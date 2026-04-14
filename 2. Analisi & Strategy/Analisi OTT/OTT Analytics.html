@@ -1,0 +1,1487 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Como TV — OTT Analytics Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; background: #f2ede4; color: #1a1a1a; font-size: 14px; line-height: 1.5; }
+
+/* ── HEADER ── */
+header {
+  background: #1a1a1a; padding: 18px 40px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 200;
+}
+.h-left { display: flex; align-items: center; gap: 20px; }
+.h-logo { height: 40px; }
+.h-divider { width: 1px; height: 36px; background: #3a3a3a; }
+.h-titles h1 { font-size: 18px; font-weight: 700; color: #fff; }
+.h-titles .h-sub { font-size: 10px; color: #7a7a7a; margin-top: 2px; }
+.h-right { display: flex; align-items: center; gap: 20px; }
+.live-badge { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #5fbe5f; font-weight: 700; }
+.live-dot { width: 7px; height: 7px; background: #5fbe5f; border-radius: 50%; animation: blink 1.6s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+.h-date { font-size: 11px; color: #6a6a6a; }
+
+/* ── PERIOD TABS ── */
+.period-bar {
+  background: #fff; border-bottom: 2px solid #e0d8cc;
+  padding: 0 40px; display: flex; align-items: center; gap: 0;
+  position: sticky; top: 76px; z-index: 190;
+}
+.period-tab {
+  padding: 12px 22px; font-size: 12px; font-weight: 700; color: #9a9080;
+  cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px;
+  text-transform: uppercase; letter-spacing: .8px; transition: all .15s;
+  user-select: none;
+}
+.period-tab:hover { color: #3a3028; }
+.period-tab.active { color: #1a1a1a; border-bottom-color: #1a1a1a; }
+.period-tab .tab-en { font-size: 9px; font-weight: 400; color: #c0b8a8; display: block; letter-spacing: .3px; text-transform: none; margin-top: 1px; }
+.period-tab.active .tab-en { color: #7a7060; }
+.tab-sep { color: #e0d8cc; font-size: 18px; line-height: 1; }
+
+/* ── SEGMENT TABS (Live / VOD) ── */
+.segment-bar { display: flex; gap: 10px; margin-bottom: 20px; }
+.seg-tab {
+  padding: 8px 22px; border-radius: 6px; font-size: 12px; font-weight: 700;
+  cursor: pointer; border: 2px solid #ddd5c8; color: #7a7060; background: #fff;
+  transition: all .15s; user-select: none;
+}
+.seg-tab:hover { border-color: #aaa098; color: #3a3028; }
+.seg-tab.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+.seg-tab .seg-en { font-size: 10px; font-weight: 400; display: inline; margin-left: 4px; opacity: .7; }
+
+/* ── LAYOUT ── */
+.wrap { max-width: 1420px; margin: 0 auto; padding: 28px 32px 50px; }
+
+/* ── SECTION DIVIDERS ── */
+.sec { display: flex; align-items: center; gap: 12px; margin: 32px 0 16px; }
+.sec-texts .sec-it { font-size: 11px; font-weight: 700; color: #1a1a1a; text-transform: uppercase; letter-spacing: 2px; }
+.sec-texts .sec-en { font-size: 9px; color: #7a7060; margin-top: 1px; }
+.sec-line { flex: 1; height: 1px; background: #d4ccc0; }
+
+/* ── CARDS ── */
+.card { background: #fff; border: 1px solid #ddd5c8; border-radius: 10px; padding: 20px 22px; }
+
+/* ── IMPACT SUMMARY ── */
+.impact-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 0; }
+.impact-card {
+  background: #fff; border: 1px solid #ddd5c8; border-radius: 10px;
+  padding: 16px 18px; position: relative; overflow: hidden;
+}
+.impact-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--ac, #1a1a1a);
+}
+.impact-card .ic-label-it { font-size: 10px; font-weight: 700; color: #2a2a2a; letter-spacing: .2px; }
+.impact-card .ic-label-en { font-size: 9px; color: #9a9080; margin-bottom: 8px; }
+.impact-card .ic-val { font-size: 26px; font-weight: 700; color: #1a1a1a; line-height: 1; }
+.impact-card .ic-trend { font-size: 11px; font-weight: 700; margin-top: 5px; }
+.impact-card .ic-note { font-size: 10px; color: #7a7060; margin-top: 3px; }
+.up { color: #1a6a1a; } .dn { color: #8a1a1a; }
+
+/* ── HERO USERS ── */
+.user-hero { background: #1a1a1a; border-radius: 10px; padding: 22px 26px; margin-bottom: 12px; display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 24px; align-items: center; }
+.uh-main .uh-label-it { font-size: 10px; font-weight: 700; color: #c8c0b8; text-transform: uppercase; letter-spacing: .8px; }
+.uh-main .uh-label-en { font-size: 9px; color: #5a5448; margin-bottom: 6px; }
+.uh-main .uh-val { font-size: 52px; font-weight: 700; color: #fff; line-height: 1; }
+.uh-main .uh-note { font-size: 11px; color: #8a8278; margin-top: 6px; }
+.uh-div { width: 1px; background: #2a2a2a; align-self: stretch; }
+.uh-stat .uh-label-it { font-size: 10px; font-weight: 700; color: #c8c0b8; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 2px; }
+.uh-stat .uh-label-en { font-size: 9px; color: #5a5448; margin-bottom: 6px; }
+.uh-stat .uh-val { font-size: 28px; font-weight: 700; color: #fff; line-height: 1; }
+.uh-stat .uh-trend { font-size: 11px; font-weight: 700; margin-top: 5px; }
+.uh-stat .uh-note { font-size: 10px; color: #8a8278; margin-top: 3px; }
+
+/* ── USER METRIC GRID ── */
+.u-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.u-card { background: #fff; border: 1px solid #ddd5c8; border-radius: 10px; padding: 14px 16px; }
+.m-label-it { font-size: 10px; font-weight: 700; color: #2a2a2a; }
+.m-label-en { font-size: 9px; color: #9a9080; margin-bottom: 7px; }
+.m-val { font-size: 24px; font-weight: 700; color: #1a1a1a; line-height: 1; }
+.m-val.sm { font-size: 18px; }
+.m-trend { font-size: 11px; font-weight: 700; margin-top: 5px; }
+.m-note-it { font-size: 10px; color: #5a5040; margin-top: 3px; }
+.m-note-en { font-size: 9px; color: #9a9080; font-style: italic; margin-top: 1px; }
+
+/* ── COMPETITION RANKINGS ── */
+.comp-block { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; }
+.card-title-it { font-size: 13px; font-weight: 700; color: #1a1a1a; }
+.card-title-en { font-size: 9px; color: #9a9080; text-transform: uppercase; letter-spacing: .8px; margin-top: 2px; margin-bottom: 14px; }
+.card-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #1a1a1a; margin-right: 6px; vertical-align: middle; }
+
+.comp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; }
+.col-hd { display: flex; gap: 6px; padding-bottom: 6px; border-bottom: 1px solid #e8e0d4; margin-bottom: 2px; font-size: 9px; text-transform: uppercase; letter-spacing: .6px; color: #9a9080; }
+.comp-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #f5ede5; }
+.comp-row:last-child { border-bottom: none; }
+.c-rank { font-size: 10px; color: #b0a898; font-weight: 700; width: 16px; flex-shrink: 0; }
+.c-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.c-name { font-size: 12px; color: #1a1a1a; flex: 1; font-weight: 500; }
+.c-bar-w { width: 70px; flex-shrink: 0; }
+.c-bar-bg { background: #ece4d8; border-radius: 3px; height: 5px; }
+.c-bar-fill { height: 5px; border-radius: 3px; }
+.c-views { font-size: 12px; font-weight: 700; color: #1a1a1a; width: 52px; text-align: right; flex-shrink: 0; }
+.c-vw { font-size: 10px; color: #9a9080; width: 46px; text-align: right; flex-shrink: 0; }
+
+.eng-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #f5ede5; }
+.eng-row:last-child { border-bottom: none; }
+.e-name { font-size: 12px; color: #1a1a1a; flex: 1; }
+.e-bar-w { width: 80px; flex-shrink: 0; }
+.e-bar-bg { background: #ece4d8; border-radius: 3px; height: 5px; }
+.e-bar-fill { height: 5px; border-radius: 3px; }
+.e-val { font-size: 12px; font-weight: 700; width: 40px; text-align: right; flex-shrink: 0; }
+
+/* ── CHART ── */
+.chart-h { height: 290px; position: relative; }
+.chart-h-sm { height: 220px; position: relative; }
+.chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* ── EVENT TABLE ── */
+.event-table { width: 100%; border-collapse: collapse; }
+.event-table th {
+  font-size: 9px; text-transform: uppercase; letter-spacing: .8px; color: #9a9080;
+  text-align: left; padding: 7px 10px; border-bottom: 2px solid #e8e0d4; white-space: nowrap;
+}
+.event-table th .th-en { display: block; font-size: 8px; color: #b0a898; text-transform: none; font-weight: 400; margin-top: 1px; }
+.event-table td { padding: 9px 10px; border-bottom: 1px solid #f5ede5; vertical-align: middle; font-size: 12px; }
+.event-table tr:hover td { background: #faf5ee; }
+.ev-rank { color: #b0a898; font-weight: 700; font-size: 11px; }
+.tag { display: inline-block; font-size: 10px; padding: 2px 7px; border-radius: 5px; font-weight: 700; white-space: nowrap; }
+.t-blue   { background: #deeaf8; color: #1a3a8a; }
+.t-green  { background: #ddf0dd; color: #0a4a0a; }
+.t-yellow { background: #f8f0d5; color: #5a3a00; }
+.t-purple { background: #ede0f8; color: #42006a; }
+.num-w { font-weight: 700; color: #1a1a1a; }
+.bar-bg { background: #ece4d8; border-radius: 3px; height: 4px; width: 80px; }
+.bar-fill { height: 4px; border-radius: 3px; background: linear-gradient(90deg, #3a3a3a, #8a8a8a); }
+
+/* ── VOD PLACEHOLDER ── */
+.vod-placeholder {
+  background: #fff; border: 2px dashed #d4ccc0; border-radius: 10px;
+  padding: 48px 32px; text-align: center;
+}
+.vod-placeholder .vp-icon { font-size: 36px; margin-bottom: 12px; }
+.vod-placeholder .vp-title-it { font-size: 16px; font-weight: 700; color: #3a3028; margin-bottom: 4px; }
+.vod-placeholder .vp-title-en { font-size: 12px; color: #9a9080; font-style: italic; margin-bottom: 16px; }
+.vod-placeholder .vp-desc { font-size: 12px; color: #7a7060; line-height: 1.7; max-width: 480px; margin: 0 auto; }
+.vod-ready-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 24px; }
+.vod-ready-card { background: #f5f0e8; border: 1px dashed #c8c0b0; border-radius: 8px; padding: 14px; text-align: left; }
+.vrc-title { font-size: 11px; font-weight: 700; color: #3a3028; margin-bottom: 4px; }
+.vrc-en { font-size: 10px; color: #9a9080; font-style: italic; margin-bottom: 8px; }
+.vrc-chip { display: inline-block; font-size: 9px; color: #1a3a8a; background: #e8eef8; border: 1px solid #b8cce8; border-radius: 4px; padding: 2px 6px; font-weight: 600; margin: 2px 2px 0 0; }
+
+/* ── COMING SOON ── */
+.cs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.cs-card { background: #fff; border: 1px dashed #c8c0b0; border-radius: 10px; padding: 18px 20px; }
+.cs-card.p1 { border-color: #c87030; background: #fffaf5; }
+.cs-card.p2 { border-color: #a89020; background: #fffdf0; }
+.cs-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; gap: 8px; }
+.cs-point { font-size: 9px; color: #9a9080; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+.cs-pri { font-size: 9px; padding: 2px 7px; border-radius: 5px; font-weight: 700; }
+.pri-h { background: #fde0c8; color: #7a2800; border: 1px solid #e8a878; }
+.pri-m { background: #fdf0c0; color: #5a3800; border: 1px solid #d8c060; }
+.pri-l { background: #dceaf8; color: #1a3a5a; border: 1px solid #9abcd8; }
+.cs-title-it { font-size: 13px; font-weight: 700; color: #1a1a1a; margin-bottom: 2px; }
+.cs-title-en { font-size: 10px; color: #9a9080; font-style: italic; margin-bottom: 8px; }
+.cs-desc-it { font-size: 11px; color: #3a3028; line-height: 1.6; }
+.cs-desc-en { font-size: 10px; color: #9a9080; line-height: 1.5; margin-top: 5px; font-style: italic; border-top: 1px solid #ece4d8; padding-top: 5px; }
+.cs-chips { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px; }
+.cs-chip { font-size: 9px; color: #1a3a8a; background: #e8eef8; border: 1px solid #b8cce8; border-radius: 4px; padding: 2px 7px; font-weight: 600; }
+.cs-ph { margin-top: 12px; background: #f5f0e8; border: 1px solid #ddd5c8; border-radius: 6px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #c0b8a8; letter-spacing: 1px; text-transform: uppercase; }
+
+/* ── STATUS BAR ── */
+.status-bar { background: #fff; border: 1px solid #ddd5c8; border-radius: 10px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.sb-item { display: flex; align-items: center; gap: 7px; font-size: 11px; color: #3a3028; }
+.sb-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.sb-note { font-size: 10px; color: #9a9080; margin-left: auto; font-style: italic; }
+
+footer { text-align: center; padding: 20px; font-size: 10px; color: #9a9080; border-top: 1px solid #ddd5c8; margin-top: 14px; }
+
+/* ── DATA NOTICE ── */
+.data-notice { background: #f5f0e8; border: 1px solid #d4ccc0; border-left: 3px solid #c87030; border-radius: 8px; padding: 10px 14px; font-size: 11px; color: #5a4a30; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+
+/* ── VOD CATEGORY TAGS ── */
+.vod-cat-tag { display:inline-block; font-size:9px; padding:2px 7px; border-radius:5px; font-weight:700; white-space:nowrap; }
+.vod-doc     { background:#ede0f8; color:#42006a; }
+.vod-original{ background:#fde8e8; color:#7a0000; }
+.vod-live-rel{ background:#deeaf8; color:#1a3a8a; }
+.vod-show    { background:#e8f5e8; color:#0a4a0a; }
+
+/* ── VOD ENGAGEMENT ROW ── */
+.veng-row { display:flex; align-items:center; gap:8px; padding:9px 0; border-bottom:1px solid #f5ede5; }
+.veng-row:last-child { border-bottom:none; }
+.veng-name { flex:1; font-size:11px; color:#1a1a1a; line-height:1.3; }
+.veng-bar-wrap { width:80px; flex-shrink:0; }
+.veng-bar-bg { background:#ece4d8; border-radius:3px; height:5px; }
+.veng-bar-fill { height:5px; border-radius:3px; background:#dc2626; }
+.veng-val { font-size:12px; font-weight:700; color:#dc2626; width:38px; text-align:right; flex-shrink:0; }
+
+</style>
+</head>
+<body>
+
+<header>
+  <div class="h-left">
+    <img src="data:image/png;base64,/9j/4AAQSkZJRgABAgAAAQABAAD/wAARCAS0A/ADACIAAREBAhEB/9sAQwAIBgYHBgUIBwcHCQkICgwUDQwLCwwZEhMPFB0aHx4dGhwcICQuJyAiLCMcHCg3KSwwMTQ0NB8nOT04MjwuMzQy/9sAQwEJCQkMCwwYDQ0YMiEcITIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIy/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMAAAERAhEAPwD5/ooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA9g/Zx/5KHqH/YKk/8ARsVfT9fMH7OP/JQ9Q/7BUn/o2Kvp+gAooooA+AKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAPYP2cf+Sh6h/2CpP/AEbFX0/XzB+zj/yUPUP+wVJ/6Nir6foAKKKKAPgCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigD2D9nH/koeof9gqT/wBGxV9P18wfs4/8lD1D/sFSf+jYq+n6ACiiigD4AooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA9g/Zx/5KHqH/YKk/8ARsVfT9fMH7OP/JQ9Q/7BUn/o2Kvp+gAooooA+AKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAPYP2cf+Sh6h/2CpP/AEbFX0/XzB+zj/yUPUP+wVJ/6Nir6foAKKKKAPgCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigD2D9nH/koeof9gqT/wBGxV9P18wfs4/8lD1D/sFSf+jYq+n6ACiiigD4AooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA9g/Zx/5KHqH/YKk/8ARsVfT9fMH7OP/JQ9Q/7BUn/o2Kvp+gAooooA+AKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAPYP2cf+Sh6h/2CpP/AEbFX0/XzB+zj/yUPUP+wVJ/6Nir6foAKKKKAPgCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigD2D9nH/koeof9gqT/wBGxV9P18wfs4/8lD1D/sFSf+jYq+n6ACiiigD4AooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA9g/Zx/5KHqH/YKk/8ARsVfT9fMH7OP/JQ9Q/7BUn/o2Kvp+gAooooA+AKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAPYP2cf+Sh6h/2CpP/AEbFX0/XzB+zj/yUPUP+wVJ/6Nir6foAKKKKAPgCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigD2D9nH/koeof9gqT/wBGxV9P18wfs4/8lD1D/sFSf+jYq+n6ACiiigD4AooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAoopcUAJRTgpY4AJPoKvW+h6pdf6nTrlwehEZx+dD0Az6K3B4P188/2bKPqR/jUc3hfW4F3Pplxj/ZXd/KoVSDdrorkl2MeipJYJYG2yxPG3o6kH9aZirJEoooFABRS4pKACiilxQAlFKBk471ah0y+uP9TZXEn+5Ex/pQBUorWHhrWmGRpd1j/rmagm0TVIBmTTrpR6mJsfypKSfUdmUKKcyMjYdSp9CMUmKYhKKXFFACUUUUAFFFFABRS0YoASiiigAooooAKKKKACilxRQAlFFFABRRRQAUUvFGKAEopcUYoASinpG8h2ojMfRRmrsWiapOMx6ddMPXymx/KjYDPorWPhrWlGTpd1j/rmapzabfW/+us7iP8A34mH9KSaew7Mq0UuKDTEJRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFAHsH7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AooooAKKKKACiiigCxaXtzYzia1neGQfxIcV3WjfET7sOrxe3nxD+a/4V57RXPXwtKurTXz6mtOtOn8LPfLK+t7yFbizuElTPDxt0P8AQ12GjeOr+w2xXg+1wDjLHDj8e/418vWGp3mmTiazuHhfvtPB+o713ui/EOGbbDq0XlN08+MZU/UdvwryJ4LE4V89B3X9dOp2KvSrLlqI+o9K1/TtYjBtJwXxkxNw4/CtOvALO8SVY7qzuAw6pJE39RXZ6N4+u7TbFqKG6i/56Dhx/jXRh81jL3ayszOpg2tYao9Moqjp2sWGrQ+ZZ3Cyccr0ZfqKvV60ZKSundHG007MKKKKYgooozQAUVQ1LWbDSYvMvLhU9E6s30FcDrPj28uw0WnKbWL++eXP+Fc9fFUqCvN/LqaU6U6j91Hc6r4g07RkJupx5mMiJeXP4f41wGs+OdQ1DMVp/okB4+U/O31Pb8K5O7vI4Ve6vLgKvV5JW/qa4fWviJFFuh0mLzG6efIPlH0Hf8a8ieNxOKlyUFZf116HasPSpK9R3O0vb62sYWuLy4SJO7SN1P8AU1wutfEQkPDpEWB0+0Sjn8F/xrib7UrvUpzNeXEkznux4H0Haqua6MPlUY+9Wd3/AF95nUxjekNCa6vbm+nM11M80h6s5zUFFFetGKirJWRxtt6sKKKKYgooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigD2D9nH/AJKHqH/YKk/9GxV9P18wfs4/8lD1D/sFSf8Ao2Kvp+gAooooA+AKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKUGkooAv6brF9pM3mWdw8fPK9Vb6ivQNF+INnd7YtSQW0vTzF5Q/1FeYUVy4jB0q/xLXv1NqdedPZn0Ha3bI0d1Z3BB6pLE38iK7bR/iBNDth1WPzk6edGMMPqO9fLWla/qOjSBrS4ITPMTco34V6Fo3jzT7/AGxXwFpP0yTlG/Ht+NeTLDYrBvmpO8f63X+R2KrRrq09GfT1hqVnqUAms7hJU77TyPqO1Wq8Is76e0lW4s7ho26h426j+orqD8QNV+weT5cPn9PPxzj/AHema6qObU5L97ozGeDmn7uqPRL/AFKz0yDzry4SJe248n6DvXCaz8QJ5t0OlxmFOnnOMsfoO1cdd3s91K9zeXDSP1Z5G6D+grjNa8e2FhuisQLuccbgcIv49/wrnqZhWry5MPH/AD/4BpHDQprmqs6+7u2YyXV3cE93llb+ZNcVrPxCtLUtDpiC5lHHmtwg/qa4XVde1HWZd15cFkzlY14RfoKy61oZVd89d3fYmpi+lNF7UtXvtWm829uHlPZeir9B2qiaKK9eEIwXLFWRxOTk7sKKKKoQUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFAHsH7OP/JQ9Q/7BUn/o2Kvp+vmD9nH/AJKHqH/YKk/9GxV9P0AFFFFAHwBRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFAGzo/ibU9FYC3nLw94ZOVP+H4V2R+JNp9g3/YpftfTy8/J9d3p+FeaUZrkrYGhWfNJa+RtTxFSCsmbGseJdS1piLiYrD2hj4Uf4/jWPRRXRTpQpx5YKyM5TlJ3kwoooqyQooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA9g/Zx/5KHqH/AGCpP/RsVfT9fMH7OP8AyUPUP+wVJ/6Nir6foAKKKKAPgCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigD2D9nH/koeof8AYKk/9GxV9P18wfs4/wDJQ9Q/7BUn/o2Kvp+gAooooA+AKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAPYP2cf+Sh6h/wBgqT/0bFX0/XzB+zj/AMlD1D/sFSf+jYq+n6ACiiigD4AooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA9g/Zx/5KHqH/AGCpP/RsVfT9fMH7OP8AyUPUP+wVJ/6Nir6foAKKKKAPgCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigD2D9nH/koeof8AYKk/9GxV9P18wfs4/wDJQ9Q/7BUn/o2Kvp+gAooooA+AKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAPYP2cf+Sh6h/wBgqT/0bFX0/XzB+zj/AMlD1D/sFSf+jYq+n6ACiiigD4AooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA9g/Zx/5KHqH/AGCpP/RsVfT9fMH7OP8AyUPUP+wVJ/6Nir6foAKKKKAPgCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigD2D9nH/koeof8AYKk/9GxV9P18wfs4/wDJQ9Q/7BUn/o2Kvp+gAooooA+AKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAPYP2cf+Sh6h/wBgqT/0bFX0/XzB+zj/AMlD1D/sFSf+jYq+n6ACiiigD4AooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA9g/Zx/5KHqH/AGCpP/RsVfT9fMH7OP8AyUPUP+wVJ/6Nir6foAKKKKAPgCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigD2D9nH/koeof8AYKk/9GxV9P18wfs4/wDJQ9Q/7BUn/o2Kvp+gAooooA+AKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAPYP2cf+Sh6h/wBgqT/0bFX0/XzB+zj/AMlD1D/sFSf+jYq+n6ACiiigD4AooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA9g/Zx/5KHqH/AGCpP/RsVfT9fMH7OP8AyUPUP+wVJ/6Nir6foAKKKKAPgCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigD2D9nH/koeof8AYKk/9GxV9P18wfs4/wDJQ9Q/7BUn/o2Kvp+gAooooA//2Q==" class="h-logo" alt="Como TV">
+    <div class="h-divider"></div>
+    <div class="h-titles">
+      <h1>OTT Analytics Dashboard</h1>
+      <div class="h-sub">Stagione / Season 2024–25 &nbsp;·&nbsp; Live + VOD &nbsp;·&nbsp; Uso interno / Internal use</div>
+    </div>
+  </div>
+  <div class="h-right">
+    <div class="live-badge"><span class="live-dot"></span>Live · DMS</div>
+    <div class="h-date">28 marzo / March 28, 2026</div>
+  </div>
+</header>
+
+<!-- PERIOD TABS -->
+<div class="period-bar">
+  <div class="period-tab active" data-period="all" onclick="setPeriod(this)">
+    Stagione<span class="tab-en">Full Season</span>
+  </div>
+  <span class="tab-sep">·</span>
+  <div class="period-tab" data-period="1m" onclick="setPeriod(this)">
+    Ultimo Mese<span class="tab-en">Last Month</span>
+  </div>
+  <span class="tab-sep">·</span>
+  <div class="period-tab" data-period="1w" onclick="setPeriod(this)">
+    Ultima Settimana<span class="tab-en">Last Week</span>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- DATA NOTICE -->
+  <div class="data-notice" id="dataNotice">
+    ⚠️ <strong>Dati stagione completa</strong> — I filtri temporali si attiveranno man mano che vengono caricati i dati per periodo. &nbsp;|&nbsp; <em>Period filters will activate as data is loaded for each timeframe.</em>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       LIVE SECTION
+  ═══════════════════════════════════════ -->
+  <div style="background:#1a1a1a;border-radius:10px;padding:14px 26px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
+    <div style="width:9px;height:9px;background:#e05050;border-radius:50%;animation:blink 1.6s infinite;flex-shrink:0"></div>
+    <div>
+      <div style="font-size:14px;font-weight:700;color:#fff;letter-spacing:.4px">🔴 LIVE — Piattaforma &amp; Eventi</div>
+      <div style="font-size:10px;color:#666;margin-top:2px">Live Events · Platform Users · Aggiornato 6 aprile 2026</div>
+    </div>
+    <div style="margin-left:auto;font-size:10px;color:#555;background:#2a2a2a;padding:5px 12px;border-radius:6px">DMS · Play Statistics · sezione 6.7</div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-texts">
+      <div class="sec-it">📊 Sintesi di Impatto Live</div>
+      <div class="sec-en">Live Impact Summary · Season metrics at a glance</div>
+    </div>
+    <div class="sec-line"></div>
+  </div>
+
+  <!-- LIVE IMPACT -->
+  <div id="liveImpact">
+    <div class="impact-grid">
+      <div class="impact-card" style="--ac:#1a1a1a">
+        <div class="ic-label-it">Utenti Totali Piattaforma</div>
+        <div class="ic-label-en">Total Registered Users</div>
+        <div class="ic-val">118.27K</div>
+        <div class="ic-note">Base cumulativa · Cumulative base</div>
+      </div>
+      <div class="impact-card" style="--ac:#1a4a9a">
+        <div class="ic-label-it">Spettatori Unici (top 50)</div>
+        <div class="ic-label-en">Unique Viewers — top 50 events</div>
+        <div class="ic-val">233K</div>
+        <div class="ic-note">Logged-in + Anonimi</div>
+      </div>
+      <div class="impact-card" style="--ac:#8a6a00">
+        <div class="ic-label-it">Visualizzazioni Totali</div>
+        <div class="ic-label-en">Total Content Views</div>
+        <div class="ic-val">688K</div>
+        <div class="ic-note">N° riproduzioni totali · Total plays</div>
+      </div>
+      <div class="impact-card" style="--ac:#1a6a1a">
+        <div class="ic-label-it">Ore di Visione</div>
+        <div class="ic-label-en">Total Watch Time</div>
+        <div class="ic-val">80.7K h</div>
+        <div class="ic-note">Ore cumulative · Cumulative hours</div>
+      </div>
+      <div class="impact-card" style="--ac:#8a2a1a">
+        <div class="ic-label-it">Evento di Punta</div>
+        <div class="ic-label-en">Top Event</div>
+        <div class="ic-val" style="font-size:16px;line-height:1.3">Barcelona<br>vs Como</div>
+        <div class="ic-note">153K views · 42.9K viewers</div>
+      </div>
+      <div class="impact-card" style="--ac:#6a3a8a">
+        <div class="ic-label-it">Completion Rate Medio</div>
+        <div class="ic-label-en">Avg Completion Rate</div>
+        <div class="ic-val">12.4%</div>
+        <div class="ic-note">Media top 50 eventi · Top 50 avg</div>
+      </div>
+    </div>
+
+    <!-- Live platform data strip -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:12px">
+      <div class="impact-card" style="--ac:#cc4444">
+        <div class="ic-label-it">Attivi 30 giorni · <span style="color:#9a9080;font-weight:400">Active 30-day</span></div>
+        <div class="ic-val">29.33K</div>
+        <div class="ic-trend dn">▼ −32.5% MoM</div>
+      </div>
+      <div class="impact-card" style="--ac:#2a6a9a">
+        <div class="ic-label-it">Attivi 7 giorni · <span style="color:#9a9080;font-weight:400">Active 7-day</span></div>
+        <div class="ic-val">8.75K</div>
+        <div class="ic-trend up">▲ +48.3% WoW</div>
+      </div>
+      <div class="impact-card" style="--ac:#9a4a00">
+        <div class="ic-label-it">Revenue Mese · <span style="color:#9a9080;font-weight:400">Revenue This Month</span></div>
+        <div class="ic-val" style="font-size:22px">€ 191.36</div>
+        <div class="ic-note">64 ordini · aprile 2026 (in corso)</div>
+      </div>
+      <div class="impact-card" style="--ac:#059669">
+        <div class="ic-label-it">Play Failures Ieri · <span style="color:#9a9080;font-weight:400">Yesterday</span></div>
+        <div class="ic-val" style="color:#059669;font-size:32px;line-height:1">0</div>
+        <div class="ic-note" style="color:#059669;font-weight:700">✓ Zero errori · Perfect day</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       UTENTI PIATTAFORMA (LIVE ONLY)
+  ═══════════════════════════════════════ -->
+  <div id="liveUsers">
+    <div class="sec">
+      <div class="sec-texts">
+        <div class="sec-it"><span style="display:inline-block;width:7px;height:7px;background:#2a7a2a;border-radius:50%;margin-right:6px;vertical-align:middle"></span>Utenti Piattaforma</div>
+        <div class="sec-en">Platform Users · Live data from DMS · 6 aprile 2026</div>
+      </div>
+      <div class="sec-line"></div>
+    </div>
+
+    <div class="user-hero">
+      <div class="uh-main">
+        <div class="uh-label-it">Utenti Totali Registrati</div>
+        <div class="uh-label-en">Total Registered Users</div>
+        <div class="uh-val">118.27K</div>
+        <div class="uh-note">Base cumulativa dalla fondazione · Cumulative base since launch</div>
+      </div>
+      <div class="uh-div"></div>
+      <div class="uh-stat">
+        <div class="uh-label-it">Ordini Totali</div>
+        <div class="uh-label-en">Total Package Orders</div>
+        <div class="uh-val">28.7K</div>
+        <div class="uh-note" style="color:#d4a830;font-weight:700">€ 80.3K revenue cumulativa</div>
+      </div>
+      <div class="uh-stat">
+        <div class="uh-label-it">Retention Nuovi Utenti</div>
+        <div class="uh-label-en">New User Retention (7-day)</div>
+        <div class="uh-val">425.7%</div>
+        <div class="uh-trend up" style="font-size:11px;font-weight:700;color:#2a8a2a;margin-top:5px">▲ +7.2% WoW</div>
+        <div class="uh-note">Tornano più volte · Return multiple times</div>
+      </div>
+    </div>
+
+    <div class="u-grid">
+      <div class="u-card">
+        <div class="m-label-it">Attivi 30 giorni</div><div class="m-label-en">Active Users (30-day)</div>
+        <div class="m-val">29.33K</div>
+        <div class="m-trend dn">▼ −32.5% MoM</div>
+        <div class="m-note-it">24.8% della base registrata</div><div class="m-note-en">24.8% of registered base</div>
+      </div>
+      <div class="u-card">
+        <div class="m-label-it">Attivi 7 giorni</div><div class="m-label-en">Active Users (7-day)</div>
+        <div class="m-val">8.75K</div>
+        <div class="m-trend up">▲ +48.3% WoW</div>
+        <div class="m-note-it">Segnale positivo settimanale</div><div class="m-note-en">Positive weekly signal</div>
+      </div>
+      <div class="u-card">
+        <div class="m-label-it">Logged-In Attivi</div><div class="m-label-en">Logged-In Active Users</div>
+        <div class="m-val">4.25K</div>
+        <div class="m-trend dn">▼ −42.5% WoW</div>
+        <div class="m-note-it">In calo rispetto alla settimana precedente</div><div class="m-note-en">Down week-over-week</div>
+      </div>
+      <div class="u-card">
+        <div class="m-label-it">Nuovi Utenti (media 7gg)</div><div class="m-label-en">New Users (7-day avg)</div>
+        <div class="m-val">490</div>
+        <div class="m-trend up">▲ +362.3% WoW</div>
+        <div class="m-note-it">Picco di acquisizione</div><div class="m-note-en">Acquisition spike</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       LIVE — RANKING COMPETIZIONI
+  ═══════════════════════════════════════ -->
+  <div id="liveContent">
+
+    <div class="sec">
+      <div class="sec-texts">
+        <div class="sec-it">🔴 Live — Ranking Competizioni</div>
+        <div class="sec-en">Live Events · Competition Rankings · Season top 50 events</div>
+      </div>
+      <div class="sec-line"></div>
+    </div>
+
+    <div class="comp-block">
+      <div class="card">
+        <span class="card-dot"></span><span class="card-title-it">Views &amp; Audience per Competizione</span>
+        <div class="card-title-en">Total Views &amp; Unique Viewers by Competition</div>
+        <div class="comp-cols">
+          <div>
+            <div class="col-hd" style="gap:6px"><span style="flex:1">Competizione / Competition</span><span style="width:52px;text-align:right">Views</span><span style="width:46px;text-align:right">Viewer</span></div>
+            <div id="compLeft"></div>
+          </div>
+          <div>
+            <div class="col-hd" style="gap:6px"><span style="flex:1">Competizione / Competition</span><span style="width:52px;text-align:right">Views</span><span style="width:46px;text-align:right">Viewer</span></div>
+            <div id="compRight"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <span class="card-dot" style="background:#1a6a1a"></span>
+        <span class="card-title-it" style="color:#1a6a1a">Engagement · Completion Rate</span>
+        <div class="card-title-en" style="color:#4a7a4a">Avg % of match watched per viewer · % media guardato</div>
+        <div style="font-size:10px;color:#9a9080;margin-bottom:12px;font-style:italic">Fonte DMS: Content Views / Unique Viewers · Dato stimato</div>
+        <div id="engList"></div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px" class="chart-grid">
+      <div class="card">
+        <span class="card-dot"></span><span class="card-title-it">Views vs Spettatori Unici per Competizione</span>
+        <div class="card-title-en">Total Views vs Unique Viewers by Competition</div>
+        <div class="chart-h"><canvas id="compChart"></canvas></div>
+      </div>
+      <div class="card">
+        <span class="card-dot" style="background:#6a3a8a"></span>
+        <span class="card-title-it">Distribuzione Audience</span>
+        <div class="card-title-en">Audience Distribution by Competition</div>
+        <div class="chart-h"><canvas id="pieChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Top 20 events -->
+    <div class="sec">
+      <div class="sec-texts">
+        <div class="sec-it">Top 20 Eventi Live per Audience</div>
+        <div class="sec-en">Top 20 Live Events by Audience</div>
+      </div>
+      <div class="sec-line"></div>
+    </div>
+    <div class="card">
+      <div style="font-size:10px;color:#9a9080;margin-bottom:12px">
+        <strong>Fonte dati / Data source:</strong> DMS → Live Event (sezione 5) · Unique Viewers = Logged-in + Anonymous · Content Views = Total plays
+      </div>
+      <table class="event-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Evento<span class="th-en">Event</span></th>
+            <th>Competizione<span class="th-en">Competition</span></th>
+            <th>Spettatori Unici<span class="th-en">Unique Viewers</span></th>
+            <th>Visualizzazioni<span class="th-en">Content Views</span></th>
+            <th>Visione Media<span class="th-en">Avg Watch Time</span></th>
+            <th>Completion<span class="th-en">% watched</span></th>
+            <th>Peso<span class="th-en">Weight</span></th>
+          </tr>
+        </thead>
+        <tbody id="evTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       VOD SECTION
+  ═══════════════════════════════════════ -->
+
+  <!-- ═══════════════════════════════════════
+       VOD SECTION
+  ═══════════════════════════════════════ -->
+  <div style="background:linear-gradient(135deg,#2d1b69 0%,#4c1d95 100%);border-radius:12px;padding:18px 28px;margin:44px 0 22px;display:flex;align-items:center;gap:18px">
+    <div style="font-size:28px;flex-shrink:0">📼</div>
+    <div style="flex:1">
+      <div style="font-size:15px;font-weight:700;color:#fff;letter-spacing:.4px">VOD — On Demand</div>
+      <div style="font-size:10px;color:#a78bfa;margin-top:3px">Video on Demand · Season Analytics · 4 apr 2025 – 4 apr 2026</div>
+    </div>
+    <div style="background:#1e1040;padding:10px 18px;border-radius:8px;text-align:right;flex-shrink:0">
+      <div style="font-size:13px;font-weight:700;color:#c4b5fd">60.2K viewers</div>
+      <div style="font-size:10px;color:#7c3aed;margin-top:2px">372.8K plays · 25.9K h</div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-texts">
+      <div class="sec-it">📊 Sintesi di Impatto VOD</div>
+      <div class="sec-en">VOD Impact Summary · On Demand Analytics</div>
+    </div>
+    <div class="sec-line"></div>
+  </div>
+
+  <!-- VOD IMPACT — v4.1 -->
+  <div id="vodImpact">
+
+    <!-- ── PERIOD NOTICE VOD ── -->
+    <div id="vodPeriodNotice" style="display:none;background:#e8f4fc;border-left:4px solid #1a6a9a;border-radius:0 6px 6px 0;padding:11px 16px;margin-bottom:14px;font-size:11px;color:#1a3a5a">
+      <strong id="vodPeriodNoticeText">⏳ Dati per questo periodo non ancora caricati</strong>
+    </div>
+
+    <!-- ── DARK HERO BAR ── -->
+    <div class="user-hero" style="grid-template-columns:1.6fr 1px 1fr 1px 1fr 1px 1fr;margin-bottom:14px">
+      <div class="uh-main">
+        <div class="uh-label-it">Spettatori Unici VOD</div>
+        <div class="uh-label-en">Total Unique Viewers · Season</div>
+        <div class="uh-val">60.2K</div>
+        <div class="uh-note">4 apr 2025 – 4 apr 2026 &nbsp;·&nbsp; Logged-in + Anonimi</div>
+      </div>
+      <div class="uh-div"></div>
+      <div class="uh-stat">
+        <div class="uh-label-it">Play Totali</div>
+        <div class="uh-label-en">Total Play Count</div>
+        <div class="uh-val">372.8K</div>
+        <div class="uh-note" style="color:#d4a830;font-weight:700">6.2× per viewer · uso abitudinario</div>
+      </div>
+      <div class="uh-div"></div>
+      <div class="uh-stat">
+        <div class="uh-label-it">Ore di Engagement</div>
+        <div class="uh-label-en">Total Engagement Time</div>
+        <div class="uh-val">25.9K h</div>
+        <div class="uh-note">4.2 min/play media · replay: 8–10 min</div>
+      </div>
+      <div class="uh-div"></div>
+      <div class="uh-stat">
+        <div class="uh-label-it">Viewer Loggati</div>
+        <div class="uh-label-en">Logged-In Viewers</div>
+        <div class="uh-val">17.3K</div>
+        <div class="uh-note">28.7% del totale · 42.9K anonimi</div>
+      </div>
+    </div>
+
+    <!-- ── STRATEGIC SPLIT VISUALIZATION ── -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+
+      <!-- ORIGINALS -->
+      <div class="card" style="border-left:4px solid #7c3aed;padding:16px 20px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <span style="font-size:18px">🎬</span>
+          <div>
+            <div style="font-size:12px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.8px">Originals &amp; Format</div>
+            <div style="font-size:9px;color:#9a9080">Documentari · Serie · Show · Branded content</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:#5a5040;margin-bottom:5px">
+            <span style="font-weight:700">REACH</span>
+            <span style="color:#7c3aed;font-weight:700">→ Leader · #1 contenuto piattaforma</span>
+          </div>
+          <div style="background:#ede4f8;border-radius:4px;height:10px;margin-bottom:4px">
+            <div style="width:100%;height:10px;border-radius:4px;background:linear-gradient(90deg,#7c3aed,#a855f7)"></div>
+          </div>
+          <div style="font-size:10px;color:#7a7060">Ascent: <strong>18.5K viewers</strong> &nbsp;·&nbsp; INTERVIEWS cat.: <strong>10.2K</strong> &nbsp;·&nbsp; Talent Hunters: <strong>7.8K</strong></div>
+        </div>
+
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:#5a5040;margin-bottom:5px">
+            <span style="font-weight:700">ORE TOTALI VOD</span>
+            <span style="color:#9a9080">~5% delle 25.9K h</span>
+          </div>
+          <div style="background:#ede4f8;border-radius:4px;height:10px;margin-bottom:4px">
+            <div style="width:5%;height:10px;border-radius:4px;background:#7c3aed77"></div>
+          </div>
+          <div style="font-size:10px;color:#7a7060">~1.200h &nbsp;·&nbsp; Goleada: <strong>203h</strong> · INTERVIEWS: <strong>548h</strong> · Talent H.: <strong>142h</strong></div>
+        </div>
+      </div>
+
+      <!-- LIVE-RELATED -->
+      <div class="card" style="border-left:4px solid #dc2626;padding:16px 20px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <span style="font-size:18px">🔴</span>
+          <div>
+            <div style="font-size:12px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.8px">Live-Related VOD</div>
+            <div style="font-size:9px;color:#9a9080">Replay partite · Highlights · Pre-show</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:#5a5040;margin-bottom:5px">
+            <span style="font-weight:700">REACH</span>
+            <span style="color:#9a9080">Top categorie per viewer</span>
+          </div>
+          <div style="background:#fde8e8;border-radius:4px;height:10px;margin-bottom:4px">
+            <div style="width:76%;height:10px;border-radius:4px;background:#dc262677"></div>
+          </div>
+          <div style="font-size:10px;color:#7a7060">COMO CUP: <strong>7.7K</strong> &nbsp;·&nbsp; Eredivisie: <strong>7.0K</strong> &nbsp;·&nbsp; Serie A Replay: <strong>6.2K</strong></div>
+        </div>
+
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:#5a5040;margin-bottom:5px">
+            <span style="font-weight:700">ORE TOTALI VOD</span>
+            <span style="color:#dc2626;font-weight:700">→ Leader · ~81% delle 25.9K h</span>
+          </div>
+          <div style="background:#fde8e8;border-radius:4px;height:10px;margin-bottom:4px">
+            <div style="width:81%;height:10px;border-radius:4px;background:linear-gradient(90deg,#dc2626,#ef4444)"></div>
+          </div>
+          <div style="font-size:10px;color:#7a7060">Copa Lib: <strong>4.177h</strong> &nbsp;·&nbsp; Argentine Copa: <strong>3.812h</strong> &nbsp;·&nbsp; Serie A Replay: <strong>2.481h</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── BOTTOM QUICK STATS ── -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+      <div class="impact-card" style="--ac:#7c3aed">
+        <div class="ic-label-it">#1 Piattaforma</div>
+        <div class="ic-label-en">Highest reach · All VOD</div>
+        <div class="ic-val" style="font-size:16px;line-height:1.4;color:#7c3aed">Ascent<br>Serie A</div>
+        <div class="ic-note">18.5K viewers · 3× il secondo contenuto</div>
+      </div>
+      <div class="impact-card" style="--ac:#dc2626">
+        <div class="ic-label-it">#1 Fan Loyalty</div>
+        <div class="ic-label-en">Deepest engagement · Category</div>
+        <div class="ic-val" style="font-size:22px;color:#dc2626">4.177h</div>
+        <div class="ic-note">Copa Libertadores · viewer più fedeli</div>
+      </div>
+      <div class="impact-card" style="--ac:#0891b2">
+        <div class="ic-label-it">Ritorno medio</div>
+        <div class="ic-label-en">Avg plays / unique viewer</div>
+        <div class="ic-val">6.2×</div>
+        <div class="ic-note">Audience abitudinaria · alta retention</div>
+      </div>
+      <div class="impact-card" style="--ac:#059669">
+        <div class="ic-label-it">Profondità media</div>
+        <div class="ic-label-en">Avg engagement per play</div>
+        <div class="ic-val">4.2 min</div>
+        <div class="ic-note">Replay: 8–10 min &nbsp;·&nbsp; Format: 1–2 min</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── VOD DETAILED ANALYSIS ── -->
+  <div id="vodContent">
+
+    <!-- ── VOD SECTION HEADER ── -->
+    <div class="sec" style="margin-top:4px">
+      <div class="sec-texts">
+        <div class="sec-it">📼 VOD — On Demand · Analisi Strategica</div>
+        <div class="sec-en">Video On Demand · DMS Section 6 · Season 4 apr 2025 – 4 apr 2026</div>
+      </div>
+      <div class="sec-line"></div>
+    </div>
+
+    <!-- ── STRATEGIC SPLIT: 2 PANELS ── -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <!-- ORIGINALS PANEL -->
+      <div class="card" style="border-left:4px solid #7c3aed">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <span style="font-size:20px">🎬</span>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#7c3aed">ORIGINALS &amp; FORMAT</div>
+            <div style="font-size:10px;color:#9a9080">Documentari · Serie · Show · Branded content</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+          <div style="background:#f5f0fc;border-radius:7px;padding:12px">
+            <div style="font-size:10px;color:#7c3aed;font-weight:700;text-transform:uppercase;letter-spacing:.6px">Viewers #1 contenuto</div>
+            <div style="font-size:28px;font-weight:700;color:#1a1a1a;line-height:1.1">18.5K</div>
+            <div style="font-size:10px;color:#5a5040">Ascent, a new view: Serie A<br>= il contenuto più visto dell'intera piattaforma</div>
+          </div>
+          <div style="background:#f5f0fc;border-radius:7px;padding:12px">
+            <div style="font-size:10px;color:#7c3aed;font-weight:700;text-transform:uppercase;letter-spacing:.6px">Doc più visto dopo Ascent</div>
+            <div style="font-size:28px;font-weight:700;color:#1a1a1a;line-height:1.1">5.9K</div>
+            <div style="font-size:10px;color:#5a5040">Alessandro Gabrielloni, The Local Hero<br>193h engagement time totale</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:#3a3028;line-height:1.6;background:#faf5ff;border-radius:7px;padding:10px 12px;border:1px solid #e8d8ff">
+          <strong style="color:#7c3aed">Cosa pesa di più:</strong><br>
+          I <strong>documentari su persone e storie</strong> (Ascent, Alessandro Gabrielloni) dominano per reach. Ascent è il contenuto #1 assoluto del VOD. I <strong>format episodici</strong> (Talent Hunters, Goleada) generano fidelizzazione regolare. La categoria INTERVIEWS (10.2K viewer) conferma che il <strong>volto Como vende</strong>.
+        </div>
+        <div style="margin-top:12px"><div id="origTop"></div></div>
+      </div>
+
+      <!-- LIVE-RELATED PANEL -->
+      <div class="card" style="border-left:4px solid #dc2626">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <span style="font-size:20px">🔴</span>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#dc2626">LIVE-RELATED VOD (Replay + Highlights)</div>
+            <div style="font-size:10px;color:#9a9080">Replay partite · Highlights · Pre-show</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+          <div style="background:#fff5f5;border-radius:7px;padding:12px">
+            <div style="font-size:10px;color:#dc2626;font-weight:700;text-transform:uppercase;letter-spacing:.6px">Engagement hours top categoria</div>
+            <div style="font-size:28px;font-weight:700;color:#1a1a1a;line-height:1.1">4.177h</div>
+            <div style="font-size:10px;color:#5a5040">Copa Libertadores<br>+ 3.812h Argentina Copa De La Liga</div>
+          </div>
+          <div style="background:#fff5f5;border-radius:7px;padding:12px">
+            <div style="font-size:10px;color:#dc2626;font-weight:700;text-transform:uppercase;letter-spacing:.6px">Play count top categoria</div>
+            <div style="font-size:28px;font-weight:700;color:#1a1a1a;line-height:1.1">33.9K</div>
+            <div style="font-size:10px;color:#5a5040">Argentina Copa De La Liga Pro<br>Copa Lib: 32.9K play</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:#3a3028;line-height:1.6;background:#fff5f5;border-radius:7px;padding:10px 12px;border:1px solid #ffd0d0">
+          <strong style="color:#dc2626">Cosa pesa di più:</strong><br>
+          Le <strong>Highlights Como-centriche</strong> guidano in reach (HL Real Betis: 5.7K viewer). I <strong>Replay Como</strong> generano il tempo di visione più alto: Final Como vs Ajax = 323h, Como vs Lazio = 301h. Le <strong>categorie internazionali</strong> (Copa Lib, Argentine Copa) sono la spina dorsale: ~8.000h totali.
+        </div>
+        <div style="margin-top:12px"><div id="liveRelTop"></div></div>
+      </div>
+    </div>
+
+    <!-- ── 4 STRATEGIC INSIGHTS ── -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+      <div class="card" style="border-top:3px solid #7c3aed;padding:14px 16px">
+        <div style="font-size:11px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">📌 Reach</div>
+        <div style="font-size:11px;color:#1a1a1a;line-height:1.5">Gli <strong>Originals dominano il reach</strong>: Ascent (18.5K) vale da solo quanto le prime 4 categorie live-related combinate per viewer unici.</div>
+      </div>
+      <div class="card" style="border-top:3px solid #dc2626;padding:14px 16px">
+        <div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">⏱ Volume</div>
+        <div style="font-size:11px;color:#1a1a1a;line-height:1.5">Il <strong>live-related VOD genera ~81% delle ore totali</strong>. Copa Lib + Argentine Copa = ~8.000h — 31% dell'intero engagement time VOD (25.900h totali).</div>
+      </div>
+      <div class="card" style="border-top:3px solid #0891b2;padding:14px 16px">
+        <div style="font-size:11px;font-weight:700;color:#0891b2;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">🎯 Highlights</div>
+        <div style="font-size:11px;color:#1a1a1a;line-height:1.5">Gli <strong>Highlights Como-centrico hanno 5–8× i viewer</strong> delle HL senza Como. Funzione: discovery rapida, non engagement profondo.</div>
+      </div>
+      <div class="card" style="border-top:3px solid #059669;padding:14px 16px">
+        <div style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">💡 Strategia diritti</div>
+        <div style="font-size:11px;color:#1a1a1a;line-height:1.5">Serie A Replay (2.481h, 18K play): altissimo valore fan italiano. Copa Lib (4.177h): audience internazionale densa. <strong>I due pacchetti più difendibili strategicamente.</strong></div>
+      </div>
+    </div>
+
+    <!-- ── TOP ORIGINALS TABLE ── -->
+    <div class="sec">
+      <div class="sec-texts">
+        <div class="sec-it">🎬 Originals &amp; Format — Top Contenuti</div>
+        <div class="sec-en">Original Productions · Ranked by Unique Viewers · Season 2025–2026</div>
+      </div>
+      <div class="sec-line"></div>
+    </div>
+    <div class="card">
+      <div style="font-size:10px;color:#9a9080;margin-bottom:10px"><strong>Fonte DMS:</strong> Section 6.6 Content Rank · Unique Viewers = Logged-in + Anonimi · Eng. Time = Total Duration</div>
+      <table class="event-table">
+        <thead><tr>
+          <th>#</th>
+          <th>Contenuto<span class="th-en">Content Title</span></th>
+          <th>Tipo<span class="th-en">Type</span></th>
+          <th style="text-align:right">Spettatori Unici<span class="th-en">Unique Viewers</span></th>
+          <th style="text-align:right">Play Count<span class="th-en">Total plays</span></th>
+          <th style="text-align:right">Eng. Time<span class="th-en">Total hours</span></th>
+          <th>Peso<span class="th-en">Weight</span></th>
+        </tr></thead>
+        <tbody id="origTable"></tbody>
+      </table>
+    </div>
+
+    <!-- ── FORMAT ORIGINALI — ANALISI PER SHOW ── -->
+    <div class="sec">
+      <div class="sec-texts">
+        <div class="sec-it">🎬 Format Originali — Performance per Show</div>
+        <div class="sec-en">Original Formats · DMS Section 6.5 · Season 2025–2026</div>
+      </div>
+      <div class="sec-line"></div>
+    </div>
+
+    <!-- DMS CATEGORIZATION NOTICE -->
+    <div style="background:#fff8f0;border:1px solid #e8a040;border-radius:8px;padding:12px 16px;margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:8px">📋 Note DMS — Categorizzazioni da verificare</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:10px;color:#3a3028">
+        <div style="background:#fff;border-radius:6px;padding:10px 12px;border-left:3px solid #059669">
+          <div style="font-weight:700;color:#059669;margin-bottom:4px">French Connection — Categoria DMS: VLOG</div>
+          I contenuti sono categorizzati nel DMS sotto la categoria <strong>VLOG</strong>, non con il titolo del format. I dati esistono ma non sono estratti nella tabella qui sotto.<br>
+          <strong>Per estrarre:</strong> DMS → VOD → Category Rank → <strong>VLOG</strong> · oppure Content Rank filtrando per titolo episodio.
+        </div>
+        <div style="background:#fff;border-radius:6px;padding:10px 12px;border-left:3px solid #f59e0b">
+          <div style="font-weight:700;color:#d97706;margin-bottom:4px">Possibili miscategorizzazioni</div>
+          La categoria <strong>INTERVIEWS (10.2K viewers · 548h)</strong> potrebbe contenere episodi di format (Goleada, Behind the Team) erroneamente taggati come interviste nel DMS. Verificare i contenuti effettivi in DMS → VOD → Category Rank → INTERVIEWS.<br>
+          Il formato <strong>COMO 1907 Original</strong>: S1E01 mostra 4.683 viewers (content rank) ma la categoria mostra solo 826. Possibile split su più categorie DMS.
+        </div>
+      </div>
+    </div>
+
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+
+      <div class="card" style="border-top:3px solid #7c3aed;padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div><div style="font-size:13px;font-weight:700">Talent Hunters</div><div style="font-size:9px;color:#7c3aed;text-transform:uppercase;letter-spacing:.8px;font-weight:700">Show · Episodico</div></div>
+          <span style="background:#7c3aed;color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px">#1 Format</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+          <div style="text-align:center;background:#f5f0fc;border-radius:6px;padding:8px 4px"><div style="font-size:18px;font-weight:700;color:#7c3aed">7.8K</div><div style="font-size:9px;color:#7a7060;margin-top:2px">Viewers</div></div>
+          <div style="text-align:center;background:#f5f0fc;border-radius:6px;padding:8px 4px"><div style="font-size:18px;font-weight:700;color:#1a1a1a">15.7K</div><div style="font-size:9px;color:#7a7060;margin-top:2px">Plays</div></div>
+          <div style="text-align:center;background:#f5f0fc;border-radius:6px;padding:8px 4px"><div style="font-size:18px;font-weight:700;color:#059669">142h</div><div style="font-size:9px;color:#7a7060;margin-top:2px">Eng.</div></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <div style="background:#ece4d8;border-radius:5px;padding:5px 8px;font-size:10px"><strong>2.0×</strong> play/viewer</div>
+          <div style="background:#ece4d8;border-radius:5px;padding:5px 8px;font-size:10px"><strong>0.54 min</strong>/play</div>
+        </div>
+        <div style="font-size:10px;color:#3a3028;line-height:1.5;background:#faf5ff;border-radius:6px;padding:8px 10px;border-left:3px solid #7c3aed">Reach leader. Clip brevi (0.54 min/play) → discovery rapida. Social-first potential: amplificare su TikTok/Reels.</div>
+      </div>
+
+      <div class="card" style="border-top:3px solid #7c3aed;padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div><div style="font-size:13px;font-weight:700">Goleada</div><div style="font-size:9px;color:#7c3aed;text-transform:uppercase;letter-spacing:.8px;font-weight:700">Show · Calcio episodico</div></div>
+          <span style="background:#059669;color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px">Eng. Depth</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+          <div style="text-align:center;background:#f5f0fc;border-radius:6px;padding:8px 4px"><div style="font-size:18px;font-weight:700;color:#7c3aed">5.3K</div><div style="font-size:9px;color:#7a7060;margin-top:2px">Viewers</div></div>
+          <div style="text-align:center;background:#f5f0fc;border-radius:6px;padding:8px 4px"><div style="font-size:18px;font-weight:700;color:#1a1a1a">9.8K</div><div style="font-size:9px;color:#7a7060;margin-top:2px">Plays</div></div>
+          <div style="text-align:center;background:#f5f0fc;border-radius:6px;padding:8px 4px"><div style="font-size:18px;font-weight:700;color:#059669">203h</div><div style="font-size:9px;color:#7a7060;margin-top:2px">Eng.</div></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <div style="background:#ece4d8;border-radius:5px;padding:5px 8px;font-size:10px"><strong>1.85×</strong> play/viewer</div>
+          <div style="background:#dcfce7;border-radius:5px;padding:5px 8px;font-size:10px;color:#059669"><strong>1.24 min</strong>/play ★</div>
+        </div>
+        <div style="font-size:10px;color:#3a3028;line-height:1.5;background:#faf5ff;border-radius:6px;padding:8px 10px;border-left:3px solid #059669">Miglior engagement depth tra i format (1.24 min/play). Fan calcistici dedicati. Qualità di visione superiore alla media dei format.</div>
+      </div>
+
+      <div class="card" style="border-top:3px solid #0891b2;padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div><div style="font-size:13px;font-weight:700">Discover Como</div><div style="font-size:9px;color:#0891b2;text-transform:uppercase;letter-spacing:.8px;font-weight:700">Branded · Lifestyle</div></div>
+          <span style="background:#0891b2;color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px">Fidelizzazione</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+          <div style="text-align:center;background:#f0f9ff;border-radius:6px;padding:8px 4px"><div style="font-size:18px;font-weight:700;color:#0891b2">3.5K</div><div style="font-size:9px;color:#7a7060;margin-top:2px">Viewers</div></div>
+          <div style="text-align:center;background:#f0f9ff;border-radius:6px;padding:8px 4px"><div style="font-size:18px;font-weight:700;color:#1a1a1a">8.8K</div><div style="font-size:9px;color:#7a7060;margin-top:2px">Plays</div></div>
+          <div style="text-align:center;background:#f0f9ff;border-radius:6px;padding:8px 4px"><div style="font-size:18px;font-weight:700;color:#059669">133h</div><div style="font-size:9px;color:#7a7060;margin-top:2px">Eng.</div></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <div style="background:#dcfce7;border-radius:5px;padding:5px 8px;font-size:10px;color:#059669"><strong>2.53×</strong> play/viewer ★</div>
+          <div style="background:#ece4d8;border-radius:5px;padding:5px 8px;font-size:10px"><strong>0.91 min</strong>/play</div>
+        </div>
+        <div style="font-size:10px;color:#3a3028;line-height:1.5;background:#f0f9ff;border-radius:6px;padding:8px 10px;border-left:3px solid #0891b2">Alta fidelizzazione (2.53×): chi guarda Discover Como torna. Branded content che funziona con volume stagionale sostenuto.</div>
+      </div>
+
+      <div class="card" style="border-top:3px solid #d97706;padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div><div style="font-size:13px;font-weight:700">Arabian Night</div><div style="font-size:9px;color:#d97706;text-transform:uppercase;letter-spacing:.8px;font-weight:700">Show · Branded internazionale</div></div>
+          <span style="background:#f5f0e8;color:#d97706;font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;border:1px solid #d97706">Niche</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+          <div style="text-align:center;background:#fef3c7;border-radius:6px;padding:8px 4px"><div style="font-size:18px;font-weight:700;color:#d97706">342</div><div style="font-size:9px;color:#7a7060;margin-top:2px">Viewers</div></div>
+          <div style="text-align:center;background:#fef3c7;border-radius:6px;padding:8px 4px"><div style="font-size:18px;font-weight:700;color:#1a1a1a">944</div><div style="font-size:9px;color:#7a7060;margin-top:2px">Plays</div></div>
+          <div style="text-align:center;background:#fef3c7;border-radius:6px;padding:8px 4px"><div style="font-size:18px;font-weight:700;color:#059669">30h</div><div style="font-size:9px;color:#7a7060;margin-top:2px">Eng.</div></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <div style="background:#dcfce7;border-radius:5px;padding:5px 8px;font-size:10px;color:#059669"><strong>2.76×</strong> play/viewer ★</div>
+          <div style="background:#dcfce7;border-radius:5px;padding:5px 8px;font-size:10px;color:#059669"><strong>1.91 min</strong>/play ★</div>
+        </div>
+        <div style="font-size:10px;color:#3a3028;line-height:1.5;background:#fef3c7;border-radius:6px;padding:8px 10px;border-left:3px solid #d97706">Reach niche ma audience molto leale: migliori ratios fidelizzazione (2.76×) e massimo engagement time/play (1.91 min) tra i format. Potenziale audience araba/internazionale.</div>
+      </div>
+
+      <div class="card" style="border-top:3px solid #7c3aed;padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div><div style="font-size:13px;font-weight:700">Como 1907 Original</div><div style="font-size:9px;color:#7c3aed;text-transform:uppercase;letter-spacing:.8px;font-weight:700">Serie · Club identity</div></div>
+          <span style="background:#fff;color:#f59e0b;font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;border:1px solid #f59e0b">Verifica DMS</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+          <div style="text-align:center;background:#f5f0fc;border-radius:6px;padding:8px 4px"><div style="font-size:14px;font-weight:700;color:#7c3aed">826</div><div style="font-size:9px;color:#7a7060;margin-top:2px">Cat. v</div></div>
+          <div style="text-align:center;background:#f5f0fc;border-radius:6px;padding:8px 4px"><div style="font-size:14px;font-weight:700;color:#1a1a1a">4.7K</div><div style="font-size:9px;color:#7a7060;margin-top:2px">S1E01 v</div></div>
+          <div style="text-align:center;background:#f5f0fc;border-radius:6px;padding:8px 4px"><div style="font-size:14px;font-weight:700;color:#059669">52h</div><div style="font-size:9px;color:#7a7060;margin-top:2px">Eng.</div></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <div style="background:#ece4d8;border-radius:5px;padding:5px 8px;font-size:10px"><strong>2.27×</strong> play/v</div>
+          <div style="background:#ece4d8;border-radius:5px;padding:5px 8px;font-size:10px"><strong>1.66 min</strong>/play</div>
+        </div>
+        <div style="font-size:10px;color:#3a3028;line-height:1.5;background:#fef3c7;border-radius:6px;padding:8px 10px;border-left:3px solid #f59e0b">⚠️ Discrepanza: cat. "COMO 1907 Original" = 826 viewers, S1E01 (content rank) = 4.683 viewers. Verificare naming DMS — possibile tracking multiplo.</div>
+      </div>
+
+      <div class="card" style="border-top:3px solid #6b7280;padding:14px 16px">
+        <div style="margin-bottom:10px">
+          <div style="font-size:12px;font-weight:700">Altri Format — Audience Ridotta</div>
+          <div style="font-size:9px;color:#6b7280;text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin-top:2px">Behind the Team · Los Clasicos · Golden '90</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px;background:#f8f6f4;border-radius:6px">
+            <div style="font-size:11px;font-weight:700;flex:1">Behind the Team</div>
+            <div style="font-size:10px;color:#7a7060">793 v</div><div style="font-size:10px;color:#7a7060">1.6K p</div>
+            <div style="font-size:10px;color:#059669;font-weight:700">1.99×</div><div style="font-size:10px;color:#5a5040">0.87m/p</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:8px;background:#f8f6f4;border-radius:6px">
+            <div style="font-size:11px;font-weight:700;flex:1">Los Clasicos</div>
+            <div style="font-size:10px;color:#7a7060">662 v</div><div style="font-size:10px;color:#7a7060">1.6K p</div>
+            <div style="font-size:10px;color:#059669;font-weight:700">2.41×</div><div style="font-size:10px;color:#5a5040">1.58m/p</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:8px;background:#f8f6f4;border-radius:6px">
+            <div style="font-size:11px;font-weight:700;flex:1">Golden '90</div>
+            <div style="font-size:10px;color:#7a7060">168 v</div><div style="font-size:10px;color:#7a7060">733 p</div>
+            <div style="font-size:10px;color:#059669;font-weight:700">4.36× ★</div><div style="font-size:10px;color:#5a5040">0.90m/p</div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:#3a3028;line-height:1.5;background:#f0f0f0;border-radius:6px;padding:8px 10px;margin-top:10px">Golden '90: fidelizzazione più alta in assoluto (4.36×), reach minimo — audience cult. Los Clasicos: buona profondità (1.58 min/play).</div>
+      </div>
+
+    </div>
+
+    <!-- Format summary table -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title-it">📊 Riepilogo Format — Ranking per Reach &amp; Engagement</div>
+      <div class="card-title-en">All original formats · DMS Section 6.5 · Season 2025–2026 · ★ = Best in class</div>
+      <div style="overflow-x:auto;margin-top:10px">
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead>
+            <tr style="background:#f5f0fc;border-bottom:2px solid #7c3aed22">
+              <th style="text-align:left;padding:8px 10px;color:#7c3aed;font-weight:700">#</th>
+              <th style="text-align:left;padding:8px 10px;color:#7c3aed;font-weight:700">Format</th>
+              <th style="text-align:right;padding:8px 10px;color:#7c3aed;font-weight:700">Viewers</th>
+              <th style="text-align:right;padding:8px 10px;color:#7c3aed;font-weight:700">Plays</th>
+              <th style="text-align:right;padding:8px 10px;color:#7c3aed;font-weight:700">Eng.h</th>
+              <th style="text-align:right;padding:8px 10px;color:#7c3aed;font-weight:700">Play/V</th>
+              <th style="text-align:right;padding:8px 10px;color:#7c3aed;font-weight:700">Min/P</th>
+              <th style="padding:8px 10px;color:#7c3aed;font-weight:700">Read strategico</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid #f0eaf8"><td style="padding:7px 10px;color:#9a9080;font-weight:700">1</td><td style="padding:7px 10px;font-weight:600">Talent Hunters</td><td style="padding:7px 10px;text-align:right;font-weight:700;color:#7c3aed">7.822</td><td style="padding:7px 10px;text-align:right">15.667</td><td style="padding:7px 10px;text-align:right">142h</td><td style="padding:7px 10px;text-align:right">2.0×</td><td style="padding:7px 10px;text-align:right;color:#9a9080">0.54 min</td><td style="padding:7px 10px;font-size:10px;color:#5a5040">Reach leader · clip brevi · social potential</td></tr>
+            <tr style="border-bottom:1px solid #f0eaf8"><td style="padding:7px 10px;color:#9a9080;font-weight:700">2</td><td style="padding:7px 10px;font-weight:600">Goleada</td><td style="padding:7px 10px;text-align:right;font-weight:700;color:#7c3aed">5.315</td><td style="padding:7px 10px;text-align:right">9.821</td><td style="padding:7px 10px;text-align:right">203h</td><td style="padding:7px 10px;text-align:right">1.85×</td><td style="padding:7px 10px;text-align:right;color:#059669;font-weight:700">1.24 min ★</td><td style="padding:7px 10px;font-size:10px;color:#5a5040">Miglior depth format · fan calcistici fidelizzati</td></tr>
+            <tr style="border-bottom:1px solid #f0eaf8"><td style="padding:7px 10px;color:#9a9080;font-weight:700">3</td><td style="padding:7px 10px;font-weight:600">Discover Como</td><td style="padding:7px 10px;text-align:right;font-weight:700;color:#7c3aed">3.477</td><td style="padding:7px 10px;text-align:right">8.792</td><td style="padding:7px 10px;text-align:right">133h</td><td style="padding:7px 10px;text-align:right;color:#059669;font-weight:700">2.53×</td><td style="padding:7px 10px;text-align:right;color:#9a9080">0.91 min</td><td style="padding:7px 10px;font-size:10px;color:#5a5040">Branded ricorrente · alta retention</td></tr>
+            <tr style="border-bottom:1px solid #f0eaf8"><td style="padding:7px 10px;color:#9a9080;font-weight:700">4</td><td style="padding:7px 10px;font-weight:600">Como 1907 Original</td><td style="padding:7px 10px;text-align:right;font-weight:700;color:#d97706">826*</td><td style="padding:7px 10px;text-align:right">1.879</td><td style="padding:7px 10px;text-align:right">52h</td><td style="padding:7px 10px;text-align:right">2.27×</td><td style="padding:7px 10px;text-align:right;color:#9a9080">1.66 min</td><td style="padding:7px 10px;font-size:10px;color:#d97706">*Dato cat. — S1E01 = 4.683 v. Verif. DMS.</td></tr>
+            <tr style="border-bottom:1px solid #f0eaf8"><td style="padding:7px 10px;color:#9a9080;font-weight:700">5</td><td style="padding:7px 10px;font-weight:600">Behind the Team</td><td style="padding:7px 10px;text-align:right;font-weight:700;color:#7c3aed">793</td><td style="padding:7px 10px;text-align:right">1.581</td><td style="padding:7px 10px;text-align:right">23h</td><td style="padding:7px 10px;text-align:right">1.99×</td><td style="padding:7px 10px;text-align:right;color:#9a9080">0.87 min</td><td style="padding:7px 10px;font-size:10px;color:#5a5040">Audience stabile · backstage content</td></tr>
+            <tr style="border-bottom:1px solid #f0eaf8"><td style="padding:7px 10px;color:#9a9080;font-weight:700">6</td><td style="padding:7px 10px;font-weight:600">Los Clasicos</td><td style="padding:7px 10px;text-align:right;font-weight:700;color:#7c3aed">662</td><td style="padding:7px 10px;text-align:right">1.593</td><td style="padding:7px 10px;text-align:right">42h</td><td style="padding:7px 10px;text-align:right;color:#059669;font-weight:700">2.41×</td><td style="padding:7px 10px;text-align:right;color:#9a9080">1.58 min</td><td style="padding:7px 10px;font-size:10px;color:#5a5040">Buona fidelizzazione · storico calcistico</td></tr>
+            <tr style="border-bottom:1px solid #f0eaf8"><td style="padding:7px 10px;color:#9a9080;font-weight:700">7</td><td style="padding:7px 10px;font-weight:600">Arabian Night</td><td style="padding:7px 10px;text-align:right;font-weight:700;color:#7c3aed">342</td><td style="padding:7px 10px;text-align:right">944</td><td style="padding:7px 10px;text-align:right">30h</td><td style="padding:7px 10px;text-align:right;color:#059669;font-weight:700">2.76×</td><td style="padding:7px 10px;text-align:right;color:#059669;font-weight:700">1.91 min ★</td><td style="padding:7px 10px;font-size:10px;color:#5a5040">Reach niche · massima profondità · audience fidelizzata</td></tr>
+            <tr style="border-bottom:1px solid #f0eaf8"><td style="padding:7px 10px;color:#9a9080;font-weight:700">8</td><td style="padding:7px 10px;font-weight:600">Golden '90</td><td style="padding:7px 10px;text-align:right;font-weight:700;color:#7c3aed">168</td><td style="padding:7px 10px;text-align:right">733</td><td style="padding:7px 10px;text-align:right">11h</td><td style="padding:7px 10px;text-align:right;color:#059669;font-weight:700">4.36× ★</td><td style="padding:7px 10px;text-align:right;color:#9a9080">0.90 min</td><td style="padding:7px 10px;font-size:10px;color:#5a5040">Fidelizzazione assoluta max · audience cult ultra-niche</td></tr>
+            <tr style="background:#f0faf4"><td style="padding:7px 10px;color:#9a9080;font-weight:700">—</td><td style="padding:7px 10px;font-weight:600;color:#059669">French Connection</td><td colspan="6" style="padding:7px 10px;color:#059669">📋 Categoria DMS: <strong>VLOG</strong> — dati presenti ma non estratti. Estrarre da DMS → VOD → Category Rank → VLOG.</td></tr>
+          </tbody>
+        </table>
+        <div style="font-size:9px;color:#9a9080;margin-top:8px">★ = Best in class per quel KPI &nbsp;·&nbsp; Fonte: DMS Section 6.5 &nbsp;·&nbsp; Play/V = play count ÷ viewers &nbsp;·&nbsp; Min/P = eng.time ÷ play count</div>
+      </div>
+    </div>
+
+    <!-- ── REPLAY + HIGHLIGHTS ── -->
+    <div class="sec">
+      <div class="sec-texts">
+        <div class="sec-it">🔴 Live-Related VOD — Replay &amp; Highlights Top</div>
+        <div class="sec-en">Replays by Engagement Hours · Highlights by Unique Viewers</div>
+      </div>
+      <div class="sec-line"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card">
+        <span class="card-dot" style="background:#dc2626"></span>
+        <span class="card-title-it" style="color:#dc2626">Replay — per Engagement Time Totale</span>
+        <div class="card-title-en" style="color:#9a5050">Fan loyalty: chi guarda un replay, guarda davvero</div>
+        <div style="font-size:10px;color:#9a9080;margin:8px 0 12px;font-style:italic">Serie A Italiana + Copa Lib dominano per profondità di consumo.</div>
+        <div id="replayList"></div>
+      </div>
+      <div class="card">
+        <span class="card-dot" style="background:#0891b2"></span>
+        <span class="card-title-it" style="color:#0891b2">Highlights — per Spettatori Unici</span>
+        <div class="card-title-en" style="color:#205a7a">Discovery content: reach veloce, consumo corto</div>
+        <div style="font-size:10px;color:#9a9080;margin:8px 0 12px;font-style:italic">Le HL Como-centriche performano molto meglio delle altre. Principale strumento di acquisizione VOD.</div>
+        <div id="hlList"></div>
+      </div>
+    </div>
+
+    <!-- ── CATEGORY CHARTS ── -->
+    <div class="sec">
+      <div class="sec-texts">
+        <div class="sec-it">📂 Ranking Categorie VOD — Viewers vs Engagement Hours</div>
+        <div class="sec-en">Top VOD Categories · Color: 🟣 Original/Format · 🔴 Live-related</div>
+      </div>
+      <div class="sec-line"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:16px">
+      <div class="card">
+        <span class="card-dot"></span>
+        <span class="card-title-it">Top 15 Categorie per Spettatori Unici</span>
+        <div class="card-title-en">🟣 Original/Format &nbsp;·&nbsp; 🔴 Live-related (Replay+HL)</div>
+        <div class="chart-h" style="height:340px"><canvas id="vodCatChart"></canvas></div>
+      </div>
+      <div class="card">
+        <span class="card-dot" style="background:#059669"></span>
+        <span class="card-title-it">Top 10 per Engagement Hours</span>
+        <div class="card-title-en">Live-related VOD domina il tempo di visione totale</div>
+        <div class="chart-h" style="height:340px"><canvas id="vodEngChart"></canvas></div>
+      </div>
+    </div>
+
+  </div>
+
+    <!-- ═══════════════════════════════════════
+       IN ARRIVO
+  ═══════════════════════════════════════ -->
+  <div class="sec">
+    <div class="sec-texts">
+      <div class="sec-it">In Arrivo · Sviluppo SDMC in corso</div>
+      <div class="sec-en">Coming Soon · SDMC development in progress</div>
+    </div>
+    <div class="sec-line"></div>
+  </div>
+
+  <div class="status-bar">
+    <div class="sb-item"><span class="sb-dot" style="background:#c87030"></span>Priorità Alta / High Priority</div>
+    <div class="sb-item"><span class="sb-dot" style="background:#a89020"></span>Priorità Media / Medium Priority</div>
+    <div class="sb-item"><span class="sb-dot" style="background:#4a7a9a"></span>In coda / In queue</div>
+    <div class="sb-item"><span class="sb-dot" style="background:#2a7a2a"></span>Point 10 – Traffic Sources → Google Analytics 4</div>
+    <div class="sb-note">Update atteso entro 30–31 marzo / Expected by Mar 30–31</div>
+  </div>
+
+  <div class="cs-grid">
+    <div class="cs-card p1">
+      <div class="cs-top"><div class="cs-point">Point 2</div><span class="cs-pri pri-h">🔴 Alta / High</span></div>
+      <div class="cs-title-it">Performance Media per Competizione</div><div class="cs-title-en">Top Competitions by Average Performance</div>
+      <div class="cs-desc-it">Quale lega performa meglio in media. Essenziale per le decisioni sui diritti.</div>
+      <div class="cs-desc-en">Which league performs best on average. Essential for rights decisions.</div>
+      <div class="cs-chips"><span class="cs-chip">N° eventi</span><span class="cs-chip">Avg viewers/evento</span><span class="cs-chip">Total watch time</span></div>
+      <div class="cs-ph">In attesa API / Awaiting API</div>
+    </div>
+    <div class="cs-card p1">
+      <div class="cs-top"><div class="cs-point">Point 3</div><span class="cs-pri pri-h">🔴 Alta / High</span></div>
+      <div class="cs-title-it">Match che Generano Nuovi Utenti</div><div class="cs-title-en">Matches Driving New User Acquisition</div>
+      <div class="cs-desc-it">Quali eventi fanno crescere la piattaforma. Il dato più utile per valutare i diritti.</div>
+      <div class="cs-desc-en">Which events grow the platform. Most useful acquisition signal for rights evaluation.</div>
+      <div class="cs-chips"><span class="cs-chip">Nuovi utenti / New users</span><span class="cs-chip">% new/total viewers</span></div>
+      <div class="cs-ph">In attesa API / Awaiting API</div>
+    </div>
+    <div class="cs-card p1">
+      <div class="cs-top"><div class="cs-point">Point 6</div><span class="cs-pri pri-h">🔴 Alta / High</span></div>
+      <div class="cs-title-it">Live vs Replay (dato API)</div><div class="cs-title-en">Live vs Replay Consumption</div>
+      <div class="cs-desc-it">Dati Live/VOD separati già disponibili in questa dashboard. Il dato API aggiungerà la % per singolo evento.</div>
+      <div class="cs-desc-en">Live/VOD split already available here. API will add per-event breakdown.</div>
+      <div class="cs-chips"><span class="cs-chip">% live per evento</span><span class="cs-chip">% replay per evento</span></div>
+      <div class="cs-ph">In attesa API / Awaiting API</div>
+    </div>
+    <div class="cs-card p2">
+      <div class="cs-top"><div class="cs-point">Point 9</div><span class="cs-pri pri-m">🟡 Media / Medium</span></div>
+      <div class="cs-title-it">Dispositivi Utilizzati</div><div class="cs-title-en">Device Breakdown</div>
+      <div class="cs-desc-it">Come gli utenti consumano il prodotto. Rilevante per UX e sponsor.</div>
+      <div class="cs-desc-en">How users consume content. Relevant for UX and sponsorship.</div>
+      <div class="cs-chips"><span class="cs-chip">Mobile</span><span class="cs-chip">Smart TV</span><span class="cs-chip">Desktop</span><span class="cs-chip">Tablet</span></div>
+      <div class="cs-ph">In attesa API / Awaiting API</div>
+    </div>
+    <div class="cs-card p2">
+      <div class="cs-top"><div class="cs-point">Point 12</div><span class="cs-pri pri-m">🟡 Media / Medium</span></div>
+      <div class="cs-title-it">Geografia degli Spettatori</div><div class="cs-title-en">Viewer Geography</div>
+      <div class="cs-desc-it">Dove si trovano gli spettatori. Strategico per sponsor e sviluppo mercati.</div>
+      <div class="cs-desc-en">Where viewers are located. Strategic for sponsorship and market expansion.</div>
+      <div class="cs-chips"><span class="cs-chip">Top paesi</span><span class="cs-chip">Top città</span><span class="cs-chip">Heatmap globale</span></div>
+      <div class="cs-ph">In attesa API / Awaiting API</div>
+    </div>
+    <div class="cs-card">
+      <div class="cs-top"><div class="cs-point">Point 7 · 8 · 11 · 13 · 14 · 15</div><span class="cs-pri pri-l">🔵 In coda</span></div>
+      <div class="cs-title-it">Analisi Avanzate</div><div class="cs-title-en">Advanced Analytics</div>
+      <div class="cs-desc-it">Drop-off, entry point live, fidelizzazione, registrazioni per evento, consumo settimanale, ranking automatico.</div>
+      <div class="cs-desc-en">Drop-off, live entry points, loyalty, registrations per event, weekly consumption, auto-ranking.</div>
+      <div class="cs-chips"><span class="cs-chip">Drop-off</span><span class="cs-chip">Entry live</span><span class="cs-chip">Loyal viewers</span><span class="cs-chip">Registrazioni/evento</span><span class="cs-chip">Min/user/week</span><span class="cs-chip">Auto-ranking</span></div>
+      <div class="cs-ph">In attesa API / Awaiting API</div>
+    </div>
+  </div>
+
+</div>
+
+<footer>Como TV &nbsp;·&nbsp; OTT Analytics Dashboard &nbsp;·&nbsp; 28 marzo / March 28, 2026 &nbsp;·&nbsp; Uso interno / Internal use &nbsp;·&nbsp; Fonte: DMS + Excel Hasfi</footer>
+
+<script>
+// ── COMPETITION COLORS (one per competition, consistent across all charts)
+const COMP_COLORS = {
+  'Joan Gamper Trophy': '#7c3aed',
+  'Eredivisie':         '#1d4ed8',
+  'Saudi Pro League':   '#d97706',
+  'Saudi Super Cup':    '#b45309',
+  'Copa De La Liga':    '#059669',
+  'Copa Libertadores':  '#dc2626',
+  'Friendly Match':     '#0891b2',
+  'Como Primavera':     '#16a34a',
+  'Como Cup':           '#9f1239',
+  'Scottish Prem.':     '#7e22ce',
+  'CONMEBOL Sudamericana': '#ea580c',
+  'Croatian Football':  '#0d9488',
+  'Como U19':           '#4f46e5',
+};
+
+function getColor(name) {
+  return COMP_COLORS[name] || '#6b7280';
+}
+
+// ── DATA
+const comps = [
+  { name: 'Joan Gamper Trophy', views: 153690, viewers: 42941 },
+  { name: 'Eredivisie',         views: 92283,  viewers: 36448 },
+  { name: 'Saudi Pro League',   views: 52339,  viewers: 15374 },
+  { name: 'Saudi Super Cup',    views: 44673,  viewers: 13349 },
+  { name: 'Copa De La Liga',    views: 44669,  viewers: 17933 },
+  { name: 'Copa Libertadores',  views: 44621,  viewers: 15131 },
+  { name: 'Friendly Match',     views: 44233,  viewers: 14927 },
+  { name: 'Como Primavera',     views: 37956,  viewers: 12235 },
+  { name: 'Como Cup',           views: 33490,  viewers: 11781 },
+  { name: 'Scottish Prem.',     views: 30330,  viewers: 11999 },
+];
+
+const eng = [
+  { name: 'Friendly Matches',  cr: 44.4, color: '#0891b2' },
+  { name: 'Copa Libertadores', cr: 15.2, color: '#dc2626' },
+  { name: 'Saudi Pro League',  cr: 14.4, color: '#d97706' },
+  { name: 'Como Primavera',    cr: 12.1, color: '#16a34a' },
+  { name: 'Como Cup',          cr: 12.0, color: '#9f1239' },
+  { name: 'Copa De La Liga',   cr: 11.4, color: '#059669' },
+  { name: 'Scottish Prem.',    cr: 10.3, color: '#7e22ce' },
+  { name: 'Eredivisie',        cr:  9.4, color: '#1d4ed8' },
+];
+
+const events = [
+  { name: 'Barcelona vs Como',      comp: 'Joan Gamper Trophy', viewers: 42941, views: 153690, avg: 26.5, cr: 13.3 },
+  { name: 'Real Betis vs Como',      comp: 'Friendly Match',     viewers: 11649, views: 35116,  avg: 29.3, cr: 17.7 },
+  { name: 'Al Nassr vs Al Ahli',     comp: 'Saudi Super Cup',    viewers: 10538, views: 37887,  avg: 25.8, cr: 12.3 },
+  { name: 'Final: Como vs Ajax',     comp: 'Como Cup',           viewers: 7369,  views: 22077,  avg: 30.8, cr: 14.4 },
+  { name: 'Go Ahead Eagles vs Ajax', comp: 'Eredivisie',         viewers: 3740,  views: 10024,  avg: 16.8, cr: 10.5 },
+  { name: 'AFC Ajax vs Heracles',    comp: 'Eredivisie',         viewers: 3232,  views: 8211,   avg: 16.2, cr: 10.2 },
+  { name: 'AFC Ajax vs Telstar',     comp: 'Eredivisie',         viewers: 3224,  views: 7399,   avg: 14.9, cr: 9.6  },
+  { name: 'Twente vs PSV',           comp: 'Eredivisie',         viewers: 2974,  views: 7271,   avg: 17.6, cr: 11.0 },
+  { name: 'Al Qadisiya vs Al Ahli',  comp: 'Saudi Super Cup',    viewers: 2811,  views: 6786,   avg: 15.4, cr: 8.8  },
+  { name: 'Ajax vs Celtic',          comp: 'Como Cup',           viewers: 2667,  views: 7027,   avg: 23.1, cr: 12.2 },
+  { name: 'Palmeiras vs Flamengo',   comp: 'Copa Libertadores',  viewers: 2619,  views: 10581,  avg: 43.6, cr: 11.0 },
+  { name: 'Como vs Lille',           comp: 'Friendly Match',     viewers: 2343,  views: 7022,   avg: 11.3, cr: 6.6  },
+  { name: 'Feyenoord vs NAC Breda',  comp: 'Eredivisie',         viewers: 1801,  views: 3898,   avg: 8.9,  cr: 5.9  },
+  { name: 'PSV vs Sparta Rotterdam', comp: 'Eredivisie',         viewers: 1732,  views: 3874,   avg: 10.4, cr: 6.9  },
+  { name: 'Al-Ahli vs Celtic (3rd)', comp: 'Como Cup',           viewers: 1632,  views: 4104,   avg: 18.7, cr: 9.2  },
+  { name: 'Rangers vs Dundee',       comp: 'Scottish Prem.',     viewers: 1628,  views: 3502,   avg: 9.4,  cr: 6.1  },
+  { name: 'Excelsior vs Feyenoord',  comp: 'Eredivisie',         viewers: 1520,  views: 3349,   avg: 10.3, cr: 6.7  },
+  { name: 'St. Mirren vs Rangers',   comp: 'Scottish Prem.',     viewers: 1514,  views: 3620,   avg: 12.8, cr: 8.3  },
+  { name: 'Varane Presentation',     comp: 'Como U19',           viewers: 1511,  views: 3974,   avg: 10.1, cr: 14.4 },
+  { name: 'Boca vs River Plate',     comp: 'Copa De La Liga',    viewers: 1423,  views: 5088,   avg: 31.0, cr: 12.2 },
+];
+
+// ── BUILD COMPETITION RANKING
+const maxV = comps[0].views;
+const half = Math.ceil(comps.length / 2);
+function compRow(c, i) {
+  const col = getColor(c.name);
+  const pct = (c.views / maxV * 100).toFixed(0);
+  return `<div class="comp-row">
+    <div class="c-rank">${i+1}</div>
+    <div class="c-dot" style="background:${col}"></div>
+    <div class="c-name">${c.name}</div>
+    <div class="c-bar-w"><div class="c-bar-bg"><div class="c-bar-fill" style="width:${pct}%;background:${col}"></div></div></div>
+    <div class="c-views">${(c.views/1000).toFixed(1)}K</div>
+    <div class="c-vw">${(c.viewers/1000).toFixed(1)}K</div>
+  </div>`;
+}
+comps.slice(0,half).forEach((c,i) => document.getElementById('compLeft').innerHTML += compRow(c,i));
+comps.slice(half).forEach((c,i)  => document.getElementById('compRight').innerHTML += compRow(c,i+half));
+
+// ── BUILD ENGAGEMENT RANKING
+const maxCr = eng[0].cr;
+eng.forEach((e,i) => {
+  const pct = (e.cr / maxCr * 100).toFixed(0);
+  document.getElementById('engList').innerHTML += `<div class="eng-row">
+    <div class="c-rank">${i+1}</div>
+    <div class="c-dot" style="background:${e.color}"></div>
+    <div class="e-name">${e.name}</div>
+    <div class="e-bar-w"><div class="e-bar-bg"><div class="e-bar-fill" style="width:${pct}%;background:${e.color}"></div></div></div>
+    <div class="e-val" style="color:${e.color}">${e.cr}%</div>
+  </div>`;
+});
+
+// ── GROUPED BAR CHART
+new Chart(document.getElementById('compChart'), {
+  type: 'bar',
+  data: {
+    labels: comps.map(c => c.name),
+    datasets: [
+      { label: 'Total Views / Visualizzazioni', data: comps.map(c => c.views),
+        backgroundColor: comps.map(c => getColor(c.name)+'cc'),
+        borderColor: comps.map(c => getColor(c.name)), borderWidth: 1, borderRadius: 4 },
+      { label: 'Unique Viewers / Spettatori Unici', data: comps.map(c => c.viewers),
+        backgroundColor: comps.map(c => getColor(c.name)+'44'),
+        borderColor: comps.map(c => getColor(c.name)), borderWidth: 1, borderRadius: 4 },
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { color:'#5a5040', font:{size:11}, boxWidth:12, padding:14 } },
+      tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.raw.toLocaleString()}` } } },
+    scales: {
+      x: { grid:{color:'#ece4d8'}, ticks:{color:'#7a7060',font:{size:10},maxRotation:28} },
+      y: { grid:{color:'#ece4d8'}, ticks:{color:'#7a7060',font:{size:10}, callback: v => v>=1000?(v/1000).toFixed(0)+'K':v} }
+    }
+  }
+});
+
+// ── DOUGHNUT CHART (audience distribution)
+new Chart(document.getElementById('pieChart'), {
+  type: 'doughnut',
+  data: {
+    labels: comps.map(c => c.name),
+    datasets: [{ data: comps.map(c => c.viewers),
+      backgroundColor: comps.map(c => getColor(c.name)+'dd'),
+      borderColor: '#fff', borderWidth: 2 }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { position:'right', labels:{ color:'#3a3028', font:{size:10}, boxWidth:11, padding:10 } },
+      tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw.toLocaleString()} viewers` } }
+    }
+  }
+});
+
+// ── EVENT TABLE
+const maxEv = events[0].views;
+events.forEach((e,i) => {
+  const col = getColor(e.comp);
+  const pct = (e.views / maxEv * 100).toFixed(0);
+  const crT  = e.cr  >= 15 ? 't-green' : e.cr  >= 10 ? 't-blue' : 't-yellow';
+  const avgT = e.avg >= 30 ? 't-green' : e.avg >= 18 ? 't-blue' : 't-yellow';
+  document.getElementById('evTable').innerHTML += `<tr>
+    <td class="ev-rank">${i+1}</td>
+    <td style="font-size:12px;max-width:190px">${e.name}</td>
+    <td><span style="display:inline-flex;align-items:center;gap:5px">
+      <span style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0;display:inline-block"></span>
+      <span style="font-size:11px;color:${col};font-weight:700">${e.comp}</span>
+    </span></td>
+    <td class="num-w">${e.viewers.toLocaleString()}</td>
+    <td class="num-w">${e.views.toLocaleString()}</td>
+    <td><span class="tag ${avgT}">${e.avg} min</span></td>
+    <td><span class="tag ${crT}">${e.cr}%</span></td>
+    <td><div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${col}"></div></div></td>
+  </tr>`;
+});
+
+// ── PERIOD TABS
+const PERIODS = {
+  all: { label: 'Stagione completa', hasData: true },
+  '1m': { label: 'Ultimo mese', hasData: false },
+  '1w': { label: 'Ultima settimana', hasData: false },
+};
+
+function setPeriod(el) {
+  document.querySelectorAll('.period-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  const p = el.dataset.period;
+  const notice = document.getElementById('dataNotice');
+  const vodNotice = document.getElementById('vodPeriodNotice');
+  const periodLabels = { all:'Stagione completa','1m':'Ultimo mese','1w':'Ultima settimana' };
+  const dmsExportHints = {
+    '1m': 'DMS → VOD → Category Rank &amp; Content Rank · Data range: ultimo mese',
+    '1w': 'DMS → VOD → Category Rank &amp; Content Rank · Data range: ultima settimana',
+  };
+  if (p === 'all') {
+    notice.innerHTML = `📅 <strong>Stagione completa</strong> — Dati VOD 4 apr 2025 – 4 apr 2026 · Dati Live stagione 2024–2025 &amp; preseason 2025–2026. &nbsp;|&nbsp; <em>Full season data loaded.</em>`;
+    notice.style.borderLeftColor = '#059669';
+    if (vodNotice) vodNotice.style.display = 'none';
+  } else {
+    notice.innerHTML = `⏳ <strong>Periodo: ${periodLabels[p]}</strong> — Solo i dati della stagione completa sono attualmente caricati. Per attivare questo filtro esporta i CSV da: <em>${dmsExportHints[p]}</em> e caricali in questa sessione.`;
+    notice.style.borderLeftColor = '#4a7a9a';
+    if (vodNotice) {
+      vodNotice.style.display = 'block';
+      document.getElementById('vodPeriodNoticeText').innerHTML = `⏳ <strong>Dati ${periodLabels[p]} non disponibili.</strong> Per visualizzare questo periodo: esporta da DMS → VOD → Category Rank (${periodLabels[p]}) e carica il CSV. Al momento sono visibili i dati della stagione completa come riferimento.`;
+    }
+  }
+}
+
+
+// ══ VOD DATA — STRATEGIC SPLIT ═══════════════════════════════════
+
+// ── ORIGINALS: top items shown in panels
+const origMini = [
+  { name:'Ascent, a new view: Serie A', viewers:18548, plays:6975, engH:113 },
+  { name:'Alessandro Gabrielloni, The Local Hero', viewers:5890, plays:5880, engH:193 },
+  { name:'S1E01 COMO 1907', viewers:4683, plays:1258, engH:null },
+  { name:'Talent Hunters – Riccardo Calafiori', viewers:3333, plays:3934, engH:null },
+];
+const origTopEl = document.getElementById('origTop');
+if (origTopEl) origMini.forEach((o,i) => {
+  const pct = (o.viewers/origMini[0].viewers*100).toFixed(0);
+  origTopEl.innerHTML += `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #f0e8f8">
+    <div style="font-size:11px;color:#9a9080;width:14px;font-weight:700">${i+1}</div>
+    <div style="flex:1;font-size:11px;color:#1a1a1a">${o.name}</div>
+    <div style="width:60px;flex-shrink:0"><div style="background:#e8d8ff;border-radius:3px;height:4px"><div style="width:${pct}%;height:4px;border-radius:3px;background:#7c3aed"></div></div></div>
+    <div style="font-size:12px;font-weight:700;color:#7c3aed;width:44px;text-align:right">${(o.viewers/1000).toFixed(1)}K</div>
+  </div>`;
+});
+
+// ── LIVE-RELATED: top items shown in panels
+const lrMini = [
+  { name:'Final: Como vs Ajax – Replay', engH:323, plays:2313 },
+  { name:'Como vs Lazio – Replay | IT', engH:301, plays:4236 },
+  { name:'Real Betis vs Como – Replay', engH:254, plays:2877 },
+  { name:'Highlights Real Betis vs Como', viewers:5711, plays:6533, engH:98 },
+];
+const lrTopEl = document.getElementById('liveRelTop');
+if (lrTopEl) lrMini.forEach((l,i) => {
+  const isHL = l.name.startsWith('Highlights');
+  const val = isHL ? (l.viewers/1000).toFixed(1)+'K v' : l.engH+'h';
+  const col = isHL ? '#0891b2' : '#dc2626';
+  const bg  = isHL ? '#e0f4fb' : '#ffe0e0';
+  lrTopEl.innerHTML += `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #fff0f0">
+    <div style="font-size:11px;color:#9a9080;width:14px;font-weight:700">${i+1}</div>
+    <div style="flex:1;font-size:11px;color:#1a1a1a">${l.name}</div>
+    <div style="font-size:10px;padding:2px 6px;border-radius:4px;background:${bg};color:${col};font-weight:700;flex-shrink:0">${isHL ? 'HL' : 'Replay'}</div>
+    <div style="font-size:12px;font-weight:700;color:${col};width:50px;text-align:right">${val}</div>
+  </div>`;
+});
+
+// ── ORIGINALS TABLE (full)
+const originals = [
+  { name:'Ascent, a new view: Serie A',            type:'doc-series', viewers:18548, plays:6975,  engH:113  },
+  { name:'Alessandro Gabrielloni, The Local Hero',  type:'doc',        viewers:5890,  plays:5880,  engH:193  },
+  { name:'S1E01 COMO 1907',                         type:'series',     viewers:4683,  plays:1258,  engH:null },
+  { name:'Talent Hunters – Riccardo Calafiori',     type:'show',       viewers:3333,  plays:3934,  engH:null },
+  { name:'Goleada – Ep.16',                         type:'show',       viewers:2617,  plays:3261,  engH:null },
+  { name:'DISCOVER COMO | THE GREATEST SHOW',       type:'branded',    viewers:1407,  plays:1366,  engH:null },
+  { name:'DISCOVER COMO | LAKE LIFE',               type:'branded',    viewers:1406,  plays:1221,  engH:null },
+  { name:'Talent Hunters – Mouzakitis',             type:'show',       viewers:null,  plays:1731,  engH:null },
+  { name:'Goleada – EP.14',                         type:'show',       viewers:null,  plays:1260,  engH:null },
+  { name:'House of Paz – A jewel from the lake',    type:'doc',        viewers:null,  plays:null,  engH:null },
+];
+const typeLabels = {
+  'doc-series':'Doc-Series','doc':'Documentario','series':'Serie','show':'Show/Format','branded':'Branded'
+};
+const typeCls = {
+  'doc-series':'vod-doc','doc':'vod-doc','series':'vod-original','show':'vod-original','branded':'vod-live-rel'
+};
+const origTbody = document.getElementById('origTable');
+if (origTbody) {
+  const maxOrigV = originals.filter(o=>o.viewers).reduce((m,o)=>Math.max(m,o.viewers),0);
+  originals.forEach((o,i) => {
+    const pct = o.viewers ? (o.viewers/maxOrigV*100).toFixed(0) : 0;
+    origTbody.innerHTML += `<tr>
+      <td class="ev-rank">${i+1}</td>
+      <td style="font-size:12px;max-width:220px">${o.name}</td>
+      <td><span class="vod-cat-tag ${typeCls[o.type]}">${typeLabels[o.type]}</span></td>
+      <td class="num-w" style="text-align:right">${o.viewers ? o.viewers.toLocaleString() : '—'}</td>
+      <td style="text-align:right;font-size:12px;color:#5a5a5a">${o.plays ? (o.plays/1000).toFixed(1)+'K' : '—'}</td>
+      <td style="text-align:right;font-size:12px;color:#7c3aed;font-weight:${o.engH?'700':'400'}">${o.engH ? o.engH+'h' : '—'}</td>
+      <td><div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:#7c3aed"></div></div></td>
+    </tr>`;
+  });
+}
+
+// ── REPLAY LIST (by engagement hours)
+const replays = [
+  { name:'Final: Como vs Ajax – Replay',            engH:323, plays:2313, viewers:null  },
+  { name:'Como vs Lazio – Replay | IT Commentary',  engH:301, plays:4236, viewers:2754  },
+  { name:'Real Betis vs Como – Replay',             engH:254, plays:2877, viewers:3442  },
+  { name:'Como vs Juventus – Replay | IT Commentary',engH:180,plays:null,  viewers:null  },
+  { name:'Barcelona vs Como – Replay',              engH:174, plays:1837, viewers:1388  },
+  { name:'Final: Palmeiras vs Flamengo – Replay',   engH:170, plays:null,  viewers:null  },
+  { name:'Como vs Al-Ahli – Replay',                engH:156, plays:2081, viewers:1338  },
+  { name:'Aberdeen vs Celtic – Replay',             engH:null,plays:2964, viewers:2354  },
+  { name:'Como vs Sudtirol – Replay | IT Commentary',engH:110,plays:1993, viewers:1480  },
+  { name:'Bologna vs Como – Replay | IT Commentary',engH:99,  plays:1471, viewers:null  },
+];
+const maxRH = 323;
+const replayEl = document.getElementById('replayList');
+if (replayEl) replays.forEach((r,i) => {
+  const pct = r.engH ? (r.engH/maxRH*100).toFixed(0) : 0;
+  replayEl.innerHTML += `<div class="veng-row">
+    <div class="ev-rank">${i+1}</div>
+    <div class="veng-name">${r.name}</div>
+    <div style="font-size:11px;color:#7a7060;width:34px;text-align:right;flex-shrink:0">${r.viewers ? (r.viewers/1000).toFixed(1)+'K' : '—'}</div>
+    <div class="veng-bar-wrap"><div class="veng-bar-bg"><div class="veng-bar-fill" style="width:${pct}%"></div></div></div>
+    <div class="veng-val">${r.engH ? r.engH+'h' : '—'}</div>
+  </div>`;
+});
+
+// ── HIGHLIGHTS LIST (by unique viewers)
+const highlights = [
+  { name:'Highlights Real Betis vs Como',           viewers:5711, plays:6533  },
+  { name:'Highlights Barcelona vs Como',             viewers:3256, plays:3645  },
+  { name:'Highlights Final: Como vs Ajax',           viewers:2965, plays:3749  },
+  { name:'Highlights Como vs Al-Ahli',              viewers:2157, plays:2903  },
+  { name:'Como v Inter | Serie A 2024-25 | HL',     viewers:1979, plays:2034  },
+  { name:'Highlights Como vs Lille',                viewers:1814, plays:2502  },
+  { name:'Highlights AFC Ajax vs Telstar',          viewers:null, plays:1653  },
+  { name:'Highlights Heart of Midlothian vs Aberdeen',viewers:null,plays:1290 },
+  { name:'Highlights Al Nassr vs Al Ittihad',       viewers:null, plays:1364  },
+];
+const maxHV = 5711;
+const hlEl = document.getElementById('hlList');
+if (hlEl) highlights.forEach((h,i) => {
+  const pct = h.viewers ? (h.viewers/maxHV*100).toFixed(0) : 0;
+  const comoHL = h.name.includes('Como') || h.name.includes('Inter');
+  hlEl.innerHTML += `<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #f0e8e0">
+    <div class="ev-rank">${i+1}</div>
+    <div style="flex:1;font-size:11px;color:#1a1a1a;line-height:1.3">${h.name}${comoHL ? '<span style="font-size:9px;background:#e0f4fb;color:#0891b2;border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700">Como</span>' : ''}</div>
+    <div style="width:60px;flex-shrink:0"><div style="background:#e8e0d4;border-radius:3px;height:4px"><div style="width:${pct}%;height:4px;border-radius:3px;background:#0891b2"></div></div></div>
+    <div style="font-size:12px;font-weight:700;color:#0891b2;width:46px;text-align:right;flex-shrink:0">${h.viewers ? h.viewers.toLocaleString() : '—'}</div>
+  </div>`;
+});
+
+// ── CATEGORY BAR CHART (horizontal, color by type)
+const vodCats = [
+  { name:'INTERVIEWS',                     viewers:10177, type:'orig', engH:548  },
+  { name:'Talent Hunters',                 viewers:7822,  type:'orig', engH:142  },
+  { name:'COMO CUP',                       viewers:7697,  type:'live', engH:789  },
+  { name:'FRIENDLY MATCH',                 viewers:7681,  type:'live', engH:475  },
+  { name:'Eredivisie',                     viewers:7035,  type:'live', engH:2276 },
+  { name:'SCOTTISH PREMIERSHIP',           viewers:6770,  type:'live', engH:1856 },
+  { name:'Serie A | Replay 2025-2026',     viewers:6196,  type:'live', engH:2481 },
+  { name:'Goleada',                        viewers:5315,  type:'orig', engH:203  },
+  { name:'Argentina Copa De La Liga Pro',  viewers:5112,  type:'live', engH:3812 },
+  { name:'Copa Libertadores',              viewers:4676,  type:'live', engH:4177 },
+  { name:'Hl. Argentina Copa De La Liga',  viewers:4044,  type:'live', engH:418  },
+  { name:'Serie A | Highlights 2024-2025', viewers:3743,  type:'live', engH:58   },
+  { name:'Highlights Eredivisie',          viewers:3703,  type:'live', engH:449  },
+  { name:'Discover Como',                  viewers:3477,  type:'orig', engH:133  },
+  { name:'JOAN GAMPER TROPHY',             viewers:3475,  type:'live', engH:223  },
+];
+const vodCatEl = document.getElementById('vodCatChart');
+if (vodCatEl) new Chart(vodCatEl, {
+  type:'bar',
+  data:{
+    labels: vodCats.map(c => c.name.length>24?c.name.slice(0,24)+'…':c.name),
+    datasets:[{
+      label:'Unique Viewers',
+      data: vodCats.map(c => c.viewers),
+      backgroundColor: vodCats.map(c => c.type==='orig' ? '#7c3aed99' : '#dc262699'),
+      borderColor: vodCats.map(c => c.type==='orig' ? '#7c3aed' : '#dc2626'),
+      borderWidth:1, borderRadius:4
+    }]
+  },
+  options:{
+    indexAxis:'y', responsive:true, maintainAspectRatio:false,
+    plugins:{
+      legend:{display:false},
+      tooltip:{callbacks:{label:ctx=>` ${ctx.raw.toLocaleString()} viewers`}}
+    },
+    scales:{
+      x:{grid:{color:'#ece4d8'},ticks:{color:'#7a7060',font:{size:9},callback:v=>v>=1000?(v/1000).toFixed(0)+'K':v}},
+      y:{grid:{display:false},ticks:{color:'#3a3028',font:{size:9}}}
+    }
+  }
+});
+
+// ── ENGAGEMENT TIME CHART (by category)
+const engCats = [
+  { name:'Copa Libertadores',         engH:4177, type:'live' },
+  { name:'Argentina Copa De La Liga', engH:3812, type:'live' },
+  { name:'Serie A | Replay 25-26',    engH:2481, type:'live' },
+  { name:'Eredivisie',                engH:2276, type:'live' },
+  { name:'Conmebol Sudamericana',     engH:2010, type:'live' },
+  { name:'Scottish Premiership',      engH:1856, type:'live' },
+  { name:'Saudi Pro League',          engH:1015, type:'live' },
+  { name:'Como Primavera',            engH:915,  type:'live' },
+  { name:'Como Cup',                  engH:789,  type:'live' },
+  { name:'INTERVIEWS',                engH:548,  type:'orig' },
+];
+const vodEngEl = document.getElementById('vodEngChart');
+if (vodEngEl) new Chart(vodEngEl, {
+  type:'bar',
+  data:{
+    labels: engCats.map(c=>c.name.length>22?c.name.slice(0,22)+'…':c.name),
+    datasets:[{
+      label:'Engagement Hours',
+      data: engCats.map(c=>c.engH),
+      backgroundColor: engCats.map(c=>c.type==='orig'?'#7c3aed99':'#dc262699'),
+      borderColor: engCats.map(c=>c.type==='orig'?'#7c3aed':'#dc2626'),
+      borderWidth:1, borderRadius:4
+    }]
+  },
+  options:{
+    indexAxis:'y', responsive:true, maintainAspectRatio:false,
+    plugins:{
+      legend:{display:false},
+      tooltip:{callbacks:{label:ctx=>` ${ctx.raw.toLocaleString()}h`}}
+    },
+    scales:{
+      x:{grid:{color:'#ece4d8'},ticks:{color:'#7a7060',font:{size:9},callback:v=>v>=1000?(v/1000).toFixed(0)+'Kh':v+'h'}},
+      y:{grid:{display:false},ticks:{color:'#3a3028',font:{size:9}}}
+    }
+  }
+});
+
+// ── setSeg() removed: LIVE and VOD sections always visible on same page
+</script>
+</body>
+</html>
