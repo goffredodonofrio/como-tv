@@ -1229,6 +1229,24 @@ const _dmsData = {};   // keyed by file type: viewers, eng, plays, logined, live
 // ── Toggle panel ──────────────────────────────────────────────
 
 
+
+// ── EPISODE COUNTS — derived from Content Rank (full season + weekly) ──
+// Fonte: Rank by Engagement Time 2025-04-04~2026-04-04.csv + weekly CSV
+const EPISODE_COUNTS = {
+  'INTERVIEWS':         131,  // 131 interviste distinte
+  'Talent Hunters':      50,  // 50 episodi (uno per calciatore)
+  'Discover Como':      104,  // 104 clip branded
+  'Goleada':             24,  // ep.1–ep.24 (dato preciso)
+  'SEASON 1 THE REAL STORY': 1,  // documentario
+  'Como 1907 Original':   7,  // S1E01–S1E07
+  'Los Clasicos':          6,  // 6 episodi
+  'Behind the Team':       8,  // 8 episodi
+  'Arabian Night':        12,  // ep.1–ep.12 (dato preciso)
+  "Golden '90":            7,  // ep.5–ep.7+ visibili
+  'Fútbol Prohibido':      2,  // ep.1–ep.2 (serie breve)
+  'Ascent':                1,  // documentario singolo
+};
+
 // ── VOD TOP LIST (aggiornato per periodo) ─────────────────────
 function renderVODTopList(cats, engMap) {
   const el = document.getElementById('vodTopList');
@@ -1239,26 +1257,37 @@ function renderVODTopList(cats, engMap) {
   const lives  = cats.filter(c => c.type === 'live');
 
   function makeRow(c, i, maxV) {
-    const pct  = maxV > 0 ? (c.viewers / maxV * 100).toFixed(0) : 0;
-    const hpv  = c.viewers > 0 ? (c.engH / c.viewers).toFixed(1) : '—';
-    const ppv  = c.viewers > 0 ? (c.plays / c.viewers).toFixed(1) : '—';
-    const col  = c.type === 'orig' ? '#7c3aed' : '#dc2626';
-    const bg   = c.type === 'orig' ? '#f5f0fc' : '#fff5f5';
+    const pct   = maxV > 0 ? (c.viewers / maxV * 100).toFixed(0) : 0;
+    const eps   = EPISODE_COUNTS[c.name] || null;
+    const hpv   = c.viewers > 0 && c.engH ? (c.engH / c.viewers).toFixed(1) : null;
+    const ppv   = c.viewers > 0 && c.plays ? (c.plays / c.viewers).toFixed(1) : null;
+    const vpe   = eps && c.viewers ? Math.round(c.viewers / eps) : null;
+    const hpe   = eps && c.engH   ? (c.engH / eps).toFixed(1)    : null;
+    const col   = c.type === 'orig' ? '#7c3aed' : '#dc2626';
+    const bg    = c.type === 'orig' ? '#f5f0fc' : '#fff5f5';
+    const epTag = eps ? `<span style="background:#e5e7eb;border-radius:4px;padding:1px 6px;font-size:9px;color:#374151;font-weight:700">${eps} ep.</span>` : '';
+    const perEp = vpe ? `<span style="color:#7c3aed;font-weight:700">${vpe} v/ep</span>` : '';
+    const hpeTag = hpe ? `<span style="color:#059669;font-weight:700">${hpe}h/ep</span>` : '';
     return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;background:${bg};margin-bottom:6px">
       <div style="font-size:13px;font-weight:700;color:${col};width:22px;text-align:center">${i+1}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:700;color:#0d1a38;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>
-        <div style="display:flex;gap:12px;margin-top:3px;font-size:10px;color:#6b7280">
-          <span><strong style="color:#0d1a38">${c.viewers.toLocaleString()}</strong> viewers</span>
-          ${c.engH ? `<span><strong style="color:#059669">${c.engH}h</strong> engagement</span>` : ''}
-          ${c.plays ? `<span><strong style="color:#B8962E">${ppv}×</strong> play/viewer</span>` : ''}
-          ${c.viewers > 0 && c.engH ? `<span><strong style="color:#0891b2">${hpv}h</strong>/viewer</span>` : ''}
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:700;color:#0d1a38">${c.name}</span>
+          ${epTag}
+        </div>
+        <div style="display:flex;gap:10px;margin-top:4px;font-size:10px;color:#6b7280;flex-wrap:wrap">
+          <span><strong style="color:#0d1a38">${c.viewers.toLocaleString()}</strong> viewers tot.</span>
+          ${c.engH  ? `<span><strong style="color:#059669">${c.engH}h</strong> eng.</span>` : ''}
+          ${ppv     ? `<span><strong style="color:#B8962E">${ppv}×</strong> play/v</span>` : ''}
+          ${perEp   ? `· ${perEp}` : ''}
+          ${hpeTag  ? `· ${hpeTag}` : ''}
         </div>
       </div>
-      <div style="width:80px;flex-shrink:0">
-        <div style="background:#e5e7eb;border-radius:3px;height:5px">
+      <div style="width:70px;flex-shrink:0;text-align:right">
+        <div style="background:#e5e7eb;border-radius:3px;height:5px;margin-bottom:4px">
           <div style="width:${pct}%;height:5px;border-radius:3px;background:${col}"></div>
         </div>
+        ${vpe ? `<div style="font-size:9px;color:#6b7280">per ep.</div>` : ''}
       </div>
     </div>`;
   }
