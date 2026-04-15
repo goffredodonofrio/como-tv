@@ -1513,20 +1513,25 @@ function renderVODSection(period) {
   const noticeT = el('vodPeriodNoticeText');
 
   if (!d) {
-    // No VOD data for this period — show prominent action card
+    // No VOD rank data for this period — show notice and fall back to full-season data
     if (notice) {
       notice.style.display = 'block';
-      notice.style.background = '#fff8f0';
+      notice.style.background = '#fffbeb';
       notice.style.borderLeftColor = '#f59e0b';
     }
     if (noticeT) {
-      const ranges = { '1m':'14 mar – 14 apr 2026', '1w':'7 – 14 apr 2026' };
-      noticeT.innerHTML =
-        `📼 <strong>VOD — Dati per questo periodo non caricati.</strong>
-        Per attivare: esporta da DMS → VOD → Category Rank · Engagement Time · Play Count
-        con range <em>${ranges[period] || period}</em>, poi usa il pannello
-        <strong>Carica Dati DMS</strong> in cima e seleziona il periodo corretto.`;
+      const ranges = { '1w':'7 – 14 apr 2026' };
+      noticeT.innerHTML = `📊 <strong>VOD — dati per questa settimana non ancora disponibili.</strong>
+        Mostrati i grafici della stagione completa come riferimento.
+        Invia i CSV "Rank by Viewers / Engagement Time / Play Count" per il periodo <em>${ranges[period] || period}</em> per aggiornare.`;
     }
+    // Fall back to full-season data so charts aren't empty
+    const fallback = vodDataByPeriod['all'];
+    if (fallback && fallback.cats) { vodCats = fallback.cats; renderVodCatChart(); }
+    if (fallback && fallback.eng)  { engCats = fallback.eng;  renderVodEngChart(); }
+    renderOrigTop('all');
+    renderLiveRelTop('all');
+    renderOrigTable('all');
     return;
   }
 
@@ -1538,7 +1543,9 @@ function renderVODSection(period) {
       notice.style.display = 'block';
       notice.style.background = '#f0faf4';
       notice.style.borderLeftColor = '#059669';
-      if (noticeT) noticeT.innerHTML = `✅ <strong>VOD — Dati per questo periodo caricati.</strong>`;
+      const periodLabels = { '1m':'14 mar – 14 apr 2026', '1w':'7 – 14 apr 2026' };
+      if (noticeT) noticeT.innerHTML = `✅ <strong>VOD ${periodLabels[period] || period} — dati caricati.</strong>
+        I valori sono più bassi della stagione completa: è normale, riflettono solo il periodo selezionato.`;
     }
   }
 
