@@ -67,14 +67,30 @@ body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; background: #f7f8
 .vod-kpi-desc strong { color:#0d1a38; }
 .vod-kpi-note  { font-size:10px; color:#B8962E; font-weight:700; margin-top:2px; }
 
-/* ── VOD TOP LIST — tag decisionali + inline meaning ── */
-.vod-dtag { display:inline-block; font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:4px; letter-spacing:.3px; white-space:nowrap; margin-left:2px; }
+/* ── VOD TOP LIST — tag decisionali + inline meaning + layout 2 colonne ── */
+.vod-toplist-grid { display:grid; grid-template-columns: 1fr 1fr; gap:20px; align-items:start; }
+@media (max-width: 1100px) { .vod-toplist-grid { grid-template-columns: 1fr; } }
+.vod-toplist-col-head { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; margin-top:4px; }
+.vod-toplist-col-head .sub { font-weight:400; color:#6b7280; font-size:10px; text-transform:none; letter-spacing:0; }
+.vod-row { display:flex; align-items:flex-start; gap:12px; padding:14px 16px; border-radius:10px; margin-bottom:8px; }
+.vod-row-rank { font-size:16px; font-weight:700; width:26px; text-align:center; flex-shrink:0; padding-top:2px; }
+.vod-row-body { flex:1; min-width:0; }
+.vod-row-head { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:8px; }
+.vod-row-title { font-size:15px; font-weight:700; color:#0d1a38; line-height:1.3; word-break:break-word; overflow-wrap:anywhere; flex-basis:100%; }
+.vod-row-stats { display:flex; gap:14px 16px; font-size:11px; color:#374151; flex-wrap:wrap; row-gap:5px; margin-bottom:10px; }
+.vod-row-bar { display:flex; align-items:center; gap:10px; }
+.vod-row-bar .barwrap { flex:1; background:#e5e7eb; border-radius:3px; height:6px; }
+.vod-row-bar .barfill { height:6px; border-radius:3px; }
+.vod-row-bar .barpct  { font-size:10px; color:#6b7280; flex-shrink:0; white-space:nowrap; }
+
+.vod-dtag { display:inline-block; font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:4px; letter-spacing:.3px; white-space:nowrap; }
 .vod-dtag.strong  { background:#d1fae5; color:#065f46; }
 .vod-dtag.gem     { background:#fce7f3; color:#9d174d; }
 .vod-dtag.growing { background:#dbeafe; color:#1e3a8a; }
 .vod-dtag.stable  { background:#f3f4f6; color:#4b5563; }
 .vod-dtag.watch   { background:#fef3c7; color:#92400e; }
-.vot-mean { color:#9ca3af; font-style:italic; font-weight:400; font-size:10px; margin-left:2px; }
+.vod-ep-badge { background:#e5e7eb; border-radius:4px; padding:2px 8px; font-size:10px; color:#374151; font-weight:700; white-space:nowrap; }
+.vot-mean { color:#9ca3af; font-style:italic; font-weight:400; font-size:10px; margin-left:2px; white-space:nowrap; }
 
 /* ── VOD CHART CARD ── */
 .vod-chart-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:20px; }
@@ -1262,34 +1278,34 @@ function renderVODTopList(cats, engMap) {
 
   // Split originals vs live-related
   const origs = cats.filter(c => c.type === 'orig');
-  const lives  = cats.filter(c => c.type === 'live');
+  const lives = cats.filter(c => c.type === 'live');
 
   function makeRow(c, i, maxV) {
-    const pct   = maxV > 0 ? (c.viewers / maxV * 100).toFixed(0) : 0;
-    const eps   = EPISODE_COUNTS[c.name] || null;
-    const hpv   = c.viewers > 0 && c.engH  ? (c.engH  / c.viewers).toFixed(1) : null;
-    const ppv   = c.viewers > 0 && c.plays ? (c.plays / c.viewers).toFixed(1) : null;
-    const vpe   = eps && c.viewers ? Math.round(c.viewers / eps)  : null;
-    const hpe   = eps && c.engH    ? (c.engH   / eps).toFixed(1)  : null;
-    const col   = c.type === 'orig' ? '#7c3aed' : '#0891b2';
-    const bg    = c.type === 'orig' ? '#f5f0fc' : '#f0f7fb';
+    const pct = maxV > 0 ? (c.viewers / maxV * 100).toFixed(0) : 0;
+    const eps = EPISODE_COUNTS[c.name] || null;
+    const hpv = c.viewers > 0 && c.engH  ? (c.engH  / c.viewers).toFixed(1) : null;
+    const ppv = c.viewers > 0 && c.plays ? (c.plays / c.viewers).toFixed(1) : null;
+    const vpe = eps && c.viewers ? Math.round(c.viewers / eps)  : null;
+    const hpe = eps && c.engH    ? (c.engH   / eps).toFixed(1)  : null;
+    const col = c.type === 'orig' ? '#7c3aed' : '#0891b2';
+    const bg  = c.type === 'orig' ? '#f5f0fc' : '#f0f7fb';
 
     // ── Decision helper tag (B) ─────────────────────────────────
     // Logica: posizione nella top list + loyalty per-viewer.
-    //   i === 0                              → Performer forte (leader reach)
-    //   hpv >= 2  OR  ppv >= 3               → Hidden gem (pochi viewer ma loyalty altissima)
-    //   i === 1                              → In crescita
-    //   i === 2                              → Stabile
-    //   i >= 3                               → Da monitorare
+    //   i === 0                    → Performer forte (leader reach)
+    //   hpv >= 2  OR  ppv >= 3     → Hidden gem (pochi viewer ma loyalty altissima)
+    //   i === 1                    → In crescita
+    //   i === 2                    → Stabile
+    //   i >= 3                     → Da monitorare
     let tag;
-    if (i === 0)                                        tag = { cls:'strong',  label:'✅ Performer forte' };
-    else if (hpv && parseFloat(hpv) >= 2)               tag = { cls:'gem',     label:'💎 Hidden gem' };
-    else if (ppv && parseFloat(ppv) >= 3)               tag = { cls:'gem',     label:'💎 Hidden gem' };
-    else if (i === 1)                                   tag = { cls:'growing', label:'📈 In crescita' };
-    else if (i === 2)                                   tag = { cls:'stable',  label:'⚖️ Stabile' };
-    else                                                tag = { cls:'watch',   label:'⚠ Da monitorare' };
+    if (i === 0)                            tag = { cls:'strong',  label:'✅ Performer forte' };
+    else if (hpv && parseFloat(hpv) >= 2)   tag = { cls:'gem',     label:'💎 Hidden gem' };
+    else if (ppv && parseFloat(ppv) >= 3)   tag = { cls:'gem',     label:'💎 Hidden gem' };
+    else if (i === 1)                       tag = { cls:'growing', label:'📈 In crescita' };
+    else if (i === 2)                       tag = { cls:'stable',  label:'⚖️ Stabile' };
+    else                                    tag = { cls:'watch',   label:'⚠ Da monitorare' };
 
-    const epTag = eps ? `<span style="background:#e5e7eb;border-radius:4px;padding:2px 8px;font-size:10px;color:#374151;font-weight:700">${eps} ep.</span>` : '';
+    const epTag = eps ? `<span class="vod-ep-badge">${eps} ep.</span>` : '';
 
     // ── Stats con inline meaning (C revised) ────────────────────
     const stats = [];
@@ -1299,49 +1315,48 @@ function renderVODTopList(cats, engMap) {
     if (vpe)    stats.push(`<span><strong style="color:#7c3aed">${vpe}</strong> v/ep <span class="vot-mean">audience per puntata</span></span>`);
     if (hpe)    stats.push(`<span><strong style="color:#059669">${hpe}h</strong>/ep <span class="vot-mean">profondità per puntata</span></span>`);
 
-    return `<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:10px;background:${bg};margin-bottom:8px">
-      <div style="font-size:16px;font-weight:700;color:${col};width:26px;text-align:center;flex-shrink:0">${i+1}</div>
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px">
-          <span style="font-size:15px;font-weight:700;color:#0d1a38;line-height:1.25">${c.name}</span>
+    return `<div class="vod-row" style="background:${bg}">
+      <div class="vod-row-rank" style="color:${col}">${i+1}</div>
+      <div class="vod-row-body">
+        <div class="vod-row-head">
+          <span class="vod-row-title">${c.name}</span>
           ${epTag}
           <span class="vod-dtag ${tag.cls}">${tag.label}</span>
         </div>
-        <div style="display:flex;gap:16px;font-size:11px;color:#374151;flex-wrap:wrap;row-gap:4px">
-          ${stats.join('')}
+        <div class="vod-row-stats">${stats.join('')}</div>
+        <div class="vod-row-bar">
+          <div class="barwrap"><div class="barfill" style="width:${pct}%;background:${col}"></div></div>
+          <div class="barpct">${pct}% del leader</div>
         </div>
-      </div>
-      <div style="width:84px;flex-shrink:0;text-align:right">
-        <div style="background:#e5e7eb;border-radius:3px;height:6px;margin-bottom:4px">
-          <div style="width:${pct}%;height:6px;border-radius:3px;background:${col}"></div>
-        </div>
-        <div style="font-size:9px;color:#6b7280">${pct}% del leader</div>
       </div>
     </div>`;
   }
 
   const maxOrigV = origs.length ? origs[0].viewers : 1;
-  const maxLiveV = lives.length  ? lives[0].viewers  : 1;
+  const maxLiveV = lives.length ? lives[0].viewers : 1;
 
-  let html = '';
-
+  let origHtml = '';
   if (origs.length) {
-    html += `<div style="font-size:10px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;margin-top:4px">
+    origHtml += `<div class="vod-toplist-col-head" style="color:#7c3aed">
       🎬 Originals & Format Como TV
-      <span style="font-weight:400;color:#6b7280;font-size:10px;text-transform:none;letter-spacing:0"> — contenuti prodotti da Como TV, ordinati per audience nel periodo</span>
+      <span class="sub">— contenuti prodotti da Como TV, ordinati per audience nel periodo</span>
     </div>`;
-    origs.slice(0, 5).forEach((c, i) => { html += makeRow(c, i, maxOrigV); });
+    origs.slice(0, 5).forEach((c, i) => { origHtml += makeRow(c, i, maxOrigV); });
   }
 
+  let liveHtml = '';
   if (lives.length) {
-    html += `<div style="font-size:10px;font-weight:700;color:#0891b2;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;margin-top:16px">
+    liveHtml += `<div class="vod-toplist-col-head" style="color:#0891b2">
       🎥 Replay &amp; Highlights (VOD)
-      <span style="font-weight:400;color:#6b7280;font-size:10px;text-transform:none;letter-spacing:0"> — contenuto live disponibile on demand: replay, highlight, pre-show</span>
+      <span class="sub">— contenuto live disponibile on demand: replay, highlight, pre-show</span>
     </div>`;
-    lives.slice(0, 5).forEach((c, i) => { html += makeRow(c, i, maxLiveV); });
+    lives.slice(0, 5).forEach((c, i) => { liveHtml += makeRow(c, i, maxLiveV); });
   }
 
-  el.innerHTML = html;
+  el.innerHTML = `<div class="vod-toplist-grid">
+    <div>${origHtml}</div>
+    <div>${liveHtml}</div>
+  </div>`;
 }
 
 
