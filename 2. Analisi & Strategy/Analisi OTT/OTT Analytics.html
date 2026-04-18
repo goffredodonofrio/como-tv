@@ -1234,7 +1234,7 @@ function renderVODSection(period) {
   if (el('vod-loggedin'))     el('vod-loggedin').textContent     = d.loggedin;
   if (el('vod-loggedin-note'))el('vod-loggedin-note').textContent = d.loginNote;
 
-  // Update originals lists and table
+  // Update originals lists and table (no-op se gli ID non esistono più)
   renderOrigTop(period);
   renderLiveRelTop(period);
   renderOrigTable(period);
@@ -1242,6 +1242,12 @@ function renderVODSection(period) {
   // Update charts if period has custom data
   if (d.cats) { vodCats = d.cats; renderVodCatChart(); }
   if (d.eng)  { engCats = d.eng;  renderVodEngChart(); }
+
+  // ⚠️ Fix: aggiornare anche top list e insight con i dati del periodo
+  if (d.cats) {
+    renderVODTopList(d.cats);
+    renderVODInsights(d.cats, d.eng || engCats);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1665,6 +1671,40 @@ let vodCats = [
   { name:'JOAN GAMPER TROPHY',                    viewers:4245,  type:'live', engH:253  },
   { name:'Highlights Arg. Copa De La Liga',       viewers:4079,  type:'live', engH:429  },
 ];
+// ── Helper: spezza i nomi lunghi su più righe (Chart.js accetta array di stringhe come label)
+function wrapLabel(name, maxCharsPerLine = 28, maxLines = 2) {
+  if (!name) return '';
+  if (name.length <= maxCharsPerLine) return name;
+  const allWords = name.split(/\s+/);
+  const lines = [];
+  let cur = '';
+  let idx = 0;
+  for (; idx < allWords.length; idx++) {
+    const w = allWords[idx];
+    const candidate = cur ? cur + ' ' + w : w;
+    if (candidate.length <= maxCharsPerLine) {
+      cur = candidate;
+    } else {
+      if (cur) lines.push(cur);
+      cur = w;
+      if (lines.length >= maxLines - 1) break;
+    }
+  }
+  // Riempi l'ultima riga con le parole rimaste finché entrano; se non c'è spazio tronca con …
+  for (idx = idx + 1; idx < allWords.length; idx++) {
+    const w = allWords[idx];
+    const candidate = cur + ' ' + w;
+    if (candidate.length <= maxCharsPerLine) {
+      cur = candidate;
+    } else {
+      cur = cur + '…';
+      break;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
 function renderVodCatChart() {
   const vodCatEl = document.getElementById('vodCatChart');
   if (!vodCatEl) return;
@@ -1672,7 +1712,7 @@ function renderVodCatChart() {
   _vodCatChart = new Chart(vodCatEl, {
   type:'bar',
   data:{
-    labels: vodCats.map(c => c.name.length>24?c.name.slice(0,24)+'…':c.name),
+    labels: vodCats.map(c => wrapLabel(c.name, 28, 2)),
     datasets:[{
       label:'Unique Viewers',
       data: vodCats.map(c => c.viewers),
@@ -1683,13 +1723,17 @@ function renderVodCatChart() {
   },
   options:{
     indexAxis:'y', responsive:true, maintainAspectRatio:false,
+    layout:{ padding:{ left:4 } },
     plugins:{
       legend:{display:false},
-      tooltip:{callbacks:{label:ctx=>` ${ctx.raw.toLocaleString()} viewers`}}
+      tooltip:{callbacks:{
+        title: ctx => Array.isArray(ctx[0].label) ? ctx[0].label.join(' ') : ctx[0].label,
+        label:ctx=>` ${ctx.raw.toLocaleString()} viewers`
+      }}
     },
     scales:{
       x:{grid:{color:'#ece4d8'},ticks:{color:'#6b7280',font:{size:9},callback:v=>v>=1000?(v/1000).toFixed(0)+'K':v}},
-      y:{grid:{display:false},ticks:{color:'#3a3028',font:{size:9}}}
+      y:{grid:{display:false},ticks:{color:'#3a3028',font:{size:9},autoSkip:false}}
     }
   }
   });
@@ -1716,7 +1760,7 @@ function renderVodEngChart() {
   _vodEngChart = new Chart(vodEngEl, {
   type:'bar',
   data:{
-    labels: engCats.map(c=>c.name.length>22?c.name.slice(0,22)+'…':c.name),
+    labels: engCats.map(c => wrapLabel(c.name, 24, 2)),
     datasets:[{
       label:'Engagement Hours',
       data: engCats.map(c=>c.engH),
@@ -1727,13 +1771,17 @@ function renderVodEngChart() {
   },
   options:{
     indexAxis:'y', responsive:true, maintainAspectRatio:false,
+    layout:{ padding:{ left:4 } },
     plugins:{
       legend:{display:false},
-      tooltip:{callbacks:{label:ctx=>` ${ctx.raw.toLocaleString()}h`}}
+      tooltip:{callbacks:{
+        title: ctx => Array.isArray(ctx[0].label) ? ctx[0].label.join(' ') : ctx[0].label,
+        label:ctx=>` ${ctx.raw.toLocaleString()}h`
+      }}
     },
     scales:{
       x:{grid:{color:'#ece4d8'},ticks:{color:'#6b7280',font:{size:9},callback:v=>v>=1000?(v/1000).toFixed(0)+'Kh':v+'h'}},
-      y:{grid:{display:false},ticks:{color:'#3a3028',font:{size:9}}}
+      y:{grid:{display:false},ticks:{color:'#3a3028',font:{size:9},autoSkip:false}}
     }
   }
   });
