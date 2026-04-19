@@ -99,6 +99,23 @@ body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; background: #f7f8
 .vod-chart-desc  { font-size:11px; color:#374151; line-height:1.6; margin-bottom:4px; }
 .vod-chart-tip   { font-size:10px; color:#6b7280; background:#f7f8fa; border-radius:6px; padding:6px 10px; margin-bottom:14px; border-left:3px solid #B8962E; }
 
+/* ── VOD MIX (Originals vs Live-related) ── */
+.vod-mix-grid { display:grid; grid-template-columns: 1fr 1fr; gap:20px; align-items:start; margin-top:4px; }
+@media (max-width: 900px) { .vod-mix-grid { grid-template-columns: 1fr; } }
+.vod-mix-card { background:#fafafa; border:1px solid #ece4d8; border-radius:10px; padding:16px; }
+.vod-mix-title { font-size:12px; font-weight:700; color:#0d1a38; margin-bottom:2px; }
+.vod-mix-sub { font-size:10px; color:#6b7280; margin-bottom:10px; font-style:italic; }
+.vod-mix-chart-wrap { position:relative; height:220px; }
+.vod-mix-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; }
+.vod-mix-center .vmc-num { font-size:28px; font-weight:700; color:#7c3aed; line-height:1; }
+.vod-mix-center .vmc-lbl { font-size:10px; font-weight:700; color:#6d28d9; margin-top:4px; letter-spacing:.5px; text-transform:uppercase; }
+.vod-mix-legend { display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
+.vod-mix-leg { display:flex; align-items:center; gap:6px; font-size:11px; color:#3a3028; }
+.vod-mix-leg .vmd-dot { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+.vod-mix-leg .vmd-val { font-weight:700; }
+.vod-mix-leg .vmd-abs { color:#6b7280; font-size:10px; font-weight:400; }
+.vod-mix-insight { margin-top:16px; padding:12px 14px; background:#f7f8fa; border-left:3px solid #B8962E; border-radius:6px; font-size:11px; color:#374151; line-height:1.55; }
+
 /* ── VOD INSIGHT CARDS ── */
 .vod-insight-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:20px; }
 .vod-insight {
@@ -646,19 +663,42 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
       <!-- Popolato da renderVODTopList() -->
     </div>
 
-    <!-- ── CATEGORY CHARTS ── -->
+    <!-- ── MIX PRODUZIONE — Originals vs Live-related ── -->
     <div class="sec">
       <div class="sec-texts">
-        <div class="sec-it">📊 Analisi per Categoria VOD</div>
-        <div class="sec-en">I dati cambiano automaticamente con il periodo selezionato</div>
+        <div class="sec-it">📊 Mix Produzione — Originals Como TV vs Live-related</div>
+        <div class="sec-en">Quanto pesa la produzione originale sul totale VOD, in reach e in ore</div>
       </div>
       <div class="sec-line"></div>
     </div>
     <div class="vod-chart-card">
-      <div class="vod-chart-title">👥 Reach per Categoria — Spettatori Unici <span class="dms-src" title="DMS → VOD → Category Rank · imposta il periodo → Export CSV">VOD → Category Rank</span></div>
-      <div class="vod-chart-desc">Quante persone distinte hanno guardato contenuti di questa categoria nel periodo selezionato. Misura la <strong>ampiezza dell'audience</strong>: chi riesce ad attrarre più persone diverse.</div>
-      <div class="vod-chart-tip">💡 <strong>Viola = Originals & Format</strong> (produzione Como TV) · <strong>Rosso = Live-Related</strong> (replay, highlights, pre-show). Una categoria viola alta significa che i contenuti originali competono con i grandi diritti internazionali. Le ore di engagement per categoria sono visibili in ogni riga della Top 10 sopra.</div>
-      <div class="chart-h" style="height:420px"><canvas id="vodCatChart"></canvas></div>
+      <div class="vod-chart-desc">Share di <strong>produzione Como TV</strong> (Originals &amp; Format) vs <strong>Live-related</strong> (replay, highlights, pre-show) sul totale VOD del periodo. Due letture per capire il valore generato dalla redazione/produzione interna.</div>
+      <div class="vod-chart-tip">💡 I due dati raccontano storie diverse: gli <strong>Originals</strong> possono fare meno <em>reach</em> ma più <em>ore</em> (loyalty forte su pochi), o viceversa (alto reach ma visione superficiale). Se lo share Originals cresce nel tempo, la strategia di produzione interna sta funzionando.</div>
+      <div class="vod-mix-grid">
+        <div class="vod-mix-card">
+          <div class="vod-mix-title">👥 Share Reach <span class="dms-src" title="DMS → VOD → Category Rank by Viewers">Viewers</span></div>
+          <div class="vod-mix-sub">% persone distinte che hanno guardato ciascun tipo</div>
+          <div class="vod-mix-chart-wrap"><canvas id="vodMixReachChart"></canvas>
+            <div class="vod-mix-center" id="vodMixReachCenter">
+              <div class="vmc-num">—</div>
+              <div class="vmc-lbl">Originals</div>
+            </div>
+          </div>
+          <div class="vod-mix-legend" id="vodMixReachLegend"></div>
+        </div>
+        <div class="vod-mix-card">
+          <div class="vod-mix-title">⏱ Share Engagement <span class="dms-src" title="DMS → VOD → Category Rank by Engagement Time">Ore Totali</span></div>
+          <div class="vod-mix-sub">% ore totali consumate su ciascun tipo</div>
+          <div class="vod-mix-chart-wrap"><canvas id="vodMixEngChart"></canvas>
+            <div class="vod-mix-center" id="vodMixEngCenter">
+              <div class="vmc-num">—</div>
+              <div class="vmc-lbl">Originals</div>
+            </div>
+          </div>
+          <div class="vod-mix-legend" id="vodMixEngLegend"></div>
+        </div>
+      </div>
+      <div class="vod-mix-insight" id="vodMixInsight"></div>
     </div>
 
   </div>
@@ -1232,12 +1272,12 @@ function renderVODSection(period) {
   renderLiveRelTop(period);
   renderOrigTable(period);
 
-  // Update charts if period has custom data
-  if (d.cats) { vodCats = d.cats; renderVodCatChart(); }
+  // Update data refs first, then re-render everything
+  if (d.cats) { vodCats = d.cats; }
   if (d.eng)  { engCats = d.eng; }
 
-  // ⚠️ Fix: aggiornare anche top list e insight con i dati del periodo
   if (d.cats) {
+    renderVodCatChart();                          // → mix donut charts
     renderVODTopList(d.cats);
     renderVODInsights(d.cats, d.eng || engCats);
   }
@@ -1684,44 +1724,114 @@ function wrapLabel(name, maxCharsPerLine = 28, maxLines = 2) {
   return lines;
 }
 
-function renderVodCatChart() {
-  const vodCatEl = document.getElementById('vodCatChart');
-  if (!vodCatEl) return;
-  if (_vodCatChart) _vodCatChart.destroy();
-  _vodCatChart = new Chart(vodCatEl, {
-  type:'bar',
-  data:{
-    labels: vodCats.map(c => wrapLabel(c.name, 42, 2)),
-    datasets:[{
-      label:'Unique Viewers',
-      data: vodCats.map(c => c.viewers),
-      backgroundColor: vodCats.map(c => c.type==='orig' ? '#7c3aed99' : '#dc262699'),
-      borderColor: vodCats.map(c => c.type==='orig' ? '#7c3aed' : '#dc2626'),
-      borderWidth:1, borderRadius:4
-    }]
-  },
-  options:{
-    indexAxis:'y', responsive:true, maintainAspectRatio:false,
-    layout:{ padding:{ left:4 } },
-    plugins:{
-      legend:{display:false},
-      tooltip:{callbacks:{
-        title: ctx => Array.isArray(ctx[0].label) ? ctx[0].label.join(' ') : ctx[0].label,
-        label:ctx=>` ${ctx.raw.toLocaleString()} viewers`
-      }}
+// ── MIX CHARTS — Originals vs Live-related (Reach + Engagement) ─
+function _vodMixBuild(canvasId, centerId, legendId, origVal, liveVal, unitFmt) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return null;
+  const total = (origVal || 0) + (liveVal || 0);
+  const origPct = total > 0 ? (origVal / total * 100) : 0;
+  const livePct = total > 0 ? (liveVal / total * 100) : 0;
+
+  // Destroy existing chart on this canvas
+  const existing = Chart.getChart(canvas);
+  if (existing) existing.destroy();
+
+  new Chart(canvas, {
+    type:'doughnut',
+    data:{
+      labels:['Originals Como TV', 'Live-related'],
+      datasets:[{
+        data:[origVal, liveVal],
+        backgroundColor:['#7c3aed', '#dc2626'],
+        borderColor:['#fff','#fff'],
+        borderWidth:2,
+        hoverOffset:6
+      }]
     },
-    scales:{
-      x:{grid:{color:'#ece4d8'},ticks:{color:'#6b7280',font:{size:11},callback:v=>v>=1000?(v/1000).toFixed(0)+'K':v}},
-      y:{grid:{display:false},ticks:{color:'#3a3028',font:{size:12,weight:'600'},autoSkip:false}}
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      cutout:'70%',
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{
+          label: ctx => ` ${ctx.label}: ${unitFmt(ctx.raw)} (${((ctx.raw/total)*100).toFixed(1)}%)`
+        }}
+      }
     }
-  }
   });
+
+  // Center label → mostra sempre % Originals
+  const center = document.getElementById(centerId);
+  if (center) {
+    center.innerHTML =
+      `<div class="vmc-num">${origPct.toFixed(0)}%</div>` +
+      `<div class="vmc-lbl">Originals</div>`;
+  }
+
+  // Legend
+  const leg = document.getElementById(legendId);
+  if (leg) {
+    leg.innerHTML =
+      `<div class="vod-mix-leg"><span class="vmd-dot" style="background:#7c3aed"></span>` +
+      `<span>🎬 Originals <span class="vmd-val">${origPct.toFixed(0)}%</span> <span class="vmd-abs">(${unitFmt(origVal)})</span></span></div>` +
+      `<div class="vod-mix-leg"><span class="vmd-dot" style="background:#dc2626"></span>` +
+      `<span>🎥 Live-related <span class="vmd-val">${livePct.toFixed(0)}%</span> <span class="vmd-abs">(${unitFmt(liveVal)})</span></span></div>`;
+  }
+  return { origPct, livePct, origVal, liveVal };
 }
-renderVodCatChart();
+
+function renderVodMixCharts(cats, engMap) {
+  if (!cats || !cats.length) return;
+  const fmtViewers = v => v >= 1000 ? (v/1000).toFixed(1)+'K' : Math.round(v).toLocaleString();
+  const fmtHours   = v => v >= 1000 ? (v/1000).toFixed(1)+'Kh' : Math.round(v).toLocaleString()+'h';
+
+  // Reach: somma viewers per tipo
+  let origViewers = 0, liveViewers = 0;
+  cats.forEach(c => {
+    if (c.type === 'orig') origViewers += (c.viewers || 0);
+    else                   liveViewers += (c.viewers || 0);
+  });
+
+  // Engagement: preferiamo engMap (se passato esplicito) altrimenti engH presente in cats
+  let origHours = 0, liveHours = 0;
+  const source = (engMap && engMap.length) ? engMap : cats;
+  source.forEach(c => {
+    const h = c.engH || 0;
+    if (c.type === 'orig') origHours += h;
+    else                   liveHours += h;
+  });
+
+  const r = _vodMixBuild('vodMixReachChart','vodMixReachCenter','vodMixReachLegend', origViewers, liveViewers, fmtViewers);
+  const e = _vodMixBuild('vodMixEngChart',  'vodMixEngCenter',  'vodMixEngLegend',   origHours,   liveHours,   fmtHours);
+
+  // Insight narrativo
+  const ins = document.getElementById('vodMixInsight');
+  if (ins && r && e) {
+    let msg = '';
+    const dpct = e.origPct - r.origPct;
+    if (r.origPct >= 50) {
+      msg = `Gli <strong>Originals dominano il reach</strong> (${r.origPct.toFixed(0)}%). La produzione Como TV è il motore principale del VOD nel periodo.`;
+    } else if (r.origPct >= 25) {
+      msg = `Gli <strong>Originals pesano ${r.origPct.toFixed(0)}%</strong> del reach: presenza solida accanto ai diritti live.`;
+    } else {
+      msg = `Il <strong>Live-related guida il reach</strong> (${r.livePct.toFixed(0)}%). Gli Originals (${r.origPct.toFixed(0)}%) hanno spazio di crescita.`;
+    }
+    if (dpct >= 8) {
+      msg += ` <strong>Loyalty forte sugli Originals</strong>: share engagement (${e.origPct.toFixed(0)}%) molto superiore allo share reach (${r.origPct.toFixed(0)}%) → chi li guarda, li guarda a lungo.`;
+    } else if (dpct <= -8) {
+      msg += ` Visione più <strong>superficiale sugli Originals</strong>: share reach (${r.origPct.toFixed(0)}%) più alto dello share engagement (${e.origPct.toFixed(0)}%) → molti click, poche ore.`;
+    } else {
+      msg += ` Reach ed engagement allineati (share Originals ~${r.origPct.toFixed(0)}%): comportamento di consumo omogeneo tra i due tipi.`;
+    }
+    ins.innerHTML = `💡 ${msg}`;
+  }
+}
+// Alias per retrocompatibilità con i call site esistenti
+function renderVodCatChart() { renderVodMixCharts(vodCats, engCats); }
 
 // ── ENGAGEMENT TIME (by category) — conservato come dataset storico per insights
 // Il chart ⏱ Fidelizzazione è stato rimosso; le ore di engagement ora appaiono
-// in ogni riga della Top 10 VOD.
+// in ogni riga della Top 10 VOD e nel mix Originals/Live-related.
 let engCats = [
   { name:'Copa Libertadores',              engH:4297, type:'live' },
   { name:'Argentina Copa De La Liga Pro',  engH:3872, type:'live' },
@@ -1734,6 +1844,9 @@ let engCats = [
   { name:'COMO CUP',                       engH:823,  type:'live' },
   { name:'INTERVIEWS',                     engH:643,  type:'orig' },
 ];
+
+// Initial render del mix — ora che vodCats e engCats sono entrambi dichiarati
+renderVodCatChart();
 
 // ── LIVE / VOD TOGGLE
 function setSec(id) {
