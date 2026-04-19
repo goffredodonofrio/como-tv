@@ -90,6 +90,7 @@ body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; background: #f7f8
 .vod-dtag.stable  { background:#f3f4f6; color:#4b5563; }
 .vod-dtag.watch   { background:#fef3c7; color:#92400e; }
 .vod-ep-badge { background:#e5e7eb; border-radius:4px; padding:2px 8px; font-size:10px; color:#374151; font-weight:700; white-space:nowrap; }
+.vod-type-tag { display:inline-block; font-size:9.5px; font-weight:700; padding:2px 8px; border-radius:4px; letter-spacing:.3px; white-space:nowrap; }
 .vot-mean { color:#9ca3af; font-style:italic; font-weight:400; font-size:10px; margin-left:2px; white-space:nowrap; }
 
 /* ── VOD CHART CARD ── */
@@ -653,19 +654,11 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
       </div>
       <div class="sec-line"></div>
     </div>
-    <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:16px">
-      <div class="vod-chart-card">
-        <div class="vod-chart-title">👥 Reach per Categoria — Spettatori Unici <span class="dms-src" title="DMS → VOD → Category Rank · imposta il periodo → Export CSV">VOD → Category Rank</span></div>
-        <div class="vod-chart-desc">Quante persone distinte hanno guardato contenuti di questa categoria nel periodo selezionato. Misura la <strong>ampiezza dell'audience</strong>: chi riesce ad attrarre più persone diverse.</div>
-        <div class="vod-chart-tip">💡 <strong>Viola = Originals & Format</strong> (produzione Como TV) · <strong>Rosso = Live-Related</strong> (replay, highlights, pre-show). Una categoria viola alta significa che i contenuti originali competono con i grandi diritti internazionali.</div>
-        <div class="chart-h" style="height:340px"><canvas id="vodCatChart"></canvas></div>
-      </div>
-      <div class="vod-chart-card">
-        <div class="vod-chart-title">⏱ Fidelizzazione — Ore Totali per Categoria <span class="dms-src" title="DMS → VOD → Category Rank · imposta il periodo → Export CSV">VOD → Category Rank</span></div>
-        <div class="vod-chart-desc">Ore cumulative di visione per categoria. Una categoria con <strong>molte ore e pochi viewer</strong> indica un'audience molto fedele che torna più volte o guarda contenuti lunghi.</div>
-        <div class="vod-chart-tip">💡 Confronta i due grafici: se una categoria ha molti viewer (sinistra) ma poche ore (destra), l'audience è ampia ma superficiale. Se ha pochi viewer ma molte ore, ha una fan-base fedele e densa.</div>
-        <div class="chart-h" style="height:340px"><canvas id="vodEngChart"></canvas></div>
-      </div>
+    <div class="vod-chart-card">
+      <div class="vod-chart-title">👥 Reach per Categoria — Spettatori Unici <span class="dms-src" title="DMS → VOD → Category Rank · imposta il periodo → Export CSV">VOD → Category Rank</span></div>
+      <div class="vod-chart-desc">Quante persone distinte hanno guardato contenuti di questa categoria nel periodo selezionato. Misura la <strong>ampiezza dell'audience</strong>: chi riesce ad attrarre più persone diverse.</div>
+      <div class="vod-chart-tip">💡 <strong>Viola = Originals & Format</strong> (produzione Como TV) · <strong>Rosso = Live-Related</strong> (replay, highlights, pre-show). Una categoria viola alta significa che i contenuti originali competono con i grandi diritti internazionali. Le ore di engagement per categoria sono visibili in ogni riga della Top 10 sopra.</div>
+      <div class="chart-h" style="height:420px"><canvas id="vodCatChart"></canvas></div>
     </div>
 
   </div>
@@ -1202,7 +1195,7 @@ function renderVODSection(period) {
     // Fall back to full-season data so charts aren't empty
     const fallback = vodDataByPeriod['all'];
     if (fallback && fallback.cats) { vodCats = fallback.cats; renderVodCatChart(); }
-    if (fallback && fallback.eng)  { engCats = fallback.eng;  renderVodEngChart(); }
+    if (fallback && fallback.eng)  { engCats = fallback.eng; }
     renderVODInsights(vodCats, engCats);
   renderVODTopList(vodCats);
     renderOrigTop('all');
@@ -1241,7 +1234,7 @@ function renderVODSection(period) {
 
   // Update charts if period has custom data
   if (d.cats) { vodCats = d.cats; renderVodCatChart(); }
-  if (d.eng)  { engCats = d.eng;  renderVodEngChart(); }
+  if (d.eng)  { engCats = d.eng; }
 
   // ⚠️ Fix: aggiornare anche top list e insight con i dati del periodo
   if (d.cats) {
@@ -1277,43 +1270,44 @@ const EPISODE_COUNTS = {
   'Ascent':                1,  // documentario singolo
 };
 
-// ── VOD TOP LIST (aggiornato per periodo) ─────────────────────
+// ── VOD TOP LIST — Top 10 unificata (colori per tipo) ─────────
 function renderVODTopList(cats, engMap) {
   const el = document.getElementById('vodTopList');
   if (!el || !cats || !cats.length) return;
 
-  // Split originals vs live-related
-  const origs = cats.filter(c => c.type === 'orig');
-  const lives = cats.filter(c => c.type === 'live');
+  // Top 10 unica, ordinata per viewers
+  const top = cats.slice().sort((a,b) => (b.viewers||0) - (a.viewers||0)).slice(0, 10);
+  const maxV = top.length ? top[0].viewers : 1;
 
-  function makeRow(c, i, maxV) {
+  function makeRow(c, i) {
     const pct = maxV > 0 ? (c.viewers / maxV * 100).toFixed(0) : 0;
     const eps = EPISODE_COUNTS[c.name] || null;
     const hpv = c.viewers > 0 && c.engH  ? (c.engH  / c.viewers).toFixed(1) : null;
     const ppv = c.viewers > 0 && c.plays ? (c.plays / c.viewers).toFixed(1) : null;
     const vpe = eps && c.viewers ? Math.round(c.viewers / eps)  : null;
     const hpe = eps && c.engH    ? (c.engH   / eps).toFixed(1)  : null;
-    const col = c.type === 'orig' ? '#7c3aed' : '#0891b2';
-    const bg  = c.type === 'orig' ? '#f5f0fc' : '#f0f7fb';
 
-    // ── Decision helper tag (B) ─────────────────────────────────
-    // Logica: posizione nella top list + loyalty per-viewer.
-    //   i === 0                    → Performer forte (leader reach)
-    //   hpv >= 2  OR  ppv >= 3     → Hidden gem (pochi viewer ma loyalty altissima)
-    //   i === 1                    → In crescita
-    //   i === 2                    → Stabile
-    //   i >= 3                     → Da monitorare
+    // Colori per tipo
+    const isOrig = c.type === 'orig';
+    const col    = isOrig ? '#7c3aed' : '#dc2626';
+    const bg     = isOrig ? '#f5f0fc' : '#fef5f5';
+    const border = isOrig ? '#7c3aed' : '#dc2626';
+    const typeTag = isOrig
+      ? `<span class="vod-type-tag" style="background:#ede9fe;color:#6d28d9">🎬 Originals Como TV</span>`
+      : `<span class="vod-type-tag" style="background:#fee2e2;color:#b91c1c">🎥 Live-related</span>`;
+
+    // Decision helper tag (B) — basato su posizione + loyalty
     let tag;
     if (i === 0)                            tag = { cls:'strong',  label:'✅ Performer forte' };
     else if (hpv && parseFloat(hpv) >= 2)   tag = { cls:'gem',     label:'💎 Hidden gem' };
     else if (ppv && parseFloat(ppv) >= 3)   tag = { cls:'gem',     label:'💎 Hidden gem' };
-    else if (i === 1)                       tag = { cls:'growing', label:'📈 In crescita' };
-    else if (i === 2)                       tag = { cls:'stable',  label:'⚖️ Stabile' };
+    else if (i <= 2)                        tag = { cls:'growing', label:'📈 In crescita' };
+    else if (i <= 5)                        tag = { cls:'stable',  label:'⚖️ Stabile' };
     else                                    tag = { cls:'watch',   label:'⚠ Da monitorare' };
 
     const epTag = eps ? `<span class="vod-ep-badge">${eps} ep.</span>` : '';
 
-    // ── Stats con inline meaning (C revised) ────────────────────
+    // Stats con inline meaning
     const stats = [];
     stats.push(`<span><strong style="color:#0d1a38">${c.viewers.toLocaleString()}</strong> viewers <span class="vot-mean">persone diverse</span></span>`);
     if (c.engH) stats.push(`<span><strong style="color:#059669">${c.engH}h</strong> eng. <span class="vot-mean">tempo totale</span></span>`);
@@ -1321,11 +1315,12 @@ function renderVODTopList(cats, engMap) {
     if (vpe)    stats.push(`<span><strong style="color:#7c3aed">${vpe}</strong> v/ep <span class="vot-mean">audience per puntata</span></span>`);
     if (hpe)    stats.push(`<span><strong style="color:#059669">${hpe}h</strong>/ep <span class="vot-mean">profondità per puntata</span></span>`);
 
-    return `<div class="vod-row" style="background:${bg}">
+    return `<div class="vod-row" style="background:${bg};border-left:4px solid ${border}">
       <div class="vod-row-rank" style="color:${col}">${i+1}</div>
       <div class="vod-row-body">
         <div class="vod-row-head">
           <span class="vod-row-title">${c.name}</span>
+          ${typeTag}
           ${epTag}
           <span class="vod-dtag ${tag.cls}">${tag.label}</span>
         </div>
@@ -1338,31 +1333,16 @@ function renderVODTopList(cats, engMap) {
     </div>`;
   }
 
-  const maxOrigV = origs.length ? origs[0].viewers : 1;
-  const maxLiveV = lives.length ? lives[0].viewers : 1;
-
-  let origHtml = '';
-  if (origs.length) {
-    origHtml += `<div class="vod-toplist-col-head" style="color:#7c3aed">
-      🎬 Originals & Format Como TV
-      <span class="sub">— contenuti prodotti da Como TV, ordinati per audience nel periodo</span>
-    </div>`;
-    origs.slice(0, 5).forEach((c, i) => { origHtml += makeRow(c, i, maxOrigV); });
-  }
-
-  let liveHtml = '';
-  if (lives.length) {
-    liveHtml += `<div class="vod-toplist-col-head" style="color:#0891b2">
-      🎥 Replay &amp; Highlights (VOD)
-      <span class="sub">— contenuto live disponibile on demand: replay, highlight, pre-show</span>
-    </div>`;
-    lives.slice(0, 5).forEach((c, i) => { liveHtml += makeRow(c, i, maxLiveV); });
-  }
-
-  el.innerHTML = `<div class="vod-toplist-grid">
-    <div>${origHtml}</div>
-    <div>${liveHtml}</div>
+  const header = `<div style="font-size:11px;color:#6b7280;line-height:1.5;margin-bottom:12px;margin-top:4px">
+    Top 10 categorie VOD del periodo, ordinate per <strong style="color:#0d1a38">viewers unici</strong>.
+    <span style="display:inline-block;width:10px;height:10px;background:#7c3aed;border-radius:2px;vertical-align:middle;margin-left:6px"></span>
+    <strong style="color:#6d28d9">Viola = Originals Como TV</strong>
+    <span style="margin:0 8px;color:#d1d5db">·</span>
+    <span style="display:inline-block;width:10px;height:10px;background:#dc2626;border-radius:2px;vertical-align:middle"></span>
+    <strong style="color:#b91c1c">Rosso = Live-related</strong> (replay, highlights, pre-show)
   </div>`;
+
+  el.innerHTML = header + top.map((c, i) => makeRow(c, i)).join('');
 }
 
 
@@ -1408,7 +1388,6 @@ function renderVODInsights(cats, eng) {
 }
 
 let _vodCatChart = null;
-let _vodEngChart = null;
 // Initial render
 liveDataByPeriod.all._period = 'all';
 renderLiveSection(liveDataByPeriod.all);
@@ -1712,7 +1691,7 @@ function renderVodCatChart() {
   _vodCatChart = new Chart(vodCatEl, {
   type:'bar',
   data:{
-    labels: vodCats.map(c => wrapLabel(c.name, 28, 2)),
+    labels: vodCats.map(c => wrapLabel(c.name, 42, 2)),
     datasets:[{
       label:'Unique Viewers',
       data: vodCats.map(c => c.viewers),
@@ -1732,15 +1711,17 @@ function renderVodCatChart() {
       }}
     },
     scales:{
-      x:{grid:{color:'#ece4d8'},ticks:{color:'#6b7280',font:{size:9},callback:v=>v>=1000?(v/1000).toFixed(0)+'K':v}},
-      y:{grid:{display:false},ticks:{color:'#3a3028',font:{size:9},autoSkip:false}}
+      x:{grid:{color:'#ece4d8'},ticks:{color:'#6b7280',font:{size:11},callback:v=>v>=1000?(v/1000).toFixed(0)+'K':v}},
+      y:{grid:{display:false},ticks:{color:'#3a3028',font:{size:12,weight:'600'},autoSkip:false}}
     }
   }
   });
 }
 renderVodCatChart();
 
-// ── ENGAGEMENT TIME CHART (by category)
+// ── ENGAGEMENT TIME (by category) — conservato come dataset storico per insights
+// Il chart ⏱ Fidelizzazione è stato rimosso; le ore di engagement ora appaiono
+// in ogni riga della Top 10 VOD.
 let engCats = [
   { name:'Copa Libertadores',              engH:4297, type:'live' },
   { name:'Argentina Copa De La Liga Pro',  engH:3872, type:'live' },
@@ -1753,40 +1734,6 @@ let engCats = [
   { name:'COMO CUP',                       engH:823,  type:'live' },
   { name:'INTERVIEWS',                     engH:643,  type:'orig' },
 ];
-function renderVodEngChart() {
-  const vodEngEl = document.getElementById('vodEngChart');
-  if (!vodEngEl) return;
-  if (_vodEngChart) _vodEngChart.destroy();
-  _vodEngChart = new Chart(vodEngEl, {
-  type:'bar',
-  data:{
-    labels: engCats.map(c => wrapLabel(c.name, 24, 2)),
-    datasets:[{
-      label:'Engagement Hours',
-      data: engCats.map(c=>c.engH),
-      backgroundColor: engCats.map(c=>c.type==='orig'?'#7c3aed99':'#dc262699'),
-      borderColor: engCats.map(c=>c.type==='orig'?'#7c3aed':'#dc2626'),
-      borderWidth:1, borderRadius:4
-    }]
-  },
-  options:{
-    indexAxis:'y', responsive:true, maintainAspectRatio:false,
-    layout:{ padding:{ left:4 } },
-    plugins:{
-      legend:{display:false},
-      tooltip:{callbacks:{
-        title: ctx => Array.isArray(ctx[0].label) ? ctx[0].label.join(' ') : ctx[0].label,
-        label:ctx=>` ${ctx.raw.toLocaleString()}h`
-      }}
-    },
-    scales:{
-      x:{grid:{color:'#ece4d8'},ticks:{color:'#6b7280',font:{size:9},callback:v=>v>=1000?(v/1000).toFixed(0)+'Kh':v+'h'}},
-      y:{grid:{display:false},ticks:{color:'#3a3028',font:{size:9},autoSkip:false}}
-    }
-  }
-  });
-}
-renderVodEngChart();
 
 // ── LIVE / VOD TOGGLE
 function setSec(id) {
@@ -1798,7 +1745,7 @@ function setSec(id) {
   // dataNotice è dentro #section-live → si nasconde automaticamente
   // Re-render the active section when switching tabs
   const activePeriod = (document.querySelector('.period-tab.active') || {}).dataset?.period || 'all';
-  if (id === 'vod') { renderVODSection(activePeriod); renderVodCatChart(); renderVodEngChart(); renderVODInsights(vodCats, engCats); renderVODTopList(vodCats); }
+  if (id === 'vod') { renderVODSection(activePeriod); renderVodCatChart(); renderVODInsights(vodCats, engCats); renderVODTopList(vodCats); }
 }
 
 // ── Alias richiesto: setSection(name) chiama setSec(name)
