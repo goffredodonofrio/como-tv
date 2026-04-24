@@ -165,8 +165,8 @@ body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; background: #f7f8
 <!-- ═══════════════════ CONFIG ═══════════════════ -->
 <script>
 const CFG = {
-  updated: '2026-04-24 — v9',
-  version: 'v9',
+  updated: '2026-04-24 — v10',
+  version: 'v10',
 };
 
 // ═══════════════════ DATI ═══════════════════
@@ -832,10 +832,23 @@ function renderLI(){
 // Carica override salvati (sovrascrivono i placeholder nel D object)
 function loadStoredData(){
   try{
-    const stored=JSON.parse(localStorage.getItem('comoTV_social')||'{}');
+    const STORE_KEY='comoTV_social_'+CFG.version;
+    // Invalida cache di versioni precedenti
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      if(k&&k.startsWith('comoTV_social')&&k!==STORE_KEY){
+        localStorage.removeItem(k); i--;
+      }
+    }
+    const stored=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');
     ['tiktok','linkedin','instagram','facebook'].forEach(k=>{
       if(stored[k]){
-        Object.assign(D[k],stored[k]);
+        // Non sovrascrivere valori base già presenti nel file con null da cache
+        const patch={};
+        Object.entries(stored[k]).forEach(([kk,vv])=>{
+          if(vv!==null&&vv!==undefined) patch[kk]=vv;
+        });
+        Object.assign(D[k],patch);
         D[k].confirmed=true;
       }
     });
@@ -856,7 +869,7 @@ function saveManualData(platform){
   try{
     const stored=JSON.parse(localStorage.getItem('comoTV_social')||'{}');
     stored[platform]=Object.assign(stored[platform]||{},data);
-    localStorage.setItem('comoTV_social',JSON.stringify(stored));
+    localStorage.setItem('comoTV_social_'+CFG.version,JSON.stringify(stored));
   }catch(e){}
   closeEditModal();
   renderAll();
