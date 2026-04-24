@@ -143,30 +143,18 @@ body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; background: #f7f8
 <!-- ═══════════════════ CONFIG ═══════════════════ -->
 <script>
 const CFG = {
-  // YouTube — chiave API + canale. NOTA: limita la chiave al tuo dominio su console.cloud.google.com
-  yt_key:     'AIzaSyAoJzzr-JdtWCRbHl717ua5M7ui8Sohvxg',
-  yt_channel: 'UC8RbHrlmZR6vTjBjglLBEng',
-
-  // Meta (Facebook + Instagram) — Page Access Token + Page ID
-  // Come ottenerlo: developers.facebook.com/tools/explorer
-  //   → Seleziona app → Seleziona pagina Como TV → Permessi: pages_read_engagement, read_insights, instagram_basic, instagram_manage_insights
-  //   → Genera token → Scambia per token long-lived (60gg, rinnovabile)
-  // Page ID: facebook.com/ComoTV → info pagina, oppure graph.facebook.com/me?access_token=TOK
-  meta_token:   '',   // ← incolla Page Access Token
-  meta_page_id: '',   // ← incolla Page ID numerico
-
   updated: '2026-04-24',
 };
 
 // ═══════════════════ DATI ═══════════════════
-// Aggiorna manualmente per TikTok e LinkedIn.
-// YouTube, Facebook, Instagram si aggiornano via API.
+// Aggiorna tutti i canali con il pulsante ✏️ in ogni tab.
+// Instagram e Facebook: dati reali da Meta Business Suite (CSV 27 Mar–24 Apr 2026).
 // trend_week  = ultime 5 settimane
 // trend_month = ultimi 5 mesi
 const D = {
 
   youtube: {
-    subscribers:0, total_views:0, video_count:0, avg_views:0,
+    subscribers:0, total_views:0, video_count:0, avg_views:0, confirmed:false,
     trend_week:  [{l:'W-4',subs:0},{l:'W-3',subs:0},{l:'W-2',subs:0},{l:'W-1',subs:0},{l:'Oggi',subs:0}],
     trend_month: [{l:'Dic',subs:0},{l:'Gen',subs:0},{l:'Feb',subs:0},{l:'Mar',subs:0},{l:'Apr',subs:0}],
     top: [{title:'Fetch dati live per vedere i top video',views:0,likes:0,comments:0}],
@@ -282,8 +270,8 @@ const D = {
 <div id="panel-panoramica" class="panel active">
   <div class="period-bar">
     <span class="period-label">Periodo:</span>
-    <button class="period-btn active" onclick="setPeriod('week')">Ultima settimana</button>
-    <button class="period-btn" onclick="setPeriod('month')">Ultimo mese</button>
+    <button class="period-btn active" onclick="setPeriod('month')">Ultimo mese</button>
+    <button class="period-btn" onclick="setPeriod('week')">Ultima settimana</button>
   </div>
   <div class="pf-grid" id="pf-grid"></div>
   <div class="chart-row">
@@ -312,22 +300,19 @@ const D = {
 <!-- ══ YOUTUBE ══ -->
 <div id="panel-youtube" class="panel">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-    <span id="yt-status-badge" class="manual-badge">⏳ Connessione in corso…</span>
+    <span class="manual-badge">📋 Dati manuali — <span id="yt-date">—</span> <button onclick="openEditModal('youtube')" style="margin-left:8px;padding:2px 9px;border:1px solid #FF000055;border-radius:6px;background:#FF000015;color:#FF0000;font-size:10px;font-weight:700;cursor:pointer;vertical-align:middle">✏️ Aggiorna</button></span>
   </div>
   <div class="period-bar">
     <span class="period-label">Periodo:</span>
-    <button class="period-btn active" onclick="setPeriod('week')">Ultima settimana</button>
-    <button class="period-btn" onclick="setPeriod('month')">Ultimo mese</button>
+    <button class="period-btn active" onclick="setPeriod('month')">Ultimo mese</button>
+    <button class="period-btn" onclick="setPeriod('week')">Ultima settimana</button>
   </div>
-  <div class="api-box" id="yt-api-box" style="display:none">
-    <div class="api-box-title">⚡ YouTube Data API</div>
-    <div class="api-box-desc">Le credenziali sono già configurate nel file. Se vuoi usarne altre, inseriscile qui.</div>
-    <div class="api-row">
-      <input class="api-input" id="yt-key" placeholder="API Key" type="text">
-      <input class="api-input" id="yt-cid" placeholder="Channel ID" style="max-width:260px" type="text">
-      <button class="api-btn" onclick="ytFetch()">▶ Fetch</button>
-    </div>
-    <div class="api-status" id="yt-msg"></div>
+  <div class="guide">
+    <strong>📍 Dove trovare i dati — YouTube Studio</strong>
+    Vai su <strong>studio.youtube.com</strong> → <em>Analytics</em> → <em>Panoramica</em>.<br>
+    Iscritti totali e views: tab <em>Pubblico</em>, seleziona il periodo.<br>
+    Video pubblicati: <em>Gestione video</em>.<br>
+    Views medie per video: <em>Analytics → Contenuto → ordina per views</em>.
   </div>
   <div class="kpi-grid">
     <div class="kpi-card" style="border-top-color:#FF0000"><div class="kpi-val" id="yt-subs">—</div><div class="kpi-label">Iscritti</div></div>
@@ -361,13 +346,15 @@ const D = {
   </div>
   <div class="period-bar">
     <span class="period-label">Periodo:</span>
-    <button class="period-btn active" onclick="setPeriod('week')">Ultima settimana</button>
-    <button class="period-btn" onclick="setPeriod('month')">Ultimo mese</button>
+    <button class="period-btn active" onclick="setPeriod('month')">Ultimo mese</button>
+    <button class="period-btn" onclick="setPeriod('week')">Ultima settimana</button>
   </div>
   <div class="guide">
-    <strong>Instagram via Meta API (automatico) oppure manuale</strong>
-    Se configuri il <strong>Meta Token</strong> nel pannello Facebook, Instagram si aggiorna automaticamente (follower, post).
-    Altrimenti: Instagram → Insight → copia i dati in <code>D.instagram</code> nel file HTML.
+    <strong>📍 Dove trovare i dati — Meta Business Suite › Instagram</strong>
+    Vai su <strong>business.facebook.com</strong> → <em>Insights</em> → seleziona <em>Instagram</em>.<br>
+    Follower e crescita: <em>Pubblico → Crescita follower</em> → esporta CSV per il periodo.<br>
+    Reach e interazioni: <em>Contenuto → Reach / Interazioni</em>.<br>
+    Views e visite profilo: <em>Panoramica</em> → seleziona 7 o 28 giorni.
   </div>
   <div class="kpi-grid">
     <div class="kpi-card" style="border-top-color:#E1306C"><div class="kpi-val" id="ig-followers">—</div><div class="kpi-label">Follower</div><div class="kpi-delta pos" id="ig-growth">—</div></div>
@@ -390,13 +377,15 @@ const D = {
   </div>
   <div class="period-bar">
     <span class="period-label">Periodo:</span>
-    <button class="period-btn active" onclick="setPeriod('week')">Ultima settimana</button>
-    <button class="period-btn" onclick="setPeriod('month')">Ultimo mese</button>
+    <button class="period-btn active" onclick="setPeriod('month')">Ultimo mese</button>
+    <button class="period-btn" onclick="setPeriod('week')">Ultima settimana</button>
   </div>
   <div class="guide">
-    <strong>Come aggiornare</strong>
-    TikTok Studio → Analisi → Panoramica. Copia Follower, Views medie e Tasso di engagement nelle variabili <code>D.tiktok</code> in cima al file HTML.
-    TikTok non espone API pubbliche browser-compatibili — l'aggiornamento rimane manuale.
+    <strong>📍 Dove trovare i dati — TikTok Studio</strong>
+    Vai su <strong>studio.tiktok.com</strong> (oppure app TikTok → Profilo → Analytics).<br>
+    Follower e crescita: <em>Panoramica → Follower</em> → ultimi 7 o 28 giorni.<br>
+    Views, like, commenti per video: tab <em>Contenuto</em>.<br>
+    Engagement rate: <em>Interazioni ÷ Views × 100</em> (calcolato manualmente).
   </div>
   <div class="kpi-grid">
     <div class="kpi-card" style="border-top-color:#161823"><div class="kpi-val" id="tt-followers">—</div><div class="kpi-label">Follower</div><div class="kpi-delta pos" id="tt-growth">—</div></div>
@@ -419,24 +408,16 @@ const D = {
   </div>
   <div class="period-bar">
     <span class="period-label">Periodo:</span>
-    <button class="period-btn active" onclick="setPeriod('week')">Ultima settimana</button>
-    <button class="period-btn" onclick="setPeriod('month')">Ultimo mese</button>
+    <button class="period-btn active" onclick="setPeriod('month')">Ultimo mese</button>
+    <button class="period-btn" onclick="setPeriod('week')">Ultima settimana</button>
   </div>
 
-  <!-- META API SETUP -->
-  <div class="api-box meta">
-    <div class="api-box-title">🔗 Meta Graph API — Facebook + Instagram automatici</div>
-    <div class="api-box-desc">
-      Con un Page Access Token aggiorni <strong>Facebook</strong> (follower, reach) e <strong>Instagram</strong> (follower, post) automaticamente.<br>
-      <strong>Come ottenerlo:</strong> <code>developers.facebook.com/tools/explorer</code> → seleziona app → seleziona pagina Como TV → permessi:
-      <code>pages_read_engagement</code>, <code>read_insights</code>, <code>instagram_basic</code> → Genera Token → copia il Page ID dalla risposta di <code>/me</code>.
-    </div>
-    <div class="api-row">
-      <input class="api-input" id="meta-token" placeholder="Page Access Token (EAAx…)" type="text">
-      <input class="api-input" id="meta-page-id" placeholder="Page ID numerico" style="max-width:200px" type="text">
-      <button class="api-btn" onclick="metaFetch()">▶ Fetch Meta</button>
-    </div>
-    <div class="api-status" id="meta-msg"></div>
+  <div class="guide">
+    <strong>📍 Dove trovare i dati — Meta Business Suite</strong>
+    Vai su <strong>business.facebook.com</strong> → <em>Insights</em> → seleziona <em>Facebook</em>.<br>
+    Follower e crescita: tab <em>Pubblico</em> → seleziona periodo (7 o 28 giorni).<br>
+    Reach e visualizzazioni: <em>Contenuto</em> oppure <em>Distribuzione</em>.<br>
+    Esporta CSV da <em>Insights → Esporta dati</em> per aggiornamento completo.
   </div>
 
   <div class="kpi-grid">
@@ -460,13 +441,15 @@ const D = {
   </div>
   <div class="period-bar">
     <span class="period-label">Periodo:</span>
-    <button class="period-btn active" onclick="setPeriod('week')">Ultima settimana</button>
-    <button class="period-btn" onclick="setPeriod('month')">Ultimo mese</button>
+    <button class="period-btn active" onclick="setPeriod('month')">Ultimo mese</button>
+    <button class="period-btn" onclick="setPeriod('week')">Ultima settimana</button>
   </div>
   <div class="guide">
-    <strong>Come aggiornare</strong>
-    LinkedIn → Pagina aziendale → Analisi → Follower e Aggiornamenti. Copia i dati in <code>D.linkedin</code>.
-    LinkedIn non espone API pubbliche per pagine aziendali senza OAuth server-side — l'aggiornamento rimane manuale.
+    <strong>📍 Dove trovare i dati — LinkedIn Analytics</strong>
+    Vai su <strong>linkedin.com/company/como-tv</strong> → <em>Analytics</em>.<br>
+    Follower e crescita: tab <em>Follower</em> → seleziona 7 o 30 giorni.<br>
+    Impressioni e interazioni: tab <em>Aggiornamenti</em>.<br>
+    Esporta report Excel da <em>Analytics → Esporta</em>.
   </div>
   <div class="kpi-grid">
     <div class="kpi-card" style="border-top-color:#0A66C2"><div class="kpi-val" id="li-followers">—</div><div class="kpi-label">Follower</div><div class="kpi-delta pos" id="li-growth">—</div></div>
@@ -487,7 +470,7 @@ const D = {
 <!-- ═══════════════════ JAVASCRIPT ═══════════════════ -->
 <script>
 // ── Stato ─────────────────────────────────────────────
-let PERIOD = 'week';
+let PERIOD = 'month';
 
 // ── Helpers ───────────────────────────────────────────
 const fmt = n => { if(!n&&n!==0)return'—'; if(n>=1e6)return(n/1e6).toFixed(1).replace('.0','')+'M'; if(n>=1e3)return(n/1e3).toFixed(1).replace('.0','')+'K'; return n.toLocaleString('it-IT'); };
@@ -536,100 +519,13 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
 // ── Period ────────────────────────────────────────────
 function setPeriod(p){
   PERIOD=p;
-  document.querySelectorAll('.period-btn').forEach((b,i)=>b.classList.toggle('active',i%2===(p==='week'?0:1)));
+  document.querySelectorAll('.period-btn').forEach((b,i)=>b.classList.toggle('active',i%2===(p==='month'?0:1)));
   renderAll();
 }
 
-// ── YouTube API ───────────────────────────────────────
-async function ytFetch(){
-  const key=document.getElementById('yt-key').value.trim()||CFG.yt_key;
-  const cid=document.getElementById('yt-cid').value.trim()||CFG.yt_channel;
-  const msg=document.getElementById('yt-msg');
-  if(msg)msg.textContent='⏳ Connessione…';
-  try{
-    const ch=await(await fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${cid}&key=${key}`)).json();
-    if(ch.error)throw new Error(ch.error.message);
-    if(!ch.items?.length)throw new Error('Canale non trovato.');
-    const s=ch.items[0].statistics;
-    D.youtube.subscribers=+s.subscriberCount;
-    D.youtube.total_views=+s.viewCount;
-    D.youtube.video_count=+s.videoCount;
-    D.youtube.avg_views=Math.round(D.youtube.total_views/D.youtube.video_count);
+// YouTube: aggiornamento manuale tramite ✏️ Aggiorna nel tab YouTube
 
-    const sr=await(await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${cid}&order=viewCount&type=video&maxResults=5&key=${key}`)).json();
-    if(sr.items?.length){
-      const ids=sr.items.map(i=>i.id.videoId).join(',');
-      const vd=await(await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${ids}&key=${key}`)).json();
-      D.youtube.top=(vd.items||[]).slice(0,3).map(v=>({type:'Video',title:v.snippet.title,v1:+v.statistics.viewCount,v2:+(v.statistics.likeCount||0),v3:+(v.statistics.commentCount||0),l1:'Views',l2:'Likes',l3:'Comm.'}));
-    }
-    if(msg)msg.innerHTML='<span style="color:#16a34a;font-weight:700">✅ YouTube aggiornato</span>';
-    const badge=document.getElementById('yt-status-badge');
-    if(badge)badge.outerHTML='<span class="live-badge" id="yt-status-badge"><span class="live-dot"></span> Live via YouTube API</span>';
-    renderYT(); renderHero(); renderOverview();
-  }catch(e){
-    if(msg)msg.innerHTML=`<span style="color:#dc2626">❌ ${e.message}</span>`;
-    const badge=document.getElementById('yt-status-badge');
-    if(badge)badge.innerHTML='❌ Errore connessione YouTube';
-  }
-}
-
-// ── Meta API (Facebook + Instagram) ───────────────────
-async function metaFetch(){
-  const token=document.getElementById('meta-token').value.trim()||CFG.meta_token;
-  const pageId=document.getElementById('meta-page-id').value.trim()||CFG.meta_page_id;
-  const msg=document.getElementById('meta-msg');
-  if(!token||!pageId){msg.innerHTML='<span style="color:#b45309">⚠ Inserisci Page Token e Page ID.</span>';return;}
-  msg.innerHTML='<span style="color:#0369a1">⏳ Connessione Meta…</span>';
-  const v='v19.0';
-  try{
-    // Facebook: follower count
-    const fb=await(await fetch(`https://graph.facebook.com/${v}/${pageId}?fields=fan_count,followers_count&access_token=${token}`)).json();
-    if(fb.error)throw new Error('Facebook: '+fb.error.message);
-    D.facebook.followers=fb.followers_count||fb.fan_count||D.facebook.followers;
-
-    // Facebook: weekly reach (requires read_insights)
-    try{
-      const ins=await(await fetch(`https://graph.facebook.com/${v}/${pageId}/insights/page_impressions_unique/week?access_token=${token}`)).json();
-      if(ins.data?.[0]?.values){
-        const vals=ins.data[0].values;
-        if(vals.length)D.facebook.weekly_reach=vals[vals.length-1].value||D.facebook.weekly_reach;
-      }
-    }catch(e){/* insights opzionale */}
-
-    // Aggiorna badge Facebook
-    const fbBadge=document.getElementById('fb-status-badge');
-    if(fbBadge)fbBadge.outerHTML='<span class="live-badge" id="fb-status-badge"><span class="live-dot"></span> Live via Meta API</span>';
-
-    // Instagram: linked business account
-    try{
-      const igAcc=await(await fetch(`https://graph.facebook.com/${v}/${pageId}?fields=instagram_business_account&access_token=${token}`)).json();
-      if(igAcc.instagram_business_account?.id){
-        const igId=igAcc.instagram_business_account.id;
-        const ig=await(await fetch(`https://graph.facebook.com/${v}/${igId}?fields=followers_count,media_count&access_token=${token}`)).json();
-        if(!ig.error){
-          D.instagram.followers=ig.followers_count||D.instagram.followers;
-          D.instagram.posts=ig.media_count||D.instagram.posts;
-          const igBadge=document.getElementById('ig-status-badge');
-          if(igBadge)igBadge.outerHTML='<span class="live-badge" id="ig-status-badge"><span class="live-dot"></span> Live via Meta API</span>';
-        }
-        // Instagram reach/impressions (richiede instagram_manage_insights)
-        try{
-          const igIns=await(await fetch(`https://graph.facebook.com/${v}/${igId}/insights?metric=reach,impressions&period=week&access_token=${token}`)).json();
-          if(igIns.data){
-            const reachData=igIns.data.find(m=>m.name==='reach');
-            if(reachData?.values?.length)D.instagram.avg_reach=reachData.values[reachData.values.length-1].value||D.instagram.avg_reach;
-          }
-        }catch(e){/* insights opzionale */}
-      }
-    }catch(e){/* Instagram opzionale */}
-
-    msg.innerHTML='<span style="color:#16a34a;font-weight:700">✅ Facebook + Instagram aggiornati</span>';
-    CFG.meta_token=token; CFG.meta_page_id=pageId;
-    renderFB(); renderIG(); renderHero(); renderOverview();
-  }catch(e){
-    msg.innerHTML=`<span style="color:#dc2626">❌ ${e.message}</span>`;
-  }
-}
+// Facebook/Instagram: aggiornamento manuale tramite ✏️ Aggiorna nei rispettivi tab
 
 // ── Hero ──────────────────────────────────────────────
 // Solo piattaforme con confirmed:true contribuiscono a crescita/eng
@@ -695,6 +591,7 @@ function renderOverview(){
 // ── Piattaforme singole ───────────────────────────────
 function renderYT(){
   const d=D.youtube;
+  const ytDate=document.getElementById('yt-date'); if(ytDate)ytDate.textContent=d.updated||CFG.updated;
   document.getElementById('yt-subs').textContent=fmt(d.subscribers);
   document.getElementById('yt-views').textContent=fmt(d.total_views);
   document.getElementById('yt-count').textContent=fmt(d.video_count);
@@ -803,6 +700,12 @@ function saveManualData(platform){
 
 // Modale editor generico
 const EDIT_META={
+  youtube: {label:'YouTube', color:'#FF0000', fields:[
+    {id:'subscribers', label:'Iscritti totali', ph:'es. 45000'},
+    {id:'total_views', label:'Visualizzazioni totali canale', ph:'es. 12000000'},
+    {id:'video_count', label:'Video pubblicati', ph:'es. 280'},
+    {id:'avg_views',   label:'Views medie per video', ph:'es. 8000'},
+  ]},
   tiktok:  {label:'TikTok',  color:'#161823', fields:[
     {id:'followers', label:'Follower totali', ph:'es. 18500'},
     {id:'growth_w',  label:'Nuovi follower questa settimana', ph:'es. 320'},
@@ -861,15 +764,6 @@ document.getElementById('hd-date').textContent=CFG.updated;
 loadStoredData();
 renderAll();
 
-// Auto-fetch YouTube on load
-ytFetch();
-
-// Auto-fetch Meta se token configurato
-if(CFG.meta_token&&CFG.meta_page_id){
-  document.getElementById('meta-token').value=CFG.meta_token;
-  document.getElementById('meta-page-id').value=CFG.meta_page_id;
-  metaFetch();
-}
 </script>
 
 <!-- MODALE AGGIORNAMENTO MANUALE -->
