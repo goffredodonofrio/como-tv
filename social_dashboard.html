@@ -154,10 +154,16 @@ const CFG = {
 const D = {
 
   youtube: {
-    subscribers:0, total_views:0, video_count:0, avg_views:0, confirmed:false,
-    trend_week:  [{l:'W-4',subs:0},{l:'W-3',subs:0},{l:'W-2',subs:0},{l:'W-1',subs:0},{l:'Oggi',subs:0}],
-    trend_month: [{l:'Dic',subs:0},{l:'Gen',subs:0},{l:'Feb',subs:0},{l:'Mar',subs:0},{l:'Apr',subs:0}],
-    top: [{title:'Fetch dati live per vedere i top video',views:0,likes:0,comments:0}],
+    subscribers:30134, growth_w:+27, growth_m:+38,
+    total_views:72161, pubblico_mensile:42853, avg_views:144,
+    confirmed:true, updated:'2026-04-23',
+    trend_week:  [{l:'27 Mar',subs:30096},{l:'03 Apr',subs:30086},{l:'11 Apr',subs:30099},{l:'18 Apr',subs:30114},{l:'23 Apr',subs:30134}],
+    trend_month: [{l:'Dic',subs:0},{l:'Gen',subs:0},{l:'Feb',subs:0},{l:'Mar',subs:30096},{l:'Apr',subs:30134}],
+    top: [
+      {type:'Video',title:'PAREDES decide il SUPERCLÁSICO | RIVER-BOCA 0-1',    v1:11153,v2:99172, v3:9.7, l1:'Views',l2:'Impressioni',l3:'CTR%'},
+      {type:'Video',title:'LENS in FINALE dopo 28 anni | LENS-TOLOSA 4-1',       v1:5637, v2:80534, v3:5.6, l1:'Views',l2:'Impressioni',l3:'CTR%'},
+      {type:'Video',title:'IL NIZZA vola a Parigi — FINALE col LENS',            v1:2705, v2:26008, v3:7.7, l1:'Views',l2:'Impressioni',l3:'CTR%'},
+    ],
   },
 
   instagram: {
@@ -315,9 +321,9 @@ const D = {
     Views medie per video: <em>Analytics → Contenuto → ordina per views</em>.
   </div>
   <div class="kpi-grid">
-    <div class="kpi-card" style="border-top-color:#FF0000"><div class="kpi-val" id="yt-subs">—</div><div class="kpi-label">Iscritti</div></div>
-    <div class="kpi-card" style="border-top-color:#FF0000"><div class="kpi-val" id="yt-views">—</div><div class="kpi-label">Visualizzazioni totali</div></div>
-    <div class="kpi-card" style="border-top-color:#FF0000"><div class="kpi-val" id="yt-count">—</div><div class="kpi-label">Video pubblicati</div></div>
+    <div class="kpi-card" style="border-top-color:#FF0000"><div class="kpi-val" id="yt-subs">—</div><div class="kpi-label">Iscritti</div><div class="kpi-delta pos" id="yt-growth">—</div></div>
+    <div class="kpi-card" style="border-top-color:#FF0000"><div class="kpi-val" id="yt-views">—</div><div class="kpi-label">Views ultimi 28gg</div></div>
+    <div class="kpi-card" style="border-top-color:#FF0000"><div class="kpi-val" id="yt-count">—</div><div class="kpi-label">Pubblico mensile</div></div>
     <div class="kpi-card" style="border-top-color:#FF0000"><div class="kpi-val" id="yt-avg">—</div><div class="kpi-label">Views medie / video</div></div>
   </div>
   <div class="chart-row">
@@ -531,16 +537,17 @@ function setPeriod(p){
 // Solo piattaforme con confirmed:true contribuiscono a crescita/eng
 function renderHero(){
   const allP=[
+    {name:'YouTube',  followers:D.youtube.subscribers, growth:D.youtube[gk()],   confirmed:D.youtube.confirmed},
     {name:'TikTok',   followers:D.tiktok.followers,   growth:D.tiktok[gk()],   confirmed:D.tiktok.confirmed},
     {name:'Instagram',followers:D.instagram.followers, growth:D.instagram[gk()], confirmed:D.instagram.confirmed},
     {name:'Facebook', followers:D.facebook.followers,  growth:D.facebook[gk()],  confirmed:D.facebook.confirmed},
     {name:'LinkedIn', followers:D.linkedin.followers,  growth:D.linkedin[gk()],  confirmed:D.linkedin.confirmed},
   ];
   const conf=allP.filter(p=>p.confirmed);
-  const total=(D.youtube.subscribers||0)+allP.reduce((a,p)=>a+p.followers,0);
+  const total=allP.reduce((a,p)=>a+p.followers,0);
   const growthBase=conf.length?conf:allP;
   const totalGrowth=growthBase.reduce((a,p)=>a+(p.growth||0),0);
-  const confEngs=[D.instagram,D.facebook].filter(p=>p.confirmed&&p.eng_rate).map(p=>p.eng_rate);
+  const confEngs=[D.youtube,D.instagram,D.facebook].filter(p=>p.confirmed&&p.eng_rate).map(p=>p.eng_rate);
   const allEngs=[D.instagram.eng_rate,D.tiktok.eng_rate,D.facebook.eng_rate,D.linkedin.eng_rate].filter(Boolean);
   const engBase=confEngs.length?confEngs:allEngs;
   const avgEng=engBase.reduce((a,v)=>a+v,0)/engBase.length;
@@ -593,8 +600,9 @@ function renderYT(){
   const d=D.youtube;
   const ytDate=document.getElementById('yt-date'); if(ytDate)ytDate.textContent=d.updated||CFG.updated;
   document.getElementById('yt-subs').textContent=fmt(d.subscribers);
+  const ytGrowthEl=document.getElementById('yt-growth'); if(ytGrowthEl)ytGrowthEl.textContent=delta(d[gk()],pLbl());
   document.getElementById('yt-views').textContent=fmt(d.total_views);
-  document.getElementById('yt-count').textContent=fmt(d.video_count);
+  document.getElementById('yt-count').textContent=fmt(d.pubblico_mensile);
   document.getElementById('yt-avg').textContent=fmt(d.avg_views);
   const trend=d[tk()]||[];
   document.getElementById('yt-trend-title').textContent=`Iscritti — andamento ${pWord()}`;
