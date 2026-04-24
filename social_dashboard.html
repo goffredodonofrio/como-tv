@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Como TV — Social Media Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* ── RESET ── */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; background: #f7f8fa; color: #0f172a; font-size: 14px; }
+
+/* ── HEADER ── */
+#header {
+  background: linear-gradient(135deg, #0d1a38 0%, #1a2d5a 100%);
+  color: #fff;
+  padding: 28px 40px 24px;
+  border-bottom: 3px solid #B8962E;
+}
+.h-row { display: flex; align-items: flex-end; justify-content: space-between; }
+.h-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.h-dot { width: 12px; height: 12px; border-radius: 50%; background: #B8962E; }
+.h-title { font-size: 20px; font-weight: 800; letter-spacing: -.4px; }
+.h-sub { font-size: 11px; color: rgba(255,255,255,.5); font-weight: 600; text-transform: uppercase; letter-spacing: .8px; margin-top: 2px; }
+.h-meta { font-size: 11px; color: rgba(255,255,255,.4); text-align: right; }
+.h-meta strong { color: rgba(255,255,255,.7); display: block; font-size: 12px; }
+
+/* ── TABS ── */
+#tab-bar {
+  background: #fff; border-bottom: 2px solid #e5e7eb;
+  padding: 0 36px; display: flex; overflow-x: auto; gap: 0;
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+}
+.tab-btn {
+  padding: 14px 18px; font-size: 11px; font-weight: 700;
+  color: #9ca3af; border: none; background: none; cursor: pointer;
+  border-bottom: 3px solid transparent; margin-bottom: -2px;
+  white-space: nowrap; text-transform: uppercase; letter-spacing: .7px;
+  transition: all .15s; display: flex; align-items: center; gap: 7px;
+}
+.tab-btn:hover { color: #0d1a38; }
+.tab-btn.active { color: #0d1a38; border-bottom-color: #B8962E; }
+.tab-pip { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── CONTENT ── */
+#content { padding: 28px 40px 60px; max-width: 1300px; margin: 0 auto; }
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* ── KPI GRID ── */
+.kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 24px; }
+@media(max-width:900px){ .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+.kpi-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+  padding: 20px 18px; border-top: 3px solid #0d1a38;
+}
+.kpi-val { font-size: 30px; font-weight: 800; color: #0d1a38; line-height: 1; letter-spacing: -.5px; }
+.kpi-label { font-size: 10px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: .8px; margin-top: 6px; }
+.kpi-delta { font-size: 11px; font-weight: 700; margin-top: 5px; }
+.kpi-delta.pos { color: #16a34a; }
+.kpi-delta.neg { color: #dc2626; }
+.kpi-sub { font-size: 10px; color: #d1d5db; margin-top: 2px; }
+
+/* ── CHARTS ── */
+.chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+@media(max-width:900px){ .chart-row { grid-template-columns: 1fr; } }
+.chart-box {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px;
+}
+.chart-title { font-size: 10px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 14px; }
+.chart-wrap { position: relative; height: 200px; }
+
+/* ── SECTION LABEL ── */
+.sec-label { font-size: 10px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 12px; }
+
+/* ── CONTENT TABLE ── */
+.ct-table { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
+.ct-row {
+  display: grid; gap: 12px; padding: 14px 18px;
+  border-bottom: 1px solid #f3f4f6; align-items: center;
+}
+.ct-row:last-child { border-bottom: none; }
+.ct-head { background: #f9fafb; font-size: 10px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: .6px; }
+.ct-rank { font-size: 15px; font-weight: 800; color: #e5e7eb; text-align: center; }
+.ct-title { font-size: 13px; font-weight: 600; color: #0f172a; margin-bottom: 3px; }
+.ct-num { font-size: 13px; font-weight: 600; color: #374151; text-align: right; }
+.ct-num small { display: block; font-size: 10px; color: #9ca3af; font-weight: 400; }
+
+/* ── BADGES ── */
+.badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
+.b-reel { background: #fdf4ff; color: #9333ea; }
+.b-carosello { background: #fff7ed; color: #ea580c; }
+.b-story { background: #fef2f2; color: #dc2626; }
+.b-video { background: #fef2f2; color: #dc2626; }
+.b-post { background: #f0fdf4; color: #16a34a; }
+.b-foto { background: #eff6ff; color: #2563eb; }
+.b-articolo { background: #f5f3ff; color: #7c3aed; }
+
+/* ── STATUS BADGES ── */
+.live-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700; color: #16a34a; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 4px 10px; }
+.live-dot { width: 6px; height: 6px; border-radius: 50%; background: #16a34a; animation: blink 2s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+.manual-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 600; color: #6b7280; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 4px 10px; }
+
+/* ── API SETUP BOX ── */
+.api-box {
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px;
+  padding: 20px 24px; margin-bottom: 20px;
+}
+.api-box-title { font-size: 12px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px; }
+.api-box-desc { font-size: 12px; color: #78350f; line-height: 1.7; margin-bottom: 14px; }
+.api-box-desc code { background: rgba(255,255,255,.7); border: 1px solid #fcd34d; border-radius: 4px; padding: 1px 5px; font-size: 11px; font-family: monospace; }
+.api-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.api-input { flex: 1; min-width: 200px; border: 1px solid #fcd34d; border-radius: 8px; padding: 9px 12px; font-size: 12px; font-family: monospace; background: #fff; outline: none; }
+.api-input:focus { border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,.15); }
+.api-btn { background: #0d1a38; color: #B8962E; border: none; border-radius: 8px; padding: 9px 20px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap; letter-spacing: .5px; text-transform: uppercase; transition: background .15s; }
+.api-btn:hover { background: #1e3464; }
+#yt-status { font-size: 11px; margin-top: 10px; min-height: 16px; }
+
+/* ── OVERVIEW PLATFORM CARDS ── */
+.pf-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 14px; margin-bottom: 28px; }
+@media(max-width:1100px){ .pf-grid { grid-template-columns: repeat(3,1fr); } }
+@media(max-width:700px){ .pf-grid { grid-template-columns: repeat(2,1fr); } }
+.pf-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+  padding: 20px 14px; text-align: center; cursor: pointer;
+  transition: all .15s; border-top: 3px solid transparent;
+}
+.pf-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+.pf-icon { font-size: 26px; margin-bottom: 8px; line-height: 1; }
+.pf-name { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+.pf-followers { font-size: 26px; font-weight: 800; color: #0d1a38; letter-spacing: -.5px; }
+.pf-fl-label { font-size: 10px; color: #9ca3af; margin-bottom: 6px; }
+.pf-growth { font-size: 11px; font-weight: 700; }
+
+/* ── OVERVIEW TABLE ── */
+.ov-table { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
+.ov-row {
+  display: grid; grid-template-columns: 160px 120px 120px 110px 1fr;
+  align-items: center; gap: 12px; padding: 14px 18px;
+  border-bottom: 1px solid #f3f4f6; cursor: pointer;
+  transition: background .1s;
+}
+.ov-row:hover { background: #f9fafb; }
+.ov-row:last-child { border-bottom: none; }
+.ov-row.head { background: #f9fafb; cursor: default; }
+.ov-row.head:hover { background: #f9fafb; }
+.ov-cell-right { text-align: right; font-size: 13px; font-weight: 600; color: #374151; }
+.ov-cell-right small { display: block; font-size: 10px; color: #9ca3af; font-weight: 400; }
+
+/* ── UPDATE GUIDE ── */
+.upd-guide {
+  background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px;
+  padding: 14px 18px; margin-bottom: 20px; font-size: 12px; color: #0369a1; line-height: 1.7;
+}
+.upd-guide strong { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .6px; display: block; color: #0c4a6e; margin-bottom: 4px; }
+
+/* ── DIVIDER ── */
+.divider { height: 1px; background: #e5e7eb; margin: 28px 0; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════
+     CONFIG — aggiorna qui ogni settimana
+     ════════════════════════════════════════════════════════ -->
+<script>
+const CFG = {
+  // ── YouTube API (opzionale — attiva l'auto-fetch) ─────────────
+  // 1. console.cloud.google.com → Progetto → YouTube Data API v3 → API Key
+  // 2. Channel ID: YouTube Studio → Impostazioni → Info canale
+  yt_key: '',
+  yt_channel: '',
+
+  // ── Periodo di riferimento ────────────────────────────────────
+  updated: '2026-04-24',
+};
+
+// ════════════════════════════════════════════════════════
+// DATI — copia dai pannelli Insight ogni settimana
+// ════════════════════════════════════════════════════════
+const D = {
+
+  youtube: {
+    // Aggiornati automaticamente se yt_key e yt_channel sono impostati
+    // Altrimenti modifica questi valori manualmente
+    subscribers: 0,
+    total_views:  0,
+    video_count:  0,
+    avg_views:    0,
+    trend: [
+      { l: 'Gen', subs: 0, views: 0 },
+      { l: 'Feb', subs: 0, views: 0 },
+      { l: 'Mar', subs: 0, views: 0 },
+      { l: 'Apr', subs: 0, views: 0 },
+    ],
+    top: [
+      { title: 'Nessun dato — aggiungi API Key o inserisci manualmente', views: 0, likes: 0, comments: 0 },
+    ],
+  },
+
+  instagram: {
+    followers:   28500,
+    growth:      +320,    // delta settimanale
+    posts:        1876,
+    avg_reach:   12400,
+    eng_rate:      4.2,   // %
+    updated:    '2026-04-21',
+    trend: [
+      { l: 'Gen', followers: 25800, eng: 3.6 },
+      { l: 'Feb', followers: 26800, eng: 3.8 },
+      { l: 'Mar', followers: 27800, eng: 4.0 },
+      { l: 'Apr', followers: 28500, eng: 4.2 },
+    ],
+    top: [
+      { type:'Reel',      title:'Gol di Fabregas — Como 3-1 Milan',             v1:84000, v2:2100, v3:340, l1:'Views', l2:'Likes', l3:'Saves' },
+      { type:'Carosello', title:'Talent Hunters: le 5 stelle internazionali',   v1:42000, v2:1200, v3:890, l1:'Views', l2:'Likes', l3:'Saves' },
+      { type:'Reel',      title:'Il Momento — post-gara vs Juventus',           v1:28000, v2:760,  v3:120, l1:'Views', l2:'Likes', l3:'Saves' },
+    ],
+  },
+
+  tiktok: {
+    followers:   18200,
+    growth:      +890,
+    total_likes: 124000,
+    avg_views:    8400,
+    eng_rate:      6.8,   // %
+    updated:    '2026-04-21',
+    trend: [
+      { l: 'Gen', followers: 12400, eng: 5.4 },
+      { l: 'Feb', followers: 14200, eng: 5.9 },
+      { l: 'Mar', followers: 16400, eng: 6.4 },
+      { l: 'Apr', followers: 18200, eng: 6.8 },
+    ],
+    top: [
+      { type:'Video', title:'Training day — Fabregas mixa musica',        v1:124000, v2:8900, v3:340, l1:'Views', l2:'Likes', l3:'Comm.' },
+      { type:'Video', title:'Lancio Competizione — Fanta Como S3',        v1:67000,  v2:4200, v3:210, l1:'Views', l2:'Likes', l3:'Comm.' },
+      { type:'Video', title:'Dietro la Partita — spogliatoio post-gara',  v1:48000,  v2:3100, v3:180, l1:'Views', l2:'Likes', l3:'Comm.' },
+    ],
+  },
+
+  facebook: {
+    followers:   42100,
+    growth:      +120,
+    weekly_reach: 28000,
+    eng_rate:      1.8,
+    updated:    '2026-04-21',
+    trend: [
+      { l: 'Gen', followers: 41600, eng: 1.6 },
+      { l: 'Feb', followers: 41700, eng: 1.7 },
+      { l: 'Mar', followers: 41900, eng: 1.8 },
+      { l: 'Apr', followers: 42100, eng: 1.8 },
+    ],
+    top: [
+      { type:'Video', title:'Live: Como vs Inter — highlights completi', v1:18000, v2:540, v3:210, l1:'Views', l2:'Likes', l3:'Share' },
+      { type:'Post',  title:'Formazione ufficiale Como-Milan',           v1:12000, v2:380, v3:140, l1:'Reach', l2:'Likes', l3:'Share' },
+      { type:'Foto',  title:'Gallery trasferta Bergamo',                 v1:8400,  v2:290, v3:80,  l1:'Reach', l2:'Likes', l3:'Share' },
+    ],
+  },
+
+  linkedin: {
+    followers:   3200,
+    growth:      +45,
+    impressions:  8400,
+    eng_rate:     3.1,
+    updated:    '2026-04-21',
+    trend: [
+      { l: 'Gen', followers: 3020, eng: 2.7 },
+      { l: 'Feb', followers: 3080, eng: 2.9 },
+      { l: 'Mar', followers: 3140, eng: 3.0 },
+      { l: 'Apr', followers: 3200, eng: 3.1 },
+    ],
+    top: [
+      { type:'Articolo', title:"Como TV OTT: i dati della stagione",           v1:2400, v2:180, v3:24, l1:'Views', l2:'Reaz.', l3:'Comm.' },
+      { type:'Post',     title:"Goffredo d'Onofrio — Direttore di Como TV",   v1:1800, v2:140, v3:18, l1:'Views', l2:'Reaz.', l3:'Comm.' },
+      { type:'Post',     title:'Come produciamo un live in 4 passi',           v1:1200, v2:98,  v3:12, l1:'Views', l2:'Reaz.', l3:'Comm.' },
+    ],
+  },
+};
+</script>
+
+<!-- HEADER -->
+<div id="header">
+  <div class="h-row">
+    <div>
+      <div class="h-logo"><div class="h-dot"></div><div class="h-title">Como TV</div></div>
+      <div class="h-sub">Social Media Dashboard</div>
+    </div>
+    <div class="h-meta">
+      <strong id="hd-updated">—</strong>
+      Ultimo aggiornamento
+    </div>
+  </div>
+</div>
+
+<!-- TAB BAR -->
+<div id="tab-bar">
+  <button class="tab-btn active" data-tab="panoramica">
+    <span class="tab-pip" style="background:#0d1a38"></span>Panoramica
+  </button>
+  <button class="tab-btn" data-tab="youtube">
+    <span class="tab-pip" style="background:#FF0000"></span>YouTube
+  </button>
+  <button class="tab-btn" data-tab="instagram">
+    <span class="tab-pip" style="background:#E1306C"></span>Instagram
+  </button>
+  <button class="tab-btn" data-tab="tiktok">
+    <span class="tab-pip" style="background:#161823"></span>TikTok
+  </button>
+  <button class="tab-btn" data-tab="facebook">
+    <span class="tab-pip" style="background:#1877F2"></span>Facebook
+  </button>
+  <button class="tab-btn" data-tab="linkedin">
+    <span class="tab-pip" style="background:#0A66C2"></span>LinkedIn
+  </button>
+</div>
+
+<!-- CONTENT -->
+<div id="content">
+
+  <!-- ══════════ PANORAMICA ══════════ -->
+  <div id="panel-panoramica" class="panel active">
+    <div class="pf-grid" id="pf-grid"></div>
+
+    <div class="chart-row">
+      <div class="chart-box">
+        <div class="chart-title">Follower / Iscritti per piattaforma</div>
+        <div class="chart-wrap"><canvas id="ov-bar"></canvas></div>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Engagement rate % (piattaforme con dato)</div>
+        <div class="chart-wrap"><canvas id="ov-eng"></canvas></div>
+      </div>
+    </div>
+
+    <div class="sec-label">Confronto piattaforme</div>
+    <div class="ov-table">
+      <div class="ov-row head" style="cursor:default">
+        <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.6px">Piattaforma</div>
+        <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.6px;text-align:right">Follower</div>
+        <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.6px;text-align:right">Crescita sett.</div>
+        <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.6px;text-align:right">Eng. rate</div>
+        <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.6px;text-align:right">Metrica chiave</div>
+      </div>
+      <div id="ov-rows"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ YOUTUBE ══════════ -->
+  <div id="panel-youtube" class="panel">
+
+    <div class="api-box">
+      <div class="api-box-title">⚡ Connetti YouTube Data API — aggiornamento automatico</div>
+      <div class="api-box-desc">
+        1. Vai su <strong>console.cloud.google.com</strong> → crea progetto → Abilita <code>YouTube Data API v3</code> → Crea <code>API Key</code>.<br>
+        2. Il Channel ID si trova in <strong>YouTube Studio → Impostazioni → Info canale → ID canale</strong>.<br>
+        Inserisci i due valori e premi Fetch. I dati si aggiornano ogni volta che apri la pagina.
+      </div>
+      <div class="api-row">
+        <input class="api-input" id="yt-key" placeholder="API Key (AIzaSy…)" type="text">
+        <input class="api-input" id="yt-cid" placeholder="Channel ID (UCxxxxxx…)" style="max-width:280px" type="text">
+        <button class="api-btn" onclick="ytFetch()">▶ Fetch dati live</button>
+      </div>
+      <div id="yt-status"></div>
+    </div>
+
+    <div style="margin-bottom:18px;display:flex;align-items:center;gap:10px">
+      <span id="yt-live-badge" class="manual-badge">📋 Dati manuali</span>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card" style="border-top-color:#FF0000">
+        <div class="kpi-val" id="yt-subs">—</div>
+        <div class="kpi-label">Iscritti</div>
+        <div class="kpi-sub">YouTube Channel</div>
+      </div>
+      <div class="kpi-card" style="border-top-color:#FF0000">
+        <div class="kpi-val" id="yt-views">—</div>
+        <div class="kpi-label">Visualizzazioni totali</div>
+        <div class="kpi-sub">Lifetime canale</div>
+      </div>
+      <div class="kpi-card" style="border-top-color:#FF0000">
+        <div class="kpi-val" id="yt-count">—</div>
+        <div class="kpi-label">Video pubblicati</div>
+        <div class="kpi-sub">Totale canale</div>
+      </div>
+      <div class="kpi-card" style="border-top-color:#FF0000">
+        <div class="kpi-val" id="yt-avg">—</div>
+        <div class="kpi-label">Views medie / video</div>
+        <div class="kpi-sub">Stima lifetime</div>
+      </div>
+    </div>
+
+    <div class="chart-row">
+      <div class="chart-box">
+        <div class="chart-title">Iscritti — andamento</div>
+        <div class="chart-wrap"><canvas id="yt-trend"></canvas></div>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Top video — views</div>
+        <div class="chart-wrap"><canvas id="yt-topbar"></canvas></div>
+      </div>
+    </div>
+
+    <div class="sec-label">Top video</div>
+    <div class="ct-table">
+      <div class="ct-row ct-head" style="grid-template-columns:40px 1fr 100px 80px 80px">
+        <div>#</div><div>Titolo</div>
+        <div style="text-align:right">Views</div>
+        <div style="text-align:right">Likes</div>
+        <div style="text-align:right">Comm.</div>
+      </div>
+      <div id="yt-top-table"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ INSTAGRAM ══════════ -->
+  <div id="panel-instagram" class="panel">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+      <span class="manual-badge">📋 Aggiornamento manuale — <span id="ig-updated-label">—</span></span>
+    </div>
+    <div class="upd-guide">
+      <strong>Come aggiornare</strong>
+      Apri Instagram → Insight → Panoramica account. Copia Follower, Reach medio e Engagement rate nelle variabili <code>D.instagram</code> in cima al file HTML. Aggiorna anche <code>updated</code> con la data di oggi.
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card" style="border-top-color:#E1306C">
+        <div class="kpi-val" id="ig-followers">—</div>
+        <div class="kpi-label">Follower</div>
+        <div class="kpi-delta pos" id="ig-growth">—</div>
+      </div>
+      <div class="kpi-card" style="border-top-color:#E1306C">
+        <div class="kpi-val" id="ig-reach">—</div>
+        <div class="kpi-label">Reach media / post</div>
+        <div class="kpi-sub">Settimana corrente</div>
+      </div>
+      <div class="kpi-card" style="border-top-color:#E1306C">
+        <div class="kpi-val" id="ig-eng">—</div>
+        <div class="kpi-label">Engagement rate</div>
+        <div class="kpi-sub">Sul reach</div>
+      </div>
+      <div class="kpi-card" style="border-top-color:#E1306C">
+        <div class="kpi-val" id="ig-posts">—</div>
+        <div class="kpi-label">Post totali</div>
+        <div class="kpi-sub">Feed + Reel</div>
+      </div>
+    </div>
+
+    <div class="chart-row">
+      <div class="chart-box">
+        <div class="chart-title">Crescita follower</div>
+        <div class="chart-wrap"><canvas id="ig-fl-chart"></canvas></div>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Engagement rate %</div>
+        <div class="chart-wrap"><canvas id="ig-eng-chart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="sec-label">Top contenuti</div>
+    <div class="ct-table" id="ig-top-table"></div>
+  </div>
+
+  <!-- ══════════ TIKTOK ══════════ -->
+  <div id="panel-tiktok" class="panel">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+      <span class="manual-badge">📋 Aggiornamento manuale — <span id="tt-updated-label">—</span></span>
+    </div>
+    <div class="upd-guide">
+      <strong>Come aggiornare</strong>
+      TikTok Studio → Analisi → Panoramica. Copia Follower, Views totali e Tasso di engagement nelle variabili <code>D.tiktok</code>.
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card" style="border-top-color:#161823">
+        <div class="kpi-val" id="tt-followers">—</div>
+        <div class="kpi-label">Follower</div>
+        <div class="kpi-delta pos" id="tt-growth">—</div>
+      </div>
+      <div class="kpi-card" style="border-top-color:#161823">
+        <div class="kpi-val" id="tt-likes">—</div>
+        <div class="kpi-label">Like totali</div>
+        <div class="kpi-sub">Lifetime canale</div>
+      </div>
+      <div class="kpi-card" style="border-top-color:#161823">
+        <div class="kpi-val" id="tt-views">—</div>
+        <div class="kpi-label">Views medie / video</div>
+        <div class="kpi-sub">Ultimi 30 giorni</div>
+      </div>
+      <div class="kpi-card" style="border-top-color:#161823">
+        <div class="kpi-val" id="tt-eng">—</div>
+        <div class="kpi-label">Engagement rate</div>
+        <div class="kpi-sub">Su views medie</div>
+      </div>
+    </div>
+
+    <div class="chart-row">
+      <div class="chart-box">
+        <div class="chart-title">Crescita follower</div>
+        <div class="chart-wrap"><canvas id="tt-fl-chart"></canvas></div>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Engagement rate %</div>
+        <div class="chart-wrap"><canvas id="tt-eng-chart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="sec-label">Top video</div>
+    <div class="ct-table" id="tt-top-table"></div>
+  </div>
+
+  <!-- ══════════ FACEBOOK ══════════ -->
+  <div id="panel-facebook" class="panel">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+      <span class="manual-badge">📋 Aggiornamento manuale — <span id="fb-updated-label">—</span></span>
+    </div>
+    <div class="upd-guide">
+      <strong>Come aggiornare</strong>
+      Meta Business Suite → Insight → Panoramica pagina. Copia Follower, Reach settimanale e Tasso di coinvolgimento nelle variabili <code>D.facebook</code>.
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card" style="border-top-color:#1877F2">
+        <div class="kpi-val" id="fb-followers">—</div>
+        <div class="kpi-label">Follower</div>
+        <div class="kpi-delta pos" id="fb-growth">—</div>
+      </div>
+      <div class="kpi-card" style="border-top-color:#1877F2">
+        <div class="kpi-val" id="fb-reach">—</div>
+        <div class="kpi-label">Reach settimanale</div>
+        <div class="kpi-sub">Persone raggiunte</div>
+      </div>
+      <div class="kpi-card" style="border-top-color:#1877F2">
+        <div class="kpi-val" id="fb-eng">—</div>
+        <div class="kpi-label">Engagement rate</div>
+        <div class="kpi-sub">Sul reach</div>
+      </div>
+      <div class="kpi-card" style="border-top-color:#1877F2">
+        <div class="kpi-val" id="fb-placeholder">Facebook</div>
+        <div class="kpi-label">Pagina</div>
+        <div class="kpi-sub">Como TV</div>
+      </div>
+    </div>
+
+    <div class="chart-row">
+      <div class="chart-box">
+        <div class="chart-title">Crescita follower</div>
+        <div class="chart-wrap"><canvas id="fb-fl-chart"></canvas></div>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Engagement rate %</div>
+        <div class="chart-wrap"><canvas id="fb-eng-chart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="sec-label">Top contenuti</div>
+    <div class="ct-table" id="fb-top-table"></div>
+  </div>
+
+  <!-- ══════════ LINKEDIN ══════════ -->
+  <div id="panel-linkedin" class="panel">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+      <span class="manual-badge">📋 Aggiornamento manuale — <span id="li-updated-label">—</span></span>
+    </div>
+    <div class="upd-guide">
+      <strong>Come aggiornare</strong>
+      LinkedIn → Analisi pagina → Follower e Aggiornamenti. Copia Follower, Impressioni e Tasso di coinvolgimento nelle variabili <code>D.linkedin</code>.
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card" style="border-top-color:#0A66C2">
+        <div class="kpi-val" id="li-followers">—</div>
+        <div class="kpi-label">Follower</div>
+        <div class="kpi-delta pos" id="li-growth">—</div>
+      </div>
+      <div class="kpi-card" style="border-top-color:#0A66C2">
+        <div class="kpi-val" id="li-impressions">—</div>
+        <div class="kpi-label">Impressioni</div>
+        <div class="kpi-sub">Ultimi 30 giorni</div>
+      </div>
+      <div class="kpi-card" style="border-top-color:#0A66C2">
+        <div class="kpi-val" id="li-eng">—</div>
+        <div class="kpi-label">Engagement rate</div>
+        <div class="kpi-sub">Su impressioni</div>
+      </div>
+      <div class="kpi-card" style="border-top-color:#0A66C2">
+        <div class="kpi-val" id="li-placeholder">LinkedIn</div>
+        <div class="kpi-label">Pagina</div>
+        <div class="kpi-sub">Como TV</div>
+      </div>
+    </div>
+
+    <div class="chart-row">
+      <div class="chart-box">
+        <div class="chart-title">Crescita follower</div>
+        <div class="chart-wrap"><canvas id="li-fl-chart"></canvas></div>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Engagement rate %</div>
+        <div class="chart-wrap"><canvas id="li-eng-chart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="sec-label">Top contenuti</div>
+    <div class="ct-table" id="li-top-table"></div>
+  </div>
+
+</div><!-- /content -->
+
+<!-- ════════════════════════════════════════════════════════
+     JAVASCRIPT — rendering e YouTube API
+     ════════════════════════════════════════════════════════ -->
+<script>
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const fmt = n => {
+  if (n === null || n === undefined || n === 0) return '—';
+  if (n >= 1e6) return (n/1e6).toFixed(1).replace('.0','') + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1).replace('.0','') + 'K';
+  return n.toLocaleString('it-IT');
+};
+const pct = n => (n && n !== 0) ? n.toFixed(1) + '%' : '—';
+const delta = n => n ? (n > 0 ? '+' : '') + fmt(n) + ' vs sett. prec.' : '';
+const badgeCls = t => ({ Reel:'b-reel', Carosello:'b-carosello', Story:'b-story', Video:'b-video', Post:'b-post', Foto:'b-foto', Articolo:'b-articolo' }[t] || 'b-post');
+
+function topTableHTML(rows) {
+  if (!rows?.length) return '<div style="padding:20px;text-align:center;color:#9ca3af;font-size:12px">Nessun dato disponibile</div>';
+  return rows.map((r, i) => `
+    <div class="ct-row" style="grid-template-columns:40px 1fr 100px 80px 80px">
+      <div class="ct-rank">${i+1}</div>
+      <div>
+        <div class="ct-title">${r.title}</div>
+        <span class="badge ${badgeCls(r.type)}">${r.type||'Video'}</span>
+      </div>
+      <div class="ct-num">${fmt(r.v1||r.views)}<small>${r.l1||'Views'}</small></div>
+      <div class="ct-num">${fmt(r.v2||r.likes)}<small>${r.l2||'Likes'}</small></div>
+      <div class="ct-num">${fmt(r.v3||r.comments)}<small>${r.l3||'Comm.'}</small></div>
+    </div>`).join('');
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+const chartInstances = {};
+function makeLineChart(id, labels, datasets, color) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  if (chartInstances[id]) chartInstances[id].destroy();
+  chartInstances[id] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: datasets.map((ds, i) => ({
+        label: ds.label,
+        data: ds.data,
+        borderColor: i === 0 ? color : '#B8962E',
+        backgroundColor: (i === 0 ? color : '#B8962E') + '15',
+        borderWidth: 2.5, pointRadius: 4, tension: .35,
+        pointBackgroundColor: i === 0 ? color : '#B8962E',
+        fill: datasets.length === 1,
+      }))
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: datasets.length > 1, labels: { font:{size:10}, boxWidth:10 } } },
+      scales: {
+        x: { grid:{display:false}, ticks:{font:{size:10}} },
+        y: { grid:{color:'#f3f4f6'}, ticks:{font:{size:10}, callback: v => fmt(v)} }
+      }
+    }
+  });
+}
+
+function makeBarChart(id, labels, data, color) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  if (chartInstances[id]) chartInstances[id].destroy();
+  chartInstances[id] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: color + 'cc', borderRadius: 6 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend:{display:false} },
+      scales: {
+        x: { grid:{display:false}, ticks:{font:{size:10}} },
+        y: { grid:{color:'#f3f4f6'}, ticks:{font:{size:10}, callback: v => fmt(v)} }
+      }
+    }
+  });
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+const TABS = ['panoramica','youtube','instagram','tiktok','facebook','linkedin'];
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const t = btn.dataset.tab;
+    TABS.forEach(id => {
+      document.getElementById('panel-'+id).classList.toggle('active', id===t);
+    });
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b===btn));
+  });
+});
+
+// ── YouTube API ───────────────────────────────────────────────────────────────
+async function ytFetch() {
+  const key = document.getElementById('yt-key').value.trim() || CFG.yt_key;
+  const cid = document.getElementById('yt-cid').value.trim() || CFG.yt_channel;
+  const status = document.getElementById('yt-status');
+  if (!key || !cid) { status.innerHTML = '<span style="color:#b45309">⚠ Inserisci chiave API e Channel ID.</span>'; return; }
+  status.innerHTML = '<span style="color:#6b7280">⏳ Recupero dati in corso…</span>';
+  try {
+    // Channel stats
+    const chRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${cid}&key=${key}`);
+    const ch = await chRes.json();
+    if (ch.error) throw new Error(ch.error.message);
+    if (!ch.items?.length) throw new Error('Canale non trovato. Controlla Channel ID.');
+    const s = ch.items[0].statistics;
+    D.youtube.subscribers  = +s.subscriberCount;
+    D.youtube.total_views  = +s.viewCount;
+    D.youtube.video_count  = +s.videoCount;
+    D.youtube.avg_views    = Math.round(D.youtube.total_views / D.youtube.video_count);
+
+    // Top videos
+    const srRes = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${cid}&order=viewCount&type=video&maxResults=5&key=${key}`);
+    const sr = await srRes.json();
+    if (sr.items?.length) {
+      const ids = sr.items.map(i => i.id.videoId).join(',');
+      const vRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${ids}&key=${key}`);
+      const vd = await vRes.json();
+      D.youtube.top = (vd.items||[]).slice(0,3).map(v => ({
+        type: 'Video',
+        title: v.snippet.title,
+        v1: +v.statistics.viewCount,
+        v2: +(v.statistics.likeCount||0),
+        v3: +(v.statistics.commentCount||0),
+        l1:'Views', l2:'Likes', l3:'Comm.'
+      }));
+    }
+    CFG.yt_key = key; CFG.yt_channel = cid;
+    status.innerHTML = '<span style="color:#16a34a;font-weight:700">✅ Dati aggiornati in tempo reale</span>';
+    document.getElementById('yt-live-badge').outerHTML = '<span class="live-badge" id="yt-live-badge"><span class="live-dot"></span> Live via YouTube API</span>';
+    renderYT();
+  } catch(e) {
+    status.innerHTML = `<span style="color:#dc2626">❌ ${e.message}</span>`;
+  }
+}
+
+// ── Render functions ──────────────────────────────────────────────────────────
+function renderYT() {
+  const d = D.youtube;
+  document.getElementById('yt-subs').textContent  = fmt(d.subscribers);
+  document.getElementById('yt-views').textContent = fmt(d.total_views);
+  document.getElementById('yt-count').textContent = fmt(d.video_count);
+  document.getElementById('yt-avg').textContent   = fmt(d.avg_views);
+
+  if (d.trend?.length) {
+    makeLineChart('yt-trend', d.trend.map(t=>t.l), [{label:'Iscritti', data:d.trend.map(t=>t.subs)}], '#FF0000');
+  }
+  if (d.top?.length) {
+    const labels = d.top.map(v => v.title.length > 22 ? v.title.slice(0,22)+'…' : v.title);
+    makeBarChart('yt-topbar', labels, d.top.map(v=>v.v1||v.views||0), '#FF0000');
+    document.getElementById('yt-top-table').innerHTML = topTableHTML(d.top);
+  }
+}
+
+function renderIG() {
+  const d = D.instagram;
+  document.getElementById('ig-updated-label').textContent = d.updated || CFG.updated;
+  document.getElementById('ig-followers').textContent = fmt(d.followers);
+  document.getElementById('ig-growth').textContent    = delta(d.growth);
+  document.getElementById('ig-reach').textContent    = fmt(d.avg_reach);
+  document.getElementById('ig-eng').textContent      = pct(d.eng_rate);
+  document.getElementById('ig-posts').textContent   = fmt(d.posts);
+  makeLineChart('ig-fl-chart',  d.trend.map(t=>t.l), [{label:'Follower', data:d.trend.map(t=>t.followers)}], '#E1306C');
+  makeLineChart('ig-eng-chart', d.trend.map(t=>t.l), [{label:'Eng%', data:d.trend.map(t=>t.eng)}], '#F56040');
+  document.getElementById('ig-top-table').innerHTML = topTableHTML(d.top);
+}
+
+function renderTT() {
+  const d = D.tiktok;
+  document.getElementById('tt-updated-label').textContent = d.updated || CFG.updated;
+  document.getElementById('tt-followers').textContent = fmt(d.followers);
+  document.getElementById('tt-growth').textContent    = delta(d.growth);
+  document.getElementById('tt-likes').textContent    = fmt(d.total_likes);
+  document.getElementById('tt-views').textContent    = fmt(d.avg_views);
+  document.getElementById('tt-eng').textContent      = pct(d.eng_rate);
+  makeLineChart('tt-fl-chart',  d.trend.map(t=>t.l), [{label:'Follower', data:d.trend.map(t=>t.followers)}], '#161823');
+  makeLineChart('tt-eng-chart', d.trend.map(t=>t.l), [{label:'Eng%', data:d.trend.map(t=>t.eng)}], '#EE1D52');
+  document.getElementById('tt-top-table').innerHTML = topTableHTML(d.top);
+}
+
+function renderFB() {
+  const d = D.facebook;
+  document.getElementById('fb-updated-label').textContent = d.updated || CFG.updated;
+  document.getElementById('fb-followers').textContent = fmt(d.followers);
+  document.getElementById('fb-growth').textContent    = delta(d.growth);
+  document.getElementById('fb-reach').textContent    = fmt(d.weekly_reach);
+  document.getElementById('fb-eng').textContent      = pct(d.eng_rate);
+  makeLineChart('fb-fl-chart',  d.trend.map(t=>t.l), [{label:'Follower', data:d.trend.map(t=>t.followers)}], '#1877F2');
+  makeLineChart('fb-eng-chart', d.trend.map(t=>t.l), [{label:'Eng%', data:d.trend.map(t=>t.eng)}], '#1877F2');
+  document.getElementById('fb-top-table').innerHTML = topTableHTML(d.top);
+}
+
+function renderLI() {
+  const d = D.linkedin;
+  document.getElementById('li-updated-label').textContent = d.updated || CFG.updated;
+  document.getElementById('li-followers').textContent   = fmt(d.followers);
+  document.getElementById('li-growth').textContent      = delta(d.growth);
+  document.getElementById('li-impressions').textContent = fmt(d.impressions);
+  document.getElementById('li-eng').textContent         = pct(d.eng_rate);
+  makeLineChart('li-fl-chart',  d.trend.map(t=>t.l), [{label:'Follower', data:d.trend.map(t=>t.followers)}], '#0A66C2');
+  makeLineChart('li-eng-chart', d.trend.map(t=>t.l), [{label:'Eng%', data:d.trend.map(t=>t.eng)}], '#0A66C2');
+  document.getElementById('li-top-table').innerHTML = topTableHTML(d.top);
+}
+
+function renderOverview() {
+  const platforms = [
+    { id:'youtube',   name:'YouTube',   icon:'▶', color:'#FF0000', followers:D.youtube.subscribers, growth:null,              eng:null,              metric:fmt(D.youtube.total_views)+' views tot.' },
+    { id:'instagram', name:'Instagram', icon:'📷', color:'#E1306C', followers:D.instagram.followers, growth:D.instagram.growth,  eng:D.instagram.eng_rate, metric:fmt(D.instagram.avg_reach)+' reach/post' },
+    { id:'tiktok',    name:'TikTok',    icon:'♪', color:'#161823', followers:D.tiktok.followers,    growth:D.tiktok.growth,    eng:D.tiktok.eng_rate,    metric:fmt(D.tiktok.avg_views)+' views/video' },
+    { id:'facebook',  name:'Facebook',  icon:'f',  color:'#1877F2', followers:D.facebook.followers,  growth:D.facebook.growth,  eng:D.facebook.eng_rate,  metric:fmt(D.facebook.weekly_reach)+' reach sett.' },
+    { id:'linkedin',  name:'LinkedIn',  icon:'in', color:'#0A66C2', followers:D.linkedin.followers,  growth:D.linkedin.growth,  eng:D.linkedin.eng_rate,  metric:fmt(D.linkedin.impressions)+' impressioni' },
+  ];
+
+  // Platform cards
+  document.getElementById('pf-grid').innerHTML = platforms.map(p => `
+    <div class="pf-card" style="border-top-color:${p.color}" onclick="document.querySelector('[data-tab=${p.id}]').click()">
+      <div class="pf-icon">${p.icon}</div>
+      <div class="pf-name" style="color:${p.color}">${p.name}</div>
+      <div class="pf-followers">${fmt(p.followers)}</div>
+      <div class="pf-fl-label">Follower / Iscritti</div>
+      <div class="pf-growth" style="color:${p.growth ? '#16a34a' : '#9ca3af'}">${p.growth ? '+'+fmt(p.growth) : '—'}</div>
+    </div>`).join('');
+
+  // Overview rows
+  document.getElementById('ov-rows').innerHTML = platforms.map(p => `
+    <div class="ov-row" onclick="document.querySelector('[data-tab=${p.id}]').click()">
+      <div><strong style="color:${p.color}">${p.name}</strong></div>
+      <div class="ov-cell-right">${fmt(p.followers)}<small>Follower</small></div>
+      <div class="ov-cell-right" style="color:${p.growth ? '#16a34a' : '#9ca3af'}">${p.growth ? '+'+fmt(p.growth) : '—'}<small>Sett.</small></div>
+      <div class="ov-cell-right">${p.eng ? pct(p.eng) : '—'}<small>Eng.</small></div>
+      <div class="ov-cell-right">${p.metric}<small>Metrica chiave</small></div>
+    </div>`).join('');
+
+  // Followers bar
+  makeBarChart('ov-bar', platforms.map(p=>p.name), platforms.map(p=>p.followers), '#0d1a38');
+
+  // Engagement bar (only platforms with eng data)
+  const engPf = platforms.filter(p=>p.eng);
+  makeBarChart('ov-eng', engPf.map(p=>p.name), engPf.map(p=>p.eng), '#B8962E');
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.getElementById('hd-updated').textContent = CFG.updated;
+
+renderOverview();
+renderYT();
+renderIG();
+renderTT();
+renderFB();
+renderLI();
+
+// Auto-fetch YouTube se le chiavi sono già in CFG
+if (CFG.yt_key && CFG.yt_channel) {
+  document.getElementById('yt-key').value = CFG.yt_key;
+  document.getElementById('yt-cid').value = CFG.yt_channel;
+  ytFetch();
+}
+</script>
+
+</body>
+</html>
