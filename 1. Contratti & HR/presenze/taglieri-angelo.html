@@ -44,9 +44,13 @@
     .calendar td.today .day-num{color:#B8962E;font-weight:800}
     .day-num{font-size:12px;font-weight:700;color:#0d1a38;display:block;margin-bottom:4px}
     .day-select{width:100%;border:1px solid #ccc;border-radius:4px;font-size:12px;padding:3px 2px;cursor:pointer;font-weight:600;font-family:inherit}
-    .type-P{background:#DBEAFE;color:#1D4ED8}.type-T{background:#FEF3C7;color:#B45309}
-    .type-F{background:#DCFCE7;color:#15803D}.type-PE{background:#FFEDD5;color:#C2410C}
-    .type-M{background:#FEE2E2;color:#B91C1C}.type-R{background:#F1F5F9;color:#64748B}
+    .type-P{background:#DBEAFE;color:#1D4ED8}
+    .type-T{background:#FEF3C7;color:#B45309}
+    .type-F{background:#DCFCE7;color:#15803D}
+    .type-PE{background:#FFEDD5;color:#C2410C}
+    .type-M{background:#FEE2E2;color:#B91C1C}
+    .type-MP{background:#EDE9FE;color:#6D28D9}
+    .type-R{background:#F1F5F9;color:#64748B}
     .type-FE{background:#E5E7EB;color:#6B7280}
     .legenda{display:flex;flex-wrap:wrap;gap:8px 18px;margin-bottom:24px;padding:12px 16px;background:#f8f9fb;border-radius:8px;font-size:12px}
     .legenda-item{display:flex;align-items:center;gap:6px}
@@ -56,7 +60,7 @@
     .riepilogo h3{font-size:11px;font-weight:700;color:#0d1a38;text-transform:uppercase;letter-spacing:1px}
     .btn-recalc{font-size:10px;font-weight:600;color:#1D4ED8;background:none;border:1px solid #BFDBFE;border-radius:4px;padding:3px 8px;cursor:pointer}
     .btn-recalc:hover{background:#EFF6FF}
-    .riepilogo-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+    .riepilogo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
     .riep-box{background:#f8f9fb;border-radius:7px;padding:10px 14px;text-align:center}
     .riep-box .riep-label{font-size:11px;color:#888;margin-bottom:6px}
     .riep-box.highlight{background:#0d1a38}
@@ -99,7 +103,7 @@
       .riepilogo-grid{gap:4px}
       .riep-box{padding:5px 8px}
       .riep-box .riep-label{font-size:9px}
-      .riep-input,.riep-val{font-size:15px}
+      .riep-input,.riep-val{font-size:14px}
       .riep-input{border-bottom:none!important}
     }
   </style>
@@ -149,6 +153,7 @@
     <div class="legenda-item"><div class="legenda-dot type-F"></div><span><strong>F</strong> Ferie</span></div>
     <div class="legenda-item"><div class="legenda-dot type-PE"></div><span><strong>PE</strong> Permesso</span></div>
     <div class="legenda-item"><div class="legenda-dot type-M"></div><span><strong>M</strong> Malattia</span></div>
+    <div class="legenda-item"><div class="legenda-dot type-MP"></div><span><strong>MP</strong> Maternità / Paternità</span></div>
     <div class="legenda-item"><div class="legenda-dot type-R"></div><span><strong>R</strong> Riposo</span></div>
     <div class="legenda-item"><div class="legenda-dot type-FE"></div><span><strong>FE</strong> Festivo</span></div>
   </div>
@@ -163,6 +168,7 @@
       <div class="riep-box"><div class="riep-label">Ferie</div><input class="riep-input" id="tot-F" type="number" min="0" value="0"></div>
       <div class="riep-box"><div class="riep-label">Permessi</div><input class="riep-input" id="tot-PE" type="number" min="0" value="0"></div>
       <div class="riep-box"><div class="riep-label">Malattia</div><input class="riep-input" id="tot-M" type="number" min="0" value="0"></div>
+      <div class="riep-box"><div class="riep-label">Maternità / Paternità</div><input class="riep-input" id="tot-MP" type="number" min="0" value="0"></div>
       <div class="riep-box"><div class="riep-label">Riposi</div><input class="riep-input" id="tot-R" type="number" min="0" value="0"></div>
       <div class="riep-box"><div class="riep-label">Festivi</div><input class="riep-input" id="tot-FE" type="number" min="0" value="0"></div>
       <div class="riep-box"><div class="riep-label">Totale giorni</div><div class="riep-val" id="tot-days">0</div></div>
@@ -180,9 +186,14 @@
 </div>
 <script>
 const MESI=['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
-const TIPI=[{val:'P',label:'P — Presenza'},{val:'T',label:'T — Trasferta'},{val:'F',label:'F — Ferie'},{val:'PE',label:'PE — Permesso'},{val:'M',label:'M — Malattia'},{val:'R',label:'R — Riposo'},{val:'FE',label:'FE — Festivo'}];
+const TIPI=[
+  {val:'P',label:'P — Presenza'},{val:'T',label:'T — Trasferta'},
+  {val:'F',label:'F — Ferie'},{val:'PE',label:'PE — Permesso'},
+  {val:'M',label:'M — Malattia'},{val:'MP',label:'MP — Mat./Pat.'},
+  {val:'R',label:'R — Riposo'},{val:'FE',label:'FE — Festivo'}
+];
 const FEST=['01-01','06-01','25-04','01-05','02-06','15-08','01-11','08-12','25-12','26-12'];
-const RIEP_IDS=['tot-lav','tot-T','tot-F','tot-PE','tot-M','tot-R','tot-FE'];
+const RIEP_IDS=['tot-lav','tot-T','tot-F','tot-PE','tot-M','tot-MP','tot-R','tot-FE'];
 const SK='presenze_taglieri-angelo';
 let Y=new Date().getFullYear(),M=new Date().getMonth(),data={},manuals={};
 
@@ -220,14 +231,13 @@ function render(){
   }
   const rem=(7-cc%7)%7;for(let i=0;i<rem;i++){const td=document.createElement('td');td.className='empty';tr.appendChild(td);}
   document.getElementById('tot-days').textContent=dim;
-  recalcFromCalendar(false);
-  loadManuals();
+  recalcFromCalendar(false);loadManuals();
 }
 
 function calcAuto(){
-  const dim=new Date(Y,M+1,0).getDate(),c={P:0,T:0,F:0,PE:0,M:0,R:0,FE:0};
+  const dim=new Date(Y,M+1,0).getDate(),c={P:0,T:0,F:0,PE:0,M:0,MP:0,R:0,FE:0};
   for(let d=1;d<=dim;d++){const t=data[key(Y,M,d)]||def(Y,M,d);if(c[t]!==undefined)c[t]++;}
-  return {'tot-lav':c.P+c.T,'tot-T':c.T,'tot-F':c.F,'tot-PE':c.PE,'tot-M':c.M,'tot-R':c.R,'tot-FE':c.FE};
+  return {'tot-lav':c.P+c.T,'tot-T':c.T,'tot-F':c.F,'tot-PE':c.PE,'tot-M':c.M,'tot-MP':c.MP,'tot-R':c.R,'tot-FE':c.FE};
 }
 
 function recalcFromCalendar(force){
