@@ -92,6 +92,29 @@
   .nav-logo{padding:8px 18px 8px 0;border-right:1px solid rgba(255,255,255,0.1);margin-right:20px;display:flex;align-items:center;flex:0 0 auto;}
   .nav-logo img{width:48px;height:48px;max-width:none;display:block;object-fit:contain;}
   .nav-doc-title{font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.5);}
+
+  /* ─── ACCESS CONTROL MODAL ─── */
+  .access-modal{position:fixed;inset:0;background:rgba(13,26,56,.72);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;z-index:9999;padding:24px;}
+  .access-modal.open{display:flex;}
+  .access-box{width:min(440px,100%);background:#fff;border:1px solid var(--grey);border-radius:18px;box-shadow:0 24px 80px rgba(0,0,0,.28);overflow:hidden;}
+  .access-head{background:var(--navy2);border-bottom:3px solid var(--gold);padding:22px 24px;}
+  .access-kicker{font-size:10px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:var(--gold2);margin-bottom:6px;}
+  .access-title{font-size:22px;font-weight:900;color:#fff;letter-spacing:-.5px;line-height:1.1;}
+  .access-body{padding:22px 24px 24px;}
+  .access-doc{font-size:12px;color:var(--mid);line-height:1.5;margin-bottom:16px;}
+  .access-doc strong{color:var(--navy);font-weight:800;}
+  .access-label{display:block;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--mid);margin:14px 0 6px;}
+  .access-input,.access-select{width:100%;border:1.5px solid var(--grey);border-radius:10px;padding:11px 12px;font-size:13px;font-family:inherit;outline:none;background:#fff;color:var(--dark);}
+  .access-input:focus,.access-select:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(184,150,46,.14);}
+  .access-actions{display:flex;gap:10px;margin-top:18px;}
+  .access-btn{border:none;border-radius:10px;padding:11px 16px;font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;}
+  .access-btn.primary{background:var(--navy2);color:var(--gold);}
+  .access-btn.secondary{background:#f3f4f6;color:#4b5563;}
+  .access-btn.primary:hover{background:var(--navy3);}
+  .access-error{display:none;margin-top:12px;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;line-height:1.45;}
+  .access-error.show{display:block;}
+  .doc-card[data-protected="true"] .doc-card-status::after{content:" · protetto";}
+
 </style>
 </head>
 <body>
@@ -253,6 +276,268 @@
   <div class="fl">Como TV — Workspace documenti operativi</div>
   <div class="fr">Aggiornato aprile 2026</div>
 </div>
+
+
+<div class="access-modal" id="access-modal" aria-hidden="true">
+  <div class="access-box" role="dialog" aria-modal="true" aria-labelledby="access-title">
+    <div class="access-head">
+      <div class="access-kicker">Accesso protetto</div>
+      <div class="access-title" id="access-title">Como TV Documents</div>
+    </div>
+    <div class="access-body">
+      <div class="access-doc">Stai aprendo: <strong id="access-doc-name">—</strong></div>
+
+      <label class="access-label" for="access-user">Utente</label>
+      <select class="access-select" id="access-user"></select>
+
+      <label class="access-label" for="access-password">Password</label>
+      <input class="access-input" id="access-password" type="password" autocomplete="current-password" placeholder="Inserisci password"/>
+
+      <div class="access-actions">
+        <button class="access-btn primary" id="access-submit" type="button">Accedi</button>
+        <button class="access-btn secondary" id="access-cancel" type="button">Annulla</button>
+      </div>
+      <div class="access-error" id="access-error">Password non corretta oppure utente non autorizzato per questo documento.</div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+/* ─── COMO TV DOCUMENT ACCESS CONTROL ───
+   Index pubblico. Protezione applicata al click sui documenti.
+   Nota: su GitHub Pages resta una protezione client-side.
+*/
+const COMO_ACCESS_USERS = [
+  {
+    "name": "Goffredo d'Onofrio",
+    "hash": "50088ed203bcd8bc5a5a2dfca79cc794698c4e31f396a7efa7dd3f2e9f558fb3",
+    "permissions": [
+      "ALL"
+    ]
+  },
+  {
+    "name": "Federico Caria",
+    "hash": "5e426aa20a205b7d053896276af3d8d88adff0ef7e0bd61defa0c8dc403ecc7c",
+    "permissions": [
+      "organigramma",
+      "presenze"
+    ]
+  },
+  {
+    "name": "Manolo Chirico",
+    "hash": "e6c6ad718490cba1ec4584435ebb388557620ddba6eb1efcac65543ad17fb554",
+    "permissions": [
+      "organigramma",
+      "presenze",
+      "ott-dashboard"
+    ]
+  },
+  {
+    "name": "Irene Crivellaro",
+    "hash": "20c27ccba3bd5e97938f3a9ec6816e1bdbd23a800f5f2dad370d8824cb25a2d3",
+    "permissions": [
+      "organigramma",
+      "presenze"
+    ]
+  },
+  {
+    "name": "Marco Ghironi",
+    "hash": "746aac414fb6ce6f6f313ae664113d951f21f0eb9d5cdec88bd3e73a87e711ee",
+    "permissions": [
+      "organigramma",
+      "presenze"
+    ]
+  },
+  {
+    "name": "Simone Indovino",
+    "hash": "9f4d794b937c1914bfd0e68d7347efeb039fd033cf35a3783157d89b56d5f709",
+    "permissions": [
+      "organigramma",
+      "presenze"
+    ]
+  },
+  {
+    "name": "Enzo Morreale",
+    "hash": "3b18911bcb31eea791b86afce363297e460bd596f8404e649d9837e614e9a530",
+    "permissions": [
+      "organigramma",
+      "presenze"
+    ]
+  },
+  {
+    "name": "Tommaso Murdocca",
+    "hash": "ed0a7ad8abc02eceaed90682bfb5318c7326b21c7d848a99d92633d32223016f",
+    "permissions": [
+      "organigramma",
+      "presenze",
+      "digital-strategy"
+    ]
+  },
+  {
+    "name": "Angelo Taglieri",
+    "hash": "84a849330863cc7fc40a416c02fc32492200b3add33d0ffa672ea8d6b26d8f5c",
+    "permissions": [
+      "organigramma",
+      "presenze"
+    ]
+  },
+  {
+    "name": "Roberto Ugliono",
+    "hash": "1c7c2b27e8772ea0dcec7f6362ae5b6aaf77e43f6c899503d890fa51391f25ac",
+    "permissions": [
+      "organigramma",
+      "presenze",
+      "digital-strategy"
+    ]
+  },
+  {
+    "name": "Enrico Zambruno",
+    "hash": "646b72c3f3715a051d1953230f1fb8a4f65da15d76c5b5593720d2b05d35f2f8",
+    "permissions": [
+      "organigramma",
+      "presenze",
+      "ott-dashboard"
+    ]
+  },
+  {
+    "name": "Francesco Castiglione",
+    "hash": "2b7ced710361ac30e6d02aedd662ffc425925302db137112f6a80db440feb858",
+    "permissions": [
+      "organigramma",
+      "presenze",
+      "digital-strategy"
+    ]
+  },
+  {
+    "name": "Simone Solario",
+    "hash": "05538c785a5715b8a777fe8673d499a9965dad80a37c4259dddc0adde5cda1e5",
+    "permissions": [
+      "organigramma",
+      "presenze",
+      "digital-strategy"
+    ]
+  }
+];
+
+const COMO_DOC_LABELS = {
+  "organigramma": "Organigramma Como TV",
+  "presenze": "Foglio Presenze",
+  "ott-dashboard": "Dashboard OTT",
+  "digital-strategy": "Digital Strategy 2026",
+  "media-ops": "Media Ops Budget 2026",
+  "rights-master-it": "Brief Diritti & Commerciale — Italiano",
+  "rate-card-it": "Rate Card & Formati — Italiano",
+  "rights-master-en": "Rights & Commercial Brief — English",
+  "rate-card-en": "Commercial Rate Card & Formats — English"
+};
+
+let pendingHref = null;
+let pendingDocKey = null;
+
+function comoDocKeyFromHref(href) {
+  const h = decodeURIComponent(String(href || "")).toLowerCase();
+  if (h.includes("organigramma")) return "organigramma";
+  if (h.includes("foglio-presenze")) return "presenze";
+  if (h.includes("ott analytics")) return "ott-dashboard";
+  if (h.includes("digital_strategy_2026")) return "digital-strategy";
+  if (h.includes("mediaops_budget2026")) return "media-ops";
+  if (h.includes("comotv_ryan_master_en")) return "rights-master-en";
+  if (h.includes("comotv_ratecard_en")) return "rate-card-en";
+  if (h.includes("comotv_ryan_master")) return "rights-master-it";
+  if (h.includes("comotv_ratecard_formati")) return "rate-card-it";
+  return "unknown";
+}
+
+function comoCanAccess(user, docKey) {
+  if (!user) return false;
+  if (user.permissions.includes("ALL")) return true;
+  return user.permissions.includes(docKey);
+}
+
+async function comoSha256(value) {
+  const buffer = new TextEncoder().encode(value);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function comoOpenModal(href, docKey, label) {
+  pendingHref = href;
+  pendingDocKey = docKey;
+  document.getElementById("access-doc-name").textContent = label || COMO_DOC_LABELS[docKey] || "Documento";
+  document.getElementById("access-password").value = "";
+  document.getElementById("access-error").classList.remove("show");
+  document.getElementById("access-modal").classList.add("open");
+  document.getElementById("access-modal").setAttribute("aria-hidden","false");
+  setTimeout(() => document.getElementById("access-password").focus(), 40);
+}
+
+function comoCloseModal() {
+  document.getElementById("access-modal").classList.remove("open");
+  document.getElementById("access-modal").setAttribute("aria-hidden","true");
+  pendingHref = null;
+  pendingDocKey = null;
+}
+
+function comoPopulateUsers() {
+  const select = document.getElementById("access-user");
+  select.innerHTML = COMO_ACCESS_USERS
+    .map(u => `<option value="${u.name.replace(/"/g,'&quot;')}">${u.name}</option>`)
+    .join("");
+  const lastUser = sessionStorage.getItem("como_access_user");
+  if (lastUser && COMO_ACCESS_USERS.some(u => u.name === lastUser)) select.value = lastUser;
+}
+
+function comoMarkProtectedCards() {
+  document.querySelectorAll("a.doc-card[href]").forEach(a => {
+    a.dataset.protected = "true";
+  });
+}
+
+async function comoHandleAccess() {
+  const selectedName = document.getElementById("access-user").value;
+  const password = document.getElementById("access-password").value;
+  const user = COMO_ACCESS_USERS.find(u => u.name === selectedName);
+  const typedHash = await comoSha256(password);
+  const okPassword = user && typedHash === user.hash;
+  const okPermission = comoCanAccess(user, pendingDocKey);
+
+  if (okPassword && okPermission && pendingHref) {
+    sessionStorage.setItem("como_access_user", selectedName);
+    window.location.href = pendingHref;
+    return;
+  }
+
+  document.getElementById("access-error").classList.add("show");
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  comoPopulateUsers();
+  comoMarkProtectedCards();
+
+  document.querySelectorAll("a.doc-card[href]").forEach(a => {
+    a.addEventListener("click", event => {
+      const href = a.getAttribute("href");
+      const docKey = comoDocKeyFromHref(href);
+      const titleEl = a.querySelector(".doc-card-name");
+      const label = titleEl ? titleEl.textContent.trim() : COMO_DOC_LABELS[docKey];
+
+      event.preventDefault();
+      comoOpenModal(href, docKey, label);
+    });
+  });
+
+  document.getElementById("access-submit").addEventListener("click", comoHandleAccess);
+  document.getElementById("access-cancel").addEventListener("click", comoCloseModal);
+  document.getElementById("access-password").addEventListener("keydown", e => {
+    if (e.key === "Enter") comoHandleAccess();
+    if (e.key === "Escape") comoCloseModal();
+  });
+  document.getElementById("access-modal").addEventListener("click", e => {
+    if (e.target.id === "access-modal") comoCloseModal();
+  });
+});
+</script>
 
 </body>
 </html>
