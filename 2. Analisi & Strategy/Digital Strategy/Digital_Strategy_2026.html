@@ -484,14 +484,13 @@ body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; background: #f7f8
 /* ── Platform grid 2-col layout ── */
 .platforms-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr 1fr;
   gap: 20px;
   padding: 24px;
   align-items: start;
 }
 @media(max-width:900px){ .platforms-grid { grid-template-columns:1fr; } }
 .platform-card {
-  min-width: 0;
   background: #fff;
   border-radius: 14px;
   border: 1px solid #e5e7eb;
@@ -499,21 +498,17 @@ body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; background: #f7f8
   margin-bottom: 0 !important;
 }
 .platform-card .platform-header { border-radius: 0; }
-.platform-card .kpi-grid { grid-template-columns: repeat(2,minmax(0,1fr)); padding: 0 16px; }
+.platform-card .kpi-grid { grid-template-columns: repeat(2,1fr); padding: 0 16px; }
 .platform-card .chart-row { grid-template-columns: 1fr; padding: 0 16px; }
 .platform-card .sec-label { margin-left: 16px; margin-right: 16px; }
 .platform-card .upload-box { margin: 0 16px 16px; }
 .platform-card .yt-top-grid { padding: 0 16px; }
 .platform-card .ct-table { font-size: 11px; }
 .platform-card .guide { margin: 0 16px 12px; }
-/* Last social card full-width */
+/* LinkedIn full-width */
 .platform-card-full { grid-column: 1 / -1; }
-.platform-card-full .kpi-grid { grid-template-columns: repeat(4,minmax(0,1fr)) !important; }
+.platform-card-full .kpi-grid { grid-template-columns: repeat(4,1fr) !important; }
 .platform-card-full .chart-row { grid-template-columns: 1fr 1fr !important; }
-@media(max-width:900px){
-  .platform-card-full .kpi-grid { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
-  .platform-card-full .chart-row { grid-template-columns: 1fr !important; }
-}
 
 /* ── Data source card ── */
 .data-source-card { border-radius: 10px; overflow: hidden; margin: 0 16px 16px; border: 1px solid #e5e7eb; }
@@ -621,6 +616,15 @@ body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; background: #f7f8
 #panel-social .panel.active { display: block !important; }
 #panel-social { padding: 0 !important; }
 
+
+/* ── FINAL FIX: social grid + upload visibility ── */
+#panel-social .platforms-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:20px!important;padding:24px!important;align-items:start!important;}
+#panel-social .platform-card{min-width:0!important;margin-bottom:0!important;}
+#panel-social .platform-card-full{grid-column:1 / -1!important;}
+#panel-social .upload-body.open{display:block!important;}
+#panel-social .upload-files-zone{display:block!important;}
+#panel-social input[type=file]{display:none!important;}
+@media(max-width:900px){#panel-social .platforms-grid{grid-template-columns:1fr!important;}}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
@@ -1111,6 +1115,19 @@ body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; background: #f7f8
 <div id="panel-social" class="panel">
 <!-- ═══════════════════ CONFIG ═══════════════════ -->
 <script>
+// Safe DOM getter: evita blocchi JS se un elemento opzionale non è presente nel layout.
+function byId(id){
+  return document.getElementById(id) || {
+    textContent:"", innerHTML:"", value:"", files:[], disabled:false,
+    style:{}, dataset:{}, className:"",
+    classList:{add:function(){}, remove:function(){}, toggle:function(){return false;}, contains:function(){return false;}},
+    addEventListener:function(){}, setAttribute:function(){}, getAttribute:function(){return null;},
+    querySelector:function(){return null;}, appendChild:function(){}
+  };
+}
+</script>
+
+<script>
 const CFG = {
   updated: '2026-04-25 — v16',
   version: 'v16',
@@ -1275,11 +1292,11 @@ const D = {
   </div>
 </div>
 <div class="upload-box" style="border-color:#FF000044">
-  <div class="upload-header" style="background:#FF0000" onclick="var b=document.getElementById('upload-body-yt');b.classList.toggle('open');this.querySelector('.upload-toggle').textContent=b.classList.contains('open')?'▾ Chiudi':'▸ Mostra istruzioni'">
+  <div class="upload-header" style="background:#FF0000" onclick="var b=byId('upload-body-yt');b.classList.toggle('open');this.querySelector('.upload-toggle').textContent=b.classList.contains('open')?'▾ Chiudi':'▸ Mostra istruzioni'">
     <div class="upload-platform-label">📤 Aggiorna dati — YouTube Studio</div>
-    <span class="upload-toggle">▸ Mostra istruzioni</span>
+    <span class="upload-toggle">▾ Chiudi</span>
   </div>
-  <div class="upload-body" id="upload-body-yt">
+  <div class="upload-body open" id="upload-body-yt">
         <div class="upload-steps-list">
 <div class="upload-step"><div class="upload-step-n" style="background:#FF0000">1</div><div class="upload-step-t">Apri <code>studio.youtube.com</code> → menu laterale → <strong>Analytics</strong></div></div>
 <div class="upload-step"><div class="upload-step-n" style="background:#FF0000">2</div><div class="upload-step-t">Seleziona il periodo desiderato → clicca <strong>⬇ Scarica rapporto</strong> in alto a destra → <strong>Esporta come CSV</strong> → salva come <code>yt_overview.csv</code></div></div>
@@ -1288,8 +1305,8 @@ const D = {
     </div>
     <div class="upload-files-zone">
       <div class="upload-files-title">📂 File CSV da caricare</div>
-<div class="upload-file-row"><label>Panoramica canale</label><label class="upload-file-btn" style="background:#FF0000">📂 Scegli file<input type="file" id="up-yt-overview" accept=".csv" style="display:none" onchange="document.getElementById('up-yt-overview-name').textContent=this.files[0]?this.files[0].name:''"></label><span class="upload-fname" id="up-yt-overview-name"></span></div>
-<div class="upload-file-row"><label>Contenuto (per video)</label><label class="upload-file-btn" style="background:#FF0000">📂 Scegli file<input type="file" id="up-yt-content" accept=".csv" style="display:none" onchange="document.getElementById('up-yt-content-name').textContent=this.files[0]?this.files[0].name:''"></label><span class="upload-fname" id="up-yt-content-name"></span></div>
+<div class="upload-file-row"><label>Panoramica canale</label><label class="upload-file-btn" style="background:#FF0000">📂 Scegli file<input type="file" id="up-yt-overview" accept=".csv" style="display:none" onchange="byId('up-yt-overview-name').textContent=this.files[0]?this.files[0].name:''"></label><span class="upload-fname" id="up-yt-overview-name"></span></div>
+<div class="upload-file-row"><label>Contenuto (per video)</label><label class="upload-file-btn" style="background:#FF0000">📂 Scegli file<input type="file" id="up-yt-content" accept=".csv" style="display:none" onchange="byId('up-yt-content-name').textContent=this.files[0]?this.files[0].name:''"></label><span class="upload-fname" id="up-yt-content-name"></span></div>
     </div>
     <button class="upload-go-btn" style="background:#FF0000" onclick="uploadYouTube()">⬆ Carica e aggiorna dashboard</button>
     <div class="upload-status" id="upload-status-yt"></div>
@@ -1372,11 +1389,11 @@ const D = {
   </div>
 </div>
 <div class="upload-box" style="border-color:#E1306C44">
-  <div class="upload-header" style="background:#E1306C" onclick="var b=document.getElementById('upload-body-ig');b.classList.toggle('open');this.querySelector('.upload-toggle').textContent=b.classList.contains('open')?'▾ Chiudi':'▸ Mostra istruzioni'">
+  <div class="upload-header" style="background:#E1306C" onclick="var b=byId('upload-body-ig');b.classList.toggle('open');this.querySelector('.upload-toggle').textContent=b.classList.contains('open')?'▾ Chiudi':'▸ Mostra istruzioni'">
     <div class="upload-platform-label">📤 Aggiorna dati — Meta Business Suite (Instagram)</div>
-    <span class="upload-toggle">▸ Mostra istruzioni</span>
+    <span class="upload-toggle">▾ Chiudi</span>
   </div>
-  <div class="upload-body" id="upload-body-ig">
+  <div class="upload-body open" id="upload-body-ig">
         <div class="upload-steps-list">
 <div class="upload-step"><div class="upload-step-n" style="background:#E1306C">1</div><div class="upload-step-t">Apri <code>business.facebook.com</code> → seleziona <strong>Como TV (Instagram)</strong></div></div>
 <div class="upload-step"><div class="upload-step-n" style="background:#E1306C">2</div><div class="upload-step-t">Menu laterale → <strong>Insights</strong> → <strong>Contenuto</strong></div></div>
@@ -1387,8 +1404,8 @@ const D = {
     </div>
     <div class="upload-files-zone">
       <div class="upload-files-title">📂 File CSV da caricare</div>
-<div class="upload-file-row"><label>Feed (post e reels)</label><label class="upload-file-btn" style="background:#E1306C">📂 Scegli file<input type="file" id="up-ig-feed" accept=".csv" style="display:none" onchange="document.getElementById('up-ig-feed-name').textContent=this.files[0]?this.files[0].name:''"></label><span class="upload-fname" id="up-ig-feed-name"></span></div>
-<div class="upload-file-row"><label>Stories</label><label class="upload-file-btn" style="background:#E1306C">📂 Scegli file<input type="file" id="up-ig-stories" accept=".csv" style="display:none" onchange="document.getElementById('up-ig-stories-name').textContent=this.files[0]?this.files[0].name:''"></label><span class="upload-fname" id="up-ig-stories-name"></span></div>
+<div class="upload-file-row"><label>Feed (post e reels)</label><label class="upload-file-btn" style="background:#E1306C">📂 Scegli file<input type="file" id="up-ig-feed" accept=".csv" style="display:none" onchange="byId('up-ig-feed-name').textContent=this.files[0]?this.files[0].name:''"></label><span class="upload-fname" id="up-ig-feed-name"></span></div>
+<div class="upload-file-row"><label>Stories</label><label class="upload-file-btn" style="background:#E1306C">📂 Scegli file<input type="file" id="up-ig-stories" accept=".csv" style="display:none" onchange="byId('up-ig-stories-name').textContent=this.files[0]?this.files[0].name:''"></label><span class="upload-fname" id="up-ig-stories-name"></span></div>
     </div>
     <button class="upload-go-btn" style="background:#E1306C" onclick="uploadInstagram()">⬆ Carica e aggiorna dashboard</button>
     <div class="upload-status" id="upload-status-ig"></div>
@@ -1475,11 +1492,11 @@ const D = {
   </div>
 </div>
 <div class="upload-box" style="border-color:#25F4EE44">
-  <div class="upload-header" style="background:#161823" onclick="var b=document.getElementById('upload-body-tt');b.classList.toggle('open');this.querySelector('.upload-toggle').textContent=b.classList.contains('open')?'▾ Chiudi':'▸ Mostra istruzioni'">
+  <div class="upload-header" style="background:#161823" onclick="var b=byId('upload-body-tt');b.classList.toggle('open');this.querySelector('.upload-toggle').textContent=b.classList.contains('open')?'▾ Chiudi':'▸ Mostra istruzioni'">
     <div class="upload-platform-label">📤 Aggiorna dati — TikTok Studio</div>
-    <span class="upload-toggle">▸ Mostra istruzioni</span>
+    <span class="upload-toggle">▾ Chiudi</span>
   </div>
-  <div class="upload-body" id="upload-body-tt">
+  <div class="upload-body open" id="upload-body-tt">
         <div class="upload-steps-list">
 <div class="upload-step"><div class="upload-step-n" style="background:#25F4EE">1</div><div class="upload-step-t">Apri <code>tiktok.com/tiktokstudio</code> oppure l'app TikTok Studio</div></div>
 <div class="upload-step"><div class="upload-step-n" style="background:#25F4EE">2</div><div class="upload-step-t">Menu → <strong>Analytics</strong> → seleziona il periodo desiderato</div></div>
@@ -1488,7 +1505,7 @@ const D = {
     </div>
     <div class="upload-files-zone">
       <div class="upload-files-title">📂 File CSV da caricare</div>
-<div class="upload-file-row"><label>Analytics TikTok</label><label class="upload-file-btn" style="background:#25F4EE">📂 Scegli file<input type="file" id="up-tt-csv" accept=".csv" style="display:none" onchange="document.getElementById('up-tt-csv-name').textContent=this.files[0]?this.files[0].name:''"></label><span class="upload-fname" id="up-tt-csv-name"></span></div>
+<div class="upload-file-row"><label>Analytics TikTok</label><label class="upload-file-btn" style="background:#25F4EE">📂 Scegli file<input type="file" id="up-tt-csv" accept=".csv" style="display:none" onchange="byId('up-tt-csv-name').textContent=this.files[0]?this.files[0].name:''"></label><span class="upload-fname" id="up-tt-csv-name"></span></div>
     </div>
     <button class="upload-go-btn" style="background:#25F4EE" onclick="uploadTikTok()">⬆ Carica e aggiorna dashboard</button>
     <div class="upload-status" id="upload-status-tt"></div>
@@ -1546,11 +1563,11 @@ const D = {
   </div>
 </div>
 <div class="upload-box" style="border-color:#1877F244">
-  <div class="upload-header" style="background:#1877F2" onclick="var b=document.getElementById('upload-body-fb');b.classList.toggle('open');this.querySelector('.upload-toggle').textContent=b.classList.contains('open')?'▾ Chiudi':'▸ Mostra istruzioni'">
+  <div class="upload-header" style="background:#1877F2" onclick="var b=byId('upload-body-fb');b.classList.toggle('open');this.querySelector('.upload-toggle').textContent=b.classList.contains('open')?'▾ Chiudi':'▸ Mostra istruzioni'">
     <div class="upload-platform-label">📤 Aggiorna dati — Meta Business Suite (Facebook)</div>
-    <span class="upload-toggle">▸ Mostra istruzioni</span>
+    <span class="upload-toggle">▾ Chiudi</span>
   </div>
-  <div class="upload-body" id="upload-body-fb">
+  <div class="upload-body open" id="upload-body-fb">
         <div class="upload-steps-list">
 <div class="upload-step"><div class="upload-step-n" style="background:#1877F2">1</div><div class="upload-step-t">Apri <code>business.facebook.com</code> → seleziona <strong>Como TV (Facebook)</strong></div></div>
 <div class="upload-step"><div class="upload-step-n" style="background:#1877F2">2</div><div class="upload-step-t">Menu laterale → <strong>Insights</strong> → <strong>Contenuto</strong></div></div>
@@ -1560,7 +1577,7 @@ const D = {
     </div>
     <div class="upload-files-zone">
       <div class="upload-files-title">📂 File CSV da caricare</div>
-<div class="upload-file-row"><label>Post della pagina</label><label class="upload-file-btn" style="background:#1877F2">📂 Scegli file<input type="file" id="up-fb-posts" accept=".csv" style="display:none" onchange="document.getElementById('up-fb-posts-name').textContent=this.files[0]?this.files[0].name:''"></label><span class="upload-fname" id="up-fb-posts-name"></span></div>
+<div class="upload-file-row"><label>Post della pagina</label><label class="upload-file-btn" style="background:#1877F2">📂 Scegli file<input type="file" id="up-fb-posts" accept=".csv" style="display:none" onchange="byId('up-fb-posts-name').textContent=this.files[0]?this.files[0].name:''"></label><span class="upload-fname" id="up-fb-posts-name"></span></div>
     </div>
     <button class="upload-go-btn" style="background:#1877F2" onclick="uploadFacebook()">⬆ Carica e aggiorna dashboard</button>
     <div class="upload-status" id="upload-status-fb"></div>
@@ -1618,11 +1635,11 @@ const D = {
   </div>
 </div>
 <div class="upload-box" style="border-color:#0A66C244">
-  <div class="upload-header" style="background:#0A66C2" onclick="var b=document.getElementById('upload-body-li');b.classList.toggle('open');this.querySelector('.upload-toggle').textContent=b.classList.contains('open')?'▾ Chiudi':'▸ Mostra istruzioni'">
+  <div class="upload-header" style="background:#0A66C2" onclick="var b=byId('upload-body-li');b.classList.toggle('open');this.querySelector('.upload-toggle').textContent=b.classList.contains('open')?'▾ Chiudi':'▸ Mostra istruzioni'">
     <div class="upload-platform-label">📤 Aggiorna dati — LinkedIn Pages</div>
-    <span class="upload-toggle">▸ Mostra istruzioni</span>
+    <span class="upload-toggle">▾ Chiudi</span>
   </div>
-  <div class="upload-body" id="upload-body-li">
+  <div class="upload-body open" id="upload-body-li">
         <div class="upload-steps-list">
 <div class="upload-step"><div class="upload-step-n" style="background:#0A66C2">1</div><div class="upload-step-t">Apri <code>linkedin.com/company/como-tv/admin</code></div></div>
 <div class="upload-step"><div class="upload-step-n" style="background:#0A66C2">2</div><div class="upload-step-t">Menu in alto → <strong>Analytics</strong> → <strong>Aggiornamenti</strong> (o <strong>Follower</strong>)</div></div>
@@ -1631,7 +1648,7 @@ const D = {
     </div>
     <div class="upload-files-zone">
       <div class="upload-files-title">📂 File CSV da caricare</div>
-<div class="upload-file-row"><label>Analytics LinkedIn</label><label class="upload-file-btn" style="background:#0A66C2">📂 Scegli file<input type="file" id="up-li-csv" accept=".csv" style="display:none" onchange="document.getElementById('up-li-csv-name').textContent=this.files[0]?this.files[0].name:''"></label><span class="upload-fname" id="up-li-csv-name"></span></div>
+<div class="upload-file-row"><label>Analytics LinkedIn</label><label class="upload-file-btn" style="background:#0A66C2">📂 Scegli file<input type="file" id="up-li-csv" accept=".csv" style="display:none" onchange="byId('up-li-csv-name').textContent=this.files[0]?this.files[0].name:''"></label><span class="upload-fname" id="up-li-csv-name"></span></div>
     </div>
     <button class="upload-go-btn" style="background:#0A66C2" onclick="uploadLinkedIn()">⬆ Carica e aggiorna dashboard</button>
     <div class="upload-status" id="upload-status-li"></div>
@@ -1652,7 +1669,6 @@ const D = {
   <div class="sec-label">Top contenuti del periodo</div>
   <div class="sec-label" id="fb-top-label">Top contenuti — complessivo</div>
   <div class="ct-table" id="li-top-table"></div>
-</div>
 </div>
 <!-- /content -->
 
@@ -1711,18 +1727,24 @@ function topHTML(rows) {
 // ── Charts ────────────────────────────────────────────
 const CI = {};
 function lineC(id,labels,datasets,color){
-  const ctx=document.getElementById(id); if(!ctx)return;
+  const ctx=byId(id); if(!ctx)return;
   if(CI[id])CI[id].destroy();
   CI[id]=new Chart(ctx,{type:'line',data:{labels,datasets:datasets.map((ds,i)=>({label:ds.label,data:ds.data,borderColor:i===0?color:'#B8962E',backgroundColor:(i===0?color:'#B8962E')+'15',borderWidth:2.5,pointRadius:4,tension:.35,pointBackgroundColor:i===0?color:'#B8962E',fill:datasets.length===1}))},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:datasets.length>1,labels:{font:{size:10},boxWidth:10}}},scales:{x:{grid:{display:false},ticks:{font:{size:10}}},y:{grid:{color:'#f3f4f6'},ticks:{font:{size:10},callback:v=>fmt(v)}}}}});
 }
+function shortT(value, maxLen=34){
+  const txt = String(value || "").replace(/\s+/g, " ").trim();
+  if (!txt) return "—";
+  return txt.length > maxLen ? txt.slice(0, maxLen - 1) + "…" : txt;
+}
+
 function barC(id,labels,data,color){
-  const ctx=document.getElementById(id); if(!ctx)return;
+  const ctx=byId(id); if(!ctx)return;
   if(CI[id])CI[id].destroy();
   CI[id]=new Chart(ctx,{type:'bar',data:{labels,datasets:[{data,backgroundColor:color+'cc',borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:10}}},y:{grid:{color:'#f3f4f6'},ticks:{font:{size:10},callback:v=>fmt(v)}}}}});
 }
 
 // ── Navigazione pagina ─────────────────────────────────
-function scrollToPanel(id){ const el=document.getElementById(id); if(el) el.scrollIntoView({behavior:"smooth",block:"start"}); }
+function scrollToPanel(id){ const el=byId(id); if(el) el.scrollIntoView({behavior:"smooth",block:"start"}); }
 
 
 // ── Period ────────────────────────────────────────────
@@ -1752,22 +1774,22 @@ function renderHero(){
   const totalGrowth=comparable.reduce((a,p)=>a+(p.growth||0),0);
   const topP=comparable.filter(p=>p.followers).sort((a,b)=>(b.growth/b.followers)-(a.growth/a.followers))[0];
 
-  document.getElementById('h-total').textContent=fmt(total);
-  document.getElementById('h-total-sub').textContent='somma audience solo dei canali con dato verificato';
-  document.getElementById('h-growth').textContent=PERIOD==='all'?'—':(totalGrowth?('+'+fmt(totalGrowth)):'—');
-  document.getElementById('h-growth-label').textContent=PERIOD==='week'?'Crescita ultimi 7 giorni':PERIOD==='month'?'Crescita ultimi 28 giorni':'Crescita aggregata';
-  document.getElementById('h-growth-sub').textContent=PERIOD==='all'?'usa il selettore periodo':(comparable.length?('somma canali con dato periodo: '+comparable.length):'dato non disponibile');
-  document.getElementById('h-eng').textContent=verified+'/5';
-  document.getElementById('h-eng-label').textContent='Canali con dato verificato';
-  document.getElementById('h-eng-sub').textContent='copertura dataset disponibile';
-  document.getElementById('h-top').textContent=topP?topP.name:'—';
-  document.getElementById('h-top-sub').textContent=topP && PERIOD!=='all' ? ('+'+(topP.growth/topP.followers*100).toFixed(1)+'% crescita relativa') : 'lettura migliore nel periodo';
+  byId('h-total').textContent=fmt(total);
+  byId('h-total-sub').textContent='somma audience solo dei canali con dato verificato';
+  byId('h-growth').textContent=PERIOD==='all'?'—':(totalGrowth?('+'+fmt(totalGrowth)):'—');
+  byId('h-growth-label').textContent=PERIOD==='week'?'Crescita ultimi 7 giorni':PERIOD==='month'?'Crescita ultimi 28 giorni':'Crescita aggregata';
+  byId('h-growth-sub').textContent=PERIOD==='all'?'usa il selettore periodo':(comparable.length?('somma canali con dato periodo: '+comparable.length):'dato non disponibile');
+  byId('h-eng').textContent=verified+'/5';
+  byId('h-eng-label').textContent='Canali con dato verificato';
+  byId('h-eng-sub').textContent='copertura dataset disponibile';
+  byId('h-top').textContent=topP?topP.name:'—';
+  byId('h-top-sub').textContent=topP && PERIOD!=='all' ? ('+'+(topP.growth/topP.followers*100).toFixed(1)+'% crescita relativa') : 'lettura migliore nel periodo';
 }
 
 // ── Overview ──────────────────────────────────────────
 function renderOverview(){
   // ── KPI strip ──
-  const kpiEl=document.getElementById('ov-kpi');
+  const kpiEl=byId('ov-kpi');
   if(kpiEl){
     const kpiData=[
       {id:'youtube',  name:'YouTube',   c:'#FF0000', num:D.youtube.subscribers,    label:'Iscritti',  metric:fmt(D.youtube.pubblico_mensile)+' pubblico/mese', growth:D.youtube[gk()]},
@@ -1796,7 +1818,7 @@ function renderOverview(){
     {id:'facebook',name:'Facebook',icon:'f',color:'#1877F2',audience:D.facebook.followers,growth:D.facebook[gk()],metric:fmt(PERIOD==='week'?D.facebook.content_week.reach:D.facebook.content_28d.reach)+' reach',note:'video distribution channel'},
     {id:'linkedin',name:'LinkedIn',icon:'in',color:'#0A66C2',audience:D.linkedin.followers,growth:D.linkedin[gk()],metric:fmt(D.linkedin.impressions)+' impressioni',note:'lettura corporate/editoriale'},
   ];
-  document.getElementById('pf-grid').innerHTML=platforms.map(p=>`
+  byId('pf-grid').innerHTML=platforms.map(p=>`
     <div class="pf-card" style="border-top-color:${p.color}" href="#panel-${p.id}">
       <div class="pf-icon">${p.icon}</div>
       <div class="pf-name" style="color:${p.color}">${p.name}</div>
@@ -1804,8 +1826,8 @@ function renderOverview(){
       <div class="pf-fl-label">Audience / iscritti</div>
       <div class="pf-growth" style="color:${typeof p.growth==='number'?'#16a34a':'#9ca3af'}">${typeof p.growth==='number' ? ((p.growth>0?'+':'')+fmt(p.growth)+' '+pWord()) : p.metric}</div>
     </div>`).join('');
-  document.getElementById('ov-gcol').textContent=PERIOD==='week'?'Crescita 7g':PERIOD==='month'?'Crescita 28g':'Crescita';
-  document.getElementById('ov-rows').innerHTML=platforms.map(p=>`
+  byId('ov-gcol').textContent=PERIOD==='week'?'Crescita 7g':PERIOD==='month'?'Crescita 28g':'Crescita';
+  byId('ov-rows').innerHTML=platforms.map(p=>`
     <div class="ov-row" href="#panel-${p.id}">
       <div><strong style="color:${p.color}">${p.name}</strong></div>
       <div class="ov-cell-right">${fmt(p.audience)}<small>Audience</small></div>
@@ -1818,24 +1840,24 @@ function renderOverview(){
 // ── Piattaforme singole ───────────────────────────────
 function renderYT(){
   const d=D.youtube;
-  const ytDate=document.getElementById('yt-date'); if(ytDate)ytDate.textContent=d.updated||CFG.updated;
-  document.getElementById('yt-subs').textContent=fmt(d.subscribers);
-  const ytGrowthEl=document.getElementById('yt-growth'); if(ytGrowthEl)ytGrowthEl.textContent=delta(d[gk()],pLbl());
-  document.getElementById('yt-views').textContent=fmt(d.total_views);
-  document.getElementById('yt-count').textContent=fmt(d.pubblico_mensile);
-  document.getElementById('yt-avg').textContent=fmt(d.avg_views);
+  const ytDate=byId('yt-date'); if(ytDate)ytDate.textContent=d.updated||CFG.updated;
+  byId('yt-subs').textContent=fmt(d.subscribers);
+  const ytGrowthEl=byId('yt-growth'); if(ytGrowthEl)ytGrowthEl.textContent=delta(d[gk()],pLbl());
+  byId('yt-views').textContent=fmt(d.total_views);
+  byId('yt-count').textContent=fmt(d.pubblico_mensile);
+  byId('yt-avg').textContent=fmt(d.avg_views);
   const trend=d[tk()]||[];
-  document.getElementById('yt-trend-title').textContent=`Iscritti — andamento ${pWord()}`;
+  byId('yt-trend-title').textContent=`Iscritti — andamento ${pWord()}`;
   if(trend.length)lineC('yt-trend',trend.map(t=>t.l),[{label:'Iscritti',data:trend.map(t=>t.subs)}],'#FF0000');
   const topArr=getTopRows(d);
-  document.getElementById('yt-top-label').textContent=`Top video — ${PERIOD==='week'?'visti negli ultimi 7 giorni':PERIOD==='month'?'visti negli ultimi 28 giorni':'complessivo'}`;
-  document.getElementById('yt-top-table').innerHTML=topHTML(topArr);
+  byId('yt-top-label').textContent=`Top video — ${PERIOD==='week'?'visti negli ultimi 7 giorni':PERIOD==='month'?'visti negli ultimi 28 giorni':'complessivo'}`;
+  byId('yt-top-table').innerHTML=topHTML(topArr);
   barC('yt-topbar', topArr.map(r=>shortT(r.title)), [{label:'Views',data:topArr.map(r=>r.v1!==undefined?r.v1:r.views)}], '#FF0000');
 
-  const wrap=document.getElementById('yt-top-wrap');
-  const pubBox=document.getElementById('yt-published-box');
-  const pubNote=document.getElementById('yt-published-note');
-  const pubTable=document.getElementById('yt-published-table');
+  const wrap=byId('yt-top-wrap');
+  const pubBox=byId('yt-published-box');
+  const pubNote=byId('yt-published-note');
+  const pubTable=byId('yt-published-table');
   if(PERIOD==='week'){
     wrap?.classList.add('dual');
     if(pubBox) pubBox.style.display='';
@@ -1855,89 +1877,89 @@ function renderIG(){
   const reels = contentMode==='week' ? d.reels_week : d.reels_28d;
   const cars = contentMode==='week' ? d.carousels_week : d.carousels_28d;
   const stTop = contentMode==='week' ? d.stories_top_week : d.stories_top_28d;
-  document.getElementById('ig-date').textContent=d.updated||CFG.updated;
-  document.getElementById('ig-followers').textContent=fmt(d.followers);
-  document.getElementById('ig-growth').textContent=d[gk()]===null||d[gk()]===undefined?'n.d.':delta(d[gk()],pLbl());
-  document.getElementById('ig-audience-core').textContent=d.audience_core||'—';
-  document.getElementById('ig-country').textContent=d.audience_country||'—';
-  document.getElementById('ig-cities').textContent=d.audience_cities||'—';
-  document.getElementById('ig-feed-items').textContent=fmt(feed.items);
-  document.getElementById('ig-feed-items-label').textContent=contentMode==='week' ? 'Contenuti feed pubblicati 7g' : 'Contenuti feed 28g';
-  document.getElementById('ig-feed-views').textContent=fmt(feed.views);
-  document.getElementById('ig-feed-reach').textContent=fmt(feed.reach);
-  document.getElementById('ig-feed-interactions').textContent=fmt(feed.interactions);
-  document.getElementById('ig-story-items').textContent=fmt(stories.items);
-  document.getElementById('ig-story-reach').textContent=fmt(stories.reach);
-  document.getElementById('ig-story-profile').textContent=fmt(stories.profile_visits);
-  document.getElementById('ig-story-link').textContent=fmt(stories.link_clicks);
+  byId('ig-date').textContent=d.updated||CFG.updated;
+  byId('ig-followers').textContent=fmt(d.followers);
+  byId('ig-growth').textContent=d[gk()]===null||d[gk()]===undefined?'n.d.':delta(d[gk()],pLbl());
+  byId('ig-audience-core').textContent=d.audience_core||'—';
+  byId('ig-country').textContent=d.audience_country||'—';
+  byId('ig-cities').textContent=d.audience_cities||'—';
+  byId('ig-feed-items').textContent=fmt(feed.items);
+  byId('ig-feed-items-label').textContent=contentMode==='week' ? 'Contenuti feed pubblicati 7g' : 'Contenuti feed 28g';
+  byId('ig-feed-views').textContent=fmt(feed.views);
+  byId('ig-feed-reach').textContent=fmt(feed.reach);
+  byId('ig-feed-interactions').textContent=fmt(feed.interactions);
+  byId('ig-story-items').textContent=fmt(stories.items);
+  byId('ig-story-reach').textContent=fmt(stories.reach);
+  byId('ig-story-profile').textContent=fmt(stories.profile_visits);
+  byId('ig-story-link').textContent=fmt(stories.link_clicks);
   const t=d[tk()]||[];
-  document.getElementById('ig-fl-title').textContent=`Contenuti pubblicati — ${contentMode==='week'?'giorno':'settimana'}`;
-  document.getElementById('ig-eng-title').textContent=`Engagement rate feed — ${contentMode==='week'?'giorno':'settimana'}`;
+  byId('ig-fl-title').textContent=`Contenuti pubblicati — ${contentMode==='week'?'giorno':'settimana'}`;
+  byId('ig-eng-title').textContent=`Engagement rate feed — ${contentMode==='week'?'giorno':'settimana'}`;
   lineC('ig-fl-chart',t.map(x=>x.l),[{label:'Contenuti',data:t.map(x=>x.items)}],'#E1306C');
   lineC('ig-eng-chart',t.map(x=>x.l),[{label:'Eng%',data:t.map(x=>x.eng)}],'#F56040');
   const rangeLabel = contentMode==='week' ? 'ultimi 7 giorni' : 'ultimi 28 giorni';
-  document.getElementById('ig-reels-label').textContent=`Top Reel — ${rangeLabel}`;
-  document.getElementById('ig-car-label').textContent=`Top Post / Caroselli — ${rangeLabel}`;
-  document.getElementById('ig-story-label').textContent=`Stories — migliori per copertura · ${rangeLabel}`;
-  document.getElementById('ig-reels-table').innerHTML=topHTML(reels);
-  document.getElementById('ig-car-table').innerHTML=topHTML(cars);
-  document.getElementById('ig-story-table').innerHTML=topHTML(stTop);
-  document.getElementById('ig-reading-note').innerHTML = contentMode==='week'
+  byId('ig-reels-label').textContent=`Top Reel — ${rangeLabel}`;
+  byId('ig-car-label').textContent=`Top Post / Caroselli — ${rangeLabel}`;
+  byId('ig-story-label').textContent=`Stories — migliori per copertura · ${rangeLabel}`;
+  byId('ig-reels-table').innerHTML=topHTML(reels);
+  byId('ig-car-table').innerHTML=topHTML(cars);
+  byId('ig-story-table').innerHTML=topHTML(stTop);
+  byId('ig-reading-note').innerHTML = contentMode==='week'
     ? `Negli ultimi 7 giorni Instagram ha pubblicato <strong>${fmt(feed.items)} contenuti feed</strong> e <strong>${fmt(stories.items)} stories</strong>. Il totale follower account non è stato aggiornato perché non compare nei CSV contenuti: serve l’export dedicato <strong>Pubblico → Crescita follower</strong>.`
     : `Sui 28 giorni Instagram ha generato <strong>${fmt(feed.views)} views feed</strong>, <strong>${fmt(feed.reach)} di reach</strong> e <strong>${fmt(stories.reach)} di reach stories</strong>. Il dato follower account resta <strong>n.d.</strong> finché non viene caricato l’export dedicato Meta.`;
 }
 
 function renderTT(){
   const d=D.tiktok;
-  document.getElementById('tt-date').textContent=d.updated||CFG.updated;
-  document.getElementById('tt-followers').textContent=fmt(d.followers);
-  document.getElementById('tt-growth').textContent=delta(d[gk()],pLbl());
-  document.getElementById('tt-likes').textContent=fmt(d.total_likes);
-  document.getElementById('tt-views').textContent=fmt(d.avg_views);
-  document.getElementById('tt-eng').textContent=pct(d.eng_rate);
+  byId('tt-date').textContent=d.updated||CFG.updated;
+  byId('tt-followers').textContent=fmt(d.followers);
+  byId('tt-growth').textContent=delta(d[gk()],pLbl());
+  byId('tt-likes').textContent=fmt(d.total_likes);
+  byId('tt-views').textContent=fmt(d.avg_views);
+  byId('tt-eng').textContent=pct(d.eng_rate);
   const t=d[tk()]||[];
-  document.getElementById('tt-fl-title').textContent=`Crescita follower — ${pWord()}`;
-  document.getElementById('tt-eng-title').textContent=`Engagement rate % — ${pWord()}`;
+  byId('tt-fl-title').textContent=`Crescita follower — ${pWord()}`;
+  byId('tt-eng-title').textContent=`Engagement rate % — ${pWord()}`;
   lineC('tt-fl-chart',t.map(x=>x.l),[{label:'Follower',data:t.map(x=>x.followers)}],'#161823');
   lineC('tt-eng-chart',t.map(x=>x.l),[{label:'Eng%',data:t.map(x=>x.eng)}],'#EE1D52');
   const topArrTT=getTopRows(d);
-  document.getElementById('tt-top-label').textContent=`Top contenuti — ${pRange()} · video pubblicati e visti`;
-  document.getElementById('tt-top-table').innerHTML=topHTML(topArrTT);
+  byId('tt-top-label').textContent=`Top contenuti — ${pRange()} · video pubblicati e visti`;
+  byId('tt-top-table').innerHTML=topHTML(topArrTT);
 }
 
 function renderFB(){
   const d=D.facebook;
-  document.getElementById('fb-date').textContent=d.updated||CFG.updated;
-  document.getElementById('fb-followers').textContent=fmt(d.followers);
-  document.getElementById('fb-growth').textContent=d[gk()]===null||d[gk()]===undefined?'n.d.':delta(d[gk()],pLbl());
-  document.getElementById('fb-reach').textContent=fmt(PERIOD==='week'?d.content_week.reach:(d.content_28d.reach));
-  document.getElementById('fb-reach-label').textContent=PERIOD==='week'?'Reach video pubblicati 7g':'Reach video 28g';
-  document.getElementById('fb-eng').textContent=pct(PERIOD==='week'?(d.content_week.interactions/d.content_week.reach*100):d.eng_rate);
+  byId('fb-date').textContent=d.updated||CFG.updated;
+  byId('fb-followers').textContent=fmt(d.followers);
+  byId('fb-growth').textContent=d[gk()]===null||d[gk()]===undefined?'n.d.':delta(d[gk()],pLbl());
+  byId('fb-reach').textContent=fmt(PERIOD==='week'?d.content_week.reach:(d.content_28d.reach));
+  byId('fb-reach-label').textContent=PERIOD==='week'?'Reach video pubblicati 7g':'Reach video 28g';
+  byId('fb-eng').textContent=pct(PERIOD==='week'?(d.content_week.interactions/d.content_week.reach*100):d.eng_rate);
   const t=d[tk()]||[];
-  document.getElementById('fb-fl-title').textContent=`Video pubblicati — ${PERIOD==='week'?'giorno':'settimana'}`;
-  document.getElementById('fb-eng-title').textContent=`Engagement rate video — ${PERIOD==='week'?'giorno':'settimana'}`;
+  byId('fb-fl-title').textContent=`Video pubblicati — ${PERIOD==='week'?'giorno':'settimana'}`;
+  byId('fb-eng-title').textContent=`Engagement rate video — ${PERIOD==='week'?'giorno':'settimana'}`;
   lineC('fb-fl-chart',t.map(x=>x.l),[{label:'Video',data:t.map(x=>x.items)}],'#1877F2');
   lineC('fb-eng-chart',t.map(x=>x.l),[{label:'Eng%',data:t.map(x=>x.eng)}],'#1877F2');
   const topArrFB=getTopRows(d);
-  document.getElementById('fb-top-label').textContent=`Top contenuti — ${pRange()} · Facebook video`;
-  document.getElementById('fb-top-table').innerHTML=topHTML(topArrFB);
+  byId('fb-top-label').textContent=`Top contenuti — ${pRange()} · Facebook video`;
+  byId('fb-top-table').innerHTML=topHTML(topArrFB);
 }
 
 function renderLI(){
   const d=D.linkedin;
-  document.getElementById('li-date').textContent=d.updated||CFG.updated;
-  document.getElementById('li-followers').textContent=fmt(d.followers);
-  document.getElementById('li-growth').textContent=delta(d[gk()],pLbl());
-  document.getElementById('li-impressions').textContent=fmt(d.impressions);
-  document.getElementById('li-eng').textContent=pct(d.eng_rate);
+  byId('li-date').textContent=d.updated||CFG.updated;
+  byId('li-followers').textContent=fmt(d.followers);
+  byId('li-growth').textContent=delta(d[gk()],pLbl());
+  byId('li-impressions').textContent=fmt(d.impressions);
+  byId('li-eng').textContent=pct(d.eng_rate);
   const t=d[tk()]||[];
-  document.getElementById('li-fl-title').textContent=`Crescita follower — ${pWord()}`;
-  document.getElementById('li-eng-title').textContent=`Engagement rate % — ${pWord()}`;
+  byId('li-fl-title').textContent=`Crescita follower — ${pWord()}`;
+  byId('li-eng-title').textContent=`Engagement rate % — ${pWord()}`;
   lineC('li-fl-chart',t.map(x=>x.l),[{label:'Follower',data:t.map(x=>x.followers)}],'#0A66C2');
   lineC('li-eng-chart',t.map(x=>x.l),[{label:'Eng%',data:t.map(x=>x.eng)}],'#0A66C2');
   const topArrLI=getTopRows(d);
-  document.getElementById('li-top-label').textContent=`Top contenuti — ${pRange()} · corporate/editoriale`;
-  document.getElementById('li-top-table').innerHTML=topHTML(topArrLI);
+  byId('li-top-label').textContent=`Top contenuti — ${pRange()} · corporate/editoriale`;
+  byId('li-top-table').innerHTML=topHTML(topArrLI);
 }
 
 
@@ -1975,7 +1997,7 @@ function saveManualData(platform){
   const allFields=[...fields,...(extra[platform]||[])];
   const data={confirmed:true, updated:new Date().toISOString().slice(0,10)};
   allFields.forEach(f=>{
-    const el=document.getElementById('edit-'+f);
+    const el=byId('edit-'+f);
     if(el&&el.value!=='') data[f]=parseFloat(el.value)||0;
   });
   Object.assign(D[platform],data);
@@ -2033,14 +2055,14 @@ function openEditModal(platform){
         style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;box-sizing:border-box;outline:none"
         onfocus="this.style.borderColor='${meta.color}'" onblur="this.style.borderColor='#d1d5db'">
     </div>`).join('');
-  document.getElementById('edit-modal-title').textContent='Aggiorna '+meta.label;
-  document.getElementById('edit-modal-title').style.color=meta.color;
-  document.getElementById('edit-modal-fields').innerHTML=fieldsHTML;
-  document.getElementById('edit-modal-save').style.background=meta.color;
-  document.getElementById('edit-modal').style.display='flex';
+  byId('edit-modal-title').textContent='Aggiorna '+meta.label;
+  byId('edit-modal-title').style.color=meta.color;
+  byId('edit-modal-fields').innerHTML=fieldsHTML;
+  byId('edit-modal-save').style.background=meta.color;
+  byId('edit-modal').style.display='flex';
 }
-function closeEditModal(){ document.getElementById('edit-modal').style.display='none'; }
-document.getElementById('edit-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeEditModal();});
+function closeEditModal(){ byId('edit-modal').style.display='none'; }
+byId('edit-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeEditModal();});
 
 
 // Update platform header meta
@@ -2052,14 +2074,14 @@ function updatePlatformMeta(){
     'facebook-ph-meta':  D.facebook.confirmed  ? `<strong>${fmt(D.facebook.followers)}</strong> follower · Dati verificati ✓`    : 'Dati non confermati',
     'linkedin-ph-meta':  `<strong>${fmt(D.linkedin.followers)}</strong> follower · ${D.linkedin.confirmed?'Dati verificati ✓':'Aggiornamento manuale'}`,
   };
-  Object.entries(metas).forEach(([id,val])=>{const el=document.getElementById(id);if(el)el.innerHTML=val;});
+  Object.entries(metas).forEach(([id,val])=>{const el=byId(id);if(el)el.innerHTML=val;});
 }
 
 
 function renderAll(){ renderHero(); renderOverview(); renderYT(); renderIG(); renderTT(); renderFB(); renderLI(); }
 
 // ── Init ──────────────────────────────────────────────
-document.getElementById('hd-date').textContent=CFG.updated;
+byId('hd-date').textContent=CFG.updated;
 loadStoredData();
 // Imposta stato iniziale: Panoramica + Complessivo
 renderAll();
@@ -2072,59 +2094,119 @@ renderAll();
 // ═══════════════════════════════════════════════
 
 function csvNum(s){
-  if(!s&&s!==0)return 0;
-  return parseInt(String(s).replace(/[^\d\-]/g,''))||0;
+  if (s === null || s === undefined || s === '') return 0;
+  let v = String(s).trim().replace(/ /g, '');
+  // Handles 1.234, 1,234, 12,5%, 12.5%, and plain numbers
+  if (/^[-+]?\d{1,3}(\.\d{3})+(,\d+)?%?$/.test(v)) v = v.replace(/\./g, '').replace(',', '.');
+  else if (/^[-+]?\d{1,3}(,\d{3})+(\.\d+)?%?$/.test(v)) v = v.replace(/,/g, '');
+  else v = v.replace(',', '.');
+  v = v.replace(/[^0-9.-]/g, '');
+  const n = parseFloat(v);
+  return isNaN(n) ? 0 : n;
 }
 
-function csvSplit(line,d){
-  const r=[];let c='';let q=false;
-  for(const ch of line){
-    if(ch==='"'){q=!q;}
-    else if(ch===d&&!q){r.push(c);c='';}
-    else c+=ch;
+function csvSplit(line, d){
+  const r = []; let c = ''; let q = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (q && line[i + 1] === '"') { c += '"'; i++; }
+      else q = !q;
+    } else if (ch === d && !q) { r.push(c); c = ''; }
+    else c += ch;
   }
-  r.push(c);return r;
+  r.push(c); return r;
+}
+
+function detectDelimiter(line){
+  const candidates = [';', ',', '\t'];
+  let best = ';', bestCount = -1;
+  for (const d of candidates) {
+    const count = csvSplit(line, d).length;
+    if (count > bestCount) { best = d; bestCount = count; }
+  }
+  return best;
+}
+
+function cleanCsvCell(v){
+  return String(v || '').replace(/^['"\s]+|['"\s]+$/g, '').trim();
+}
+
+function normalizeHeader(h){
+  return cleanCsvCell(h).replace(/^﻿/, '').trim();
 }
 
 function csvParse(text){
-  if(!text)return[];
-  if(text.charCodeAt(0)===0xFEFF)text=text.slice(1);
-  const lines=text.replace(/\r/g,'').split('\n').filter(l=>l.trim());
-  if(lines.length<2)return[];
-  const first=lines[0];
-  const d=(first.split(';').length>=first.split(',').length)?';':',';
-  const hdrs=csvSplit(first,d).map(h=>h.replace(/^["'\s]+|["'\s]+$/g,''));
-  return lines.slice(1).map(line=>{
-    const vs=csvSplit(line,d);
-    const o={};
-    hdrs.forEach((h,i)=>{o[h]=(vs[i]||'').replace(/^["'\s]+|["'\s]+$/g,'');});
+  if (!text) return [];
+  text = String(text).replace(/^﻿/, '').replace(/\r/g, '');
+  let rawLines = text.split('\n').filter(l => l.trim());
+  rawLines = rawLines.filter(l => !/^sep=/i.test(l.trim()));
+  if (rawLines.length < 2) return [];
+
+  // Some platform exports have title/metadata lines before the actual table.
+  let headerIndex = 0, delimiter = detectDelimiter(rawLines[0]), bestScore = -1;
+  for (let i = 0; i < Math.min(rawLines.length, 25); i++) {
+    const d = detectDelimiter(rawLines[i]);
+    const headers = csvSplit(rawLines[i], d).map(normalizeHeader);
+    const joined = headers.join(' ').toLowerCase();
+    const score = headers.length
+      + (/(date|data|orario|time|published|pubblicazione)/i.test(joined) ? 10 : 0)
+      + (/(views|visualizzazioni|impression|copertura|reach|interazioni|followers|iscritti)/i.test(joined) ? 10 : 0);
+    if (headers.length > 1 && score > bestScore) { bestScore = score; headerIndex = i; delimiter = d; }
+  }
+
+  const hdrs = csvSplit(rawLines[headerIndex], delimiter).map(normalizeHeader);
+  return rawLines.slice(headerIndex + 1).map(line => {
+    const vs = csvSplit(line, delimiter);
+    const o = {};
+    hdrs.forEach((h, i) => { if (h) o[h] = cleanCsvCell(vs[i]); });
     return o;
-  }).filter(r=>Object.values(r).some(v=>v));
+  }).filter(r => Object.values(r).some(v => String(v).trim()));
 }
 
 function csvParseDate(s){
-  if(!s)return null;
-  // Try MM/DD/YYYY HH:MM or YYYY-MM-DD
-  let m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if(m)return new Date(+m[3],+m[1]-1,+m[2]);
-  m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if(m)return new Date(+m[1],+m[2]-1,+m[3]);
-  return null;
+  if (!s) return null;
+  const raw = String(s).trim();
+  let m = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  m = raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
+  if (m) {
+    const a = +m[1], b = +m[2], y = +m[3];
+    // Italian exports are usually DD/MM/YYYY. US exports can be MM/DD/YYYY.
+    if (a > 12) return new Date(y, b - 1, a);
+    if (b > 12) return new Date(y, a - 1, b);
+    return new Date(y, b - 1, a);
+  }
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
 }
 
-function csvDateWindow(rows,dateKey,days){
-  const now=new Date();
-  const cutoff=new Date(now.getTime()-days*864e5);
-  return rows.filter(r=>{const d=csvParseDate(r[dateKey]);return d&&d>=cutoff;});
+function findCsvKey(row, patterns){
+  const keys = Object.keys(row || {});
+  return keys.find(k => patterns.some(p => p.test(k))) || null;
+}
+
+function csvVal(row, patterns){
+  const k = findCsvKey(row, patterns);
+  return k ? row[k] : '';
+}
+
+function csvDateWindow(rows, dateKey, days){
+  if (!rows || !rows.length || !dateKey) return rows || [];
+  const dated = rows.map(r => ({r, d: csvParseDate(r[dateKey])})).filter(x => x.d);
+  if (!dated.length) return rows;
+  const maxTime = Math.max(...dated.map(x => x.d.getTime()));
+  const cutoff = new Date(maxTime - days * 864e5);
+  return dated.filter(x => x.d >= cutoff).map(x => x.r);
 }
 
 function upShowFile(inputId,nameId){
-  const f=document.getElementById(inputId).files[0];
-  document.getElementById(nameId).textContent=f?f.name:'Nessun file selezionato';
+  const f=byId(inputId).files[0];
+  byId(nameId).textContent=f?f.name:'Nessun file selezionato';
 }
 
 function upStatus(id,msg,cls){
-  const el=document.getElementById(id);
+  const el=byId(id);
   if(!el)return;
   el.textContent=msg;
   el.className='upload-status '+(cls||'');
@@ -2145,7 +2227,7 @@ function upSaveAndRender(platform,updates){
 
 function upReadFile(fileInputId){
   return new Promise((res,rej)=>{
-    const f=document.getElementById(fileInputId)?.files[0];
+    const f=byId(fileInputId)?.files[0];
     if(!f){res(null);return;}
     const fr=new FileReader();
     fr.onload=e=>res(e.target.result);
@@ -2156,94 +2238,94 @@ function upReadFile(fileInputId){
 
 // ── INSTAGRAM ──────────────────────────────────
 async function uploadInstagram(){
-  upStatus('up-st-ig','⏳ Elaborazione...','loading');
+  upStatus('upload-status-ig','⏳ Elaborazione...','loading');
   try{
     const feedText=await upReadFile('up-ig-feed');
     const storiesText=await upReadFile('up-ig-stories');
-    if(!feedText&&!storiesText){upStatus('up-st-ig','⚠️ Seleziona almeno un file','err');return;}
+    if(!feedText&&!storiesText){upStatus('upload-status-ig','⚠️ Seleziona almeno un file','err');return;}
     const updates={};
     const msgs=[];
 
     if(feedText){
       const rows=csvParse(feedText).filter(r=>{
-        const t=r['Orario di pubblicazione']||r['Post time']||'';
-        return t&&t.match(/\d/)&&!t.toLowerCase().includes('totale');
+        const t=csvVal(r,[/orario/i,/pubblicazione/i,/post time/i,/date/i,/data/i,/time/i]);
+        return (!t || t.match(/\d/)) && !String(t).toLowerCase().includes('totale');
       });
       if(rows.length){
-        const dateKey='Orario di pubblicazione';
+        const dateKey=findCsvKey(rows[0], [/orario/i,/pubblicazione/i,/post time/i,/date/i,/data/i,/time/i]) || 'Orario di pubblicazione';
         const r28=csvDateWindow(rows,dateKey,28);
         const r7=csvDateWindow(rows,dateKey,7);
         const agg=rs=>({
           items:rs.length,
-          views:rs.reduce((s,r)=>s+csvNum(r['Visualizzazioni']||r['Impressioni']||r['Impression']||r['Video views']),0),
-          reach:rs.reduce((s,r)=>s+csvNum(r['Copertura']||r['Reach']),0),
-          interactions:rs.reduce((s,r)=>s+csvNum(r['Interazioni']||r['Interactions']),0),
-          reels:rs.filter(r=>(r['Tipo di contenuto']||'').match(/reel/i)).length,
-          carousels:rs.filter(r=>(r['Tipo di contenuto']||'').match(/carosell/i)).length,
+          views:rs.reduce((s,r)=>s+csvNum(csvVal(r,[/visualizz/i,/views/i,/impression/i,/video views/i])),0),
+          reach:rs.reduce((s,r)=>s+csvNum(csvVal(r,[/copertura/i,/reach/i,/persone raggiunte/i])),0),
+          interactions:rs.reduce((s,r)=>s+csvNum(csvVal(r,[/interaz/i,/interaction/i,/engagement/i,/coinvolg/i,/reazioni/i,/likes/i,/mi piace/i])),0),
+          reels:rs.filter(r=>(csvVal(r,[/tipo/i,/content type/i,/formato/i])||'').match(/reel/i)).length,
+          carousels:rs.filter(r=>(csvVal(r,[/tipo/i,/content type/i,/formato/i])||'').match(/carosell/i)).length,
         });
         const f28=agg(r28); const f7=agg(r7);
         f28.eng_rate=f28.reach?+(f28.interactions/f28.reach*100).toFixed(2):0;
         f7.eng_rate=f7.reach?+(f7.interactions/f7.reach*100).toFixed(2):0;
-        const topN=(rs,n=3)=>[...rs].sort((a,b)=>csvNum(b['Visualizzazioni']||b['Impression'])-csvNum(a['Visualizzazioni']||a['Impression'])).slice(0,n).map(r=>({type:r['Tipo di contenuto']||'Post',title:(r['Titolo']||'Post').slice(0,60),v1:csvNum(r['Visualizzazioni']||r['Impression']),v2:csvNum(r['Copertura']||r['Reach']),v3:csvNum(r['Interazioni']||r['Interactions']),l1:'Views',l2:'Reach',l3:'Interaz.'}));
+        const topN=(rs,n=3)=>[...rs].sort((a,b)=>csvNum(csvVal(b,[/visualizz/i,/views/i,/impression/i]))-csvNum(csvVal(a,[/visualizz/i,/views/i,/impression/i]))).slice(0,n).map(r=>({type:csvVal(r,[/tipo/i,/content type/i,/formato/i])||'Post',title:(csvVal(r,[/titolo/i,/title/i,/didascalia/i,/caption/i,/testo/i])||'Post').slice(0,60),v1:csvNum(csvVal(r,[/visualizz/i,/views/i,/impression/i])),v2:csvNum(csvVal(r,[/copertura/i,/reach/i,/persone raggiunte/i])),v3:csvNum(csvVal(r,[/interaz/i,/interaction/i,/engagement/i,/coinvolg/i,/reazioni/i,/likes/i,/mi piace/i])),l1:'Views',l2:'Reach',l3:'Interaz.'}));
         updates.feed_28d=f28; updates.feed_week=f7;
-        updates.top_total=topN(rows); updates.reels_28d=topN(r28.filter(r=>(r['Tipo di contenuto']||'').match(/reel/i)));
-        updates.reels_week=topN(r7.filter(r=>(r['Tipo di contenuto']||'').match(/reel/i)));
-        updates.carousels_28d=topN(r28.filter(r=>(r['Tipo di contenuto']||'').match(/carosell/i)));
-        updates.carousels_week=topN(r7.filter(r=>(r['Tipo di contenuto']||'').match(/carosell/i)));
+        updates.top_total=topN(rows); updates.reels_28d=topN(r28.filter(r=>(csvVal(r,[/tipo/i,/content type/i,/formato/i])||'').match(/reel/i)));
+        updates.reels_week=topN(r7.filter(r=>(csvVal(r,[/tipo/i,/content type/i,/formato/i])||'').match(/reel/i)));
+        updates.carousels_28d=topN(r28.filter(r=>(csvVal(r,[/tipo/i,/content type/i,/formato/i])||'').match(/carosell/i)));
+        updates.carousels_week=topN(r7.filter(r=>(csvVal(r,[/tipo/i,/content type/i,/formato/i])||'').match(/carosell/i)));
         msgs.push('✓ Feed: '+r28.length+' post (28g), '+r7.length+' (7g)');
       }
     }
     if(storiesText){
       const rows=csvParse(storiesText).filter(r=>{
-        const t=r['Orario di pubblicazione']||r['Post time']||'';
-        return t&&t.match(/\d/)&&!t.toLowerCase().includes('totale');
+        const t=csvVal(r,[/orario/i,/pubblicazione/i,/post time/i,/date/i,/data/i,/time/i]);
+        return (!t || t.match(/\d/)) && !String(t).toLowerCase().includes('totale');
       });
       if(rows.length){
-        const dateKey='Orario di pubblicazione';
+        const dateKey=findCsvKey(rows[0], [/orario/i,/pubblicazione/i,/post time/i,/date/i,/data/i,/time/i]) || 'Orario di pubblicazione';
         const r28=csvDateWindow(rows,dateKey,28); const r7=csvDateWindow(rows,dateKey,7);
-        const agg=rs=>({items:rs.length,views:rs.reduce((s,r)=>s+csvNum(r['Visualizzazioni']||r['Impression']),0),reach:rs.reduce((s,r)=>s+csvNum(r['Copertura']||r['Reach']),0),profile_visits:rs.reduce((s,r)=>s+csvNum(r['Interazioni con il profilo']||r['Profile activity']),0),link_clicks:rs.reduce((s,r)=>s+csvNum(r['Link clicked']||r['Link clicks']),0),interactions:rs.reduce((s,r)=>s+csvNum(r['Interazioni']||r['Interactions']),0),replies:rs.reduce((s,r)=>s+csvNum(r['Risposte']||r['Replies']),0)});
+        const agg=rs=>({items:rs.length,views:rs.reduce((s,r)=>s+csvNum(csvVal(r,[/visualizz/i,/views/i,/impression/i])),0),reach:rs.reduce((s,r)=>s+csvNum(csvVal(r,[/copertura/i,/reach/i,/persone raggiunte/i])),0),profile_visits:rs.reduce((s,r)=>s+csvNum(r['Interazioni con il profilo']||r['Profile activity']),0),link_clicks:rs.reduce((s,r)=>s+csvNum(r['Link clicked']||r['Link clicks']),0),interactions:rs.reduce((s,r)=>s+csvNum(csvVal(r,[/interaz/i,/interaction/i,/engagement/i,/coinvolg/i,/reazioni/i,/likes/i,/mi piace/i])),0),replies:rs.reduce((s,r)=>s+csvNum(r['Risposte']||r['Replies']),0)});
         updates.stories_28d=agg(r28); updates.stories_week=agg(r7);
-        const topS=(rs,n=3)=>[...rs].sort((a,b)=>csvNum(b['Visualizzazioni']||b['Impression'])-csvNum(a['Visualizzazioni']||a['Impression'])).slice(0,n).map(r=>({type:'Storia',title:(r['Orario di pubblicazione']||'Story').slice(0,40),v1:csvNum(r['Visualizzazioni']||r['Impression']),v2:csvNum(r['Copertura']||r['Reach']),v3:csvNum(r['Interazioni']||r['Interactions']),l1:'Views',l2:'Reach',l3:'Interaz.'}));
+        const topS=(rs,n=3)=>[...rs].sort((a,b)=>csvNum(csvVal(b,[/visualizz/i,/views/i,/impression/i]))-csvNum(csvVal(a,[/visualizz/i,/views/i,/impression/i]))).slice(0,n).map(r=>({type:'Storia',title:(csvVal(r,[/orario/i,/pubblicazione/i,/post time/i,/date/i,/data/i,/time/i])||'Story').slice(0,40),v1:csvNum(csvVal(r,[/visualizz/i,/views/i,/impression/i])),v2:csvNum(csvVal(r,[/copertura/i,/reach/i,/persone raggiunte/i])),v3:csvNum(csvVal(r,[/interaz/i,/interaction/i,/engagement/i,/coinvolg/i,/reazioni/i,/likes/i,/mi piace/i])),l1:'Views',l2:'Reach',l3:'Interaz.'}));
         updates.stories_top_28d=topS(r28); updates.stories_top_week=topS(r7);
         msgs.push('✓ Storie: '+r28.length+' (28g), '+r7.length+' (7g)');
       }
     }
-    if(Object.keys(updates).length){upSaveAndRender('instagram',updates);upStatus('up-st-ig',msgs.join(' · ')+'\n✅ Dashboard aggiornata','ok');}
-    else{upStatus('up-st-ig','⚠️ Nessun dato estratto — verifica formato file','err');}
-  }catch(e){upStatus('up-st-ig','❌ Errore: '+e.message,'err');}
+    if(Object.keys(updates).length){upSaveAndRender('instagram',updates);upStatus('upload-status-ig',msgs.join(' · ')+'\n✅ Dashboard aggiornata','ok');}
+    else{upStatus('upload-status-ig','⚠️ Nessun dato estratto — verifica formato file','err');}
+  }catch(e){upStatus('upload-status-ig','❌ Errore: '+e.message,'err');}
 }
 
 // ── FACEBOOK ───────────────────────────────────
 async function uploadFacebook(){
-  upStatus('up-st-fb','⏳ Elaborazione...','loading');
+  upStatus('upload-status-fb','⏳ Elaborazione...','loading');
   try{
     const text=await upReadFile('up-fb-posts');
-    if(!text){upStatus('up-st-fb','⚠️ Seleziona il file CSV','err');return;}
+    if(!text){upStatus('upload-status-fb','⚠️ Seleziona il file CSV','err');return;}
     const rows=csvParse(text).filter(r=>{
-      const t=r['Orario di pubblicazione']||r['Post time']||r['Data']||'';
-      return t&&t.match(/\d/)&&!t.toLowerCase().includes('totale');
+      const t=csvVal(r,[/orario/i,/pubblicazione/i,/post time/i,/date/i,/data/i,/time/i]);
+      return (!t || t.match(/\d/)) && !String(t).toLowerCase().includes('totale');
     });
-    if(!rows.length){upStatus('up-st-fb','⚠️ Nessun dato trovato — verifica formato file','err');return;}
-    const dateKey=Object.keys(rows[0]).find(k=>k.match(/pubblicazione|post time/i))||'Data';
+    if(!rows.length){upStatus('upload-status-fb','⚠️ Nessun dato trovato — verifica formato file','err');return;}
+    const dateKey=findCsvKey(rows[0], [/orario/i,/pubblicazione/i,/post time/i,/date/i,/data/i,/time/i]) || 'Data';
     const r28=csvDateWindow(rows,dateKey,28); const r7=csvDateWindow(rows,dateKey,7);
-    const agg=rs=>({items:rs.length,views:rs.reduce((s,r)=>s+csvNum(r['Visualizzazioni']||r['Impression']||r['Copertura dei post']||r['Post impressions']),0),reach:rs.reduce((s,r)=>s+csvNum(r['Copertura']||r['Reach']||r['Persone raggiunte']),0),interactions:rs.reduce((s,r)=>s+csvNum(r['Interazioni']||r['Interactions']||r['Coinvolgimento']),0)});
+    const agg=rs=>({items:rs.length,views:rs.reduce((s,r)=>s+csvNum(csvVal(r,[/visualizz/i,/views/i,/impression/i,/copertura dei post/i,/post impressions/i])),0),reach:rs.reduce((s,r)=>s+csvNum(csvVal(r,[/copertura/i,/reach/i,/persone raggiunte/i])||r['Persone raggiunte']),0),interactions:rs.reduce((s,r)=>s+csvNum(csvVal(r,[/interaz/i,/interaction/i,/engagement/i,/coinvolg/i,/reazioni/i,/likes/i,/mi piace/i])||r['Coinvolgimento']),0)});
     const c28=agg(r28); const c7=agg(r7);
     c28.eng_rate=c28.reach?+(c28.interactions/c28.reach*100).toFixed(2):0;
     c7.eng_rate=c7.reach?+(c7.interactions/c7.reach*100).toFixed(2):0;
-    const topN=(rs,n=3)=>[...rs].sort((a,b)=>csvNum(b['Visualizzazioni']||b['Impression']||b['Copertura dei post'])-csvNum(a['Visualizzazioni']||a['Impression']||a['Copertura dei post'])).slice(0,n).map(r=>({type:r['Tipo']||r['Type']||'Post',title:(r['Titolo']||r['Title']||r['Messaggio']||'Post').slice(0,60),v1:csvNum(r['Visualizzazioni']||r['Impression']||r['Copertura dei post']),v2:csvNum(r['Copertura']||r['Reach']),v3:csvNum(r['Interazioni']||r['Interactions']),l1:'Views',l2:'Reach',l3:'Interaz.'}));
+    const topN=(rs,n=3)=>[...rs].sort((a,b)=>csvNum(csvVal(b,[/visualizz/i,/views/i,/impression/i,/copertura dei post/i,/post impressions/i]))-csvNum(csvVal(a,[/visualizz/i,/views/i,/impression/i,/copertura dei post/i,/post impressions/i]))).slice(0,n).map(r=>({type:csvVal(r,[/tipo/i,/type/i,/formato/i])||'Post',title:(csvVal(r,[/titolo/i,/title/i,/messaggio/i,/message/i,/caption/i,/testo/i])||'Post').slice(0,60),v1:csvNum(r['Visualizzazioni']||r['Impression']||r['Copertura dei post']),v2:csvNum(csvVal(r,[/copertura/i,/reach/i,/persone raggiunte/i])),v3:csvNum(csvVal(r,[/interaz/i,/interaction/i,/engagement/i,/coinvolg/i,/reazioni/i,/likes/i,/mi piace/i])),l1:'Views',l2:'Reach',l3:'Interaz.'}));
     const updates={content_28d:c28,content_week:c7,top_total:topN(rows),top_28d:topN(r28),top_week:topN(r7)};
     upSaveAndRender('facebook',updates);
-    upStatus('up-st-fb','✓ '+r28.length+' post (28g), '+r7.length+' (7g)\n✅ Dashboard aggiornata','ok');
-  }catch(e){upStatus('up-st-fb','❌ Errore: '+e.message,'err');}
+    upStatus('upload-status-fb','✓ '+r28.length+' post (28g), '+r7.length+' (7g)\n✅ Dashboard aggiornata','ok');
+  }catch(e){upStatus('upload-status-fb','❌ Errore: '+e.message,'err');}
 }
 
 // ── YOUTUBE ────────────────────────────────────
 async function uploadYouTube(){
-  upStatus('up-st-yt','⏳ Elaborazione...','loading');
+  upStatus('upload-status-yt','⏳ Elaborazione...','loading');
   try{
     const overText=await upReadFile('up-yt-overview');
     const contText=await upReadFile('up-yt-content');
-    if(!overText&&!contText){upStatus('up-st-yt','⚠️ Seleziona almeno un file CSV','err');return;}
+    if(!overText&&!contText){upStatus('upload-status-yt','⚠️ Seleziona almeno un file CSV','err');return;}
     const updates={};const msgs=[];
     if(overText){
       // YouTube Studio overview CSV: skip header lines until we find data
@@ -2276,19 +2358,19 @@ async function uploadYouTube(){
         msgs.push('✓ Contenuto: '+rows.length+' video');
       }
     }
-    if(Object.keys(updates).length){upSaveAndRender('youtube',updates);upStatus('up-st-yt',msgs.join(' · ')+'\n✅ Dashboard aggiornata','ok');}
-    else upStatus('up-st-yt','⚠️ Nessun dato estratto — verifica formato','err');
-  }catch(e){upStatus('up-st-yt','❌ Errore: '+e.message,'err');}
+    if(Object.keys(updates).length){upSaveAndRender('youtube',updates);upStatus('upload-status-yt',msgs.join(' · ')+'\n✅ Dashboard aggiornata','ok');}
+    else upStatus('upload-status-yt','⚠️ Nessun dato estratto — verifica formato','err');
+  }catch(e){upStatus('upload-status-yt','❌ Errore: '+e.message,'err');}
 }
 
 // ── TIKTOK ─────────────────────────────────────
 async function uploadTikTok(){
-  upStatus('up-st-tt','⏳ Elaborazione...','loading');
+  upStatus('upload-status-tt','⏳ Elaborazione...','loading');
   try{
     const text=await upReadFile('up-tt-csv');
-    if(!text){upStatus('up-st-tt','⚠️ Seleziona il file CSV','err');return;}
+    if(!text){upStatus('upload-status-tt','⚠️ Seleziona il file CSV','err');return;}
     const rows=csvParse(text).filter(r=>Object.values(r).some(v=>v.match&&v.match(/\d/)));
-    if(!rows.length){upStatus('up-st-tt','⚠️ Nessun dato — verifica formato','err');return;}
+    if(!rows.length){upStatus('upload-status-tt','⚠️ Nessun dato — verifica formato','err');return;}
     const updates={};
     // Total followers from last row or specific column
     const followerKey=Object.keys(rows[0]).find(k=>k.match(/follower|seguac/i));
@@ -2307,19 +2389,19 @@ async function uploadTikTok(){
       if(totalViews){updates.avg_views=Math.round(totalViews/Math.max(r28.length,1));}
       if(totalLikes>1000){updates.total_likes=totalLikes;}
     }
-    if(Object.keys(updates).length){upSaveAndRender('tiktok',updates);upStatus('up-st-tt','✅ Dashboard aggiornata','ok');}
-    else upStatus('up-st-tt','⚠️ Nessun dato utile — usa aggiornamento manuale','err');
-  }catch(e){upStatus('up-st-tt','❌ Errore: '+e.message,'err');}
+    if(Object.keys(updates).length){upSaveAndRender('tiktok',updates);upStatus('upload-status-tt','✅ Dashboard aggiornata','ok');}
+    else upStatus('upload-status-tt','⚠️ Nessun dato utile — usa aggiornamento manuale','err');
+  }catch(e){upStatus('upload-status-tt','❌ Errore: '+e.message,'err');}
 }
 
 // ── LINKEDIN ───────────────────────────────────
 async function uploadLinkedIn(){
-  upStatus('up-st-li','⏳ Elaborazione...','loading');
+  upStatus('upload-status-li','⏳ Elaborazione...','loading');
   try{
     const text=await upReadFile('up-li-csv');
-    if(!text){upStatus('up-st-li','⚠️ Seleziona il file CSV','err');return;}
+    if(!text){upStatus('upload-status-li','⚠️ Seleziona il file CSV','err');return;}
     const rows=csvParse(text).filter(r=>Object.values(r).some(v=>v.match&&v.match(/\d/)));
-    if(!rows.length){upStatus('up-st-li','⚠️ Nessun dato — verifica formato','err');return;}
+    if(!rows.length){upStatus('upload-status-li','⚠️ Nessun dato — verifica formato','err');return;}
     const updates={};
     const impKey=Object.keys(rows[0]).find(k=>k.match(/impression|visualiz/i));
     const engKey=Object.keys(rows[0]).find(k=>k.match(/engagement|coinvolg/i));
@@ -2333,16 +2415,16 @@ async function uploadLinkedIn(){
         if(engs.length){updates.eng_rate=+(engs.reduce((s,v)=>s+v,0)/engs.length).toFixed(2);}
       }
     }
-    if(Object.keys(updates).length){upSaveAndRender('linkedin',updates);upStatus('up-st-li','✅ Dashboard aggiornata','ok');}
-    else upStatus('up-st-li','⚠️ Nessun dato utile — usa aggiornamento manuale','err');
-  }catch(e){upStatus('up-st-li','❌ Errore: '+e.message,'err');}
+    if(Object.keys(updates).length){upSaveAndRender('linkedin',updates);upStatus('upload-status-li','✅ Dashboard aggiornata','ok');}
+    else upStatus('upload-status-li','⚠️ Nessun dato utile — usa aggiornamento manuale','err');
+  }catch(e){upStatus('upload-status-li','❌ Errore: '+e.message,'err');}
 }
 
 
 
 // ── Esporta HTML aggiornato ──────────────────────────
 async function exportHTML() {
-  const btn = document.getElementById('export-btn');
+  const btn = byId('export-btn');
   const orig = btn.textContent;
   btn.textContent = '⏳ Generando...';
   btn.disabled = true;
@@ -2397,7 +2479,7 @@ async function exportHTML() {
 function showPanel(id, el) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-  var panel = document.getElementById('panel-' + id);
+  var panel = byId('panel-' + id);
   if(panel) panel.classList.add('active');
   if(el) el.classList.add('active');
   if(id==='social' && typeof renderAll==='function') renderAll();
