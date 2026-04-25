@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Foglio Presenze — Como TV</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f5f5f5;
+      color: #222;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.10);
+      padding: 36px 40px 40px;
+    }
+
+    /* HEADER */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 2px solid #1a2e4a;
+      padding-bottom: 18px;
+      margin-bottom: 24px;
+    }
+    .header-logo {
+      font-size: 22px;
+      font-weight: 800;
+      color: #1a2e4a;
+      letter-spacing: 1px;
+    }
+    .header-logo span { color: #e63946; }
+    .header-title {
+      font-size: 13px;
+      color: #666;
+      text-align: right;
+    }
+    .header-title strong {
+      display: block;
+      font-size: 16px;
+      color: #1a2e4a;
+    }
+
+    /* FORM INFO */
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px 32px;
+      margin-bottom: 28px;
+      background: #f8f9fb;
+      border-radius: 8px;
+      padding: 16px 20px;
+    }
+    .info-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .info-field label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .info-field input, .info-field select {
+      border: 1px solid #d0d0d0;
+      border-radius: 5px;
+      padding: 6px 10px;
+      font-size: 14px;
+      color: #222;
+      background: #fff;
+    }
+    .info-field input:focus, .info-field select:focus {
+      outline: none;
+      border-color: #1a2e4a;
+    }
+    .info-field input[readonly] {
+      background: #f0f0f0;
+      color: #555;
+    }
+
+    /* MONTH SELECTOR */
+    .month-nav {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .month-nav button {
+      background: #1a2e4a;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      padding: 6px 14px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    .month-nav button:hover { background: #2d4a7a; }
+    .month-nav .month-label {
+      font-size: 17px;
+      font-weight: 700;
+      color: #1a2e4a;
+      min-width: 200px;
+      text-align: center;
+    }
+
+    /* CALENDAR */
+    .calendar {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 24px;
+    }
+    .calendar th {
+      background: #1a2e4a;
+      color: #fff;
+      text-align: center;
+      padding: 8px 4px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    .calendar th.weekend { background: #2d4a7a; }
+    .calendar td {
+      border: 1px solid #e0e0e0;
+      text-align: center;
+      vertical-align: top;
+      padding: 4px 2px;
+      min-width: 110px;
+      height: 68px;
+    }
+    .calendar td.empty { background: #fafafa; }
+    .calendar td.today .day-num { color: #e63946; font-weight: 800; }
+
+    .day-num {
+      font-size: 12px;
+      font-weight: 700;
+      color: #1a2e4a;
+      display: block;
+      margin-bottom: 4px;
+    }
+    .day-select {
+      width: 100%;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 12px;
+      padding: 3px 2px;
+      cursor: pointer;
+      text-align: center;
+      font-weight: 600;
+    }
+    .day-note {
+      width: 100%;
+      border: 1px solid #e0e0e0;
+      border-radius: 3px;
+      font-size: 10px;
+      padding: 2px 4px;
+      margin-top: 3px;
+      color: #555;
+      resize: none;
+    }
+
+    /* Colori tipi giornata */
+    .type-P  { background: #e8f4fd; color: #1a2e4a; }
+    .type-T  { background: #fff3cd; color: #7a5a00; }
+    .type-F  { background: #d4edda; color: #155724; }
+    .type-PE { background: #fde8b0; color: #8a5200; }
+    .type-M  { background: #fdd9d9; color: #721c24; }
+    .type-R  { background: #ebebeb; color: #666; }
+    .type-FE { background: #ddd; color: #555; }
+
+    /* LEGENDA */
+    .legenda {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 18px;
+      margin-bottom: 24px;
+      padding: 12px 16px;
+      background: #f8f9fb;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+    .legenda-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .legenda-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      border: 1px solid rgba(0,0,0,0.1);
+    }
+
+    /* RIEPILOGO */
+    .riepilogo {
+      margin-bottom: 28px;
+    }
+    .riepilogo h3 {
+      font-size: 13px;
+      font-weight: 700;
+      color: #1a2e4a;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+    }
+    .riepilogo-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    .riep-box {
+      background: #f8f9fb;
+      border-radius: 7px;
+      padding: 10px 14px;
+      text-align: center;
+    }
+    .riep-box .riep-label {
+      font-size: 11px;
+      color: #888;
+      margin-bottom: 4px;
+    }
+    .riep-box .riep-val {
+      font-size: 22px;
+      font-weight: 800;
+      color: #1a2e4a;
+    }
+    .riep-box.highlight { background: #1a2e4a; }
+    .riep-box.highlight .riep-label { color: #aac; }
+    .riep-box.highlight .riep-val { color: #fff; }
+
+    /* FIRMA */
+    .firme {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      margin-top: 8px;
+    }
+    .firma-box {
+      border-top: 1px solid #bbb;
+      padding-top: 8px;
+    }
+    .firma-box label {
+      font-size: 11px;
+      color: #888;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .firma-box .firma-line {
+      height: 40px;
+    }
+
+    /* NOTE */
+    .note-section {
+      margin-bottom: 24px;
+    }
+    .note-section label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 5px;
+    }
+    .note-section textarea {
+      width: 100%;
+      border: 1px solid #d0d0d0;
+      border-radius: 5px;
+      padding: 8px 10px;
+      font-size: 13px;
+      color: #222;
+      resize: vertical;
+      min-height: 60px;
+    }
+
+    /* BUTTONS */
+    .actions {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+    .btn-print {
+      background: #1a2e4a;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 28px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-print:hover { background: #2d4a7a; }
+    .btn-reset {
+      background: #fff;
+      color: #e63946;
+      border: 1.5px solid #e63946;
+      border-radius: 6px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-reset:hover { background: #fff5f5; }
+
+    /* PRINT */
+    @media print {
+      body { background: #fff; padding: 0; }
+      .container { box-shadow: none; border-radius: 0; padding: 20px; max-width: 100%; }
+      .actions, .btn-print, .btn-reset { display: none; }
+      .day-note { border: none; }
+      .calendar td { height: 55px; }
+      .info-field input, .info-field select { border: none; background: transparent; padding: 0; }
+      .month-nav { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-logo">COMO<span>TV</span></div>
+    <div class="header-title">
+      <strong>Foglio Presenze Mensile</strong>
+      SENT Entertainment Italy S.r.l.
+    </div>
+  </div>
+
+  <!-- NAV MESE -->
+  <div class="month-nav">
+    <button onclick="changeMonth(-1)">&#8592;</button>
+    <div class="month-label" id="monthLabel"></div>
+    <button onclick="changeMonth(1)">&#8594;</button>
+  </div>
+
+  <!-- INFO DIPENDENTE -->
+  <div class="info-grid">
+    <div class="info-field">
+      <label>Dipendente</label>
+      <input type="text" id="nomeDip" value="Goffredo D'Onofrio">
+    </div>
+    <div class="info-field">
+      <label>Qualifica</label>
+      <input type="text" id="qualifica" value="Dirigente" readonly>
+    </div>
+    <div class="info-field">
+      <label>Sede</label>
+      <input type="text" id="sede" value="Lungo Dora Pietro Colletta 131, Torino">
+    </div>
+    <div class="info-field">
+      <label>CCNL</label>
+      <input type="text" id="ccnl" value="Confcommercio / Manageritalia" readonly>
+    </div>
+  </div>
+
+  <!-- CALENDARIO -->
+  <table class="calendar" id="calendarTable">
+    <thead>
+      <tr>
+        <th>Lun</th>
+        <th>Mar</th>
+        <th>Mer</th>
+        <th>Gio</th>
+        <th>Ven</th>
+        <th class="weekend">Sab</th>
+        <th class="weekend">Dom</th>
+      </tr>
+    </thead>
+    <tbody id="calendarBody"></tbody>
+  </table>
+
+  <!-- LEGENDA -->
+  <div class="legenda">
+    <div class="legenda-item">
+      <div class="legenda-dot type-P"></div> <span><strong>P</strong> — Presenza</span>
+    </div>
+    <div class="legenda-item">
+      <div class="legenda-dot type-T"></div> <span><strong>T</strong> — Trasferta</span>
+    </div>
+    <div class="legenda-item">
+      <div class="legenda-dot type-F"></div> <span><strong>F</strong> — Ferie</span>
+    </div>
+    <div class="legenda-item">
+      <div class="legenda-dot type-PE"></div> <span><strong>PE</strong> — Permesso</span>
+    </div>
+    <div class="legenda-item">
+      <div class="legenda-dot type-M"></div> <span><strong>M</strong> — Malattia</span>
+    </div>
+    <div class="legenda-item">
+      <div class="legenda-dot type-R"></div> <span><strong>R</strong> — Riposo</span>
+    </div>
+    <div class="legenda-item">
+      <div class="legenda-dot type-FE"></div> <span><strong>FE</strong> — Festivo</span>
+    </div>
+  </div>
+
+  <!-- RIEPILOGO -->
+  <div class="riepilogo">
+    <h3>Riepilogo</h3>
+    <div class="riepilogo-grid">
+      <div class="riep-box highlight">
+        <div class="riep-label">Giorni Lavorati (P+T)</div>
+        <div class="riep-val" id="tot-lav">0</div>
+      </div>
+      <div class="riep-box">
+        <div class="riep-label">Trasferte</div>
+        <div class="riep-val" id="tot-T">0</div>
+      </div>
+      <div class="riep-box">
+        <div class="riep-label">Ferie</div>
+        <div class="riep-val" id="tot-F">0</div>
+      </div>
+      <div class="riep-box">
+        <div class="riep-label">Permessi</div>
+        <div class="riep-val" id="tot-PE">0</div>
+      </div>
+      <div class="riep-box">
+        <div class="riep-label">Malattia</div>
+        <div class="riep-val" id="tot-M">0</div>
+      </div>
+      <div class="riep-box">
+        <div class="riep-label">Riposi</div>
+        <div class="riep-val" id="tot-R">0</div>
+      </div>
+      <div class="riep-box">
+        <div class="riep-label">Festivi</div>
+        <div class="riep-val" id="tot-FE">0</div>
+      </div>
+      <div class="riep-box">
+        <div class="riep-label">Totale giorni mese</div>
+        <div class="riep-val" id="tot-days">0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOTE -->
+  <div class="note-section">
+    <label>Note (opzionale)</label>
+    <textarea id="noteField" placeholder="Es. trasferta Milano 3-4 aprile, permesso per visita medica..."></textarea>
+  </div>
+
+  <!-- AZIONI -->
+  <div class="actions">
+    <button class="btn-print" onclick="window.print()">
+      🖨️ Stampa / Salva PDF
+    </button>
+    <button class="btn-reset" onclick="resetMonth()">Azzera mese</button>
+  </div>
+
+  <!-- FIRME -->
+  <div class="firme">
+    <div class="firma-box">
+      <label>Data e Firma Dipendente</label>
+      <div class="firma-line"></div>
+    </div>
+    <div class="firma-box">
+      <label>Data e Firma Responsabile / HR</label>
+      <div class="firma-line"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
+                 'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+  const TIPI = [
+    { val: 'P',  label: 'P — Presenza' },
+    { val: 'T',  label: 'T — Trasferta' },
+    { val: 'F',  label: 'F — Ferie' },
+    { val: 'PE', label: 'PE — Permesso' },
+    { val: 'M',  label: 'M — Malattia' },
+    { val: 'R',  label: 'R — Riposo' },
+    { val: 'FE', label: 'FE — Festivo' },
+  ];
+
+  // Festività nazionali italiane fisse (giorno-mese)
+  const FESTIVITA = [
+    '01-01','06-01','25-04','01-05','02-06',
+    '15-08','01-11','08-12','25-12','26-12'
+  ];
+
+  let currentYear  = new Date().getFullYear();
+  let currentMonth = new Date().getMonth(); // 0-indexed
+  let dayData = {}; // { 'YYYY-MM-DD': 'P'|'T'|... }
+
+  function dateKey(y, m, d) {
+    return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  }
+
+  function isFestivo(y, m, d) {
+    const key = `${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    return FESTIVITA.includes(key);
+  }
+
+  function defaultType(y, m, d) {
+    const dow = new Date(y, m, d).getDay(); // 0=dom, 6=sab
+    if (dow === 0 || dow === 6) return 'R';
+    if (isFestivo(y, m, d)) return 'FE';
+    return 'P';
+  }
+
+  function renderCalendar() {
+    const y = currentYear, m = currentMonth;
+    document.getElementById('monthLabel').textContent = `${MESI[m]} ${y}`;
+
+    const firstDay = new Date(y, m, 1).getDay(); // 0=dom
+    const daysInMonth = new Date(y, m+1, 0).getDate();
+    // Converti da domenica=0 a lunedì=0
+    const startCol = (firstDay === 0) ? 6 : firstDay - 1;
+
+    const today = new Date();
+    const isCurrentMonth = today.getFullYear()===y && today.getMonth()===m;
+
+    const tbody = document.getElementById('calendarBody');
+    tbody.innerHTML = '';
+
+    let cellCount = 0;
+    let tr = null;
+
+    // Celle vuote iniziali
+    for (let i = 0; i < startCol; i++) {
+      if (cellCount % 7 === 0) { tr = document.createElement('tr'); tbody.appendChild(tr); }
+      const td = document.createElement('td'); td.className = 'empty'; tr.appendChild(td);
+      cellCount++;
+    }
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      if (cellCount % 7 === 0) { tr = document.createElement('tr'); tbody.appendChild(tr); }
+
+      const key = dateKey(y, m, d);
+      if (!(key in dayData)) dayData[key] = defaultType(y, m, d);
+      const tipo = dayData[key];
+
+      const td = document.createElement('td');
+      const dow = new Date(y, m, d).getDay();
+      if (isCurrentMonth && today.getDate()===d) td.className = 'today';
+
+      // Numero giorno
+      const span = document.createElement('span');
+      span.className = 'day-num';
+      const dowLabel = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'][dow];
+      span.textContent = `${d} ${dowLabel}`;
+      td.appendChild(span);
+
+      // Select tipo
+      const sel = document.createElement('select');
+      sel.className = `day-select type-${tipo}`;
+      sel.dataset.key = key;
+      TIPI.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.val;
+        opt.textContent = t.label;
+        if (t.val === tipo) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener('change', function() {
+        dayData[this.dataset.key] = this.value;
+        this.className = `day-select type-${this.value}`;
+        updateRiepilogo();
+      });
+      td.appendChild(sel);
+
+      tr.appendChild(td);
+      cellCount++;
+    }
+
+    // Celle vuote finali
+    const remaining = (7 - (cellCount % 7)) % 7;
+    for (let i = 0; i < remaining; i++) {
+      const td = document.createElement('td'); td.className = 'empty'; tr.appendChild(td);
+    }
+
+    updateRiepilogo();
+  }
+
+  function updateRiepilogo() {
+    const y = currentMonth === undefined ? currentYear : currentYear;
+    const m = currentMonth;
+    const daysInMonth = new Date(y, m+1, 0).getDate();
+
+    const counts = { P:0, T:0, F:0, PE:0, M:0, R:0, FE:0 };
+    for (let d = 1; d <= daysInMonth; d++) {
+      const key = dateKey(y, m, d);
+      const tipo = dayData[key] || defaultType(y, m, d);
+      if (counts[tipo] !== undefined) counts[tipo]++;
+    }
+
+    document.getElementById('tot-lav').textContent = counts.P + counts.T;
+    document.getElementById('tot-T').textContent  = counts.T;
+    document.getElementById('tot-F').textContent  = counts.F;
+    document.getElementById('tot-PE').textContent = counts.PE;
+    document.getElementById('tot-M').textContent  = counts.M;
+    document.getElementById('tot-R').textContent  = counts.R;
+    document.getElementById('tot-FE').textContent = counts.FE;
+    document.getElementById('tot-days').textContent = daysInMonth;
+  }
+
+  function changeMonth(delta) {
+    currentMonth += delta;
+    if (currentMonth < 0)  { currentMonth = 11; currentYear--; }
+    if (currentMonth > 11) { currentMonth = 0;  currentYear++; }
+    renderCalendar();
+  }
+
+  function resetMonth() {
+    if (!confirm('Vuoi azzerare le presenze del mese corrente?')) return;
+    const y = currentYear, m = currentMonth;
+    const daysInMonth = new Date(y, m+1, 0).getDate();
+    for (let d = 1; d <= daysInMonth; d++) {
+      const key = dateKey(y, m, d);
+      dayData[key] = defaultType(y, m, d);
+    }
+    renderCalendar();
+  }
+
+  // Init
+  renderCalendar();
+</script>
+</body>
+</html>
