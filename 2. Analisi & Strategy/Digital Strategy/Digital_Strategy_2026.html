@@ -217,7 +217,7 @@ body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; background: #f7f8
 .period-bar { display:flex; gap:8px; margin-bottom:20px; align-items:center; }
 .period-label { font-size:10px; font-weight:700; color:#9ca3af; text-transform:uppercase; letter-spacing:.6px; margin-right:4px; }
 .period-btn { padding:6px 16px; font-size:11px; font-weight:700; border:2px solid #e5e7eb; border-radius:6px; background:#f9fafb; color:#6b7280; cursor:pointer; text-transform:uppercase; letter-spacing:.5px; transition:all .15s; }
-.period-btn.active { background:#0d1a38; color:#B8962E; border-color:#0d1a38; }
+.period-btn.active { background:#B8962E; color:#0d1a38; border-color:#B8962E; box-shadow:0 2px 10px rgba(184,150,46,.32); }
 .period-btn:hover:not(.active) { border-color:#0d1a38; color:#0d1a38; }
 
 /* ── CONTENT ── */
@@ -416,7 +416,7 @@ body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; background: #f7f8
 
 /* Period buttons — slight refresh */
 .period-btn { padding: 7px 18px; font-size: 11px; font-weight: 700; border: 2px solid #e5e7eb; border-radius: 8px; background: #f9fafb; color: #6b7280; cursor: pointer; text-transform: uppercase; letter-spacing: .5px; transition: all .15s; }
-.period-btn.active { background: #0d1a38; color: #B8962E; border-color: #0d1a38; box-shadow: 0 2px 8px rgba(13,26,56,.2); }
+.period-btn.active { background: #B8962E; color: #0d1a38; border-color: #B8962E; box-shadow: 0 2px 10px rgba(184,150,46,.32); }
 
 /* Chart box */
 .chart-box { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 20px; }
@@ -526,15 +526,28 @@ body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; background: #f7f8
 .dsc-chip-period { background: #f0fdf4; color: #15803d; }
 .dsc-fields { font-size: 11px; color: #6b7280; line-height: 1.6; padding-top: 2px; }
 
+/* Data source box — collapsed by default */
+.dsc-header{cursor:pointer;user-select:none;justify-content:space-between;}
+.dsc-head-left{display:flex;align-items:center;gap:8px;}
+.dsc-toggle{font-size:11px;color:rgba(255,255,255,.8);background:rgba(255,255,255,.18);padding:3px 10px;border-radius:20px;font-weight:600;white-space:nowrap;}
+.dsc-body{display:none;}
+.dsc-body.open{display:flex;}
+
 /* ── Period bar section (above platform grid) ── */
 .period-bar-section {
-  padding: 16px 24px 8px;
+  position: sticky;
+  top: 72px;
+  z-index: 160;
+  padding: 14px 24px 10px;
   display: flex;
   align-items: center;
   gap: 16px;
   border-top: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
   margin-top: 4px;
-  background: #f9fafb;
+  background: rgba(249,250,251,.96);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 14px rgba(13,26,56,.06);
 }
 .period-bar-label {
   font-size: 10px;
@@ -546,6 +559,35 @@ body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; background: #f7f8
 }
 .period-bar-section .period-bar {
   margin-bottom: 0;
+}
+
+.period-bar-section .period-btn {
+  min-width: 148px;
+  justify-content: center;
+}
+.period-bar-section .period-btn.active::before {
+  content: '✓';
+  margin-right: 6px;
+  font-weight: 900;
+}
+.period-bar-section .period-btn:not(.active) {
+  opacity: .78;
+}
+.period-bar-section .period-btn:not(.active):hover {
+  opacity: 1;
+}
+@media(max-width:700px){
+  .period-bar-section{
+    top:72px;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:8px;
+  }
+  .period-bar-section .period-bar{
+    width:100%;
+    overflow-x:auto;
+    padding-bottom:2px;
+  }
 }
 
 /* ── Panoramica KPI strip ── */
@@ -1184,6 +1226,14 @@ function byId(id){
     querySelector:function(){return null;}, appendChild:function(){}
   };
 }
+function toggleDataSource(header){
+  const body = header && header.nextElementSibling;
+  const toggle = header ? header.querySelector(".dsc-toggle") : null;
+  if(!body) return;
+  body.classList.toggle("open");
+  if(toggle) toggle.textContent = body.classList.contains("open") ? "▾ Chiudi" : "▸ Mostra";
+}
+
 </script>
 
 <script>
@@ -2271,8 +2321,8 @@ const D = {
 <div class="period-bar-section">
   <div class="period-bar-label">Seleziona periodo per i canali</div>
   <div class="period-bar">
-    <button class="period-btn active" onclick="setPeriod('month')">Ultimi 28 giorni</button>
-    <button class="period-btn" onclick="setPeriod('week')">Ultimi 7 giorni</button>
+    <button class="period-btn active" data-period="month" aria-pressed="true" onclick="setPeriod('month')">Ultimi 28 giorni</button>
+    <button class="period-btn" data-period="week" aria-pressed="false" onclick="setPeriod('week')">Ultima settimana</button>
   </div>
 </div>
 <div class="platforms-grid">
@@ -2289,9 +2339,12 @@ const D = {
     <span class="manual-badge">📋 Dati inseriti — <span id="yt-date">—</span></span>
   </div>
     <div class="data-source-card">
-  <div class="dsc-header" style="background:#FF0000">
-    <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5.5" stroke="rgba(255,255,255,.6)" fill="none"/><circle cx="6" cy="4.5" r="1" fill="#fff"/><rect x="5.5" y="6" width="1" height="3" rx=".5" fill="#fff"/></svg>
-    <span class="dsc-title">Dove trovare i dati</span>
+  <div class="dsc-header" style="background:#FF0000" onclick="toggleDataSource(this)">
+    <div class="dsc-head-left">
+      <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5.5" stroke="rgba(255,255,255,.6)" fill="none"/><circle cx="6" cy="4.5" r="1" fill="#fff"/><rect x="5.5" y="6" width="1" height="3" rx=".5" fill="#fff"/></svg>
+      <span class="dsc-title">Dove trovare i dati</span>
+    </div>
+    <span class="dsc-toggle">▸ Mostra</span>
   </div>
   <div class="dsc-body">
     <div class="dsc-path"><span class="dsc-path-step">studio.youtube.com</span> <span class="dsc-path-arrow">→</span> <span class="dsc-path-step">Analytics</span> <span class="dsc-path-arrow">→</span> <span class="dsc-path-step">Panoramica · Contenuto · Pubblico</span></div>
@@ -2312,9 +2365,9 @@ const D = {
 <div class="upload-box" style="border-color:#FF000044">
   <div class="upload-header" style="background:#FF0000" onclick="var b=byId('upload-body-yt');b.classList.toggle('open');this.querySelector('.upload-toggle').textContent=b.classList.contains('open')?'▾ Chiudi':'▸ Mostra istruzioni'">
     <div class="upload-platform-label">📤 Aggiorna dati — YouTube Studio</div>
-    <span class="upload-toggle">▾ Chiudi</span>
+    <span class="upload-toggle">▸ Mostra istruzioni</span>
   </div>
-  <div class="upload-body open" id="upload-body-yt">
+  <div class="upload-body" id="upload-body-yt">
         <div class="upload-steps-list">
 <div class="upload-step"><div class="upload-step-n" style="background:#FF0000">1</div><div class="upload-step-t">Apri <code>studio.youtube.com</code> → menu laterale → <strong>Analytics</strong></div></div>
 <div class="upload-step"><div class="upload-step-n" style="background:#FF0000">2</div><div class="upload-step-t">Seleziona il periodo desiderato → clicca <strong>⬇ Scarica rapporto</strong> in alto a destra → <strong>Esporta come CSV</strong> → salva come <code>yt_overview.csv</code></div></div>
@@ -2386,9 +2439,12 @@ const D = {
     <span id="ig-status-badge" class="manual-badge">📋 Dati manuali — <span id="ig-date">—</span> <button onclick="openEditModal('instagram')" style="margin-left:8px;padding:2px 9px;border:1px solid #E1306C55;border-radius:6px;background:#E1306C15;color:#E1306C;font-size:10px;font-weight:700;cursor:pointer;vertical-align:middle">✏️ Aggiorna</button></span>
   </div>
     <div class="data-source-card">
-  <div class="dsc-header" style="background:#E1306C">
-    <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5.5" stroke="rgba(255,255,255,.6)" fill="none"/><circle cx="6" cy="4.5" r="1" fill="#fff"/><rect x="5.5" y="6" width="1" height="3" rx=".5" fill="#fff"/></svg>
-    <span class="dsc-title">Dove trovare i dati</span>
+  <div class="dsc-header" style="background:#E1306C" onclick="toggleDataSource(this)">
+    <div class="dsc-head-left">
+      <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5.5" stroke="rgba(255,255,255,.6)" fill="none"/><circle cx="6" cy="4.5" r="1" fill="#fff"/><rect x="5.5" y="6" width="1" height="3" rx=".5" fill="#fff"/></svg>
+      <span class="dsc-title">Dove trovare i dati</span>
+    </div>
+    <span class="dsc-toggle">▸ Mostra</span>
   </div>
   <div class="dsc-body">
     <div class="dsc-path"><span class="dsc-path-step">business.facebook.com</span> <span class="dsc-path-arrow">→</span> <span class="dsc-path-step">Como TV (IG)</span> <span class="dsc-path-arrow">→</span> <span class="dsc-path-step">Insights</span> <span class="dsc-path-arrow">→</span> <span class="dsc-path-step">Contenuto</span></div>
@@ -2409,9 +2465,9 @@ const D = {
 <div class="upload-box" style="border-color:#E1306C44">
   <div class="upload-header" style="background:#E1306C" onclick="var b=byId('upload-body-ig');b.classList.toggle('open');this.querySelector('.upload-toggle').textContent=b.classList.contains('open')?'▾ Chiudi':'▸ Mostra istruzioni'">
     <div class="upload-platform-label">📤 Aggiorna dati — Meta Business Suite (Instagram)</div>
-    <span class="upload-toggle">▾ Chiudi</span>
+    <span class="upload-toggle">▸ Mostra istruzioni</span>
   </div>
-  <div class="upload-body open" id="upload-body-ig">
+  <div class="upload-body" id="upload-body-ig">
         <div class="upload-steps-list">
 <div class="upload-step"><div class="upload-step-n" style="background:#E1306C">1</div><div class="upload-step-t">Apri <code>business.facebook.com</code> → seleziona <strong>Como TV (Instagram)</strong></div></div>
 <div class="upload-step"><div class="upload-step-n" style="background:#E1306C">2</div><div class="upload-step-t">Menu laterale → <strong>Insights</strong> → <strong>Contenuto</strong></div></div>
@@ -2489,9 +2545,12 @@ const D = {
     <span class="manual-badge">📋 Aggiornamento manuale — <span id="tt-date">—</span> <button onclick="openEditModal('tiktok')" style="margin-left:8px;padding:2px 9px;border:1px solid #16182355;border-radius:6px;background:#16182315;color:#161823;font-size:10px;font-weight:700;cursor:pointer;vertical-align:middle">✏️ Aggiorna</button></span>
   </div>
     <div class="data-source-card">
-  <div class="dsc-header" style="background:#010101">
-    <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5.5" stroke="rgba(255,255,255,.6)" fill="none"/><circle cx="6" cy="4.5" r="1" fill="#fff"/><rect x="5.5" y="6" width="1" height="3" rx=".5" fill="#fff"/></svg>
-    <span class="dsc-title">Dove trovare i dati</span>
+  <div class="dsc-header" style="background:#010101" onclick="toggleDataSource(this)">
+    <div class="dsc-head-left">
+      <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5.5" stroke="rgba(255,255,255,.6)" fill="none"/><circle cx="6" cy="4.5" r="1" fill="#fff"/><rect x="5.5" y="6" width="1" height="3" rx=".5" fill="#fff"/></svg>
+      <span class="dsc-title">Dove trovare i dati</span>
+    </div>
+    <span class="dsc-toggle">▸ Mostra</span>
   </div>
   <div class="dsc-body">
     <div class="dsc-path"><span class="dsc-path-step">TikTok Studio</span> <span class="dsc-path-arrow">→</span> <span class="dsc-path-step">Analytics</span></div>
@@ -2512,9 +2571,9 @@ const D = {
 <div class="upload-box" style="border-color:#25F4EE44">
   <div class="upload-header" style="background:#161823" onclick="var b=byId('upload-body-tt');b.classList.toggle('open');this.querySelector('.upload-toggle').textContent=b.classList.contains('open')?'▾ Chiudi':'▸ Mostra istruzioni'">
     <div class="upload-platform-label">📤 Aggiorna dati — TikTok Studio</div>
-    <span class="upload-toggle">▾ Chiudi</span>
+    <span class="upload-toggle">▸ Mostra istruzioni</span>
   </div>
-  <div class="upload-body open" id="upload-body-tt">
+  <div class="upload-body" id="upload-body-tt">
         <div class="upload-steps-list">
 <div class="upload-step"><div class="upload-step-n" style="background:#25F4EE">1</div><div class="upload-step-t">Apri <code>tiktok.com/tiktokstudio</code> oppure l'app TikTok Studio</div></div>
 <div class="upload-step"><div class="upload-step-n" style="background:#25F4EE">2</div><div class="upload-step-t">Menu → <strong>Analytics</strong> → seleziona il periodo desiderato</div></div>
@@ -2560,9 +2619,12 @@ const D = {
   </div>
 
     <div class="data-source-card">
-  <div class="dsc-header" style="background:#1877F2">
-    <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5.5" stroke="rgba(255,255,255,.6)" fill="none"/><circle cx="6" cy="4.5" r="1" fill="#fff"/><rect x="5.5" y="6" width="1" height="3" rx=".5" fill="#fff"/></svg>
-    <span class="dsc-title">Dove trovare i dati</span>
+  <div class="dsc-header" style="background:#1877F2" onclick="toggleDataSource(this)">
+    <div class="dsc-head-left">
+      <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5.5" stroke="rgba(255,255,255,.6)" fill="none"/><circle cx="6" cy="4.5" r="1" fill="#fff"/><rect x="5.5" y="6" width="1" height="3" rx=".5" fill="#fff"/></svg>
+      <span class="dsc-title">Dove trovare i dati</span>
+    </div>
+    <span class="dsc-toggle">▸ Mostra</span>
   </div>
   <div class="dsc-body">
     <div class="dsc-path"><span class="dsc-path-step">business.facebook.com</span> <span class="dsc-path-arrow">→</span> <span class="dsc-path-step">Como TV (FB)</span> <span class="dsc-path-arrow">→</span> <span class="dsc-path-step">Insights</span> <span class="dsc-path-arrow">→</span> <span class="dsc-path-step">Contenuto</span></div>
@@ -2583,9 +2645,9 @@ const D = {
 <div class="upload-box" style="border-color:#1877F244">
   <div class="upload-header" style="background:#1877F2" onclick="var b=byId('upload-body-fb');b.classList.toggle('open');this.querySelector('.upload-toggle').textContent=b.classList.contains('open')?'▾ Chiudi':'▸ Mostra istruzioni'">
     <div class="upload-platform-label">📤 Aggiorna dati — Meta Business Suite (Facebook)</div>
-    <span class="upload-toggle">▾ Chiudi</span>
+    <span class="upload-toggle">▸ Mostra istruzioni</span>
   </div>
-  <div class="upload-body open" id="upload-body-fb">
+  <div class="upload-body" id="upload-body-fb">
         <div class="upload-steps-list">
 <div class="upload-step"><div class="upload-step-n" style="background:#1877F2">1</div><div class="upload-step-t">Apri <code>business.facebook.com</code> → seleziona <strong>Como TV (Facebook)</strong></div></div>
 <div class="upload-step"><div class="upload-step-n" style="background:#1877F2">2</div><div class="upload-step-t">Menu laterale → <strong>Insights</strong> → <strong>Contenuto</strong></div></div>
@@ -2632,9 +2694,12 @@ const D = {
     <span class="manual-badge">📋 Aggiornamento manuale — <span id="li-date">—</span> <button onclick="openEditModal('linkedin')" style="margin-left:8px;padding:2px 9px;border:1px solid #0A66C255;border-radius:6px;background:#0A66C215;color:#0A66C2;font-size:10px;font-weight:700;cursor:pointer;vertical-align:middle">✏️ Aggiorna</button></span>
   </div>
     <div class="data-source-card">
-  <div class="dsc-header" style="background:#0A66C2">
-    <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5.5" stroke="rgba(255,255,255,.6)" fill="none"/><circle cx="6" cy="4.5" r="1" fill="#fff"/><rect x="5.5" y="6" width="1" height="3" rx=".5" fill="#fff"/></svg>
-    <span class="dsc-title">Dove trovare i dati</span>
+  <div class="dsc-header" style="background:#0A66C2" onclick="toggleDataSource(this)">
+    <div class="dsc-head-left">
+      <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5.5" stroke="rgba(255,255,255,.6)" fill="none"/><circle cx="6" cy="4.5" r="1" fill="#fff"/><rect x="5.5" y="6" width="1" height="3" rx=".5" fill="#fff"/></svg>
+      <span class="dsc-title">Dove trovare i dati</span>
+    </div>
+    <span class="dsc-toggle">▸ Mostra</span>
   </div>
   <div class="dsc-body">
     <div class="dsc-path"><span class="dsc-path-step">linkedin.com/company/como-tv/admin</span> <span class="dsc-path-arrow">→</span> <span class="dsc-path-step">Analytics</span> <span class="dsc-path-arrow">→</span> <span class="dsc-path-step">Aggiornamenti</span></div>
@@ -2655,9 +2720,9 @@ const D = {
 <div class="upload-box" style="border-color:#0A66C244">
   <div class="upload-header" style="background:#0A66C2" onclick="var b=byId('upload-body-li');b.classList.toggle('open');this.querySelector('.upload-toggle').textContent=b.classList.contains('open')?'▾ Chiudi':'▸ Mostra istruzioni'">
     <div class="upload-platform-label">📤 Aggiorna dati — LinkedIn Pages</div>
-    <span class="upload-toggle">▾ Chiudi</span>
+    <span class="upload-toggle">▸ Mostra istruzioni</span>
   </div>
-  <div class="upload-body open" id="upload-body-li">
+  <div class="upload-body" id="upload-body-li">
         <div class="upload-steps-list">
 <div class="upload-step"><div class="upload-step-n" style="background:#0A66C2">1</div><div class="upload-step-t">Apri <code>linkedin.com/company/como-tv/admin</code></div></div>
 <div class="upload-step"><div class="upload-step-n" style="background:#0A66C2">2</div><div class="upload-step-t">Menu in alto → <strong>Analytics</strong> → <strong>Aggiornamenti</strong> (o <strong>Follower</strong>)</div></div>
@@ -2767,8 +2832,11 @@ function scrollToPanel(id){ const el=byId(id); if(el) el.scrollIntoView({behavio
 
 // ── Period ────────────────────────────────────────────
 function setPeriod(p){
-  PERIOD=p;
-  const pIdx={all:0,month:1,week:2}[p]||0; document.querySelectorAll('.period-btn').forEach((b,i)=>b.classList.toggle('active',i%3===pIdx));
+  PERIOD = p;
+  document.querySelectorAll('.period-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.period === p);
+    btn.setAttribute('aria-pressed', btn.dataset.period === p ? 'true' : 'false');
+  });
   renderAll();
 }
 
