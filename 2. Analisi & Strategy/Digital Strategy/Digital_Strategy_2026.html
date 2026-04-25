@@ -548,6 +548,68 @@ body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; background: #f7f8
   margin-bottom: 0;
 }
 
+/* ── Panoramica KPI strip ── */
+.ov-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin: 0 0 20px;
+}
+@media(max-width:900px){ .ov-kpi-strip { grid-template-columns: repeat(2,1fr); } }
+.ov-kpi-card {
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  padding: 14px 16px;
+  position: relative;
+  overflow: hidden;
+}
+.ov-kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--c);
+}
+.ov-kpi-platform {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--c);
+  margin-bottom: 8px;
+}
+.ov-kpi-num {
+  font-size: 22px;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.ov-kpi-label {
+  font-size: 10px;
+  color: #9ca3af;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  margin-bottom: 8px;
+}
+.ov-kpi-metric {
+  font-size: 11px;
+  color: #374151;
+  font-weight: 600;
+}
+.ov-kpi-growth {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
+  margin-top: 4px;
+}
+.ov-kpi-growth.pos { background: #f0fdf4; color: #16a34a; }
+.ov-kpi-growth.neg { background: #fef2f2; color: #dc2626; }
+.ov-kpi-growth.neu { background: #f3f4f6; color: #6b7280; }
+
 
 /* ── Social Analytics isolation ── */
 #panel-social .panel { display: block !important; margin-bottom: 56px; scroll-margin-top: 70px; }
@@ -1160,6 +1222,7 @@ const D = {
     </div>
     <div class="section-jump">Totali complessivi · seleziona periodo per i canali ↓</div>
   </div>
+  <div class="ov-kpi-strip" id="ov-kpi"></div>
   <div class="chart-row">
     <div class="chart-box">
       <div class="chart-title">Audience per piattaforma</div>
@@ -1177,9 +1240,7 @@ const D = {
 <div class="period-bar-section">
   <div class="period-bar-label">Seleziona periodo per i canali</div>
   <div class="period-bar">
-    <div class="period-label">Periodo</div>
-    <button class="period-btn active" onclick="setPeriod('all')">Complessivo</button>
-    <button class="period-btn" onclick="setPeriod('month')">Ultimi 28 giorni</button>
+    <button class="period-btn active" onclick="setPeriod('month')">Ultimi 28 giorni</button>
     <button class="period-btn" onclick="setPeriod('week')">Ultimi 7 giorni</button>
   </div>
 </div>
@@ -1603,7 +1664,7 @@ const D = {
 <!-- ═══════════════════ JAVASCRIPT ═══════════════════ -->
 <script>
 // ── Stato ─────────────────────────────────────────────
-let PERIOD = 'all';
+let PERIOD = 'month';
 
 // ── Helpers ───────────────────────────────────────────
 const fmt = n => { if(!n&&n!==0)return'—'; if(n>=1e6)return(n/1e6).toFixed(1).replace('.0','')+'M'; if(n>=1e3)return(n/1e3).toFixed(1).replace('.0','')+'K'; return n.toLocaleString('it-IT'); };
@@ -1710,6 +1771,29 @@ function renderHero(){
 
 // ── Overview ──────────────────────────────────────────
 function renderOverview(){
+  // ── KPI strip ──
+  const kpiEl=document.getElementById('ov-kpi');
+  if(kpiEl){
+    const kpiData=[
+      {id:'youtube',  name:'YouTube',   c:'#FF0000', num:D.youtube.subscribers,    label:'Iscritti',  metric:fmt(D.youtube.pubblico_mensile)+' pubblico/mese', growth:D.youtube[gk()]},
+      {id:'instagram',name:'Instagram', c:'#E1306C', num:D.instagram.followers,    label:'Follower',  metric:fmt(D.instagram.feed_28d.reach)+' reach 28g',     growth:D.instagram[gk()]},
+      {id:'tiktok',   name:'TikTok',    c:'#010101', num:D.tiktok.followers,       label:'Follower',  metric:fmt(D.tiktok.avg_views)+' views/video',           growth:D.tiktok[gk()]},
+      {id:'facebook', name:'Facebook',  c:'#1877F2', num:D.facebook.followers,     label:'Follower',  metric:fmt(D.facebook.content_28d.reach)+' reach 28g',   growth:D.facebook[gk()]},
+      {id:'linkedin', name:'LinkedIn',  c:'#0A66C2', num:D.linkedin.followers,     label:'Follower',  metric:fmt(D.linkedin.impressions)+' impressioni',        growth:D.linkedin[gk()]},
+    ];
+    kpiEl.innerHTML=kpiData.map(p=>{
+      const g=typeof p.growth==='number';
+      const gcls=g?(p.growth>0?'pos':p.growth<0?'neg':'neu'):'neu';
+      const gtxt=g?((p.growth>0?'+':'')+fmt(p.growth)+' '+pWord()):'—';
+      return `<div class="ov-kpi-card" style="--c:${p.c}">
+        <div class="ov-kpi-platform">${p.name}</div>
+        <div class="ov-kpi-num">${fmt(p.num)}</div>
+        <div class="ov-kpi-label">${p.label}</div>
+        <div class="ov-kpi-metric">${p.metric}</div>
+        <span class="ov-kpi-growth ${gcls}">${gtxt}</span>
+      </div>`;
+    }).join('');
+  }
   const platforms=[
     {id:'youtube',name:'YouTube',icon:'▶',color:'#FF0000',audience:D.youtube.subscribers,growth:D.youtube[gk()],metric: PERIOD==='all' ? fmt(D.youtube.total_views)+' views storiche' : fmt(D.youtube.pubblico_mensile)+' pubblico periodo',note:'storico + libreria contenuti'},
     {id:'instagram',name:'Instagram',icon:'📷',color:'#E1306C',audience:D.instagram.followers,growth:D.instagram[gk()],metric:(PERIOD==='week'?fmt(D.instagram.feed_week.reach)+' reach 7g':fmt(D.instagram.feed_28d.reach)+' reach 28g'),note:'Reel / Post / Stories separati'},

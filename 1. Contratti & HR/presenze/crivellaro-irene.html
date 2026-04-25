@@ -51,15 +51,35 @@
     .legenda{display:flex;flex-wrap:wrap;gap:8px 18px;margin-bottom:24px;padding:12px 16px;background:#f8f9fb;border-radius:8px;font-size:12px;}
     .legenda-item{display:flex;align-items:center;gap:6px;}
     .legenda-dot{width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,0.1);}
+
+    /* RIEPILOGO */
     .riepilogo{margin-bottom:28px;}
-    .riepilogo h3{font-size:11px;font-weight:700;color:#0d1a38;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;}
+    .riepilogo-header{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
+    .riepilogo h3{font-size:11px;font-weight:700;color:#0d1a38;text-transform:uppercase;letter-spacing:1px;}
+    .btn-recalc{font-size:10px;font-weight:600;color:#1D4ED8;background:none;border:1px solid #BFDBFE;border-radius:4px;padding:3px 8px;cursor:pointer;}
+    .btn-recalc:hover{background:#EFF6FF;}
     .riepilogo-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
     .riep-box{background:#f8f9fb;border-radius:7px;padding:10px 14px;text-align:center;}
-    .riep-box .riep-label{font-size:11px;color:#888;margin-bottom:4px;}
-    .riep-box .riep-val{font-size:22px;font-weight:800;color:#0d1a38;}
+    .riep-box .riep-label{font-size:11px;color:#888;margin-bottom:6px;}
     .riep-box.highlight{background:#0d1a38;}
     .riep-box.highlight .riep-label{color:#8899bb;}
-    .riep-box.highlight .riep-val{color:#d4a93a;}
+    .riep-box .riep-val{font-size:22px;font-weight:800;color:#0d1a38;}  /* tot-days */
+
+    /* input numerico nel riepilogo */
+    .riep-input{
+      width:100%; border:none; background:transparent; text-align:center;
+      font-size:22px; font-weight:800; color:#0d1a38;
+      font-family:inherit; padding:0; cursor:text;
+      border-bottom:2px solid transparent; transition:border-color 0.15s;
+      -moz-appearance:textfield;
+    }
+    .riep-input::-webkit-outer-spin-button,
+    .riep-input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+    .riep-input:focus{outline:none;border-bottom-color:#B8962E;}
+    .riep-input.manual{color:#B45309;border-bottom-color:#FCD34D;}
+    .riep-box.highlight .riep-input{color:#d4a93a;}
+    .riep-box.highlight .riep-input.manual{color:#facc15;}
+
     .note-section{margin-bottom:24px;}
     .note-section label{font-size:11px;font-weight:600;color:#888;text-transform:uppercase;display:block;margin-bottom:5px;}
     .note-section textarea{width:100%;border:1px solid #d0d0d0;border-radius:5px;padding:8px 10px;font-size:13px;color:#1a1a18;resize:vertical;min-height:60px;font-family:inherit;}
@@ -69,13 +89,14 @@
     .btn-reset{background:#fff;color:#B91C1C;border:1.5px solid #B91C1C;border-radius:6px;padding:10px 20px;font-size:14px;font-weight:600;cursor:pointer;}
     .btn-reset:hover{background:#FEF2F2;}
     .btn-clear-all{background:#fff;color:#888;border:1.5px solid #ccc;border-radius:6px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;margin-left:auto;}
-    .btn-clear-all:hover{background:#f5f5f5;color:#555;}
+    .btn-clear-all:hover{background:#f5f5f5;}
+
     @page { size: A4 landscape; margin: 0; }
     @media print {
-      body { background: #fff; }
-      .nav,.month-nav,.actions,.note-section,.print-tip,.save-indicator { display: none !important; }
-      .doc-header { display: none; }
-      .print-header { display: flex !important; }
+      body { background:#fff; }
+      .nav,.month-nav,.actions,.note-section,.print-tip,.save-indicator,.btn-recalc { display:none !important; }
+      .doc-header { display:none; }
+      .print-header { display:flex !important; }
       .container { box-shadow:none;border-radius:0;padding:8mm 8mm 6mm;max-width:100%;margin:0; }
       .info-grid { padding:6px 10px;margin-bottom:8px;gap:4px 20px; }
       .info-field label { font-size:9px; }
@@ -91,7 +112,8 @@
       .riepilogo-grid { gap:4px; }
       .riep-box { padding:5px 8px; }
       .riep-box .riep-label { font-size:9px; }
-      .riep-box .riep-val { font-size:15px; }
+      .riep-input,.riep-val { font-size:15px; }
+      .riep-input { border-bottom:none !important; }
     }
   </style>
 </head>
@@ -144,15 +166,18 @@
     <div class="legenda-item"><div class="legenda-dot type-FE"></div><span><strong>FE</strong> Festivo</span></div>
   </div>
   <div class="riepilogo">
-    <h3>Riepilogo</h3>
+    <div class="riepilogo-header">
+      <h3>Riepilogo</h3>
+      <button class="btn-recalc" onclick="recalcFromCalendar()" title="Ricalcola i totali dal calendario">↺ Ricalcola dal calendario</button>
+    </div>
     <div class="riepilogo-grid">
-      <div class="riep-box highlight"><div class="riep-label">Giorni Lavorati (P+T)</div><div class="riep-val" id="tot-lav">0</div></div>
-      <div class="riep-box"><div class="riep-label">Trasferte</div><div class="riep-val" id="tot-T">0</div></div>
-      <div class="riep-box"><div class="riep-label">Ferie</div><div class="riep-val" id="tot-F">0</div></div>
-      <div class="riep-box"><div class="riep-label">Permessi</div><div class="riep-val" id="tot-PE">0</div></div>
-      <div class="riep-box"><div class="riep-label">Malattia</div><div class="riep-val" id="tot-M">0</div></div>
-      <div class="riep-box"><div class="riep-label">Riposi</div><div class="riep-val" id="tot-R">0</div></div>
-      <div class="riep-box"><div class="riep-label">Festivi</div><div class="riep-val" id="tot-FE">0</div></div>
+      <div class="riep-box highlight"><div class="riep-label">Giorni Lavorati</div><input class="riep-input" id="tot-lav" type="number" min="0" value="0"></div>
+      <div class="riep-box"><div class="riep-label">Trasferte</div><input class="riep-input" id="tot-T" type="number" min="0" value="0"></div>
+      <div class="riep-box"><div class="riep-label">Ferie</div><input class="riep-input" id="tot-F" type="number" min="0" value="0"></div>
+      <div class="riep-box"><div class="riep-label">Permessi</div><input class="riep-input" id="tot-PE" type="number" min="0" value="0"></div>
+      <div class="riep-box"><div class="riep-label">Malattia</div><input class="riep-input" id="tot-M" type="number" min="0" value="0"></div>
+      <div class="riep-box"><div class="riep-label">Riposi</div><input class="riep-input" id="tot-R" type="number" min="0" value="0"></div>
+      <div class="riep-box"><div class="riep-label">Festivi</div><input class="riep-input" id="tot-FE" type="number" min="0" value="0"></div>
       <div class="riep-box"><div class="riep-label">Totale giorni</div><div class="riep-val" id="tot-days">0</div></div>
     </div>
   </div>
@@ -170,90 +195,143 @@
   const MESI=['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
   const TIPI=[{val:'P',label:'P — Presenza'},{val:'T',label:'T — Trasferta'},{val:'F',label:'F — Ferie'},{val:'PE',label:'PE — Permesso'},{val:'M',label:'M — Malattia'},{val:'R',label:'R — Riposo'},{val:'FE',label:'FE — Festivo'}];
   const FEST=['01-01','06-01','25-04','01-05','02-06','15-08','01-11','08-12','25-12','26-12'];
-  const SK = 'presenze_crivellaro-irene';
-  let Y=new Date().getFullYear(), M=new Date().getMonth(), data={};
+  const RIEP_IDS=['tot-lav','tot-T','tot-F','tot-PE','tot-M','tot-R','tot-FE'];
+  const SK='presenze_crivellaro-irene';
+  let Y=new Date().getFullYear(), M=new Date().getMonth(), data={}, manuals={};
 
-  // ── Persistenza ──────────────────────────────────────────────────────────
-  function loadAll() {
-    try { const s=localStorage.getItem(SK); if(s) data=JSON.parse(s); } catch(e){}
+  // ── Persistenza ───────────────────────────────────────────────────────────
+  function loadAll(){
+    try{
+      const s=localStorage.getItem(SK); if(s) data=JSON.parse(s);
+      const m=localStorage.getItem(SK+'_manuals'); if(m) manuals=JSON.parse(m);
+    }catch(e){}
   }
   let saveTimer=null;
-  function saveAll() {
-    try { localStorage.setItem(SK,JSON.stringify(data)); } catch(e){}
+  function saveAll(){
+    try{
+      localStorage.setItem(SK,JSON.stringify(data));
+      localStorage.setItem(SK+'_manuals',JSON.stringify(manuals));
+    }catch(e){}
     const ind=document.getElementById('saveInd');
-    ind.textContent='✓ Salvato automaticamente';
+    ind.textContent='✓ Salvato';
     clearTimeout(saveTimer);
     saveTimer=setTimeout(()=>{ind.textContent='';},2000);
   }
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
   const key=(y,m,d)=>`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  const mk=(y,m,id)=>`${y}-${m}-${id}`;  // chiave per manuals
   const isFest=(y,m,d)=>FEST.includes(`${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
   const def=(y,m,d)=>{const w=new Date(y,m,d).getDay();return(w===0||w===6)?'R':isFest(y,m,d)?'FE':'P';};
 
-  // ── Render ───────────────────────────────────────────────────────────────
-  function render() {
+  // ── Calendario ────────────────────────────────────────────────────────────
+  function render(){
     document.getElementById('monthLabel').textContent=MESI[M]+' '+Y;
     const dim=new Date(Y,M+1,0).getDate(), fd=new Date(Y,M,1).getDay(), sc=fd===0?6:fd-1;
     const today=new Date(), isCur=today.getFullYear()===Y&&today.getMonth()===M;
     const tb=document.getElementById('calendarBody'); tb.innerHTML='';
     let cc=0,tr=null;
-    for(let i=0;i<sc;i++) {
+    for(let i=0;i<sc;i++){if(cc%7===0){tr=document.createElement('tr');tb.appendChild(tr);}const td=document.createElement('td');td.className='empty';tr.appendChild(td);cc++;}
+    for(let d=1;d<=dim;d++){
       if(cc%7===0){tr=document.createElement('tr');tb.appendChild(tr);}
-      const td=document.createElement('td');td.className='empty';tr.appendChild(td);cc++;
-    }
-    for(let d=1;d<=dim;d++) {
-      if(cc%7===0){tr=document.createElement('tr');tb.appendChild(tr);}
-      const k=key(Y,M,d);
-      if(!(k in data)) data[k]=def(Y,M,d);
+      const k=key(Y,M,d); if(!(k in data))data[k]=def(Y,M,d);
       const td=document.createElement('td');
-      if(isCur&&today.getDate()===d) td.className='today';
+      if(isCur&&today.getDate()===d)td.className='today';
       const sp=document.createElement('span');sp.className='day-num';
       sp.textContent=d+' '+['Dom','Lun','Mar','Mer','Gio','Ven','Sab'][new Date(Y,M,d).getDay()];
       td.appendChild(sp);
-      const sel=document.createElement('select');
-      sel.className='day-select type-'+data[k]; sel.dataset.key=k;
-      TIPI.forEach(t=>{
-        const o=document.createElement('option');o.value=t.val;o.textContent=t.label;
-        if(t.val===data[k])o.selected=true;sel.appendChild(o);
-      });
+      const sel=document.createElement('select');sel.className='day-select type-'+data[k];sel.dataset.key=k;
+      TIPI.forEach(t=>{const o=document.createElement('option');o.value=t.val;o.textContent=t.label;if(t.val===data[k])o.selected=true;sel.appendChild(o);});
       sel.addEventListener('change',function(){
         data[this.dataset.key]=this.value;
         this.className='day-select type-'+this.value;
-        saveAll(); update();
+        // Se non c'è un valore manuale, aggiorna il riepilogo dal calendario
+        recalcFromCalendar(true);
+        saveAll();
       });
       td.appendChild(sel); tr.appendChild(td); cc++;
     }
     const rem=(7-cc%7)%7;
     for(let i=0;i<rem;i++){const td=document.createElement('td');td.className='empty';tr.appendChild(td);}
-    update();
+    document.getElementById('tot-days').textContent=dim;
+    loadManuals();
+    recalcFromCalendar(false); // aggiorna solo i campi non manuali
   }
 
-  function update() {
+  // ── Riepilogo ─────────────────────────────────────────────────────────────
+  function calcFromCalendar(){
     const dim=new Date(Y,M+1,0).getDate(), c={P:0,T:0,F:0,PE:0,M:0,R:0,FE:0};
     for(let d=1;d<=dim;d++){const t=data[key(Y,M,d)]||def(Y,M,d);if(c[t]!==undefined)c[t]++;}
-    document.getElementById('tot-lav').textContent=c.P+c.T;
-    ['T','F','PE','M','R','FE'].forEach(k=>document.getElementById('tot-'+k).textContent=c[k]);
-    document.getElementById('tot-days').textContent=dim;
+    return {...c, lav:c.P+c.T};
   }
 
-  function changeMonth(d) {M+=d;if(M<0){M=11;Y--;}if(M>11){M=0;Y++;}render();}
+  function recalcFromCalendar(forceAll=false){
+    const c=calcFromCalendar();
+    const vals={
+      'tot-lav':c.lav,'tot-T':c.T,'tot-F':c.F,
+      'tot-PE':c.PE,'tot-M':c.M,'tot-R':c.R,'tot-FE':c.FE
+    };
+    RIEP_IDS.forEach(id=>{
+      const mkey=mk(Y,M,id);
+      const el=document.getElementById(id);
+      if(forceAll || !(mkey in manuals)){
+        el.value=vals[id];
+        el.classList.remove('manual');
+        delete manuals[mkey];
+      }
+    });
+  }
 
-  function resetMonth() {
-    if(!confirm('Azzera il mese corrente? Lo storico degli altri mesi resta invariato.')) return;
+  function loadManuals(){
+    RIEP_IDS.forEach(id=>{
+      const mkey=mk(Y,M,id);
+      const el=document.getElementById(id);
+      if(mkey in manuals){
+        el.value=manuals[mkey];
+        el.classList.add('manual');
+      } else {
+        el.classList.remove('manual');
+      }
+    });
+  }
+
+  // Listener sui campi riepilogo
+  RIEP_IDS.forEach(id=>{
+    document.addEventListener('DOMContentLoaded',()=>{
+      const el=document.getElementById(id);
+      el.addEventListener('input',()=>{
+        const c=calcFromCalendar();
+        const autoVals={'tot-lav':c.lav,'tot-T':c.T,'tot-F':c.F,'tot-PE':c.PE,'tot-M':c.M,'tot-R':c.R,'tot-FE':c.FE};
+        const mkey=mk(Y,M,id);
+        if(parseInt(el.value)===autoVals[id]){
+          delete manuals[mkey]; el.classList.remove('manual');
+        } else {
+          manuals[mkey]=parseInt(el.value)||0; el.classList.add('manual');
+        }
+        saveAll();
+      });
+    });
+  });
+
+  // ── Azioni ────────────────────────────────────────────────────────────────
+  function changeMonth(d){M+=d;if(M<0){M=11;Y--;}if(M>11){M=0;Y++;}render();}
+
+  function resetMonth(){
+    if(!confirm('Azzera il mese corrente? Lo storico degli altri mesi resta.')) return;
     const dim=new Date(Y,M+1,0).getDate();
-    for(let d=1;d<=dim;d++) data[key(Y,M,d)]=def(Y,M,d);
+    for(let d=1;d<=dim;d++)data[key(Y,M,d)]=def(Y,M,d);
+    RIEP_IDS.forEach(id=>delete manuals[mk(Y,M,id)]);
     saveAll(); render();
   }
 
-  function clearAll() {
-    if(!confirm('Cancellare TUTTO lo storico di Irene Crivellaro? Questa azione non è reversibile.')) return;
-    data={};
-    try{localStorage.removeItem(SK);}catch(e){}
+  function clearAll(){
+    if(!confirm('Cancellare TUTTO lo storico di Irene Crivellaro? Azione non reversibile.')) return;
+    data={}; manuals={};
+    try{localStorage.removeItem(SK);localStorage.removeItem(SK+'_manuals');}catch(e){}
     render();
   }
 
-  // ── Note persistenti ─────────────────────────────────────────────────────
+  // ── Note ─────────────────────────────────────────────────────────────────
   const noteKey=SK+'_notes';
   document.addEventListener('DOMContentLoaded',()=>{
     const nf=document.getElementById('noteField');
@@ -261,9 +339,8 @@
     nf.addEventListener('input',()=>{try{localStorage.setItem(noteKey,nf.value);}catch(e){}});
   });
 
-  // ── Init ─────────────────────────────────────────────────────────────────
-  loadAll();
-  render();
+  // ── Init ──────────────────────────────────────────────────────────────────
+  loadAll(); render();
 </script>
 </body>
 </html>
