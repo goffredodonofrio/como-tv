@@ -39,14 +39,16 @@
     .calendar{width:100%;border-collapse:collapse;margin-bottom:24px}
     .calendar th{background:#0d1a38;color:#fff;text-align:center;padding:8px 4px;font-size:12px;font-weight:600}
     .calendar th.weekend{background:#1a2e55}
-    .calendar td{border:1px solid #e0e0e0;text-align:center;vertical-align:top;padding:4px 2px;min-width:110px;height:88px}
+    .calendar td{border:1px solid #e0e0e0;text-align:center;vertical-align:top;padding:4px 2px;min-width:110px;height:118px}
     .calendar td.empty{background:#fafaf8}
     .calendar td.today .day-num{color:#B8962E;font-weight:800}
     .day-num{font-size:12px;font-weight:700;color:#0d1a38;display:block;margin-bottom:4px}
     .day-select{width:100%;border:1px solid #ccc;border-radius:4px;font-size:12px;padding:3px 2px;cursor:pointer;font-weight:600;font-family:inherit}
-    .day-time{display:none;width:100%;margin-top:3px;padding:2px 4px;border:1px solid #d0d0d0;border-radius:3px;font-size:11px;color:#0d1a38;background:#f8f9fb;font-family:inherit}
+    .day-time-row{display:none;margin-top:2px;text-align:left}
+    .day-time-row.show{display:block}
+    .day-time-label{display:block;font-size:8px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.5px;line-height:1.1;margin-bottom:1px}
+    .day-time{display:block;width:100%;padding:1px 4px;border:1px solid #d0d0d0;border-radius:3px;font-size:11px;color:#0d1a38;background:#f8f9fb;font-family:inherit}
     .day-time:focus{outline:none;border-color:#0d1a38;background:#fff}
-    .day-time.show{display:block}
     .type-P{background:#DBEAFE;color:#1D4ED8}
     .type-T{background:#FEF3C7;color:#B45309}
     .type-F{background:#DCFCE7;color:#15803D}
@@ -98,10 +100,13 @@
       .info-field label{font-size:9px}
       .info-field input{border:none;background:transparent;padding:0;font-size:11px}
       .calendar th{font-size:9px;padding:4px 2px}
-      .calendar td{height:54px;padding:2px 1px}
+      .calendar td{height:78px;padding:2px 1px}
       .day-num{font-size:9px;margin-bottom:2px}
       .day-select{font-size:9px;padding:1px}
-      .day-time{font-size:8px;padding:0;border:none;background:transparent;text-align:center}
+      .day-time-row{display:none;margin-top:1px}
+      .day-time-row.show{display:block}
+      .day-time-label{display:block;font-size:7px;font-weight:700;color:#666;text-transform:uppercase;line-height:1;margin-bottom:0}
+      .day-time{font-size:8px;padding:0;border:none;background:transparent;text-align:center;width:100%}
       .day-time::-webkit-calendar-picker-indicator{display:none}
       .legenda{padding:5px 10px;margin-bottom:8px;font-size:9px;gap:4px 10px}
       .legenda-dot{width:10px;height:10px}
@@ -182,6 +187,7 @@
       <div class="riep-box"><div class="riep-label">Recupero Riposo</div><input class="riep-input" id="tot-RR" type="number" min="0" value="0"></div>
       <div class="riep-box"><div class="riep-label">Infortunio</div><input class="riep-input" id="tot-IN" type="number" min="0" value="0"></div>
       <div class="riep-box"><div class="riep-label">Festivi</div><input class="riep-input" id="tot-FE" type="number" min="0" value="0"></div>
+      <div class="riep-box"><div class="riep-label">RR Residui</div><input class="riep-input" id="rrResidui" type="number" min="0" step="0.5" value="0" title="Recupero Riposo residui — valore manuale, persistente"></div>
       <div class="riep-box"><div class="riep-label">Totale giorni</div><div class="riep-val" id="tot-days">0</div></div>
     </div>
   </div>
@@ -207,13 +213,13 @@ const TIPI=[
 const FEST=['01-01','06-01','25-04','01-05','02-06','15-08','01-11','08-12','25-12','26-12'];
 const RIEP_IDS=['tot-lav','tot-T','tot-F','tot-PE','tot-M','tot-MP','tot-R','tot-RR','tot-IN','tot-FE'];
 const SK='presenze_taglieri-angelo';
-let Y=new Date().getFullYear(),M=new Date().getMonth(),data={},manuals={},times={};
+let Y=new Date().getFullYear(),M=new Date().getMonth(),data={},manuals={},times={},outTimes={};
 const TIME_TYPES=['P','T','PE'];
 
-function loadAll(){try{const s=localStorage.getItem(SK);if(s)data=JSON.parse(s);const m=localStorage.getItem(SK+'_manuals');if(m)manuals=JSON.parse(m);const t=localStorage.getItem(SK+'_times');if(t)times=JSON.parse(t);}catch(e){}}
+function loadAll(){try{const s=localStorage.getItem(SK);if(s)data=JSON.parse(s);const m=localStorage.getItem(SK+'_manuals');if(m)manuals=JSON.parse(m);const t=localStorage.getItem(SK+'_times');if(t)times=JSON.parse(t);const o=localStorage.getItem(SK+'_outTimes');if(o)outTimes=JSON.parse(o);}catch(e){}}
 let saveTimer=null;
 function saveAll(){
-  try{localStorage.setItem(SK,JSON.stringify(data));localStorage.setItem(SK+'_manuals',JSON.stringify(manuals));localStorage.setItem(SK+'_times',JSON.stringify(times));}catch(e){}
+  try{localStorage.setItem(SK,JSON.stringify(data));localStorage.setItem(SK+'_manuals',JSON.stringify(manuals));localStorage.setItem(SK+'_times',JSON.stringify(times));localStorage.setItem(SK+'_outTimes',JSON.stringify(outTimes));}catch(e){}
   const ind=document.getElementById('saveInd');ind.textContent='✓ Salvato';
   clearTimeout(saveTimer);saveTimer=setTimeout(()=>{ind.textContent='';},2000);
 }
@@ -239,11 +245,16 @@ function render(){
     td.appendChild(sp);
     const sel=document.createElement('select');sel.className='day-select type-'+data[k];sel.dataset.key=k;
     TIPI.forEach(t=>{const o=document.createElement('option');o.value=t.val;o.textContent=t.label;if(t.val===data[k])o.selected=true;sel.appendChild(o);});
-    sel.addEventListener('change',function(){data[this.dataset.key]=this.value;this.className='day-select type-'+this.value;const ti=this.parentElement.querySelector('.day-time');if(ti)ti.classList.toggle('show',TIME_TYPES.includes(this.value));recalcFromCalendar(false);saveAll();});
+    sel.addEventListener('change',function(){data[this.dataset.key]=this.value;this.className='day-select type-'+this.value;const rows=this.parentElement.querySelectorAll('.day-time-row');rows.forEach(r=>r.classList.toggle('show',TIME_TYPES.includes(this.value)));recalcFromCalendar(false);saveAll();});
     td.appendChild(sel);
-    const ti=document.createElement('input');ti.type='time';ti.className='day-time'+(TIME_TYPES.includes(data[k])?' show':'');ti.value=times[k]||'09:00';ti.dataset.key=k;ti.title='Orario di ingresso (24h) — default 09:00';
+    const tiRow=document.createElement('div');tiRow.className='day-time-row'+(TIME_TYPES.includes(data[k])?' show':'');tiRow.innerHTML='<span class="day-time-label">Entrata</span>';
+    const ti=document.createElement('input');ti.type='time';ti.className='day-time';ti.value=times[k]||'09:00';ti.dataset.key=k;ti.title='Orario di entrata (24h) — default 09:00';
     ti.addEventListener('change',function(){times[this.dataset.key]=this.value;saveAll();});
-    td.appendChild(ti);tr.appendChild(td);cc++;
+    tiRow.appendChild(ti);td.appendChild(tiRow);
+    const toRow=document.createElement('div');toRow.className='day-time-row'+(TIME_TYPES.includes(data[k])?' show':'');toRow.innerHTML='<span class="day-time-label">Uscita</span>';
+    const to=document.createElement('input');to.type='time';to.className='day-time';to.value=outTimes[k]||'18:00';to.dataset.key=k;to.title='Orario di uscita (24h) — default 18:00';
+    to.addEventListener('change',function(){outTimes[this.dataset.key]=this.value;saveAll();});
+    toRow.appendChild(to);td.appendChild(toRow);tr.appendChild(td);cc++;
   }
   const rem=(7-cc%7)%7;for(let i=0;i<rem;i++){const td=document.createElement('td');td.className='empty';tr.appendChild(td);}
   document.getElementById('tot-days').textContent=dim;
@@ -286,14 +297,17 @@ RIEP_IDS.forEach(id=>{
 });
 
 function changeMonth(d){M+=d;if(M<0){M=11;Y--;}if(M>11){M=0;Y++;}render();}
-function resetMonth(){if(!confirm("Azzera il mese corrente? Lo storico degli altri mesi resta."))return;const dim=new Date(Y,M+1,0).getDate();for(let d=1;d<=dim;d++){data[key(Y,M,d)]=def(Y,M,d);delete times[key(Y,M,d)];}RIEP_IDS.forEach(id=>delete manuals[mk(Y,M,id)]);saveAll();render();}
-function clearAll(){if(!confirm("Cancellare TUTTO lo storico di Angelo Taglieri? Azione non reversibile."))return;data={};manuals={};times={};try{localStorage.removeItem(SK);localStorage.removeItem(SK+'_manuals');localStorage.removeItem(SK+'_times');}catch(e){}render();}
+function resetMonth(){if(!confirm("Azzera il mese corrente? Lo storico degli altri mesi resta."))return;const dim=new Date(Y,M+1,0).getDate();for(let d=1;d<=dim;d++){data[key(Y,M,d)]=def(Y,M,d);delete times[key(Y,M,d)];delete outTimes[key(Y,M,d)];}RIEP_IDS.forEach(id=>delete manuals[mk(Y,M,id)]);saveAll();render();}
+function clearAll(){if(!confirm("Cancellare TUTTO lo storico di Angelo Taglieri? Azione non reversibile."))return;data={};manuals={};times={};outTimes={};try{localStorage.removeItem(SK);localStorage.removeItem(SK+'_manuals');localStorage.removeItem(SK+'_times');localStorage.removeItem(SK+'_outTimes');localStorage.removeItem(SK+'_rrResidui');}catch(e){}const rr=document.getElementById('rrResidui');if(rr)rr.value=0;render();}
 
 const noteKey=SK+'_notes';
 document.addEventListener('DOMContentLoaded',()=>{
   const nf=document.getElementById('noteField');
   try{nf.value=localStorage.getItem(noteKey)||'';}catch(e){}
   nf.addEventListener('input',()=>{try{localStorage.setItem(noteKey,nf.value);}catch(e){}});
+  const rr=document.getElementById('rrResidui');
+  try{const v=localStorage.getItem(SK+'_rrResidui');if(v!==null)rr.value=v;}catch(e){}
+  rr.addEventListener('input',()=>{try{localStorage.setItem(SK+'_rrResidui',rr.value);}catch(e){}});
 });
 
 loadAll();render();
