@@ -39,11 +39,14 @@
     .calendar{width:100%;border-collapse:collapse;margin-bottom:24px}
     .calendar th{background:#0d1a38;color:#fff;text-align:center;padding:8px 4px;font-size:12px;font-weight:600}
     .calendar th.weekend{background:#1a2e55}
-    .calendar td{border:1px solid #e0e0e0;text-align:center;vertical-align:top;padding:4px 2px;min-width:110px;height:68px}
+    .calendar td{border:1px solid #e0e0e0;text-align:center;vertical-align:top;padding:4px 2px;min-width:110px;height:88px}
     .calendar td.empty{background:#fafaf8}
     .calendar td.today .day-num{color:#B8962E;font-weight:800}
     .day-num{font-size:12px;font-weight:700;color:#0d1a38;display:block;margin-bottom:4px}
     .day-select{width:100%;border:1px solid #ccc;border-radius:4px;font-size:12px;padding:3px 2px;cursor:pointer;font-weight:600;font-family:inherit}
+    .day-time{display:none;width:100%;margin-top:3px;padding:2px 4px;border:1px solid #d0d0d0;border-radius:3px;font-size:11px;color:#0d1a38;background:#f8f9fb;font-family:inherit}
+    .day-time:focus{outline:none;border-color:#0d1a38;background:#fff}
+    .day-time.show{display:block}
     .type-P{background:#DBEAFE;color:#1D4ED8}
     .type-T{background:#FEF3C7;color:#B45309}
     .type-F{background:#DCFCE7;color:#15803D}
@@ -52,6 +55,8 @@
     .type-MP{background:#EDE9FE;color:#6D28D9}
     .type-R{background:#F1F5F9;color:#64748B}
     .type-FE{background:#E5E7EB;color:#6B7280}
+    .type-RR{background:#CFFAFE;color:#0E7490}
+    .type-IN{background:#FCE7F3;color:#BE185D}
     .legenda{display:flex;flex-wrap:wrap;gap:8px 18px;margin-bottom:24px;padding:12px 16px;background:#f8f9fb;border-radius:8px;font-size:12px}
     .legenda-item{display:flex;align-items:center;gap:6px}
     .legenda-dot{width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,0.1)}
@@ -93,9 +98,11 @@
       .info-field label{font-size:9px}
       .info-field input{border:none;background:transparent;padding:0;font-size:11px}
       .calendar th{font-size:9px;padding:4px 2px}
-      .calendar td{height:42px;padding:2px 1px}
+      .calendar td{height:54px;padding:2px 1px}
       .day-num{font-size:9px;margin-bottom:2px}
       .day-select{font-size:9px;padding:1px}
+      .day-time{font-size:8px;padding:0;border:none;background:transparent;text-align:center}
+      .day-time::-webkit-calendar-picker-indicator{display:none}
       .legenda{padding:5px 10px;margin-bottom:8px;font-size:9px;gap:4px 10px}
       .legenda-dot{width:10px;height:10px}
       .riepilogo{margin-bottom:8px}
@@ -155,6 +162,8 @@
     <div class="legenda-item"><div class="legenda-dot type-M"></div><span><strong>M</strong> Malattia</span></div>
     <div class="legenda-item"><div class="legenda-dot type-MP"></div><span><strong>MP</strong> Maternità / Paternità</span></div>
     <div class="legenda-item"><div class="legenda-dot type-R"></div><span><strong>R</strong> Riposo</span></div>
+    <div class="legenda-item"><div class="legenda-dot type-RR"></div><span><strong>RR</strong> Recupero Riposo</span></div>
+    <div class="legenda-item"><div class="legenda-dot type-IN"></div><span><strong>IN</strong> Infortunio</span></div>
     <div class="legenda-item"><div class="legenda-dot type-FE"></div><span><strong>FE</strong> Festivo</span></div>
   </div>
   <div class="riepilogo">
@@ -170,6 +179,8 @@
       <div class="riep-box"><div class="riep-label">Malattia</div><input class="riep-input" id="tot-M" type="number" min="0" value="0"></div>
       <div class="riep-box"><div class="riep-label">Maternità / Paternità</div><input class="riep-input" id="tot-MP" type="number" min="0" value="0"></div>
       <div class="riep-box"><div class="riep-label">Riposi</div><input class="riep-input" id="tot-R" type="number" min="0" value="0"></div>
+      <div class="riep-box"><div class="riep-label">Recupero Riposo</div><input class="riep-input" id="tot-RR" type="number" min="0" value="0"></div>
+      <div class="riep-box"><div class="riep-label">Infortunio</div><input class="riep-input" id="tot-IN" type="number" min="0" value="0"></div>
       <div class="riep-box"><div class="riep-label">Festivi</div><input class="riep-input" id="tot-FE" type="number" min="0" value="0"></div>
       <div class="riep-box"><div class="riep-label">Totale giorni</div><div class="riep-val" id="tot-days">0</div></div>
     </div>
@@ -190,17 +201,19 @@ const TIPI=[
   {val:'P',label:'P — Presenza'},{val:'T',label:'T — Trasferta'},
   {val:'F',label:'F — Ferie'},{val:'PE',label:'PE — Permesso'},
   {val:'M',label:'M — Malattia'},{val:'MP',label:'MP — Mat./Pat.'},
-  {val:'R',label:'R — Riposo'},{val:'FE',label:'FE — Festivo'}
+  {val:'R',label:'R — Riposo'},{val:'RR',label:'RR — Recupero Riposo'},
+  {val:'IN',label:'IN — Infortunio'},{val:'FE',label:'FE — Festivo'}
 ];
 const FEST=['01-01','06-01','25-04','01-05','02-06','15-08','01-11','08-12','25-12','26-12'];
-const RIEP_IDS=['tot-lav','tot-T','tot-F','tot-PE','tot-M','tot-MP','tot-R','tot-FE'];
+const RIEP_IDS=['tot-lav','tot-T','tot-F','tot-PE','tot-M','tot-MP','tot-R','tot-RR','tot-IN','tot-FE'];
 const SK='presenze_chirico-manolo';
-let Y=new Date().getFullYear(),M=new Date().getMonth(),data={},manuals={};
+let Y=new Date().getFullYear(),M=new Date().getMonth(),data={},manuals={},times={};
+const TIME_TYPES=['P','T','PE'];
 
-function loadAll(){try{const s=localStorage.getItem(SK);if(s)data=JSON.parse(s);const m=localStorage.getItem(SK+'_manuals');if(m)manuals=JSON.parse(m);}catch(e){}}
+function loadAll(){try{const s=localStorage.getItem(SK);if(s)data=JSON.parse(s);const m=localStorage.getItem(SK+'_manuals');if(m)manuals=JSON.parse(m);const t=localStorage.getItem(SK+'_times');if(t)times=JSON.parse(t);}catch(e){}}
 let saveTimer=null;
 function saveAll(){
-  try{localStorage.setItem(SK,JSON.stringify(data));localStorage.setItem(SK+'_manuals',JSON.stringify(manuals));}catch(e){}
+  try{localStorage.setItem(SK,JSON.stringify(data));localStorage.setItem(SK+'_manuals',JSON.stringify(manuals));localStorage.setItem(SK+'_times',JSON.stringify(times));}catch(e){}
   const ind=document.getElementById('saveInd');ind.textContent='✓ Salvato';
   clearTimeout(saveTimer);saveTimer=setTimeout(()=>{ind.textContent='';},2000);
 }
@@ -226,8 +239,11 @@ function render(){
     td.appendChild(sp);
     const sel=document.createElement('select');sel.className='day-select type-'+data[k];sel.dataset.key=k;
     TIPI.forEach(t=>{const o=document.createElement('option');o.value=t.val;o.textContent=t.label;if(t.val===data[k])o.selected=true;sel.appendChild(o);});
-    sel.addEventListener('change',function(){data[this.dataset.key]=this.value;this.className='day-select type-'+this.value;recalcFromCalendar(false);saveAll();});
-    td.appendChild(sel);tr.appendChild(td);cc++;
+    sel.addEventListener('change',function(){data[this.dataset.key]=this.value;this.className='day-select type-'+this.value;const ti=this.parentElement.querySelector('.day-time');if(ti)ti.classList.toggle('show',TIME_TYPES.includes(this.value));recalcFromCalendar(false);saveAll();});
+    td.appendChild(sel);
+    const ti=document.createElement('input');ti.type='time';ti.className='day-time'+(TIME_TYPES.includes(data[k])?' show':'');ti.value=times[k]||'09:00';ti.dataset.key=k;ti.title='Orario di ingresso (24h) — default 09:00';
+    ti.addEventListener('change',function(){times[this.dataset.key]=this.value;saveAll();});
+    td.appendChild(ti);tr.appendChild(td);cc++;
   }
   const rem=(7-cc%7)%7;for(let i=0;i<rem;i++){const td=document.createElement('td');td.className='empty';tr.appendChild(td);}
   document.getElementById('tot-days').textContent=dim;
@@ -235,9 +251,9 @@ function render(){
 }
 
 function calcAuto(){
-  const dim=new Date(Y,M+1,0).getDate(),c={P:0,T:0,F:0,PE:0,M:0,MP:0,R:0,FE:0};
+  const dim=new Date(Y,M+1,0).getDate(),c={P:0,T:0,F:0,PE:0,M:0,MP:0,R:0,RR:0,IN:0,FE:0};
   for(let d=1;d<=dim;d++){const t=data[key(Y,M,d)]||def(Y,M,d);if(c[t]!==undefined)c[t]++;}
-  return {'tot-lav':c.P+c.T,'tot-T':c.T,'tot-F':c.F,'tot-PE':c.PE,'tot-M':c.M,'tot-MP':c.MP,'tot-R':c.R,'tot-FE':c.FE};
+  return {'tot-lav':c.P+c.T,'tot-T':c.T,'tot-F':c.F,'tot-PE':c.PE,'tot-M':c.M,'tot-MP':c.MP,'tot-R':c.R,'tot-RR':c.RR,'tot-IN':c.IN,'tot-FE':c.FE};
 }
 
 function recalcFromCalendar(force){
@@ -270,8 +286,8 @@ RIEP_IDS.forEach(id=>{
 });
 
 function changeMonth(d){M+=d;if(M<0){M=11;Y--;}if(M>11){M=0;Y++;}render();}
-function resetMonth(){if(!confirm("Azzera il mese corrente? Lo storico degli altri mesi resta."))return;const dim=new Date(Y,M+1,0).getDate();for(let d=1;d<=dim;d++)data[key(Y,M,d)]=def(Y,M,d);RIEP_IDS.forEach(id=>delete manuals[mk(Y,M,id)]);saveAll();render();}
-function clearAll(){if(!confirm("Cancellare TUTTO lo storico di Manolo Chirico? Azione non reversibile."))return;data={};manuals={};try{localStorage.removeItem(SK);localStorage.removeItem(SK+'_manuals');}catch(e){}render();}
+function resetMonth(){if(!confirm("Azzera il mese corrente? Lo storico degli altri mesi resta."))return;const dim=new Date(Y,M+1,0).getDate();for(let d=1;d<=dim;d++){data[key(Y,M,d)]=def(Y,M,d);delete times[key(Y,M,d)];}RIEP_IDS.forEach(id=>delete manuals[mk(Y,M,id)]);saveAll();render();}
+function clearAll(){if(!confirm("Cancellare TUTTO lo storico di Manolo Chirico? Azione non reversibile."))return;data={};manuals={};times={};try{localStorage.removeItem(SK);localStorage.removeItem(SK+'_manuals');localStorage.removeItem(SK+'_times');}catch(e){}render();}
 
 const noteKey=SK+'_notes';
 document.addEventListener('DOMContentLoaded',()=>{
