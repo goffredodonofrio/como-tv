@@ -651,11 +651,11 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
   <!-- ── VOD DETAILED ANALYSIS ── -->
   <div id="vodContent">
 
-    <!-- ── TOP CATEGORIE (aggiornato per periodo) ── -->
+    <!-- ── TOP CATEGORIE — DOPPIA TOP 10 SPLIT (aggiornato per periodo) ── -->
     <div class="sec" style="margin-top:4px">
       <div class="sec-texts">
-        <div class="sec-it">🏆 Cosa sta funzionando — Top Categorie <span class="dms-src" title="DMS → VOD → Category Rank · imposta il periodo → Export CSV">VOD → Category Rank</span></div>
-        <div class="sec-en">Si aggiorna automaticamente con il tab di periodo selezionato</div>
+        <div class="sec-it">🏆 Cosa sta funzionando — Top 10 Originals + Top 10 Live-related <span class="dms-src" title="DMS → VOD → Category Rank · imposta il periodo → Export CSV">VOD → Category Rank</span></div>
+        <div class="sec-en">Due classifiche affiancate (produzione interna vs diritti) · Si aggiorna con il tab di periodo</div>
       </div>
       <div class="sec-line"></div>
     </div>
@@ -1344,11 +1344,81 @@ function renderVODTopList(cats, engMap) {
   const el = document.getElementById('vodTopList');
   if (!el || !cats || !cats.length) return;
 
-  // Top 10 unica, ordinata per viewers
-  const top = cats.slice().sort((a,b) => (b.viewers||0) - (a.viewers||0)).slice(0, 10);
-  const maxV = top.length ? top[0].viewers : 1;
+  // Descrittori per chiarire la natura della playlist/categoria DMS
+  // (i nomi nei rank DMS sono playlist/categorie aggregate, non singoli file video)
+  const PLAYLIST_KIND = {
+    // ── ORIGINALS / Format Como TV ───────────────────────────────
+    'INTERVIEWS':                          { kind:'serie',  desc:'Interviste 1-to-1 (player, staff, ospiti)' },
+    'Talent Hunters':                      { kind:'serie',  desc:'Scouting & ritratti calciatori' },
+    'Discover Como':                       { kind:'clip',   desc:'Clip branded sulla città di Como' },
+    'Goleada':                             { kind:'serie',  desc:'Programma a episodi numerati' },
+    'Como 1907 Original':                  { kind:'serie',  desc:'Documentario originale, S1E01–S1E07' },
+    'Los Clasicos':                        { kind:'serie',  desc:'Mini-serie 6 episodi' },
+    'Behind the Team':                     { kind:'serie',  desc:'Backstage prima squadra (8 episodi)' },
+    'BEHIND THE TEAM':                     { kind:'serie',  desc:'Backstage prima squadra' },
+    'Arabian Night':                       { kind:'serie',  desc:'Format a 12 episodi numerati' },
+    "Golden '90":                          { kind:'serie',  desc:'Format vintage anni \'90' },
+    'Fútbol Prohibido':                    { kind:'serie',  desc:'Mini-serie investigativa (2 ep.)' },
+    'Ascent':                              { kind:'doc',    desc:'Documentario singolo' },
+    'SEASON 1 THE REAL STORY':             { kind:'doc',    desc:'Documentario stagione 1' },
+    'Como 1907 First Team Men Pre Show':   { kind:'pre',    desc:'Pre-show di ogni partita Serie A' },
+    'Como Gaming Club':                    { kind:'serie',  desc:'Format gaming/eSports' },
+    'Taste of Como':                       { kind:'clip',   desc:'Clip food & lifestyle' },
 
-  function makeRow(c, i) {
+    // ── LIVE-RELATED / Diritti acquisiti ─────────────────────────
+    'Copa Libertadores':                   { kind:'rights', desc:'Replay integrali partite Conmebol' },
+    'Highlights Copa Libertadores':        { kind:'high',   desc:'Sintesi partite Libertadores' },
+    'Conmebol Sudamericana':               { kind:'rights', desc:'Replay integrali Sudamericana' },
+    'Highlights Copa Sudamericana':        { kind:'high',   desc:'Sintesi partite Sudamericana' },
+    'Argentina Copa De La Liga Pro':       { kind:'rights', desc:'Replay integrali Liga Pro Argentina' },
+    'Highlights Argentina Copa de La Liga Pro': { kind:'high', desc:'Sintesi Liga Pro Argentina' },
+    'SCOTTISH CUP':                        { kind:'rights', desc:'Replay coppa scozzese' },
+    'Highlights Scottish Cup':             { kind:'high',   desc:'Sintesi Scottish Cup' },
+    'SCOTTISH PREMIERSHIP':                { kind:'rights', desc:'Replay massima serie scozzese' },
+    'Highlights Scottish Premiership':     { kind:'high',   desc:'Sintesi Scottish Premiership' },
+    'SCOTTISH CHAMPIONSHIP':               { kind:'rights', desc:'Replay seconda serie scozzese' },
+    'Highlights Scottish Championship':    { kind:'high',   desc:'Sintesi Scottish Championship' },
+    'FRENCH CUP':                          { kind:'rights', desc:'Replay coppa francese' },
+    'Highlights French Cup':               { kind:'high',   desc:'Sintesi Coupe de France' },
+    'Croatian Football League':            { kind:'rights', desc:'Replay massima serie croata' },
+    'Highlights Croatian Super League':    { kind:'high',   desc:'Sintesi HNL' },
+    'TACA DE PORTUGAL':                    { kind:'rights', desc:'Replay coppa portoghese' },
+    'Highlights SuperTaca de Portugal':    { kind:'high',   desc:'Sintesi SuperTaça' },
+    'SAUDI PRO LEAGUE':                    { kind:'rights', desc:'Replay massima serie saudita' },
+    'Highlights Saudi Pro League':         { kind:'high',   desc:"Sintesi SPL" },
+    "SAUDI KING'S CUP":                    { kind:'rights', desc:'Replay King\'s Cup' },
+    "Highlights Saudi King's Cup":         { kind:'high',   desc:"Sintesi King's Cup" },
+    'Eredivisie':                          { kind:'rights', desc:'Replay massima serie olandese' },
+    'Highlights Eredivisie':               { kind:'high',   desc:'Sintesi Eredivisie' },
+    'COPPA ITALIA':                        { kind:'rights', desc:'Replay Coppa Italia' },
+    'COMO U17':                            { kind:'comoyt', desc:'Partite Como U17 (settore giovanile)' },
+    'COMO PRIMAVERA':                      { kind:'comoyt', desc:'Partite Como Primavera' },
+    'COMO CUP':                            { kind:'comoyt', desc:'Tornei Como Cup' },
+    'Como 1907 Women | Serie B 2025-2026 | Highlights': { kind:'high',   desc:'Sintesi Como Women Serie B' },
+    'Como 1907 Women | Serie B 2025-2026 | Replay':     { kind:'rights', desc:'Replay Como Women Serie B' },
+    'Serie A | Replay 2025-2026':          { kind:'rights', desc:'Replay integrali partite Como in Serie A' },
+    'Serie A | Highlights 2025-2026':      { kind:'high',   desc:'Sintesi partite Como in Serie A' },
+    'SERIE B FULL MATCHES 2023-24':        { kind:'rights', desc:'Archivio Serie B 2023-24' },
+    'Sport Competitions':                  { kind:'rights', desc:'Contenitore generico competizioni' },
+    'Goleada':                             { kind:'serie',  desc:'Programma a episodi numerati' },
+  };
+
+  const KIND_LABELS = {
+    serie:  '📂 Playlist · serie a episodi',
+    clip:   '📂 Playlist · raccolta clip brevi',
+    doc:    '📂 Playlist · documentario',
+    pre:    '📂 Playlist · pre-show ricorrente',
+    rights: '📂 Playlist · replay integrali (diritti)',
+    high:   '📂 Playlist · highlights/sintesi',
+    comoyt: '📂 Playlist · partite squadre Como',
+  };
+
+  // Split per tipo, ordinati per viewers
+  const sortV = (a,b) => (b.viewers||0) - (a.viewers||0);
+  const origs = cats.filter(c => c.type === 'orig').sort(sortV).slice(0, 10);
+  const lives = cats.filter(c => c.type === 'live').sort(sortV).slice(0, 10);
+
+  function makeRow(c, i, maxV, isOrig) {
     const pct = maxV > 0 ? (c.viewers / maxV * 100).toFixed(0) : 0;
     const eps = EPISODE_COUNTS[c.name] || null;
     const hpv = c.viewers > 0 && c.engH  ? (c.engH  / c.viewers).toFixed(1) : null;
@@ -1357,15 +1427,16 @@ function renderVODTopList(cats, engMap) {
     const hpe = eps && c.engH    ? (c.engH   / eps).toFixed(1)  : null;
 
     // Colori per tipo
-    const isOrig = c.type === 'orig';
     const col    = isOrig ? '#7c3aed' : '#dc2626';
     const bg     = isOrig ? '#f5f0fc' : '#fef5f5';
     const border = isOrig ? '#7c3aed' : '#dc2626';
-    const typeTag = isOrig
-      ? `<span class="vod-type-tag" style="background:#ede9fe;color:#6d28d9">🎬 Originals Como TV</span>`
-      : `<span class="vod-type-tag" style="background:#fee2e2;color:#b91c1c">🎥 Live-related</span>`;
 
-    // Decision helper tag (B) — basato su posizione + loyalty
+    // Descrittore playlist (cosa contiene la categoria DMS)
+    const meta = PLAYLIST_KIND[c.name];
+    const kindLabel = meta ? KIND_LABELS[meta.kind] : '📂 Playlist DMS · categoria aggregata';
+    const kindDesc  = meta ? meta.desc : 'Aggregato di più video pubblicati nella categoria';
+
+    // Decision helper tag — basato su posizione + loyalty
     let tag;
     if (i === 0)                            tag = { cls:'strong',  label:'✅ Performer forte' };
     else if (hpv && parseFloat(hpv) >= 2)   tag = { cls:'gem',     label:'💎 Hidden gem' };
@@ -1389,9 +1460,13 @@ function renderVODTopList(cats, engMap) {
       <div class="vod-row-body">
         <div class="vod-row-head">
           <span class="vod-row-title">${c.name}</span>
-          ${typeTag}
           ${epTag}
           <span class="vod-dtag ${tag.cls}">${tag.label}</span>
+        </div>
+        <div style="font-size:10.5px;color:#6b7280;margin:2px 0 6px;line-height:1.4">
+          <span style="font-weight:600;color:#0d1a38">${kindLabel}</span>
+          <span style="margin:0 4px;color:#d1d5db">·</span>
+          <span>${kindDesc}</span>
         </div>
         <div class="vod-row-stats">${stats.join('')}</div>
         <div class="vod-row-bar">
@@ -1402,16 +1477,37 @@ function renderVODTopList(cats, engMap) {
     </div>`;
   }
 
-  const header = `<div style="font-size:11px;color:#6b7280;line-height:1.5;margin-bottom:12px;margin-top:4px">
-    Top 10 categorie VOD del periodo, ordinate per <strong style="color:#0d1a38">viewers unici</strong>.
-    <span style="display:inline-block;width:10px;height:10px;background:#7c3aed;border-radius:2px;vertical-align:middle;margin-left:6px"></span>
-    <strong style="color:#6d28d9">Viola = Originals Como TV</strong>
-    <span style="margin:0 8px;color:#d1d5db">·</span>
-    <span style="display:inline-block;width:10px;height:10px;background:#dc2626;border-radius:2px;vertical-align:middle"></span>
-    <strong style="color:#b91c1c">Rosso = Live-related</strong> (replay, highlights, pre-show)
+  const intro = `<div style="font-size:11px;color:#6b7280;line-height:1.55;margin-bottom:14px;margin-top:4px">
+    Due Top 10 separate, ordinate per <strong style="color:#0d1a38">viewers unici</strong>.
+    I nomi sono <strong style="color:#0d1a38">nomi di playlist/categoria DMS</strong> (collezioni di video, non singoli file): sotto a ciascuno trovi una descrizione di cosa contiene la playlist.
   </div>`;
 
-  el.innerHTML = header + top.map((c, i) => makeRow(c, i)).join('');
+  const maxOrig = origs.length ? origs[0].viewers : 1;
+  const maxLive = lives.length ? lives[0].viewers : 1;
+
+  const colOrig = `
+    <div>
+      <div class="vod-toplist-col-head" style="color:#6d28d9">
+        🎬 Top 10 Originals Como TV
+        <span class="sub">— produzioni interne (interviste, format, documentari, pre-show)</span>
+      </div>
+      ${origs.length
+        ? origs.map((c, i) => makeRow(c, i, maxOrig, true)).join('')
+        : '<div style="font-size:12px;color:#9ca3af;padding:12px 0">Nessuna categoria Originals nel periodo.</div>'}
+    </div>`;
+
+  const colLive = `
+    <div>
+      <div class="vod-toplist-col-head" style="color:#b91c1c">
+        🎥 Top 10 Live-related
+        <span class="sub">— replay integrali, highlights, partite squadre Como</span>
+      </div>
+      ${lives.length
+        ? lives.map((c, i) => makeRow(c, i, maxLive, false)).join('')
+        : '<div style="font-size:12px;color:#9ca3af;padding:12px 0">Nessuna categoria Live-related nel periodo.</div>'}
+    </div>`;
+
+  el.innerHTML = intro + `<div class="vod-toplist-grid">${colOrig}${colLive}</div>`;
 }
 
 
