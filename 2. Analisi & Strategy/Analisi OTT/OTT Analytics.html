@@ -437,7 +437,7 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
   <div class="sb-row">
     <span class="sb-label">Periodo</span>
     <span class="period-tab active" data-period="all" onclick="setPeriod(this)">Stagione</span>
-    <span class="period-tab"        data-period="1m"  onclick="setPeriod(this)">Ultimo mese</span>
+    <span class="period-tab"        data-period="1m"  onclick="setPeriod(this)">Mese chiuso</span>
     <span class="period-tab"        data-period="1w"  onclick="setPeriod(this)">Ultima settimana</span>
   </div>
 </div>
@@ -1213,7 +1213,7 @@ const vodDataByPeriod = {
     loggedin:    '3.0K',
     playsNote:   '8.3× per viewer',
     loginNote:   '99.5% del totale',
-    periodLabel: '14 mar 2026 – 14 apr 2026 · Logged-in + Anonimi',
+    periodLabel: 'Marzo 2026 (1–31 mar) · in transizione dal rolling 14 mar–14 apr',
     cats: [
       {"name": "Serie A | Replay 2025-2026", "viewers": 547, "type": "live", "engH": 349, "plays": 1882},
       {"name": "COMO PRIMAVERA", "viewers": 513, "type": "live", "engH": 163, "plays": 2062},
@@ -1319,11 +1319,19 @@ function renderVODSection(period) {
   if (notice) {
     if (period === 'all') {
       notice.style.display = 'none';
+    } else if (period === '1m') {
+      // Tab "Mese chiuso" — etichetta nuova ma dati ancora del rolling 14 mar–14 apr
+      notice.style.display = 'block';
+      notice.style.background = '#fffbeb';
+      notice.style.borderLeftColor = '#f59e0b';
+      if (noticeT) noticeT.innerHTML = `⚠️ <strong>VOD Mese chiuso — in transizione.</strong>
+        Etichetta aggiornata a <em>Marzo 2026 (1–31 mar)</em>, ma i dati mostrati provengono ancora dal vecchio export rolling <em>14 mar – 14 apr 2026</em>.
+        Sostituiremo con i dati di <strong>Aprile 2026 chiuso (1–30 apr)</strong> al prossimo export DMS (Category Rank + Asset Rank).`;
     } else {
       notice.style.display = 'block';
       notice.style.background = '#f0faf4';
       notice.style.borderLeftColor = '#059669';
-      const periodLabels = { '1m':'14 mar – 14 apr 2026', '1w':'17 – 24 apr 2026' };
+      const periodLabels = { '1w':'17 – 24 apr 2026' };
       if (noticeT) noticeT.innerHTML = `✅ <strong>VOD ${periodLabels[period] || period} — dati caricati.</strong>
         I valori sono più bassi della stagione completa: è normale, riflettono solo il periodo selezionato.`;
     }
@@ -1727,12 +1735,12 @@ renderLiveSection(liveDataByPeriod.all);
 // ── PERIOD TABS
 const PERIODS = {
   all:  { label: 'Stagione',            hasData: true },
-  '1m': { label: 'Ultimo mese',         hasData: true },
+  '1m': { label: 'Mese chiuso',         hasData: true },
   '1w': { label: 'Ultima settimana',    hasData: true },
 };
 const periodRanges = {
   all:  '14 apr 2025 – 14 apr 2026 (stagione completa)',
-  '1m': '14 mar 2026 – 14 apr 2026',
+  '1m': 'Marzo 2026 · 1 mar – 31 mar 2026 (mese chiuso)',
   '1w': '17 apr 2026 – 24 apr 2026',
 };
 
@@ -1753,8 +1761,19 @@ function setPeriod(el) {
   const nComps = _activePeriodData.comps.length;
 
   // Live notice
-  notice.innerHTML = `<strong>✅ LIVE ${periodLabel}</strong> — ${periodRanges[p] || ''} &nbsp;·&nbsp; ${nEv} eventi · ${nComps} competizioni`;
-  notice.style.borderLeftColor = '#059669';
+  if (p === '1m') {
+    // Tab "Mese chiuso" — i dati attuali sono ancora del rolling 14 mar–14 apr,
+    // in attesa dell'export DMS 1–30 apr 2026 chiuso (disponibile dal 1° maggio).
+    notice.innerHTML = `<strong>⚠️ LIVE Mese chiuso — in transizione.</strong>
+      Etichetta aggiornata a <em>Marzo 2026 (1–31 mar)</em>, ma i dati mostrati provengono ancora dal vecchio export rolling <em>14 mar – 14 apr 2026</em>.
+      Sostituiremo con i dati di <strong>Aprile 2026 chiuso (1–30 apr)</strong> al prossimo export DMS.`;
+    notice.style.borderLeftColor = '#f59e0b';
+    notice.style.background = '#fffbeb';
+  } else {
+    notice.innerHTML = `<strong>✅ LIVE ${periodLabel}</strong> — ${periodRanges[p] || ''} &nbsp;·&nbsp; ${nEv} eventi · ${nComps} competizioni`;
+    notice.style.borderLeftColor = '#059669';
+    notice.style.background = '#f0faf4';
+  }
   // VOD notice è gestita da renderVODSection — non sovrascrivere qui
 }
 
