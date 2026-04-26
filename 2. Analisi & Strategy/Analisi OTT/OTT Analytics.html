@@ -93,6 +93,47 @@ body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; background: #f7f8
 .vod-type-tag { display:inline-block; font-size:9.5px; font-weight:700; padding:2px 8px; border-radius:4px; letter-spacing:.3px; white-space:nowrap; }
 .vot-mean { color:#9ca3af; font-style:italic; font-weight:400; font-size:10px; margin-left:2px; white-space:nowrap; }
 
+/* ── ORIGINALS SLIDESHOW (top 30, paginato 10/pagina) ── */
+.orig-slide-header {
+  display:flex; align-items:center; justify-content:space-between;
+  background:#f5f0fc; border:1px solid #e9d8ff; border-radius:8px;
+  padding:8px 12px; margin-bottom:10px;
+}
+.orig-slide-pageinfo { font-size:11px; color:#6d28d9; font-weight:700; letter-spacing:.3px; }
+.orig-slide-arrow {
+  background:#7c3aed; color:#fff; border:none; border-radius:6px;
+  width:32px; height:28px; font-size:14px; font-weight:700;
+  cursor:pointer; transition:background .15s;
+}
+.orig-slide-arrow:hover:not(:disabled) { background:#6d28d9; }
+.orig-slide-arrow:disabled { background:#d1c4e9; cursor:not-allowed; opacity:.5; }
+.orig-slide-dots {
+  display:flex; justify-content:center; gap:8px; margin-top:10px;
+}
+.orig-slide-dot {
+  width:24px; height:6px; background:#e5e7eb; border-radius:3px;
+  cursor:pointer; transition:background .15s;
+}
+.orig-slide-dot.active { background:#7c3aed; }
+.orig-slide-dot:hover:not(.active) { background:#c4b5fd; }
+.orig-asset-parent {
+  display:inline-block; font-size:10px; color:#6d28d9; font-weight:700;
+  background:#ede9fe; padding:2px 8px; border-radius:4px; margin-bottom:4px;
+}
+.orig-empty {
+  background:#fafafa; border:1px dashed #d1d5db; border-radius:10px;
+  padding:20px 18px; font-size:12px; color:#374151; line-height:1.65;
+}
+.orig-empty-title { font-size:13px; font-weight:700; color:#0d1a38; margin-bottom:8px; }
+.orig-empty-step { background:#fff; border:1px solid #e5e7eb; border-radius:6px; padding:8px 10px; margin-top:6px; font-size:11px; color:#374151; }
+.orig-empty-step strong { color:#0d1a38; }
+.orig-empty-mock {
+  margin-top:12px; padding:10px 12px; background:#f5f0fc; border-left:3px solid #7c3aed;
+  border-radius:6px; font-size:11px; color:#6d28d9;
+}
+.orig-empty-mock-row { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed #d1c4e9; opacity:.7; }
+.orig-empty-mock-row:last-child { border-bottom:none; }
+
 /* ── VOD CHART CARD ── */
 .vod-chart-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:20px; }
 .vod-chart-title { font-size:13px; font-weight:700; color:#0d1a38; margin-bottom:4px; }
@@ -1243,6 +1284,7 @@ const vodDataByPeriod = {
   },
 };
 function renderVODSection(period) {
+  _vodActivePeriod = period;   // mantiene il periodo attivo per slideshow Originals
   const d = vodDataByPeriod[period];
   const el = id => document.getElementById(id);
   const notice  = el('vodPeriodNotice');
@@ -1339,7 +1381,23 @@ const EPISODE_COUNTS = {
   'Ascent':                1,  // documentario singolo
 };
 
-// ── VOD TOP LIST — Top 10 unificata (colori per tipo) ─────────
+// ── VOD ASSET RANK — singoli contenuti Originals (slideshow 30/10) ──
+// Da popolare con export DMS Asset Rank filtrato sulle categorie Originals.
+// Schema item: {name, parent, viewers, plays, engH, kind?: 'serie'|'doc'|'pre'|'clip'}
+// Per Live-related si tiene la classifica per playlist (non per asset singolo)
+// perché replay/highlights sono troppo numerosi e ha più senso aggregato.
+const ASSETS_PER_PAGE = 10;
+const ASSETS_TOTAL    = 30;
+const _origSlidePage  = { all:0, '1m':0, '1w':0 };
+let   _vodActivePeriod = 'all';
+
+const vodAssetsByPeriod = {
+  all: { originals: [] },   // popolare con DMS Asset Rank (full season)
+  '1m': { originals: [] },  // popolare con DMS Asset Rank (last 30d)
+  '1w': { originals: [] },  // popolare con DMS Asset Rank (last 7d)
+};
+
+// ── VOD TOP LIST — Top 30 Originals (slideshow) + Top 10 Live-related (playlist) ──
 function renderVODTopList(cats, engMap) {
   const el = document.getElementById('vodTopList');
   if (!el || !cats || !cats.length) return;
@@ -1478,28 +1536,25 @@ function renderVODTopList(cats, engMap) {
   }
 
   const intro = `<div style="font-size:11px;color:#6b7280;line-height:1.55;margin-bottom:14px;margin-top:4px">
-    Due Top 10 separate, ordinate per <strong style="color:#0d1a38">viewers unici</strong>.
-    I nomi sono <strong style="color:#0d1a38">nomi di playlist/categoria DMS</strong> (collezioni di video, non singoli file): sotto a ciascuno trovi una descrizione di cosa contiene la playlist.
+    A sinistra: <strong style="color:#6d28d9">singoli contenuti Originals</strong> (top 30, slideshow paginata da 10) — produzione Como TV per asset.
+    A destra: <strong style="color:#b91c1c">playlist Live-related</strong> (top 10) — replay e highlights, aggregati per categoria perché i singoli asset sono troppi.
   </div>`;
 
-  const maxOrig = origs.length ? origs[0].viewers : 1;
   const maxLive = lives.length ? lives[0].viewers : 1;
 
   const colOrig = `
     <div>
       <div class="vod-toplist-col-head" style="color:#6d28d9">
-        🎬 Top 10 Originals Como TV
-        <span class="sub">— produzioni interne (interviste, format, documentari, pre-show)</span>
+        🎬 Top 30 Originals — singoli contenuti
+        <span class="sub">— interviste, format, documentari, pre-show · slideshow 10 per pagina</span>
       </div>
-      ${origs.length
-        ? origs.map((c, i) => makeRow(c, i, maxOrig, true)).join('')
-        : '<div style="font-size:12px;color:#9ca3af;padding:12px 0">Nessuna categoria Originals nel periodo.</div>'}
+      <div id="vodOrigSlide"></div>
     </div>`;
 
   const colLive = `
     <div>
       <div class="vod-toplist-col-head" style="color:#b91c1c">
-        🎥 Top 10 Live-related
+        🎥 Top 10 Live-related — playlist
         <span class="sub">— replay integrali, highlights, partite squadre Como</span>
       </div>
       ${lives.length
@@ -1508,6 +1563,117 @@ function renderVODTopList(cats, engMap) {
     </div>`;
 
   el.innerHTML = intro + `<div class="vod-toplist-grid">${colOrig}${colLive}</div>`;
+
+  // Render slideshow Originals (asset singoli) — fallback a top 10 playlist se non ci sono asset
+  renderOrigSlideshow(_vodActivePeriod, origs);
+}
+
+// ── ORIG SLIDESHOW — singoli contenuti Originals (top 30, paginato 10) ──
+function renderOrigSlideshow(period, fallbackPlaylists) {
+  const container = document.getElementById('vodOrigSlide');
+  if (!container) return;
+
+  const data = vodAssetsByPeriod[period];
+  const assets = (data && data.originals) ? data.originals.slice(0, ASSETS_TOTAL) : [];
+
+  // EMPTY STATE — nessun asset caricato per questo periodo
+  if (!assets.length) {
+    const fb = (fallbackPlaylists || []).slice(0, 5);
+    const fbHtml = fb.length ? `
+      <div style="margin-top:14px">
+        <div style="font-size:11px;font-weight:700;color:#6d28d9;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">
+          Nel frattempo — Top 5 playlist Originals (per riferimento)
+        </div>
+        ${fb.map((c, i) => {
+          const pct = fb[0].viewers > 0 ? (c.viewers / fb[0].viewers * 100).toFixed(0) : 0;
+          return `<div class="vod-row" style="background:#f5f0fc;border-left:4px solid #7c3aed;padding:10px 14px">
+            <div class="vod-row-rank" style="color:#7c3aed">${i+1}</div>
+            <div class="vod-row-body">
+              <div class="vod-row-head"><span class="vod-row-title" style="font-size:13px">${c.name}</span></div>
+              <div class="vod-row-stats">
+                <span><strong style="color:#0d1a38">${c.viewers.toLocaleString()}</strong> viewers</span>
+                ${c.engH ? `<span><strong style="color:#059669">${c.engH}h</strong> eng.</span>` : ''}
+                ${c.plays ? `<span><strong style="color:#B8962E">${c.plays.toLocaleString()}</strong> plays</span>` : ''}
+              </div>
+              <div class="vod-row-bar">
+                <div class="barwrap"><div class="barfill" style="width:${pct}%;background:#7c3aed"></div></div>
+                <div class="barpct">${pct}%</div>
+              </div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>` : '';
+
+    container.innerHTML = `
+      <div class="orig-empty">
+        <div class="orig-empty-title">🎬 Slideshow Originals — in attesa export DMS Asset Rank</div>
+        Per popolare la classifica dei <strong>singoli contenuti</strong> servono i dati per asset (non per playlist).
+        <div class="orig-empty-step"><strong>Path DMS:</strong> Analytics → VOD → <em>Asset Rank</em> (o "Content Rank" se l'etichetta è cambiata) → imposta il periodo → filtra per categorie Originals (INTERVIEWS, Talent Hunters, Discover Como, Como 1907 Original, Behind the Team, Arabian Night, Pre Show, ecc.) → Export CSV.</div>
+        <div class="orig-empty-step"><strong>3 CSV utili:</strong> Asset Rank by Viewers · by Engagement Time · by Play Count — periodo settimana corrente.</div>
+        <div class="orig-empty-mock">
+          <strong style="font-size:10px;letter-spacing:.5px">📐 ANTEPRIMA STRUTTURA — 30 contenuti, 3 pagine da 10:</strong>
+          <div class="orig-empty-mock-row"><span>1. [Titolo asset · es. "Diego Carlos: A Como Grazie a Cesc"]</span><span>123V · 5h · 2.4× play/v</span></div>
+          <div class="orig-empty-mock-row"><span>2. [Titolo asset · es. "Goleada Ep.24"]</span><span>110V · 4h · 1.9× play/v</span></div>
+          <div class="orig-empty-mock-row"><span>3. [Titolo asset · es. "Arabian Night Ep.12"]</span><span>95V · 3h · 2.1× play/v</span></div>
+          <div class="orig-empty-mock-row"><span style="font-style:italic;color:#9ca3af">… altri 7 in pagina 1, poi pag. 2 e pag. 3 →</span><span></span></div>
+        </div>
+        ${fbHtml}
+      </div>`;
+    return;
+  }
+
+  // SLIDESHOW ATTIVA
+  const totalPages = Math.ceil(assets.length / ASSETS_PER_PAGE);
+  const page = Math.min(Math.max(_origSlidePage[period] || 0, 0), totalPages - 1);
+  const slice = assets.slice(page * ASSETS_PER_PAGE, (page + 1) * ASSETS_PER_PAGE);
+  const maxV = assets[0].viewers || 1;
+
+  function makeAssetRow(a, i) {
+    const pct = maxV > 0 ? (a.viewers / maxV * 100).toFixed(0) : 0;
+    const ppv = a.viewers > 0 && a.plays ? (a.plays / a.viewers).toFixed(1) : null;
+    const hpv = a.viewers > 0 && a.engH  ? (a.engH  / a.viewers).toFixed(1) : null;
+
+    const stats = [];
+    stats.push(`<span><strong style="color:#0d1a38">${a.viewers.toLocaleString()}</strong> viewers</span>`);
+    if (a.engH)  stats.push(`<span><strong style="color:#059669">${a.engH}h</strong> eng.</span>`);
+    if (ppv)     stats.push(`<span><strong style="color:#B8962E">${ppv}×</strong> play/v</span>`);
+    if (hpv)     stats.push(`<span><strong style="color:#7c3aed">${hpv}h</strong>/viewer</span>`);
+
+    return `<div class="vod-row" style="background:#f5f0fc;border-left:4px solid #7c3aed;padding:12px 14px">
+      <div class="vod-row-rank" style="color:#7c3aed">${i+1}</div>
+      <div class="vod-row-body">
+        ${a.parent ? `<span class="orig-asset-parent">📂 ${a.parent}</span>` : ''}
+        <div class="vod-row-head"><span class="vod-row-title" style="font-size:14px">${a.name}</span></div>
+        <div class="vod-row-stats">${stats.join('')}</div>
+        <div class="vod-row-bar">
+          <div class="barwrap"><div class="barfill" style="width:${pct}%;background:#7c3aed"></div></div>
+          <div class="barpct">${pct}% del leader</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  const rows = slice.map((a, idx) => makeAssetRow(a, page * ASSETS_PER_PAGE + idx)).join('');
+  const dots = Array.from({length: totalPages}, (_, i) =>
+    `<span class="orig-slide-dot ${i===page?'active':''}" onclick="setOrigSlidePage('${period}', ${i})" title="Pagina ${i+1}"></span>`
+  ).join('');
+  const from = page * ASSETS_PER_PAGE + 1;
+  const to   = Math.min((page + 1) * ASSETS_PER_PAGE, assets.length);
+
+  container.innerHTML = `
+    <div class="orig-slide-header">
+      <button class="orig-slide-arrow" ${page===0?'disabled':''} onclick="setOrigSlidePage('${period}', ${page-1})">←</button>
+      <span class="orig-slide-pageinfo">Pagina ${page+1} / ${totalPages} · contenuti ${from}–${to} su ${assets.length}</span>
+      <button class="orig-slide-arrow" ${page>=totalPages-1?'disabled':''} onclick="setOrigSlidePage('${period}', ${page+1})">→</button>
+    </div>
+    <div>${rows}</div>
+    <div class="orig-slide-dots">${dots}</div>`;
+}
+
+function setOrigSlidePage(period, page) {
+  _origSlidePage[period] = page;
+  // Re-render solo slideshow (i playlist fallback non servono qui)
+  renderOrigSlideshow(period, []);
 }
 
 
