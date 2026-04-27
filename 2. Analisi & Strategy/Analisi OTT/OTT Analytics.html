@@ -1211,7 +1211,8 @@ const retentionSummary = {
     fresh:  { d1: 11.3, d2: 6.7, d3: 0.0, d4: null, d5: null, d6: null, d7: null, base: 2405 },
   },
   vod: {
-    curve:  { d1: 25.6, d2: 21.4, d3: 20.5, d4: 20.5, d5: 18.9, d6: 19.8, d7: 21.1, base: 6811 },
+    all: { d1: 22.9, d2: 18.2, d3: 16.9, d4: 16.3, d5: 15.7, d6: 16.4, d7: 17.7, d14: 14.4, d30: 13.1, base: 81775 },
+    '1m': { d1: 25.6, d2: 21.4, d3: 20.5, d4: 20.5, d5: 18.9, d6: 19.8, d7: 21.1, base: 6811 },
   },
 };
 
@@ -1509,10 +1510,10 @@ function renderPlaylistRetention(period) {
   }).join('');
 }
 
-function renderRetentionPanels() {
+function renderRetentionPanels(period = 'all') {
   const liveActive = retentionSummary.live.active;
   const liveFresh = retentionSummary.live.fresh;
-  const vodCurve = retentionSummary.vod.curve;
+  const vodCurve = retentionSummary.vod[period] || retentionSummary.vod.all;
   const el = id => document.getElementById(id);
 
   if (el('liveRetentionD1')) el('liveRetentionD1').textContent = `${liveActive.d1.toFixed(1)}%`;
@@ -1528,7 +1529,11 @@ function renderRetentionPanels() {
   }
   const vodNote = el('vodRetentionNote');
   if (vodNote) {
-    vodNote.innerHTML = `Su VOD aprile tiene bene nel breve: <strong>${vodCurve.d1.toFixed(1)}%</strong> a D1 e <strong>${vodCurve.d7.toFixed(1)}%</strong> a D7. La curva resta abbastanza stabile fino a metà settimana, segnale utile per serialità, replay e reminder editoriali.`;
+    if (period === '1m') {
+      vodNote.innerHTML = `Su VOD aprile tiene bene nel breve: <strong>${vodCurve.d1.toFixed(1)}%</strong> a D1 e <strong>${vodCurve.d7.toFixed(1)}%</strong> a D7. La curva resta abbastanza stabile fino a metà settimana, segnale utile per serialità, replay e reminder editoriali.`;
+    } else {
+      vodNote.innerHTML = `Su VOD stagione intera la retention si assesta a <strong>${vodCurve.d1.toFixed(1)}%</strong> a D1 e <strong>${vodCurve.d7.toFixed(1)}%</strong> a D7, con una tenuta di <strong>${vodCurve.d14.toFixed(1)}%</strong> a due settimane e <strong>${vodCurve.d30.toFixed(1)}%</strong> a trenta giorni.`;
+    }
   }
 
   const liveCanvas = document.getElementById('liveRetentionChart');
@@ -1612,7 +1617,7 @@ function renderLiveSection(data) {
   const comps  = data.comps;
   const events = data.events;
   const period = data._period || 'all';
-  renderRetentionPanels();
+  renderRetentionPanels('all');
 
   // ── Update summary impact cards
   const sm = liveSummary[period] || liveSummary.all;
@@ -1912,7 +1917,7 @@ function renderVODSection(period) {
   const notice  = el('vodPeriodNotice');
   const noticeT = el('vodPeriodNoticeText');
   const scopeBadge = el('vodScopeBadge');
-  renderRetentionPanels();
+  renderRetentionPanels(period === '1m' ? '1m' : 'all');
   renderPlaylistRetention(period);
 
   if (scopeBadge) {
