@@ -2991,10 +2991,21 @@ function renderVodMixCharts(cats, engMap) {
     else                   liveViewers += (c.viewers || 0);
   });
 
-  // Engagement: preferiamo engMap (se passato esplicito) altrimenti engH presente in cats
+  // Engagement: usiamo i cats come base completa per evitare mappe parziali.
+  // Se esiste engMap, la usiamo solo per arricchire/sovrascrivere i valori noti per nome.
   let origHours = 0, liveHours = 0;
-  const source = (engMap && engMap.length) ? engMap : cats;
-  source.forEach(c => {
+  const hoursByName = new Map();
+  cats.forEach(c => {
+    hoursByName.set(c.name, { type: c.type, engH: c.engH || 0 });
+  });
+  if (engMap && engMap.length) {
+    engMap.forEach(c => {
+      if (!c || !c.name) return;
+      const prev = hoursByName.get(c.name) || { type: c.type, engH: 0 };
+      hoursByName.set(c.name, { type: prev.type || c.type, engH: c.engH || prev.engH || 0 });
+    });
+  }
+  Array.from(hoursByName.values()).forEach(c => {
     const h = c.engH || 0;
     if (c.type === 'orig') origHours += h;
     else                   liveHours += h;
