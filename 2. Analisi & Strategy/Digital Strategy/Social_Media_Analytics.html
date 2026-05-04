@@ -916,6 +916,7 @@ img, svg, canvas { max-width: 100%; }
 
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 <nav class="nav">
@@ -2038,10 +2039,10 @@ const D = {
     <div class="folder-import">
       <div class="folder-box">
         <div class="data-ops-title">Import settimanale da cartella CSV</div>
-        <div class="data-ops-sub">Seleziona la cartella della settimana con i file rinominati in modo standard: yt_overview.csv, yt_contenuto.csv, ig_feed.csv, ig_storie.csv, fb_posts.csv, tiktok_analytics.csv, linkedin_updates.csv.</div>
+        <div class="data-ops-sub">Seleziona la cartella della settimana con i file rinominati in modo standard. Sono accettati CSV, XLS e XLSX: yt_overview, yt_contenuto, ig_feed, ig_storie, fb_posts, tiktok_analytics, linkedin_updates.</div>
         <div class="folder-actions">
           <label class="folder-btn secondary">Scegli cartella
-            <input type="file" id="weekly-folder" webkitdirectory directory multiple accept=".csv,text/csv" style="display:none" onchange="previewWeeklyFolder()">
+            <input type="file" id="weekly-folder" webkitdirectory directory multiple accept=".csv,.xls,.xlsx,text/csv" style="display:none" onchange="previewWeeklyFolder()">
           </label>
           <button class="folder-btn" onclick="uploadWeeklyFolder()">Valida e aggiorna</button>
         </div>
@@ -2945,30 +2946,40 @@ function upReadFile(fileInputId){
   return new Promise((res,rej)=>{
     const f=byId(fileInputId)?.files[0];
     if(!f){res(null);return;}
-    const fr=new FileReader();
-    fr.onload=e=>res(e.target.result);
-    fr.onerror=()=>rej(new Error('Errore lettura file'));
-    fr.readAsText(f,'UTF-8');
+    readFileObject(f).then(res).catch(rej);
   });
 }
 
 function readFileObject(file){
   return new Promise((res,rej)=>{
+    const isXls=/\.xlsx?$/i.test(file.name);
     const fr=new FileReader();
-    fr.onload=e=>res(e.target.result);
-    fr.onerror=()=>rej(new Error('Errore lettura file: '+file.name));
-    fr.readAsText(file,'UTF-8');
+    if(isXls){
+      fr.onload=e=>{
+        try{
+          const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+          const ws=wb.Sheets[wb.SheetNames[0]];
+          res(XLSX.utils.sheet_to_csv(ws,{FS:',',RS:'\n'}));
+        }catch(err){rej(new Error('Errore lettura XLS: '+file.name+' — '+err.message));}
+      };
+      fr.onerror=()=>rej(new Error('Errore lettura file: '+file.name));
+      fr.readAsArrayBuffer(file);
+    }else{
+      fr.onload=e=>res(e.target.result);
+      fr.onerror=()=>rej(new Error('Errore lettura file: '+file.name));
+      fr.readAsText(file,'UTF-8');
+    }
   });
 }
 
 const WEEKLY_FILES=[
-  {key:'yt_overview',label:'YouTube panoramica',names:['yt_overview.csv','youtube_overview.csv','iscritti.csv','dati del grafico.csv'],need:[/data|date/i,/visualizzazioni|views|iscritti/i]},
-  {key:'yt_content',label:'YouTube contenuti',names:['yt_contenuto.csv','youtube_contenuto.csv','yt_content.csv','dati della tabella.csv'],need:[/titolo video|contenuti/i,/visualizzazioni|views/i]},
-  {key:'ig_feed',label:'Instagram feed',names:['ig_feed.csv','instagram_feed.csv'],need:[/orario di pubblicazione|data/i,/visualizzazioni|copertura|reach/i]},
-  {key:'ig_stories',label:'Instagram stories',names:['ig_storie.csv','ig_stories.csv','instagram_stories.csv'],need:[/orario di pubblicazione|data/i,/visualizzazioni|copertura|reach/i]},
-  {key:'fb_posts',label:'Facebook post',names:['fb_posts.csv','facebook_posts.csv'],need:[/orario di pubblicazione|data/i,/visualizzazioni|copertura|reach/i]},
-  {key:'tt_csv',label:'TikTok analytics',names:['tiktok_analytics.csv','tt_analytics.csv'],need:[/date|data/i,/video views|views|visualizzazioni/i]},
-  {key:'li_csv',label:'LinkedIn analytics',names:['linkedin_updates.csv','linkedin_analytics.csv','li_updates.csv'],need:[/date|data/i,/impression|visualizzazioni|engagement/i]},
+  {key:'yt_overview',label:'YouTube panoramica',names:['yt_overview.csv','yt_overview.xlsx','youtube_overview.csv','youtube_overview.xlsx','iscritti.csv','iscritti.xlsx','dati del grafico.csv','dati del grafico.xlsx'],need:[/data|date/i,/visualizzazioni|views|iscritti/i]},
+  {key:'yt_content',label:'YouTube contenuti',names:['yt_contenuto.csv','yt_contenuto.xlsx','youtube_contenuto.csv','youtube_contenuto.xlsx','yt_content.csv','yt_content.xlsx','dati della tabella.csv','dati della tabella.xlsx'],need:[/titolo video|contenuti/i,/visualizzazioni|views/i]},
+  {key:'ig_feed',label:'Instagram feed',names:['ig_feed.csv','ig_feed.xlsx','instagram_feed.csv','instagram_feed.xlsx'],need:[/orario di pubblicazione|data/i,/visualizzazioni|copertura|reach/i]},
+  {key:'ig_stories',label:'Instagram stories',names:['ig_storie.csv','ig_storie.xlsx','ig_stories.csv','ig_stories.xlsx','instagram_stories.csv','instagram_stories.xlsx'],need:[/orario di pubblicazione|data/i,/visualizzazioni|copertura|reach/i]},
+  {key:'fb_posts',label:'Facebook post',names:['fb_posts.csv','fb_posts.xlsx','facebook_posts.csv','facebook_posts.xlsx'],need:[/orario di pubblicazione|data/i,/visualizzazioni|copertura|reach/i]},
+  {key:'tt_csv',label:'TikTok analytics',names:['tiktok_analytics.csv','tiktok_analytics.xlsx','tt_analytics.csv','tt_analytics.xlsx'],need:[/date|data/i,/video views|views|visualizzazioni/i]},
+  {key:'li_csv',label:'LinkedIn analytics',names:['linkedin_updates.csv','linkedin_updates.xlsx','linkedin_analytics.csv','linkedin_analytics.xlsx','li_updates.csv','li_updates.xlsx'],need:[/date|data/i,/impression|visualizzazioni|engagement/i]},
 ];
 
 function normalizeFileName(name){
@@ -2977,7 +2988,7 @@ function normalizeFileName(name){
 
 function weeklyFileMap(){
   const input=byId('weekly-folder');
-  const files=Array.from(input?.files||[]).filter(f=>/\.csv$/i.test(f.name));
+  const files=Array.from(input?.files||[]).filter(f=>/\.(csv|xlsx?)$/i.test(f.name));
   const byName=new Map(files.map(f=>[normalizeFileName(f.name),f]));
   const mapped={};
   WEEKLY_FILES.forEach(rule=>{
@@ -2993,7 +3004,7 @@ function previewWeeklyFolder(){
     const f=mapped[rule.key];
     return `<div class="folder-chip ${f?'ok':'warn'}">${rule.label}: ${f?f.name:'manca'}</div>`;
   }).join('');
-  upStatus('weekly-folder-status',files.length?`${files.length} CSV selezionati. Puoi validare e aggiornare.`:'Nessun CSV selezionato','');
+  upStatus('weekly-folder-status',files.length?`${files.length} file selezionati (CSV / XLS / XLSX). Puoi validare e aggiornare.`:'Nessun file selezionato','');
 }
 
 function validateWeeklyCsv(rule,text){
@@ -3008,7 +3019,7 @@ function validateWeeklyCsv(rule,text){
 
 async function uploadWeeklyFolder(){
   const {files,mapped}=weeklyFileMap();
-  if(!files.length){upStatus('weekly-folder-status','Seleziona prima una cartella con CSV','err');return;}
+  if(!files.length){upStatus('weekly-folder-status','Seleziona prima una cartella con file CSV, XLS o XLSX','err');return;}
   upStatus('weekly-folder-status','Validazione CSV in corso...','loading');
   try{
     const texts={}; const checks=[];
