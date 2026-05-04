@@ -2356,10 +2356,13 @@ function shortT(value, maxLen=34){
   return txt.length > maxLen ? txt.slice(0, maxLen - 1) + "…" : txt;
 }
 
-function barC(id,labels,data,color){
+function barC(id,labels,datasets,color){
   const ctx=byId(id); if(!ctx)return;
   if(CI[id])CI[id].destroy();
-  CI[id]=new Chart(ctx,{type:'bar',data:{labels,datasets:[{data,backgroundColor:color+'cc',borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:10}}},y:{grid:{color:'#f3f4f6'},ticks:{font:{size:10},callback:v=>fmt(v)}}}}});
+  const palette=[color,'#B8962E','#6366f1','#16a34a','#f59e0b'];
+  const isFlat=!Array.isArray(datasets[0]);
+  const dsets=isFlat?[{label:'',data:datasets}]:datasets;
+  CI[id]=new Chart(ctx,{type:'bar',data:{labels,datasets:dsets.map((ds,i)=>({label:ds.label||'',data:ds.data,backgroundColor:palette[i%palette.length]+'cc',borderRadius:6}))},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:dsets.length>1&&dsets[0].label!=='',labels:{font:{size:10},boxWidth:10}}},scales:{x:{grid:{display:false},ticks:{font:{size:10},maxRotation:35}},y:{grid:{color:'#f3f4f6'},ticks:{font:{size:10},callback:v=>fmt(v)}}}}});
 }
 
 // ── Navigazione pagina ─────────────────────────────────
@@ -2514,11 +2517,13 @@ function renderIG(){
   byId('ig-story-reach').textContent=fmt(stories.reach);
   byId('ig-story-profile').textContent=fmt(stories.profile_visits);
   byId('ig-story-link').textContent=fmt(stories.link_clicks);
-  const t=d[tk()]||[];
-  byId('ig-fl-title').textContent=`Contenuti pubblicati — ${contentMode==='week'?'giorno':'settimana'}`;
-  byId('ig-eng-title').textContent=`Engagement rate feed — ${contentMode==='week'?'giorno':'settimana'}`;
-  lineC('ig-fl-chart',t.map(x=>x.l),[{label:'Contenuti',data:t.map(x=>x.items)}],'#E1306C');
-  lineC('ig-eng-chart',t.map(x=>x.l),[{label:'Eng%',data:t.map(x=>x.eng)}],'#F56040');
+  // IG chart 1: Distribuzione contenuti per formato
+  const igOther=Math.max(0,(feed.items||0)-(feed.count_reels||0)-(feed.count_carousels||0));
+  byId('ig-fl-title').textContent=`Contenuti per formato — ${contentMode==='week'?'7 giorni':'28 giorni'}`;
+  barC('ig-fl-chart',['Reel','Carosello','Altro'],[{label:'Contenuti',data:[feed.count_reels||0,feed.count_carousels||0,igOther]}],'#E1306C');
+  // IG chart 2: Views medie per formato
+  byId('ig-eng-title').textContent=`Views medie per formato — ${contentMode==='week'?'7 giorni':'28 giorni'}`;
+  barC('ig-eng-chart',['Reel','Carosello'],[{label:'Views medie',data:[feed.avg_views_reels||0,feed.avg_views_carousels||0]}],'#F56040');
   const rangeLabel = contentMode==='week' ? 'ultimi 7 giorni' : 'ultimi 28 giorni';
   byId('ig-reels-label').textContent=`Top Reel — ${rangeLabel}`;
   byId('ig-car-label').textContent=`Top Post / Caroselli — ${rangeLabel}`;
@@ -2540,10 +2545,13 @@ function renderTT(){
   byId('tt-views').textContent=fmt(periodData.avg_views || d.avg_views);
   byId('tt-eng').textContent=pct(periodData.eng_rate || d.eng_rate);
   const t=d[tk()]||[];
-  byId('tt-fl-title').textContent=`Video views — ${pWord()}`;
-  byId('tt-eng-title').textContent=`Engagement rate % — ${pWord()}`;
+  byId('tt-fl-title').textContent=`Views giornaliere — ${pWord()}`;
   lineC('tt-fl-chart',t.map(x=>x.l),[{label:'Views',data:t.map(x=>x.followers)}],'#161823');
-  lineC('tt-eng-chart',t.map(x=>x.l),[{label:'Eng%',data:t.map(x=>x.eng)}],'#EE1D52');
+  // TT chart 2: confronto 7g vs media settimanale su 28g
+  const tt7d=d.views_7d||0;
+  const tt28avg=Math.round((d.views_28d||0)/4);
+  byId('tt-eng-title').textContent='Views: ultimi 7g vs media sett. 28g';
+  barC('tt-eng-chart',['Views ultimi 7g','Media 7g su 28g'],[{label:'Views',data:[tt7d,tt28avg]}],'#EE1D52');
   const topArrTT=getTopRows(d);
   byId('tt-top-label').textContent=`Top giorni TikTok — ${pRange()}`;
   byId('tt-top-table').innerHTML=topHTML(topArrTT);
@@ -2558,15 +2566,17 @@ function renderFB(){
   byId('fb-reach').textContent=fmt(PERIOD==='week'?d.content_week.reach:(d.content_28d.reach));
   byId('fb-reach-label').textContent=PERIOD==='week'?'Reach video pubblicati 7g':'Reach video 28g';
   byId('fb-eng').textContent=pct(PERIOD==='week'?(d.content_week.interactions/d.content_week.reach*100):d.eng_rate);
-  const t=d[tk()]||[];
-  byId('fb-fl-title').textContent=`Video pubblicati — ${PERIOD==='week'?'giorno':'settimana'}`;
-  byId('fb-eng-title').textContent=`Engagement rate video — ${PERIOD==='week'?'giorno':'settimana'}`;
-  lineC('fb-fl-chart',t.map(x=>x.l),[{label:'Video',data:t.map(x=>x.items)}],'#1877F2');
-  lineC('fb-eng-chart',t.map(x=>x.l),[{label:'Eng%',data:t.map(x=>x.eng)}],'#1877F2');
   const topArrFB=getTopRows(d);
+  const fbContent=PERIOD==='week'?d.content_week:d.content_28d;
+  // FB chart 1: top video per views
+  byId('fb-fl-title').textContent=`Top video per views — ${pRange()}`;
+  barC('fb-fl-chart',topArrFB.slice(0,5).map((r,i)=>`#${i+1} ${shortT(r.title,20)}`),
+    [{label:'Views',data:topArrFB.slice(0,5).map(r=>r.v1||0)}],'#1877F2');
+  // FB chart 2: views vs reach del periodo
+  byId('fb-eng-title').textContent=`Views vs Reach — ${pRange()}`;
+  barC('fb-eng-chart',['Views','Reach'],[{label:pRange(),data:[fbContent.views||0,fbContent.reach||0]}],'#1877F2');
   byId('fb-top-label').textContent=`Top contenuti — ${pRange()} · Facebook video`;
   byId('fb-top-table').innerHTML=topHTML(topArrFB);
-  const fbContent=PERIOD==='week'?d.content_week:d.content_28d;
   setAnalysis('fb-analysis',`Facebook ha una buona capacita' di distribuzione: <strong>${fmt(fbContent.reach)} reach</strong> e <strong>${fmt(fbContent.views)} views</strong> nel periodo. Il punto debole e' l'interazione: <strong>${pct(fbContent.eng_rate||d.eng_rate)}</strong> con <strong>${fmt(fbContent.interactions)} interazioni</strong>. ${verdict('da ottimizzare','tenere i video che fanno reach, ma riscrivere copy e CTA per generare commenti e condivisioni')}`);
 }
 
@@ -2578,10 +2588,11 @@ function renderLI(){
   byId('li-impressions').textContent=fmt(d.impressions);
   byId('li-eng').textContent=pct(d.eng_rate);
   const t=d[tk()]||[];
-  byId('li-fl-title').textContent=`Crescita follower — ${pWord()}`;
-  byId('li-eng-title').textContent=`Engagement rate % — ${pWord()}`;
-  lineC('li-fl-chart',t.map(x=>x.l),[{label:'Follower',data:t.map(x=>x.followers)}],'#0A66C2');
-  lineC('li-eng-chart',t.map(x=>x.l),[{label:'Eng%',data:t.map(x=>x.eng)}],'#0A66C2');
+  byId('li-fl-title').textContent=`Impressioni giornaliere — ${pWord()}`;
+  lineC('li-fl-chart',t.map(x=>x.l),[{label:'Impressioni',data:t.map(x=>x.followers)}],'#0A66C2');
+  // LI chart 2: impressioni 7g vs 28g
+  byId('li-eng-title').textContent='Impressioni: 7 giorni vs 28 giorni';
+  barC('li-eng-chart',['Impressioni 7g','Impressioni 28g'],[{label:'Impressioni',data:[d.impressions_7d||0,d.impressions||0]}],'#0A66C2');
   const topArrLI=getTopRows(d);
   byId('li-top-label').textContent=`Top contenuti — ${pRange()} · corporate/editoriale`;
   byId('li-top-table').innerHTML=topHTML(topArrLI);
