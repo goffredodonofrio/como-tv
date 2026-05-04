@@ -2823,6 +2823,13 @@ const D = {
     <div class="kpi-card" style="border-top-color:#E1306C"><div class="kpi-val" id="ig-feed-reach">—</div><div class="kpi-label">Reach feed</div></div>
     <div class="kpi-card" style="border-top-color:#E1306C"><div class="kpi-val" id="ig-feed-interactions">—</div><div class="kpi-label">Interazioni feed</div></div>
   </div>
+  <div class="sec-label">Reel e Caroselli del periodo</div>
+  <div class="kpi-grid">
+    <div class="kpi-card" style="border-top-color:#9333ea"><div class="kpi-val" id="ig-reel-count">—</div><div class="kpi-label" id="ig-reel-count-label">Reel pubblicati</div></div>
+    <div class="kpi-card" style="border-top-color:#9333ea"><div class="kpi-val" id="ig-reel-avg">—</div><div class="kpi-label">Views medie reel</div></div>
+    <div class="kpi-card" style="border-top-color:#ea580c"><div class="kpi-val" id="ig-car-count">—</div><div class="kpi-label" id="ig-car-count-label">Caroselli pubblicati</div></div>
+    <div class="kpi-card" style="border-top-color:#ea580c"><div class="kpi-val" id="ig-car-avg">—</div><div class="kpi-label">Views medie caroselli</div></div>
+  </div>
   <div class="sec-label">Stories del periodo</div>
   <div class="kpi-grid">
     <div class="kpi-card" style="border-top-color:#E1306C"><div class="kpi-val" id="ig-story-items">—</div><div class="kpi-label">Stories pubblicate</div></div>
@@ -3171,6 +3178,15 @@ function renderIG(){
   byId('ig-feed-views').textContent=fmt(feed.views);
   byId('ig-feed-reach').textContent=fmt(feed.reach);
   byId('ig-feed-interactions').textContent=fmt(feed.interactions);
+  // Reel e Caroselli
+  const reelCount = feed.count_reels||0;
+  const carCount  = feed.count_carousels||0;
+  byId('ig-reel-count').textContent=reelCount||'—';
+  byId('ig-reel-count-label').textContent=contentMode==='week'?'Reel pubblicati 7g':'Reel pubblicati 28g';
+  byId('ig-reel-avg').textContent=feed.avg_views_reels?fmt(feed.avg_views_reels):'—';
+  byId('ig-car-count').textContent=carCount||'—';
+  byId('ig-car-count-label').textContent=contentMode==='week'?'Caroselli pubblicati 7g':'Caroselli pubblicati 28g';
+  byId('ig-car-avg').textContent=feed.avg_views_carousels?fmt(feed.avg_views_carousels):'—';
   byId('ig-story-items').textContent=fmt(stories.items);
   byId('ig-story-reach').textContent=fmt(stories.reach);
   byId('ig-story-profile').textContent=fmt(stories.profile_visits);
@@ -3692,6 +3708,12 @@ async function uploadInstagram(feedTextArg,storiesTextArg){
         const byDate=d=>csvParseDate(getDate(d));
         const r28=rows.filter(r=>{const d=byDate(r);return d&&d>=cut28;});
         const r7 =rows.filter(r=>{const d=byDate(r);return d&&d>=cutW;});
+        const isReel=r=>/reel/i.test(r['Tipo di post']||'');
+        const isCar =r=>/carosel/i.test(r['Tipo di post']||'');
+        const avgViews=(arr)=>{
+          const vv=arr.map(r=>csvNum(r['Visualizzazioni'])).filter(v=>v>0);
+          return vv.length?Math.round(vv.reduce((s,v)=>s+v,0)/vv.length):0;
+        };
         const agg=rs=>({
           items:rs.length,
           views:rs.reduce((s,r)=>s+csvNum(r['Visualizzazioni']),0),
@@ -3699,6 +3721,10 @@ async function uploadInstagram(feedTextArg,storiesTextArg){
           interactions:rs.reduce((s,r)=>s+csvNum(r['Mi piace'])+csvNum(r['Commenti'])+csvNum(r['Salvataggi'])+csvNum(r['Condivisioni']),0),
           saves:rs.reduce((s,r)=>s+csvNum(r['Salvataggi']),0),
           shares:rs.reduce((s,r)=>s+csvNum(r['Condivisioni']),0),
+          count_reels:rs.filter(isReel).length,
+          count_carousels:rs.filter(isCar).length,
+          avg_views_reels:avgViews(rs.filter(isReel)),
+          avg_views_carousels:avgViews(rs.filter(isCar)),
         });
         const f28=agg(r28); const f7=agg(r7);
         f28.eng_rate=f28.reach?+(f28.interactions/f28.reach*100).toFixed(2):0;
