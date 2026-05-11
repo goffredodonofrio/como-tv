@@ -857,6 +857,21 @@ img, svg, canvas { max-width: 100%; }
   .ct-head > *:nth-child(4),
   .ct-head > *:nth-child(5) { display: none !important; }
 }
+
+/* ── Comparison + Efficiency ─────────────────────── */
+.comp-delta-item { display:flex; justify-content:space-between; align-items:center; padding:9px 6px; border-bottom:1px solid #f3f4f6; }
+.comp-delta-item:last-child { border-bottom:none; }
+.comp-delta-name { font-size:12px; font-weight:600; }
+.comp-delta-val  { font-size:14px; font-weight:800; }
+.comp-delta-val.pos { color:#16a34a; }
+.comp-delta-val.neg { color:#dc2626; }
+.comp-delta-val.neu { color:#9ca3af; }
+.comp-note { font-size:10.5px; color:#9ca3af; margin-top:10px; padding:8px 10px; background:#f9fafb; border-radius:6px; border-left:3px solid #e5e7eb; }
+.placeholder-note { padding:24px 16px; text-align:center; color:#9ca3af; font-size:12px; background:#f9fafb; border-radius:8px; border:1.5px dashed #e5e7eb; }
+.efficiency-strip { display:flex; gap:12px; flex-wrap:wrap; margin:10px 0 14px; }
+.eff-card { flex:1; min-width:110px; background:#f9fafb; border-radius:8px; padding:10px 14px; border:1px solid #f3f4f6; }
+.eff-val  { font-size:18px; font-weight:800; color:#0d1a38; }
+.eff-label{ font-size:10px; color:#9ca3af; margin-top:2px; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
@@ -1349,16 +1364,19 @@ const WEEKS = [
       "growth_m": null,
       "confirmed": true,
       "audience_note": "Core audience Uomini 35–44 (32,4%) · Italia ~94%",
+      "audience_core": "Uomini 35–44 · 32,4%",
+      "audience_country": "Italia · ~94%",
+      "audience_cities": "Roma · Napoli · Milano",
       "feed_week": {
         "items": 44,
         "views": 558816,
         "reach": 402510,
         "interactions": 26244,
         "eng_rate": 4.7,
-        "reels": 28,
-        "carousels": 16,
-        "reel_avg_views": 12977,
-        "carousel_avg_views": 12216
+        "count_reels": 28,
+        "count_carousels": 16,
+        "avg_views_reels": 12977,
+        "avg_views_carousels": 12216
       },
       "stories_week": {
         "views": 24107,
@@ -1767,16 +1785,19 @@ const WEEKS = [
       "growth_m": null,
       "confirmed": true,
       "audience_note": "Core audience Uomini 35–44 (32,4%) · Italia ~94%",
+      "audience_core": "Uomini 35–44 · 32,4%",
+      "audience_country": "Italia · ~94%",
+      "audience_cities": "Roma · Napoli · Milano",
       "feed_week": {
         "items": 55,
         "views": 1620865,
         "reach": 1303057,
         "interactions": 78207,
         "eng_rate": 4.83,
-        "reels": 32,
-        "carousels": 18,
-        "reel_avg_views": 40130,
-        "carousel_avg_views": 17990
+        "count_reels": 32,
+        "count_carousels": 18,
+        "avg_views_reels": 40130,
+        "avg_views_carousels": 17990
       },
       "stories_week": {
         "views": 48555,
@@ -2171,6 +2192,21 @@ const PERIOD = 'week'; // fixed — navigazione per settimana
         <button class="week-btn active" data-idx="2" onclick="selectWeek(2)">4–10 mag 2026</button>
       </div>
     </div>
+<div class="platform-card" id="panel-comparison" style="border-radius:14px;margin-bottom:0">
+  <div class="sec-label" style="font-size:13px;font-weight:800;color:#0d1a38;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #f3f4f6">📊 Confronto settimane — tutte le piattaforme</div>
+  <div class="chart-row" style="align-items:stretch;gap:16px">
+    <div class="chart-box" style="flex:2">
+      <div class="chart-title">Views / Impressioni settimanali per piattaforma</div>
+      <div class="chart-wrap" style="height:230px"><canvas id="comp-views-chart"></canvas></div>
+    </div>
+    <div class="chart-box" style="flex:1;min-width:190px">
+      <div class="chart-title">Variazione vs settimana precedente</div>
+      <div id="comp-delta-list" style="padding:4px 0"></div>
+    </div>
+  </div>
+  <div class="comp-note" id="comp-note"></div>
+</div>
+
 <div class="platforms-grid">
 <div id="panel-youtube" class="platform-card">
   <div class="platform-header" style="--pc:#FF0000">
@@ -2472,16 +2508,13 @@ function topHTMLPublished(rows) {
 
 function topHTML(rows) {
   if(!rows?.length) return '<div style="padding:20px;text-align:center;color:#9ca3af;font-size:12px">Nessun dato</div>';
-  return rows.map((r,i)=>{
-    const bType=r.badge||r.type||'';
-    const bLabel=bType.replace(' di Instagram','').replace(' di Facebook','').replace('Instagram','').replace('Facebook','').trim()||'Post';
-    return `<div class="ct-row" style="grid-template-columns:28px minmax(0,1fr) 82px 68px 68px">
+  return rows.map((r,i)=>`<div class="ct-row" style="grid-template-columns:28px minmax(0,1fr) 82px 68px 68px">
     <div class="ct-rank">${i+1}</div>
-    <div><div class="ct-title">${r.url?`<a href="${r.url}" target="_blank" rel="noopener">${r.title}</a>`:r.title}</div><span class="badge ${badgeCls(bType)}" style="font-size:10px;padding:2px 7px">${bLabel}</span></div>
+    <div><div class="ct-title">${r.url?`<a href="${r.url}" target="_blank" rel="noopener">${r.title}</a>`:r.title}</div><span class="badge ${badgeCls(r.badge||r.type)}">${(r.badge||r.type||'Post').replace(' di Instagram','').replace(' di Facebook','').trim()}</span></div>
     ${metricHTML((r.v1!==undefined?r.v1:r.views), r.l1, 'Views')}
     ${metricHTML((r.v2!==undefined?r.v2:r.likes), r.l2, 'Metrica 2')}
     ${metricHTML((r.v3!==undefined?r.v3:r.comments), r.l3, 'Metrica 3')}
-  </div>`;}).join('');
+  </div>`).join('');
 }
 
 // ── Charts ────────────────────────────────────────────
@@ -2512,74 +2545,59 @@ function scrollToPanel(id){ const el=byId(id); if(el) el.scrollIntoView({behavio
 
 
 // ── Confronto settimane ───────────────────────────────
-function wowDelta(curVal, prevVal){
-  if(!prevVal || prevVal===0) return null;
-  return (curVal - prevVal) / prevVal * 100;
-}
+function wowDelta(cv, pv){ if(!pv)return null; return (cv-pv)/pv*100; }
 
 function renderComparison(){
-  const platforms = [
-    {name:'Instagram', c:'#E1306C', metric: w => w.instagram?.feed_week?.views || 0},
-    {name:'Facebook',  c:'#1877F2', metric: w => w.facebook?.content_week?.views || 0},
-    {name:'TikTok',    c:'#EE1D52', metric: w => w.tiktok?.views_7d || 0},
-    {name:'YouTube',   c:'#FF0000', metric: w => w.youtube?.views_7d || 0},
-    {name:'LinkedIn',  c:'#0A66C2', metric: w => w.linkedin?.impressions_7d || 0},
+  const platforms=[
+    {name:'Instagram',c:'#E1306C',metric:w=>w.instagram?.feed_week?.views||0},
+    {name:'Facebook', c:'#1877F2',metric:w=>w.facebook?.content_week?.views||0},
+    {name:'TikTok',   c:'#EE1D52',metric:w=>w.tiktok?.views_7d||0},
+    {name:'YouTube',  c:'#FF0000',metric:w=>w.youtube?.views_7d||0},
+    {name:'LinkedIn', c:'#0A66C2',metric:w=>w.linkedin?.impressions_7d||0},
   ];
-
-  const weekColors = ['#6b7280bb','#B8962Ebb','#0d1a38dd'];
-  const labels = platforms.map(p => p.name);
-  const datasets = WEEKS.map((w, i) => ({
-    label: w.label || 'Sett.'+(i+1),
-    data: platforms.map(p => p.metric(w)),
-    backgroundColor: weekColors[i] || '#ccccccbb',
-    borderRadius: 5
-  }));
-
-  const ctx = byId('comp-views-chart');
+  const wkColors=['#6b7280bb','#B8962Ebb','#0d1a38dd'];
+  const ctx=byId('comp-views-chart');
   if(ctx){
-    if(CI['comp-views-chart']) CI['comp-views-chart'].destroy();
-    CI['comp-views-chart'] = new Chart(ctx, {
-      type: 'bar',
-      data: { labels, datasets },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: true, labels: { font:{size:10}, boxWidth:10 } } },
-        scales: {
-          x: { grid:{display:false}, ticks:{font:{size:10}} },
-          y: { grid:{color:'#f3f4f6'}, ticks:{font:{size:10}, callback: v=>fmt(v)} }
+    if(CI['comp-views-chart'])CI['comp-views-chart'].destroy();
+    CI['comp-views-chart']=new Chart(ctx,{
+      type:'bar',
+      data:{
+        labels:platforms.map(p=>p.name),
+        datasets:WEEKS.map((w,i)=>({
+          label:(w.label||'Sett.'+(i+1)).replace(' 2026',''),
+          data:platforms.map(p=>p.metric(w)),
+          backgroundColor:wkColors[i]||'#ccccbbbb',
+          borderRadius:5
+        }))
+      },
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:true,labels:{font:{size:10},boxWidth:10}}},
+        scales:{
+          x:{grid:{display:false},ticks:{font:{size:10}}},
+          y:{grid:{color:'#f3f4f6'},ticks:{font:{size:10},callback:v=>fmt(v)}}
         }
       }
     });
   }
-
-  // Delta vs settimana precedente
-  const curIdx = WEEKS.indexOf(D);
-  const prevIdx = curIdx > 0 ? curIdx - 1 : null;
-  const deltaEl = byId('comp-delta-list');
+  const curIdx=WEEKS.indexOf(D);
+  const prevIdx=curIdx>0?curIdx-1:null;
+  const deltaEl=byId('comp-delta-list');
   if(deltaEl){
-    if(prevIdx !== null){
-      const cur = WEEKS[curIdx];
-      const prev = WEEKS[prevIdx];
-      deltaEl.innerHTML = platforms.map(p => {
-        const cv = p.metric(cur);
-        const pv = p.metric(prev);
-        const d = wowDelta(cv, pv);
-        const cls = d===null?'neu':d>5?'pos':d<-5?'neg':'neu';
-        const dtxt = d===null ? '—' : (d>0?'+':'')+d.toFixed(1)+'%';
-        return `<div class="comp-delta-item">
-          <span class="comp-delta-name" style="color:${p.c}">${p.name}</span>
-          <span class="comp-delta-val ${cls}">${dtxt}</span>
-        </div>`;
-      }).join('') + `<div style="margin-top:8px;font-size:10px;color:#9ca3af;padding:0 2px">vs ${WEEKS[prevIdx].label}</div>`;
+    if(prevIdx!==null){
+      const cur=WEEKS[curIdx],prev=WEEKS[prevIdx];
+      deltaEl.innerHTML=platforms.map(p=>{
+        const d=wowDelta(p.metric(cur),p.metric(prev));
+        const cls=d===null?'neu':d>5?'pos':d<-5?'neg':'neu';
+        const dtxt=d===null?'—':(d>0?'+':'')+d.toFixed(1)+'%';
+        return `<div class="comp-delta-item"><span class="comp-delta-name" style="color:${p.c}">${p.name}</span><span class="comp-delta-val ${cls}">${dtxt}</span></div>`;
+      }).join('')+`<div style="margin-top:6px;font-size:10px;color:#9ca3af;padding:2px">vs ${(WEEKS[prevIdx].label||'').replace(' 2026','')}</div>`;
     } else {
-      deltaEl.innerHTML = '<div style="padding:16px 4px;font-size:11px;color:#9ca3af">Seleziona la settimana 2 o 3 per vedere la variazione WoW</div>';
+      deltaEl.innerHTML='<div style="padding:14px 4px;font-size:11px;color:#9ca3af">Seleziona la sett. 2 o 3 per il confronto WoW</div>';
     }
   }
-
-  const noteEl = byId('comp-note');
-  if(noteEl) noteEl.innerHTML = '⚠️ <strong>Nota dati:</strong> IG e FB: views aggregate per data di pubblicazione, non per data di consumo effettivo — i trend giornalieri sono approssimativi. TikTok, YouTube e LinkedIn: dati giornalieri reali. Per follower growth serve export dedicato da ogni piattaforma.';
+  const noteEl=byId('comp-note');
+  if(noteEl)noteEl.innerHTML='⚠️ <strong>Nota:</strong> IG e FB: views per data di pubblicazione (approssimativo). TikTok, YouTube, LinkedIn: dati giornalieri reali. Follower growth: serve export dedicato da ogni piattaforma.';
 }
-
 // ── Week selector ─────────────────────────────────────
 function selectWeek(idx){
   D = WEEKS[idx];
@@ -2717,22 +2735,23 @@ function renderIG(){
   byId('ig-feed-views').textContent=fmt(feed.views);
   byId('ig-feed-reach').textContent=fmt(feed.reach);
   byId('ig-feed-interactions').textContent=fmt(feed.interactions);
-  // Efficiency metrics
-  const igVpp = feed.items > 0 ? Math.round(feed.views / feed.items) : 0;
-  const igRpm = d.followers > 0 ? ((feed.reach / d.followers) * 100).toFixed(1) + '%' : '—';
-  const igStAvg = (d.stories_week?.count||d.stories_week?.items) > 0 ? Math.round((d.stories_week?.views||0) / (d.stories_week?.count||d.stories_week?.items||1)) : null;
-  if(byId('ig-eff-vpp')) byId('ig-eff-vpp').textContent = fmt(igVpp);
-  if(byId('ig-eff-rpm')) byId('ig-eff-rpm').textContent = igRpm;
-  if(byId('ig-eff-story-avg')) byId('ig-eff-story-avg').textContent = igStAvg ? fmt(igStAvg) : '—';
+  // Efficiency
+  const igVpp=feed.items>0?Math.round(feed.views/feed.items):0;
+  const igRpm=d.followers>0?(feed.reach/d.followers).toFixed(1)+'x':'—';
+  const igStCnt=d.stories_week?.count||d.stories_week?.items||0;
+  const igStAvg=igStCnt>0?Math.round((d.stories_week?.views||0)/igStCnt):null;
+  if(byId('ig-eff-vpp'))byId('ig-eff-vpp').textContent=fmt(igVpp);
+  if(byId('ig-eff-rpm'))byId('ig-eff-rpm').textContent=igRpm;
+  if(byId('ig-eff-story-avg'))byId('ig-eff-story-avg').textContent=igStAvg?fmt(igStAvg):'—';
   // Reel e Caroselli
-  const reelCount = feed.count_reels||0;
-  const carCount  = feed.count_carousels||0;
+  const reelCount = feed.count_reels||feed.reels||0;
+  const carCount  = feed.count_carousels||feed.carousels||0;
   byId('ig-reel-count').textContent=reelCount||'—';
   byId('ig-reel-count-label').textContent=contentMode==='week'?'Reel pubblicati 7g':'Reel pubblicati 28g';
-  byId('ig-reel-avg').textContent=feed.avg_views_reels?fmt(feed.avg_views_reels):'—';
+  byId('ig-reel-avg').textContent=(feed.avg_views_reels||feed.reel_avg_views)?fmt(feed.avg_views_reels||feed.reel_avg_views):'—';
   byId('ig-car-count').textContent=carCount||'—';
   byId('ig-car-count-label').textContent=contentMode==='week'?'Caroselli pubblicati 7g':'Caroselli pubblicati 28g';
-  byId('ig-car-avg').textContent=feed.avg_views_carousels?fmt(feed.avg_views_carousels):'—';
+  byId('ig-car-avg').textContent=(feed.avg_views_carousels||feed.carousel_avg_views)?fmt(feed.avg_views_carousels||feed.carousel_avg_views):'—';
   byId('ig-story-items').textContent=fmt(stories.items);
   byId('ig-story-reach').textContent=fmt(stories.reach);
   byId('ig-story-profile').textContent=fmt(stories.profile_visits);
@@ -2783,25 +2802,19 @@ function renderFB(){
   byId('fb-date').textContent=d.updated||CFG.updated;
   byId('fb-followers').textContent=fmt(d.followers);
   byId('fb-growth').textContent=d[gk()]===null||d[gk()]===undefined?'n.d.':delta(d[gk()],pLbl());
-  byId('fb-reach').textContent=fmt(PERIOD==='week'?d.content_week.reach:(d.content_28d?.reach||0));
+  byId('fb-reach').textContent=fmt(PERIOD==='week'?d.content_week.reach:(d.content_28d.reach));
   byId('fb-reach-label').textContent=PERIOD==='week'?'Reach video pubblicati 7g':'Reach video 28g';
-  byId('fb-eng').textContent=pct(PERIOD==='week'?(d.content_week.interactions/Math.max(d.content_week.reach||1,1)*100):(d.eng_rate||0));
+  byId('fb-eng').textContent=pct(PERIOD==='week'?(d.content_week.interactions/d.content_week.reach*100):d.eng_rate);
   const topArrFB=getTopRows(d);
   const fbContent=PERIOD==='week'?d.content_week:(d.content_28d||{});
-  // Efficiency FB
-  const fbVpp = fbContent.items > 0 ? Math.round((fbContent.views||0) / fbContent.items) : 0;
-  const fbRpp = fbContent.items > 0 ? Math.round((fbContent.reach||0) / fbContent.items) : 0;
-  if(byId('fb-eff-vpp')) byId('fb-eff-vpp').textContent = fmt(fbVpp);
-  if(byId('fb-eff-reach-pp')) byId('fb-eff-reach-pp').textContent = fmt(fbRpp);
+  const fbVpp=fbContent.items>0?Math.round((fbContent.views||0)/fbContent.items):0;
+  const fbRpp=fbContent.items>0?Math.round((fbContent.reach||0)/fbContent.items):0;
+  if(byId('fb-eff-vpp'))byId('fb-eff-vpp').textContent=fmt(fbVpp);
+  if(byId('fb-eff-reach-pp'))byId('fb-eff-reach-pp').textContent=fmt(fbRpp);
   // FB chart 1: top video per views
-  byId('fb-fl-title').textContent=`Top 5 video per views — ${pRange()}`;
-  if(topArrFB.length){
-    barC('fb-fl-chart',topArrFB.slice(0,5).map((r,i)=>`#${i+1} ${shortT(r.title,18)}`),
-      [{label:'Views',data:topArrFB.slice(0,5).map(r=>r.v1||0)}],'#1877F2');
-  } else {
-    const el=byId('fb-fl-chart'); if(el){ const ctx=el.getContext('2d'); ctx&&ctx.clearRect(0,0,el.width,el.height); }
-    const wrap=el?.parentElement; if(wrap) wrap.innerHTML='<div class="placeholder-note">📋 Nessun dato top video disponibile per questa settimana</div>';
-  }
+  byId('fb-fl-title').textContent=`Top video per views — ${pRange()}`;
+  barC('fb-fl-chart',topArrFB.slice(0,5).map((r,i)=>`#${i+1} ${shortT(r.title,20)}`),
+    [{label:'Views',data:topArrFB.slice(0,5).map(r=>r.v1||0)}],'#1877F2');
   // FB chart 2: views vs reach del periodo
   byId('fb-eng-title').textContent=`Views vs Reach — ${pRange()}`;
   barC('fb-eng-chart',['Views','Reach'],[{label:pRange(),data:[fbContent.views||0,fbContent.reach||0]}],'#1877F2');
@@ -2815,16 +2828,14 @@ function renderLI(){
   byId('li-date').textContent=d.updated||CFG.updated;
   byId('li-followers').textContent=fmt(d.followers);
   byId('li-growth').textContent=delta(d[gk()],pLbl());
-  byId('li-impressions').textContent=fmt(d.impressions_7d || d.impressions);
-  byId('li-eng').textContent=d.eng_rate ? pct(d.eng_rate) : '—';
+  byId('li-impressions').textContent=fmt(d.impressions_7d||d.impressions);
+  byId('li-eng').textContent=pct(d.eng_rate);
   const t=d[tk()]||[];
   byId('li-fl-title').textContent=`Impressioni giornaliere — ${pWord()}`;
   lineC('li-fl-chart',t.map(x=>x.l),[{label:'Impressioni',data:t.map(x=>x.followers)}],'#0A66C2');
   // LI chart 2: impressioni 7g vs 28g
   byId('li-eng-title').textContent='Impressioni: confronto settimane';
-  const liWeekVals = WEEKS.map(w => w.linkedin?.impressions_7d || 0);
-  const liWeekLabels = WEEKS.map(w => (w.label||'').replace(' 2026',''));
-  barC('li-eng-chart', liWeekLabels, [{label:'Impressioni', data:liWeekVals}], '#0A66C2');
+  barC('li-eng-chart',WEEKS.map(w=>(w.label||'').replace(' 2026','')),  [{label:'Impressioni',data:WEEKS.map(w=>w.linkedin?.impressions_7d||0)}],'#0A66C2');
   const topArrLI=getTopRows(d);
   byId('li-top-label').textContent=`Top contenuti — ${pRange()} · corporate/editoriale`;
   byId('li-top-table').innerHTML=topHTML(topArrLI);
@@ -3411,6 +3422,9 @@ Decisiva anche la giocata dell",
       "growth_m": null,
       "confirmed": true,
       "audience_note": "Core audience Uomini 35–44 (32,4%) · Italia ~94%",
+      "audience_core": "Uomini 35–44 · 32,4%",
+      "audience_country": "Italia · ~94%",
+      "audience_cities": "Roma · Napoli · Milano",
       "feed_week": {
         "items": 44,
         "views": 558816,
@@ -3858,6 +3872,9 @@ Ma i Brasiliani non vanno o",
       "growth_m": null,
       "confirmed": true,
       "audience_note": "Core audience Uomini 35–44 (32,4%) · Italia ~94%",
+      "audience_core": "Uomini 35–44 · 32,4%",
+      "audience_country": "Italia · ~94%",
+      "audience_cities": "Roma · Napoli · Milano",
       "feed_week": {
         "items": 55,
         "views": 1620865,
