@@ -2259,6 +2259,11 @@ const PERIOD = 'week'; // fixed — navigazione per settimana
     <div class="kpi-card" style="border-top-color:#E1306C"><div class="kpi-val" id="ig-cities">—</div><div class="kpi-label">Città chiave</div></div>
   </div>
   <div class="sec-label">Feed del periodo</div>
+  <div class="efficiency-strip">
+    <div class="eff-card"><div class="eff-val" id="ig-eff-vpp">—</div><div class="eff-label">Views medie / post</div></div>
+    <div class="eff-card"><div class="eff-val" id="ig-eff-rpm">—</div><div class="eff-label">Reach / follower</div></div>
+    <div class="eff-card"><div class="eff-val" id="ig-eff-story-avg">—</div><div class="eff-label">Views medie / storia</div></div>
+  </div>
   <div class="kpi-grid">
     <div class="kpi-card" style="border-top-color:#E1306C"><div class="kpi-val" id="ig-feed-items">—</div><div class="kpi-label" id="ig-feed-items-label">Contenuti feed</div></div>
     <div class="kpi-card" style="border-top-color:#E1306C"><div class="kpi-val" id="ig-feed-views">—</div><div class="kpi-label">Views feed</div></div>
@@ -2364,6 +2369,10 @@ const PERIOD = 'week'; // fixed — navigazione per settimana
     <div class="kpi-card" style="border-top-color:#1877F2"><div class="kpi-val">Facebook</div><div class="kpi-label">Pagina Como TV</div></div>
   </div>
   <div class="sec-label">Performance del periodo</div>
+  <div class="efficiency-strip">
+    <div class="eff-card"><div class="eff-val" id="fb-eff-vpp">—</div><div class="eff-label">Views medie / post</div></div>
+    <div class="eff-card"><div class="eff-val" id="fb-eff-reach-pp">—</div><div class="eff-label">Reach medie / post</div></div>
+  </div>
   <div class="chart-row">
     <div class="chart-box"><div class="chart-title" id="fb-fl-title">Crescita follower</div><div class="chart-wrap"><canvas id="fb-fl-chart"></canvas></div></div>
     <div class="chart-box"><div class="chart-title" id="fb-eng-title">Engagement rate %</div><div class="chart-wrap"><canvas id="fb-eng-chart"></canvas></div></div>
@@ -2431,7 +2440,17 @@ function getTopRows(d){
   if(PERIOD==='month' && d.top_month?.length) return d.top_month;
   return d.top_total || d.top || [];
 }
-const badgeCls = t=>({Reel:'b-reel',Carosello:'b-carosello',Story:'b-story',Video:'b-video',Post:'b-post',Foto:'b-foto',Articolo:'b-articolo'}[t]||'b-post');
+const badgeCls = t=>{
+  if(!t)return'b-post';
+  const s=t.toLowerCase();
+  if(s.includes('reel'))return'b-reel';
+  if(s.includes('caros'))return'b-carosello';
+  if(s.includes('story')||s.includes('storia'))return'b-story';
+  if(s.includes('video'))return'b-video';
+  if(s.includes('foto')||s.includes('photo'))return'b-foto';
+  if(s.includes('articolo'))return'b-articolo';
+  return'b-post';
+};
 
 function metricHTML(value,label,fallbackLabel){
   const hasVal = value!==undefined && value!==null && value!=='';
@@ -2453,13 +2472,16 @@ function topHTMLPublished(rows) {
 
 function topHTML(rows) {
   if(!rows?.length) return '<div style="padding:20px;text-align:center;color:#9ca3af;font-size:12px">Nessun dato</div>';
-  return rows.map((r,i)=>`<div class="ct-row" style="grid-template-columns:28px minmax(0,1fr) 82px 68px 68px">
+  return rows.map((r,i)=>{
+    const bType=r.badge||r.type||'';
+    const bLabel=bType.replace(' di Instagram','').replace(' di Facebook','').replace('Instagram','').replace('Facebook','').trim()||'Post';
+    return `<div class="ct-row" style="grid-template-columns:28px minmax(0,1fr) 82px 68px 68px">
     <div class="ct-rank">${i+1}</div>
-    <div><div class="ct-title">${r.url?`<a href="${r.url}" target="_blank" rel="noopener">${r.title}</a>`:r.title}</div><span class="badge ${badgeCls(r.type)}">${r.type||'Video'}</span></div>
+    <div><div class="ct-title">${r.url?`<a href="${r.url}" target="_blank" rel="noopener">${r.title}</a>`:r.title}</div><span class="badge ${badgeCls(bType)}" style="font-size:10px;padding:2px 7px">${bLabel}</span></div>
     ${metricHTML((r.v1!==undefined?r.v1:r.views), r.l1, 'Views')}
     ${metricHTML((r.v2!==undefined?r.v2:r.likes), r.l2, 'Metrica 2')}
     ${metricHTML((r.v3!==undefined?r.v3:r.comments), r.l3, 'Metrica 3')}
-  </div>`).join('');
+  </div>`;}).join('');
 }
 
 // ── Charts ────────────────────────────────────────────
@@ -2488,6 +2510,76 @@ function barC(id,labels,datasets,color){
 function scrollToPanel(id){ const el=byId(id); if(el) el.scrollIntoView({behavior:"smooth",block:"start"}); }
 
 
+
+// ── Confronto settimane ───────────────────────────────
+function wowDelta(curVal, prevVal){
+  if(!prevVal || prevVal===0) return null;
+  return (curVal - prevVal) / prevVal * 100;
+}
+
+function renderComparison(){
+  const platforms = [
+    {name:'Instagram', c:'#E1306C', metric: w => w.instagram?.feed_week?.views || 0},
+    {name:'Facebook',  c:'#1877F2', metric: w => w.facebook?.content_week?.views || 0},
+    {name:'TikTok',    c:'#EE1D52', metric: w => w.tiktok?.views_7d || 0},
+    {name:'YouTube',   c:'#FF0000', metric: w => w.youtube?.views_7d || 0},
+    {name:'LinkedIn',  c:'#0A66C2', metric: w => w.linkedin?.impressions_7d || 0},
+  ];
+
+  const weekColors = ['#6b7280bb','#B8962Ebb','#0d1a38dd'];
+  const labels = platforms.map(p => p.name);
+  const datasets = WEEKS.map((w, i) => ({
+    label: w.label || 'Sett.'+(i+1),
+    data: platforms.map(p => p.metric(w)),
+    backgroundColor: weekColors[i] || '#ccccccbb',
+    borderRadius: 5
+  }));
+
+  const ctx = byId('comp-views-chart');
+  if(ctx){
+    if(CI['comp-views-chart']) CI['comp-views-chart'].destroy();
+    CI['comp-views-chart'] = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: true, labels: { font:{size:10}, boxWidth:10 } } },
+        scales: {
+          x: { grid:{display:false}, ticks:{font:{size:10}} },
+          y: { grid:{color:'#f3f4f6'}, ticks:{font:{size:10}, callback: v=>fmt(v)} }
+        }
+      }
+    });
+  }
+
+  // Delta vs settimana precedente
+  const curIdx = WEEKS.indexOf(D);
+  const prevIdx = curIdx > 0 ? curIdx - 1 : null;
+  const deltaEl = byId('comp-delta-list');
+  if(deltaEl){
+    if(prevIdx !== null){
+      const cur = WEEKS[curIdx];
+      const prev = WEEKS[prevIdx];
+      deltaEl.innerHTML = platforms.map(p => {
+        const cv = p.metric(cur);
+        const pv = p.metric(prev);
+        const d = wowDelta(cv, pv);
+        const cls = d===null?'neu':d>5?'pos':d<-5?'neg':'neu';
+        const dtxt = d===null ? '—' : (d>0?'+':'')+d.toFixed(1)+'%';
+        return `<div class="comp-delta-item">
+          <span class="comp-delta-name" style="color:${p.c}">${p.name}</span>
+          <span class="comp-delta-val ${cls}">${dtxt}</span>
+        </div>`;
+      }).join('') + `<div style="margin-top:8px;font-size:10px;color:#9ca3af;padding:0 2px">vs ${WEEKS[prevIdx].label}</div>`;
+    } else {
+      deltaEl.innerHTML = '<div style="padding:16px 4px;font-size:11px;color:#9ca3af">Seleziona la settimana 2 o 3 per vedere la variazione WoW</div>';
+    }
+  }
+
+  const noteEl = byId('comp-note');
+  if(noteEl) noteEl.innerHTML = '⚠️ <strong>Nota dati:</strong> IG e FB: views aggregate per data di pubblicazione, non per data di consumo effettivo — i trend giornalieri sono approssimativi. TikTok, YouTube e LinkedIn: dati giornalieri reali. Per follower growth serve export dedicato da ogni piattaforma.';
+}
+
 // ── Week selector ─────────────────────────────────────
 function selectWeek(idx){
   D = WEEKS[idx];
@@ -2497,6 +2589,7 @@ function selectWeek(idx){
   Object.values(CI).forEach(c=>c.destroy());
   CI={};
   renderAll();
+  renderComparison();
 }
 
 // YouTube: aggiornamento manuale tramite ✏️ Aggiorna nel tab YouTube
@@ -2624,6 +2717,13 @@ function renderIG(){
   byId('ig-feed-views').textContent=fmt(feed.views);
   byId('ig-feed-reach').textContent=fmt(feed.reach);
   byId('ig-feed-interactions').textContent=fmt(feed.interactions);
+  // Efficiency metrics
+  const igVpp = feed.items > 0 ? Math.round(feed.views / feed.items) : 0;
+  const igRpm = d.followers > 0 ? ((feed.reach / d.followers) * 100).toFixed(1) + '%' : '—';
+  const igStAvg = (d.stories_week?.count||d.stories_week?.items) > 0 ? Math.round((d.stories_week?.views||0) / (d.stories_week?.count||d.stories_week?.items||1)) : null;
+  if(byId('ig-eff-vpp')) byId('ig-eff-vpp').textContent = fmt(igVpp);
+  if(byId('ig-eff-rpm')) byId('ig-eff-rpm').textContent = igRpm;
+  if(byId('ig-eff-story-avg')) byId('ig-eff-story-avg').textContent = igStAvg ? fmt(igStAvg) : '—';
   // Reel e Caroselli
   const reelCount = feed.count_reels||0;
   const carCount  = feed.count_carousels||0;
@@ -2683,15 +2783,25 @@ function renderFB(){
   byId('fb-date').textContent=d.updated||CFG.updated;
   byId('fb-followers').textContent=fmt(d.followers);
   byId('fb-growth').textContent=d[gk()]===null||d[gk()]===undefined?'n.d.':delta(d[gk()],pLbl());
-  byId('fb-reach').textContent=fmt(PERIOD==='week'?d.content_week.reach:(d.content_28d.reach));
+  byId('fb-reach').textContent=fmt(PERIOD==='week'?d.content_week.reach:(d.content_28d?.reach||0));
   byId('fb-reach-label').textContent=PERIOD==='week'?'Reach video pubblicati 7g':'Reach video 28g';
-  byId('fb-eng').textContent=pct(PERIOD==='week'?(d.content_week.interactions/d.content_week.reach*100):d.eng_rate);
+  byId('fb-eng').textContent=pct(PERIOD==='week'?(d.content_week.interactions/Math.max(d.content_week.reach||1,1)*100):(d.eng_rate||0));
   const topArrFB=getTopRows(d);
-  const fbContent=PERIOD==='week'?d.content_week:d.content_28d;
+  const fbContent=PERIOD==='week'?d.content_week:(d.content_28d||{});
+  // Efficiency FB
+  const fbVpp = fbContent.items > 0 ? Math.round((fbContent.views||0) / fbContent.items) : 0;
+  const fbRpp = fbContent.items > 0 ? Math.round((fbContent.reach||0) / fbContent.items) : 0;
+  if(byId('fb-eff-vpp')) byId('fb-eff-vpp').textContent = fmt(fbVpp);
+  if(byId('fb-eff-reach-pp')) byId('fb-eff-reach-pp').textContent = fmt(fbRpp);
   // FB chart 1: top video per views
-  byId('fb-fl-title').textContent=`Top video per views — ${pRange()}`;
-  barC('fb-fl-chart',topArrFB.slice(0,5).map((r,i)=>`#${i+1} ${shortT(r.title,20)}`),
-    [{label:'Views',data:topArrFB.slice(0,5).map(r=>r.v1||0)}],'#1877F2');
+  byId('fb-fl-title').textContent=`Top 5 video per views — ${pRange()}`;
+  if(topArrFB.length){
+    barC('fb-fl-chart',topArrFB.slice(0,5).map((r,i)=>`#${i+1} ${shortT(r.title,18)}`),
+      [{label:'Views',data:topArrFB.slice(0,5).map(r=>r.v1||0)}],'#1877F2');
+  } else {
+    const el=byId('fb-fl-chart'); if(el){ const ctx=el.getContext('2d'); ctx&&ctx.clearRect(0,0,el.width,el.height); }
+    const wrap=el?.parentElement; if(wrap) wrap.innerHTML='<div class="placeholder-note">📋 Nessun dato top video disponibile per questa settimana</div>';
+  }
   // FB chart 2: views vs reach del periodo
   byId('fb-eng-title').textContent=`Views vs Reach — ${pRange()}`;
   barC('fb-eng-chart',['Views','Reach'],[{label:pRange(),data:[fbContent.views||0,fbContent.reach||0]}],'#1877F2');
@@ -2705,14 +2815,16 @@ function renderLI(){
   byId('li-date').textContent=d.updated||CFG.updated;
   byId('li-followers').textContent=fmt(d.followers);
   byId('li-growth').textContent=delta(d[gk()],pLbl());
-  byId('li-impressions').textContent=fmt(d.impressions);
-  byId('li-eng').textContent=pct(d.eng_rate);
+  byId('li-impressions').textContent=fmt(d.impressions_7d || d.impressions);
+  byId('li-eng').textContent=d.eng_rate ? pct(d.eng_rate) : '—';
   const t=d[tk()]||[];
   byId('li-fl-title').textContent=`Impressioni giornaliere — ${pWord()}`;
   lineC('li-fl-chart',t.map(x=>x.l),[{label:'Impressioni',data:t.map(x=>x.followers)}],'#0A66C2');
   // LI chart 2: impressioni 7g vs 28g
-  byId('li-eng-title').textContent='Impressioni: 7 giorni vs 28 giorni';
-  barC('li-eng-chart',['Impressioni 7g','Impressioni 28g'],[{label:'Impressioni',data:[d.impressions_7d||0,d.impressions||0]}],'#0A66C2');
+  byId('li-eng-title').textContent='Impressioni: confronto settimane';
+  const liWeekVals = WEEKS.map(w => w.linkedin?.impressions_7d || 0);
+  const liWeekLabels = WEEKS.map(w => (w.label||'').replace(' 2026',''));
+  barC('li-eng-chart', liWeekLabels, [{label:'Impressioni', data:liWeekVals}], '#0A66C2');
   const topArrLI=getTopRows(d);
   byId('li-top-label').textContent=`Top contenuti — ${pRange()} · corporate/editoriale`;
   byId('li-top-table').innerHTML=topHTML(topArrLI);
@@ -2805,7 +2917,7 @@ function updatePlatformMeta(){
 }
 
 
-function renderAll(){ renderHero(); renderOverview(); renderYT(); renderIG(); renderTT(); renderFB(); renderLI(); updatePlatformMeta(); }
+function renderAll(){ renderHero(); renderOverview(); renderYT(); renderIG(); renderTT(); renderFB(); renderLI(); updatePlatformMeta(); renderComparison(); }
 
 // ── Init ──────────────────────────────────────────────
 byId('hd-date').textContent=CFG.updated;
