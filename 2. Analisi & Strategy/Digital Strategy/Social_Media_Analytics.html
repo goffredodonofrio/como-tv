@@ -247,11 +247,21 @@ a { text-decoration: none; color: inherit; }
 /* ── TREND SPARKBAR ── */
 .sparkbar-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px; margin-bottom: 14px; }
 .sparkbar-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: #9ca3af; margin-bottom: 14px; }
-.sparkbar-chart { display: flex; align-items: flex-end; gap: 5px; height: 60px; }
-.sparkbar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
+.sparkbar-chart { display: flex; align-items: flex-end; gap: 5px; height: 80px; }
+.sparkbar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; height: 100%; justify-content: flex-end; }
+.sparkbar-val { font-size: 8px; font-weight: 700; color: #374151; white-space: nowrap; line-height: 1; }
 .sparkbar-bar { width: 100%; border-radius: 4px 4px 0 0; background: var(--pc); opacity: .7; min-height: 4px; transition: opacity .15s; }
 .sparkbar-bar:hover { opacity: 1; }
 .sparkbar-lbl { font-size: 9px; color: #9ca3af; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40px; text-align: center; }
+/* ── WEEK COMPARISON CHART ── */
+.weekcomp-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+.weekcomp-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: #9ca3af; margin-bottom: 14px; }
+.weekcomp-chart { display: flex; align-items: flex-end; gap: 12px; height: 90px; }
+.weekcomp-group { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; height: 100%; justify-content: flex-end; }
+.weekcomp-val { font-size: 9px; font-weight: 700; color: #374151; white-space: nowrap; }
+.weekcomp-bar { width: 100%; border-radius: 5px 5px 0 0; min-height: 4px; transition: opacity .15s; }
+.weekcomp-bar:hover { opacity: .85; }
+.weekcomp-lbl { font-size: 9px; color: #6b7280; font-weight: 600; text-align: center; white-space: nowrap; }
 
 /* ── NO WEEK ── */
 .empty-state { padding: 60px 32px; text-align: center; color: #9ca3af; font-size: 14px; }
@@ -913,6 +923,11 @@ function renderFacebook(W, wi) {
       <div class="metric-card"><div class="mc-val">${cw.items || '—'}</div><div class="mc-label">Contenuti pubblicati</div><div class="mc-sub">Video e post</div></div>
     </div>
 
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      ${renderWeekComparison('reach',  'Reach settimanale — confronto 3 settimane', pc, '')}
+      ${renderWeekComparison('views',  'Views settimanali — confronto 3 settimane', pc, '')}
+    </div>
+
     <div class="insight-row" style="--pc:${pc}">
       <div class="insight-pill"><span class="ip-icon">📉</span><div class="ip-text">La <strong>reach organica su Facebook</strong> è strutturalmente bassa (~1–3% dei follower per post). Un picco come quello della settimana 3 (628K) dipende quasi sempre da un video che sfonda nell'algoritmo dei video brevi.</div></div>
       <div class="insight-pill"><span class="ip-icon">🎬</span><div class="ip-text">I <strong>video (Reel)</strong> sono il formato con la maggiore distribuzione algoritmica su Facebook nel 2025–2026. Concentrare la produzione su video brevi è la strategia più efficace per la reach.</div></div>
@@ -1002,7 +1017,9 @@ function renderSparkbar(data, valKey, color, title) {
   const max = Math.max(...vals) || 1;
   const bars = data.map((d, i) => {
     const h = Math.max(4, Math.round((vals[i] / max) * 52));
+    const valLabel = vals[i] >= 1000 ? fmt(vals[i]) : vals[i].toString();
     return `<div class="sparkbar-col" title="${d.l}: ${fmtFull(vals[i])}">
+      <div class="sparkbar-val">${valLabel}</div>
       <div class="sparkbar-bar" style="height:${h}px;background:${color}"></div>
       <div class="sparkbar-lbl">${d.l.replace(/^\d{2}-/,'').replace('aprile','apr').replace('maggio','mag')}</div>
     </div>`;
@@ -1010,6 +1027,29 @@ function renderSparkbar(data, valKey, color, title) {
   return `<div class="sparkbar-wrap">
     <div class="sparkbar-title">${title}</div>
     <div class="sparkbar-chart">${bars}</div>
+  </div>`;
+}
+
+function renderWeekComparison(metricKey, title, color, unit) {
+  const data = WEEKS.map((w, i) => ({
+    label: w.label.replace(/\d{4}/,'').trim().replace(/ apr /,' apr ').replace(/ mag /,' mag '),
+    val: w.facebook?.content_week?.[metricKey] || 0,
+    week: i + 1
+  }));
+  const max = Math.max(...data.map(d => d.val)) || 1;
+  const bars = data.map(d => {
+    const h = Math.max(4, Math.round((d.val / max) * 68));
+    const valLabel = d.val >= 1000 ? fmt(d.val) : (d.val || '—').toString();
+    const isActive = (currentWeekIndex === d.week - 1);
+    return `<div class="weekcomp-group">
+      <div class="weekcomp-val">${valLabel}${d.val && unit ? ' ' + unit : ''}</div>
+      <div class="weekcomp-bar" style="height:${h}px;background:${color};opacity:${isActive ? '1' : '0.45'}"></div>
+      <div class="weekcomp-lbl">Sett. ${d.week}</div>
+    </div>`;
+  }).join('');
+  return `<div class="weekcomp-wrap">
+    <div class="weekcomp-title">${title}</div>
+    <div class="weekcomp-chart">${bars}</div>
   </div>`;
 }
 
