@@ -341,6 +341,91 @@ body { font-family: 'Inter', sans-serif; background: #eef0f3; color: #0f172a; fo
 .tbl-body::-webkit-scrollbar { width: 4px; }
 .tbl-body::-webkit-scrollbar-track { background: transparent; }
 .tbl-body::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 4px; }
+
+/* ── MOBILE ── */
+@media (max-width: 768px) {
+  /* Table text wraps instead of truncating */
+  .tbl-text { white-space: normal; }
+  .tbl-row { align-items: start; }
+
+  html, body { height: auto; overflow: auto; }
+
+  .app { height: auto; min-height: 100vh; overflow: visible; }
+
+  /* Nav */
+  .nav { padding: 0 14px; gap: 0; }
+  .nav-logo { min-width: 56px; flex: 0 0 56px; margin-right: 10px; padding-right: 12px; }
+  .nav-logo img { width: 40px; height: 40px; }
+  .nav-doc-title { font-size: 10px; letter-spacing: .8px; }
+  .nav-indice { padding: 6px 10px !important; font-size: 10px !important; }
+
+  /* Ptabs — tabs scroll, dropdown stacks below */
+  .ptabs {
+    height: auto;
+    flex-wrap: wrap;
+    padding: 0 10px;
+    row-gap: 0;
+  }
+  .ptab { padding: 0 12px; height: 48px; }
+  .ptab-kpi { font-size: 12px; }
+  .ptabs-spacer { display: none; }
+  .ptabs-weeks {
+    order: 100;
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid rgba(255,255,255,.08);
+    padding: 8px 4px;
+    justify-content: flex-start;
+  }
+  .ptabs-week-label { display: flex; }
+  .week-dropdown-btn { min-width: 0; flex: 1; max-width: 260px; }
+  .week-dropdown-menu { top: auto; right: 14px; left: 14px; min-width: 0; }
+
+  /* Panels — scrollable single column */
+  .panels { position: static; overflow: visible; flex: none; height: auto; }
+  .panel {
+    position: static;
+    display: none;
+    flex-direction: column;
+    grid-template-columns: 1fr;
+    padding: 14px 14px 24px;
+    gap: 12px;
+    overflow: visible;
+    height: auto;
+  }
+  .panel.active { display: flex; }
+
+  /* Columns */
+  .panel-l, .panel-r { overflow: visible; min-height: auto; }
+
+  /* Hero card — fixed height so it doesn't collapse */
+  .hero-card { flex: none; min-height: 200px; }
+  .hc-val { font-size: 36px; }
+
+  /* Metric grid — keep 3 col but smaller */
+  .metric-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .mc { padding: 8px 10px; }
+  .mc-val { font-size: 15px; }
+
+  /* Table */
+  .tbl-wrap { flex: none; min-height: 260px; max-height: none; }
+  .tbl-body { overflow-y: visible; max-height: 400px; overflow-y: auto; }
+
+  /* Audience strip */
+  .audience-strip { gap: 14px; flex-wrap: wrap; }
+}
+
+@media (max-width: 480px) {
+  .nav-doc-title { display: none; }
+  .ptab { padding: 0 9px; }
+  .ptab-name { font-size: 9px; }
+  .ptab-kpi { font-size: 11px; }
+  .hc-val { font-size: 30px; }
+  .metric-grid { grid-template-columns: repeat(2, 1fr); }
+  .tbl-row { grid-template-columns: 18px 1fr 68px; gap: 8px; }
+  .tbl-mval { font-size: 12px; }
+  .audience-strip { gap: 10px; }
+}
 </style>
 </head>
 <body>
@@ -655,9 +740,7 @@ function panelInstagram(d, prev, wi) {
       <div class="hc-narrative">${narratives[wi]}</div>
     </div>`;
 
-  /* Dati giornalieri Instagram non disponibili — placeholder coerente */
   const right = `
-    ${sparkbar([], '', 'reach', pc, 'Reach giornaliera Instagram')}
     ${topTable(d.top_week, 'Top contenuti settimana', 'v1', 'v2')}
     ${d.audience_core ? audienceStrip(d.audience_core, d.audience_country, d.audience_cities) : ''}`;
 
@@ -711,7 +794,7 @@ function panelYouTube(d, prev, wi) {
   const dl = delta(d.views_7d, prev?.views_7d);
 
   const narratives = [
-    `<strong>${fmt(d.views_7d)} views</strong> nella settimana, ~${fmt(Math.round(d.views_7d/7))} views/giorno. Pubblico mensile stimato: <strong>${fmt(d.pubblico_mensile)}</strong> spettatori unici. Views medie per video (storico): <strong>${d.avg_views}</strong>.`,
+    `<strong>${fmt(d.views_7d)} views</strong> nella settimana, ~${fmt(Math.round(d.views_7d/7))} views/giorno. Pubblico settimanale stimato: <strong>${fmt(d.pubblico_mensile)}</strong> spettatori unici. Views medie per video (storico): <strong>${d.avg_views}</strong>.`,
     `<strong>${fmt(d.views_7d)} views</strong> — +24% vs settimana 1. Picco martedì 30 aprile con oltre <strong>13K views in un giorno</strong>, probabilmente legato a un video molto condiviso.`,
     `La settimana migliore del periodo: <strong>${fmt(d.views_7d)} views</strong> (+145% vs W1). I primi due giorni (4 e 5 maggio) coprono il 35% delle views totali della settimana.`
   ];
@@ -721,7 +804,7 @@ function panelYouTube(d, prev, wi) {
     <div class="metric-grid" style="--pc:${pc}">
       ${mc(fmtFull(d.subscribers), 'Iscritti', 'Cumulato canale')}
       ${mc(fmt(d.total_views), 'Views totali', 'Cumulato canale')}
-      ${mc(d.pubblico_mensile ? fmt(d.pubblico_mensile) : '—', 'Pubblico mens.', 'Spett. unici 28gg')}
+      ${mc(d.pubblico_mensile ? fmt(d.pubblico_mensile) : '—', 'Pubblico sett.', 'Spett. unici 7gg')}
       ${mc(fmt(Math.round(d.views_7d/7)), 'Media giorn.', 'Views/giorno')}
       ${mc(d.avg_views ? fmtFull(d.avg_views) : '—', 'Views medie', 'Per video (storico)')}
       ${mc('—', 'Iscritti netti', 'Non disponibile')}
@@ -776,9 +859,7 @@ function panelFacebook(d, prev, wi) {
       <div class="hc-narrative">${narratives[wi]}</div>
     </div>`;
 
-  /* Dati giornalieri Facebook non disponibili — placeholder coerente */
   const right = `
-    ${sparkbar([], '', 'reach', pc, 'Reach giornaliera Facebook')}
     ${d.top_week?.length
       ? topTable(d.top_week, 'Top contenuti settimana', 'v1', 'v2')
       : `<div class="no-data" style="flex:1"><span style="font-size:28px">📢</span>Top contenuti non disponibili per questa settimana</div>`}`;
