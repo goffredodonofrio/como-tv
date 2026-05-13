@@ -32,7 +32,7 @@ body { font-family: 'Inter', sans-serif; background: #eef0f3; color: #0f172a; fo
 .hdr-brand { display: flex; flex-direction: column; }
 .hdr-name { font-size: 14px; font-weight: 800; color: #fff; letter-spacing: -.2px; line-height: 1; }
 .hdr-sub { font-size: 9px; color: rgba(255,255,255,.38); font-weight: 600; text-transform: uppercase; letter-spacing: .8px; margin-top: 2px; }
-/* ── WEEK PILLS (inside ptabs) ── */
+/* ── WEEK DROPDOWN (inside ptabs) ── */
 .ptabs-spacer { flex: 1; order: 98; }
 .ptabs-weeks {
   display: flex;
@@ -42,23 +42,64 @@ body { font-family: 'Inter', sans-serif; background: #eef0f3; color: #0f172a; fo
   border-left: 1px solid #e5e7eb;
   flex-shrink: 0;
   order: 99;
+  position: relative;
 }
 .ptabs-week-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: #9ca3af; white-space: nowrap; }
-.week-pills { display: flex; gap: 5px; }
-.hdr-pill {
-  padding: 3px 12px;
-  border-radius: 20px;
+.week-dropdown { position: relative; }
+.week-dropdown-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 12px;
+  border-radius: 8px;
   border: 1.5px solid #d1d5db;
-  background: transparent;
-  color: #6b7280;
-  font-size: 10px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
   transition: all .15s;
   white-space: nowrap;
+  font-family: inherit;
+  min-width: 148px;
+  justify-content: space-between;
 }
-.hdr-pill:hover { border-color: #9ca3af; color: #374151; background: #f9fafb; }
-.hdr-pill.active { background: #0b1628; border-color: #0b1628; color: #B8962E; }
+.week-dropdown-btn:hover { border-color: #9ca3af; background: #f9fafb; }
+.week-dropdown-btn.open { border-color: #0b1628; background: #0b1628; color: #B8962E; }
+.week-dropdown-btn.open .wdd-chevron { transform: rotate(180deg); color: #B8962E; }
+.wdd-chevron { transition: transform .2s; color: #9ca3af; flex-shrink: 0; }
+.week-dropdown-menu {
+  display: none;
+  position: fixed;
+  top: 56px;
+  right: 20px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  z-index: 500;
+  min-width: 210px;
+  overflow: hidden;
+}
+.week-dropdown-menu.open { display: block; }
+.wdd-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  border-bottom: 1px solid #f3f4f6;
+  transition: background .1s;
+  gap: 12px;
+}
+.wdd-item:last-child { border-bottom: none; }
+.wdd-item:hover { background: #f9fafb; }
+.wdd-item.active { background: #f0f4ff; color: #0b1628; font-weight: 800; }
+.wdd-item-check { color: #B8962E; font-size: 12px; flex-shrink: 0; }
+.wdd-item-n { font-size: 9px; color: #9ca3af; font-weight: 600; flex-shrink: 0; }
 .hdr-spacer { flex: 1; }
 .hdr-date { text-align: right; }
 .hdr-date-val { font-size: 11px; font-weight: 700; color: rgba(255,255,255,.7); }
@@ -339,7 +380,15 @@ body { font-family: 'Inter', sans-serif; background: #eef0f3; color: #0f172a; fo
     <div class="ptabs-spacer"></div>
     <div class="ptabs-weeks">
       <span class="ptabs-week-label">Settimana</span>
-      <div class="week-pills" id="hdr-pills"></div>
+      <div class="week-dropdown" id="week-dropdown">
+        <button class="week-dropdown-btn" id="week-dropdown-btn" onclick="toggleWeekDropdown(event)">
+          <span id="week-dropdown-label">—</span>
+          <svg class="wdd-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <div class="week-dropdown-menu" id="week-dropdown-menu"></div>
+      </div>
     </div>
   </nav>
 
@@ -558,7 +607,7 @@ function renderWeek(wi) {
   const W = WEEKS[wi];
 
   // header
-  document.querySelectorAll('.hdr-pill').forEach((el,i) => el.classList.toggle('active', i===wi));
+
   const dates = ['youtube','tiktok','instagram','facebook','linkedin'].map(k=>W[k]?.updated).filter(Boolean).sort();
   document.getElementById('hdr-date').textContent = dates[dates.length-1]||'—';
 
@@ -887,18 +936,51 @@ function switchPlatform(pi) {
 }
 
 /* ══ INIT ══ */
-// Build week pills
-const pillsEl = document.getElementById('hdr-pills');
-WEEKS.forEach((w,i) => {
-  const btn = document.createElement('button');
-  btn.className = 'hdr-pill';
-  btn.textContent = w.label;
-  btn.onclick = () => renderWeek(i);
-  pillsEl.appendChild(btn);
-});
+// Build week dropdown
+const wddMenu = document.getElementById('week-dropdown-menu');
+const wddBtn  = document.getElementById('week-dropdown-btn');
+const wddLbl  = document.getElementById('week-dropdown-label');
+
+function buildWeekDropdown() {
+  wddMenu.innerHTML = '';
+  WEEKS.forEach((w,i) => {
+    const item = document.createElement('div');
+    item.className = 'wdd-item' + (i===currentWeek?' active':'');
+    item.dataset.wi = i;
+    item.innerHTML = `<span>${w.label}</span><span class="wdd-item-n">W${i+1}</span>${i===currentWeek?'<span class="wdd-item-check">✓</span>':'<span></span>'}`;
+    item.onclick = () => { renderWeek(i); closeWeekDropdown(); };
+    wddMenu.appendChild(item);
+  });
+  wddLbl.textContent = WEEKS[currentWeek].label;
+}
+
+function toggleWeekDropdown(e) {
+  e.stopPropagation();
+  const open = wddMenu.classList.toggle('open');
+  wddBtn.classList.toggle('open', open);
+}
+
+function closeWeekDropdown() {
+  wddMenu.classList.remove('open');
+  wddBtn.classList.remove('open');
+}
+
+document.addEventListener('click', () => closeWeekDropdown());
+
+// Patch renderWeek to update dropdown label
+const _origRenderWeek = renderWeek;
+renderWeek = function(wi) {
+  _origRenderWeek(wi);
+  wddLbl.textContent = WEEKS[wi].label;
+  document.querySelectorAll('.wdd-item').forEach((el,i) => {
+    el.classList.toggle('active', i===wi);
+    el.innerHTML = `<span>${WEEKS[i].label}</span><span class="wdd-item-n">W${i+1}</span>${i===wi?'<span class="wdd-item-check">✓</span>':'<span></span>'}`;
+  });
+};
 
 buildUI();
 renderWeek(WEEKS.length - 1);
+buildWeekDropdown();
 </script>
 </body>
 </html>
