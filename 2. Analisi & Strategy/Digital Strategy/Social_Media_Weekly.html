@@ -92,6 +92,46 @@ body { font-family: 'Inter', sans-serif; background: #eef0f3; color: #0f172a; fo
 .wdd-item-n { font-size: 9px; color: #9ca3af; font-weight: 600; flex-shrink: 0; }
 .nav-indice:hover{background:rgba(184,150,46,0.25)!important;}
 
+/* ── RIEPILOGO PANEL ── */
+.panel-riepilogo {
+  display: none;
+  position: absolute;
+  inset: 0;
+  padding: 16px 20px;
+  overflow-y: auto;
+  background: #eef0f3;
+}
+.panel-riepilogo.active { display: block; }
+.riep-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #9ca3af; margin-bottom: 14px; }
+.riep-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.riep-table th { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .8px; color: #9ca3af; padding: 10px 14px; background: #f8f9fb; border-bottom: 2px solid #e5e7eb; text-align: right; }
+.riep-table th:first-child, .riep-table th:nth-child(2) { text-align: left; }
+.riep-table td { padding: 9px 14px; font-size: 12px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; text-align: right; }
+.riep-table td:first-child { text-align: left; width: 28px; }
+.riep-table td:nth-child(2) { text-align: left; font-weight: 600; color: #374151; font-size: 11px; }
+.riep-table tr:last-child td { border-bottom: none; }
+.riep-plat-row td { background: #f8f9fb; font-size: 11px; font-weight: 800; color: #0f172a; letter-spacing: .3px; padding: 8px 14px; border-bottom: 1px solid #e5e7eb; border-top: 2px solid #e5e7eb; }
+.riep-plat-row:first-of-type td { border-top: none; }
+.riep-val { font-size: 12px; font-weight: 700; color: #0f172a; }
+.riep-val.dim { color: #9ca3af; font-weight: 400; }
+.riep-delta { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 8px; display: inline-block; }
+.riep-delta.up { background: rgba(22,163,74,.1); color: #16a34a; }
+.riep-delta.down { background: rgba(225,29,72,.1); color: #e11d48; }
+.riep-delta.neutral { background: #f3f4f6; color: #9ca3af; }
+.riep-week-cur td { background: rgba(184,150,46,.04); }
+.riep-week-cur .riep-val { color: #0f172a; }
+.riep-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 16px; }
+.riep-summary-card { background: #fff; border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 4px rgba(0,0,0,.06); border-top: 3px solid var(--pc); }
+.riep-sc-plat { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .8px; color: var(--pc); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.riep-sc-icon { width: 20px; height: 20px; border-radius: 5px; background: var(--pc); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.riep-sc-rows { display: flex; flex-direction: column; gap: 5px; }
+.riep-sc-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.riep-sc-label { font-size: 10px; color: #6b7280; font-weight: 500; }
+.riep-sc-weeks { display: flex; align-items: center; gap: 6px; }
+.riep-sc-week { font-size: 11px; font-weight: 700; color: #9ca3af; }
+.riep-sc-week.cur { color: #0f172a; }
+.riep-sc-arr { font-size: 10px; }
+
 /* ── PLATFORM TABS ── */
 .ptabs {
   height: 56px;
@@ -653,9 +693,108 @@ let currentWeek = WEEKS.length - 1;
 let currentPlatform = 0;
 
 /* ══ BUILD TABS & PANELS (once) ══ */
+/* ── Riepilogo WoW ── */
+function panelRiepilogo(wi) {
+  function dlt(a, b) {
+    if (a==null||b==null||b===0) return null;
+    const v = ((a-b)/b*100);
+    return { val:(v>=0?'+':'')+v.toFixed(0)+'%', dir: v>=0?'up':'down' };
+  }
+  function dEl(d) {
+    if (!d) return '<span class="riep-delta neutral">—</span>';
+    return `<span class="riep-delta ${d.dir}">${d.val}</span>`;
+  }
+  function vEl(v, isCur) {
+    if (v==null) return `<span class="riep-val dim">—</span>`;
+    return `<span class="riep-val${isCur?' cur':''}">${fmt(v)}</span>`;
+  }
+
+  const cfg = [
+    { key:'instagram', name:'Instagram', color:'#E1306C', icon:igSvg, metrics:[
+      { label:'Views feed',   fn: d => d?.feed_week?.views },
+      { label:'Reach feed',   fn: d => d?.feed_week?.reach },
+      { label:'Follower',     fn: d => d?.followers },
+      { label:'Eng rate',     fn: d => d?.feed_week?.eng_rate },
+    ]},
+    { key:'tiktok', name:'TikTok', color:'#000000', icon:ttSvg, metrics:[
+      { label:'Views 7d',     fn: d => d?.views_7d },
+      { label:'Avg views',    fn: d => d?.avg_views },
+      { label:'Follower',     fn: d => d?.followers },
+    ]},
+    { key:'youtube', name:'YouTube', color:'#FF0000', icon:ytSvg, metrics:[
+      { label:'Views 7d',     fn: d => d?.views_7d },
+      { label:'Pubblico',     fn: d => d?.pubblico_mensile },
+      { label:'Iscritti',     fn: d => d?.subscribers },
+      { label:'Avg views',    fn: d => d?.avg_views },
+    ]},
+    { key:'facebook', name:'Facebook', color:'#1877F2', icon:fbSvg, metrics:[
+      { label:'Reach',        fn: d => d?.content_week?.reach },
+      { label:'Views',        fn: d => d?.content_week?.views },
+      { label:'Reactions',    fn: d => d?.content_week?.reactions },
+      { label:'Items',        fn: d => d?.content_week?.items },
+    ]},
+    { key:'linkedin', name:'LinkedIn', color:'#0A66C2', icon:liSvg, metrics:[
+      { label:'Impressioni',  fn: d => d?.impressions_7d },
+      { label:'Follower',     fn: d => d?.followers },
+    ]},
+  ];
+
+  let rows = '';
+  for (const plat of cfg) {
+    const allData = WEEKS.map(w => w[plat.key]);
+    rows += `<tr class="riep-plat-row">
+      <td><div class="riep-sc-icon" style="background:${plat.color}">${plat.icon(12)}</div></td>
+      <td colspan="${WEEKS.length + WEEKS.length - 1 + 1}" style="color:${plat.color}">${plat.name}</td>
+    </tr>`;
+
+    for (const m of plat.metrics) {
+      const vals = allData.map(m.fn);
+      const wCells = vals.map((v,i) => `<td class="${i===wi?'riep-week-cur':''}">${vEl(v, i===wi)}</td>`).join('');
+      const dCells = vals.slice(1).map((v,i) => `<td>${dEl(dlt(v, vals[i]))}</td>`).join('');
+      rows += `<tr><td></td><td>${m.label}</td>${wCells}${dCells}</tr>`;
+    }
+  }
+
+  const header = `<tr>
+    <th></th><th>Metrica</th>
+    ${WEEKS.map((w,i) => `<th style="${i===wi?'color:#0f172a;font-weight:900;background:#fff8e6':''}">${w.label}</th>`).join('')}
+    ${WEEKS.slice(1).map((_,i) => `<th>W${i+1}→W${i+2}</th>`).join('')}
+  </tr>`;
+
+  return `<div class="panel-riepilogo active" id="panel-riepilogo">
+    <div class="riep-title">Variazioni week over week — tutte le piattaforme</div>
+    <table class="riep-table">
+      <thead>${header}</thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
 function buildUI() {
   const tabsEl = document.getElementById('ptabs');
   const panelsEl = document.getElementById('panels');
+
+  // Tab Riepilogo (speciale, non in PLATFORMS)
+  const riepTab = document.createElement('div');
+  riepTab.className = 'ptab';
+  riepTab.id = 'ptab-riepilogo';
+  riepTab.style.setProperty('--pc', '#B8962E');
+  riepTab.innerHTML = `<div class="ptab-icon" style="background:#B8962E">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M3 3h7v7H3zm11 0h7v7h-7zm0 11h7v7h-7zM3 14h7v7H3z"/></svg>
+  </div>
+  <div class="ptab-info">
+    <div class="ptab-name">Riepilogo</div>
+    <div class="ptab-kpi">WoW</div>
+    <div class="ptab-delta neutral">tutte le settimane</div>
+  </div>`;
+  riepTab.onclick = () => {
+    document.querySelectorAll('.ptab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel, .panel-riepilogo').forEach(p => p.classList.remove('active'));
+    riepTab.classList.add('active');
+    const rp = document.getElementById('panel-riepilogo');
+    if (rp) rp.classList.add('active');
+  };
+  tabsEl.appendChild(riepTab);
 
   PLATFORMS.forEach((p, pi) => {
     // tab
@@ -706,6 +845,14 @@ function renderWeek(wi) {
     const el = document.getElementById(`panel-${p.key}`);
     el.innerHTML = buildPanel(p, W, wi);
   });
+  // update riepilogo
+  let rp = document.getElementById('panel-riepilogo');
+  if (!rp) {
+    rp = document.createElement('div');
+    rp.id = 'panel-riepilogo';
+    document.getElementById('panels').appendChild(rp);
+  }
+  rp.outerHTML = panelRiepilogo(wi);
 }
 
 /* ══ BUILD PANEL ══ */
@@ -1053,6 +1200,11 @@ renderWeek = function(wi) {
 };
 
 buildUI();
+// crea panel riepilogo vuoto
+const rpEl = document.createElement('div');
+rpEl.id = 'panel-riepilogo';
+rpEl.className = 'panel-riepilogo';
+document.getElementById('panels').appendChild(rpEl);
 renderWeek(WEEKS.length - 1);
 buildWeekDropdown();
 </script>
