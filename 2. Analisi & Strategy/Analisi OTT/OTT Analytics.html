@@ -746,8 +746,24 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
           <div class="period-dd-item active" data-period="all" onclick="setPeriod('all'); closePeriodDropdown()">
             <span>Anno 2026 · 1 gen – 17 mag</span><span class="period-dd-check">✓</span>
           </div>
-          <div class="period-dd-item" data-period="1m" onclick="setPeriod('1m'); closePeriodDropdown()">
-            <span>Mese chiuso (apr)</span><span class="period-dd-check"></span>
+          <div style="height:1px;background:#f3f4f6;margin:2px 0"></div>
+          <div class="period-dd-item" data-period="anno2026" onclick="setPeriod('anno2026'); closePeriodDropdown()">
+            <span>Anno 2026</span><span class="period-dd-check"></span>
+          </div>
+          <div class="period-dd-item" data-period="2026-01" onclick="setPeriod('2026-01'); closePeriodDropdown()">
+            <span>Gennaio 2026</span><span class="period-dd-check"></span>
+          </div>
+          <div class="period-dd-item" data-period="2026-02" onclick="setPeriod('2026-02'); closePeriodDropdown()">
+            <span>Febbraio 2026</span><span class="period-dd-check"></span>
+          </div>
+          <div class="period-dd-item" data-period="2026-03" onclick="setPeriod('2026-03'); closePeriodDropdown()">
+            <span>Marzo 2026</span><span class="period-dd-check"></span>
+          </div>
+          <div class="period-dd-item" data-period="2026-04" onclick="setPeriod('2026-04'); closePeriodDropdown()">
+            <span>Aprile 2026</span><span class="period-dd-check"></span>
+          </div>
+          <div class="period-dd-item" data-period="2026-05" onclick="setPeriod('2026-05'); closePeriodDropdown()">
+            <span>Maggio 2026 <span style="font-size:9px;color:#9ca3af">fino al 17</span></span><span class="period-dd-check"></span>
           </div>
         </div>
       </div>
@@ -1347,6 +1363,13 @@ const liveSummary = {
     topName: 'River Plate<br>vs Boca Juniors',
     topNote: '2,742 views · 883 viewers',
   },
+  // ── Periodi mensili 2026 — dati in arrivo da Cowork ──
+  'anno2026': null,
+  '2026-01': null,
+  '2026-02': null,
+  '2026-03': null,
+  '2026-04': null,  // alias impostato dopo definizione di '1m'
+  '2026-05': null,
 };
 
 const liveInvestmentLens = {
@@ -1385,7 +1408,7 @@ const liveInvestmentLens = {
 };
 
 const LIVE_EVENTS_PER_PAGE = 4;
-const _liveEventsSlidePage = { all:0, '1m':0, '1w':0 };
+const _liveEventsSlidePage = { all:0, '1m':0, '1w':0, 'anno2026':0, '2026-01':0, '2026-02':0, '2026-03':0, '2026-04':0, '2026-05':0 };
 
 const retentionSummary = {
   live: {
@@ -1936,14 +1959,18 @@ function renderRetentionPanels(period = 'all') {
 }
 
 function renderLiveSection(data) {
-  const comps  = data.comps;
-  const events = data.events;
+  const comps  = data.comps  || [];
+  const events = data.events || [];
   const period = data._period || 'all';
   renderRetentionPanels('all');
   renderLiveInvestmentLens(period);
 
-  // ── Update summary impact cards
-  const sm = liveSummary[period] || liveSummary.all;
+  // ── Se il periodo non ha ancora dati, mostra placeholder nelle card
+  const noData = !!data._noData;
+  const sm = noData
+    ? { viewers:'—', viewersNote:'Dati in arrivo da Cowork', views:'—', hours:'—',
+        topName:'—', topNote:'Nessun dato disponibile per questo periodo' }
+    : (liveSummary[period] || liveSummary.all);
   const el = id => document.getElementById(id);
   if (el('lv-viewers'))      el('lv-viewers').textContent      = sm.viewers;
   if (el('lv-viewers-note')) el('lv-viewers-note').textContent  = sm.viewersNote;
@@ -2237,7 +2264,7 @@ function renderVODSection(period) {
   const notice  = el('vodPeriodNotice');
   const noticeT = el('vodPeriodNoticeText');
   const scopeBadge = el('vodScopeBadge');
-  renderRetentionPanels(period === '1m' ? '1m' : 'all');
+  renderRetentionPanels(['1m','2026-04'].includes(period) ? '1m' : 'all');
   renderPlaylistRetention(period);
 
   if (scopeBadge) {
@@ -2333,8 +2360,8 @@ const EPISODE_COUNTS = {
 // perché replay/highlights sono troppo numerosi e ha più senso aggregato.
 const ASSETS_PER_PAGE = 3;
 const ASSETS_TOTAL    = 30;
-const _origSlidePage  = { all:0, '1m':0, '1w':0 };
-const _liveRelSlidePage = { all:0, '1m':0, '1w':0 };
+const _origSlidePage    = { all:0, '1m':0, '1w':0, 'anno2026':0, '2026-01':0, '2026-02':0, '2026-03':0, '2026-04':0, '2026-05':0 };
+const _liveRelSlidePage = { all:0, '1m':0, '1w':0, 'anno2026':0, '2026-01':0, '2026-02':0, '2026-03':0, '2026-04':0, '2026-05':0 };
 let   _vodActivePeriod = 'all';
 
 const vodAssetsByPeriod = {
@@ -2955,13 +2982,37 @@ renderLiveSection(liveDataByPeriod.all);
 
 // ── PERIOD TABS
 const PERIODS = {
-  all:  { label: 'Anno 2026',           hasData: true },
-  '1m': { label: 'Mese chiuso',         hasData: true },
+  all:        { label: 'Stagione 2024/25', hasData: true  },
+  '1m':       { label: 'Aprile 2026',      hasData: true  },
+  'anno2026': { label: 'Anno 2026',        hasData: false },
+  '2026-01':  { label: 'Gennaio 2026',     hasData: false },
+  '2026-02':  { label: 'Febbraio 2026',    hasData: false },
+  '2026-03':  { label: 'Marzo 2026',       hasData: false },
+  '2026-04':  { label: 'Aprile 2026',      hasData: true  },
+  '2026-05':  { label: 'Maggio 2026',      hasData: false },
 };
 const periodRanges = {
-  all:  '1 gen 2026 – 17 mag 2026 (Anno 2026 · YTD)',
-  '1m': '1 apr – 27 apr 2026 (mese chiuso)',
+  all:        '25 apr 2025 – 27 apr 2026 (stagione completa)',
+  '1m':       '1 apr – 27 apr 2026 (mese chiuso)',
+  'anno2026': '1 gen – 17 mag 2026 (anno in corso)',
+  '2026-01':  'Gennaio 2026',
+  '2026-02':  'Febbraio 2026',
+  '2026-03':  'Marzo 2026',
+  '2026-04':  '1 apr – 27 apr 2026',
+  '2026-05':  '1 mag – 17 mag 2026',
 };
+// ── Alias aprile: '2026-04' punta agli stessi dati di '1m'
+liveSummary['2026-04']          = liveSummary['1m'];
+liveDataByPeriod['2026-04']     = liveDataByPeriod['1m'];
+liveInvestmentLens['2026-04']   = liveInvestmentLens['1m'];
+retentionSummary.vod['2026-04'] = retentionSummary.vod['1m'];
+vodAssetsByPeriod['2026-04']    = vodAssetsByPeriod['1m'];
+VOD_SCOPE_BADGES['2026-04']     = VOD_SCOPE_BADGES['1m'];
+// ── Stub periodi senza dati ancora (array vuoti per non crashare renderLiveSection)
+['anno2026','2026-01','2026-02','2026-03','2026-05'].forEach(k => {
+  liveDataByPeriod[k] = liveDataByPeriod[k] || { eventCount:0, compCount:0, events:[], comps:[], _noData:true };
+  liveInvestmentLens[k] = liveInvestmentLens[k] || [];
+});
 
 function setPeriod(el) {
   // Switch live section data
@@ -2975,7 +3026,13 @@ function setPeriod(el) {
   // Update dropdown active state
   document.querySelectorAll('.period-dd-item').forEach(t => t.classList.toggle('active', t.dataset.period === p));
   const lbl = document.getElementById('period-dd-label');
-  if (lbl) lbl.textContent = ({all:'Stagione 2024/25','1m':'Mese chiuso (apr)'})[p] || p;
+  const periodDisplayLabels = {
+    all:'Stagione 2024/25', '1m':'Aprile 2026',
+    'anno2026':'Anno 2026', '2026-01':'Gennaio 2026',
+    '2026-02':'Febbraio 2026', '2026-03':'Marzo 2026',
+    '2026-04':'Aprile 2026', '2026-05':'Maggio 2026',
+  };
+  if (lbl) lbl.textContent = periodDisplayLabels[p] || p;
   const ddm = document.getElementById('period-dd-menu');
   if (ddm) ddm.classList.remove('open');
   const ddb = document.getElementById('period-dd-btn');
