@@ -739,17 +739,14 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
       <span class="sb-label" style="margin-bottom:0">Periodo</span>
       <div class="period-dropdown" id="period-dropdown">
         <button class="period-dd-btn" id="period-dd-btn" onclick="togglePeriodDropdown(event)">
-          <span id="period-dd-label">Anno 2026</span>
+          <span id="period-dd-label">2026 — Complessivo</span>
           <svg class="period-dd-chevron" id="period-dd-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <div class="period-dd-menu" id="period-dd-menu">
-          <div class="period-dd-item active" data-period="all" onclick="setPeriod('all'); closePeriodDropdown()">
-            <span>Anno 2026 · 1 gen – 17 mag</span><span class="period-dd-check">✓</span>
+          <div class="period-dd-item active" data-period="anno2026" onclick="setPeriod('anno2026'); closePeriodDropdown()">
+            <span>2026 — Complessivo</span><span class="period-dd-check">✓</span>
           </div>
           <div style="height:1px;background:#f3f4f6;margin:2px 0"></div>
-          <div class="period-dd-item" data-period="anno2026" onclick="setPeriod('anno2026'); closePeriodDropdown()">
-            <span>Anno 2026</span><span class="period-dd-check"></span>
-          </div>
           <div class="period-dd-item" data-period="2026-01" onclick="setPeriod('2026-01'); closePeriodDropdown()">
             <span>Gennaio 2026</span><span class="period-dd-check"></span>
           </div>
@@ -763,7 +760,7 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
             <span>Aprile 2026</span><span class="period-dd-check"></span>
           </div>
           <div class="period-dd-item" data-period="2026-05" onclick="setPeriod('2026-05'); closePeriodDropdown()">
-            <span>Maggio 2026 <span style="font-size:9px;color:#9ca3af">fino al 17</span></span><span class="period-dd-check"></span>
+            <span>Maggio 2026 <span style="font-size:9px;color:#9ca3af">1–19 mag</span></span><span class="period-dd-check"></span>
           </div>
         </div>
       </div>
@@ -3325,7 +3322,11 @@ function setLiveRelSlidePage(period, page) {
 let _vodCatChart = null;
 // Initial render
 liveDataByPeriod.all._period = 'all';
-renderLiveSection(liveDataByPeriod.all);
+// Default view: anno2026 (complessivo 2026)
+window._activePeriod = 'anno2026';
+_activePeriodData = liveDataByPeriod['anno2026'] || liveDataByPeriod.all;
+_activePeriodData._period = 'anno2026';
+renderLiveSection(_activePeriodData);
 // renderVODSection — called by setSec when user first opens VOD tab
 
 // ── PERIOD TABS
@@ -3342,12 +3343,12 @@ const PERIODS = {
 const periodRanges = {
   all:        '25 apr 2025 – 27 apr 2026 (stagione completa)',
   '1m':       '1 apr – 27 apr 2026 (mese chiuso)',
-  'anno2026': '1 gen – 17 mag 2026 (anno in corso)',
+  'anno2026': '1 gen – 19 mag 2026 (anno in corso)',
   '2026-01':  'Gennaio 2026',
   '2026-02':  'Febbraio 2026',
   '2026-03':  'Marzo 2026',
   '2026-04':  '1 apr – 27 apr 2026',
-  '2026-05':  '1 mag – 17 mag 2026',
+  '2026-05':  '1 mag – 19 mag 2026',
 };
 // ── Alias aprile: '2026-04' punta agli stessi dati di '1m'
 liveSummary['2026-04']          = liveSummary['1m'];
@@ -3376,9 +3377,9 @@ function setPeriod(el) {
   const lbl = document.getElementById('period-dd-label');
   const periodDisplayLabels = {
     all:'Stagione 2024/25', '1m':'Aprile 2026',
-    'anno2026':'Anno 2026', '2026-01':'Gennaio 2026',
+    'anno2026':'2026 — Complessivo', '2026-01':'Gennaio 2026',
     '2026-02':'Febbraio 2026', '2026-03':'Marzo 2026',
-    '2026-04':'Aprile 2026', '2026-05':'Maggio 2026',
+    '2026-04':'Aprile 2026', '2026-05':'Maggio 2026 (1–19)',
   };
   if (lbl) lbl.textContent = periodDisplayLabels[p] || p;
   const ddm = document.getElementById('period-dd-menu');
@@ -3394,10 +3395,9 @@ function setPeriod(el) {
   // Live notice
   const realEvents = _activePeriodData.eventCount || nEv;
   const realComps = _activePeriodData.compCount || nComps;
-  if (p === 'all') {
-    // Tab "Anno 2026" — VOD ricaricato YTD 1 gen–17 mag, LIVE ancora dati periodo precedente
-    notice.innerHTML = `<strong>⚠️ VOD aggiornato a Anno 2026 (1 gen – 17 mag) — LIVE in attesa di refresh.</strong>
-      I dati LIVE mostrati sono ancora del periodo precedente (25 apr 25 – 27 apr 26 · ${realEvents} eventi · ${realComps} competizioni). Quando arriva la Live Event List per 1 gen – 17 mag 2026, allineamo anche LIVE.`;
+  const isNoData = !!_activePeriodData._noData;
+  if (isNoData) {
+    notice.innerHTML = `<strong>📊 VOD — ${periodDisplayLabels[p] || periodLabel}</strong> &nbsp;·&nbsp; ${periodRanges[p] || ''} &nbsp;·&nbsp; Dati LIVE in arrivo da Cowork`;
     notice.style.borderLeftColor = '#f59e0b';
     notice.style.background = '#fffbeb';
   } else {
