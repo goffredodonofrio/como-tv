@@ -194,60 +194,14 @@ body { font-family: 'Inter', sans-serif; background: #eef0f3; color: #0f172a; fo
 
 /* ── PLAYLIST RETENTION ── */
 .playlist-retention-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:20px; }
-.playlist-retention-intro { font-size:11px; color:#374151; line-height:1.6; margin-bottom:12px; }
-.playlist-retention-grid { display:grid; grid-template-columns: 1fr; gap:14px; align-items:start; }
-.playlist-model {
-  background:var(--playlist-soft, #faf7ff); border:1px solid var(--playlist-border, #eadcff); border-radius:10px; padding:16px;
-}
-.playlist-model-title { font-size:11px; font-weight:700; color:var(--playlist-accent, #6d28d9); text-transform:uppercase; letter-spacing:.7px; margin-bottom:10px; }
-.playlist-kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
-@media (max-width: 880px) { .playlist-kpi-grid { grid-template-columns:repeat(2,1fr); } }
-@media (max-width: 560px) { .playlist-kpi-grid { grid-template-columns:1fr; } }
-.playlist-kpi-box {
-  background:#fff; border:1px solid var(--playlist-border, #e9d8ff); border-radius:8px; padding:12px;
-}
-.playlist-kpi-eyebrow { font-size:10px; color:#6b7280; text-transform:uppercase; letter-spacing:.6px; font-weight:700; }
-.playlist-kpi-title { font-size:13px; font-weight:700; color:#0d1a38; line-height:1.35; margin-top:4px; }
-.playlist-kpi-metric { font-size:22px; font-weight:700; color:var(--playlist-accent, #6d28d9); line-height:1.1; margin-top:10px; }
-.playlist-kpi-note { font-size:10px; color:#6b7280; margin-top:4px; line-height:1.45; }
-.playlist-retention-side {
-  background:#fafafa; border:1px solid #ece4d8; border-radius:10px; padding:16px;
-}
-.playlist-side-title { font-size:11px; font-weight:700; color:#0d1a38; text-transform:uppercase; letter-spacing:.7px; margin-bottom:10px; }
-.playlist-side-list { display:flex; flex-direction:column; gap:8px; }
-.playlist-side-item {
-  background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:11px; color:#374151; line-height:1.55;
-}
-.playlist-side-item strong { color:#0d1a38; }
-.playlist-waiting {
-  margin-top:14px; background:#fff7db; border:1px solid #ecd795; border-radius:8px; padding:12px 14px;
-  font-size:11px; color:#5a4a22; line-height:1.6;
-}
+.playlist-retention-intro { display:none; }
+.playlist-retention-grid { display:grid; grid-template-columns:1fr; gap:0; }
+.playlist-model { background:#faf7f2; border:1px solid #ece4d8; border-radius:10px; padding:18px; margin-bottom:14px; }
 .playlist-library {
-  display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:14px;
+  display:grid; grid-template-columns:repeat(3,1fr); gap:12px;
 }
 @media (max-width: 1100px) { .playlist-library { grid-template-columns:repeat(2,1fr); } }
-@media (max-width: 760px) { .playlist-library { grid-template-columns:1fr; } }
-.playlist-library-card {
-  background:#fff; border:1px solid var(--playlist-border, #e5e7eb); border-radius:10px; padding:14px 14px 12px;
-  box-shadow: inset 0 4px 0 var(--playlist-accent, #6d28d9);
-}
-.playlist-library-top { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px; }
-.playlist-library-name { font-size:14px; font-weight:700; color:#0d1a38; line-height:1.3; }
-.playlist-library-badge {
-  font-size:10px; font-weight:700; color:var(--playlist-accent, #6d28d9); background:var(--playlist-soft, #ede9fe);
-  border:1px solid var(--playlist-border, #ddd6fe); border-radius:999px; padding:3px 8px; white-space:nowrap;
-}
-.playlist-library-desc { font-size:11px; color:#374151; line-height:1.55; margin-bottom:10px; }
-.playlist-library-flow {
-  display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-bottom:8px;
-}
-.playlist-flow-box {
-  background:var(--playlist-soft, #faf7ff); border:1px solid var(--playlist-border, #eadcff); border-radius:8px; padding:8px 9px;
-}
-.playlist-flow-box strong { display:block; font-size:10px; color:#6b7280; text-transform:uppercase; letter-spacing:.5px; margin-bottom:3px; }
-.playlist-flow-box span { font-size:11px; color:#0d1a38; line-height:1.4; display:block; }
-.playlist-library-note { font-size:10px; color:#6b7280; line-height:1.5; }
+@media (max-width: 760px)  { .playlist-library { grid-template-columns:1fr; } }
 
 
 /* ── DMS SOURCE TAG ── */
@@ -1855,66 +1809,134 @@ function renderPlaylistRetention(period) {
   const top = serialRows.slice().sort((a,b) => b.ppv - a.ppv)[0];
   const avgPpv = serialRows.length ? serialRows.reduce((s,r) => s + r.ppv, 0) / serialRows.length : 0;
   const avgHpv = serialRows.length ? serialRows.reduce((s,r) => s + r.hpv, 0) / serialRows.length : 0;
-  const periodName = period === '1m' ? 'Mese chiuso' : 'Anno 2026';
-  const periodScope = period === '1m' ? '1–27 apr 2026' : '1 gen – 17 mag 2026';
+  const maxPpv = top ? top.ppv : 1;
 
-  intro.innerHTML = `<strong>Playlist Loyalty</strong> — quali brand seriali riportano il pubblico e trattengono tempo di visione · periodo <strong>${periodScope}</strong>.`;
+  // ── Period labels — fully dynamic
+  const PERIOD_META = {
+    'all':      { name:'Stagione 2026', scope:'1 gen – 19 mag 2026' },
+    'anno2026': { name:'Anno 2026',     scope:'1 gen – 19 mag 2026' },
+    '1m':       { name:'Aprile 2026',   scope:'1–30 apr 2026' },
+    '2026-04':  { name:'Aprile 2026',   scope:'1–30 apr 2026' },
+    '2026-01':  { name:'Gennaio 2026',  scope:'gen 2026' },
+    '2026-02':  { name:'Febbraio 2026', scope:'feb 2026' },
+    '2026-03':  { name:'Marzo 2026',    scope:'mar 2026' },
+    '2026-05':  { name:'Maggio 2026',   scope:'1–19 mag 2026' },
+  };
+  const pm = PERIOD_META[period] || { name: period, scope: period };
 
+  intro.innerHTML = '';  // intro rimosso — info già nel model header
+
+  // ── Model header — 4 hero KPI compatti
   model.innerHTML = `
-    <div class="playlist-model-title">Come leggere il blocco — ${periodName}</div>
-    <div class="playlist-kpi-grid">
-      <div class="playlist-kpi-box">
-        <div class="playlist-kpi-eyebrow">Leader</div>
-        <div class="playlist-kpi-title">Playlist piu forte</div>
-        <div class="playlist-kpi-metric">${top ? top.ppv.toFixed(1)+'×' : '—'}</div>
-        <div class="playlist-kpi-note">${top ? `${top.label} · rapporto play per viewer` : 'dati non disponibili'}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#0d1a38;">Playlist Loyalty</span>
+        <span style="font-size:11px;background:#fff7db;color:#8f7320;border:1px solid #e7d292;padding:2px 9px;border-radius:20px;font-weight:600;">${pm.name}</span>
+        <span style="font-size:11px;color:#6b7280;">${pm.scope}</span>
       </div>
-      <div class="playlist-kpi-box">
-        <div class="playlist-kpi-eyebrow">Media</div>
-        <div class="playlist-kpi-title">Play / viewer</div>
-        <div class="playlist-kpi-metric">${avgPpv ? avgPpv.toFixed(1)+'×' : '—'}</div>
-        <div class="playlist-kpi-note">quante volte, in media, ogni viewer torna a far partire contenuti della playlist</div>
+      <span style="font-size:11px;color:#6b7280;">${serialRows.length} playlist seriali leggibili</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+      <div style="background:#faf7f2;border:1px solid #ece4d8;border-radius:10px;padding:14px 12px;text-align:center;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:6px;">Leader</div>
+        <div style="font-size:26px;font-weight:800;color:#8f7320;line-height:1;margin-bottom:4px;">${top ? top.ppv.toFixed(1)+'×' : '—'}</div>
+        <div style="font-size:10px;color:#374151;font-weight:600;">${top ? top.label : '—'}</div>
+        <div style="font-size:10px;color:#6b7280;margin-top:2px;">play / viewer</div>
       </div>
-      <div class="playlist-kpi-box">
-        <div class="playlist-kpi-eyebrow">Depth</div>
-        <div class="playlist-kpi-title">Hours / viewer</div>
-        <div class="playlist-kpi-metric">${avgHpv ? avgHpv.toFixed(2)+'h' : '—'}</div>
-        <div class="playlist-kpi-note">quanto tempo spende, in media, ogni viewer che entra nella playlist</div>
+      <div style="background:#faf7f2;border:1px solid #ece4d8;border-radius:10px;padding:14px 12px;text-align:center;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:6px;">Media Loyalty</div>
+        <div style="font-size:26px;font-weight:800;color:#0d1a38;line-height:1;margin-bottom:4px;">${avgPpv ? avgPpv.toFixed(1)+'×' : '—'}</div>
+        <div style="font-size:10px;color:#6b7280;">media play/viewer</div>
+        <div style="font-size:10px;color:#6b7280;margin-top:2px;">su tutte le playlist</div>
       </div>
-      <div class="playlist-kpi-box">
-        <div class="playlist-kpi-eyebrow">Coverage</div>
-        <div class="playlist-kpi-title">Playlist lette</div>
-        <div class="playlist-kpi-metric">${serialRows.length}</div>
-        <div class="playlist-kpi-note">playlist seriali leggibili nel periodo</div>
+      <div style="background:#faf7f2;border:1px solid #ece4d8;border-radius:10px;padding:14px 12px;text-align:center;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:6px;">Depth media</div>
+        <div style="font-size:26px;font-weight:800;color:#0d1a38;line-height:1;margin-bottom:4px;">${avgHpv ? avgHpv.toFixed(2)+'h' : '—'}</div>
+        <div style="font-size:10px;color:#6b7280;">hours / viewer</div>
+        <div style="font-size:10px;color:#6b7280;margin-top:2px;">tempo medio per accesso</div>
+      </div>
+      <div style="background:#faf7f2;border:1px solid #ece4d8;border-radius:10px;padding:14px 12px;text-align:center;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:6px;">Coverage</div>
+        <div style="font-size:26px;font-weight:800;color:#0d1a38;line-height:1;margin-bottom:4px;">${serialRows.length}</div>
+        <div style="font-size:10px;color:#6b7280;">playlist con dati</div>
+        <div style="font-size:10px;color:#6b7280;margin-top:2px;">nel periodo</div>
       </div>
     </div>`;
 
-  // Espandi model a tutta larghezza e nascondi il side panel
   model.style.gridColumn = '1 / -1';
   side.innerHTML = '';
   side.style.display = 'none';
 
-  library.innerHTML = serialRows.map(row => {
+  // ── Library cards — redesign: Loyalty hero, Reach/Depth secondari, strip bottom
+  library.innerHTML = serialRows
+    .slice()
+    .sort((a, b) => b.ppv - a.ppv)   // ordina per loyalty decrescente
+    .map((row, idx) => {
     const colors = PLAYLIST_COLORS[row.label] || { accent:'#6d28d9', soft:'#faf7ff', border:'#eadcff' };
-    const quality = row.ppv >= 2.2 ? 'Playlist molto fedele' : row.ppv >= 1.6 ? 'Playlist solida' : 'Playlist da presidiare';
-    const epNote = row.surfacedEpisodes ? `${row.surfacedEpisodes} episodi emersi nel content rank` : 'nessun episodio emerso nel content rank';
-    return `<div class="playlist-library-card" style="--playlist-accent:${colors.accent};--playlist-soft:${colors.soft};--playlist-border:${colors.border}">
-      <div class="playlist-library-top">
-        <div class="playlist-library-name">${row.label}</div>
-        <div class="playlist-library-badge">${row.episodes} ep. totali${period === '1m' ? ` · ${row.surfacedEpisodes || 0} nel mese` : ''}</div>
+    const ac = colors.accent;
+
+    const qualityLabel = row.ppv >= 2.2 ? 'Molto fedele' : row.ppv >= 1.6 ? 'Solida' : 'Da presidiare';
+    const qualityColor = row.ppv >= 2.2 ? '#059669' : row.ppv >= 1.6 ? '#8f7320' : '#6b7280';
+    const qualityBg    = row.ppv >= 2.2 ? '#ecfdf5' : row.ppv >= 1.6 ? '#fff7db' : '#f3f4f6';
+    const qualityBorder= row.ppv >= 2.2 ? '#a7f3d0' : row.ppv >= 1.6 ? '#e7d292' : '#e5e7eb';
+
+    // Loyalty bar — % rispetto al leader
+    const barPct = maxPpv > 0 ? Math.min(100, (row.ppv / maxPpv) * 100).toFixed(0) : 0;
+
+    const epNote = row.surfacedEpisodes
+      ? `${row.surfacedEpisodes} ep. nel rank`
+      : '—';
+    const periodEpBadge = (period === '1m' || period === '2026-04')
+      ? ` · <strong>${row.surfacedEpisodes || 0}</strong> nel mese`
+      : '';
+
+    return `<div style="background:#fff;border-radius:10px;border:1px solid ${colors.border};box-shadow:inset 0 4px 0 ${ac};padding:14px 16px 12px;display:flex;flex-direction:column;gap:0;">
+      <!-- Header -->
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px;">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#0d1a38;line-height:1.3;">${row.label}</div>
+          <div style="font-size:10px;color:#6b7280;margin-top:2px;">${row.episodes} ep. totali${periodEpBadge}</div>
+        </div>
+        <span style="font-size:10px;font-weight:700;color:${qualityColor};background:${qualityBg};border:1px solid ${qualityBorder};border-radius:999px;padding:3px 9px;white-space:nowrap;flex-shrink:0;">${qualityLabel}</span>
       </div>
-      <div class="playlist-library-desc">${row.desc}</div>
-      <div class="playlist-library-flow">
-        <div class="playlist-flow-box"><strong>Reach</strong><span>${fmtCompact(Math.round(row.viewers))} viewer</span></div>
-        <div class="playlist-flow-box"><strong>Loyalty</strong><span>${row.ppv ? row.ppv.toFixed(1)+'× play/viewer' : '—'}</span></div>
-        <div class="playlist-flow-box"><strong>Depth</strong><span>${row.hpv ? row.hpv.toFixed(2)+'h/viewer' : '—'}</span></div>
+
+      <!-- 3 hero metrics -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:8px 0;">
+        <!-- Loyalty — hero principale -->
+        <div style="background:${colors.soft};border:1px solid ${colors.border};border-radius:8px;padding:10px 8px;text-align:center;">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${ac};margin-bottom:4px;">Loyalty</div>
+          <div style="font-size:26px;font-weight:800;color:${ac};line-height:1;margin-bottom:2px;">${row.ppv ? row.ppv.toFixed(1)+'×' : '—'}</div>
+          <div style="font-size:9px;color:#6b7280;">play / viewer</div>
+        </div>
+        <!-- Reach -->
+        <div style="background:#faf7f2;border:1px solid #ece4d8;border-radius:8px;padding:10px 8px;text-align:center;">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:4px;">Reach</div>
+          <div style="font-size:22px;font-weight:700;color:#0d1a38;line-height:1;margin-bottom:2px;">${fmtCompact(Math.round(row.viewers))}</div>
+          <div style="font-size:9px;color:#6b7280;">viewer</div>
+        </div>
+        <!-- Depth -->
+        <div style="background:#faf7f2;border:1px solid #ece4d8;border-radius:8px;padding:10px 8px;text-align:center;">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:4px;">Depth</div>
+          <div style="font-size:22px;font-weight:700;color:#0d1a38;line-height:1;margin-bottom:2px;">${row.hpv ? row.hpv.toFixed(2)+'h' : '—'}</div>
+          <div style="font-size:9px;color:#6b7280;">/ viewer</div>
+        </div>
       </div>
-      <div class="playlist-library-flow">
-        <div class="playlist-flow-box"><strong>Engagement</strong><span>${row.engH ? row.engH.toFixed(1)+'h totali' : '—'}</span></div>
-        <div class="playlist-flow-box"><strong>Per episodio</strong><span>${row.vpe ? Math.round(row.vpe)+' viewer/ep' : '—'}</span></div>
-        <div class="playlist-flow-box"><strong>Coverage</strong><span>${epNote}</span></div>
+
+      <!-- Loyalty bar -->
+      <div style="margin:4px 0 8px;">
+        <div style="height:4px;background:#f3f4f6;border-radius:2px;overflow:hidden;">
+          <div style="height:100%;width:${barPct}%;background:${ac};border-radius:2px;transition:width .4s;"></div>
+        </div>
       </div>
-      <div class="playlist-library-note"><strong>${quality}.</strong> ${row.maturity}.</div>
+
+      <!-- Strip secondaria -->
+      <div style="display:flex;flex-wrap:wrap;gap:8px;padding-top:8px;border-top:1px solid #f3f4f6;">
+        <span style="font-size:10px;color:#374151;"><strong style="color:#0d1a38;">${row.engH ? row.engH.toFixed(0)+'h' : '—'}</strong> engagement</span>
+        <span style="font-size:10px;color:#d1d5db;">·</span>
+        <span style="font-size:10px;color:#374151;"><strong style="color:#0d1a38;">${row.vpe ? Math.round(row.vpe) : '—'}</strong> viewer/ep</span>
+        <span style="font-size:10px;color:#d1d5db;">·</span>
+        <span style="font-size:10px;color:#374151;">${epNote}</span>
+      </div>
     </div>`;
   }).join('');
 }
