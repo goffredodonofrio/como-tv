@@ -194,9 +194,8 @@ body { font-family: 'Inter', sans-serif; background: #eef0f3; color: #0f172a; fo
 
 /* ── PLAYLIST RETENTION ── */
 .playlist-retention-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:20px; }
-.playlist-retention-intro { font-size:11px; color:#374151; line-height:1.6; margin-bottom:14px; }
-.playlist-retention-grid { display:grid; grid-template-columns: 1.05fr .95fr; gap:16px; align-items:start; }
-@media (max-width: 980px) { .playlist-retention-grid { grid-template-columns:1fr; } }
+.playlist-retention-intro { font-size:11px; color:#374151; line-height:1.6; margin-bottom:12px; }
+.playlist-retention-grid { display:grid; grid-template-columns: 1fr; gap:14px; align-items:start; }
 .playlist-model {
   background:var(--playlist-soft, #faf7ff); border:1px solid var(--playlist-border, #eadcff); border-radius:10px; padding:16px;
 }
@@ -1538,6 +1537,7 @@ let _activePeriodData = liveDataByPeriod.all;
 // ── LIVE SECTION RENDER (period-aware) ─────────────────────────
 let _liveRetentionChart = null;
 let _vodRetentionChart = null;
+let _vodRetentionCurveChart = null;
 let _investChart = null;
 let _compChart = null;
 let _pieChart = null;
@@ -1698,6 +1698,9 @@ function renderVodRetentionBlock(period) {
   const el = document.getElementById('vodRetentionBlock');
   if (!el) return;
 
+  // Destroy previous chart before rewriting DOM
+  if (_vodRetentionCurveChart) { _vodRetentionCurveChart.destroy(); _vodRetentionCurveChart = null; }
+
   const PERIOD_LABELS = {
     'all':      'Stagione 2026',
     'anno2026': 'Anno 2026 (YTD)',
@@ -1709,63 +1712,112 @@ function renderVodRetentionBlock(period) {
     '2026-05':  'Maggio 2026',
   };
 
-  // retentionSummary.vod has entries for all periods (2026-04 aliased at init)
   const r = retentionSummary.vod[period];
+  const label = PERIOD_LABELS[period] || period;
 
   if (!r) {
     el.innerHTML = `
       <div style="padding:18px 20px;background:rgba(255,255,255,.04);border-radius:10px;border:1px solid rgba(255,255,255,.08);color:#9ca3af;font-size:13px;display:flex;align-items:center;gap:10px;">
         <span style="font-size:18px;opacity:.5">📊</span>
-        <span>Dato di retention non disponibile per <strong style="color:#d1d5db">${PERIOD_LABELS[period] || period}</strong>.</span>
+        <span>Dato di retention non disponibile per <strong style="color:#d1d5db">${label}</strong>.</span>
       </div>`;
     return;
   }
 
-  const label = PERIOD_LABELS[period] || period;
+  // ── Hero KPIs: D1 e D7 sempre in evidenza (oro); D14/D30 se presenti (neutro)
+  const heroes = [
+    { lbl:'D1',  sub:'Giorno 1',   val:r.d1,  gold:true  },
+    { lbl:'D7',  sub:'7 giorni',   val:r.d7,  gold:true  },
+    { lbl:'D14', sub:'14 giorni',  val:r.d14, gold:false },
+    { lbl:'D30', sub:'30 giorni',  val:r.d30, gold:false },
+  ].filter(h => h.val != null);
 
-  // Helper: build a retention pill — omits pill entirely if value is null/undefined
-  const pill = (lbl, value, highlight) => {
-    if (value == null) return '';
-    return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-      <span style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9ca3af;text-transform:uppercase;">${lbl}</span>
-      <span style="font-size:${highlight ? '22px' : '18px'};font-weight:800;color:${highlight ? '#d4aa4a' : '#e5e7eb'};">${value}%</span>
-    </div>`;
-  };
+  const heroHtml = heroes.map(h => `
+    <div style="background:${h.gold ? '#fff7db' : '#faf7f2'};border-radius:10px;border:1px solid ${h.gold ? '#e7d292' : '#ece4d8'};padding:14px 18px;text-align:center;min-width:90px;">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${h.gold ? '#8f7320' : '#6b7280'};margin-bottom:6px;">${h.lbl}</div>
+      <div style="font-size:34px;font-weight:800;line-height:1;color:${h.gold ? '#8f7320' : '#0d1a38'};margin-bottom:5px;">${h.val}%</div>
+      <div style="font-size:10px;color:#6b7280;">${h.sub}</div>
+    </div>`).join('');
 
-  // Separator between weekly and long-term pills
-  const sep = (r.d14 != null || r.d30 != null)
-    ? `<div style="width:1px;background:rgba(255,255,255,.1);height:36px;align-self:center;margin:0 4px;"></div>`
-    : '';
-
-  // Build footnote
-  let note = `D1 ${r.d1}% → D7 ${r.d7}%`;
-  if (r.d30 != null) note += ` → D30 ${r.d30}% · Pattern stabile, ritorno settimanale confermato.`;
-  else if (r.d14 != null) note += ` → D14 ${r.d14}% · D30 non ancora disponibile per questo periodo.`;
-  else note += ` · Finestra a 7 giorni — D14/D30 non ancora disponibili per questo periodo.`;
+  // ── Chart data points (all non-null values)
+  const pts = [
+    {l:'D1',v:r.d1},{l:'D2',v:r.d2},{l:'D3',v:r.d3},{l:'D4',v:r.d4},
+    {l:'D5',v:r.d5},{l:'D6',v:r.d6},{l:'D7',v:r.d7},
+    {l:'D14',v:r.d14},{l:'D30',v:r.d30}
+  ].filter(p => p.v != null);
 
   el.innerHTML = `
-    <div style="background:rgba(255,255,255,.04);border-radius:12px;border:1px solid rgba(255,255,255,.1);padding:20px 24px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
-        <div>
-          <span style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#9ca3af;">Retention VOD</span>
-          <span style="margin-left:10px;font-size:11px;background:rgba(212,170,74,.15);color:#d4aa4a;border:1px solid rgba(212,170,74,.3);padding:2px 8px;border-radius:20px;font-weight:600;">${label} · ${r.base.toLocaleString('it-IT')} utenti</span>
+    <div style="background:#fff;border-radius:10px;border:1px solid #e5e7eb;padding:20px 22px;">
+      <!-- Header -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#0d1a38;">Retention VOD</span>
+        <span style="font-size:11px;background:#fff7db;color:#8f7320;border:1px solid #e7d292;padding:2px 9px;border-radius:20px;font-weight:600;">${label}</span>
+        <span style="font-size:11px;color:#6b7280;">${r.base.toLocaleString('it-IT')} utenti · % che tornano dopo il primo accesso</span>
+      </div>
+      <!-- Hero KPIs + Curva affiancati -->
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:22px;align-items:center;">
+        <div style="display:flex;flex-direction:column;gap:8px;">${heroHtml}</div>
+        <div style="position:relative;height:${Math.max(heroes.length * 68, 180)}px;">
+          <canvas id="vodRetentionCurveCanvas"></canvas>
         </div>
-        <span style="font-size:11px;color:#6b7280;">% che tornano dopo il primo accesso</span>
       </div>
-      <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end;">
-        ${pill('D1', r.d1, true)}
-        ${pill('D2', r.d2)}
-        ${pill('D3', r.d3)}
-        ${pill('D4', r.d4)}
-        ${pill('D5', r.d5)}
-        ${pill('D6', r.d6)}
-        ${pill('D7', r.d7, true)}
-        ${sep}
-        ${pill('D14', r.d14)}
-        ${pill('D30', r.d30)}
-      </div>
-      <p style="margin:14px 0 0;font-size:11px;color:#6b7280;line-height:1.5;">${note}</p>
     </div>`;
+
+  // ── Chart.js line chart — curva di retention
+  const canvas = document.getElementById('vodRetentionCurveCanvas');
+  if (!canvas || typeof Chart === 'undefined') return;
+  _vodRetentionCurveChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: pts.map(p => p.l),
+      datasets: [{
+        data: pts.map(p => p.v),
+        borderColor: '#B8962E',
+        backgroundColor: ctx => {
+          const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, ctx.chart.height);
+          g.addColorStop(0, 'rgba(184,150,46,.18)');
+          g.addColorStop(1, 'rgba(184,150,46,.02)');
+          return g;
+        },
+        borderWidth: 2.5,
+        pointBackgroundColor: pts.map(p => ['D1','D7'].includes(p.l) ? '#B8962E' : '#d4b96a'),
+        pointRadius:          pts.map(p => ['D1','D7'].includes(p.l) ? 6 : 3),
+        pointHoverRadius: 7,
+        fill: true,
+        tension: 0.38,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#fff',
+          borderColor: '#e5e7eb',
+          borderWidth: 1,
+          titleColor: '#0d1a38',
+          bodyColor: '#374151',
+          padding: 10,
+          callbacks: {
+            title: items => items[0].label,
+            label: ctx => ` ${ctx.raw.toFixed(1)}% degli utenti torna`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { color: '#6b7280', font: { size: 10 } }
+        },
+        y: {
+          beginAtZero: false,
+          grid: { color: '#ece4d8' },
+          ticks: { color: '#6b7280', font: { size: 10 }, callback: v => `${v}%`, maxTicksLimit: 5 }
+        }
+      }
+    }
+  });
 }
 
 function renderPlaylistRetention(period) {
@@ -1806,8 +1858,7 @@ function renderPlaylistRetention(period) {
   const periodName = period === '1m' ? 'Mese chiuso' : 'Anno 2026';
   const periodScope = period === '1m' ? '1–27 apr 2026' : '1 gen – 17 mag 2026';
 
-  intro.innerHTML = `Qui la domanda e: <strong>quali playlist seriali fanno tornare il pubblico e trattengono tempo di visione?</strong>
-    La lettura usa il contenitore giusto, cioe la <strong>playlist</strong>, e combina rank di categoria con i contenuti episodio presenti nel periodo <strong>${periodScope}</strong>.`;
+  intro.innerHTML = `<strong>Playlist Loyalty</strong> — quali brand seriali riportano il pubblico e trattengono tempo di visione · periodo <strong>${periodScope}</strong>.`;
 
   model.innerHTML = `
     <div class="playlist-model-title">Come leggere il blocco — ${periodName}</div>
@@ -1834,22 +1885,14 @@ function renderPlaylistRetention(period) {
         <div class="playlist-kpi-eyebrow">Coverage</div>
         <div class="playlist-kpi-title">Playlist lette</div>
         <div class="playlist-kpi-metric">${serialRows.length}</div>
-        <div class="playlist-kpi-note">playlist seriali effettivamente leggibili nel periodo</div>
+        <div class="playlist-kpi-note">playlist seriali leggibili nel periodo</div>
       </div>
-    </div>
-    <div class="playlist-waiting">
-      Questa non e la vera retention utente-per-utente, ma e il miglior <strong>proxy di fedelta seriale</strong> che possiamo costruire oggi con i dati DMS disponibili:
-      <strong>plays/viewer</strong>, <strong>hours/viewer</strong> e <strong>resa per episodio</strong>.
     </div>`;
 
-  side.innerHTML = `
-    <div class="playlist-side-title">Cosa significa ogni metrica</div>
-    <div class="playlist-side-list">
-      <div class="playlist-side-item"><strong>Reach playlist:</strong> utenti unici che hanno toccato almeno un contenuto del brand seriale.</div>
-      <div class="playlist-side-item"><strong>Play / viewer:</strong> piu e alto, piu il format sembra riportare lo stesso utente sulla playlist.</div>
-      <div class="playlist-side-item"><strong>Hours / viewer:</strong> distingue le playlist che vengono solo aperte da quelle che trattengono davvero tempo.</div>
-      <div class="playlist-side-item"><strong>Viewers / episodio:</strong> aiuta a capire se la libreria vive di pochi picchi o regge su una base piu distribuita.</div>
-    </div>`;
+  // Espandi model a tutta larghezza e nascondi il side panel
+  model.style.gridColumn = '1 / -1';
+  side.innerHTML = '';
+  side.style.display = 'none';
 
   library.innerHTML = serialRows.map(row => {
     const colors = PLAYLIST_COLORS[row.label] || { accent:'#6d28d9', soft:'#faf7ff', border:'#eadcff' };
