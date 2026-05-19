@@ -1365,8 +1365,8 @@ const retentionSummary = {
     fresh:  { d1: 11.3, d2: 6.7, d3: 0.0, d4: null, d5: null, d6: null, d7: null, base: 2405 },
   },
   vod: {
-    all: { d1: 22.9, d2: 18.2, d3: 16.9, d4: 16.3, d5: 15.7, d6: 16.4, d7: 17.7, d14: 14.4, d30: 13.1, base: 81775 },
-    '1m': { d1: 26.3, d2: 22.0, d3: 20.9, d4: 21.1, d5: 19.5, d6: 20.9, d7: 22.6, d14: 22.3, d30: null, base: 7483 },  // Aprile 2026 da VOD User Retention CSV
+    all: { d1: 25.0, d2: 20.6, d3: 19.5, d4: 19.1, d5: 18.7, d6: 19.8, d7: 22.1, d14: 18.6, d30: 18.6, base: 33813 },  // Stagione 2026 completa (gen–mag 2026)
+    '1m': { d1: 26.3, d2: 22.0, d3: 20.9, d4: 21.1, d5: 19.5, d6: 20.9, d7: 22.6, d14: 22.3, d30: null, base: 7483 },  // Aprile 2026
     '2026-01': { d1: 21.8, d2: 17.9, d3: 17.7, d4: 18.2, d5: 17.7, d6: 18.2, d7: 20.3, d14: 21.1, d30: 16.0, base: 7068 },
     '2026-02': { d1: 27.7, d2: 22.9, d3: 22.3, d4: 21.9, d5: 21.5, d6: 22.7, d7: 26.3, d14: 20.5, d30: null, base: 6903 },
     '2026-03': { d1: 24.2, d2: 18.5, d3: 16.9, d4: 14.8, d5: 14.9, d6: 16.1, d7: 18.1, d14: 14.6, d30: 24.6, base: 6789 },
@@ -1716,89 +1716,74 @@ function renderVodRetentionBlock(period) {
   const el = document.getElementById('vodRetentionBlock');
   if (!el) return;
 
-  // ── Dati retention disponibili solo per 'all' e '1m'/'2026-04'
-  const hasAll = period === 'all';
-  const has1m  = period === '1m' || period === '2026-04';
+  const PERIOD_LABELS = {
+    'all':      'Stagione 2026',
+    'anno2026': 'Anno 2026 (YTD)',
+    '1m':       'Aprile 2026',
+    '2026-04':  'Aprile 2026',
+    '2026-01':  'Gennaio 2026',
+    '2026-02':  'Febbraio 2026',
+    '2026-03':  'Marzo 2026',
+    '2026-05':  'Maggio 2026',
+  };
 
-  if (!hasAll && !has1m) {
-    // Nessun dato retention per questo periodo
-    const periodNames = {
-      'anno2026':  'Anno 2026 (YTD)',
-      '2026-01':   'Gennaio 2026',
-      '2026-02':   'Febbraio 2026',
-      '2026-03':   'Marzo 2026',
-      '2026-05':   'Maggio 2026',
-    };
-    const label = periodNames[period] || period;
+  // retentionSummary.vod has entries for all periods (2026-04 aliased at init)
+  const r = retentionSummary.vod[period];
+
+  if (!r) {
     el.innerHTML = `
       <div style="padding:18px 20px;background:rgba(255,255,255,.04);border-radius:10px;border:1px solid rgba(255,255,255,.08);color:#9ca3af;font-size:13px;display:flex;align-items:center;gap:10px;">
         <span style="font-size:18px;opacity:.5">📊</span>
-        <span>Dato di retention non disponibile per <strong style="color:#d1d5db">${label}</strong> — serve un minimo di 30 giorni di osservazione.</span>
+        <span>Dato di retention non disponibile per <strong style="color:#d1d5db">${PERIOD_LABELS[period] || period}</strong>.</span>
       </div>`;
     return;
   }
 
-  // ── Helper: build a retention pill
-  const pill = (label, value, highlight) => `
-    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-      <span style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9ca3af;text-transform:uppercase;">${label}</span>
+  const label = PERIOD_LABELS[period] || period;
+
+  // Helper: build a retention pill — omits pill entirely if value is null/undefined
+  const pill = (lbl, value, highlight) => {
+    if (value == null) return '';
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+      <span style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9ca3af;text-transform:uppercase;">${lbl}</span>
       <span style="font-size:${highlight ? '22px' : '18px'};font-weight:800;color:${highlight ? '#d4aa4a' : '#e5e7eb'};">${value}%</span>
     </div>`;
+  };
 
-  if (hasAll) {
-    // Intera stagione: D1 D2 D3 D4 D5 D6 D7 D14 D30
-    const r = retentionSummary.vod.all;
-    el.innerHTML = `
-      <div style="background:rgba(255,255,255,.04);border-radius:12px;border:1px solid rgba(255,255,255,.1);padding:20px 24px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
-          <div>
-            <span style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#9ca3af;">Retention VOD</span>
-            <span style="margin-left:10px;font-size:11px;background:rgba(212,170,74,.15);color:#d4aa4a;border:1px solid rgba(212,170,74,.3);padding:2px 8px;border-radius:20px;font-weight:600;">Stagione 2025/26 · ${r.base.toLocaleString('it-IT')} utenti</span>
-          </div>
-          <span style="font-size:11px;color:#6b7280;">% che tornano dopo il primo accesso</span>
+  // Separator between weekly and long-term pills
+  const sep = (r.d14 != null || r.d30 != null)
+    ? `<div style="width:1px;background:rgba(255,255,255,.1);height:36px;align-self:center;margin:0 4px;"></div>`
+    : '';
+
+  // Build footnote
+  let note = `D1 ${r.d1}% → D7 ${r.d7}%`;
+  if (r.d30 != null) note += ` → D30 ${r.d30}% · Pattern stabile, ritorno settimanale confermato.`;
+  else if (r.d14 != null) note += ` → D14 ${r.d14}% · D30 non ancora disponibile per questo periodo.`;
+  else note += ` · Finestra a 7 giorni — D14/D30 non ancora disponibili per questo periodo.`;
+
+  el.innerHTML = `
+    <div style="background:rgba(255,255,255,.04);border-radius:12px;border:1px solid rgba(255,255,255,.1);padding:20px 24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+        <div>
+          <span style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#9ca3af;">Retention VOD</span>
+          <span style="margin-left:10px;font-size:11px;background:rgba(212,170,74,.15);color:#d4aa4a;border:1px solid rgba(212,170,74,.3);padding:2px 8px;border-radius:20px;font-weight:600;">${label} · ${r.base.toLocaleString('it-IT')} utenti</span>
         </div>
-        <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end;">
-          ${pill('D1', r.d1, true)}
-          ${pill('D2', r.d2)}
-          ${pill('D3', r.d3)}
-          ${pill('D4', r.d4)}
-          ${pill('D5', r.d5)}
-          ${pill('D6', r.d6)}
-          ${pill('D7', r.d7, true)}
-          <div style="width:1px;background:rgba(255,255,255,.1);height:36px;align-self:center;margin:0 4px;"></div>
-          ${pill('D14', r.d14)}
-          ${pill('D30', r.d30)}
-        </div>
-        <p style="margin:14px 0 0;font-size:11px;color:#6b7280;line-height:1.5;">
-          Picco D1 (${r.d1}%) → calo progressivo → rimbalzo D7 (${r.d7}%) → stabilizzazione a lungo termine D30 (${r.d30}%). Pattern tipico di contenuto seriale con cadenza settimanale.
-        </p>
-      </div>`;
-  } else {
-    // Aprile 2026: D1–D7 (niente D14/D30 — 30gg non ancora trascorsi)
-    const r = retentionSummary.vod['1m'];
-    el.innerHTML = `
-      <div style="background:rgba(255,255,255,.04);border-radius:12px;border:1px solid rgba(255,255,255,.1);padding:20px 24px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
-          <div>
-            <span style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#9ca3af;">Retention VOD</span>
-            <span style="margin-left:10px;font-size:11px;background:rgba(212,170,74,.15);color:#d4aa4a;border:1px solid rgba(212,170,74,.3);padding:2px 8px;border-radius:20px;font-weight:600;">Aprile 2026 · ${r.base.toLocaleString('it-IT')} utenti</span>
-          </div>
-          <span style="font-size:11px;color:#6b7280;">% che tornano dopo il primo accesso</span>
-        </div>
-        <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end;">
-          ${pill('D1', r.d1, true)}
-          ${pill('D2', r.d2)}
-          ${pill('D3', r.d3)}
-          ${pill('D4', r.d4)}
-          ${pill('D5', r.d5)}
-          ${pill('D6', r.d6)}
-          ${pill('D7', r.d7, true)}
-        </div>
-        <p style="margin:14px 0 0;font-size:11px;color:#6b7280;line-height:1.5;">
-          D1 ${r.d1}% → D7 ${r.d7}% · finestra 7 giorni (D14/D30 non ancora disponibili per il mese corrente).
-        </p>
-      </div>`;
-  }
+        <span style="font-size:11px;color:#6b7280;">% che tornano dopo il primo accesso</span>
+      </div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end;">
+        ${pill('D1', r.d1, true)}
+        ${pill('D2', r.d2)}
+        ${pill('D3', r.d3)}
+        ${pill('D4', r.d4)}
+        ${pill('D5', r.d5)}
+        ${pill('D6', r.d6)}
+        ${pill('D7', r.d7, true)}
+        ${sep}
+        ${pill('D14', r.d14)}
+        ${pill('D30', r.d30)}
+      </div>
+      <p style="margin:14px 0 0;font-size:11px;color:#6b7280;line-height:1.5;">${note}</p>
+    </div>`;
 }
 
 function renderPlaylistRetention(period) {
