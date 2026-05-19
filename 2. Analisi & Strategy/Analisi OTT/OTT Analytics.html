@@ -719,19 +719,22 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
   gap: 12px;
 }
 .period-dd-item:last-child { border-bottom: none; }
-.period-dd-item:hover { background: #f9fafb; }
+.period-dd-item:hover:not(.active) { background: #f9fafb; }
 .period-dd-item.active {
-  background: #0d1a38;
+  background: linear-gradient(135deg, #B8962E 0%, #d4aa4a 100%);
   color: #fff;
   font-weight: 800;
-  border-left: 3px solid #B8962E;
-  padding-left: 13px; /* compensa il border di 3px */
+  font-size: 13px;
+  border-left: 4px solid #8a6e22;
+  padding-left: 12px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 2px 6px rgba(184,150,46,.25);
+  letter-spacing: .01em;
 }
 .period-dd-item:not(.active) {
-  border-left: 3px solid transparent;
-  padding-left: 13px;
+  border-left: 4px solid transparent;
+  padding-left: 12px;
 }
-.period-dd-item.active .period-dd-check { color: #B8962E; }
+.period-dd-item.active .period-dd-check { color: #fff; font-size: 14px; text-shadow: 0 1px 2px rgba(0,0,0,.3); }
 .period-dd-check { color: #B8962E; font-size: 12px; flex-shrink: 0; font-weight: 900; }
 .period-dd-item:not(.active) .period-dd-check { visibility: hidden; }
 
@@ -856,39 +859,8 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
       </div>
     </div>
 
-    <!-- Live platform data strip -->
-    <div class="live-micro-grid">
-      <div class="impact-card" style="--ac:#60a5fa">
-        <div class="ic-label-it">Nuovi Utenti · media 7 giorni <span class="dms-src" title="DMS → Dashboard → User Overview · New Users 7-day Average">Dashboard → Users</span></div>
-        <div class="ic-label-en">New Users · 7-day average</div>
-        <div class="ic-val">513</div>
-        <div class="ic-trend dn">▼ −41.5% WoW</div>
-      </div>
-      <div class="impact-card" style="--ac:#f4b740">
-        <div class="ic-label-it">Utenti Attivi Loggati <span class="dms-src" title="DMS → Dashboard → User Overview · Active Users (Logged in)">Dashboard → Users</span></div>
-        <div class="ic-label-en">Active Users · logged in</div>
-        <div class="ic-val">4.77K</div>
-        <div class="ic-trend up">▲ +19.1% WoW</div>
-      </div>
-      <div class="impact-card" style="--ac:#2a7a2a">
-        <div class="ic-label-it">Attivi 30 giorni <span class="dms-src" title="DMS → Dashboard → User Overview · Active Users 30-day">Dashboard → Users</span></div>
-        <div class="ic-label-en">Active Users · last 30 days</div>
-        <div class="ic-val">32.94K</div>
-        <div class="ic-trend dn">▼ −10.1% MoM</div>
-      </div>
-      <div class="impact-card" style="--ac:#2a6a9a">
-        <div class="ic-label-it">Attivi 7 giorni <span class="dms-src" title="DMS → Dashboard → User Overview · Active Users 7-day">Dashboard → Users</span></div>
-        <div class="ic-label-en">Active Users · last 7 days</div>
-        <div class="ic-val">11.47K</div>
-        <div class="ic-trend dn">▼ −2.5% WoW</div>
-      </div>
-      <div class="impact-card" style="--ac:#ef4444">
-        <div class="ic-label-it">Play Failures Ieri <span class="dms-src" title="DMS → Analytics → Play Statistics → Play Failures">Play Stats → Failures</span></div>
-        <div class="ic-label-en">Yesterday · Platform stability</div>
-        <div class="ic-val" style="color:#ef4444;font-size:32px;line-height:1">3</div>
-        <div class="ic-note" style="color:#ef4444;font-weight:700">Da monitorare · three failures yesterday</div>
-      </div>
-    </div>
+    <!-- Live platform data strip — populated dynamically by renderLiveSection -->
+    <div class="live-micro-grid" id="liveMicroGrid"></div>
 
     <div class="retention-card">
       <div class="retention-head">
@@ -2015,47 +1987,174 @@ function renderLiveSection(data) {
 
   const compChartEl = document.getElementById('compChart');
   if (compChartEl) {
-    const topComps = comps
-      .filter(c => normalizeCompKey(c.name) !== normalizeCompKey('JOAN GAMPER TROPHY'))
-      .slice(0, 10);
     if (_compChart) _compChart.destroy();
-    _compChart = new Chart(compChartEl, {
-      type: 'bar',
-      data: {
-        labels: topComps.map(c => displayCompetitionName(c.name)),
-        datasets: [
-          { label: 'Viewer sum', data: topComps.map(c => c.viewers),
-            backgroundColor: topComps.map(c => getColor(c.name)+'cc'),
-            borderColor: topComps.map(c => getColor(c.name)), borderWidth:1, borderRadius:6,
-            barThickness: 18
+    // ── Aggiorna i titoli del card contenitore
+    const compCardTitle = compChartEl.closest('.card')?.querySelector('.card-title-it');
+    const compCardSub   = compChartEl.closest('.card')?.querySelector('.card-title-en');
+    if (noData) {
+      // Nessun live event: mostra top categorie VOD del mese
+      const vd2 = (typeof vodDataByPeriod !== 'undefined') ? vodDataByPeriod[period] : null;
+      const topCats = vd2?.cats ? vd2.cats.slice(0, 8) : [];
+      if (compCardTitle) compCardTitle.textContent = 'Top Categorie VOD del Mese';
+      if (compCardSub)   compCardSub.textContent   = 'Viewer unici per categoria · DMS Play Statistics';
+      const catColors = ['#B8962E','#0d1a38','#37c3c9','#ef4444','#16a34a','#7e22ce','#d97706','#1d4ed8'];
+      _compChart = new Chart(compChartEl, {
+        type: 'bar',
+        data: {
+          labels: topCats.map(c => c.name.split('|')[0].trim()),
+          datasets: [{
+            label: 'Viewer unici',
+            data: topCats.map(c => c.viewers),
+            backgroundColor: topCats.map((_,i) => catColors[i % catColors.length] + 'cc'),
+            borderColor:     topCats.map((_,i) => catColors[i % catColors.length]),
+            borderWidth:1, borderRadius:6, barThickness:18
+          }]
+        },
+        options: {
+          responsive:true, maintainAspectRatio:false,
+          indexAxis: 'y',
+          plugins: { legend:{display:false},
+            tooltip:{callbacks:{
+              title: items => items[0]?.label || '',
+              label: ctx => ` Viewer: ${ctx.raw.toLocaleString()}`,
+              afterLabel: ctx => {
+                const row = topCats[ctx.dataIndex];
+                return [
+                  `Views: ${(row.plays || 0).toLocaleString()}`,
+                  `Ore engagement: ${row.engH != null ? row.engH.toFixed(0)+'h' : '—'}`
+                ];
+              }
+            }}
+          },
+          scales: {
+            x:{grid:{color:'#ece4d8'},ticks:{color:'#6b7280',font:{size:10},callback:v=>v>=1000?(v/1000).toFixed(0)+'K':v}},
+            y:{grid:{display:false},ticks:{color:'#374151',font:{size:10}}}
           }
-        ]
-      },
-      options: {
-        responsive:true, maintainAspectRatio:false,
-        indexAxis: 'y',
-        plugins: { legend:{display:false},
-          tooltip:{callbacks:{
-            title: items => items[0]?.label || '',
-            label: ctx => {
-              const row = topComps[ctx.dataIndex];
-              return ` Viewer sum: ${ctx.raw.toLocaleString()}`;
-            },
-            afterLabel: ctx => {
-              const row = topComps[ctx.dataIndex];
-              return [
-                `Views: ${row.views.toLocaleString()}`,
-                `Ore: ${fmtHoursCompact(row.hours || 0)}`,
-                `Eventi: ${row.events || 0}`
-              ];
-            }
-          }} },
-        scales: {
-          x:{grid:{color:'#ece4d8'},ticks:{color:'#6b7280',font:{size:10},callback:v=>v>=1000?(v/1000).toFixed(0)+'K':v}},
-          y:{grid:{display:false},ticks:{color:'#374151',font:{size:10}}}
         }
+      });
+    } else {
+      // Competizioni live normali
+      const topComps = comps
+        .filter(c => normalizeCompKey(c.name) !== normalizeCompKey('JOAN GAMPER TROPHY'))
+        .slice(0, 10);
+      if (compCardTitle) compCardTitle.textContent = 'Top Competizioni per Somma Viewer';
+      if (compCardSub)   compCardSub.textContent   = 'Chi accumula più audience nei singoli eventi del periodo, con contesto su views e ore';
+      _compChart = new Chart(compChartEl, {
+        type: 'bar',
+        data: {
+          labels: topComps.map(c => displayCompetitionName(c.name)),
+          datasets: [
+            { label: 'Viewer sum', data: topComps.map(c => c.viewers),
+              backgroundColor: topComps.map(c => getColor(c.name)+'cc'),
+              borderColor: topComps.map(c => getColor(c.name)), borderWidth:1, borderRadius:6,
+              barThickness: 18
+            }
+          ]
+        },
+        options: {
+          responsive:true, maintainAspectRatio:false,
+          indexAxis: 'y',
+          plugins: { legend:{display:false},
+            tooltip:{callbacks:{
+              title: items => items[0]?.label || '',
+              label: ctx => {
+                const row = topComps[ctx.dataIndex];
+                return ` Viewer sum: ${ctx.raw.toLocaleString()}`;
+              },
+              afterLabel: ctx => {
+                const row = topComps[ctx.dataIndex];
+                return [
+                  `Views: ${row.views.toLocaleString()}`,
+                  `Ore: ${fmtHoursCompact(row.hours || 0)}`,
+                  `Eventi: ${row.events || 0}`
+                ];
+              }
+            }} },
+          scales: {
+            x:{grid:{color:'#ece4d8'},ticks:{color:'#6b7280',font:{size:10},callback:v=>v>=1000?(v/1000).toFixed(0)+'K':v}},
+            y:{grid:{display:false},ticks:{color:'#374151',font:{size:10}}}
+          }
+        }
+      });
+    }
+  }
+
+  // ── Platform micro-grid: aggiorna dinamicamente
+  const microGrid = document.getElementById('liveMicroGrid');
+  if (microGrid) {
+    if (noData) {
+      // Nessun live event: mostra VOD platform stats del mese selezionato
+      const vdm = (typeof vodDataByPeriod !== 'undefined') ? vodDataByPeriod[period] : null;
+      if (vdm) {
+        const topCatName = vdm.cats?.[0] ? vdm.cats[0].name.split('|')[0].trim() : '—';
+        const topCatViewers = vdm.cats?.[0] ? vdm.cats[0].viewers.toLocaleString() : '—';
+        const topCatPlays  = vdm.cats?.[0] ? (vdm.cats[0].plays || 0).toLocaleString() : '—';
+        microGrid.innerHTML = `
+          <div class="impact-card" style="--ac:#37c3c9">
+            <div class="ic-label-it">Viewer Unici del Mese <span class="dms-src" title="DMS → Play Statistics">Play Statistics</span></div>
+            <div class="ic-label-en">Unique Viewers · monthly</div>
+            <div class="ic-val">${vdm.viewers}</div>
+            <div class="ic-note">${vdm.loginNote || 'Audience periodo'}</div>
+          </div>
+          <div class="impact-card" style="--ac:#B8962E">
+            <div class="ic-label-it">Viewer Loggati <span class="dms-src" title="DMS → Play Statistics">Play Statistics</span></div>
+            <div class="ic-label-en">Logged-in Viewers</div>
+            <div class="ic-val">${vdm.loggedin}</div>
+            <div class="ic-note">${vdm.loginNote || '% loggati sul totale'}</div>
+          </div>
+          <div class="impact-card" style="--ac:#16a34a">
+            <div class="ic-label-it">Riproduzioni Totali <span class="dms-src" title="DMS → Play Statistics">Play Statistics</span></div>
+            <div class="ic-label-en">Total Plays</div>
+            <div class="ic-val">${vdm.plays}</div>
+            <div class="ic-note">${vdm.playsNote || 'Play totali del mese'}</div>
+          </div>
+          <div class="impact-card" style="--ac:#7e22ce">
+            <div class="ic-label-it">Ore di Visione <span class="dms-src" title="DMS → Play Statistics">Play Statistics</span></div>
+            <div class="ic-label-en">Watch Hours</div>
+            <div class="ic-val">${vdm.hours}</div>
+            <div class="ic-note">Engagement totale del mese</div>
+          </div>
+          <div class="impact-card" style="--ac:#0d1a38">
+            <div class="ic-label-it">Categoria #1 <span class="dms-src" title="DMS → Category Rank">Category Rank</span></div>
+            <div class="ic-label-en">Top VOD Category</div>
+            <div class="ic-val" style="font-size:13px;line-height:1.3">${topCatName}</div>
+            <div class="ic-note">${topCatViewers} viewer · ${topCatPlays} plays</div>
+          </div>`;
       }
-    });
+    } else {
+      // Aprile 2026 / dati live reali: ripristina il micro-grid originale (snapshot dashboard)
+      microGrid.innerHTML = `
+        <div class="impact-card" style="--ac:#60a5fa">
+          <div class="ic-label-it">Nuovi Utenti · media 7 giorni <span class="dms-src" title="DMS → Dashboard → User Overview · New Users 7-day Average">Dashboard → Users</span></div>
+          <div class="ic-label-en">New Users · 7-day average</div>
+          <div class="ic-val">513</div>
+          <div class="ic-trend dn">▼ −41.5% WoW</div>
+        </div>
+        <div class="impact-card" style="--ac:#f4b740">
+          <div class="ic-label-it">Utenti Attivi Loggati <span class="dms-src" title="DMS → Dashboard → User Overview · Active Users (Logged in)">Dashboard → Users</span></div>
+          <div class="ic-label-en">Active Users · logged in</div>
+          <div class="ic-val">4.77K</div>
+          <div class="ic-trend up">▲ +19.1% WoW</div>
+        </div>
+        <div class="impact-card" style="--ac:#2a7a2a">
+          <div class="ic-label-it">Attivi 30 giorni <span class="dms-src" title="DMS → Dashboard → User Overview · Active Users 30-day">Dashboard → Users</span></div>
+          <div class="ic-label-en">Active Users · last 30 days</div>
+          <div class="ic-val">32.94K</div>
+          <div class="ic-trend dn">▼ −10.1% MoM</div>
+        </div>
+        <div class="impact-card" style="--ac:#2a6a9a">
+          <div class="ic-label-it">Attivi 7 giorni <span class="dms-src" title="DMS → Dashboard → User Overview · Active Users 7-day">Dashboard → Users</span></div>
+          <div class="ic-label-en">Active Users · last 7 days</div>
+          <div class="ic-val">11.47K</div>
+          <div class="ic-trend dn">▼ −2.5% WoW</div>
+        </div>
+        <div class="impact-card" style="--ac:#ef4444">
+          <div class="ic-label-it">Play Failures Ieri <span class="dms-src" title="DMS → Analytics → Play Statistics → Play Failures">Play Stats → Failures</span></div>
+          <div class="ic-label-en">Yesterday · Platform stability</div>
+          <div class="ic-val" style="color:#ef4444;font-size:32px;line-height:1">3</div>
+          <div class="ic-note" style="color:#ef4444;font-weight:700">Da monitorare · three failures yesterday</div>
+        </div>`;
+    }
   }
 
   // ── Event table
