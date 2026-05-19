@@ -688,6 +688,10 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
 .period-dd-btn:hover { border-color: #B8962E; background: #fffaf3; }
 .period-dd-btn.open { border-color: #B8962E; background: #B8962E; color: #fff; }
 .period-dd-btn.open .period-dd-chevron { transform: rotate(180deg); color: #fff; }
+.period-dd-btn[data-period]:not([data-period="anno2026"]) {
+  border-color: #B8962E;
+  background: rgba(184,150,46,0.08);
+}
 .period-dd-chevron { transition: transform .2s; color: #6b7280; flex-shrink: 0; }
 .period-dd-menu {
   display: none;
@@ -700,7 +704,7 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0,0,0,.12);
   z-index: 500;
-  min-width: 200px;
+  min-width: 220px;
   overflow: hidden;
 }
 .period-dd-menu.open { display: block; }
@@ -716,7 +720,18 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
 }
 .period-dd-item:last-child { border-bottom: none; }
 .period-dd-item:hover { background: #f9fafb; }
-.period-dd-item.active { background: #f0f4ff; color: #0b1628; font-weight: 800; }
+.period-dd-item.active {
+  background: #0d1a38;
+  color: #fff;
+  font-weight: 800;
+  border-left: 3px solid #B8962E;
+  padding-left: 13px; /* compensa il border di 3px */
+}
+.period-dd-item:not(.active) {
+  border-left: 3px solid transparent;
+  padding-left: 13px;
+}
+.period-dd-item.active .period-dd-check { color: #B8962E; }
 .period-dd-check { color: #B8962E; font-size: 12px; flex-shrink: 0; font-weight: 900; }
 .period-dd-item:not(.active) .period-dd-check { visibility: hidden; }
 
@@ -1454,11 +1469,11 @@ const PLAYLIST_COLORS = {
 const VOD_SCOPE_BADGES = {
   all: '353 ep. pubblicati in stagione',
   '1m': '30 ep. pubblicati / emersi nel mese chiuso',
-  'anno2026': '2.598 asset · 87 categorie su YTD',
-  '2026-01':  '842 asset · 62 categorie',
-  '2026-02':  '955 asset · 63 categorie',
-  '2026-03':  '1051 asset · 63 categorie',
-  '2026-05':  '938 asset · 55 categorie · parziale 1-19 mag',
+  'anno2026': 'Anno 2026 · 1 gen – 19 mag',
+  '2026-01':  'Gennaio 2026',
+  '2026-02':  'Febbraio 2026',
+  '2026-03':  'Marzo 2026',
+  '2026-05':  'Maggio 2026 · parziale (1-19)',
 };
 
 const liveDataByPeriod = {
@@ -2204,7 +2219,7 @@ const vodDataByPeriod = {
     loggedin:    '8.6K',
     playsNote:   '13.5× per viewer · audience consolidatissima YTD',
     loginNote:   '99.1% loggati · 78 anonimi',
-    periodLabel: 'Anno 2026 · 1 gen – 17 mag 2026 · DMS Category Rank',
+    periodLabel: 'Anno 2026 · 1 gen – 17 mag 2026 · DMS Category Rank · viewer deduplicati su tutta la finestra',
     cats: [
       {"name": "Serie A | Replay 2025-2026", "viewers": 1646, "type": "live", "engH": 1467.0, "plays": 8030},
       {"name": "Como 1907 First Team Men Pre Show", "viewers": 1435, "type": "orig", "engH": 160.7, "plays": 3648},
@@ -2522,6 +2537,11 @@ function renderVODSection(period) {
       notice.style.background = '#f0faf4';
       notice.style.borderLeftColor = '#059669';
       if (noticeT) noticeT.innerHTML = `✅ <strong>VOD Aprile 2026 — dati Play Statistics DMS.</strong> KPI, mix e playlist allineati al periodo attivo.`;
+    } else if (period === 'anno2026') {
+      notice.style.display = 'block';
+      notice.style.background = '#f0f4ff';
+      notice.style.borderLeftColor = '#6366f1';
+      if (noticeT) noticeT.innerHTML = `📊 <strong>Anno 2026 · Complessivo (1 gen – 19 mag).</strong> Dati da <em>Category Rank</em> DMS: viewer deduplicati sull'intero periodo. I mesi singoli usano Play Statistics (viewer unici per mese, non deduplicati cross-periodo) — i totali <strong>non sono direttamente sommabili</strong>.`;
     } else {
       // Periodi mensili 2026 con dati Play Statistics
       const pd = periodRanges && periodRanges[period] ? periodRanges[period] : period;
@@ -3343,6 +3363,20 @@ function setLiveRelSlidePage(period, page) {
 let _vodCatChart = null;
 // Initial render
 liveDataByPeriod.all._period = 'all';
+
+// ── Alias aprile: '2026-04' punta agli stessi dati di '1m'
+liveSummary['2026-04']          = liveSummary['1m'];
+liveDataByPeriod['2026-04']     = liveDataByPeriod['1m'];
+liveInvestmentLens['2026-04']   = liveInvestmentLens['1m'];
+retentionSummary.vod['2026-04'] = retentionSummary.vod['1m'];
+vodAssetsByPeriod['2026-04']    = vodAssetsByPeriod['1m'];
+VOD_SCOPE_BADGES['2026-04']     = VOD_SCOPE_BADGES['1m'];
+// ── Stub periodi senza dati ancora (array vuoti per non crashare renderLiveSection)
+['anno2026','2026-01','2026-02','2026-03','2026-05'].forEach(k => {
+  liveDataByPeriod[k] = liveDataByPeriod[k] || { eventCount:0, compCount:0, events:[], comps:[], _noData:true };
+  liveInvestmentLens[k] = liveInvestmentLens[k] || [];
+});
+
 // Default view: anno2026 (complessivo 2026)
 window._activePeriod = 'anno2026';
 _activePeriodData = liveDataByPeriod['anno2026'] || liveDataByPeriod.all;
@@ -3371,18 +3405,6 @@ const periodRanges = {
   '2026-04':  '1 apr – 27 apr 2026',
   '2026-05':  '1 mag – 19 mag 2026',
 };
-// ── Alias aprile: '2026-04' punta agli stessi dati di '1m'
-liveSummary['2026-04']          = liveSummary['1m'];
-liveDataByPeriod['2026-04']     = liveDataByPeriod['1m'];
-liveInvestmentLens['2026-04']   = liveInvestmentLens['1m'];
-retentionSummary.vod['2026-04'] = retentionSummary.vod['1m'];
-vodAssetsByPeriod['2026-04']    = vodAssetsByPeriod['1m'];
-VOD_SCOPE_BADGES['2026-04']     = VOD_SCOPE_BADGES['1m'];
-// ── Stub periodi senza dati ancora (array vuoti per non crashare renderLiveSection)
-['anno2026','2026-01','2026-02','2026-03','2026-05'].forEach(k => {
-  liveDataByPeriod[k] = liveDataByPeriod[k] || { eventCount:0, compCount:0, events:[], comps:[], _noData:true };
-  liveInvestmentLens[k] = liveInvestmentLens[k] || [];
-});
 
 function setPeriod(el) {
   // Switch live section data
@@ -3403,6 +3425,8 @@ function setPeriod(el) {
     '2026-04':'Aprile 2026', '2026-05':'Maggio 2026 (1–19)',
   };
   if (lbl) lbl.textContent = periodDisplayLabels[p] || p;
+  const ddb2 = document.getElementById('period-dd-btn');
+  if (ddb2) ddb2.setAttribute('data-period', p);
   const ddm = document.getElementById('period-dd-menu');
   if (ddm) ddm.classList.remove('open');
   const ddb = document.getElementById('period-dd-btn');
