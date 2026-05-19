@@ -1883,19 +1883,23 @@ function renderPlaylistRetention(period) {
     // Loyalty bar — % rispetto al leader
     const barPct = maxPpv > 0 ? Math.min(100, (row.ppv / maxPpv) * 100).toFixed(0) : 0;
 
-    const epNote = row.surfacedEpisodes
-      ? `${row.surfacedEpisodes} ep. nel rank`
-      : '—';
-    const periodEpBadge = (period === '1m' || period === '2026-04')
-      ? ` · <strong>${row.surfacedEpisodes || 0}</strong> nel mese`
-      : '';
+    // Episodi nel periodo (surfaced) vs totali storici
+    const epInPeriod  = row.surfacedEpisodes || 0;
+    const epLabel     = epInPeriod > 0
+      ? `${epInPeriod} ep. nel periodo`
+      : `${row.episodes} ep. (totale serie)`;
+    const epNote      = epInPeriod ? `${epInPeriod} ep. nel rank` : '—';
+    // vpe basato sugli episodi del periodo quando disponibili
+    const vpePeriod   = epInPeriod > 0
+      ? Math.round(row.viewers / epInPeriod)
+      : (row.vpe ? Math.round(row.vpe) : null);
 
     return `<div style="background:#fff;border-radius:10px;border:1px solid ${colors.border};box-shadow:inset 0 4px 0 ${ac};padding:14px 16px 12px;display:flex;flex-direction:column;gap:0;">
       <!-- Header -->
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px;">
         <div>
           <div style="font-size:14px;font-weight:700;color:#0d1a38;line-height:1.3;">${row.label}</div>
-          <div style="font-size:10px;color:#6b7280;margin-top:2px;">${row.episodes} ep. totali${periodEpBadge}</div>
+          <div style="font-size:10px;color:#6b7280;margin-top:2px;">${epLabel}</div>
         </div>
         <span style="font-size:10px;font-weight:700;color:${qualityColor};background:${qualityBg};border:1px solid ${qualityBorder};border-radius:999px;padding:3px 9px;white-space:nowrap;flex-shrink:0;">${qualityLabel}</span>
       </div>
@@ -1933,7 +1937,7 @@ function renderPlaylistRetention(period) {
       <div style="display:flex;flex-wrap:wrap;gap:8px;padding-top:8px;border-top:1px solid #f3f4f6;">
         <span style="font-size:10px;color:#374151;"><strong style="color:#0d1a38;">${row.engH ? row.engH.toFixed(0)+'h' : '—'}</strong> engagement</span>
         <span style="font-size:10px;color:#d1d5db;">·</span>
-        <span style="font-size:10px;color:#374151;"><strong style="color:#0d1a38;">${row.vpe ? Math.round(row.vpe) : '—'}</strong> viewer/ep</span>
+        <span style="font-size:10px;color:#374151;"><strong style="color:#0d1a38;">${vpePeriod !== null ? vpePeriod : '—'}</strong> viewer/ep</span>
         <span style="font-size:10px;color:#d1d5db;">·</span>
         <span style="font-size:10px;color:#374151;">${epNote}</span>
       </div>
@@ -3536,24 +3540,36 @@ function renderOrigSlideshow(period, fallbackPlaylists) {
   }
 
   function makeAssetRow(a, i) {
-    const pct = maxV > 0 ? (a.viewers / maxV * 100).toFixed(0) : 0;
-    const ppv = a.viewers > 0 && a.plays ? (a.plays / a.viewers).toFixed(1) : null;
-    const hpv = a.viewers > 0 && a.engH  ? (a.engH  / a.viewers).toFixed(1) : null;
+    const rank = i + 1;
+    const pct  = maxV > 0 ? Math.round(a.viewers / maxV * 100) : 0;
+    const hpv  = a.viewers > 0 && a.engH ? (a.engH / a.viewers).toFixed(2) : null;
+    const rankColor = rank === 1 ? '#7c3aed' : rank <= 3 ? '#6d28d9' : '#9ca3af';
 
-    const stats = [];
-    if (a.engH)  stats.push(`<span><strong style="color:#059669">${a.engH}h</strong> eng.</span>`);
-    stats.push(getAssetRetentionMarkup(a));
-    if (hpv)     stats.push(`<span><strong style="color:#7c3aed">${hpv}h</strong>/viewer</span>`);
-
-    return `<div class="vod-row" style="background:#f5f0fc;border-left:4px solid #7c3aed;padding:12px 14px">
-      <div class="vod-row-rank" style="color:#7c3aed">${i+1}</div>
-      <div class="vod-row-body">
-        ${a.parent ? `<span class="orig-asset-parent">📂 ${a.parent}</span>` : ''}
-        <div class="vod-row-head"><span class="vod-row-title vod-row-title-asset" style="font-size:14px">${a.name}</span></div>
-        <div class="vod-row-stats">${stats.join('')}</div>
-        <div class="vod-row-bar">
-          <div class="barwrap"><div class="barfill" style="width:${pct}%;background:#7c3aed"></div></div>
-          <div class="barpct">${pct}% del leader</div>
+    return `
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start;">
+      <!-- Rank -->
+      <div style="font-size:18px;font-weight:800;color:${rankColor};width:26px;flex-shrink:0;text-align:center;line-height:1.2;padding-top:2px;">${rank}</div>
+      <!-- Body -->
+      <div style="flex:1;min-width:0;">
+        ${a.parent ? `<div style="font-size:10px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📂 ${a.parent}</div>` : ''}
+        <div style="font-size:14px;font-weight:700;color:#0d1a38;line-height:1.3;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${a.name}</div>
+        <!-- Metrics row -->
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+          ${a.engH ? `<div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;padding:4px 8px;text-align:center;">
+            <div style="font-size:16px;font-weight:800;color:#059669;line-height:1;">${a.engH}h</div>
+            <div style="font-size:9px;color:#6b7280;margin-top:1px;text-transform:uppercase;letter-spacing:.04em;">engagement</div>
+          </div>` : ''}
+          ${hpv ? `<div style="background:#f5f0fc;border:1px solid #ddd6fe;border-radius:6px;padding:4px 8px;text-align:center;">
+            <div style="font-size:16px;font-weight:800;color:#7c3aed;line-height:1;">${hpv}h</div>
+            <div style="font-size:9px;color:#6b7280;margin-top:1px;text-transform:uppercase;letter-spacing:.04em;">/ viewer</div>
+          </div>` : ''}
+        </div>
+        <!-- Bar -->
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="flex:1;background:#e5e7eb;border-radius:3px;height:5px;overflow:hidden;">
+            <div style="height:5px;width:${pct}%;background:#7c3aed;border-radius:3px;"></div>
+          </div>
+          <span style="font-size:10px;color:#6b7280;flex-shrink:0;">${pct}% del leader</span>
         </div>
       </div>
     </div>`;
@@ -3641,30 +3657,45 @@ function renderLiveRelSlideshow(period, fallbackPlaylists) {
   }
 
   function makeAssetRow(a, i) {
-    const pct = maxV > 0 ? (a.viewers / maxV * 100).toFixed(0) : 0;
-    const ppv = a.viewers > 0 && a.plays ? (a.plays / a.viewers).toFixed(1) : null;
-    const hpv = a.viewers > 0 && a.engH ? (a.engH / a.viewers).toFixed(1) : null;
+    const rank = i + 1;
+    const pct  = maxV > 0 ? Math.round(a.viewers / maxV * 100) : 0;
+    const hpv  = a.viewers > 0 && a.engH ? (a.engH / a.viewers).toFixed(2) : null;
     const isHighlight = /highlight/i.test(a.name);
-    const accent = isHighlight ? '#0891b2' : '#dc2626';
-    const badgeBg = isHighlight ? '#e0f4fb' : '#fee2e2';
-    const badge = isHighlight ? 'Highlights' : 'Replay';
-    const stats = [];
-    if (a.engH) stats.push(`<span><strong style="color:#059669">${a.engH}h</strong> eng.</span>`);
-    stats.push(getAssetRetentionMarkup(a));
-    if (hpv) stats.push(`<span><strong style="color:${accent}">${hpv}h</strong>/viewer</span>`);
+    const accent    = isHighlight ? '#0891b2' : '#dc2626';
+    const accentBg  = isHighlight ? '#e0f4fb' : '#fee2e2';
+    const accentBdr = isHighlight ? '#a5f3fc' : '#fecaca';
+    const badge     = isHighlight ? 'Highlights' : 'Replay';
+    const rankColor = rank === 1 ? accent : rank <= 3 ? accent : '#9ca3af';
+    const parentColor = isHighlight ? '#0891b2' : '#dc2626';
 
-    return `<div class="vod-row" style="background:#fef5f5;border-left:4px solid ${accent};padding:12px 14px">
-      <div class="vod-row-rank" style="color:${accent}">${i+1}</div>
-      <div class="vod-row-body">
-        ${a.parent ? `<span class="orig-asset-parent" style="background:${badgeBg};color:${accent}">📂 ${a.parent}</span>` : ''}
-        <div class="vod-row-head">
-          <span class="vod-row-title vod-row-title-asset" style="font-size:14px">${a.name}</span>
-          <span class="vod-type-tag" style="background:${badgeBg};color:${accent}">${badge}</span>
+    return `
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start;">
+      <!-- Rank -->
+      <div style="font-size:18px;font-weight:800;color:${rankColor};width:26px;flex-shrink:0;text-align:center;line-height:1.2;padding-top:2px;">${rank}</div>
+      <!-- Body -->
+      <div style="flex:1;min-width:0;">
+        ${a.parent ? `<div style="font-size:10px;font-weight:700;color:${parentColor};text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📂 ${a.parent}</div>` : ''}
+        <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;">
+          <div style="font-size:14px;font-weight:700;color:#0d1a38;line-height:1.3;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${a.name}</div>
+          <span style="font-size:10px;font-weight:700;color:${accent};background:${accentBg};border:1px solid ${accentBdr};border-radius:999px;padding:2px 8px;white-space:nowrap;flex-shrink:0;">${badge}</span>
         </div>
-        <div class="vod-row-stats">${stats.join('')}</div>
-        <div class="vod-row-bar">
-          <div class="barwrap"><div class="barfill" style="width:${pct}%;background:${accent}"></div></div>
-          <div class="barpct">${pct}% del leader</div>
+        <!-- Metrics row -->
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+          ${a.engH ? `<div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;padding:4px 8px;text-align:center;">
+            <div style="font-size:16px;font-weight:800;color:#059669;line-height:1;">${a.engH}h</div>
+            <div style="font-size:9px;color:#6b7280;margin-top:1px;text-transform:uppercase;letter-spacing:.04em;">engagement</div>
+          </div>` : ''}
+          ${hpv ? `<div style="background:${accentBg};border:1px solid ${accentBdr};border-radius:6px;padding:4px 8px;text-align:center;">
+            <div style="font-size:16px;font-weight:800;color:${accent};line-height:1;">${hpv}h</div>
+            <div style="font-size:9px;color:#6b7280;margin-top:1px;text-transform:uppercase;letter-spacing:.04em;">/ viewer</div>
+          </div>` : ''}
+        </div>
+        <!-- Bar -->
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="flex:1;background:#e5e7eb;border-radius:3px;height:5px;overflow:hidden;">
+            <div style="height:5px;width:${pct}%;background:${accent};border-radius:3px;"></div>
+          </div>
+          <span style="font-size:10px;color:#6b7280;flex-shrink:0;">${pct}% del leader</span>
         </div>
       </div>
     </div>`;
