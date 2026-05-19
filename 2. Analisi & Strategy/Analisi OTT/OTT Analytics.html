@@ -1795,15 +1795,21 @@ function renderPlaylistRetention(period) {
 
   const serialRows = PLAYLIST_EPISODIC.map(meta => {
     const aliases = meta.names || [meta.label];
-    const cat = cats.find(c => aliases.includes(c.name)) || vodDataByPeriod.all.cats.find(c => aliases.includes(c.name));
+    // Cerchiamo prima la cat del periodo corrente, poi facciamo fallback alla stagione intera
+    // NOTA: usiamo variabili separate per non mischiare i dati dei due periodi
+    const catFromPeriod  = cats.find(c => aliases.includes(c.name));
+    const catFallback    = catFromPeriod ? null : vodDataByPeriod.all.cats.find(c => aliases.includes(c.name));
+    const cat            = catFromPeriod || catFallback;
     const episodes = Math.max(meta.episodes || 1, 1);
     const playlistAssets = origAssets.filter(a => aliases.includes(a.parent) || a.parent === meta.label);
     const assetViewers = playlistAssets.reduce((s,a) => s + (+a.viewers || 0), 0);
-    const assetPlays = playlistAssets.reduce((s,a) => s + (+a.plays || 0), 0);
-    const assetEngH = playlistAssets.reduce((s,a) => s + parseHourTextToHours(a.engH || 0), 0);
-    const viewers = cat?.viewers || assetViewers || 0;
-    const plays = cat?.plays || assetPlays || 0;
-    const engH = parseHourTextToHours(cat?.engH || 0) || assetEngH || 0;
+    const assetPlays   = playlistAssets.reduce((s,a) => s + (+a.plays   || 0), 0);
+    const assetEngH    = playlistAssets.reduce((s,a) => s + parseHourTextToHours(a.engH || 0), 0);
+    // Priorità: cat del periodo → asset del periodo → cat all-time (fallback)
+    // Così evitiamo di mostrare i viewer totali stagionali quando il brand non è nel rank del periodo
+    const viewers = catFromPeriod?.viewers || assetViewers || catFallback?.viewers || 0;
+    const plays   = catFromPeriod?.plays   || assetPlays   || catFallback?.plays   || 0;
+    const engH    = parseHourTextToHours(catFromPeriod?.engH || 0) || assetEngH || parseHourTextToHours(catFallback?.engH || 0) || 0;
     const surfacedEpisodes = playlistAssets.length;
     const ppv = viewers > 0 ? plays / viewers : 0;
     const hpv = viewers > 0 ? engH / viewers : 0;
@@ -1896,8 +1902,9 @@ function renderPlaylistRetention(period) {
       ? `${epInPeriod} ep. nel periodo`
       : `${row.episodes} ep. (totale serie)`;
     const epNote      = epInPeriod ? `${epInPeriod} ep. nel rank` : '—';
-    // vpe basato sugli episodi del periodo quando disponibili
-    const vpePeriod   = epInPeriod > 0
+    // vpe: usiamo gli episodi emersi solo se >= 2 (1 solo episodio è campione troppo piccolo)
+    // Con 1 solo ep surfacé si rischia di dividere tutti i viewer per 1 → numero fuorviante
+    const vpePeriod   = epInPeriod >= 2
       ? Math.round(row.viewers / epInPeriod)
       : (row.vpe ? Math.round(row.vpe) : null);
 
