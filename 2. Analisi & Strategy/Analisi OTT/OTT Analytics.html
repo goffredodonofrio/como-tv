@@ -1318,19 +1318,19 @@ const retentionSummary = {
 };
 
 const PLAYLIST_EPISODIC = [
-  { names:['Talent Hunters'], label:'Talent Hunters', episodes:50, desc:'Serie lunga di scouting e ritratti calciatori.' },
-  { names:['Goleada'], label:'Goleada', episodes:24, desc:'Rubrica classica a puntate, da leggere come appuntamento ricorrente.' },
-  { names:['Arabian Night'], label:'Arabian Night', episodes:12, desc:'Format a episodi numerati, piu lineare e facilmente confrontabile.' },
-  { names:['Como 1907 Original','SEASON 1 THE REAL STORY'], label:'Como 1907 Original', episodes:7, desc:'Docu-serie narrativa: conta la tenuta lungo tutto l’arco della serie.' },
-  { names:['Fútbol Prohibido','Futbol Prohibido'], label:'Futbol Prohibido', episodes:2, desc:'Mini-serie breve: qui completion e intensita pesano molto.' },
-  { names:['Behind the Team','BEHIND THE TEAM'], label:'Behind the Team', episodes:8, desc:'Backstage prima squadra, utile per capire il valore relazionale del format.' },
-  { names:['Discover Como'], label:'Discover Como', episodes:104, desc:'Serie branded ampia: qui conta la distribuzione della library e la capacita di generare ritorno.' },
-  { names:['INTERVIEWS'], label:'Interviews', episodes:131, desc:'Libreria di interviste ricorrenti: utile per leggere breadth e fedelta editoriale.' },
-  { names:['Como 1907 First Team Men Pre Show'], label:'Pre Show', episodes:38, desc:'Format ricorrente legato alle partite: molto utile per misurare abitudine e ritorno.' },
-  { names:["Golden '90"], label:"Golden '90", episodes:7, desc:'Format episodico vintage, con stagionalita corta ma leggibile.' },
-  { names:['ZETA COMO REVIEW'], label:'Zeta Como Review', episodes:9, desc:'Rubrica episodica con taglio magazine/interviste.' },
-  { names:['Taste of Como'], label:'Taste of Como', episodes:8, desc:'Serie lifestyle/branded, ideale per capire se il pubblico torna oltre il primo assaggio.' },
-  { names:['Academy','Academy Corner','Como 1907 - Academy Interviews'], label:'Academy', episodes:6, desc:'Contenitore editoriale academy: piccolo campione, ma utile per vedere la tenuta del brand.' },
+  { names:[‘Talent Hunters’], label:’Talent Hunters’, episodes:50, desc:’Serie lunga di scouting e ritratti calciatori.’ },
+  { names:[‘Goleada’], label:’Goleada’, episodes:25, desc:’Rubrica classica a puntate, da leggere come appuntamento ricorrente.’ },
+  { names:[‘Arabian Night’], label:’Arabian Night’, episodes:16, desc:’Format a episodi numerati, piu lineare e facilmente confrontabile.’ },
+  { names:[‘Como 1907 Original’,’SEASON 1 THE REAL STORY’], label:’Como 1907 Original’, episodes:7, desc:’Docu-serie narrativa: conta la tenuta lungo tutto l’arco della serie.’ },
+  { names:[‘Fútbol Prohibido’,’Futbol Prohibido’], label:’Futbol Prohibido’, episodes:3, desc:’Mini-serie breve: qui completion e intensita pesano molto.’ },
+  { names:[‘Behind the Team’,’BEHIND THE TEAM’], label:’Behind the Team’, episodes:8, desc:’Backstage prima squadra, utile per capire il valore relazionale del format.’ },
+  { names:[‘Discover Como’], label:’Discover Como’, episodes:104, desc:’Serie branded ampia: qui conta la distribuzione della library e la capacita di generare ritorno.’ },
+  { names:[‘INTERVIEWS’], label:’Interviews’, episodes:131, desc:’Libreria di interviste ricorrenti: utile per leggere breadth e fedelta editoriale.’ },
+  { names:[‘Como 1907 First Team Men Pre Show’], label:’Pre Show’, episodes:38, desc:’Format ricorrente legato alle partite: molto utile per misurare abitudine e ritorno.’ },
+  { names:["Golden ‘90"], label:"Golden ‘90", episodes:7, desc:’Format episodico vintage, con stagionalita corta ma leggibile.’ },
+  { names:[‘ZETA COMO REVIEW’,’Como Gaming Club’], label:’Zeta Como Review’, episodes:9, desc:’Rubrica episodica con taglio magazine/interviste.’ },
+  { names:[‘Taste of Como’], label:’Taste of Como’, episodes:8, desc:’Serie lifestyle/branded, ideale per capire se il pubblico torna oltre il primo assaggio.’ },
+  { names:[‘Academy’,’Academy Corner’,’Como 1907 - Academy Interviews’], label:’Academy’, episodes:6, desc:’Contenitore editoriale academy: piccolo campione, ma utile per vedere la tenuta del brand.’ },
 ];
 
 const PLAYLIST_COLORS = {
@@ -1805,11 +1805,13 @@ function renderPlaylistRetention(period) {
     const assetViewers = playlistAssets.reduce((s,a) => s + (+a.viewers || 0), 0);
     const assetPlays   = playlistAssets.reduce((s,a) => s + (+a.plays   || 0), 0);
     const assetEngH    = playlistAssets.reduce((s,a) => s + parseHourTextToHours(a.engH || 0), 0);
-    // Priorità: cat del periodo → asset del periodo → cat all-time (fallback)
-    // Così evitiamo di mostrare i viewer totali stagionali quando il brand non è nel rank del periodo
-    const viewers = catFromPeriod?.viewers || assetViewers || catFallback?.viewers || 0;
-    const plays   = catFromPeriod?.plays   || assetPlays   || catFallback?.plays   || 0;
-    const engH    = parseHourTextToHours(catFromPeriod?.engH || 0) || assetEngH || parseHourTextToHours(catFallback?.engH || 0) || 0;
+    // Priorità: cat del periodo → asset del periodo → cat all-time (solo per 'all'/'anno2026')
+    // Per i periodi mensili NON usiamo il fallback all-time: mostrerebbe totali stagionali come
+    // se fossero dati del mese (es. Goleada 5338 viewer in aprile invece di 81)
+    const useFallback = ['all','anno2026'].includes(period);
+    const viewers = catFromPeriod?.viewers || assetViewers || (useFallback ? catFallback?.viewers : 0) || 0;
+    const plays   = catFromPeriod?.plays   || assetPlays   || (useFallback ? catFallback?.plays   : 0) || 0;
+    const engH    = parseHourTextToHours(catFromPeriod?.engH || 0) || assetEngH || (useFallback ? parseHourTextToHours(catFallback?.engH || 0) : 0) || 0;
     const surfacedEpisodes = playlistAssets.length;
     const ppv = viewers > 0 ? plays / viewers : 0;
     const hpv = viewers > 0 ? engH / viewers : 0;
@@ -2451,7 +2453,14 @@ const vodDataByPeriod = {
       {"name": "Croatian Football League", "viewers": 434, "type": "live", "engH": 67.6, "plays": 682},
       {"name": "Highlights Scottish Premiership", "viewers": 423, "type": "live", "engH": 20.7, "plays": 586},
       {"name": "Highlights Saudi Pro League", "viewers": 410, "type": "live", "engH": 13.1, "plays": 609},
-      {"name": "Talent Hunters", "viewers": 317, "type": "orig", "engH": 6.1, "plays": 553}
+      {"name": "Talent Hunters", "viewers": 317, "type": "orig", "engH": 6.1, "plays": 553},
+      {"name": "Fútbol Prohibido", "viewers": 301, "type": "orig", "engH": 30.2, "plays": 534},
+      {"name": "Arabian Night", "viewers": 265, "type": "orig", "engH": 8.9, "plays": 439},
+      {"name": "Como 1907 Original", "viewers": 166, "type": "orig", "engH": 9.0, "plays": 243},
+      {"name": "Goleada", "viewers": 81, "type": "orig", "engH": 10.2, "plays": 165},
+      {"name": "Golden '90", "viewers": 51, "type": "orig", "engH": 0.8, "plays": 119},
+      {"name": "Taste of Como", "viewers": 48, "type": "orig", "engH": 2.5, "plays": 74},
+      {"name": "Discover Como", "viewers": 45, "type": "orig", "engH": 0.3, "plays": 88}
     ],
     eng:  [
       {"name": "Copa Libertadores", "engH": 881, "type": "live"},
@@ -2531,7 +2540,13 @@ const vodDataByPeriod = {
       {"name": "SCOTTISH PREMIERSHIP", "viewers": 442, "type": "live", "engH": 229.3, "plays": 850},
       {"name": "Como 1907 Original", "viewers": 390, "type": "orig", "engH": 12.1, "plays": 641},
       {"name": "Como 1907 First Team Men Pre Show", "viewers": 346, "type": "orig", "engH": 16.1, "plays": 569},
-      {"name": "Los Clasicos", "viewers": 283, "type": "orig", "engH": 11.8, "plays": 533}
+      {"name": "Los Clasicos", "viewers": 283, "type": "orig", "engH": 11.8, "plays": 533},
+      {"name": "Arabian Night", "viewers": 171, "type": "orig", "engH": 7.5, "plays": 293},
+      {"name": "Talent Hunters", "viewers": 105, "type": "orig", "engH": 1.6, "plays": 146},
+      {"name": "Goleada", "viewers": 102, "type": "orig", "engH": 4.0, "plays": 236},
+      {"name": "Golden '90", "viewers": 56, "type": "orig", "engH": 5.3, "plays": 165},
+      {"name": "Como Gaming Club", "viewers": 43, "type": "orig", "engH": 1.9, "plays": 82},
+      {"name": "Discover Como", "viewers": 32, "type": "orig", "engH": 1.3, "plays": 84}
     ],
     eng:  [
       {"name": "Serie A | Replay 2025-2026", "engH": 558, "type": "live"},
@@ -2571,7 +2586,16 @@ const vodDataByPeriod = {
       {"name": "COPPA ITALIA", "viewers": 423, "type": "live", "engH": 62.0, "plays": 696},
       {"name": "SAUDI PRO LEAGUE", "viewers": 408, "type": "live", "engH": 158.6, "plays": 748},
       {"name": "Conmebol Recopa", "viewers": 388, "type": "live", "engH": 154.1, "plays": 650},
-      {"name": "Croatian Football League", "viewers": 350, "type": "live", "engH": 40.5, "plays": 539}
+      {"name": "Croatian Football League", "viewers": 350, "type": "live", "engH": 40.5, "plays": 539},
+      {"name": "Como 1907 First Team Men Pre Show", "viewers": 232, "type": "orig", "engH": 12.7, "plays": 375},
+      {"name": "Arabian Night", "viewers": 153, "type": "orig", "engH": 8.8, "plays": 300},
+      {"name": "Discover Como", "viewers": 140, "type": "orig", "engH": 7.9, "plays": 232},
+      {"name": "Goleada", "viewers": 89, "type": "orig", "engH": 7.2, "plays": 206},
+      {"name": "Golden '90", "viewers": 73, "type": "orig", "engH": 1.8, "plays": 196},
+      {"name": "Como 1907 Original", "viewers": 72, "type": "orig", "engH": 2.0, "plays": 95},
+      {"name": "Fútbol Prohibido", "viewers": 80, "type": "orig", "engH": 9.0, "plays": 172},
+      {"name": "Talent Hunters", "viewers": 50, "type": "orig", "engH": 0.4, "plays": 96},
+      {"name": "Como Gaming Club", "viewers": 42, "type": "orig", "engH": 0.8, "plays": 103}
     ],
     eng:  [
       {"name": "Argentina Copa De La Liga Pro", "engH": 508, "type": "live"},
@@ -2611,7 +2635,13 @@ const vodDataByPeriod = {
       {"name": "Highlights Scottish Premiership", "viewers": 471, "type": "live", "engH": 32.2, "plays": 663},
       {"name": "SCOTTISH PREMIERSHIP", "viewers": 389, "type": "live", "engH": 183.5, "plays": 804},
       {"name": "COPPA ITALIA", "viewers": 381, "type": "live", "engH": 36.0, "plays": 608},
-      {"name": "Croatian Football League", "viewers": 371, "type": "live", "engH": 63.4, "plays": 643}
+      {"name": "Croatian Football League", "viewers": 371, "type": "live", "engH": 63.4, "plays": 643},
+      {"name": "Como 1907 Original", "viewers": 235, "type": "orig", "engH": 14.6, "plays": 411},
+      {"name": "Fútbol Prohibido", "viewers": 114, "type": "orig", "engH": 10.8, "plays": 302},
+      {"name": "Arabian Night", "viewers": 107, "type": "orig", "engH": 6.3, "plays": 182},
+      {"name": "Goleada", "viewers": 83, "type": "orig", "engH": 7.9, "plays": 199},
+      {"name": "Discover Como", "viewers": 62, "type": "orig", "engH": 3.8, "plays": 91},
+      {"name": "Golden '90", "viewers": 46, "type": "orig", "engH": 1.4, "plays": 122}
     ],
     eng:  [
       {"name": "Argentina Copa De La Liga Pro", "engH": 408, "type": "live"},
@@ -2651,7 +2681,12 @@ const vodDataByPeriod = {
       {"name": "Serie A | Highlights 2025-2026", "viewers": 435, "type": "live", "engH": 13.2, "plays": 583},
       {"name": "Highlights Saudi Pro League", "viewers": 388, "type": "live", "engH": 12.8, "plays": 574},
       {"name": "Como 1907 - Academy Interviews", "viewers": 316, "type": "live", "engH": 12.2, "plays": 589},
-      {"name": "Croatian Football League", "viewers": 244, "type": "live", "engH": 35.4, "plays": 397}
+      {"name": "Croatian Football League", "viewers": 244, "type": "live", "engH": 35.4, "plays": 397},
+      {"name": "Arabian Night", "viewers": 205, "type": "orig", "engH": 8.3, "plays": 298},
+      {"name": "Talent Hunters", "viewers": 157, "type": "orig", "engH": 4.0, "plays": 258},
+      {"name": "Fútbol Prohibido", "viewers": 120, "type": "orig", "engH": 14.0, "plays": 201},
+      {"name": "Como 1907 Original", "viewers": 125, "type": "orig", "engH": 4.0, "plays": 189},
+      {"name": "Goleada", "viewers": 90, "type": "orig", "engH": 4.7, "plays": 108}
     ],
     eng:  [
       {"name": "Copa Libertadores", "engH": 523, "type": "live"},
