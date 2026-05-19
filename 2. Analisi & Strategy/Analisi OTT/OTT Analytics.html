@@ -693,7 +693,8 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
   display: none;
   position: absolute;
   top: calc(100% + 6px);
-  left: 0;
+  right: 0;
+  left: auto;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
@@ -705,8 +706,8 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
 .period-dd-menu.open { display: block; }
 .period-dd-item {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 9px 14px;
-  font-size: 11px; font-weight: 600;
+  padding: 11px 16px;
+  font-size: 12px; font-weight: 600;
   color: #374151;
   cursor: pointer;
   border-bottom: 1px solid #f3f4f6;
@@ -1967,12 +1968,28 @@ function renderLiveSection(data) {
   renderRetentionPanels('all');
   renderLiveInvestmentLens(period);
 
-  // ── Se il periodo non ha ancora dati, mostra placeholder nelle card
+  // ── Dati impact card: live events se disponibili, altrimenti Play Statistics dal VOD
   const noData = !!data._noData;
-  const sm = noData
-    ? { viewers:'—', viewersNote:'Dati in arrivo da Cowork', views:'—', hours:'—',
-        topName:'—', topNote:'Nessun dato disponibile per questo periodo' }
-    : (liveSummary[period] || liveSummary.all);
+  let sm;
+  if (!noData) {
+    sm = liveSummary[period] || liveSummary.all;
+  } else {
+    // Nessun dato live events per questo mese — usa Play Statistics da vodDataByPeriod
+    const vd = (typeof vodDataByPeriod !== 'undefined') ? vodDataByPeriod[period] : null;
+    if (vd) {
+      const topCat = vd.cats && vd.cats[0];
+      sm = {
+        viewers:      vd.viewers  || '—',
+        viewersNote:  'Play Statistics · tutti i contenuti del periodo',
+        views:        vd.plays    || '—',
+        hours:        vd.hours    || '—',
+        topName:      topCat ? topCat.name.split('|')[0].trim() : '—',
+        topNote:      topCat ? (topCat.viewers || '?') + ' viewer · categoria più vista del periodo' : '—',
+      };
+    } else {
+      sm = { viewers:'—', viewersNote:'Dati in arrivo da Cowork', views:'—', hours:'—', topName:'—', topNote:'—' };
+    }
+  }
   const el = id => document.getElementById(id);
   if (el('lv-viewers'))      el('lv-viewers').textContent      = sm.viewers;
   if (el('lv-viewers-note')) el('lv-viewers-note').textContent  = sm.viewersNote;
@@ -2500,14 +2517,18 @@ function renderVODSection(period) {
   if (notice) {
     if (period === 'all') {
       notice.style.display = 'none';
-    } else if (period === '1m') {
-      // Tab "Mese chiuso" — asset rank e category rank disponibili per la lettura VOD
+    } else if (period === '1m' || period === '2026-04') {
       notice.style.display = 'block';
       notice.style.background = '#f0faf4';
       notice.style.borderLeftColor = '#059669';
-      if (noticeT) noticeT.innerHTML = `✅ <strong>VOD 1–27 apr 2026 — lettura aggiornata.</strong>
-        <strong>Top 30 Originals</strong> e <strong>Top 30 Live-related</strong> usano asset rank reale dai CSV caricati (<em>Logged-in Viewers + Engagement Time + Play Count</em>).<br>
-        <strong>KPI, playlist analysis e mix produzione</strong> sono allineati ai rank VOD disponibili per il periodo attivo. Dove leggi audience o viewer, stiamo mostrando <strong>somme da rank DMS</strong>, non un totale deduplicato cross-content.`;
+      if (noticeT) noticeT.innerHTML = `✅ <strong>VOD Aprile 2026 — dati Play Statistics DMS.</strong> KPI, mix e playlist allineati al periodo attivo.`;
+    } else {
+      // Periodi mensili 2026 con dati Play Statistics
+      const pd = periodRanges && periodRanges[period] ? periodRanges[period] : period;
+      notice.style.display = 'block';
+      notice.style.background = '#f0f4ff';
+      notice.style.borderLeftColor = '#6366f1';
+      if (noticeT) noticeT.innerHTML = `📊 <strong>VOD — ${pd}.</strong> Dati da Play Statistics DMS. I valori mostrano la distribuzione del consumo VOD nel periodo selezionato.`;
     }
   }
 
