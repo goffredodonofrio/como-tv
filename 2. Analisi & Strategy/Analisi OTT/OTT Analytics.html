@@ -1609,7 +1609,15 @@ function renderLiveInvestmentLens(period = 'all') {
   const chartEl = document.getElementById('investChart');
   if (!intro || !groups || !chartEl) return;
 
-  const rows = liveInvestmentLens[period] || liveInvestmentLens.all;
+  const rows = (liveInvestmentLens[period] && liveInvestmentLens[period].length)
+    ? liveInvestmentLens[period]
+    : liveInvestmentLens.all;
+  // Guard: se rows è ancora vuoto non c'è nulla da mostrare
+  if (!rows || !rows.length) {
+    if (intro) intro.innerHTML = '<em style="color:#9ca3af">Nessun dato competizioni disponibile per il periodo selezionato.</em>';
+    if (groups) groups.innerHTML = '';
+    return;
+  }
   const compMeta = new Map((liveDataByPeriod[period]?.comps || []).map(row => [normalizeCompKey(row.name), row]));
   const engMeta = new Map(eng.map(row => [normalizeCompKey(row.name), row]));
   const scaleLeader = rows.slice().sort((a,b) => b.combinedViewers - a.combinedViewers)[0];
@@ -1952,10 +1960,8 @@ function renderLiveSection(data) {
   const comps  = data.comps  || [];
   const events = data.events || [];
   const period = data._period || 'all';
-  renderRetentionPanels('all');
-  renderLiveInvestmentLens(period);
 
-  // ── Dati impact card: live events se disponibili, altrimenti Play Statistics dal VOD
+  // ── 1. Hero cards — PRIMA di tutto il resto (evita che crash successivi blocchino l'update)
   const noData = !!data._noData;
   let sm;
   if (!noData) {
@@ -1984,6 +1990,10 @@ function renderLiveSection(data) {
   if (el('lv-hours'))        el('lv-hours').textContent        = sm.hours;
   if (el('lv-top-name'))     el('lv-top-name').innerHTML       = sm.topName;
   if (el('lv-top-note'))     el('lv-top-note').textContent     = sm.topNote;
+
+  // ── 2. Retention panels e investment lens (ora che i dati hero sono già aggiornati)
+  renderRetentionPanels('all');
+  try { renderLiveInvestmentLens(period); } catch(e) { console.warn('renderLiveInvestmentLens error:', e); }
 
   const compChartEl = document.getElementById('compChart');
   if (compChartEl) {
@@ -2598,38 +2608,32 @@ function renderVODSection(period) {
   const notice  = el('vodPeriodNotice');
   const noticeT = el('vodPeriodNoticeText');
   const scopeBadge = el('vodScopeBadge');
-  renderRetentionPanels(['1m','2026-04'].includes(period) ? '1m' : 'all');
-  renderPlaylistRetention(period);
+  // ── 1. Scope badge — aggiornato subito
+  if (scopeBadge) scopeBadge.textContent = VOD_SCOPE_BADGES[period] || VOD_SCOPE_BADGES.all;
 
-  if (scopeBadge) {
-    scopeBadge.textContent = VOD_SCOPE_BADGES[period] || VOD_SCOPE_BADGES.all;
+  // ── 2. Hero metrics VOD — aggiornati PRIMA di tutto il resto
+  if (d) {
+    if (el('vod-viewers'))       el('vod-viewers').textContent       = d.viewers || '—';
+    if (el('vod-period-label'))  el('vod-period-label').innerHTML    = d.periodLabel || 'Periodo non disponibile';
+    if (el('vod-plays'))         el('vod-plays').textContent         = d.plays;
+    if (el('vod-plays-note'))    el('vod-plays-note').textContent    = d.playsNote;
+    if (el('vod-hours'))         el('vod-hours').textContent         = d.hours;
+    if (el('vod-loggedin'))      el('vod-loggedin').textContent      = d.loggedin;
+    if (el('vod-loggedin-note')) el('vod-loggedin-note').textContent = d.loginNote;
   }
 
-  if (!d) {
-    // No VOD rank data for this period — show notice and fall back to full-season data
-    if (notice) {
+  // ── 3. Retention e playlist (wrapped: errori qui non bloccano il resto)
+  try { renderRetentionPanels(['1m','2026-04'].includes(period) ? '1m' : 'all'); } catch(e) { console.warn('renderRetentionPanels error:', e); }
+  try { renderPlaylistRetention(period); } catch(e) { console.warn('renderPlaylistRetention error:', e); }
+
+  // ── 4. Period notice
+  if (notice) {
+    if (!d) {
       notice.style.display = 'block';
       notice.style.background = '#fffbeb';
       notice.style.borderLeftColor = '#f59e0b';
-    }
-    if (noticeT) {
-      noticeT.innerHTML = `📊 <strong>VOD — dati per questo periodo non ancora disponibili.</strong>
-        Mostrati i grafici di Anno 2026 (YTD) come riferimento.`;
-    }
-    // Fall back to full-season data so charts aren't empty
-    const fallback = vodDataByPeriod['all'];
-    if (fallback && fallback.cats) { vodCats = fallback.cats; renderVodCatChart(); }
-    if (fallback && fallback.eng)  { engCats = fallback.eng; }
-    renderVODTopList(vodCats);
-    renderOrigTop('all');
-    renderLiveRelTop('all');
-    renderOrigTable('all');
-    return;
-  }
-
-  // Has VOD data — hide notice or show info notice
-  if (notice) {
-    if (period === 'all') {
+      if (noticeT) noticeT.innerHTML = `📊 <strong>VOD — dati per questo periodo non ancora disponibili.</strong> Mostrati i grafici di Anno 2026 (YTD) come riferimento.`;
+    } else if (period === 'all') {
       notice.style.display = 'none';
     } else if (period === '1m' || period === '2026-04') {
       notice.style.display = 'block';
@@ -2642,7 +2646,6 @@ function renderVODSection(period) {
       notice.style.borderLeftColor = '#6366f1';
       if (noticeT) noticeT.innerHTML = `📊 <strong>Anno 2026 · Complessivo (1 gen – 19 mag).</strong> Dati da <em>Category Rank</em> DMS: viewer deduplicati sull'intero periodo. I mesi singoli usano Play Statistics (viewer unici per mese, non deduplicati cross-periodo) — i totali <strong>non sono direttamente sommabili</strong>.`;
     } else {
-      // Periodi mensili 2026 con dati Play Statistics
       const pd = periodRanges && periodRanges[period] ? periodRanges[period] : period;
       notice.style.display = 'block';
       notice.style.background = '#f0f4ff';
@@ -2651,28 +2654,27 @@ function renderVODSection(period) {
     }
   }
 
-  // Update hero metrics
-  if (el('vod-viewers'))      el('vod-viewers').textContent      = d.viewers || '—';
-  if (el('vod-period-label')) el('vod-period-label').innerHTML   = d.periodLabel || 'Periodo non disponibile';
-  if (el('vod-plays'))        el('vod-plays').textContent        = d.plays;
-  if (el('vod-plays-note'))   el('vod-plays-note').textContent   = d.playsNote;
-  if (el('vod-hours'))        el('vod-hours').textContent        = d.hours;
-  if (el('vod-loggedin'))     el('vod-loggedin').textContent     = d.loggedin;
-  if (el('vod-loggedin-note'))el('vod-loggedin-note').textContent = d.loginNote;
-
-  // Update originals lists and table (no-op se gli ID non esistono più)
-  renderOrigTop(period);
-  renderLiveRelTop(period);
-  renderOrigTable(period);
-
-  // Update data refs first, then re-render everything
-  if (d.cats) { vodCats = d.cats; }
-  if (d.eng)  { engCats = d.eng; }
-
-  if (d.cats) {
-    renderVodCatChart();                          // → mix donut charts
-    renderVODTopList(d.cats);
+  // ── 5. Fallback senza dati
+  if (!d) {
+    const fallback = vodDataByPeriod['all'];
+    if (fallback && fallback.cats) { vodCats = fallback.cats; renderVodCatChart(); }
+    if (fallback && fallback.eng)  { engCats = fallback.eng; }
+    renderVODTopList(vodCats);
+    renderOrigTop('all');
+    renderLiveRelTop('all');
+    renderOrigTable('all');
+    return;
   }
+
+  // ── 6. Grafici e liste (wrapped)
+  try {
+    if (d.cats) { vodCats = d.cats; }
+    if (d.eng)  { engCats = d.eng; }
+    if (d.cats) { renderVodCatChart(); renderVODTopList(d.cats); }
+    renderOrigTop(period);
+    renderLiveRelTop(period);
+    renderOrigTable(period);
+  } catch(e) { console.warn('renderVODSection charts error:', e); }
 }
 
 
