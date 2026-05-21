@@ -276,8 +276,15 @@ body { font-family: 'Inter', sans-serif; background: #eef0f3; color: #0f172a; fo
 }
 .live-micro-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-top:12px; }
 @media (max-width: 1280px) { .live-micro-grid { grid-template-columns:repeat(3,1fr); } }
-@media (max-width: 900px) { .live-micro-grid { grid-template-columns:repeat(2,1fr); } }
-@media (max-width: 640px) { .live-micro-grid { grid-template-columns:1fr; } }
+@media (max-width: 900px)  { .live-micro-grid { grid-template-columns:repeat(2,1fr); } }
+@media (max-width: 640px)  { .live-micro-grid { grid-template-columns:1fr; } }
+.live-micro-grid .ic-chart-wrap { width:100%; height:50px; margin-top:8px; position:relative; }
+.micro-cat-bars { margin-top:10px; display:flex; flex-direction:column; gap:5px; }
+.micro-cat-row  { display:flex; align-items:center; gap:6px; font-size:9px; color:#374151; }
+.micro-cat-label{ flex:0 0 80px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:600; }
+.micro-cat-bar  { flex:1; height:6px; background:#f3f4f6; border-radius:3px; overflow:hidden; }
+.micro-cat-fill { height:100%; border-radius:3px; transition:width .4s; }
+.micro-cat-num  { flex:0 0 32px; text-align:right; color:#9ca3af; }
 .live-snapshot-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; }
 @media (max-width: 980px) { .live-snapshot-grid { grid-template-columns:1fr; } }
 .mix-snap-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:18px 20px; }
@@ -1298,7 +1305,7 @@ const liveSummary = {
 };
 
 // Dati mensili numerici per sparkline chart delle impact card LIVE
-const liveMetricsMonthly = {
+const liveMetricsMonthly = {  // ← mantenuto identico
   labels:  ['Gen', 'Feb', 'Mar', 'Apr', 'Mag'],
   periods: ['2026-01','2026-02','2026-03','2026-04','2026-05'],
   viewers:    [14900, 16900, 11600, 16700, 17100],
@@ -1308,6 +1315,16 @@ const liveMetricsMonthly = {
   completion: [5.1,   5.1,   4.7,   4.3,   4.2],
   // utenti totali cumulativi fine mese (130.530 − nuovi degli ultimi mesi)
   usersTotal: [110532, 114755, 117566, 120320, 130530],
+};
+
+// Dati mensili numerici per sparkline chart del micro-grid VOD Play Stats
+const vodMetricsMonthly = {
+  labels:   ['Gen', 'Feb', 'Mar', 'Apr', 'Mag'],
+  periods:  ['2026-01','2026-02','2026-03','2026-04','2026-05'],
+  viewers:  [12800, 13800, 14000, 17500, 12400],
+  loggedin: [12800, 13800, 13900, 17400, 12400],
+  plays:    [22100, 23200, 23800, 29100, 19800],
+  hours:    [2200,  2700,  2600,  3000,  2300],
 };
 
 const liveInvestmentLens = {
@@ -1790,6 +1807,7 @@ let _activePeriodData = liveDataByPeriod['anno2026'];
 // ── LIVE SECTION RENDER (period-aware) ─────────────────────────
 let _liveRetentionChart = null;
 let _liveSparkCharts = {};
+let _microSparkCharts = {};
 let _vodRetentionChart = null;
 let _vodRetentionCurveChart = null;
 const eventVodPlays = {"anno2026": {"Citadella U19 vs Como U19": 438, "Vicenza U19 vs Como U19": 720, "Paris St Germain vs Paris FC": 236, "Celtic vs Heart of Midlothian": 571, "Al Nassr vs Al Qadsiah": 194, "Union Brescia U19 vs Como U19": 398, "Al Kholood vs Al Nassr": 76, "Como U19 vs Modena U19": 417, "Renate U19 vs Como U19": 426, "Como U19 vs Udinese U19": 535, "Como U19 vs Lecco U19": 641, "Sampdoria U19 vs Como U19": 499, "Como U19 vs Venezia U19": 328, "Feyenoord vs Go Ahead Eagles": 153, "River Plate vs Boca Juniors": 288, "Como U19 vs Südtirol U19": 385, "Quarter Finals : Rangers vs Celtic": 271, "Entella U19 vs Como U19": 367, "Supercup : Como U19 vs Empoli U19": 132}, "2026-01": {"Reggiana U19 vs Como U19": 349, "Citadella U19 vs Como U19": 380, "Como U19 vs Vicenza U19": 281, "Como U17 vs Mantova U17": 301, "Como U17 vs Hellas Verona U17": 192, "Paris St Germain vs Paris FC": 226, "Albinoleffe U19 vs Como U19": 225, "Al Hilal vs Al Nassr": 180, "Feyenoord vs Sparta Rotterdam": 164, "Quarter Finals : FC Porto vs Benfica": 206, "Heart of Midlothian vs Celtic": 212, "Barracas Central vs River Plate": 147, "Boca Juniors vs Deportivo Riestra": 162, "PSV Eindhoven vs NAC Breda": 125, "Al Nassr vs Al Qadsiah": 119, "Telstar vs AFC Ajax": 130, "sc Heerenveen vs Feyenoord": 133, "AFC Ajax vs FC Volendam": 131, "Al Nassr vs Al Shabab": 88, "Damac vs Al Nassr": 80, "Al Ahli vs Al Nassr": 99, "Al Nassr vs Al Taawoun": 75, "Damac vs Al Ittihad": 60, "Al Kholood vs Al Nassr": 53}, "2026-02": {"Como U19 vs Udinese U19": 413, "Pro Vercelli U19 vs Como U19": 372, "Como U17 vs Milan U17": 307, "Como U19 vs Padova U19": 299, "Sudtirol U17 vs Como U17": 291, "PSV Eindhoven vs Feyenoord": 209, "Feyenoord vs Go Ahead Eagles": 151, "FC Volendam vs PSV Eindhoven": 127, "Olympique de Marseille vs Stade Rennais": 160, "Rangers vs Heart of Midlothian": 165, "Excelsior vs AFC Ajax": 140, "Al Nassr vs Al Hazem": 114, "Al Okhdood vs Al Hilal": 105, "Al Nassr vs Al Ittihad": 108, "Al Hilal vs Al Ahli": 103, "FC Groningen vs PSV Eindhoven": 98, "AZ Alkmaar vs AFC Ajax": 126, "Livingston vs Rangers": 103, "Renate U19 vs Como U19": 140, "Al Fateh vs Al Nassr": 76, "Al Hilal vs Al Ittihad": 104, "FC Utrecht vs Feyenoord": 106, "Al Najma vs Al Nassr": 82, "Al Riyadh vs Al Nassr": 70, "Al Fayha vs Al Nassr": 1}, "2026-03": {"Udinese U17 vs Como U17": 335, "Como U19 vs Reggiana U19": 406, "Sampdoria U19 vs Como U19": 353, "Como U19 vs Südtirol U19": 293, "Rangers vs Celtic": 335, "Monza U17 vs Como U17": 302, "Quarter Finals : Rangers vs Celtic": 266, "Como U17 vs Venezia U17": 257, "Feyenoord vs AFC Ajax": 190, "FC Twente vs Feyenoord": 128, "PSV Eindhoven vs NEC": 138, "PSV Eindhoven vs AZ Alkmaar": 115, "Al Nassr vs Neom": 92, "Olympique Lyonnais vs RC Lens": 145, "Dundee United vs Celtic": 140, "Olympique de Marseille vs Toulouse FC": 133, "Telstar vs PSV Eindhoven": 111, "FC Groningen vs AFC Ajax": 127, "PEC Zwolle vs AFC Ajax": 108, "St Mirren vs Rangers": 127, "Feyenoord vs Excelsior": 109, "Semi Final : Al Ahli vs Al Hilal": 85, "Semi Finals : Sporting Lisbon vs FC Porto": 117, "NAC Breda vs Feyenoord": 107}, "2026-04": {"Como U19 vs Lecco U19": 557, "Cremonese U17 vs Como U17": 396, "Vicenza U19 vs Como U19": 361, "Como U19 vs Venezia U19": 288, "Union Brescia U19 vs Como U19": 289, "Como U17 vs Cagliari U17": 289, "Como U17 vs Inter U17": 276, "River Plate vs Boca Juniors": 276, "Boca Juniors vs Barcelona": 261, "PSV Eindhoven vs FC Utrecht": 186, "Independiente vs Racing": 332, "Al Nassr vs Al Najma": 139, "Hibernian vs Heart of Midlothian": 148, "Livingston vs Heart of Midlothian": 172, "Semi Finals : FC Porto vs Sporting Lisbon": 172, "Palmeiras vs Sporting Cristal": 163, "Falkirk vs Rangers": 143, "NEC vs Feyenoord": 139, "FC Volendam vs Feyenoord": 143, "Atalanta U17 vs Como U17": 165, "Semi Finals : Celtic vs St Mirren": 117, "Al Okhdood vs Al Nassr": 91, "San Lorenzo vs Santos": 110, "Al Nassr vs Al Ettifaq": 74, "Al Nassr vs Al Ahli": 80}, "2026-05": {"Palermo U17 vs Como U17": 280, "Como U19 vs Modena U19": 345, "Entella U19 vs Como U19": 367, "Celtic vs Heart of Midlothian": 333, "Celtic vs Rangers": 290, "Heart of Midlothian vs Falkirk": 205, "Heart of Midlothian vs Rangers": 265, "Al Nassr vs Al Hilal": 184, "AFC Ajax vs PSV Eindhoven": 182, "Motherwell vs Celtic": 176, "Boca Juniors vs Huracán": 190, "Motherwell vs Heart of Midlothian": 142, "Final : Al Kholood vs Al Hilal": 159, "Supercup : Como U19 vs Empoli U19": 132, "Semi Final: River Plate vs Rosario Central": 148, "Hibernian vs Celtic": 152, "Al Shabab vs Al Nassr": 93, "AFC Ajax vs FC Utrecht": 106, "Central Córdoba vs Boca Juniors": 96, "Al Qadsiah vs Al Nassr": 75, "Semi Final:  Argentinos vs Belgrano": 80, "Fortuna Sittard vs Feyenoord": 86, "sc Heerenveen vs AFC Ajax": 77, "Al Hilal vs Neom": 70, "Al Khaleej vs Al Hilal": 49}};
@@ -2304,6 +2322,48 @@ function renderPlaylistRetention(period) {
   }).join('');
 }
 
+function renderMicroSparkCharts(period) {
+  const m = vodMetricsMonthly;
+  const idx = m.periods.indexOf(period); // -1 per anno2026
+
+  Object.values(_microSparkCharts).forEach(c => { try { c.destroy(); } catch(e){} });
+  _microSparkCharts = {};
+
+  const palette = (hex) => m.labels.map((_, i) =>
+    idx < 0 ? hex + 'bb' : (i === idx ? hex : hex + '22')
+  );
+  const baseOpts = (ttFmt) => ({
+    responsive: true, maintainAspectRatio: false,
+    animation: { duration: 350 },
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: {
+        title: (items) => m.labels[items[0].dataIndex] + ' 2026',
+        label: (ctx) => ttFmt(ctx.raw)
+      }}
+    },
+    scales: {
+      x: { grid:{display:false}, ticks:{color:'#b0b7c3', font:{size:8}, maxRotation:0} },
+      y: { display:false, beginAtZero:true }
+    }
+  });
+  const mkBar = (id, data, color, ttFmt) => {
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+    _microSparkCharts[id] = new Chart(canvas, {
+      type: 'bar',
+      data: { labels: m.labels, datasets: [{
+        data, backgroundColor: palette(color), borderRadius: 3, borderSkipped: false
+      }]},
+      options: baseOpts(ttFmt)
+    });
+  };
+  mkBar('microSparkViewers',  m.viewers,  '#37c3c9', v => `${(v/1000).toFixed(1)}K viewer`);
+  mkBar('microSparkLoggedin', m.loggedin, '#B8962E', v => `${(v/1000).toFixed(1)}K loggati`);
+  mkBar('microSparkPlays',    m.plays,    '#16a34a', v => `${(v/1000).toFixed(1)}K plays`);
+  mkBar('microSparkHours',    m.hours,    '#7e22ce', v => `${(v/1000).toFixed(1)}K ore`);
+}
+
 function renderLiveSparkCharts(period) {
   const m = liveMetricsMonthly;
   const idx = m.periods.indexOf(period); // -1 per anno2026 (nessun mese evidenziato)
@@ -2631,40 +2691,50 @@ function renderLiveSection(data) {
       // Nessun live event: mostra VOD platform stats del mese selezionato
       const vdm = (typeof vodDataByPeriod !== 'undefined') ? vodDataByPeriod[period] : null;
       if (vdm) {
-        const topCatName = vdm.cats?.[0] ? vdm.cats[0].name.split('|')[0].trim() : '—';
-        const topCatViewers = vdm.cats?.[0] ? vdm.cats[0].viewers.toLocaleString() : '—';
-        const topCatPlays  = vdm.cats?.[0] ? (vdm.cats[0].plays || 0).toLocaleString() : '—';
+        // Top 3 categorie per bar orizzontali
+        const top3 = (vdm.cats || []).slice(0, 3);
+        const maxV = top3[0] ? top3[0].viewers : 1;
+        const catBars = top3.map(c => {
+          const label = c.name.split('|')[0].trim().slice(0,18);
+          const pct   = (c.viewers / maxV * 100).toFixed(0);
+          return `<div class="micro-cat-row">
+            <span class="micro-cat-label">${label}</span>
+            <div class="micro-cat-bar"><div class="micro-cat-fill" style="width:${pct}%;background:#0d1a38bb;"></div></div>
+            <span class="micro-cat-num">${(c.viewers/1000).toFixed(1)}K</span>
+          </div>`;
+        }).join('');
+
         microGrid.innerHTML = `
           <div class="impact-card" style="--ac:#37c3c9">
-            <div class="ic-label-it">Viewer Unici del Mese <span class="dms-src" title="DMS → Play Statistics">Play Statistics</span></div>
-            <div class="ic-label-en">Unique Viewers · monthly</div>
+            <div class="ic-label-it">Viewer Unici <span class="dms-src" title="DMS → Play Statistics">Play Statistics</span></div>
             <div class="ic-val">${vdm.viewers}</div>
-            <div class="ic-note">${vdm.loginNote || 'Audience periodo'}</div>
+            <div class="ic-note">${vdm.loginNote || 'Audience periodo · viewer deduplicati'}</div>
+            <div class="ic-chart-wrap"><canvas id="microSparkViewers"></canvas></div>
           </div>
           <div class="impact-card" style="--ac:#B8962E">
             <div class="ic-label-it">Viewer Loggati <span class="dms-src" title="DMS → Play Statistics">Play Statistics</span></div>
-            <div class="ic-label-en">Logged-in Viewers</div>
             <div class="ic-val">${vdm.loggedin}</div>
             <div class="ic-note">${vdm.loginNote || '% loggati sul totale'}</div>
+            <div class="ic-chart-wrap"><canvas id="microSparkLoggedin"></canvas></div>
           </div>
           <div class="impact-card" style="--ac:#16a34a">
             <div class="ic-label-it">Riproduzioni Totali <span class="dms-src" title="DMS → Play Statistics">Play Statistics</span></div>
-            <div class="ic-label-en">Total Plays</div>
             <div class="ic-val">${vdm.plays}</div>
-            <div class="ic-note">${vdm.playsNote || 'Play totali del mese'}</div>
+            <div class="ic-note">${vdm.playsNote || 'Play totali del periodo'}</div>
+            <div class="ic-chart-wrap"><canvas id="microSparkPlays"></canvas></div>
           </div>
           <div class="impact-card" style="--ac:#7e22ce">
             <div class="ic-label-it">Ore di Visione <span class="dms-src" title="DMS → Play Statistics">Play Statistics</span></div>
-            <div class="ic-label-en">Watch Hours</div>
             <div class="ic-val">${vdm.hours}</div>
-            <div class="ic-note">Engagement totale del mese</div>
+            <div class="ic-note">Engagement totale del periodo</div>
+            <div class="ic-chart-wrap"><canvas id="microSparkHours"></canvas></div>
           </div>
           <div class="impact-card" style="--ac:#0d1a38">
-            <div class="ic-label-it">Categoria #1 <span class="dms-src" title="DMS → Category Rank">Category Rank</span></div>
-            <div class="ic-label-en">Top VOD Category</div>
-            <div class="ic-val" style="font-size:13px;line-height:1.3">${topCatName}</div>
-            <div class="ic-note">${topCatViewers} viewer · ${topCatPlays} plays</div>
+            <div class="ic-label-it">Top Categorie <span class="dms-src" title="DMS → Category Rank">Category Rank</span></div>
+            <div class="ic-val" style="font-size:13px;line-height:1.2">${top3[0] ? top3[0].name.split('|')[0].trim().slice(0,22) : '—'}</div>
+            <div class="micro-cat-bars">${catBars}</div>
           </div>`;
+        renderMicroSparkCharts(period);
       } else { microGrid.innerHTML = ''; }
     } else {
       // Aprile 2026 (1m / 2026-04): snapshot piattaforma DMS User Overview
