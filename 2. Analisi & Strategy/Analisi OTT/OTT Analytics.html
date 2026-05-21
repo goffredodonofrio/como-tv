@@ -853,30 +853,13 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
 
     <div class="sec">
       <div class="sec-texts">
-        <div class="sec-it">💼 Competition Investment Lens</div>
-        <div class="sec-en">Lente decisionale su competizioni live e coda VOD. Le audience qui sotto vanno lette come somme per evento o contenuto, non come totale deduplicato piattaforma.</div>
+        <div class="sec-it">📊 Top Competizioni — Views Live + Coda VOD</div>
+        <div class="sec-en">Play combinati per competizione · segmento pieno = views della diretta, segmento chiaro = coda replay/highlights</div>
       </div>
       <div class="sec-line"></div>
     </div>
-    <div class="invest-grid">
-      <div class="invest-card">
-        <div class="invest-intro" id="investIntro"></div>
-        <div class="invest-chart-wrap"><canvas id="investChart"></canvas></div>
-        <div class="comp-block" style="margin-top:16px">
-          <div class="card" style="background:#fbfcfe;border-color:#eef2f7;box-shadow:none">
-            <span class="card-dot"></span><span class="card-title-it">Top Competizioni — Views Live + Coda VOD</span>
-            <div class="card-title-en">Play combinati per competizione · segmento pieno = views della diretta, segmento chiaro = coda replay/HL</div>
-            <div class="chart-h"><canvas id="compChart"></canvas></div>
-          </div>
-          <div class="card" style="background:#fbfcfe;border-color:#eef2f7;box-shadow:none">
-            <span class="card-dot" style="background:#1a6a1a"></span>
-            <span class="card-title-it" style="color:#1a6a1a">Engagement · Completion</span>
-            <div class="card-title-en" style="color:#4a7a4a">Dove il pubblico resta di più, non solo dove entra</div>
-            <div id="engList"></div>
-          </div>
-        </div>
-        <div id="investGroups"></div>
-      </div>
+    <div class="card">
+      <div class="chart-h" style="height:360px"><canvas id="compChart"></canvas></div>
     </div>
 
   </div>
@@ -889,15 +872,15 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
     <div class="sec">
       <div class="sec-texts">
         <div class="sec-it">Top 20 Eventi Live per Audience</div>
-        <div class="sec-en">Gli eventi che hanno mosso più pubblico, con check su watch time e completion</div>
+        <div class="sec-en">Views live + coda replay/highlights per evento · due tonalità dello stesso colore della competizione</div>
       </div>
       <div class="sec-line"></div>
     </div>
     <div class="card">
       <div style="font-size:10px;color:#6b7280;margin-bottom:12px">
-        <strong>Fonte dati / Data source:</strong> DMS → Live Event (sezione 5) · Unique Viewers = Logged-in + Anonymous a livello singolo evento · Content Views = Total plays
+        <strong>Fonte dati / Data source:</strong> DMS → Live Event · Views live = Content Views della diretta · Coda VOD = plays degli asset replay/highlights del match
       </div>
-      <div id="evTable" class="live-event-list"></div>
+      <div class="chart-h" style="height:560px"><canvas id="evChart"></canvas></div>
     </div>
 
   </div>
@@ -1776,6 +1759,53 @@ let _activePeriodData = liveDataByPeriod['anno2026'];
 let _liveRetentionChart = null;
 let _vodRetentionChart = null;
 let _vodRetentionCurveChart = null;
+const eventVodPlays = {"anno2026": {"Como U19 vs Lecco U19": 390, "Como U19 vs Udinese U19": 342, "Como U19 vs Südtirol U19": 257, "Sampdoria U19 vs Como U19": 307, "Citadella U19 vs Como U19": 257, "Vicenza U19 vs Como U19": 259}, "2026-01": {"Reggiana U19 vs Como U19": 281, "Citadella U19 vs Como U19": 228, "Como U19 vs Vicenza U19": 208, "Paris St Germain vs Paris FC": 154, "Como U17 vs Hellas Verona U17": 181, "Albinoleffe U19 vs Como U19": 145, "Al Hilal vs Al Nassr": 123, "Como U17 vs Mantova U17": 207, "Feyenoord vs Sparta Rotterdam": 116, "Quarter Finals : FC Porto vs Benfica": 115, "Heart of Midlothian vs Celtic": 102}, "2026-02": {"Como U19 vs Udinese U19": 401, "Pro Vercelli U19 vs Como U19": 360, "Como U17 vs Milan U17": 223, "Como U19 vs Padova U19": 295, "Sudtirol U17 vs Como U17": 172, "FC Volendam vs PSV Eindhoven": 92}, "2026-03": {"Udinese U17 vs Como U17": 240, "Como U19 vs Südtirol U19": 194, "Sampdoria U19 vs Como U19": 343, "Como U19 vs Reggiana U19": 363, "Rangers vs Celtic": 335, "Como U17 vs Venezia U17": 158, "Quarter Finals : Rangers vs Celtic": 266, "Monza U17 vs Como U17": 292, "Feyenoord vs AFC Ajax": 102}, "2026-04": {"Como U19 vs Lecco U19": 551, "Cremonese U17 vs Como U17": 384, "Vicenza U19 vs Como U19": 340, "Union Brescia U19 vs Como U19": 181, "River Plate vs Boca Juniors": 135, "Como U19 vs Venezia U19": 187, "Boca Juniors vs Barcelona": 126, "Como U17 vs Cagliari U17": 289, "PSV Eindhoven vs FC Utrecht": 126, "Como U17 vs Inter U17": 276, "Independiente vs Racing": 122, "Hibernian vs Heart of Midlothian": 95, "Livingston vs Heart of Midlothian": 95}, "2026-05": {"Palermo U17 vs Como U17": 197, "Entella U19 vs Como U19": 366, "Celtic vs Heart of Midlothian": 303, "Heart of Midlothian vs Falkirk": 151, "Heart of Midlothian vs Rangers": 147, "Como U19 vs Modena U19": 315, "Celtic vs Rangers": 289, "Al Nassr vs Al Hilal": 123, "Motherwell vs Celtic": 99, "AFC Ajax vs PSV Eindhoven": 103, "Motherwell vs Heart of Midlothian": 90, "Boca Juniors vs Huracán": 90}};
+let _evChart = null;
+function renderEventChart(period) {
+  const el = document.getElementById('evChart');
+  if (!el) return;
+  if (_evChart) _evChart.destroy();
+  const evs = (liveDataByPeriod[period] && liveDataByPeriod[period].events) || [];
+  const vmap = eventVodPlays[period] || {};
+  const rows = evs.map(e => {
+    const vod = vmap[e.name] || 0;
+    return { name:e.name, comp:e.comp, liveViews:e.views, vodPlays:vod,
+             combined:e.views + vod, viewers:e.viewers };
+  }).sort((a,b) => b.combined - a.combined).slice(0, 20);
+  _evChart = new Chart(el, {
+    type:'bar',
+    data:{
+      labels: rows.map(r => r.name),
+      datasets:[
+        { label:'Views live (diretta)', data: rows.map(r => r.liveViews),
+          backgroundColor: rows.map(r => getColor(r.comp)),
+          borderWidth:0, borderRadius:3, barThickness:14, stack:'p' },
+        { label:'Coda VOD (replay/HL)', data: rows.map(r => r.vodPlays),
+          backgroundColor: rows.map(r => lightenHex(getColor(r.comp), 0.62)),
+          borderWidth:0, borderRadius:3, barThickness:14, stack:'p' }
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      plugins:{ legend:{display:true, position:'top', labels:{font:{size:10}, boxWidth:10, padding:8, color:'#374151'}},
+        tooltip:{callbacks:{
+          title: items => items[0]?.label || '',
+          label: ctx => ` ${ctx.dataset.label}: ${ctx.raw.toLocaleString()}`,
+          afterBody: items => {
+            const r = rows[items[0].dataIndex];
+            return [`Totale: ${r.combined.toLocaleString()}`,
+                    `Spettatori unici: ${r.viewers.toLocaleString()}`,
+                    `Competizione: ${displayCompetitionName(r.comp)}`];
+          }
+        }} },
+      scales:{
+        x:{stacked:true, grid:{color:'#ece4d8'}, ticks:{color:'#6b7280',font:{size:10},callback:v=>v>=1000?(v/1000).toFixed(0)+'K':v}},
+        y:{stacked:true, grid:{display:false}, ticks:{color:'#374151',font:{size:9}}}
+      }
+    }
+  });
+}
+
 let _investChart = null;
 let _compChart = null;
 let _pieChart = null;
@@ -2428,6 +2458,12 @@ function renderLiveSection(data) {
         })
         .sort((a,b) => b.combined - a.combined)
         .slice(0, 10);
+      const _serieRow = (liveInvestmentLens[period] || []).find(r => /^Serie A/.test(r.name));
+      if (_serieRow) {
+        topComps.push({ name:'Serie A — replay/HL', liveViews:0, combined:_serieRow.combinedPlays,
+                        vodPlays:_serieRow.combinedPlays, viewers:0, hours:0, events:0 });
+        topComps.sort((a,b) => b.combined - a.combined);
+      }
       if (compCardTitle) compCardTitle.textContent = 'Top Competizioni — Views Live + Coda VOD';
       if (compCardSub)   compCardSub.textContent   = 'Play combinati per competizione · segmento pieno = views della diretta, segmento chiaro = coda replay/HL';
       _compChart = new Chart(compChartEl, {
@@ -2464,6 +2500,8 @@ function renderLiveSection(data) {
       });
     }
   }
+
+  try { renderEventChart(period); } catch(e) { console.warn('renderEventChart', e); }
 
   // ── Platform micro-grid: aggiorna dinamicamente
   const microGrid = document.getElementById('liveMicroGrid');
