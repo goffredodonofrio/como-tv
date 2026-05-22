@@ -232,10 +232,13 @@ body { font-family: 'Inter', sans-serif; background: #eef0f3; color: #0f172a; fo
 .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 22px 24px; box-shadow:0 1px 0 rgba(15,23,42,0.03); }
 
 /* ── IMPACT SUMMARY ── */
-.impact-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 0; }
+.impact-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 0; }
 @media (max-width: 1400px) { .impact-grid { grid-template-columns:repeat(3,1fr); } }
 @media (max-width: 900px)  { .impact-grid { grid-template-columns:repeat(2,1fr); } }
 @media (max-width: 640px)  { .impact-grid { grid-template-columns:1fr; } }
+.impact-bottom { display:grid; grid-template-columns:1fr 1fr 1.6fr; gap:12px; margin-top:12px; }
+@media (max-width:1100px) { .impact-bottom { grid-template-columns:1fr 1fr; } }
+@media (max-width:640px)  { .impact-bottom { grid-template-columns:1fr; } }
 .impact-card {
   background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
   padding: 14px 16px 12px; position: relative; overflow: hidden;
@@ -820,7 +823,12 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
         <div class="ic-chart-wrap"><canvas id="sparkCompletion"></canvas></div>
       </div>
 
-      <!-- 7. Evento di punta -->
+    </div>
+
+    <!-- IMPACT BOTTOM: Evento · Retention stats · Curva -->
+    <div class="impact-bottom">
+
+      <!-- Evento di Punta -->
       <div class="impact-card" style="--ac:#8a2a1a">
         <div class="top-event-badge">★ #1</div>
         <div class="ic-label-it">Evento di Punta <span class="dms-src" title="DMS → Analytics → Play Statistics → Live Events · top evento">Live → Play Stats</span></div>
@@ -841,17 +849,12 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
         </div>
       </div>
 
-    </div>
-
-    <!-- Live platform data strip — populated dynamically by renderLiveSection -->
-    <div class="live-micro-grid" id="liveMicroGrid"></div>
-
-    <div class="retention-grid">
-      <div class="retention-card">
+      <!-- Retention nuovi utenti -->
+      <div class="impact-card" style="--ac:#0d6650">
         <div class="retention-head">
           <div>
-            <div class="retention-title">Retention nuovi utenti</div>
-            <div class="retention-sub" id="liveRetentionSub">Anno 2026 · cohort retention su nuovi iscritti per periodo</div>
+            <div class="ic-label-it" style="font-size:10px;">Retention nuovi utenti</div>
+            <div class="ic-note" id="liveRetentionSub">Anno 2026 · cohort retention su nuovi iscritti per periodo</div>
           </div>
           <div class="retention-badge" id="liveRetentionBadge">gen–mag</div>
         </div>
@@ -873,9 +876,11 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
           </div>
         </div>
         <div class="retention-mini-note" id="liveRetentionNote">
-          La retention dei nuovi utenti di aprile si attesta al 12.0% su D1 e 7.5% su D2. La base attiva (tutti gli utenti, aprile) mostra una tenuta molto superiore: 30.7% D1 e 28.3% D7.
+          La retention dei nuovi utenti di aprile si attesta al 12.0% su D1 e 7.5% su D2.
         </div>
       </div>
+
+      <!-- Curva retention -->
       <div class="retention-card">
         <div class="retention-head">
           <div>
@@ -885,6 +890,7 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
         </div>
         <div class="retention-chart-wrap"><canvas id="liveRetentionChart"></canvas></div>
       </div>
+
     </div>
 
     <div class="sec">
@@ -2676,76 +2682,6 @@ function renderLiveSection(data) {
   }
 
   try { renderEventChart(period); } catch(e) { console.warn('renderEventChart', e); }
-
-  // ── Platform micro-grid: aggiorna dinamicamente
-  const microGrid = document.getElementById('liveMicroGrid');
-  if (microGrid) {
-    if (period !== '2026-04') {
-      // Nessun live event: mostra VOD platform stats del mese selezionato
-      const vdm = (typeof vodDataByPeriod !== 'undefined') ? vodDataByPeriod[period] : null;
-      if (vdm) {
-        microGrid.innerHTML = `
-          <div class="impact-card" style="--ac:#37c3c9">
-            <div class="ic-label-it">Viewer Unici <span class="dms-src" title="DMS → Play Statistics">Play Statistics</span></div>
-            <div class="ic-val">${vdm.viewers}</div>
-            <div class="ic-note">${vdm.loginNote || 'Audience periodo · viewer deduplicati'}</div>
-            <div class="ic-chart-wrap"><canvas id="microSparkViewers"></canvas></div>
-          </div>
-          <div class="impact-card" style="--ac:#B8962E">
-            <div class="ic-label-it">Viewer Loggati <span class="dms-src" title="DMS → Play Statistics">Play Statistics</span></div>
-            <div class="ic-val">${vdm.loggedin}</div>
-            <div class="ic-note">${vdm.loginNote || '% loggati sul totale'}</div>
-            <div class="ic-chart-wrap"><canvas id="microSparkLoggedin"></canvas></div>
-          </div>
-          <div class="impact-card" style="--ac:#16a34a">
-            <div class="ic-label-it">Riproduzioni Totali <span class="dms-src" title="DMS → Play Statistics">Play Statistics</span></div>
-            <div class="ic-val">${vdm.plays}</div>
-            <div class="ic-note">${vdm.playsNote || 'Play totali del periodo'}</div>
-            <div class="ic-chart-wrap"><canvas id="microSparkPlays"></canvas></div>
-          </div>
-          <div class="impact-card" style="--ac:#7e22ce">
-            <div class="ic-label-it">Ore di Visione <span class="dms-src" title="DMS → Play Statistics">Play Statistics</span></div>
-            <div class="ic-val">${vdm.hours}</div>
-            <div class="ic-note">Engagement totale del periodo</div>
-            <div class="ic-chart-wrap"><canvas id="microSparkHours"></canvas></div>
-          </div>`;
-        renderMicroSparkCharts(period);
-      } else { microGrid.innerHTML = ''; }
-    } else {
-      // Aprile 2026 (1m / 2026-04): snapshot piattaforma DMS User Overview
-      microGrid.innerHTML = `
-        <div class="impact-card" style="--ac:#60a5fa">
-          <div class="ic-label-it">Nuovi Utenti · media 7 giorni <span class="dms-src" title="DMS → Dashboard → User Overview · New Users 7-day Average">Dashboard → Users</span></div>
-          <div class="ic-label-en">New Users · 7-day average</div>
-          <div class="ic-val">513</div>
-          <div class="ic-trend dn">▼ −41.5% WoW</div>
-        </div>
-        <div class="impact-card" style="--ac:#f4b740">
-          <div class="ic-label-it">Utenti Attivi Loggati <span class="dms-src" title="DMS → Dashboard → User Overview · Active Users (Logged in)">Dashboard → Users</span></div>
-          <div class="ic-label-en">Active Users · logged in</div>
-          <div class="ic-val">4.77K</div>
-          <div class="ic-trend up">▲ +19.1% WoW</div>
-        </div>
-        <div class="impact-card" style="--ac:#2a7a2a">
-          <div class="ic-label-it">Attivi 30 giorni <span class="dms-src" title="DMS → Dashboard → User Overview · Active Users 30-day">Dashboard → Users</span></div>
-          <div class="ic-label-en">Active Users · last 30 days</div>
-          <div class="ic-val">32.94K</div>
-          <div class="ic-trend dn">▼ −10.1% MoM</div>
-        </div>
-        <div class="impact-card" style="--ac:#2a6a9a">
-          <div class="ic-label-it">Attivi 7 giorni <span class="dms-src" title="DMS → Dashboard → User Overview · Active Users 7-day">Dashboard → Users</span></div>
-          <div class="ic-label-en">Active Users · last 7 days</div>
-          <div class="ic-val">11.47K</div>
-          <div class="ic-trend dn">▼ −2.5% WoW</div>
-        </div>
-        <div class="impact-card" style="--ac:#ef4444">
-          <div class="ic-label-it">Play Failures Ieri <span class="dms-src" title="DMS → Analytics → Play Statistics → Play Failures">Play Stats → Failures</span></div>
-          <div class="ic-label-en">Yesterday · Platform stability</div>
-          <div class="ic-val" style="color:#ef4444;font-size:32px;line-height:1">3</div>
-          <div class="ic-note" style="color:#ef4444;font-weight:700">Da monitorare · three failures yesterday</div>
-        </div>`;
-    }
-  }
 
   // ── Event table
   const tbody = document.getElementById('evTable');
