@@ -1070,6 +1070,34 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
       </div>
     </div>
 
+    <!-- Row 3: Top Originals singoli + Top Live-related singoli — asset-level -->
+    <div class="live-charts-row">
+      <div>
+        <div class="sec" style="margin-top:28px">
+          <div class="sec-texts">
+            <div class="sec-it">🎬 Top Originals — singoli contenuti <span class="dms-src" title="DMS → VOD → Asset Rank by Viewers · imposta il periodo → Export CSV">VOD → Asset Rank</span></div>
+            <div class="sec-en">Episodi e format prodotti Como TV — viewer unici per contenuto nel periodo</div>
+          </div>
+          <div class="sec-line"></div>
+        </div>
+        <div class="card">
+          <div class="chart-h" style="height:460px"><canvas id="vodOrigAssetsChart"></canvas></div>
+        </div>
+      </div>
+      <div>
+        <div class="sec" style="margin-top:28px">
+          <div class="sec-texts">
+            <div class="sec-it">🎥 Top Live-related — singoli contenuti <span class="dms-src" title="DMS → VOD → Asset Rank by Viewers · imposta il periodo → Export CSV">VOD → Asset Rank</span></div>
+            <div class="sec-en">Replay e highlights singoli — viewer unici per contenuto nel periodo</div>
+          </div>
+          <div class="sec-line"></div>
+        </div>
+        <div class="card">
+          <div class="chart-h" style="height:460px"><canvas id="vodLiveRelAssetsChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   </div><!-- /section-vod -->
@@ -1811,6 +1839,7 @@ let _investChart = null;
 let _compChart = null;
 let _pieChart = null;
 let _vodOrigChart = null, _vodLiveRelChart = null, _vodSerialChart = null, _vodLoyaltyChart = null;
+let _vodOrigAssetsChart = null, _vodLiveRelAssetsChart = null;
 
 function fmtCompact(n) {
   if (n == null || Number.isNaN(n)) return 'n/a';
@@ -2145,6 +2174,85 @@ function renderVodMixImpactChart(cats, engMap) {
       }
     }
   });
+}
+
+// ── VOD ASSET CHARTS — Top 15 singoli contenuti Originals + Live-related ─
+function renderVodAssetCharts(period) {
+  const useFallback = !vodAssetsByPeriod[period];
+  const src = vodAssetsByPeriod[period] || vodAssetsByPeriod['anno2026'] || {};
+  const originals   = (src.originals   || []).slice(0, 15);
+  const liveRelated = (src.liveRelated || []).slice(0, 15);
+
+  function makeAssetChart(canvasId, items, color, chartRef, setRef) {
+    const el = document.getElementById(canvasId);
+    if (!el) return null;
+    const existing = Chart.getChart(el);
+    if (existing) existing.destroy();
+    if (!items.length) return null;
+    const labels = items.map(a => {
+      const n = (a.parent && a.parent !== a.name)
+        ? a.parent + ' · ' + a.name.replace(a.parent, '').replace(/^\s*[|·\-]\s*/, '').trim()
+        : a.name;
+      return n.length > 34 ? n.slice(0, 33) + '…' : n;
+    });
+    return new Chart(el, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Viewer unici',
+          data: items.map(a => a.viewers || 0),
+          backgroundColor: color + 'bb',
+          borderColor: color,
+          borderWidth: 1,
+          borderRadius: 5,
+          barThickness: 18,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#fff',
+            borderColor: '#e5e7eb',
+            borderWidth: 1,
+            titleColor: '#0d1a38',
+            bodyColor: '#374151',
+            padding: 10,
+            callbacks: {
+              title: it => items[it[0].dataIndex]?.name || it[0].label,
+              label: ctx => ` Viewer: ${ctx.raw.toLocaleString('it-IT')}`,
+              afterLabel: ctx => {
+                const a = items[ctx.dataIndex];
+                const lines = [];
+                if (a.plays)  lines.push(` Plays: ${a.plays.toLocaleString('it-IT')}`);
+                if (a.engH)   lines.push(` Ore eng.: ${a.engH}h`);
+                if (a.viewers && a.plays) lines.push(` Plays/viewer: ${(a.plays / a.viewers).toFixed(1)}x`);
+                if (a.parent && a.parent !== a.name) lines.push(` Serie: ${a.parent}`);
+                return lines;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: '#ece4d8' },
+            ticks: { color: '#6b7280', font: { size: 10 }, callback: v => v >= 1000 ? (v/1000).toFixed(0)+'K' : v }
+          },
+          y: {
+            grid: { display: false },
+            ticks: { color: '#374151', font: { size: 11 } }
+          }
+        }
+      }
+    });
+  }
+
+  _vodOrigAssetsChart    = makeAssetChart('vodOrigAssetsChart',    originals,   '#7c3aed', _vodOrigAssetsChart,    v => { _vodOrigAssetsChart    = v; });
+  _vodLiveRelAssetsChart = makeAssetChart('vodLiveRelAssetsChart', liveRelated, '#dc2626', _vodLiveRelAssetsChart, v => { _vodLiveRelAssetsChart = v; });
 }
 
 function renderPlaylistRetention(period) {
@@ -3025,6 +3133,7 @@ function renderVODSection(period) {
   try { renderVodRetentionBlock(period); } catch(e) { console.warn('renderVodRetentionBlock error:', e); }
   try { renderRetentionPanels(period || 'anno2026'); } catch(e) { console.warn('renderRetentionPanels error:', e); }
   try { renderPlaylistRetention(period); } catch(e) { console.warn('renderPlaylistRetention error:', e); }
+  try { renderVodAssetCharts(period); } catch(e) { console.warn('renderVodAssetCharts error:', e); }
 
   // ── 4. Period notice
   if (notice) {
@@ -4082,6 +4191,7 @@ let engCats = [
 // Initial render del mix — ora che vodCats e engCats sono entrambi dichiarati
 renderVodCatChart();
 renderEngagementList();
+renderVodAssetCharts('anno2026');
 
 // ── LIVE / VOD TOGGLE
 function setSec(id) {
