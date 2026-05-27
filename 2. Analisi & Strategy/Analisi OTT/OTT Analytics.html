@@ -1005,33 +1005,59 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
   <!-- ── VOD DETAILED ANALYSIS ── -->
   <div id="vodContent">
 
-    <div class="playlist-retention-card">
-      <div class="sec" style="margin:0 0 18px">
-        <div class="sec-texts">
-          <div class="sec-it">📂 Serialità VOD — Fidelizzazione per Brand</div>
-          <div class="sec-en">Quali format seriali costruiscono ritorno e profondità di visione nel periodo</div>
+    <!-- Row 1: Top Originals + Top Live-related affiancati -->
+    <div class="live-charts-row">
+      <div>
+        <div class="sec" style="margin-top:28px">
+          <div class="sec-texts">
+            <div class="sec-it">🎬 Top Originals <span class="dms-src" title="DMS → VOD → Category Rank · imposta il periodo → Export CSV">VOD → Category Rank</span></div>
+            <div class="sec-en">Format e serie prodotti Como TV — viewer unici per categoria nel periodo</div>
+          </div>
+          <div class="sec-line"></div>
         </div>
-        <div class="sec-line"></div>
+        <div class="card">
+          <div class="chart-h" style="height:360px"><canvas id="vodOrigChart"></canvas></div>
+        </div>
       </div>
-      <div class="playlist-retention-intro" id="playlistRetentionIntro"></div>
-      <div class="playlist-retention-grid">
-        <div class="playlist-model" id="playlistRetentionModel"></div>
-        <div class="playlist-retention-side" id="playlistRetentionSide"></div>
+      <div>
+        <div class="sec" style="margin-top:28px">
+          <div class="sec-texts">
+            <div class="sec-it">🎥 Top Live-related <span class="dms-src" title="DMS → VOD → Category Rank · imposta il periodo → Export CSV">VOD → Category Rank</span></div>
+            <div class="sec-en">Replay e highlights — viewer unici per categoria nel periodo</div>
+          </div>
+          <div class="sec-line"></div>
+        </div>
+        <div class="card">
+          <div class="chart-h" style="height:360px"><canvas id="vodLiveRelChart"></canvas></div>
+        </div>
       </div>
-      <div class="playlist-library" id="playlistRetentionLibrary"></div>
     </div>
 
-    <!-- ── TOP CATEGORIE — DOPPIA TOP 10 SPLIT (aggiornato per periodo) ── -->
-    <div class="playlist-retention-card" style="margin-top:18px">
-      <div class="sec" style="margin:0 0 18px">
-        <div class="sec-texts">
-          <div class="sec-it">🏆 Top 30 Contenuti — Originals & Live-related <span class="dms-src" title="DMS → VOD → Category Rank · imposta il periodo → Export CSV">VOD → Category Rank</span></div>
-          <div class="sec-en">I contenuti più visti del periodo per tipo · Originals produzione Como TV · Live-related replay e highlights</div>
+    <!-- Row 2: Serialità (viewer) + Loyalty (plays/viewer) affiancati -->
+    <div class="live-charts-row" style="margin-top:0">
+      <div>
+        <div class="sec" style="margin-top:28px">
+          <div class="sec-texts">
+            <div class="sec-it">📂 Serialità VOD — Reach per Brand</div>
+            <div class="sec-en">Viewer unici per serie episodica nel periodo · ordine decrescente</div>
+          </div>
+          <div class="sec-line"></div>
         </div>
-        <div class="sec-line"></div>
+        <div class="card">
+          <div class="chart-h" style="height:320px"><canvas id="vodSerialChart"></canvas></div>
+        </div>
       </div>
-      <div id="vodTopList" style="margin-bottom:4px">
-        <!-- Popolato da renderVODTopList() -->
+      <div>
+        <div class="sec" style="margin-top:28px">
+          <div class="sec-texts">
+            <div class="sec-it">🔁 Loyalty per Brand</div>
+            <div class="sec-en">Plays / viewer — quante volte il pubblico torna sulla stessa serie</div>
+          </div>
+          <div class="sec-line"></div>
+        </div>
+        <div class="card">
+          <div class="chart-h" style="height:320px"><canvas id="vodLoyaltyChart"></canvas></div>
+        </div>
       </div>
     </div>
 
@@ -1774,6 +1800,7 @@ function renderEventChart(period) {
 let _investChart = null;
 let _compChart = null;
 let _pieChart = null;
+let _vodOrigChart = null, _vodLiveRelChart = null, _vodSerialChart = null, _vodLoyaltyChart = null;
 
 function fmtCompact(n) {
   if (n == null || Number.isNaN(n)) return 'n/a';
@@ -2056,11 +2083,8 @@ function renderVodRetentionBlock(period) {
 }
 
 function renderPlaylistRetention(period) {
-  const intro = document.getElementById('playlistRetentionIntro');
-  const model = document.getElementById('playlistRetentionModel');
-  const side = document.getElementById('playlistRetentionSide');
-  const library = document.getElementById('playlistRetentionLibrary');
-  if (!intro || !model || !side || !library) return;
+  const serialEl  = document.getElementById('vodSerialChart');
+  const loyaltyEl = document.getElementById('vodLoyaltyChart');
 
   const vodPeriod = vodDataByPeriod[period] || vodDataByPeriod['anno2026'];
   const cats = (vodPeriod && vodPeriod.cats) ? vodPeriod.cats : [];
@@ -2069,8 +2093,6 @@ function renderPlaylistRetention(period) {
 
   const serialRows = PLAYLIST_EPISODIC.map(meta => {
     const aliases = meta.names || [meta.label];
-    // Cerchiamo prima la cat del periodo corrente, poi facciamo fallback alla stagione intera
-    // NOTA: usiamo variabili separate per non mischiare i dati dei due periodi
     const catFromPeriod  = cats.find(c => aliases.includes(c.name));
     const catFallback    = catFromPeriod ? null : (vodDataByPeriod['anno2026']?.cats || []).find(c => aliases.includes(c.name));
     const cat            = catFromPeriod || catFallback;
@@ -2079,9 +2101,6 @@ function renderPlaylistRetention(period) {
     const assetViewers = playlistAssets.reduce((s,a) => s + (+a.viewers || 0), 0);
     const assetPlays   = playlistAssets.reduce((s,a) => s + (+a.plays   || 0), 0);
     const assetEngH    = playlistAssets.reduce((s,a) => s + parseHourTextToHours(a.engH || 0), 0);
-    // Priorità: cat del periodo → asset del periodo → cat all-time (solo per 'all'/'anno2026')
-    // Per i periodi mensili NON usiamo il fallback all-time: mostrerebbe totali stagionali come
-    // se fossero dati del mese (es. Goleada 5338 viewer in aprile invece di 81)
     const useFallback = period === 'anno2026';
     const viewers = catFromPeriod?.viewers || assetViewers || (useFallback ? catFallback?.viewers : 0) || 0;
     const plays   = catFromPeriod?.plays   || assetPlays   || (useFallback ? catFallback?.plays   : 0) || 0;
@@ -2089,151 +2108,96 @@ function renderPlaylistRetention(period) {
     const surfacedEpisodes = playlistAssets.length;
     const ppv = viewers > 0 ? plays / viewers : 0;
     const hpv = viewers > 0 ? engH / viewers : 0;
-    const vpe = episodes > 0 ? viewers / episodes : 0;
-    const ape = surfacedEpisodes > 0 ? plays / surfacedEpisodes : 0;
-    const maturity = surfacedEpisodes >= 3 ? 'episodi visibili nel rank' : (surfacedEpisodes > 0 ? 'campione parziale episodi' : 'solo playlist-level');
-    return { ...meta, cat, viewers, plays, engH, ppv, hpv, vpe, ape, surfacedEpisodes, maturity };
+    return { ...meta, cat, viewers, plays, engH, ppv, hpv, surfacedEpisodes };
   }).filter(row => row.cat || row.surfacedEpisodes > 0 || row.viewers > 0 || row.plays > 0 || row.engH > 0);
 
-  const top = serialRows.slice().sort((a,b) => b.ppv - a.ppv)[0];
-  const avgPpv = serialRows.length ? serialRows.reduce((s,r) => s + r.ppv, 0) / serialRows.length : 0;
-  const avgHpv = serialRows.length ? serialRows.reduce((s,r) => s + r.hpv, 0) / serialRows.length : 0;
-  const maxPpv = top ? top.ppv : 1;
+  const sorted = serialRows.slice().sort((a,b) => b.viewers - a.viewers);
+  const labels  = sorted.map(r => r.label);
+  const viewers = sorted.map(r => r.viewers);
+  const ppvs    = sorted.map(r => r.ppv);
+  const colors  = sorted.map(r => (PLAYLIST_COLORS[r.label] || {accent:'#6d28d9'}).accent);
 
-  // ── Period labels — fully dynamic
-  const PERIOD_META = {
-    'anno2026': { name:'2026 — Complessivo', scope:'1 gen – 26 mag 2026' },
-    '2026-04':  { name:'Aprile 2026',        scope:'1–30 apr 2026' },
-    '2026-01':  { name:'Gennaio 2026',       scope:'gen 2026' },
-    '2026-02':  { name:'Febbraio 2026',      scope:'feb 2026' },
-    '2026-03':  { name:'Marzo 2026',         scope:'mar 2026' },
-    '2026-05':  { name:'Maggio 2026',        scope:'1–26 mag 2026' },
-  };
-  const pm = PERIOD_META[period] || { name: period, scope: period };
+  // ── Chart 1: Reach (viewer unici) ───────────────────
+  if (serialEl) {
+    const existing = Chart.getChart(serialEl);
+    if (existing) existing.destroy();
+    _vodSerialChart = new Chart(serialEl, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{ label:'Viewer', data:viewers,
+          backgroundColor: colors.map(c => c+'cc'), borderColor: colors,
+          borderWidth:1, borderRadius:5, barThickness:18 }]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false, indexAxis:'y',
+        plugins: {
+          legend:{display:false},
+          tooltip:{
+            backgroundColor:'#fff', borderColor:'#e5e7eb', borderWidth:1,
+            titleColor:'#0d1a38', bodyColor:'#374151', padding:10,
+            callbacks:{
+              title: it => sorted[it[0].dataIndex]?.label || it[0].label,
+              label: ctx => ` Viewer: ${ctx.raw.toLocaleString('it-IT')}`,
+              afterLabel: ctx => {
+                const r = sorted[ctx.dataIndex];
+                const lines = [];
+                if (r.plays) lines.push(` Views totali: ${Math.round(r.plays).toLocaleString('it-IT')}`);
+                if (r.engH)  lines.push(` Ore eng.: ${r.engH.toFixed(0)}h`);
+                if (r.ppv)   lines.push(` Loyalty: ${r.ppv.toFixed(1)}× plays/viewer`);
+                lines.push(` Episodi: ${r.episodes}`);
+                return lines;
+              }
+            }
+          }
+        },
+        scales:{
+          x:{grid:{color:'#ece4d8'}, ticks:{color:'#6b7280', font:{size:10}, callback:v => v>=1000?(v/1000).toFixed(0)+'K':v}},
+          y:{grid:{display:false}, ticks:{color:'#374151', font:{size:11}}}
+        }
+      }
+    });
+  }
 
-  intro.innerHTML = '';  // intro rimosso — info già nel model header
-
-  // ── Model header — 4 hero KPI compatti
-  model.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#0d1a38;">Playlist Loyalty</span>
-        <span style="font-size:11px;background:#fff7db;color:#8f7320;border:1px solid #e7d292;padding:2px 9px;border-radius:20px;font-weight:600;">${pm.name}</span>
-        <span style="font-size:11px;color:#6b7280;">${pm.scope}</span>
-      </div>
-      <span style="font-size:11px;color:#6b7280;">${serialRows.length} playlist seriali leggibili</span>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
-      <div style="background:#faf7f2;border:1px solid #ece4d8;border-radius:10px;padding:14px 12px;text-align:center;">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:6px;">Leader</div>
-        <div style="font-size:26px;font-weight:800;color:#8f7320;line-height:1;margin-bottom:4px;">${top ? top.ppv.toFixed(1)+'×' : '—'}</div>
-        <div style="font-size:10px;color:#374151;font-weight:600;">${top ? top.label : '—'}</div>
-        <div style="font-size:10px;color:#6b7280;margin-top:2px;">play / viewer</div>
-      </div>
-      <div style="background:#faf7f2;border:1px solid #ece4d8;border-radius:10px;padding:14px 12px;text-align:center;">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:6px;">Media Loyalty</div>
-        <div style="font-size:26px;font-weight:800;color:#0d1a38;line-height:1;margin-bottom:4px;">${avgPpv ? avgPpv.toFixed(1)+'×' : '—'}</div>
-        <div style="font-size:10px;color:#6b7280;">media play/viewer</div>
-        <div style="font-size:10px;color:#6b7280;margin-top:2px;">su tutte le playlist</div>
-      </div>
-      <div style="background:#faf7f2;border:1px solid #ece4d8;border-radius:10px;padding:14px 12px;text-align:center;">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:6px;">Depth media</div>
-        <div style="font-size:26px;font-weight:800;color:#0d1a38;line-height:1;margin-bottom:4px;">${avgHpv ? avgHpv.toFixed(2)+'h' : '—'}</div>
-        <div style="font-size:10px;color:#6b7280;">hours / viewer</div>
-        <div style="font-size:10px;color:#6b7280;margin-top:2px;">tempo medio per accesso</div>
-      </div>
-      <div style="background:#faf7f2;border:1px solid #ece4d8;border-radius:10px;padding:14px 12px;text-align:center;">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:6px;">Coverage</div>
-        <div style="font-size:26px;font-weight:800;color:#0d1a38;line-height:1;margin-bottom:4px;">${serialRows.length}</div>
-        <div style="font-size:10px;color:#6b7280;">playlist con dati</div>
-        <div style="font-size:10px;color:#6b7280;margin-top:2px;">nel periodo</div>
-      </div>
-    </div>`;
-
-  model.style.gridColumn = '1 / -1';
-  side.innerHTML = '';
-  side.style.display = 'none';
-
-  // ── Library cards — redesign: Loyalty hero, Reach/Depth secondari, strip bottom
-  library.innerHTML = serialRows
-    .slice()
-    .sort((a, b) => b.ppv - a.ppv)   // ordina per loyalty decrescente
-    .map((row, idx) => {
-    const colors = PLAYLIST_COLORS[row.label] || { accent:'#6d28d9', soft:'#faf7ff', border:'#eadcff' };
-    const ac = colors.accent;
-
-    const qualityLabel = row.ppv >= 2.2 ? 'Molto fedele' : row.ppv >= 1.6 ? 'Solida' : 'Da presidiare';
-    const qualityColor = row.ppv >= 2.2 ? '#059669' : row.ppv >= 1.6 ? '#8f7320' : '#6b7280';
-    const qualityBg    = row.ppv >= 2.2 ? '#ecfdf5' : row.ppv >= 1.6 ? '#fff7db' : '#f3f4f6';
-    const qualityBorder= row.ppv >= 2.2 ? '#a7f3d0' : row.ppv >= 1.6 ? '#e7d292' : '#e5e7eb';
-
-    // Loyalty bar — % rispetto al leader
-    const barPct = maxPpv > 0 ? Math.min(100, (row.ppv / maxPpv) * 100).toFixed(0) : 0;
-
-    // Episodi nel periodo (surfaced) vs totali storici
-    const epInPeriod  = row.surfacedEpisodes || 0;
-    const epLabel     = epInPeriod > 0
-      ? `${epInPeriod} ep. nel periodo`
-      : `${row.episodes} ep. (totale serie)`;
-    const epNote      = epInPeriod ? `${epInPeriod} ep. nel rank` : '—';
-    // vpe: usiamo gli episodi emersi solo se >= 2 (1 solo episodio è campione troppo piccolo)
-    // Con 1 solo ep surfacé si rischia di dividere tutti i viewer per 1 → numero fuorviante
-    const vpePeriod   = epInPeriod >= 2
-      ? Math.round(row.viewers / epInPeriod)
-      : (row.vpe ? Math.round(row.vpe) : null);
-
-    return `<div style="background:#fff;border-radius:10px;border:1px solid ${colors.border};box-shadow:inset 0 4px 0 ${ac};padding:14px 16px 12px;display:flex;flex-direction:column;gap:0;">
-      <!-- Header -->
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px;">
-        <div>
-          <div style="font-size:14px;font-weight:700;color:#0d1a38;line-height:1.3;">${row.label}</div>
-          <div style="font-size:10px;color:#6b7280;margin-top:2px;">${epLabel}</div>
-        </div>
-        <span style="font-size:10px;font-weight:700;color:${qualityColor};background:${qualityBg};border:1px solid ${qualityBorder};border-radius:999px;padding:3px 9px;white-space:nowrap;flex-shrink:0;">${qualityLabel}</span>
-      </div>
-
-      <!-- 3 hero metrics -->
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:8px 0;">
-        <!-- Loyalty — hero principale -->
-        <div style="background:${colors.soft};border:1px solid ${colors.border};border-radius:8px;padding:10px 8px;text-align:center;">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${ac};margin-bottom:4px;">Loyalty</div>
-          <div style="font-size:26px;font-weight:800;color:${ac};line-height:1;margin-bottom:2px;">${row.ppv ? row.ppv.toFixed(1)+'×' : '—'}</div>
-          <div style="font-size:9px;color:#6b7280;">play / viewer</div>
-        </div>
-        <!-- Reach -->
-        <div style="background:#faf7f2;border:1px solid #ece4d8;border-radius:8px;padding:10px 8px;text-align:center;">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:4px;">Reach</div>
-          <div style="font-size:22px;font-weight:700;color:#0d1a38;line-height:1;margin-bottom:2px;">${fmtCompact(Math.round(row.viewers))}</div>
-          <div style="font-size:9px;color:#6b7280;">viewer</div>
-        </div>
-        <!-- Depth -->
-        <div style="background:#faf7f2;border:1px solid #ece4d8;border-radius:8px;padding:10px 8px;text-align:center;">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:4px;">Depth</div>
-          <div style="font-size:22px;font-weight:700;color:#0d1a38;line-height:1;margin-bottom:2px;">${row.hpv ? row.hpv.toFixed(2)+'h' : '—'}</div>
-          <div style="font-size:9px;color:#6b7280;">/ viewer</div>
-        </div>
-      </div>
-
-      <!-- Loyalty bar -->
-      <div style="margin:4px 0 4px;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <div style="flex:1;height:4px;background:#f3f4f6;border-radius:2px;overflow:hidden;">
-            <div style="height:100%;width:${barPct}%;background:${ac};border-radius:2px;transition:width .4s;"></div>
-          </div>
-          <span style="font-size:9px;color:#9ca3af;flex-shrink:0;cursor:default;" title="Loyalty (plays per viewer) di questo brand rispetto a quello con la fedeltà più alta nel periodo">${barPct}% del leader</span>
-        </div>
-      </div>
-
-      <!-- Strip secondaria -->
-      <div style="display:flex;flex-wrap:wrap;gap:8px;padding-top:8px;border-top:1px solid #f3f4f6;">
-        <span style="font-size:10px;color:#374151;"><strong style="color:#0d1a38;">${row.engH ? row.engH.toFixed(0)+'h' : '—'}</strong> engagement</span>
-        <span style="font-size:10px;color:#d1d5db;">·</span>
-        <span style="font-size:10px;color:#374151;"><strong style="color:#0d1a38;">${vpePeriod !== null ? vpePeriod : '—'}</strong> viewer/ep</span>
-        <span style="font-size:10px;color:#d1d5db;">·</span>
-        <span style="font-size:10px;color:#374151;">${epNote}</span>
-      </div>
-    </div>`;
-  }).join('');
+  // ── Chart 2: Loyalty (plays/viewer) ─────────────────
+  if (loyaltyEl) {
+    const existing = Chart.getChart(loyaltyEl);
+    if (existing) existing.destroy();
+    _vodLoyaltyChart = new Chart(loyaltyEl, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{ label:'Plays/viewer', data:ppvs,
+          backgroundColor: colors.map(c => c+'cc'), borderColor: colors,
+          borderWidth:1, borderRadius:5, barThickness:18 }]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false, indexAxis:'y',
+        plugins: {
+          legend:{display:false},
+          tooltip:{
+            backgroundColor:'#fff', borderColor:'#e5e7eb', borderWidth:1,
+            titleColor:'#0d1a38', bodyColor:'#374151', padding:10,
+            callbacks:{
+              title: it => sorted[it[0].dataIndex]?.label || it[0].label,
+              label: ctx => ` Loyalty: ${ctx.raw.toFixed(1)}× plays/viewer`,
+              afterLabel: ctx => {
+                const r = sorted[ctx.dataIndex];
+                const lines = [];
+                if (r.hpv)     lines.push(` Depth: ${r.hpv.toFixed(2)}h/viewer`);
+                if (r.viewers) lines.push(` Viewer: ${r.viewers.toLocaleString('it-IT')}`);
+                return lines;
+              }
+            }
+          }
+        },
+        scales:{
+          x:{grid:{color:'#ece4d8'}, ticks:{color:'#6b7280', font:{size:10}, callback:v => v.toFixed(1)+'×'}},
+          y:{grid:{display:false}, ticks:{color:'#374151', font:{size:11}}}
+        }
+      }
+    });
+  }
 }
 
 function renderMicroSparkCharts(period) {
@@ -3358,183 +3322,59 @@ const vodAssetsByPeriod = {
 
 // ── VOD TOP LIST — Top 30 Originals + Top 30 Live-related (slideshow) ──
 function renderVODTopList(cats, engMap) {
-  const el = document.getElementById('vodTopList');
-  if (!el || !cats || !cats.length) return;
+  if (!cats || !cats.length) return;
 
-  // Descrittori per chiarire la natura della playlist/categoria DMS
-  // (i nomi nei rank DMS sono playlist/categorie aggregate, non singoli file video)
-  const PLAYLIST_KIND = {
-    // ── ORIGINALS / Format Como TV ───────────────────────────────
-    'INTERVIEWS':                          { kind:'serie',  desc:'Interviste 1-to-1 (player, staff, ospiti)' },
-    'Talent Hunters':                      { kind:'serie',  desc:'Scouting & ritratti calciatori' },
-    'Discover Como':                       { kind:'clip',   desc:'Clip branded sulla città di Como' },
-    'Goleada':                             { kind:'serie',  desc:'Programma a episodi numerati' },
-    'Como 1907 Original':                  { kind:'serie',  desc:'Documentario originale, S1E01–S1E07' },
-    'Los Clasicos':                        { kind:'serie',  desc:'Mini-serie 6 episodi' },
-    'Behind the Team':                     { kind:'serie',  desc:'Backstage prima squadra (8 episodi)' },
-    'BEHIND THE TEAM':                     { kind:'serie',  desc:'Backstage prima squadra' },
-    'Arabian Night':                       { kind:'serie',  desc:'Format a 12 episodi numerati' },
-    "Golden '90":                          { kind:'serie',  desc:'Format vintage anni \'90' },
-    'Fútbol Prohibido':                    { kind:'serie',  desc:'Mini-serie investigativa (2 ep.)' },
-    'Ascent':                              { kind:'doc',    desc:'Documentario singolo' },
-    'SEASON 1 THE REAL STORY':             { kind:'doc',    desc:'Documentario stagione 1' },
-    'Como 1907 First Team Men Pre Show':   { kind:'pre',    desc:'Pre-show di ogni partita Serie A' },
-    'Como Gaming Club':                    { kind:'serie',  desc:'Format gaming/eSports' },
-    'Taste of Como':                       { kind:'clip',   desc:'Clip food & lifestyle' },
-
-    // ── LIVE-RELATED / Diritti acquisiti ─────────────────────────
-    'Copa Libertadores':                   { kind:'rights', desc:'Replay integrali partite Conmebol' },
-    'Highlights Copa Libertadores':        { kind:'high',   desc:'Sintesi partite Libertadores' },
-    'Conmebol Sudamericana':               { kind:'rights', desc:'Replay integrali Sudamericana' },
-    'Highlights Copa Sudamericana':        { kind:'high',   desc:'Sintesi partite Sudamericana' },
-    'Argentina Copa De La Liga Pro':       { kind:'rights', desc:'Replay integrali Liga Pro Argentina' },
-    'Highlights Argentina Copa de La Liga Pro': { kind:'high', desc:'Sintesi Liga Pro Argentina' },
-    'SCOTTISH CUP':                        { kind:'rights', desc:'Replay coppa scozzese' },
-    'Highlights Scottish Cup':             { kind:'high',   desc:'Sintesi Scottish Cup' },
-    'SCOTTISH PREMIERSHIP':                { kind:'rights', desc:'Replay massima serie scozzese' },
-    'Highlights Scottish Premiership':     { kind:'high',   desc:'Sintesi Scottish Premiership' },
-    'SCOTTISH CHAMPIONSHIP':               { kind:'rights', desc:'Replay seconda serie scozzese' },
-    'Highlights Scottish Championship':    { kind:'high',   desc:'Sintesi Scottish Championship' },
-    'FRENCH CUP':                          { kind:'rights', desc:'Replay coppa francese' },
-    'Highlights French Cup':               { kind:'high',   desc:'Sintesi Coupe de France' },
-    'Croatian Football League':            { kind:'rights', desc:'Replay massima serie croata' },
-    'Highlights Croatian Super League':    { kind:'high',   desc:'Sintesi HNL' },
-    'TACA DE PORTUGAL':                    { kind:'rights', desc:'Replay coppa portoghese' },
-    'Highlights SuperTaca de Portugal':    { kind:'high',   desc:'Sintesi SuperTaça' },
-    'SAUDI PRO LEAGUE':                    { kind:'rights', desc:'Replay massima serie saudita' },
-    'Highlights Saudi Pro League':         { kind:'high',   desc:"Sintesi SPL" },
-    "SAUDI KING'S CUP":                    { kind:'rights', desc:'Replay King\'s Cup' },
-    "Highlights Saudi King's Cup":         { kind:'high',   desc:"Sintesi King's Cup" },
-    'Eredivisie':                          { kind:'rights', desc:'Replay massima serie olandese' },
-    'Highlights Eredivisie':               { kind:'high',   desc:'Sintesi Eredivisie' },
-    'COPPA ITALIA':                        { kind:'rights', desc:'Replay Coppa Italia' },
-    'COMO U17':                            { kind:'comoyt', desc:'Partite Como U17 (settore giovanile)' },
-    'COMO PRIMAVERA':                      { kind:'comoyt', desc:'Partite Como Primavera' },
-    'COMO CUP':                            { kind:'comoyt', desc:'Tornei Como Cup' },
-    'Como 1907 Women | Serie B 2025-2026 | Highlights': { kind:'high',   desc:'Sintesi Como Women Serie B' },
-    'Como 1907 Women | Serie B 2025-2026 | Replay':     { kind:'rights', desc:'Replay Como Women Serie B' },
-    'Serie A | Replay 2025-2026':          { kind:'rights', desc:'Replay integrali partite Como in Serie A' },
-    'Serie A | Highlights 2025-2026':      { kind:'high',   desc:'Sintesi partite Como in Serie A' },
-    'SERIE B FULL MATCHES 2023-24':        { kind:'rights', desc:'Archivio Serie B 2023-24' },
-    'Sport Competitions':                  { kind:'rights', desc:'Contenitore generico competizioni' },
-    'Goleada':                             { kind:'serie',  desc:'Programma a episodi numerati' },
-  };
-
-  const KIND_LABELS = {
-    serie:  '📂 Playlist · serie a episodi',
-    clip:   '📂 Playlist · raccolta clip brevi',
-    doc:    '📂 Playlist · documentario',
-    pre:    '📂 Playlist · pre-show ricorrente',
-    rights: '📂 Playlist · replay integrali (diritti)',
-    high:   '📂 Playlist · highlights/sintesi',
-    comoyt: '📂 Playlist · partite squadre Como',
-  };
-
-  // Split per tipo, ordinati per viewers
   const sortV = (a,b) => (b.viewers||0) - (a.viewers||0);
-  const bestCount = 10;
-  const origs = cats.filter(c => c.type === 'orig').sort(sortV).slice(0, bestCount);
-  const lives = cats.filter(c => c.type === 'live').sort(sortV).slice(0, bestCount);
+  const origs = cats.filter(c => c.type === 'orig').sort(sortV).slice(0, 12);
+  const lives = cats.filter(c => c.type === 'live').sort(sortV).slice(0, 12);
 
-  function getRetentionValue(item) {
-    if (!item) return null;
-    if (item.retention !== undefined && item.retention !== null && item.retention !== '') return item.retention;
-    if (item.retentionPct !== undefined && item.retentionPct !== null && item.retentionPct !== '') return item.retentionPct;
-    return null;
+  function makeHorizChart(canvasId, items, color) {
+    const el = document.getElementById(canvasId);
+    if (!el) return;
+    const existing = Chart.getChart(el);
+    if (existing) existing.destroy();
+    return new Chart(el, {
+      type: 'bar',
+      data: {
+        labels: items.map(c => {
+          const n = c.name.replace(' | ', ' · ');
+          return n.length > 28 ? n.slice(0, 27) + '…' : n;
+        }),
+        datasets: [{ label:'Viewer', data: items.map(c => c.viewers || 0),
+          backgroundColor: color + 'cc', borderColor: color,
+          borderWidth:1, borderRadius:5, barThickness:18 }]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false, indexAxis:'y',
+        plugins: {
+          legend:{display:false},
+          tooltip:{
+            backgroundColor:'#fff', borderColor:'#e5e7eb', borderWidth:1,
+            titleColor:'#0d1a38', bodyColor:'#374151', padding:10,
+            callbacks:{
+              title: it => items[it[0].dataIndex]?.name || it[0].label,
+              label: ctx => ` Viewer: ${ctx.raw.toLocaleString('it-IT')}`,
+              afterLabel: ctx => {
+                const r = items[ctx.dataIndex];
+                const lines = [];
+                if (r.plays)  lines.push(` Views: ${r.plays.toLocaleString('it-IT')}`);
+                if (r.engH != null) lines.push(` Ore eng.: ${typeof r.engH === 'number' ? r.engH.toFixed(0)+'h' : r.engH}`);
+                if (r.viewers && r.plays) lines.push(` Plays/viewer: ${(r.plays/r.viewers).toFixed(1)}x`);
+                return lines;
+              }
+            }
+          }
+        },
+        scales:{
+          x:{grid:{color:'#ece4d8'}, ticks:{color:'#6b7280', font:{size:10}, callback:v => v>=1000?(v/1000).toFixed(0)+'K':v}},
+          y:{grid:{display:false}, ticks:{color:'#374151', font:{size:11}}}
+        }
+      }
+    });
   }
 
-  function getRetentionMarkup(item) {
-    const retention = getRetentionValue(item);
-    if (retention === null) {
-      return `<span><strong style="color:#0d1a38">n/d</strong> retention <span class="vot-mean">CSV retention non caricato</span></span>`;
-    }
-    const num = typeof retention === 'number' ? retention.toFixed(1) : String(retention).replace('%','');
-    return `<span><strong style="color:#0d1a38">${num}%</strong> retention <span class="vot-mean">tenuta del contenuto</span></span>`;
-  }
-
-  function makeRow(c, i, maxV, isOrig) {
-    const pct = maxV > 0 ? (c.viewers / maxV * 100).toFixed(0) : 0;
-    const eps = EPISODE_COUNTS[c.name] || null;
-    const hpv = c.viewers > 0 && c.engH  ? (c.engH  / c.viewers).toFixed(1) : null;
-    const ppv = c.viewers > 0 && c.plays ? (c.plays / c.viewers).toFixed(1) : null;
-    const vpe = eps && c.viewers ? Math.round(c.viewers / eps)  : null;
-    const hpe = eps && c.engH    ? (c.engH   / eps).toFixed(1)  : null;
-
-    // Colori per tipo
-    const col    = isOrig ? '#7c3aed' : '#dc2626';
-    const bg     = isOrig ? '#f5f0fc' : '#fef5f5';
-    const border = isOrig ? '#7c3aed' : '#dc2626';
-
-    // Descrittore playlist (cosa contiene la categoria DMS)
-    const meta = PLAYLIST_KIND[c.name];
-    const kindLabel = meta ? KIND_LABELS[meta.kind] : '📂 Playlist DMS · categoria aggregata';
-    const kindDesc  = meta ? meta.desc : 'Aggregato di più video pubblicati nella categoria';
-
-    // Decision helper tag — basato su posizione + loyalty
-    let tag;
-    if (i === 0)                            tag = { cls:'strong',  label:'✅ Performer forte' };
-    else if (hpv && parseFloat(hpv) >= 2)   tag = { cls:'gem',     label:'💎 Hidden gem' };
-    else if (ppv && parseFloat(ppv) >= 3)   tag = { cls:'gem',     label:'💎 Hidden gem' };
-    else if (i <= 2)                        tag = { cls:'growing', label:'📈 In crescita' };
-    else if (i <= 5)                        tag = { cls:'stable',  label:'⚖️ Stabile' };
-    else                                    tag = { cls:'watch',   label:'⚠ Da monitorare' };
-
-    const epTag = eps ? `<span class="vod-ep-badge">${eps} ep.</span>` : '';
-
-    // Stats con inline meaning
-    const stats = [];
-    if (c.engH) stats.push(`<span><strong style="color:#059669">${c.engH}h</strong> eng. <span class="vot-mean">tempo totale</span></span>`);
-    stats.push(getRetentionMarkup(c));
-    if (vpe)    stats.push(`<span><strong style="color:#7c3aed">${vpe}</strong> v/ep <span class="vot-mean">audience per puntata</span></span>`);
-    if (hpe)    stats.push(`<span><strong style="color:#059669">${hpe}h</strong>/ep <span class="vot-mean">profondità per puntata</span></span>`);
-
-    return `<div class="vod-row" style="background:${bg};border-left:4px solid ${border}">
-      <div class="vod-row-rank" style="color:${col}">${i+1}</div>
-      <div class="vod-row-body">
-        <div class="vod-row-head">
-          <span class="vod-row-title">${c.name}</span>
-          ${epTag}
-          <span class="vod-dtag ${tag.cls}">${tag.label}</span>
-        </div>
-        <div style="font-size:10.5px;color:#6b7280;margin:2px 0 6px;line-height:1.4">
-          <span style="font-weight:600;color:#0d1a38">${kindLabel}</span>
-          <span style="margin:0 4px;color:#d1d5db">·</span>
-          <span>${kindDesc}</span>
-        </div>
-        <div class="vod-row-stats">${stats.join('')}</div>
-        <div class="vod-row-bar">
-          <div class="barwrap"><div class="barfill" style="width:${pct}%;background:${col}"></div></div>
-          <div class="barpct" title="Audience di questa categoria rispetto alla più vista nella stessa colonna nel periodo">${pct}% del leader</div>
-        </div>
-      </div>
-    </div>`;
-  }
-
-  const intro = '';
-
-  const colOrig = `
-    <div>
-      <div class="vod-toplist-col-head" style="color:#6d28d9">
-        🎬 Originals
-        <span class="sub">— format, interviste, documentari, pre-show</span>
-      </div>
-      <div id="vodOrigSlide"></div>
-    </div>`;
-
-  const colLive = `
-    <div>
-      <div class="vod-toplist-col-head" style="color:#b91c1c">
-        🎥 Live-related
-        <span class="sub">— replay, highlights, partite squadre Como</span>
-      </div>
-      <div id="vodLiveRelSlide"></div>
-    </div>`;
-
-  el.innerHTML = intro + `<div class="vod-toplist-grid">${colOrig}${colLive}</div>`;
-
-  // Render slideshow asset-level
-  renderOrigSlideshow(_vodActivePeriod, origs);
-  renderLiveRelSlideshow(_vodActivePeriod, lives);
+  _vodOrigChart    = makeHorizChart('vodOrigChart',    origs, '#7c3aed');
+  _vodLiveRelChart = makeHorizChart('vodLiveRelChart', lives, '#dc2626');
 }
 
 // ── ORIG SLIDESHOW — singoli contenuti Originals (top 30, paginato 3) ──
