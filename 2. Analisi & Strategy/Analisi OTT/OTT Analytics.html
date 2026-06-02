@@ -986,11 +986,35 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
     <!-- ── IMPACT BOTTOM: Mix chart (full width) ── -->
     <div class="impact-bottom">
 
-      <!-- Mix VOD — full width -->
-      <div class="impact-card" style="--ac:#7c3aed;grid-column:1/-1">
-        <div class="ic-label-it">Mix VOD · Originals vs Live-related <span class="dms-src" title="DMS → VOD → Category Rank · imposta il periodo → Export CSV">VOD → Category Rank</span></div>
-        <div style="position:relative;height:210px;margin-top:12px">
-          <canvas id="vodMixImpactChart"></canvas>
+      <!-- Mix VOD — full width, donut split ──────────────────────── -->
+      <div class="impact-card" style="--ac:#7c3aed;grid-column:1/-1;padding:20px 24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div class="ic-label-it" style="font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:#9ca3af;font-weight:600">Mix VOD · Originals vs Live-related</div>
+          <span class="dms-src" title="DMS → VOD → Category Rank">VOD → Category Rank</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:center">
+          <!-- Donut viewers -->
+          <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+            <div style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.3px">Viewer Unici</div>
+            <div style="position:relative;height:140px;width:140px">
+              <canvas id="vodMixDonutViewers"></canvas>
+            </div>
+            <div style="display:flex;gap:16px;font-size:10px;color:#374151">
+              <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#7c3aed;margin-right:4px"></span>Originals <strong id="vodMixOrigViewersPct">—</strong></span>
+              <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626;margin-right:4px"></span>Live-rel. <strong id="vodMixLiveViewersPct">—</strong></span>
+            </div>
+          </div>
+          <!-- Donut ore engagement -->
+          <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+            <div style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.3px">Ore Engagement</div>
+            <div style="position:relative;height:140px;width:140px">
+              <canvas id="vodMixDonutHours"></canvas>
+            </div>
+            <div style="display:flex;gap:16px;font-size:10px;color:#374151">
+              <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#7c3aed;margin-right:4px"></span>Originals <strong id="vodMixOrigHoursPct">—</strong></span>
+              <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626;margin-right:4px"></span>Live-rel. <strong id="vodMixLiveHoursPct">—</strong></span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1068,7 +1092,7 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
           <div class="sec-line"></div>
         </div>
         <div class="card">
-          <div class="chart-h" style="height:460px"><canvas id="vodOrigAssetsChart"></canvas></div>
+          <div id="origAssetsWrap" style="height:820px"><canvas id="vodOrigAssetsChart"></canvas></div>
         </div>
       </div>
       <div>
@@ -1080,7 +1104,7 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
           <div class="sec-line"></div>
         </div>
         <div class="card">
-          <div class="chart-h" style="height:460px"><canvas id="vodLiveRelAssetsChart"></canvas></div>
+          <div id="liveRelAssetsWrap" style="height:820px"><canvas id="vodLiveRelAssetsChart"></canvas></div>
         </div>
       </div>
     </div>
@@ -2173,13 +2197,12 @@ function renderVodRetentionBlock(period) {
 
 // ── MIX IMPACT CHART — grouped bar Originals vs Live-related (Viewer, Play, Ore) ─
 function renderVodMixImpactChart(cats, engMap) {
-  const el = document.getElementById('vodMixImpactChart');
-  if (!el || !cats || !cats.length) return;
+  if (!cats || !cats.length) return;
 
-  let origViewers = 0, liveViewers = 0, origPlays = 0, livePlays = 0;
+  let origViewers = 0, liveViewers = 0;
   cats.forEach(c => {
-    if (c.type === 'orig') { origViewers += (c.viewers || 0); origPlays += (c.plays || 0); }
-    else                   { liveViewers += (c.viewers || 0); livePlays += (c.plays || 0); }
+    if (c.type === 'orig') origViewers += (c.viewers || 0);
+    else                   liveViewers += (c.viewers || 0);
   });
 
   const hoursByName = new Map();
@@ -2197,73 +2220,59 @@ function renderVodMixImpactChart(cats, engMap) {
     else                   liveHours += (c.engH || 0);
   });
 
-  const existing = Chart.getChart(el);
-  if (existing) existing.destroy();
+  const pct = (a, b) => a + b > 0 ? Math.round(a / (a + b) * 100) : 0;
+  const fmt = v => v >= 1000 ? (v/1000).toFixed(1)+'K' : v.toLocaleString('it-IT');
 
-  _vodMixImpactChart = new Chart(el, {
-    type: 'bar',
-    data: {
-      labels: ['Viewer unici', 'Play totali', 'Ore engagement'],
-      datasets: [
-        {
-          label: '🎬 Originals',
-          data: [origViewers, origPlays, Math.round(origHours)],
-          backgroundColor: '#7c3aed99',
-          borderColor: '#7c3aed',
-          borderWidth: 1,
-          borderRadius: 4,
-          barThickness: 16,
-        },
-        {
-          label: '🎥 Live-rel.',
-          data: [liveViewers, livePlays, Math.round(liveHours)],
-          backgroundColor: '#dc262699',
-          borderColor: '#dc2626',
-          borderWidth: 1,
-          borderRadius: 4,
-          barThickness: 16,
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      indexAxis: 'y',
-      plugins: {
-        legend: {
-          display: true,
-          position: 'top',
-          labels: { color: '#374151', font: { size: 10 }, boxWidth: 10, padding: 8 }
-        },
-        tooltip: {
-          backgroundColor: '#fff',
-          borderColor: '#e5e7eb',
-          borderWidth: 1,
-          titleColor: '#0d1a38',
-          bodyColor: '#374151',
-          padding: 10,
-          callbacks: {
-            label: ctx => {
-              const v = ctx.raw;
-              const fmt = v >= 1000 ? (v / 1000).toFixed(1) + 'K' : v.toLocaleString('it-IT');
-              return ` ${ctx.dataset.label}: ${fmt}`;
+  const set = (id, txt) => { const e = document.getElementById(id); if (e) e.textContent = txt; };
+  set('vodMixOrigViewersPct', pct(origViewers, liveViewers) + '%');
+  set('vodMixLiveViewersPct', pct(liveViewers, origViewers) + '%');
+  set('vodMixOrigHoursPct',   pct(origHours, liveHours) + '%');
+  set('vodMixLiveHoursPct',   pct(liveHours, origHours) + '%');
+
+  const makeDonut = (canvasId, origVal, liveVal) => {
+    const el = document.getElementById(canvasId);
+    if (!el) return;
+    const existing = Chart.getChart(el);
+    if (existing) existing.destroy();
+    new Chart(el, {
+      type: 'doughnut',
+      data: {
+        labels: ['Originals', 'Live-related'],
+        datasets: [{
+          data: [Math.round(origVal), Math.round(liveVal)],
+          backgroundColor: ['#7c3aedcc', '#dc2626cc'],
+          borderColor: ['#7c3aed', '#dc2626'],
+          borderWidth: 2,
+          hoverOffset: 6,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '68%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#fff',
+            borderColor: '#e5e7eb',
+            borderWidth: 1,
+            titleColor: '#0d1a38',
+            bodyColor: '#374151',
+            padding: 10,
+            callbacks: {
+              label: ctx => ` ${ctx.label}: ${fmt(ctx.raw)} (${pct(ctx.raw, ctx.dataset.data.reduce((a,b)=>a+b,0) - ctx.raw)}%)`
             }
           }
         }
-      },
-      scales: {
-        x: {
-          grid: { color: '#ece4d8' },
-          ticks: { color: '#6b7280', font: { size: 10 }, callback: v => v >= 1000 ? (v / 1000).toFixed(0) + 'K' : v }
-        },
-        y: {
-          grid: { display: false },
-          ticks: { color: '#374151', font: { size: 10 } }
-        }
       }
-    }
-  });
+    });
+  };
+
+  makeDonut('vodMixDonutViewers', origViewers, liveViewers);
+  makeDonut('vodMixDonutHours',   origHours,   liveHours);
+  if (_vodMixImpactChart) { try { _vodMixImpactChart.destroy(); } catch(e){} _vodMixImpactChart = null; }
 }
+
 
 // ── VOD ASSET CHARTS — Top 15 singoli contenuti Originals + Live-related ─
 function renderVodAssetCharts(period) {
@@ -2289,8 +2298,8 @@ function renderVodAssetCharts(period) {
           backgroundColor: color + 'bb',
           borderColor: color,
           borderWidth: 1,
-          borderRadius: 5,
-          barThickness: 18,
+          borderRadius: 4,
+          barThickness: 14,
         }]
       },
       options: {
@@ -2328,7 +2337,7 @@ function renderVodAssetCharts(period) {
             ticks: { color: '#6b7280', font: { size: 10 }, callback: v => v >= 1000 ? (v/1000).toFixed(0)+'K' : v }
           },
           y: {
-            afterFit: scale => { scale.width = Math.max(scale.width, 200); },
+            afterFit: scale => { scale.width = Math.max(scale.width, 260); },
             grid: { display: false },
             ticks: { color: '#374151', font: { size: 10 }, maxRotation: 0 }
           }
