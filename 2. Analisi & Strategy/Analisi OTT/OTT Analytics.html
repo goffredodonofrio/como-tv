@@ -2663,7 +2663,20 @@ function renderLiveSection(data) {
   const noData = !!data._noData;
   let sm;
   if (!noData) {
-    sm = liveSummary[period] || liveSummary['anno2026'];
+    sm = liveSummary[period];
+    if (!sm) {
+      // Calcola top evento dal dato live grezzo del periodo
+      const pData = liveDataByPeriod[period];
+      const evts  = pData && pData.events ? [...pData.events].sort((a,b) => (b.viewers||0)-(a.viewers||0)) : [];
+      const top   = evts[0];
+      sm = {
+        viewers:      pData ? String(pData.viewersTotal || '—') : '—',
+        viewersNote:  pData ? `${pData.eventCount || 0} eventi · ${pData.compCount || 0} comp` : '—',
+        views:        '—', hours: '—', completion: '—',
+        topName:      top ? top.name : null,
+        newUsers:     '—', newUsersNote: '—',
+      };
+    }
   } else {
     // Nessun dato live events per questo mese — usa Play Statistics da vodDataByPeriod
     const vd = (typeof vodDataByPeriod !== 'undefined') ? vodDataByPeriod[period] : null;
