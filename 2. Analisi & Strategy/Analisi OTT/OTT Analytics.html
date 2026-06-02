@@ -2368,6 +2368,7 @@ function renderPlaylistRetention(period) {
   const cats = (vodPeriod && vodPeriod.cats) ? vodPeriod.cats : [];
   const assetsPeriod = vodAssetsByPeriod[period] || {};
   const origAssets = assetsPeriod.originals || [];
+  const fallbackOrigAssets = (vodAssetsByPeriod['stagione2526'] || vodAssetsByPeriod['anno2026'] || {}).originals || [];
 
   const serialRows = PLAYLIST_EPISODIC.map(meta => {
     const aliases = meta.names || [meta.label];
@@ -2376,9 +2377,10 @@ function renderPlaylistRetention(period) {
     const cat            = catFromPeriod || catFallback;
     const episodes = Math.max(meta.episodes || 1, 1);
     const playlistAssets = origAssets.filter(a => aliases.includes(a.parent) || a.parent === meta.label);
-    const assetViewers = playlistAssets.reduce((s,a) => s + (+a.viewers || 0), 0);
-    const assetPlays   = playlistAssets.reduce((s,a) => s + (+a.plays   || 0), 0);
-    const assetEngH    = playlistAssets.reduce((s,a) => s + parseHourTextToHours(a.engH || 0), 0);
+    const fallbackAssets = playlistAssets.length === 0 ? fallbackOrigAssets.filter(a => aliases.includes(a.parent) || a.parent === meta.label) : [];
+    const assetViewers = playlistAssets.reduce((s,a) => s + (+a.viewers || 0), 0) || fallbackAssets.reduce((s,a) => s + (+a.viewers || 0), 0);
+    const assetPlays   = playlistAssets.reduce((s,a) => s + (+a.plays   || 0), 0) || fallbackAssets.reduce((s,a) => s + (+a.plays   || 0), 0);
+    const assetEngH    = playlistAssets.reduce((s,a) => s + parseHourTextToHours(a.engH || 0), 0) || fallbackAssets.reduce((s,a) => s + parseHourTextToHours(a.engH || 0), 0);
     const useFallback = !catFromPeriod && assetViewers === 0;
     const viewers = catFromPeriod?.viewers || assetViewers || (useFallback ? catFallback?.viewers : 0) || 0;
     const plays   = catFromPeriod?.plays   || assetPlays   || (useFallback ? catFallback?.plays   : 0) || 0;
@@ -2392,7 +2394,10 @@ function renderPlaylistRetention(period) {
   const sorted = serialRows.slice().sort((a,b) => b.viewers - a.viewers);
   const labels  = sorted.map(r => r.label);
   const viewers = sorted.map(r => r.viewers);
-  const ppvs    = sorted.map(r => r.ppv);
+  // loyalty: usa ppv (plays/viewer) se disponibile, altrimenti hpv (ore/viewer) come proxy
+  const loyaltyVals  = sorted.map(r => r.ppv > 0 ? r.ppv : r.hpv);
+  const loyaltyLabel = sorted.map(r => r.ppv > 0 ? 'plays/viewer' : 'ore/viewer');
+  const ppvs    = loyaltyVals;
   const colors  = sorted.map(r => (PLAYLIST_COLORS[r.label] || {accent:'#6d28d9'}).accent);
 
   // ── Chart 1: Reach (viewer unici) ───────────────────
@@ -2458,7 +2463,11 @@ function renderPlaylistRetention(period) {
             titleColor:'#0d1a38', bodyColor:'#374151', padding:10,
             callbacks:{
               title: it => sorted[it[0].dataIndex]?.label || it[0].label,
-              label: ctx => ` Loyalty: ${ctx.raw.toFixed(1)}× plays/viewer`,
+              label: ctx => {
+                const lbl = loyaltyLabel[ctx.dataIndex];
+                const sym = lbl === 'ore/viewer' ? 'h/v (proxy)' : '× plays/viewer';
+                return ` Loyalty: ${ctx.raw.toFixed(2)} ${sym}`;
+              },
               afterLabel: ctx => {
                 const r = sorted[ctx.dataIndex];
                 const lines = [];
