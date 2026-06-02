@@ -2391,14 +2391,19 @@ function renderPlaylistRetention(period) {
     return { ...meta, cat, viewers, plays, engH, ppv, hpv, surfacedEpisodes };
   }).filter(row => row.cat || row.surfacedEpisodes > 0 || row.viewers > 0 || row.plays > 0 || row.engH > 0);
 
-  const sorted = serialRows.slice().sort((a,b) => b.viewers - a.viewers);
-  const labels  = sorted.map(r => r.label);
-  const viewers = sorted.map(r => r.viewers);
-  // loyalty: usa ppv (plays/viewer) se disponibile, altrimenti hpv (ore/viewer) come proxy
-  const loyaltyVals  = sorted.map(r => r.ppv > 0 ? r.ppv : r.hpv);
-  const loyaltyLabel = sorted.map(r => r.ppv > 0 ? 'plays/viewer' : 'ore/viewer');
-  const ppvs    = loyaltyVals;
-  const colors  = sorted.map(r => (PLAYLIST_COLORS[r.label] || {accent:'#6d28d9'}).accent);
+  const sorted        = serialRows.slice().sort((a,b) => b.viewers - a.viewers);
+  const sortedLoyalty = serialRows.slice().sort((a,b) => {
+    const va = a.ppv > 0 ? a.ppv : a.hpv;
+    const vb = b.ppv > 0 ? b.ppv : b.hpv;
+    return vb - va;
+  });
+  const labels        = sorted.map(r => r.label);
+  const viewers       = sorted.map(r => r.viewers);
+  const loyaltyVals   = sortedLoyalty.map(r => r.ppv > 0 ? r.ppv : r.hpv);
+  const loyaltyLabel  = sortedLoyalty.map(r => r.ppv > 0 ? 'plays/viewer' : 'ore/viewer');
+  const ppvs          = loyaltyVals;
+  const colors        = sorted.map(r => (PLAYLIST_COLORS[r.label] || {accent:'#6d28d9'}).accent);
+  const loyaltyColors = sortedLoyalty.map(r => (PLAYLIST_COLORS[r.label] || {accent:'#6d28d9'}).accent);
 
   // ── Chart 1: Reach (viewer unici) ───────────────────
   if (serialEl) {
