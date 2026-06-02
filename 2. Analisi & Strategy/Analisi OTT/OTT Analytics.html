@@ -804,18 +804,12 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
         <div class="ic-note" id="lv-total-users-note">Base cumulativa registrati · aggiornato 2 Jun 2026</div>
       </div>
 
-      <!-- 2. Nuovi utenti questo mese -->
-      <div class="impact-card" style="--ac:#0d6650">
-        <div class="ic-label-it">Nuovi Utenti questo mese <span class="dms-src" title="DMS → Dashboard → User Overview · New Users">Dashboard → New Users</span></div>
-        <div class="ic-val" id="lv-new-users">—</div>
-        <div class="ic-note" id="lv-new-users-note">Nuovi iscritti nel periodo selezionato</div>
-      </div>
-
-      <!-- 3. Viewer per evento — bar mensile -->
+      <!-- 2. Viewer per evento — bar mensile -->
       <div class="impact-card" style="--ac:#1a4a9a">
         <div class="ic-label-it">Viewer per Evento <span class="dms-src" title="DMS → Analytics → Play Statistics → Live Events · Unique Viewers">Live → Play Stats</span></div>
         <div class="ic-val" id="lv-viewers">77.3K</div>
-        <div class="ic-note" id="lv-viewers-note">Somma non deduplicata · gen–mag 2026</div>
+        <div class="ic-note" id="lv-viewers-note">Somma non deduplicata</div>
+        <div style="font-size:10px;color:#6b7280;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="lv-top-name">Top evento: —</div>
         <div class="ic-chart-wrap"><canvas id="sparkViewers"></canvas></div>
       </div>
 
@@ -1669,7 +1663,7 @@ const liveInvestmentLens = {
 };
 
 const LIVE_EVENTS_PER_PAGE = 4;
-const _liveEventsSlidePage = { 'anno2026':0, '2026-01':0, '2026-02':0, '2026-03':0, '2026-04':0, '2026-05':0 };
+const _liveEventsSlidePage = { 'stagione2526':0, '2025-07':0, '2025-08':0, '2025-09':0, '2025-10':0, '2025-11':0, '2025-12':0, '2026-01':0, '2026-02':0, '2026-03':0, '2026-04':0, '2026-05':0 };
 
 const retentionSummary = {
   live: {
@@ -1957,7 +1951,7 @@ function fmtHoursCompact(n) {
   return `${Math.round(n)}h`;
 }
 
-function renderLiveInvestmentLens(period = 'anno2026') {
+function renderLiveInvestmentLens(period = 'stagione2526') {
   const intro = document.getElementById('investIntro');
   const groups = document.getElementById('investGroups');
   const chartEl = document.getElementById('investChart');
@@ -1982,7 +1976,7 @@ function renderLiveInvestmentLens(period = 'anno2026') {
   const tailLeader = tailRows.length ? tailRows.slice().sort((a,b) => b.tailShare - a.tailShare)[0] : null;
   const balancedLeader = _leaderRows.slice().sort((a,b) => ((b.combinedViewers/1000) + b.avgLiveViewers + ((typeof b.tailShare === 'number' ? b.tailShare : 0)*12)) - ((a.combinedViewers/1000) + a.avgLiveViewers + ((typeof a.tailShare === 'number' ? a.tailShare : 0)*12)))[0];
   const periodLabel = period === '2026-04' ? 'mese chiuso'
-    : period === 'anno2026' ? 'anno in corso'
+    : period === 'stagione2526' ? 'anno in corso'
     : (period && period.indexOf('2026-') === 0) ? 'mese selezionato' : 'anno in corso';
   const _lensNote = `<div style="background:#eef4ff;border-left:3px solid #2563eb;padding:8px 12px;margin-bottom:10px;border-radius:5px;font-size:12px;color:#1e3a8a;line-height:1.5"><strong>ℹ️ Lettura combinata LIVE + coda VOD.</strong> «Viewer sum», «Play combinati» e «Ore totali» sommano diretta + replay + highlights; «Coda VOD» è la quota di engagement che arriva dopo la diretta. Le competizioni non presenti nel Category Rank caricato mostrano coda «non riconosciuta» (n/a): la categoria replay/HL può esistere ma è sotto la soglia dell'export VOD attuale. «Serie A» e «Coppa Italia» sono righe VOD-only: replay/HL senza diretta OTT.</div>`;
   const familyOrder = ['league','cup','eventOwned'];
@@ -2106,7 +2100,7 @@ function renderVodRetentionBlock(period) {
   if (_vodRetentionCurveChart) { _vodRetentionCurveChart.destroy(); _vodRetentionCurveChart = null; }
 
   const PERIOD_LABELS = {
-    'anno2026': 'Anno 2026 (YTD)',
+    'stagione2526': 'Stagione 25-26',
     '2026-04':  'Aprile 2026',
     '2026-01':  'Gennaio 2026',
     '2026-02':  'Febbraio 2026',
@@ -2375,7 +2369,7 @@ function renderPlaylistRetention(period) {
     const assetViewers = playlistAssets.reduce((s,a) => s + (+a.viewers || 0), 0);
     const assetPlays   = playlistAssets.reduce((s,a) => s + (+a.plays   || 0), 0);
     const assetEngH    = playlistAssets.reduce((s,a) => s + parseHourTextToHours(a.engH || 0), 0);
-    const useFallback = period === 'anno2026';
+    const useFallback = period === 'stagione2526';
     const viewers = catFromPeriod?.viewers || assetViewers || (useFallback ? catFallback?.viewers : 0) || 0;
     const plays   = catFromPeriod?.plays   || assetPlays   || (useFallback ? catFallback?.plays   : 0) || 0;
     const engH    = parseHourTextToHours(catFromPeriod?.engH || 0) || assetEngH || (useFallback ? parseHourTextToHours(catFallback?.engH || 0) : 0) || 0;
@@ -2476,7 +2470,7 @@ function renderPlaylistRetention(period) {
 
 function renderMicroSparkCharts(period) {
   const m = vodMetricsMonthly;
-  const idx = m.periods.indexOf(period); // -1 per anno2026
+  const idx = m.periods.indexOf(period); // -1 per stagione2526
 
   Object.values(_microSparkCharts).forEach(c => { try { c.destroy(); } catch(e){} });
   _microSparkCharts = {};
@@ -2490,12 +2484,15 @@ function renderMicroSparkCharts(period) {
     plugins: {
       legend: { display: false },
       tooltip: { callbacks: {
-        title: (items) => m.labels[items[0].dataIndex] + ' 2026',
+        title: (items) => {
+          const p = m.periods[items[0].dataIndex];
+          return p ? (m.labels[items[0].dataIndex] + ' ' + p.slice(0,4)) : m.labels[items[0].dataIndex];
+        },
         label: (ctx) => ttFmt(ctx.raw)
       }}
     },
     scales: {
-      x: { grid:{display:false}, ticks:{color:'#b0b7c3', font:{size:8}, maxRotation:0} },
+      x: { grid:{display:false}, ticks:{color:'#b0b7c3', font:{size:8}, maxRotation:35, autoSkip:false} },
       y: { display:false, beginAtZero:true }
     }
   });
@@ -2518,7 +2515,7 @@ function renderMicroSparkCharts(period) {
 
 function renderLiveSparkCharts(period) {
   const m = liveMetricsMonthly;
-  const idx = m.periods.indexOf(period); // -1 per anno2026 (nessun mese evidenziato)
+  const idx = m.periods.indexOf(period); // -1 per stagione2526 (nessun mese evidenziato)
 
   // Distruggi tutti i chart precedenti
   Object.values(_liveSparkCharts).forEach(c => { try { c.destroy(); } catch(e){} });
@@ -2537,12 +2534,15 @@ function renderLiveSparkCharts(period) {
     plugins: {
       legend: { display: false },
       tooltip: { callbacks: {
-        title: (items) => m.labels[items[0].dataIndex] + ' 2026',
+        title: (items) => {
+          const p = m.periods[items[0].dataIndex];
+          return p ? (m.labels[items[0].dataIndex] + ' ' + p.slice(0,4)) : m.labels[items[0].dataIndex];
+        },
         label: (ctx) => ttFmt(ctx.raw)
       }}
     },
     scales: {
-      x: { grid:{ display:false }, ticks:{ color:'#b0b7c3', font:{ size:9 }, maxRotation:0 } },
+      x: { grid:{ display:false }, ticks:{ color:'#b0b7c3', font:{ size:8 }, maxRotation:35, autoSkip:false } },
       y: { display: false, beginAtZero: true }
     }
   });
@@ -2566,7 +2566,7 @@ function renderLiveSparkCharts(period) {
 
 }
 
-function renderRetentionPanels(period = 'anno2026') {
+function renderRetentionPanels(period = 'stagione2526') {
   const liveActive = retentionSummary.live.active;
   const fresh = (typeof newUserRetention !== 'undefined')
     ? (newUserRetention[period] || newUserRetention['anno2026'])
@@ -2576,14 +2576,14 @@ function renderRetentionPanels(period = 'anno2026') {
 
   // ── Badge e subtitle per il periodo selezionato
   const PERIOD_LABELS_RET = {
-    'anno2026': { sub: 'Anno 2026 · cohort retention su nuovi iscritti per periodo', badge: 'gen–mag' },
+    'stagione2526': { sub: 'Stagione 25-26 · cohort retention su nuovi iscritti per periodo', badge: 'lug–mag' },
     '2026-01':  { sub: 'Gennaio 2026 · cohort retention nuovi utenti', badge: 'gen 2026' },
     '2026-02':  { sub: 'Febbraio 2026 · cohort retention nuovi utenti', badge: 'feb 2026' },
     '2026-03':  { sub: 'Marzo 2026 · cohort retention nuovi utenti', badge: 'mar 2026' },
     '2026-04':  { sub: 'Aprile 2026 · cohort retention nuovi utenti', badge: 'apr 2026' },
     '2026-05':  { sub: 'Maggio 2026 · cohort retention nuovi utenti (1–22 mag)', badge: 'mag 2026' },
   };
-  const retLabel = PERIOD_LABELS_RET[period] || PERIOD_LABELS_RET['anno2026'];
+  const retLabel = PERIOD_LABELS_RET[period] || PERIOD_LABELS_RET['stagione2526'];
   if (el('liveRetentionSub'))   el('liveRetentionSub').textContent   = retLabel.sub;
   if (el('liveRetentionBadge')) el('liveRetentionBadge').textContent = retLabel.badge;
 
@@ -2643,7 +2643,7 @@ function renderRetentionPanels(period = 'anno2026') {
 function renderLiveSection(data) {
   const comps  = data.comps  || [];
   const events = data.events || [];
-  const period = data._period || 'anno2026';
+  const period = data._period || 'stagione2526';
 
   // ── 1. Hero cards — PRIMA di tutto il resto (evita che crash successivi blocchino l'update)
   const noData = !!data._noData;
@@ -2670,6 +2670,7 @@ function renderLiveSection(data) {
   const el = id => document.getElementById(id);
   if (el('lv-viewers'))        el('lv-viewers').textContent        = sm.viewers;
   if (el('lv-viewers-note'))   el('lv-viewers-note').textContent   = sm.viewersNote;
+  if (el('lv-top-name'))       el('lv-top-name').textContent       = sm.topName ? '🏆 ' + sm.topName : 'Top evento: —';
   if (el('lv-views'))          el('lv-views').textContent          = sm.views;
   if (el('lv-hours'))          el('lv-hours').textContent          = sm.hours;
   if (el('lv-completion'))     el('lv-completion').textContent     = sm.completion || '—';
@@ -2733,10 +2734,10 @@ function renderLiveSection(data) {
   if (el('lv-new-users-note')) el('lv-new-users-note').textContent = sm.newUsersNote || '—';
 
   // ── 2. Sparkline charts nelle impact card
-  try { renderLiveSparkCharts(period || 'anno2026'); } catch(e) { console.warn('renderLiveSparkCharts error:', e); }
+  try { renderLiveSparkCharts(period || 'stagione2526'); } catch(e) { console.warn('renderLiveSparkCharts error:', e); }
 
   // ── 3. Retention panels e investment lens
-  renderRetentionPanels(period || 'anno2026');
+  renderRetentionPanels(period || 'stagione2526');
   try { renderLiveInvestmentLens(period); } catch(e) { console.warn('renderLiveInvestmentLens error:', e); }
 
   const compChartEl = document.getElementById('compChart');
@@ -3184,7 +3185,7 @@ function renderVODSection(period) {
   const noticeT = el('vodPeriodNoticeText');
   const scopeBadge = el('vodScopeBadge');
   // ── 1. Scope badge — aggiornato subito
-  if (scopeBadge) scopeBadge.textContent = VOD_SCOPE_BADGES[period] || VOD_SCOPE_BADGES['anno2026'];
+  if (scopeBadge) scopeBadge.textContent = VOD_SCOPE_BADGES[period] || VOD_SCOPE_BADGES['stagione2526'];
 
   // ── 2. Hero metrics VOD — aggiornati PRIMA di tutto il resto
   if (d) {
@@ -3199,7 +3200,7 @@ function renderVODSection(period) {
 
   // ── 3. Retention e playlist (wrapped: errori qui non bloccano il resto)
   try { renderVodRetentionBlock(period); } catch(e) { console.warn('renderVodRetentionBlock error:', e); }
-  try { renderRetentionPanels(period || 'anno2026'); } catch(e) { console.warn('renderRetentionPanels error:', e); }
+  try { renderRetentionPanels(period || 'stagione2526'); } catch(e) { console.warn('renderRetentionPanels error:', e); }
   try { renderPlaylistRetention(period); } catch(e) { console.warn('renderPlaylistRetention error:', e); }
   try { renderVodAssetCharts(period); } catch(e) { console.warn('renderVodAssetCharts error:', e); }
 
@@ -3215,7 +3216,7 @@ function renderVODSection(period) {
       notice.style.background = '#f0faf4';
       notice.style.borderLeftColor = '#059669';
       if (noticeT) noticeT.innerHTML = `✅ <strong>VOD Aprile 2026 — dati Play Statistics DMS.</strong> KPI, mix e playlist allineati al periodo attivo.`;
-    } else if (period === 'anno2026') {
+    } else if (period === 'stagione2526') {
       notice.style.display = 'block';
       notice.style.background = '#f0f4ff';
       notice.style.borderLeftColor = '#6366f1';
@@ -3235,9 +3236,9 @@ function renderVODSection(period) {
     if (fallback && fallback.cats) { vodCats = fallback.cats; renderVodCatChart(); }
     if (fallback && fallback.eng)  { engCats = fallback.eng; }
     renderVODTopList(vodCats);
-    renderOrigTop('anno2026');
-    renderLiveRelTop('anno2026');
-    renderOrigTable('anno2026');
+    renderOrigTop('stagione2526');
+    renderLiveRelTop('stagione2526');
+    renderOrigTable('stagione2526');
     return;
   }
 
@@ -3280,9 +3281,9 @@ const EPISODE_COUNTS = {
 // perché replay/highlights sono troppo numerosi e ha più senso aggregato.
 const ASSETS_PER_PAGE = 3;
 const ASSETS_TOTAL    = 30;
-const _origSlidePage    = { 'anno2026':0, '2026-01':0, '2026-02':0, '2026-03':0, '2026-04':0, '2026-05':0 };
-const _liveRelSlidePage = { 'anno2026':0, '2026-01':0, '2026-02':0, '2026-03':0, '2026-04':0, '2026-05':0 };
-let   _vodActivePeriod = 'anno2026';
+const _origSlidePage    = { 'stagione2526':0, '2025-07':0, '2025-08':0, '2025-09':0, '2025-10':0, '2025-11':0, '2025-12':0, '2026-01':0, '2026-02':0, '2026-03':0, '2026-04':0, '2026-05':0 };
+const _liveRelSlidePage = { 'stagione2526':0, '2025-07':0, '2025-08':0, '2025-09':0, '2025-10':0, '2025-11':0, '2025-12':0, '2026-01':0, '2026-02':0, '2026-03':0, '2026-04':0, '2026-05':0 };
+let   _vodActivePeriod = 'stagione2526';
 
 const vodAssetsByPeriod = {
   'stagione2526': {
@@ -3729,7 +3730,7 @@ vodAssetsByPeriod['2026-04']    = vodAssetsByPeriod['1m'];
 VOD_SCOPE_BADGES['2026-04']     = VOD_SCOPE_BADGES['1m'];
 vodDataByPeriod['2026-04']      = vodDataByPeriod['1m'];
 
-// Default view: anno2026 (complessivo 2026)
+// Default view: stagione2526
 window._activePeriod = 'stagione2526';
 _activePeriodData = liveDataByPeriod['stagione2526'] || liveDataByPeriod['anno2026'];
 _activePeriodData._period = 'stagione2526';
@@ -3938,9 +3939,9 @@ function renderOrigTable(period) {
 }
 
 // ── Initial render (anno2026) ──────────────────────────────
-renderOrigTop('anno2026');
-renderLiveRelTop('anno2026');
-renderOrigTable('anno2026');
+renderOrigTop('stagione2526');
+renderLiveRelTop('stagione2526');
+renderOrigTable('stagione2526');
 
 // ── REPLAY LIST (by engagement hours)
 const replays = [
@@ -4130,7 +4131,7 @@ let engCats = [
 // Initial render del mix — ora che vodCats e engCats sono entrambi dichiarati
 renderVodCatChart();
 renderEngagementList();
-renderVodAssetCharts('anno2026');
+renderVodAssetCharts('stagione2526');
 
 // ── LIVE / VOD TOGGLE
 function setSec(id) {
@@ -4141,7 +4142,7 @@ function setSec(id) {
   });
   // dataNotice è dentro #section-live → si nasconde automaticamente
   // Re-render the active section when switching tabs
-  const activePeriod = window._activePeriod || 'anno2026';
+  const activePeriod = window._activePeriod || 'stagione2526';
   if (id === 'vod') { renderVODSection(activePeriod); renderVodCatChart(); renderVODTopList(vodCats); }
 }
 
