@@ -812,11 +812,15 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
         <div class="ic-note" id="lv-total-users-note" style="font-size:10px;color:#6b7280;line-height:1.3">—</div>
       </div>
 
-      <!-- 2. Viewer per evento -->
+      <!-- 2. Top evento combinato -->
       <div class="impact-card" style="--ac:#1a4a9a;border-top:3px solid #1a4a9a">
-        <div class="ic-label-it" style="font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:#9ca3af;font-weight:600">Viewer per Evento</div>
-        <div class="ic-val" id="lv-viewers" style="font-size:28px;font-weight:800;color:#1a4a9a;margin:6px 0 4px">—</div>
-        <div class="ic-note" id="lv-top-name" style="font-size:10px;color:#6b7280;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</div>
+        <div class="ic-label-it" style="font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:#9ca3af;font-weight:600">Top Evento del Periodo</div>
+        <div style="display:flex;align-items:baseline;gap:6px;margin:6px 0 2px">
+          <div class="ic-val" id="lv-viewers" style="font-size:28px;font-weight:800;color:#1a4a9a">—</div>
+          <div id="lv-viewers-vod" style="font-size:12px;color:#6b7280;font-weight:600"></div>
+        </div>
+        <div id="lv-top-name" style="font-size:10px;color:#374151;font-weight:600;line-height:1.4;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</div>
+        <div id="lv-top-breakdown" style="font-size:9px;color:#9ca3af;line-height:1.3"></div>
       </div>
 
       <!-- 3. Visualizzazioni -->
@@ -2654,6 +2658,49 @@ function renderRetentionPanels(period = 'stagione2526') {
   // vodRetentionChart rimosso dall'HTML — il confronto statico Stagione vs Aprile lo sostituisce
 }
 
+
+// ── Top evento combinato: live viewers + VOD replay/HL viewers ──────────────
+function computeTopCombinedEvent(period) {
+  const pd   = liveDataByPeriod[period];
+  const vap  = vodAssetsByPeriod[period] || {};
+  const events = (pd && pd.events) ? pd.events : [];
+  const liveRel = vap.liveRelated || [];
+
+  if (!events.length) return null;
+
+  // Normalizza nome per matching (rimuovi prefissi/suffissi comuni)
+  function normName(s) {
+    return s.toLowerCase()
+      .replace(/\s*\|\s*(italian|english)\s+commentary.*/i, '')
+      .replace(/^highlights?\s+/i, '')
+      .replace(/\s*[-–]\s*replay\s*$/i, '')
+      .replace(/\|\s*replay\s*$/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // Pre-calcola VOD assets normalizzati
+  const normAssets = liveRel.map(a => ({ ...a, norm: normName(a.name) }));
+
+  // Per ogni evento live, somma i viewer VOD corrispondenti
+  const combined = events.map(evt => {
+    const evNorm = normName(evt.name);
+    if (evNorm.length < 5) return { ...evt, vodViewers: 0, combined: evt.viewers };
+    let vodV = 0;
+    normAssets.forEach(a => {
+      if (a.norm.length < 5) return;
+      if (evNorm.includes(a.norm) || a.norm.includes(evNorm)) {
+        vodV += (a.viewers || 0);
+      }
+    });
+    return { ...evt, vodViewers: vodV, combined: (evt.viewers || 0) + vodV };
+  });
+
+  // Top per viewer combinati
+  combined.sort((a, b) => b.combined - a.combined);
+  return combined[0] || null;
+}
+
 function renderLiveSection(data) {
   const comps  = data.comps  || [];
   const events = data.events || [];
@@ -2696,7 +2743,21 @@ function renderLiveSection(data) {
   }
   const el = id => document.getElementById(id);
   if (el('lv-viewers'))        el('lv-viewers').textContent        = sm.viewers;
-  if (el('lv-top-name'))       el('lv-top-name').textContent       = sm.topName ? '🏆 ' + sm.topName : 'Top evento: —';
+  // Top evento combinato (live + VOD replay/HL)
+  const topComb = computeTopCombinedEvent(period);
+  if (topComb && topComb.name) {
+    const fmt = n => n >= 1000 ? (n/1000).toFixed(1)+'K' : n.toLocaleString('it-IT');
+    if (el('lv-viewers'))       el('lv-viewers').textContent       = fmt(topComb.combined);
+    if (el('lv-viewers-vod'))   el('lv-viewers-vod').textContent   = topComb.vodViewers > 0 ? `live+VOD` : `live`;
+    if (el('lv-top-name'))      el('lv-top-name').textContent      = '🏆 ' + topComb.name;
+    if (el('lv-top-breakdown')) el('lv-top-breakdown').textContent =
+      topComb.vodViewers > 0
+        ? `${fmt(topComb.viewers)} live · ${fmt(topComb.vodViewers)} replay/HL`
+        : `${fmt(topComb.viewers)} viewer live · nessuna replica`;
+  } else if (sm.topName) {
+    if (el('lv-top-name'))  el('lv-top-name').textContent  = '🏆 ' + sm.topName;
+    if (el('lv-viewers'))   el('lv-viewers').textContent   = sm.viewers || '—';
+  }
   if (el('lv-views'))          el('lv-views').textContent          = sm.views;
   if (el('lv-hours'))          el('lv-hours').textContent          = sm.hours;
   if (el('lv-completion'))     el('lv-completion').textContent     = sm.completion || '—';
