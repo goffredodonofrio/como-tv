@@ -812,12 +812,12 @@ footer { text-align: center; padding: 20px; font-size: 10px; color: #6b7280; bor
         <div class="ic-note" id="lv-total-users-note" style="font-size:10px;color:#6b7280;line-height:1.3">—</div>
       </div>
 
-      <!-- 2. Top evento combinato -->
+      <!-- 2. Top evento — plays totali (live + replay DMS) -->
       <div class="impact-card" style="--ac:#1a4a9a;border-top:3px solid #1a4a9a">
-        <div class="ic-label-it" style="font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:#9ca3af;font-weight:600">Top Evento del Periodo</div>
+        <div class="ic-label-it" style="font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:#9ca3af;font-weight:600">Top Evento · Plays Totali</div>
         <div style="display:flex;align-items:baseline;gap:6px;margin:6px 0 2px">
           <div class="ic-val" id="lv-viewers" style="font-size:28px;font-weight:800;color:#1a4a9a">—</div>
-          <div id="lv-viewers-vod" style="font-size:12px;color:#6b7280;font-weight:600"></div>
+          <div id="lv-viewers-vod" style="font-size:11px;color:#6b7280;font-weight:500">plays</div>
         </div>
         <div id="lv-top-name" style="font-size:10px;color:#374151;font-weight:600;line-height:1.4;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</div>
         <div id="lv-top-breakdown" style="font-size:9px;color:#9ca3af;line-height:1.3"></div>
@@ -2772,16 +2772,19 @@ function renderLiveSection(data) {
   const topComb = computeTopCombinedEvent(period);
   if (topComb && topComb.name) {
     const fmt = n => n >= 1000 ? (n/1000).toFixed(1)+'K' : n.toLocaleString('it-IT');
-    if (el('lv-viewers'))       el('lv-viewers').textContent       = fmt(topComb.combined);
-    if (el('lv-viewers-vod'))   el('lv-viewers-vod').textContent   = topComb.vodViewers > 0 ? `viewer` : `viewer`;
+    // Mostra plays totali (live + replay) come metrica principale — numero più grande e onesto
+    const topPlays = (topComb.views || 0);
+    if (el('lv-viewers'))       el('lv-viewers').textContent       = fmt(topPlays);
+    if (el('lv-viewers-vod'))   el('lv-viewers-vod').textContent   = 'plays';
     if (el('lv-top-name'))      el('lv-top-name').textContent      = '🏆 ' + topComb.name;
     if (el('lv-top-breakdown')) el('lv-top-breakdown').textContent =
       topComb.vodViewers > 0
-        ? `${fmt(topComb.viewers)} live · ${fmt(topComb.vodViewers)} replay/HL`
-        : `${fmt(topComb.viewers)} viewer live · nessuna replica`;
+        ? `${fmt(topComb.viewers)} viewer live · ${fmt(topComb.vodViewers)} viewer VOD`
+        : `${fmt(topComb.viewers)} viewer live · avg ${topComb.avg}\' · ${topComb.cr}% cr`;
   } else if (sm.topName) {
     if (el('lv-top-name'))  el('lv-top-name').textContent  = '🏆 ' + sm.topName;
-    if (el('lv-viewers'))   el('lv-viewers').textContent   = sm.viewers || '—';
+    if (el('lv-viewers'))   el('lv-viewers').textContent   = sm.topViews || sm.viewers || '—';
+    if (el('lv-viewers-vod')) el('lv-viewers-vod').textContent = 'plays';
   }
   if (el('lv-views'))          el('lv-views').textContent          = sm.views;
   if (el('lv-hours'))          el('lv-hours').textContent          = sm.hours;
