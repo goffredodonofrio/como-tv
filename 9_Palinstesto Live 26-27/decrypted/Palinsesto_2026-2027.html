@@ -204,7 +204,7 @@ tr:hover td{background:var(--s2);}
   <div class="hdr-info">
     <div class="hdr-eyebrow">Palinsesto Live</div>
     <div class="hdr-title">VMIX Planner <span>2026–27</span></div>
-    <div class="hdr-sub">996 slot · 15 competizioni · 1.928 partite stagionali</div>
+    <div class="hdr-sub">791 slot · 15 competizioni · 1.225 partite stagionali</div>
   </div>
   <div class="hdr-roles">
     <div class="role-pill role-davide">📡 Davide — VMIX Assignment</div>
@@ -340,21 +340,32 @@ tr:hover td{background:var(--s2);}
 
 <!-- ══ TAB: STAGIONE ══ -->
 <div class="section" id="tab-stagione">
-  <div class="kpi-row" id="season-kpis"></div>
-  <div class="charts-2col">
-    <div class="card">
-      <div class="card-header"><div class="card-title">Partite per mese (stacked per competizione)</div></div>
-      <div class="chart-h320"><canvas id="monthStackChart"></canvas></div>
-    </div>
-    <div class="card">
-      <div class="card-header"><div class="card-title">Distribuzione partite per competizione</div></div>
-      <div class="chart-h320"><canvas id="seasonDonut"></canvas></div>
-    </div>
-  </div>
-  <div class="card" style="margin-top:0;">
-    <div class="card-header"><div class="card-title">Riepilogo mensile completo</div></div>
-    <div class="tbl-wrap"><table id="monthly-tbl"><thead id="monthly-thead"></thead><tbody id="monthly-tbody"></tbody></table></div>
-  </div>
+<div class="kpi-row" id="season-kpis"></div>
+
+<!-- Grafico stacked + legenda -->
+<div class="card" style="margin-top:0;">
+<div class="card-header"><div class="card-title">Partite trasmesse per mese — per competizione</div></div>
+<div class="chart-h320"><canvas id="monthStackChart"></canvas></div>
+<div class="legend-row" id="stack-legend" style="display:flex;flex-wrap:wrap;gap:4px 8px;margin-top:10px;padding:0 4px;"></div>
+</div>
+
+<!-- Riepilogo competizioni + donut -->
+<div class="charts-2col" style="margin-top:20px;">
+<div class="card">
+<div class="card-header"><div class="card-title">Riepilogo per competizione</div></div>
+<div class="tbl-wrap"><table id="comp-summary-tbl"></table></div>
+</div>
+<div class="card">
+<div class="card-header"><div class="card-title">Distribuzione partite</div></div>
+<div class="chart-h320"><canvas id="seasonDonut"></canvas></div>
+</div>
+</div>
+
+<!-- Tabella mensile -->
+<div class="card" style="margin-top:20px;">
+<div class="card-header"><div class="card-title">Dettaglio mensile per competizione</div></div>
+<div class="tbl-wrap"><table id="monthly-tbl"><thead id="monthly-thead"></thead><tbody id="monthly-tbody"></tbody></table></div>
+</div>
 </div>
 
 </div><!-- /main -->
@@ -858,77 +869,153 @@ let monthChartInstance = null;
 let donutChartInstance = null;
 
 function initStagione() {
-  // KPIs
   const totalPartite = EVENTS.reduce((s,e)=>s+e.partite,0);
-  const totalSlots = EVENTS.length;
-  const totalDays = new Set(EVENTS.map(e=>e.date)).size;
-  const maxDay = INTENSE[0];
-  
+  const totalSlots   = EVENTS.length;
+  const totalDays    = new Set(EVENTS.map(e=>e.date)).size;
+  const maxDay       = INTENSE[0];
+  const compsActive  = new Set(EVENTS.map(e=>e.competition)).size;
+
+  // ── KPIs ──
   document.getElementById('season-kpis').innerHTML = `
-    <div class="kpi accent"><div class="kpi-label">Partite stagione</div><div class="kpi-val">${totalPartite.toLocaleString('it')}</div><div class="kpi-sub">VMIX-occupazioni totali</div></div>
-    <div class="kpi"><div class="kpi-label">Slot di trasmissione</div><div class="kpi-val">${totalSlots}</div><div class="kpi-sub">blocchi programmati</div></div>
-    <div class="kpi"><div class="kpi-label">Giornate live</div><div class="kpi-val">${totalDays}</div><div class="kpi-sub">giorni con almeno 1 evento</div></div>
-    <div class="kpi crit"><div class="kpi-label">Giorno più intenso</div><div class="kpi-val" style="color:var(--crit)">${maxDay.vmix}</div><div class="kpi-sub">${fmtDate(maxDay.date)} · ${maxDay.ora}</div></div>
+    <div class="kpi accent">
+      <div class="kpi-label">Partite stagione</div>
+      <div class="kpi-val">${totalPartite.toLocaleString('it')}</div>
+      <div class="kpi-sub">${totalSlots} slot · ${totalDays} giorni live</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Competizioni attive</div>
+      <div class="kpi-val">${compsActive}</div>
+      <div class="kpi-sub">leghe e coppe trasmesse</div>
+    </div>
+    <div class="kpi crit">
+      <div class="kpi-label">Picco VMIX stagionale</div>
+      <div class="kpi-val" style="color:var(--crit)">${maxDay.vmix}</div>
+      <div class="kpi-sub">${maxDay.dow} ${fmtDate(maxDay.date)} · ore ${maxDay.ora}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Giorno più intenso</div>
+      <div class="kpi-val" style="font-size:13px;line-height:1.3">${fmtDate(maxDay.date)}</div>
+      <div class="kpi-sub">${maxDay.comps.split(' | ').length} competizioni contemporanee</div>
+    </div>
   `;
 
-  // stacked monthly chart
-  const comps = [...new Set(EVENTS.map(e=>e.competition))].sort();
-  const monthLabels = allMonths.map(m => { const[y,mo]=m.split('-'); return MONTHS_SHORT[parseInt(mo)]+"'"+y.slice(2); });
-  
-  const monthDatasets = comps.map(c => {
-    const meta = getMeta(c);
-    const data = allMonths.map(mo => {
-      const evts = EVENTS.filter(e=>e.competition===c && e.date.startsWith(mo));
-      return evts.reduce((s,e)=>s+e.partite,0);
-    });
-    return { label: meta.s, data, backgroundColor: meta.color+'bb', borderWidth:0, stack:'m' };
+  // ── Raccoglie competizioni ordinate per totale ──
+  const comps = [...new Set(EVENTS.map(e=>e.competition))];
+  const compStats = comps.map(c => {
+    const tot = EVENTS.filter(e=>e.competition===c).reduce((s,e)=>s+e.partite,0);
+    const mesi = new Set(EVENTS.filter(e=>e.competition===c).map(e=>e.date.slice(0,7))).size;
+    const pct  = ((tot/totalPartite)*100).toFixed(1);
+    return { c, meta:getMeta(c), tot, mesi, pct };
+  }).filter(r=>r.tot>0).sort((a,b)=>b.tot-a.tot);
+  const maxTot = compStats[0]?.tot||1;
+
+  // ── STACKED CHART ──
+  const monthLabels = allMonths.map(mo => {
+    const [y,m] = mo.split('-');
+    return MONTHS_SHORT[parseInt(m)] + "\'" + y.slice(2);
   });
-  
+  const sortedComps = compStats.map(r=>r.c);
+  const datasets = sortedComps.map(c => {
+    const meta = getMeta(c);
+    const data = allMonths.map(mo =>
+      EVENTS.filter(e=>e.competition===c && e.date.startsWith(mo)).reduce((s,e)=>s+e.partite,0)
+    );
+    return { label: meta.flag+' '+meta.s, data, backgroundColor: meta.color+'bb', borderWidth:0, stack:'m' };
+  });
   if (monthChartInstance) monthChartInstance.destroy();
   const ctx1 = document.getElementById('monthStackChart').getContext('2d');
   monthChartInstance = new Chart(ctx1, {
     type:'bar',
-    data:{ labels:monthLabels, datasets:monthDatasets },
+    data:{ labels:monthLabels, datasets },
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false}, tooltip:{ mode:'index', intersect:false, callbacks:{ footer:items=>{ const t=items.reduce((s,i)=>s+i.raw,0); return t?`Totale: ${t} partite`:''; } } } },
+      plugins:{
+        legend:{display:false},
+        tooltip:{ mode:'index', intersect:false,
+          callbacks:{
+            label: i => i.raw>0 ? `${i.dataset.label}: ${i.raw}` : null,
+            footer: items => { const t=items.reduce((s,i)=>s+(i.raw||0),0); return t?'Totale: '+t+' partite':''; }
+          }
+        }
+      },
       scales:{
         x:{stacked:true,grid:{display:false},ticks:{color:'#9ca3af',font:{size:10}}},
         y:{stacked:true,grid:{color:'rgba(0,0,0,0.06)'},ticks:{color:'#9ca3af',font:{size:10}}}
       }
     }
   });
-  
-  // donut
-  const compTotals = comps.map(c => EVENTS.filter(e=>e.competition===c).reduce((s,e)=>s+e.partite,0));
+
+  // ── LEGENDA SOTTO GRAFICO ──
+  document.getElementById('stack-legend').innerHTML = compStats.map(r =>
+    `<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--fg);">
+       <div style="width:10px;height:10px;border-radius:2px;background:${r.meta.color};flex-shrink:0;"></div>
+       <span>${r.meta.flag} ${r.meta.s}</span>
+     </div>`
+  ).join('');
+
+  // ── TABELLA RIEPILOGO COMPETIZIONI ──
+  document.getElementById('comp-summary-tbl').innerHTML =
+    `<thead><tr>
+      <th style="text-align:left;padding:8px 10px;font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);border-bottom:2px solid var(--border);">Competizione</th>
+      <th style="text-align:right;padding:8px 10px;font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);border-bottom:2px solid var(--border);">Partite</th>
+      <th style="text-align:right;padding:8px 10px;font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);border-bottom:2px solid var(--border);">% stagione</th>
+      <th style="min-width:80px;padding:8px 10px;font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);border-bottom:2px solid var(--border);">Peso</th>
+      <th style="text-align:right;padding:8px 10px;font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);border-bottom:2px solid var(--border);">Mesi</th>
+    </tr></thead>
+    <tbody>` +
+    compStats.map(r => `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:7px 10px;"><span class="comp-tag" style="background:${r.meta.color}22;color:${r.meta.color};border:1px solid ${r.meta.color}44;display:inline-block;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700;">${r.meta.flag} ${r.meta.s}</span></td>
+      <td style="padding:7px 10px;text-align:right;font-weight:700;">${r.tot}</td>
+      <td style="padding:7px 10px;text-align:right;color:var(--muted);">${r.pct}%</td>
+      <td style="padding:7px 10px;"><div style="width:100%;height:6px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="width:${(r.tot/maxTot*100).toFixed(0)}%;height:6px;border-radius:3px;background:${r.meta.color};"></div></div></td>
+      <td style="padding:7px 10px;text-align:right;color:var(--muted);">${r.mesi}</td>
+    </tr>`).join('') +
+    `<tr style="border-top:2px solid var(--border);">
+      <td style="padding:7px 10px;font-weight:800;">TOTALE</td>
+      <td style="padding:7px 10px;text-align:right;font-weight:800;">${totalPartite.toLocaleString('it')}</td>
+      <td style="padding:7px 10px;text-align:right;font-weight:800;">100%</td>
+      <td style="padding:7px 10px;"></td>
+      <td style="padding:7px 10px;"></td>
+    </tr>
+    </tbody>`;
+
+  // ── DONUT ──
   if (donutChartInstance) donutChartInstance.destroy();
   const ctx2 = document.getElementById('seasonDonut').getContext('2d');
   donutChartInstance = new Chart(ctx2, {
     type:'doughnut',
-    data:{ labels:comps.map(c=>getMeta(c).s), datasets:[{ data:compTotals, backgroundColor:comps.map(c=>getMeta(c).color+'dd'), borderColor:comps.map(c=>getMeta(c).color), borderWidth:1 }] },
+    data:{
+      labels: compStats.map(r=>r.meta.flag+' '+r.meta.s),
+      datasets:[{ data:compStats.map(r=>r.tot), backgroundColor:compStats.map(r=>r.meta.color+'dd'), borderColor:compStats.map(r=>r.meta.color), borderWidth:1 }]
+    },
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{ position:'right', labels:{ color:'#9ca3af', font:{size:10}, boxWidth:10, padding:8 } },
-        tooltip:{ callbacks:{ label:i=>`${i.label}: ${i.raw} partite (${((i.raw/totalPartite)*100).toFixed(1)}%)` } }
+      plugins:{
+        legend:{ position:'right', labels:{ color:'#374151', font:{size:10}, boxWidth:10, padding:6 } },
+        tooltip:{ callbacks:{ label: i => `${i.label}: ${i.raw} (${((i.raw/totalPartite)*100).toFixed(1)}%)` } }
       }
     }
   });
-  
-  // monthly table
-  const shortMap = {
-    'Campionato EFL (Ch':'EFL Ch.','Coppa di Lega Ingl':'Carabao','Coppa di Germania ':'DFB Pokal',
-    'Campionato Olandes':'Eredivisie','Copa Libertadores':'Lib.','Copa Sudamericana':'Sud.',
-    'Recopa Sudamerican':'Recopa','Campionato Saudita':'Saudi PL','Coppa del Re Arabi':'C.Re SA',
-    'Campionato Scozzes':'Scozzese','Campionato Croato ':'HNL','Coppa di Francia':'C.Francia',
-    'Coppa di Lega Scoz':'C.Lega SC','Coppa di Scozia':'C.Scozia','Coppa del Portogal':'C.Port.',
-    'Supercoppa del Por':'Super.PT','TOTALE':'TOTALE','Mese':'Mese'
-  };
-  document.getElementById('monthly-thead').innerHTML = '<tr>' + MONTHLY_HEADERS.map((h,i)=>`<th ${i===MONTHLY_HEADERS.length-1?'style="background:var(--s3)"':''}>${shortMap[h]||h}</th>`).join('') + '</tr>';
-  document.getElementById('monthly-tbody').innerHTML = MONTHLY_DATA.map(row=>`<tr>${row.map((v,i)=>{
-    const isT=i===row.length-1, isM=i===0;
-    const val=(v===''||v==='None')?'—':v;
-    return `<td style="${isT?'font-weight:800;background:var(--s3);':isM?'font-weight:700;':''}">${val}</td>`;
-  }).join('')}</tr>`).join('');
+
+  // ── TABELLA MENSILE ──
+  // Ricostruisce la mappatura MONTHLY_HEADERS → COMP_META
+  const hdrHtml = MONTHLY_HEADERS.map((h,i) => {
+    if (i===0) return '<th style="text-align:left;padding:6px 8px;">Mese</th>';
+    if (h==='TOTALE') return '<th style="text-align:right;padding:6px 8px;background:var(--s3);font-weight:800;">Tot.</th>';
+    // cerca la competizione il cui nome inizia con h (troncato a 18)
+    const fullComp = EVENTS.find(e => e.competition.slice(0,18)===h || e.competition===h)?.competition;
+    const meta = fullComp ? getMeta(fullComp) : null;
+    const label = meta ? meta.flag+'<br>'+meta.s : h;
+    return `<th style="text-align:right;padding:6px 8px;" title="${fullComp||h}">${label}</th>`;
+  }).join('');
+  document.getElementById('monthly-thead').innerHTML = '<tr>'+hdrHtml+'</tr>';
+  document.getElementById('monthly-tbody').innerHTML = MONTHLY_DATA.map(row=>`<tr>${
+    row.map((v,i)=>{
+      const isT = i===row.length-1, isM = i===0;
+      const val = (v===''||v==='None'||v==='0') ? '<span style="color:var(--muted)">—</span>' : v;
+      return `<td style="padding:5px 8px;text-align:${isM?'left':'right'};${isT?'font-weight:800;background:var(--s3);':isM?'font-weight:700;':''}">${val}</td>`;
+    }).join('')
+  }</tr>`).join('');
 }
 
 // ══ INIT ══
