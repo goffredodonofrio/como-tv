@@ -621,7 +621,8 @@ function renderDay() {
   }).join('');
 
   // Gantt timeline
-  document.getElementById('day-tbl-count').textContent = dayEvents.length + ' eventi';
+  const totalMatches = dayEvents.reduce((s,e)=>s+e.partite,0);
+  document.getElementById('day-tbl-count').textContent = totalMatches + ' partite · ' + dayEvents.length + ' slot';
   renderGantt(dayEvents);
 }
 
@@ -642,91 +643,97 @@ function renderGantt(dayEvents) {
   const wrap = document.getElementById('gantt-wrap');
   if (!dayEvents.length) { wrap.innerHTML = ''; return; }
 
-  // Compute time window
-  const evs = dayEvents.map(e => {
+  // Expand: 1 bar per partita (1 VMIX each)
+  const matches = [];
+  dayEvents.forEach(e => {
     let s = timeToMins(e.start), en = timeToMins(e.end);
     if (en <= s) en += 1440;
-    return {...e, _start: s, _end: en};
+    for (let i = 0; i < e.partite; i++) {
+      matches.push({...e, _start: s, _end: en, _idx: i + 1});
+    }
   });
-  const winStart = Math.floor(Math.min(...evs.map(e=>e._start)) / 60) * 60;
-  const winEnd   = Math.ceil(Math.max(...evs.map(e=>e._end)) / 60) * 60;
-  const totalDur = winEnd - winStart;
 
+  // Time window
+  const winStart = Math.floor(Math.min(...matches.map(e=>e._start)) / 60) * 60;
+  const winEnd   = Math.ceil(Math.max(...matches.map(e=>e._end)) / 60) * 60;
+  const totalDur = winEnd - winStart;
   const pct = m => ((m - winStart) / totalDur * 100).toFixed(2) + '%';
 
   // Hour markers
   const hours = [];
   for (let m = winStart; m <= winEnd; m += 60) hours.push(m);
 
-  // Half-hour slots for VMIX row
-  const halfSlots = [];
-  for (let m = winStart; m < winEnd; m += 30) halfSlots.push(m);
-
-  const slotVmix = halfSlots.map(ss => {
-    const se = ss + 30;
-    return evs.reduce((t, e) => (e._start < se && e._end > ss) ? t + e.partite : t, 0);
+  // VMIX in uso per fascia oraria (ogni ora intera)
+  const vmixByHour = hours.slice(0, -1).map(hh => {
+    const he = hh + 60;
+    return matches.filter(e => e._start < he && e._end > hh).length;
   });
-  const maxVmix = Math.max(...slotVmix, 1);
+  const maxVmix = Math.max(...vmixByHour, 1);
 
-  // Pack lanes
-  const lanes = packLanes(evs);
+  // Lane pack individual matches
+  const lanes = packLanes(matches);
 
   let h = '<div class="gantt-outer">';
 
   // Time header
-  h += '<div class="gantt-time-hdr" style="position:relative;height:22px;margin-bottom:4px;">';
+  h += '<div style="position:relative;height:22px;margin-bottom:6px;">';
   for (const m of hours) {
     h += `<div style="position:absolute;left:${pct(m)};transform:translateX(-50%);font-size:10px;font-weight:700;color:var(--muted);white-space:nowrap;">${minsToTime(m%1440)}</div>`;
   }
   h += '</div>';
 
-  // Grid + lanes container
+  // Grid + lanes
   h += '<div style="position:relative;">';
-
-  // Vertical grid lines
+  // grid lines
   h += '<div style="position:absolute;inset:0;pointer-events:none;z-index:0;">';
   for (const m of hours) {
     h += `<div style="position:absolute;left:${pct(m)};top:0;bottom:0;width:1px;background:rgba(0,0,0,0.07);"></div>`;
   }
   h += '</div>';
 
-  // Lanes
+  // Lanes (1 row = 1 VMIX)
   for (const lane of lanes) {
     h += '<div class="gantt-lane">';
     for (const e of lane) {
       const meta = getMeta(e.competition);
       const lft = pct(e._start);
       const wid = ((e._end - e._start) / totalDur * 100).toFixed(2) + '%';
-      const warn = e.partite >= 10 ? ' ⚠' : '';
-      const textCol = meta.color;
-      h += `<div class="gantt-bar" style="left:${lft};width:${wid};background:${meta.color}1a;border-color:${meta.color}66;color:${textCol};"
-        title="${e.competition} · ${minsToTime(e._start%1440)} → ${minsToTime(e._end%1440)} · ${e.partite} VMIX${warn?'\nRichiede setup anticipato':''}">
-        <span class="gantt-bar-inner">${meta.flag} ${meta.s} <b>${e.partite}</b>${warn}</span>
+      h += `<div class="gantt-bar" style="left:${lft};width:${wid};background:${meta.color}18;border-color:${meta.color}55;color:${meta.color};"
+        title="Partita ${e._idx} · ${e.competition}\n${minsToTime(e._start%1440)} → ${minsToTime(e._end%1440)} · 1 VMIX">
+        <span class="gantt-bar-inner">${meta.flag} Partita ${e._idx} | ${meta.s}</span>
       </div>`;
     }
     h += '</div>';
   }
 
-  // VMIX heat row
-  h += '<div class="gantt-heat-row">';
-  for (let i = 0; i < halfSlots.length; i++) {
-    const v = slotVmix[i];
-    const intensity = v / maxVmix;
-    let bg, col;
-    if (v === 0) { bg = 'var(--s2)'; col = 'transparent'; }
-    else if (v >= 14) { bg = '#fee2e2'; col = 'var(--crit)'; }
-    else if (v >= 8)  { bg = '#ffedd5'; col = 'var(--high)'; }
-    else if (v >= 4)  { bg = '#fef9c3'; col = 'var(--med)'; }
-    else              { bg = '#dcfce7'; col = 'var(--low)'; }
-    h += `<div class="gantt-heat-cell" style="flex:1;background:${bg};" title="${minsToTime(halfSlots[i]%1440)}: ${v} VMIX">
-      <span style="font-size:${v>=10?10:9}px;font-weight:800;color:${col};">${v||''}</span>
+  // VMIX in uso per ora — barra con etichetta chiara
+  h += '<div style="border-top:2px solid var(--border);margin-top:10px;padding-top:10px;">';
+  h += '<div style="font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">VMIX in uso per fascia oraria</div>';
+  h += '<div style="display:flex;gap:3px;align-items:flex-end;height:48px;">';
+  for (let i = 0; i < vmixByHour.length; i++) {
+    const v = vmixByHour[i];
+    const barH = v > 0 ? Math.max(12, Math.round((v / maxVmix) * 44)) : 4;
+    let bg;
+    if (v === 0)      bg = 'var(--border)';
+    else if (v >= 14) bg = 'var(--crit)';
+    else if (v >= 8)  bg = 'var(--high)';
+    else if (v >= 4)  bg = 'var(--med)';
+    else              bg = 'var(--low)';
+    h += `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;" title="${minsToTime(hours[i]%1440)}–${minsToTime(hours[i+1]%1440)}: ${v} VMIX in uso">
+      <span style="font-size:${v>=10?10:9}px;font-weight:800;color:${v?bg:'var(--dim)'};">${v||''}</span>
+      <div style="width:100%;height:${barH}px;background:${bg};border-radius:3px 3px 0 0;opacity:${v?1:0.3};"></div>
     </div>`;
   }
   h += '</div>';
-  h += '<div class="gantt-heat-label">VMIX concorrenti per fascia 30 min</div>';
+  // hour labels under bars
+  h += '<div style="display:flex;gap:3px;margin-top:3px;">';
+  for (let i = 0; i < vmixByHour.length; i++) {
+    h += `<div style="flex:1;text-align:center;font-size:9px;color:var(--dim);">${minsToTime(hours[i]%1440)}</div>`;
+  }
+  h += '</div>';
+  h += '</div>';
 
-  h += '</div>'; // close position:relative
-  h += '</div>'; // close gantt-outer
+  h += '</div></div>'; // close relative + gantt-outer
   wrap.innerHTML = h;
 }
 
