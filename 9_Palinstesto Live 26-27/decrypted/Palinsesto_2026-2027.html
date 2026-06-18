@@ -109,25 +109,32 @@ tr:hover td{background:var(--s2);}
 .no-events{padding:48px;text-align:center;color:var(--muted);font-size:13px;}
 
 /* ── CALENDARIO ── */
-.cal-nav{display:flex;align-items:center;gap:16px;margin-bottom:20px;}
 .cal-month-title{font-size:18px;font-weight:800;color:var(--navy);}
-.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px;}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr) 88px;gap:4px;margin-bottom:4px;}
 .cal-dow-hdr{text-align:center;font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);padding:6px 0;}
-.cal-cell{min-height:60px;background:white;border:1.5px solid var(--border);border-radius:8px;padding:7px 8px;cursor:pointer;transition:all .1s;display:flex;flex-direction:column;justify-content:space-between;}
+.cal-cell{min-height:72px;background:white;border:1.5px solid var(--border);border-radius:8px;padding:8px 9px;cursor:pointer;transition:all .1s;display:flex;flex-direction:column;gap:4px;}
 .cal-cell:hover{border-color:var(--gold);box-shadow:0 2px 8px rgba(21,35,71,0.08);transform:translateY(-1px);}
-.cal-cell.empty{background:var(--s2);border-color:transparent;cursor:default;}
+.cal-cell.empty{background:var(--s2);border-color:transparent;cursor:default;min-height:72px;}
 .cal-cell.empty:hover{transform:none;border-color:transparent;box-shadow:none;}
 .cal-day-num{font-size:11px;font-weight:700;color:var(--muted);}
-.cal-vmix{font-size:14px;font-weight:900;align-self:flex-end;}
+.cal-ev-count{font-size:13px;font-weight:800;color:var(--navy);}
+.cal-ev-sub{font-size:10px;color:var(--muted);font-weight:500;}
+.cal-vmix-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:800;padding:2px 6px;border-radius:4px;align-self:flex-start;margin-top:auto;}
 .cal-cell.crit{background:var(--crit2);border-color:#fca5a5;}
-.cal-cell.crit .cal-vmix{color:var(--crit);}
+.cal-cell.crit .cal-vmix-badge{background:#fee2e2;color:var(--crit);}
 .cal-cell.high{background:var(--high2);border-color:#fdba74;}
-.cal-cell.high .cal-vmix{color:var(--high);}
+.cal-cell.high .cal-vmix-badge{background:#ffedd5;color:var(--high);}
 .cal-cell.med{background:var(--med2);border-color:#fde68a;}
-.cal-cell.med .cal-vmix{color:var(--med);}
+.cal-cell.med .cal-vmix-badge{background:#fef9c3;color:var(--med);}
 .cal-cell.low{background:var(--low2);border-color:#6ee7b7;}
-.cal-cell.low .cal-vmix{color:var(--low);}
+.cal-cell.low .cal-vmix-badge{background:#dcfce7;color:var(--low);}
 .cal-cell.active-today{border-color:var(--navy)!important;box-shadow:0 0 0 2px rgba(21,35,71,0.15)!important;}
+.cal-week-cell{min-height:72px;background:var(--s3);border:1.5px solid var(--border);border-radius:8px;padding:8px 9px;display:flex;flex-direction:column;justify-content:center;gap:5px;}
+.cal-week-label{font-size:8px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);}
+.cal-week-ev{font-size:13px;font-weight:800;color:var(--navy);}
+.cal-week-vmix{font-size:10px;font-weight:700;color:var(--muted);}
+.cal-dow-hdr{font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:4px 0 6px;text-align:center;}
+.cal-dow-hdr.week-col{color:var(--gold);}
 
 /* ── COMPETIZIONI ── */
 .comp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px;}
@@ -227,8 +234,6 @@ tr:hover td{background:var(--s2);}
 <div class="tabs">
   <button class="tab active" onclick="showTab('calendario',this)"><span class="tab-icon">🗓</span>CALENDARIO</button>
   <button class="tab" onclick="showTab('giornata',this)"><span class="tab-icon">📡</span>GIORNATA / VMIX</button>
-  <button class="tab" onclick="showTab('settimane',this)"><span class="tab-icon">📊</span>SETTIMANE</button>
-  <button class="tab" onclick="showTab('competizioni',this)"><span class="tab-icon">🏆</span>COMPETIZIONI</button>
   <button class="tab" onclick="showTab('stagione',this)"><span class="tab-icon">📈</span>STAGIONE</button>
 </div>
 
@@ -272,74 +277,27 @@ tr:hover td{background:var(--s2);}
 
 <!-- ══ TAB: CALENDARIO ══ -->
 <div class="section active" id="tab-calendario">
-  <div class="cal-nav">
-    <button class="day-nav-btn" onclick="prevMonth()">← Mese prec.</button>
-    <div class="cal-month-title" id="cal-month-title">—</div>
-    <button class="day-nav-btn" onclick="nextMonth()">Mese succ. →</button>
-    <div style="margin-left:24px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-      <span class="legend-item"><span class="vmix-chip vc-crit" style="font-size:10px;padding:2px 7px">≥14</span> Critico</span>
-      <span class="legend-item"><span class="vmix-chip vc-high" style="font-size:10px;padding:2px 7px">8-13</span> Intenso</span>
-      <span class="legend-item"><span class="vmix-chip vc-med" style="font-size:10px;padding:2px 7px">4-7</span> Medio</span>
-      <span class="legend-item"><span class="vmix-chip vc-low" style="font-size:10px;padding:2px 7px">&lt;4</span> Leggero</span>
-    </div>
-  </div>
-  <div id="cal-container"></div>
-</div>
+  <!-- KPI mese -->
+  <div class="kpi-row" id="cal-kpis"></div>
 
-<!-- ══ TAB: COMPETIZIONI ══ -->
-<div class="section" id="tab-competizioni">
-  <div class="comp-grid" id="comp-grid"></div>
-  <div class="card" id="comp-detail-card" style="display:none">
-    <div class="card-header">
-      <div class="card-title" id="comp-detail-title">—</div>
-      <div class="card-meta" id="comp-detail-meta">—</div>
-    </div>
-    <div class="filter-row" style="padding:14px 20px 0;">
-      <div class="fl-group"><div class="fl-label">Mese</div>
-        <select class="fl-select" id="comp-mese-filter" onchange="renderCompDetail()">
-          <option value="">Tutti</option>
-          <option value="2026-07">Lug 2026</option><option value="2026-08">Ago 2026</option><option value="2026-09">Set 2026</option>
-          <option value="2026-10">Ott 2026</option><option value="2026-11">Nov 2026</option>
-          <option value="2026-12">Dic 2026</option><option value="2027-01">Gen 2027</option>
-          <option value="2027-02">Feb 2027</option><option value="2027-03">Mar 2027</option>
-          <option value="2027-04">Apr 2027</option><option value="2027-05">Mag 2027</option>
-          <option value="2027-06">Giu 2027</option>
-        </select>
-      </div>
-    </div>
-    <div class="tbl-wrap">
-      <table>
-        <thead><tr><th>Data</th><th>G</th><th>Inizio</th><th>Fine</th><th>Partite (VMIX)</th><th>Settimana</th></tr></thead>
-        <tbody id="comp-detail-tbody"></tbody>
-      </table>
-    </div>
-    <div class="pag" id="comp-detail-pag"></div>
-  </div>
-</div>
-
-<!-- ══ TAB: SETTIMANE ══ -->
-<div class="section" id="tab-settimane">
-  <div class="kpi-row" id="week-kpis"></div>
-  <div class="card" style="margin-bottom:20px;">
-    <div class="card-header">
-      <div class="card-title">Peak VMIX per settimana — intera stagione</div>
-      <div class="card-meta">44 settimane · Ago 2026 – Giu 2027</div>
-    </div>
-    <div class="week-season-chart"><canvas id="weekSeasonChart"></canvas></div>
-  </div>
   <div class="card">
     <div class="card-header">
-      <div class="card-title">Dettaglio settimanale</div>
-      <div class="card-meta">Peak VMIX per giorno · Lun→Dom</div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <button class="day-nav-btn" onclick="prevMonth()">←</button>
+        <div class="cal-month-title" id="cal-month-title">—</div>
+        <button class="day-nav-btn" onclick="nextMonth()">→</button>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <span class="legend-item"><span class="vmix-chip vc-crit" style="font-size:10px;padding:2px 7px">≥14</span> Critico</span>
+        <span class="legend-item"><span class="vmix-chip vc-high" style="font-size:10px;padding:2px 7px">8–13</span> Intenso</span>
+        <span class="legend-item"><span class="vmix-chip vc-med" style="font-size:10px;padding:2px 7px">4–7</span> Medio</span>
+        <span class="legend-item"><span class="vmix-chip vc-low" style="font-size:10px;padding:2px 7px">&lt;4</span> Leggero</span>
+      </div>
     </div>
-    <div class="tbl-wrap">
-      <table id="weeks-table">
-        <thead><tr><th>Settimana</th><th>Lun</th><th>Mar</th><th>Mer</th><th>Gio</th><th>Ven</th><th>Sab</th><th>Dom</th><th>Peak</th><th>Giorno</th><th>Ora</th></tr></thead>
-        <tbody id="weeks-tbody"></tbody>
-      </table>
-    </div>
+    <div id="cal-container" style="padding:0 16px 16px;"></div>
   </div>
 </div>
+
 
 <!-- ══ TAB: STAGIONE ══ -->
 <div class="section" id="tab-stagione">
@@ -750,44 +708,74 @@ function nextMonth() { if (calMonthIdx < allMonths.length-1) { calMonthIdx++; re
 function renderCalendar() {
   const mo = allMonths[calMonthIdx];
   const [y, m] = mo.split('-').map(Number);
-  const moName = `${MONTHS_IT[m]} ${y}`;
-  document.getElementById('cal-month-title').textContent = moName;
-  
+  document.getElementById('cal-month-title').textContent = `${MONTHS_IT[m]} ${y}`;
+
   const firstDay = new Date(y, m-1, 1);
-  let startDow = firstDay.getDay(); // 0=Sun
-  startDow = startDow === 0 ? 6 : startDow - 1; // convert to Mon=0
+  let startDow = firstDay.getDay();
+  startDow = startDow === 0 ? 6 : startDow - 1;
   const daysInMonth = new Date(y, m, 0).getDate();
-  
-  let html = '<div class="cal-grid">';
-  ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'].forEach(d => html += `<div class="cal-dow-hdr">${d}</div>`);
-  
-  // empty cells before first day
-  for (let i = 0; i < startDow; i++) html += '<div class="cal-cell empty"></div>';
-  
+
+  const monthDays = [];
   for (let day = 1; day <= daysInMonth; day++) {
     const dateStr = `${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const evs = eventsByDate[dateStr] || [];
     const peak = vmixByDate[dateStr] || 0;
-    const hasEvents = !!eventsByDate[dateStr];
-    const cls = calClass(peak);
-    const isActive = dateStr === currentDay ? 'active-today' : '';
-    
-    if (hasEvents) {
-      const dayComps = [...new Set(eventsByDate[dateStr].map(e=>e.competition))];
-      const dots = dayComps.map(c => {
-        const meta = COMP_META[c];
-        const col = meta ? meta.color : '#999';
-        const lbl = meta ? `${meta.flag} ${meta.s}` : c;
-        return `<span class="cal-dot-label" style="background:${col};opacity:.9" title="${c}">${lbl}</span>`;
-      }).join('');
-      html += `<div class="cal-cell ${cls} ${isActive}" onclick="jumpToDay('${dateStr}')">
-        <span class="cal-day-num">${day}</span>
-        ${peak > 0 ? `<span class="cal-vmix">${peak}</span>` : ''}
-        <div class="cal-dots">${dots}</div>
+    const partite = evs.reduce((s,e)=>s+e.partite,0);
+    monthDays.push({ day, dateStr, evs, peak, partite });
+  }
+
+  const moSlots   = monthDays.reduce((s,d)=>s+d.evs.length,0);
+  const moPartite = monthDays.reduce((s,d)=>s+d.partite,0);
+  const moPeak    = Math.max(...monthDays.map(d=>d.peak),0);
+  const moDays    = monthDays.filter(d=>d.evs.length>0).length;
+  const pkCol     = moPeak>=14?'var(--crit)':moPeak>=8?'var(--high)':\'var(--navy)\';
+  document.getElementById('cal-kpis').innerHTML = `
+    <div class="kpi"><div class="kpi-label">Giorni live</div><div class="kpi-val">${moDays}</div><div class="kpi-sub">su ${daysInMonth} giorni</div></div>
+    <div class="kpi"><div class="kpi-label">Slot trasmissione</div><div class="kpi-val">${moSlots}</div><div class="kpi-sub">blocchi orari</div></div>
+    <div class="kpi"><div class="kpi-label">Partite del mese</div><div class="kpi-val">${moPartite}</div><div class="kpi-sub">VMIX impegnati</div></div>
+    <div class="kpi"><div class="kpi-label">Peak VMIX mese</div><div class="kpi-val" style="color:${pkCol}">${moPeak||'—'}</div><div class="kpi-sub">concurrent max</div></div>
+  `;
+
+  let html = '<div class="cal-grid">';
+  ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'].forEach(d => html += `<div class="cal-dow-hdr">${d}</div>`);
+  html += '<div class="cal-dow-hdr week-col">Settimana</div>';
+
+  for (let i = 0; i < startDow; i++) html += '<div class="cal-cell empty"></div>';
+
+  let col = startDow, wSlots = 0, wPartite = 0, wPeak = 0;
+
+  for (const d of monthDays) {
+    const cls = calClass(d.peak);
+    const isActive = d.dateStr === currentDay ? 'active-today' : '';
+    if (d.evs.length > 0) {
+      html += `<div class="cal-cell ${cls} ${isActive}" onclick="jumpToDay('${d.dateStr}')" title="${d.evs.length} slot · ${d.partite} partite · peak ${d.peak} VMIX">
+        <span class="cal-day-num">${d.day}</span>
+        <span class="cal-ev-count">${d.evs.length}<span style="font-size:10px;font-weight:600;"> slot</span></span>
+        <span class="cal-ev-sub">${d.partite} partite</span>
+        <span class="cal-vmix-badge">⚡ ${d.peak} VMIX</span>
       </div>`;
     } else {
-      html += `<div class="cal-cell empty"><span class="cal-day-num" style="opacity:.4">${day}</span></div>`;
+      html += `<div class="cal-cell empty"><span class="cal-day-num" style="opacity:.35">${d.day}</span></div>`;
+    }
+    wSlots += d.evs.length; wPartite += d.partite; wPeak = Math.max(wPeak, d.peak);
+    col++;
+    if (col === 7 || d.day === daysInMonth) {
+      const vc = wPeak>=14?'var(--crit)':wPeak>=8?'var(--high)':wPeak>=4?'var(--med)':wPeak>0?'var(--low)':\'var(--muted)\';
+      html += `<div class="cal-week-cell">
+        <span class="cal-week-label">Settimana</span>
+        <span class="cal-week-ev">${wSlots}<span style="font-size:10px;font-weight:600;"> slot</span></span>
+        <span class="cal-week-vmix">${wPartite} partite</span>
+        ${wPeak > 0 ? `<span style="font-size:11px;font-weight:800;color:${vc};margin-top:2px;">⚡ ${wPeak}</span>` : '<span style="font-size:10px;color:var(--dim);">—</span>'}
+      </div>`;
+      wSlots = 0; wPartite = 0; wPeak = 0; col = 0;
     }
   }
+
+  if (col > 0 && col < 7) {
+    for (let i = col; i < 7; i++) html += '<div class="cal-cell empty"></div>';
+    html += '<div class="cal-week-cell" style="opacity:.3"><span class="cal-week-label">—</span></div>';
+  }
+
   html += '</div>';
   document.getElementById('cal-container').innerHTML = html;
 }
@@ -1130,13 +1118,7 @@ function initStagione() {
 document.addEventListener('DOMContentLoaded', () => {
   initGiornata();
   initCalendario();
-  initCompetizioni();
-  initSettimane();
   initStagione();
-  
-  // set calendar to first event month
-  calMonthIdx = 0;
-  renderCalendar();
 });
 </script>
 </body>
