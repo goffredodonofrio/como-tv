@@ -1144,13 +1144,14 @@ async function loadVmixLive() {
 }
 
 async function fetchVmixEvents() {
-  const now = new Date(); now.setDate(now.getDate() - 1);
-  const filter = encodeURIComponent(`IS_AFTER({${VMIX_FIELDS.date}},'${now.toISOString().slice(0,10)}')`);
+  const cutoff = Date.now() - 86400000;
   const fields = Object.values(VMIX_FIELDS).map(f=>`fields[]=${f}`).join('&');
   const sort = `sort[0][field]=${VMIX_FIELDS.date}&sort[0][direction]=asc`;
-  let url = `https://api.airtable.com/v0/${VMIX_BASE}/${VMIX_TABLE}?filterByFormula=${filter}&${fields}&${sort}`;
+  const baseUrl = `https://api.airtable.com/v0/${VMIX_BASE}/${VMIX_TABLE}?${fields}&${sort}`;
   const events = [];
-  while (url) {
+  let offset = null;
+  do {
+    const url = offset ? `${baseUrl}&offset=${offset}` : baseUrl;
     const res = await fetch(url, {headers:{Authorization:`Bearer ${VMIX_TOKEN}`}});
     if (!res.ok) throw new Error(`Airtable API ${res.status}`);
     const data = await res.json();
@@ -1159,9 +1160,10 @@ async function fetchVmixEvents() {
       const dateVal = f[VMIX_FIELDS.date];
       if (!dateVal) continue;
       const startMs = new Date(dateVal).getTime();
-      const durSec  = f[VMIX_FIELDS.dur] || 7200;
+      if (startMs < cutoff) continue;
+      const durSec = f[VMIX_FIELDS.dur] || 7200;
       const vmixArr = f[VMIX_FIELDS.vmix];
-      const vmix    = vmixArr && vmixArr.length ? vmixArr[0].name : null;
+      const vmix = vmixArr && vmixArr.length ? vmixArr[0].name : null;
       const compObj = f[VMIX_FIELDS.comp];
       events.push({
         title:  f[VMIX_FIELDS.title] || '—',
@@ -1172,8 +1174,8 @@ async function fetchVmixEvents() {
         dayStr: new Date(startMs).toISOString().slice(0,10),
       });
     }
-    url = data.offset ? `https://api.airtable.com/v0/${VMIX_BASE}/${VMIX_TABLE}?filterByFormula=${filter}&${fields}&${sort}&offset=${data.offset}` : null;
-  }
+    offset = data.offset || null;
+  } while (offset);
   return events;
 }
 
