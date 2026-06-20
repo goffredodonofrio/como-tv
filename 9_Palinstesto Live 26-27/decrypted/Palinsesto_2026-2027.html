@@ -1163,7 +1163,7 @@ async function fetchVmixEvents() {
       if (startMs < cutoff) continue;
       const durSec = f[VMIX_FIELDS.dur] || 7200;
       const vmixArr = f[VMIX_FIELDS.vmix];
-      const vmix = vmixArr && vmixArr.length ? vmixArr[0].name : null;
+      const vmix = vmixArr && vmixArr.length ? (typeof vmixArr[0] === 'string' ? vmixArr[0] : vmixArr[0].name) : null;
       const compObj = f[VMIX_FIELDS.comp];
       events.push({
         title:  f[VMIX_FIELDS.title] || '—',
@@ -1216,13 +1216,33 @@ function renderVmixRoot(events) {
   renderVmixWeek();
 }
 
+function vmixFmtTime(ms) {
+  const d=new Date(ms);
+  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+
+function vmixCluster(evs) {
+  // Group overlapping/nearby events (within 30 min gap) into clusters
+  const sorted=[...evs].sort((a,b)=>a._s-b._s);
+  const clusters=[];
+  for(const e of sorted){
+    const GAP=30*60*1000;
+    let placed=false;
+    for(const cl of clusters){
+      const clMax=Math.max(...cl.map(x=>x._e));
+      if(e._s<=clMax+GAP){cl.push(e);placed=true;break;}
+    }
+    if(!placed) clusters.push([e]);
+  }
+  return clusters;
+}
+
 function renderVmixWeek() {
   const weeks=window._vmixWeeks, idx=window._vmixWeekIdx;
   const {mon,events:wEvs}=weeks[idx];
   const sun=new Date(mon);sun.setDate(sun.getDate()+6);
   const wLabel=`${mon.getDate()} ${VMIX_MONTHS_IT[mon.getMonth()+1]} – ${sun.getDate()} ${VMIX_MONTHS_IT[sun.getMonth()+1]} ${sun.getFullYear()}`;
 
-  // KPIs
   const totalV=wEvs.filter(e=>e.vmix).length;
   const opsActive=[...new Set(wEvs.map(e=>e.vmix).filter(Boolean))];
   const daysLive=new Set(wEvs.map(e=>e.dayStr)).size;
@@ -1230,17 +1250,16 @@ function renderVmixWeek() {
   for(const e of wEvs){const c=wEvs.filter(o=>o._s<e._e&&o._e>e._s).length;maxConc=Math.max(maxConc,c);}
   const concCol=maxConc>=3?'var(--crit)':maxConc>=2?'var(--high)':'var(--low)';
 
-  // Group by day
   const dayMap={};
   for(const e of wEvs){if(!dayMap[e.dayStr])dayMap[e.dayStr]=[];dayMap[e.dayStr].push(e);}
   const days=Object.keys(dayMap).sort();
 
   let html=`
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:24px;">
     <button class="day-nav-btn" onclick="vmixPrevWeek()" ${idx===0?'disabled':''}>← Prec.</button>
-    <span style="flex:1;text-align:center;font-size:14px;font-weight:700;color:var(--navy)">${wLabel}</span>
+    <span style="flex:1;text-align:center;font-size:15px;font-weight:800;color:var(--navy);letter-spacing:-.3px">${wLabel}</span>
     <button class="day-nav-btn" onclick="vmixNextWeek()" ${idx===window._vmixWeeks.length-1?'disabled':''}>Succ. →</button>
-    <button class="day-nav-btn" onclick="vmixLoaded=false;loadVmixLive()" style="margin-left:8px;font-size:11px;opacity:.7">↻ Aggiorna</button>
+    <button class="day-nav-btn" onclick="vmixLoaded=false;loadVmixLive()" style="margin-left:4px;font-size:11px;opacity:.6">↻ Aggiorna</button>
   </div>
   <div class="kpi-row">
     <div class="kpi"><div class="kpi-label">Giorni live</div><div class="kpi-val">${daysLive}</div><div class="kpi-sub">su 7 giorni</div></div>
@@ -1252,60 +1271,90 @@ function renderVmixWeek() {
   for(const dayStr of days){
     const dt=new Date(dayStr);
     const evs=dayMap[dayStr].sort((a,b)=>a._s-b._s);
-    let dMin=Infinity,dMax=-Infinity;
-    for(const e of evs){dMin=Math.min(dMin,e._s);dMax=Math.max(dMax,e._e);}
-    const winS=Math.floor(dMin/3600000)*3600000;
-    const winE=Math.ceil(dMax/3600000)*3600000;
-    const tot=winE-winS;
-    const lanes=vmixPackLanes(evs);
-    const ticks=[];
-    for(let t=winS;t<=winE;t+=3600000) ticks.push({pct:(t-winS)/tot*100,label:String(new Date(t).getHours()).padStart(2,'0')+':00'});
-    const slotMs=900000;
-    const slots=[];
-    for(let t=winS;t<winE;t+=slotMs){const c=evs.filter(e=>e._s<t+slotMs&&e._e>t).length;slots.push({pct:(t-winS)/tot*100,w:slotMs/tot*100,c});}
+    const dayMaxConc=Math.max(...evs.map(e=>evs.filter(o=>o._s<e._e&&o._e>e._s).length));
+    const concBadge=dayMaxConc>=2
+      ? `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${dayMaxConc>=3?'var(--crit2)':'var(--high2)'};color:${dayMaxConc>=3?'var(--crit)':'var(--high)'};margin-left:8px;">⚠ ${dayMaxConc} VMIX concurrent</span>`
+      : '';
 
-    html+=`<div style="margin-bottom:20px;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-        <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.7px">${VMIX_DAYS_IT[dt.getDay()]} ${dt.getDate()} ${VMIX_MONTHS_IT[dt.getMonth()+1]}</span>
+    html+=`<div style="margin-bottom:28px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <span style="font-size:12px;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.8px">${VMIX_DAYS_IT[dt.getDay()]} ${dt.getDate()} ${VMIX_MONTHS_IT[dt.getMonth()+1]}</span>
+        <span style="font-size:10px;color:var(--muted);font-weight:500">${evs.length} event${evs.length===1?'o':'i'}</span>
+        ${concBadge}
         <div style="flex:1;height:1px;background:var(--border)"></div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;margin-left:60px;position:relative;height:14px;">
-        ${ticks.map(({pct,label})=>`<span style="position:absolute;left:${pct}%;transform:translateX(-50%);font-size:9px;color:var(--muted)">${label}</span>`).join('')}
       </div>`;
 
-    for(const lane of lanes){
-      html+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
-        <div style="min-width:52px"></div>
-        <div style="flex:1;height:22px;background:var(--s3);border-radius:4px;position:relative;overflow:hidden;">`;
-      for(const e of lane){
-        const l=(e._s-winS)/tot*100, w=(e._e-e._s)/tot*100;
-        const color=VMIX_OPS_COLORS[e.vmix]||VMIX_DEFAULT_COLOR;
-        const initials=e.vmix?e.vmix.split(' ').map(p=>p[0]).join(''):'?';
-        html+=`<div style="position:absolute;top:2px;left:${Math.max(l,0)}%;width:${Math.max(w,1)}%;height:18px;background:${color};border-radius:3px;display:flex;align-items:center;padding:0 6px;overflow:hidden;" title="${e.title}&#10;${e.vmix||'—'}&#10;${e.comp}">
-          <span style="font-size:9px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${initials} · ${e.title.substring(0,24)}</span></div>`;
+    // Cluster events
+    const clusters=vmixCluster(evs);
+    for(const cl of clusters){
+      const clConc=cl.length;
+      const isOverlap=cl.some(e=>cl.some(o=>o!==e&&o._s<e._e&&o._e>e._s));
+      const clS=Math.min(...cl.map(e=>e._s)), clE=Math.max(...cl.map(e=>e._e));
+      const timeRange=`${vmixFmtTime(clS)} – ${vmixFmtTime(clE)}`;
+
+      if(isOverlap){
+        // Overlap group: cards side by side with warning header
+        html+=`<div style="margin-bottom:10px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;margin-left:2px;">
+            <span style="font-size:10px;font-weight:700;color:var(--high);">⚠ Sovrapposizione</span>
+            <span style="font-size:10px;color:var(--muted);">${timeRange} · ${cl.length} VMIX in uso</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;">`;
+        for(const e of cl){
+          const color=VMIX_OPS_COLORS[e.vmix]||VMIX_DEFAULT_COLOR;
+          const opShort=e.vmix?(e.vmix.split(' ')[0][0]+'. '+e.vmix.split(' ').slice(1).join(' ')):'Non assegnato';
+          html+=`<div style="background:white;border:1.5px solid ${color}33;border-left:4px solid ${color};border-radius:8px;padding:10px 12px;">
+            <div style="font-size:10px;font-weight:600;color:var(--muted);margin-bottom:4px;">${vmixFmtTime(e._s)} – ${vmixFmtTime(e._e)}</div>
+            <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px;line-height:1.3">${e.title}</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;">
+              <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:${color};">
+                <span style="width:7px;height:7px;border-radius:50%;background:${color};display:inline-block"></span>${opShort}
+              </span>
+              ${e.comp?`<span style="font-size:9px;font-weight:600;color:var(--muted);background:var(--s3);padding:1px 6px;border-radius:4px;">${e.comp}</span>`:''}
+            </div>
+          </div>`;
+        }
+        html+=`</div></div>`;
+      } else {
+        // Single or sequential events: clean list rows
+        for(const e of cl){
+          const color=VMIX_OPS_COLORS[e.vmix]||VMIX_DEFAULT_COLOR;
+          const opShort=e.vmix?(e.vmix.split(' ')[0][0]+'. '+e.vmix.split(' ').slice(1).join(' ')):'Non assegnato';
+          html+=`<div style="background:white;border:1.5px solid var(--border);border-left:4px solid ${color};border-radius:8px;padding:10px 16px;margin-bottom:6px;display:flex;align-items:center;gap:16px;">
+            <div style="min-width:96px;flex-shrink:0;">
+              <div style="font-size:13px;font-weight:800;color:var(--navy);font-variant-numeric:tabular-nums">${vmixFmtTime(e._s)}</div>
+              <div style="font-size:10px;color:var(--muted);font-weight:500">→ ${vmixFmtTime(e._e)}</div>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:700;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.title}</div>
+              ${e.comp?`<div style="font-size:10px;color:var(--muted);margin-top:2px">${e.comp}</div>`:''}
+            </div>
+            <div style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:${color};white-space:nowrap;flex-shrink:0;">
+              <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block"></span>${opShort}
+            </div>
+          </div>`;
+        }
       }
-      html+=`</div></div>`;
     }
-
-    // Concurrency strip
-    html+=`<div style="display:flex;align-items:center;gap:8px;margin-top:3px;">
-      <span style="min-width:52px;font-size:9px;color:var(--dim);text-align:right;padding-right:8px">conc.</span>
-      <div style="flex:1;height:13px;background:var(--s3);border-radius:3px;position:relative;overflow:hidden;">
-        ${slots.map(({pct,w,c})=>{const{bg,text}=vmixConcColor(c);return c>0?`<div style="position:absolute;left:${pct}%;width:${w}%;height:100%;background:${bg};display:flex;align-items:center;justify-content:center;"><span style="font-size:8px;font-weight:700;color:${text}">${c}</span></div>`:''}).join('')}
-      </div></div>`;
-
     html+=`</div>`;
   }
 
-  // Legend
+  // Legend operatori
   const activeOps=[...new Set(wEvs.map(e=>e.vmix).filter(Boolean))];
-  html+=`<div style="display:flex;gap:14px;flex-wrap:wrap;padding-top:14px;border-top:1px solid var(--border);margin-top:4px;">`;
-  for(const op of activeOps){const color=VMIX_OPS_COLORS[op]||VMIX_DEFAULT_COLOR;html+=`<div style="display:flex;align-items:center;gap:5px;"><div style="width:8px;height:8px;border-radius:50%;background:${color}"></div><span style="font-size:11px;color:var(--muted)">${op}</span></div>`;}
-  html+=`<div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
-    <div style="width:12px;height:12px;background:#bbf7d0;border-radius:2px"></div><span style="font-size:10px;color:var(--dim)">1</span>
-    <div style="width:12px;height:12px;background:#fef08a;border-radius:2px"></div><span style="font-size:10px;color:var(--dim)">2</span>
-    <div style="width:12px;height:12px;background:#fca5a5;border-radius:2px"></div><span style="font-size:10px;color:var(--dim)">3+</span>
-  </div></div>`;
+  if(activeOps.length){
+    html+=`<div style="display:flex;gap:16px;flex-wrap:wrap;padding-top:16px;border-top:1.5px solid var(--border);margin-top:4px;align-items:center;">
+      <span style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px">Operatori</span>`;
+    for(const op of activeOps){
+      const color=VMIX_OPS_COLORS[op]||VMIX_DEFAULT_COLOR;
+      const cnt=wEvs.filter(e=>e.vmix===op).length;
+      html+=`<div style="display:flex;align-items:center;gap:5px;">
+        <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0"></span>
+        <span style="font-size:11px;font-weight:600;color:var(--text)">${op}</span>
+        <span style="font-size:10px;color:var(--muted)">${cnt} ev.</span>
+      </div>`;
+    }
+    html+=`</div>`;
+  }
 
   document.getElementById('vmix-live-root').innerHTML = html;
 }
