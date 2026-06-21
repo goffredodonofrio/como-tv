@@ -1133,7 +1133,7 @@ let vmixLoaded = false;
 async function loadVmixLive() {
   if (vmixLoaded) return;
   const root = document.getElementById('vmix-live-root');
-  root.innerHTML = '<div style="padding:48px;text-align:center;color:var(--muted);font-size:13px;">Caricamento dati da Airtable…</div>';
+  root.innerHTML = '<div style="padding:48px;text-align:center;color:var(--muted);font-size:13px;">⏳ Caricamento dati da Airtable…<br><span style="font-size:11px;opacity:.6">(potrebbe richiedere qualche secondo)</span></div>';
   try {
     const events = await fetchVmixEvents();
     vmixLoaded = true;
@@ -1164,14 +1164,17 @@ async function fetchVmixEvents() {
       const durSec = f[VMIX_FIELDS.dur] || 7200;
       const vmixArr = f[VMIX_FIELDS.vmix];
       const vmix = vmixArr && vmixArr.length ? (typeof vmixArr[0] === 'string' ? vmixArr[0] : vmixArr[0].name) : null;
-      const compObj = f[VMIX_FIELDS.comp];
+      const compRaw = f[VMIX_FIELDS.comp];
+      const comp = compRaw ? (typeof compRaw === 'string' ? compRaw : compRaw.name || '') : '';
+      const dLocal = new Date(startMs);
+      const dayStr = dLocal.getFullYear() + '-' + String(dLocal.getMonth()+1).padStart(2,'0') + '-' + String(dLocal.getDate()).padStart(2,'0');
       events.push({
-        title:  f[VMIX_FIELDS.title] || '—',
-        _s:     startMs,
-        _e:     startMs + durSec * 1000,
+        title: f[VMIX_FIELDS.title] || '—',
+        _s:    startMs,
+        _e:    startMs + durSec * 1000,
         vmix,
-        comp:   compObj ? compObj.name : '',
-        dayStr: new Date(startMs).toISOString().slice(0,10),
+        comp,
+        dayStr,
       });
     }
     offset = data.offset || null;
@@ -1211,7 +1214,7 @@ function renderVmixRoot(events) {
     weekMap[k].events.push(e);
   }
   const weeks=Object.values(weekMap).sort((a,b)=>a.mon-b.mon);
-  if(!weeks.length){document.getElementById('vmix-live-root').innerHTML='<div style="padding:48px;text-align:center;color:var(--muted)">Nessun evento futuro trovato in Airtable.</div>';return;}
+  if(!weeks.length){document.getElementById('vmix-live-root').innerHTML='<div style="padding:48px;text-align:center;color:var(--muted)">Nessun evento futuro trovato in Airtable.<br><span style="font-size:11px">Record totali ricevuti: ' + events.length + '</span></div>';return;}
   window._vmixWeeks=weeks; window._vmixWeekIdx=0;
   renderVmixWeek();
 }
