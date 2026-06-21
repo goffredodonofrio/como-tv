@@ -1215,7 +1215,13 @@ function renderVmixRoot(events) {
   }
   const weeks=Object.values(weekMap).sort((a,b)=>a.mon-b.mon);
   if(!weeks.length){document.getElementById('vmix-live-root').innerHTML='<div style="padding:48px;text-align:center;color:var(--muted)">Nessun evento futuro trovato in Airtable.<br><span style="font-size:11px">Record totali ricevuti: ' + events.length + '</span></div>';return;}
-  window._vmixWeeks=weeks; window._vmixWeekIdx=0;
+  // Parti dalla settimana più vicina a oggi
+  const now = Date.now();
+  let startIdx = 0;
+  for (let i = 0; i < weeks.length; i++) {
+    if (weeks[i].mon.getTime() <= now) startIdx = i;
+  }
+  window._vmixWeeks=weeks; window._vmixWeekIdx=startIdx;
   renderVmixWeek();
 }
 
@@ -1275,11 +1281,15 @@ function renderVmixWeek() {
   }
   const days = Object.keys(dayMap).sort();
 
+  const totalWeeks = window._vmixWeeks.length;
   let html = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;">'
-    + '<button class="day-nav-btn" onclick="vmixPrevWeek()"' + (idx === 0 ? ' disabled' : '') + '>← Prec.</button>'
-    + '<span style="flex:1;text-align:center;font-size:15px;font-weight:800;color:var(--navy);letter-spacing:-.3px">' + wLabel + '</span>'
-    + '<button class="day-nav-btn" onclick="vmixNextWeek()"' + (idx === window._vmixWeeks.length - 1 ? ' disabled' : '') + '>Succ. →</button>'
-    + '<button class="day-nav-btn" onclick="vmixLoaded=false;loadVmixLive()" style="margin-left:4px;font-size:11px;opacity:.6">↻ Aggiorna</button>'
+    + '<button class="day-nav-btn" onclick="vmixPrevWeek()"' + (idx === 0 ? ' disabled' : '') + ' style="padding:6px 16px;font-weight:700;">← Prec.</button>'
+    + '<div style="flex:1;text-align:center;">'
+    + '<div style="font-size:16px;font-weight:800;color:var(--navy);letter-spacing:-.3px">' + wLabel + '</div>'
+    + '<div style="font-size:11px;color:var(--muted);margin-top:2px">Settimana ' + (idx+1) + ' di ' + totalWeeks + '</div>'
+    + '</div>'
+    + '<button class="day-nav-btn" onclick="vmixNextWeek()"' + (idx === totalWeeks - 1 ? ' disabled' : '') + ' style="padding:6px 16px;font-weight:700;">Succ. →</button>'
+    + '<button class="day-nav-btn" onclick="vmixLoaded=false;loadVmixLive()" style="margin-left:4px;font-size:11px;opacity:.6">↻</button>'
     + '</div>'
     + '<div class="kpi-row">'
     + '<div class="kpi"><div class="kpi-label">Giorni live</div><div class="kpi-val">' + daysLive + '</div><div class="kpi-sub">su 7 giorni</div></div>'
