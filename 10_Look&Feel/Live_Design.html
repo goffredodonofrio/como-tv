@@ -149,6 +149,8 @@
   .btn:hover{border-color:var(--gold)}
   .btn.on{background:linear-gradient(180deg,var(--gold-bright),var(--gold-deep));color:#2a1e06;border-color:transparent;box-shadow:var(--glow-gold)}
   .btn.play{background:linear-gradient(180deg,var(--ivory),#cfc9b6);color:#0A0F24;border-color:transparent}
+  .btn.rec-on{background:linear-gradient(180deg,#F0474B,var(--red-deep));color:#fff;border-color:transparent;box-shadow:var(--glow-live);animation:rec-pulse 1.1s ease-in-out infinite}
+  @keyframes rec-pulse{0%,100%{opacity:1}50%{opacity:.75}}
   .sep{width:1px;height:24px;background:rgba(201,162,75,.25);margin:0 4px}
   .grp{display:flex;gap:6px;align-items:center}
   .grp .lbl{font-family:var(--font-body);font-weight:700;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-3);margin-right:2px}
@@ -2237,7 +2239,9 @@ window.Studio = {
 
     const [scale, setScale] = useState(1);
     const [running, setRunning] = useState(false);
+    const [recording, setRecording] = useState(false);
     const timers = useRef([]);
+    const recRef = useRef({ recorder: null, chunks: [], stream: null });
 
     useEffect(() => {
       const rescale = () => {
@@ -2249,6 +2253,49 @@ window.Studio = {
     });
     const clear = () => { timers.current.forEach(clearTimeout); timers.current = []; };
     useEffect(() => () => clear(), []);
+    useEffect(() => () => { const { stream } = recRef.current; if (stream) stream.getTracks().forEach((t) => t.stop()); }, []);
+
+    const stopExport = () => {
+      const { recorder, stream } = recRef.current;
+      if (recorder && recorder.state !== 'inactive') recorder.stop();
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+      recRef.current = { recorder: null, chunks: [], stream: null };
+      setRecording(false);
+    };
+
+    const startExport = async () => {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        alert('Esportazione video non supportata su questo browser. Usa Chrome o Edge.');
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { displaySurface: 'browser', frameRate: 30 },
+          audio: false,
+          preferCurrentTab: true,
+        });
+        const mimeCandidates = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+        const mimeType = mimeCandidates.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
+        const chunks = [];
+        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+        recorder.onstop = () => {
+          const blob = new Blob(chunks, { type: mimeType || 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'como-tv-live-design-' + Date.now() + '.webm';
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 4000);
+        };
+        stream.getVideoTracks()[0].addEventListener('ended', stopExport);
+        recorder.start();
+        recRef.current = { recorder, chunks, stream };
+        setRecording(true);
+      } catch (err) {
+        if (err && err.name !== 'NotAllowedError') console.error(err);
+      }
+    };
 
     const go = (m) => { clear(); setRunning(false); setMode(m); setRunKey((k) => k + 1); };
     const goOpening = () => { go({ t: 'opening' }); timers.current.push(setTimeout(() => { setMode({ t: 'sting' }); setRunKey((k) => k + 1); }, OPENING_TOTAL + 200)); };
@@ -2310,6 +2357,10 @@ window.Studio = {
             </span>
             <span className="sep" />
             <button className={"btn" + (mode.t === 'ticker' ? ' on' : '')} onClick={() => go({ t: 'ticker' })}><I n="scroll-text" /> Titoli di coda</button>
+            <span className="spacer" />
+            <button className={"btn" + (recording ? ' rec-on' : '')} onClick={recording ? stopExport : startExport}>
+              <I n={recording ? 'square' : 'circle'} /> {recording ? 'Ferma e scarica' : 'Esporta video'}
+            </button>
           </div>
           <div className="rail-run">
             <span className="lbl" style={{marginRight:6,flexShrink:0}}>Rundown</span>
