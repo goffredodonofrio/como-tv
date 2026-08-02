@@ -204,6 +204,12 @@ tr:hover td{background:var(--s2);}
 .cal-dots{display:flex;flex-wrap:wrap;gap:2px 2px;margin-top:3px;justify-content:flex-start;padding:0 1px;}
 .cal-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;cursor:default;}
 .cal-dot-label{font-size:7.5px;font-weight:700;line-height:1.2;color:#fff;padding:1px 4px;border-radius:3px;white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis;}
+
+.stag-toggle-btn.active {
+  background: var(--navy) !important;
+  color: #fff !important;
+  border-color: var(--navy) !important;
+}
 </style>
 </head>
 <body>
@@ -242,6 +248,22 @@ tr:hover td{background:var(--s2);}
 <div class="section active" id="tab-stagione">
 <div id="stagione-status" style="display:none;padding:48px;text-align:center;color:var(--muted);font-size:13px;"></div>
 <div id="stagione-content" style="display:none">
+
+<!-- Toggle vista -->
+<div style="display:flex;gap:6px;margin-bottom:16px;align-items:center;">
+  <button class="stag-toggle-btn active" data-view="sport"
+    onclick="setStagioneView('sport')"
+    style="padding:6px 16px;border-radius:20px;border:1.5px solid var(--border);background:var(--s3);font-size:12px;font-weight:700;cursor:pointer;color:var(--fg);transition:all .15s">
+    Stagione Sportiva
+  </button>
+  <button class="stag-toggle-btn" data-view="solare"
+    onclick="setStagioneView('solare')"
+    style="padding:6px 16px;border-radius:20px;border:1.5px solid var(--border);background:transparent;font-size:12px;font-weight:700;cursor:pointer;color:var(--muted);transition:all .15s">
+    Anno Solare
+  </button>
+  <span id="stagione-period-label" style="font-size:11px;color:var(--muted);margin-left:4px"></span>
+</div>
+
 <div class="kpi-row" id="season-kpis"></div>
 
 <!-- Grafico stacked + legenda -->
@@ -376,6 +398,34 @@ async function fetchStagioneEvents() {
   return events;
 }
 
+function stagionFilterEvents(allEvs, view) {
+  const now = new Date();
+  const yr  = now.getFullYear();
+  const mo  = now.getMonth() + 1; // 1-12
+  if (view === 'sport') {
+    // Stagione sportiva: luglio anno X → giugno anno X+1
+    const sy = mo >= 7 ? yr : yr - 1;
+    const s  = new Date(sy+'-07-01').getTime();
+    const e  = new Date((sy+1)+'-06-30T23:59:59').getTime();
+    return allEvs.filter(ev => ev._s >= s && ev._s <= e);
+  } else {
+    // Anno solare
+    const s = new Date(yr+'-01-01').getTime();
+    const e = new Date(yr+'-12-31T23:59:59').getTime();
+    return allEvs.filter(ev => ev._s >= s && ev._s <= e);
+  }
+}
+
+function setStagioneView(view) {
+  window._stagionView = view;
+  document.querySelectorAll('.stag-toggle-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === view);
+  });
+  if (window._stagionAllEvents) {
+    initStagione(stagionFilterEvents(window._stagionAllEvents, view), view);
+  }
+}
+
 async function loadStagione() {
   if (stagionLoaded) return;
   const status = document.getElementById('stagione-status');
@@ -384,17 +434,19 @@ async function loadStagione() {
   status.innerHTML = 'Caricamento dati da Airtable…';
   content.style.display = 'none';
   try {
-    const events = await fetchStagioneEvents();
+    const allEvents = await fetchStagioneEvents();
+    window._stagionAllEvents = allEvents;
+    window._stagionView = window._stagionView || 'sport';
     stagionLoaded = true;
     status.style.display = 'none';
     content.style.display = 'block';
-    initStagione(events);
+    initStagione(stagionFilterEvents(allEvents, window._stagionView), window._stagionView);
   } catch(e) {
     status.innerHTML = '<span style="color:#dc2626">Errore: '+e.message+'</span>';
   }
 }
 
-function initStagione(events) {
+function initStagione(events, view) {
   const totalPartite = events.length;
   const totalDays    = new Set(events.map(e=>e.date)).size;
   const compsActive  = new Set(events.map(e=>e.competition).filter(Boolean)).size;
@@ -453,8 +505,16 @@ function initStagione(events) {
       <div class="kpi-sub">${maxDayObj ? maxDayObj.comps.split(' | ').length+' competizioni' : '—'}</div>
     </div>
     <div style="display:flex;justify-content:flex-end;padding:4px 0 0 0;">
-      <button class="day-nav-btn" onclick="stagionLoaded=false;loadStagione()" style="font-size:11px;opacity:.6">↻ Aggiorna</button>
+      <button class="day-nav-btn" onclick="stagionLoaded=false;window._stagionAllEvents=null;loadStagione()" style="font-size:11px;opacity:.6">↻ Aggiorna</button>
     </div>`;
+
+  // ── Label periodo ──
+  const now = new Date(), yr = now.getFullYear(), mo = now.getMonth()+1;
+  const periodLabel = view === 'sport'
+    ? ('Stagione ' + (mo >= 7 ? yr : yr-1) + '/' + String(mo >= 7 ? yr+1 : yr).slice(2))
+    : ('Anno ' + yr);
+  const el = document.getElementById('stagione-period-label');
+  if (el) el.textContent = periodLabel;
 
   // ── allMonths ──
   const allMonths = [...new Set(events.map(e=>e.date.slice(0,7)))].sort();
@@ -648,10 +708,6 @@ async function fetchVmixEvents() {
       const dateVal = f[VMIX_FIELDS.date];
       if (!dateVal) continue;
       const startMs = new Date(dateVal).getTime();
-      // Stagione sportiva: 1 luglio – 30 giugno
-      const seasonStart = new Date('2026-07-01').getTime();
-      const seasonEnd   = new Date('2027-06-30T23:59:59').getTime();
-      if (startMs < seasonStart || startMs > seasonEnd) continue;
       if (startMs < cutoff) continue;
       const durSec = f[VMIX_FIELDS.dur] || 7200;
       const vmixArr = f[VMIX_FIELDS.vmix];
