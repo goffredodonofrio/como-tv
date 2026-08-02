@@ -358,6 +358,10 @@ async function fetchStagioneEvents() {
       const dateVal = f[VMIX_FIELDS.date];
       if (!dateVal) continue;
       const startMs = new Date(dateVal).getTime();
+      // Stagione sportiva: 1 luglio – 30 giugno
+      const seasonStart = new Date('2026-07-01').getTime();
+      const seasonEnd   = new Date('2027-06-30T23:59:59').getTime();
+      if (startMs < seasonStart || startMs > seasonEnd) continue;
       const durSec = f[VMIX_FIELDS.dur] || 7200;
       const vmixArr = f[VMIX_FIELDS.vmix];
       const vmix = vmixArr && vmixArr.length ? (typeof vmixArr[0]==='string' ? vmixArr[0] : vmixArr[0].name) : null;
@@ -476,7 +480,7 @@ function initStagione(events) {
     return MONTHS_SHORT[parseInt(m)]+"'"+y.slice(2);
   });
   const datasets = compStats.map(r => ({
-    label: r.meta.flag+' '+r.meta.s,
+    label: r.meta.s,
     data: allMonths.map(mo => events.filter(e=>e.competition===r.c&&e.date.startsWith(mo)).length),
     backgroundColor: r.color,
     borderColor: r.color,
@@ -510,7 +514,7 @@ function initStagione(events) {
   document.getElementById('stack-legend').innerHTML = compStats.map(r =>
     `<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--fg);">
        <div style="width:10px;height:10px;border-radius:2px;background:${r.color};flex-shrink:0;"></div>
-       <span>${r.meta.flag} ${r.meta.s}</span>
+       <span>${r.meta.s}</span>
      </div>`
   ).join('');
 
@@ -525,7 +529,7 @@ function initStagione(events) {
     </tr></thead>
     <tbody>` +
     compStats.map(r => `<tr style="border-bottom:1px solid var(--border);">
-      <td style="padding:7px 10px;"><span style="display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;background:${r.color}20;color:${r.color};border:1px solid ${r.color}44;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${r.meta.flag} ${r.meta.s}</span></td>
+      <td style="padding:7px 10px;"><span style="display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;background:${r.color}20;color:${r.color};border:1px solid ${r.color}44;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${r.meta.s}</span></td>
       <td style="padding:7px 10px;text-align:right;font-weight:700;">${r.tot}</td>
       <td style="padding:7px 10px;text-align:right;color:var(--muted);font-size:12px">${r.pct}%</td>
       <td style="padding:7px 10px;"><div style="width:100%;height:6px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="width:${(r.tot/maxTot*100).toFixed(0)}%;height:6px;border-radius:3px;background:${r.color};"></div></div></td>
@@ -544,7 +548,7 @@ function initStagione(events) {
   donutChartInstance = new Chart(ctx2, {
     type:'doughnut',
     data:{
-      labels: compStats.map(r=>r.meta.flag+' '+r.meta.s),
+      labels: compStats.map(r=>r.meta.s),
       datasets:[{ data:compStats.map(r=>r.tot), backgroundColor:compStats.map(r=>r.color+'cc'), borderColor:compStats.map(r=>r.color), borderWidth:1 }]
     },
     options:{
@@ -573,7 +577,7 @@ function initStagione(events) {
   const rows = compStats.map(r => {
     const byMonth = allMonths.map(mo => events.filter(e=>e.competition===r.c&&e.date.startsWith(mo)).length);
     return `<tr style="border-bottom:1px solid var(--border);">`
-      + `<td style="padding:5px 8px;"><span style="display:inline-flex;align-items:center;gap:4px;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;background:${r.color}18;color:${r.color};border:1px solid ${r.color}33;white-space:nowrap">${r.meta.flag} ${r.meta.s}</span></td>`
+      + `<td style="padding:5px 8px;"><span style="display:inline-flex;align-items:center;gap:4px;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;background:${r.color}18;color:${r.color};border:1px solid ${r.color}33;white-space:nowrap">${r.meta.s}</span></td>`
       + `<td style="${tdBase}font-weight:800;background:var(--s3);">${r.tot}</td>`
       + byMonth.map(v => `<td style="${tdBase}">${v||'<span style="color:var(--muted)">—</span>'}</td>`).join('')
       + '</tr>';
@@ -644,6 +648,10 @@ async function fetchVmixEvents() {
       const dateVal = f[VMIX_FIELDS.date];
       if (!dateVal) continue;
       const startMs = new Date(dateVal).getTime();
+      // Stagione sportiva: 1 luglio – 30 giugno
+      const seasonStart = new Date('2026-07-01').getTime();
+      const seasonEnd   = new Date('2027-06-30T23:59:59').getTime();
+      if (startMs < seasonStart || startMs > seasonEnd) continue;
       if (startMs < cutoff) continue;
       const durSec = f[VMIX_FIELDS.dur] || 7200;
       const vmixArr = f[VMIX_FIELDS.vmix];
