@@ -451,13 +451,37 @@ function initStagione(events, view) {
   const totalPartite = events.length;
   const totalDays    = new Set(events.map(e=>e.date)).size;
 
+  // ── Palette colori per competizioni ──
+  const PALETTE = ['#6366f1','#f59e0b','#10b981','#ef4444','#8b5cf6','#06b6d4','#84cc16',
+                   '#f97316','#ec4899','#14b8a6','#a855f7','#eab308','#22c55e','#3b82f6','#f43f5e'];
+  function compColor(comp, idx) {
+    const m = getMeta(comp);
+    return (m.color && m.color !== '#9ca3af') ? m.color : PALETTE[idx % PALETTE.length];
+  }
+
   // ── Label periodo ──
   const now = new Date(), yr = now.getFullYear(), mo = now.getMonth()+1;
   const periodLabel = view === 'sport'
     ? ('Stagione ' + (mo >= 7 ? yr : yr-1) + '/' + String(mo >= 7 ? yr+1 : yr).slice(2))
     : ('Anno ' + yr);
   const el = document.getElementById('stagione-period-label');
-  if (el) el.textContent = periodLabel;
+  if (el) el.textContent = periodLabel + (totalPartite ? '' : ' — nessun evento');
+
+  // ── Early return se nessun evento ──
+  if (totalPartite === 0) {
+    const content = document.getElementById('stagione-content');
+    if (content) {
+      const charts = content.querySelectorAll('canvas');
+      charts.forEach(c => { const ctx = c.getContext('2d'); ctx.clearRect(0,0,c.width,c.height); });
+      ['comp-summary-tbl','monthly-detail-tbl','stack-legend'].forEach(id => {
+        const el2 = document.getElementById(id);
+        if (el2) el2.innerHTML = '';
+      });
+    }
+    const status = document.getElementById('stagione-status');
+    if (status) { status.style.display='block'; status.innerHTML='Nessun evento trovato per il periodo selezionato. Verifica che i record Airtable abbiano date nel range corretto.'; }
+    return;
+  }
 
   // ── allMonths ──
   const allMonths = [...new Set(events.map(e=>e.date.slice(0,7)))].sort();
