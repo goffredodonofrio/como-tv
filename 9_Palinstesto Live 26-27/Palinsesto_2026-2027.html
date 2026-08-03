@@ -281,7 +281,7 @@ tr:hover td{background:var(--s2);}
 </div>
 <div class="card">
 <div class="card-header"><div class="card-title">Distribuzione partite</div></div>
-<div class="chart-h320"><canvas id="seasonDonut"></canvas></div>
+<div id="hero-stats" style="padding:12px 0 4px"></div>
 </div>
 </div>
 
@@ -567,46 +567,25 @@ function initStagione(events, view) {
     </tr></tbody>`;
 
   // ── DONUT ──
-  if (donutChartInstance) donutChartInstance.destroy();
-  const ctx2 = document.getElementById('seasonDonut').getContext('2d');
-  const _totPartite = totalPartite;
-  donutChartInstance = new Chart(ctx2, {
-    type:'doughnut',
-    data:{
-      labels: compStats.map(r=>r.meta.s),
-      datasets:[{
-        data: compStats.map(r=>r.tot),
-        backgroundColor: compStats.map(r=>r.color),
-        borderColor: '#ffffff',
-        borderWidth: 3,
-        hoverOffset: 6
-      }]
-    },
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      cutout: '68%',
-      plugins:{
-        legend:{ display:false },
-        tooltip:{ callbacks:{ label: i => `${i.label}: ${i.raw} (${((i.raw/_totPartite)*100).toFixed(1)}%)` } }
-      }
-    },
-    plugins:[{
-      id:'centerText',
-      afterDraw(chart){
-        const {ctx, chartArea:{width,height,left,top}} = chart;
-        ctx.save();
-        const cx = left + width/2, cy = top + height/2;
-        ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.font = 'bold 30px system-ui, -apple-system, sans-serif';
-        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--navy').trim() || '#0a1628';
-        ctx.fillText(_totPartite, cx, cy - 9);
-        ctx.font = '11px system-ui, -apple-system, sans-serif';
-        ctx.fillStyle = '#9ca3af';
-        ctx.fillText('partite', cx, cy + 14);
-        ctx.restore();
-      }
-    }]
-  });
+  // ── HERO NUMBERS ──
+  document.getElementById('hero-stats').innerHTML =
+    `<div style="text-align:center;padding:16px 0 20px;border-bottom:1px solid var(--border);margin-bottom:16px;">
+       <div style="font-size:56px;font-weight:900;line-height:1;color:var(--navy);letter-spacing:-2px;">${totalPartite}</div>
+       <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-top:6px;">partite totali</div>
+     </div>` +
+    compStats.map(r => `
+     <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;margin-bottom:6px;background:${r.color}10;border-left:3px solid ${r.color};">
+       <div style="flex:1;min-width:0;">
+         <div style="font-size:11px;font-weight:700;color:${r.color};letter-spacing:0.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.meta.s}</div>
+         <div style="margin-top:5px;height:4px;background:var(--border);border-radius:2px;overflow:hidden;">
+           <div style="width:${r.pct}%;height:4px;background:${r.color};border-radius:2px;"></div>
+         </div>
+       </div>
+       <div style="text-align:right;flex-shrink:0;">
+         <div style="font-size:32px;font-weight:900;line-height:1;color:var(--navy);letter-spacing:-1px;">${r.tot}</div>
+         <div style="font-size:11px;color:var(--muted);font-weight:600;margin-top:2px;">${r.pct}%</div>
+       </div>
+     </div>`).join('');
 
   // ── TABELLA MENSILE: trasposta (righe = comp, colonne = mesi) — totale come prima colonna ──
   const thStyle = 'padding:6px 8px;font-size:9px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);border-bottom:2px solid var(--border);text-align:right;white-space:nowrap;';
