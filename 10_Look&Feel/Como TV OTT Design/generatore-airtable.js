@@ -252,6 +252,25 @@ function renderEventPanel() {
     };
 
     card.appendChild(select);
+
+    // Bottone "Aggiorna" per forzare il caricamento (fallback)
+    var updateBtn = document.createElement('button');
+    updateBtn.textContent = '🔄 Aggiorna';
+    updateBtn.style.marginTop = '8px';
+    updateBtn.style.width = '100%';
+    updateBtn.style.padding = '8px';
+    updateBtn.style.backgroundColor = 'var(--btn-bg, #ffc)';
+    updateBtn.style.border = '1px solid var(--fg3)';
+    updateBtn.style.cursor = 'pointer';
+    updateBtn.style.borderRadius = '4px';
+    updateBtn.onclick = function() {
+      var val = select.value;
+      if (!val) return;
+      console.log('UPDATE BUTTON CLICKED:', val);
+      var evt = EVENTS_DATA[parseInt(val)];
+      applyEventToGenerator(evt);
+    };
+    card.appendChild(updateBtn);
   }
 
   panelContainer.appendChild(card);
