@@ -553,8 +553,20 @@ function loadPhotoFromDriveURL(url, modal){
  }
 
  // Carica la foto usando l'ID estratto
- var photoUrl = 'https://drive.google.com/uc?export=download&id=' + fileId;
- fetch(photoUrl)
+ // Prova diverse URL di accesso a Google Drive
+ var photoUrls = [
+  'https://drive.google.com/uc?id=' + fileId,
+  'https://drive.google.com/uc?export=download&id=' + fileId
+ ];
+
+ var loadPhoto = function(urlIndex) {
+  if(urlIndex >= photoUrls.length) {
+   alert('⚠️ Errore: il file potrebbe essere privato.\n\nSoluzione:\n1. Apri il file in Google Drive\n2. Clicca "Condividi"\n3. Cambia da "Privato" a "Chiunque con il link"\n4. Ricopia l\'URL e incolla di nuovo');
+   return;
+  }
+
+  var photoUrl = photoUrls[urlIndex];
+  fetch(photoUrl)
   .then(r => r.blob())
   .then(blob => {
    var reader = new FileReader();
@@ -575,7 +587,13 @@ function loadPhotoFromDriveURL(url, modal){
    };
    reader.readAsDataURL(blob);
   })
-  .catch(e => alert('Errore caricamento foto: ' + e.message));
+  .catch(e => {
+   console.log('Tentativo fallito con: ' + photoUrl);
+   loadPhoto(urlIndex + 1);
+  });
+ };
+
+ loadPhoto(0);
 }
 function showDrivePhotoGrid(files){
  var modal=document.createElement('div');modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
