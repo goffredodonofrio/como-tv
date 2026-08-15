@@ -493,11 +493,15 @@ function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);va
  fc.appendChild(seg);
  if(SHARED.mode==='comp'){
    fc.appendChild(el('label','Competizione'));
-   fc.appendChild(simpleInput(SHARED.compBase,function(v){SHARED.compBase=v;composeComp();}));
-   fc.appendChild(el('label','Giornata / Turno'));fc.appendChild(simpleInput(SHARED.round,function(v){SHARED.round=v;composeComp();}));
+   var cs=document.createElement('select');cs.appendChild(opt('','— scegli competizione —'));
+   Object.keys(TEAMS).forEach(function(k){cs.appendChild(opt(k,TEAMS[k].label));});cs.value=SHARED.compKey;
+   cs.onchange=function(){pushUndo();SHARED.compKey=cs.value;if(cs.value&&TEAMS[cs.value])SHARED.compBase=(TEAMS[cs.value].name||cleanLabel(TEAMS[cs.value].label));composeComp();if(COMP_LOGO[cs.value])SHIMG.logoComp=COMP_LOGO[cs.value];else if(typeof LOGO_LIB!=='undefined'&&LOGO_LIB[cs.value])SHIMG.logoComp=LOGO_LIB[cs.value].d;renderControls();renderStage();refreshThumbs();};
+   fc.appendChild(cs);
+   fc.appendChild(el('label','Giornata / Turno'));var rs=document.createElement('select');rs.appendChild(opt('','— nessuno —'));ROUNDS.forEach(function(rr){rs.appendChild(opt(rr,rr));});rs.value=SHARED.round||'';rs.onchange=function(){pushUndo();SHARED.round=this.value;composeComp();renderStage();refreshThumbs();};fc.appendChild(rs);
    var teams=(TEAMS[SHARED.compKey]&&TEAMS[SHARED.compKey].teams)||[];
-   fc.appendChild(el('label','Squadra casa'));fc.appendChild(simpleInput(SHARED.home,function(v){SHARED.home=v;}));
-   fc.appendChild(el('label','Squadra ospite'));fc.appendChild(simpleInput(SHARED.away,function(v){SHARED.away=v;}));
+   [['home','Squadra casa'],['away','Squadra ospite']].forEach(function(t){
+     fc.appendChild(el('label',t[1]));
+     if(SHARED.compKey&&teams.length){var ts=document.createElement('select');ts.appendChild(opt('','— scegli squadra —'));teams.forEach(function(n){ts.appendChild(opt(n,n));});ts.value=(teams.indexOf(SHARED[t[0]])>=0?SHARED[t[0]]:'');ts.onchange=(function(fk){return function(){pushUndo();SHARED[fk]=this.value;renderStage();refreshThumbs();};})(t[0]);fc.appendChild(ts);}
      else{fc.appendChild(simpleInput(SHARED[t[0]],(function(fk){return function(v){SHARED[fk]=v;};})(t[0])));}
    });
  } else {
