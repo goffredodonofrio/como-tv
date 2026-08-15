@@ -733,94 +733,35 @@ document.fonts.ready.then(function(){renderControls();renderStage();renderThumbs
 renderControls();renderStage();renderThumbs();
 loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
 
-// Auto-positioning per formati banner - solo se non regolato manualmente
-var faceapiLoaded=false;
+// Auto-positioning per formati banner
 async function autoPositionPhotoIfBanner(){
  var fmt=BYKEY[current];
  if(!fmt||!fmt.name.toLowerCase().includes('banner'))return;
  if(!SHIMG.photo)return;
 
- // NON sovrascrive se l'utente ha già regolato manualmente
- if(STATE[current].adj.photo&&(STATE[current].adj.photo.dy||STATE[current].adj.photo.dx)){
-  console.log('📸 Foto già regolata manualmente, skip auto-positioning');
-  return;
- }
-
- // Prova face detection se disponibile
- if(!faceapiLoaded){
-  tryLoadFaceDetection();
- } else {
-  tryDetectFace();
- }
-
- // Fallback a smart positioning
- setTimeout(trySmartPosition, 100);
-}
-
-function tryLoadFaceDetection(){
  try{
-  var script=document.createElement('script');
-  script.src='https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
-  script.async=true;
-  script.onload=function(){
-   faceapiLoaded=true;
-   tryDetectFace();
-  };
-  script.onerror=function(){
-   console.log('Face detection unavailable, usando smart positioning');
-  };
-  document.head.appendChild(script);
- }catch(e){}
-}
-
-async function tryDetectFace(){
- try{
-  if(!window.faceapi)return;
-  var img=new Image();
-  img.crossOrigin='anonymous';
-  img.onload=async function(){
-   try{
-    var detections=await faceapi.detectAllFaces(img, new faceapi.TinyFaceDetector());
-    if(detections.length>0){
-     var face=detections[0].box;
-     var faceY=face.y+face.height/2;
-     var fmt=BYKEY[current];
-     var offset_y=(fmt.h/2)-faceY;
-     offset_y=Math.max(-(img.height-fmt.h), Math.min(0, offset_y));
-
-     STATE[current].adj.photo=STATE[current].adj.photo||{};
-     STATE[current].adj.photo.dy=offset_y;
-     console.log('📸 Viso rilevato e centrato');
-     renderStage(); refreshThumbs();
-     return true;
-    }
-   }catch(e){}
-  };
-  img.src=SHIMG.photo;
- }catch(e){}
-}
-
-function trySmartPosition(){
- var fmt=BYKEY[current];
- if(!STATE[current].adj.photo||(STATE[current].adj.photo.dy===undefined&&STATE[current].adj.photo.dx===undefined)){
   var img=new Image();
   img.crossOrigin='anonymous';
   img.onload=function(){
    var aspect=img.width/img.height;
    var fmt_aspect=fmt.w/fmt.h;
-   var offset_y=0;
 
-   if(aspect>fmt_aspect && img.height>fmt.h){
-    // Landscape: sposta in alto (80% top)
-    offset_y=-(img.height-fmt.h)*0.2;
+   if(aspect>fmt_aspect){
+    // Immagine più larga: centra verticalmente in alto (viso di solito in alto)
+    var offset=-Math.abs(img.height-fmt.h)/4;
+    STATE[current].adj.photo=STATE[current].adj.photo||{};
+    STATE[current].adj.photo.dy=offset;
+    console.log('📸 Banner: posizionato in alto');
+   } else {
+    // Immagine più stretta: centra normalmente
+    STATE[current].adj.photo=STATE[current].adj.photo||{};
+    STATE[current].adj.photo.dy=0;
+    console.log('📸 Banner: posizionato al centro');
    }
-
-   STATE[current].adj.photo=STATE[current].adj.photo||{};
-   STATE[current].adj.photo.dy=offset_y;
-   console.log('📸 Smart positioning');
-   renderStage(); refreshThumbs();
   };
   img.src=SHIMG.photo;
+ }catch(e){
+  console.log('Auto-positioning: '+e.message);
  }
 }
 </script>
