@@ -333,15 +333,25 @@ function applyEventToGenerator(evt) {
   // Carica foto da Airtable se disponibile
   if (evt.fotoUrl && typeof loadNat === 'function') {
     console.log('📷 Carico foto da Airtable:', evt.fotoUrl);
+    console.log('DEBUG: SHIMG=', SHIMG);
+    console.log('DEBUG: STATE[current]=', STATE[current]);
     // Carica come blob per aggirare CORS, poi converti in data URI
-    fetch(evt.fotoUrl)
-      .then(r => r.blob())
+    fetch(evt.fotoUrl, {mode: 'cors'})
+      .then(r => {
+        console.log('✓ Fetch response:', r.status);
+        return r.blob();
+      })
       .then(blob => {
+        console.log('✓ Blob caricato, size:', blob.size);
         var reader = new FileReader();
         reader.onload = function(){
+          console.log('✓ DataURI convertito, lunghezza:', reader.result.length);
           SHIMG.photo = reader.result;
           delete STATE[current].adj.photo;
-          if (typeof renderStage === 'function') renderStage();
+          if (typeof renderStage === 'function') {
+            console.log('✓ Chiamo renderStage()');
+            renderStage();
+          }
           if (typeof refreshThumbs === 'function') refreshThumbs();
           console.log('✓ Foto caricata da Airtable');
         };
@@ -349,8 +359,6 @@ function applyEventToGenerator(evt) {
       })
       .catch(e => {
         console.error('❌ Errore caricamento foto Airtable:', e);
-        SHIMG.photo = evt.fotoUrl; // Fallback all'URL diretto
-        if (typeof renderStage === 'function') renderStage();
       });
   }
 
