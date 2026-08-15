@@ -335,19 +335,27 @@ function applyEventToGenerator(evt) {
 }
 
 function updateFieldsInDOM() {
-  // Trova tutti i select (Competizione, Turno, Casa, Ospite)
-  var selects = document.querySelectorAll('select');
+  // Trova tutti i select, ESCLUDENDO quello Airtable (id="airtableEventSelect")
+  var allSelects = document.querySelectorAll('select');
+  var selects = [];
+  for (var j = 0; j < allSelects.length; j++) {
+    if (allSelects[j].id !== 'airtableEventSelect') {
+      selects.push(allSelects[j]);
+    }
+  }
 
   // Select 0: Competizione
   if (selects[0] && SHARED.compKey) {
     selects[0].value = SHARED.compKey;
     selects[0].dispatchEvent(new Event('change'));
+    console.log('✓ Set compKey:', SHARED.compKey);
   }
 
   // Select 1: Turno/Giornata
   if (selects[1] && SHARED.round) {
     selects[1].value = SHARED.round;
     selects[1].dispatchEvent(new Event('change'));
+    console.log('✓ Set round:', SHARED.round);
   }
 
   // Select 2: Squadra casa
@@ -356,6 +364,7 @@ function updateFieldsInDOM() {
       if (selects[2].options[i].text.toUpperCase() === SHARED.home.toUpperCase()) {
         selects[2].value = selects[2].options[i].value;
         selects[2].dispatchEvent(new Event('change'));
+        console.log('✓ Set home:', SHARED.home);
         break;
       }
     }
@@ -367,6 +376,7 @@ function updateFieldsInDOM() {
       if (selects[3].options[i].text.toUpperCase() === SHARED.away.toUpperCase()) {
         selects[3].value = selects[3].options[i].value;
         selects[3].dispatchEvent(new Event('change'));
+        console.log('✓ Set away:', SHARED.away);
         break;
       }
     }
