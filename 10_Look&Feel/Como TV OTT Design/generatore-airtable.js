@@ -171,6 +171,9 @@ function parseAirtableRecord(rec) {
   // English commentary
   var english = !!(fields['Commento 1'] || []).find(c => c.includes('Paul') || c.includes('EN'));
 
+  // Foto Piattaforma (URL della foto)
+  var fotoUrl = fields['Foto Piattaforma'] || '';
+
   return {
     id: rec.id,
     home: home,
@@ -183,7 +186,8 @@ function parseAirtableRecord(rec) {
     round: round,
     english: english,
     fanVoice: fanVoice,
-    partitaRaw: partita
+    partitaRaw: partita,
+    fotoUrl: fotoUrl
   };
 }
 
@@ -312,6 +316,30 @@ function applyEventToGenerator(evt) {
   // Carica logo
   if (typeof LOGO_LIB !== 'undefined' && LOGO_LIB[mappedCompKey] && typeof SHIMG !== 'undefined') {
     SHIMG.logoComp = LOGO_LIB[mappedCompKey].d;
+  }
+
+  // Carica foto da Airtable se disponibile
+  if (evt.fotoUrl && typeof loadNat === 'function') {
+    console.log('📷 Carico foto da Airtable:', evt.fotoUrl);
+    // Carica la foto dalla URL
+    var img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = function(){
+      var canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      SHIMG.photo = canvas.toDataURL('image/jpeg', 0.95);
+      delete STATE[current].adj.photo;
+      if (typeof renderStage === 'function') renderStage();
+      if (typeof refreshThumbs === 'function') refreshThumbs();
+      console.log('✓ Foto caricata da Airtable');
+    };
+    img.onerror = function(){
+      console.warn('⚠️ Errore caricamento foto Airtable');
+    };
+    img.src = evt.fotoUrl;
   }
 
   // Aggiorna i campi nel DOM (aspetta che siano creati)
