@@ -554,38 +554,30 @@ function openDriveFileModal(){
 }
 
 function loadPhotoFromDriveFileId(fileId){
- // Usa URL lh3.google.com per le immagini (funziona meglio con CORS)
- var url='https://lh3.google.com/d/'+fileId+'=w2000';
+ // URL pubblico Google Drive (funziona senza autenticazione)
+ var url='https://drive.google.com/uc?id='+fileId+'&export=download';
 
- console.log('⏳ Caricamento foto:', fileId, 'da', url);
+ console.log('⏳ Caricamento foto:', fileId);
 
- // Usa un img tag + canvas per evitare problemi CORS
- var img=new Image();
- img.crossOrigin='anonymous';
- img.onload=function(){
-  if(typeof pushUndo==='function') pushUndo();
-  var canvas=document.createElement('canvas');
-  canvas.width=img.width;
-  canvas.height=img.height;
-  var ctx=canvas.getContext('2d');
-  ctx.drawImage(img, 0, 0);
-  SHIMG.photo=canvas.toDataURL('image/jpeg', 0.95);
-  delete STATE[current].adj.photo;
-  loadNat(SHIMG.photo, function(){
-   renderControls();
-   renderStage();
-   refreshThumbs();
-  });
-  renderControls();
-  renderStage();
-  refreshThumbs();
-  console.log('✓ Foto caricata da Google Drive');
- };
- img.onerror=function(){
-  console.error('Errore caricamento foto');
-  alert('❌ Errore: foto non accessibile. Verifica che:\n1. Il file sia pubblico\n2. L\'ID sia corretto');
- };
- img.src=url;
+ fetch(url, {mode:'no-cors'})
+  .then(r=>r.blob())
+  .then(blob=>{
+   var reader=new FileReader();
+   reader.onload=function(){
+    if(typeof pushUndo==='function') pushUndo();
+    SHIMG.photo=reader.result;
+    delete STATE[current].adj.photo;
+    loadNat(reader.result, function(){
+     renderControls();
+     renderStage();
+     refreshThumbs();
+    });
+    renderControls();
+    renderStage();
+    refreshThumbs();
+    console.log('✓ Foto caricata da Google Drive');
+   };
+   reader.readAsDataURL(blob);
   })
   .catch(e=>{
    alert('Errore caricamento foto: '+e.message);
