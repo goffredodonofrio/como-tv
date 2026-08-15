@@ -329,7 +329,12 @@ function applyEventToGenerator(evt) {
   }
 
   // ADESSO renderControls() creerà i dropdown con le squadre giuste
-  if (typeof renderControls === 'function') renderControls();
+  try {
+    if (typeof renderControls === 'function') renderControls();
+  } catch (e) {
+    console.warn('renderControls error (ignorato):', e.message);
+  }
+
   if (typeof renderStage === 'function') renderStage();
   if (typeof refreshThumbs === 'function') refreshThumbs();
 
