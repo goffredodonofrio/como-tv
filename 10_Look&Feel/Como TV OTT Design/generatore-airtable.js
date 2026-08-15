@@ -346,10 +346,6 @@ function applyEventToGenerator(evt) {
       delete STATE[current].adj.photo;
       if (typeof renderStage === 'function') renderStage();
       if (typeof refreshThumbs === 'function') refreshThumbs();
-      // Auto-positioning per i banner
-      if (typeof autoPositionPhotoIfBanner === 'function') {
-        autoPositionPhotoIfBanner();
-      }
       console.log('✓ Foto caricata da Airtable');
     };
     img.onerror = function(){
