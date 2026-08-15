@@ -551,7 +551,7 @@ function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);va
 var selObj=null;var photoEdit=false;
 // Mappatura degli oggetti testo ai campi editabili (SHARED o specifici del formato)
 var TEXT_EDIT_MAP={'t-home':'home','t-away':'away','t-comp':'comp','t-dt':'','t-hl':'hlKind','t-fan':'','t-q':'','t-sub':'','t-kicker':'heroKicker','t-line1':'heroLine1','t-line2':'heroLine2','t-title':'title','t-name':'name','t-kind':'hlKind','t-tag':'','t-num':'num','t-mark':''};
-function renderStage(){if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');
+function renderStage(){if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');addPhotoClickDrag(svg);
  attachInteract(svg);highlightSel(svg);syncScaleSlider();syncPhotoBar();
  requestAnimationFrame(drawRulers);}
 // ---- menù foto dedicato (Zoom / Orizzontale / Verticale) ----
@@ -732,6 +732,44 @@ window.addEventListener('keydown',function(e){
 document.fonts.ready.then(function(){renderControls();renderStage();renderThumbs();});
 renderControls();renderStage();renderThumbs();
 loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
+
+// Drag click sulla foto - click+drag per spostare
+function addPhotoClickDrag(svg){
+ if(!svg)return;
+ var photoGroup=svg.querySelector('[data-obj="photo"]');
+ if(!photoGroup)return;
+ var isDragging=false,sx=0,sy=0,dx0=0,dy0=0;
+ photoGroup.style.cursor='grab';
+ photoGroup.addEventListener('mousedown',function(ev){
+  if(ev.button!==0)return;
+  isDragging=true;
+  sx=ev.clientX; sy=ev.clientY;
+  var adj=STATE[current].adj.photo||{};
+  dx0=adj.dx||0; dy0=adj.dy||0;
+  photoGroup.style.cursor='grabbing';
+  ev.preventDefault();
+  function mv(e){
+   if(!isDragging)return;
+   var k=svgUnitPerPx(svg);
+   var dx=dx0+(e.clientX-sx)*k;
+   var dy=dy0+(e.clientY-sy)*k;
+   STATE[current].adj.photo=STATE[current].adj.photo||{};
+   STATE[current].adj.photo.dx=dx;
+   STATE[current].adj.photo.dy=dy;
+   photoClamp(STATE[current].adj.photo);
+   photoGroup.setAttribute('transform',objTF(STATE[current].adj.photo));
+  }
+  function up(){
+   isDragging=false;
+   photoGroup.style.cursor='grab';
+   window.removeEventListener('mousemove',mv);
+   window.removeEventListener('mouseup',up);
+   renderStage();
+  }
+  window.addEventListener('mousemove',mv);
+  window.addEventListener('mouseup',up);
+ });
+}
 
 // Auto-positioning intelligente per formati banner con face detection
 var faceapiLoaded=false,faceapiLoading=false;
