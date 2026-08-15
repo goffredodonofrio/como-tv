@@ -183,26 +183,42 @@ function parseAirtableRecord(rec) {
 }
 
 function renderEventPanel() {
-  // Controlla se il pannello Airtable esiste già (per non ricrearlo)
-  if (document.getElementById('airtableImportPanel')) return;
+  // Controlla se il pannello Airtable esiste già
+  var existing = document.getElementById('airtableImportPanel');
+  if (existing) {
+    // Aggiorna il select con gli eventi (in caso di ricarica)
+    var select = document.getElementById('airtableEventSelect');
+    if (select && EVENTS_DATA.length > 0) {
+      // Pulisci opzioni vecchie (tranne la prima)
+      while (select.options.length > 1) select.remove(1);
+      // Aggiungi nuove opzioni
+      EVENTS_DATA.forEach((evt, idx) => {
+        var label = evt.home + ' vs ' + evt.away
+          + ' · ' + evt.date
+          + ' · ' + evt.compBase;
+        select.appendChild(createOption(idx, label));
+      });
+    }
+    return;
+  }
 
-  var panel = document.querySelector('.panel');
-  var pbody = document.querySelector('.pbody');
-  if (!pbody) return;
+  var wrap = document.querySelector('.wrap');
+  if (!wrap) return;
 
-  // Crea il contenitore principale del pannello Airtable (FUORI da fieldsCard)
+  // Crea contenitore Airtable FUORI dalla struttura del generatore
   var panelContainer = document.createElement('div');
   panelContainer.id = 'airtableImportPanel';
-  panelContainer.className = 'pbody'; // Stesso stile del pannello principale
-  panelContainer.style.pointerEvents = 'auto';
-  panelContainer.style.order = '-1'; // Mettilo prima di tutto (se flex)
+  panelContainer.className = 'pbody';
+  panelContainer.style.marginBottom = '20px';
+  panelContainer.style.borderBottom = '1px solid var(--fg3)';
+  panelContainer.style.paddingBottom = '20px';
 
-  // Crea la sezione "Importa"
+  // Sezione "Importa da Airtable"
   var importSec = document.createElement('div');
   importSec.className = 'step';
   var stepSpan = document.createElement('span');
   stepSpan.className = 'n';
-  stepSpan.textContent = '0'; // Step "0" per essere prima di Formato
+  stepSpan.textContent = '1';
   importSec.appendChild(stepSpan);
   importSec.appendChild(document.createTextNode('Importa da Airtable'));
   panelContainer.appendChild(importSec);
@@ -216,6 +232,7 @@ function renderEventPanel() {
   } else {
     var select = document.createElement('select');
     select.id = 'airtableEventSelect';
+    select.style.width = '100%';
     select.appendChild(createOption('', '— Scegli partita —'));
 
     EVENTS_DATA.forEach((evt, idx) => {
@@ -236,17 +253,8 @@ function renderEventPanel() {
 
   panelContainer.appendChild(card);
 
-  // Inserisci il pannello Airtable PRIMA del pbody principale
-  var pbodyParent = pbody.parentNode;
-  pbodyParent.insertBefore(panelContainer, pbody);
-
-  // Renumerazione: tutti gli step diventano 1, 2, 3...
-  setTimeout(function() {
-    var allSteps = pbodyParent.querySelectorAll('.step .n');
-    allSteps.forEach(function(numSpan, idx) {
-      numSpan.textContent = String(idx + 1);
-    });
-  }, 50);
+  // Inserisci PRIMA del .wrap (così rimane sempre visibile)
+  wrap.parentNode.insertBefore(panelContainer, wrap);
 }
 
 function createOption(val, text) {
