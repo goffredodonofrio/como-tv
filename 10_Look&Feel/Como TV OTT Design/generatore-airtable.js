@@ -85,10 +85,16 @@ function parseAirtableRecord(rec) {
   var fields = rec.fields || {};
   var partita = fields['Partita'] || '';
 
-  // Parsing "CASA-OSPITE" da Partita
-  var parts = partita.split('-');
-  var home = (parts[0] || '').trim().replace(/\s+RINVIATA.*/, '').replace(/^\d+\s*/, '');
-  var away = (parts[1] || '').trim().replace(/\s*\d+\s*(dcr)?$/, '').trim();
+  // Parsing "CASA-OSPITE" da Partita (gestisce: "PARMA-COMO", "A-B 3-4", "A-B RINVIATA", "A-B 3-4 (dcr)", ecc.)
+  var cleanedPartita = partita
+    .replace(/\s+RINVIATA.*$/i, '')      // Rimuovi RINVIATA e tutto dopo
+    .replace(/\s*\(\d+-\d+.*?\).*$/i, '') // Rimuovi (N-N ...) e dopo
+    .replace(/\s+\d+-\d+\s*(dcr)?.*$/i, '') // Rimuovi punteggio finale e dcr
+    .trim();
+
+  var parts = cleanedPartita.split('-');
+  var home = (parts[0] || '').trim().replace(/^\d+\s*/, '').toUpperCase();
+  var away = (parts[1] || '').trim().replace(/^\d+\s*/, '').toUpperCase();
 
   // Parsing data/ora
   var dateTime = fields['Data | Orario'] || '';
@@ -102,8 +108,10 @@ function parseAirtableRecord(rec) {
     time = String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
   }
 
-  // Competizione
+  // Competizione (da singleSelect Airtable)
   var comp = (fields['Competizione'] || [''])[0] || '';
+
+  // Turno (da singleSelect Airtable)
   var round = (fields['Turno'] || [''])[0] || '';
 
   // Fan Voice
@@ -131,6 +139,14 @@ function renderEventPanel() {
   var fc = document.getElementById('fieldsCard');
   if (!fc) return;
 
+  // Controlla se il pannello Airtable esiste già (per non ricrearlo)
+  if (document.getElementById('airtableImportPanel')) return;
+
+  // Crea il contenitore principale del pannello Airtable (ID fisso)
+  var panelContainer = document.createElement('div');
+  panelContainer.id = 'airtableImportPanel';
+  panelContainer.style.pointerEvents = 'auto'; // Mantieni interattività
+
   // Crea la sezione "Importa" come Step 1
   var importSec = document.createElement('div');
   importSec.className = 'step';
@@ -139,15 +155,17 @@ function renderEventPanel() {
   stepSpan.textContent = '1';
   importSec.appendChild(stepSpan);
   importSec.appendChild(document.createTextNode('Importa da Airtable'));
-  fc.insertBefore(importSec, fc.firstChild);
+  panelContainer.appendChild(importSec);
 
   var card = document.createElement('div');
   card.className = 'card';
+  card.id = 'airtableEventCard';
 
   if (EVENTS_DATA.length === 0) {
     card.innerHTML = '<p style="color: var(--fg3); font-size: 12px;">Nessun evento nei prossimi 14 giorni</p>';
   } else {
     var select = document.createElement('select');
+    select.id = 'airtableEventSelect';
     select.appendChild(createOption('', '— Scegli partita —'));
 
     EVENTS_DATA.forEach((evt, idx) => {
@@ -166,7 +184,8 @@ function renderEventPanel() {
     card.appendChild(select);
   }
 
-  fc.insertBefore(card, fc.firstChild.nextSibling);
+  panelContainer.appendChild(card);
+  fc.insertBefore(panelContainer, fc.firstChild);
 
   // Rinumerazione step esistenti (Formato → 2, Contenuto → 3)
   setTimeout(function() {
@@ -199,9 +218,22 @@ function applyEventToGenerator(evt) {
   SHARED.compKey = evt.compKey || '';
   SHARED.english = evt.english || false;
 
+  // Preserva il pannello Airtable nascondendolo temporaneamente
+  var airtablePanel = document.getElementById('airtableImportPanel');
+  var wasHidden = false;
+  if (airtablePanel) {
+    airtablePanel.style.display = 'none';
+    wasHidden = true;
+  }
+
   if (typeof renderControls === 'function') renderControls();
   if (typeof renderStage === 'function') renderStage();
   if (typeof refreshThumbs === 'function') refreshThumbs();
+
+  // Re-mostra il pannello Airtable
+  if (wasHidden && airtablePanel) {
+    airtablePanel.style.display = '';
+  }
 }
 
 // Carica gli eventi al caricamento della pagina
