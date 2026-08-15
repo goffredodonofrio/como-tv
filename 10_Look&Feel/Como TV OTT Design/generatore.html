@@ -51,6 +51,10 @@ button.act:active{transform:scale(.97)}
 #stage svg [data-obj]{cursor:move}
 #stage svg [data-obj].sel{outline:none}
 .selrect{fill:none;stroke:var(--gold);stroke-width:2;stroke-dasharray:6 5;pointer-events:none}
+.handle{pointer-events:none}
+.alignment-guide{stroke:var(--gold);stroke-width:1;stroke-dasharray:4 4;opacity:0.4;pointer-events:none}
+@keyframes caretBlink{0%,49%{opacity:1}50%,100%{opacity:0}}
+input[style*="position:fixed"][style*="border:2px solid var(--gold)"]{caret-color:var(--gold);animation:caretBlink 0.8s infinite}
 .editbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--fg2)}
 .photobar{display:flex;gap:16px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--fg2);background:rgba(201,162,75,.09);border:1px solid var(--line);border-radius:10px;padding:9px 13px}
 .photobar .pbl{font-size:11px;font-weight:800;letter-spacing:.18em;color:var(--gold)}
@@ -626,10 +630,14 @@ function attachInteract(svg){
  el.addEventListener('dblclick',function(){var o=el.getAttribute('data-obj');if(o==='photo')enterPhotoEdit();else if(TEXT_EDIT_MAP[o])startTextEdit(o,el,svg);});
  });
 }
-function highlightSel(svg){var old=svg.querySelector('.selrect');if(old)old.remove();var oldHandles=svg.querySelectorAll('.handle');oldHandles.forEach(h=>h.remove());if(!selObj)return;var el=svg.querySelector('[data-obj="'+selObj+'"]');if(!el)return;
+function drawAlignmentGuides(svg,bb,ct){var vb=svg.viewBox.baseVal;var guides=[
+ {x1:bb.x,y1:0,x2:bb.x,y2:vb.height},{x1:bb.x+bb.width,y1:0,x2:bb.x+bb.width,y2:vb.height},
+ {x1:0,y1:bb.y,x2:vb.width,y2:bb.y},{x1:0,y1:bb.y+bb.height,x2:vb.width,y2:bb.y+bb.height}];
+ guides.forEach(function(g){var line=document.createElementNS('http://www.w3.org/2000/svg','line');line.setAttribute('class','alignment-guide');line.setAttribute('x1',g.x1);line.setAttribute('y1',g.y1);line.setAttribute('x2',g.x2);line.setAttribute('y2',g.y2);svg.appendChild(line);});}
+function highlightSel(svg){var old=svg.querySelector('.selrect');if(old)old.remove();var oldHandles=svg.querySelectorAll('.handle');oldHandles.forEach(h=>h.remove());var oldGuides=svg.querySelectorAll('.alignment-guide');oldGuides.forEach(g=>g.remove());if(!selObj)return;var el=svg.querySelector('[data-obj="'+selObj+'"]');if(!el)return;
  var bb;try{bb=el.getBBox();}catch(e){return;}var ct=el.getAttribute('transform');
  var r=document.createElementNS('http://www.w3.org/2000/svg','rect');r.setAttribute('class','selrect');r.setAttribute('x',bb.x);r.setAttribute('y',bb.y);r.setAttribute('width',bb.width);r.setAttribute('height',bb.height);if(ct)r.setAttribute('transform',ct);svg.appendChild(r);
- // Aggiungi handle ai 4 angoli (cerchietti dorati)
+ drawAlignmentGuides(svg,bb,ct);
  var handleR=6;var corners=[[bb.x,bb.y],[bb.x+bb.width,bb.y],[bb.x,bb.y+bb.height],[bb.x+bb.width,bb.y+bb.height]];
  corners.forEach(function(c){var h=document.createElementNS('http://www.w3.org/2000/svg','circle');h.setAttribute('class','handle');h.setAttribute('cx',c[0]);h.setAttribute('cy',c[1]);h.setAttribute('r',handleR);h.setAttribute('fill','var(--gold)');h.setAttribute('opacity','0.6');if(ct)h.setAttribute('transform',ct);svg.appendChild(h);});}
 function pct(s){return Math.round((s||1)*100)+'%';}
