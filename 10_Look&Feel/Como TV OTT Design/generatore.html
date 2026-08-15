@@ -493,29 +493,59 @@ function getSportSeason(dateStr){
  var year=SHARED.year||new Date().getFullYear();
  if(month>=8)return year+'-'+(year+1);else return (year-1)+'-'+year;
 }
-var GOOGLE_PICKER_API_KEY='AIzaSyD6yPdKa7Sh_2VSNfU3bsdQng4xJxk6Fnc';
+var GOOGLE_PICKER_CLIENT_ID='640416096387-ak0a1u5v0eakgirbpug1q13eim9v64oq.apps.googleusercontent.com';
 var GOOGLE_PICKER_LOADED=false;
+var GOOGLE_AUTH_TOKEN=null;
 
 function openDriveFilePicker(){
- // Carica la Google Picker API se non è ancora caricata
+ // Carica la libreria Google se non lo è ancora
  if(!GOOGLE_PICKER_LOADED) {
   var script=document.createElement('script');
-  script.src='https://apis.google.com/js/client.js?onload=onGoogleClientLoad&key='+GOOGLE_PICKER_API_KEY;
+  script.src='https://apis.google.com/js/client:platform.js';
+  script.onload=function(){
+   gapi.load('client:auth2:picker', {callback: initGoogleAuth});
+  };
   document.head.appendChild(script);
   GOOGLE_PICKER_LOADED=true;
+ } else {
+  // Se già caricato, verifica l'autenticazione
+  checkAuthAndOpenPicker();
  }
+}
 
- // Carica la Picker Library
- setTimeout(function(){
-  gapi.load('picker', {callback: createPicker});
- }, 500);
+function initGoogleAuth(){
+ gapi.auth2.init({
+  client_id: GOOGLE_PICKER_CLIENT_ID,
+  scope: 'https://www.googleapis.com/auth/drive.readonly'
+ }).then(function(){
+  checkAuthAndOpenPicker();
+ }).catch(function(err){
+  alert('Errore inizializzazione Google: '+err.message);
+ });
+}
+
+function checkAuthAndOpenPicker(){
+ var auth2=gapi.auth2.getAuthInstance();
+ if(!auth2.isSignedIn.get()) {
+  // Utente non autenticato, fa il login
+  auth2.signIn().then(function(){
+   createPicker();
+  }).catch(function(err){
+   console.log('Login annullato:', err);
+  });
+ } else {
+  // Già autenticato, apri il picker
+  createPicker();
+ }
 }
 
 function createPicker(){
+ var auth2=gapi.auth2.getAuthInstance();
+ var oauthToken=auth2.currentUser.get().getAuthResponse().id_token;
+
  var picker=new google.picker.PickerBuilder()
   .addView(google.picker.ViewId.DOCS_IMAGES)
-  .setOAuthToken(null) // Non usiamo OAuth, solo API Key
-  .setDeveloperKey(GOOGLE_PICKER_API_KEY)
+  .setOAuthToken(oauthToken)
   .setCallback(pickerCallback)
   .build();
  picker.setVisible(true);
@@ -525,13 +555,19 @@ function pickerCallback(data){
  if(data[google.picker.Response.ACTION]==='picked') {
   var doc=data[google.picker.Response.DOCUMENTS][0];
   var fileId=doc[google.picker.Document.ID];
-  console.log('File selezionato:', fileId);
+  console.log('✓ File selezionato:', fileId);
   loadPhotoFromDriveFileId(fileId);
+ } else if(data[google.picker.Response.ACTION]==='cancel') {
+  console.log('Picker annullato');
  }
 }
 
 function loadPhotoFromDriveFileId(fileId){
- var photoUrl='https://drive.google.com/uc?id='+fileId;
+ var auth2=gapi.auth2.getAuthInstance();
+ var accessToken=auth2.currentUser.get().getAuthResponse().access_token;
+
+ var photoUrl='https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media&access_token='+accessToken;
+
  fetch(photoUrl)
   .then(r=>r.blob())
   .then(blob=>{
@@ -555,11 +591,6 @@ function loadPhotoFromDriveFileId(fileId){
   .catch(e=>{
    alert('Errore caricamento foto: '+e.message);
   });
-}
-
-function onGoogleClientLoad(){
- // Callback quando Google Client Library è caricata
- console.log('Google Client Library caricata');
 }
 function loadPhotoFromDriveURL(url, modal){
  // Estrai l'ID del file da URL Google Drive
