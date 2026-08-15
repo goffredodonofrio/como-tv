@@ -287,20 +287,38 @@ function applyEventToGenerator(evt) {
   if (typeof refreshThumbs === 'function') refreshThumbs();
 
   // AFTER renderControls(), seleziona il dropdown di competizione e turno
+  // E aggiorna TEAMS con le squadre di Airtable
   setTimeout(function() {
-    // Trova il select di competizione e impostalo
-    var compSelect = document.querySelector('select');
-    if (compSelect && SHARED.compKey) {
-      // Itera i select per trovare quello di competizione (solitamente il primo)
-      var selects = document.querySelectorAll('select');
-      if (selects.length > 0) {
-        selects[0].value = SHARED.compKey; // Select competizione
-        selects[0].dispatchEvent(new Event('change'));
+    // Aggiorna TEAMS con le squadre di Airtable (fonte primaria)
+    if (SHARED.compKey && typeof TEAMS !== 'undefined') {
+      // Raccogli tutte le squadre per questa competizione
+      var teamsForComp = new Set();
+      EVENTS_DATA.forEach(e => {
+        if (COMP_MAPPING[e.compBase] === SHARED.compKey) {
+          teamsForComp.add(e.home);
+          teamsForComp.add(e.away);
+        }
+      });
+
+      // Aggiungi le squadre a TEAMS
+      if (!TEAMS[SHARED.compKey]) {
+        TEAMS[SHARED.compKey] = { label: SHARED.compBase, name: SHARED.compBase, teams: [] };
       }
+      if (!TEAMS[SHARED.compKey].teams) {
+        TEAMS[SHARED.compKey].teams = [];
+      }
+      TEAMS[SHARED.compKey].teams = Array.from(teamsForComp).sort();
+      console.log('TEAMS aggiornato per', SHARED.compKey, ':', TEAMS[SHARED.compKey].teams);
     }
 
-    // Trova il select di turno e impostalo (solitamente il secondo)
+    // Seleziona il dropdown di competizione (solitamente il primo)
     var selects = document.querySelectorAll('select');
+    if (selects.length > 0 && SHARED.compKey) {
+      selects[0].value = SHARED.compKey; // Select competizione
+      selects[0].dispatchEvent(new Event('change'));
+    }
+
+    // Seleziona il dropdown di turno (solitamente il secondo)
     if (selects.length > 1 && SHARED.round) {
       selects[1].value = SHARED.round; // Select turno
       selects[1].dispatchEvent(new Event('change'));
