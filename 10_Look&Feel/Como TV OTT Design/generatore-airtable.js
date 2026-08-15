@@ -281,6 +281,14 @@ function applyEventToGenerator(evt) {
   var mappedCompKey = COMP_MAPPING[evt.compBase] || evt.compKey || '';
   SHARED.compKey = mappedCompKey;
 
+  // Carica il logo della competizione
+  if (typeof LOGO_LIB !== 'undefined' && LOGO_LIB[mappedCompKey]) {
+    if (typeof SHIMG !== 'undefined') {
+      SHIMG.logoComp = LOGO_LIB[mappedCompKey].d;
+      console.log('Logo caricato per', mappedCompKey);
+    }
+  }
+
   console.log('Evento applicato:', {
     home: SHARED.home,
     away: SHARED.away,
@@ -294,12 +302,12 @@ function applyEventToGenerator(evt) {
   if (typeof renderStage === 'function') renderStage();
   if (typeof refreshThumbs === 'function') refreshThumbs();
 
-  // AFTER renderControls(), seleziona il dropdown di competizione e turno
-  // E aggiorna TEAMS con le squadre di Airtable
+  // AFTER renderControls(), compila TUTTI i campi
   setTimeout(function() {
-    // Aggiorna TEAMS con le squadre di Airtable (fonte primaria)
+    console.log('Post-renderControls: compilazione campi', { home: SHARED.home, away: SHARED.away, comp: SHARED.comp, round: SHARED.round });
+
+    // Aggiorna TEAMS con le squadre di Airtable
     if (SHARED.compKey && typeof TEAMS !== 'undefined') {
-      // Raccogli tutte le squadre per questa competizione
       var teamsForComp = new Set();
       EVENTS_DATA.forEach(e => {
         if (COMP_MAPPING[e.compBase] === SHARED.compKey) {
@@ -308,30 +316,84 @@ function applyEventToGenerator(evt) {
         }
       });
 
-      // Aggiungi le squadre a TEAMS
       if (!TEAMS[SHARED.compKey]) {
         TEAMS[SHARED.compKey] = { label: SHARED.compBase, name: SHARED.compBase, teams: [] };
       }
-      if (!TEAMS[SHARED.compKey].teams) {
-        TEAMS[SHARED.compKey].teams = [];
-      }
       TEAMS[SHARED.compKey].teams = Array.from(teamsForComp).sort();
-      console.log('TEAMS aggiornato per', SHARED.compKey, ':', TEAMS[SHARED.compKey].teams);
     }
 
-    // Seleziona il dropdown di competizione (solitamente il primo)
+    // Seleziona TUTTI i select (competizione, turno, squadra casa, squadra ospite)
     var selects = document.querySelectorAll('select');
-    if (selects.length > 0 && SHARED.compKey) {
-      selects[0].value = SHARED.compKey; // Select competizione
-      selects[0].dispatchEvent(new Event('change'));
+    var selectIdx = 0;
+
+    // Select 0: Competizione
+    if (selects[selectIdx] && SHARED.compKey) {
+      selects[selectIdx].value = SHARED.compKey;
+      selects[selectIdx].dispatchEvent(new Event('change'));
+      console.log('Set compKey:', SHARED.compKey);
+    }
+    selectIdx++;
+
+    // Select 1: Turno
+    if (selects[selectIdx] && SHARED.round) {
+      selects[selectIdx].value = SHARED.round;
+      selects[selectIdx].dispatchEvent(new Event('change'));
+      console.log('Set round:', SHARED.round);
+    }
+    selectIdx++;
+
+    // Select 2: Squadra casa
+    if (selects[selectIdx] && SHARED.home) {
+      var homeSelect = selects[selectIdx];
+      var homeFound = false;
+      for (var i = 0; i < homeSelect.options.length; i++) {
+        if (homeSelect.options[i].value === SHARED.home || homeSelect.options[i].text === SHARED.home) {
+          homeSelect.value = homeSelect.options[i].value;
+          homeFound = true;
+          break;
+        }
+      }
+      if (homeFound) homeSelect.dispatchEvent(new Event('change'));
+      console.log('Set home:', SHARED.home, homeFound ? 'found' : 'not found');
+    }
+    selectIdx++;
+
+    // Select 3: Squadra ospite
+    if (selects[selectIdx] && SHARED.away) {
+      var awaySelect = selects[selectIdx];
+      var awayFound = false;
+      for (var i = 0; i < awaySelect.options.length; i++) {
+        if (awaySelect.options[i].value === SHARED.away || awaySelect.options[i].text === SHARED.away) {
+          awaySelect.value = awaySelect.options[i].value;
+          awayFound = true;
+          break;
+        }
+      }
+      if (awayFound) awaySelect.dispatchEvent(new Event('change'));
+      console.log('Set away:', SHARED.away, awayFound ? 'found' : 'not found');
     }
 
-    // Seleziona il dropdown di turno (solitamente il secondo)
-    if (selects.length > 1 && SHARED.round) {
-      selects[1].value = SHARED.round; // Select turno
-      selects[1].dispatchEvent(new Event('change'));
-    }
-  }, 100);
+    // Input text: Data e Ora
+    var inputs = document.querySelectorAll('input[type="text"]');
+    inputs.forEach(input => {
+      var label = input.previousElementSibling ? input.previousElementSibling.textContent : '';
+      if (label.includes('Data') || label.includes('data')) {
+        input.value = SHARED.date;
+        input.dispatchEvent(new Event('input'));
+        console.log('Set date:', SHARED.date);
+      }
+    });
+
+    var timeInputs = document.querySelectorAll('input[type="text"]');
+    timeInputs.forEach(input => {
+      var label = input.previousElementSibling ? input.previousElementSibling.textContent : '';
+      if (label.includes('Ora') || label.includes('ora')) {
+        input.value = SHARED.time;
+        input.dispatchEvent(new Event('input'));
+        console.log('Set time:', SHARED.time);
+      }
+    });
+  }, 150);
 }
 
 // Carica gli eventi al caricamento della pagina
