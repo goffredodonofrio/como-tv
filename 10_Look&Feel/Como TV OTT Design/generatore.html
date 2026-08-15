@@ -493,45 +493,73 @@ function getSportSeason(dateStr){
  var year=SHARED.year||new Date().getFullYear();
  if(month>=8)return year+'-'+(year+1);else return (year-1)+'-'+year;
 }
+var GOOGLE_PICKER_API_KEY='AIzaSyD6yPdKa7Sh_2VSNfU3bsdQng4xJxk6Fnc';
+var GOOGLE_PICKER_LOADED=false;
+
 function openDriveFilePicker(){
- var modal=document.createElement('div');
- modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+ // Carica la Google Picker API se non è ancora caricata
+ if(!GOOGLE_PICKER_LOADED) {
+  var script=document.createElement('script');
+  script.src='https://apis.google.com/js/client.js?onload=onGoogleClientLoad&key='+GOOGLE_PICKER_API_KEY;
+  document.head.appendChild(script);
+  GOOGLE_PICKER_LOADED=true;
+ }
 
- var box=document.createElement('div');
- box.style.cssText='background:#1e3260;border:2px solid #B8962E;border-radius:12px;padding:30px;max-width:600px;width:100%;color:#fff';
+ // Carica la Picker Library
+ setTimeout(function(){
+  gapi.load('picker', {callback: createPicker});
+ }, 500);
+}
 
- var title=document.createElement('h2');
- title.textContent='📸 Google Drive - Carica foto';
- title.style.cssText='color:#B8962E;margin:0 0 20px 0;font-size:18px';
- box.appendChild(title);
+function createPicker(){
+ var picker=new google.picker.PickerBuilder()
+  .addView(google.picker.ViewId.DOCS_IMAGES)
+  .setOAuthToken(null) // Non usiamo OAuth, solo API Key
+  .setDeveloperKey(GOOGLE_PICKER_API_KEY)
+  .setCallback(pickerCallback)
+  .build();
+ picker.setVisible(true);
+}
 
- var desc=document.createElement('p');
- desc.innerHTML='<strong>1. Naviga la cartella e apri la foto:</strong><br><a href="https://drive.google.com/drive/folders/1dqMuFDAKG8izB8N3N4Xabsr_j9r4oH6F" target="_blank" style="color:#B8962E;text-decoration:underline">📁 Apri Google Drive</a><br><br><strong>2. Naviga:</strong> <code style="background:#0a0f24;padding:2px 6px;border-radius:3px">Competizione > Stagione > Giornata > materiale</code><br><br><strong>3. Clicca il JPEG, copia l\'URL dalla barra del browser</strong><br><br><strong>4. Incolla qui:</strong>';
- desc.style.cssText='font-size:13px;line-height:1.6;margin:0 0 20px 0;color:#ddd';
- box.appendChild(desc);
+function pickerCallback(data){
+ if(data[google.picker.Response.ACTION]==='picked') {
+  var doc=data[google.picker.Response.DOCUMENTS][0];
+  var fileId=doc[google.picker.Document.ID];
+  console.log('File selezionato:', fileId);
+  loadPhotoFromDriveFileId(fileId);
+ }
+}
 
- var input=document.createElement('input');
- input.type='text';
- input.placeholder='Incolla URL del file Google Drive...';
- input.style.cssText='width:100%;padding:12px;background:#0a0f24;border:1px solid #B8962E;border-radius:6px;color:#fff;font-size:13px;margin-bottom:15px;box-sizing:border-box';
- input.onchange=function(){loadPhotoFromDriveURL(input.value, modal);};
- input.onkeypress=function(e){if(e.key==='Enter') loadPhotoFromDriveURL(input.value, modal);};
- box.appendChild(input);
+function loadPhotoFromDriveFileId(fileId){
+ var photoUrl='https://drive.google.com/uc?id='+fileId;
+ fetch(photoUrl)
+  .then(r=>r.blob())
+  .then(blob=>{
+   var reader=new FileReader();
+   reader.onload=function(){
+    if(typeof pushUndo==='function') pushUndo();
+    SHIMG.photo=reader.result;
+    delete STATE[current].adj.photo;
+    loadNat(reader.result, function(){
+     renderControls();
+     renderStage();
+     refreshThumbs();
+    });
+    renderControls();
+    renderStage();
+    refreshThumbs();
+    console.log('✓ Foto caricata da Google Drive');
+   };
+   reader.readAsDataURL(blob);
+  })
+  .catch(e=>{
+   alert('Errore caricamento foto: '+e.message);
+  });
+}
 
- var helpText=document.createElement('p');
- helpText.innerHTML='<small style="color:#999">Esempio URL: <code style="background:#0a0f24;padding:2px 4px;border-radius:2px">https://drive.google.com/file/d/FILE_ID/view</code></small>';
- helpText.style.cssText='margin:0 0 15px 0;font-size:12px';
- box.appendChild(helpText);
-
- var closeBtn=document.createElement('button');
- closeBtn.textContent='Chiudi';
- closeBtn.style.cssText='display:block;width:100%;padding:10px;background:none;color:#B8962E;border:1px solid #B8962E;border-radius:6px;cursor:pointer;font-size:13px';
- closeBtn.onclick=function(){modal.remove();};
- box.appendChild(closeBtn);
-
- modal.appendChild(box);
- document.body.appendChild(modal);
- input.focus();
+function onGoogleClientLoad(){
+ // Callback quando Google Client Library è caricata
+ console.log('Google Client Library caricata');
 }
 function loadPhotoFromDriveURL(url, modal){
  // Estrai l'ID del file da URL Google Drive
