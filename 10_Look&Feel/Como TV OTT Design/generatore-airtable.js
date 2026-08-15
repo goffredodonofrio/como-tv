@@ -337,53 +337,85 @@ function applyEventToGenerator(evt) {
 }
 
 function updateFieldsInDOM() {
-  console.log('📝 Aggiorna campi:', SHARED.compBase, SHARED.home, SHARED.away, SHARED.round, SHARED.date, SHARED.time);
+  console.log('📝 Aggiorna campi da Airtable:', {home: SHARED.home, away: SHARED.away, comp: SHARED.compBase, round: SHARED.round, date: SHARED.date, time: SHARED.time});
 
-  // Trova TUTTI gli input text nel Step 3 (Contenuto)
-  var inputs = document.querySelectorAll('input[type="text"]');
+  // Aggiorna TUTTI gli input text e select
+  var allInputs = document.querySelectorAll('input[type="text"], select');
+  var updated = {comp: false, round: false, home: false, away: false, date: false, time: false};
 
-  inputs.forEach((inp) => {
-    var label = inp.previousElementSibling ? inp.previousElementSibling.textContent.toLowerCase() : '';
+  allInputs.forEach((el) => {
+    var label = el.previousElementSibling ? el.previousElementSibling.textContent.toLowerCase() : '';
+    var isSelect = el.tagName === 'SELECT';
+    var isInput = el.tagName === 'INPUT';
 
-    // Competizione (testo libero da Airtable)
-    if (label.includes('competizione')) {
-      inp.value = SHARED.compBase;
-      inp.dispatchEvent(new Event('input'));
+    // Competizione
+    if (label.includes('competizione') && !updated.comp) {
+      if (isInput) el.value = SHARED.compBase;
+      if (isSelect) el.value = SHARED.compKey;
+      el.dispatchEvent(new Event('change'));
+      updated.comp = true;
       console.log('✓ Competizione:', SHARED.compBase);
     }
 
-    // Giornata / Turno (testo libero da Airtable)
-    if (label.includes('giornata') || label.includes('turno')) {
-      inp.value = SHARED.round;
-      inp.dispatchEvent(new Event('input'));
+    // Giornata / Turno
+    if ((label.includes('giornata') || label.includes('turno')) && !updated.round) {
+      el.value = SHARED.round;
+      el.dispatchEvent(new Event('change'));
+      updated.round = true;
       console.log('✓ Turno:', SHARED.round);
     }
 
-    // Squadra casa (testo libero)
-    if (label.includes('squadra casa')) {
-      inp.value = SHARED.home;
-      inp.dispatchEvent(new Event('input'));
+    // Squadra casa
+    if (label.includes('squadra casa') && !updated.home) {
+      if (isInput) {
+        el.value = SHARED.home;
+        el.dispatchEvent(new Event('input'));
+      } else if (isSelect) {
+        // Cerca option con testo matching
+        for (var i = 0; i < el.options.length; i++) {
+          if (el.options[i].text.toUpperCase() === SHARED.home.toUpperCase()) {
+            el.value = el.options[i].value;
+            break;
+          }
+        }
+        el.dispatchEvent(new Event('change'));
+      }
+      updated.home = true;
       console.log('✓ Home:', SHARED.home);
     }
 
-    // Squadra ospite (testo libero)
-    if (label.includes('squadra ospite')) {
-      inp.value = SHARED.away;
-      inp.dispatchEvent(new Event('input'));
+    // Squadra ospite
+    if (label.includes('squadra ospite') && !updated.away) {
+      if (isInput) {
+        el.value = SHARED.away;
+        el.dispatchEvent(new Event('input'));
+      } else if (isSelect) {
+        // Cerca option con testo matching
+        for (var i = 0; i < el.options.length; i++) {
+          if (el.options[i].text.toUpperCase() === SHARED.away.toUpperCase()) {
+            el.value = el.options[i].value;
+            break;
+          }
+        }
+        el.dispatchEvent(new Event('change'));
+      }
+      updated.away = true;
       console.log('✓ Away:', SHARED.away);
     }
 
     // Data
-    if (label.includes('data')) {
-      inp.value = SHARED.date;
-      inp.dispatchEvent(new Event('input'));
+    if (label.includes('data') && !updated.date) {
+      el.value = SHARED.date;
+      el.dispatchEvent(new Event('input'));
+      updated.date = true;
       console.log('✓ Data:', SHARED.date);
     }
 
     // Ora
-    if (label.includes('ora')) {
-      inp.value = SHARED.time;
-      inp.dispatchEvent(new Event('input'));
+    if (label.includes('ora') && !updated.time) {
+      el.value = SHARED.time;
+      el.dispatchEvent(new Event('input'));
+      updated.time = true;
       console.log('✓ Ora:', SHARED.time);
     }
   });
