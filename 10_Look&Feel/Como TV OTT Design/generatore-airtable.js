@@ -348,12 +348,22 @@ function applyEventToGenerator(evt) {
           console.log('✓ DataURI convertito, lunghezza:', reader.result.length);
           SHIMG.photo = reader.result;
           delete STATE[current].adj.photo;
-          if (typeof renderStage === 'function') {
-            console.log('✓ Chiamo renderStage()');
-            renderStage();
+          // Usa loadNat() come per le foto locali per caricare dimensioni naturali
+          if (typeof loadNat === 'function') {
+            loadNat(reader.result, function(){
+              console.log('✓ Dimensioni foto caricate via loadNat()');
+              if (typeof autoPositionPhotoIfBanner === 'function') {
+                autoPositionPhotoIfBanner();
+              }
+              if (typeof renderControls === 'function') renderControls();
+              if (typeof renderStage === 'function') {
+                console.log('✓ Chiamo renderStage()');
+                renderStage();
+              }
+              if (typeof refreshThumbs === 'function') refreshThumbs();
+              console.log('✓ Foto caricata da Airtable');
+            });
           }
-          if (typeof refreshThumbs === 'function') refreshThumbs();
-          console.log('✓ Foto caricata da Airtable');
         };
         reader.readAsDataURL(blob);
       })
