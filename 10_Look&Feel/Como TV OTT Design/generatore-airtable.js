@@ -116,11 +116,11 @@ function parseAirtableRecord(rec) {
     time = String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
   }
 
-  // Competizione (da singleSelect Airtable)
-  var comp = (fields['Competizione'] || [''])[0] || '';
+  // Competizione (da singleSelect Airtable - è una stringa, non array)
+  var comp = fields['Competizione'] || '';
 
-  // Turno (da singleSelect Airtable)
-  var round = (fields['Turno'] || [''])[0] || '';
+  // Turno (da singleSelect Airtable - è una stringa, non array)
+  var round = fields['Turno'] || '';
 
   // Fan Voice
   var fanVoice = !!fields['Fan Voice'];
