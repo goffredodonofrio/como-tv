@@ -171,8 +171,20 @@ function parseAirtableRecord(rec) {
   // English commentary
   var english = !!(fields['Commento 1'] || []).find(c => c.includes('Paul') || c.includes('EN'));
 
-  // Foto Piattaforma (URL della foto)
-  var fotoUrl = fields['Foto Piattaforma'] || '';
+  // Foto Piattaforma (URL della foto o array di allegati Airtable)
+  var fotoUrl = '';
+  var fotoField = fields['Foto Piattaforma'];
+  if (fotoField) {
+    // Se è un array (allegati Airtable), prendi il primo URL
+    if (Array.isArray(fotoField) && fotoField.length > 0) {
+      fotoUrl = fotoField[0].url || '';
+      console.log('📷 Foto da allegato Airtable:', fotoUrl);
+    }
+    // Se è una stringa (URL manuale), usala direttamente
+    else if (typeof fotoField === 'string') {
+      fotoUrl = fotoField;
+    }
+  }
 
   return {
     id: rec.id,
