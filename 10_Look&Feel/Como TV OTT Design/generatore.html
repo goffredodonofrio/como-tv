@@ -493,77 +493,83 @@ function getSportSeason(dateStr){
  var year=SHARED.year||new Date().getFullYear();
  if(month>=8)return year+'-'+(year+1);else return (year-1)+'-'+year;
 }
-var GOOGLE_CLIENT_ID='640416096387-ak0a1u5v0eakgirbpug1q13eim9v64oq.apps.googleusercontent.com';
-var GOOGLE_API_KEY='AIzaSyDKlV_bwqvQjJYQ8nJKBX8bZ_I9mhJWqxY';
-var gapiLoaded=false;
+var GOOGLE_PICKER_CLIENT_ID='640416096387-ak0a1u5v0eakgirbpug1q13eim9v64oq.apps.googleusercontent.com';
+var GOOGLE_PICKER_LOADED=false;
+var GOOGLE_AUTH_TOKEN=null;
 
 function openDriveFilePicker(){
- if(!gapiLoaded){
-  // Carica gapi
+ // Carica la libreria Google se non lo è ancora
+ if(!GOOGLE_PICKER_LOADED) {
   var script=document.createElement('script');
-  script.src='https://apis.google.com/js/api.js';
+  script.src='https://apis.google.com/js/client:platform.js';
   script.onload=function(){
-   gapi.load('picker', {callback: initPicker});
-   gapiLoaded=true;
+   gapi.load('client:auth2:picker', {callback: initGoogleAuth});
   };
   document.head.appendChild(script);
+  GOOGLE_PICKER_LOADED=true;
  } else {
-  initPicker();
+  // Se già caricato, verifica l'autenticazione
+  checkAuthAndOpenPicker();
  }
 }
 
-function initPicker(){
- // Carica Google Auth Library
- gapi.load('auth2', function(){
-  gapi.auth2.init({
-   client_id: GOOGLE_CLIENT_ID,
-   scope: 'https://www.googleapis.com/auth/drive.readonly'
-  }).then(function(auth2){
-   if(auth2.isSignedIn.get()){
-    createAndShowPicker(auth2);
-   } else {
-    auth2.signIn().then(function(){
-     createAndShowPicker(auth2);
-    });
-   }
-  }).catch(function(e){
-   console.error('Errore auth:', e);
-   alert('Errore autenticazione: '+e.message);
-  });
+function initGoogleAuth(){
+ gapi.auth2.init({
+  client_id: GOOGLE_PICKER_CLIENT_ID,
+  scope: 'https://www.googleapis.com/auth/drive.readonly'
+ }).then(function(){
+  checkAuthAndOpenPicker();
+ }).catch(function(err){
+  alert('Errore inizializzazione Google: '+err.message);
  });
 }
 
-function createAndShowPicker(auth2){
- var token=auth2.currentUser.get().getAuthResponse().access_token;
+function checkAuthAndOpenPicker(){
+ var auth2=gapi.auth2.getAuthInstance();
+ if(!auth2.isSignedIn.get()) {
+  // Utente non autenticato, fa il login
+  auth2.signIn().then(function(){
+   createPicker();
+  }).catch(function(err){
+   console.log('Login annullato:', err);
+  });
+ } else {
+  // Già autenticato, apri il picker
+  createPicker();
+ }
+}
+
+function createPicker(){
+ var auth2=gapi.auth2.getAuthInstance();
+ var oauthToken=auth2.currentUser.get().getAuthResponse().id_token;
+
  var picker=new google.picker.PickerBuilder()
   .addView(google.picker.ViewId.DOCS_IMAGES)
-  .setOAuthToken(token)
+  .setOAuthToken(oauthToken)
   .setCallback(pickerCallback)
   .build();
  picker.setVisible(true);
 }
 
 function pickerCallback(data){
- if(data[google.picker.Response.ACTION]==='picked'){
-  var file=data[google.picker.Response.DOCUMENTS][0];
-  var fileId=file[google.picker.Document.ID];
-  console.log('File selezionato:', fileId);
+ if(data[google.picker.Response.ACTION]==='picked') {
+  var doc=data[google.picker.Response.DOCUMENTS][0];
+  var fileId=doc[google.picker.Document.ID];
+  console.log('✓ File selezionato:', fileId);
   loadPhotoFromDriveFileId(fileId);
+ } else if(data[google.picker.Response.ACTION]==='cancel') {
+  console.log('Picker annullato');
  }
 }
 
 function loadPhotoFromDriveFileId(fileId){
  var auth2=gapi.auth2.getAuthInstance();
- var token=auth2.currentUser.get().getAuthResponse().access_token;
+ var accessToken=auth2.currentUser.get().getAuthResponse().access_token;
 
- // Scarica file da Google Drive con access token
- var url='https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media&access_token='+token;
+ var photoUrl='https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media&access_token='+accessToken;
 
- fetch(url)
-  .then(r=>{
-   if(!r.ok) throw new Error('Errore download: '+r.status);
-   return r.blob();
-  })
+ fetch(photoUrl)
+  .then(r=>r.blob())
   .then(blob=>{
    var reader=new FileReader();
    reader.onload=function(){
