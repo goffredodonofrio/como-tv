@@ -149,12 +149,14 @@ function parseAirtableRecord(rec) {
   var dateTime = fields['Data | Orario'] || '';
   var date = '';
   var time = '';
+  var year = 0;
   if (dateTime) {
     var dt = new Date(dateTime);
     var day = dt.getDate();
     var monthNames = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
     date = day + ' ' + monthNames[dt.getMonth()];
     time = String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
+    year = dt.getFullYear();
   }
 
   // Competizione (da singleSelect Airtable - è una stringa, non array)
@@ -175,6 +177,7 @@ function parseAirtableRecord(rec) {
     away: away,
     date: date,
     time: time,
+    year: year,
     compBase: comp,
     compKey: comp.toLowerCase().replace(/\s+/g, '_'),
     round: round,
@@ -284,6 +287,7 @@ function applyEventToGenerator(evt) {
   SHARED.round = evt.round || '';
   SHARED.date = evt.date || '';
   SHARED.time = evt.time || '';
+  SHARED.year = evt.year || new Date().getFullYear();
   SHARED.english = evt.english || false;
 
   // Mappatura competizione
