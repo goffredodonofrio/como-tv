@@ -493,74 +493,77 @@ function getSportSeason(dateStr){
  var year=SHARED.year||new Date().getFullYear();
  if(month>=8)return year+'-'+(year+1);else return (year-1)+'-'+year;
 }
-function openDriveFileModal(){
- var modal=document.createElement('div');
- modal.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:10000';
+var GOOGLE_CLIENT_ID='640416096387-ak0a1u5v0eakgirbpug1q13eim9v64oq.apps.googleusercontent.com';
+var GOOGLE_API_KEY='AIzaSyDKlV_bwqvQjJYQ8nJKBX8bZ_I9mhJWqxY';
+var gapiLoaded=false;
 
- var box=document.createElement('div');
- box.style.cssText='background:#1a1a1a;border:1px solid #B8962E;border-radius:8px;padding:24px;width:90%;max-width:520px;color:#fff';
+function openDriveFilePicker(){
+ if(!gapiLoaded){
+  // Carica gapi
+  var script=document.createElement('script');
+  script.src='https://apis.google.com/js/api.js';
+  script.onload=function(){
+   gapi.load('picker', {callback: initPicker});
+   gapiLoaded=true;
+  };
+  document.head.appendChild(script);
+ } else {
+  initPicker();
+ }
+}
 
- var title=document.createElement('h2');
- title.textContent='📁 Carica foto da Google Drive';
- title.style.cssText='margin:0 0 16px 0;font-size:18px;color:#fff';
- box.appendChild(title);
+function initPicker(){
+ // Carica Google Auth Library
+ gapi.load('auth2', function(){
+  gapi.auth2.init({
+   client_id: GOOGLE_CLIENT_ID,
+   scope: 'https://www.googleapis.com/auth/drive.readonly'
+  }).then(function(auth2){
+   if(auth2.isSignedIn.get()){
+    createAndShowPicker(auth2);
+   } else {
+    auth2.signIn().then(function(){
+     createAndShowPicker(auth2);
+    });
+   }
+  }).catch(function(e){
+   console.error('Errore auth:', e);
+   alert('Errore autenticazione: '+e.message);
+  });
+ });
+}
 
- var instructions=document.createElement('div');
- instructions.style.cssText='background:#2a2a2a;padding:12px;border-radius:4px;margin-bottom:16px;font-size:12px;color:#aaa;line-height:1.7';
- instructions.innerHTML='<strong style="color:#B8962E">Come fare:</strong><br>'+
-  '1️⃣ Apri Google Drive in un\'altra tab<br>'+
-  '2️⃣ Naviga fino alla foto che ti serve<br>'+
-  '3️⃣ Clicca col destro → "Ottieni link"<br>'+
-  '4️⃣ Copia l\'<strong>ID del file</strong> da:<br>'+
-  '<code style="background:#333;padding:4px 8px;border-radius:2px;display:inline-block;margin:4px 0">drive.google.com/file/d/<span style="color:#B8962E">ID_QUI</span>/view</code><br>'+
-  '5️⃣ Incolla qui sotto e premi Carica';
- box.appendChild(instructions);
+function createAndShowPicker(auth2){
+ var token=auth2.currentUser.get().getAuthResponse().access_token;
+ var picker=new google.picker.PickerBuilder()
+  .addView(google.picker.ViewId.DOCS_IMAGES)
+  .setOAuthToken(token)
+  .setCallback(pickerCallback)
+  .build();
+ picker.setVisible(true);
+}
 
- var input=document.createElement('input');
- input.type='text';
- input.placeholder='Esempio: 1MSltBlKHRyZPakv9YpTiSK8rMtdtQmTb';
- input.style.cssText='width:100%;padding:12px;background:#2a2a2a;border:1px solid #444;border-radius:4px;color:#fff;font-size:13px;box-sizing:border-box;margin-bottom:16px;font-family:monospace';
- box.appendChild(input);
-
- var btnContainer=document.createElement('div');
- btnContainer.style.cssText='display:flex;gap:8px;justify-content:flex-end';
-
- var btnCancel=document.createElement('button');
- btnCancel.textContent='Annulla';
- btnCancel.style.cssText='padding:10px 20px;background:#333;color:#fff;border:1px solid #555;border-radius:4px;cursor:pointer;font-size:13px;font-weight:bold';
- btnCancel.onclick=function(){ modal.remove(); };
- btnContainer.appendChild(btnCancel);
-
- var btnLoad=document.createElement('button');
- btnLoad.textContent='✓ Carica';
- btnLoad.style.cssText='padding:10px 20px;background:#B8962E;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:13px';
- btnLoad.onclick=function(){
-  var fileId=input.value.trim();
-  if(!fileId){
-   alert('❌ Incolla l\'ID del file!');
-   input.focus();
-   return;
-  }
-  modal.remove();
+function pickerCallback(data){
+ if(data[google.picker.Response.ACTION]==='picked'){
+  var file=data[google.picker.Response.DOCUMENTS][0];
+  var fileId=file[google.picker.Document.ID];
+  console.log('File selezionato:', fileId);
   loadPhotoFromDriveFileId(fileId);
- };
- btnContainer.appendChild(btnLoad);
-
- box.appendChild(btnContainer);
- modal.appendChild(box);
- document.body.appendChild(modal);
-
- setTimeout(()=>input.focus(), 100);
+ }
 }
 
 function loadPhotoFromDriveFileId(fileId){
- // URL pubblico Google Drive (funziona senza autenticazione)
- var url='https://drive.google.com/uc?id='+fileId+'&export=download';
+ var auth2=gapi.auth2.getAuthInstance();
+ var token=auth2.currentUser.get().getAuthResponse().access_token;
 
- console.log('⏳ Caricamento foto:', fileId);
+ // Scarica file da Google Drive con access token
+ var url='https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media&access_token='+token;
 
- fetch(url, {mode:'no-cors'})
-  .then(r=>r.blob())
+ fetch(url)
+  .then(r=>{
+   if(!r.ok) throw new Error('Errore download: '+r.status);
+   return r.blob();
+  })
   .then(blob=>{
    var reader=new FileReader();
    reader.onload=function(){
@@ -705,7 +708,7 @@ function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);va
    r.appendChild(th);r.appendChild(nm);r.appendChild(fi);r.appendChild(rm);fc.appendChild(r);})();
  // ---- Foto da Google Drive ----
  fc.appendChild(el('label','📸 Foto da Google Drive'));
- (function(){var btn=document.createElement('button');btn.textContent='Carica da Drive';btn.style.cssText='width:100%;padding:10px;background:#2a3f5f;color:#fff;border:1px solid #B8962E;border-radius:6px;cursor:pointer;font-weight:bold;margin-bottom:12px';btn.onclick=function(){openDriveFileModal();};fc.appendChild(btn);})();
+ (function(){var btn=document.createElement('button');btn.textContent='Carica da Drive';btn.style.cssText='width:100%;padding:10px;background:#2a3f5f;color:#fff;border:1px solid #B8962E;border-radius:6px;cursor:pointer;font-weight:bold;margin-bottom:12px';btn.onclick=function(){openDriveFilePicker();};fc.appendChild(btn);})();
  fc.appendChild(el('label','🏆 Logo competizione · comune a tutti'));
  (function(){var top=document.createElement('div');top.className='imgrow';
    var th=document.createElement('img');th.className='th';th.src=SHIMG.logoComp||'';if(!th.src)th.style.visibility='hidden';top.appendChild(th);
