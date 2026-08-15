@@ -65,7 +65,10 @@ function loadAirtableEvents() {
     })
     .then(data => {
       EVENTS_DATA = (data.records || []).map(rec => parseAirtableRecord(rec));
-      console.log('Caricati ' + EVENTS_DATA.length + ' eventi da Airtable');
+      console.log('Caricati ' + EVENTS_DATA.length + ' eventi da Airtable', EVENTS_DATA);
+      if (data.records && data.records.length > 0) {
+        console.log('Primo record raw:', data.records[0]);
+      }
       renderEventPanel();
     })
     .catch(err => {
@@ -83,6 +86,11 @@ function formatDateForAirtable(date) {
 
 function parseAirtableRecord(rec) {
   var fields = rec.fields || {};
+  // Log dei nomi campi per debug
+  if (!window.airtableFieldsLogged) {
+    console.log('Nomi campi Airtable:', Object.keys(fields));
+    window.airtableFieldsLogged = true;
+  }
   var partita = fields['Partita'] || '';
 
   // Parsing "CASA-OSPITE" da Partita (gestisce: "PARMA-COMO", "A-B 3-4", "A-B RINVIATA", "A-B 3-4 (dcr)", ecc.)
@@ -136,23 +144,26 @@ function parseAirtableRecord(rec) {
 }
 
 function renderEventPanel() {
-  var fc = document.getElementById('fieldsCard');
-  if (!fc) return;
-
   // Controlla se il pannello Airtable esiste già (per non ricrearlo)
   if (document.getElementById('airtableImportPanel')) return;
 
-  // Crea il contenitore principale del pannello Airtable (ID fisso)
+  var panel = document.querySelector('.panel');
+  var pbody = document.querySelector('.pbody');
+  if (!pbody) return;
+
+  // Crea il contenitore principale del pannello Airtable (FUORI da fieldsCard)
   var panelContainer = document.createElement('div');
   panelContainer.id = 'airtableImportPanel';
-  panelContainer.style.pointerEvents = 'auto'; // Mantieni interattività
+  panelContainer.className = 'pbody'; // Stesso stile del pannello principale
+  panelContainer.style.pointerEvents = 'auto';
+  panelContainer.style.order = '-1'; // Mettilo prima di tutto (se flex)
 
-  // Crea la sezione "Importa" come Step 1
+  // Crea la sezione "Importa"
   var importSec = document.createElement('div');
   importSec.className = 'step';
   var stepSpan = document.createElement('span');
   stepSpan.className = 'n';
-  stepSpan.textContent = '1';
+  stepSpan.textContent = '0'; // Step "0" per essere prima di Formato
   importSec.appendChild(stepSpan);
   importSec.appendChild(document.createTextNode('Importa da Airtable'));
   panelContainer.appendChild(importSec);
@@ -185,14 +196,16 @@ function renderEventPanel() {
   }
 
   panelContainer.appendChild(card);
-  fc.insertBefore(panelContainer, fc.firstChild);
 
-  // Rinumerazione step esistenti (Formato → 2, Contenuto → 3)
+  // Inserisci il pannello Airtable PRIMA del pbody principale
+  var pbodyParent = pbody.parentNode;
+  pbodyParent.insertBefore(panelContainer, pbody);
+
+  // Renumerazione: tutti gli step diventano 1, 2, 3...
   setTimeout(function() {
-    var allSteps = fc.querySelectorAll('.step');
-    allSteps.forEach(function(step, idx) {
-      var numSpan = step.querySelector('.n');
-      if (numSpan) numSpan.textContent = String(idx + 1);
+    var allSteps = pbodyParent.querySelectorAll('.step .n');
+    allSteps.forEach(function(numSpan, idx) {
+      numSpan.textContent = String(idx + 1);
     });
   }, 50);
 }
@@ -218,22 +231,10 @@ function applyEventToGenerator(evt) {
   SHARED.compKey = evt.compKey || '';
   SHARED.english = evt.english || false;
 
-  // Preserva il pannello Airtable nascondendolo temporaneamente
-  var airtablePanel = document.getElementById('airtableImportPanel');
-  var wasHidden = false;
-  if (airtablePanel) {
-    airtablePanel.style.display = 'none';
-    wasHidden = true;
-  }
-
+  // Il pannello Airtable rimane visibile (è fuori da fieldsCard)
   if (typeof renderControls === 'function') renderControls();
   if (typeof renderStage === 'function') renderStage();
   if (typeof refreshThumbs === 'function') refreshThumbs();
-
-  // Re-mostra il pannello Airtable
-  if (wasHidden && airtablePanel) {
-    airtablePanel.style.display = '';
-  }
 }
 
 // Carica gli eventi al caricamento della pagina
