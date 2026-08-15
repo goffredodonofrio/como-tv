@@ -337,68 +337,58 @@ function applyEventToGenerator(evt) {
 }
 
 function updateFieldsInDOM() {
-  // Trova tutti i select, ESCLUDENDO quello Airtable (id="airtableEventSelect")
-  var allSelects = document.querySelectorAll('select');
-  var selects = [];
-  for (var j = 0; j < allSelects.length; j++) {
-    if (allSelects[j].id !== 'airtableEventSelect') {
-      selects.push(allSelects[j]);
-    }
-  }
+  console.log('📝 Aggiorna campi:', SHARED.compBase, SHARED.home, SHARED.away, SHARED.round, SHARED.date, SHARED.time);
 
-  // Select 0: Competizione
-  if (selects[0] && SHARED.compKey) {
-    selects[0].value = SHARED.compKey;
-    selects[0].dispatchEvent(new Event('change'));
-    console.log('✓ Set compKey:', SHARED.compKey);
-  }
-
-  // Select 1: Turno/Giornata
-  if (selects[1] && SHARED.round) {
-    selects[1].value = SHARED.round;
-    selects[1].dispatchEvent(new Event('change'));
-    console.log('✓ Set round:', SHARED.round);
-  }
-
-  // Select 2: Squadra casa
-  if (selects[2] && SHARED.home) {
-    for (var i = 0; i < selects[2].options.length; i++) {
-      if (selects[2].options[i].text.toUpperCase() === SHARED.home.toUpperCase()) {
-        selects[2].value = selects[2].options[i].value;
-        selects[2].dispatchEvent(new Event('change'));
-        console.log('✓ Set home:', SHARED.home);
-        break;
-      }
-    }
-  }
-
-  // Select 3: Squadra ospite
-  if (selects[3] && SHARED.away) {
-    for (var i = 0; i < selects[3].options.length; i++) {
-      if (selects[3].options[i].text.toUpperCase() === SHARED.away.toUpperCase()) {
-        selects[3].value = selects[3].options[i].value;
-        selects[3].dispatchEvent(new Event('change'));
-        console.log('✓ Set away:', SHARED.away);
-        break;
-      }
-    }
-  }
-
-  // Aggiorna input Data (cerca input con etichetta "Data")
+  // Trova TUTTI gli input text nel Step 3 (Contenuto)
   var inputs = document.querySelectorAll('input[type="text"]');
-  inputs.forEach((inp, idx) => {
-    var label = inp.previousElementSibling ? inp.previousElementSibling.textContent : '';
-    if (label && (label.includes('Data') || label.includes('data'))) {
+
+  inputs.forEach((inp) => {
+    var label = inp.previousElementSibling ? inp.previousElementSibling.textContent.toLowerCase() : '';
+
+    // Competizione (testo libero da Airtable)
+    if (label.includes('competizione')) {
+      inp.value = SHARED.compBase;
+      inp.dispatchEvent(new Event('input'));
+      console.log('✓ Competizione:', SHARED.compBase);
+    }
+
+    // Giornata / Turno (testo libero da Airtable)
+    if (label.includes('giornata') || label.includes('turno')) {
+      inp.value = SHARED.round;
+      inp.dispatchEvent(new Event('input'));
+      console.log('✓ Turno:', SHARED.round);
+    }
+
+    // Squadra casa (testo libero)
+    if (label.includes('squadra casa')) {
+      inp.value = SHARED.home;
+      inp.dispatchEvent(new Event('input'));
+      console.log('✓ Home:', SHARED.home);
+    }
+
+    // Squadra ospite (testo libero)
+    if (label.includes('squadra ospite')) {
+      inp.value = SHARED.away;
+      inp.dispatchEvent(new Event('input'));
+      console.log('✓ Away:', SHARED.away);
+    }
+
+    // Data
+    if (label.includes('data')) {
       inp.value = SHARED.date;
       inp.dispatchEvent(new Event('input'));
+      console.log('✓ Data:', SHARED.date);
     }
-    if (label && (label.includes('Ora') || label.includes('ora'))) {
+
+    // Ora
+    if (label.includes('ora')) {
       inp.value = SHARED.time;
       inp.dispatchEvent(new Event('input'));
+      console.log('✓ Ora:', SHARED.time);
     }
   });
 
-  console.log('✓ Campi aggiornati');
+  console.log('✓ Campi aggiornati da Airtable');
 }
 
 // Carica gli eventi al caricamento della pagina
