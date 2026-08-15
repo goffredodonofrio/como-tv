@@ -532,8 +532,8 @@ function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);va
 
 // ---------- stage + interaction ----------
 var selObj=null;var photoEdit=false;
-// Mappatura degli oggetti testo agli attributi SHARED per editing inline
-var TEXT_EDIT_MAP={'t-home':'home','t-away':'away','t-comp':'comp','t-hl':'','t-dt':'','t-fan':'','t-q':'','t-sub':'','t-sub2':''};
+// Mappatura degli oggetti testo ai campi editabili (SHARED o specifici del formato)
+var TEXT_EDIT_MAP={'t-home':'home','t-away':'away','t-comp':'comp','t-dt':'','t-hl':'hlKind','t-fan':'','t-q':'','t-sub':'','t-kicker':'heroKicker','t-line1':'heroLine1','t-line2':'heroLine2','t-title':'title','t-name':'name','t-kind':'hlKind','t-tag':'','t-num':'num','t-mark':''};
 function renderStage(){if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');
  attachInteract(svg);highlightSel(svg);syncScaleSlider();syncPhotoBar();
  requestAnimationFrame(drawRulers);}
@@ -575,12 +575,13 @@ var PE_BEFORE=null;
 function enterPhotoEdit(){if(photoEdit)return;pushUndo();PE_BEFORE=JSON.stringify(STATE[current].adj.photo||null);photoEdit=true;var b=document.getElementById('phEdit');if(b)b.textContent='✓ Fine ritaglio';var pb=document.getElementById('peBar');if(pb)pb.classList.add('on');renderStage();}
 function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;var b=document.getElementById('phEdit');if(b)b.textContent='Ritaglia foto';var pb=document.getElementById('peBar');if(pb)pb.classList.remove('on');renderStage();}
 function cancelPhotoEdit(){if(!photoEdit)return;var v=JSON.parse(PE_BEFORE||'null');if(v)STATE[current].adj.photo=v;else delete STATE[current].adj.photo;exitPhotoEdit();}
-function startTextEdit(objId,el,svg){var field=TEXT_EDIT_MAP[objId];if(!field)return;var currentVal=SHARED[field]||'';
+function startTextEdit(objId,el,svg){var field=TEXT_EDIT_MAP[objId];if(!field)return;
+ var isShared=SHAREDKEYS[field];var currentVal=isShared?SHARED[field]:(STATE[current].vals[field]||'');
  var wrap=document.querySelector('.stagewrap');if(!wrap)return;
  var inp=document.createElement('input');inp.type='text';inp.value=currentVal;
  inp.style.cssText='position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:300px;padding:12px;font-size:18px;border:4px solid #C4A060;background:#2a2f40;color:#ffffff;z-index:10001;font-weight:bold;caret-color:#C4A060;box-shadow:0 0 30px rgba(196,160,96,0.8)';
  wrap.appendChild(inp);inp.focus();inp.select();
- function finishEdit(){if(inp.parentNode)inp.remove();var newVal=inp.value.trim();if(newVal&&newVal!==currentVal){pushUndo();SHARED[field]=newVal;renderStage();refreshThumbs();}}
+ function finishEdit(){if(inp.parentNode)inp.remove();var newVal=inp.value.trim();if(newVal&&newVal!==currentVal){pushUndo();if(isShared)SHARED[field]=newVal;else STATE[current].vals[field]=newVal;renderStage();refreshThumbs();}}
  inp.addEventListener('blur',finishEdit);inp.addEventListener('keydown',function(e){if(e.key==='Enter')finishEdit();else if(e.key==='Escape')inp.remove();});}
 function renderPhotoEditor(){
  var st=document.getElementById('stage');
