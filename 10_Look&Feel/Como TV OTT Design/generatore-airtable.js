@@ -333,29 +333,12 @@ function applyEventToGenerator(evt) {
   // Carica foto da Airtable se disponibile
   if (evt.fotoUrl && typeof loadNat === 'function') {
     console.log('📷 Carico foto da Airtable:', evt.fotoUrl);
-    // Carica la foto dalla URL
-    var img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = function(){
-      var canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      var ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      SHIMG.photo = canvas.toDataURL('image/jpeg', 0.95);
-      delete STATE[current].adj.photo;
-      if (typeof renderStage === 'function') renderStage();
-      if (typeof refreshThumbs === 'function') refreshThumbs();
-      // Auto-positioning per i banner
-      if (typeof autoPositionPhotoIfBanner === 'function') {
-        autoPositionPhotoIfBanner();
-      }
-      console.log('✓ Foto caricata da Airtable');
-    };
-    img.onerror = function(){
-      console.warn('⚠️ Errore caricamento foto Airtable');
-    };
-    img.src = evt.fotoUrl;
+    // Usa la foto direttamente dall'URL (senza canvas, per evitare CORS)
+    SHIMG.photo = evt.fotoUrl;
+    delete STATE[current].adj.photo;
+    if (typeof renderStage === 'function') renderStage();
+    if (typeof refreshThumbs === 'function') refreshThumbs();
+    console.log('✓ Foto caricata da Airtable');
   }
 
   // Aggiorna i campi nel DOM (aspetta che siano creati)
