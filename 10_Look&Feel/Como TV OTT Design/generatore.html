@@ -523,7 +523,7 @@ function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);va
  (function(){var r=document.createElement('div');r.className='imgrow';
    var th=document.createElement('img');th.className='th';th.src=SHIMG.photo||DEFAULT_PHOTO;
    var nm=document.createElement('div');nm.className='nm';nm.textContent='Carica foto';
-   var fi=document.createElement('input');fi.type='file';fi.accept='image/*';fi.onchange=function(e){var f=e.target.files[0];if(!f)return;var rr=new FileReader();rr.onload=function(){pushUndo();SHIMG.photo=rr.result;delete STATE[current].adj.photo;loadNat(rr.result,function(){renderControls();renderStage();refreshThumbs();});renderControls();renderStage();refreshThumbs();};rr.readAsDataURL(f);};
+   var fi=document.createElement('input');fi.type='file';fi.accept='image/*';fi.onchange=function(e){var f=e.target.files[0];if(!f)return;var rr=new FileReader();rr.onload=function(){pushUndo();SHIMG.photo=rr.result;delete STATE[current].adj.photo;loadNat(rr.result,function(){autoPositionPhotoIfBanner();renderControls();renderStage();refreshThumbs();});renderControls();renderStage();refreshThumbs();};rr.readAsDataURL(f);};
    var rm=document.createElement('button');rm.textContent='✕';rm.title='Ripristina';rm.onclick=function(){pushUndo();delete SHIMG.photo;renderControls();renderStage();refreshThumbs();};
    r.appendChild(th);r.appendChild(nm);r.appendChild(fi);r.appendChild(rm);fc.appendChild(r);})();
  // ---- Foto da Google Drive ----
@@ -732,6 +732,38 @@ window.addEventListener('keydown',function(e){
 document.fonts.ready.then(function(){renderControls();renderStage();renderThumbs();});
 renderControls();renderStage();renderThumbs();
 loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
+
+// Auto-positioning per formati banner
+async function autoPositionPhotoIfBanner(){
+ var fmt=BYKEY[current];
+ if(!fmt||!fmt.name.toLowerCase().includes('banner'))return;
+ if(!SHIMG.photo)return;
+
+ try{
+  var img=new Image();
+  img.crossOrigin='anonymous';
+  img.onload=function(){
+   var aspect=img.width/img.height;
+   var fmt_aspect=fmt.w/fmt.h;
+
+   if(aspect>fmt_aspect){
+    // Immagine più larga: centra verticalmente in alto (viso di solito in alto)
+    var offset=-Math.abs(img.height-fmt.h)/4;
+    STATE[current].adj.photo=STATE[current].adj.photo||{};
+    STATE[current].adj.photo.dy=offset;
+    console.log('📸 Banner: posizionato in alto');
+   } else {
+    // Immagine più stretta: centra normalmente
+    STATE[current].adj.photo=STATE[current].adj.photo||{};
+    STATE[current].adj.photo.dy=0;
+    console.log('📸 Banner: posizionato al centro');
+   }
+  };
+  img.src=SHIMG.photo;
+ }catch(e){
+  console.log('Auto-positioning: '+e.message);
+ }
+}
 </script>
 <script src="generatore-airtable.js"></script>
 </body>
