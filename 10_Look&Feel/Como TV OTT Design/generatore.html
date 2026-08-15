@@ -483,6 +483,50 @@ function svgExport(key){var it=BYKEY[key];return OTTGEN.svgFor(it,P(key),imgsFor
  Object.keys(groups).forEach(function(g){var og=document.createElement('optgroup');og.label=g;groups[g].forEach(function(it){var o=document.createElement('option');o.value=it.key;o.textContent=fname(it.key)+' · '+it.w+'×'+it.h;og.appendChild(o);});sel.appendChild(og);});
  sel.value=current;sel.onchange=function(){current=sel.value;selObj=null;renderControls();renderStage();markThumb();};})();
 
+// ---------- Google Drive Photo Loading ----------
+var DRIVE_FOLDER_ID='1dqMuFDAKG8izB8N3N4Xabsr_j9r4oH6F';
+function loadDrivePhotos(competizione){
+ var folderName=competizione.toUpperCase().replace(/\s+/g,'_');
+ fetch('https://www.googleapis.com/drive/v3/files?q=name="'+folderName+'"+and+trashed=false&spaces=drive&fields=id,name&pageSize=1&key=AIzaSyBy2_rNANVb2Q9_PnKGCL5lPKvlLfFh9nQ')
+ .then(r=>r.json())
+ .then(d=>{
+  if(!d.files||d.files.length===0){alert('Cartella '+competizione+' non trovata su Drive');return;}
+  var folderId=d.files[0].id;
+  fetch('https://www.googleapis.com/drive/v3/files?q="'+folderId+'"+in+parents+and+mimeType="image/jpeg"+and+trashed=false&spaces=drive&fields=id,name,webViewLink&pageSize=30&key=AIzaSyBy2_rNANVb2Q9_PnKGCL5lPKvlLfFh9nQ')
+  .then(r=>r.json())
+  .then(d=>{showDrivePhotoGrid(d.files||[]);})
+  .catch(e=>{alert('Errore caricamento foto: '+e.message);});
+ })
+ .catch(e=>{alert('Errore accesso Drive: '+e.message);});
+}
+function showDrivePhotoGrid(files){
+ var modal=document.createElement('div');modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+ var box=document.createElement('div');box.style.cssText='background:#1e3260;border:2px solid #B8962E;border-radius:12px;padding:20px;max-width:600px;width:100%;max-height:80vh;overflow-y:auto;color:#fff';
+ box.innerHTML='<div style="font-size:16px;font-weight:bold;margin-bottom:15px;">Seleziona una foto</div>';
+ var grid=document.createElement('div');grid.style.cssText='display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:15px';
+ (files||[]).forEach(function(f){
+  var item=document.createElement('div');item.style.cssText='cursor:pointer;border:2px solid #B8962E;border-radius:8px;overflow:hidden;aspect-ratio:1;background:#0a0f24;display:flex;align-items:center;justify-content:center;font-size:12px;text-align:center;padding:5px';
+  var img=document.createElement('img');img.src='https://drive.google.com/thumbnail?id='+f.id+'&sz=200';img.style.cssText='width:100%;height:100%;object-fit:cover';
+  item.appendChild(img);
+  item.onclick=function(){loadPhotoFromDrive(f.id,modal);};
+  grid.appendChild(item);
+ });
+ box.appendChild(grid);
+ var closeBtn=document.createElement('button');closeBtn.textContent='Chiudi';closeBtn.style.cssText='width:100%;padding:10px;background:#B8962E;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold';closeBtn.onclick=function(){modal.remove();};
+ box.appendChild(closeBtn);
+ modal.appendChild(box);
+ modal.onclick=function(e){if(e.target===modal)modal.remove();};
+ document.body.appendChild(modal);
+}
+function loadPhotoFromDrive(fileId,modal){
+ var photoUrl='https://drive.google.com/uc?export=download&id='+fileId;
+ fetch(photoUrl)
+ .then(r=>r.blob())
+ .then(blob=>{
+  var reader=new FileReader();reader.onload=function(){pushUndo();SHIMG.photo=reader.result;delete STATE[current].adj.photo;loadNat(reader.result,function(){renderControls();renderStage();refreshThumbs();});renderControls();renderStage();refreshThumbs();modal.remove();};reader.readAsDataURL(blob);
+ })
+ .catch(e=>{alert('Errore caricamento foto: '+e.message);});
+}
 // ---------- controls (per-format) ----------
 function el(t,txt){var e=document.createElement(t);if(txt)e.textContent=txt;return e;}
 function opt(v,t){var o=document.createElement('option');o.value=v;o.textContent=t;return o;}
@@ -513,6 +557,9 @@ function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);va
    var fi=document.createElement('input');fi.type='file';fi.accept='image/*';fi.onchange=function(e){var f=e.target.files[0];if(!f)return;var rr=new FileReader();rr.onload=function(){pushUndo();SHIMG.photo=rr.result;delete STATE[current].adj.photo;loadNat(rr.result,function(){renderControls();renderStage();refreshThumbs();});renderControls();renderStage();refreshThumbs();};rr.readAsDataURL(f);};
    var rm=document.createElement('button');rm.textContent='✕';rm.title='Ripristina';rm.onclick=function(){pushUndo();delete SHIMG.photo;renderControls();renderStage();refreshThumbs();};
    r.appendChild(th);r.appendChild(nm);r.appendChild(fi);r.appendChild(rm);fc.appendChild(r);})();
+ // ---- Foto da Google Drive ----
+ fc.appendChild(el('label','📸 Foto da Google Drive'));
+ (function(){var btn=document.createElement('button');btn.textContent='Carica da Drive';btn.style.cssText='width:100%;padding:10px;background:#2a3f5f;color:#fff;border:1px solid #B8962E;border-radius:6px;cursor:pointer;font-weight:bold;margin-bottom:12px';btn.onclick=function(){var comp=SHARED.compBase||'';if(!comp){alert('Seleziona una competizione prima');return;}loadDrivePhotos(comp);};fc.appendChild(btn);})();
  fc.appendChild(el('label','🏆 Logo competizione · comune a tutti'));
  (function(){var top=document.createElement('div');top.className='imgrow';
    var th=document.createElement('img');th.className='th';th.src=SHIMG.logoComp||'';if(!th.src)th.style.visibility='hidden';top.appendChild(th);
