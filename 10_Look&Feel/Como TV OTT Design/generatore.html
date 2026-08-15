@@ -524,12 +524,20 @@ function loadDrivePhotos(competizione){
  });
 }
 function searchFolderByName(parentId,name,callback){
- fetch('https://www.googleapis.com/drive/v3/files?q="'+parentId+'"+in+parents+and+mimeType="application/vnd.google-apps.folder"+and+trashed=false&spaces=drive&fields=id,name&pageSize=1000&key=AIzaSyBy2_rNANVb2Q9_PnKGCL5lPKvlLfFh9nQ')
- .then(r=>r.json()).then(d=>{
-  var folder=null;
-  (d.files||[]).forEach(f=>{if(f.name.toUpperCase().includes(name.toUpperCase())){folder=f;}});
-  callback(folder);
- }).catch(e=>{alert('Errore ricerca cartella: '+e.message);});
+ // Ricerca per nome diretto nella query
+ var q='"'+parentId+'"+in+parents+and+mimeType="application/vnd.google-apps.folder"+and+trashed=false+and+name contains "'+name+'"';
+ function fetchPage(pageToken){
+  var url='https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q)+'&spaces=drive&fields=files(id,name),nextPageToken&pageSize=100&key=AIzaSyBy2_rNANVb2Q9_PnKGCL5lPKvlLfFh9nQ';
+  if(pageToken)url+='&pageToken='+pageToken;
+  fetch(url).then(r=>r.json()).then(d=>{
+   if(d.files&&d.files.length>0){
+    var folder=d.files.find(f=>f.name.toUpperCase()===name.toUpperCase());
+    if(folder){callback(folder);return;}
+   }
+   if(d.nextPageToken){fetchPage(d.nextPageToken);}else{callback(null);}
+  }).catch(e=>{alert('Errore ricerca cartella: '+e.message);callback(null);});
+ }
+ fetchPage();
 }
 function showDrivePhotoGrid(files){
  var modal=document.createElement('div');modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
