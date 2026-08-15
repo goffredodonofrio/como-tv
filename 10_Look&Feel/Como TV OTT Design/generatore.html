@@ -498,67 +498,31 @@ var GOOGLE_PICKER_LOADED=false;
 
 var GOOGLE_CLIENT_ID = '640416096387-ak0a1u5v0eakgirbpug1q13eim9v64oq.apps.googleusercontent.com';
 var gapiInitialized = false;
-var gapiScript = null;
 
 function openDriveFilePicker(){
- console.log('🔵 openDriveFilePicker() chiamato');
-
- if(!gapiScript){
-  console.log('⏳ Caricamento Google API...');
-  gapiScript = document.createElement('script');
-  gapiScript.src = 'https://apis.google.com/js/client.js';
-  gapiScript.async = true;
-  gapiScript.defer = true;
-
-  gapiScript.onload = function(){
-   console.log('✓ Google Client JS caricato');
-   setTimeout(initGoogleAuth, 500);
-  };
-
-  gapiScript.onerror = function(){
-   console.error('❌ Errore caricamento Google API');
-   alert('Errore: impossibile caricare Google API');
-  };
-
-  document.head.appendChild(gapiScript);
- } else if(gapiInitialized){
-  console.log('✓ gapi già inizializzato');
-  showDriveModal();
- } else {
-  console.log('⏳ gapi in caricamento, ritardo...');
-  setTimeout(openDriveFilePicker, 500);
- }
-}
-
-function initGoogleAuth(){
- console.log('🔵 initGoogleAuth() chiamato');
-
- if(!window.gapi){
-  console.error('❌ gapi non disponibile');
-  alert('Errore: gapi non caricato');
-  return;
- }
-
- gapi.load('auth2', function(){
-  console.log('✓ gapi.auth2 caricato');
-
-  try {
-   gapi.auth2.init({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: 'https://www.googleapis.com/auth/drive.readonly'
-   }).then(function(auth2){
-    console.log('✓ Auth2 inizializzato');
-    gapiInitialized = true;
-    showDriveModal();
-   }).catch(function(err){
-    console.error('❌ Errore auth2.init():', err);
-    alert('Errore OAuth: ' + (err.error_description || err.error || err.message || 'sconosciuto'));
+ // Carica Google API se non è ancora caricata
+ if(!gapiInitialized){
+  var script = document.createElement('script');
+  script.src = 'https://apis.google.com/js/client.js';
+  script.onload = function(){
+   gapi.load('client:auth2', function(){
+    gapi.auth2.init({
+     client_id: GOOGLE_CLIENT_ID,
+     scope: 'https://www.googleapis.com/auth/drive.readonly',
+     immediate: false
+    }).then(function(){
+     gapiInitialized = true;
+     showDriveModal();
+    }).catch(function(err){
+     console.error('Errore init OAuth:', err);
+     alert('Errore: ' + err.error_description);
+    });
    });
-  } catch(e){
-   console.error('❌ Eccezione in initGoogleAuth:', e);
-   alert('Errore: ' + e.message);
-  }
- });
+  };
+  document.head.appendChild(script);
+ } else {
+  showDriveModal();
+ }
 }
 
 function showDriveModal(){
