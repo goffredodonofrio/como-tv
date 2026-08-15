@@ -326,12 +326,14 @@ function applyEventToGenerator(evt) {
     SHIMG.logoComp = LOGO_LIB[mappedCompKey].d;
   }
 
-  // Aggiorna i campi nel DOM (senza renderControls)
-  updateFieldsInDOM();
+  // Aggiorna i campi nel DOM (aspetta che siano creati)
+  setTimeout(updateFieldsInDOM, 100);
 
   // Re-render canvas e anteprime
-  if (typeof renderStage === 'function') renderStage();
-  if (typeof refreshThumbs === 'function') refreshThumbs();
+  setTimeout(function() {
+    if (typeof renderStage === 'function') renderStage();
+    if (typeof refreshThumbs === 'function') refreshThumbs();
+  }, 150);
 }
 
 function updateFieldsInDOM() {
