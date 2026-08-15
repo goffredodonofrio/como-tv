@@ -623,11 +623,15 @@ window.addEventListener('resize',function(){requestAnimationFrame(drawRulers);})
 var _sw=document.querySelector('.stagewrap');if(_sw)_sw.addEventListener('scroll',function(){requestAnimationFrame(drawRulers);});
 function svgUnitPerPx(svg){var vb=svg.viewBox.baseVal;return vb.width/svg.getBoundingClientRect().width;}
 function ensureAdj(o,svg){var S=STATE[current];if(!S.adj[o]){var el=svg.querySelector('[data-obj="'+o+'"]');var bb=el.getBBox();S.adj[o]={dx:0,dy:0,s:1,cx:bb.x+bb.width/2,cy:bb.y+bb.height/2};}return S.adj[o];}
-function snapToAlign(el,svg,a,threshold){var SNAP=threshold||15;var bb=el.getBBox();var cx=bb.x+bb.width/2,cy=bb.y+bb.height/2;var vx=a.dx,vy=a.dy;
+function snapToAlign(el,svg,a,threshold){var SNAP=threshold||15;var bb=el.getBBox();var bestDx=a.dx,bestDy=a.dy;var minDistX=SNAP,minDistY=SNAP;
  var objs=svg.querySelectorAll('[data-obj]');objs.forEach(function(other){if(other===el)return;var obb=other.getBBox();
- if(Math.abs((bb.x+vx)-(obb.x))<SNAP)vx=obb.x-bb.x;if(Math.abs((bb.x+bb.width+vx)-(obb.x+obb.width))<SNAP)vx=(obb.x+obb.width)-(bb.x+bb.width);
- if(Math.abs((bb.y+vy)-(obb.y))<SNAP)vy=obb.y-bb.y;if(Math.abs((bb.y+bb.height+vy)-(obb.y+obb.height))<SNAP)vy=(obb.y+obb.height)-(bb.y+bb.height);
- });return{dx:vx,dy:vy};}
+ var distLeftToLeft=Math.abs((bb.x+a.dx)-obb.x);if(distLeftToLeft<minDistX){minDistX=distLeftToLeft;bestDx=obb.x-bb.x;}
+ var distRightToRight=Math.abs((bb.x+bb.width+a.dx)-(obb.x+obb.width));if(distRightToRight<minDistX){minDistX=distRightToRight;bestDx=(obb.x+obb.width)-(bb.x+bb.width);}
+ var distCenterToCenter=Math.abs((bb.x+bb.width/2+a.dx)-(obb.x+obb.width/2));if(distCenterToCenter<minDistX){minDistX=distCenterToCenter;bestDx=(obb.x+obb.width/2)-(bb.x+bb.width/2);}
+ var distTopToTop=Math.abs((bb.y+a.dy)-obb.y);if(distTopToTop<minDistY){minDistY=distTopToTop;bestDy=obb.y-bb.y;}
+ var distBottomToBottom=Math.abs((bb.y+bb.height+a.dy)-(obb.y+obb.height));if(distBottomToBottom<minDistY){minDistY=distBottomToBottom;bestDy=(obb.y+obb.height)-(bb.y+bb.height);}
+ var distCenterYToCenter=Math.abs((bb.y+bb.height/2+a.dy)-(obb.y+obb.height/2));if(distCenterYToCenter<minDistY){minDistY=distCenterYToCenter;bestDy=(obb.y+obb.height/2)-(bb.y+bb.height/2);}
+ });return{dx:bestDx,dy:bestDy};}
 function attachInteract(svg){
  var objs=svg.querySelectorAll('[data-obj]');
  objs.forEach(function(el){el.addEventListener('pointerdown',function(ev){ev.preventDefault();pushUndo();
