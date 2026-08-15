@@ -8,6 +8,38 @@ var AIRTABLE_CONFIG = {
   token: null // Salvato in sessionStorage al primo caricamento
 };
 
+// Mappatura: nomi italiani Airtable → compKey generatore (per loghi e squadre)
+var COMP_MAPPING = {
+  'Bundesliga Austria': 'bundesliga_austria',
+  'Eredivisie': 'eredivisie',
+  'Scottish Premiership': 'scottish_premiership',
+  'Saudi Pro League': 'saudi_pro',
+  'Carabao Cup': 'carabao',
+  'DFB-Pokal': 'dfb_pokal',
+  'Coppa di Germania': 'dfb_pokal',
+  'Coupe de France': 'coupe_france',
+  'Premier Sports Cup': 'scottish_lc',
+  'Scottish Cup': 'scottish_cup',
+  'Taça de Portugal': 'taca',
+  'SuperSport HNL': 'hnl',
+  'Copa Libertadores': 'libertadores',
+  'Copa Sudamericana': 'sudamericana',
+  'Recopa Sudamericana': 'recopa',
+  'LPF Argentina': 'lpf',
+  'Clausura Liga Profesional': 'lpf', // Argentina
+  'Supercopa Internacional': 'supercopa_int',
+  'Trofeo de Campeones': 'trofeo_campeones',
+  'Saudi Super Cup': 'saudi_super',
+  'Scottish Championship': 'scottish_championship',
+  'Championship': 'scottish_championship',
+  'Supertaça Portugal': 'supertaca',
+  'Serie A': 'serie_a',
+  'Coppa Italia': 'coppa_italia',
+  'Coppa Italia Primavera': 'coppa_italia_primavera',
+  'Como 1907 | Prima Squ...': 'como_cup', // Fallback per Como
+  'Studio Live': '', // Nessun logo per programmi
+};
+
 function getAirtableToken() {
   // Prova sessionStorage
   if (sessionStorage.airtableToken) return sessionStorage.airtableToken;
@@ -228,8 +260,20 @@ function applyEventToGenerator(evt) {
   SHARED.round = evt.round || '';
   SHARED.date = evt.date || '';
   SHARED.time = evt.time || '';
-  SHARED.compKey = evt.compKey || '';
   SHARED.english = evt.english || false;
+
+  // Mappatura competizione italiano → compKey (per loghi e squadre)
+  var mappedCompKey = COMP_MAPPING[evt.compBase] || evt.compKey || '';
+  SHARED.compKey = mappedCompKey;
+
+  // Log per debug
+  console.log('Evento applicato:', {
+    home: SHARED.home,
+    away: SHARED.away,
+    comp: SHARED.comp,
+    round: SHARED.round,
+    compKey: SHARED.compKey
+  });
 
   // Il pannello Airtable rimane visibile (è fuori da fieldsCard)
   if (typeof renderControls === 'function') renderControls();
