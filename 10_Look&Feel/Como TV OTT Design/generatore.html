@@ -506,27 +506,22 @@ function openDriveFilePicker(){
  box.appendChild(title);
 
  var desc=document.createElement('p');
- desc.innerHTML='<strong>Naviga la cartella e scarica il JPEG che serve:</strong><br><br>1. Clicca il bottone qui sotto per aprire Google Drive<br>2. Naviga: <code style="background:#0a0f24;padding:2px 6px;border-radius:3px">Competizione > Stagione > Giornata > materiale</code><br>3. Scarica la foto che serve<br>4. Ritorna qui e carica il file<br>';
- desc.style.cssText='font-size:13px;line-height:1.6;margin:0 0 25px 0;color:#ddd';
+ desc.innerHTML='<strong>1. Naviga la cartella e apri la foto:</strong><br><a href="https://drive.google.com/drive/folders/1dqMuFDAKG8izB8N3N4Xabsr_j9r4oH6F" target="_blank" style="color:#B8962E;text-decoration:underline">📁 Apri Google Drive</a><br><br><strong>2. Naviga:</strong> <code style="background:#0a0f24;padding:2px 6px;border-radius:3px">Competizione > Stagione > Giornata > materiale</code><br><br><strong>3. Clicca il JPEG, copia l\'URL dalla barra del browser</strong><br><br><strong>4. Incolla qui:</strong>';
+ desc.style.cssText='font-size:13px;line-height:1.6;margin:0 0 20px 0;color:#ddd';
  box.appendChild(desc);
 
- var link=document.createElement('a');
- link.href='https://drive.google.com/drive/folders/1dqMuFDAKG8izB8N3N4Xabsr_j9r4oH6F';
- link.target='_blank';
- link.textContent='🔗 Apri Google Drive';
- link.style.cssText='display:inline-block;padding:12px 24px;background:#B8962E;color:#000;text-decoration:none;border-radius:6px;font-weight:bold;margin-bottom:15px;cursor:pointer';
- box.appendChild(link);
+ var input=document.createElement('input');
+ input.type='text';
+ input.placeholder='Incolla URL del file Google Drive...';
+ input.style.cssText='width:100%;padding:12px;background:#0a0f24;border:1px solid #B8962E;border-radius:6px;color:#fff;font-size:13px;margin-bottom:15px;box-sizing:border-box';
+ input.onchange=function(){loadPhotoFromDriveURL(input.value, modal);};
+ input.onkeypress=function(e){if(e.key==='Enter') loadPhotoFromDriveURL(input.value, modal);};
+ box.appendChild(input);
 
- var copyBtn=document.createElement('button');
- copyBtn.textContent='📋 Copia link';
- copyBtn.style.cssText='display:block;width:100%;padding:10px;background:#2a3f5f;color:#B8962E;border:1px solid #B8962E;border-radius:6px;cursor:pointer;font-size:13px;margin-bottom:15px';
- copyBtn.onclick=function(){
-  navigator.clipboard.writeText('https://drive.google.com/drive/folders/1dqMuFDAKG8izB8N3N4Xabsr_j9r4oH6F').then(()=>{
-   copyBtn.textContent='✓ Link copiato!';
-   setTimeout(()=>{copyBtn.textContent='📋 Copia link';}, 2000);
-  });
- };
- box.appendChild(copyBtn);
+ var helpText=document.createElement('p');
+ helpText.innerHTML='<small style="color:#999">Esempio URL: <code style="background:#0a0f24;padding:2px 4px;border-radius:2px">https://drive.google.com/file/d/FILE_ID/view</code></small>';
+ helpText.style.cssText='margin:0 0 15px 0;font-size:12px';
+ box.appendChild(helpText);
 
  var closeBtn=document.createElement('button');
  closeBtn.textContent='Chiudi';
@@ -536,6 +531,51 @@ function openDriveFilePicker(){
 
  modal.appendChild(box);
  document.body.appendChild(modal);
+ input.focus();
+}
+function loadPhotoFromDriveURL(url, modal){
+ // Estrai l'ID del file da URL Google Drive
+ var fileId = null;
+
+ // Formato: https://drive.google.com/file/d/FILE_ID/view
+ var match1 = url.match(/\/file\/d\/([a-zA-Z0-9-_]+)/);
+ if(match1) fileId = match1[1];
+
+ // Formato: https://drive.google.com/open?id=FILE_ID
+ if(!fileId) {
+  var match2 = url.match(/id=([a-zA-Z0-9-_]+)/);
+  if(match2) fileId = match2[1];
+ }
+
+ if(!fileId) {
+  alert('URL non valido. Copia l\'URL diretto del file da Google Drive');
+  return;
+ }
+
+ // Carica la foto usando l'ID estratto
+ var photoUrl = 'https://drive.google.com/uc?export=download&id=' + fileId;
+ fetch(photoUrl)
+  .then(r => r.blob())
+  .then(blob => {
+   var reader = new FileReader();
+   reader.onload = function(){
+    if(typeof pushUndo === 'function') pushUndo();
+    SHIMG.photo = reader.result;
+    delete STATE[current].adj.photo;
+    loadNat(reader.result, function(){
+     renderControls();
+     renderStage();
+     refreshThumbs();
+    });
+    renderControls();
+    renderStage();
+    refreshThumbs();
+    modal.remove();
+    console.log('✓ Foto caricata da Google Drive');
+   };
+   reader.readAsDataURL(blob);
+  })
+  .catch(e => alert('Errore caricamento foto: ' + e.message));
 }
 function showDrivePhotoGrid(files){
  var modal=document.createElement('div');modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
