@@ -578,7 +578,41 @@ function loadPhotoFromDriveURL(url, modal){
 
  var loadPhoto = function(urlIndex) {
   if(urlIndex >= photoUrls.length) {
-   alert('⚠️ Errore: il file potrebbe essere privato.\n\nSoluzione:\n1. Apri il file in Google Drive\n2. Clicca "Condividi"\n3. Cambia da "Privato" a "Chiunque con il link"\n4. Ricopia l\'URL e incolla di nuovo');
+   // Prova con lh3.google.com (image server - più affidabile)
+   console.log('Tutte le URL fallite, provo lh3.google.com');
+   var lh3Url = 'https://lh3.google.com/d/' + fileId + '=w2000';
+   fetch(lh3Url)
+    .then(r => r.blob())
+    .then(blob => {
+     var img = new Image();
+     img.onload = function(){
+      if(typeof pushUndo === 'function') pushUndo();
+      var canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      SHIMG.photo = canvas.toDataURL('image/jpeg', 0.95);
+      delete STATE[current].adj.photo;
+      loadNat(SHIMG.photo, function(){
+       renderControls();
+       renderStage();
+       refreshThumbs();
+      });
+      renderControls();
+      renderStage();
+      refreshThumbs();
+      modal.remove();
+      console.log('✓ Foto caricata da Google Drive (lh3)');
+     };
+     img.onerror = function(){
+      alert('⚠️ Errore: il file potrebbe essere privato.\n\nSoluzione:\n1. Apri il file in Google Drive\n2. Clicca "Condividi"\n3. Cambia da "Privato" a "Chiunque con il link"\n4. Ricopia l\'URL e incolla di nuovo');
+     };
+     img.src = URL.createObjectURL(blob);
+    })
+    .catch(e => {
+     alert('⚠️ Errore: il file potrebbe essere privato.\n\nSoluzione:\n1. Apri il file in Google Drive\n2. Clicca "Condividi"\n3. Cambia da "Privato" a "Chiunque con il link"\n4. Ricopia l\'URL e incolla di nuovo');
+    });
    return;
   }
 
