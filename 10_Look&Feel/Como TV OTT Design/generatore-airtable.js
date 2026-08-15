@@ -273,7 +273,6 @@ function applyEventToGenerator(evt) {
   var mappedCompKey = COMP_MAPPING[evt.compBase] || evt.compKey || '';
   SHARED.compKey = mappedCompKey;
 
-  // Log per debug
   console.log('Evento applicato:', {
     home: SHARED.home,
     away: SHARED.away,
@@ -286,6 +285,27 @@ function applyEventToGenerator(evt) {
   if (typeof renderControls === 'function') renderControls();
   if (typeof renderStage === 'function') renderStage();
   if (typeof refreshThumbs === 'function') refreshThumbs();
+
+  // AFTER renderControls(), seleziona il dropdown di competizione e turno
+  setTimeout(function() {
+    // Trova il select di competizione e impostalo
+    var compSelect = document.querySelector('select');
+    if (compSelect && SHARED.compKey) {
+      // Itera i select per trovare quello di competizione (solitamente il primo)
+      var selects = document.querySelectorAll('select');
+      if (selects.length > 0) {
+        selects[0].value = SHARED.compKey; // Select competizione
+        selects[0].dispatchEvent(new Event('change'));
+      }
+    }
+
+    // Trova il select di turno e impostalo (solitamente il secondo)
+    var selects = document.querySelectorAll('select');
+    if (selects.length > 1 && SHARED.round) {
+      selects[1].value = SHARED.round; // Select turno
+      selects[1].dispatchEvent(new Event('change'));
+    }
+  }, 100);
 }
 
 // Carica gli eventi al caricamento della pagina
