@@ -123,7 +123,14 @@ function parseAirtableRecord(rec) {
     console.log('Nomi campi Airtable:', Object.keys(fields));
     window.airtableFieldsLogged = true;
   }
+
   var partita = fields['Partita'] || '';
+  console.log('DEBUG parseAirtableRecord:', {
+    partita: partita,
+    competizione: fields['Competizione'],
+    turno: fields['Turno'],
+    allFields: fields
+  });
 
   // Parsing "CASA-OSPITE" da Partita (gestisce: "PARMA-COMO", "A-B 3-4", "A-B RINVIATA", "A-B 3-4 (dcr)", ecc.)
   var cleanedPartita = partita
