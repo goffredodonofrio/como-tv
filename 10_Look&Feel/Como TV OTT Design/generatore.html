@@ -486,16 +486,31 @@ function svgExport(key){var it=BYKEY[key];return OTTGEN.svgFor(it,P(key),imgsFor
 // ---------- Google Drive Photo Loading ----------
 var DRIVE_FOLDER_ID='1dqMuFDAKG8izB8N3N4Xabsr_j9r4oH6F';
 function loadDrivePhotos(competizione){
- var folderName=competizione.toUpperCase().replace(/\s+/g,'_');
- fetch('https://www.googleapis.com/drive/v3/files?q=name="'+folderName+'"+and+trashed=false&spaces=drive&fields=id,name&pageSize=1&key=AIzaSyBy2_rNANVb2Q9_PnKGCL5lPKvlLfFh9nQ')
+ // Step 1: List all folders inside DRIVE_FOLDER_ID
+ fetch('https://www.googleapis.com/drive/v3/files?q="'+DRIVE_FOLDER_ID+'"+in+parents+and+mimeType="application/vnd.google-apps.folder"+and+trashed=false&spaces=drive&fields=id,name&pageSize=100&key=AIzaSyBy2_rNANVb2Q9_PnKGCL5lPKvlLfFh9nQ')
  .then(r=>r.json())
  .then(d=>{
-  if(!d.files||d.files.length===0){alert('Cartella '+competizione+' non trovata su Drive');return;}
-  var folderId=d.files[0].id;
-  fetch('https://www.googleapis.com/drive/v3/files?q="'+folderId+'"+in+parents+and+mimeType="image/jpeg"+and+trashed=false&spaces=drive&fields=id,name,webViewLink&pageSize=30&key=AIzaSyBy2_rNANVb2Q9_PnKGCL5lPKvlLfFh9nQ')
+  // Step 2: Find folder matching competizione name
+  var compFolder=null;
+  (d.files||[]).forEach(f=>{
+   if(f.name.toUpperCase().includes(competizione.toUpperCase())){compFolder=f;}
+  });
+  if(!compFolder){alert('Cartella "'+competizione+'" non trovata su Drive');return;}
+
+  // Step 3: Find "materiale" folder inside competizione folder
+  fetch('https://www.googleapis.com/drive/v3/files?q="'+compFolder.id+'"+in+parents+and+mimeType="application/vnd.google-apps.folder"+and+name="materiale"+and+trashed=false&spaces=drive&fields=id,name&pageSize=1&key=AIzaSyBy2_rNANVb2Q9_PnKGCL5lPKvlLfFh9nQ')
   .then(r=>r.json())
-  .then(d=>{showDrivePhotoGrid(d.files||[]);})
-  .catch(e=>{alert('Errore caricamento foto: '+e.message);});
+  .then(d=>{
+   if(!d.files||d.files.length===0){alert('Cartella materiale non trovata per '+competizione);return;}
+   var materialeFolder=d.files[0];
+
+   // Step 4: List all photos inside materiale folder
+   fetch('https://www.googleapis.com/drive/v3/files?q="'+materialeFolder.id+'"+in+parents+and+(mimeType="image/jpeg"+or+mimeType="image/png")+and+trashed=false&spaces=drive&fields=id,name&pageSize=50&key=AIzaSyBy2_rNANVb2Q9_PnKGCL5lPKvlLfFh9nQ')
+   .then(r=>r.json())
+   .then(d=>{showDrivePhotoGrid(d.files||[]);})
+   .catch(e=>{alert('Errore caricamento foto: '+e.message);});
+  })
+  .catch(e=>{alert('Errore ricerca materiale: '+e.message);});
  })
  .catch(e=>{alert('Errore accesso Drive: '+e.message);});
 }
