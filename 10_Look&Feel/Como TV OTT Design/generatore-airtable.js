@@ -333,12 +333,25 @@ function applyEventToGenerator(evt) {
   // Carica foto da Airtable se disponibile
   if (evt.fotoUrl && typeof loadNat === 'function') {
     console.log('📷 Carico foto da Airtable:', evt.fotoUrl);
-    // Usa la foto direttamente dall'URL (senza canvas, per evitare CORS)
-    SHIMG.photo = evt.fotoUrl;
-    delete STATE[current].adj.photo;
-    if (typeof renderStage === 'function') renderStage();
-    if (typeof refreshThumbs === 'function') refreshThumbs();
-    console.log('✓ Foto caricata da Airtable');
+    // Carica come blob per aggirare CORS, poi converti in data URI
+    fetch(evt.fotoUrl)
+      .then(r => r.blob())
+      .then(blob => {
+        var reader = new FileReader();
+        reader.onload = function(){
+          SHIMG.photo = reader.result;
+          delete STATE[current].adj.photo;
+          if (typeof renderStage === 'function') renderStage();
+          if (typeof refreshThumbs === 'function') refreshThumbs();
+          console.log('✓ Foto caricata da Airtable');
+        };
+        reader.readAsDataURL(blob);
+      })
+      .catch(e => {
+        console.error('❌ Errore caricamento foto Airtable:', e);
+        SHIMG.photo = evt.fotoUrl; // Fallback all'URL diretto
+        if (typeof renderStage === 'function') renderStage();
+      });
   }
 
   // Aggiorna i campi nel DOM (aspetta che siano creati)
