@@ -623,6 +623,16 @@ window.addEventListener('resize',function(){requestAnimationFrame(drawRulers);})
 var _sw=document.querySelector('.stagewrap');if(_sw)_sw.addEventListener('scroll',function(){requestAnimationFrame(drawRulers);});
 function svgUnitPerPx(svg){var vb=svg.viewBox.baseVal;return vb.width/svg.getBoundingClientRect().width;}
 function ensureAdj(o,svg){var S=STATE[current];if(!S.adj[o]){var el=svg.querySelector('[data-obj="'+o+'"]');var bb=el.getBBox();S.adj[o]={dx:0,dy:0,s:1,cx:bb.x+bb.width/2,cy:bb.y+bb.height/2};}return S.adj[o];}
+function snapToAlign(el,svg,a,threshold){var SNAP=threshold||12;var bb=el.getBBox();var newPos={dx:a.dx,dy:a.dy};var snapped=false;
+ var ct=el.getAttribute('transform');var objs=svg.querySelectorAll('[data-obj]');
+ objs.forEach(function(other){if(other===el)return;var obb=other.getBBox();var oct=other.getAttribute('transform');
+ var getTransformed=function(bbox,trans){var m=new DOMMatrix(trans||'matrix(1,0,0,1,0,0)');return{l:bbox.x*m.a+bbox.y*m.c+m.e,t:bbox.y*m.b+bbox.x*m.d+m.f,r:(bbox.x+bbox.width)*m.a+(bbox.y+bbox.height)*m.c+m.e,b:(bbox.y+bbox.height)*m.b+(bbox.x+bbox.width)*m.d+m.f};};
+ var cpos=getTransformed(bb,ct),opos=getTransformed(obb,oct);
+ if(Math.abs(cpos.l-opos.l)<SNAP){newPos.dx=a.dx-(cpos.l-opos.l);snapped=true;}
+ if(Math.abs(cpos.r-opos.r)<SNAP){newPos.dx=a.dx-(cpos.r-opos.r);snapped=true;}
+ if(Math.abs(cpos.t-opos.t)<SNAP){newPos.dy=a.dy-(cpos.t-opos.t);snapped=true;}
+ if(Math.abs(cpos.b-opos.b)<SNAP){newPos.dy=a.dy-(cpos.b-opos.b);snapped=true;}
+ });return newPos;}
 function attachInteract(svg){
  var objs=svg.querySelectorAll('[data-obj]');
  objs.forEach(function(el){el.addEventListener('pointerdown',function(ev){ev.preventDefault();pushUndo();
@@ -630,7 +640,7 @@ function attachInteract(svg){
    var k=svgUnitPerPx(svg);var sx=ev.clientX,sy=ev.clientY,dx0=a.dx,dy0=a.dy;
    document.getElementById('selName').textContent='Oggetto: '+o;
    syncScaleSlider();highlightSel(svg);
-   function mv(e){a.dx=dx0+(e.clientX-sx)*k;a.dy=dy0+(e.clientY-sy)*k;if(o==='photo')photoClamp(a);el.setAttribute('transform',objTF(a));highlightSel(svg);}
+   function mv(e){var rawDx=dx0+(e.clientX-sx)*k;var rawDy=dy0+(e.clientY-sy)*k;var snapped=snapToAlign(el,svg,{dx:rawDx,dy:rawDy});a.dx=snapped.dx;a.dy=snapped.dy;if(o==='photo')photoClamp(a);el.setAttribute('transform',objTF(a));highlightSel(svg);}
    function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);if(o==='photo')syncPhotoBar();}
    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);
  });
