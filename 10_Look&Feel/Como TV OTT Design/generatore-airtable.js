@@ -290,8 +290,9 @@ function applyEventToGenerator(evt) {
   if (typeof SHARED === 'undefined') return;
   if (typeof pushUndo === 'function') pushUndo();
 
-  console.log('=== APPLY EVENT ===', evt.home, 'vs', evt.away);
+  console.log('🎯 CAMBIO PARTITA:', evt.home, 'vs', evt.away);
 
+  // Aggiorna SHARED (dati globali)
   SHARED.home = evt.home || 'Home';
   SHARED.away = evt.away || 'Away';
   SHARED.compBase = evt.compBase || '';
@@ -301,11 +302,11 @@ function applyEventToGenerator(evt) {
   SHARED.time = evt.time || '';
   SHARED.english = evt.english || false;
 
-  // Mappatura competizione italiano → compKey
+  // Mappatura competizione
   var mappedCompKey = COMP_MAPPING[evt.compBase] || evt.compKey || '';
   SHARED.compKey = mappedCompKey;
 
-  // PRIMA di renderControls: aggiorna TEAMS con le squadre di Airtable
+  // Aggiorna TEAMS
   if (SHARED.compKey && typeof TEAMS !== 'undefined') {
     var teamsForComp = new Set();
     EVENTS_DATA.forEach(e => {
@@ -314,73 +315,78 @@ function applyEventToGenerator(evt) {
         teamsForComp.add(e.away);
       }
     });
-
     if (!TEAMS[SHARED.compKey]) {
       TEAMS[SHARED.compKey] = { label: SHARED.compBase, name: SHARED.compBase, teams: [] };
     }
     TEAMS[SHARED.compKey].teams = Array.from(teamsForComp).sort();
-    console.log('TEAMS aggiornato:', SHARED.compKey, TEAMS[SHARED.compKey].teams);
   }
 
-  // Carica il logo della competizione
+  // Carica logo
   if (typeof LOGO_LIB !== 'undefined' && LOGO_LIB[mappedCompKey] && typeof SHIMG !== 'undefined') {
     SHIMG.logoComp = LOGO_LIB[mappedCompKey].d;
-    console.log('Logo:', mappedCompKey);
   }
 
-  // ADESSO renderControls() creerà i dropdown con le squadre giuste
-  try {
-    if (typeof renderControls === 'function') renderControls();
-  } catch (e) {
-    console.warn('renderControls error (ignorato):', e.message);
-  }
+  // Aggiorna i campi nel DOM (senza renderControls)
+  updateFieldsInDOM();
 
+  // Re-render canvas e anteprime
   if (typeof renderStage === 'function') renderStage();
   if (typeof refreshThumbs === 'function') refreshThumbs();
+}
 
-  // AFTER renderControls(): seleziona i valori nei dropdown
-  setTimeout(function() {
-    console.log('Post-render: seleziona campi');
-    var selects = document.querySelectorAll('select');
+function updateFieldsInDOM() {
+  // Trova tutti i select (Competizione, Turno, Casa, Ospite)
+  var selects = document.querySelectorAll('select');
 
-    // Select 0: Competizione
-    if (selects[0] && SHARED.compKey) {
-      selects[0].value = SHARED.compKey;
-      selects[0].dispatchEvent(new Event('change'));
-      console.log('✓ compKey:', SHARED.compKey);
-    }
+  // Select 0: Competizione
+  if (selects[0] && SHARED.compKey) {
+    selects[0].value = SHARED.compKey;
+    selects[0].dispatchEvent(new Event('change'));
+  }
 
-    // Select 1: Turno
-    if (selects[1] && SHARED.round) {
-      selects[1].value = SHARED.round;
-      selects[1].dispatchEvent(new Event('change'));
-      console.log('✓ round:', SHARED.round);
-    }
+  // Select 1: Turno/Giornata
+  if (selects[1] && SHARED.round) {
+    selects[1].value = SHARED.round;
+    selects[1].dispatchEvent(new Event('change'));
+  }
 
-    // Select 2: Squadra casa
-    if (selects[2] && SHARED.home) {
-      for (var i = 0; i < selects[2].options.length; i++) {
-        if (selects[2].options[i].text.toUpperCase() === SHARED.home.toUpperCase()) {
-          selects[2].value = selects[2].options[i].value;
-          selects[2].dispatchEvent(new Event('change'));
-          console.log('✓ home:', SHARED.home);
-          break;
-        }
+  // Select 2: Squadra casa
+  if (selects[2] && SHARED.home) {
+    for (var i = 0; i < selects[2].options.length; i++) {
+      if (selects[2].options[i].text.toUpperCase() === SHARED.home.toUpperCase()) {
+        selects[2].value = selects[2].options[i].value;
+        selects[2].dispatchEvent(new Event('change'));
+        break;
       }
     }
+  }
 
-    // Select 3: Squadra ospite
-    if (selects[3] && SHARED.away) {
-      for (var i = 0; i < selects[3].options.length; i++) {
-        if (selects[3].options[i].text.toUpperCase() === SHARED.away.toUpperCase()) {
-          selects[3].value = selects[3].options[i].value;
-          selects[3].dispatchEvent(new Event('change'));
-          console.log('✓ away:', SHARED.away);
-          break;
-        }
+  // Select 3: Squadra ospite
+  if (selects[3] && SHARED.away) {
+    for (var i = 0; i < selects[3].options.length; i++) {
+      if (selects[3].options[i].text.toUpperCase() === SHARED.away.toUpperCase()) {
+        selects[3].value = selects[3].options[i].value;
+        selects[3].dispatchEvent(new Event('change'));
+        break;
       }
     }
-  }, 200);
+  }
+
+  // Aggiorna input Data (cerca input con etichetta "Data")
+  var inputs = document.querySelectorAll('input[type="text"]');
+  inputs.forEach((inp, idx) => {
+    var label = inp.previousElementSibling ? inp.previousElementSibling.textContent : '';
+    if (label && (label.includes('Data') || label.includes('data'))) {
+      inp.value = SHARED.date;
+      inp.dispatchEvent(new Event('input'));
+    }
+    if (label && (label.includes('Ora') || label.includes('ora'))) {
+      inp.value = SHARED.time;
+      inp.dispatchEvent(new Event('input'));
+    }
+  });
+
+  console.log('✓ Campi aggiornati');
 }
 
 // Carica gli eventi al caricamento della pagina
