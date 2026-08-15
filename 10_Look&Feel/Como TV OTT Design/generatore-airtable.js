@@ -32,10 +32,12 @@ var COMP_MAPPING = {
   'Saudi Super Cup': 'saudi_super',
   'Scottish Championship': 'scottish_championship',
   'Championship': 'scottish_championship',
+  'EFL Championship': 'efl_championship',
   'Supertaça Portugal': 'supertaca',
   'Serie A': 'serie_a',
   'Coppa Italia': 'coppa_italia',
   'Coppa Italia Primavera': 'coppa_italia_primavera',
+  'Primavera 1': 'primavera1',
   'Como 1907 | Prima Squ...': 'como_cup', // Fallback per Como
   'Studio Live': '', // Nessun logo per programmi
 };
