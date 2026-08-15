@@ -496,59 +496,187 @@ function getSportSeason(dateStr){
 var GOOGLE_PICKER_API_KEY='AIzaSyD6yPdKa7Sh_2VSNfU3bsdQng4xJxk6Fnc';
 var GOOGLE_PICKER_LOADED=false;
 
+var GOOGLE_CLIENT_ID = '640416096387-ak0a1u5v0eakgirbpug1q13eim9v64oq.apps.googleusercontent.com';
+var gapiInitialized = false;
+
 function openDriveFilePicker(){
- var modal=document.createElement('div');
- modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+ // Carica Google API se non è ancora caricata
+ if(!gapiInitialized){
+  var script = document.createElement('script');
+  script.src = 'https://apis.google.com/js/client.js';
+  script.onload = function(){
+   gapi.load('client:auth2', function(){
+    gapi.auth2.init({
+     client_id: GOOGLE_CLIENT_ID,
+     scope: 'https://www.googleapis.com/auth/drive.readonly',
+     immediate: false
+    }).then(function(){
+     gapiInitialized = true;
+     showDriveModal();
+    }).catch(function(err){
+     console.error('Errore init OAuth:', err);
+     alert('Errore: ' + err.error_description);
+    });
+   });
+  };
+  document.head.appendChild(script);
+ } else {
+  showDriveModal();
+ }
+}
 
- var box=document.createElement('div');
- box.style.cssText='background:#1e3260;border:2px solid #B8962E;border-radius:12px;padding:30px;max-width:600px;width:100%;color:#fff';
+function showDriveModal(){
+ var auth2 = gapi.auth2.getAuthInstance();
 
- var title=document.createElement('h2');
- title.textContent='📸 Carica foto da Google Drive';
- title.style.cssText='color:#B8962E;margin:0 0 20px 0;font-size:18px';
+ var modal = document.createElement('div');
+ modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+
+ var box = document.createElement('div');
+ box.style.cssText = 'background:#1e3260;border:2px solid #B8962E;border-radius:12px;padding:30px;max-width:600px;width:100%;color:#fff';
+
+ var title = document.createElement('h2');
+ title.textContent = '📸 Carica foto da Google Drive';
+ title.style.cssText = 'color:#B8962E;margin:0 0 20px 0;font-size:18px';
  box.appendChild(title);
 
- var desc=document.createElement('p');
- desc.innerHTML='<strong>1. Apri Google Drive</strong> → naviga fino alla foto<br>' +
-  '<strong>2. Clicca col destro sulla foto → "Ottieni link"</strong><br>' +
-  '<strong>3. Copia il link completo</strong><br>' +
-  '<strong>4. Incolla qui:</strong>';
- desc.style.cssText='font-size:13px;line-height:1.6;margin:0 0 20px 0;color:#ddd';
- box.appendChild(desc);
+ var btnContainer = document.createElement('div');
+ btnContainer.style.cssText = 'display:flex;gap:10px;justify-content:flex-end';
 
- var input=document.createElement('input');
- input.type='text';
- input.placeholder='https://drive.google.com/file/d/FILE_ID/view';
- input.style.cssText='width:100%;padding:12px;background:#0a0f24;border:1px solid #B8962E;border-radius:6px;color:#fff;font-size:13px;margin-bottom:15px;box-sizing:border-box';
- box.appendChild(input);
-
- var btnContainer=document.createElement('div');
- btnContainer.style.cssText='display:flex;gap:10px;justify-content:flex-end';
-
- var closeBtn=document.createElement('button');
- closeBtn.textContent='Annulla';
- closeBtn.style.cssText='padding:10px 20px;background:none;color:#B8962E;border:1px solid #B8962E;border-radius:6px;cursor:pointer;font-size:13px';
- closeBtn.onclick=function(){modal.remove();};
+ var closeBtn = document.createElement('button');
+ closeBtn.textContent = 'Annulla';
+ closeBtn.style.cssText = 'padding:10px 20px;background:none;color:#B8962E;border:1px solid #B8962E;border-radius:6px;cursor:pointer;font-size:13px';
+ closeBtn.onclick = function(){ modal.remove(); };
  btnContainer.appendChild(closeBtn);
 
- var loadBtn=document.createElement('button');
- loadBtn.textContent='✓ Carica';
- loadBtn.style.cssText='padding:10px 20px;background:#B8962E;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:13px';
- loadBtn.onclick=function(){
-  var url=input.value.trim();
+ var signInBtn = document.createElement('button');
+ signInBtn.textContent = '✓ Accedi con Google';
+ signInBtn.style.cssText = 'padding:10px 20px;background:#B8962E;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:13px';
+ signInBtn.onclick = function(){
+  if(!auth2.isSignedIn.get()){
+   auth2.signIn().then(function(){
+    console.log('✓ Login Google completato');
+    showDriveFileBrowser(modal);
+   }).catch(function(err){
+    console.error('Errore login:', err);
+    alert('Errore login: ' + err.error);
+   });
+  } else {
+   showDriveFileBrowser(modal);
+  }
+ };
+ btnContainer.appendChild(signInBtn);
+
+ box.appendChild(btnContainer);
+ modal.appendChild(box);
+ document.body.appendChild(modal);
+}
+
+function showDriveFileBrowser(modal){
+ modal.remove();
+
+ var browserModal = document.createElement('div');
+ browserModal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+
+ var box = document.createElement('div');
+ box.style.cssText = 'background:#1e3260;border:2px solid #B8962E;border-radius:12px;padding:30px;max-width:600px;width:100%;color:#fff';
+
+ var title = document.createElement('h2');
+ title.textContent = '📸 Carica foto - Incolla link';
+ title.style.cssText = 'color:#B8962E;margin:0 0 20px 0;font-size:18px';
+ box.appendChild(title);
+
+ var desc = document.createElement('p');
+ desc.innerHTML = '<strong>Sei autenticato!</strong><br>' +
+  'Adesso:<br>' +
+  '<strong>1.</strong> Apri Google Drive<br>' +
+  '<strong>2.</strong> Naviga → CALCIO > Stagione > Giornata > materiale<br>' +
+  '<strong>3.</strong> Clicca destro foto → "Ottieni link"<br>' +
+  '<strong>4.</strong> Incolla il link qui:';
+ desc.style.cssText = 'font-size:13px;line-height:1.6;margin:0 0 20px 0;color:#ddd';
+ box.appendChild(desc);
+
+ var input = document.createElement('input');
+ input.type = 'text';
+ input.placeholder = 'https://drive.google.com/file/d/FILE_ID/view';
+ input.style.cssText = 'width:100%;padding:12px;background:#0a0f24;border:1px solid #B8962E;border-radius:6px;color:#fff;font-size:13px;margin-bottom:15px;box-sizing:border-box';
+ box.appendChild(input);
+
+ var btnContainer = document.createElement('div');
+ btnContainer.style.cssText = 'display:flex;gap:10px;justify-content:flex-end';
+
+ var closeBtn = document.createElement('button');
+ closeBtn.textContent = 'Annulla';
+ closeBtn.style.cssText = 'padding:10px 20px;background:none;color:#B8962E;border:1px solid #B8962E;border-radius:6px;cursor:pointer;font-size:13px';
+ closeBtn.onclick = function(){ browserModal.remove(); };
+ btnContainer.appendChild(closeBtn);
+
+ var loadBtn = document.createElement('button');
+ loadBtn.textContent = '✓ Carica';
+ loadBtn.style.cssText = 'padding:10px 20px;background:#B8962E;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:13px';
+ loadBtn.onclick = function(){
+  var url = input.value.trim();
   if(!url){
    alert('Incolla il link di Google Drive');
    input.focus();
    return;
   }
-  loadPhotoFromDriveURL(url, modal);
+  browserModal.remove();
+  loadPhotoFromDriveURLWithAuth(url);
  };
  btnContainer.appendChild(loadBtn);
 
  box.appendChild(btnContainer);
- modal.appendChild(box);
- document.body.appendChild(modal);
+ browserModal.appendChild(box);
+ document.body.appendChild(browserModal);
  input.focus();
+}
+
+function loadPhotoFromDriveURLWithAuth(url){
+ // Estrai l'ID del file
+ var fileId = null;
+ var match = url.match(/\/file\/d\/([a-zA-Z0-9-_]+)/);
+ if(match) fileId = match[1];
+
+ if(!fileId){
+  alert('URL non valido');
+  return;
+ }
+
+ // Ottieni l'access token
+ var auth2 = gapi.auth2.getAuthInstance();
+ var accessToken = auth2.currentUser.get().getAuthResponse().access_token;
+
+ console.log('📥 Scarico file con access token:', fileId);
+
+ // Usa Google Drive API v3 con access token
+ var url = 'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media&access_token=' + accessToken;
+
+ fetch(url)
+  .then(r => {
+   if(!r.ok) throw new Error('Errore: ' + r.status);
+   return r.blob();
+  })
+  .then(blob => {
+   var reader = new FileReader();
+   reader.onload = function(){
+    if(typeof pushUndo === 'function') pushUndo();
+    SHIMG.photo = reader.result;
+    delete STATE[current].adj.photo;
+    loadNat(reader.result, function(){
+     renderControls();
+     renderStage();
+     refreshThumbs();
+    });
+    renderControls();
+    renderStage();
+    refreshThumbs();
+    console.log('✓ Foto caricata con accesso autenticato');
+   };
+   reader.readAsDataURL(blob);
+  })
+  .catch(e => {
+   alert('Errore download: ' + e.message);
+  });
 }
 function loadPhotoFromDriveURL(url, modal){
  // Estrai l'ID del file da URL Google Drive
