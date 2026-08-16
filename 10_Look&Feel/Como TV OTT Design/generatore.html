@@ -26,7 +26,10 @@ body{font-family:'Mazzard',system-ui,sans-serif;background:radial-gradient(120% 
 .step .n{width:18px;height:18px;border-radius:50%;background:var(--gold);color:var(--n900);display:inline-flex;align-items:center;justify-content:center;font-size:10px}
 .card{background:rgba(255,255,255,.03);border:1px solid rgba(245,241,230,.08);border-radius:12px;padding:10px;margin-bottom:10px}
 /* Lo step 4 non ha chrome proprio: i contenitori sono i due riquadri interni. */
-#mediaCard{background:none;border:0;padding:0;margin-bottom:0}
+#mediaCard,#compCard{background:none;border:0;padding:0;margin-bottom:0}
+.imgsection select{width:100%;margin-top:8px;font-size:12px;padding:6px 9px}
+.newlogo{display:flex;gap:6px;align-items:center;margin-top:8px}
+.newlogo input[type=text]{flex:1;min-width:0;font-size:12px;padding:5px 8px}
 label{display:block;font-size:11px;letter-spacing:.04em;color:var(--fg3);margin:8px 0 3px}
 label:first-child{margin-top:0}
 input[type=text],select{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(245,241,230,.14);border-radius:8px;color:var(--ivory);font:inherit;font-size:13px;padding:6px 10px;outline:none}
@@ -130,6 +133,8 @@ small.flag{color:#E3C271}
    <div class="card" id="fieldsCard"></div>
    <div class="step" id="mediaStep"><span class="n">4</span>Foto e loghi</div>
    <div class="card" id="mediaCard"></div>
+   <div class="step" id="compStep" style="display:none"><span class="n">5</span>Competizioni</div>
+   <div class="card" id="compCard" style="display:none"></div>
  </div></div>
  <div class="main">
   <div class="toolbar">
@@ -626,7 +631,7 @@ function pairRow(l1,v1,s1,l2,v2,s2){
 function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);var S=STATE[current];
  document.getElementById('fmtDim').textContent=fname(current)+' — '+it.w+'×'+it.h+' px';
  var fc=document.getElementById('fieldsCard');fc.innerHTML='';
- if(!meta.useComp){(meta.fields||[]).forEach(function(f){if(!SHAREDKEYS[f.k]){fc.appendChild(el('label',f.l));fc.appendChild(simpleInput(S.vals[f.k],(function(k){return function(v){S.vals[k]=v;};})(f.k)));}});renderMedia(false);return;}
+ if(!meta.useComp){(meta.fields||[]).forEach(function(f){if(!SHAREDKEYS[f.k]){fc.appendChild(el('label',f.l));fc.appendChild(simpleInput(S.vals[f.k],(function(k){return function(v){S.vals[k]=v;};})(f.k)));}});renderMedia(false);renderCompetizioni(false);return;}
  SHARED.mode='libero';
  fc.appendChild(pairRow('Competizione',SHARED.compBase,function(v){SHARED.compBase=v;composeComp();},'Giornata / Turno',SHARED.round,function(v){SHARED.round=v;composeComp();}));
  fc.appendChild(pairRow('Squadra casa',SHARED.home,function(v){SHARED.home=v;},'Squadra ospite',SHARED.away,function(v){SHARED.away=v;}));
@@ -640,7 +645,7 @@ function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);va
  c2.appendChild(le);lastRow.appendChild(c1);lastRow.appendChild(c2);fc.appendChild(lastRow);
  // ---- Campi specifici del formato (non shared) ----
  (meta.fields||[]).forEach(function(f){if(!SHAREDKEYS[f.k]&&f.k!=='live'){fc.appendChild(el('label',f.l));fc.appendChild(simpleInput(S.vals[f.k],(function(k){return function(v){S.vals[k]=v;};})(f.k)));}});
- renderMedia(true);
+ var comp=isCompFormat();renderMedia(!comp);renderCompetizioni(comp);
 }
 
 // ---------- step 4: Foto e loghi ----------
@@ -648,8 +653,78 @@ function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);va
 function filePicker(txt,onFile){
  var btn=document.createElement('label');btn.className='filebtn';btn.textContent=txt;
  var fi=document.createElement('input');fi.type='file';fi.accept='image/*';
- fi.onchange=function(e){var f=e.target.files[0];if(!f)return;var rr=new FileReader();rr.onload=function(){onFile(rr.result);};rr.readAsDataURL(f);};
+ fi.onchange=function(e){var f=e.target.files[0];if(!f)return;var rr=new FileReader();rr.onload=function(){onFile(rr.result,f.name);};rr.readAsDataURL(f);};
  btn.appendChild(fi);return btn;
+}
+// ---------- step 5: Competizioni (solo formato competizioni_1200x1800) ----------
+// I loghi caricati qui restano nel browser (localStorage): non finiscono nel file,
+// quindi non li vede chi apre il generatore da un altro computer.
+var CUSTOM_LOGO_KEY='comotv_loghi_competizioni';
+function customLogos(){try{return JSON.parse(localStorage.getItem(CUSTOM_LOGO_KEY)||'{}');}catch(e){return {};}}
+function saveCustomLogos(o){try{localStorage.setItem(CUSTOM_LOGO_KEY,JSON.stringify(o));return true;}catch(e){return false;}}
+function isCompFormat(){return typeof COMP_FORMATS!=='undefined'&&COMP_FORMATS.indexOf(current)>=0;}
+function renderCompetizioni(show){
+ var card=document.getElementById('compCard'),step=document.getElementById('compStep');
+ card.innerHTML='';card.style.display=show?'':'none';step.style.display=show?'':'none';
+ if(!show)return;
+ var lib=(typeof LOGO_LIB!=='undefined')?LOGO_LIB:{},mine=customLogos();
+ var sec=document.createElement('div');sec.className='imgsection';
+ sec.appendChild(el('label','🏆 Logo competizione'));
+
+ // anteprima del logo attivo
+ var row=document.createElement('div');row.className='imgrow';
+ var th=document.createElement('img');th.className='th';
+ if(SHIMG.logoComp){th.src=SHIMG.logoComp;}else{th.removeAttribute('src');th.style.visibility='hidden';}
+ var nm=document.createElement('div');nm.className='nm';nm.textContent=SHIMG.logoComp?'Logo attivo':'Nessun logo';
+ var rm=document.createElement('button');rm.textContent='✕';rm.title='Togli il logo dalla grafica';
+ rm.onclick=function(){pushUndo();delete SHIMG.logoComp;renderControls();renderStage();refreshThumbs();};
+ row.appendChild(th);row.appendChild(nm);row.appendChild(rm);sec.appendChild(row);
+
+ // tendina: libreria interna + loghi caricati
+ var sel=document.createElement('select');
+ sel.appendChild(opt('','▾ Scegli dalla libreria'));
+ Object.keys(lib).sort(function(a,b){return lib[a].l.localeCompare(lib[b].l);})
+   .forEach(function(k){sel.appendChild(opt('lib:'+k,lib[k].l));});
+ var mk=Object.keys(mine).sort(function(a,b){return mine[a].l.localeCompare(mine[b].l);});
+ mk.forEach(function(k){sel.appendChild(opt('mine:'+k,mine[k].l+' · caricato'));});
+ sel.value=SHARED.compLogoKey||'';
+ sel.onchange=function(){
+  if(!this.value)return;pushUndo();
+  var v=this.value,src=v.slice(0,5)==='mine:'?mine[v.slice(5)]:lib[v.slice(4)];
+  if(!src)return;
+  SHIMG.logoComp=src.d;SHARED.compLogoKey=v;
+  renderControls();renderStage();refreshThumbs();
+ };
+ sec.appendChild(sel);
+
+ // elimina dalla libreria: solo per i loghi caricati
+ if(String(SHARED.compLogoKey||'').slice(0,5)==='mine:'){
+  var del=document.createElement('button');del.className='tbtn';del.style.marginTop='8px';
+  del.textContent='Elimina dalla libreria';
+  del.onclick=function(){
+   var k=SHARED.compLogoKey.slice(5),o=customLogos();delete o[k];saveCustomLogos(o);
+   pushUndo();delete SHARED.compLogoKey;delete SHIMG.logoComp;
+   renderControls();renderStage();refreshThumbs();};
+  sec.appendChild(del);
+ }
+
+ // caricamento di una nuova competizione
+ var nl=document.createElement('div');nl.className='newlogo';
+ var nome=document.createElement('input');nome.type='text';nome.placeholder='Nome nuova competizione';
+ nl.appendChild(nome);
+ nl.appendChild(filePicker('Carica logo',function(d,fileName){
+  var label=nome.value.trim()||String(fileName||'').replace(/\.[^.]+$/,'')||'Senza nome';
+  var key=label.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')||('logo_'+Date.now());
+  var o=customLogos();o[key]={l:label,d:d};
+  if(!saveCustomLogos(o)){alert('Spazio esaurito nel browser: il logo e\' applicato alla grafica ma non salvato in libreria.');}
+  pushUndo();SHIMG.logoComp=d;SHARED.compLogoKey='mine:'+key;
+  renderControls();renderStage();refreshThumbs();
+ }));
+ sec.appendChild(nl);
+ var hint=document.createElement('div');hint.className='hintbox';
+ hint.textContent='Il nome della competizione sulla grafica si scrive a mano nel campo Competizione.';
+ sec.appendChild(hint);
+ card.appendChild(sec);
 }
 function renderMedia(show){
  var mc=document.getElementById('mediaCard');var ms=document.getElementById('mediaStep');
