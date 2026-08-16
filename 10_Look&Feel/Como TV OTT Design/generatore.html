@@ -217,10 +217,15 @@ function mPortrait(W,H,p,I,A,hl){
   +hair(W,H,H-5);
 }
 // MATCH — layout ORIZZONTALE generico (foto a destra, testo a sinistra). Stesso design.
-function mLandscape(W,H,p,I,A,hl){
+function mLandscape(W,H,p,I,A,hl,mid){
  var M=R(W*0.032),homeS=R(H*0.135*TEAM_SCALE),vsS=R(H*0.05*TEAM_SCALE),kickS=R(H*0.028),dtS=R(H*0.04);
  var defs='<defs><linearGradient id="lL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#05070F"/><stop offset=".4" stop-color="#05070F" stop-opacity=".82"/><stop offset=".72" stop-color="#0A0F24" stop-opacity=".15"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient><linearGradient id="bL" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#05070F" stop-opacity="1"/><stop offset=".45" stop-color="#05070F" stop-opacity="0"/></linearGradient>'+goldGrad('gL')+'</defs>';
  var kickY=R(H*0.28),homeY=R(H*0.47),awayY=homeY+R(homeS*0.76),ulY=awayY+R(H*0.05),dtY=ulY+R(dtS*1.7),tickH=R(kickS*0.95),ulH=Math.max(3,R(H*0.007));
+ // Il banner-mid (1506x412) e' molto piu' basso e largo degli altri landscape:
+ // con la metrica generica le due squadre restano a 0.76 di interlinea (circa 2px
+ // di bianco tra le maiuscole) e sotto avanzano ~130px vuoti. Qui usa una metrica
+ // propria: interlinea piena e blocco ridistribuito sull'altezza.
+ if(mid){kickY=R(H*0.27);homeY=R(H*0.505);awayY=homeY+R(homeS*1.0);ulY=awayY+R(H*0.058);dtY=ulY+R(dtS*1.9);}
  return GPHOTO(W,H,A,I)+defs
   +'<rect width="'+W+'" height="'+H+'" fill="url(#lL)" pointer-events="none"/><rect width="'+W+'" height="'+H+'" fill="url(#bL)" pointer-events="none"/>'
   +(!hl&&p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
@@ -309,7 +314,7 @@ var FMT={
  hl_portrait_1080x1620:{label:'HL portrait (1080×1620)',group:'Highlights',w:1080,h:1620,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mPortrait(1080,1620,p,I,A,true);}},
  hl_landscape_1920x1080:{label:'HL landscape (1920×1080)',group:'Highlights',w:1920,h:1080,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mLandscape(1920,1080,p,I,A,true);}},
  hl_banner_top_1506x560:{label:'HL banner-top (1506×560)',group:'Highlights',w:1506,h:560,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mLandscape(1506,560,p,I,A,true);}},
- hl_banner_mid_1506x412:{label:'HL banner-mid (1506×412)',group:'Highlights',w:1506,h:412,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mLandscape(1506,412,p,I,A,true);}},
+ hl_banner_mid_1506x412:{label:'HL banner-mid (1506×412)',group:'Highlights',w:1506,h:412,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mLandscape(1506,412,p,I,A,true,true);}},
 
  ott_hero_1920x1080:{label:'Hero banner 16:9',group:'Editoriale',w:1920,h:1080,fields:[{k:'heroKicker',l:'Kicker'},{k:'heroLine1',l:'Titolo riga 1'},{k:'heroLine2',l:'Titolo riga 2'}],images:[{k:'photo',l:'Foto'},{k:'logoComp',l:'Logo'}],gen:function(p,I,A){var W=1920,H=1080;
   return bg(W,H)
@@ -367,7 +372,7 @@ var FMT={
    +G('t-line1',A,T(66,1130,L[0],{s:82,w:800,ls:-2}))
    +(L[1]?G('t-line2',A,T(66,1212,L[1],{s:82,w:800,ls:-2})):'');}},
 
- banner_mid_1506x412:{label:'Banner mid (1506×412)',group:'Match',w:1506,h:412,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mLandscape(1506,412,p,I,A);}},
+ banner_mid_1506x412:{label:'Banner mid (1506×412)',group:'Match',w:1506,h:412,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mLandscape(1506,412,p,I,A,false,true);}},
 
  badge_competizione_1080:{label:'Badge competizione',group:'Banner',w:1080,h:1080,fields:[{k:'badgeName',l:'Nome competizione'}],images:[{k:'logo',l:'Logo competizione'}],gen:function(p,I,A){var W=1080,H=1080;
   return bg(W,H)
@@ -748,17 +753,20 @@ function baseFontOf(o){
  var mx=0;g.querySelectorAll('text,tspan').forEach(function(n){var fs=parseFloat(n.getAttribute('font-size'));if(fs&&fs>mx)mx=fs;});
  return mx;
 }
-// Aggiorna il campo numerico: px se l'oggetto e' testo, altrimenti %.
+// Le unita' SVG sono px; il corpo del font si misura in punti tipografici.
+// Standard CSS/SVG: 1pt = 1/72", 1px = 1/96"  ->  pt = px * 0.75
+var PT_PER_PX=0.75;
+// Aggiorna il campo numerico: pt se l'oggetto e' testo, altrimenti %.
 function setScaleField(s){
  var v=document.getElementById('scaleV'),u=document.getElementById('scaleUnit');var base=baseFontOf(selObj);
- if(base){u.textContent='px';v.min=Math.round(base*0.3);v.max=Math.round(base*3);v.value=Math.round(base*s);}
+ if(base){u.textContent='pt';v.min=Math.round(base*0.3*PT_PER_PX);v.max=Math.round(base*3*PT_PER_PX);v.value=Math.round(base*s*PT_PER_PX);}
  else{u.textContent='%';v.min=30;v.max=300;v.value=Math.round(s*100);}
 }
 function syncScaleSlider(){var r=document.getElementById('scaleR'),v=document.getElementById('scaleV');var on=!!(selObj&&STATE[current].adj[selObj]);r.disabled=!on;v.disabled=!on;var s=on?(STATE[current].adj[selObj].s||1):1;r.value=s;setScaleField(s);}
 function applyObjScale(s,fromNum){if(!selObj)return;var svg=document.querySelector('#stage svg');if(!svg)return;var a=ensureAdj(selObj,svg);a.s=Math.min(3,Math.max(0.3,s));var el=svg.querySelector('[data-obj="'+selObj+'"]');el.setAttribute('transform',objTF(a));document.getElementById('scaleR').value=a.s;if(!fromNum)setScaleField(a.s);highlightSel(svg);}
 document.getElementById('scaleR').addEventListener('input',function(){applyObjScale(parseFloat(this.value));});
 document.getElementById('scaleV').addEventListener('focus',function(){pushUndo();});
-document.getElementById('scaleV').addEventListener('input',function(){var n=parseFloat(this.value);if(isNaN(n))return;var base=baseFontOf(selObj);applyObjScale(base?(n/base):(n/100),true);});
+document.getElementById('scaleV').addEventListener('input',function(){var n=parseFloat(this.value);if(isNaN(n))return;var base=baseFontOf(selObj);applyObjScale(base?((n/PT_PER_PX)/base):(n/100),true);});
 document.getElementById('scaleV').addEventListener('blur',function(){syncScaleSlider();});
 document.getElementById('resetPos').onclick=function(){pushUndo();STATE[current].adj={};selObj=null;document.getElementById('selName').textContent='Nessun oggetto selezionato';renderStage();};
 document.getElementById('scaleR').addEventListener('pointerdown',function(){pushUndo();});
