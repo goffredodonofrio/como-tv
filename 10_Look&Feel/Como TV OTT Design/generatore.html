@@ -26,7 +26,9 @@ body{font-family:'Mazzard',system-ui,sans-serif;background:radial-gradient(120% 
 .step .n{width:18px;height:18px;border-radius:50%;background:var(--gold);color:var(--n900);display:inline-flex;align-items:center;justify-content:center;font-size:10px}
 .card{background:rgba(255,255,255,.03);border:1px solid rgba(245,241,230,.08);border-radius:12px;padding:10px;margin-bottom:10px}
 /* Lo step 4 non ha chrome proprio: i contenitori sono i due riquadri interni. */
-#mediaCard,#compCard{background:none;border:0;padding:0;margin-bottom:0}
+#mediaCard,#compCard{background:rgba(30,40,70,.6);border:1px solid rgba(201,162,75,.24);border-radius:10px;padding:9px 10px 10px;margin-bottom:10px}
+#mediaCard .imgrow,#compCard .imgrow{margin:0;background:rgba(201,162,75,.05);border:1px solid rgba(201,162,75,.16);border-style:solid;min-width:0}
+#compCard .imgrow select{flex:1;width:auto;margin:0;min-width:0}
 .imgsection select{width:100%;margin-top:8px;font-size:12px;padding:6px 9px}
 .newlogo{display:flex;gap:6px;align-items:center;margin-top:8px}
 .newlogo input[type=text]{flex:1;min-width:0;font-size:12px;padding:5px 8px}
@@ -128,10 +130,10 @@ small.flag{color:#E3C271}
 <div class="wrap">
  <div class="panel"><div class="pbody">
    <div class="step"><span class="n">2</span>Formato</div>
-   <div class="card"><select id="fmtSel"></select><div class="hintbox" id="fmtDim"></div></div>
+   <div class="card"><select id="fmtSel"></select></div>
    <div class="step"><span class="n">3</span>Contenuto</div>
    <div class="card" id="fieldsCard"></div>
-   <div class="step" id="mediaStep"><span class="n">4</span>Foto e loghi</div>
+   <div class="step" id="mediaStep"><span class="n">4</span>Foto · comune a tutti</div>
    <div class="card" id="mediaCard"></div>
    <div class="step" id="compStep" style="display:none"><span class="n">5</span>Competizioni</div>
    <div class="card" id="compCard" style="display:none"></div>
@@ -629,9 +631,9 @@ function pairRow(l1,v1,s1,l2,v2,s2){
  return row;
 }
 function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);var S=STATE[current];
- document.getElementById('fmtDim').textContent=fname(current)+' — '+it.w+'×'+it.h+' px';
+ var fd=document.getElementById('fmtDim');if(fd)fd.textContent=fname(current)+' — '+it.w+'×'+it.h+' px';
  var fc=document.getElementById('fieldsCard');fc.innerHTML='';
- if(!meta.useComp){(meta.fields||[]).forEach(function(f){if(!SHAREDKEYS[f.k]){fc.appendChild(el('label',f.l));fc.appendChild(simpleInput(S.vals[f.k],(function(k){return function(v){S.vals[k]=v;};})(f.k)));}});renderMedia(false);renderCompetizioni(false);return;}
+ if(!meta.useComp){(meta.fields||[]).forEach(function(f){if(!SHAREDKEYS[f.k]){fc.appendChild(el('label',f.l));fc.appendChild(simpleInput(S.vals[f.k],(function(k){return function(v){S.vals[k]=v;};})(f.k)));}});renderMedia(false);renderCompetizioni(true);return;}
  SHARED.mode='libero';
  fc.appendChild(pairRow('Competizione',SHARED.compBase,function(v){SHARED.compBase=v;composeComp();},'Giornata / Turno',SHARED.round,function(v){SHARED.round=v;composeComp();}));
  fc.appendChild(pairRow('Squadra casa',SHARED.home,function(v){SHARED.home=v;},'Squadra ospite',SHARED.away,function(v){SHARED.away=v;}));
@@ -645,7 +647,7 @@ function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);va
  c2.appendChild(le);lastRow.appendChild(c1);lastRow.appendChild(c2);fc.appendChild(lastRow);
  // ---- Campi specifici del formato (non shared) ----
  (meta.fields||[]).forEach(function(f){if(!SHAREDKEYS[f.k]&&f.k!=='live'){fc.appendChild(el('label',f.l));fc.appendChild(simpleInput(S.vals[f.k],(function(k){return function(v){S.vals[k]=v;};})(f.k)));}});
- var comp=isCompFormat();renderMedia(!comp);renderCompetizioni(comp);
+ renderMedia(true);renderCompetizioni(true);
 }
 
 // ---------- step 4: Foto e loghi ----------
@@ -668,47 +670,34 @@ function renderCompetizioni(show){
  card.innerHTML='';card.style.display=show?'':'none';step.style.display=show?'':'none';
  if(!show)return;
  var lib=(typeof LOGO_LIB!=='undefined')?LOGO_LIB:{},mine=customLogos();
- var sec=document.createElement('div');sec.className='imgsection';
- sec.appendChild(el('label','🏆 Logo competizione'));
 
- // anteprima del logo attivo
+ // riga 1: anteprima + tendina (libreria interna + loghi caricati) + rimozione
  var row=document.createElement('div');row.className='imgrow';
  var th=document.createElement('img');th.className='th';
  if(SHIMG.logoComp){th.src=SHIMG.logoComp;}else{th.removeAttribute('src');th.style.visibility='hidden';}
- var nm=document.createElement('div');nm.className='nm';nm.textContent=SHIMG.logoComp?'Logo attivo':'Nessun logo';
- var rm=document.createElement('button');rm.textContent='✕';rm.title='Togli il logo dalla grafica';
- rm.onclick=function(){pushUndo();delete SHIMG.logoComp;renderControls();renderStage();refreshThumbs();};
- row.appendChild(th);row.appendChild(nm);row.appendChild(rm);sec.appendChild(row);
-
- // tendina: libreria interna + loghi caricati
+ row.appendChild(th);
  var sel=document.createElement('select');
- sel.appendChild(opt('','▾ Scegli dalla libreria'));
+ sel.appendChild(opt('','\u25be Scegli dalla libreria'));
  Object.keys(lib).sort(function(a,b){return lib[a].l.localeCompare(lib[b].l);})
    .forEach(function(k){sel.appendChild(opt('lib:'+k,lib[k].l));});
- var mk=Object.keys(mine).sort(function(a,b){return mine[a].l.localeCompare(mine[b].l);});
- mk.forEach(function(k){sel.appendChild(opt('mine:'+k,mine[k].l+' · caricato'));});
+ Object.keys(mine).sort(function(a,b){return mine[a].l.localeCompare(mine[b].l);})
+   .forEach(function(k){sel.appendChild(opt('mine:'+k,mine[k].l+' \u00b7 caricato'));});
  sel.value=SHARED.compLogoKey||'';
  sel.onchange=function(){
   if(!this.value)return;pushUndo();
   var v=this.value,src=v.slice(0,5)==='mine:'?mine[v.slice(5)]:lib[v.slice(4)];
   if(!src)return;
   SHIMG.logoComp=src.d;SHARED.compLogoKey=v;
+  // il nome della competizione segue il logo, poi resta modificabile a mano
+  SHARED.compBase=src.l;composeComp();
   renderControls();renderStage();refreshThumbs();
  };
- sec.appendChild(sel);
+ row.appendChild(sel);
+ var rm=document.createElement('button');rm.textContent='\u2715';rm.title='Togli il logo dalla grafica';
+ rm.onclick=function(){pushUndo();delete SHIMG.logoComp;delete SHARED.compLogoKey;renderControls();renderStage();refreshThumbs();};
+ row.appendChild(rm);card.appendChild(row);
 
- // elimina dalla libreria: solo per i loghi caricati
- if(String(SHARED.compLogoKey||'').slice(0,5)==='mine:'){
-  var del=document.createElement('button');del.className='tbtn';del.style.marginTop='8px';
-  del.textContent='Elimina dalla libreria';
-  del.onclick=function(){
-   var k=SHARED.compLogoKey.slice(5),o=customLogos();delete o[k];saveCustomLogos(o);
-   pushUndo();delete SHARED.compLogoKey;delete SHIMG.logoComp;
-   renderControls();renderStage();refreshThumbs();};
-  sec.appendChild(del);
- }
-
- // caricamento di una nuova competizione
+ // riga 2: nuova competizione (nome + logo) ed eliminazione dei loghi caricati
  var nl=document.createElement('div');nl.className='newlogo';
  var nome=document.createElement('input');nome.type='text';nome.placeholder='Nome nuova competizione';
  nl.appendChild(nome);
@@ -716,49 +705,34 @@ function renderCompetizioni(show){
   var label=nome.value.trim()||String(fileName||'').replace(/\.[^.]+$/,'')||'Senza nome';
   var key=label.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')||('logo_'+Date.now());
   var o=customLogos();o[key]={l:label,d:d};
-  if(!saveCustomLogos(o)){alert('Spazio esaurito nel browser: il logo e\' applicato alla grafica ma non salvato in libreria.');}
+  if(!saveCustomLogos(o))alert('Spazio esaurito nel browser: il logo e\' applicato alla grafica ma non salvato in libreria.');
   pushUndo();SHIMG.logoComp=d;SHARED.compLogoKey='mine:'+key;
+  SHARED.compBase=label;composeComp();
   renderControls();renderStage();refreshThumbs();
  }));
- sec.appendChild(nl);
- var hint=document.createElement('div');hint.className='hintbox';
- hint.textContent='Il nome della competizione sulla grafica si scrive a mano nel campo Competizione.';
- sec.appendChild(hint);
- card.appendChild(sec);
+ if(String(SHARED.compLogoKey||'').slice(0,5)==='mine:'){
+  var del=document.createElement('button');del.className='tbtn';del.textContent='Elimina';
+  del.title='Rimuove il logo dalla libreria di questo browser';
+  del.onclick=function(){
+   var k=SHARED.compLogoKey.slice(5),o=customLogos();delete o[k];saveCustomLogos(o);
+   pushUndo();delete SHARED.compLogoKey;delete SHIMG.logoComp;
+   renderControls();renderStage();refreshThumbs();};
+  nl.appendChild(del);
+ }
+ card.appendChild(nl);
 }
 function renderMedia(show){
  var mc=document.getElementById('mediaCard');var ms=document.getElementById('mediaStep');
  mc.innerHTML='';mc.style.display=show?'':'none';ms.style.display=show?'':'none';
  if(!show)return;
  // ---- Foto ----
- (function(){var sec=document.createElement('div');sec.className='imgsection';
-   sec.appendChild(el('label','📷 Foto · comune a tutti i formati'));
-   var r=document.createElement('div');r.className='imgrow';
+ (function(){var r=document.createElement('div');r.className='imgrow';
    var th=document.createElement('img');th.className='th';th.src=SHIMG.photo||DEFAULT_PHOTO;
    var nm=document.createElement('div');nm.className='nm';nm.textContent=SHIMG.photo?'Foto caricata':'Foto di default';
    var rm=document.createElement('button');rm.textContent='✕';rm.title='Ripristina';rm.onclick=function(){pushUndo();delete SHIMG.photo;renderControls();renderStage();refreshThumbs();};
    r.appendChild(th);r.appendChild(nm);
    r.appendChild(filePicker('Scegli file',function(d){pushUndo();SHIMG.photo=d;delete STATE[current].adj.photo;loadNat(d,function(){autoPositionPhotoIfBanner();renderControls();renderStage();refreshThumbs();});renderControls();renderStage();refreshThumbs();}));
-   r.appendChild(rm);sec.appendChild(r);
-   mc.appendChild(sec);})();
- // ---- Logo competizione ----
- (function(){var sec=document.createElement('div');sec.className='imgsection';
-   sec.appendChild(el('label','🏆 Logo competizione · comune a tutti'));
-   var top=document.createElement('div');top.className='imgrow';
-   var th=document.createElement('img');th.className='th';
-   if(SHIMG.logoComp){th.src=SHIMG.logoComp;}else{th.removeAttribute('src');th.style.visibility='hidden';}
-   top.appendChild(th);
-   if(SHARED.mode==='comp'&&typeof LOGO_LIB!=='undefined'){
-     var lsel=document.createElement('select');lsel.style.flex='1';lsel.appendChild(opt('','▾ Logo dalla libreria'));
-     Object.keys(LOGO_LIB).forEach(function(lk){lsel.appendChild(opt(lk,LOGO_LIB[lk].l));});
-     lsel.value=(LOGO_LIB[SHARED.compKey]?SHARED.compKey:'');
-     lsel.onchange=function(){if(!this.value)return;pushUndo();SHIMG.logoComp=LOGO_LIB[this.value].d;if(SHARED.compKey)COMP_LOGO[SHARED.compKey]=SHIMG.logoComp;renderControls();renderStage();refreshThumbs();};
-     top.appendChild(lsel);
-   } else {var nm=document.createElement('div');nm.className='nm';nm.textContent=SHIMG.logoComp?'Logo caricato':'Nessun logo';top.appendChild(nm);}
-   var pick=filePicker('Scegli file',function(d){pushUndo();SHIMG.logoComp=d;if(SHARED.compKey)COMP_LOGO[SHARED.compKey]=d;renderControls();renderStage();refreshThumbs();});
-   var rm=document.createElement('button');rm.textContent='✕';rm.title='Rimuovi';rm.onclick=function(){pushUndo();delete SHIMG.logoComp;if(SHARED.compKey)delete COMP_LOGO[SHARED.compKey];renderControls();renderStage();refreshThumbs();};
-   top.appendChild(pick);top.appendChild(rm);sec.appendChild(top);
-   mc.appendChild(sec);})();
+   r.appendChild(rm);mc.appendChild(r);})();
 }
 
 // ---------- stage + interaction ----------
