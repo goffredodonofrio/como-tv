@@ -821,6 +821,20 @@ function renderPhotoEditor(){
  var g=svg.querySelector('[data-obj="photo"]');
  if(!g){exitPhotoEdit();return;}
  var a=ensureAdj('photo',svg);photoClamp(a);g.setAttribute('transform',objTF(a));syncPhotoBar();
+ // Mirino: reticolo guida sul punto target del volto (FACE_TARGET), solo sui
+ // formati portrait, per allineare i soggetti a mano quando serve.
+ var fmt=BYKEY[current];
+ if(fmt&&fmt.label&&fmt.label.toLowerCase().includes('portrait')){
+  var tx=fmt.w*FACE_TARGET.x,ty=fmt.h*FACE_TARGET.y,mr=Math.round(fmt.w*0.09);
+  var mirino=document.createElementNS('http://www.w3.org/2000/svg','g');
+  mirino.setAttribute('pointer-events','none');
+  mirino.innerHTML='<circle cx="'+tx+'" cy="'+ty+'" r="'+mr+'" fill="none" stroke="#C9A24B" stroke-width="3" stroke-dasharray="10 8" opacity=".85"/>'
+   +'<line x1="'+(tx-mr-16)+'" y1="'+ty+'" x2="'+(tx-mr+16)+'" y2="'+ty+'" stroke="#C9A24B" stroke-width="3" opacity=".85"/>'
+   +'<line x1="'+(tx+mr-16)+'" y1="'+ty+'" x2="'+(tx+mr+16)+'" y2="'+ty+'" stroke="#C9A24B" stroke-width="3" opacity=".85"/>'
+   +'<line x1="'+tx+'" y1="'+(ty-mr-16)+'" x2="'+tx+'" y2="'+(ty-mr+16)+'" stroke="#C9A24B" stroke-width="3" opacity=".85"/>'
+   +'<line x1="'+tx+'" y1="'+(ty+mr-16)+'" x2="'+tx+'" y2="'+(ty+mr+16)+'" stroke="#C9A24B" stroke-width="3" opacity=".85"/>';
+  svg.appendChild(mirino);
+ }
  PEUPD=function(){var aa=STATE[current].adj.photo;if(aa){photoClamp(aa);g.setAttribute('transform',objTF(aa));}};
  svg.addEventListener('pointerdown',function(ev){ev.preventDefault();pushUndoC();var k=svgUnitPerPx(svg);var sx=ev.clientX,sy=ev.clientY,dx0=a.dx||0,dy0=a.dy||0;
    function mv(e){a.dx=dx0+(e.clientX-sx)*k;a.dy=dy0+(e.clientY-sy)*k;photoClamp(a);g.setAttribute('transform',objTF(a));syncPhotoBar();}
@@ -1018,11 +1032,19 @@ document.fonts.ready.then(function(){renderControls();renderStage();renderThumbs
 renderControls();renderStage();renderThumbs();
 loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
 
-// Auto-positioning intelligente per formati banner con face detection
+// Mirino: il punto in cui deve cadere il centro del volto rilevato, come frazione
+// W/H del formato. Orizzontalmente al centro, verticale appena sopra il terzo
+// superiore (sopra la fascia testo/scrim in basso) — cosi' i soggetti restano
+// allineati tra loro quando le grafiche vengono prodotte in batteria.
+var FACE_TARGET={x:0.5,y:0.32};
+
+// Auto-positioning intelligente con face detection: formati banner e portrait.
 var faceapiLoaded=false,faceapiLoading=false;
 async function autoPositionPhotoIfBanner(){
  var fmt=BYKEY[current];
- if(!fmt||!fmt.name||!fmt.name.toLowerCase().includes('banner'))return;
+ if(!fmt||!fmt.label)return;
+ var lbl=fmt.label.toLowerCase();
+ if(!lbl.includes('banner')&&!lbl.includes('portrait'))return;
  if(!SHIMG.photo)return;
 
  try{
@@ -1057,12 +1079,8 @@ async function tryFaceDetection(){
     var detections=await faceapi.detectAllFaces(img, new faceapi.TinyFaceDetector());
     if(detections.length>0){
      var face=detections[0].box;
-     var faceY=face.y+face.height/2;
-     var offset_y=(fmt.h/2)-faceY;
-     offset_y=Math.max(-(img.height-fmt.h), Math.min(0, offset_y));
-     STATE[current].adj.photo=STATE[current].adj.photo||{};
-     STATE[current].adj.photo.dy=offset_y;
-     console.log('📸 Viso rilevato e centrato');
+     placeFaceAtTarget(img.naturalWidth,img.naturalHeight,face.x+face.width/2,face.y+face.height/2);
+     console.log('📸 Viso rilevato, allineato al mirino');
      renderStage(); refreshThumbs();
     } else {
      trySmartPositioning();
@@ -1078,21 +1096,42 @@ async function tryFaceDetection(){
  }
 }
 
+// Piazza il punto (fx,fy) dell'immagine naturale (nw x nh, coordinate in pixel
+// dell'immagine originale) esattamente sul target del mirino (FACE_TARGET, in
+// frazione W/H del formato corrente), allo zoom di partenza PHOTO_MIN_ZOOM.
+// Inverte la trasformazione usata da PHOTO()+objTF(): il "cover" e' sempre
+// centrato (cx=W/2, cy=H/2), quindi basta risolvere dx/dy rispetto al centro.
+function placeFaceAtTarget(nw,nh,fx,fy){
+ var fmt=BYKEY[current],W=fmt.w,H=fmt.h,s=PHOTO_MIN_ZOOM;
+ var cov=Math.max(W/nw,H/nh);
+ STATE[current].adj.photo=STATE[current].adj.photo||{};
+ var a=STATE[current].adj.photo;
+ a.s=s;
+ a.dx=(W*FACE_TARGET.x)-(W/2)-s*cov*(fx-nw/2);
+ a.dy=(H*FACE_TARGET.y)-(H/2)-s*cov*(fy-nh/2);
+}
+
 function trySmartPositioning(){
+ var fmt=BYKEY[current];
  var img=new Image();
  img.crossOrigin='anonymous';
  img.onload=function(){
-  var aspect=img.width/img.height;
-  var fmt_aspect=BYKEY[current].w/BYKEY[current].h;
-  var offset_y=0;
-
-  if(aspect>fmt_aspect && img.height>BYKEY[current].h){
-   // Landscape: sposta in alto (80% top, 20% margine)
-   offset_y=-(img.height-BYKEY[current].h)*0.2;
+  var lbl=(fmt.label||'').toLowerCase();
+  if(lbl.includes('portrait')){
+   // Nessun volto rilevato: allinea comunque al mirino usando il centro
+   // dell'immagine come stima del soggetto.
+   placeFaceAtTarget(img.naturalWidth,img.naturalHeight,img.naturalWidth/2,img.naturalHeight/2);
+  } else {
+   var aspect=img.width/img.height;
+   var fmt_aspect=fmt.w/fmt.h;
+   var offset_y=0;
+   if(aspect>fmt_aspect && img.height>fmt.h){
+    // Landscape: sposta in alto (80% top, 20% margine)
+    offset_y=-(img.height-fmt.h)*0.2;
+   }
+   STATE[current].adj.photo=STATE[current].adj.photo||{};
+   STATE[current].adj.photo.dy=offset_y;
   }
-
-  STATE[current].adj.photo=STATE[current].adj.photo||{};
-  STATE[current].adj.photo.dy=offset_y;
   console.log('📸 Smart positioning');
   renderStage(); refreshThumbs();
  };
