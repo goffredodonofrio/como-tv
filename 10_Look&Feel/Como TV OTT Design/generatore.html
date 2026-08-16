@@ -145,18 +145,16 @@ small.flag{color:#E3C271}
    <button class="act" id="phEdit">Ritaglia foto</button>
    <button class="act ghost" id="phReset">Centra foto</button>
   </div>
-  <div class="editbar">
-   <div class="seg"><span id="selName">Nessun oggetto selezionato</span></div>
-   <div class="seg">Dimensione testo/oggetto <input type="range" id="scaleR" min="0.3" max="3" step="0.01" value="1" disabled><input type="number" id="scaleV" min="30" max="300" step="1" value="100" style="width:56px;text-align:right" disabled><span id="scaleUnit">%</span></div>
-  </div>
   <div class="editbar" id="textBar" style="display:none">
-   <span class="pbl" style="color:var(--gold);font-size:11px;font-weight:800;letter-spacing:.18em">TESTO</span>
-   <div class="seg">Allinea
+   <span class="pbl" id="textBarTitle" style="color:var(--gold);font-size:11px;font-weight:800;letter-spacing:.18em">TESTO</span>
+   <div class="seg"><span id="selName">Nessun oggetto selezionato</span></div>
+   <div class="seg">Dimensione <input type="range" id="scaleR" min="0.3" max="3" step="0.01" value="1" disabled><input type="number" id="scaleV" min="30" max="300" step="1" value="100" style="width:56px;text-align:right" disabled><span id="scaleUnit">%</span></div>
+   <div class="seg tonly">Allinea
     <button class="tbtn" data-al="left" title="Allinea al margine sinistro">⇤</button>
     <button class="tbtn" data-al="center" title="Centra nella grafica">↔</button>
     <button class="tbtn" data-al="right" title="Allinea al margine destro">⇥</button>
    </div>
-   <div class="seg">Peso
+   <div class="seg tonly">Peso
     <select id="txtW">
      <option value="400">Regular</option>
      <option value="600">SemiBold</option>
@@ -165,13 +163,13 @@ small.flag{color:#E3C271}
     </select>
     <button class="tbtn" id="txtIt" title="Corsivo" style="font-style:italic;font-family:Georgia,serif;padding:5px 11px">I</button>
    </div>
-   <div class="seg">Spaziatura <input type="range" id="txtLs" min="-10" max="30" step="0.5" value="0" style="width:110px"><span id="txtLsV" style="min-width:26px;text-align:right">0</span></div>
-   <div class="seg">Colore
+   <div class="seg tonly">Spaziatura <input type="range" id="txtLs" min="-10" max="30" step="0.5" value="0" style="width:110px"><span id="txtLsV" style="min-width:26px;text-align:right">0</span></div>
+   <div class="seg tonly">Colore
     <button class="sw" data-col="#F5F1E6" title="Avorio" style="background:#F5F1E6"></button>
     <button class="sw" data-col="#C9A24B" title="Oro" style="background:#C9A24B"></button>
     <button class="sw" data-col="#8A8B96" title="Grigio" style="background:#8A8B96"></button>
    </div>
-   <button class="tbtn" id="txtReset" title="Rimuove le modifiche di stile su questo testo">Ripristina stile</button>
+   <button class="tbtn tonly" id="txtReset" title="Rimuove le modifiche di stile su questo testo">Ripristina stile</button>
   </div>
   <div class="pebar" id="peBar">
    <span class="pbl" style="color:var(--gold)">RITAGLIO FOTO</span>
@@ -829,12 +827,16 @@ function setScaleField(s){
  else{u.textContent='%';v.min=30;v.max=300;v.value=Math.round(s*100);}
 }
 function syncScaleSlider(){var r=document.getElementById('scaleR'),v=document.getElementById('scaleV');var on=!!(selObj&&STATE[current].adj[selObj]);r.disabled=!on;v.disabled=!on;var s=on?(STATE[current].adj[selObj].s||1):1;r.value=s;setScaleField(s);syncTextBar();}
-// La barra TESTO compare solo per gli oggetti che contengono testo.
+// La barra compare quando c'e' una selezione: nome oggetto e Dimensione valgono
+// per tutti, i controlli tipografici (.tonly) solo per gli oggetti con testo.
 function syncTextBar(){
  var bar=document.getElementById('textBar');var svg=document.querySelector('#stage svg');
- var base=selObj?baseFontOf(selObj):0;
- if(!selObj||!base||!svg){bar.style.display='none';return;}
+ if(!selObj||!svg){bar.style.display='none';return;}
  bar.style.display='flex';
+ var base=baseFontOf(selObj);
+ bar.querySelectorAll('.tonly').forEach(function(e){e.style.display=base?'':'none';});
+ document.getElementById('textBarTitle').textContent=base?'TESTO':'OGGETTO';
+ if(!base)return;
  var g=svg.querySelector('[data-obj="'+selObj+'"]');if(!g)return;
  var n=mainTextNodes(g)[0],t=g.querySelector('text');
  var f=((STATE[current].adj[selObj]||{}).font)||{};
