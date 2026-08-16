@@ -763,12 +763,16 @@ function photoItem(){return BYKEY[current]||{w:1080,h:1080};}
 // formato coincidono su un asse (a s=1 quell'asse avrebbe pan=0, es. foto larga su
 // formato landscape: si sposta in verticale ma non in orizzontale).
 var PHOTO_MIN_ZOOM=1.1;
-// crop "cover" ad aspetto reale (Keynote): la foto riempie sempre il frame; l'eccedenza (che dipende dalle proporzioni foto vs frame) è pannabile. Niente bordi vuoti.
+// Base per lo slider Orizzontale/Verticale: un range ampio e fisso (una foto-frame intera
+// per lato), cosi' lo slider da' comunque tanto margine anche se la foto "combacia" col
+// formato. Il trascinamento diretto (mouse) non usa piu' questo limite: e' libero.
 function photoPanMax(s){var it=photoItem();var n=PHOTONAT[curPhotoSrc()];
- if(!n||!n.w||!n.h)return {mx:Math.max(0,(s-1)*it.w/2),my:Math.max(0,(s-1)*it.h/2)};
+ var freeX=it.w,freeY=it.h;
+ if(!n||!n.w||!n.h)return {mx:freeX,my:freeY};
  var cov=Math.max(it.w/n.w,it.h/n.h),dw=n.w*cov*s,dh=n.h*cov*s;
- return {mx:Math.max(0,(dw-it.w)/2),my:Math.max(0,(dh-it.h)/2)};}
-function photoClamp(a){var m=photoPanMax(a.s||1);a.dx=Math.max(-m.mx,Math.min(m.mx,a.dx||0));a.dy=Math.max(-m.my,Math.min(m.my,a.dy||0));return a;}
+ return {mx:Math.max(freeX,(dw-it.w)/2),my:Math.max(freeY,(dh-it.h)/2)};}
+// Trascinamento libero: nessun limite, la foto si sposta ovunque (reset con "Centra foto").
+function photoClamp(a){return a;}
 function syncPhotoBar(){var a=STATE[current].adj.photo;
  var z=document.getElementById('phZoom'),x=document.getElementById('phX'),y=document.getElementById('phY');
  if(!z)return;
