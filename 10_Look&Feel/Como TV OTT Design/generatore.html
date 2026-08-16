@@ -754,7 +754,7 @@ var selObj=null;var photoEdit=false;
 // Mappatura degli oggetti testo ai campi editabili (SHARED o specifici del formato)
 var TEXT_EDIT_MAP={'t-home':'home','t-away':'away','t-comp':'comp','t-dt':'','t-hl':'hlKind','t-fan':'','t-q':'','t-sub':'','t-kicker':'heroKicker','t-line1':'heroLine1','t-line2':'heroLine2','t-title':'title','t-name':'name','t-kind':'hlKind','t-tag':'','t-num':'num','t-mark':''};
 function renderStage(){if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');svg.style.backgroundColor='#050a1a';applyTextStyles(svg,current);
- attachInteract(svg);highlightSel(svg);syncScaleSlider();syncPhotoBar();
+ attachInteract(svg);highlightSel(svg);syncScaleSlider();syncPhotoBar();drawMirino(svg);
  requestAnimationFrame(drawRulers);}
 // ---- menù foto dedicato (Zoom / Orizzontale / Verticale) ----
 function photoItem(){return BYKEY[current]||{w:1080,h:1080};}
@@ -820,21 +820,7 @@ function renderPhotoEditor(){
  ['rulerTop','rulerLeft','rulerCorner'].forEach(function(id){var c=document.getElementById(id);if(c)c.style.display='none';});
  var g=svg.querySelector('[data-obj="photo"]');
  if(!g){exitPhotoEdit();return;}
- var a=ensureAdj('photo',svg);photoClamp(a);g.setAttribute('transform',objTF(a));syncPhotoBar();
- // Mirino: reticolo guida sul punto target del volto (FACE_TARGET), solo sui
- // formati portrait, per allineare i soggetti a mano quando serve.
- var fmt=BYKEY[current];
- if(fmt&&fmt.label&&fmt.label.toLowerCase().includes('portrait')){
-  var tx=fmt.w*FACE_TARGET.x,ty=fmt.h*FACE_TARGET.y,mr=Math.round(fmt.w*0.09);
-  var mirino=document.createElementNS('http://www.w3.org/2000/svg','g');
-  mirino.setAttribute('pointer-events','none');
-  mirino.innerHTML='<circle cx="'+tx+'" cy="'+ty+'" r="'+mr+'" fill="none" stroke="#C9A24B" stroke-width="3" stroke-dasharray="10 8" opacity=".85"/>'
-   +'<line x1="'+(tx-mr-16)+'" y1="'+ty+'" x2="'+(tx-mr+16)+'" y2="'+ty+'" stroke="#C9A24B" stroke-width="3" opacity=".85"/>'
-   +'<line x1="'+(tx+mr-16)+'" y1="'+ty+'" x2="'+(tx+mr+16)+'" y2="'+ty+'" stroke="#C9A24B" stroke-width="3" opacity=".85"/>'
-   +'<line x1="'+tx+'" y1="'+(ty-mr-16)+'" x2="'+tx+'" y2="'+(ty-mr+16)+'" stroke="#C9A24B" stroke-width="3" opacity=".85"/>'
-   +'<line x1="'+tx+'" y1="'+(ty+mr-16)+'" x2="'+tx+'" y2="'+(ty+mr+16)+'" stroke="#C9A24B" stroke-width="3" opacity=".85"/>';
-  svg.appendChild(mirino);
- }
+ var a=ensureAdj('photo',svg);photoClamp(a);g.setAttribute('transform',objTF(a));syncPhotoBar();drawMirino(svg);
  PEUPD=function(){var aa=STATE[current].adj.photo;if(aa){photoClamp(aa);g.setAttribute('transform',objTF(aa));}};
  svg.addEventListener('pointerdown',function(ev){ev.preventDefault();pushUndoC();var k=svgUnitPerPx(svg);var sx=ev.clientX,sy=ev.clientY,dx0=a.dx||0,dy0=a.dy||0;
    function mv(e){a.dx=dx0+(e.clientX-sx)*k;a.dy=dy0+(e.clientY-sy)*k;photoClamp(a);g.setAttribute('transform',objTF(a));syncPhotoBar();}
@@ -1033,10 +1019,26 @@ renderControls();renderStage();renderThumbs();
 loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
 
 // Mirino: il punto in cui deve cadere il centro del volto rilevato, come frazione
-// W/H del formato. Orizzontalmente al centro, verticale appena sopra il terzo
-// superiore (sopra la fascia testo/scrim in basso) — cosi' i soggetti restano
+// W/H del formato. Orizzontalmente al centro, verticale nella parte alta del
+// frame (sopra la fascia testo/scrim in basso) — cosi' i soggetti restano
 // allineati tra loro quando le grafiche vengono prodotte in batteria.
-var FACE_TARGET={x:0.5,y:0.32};
+var FACE_TARGET={x:0.5,y:0.22};
+// Disegna il reticolo del mirino sull'svg dato, se il formato corrente e' portrait.
+// Richiamata sia nella vista normale sia in "Ritaglia foto", cosi' resta visibile
+// sempre, non solo durante il ritaglio.
+function drawMirino(svg){
+ var fmt=BYKEY[current];
+ if(!fmt||!fmt.label||!fmt.label.toLowerCase().includes('portrait'))return;
+ var tx=fmt.w*FACE_TARGET.x,ty=fmt.h*FACE_TARGET.y,mr=Math.round(fmt.w*0.15);
+ var mirino=document.createElementNS('http://www.w3.org/2000/svg','g');
+ mirino.setAttribute('pointer-events','none');
+ mirino.innerHTML='<circle cx="'+tx+'" cy="'+ty+'" r="'+mr+'" fill="none" stroke="#C9A24B" stroke-width="4" stroke-dasharray="12 9" opacity=".85"/>'
+  +'<line x1="'+(tx-mr-20)+'" y1="'+ty+'" x2="'+(tx-mr+20)+'" y2="'+ty+'" stroke="#C9A24B" stroke-width="4" opacity=".85"/>'
+  +'<line x1="'+(tx+mr-20)+'" y1="'+ty+'" x2="'+(tx+mr+20)+'" y2="'+ty+'" stroke="#C9A24B" stroke-width="4" opacity=".85"/>'
+  +'<line x1="'+tx+'" y1="'+(ty-mr-20)+'" x2="'+tx+'" y2="'+(ty-mr+20)+'" stroke="#C9A24B" stroke-width="4" opacity=".85"/>'
+  +'<line x1="'+tx+'" y1="'+(ty+mr-20)+'" x2="'+tx+'" y2="'+(ty+mr+20)+'" stroke="#C9A24B" stroke-width="4" opacity=".85"/>';
+ svg.appendChild(mirino);
+}
 
 // Auto-positioning intelligente con face detection: formati banner e portrait.
 var faceapiLoaded=false,faceapiLoading=false;
