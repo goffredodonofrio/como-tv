@@ -90,8 +90,8 @@ small.flag{color:#E3C271}
 #fieldsCard .chk{margin:12px 14px;background:rgba(201,162,75,.08);border:1px solid rgba(201,162,75,.16);border-radius:8px;padding:10px;font-size:12px}
 #fieldsCard .imgrow{margin:10px 14px;background:rgba(201,162,75,.04);border:1px solid rgba(201,162,75,.14)}
 #fieldsCard .hintbox{margin:6px 14px 14px;color:var(--fg3);font-size:12px}
-.imgrow input[type=file]{color:transparent;width:auto;background:linear-gradient(160deg,var(--goldB),var(--gold));border:none;padding:8px 16px;cursor:pointer}
-.imgrow input[type=file]::-webkit-file-upload-button{background:none;color:var(--n900);border:none;padding:0;margin-right:0;cursor:pointer;font-weight:700;font-size:12px}
+.imgsection{border:1px solid rgba(201,162,75,.24);border-radius:10px;background:rgba(10,15,36,.5);padding:12px;margin:14px;margin-bottom:16px}
+.imgsection>label{display:block;padding:0 2px 8px;font-weight:600}
 </style>
 </head>
 <body>
@@ -541,17 +541,18 @@ function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);va
  // ---- Campi specifici del formato (non shared) ----
  (meta.fields||[]).forEach(function(f){if(!SHAREDKEYS[f.k]&&f.k!=='live'){fc.appendChild(el('label',f.l));fc.appendChild(simpleInput(S.vals[f.k],(function(k){return function(v){S.vals[k]=v;};})(f.k)));}});
  // ---- Immagini (dentro Contenuto) ----
- fc.appendChild(el('label','📷 Foto · comune a tutti i formati'));
- (function(){var r=document.createElement('div');r.className='imgrow';
+ (function(){var sec=document.createElement('div');sec.className='imgsection';
+   var lbl=document.createElement('label');lbl.textContent='📷 Foto · comune a tutti i formati';sec.appendChild(lbl);
+   var r=document.createElement('div');r.className='imgrow';
    var th=document.createElement('img');th.className='th';th.src=SHIMG.photo||DEFAULT_PHOTO;
    var nm=document.createElement('div');nm.className='nm';nm.textContent='Carica foto';
    var fi=document.createElement('input');fi.type='file';fi.accept='image/*';fi.onchange=function(e){var f=e.target.files[0];if(!f)return;var rr=new FileReader();rr.onload=function(){pushUndo();SHIMG.photo=rr.result;delete STATE[current].adj.photo;loadNat(rr.result,function(){autoPositionPhotoIfBanner();renderControls();renderStage();refreshThumbs();});renderControls();renderStage();refreshThumbs();};rr.readAsDataURL(f);};
    var rm=document.createElement('button');rm.textContent='✕';rm.title='Ripristina';rm.onclick=function(){pushUndo();delete SHIMG.photo;renderControls();renderStage();refreshThumbs();};
-   r.appendChild(th);r.appendChild(nm);r.appendChild(fi);r.appendChild(rm);fc.appendChild(r);})();
- // ---- Foto da Google Drive ----
- fc.appendChild(el('label','📸 Foto da Google Drive'));
- fc.appendChild(el('label','🏆 Logo competizione · comune a tutti'));
- (function(){var top=document.createElement('div');top.className='imgrow';
+   r.appendChild(th);r.appendChild(nm);r.appendChild(fi);r.appendChild(rm);sec.appendChild(r);fc.appendChild(sec);})();
+ // ---- Logo competizione ----
+ (function(){var sec=document.createElement('div');sec.className='imgsection';
+   var lbl=document.createElement('label');lbl.textContent='🏆 Logo competizione · comune a tutti';sec.appendChild(lbl);
+   var top=document.createElement('div');top.className='imgrow';
    var th=document.createElement('img');th.className='th';th.src=SHIMG.logoComp||'';if(!th.src)th.style.visibility='hidden';top.appendChild(th);
    if(SHARED.mode==='comp'&&typeof LOGO_LIB!=='undefined'){
      var lsel=document.createElement('select');lsel.style.flex='1';lsel.appendChild(opt('','▾ Logo dalla libreria'));
@@ -561,12 +562,12 @@ function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);va
      top.appendChild(lsel);
    } else {var nm=document.createElement('div');nm.className='nm';nm.textContent='Carica logo (testo libero)';top.appendChild(nm);}
    var rm=document.createElement('button');rm.textContent='✕';rm.title='Rimuovi';rm.onclick=function(){pushUndo();delete SHIMG.logoComp;if(SHARED.compKey)delete COMP_LOGO[SHARED.compKey];renderControls();renderStage();refreshThumbs();};top.appendChild(rm);
-   fc.appendChild(top);
+   sec.appendChild(top);
    var fl=document.createElement('div');fl.style.cssText='display:flex;align-items:center;gap:8px;font-size:11px;color:var(--fg3);margin-top:5px';
    var fi=document.createElement('input');fi.type='file';fi.accept='image/*';fi.style.width='auto';
    fi.onchange=function(e){var f=e.target.files[0];if(!f)return;var rr=new FileReader();rr.onload=function(){pushUndo();SHIMG.logoComp=rr.result;if(SHARED.compKey)COMP_LOGO[SHARED.compKey]=rr.result;renderControls();renderStage();refreshThumbs();};rr.readAsDataURL(f);};
-   fl.appendChild(document.createTextNode(SHARED.mode==='comp'?'…oppure carica logo:':'Carica logo libero:'));fl.appendChild(fi);fc.appendChild(fl);
- })();
+   fl.appendChild(document.createTextNode(SHARED.mode==='comp'?'…oppure carica logo:':'Carica logo libero:'));fl.appendChild(fi);sec.appendChild(fl);
+   fc.appendChild(sec);})();
 }
 
 // ---------- stage + interaction ----------
