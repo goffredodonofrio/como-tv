@@ -1,5 +1,5 @@
 // Estensione Generatore OTT ↔ Airtable
-// Legge Live Events da Airtable (prossimi 14 giorni) e popola il pannello "Importa"
+// Legge Live Events da Airtable (da oggi in avanti, tutto il calendario) e popola il pannello "Importa"
 
 var EVENTS_DATA = [];
 var AIRTABLE_CONFIG = {
@@ -64,45 +64,30 @@ function loadAirtableEvents() {
     return;
   }
 
-  var today = new Date();
-  var in14days = new Date(today);
-  in14days.setDate(in14days.getDate() + 14);
-
-  // Formatta le date per Airtable (YYYY-MM-DD)
-  var todayStr = formatDateForAirtable(today);
-  var in14daysStr = formatDateForAirtable(in14days);
-
-  // Formula per filtrare eventi nei prossimi 14 giorni
+  // Tutti gli eventi da oggi in avanti, senza limite superiore.
+  // DATEADD(TODAY(), -1, 'days') = "dopo ieri a mezzanotte", così anche gli
+  // eventi di oggi (a qualsiasi ora) restano nell'elenco.
   // Esclude non-partita (es. studio live, show) e partite rinviate
   var filterFormula = 'AND(' +
-    'IS_AFTER({Data | Orario}, "' + todayStr + '"), ' +
-    'IS_BEFORE({Data | Orario}, "' + in14daysStr + '"), ' +
+    "IS_AFTER({Data | Orario}, DATEADD(TODAY(), -1, 'days')), " +
     'NOT({Partita} = BLANK()), ' +
     'NOT(FIND("RINVIATA", {Partita})), ' +
     'NOT(FIND("SHOW", {Partita}))' +
     ')';
 
-  var url = 'https://api.airtable.com/v0/' + AIRTABLE_CONFIG.baseId + '/' + AIRTABLE_CONFIG.tableId
-    + '?filterByFormula=' + encodeURIComponent(filterFormula)
-    + '&sort[0][field]=Data | Orario&sort[0][direction]=asc';
+  var url = 'https://api.airtable.com/v0/' + AIRTABLE_CONFIG.baseId + '/' + AIRTABLE_CONFIG.tableId;
+  var params = {
+    filterByFormula: filterFormula,
+    pageSize: '100',
+    'sort[0][field]': 'Data | Orario',
+    'sort[0][direction]': 'asc'
+  };
 
-  fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': 'Bearer ' + token,
-      'Content-Type': 'application/json'
-    }
-  })
-    .then(r => {
-      if (!r.ok) throw new Error('Airtable error: ' + r.status);
-      return r.json();
-    })
-    .then(data => {
-      EVENTS_DATA = (data.records || []).map(rec => parseAirtableRecord(rec));
+  airtableFetchAll(url, params, token)
+    .then(records => {
+      EVENTS_DATA = records.map(rec => parseAirtableRecord(rec));
       console.log('Caricati ' + EVENTS_DATA.length + ' eventi da Airtable', EVENTS_DATA);
-      if (data.records && data.records.length > 0) {
-        console.log('Primo record raw:', data.records[0]);
-      }
+      if (records.length > 0) console.log('Primo record raw:', records[0]);
       renderEventPanel();
     })
     .catch(err => {
@@ -111,11 +96,33 @@ function loadAirtableEvents() {
     });
 }
 
-function formatDateForAirtable(date) {
-  var y = date.getFullYear();
-  var m = String(date.getMonth() + 1).padStart(2, '0');
-  var d = String(date.getDate()).padStart(2, '0');
-  return y + '-' + m + '-' + d;
+// Airtable restituisce max 100 record per pagina: segue l'offset finché
+// ci sono altre pagine, così l'elenco copre tutto il calendario.
+function airtableFetchAll(baseUrl, params, token) {
+  var all = [];
+  var MAX_PAGES = 50; // guardia anti-loop (5.000 record)
+  function page(offset, n) {
+    var p = new URLSearchParams(params);
+    if (offset) p.set('offset', offset);
+    return fetch(baseUrl + '?' + p.toString(), {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json'
+      }
+    })
+      .then(r => {
+        if (!r.ok) throw new Error('Airtable error: ' + r.status);
+        return r.json();
+      })
+      .then(data => {
+        all = all.concat(data.records || []);
+        if (data.offset && n < MAX_PAGES) return page(data.offset, n + 1);
+        if (data.offset) console.warn('Airtable: raggiunto il limite di ' + MAX_PAGES + ' pagine');
+        return all;
+      });
+  }
+  return page(null, 1);
 }
 
 function parseAirtableRecord(rec) {
@@ -209,17 +216,7 @@ function renderEventPanel() {
   if (existing) {
     // Aggiorna il select con gli eventi (in caso di ricarica)
     var select = document.getElementById('airtableEventSelect');
-    if (select && EVENTS_DATA.length > 0) {
-      // Pulisci opzioni vecchie (tranne la prima)
-      while (select.options.length > 1) select.remove(1);
-      // Aggiungi nuove opzioni
-      EVENTS_DATA.forEach((evt, idx) => {
-        var label = evt.home + ' vs ' + evt.away
-          + ' · ' + evt.date
-          + ' · ' + evt.compBase;
-        select.appendChild(createOption(idx, label));
-      });
-    }
+    if (select) fillEventSelect(select);
     return;
   }
 
@@ -245,19 +242,12 @@ function renderEventPanel() {
   card.id = 'airtableEventCard';
 
   if (EVENTS_DATA.length === 0) {
-    card.innerHTML = '<p style="color: var(--fg3); font-size: 12px;">Nessun evento nei prossimi 14 giorni</p>';
+    card.innerHTML = '<p style="color: var(--fg3); font-size: 12px;">Nessun evento in programma da oggi in avanti</p>';
   } else {
     var select = document.createElement('select');
     select.id = 'airtableEventSelect';
     select.style.width = '100%';
-    select.appendChild(createOption('', '— Scegli partita —'));
-
-    EVENTS_DATA.forEach((evt, idx) => {
-      var label = evt.home + ' vs ' + evt.away
-        + ' · ' + evt.date
-        + ' · ' + evt.compBase;
-      select.appendChild(createOption(idx, label));
-    });
+    fillEventSelect(select);
 
     select.onchange = function() {
       if (!this.value) return;
@@ -280,6 +270,27 @@ function renderEventPanel() {
   } else {
     wrap.parentNode.insertBefore(panelContainer, wrap);
   }
+}
+
+// Riempie il menu a tendina: placeholder + un'opzione per evento.
+function fillEventSelect(select) {
+  select.innerHTML = '';
+  select.appendChild(createOption('', '— Scegli partita —'));
+  EVENTS_DATA.forEach((evt, idx) => {
+    select.appendChild(createOption(idx, eventLabel(evt)));
+  });
+}
+
+// "CASA vs OSPITE · 16 Ago · 16:00 · Serie A"
+// L'anno compare solo se l'evento non è dell'anno corrente.
+function eventLabel(evt) {
+  var parts = [evt.home + ' vs ' + evt.away];
+  var when = evt.date || '';
+  if (when && evt.year && evt.year !== new Date().getFullYear()) when += ' ' + evt.year;
+  if (when) parts.push(when);
+  if (evt.time) parts.push(evt.time);
+  if (evt.compBase) parts.push(evt.compBase);
+  return parts.join(' · ');
 }
 
 function createOption(val, text) {
