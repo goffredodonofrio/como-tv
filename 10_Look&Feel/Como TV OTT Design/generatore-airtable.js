@@ -1,5 +1,5 @@
 // Estensione Generatore OTT ↔ Airtable
-// Legge Live Events da Airtable (da oggi in avanti, tutto il calendario) e popola il pannello "Importa"
+// Legge Live Events da Airtable (dagli ultimi 2 giorni in avanti, tutto il calendario) e popola il pannello "Importa"
 
 var EVENTS_DATA = [];
 var AIRTABLE_CONFIG = {
@@ -64,12 +64,12 @@ function loadAirtableEvents() {
     return;
   }
 
-  // Tutti gli eventi da oggi in avanti, senza limite superiore.
-  // DATEADD(TODAY(), -1, 'days') = "dopo ieri a mezzanotte", così anche gli
-  // eventi di oggi (a qualsiasi ora) restano nell'elenco.
+  // Dagli ultimi 2 giorni in avanti, senza limite superiore.
+  // DATEADD(TODAY(), -2, 'days') = mezzanotte di due giorni fa: restano in
+  // elenco l'altroieri, ieri, oggi (a qualsiasi ora) e tutto il futuro.
   // Esclude non-partita (es. studio live, show) e partite rinviate
   var filterFormula = 'AND(' +
-    "IS_AFTER({Data | Orario}, DATEADD(TODAY(), -1, 'days')), " +
+    "IS_AFTER({Data | Orario}, DATEADD(TODAY(), -2, 'days')), " +
     'NOT({Partita} = BLANK()), ' +
     'NOT(FIND("RINVIATA", {Partita})), ' +
     'NOT(FIND("SHOW", {Partita}))' +
@@ -242,7 +242,7 @@ function renderEventPanel() {
   card.id = 'airtableEventCard';
 
   if (EVENTS_DATA.length === 0) {
-    card.innerHTML = '<p style="color: var(--fg3); font-size: 12px;">Nessun evento in programma da oggi in avanti</p>';
+    card.innerHTML = '<p style="color: var(--fg3); font-size: 12px;">Nessun evento dagli ultimi 2 giorni in avanti</p>';
   } else {
     var select = document.createElement('select');
     select.id = 'airtableEventSelect';
