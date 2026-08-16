@@ -83,6 +83,8 @@ button.act:active{transform:scale(.97)}
 .thumbcol{width:260px;flex:none;border-left:1px solid var(--line);height:calc(100vh - 58px);overflow-y:auto;padding:14px;position:sticky;top:58px}
 .thumbhd{font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin-bottom:10px}
 .thumbs{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.thgrp{grid-column:1/-1;font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin:8px 0 0;padding-top:8px;border-top:1px solid rgba(201,162,75,.2)}
+.thgrp:first-child{margin-top:0;padding-top:0;border-top:0}
 .thumb{background:rgba(255,255,255,.03);border:1px solid rgba(245,241,230,.08);border-radius:10px;padding:7px;cursor:pointer;transition:border-color .15s}
 .thumb.sel{border-color:var(--gold)}
 .thumb .box{width:100%;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#05070F;border-radius:6px}
@@ -515,19 +517,28 @@ var TEAMS={
 if(typeof TEAMS_EXTRA!=='undefined')Object.keys(TEAMS_EXTRA).forEach(function(k){if(TEAMS[k])TEAMS[k].teams=TEAMS_EXTRA[k];});
 
 // Due categorie: Live Match e Highlights (stessi formati, un layout ciascuno)
-var LIVE_FORMATS=['feed_1080x1350','story_1080x1920','match_2x3_1080x1620','match_16x9_1920x1080','banner_top_1506x560','banner_mid_1506x412','fanvoice_1080x1920'];
-var HL_FORMATS=['hl_feed_1080x1350','hl_story_1080x1920','hl_portrait_1080x1620','hl_landscape_1920x1080','hl_banner_top_1506x560','hl_banner_mid_1506x412'];
-var COMP_FORMATS=['competizioni_1200x1800'];
-var MATCH_FORMATS=LIVE_FORMATS.concat(HL_FORMATS).concat(COMP_FORMATS);
-var CAT={};LIVE_FORMATS.forEach(function(k){CAT[k]='Live Match';});HL_FORMATS.forEach(function(k){CAT[k]='Highlights';});COMP_FORMATS.forEach(function(k){CAT[k]='Competizioni';});
-var ITEMS=OTTGEN.items().filter(function(i){return MATCH_FORMATS.indexOf(i.key)>=0;}).sort(function(a,b){return MATCH_FORMATS.indexOf(a.key)-MATCH_FORMATS.indexOf(b.key);});
-// varianti "-live": stessi formati con badge LIVE già incluso. Escluse Fan Voice e tutti gli HL.
-var LIVE_VARIANT_BASE=LIVE_FORMATS.filter(function(k){return k!=='fanvoice_1080x1920';});
-(function(){var clones=[];ITEMS.forEach(function(it){it.liveOn=false;
- if(LIVE_VARIANT_BASE.indexOf(it.key)>=0){var c=Object.assign({},it);c.key=it.key+'-live';c.liveOn=true;CAT[c.key]='Live Match';clones.push(c);}});
- var comp=ITEMS.filter(function(it){return CAT[it.key]==='Competizioni';});
- var rest=ITEMS.filter(function(it){return CAT[it.key]!=='Competizioni';});
- ITEMS=rest.concat(clones).concat(comp);})();
+// Ordine e raggruppamento del menu formati e della colonna anteprime.
+// La chiave col suffisso -live e' la variante col badge LIVE, clonata dal formato base.
+var MENU=[
+ {g:'Piattaforma live',k:[
+   'match_2x3_1080x1620','match_16x9_1920x1080','banner_top_1506x560','banner_mid_1506x412',
+   'match_2x3_1080x1620-live','match_16x9_1920x1080-live','banner_top_1506x560-live','banner_mid_1506x412-live']},
+ {g:'Piattaforma highlights',k:[
+   'hl_feed_1080x1350','hl_story_1080x1920','hl_portrait_1080x1620','hl_landscape_1920x1080',
+   'hl_banner_top_1506x560','hl_banner_mid_1506x412']},
+ {g:'Competizioni',k:['competizioni_1200x1800']},
+ {g:'Social media',k:[
+   'feed_1080x1350','story_1080x1920','feed_1080x1350-live','story_1080x1920-live','fanvoice_1080x1920']}
+];
+var CAT={},ORDER=[];
+MENU.forEach(function(m){m.k.forEach(function(k){CAT[k]=m.g;ORDER.push(k);});});
+// Voci nell'ordine dichiarato sopra; le -live sono cloni del formato base con liveOn.
+var ITEMS=(function(){var src={};OTTGEN.items().forEach(function(i){src[i.key]=i;});
+ var out=[];ORDER.forEach(function(k){
+  var live=/-live$/.test(k),base=k.replace(/-live$/,'');
+  if(!src[base]){console.warn('Formato inesistente nel menu:',k);return;}
+  var it=Object.assign({},src[base]);it.key=k;it.liveOn=live;out.push(it);});
+ return out;})();
 var BYKEY={};ITEMS.forEach(function(i){BYKEY[i.key]=i;});
 // naming convention export (come richiesto)
 var FNAME={feed_1080x1350:'feed',story_1080x1920:'story',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'thumbnail',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',competizioni_1200x1800:'competizioni',format_card_talent:'format-talent',format_card_goleada:'format-goleada',format_card_clasicos:'format-clasicos',format_card_golden:'format-golden'};
@@ -673,7 +684,6 @@ function filePicker(txt,onFile){
 var CUSTOM_LOGO_KEY='comotv_loghi_competizioni';
 function customLogos(){try{return JSON.parse(localStorage.getItem(CUSTOM_LOGO_KEY)||'{}');}catch(e){return {};}}
 function saveCustomLogos(o){try{localStorage.setItem(CUSTOM_LOGO_KEY,JSON.stringify(o));return true;}catch(e){return false;}}
-function isCompFormat(){return typeof COMP_FORMATS!=='undefined'&&COMP_FORMATS.indexOf(current)>=0;}
 function renderCompetizioni(show){
  var card=document.getElementById('compCard'),step=document.getElementById('compStep');
  card.innerHTML='';card.style.display=show?'':'none';step.style.display=show?'':'none';
@@ -951,7 +961,11 @@ document.getElementById('resetPos').onclick=function(){pushUndo();STATE[current]
 document.getElementById('scaleR').addEventListener('pointerdown',function(){pushUndo();});
 
 // ---------- thumbnails ----------
-function renderThumbs(){var box=document.getElementById('thumbs');box.innerHTML='';ITEMS.forEach(function(it){var d=document.createElement('div');d.className='thumb'+(it.key===current?' sel':'');
+function renderThumbs(){var box=document.getElementById('thumbs');box.innerHTML='';var lastG='';
+ ITEMS.forEach(function(it){
+ var g=CAT[it.key]||it.group;
+ if(g!==lastG){lastG=g;var hd=document.createElement('div');hd.className='thgrp';hd.textContent=g;box.appendChild(hd);}
+ var d=document.createElement('div');d.className='thumb'+(it.key===current?' sel':'');
  d.innerHTML='<div class="box">'+svgScreen(it.key)+'</div><div class="lb"><b>'+fname(it.key)+'</b><br>'+it.w+'×'+it.h+'</div>';
  if(hasFontOverrides(it.key)){var tsvg=d.querySelector('svg');if(tsvg)applyTextStyles(tsvg,it.key);}
  d.onclick=function(){current=it.key;selObj=null;document.getElementById('fmtSel').value=it.key;renderControls();renderStage();markThumb();};box.appendChild(d);});}
