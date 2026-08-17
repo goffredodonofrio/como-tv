@@ -72,6 +72,9 @@ button.act:active{transform:scale(.97)}
 .photobar input[type=range]{width:150px;vertical-align:middle}
 .pebar{display:none;gap:14px;align-items:center;flex-wrap:wrap;background:rgba(201,162,75,.14);border:1px solid var(--gold);border-radius:10px;padding:9px 13px;font-size:12px;color:var(--fg2)}
 .pebar.on{display:flex}
+.vtrans{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:12px;color:var(--fg2)}
+.vtrans input[type=range]{flex:1;min-width:0}
+.vtrans .tm{font-variant-numeric:tabular-nums;min-width:82px;text-align:right;color:var(--fg3)}
 .editbar .seg{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.04);border:1px solid rgba(245,241,230,.1);border-radius:8px;padding:6px 10px}
 #textBar{background:rgba(201,162,75,.07);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
 #textBar select{width:auto;min-width:104px;font-size:12px;padding:4px 8px}
@@ -183,8 +186,9 @@ small.flag{color:#E3C271}
   </div>
   <div class="pebar" id="vidBar">
    <span class="pbl" style="color:var(--gold)">FOTOGRAMMA DA VIDEO</span>
-   <span class="peh">Metti in pausa sul momento giusto · frecce ← → per avanzare di poco</span>
-   <button class="act" id="vidUse">✓ Usa questo fotogramma</button>
+   <span class="peh">Tieni la finestra in primo piano durante l'export · la registrazione dura quanto la clip</span>
+   <button class="act" id="vidExport">🎬 Esporta video</button>
+   <button class="act ghost" id="vidUse">Usa solo il fotogramma</button>
    <button class="act ghost" id="vidCancel">Annulla</button>
   </div>
   <div class="pebar" id="peBar">
@@ -220,11 +224,14 @@ function runsT(x,y,o,runs){o=o||{};var a=o.anchor||'start';var ls=o.ls||0;
    var txt=r.upper===false?r.t:up(r.t);if(tt==='VS')txt=' '+String(txt).trim()+' ';
    return '<tspan font-family="Mazzard" font-weight="'+(r.w||800)+'" font-size="'+sz+'" fill="'+(r.fill||C.ivory)+'"'+(tt==='VS'?' font-style="italic"':'')+(dx?(' dx="'+dx+'"'):'')+'>'+esc(txt)+'</tspan>';}).join('');
  return '<text x="'+x+'" y="'+y+'" letter-spacing="'+ls+'" text-anchor="'+a+'">'+inner+'</text>';}
+// Quando e' attivo, la foto non viene disegnata: la grafica esce trasparente
+// li' sotto e si puo' sovrapporre a un video.
+var NOPHOTO=false;
 function ph(I,k){return (I&&I[k])?I[k]:'';}
 // photo element (transform handled by wrapping group)
-function PH(I,k,x,y,w,h,al){al=al||'xMidYMid';var u=ph(I,k);return u?('<image href="'+u+'" x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" preserveAspectRatio="'+al+' slice"/>'):('<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" fill="#0E1430"/><text x="'+(x+w/2)+'" y="'+(y+h/2)+'" font-family="Mazzard" font-weight="700" font-size="'+Math.max(18,w/22)+'" fill="#4a5578" text-anchor="middle" opacity=".5">FOTO</text>');}
+function PH(I,k,x,y,w,h,al){if(NOPHOTO&&k==='photo')return '';al=al||'xMidYMid';var u=ph(I,k);return u?('<image href="'+u+'" x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" preserveAspectRatio="'+al+' slice"/>'):('<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" fill="#0E1430"/><text x="'+(x+w/2)+'" y="'+(y+h/2)+'" font-family="Mazzard" font-weight="700" font-size="'+Math.max(18,w/22)+'" fill="#4a5578" text-anchor="middle" opacity=".5">FOTO</text>');}
 // foto "cover" ad aspetto reale (Keynote-style): riempie il frame WxH, centrata; la trasformazione (scala/pan) è applicata dal gruppo. Richiede I.photoNat={w,h}; senza, fallback a slice.
-function PHOTO(I,W,H){var u=ph(I,'photo');if(!u)return PH(I,'photo',0,0,W,H);var n=I.photoNat;
+function PHOTO(I,W,H){if(NOPHOTO)return '';var u=ph(I,'photo');if(!u)return PH(I,'photo',0,0,W,H);var n=I.photoNat;
  if(n&&n.w&&n.h){var cov=Math.max(W/n.w,H/n.h),dw=n.w*cov,dh=n.h*cov;return '<image href="'+u+'" x="'+((W-dw)/2)+'" y="'+((H-dh)/2)+'" width="'+dw+'" height="'+dh+'" preserveAspectRatio="none"/>';}
  return PH(I,'photo',0,0,W,H);}
 // foto full-bleed CLIPPATA al template: ciò che eccede il frame non si vede mai. Il gruppo data-obj resta trascinabile dentro il clip.
@@ -476,7 +483,7 @@ function items(){var out=[];Object.keys(FMT).forEach(function(k){var f=FMT[k];
   if(f.variantKey){['talent','goleada','clasicos','golden'].forEach(function(v){out.push({key:k+'_'+v,base:k,variant:v,label:f.label+' — '+v,group:f.group,w:f.w,h:f.h});});}
   else out.push({key:k,base:k,label:f.label,group:f.group,w:f.w,h:f.h});});return out;}
 function meta(base){return FMT[base];}
-function svgFor(item,p,I,A,fontcss){var f=FMT[item.base];var inner=f.gen(p,I||{},A||{},item.variant);
+function svgFor(item,p,I,A,fontcss,noPhoto){var f=FMT[item.base];NOPHOTO=!!noPhoto;var inner=f.gen(p,I||{},A||{},item.variant);NOPHOTO=false;
  var style=fontcss?('<style>'+fontcss+'</style>'):'';
  return '<svg xmlns="http://www.w3.org/2000/svg" width="'+f.w+'" height="'+f.h+'" viewBox="0 0 '+f.w+' '+f.h+'">'+style+inner+'</svg>';}
 
@@ -814,36 +821,89 @@ document.getElementById('peApply').onclick=function(){exitPhotoEdit();};
 document.getElementById('peCancel').onclick=function(){cancelPhotoEdit();};
 // ===== Editor foto stile Keynote: rettangolo fisso (maschera), foto spostabile/scalabile dentro =====
 var PE_BEFORE=null;
-// ---------- fotogramma da video ----------
-// Il video non entra nella grafica: se ne estrae un fotogramma che diventa la
-// foto condivisa, quindi da li' in poi funziona tutto come con una foto normale
-// (ritaglio, zoom, export PNG).
+// ---------- video: fotogramma singolo oppure export con grafica sovrimpressa ----------
+// La grafica e' statica, quindi si rasterizza UNA volta senza la foto (strato
+// trasparente) e si sovrappone a ogni fotogramma del video. L'inquadratura del
+// video replica quella che l'SVG applica alla foto: cover-fit + il transform
+// del gruppo 'photo' (trascinamento e zoom fatti dall'utente).
 var videoPick=null;
+
+function overlaySvg(key){var it=BYKEY[key];
+ return withTextStyles(OTTGEN.svgFor(it,P(key),imgsFor(key),adjMap(key),FONTCSS,true),key);}
+function svgToImage(str){return new Promise(function(res,rej){var im=new Image();
+ im.onload=function(){res(im);};im.onerror=rej;
+ im.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(str)));});}
+
+// Disegna un fotogramma composito: video inquadrato come la foto + grafica sopra.
+function drawComposite(ctx,W,H,src,sw,sh,overlay){
+ ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,W,H);
+ if(sw&&sh){
+  var a=(STATE[current].adj||{}).photo||{},dx=a.dx||0,dy=a.dy||0,sc=a.s||1,cx=a.cx||0,cy=a.cy||0;
+  var cov=Math.max(W/sw,H/sh),dw=sw*cov,dh=sh*cov;
+  ctx.save();
+  ctx.translate(dx,dy);ctx.translate(cx,cy);ctx.scale(sc,sc);ctx.translate(-cx,-cy);
+  ctx.drawImage(src,(W-dw)/2,(H-dh)/2,dw,dh);
+  ctx.restore();
+ }
+ if(overlay)ctx.drawImage(overlay,0,0,W,H);
+}
+
 function enterVideoPick(file){
  if(videoPick)exitVideoPick();
  if(photoEdit)exitPhotoEdit();
- videoPick={url:URL.createObjectURL(file),nome:file.name};
+ videoPick={url:URL.createObjectURL(file),nome:file.name,el:null,raf:0,rec:null};
  document.getElementById('vidBar').classList.add('on');
  renderStage();
 }
 function exitVideoPick(){
  if(!videoPick)return;
+ if(videoPick.raf)cancelAnimationFrame(videoPick.raf);
+ if(videoPick.timer)clearInterval(videoPick.timer);
+ if(videoPick.rec&&videoPick.rec.state==='recording')videoPick.rec.stop();
+ if(videoPick.el){videoPick.el.pause();videoPick.el.src='';}
  URL.revokeObjectURL(videoPick.url);videoPick=null;
  document.getElementById('vidBar').classList.remove('on');
  renderStage();
 }
+function fmtT(t){t=Math.max(0,t||0);var m=Math.floor(t/60),s2=Math.floor(t%60),d=Math.floor((t%1)*10);
+ return m+':'+(s2<10?'0':'')+s2+'.'+d;}
+
 function renderVideoPicker(){
+ var it=BYKEY[current],W=it.w,H=it.h;
  var st=document.getElementById('stage');st.innerHTML='';
- var v=document.createElement('video');v.id='vidEl';v.src=videoPick.url;v.controls=true;v.preload='auto';
- v.style.cssText='max-width:100%;max-height:66vh;display:block;border-radius:4px;background:#05070F';
- v.onloadedmetadata=function(){v.currentTime=Math.min(0.1,v.duration||0);};
- st.appendChild(v);
- v.focus();
+ var cv=document.createElement('canvas');cv.width=W;cv.height=H;cv.id='vidCanvas';
+ cv.style.cssText='max-width:100%;max-height:62vh;height:auto;display:block;box-shadow:0 30px 80px -30px #000;border-radius:4px;background:#05070F';
+ st.appendChild(cv);
+ var v=document.createElement('video');v.src=videoPick.url;v.preload='auto';v.playsInline=true;
+ v.style.display='none';st.appendChild(v);videoPick.el=v;
+ var ctx=cv.getContext('2d');
+
+ // trasporto: play/pausa + scrub, il canvas e' l'unica cosa che si guarda
+ var tr=document.createElement('div');tr.className='vtrans';
+ var pb=document.createElement('button');pb.className='tbtn';pb.textContent='▶';pb.style.minWidth='34px';
+ var sl=document.createElement('input');sl.type='range';sl.min=0;sl.max=1000;sl.value=0;
+ var tm=document.createElement('div');tm.className='tm';tm.textContent='0:00.0 / 0:00.0';
+ tr.appendChild(pb);tr.appendChild(sl);tr.appendChild(tm);st.appendChild(tr);
+
+ var overlay=null;
+ document.fonts.ready.then(function(){return svgToImage(overlaySvg(current));})
+  .then(function(im){overlay=im;});
+
+ function frame(){
+  drawComposite(ctx,W,H,v,v.videoWidth,v.videoHeight,overlay);
+  if(v.duration){sl.value=Math.round(v.currentTime/v.duration*1000);
+   tm.textContent=fmtT(v.currentTime)+' / '+fmtT(v.duration);}
+  videoPick.raf=requestAnimationFrame(frame);
+ }
+ v.onloadedmetadata=function(){v.currentTime=Math.min(0.05,v.duration||0);frame();};
+ pb.onclick=function(){if(v.paused){v.play();pb.textContent='❚❚';}else{v.pause();pb.textContent='▶';}};
+ v.onended=function(){pb.textContent='▶';};
+ sl.oninput=function(){if(v.duration)v.currentTime=this.value/1000*v.duration;};
 }
-// Disegna il fotogramma corrente e lo usa come foto. JPEG perche' un fotogramma
-// non ha trasparenza e un PNG a piena risoluzione pesa troppo negli snapshot di undo.
+
+// Cattura solo l'istante corrente e lo usa come foto (flusso PNG di sempre).
 function useVideoFrame(){
- var v=document.getElementById('vidEl');if(!v||!v.videoWidth)return;
+ var v=videoPick&&videoPick.el;if(!v||!v.videoWidth)return;
  var MAXL=1920,w=v.videoWidth,h=v.videoHeight,k=Math.min(1,MAXL/Math.max(w,h));
  var c=document.createElement('canvas');c.width=Math.round(w*k);c.height=Math.round(h*k);
  c.getContext('2d').drawImage(v,0,0,c.width,c.height);
@@ -853,7 +913,71 @@ function useVideoFrame(){
  loadNat(d,function(){autoPositionPhotoIfBanner();renderControls();renderStage();refreshThumbs();});
  renderControls();refreshThumbs();
 }
+
+// Contenitore: MP4 se il browser lo sa scrivere, altrimenti WebM.
+function pickVideoMime(){
+ if(!window.MediaRecorder)return '';
+ var c=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4;codecs=avc1.4d002a','video/mp4',
+        'video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+ for(var i=0;i<c.length;i++){if(MediaRecorder.isTypeSupported(c[i]))return c[i];}
+ return '';
+}
+
+// Registra in tempo reale il canvas composito, con l'audio della clip.
+function exportVideo(){
+ var v=videoPick&&videoPick.el;if(!v||!v.videoWidth)return;
+ if(document.hidden){alert('Porta la finestra in primo piano prima di esportare.');return;}
+ var mime=pickVideoMime();
+ if(!mime){alert('Questo browser non sa registrare video. Usa Chrome o Safari aggiornati.');return;}
+ var it=BYKEY[current],W=it.w,H=it.h;
+ var cv=document.createElement('canvas');cv.width=W;cv.height=H;var ctx=cv.getContext('2d');
+ var dur=v.duration||0;
+ busy(true,'Preparo la grafica…');
+ document.fonts.ready.then(function(){return svgToImage(overlaySvg(current));}).then(function(overlay){
+  var stream=cv.captureStream(30);
+  // audio della clip: captureStream sull'elemento video
+  var cap=v.captureStream?v.captureStream():(v.mozCaptureStream?v.mozCaptureStream():null);
+  if(cap)cap.getAudioTracks().forEach(function(t){stream.addTrack(t);});
+  var rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:10000000});
+  videoPick.rec=rec;
+  var chunks=[];
+  rec.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data);};
+  rec.onstop=function(){
+   if(videoPick&&videoPick.raf)cancelAnimationFrame(videoPick.raf);
+   var ext=mime.indexOf('mp4')>=0?'mp4':'webm';
+   dl(new Blob(chunks,{type:mime}),fname(current)+'.'+ext);
+   busy(false);
+   if(videoPick){videoPick.rec=null;renderVideoPicker();}
+  };
+  // Il ridisegno usa setInterval, non requestAnimationFrame: in una scheda in
+  // secondo piano rAF non viene mai chiamato e il video uscirebbe vuoto senza
+  // alcun errore. Con setInterval degrada ma non si azzera.
+  if(videoPick.raf)cancelAnimationFrame(videoPick.raf);
+  var nFrame=0;
+  videoPick.timer=setInterval(function(){
+   drawComposite(ctx,W,H,v,v.videoWidth,v.videoHeight,overlay);nFrame++;
+   if(dur)busy(true,'Registro… '+Math.round(v.currentTime/dur*100)+'%');
+  },1000/30);
+  function stopRec(){
+   if(videoPick&&videoPick.timer){clearInterval(videoPick.timer);videoPick.timer=0;}
+   document.removeEventListener('visibilitychange',onHide);
+   if(rec.state==='recording')rec.stop();
+  }
+  // Se la scheda passa in secondo piano il browser smette di aggiornare il
+  // canvas: meglio fermarsi e dirlo che consegnare un file corrotto.
+  function onHide(){if(document.hidden){stopRec();
+   setTimeout(function(){alert('Export interrotto: la scheda e\' passata in secondo piano. Tieni la finestra in primo piano durante la registrazione.');},100);}}
+  document.addEventListener('visibilitychange',onHide);
+  v.onended=stopRec;
+  rec.onerror=function(){stopRec();busy(false);};
+  v.currentTime=0;v.muted=false;v.volume=1;
+  v.play().then(function(){rec.start(200);}).catch(function(e){
+   stopRec();busy(false);alert('Impossibile avviare la riproduzione: '+e.message);});
+ }).catch(function(e){busy(false);alert('Errore nella grafica: '+e.message);});
+}
+
 document.getElementById('vidUse').onclick=useVideoFrame;
+document.getElementById('vidExport').onclick=exportVideo;
 document.getElementById('vidCancel').onclick=exitVideoPick;
 function enterPhotoEdit(){if(photoEdit)return;pushUndo();PE_BEFORE=JSON.stringify(STATE[current].adj.photo||null);photoEdit=true;var b=document.getElementById('phEdit');if(b)b.textContent='✓ Fine ritaglio';var pb=document.getElementById('peBar');if(pb)pb.classList.add('on');renderStage();}
 function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;var b=document.getElementById('phEdit');if(b)b.textContent='Ritaglia foto';var pb=document.getElementById('peBar');if(pb)pb.classList.remove('on');renderStage();}
