@@ -56,7 +56,21 @@ button.act:active{transform:scale(.97)}
 .stagewrap{flex:1;display:flex;align-items:center;justify-content:center;background:repeating-conic-gradient(#0c1330 0% 25%,#0a1029 0% 50%) 50%/26px 26px;border:1px solid var(--line);border-radius:14px;padding:40px;min-height:300px;overflow-x:hidden;overflow-y:auto;position:relative}
 .ruler{position:absolute;z-index:5;pointer-events:none;background:#0b1230}
 #rulerCorner{position:absolute;z-index:6;background:#0b1230;border:1px solid rgba(245,241,230,.14)}
-#stage{position:relative}
+#stage{position:relative;z-index:6}
+/* Confine del formato esportato. E' un elemento del DOM, non entra mai nell'SVG:
+   l'export rigenera la grafica dai template e non puo' contenerlo.
+   Sta FUORI dal bordo dell'artwork, cosi' non copre mai il contenuto, e ha un
+   alone scuro sotto per restare leggibile anche su una foto chiara. */
+#stage.marks::after{content:'';position:absolute;inset:-5px;border:2px solid var(--gold);
+ border-radius:7px;pointer-events:none;box-shadow:0 0 0 1px rgba(5,7,15,.9),inset 0 0 0 1px rgba(5,7,15,.9)}
+#stage.marks .cmark{position:absolute;width:14px;height:14px;pointer-events:none;border-color:var(--goldB);border-style:solid;border-width:0}
+#stage.marks .cmark.tl{top:-13px;left:-13px;border-top-width:2px;border-left-width:2px}
+#stage.marks .cmark.tr{top:-13px;right:-13px;border-top-width:2px;border-right-width:2px}
+#stage.marks .cmark.bl{bottom:-13px;left:-13px;border-bottom-width:2px;border-left-width:2px}
+#stage.marks .cmark.br{bottom:-13px;right:-13px;border-bottom-width:2px;border-right-width:2px}
+#stage.marks .fmtlab{position:absolute;top:-30px;left:-5px;font-size:10px;font-weight:800;letter-spacing:.14em;
+ text-transform:uppercase;color:var(--gold);pointer-events:none;white-space:nowrap;
+ background:rgba(5,7,15,.92);padding:3px 8px;border-radius:5px;border:1px solid rgba(201,162,75,.35)}
 #stage svg{max-width:100%;max-height:66vh;height:auto;box-shadow:0 30px 80px -30px #000;border-radius:4px;display:block}
 #stage svg [data-obj]{cursor:move}
 #stage svg [data-obj].sel{outline:none}
@@ -810,7 +824,18 @@ function renderMedia(show){
 var selObj=null;var photoEdit=false;
 // Mappatura degli oggetti testo ai campi editabili (SHARED o specifici del formato)
 var TEXT_EDIT_MAP={'t-home':'home','t-away':'away','t-comp':'comp','t-dt':'','t-hl':'hlKind','t-fan':'','t-q':'','t-sub':'','t-kicker':'heroKicker','t-line1':'heroLine1','t-line2':'heroLine2','t-title':'title','t-name':'name','t-kind':'hlKind','t-tag':'','t-num':'num','t-mark':''};
-function renderStage(){if(videoPick){renderVideoPicker();return;}if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');svg.style.backgroundColor='#050a1a';applyTextStyles(svg,current);
+// Crocini d'angolo + misura del formato: aiutano a vedere dove finisce l'area
+// esportata quando il contenuto ha lo stesso blu del fondo.
+function stageMarks(st){
+ st.className='marks';
+ st.querySelectorAll('.cmark,.fmtlab').forEach(function(e){e.remove();});
+ ['tl','tr','bl','br'].forEach(function(c){
+  var d=document.createElement('div');d.className='cmark '+c;st.appendChild(d);});
+ var it=BYKEY[current];
+ var l=document.createElement('div');l.className='fmtlab';
+ l.textContent='Area esportata · '+it.w+'×'+it.h;st.appendChild(l);
+}
+function renderStage(){if(videoPick){renderVideoPicker();return;}if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');svg.style.backgroundColor='#050a1a';applyTextStyles(svg,current);stageMarks(st);
  attachInteract(svg);highlightSel(svg);syncScaleSlider();syncPhotoBar();drawMirino(svg);
  requestAnimationFrame(drawRulers);}
 // ---- menù foto dedicato (Zoom / Orizzontale / Verticale) ----
@@ -906,7 +931,7 @@ function fmtT(t){t=Math.max(0,t||0);var m=Math.floor(t/60),s2=Math.floor(t%60),d
 
 function renderVideoPicker(){
  var it=BYKEY[current],W=it.w,H=it.h;
- var st=document.getElementById('stage');st.innerHTML='';
+ var st=document.getElementById('stage');st.innerHTML='';st.className='';
  var cv=document.createElement('canvas');cv.width=W;cv.height=H;cv.id='vidCanvas';
  cv.style.cssText='max-width:100%;max-height:62vh;height:auto;display:block;box-shadow:0 30px 80px -30px #000;border-radius:4px;background:#05070F';
  st.appendChild(cv);
@@ -1039,6 +1064,7 @@ function renderPhotoEditor(){
  st.innerHTML=svgScreen(current);
  var svg=st.querySelector('svg');if(!svg){exitPhotoEdit();return;}
  svg.style.maxHeight='84vh';svg.style.cursor='move';svg.style.touchAction='none';
+ stageMarks(st); // in ritaglio il confine serve piu' che mai: e' li' che sposti la foto
  // in ritaglio nascondiamo del tutto i righelli (niente riga blu)
  ['rulerTop','rulerLeft','rulerCorner'].forEach(function(id){var c=document.getElementById(id);if(c)c.style.display='none';});
  var g=svg.querySelector('[data-obj="photo"]');
