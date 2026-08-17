@@ -240,7 +240,7 @@ function GPHOTO(W,H,A,I){var id='pcp'+W+'x'+H;return '<clipPath id="'+id+'"><rec
 function LOGOR(cx,cy,r,I,k,idc){var u=ph(I,k);var ring='<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="#141B3C" stroke="'+C.gold+'" stroke-opacity=".5" stroke-width="2"/>';
  if(u){var bs=Math.round(r*1.34);return ring+'<image href="'+u+'" x="'+(cx-bs/2)+'" y="'+(cy-bs/2)+'" width="'+bs+'" height="'+bs+'" preserveAspectRatio="xMidYMid meet"/>';}
  return ring+'<text x="'+cx+'" y="'+(cy+r*0.12)+'" font-family="Mazzard" font-weight="700" font-size="'+(r*0.5)+'" fill="'+C.fg3+'" text-anchor="middle">◆</text>';}
-function bg(W,H){return '<defs><radialGradient id="bg" cx="50%" cy="0%" r="120%"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".46" stop-color="#141B3C"/><stop offset="1" stop-color="#0A0F24"/></radialGradient></defs><rect width="'+W+'" height="'+H+'" fill="url(#bg)" pointer-events="none"/>';}
+function bg(W,H){if(NOPHOTO)return '';return '<defs><radialGradient id="bg" cx="50%" cy="0%" r="120%"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".46" stop-color="#141B3C"/><stop offset="1" stop-color="#0A0F24"/></radialGradient></defs><rect width="'+W+'" height="'+H+'" fill="url(#bg)" pointer-events="none"/>';}
 function hair(W,H,y){return '<defs><linearGradient id="h'+y+'" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="'+C.gold+'" stop-opacity="0"/><stop offset=".2" stop-color="'+C.gold+'"/><stop offset=".5" stop-color="'+C.goldB+'"/><stop offset=".8" stop-color="'+C.gold+'"/><stop offset="1" stop-color="'+C.gold+'" stop-opacity="0"/></linearGradient></defs><rect x="0" y="'+y+'" width="'+W+'" height="5" fill="url(#h'+y+')"/>';}
 function goldGrad(id){return '<linearGradient id="'+id+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+C.goldB+'"/><stop offset="1" stop-color="'+C.goldD+'"/></linearGradient>';}
 function border(W,H,rad){return '<rect x="1.5" y="1.5" width="'+(W-3)+'" height="'+(H-3)+'" rx="'+rad+'" fill="none" stroke="#F5F1E6" stroke-opacity=".12" stroke-width="3"/>';}
@@ -887,7 +887,7 @@ function renderVideoPicker(){
 
  var overlay=null;
  document.fonts.ready.then(function(){return svgToImage(overlaySvg(current));})
-  .then(function(im){overlay=im;});
+  .then(function(im){overlay=im;drawComposite(ctx,W,H,v,v.videoWidth,v.videoHeight,overlay);});
 
  function frame(){
   drawComposite(ctx,W,H,v,v.videoWidth,v.videoHeight,overlay);
@@ -895,7 +895,13 @@ function renderVideoPicker(){
    tm.textContent=fmtT(v.currentTime)+' / '+fmtT(v.duration);}
   videoPick.raf=requestAnimationFrame(frame);
  }
- v.onloadedmetadata=function(){v.currentTime=Math.min(0.05,v.duration||0);frame();};
+ function paint(){drawComposite(ctx,W,H,v,v.videoWidth,v.videoHeight,overlay);}
+ // Un fotogramma va mostrato subito: il primo istante e' spesso nero o in
+ // dissolvenza, quindi ci si sposta un poco dentro e si disegna appena il
+ // fotogramma e' decodificato, senza aspettare il ciclo di animazione.
+ v.onloadedmetadata=function(){v.currentTime=Math.min(0.4,(v.duration||0)*0.05||0.4);};
+ v.onloadeddata=paint;
+ v.onseeked=function(){paint();if(!videoPick.raf)frame();};
  pb.onclick=function(){if(v.paused){v.play();pb.textContent='❚❚';}else{v.pause();pb.textContent='▶';}};
  v.onended=function(){pb.textContent='▶';};
  sl.oninput=function(){if(v.duration)v.currentTime=this.value/1000*v.duration;};
@@ -944,9 +950,11 @@ function exportVideo(){
   rec.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data);};
   rec.onstop=function(){
    if(videoPick&&videoPick.raf)cancelAnimationFrame(videoPick.raf);
-   var ext=mime.indexOf('mp4')>=0?'mp4':'webm';
-   dl(new Blob(chunks,{type:mime}),fname(current)+'.'+ext);
+   var isMp4=mime.indexOf('mp4')>=0,ext=isMp4?'mp4':'webm';
+   var blob=new Blob(chunks,{type:mime});
+   dl(blob,fname(current)+'.'+ext);
    busy(false);
+   if(!isMp4)setTimeout(function(){alert('Questo browser non sa scrivere MP4: il file e\' in WebM ('+Math.round(blob.size/1048576*10)/10+' MB). Instagram lo accetta male — se serve MP4, esporta da Chrome o Safari aggiornati.');},150);
    if(videoPick){videoPick.rec=null;renderVideoPicker();}
   };
   // Il ridisegno usa setInterval, non requestAnimationFrame: in una scheda in
