@@ -54,21 +54,16 @@ button.act{background:linear-gradient(160deg,var(--goldB),var(--gold));color:var
 button.ghost{background:transparent;border:1px solid var(--line);color:var(--ivory)}
 button.act:active{transform:scale(.97)}
 .stagewrap{flex:1;display:flex;align-items:center;justify-content:center;background:repeating-conic-gradient(#33343c 0% 25%,#2b2c33 0% 50%) 50%/26px 26px;border:1px solid var(--line);border-radius:14px;padding:40px;min-height:300px;overflow-x:hidden;overflow-y:auto;position:relative}
-.ruler{position:absolute;z-index:5;pointer-events:none;background:#0b1230}
-#rulerCorner{position:absolute;z-index:6;background:#0b1230;border:1px solid rgba(245,241,230,.14)}
+.ruler{position:absolute;z-index:5;pointer-events:none;background:#212228;border-radius:3px}
+#rulerCorner{position:absolute;z-index:6;background:#212228;border-radius:3px}
 #stage{position:relative;z-index:6}
 /* Confine del formato esportato. E' un elemento del DOM, non entra mai nell'SVG:
    l'export rigenera la grafica dai template e non puo' contenerlo.
    Sta FUORI dal bordo dell'artwork, cosi' non copre mai il contenuto, e ha un
    alone scuro sotto per restare leggibile anche su una foto chiara. */
-#stage .fmtbox{position:absolute;box-sizing:border-box;border:3px solid var(--goldB);border-radius:8px;
- pointer-events:none;box-shadow:0 0 0 2px rgba(5,7,15,.95),inset 0 0 0 2px rgba(5,7,15,.95),0 0 22px rgba(201,162,75,.28)}
-#stage .fmtbox .cmark{position:absolute;width:14px;height:14px;pointer-events:none;border-color:var(--goldB);border-style:solid;border-width:0}
-#stage .fmtbox .cmark.tl{top:-13px;left:-13px;border-top-width:2px;border-left-width:2px}
-#stage .fmtbox .cmark.tr{top:-13px;right:-13px;border-top-width:2px;border-right-width:2px}
-#stage .fmtbox .cmark.bl{bottom:-13px;left:-13px;border-bottom-width:2px;border-left-width:2px}
-#stage .fmtbox .cmark.br{bottom:-13px;right:-13px;border-bottom-width:2px;border-right-width:2px}
-#stage .fmtbox .fmtlab{position:absolute;bottom:-30px;left:-3px;font-size:10px;font-weight:800;letter-spacing:.14em;
+#stage .fmtbox{position:absolute;box-sizing:border-box;border:1.5px solid var(--gold);border-radius:3px;
+ pointer-events:none;opacity:.85}
+#stage .fmtbox .fmtlab{position:absolute;bottom:-28px;left:-1px;font-size:10px;font-weight:800;letter-spacing:.14em;
  text-transform:uppercase;color:var(--gold);pointer-events:none;white-space:nowrap;
  background:rgba(5,7,15,.92);padding:3px 8px;border-radius:5px;border:1px solid rgba(201,162,75,.35)}
 #stage svg{max-width:100%;max-height:66vh;height:auto;box-shadow:0 30px 80px -30px #000;border-radius:4px;display:block}
@@ -847,12 +842,10 @@ function stageMarks(st){
  // Misure reali dell'artwork: #stage non si stringe sull'SVG quando e'
  // l'altezza a limitarlo, quindi il riquadro va posizionato a mano.
  var sr=(art.tagName.toLowerCase()==='svg')?artRect(art):art.getBoundingClientRect();
- var rr=st.getBoundingClientRect(),P=6;
+ var rr=st.getBoundingClientRect(),P=12; // distanza dal bordo: lascia aria alla selezione
  var box=document.createElement('div');box.className='fmtbox';
  box.style.left=(sr.left-rr.left-P)+'px';box.style.top=(sr.top-rr.top-P)+'px';
  box.style.width=(sr.width+P*2)+'px';box.style.height=(sr.height+P*2)+'px';
- ['tl','tr','bl','br'].forEach(function(c){
-  var d=document.createElement('div');d.className='cmark '+c;box.appendChild(d);});
  var it=BYKEY[current];
  var l=document.createElement('div');l.className='fmtlab';
  l.textContent='Area esportata · '+it.w+'×'+it.h;box.appendChild(l);
@@ -1120,19 +1113,42 @@ function renderPhotoEditor(){
 // ---- righello stile Photoshop (px del documento) ----
 function niceStep(sc){var u=64/sc;var pow=Math.pow(10,Math.floor(Math.log(u)/Math.LN10));var f=u/pow;var n=f<1.5?1:(f<3?2:(f<7?5:10));return n*pow;}
 function drawRulers(){var wrap=document.querySelector('.stagewrap');var svg=document.querySelector('#stage svg');if(!svg||!svg.viewBox)return;
- var wr=wrap.getBoundingClientRect(),sr=artRect(svg);var RB=22,GAP=16;
+ var wr=wrap.getBoundingClientRect(),sr=artRect(svg);var RB=20,GAP=22;
  var left=sr.left-wr.left+wrap.scrollLeft,top=sr.top-wr.top+wrap.scrollTop;
  var vw=svg.viewBox.baseVal.width,vh=svg.viewBox.baseVal.height,sc=sr.width/vw;
  var tc=document.getElementById('rulerTop'),lc=document.getElementById('rulerLeft'),co=document.getElementById('rulerCorner');
  tc.style.display='';lc.style.display='';co.style.display='';
- tc.style.left=left+'px';tc.style.top=(top-RB-GAP)+'px';tc.style.width=sr.width+'px';tc.style.height=RB+'px';tc.width=Math.round(sr.width);tc.height=RB;
- lc.style.left=(left-RB-GAP)+'px';lc.style.top=top+'px';lc.style.width=RB+'px';lc.style.height=sr.height+'px';lc.width=RB;lc.height=Math.round(sr.height);
+ // Il canvas va allocato alla risoluzione reale dello schermo, altrimenti su
+ // display retina tacche e numeri escono sfocati.
+ var dpr=window.devicePixelRatio||1;
+ function prep(c,w,h){c.style.width=w+'px';c.style.height=h+'px';c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);
+  var x=c.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,w,h);return x;}
+ tc.style.left=left+'px';tc.style.top=(top-RB-GAP)+'px';
+ lc.style.left=(left-RB-GAP)+'px';lc.style.top=top+'px';
  co.style.left=(left-RB-GAP)+'px';co.style.top=(top-RB-GAP)+'px';co.style.width=RB+'px';co.style.height=RB+'px';
- var step=niceStep(sc),u,x,y;
- var a=tc.getContext('2d');a.clearRect(0,0,tc.width,RB);a.fillStyle='#0b1230';a.fillRect(0,0,tc.width,RB);a.strokeStyle='rgba(245,241,230,.4)';a.fillStyle='#C4C0B4';a.font='9px system-ui,sans-serif';a.beginPath();
- for(u=0;u<=vw;u+=step){x=u*sc;a.moveTo(x,RB);a.lineTo(x,RB-8);a.fillText(String(Math.round(u)),x+2,10);}a.stroke();
- var b=lc.getContext('2d');b.clearRect(0,0,RB,lc.height);b.fillStyle='#0b1230';b.fillRect(0,0,RB,lc.height);b.strokeStyle='rgba(245,241,230,.4)';b.fillStyle='#C4C0B4';b.font='9px system-ui,sans-serif';b.beginPath();
- for(u=0;u<=vh;u+=step){y=u*sc;b.moveTo(RB,y);b.lineTo(RB-8,y);b.save();b.translate(9,y+2);b.rotate(-Math.PI/2);b.fillText(String(Math.round(u)),0,0);b.restore();}b.stroke();}
+ var W=Math.round(sr.width),H=Math.round(sr.height);
+ var step=niceStep(sc),minor=step/5,u,x,y;
+ var MAJ='rgba(245,241,230,.55)',MIN='rgba(245,241,230,.22)',TXT='rgba(245,241,230,.62)';
+ var FONT='10px -apple-system,BlinkMacSystemFont,system-ui,sans-serif';
+
+ var a=prep(tc,W,RB);
+ a.font=FONT;a.textBaseline='top';a.textAlign='left';
+ a.strokeStyle=MIN;a.lineWidth=1;a.beginPath();
+ for(u=minor;u<vw;u+=minor){x=Math.round(u*sc)+.5;a.moveTo(x,RB-4);a.lineTo(x,RB);}a.stroke();
+ a.strokeStyle=MAJ;a.beginPath();
+ for(u=0;u<=vw;u+=step){x=Math.round(u*sc)+.5;a.moveTo(x,RB-8);a.lineTo(x,RB);}a.stroke();
+ a.fillStyle=TXT;
+ for(u=0;u<=vw;u+=step){x=Math.round(u*sc);if(x>W-16)continue;a.fillText(String(Math.round(u)),x+3,2);}
+
+ var b=prep(lc,RB,H);
+ b.font=FONT;b.textBaseline='top';
+ b.strokeStyle=MIN;b.lineWidth=1;b.beginPath();
+ for(u=minor;u<vh;u+=minor){y=Math.round(u*sc)+.5;b.moveTo(RB-4,y);b.lineTo(RB,y);}b.stroke();
+ b.strokeStyle=MAJ;b.beginPath();
+ for(u=0;u<=vh;u+=step){y=Math.round(u*sc)+.5;b.moveTo(RB-8,y);b.lineTo(RB,y);}b.stroke();
+ b.fillStyle=TXT;
+ for(u=0;u<=vh;u+=step){y=Math.round(u*sc);if(y>H-16)continue;b.save();b.translate(2,y+3);b.rotate(-Math.PI/2);b.textAlign='right';b.fillText(String(Math.round(u)),0,0);b.restore();}
+}
 window.addEventListener('resize',function(){requestAnimationFrame(drawRulers);setTimeout(stageMarks,0);});
 var _sw=document.querySelector('.stagewrap');if(_sw)_sw.addEventListener('scroll',function(){requestAnimationFrame(drawRulers);});
 // Sui formati verticali l'elemento e' piu' largo del disegno: serve la larghezza
