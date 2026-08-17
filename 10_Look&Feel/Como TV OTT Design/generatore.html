@@ -181,6 +181,12 @@ small.flag{color:#E3C271}
    </div>
    <button class="tbtn tonly" id="txtReset" title="Rimuove le modifiche di stile su questo testo">Ripristina stile</button>
   </div>
+  <div class="pebar" id="vidBar">
+   <span class="pbl" style="color:var(--gold)">FOTOGRAMMA DA VIDEO</span>
+   <span class="peh">Metti in pausa sul momento giusto · frecce ← → per avanzare di poco</span>
+   <button class="act" id="vidUse">✓ Usa questo fotogramma</button>
+   <button class="act ghost" id="vidCancel">Annulla</button>
+  </div>
   <div class="pebar" id="peBar">
    <span class="pbl" style="color:var(--gold)">RITAGLIO FOTO</span>
    <span class="peh">Trascina la foto per spostarla · rotella o slider Zoom per ridimensionarla</span>
@@ -667,6 +673,13 @@ function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);va
 
 // ---------- step 4: Foto e loghi ----------
 // Crea una riga "Scegli file" con input nativo nascosto (niente "nessun file selezionato").
+// come filePicker ma consegna il File grezzo: per il video non serve il data URI
+function rawFilePicker(txt,accept,onFile){
+ var btn=document.createElement('label');btn.className='filebtn';btn.textContent=txt;
+ var fi=document.createElement('input');fi.type='file';fi.accept=accept;
+ fi.onchange=function(e){var f=e.target.files[0];if(f)onFile(f);this.value='';};
+ btn.appendChild(fi);return btn;
+}
 function filePicker(txt,onFile){
  var btn=document.createElement('label');btn.className='filebtn';btn.textContent=txt;
  var fi=document.createElement('input');fi.type='file';fi.accept='image/*';
@@ -746,6 +759,7 @@ function renderMedia(show){
    var rm=document.createElement('button');rm.textContent='✕';rm.title='Ripristina';rm.onclick=function(){pushUndo();delete SHIMG.photo;renderControls();renderStage();refreshThumbs();};
    r.appendChild(th);r.appendChild(nm);
    r.appendChild(filePicker('Scegli file',function(d){pushUndo();SHIMG.photo=d;delete STATE[current].adj.photo;loadNat(d,function(){autoPositionPhotoIfBanner();renderControls();renderStage();refreshThumbs();});renderControls();renderStage();refreshThumbs();}));
+   r.appendChild(rawFilePicker('Da video','video/*',enterVideoPick));
    r.appendChild(rm);mc.appendChild(r);})();
 }
 
@@ -753,7 +767,7 @@ function renderMedia(show){
 var selObj=null;var photoEdit=false;
 // Mappatura degli oggetti testo ai campi editabili (SHARED o specifici del formato)
 var TEXT_EDIT_MAP={'t-home':'home','t-away':'away','t-comp':'comp','t-dt':'','t-hl':'hlKind','t-fan':'','t-q':'','t-sub':'','t-kicker':'heroKicker','t-line1':'heroLine1','t-line2':'heroLine2','t-title':'title','t-name':'name','t-kind':'hlKind','t-tag':'','t-num':'num','t-mark':''};
-function renderStage(){if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');svg.style.backgroundColor='#050a1a';applyTextStyles(svg,current);
+function renderStage(){if(videoPick){renderVideoPicker();return;}if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');svg.style.backgroundColor='#050a1a';applyTextStyles(svg,current);
  attachInteract(svg);highlightSel(svg);syncScaleSlider();syncPhotoBar();drawMirino(svg);
  requestAnimationFrame(drawRulers);}
 // ---- menù foto dedicato (Zoom / Orizzontale / Verticale) ----
@@ -800,6 +814,47 @@ document.getElementById('peApply').onclick=function(){exitPhotoEdit();};
 document.getElementById('peCancel').onclick=function(){cancelPhotoEdit();};
 // ===== Editor foto stile Keynote: rettangolo fisso (maschera), foto spostabile/scalabile dentro =====
 var PE_BEFORE=null;
+// ---------- fotogramma da video ----------
+// Il video non entra nella grafica: se ne estrae un fotogramma che diventa la
+// foto condivisa, quindi da li' in poi funziona tutto come con una foto normale
+// (ritaglio, zoom, export PNG).
+var videoPick=null;
+function enterVideoPick(file){
+ if(videoPick)exitVideoPick();
+ if(photoEdit)exitPhotoEdit();
+ videoPick={url:URL.createObjectURL(file),nome:file.name};
+ document.getElementById('vidBar').classList.add('on');
+ renderStage();
+}
+function exitVideoPick(){
+ if(!videoPick)return;
+ URL.revokeObjectURL(videoPick.url);videoPick=null;
+ document.getElementById('vidBar').classList.remove('on');
+ renderStage();
+}
+function renderVideoPicker(){
+ var st=document.getElementById('stage');st.innerHTML='';
+ var v=document.createElement('video');v.id='vidEl';v.src=videoPick.url;v.controls=true;v.preload='auto';
+ v.style.cssText='max-width:100%;max-height:66vh;display:block;border-radius:4px;background:#05070F';
+ v.onloadedmetadata=function(){v.currentTime=Math.min(0.1,v.duration||0);};
+ st.appendChild(v);
+ v.focus();
+}
+// Disegna il fotogramma corrente e lo usa come foto. JPEG perche' un fotogramma
+// non ha trasparenza e un PNG a piena risoluzione pesa troppo negli snapshot di undo.
+function useVideoFrame(){
+ var v=document.getElementById('vidEl');if(!v||!v.videoWidth)return;
+ var MAXL=1920,w=v.videoWidth,h=v.videoHeight,k=Math.min(1,MAXL/Math.max(w,h));
+ var c=document.createElement('canvas');c.width=Math.round(w*k);c.height=Math.round(h*k);
+ c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+ var d=c.toDataURL('image/jpeg',0.92);
+ pushUndo();SHIMG.photo=d;delete STATE[current].adj.photo;
+ exitVideoPick();
+ loadNat(d,function(){autoPositionPhotoIfBanner();renderControls();renderStage();refreshThumbs();});
+ renderControls();refreshThumbs();
+}
+document.getElementById('vidUse').onclick=useVideoFrame;
+document.getElementById('vidCancel').onclick=exitVideoPick;
 function enterPhotoEdit(){if(photoEdit)return;pushUndo();PE_BEFORE=JSON.stringify(STATE[current].adj.photo||null);photoEdit=true;var b=document.getElementById('phEdit');if(b)b.textContent='✓ Fine ritaglio';var pb=document.getElementById('peBar');if(pb)pb.classList.add('on');renderStage();}
 function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;var b=document.getElementById('phEdit');if(b)b.textContent='Ritaglia foto';var pb=document.getElementById('peBar');if(pb)pb.classList.remove('on');renderStage();}
 function cancelPhotoEdit(){if(!photoEdit)return;var v=JSON.parse(PE_BEFORE||'null');if(v)STATE[current].adj.photo=v;else delete STATE[current].adj.photo;exitPhotoEdit();}
