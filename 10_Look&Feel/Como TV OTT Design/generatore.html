@@ -61,14 +61,14 @@ button.act:active{transform:scale(.97)}
    l'export rigenera la grafica dai template e non puo' contenerlo.
    Sta FUORI dal bordo dell'artwork, cosi' non copre mai il contenuto, e ha un
    alone scuro sotto per restare leggibile anche su una foto chiara. */
-#stage.marks::after{content:'';position:absolute;inset:-6px;border:3px solid var(--goldB);
- border-radius:8px;pointer-events:none;box-shadow:0 0 0 2px rgba(5,7,15,.95),inset 0 0 0 2px rgba(5,7,15,.95),0 0 22px rgba(201,162,75,.28)}
-#stage.marks .cmark{position:absolute;width:14px;height:14px;pointer-events:none;border-color:var(--goldB);border-style:solid;border-width:0}
-#stage.marks .cmark.tl{top:-13px;left:-13px;border-top-width:2px;border-left-width:2px}
-#stage.marks .cmark.tr{top:-13px;right:-13px;border-top-width:2px;border-right-width:2px}
-#stage.marks .cmark.bl{bottom:-13px;left:-13px;border-bottom-width:2px;border-left-width:2px}
-#stage.marks .cmark.br{bottom:-13px;right:-13px;border-bottom-width:2px;border-right-width:2px}
-#stage.marks .fmtlab{position:absolute;bottom:-30px;left:-6px;font-size:10px;font-weight:800;letter-spacing:.14em;
+#stage .fmtbox{position:absolute;box-sizing:border-box;border:3px solid var(--goldB);border-radius:8px;
+ pointer-events:none;box-shadow:0 0 0 2px rgba(5,7,15,.95),inset 0 0 0 2px rgba(5,7,15,.95),0 0 22px rgba(201,162,75,.28)}
+#stage .fmtbox .cmark{position:absolute;width:14px;height:14px;pointer-events:none;border-color:var(--goldB);border-style:solid;border-width:0}
+#stage .fmtbox .cmark.tl{top:-13px;left:-13px;border-top-width:2px;border-left-width:2px}
+#stage .fmtbox .cmark.tr{top:-13px;right:-13px;border-top-width:2px;border-right-width:2px}
+#stage .fmtbox .cmark.bl{bottom:-13px;left:-13px;border-bottom-width:2px;border-left-width:2px}
+#stage .fmtbox .cmark.br{bottom:-13px;right:-13px;border-bottom-width:2px;border-right-width:2px}
+#stage .fmtbox .fmtlab{position:absolute;bottom:-30px;left:-3px;font-size:10px;font-weight:800;letter-spacing:.14em;
  text-transform:uppercase;color:var(--gold);pointer-events:none;white-space:nowrap;
  background:rgba(5,7,15,.92);padding:3px 8px;border-radius:5px;border:1px solid rgba(201,162,75,.35)}
 #stage svg{max-width:100%;max-height:66vh;height:auto;box-shadow:0 30px 80px -30px #000;border-radius:4px;display:block}
@@ -827,18 +827,39 @@ var selObj=null;var photoEdit=false;
 var TEXT_EDIT_MAP={'t-home':'home','t-away':'away','t-comp':'comp','t-dt':'','t-hl':'hlKind','t-fan':'','t-q':'','t-sub':'','t-kicker':'heroKicker','t-line1':'heroLine1','t-line2':'heroLine2','t-title':'title','t-name':'name','t-kind':'hlKind','t-tag':'','t-num':'num','t-mark':''};
 // Crocini d'angolo + misura del formato: aiutano a vedere dove finisce l'area
 // esportata quando il contenuto ha lo stesso blu del fondo.
+// Rettangolo realmente occupato dal disegno. L'elemento <svg> puo' essere piu'
+// largo o piu' alto del contenuto: con max-height che limita, larghezza e altezza
+// vengono calcolate in modo indipendente e il disegno resta centrato dentro
+// (preserveAspectRatio). Misurare l'elemento darebbe un rettangolo sbagliato.
+function artRect(svg){
+ var er=svg.getBoundingClientRect(),vb=svg.viewBox&&svg.viewBox.baseVal;
+ if(!vb||!vb.width||!vb.height)return er;
+ var k=Math.min(er.width/vb.width,er.height/vb.height),w=vb.width*k,h=vb.height*k;
+ return {left:er.left+(er.width-w)/2,top:er.top+(er.height-h)/2,width:w,height:h};
+}
 function stageMarks(st){
- st.className='marks';
- st.querySelectorAll('.cmark,.fmtlab').forEach(function(e){e.remove();});
+ st=st||document.getElementById('stage');
+ st.querySelectorAll('.fmtbox').forEach(function(e){e.remove();});
+ if(st.className!=='marks')return;
+ var art=st.querySelector('svg')||st.querySelector('canvas');
+ if(!art)return;
+ // Misure reali dell'artwork: #stage non si stringe sull'SVG quando e'
+ // l'altezza a limitarlo, quindi il riquadro va posizionato a mano.
+ var sr=(art.tagName.toLowerCase()==='svg')?artRect(art):art.getBoundingClientRect();
+ var rr=st.getBoundingClientRect(),P=6;
+ var box=document.createElement('div');box.className='fmtbox';
+ box.style.left=(sr.left-rr.left-P)+'px';box.style.top=(sr.top-rr.top-P)+'px';
+ box.style.width=(sr.width+P*2)+'px';box.style.height=(sr.height+P*2)+'px';
  ['tl','tr','bl','br'].forEach(function(c){
-  var d=document.createElement('div');d.className='cmark '+c;st.appendChild(d);});
+  var d=document.createElement('div');d.className='cmark '+c;box.appendChild(d);});
  var it=BYKEY[current];
  var l=document.createElement('div');l.className='fmtlab';
- l.textContent='Area esportata · '+it.w+'×'+it.h;st.appendChild(l);
+ l.textContent='Area esportata · '+it.w+'×'+it.h;box.appendChild(l);
+ st.appendChild(box);
 }
-function renderStage(){if(videoPick){renderVideoPicker();return;}if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');svg.style.backgroundColor='#050a1a';applyTextStyles(svg,current);stageMarks(st);
+function renderStage(){if(videoPick){renderVideoPicker();return;}if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');svg.style.backgroundColor='#050a1a';applyTextStyles(svg,current);st.className='marks';setTimeout(function(){stageMarks(st);},0);
  attachInteract(svg);highlightSel(svg);syncScaleSlider();syncPhotoBar();drawMirino(svg);
- requestAnimationFrame(drawRulers);}
+ setTimeout(drawRulers,0);}
 // ---- menù foto dedicato (Zoom / Orizzontale / Verticale) ----
 function photoItem(){return BYKEY[current]||{w:1080,h:1080};}
 // Zoom di partenza leggermente sopra il "cover" minimo: garantisce sempre un margine
@@ -1065,7 +1086,7 @@ function renderPhotoEditor(){
  st.innerHTML=svgScreen(current);
  var svg=st.querySelector('svg');if(!svg){exitPhotoEdit();return;}
  svg.style.maxHeight='84vh';svg.style.cursor='move';svg.style.touchAction='none';
- stageMarks(st); // in ritaglio il confine serve piu' che mai: e' li' che sposti la foto
+ st.className='marks';setTimeout(function(){stageMarks(st);},0); // in ritaglio serve piu' che mai
  // in ritaglio nascondiamo del tutto i righelli (niente riga blu)
  ['rulerTop','rulerLeft','rulerCorner'].forEach(function(id){var c=document.getElementById(id);if(c)c.style.display='none';});
  var g=svg.querySelector('[data-obj="photo"]');
@@ -1082,7 +1103,7 @@ function renderPhotoEditor(){
 // ---- righello stile Photoshop (px del documento) ----
 function niceStep(sc){var u=64/sc;var pow=Math.pow(10,Math.floor(Math.log(u)/Math.LN10));var f=u/pow;var n=f<1.5?1:(f<3?2:(f<7?5:10));return n*pow;}
 function drawRulers(){var wrap=document.querySelector('.stagewrap');var svg=document.querySelector('#stage svg');if(!svg||!svg.viewBox)return;
- var wr=wrap.getBoundingClientRect(),sr=svg.getBoundingClientRect();var RB=22,GAP=16;
+ var wr=wrap.getBoundingClientRect(),sr=artRect(svg);var RB=22,GAP=16;
  var left=sr.left-wr.left+wrap.scrollLeft,top=sr.top-wr.top+wrap.scrollTop;
  var vw=svg.viewBox.baseVal.width,vh=svg.viewBox.baseVal.height,sc=sr.width/vw;
  var tc=document.getElementById('rulerTop'),lc=document.getElementById('rulerLeft'),co=document.getElementById('rulerCorner');
@@ -1095,7 +1116,7 @@ function drawRulers(){var wrap=document.querySelector('.stagewrap');var svg=docu
  for(u=0;u<=vw;u+=step){x=u*sc;a.moveTo(x,RB);a.lineTo(x,RB-8);a.fillText(String(Math.round(u)),x+2,10);}a.stroke();
  var b=lc.getContext('2d');b.clearRect(0,0,RB,lc.height);b.fillStyle='#0b1230';b.fillRect(0,0,RB,lc.height);b.strokeStyle='rgba(245,241,230,.4)';b.fillStyle='#C4C0B4';b.font='9px system-ui,sans-serif';b.beginPath();
  for(u=0;u<=vh;u+=step){y=u*sc;b.moveTo(RB,y);b.lineTo(RB-8,y);b.save();b.translate(9,y+2);b.rotate(-Math.PI/2);b.fillText(String(Math.round(u)),0,0);b.restore();}b.stroke();}
-window.addEventListener('resize',function(){requestAnimationFrame(drawRulers);});
+window.addEventListener('resize',function(){requestAnimationFrame(drawRulers);setTimeout(stageMarks,0);});
 var _sw=document.querySelector('.stagewrap');if(_sw)_sw.addEventListener('scroll',function(){requestAnimationFrame(drawRulers);});
 function svgUnitPerPx(svg){var vb=svg.viewBox.baseVal;return vb.width/svg.getBoundingClientRect().width;}
 function ensureAdj(o,svg){var S=STATE[current];if(!S.adj[o]){var el=svg.querySelector('[data-obj="'+o+'"]');var bb=el.getBBox();S.adj[o]={dx:0,dy:0,s:(o==='photo'?PHOTO_MIN_ZOOM:1),cx:bb.x+bb.width/2,cy:bb.y+bb.height/2};}return S.adj[o];}
