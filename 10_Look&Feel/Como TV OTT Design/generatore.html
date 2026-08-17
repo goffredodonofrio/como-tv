@@ -858,7 +858,7 @@ function stageMarks(st){
  l.textContent='Area esportata · '+it.w+'×'+it.h;box.appendChild(l);
  st.appendChild(box);
 }
-function renderStage(){if(videoPick){renderVideoPicker();return;}if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');svg.style.backgroundColor='#050a1a';applyTextStyles(svg,current);st.className='marks';setTimeout(function(){stageMarks(st);},0);
+function renderStage(){if(videoPick){renderVideoPicker();return;}if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');svg.style.background='none';applyTextStyles(svg,current);st.className='marks';setTimeout(function(){stageMarks(st);},0);
  attachInteract(svg);highlightSel(svg);syncScaleSlider();syncPhotoBar();drawMirino(svg);
  setTimeout(drawRulers,0);}
 // ---- menù foto dedicato (Zoom / Orizzontale / Verticale) ----
@@ -1087,6 +1087,22 @@ function renderPhotoEditor(){
  st.innerHTML=svgScreen(current);
  var svg=st.querySelector('svg');if(!svg){exitPhotoEdit();return;}
  svg.style.maxHeight='84vh';svg.style.cursor='move';svg.style.touchAction='none';
+ // Fuori dal formato la foto normalmente e' tagliata: in ritaglio la mostriamo
+ // per intero, cosi' si vede quanta eccede e da che lato. Serve sia togliere il
+ // clip del gruppo sia aprire l'overflow dell'SVG, che altrimenti taglia al viewBox.
+ svg.style.overflow='visible';svg.style.background='none';
+ var clipped=svg.querySelector('g[clip-path]');
+ if(clipped)clipped.removeAttribute('clip-path');
+ // Velo sulla parte fuori formato: un rettangolo enorme col buco del formato
+ // (fill-rule evenodd), cosi' si distingue subito cosa resta e cosa si perde.
+ (function(){
+  var vb=svg.viewBox.baseVal,W=vb.width,H=vb.height,B=Math.max(W,H)*3;
+  var m=document.createElementNS('http://www.w3.org/2000/svg','path');
+  m.setAttribute('d','M'+(-B)+' '+(-B)+'h'+(B*3)+'v'+(B*3)+'h'+(-B*3)+'Z M0 0h'+W+'v'+H+'h'+(-W)+'Z');
+  m.setAttribute('fill-rule','evenodd');m.setAttribute('fill','#05070F');
+  m.setAttribute('fill-opacity','.66');m.setAttribute('pointer-events','none');
+  svg.appendChild(m);
+ })();
  st.className='marks';setTimeout(function(){stageMarks(st);},0); // in ritaglio serve piu' che mai
  // in ritaglio nascondiamo del tutto i righelli (niente riga blu)
  ['rulerTop','rulerLeft','rulerCorner'].forEach(function(id){var c=document.getElementById(id);if(c)c.style.display='none';});
