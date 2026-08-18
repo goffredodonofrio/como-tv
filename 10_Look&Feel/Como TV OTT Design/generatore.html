@@ -1128,12 +1128,42 @@ function renderPhotoEditor(){
  var g=svg.querySelector('[data-obj="photo"]');
  if(!g){exitPhotoEdit();return;}
  var a=ensureAdj('photo',svg);photoClamp(a);g.setAttribute('transform',objTF(a));syncPhotoBar();drawMirino(svg);
- PEUPD=function(){var aa=STATE[current].adj.photo;if(aa){photoClamp(aa);g.setAttribute('transform',objTF(aa));var e=svg.querySelector('.phedge');if(e)e.setAttribute('transform',objTF(aa));}};
+ // Maniglie d'angolo: esistono solo qui, non alla semplice selezione.
+ // Stanno in coordinate assolute, non dentro un gruppo trasformato, cosi' il
+ // raggio non si gonfia insieme allo zoom della foto.
+ var peH=['tl','tr','bl','br'].map(function(c,i){
+  var h=document.createElementNS('http://www.w3.org/2000/svg','circle');
+  h.setAttribute('class','handle'+((i===1||i===2)?' nesw':''));
+  h.setAttribute('pointer-events','auto');svg.appendChild(h);return h;});
+ function peCorners(){
+  var bb=g.getBBox(),aa=STATE[current].adj.photo||{};
+  var sc=aa.s||1,cx=aa.cx||0,cy=aa.cy||0,dx=aa.dx||0,dy=aa.dy||0;
+  function P(x,y){return [dx+cx+(x-cx)*sc,dy+cy+(y-cy)*sc];}
+  return [P(bb.x,bb.y),P(bb.x+bb.width,bb.y),P(bb.x,bb.y+bb.height),P(bb.x+bb.width,bb.y+bb.height)];
+ }
+ function peSync(){
+  var aa=STATE[current].adj.photo;if(!aa)return;
+  var tf=objTF(aa);g.setAttribute('transform',tf);
+  var e=svg.querySelector('.phedge');if(e)e.setAttribute('transform',tf);
+  var r=7*svgUnitPerPx(svg),c=peCorners();
+  peH.forEach(function(h,i){h.setAttribute('cx',c[i][0]);h.setAttribute('cy',c[i][1]);h.setAttribute('r',r);});
+ }
+ peH.forEach(function(h){h.addEventListener('pointerdown',function(ev){
+  ev.preventDefault();ev.stopPropagation();pushUndo();
+  var aa=STATE[current].adj.photo,rc=artRect(svg),vb=svg.viewBox.baseVal,k=rc.width/vb.width;
+  var ccx=rc.left+((aa.cx||0)+(aa.dx||0))*k,ccy=rc.top+((aa.cy||0)+(aa.dy||0))*k;
+  var d0=Math.hypot(ev.clientX-ccx,ev.clientY-ccy)||1,s0=aa.s||1;
+  function mv(e){var d=Math.hypot(e.clientX-ccx,e.clientY-ccy);
+   aa.s=Math.min(6,Math.max(0.2,s0*(d/d0)));photoClamp(aa);peSync();syncPhotoBar();}
+  function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);refreshThumbs();}
+  window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);});});
+ PEUPD=function(){var aa=STATE[current].adj.photo;if(aa){photoClamp(aa);peSync();}};
+ setTimeout(peSync,0);
  svg.addEventListener('pointerdown',function(ev){ev.preventDefault();pushUndoC();var k=svgUnitPerPx(svg);var sx=ev.clientX,sy=ev.clientY,dx0=a.dx||0,dy0=a.dy||0;
-   function mv(e){a.dx=dx0+(e.clientX-sx)*k;a.dy=dy0+(e.clientY-sy)*k;photoClamp(a);var tf=objTF(a);g.setAttribute('transform',tf);var e2=svg.querySelector('.phedge');if(e2)e2.setAttribute('transform',tf);syncPhotoBar();}
+   function mv(e){a.dx=dx0+(e.clientX-sx)*k;a.dy=dy0+(e.clientY-sy)*k;photoClamp(a);peSync();syncPhotoBar();}
    function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);}
    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);});
- svg.addEventListener('wheel',function(ev){ev.preventDefault();pushUndoC();a.s=Math.min(3.5,Math.max(1,(a.s||1)*(ev.deltaY<0?1.05:0.95)));photoClamp(a);g.setAttribute('transform',objTF(a));syncPhotoBar();},{passive:false});
+ svg.addEventListener('wheel',function(ev){ev.preventDefault();pushUndoC();a.s=Math.min(3.5,Math.max(1,(a.s||1)*(ev.deltaY<0?1.05:0.95)));photoClamp(a);peSync();syncPhotoBar();},{passive:false});
  svg.addEventListener('dblclick',function(){exitPhotoEdit();});
 }
 // ---- righello stile Photoshop (px del documento) ----
@@ -1215,6 +1245,7 @@ function highlightSel(svg){var old=svg.querySelector('.selrect');if(old)old.remo
  var bb;try{bb=el.getBBox();}catch(e){return;}var ct=el.getAttribute('transform');
  var r=document.createElementNS('http://www.w3.org/2000/svg','rect');r.setAttribute('class','selrect');r.setAttribute('x',bb.x);r.setAttribute('y',bb.y);r.setAttribute('width',bb.width);r.setAttribute('height',bb.height);if(ct)r.setAttribute('transform',ct);svg.appendChild(r);
  drawAlignmentGuides(svg,bb,ct);
+ if(selObj==='photo')return; // la foto si ridimensiona in ritaglio, non alla selezione
  var handleR=6;var corners=[[bb.x,bb.y],[bb.x+bb.width,bb.y],[bb.x,bb.y+bb.height],[bb.x+bb.width,bb.y+bb.height]];
  corners.forEach(function(c,ci){var h=document.createElementNS('http://www.w3.org/2000/svg','circle');h.setAttribute('class','handle'+((ci===1||ci===2)?' nesw':''));h.setAttribute('cx',c[0]);h.setAttribute('cy',c[1]);h.setAttribute('r',handleR);h.setAttribute('fill','var(--gold)');attachResize(h,svg);h.setAttribute('opacity','0.6');if(ct)h.setAttribute('transform',ct);svg.appendChild(h);});}
 // Maniglie d'angolo: trascinandole si ridimensiona l'oggetto selezionato.
