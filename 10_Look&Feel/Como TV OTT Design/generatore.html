@@ -1086,15 +1086,41 @@ function renderPhotoEditor(){
  svg.style.overflow='visible';svg.style.background='none';
  var clipped=svg.querySelector('g[clip-path]');
  if(clipped)clipped.removeAttribute('clip-path');
+ // Tutti gli strati del template si spengono tranne la foto: si giudica
+ // l'inquadratura senza che sfumature, testi e loghi disturbino. Come in
+ // Keynote o Photoshop, dove in ritaglio resta leggibile solo l'immagine.
+ (function(){
+  var ph=svg.querySelector('[data-obj="photo"]');
+  [].forEach.call(svg.children,function(n){
+   var t=n.tagName.toLowerCase();
+   if(t==='defs'||t==='clippath'||t==='style')return;
+   if(ph&&(n===ph||n.contains(ph)))return;
+   n.style.opacity='.14';
+  });
+ })();
  // Velo sulla parte fuori formato: un rettangolo enorme col buco del formato
  // (fill-rule evenodd), cosi' si distingue subito cosa resta e cosa si perde.
+ // Aggiunto DOPO lo spegnimento, per restare a piena intensita'.
  (function(){
   var vb=svg.viewBox.baseVal,W=vb.width,H=vb.height,B=Math.max(W,H)*3;
   var m=document.createElementNS('http://www.w3.org/2000/svg','path');
   m.setAttribute('d','M'+(-B)+' '+(-B)+'h'+(B*3)+'v'+(B*3)+'h'+(-B*3)+'Z M0 0h'+W+'v'+H+'h'+(-W)+'Z');
   m.setAttribute('fill-rule','evenodd');m.setAttribute('fill','#05070F');
-  m.setAttribute('fill-opacity','.66');m.setAttribute('pointer-events','none');
+  m.setAttribute('fill-opacity','.62');m.setAttribute('pointer-events','none');
   svg.appendChild(m);
+  // Contorno della foto: cosi' si vede dove arriva l'immagine anche dove il
+  // velo la copre. Sta sopra il velo, in ciano come le altre selezioni.
+  var ph=svg.querySelector('[data-obj="photo"]');
+  if(ph){var bb=ph.getBBox(),tf=ph.getAttribute('transform');
+   var r=document.createElementNS('http://www.w3.org/2000/svg','rect');
+   r.setAttribute('x',bb.x);r.setAttribute('y',bb.y);
+   r.setAttribute('width',bb.width);r.setAttribute('height',bb.height);
+   if(tf)r.setAttribute('transform',tf);
+   r.setAttribute('fill','none');r.setAttribute('stroke','#2FE3F5');
+   r.setAttribute('stroke-width',Math.max(2,vb.width/540));
+   r.setAttribute('vector-effect','non-scaling-stroke');
+   r.setAttribute('pointer-events','none');r.setAttribute('class','phedge');
+   svg.appendChild(r);}
  })();
  st.className='marks';setTimeout(function(){stageMarks(st);},0); // in ritaglio serve piu' che mai
  // in ritaglio nascondiamo del tutto i righelli (niente riga blu)
@@ -1102,9 +1128,9 @@ function renderPhotoEditor(){
  var g=svg.querySelector('[data-obj="photo"]');
  if(!g){exitPhotoEdit();return;}
  var a=ensureAdj('photo',svg);photoClamp(a);g.setAttribute('transform',objTF(a));syncPhotoBar();drawMirino(svg);
- PEUPD=function(){var aa=STATE[current].adj.photo;if(aa){photoClamp(aa);g.setAttribute('transform',objTF(aa));}};
+ PEUPD=function(){var aa=STATE[current].adj.photo;if(aa){photoClamp(aa);g.setAttribute('transform',objTF(aa));var e=svg.querySelector('.phedge');if(e)e.setAttribute('transform',objTF(aa));}};
  svg.addEventListener('pointerdown',function(ev){ev.preventDefault();pushUndoC();var k=svgUnitPerPx(svg);var sx=ev.clientX,sy=ev.clientY,dx0=a.dx||0,dy0=a.dy||0;
-   function mv(e){a.dx=dx0+(e.clientX-sx)*k;a.dy=dy0+(e.clientY-sy)*k;photoClamp(a);g.setAttribute('transform',objTF(a));syncPhotoBar();}
+   function mv(e){a.dx=dx0+(e.clientX-sx)*k;a.dy=dy0+(e.clientY-sy)*k;photoClamp(a);var tf=objTF(a);g.setAttribute('transform',tf);var e2=svg.querySelector('.phedge');if(e2)e2.setAttribute('transform',tf);syncPhotoBar();}
    function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);}
    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);});
  svg.addEventListener('wheel',function(ev){ev.preventDefault();pushUndoC();a.s=Math.min(3.5,Math.max(1,(a.s||1)*(ev.deltaY<0?1.05:0.95)));photoClamp(a);g.setAttribute('transform',objTF(a));syncPhotoBar();},{passive:false});
