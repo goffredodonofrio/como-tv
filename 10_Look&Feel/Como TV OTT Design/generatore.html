@@ -168,11 +168,10 @@ small.flag{color:#E3C271}
   </div>
   <div class="photobar">
    <span class="pbl">FOTO</span>
-   <div class="seg">Zoom <input type="range" id="phZoom" min="1" max="3.5" step="0.01" value="1.1"><span id="phZv">110%</span></div>
-   <div class="seg">Orizzontale <input type="range" id="phX" min="-100" max="100" step="1" value="0"></div>
-   <div class="seg">Verticale <input type="range" id="phY" min="-100" max="100" step="1" value="0"></div>
+   <div class="seg">Zoom <span id="phZv" style="font-variant-numeric:tabular-nums;font-weight:800;color:var(--ivory)">110%</span></div>
    <button class="act" id="phEdit">Ritaglia foto</button>
    <button class="act ghost" id="phReset">Centra foto</button>
+   <span class="peh" style="color:var(--fg3)">Trascina la foto per spostarla · doppio clic per ritagliarla</span>
   </div>
   <div class="editbar" id="textBar" style="display:none">
    <span class="pbl" id="textBarTitle" style="color:var(--gold);font-size:11px;font-weight:800;letter-spacing:.18em">TESTO</span>
@@ -871,27 +870,12 @@ function photoPanMax(s){var it=photoItem();var n=PHOTONAT[curPhotoSrc()];
  return {mx:Math.max(freeX,(dw-it.w)/2),my:Math.max(freeY,(dh-it.h)/2)};}
 // Trascinamento libero: nessun limite, la foto si sposta ovunque (reset con "Centra foto").
 function photoClamp(a){return a;}
+// Lo zoom e' solo una lettura: si agisce trascinando, con la rotella o con le
+// maniglie in ritaglio. Il numero resta perche' il gesto non lo dice.
 function syncPhotoBar(){var a=STATE[current].adj.photo;
- var z=document.getElementById('phZoom'),x=document.getElementById('phX'),y=document.getElementById('phY');
- if(!z)return;
- if(a){var m=photoPanMax(a.s||1);z.value=a.s||1;x.value=m.mx?Math.round((a.dx||0)/m.mx*100):0;y.value=m.my?Math.round((a.dy||0)/m.my*100):0;}
- else{z.value=PHOTO_MIN_ZOOM;x.value=0;y.value=0;}
- document.getElementById('phZv').textContent=Math.round((a&&a.s||PHOTO_MIN_ZOOM)*100)+'%';}
+ var v=document.getElementById('phZv');if(!v)return;
+ v.textContent=Math.round((a&&a.s||PHOTO_MIN_ZOOM)*100)+'%';}
 var PEUPD=null;
-function photoApply(){
- if(photoEdit){var ae=STATE[current].adj.photo;if(!ae)return;ae.s=parseFloat(document.getElementById('phZoom').value);var me=photoPanMax(ae.s);ae.dx=parseFloat(document.getElementById('phX').value)/100*me.mx;ae.dy=parseFloat(document.getElementById('phY').value)/100*me.my;if(PEUPD)PEUPD();document.getElementById('phZv').textContent=Math.round(ae.s*100)+'%';return;}
- var svg=document.querySelector('#stage svg');if(!svg)return;var g=svg.querySelector('[data-obj="photo"]');if(!g)return;
- var a=ensureAdj('photo',svg);
- a.s=parseFloat(document.getElementById('phZoom').value);
- var m=photoPanMax(a.s);
- a.dx=parseFloat(document.getElementById('phX').value)/100*m.mx;
- a.dy=parseFloat(document.getElementById('phY').value)/100*m.my;
- g.setAttribute('transform',objTF(a));
- document.getElementById('phZv').textContent=Math.round(a.s*100)+'%';
- if(selObj==='photo')highlightSel(svg);}
-['phZoom','phX','phY'].forEach(function(id){var e=document.getElementById(id);
- e.addEventListener('pointerdown',function(){pushUndo();});
- e.addEventListener('input',photoApply);});
 document.getElementById('phReset').onclick=function(){pushUndo();delete STATE[current].adj.photo;renderStage();};
 document.getElementById('phEdit').onclick=function(){if(photoEdit)exitPhotoEdit();else enterPhotoEdit();};
 document.getElementById('peApply').onclick=function(){exitPhotoEdit();};
