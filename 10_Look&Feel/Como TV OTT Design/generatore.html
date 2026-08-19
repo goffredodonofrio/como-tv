@@ -291,6 +291,47 @@ function mPortrait(W,H,p,I,A,hl){
   +G('logo',A,LOGOR(M+badgeR,badgeCy,badgeR,I,'logoComp','lcP'+W+'x'+H)+T(M+badgeR*2+R(W*0.02),footY,p.comp,{s:footS,w:700,fill:C.fg2,ls:4}))
   +hair(W,H,H-5);
 }
+// ---------- YouTube 16:9: componenti del design system ----------
+// Riproduce Youtube_Design.html. Gli id dei gradienti portano un prefisso per
+// formato: sono globali nel documento e la colonna anteprime disegna tutto
+// insieme, quindi due formati con lo stesso id userebbero il primo trovato.
+var YTW=1280,YTH=720;
+function ytDefs(q){return '<defs>'
+ +'<linearGradient id="'+q+'bg" x1="0" y1="0" x2=".55" y2="1"><stop offset="0" stop-color="#141B3C"/><stop offset=".48" stop-color="#0E1430"/><stop offset="1" stop-color="#0A0F24"/></linearGradient>'
+ +'<radialGradient id="'+q+'g1" cx="20%" cy="8%" r="90%"><stop offset="0" stop-color="#24408A" stop-opacity=".5"/><stop offset=".55" stop-color="#24408A" stop-opacity="0"/></radialGradient>'
+ +'<radialGradient id="'+q+'g2" cx="92%" cy="108%" r="80%"><stop offset="0" stop-color="#C9A24B" stop-opacity=".16"/><stop offset=".55" stop-color="#C9A24B" stop-opacity="0"/></radialGradient>'
+ +'<linearGradient id="'+q+'mt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F2E3B8"/><stop offset=".4" stop-color="#EBD79B"/><stop offset=".6" stop-color="#C9A24B"/><stop offset="1" stop-color="#7A5A22"/></linearGradient>'
+ +'<linearGradient id="'+q+'sl" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="'+C.goldB+'"/><stop offset=".6" stop-color="'+C.gold+'"/><stop offset="1" stop-color="'+C.goldD+'"/></linearGradient>'
+ +'<linearGradient id="'+q+'fadeL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0A0F24"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>'
+ +'<linearGradient id="'+q+'fadeB" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#0A0F24" stop-opacity=".95"/><stop offset=".45" stop-color="#0A0F24" stop-opacity=".5"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>'
+ +'</defs>';}
+function ytBg(q){return '<rect width="'+YTW+'" height="'+YTH+'" fill="url(#'+q+'bg)"/><rect width="'+YTW+'" height="'+YTH+'" fill="url(#'+q+'g1)" pointer-events="none"/><rect width="'+YTW+'" height="'+YTH+'" fill="url(#'+q+'g2)" pointer-events="none"/>';}
+// Foto a tutta pagina oppure pannello a destra, con la sfumatura che la stacca.
+function ytPhotoFull(A,I){return GPHOTO(YTW,YTH,A,I);}
+function ytPhotoRight(q,A,I,w,off){var x=YTW-w+(off||0);
+ return '<clipPath id="'+q+'pc"><rect x="'+x+'" y="0" width="'+w+'" height="'+YTH+'"/></clipPath>'
+  +'<g clip-path="url(#'+q+'pc)">'+G('photo',A,PH(I,'photo',x,0,w,YTH),null)+'</g>';}
+function ytFadeL(q,rightEdge,w){return '<rect x="'+(YTW-rightEdge-w)+'" y="0" width="'+w+'" height="'+YTH+'" fill="url(#'+q+'fadeL)" pointer-events="none"/>';}
+function ytFadeB(q,h){return '<rect x="0" y="'+(YTH-h)+'" width="'+YTW+'" height="'+h+'" fill="url(#'+q+'fadeB)" pointer-events="none"/>';}
+// Blocco oro inclinato con testo dentro, come nel design system.
+function ytSlab(q,A,name,x,y,txt,size,rot){var pad=Math.round(size*0.27),w=R(estW(up(txt),size,0))+pad*2,h=Math.round(size*1.18);
+ return G(name,A,'<g transform="rotate('+rot+' '+x+' '+(y+h/2)+')"><rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" fill="url(#'+q+'sl)"/>'
+  +T(x+pad,y+Math.round(h*0.82),txt,{s:size,w:800,fill:C.n900})+'</g>');}
+// Pastiglia rossa inclinata (Le parole di, Fantatime).
+function ytChip(A,name,xRight,y,txt,size,rot,fill){var pad=24,w=R(estW(up(txt),size,Math.round(size*0.12)))+pad*2,h=size+16,x=xRight-w;
+ return G(name,A,'<g transform="rotate('+(rot||0)+' '+(x+w/2)+' '+(y+h/2)+')"><rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" fill="'+(fill||C.red)+'"/>'
+  +T(x+w/2,y+Math.round(h*0.72),txt,{s:size,w:800,fill:'#FFFFFF',ls:Math.round(size*0.12),anchor:'middle'})+'</g>');}
+// Filetto + etichetta, ricorre in quasi tutti i design.
+function ytRule(x,y,w,h,col){return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+(h||5)+'" fill="'+(col||C.gold)+'"/>';}
+// Riduce il corpo finche' il testo sta nella larghezza: i design del sistema
+// avevano testi corti e su misura, qui il testo lo scrive l'utente.
+function ytFit(txt,size,ls,maxW){var w=estW(up(txt||''),size,ls);
+ return w>maxW?Math.max(12,Math.floor(size*maxW/w)):size;}
+// Manda a capo sulle parole entro una larghezza massima.
+function ytWrap(txt,size,ls,maxW){var words=String(txt||'').split(/\s+/),lines=[],cur='';
+ words.forEach(function(w){var t=cur?cur+' '+w:w;
+  if(estW(up(t),size,ls)>maxW&&cur){lines.push(cur);cur=w;}else cur=t;});
+ if(cur)lines.push(cur);return lines.length?lines:[''];}
 // STORY 9:16. k attenua il velo blu: 1 = pieno, valori piu' bassi lasciano
 // passare piu' immagine. Serve sui video, dove un velo pesante spegne la clip.
 // gid deve essere diverso per ogni intensita': gli id dei gradienti SVG sono
@@ -391,6 +432,117 @@ var FMT={
    +(p.showLive?G('live',A,livePill(W-54-176,44)):'')
    +G('t-comp',A,T(cx,561,'Highlights · '+p.comp,{s:24,w:800,fill:C.goldB,ls:6.5,anchor:'middle'}))
    +G('t-match',A,T(cx,636,p.home+'-'+p.away,{s:77,w:800,fill:C.ivory,ls:-1,anchor:'middle'}));}},
+
+ // ---------- YouTube 16:9 (da Youtube_Design.html) ----------
+ yt_parole_classico:{label:'YT · Le parole di — classico',group:'YouTube',w:1280,h:720,useComp:false,
+  fields:[{k:'ytKicker',l:'Occhiello'},{k:'ytTitle',l:'Citazione'},{k:'ytName',l:'Nome'}],images:Imatch,
+  gen:function(p,I,A){var q='yc';var L=ytWrap(p.ytTitle,76,-1,660);
+   var out=ytDefs(q)+ytBg(q)+ytPhotoRight(q,A,I,520,0)+ytFadeL(q,380,300)
+    +(p.showLogo===false?'':brandMark(A,44,36,96))
+    +G('t-comp',A,T(44,218,p.ytKicker,{s:34,w:700,fill:C.gold,ls:9}));
+   var ty=300,tx='';L.forEach(function(l,i){tx+=T(44,ty+i*80,l,{s:76,w:800,fill:C.ivory,ls:-1});});
+   var ny=ty+(L.length-1)*80+74;
+   return out+G('t-title',A,tx)+G('t-name',A,ytRule(44,ny-14,44,4)+T(104,ny,p.ytName,{s:34,w:700,fill:C.gold}));}},
+
+ yt_parole_split:{label:'YT · Le parole di — split',group:'YouTube',w:1280,h:720,useComp:false,
+  fields:[{k:'ytTitle',l:'Citazione riga 1'},{k:'ytTitle2',l:'Citazione riga 2 (oro)'},{k:'ytName',l:'Nome'},{k:'ytKicker',l:'Occhiello'}],images:Imatch,
+  gen:function(p,I,A){var q='ys';
+   return ytDefs(q)+ytBg(q)+ytPhotoRight(q,A,I,560,0)+ytFadeL(q,460,280)
+    +(p.showLogo===false?'':brandMark(A,40,32,88))
+    +T(28,454,'«',{s:520,w:800,fill:C.gold,upper:false})
+    +G('t-title',A,T(40,330,p.ytTitle,{s:ytFit(p.ytTitle,98,-1,640),w:800,fill:C.ivory,ls:-1})+T(40,428,p.ytTitle2,{s:ytFit(p.ytTitle2,98,-1,640),w:800,fill:C.gold,ls:-1}))
+    +G('t-name',A,ytRule(40,492,40,5)+T(94,506,p.ytName,{s:44,w:700,fill:'#D8D2C2'})
+      +T(94+R(estW(up(p.ytName),44,0))+16,506,'· '+(p.ytKicker||''),{s:44,w:400,fill:C.fg3}));}},
+
+ yt_parole_volto:{label:'YT · Le parole di — volto grande',group:'YouTube',w:1280,h:720,useComp:false,
+  fields:[{k:'ytTitle',l:'Citazione riga 1'},{k:'ytTitle2',l:'Citazione riga 2 (blocco oro)'},{k:'ytName',l:'Nome'}],images:Imatch,
+  gen:function(p,I,A){var q='yv';
+   return ytDefs(q)+ytBg(q)+ytPhotoRight(q,A,I,620,40)+ytFadeL(q,420,340)
+    +(p.showLogo===false?'':brandMark(A,40,32,88))
+    +G('t-title',A,T(40,282,p.ytTitle,{s:ytFit(p.ytTitle,125,0,700),w:800,fill:C.ivory}))
+    +ytSlab(q,A,'t-title2',40,302,p.ytTitle2||'',ytFit(p.ytTitle2,125,0,620),-2)
+    +G('t-name',A,ytRule(40,486,40,5)+T(94,502,p.ytName,{s:40,w:700,fill:C.gold}));}},
+
+ yt_citazione_prot:{label:'YT · Citazione protagonista',group:'YouTube',w:1280,h:720,useComp:false,
+  fields:[{k:'ytChip',l:'Pastiglia rossa'},{k:'ytTitle',l:'Citazione'},{k:'ytName',l:'Nome'}],images:Imatch,
+  gen:function(p,I,A){var q='yq';var L=ytWrap(p.ytTitle,100,-1,820);
+   var base=YTH-44-40,ty=base-(L.length-1)*104,tx='';
+   L.forEach(function(l,i){tx+=T(40,ty+i*104,l,{s:100,w:800,fill:C.ivory,ls:-1});});
+   return ytDefs(q)+ytBg(q)+ytPhotoFull(A,I)+ytFadeB(q,420)
+    +(p.showLogo===false?'':brandMark(A,40,32,88))
+    +ytChip(A,'cta',YTW-44,44,p.ytChip||'',32,2)
+    +G('t-title',A,tx)+G('t-name',A,T(40,YTH-44,p.ytName,{s:34,w:700,fill:C.gold,ls:8}));}},
+
+ yt_citazione_medaglione:{label:'YT · Citazione — medaglione',group:'YouTube',w:1280,h:720,useComp:false,
+  fields:[{k:'ytKicker',l:'Occhiello'},{k:'ytTitle',l:'Citazione'}],images:Imatch,
+  gen:function(p,I,A){var q='ym',cx=YTW/2;var L=ytWrap(p.ytTitle,96,-1,1040);
+   var tx='';L.forEach(function(l,i){tx+=T(cx,286+i*100,l,{s:96,w:800,fill:'url(#'+q+'mt)',ls:-1,anchor:'middle'});});
+   var py=286+(L.length-1)*100+70,r=85;
+   return ytDefs(q)+ytBg(q)
+    +(p.showLogo===false?'':brandMark(A,44,36,96))
+    +G('t-comp',A,T(cx,214,p.ytKicker,{s:34,w:700,fill:C.gold,ls:9,anchor:'middle'}))
+    +G('t-title',A,tx)
+    +'<clipPath id="'+q+'rc"><circle cx="'+cx+'" cy="'+(py+r)+'" r="'+r+'"/></clipPath>'
+    +G('photo',A,'<g clip-path="url(#'+q+'rc)">'+PH(I,'photo',cx-r,py,r*2,r*2)+'</g>'
+      +'<circle cx="'+cx+'" cy="'+(py+r)+'" r="'+(r+2)+'" fill="none" stroke="'+C.gold+'" stroke-width="4"/>');}},
+
+ yt_inglese_editoriale:{label:'YT · Calcio Inglese — editoriale',group:'YouTube',w:1280,h:720,useComp:false,
+  fields:[{k:'yteKicker',l:'Occhiello'},{k:'yteTitle',l:'Titolo'},{k:'yteGold',l:'Parola in oro'},{k:'yteSub',l:'Sottotitolo'}],images:Imatch,
+  gen:function(p,I,A){var q='yi';var L=ytWrap(p.yteTitle,104,-1,680);
+   var tx='';L.forEach(function(l,i){tx+=T(40,296+i*106,l,{s:104,w:800,fill:C.ivory,ls:-1});});
+   var last=L[L.length-1]||'',lw=R(estW(up(last),104,-1)),gw=R(estW(up(p.yteGold||''),104,-1));
+   var capo=(40+lw+22+gw)>760, gx=capo?40:40+lw+22, gy=296+(L.length-1)*106+(capo?106:0);
+   return ytDefs(q)+ytBg(q)+ytPhotoRight(q,A,I,520,0)+ytFadeL(q,400,300)
+    +(p.showLogo===false?'':brandMark(A,40,32,88))
+    +G('t-comp',A,ytRule(40,200,40,5,C.red)+T(96,216,p.yteKicker,{s:34,w:700,fill:C.gold,ls:9}))
+    +G('t-title',A,tx+(p.yteGold?T(gx,gy,p.yteGold,{s:104,w:800,fill:C.gold,ls:-1}):''))
+    +G('t-sub',A,T(40,gy+72,p.yteSub,{s:32,w:700,fill:'#D8D2C2'}));}},
+
+ yt_inglese_testata:{label:'YT · Calcio Inglese — testata',group:'YouTube',w:1280,h:720,useComp:false,
+  fields:[{k:'ytiKicker',l:'Occhiello'},{k:'ytiTitle',l:'Titolo'},{k:'ytiSub',l:'Blocco oro'}],images:Imatch,
+  gen:function(p,I,A){var q='yt2',cx=YTW/2;
+   var kw=R(estW(up(p.ytiKicker),34,9)),ky=YTH-286;
+   return ytDefs(q)+ytBg(q)+ytPhotoFull(A,I)+ytFadeB(q,480)
+    +(p.showLogo===false?'':brandMark(A,40,32,88))
+    +G('t-comp',A,ytRule(cx-kw/2-76,ky-14,56,5)+T(cx,ky,p.ytiKicker,{s:34,w:700,fill:C.gold,ls:9,anchor:'middle'})+ytRule(cx+kw/2+20,ky-14,56,5))
+    +G('t-title',A,T(cx,YTH-150,p.ytiTitle,{s:ytFit(p.ytiTitle,135,-2,1180),w:800,fill:'url(#'+q+'mt)',ls:-2,anchor:'middle'}))
+    +ytSlab(q,A,'cta',cx-R(estW(up(p.ytiSub||''),48,0))/2-13,YTH-104,p.ytiSub||'',48,-2);}},
+
+ yt_vlog_foto:{label:'YT · Vlog — foto piena',group:'YouTube',w:1280,h:720,useComp:false,
+  fields:[{k:'ytvChip',l:'Pastiglia'},{k:'ytvKicker',l:'Occhiello'},{k:'ytvTitle',l:'Titolo'}],images:Imatch,
+  gen:function(p,I,A){var q='yw';var L=ytWrap(p.ytvTitle,84,-1,1000);
+   var base=YTH-48,ty=base-(L.length-1)*88,tx='';
+   L.forEach(function(l,i){tx+=T(44,ty+i*88,l,{s:84,w:800,fill:C.ivory,ls:-1});});
+   return ytDefs(q)+ytBg(q)+ytPhotoFull(A,I)+ytFadeB(q,280)
+    +(p.showLogo===false?'':brandMark(A,44,36,96))
+    +ytChip(A,'cta',YTW-44,48,p.ytvChip||'',28,0,'url(#'+q+'sl)')
+    +G('t-comp',A,T(44,ty-64,p.ytvKicker,{s:34,w:700,fill:C.gold,ls:9}))
+    +G('t-title',A,tx);}},
+
+ yt_fanta_voto:{label:'YT · Fantatime — fantavoto',group:'YouTube',w:1280,h:720,useComp:false,
+  fields:[{k:'ytfChip',l:'Pastiglia rossa'},{k:'ytfKicker',l:'Occhiello'},{k:'ytfName',l:'Giocatore'},{k:'ytVoto',l:'Voto'},{k:'ytfLabel',l:'Etichetta voto'}],images:Imatch,
+  gen:function(p,I,A){var q='yf';
+   var vw=R(estW(up(p.ytVoto||''),190,0));
+   return ytDefs(q)+ytBg(q)+ytPhotoRight(q,A,I,560,20)+ytFadeL(q,440,300)
+    +(p.showLogo===false?'':brandMark(A,40,32,88))
+    +ytChip(A,'cta',YTW-44,44,p.ytfChip||'',32,2)
+    +G('t-comp',A,T(40,218,p.ytfKicker,{s:34,w:700,fill:C.gold,ls:9}))
+    +G('t-name',A,T(40,336,p.ytfName,{s:ytFit(p.ytfName,110,-1,640),w:800,fill:C.ivory,ls:-1}))
+    +G('t-title',A,T(40,516,p.ytVoto,{s:190,w:800,fill:'url(#'+q+'mt)',upper:false})
+      +T(40+vw+18,516,p.ytfLabel,{s:40,w:700,fill:C.gold,ls:6}));}},
+
+ yt_gol_collection:{label:'YT · Gol Collection',group:'YouTube',w:1280,h:720,useComp:true,
+  fields:[{k:'ytgTitle',l:'Titolo (es. Gol Collection)'}],images:[{k:'logoComp',l:'Logo competizione'},{k:'photo',l:'Foto'}],
+  gen:function(p,I,A){var q='yg',cx=YTW/2;
+   // Logo competizione al centro, campionato e giornata sopra, titolo sotto.
+   var r=92,ly=150;
+   return ytDefs(q)+ytBg(q)+ytPhotoFull(A,I)
+    +'<rect width="'+YTW+'" height="'+YTH+'" fill="#0A0F24" fill-opacity=".62" pointer-events="none"/>'+ytFadeB(q,420)
+    +(p.showLogo===false?'':brandMark(A,40,32,88))
+    +G('logo',A,LOGOR(cx,ly+r,r,I,'logoComp',q+'lc'))
+    +G('t-comp',A,T(cx,ly+r*2+72,p.compBase||p.comp,{s:34,w:700,fill:C.gold,ls:9,anchor:'middle'}))
+    +G('t-title',A,T(cx,YTH-150,p.ytgTitle,{s:ytFit(p.ytgTitle,126,-2,1180),w:800,fill:'url(#'+q+'mt)',ls:-2,anchor:'middle'}))
+    +G('t-dt',A,T(cx,YTH-72,p.round,{s:44,w:700,fill:C.ivory,ls:5,anchor:'middle'}));}},
 
  match_16x9_1920x1080:{label:'Landscape 16:9 (1920×1080)',group:'Match',w:1920,h:1080,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mLandscape(1920,1080,p,I,A);}},
  banner_top_1506x560:{label:'Banner top (1506×560)',group:'Match',w:1506,h:560,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mLandscape(1506,560,p,I,A);}},
@@ -562,8 +714,13 @@ var MENU=[
    'hl_banner_top_1506x560','hl_banner_mid_1506x412']},
  {g:'Competizioni',k:['competizioni_1200x1800']},
  {g:'Social media',k:[
-   'feed_1080x1440','story_1080x1920','fanvoice_1080x1920','youtube_1280x720']},
- {g:'Social media video',k:['story_video_1080x1920','story_video_1080x1920-live']}
+   'feed_1080x1440','story_1080x1920','fanvoice_1080x1920']},
+ {g:'Social media video',k:['story_video_1080x1920','story_video_1080x1920-live']},
+ {g:'YouTube',k:['youtube_1280x720','yt_gol_collection',
+   'yt_inglese_testata','yt_inglese_editoriale',
+   'yt_parole_classico','yt_parole_split','yt_parole_volto',
+   'yt_citazione_prot','yt_citazione_medaglione',
+   'yt_vlog_foto','yt_fanta_voto']}
 ];
 var CAT={},ORDER=[];
 MENU.forEach(function(m){m.k.forEach(function(k){CAT[k]=m.g;ORDER.push(k);});});
@@ -576,13 +733,13 @@ var ITEMS=(function(){var src={};OTTGEN.items().forEach(function(i){src[i.key]=i
  return out;})();
 var BYKEY={};ITEMS.forEach(function(i){BYKEY[i.key]=i;});
 // naming convention export (come richiesto)
-var FNAME={feed_1080x1440:'feed',story_1080x1920:'story',story_video_1080x1920:'story-video',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'youtube',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',competizioni_1200x1800:'competizioni',format_card_talent:'format-talent',format_card_goleada:'format-goleada',format_card_clasicos:'format-clasicos',format_card_golden:'format-golden'};
+var FNAME={feed_1080x1440:'feed',story_1080x1920:'story',story_video_1080x1920:'story-video',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'youtube',yt_gol_collection:'YT-gol-collection',yt_inglese_testata:'YT-testata',yt_inglese_editoriale:'YT-editoriale',yt_parole_classico:'YT-parole-classico',yt_parole_split:'YT-parole-split',yt_parole_volto:'YT-parole-volto',yt_citazione_prot:'YT-citazione',yt_citazione_medaglione:'YT-medaglione',yt_vlog_foto:'YT-vlog',yt_fanta_voto:'YT-fantavoto',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',competizioni_1200x1800:'competizioni',format_card_talent:'format-talent',format_card_goleada:'format-goleada',format_card_clasicos:'format-clasicos',format_card_golden:'format-golden'};
 function fname(k){if(/-live$/.test(k)){var b=k.replace(/-live$/,'');return (FNAME[b]||b)+'-live';}return FNAME[k]||k;}
 // default text values per format base
 var DEF={home:'West Ham',away:'Portsmouth',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'Preshow 15:10',live:true,hlKind:'Highlights',
  heroKicker:'Como TV · Live Events',heroLine1:'Il grande calcio,',heroLine2:'in diretta.',title:'Como Cup 2026',
  novKicker:'FPF Supertaça · Porto campione',novTitle:'Alzata del trofeo',midKicker:'Como TV · Originals',midLine1:'La tua casa',midLine2:'del calcio',
- badgeName:'Carabao Cup',replName:'LPF Torneo Apertura',name:'Talent Hunters',num:'01',preshow:'Football Show 15:10'};
+ badgeName:'Carabao Cup',replName:'LPF Torneo Apertura',name:'Talent Hunters',num:'01',preshow:'Football Show 15:10',ytKicker:'Le parole di',ytTitle:'Abbiamo scritto la storia',ytTitle2:'la storia',ytName:'Mikel Arteta',ytChip:'Le parole di',ytiKicker:'Videopodcast',ytiTitle:'Calcio Inglese',ytiSub:'La corsa al titolo',yteKicker:'Calcio Inglese',yteTitle:'Il crollo dello',yteGold:'United',yteSub:'Videopodcast · Ep. 21',ytvChip:'Vlog',ytvKicker:'Dietro le quinte · Wembley',ytvTitle:'Il giorno della finale',ytfChip:'Fantatime',ytfKicker:"L'uomo della giornata",ytfName:'Douvikas',ytVoto:'9,5',ytfLabel:'Fantavoto',ytgTitle:'Gol Collection'};
 var FMTNAMES={talent:'Talent Hunters',goleada:'Goleada',clasicos:'Los Clásicos',golden:'Golden 90'};
 var FMTNUM={talent:'01',goleada:'02',clasicos:'03',golden:'04'};
 
