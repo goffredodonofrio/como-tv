@@ -311,6 +311,14 @@ function ytPhotoFull(A,I){return GPHOTO(YTW,YTH,A,I);}
 function ytPhotoRight(q,A,I,w,off){var x=YTW-w+(off||0);
  return '<clipPath id="'+q+'pc"><rect x="'+x+'" y="0" width="'+w+'" height="'+YTH+'"/></clipPath>'
   +'<g clip-path="url(#'+q+'pc)">'+G('photo',A,PH(I,'photo',x,0,w,YTH),null)+'</g>';}
+// La foto laterale si dissolve nel fondo con una maschera, invece di essere
+// tagliata di netto e coperta da un rettangolo sfumato: il bordo duro sparisce
+// del tutto e il trattamento resta distinto da quello dei formati social.
+function ytPhotoSoft(q,A,I,w,off,feather){var x=YTW-w+(off||0),f=(feather||0.42);
+ return '<defs><linearGradient id="'+q+'mg" x1="0" y1="0" x2="1" y2="0">'
+  +'<stop offset="0" stop-color="#000000"/><stop offset="'+f+'" stop-color="#FFFFFF"/></linearGradient>'
+  +'<mask id="'+q+'mk"><rect x="'+x+'" y="0" width="'+w+'" height="'+YTH+'" fill="url(#'+q+'mg)"/></mask></defs>'
+  +'<g mask="url(#'+q+'mk)">'+G('photo',A,PH(I,'photo',x,0,w,YTH),null)+'</g>';}
 function ytFadeL(q,rightEdge,w){return '<rect x="'+(YTW-rightEdge-w)+'" y="0" width="'+w+'" height="'+YTH+'" fill="url(#'+q+'fadeL)" pointer-events="none"/>';}
 function ytFadeB(q,h){return '<rect x="0" y="'+(YTH-h)+'" width="'+YTW+'" height="'+h+'" fill="url(#'+q+'fadeB)" pointer-events="none"/>';}
 // Blocco oro inclinato con testo dentro, come nel design system.
@@ -437,31 +445,33 @@ var FMT={
  yt_parole_classico:{label:'YT · Le parole di — classico',group:'YouTube',w:1280,h:720,useComp:false,
   fields:[{k:'ytKicker',l:'Occhiello'},{k:'ytTitle',l:'Citazione'},{k:'ytName',l:'Nome'}],images:Imatch,
   gen:function(p,I,A){var q='yc';var L=ytWrap(p.ytTitle,76,-1,660);
-   var out=ytDefs(q)+ytBg(q)+ytPhotoRight(q,A,I,520,0)+ytFadeL(q,380,300)
-    +(p.showLogo===false?'':brandMark(A,44,36,96))
+   var out=ytDefs(q)+ytBg(q)+ytPhotoSoft(q,A,I,640,0,.44)
+    +(p.showLogo===false?'':brandMark(A,54,34,72))
     +G('t-comp',A,T(44,218,p.ytKicker,{s:34,w:700,fill:C.gold,ls:9}));
    var ty=300,tx='';L.forEach(function(l,i){tx+=T(44,ty+i*80,l,{s:76,w:800,fill:C.ivory,ls:-1});});
    var ny=ty+(L.length-1)*80+74;
    return out+G('t-title',A,tx)+G('t-name',A,ytRule(44,ny-14,44,4)+T(104,ny,p.ytName,{s:34,w:700,fill:C.gold}));}},
 
  yt_parole_split:{label:'YT · Le parole di — split',group:'YouTube',w:1280,h:720,useComp:false,
-  fields:[{k:'ytTitle',l:'Citazione riga 1'},{k:'ytTitle2',l:'Citazione riga 2 (oro)'},{k:'ytName',l:'Nome'},{k:'ytKicker',l:'Occhiello'}],images:Imatch,
+  fields:[{k:'ytsL1',l:'Citazione riga 1'},{k:'ytsL2',l:'Citazione riga 2 (oro)'},{k:'ytsName',l:'Nome'},{k:'ytsKicker',l:'Occhiello'}],images:Imatch,
   gen:function(p,I,A){var q='ys';
-   return ytDefs(q)+ytBg(q)+ytPhotoRight(q,A,I,560,0)+ytFadeL(q,460,280)
-    +(p.showLogo===false?'':brandMark(A,40,32,88))
-    +T(28,454,'«',{s:520,w:800,fill:C.gold,upper:false})
-    +G('t-title',A,T(40,330,p.ytTitle,{s:ytFit(p.ytTitle,98,-1,640),w:800,fill:C.ivory,ls:-1})+T(40,428,p.ytTitle2,{s:ytFit(p.ytTitle2,98,-1,640),w:800,fill:C.gold,ls:-1}))
-    +G('t-name',A,ytRule(40,492,40,5)+T(94,506,p.ytName,{s:44,w:700,fill:'#D8D2C2'})
-      +T(94+R(estW(up(p.ytName),44,0))+16,506,'· '+(p.ytKicker||''),{s:44,w:400,fill:C.fg3}));}},
+   return ytDefs(q)+ytBg(q)+ytPhotoSoft(q,A,I,680,0,.42)
+    +(p.showLogo===false?'':brandMark(A,54,34,72))
+    +'<g opacity=".16">'+T(16,392,'«',{s:400,w:800,fill:C.gold,upper:false})+'</g>'
+    +G('t-title',A,(function(){var ss=Math.min(ytFit(p.ytsL1,98,-1,640),ytFit(p.ytsL2,98,-1,640));
+     return T(40,330,p.ytsL1,{s:ss,w:800,fill:C.ivory,ls:-1})+T(40,330+Math.round(ss*1.02),p.ytsL2,{s:ss,w:800,fill:C.gold,ls:-1});})())
+    +G('t-name',A,ytRule(40,492,40,5)+T(94,506,p.ytsName,{s:44,w:700,fill:'#D8D2C2'})
+      +T(94+R(estW(up(p.ytsName),44,0))+16,506,'· '+(p.ytsKicker||''),{s:44,w:400,fill:C.fg3}));}},
 
  yt_parole_volto:{label:'YT · Le parole di — volto grande',group:'YouTube',w:1280,h:720,useComp:false,
-  fields:[{k:'ytTitle',l:'Citazione riga 1'},{k:'ytTitle2',l:'Citazione riga 2 (blocco oro)'},{k:'ytName',l:'Nome'}],images:Imatch,
+  fields:[{k:'ytoL1',l:'Citazione riga 1'},{k:'ytoL2',l:'Citazione riga 2 (blocco oro)'},{k:'ytoName',l:'Nome'}],images:Imatch,
   gen:function(p,I,A){var q='yv';
-   return ytDefs(q)+ytBg(q)+ytPhotoRight(q,A,I,620,40)+ytFadeL(q,420,340)
-    +(p.showLogo===false?'':brandMark(A,40,32,88))
-    +G('t-title',A,T(40,282,p.ytTitle,{s:ytFit(p.ytTitle,125,0,700),w:800,fill:C.ivory}))
-    +ytSlab(q,A,'t-title2',40,302,p.ytTitle2||'',ytFit(p.ytTitle2,125,0,620),-2)
-    +G('t-name',A,ytRule(40,486,40,5)+T(94,502,p.ytName,{s:40,w:700,fill:C.gold}));}},
+   return ytDefs(q)+ytBg(q)+ytPhotoSoft(q,A,I,720,40,.44)
+    +(p.showLogo===false?'':brandMark(A,54,34,72))
+    +(function(){var ss=Math.min(ytFit(p.ytoL1,125,0,700),ytFit(p.ytoL2,125,0,620));
+     return G('t-title',A,T(40,282,p.ytoL1,{s:ss,w:800,fill:C.ivory}))
+      +ytSlab(q,A,'t-title2',40,302,p.ytoL2||'',ss,-2);})()
+    +G('t-name',A,ytRule(40,486,40,5)+T(94,502,p.ytoName,{s:40,w:700,fill:C.gold}));}},
 
  yt_citazione_prot:{label:'YT · Citazione protagonista',group:'YouTube',w:1280,h:720,useComp:false,
   fields:[{k:'ytChip',l:'Pastiglia rossa'},{k:'ytTitle',l:'Citazione'},{k:'ytName',l:'Nome'}],images:Imatch,
@@ -469,7 +479,7 @@ var FMT={
    var base=YTH-44-40,ty=base-(L.length-1)*104,tx='';
    L.forEach(function(l,i){tx+=T(40,ty+i*104,l,{s:100,w:800,fill:C.ivory,ls:-1});});
    return ytDefs(q)+ytBg(q)+ytPhotoFull(A,I)+ytFadeB(q,420)
-    +(p.showLogo===false?'':brandMark(A,40,32,88))
+    +(p.showLogo===false?'':brandMark(A,54,34,72))
     +ytChip(A,'cta',YTW-44,44,p.ytChip||'',32,2)
     +G('t-title',A,tx)+G('t-name',A,T(40,YTH-44,p.ytName,{s:34,w:700,fill:C.gold,ls:8}));}},
 
@@ -479,7 +489,7 @@ var FMT={
    var tx='';L.forEach(function(l,i){tx+=T(cx,286+i*100,l,{s:96,w:800,fill:'url(#'+q+'mt)',ls:-1,anchor:'middle'});});
    var py=286+(L.length-1)*100+70,r=85;
    return ytDefs(q)+ytBg(q)
-    +(p.showLogo===false?'':brandMark(A,44,36,96))
+    +(p.showLogo===false?'':brandMark(A,54,34,72))
     +G('t-comp',A,T(cx,214,p.ytKicker,{s:34,w:700,fill:C.gold,ls:9,anchor:'middle'}))
     +G('t-title',A,tx)
     +'<clipPath id="'+q+'rc"><circle cx="'+cx+'" cy="'+(py+r)+'" r="'+r+'"/></clipPath>'
@@ -492,8 +502,8 @@ var FMT={
    var tx='';L.forEach(function(l,i){tx+=T(40,296+i*106,l,{s:104,w:800,fill:C.ivory,ls:-1});});
    var last=L[L.length-1]||'',lw=R(estW(up(last),104,-1)),gw=R(estW(up(p.yteGold||''),104,-1));
    var capo=(40+lw+22+gw)>760, gx=capo?40:40+lw+22, gy=296+(L.length-1)*106+(capo?106:0);
-   return ytDefs(q)+ytBg(q)+ytPhotoRight(q,A,I,520,0)+ytFadeL(q,400,300)
-    +(p.showLogo===false?'':brandMark(A,40,32,88))
+   return ytDefs(q)+ytBg(q)+ytPhotoSoft(q,A,I,640,0,.44)
+    +(p.showLogo===false?'':brandMark(A,54,34,72))
     +G('t-comp',A,ytRule(40,200,40,5,C.red)+T(96,216,p.yteKicker,{s:34,w:700,fill:C.gold,ls:9}))
     +G('t-title',A,tx+(p.yteGold?T(gx,gy,p.yteGold,{s:104,w:800,fill:C.gold,ls:-1}):''))
     +G('t-sub',A,T(40,gy+72,p.yteSub,{s:32,w:700,fill:'#D8D2C2'}));}},
@@ -503,7 +513,7 @@ var FMT={
   gen:function(p,I,A){var q='yt2',cx=YTW/2;
    var kw=R(estW(up(p.ytiKicker),34,9)),ky=YTH-286;
    return ytDefs(q)+ytBg(q)+ytPhotoFull(A,I)+ytFadeB(q,480)
-    +(p.showLogo===false?'':brandMark(A,40,32,88))
+    +(p.showLogo===false?'':brandMark(A,54,34,72))
     +G('t-comp',A,ytRule(cx-kw/2-76,ky-14,56,5)+T(cx,ky,p.ytiKicker,{s:34,w:700,fill:C.gold,ls:9,anchor:'middle'})+ytRule(cx+kw/2+20,ky-14,56,5))
     +G('t-title',A,T(cx,YTH-150,p.ytiTitle,{s:ytFit(p.ytiTitle,135,-2,1180),w:800,fill:'url(#'+q+'mt)',ls:-2,anchor:'middle'}))
     +ytSlab(q,A,'cta',cx-R(estW(up(p.ytiSub||''),48,0))/2-13,YTH-104,p.ytiSub||'',48,-2);}},
@@ -514,7 +524,7 @@ var FMT={
    var base=YTH-48,ty=base-(L.length-1)*88,tx='';
    L.forEach(function(l,i){tx+=T(44,ty+i*88,l,{s:84,w:800,fill:C.ivory,ls:-1});});
    return ytDefs(q)+ytBg(q)+ytPhotoFull(A,I)+ytFadeB(q,280)
-    +(p.showLogo===false?'':brandMark(A,44,36,96))
+    +(p.showLogo===false?'':brandMark(A,54,34,72))
     +ytChip(A,'cta',YTW-44,48,p.ytvChip||'',28,0,'url(#'+q+'sl)')
     +G('t-comp',A,T(44,ty-64,p.ytvKicker,{s:34,w:700,fill:C.gold,ls:9}))
     +G('t-title',A,tx);}},
@@ -523,8 +533,8 @@ var FMT={
   fields:[{k:'ytfChip',l:'Pastiglia rossa'},{k:'ytfKicker',l:'Occhiello'},{k:'ytfName',l:'Giocatore'},{k:'ytVoto',l:'Voto'},{k:'ytfLabel',l:'Etichetta voto'}],images:Imatch,
   gen:function(p,I,A){var q='yf';
    var vw=R(estW(up(p.ytVoto||''),190,0));
-   return ytDefs(q)+ytBg(q)+ytPhotoRight(q,A,I,560,20)+ytFadeL(q,440,300)
-    +(p.showLogo===false?'':brandMark(A,40,32,88))
+   return ytDefs(q)+ytBg(q)+ytPhotoSoft(q,A,I,680,20,.42)
+    +(p.showLogo===false?'':brandMark(A,54,34,72))
     +ytChip(A,'cta',YTW-44,44,p.ytfChip||'',32,2)
     +G('t-comp',A,T(40,218,p.ytfKicker,{s:34,w:700,fill:C.gold,ls:9}))
     +G('t-name',A,T(40,336,p.ytfName,{s:ytFit(p.ytfName,110,-1,640),w:800,fill:C.ivory,ls:-1}))
@@ -542,7 +552,7 @@ var FMT={
    return ytDefs(q)+ytBg(q)+ytPhotoFull(A,I)
     +'<rect width="'+YTW+'" height="'+YTH+'" fill="#0A0F24" fill-opacity=".34" pointer-events="none"/>'
     +ytFadeB(q,460)
-    +(p.showLogo===false?'':brandMark(A,40,32,88))
+    +(p.showLogo===false?'':brandMark(A,54,34,72))
     +G('logo',A,LOGOR(x0+r,400,r,I,'logoComp',q+'lc'))
     +G('t-comp',A,T(x0+r*2+gap,412,nome,{s:ns,w:700,fill:C.gold,ls:9}))
     +G('t-title',A,T(cx,556,p.ytgTitle,{s:ts,w:800,fill:'url(#'+q+'mt)',ls:-2,anchor:'middle'}))
@@ -744,7 +754,7 @@ function fname(k){if(/-live$/.test(k)){var b=k.replace(/-live$/,'');return (FNAM
 var DEF={home:'West Ham',away:'Portsmouth',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'Preshow 15:10',live:true,hlKind:'Highlights',
  heroKicker:'Como TV · Live Events',heroLine1:'Il grande calcio,',heroLine2:'in diretta.',title:'Como Cup 2026',
  novKicker:'FPF Supertaça · Porto campione',novTitle:'Alzata del trofeo',midKicker:'Como TV · Originals',midLine1:'La tua casa',midLine2:'del calcio',
- badgeName:'Carabao Cup',replName:'LPF Torneo Apertura',name:'Talent Hunters',num:'01',preshow:'Football Show 15:10',ytKicker:'Le parole di',ytTitle:'Abbiamo scritto la storia',ytTitle2:'la storia',ytName:'Mikel Arteta',ytChip:'Le parole di',ytiKicker:'Videopodcast',ytiTitle:'Calcio Inglese',ytiSub:'La corsa al titolo',yteKicker:'Calcio Inglese',yteTitle:'Il crollo dello',yteGold:'United',yteSub:'Videopodcast · Ep. 21',ytvChip:'Vlog',ytvKicker:'Dietro le quinte · Wembley',ytvTitle:'Il giorno della finale',ytfChip:'Fantatime',ytfKicker:"L'uomo della giornata",ytfName:'Douvikas',ytVoto:'9,5',ytfLabel:'Fantavoto',ytgTitle:'Gol Collection'};
+ badgeName:'Carabao Cup',replName:'LPF Torneo Apertura',name:'Talent Hunters',num:'01',preshow:'Football Show 15:10',ytKicker:'Le parole di',ytTitle:'Abbiamo scritto la storia',ytTitle2:'la storia',ytName:'Mikel Arteta',ytChip:'Le parole di',ytiKicker:'Videopodcast',ytiTitle:'Calcio Inglese',ytiSub:'La corsa al titolo',yteKicker:'Calcio Inglese',yteTitle:'Il crollo dello',yteGold:'United',yteSub:'Videopodcast · Ep. 21',ytvChip:'Vlog',ytvKicker:'Dietro le quinte · Wembley',ytvTitle:'Il giorno della finale',ytfChip:'Fantatime',ytfKicker:"L'uomo della giornata",ytfName:'Douvikas',ytVoto:'9,5',ytfLabel:'Fantavoto',ytgTitle:'Gol Collection',ytsL1:'Abbiamo scritto',ytsL2:'la storia',ytsName:'Mikel Arteta',ytsKicker:'Le parole di',ytoL1:'«Scritta',ytoL2:'la storia»',ytoName:'Arteta'};
 var FMTNAMES={talent:'Talent Hunters',goleada:'Goleada',clasicos:'Los Clásicos',golden:'Golden 90'};
 var FMTNUM={talent:'01',goleada:'02',clasicos:'03',golden:'04'};
 
