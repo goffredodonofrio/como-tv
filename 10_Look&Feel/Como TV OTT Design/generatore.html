@@ -2010,49 +2010,43 @@ function cerchio(cls,c,r,col,tratteggio,w,soloVista){
 // trascinabili e ridimensionabili. Solo in ritaglio: nella vista normale
 // sporcherebbero il giudizio sulla grafica.
 var FOCAL_DOPO=null;
-// Due livelli sovrapposti, separati dal lucchetto:
-//  - cerchio GIALLO sulla foto: dov'e' e quanto e' grande la testa. E' il gesto
-//    dell'operatore, c'e' sempre.
-//  - cerchio CIANO sul formato: dove deve finire e quanto grande. E' taratura di
-//    design, compare solo a lucchetto aperto insieme alle Regolazioni.
-// Cosi' chi fa le grafiche vede un oggetto solo e un gesto solo.
+// Due cerchi, sempre tutti e due, sempre manovrabili:
+//  - GIALLO sulla foto: dov'e' e quanto e' grande la testa;
+//  - CIANO sul formato: dove deve finire e quanto grande deve venire.
+// Il mirino non sta sotto il lucchetto: se non si vede appena si apre il
+// ritaglio, trascinandolo si finisce per spostare la foto. La sua posizione
+// resta comunque una regolazione, quindi si salva da sola.
 function drawFocalUI(svg,dopo){
  if(dopo)FOCAL_DOPO=dopo;
  if(!photoEdit)return;
- // L'istruzione cambia con il lucchetto: a chiuso si parla di un cerchio solo.
  var h=document.getElementById('peHint');
  if(h)h.textContent=!photoFullBleed(current)
   ? 'Trascina per spostare · rotella o angoli per lo zoom'
-  : (LOCKED
-    ? 'Cerchio giallo sul volto, largo quanto la testa · rotella per lo zoom'
-    : 'Giallo = il volto · ciano = dove finisce · trascina o ridimensiona');
- if(!photoFullBleed(current))return;
+  : 'Giallo = il volto · ciano = dove finisce · trascina o ridimensiona';
  [].forEach.call(svg.querySelectorAll('.mirg,.testag,.avvzoom'),function(e){e.remove();});
+ if(!photoFullBleed(current))return;
  var it=BYKEY[current],m=mirFor(current),lato=Math.min(it.w,it.h);
  var w=Math.max(3,Math.round(it.w*0.0035));
  var mc={x:it.w*m.x,y:it.h*m.y},mr=m.r*lato;
  var p=focalToStage();
- // Se il volto non riesce a diventare grande come il mirino (zoom al tetto di
- // risoluzione) va detto, altrimenti sembra che allargare il cerchio non faccia
- // niente. Il mirino diventa ambra e lo scrive.
- var corto=p&&p.r<mr-2;
- var lontano=p&&Math.hypot(p.x-mc.x,p.y-mc.y)>4;
- if(!LOCKED){
-  var gm=cerchio('mirg',mc,mr,(corto||lontano)?'#FF9F1C':'#00E5FF',true,w);svg.appendChild(gm);
-  if(corto||lontano){var av=document.createElementNS('http://www.w3.org/2000/svg','text');
-   av.setAttribute('class','avvzoom');
-   av.setAttribute('x',mc.x);av.setAttribute('y',mc.y-mr-w*4);av.setAttribute('text-anchor','middle');
-   av.setAttribute('font-family','Mazzard');av.setAttribute('font-weight','700');
-   av.setAttribute('font-size',Math.round(lato*0.035));av.setAttribute('fill','#FF9F1C');
-   av.setAttribute('pointer-events','none');
-   av.textContent=lontano?'volto troppo defilato: più in là la foto sgranerebbe'
-                         :'zoom al massimo: foto troppo piccola';
-   svg.appendChild(av);}
-  trascina(gm,svg,function(dxu,dyu,modo,base){
-   if(modo==='corpo')MIR[current]={x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r};
-   else MIR[current]={x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))};
-  },{x:mc.x,y:mc.y,r:mr},true);
- }
+ // Due modi in cui la richiesta puo' non essere soddisfatta, ed entrambi vanno
+ // detti: il volto non arriva sul mirino (soggetto troppo defilato, servirebbe
+ // uno zoom che sgranerebbe) o non diventa grande come il cerchio (foto piccola).
+ var corto=p&&p.r<mr-2, lontano=p&&Math.hypot(p.x-mc.x,p.y-mc.y)>4;
+ var gm=cerchio('mirg',mc,mr,(corto||lontano)?'#FF9F1C':'#00E5FF',true,w);svg.appendChild(gm);
+ if(corto||lontano){var av=document.createElementNS('http://www.w3.org/2000/svg','text');
+  av.setAttribute('class','avvzoom');
+  av.setAttribute('x',mc.x);av.setAttribute('y',mc.y-mr-w*4);av.setAttribute('text-anchor','middle');
+  av.setAttribute('font-family','Mazzard');av.setAttribute('font-weight','700');
+  av.setAttribute('font-size',Math.round(lato*0.035));av.setAttribute('fill','#FF9F1C');
+  av.setAttribute('pointer-events','none');
+  av.textContent=lontano?'volto troppo defilato: più in là la foto sgranerebbe'
+                        :'zoom al massimo: foto troppo piccola';
+  svg.appendChild(av);}
+ trascina(gm,svg,function(dxu,dyu,modo,base){
+  if(modo==='corpo')MIR[current]={x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r};
+  else MIR[current]={x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))};
+ },{x:mc.x,y:mc.y,r:mr},true);
  if(p){var gt=cerchio('testag',p,p.r,'#FFD166',false,w);svg.appendChild(gt);
   trascina(gt,svg,function(dxu,dyu,modo,base){
    if(modo==='corpo'){var f=stageToFocal(base.x+dxu,base.y+dyu);if(f){FOCAL.x=f.x;FOCAL.y=f.y;}}
