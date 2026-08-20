@@ -73,6 +73,8 @@ button.act:active{transform:scale(.97)}
  background:var(--gold);padding:4px 10px;border-radius:5px}
 #stage svg{max-width:100%;max-height:66vh;height:auto;box-shadow:0 30px 80px -30px #000;border-radius:4px;display:block}
 #stage svg [data-obj]{cursor:move}
+#stage.lock svg [data-obj]{cursor:default}
+.act.on{border-color:var(--gold);color:var(--gold)}
 #stage svg [data-obj].sel{outline:none}
 .selrect{fill:none;stroke:var(--sel);stroke-width:2.5;stroke-dasharray:7 5;pointer-events:none;filter:drop-shadow(0 0 3px rgba(5,7,15,.9))}
 .handle{pointer-events:auto;cursor:nwse-resize;fill:#FFFFFF;stroke:var(--sel);stroke-width:2.5;
@@ -112,8 +114,21 @@ button.act:active{transform:scale(.97)}
 .thgrp .tw{font-size:9px;width:9px;flex:none}
 .thgrp .tn{margin-left:auto;color:var(--fg3);font-weight:700;letter-spacing:.04em}
 .thgrp:first-child{margin-top:0}
-.thumb{background:rgba(255,255,255,.03);border:1px solid rgba(245,241,230,.08);border-radius:10px;padding:7px;cursor:pointer;transition:border-color .15s}
+.thumb{position:relative;background:rgba(255,255,255,.03);border:1px solid rgba(245,241,230,.08);border-radius:10px;padding:7px;cursor:pointer;transition:border-color .15s}
 .thumb.sel{border-color:var(--gold)}
+/* Spunta di inclusione nell'export: i formati esclusi restano visibili ma spenti,
+   cosi' si vede sempre l'intero parco formati e non solo quello che si esporta. */
+.thumb.off{opacity:.42}
+.thumb .xsel{position:absolute;top:11px;right:11px;width:16px;height:16px;border-radius:4px;
+ border:1.5px solid rgba(245,241,230,.45);background:rgba(5,7,15,.7);cursor:pointer;z-index:2}
+.thumb .xsel:hover{border-color:var(--gold)}
+.thumb .xsel.on{background:var(--gold);border-color:var(--gold)}
+.thumb .xsel.on::after{content:'';position:absolute;left:4px;top:1px;width:4px;height:8px;
+ border:solid #0A0F24;border-width:0 2px 2px 0;transform:rotate(42deg)}
+.thgrp .gsel{position:relative;width:13px;height:13px;flex:none;border-radius:3px;
+ border:1.5px solid rgba(201,162,75,.55);background:transparent;cursor:pointer}
+.thgrp .gsel.on{background:var(--gold);border-color:var(--gold)}
+.thgrp .gsel.mix::after{content:'';position:absolute;left:2px;top:4.5px;width:7px;height:2px;background:var(--gold)}
 .thumb .box{width:100%;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#05070F;border-radius:6px}
 .thumb .box svg{max-width:100%;max-height:100%;height:auto}
 .thumb .lb{font-size:10px;color:var(--fg2);margin-top:5px;text-align:center;line-height:1.3}
@@ -174,13 +189,15 @@ small.flag{color:#E3C271}
  </div></div>
  <div class="main">
   <div class="photobar">
-   <button class="act" id="dlPng">Scarica PNG</button>
-   <button class="act" id="dlAll">Esporta tutti (ZIP)</button>
+   <button class="act" id="dlPng">Scarica JPG</button>
+   <button class="act" id="dlAll">Esporta selezionati</button>
    <button class="act ghost" id="resetPos">Reset posizioni</button>
+   <button class="act ghost on" id="lockBtn" title="Blocca gli elementi: da chiuso non si spostano per sbaglio">🔒 Bloccato</button>
    <span class="tbsep"></span>
    <span class="pbl">FOTO</span>
    <div class="seg">Zoom <span id="phZv" style="font-variant-numeric:tabular-nums;font-weight:800;color:var(--ivory)">110%</span></div>
    <button class="act" id="phEdit">Ritaglia foto</button>
+   <button class="act ghost" id="focalBtn" title="Indica dov'è il volto: tutti i formati si allineano da soli">🎯 Punto volto</button>
    <button class="act ghost" id="phReset">Centra foto</button>
   </div>
   <div class="editbar" id="textBar" style="display:none">
@@ -285,7 +302,10 @@ function R(n){return Math.round(n);}
 // Comprende il 'vs' e l'interlinea, per non alterare il lockup.
 var TEAM_SCALE=0.90;
 // MATCH — layout VERTICALE generico (foto full-bleed, testo in basso). Stesso design.
+// hl: false = match con data/ora · true = "Highlights" · stringa = quella parola
+// (serve per i formati Replay, identici agli Highlights salvo l'etichetta).
 function mPortrait(W,H,p,I,A,hl){
+ var kind=(hl===true?'Highlights':hl);
  var M=R(W*0.056),homeS=R(W*0.10*TEAM_SCALE),vsS=R(W*0.036*TEAM_SCALE),kickS=R(W*0.030),dtS=R(W*0.042),preS=R(W*0.026),footS=R(W*0.019);
  var bm=R(H*0.05),footY=H-bm,lineY=footY-R(footS*1.7),badgeR=R(footS*1.05),badgeCy=footY-R(footS*0.33);
  var dtY=lineY-R(W*0.028),awayY=dtY-R(homeS*0.6),homeY=awayY-R(homeS*0.9),kickY=homeY-R(homeS*0.95),tickH=R(kickS*0.9);
@@ -296,7 +316,7 @@ function mPortrait(W,H,p,I,A,hl){
   +(p.english?G('eng',A,engPill(M,R(H*0.04))):'')
   +G('t-home',A,runsT(M,homeY,{ls:-3},[{t:p.home,w:800,fill:C.ivory,s:homeS},{t:'vs',w:600,fill:C.gold,s:vsS}]))
   +G('t-away',A,T(M,awayY,p.away,{s:homeS,w:800,ls:-3,fill:C.goldB}))
-  +(hl?G('t-hl',A,T(M,dtY,'Highlights',{s:R(dtS*0.92),w:700,fill:C.gold,ls:R(dtS*0.16)})):(G('t-dt',A,runsT(M,dtY,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,w:800,fill:C.gold,upper:false,s:dtS}]))+pv))
+  +(hl?G('t-hl',A,T(M,dtY,kind,{s:R(dtS*0.92),w:700,fill:C.gold,ls:R(dtS*0.16)})):(G('t-dt',A,runsT(M,dtY,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,w:800,fill:C.gold,upper:false,s:dtS}]))+pv))
   +'<rect x="'+M+'" y="'+lineY+'" width="'+(W-2*M)+'" height="1" fill="#F5F1E6" fill-opacity=".14"/>'
   +G('logo',A,LOGOR(M+badgeR,badgeCy,badgeR,I,'logoComp','lcP'+W+'x'+H)+T(M+badgeR*2+R(W*0.02),footY,p.comp,{s:footS,w:700,fill:C.fg2,ls:4}))
   +hair(W,H,H-5);
@@ -375,6 +395,7 @@ function mStory(p,I,A,k,gid,video){
 }
 // MATCH — layout ORIZZONTALE generico (foto a destra, testo a sinistra). Stesso design.
 function mLandscape(W,H,p,I,A,hl,mid){
+ var kind=(hl===true?'Highlights':hl);
  var M=R(W*0.032),homeS=R(H*0.135*TEAM_SCALE),vsS=R(H*0.05*TEAM_SCALE),kickS=R(H*0.028),dtS=R(H*0.04);
  var defs='<defs><linearGradient id="lL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".4" stop-color="'+SCRIM+'" stop-opacity=".82"/><stop offset=".72" stop-color="#0A0F24" stop-opacity=".15"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient><linearGradient id="bL" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="'+SCRIM+'" stop-opacity="1"/><stop offset=".45" stop-color="'+SCRIM+'" stop-opacity="0"/></linearGradient>'+goldGrad('gL')+'</defs>';
  var kickY=R(H*0.28),homeY=R(H*0.47),awayY=homeY+R(homeS*0.76),ulY=awayY+R(H*0.05),dtY=ulY+R(dtS*1.7),tickH=R(kickS*0.95),ulH=Math.max(3,R(H*0.007));
@@ -396,7 +417,7 @@ function mLandscape(W,H,p,I,A,hl,mid){
   +G('t-comp',A,'<rect x="'+M+'" y="'+(kickY-tickH+R(kickS*0.05))+'" width="'+R(H*0.006)+'" height="'+tickH+'" rx="2" fill="'+C.gold+'"/>'+T(M+R(H*0.02),kickY,p.comp,{s:kickS,w:700,fill:C.gold,ls:5}))
   +G('t-home',A,runsT(M,homeY,{ls:-3},[{t:p.home,w:800,fill:C.ivory,s:homeS},{t:'vs',w:600,fill:C.gold,s:vsS}]))
   +G('t-away',A,T(M,awayY,p.away,{s:homeS,w:800,ls:-3,fill:C.goldB})+'<rect x="'+M+'" y="'+ulY+'" width="'+R(W*0.17)+'" height="'+ulH+'" rx="2" fill="url(#gL)"/>')
-  +(hl?G('t-hl',A,T(M,dtY,'Highlights',{s:R(dtS*0.95),w:700,fill:C.gold,ls:R(dtS*0.16)})):(G('t-dt',A,runsT(M,dtY,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,w:800,fill:C.gold,upper:false,s:dtS}]))+pv));
+  +(hl?G('t-hl',A,T(M,dtY,kind,{s:R(dtS*0.95),w:700,fill:C.gold,ls:R(dtS*0.16)})):(G('t-dt',A,runsT(M,dtY,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,w:800,fill:C.gold,upper:false,s:dtS}]))+pv));
 }
 // FAN VOICE — story 9:16 (design dedicato)
 function mFanVoice(W,H,p,I,A){
@@ -566,6 +587,12 @@ var FMT={
  hl_banner_top_1506x560:{label:'HL banner-top (1506×560)',group:'Highlights',w:1506,h:560,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mLandscape(1506,560,p,I,A,true);}},
  hl_banner_mid_1506x412:{label:'HL banner-mid (1506×412)',group:'Highlights',w:1506,h:412,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mLandscape(1506,412,p,I,A,true,true);}},
 
+ // Replay: stessi layout degli Highlights, cambia solo la parola al posto di data/ora.
+ rp_landscape_1920x1080:{label:'Replay landscape (1920×1080)',group:'Replay',w:1920,h:1080,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mLandscape(1920,1080,p,I,A,'Replay');}},
+ rp_portrait_1080x1620:{label:'Replay portrait (1080×1620)',group:'Replay',w:1080,h:1620,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mPortrait(1080,1620,p,I,A,'Replay');}},
+ rp_banner_top_1506x560:{label:'Replay banner-top (1506×560)',group:'Replay',w:1506,h:560,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mLandscape(1506,560,p,I,A,'Replay');}},
+ rp_banner_mid_1506x412:{label:'Replay banner-mid (1506×412)',group:'Replay',w:1506,h:412,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mLandscape(1506,412,p,I,A,'Replay',true);}},
+
  ott_hero_1920x1080:{label:'Hero banner 16:9',group:'Editoriale',w:1920,h:1080,fields:[{k:'heroKicker',l:'Kicker'},{k:'heroLine1',l:'Titolo riga 1'},{k:'heroLine2',l:'Titolo riga 2'}],images:[{k:'photo',l:'Foto'},{k:'logoComp',l:'Logo'}],gen:function(p,I,A){var W=1920,H=1080;
   return bg(W,H)
    +'<defs><clipPath id="phH"><rect x="900" width="1020" height="'+H+'"/></clipPath>'
@@ -721,6 +748,9 @@ var MENU=[
  {g:'Piattaforma highlights',k:[
    'hl_feed_1080x1350','hl_story_1080x1920','hl_landscape_1920x1080','hl_portrait_1080x1620',
    'hl_banner_top_1506x560','hl_banner_mid_1506x412']},
+ {g:'Piattaforma replay',k:[
+   'rp_landscape_1920x1080','rp_portrait_1080x1620',
+   'rp_banner_top_1506x560','rp_banner_mid_1506x412']},
  {g:'Competizioni',k:['competizioni_1200x1800']},
  {g:'Social media',k:[
    'feed_1080x1440','story_1080x1920','fanvoice_1080x1920']},
@@ -742,7 +772,7 @@ var ITEMS=(function(){var src={};OTTGEN.items().forEach(function(i){src[i.key]=i
  return out;})();
 var BYKEY={};ITEMS.forEach(function(i){BYKEY[i.key]=i;});
 // naming convention export (come richiesto)
-var FNAME={feed_1080x1440:'feed',story_1080x1920:'story',story_video_1080x1920:'story-video',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'YT-Highlights',yt_gol_collection:'YT-gol-collection',yt_inglese_testata:'YT-testata',yt_inglese_editoriale:'YT-editoriale',yt_parole_classico:'YT-parole-classico',yt_parole_split:'YT-parole-split',yt_parole_volto:'YT-parole-volto',yt_citazione_prot:'YT-citazione',yt_vlog_foto:'YT-vlog',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',competizioni_1200x1800:'competizioni',format_card_talent:'format-talent',format_card_goleada:'format-goleada',format_card_clasicos:'format-clasicos',format_card_golden:'format-golden'};
+var FNAME={feed_1080x1440:'feed',story_1080x1920:'story',story_video_1080x1920:'story-video',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'YT-Highlights',yt_gol_collection:'YT-gol-collection',yt_inglese_testata:'YT-testata',yt_inglese_editoriale:'YT-editoriale',yt_parole_classico:'YT-parole-classico',yt_parole_split:'YT-parole-split',yt_parole_volto:'YT-parole-volto',yt_citazione_prot:'YT-citazione',yt_vlog_foto:'YT-vlog',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',rp_landscape_1920x1080:'RP-landscape',rp_portrait_1080x1620:'RP-portrait',rp_banner_top_1506x560:'RP-banner-top',rp_banner_mid_1506x412:'RP-banner-mid',competizioni_1200x1800:'competizioni',format_card_talent:'format-talent',format_card_goleada:'format-goleada',format_card_clasicos:'format-clasicos',format_card_golden:'format-golden'};
 function fname(k){if(/-live$/.test(k)){var b=k.replace(/-live$/,'');return (FNAME[b]||b)+'-live';}return FNAME[k]||k;}
 // default text values per format base
 var DEF={home:'West Ham',away:'Portsmouth',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'Preshow 15:10',live:true,hlKind:'Highlights',
@@ -1006,7 +1036,7 @@ function artRect(svg){
 function stageMarks(st){
  st=st||document.getElementById('stage');
  st.querySelectorAll('.fmtbox').forEach(function(e){e.remove();});
- if(st.className!=='marks')return;
+ if(!/\bmarks\b/.test(st.className))return;
  var art=st.querySelector('svg')||st.querySelector('canvas');
  if(!art)return;
  // Misure reali dell'artwork: #stage non si stringe sull'SVG quando e'
@@ -1023,7 +1053,7 @@ function stageMarks(st){
  n.textContent=fname(current);box.appendChild(n);
  st.appendChild(box);
 }
-function renderStage(){if(videoPick){renderVideoPicker();return;}if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');svg.style.background='none';applyTextStyles(svg,current);st.className='marks';setTimeout(function(){stageMarks(st);},0);
+function renderStage(){if(videoPick){renderVideoPicker();return;}if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');svg.style.background='none';applyTextStyles(svg,current);st.className='marks'+(LOCKED?' lock':'');setTimeout(function(){stageMarks(st);},0);
  attachInteract(svg);highlightSel(svg);syncScaleSlider();syncPhotoBar();drawMirino(svg);
  setTimeout(drawRulers,0);}
 // ---- menù foto dedicato (Zoom / Orizzontale / Verticale) ----
@@ -1284,7 +1314,8 @@ function renderPhotoEditor(){
  ['rulerTop','rulerLeft','rulerCorner'].forEach(function(id){var c=document.getElementById(id);if(c)c.style.display='none';});
  var g=svg.querySelector('[data-obj="photo"]');
  if(!g){exitPhotoEdit();return;}
- var a=ensureAdj('photo',svg);photoClamp(a);g.setAttribute('transform',objTF(a));syncPhotoBar();drawMirino(svg);
+ var a=ensureAdj('photo',svg);photoClamp(a);g.setAttribute('transform',objTF(a));syncPhotoBar();drawMirino(svg);drawFocalMark(svg);
+ if(focalPick)svg.style.cursor='crosshair';
  // Maniglie d'angolo: esistono solo qui, non alla semplice selezione.
  // Stanno in coordinate assolute, non dentro un gruppo trasformato, cosi' il
  // raggio non si gonfia insieme allo zoom della foto.
@@ -1316,7 +1347,17 @@ function renderPhotoEditor(){
   window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);});});
  PEUPD=function(){var aa=STATE[current].adj.photo;if(aa){photoClamp(aa);peSync();}};
  setTimeout(peSync,0);
- svg.addEventListener('pointerdown',function(ev){ev.preventDefault();pushUndoC();var k=svgUnitPerPx(svg);var sx=ev.clientX,sy=ev.clientY,dx0=a.dx||0,dy0=a.dy||0;
+ svg.addEventListener('pointerdown',function(ev){ev.preventDefault();
+   // In scelta del punto volto il clic non trascina: segna e riallinea tutto.
+   if(focalPick){
+    var pt=svg.createSVGPoint();pt.x=ev.clientX;pt.y=ev.clientY;
+    var loc=pt.matrixTransform(svg.getScreenCTM().inverse());
+    var f=stageToFocal(loc.x,loc.y);if(!f)return;
+    pushUndo();FOCAL=f;focalPick=false;syncFocalBtn();
+    applyFocalAll(function(){renderStage();refreshThumbs();});
+    return;
+   }
+   pushUndoC();var k=svgUnitPerPx(svg);var sx=ev.clientX,sy=ev.clientY,dx0=a.dx||0,dy0=a.dy||0;
    function mv(e){a.dx=dx0+(e.clientX-sx)*k;a.dy=dy0+(e.clientY-sy)*k;photoClamp(a);peSync();syncPhotoBar();}
    function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);}
    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);});
@@ -1377,9 +1418,13 @@ function snapToAlign(el,svg,a,threshold){var SNAP=threshold||15;var bb=el.getBBo
  var distBottomToBottom=Math.abs((bb.y+bb.height+a.dy)-(obb.y+obb.height));if(distBottomToBottom<minDistY){minDistY=distBottomToBottom;bestDy=(obb.y+obb.height)-(bb.y+bb.height);}
  var distCenterYToCenter=Math.abs((bb.y+bb.height/2+a.dy)-(obb.y+obb.height/2));if(distCenterYToCenter<minDistY){minDistY=distCenterYToCenter;bestDy=(obb.y+obb.height/2)-(bb.y+bb.height/2);}
  });return{dx:bestDx,dy:bestDy};}
+// Lucchetto: da chiuso (default) niente si sposta o si ridimensiona per sbaglio.
+// La foto resta gestibile entrando in ritaglio, che e' una scelta esplicita.
+// Il doppio clic per modificare i testi continua a funzionare: non muove nulla.
+var LOCKED=true;
 function attachInteract(svg){
  var objs=svg.querySelectorAll('[data-obj]');
- objs.forEach(function(el){el.addEventListener('pointerdown',function(ev){ev.preventDefault();pushUndo();
+ objs.forEach(function(el){el.addEventListener('pointerdown',function(ev){if(LOCKED)return;ev.preventDefault();pushUndo();
    var o=el.getAttribute('data-obj');selObj=o;var a=ensureAdj(o,svg);
    var k=svgUnitPerPx(svg);var sx=ev.clientX,sy=ev.clientY,dx0=a.dx,dy0=a.dy;
    document.getElementById('selName').textContent='Oggetto: '+o;
@@ -1388,7 +1433,7 @@ function attachInteract(svg){
    function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);if(o==='photo')syncPhotoBar();}
    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);
  });
- el.addEventListener('wheel',function(ev){ev.preventDefault();pushUndoC();var o=el.getAttribute('data-obj');selObj=o;var a=ensureAdj(o,svg);
+ el.addEventListener('wheel',function(ev){if(LOCKED)return;ev.preventDefault();pushUndoC();var o=el.getAttribute('data-obj');selObj=o;var a=ensureAdj(o,svg);
    var lo=(o==='photo')?1:0.3,hi=(o==='photo')?3.5:2.6;
    a.s=Math.min(hi,Math.max(lo,(a.s||1)*(ev.deltaY<0?1.06:0.94)));if(o==='photo')photoClamp(a);el.setAttribute('transform',objTF(a));syncScaleSlider();if(o==='photo')syncPhotoBar();highlightSel(svg);},{passive:false});
  el.addEventListener('dblclick',function(){var o=el.getAttribute('data-obj');if(o==='photo')enterPhotoEdit();else if(TEXT_EDIT_MAP[o])startTextEdit(o,el,svg);});
@@ -1504,6 +1549,17 @@ document.getElementById('scaleR').addEventListener('input',function(){applyObjSc
 document.getElementById('scaleV').addEventListener('focus',function(){pushUndo();});
 document.getElementById('scaleV').addEventListener('input',function(){var n=parseFloat(this.value);if(isNaN(n))return;var base=baseFontOf(selObj);applyObjScale(base?((n/PT_PER_PX)/base):(n/100),true);});
 document.getElementById('scaleV').addEventListener('blur',function(){syncScaleSlider();});
+function syncFocalBtn(){var b=document.getElementById('focalBtn');if(!b)return;
+ b.className='act ghost'+(focalPick?' on':'');
+ b.textContent=focalPick?'🎯 Clicca sul volto':'🎯 Punto volto';}
+document.getElementById('focalBtn').onclick=function(){
+ focalPick=!focalPick;syncFocalBtn();
+ if(focalPick&&!photoEdit)enterPhotoEdit();else renderStage();};
+document.getElementById('lockBtn').onclick=function(){
+ LOCKED=!LOCKED;this.textContent=LOCKED?'🔒 Bloccato':'🔓 Sbloccato';
+ this.className='act ghost'+(LOCKED?' on':'');
+ if(LOCKED){selObj=null;document.getElementById('selName').textContent='Nessun oggetto selezionato';}
+ renderStage();};
 document.getElementById('resetPos').onclick=function(){pushUndo();STATE[current].adj={};selObj=null;document.getElementById('selName').textContent='Nessun oggetto selezionato';renderStage();};
 document.getElementById('scaleR').addEventListener('pointerdown',function(){pushUndo();});
 
@@ -1513,6 +1569,14 @@ document.getElementById('scaleR').addEventListener('pointerdown',function(){push
 // formato corrente: quando cambi formato il suo gruppo si apre da solo, ma da
 // li' in poi comanda il clic.
 var THOPEN={},THCUR=null;
+// Selezione per l'export. Di default sono accesi solo i formati che escono per
+// ogni partita: piattaforma (live, highlights, replay), FanVoice e Story. Gli
+// altri si esportano solo se spuntati, per non riempire Drive di file inutili.
+var EXPDEF={};['Piattaforma live','Piattaforma highlights','Piattaforma replay'].forEach(function(g){EXPDEF[g]=1;});
+var EXPSEL={};ITEMS.forEach(function(it){
+ EXPSEL[it.key]=!!EXPDEF[CAT[it.key]]||it.key==='fanvoice_1080x1920'||it.key==='story_1080x1920';});
+function expCount(){return ITEMS.filter(function(it){return EXPSEL[it.key];}).length;}
+function syncExpBtn(){var b=document.getElementById('dlAll');if(b)b.textContent='Esporta selezionati ('+expCount()+')';}
 function renderThumbs(){
  var box=document.getElementById('thumbs');box.innerHTML='';
  var cur=CAT[current]||'',gruppi=[];
@@ -1521,34 +1585,64 @@ function renderThumbs(){
   if(!gruppi.length||gruppi[gruppi.length-1].g!==g)gruppi.push({g:g,items:[]});
   gruppi[gruppi.length-1].items.push(it);});
  gruppi.forEach(function(gr){
-  var aperto=!!THOPEN[gr.g];
+  var aperto=!!THOPEN[gr.g],nSel=gr.items.filter(function(it){return EXPSEL[it.key];}).length;
   var hd=document.createElement('div');hd.className='thgrp';
-  hd.innerHTML='<span class="tw">'+(aperto?'\u25be':'\u25b8')+'</span>'+gr.g
-   +'<span class="tn">'+gr.items.length+'</span>';
+  // Il quadratino sulla testata accende/spegne tutto il gruppo in un colpo.
+  var gcb=document.createElement('span');gcb.className='gsel'+(nSel===gr.items.length?' on':(nSel?' mix':''));
+  gcb.title='Includi tutto il gruppo nell\'export';
+  gcb.onclick=function(e){e.stopPropagation();var v=nSel!==gr.items.length;
+   gr.items.forEach(function(it){EXPSEL[it.key]=v;});renderThumbs();syncExpBtn();};
+  hd.appendChild(gcb);
+  var tw=document.createElement('span');tw.className='tw';tw.textContent=aperto?'\u25be':'\u25b8';hd.appendChild(tw);
+  hd.appendChild(document.createTextNode(gr.g));
+  var tn=document.createElement('span');tn.className='tn';tn.textContent=nSel+'/'+gr.items.length;hd.appendChild(tn);
   hd.onclick=function(){THOPEN[gr.g]=!aperto;renderThumbs();};
   box.appendChild(hd);
   var wrap=document.createElement('div');wrap.className='thwrap';
   if(!aperto)wrap.style.display='none';
   gr.items.forEach(function(it){
-   var d=document.createElement('div');d.className='thumb'+(it.key===current?' sel':'');
+   var d=document.createElement('div');d.className='thumb'+(it.key===current?' sel':'')+(EXPSEL[it.key]?'':' off');
    d.innerHTML='<div class="box">'+svgScreen(it.key)+'</div><div class="lb"><b>'+fname(it.key)+'</b><br>'+it.w+'\u00d7'+it.h+'</div>';
    if(hasFontOverrides(it.key)){var tsvg=d.querySelector('svg');if(tsvg)applyTextStyles(tsvg,it.key);}
+   var cb=document.createElement('span');cb.className='xsel'+(EXPSEL[it.key]?' on':'');
+   cb.title=EXPSEL[it.key]?'Nell\'export':'Escluso dall\'export';
+   cb.onclick=function(e){e.stopPropagation();EXPSEL[it.key]=!EXPSEL[it.key];renderThumbs();syncExpBtn();};
+   d.appendChild(cb);
    d.onclick=function(){current=it.key;selObj=null;document.getElementById('fmtSel').value=it.key;renderControls();renderStage();renderThumbs();};
    wrap.appendChild(d);});
   box.appendChild(wrap);
  });
+ syncExpBtn();
 }
 function markThumb(){var t=document.querySelectorAll('.thumb');ITEMS.forEach(function(it,i){if(t[i])t[i].className='thumb'+(it.key===current?' sel':'');});}
 
 // ---------- export ----------
+// Export in JPG: la piattaforma rifiuta i file oltre 1 MB, quindi la qualita'
+// scende a scalini finche' il file non ci sta. Il JPG non ha canale alfa: il
+// fondo viene dipinto prima, altrimenti le zone scoperte uscirebbero nere.
+var MAX_BYTES=1000000, JPG_Q=[0.92,0.86,0.80,0.74,0.68,0.60,0.52,0.45];
 function rasterize(svgStr,w,h){return new Promise(function(res,rej){var img=new Image();
- img.onload=function(){var cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);cv.toBlob(function(b){res(b);},'image/png');};
+ img.onload=function(){
+  var cv=document.createElement('canvas');cv.width=w;cv.height=h;
+  var x=cv.getContext('2d');x.fillStyle='#0A0F24';x.fillRect(0,0,w,h);x.drawImage(img,0,0,w,h);
+  var i=0;
+  (function prova(){
+   cv.toBlob(function(b){
+    if(!b){rej(new Error('canvas vuoto'));return;}
+    if(b.size<=MAX_BYTES||i>=JPG_Q.length-1){res(b);return;}
+    i++;prova();
+   },'image/jpeg',JPG_Q[i]);
+  })();
+ };
  img.onerror=rej;img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(svgStr)));});}
 function dl(blob,name){var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(a.href);},3000);}
 function busy(on,t){document.getElementById('busy').className='busy'+(on?' on':'');if(t)document.getElementById('busyTxt').textContent=t;}
-document.getElementById('dlPng').onclick=function(){var it=BYKEY[current];busy(true,'Rendo PNG…');document.fonts.ready.then(function(){return rasterize(svgExport(current),it.w,it.h);}).then(function(b){dl(b,fname(current)+'.png');busy(false);});};
-document.getElementById('dlAll').onclick=function(){if(!window.JSZip){alert('JSZip non caricato (serve connessione).');return;}busy(true,'Esporto tutti…');var zip=new JSZip();
- document.fonts.ready.then(function(){var ch=Promise.resolve();ITEMS.forEach(function(it,i){ch=ch.then(function(){busy(true,'Esporto '+fname(it.key)+'…');var pfx=('0'+(i+1)).slice(-2)+'_';return rasterize(svgExport(it.key),it.w,it.h).then(function(b){zip.file(pfx+fname(it.key)+'.png',b);});});});return ch;})
+document.getElementById('dlPng').onclick=function(){var it=BYKEY[current];busy(true,'Rendo JPG…');document.fonts.ready.then(function(){return rasterize(svgExport(current),it.w,it.h);}).then(function(b){dl(b,fname(current)+'.jpg');busy(false);});};
+document.getElementById('dlAll').onclick=function(){if(!window.JSZip){alert('JSZip non caricato (serve connessione).');return;}
+ var sel=ITEMS.filter(function(it){return EXPSEL[it.key];});
+ if(!sel.length){alert('Nessun formato selezionato: spunta almeno una miniatura nella colonna di destra.');return;}
+ busy(true,'Esporto '+sel.length+' formati…');var zip=new JSZip();
+ document.fonts.ready.then(function(){var ch=Promise.resolve();sel.forEach(function(it,i){ch=ch.then(function(){busy(true,'Esporto '+fname(it.key)+'… ('+(i+1)+'/'+sel.length+')');var pfx=('0'+(i+1)).slice(-2)+'_';return rasterize(svgExport(it.key),it.w,it.h).then(function(b){zip.file(pfx+fname(it.key)+'.jpg',b);});});});return ch;})
  .then(function(){return zip.generateAsync({type:'blob'});}).then(function(b){dl(b,'Como_TV_OTT_export.zip');busy(false);}).catch(function(e){busy(false);alert('Errore: '+e);});};
 
 // ---------- Undo / Redo + scorciatoie ----------
@@ -1583,125 +1677,158 @@ document.fonts.ready.then(function(){renderControls();renderStage();renderThumbs
 renderControls();renderStage();renderThumbs();
 loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
 
-// Mirino: il punto in cui deve cadere il centro del volto rilevato, come frazione
-// W/H del formato. Orizzontalmente al centro, verticale nella parte alta del
-// frame (sopra la fascia testo/scrim in basso) — cosi' i soggetti restano
-// allineati tra loro quando le grafiche vengono prodotte in batteria.
-var FACE_TARGET={x:0.5,y:0.22};
-// Disegna il reticolo del mirino sull'svg dato, se il formato corrente e' portrait.
-// Richiamata sia nella vista normale sia in "Ritaglia foto", cosi' resta visibile
-// sempre, non solo durante il ritaglio.
+// ---------- ancoraggio del volto ----------
+// Il punto di interesse ("volto") si sceglie UNA volta sulla foto e vale per
+// tutti i formati: ogni formato lo porta nel proprio bersaglio invece di
+// ritagliare al centro. E' il principio del posizionamento su Photoshop.
+// FOCAL e' in frazione dell'immagine naturale, quindi indipendente dai pixel.
+var FOCAL={x:0.5,y:0.36};
+// Bersaglio per formato, in frazione W/H. I layout non sono uguali fra loro:
+// negli orizzontali il testo occupa la sinistra, nei verticali la fascia bassa.
+var FACE_T={
+ feed_1080x1440:[0.50,0.22],
+ story_1080x1920:[0.50,0.24],story_video_1080x1920:[0.50,0.24],
+ fanvoice_1080x1920:[0.50,0.20],
+ hl_feed_1080x1350:[0.50,0.24]
+};
+function faceTarget(key){
+ var b=key.replace(/-live$/,'');
+ if(FACE_T[b])return FACE_T[b];
+ var it=BYKEY[key],r=it.w/it.h;
+ if(r>=1.5)return [0.68,0.42];  // landscape e banner: testo a sinistra
+ if(r<=0.85)return [0.50,0.28]; // verticali: testo in basso
+ return [0.50,0.34];
+}
+// Vero solo dove la foto e' a pieno formato dentro una clip fissa: li' spostare
+// il gruppo fa scorrere la foto nella finestra. Sui pannelli YouTube (ritaglio
+// "slice") muovere il gruppo sposterebbe il pannello stesso, quindi si esclude.
+var _fullBleed={};
+function photoFullBleed(key){
+ if(_fullBleed[key]===undefined){
+  // La clip 'pcpWxH' la emette solo GPHOTO, cioe' esattamente il caso a pieno
+  // formato. Cercare l'attributo sull'<image> non funziona: il data URI della
+  // foto e' lungo centinaia di migliaia di caratteri e sfonda ogni finestra.
+  var it=BYKEY[key];
+  _fullBleed[key]=svgScreen(key).indexOf('<clipPath id="pcp'+it.w+'x'+it.h+'"')>=0;
+ }
+ return _fullBleed[key];
+}
+// Inverte PHOTO()+objTF(): il "cover" e' centrato sul frame, quindi il centro di
+// scala e' (W/2,H/2) e resta da risolvere solo la traslazione. Il risultato e'
+// limitato perche' la foto continui a coprire tutto il formato.
+// Zoom minimo perche' il bersaglio sia raggiungibile senza scoprire il fondo.
+// Su una foto con lo stesso rapporto del formato la copertura e' esatta e non
+// c'e' un millimetro di margine: per spostare il volto bisogna ingrandire, come
+// si fa a mano in Photoshop. Oltre ZOOM_MAX ci si ferma e si va il piu' vicino
+// possibile, per non arrivare a immagini sgranate.
+var ZOOM_MAX=1.6;
+function minScaleFor(L,D,a,u){
+ // vincolo: |a - s*u| <= (D*s - L)/2   →  due disuguaglianze lineari in s
+ var s=0;
+ var d1=D+2*u;if(d1>0)s=Math.max(s,(2*a+L)/d1);
+ var d2=D-2*u;if(d2>0)s=Math.max(s,(L-2*a)/d2);
+ return s;
+}
+function focalAdjFor(key,nat,scale){
+ var it=BYKEY[key],W=it.w,H=it.h;
+ var cov=Math.max(W/nat.w,H/nat.h),Dw=nat.w*cov,Dh=nat.h*cov;
+ var t=faceTarget(key);
+ var ux=cov*(FOCAL.x*nat.w-nat.w/2),uy=cov*(FOCAL.y*nat.h-nat.h/2);
+ var need=Math.max(minScaleFor(W,Dw,W*(t[0]-0.5),ux),minScaleFor(H,Dh,H*(t[1]-0.5),uy));
+ // Il tetto non e' un numero fisso ma la risoluzione: finche' 'cov*s' resta
+ // sotto 1 la foto viene ancora rimpicciolita, quindi si puo' zoomare senza
+ // perdere nulla. Le foto piccole restano protette dal limite di ZOOM_MAX.
+ var tetto=Math.min(3,Math.max(ZOOM_MAX,1.15/cov));
+ var s=Math.min(tetto,Math.max(scale||PHOTO_MIN_ZOOM,need));
+ var dw=Dw*s,dh=Dh*s;
+ var dx=W*t[0]-W/2-s*ux, dy=H*t[1]-H/2-s*uy;
+ dx=Math.max(W-(W+dw)/2,Math.min((dw-W)/2,dx));
+ dy=Math.max(H-(H+dh)/2,Math.min((dh-H)/2,dy));
+ return {dx:dx,dy:dy,s:s,cx:W/2,cy:H/2};
+}
+// Riallinea tutti i formati al punto scelto. Chiamata quando si carica una foto
+// o si sposta il mirino: un gesto solo, 30 ritagli.
+function applyFocalAll(cb){
+ var src=curPhotoSrc();
+ loadNat(src,function(nat){
+  if(nat&&nat.w>1&&nat.h>1){
+   ITEMS.forEach(function(it){
+    if(!photoFullBleed(it.key))return;
+    var old=STATE[it.key].adj.photo;
+    STATE[it.key].adj.photo=focalAdjFor(it.key,nat,old&&old.s);
+   });
+  }
+  cb&&cb();
+ });
+}
+// Mirino: cerchio tratteggiato sul bersaglio del formato, cosi' si vede dove
+// finira' il volto. Solo in ritaglio, per non sporcare la vista normale.
 function drawMirino(svg){
- var fmt=BYKEY[current];
- if(!fmt||!fmt.label||!fmt.label.toLowerCase().includes('portrait'))return;
- var tx=fmt.w*FACE_TARGET.x,ty=fmt.h*FACE_TARGET.y,mr=Math.round(fmt.w*0.15);
- var mirino=document.createElementNS('http://www.w3.org/2000/svg','g');
- mirino.setAttribute('pointer-events','none');
- mirino.innerHTML='<circle cx="'+tx+'" cy="'+ty+'" r="'+mr+'" fill="none" stroke="#C9A24B" stroke-width="4" stroke-dasharray="12 9" opacity=".85"/>'
-  +'<line x1="'+(tx-mr-20)+'" y1="'+ty+'" x2="'+(tx-mr+20)+'" y2="'+ty+'" stroke="#C9A24B" stroke-width="4" opacity=".85"/>'
-  +'<line x1="'+(tx+mr-20)+'" y1="'+ty+'" x2="'+(tx+mr+20)+'" y2="'+ty+'" stroke="#C9A24B" stroke-width="4" opacity=".85"/>'
-  +'<line x1="'+tx+'" y1="'+(ty-mr-20)+'" x2="'+tx+'" y2="'+(ty-mr+20)+'" stroke="#C9A24B" stroke-width="4" opacity=".85"/>'
-  +'<line x1="'+tx+'" y1="'+(ty+mr-20)+'" x2="'+tx+'" y2="'+(ty+mr+20)+'" stroke="#C9A24B" stroke-width="4" opacity=".85"/>';
- svg.appendChild(mirino);
+ if(!photoEdit||!photoFullBleed(current))return;
+ var fmt=BYKEY[current],t=faceTarget(current);
+ var tx=fmt.w*t[0],ty=fmt.h*t[1],mr=Math.round(Math.min(fmt.w,fmt.h)*0.13),b=Math.max(3,Math.round(fmt.w*0.003));
+ var g=document.createElementNS('http://www.w3.org/2000/svg','g');
+ g.setAttribute('pointer-events','none');
+ g.innerHTML='<circle cx="'+tx+'" cy="'+ty+'" r="'+mr+'" fill="none" stroke="#00E5FF" stroke-width="'+b+'" stroke-dasharray="'+(mr*0.22)+' '+(mr*0.16)+'" opacity=".9"/>'
+  +'<circle cx="'+tx+'" cy="'+ty+'" r="'+b+'" fill="#00E5FF"/>';
+ svg.appendChild(g);
 }
-
-// Auto-positioning intelligente con face detection: formati banner e portrait.
+// Segna sulla foto il punto scelto e, quando si e' in scelta, cattura il clic.
+// Cosi' il concetto e' leggibile: questo punto finisce dentro quel cerchio.
+var focalPick=false;
+function focalToStage(){
+ var nat=PHOTONAT[curPhotoSrc()];if(!nat||nat.w<2)return null;
+ var it=BYKEY[current],W=it.w,H=it.h,a=STATE[current].adj.photo||{};
+ var s=a.s||1,cx=(a.cx!==undefined?a.cx:W/2),cy=(a.cy!==undefined?a.cy:H/2),dx=a.dx||0,dy=a.dy||0;
+ var cov=Math.max(W/nat.w,H/nat.h),dw=nat.w*cov,dh=nat.h*cov;
+ var px=(W-dw)/2+FOCAL.x*dw,py=(H-dh)/2+FOCAL.y*dh;
+ return {x:dx+cx+(px-cx)*s,y:dy+cy+(py-cy)*s};
+}
+function stageToFocal(px,py){
+ var nat=PHOTONAT[curPhotoSrc()];if(!nat||nat.w<2)return null;
+ var it=BYKEY[current],W=it.w,H=it.h,a=STATE[current].adj.photo||{};
+ var s=a.s||1,cx=(a.cx!==undefined?a.cx:W/2),cy=(a.cy!==undefined?a.cy:H/2),dx=a.dx||0,dy=a.dy||0;
+ var qx=(px-dx-cx)/s+cx,qy=(py-dy-cy)/s+cy;
+ var cov=Math.max(W/nat.w,H/nat.h),dw=nat.w*cov,dh=nat.h*cov;
+ return {x:Math.max(0,Math.min(1,(qx-(W-dw)/2)/dw)),y:Math.max(0,Math.min(1,(qy-(H-dh)/2)/dh))};
+}
+function drawFocalMark(svg){
+ if(!photoFullBleed(current))return;
+ var p=focalToStage();if(!p)return;
+ var it=BYKEY[current],r=Math.round(Math.min(it.w,it.h)*0.028),b=Math.max(3,Math.round(it.w*0.003));
+ var g=document.createElementNS('http://www.w3.org/2000/svg','g');g.setAttribute('pointer-events','none');
+ g.innerHTML='<circle cx="'+p.x+'" cy="'+p.y+'" r="'+r+'" fill="none" stroke="#FFD166" stroke-width="'+b+'"/>'
+  +'<line x1="'+(p.x-r*1.8)+'" y1="'+p.y+'" x2="'+(p.x+r*1.8)+'" y2="'+p.y+'" stroke="#FFD166" stroke-width="'+b+'"/>'
+  +'<line x1="'+p.x+'" y1="'+(p.y-r*1.8)+'" x2="'+p.x+'" y2="'+(p.y+r*1.8)+'" stroke="#FFD166" stroke-width="'+b+'"/>';
+ svg.appendChild(g);
+}
+// Rilevamento del volto: imposta FOCAL, poi tutti i formati si riallineano.
+// Se la libreria non e' raggiungibile (o non trova volti) resta il valore
+// corrente, che si puo' comunque correggere a mano dal ritaglio.
 var faceapiLoaded=false,faceapiLoading=false;
-async function autoPositionPhotoIfBanner(){
- var fmt=BYKEY[current];
- if(!fmt||!fmt.label)return;
- var lbl=fmt.label.toLowerCase();
- if(!lbl.includes('banner')&&!lbl.includes('portrait'))return;
- if(!SHIMG.photo)return;
-
- try{
-  // Carica face-api.js se non lo è già
-  if(!faceapiLoaded && !faceapiLoading){
-   faceapiLoading=true;
-   var script=document.createElement('script');
-   script.src='https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
-   script.onerror=function(){ faceapiLoading=false; trySmartPositioning(); };
-   script.onload=function(){
-    faceapiLoaded=true;
-    faceapiLoading=false;
-    tryFaceDetection();
-   };
-   document.head.appendChild(script);
-   return;
-  }
-  if(faceapiLoaded) tryFaceDetection();
-  else if(!faceapiLoading) trySmartPositioning();
- }catch(e){
-  trySmartPositioning();
- }
+function autoPositionPhotoIfBanner(){
+ if(!SHIMG.photo){applyFocalAll(function(){renderStage();refreshThumbs();});return;}
+ function fine(){applyFocalAll(function(){renderStage();refreshThumbs();});}
+ if(faceapiLoaded){rilevaVolto(fine);return;}
+ if(faceapiLoading){fine();return;}
+ faceapiLoading=true;
+ var sc=document.createElement('script');
+ sc.src='https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
+ sc.onerror=function(){faceapiLoading=false;fine();};
+ sc.onload=function(){faceapiLoaded=true;faceapiLoading=false;rilevaVolto(fine);};
+ document.head.appendChild(sc);
 }
-
-async function tryFaceDetection(){
- try{
-  if(!window.faceapi) return trySmartPositioning();
-  var img=new Image();
-  img.crossOrigin='anonymous';
-  img.onload=async function(){
-   try{
-    var detections=await faceapi.detectAllFaces(img, new faceapi.TinyFaceDetector());
-    if(detections.length>0){
-     var face=detections[0].box;
-     placeFaceAtTarget(img.naturalWidth,img.naturalHeight,face.x+face.width/2,face.y+face.height/2);
-     console.log('📸 Viso rilevato, allineato al mirino');
-     renderStage(); refreshThumbs();
-    } else {
-     trySmartPositioning();
-    }
-   }catch(e){
-    trySmartPositioning();
-   }
-  };
-  img.onerror=trySmartPositioning;
-  img.src=SHIMG.photo;
- }catch(e){
-  trySmartPositioning();
- }
-}
-
-// Piazza il punto (fx,fy) dell'immagine naturale (nw x nh, coordinate in pixel
-// dell'immagine originale) esattamente sul target del mirino (FACE_TARGET, in
-// frazione W/H del formato corrente), allo zoom di partenza PHOTO_MIN_ZOOM.
-// Inverte la trasformazione usata da PHOTO()+objTF(): il "cover" e' sempre
-// centrato (cx=W/2, cy=H/2), quindi basta risolvere dx/dy rispetto al centro.
-function placeFaceAtTarget(nw,nh,fx,fy){
- var fmt=BYKEY[current],W=fmt.w,H=fmt.h,s=PHOTO_MIN_ZOOM;
- var cov=Math.max(W/nw,H/nh);
- STATE[current].adj.photo=STATE[current].adj.photo||{};
- var a=STATE[current].adj.photo;
- a.s=s;
- a.dx=(W*FACE_TARGET.x)-(W/2)-s*cov*(fx-nw/2);
- a.dy=(H*FACE_TARGET.y)-(H/2)-s*cov*(fy-nh/2);
-}
-
-function trySmartPositioning(){
- var fmt=BYKEY[current];
+function rilevaVolto(cb){
+ if(!window.faceapi||!faceapi.TinyFaceDetector){cb();return;}
  var img=new Image();
- img.crossOrigin='anonymous';
  img.onload=function(){
-  var lbl=(fmt.label||'').toLowerCase();
-  if(lbl.includes('portrait')){
-   // Nessun volto rilevato: allinea comunque al mirino usando il centro
-   // dell'immagine come stima del soggetto.
-   placeFaceAtTarget(img.naturalWidth,img.naturalHeight,img.naturalWidth/2,img.naturalHeight/2);
-  } else {
-   var aspect=img.width/img.height;
-   var fmt_aspect=fmt.w/fmt.h;
-   var offset_y=0;
-   if(aspect>fmt_aspect && img.height>fmt.h){
-    // Landscape: sposta in alto (80% top, 20% margine)
-    offset_y=-(img.height-fmt.h)*0.2;
-   }
-   STATE[current].adj.photo=STATE[current].adj.photo||{};
-   STATE[current].adj.photo.dy=offset_y;
-  }
-  console.log('📸 Smart positioning');
-  renderStage(); refreshThumbs();
+  Promise.resolve(faceapi.detectAllFaces(img,new faceapi.TinyFaceDetector()))
+   .then(function(d){
+    if(d&&d.length){var b=d[0].box;
+     FOCAL={x:(b.x+b.width/2)/img.naturalWidth,y:(b.y+b.height/2)/img.naturalHeight};}
+   }).catch(function(){}).then(cb);
  };
+ img.onerror=function(){cb();};
  img.src=SHIMG.photo;
 }
 </script>
