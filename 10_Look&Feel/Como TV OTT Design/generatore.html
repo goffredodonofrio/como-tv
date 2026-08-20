@@ -1359,7 +1359,7 @@ function renderPhotoEditor(){
  var g=svg.querySelector('[data-obj="photo"]');
  if(!g){exitPhotoEdit();return;}
  var a=ensureAdj('photo',svg);photoClamp(a);g.setAttribute('transform',objTF(a));syncPhotoBar();
- drawFocalUI(svg,function(){applyFocalAll(function(){renderStage();refreshThumbs();});});
+ drawFocalUI(svg);
  // Maniglie d'angolo: esistono solo qui, non alla semplice selezione.
  // Stanno in coordinate assolute, non dentro un gruppo trasformato, cosi' il
  // raggio non si gonfia insieme allo zoom della foto.
@@ -2032,7 +2032,6 @@ function cerchio(cls,c,r,col,tratteggio,w,soloVista){
 // Disegna mirino (dove deve andare) e cerchio testa (dov'e' ora), entrambi
 // trascinabili e ridimensionabili. Solo in ritaglio: nella vista normale
 // sporcherebbero il giudizio sulla grafica.
-var FOCAL_DOPO=null;
 // Il ritaglio e' guidato in due passi, perche' due oggetti trascinabili insieme
 // non si capiscono: prima dici DOVE vuoi il volto (cerchio giallo, resta salvato
 // per formato), poi selezioni il volto NELLA foto con un rettangolo e premi
@@ -2059,8 +2058,7 @@ function passoUI(){
   h.textContent='Trascina per spostare · rotella o angoli per lo zoom · «Rifai» per ricominciare';
   n.style.display='';n.textContent='↺ Rifai';b.style.display='none';ap.style.display='';}
 }
-function drawFocalUI(svg,dopo){
- if(dopo)FOCAL_DOPO=dopo;
+function drawFocalUI(svg){
  if(!photoEdit)return;
  passoUI();
  [].forEach.call(svg.querySelectorAll('.mirg,.selrt,.avvzoom'),function(e){e.remove();});
@@ -2121,7 +2119,10 @@ function trascina(g,svg,applica,base,eRegolazione){
    function mv(e){applica((e.clientX-sx)*k,(e.clientY-sy)*k,modo,base);
     var s2=document.querySelector('#stage svg');if(s2)drawFocalUI(s2);}
    function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);
-    if(eRegolazione)prefTocca();FOCAL_DOPO&&FOCAL_DOPO();}
+    // Nessun riallineamento qui: spostare il cerchio muove il cerchio, la foto
+    // si sposta solo all'Invio del passo 2. Altrimenti l'immagine scappa via
+    // mentre stai ancora decidendo dove vuoi il volto.
+    if(eRegolazione)prefTocca();}
    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);
   });
  });
