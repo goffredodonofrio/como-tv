@@ -191,20 +191,19 @@ small.flag{color:#E3C271}
   <div class="photobar">
    <button class="act" id="dlPng">Scarica JPG</button>
    <button class="act" id="dlAll">Esporta selezionati</button>
-   <button class="act ghost" id="resetPos">Reset posizioni</button>
    <button class="act ghost on" id="lockBtn" title="Blocca gli elementi: da chiuso non si spostano per sbaglio">🔒 Bloccato</button>
    <span class="tbsep"></span>
    <span class="pbl">FOTO</span>
    <div class="seg">Zoom <span id="phZv" style="font-variant-numeric:tabular-nums;font-weight:800;color:var(--ivory)">110%</span></div>
    <button class="act" id="phEdit">Ritaglia foto</button>
-   <button class="act ghost" id="focalBtn" title="Indica dov'è il volto: tutti i formati si allineano da soli">🎯 Punto volto</button>
-   <button class="act ghost" id="phReset">Centra foto</button>
+   <button class="act ghost" id="phReset" title="Rimette l'inquadratura di questo formato come la vuole il mirino">Riallinea al volto</button>
   </div>
   <!-- Regolazioni: compare solo a lucchetto aperto. Chi regola sta gia' scegliendo
        di intervenire sul design, quindi qui trova anche come renderlo permanente. -->
   <div class="photobar" id="prefBar" style="display:none">
    <span class="pbl">REGOLAZIONI</span>
    <span class="seg" id="prefState">nessuna modifica salvata</span>
+   <button class="act ghost" id="resetPos" title="Rimette gli elementi di questo formato dove li mette il progetto">Azzera spostamenti</button>
    <button class="act" id="prefSave">Salva</button>
    <button class="act ghost" id="prefExp">Esporta file</button>
    <button class="act ghost" id="prefImp">Carica file</button>
@@ -245,8 +244,8 @@ small.flag{color:#E3C271}
   </div>
   <div class="pebar" id="peBar">
    <span class="pbl" style="color:var(--gold)">RITAGLIO FOTO</span>
-   <span class="peh">Trascina per spostare · rotella o angoli per ridimensionare</span>
-   <button class="act" id="peApply">✓ Applica ritaglio</button>
+   <span class="peh" id="peHint"></span>
+   <button class="act" id="peApply">✓ Fine</button>
    <button class="act ghost" id="peCancel">Annulla</button>
   </div>
   <div class="stagewrap"><canvas id="rulerTop" class="ruler"></canvas><canvas id="rulerLeft" class="ruler"></canvas><div id="rulerCorner"></div><div id="stage"></div></div>
@@ -1089,7 +1088,9 @@ function syncPhotoBar(){var a=STATE[current].adj.photo;
  var v=document.getElementById('phZv');if(!v)return;
  v.textContent=Math.round((a&&a.s||PHOTO_MIN_ZOOM)*100)+'%';}
 var PEUPD=null;
-document.getElementById('phReset').onclick=function(){pushUndo();delete STATE[current].adj.photo;renderStage();};
+// Prima cancellava e basta: la foto restava senza ancoraggio finche' qualcosa
+// non faceva ripartire il calcolo, quindi a volte sembrava funzionare e a volte no.
+document.getElementById('phReset').onclick=function(){pushUndo();delete STATE[current].adj.photo;anchorCurrent();renderStage();refreshThumbs();};
 document.getElementById('phEdit').onclick=function(){if(photoEdit)exitPhotoEdit();else enterPhotoEdit();};
 document.getElementById('peApply').onclick=function(){exitPhotoEdit();};
 document.getElementById('peCancel').onclick=function(){cancelPhotoEdit();};
@@ -1261,9 +1262,18 @@ function exportVideo(){
 document.getElementById('vidUse').onclick=useVideoFrame;
 document.getElementById('vidExport').onclick=exportVideo;
 document.getElementById('vidCancel').onclick=exitVideoPick;
-function enterPhotoEdit(){if(photoEdit)return;pushUndo();PE_BEFORE=JSON.stringify(STATE[current].adj.photo||null);photoEdit=true;var b=document.getElementById('phEdit');if(b)b.textContent='✓ Fine ritaglio';var pb=document.getElementById('peBar');if(pb)pb.classList.add('on');renderStage();}
-function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;var b=document.getElementById('phEdit');if(b)b.textContent='Ritaglia foto';var pb=document.getElementById('peBar');if(pb)pb.classList.remove('on');renderStage();}
-function cancelPhotoEdit(){if(!photoEdit)return;var v=JSON.parse(PE_BEFORE||'null');if(v)STATE[current].adj.photo=v;else delete STATE[current].adj.photo;exitPhotoEdit();}
+function enterPhotoEdit(){if(photoEdit)return;pushUndo();
+ // Annulla deve poter tornare indietro su tutto quello che si tocca qui dentro:
+ // il ritaglio di questo formato, ma anche i mirini e il cerchio del volto, che
+ // valgono su tutti i formati. Prima ripristinava solo il primo.
+ PE_BEFORE=JSON.stringify({adj:STATE[current].adj.photo||null,mir:MIR,focal:FOCAL});
+ photoEdit=true;var b=document.getElementById('phEdit');if(b)b.style.display='none';var pb=document.getElementById('peBar');if(pb)pb.classList.add('on');renderStage();}
+function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;var b=document.getElementById('phEdit');if(b)b.style.display='';var pb=document.getElementById('peBar');if(pb)pb.classList.remove('on');renderStage();}
+function cancelPhotoEdit(){if(!photoEdit)return;
+ var v=null;try{v=JSON.parse(PE_BEFORE||'null');}catch(e){}
+ if(v){MIR=v.mir||{};FOCAL=v.focal||FOCAL;
+  if(v.adj)STATE[current].adj.photo=v.adj;else delete STATE[current].adj.photo;}
+ exitPhotoEdit();applyFocalAll(function(){renderStage();refreshThumbs();});}
 function startTextEdit(objId,el,svg){var field=TEXT_EDIT_MAP[objId];if(!field)return;
  var isShared=SHAREDKEYS[field];var currentVal=isShared?SHARED[field]:(STATE[current].vals[field]||'');
  var wrap=document.querySelector('.stagewrap');if(!wrap)return;
@@ -1326,7 +1336,6 @@ function renderPhotoEditor(){
  if(!g){exitPhotoEdit();return;}
  var a=ensureAdj('photo',svg);photoClamp(a);g.setAttribute('transform',objTF(a));syncPhotoBar();
  drawFocalUI(svg,function(){applyFocalAll(function(){renderStage();refreshThumbs();});});
- if(focalPick)svg.style.cursor='crosshair';
  // Maniglie d'angolo: esistono solo qui, non alla semplice selezione.
  // Stanno in coordinate assolute, non dentro un gruppo trasformato, cosi' il
  // raggio non si gonfia insieme allo zoom della foto.
@@ -1359,15 +1368,6 @@ function renderPhotoEditor(){
  PEUPD=function(){var aa=STATE[current].adj.photo;if(aa){photoClamp(aa);peSync();}};
  setTimeout(peSync,0);
  svg.addEventListener('pointerdown',function(ev){ev.preventDefault();
-   // In scelta del punto volto il clic non trascina: segna e riallinea tutto.
-   if(focalPick){
-    var pt=svg.createSVGPoint();pt.x=ev.clientX;pt.y=ev.clientY;
-    var loc=pt.matrixTransform(svg.getScreenCTM().inverse());
-    var f=stageToFocal(loc.x,loc.y);if(!f)return;
-    pushUndo();FOCAL=f;focalPick=false;syncFocalBtn();
-    applyFocalAll(function(){renderStage();refreshThumbs();});
-    return;
-   }
    pushUndoC();var k=svgUnitPerPx(svg);var sx=ev.clientX,sy=ev.clientY,dx0=a.dx||0,dy0=a.dy||0;
    function mv(e){a.dx=dx0+(e.clientX-sx)*k;a.dy=dy0+(e.clientY-sy)*k;photoClamp(a);peSync();syncPhotoBar();}
    function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);}
@@ -1579,19 +1579,17 @@ document.getElementById('prefReset').onclick=function(){
  MIR={};FOCAL.r=0.11;
  ITEMS.forEach(function(it){var a=STATE[it.key].adj;Object.keys(a).forEach(function(k){if(k!=='photo')delete a[k];});});
  PREF_DIRTY=false;applyFocalAll(function(){renderControls();renderStage();renderThumbs();});prefStato('predefiniti ripristinati');};
-function syncFocalBtn(){var b=document.getElementById('focalBtn');if(!b)return;
- b.className='act ghost'+(focalPick?' on':'');
- b.textContent=focalPick?'🎯 Clicca sul volto':'🎯 Punto volto';}
-document.getElementById('focalBtn').onclick=function(){
- focalPick=!focalPick;syncFocalBtn();
- if(focalPick&&!photoEdit)enterPhotoEdit();else renderStage();};
 document.getElementById('lockBtn').onclick=function(){
  LOCKED=!LOCKED;this.textContent=LOCKED?'🔒 Bloccato':'🔓 Sbloccato';
  this.className='act ghost'+(LOCKED?' on':'');
  if(LOCKED){selObj=null;document.getElementById('selName').textContent='Nessun oggetto selezionato';}
  document.getElementById('prefBar').style.display=LOCKED?'none':'';
  prefStato();renderStage();};
-document.getElementById('resetPos').onclick=function(){pushUndo();STATE[current].adj={};selObj=null;document.getElementById('selName').textContent='Nessun oggetto selezionato';renderStage();};
+// Azzera gli spostamenti di questo formato ma NON lascia la foto scoperta:
+// il ritaglio viene subito ricalcolato dal mirino.
+document.getElementById('resetPos').onclick=function(){pushUndo();STATE[current].adj={};selObj=null;
+ document.getElementById('selName').textContent='Nessun oggetto selezionato';
+ anchorCurrent();prefTocca();renderStage();refreshThumbs();};
 document.getElementById('scaleR').addEventListener('pointerdown',function(){pushUndo();});
 
 // ---------- thumbnails ----------
@@ -1859,7 +1857,6 @@ function stageToFocal(px,py){
  return {x:Math.max(0,Math.min(1,(qx-(g.W-g.Dw)/2)/g.Dw)),
          y:Math.max(0,Math.min(1,(qy-(g.H-g.Dh)/2)/g.Dh))};
 }
-var focalPick=false;
 function cerchio(cls,c,r,col,tratteggio,w){
  var g=document.createElementNS('http://www.w3.org/2000/svg','g');g.setAttribute('class',cls);
  var vis='<circle cx="'+c.x+'" cy="'+c.y+'" r="'+r+'" fill="none" stroke="'+col+'" stroke-width="'+w+'"'
@@ -1875,10 +1872,24 @@ function cerchio(cls,c,r,col,tratteggio,w){
 // trascinabili e ridimensionabili. Solo in ritaglio: nella vista normale
 // sporcherebbero il giudizio sulla grafica.
 var FOCAL_DOPO=null;
+// Due livelli sovrapposti, separati dal lucchetto:
+//  - cerchio GIALLO sulla foto: dov'e' e quanto e' grande la testa. E' il gesto
+//    dell'operatore, c'e' sempre.
+//  - cerchio CIANO sul formato: dove deve finire e quanto grande. E' taratura di
+//    design, compare solo a lucchetto aperto insieme alle Regolazioni.
+// Cosi' chi fa le grafiche vede un oggetto solo e un gesto solo.
 function drawFocalUI(svg,dopo){
  if(dopo)FOCAL_DOPO=dopo;
- if(!photoEdit||!photoFullBleed(current))return;
- [].forEach.call(svg.querySelectorAll('.mirg,.testag'),function(e){e.remove();});
+ if(!photoEdit)return;
+ // L'istruzione cambia con il lucchetto: a chiuso si parla di un cerchio solo.
+ var h=document.getElementById('peHint');
+ if(h)h.textContent=!photoFullBleed(current)
+  ? 'Trascina per spostare · rotella o angoli per ridimensionare'
+  : (LOCKED
+    ? 'Trascina il cerchio giallo sul volto e allargalo quanto è grande la testa · la foto si sposta trascinandola, rotella e angoli la ridimensionano'
+    : 'Giallo = il volto nella foto · ciano = dove deve finire in questo formato. Trascina dal centro, ridimensiona dal bordo.');
+ if(!photoFullBleed(current))return;
+ [].forEach.call(svg.querySelectorAll('.mirg,.testag,.avvzoom'),function(e){e.remove();});
  var it=BYKEY[current],m=mirFor(current),lato=Math.min(it.w,it.h);
  var w=Math.max(3,Math.round(it.w*0.0035));
  var mc={x:it.w*m.x,y:it.h*m.y},mr=m.r*lato;
@@ -1887,26 +1898,29 @@ function drawFocalUI(svg,dopo){
  // risoluzione) va detto, altrimenti sembra che allargare il cerchio non faccia
  // niente. Il mirino diventa ambra e lo scrive.
  var corto=p&&p.r<mr-2;
- var gm=cerchio('mirg',mc,mr,corto?'#FF9F1C':'#00E5FF',true,w);svg.appendChild(gm);
- if(corto){var av=document.createElementNS('http://www.w3.org/2000/svg','text');
-  av.setAttribute('x',mc.x);av.setAttribute('y',mc.y-mr-w*4);av.setAttribute('text-anchor','middle');
-  av.setAttribute('font-family','Mazzard');av.setAttribute('font-weight','700');
-  av.setAttribute('font-size',Math.round(lato*0.035));av.setAttribute('fill','#FF9F1C');
-  av.setAttribute('pointer-events','none');av.textContent='zoom al massimo: foto troppo piccola';
-  svg.appendChild(av);}
+ if(!LOCKED){
+  var gm=cerchio('mirg',mc,mr,corto?'#FF9F1C':'#00E5FF',true,w);svg.appendChild(gm);
+  if(corto){var av=document.createElementNS('http://www.w3.org/2000/svg','text');
+   av.setAttribute('class','avvzoom');
+   av.setAttribute('x',mc.x);av.setAttribute('y',mc.y-mr-w*4);av.setAttribute('text-anchor','middle');
+   av.setAttribute('font-family','Mazzard');av.setAttribute('font-weight','700');
+   av.setAttribute('font-size',Math.round(lato*0.035));av.setAttribute('fill','#FF9F1C');
+   av.setAttribute('pointer-events','none');av.textContent='zoom al massimo: foto troppo piccola';
+   svg.appendChild(av);}
+  trascina(gm,svg,function(dxu,dyu,modo,base){
+   if(modo==='corpo')MIR[current]={x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r};
+   else MIR[current]={x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))};
+  },{x:mc.x,y:mc.y,r:mr},true);
+ }
  if(p){var gt=cerchio('testag',p,p.r,'#FFD166',false,w);svg.appendChild(gt);
   trascina(gt,svg,function(dxu,dyu,modo,base){
    if(modo==='corpo'){var f=stageToFocal(base.x+dxu,base.y+dyu);if(f){FOCAL.x=f.x;FOCAL.y=f.y;}}
    else{var nr=Math.max(6,base.r+dxu);var q=focalToStage();FOCAL.r=Math.max(0.02,Math.min(0.6,nr/(q.Dw*q.s)));}
-  },{x:p.x,y:p.y,r:p.r});
+  },{x:p.x,y:p.y,r:p.r},false);
  }
- trascina(gm,svg,function(dxu,dyu,modo,base){
-  if(modo==='corpo'){MIR[current]={x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r};}
-  else{MIR[current]={x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))};}
- },{x:mc.x,y:mc.y,r:mr});
 }
 // Trascinamento comune ai due cerchi: corpo = sposta, bordo = raggio.
-function trascina(g,svg,applica,base){
+function trascina(g,svg,applica,base,eRegolazione){
  ['corpo','bordo'].forEach(function(modo){
   var el=g.querySelector('.gr-'+modo);if(!el)return;
   el.addEventListener('pointerdown',function(ev){
@@ -1915,7 +1929,7 @@ function trascina(g,svg,applica,base){
    function mv(e){applica((e.clientX-sx)*k,(e.clientY-sy)*k,modo,base);
     var s2=document.querySelector('#stage svg');if(s2)drawFocalUI(s2);}
    function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);
-    prefTocca();FOCAL_DOPO&&FOCAL_DOPO();}
+    if(eRegolazione)prefTocca();FOCAL_DOPO&&FOCAL_DOPO();}
    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);
   });
  });
