@@ -237,7 +237,7 @@ small.flag{color:#E3C271}
    <span class="tbsep"></span>
    <button class="act ghost ico" id="tMano" title="Sposta — trascina la foto, rotella per lo zoom">
     <svg viewBox="0 0 20 20"><path d="M10 2v16M2 10h16M10 2 7.6 4.4M10 2l2.4 2.4M10 18l-2.4-2.4M10 18l2.4-2.4M2 10l2.4-2.4M2 10l2.4 2.4M18 10l-2.4-2.4M18 10l-2.4 2.4"/></svg></button>
-   <button class="act ghost ico" id="tMirino" title="Mirino — dove finisce il volto e quanto grande">
+   <button class="act ghost ico" id="tMirino" title="Mirino — mostra il cerchio del volto in sovraimpressione, resta acceso finché non lo rispegni">
     <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="5.6"/><path d="M10 1.4v3.2M10 15.4v3.2M1.4 10h3.2M15.4 10h3.2"/><circle cx="10" cy="10" r="1.1" fill="currentColor" stroke="none"/></svg></button>
    <button class="act ghost ico" id="tVolto" title="Volto — traccia un rettangolo sul volto e la foto si allinea">
     <svg viewBox="0 0 20 20"><rect x="2.5" y="4.5" width="15" height="11" rx="1" stroke-dasharray="3.2 2.4"/><circle cx="10" cy="10" r="2.6"/></svg></button>
@@ -1188,7 +1188,7 @@ document.getElementById('fattoBtn').onclick=function(){
 document.getElementById('scopeFam').onclick=function(){MIRSCOPE='famiglia';passoUI();};
 document.getElementById('scopeUno').onclick=function(){MIRSCOPE='formato';passoUI();};
 document.getElementById('tMano').onclick=function(){toolVai('mano');};
-document.getElementById('tMirino').onclick=function(){toolVai('mirino');};
+document.getElementById('tMirino').onclick=function(){MIRON=!MIRON;aggiornaModo();};
 document.getElementById('tVolto').onclick=function(){toolVai('volto');};
 // il conteggio dei formati da esportare sta sull'icona ZIP
 function syncZip(){var e=document.getElementById('zipN');if(e)e.textContent='ZIP '+expCount();}
@@ -1366,7 +1366,7 @@ function enterPhotoEdit(){if(photoEdit)return;pushUndo();
  // valgono su tutti i formati. Prima ripristinava solo il primo.
  PE_BEFORE=JSON.stringify({adj:STATE[current].adj.photo||null,mir:MIR,focal:FOCAL});
  photoEdit=true;SELRECT=null;renderStage();}
-function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;TOOL=null;renderStage();passoUI();}
+function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;TOOL=null;MIRON=false;renderStage();passoUI();}
 function cancelPhotoEdit(){if(!photoEdit)return;
  var v=null;try{v=JSON.parse(PE_BEFORE||'null');}catch(e){}
  if(v){MIR=v.mir||{};FOCAL=v.focal||FOCAL;
@@ -2136,25 +2136,32 @@ function cerchio(cls,c,r,col,tratteggio,w,soloVista){
 // STRUMENTO: 'mano' = trascini la foto · 'mirino' = sposti il cerchio ·
 // 'volto' = selezioni il volto col rettangolo. Nessuna sequenza: sono tre modi
 // di dire la stessa cosa e si sceglie quello che conviene.
-var TOOL=null, SELRECT=null;   // null = nessuno strumento, vista normale
-// Gli strumenti sono interruttori: accenderne uno entra nella vista di modifica,
-// rispegnerlo ne esce. Niente bottoni che compaiono e scompaiono.
-function toolVai(t){
- if(TOOL===t){exitPhotoEdit();passoUI();return;}
- TOOL=t;SELRECT=null;
- if(!photoEdit)enterPhotoEdit();else renderStage();
+// TOOL: 'mano' o 'volto' — cosa fa il puntatore. Sono alternativi.
+// MIRON: il cerchio e' un interruttore a se', non uno strumento. Se acceso resta
+// in sovraimpressione qualunque cosa tu stia facendo; se spento non si vede.
+var TOOL=null, MIRON=false, SELRECT=null;
+// Un solo posto decide se si e' in modifica: ci si sta finche' e' acceso uno
+// strumento OPPURE il mirino. Cosi' accendere il cerchio non si prende anche la
+// Mano, e spegnere la Mano non fa sparire il cerchio.
+function aggiornaModo(){
+ if(TOOL||MIRON){if(!photoEdit)enterPhotoEdit();else renderStage();}
+ else if(photoEdit)exitPhotoEdit();
+ else renderStage();
  passoUI();
 }
+function toolVai(t){TOOL=(TOOL===t)?null:t;SELRECT=null;aggiornaModo();}
 function passoUI(){
  if(typeof MIR==='undefined')return;   // chiamata prima che lo stato esista
  var h=document.getElementById('peHint');if(!h)return;
  var fb=document.getElementById('fattoBtn');if(fb)fb.style.display=photoEdit?'':'none';
  var sc=document.getElementById('scopeSel'),senzaFoto=!photoFullBleed(current);
- ['mano','mirino','volto'].forEach(function(t){
+ ['mano','volto'].forEach(function(t){
   var b=document.getElementById('t'+t.charAt(0).toUpperCase()+t.slice(1));if(!b)return;
   b.className='act ghost ico'+(TOOL===t?' on':'');
   b.style.display=(senzaFoto&&t!=='mano')?'none':'';
  });
+ var bm=document.getElementById('tMirino');
+ if(bm){bm.className='act ghost ico'+(MIRON?' on':'');bm.style.display=senzaFoto?'none':'';}
  if(sc){sc.style.display=senzaFoto?'none':'';
   var fam=MIRSCOPE==='famiglia',spunta='<svg viewBox="0 0 20 20"><path d="m4 10.5 4 4 8-9"/></svg>';
   var bf=document.getElementById('scopeFam'),bu=document.getElementById('scopeUno');
@@ -2166,9 +2173,8 @@ function passoUI(){
  }
  h.textContent=!TOOL?''
   :(senzaFoto?'trascina · rotella per lo zoom'
-   :(TOOL==='mano'?'trascina la foto · rotella per lo zoom'
-    :(TOOL==='mirino'?'trascina il cerchio · dal bordo la dimensione'
-     :'traccia un rettangolo sul volto')));
+   :(TOOL==='mano'?('trascina la foto · rotella per lo zoom'+(MIRON?' · il cerchio si sposta dal centro, si ridimensiona dal bordo':''))
+    :'traccia un rettangolo sul volto'));
 }
 
 
@@ -2188,12 +2194,14 @@ function drawFocalUI(svg){
    +'fill="rgba(0,229,255,.12)" stroke="#00E5FF" stroke-width="'+w+'" stroke-dasharray="'+(w*4)+' '+(w*3)+'"/>';
   svg.appendChild(g);
  }
- // Il cerchio si vede SOLO con lo strumento Mirino: con la Mano si guarda la
- // foto, e un cerchio che non si puo' toccare confonde e basta.
- if(TOOL!=='mirino')return;
- var mc={x:it.w*m.x,y:it.h*m.y},mr=m.r*lato;
- var gm=cerchio('mirg',mc,mr,'#FFD166',true,w,false);
+ // Il cerchio dipende dal suo interruttore, non dallo strumento: acceso resta
+ // visibile durante qualunque attivita'. Con lo strumento Volto e' di sola
+ // vista, altrimenti intercetterebbe il rettangolo che stai tracciando sopra.
+ if(!MIRON)return;
+ var mc={x:it.w*m.x,y:it.h*m.y},mr=m.r*lato,soloVista=(TOOL==='volto');
+ var gm=cerchio('mirg',mc,mr,'#FFD166',true,w,soloVista);
  svg.appendChild(gm);
+ if(soloVista)return;
  trascina(gm,svg,function(dxu,dyu,modo,base){
   if(modo==='corpo')mirSet(current,{x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r});
   else mirSet(current,{x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))});
