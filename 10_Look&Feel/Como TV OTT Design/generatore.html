@@ -91,8 +91,11 @@ button.act:active{transform:scale(.97)}
 .photobar input[type=range]{width:150px;vertical-align:middle}
 .photobar input[type=text],.photobar select{background:#151A32;border:1px solid var(--line);color:var(--ivory);
  border-radius:8px;padding:7px 10px;font:inherit;font-size:12px;outline:none}
-.photobar input[type=text]{width:250px}
-.photobar select{max-width:290px}
+.photobar input[type=text]{flex:1 1 150px;min-width:110px;max-width:250px}
+.photobar select{flex:1 1 170px;min-width:120px;max-width:280px}
+/* Le barre devono stare su una riga: il testo di stato si accorcia con i puntini
+   invece di spingere i bottoni a capo. */
+.photobar .seg.flex{flex:1 1 40px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .photobar input[type=text]:focus,.photobar select:focus{border-color:var(--gold)}
 .pebar{display:none;gap:14px;align-items:center;flex-wrap:wrap;background:rgba(201,162,75,.14);border:1px solid var(--gold);border-radius:10px;padding:9px 13px;font-size:12px;color:var(--fg2)}
 .pebar.on{display:flex}
@@ -203,25 +206,24 @@ small.flag{color:#E3C271}
    <select id="sessList"></select>
    <button class="act ghost" id="sessOpen">Riapri</button>
    <button class="act ghost" id="sessDel">Elimina</button>
-   <span class="seg" id="sessState"></span>
+   <span class="seg flex" id="sessState"></span>
   </div>
   <div class="photobar">
    <button class="act" id="dlPng">Scarica JPG</button>
-   <button class="act" id="dlAll">Esporta selezionati</button>
+   <button class="act" id="dlAll" title="Scarica in un file ZIP i formati spuntati nella colonna di destra">Esporta ZIP</button>
    <button class="act ghost on" id="lockBtn" title="Blocca gli elementi: da chiuso non si spostano per sbaglio">🔒 Bloccato</button>
    <span class="tbsep"></span>
-   <span class="pbl">FOTO</span>
-   <div class="seg">Zoom <span id="phZv" style="font-variant-numeric:tabular-nums;font-weight:800;color:var(--ivory)">110%</span></div>
+   <div class="seg">Zoom foto <span id="phZv" style="font-variant-numeric:tabular-nums;font-weight:800;color:var(--ivory)">110%</span></div>
    <button class="act" id="phEdit">Ritaglia foto</button>
-   <button class="act ghost" id="phReset" title="Rimette l'inquadratura di questo formato come la vuole il mirino">Riallinea al volto</button>
+   <button class="act ghost" id="phReset" title="Rimette l'inquadratura di questo formato come la vuole il mirino">Riallinea</button>
   </div>
   <!-- Regolazioni: compare solo a lucchetto aperto. Chi regola sta gia' scegliendo
        di intervenire sul design, quindi qui trova anche come renderlo permanente. -->
   <div class="photobar" id="prefBar" style="display:none">
-   <span class="pbl">REGOLAZIONI SUL TUO COMPUTER</span>
-   <span class="seg" id="prefState"></span>
-   <button class="act ghost" id="resetPos" title="Rimette gli elementi di questo formato dove li mette il progetto, senza toccare gli altri formati">Rimetti a posto questo formato</button>
-   <button class="act ghost" id="prefReset" title="Rimette mirini, posizioni e stili di TUTTI i formati come sono di fabbrica">Rimetti tutto di fabbrica</button>
+   <span class="pbl">REGOLAZIONI</span>
+   <span class="seg flex" id="prefState"></span>
+   <button class="act ghost" id="resetPos" title="Rimette gli elementi di questo formato dove li mette il progetto, senza toccare gli altri formati">Ripristina formato</button>
+   <button class="act ghost" id="prefReset" title="Rimette mirini, posizioni e stili di TUTTI i formati come sono di fabbrica, e cancella il salvataggio su questo computer">Ripristina tutto</button>
   </div>
   <div class="editbar" id="textBar" style="display:none">
    <span class="pbl" id="textBarTitle" style="color:var(--gold);font-size:11px;font-weight:800;letter-spacing:.18em">TESTO</span>
@@ -1381,10 +1383,22 @@ function renderPhotoEditor(){
   window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);});});
  PEUPD=function(){var aa=STATE[current].adj.photo;if(aa){photoClamp(aa);peSync();}};
  setTimeout(peSync,0);
+ // Clic secco = "il volto e' qui": la foto salta e lo porta nel mirino, su tutti
+ // i formati. Trascinando invece si ritocca l'inquadratura di questo solo. Il
+ // discrimine sono 4 px di movimento, cosi' un clic un po' tremolante resta un clic.
  svg.addEventListener('pointerdown',function(ev){ev.preventDefault();
-   pushUndoC();var k=svgUnitPerPx(svg);var sx=ev.clientX,sy=ev.clientY,dx0=a.dx||0,dy0=a.dy||0;
-   function mv(e){a.dx=dx0+(e.clientX-sx)*k;a.dy=dy0+(e.clientY-sy)*k;photoClamp(a);peSync();syncPhotoBar();}
-   function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);}
+   pushUndoC();var k=svgUnitPerPx(svg);var sx=ev.clientX,sy=ev.clientY,dx0=a.dx||0,dy0=a.dy||0,mosso=false;
+   function mv(e){
+    if(!mosso&&Math.abs(e.clientX-sx)<4&&Math.abs(e.clientY-sy)<4)return;
+    mosso=true;a.dx=dx0+(e.clientX-sx)*k;a.dy=dy0+(e.clientY-sy)*k;photoClamp(a);peSync();syncPhotoBar();}
+   function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);
+    if(mosso){refreshThumbs();return;}
+    if(!photoFullBleed(current))return;
+    var pt=svg.createSVGPoint();pt.x=sx;pt.y=sy;
+    var loc=pt.matrixTransform(svg.getScreenCTM().inverse());
+    var f=stageToFocal(loc.x,loc.y);if(!f)return;
+    FOCAL.x=f.x;FOCAL.y=f.y;
+    applyFocalAll(function(){renderStage();refreshThumbs();});}
    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);});
  svg.addEventListener('wheel',function(ev){ev.preventDefault();pushUndoC();a.s=Math.min(3.5,Math.max(1,(a.s||1)*(ev.deltaY<0?1.05:0.95)));photoClamp(a);peSync();syncPhotoBar();},{passive:false});
  svg.addEventListener('dblclick',function(){exitPhotoEdit();});
@@ -1580,7 +1594,7 @@ document.getElementById('prefReset').onclick=function(){
  try{localStorage.removeItem(PREF_KEY);}catch(e){}
  MIR={};FOCAL.r=0.11;
  ITEMS.forEach(function(it){var a=STATE[it.key].adj;Object.keys(a).forEach(function(k){if(k!=='photo')delete a[k];});});
- PREF_DIRTY=false;applyFocalAll(function(){renderControls();renderStage();renderThumbs();});prefStato('di fabbrica, mai modificate');};
+ PREF_DIRTY=false;applyFocalAll(function(){renderControls();renderStage();renderThumbs();});prefStato();};
 // ---- comandi delle sessioni ----
 document.getElementById('sessSave').onclick=function(){
  var inp=document.getElementById('sessName');
@@ -1646,7 +1660,7 @@ var EXPDEF={};['Piattaforma live','Piattaforma highlights','Piattaforma replay']
 var EXPSEL={};ITEMS.forEach(function(it){
  EXPSEL[it.key]=!!EXPDEF[CAT[it.key]]||it.key==='fanvoice_1080x1920'||it.key==='story_1080x1920';});
 function expCount(){return ITEMS.filter(function(it){return EXPSEL[it.key];}).length;}
-function syncExpBtn(){var b=document.getElementById('dlAll');if(b)b.textContent='Esporta selezionati ('+expCount()+')';}
+function syncExpBtn(){var b=document.getElementById('dlAll');if(b)b.textContent='Esporta ZIP ('+expCount()+')';}
 function renderThumbs(){
  var box=document.getElementById('thumbs');box.innerHTML='';
  var cur=CAT[current]||'',gruppi=[];
@@ -1874,7 +1888,7 @@ function prefCarica(){
   if(d&&prefApplica(d)){prefStato('✓ salvate su questo computer');return true;}}catch(e){}
  return false;
 }
-function prefStato(t){var e=document.getElementById('prefState');if(e)e.textContent=t||'di fabbrica, mai modificate';}
+function prefStato(t){var e=document.getElementById('prefState');if(e)e.textContent=t||'di fabbrica · su questo computer';}
 // Salvataggio automatico: non c'e' un bottone Salva da ricordarsi. Si accumula
 // per un attimo, cosi' un trascinamento non scrive dieci volte di fila.
 var _prefTO;
@@ -1993,69 +2007,70 @@ function stageToFocal(px,py){
  return {x:Math.max(0,Math.min(1,(qx-(g.W-g.Dw)/2)/g.Dw)),
          y:Math.max(0,Math.min(1,(qy-(g.H-g.Dh)/2)/g.Dh))};
 }
-function cerchio(cls,c,r,col,tratteggio,w){
+function cerchio(cls,c,r,col,tratteggio,w,soloVista){
  var g=document.createElementNS('http://www.w3.org/2000/svg','g');g.setAttribute('class',cls);
  var vis='<circle cx="'+c.x+'" cy="'+c.y+'" r="'+r+'" fill="none" stroke="'+col+'" stroke-width="'+w+'"'
   +(tratteggio?' stroke-dasharray="'+(r*0.2)+' '+(r*0.15)+'"':'')+' pointer-events="none"/>'
   +'<circle cx="'+c.x+'" cy="'+c.y+'" r="'+(w*1.4)+'" fill="'+col+'" pointer-events="none"/>'
   // maniglia sul bordo per il raggio, corpo trasparente per lo spostamento
-  +'<circle class="gr-corpo" cx="'+c.x+'" cy="'+c.y+'" r="'+Math.max(1,r-w*3)+'" fill="transparent" style="cursor:move"/>'
+  +(soloVista?'':'<circle class="gr-corpo" cx="'+c.x+'" cy="'+c.y+'" r="'+Math.max(1,r-w*3)+'" fill="transparent" style="cursor:move"/>'
   +'<circle class="gr-bordo" cx="'+c.x+'" cy="'+c.y+'" r="'+r+'" fill="none" stroke="transparent" stroke-width="'+(w*6)+'" pointer-events="stroke" style="cursor:nwse-resize"/>'
-  +'<circle cx="'+(c.x+r*0.707)+'" cy="'+(c.y-r*0.707)+'" r="'+(w*2)+'" fill="'+col+'" pointer-events="none"/>';
+  +'<circle cx="'+(c.x+r*0.707)+'" cy="'+(c.y-r*0.707)+'" r="'+(w*2)+'" fill="'+col+'" pointer-events="none"/>');
  g.innerHTML=vis;return g;
 }
 // Disegna mirino (dove deve andare) e cerchio testa (dov'e' ora), entrambi
 // trascinabili e ridimensionabili. Solo in ritaglio: nella vista normale
 // sporcherebbero il giudizio sulla grafica.
 var FOCAL_DOPO=null;
-// Due livelli sovrapposti, separati dal lucchetto:
-//  - cerchio GIALLO sulla foto: dov'e' e quanto e' grande la testa. E' il gesto
-//    dell'operatore, c'e' sempre.
-//  - cerchio CIANO sul formato: dove deve finire e quanto grande. E' taratura di
-//    design, compare solo a lucchetto aperto insieme alle Regolazioni.
-// Cosi' chi fa le grafiche vede un oggetto solo e un gesto solo.
+// Un mirino solo. Dice dove finira' il volto in questo formato e quanto grande.
+// Dove sia il volto NELLA foto non e' un oggetto da trascinare: lo si dice con
+// un clic sull'immagine, e la foto ci va. A lucchetto chiuso il mirino si vede
+// ma non si tocca (l'operatore produce); aperto si sposta e si ridimensiona
+// (e' taratura di design, e resta salvata).
 function drawFocalUI(svg,dopo){
  if(dopo)FOCAL_DOPO=dopo;
  if(!photoEdit)return;
- // L'istruzione cambia con il lucchetto: a chiuso si parla di un cerchio solo.
  var h=document.getElementById('peHint');
  if(h)h.textContent=!photoFullBleed(current)
-  ? 'Trascina per spostare · rotella o angoli per ridimensionare'
+  ? 'Trascina per spostare · rotella o angoli per lo zoom'
   : (LOCKED
-    ? 'Trascina il cerchio giallo sul volto e allargalo quanto è grande la testa · la foto si sposta trascinandola, rotella e angoli la ridimensionano'
-    : 'Giallo = il volto nella foto · ciano = dove deve finire in questo formato. Trascina dal centro, ridimensiona dal bordo.');
+    ? 'Clicca sul volto e la foto si allinea · trascina per ritoccare · rotella per lo zoom'
+    : 'Clicca sul volto · trascina il mirino per spostarlo, dal bordo per la dimensione');
+ [].forEach.call(svg.querySelectorAll('.mirg,.avvzoom'),function(e){e.remove();});
  if(!photoFullBleed(current))return;
- [].forEach.call(svg.querySelectorAll('.mirg,.testag,.avvzoom'),function(e){e.remove();});
  var it=BYKEY[current],m=mirFor(current),lato=Math.min(it.w,it.h);
  var w=Math.max(3,Math.round(it.w*0.0035));
  var mc={x:it.w*m.x,y:it.h*m.y},mr=m.r*lato;
  var p=focalToStage();
- // Se il volto non riesce a diventare grande come il mirino (zoom al tetto di
- // risoluzione) va detto, altrimenti sembra che allargare il cerchio non faccia
- // niente. Il mirino diventa ambra e lo scrive.
+ // Due modi in cui la richiesta puo' non essere soddisfatta, ed entrambi vanno
+ // detti: il volto non arriva sul mirino (soggetto troppo decentrato: servirebbe
+ // uno zoom che sgranerebbe) oppure non diventa grande come il cerchio (foto
+ // troppo piccola). Senza avviso sembrerebbe che il mirino non funzioni.
+ var lontano=p&&Math.hypot(p.x-mc.x,p.y-mc.y)>4;
  var corto=p&&p.r<mr-2;
- if(!LOCKED){
-  var gm=cerchio('mirg',mc,mr,corto?'#FF9F1C':'#00E5FF',true,w);svg.appendChild(gm);
-  if(corto){var av=document.createElementNS('http://www.w3.org/2000/svg','text');
-   av.setAttribute('class','avvzoom');
-   av.setAttribute('x',mc.x);av.setAttribute('y',mc.y-mr-w*4);av.setAttribute('text-anchor','middle');
-   av.setAttribute('font-family','Mazzard');av.setAttribute('font-weight','700');
-   av.setAttribute('font-size',Math.round(lato*0.035));av.setAttribute('fill','#FF9F1C');
-   av.setAttribute('pointer-events','none');av.textContent='zoom al massimo: foto troppo piccola';
-   svg.appendChild(av);}
-  trascina(gm,svg,function(dxu,dyu,modo,base){
-   if(modo==='corpo')MIR[current]={x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r};
-   else MIR[current]={x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))};
-  },{x:mc.x,y:mc.y,r:mr},true);
- }
- if(p){var gt=cerchio('testag',p,p.r,'#FFD166',false,w);svg.appendChild(gt);
-  trascina(gt,svg,function(dxu,dyu,modo,base){
-   if(modo==='corpo'){var f=stageToFocal(base.x+dxu,base.y+dyu);if(f){FOCAL.x=f.x;FOCAL.y=f.y;}}
-   else{var nr=Math.max(6,base.r+dxu);var q=focalToStage();FOCAL.r=Math.max(0.02,Math.min(0.6,nr/(q.Dw*q.s)));}
-  },{x:p.x,y:p.y,r:p.r},false);
- }
+ var gm=cerchio('mirg',mc,mr,(lontano||corto)?'#FF9F1C':'#00E5FF',true,w,LOCKED);svg.appendChild(gm);
+ if(lontano){ // dove il volto e' finito davvero, e il tiro che manca
+  var seg=document.createElementNS('http://www.w3.org/2000/svg','g');seg.setAttribute('class','avvzoom');
+  seg.setAttribute('pointer-events','none');
+  seg.innerHTML='<line x1="'+mc.x+'" y1="'+mc.y+'" x2="'+p.x+'" y2="'+p.y+'" stroke="#FF9F1C" stroke-width="'+w+'" stroke-dasharray="'+(w*3)+' '+(w*3)+'"/>'
+   +'<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(w*2.5)+'" fill="none" stroke="#FF9F1C" stroke-width="'+w+'"/>';
+  svg.appendChild(seg);}
+ if(lontano||corto){var av=document.createElementNS('http://www.w3.org/2000/svg','text');
+  av.setAttribute('class','avvzoom');
+  av.setAttribute('x',mc.x);av.setAttribute('y',mc.y-mr-w*4);av.setAttribute('text-anchor','middle');
+  av.setAttribute('font-family','Mazzard');av.setAttribute('font-weight','700');
+  av.setAttribute('font-size',Math.round(lato*0.035));av.setAttribute('fill','#FF9F1C');
+  av.setAttribute('pointer-events','none');
+  av.textContent=lontano?'volto troppo defilato: più in là la foto sgranerebbe'
+                        :'zoom al massimo: foto troppo piccola';
+  svg.appendChild(av);}
+ if(LOCKED)return;
+ trascina(gm,svg,function(dxu,dyu,modo,base){
+  if(modo==='corpo')MIR[current]={x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r};
+  else MIR[current]={x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))};
+ },{x:mc.x,y:mc.y,r:mr},true);
 }
-// Trascinamento comune ai due cerchi: corpo = sposta, bordo = raggio.
+// Trascinamento del mirino: corpo = sposta, bordo = raggio.
 function trascina(g,svg,applica,base,eRegolazione){
  ['corpo','bordo'].forEach(function(modo){
   var el=g.querySelector('.gr-'+modo);if(!el)return;
