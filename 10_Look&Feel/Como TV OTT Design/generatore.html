@@ -95,10 +95,18 @@ button.act:active{transform:scale(.97)}
 .photobar select{flex:1 1 140px;min-width:110px;max-width:210px}
 /* Bottoni-icona: quadrati, disegno a tratto che segue il colore del testo,
    cosi' l'icona si accende insieme al bottone quando lo strumento e' attivo. */
-.photobar .ico,.pebar .ico{padding:6px 9px;display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:0}
+.photobar .ico,.pebar .ico{padding:6px 7px;display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:0}
 .photobar .ico svg,.pebar .ico svg{width:19px;height:19px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;
  stroke-linecap:round;stroke-linejoin:round}
 .photobar .grow{flex:1 1 0;min-width:0}
+/* Selettore a due opzioni: un solo contorno, la scelta si legge dalla spunta */
+.segsel{display:inline-flex;flex:none;border:1px solid var(--line);border-radius:999px;padding:2px;gap:2px;background:rgba(0,0,0,.18)}
+.segsel button{display:inline-flex;align-items:center;gap:5px;background:none;border:0;cursor:pointer;
+ color:var(--fg2);font:inherit;font-size:11px;font-weight:800;letter-spacing:.04em;padding:5px 10px;border-radius:999px;white-space:nowrap}
+.segsel button:hover{color:var(--ivory)}
+.segsel button.on{background:var(--gold);color:var(--n900)}
+.segsel button svg{width:13px;height:13px;flex:none;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.segsel button:not(.on) svg{visibility:hidden;width:0}
 .menuwrap{position:relative;flex:none}
 .menu{display:none;position:absolute;right:0;top:calc(100% + 7px);z-index:40;min-width:230px;
  background:#141A31;border:1px solid var(--line);border-radius:10px;padding:7px;box-shadow:0 18px 40px -12px #000}
@@ -219,9 +227,9 @@ small.flag{color:#E3C271}
   <!-- Una barra sola, sempre visibile: sessione, export, strumenti foto.
        Gli strumenti non compaiono e scompaiono — sono sempre li' e accenderne
        uno entra nella vista di modifica, rispegnerlo ne esce. -->
-  <div class="photobar" id="barra" style="gap:9px;flex-wrap:nowrap;overflow-x:auto;overflow-y:visible">
+  <div class="photobar" id="barra" style="gap:8px;flex-wrap:nowrap;overflow-x:auto;overflow-y:visible">
    <button class="act ico" id="dlPng" title="Scarica questo formato in JPG">
-    <svg viewBox="0 0 20 20"><path d="M10 2.5v11M10 13.5 6 9.5M10 13.5l4-4M3 16.5h14"/></svg><span>JPG</span></button>
+    <svg viewBox="0 0 20 20"><path d="M10 2.5v11M10 13.5 6 9.5M10 13.5l4-4M3 16.5h14"/></svg></button>
    <button class="act ico" id="dlAll" title="Scarica in un file ZIP i formati spuntati nella colonna di destra">
     <svg viewBox="0 0 20 20"><path d="M2.5 6.5h15v11h-15zM2.5 6.5 5 2.5h10l2.5 4M10 2.5v4M8 10h4M8 12.5h4"/></svg><span id="zipN">ZIP</span></button>
    <button class="act ghost ico on" id="lockBtn" title="Blocca gli elementi: da chiuso non si spostano per sbaglio">
@@ -233,7 +241,12 @@ small.flag{color:#E3C271}
     <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="5.6"/><path d="M10 1.4v3.2M10 15.4v3.2M1.4 10h3.2M15.4 10h3.2"/><circle cx="10" cy="10" r="1.1" fill="currentColor" stroke="none"/></svg></button>
    <button class="act ghost ico" id="tVolto" title="Volto — traccia un rettangolo sul volto e la foto si allinea">
     <svg viewBox="0 0 20 20"><rect x="2.5" y="4.5" width="15" height="11" rx="1" stroke-dasharray="3.2 2.4"/><circle cx="10" cy="10" r="2.6"/></svg></button>
-   <button class="act ghost ico" id="peScope" title="Ambito della modifica"><span></span></button>
+   <!-- Ambito: due opzioni esplicite con la spunta, non un interruttore che
+        cambia faccia. Si vede sempre quale delle due e' attiva. -->
+   <span class="segsel" id="scopeSel">
+    <button id="scopeFam"></button>
+    <button id="scopeUno"></button>
+   </span>
    <span class="tbsep"></span>
    <input type="text" id="sessName" placeholder="nome partita" title="Nome della sessione">
    <button class="act ghost ico" id="sessSave" title="Salva la sessione: contenuto, foto e ritagli">
@@ -1117,7 +1130,7 @@ function stageMarks(st){
  st.appendChild(box);
 }
 function renderStage(){if(videoPick){renderVideoPicker();return;}if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');svg.style.background='none';applyTextStyles(svg,current);st.className='marks'+(LOCKED?' lock':'');setTimeout(function(){stageMarks(st);},0);
- attachInteract(svg);highlightSel(svg);syncScaleSlider();syncPhotoBar();
+ attachInteract(svg);highlightSel(svg);syncScaleSlider();syncPhotoBar();passoUI();
  setTimeout(drawRulers,0);}
 // ---- menù foto dedicato (Zoom / Orizzontale / Verticale) ----
 function photoItem(){return BYKEY[current]||{w:1080,h:1080};}
@@ -1150,8 +1163,8 @@ var PEUPD=null;
  b.onclick=function(e){e.stopPropagation();m.classList.toggle('on');prefStato();};
  document.addEventListener('click',function(){m.classList.remove('on');});
  m.onclick=function(e){e.stopPropagation();};})();
-document.getElementById('peScope').onclick=function(){
- MIRSCOPE=(MIRSCOPE==='famiglia')?'formato':'famiglia';passoUI();};
+document.getElementById('scopeFam').onclick=function(){MIRSCOPE='famiglia';passoUI();};
+document.getElementById('scopeUno').onclick=function(){MIRSCOPE='formato';passoUI();};
 document.getElementById('tMano').onclick=function(){toolVai('mano');};
 document.getElementById('tMirino').onclick=function(){toolVai('mirino');};
 document.getElementById('tVolto').onclick=function(){toolVai('volto');};
@@ -1833,7 +1846,6 @@ window.addEventListener('keydown',function(e){
 });
 
 document.fonts.ready.then(function(){renderControls();renderStage();renderThumbs();});
-renderControls();renderStage();renderThumbs();
 
 
 
@@ -2129,22 +2141,22 @@ function toolVai(t){
  passoUI();
 }
 function passoUI(){
+ if(typeof MIR==='undefined')return;   // chiamata prima che lo stato esista
  var h=document.getElementById('peHint');if(!h)return;
- var sc=document.getElementById('peScope'),senzaFoto=!photoFullBleed(current);
+ var sc=document.getElementById('scopeSel'),senzaFoto=!photoFullBleed(current);
  ['mano','mirino','volto'].forEach(function(t){
   var b=document.getElementById('t'+t.charAt(0).toUpperCase()+t.slice(1));if(!b)return;
   b.className='act ghost ico'+(TOOL===t?' on':'');
   b.style.display=(senzaFoto&&t!=='mano')?'none':'';
  });
  if(sc){sc.style.display=senzaFoto?'none':'';
-  var fam=MIRSCOPE==='famiglia';
-  // due riquadri = la famiglia, uno solo = questo formato: l'icona dice l'ambito
-  sc.innerHTML=(fam
-   ? '<svg viewBox="0 0 20 20"><rect x="1.5" y="5" width="11" height="9" rx="1"/><rect x="7.5" y="7.5" width="11" height="9" rx="1"/></svg>'
-   : '<svg viewBox="0 0 20 20"><rect x="3.5" y="5" width="13" height="10" rx="1"/></svg>')
-   +'<span>'+(fam?famiglieNome(current).replace(/^(gli|i) /,''):'solo questo')+'</span>';
-  sc.title=fam?('La modifica vale per tutti '+famiglieNome(current)+' — clicca per limitarla a questo formato')
-              :'La modifica vale solo per questo formato — clicca per estenderla alla famiglia';
+  var fam=MIRSCOPE==='famiglia',spunta='<svg viewBox="0 0 20 20"><path d="m4 10.5 4 4 8-9"/></svg>';
+  var bf=document.getElementById('scopeFam'),bu=document.getElementById('scopeUno');
+  bf.className=fam?'on':'';bu.className=fam?'':'on';
+  bf.innerHTML=spunta+'<span>'+famiglieNome(current).replace(/^(gli|i) /,'')+'</span>';
+  bu.innerHTML=spunta+'<span>solo questo</span>';
+  bf.title='La modifica vale per tutti '+famiglieNome(current);
+  bu.title='La modifica vale solo per il formato aperto';
  }
  h.textContent=!TOOL?''
   :(senzaFoto?'trascina · rotella per lo zoom'
@@ -2264,6 +2276,7 @@ function rilevaVolto(cb){
 (function(){var l=document.getElementById('topLogo');if(!l)return;
  var d=(typeof LOGO_LIB!=='undefined'&&LOGO_LIB.como_tv)?LOGO_LIB.como_tv.d:'';
  if(d)l.src=d;else l.remove();})();
+renderControls();renderStage();renderThumbs();
 prefCarica();sessAggiornaElenco();sessProponiNome();passoUI();syncZip();
 loadNat(DEFAULT_PHOTO,function(){applyFocalAll(function(){renderStage();refreshThumbs();});});
 </script>
