@@ -1383,22 +1383,10 @@ function renderPhotoEditor(){
   window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);});});
  PEUPD=function(){var aa=STATE[current].adj.photo;if(aa){photoClamp(aa);peSync();}};
  setTimeout(peSync,0);
- // Clic secco = "il volto e' qui": la foto salta e lo porta nel mirino, su tutti
- // i formati. Trascinando invece si ritocca l'inquadratura di questo solo. Il
- // discrimine sono 4 px di movimento, cosi' un clic un po' tremolante resta un clic.
  svg.addEventListener('pointerdown',function(ev){ev.preventDefault();
-   pushUndoC();var k=svgUnitPerPx(svg);var sx=ev.clientX,sy=ev.clientY,dx0=a.dx||0,dy0=a.dy||0,mosso=false;
-   function mv(e){
-    if(!mosso&&Math.abs(e.clientX-sx)<4&&Math.abs(e.clientY-sy)<4)return;
-    mosso=true;a.dx=dx0+(e.clientX-sx)*k;a.dy=dy0+(e.clientY-sy)*k;photoClamp(a);peSync();syncPhotoBar();}
-   function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);
-    if(mosso){refreshThumbs();return;}
-    if(!photoFullBleed(current))return;
-    var pt=svg.createSVGPoint();pt.x=sx;pt.y=sy;
-    var loc=pt.matrixTransform(svg.getScreenCTM().inverse());
-    var f=stageToFocal(loc.x,loc.y);if(!f)return;
-    FOCAL.x=f.x;FOCAL.y=f.y;
-    applyFocalAll(function(){renderStage();refreshThumbs();});}
+   pushUndoC();var k=svgUnitPerPx(svg);var sx=ev.clientX,sy=ev.clientY,dx0=a.dx||0,dy0=a.dy||0;
+   function mv(e){a.dx=dx0+(e.clientX-sx)*k;a.dy=dy0+(e.clientY-sy)*k;photoClamp(a);peSync();syncPhotoBar();}
+   function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);}
    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);});
  svg.addEventListener('wheel',function(ev){ev.preventDefault();pushUndoC();a.s=Math.min(3.5,Math.max(1,(a.s||1)*(ev.deltaY<0?1.05:0.95)));photoClamp(a);peSync();syncPhotoBar();},{passive:false});
  svg.addEventListener('dblclick',function(){exitPhotoEdit();});
@@ -2022,55 +2010,57 @@ function cerchio(cls,c,r,col,tratteggio,w,soloVista){
 // trascinabili e ridimensionabili. Solo in ritaglio: nella vista normale
 // sporcherebbero il giudizio sulla grafica.
 var FOCAL_DOPO=null;
-// Un mirino solo. Dice dove finira' il volto in questo formato e quanto grande.
-// Dove sia il volto NELLA foto non e' un oggetto da trascinare: lo si dice con
-// un clic sull'immagine, e la foto ci va. A lucchetto chiuso il mirino si vede
-// ma non si tocca (l'operatore produce); aperto si sposta e si ridimensiona
-// (e' taratura di design, e resta salvata).
+// Due livelli sovrapposti, separati dal lucchetto:
+//  - cerchio GIALLO sulla foto: dov'e' e quanto e' grande la testa. E' il gesto
+//    dell'operatore, c'e' sempre.
+//  - cerchio CIANO sul formato: dove deve finire e quanto grande. E' taratura di
+//    design, compare solo a lucchetto aperto insieme alle Regolazioni.
+// Cosi' chi fa le grafiche vede un oggetto solo e un gesto solo.
 function drawFocalUI(svg,dopo){
  if(dopo)FOCAL_DOPO=dopo;
  if(!photoEdit)return;
+ // L'istruzione cambia con il lucchetto: a chiuso si parla di un cerchio solo.
  var h=document.getElementById('peHint');
  if(h)h.textContent=!photoFullBleed(current)
   ? 'Trascina per spostare · rotella o angoli per lo zoom'
   : (LOCKED
-    ? 'Clicca sul volto e la foto si allinea · trascina per ritoccare · rotella per lo zoom'
-    : 'Clicca sul volto · trascina il mirino per spostarlo, dal bordo per la dimensione');
- [].forEach.call(svg.querySelectorAll('.mirg,.avvzoom'),function(e){e.remove();});
+    ? 'Cerchio giallo sul volto, largo quanto la testa · rotella per lo zoom'
+    : 'Giallo = il volto · ciano = dove finisce · trascina o ridimensiona');
  if(!photoFullBleed(current))return;
+ [].forEach.call(svg.querySelectorAll('.mirg,.testag,.avvzoom'),function(e){e.remove();});
  var it=BYKEY[current],m=mirFor(current),lato=Math.min(it.w,it.h);
  var w=Math.max(3,Math.round(it.w*0.0035));
  var mc={x:it.w*m.x,y:it.h*m.y},mr=m.r*lato;
  var p=focalToStage();
- // Due modi in cui la richiesta puo' non essere soddisfatta, ed entrambi vanno
- // detti: il volto non arriva sul mirino (soggetto troppo decentrato: servirebbe
- // uno zoom che sgranerebbe) oppure non diventa grande come il cerchio (foto
- // troppo piccola). Senza avviso sembrerebbe che il mirino non funzioni.
- var lontano=p&&Math.hypot(p.x-mc.x,p.y-mc.y)>4;
+ // Se il volto non riesce a diventare grande come il mirino (zoom al tetto di
+ // risoluzione) va detto, altrimenti sembra che allargare il cerchio non faccia
+ // niente. Il mirino diventa ambra e lo scrive.
  var corto=p&&p.r<mr-2;
- var gm=cerchio('mirg',mc,mr,(lontano||corto)?'#FF9F1C':'#00E5FF',true,w,LOCKED);svg.appendChild(gm);
- if(lontano){ // dove il volto e' finito davvero, e il tiro che manca
-  var seg=document.createElementNS('http://www.w3.org/2000/svg','g');seg.setAttribute('class','avvzoom');
-  seg.setAttribute('pointer-events','none');
-  seg.innerHTML='<line x1="'+mc.x+'" y1="'+mc.y+'" x2="'+p.x+'" y2="'+p.y+'" stroke="#FF9F1C" stroke-width="'+w+'" stroke-dasharray="'+(w*3)+' '+(w*3)+'"/>'
-   +'<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(w*2.5)+'" fill="none" stroke="#FF9F1C" stroke-width="'+w+'"/>';
-  svg.appendChild(seg);}
- if(lontano||corto){var av=document.createElementNS('http://www.w3.org/2000/svg','text');
-  av.setAttribute('class','avvzoom');
-  av.setAttribute('x',mc.x);av.setAttribute('y',mc.y-mr-w*4);av.setAttribute('text-anchor','middle');
-  av.setAttribute('font-family','Mazzard');av.setAttribute('font-weight','700');
-  av.setAttribute('font-size',Math.round(lato*0.035));av.setAttribute('fill','#FF9F1C');
-  av.setAttribute('pointer-events','none');
-  av.textContent=lontano?'volto troppo defilato: più in là la foto sgranerebbe'
-                        :'zoom al massimo: foto troppo piccola';
-  svg.appendChild(av);}
- if(LOCKED)return;
- trascina(gm,svg,function(dxu,dyu,modo,base){
-  if(modo==='corpo')MIR[current]={x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r};
-  else MIR[current]={x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))};
- },{x:mc.x,y:mc.y,r:mr},true);
+ var lontano=p&&Math.hypot(p.x-mc.x,p.y-mc.y)>4;
+ if(!LOCKED){
+  var gm=cerchio('mirg',mc,mr,(corto||lontano)?'#FF9F1C':'#00E5FF',true,w);svg.appendChild(gm);
+  if(corto||lontano){var av=document.createElementNS('http://www.w3.org/2000/svg','text');
+   av.setAttribute('class','avvzoom');
+   av.setAttribute('x',mc.x);av.setAttribute('y',mc.y-mr-w*4);av.setAttribute('text-anchor','middle');
+   av.setAttribute('font-family','Mazzard');av.setAttribute('font-weight','700');
+   av.setAttribute('font-size',Math.round(lato*0.035));av.setAttribute('fill','#FF9F1C');
+   av.setAttribute('pointer-events','none');
+   av.textContent=lontano?'volto troppo defilato: più in là la foto sgranerebbe'
+                         :'zoom al massimo: foto troppo piccola';
+   svg.appendChild(av);}
+  trascina(gm,svg,function(dxu,dyu,modo,base){
+   if(modo==='corpo')MIR[current]={x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r};
+   else MIR[current]={x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))};
+  },{x:mc.x,y:mc.y,r:mr},true);
+ }
+ if(p){var gt=cerchio('testag',p,p.r,'#FFD166',false,w);svg.appendChild(gt);
+  trascina(gt,svg,function(dxu,dyu,modo,base){
+   if(modo==='corpo'){var f=stageToFocal(base.x+dxu,base.y+dyu);if(f){FOCAL.x=f.x;FOCAL.y=f.y;}}
+   else{var nr=Math.max(6,base.r+dxu);var q=focalToStage();FOCAL.r=Math.max(0.02,Math.min(0.6,nr/(q.Dw*q.s)));}
+  },{x:p.x,y:p.y,r:p.r},false);
+ }
 }
-// Trascinamento del mirino: corpo = sposta, bordo = raggio.
+// Trascinamento comune ai due cerchi: corpo = sposta, bordo = raggio.
 function trascina(g,svg,applica,base,eRegolazione){
  ['corpo','bordo'].forEach(function(modo){
   var el=g.querySelector('.gr-'+modo);if(!el)return;
