@@ -1493,7 +1493,6 @@ function renderPhotoEditor(){
    ev.preventDefault();pushUndoC();
    a.s=(a.s||1)*(ev.deltaY<0?1.05:0.95);photoClamp(a);peSync();
  },{passive:false});
- svg.addEventListener('dblclick',function(){exitPhotoEdit();});
 }
 // ---- righello stile Photoshop (px del documento) ----
 function niceStep(sc){var u=64/sc;var pow=Math.pow(10,Math.floor(Math.log(u)/Math.LN10));var f=u/pow;var n=f<1.5?1:(f<3?2:(f<7?5:10));return n*pow;}
@@ -1569,7 +1568,7 @@ function attachInteract(svg){
  el.addEventListener('wheel',function(ev){if(LOCKED)return;ev.preventDefault();pushUndoC();var o=el.getAttribute('data-obj');selObj=o;var a=ensureAdj(o,svg);
    var lo=(o==='photo')?1:0.3,hi=(o==='photo')?3.5:2.6;
    a.s=Math.min(hi,Math.max(lo,(a.s||1)*(ev.deltaY<0?1.06:0.94)));if(o==='photo')photoClamp(a);el.setAttribute('transform',objTF(a));syncScaleSlider();if(o==='photo')syncPhotoBar();highlightSel(svg);},{passive:false});
- el.addEventListener('dblclick',function(){var o=el.getAttribute('data-obj');if(o==='photo')enterPhotoEdit();else if(TEXT_EDIT_MAP[o])startTextEdit(o,el,svg);});
+ el.addEventListener('dblclick',function(){var o=el.getAttribute('data-obj');if(o!=='photo'&&TEXT_EDIT_MAP[o])startTextEdit(o,el,svg);});
  });
 }
 function drawAlignmentGuides(svg,bb,ct){var vb=svg.viewBox.baseVal;var guides=[
@@ -2177,7 +2176,7 @@ function passoUI(){
 function drawFocalUI(svg){
  if(!photoEdit)return;
  passoUI();
- [].forEach.call(svg.querySelectorAll('.mirg,.selrt,.avvzoom'),function(e){e.remove();});
+ [].forEach.call(svg.querySelectorAll('.mirg,.selrt'),function(e){e.remove();});
  if(!photoFullBleed(current))return;
  var it=BYKEY[current],m=mirFor(current),lato=Math.min(it.w,it.h);
  var w=Math.max(3,Math.round(it.w*0.0035));
@@ -2192,22 +2191,9 @@ function drawFocalUI(svg){
  // Il cerchio si vede SOLO con lo strumento Mirino: con la Mano si guarda la
  // foto, e un cerchio che non si puo' toccare confonde e basta.
  if(TOOL!=='mirino')return;
- var mc={x:it.w*m.x,y:it.h*m.y},mr=m.r*lato,p=focalToStage();
- // Se la richiesta non e' soddisfacibile va detto, altrimenti il cerchio sembra
- // non funzionare: il volto non ci arriva (soggetto troppo defilato) oppure non
- // diventa grande abbastanza (foto troppo piccola).
- var corto=p&&p.r<mr-2, lontano=p&&Math.hypot(p.x-mc.x,p.y-mc.y)>4;
- var gm=cerchio('mirg',mc,mr,(corto||lontano)?'#FF9F1C':'#FFD166',true,w,false);
+ var mc={x:it.w*m.x,y:it.h*m.y},mr=m.r*lato;
+ var gm=cerchio('mirg',mc,mr,'#FFD166',true,w,false);
  svg.appendChild(gm);
- if(corto||lontano){var av=document.createElementNS('http://www.w3.org/2000/svg','text');
-  av.setAttribute('class','avvzoom');
-  av.setAttribute('x',mc.x);av.setAttribute('y',mc.y-mr-w*4);av.setAttribute('text-anchor','middle');
-  av.setAttribute('font-family','Mazzard');av.setAttribute('font-weight','700');
-  av.setAttribute('font-size',Math.round(lato*0.035));av.setAttribute('fill','#FF9F1C');
-  av.setAttribute('pointer-events','none');
-  av.textContent=lontano?'volto troppo defilato: più in là la foto sgranerebbe'
-                        :'zoom al massimo: foto troppo piccola';
-  svg.appendChild(av);}
  trascina(gm,svg,function(dxu,dyu,modo,base){
   if(modo==='corpo')mirSet(current,{x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r});
   else mirSet(current,{x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))});
