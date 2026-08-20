@@ -260,8 +260,9 @@ small.flag{color:#E3C271}
    <button class="act ghost" id="vidCancel">Annulla</button>
   </div>
   <div class="pebar" id="peBar">
-   <span class="pbl" style="color:var(--gold)" id="peStep">PASSO 1 DI 2</span>
+   <span class="pbl" style="color:var(--gold)" id="peStep">PASSO 1/2</span>
    <span class="peh" id="peHint"></span>
+   <button class="act ghost" id="peScope" title="Se la regolazione vale per tutti i formati con lo stesso orientamento o solo per questo"></button>
    <button class="act" id="peNext">Avanti →</button>
    <button class="act ghost" id="peBack">← Indietro</button>
    <button class="act" id="peApply">✓ Fine</button>
@@ -1131,6 +1132,8 @@ document.getElementById('peNext').onclick=function(){
  passoVai(1); // dal ritocco si ricomincia
 };
 document.getElementById('peBack').onclick=function(){passoVai(1);};
+document.getElementById('peScope').onclick=function(){
+ MIRSCOPE=(MIRSCOPE==='famiglia')?'formato':'famiglia';passoUI();};
 document.getElementById('peApply').onclick=function(){exitPhotoEdit();};
 document.getElementById('peCancel').onclick=function(){cancelPhotoEdit();};
 // ===== Editor foto stile Keynote: rettangolo fisso (maschera), foto spostabile/scalabile dentro =====
@@ -1951,7 +1954,22 @@ function mirFor(key){
  if(r<=0.85)return {x:0.50,y:0.27,r:0.20}; // verticali: testo in basso
  return {x:0.50,y:0.32,r:0.20};
 }
-function mirSet(key,m){MIR[key]={x:m.x,y:m.y,r:m.r};}
+// Le famiglie di orientamento sono le stesse su cui si calcolano i mirini di
+// partenza: un layout orizzontale ha il testo a sinistra, uno verticale in
+// basso, e il volto va in posti diversi. Regolare un mirino significa quasi
+// sempre regolarli tutti quelli fatti allo stesso modo.
+function famiglia(key){var it=BYKEY[key],r=it.w/it.h;
+ return r>=1.5?'orizzontali':(r<=0.85?'verticali':'quadrati');}
+function famiglieNome(key){var f=famiglia(key);
+ return f==='orizzontali'?'gli orizzontali':(f==='verticali'?'i verticali':'i quadrati');}
+// 'famiglia' = una regolazione sistema tutti i formati con lo stesso orientamento
+// 'formato'  = solo quello su cui stai lavorando
+var MIRSCOPE='famiglia';
+function mirSet(key,m){
+ if(MIRSCOPE!=='famiglia'){MIR[key]={x:m.x,y:m.y,r:m.r};return;}
+ var f=famiglia(key);
+ ITEMS.forEach(function(t){if(famiglia(t.key)===f)MIR[t.key]={x:m.x,y:m.y,r:m.r};});
+}
 // Vero solo dove la foto e' a pieno formato dentro una clip fissa: li' spostare
 // il gruppo fa scorrere la foto nella finestra. Sui pannelli YouTube (ritaglio
 // "slice") muovere il gruppo sposterebbe il pannello stesso, quindi si esclude.
@@ -2060,13 +2078,17 @@ function passoUI(){
      n=document.getElementById('peNext'),b=document.getElementById('peBack'),
      ap=document.getElementById('peApply');
  if(!st)return;
+ var sc=document.getElementById('peScope');
  var senzaFoto=!photoFullBleed(current);
+ if(sc){sc.style.display=(!senzaFoto&&PASSO===1)?'':'none';
+  sc.textContent=MIRSCOPE==='famiglia'?('↔ tutti '+famiglieNome(current)):'↔ solo questo formato';}
  if(senzaFoto){st.textContent='RITAGLIO FOTO';h.textContent='Trascina per spostare · rotella o angoli per lo zoom';
   n.style.display='none';b.style.display='none';ap.style.display='';return;}
- if(PASSO===1){st.textContent='PASSO 1 DI 2';
-  h.textContent='Sposta il cerchio dove vuoi il volto · dal bordo scegli quanto grande';
+ if(PASSO===1){st.textContent='PASSO 1/2';
+  // l'ambito lo dichiara gia' il bottone accanto: qui non va ripetuto
+  h.textContent='Sposta il cerchio dove vuoi il volto';
   n.style.display='';n.textContent='Avanti →';b.style.display='none';ap.style.display='none';}
- else if(PASSO===2){st.textContent='PASSO 2 DI 2';
+ else if(PASSO===2){st.textContent='PASSO 2/2';
   h.textContent='Traccia un rettangolo sul volto, poi premi Invio';
   n.style.display=SELRECT?'':'none';n.textContent='✓ Invio';b.style.display='';ap.style.display='none';}
  else{st.textContent='RITOCCO';
@@ -2099,8 +2121,8 @@ function drawFocalUI(svg){
   svg.appendChild(av);}
  if(PASSO===1){
   trascina(gm,svg,function(dxu,dyu,modo,base){
-   if(modo==='corpo')MIR[current]={x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r};
-   else MIR[current]={x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))};
+   if(modo==='corpo')mirSet(current,{x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r});
+   else mirSet(current,{x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))});
   },{x:mc.x,y:mc.y,r:mr},true);
  }
  if(PASSO===2&&SELRECT){
