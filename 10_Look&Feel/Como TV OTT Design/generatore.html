@@ -202,12 +202,12 @@ small.flag{color:#E3C271}
        di intervenire sul design, quindi qui trova anche come renderlo permanente. -->
   <div class="photobar" id="prefBar" style="display:none">
    <span class="pbl">REGOLAZIONI</span>
-   <span class="seg" id="prefState">nessuna modifica salvata</span>
-   <button class="act ghost" id="resetPos" title="Rimette gli elementi di questo formato dove li mette il progetto">Azzera spostamenti</button>
-   <button class="act" id="prefSave">Salva</button>
-   <button class="act ghost" id="prefExp">Esporta file</button>
-   <button class="act ghost" id="prefImp">Carica file</button>
-   <button class="act ghost" id="prefReset">Ripristina predefiniti</button>
+   <span class="seg" id="prefState"></span>
+   <button class="act ghost" id="resetPos" title="Rimette gli elementi di questo formato dove li mette il progetto, senza toccare gli altri formati">Rimetti a posto questo formato</button>
+   <button class="act ghost" id="prefReset" title="Rimette mirini, posizioni e stili di TUTTI i formati come sono di fabbrica">Rimetti tutto di fabbrica</button>
+   <span class="tbsep"></span>
+   <button class="act" id="prefExp" title="Scarica un file da mandare a Goffredo: le tue regolazioni diventano il predefinito per tutti">Esporta per tutti</button>
+   <button class="act ghost" id="prefImp" title="Applica un file di regolazioni ricevuto da qualcun altro">Importa da file</button>
   </div>
   <div class="editbar" id="textBar" style="display:none">
    <span class="pbl" id="textBarTitle" style="color:var(--gold);font-size:11px;font-weight:800;letter-spacing:.18em">TESTO</span>
@@ -1560,25 +1560,25 @@ document.getElementById('scaleR').addEventListener('input',function(){applyObjSc
 document.getElementById('scaleV').addEventListener('focus',function(){pushUndo();});
 document.getElementById('scaleV').addEventListener('input',function(){var n=parseFloat(this.value);if(isNaN(n))return;var base=baseFontOf(selObj);applyObjScale(base?((n/PT_PER_PX)/base):(n/100),true);});
 document.getElementById('scaleV').addEventListener('blur',function(){syncScaleSlider();});
-document.getElementById('prefSave').onclick=function(){prefSalva();};
+
 document.getElementById('prefExp').onclick=function(){
  var b=new Blob([JSON.stringify(prefRaccogli(),null,1)],{type:'application/json'});
- dl(b,'como-tv-regolazioni.json');prefStato('file esportato');};
+ dl(b,'como-tv-regolazioni.json');prefStato('✓ file esportato, mandalo a Goffredo');};
 document.getElementById('prefImp').onclick=function(){
  var i=document.createElement('input');i.type='file';i.accept='application/json,.json';
  i.onchange=function(){var f=i.files&&i.files[0];if(!f)return;
   var r=new FileReader();r.onload=function(){
    try{var d=JSON.parse(r.result);if(!prefApplica(d))throw 0;
-    prefSalva();applyFocalAll(function(){renderStage();renderThumbs();});prefStato('file caricato e salvato');}
+    prefSalva();applyFocalAll(function(){renderStage();renderThumbs();});prefStato('✓ file importato e salvato');}
    catch(e){alert('File non valido.');}};
   r.readAsText(f);};
  i.click();};
 document.getElementById('prefReset').onclick=function(){
- if(!confirm('Rimette mirini, posizioni e stili come sono di fabbrica. Procedo?'))return;
+ if(!confirm('Rimette mirini, posizioni e stili di TUTTI i formati come sono di fabbrica, e cancella il salvataggio su questo computer. Procedo?'))return;
  try{localStorage.removeItem(PREF_KEY);}catch(e){}
  MIR={};FOCAL.r=0.11;
  ITEMS.forEach(function(it){var a=STATE[it.key].adj;Object.keys(a).forEach(function(k){if(k!=='photo')delete a[k];});});
- PREF_DIRTY=false;applyFocalAll(function(){renderControls();renderStage();renderThumbs();});prefStato('predefiniti ripristinati');};
+ PREF_DIRTY=false;applyFocalAll(function(){renderControls();renderStage();renderThumbs();});prefStato('di fabbrica, mai modificate');};
 document.getElementById('lockBtn').onclick=function(){
  LOCKED=!LOCKED;this.textContent=LOCKED?'🔒 Bloccato':'🔓 Sbloccato';
  this.className='act ghost'+(LOCKED?' on':'');
@@ -1734,16 +1734,20 @@ function prefApplica(d){
  return true;
 }
 function prefSalva(){
- try{localStorage.setItem(PREF_KEY,JSON.stringify(prefRaccogli()));PREF_DIRTY=false;prefStato('salvate su questo computer');return true;}
- catch(e){prefStato('spazio esaurito nel browser');return false;}
+ try{localStorage.setItem(PREF_KEY,JSON.stringify(prefRaccogli()));PREF_DIRTY=false;prefStato('✓ salvate su questo computer');return true;}
+ catch(e){prefStato('⚠ spazio esaurito nel browser');return false;}
 }
 function prefCarica(){
  try{var d=JSON.parse(localStorage.getItem(PREF_KEY)||'null');
-  if(d&&prefApplica(d)){prefStato('caricate da questo computer');return true;}}catch(e){}
+  if(d&&prefApplica(d)){prefStato('✓ salvate su questo computer');return true;}}catch(e){}
  return false;
 }
-function prefStato(t){var e=document.getElementById('prefState');if(e)e.textContent=t||(PREF_DIRTY?'modifiche non salvate':'nessuna modifica salvata');}
-function prefTocca(){PREF_DIRTY=true;prefStato();}
+function prefStato(t){var e=document.getElementById('prefState');if(e)e.textContent=t||'di fabbrica, mai modificate';}
+// Salvataggio automatico: non c'e' un bottone Salva da ricordarsi. Si accumula
+// per un attimo, cosi' un trascinamento non scrive dieci volte di fila.
+var _prefTO;
+function prefTocca(){PREF_DIRTY=true;prefStato('salvo…');
+ clearTimeout(_prefTO);_prefTO=setTimeout(function(){prefSalva();},450);}
 
 // ---------- ancoraggio del volto ----------
 // Modello "cerchio su cerchio", lo stesso gesto del place di Photoshop.
