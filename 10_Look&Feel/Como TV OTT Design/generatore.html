@@ -93,6 +93,10 @@ button.act:active{transform:scale(.97)}
  border-radius:8px;padding:7px 10px;font:inherit;font-size:12px;outline:none}
 .photobar input[type=text]{flex:1 1 150px;min-width:110px;max-width:250px}
 .photobar select{flex:1 1 170px;min-width:120px;max-width:280px}
+.perow{display:flex;gap:14px;align-items:center;min-width:0}
+.perow .grow{flex:1}
+.perow .pbl{font-size:10px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:var(--fg3);flex:none}
+.peh.flex{flex:1 1 40px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pebar select{background:#151A32;border:1px solid var(--line);color:var(--ivory);
  border-radius:8px;padding:6px 9px;font:inherit;font-size:12px;outline:none;max-width:210px}
 .pebar select:focus{border-color:var(--gold)}
@@ -100,7 +104,7 @@ button.act:active{transform:scale(.97)}
    invece di spingere i bottoni a capo. */
 .photobar .seg.flex{flex:1 1 40px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .photobar input[type=text]:focus,.photobar select:focus{border-color:var(--gold)}
-.pebar{display:none;gap:14px;align-items:center;flex-wrap:wrap;background:rgba(201,162,75,.14);border:1px solid var(--gold);border-radius:10px;padding:9px 13px;font-size:12px;color:var(--fg2)}
+.pebar{display:none;flex-direction:column;align-items:stretch;gap:9px;background:rgba(201,162,75,.14);border:1px solid var(--gold);border-radius:10px;padding:9px 13px;font-size:12px;color:var(--fg2)}
 .pebar.on{display:flex}
 .vtrans{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:12px;color:var(--fg2)}
 .vtrans input[type=range]{flex:1;min-width:0}
@@ -218,7 +222,7 @@ small.flag{color:#E3C271}
    <button class="act ghost on" id="lockBtn" title="Blocca gli elementi: da chiuso non si spostano per sbaglio">🔒 Bloccato</button>
    <span class="tbsep"></span>
    <div class="seg">Zoom foto <span id="phZv" style="font-variant-numeric:tabular-nums;font-weight:800;color:var(--ivory)">110%</span></div>
-   <button class="act" id="phEdit">Ritaglia foto</button>
+   <button class="act" id="phEdit">Modifica foto</button>
    <button class="act ghost" id="phReset" title="Rimette l'inquadratura di questo formato come la vuole il mirino">Riallinea</button>
   </div>
   <!-- Regolazioni: compare solo a lucchetto aperto. Chi regola sta gia' scegliendo
@@ -262,15 +266,26 @@ small.flag{color:#E3C271}
    <button class="act ghost" id="vidUse">Usa solo il fotogramma</button>
    <button class="act ghost" id="vidCancel">Annulla</button>
   </div>
+  <!-- Tre strumenti sempre visibili, nessuna sequenza: si sceglie quello che
+       serve e ci si salta dentro e fuori liberamente. Due righe volute, non un
+       a-capo casuale: sopra cosa fai, sotto dove vale e come esci. -->
   <div class="pebar" id="peBar">
-   <span class="pbl" style="color:var(--gold)" id="peStep">PASSO 1/2</span>
-   <select id="peFmt" title="Cambia formato restando nel ritaglio"></select>
-   <span class="peh" id="peHint"></span>
-   <button class="act ghost" id="peScope" title="Se la regolazione vale per tutti i formati con lo stesso orientamento o solo per questo"></button>
-   <button class="act" id="peNext">Avanti →</button>
-   <button class="act ghost" id="peBack">← Indietro</button>
-   <button class="act" id="peApply">✓ Fine</button>
-   <button class="act ghost" id="peCancel">Annulla</button>
+   <div class="perow">
+    <span class="pbl" style="color:var(--gold)">MODIFICA FOTO</span>
+    <select id="peFmt" title="Cambia formato restando qui dentro"></select>
+    <span class="tbsep"></span>
+    <button class="act ghost" id="tMano"   title="Trascina la foto · rotella per lo zoom">✋ Mano</button>
+    <button class="act ghost" id="tMirino" title="Sposta il cerchio: dove finisce il volto e quanto grande">◎ Mirino</button>
+    <button class="act ghost" id="tVolto"  title="Traccia un rettangolo sul volto: la foto si allinea">▭ Volto</button>
+    <span class="peh flex" id="peHint"></span>
+   </div>
+   <div class="perow">
+    <span class="pbl">APPLICA A</span>
+    <button class="act ghost" id="peScope" title="Se la modifica vale per tutti i formati con lo stesso orientamento o solo per questo"></button>
+    <span class="grow"></span>
+    <button class="act" id="peApply">✓ Fine</button>
+    <button class="act ghost" id="peCancel">Annulla</button>
+   </div>
   </div>
   <div class="stagewrap"><canvas id="rulerTop" class="ruler"></canvas><canvas id="rulerLeft" class="ruler"></canvas><div id="rulerCorner"></div><div id="stage"></div></div>
  </div>
@@ -1130,14 +1145,8 @@ var PEUPD=null;
 // non faceva ripartire il calcolo, quindi a volte sembrava funzionare e a volte no.
 document.getElementById('phReset').onclick=function(){pushUndo();delete STATE[current].adj.photo;anchorCurrent();renderStage();refreshThumbs();};
 document.getElementById('phEdit').onclick=function(){if(photoEdit)exitPhotoEdit();else enterPhotoEdit();};
-document.getElementById('peNext').onclick=function(){
- if(PASSO===1){passoVai(2);return;}
- if(PASSO===2){if(!applicaSelezione())passoUI();return;}
- passoVai(1); // dal ritocco si ricomincia
-};
-document.getElementById('peBack').onclick=function(){passoVai(1);};
-// Tendina del formato dentro il ritaglio: tarare un mirino vuol dire guardarlo
-// su piu' formati della stessa famiglia, e uscire ogni volta e' scomodo.
+// Tendina del formato: tarare un mirino vuol dire guardarlo su piu' formati
+// della stessa famiglia, e uscire ogni volta e' scomodo.
 function peFmtRiempi(){
  var sel=document.getElementById('peFmt');if(!sel)return;
  sel.innerHTML='';var gruppo=null,og=null;
@@ -1156,6 +1165,9 @@ document.getElementById('peFmt').onchange=function(){
 };
 document.getElementById('peScope').onclick=function(){
  MIRSCOPE=(MIRSCOPE==='famiglia')?'formato':'famiglia';passoUI();};
+document.getElementById('tMano').onclick=function(){toolVai('mano');};
+document.getElementById('tMirino').onclick=function(){toolVai('mirino');};
+document.getElementById('tVolto').onclick=function(){toolVai('volto');};
 document.getElementById('peApply').onclick=function(){exitPhotoEdit();};
 document.getElementById('peCancel').onclick=function(){cancelPhotoEdit();};
 // ===== Editor foto stile Keynote: rettangolo fisso (maschera), foto spostabile/scalabile dentro =====
@@ -1331,7 +1343,7 @@ function enterPhotoEdit(){if(photoEdit)return;pushUndo();
  // il ritaglio di questo formato, ma anche i mirini e il cerchio del volto, che
  // valgono su tutti i formati. Prima ripristinava solo il primo.
  PE_BEFORE=JSON.stringify({adj:STATE[current].adj.photo||null,mir:MIR,focal:FOCAL});
- photoEdit=true;PASSO=1;SELRECT=null;var b=document.getElementById('phEdit');if(b)b.style.display='none';var pb=document.getElementById('peBar');if(pb)pb.classList.add('on');renderStage();}
+ photoEdit=true;TOOL='mano';SELRECT=null;var b=document.getElementById('phEdit');if(b)b.style.display='none';var pb=document.getElementById('peBar');if(pb)pb.classList.add('on');renderStage();}
 function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;var b=document.getElementById('phEdit');if(b)b.style.display='';var pb=document.getElementById('peBar');if(pb)pb.classList.remove('on');renderStage();}
 function cancelPhotoEdit(){if(!photoEdit)return;
  var v=null;try{v=JSON.parse(PE_BEFORE||'null');}catch(e){}
@@ -1432,21 +1444,49 @@ function renderPhotoEditor(){
  PEUPD=function(){var aa=STATE[current].adj.photo;if(aa){photoClamp(aa);peSync();}};
  setTimeout(peSync,0);
  svg.addEventListener('pointerdown',function(ev){ev.preventDefault();
-   if(PASSO===2){ // traccia il rettangolo sul volto
+   if(TOOL==='volto'){ // traccia il rettangolo sul volto
     var p0=puntoSvg(svg,ev.clientX,ev.clientY);
     function mvR(e){var p1=puntoSvg(svg,e.clientX,e.clientY);
      SELRECT={x:Math.min(p0.x,p1.x),y:Math.min(p0.y,p1.y),w:Math.abs(p1.x-p0.x),h:Math.abs(p1.y-p0.y)};
      drawFocalUI(svg);}
     function upR(){window.removeEventListener('pointermove',mvR);window.removeEventListener('pointerup',upR);
      if(SELRECT&&(SELRECT.w<6||SELRECT.h<6))SELRECT=null;
+     // si applica al rilascio: niente Invio da ricordare. Poi torna alla Mano,
+     // che e' quasi sempre il gesto successivo (ritocco fine).
+     if(SELRECT){applicaSelezione();return;}
      drawFocalUI(svg);passoUI();}
     window.addEventListener('pointermove',mvR);window.addEventListener('pointerup',upR);return;}
-   pushUndoC();var k=svgUnitPerPx(svg);var sx=ev.clientX,sy=ev.clientY,dx0=a.dx||0,dy0=a.dy||0;
-   function mv(e){a.dx=dx0+(e.clientX-sx)*k;a.dy=dy0+(e.clientY-sy)*k;photoClamp(a);peSync();syncPhotoBar();}
-   function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);}
+   if(TOOL!=='mano')return;
+   // Trascinare la foto E' spostare il mirino, espresso dall'altra parte: se la
+   // foto va a destra di D, il volto finisce a destra di D, quindi il bersaglio
+   // si e' spostato di D. Cosi' mano, mirino e rettangolo scrivono negli stessi
+   // due dati e l'ambito (famiglia / solo questo) vale identico per tutti e tre,
+   // senza che le inquadrature possano andare alla deriva formato per formato.
+   pushUndoC();var k=svgUnitPerPx(svg),sx=ev.clientX,sy=ev.clientY;
+   var it0=BYKEY[current],m0=mirFor(current);
+   function mv(e){
+    var nx=Math.max(0,Math.min(1,m0.x+(e.clientX-sx)*k/it0.w));
+    var ny=Math.max(0,Math.min(1,m0.y+(e.clientY-sy)*k/it0.h));
+    MIR[current]={x:nx,y:ny,r:m0.r};      // durante il gesto solo qui, per la risposta immediata
+    anchorCurrent();peSync();syncPhotoBar();}
+   function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);
+    mirSet(current,mirFor(current));prefTocca();   // al rilascio si propaga secondo l'ambito
+    applyFocalAll(function(){renderStage();refreshThumbs();});}
    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);});
- if(PASSO===2)svg.style.cursor='crosshair';
- svg.addEventListener('wheel',function(ev){ev.preventDefault();pushUndoC();a.s=Math.min(3.5,Math.max(1,(a.s||1)*(ev.deltaY<0?1.05:0.95)));photoClamp(a);peSync();syncPhotoBar();},{passive:false});
+ if(TOOL==='volto')svg.style.cursor='crosshair';
+ // La rotella allarga o stringe il mirino: ingrandire la foto e' fare il volto
+ // piu' grande. Stesso dato, stessa propagazione.
+ var _rotTO;
+ svg.addEventListener('wheel',function(ev){
+   if(TOOL!=='mano'||!photoFullBleed(current))return;
+   ev.preventDefault();pushUndoC();
+   var m=mirFor(current);
+   MIR[current]={x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,m.r*(ev.deltaY<0?1.05:0.95)))};
+   anchorCurrent();peSync();syncPhotoBar();drawFocalUI(svg);
+   clearTimeout(_rotTO);_rotTO=setTimeout(function(){
+    mirSet(current,mirFor(current));prefTocca();
+    applyFocalAll(function(){renderStage();refreshThumbs();});},260);
+ },{passive:false});
  svg.addEventListener('dblclick',function(){exitPhotoEdit();});
 }
 // ---- righello stile Photoshop (px del documento) ----
@@ -1793,10 +1833,7 @@ window.addEventListener('keydown',function(e){
  if(mod&&(e.key==='e'||e.key==='E')){e.preventDefault();document.getElementById('dlAll').click();return;}
  var tag=(e.target.tagName||'').toLowerCase();if(tag==='input'||tag==='select'||tag==='textarea')return;
  var svg=document.querySelector('#stage svg');
- if(photoEdit&&(e.key==='Enter')){e.preventDefault();
-  if(PASSO===1)passoVai(2);else if(PASSO===2)applicaSelezione();
-  return;}
- if(e.key==='Escape'){if(photoEdit){if(PASSO===2&&SELRECT){SELRECT=null;renderStage();return;}exitPhotoEdit();return;}selObj=null;document.getElementById('selName').textContent='Nessun oggetto selezionato';if(svg)highlightSel(svg);syncScaleSlider();return;}
+ if(e.key==='Escape'){if(photoEdit){if(SELRECT){SELRECT=null;renderStage();return;}exitPhotoEdit();return;}selObj=null;document.getElementById('selName').textContent='Nessun oggetto selezionato';if(svg)highlightSel(svg);syncScaleSlider();return;}
  if(!selObj||!svg)return;var a=ensureAdj(selObj,svg);var st=e.shiftKey?20:4;var did=false;
  if(e.key==='ArrowLeft'){pushUndoC();a.dx-=st;did=true;}
  else if(e.key==='ArrowRight'){pushUndoC();a.dx+=st;did=true;}
@@ -2092,32 +2129,28 @@ function cerchio(cls,c,r,col,tratteggio,w,soloVista){
 // per formato), poi selezioni il volto NELLA foto con un rettangolo e premi
 // Invio. Il rettangolo da' posizione e dimensione della testa in un gesto solo,
 // e la foto si sposta per portarcelo, su tutti i formati insieme.
-// PASSO: 1 = posiziona il cerchio · 2 = seleziona il volto · 0 = ritocco libero
-var PASSO=1, SELRECT=null;
-function passoVai(n){PASSO=n;SELRECT=null;renderStage();}
+// STRUMENTO: 'mano' = trascini la foto · 'mirino' = sposti il cerchio ·
+// 'volto' = selezioni il volto col rettangolo. Nessuna sequenza: sono tre modi
+// di dire la stessa cosa e si sceglie quello che conviene.
+var TOOL='mano', SELRECT=null;
+function toolVai(t){TOOL=t;SELRECT=null;renderStage();}
 function passoUI(){
- var st=document.getElementById('peStep'),h=document.getElementById('peHint'),
-     n=document.getElementById('peNext'),b=document.getElementById('peBack'),
-     ap=document.getElementById('peApply');
- if(!st)return;
+ var h=document.getElementById('peHint');if(!h)return;
  peFmtRiempi();
- var sc=document.getElementById('peScope');
- var senzaFoto=!photoFullBleed(current);
- if(sc){sc.style.display=(!senzaFoto&&PASSO===1)?'':'none';
+ var sc=document.getElementById('peScope'),senzaFoto=!photoFullBleed(current);
+ ['mano','mirino','volto'].forEach(function(t){
+  var b=document.getElementById('t'+t.charAt(0).toUpperCase()+t.slice(1));if(!b)return;
+  b.className='act ghost'+(TOOL===t?' on':'');
+  b.style.display=(senzaFoto&&t!=='mano')?'none':'';   // senza foto a pieno campo c'e' solo la mano
+ });
+ if(sc){sc.style.display=senzaFoto?'none':'';
   sc.textContent=MIRSCOPE==='famiglia'?('↔ tutti '+famiglieNome(current)):'↔ solo questo formato';}
- if(senzaFoto){st.textContent='RITAGLIO FOTO';h.textContent='Trascina per spostare · rotella o angoli per lo zoom';
-  n.style.display='none';b.style.display='none';ap.style.display='';return;}
- if(PASSO===1){st.textContent='PASSO 1/2';
-  // l'ambito lo dichiara gia' il bottone accanto: qui non va ripetuto
-  h.textContent='Sposta il cerchio dove vuoi il volto';
-  n.style.display='';n.textContent='Avanti →';b.style.display='none';ap.style.display='none';}
- else if(PASSO===2){st.textContent='PASSO 2/2';
-  h.textContent='Traccia un rettangolo sul volto, poi premi Invio';
-  n.style.display=SELRECT?'':'none';n.textContent='✓ Invio';b.style.display='';ap.style.display='none';}
- else{st.textContent='RITOCCO';
-  h.textContent='Trascina per spostare · rotella o angoli per lo zoom · «Rifai» per ricominciare';
-  n.style.display='';n.textContent='↺ Rifai';b.style.display='none';ap.style.display='';}
+ h.textContent=senzaFoto?'Trascina per spostare · rotella o angoli per lo zoom'
+  :(TOOL==='mano'?'Trascina la foto · rotella per lo zoom'
+   :(TOOL==='mirino'?'Trascina il cerchio · dal bordo la dimensione'
+    :'Traccia un rettangolo sul volto'));
 }
+
 function drawFocalUI(svg){
  if(!photoEdit)return;
  passoUI();
@@ -2130,8 +2163,8 @@ function drawFocalUI(svg){
  // Se la richiesta non e' soddisfacibile va detto, altrimenti il cerchio sembra
  // non funzionare: il volto non ci arriva (soggetto troppo defilato) oppure non
  // diventa grande abbastanza (foto troppo piccola).
- var corto=PASSO===0&&p&&p.r<mr-2, lontano=PASSO===0&&p&&Math.hypot(p.x-mc.x,p.y-mc.y)>4;
- var gm=cerchio('mirg',mc,mr,(corto||lontano)?'#FF9F1C':'#FFD166',true,w,PASSO!==1);
+ var corto=p&&p.r<mr-2, lontano=p&&Math.hypot(p.x-mc.x,p.y-mc.y)>4;
+ var gm=cerchio('mirg',mc,mr,(corto||lontano)?'#FF9F1C':'#FFD166',true,w,TOOL!=='mirino');
  svg.appendChild(gm);
  if(corto||lontano){var av=document.createElementNS('http://www.w3.org/2000/svg','text');
   av.setAttribute('class','avvzoom');
@@ -2142,13 +2175,13 @@ function drawFocalUI(svg){
   av.textContent=lontano?'volto troppo defilato: più in là la foto sgranerebbe'
                         :'zoom al massimo: foto troppo piccola';
   svg.appendChild(av);}
- if(PASSO===1){
+ if(TOOL==='mirino'){
   trascina(gm,svg,function(dxu,dyu,modo,base){
    if(modo==='corpo')mirSet(current,{x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r});
    else mirSet(current,{x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))});
   },{x:mc.x,y:mc.y,r:mr},true);
  }
- if(PASSO===2&&SELRECT){
+ if(TOOL==='volto'&&SELRECT){
   var g=document.createElementNS('http://www.w3.org/2000/svg','g');g.setAttribute('class','selrt');
   g.setAttribute('pointer-events','none');
   g.innerHTML='<rect x="'+SELRECT.x+'" y="'+SELRECT.y+'" width="'+SELRECT.w+'" height="'+SELRECT.h+'" '
@@ -2165,7 +2198,7 @@ function applicaSelezione(){
  pushUndo();
  FOCAL.x=f.x;FOCAL.y=f.y;
  FOCAL.r=Math.max(0.02,Math.min(0.6,(Math.max(SELRECT.w,SELRECT.h)/2)/(q.Dw*q.s)));
- SELRECT=null;PASSO=0;
+ SELRECT=null;TOOL='mano';
  applyFocalAll(function(){renderStage();refreshThumbs();});
  return true;
 }
