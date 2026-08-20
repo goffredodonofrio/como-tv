@@ -259,8 +259,10 @@ small.flag{color:#E3C271}
    <button class="act ghost" id="vidCancel">Annulla</button>
   </div>
   <div class="pebar" id="peBar">
-   <span class="pbl" style="color:var(--gold)">RITAGLIO FOTO</span>
+   <span class="pbl" style="color:var(--gold)" id="peStep">PASSO 1 DI 2</span>
    <span class="peh" id="peHint"></span>
+   <button class="act" id="peNext">Avanti →</button>
+   <button class="act ghost" id="peBack">← Indietro</button>
    <button class="act" id="peApply">✓ Fine</button>
    <button class="act ghost" id="peCancel">Annulla</button>
   </div>
@@ -1108,6 +1110,12 @@ var PEUPD=null;
 // non faceva ripartire il calcolo, quindi a volte sembrava funzionare e a volte no.
 document.getElementById('phReset').onclick=function(){pushUndo();delete STATE[current].adj.photo;anchorCurrent();renderStage();refreshThumbs();};
 document.getElementById('phEdit').onclick=function(){if(photoEdit)exitPhotoEdit();else enterPhotoEdit();};
+document.getElementById('peNext').onclick=function(){
+ if(PASSO===1){passoVai(2);return;}
+ if(PASSO===2){if(!applicaSelezione())passoUI();return;}
+ passoVai(1); // dal ritocco si ricomincia
+};
+document.getElementById('peBack').onclick=function(){passoVai(1);};
 document.getElementById('peApply').onclick=function(){exitPhotoEdit();};
 document.getElementById('peCancel').onclick=function(){cancelPhotoEdit();};
 // ===== Editor foto stile Keynote: rettangolo fisso (maschera), foto spostabile/scalabile dentro =====
@@ -1283,7 +1291,7 @@ function enterPhotoEdit(){if(photoEdit)return;pushUndo();
  // il ritaglio di questo formato, ma anche i mirini e il cerchio del volto, che
  // valgono su tutti i formati. Prima ripristinava solo il primo.
  PE_BEFORE=JSON.stringify({adj:STATE[current].adj.photo||null,mir:MIR,focal:FOCAL});
- photoEdit=true;var b=document.getElementById('phEdit');if(b)b.style.display='none';var pb=document.getElementById('peBar');if(pb)pb.classList.add('on');renderStage();}
+ photoEdit=true;PASSO=1;SELRECT=null;var b=document.getElementById('phEdit');if(b)b.style.display='none';var pb=document.getElementById('peBar');if(pb)pb.classList.add('on');renderStage();}
 function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;var b=document.getElementById('phEdit');if(b)b.style.display='';var pb=document.getElementById('peBar');if(pb)pb.classList.remove('on');renderStage();}
 function cancelPhotoEdit(){if(!photoEdit)return;
  var v=null;try{v=JSON.parse(PE_BEFORE||'null');}catch(e){}
@@ -1384,10 +1392,20 @@ function renderPhotoEditor(){
  PEUPD=function(){var aa=STATE[current].adj.photo;if(aa){photoClamp(aa);peSync();}};
  setTimeout(peSync,0);
  svg.addEventListener('pointerdown',function(ev){ev.preventDefault();
+   if(PASSO===2){ // traccia il rettangolo sul volto
+    var p0=puntoSvg(svg,ev.clientX,ev.clientY);
+    function mvR(e){var p1=puntoSvg(svg,e.clientX,e.clientY);
+     SELRECT={x:Math.min(p0.x,p1.x),y:Math.min(p0.y,p1.y),w:Math.abs(p1.x-p0.x),h:Math.abs(p1.y-p0.y)};
+     drawFocalUI(svg);}
+    function upR(){window.removeEventListener('pointermove',mvR);window.removeEventListener('pointerup',upR);
+     if(SELRECT&&(SELRECT.w<6||SELRECT.h<6))SELRECT=null;
+     drawFocalUI(svg);passoUI();}
+    window.addEventListener('pointermove',mvR);window.addEventListener('pointerup',upR);return;}
    pushUndoC();var k=svgUnitPerPx(svg);var sx=ev.clientX,sy=ev.clientY,dx0=a.dx||0,dy0=a.dy||0;
    function mv(e){a.dx=dx0+(e.clientX-sx)*k;a.dy=dy0+(e.clientY-sy)*k;photoClamp(a);peSync();syncPhotoBar();}
    function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);}
    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);});
+ if(PASSO===2)svg.style.cursor='crosshair';
  svg.addEventListener('wheel',function(ev){ev.preventDefault();pushUndoC();a.s=Math.min(3.5,Math.max(1,(a.s||1)*(ev.deltaY<0?1.05:0.95)));photoClamp(a);peSync();syncPhotoBar();},{passive:false});
  svg.addEventListener('dblclick',function(){exitPhotoEdit();});
 }
@@ -1434,6 +1452,8 @@ window.addEventListener('resize',function(){requestAnimationFrame(drawRulers);se
 var _sw=document.querySelector('.stagewrap');if(_sw)_sw.addEventListener('scroll',function(){requestAnimationFrame(drawRulers);});
 // Sui formati verticali l'elemento e' piu' largo del disegno: serve la larghezza
 // reale, altrimenti il trascinamento non segue il puntatore.
+function puntoSvg(svg,cx,cy){var pt=svg.createSVGPoint();pt.x=cx;pt.y=cy;
+ return pt.matrixTransform(svg.getScreenCTM().inverse());}
 function svgUnitPerPx(svg){var vb=svg.viewBox.baseVal;return vb.width/artRect(svg).width;}
 function ensureAdj(o,svg){var S=STATE[current];if(!S.adj[o]){var el=svg.querySelector('[data-obj="'+o+'"]');var bb=el.getBBox();S.adj[o]={dx:0,dy:0,s:(o==='photo'?PHOTO_MIN_ZOOM:1),cx:bb.x+bb.width/2,cy:bb.y+bb.height/2};}return S.adj[o];}
 function snapToAlign(el,svg,a,threshold){var SNAP=threshold||15;var bb=el.getBBox();var bestDx=a.dx,bestDy=a.dy;var minDistX=SNAP,minDistY=SNAP;
@@ -1733,7 +1753,10 @@ window.addEventListener('keydown',function(e){
  if(mod&&(e.key==='e'||e.key==='E')){e.preventDefault();document.getElementById('dlAll').click();return;}
  var tag=(e.target.tagName||'').toLowerCase();if(tag==='input'||tag==='select'||tag==='textarea')return;
  var svg=document.querySelector('#stage svg');
- if(e.key==='Escape'){if(photoEdit){exitPhotoEdit();return;}selObj=null;document.getElementById('selName').textContent='Nessun oggetto selezionato';if(svg)highlightSel(svg);syncScaleSlider();return;}
+ if(photoEdit&&(e.key==='Enter')){e.preventDefault();
+  if(PASSO===1)passoVai(2);else if(PASSO===2)applicaSelezione();
+  return;}
+ if(e.key==='Escape'){if(photoEdit){if(PASSO===2&&SELRECT){SELRECT=null;renderStage();return;}exitPhotoEdit();return;}selObj=null;document.getElementById('selName').textContent='Nessun oggetto selezionato';if(svg)highlightSel(svg);syncScaleSlider();return;}
  if(!selObj||!svg)return;var a=ensureAdj(selObj,svg);var st=e.shiftKey?20:4;var did=false;
  if(e.key==='ArrowLeft'){pushUndoC();a.dx-=st;did=true;}
  else if(e.key==='ArrowRight'){pushUndoC();a.dx+=st;did=true;}
@@ -2010,30 +2033,48 @@ function cerchio(cls,c,r,col,tratteggio,w,soloVista){
 // trascinabili e ridimensionabili. Solo in ritaglio: nella vista normale
 // sporcherebbero il giudizio sulla grafica.
 var FOCAL_DOPO=null;
-// Due cerchi, sempre tutti e due, sempre manovrabili:
-//  - GIALLO sulla foto: dov'e' e quanto e' grande la testa;
-//  - CIANO sul formato: dove deve finire e quanto grande deve venire.
-// Il mirino non sta sotto il lucchetto: se non si vede appena si apre il
-// ritaglio, trascinandolo si finisce per spostare la foto. La sua posizione
-// resta comunque una regolazione, quindi si salva da sola.
+// Il ritaglio e' guidato in due passi, perche' due oggetti trascinabili insieme
+// non si capiscono: prima dici DOVE vuoi il volto (cerchio giallo, resta salvato
+// per formato), poi selezioni il volto NELLA foto con un rettangolo e premi
+// Invio. Il rettangolo da' posizione e dimensione della testa in un gesto solo,
+// e la foto si sposta per portarcelo, su tutti i formati insieme.
+// PASSO: 1 = posiziona il cerchio · 2 = seleziona il volto · 0 = ritocco libero
+var PASSO=1, SELRECT=null;
+function passoVai(n){PASSO=n;SELRECT=null;renderStage();}
+function passoUI(){
+ var st=document.getElementById('peStep'),h=document.getElementById('peHint'),
+     n=document.getElementById('peNext'),b=document.getElementById('peBack'),
+     ap=document.getElementById('peApply');
+ if(!st)return;
+ var senzaFoto=!photoFullBleed(current);
+ if(senzaFoto){st.textContent='RITAGLIO FOTO';h.textContent='Trascina per spostare · rotella o angoli per lo zoom';
+  n.style.display='none';b.style.display='none';ap.style.display='';return;}
+ if(PASSO===1){st.textContent='PASSO 1 DI 2';
+  h.textContent='Sposta il cerchio dove vuoi il volto · dal bordo scegli quanto grande';
+  n.style.display='';n.textContent='Avanti →';b.style.display='none';ap.style.display='none';}
+ else if(PASSO===2){st.textContent='PASSO 2 DI 2';
+  h.textContent='Traccia un rettangolo sul volto, poi premi Invio';
+  n.style.display=SELRECT?'':'none';n.textContent='✓ Invio';b.style.display='';ap.style.display='none';}
+ else{st.textContent='RITOCCO';
+  h.textContent='Trascina per spostare · rotella o angoli per lo zoom · «Rifai» per ricominciare';
+  n.style.display='';n.textContent='↺ Rifai';b.style.display='none';ap.style.display='';}
+}
 function drawFocalUI(svg,dopo){
  if(dopo)FOCAL_DOPO=dopo;
  if(!photoEdit)return;
- var h=document.getElementById('peHint');
- if(h)h.textContent=!photoFullBleed(current)
-  ? 'Trascina per spostare · rotella o angoli per lo zoom'
-  : 'Giallo = il volto · ciano = dove finisce · trascina o ridimensiona';
- [].forEach.call(svg.querySelectorAll('.mirg,.testag,.avvzoom'),function(e){e.remove();});
+ passoUI();
+ [].forEach.call(svg.querySelectorAll('.mirg,.selrt,.avvzoom'),function(e){e.remove();});
  if(!photoFullBleed(current))return;
  var it=BYKEY[current],m=mirFor(current),lato=Math.min(it.w,it.h);
  var w=Math.max(3,Math.round(it.w*0.0035));
  var mc={x:it.w*m.x,y:it.h*m.y},mr=m.r*lato;
  var p=focalToStage();
- // Due modi in cui la richiesta puo' non essere soddisfatta, ed entrambi vanno
- // detti: il volto non arriva sul mirino (soggetto troppo defilato, servirebbe
- // uno zoom che sgranerebbe) o non diventa grande come il cerchio (foto piccola).
- var corto=p&&p.r<mr-2, lontano=p&&Math.hypot(p.x-mc.x,p.y-mc.y)>4;
- var gm=cerchio('mirg',mc,mr,(corto||lontano)?'#FF9F1C':'#00E5FF',true,w);svg.appendChild(gm);
+ // Se la richiesta non e' soddisfacibile va detto, altrimenti il cerchio sembra
+ // non funzionare: il volto non ci arriva (soggetto troppo defilato) oppure non
+ // diventa grande abbastanza (foto troppo piccola).
+ var corto=PASSO===0&&p&&p.r<mr-2, lontano=PASSO===0&&p&&Math.hypot(p.x-mc.x,p.y-mc.y)>4;
+ var gm=cerchio('mirg',mc,mr,(corto||lontano)?'#FF9F1C':'#FFD166',true,w,PASSO!==1);
+ svg.appendChild(gm);
  if(corto||lontano){var av=document.createElementNS('http://www.w3.org/2000/svg','text');
   av.setAttribute('class','avvzoom');
   av.setAttribute('x',mc.x);av.setAttribute('y',mc.y-mr-w*4);av.setAttribute('text-anchor','middle');
@@ -2043,16 +2084,32 @@ function drawFocalUI(svg,dopo){
   av.textContent=lontano?'volto troppo defilato: più in là la foto sgranerebbe'
                         :'zoom al massimo: foto troppo piccola';
   svg.appendChild(av);}
- trascina(gm,svg,function(dxu,dyu,modo,base){
-  if(modo==='corpo')MIR[current]={x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r};
-  else MIR[current]={x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))};
- },{x:mc.x,y:mc.y,r:mr},true);
- if(p){var gt=cerchio('testag',p,p.r,'#FFD166',false,w);svg.appendChild(gt);
-  trascina(gt,svg,function(dxu,dyu,modo,base){
-   if(modo==='corpo'){var f=stageToFocal(base.x+dxu,base.y+dyu);if(f){FOCAL.x=f.x;FOCAL.y=f.y;}}
-   else{var nr=Math.max(6,base.r+dxu);var q=focalToStage();FOCAL.r=Math.max(0.02,Math.min(0.6,nr/(q.Dw*q.s)));}
-  },{x:p.x,y:p.y,r:p.r},false);
+ if(PASSO===1){
+  trascina(gm,svg,function(dxu,dyu,modo,base){
+   if(modo==='corpo')MIR[current]={x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r};
+   else MIR[current]={x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))};
+  },{x:mc.x,y:mc.y,r:mr},true);
  }
+ if(PASSO===2&&SELRECT){
+  var g=document.createElementNS('http://www.w3.org/2000/svg','g');g.setAttribute('class','selrt');
+  g.setAttribute('pointer-events','none');
+  g.innerHTML='<rect x="'+SELRECT.x+'" y="'+SELRECT.y+'" width="'+SELRECT.w+'" height="'+SELRECT.h+'" '
+   +'fill="rgba(0,229,255,.12)" stroke="#00E5FF" stroke-width="'+w+'" stroke-dasharray="'+(w*4)+' '+(w*3)+'"/>';
+  svg.appendChild(g);
+ }
+}
+// Dal rettangolo tracciato sul volto: centro e mezza-diagonale del lato maggiore
+// diventano il punto e il raggio della testa, poi tutti i formati si riallineano.
+function applicaSelezione(){
+ if(!SELRECT||SELRECT.w<4||SELRECT.h<4)return false;
+ var f=stageToFocal(SELRECT.x+SELRECT.w/2,SELRECT.y+SELRECT.h/2);if(!f)return false;
+ var q=focalToStage();if(!q)return false;
+ pushUndo();
+ FOCAL.x=f.x;FOCAL.y=f.y;
+ FOCAL.r=Math.max(0.02,Math.min(0.6,(Math.max(SELRECT.w,SELRECT.h)/2)/(q.Dw*q.s)));
+ SELRECT=null;PASSO=0;
+ applyFocalAll(function(){renderStage();refreshThumbs();});
+ return true;
 }
 // Trascinamento comune ai due cerchi: corpo = sposta, bordo = raggio.
 function trascina(g,svg,applica,base,eRegolazione){
