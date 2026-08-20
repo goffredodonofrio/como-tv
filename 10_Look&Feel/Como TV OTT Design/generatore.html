@@ -2174,13 +2174,23 @@ function drawFocalUI(svg){
  if(!photoFullBleed(current))return;
  var it=BYKEY[current],m=mirFor(current),lato=Math.min(it.w,it.h);
  var w=Math.max(3,Math.round(it.w*0.0035));
- var mc={x:it.w*m.x,y:it.h*m.y},mr=m.r*lato;
- var p=focalToStage();
+ // Il rettangolo di selezione: solo mentre lo si sta tracciando.
+ if(TOOL==='volto'&&SELRECT){
+  var g=document.createElementNS('http://www.w3.org/2000/svg','g');g.setAttribute('class','selrt');
+  g.setAttribute('pointer-events','none');
+  g.innerHTML='<rect x="'+SELRECT.x+'" y="'+SELRECT.y+'" width="'+SELRECT.w+'" height="'+SELRECT.h+'" '
+   +'fill="rgba(0,229,255,.12)" stroke="#00E5FF" stroke-width="'+w+'" stroke-dasharray="'+(w*4)+' '+(w*3)+'"/>';
+  svg.appendChild(g);
+ }
+ // Il cerchio si vede SOLO con lo strumento Mirino: con la Mano si guarda la
+ // foto, e un cerchio che non si puo' toccare confonde e basta.
+ if(TOOL!=='mirino')return;
+ var mc={x:it.w*m.x,y:it.h*m.y},mr=m.r*lato,p=focalToStage();
  // Se la richiesta non e' soddisfacibile va detto, altrimenti il cerchio sembra
  // non funzionare: il volto non ci arriva (soggetto troppo defilato) oppure non
  // diventa grande abbastanza (foto troppo piccola).
  var corto=p&&p.r<mr-2, lontano=p&&Math.hypot(p.x-mc.x,p.y-mc.y)>4;
- var gm=cerchio('mirg',mc,mr,(corto||lontano)?'#FF9F1C':'#FFD166',true,w,TOOL!=='mirino');
+ var gm=cerchio('mirg',mc,mr,(corto||lontano)?'#FF9F1C':'#FFD166',true,w,false);
  svg.appendChild(gm);
  if(corto||lontano){var av=document.createElementNS('http://www.w3.org/2000/svg','text');
   av.setAttribute('class','avvzoom');
@@ -2191,20 +2201,12 @@ function drawFocalUI(svg){
   av.textContent=lontano?'volto troppo defilato: più in là la foto sgranerebbe'
                         :'zoom al massimo: foto troppo piccola';
   svg.appendChild(av);}
- if(TOOL==='mirino'){
-  trascina(gm,svg,function(dxu,dyu,modo,base){
-   if(modo==='corpo')mirSet(current,{x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r});
-   else mirSet(current,{x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))});
-  },{x:mc.x,y:mc.y,r:mr},true);
- }
- if(TOOL==='volto'&&SELRECT){
-  var g=document.createElementNS('http://www.w3.org/2000/svg','g');g.setAttribute('class','selrt');
-  g.setAttribute('pointer-events','none');
-  g.innerHTML='<rect x="'+SELRECT.x+'" y="'+SELRECT.y+'" width="'+SELRECT.w+'" height="'+SELRECT.h+'" '
-   +'fill="rgba(0,229,255,.12)" stroke="#00E5FF" stroke-width="'+w+'" stroke-dasharray="'+(w*4)+' '+(w*3)+'"/>';
-  svg.appendChild(g);
- }
+ trascina(gm,svg,function(dxu,dyu,modo,base){
+  if(modo==='corpo')mirSet(current,{x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r});
+  else mirSet(current,{x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))});
+ },{x:mc.x,y:mc.y,r:mr},true);
 }
+
 // Dal rettangolo tracciato sul volto: centro e mezza-diagonale del lato maggiore
 // diventano il punto e il raggio della testa, poi tutti i formati si riallineano.
 function applicaSelezione(){
