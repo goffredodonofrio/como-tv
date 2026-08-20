@@ -89,6 +89,11 @@ button.act:active{transform:scale(.97)}
 .tbsep{width:1px;height:26px;background:rgba(245,241,230,.16);flex:none}
 .photobar .pbl{font-size:11px;font-weight:800;letter-spacing:.18em;color:var(--gold)}
 .photobar input[type=range]{width:150px;vertical-align:middle}
+.photobar input[type=text],.photobar select{background:#151A32;border:1px solid var(--line);color:var(--ivory);
+ border-radius:8px;padding:7px 10px;font:inherit;font-size:12px;outline:none}
+.photobar input[type=text]{width:250px}
+.photobar select{max-width:290px}
+.photobar input[type=text]:focus,.photobar select:focus{border-color:var(--gold)}
 .pebar{display:none;gap:14px;align-items:center;flex-wrap:wrap;background:rgba(201,162,75,.14);border:1px solid var(--gold);border-radius:10px;padding:9px 13px;font-size:12px;color:var(--fg2)}
 .pebar.on{display:flex}
 .vtrans{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:12px;color:var(--fg2)}
@@ -188,6 +193,18 @@ small.flag{color:#E3C271}
    <div class="card" id="compCard" style="display:none"></div>
  </div></div>
  <div class="main">
+  <!-- La sessione e' la singola partita: contenuto, foto e ritagli. La taratura
+       (mirini, posizioni degli elementi) e' del design e vive per conto suo. -->
+  <div class="photobar" id="sessBar">
+   <span class="pbl">SESSIONE</span>
+   <input type="text" id="sessName" placeholder="nome della partita">
+   <button class="act" id="sessSave">Salva</button>
+   <span class="tbsep"></span>
+   <select id="sessList"></select>
+   <button class="act ghost" id="sessOpen">Riapri</button>
+   <button class="act ghost" id="sessDel">Elimina</button>
+   <span class="seg" id="sessState"></span>
+  </div>
   <div class="photobar">
    <button class="act" id="dlPng">Scarica JPG</button>
    <button class="act" id="dlAll">Esporta selezionati</button>
@@ -809,7 +826,7 @@ var current=ITEMS[0].key;
 function getV(k,fk){return SHAREDKEYS[fk]?SHARED[fk]:STATE[k].vals[fk];}
 function setV(k,fk,v){if(SHAREDKEYS[fk])SHARED[fk]=v;else STATE[k].vals[fk]=v;}
 function P(key){var p=Object.assign({},SHARED,STATE[key].vals);p.live=!!(BYKEY[key]&&BYKEY[key].liveOn);return p;}
-var _thumbTO;function refreshThumbs(){clearTimeout(_thumbTO);_thumbTO=setTimeout(renderThumbs,120);}
+var _thumbTO;function refreshThumbs(){clearTimeout(_thumbTO);_thumbTO=setTimeout(renderThumbs,120);if(window.sessProponiNome)sessProponiNome();}
 
 // adj -> transform string
 function objTF(a){if(!a)return 'translate(0 0)';var dx=a.dx||0,dy=a.dy||0,s=a.s||1,cx=a.cx||0,cy=a.cy||0;
@@ -1564,6 +1581,45 @@ document.getElementById('prefReset').onclick=function(){
  MIR={};FOCAL.r=0.11;
  ITEMS.forEach(function(it){var a=STATE[it.key].adj;Object.keys(a).forEach(function(k){if(k!=='photo')delete a[k];});});
  PREF_DIRTY=false;applyFocalAll(function(){renderControls();renderStage();renderThumbs();});prefStato('di fabbrica, mai modificate');};
+// ---- comandi delle sessioni ----
+document.getElementById('sessSave').onclick=function(){
+ var inp=document.getElementById('sessName');
+ var nome=(inp.value||'').trim()||sessNomeProposto();
+ inp.value=nome;
+ sessTutte(function(l){
+  // stesso nome = aggiorna, cosi' salvando due volte non si accumulano copie
+  var vecchia=l.filter(function(v){return v.nome===nome;})[0];
+  var rec={id:vecchia?vecchia.id:('s'+Date.now()+'-'+Math.round(Math.random()*1e6)),
+           nome:nome,quando:Date.now(),dati:sessRaccogli()};
+  sessScrivi(rec,function(ok){
+   if(!ok){sessStato('⚠ non salvata (archivio non disponibile)');return;}
+   sessPota();sessAggiornaElenco(function(){document.getElementById('sessList').value=rec.id;});
+   sessStato(vecchia?'✓ aggiornata':'✓ salvata');});});
+};
+document.getElementById('sessOpen').onclick=function(){
+ var id=document.getElementById('sessList').value;if(!id){sessStato('nessuna sessione da riaprire');return;}
+ sessLeggi(id,function(rec){
+  if(!rec){sessStato('⚠ sessione non trovata');return;}
+  pushUndo();
+  sessApplica(rec.dati,function(){
+   document.getElementById('sessName').value=rec.nome;
+   renderControls();renderStage();renderThumbs();
+   if(window.fillEventSelect)try{fillEventSelect();}catch(e){}
+   sessStato('✓ riaperta: '+rec.nome);});});
+};
+document.getElementById('sessDel').onclick=function(){
+ var sel=document.getElementById('sessList'),id=sel.value;if(!id)return;
+ var nome=sel.options[sel.selectedIndex].textContent;
+ if(!confirm('Elimino la sessione "'+nome+'"? Non si recupera.'))return;
+ sessElimina(id,function(){sessAggiornaElenco();sessStato('sessione eliminata');});
+};
+// il nome si propone da solo dalle squadre finche' non lo si scrive a mano
+var SESS_NOME_TOCCATO=false;
+document.getElementById('sessName').oninput=function(){SESS_NOME_TOCCATO=true;};
+function sessProponiNome(){
+ if(SESS_NOME_TOCCATO)return;
+ var inp=document.getElementById('sessName');if(inp)inp.placeholder=sessNomeProposto()||'nome della partita';
+}
 document.getElementById('lockBtn').onclick=function(){
  LOCKED=!LOCKED;this.textContent=LOCKED?'🔒 Bloccato':'🔓 Sbloccato';
  this.className='act ghost'+(LOCKED?' on':'');
@@ -1690,6 +1746,97 @@ window.addEventListener('keydown',function(e){
 document.fonts.ready.then(function(){renderControls();renderStage();renderThumbs();});
 renderControls();renderStage();renderThumbs();
 
+
+
+// ---------- sessioni ----------
+// Una sessione e' la singola partita: contenuto, foto, logo competizione, punto
+// del volto e i ritagli formato per formato. NON contiene la taratura (mirini e
+// posizioni degli elementi), che e' del design e vale per tutte le partite:
+// riaprendo una sessione vecchia non si vuole tornare indietro anche col design.
+// Sta in IndexedDB e non in localStorage perche' una foto sola riempirebbe i
+// 5 MB di quest'ultimo, e senza la foto riaprire una sessione non serve a nulla.
+var SESS_DB=null,SESS_DBNAME='comotv_ott',SESS_STORE='sessioni',SESS_MAX=30;
+function sessDB(cb){
+ if(SESS_DB){cb(SESS_DB);return;}
+ if(!window.indexedDB){cb(null);return;}
+ var r=indexedDB.open(SESS_DBNAME,1);
+ r.onupgradeneeded=function(){var d=r.result;
+  if(!d.objectStoreNames.contains(SESS_STORE))d.createObjectStore(SESS_STORE,{keyPath:'id'});};
+ r.onsuccess=function(){SESS_DB=r.result;cb(SESS_DB);};
+ r.onerror=function(){cb(null);};
+}
+function sessTutte(cb){
+ sessDB(function(d){if(!d){cb([]);return;}
+  var out=[],t=d.transaction(SESS_STORE,'readonly').objectStore(SESS_STORE).openCursor();
+  t.onsuccess=function(e){var c=e.target.result;
+   if(c){out.push({id:c.value.id,nome:c.value.nome,quando:c.value.quando});c.continue();}
+   else{out.sort(function(a,b){return b.quando-a.quando;});cb(out);}};
+  t.onerror=function(){cb([]);};});
+}
+function sessLeggi(id,cb){
+ sessDB(function(d){if(!d){cb(null);return;}
+  var r=d.transaction(SESS_STORE,'readonly').objectStore(SESS_STORE).get(id);
+  r.onsuccess=function(){cb(r.result||null);};r.onerror=function(){cb(null);};});
+}
+function sessScrivi(rec,cb){
+ sessDB(function(d){if(!d){cb(false);return;}
+  var tx=d.transaction(SESS_STORE,'readwrite');tx.objectStore(SESS_STORE).put(rec);
+  tx.oncomplete=function(){cb(true);};tx.onerror=function(){cb(false);};});
+}
+function sessElimina(id,cb){
+ sessDB(function(d){if(!d){cb(false);return;}
+  var tx=d.transaction(SESS_STORE,'readwrite');tx.objectStore(SESS_STORE).delete(id);
+  tx.oncomplete=function(){cb(true);};tx.onerror=function(){cb(false);};});
+}
+// Oltre SESS_MAX si buttano le piu' vecchie: altrimenti l'archivio cresce per
+// sempre e nessuno lo pulisce mai.
+function sessPota(){
+ sessTutte(function(l){l.slice(SESS_MAX).forEach(function(v){sessElimina(v.id,function(){});});});
+}
+function sessNomeProposto(){
+ var n=(SHARED.home||'')+' – '+(SHARED.away||'');
+ if(SHARED.date)n+=' · '+SHARED.date;
+ if(SHARED.time)n+=' '+SHARED.time;
+ return n.trim();
+}
+function sessStato(t){var e=document.getElementById('sessState');if(e)e.textContent=t||'';}
+function sessRaccogli(){
+ var vals={},crop={};
+ ITEMS.forEach(function(it){
+  vals[it.key]=STATE[it.key].vals;
+  if(STATE[it.key].adj.photo)crop[it.key]=STATE[it.key].adj.photo;});
+ return {shared:SHARED,vals:vals,crop:crop,volto:FOCAL,
+         img:{photo:SHIMG.photo||null,logoComp:SHIMG.logoComp||null},
+         export:EXPSEL};
+}
+function sessApplica(d,cb){
+ if(!d){cb&&cb();return;}
+ if(d.shared)Object.keys(d.shared).forEach(function(k){SHARED[k]=d.shared[k];});
+ composeComp(); // la riga competizione e' derivata: ricomporla evita testi vecchi
+ if(d.volto)FOCAL={x:d.volto.x,y:d.volto.y,r:d.volto.r};
+ if(d.img){if(d.img.photo)SHIMG.photo=d.img.photo;else delete SHIMG.photo;
+           if(d.img.logoComp)SHIMG.logoComp=d.img.logoComp;else delete SHIMG.logoComp;}
+ if(d.export)Object.keys(d.export).forEach(function(k){if(BYKEY[k])EXPSEL[k]=d.export[k];});
+ ITEMS.forEach(function(it){
+  if(d.vals&&d.vals[it.key])STATE[it.key].vals=d.vals[it.key];
+  if(d.crop&&d.crop[it.key])STATE[it.key].adj.photo=d.crop[it.key];
+  else delete STATE[it.key].adj.photo;});
+ // la foto va misurata prima di ridisegnare, altrimenti il ritaglio non regge
+ loadNat(curPhotoSrc(),function(){cb&&cb();});
+}
+function sessAggiornaElenco(cb){
+ sessTutte(function(l){
+  var sel=document.getElementById('sessList');if(!sel){cb&&cb(l);return;}
+  var prima=sel.value;sel.innerHTML='';
+  if(!l.length){var o=document.createElement('option');o.value='';o.textContent='— nessuna sessione salvata —';sel.appendChild(o);}
+  l.forEach(function(v,i){var o=document.createElement('option');o.value=v.id;
+   o.textContent=(i===0?'★ ':'')+v.nome+'  ('+sessQuando(v.quando)+')';sel.appendChild(o);});
+  if(prima)sel.value=prima;
+  cb&&cb(l);});
+}
+function sessQuando(t){var d=new Date(t);
+ var g=['dom','lun','mar','mer','gio','ven','sab'][d.getDay()];
+ return g+' '+d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
 
 // ---------- regolazioni salvabili ----------
 // Cosa si salva: i mirini per formato e le posizioni/stili degli elementi
@@ -1958,7 +2105,7 @@ function rilevaVolto(cb){
 // Avvio delle regolazioni: va in fondo al blocco, dopo che MIR e FOCAL hanno un
 // valore. Le dichiarazioni var si sollevano, le assegnazioni no: chiamarlo
 // prima falliva in silenzio e le regolazioni salvate non tornavano.
-prefCarica();
+prefCarica();sessAggiornaElenco();sessProponiNome();
 loadNat(DEFAULT_PHOTO,function(){applyFocalAll(function(){renderStage();refreshThumbs();});});
 </script>
 <script src="generatore-airtable.js"></script>
