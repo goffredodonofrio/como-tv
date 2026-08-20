@@ -254,6 +254,7 @@ small.flag{color:#E3C271}
    <select id="sessList" title="Sessioni salvate"></select>
    <button class="act ghost ico" id="sessDel" title="Elimina la sessione scelta">
     <svg viewBox="0 0 20 20"><path d="M4 5.5h12M8 5.5V3.5h4v2M5.5 5.5l.8 12h7.4l.8-12M8.5 8.5v6M11.5 8.5v6"/></svg></button>
+   <button class="act" id="fattoBtn" style="display:none" title="Conferma posizione e dimensione">FATTO</button>
    <span class="grow"></span>
    <!-- Le azioni rare non meritano un posto fisso: stanno qui dentro. -->
    <span class="menuwrap">
@@ -1148,7 +1149,17 @@ function photoPanMax(s){var it=photoItem();var n=PHOTONAT[curPhotoSrc()];
  var cov=Math.max(it.w/n.w,it.h/n.h),dw=n.w*cov*s,dh=n.h*cov*s;
  return {mx:Math.max(freeX,(dw-it.w)/2),my:Math.max(freeY,(dh-it.h)/2)};}
 // Trascinamento libero: nessun limite, la foto si sposta ovunque (reset con "Centra foto").
-function photoClamp(a){return a;}
+// Limita spostamento e scala perche' la foto continui a coprire il formato:
+// sotto scala 1 il cover non copre piu', e oltre il bordo si scoprirebbe il fondo.
+function photoClamp(a){
+ var nat=PHOTONAT[curPhotoSrc()];if(!a||!nat||nat.w<2)return a;
+ var g=coverOf(current,nat);
+ a.s=Math.max(1,Math.min(3.5,a.s||1));
+ if(a.cx===undefined){a.cx=g.W/2;a.cy=g.H/2;}
+ var dw=g.Dw*a.s,dh=g.Dh*a.s;
+ a.dx=Math.max(g.W-(g.W+dw)/2,Math.min((dw-g.W)/2,a.dx||0));
+ a.dy=Math.max(g.H-(g.H+dh)/2,Math.min((dh-g.H)/2,a.dy||0));
+ return a;}
 // Lo zoom e' solo una lettura: si agisce trascinando, con la rotella o con le
 // maniglie in ritaglio. Il numero resta perche' il gesto non lo dice.
 function syncPhotoBar(){var a=STATE[current].adj.photo;
@@ -1163,6 +1174,17 @@ var PEUPD=null;
  b.onclick=function(e){e.stopPropagation();m.classList.toggle('on');prefStato();};
  document.addEventListener('click',function(){m.classList.remove('on');});
  m.onclick=function(e){e.stopPropagation();};})();
+// FATTO: prende l'inquadratura ottenuta a mano e la traduce in mirino — dove sta
+// il volto adesso e quanto e' grande — poi la propaga secondo l'ambito scelto.
+// Cosi' il gesto libero e la regolazione condivisa restano la stessa cosa.
+document.getElementById('fattoBtn').onclick=function(){
+ if(photoFullBleed(current)){
+  var p=focalToStage(),it=BYKEY[current];
+  if(p){mirSet(current,{x:p.x/it.w,y:p.y/it.h,r:p.r/Math.min(it.w,it.h)});prefTocca();}
+ }
+ exitPhotoEdit();
+ applyFocalAll(function(){renderStage();refreshThumbs();});
+};
 document.getElementById('scopeFam').onclick=function(){MIRSCOPE='famiglia';passoUI();};
 document.getElementById('scopeUno').onclick=function(){MIRSCOPE='formato';passoUI();};
 document.getElementById('tMano').onclick=function(){toolVai('mano');};
@@ -1344,7 +1366,7 @@ function enterPhotoEdit(){if(photoEdit)return;pushUndo();
  // valgono su tutti i formati. Prima ripristinava solo il primo.
  PE_BEFORE=JSON.stringify({adj:STATE[current].adj.photo||null,mir:MIR,focal:FOCAL});
  photoEdit=true;SELRECT=null;renderStage();}
-function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;TOOL=null;renderStage();}
+function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;TOOL=null;renderStage();passoUI();}
 function cancelPhotoEdit(){if(!photoEdit)return;
  var v=null;try{v=JSON.parse(PE_BEFORE||'null');}catch(e){}
  if(v){MIR=v.mir||{};FOCAL=v.focal||FOCAL;
@@ -1457,35 +1479,19 @@ function renderPhotoEditor(){
      drawFocalUI(svg);passoUI();}
     window.addEventListener('pointermove',mvR);window.addEventListener('pointerup',upR);return;}
    if(TOOL!=='mano')return;
-   // Trascinare la foto E' spostare il mirino, espresso dall'altra parte: se la
-   // foto va a destra di D, il volto finisce a destra di D, quindi il bersaglio
-   // si e' spostato di D. Cosi' mano, mirino e rettangolo scrivono negli stessi
-   // due dati e l'ambito (famiglia / solo questo) vale identico per tutti e tre,
-   // senza che le inquadrature possano andare alla deriva formato per formato.
-   pushUndoC();var k=svgUnitPerPx(svg),sx=ev.clientX,sy=ev.clientY;
-   var it0=BYKEY[current],m0=mirFor(current);
-   function mv(e){
-    var nx=Math.max(0,Math.min(1,m0.x+(e.clientX-sx)*k/it0.w));
-    var ny=Math.max(0,Math.min(1,m0.y+(e.clientY-sy)*k/it0.h));
-    MIR[current]={x:nx,y:ny,r:m0.r};      // durante il gesto solo qui, per la risposta immediata
-    anchorCurrent();peSync();syncPhotoBar();}
-   function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);
-    mirSet(current,mirFor(current));prefTocca();   // al rilascio si propaga secondo l'ambito
-    applyFocalAll(function(){renderStage();refreshThumbs();});}
+   // Manipolazione diretta e libera: si sposta e si ridimensiona la foto senza
+   // limiti di taratura. Quello che si e' ottenuto diventa mirino solo con FATTO.
+   pushUndoC();var k=svgUnitPerPx(svg),sx=ev.clientX,sy=ev.clientY,dx0=a.dx||0,dy0=a.dy||0;
+   function mv(e){a.dx=dx0+(e.clientX-sx)*k;a.dy=dy0+(e.clientY-sy)*k;photoClamp(a);peSync();}
+   function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);refreshThumbs();}
    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);});
  if(TOOL==='volto')svg.style.cursor='crosshair';
- // La rotella allarga o stringe il mirino: ingrandire la foto e' fare il volto
- // piu' grande. Stesso dato, stessa propagazione.
- var _rotTO;
+ // Rotella: scala diretta della foto. Il tetto di risoluzione vale per il
+ // calcolo automatico, non per una scelta fatta a mano.
  svg.addEventListener('wheel',function(ev){
-   if(TOOL!=='mano'||!photoFullBleed(current))return;
+   if(TOOL!=='mano')return;
    ev.preventDefault();pushUndoC();
-   var m=mirFor(current);
-   MIR[current]={x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,m.r*(ev.deltaY<0?1.05:0.95)))};
-   anchorCurrent();peSync();syncPhotoBar();drawFocalUI(svg);
-   clearTimeout(_rotTO);_rotTO=setTimeout(function(){
-    mirSet(current,mirFor(current));prefTocca();
-    applyFocalAll(function(){renderStage();refreshThumbs();});},260);
+   a.s=(a.s||1)*(ev.deltaY<0?1.05:0.95);photoClamp(a);peSync();
  },{passive:false});
  svg.addEventListener('dblclick',function(){exitPhotoEdit();});
 }
@@ -2143,6 +2149,7 @@ function toolVai(t){
 function passoUI(){
  if(typeof MIR==='undefined')return;   // chiamata prima che lo stato esista
  var h=document.getElementById('peHint');if(!h)return;
+ var fb=document.getElementById('fattoBtn');if(fb)fb.style.display=photoEdit?'':'none';
  var sc=document.getElementById('scopeSel'),senzaFoto=!photoFullBleed(current);
  ['mano','mirino','volto'].forEach(function(t){
   var b=document.getElementById('t'+t.charAt(0).toUpperCase()+t.slice(1));if(!b)return;
