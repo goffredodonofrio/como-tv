@@ -91,14 +91,23 @@ button.act:active{transform:scale(.97)}
 .photobar input[type=range]{width:150px;vertical-align:middle}
 .photobar input[type=text],.photobar select{background:#151A32;border:1px solid var(--line);color:var(--ivory);
  border-radius:8px;padding:7px 10px;font:inherit;font-size:12px;outline:none}
-.photobar input[type=text]{flex:1 1 150px;min-width:110px;max-width:250px}
-.photobar select{flex:1 1 170px;min-width:120px;max-width:280px}
+.photobar input[type=text]{flex:1 1 120px;min-width:96px;max-width:190px}
+.photobar select{flex:1 1 140px;min-width:110px;max-width:210px}
 /* Bottoni-icona: quadrati, disegno a tratto che segue il colore del testo,
    cosi' l'icona si accende insieme al bottone quando lo strumento e' attivo. */
-.pebar .ico{padding:6px 9px;display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:0}
-.pebar .ico svg{width:19px;height:19px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;
+.photobar .ico,.pebar .ico{padding:6px 9px;display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:0}
+.photobar .ico svg,.pebar .ico svg{width:19px;height:19px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;
  stroke-linecap:round;stroke-linejoin:round}
-.pebar .ico span{font-size:11px;font-weight:800;letter-spacing:.06em;line-height:1;text-transform:none}
+.photobar .grow{flex:1 1 0;min-width:0}
+.menuwrap{position:relative;flex:none}
+.menu{display:none;position:absolute;right:0;top:calc(100% + 7px);z-index:40;min-width:230px;
+ background:#141A31;border:1px solid var(--line);border-radius:10px;padding:7px;box-shadow:0 18px 40px -12px #000}
+.menu.on{display:block}
+.menu .mst{font-size:11px;color:var(--fg3);padding:6px 9px 8px}
+.menu button{display:block;width:100%;text-align:left;background:none;border:0;color:var(--ivory);
+ font:inherit;font-size:12px;padding:8px 9px;border-radius:7px;cursor:pointer}
+.menu button:hover{background:rgba(201,162,75,.16);color:var(--gold)}
+.photobar .ico span,.pebar .ico span{font-size:11px;font-weight:800;letter-spacing:.06em;line-height:1;text-transform:none}
 .peh.flex{flex:1 1 40px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pebar select{background:#151A32;border:1px solid var(--line);color:var(--ivory);
  border-radius:8px;padding:6px 9px;font:inherit;font-size:12px;outline:none;max-width:210px}
@@ -207,34 +216,44 @@ small.flag{color:#E3C271}
    <div class="card" id="compCard" style="display:none"></div>
  </div></div>
  <div class="main">
-  <!-- La sessione e' la singola partita: contenuto, foto e ritagli. La taratura
-       (mirini, posizioni degli elementi) e' del design e vive per conto suo. -->
-  <div class="photobar" id="sessBar">
-   <span class="pbl">SESSIONE</span>
-   <input type="text" id="sessName" placeholder="nome della partita">
-   <button class="act" id="sessSave">Salva</button>
+  <!-- Una barra sola, sempre visibile: sessione, export, strumenti foto.
+       Gli strumenti non compaiono e scompaiono — sono sempre li' e accenderne
+       uno entra nella vista di modifica, rispegnerlo ne esce. -->
+  <div class="photobar" id="barra" style="gap:9px;flex-wrap:nowrap;overflow-x:auto;overflow-y:visible">
+   <button class="act ico" id="dlPng" title="Scarica questo formato in JPG">
+    <svg viewBox="0 0 20 20"><path d="M10 2.5v11M10 13.5 6 9.5M10 13.5l4-4M3 16.5h14"/></svg><span>JPG</span></button>
+   <button class="act ico" id="dlAll" title="Scarica in un file ZIP i formati spuntati nella colonna di destra">
+    <svg viewBox="0 0 20 20"><path d="M2.5 6.5h15v11h-15zM2.5 6.5 5 2.5h10l2.5 4M10 2.5v4M8 10h4M8 12.5h4"/></svg><span id="zipN">ZIP</span></button>
+   <button class="act ghost ico on" id="lockBtn" title="Blocca gli elementi: da chiuso non si spostano per sbaglio">
+    <svg viewBox="0 0 20 20"><rect x="4" y="8.5" width="12" height="9" rx="1.5"/><path d="M6.8 8.5V6a3.2 3.2 0 0 1 6.4 0v2.5"/></svg></button>
    <span class="tbsep"></span>
-   <select id="sessList"></select>
-   <button class="act ghost" id="sessOpen">Riapri</button>
-   <button class="act ghost" id="sessDel">Elimina</button>
-   <span class="seg flex" id="sessState"></span>
-  </div>
-  <div class="photobar">
-   <button class="act" id="dlPng">Scarica JPG</button>
-   <button class="act" id="dlAll" title="Scarica in un file ZIP i formati spuntati nella colonna di destra">Esporta ZIP</button>
-   <button class="act ghost on" id="lockBtn" title="Blocca gli elementi: da chiuso non si spostano per sbaglio">🔒 Bloccato</button>
+   <button class="act ghost ico" id="tMano" title="Sposta — trascina la foto, rotella per lo zoom">
+    <svg viewBox="0 0 20 20"><path d="M10 2v16M2 10h16M10 2 7.6 4.4M10 2l2.4 2.4M10 18l-2.4-2.4M10 18l2.4-2.4M2 10l2.4-2.4M2 10l2.4 2.4M18 10l-2.4-2.4M18 10l-2.4 2.4"/></svg></button>
+   <button class="act ghost ico" id="tMirino" title="Mirino — dove finisce il volto e quanto grande">
+    <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="5.6"/><path d="M10 1.4v3.2M10 15.4v3.2M1.4 10h3.2M15.4 10h3.2"/><circle cx="10" cy="10" r="1.1" fill="currentColor" stroke="none"/></svg></button>
+   <button class="act ghost ico" id="tVolto" title="Volto — traccia un rettangolo sul volto e la foto si allinea">
+    <svg viewBox="0 0 20 20"><rect x="2.5" y="4.5" width="15" height="11" rx="1" stroke-dasharray="3.2 2.4"/><circle cx="10" cy="10" r="2.6"/></svg></button>
+   <button class="act ghost ico" id="peScope" title="Ambito della modifica"><span></span></button>
    <span class="tbsep"></span>
-   <div class="seg">Zoom foto <span id="phZv" style="font-variant-numeric:tabular-nums;font-weight:800;color:var(--ivory)">110%</span></div>
-   <button class="act" id="phEdit">Modifica foto</button>
-   <button class="act ghost" id="phReset" title="Rimette l'inquadratura di questo formato come la vuole il mirino">Riallinea</button>
-  </div>
-  <!-- Regolazioni: compare solo a lucchetto aperto. Chi regola sta gia' scegliendo
-       di intervenire sul design, quindi qui trova anche come renderlo permanente. -->
-  <div class="photobar" id="prefBar" style="display:none">
-   <span class="pbl">REGOLAZIONI</span>
-   <span class="seg flex" id="prefState"></span>
-   <button class="act ghost" id="resetPos" title="Rimette gli elementi di questo formato dove li mette il progetto, senza toccare gli altri formati">Ripristina formato</button>
-   <button class="act ghost" id="prefReset" title="Rimette mirini, posizioni e stili di TUTTI i formati come sono di fabbrica, e cancella il salvataggio su questo computer">Ripristina tutto</button>
+   <input type="text" id="sessName" placeholder="nome partita" title="Nome della sessione">
+   <button class="act ghost ico" id="sessSave" title="Salva la sessione: contenuto, foto e ritagli">
+    <svg viewBox="0 0 20 20"><path d="M3.5 3.5h10l3 3v10h-13zM6.5 3.5v5h7M6.5 16.5v-5h7v5"/></svg></button>
+   <select id="sessList" title="Sessioni salvate"></select>
+   <button class="act ghost ico" id="sessDel" title="Elimina la sessione scelta">
+    <svg viewBox="0 0 20 20"><path d="M4 5.5h12M8 5.5V3.5h4v2M5.5 5.5l.8 12h7.4l.8-12M8.5 8.5v6M11.5 8.5v6"/></svg></button>
+   <span class="grow"></span>
+   <!-- Le azioni rare non meritano un posto fisso: stanno qui dentro. -->
+   <span class="menuwrap">
+    <button class="act ghost ico" id="altroBtn" title="Altro">
+     <svg viewBox="0 0 20 20"><circle cx="4" cy="10" r="1.3" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1.3" fill="currentColor" stroke="none"/><circle cx="16" cy="10" r="1.3" fill="currentColor" stroke="none"/></svg></button>
+    <div class="menu" id="altroMenu">
+     <div class="mst" id="prefState"></div>
+     <button id="resetPos">Ripristina questo formato</button>
+     <button id="prefReset">Ripristina tutto di fabbrica</button>
+    </div>
+   </span>
+   <span class="peh" id="peHint" style="display:none"></span>
+   <span class="seg" id="sessState" style="display:none"></span>
   </div>
   <div class="editbar" id="textBar" style="display:none">
    <span class="pbl" id="textBarTitle" style="color:var(--gold);font-size:11px;font-weight:800;letter-spacing:.18em">TESTO</span>
@@ -268,27 +287,6 @@ small.flag{color:#E3C271}
    <button class="act" id="vidExport">🎬 Esporta video</button>
    <button class="act ghost" id="vidUse">Usa solo il fotogramma</button>
    <button class="act ghost" id="vidCancel">Annulla</button>
-  </div>
-  <!-- Options bar in stile Photoshop: icone disegnate, poche parole, una riga
-       sola sempre visibile. Gli strumenti non sono una sequenza: si sceglie
-       quello che serve e ci si salta dentro e fuori. -->
-  <div class="pebar" id="peBar">
-   <span class="pbl" style="color:var(--gold)">FOTO</span>
-   <select id="peFmt" title="Cambia formato restando qui dentro"></select>
-   <span class="tbsep"></span>
-   <button class="act ghost ico" id="tMano" title="Sposta — trascina la foto, rotella per lo zoom">
-    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v16M2 10h16M10 2 7.6 4.4M10 2l2.4 2.4M10 18l-2.4-2.4M10 18l2.4-2.4M2 10l2.4-2.4M2 10l2.4 2.4M18 10l-2.4-2.4M18 10l-2.4 2.4"/></svg></button>
-   <button class="act ghost ico" id="tMirino" title="Mirino — dove finisce il volto e quanto grande">
-    <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="5.6"/><path d="M10 1.4v3.2M10 15.4v3.2M1.4 10h3.2M15.4 10h3.2"/><circle cx="10" cy="10" r="1.1" fill="currentColor" stroke="none"/></svg></button>
-   <button class="act ghost ico" id="tVolto" title="Volto — traccia un rettangolo sul volto e la foto si allinea">
-    <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4.5" width="15" height="11" rx="1" stroke-dasharray="3.2 2.4"/><circle cx="10" cy="10" r="2.6"/></svg></button>
-   <span class="tbsep"></span>
-   <button class="act ghost ico" id="peScope" title="Ambito della modifica"><span></span></button>
-   <span class="peh flex" id="peHint"></span>
-   <button class="act ico" id="peApply" title="Fine — chiudi tenendo le modifiche">
-    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m3.5 10.5 4.2 4.2L16.5 5.9"/></svg></button>
-   <button class="act ghost ico" id="peCancel" title="Annulla — chiudi e rimetti tutto com'era">
-    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.6 4.6l10.8 10.8M15.4 4.6 4.6 15.4"/></svg></button>
   </div>
   <div class="stagewrap"><canvas id="rulerTop" class="ruler"></canvas><canvas id="rulerLeft" class="ruler"></canvas><div id="rulerCorner"></div><div id="stage"></div></div>
  </div>
@@ -1144,35 +1142,21 @@ function syncPhotoBar(){var a=STATE[current].adj.photo;
  var v=document.getElementById('phZv');if(!v)return;
  v.textContent=Math.round((a&&a.s||PHOTO_MIN_ZOOM)*100)+'%';}
 var PEUPD=null;
-// Prima cancellava e basta: la foto restava senza ancoraggio finche' qualcosa
-// non faceva ripartire il calcolo, quindi a volte sembrava funzionare e a volte no.
-document.getElementById('phReset').onclick=function(){pushUndo();delete STATE[current].adj.photo;anchorCurrent();renderStage();refreshThumbs();};
-document.getElementById('phEdit').onclick=function(){if(photoEdit)exitPhotoEdit();else enterPhotoEdit();};
+
 // Tendina del formato: tarare un mirino vuol dire guardarlo su piu' formati
 // della stessa famiglia, e uscire ogni volta e' scomodo.
-function peFmtRiempi(){
- var sel=document.getElementById('peFmt');if(!sel)return;
- sel.innerHTML='';var gruppo=null,og=null;
- ITEMS.forEach(function(it){
-  if(!photoFullBleed(it.key))return;      // senza foto a pieno campo il mirino non c'e'
-  var g=CAT[it.key]||it.group;
-  if(g!==gruppo){gruppo=g;og=document.createElement('optgroup');og.label=g;sel.appendChild(og);}
-  var o=document.createElement('option');o.value=it.key;
-  o.textContent=fname(it.key)+' · '+it.w+'×'+it.h;og.appendChild(o);});
- sel.value=current;
-}
-document.getElementById('peFmt').onchange=function(){
- var k=this.value;if(!k||k===current)return;
- current=k;selObj=null;document.getElementById('fmtSel').value=k;
- renderControls();renderStage();renderThumbs();
-};
+// menu' "altro"
+(function(){var b=document.getElementById('altroBtn'),m=document.getElementById('altroMenu');
+ b.onclick=function(e){e.stopPropagation();m.classList.toggle('on');prefStato();};
+ document.addEventListener('click',function(){m.classList.remove('on');});
+ m.onclick=function(e){e.stopPropagation();};})();
 document.getElementById('peScope').onclick=function(){
  MIRSCOPE=(MIRSCOPE==='famiglia')?'formato':'famiglia';passoUI();};
 document.getElementById('tMano').onclick=function(){toolVai('mano');};
 document.getElementById('tMirino').onclick=function(){toolVai('mirino');};
 document.getElementById('tVolto').onclick=function(){toolVai('volto');};
-document.getElementById('peApply').onclick=function(){exitPhotoEdit();};
-document.getElementById('peCancel').onclick=function(){cancelPhotoEdit();};
+// il conteggio dei formati da esportare sta sull'icona ZIP
+function syncZip(){var e=document.getElementById('zipN');if(e)e.textContent='ZIP '+expCount();}
 // ===== Editor foto stile Keynote: rettangolo fisso (maschera), foto spostabile/scalabile dentro =====
 var PE_BEFORE=null;
 // ---------- video: fotogramma singolo oppure export con grafica sovrimpressa ----------
@@ -1346,8 +1330,8 @@ function enterPhotoEdit(){if(photoEdit)return;pushUndo();
  // il ritaglio di questo formato, ma anche i mirini e il cerchio del volto, che
  // valgono su tutti i formati. Prima ripristinava solo il primo.
  PE_BEFORE=JSON.stringify({adj:STATE[current].adj.photo||null,mir:MIR,focal:FOCAL});
- photoEdit=true;TOOL='mano';SELRECT=null;var b=document.getElementById('phEdit');if(b)b.style.display='none';var pb=document.getElementById('peBar');if(pb)pb.classList.add('on');renderStage();}
-function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;var b=document.getElementById('phEdit');if(b)b.style.display='';var pb=document.getElementById('peBar');if(pb)pb.classList.remove('on');renderStage();}
+ photoEdit=true;SELRECT=null;renderStage();}
+function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;TOOL=null;renderStage();}
 function cancelPhotoEdit(){if(!photoEdit)return;
  var v=null;try{v=JSON.parse(PE_BEFORE||'null');}catch(e){}
  if(v){MIR=v.mir||{};FOCAL=v.focal||FOCAL;
@@ -1701,8 +1685,9 @@ document.getElementById('sessSave').onclick=function(){
    sessPota();sessAggiornaElenco(function(){document.getElementById('sessList').value=rec.id;});
    sessStato(vecchia?'✓ aggiornata':'✓ salvata');});});
 };
-document.getElementById('sessOpen').onclick=function(){
- var id=document.getElementById('sessList').value;if(!id){sessStato('nessuna sessione da riaprire');return;}
+// La tendina riapre direttamente: un clic invece di due.
+document.getElementById('sessList').onchange=function(){
+ var id=this.value;if(!id){sessStato('nessuna sessione da riaprire');return;}
  sessLeggi(id,function(rec){
   if(!rec){sessStato('⚠ sessione non trovata');return;}
   pushUndo();
@@ -1729,7 +1714,6 @@ document.getElementById('lockBtn').onclick=function(){
  LOCKED=!LOCKED;this.textContent=LOCKED?'🔒 Bloccato':'🔓 Sbloccato';
  this.className='act ghost'+(LOCKED?' on':'');
  if(LOCKED){selObj=null;document.getElementById('selName').textContent='Nessun oggetto selezionato';}
- document.getElementById('prefBar').style.display=LOCKED?'none':'';
  prefStato();renderStage();};
 // Azzera gli spostamenti di questo formato ma NON lascia la foto scoperta:
 // il ritaglio viene subito ricalcolato dal mirino.
@@ -1751,7 +1735,7 @@ var EXPDEF={};['Piattaforma live','Piattaforma highlights','Piattaforma replay']
 var EXPSEL={};ITEMS.forEach(function(it){
  EXPSEL[it.key]=!!EXPDEF[CAT[it.key]]||it.key==='fanvoice_1080x1920'||it.key==='story_1080x1920';});
 function expCount(){return ITEMS.filter(function(it){return EXPSEL[it.key];}).length;}
-function syncExpBtn(){var b=document.getElementById('dlAll');if(b)b.textContent='Esporta ZIP ('+expCount()+')';}
+function syncExpBtn(){if(window.syncZip)syncZip();}
 function renderThumbs(){
  var box=document.getElementById('thumbs');box.innerHTML='';
  var cur=CAT[current]||'',gruppi=[];
@@ -2135,16 +2119,22 @@ function cerchio(cls,c,r,col,tratteggio,w,soloVista){
 // STRUMENTO: 'mano' = trascini la foto · 'mirino' = sposti il cerchio ·
 // 'volto' = selezioni il volto col rettangolo. Nessuna sequenza: sono tre modi
 // di dire la stessa cosa e si sceglie quello che conviene.
-var TOOL='mano', SELRECT=null;
-function toolVai(t){TOOL=t;SELRECT=null;renderStage();}
+var TOOL=null, SELRECT=null;   // null = nessuno strumento, vista normale
+// Gli strumenti sono interruttori: accenderne uno entra nella vista di modifica,
+// rispegnerlo ne esce. Niente bottoni che compaiono e scompaiono.
+function toolVai(t){
+ if(TOOL===t){exitPhotoEdit();passoUI();return;}
+ TOOL=t;SELRECT=null;
+ if(!photoEdit)enterPhotoEdit();else renderStage();
+ passoUI();
+}
 function passoUI(){
  var h=document.getElementById('peHint');if(!h)return;
- peFmtRiempi();
  var sc=document.getElementById('peScope'),senzaFoto=!photoFullBleed(current);
  ['mano','mirino','volto'].forEach(function(t){
   var b=document.getElementById('t'+t.charAt(0).toUpperCase()+t.slice(1));if(!b)return;
   b.className='act ghost ico'+(TOOL===t?' on':'');
-  b.style.display=(senzaFoto&&t!=='mano')?'none':'';   // senza foto a pieno campo c'e' solo la mano
+  b.style.display=(senzaFoto&&t!=='mano')?'none':'';
  });
  if(sc){sc.style.display=senzaFoto?'none':'';
   var fam=MIRSCOPE==='famiglia';
@@ -2156,11 +2146,13 @@ function passoUI(){
   sc.title=fam?('La modifica vale per tutti '+famiglieNome(current)+' — clicca per limitarla a questo formato')
               :'La modifica vale solo per questo formato — clicca per estenderla alla famiglia';
  }
- h.textContent=senzaFoto?'trascina · rotella per lo zoom'
-  :(TOOL==='mano'?'trascina la foto · rotella per lo zoom'
-   :(TOOL==='mirino'?'trascina il cerchio · dal bordo la dimensione'
-    :'traccia un rettangolo sul volto'));
+ h.textContent=!TOOL?''
+  :(senzaFoto?'trascina · rotella per lo zoom'
+   :(TOOL==='mano'?'trascina la foto · rotella per lo zoom'
+    :(TOOL==='mirino'?'trascina il cerchio · dal bordo la dimensione'
+     :'traccia un rettangolo sul volto')));
 }
+
 
 
 function drawFocalUI(svg){
@@ -2272,7 +2264,7 @@ function rilevaVolto(cb){
 (function(){var l=document.getElementById('topLogo');if(!l)return;
  var d=(typeof LOGO_LIB!=='undefined'&&LOGO_LIB.como_tv)?LOGO_LIB.como_tv.d:'';
  if(d)l.src=d;else l.remove();})();
-prefCarica();sessAggiornaElenco();sessProponiNome();
+prefCarica();sessAggiornaElenco();sessProponiNome();passoUI();syncZip();
 loadNat(DEFAULT_PHOTO,function(){applyFocalAll(function(){renderStage();refreshThumbs();});});
 </script>
 <script src="generatore-airtable.js"></script>
