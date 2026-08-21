@@ -107,6 +107,13 @@ button.act:active{transform:scale(.97)}
 .photobar .grow{flex:1 1 0;min-width:0}
 /* Le barre stanno sopra le colonne e restano visibili scorrendo. L'intestazione
    e le barre sono un blocco solo: il resto della pagina parte sotto. */
+/* Mentre si ritaglia sparisce cio' che non serve al ritaglio: intestazione, riga
+   del documento e pannello. Il disegno e' limitato dall'altezza, quindi conta
+   l'ingombro verticale: togliere larghezza da sola non regalerebbe nulla. */
+body.editing .top,body.editing #barra,body.editing .panel{display:none}
+body.editing .bars{padding:6px 12px}
+body.editing .main{padding:8px 10px}
+body.editing .stagewrap{padding:16px 16px 30px}
 .bars{position:sticky;top:0;z-index:12;display:flex;flex-direction:column;gap:8px;
  padding:10px 18px;background:rgba(10,15,36,.92);backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
 .bars .photobar{margin:0}
@@ -1460,13 +1467,19 @@ function exportVideo(){
 document.getElementById('vidUse').onclick=useVideoFrame;
 document.getElementById('vidExport').onclick=exportVideo;
 document.getElementById('vidCancel').onclick=exitVideoPick;
-function enterPhotoEdit(){if(photoEdit)return;pushUndo();
+// Entrando e uscendo dall'editor a schermo pieno l'ingombro cambia in piu' passi
+// (barre, pannello, scrollbar): una misura sola presa subito coglie uno stato
+// intermedio e resta congelata. Rimisuro finche' il valore non si assesta.
+function rimisura(){if(!window.misuraAltezze)return;
+ misuraAltezze();requestAnimationFrame(misuraAltezze);
+ setTimeout(misuraAltezze,120);setTimeout(misuraAltezze,350);}
+function enterPhotoEdit(){if(photoEdit)return;pushUndo();document.body.classList.add('editing');
  // Annulla deve poter tornare indietro su tutto quello che si tocca qui dentro:
  // il ritaglio di questo formato, ma anche i mirini e il cerchio del volto, che
  // valgono su tutti i formati. Prima ripristinava solo il primo.
  PE_BEFORE=JSON.stringify({adj:STATE[current].adj.photo||null,mir:MIR,focal:FOCAL});
- photoEdit=true;SELRECT=null;renderStage();}
-function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;TOOL=null;MIRON=false;renderStage();passoUI();}
+ photoEdit=true;SELRECT=null;rimisura();renderStage();}
+function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;TOOL=null;MIRON=false;document.body.classList.remove('editing');rimisura();renderStage();passoUI();}
 function cancelPhotoEdit(){if(!photoEdit)return;
  var v=null;try{v=JSON.parse(PE_BEFORE||'null');}catch(e){}
  if(v){MIR=v.mir||{};FOCAL=v.focal||FOCAL;
@@ -1965,6 +1978,7 @@ window.addEventListener('keydown',function(e){
  if(mod&&(e.key==='e'||e.key==='E')){e.preventDefault();document.getElementById('dlAll').click();return;}
  var tag=(e.target.tagName||'').toLowerCase();if(tag==='input'||tag==='select'||tag==='textarea')return;
  var svg=document.querySelector('#stage svg');
+ if(photoEdit&&e.key==='Enter'){e.preventDefault();document.getElementById('fattoBtn').click();return;}
  if(e.key==='Escape'){if(photoEdit){if(SELRECT){SELRECT=null;renderStage();return;}exitPhotoEdit();return;}selObj=null;document.getElementById('selName').textContent='Nessun oggetto selezionato';if(svg)highlightSel(svg);syncScaleSlider();return;}
  if(!selObj||!svg)return;var a=ensureAdj(selObj,svg);var st=e.shiftKey?20:4;var did=false;
  if(e.key==='ArrowLeft'){pushUndoC();a.dx-=st;did=true;}
@@ -2416,11 +2430,17 @@ renderControls();renderStage();renderThumbs();
 // cosi' colonne e altezze restano agganciate anche se le barre cambiano.
 (function(){var b=document.getElementById('bars');if(!b)return;
   window.misuraAltezze=mis;
+ // Le misure vanno riprese ad ogni cambio di ingombro, non solo al ridimensiona-
+ // mento della finestra: entrando e uscendo dall'editor a schermo pieno le barre
+ // e il pannello compaiono e spariscono, e una misura presa nel fotogramma
+ // sbagliato restava congelata su un valore piu' piccolo del dovuto.
  function mis(){
   document.documentElement.style.setProperty('--th',Math.round(b.getBoundingClientRect().height)+'px');
   var sw=document.querySelector('.stagewrap');
   if(sw){var h=sw.clientHeight-78;   // padding sopra + spazio per la targhetta sotto
-   document.documentElement.style.setProperty('--sh',Math.max(160,Math.round(h))+'px');
+   var nuovo=Math.max(160,Math.round(h));
+   if(Math.abs(nuovo-parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sh')||0))<=1)return;
+   document.documentElement.style.setProperty('--sh',nuovo+'px');
    // il disegno cambia dimensione: cornice e righelli vanno rifatti, altrimenti
    // restano dov'erano e sembrano sbagliati
    setTimeout(function(){if(window.stageMarks)stageMarks();if(window.drawRulers)drawRulers();},0);}
@@ -2428,7 +2448,8 @@ renderControls();renderStage();renderThumbs();
  mis();window.misuraAltezze=mis;window.addEventListener('resize',mis);
  requestAnimationFrame(mis);setTimeout(mis,300);
  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(mis);
- if(window.ResizeObserver)new ResizeObserver(mis).observe(b);})();
+ if(window.ResizeObserver){var ro=new ResizeObserver(function(){requestAnimationFrame(mis);});
+  ro.observe(b);var swo=document.querySelector('.stagewrap');if(swo)ro.observe(swo);}})();
 prefCarica();prefStato();sessAggiornaElenco();sessProponiNome();passoUI();syncZip();renderSocial();
 loadNat(DEFAULT_PHOTO,function(){applyFocalAll(function(){renderStage();refreshThumbs();});});
 </script>
