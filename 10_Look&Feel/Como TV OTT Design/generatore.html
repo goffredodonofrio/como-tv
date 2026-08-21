@@ -533,81 +533,93 @@ function ytWrap(txt,size,ls,maxW){var words=String(txt||'').split(/\s+/),lines=[
   if(estW(up(t),size,ls)>maxW&&cur){lines.push(cur);cur=w;}else cur=t;});
  if(cur)lines.push(cur);return lines.length?lines:[''];}
 
-// ==== INTERVISTE — stessa identita' di "YT · Le parole di — volto grande"
-// (foto sfumata + citazione a due righe + nome), generalizzata per un W/H
-// qualsiasi cosi' si riusa sui formati di Piattaforma live. ====
+// ==== INTERVISTE — "cover" col volto: foto intera del soggetto, etichetta
+// "Intervista" a pastiglia oro, nome grande (cognome staccato in oro, come
+// le squadre in mLandscape) + riga di contesto col trattino oro. Rifatto su
+// riferimento diretto (le grafiche INTERVISTA/INTERVIEW di Como 1907), con
+// la palette e i componenti gia' in uso nel resto del generatore invece del
+// rosso/bianco del club: pastiglia oro (come i chip "Football Show 15:10"),
+// trattino + etichetta oro (come "t-comp" in mLandscape), stesso logo.
+// Pastiglia piena, stesso linguaggio dei chip gia' nel file (ytChip/preshow):
+// sfondo oro, testo blu notte.
+function intTag(x,y,label,size,gid){var pad=Math.round(size*0.85),w=R(estW(up(label),size,3))+pad*2,h=Math.round(size*2.2);
+ return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+R(h/2)+'" fill="url(#'+gid+')"/>'
+  +T(x+pad,y+Math.round(h*0.67),label,{s:size,w:800,fill:C.n900,ls:3});}
+// Trattino + etichetta oro per la riga di contesto (stessa idea di t-comp
+// in mLandscape/mPortrait: tacca verticale + testo).
+function intContext(x,y,txt,size,col){var tickH=R(size*0.85);
+ return '<rect x="'+x+'" y="'+(y-tickH+R(size*0.05))+'" width="'+R(size*0.16)+'" height="'+tickH+'" rx="2" fill="'+(col||C.gold)+'"/>'
+  +T(x+R(size*0.5),y,txt,{s:size,w:700,fill:(col||C.gold),ls:4});}
+// Sfumatura scura dall'ALTO (dove sta il testo) verso il basso (dove la foto
+// resta pulita): il contrario del velo in basso di mPortrait/mStory.
+function intTopScrim(gid){return '<linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1">'
+ +'<stop offset="0" stop-color="'+SCRIM+'" stop-opacity=".92"/><stop offset=".36" stop-color="'+SCRIM+'" stop-opacity=".7"/>'
+ +'<stop offset=".6" stop-color="#0A0F24" stop-opacity=".3"/><stop offset=".8" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>';}
+
+// Landscape 16:9 — foto piena, testo ancorato in alto (logo, pastiglia
+// "Intervista", nome grande, riga di contesto), come nei riferimenti.
+function iLandscape(W,H,p,I,A){
+ var M=R(W*0.032);
+ var nm=p.intName||'',ctx=p.intContext||'',tag=p.intTag||'Intervista';
+ var parts=splitMark(nm),n1=parts[0]||'',n2=parts.length>1?parts[1]:'';
+ var nameS=ytFit(n1,R(H*0.15),-2,R(W*0.6));
+ if(n2)nameS=Math.min(nameS,ytFit(n2,R(H*0.15),-2,R(W*0.6)));
+ var tagS=R(H*0.026),tagY=R(H*0.205);
+ var n1Y=R(H*0.44),n2Y=n2?(n1Y+R(nameS*0.92)):n1Y,ctxY=(n2?n2Y:n1Y)+R(H*0.1);
+ return '<defs>'+intTopScrim('ilT')+goldGrad('ilG')+'</defs>'+GPHOTO(W,H,A,I)
+  +'<rect width="'+W+'" height="'+H+'" fill="url(#ilT)" pointer-events="none"/>'
+  +(p.showLogo===false?'':brandMark(A,M,R(H*0.047),R(H*0.10)))
+  +(p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
+  +G('t-tag',A,intTag(M,tagY,tag,tagS,'ilG'))
+  +G('t-title',A,T(M,n1Y,n1,{s:nameS,w:800,fill:C.ivory,ls:-2})+(n2?T(M,n2Y,n2,{s:nameS,w:800,fill:C.goldB,ls:-2}):''))
+  +(ctx?G('t-name',A,intContext(M,ctxY,ctx,R(H*0.03))):'');
+}
+// Portrait 2:3 — stessa impaginazione, proporzioni sulla larghezza (come
+// mPortrait) invece che sull'altezza.
+function iPortrait(W,H,p,I,A){
+ var M=R(W*0.072);
+ var nm=p.intName||'',ctx=p.intContext||'',tag=p.intTag||'Intervista';
+ var parts=splitMark(nm),n1=parts[0]||'',n2=parts.length>1?parts[1]:'';
+ var nameS=ytFit(n1,R(W*0.125),-2,R(W*0.86));
+ if(n2)nameS=Math.min(nameS,ytFit(n2,R(W*0.125),-2,R(W*0.86)));
+ var tagS=R(W*0.026),tagY=R(H*0.115);
+ var n1Y=R(H*0.255),n2Y=n2?(n1Y+R(nameS*0.92)):n1Y,ctxY=(n2?n2Y:n1Y)+R(H*0.055);
+ return '<defs>'+intTopScrim('ipT')+goldGrad('ipG')+'</defs>'+GPHOTO(W,H,A,I)
+  +'<rect width="'+W+'" height="'+H+'" fill="url(#ipT)" pointer-events="none"/>'
+  +(p.showLogo===false?'':brandMark(A,M,R(H*0.03),R(H*0.055)))
+  +(p.live?G('live',A,livePill(W-M-176,R(H*0.03))):'')
+  +G('t-tag',A,intTag(M,tagY,tag,tagS,'ipG'))
+  +G('t-title',A,T(M,n1Y,n1,{s:nameS,w:800,fill:C.ivory,ls:-2})+(n2?T(M,n2Y,n2,{s:nameS,w:800,fill:C.goldB,ls:-2}):''))
+  +(ctx?G('t-name',A,intContext(M,ctxY,ctx,R(W*0.03))):'')
+  +hair(W,H,H-5);
+}
+// Banner mid (1506×412, striscia bassa) — troppo bassa per impilare logo +
+// pastiglia + nome su due righe: nome su una riga sola, pastiglia in linea
+// col logo. Foto piena con velo a sinistra (come mLandscape), non piu' il
+// pannello sfumato a destra: qui il soggetto resta a tutta inquadratura.
+function iBanner(W,H,p,I,A){
+ var M=R(W*0.024);
+ var nm=p.intName||'',ctx=p.intContext||'',tag=p.intTag||'Intervista';
+ var logoH=R(H*0.16),logoW=brandW(logoH),tagS=R(H*0.13),tagY=R(H*0.09);
+ var tagX=M+logoW+R(W*0.02);
+ var nameS=ytFit(up(nm),R(H*0.32),-2,R(W*0.6)),nameY=R(H*0.62),ctxY=R(H*0.88);
+ var leftFade='<linearGradient id="ibL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".55" stop-color="'+SCRIM+'" stop-opacity=".85"/><stop offset=".85" stop-color="#0A0F24" stop-opacity=".1"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>';
+ return '<defs>'+leftFade+goldGrad('ibG')+'</defs>'+GPHOTO(W,H,A,I)
+  +'<rect width="'+W+'" height="'+H+'" fill="url(#ibL)" pointer-events="none"/>'
+  +(p.showLogo===false?'':brandMark(A,M,R(H*0.09),logoH))
+  +(p.live?G('live',A,livePill(W-M-176,R(H*0.14))):'')
+  +G('t-tag',A,intTag(tagX,tagY,tag,tagS,'ibG'))
+  +G('t-title',A,T(M,nameY,nm,{s:nameS,w:800,fill:C.ivory,ls:-2}))
+  +(ctx?G('t-name',A,intContext(M,ctxY,ctx,R(H*0.09))):'');
+}
+
 // Foto laterale che si dissolve nel fondo (come ytPhotoSoft, ma parametrica).
+// Usata solo da Football Show qui sotto (Interviste ora e' foto piena).
 function intPhotoSoft(W,H,q,A,I,w,off,feather){var x=W-w+(off||0),f=(feather||0.42);
  return '<defs><linearGradient id="'+q+'mg" x1="0" y1="0" x2="1" y2="0">'
   +'<stop offset="0" stop-color="#000000"/><stop offset="'+f+'" stop-color="#FFFFFF"/></linearGradient>'
   +'<mask id="'+q+'mk"><rect x="'+x+'" y="0" width="'+w+'" height="'+H+'" fill="url(#'+q+'mg)"/></mask></defs>'
   +'<g mask="url(#'+q+'mk)">'+G('photo',A,PH(I,'photo',x,0,w,H),null)+'</g>';}
-// Virgolette decorative in Abril Display (lo stesso corsivo del wordmark
-// Football Show, gia' incorporato nel file): segnano "e' una citazione" a
-// colpo d'occhio, senza bisogno di etichette testuali tipo "INTERVISTA A".
-function intQuoteMark(x,y,size,gid){
- return '<text x="'+x+'" y="'+y+'" font-family="\'Abril Display\',Georgia,serif" font-style="italic" font-weight="400" font-size="'+size+'" fill="url(#'+gid+')">&#8220;</text>';
-}
-
-// Landscape 16:9 — foto sfumata a destra, virgolette + citazione (testo
-// COSI' COM'E' SCRITTO, non tutto maiuscolo: e' parlato, non un titolo da
-// cartellone) + firma in oro a sinistra.
-function iLandscape(W,H,p,I,A){
- var M=R(W*0.032);
- var q1=p.intQuote1||'',q2=p.intQuote2||'',nm=p.intName||'';
- var ss=Math.min(ytFit(q1,R(H*0.083),0,R(W*0.42)),ytFit(q2,R(H*0.083),0,R(W*0.42)));
- var y1=R(H*0.52),y2=y1+R(ss*1.22),nameY=R(H*0.8);
- var qmS=R(H*0.2),qmY=R(H*0.38);
- return '<defs>'+goldGrad('ilG')+'</defs>'+bg(W,H)+intPhotoSoft(W,H,'il',A,I,R(W*0.5),R(W*0.02),.42)
-  +'<rect width="'+W+'" height="'+H+'" fill="'+SCRIM+'" opacity=".08" pointer-events="none"/>'
-  +(p.showLogo===false?'':brandMark(A,M,R(H*0.047),R(H*0.10)))
-  +(p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
-  +G('t-qmark',A,intQuoteMark(M-R(W*0.004),qmY,qmS,'ilG'))
-  +G('t-title',A,T(M,y1,q1,{s:ss,w:700,fill:C.ivory,ls:0,upper:false})+T(M,y2,q2,{s:ss,w:700,fill:C.ivory,ls:0,upper:false}))
-  +G('t-name',A,T(M,nameY,'— '+nm,{s:R(H*0.033),w:700,fill:C.gold,ls:1}));
-}
-// Portrait 2:3 — foto piena, virgolette + citazione + firma ancorate in
-// basso (stessa griglia di mPortrait), calcolate dal basso verso l'alto cosi'
-// non si accavallano mai.
-function iPortrait(W,H,p,I,A){
- var M=R(W*0.072),bm=R(H*0.052),footY=H-bm;
- var q1=p.intQuote1||'',q2=p.intQuote2||'',nm=p.intName||'';
- var nameS=R(W*0.034),nameY=footY;
- var ss=Math.min(ytFit(q1,R(W*0.062),0,R(W*0.82)),ytFit(q2,R(W*0.062),0,R(W*0.82)));
- var y2=nameY-R(H*0.052),y1=y2-R(ss*1.22);
- var qmS=R(W*0.24),qmY=y1-R(qmS*0.7);
- var scrim='<defs><linearGradient id="ipS" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".22" stop-color="'+SCRIM+'" stop-opacity=".96"/><stop offset=".52" stop-color="#0A0F24" stop-opacity=".5"/><stop offset=".8" stop-color="#0A0F24" stop-opacity=".05"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>'+goldGrad('ipG')+'</defs>';
- return GPHOTO(W,H,A,I)+scrim+'<rect width="'+W+'" height="'+H+'" fill="url(#ipS)" pointer-events="none"/>'
-  +(p.showLogo===false?'':brandMark(A,M,R(H*0.03),R(H*0.055)))
-  +(p.live?G('live',A,livePill(W-M-176,R(H*0.03))):'')
-  +G('t-qmark',A,intQuoteMark(M-R(W*0.006),qmY,qmS,'ipG'))
-  +G('t-title',A,T(M,y1,q1,{s:ss,w:700,fill:C.ivory,ls:0,upper:false})+T(M,y2,q2,{s:ss,w:700,fill:C.ivory,ls:0,upper:false}))
-  +G('t-name',A,T(M,nameY,'— '+nm,{s:nameS,w:700,fill:C.gold,ls:1}))
-  +hair(W,H,H-5);
-}
-// Banner mid (1506×412, striscia bassa) — virgolette e citazione su
-// un'unica riga in linea con la firma; il banner-top ora e' 1920×1080 e
-// riusa direttamente iLandscape (vedi registrazione FMT).
-function iBanner(W,H,p,I,A){
- var M=R(W*0.024);
- var q1=p.intQuote1||'',q2=p.intQuote2||'',nm=p.intName||'';
- var q=[q1,q2].filter(Boolean).join(' ');
- var quoteS=R(H*0.15),nameS=R(H*0.088);
- var photoW=R(W*0.34),photoOff=R(W*0.015);
- var cy=R(H*0.42),nameY=R(H*0.85);
- // le virgolette stanno nello spazio libero tra il logo e il testo, alla
- // stessa altezza della riga di citazione (non sopra, come su landscape/
- // portrait: qui non c'e' l'altezza per impilarle).
- var qmS=R(H*0.34),qmX=M+R(W*0.06),qmY=cy,txtX=qmX+R(qmS*0.55);
- var ss=ytFit(q,quoteS,0,R(W*0.4));
- return '<defs>'+goldGrad('ibG')+'</defs>'+bg(W,H)+intPhotoSoft(W,H,'ibm',A,I,photoW,photoOff,.5)
-  +'<rect width="'+W+'" height="'+H+'" fill="'+SCRIM+'" opacity=".1" pointer-events="none"/>'
-  +(p.showLogo===false?'':brandMark(A,M,R(H*0.09),R(H*0.16)))
-  +(p.live?G('live',A,livePill(W-M-176,R(H*0.14))):'')
-  +G('t-qmark',A,intQuoteMark(qmX,qmY,qmS,'ibG'))
-  +G('t-title',A,T(txtX,cy,q,{s:ss,w:700,fill:C.ivory,ls:0,upper:false}))
-  +G('t-name',A,T(txtX,nameY,'— '+nm,{s:nameS,w:700,fill:C.gold,ls:1}));
-}
 
 // ==== FOOTBALL SHOW — su modello di Ale: wordmark "Football Show" in Abril
 // Display Italic con la sfumatura oro della guida (non e' un campo, e' il
@@ -814,19 +826,19 @@ var FMT={
       +ytSlab(q,A,'t-title2',40,302,p.ytoL2||'',ss,-2);})()
     +G('t-name',A,ytRule(40,486,40,5)+T(94,502,p.ytoName,{s:40,w:700,fill:C.gold}));}},
 
- // Interviste — stessa identita' di YT · Le parole di — volto grande, sui
+ // Interviste — cover col volto dell'intervistato (vedi iLandscape), sui
  // formati di Piattaforma live (landscape, portrait, banner-top, banner-mid).
  int_landscape_1920x1080:{label:'Interviste · Landscape (1920×1080)',group:'Interviste',w:1920,h:1080,useComp:false,
-  fields:[{k:'intQuote1',l:'Citazione riga 1'},{k:'intQuote2',l:'Citazione riga 2'},{k:'intName',l:'Nome intervistato'}],images:Imatch,
+  fields:[{k:'intTag',l:'Etichetta (Intervista)'},{k:'intName',l:'Nome intervistato'},{k:'intContext',l:'Contesto (es. Como 1907 · Serie B)'}],images:Imatch,
   gen:function(p,I,A){return iLandscape(1920,1080,p,I,A);}},
  int_portrait_1200x1800:{label:'Interviste · Portrait (1200×1800)',group:'Interviste',w:1200,h:1800,useComp:false,
-  fields:[{k:'intQuote1',l:'Citazione riga 1'},{k:'intQuote2',l:'Citazione riga 2'},{k:'intName',l:'Nome intervistato'}],images:Imatch,
+  fields:[{k:'intTag',l:'Etichetta (Intervista)'},{k:'intName',l:'Nome intervistato'},{k:'intContext',l:'Contesto (es. Como 1907 · Serie B)'}],images:Imatch,
   gen:function(p,I,A){return iPortrait(1200,1800,p,I,A);}},
  int_banner_top_1920x1080:{label:'Interviste · Banner top (1920×1080)',group:'Interviste',w:1920,h:1080,useComp:false,
-  fields:[{k:'intQuote1',l:'Citazione riga 1'},{k:'intQuote2',l:'Citazione riga 2'},{k:'intName',l:'Nome intervistato'}],images:Imatch,
+  fields:[{k:'intTag',l:'Etichetta (Intervista)'},{k:'intName',l:'Nome intervistato'},{k:'intContext',l:'Contesto (es. Como 1907 · Serie B)'}],images:Imatch,
   gen:function(p,I,A){return iLandscape(1920,1080,p,I,A);}},
  int_banner_mid_1506x412:{label:'Interviste · Banner mid (1506×412)',group:'Interviste',w:1506,h:412,useComp:false,
-  fields:[{k:'intQuote1',l:'Citazione riga 1'},{k:'intQuote2',l:'Citazione riga 2'},{k:'intName',l:'Nome intervistato'}],images:Imatch,
+  fields:[{k:'intTag',l:'Etichetta (Intervista)'},{k:'intName',l:'Nome intervistato'},{k:'intContext',l:'Contesto (es. Como 1907 · Serie B)'}],images:Imatch,
   gen:function(p,I,A){return iBanner(1506,412,p,I,A);}},
 
  // Football Show — su modello di Ale (landscape/portrait), banner estrapolati
@@ -1121,7 +1133,7 @@ function fname(k){if(/-live$/.test(k)){var b=k.replace(/-live$/,'');return (FNAM
 var DEF={home:'West Ham',away:'Portsmouth',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'Preshow 15:10',live:true,hlKind:'Highlights',
  heroKicker:'Como TV · Live Events',heroLine1:'Il grande calcio,',heroLine2:'in diretta.',title:'Como Cup 2026',
  novKicker:'FPF Supertaça · Porto campione',novTitle:'Alzata del trofeo',midKicker:'Como TV · Originals',midLine1:'La tua casa',midLine2:'del calcio',
- badgeName:'Carabao Cup',replName:'LPF Torneo Apertura',name:'Talent Hunters',num:'01',preshow:'Football Show 15:10',ytKicker:'Le parole di',ytTitle:'Abbiamo scritto la storia',ytTitle2:'la storia',ytName:'Mikel Arteta',ytChip:'Le parole di',ytiKicker:'Videopodcast',ytiTitle:'Calcio Inglese',ytiSub:'La corsa al titolo',yteKicker:'Calcio Inglese',yteTitle:'Il crollo dello',yteGold:'United',yteSub:'Videopodcast · Ep. 21',ytvChip:'Vlog',ytvKicker:'Dietro le quinte · Wembley',ytvTitle:'Il giorno della finale',ytgTitle:'Gol Collection',ytsL1:'Abbiamo scritto',ytsL2:'la storia',ytsName:'Mikel Arteta',ytsKicker:'Le parole di',ytoL1:'«Scritta',ytoL2:'la storia»',ytoName:'Arteta',intQuote1:'Abbiamo dato',intQuote2:'tutto in campo',intName:'Nome Cognome',fsEyebrow:'Speciale',fsTitle:'Champions League'};
+ badgeName:'Carabao Cup',replName:'LPF Torneo Apertura',name:'Talent Hunters',num:'01',preshow:'Football Show 15:10',ytKicker:'Le parole di',ytTitle:'Abbiamo scritto la storia',ytTitle2:'la storia',ytName:'Mikel Arteta',ytChip:'Le parole di',ytiKicker:'Videopodcast',ytiTitle:'Calcio Inglese',ytiSub:'La corsa al titolo',yteKicker:'Calcio Inglese',yteTitle:'Il crollo dello',yteGold:'United',yteSub:'Videopodcast · Ep. 21',ytvChip:'Vlog',ytvKicker:'Dietro le quinte · Wembley',ytvTitle:'Il giorno della finale',ytgTitle:'Gol Collection',ytsL1:'Abbiamo scritto',ytsL2:'la storia',ytsName:'Mikel Arteta',ytsKicker:'Le parole di',ytoL1:'«Scritta',ytoL2:'la storia»',ytoName:'Arteta',intTag:'Intervista',intName:'Nome Cognome',intContext:'Como 1907',fsEyebrow:'Speciale',fsTitle:'Champions League'};
 var FMTNAMES={talent:'Talent Hunters',goleada:'Goleada',clasicos:'Los Clásicos',golden:'Golden 90'};
 var FMTNUM={talent:'01',goleada:'02',clasicos:'03',golden:'04'};
 
