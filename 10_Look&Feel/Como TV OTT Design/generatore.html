@@ -14,10 +14,10 @@
 :root{--gold:#C9A24B;--goldB:#E3C271;--red:#E51B20;--n900:#0A0F24;--n800:#141B3C;--ink:#05070F;--ivory:#F5F1E6;--fg2:#C4C0B4;--fg3:#8A8B96;--line:rgba(201,162,75,.28);--sel:#2FE3F5;color-scheme:dark}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Mazzard',system-ui,sans-serif;background:radial-gradient(120% 80% at 50% 0%,#141B3C,#0A0F24 55%,#05070F);color:var(--ivory);min-height:100vh}
-.top{display:flex;align-items:center;gap:14px;padding:14px 22px;border-bottom:1px solid var(--line);background:rgba(10,15,36,.6);position:sticky;top:0;z-index:10}
+.top{display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid var(--line);background:rgba(10,15,36,.6)}
 .top b{font-weight:800}.top .tag{font-size:11px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--gold)}
-.wrap{display:flex;min-height:calc(100vh - 58px)}
-.panel{width:322px;flex:none;border-right:1px solid var(--line);height:calc(100vh - 58px);overflow-y:auto;overflow-x:hidden;position:sticky;top:58px}
+.wrap{display:flex;min-height:calc(100vh - var(--th,58px))}
+.panel{width:322px;flex:none;border-right:1px solid var(--line);height:calc(100vh - var(--th,58px));overflow-y:auto;overflow-x:hidden;position:sticky;top:var(--th,58px)}
 .panel::-webkit-scrollbar{width:0;height:0}
 .panel{scrollbar-width:none}
 .pbody{padding:12px}
@@ -100,6 +100,15 @@ button.act:active{transform:scale(.97)}
 .photobar .ico svg,.pebar .ico svg{width:19px;height:19px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;
  stroke-linecap:round;stroke-linejoin:round}
 .photobar .grow{flex:1 1 0;min-width:0}
+/* Le barre stanno sopra le colonne e restano visibili scorrendo. L'intestazione
+   e le barre sono un blocco solo: il resto della pagina parte sotto. */
+.bars{position:sticky;top:0;z-index:12;display:flex;flex-direction:column;gap:8px;
+ padding:10px 18px;background:rgba(10,15,36,.92);backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
+.bars .photobar{margin:0}
+.thmini{width:26px;height:26px;flex:none;border-radius:5px;object-fit:cover;background:#0E1430;border:1px solid rgba(245,241,230,.14)}
+.blkSocial{display:inline-flex;gap:5px;align-items:center;flex:none}
+/* Spento significa "esiste ma non vale qui": si vede, non si usa. */
+.act.ico[disabled]{opacity:.32;cursor:not-allowed}
 /* Selettore a due opzioni: un solo contorno, la scelta si legge dalla spunta */
 .segsel{display:inline-flex;flex:none;border:1px solid var(--line);border-radius:999px;padding:2px;gap:2px;background:rgba(0,0,0,.18)}
 .segsel button{display:inline-flex;align-items:center;gap:5px;background:none;border:0;cursor:pointer;
@@ -139,7 +148,7 @@ button.act:active{transform:scale(.97)}
 .sw{width:19px;height:19px;border-radius:50%;border:2px solid rgba(245,241,230,.22);cursor:pointer;padding:0}
 .sw.on{border-color:var(--gold);box-shadow:0 0 0 2px rgba(201,162,75,.35)}
 .editbar input[type=range]{width:130px}
-.thumbcol{width:228px;flex:none;border-left:1px solid var(--line);height:calc(100vh - 58px);overflow-y:auto;padding:14px;position:sticky;top:58px}
+.thumbcol{width:228px;flex:none;border-left:1px solid var(--line);height:calc(100vh - var(--th,58px));overflow-y:auto;padding:14px;position:sticky;top:var(--th,58px)}
 .thumbhd{font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin-bottom:10px}
 .thumbs{display:block}
 .thwrap{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:6px}
@@ -207,28 +216,51 @@ small.flag{color:#E3C271}
 </style>
 </head>
 <body>
+<!-- Due barre a tutta larghezza, sopra le colonne: piu' spazio per i comandi e
+     la colonna centrale si riprende l'altezza. Regola di fondo: niente compare
+     e scompare — cio' che non vale per il formato aperto resta visibile e spento.
+     A sinistra si digita, qui in alto si clicca. -->
+<div class="bars" id="bars">
 <div class="top">
 <div style="flex:1;display:flex;align-items:center;gap:11px">
 <img id="topLogo" alt="Como TV" style="height:26px;width:auto;display:block">
 <span class="tag">Generatore OTT</span>
 </div>
 </div>
-<div class="wrap">
- <div class="panel"><div class="pbody">
-   <div class="step"><span class="n">2</span>Formato</div>
-   <div class="card"><select id="fmtSel"></select></div>
-   <div class="step"><span class="n">3</span>Contenuto</div>
-   <div class="card" id="fieldsCard"></div>
-   <div class="step" id="mediaStep"><span class="n">4</span>Foto · comune a tutti</div>
-   <div class="card" id="mediaCard"></div>
-   <div class="step" id="compStep" style="display:none"><span class="n">5</span>Competizioni</div>
-   <div class="card" id="compCard" style="display:none"></div>
- </div></div>
- <div class="main">
-  <!-- Una barra sola, sempre visibile: sessione, export, strumenti foto.
+ <div class="photobar" id="barraContenuto">
+  <span class="pbl">FOTO</span>
+  <img id="cbFotoTh" class="thmini" title="La foto e' una sola e vale per tutti i formati">
+  <button class="act ghost ico" id="cbFotoFile" title="Carica una foto dal computer">
+   <svg viewBox="0 0 20 20"><path d="M2.5 15.5v-11h5l1.5-2h4l1.5 2h3v11z"/><circle cx="10" cy="10.5" r="3.2"/></svg></button>
+  <button class="act ghost ico" id="cbFotoVideo" title="Prendi un fotogramma da un video">
+   <svg viewBox="0 0 20 20"><rect x="2.5" y="5" width="11" height="10" rx="1.5"/><path d="m13.5 10 4-2.6v5.2z"/></svg></button>
+  <button class="act ghost ico" id="cbFotoVia" title="Torna alla foto di default">
+   <svg viewBox="0 0 20 20"><path d="M4.6 4.6l10.8 10.8M15.4 4.6 4.6 15.4"/></svg></button>
+  <span class="tbsep"></span>
+  <span class="pbl">COMPETIZIONE</span>
+  <img id="cbCompTh" class="thmini" title="Logo della competizione">
+  <select id="cbCompSel" title="Scegli il logo dalla libreria"></select>
+  <button class="act ghost ico" id="cbCompVia" title="Togli il logo dalla grafica">
+   <svg viewBox="0 0 20 20"><path d="M4.6 4.6l10.8 10.8M15.4 4.6 4.6 15.4"/></svg></button>
+  <span class="menuwrap">
+   <button class="act ghost ico" id="cbCompNew" title="Aggiungi una competizione nuova">
+    <svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg></button>
+   <div class="menu" id="cbCompMenu">
+    <div class="mst">Nuova competizione</div>
+    <input type="text" id="cbCompNome" placeholder="Nome competizione" style="width:100%;margin-bottom:7px">
+    <button id="cbCompCarica">Carica il logo…</button>
+    <button id="cbCompElimina" style="display:none">Elimina questo logo dalla libreria</button>
+   </div>
+  </span>
+  <span class="tbsep"></span>
+  <span class="pbl">ELEMENTI SOCIAL</span>
+  <span class="blkSocial" id="cbSocial"></span>
+  <span class="grow"></span>
+ </div>
+  <!-- Barra di lavoro sola, sempre visibile: sessione, export, strumenti foto.
        Gli strumenti non compaiono e scompaiono — sono sempre li' e accenderne
        uno entra nella vista di modifica, rispegnerlo ne esce. -->
-  <div class="photobar" id="barra" style="gap:8px;flex-wrap:nowrap;overflow-x:auto;overflow-y:visible">
+ <div class="photobar" id="barra" style="gap:8px;flex-wrap:nowrap;overflow-x:auto;overflow-y:visible">
    <button class="act ico" id="dlPng" title="Scarica questo formato in JPG">
     <svg viewBox="0 0 20 20"><path d="M10 2.5v11M10 13.5 6 9.5M10 13.5l4-4M3 16.5h14"/></svg></button>
    <button class="act ico" id="dlAll" title="Scarica in un file ZIP i formati spuntati nella colonna di destra">
@@ -270,6 +302,15 @@ small.flag{color:#E3C271}
    <span class="peh" id="peHint" style="display:none"></span>
    <span class="seg" id="sessState" style="display:none"></span>
   </div>
+</div>
+<div class="wrap">
+ <div class="panel"><div class="pbody">
+   <div class="step"><span class="n">1</span>Formato</div>
+   <div class="card"><select id="fmtSel"></select></div>
+   <div class="step"><span class="n">2</span>Contenuto</div>
+   <div class="card" id="fieldsCard"></div>
+ </div></div>
+ <div class="main">
   <div class="editbar" id="textBar" style="display:none">
    <span class="pbl" id="textBarTitle" style="color:var(--gold);font-size:11px;font-weight:800;letter-spacing:.18em">TESTO</span>
    <div class="seg"><span id="selName">Nessun oggetto selezionato</span></div>
@@ -967,7 +1008,7 @@ function usesPhoto(key){try{return svgScreen(key).indexOf('data-obj="photo"')>=0
 function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);var S=STATE[current];
  var fd=document.getElementById('fmtDim');if(fd)fd.textContent=fname(current)+' — '+it.w+'×'+it.h+' px';
  var fc=document.getElementById('fieldsCard');fc.innerHTML='';
- if(!meta.useComp){(meta.fields||[]).forEach(function(f){if(!SHAREDKEYS[f.k]){fc.appendChild(el('label',f.l));fc.appendChild(simpleInput(S.vals[f.k],(function(k){return function(v){S.vals[k]=v;};})(f.k)));}});renderMedia(usesPhoto(current));renderCompetizioni(true);return;}
+ if(!meta.useComp){(meta.fields||[]).forEach(function(f){if(!SHAREDKEYS[f.k]){fc.appendChild(el('label',f.l));fc.appendChild(simpleInput(S.vals[f.k],(function(k){return function(v){S.vals[k]=v;};})(f.k)));}});renderMedia(usesPhoto(current));renderCompetizioni(true);renderSocial();return;}
  SHARED.mode='libero';
  fc.appendChild(pairRow('Competizione',SHARED.compBase,function(v){SHARED.compBase=v;composeComp();},'Giornata / Turno',SHARED.round,function(v){SHARED.round=v;composeComp();}));
  fc.appendChild(pairRow('Squadra casa',SHARED.home,function(v){SHARED.home=v;},'Squadra ospite',SHARED.away,function(v){SHARED.away=v;}));
@@ -977,29 +1018,10 @@ function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);va
  var c1=document.createElement('div');c1.appendChild(el('label','Football Show'));
  var psIn=simpleInput(SHARED.preshow,function(v){SHARED.preshow=v;});psIn.placeholder='vuoto = nascosto';c1.appendChild(psIn);
  lastRow.appendChild(c1);
- if(!isSocialFormat()){
-  var c2=document.createElement('div');c2.style.cssText='display:flex;align-items:flex-end';
-  var le=document.createElement('label');le.className='chk';var cbe=document.createElement('input');cbe.type='checkbox';cbe.checked=!!SHARED.english;cbe.onchange=function(){pushUndo();SHARED.english=cbe.checked;renderStage();refreshThumbs();};le.appendChild(cbe);le.appendChild(document.createTextNode(' English Comm.'));
-  c2.appendChild(le);lastRow.appendChild(c2);
- }
  fc.appendChild(lastRow);
- // Elementi opzionali: valgono solo sui formati social, gli unici che li hanno.
- if(isSocialFormat()){
-  var sub=document.createElement('div');sub.className='subsec';
-  var hd=document.createElement('div');hd.className='hd';hd.textContent='Elementi social';sub.appendChild(hd);
-  var rw=document.createElement('div');rw.className='row';
-  [['showLogo','Logo Como TV'],['showLive','Pill LIVE'],['showCta','Guarda il live'],['showPreshow','Football Show'],['english','English Comm.']].forEach(function(f){
-   var l=document.createElement('label');l.className='chk';
-   var cb=document.createElement('input');cb.type='checkbox';cb.checked=(f[0]==='english'||f[0]==='showLive')?!!SHARED[f[0]]:SHARED[f[0]]!==false;
-   cb.onchange=function(){pushUndo();SHARED[f[0]]=cb.checked;renderStage();refreshThumbs();};
-   l.appendChild(cb);l.appendChild(document.createTextNode(' '+f[1]));rw.appendChild(l);
-  });
-  sub.appendChild(rw);
-  fc.appendChild(sub);
- }
  // ---- Campi specifici del formato (non shared) ----
  (meta.fields||[]).forEach(function(f){if(!SHAREDKEYS[f.k]&&f.k!=='live'){fc.appendChild(el('label',f.l));fc.appendChild(simpleInput(S.vals[f.k],(function(k){return function(v){S.vals[k]=v;};})(f.k)));}});
- renderMedia(usesPhoto(current));renderCompetizioni(true);
+ renderMedia(usesPhoto(current));renderCompetizioni(true);renderSocial();
 }
 
 // ---------- step 4: Foto e loghi ----------
@@ -1025,75 +1047,39 @@ function customLogos(){try{return JSON.parse(localStorage.getItem(CUSTOM_LOGO_KE
 function saveCustomLogos(o){try{localStorage.setItem(CUSTOM_LOGO_KEY,JSON.stringify(o));return true;}catch(e){return false;}}
 function isSocialFormat(){var g=CAT[current]||'';return g==='Social media'||g==='Social media video';}
 function renderCompetizioni(show){
- var card=document.getElementById('compCard'),step=document.getElementById('compStep');
- card.innerHTML='';card.style.display=show?'':'none';step.style.display=show?'':'none';
- if(!show)return;
+ var th=document.getElementById('cbCompTh'),sel=document.getElementById('cbCompSel');
+ if(!th||!sel)return;
  var lib=(typeof LOGO_LIB!=='undefined')?LOGO_LIB:{},mine=customLogos();
-
- // riga 1: anteprima + tendina (libreria interna + loghi caricati) + rimozione
- var row=document.createElement('div');row.className='imgrow';
- var th=document.createElement('img');th.className='th';
- if(SHIMG.logoComp){th.src=SHIMG.logoComp;}else{th.removeAttribute('src');th.style.visibility='hidden';}
- row.appendChild(th);
- var sel=document.createElement('select');
- sel.appendChild(opt('','\u25be Scegli dalla libreria'));
+ if(SHIMG.logoComp){th.src=SHIMG.logoComp;th.style.visibility='';}else{th.removeAttribute('src');th.style.visibility='hidden';}
+ sel.innerHTML='';
+ sel.appendChild(opt('','▾ Scegli dalla libreria'));
  Object.keys(lib).sort(function(a,b){return lib[a].l.localeCompare(lib[b].l);})
    .forEach(function(k){sel.appendChild(opt('lib:'+k,lib[k].l));});
  Object.keys(mine).sort(function(a,b){return mine[a].l.localeCompare(mine[b].l);})
-   .forEach(function(k){sel.appendChild(opt('mine:'+k,mine[k].l+' \u00b7 caricato'));});
+   .forEach(function(k){sel.appendChild(opt('mine:'+k,mine[k].l+' · caricato'));});
  sel.value=SHARED.compLogoKey||'';
- sel.onchange=function(){
-  if(!this.value)return;pushUndo();
-  var v=this.value,src=v.slice(0,5)==='mine:'?mine[v.slice(5)]:lib[v.slice(4)];
-  if(!src)return;
-  SHIMG.logoComp=src.d;SHARED.compLogoKey=v;
-  // il nome della competizione segue il logo, poi resta modificabile a mano
-  SHARED.compBase=src.l;composeComp();
-  renderControls();renderStage();refreshThumbs();
- };
- row.appendChild(sel);
- var rm=document.createElement('button');rm.textContent='\u2715';rm.title='Togli il logo dalla grafica';
- rm.onclick=function(){pushUndo();delete SHIMG.logoComp;delete SHARED.compLogoKey;renderControls();renderStage();refreshThumbs();};
- row.appendChild(rm);card.appendChild(row);
+ sel.disabled=!show;
+ document.getElementById('cbCompVia').disabled=!show||!SHIMG.logoComp;
+ document.getElementById('cbCompNew').disabled=!show;
+ th.style.opacity=show?'':'.32';
+ // l'eliminazione dalla libreria vale solo per i loghi caricati a mano
+ var del=document.getElementById('cbCompElimina');
+ del.style.display=(String(SHARED.compLogoKey||'').slice(0,5)==='mine:')?'':'none';
+}
 
- // riga 2: nuova competizione (nome + logo) ed eliminazione dei loghi caricati
- var nl=document.createElement('div');nl.className='newlogo';
- var nome=document.createElement('input');nome.type='text';nome.placeholder='Nome nuova competizione';
- nl.appendChild(nome);
- nl.appendChild(filePicker('Carica logo',function(d,fileName){
-  var label=nome.value.trim()||String(fileName||'').replace(/\.[^.]+$/,'')||'Senza nome';
-  var key=label.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')||('logo_'+Date.now());
-  var o=customLogos();o[key]={l:label,d:d};
-  if(!saveCustomLogos(o))alert('Spazio esaurito nel browser: il logo e\' applicato alla grafica ma non salvato in libreria.');
-  pushUndo();SHIMG.logoComp=d;SHARED.compLogoKey='mine:'+key;
-  SHARED.compBase=label;composeComp();
-  renderControls();renderStage();refreshThumbs();
- }));
- if(String(SHARED.compLogoKey||'').slice(0,5)==='mine:'){
-  var del=document.createElement('button');del.className='tbtn';del.textContent='Elimina';
-  del.title='Rimuove il logo dalla libreria di questo browser';
-  del.onclick=function(){
-   var k=SHARED.compLogoKey.slice(5),o=customLogos();delete o[k];saveCustomLogos(o);
-   pushUndo();delete SHARED.compLogoKey;delete SHIMG.logoComp;
-   renderControls();renderStage();refreshThumbs();};
-  nl.appendChild(del);
- }
- card.appendChild(nl);
-}
+// La foto e il logo competizione stanno in barra, sempre visibili: erano il caso
+// tipico di comandi che comparivano solo su certi formati, e chi non ci passava
+// non sapeva che esistessero. Dove non valgono restano visibili e spenti.
 function renderMedia(show){
- var mc=document.getElementById('mediaCard');var ms=document.getElementById('mediaStep');
- mc.innerHTML='';mc.style.display=show?'':'none';ms.style.display=show?'':'none';
- if(!show)return;
- // ---- Foto ----
- (function(){var r=document.createElement('div');r.className='imgrow';
-   var th=document.createElement('img');th.className='th';th.src=SHIMG.photo||DEFAULT_PHOTO;
-   var nm=document.createElement('div');nm.className='nm';nm.textContent=SHIMG.photo?'Foto caricata':'Foto di default';
-   var rm=document.createElement('button');rm.textContent='✕';rm.title='Ripristina';rm.onclick=function(){pushUndo();delete SHIMG.photo;renderControls();renderStage();refreshThumbs();};
-   r.appendChild(th);r.appendChild(nm);
-   r.appendChild(filePicker('Scegli file',function(d){pushUndo();SHIMG.photo=d;delete STATE[current].adj.photo;loadNat(d,function(){autoPositionPhotoIfBanner();renderControls();renderStage();refreshThumbs();});renderControls();renderStage();refreshThumbs();}));
-   r.appendChild(rawFilePicker('Da video','video/*',enterVideoPick));
-   r.appendChild(rm);mc.appendChild(r);})();
+ var th=document.getElementById('cbFotoTh');if(!th)return;
+ th.src=SHIMG.photo||DEFAULT_PHOTO;
+ th.title=(SHIMG.photo?'Foto caricata':'Foto di default')+' · vale per tutti i formati';
+ ['cbFotoFile','cbFotoVideo','cbFotoVia'].forEach(function(id){
+  var b=document.getElementById(id);if(b)b.disabled=!show;});
+ var v=document.getElementById('cbFotoVia');if(v)v.disabled=!show||!SHIMG.photo;
+ th.style.opacity=show?'':'.32';
 }
+
 
 // ---------- stage + interaction ----------
 var selObj=null;var photoEdit=false;
@@ -1188,6 +1174,88 @@ document.getElementById('fattoBtn').onclick=function(){
 };
 document.getElementById('scopeFam').onclick=function(){MIRSCOPE='famiglia';passoUI();};
 document.getElementById('scopeUno').onclick=function(){MIRSCOPE='formato';passoUI();};
+// ---- ELEMENTI SOCIAL in barra ----
+// Prima comparivano solo aprendo un formato social: chi non ci passava non
+// sapeva nemmeno che esistessero. Ora ci sono sempre e altrove sono spenti.
+var SOCIAL_EL=[
+ {k:'showLogo',  n:'Logo Como TV',   d:'<circle cx="10" cy="10" r="7"/><path d="M7 10h6M10 7v6"/>'},
+ {k:'showLive',  n:'Pill LIVE',      d:'<rect x="2.5" y="6.5" width="15" height="7" rx="3.5"/><circle cx="6.2" cy="10" r="1.5" fill="currentColor" stroke="none"/>'},
+ {k:'showCta',   n:'Guarda il live', d:'<rect x="2.5" y="4.5" width="15" height="11" rx="1.5"/><path d="m8.5 7.6 4.5 2.9-4.5 2.9z"/>'},
+ {k:'showPreshow',n:'Football Show', d:'<circle cx="10" cy="10" r="7"/><path d="m10 5.6 3.4 2.5-1.3 4h-4.2l-1.3-4z"/>'},
+ {k:'english',   n:'English Comm.',  d:'<circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3a16 16 0 0 1 0 14a16 16 0 0 1 0-14"/>',ovunque:true}
+];
+function renderSocial(){
+ var box=document.getElementById('cbSocial');if(!box)return;
+ var vale=isSocialFormat();
+ if(!box.childNodes.length){
+  SOCIAL_EL.forEach(function(e){
+   var b=document.createElement('button');b.className='act ghost ico';b.dataset.k=e.k;
+   b.innerHTML='<svg viewBox="0 0 20 20">'+e.d+'</svg>';
+   b.onclick=function(){if(b.disabled)return;pushUndo();
+    SHARED[e.k]=!acceso(e.k);renderStage();refreshThumbs();renderSocial();};
+   box.appendChild(b);});
+ }
+ [].forEach.call(box.children,function(b){
+  var k=b.dataset.k,e=SOCIAL_EL.filter(function(z){return z.k===k;})[0];
+  // English Comm. non e' un elemento social: vale su tutti i formati
+  var attivabile=vale||!!e.ovunque;
+  b.className='act ghost ico'+(attivabile&&acceso(k)?' on':'');
+  b.disabled=!attivabile;
+  b.title=e.n+(attivabile?(acceso(k)?' · acceso':' · spento'):' · vale solo sui formati social');});
+}
+function acceso(k){return (k==='english'||k==='showLive')?!!SHARED[k]:SHARED[k]!==false;}
+// ---- blocco COMPETIZIONE in barra ----
+document.getElementById('cbCompSel').onchange=function(){
+ if(!this.value)return;pushUndo();
+ var lib=(typeof LOGO_LIB!=='undefined')?LOGO_LIB:{},mine=customLogos();
+ var v=this.value,src=v.slice(0,5)==='mine:'?mine[v.slice(5)]:lib[v.slice(4)];
+ if(!src)return;
+ SHIMG.logoComp=src.d;SHARED.compLogoKey=v;
+ // il nome della competizione segue il logo, poi resta modificabile a mano
+ SHARED.compBase=src.l;composeComp();
+ renderControls();renderStage();refreshThumbs();};
+document.getElementById('cbCompVia').onclick=function(){
+ pushUndo();delete SHIMG.logoComp;delete SHARED.compLogoKey;
+ renderControls();renderStage();refreshThumbs();};
+(function(){var b=document.getElementById('cbCompNew'),m=document.getElementById('cbCompMenu');
+ b.onclick=function(e){e.stopPropagation();m.classList.toggle('on');};
+ document.addEventListener('click',function(){m.classList.remove('on');});
+ m.onclick=function(e){e.stopPropagation();};})();
+document.getElementById('cbCompCarica').onclick=function(){
+ var i=document.createElement('input');i.type='file';i.accept='image/*';
+ i.onchange=function(){var f=i.files&&i.files[0];if(!f)return;
+  var r=new FileReader();r.onload=function(){
+   var d=r.result,nome=document.getElementById('cbCompNome');
+   var label=(nome.value||'').trim()||String(f.name||'').replace(/\.[^.]+$/,'')||'Senza nome';
+   var key=label.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')||('logo_'+Date.now());
+   var o=customLogos();o[key]={l:label,d:d};
+   if(!saveCustomLogos(o))alert('Spazio esaurito nel browser: il logo e\' applicato alla grafica ma non salvato in libreria.');
+   pushUndo();SHIMG.logoComp=d;SHARED.compLogoKey='mine:'+key;
+   SHARED.compBase=label;composeComp();nome.value='';
+   document.getElementById('cbCompMenu').classList.remove('on');
+   renderControls();renderStage();refreshThumbs();};
+  r.readAsDataURL(f);};
+ i.click();};
+document.getElementById('cbCompElimina').onclick=function(){
+ var k=String(SHARED.compLogoKey||'').slice(5),o=customLogos();delete o[k];saveCustomLogos(o);
+ pushUndo();delete SHARED.compLogoKey;delete SHIMG.logoComp;
+ document.getElementById('cbCompMenu').classList.remove('on');
+ renderControls();renderStage();refreshThumbs();};
+// ---- blocco FOTO in barra ----
+document.getElementById('cbFotoFile').onclick=function(){
+ var i=document.createElement('input');i.type='file';i.accept='image/*';
+ i.onchange=function(){var f=i.files&&i.files[0];if(!f)return;
+  var r=new FileReader();r.onload=function(){var d=r.result;
+   pushUndo();SHIMG.photo=d;delete STATE[current].adj.photo;
+   loadNat(d,function(){autoPositionPhotoIfBanner();renderControls();renderStage();refreshThumbs();});};
+  r.readAsDataURL(f);};
+ i.click();};
+document.getElementById('cbFotoVideo').onclick=function(){
+ var i=document.createElement('input');i.type='file';i.accept='video/*';
+ i.onchange=function(){var f=i.files&&i.files[0];if(f)enterVideoPick(f);};
+ i.click();};
+document.getElementById('cbFotoVia').onclick=function(){
+ pushUndo();delete SHIMG.photo;renderControls();renderStage();refreshThumbs();};
 document.getElementById('tMano').onclick=function(){toolVai('mano');};
 document.getElementById('tMirino').onclick=function(){MIRON=!MIRON;aggiornaModo();};
 document.getElementById('tVolto').onclick=function(){toolVai('volto');};
@@ -2285,7 +2353,15 @@ function rilevaVolto(cb){
  var d=(typeof LOGO_LIB!=='undefined'&&LOGO_LIB.como_tv)?LOGO_LIB.como_tv.d:'';
  if(d)l.src=d;else l.remove();})();
 renderControls();renderStage();renderThumbs();
-prefCarica();sessAggiornaElenco();sessProponiNome();passoUI();syncZip();
+// L'altezza dell'intestazione + barre non e' fissa: la misuro e la passo al CSS,
+// cosi' colonne e altezze restano agganciate anche se le barre cambiano.
+(function(){var b=document.getElementById('bars');if(!b)return;
+ function mis(){document.documentElement.style.setProperty('--th',Math.round(b.getBoundingClientRect().height)+'px');}
+ mis();window.addEventListener('resize',mis);
+ requestAnimationFrame(mis);setTimeout(mis,300);
+ if(document.fonts&&document.fonts.ready)document.fonts.ready.then(mis);
+ if(window.ResizeObserver)new ResizeObserver(mis).observe(b);})();
+prefCarica();sessAggiornaElenco();sessProponiNome();passoUI();syncZip();renderSocial();
 loadNat(DEFAULT_PHOTO,function(){applyFocalAll(function(){renderStage();refreshThumbs();});});
 </script>
 <script src="generatore-airtable.js"></script>
