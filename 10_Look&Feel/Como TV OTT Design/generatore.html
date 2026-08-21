@@ -162,14 +162,14 @@ button.act:active{transform:scale(.97)}
 /* Chiudibile: sui formati verticali l'altezza vale piu' della larghezza, e
    questa striscia se la prende. Meglio poterla togliere di mezzo. */
 .thumbTog{position:sticky;left:0;align-self:flex-start;background:none;border:0;cursor:pointer;color:var(--gold);
- font:inherit;font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;
- padding:3px 2px 6px;display:flex;align-items:center;gap:6px}
+ font:inherit;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+ padding:4px 10px 6px;display:flex;align-items:center;gap:6px}
 .thumbTog:hover{color:var(--ivory)}
 .thumbrow .thumbs{display:flex;align-items:stretch;gap:0;min-height:112px}
 .catblk{display:flex;align-items:stretch;gap:9px;flex:none;padding:7px 11px 8px;
  border-left:1px solid;border-right:1px solid transparent}
 .thgrpH{display:flex;align-items:center;flex:none;gap:7px;padding:0 4px;cursor:pointer;
- font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);
+ font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--gold);white-space:nowrap;
  writing-mode:vertical-rl;transform:rotate(180deg);user-select:none;border-left:1px solid rgba(201,162,75,.22)}
 
 .thgrpH .tn{color:var(--fg3);font-weight:700;letter-spacing:.04em}
@@ -185,9 +185,8 @@ button.act:active{transform:scale(.97)}
 .thgrp:first-child{margin-top:0}
 .thumb{position:relative;flex:none;width:104px;background:rgba(255,255,255,.03);border:1px solid rgba(245,241,230,.08);border-radius:10px;padding:6px;cursor:pointer;transition:border-color .15s}
 .thumb.sel{border-color:var(--gold)}
-/* Spunta di inclusione nell'export: i formati esclusi restano visibili ma spenti,
-   cosi' si vede sempre l'intero parco formati e non solo quello che si esporta. */
-.thumb.off{opacity:.42}
+/* La spunta dice se il formato entra nell'export. Le miniature restano tutte
+   alla stessa luminosita': spegnerle rendeva difficile leggere le grafiche. */
 .thumb .xsel{position:absolute;top:11px;right:11px;width:16px;height:16px;border-radius:4px;
  border:1.5px solid rgba(245,241,230,.45);background:rgba(5,7,15,.7);cursor:pointer;z-index:2}
 .thumb .xsel:hover{border-color:var(--gold)}
@@ -269,17 +268,10 @@ small.flag{color:#E3C271}
    <select id="sessList" title="Sessioni salvate"></select>
    <button class="act ghost ico" id="sessDel" title="Elimina la sessione scelta">
     <svg viewBox="0 0 20 20"><path d="M4 5.5h12M8 5.5V3.5h4v2M5.5 5.5l.8 12h7.4l.8-12M8.5 8.5v6M11.5 8.5v6"/></svg></button>
-   <span class="grow"></span>
-   <!-- Le azioni rare non meritano un posto fisso: stanno qui dentro. -->
-   <span class="menuwrap">
-    <button class="act ghost ico" id="altroBtn" title="Altro">
-     <svg viewBox="0 0 20 20"><circle cx="4" cy="10" r="1.3" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1.3" fill="currentColor" stroke="none"/><circle cx="16" cy="10" r="1.3" fill="currentColor" stroke="none"/></svg></button>
-    <div class="menu" id="altroMenu">
-     <div class="mst" id="prefState"></div>
-     <button id="resetPos">Ripristina questo formato</button>
-     <button id="prefReset">Ripristina tutto di fabbrica</button>
-    </div>
-   </span>
+   <span class="tbsep"></span>
+   <button class="act ghost" id="resetPos" title="Rimette gli elementi di questo formato dove li mette il progetto, senza toccare gli altri formati">Ripristina formato</button>
+   <button class="act ghost" id="prefReset" title="Rimette mirini, posizioni e stili di TUTTI i formati come sono di fabbrica, e cancella il salvataggio su questo computer">Ripristina tutto</button>
+   <span class="seg flex" id="prefState"></span>
    <span class="peh" id="peHint" style="display:none"></span>
    <span class="seg" id="sessState" style="display:none"></span>
   </div>
@@ -1187,22 +1179,6 @@ var PEUPD=null;
 
 // Tendina del formato: tarare un mirino vuol dire guardarlo su piu' formati
 // della stessa famiglia, e uscire ogni volta e' scomodo.
-// menu' "altro"
-(function(){var b=document.getElementById('altroBtn'),m=document.getElementById('altroMenu');
- b.onclick=function(e){e.stopPropagation();m.classList.toggle('on');prefStato();};
- document.addEventListener('click',function(){m.classList.remove('on');});
- m.onclick=function(e){e.stopPropagation();};})();
-// FATTO: prende l'inquadratura ottenuta a mano e la traduce in mirino — dove sta
-// il volto adesso e quanto e' grande — poi la propaga secondo l'ambito scelto.
-// Cosi' il gesto libero e la regolazione condivisa restano la stessa cosa.
-document.getElementById('fattoBtn').onclick=function(){
- if(photoFullBleed(current)){
-  var p=focalToStage(),it=BYKEY[current];
-  if(p){mirSet(current,{x:p.x/it.w,y:p.y/it.h,r:p.r/Math.min(it.w,it.h)});prefTocca();}
- }
- exitPhotoEdit();
- applyFocalAll(function(){renderStage();refreshThumbs();});
-};
 document.getElementById('scopeFam').onclick=function(){MIRSCOPE='famiglia';passoUI();};
 document.getElementById('scopeUno').onclick=function(){MIRSCOPE='formato';passoUI();};
 // ---- ELEMENTI SOCIAL in barra ----
@@ -2438,7 +2414,7 @@ renderControls();renderStage();renderThumbs();
  requestAnimationFrame(mis);setTimeout(mis,300);
  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(mis);
  if(window.ResizeObserver)new ResizeObserver(mis).observe(b);})();
-prefCarica();sessAggiornaElenco();sessProponiNome();passoUI();syncZip();renderSocial();syncThumbRow();
+prefCarica();prefStato();sessAggiornaElenco();sessProponiNome();passoUI();syncZip();renderSocial();syncThumbRow();
 loadNat(DEFAULT_PHOTO,function(){applyFocalAll(function(){renderStage();refreshThumbs();});});
 </script>
 <script src="generatore-airtable.js?v=4"></script>
