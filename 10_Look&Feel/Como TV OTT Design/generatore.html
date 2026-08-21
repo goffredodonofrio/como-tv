@@ -542,67 +542,72 @@ function intPhotoSoft(W,H,q,A,I,w,off,feather){var x=W-w+(off||0),f=(feather||0.
   +'<stop offset="0" stop-color="#000000"/><stop offset="'+f+'" stop-color="#FFFFFF"/></linearGradient>'
   +'<mask id="'+q+'mk"><rect x="'+x+'" y="0" width="'+w+'" height="'+H+'" fill="url(#'+q+'mg)"/></mask></defs>'
   +'<g mask="url(#'+q+'mk)">'+G('photo',A,PH(I,'photo',x,0,w,H),null)+'</g>';}
-// Blocco oro inclinato con la seconda riga di citazione (come ytSlab, ma
-// prende l'id del gradiente gia' pronto invece di costruirsene uno suo).
-function intSlab(gid,A,name,x,y,txt,size,rot){var pad=Math.round(size*0.27),w=R(estW(up(txt),size,0))+pad*2,h=Math.round(size*1.18);
- return G(name,A,'<g transform="rotate('+rot+' '+x+' '+(y+h/2)+')"><rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" fill="url(#'+gid+')"/>'
-  +T(x+pad,y+Math.round(h*0.82),txt,{s:size,w:800,fill:C.n900})+'</g>');}
+// Virgolette decorative in Abril Display (lo stesso corsivo del wordmark
+// Football Show, gia' incorporato nel file): segnano "e' una citazione" a
+// colpo d'occhio, senza bisogno di etichette testuali tipo "INTERVISTA A".
+function intQuoteMark(x,y,size,gid){
+ return '<text x="'+x+'" y="'+y+'" font-family="\'Abril Display\',Georgia,serif" font-style="italic" font-weight="400" font-size="'+size+'" fill="url(#'+gid+')">&#8220;</text>';
+}
 
-// Landscape 16:9 — foto sfumata a destra, citazione + nome a sinistra
-// (stessa impaginazione di yt_parole_volto, riscalata su W/H qualsiasi).
+// Landscape 16:9 — foto sfumata a destra, virgolette + citazione (testo
+// COSI' COM'E' SCRITTO, non tutto maiuscolo: e' parlato, non un titolo da
+// cartellone) + firma in oro a sinistra.
 function iLandscape(W,H,p,I,A){
  var M=R(W*0.032);
  var q1=p.intQuote1||'',q2=p.intQuote2||'',nm=p.intName||'';
- var ss=Math.min(ytFit(q1,R(H*0.135),-1,R(W*0.5)),ytFit(q2,R(H*0.135),-1,R(W*0.44)));
- var y1=R(H*0.42),y2=y1+R(ss*0.18),nameY=y2+Math.round(ss*1.18)+R(H*0.075),ruleY=nameY-R(H*0.028);
+ var ss=Math.min(ytFit(q1,R(H*0.083),0,R(W*0.42)),ytFit(q2,R(H*0.083),0,R(W*0.42)));
+ var y1=R(H*0.52),y2=y1+R(ss*1.22),nameY=R(H*0.8);
+ var qmS=R(H*0.2),qmY=R(H*0.38);
  return '<defs>'+goldGrad('ilG')+'</defs>'+bg(W,H)+intPhotoSoft(W,H,'il',A,I,R(W*0.5),R(W*0.02),.42)
   +'<rect width="'+W+'" height="'+H+'" fill="'+SCRIM+'" opacity=".08" pointer-events="none"/>'
   +(p.showLogo===false?'':brandMark(A,M,R(H*0.047),R(H*0.10)))
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
-  +G('t-title',A,T(M,y1,q1,{s:ss,w:800,fill:C.ivory,ls:-1}))
-  +intSlab('ilG',A,'t-title2',M,y2,q2,ss,-2)
-  +G('t-name',A,'<rect x="'+M+'" y="'+ruleY+'" width="'+R(W*0.032)+'" height="5" fill="'+C.gold+'"/>'+T(M+R(W*0.045),nameY,nm,{s:R(H*0.037),w:700,fill:C.gold}));
+  +G('t-qmark',A,intQuoteMark(M-R(W*0.004),qmY,qmS,'ilG'))
+  +G('t-title',A,T(M,y1,q1,{s:ss,w:700,fill:C.ivory,ls:0,upper:false})+T(M,y2,q2,{s:ss,w:700,fill:C.ivory,ls:0,upper:false}))
+  +G('t-name',A,T(M,nameY,'— '+nm,{s:R(H*0.033),w:700,fill:C.gold,ls:1}));
 }
-// Portrait 2:3 — foto piena, citazione + nome ancorati in basso (stessa
-// griglia di mPortrait, per restare coerenti con gli altri formati verticali).
+// Portrait 2:3 — foto piena, virgolette + citazione + firma ancorate in
+// basso (stessa griglia di mPortrait), calcolate dal basso verso l'alto cosi'
+// non si accavallano mai.
 function iPortrait(W,H,p,I,A){
- var M=R(W*0.056),bm=R(H*0.05),footY=H-bm;
+ var M=R(W*0.072),bm=R(H*0.052),footY=H-bm;
  var q1=p.intQuote1||'',q2=p.intQuote2||'',nm=p.intName||'';
- var nameS=R(W*0.037),nameY=footY,ruleY=nameY-R(nameS*1.02);
- var ss=Math.min(ytFit(q1,R(W*0.082),-1,R(W*0.86)),ytFit(q2,R(W*0.082),-1,R(W*0.76)));
- // dal basso verso l'alto: nome -> rule -> blocco oro (con la sua altezza,
- // non solo la sua y) -> riga 1, cosi' non si accavallano mai.
- var slabH=Math.round(ss*1.18),slabBottom=ruleY-R(H*0.045),y2=slabBottom-slabH,y1=y2-R(ss*0.16);
- var scrim='<defs><linearGradient id="ipS" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".2" stop-color="'+SCRIM+'" stop-opacity=".96"/><stop offset=".55" stop-color="#0A0F24" stop-opacity=".5"/><stop offset=".82" stop-color="#0A0F24" stop-opacity=".05"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>'+goldGrad('ipG')+'</defs>';
+ var nameS=R(W*0.034),nameY=footY;
+ var ss=Math.min(ytFit(q1,R(W*0.062),0,R(W*0.82)),ytFit(q2,R(W*0.062),0,R(W*0.82)));
+ var y2=nameY-R(H*0.052),y1=y2-R(ss*1.22);
+ var qmS=R(W*0.24),qmY=y1-R(qmS*0.7);
+ var scrim='<defs><linearGradient id="ipS" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".22" stop-color="'+SCRIM+'" stop-opacity=".96"/><stop offset=".52" stop-color="#0A0F24" stop-opacity=".5"/><stop offset=".8" stop-color="#0A0F24" stop-opacity=".05"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>'+goldGrad('ipG')+'</defs>';
  return GPHOTO(W,H,A,I)+scrim+'<rect width="'+W+'" height="'+H+'" fill="url(#ipS)" pointer-events="none"/>'
   +(p.showLogo===false?'':brandMark(A,M,R(H*0.03),R(H*0.055)))
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.03))):'')
-  +G('t-title',A,T(M,y1,q1,{s:ss,w:800,fill:C.ivory,ls:-1}))
-  +intSlab('ipG',A,'t-title2',M,y2,q2,ss,-2)
-  +G('t-name',A,'<rect x="'+M+'" y="'+ruleY+'" width="'+R(W*0.1)+'" height="5" fill="'+C.gold+'"/>'+T(M+R(W*0.12),nameY,nm,{s:nameS,w:700,fill:C.gold}))
+  +G('t-qmark',A,intQuoteMark(M-R(W*0.006),qmY,qmS,'ipG'))
+  +G('t-title',A,T(M,y1,q1,{s:ss,w:700,fill:C.ivory,ls:0,upper:false})+T(M,y2,q2,{s:ss,w:700,fill:C.ivory,ls:0,upper:false}))
+  +G('t-name',A,T(M,nameY,'— '+nm,{s:nameS,w:700,fill:C.gold,ls:1}))
   +hair(W,H,H-5);
 }
-// Banner (top/mid) — striscia larga e bassa: foto sfumata a destra, citazione
-// su una riga sola + nome, metriche compatte come mLandscape col flag "mid".
-function iBanner(W,H,p,I,A,mid){
+// Banner mid (1506×412, striscia bassa) — virgolette e citazione su
+// un'unica riga in linea con la firma; il banner-top ora e' 1920×1080 e
+// riusa direttamente iLandscape (vedi registrazione FMT).
+function iBanner(W,H,p,I,A){
  var M=R(W*0.024);
  var q1=p.intQuote1||'',q2=p.intQuote2||'',nm=p.intName||'';
- var quoteS=R(H*(mid?0.16:0.135)),nameS=R(H*(mid?0.1:0.088));
+ var q=[q1,q2].filter(Boolean).join(' ');
+ var quoteS=R(H*0.15),nameS=R(H*0.088);
  var photoW=R(W*0.34),photoOff=R(W*0.015);
- var q1Fit=ytFit(q1,quoteS,-1,R(W*0.42)),q2Fit=ytFit(q2,quoteS,-1,R(W*0.34)),ss=Math.min(q1Fit,q2Fit);
- var cy=R(H*0.42),nameY=R(H*(mid?0.82:0.85));
- return '<defs>'+goldGrad('ibG')+'</defs>'+bg(W,H)+intPhotoSoft(W,H,'ib'+(mid?'m':'t'),A,I,photoW,photoOff,.5)
+ var cy=R(H*0.42),nameY=R(H*0.85);
+ // le virgolette stanno nello spazio libero tra il logo e il testo, alla
+ // stessa altezza della riga di citazione (non sopra, come su landscape/
+ // portrait: qui non c'e' l'altezza per impilarle).
+ var qmS=R(H*0.34),qmX=M+R(W*0.06),qmY=cy,txtX=qmX+R(qmS*0.55);
+ var ss=ytFit(q,quoteS,0,R(W*0.4));
+ return '<defs>'+goldGrad('ibG')+'</defs>'+bg(W,H)+intPhotoSoft(W,H,'ibm',A,I,photoW,photoOff,.5)
   +'<rect width="'+W+'" height="'+H+'" fill="'+SCRIM+'" opacity=".1" pointer-events="none"/>'
   +(p.showLogo===false?'':brandMark(A,M,R(H*0.09),R(H*0.16)))
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.14))):'')
-  +G('t-title',A,T(M,cy,q1,{s:ss,w:800,fill:C.ivory,ls:-1})+intSlabInline('ibG',q2,M+R(estW(up(q1),ss,-1))+R(W*0.014),cy,ss))
-  +G('t-name',A,'<rect x="'+M+'" y="'+(nameY-R(nameS*0.85))+'" width="'+R(W*0.018)+'" height="'+R(nameS*0.7)+'" fill="'+C.gold+'"/>'+T(M+R(W*0.02),nameY,nm,{s:nameS,w:700,fill:C.gold}));
+  +G('t-qmark',A,intQuoteMark(qmX,qmY,qmS,'ibG'))
+  +G('t-title',A,T(txtX,cy,q,{s:ss,w:700,fill:C.ivory,ls:0,upper:false}))
+  +G('t-name',A,T(txtX,nameY,'— '+nm,{s:nameS,w:700,fill:C.gold,ls:1}));
 }
-// Variante del blocco oro pensata per stare IN LINEA con la prima riga
-// (usata sui banner, dove non c'e' altezza per due righe impilate).
-function intSlabInline(gid,txt,x,ybase,size){if(!txt)return'';var pad=Math.round(size*0.27),w=R(estW(up(txt),size,0))+pad*2,h=Math.round(size*1.18),y=ybase-Math.round(h*0.82);
- return '<g transform="rotate(-2 '+x+' '+(y+h/2)+')"><rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" fill="url(#'+gid+')"/>'
-  +T(x+pad,y+Math.round(h*0.82),txt,{s:size,w:800,fill:C.n900})+'</g>';}
 
 // ==== FOOTBALL SHOW — su modello di Ale: wordmark "Football Show" in Abril
 // Display Italic con la sfumatura oro della guida (non e' un campo, e' il
@@ -812,17 +817,17 @@ var FMT={
  // Interviste — stessa identita' di YT · Le parole di — volto grande, sui
  // formati di Piattaforma live (landscape, portrait, banner-top, banner-mid).
  int_landscape_1920x1080:{label:'Interviste · Landscape (1920×1080)',group:'Interviste',w:1920,h:1080,useComp:false,
-  fields:[{k:'intQuote1',l:'Citazione riga 1'},{k:'intQuote2',l:'Citazione riga 2 (blocco oro)'},{k:'intName',l:'Nome intervistato'}],images:Imatch,
+  fields:[{k:'intQuote1',l:'Citazione riga 1'},{k:'intQuote2',l:'Citazione riga 2'},{k:'intName',l:'Nome intervistato'}],images:Imatch,
   gen:function(p,I,A){return iLandscape(1920,1080,p,I,A);}},
  int_portrait_1200x1800:{label:'Interviste · Portrait (1200×1800)',group:'Interviste',w:1200,h:1800,useComp:false,
-  fields:[{k:'intQuote1',l:'Citazione riga 1'},{k:'intQuote2',l:'Citazione riga 2 (blocco oro)'},{k:'intName',l:'Nome intervistato'}],images:Imatch,
+  fields:[{k:'intQuote1',l:'Citazione riga 1'},{k:'intQuote2',l:'Citazione riga 2'},{k:'intName',l:'Nome intervistato'}],images:Imatch,
   gen:function(p,I,A){return iPortrait(1200,1800,p,I,A);}},
  int_banner_top_1920x1080:{label:'Interviste · Banner top (1920×1080)',group:'Interviste',w:1920,h:1080,useComp:false,
-  fields:[{k:'intQuote1',l:'Citazione riga 1'},{k:'intQuote2',l:'Citazione riga 2 (blocco oro)'},{k:'intName',l:'Nome intervistato'}],images:Imatch,
-  gen:function(p,I,A){return iBanner(1920,1080,p,I,A);}},
+  fields:[{k:'intQuote1',l:'Citazione riga 1'},{k:'intQuote2',l:'Citazione riga 2'},{k:'intName',l:'Nome intervistato'}],images:Imatch,
+  gen:function(p,I,A){return iLandscape(1920,1080,p,I,A);}},
  int_banner_mid_1506x412:{label:'Interviste · Banner mid (1506×412)',group:'Interviste',w:1506,h:412,useComp:false,
-  fields:[{k:'intQuote1',l:'Citazione riga 1'},{k:'intQuote2',l:'Citazione riga 2 (blocco oro)'},{k:'intName',l:'Nome intervistato'}],images:Imatch,
-  gen:function(p,I,A){return iBanner(1506,412,p,I,A,true);}},
+  fields:[{k:'intQuote1',l:'Citazione riga 1'},{k:'intQuote2',l:'Citazione riga 2'},{k:'intName',l:'Nome intervistato'}],images:Imatch,
+  gen:function(p,I,A){return iBanner(1506,412,p,I,A);}},
 
  // Football Show — su modello di Ale (landscape/portrait), banner estrapolati
  // di conseguenza sugli stessi formati di Piattaforma live.
