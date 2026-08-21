@@ -71,12 +71,15 @@ function loadAirtableEvents() {
   // Dagli ultimi 2 giorni in avanti, senza limite superiore.
   // DATEADD(TODAY(), -2, 'days') = mezzanotte di due giorni fa: restano in
   // elenco l'altroieri, ieri, oggi (a qualsiasi ora) e tutto il futuro.
-  // Esclude non-partita (es. studio live, show) e partite rinviate
+  // Esclude le partite rinviate e i PRE SHOW, che sono slot interni di studio
+  // ("PRE SHOW SERATA 2: SOLO PARTITE MEZZANOTTE") e non diventano mai grafiche.
+  // I FOOTBALL SHOW invece restano: sono programmi con una loro grafica. Prima
+  // il filtro escludeva qualunque cosa contenesse "SHOW" e li portava via tutti.
   var filterFormula = 'AND(' +
     "IS_AFTER({Data | Orario}, DATEADD(TODAY(), -2, 'days')), " +
     'NOT({Partita} = BLANK()), ' +
-    'NOT(FIND("RINVIATA", {Partita})), ' +
-    'NOT(FIND("SHOW", {Partita}))' +
+    'NOT(FIND("RINVIATA", UPPER({Partita}))), ' +
+    'NOT(FIND("PRE SHOW", UPPER({Partita})))' +
     ')';
 
   var url = 'https://api.airtable.com/v0/' + AIRTABLE_CONFIG.baseId + '/' + AIRTABLE_CONFIG.tableId;
@@ -149,6 +152,22 @@ function parseAirtableRecord(rec) {
   var home = (parts[0] || '').trim().replace(/^\d+\s*/, '').toUpperCase();
   var away = (parts[1] || '').trim().replace(/^\d+\s*/, '').toUpperCase();
 
+  // Un programma non e' una partita: non ha due squadre e non vuole il "vs".
+  // "FOOTBALL SHOW: Sorteggi Champions" diventa due righe, titolo e sottotitolo.
+  var noVs = false;
+  if (!away) {
+    var titolo = cleanedPartita.replace(/^[^A-Za-z0-9]+/, '').trim();  // via l'emoji iniziale
+    var duePunti = titolo.indexOf(':');
+    if (duePunti > 0) {
+      home = titolo.slice(0, duePunti).trim().toUpperCase();
+      away = titolo.slice(duePunti + 1).trim().toUpperCase();
+    } else {
+      home = titolo.toUpperCase();
+      away = '';
+    }
+    noVs = true;
+  }
+
   // Parsing data/ora
   var dateTime = fields['Data | Orario'] || '';
   var date = '';
@@ -200,6 +219,7 @@ function parseAirtableRecord(rec) {
     compKey: comp.toLowerCase().replace(/\s+/g, '_'),
     round: round,
     english: english,
+    noVs: noVs,
     fanVoice: fanVoice,
     partitaRaw: partita,
     fotoUrl: fotoUrl
@@ -296,7 +316,7 @@ function fillEventSelect(select) {
 // "CASA vs OSPITE · 16 Ago · 16:00 · Serie A"
 // L'anno compare solo se l'evento non è dell'anno corrente.
 function eventLabel(evt) {
-  var parts = [evt.home + ' vs ' + evt.away];
+  var parts = [evt.noVs ? (evt.home + (evt.away ? ': ' + evt.away : '')) : (evt.home + ' vs ' + evt.away)];
   var when = evt.date || '';
   if (when && evt.year && evt.year !== new Date().getFullYear()) when += ' ' + evt.year;
   if (when) parts.push(when);
@@ -328,6 +348,7 @@ function applyEventToGenerator(evt) {
   SHARED.time = evt.time || '';
   SHARED.year = evt.year || new Date().getFullYear();
   SHARED.english = evt.english || false;
+  SHARED.noVs = !!evt.noVs;   // i template tolgono il "vs" quando non c'e' un avversario
 
   // Mappatura competizione
   var mappedCompKey = COMP_MAPPING[evt.compBase] || evt.compKey || '';
