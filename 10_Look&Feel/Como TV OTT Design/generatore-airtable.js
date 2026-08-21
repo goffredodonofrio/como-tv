@@ -211,6 +211,23 @@ function parseAirtableRecord(rec) {
 }
 
 function renderEventPanel() {
+  // La tendina vive nella barra in alto: se il posto c'e' gia', riempilo e basta.
+  // Il pannello laterale resta come ripiego per compatibilita'.
+  var inBarra = document.getElementById('airtableEventSelect');
+  if (inBarra && !document.getElementById('airtableImportPanel')) {
+    fillEventSelect(inBarra);
+    if (!inBarra.dataset.wired) {
+      inBarra.dataset.wired = '1';
+      inBarra.onchange = function() {
+        if (!this.value) return;
+        var evt = EVENTS_DATA[parseInt(this.value)];
+        applyEventToGenerator(evt);
+        var self = this;
+        setTimeout(function(){ self.value = ''; }, 100);
+      };
+    }
+    return;
+  }
   // Controlla se il pannello Airtable esiste già
   var existing = document.getElementById('airtableImportPanel');
   if (existing) {
