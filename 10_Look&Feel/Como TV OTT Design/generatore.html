@@ -172,6 +172,12 @@ body.editing .stagewrap{padding:16px 16px 30px}
 .catblk{border-radius:10px;margin-bottom:6px;overflow:hidden;border:1px solid}
 .catblk .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:8px}
 .catblk.chiuso .grid{display:none}
+/* Dove una categoria ha sia orizzontali sia verticali le due famiglie stanno in
+   due colonne separate (sinistra orizzontali, destra verticali): le altezze delle
+   miniature sono molto diverse e mescolarle in un flusso unico lascia buchi. */
+.catblk .cols{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:8px;align-items:start}
+.catblk .cols .col{display:flex;flex-direction:column;gap:8px;min-width:0}
+.catblk.chiuso .cols{display:none}
 .thgrpH{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;user-select:none;
  font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--gold)}
 .thgrpH .tw{font-size:9px;width:9px;flex:none}
@@ -1869,6 +1875,19 @@ var CATCOL={
  'Piattaforma live':'#C9A24B','Piattaforma highlights':'#2FE3F5','Piattaforma replay':'#9B7BF0',
  'Social media':'#F05A8C','Social media video':'#FF9F1C','YouTube':'#E5484D','Competizioni':'#3FC98B'};
 var THOPEN={};   // tutti chiusi all'avvio: si apre solo cio' che serve
+// Una miniatura, con la sua casella di export e il click che la rende corrente.
+function creaThumb(it){
+ var d=document.createElement('div');d.className='thumb'+(it.key===current?' sel':'');
+ d.dataset.k=it.key;
+ d.innerHTML='<div class="box">'+svgScreen(it.key)+'</div><div class="lb"><b>'+fname(it.key)+'</b><br>'+it.w+'\u00D7'+it.h+'</div>';
+ if(hasFontOverrides(it.key)){var tsvg=d.querySelector('svg');if(tsvg)applyTextStyles(tsvg,it.key);}
+ var cb=document.createElement('span');cb.className='xsel'+(EXPSEL[it.key]?' on':'');
+ cb.title=EXPSEL[it.key]?'Nell\'export':'Escluso dall\'export';
+ cb.onclick=function(e){e.stopPropagation();EXPSEL[it.key]=!EXPSEL[it.key];renderThumbs();syncExpBtn();};
+ d.appendChild(cb);
+ d.onclick=function(){current=it.key;selObj=null;document.getElementById('fmtSel').value=it.key;renderControls();renderStage();renderThumbs();};
+ return d;
+}
 function renderThumbs(){
  var box=document.getElementById('thumbs');if(!box)return;
  box.innerHTML='';
@@ -1894,19 +1913,23 @@ function renderThumbs(){
   var tn=document.createElement('span');tn.className='tn';tn.textContent=nSel+'/'+gr.items.length;hd.appendChild(tn);
   hd.onclick=function(){THOPEN[gr.g]=!aperto;renderThumbs();};
   blocco.appendChild(hd);
-  var grid=document.createElement('div');grid.className='grid';
-  if(aperto)gr.items.forEach(function(it){
-   var d=document.createElement('div');d.className='thumb'+(it.key===current?' sel':'');
-   d.dataset.k=it.key;
-   d.innerHTML='<div class="box">'+svgScreen(it.key)+'</div><div class="lb"><b>'+fname(it.key)+'</b><br>'+it.w+'×'+it.h+'</div>';
-   if(hasFontOverrides(it.key)){var tsvg=d.querySelector('svg');if(tsvg)applyTextStyles(tsvg,it.key);}
-   var cb=document.createElement('span');cb.className='xsel'+(EXPSEL[it.key]?' on':'');
-   cb.title=EXPSEL[it.key]?'Nell\'export':'Escluso dall\'export';
-   cb.onclick=function(e){e.stopPropagation();EXPSEL[it.key]=!EXPSEL[it.key];renderThumbs();syncExpBtn();};
-   d.appendChild(cb);
-   d.onclick=function(){current=it.key;selObj=null;document.getElementById('fmtSel').value=it.key;renderControls();renderStage();renderThumbs();};
-   grid.appendChild(d);});
-  blocco.appendChild(grid);
+  var oriz=gr.items.filter(function(it){return it.w>=it.h;}),
+      vert=gr.items.filter(function(it){return it.h>it.w;});
+  var cont;
+  if(oriz.length&&vert.length){
+   // la divisione c'e': due pile affiancate, orizzontali a sinistra
+   cont=document.createElement('div');cont.className='cols';
+   var cA=document.createElement('div');cA.className='col';
+   var cB=document.createElement('div');cB.className='col';
+   if(aperto){oriz.forEach(function(it){cA.appendChild(creaThumb(it));});
+              vert.forEach(function(it){cB.appendChild(creaThumb(it));});}
+   cont.appendChild(cA);cont.appendChild(cB);
+  }else{
+   // tutta orizzontale o tutta verticale: resta il flusso a due colonne
+   cont=document.createElement('div');cont.className='grid';
+   if(aperto)gr.items.forEach(function(it){cont.appendChild(creaThumb(it));});
+  }
+  blocco.appendChild(cont);
   box.appendChild(blocco);
  });
  syncExpBtn();
