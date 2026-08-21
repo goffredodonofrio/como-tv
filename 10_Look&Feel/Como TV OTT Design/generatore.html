@@ -152,12 +152,12 @@ button.act:active{transform:scale(.97)}
 .editbar input[type=range]{width:130px}
 /* Striscia delle anteprime sotto l'editor: scorre in orizzontale, i gruppi
    restano separati da un'etichetta verticale che fa da segnaposto. */
-.thumbrow{flex:none;display:flex;flex-direction:column;margin-top:8px;border-top:1px solid var(--line);padding-top:6px}
-.thumbrow .thumbs{overflow-x:auto;overflow-y:hidden}
+.thumbrow{flex:none;display:flex;flex-direction:column;margin-top:8px;border-top:1px solid var(--line);padding-top:6px;overflow-x:auto;overflow-y:hidden}
+
 .thumbrow.chiusa .thumbs{display:none}
 /* Chiudibile: sui formati verticali l'altezza vale piu' della larghezza, e
    questa striscia se la prende. Meglio poterla togliere di mezzo. */
-.thumbTog{align-self:flex-start;background:none;border:0;cursor:pointer;color:var(--gold);
+.thumbTog{position:sticky;left:0;align-self:flex-start;background:none;border:0;cursor:pointer;color:var(--gold);
  font:inherit;font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;
  padding:3px 2px 6px;display:flex;align-items:center;gap:6px}
 .thumbTog:hover{color:var(--ivory)}
@@ -1845,11 +1845,6 @@ document.getElementById('resetPos').onclick=function(){pushUndo();STATE[current]
 document.getElementById('scaleR').addEventListener('pointerdown',function(){pushUndo();});
 
 // ---------- thumbnails ----------
-// Colonna anteprime a fisarmonica: 20 miniature in un unico scorrimento erano
-// troppe. Ogni gruppo si apre e si chiude liberamente, compreso quello del
-// formato corrente: quando cambi formato il suo gruppo si apre da solo, ma da
-// li' in poi comanda il clic.
-var THOPEN={},THCUR=null;
 // Selezione per l'export. Di default sono accesi solo i formati che escono per
 // ogni partita: piattaforma (live, highlights, replay), FanVoice e Story. Gli
 // altri si esportano solo se spuntati, per non riempire Drive di file inutili.
@@ -1860,29 +1855,26 @@ function expCount(){return ITEMS.filter(function(it){return EXPSEL[it.key];}).le
 function syncExpBtn(){if(window.syncZip)syncZip();}
 function renderThumbs(){
  var box=document.getElementById('thumbs');box.innerHTML='';
- var cur=CAT[current]||'',gruppi=[];
- if(cur!==THCUR){THCUR=cur;THOPEN[cur]=true;}
+ var gruppi=[];
  ITEMS.forEach(function(it){var g=CAT[it.key]||it.group;
   if(!gruppi.length||gruppi[gruppi.length-1].g!==g)gruppi.push({g:g,items:[]});
   gruppi[gruppi.length-1].items.push(it);});
+ // Tutti i formati sempre in fila: in orizzontale si scorre, e la fisarmonica
+ // (che serviva a non avere 32 voci in colonna) non ha piu' motivo di esistere.
  gruppi.forEach(function(gr){
-  var aperto=!!THOPEN[gr.g],nSel=gr.items.filter(function(it){return EXPSEL[it.key];}).length;
-  // Etichetta verticale che separa i gruppi: clic per aprire o chiudere,
-  // quadratino per includere o escludere tutto il gruppo dall'export.
+  var nSel=gr.items.filter(function(it){return EXPSEL[it.key];}).length;
   var hd=document.createElement('div');hd.className='thgrpH';
   var gcb=document.createElement('span');gcb.className='gsel'+(nSel===gr.items.length?' on':(nSel?' mix':''));
-  gcb.title='Includi tutto il gruppo nell\'export';
-  gcb.onclick=function(e){e.stopPropagation();var v=nSel!==gr.items.length;
-   gr.items.forEach(function(it){EXPSEL[it.key]=v;});renderThumbs();syncExpBtn();};
   hd.appendChild(gcb);
   hd.appendChild(document.createTextNode(gr.g));
-  var tn=document.createElement('span');tn.className='tn';tn.textContent=(aperto?nSel+'/':'')+gr.items.length;hd.appendChild(tn);
-  hd.title=(aperto?'Chiudi':'Apri')+' '+gr.g;
-  hd.onclick=function(){THOPEN[gr.g]=!aperto;renderThumbs();};
+  var tn=document.createElement('span');tn.className='tn';tn.textContent=nSel+'/'+gr.items.length;hd.appendChild(tn);
+  hd.title='Includi o togli tutto il gruppo dall\'export';
+  hd.onclick=function(){var v=nSel!==gr.items.length;
+   gr.items.forEach(function(it){EXPSEL[it.key]=v;});renderThumbs();syncExpBtn();};
   box.appendChild(hd);
-  if(!aperto)return;
   gr.items.forEach(function(it){
    var d=document.createElement('div');d.className='thumb'+(it.key===current?' sel':'')+(EXPSEL[it.key]?'':' off');
+   d.dataset.k=it.key;
    d.innerHTML='<div class="box">'+svgScreen(it.key)+'</div><div class="lb"><b>'+fname(it.key)+'</b><br>'+it.w+'×'+it.h+'</div>';
    if(hasFontOverrides(it.key)){var tsvg=d.querySelector('svg');if(tsvg)applyTextStyles(tsvg,it.key);}
    var cb=document.createElement('span');cb.className='xsel'+(EXPSEL[it.key]?' on':'');
@@ -1893,9 +1885,29 @@ function renderThumbs(){
    box.appendChild(d);});
  });
  syncExpBtn();
+ // dopo il ridisegno la larghezza non e' ancora ricalcolata: assegnare subito lo
+ // scorrimento lo farebbe limitare a zero. Un fotogramma dopo e' corretta.
+ setTimeout(portaInVista,0);
+}
+// Con 32 miniature in fila quella su cui lavori puo' finire fuori campo.
+// scrollIntoView lo fa fare al browser, che sa quando il calcolo e' pronto:
+// assegnare scrollLeft a mano subito dopo il ridisegno veniva limitato a zero.
+function portaInVista(){
+ if(!THROW_OPEN)return;
+ var d=document.querySelector('#thumbs .thumb.sel');
+ if(d&&d.scrollIntoView)d.scrollIntoView({block:'nearest',inline:'center'});
 }
 
-function markThumb(){var t=document.querySelectorAll('.thumb');ITEMS.forEach(function(it,i){if(t[i])t[i].className='thumb'+(it.key===current?' sel':'');});}
+
+// Aggiorna solo la selezione senza ridisegnare tutto. Attenzione a non perdere
+// lo stato "escluso dall'export", che prima veniva cancellato riscrivendo la
+// classe: bastava cambiare formato dal menu' per far sembrare tutto incluso.
+function markThumb(){
+ document.querySelectorAll('#thumbs .thumb').forEach(function(d){
+  var k=d.dataset.k;
+  d.className='thumb'+(k===current?' sel':'')+(EXPSEL[k]?'':' off');});
+ setTimeout(portaInVista,0);
+}
 
 // ---------- export ----------
 // Export in JPG: la piattaforma rifiuta i file oltre 1 MB, quindi la qualita'
@@ -2396,7 +2408,7 @@ renderControls();renderStage();renderThumbs();
  function mis(){
   document.documentElement.style.setProperty('--th',Math.round(b.getBoundingClientRect().height)+'px');
   var sw=document.querySelector('.stagewrap');
-  if(sw){var h=sw.clientHeight-52;   // meno il padding del riquadro
+  if(sw){var h=sw.clientHeight-78;   // padding sopra + spazio per la targhetta sotto
    document.documentElement.style.setProperty('--sh',Math.max(160,Math.round(h))+'px');
    // il disegno cambia dimensione: cornice e righelli vanno rifatti, altrimenti
    // restano dov'erano e sembrano sbagliati
