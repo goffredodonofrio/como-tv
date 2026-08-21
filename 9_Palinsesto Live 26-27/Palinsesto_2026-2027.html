@@ -805,12 +805,29 @@ function renderVmixWeek() {
     const groups = vmixFindGroups(evs);
     const hasOverlap = groups.some(g => g.length > 1);
 
+    // Stats per giornata
+    const dayVmix = evs.filter(e => e.vmix).length;
+    let dayPeak = 0;
+    for (const e of evs) {
+      const conc = evs.filter(o => o._s < e._e && o._e > e._s).length;
+      dayPeak = Math.max(dayPeak, conc);
+    }
+    const overlapEvts = groups.filter(g => g.length > 1).reduce((s, g) => s + g.length, 0);
+    const peakColor = dayPeak >= 3 ? '#dc2626' : dayPeak >= 2 ? '#ea580c' : '#059669';
+    const peakBg   = dayPeak >= 3 ? '#fee2e2' : dayPeak >= 2 ? '#ffedd5' : '#d1fae5';
+
     html += '<div style="margin-bottom:28px;">';
-    html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">'
+    html += '<div style="margin-bottom:12px;">'
+      + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">'
       + '<span style="font-size:13px;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.8px">' + DAYS[dt.getDay()] + ' ' + dt.getDate() + ' ' + MONTHS[dt.getMonth()+1] + '</span>'
-      + '<span style="font-size:11px;color:var(--muted)">' + evs.length + ' event' + (evs.length === 1 ? 'o' : 'i') + '</span>'
-      + (hasOverlap ? '<span style="font-size:11px;font-weight:800;padding:3px 10px;border-radius:20px;background:#fee2e2;color:#dc2626;">⚠️ Sovrapposizione VMIX</span>' : '')
       + '<div style="flex:1;height:1px;background:var(--border)"></div>'
+      + '</div>'
+      + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
+      + '<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;background:var(--s3);color:var(--muted);">' + evs.length + ' event' + (evs.length === 1 ? 'o' : 'i') + '</span>'
+      + '<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;background:#e0f2fe;color:#0369a1;">📡 ' + dayVmix + ' VMIX impegnati</span>'
+      + '<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;background:' + peakBg + ';color:' + peakColor + ';">⚡ Peak: ' + dayPeak + ' contemporanei</span>'
+      + (hasOverlap ? '<span style="font-size:11px;font-weight:800;padding:3px 9px;border-radius:6px;background:#fee2e2;color:#dc2626;">⚠️ ' + overlapEvts + ' eventi sovrapposti</span>' : '')
+      + '</div>'
       + '</div>';
 
     for (const group of groups) {
