@@ -699,6 +699,68 @@ function vmixConcColor(n) {
   return{bg:'#fca5a5',text:'#7f1d1d'};
 }
 
+function renderDayGantt(evs) {
+  if (!evs.length) return '';
+  const minT = Math.min(...evs.map(e => e._s));
+  const maxT = Math.max(...evs.map(e => e._e));
+  const span = maxT - minT;
+
+  // Operatori unici nell'ordine in cui compaiono (già sorted by _s)
+  const ops = [...new Set(evs.map(e => e.vmix || 'Non assegnato'))];
+
+  // Tick orari — ogni ora piena dentro l'intervallo
+  const firstHourMs = Math.ceil(minT / 3600000) * 3600000;
+  const ticks = [];
+  for (let ms = firstHourMs; ms <= maxT; ms += 3600000) {
+    const pct = ((ms - minT) / span * 100).toFixed(1);
+    const h = new Date(ms).getHours();
+    ticks.push({ label: String(h).padStart(2,'0') + ':00', pct });
+  }
+
+  const LW = 96; // larghezza colonna label (px)
+  let html = '<div style="background:white;border:1.5px solid var(--border);border-radius:10px;padding:10px 14px 12px;margin-bottom:12px;overflow-x:auto;">';
+  html += '<div style="min-width:520px;">';
+
+  // Asse ore
+  html += '<div style="display:flex;margin-bottom:2px;">';
+  html += '<div style="width:' + LW + 'px;flex-shrink:0;"></div>';
+  html += '<div style="flex:1;position:relative;height:16px;">';
+  for (const t of ticks) {
+    html += '<div style="position:absolute;left:' + t.pct + '%;transform:translateX(-50%);font-size:9px;color:var(--muted);font-weight:600;white-space:nowrap;">' + t.label + '</div>';
+  }
+  html += '</div></div>';
+
+  // Riga per operatore
+  for (const op of ops) {
+    const color = VMIX_OPS_COLORS[op] || VMIX_DEFAULT_COLOR;
+    const opEvs = evs.filter(e => (e.vmix || 'Non assegnato') === op);
+    const shortName = op === 'Non assegnato' ? '—' : op.split(' ')[0];
+
+    html += '<div style="display:flex;align-items:center;margin-bottom:3px;">';
+    html += '<div style="width:' + LW + 'px;flex-shrink:0;font-size:10px;font-weight:700;color:' + color + ';padding-right:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + shortName + '</div>';
+    html += '<div style="flex:1;position:relative;height:24px;background:var(--s2);border-radius:4px;">';
+
+    // Grid lines orarie
+    for (const t of ticks) {
+      html += '<div style="position:absolute;top:0;bottom:0;left:' + t.pct + '%;width:1px;background:var(--border);pointer-events:none;"></div>';
+    }
+
+    // Barre eventi
+    for (const e of opEvs) {
+      const left  = ((e._s - minT) / span * 100).toFixed(2);
+      const width = Math.max(((e._e - e._s) / span * 100), 0.8).toFixed(2);
+      const tip   = e.title + '\n' + vmixFmtTime(e._s) + ' → ' + vmixFmtTime(e._e);
+      html += '<div title="' + tip.replace(/"/g,'&quot;') + '" style="position:absolute;top:2px;bottom:2px;left:' + left + '%;width:' + width + '%;background:' + color + ';border-radius:3px;overflow:hidden;cursor:default;">';
+      html += '<div style="font-size:8.5px;font-weight:700;color:white;padding:0 5px;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + vmixFmtTime(e._s) + ' ' + e.title + '</div>';
+      html += '</div>';
+    }
+    html += '</div></div>';
+  }
+
+  html += '</div></div>';
+  return html;
+}
+
 function renderVmixRoot(events) {
   // Group by week
   const weekMap={};
@@ -829,6 +891,8 @@ function renderVmixWeek() {
       + (hasOverlap ? '<span style="font-size:11px;font-weight:800;padding:3px 9px;border-radius:6px;background:#fee2e2;color:#dc2626;">⚠️ ' + overlapEvts + ' eventi sovrapposti</span>' : '')
       + '</div>'
       + '</div>';
+
+    html += renderDayGantt(evs);
 
     for (const group of groups) {
       if (group.length === 1) {
