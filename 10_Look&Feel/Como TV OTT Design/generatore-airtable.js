@@ -226,11 +226,9 @@ function renderEventPanel() {
     if (!inBarra.dataset.wired) {
       inBarra.dataset.wired = '1';
       inBarra.onchange = function() {
-        if (!this.value) return;
-        var evt = EVENTS_DATA[parseInt(this.value)];
-        applyEventToGenerator(evt);
-        var self = this;
-        setTimeout(function(){ self.value = ''; }, 100);
+        if (this.value === '') return;
+        applyEventToGenerator(EVENTS_DATA[parseInt(this.value)]);
+        // niente azzeramento: la tendina mostra la partita su cui stai lavorando
       };
     }
     return;
@@ -274,12 +272,8 @@ function renderEventPanel() {
     fillEventSelect(select);
 
     select.onchange = function() {
-      if (!this.value) return;
-      console.log('SELECT CHANGED:', this.value);
-      var evt = EVENTS_DATA[parseInt(this.value)];
-      applyEventToGenerator(evt);
-      // Resetta il select dopo aver applicato (così puoi selezionare la stessa partita due volte)
-      setTimeout(() => { this.value = ''; }, 100);
+      if (this.value === '') return;
+      applyEventToGenerator(EVENTS_DATA[parseInt(this.value)]);
     };
 
     card.appendChild(select);
@@ -298,11 +292,13 @@ function renderEventPanel() {
 
 // Riempie il menu a tendina: placeholder + un'opzione per evento.
 function fillEventSelect(select) {
+  var scelta = select.value;   // l'elenco si ricostruisce, la scelta no
   select.innerHTML = '';
   select.appendChild(createOption('', EVENTS_DATA.length ? '— Scegli partita —' : '— nessuna partita da Airtable —'));
   EVENTS_DATA.forEach((evt, idx) => {
     select.appendChild(createOption(idx, eventLabel(evt)));
   });
+  if (scelta !== '' && select.querySelector('option[value="' + scelta + '"]')) select.value = scelta;
 }
 
 // "CASA vs OSPITE · 16 Ago · 16:00 · Serie A"
