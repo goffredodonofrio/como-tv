@@ -56,8 +56,12 @@ function getAirtableToken() {
 }
 
 function loadAirtableEvents() {
-  // Recupera il token (chiede se non esiste)
-  var token = AIRTABLE_CONFIG.token || getAirtableToken();
+  // Recupera il token (chiede se non esiste). Se la richiesta viene annullata o
+  // bloccata dal browser non deve fermare tutto: la tendina si popola comunque,
+  // anche solo per dire che non ci sono partite.
+  var token = null;
+  try { token = AIRTABLE_CONFIG.token || getAirtableToken(); }
+  catch (e) { console.warn('Token Airtable non richiesto:', e && e.message); }
   if (!token) {
     console.warn('Token Airtable non disponibile');
     renderEventPanel();
@@ -211,10 +215,13 @@ function parseAirtableRecord(rec) {
 }
 
 function renderEventPanel() {
-  // La tendina vive nella barra in alto: se il posto c'e' gia', riempilo e basta.
-  // Il pannello laterale resta come ripiego per compatibilita'.
-  var inBarra = document.getElementById('airtableEventSelect');
-  if (inBarra && !document.getElementById('airtableImportPanel')) {
+  // La tendina vive nella barra in alto. Se il posto c'e', si usa quello e si
+  // toglie di mezzo il vecchio pannello laterale, che altrimenti resta li' da
+  // una sessione precedente con dentro un secondo select con lo stesso id.
+  var inBarra = document.querySelector('#barra #airtableEventSelect');
+  if (inBarra) {
+    var vecchioPannello = document.getElementById('airtableImportPanel');
+    if (vecchioPannello) vecchioPannello.remove();
     fillEventSelect(inBarra);
     if (!inBarra.dataset.wired) {
       inBarra.dataset.wired = '1';
@@ -292,7 +299,7 @@ function renderEventPanel() {
 // Riempie il menu a tendina: placeholder + un'opzione per evento.
 function fillEventSelect(select) {
   select.innerHTML = '';
-  select.appendChild(createOption('', '— Scegli partita —'));
+  select.appendChild(createOption('', EVENTS_DATA.length ? '— Scegli partita —' : '— nessuna partita da Airtable —'));
   EVENTS_DATA.forEach((evt, idx) => {
     select.appendChild(createOption(idx, eventLabel(evt)));
   });
