@@ -160,24 +160,16 @@ button.act:active{transform:scale(.97)}
 .editbar input[type=range]{width:130px}
 /* Striscia delle anteprime sotto l'editor: scorre in orizzontale, i gruppi
    restano separati da un'etichetta verticale che fa da segnaposto. */
-.thumbrow{flex:none;display:flex;flex-direction:column;border-top:1px solid var(--line);
- padding:6px 0 0;overflow-x:auto;overflow-y:hidden;background:rgba(10,15,36,.55)}
+/* Un blocco per categoria: intestazione col suo colore, miniature a due colonne
+   che compaiono solo quando il blocco e' aperto. */
+.catblk{border-radius:10px;margin-bottom:6px;overflow:hidden;border:1px solid}
+.catblk .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:8px}
+.catblk.chiuso .grid{display:none}
+.thgrpH{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;user-select:none;
+ font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--gold)}
+.thgrpH .tw{font-size:9px;width:9px;flex:none}
 
-.thumbrow.chiusa .thumbs{display:none}
-/* Chiudibile: sui formati verticali l'altezza vale piu' della larghezza, e
-   questa striscia se la prende. Meglio poterla togliere di mezzo. */
-.thumbTog{position:sticky;left:0;align-self:flex-start;background:none;border:0;cursor:pointer;color:var(--gold);
- font:inherit;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
- padding:4px 10px 6px;display:flex;align-items:center;gap:6px}
-.thumbTog:hover{color:var(--ivory)}
-.thumbrow .thumbs{display:flex;align-items:stretch;gap:0;min-height:112px}
-.catblk{display:flex;align-items:stretch;gap:9px;flex:none;padding:7px 11px 8px;
- border-left:1px solid;border-right:1px solid transparent}
-.thgrpH{display:flex;align-items:center;flex:none;gap:7px;padding:0 4px;cursor:pointer;
- font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--gold);white-space:nowrap;
- writing-mode:vertical-rl;transform:rotate(180deg);user-select:none;border-left:1px solid rgba(201,162,75,.22)}
-
-.thgrpH .tn{color:var(--fg3);font-weight:700;letter-spacing:.04em}
+.thgrpH .tn{margin-left:auto;color:var(--fg3);font-weight:700;letter-spacing:.04em}
 .thumbhd{font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin-bottom:10px}
 
 .thwrap{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:6px}
@@ -188,7 +180,7 @@ button.act:active{transform:scale(.97)}
 .thgrp .tw{font-size:9px;width:9px;flex:none}
 .thgrp .tn{margin-left:auto;color:var(--fg3);font-weight:700;letter-spacing:.04em}
 .thgrp:first-child{margin-top:0}
-.thumb{position:relative;flex:none;width:104px;background:rgba(255,255,255,.03);border:1px solid rgba(245,241,230,.08);border-radius:10px;padding:6px;cursor:pointer;transition:border-color .15s}
+.thumb{position:relative;background:rgba(255,255,255,.03);border:1px solid rgba(245,241,230,.08);border-radius:10px;padding:6px;cursor:pointer;transition:border-color .15s}
 .thumb.sel{border-color:var(--gold)}
 /* La spunta dice se il formato entra nell'export. Le miniature restano tutte
    alla stessa luminosita': spegnerle rendeva difficile leggere le grafiche. */
@@ -202,7 +194,7 @@ button.act:active{transform:scale(.97)}
  border:1.5px solid rgba(201,162,75,.55);background:transparent;cursor:pointer}
 .thgrp .gsel.on{background:var(--gold);border-color:var(--gold)}
 .thgrp .gsel.mix::after{content:'';position:absolute;left:2px;top:4.5px;width:7px;height:2px;background:var(--gold)}
-.thumb .box{width:100%;height:66px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#05070F;border-radius:6px}
+.thumb .box{width:100%;height:62px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#05070F;border-radius:6px}
 .thumb .box svg{max-width:100%;max-height:100%;height:auto}
 .thumb .lb{font-size:9px;color:var(--fg2);margin-top:4px;text-align:center;line-height:1.25}
 .busy{position:fixed;inset:0;background:rgba(5,7,15,.72);display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;z-index:50}
@@ -334,6 +326,10 @@ small.flag{color:#E3C271}
  <div class="panel"><div class="pbody">
    <div class="step"><span class="n">1</span>Contenuto</div>
    <div class="card" id="fieldsCard"></div>
+   <!-- Anteprime nella colonna, sotto il contenuto: in fondo alla pagina davano
+        fastidio mentre si lavora. Tutti i gruppi chiusi, si apre cio' che serve. -->
+   <div class="step"><span class="n">2</span>Anteprime</div>
+   <div class="thumbs" id="thumbs"></div>
  </div></div>
  <div class="main">
   <div class="editbar" id="textBar" style="display:none">
@@ -371,12 +367,6 @@ small.flag{color:#E3C271}
   </div>
   <div class="stagewrap"><canvas id="rulerTop" class="ruler"></canvas><canvas id="rulerLeft" class="ruler"></canvas><div id="rulerCorner"></div><div id="stage"></div></div>
  </div>
-</div>
-<!-- Anteprime a tutta pagina, sotto tutto: ogni categoria ha il suo fondo,
-     cosi' i blocchi tematici si riconoscono senza leggere le etichette. -->
-<div class="thumbrow" id="thumbrow">
- <button class="thumbTog" id="thumbTog" title="Mostra o nascondi le anteprime"></button>
- <div class="thumbs" id="thumbs"></div>
 </div>
 <div class="busy" id="busy"><div class="spin"></div><div id="busyTxt">Esporto…</div></div>
 
@@ -1290,16 +1280,6 @@ document.getElementById('cbFotoVideo').onclick=function(){
  i.click();};
 document.getElementById('cbFotoVia').onclick=function(){
  pushUndo();delete SHIMG.photo;renderControls();renderStage();refreshThumbs();};
-// ---- striscia anteprime: apri/chiudi ----
-var THROW_OPEN=true;
-function syncThumbRow(){
- var r=document.getElementById('thumbrow'),b=document.getElementById('thumbTog');
- if(!r||!b)return;
- r.className='thumbrow'+(THROW_OPEN?'':' chiusa');
- b.textContent=(THROW_OPEN?'▾ ':'▸ ')+'Anteprime';
- if(window.misuraAltezze)misuraAltezze();
-}
-document.getElementById('thumbTog').onclick=function(){THROW_OPEN=!THROW_OPEN;syncThumbRow();};
 document.getElementById('tMano').onclick=function(){toolVai('mano');};
 document.getElementById('tMirino').onclick=function(){MIRON=!MIRON;aggiornaModo();};
 document.getElementById('tVolto').onclick=function(){toolVai('volto');};
@@ -1868,33 +1848,35 @@ function syncExpBtn(){if(window.syncZip)syncZip();}
 var CATCOL={
  'Piattaforma live':'#C9A24B','Piattaforma highlights':'#2FE3F5','Piattaforma replay':'#9B7BF0',
  'Social media':'#F05A8C','Social media video':'#FF9F1C','YouTube':'#E5484D','Competizioni':'#3FC98B'};
+var THOPEN={};   // tutti chiusi all'avvio: si apre solo cio' che serve
 function renderThumbs(){
- var box=document.getElementById('thumbs');box.innerHTML='';
+ var box=document.getElementById('thumbs');if(!box)return;
+ box.innerHTML='';
  var gruppi=[];
  ITEMS.forEach(function(it){var g=CAT[it.key]||it.group;
   if(!gruppi.length||gruppi[gruppi.length-1].g!==g)gruppi.push({g:g,items:[]});
   gruppi[gruppi.length-1].items.push(it);});
- // Tutti i formati sempre in fila: in orizzontale si scorre, e la fisarmonica
- // (che serviva a non avere 32 voci in colonna) non ha piu' motivo di esistere.
  gruppi.forEach(function(gr){
-  var nSel=gr.items.filter(function(it){return EXPSEL[it.key];}).length;
+  var aperto=!!THOPEN[gr.g],nSel=gr.items.filter(function(it){return EXPSEL[it.key];}).length;
   var col=CATCOL[gr.g]||'#C9A24B';
-  var blocco=document.createElement('div');blocco.className='catblk';
-  blocco.style.background='linear-gradient(180deg,'+col+'26,'+col+'0D 62%,transparent)';
-  blocco.style.borderColor=col+'40';
+  var blocco=document.createElement('div');blocco.className='catblk'+(aperto?'':' chiuso');
+  blocco.style.borderColor=col+'38';
   var hd=document.createElement('div');hd.className='thgrpH';hd.style.color=col;
-  hd.style.borderLeftColor='transparent';
+  hd.style.background='linear-gradient(90deg,'+col+'22,'+col+'0A)';
+  var tw=document.createElement('span');tw.className='tw';tw.textContent=aperto?'▾':'▸';hd.appendChild(tw);
   var gcb=document.createElement('span');gcb.className='gsel'+(nSel===gr.items.length?' on':(nSel?' mix':''));
   gcb.style.borderColor=col;if(nSel===gr.items.length)gcb.style.background=col;
+  gcb.title='Includi o togli tutto il gruppo dall\'export';
+  gcb.onclick=function(e){e.stopPropagation();var v=nSel!==gr.items.length;
+   gr.items.forEach(function(it){EXPSEL[it.key]=v;});renderThumbs();syncExpBtn();};
   hd.appendChild(gcb);
   hd.appendChild(document.createTextNode(gr.g));
   var tn=document.createElement('span');tn.className='tn';tn.textContent=nSel+'/'+gr.items.length;hd.appendChild(tn);
-  hd.title='Includi o togli tutto il gruppo dall\'export';
-  hd.onclick=function(){var v=nSel!==gr.items.length;
-   gr.items.forEach(function(it){EXPSEL[it.key]=v;});renderThumbs();syncExpBtn();};
+  hd.onclick=function(){THOPEN[gr.g]=!aperto;renderThumbs();};
   blocco.appendChild(hd);
-  gr.items.forEach(function(it){
-   var d=document.createElement('div');d.className='thumb'+(it.key===current?' sel':'')+(EXPSEL[it.key]?'':' off');
+  var grid=document.createElement('div');grid.className='grid';
+  if(aperto)gr.items.forEach(function(it){
+   var d=document.createElement('div');d.className='thumb'+(it.key===current?' sel':'');
    d.dataset.k=it.key;
    d.innerHTML='<div class="box">'+svgScreen(it.key)+'</div><div class="lb"><b>'+fname(it.key)+'</b><br>'+it.w+'×'+it.h+'</div>';
    if(hasFontOverrides(it.key)){var tsvg=d.querySelector('svg');if(tsvg)applyTextStyles(tsvg,it.key);}
@@ -1903,22 +1885,21 @@ function renderThumbs(){
    cb.onclick=function(e){e.stopPropagation();EXPSEL[it.key]=!EXPSEL[it.key];renderThumbs();syncExpBtn();};
    d.appendChild(cb);
    d.onclick=function(){current=it.key;selObj=null;document.getElementById('fmtSel').value=it.key;renderControls();renderStage();renderThumbs();};
-   blocco.appendChild(d);});
+   grid.appendChild(d);});
+  blocco.appendChild(grid);
   box.appendChild(blocco);
  });
  syncExpBtn();
- // dopo il ridisegno la larghezza non e' ancora ricalcolata: assegnare subito lo
- // scorrimento lo farebbe limitare a zero. Un giro dopo e' corretta.
  setTimeout(portaInVista,0);
 }
+
 
 // Con 32 miniature in fila quella su cui lavori puo' finire fuori campo.
 // scrollIntoView lo fa fare al browser, che sa quando il calcolo e' pronto:
 // assegnare scrollLeft a mano subito dopo il ridisegno veniva limitato a zero.
 function portaInVista(){
- if(!THROW_OPEN)return;
  var d=document.querySelector('#thumbs .thumb.sel');
- if(d&&d.scrollIntoView)d.scrollIntoView({block:'nearest',inline:'center'});
+ if(d&&d.scrollIntoView)d.scrollIntoView({block:'nearest'});
 }
 
 
@@ -2441,7 +2422,7 @@ renderControls();renderStage();renderThumbs();
  requestAnimationFrame(mis);setTimeout(mis,300);
  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(mis);
  if(window.ResizeObserver)new ResizeObserver(mis).observe(b);})();
-prefCarica();prefStato();sessAggiornaElenco();sessProponiNome();passoUI();syncZip();renderSocial();syncThumbRow();
+prefCarica();prefStato();sessAggiornaElenco();sessProponiNome();passoUI();syncZip();renderSocial();
 loadNat(DEFAULT_PHOTO,function(){applyFocalAll(function(){renderStage();refreshThumbs();});});
 </script>
 <script src="generatore-airtable.js?v=4"></script>
