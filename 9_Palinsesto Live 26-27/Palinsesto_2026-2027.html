@@ -705,9 +705,6 @@ function renderDayGantt(evs) {
   const maxT = Math.max(...evs.map(e => e._e));
   const span = maxT - minT;
 
-  // Operatori unici nell'ordine in cui compaiono (già sorted by _s)
-  const ops = [...new Set(evs.map(e => e.vmix || 'Non assegnato'))];
-
   // Tick orari — ogni ora piena dentro l'intervallo
   const firstHourMs = Math.ceil(minT / 3600000) * 3600000;
   const ticks = [];
@@ -717,7 +714,7 @@ function renderDayGantt(evs) {
     ticks.push({ label: String(h).padStart(2,'0') + ':00', pct });
   }
 
-  const LW = 96; // larghezza colonna label (px)
+  const LW = 120; // larghezza colonna label (px)
   let html = '<div style="background:white;border:1.5px solid var(--border);border-radius:10px;padding:10px 14px 12px;margin-bottom:12px;overflow-x:auto;">';
   html += '<div style="min-width:520px;">';
 
@@ -730,30 +727,30 @@ function renderDayGantt(evs) {
   }
   html += '</div></div>';
 
-  // Riga per operatore
-  for (const op of ops) {
-    const color = VMIX_OPS_COLORS[op] || VMIX_DEFAULT_COLOR;
-    const opEvs = evs.filter(e => (e.vmix || 'Non assegnato') === op);
-    const shortName = op === 'Non assegnato' ? '—' : op.split(' ')[0];
+  // Una riga per evento (già ordinati per _s)
+  for (const e of evs) {
+    const color = VMIX_OPS_COLORS[e.vmix] || VMIX_DEFAULT_COLOR;
+    const left  = ((e._s - minT) / span * 100).toFixed(2);
+    const width = Math.max(((e._e - e._s) / span * 100), 0.8).toFixed(2);
+    const label = vmixFmtTime(e._s) + ' ' + e.title;
+    const tip   = e.title + '\n' + vmixFmtTime(e._s) + ' → ' + vmixFmtTime(e._e) + (e.vmix ? '\n' + e.vmix : '');
 
-    html += '<div style="display:flex;align-items:center;margin-bottom:3px;">';
-    html += '<div style="width:' + LW + 'px;flex-shrink:0;font-size:10px;font-weight:700;color:' + color + ';padding-right:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + shortName + '</div>';
-    html += '<div style="flex:1;position:relative;height:24px;background:var(--s2);border-radius:4px;">';
-
+    html += '<div style="display:flex;align-items:center;margin-bottom:2px;">';
+    // Label: orario + nome troncato
+    html += '<div style="width:' + LW + 'px;flex-shrink:0;display:flex;align-items:center;gap:5px;padding-right:8px;">';
+    html += '<span style="font-size:10px;font-weight:800;color:var(--navy);font-variant-numeric:tabular-nums;white-space:nowrap;">' + vmixFmtTime(e._s) + '</span>';
+    html += '<span style="font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + e.title + '</span>';
+    html += '</div>';
+    // Track
+    html += '<div style="flex:1;position:relative;height:20px;background:var(--s2);border-radius:3px;">';
     // Grid lines orarie
     for (const t of ticks) {
       html += '<div style="position:absolute;top:0;bottom:0;left:' + t.pct + '%;width:1px;background:var(--border);pointer-events:none;"></div>';
     }
-
-    // Barre eventi
-    for (const e of opEvs) {
-      const left  = ((e._s - minT) / span * 100).toFixed(2);
-      const width = Math.max(((e._e - e._s) / span * 100), 0.8).toFixed(2);
-      const tip   = e.title + '\n' + vmixFmtTime(e._s) + ' → ' + vmixFmtTime(e._e);
-      html += '<div title="' + tip.replace(/"/g,'&quot;') + '" style="position:absolute;top:2px;bottom:2px;left:' + left + '%;width:' + width + '%;background:' + color + ';border-radius:3px;overflow:hidden;cursor:default;">';
-      html += '<div style="font-size:8.5px;font-weight:700;color:white;padding:0 5px;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + vmixFmtTime(e._s) + ' ' + e.title + '</div>';
-      html += '</div>';
-    }
+    // Barra evento
+    html += '<div title="' + tip.replace(/"/g,'&quot;') + '" style="position:absolute;top:2px;bottom:2px;left:' + left + '%;width:' + width + '%;background:' + color + ';border-radius:3px;overflow:hidden;cursor:default;">';
+    html += '<div style="font-size:8.5px;font-weight:700;color:white;padding:0 5px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + label + '</div>';
+    html += '</div>';
     html += '</div></div>';
   }
 
