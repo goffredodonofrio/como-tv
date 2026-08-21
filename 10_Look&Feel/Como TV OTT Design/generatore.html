@@ -531,6 +531,77 @@ function ytWrap(txt,size,ls,maxW){var words=String(txt||'').split(/\s+/),lines=[
  words.forEach(function(w){var t=cur?cur+' '+w:w;
   if(estW(up(t),size,ls)>maxW&&cur){lines.push(cur);cur=w;}else cur=t;});
  if(cur)lines.push(cur);return lines.length?lines:[''];}
+
+// ==== INTERVISTE — stessa identita' di "YT · Le parole di — volto grande"
+// (foto sfumata + citazione a due righe + nome), generalizzata per un W/H
+// qualsiasi cosi' si riusa sui formati di Piattaforma live. ====
+// Foto laterale che si dissolve nel fondo (come ytPhotoSoft, ma parametrica).
+function intPhotoSoft(W,H,q,A,I,w,off,feather){var x=W-w+(off||0),f=(feather||0.42);
+ return '<defs><linearGradient id="'+q+'mg" x1="0" y1="0" x2="1" y2="0">'
+  +'<stop offset="0" stop-color="#000000"/><stop offset="'+f+'" stop-color="#FFFFFF"/></linearGradient>'
+  +'<mask id="'+q+'mk"><rect x="'+x+'" y="0" width="'+w+'" height="'+H+'" fill="url(#'+q+'mg)"/></mask></defs>'
+  +'<g mask="url(#'+q+'mk)">'+G('photo',A,PH(I,'photo',x,0,w,H),null)+'</g>';}
+// Blocco oro inclinato con la seconda riga di citazione (come ytSlab, ma
+// prende l'id del gradiente gia' pronto invece di costruirsene uno suo).
+function intSlab(gid,A,name,x,y,txt,size,rot){var pad=Math.round(size*0.27),w=R(estW(up(txt),size,0))+pad*2,h=Math.round(size*1.18);
+ return G(name,A,'<g transform="rotate('+rot+' '+x+' '+(y+h/2)+')"><rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" fill="url(#'+gid+')"/>'
+  +T(x+pad,y+Math.round(h*0.82),txt,{s:size,w:800,fill:C.n900})+'</g>');}
+
+// Landscape 16:9 — foto sfumata a destra, citazione + nome a sinistra
+// (stessa impaginazione di yt_parole_volto, riscalata su W/H qualsiasi).
+function iLandscape(W,H,p,I,A){
+ var M=R(W*0.032);
+ var q1=p.intQuote1||'',q2=p.intQuote2||'',nm=p.intName||'';
+ var ss=Math.min(ytFit(q1,R(H*0.135),-1,R(W*0.5)),ytFit(q2,R(H*0.135),-1,R(W*0.44)));
+ var y1=R(H*0.42),y2=y1+R(ss*0.18),nameY=y2+Math.round(ss*1.18)+R(H*0.075),ruleY=nameY-R(H*0.028);
+ return '<defs>'+goldGrad('ilG')+'</defs>'+GPHOTO(W,H,A,I)+intPhotoSoft(W,H,'il',A,I,R(W*0.5),R(W*0.02),.42)
+  +'<rect width="'+W+'" height="'+H+'" fill="'+SCRIM+'" opacity=".08" pointer-events="none"/>'
+  +(p.showLogo===false?'':brandMark(A,M,R(H*0.047),R(H*0.10)))
+  +(p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
+  +G('t-title',A,T(M,y1,q1,{s:ss,w:800,fill:C.ivory,ls:-1}))
+  +intSlab('ilG',A,'t-title2',M,y2,q2,ss,-2)
+  +G('t-name',A,'<rect x="'+M+'" y="'+ruleY+'" width="'+R(W*0.032)+'" height="5" fill="'+C.gold+'"/>'+T(M+R(W*0.045),nameY,nm,{s:R(H*0.037),w:700,fill:C.gold}));
+}
+// Portrait 2:3 — foto piena, citazione + nome ancorati in basso (stessa
+// griglia di mPortrait, per restare coerenti con gli altri formati verticali).
+function iPortrait(W,H,p,I,A){
+ var M=R(W*0.056),bm=R(H*0.05),footY=H-bm;
+ var q1=p.intQuote1||'',q2=p.intQuote2||'',nm=p.intName||'';
+ var nameS=R(W*0.037),nameY=footY,ruleY=nameY-R(nameS*1.02);
+ var ss=Math.min(ytFit(q1,R(W*0.082),-1,R(W*0.86)),ytFit(q2,R(W*0.082),-1,R(W*0.76)));
+ // dal basso verso l'alto: nome -> rule -> blocco oro (con la sua altezza,
+ // non solo la sua y) -> riga 1, cosi' non si accavallano mai.
+ var slabH=Math.round(ss*1.18),slabBottom=ruleY-R(H*0.045),y2=slabBottom-slabH,y1=y2-R(ss*0.16);
+ var scrim='<defs><linearGradient id="ipS" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".2" stop-color="'+SCRIM+'" stop-opacity=".96"/><stop offset=".55" stop-color="#0A0F24" stop-opacity=".5"/><stop offset=".82" stop-color="#0A0F24" stop-opacity=".05"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>'+goldGrad('ipG')+'</defs>';
+ return GPHOTO(W,H,A,I)+scrim+'<rect width="'+W+'" height="'+H+'" fill="url(#ipS)" pointer-events="none"/>'
+  +(p.showLogo===false?'':brandMark(A,M,R(H*0.03),R(H*0.055)))
+  +(p.live?G('live',A,livePill(W-M-176,R(H*0.03))):'')
+  +G('t-title',A,T(M,y1,q1,{s:ss,w:800,fill:C.ivory,ls:-1}))
+  +intSlab('ipG',A,'t-title2',M,y2,q2,ss,-2)
+  +G('t-name',A,'<rect x="'+M+'" y="'+ruleY+'" width="'+R(W*0.1)+'" height="5" fill="'+C.gold+'"/>'+T(M+R(W*0.12),nameY,nm,{s:nameS,w:700,fill:C.gold}))
+  +hair(W,H,H-5);
+}
+// Banner (top/mid) — striscia larga e bassa: foto sfumata a destra, citazione
+// su una riga sola + nome, metriche compatte come mLandscape col flag "mid".
+function iBanner(W,H,p,I,A,mid){
+ var M=R(W*0.024);
+ var q1=p.intQuote1||'',q2=p.intQuote2||'',nm=p.intName||'';
+ var quoteS=R(H*(mid?0.16:0.135)),nameS=R(H*(mid?0.1:0.088));
+ var photoW=R(W*0.34),photoOff=R(W*0.015);
+ var q1Fit=ytFit(q1,quoteS,-1,R(W*0.42)),q2Fit=ytFit(q2,quoteS,-1,R(W*0.34)),ss=Math.min(q1Fit,q2Fit);
+ var cy=R(H*0.42),nameY=R(H*(mid?0.82:0.85));
+ return '<defs>'+goldGrad('ibG')+'</defs>'+GPHOTO(W,H,A,I)+intPhotoSoft(W,H,'ib'+(mid?'m':'t'),A,I,photoW,photoOff,.5)
+  +'<rect width="'+W+'" height="'+H+'" fill="'+SCRIM+'" opacity=".1" pointer-events="none"/>'
+  +(p.showLogo===false?'':brandMark(A,M,R(H*0.09),R(H*0.16)))
+  +(p.live?G('live',A,livePill(W-M-176,R(H*0.14))):'')
+  +G('t-title',A,T(M,cy,q1,{s:ss,w:800,fill:C.ivory,ls:-1})+intSlabInline('ibG',q2,M+R(estW(up(q1),ss,-1))+R(W*0.014),cy,ss))
+  +G('t-name',A,'<rect x="'+M+'" y="'+(nameY-R(nameS*0.85))+'" width="'+R(W*0.018)+'" height="'+R(nameS*0.7)+'" fill="'+C.gold+'"/>'+T(M+R(W*0.02),nameY,nm,{s:nameS,w:700,fill:C.gold}));
+}
+// Variante del blocco oro pensata per stare IN LINEA con la prima riga
+// (usata sui banner, dove non c'e' altezza per due righe impilate).
+function intSlabInline(gid,txt,x,ybase,size){if(!txt)return'';var pad=Math.round(size*0.27),w=R(estW(up(txt),size,0))+pad*2,h=Math.round(size*1.18),y=ybase-Math.round(h*0.82);
+ return '<g transform="rotate(-2 '+x+' '+(y+h/2)+')"><rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" fill="url(#'+gid+')"/>'
+  +T(x+pad,y+Math.round(h*0.82),txt,{s:size,w:800,fill:C.n900})+'</g>';}
 // STORY 9:16. k attenua il velo blu: 1 = pieno, valori piu' bassi lasciano
 // passare piu' immagine. Serve sui video, dove un velo pesante spegne la clip.
 // gid deve essere diverso per ogni intensita': gli id dei gradienti SVG sono
@@ -672,6 +743,21 @@ var FMT={
      return G('t-title',A,T(40,282,p.ytoL1,{s:ss,w:800,fill:C.ivory}))
       +ytSlab(q,A,'t-title2',40,302,p.ytoL2||'',ss,-2);})()
     +G('t-name',A,ytRule(40,486,40,5)+T(94,502,p.ytoName,{s:40,w:700,fill:C.gold}));}},
+
+ // Interviste — stessa identita' di YT · Le parole di — volto grande, sui
+ // formati di Piattaforma live (landscape, portrait, banner-top, banner-mid).
+ int_landscape_1920x1080:{label:'Interviste · Landscape (1920×1080)',group:'Interviste',w:1920,h:1080,useComp:false,
+  fields:[{k:'intQuote1',l:'Citazione riga 1'},{k:'intQuote2',l:'Citazione riga 2 (blocco oro)'},{k:'intName',l:'Nome intervistato'}],images:Imatch,
+  gen:function(p,I,A){return iLandscape(1920,1080,p,I,A);}},
+ int_portrait_1080x1620:{label:'Interviste · Portrait (1080×1620)',group:'Interviste',w:1080,h:1620,useComp:false,
+  fields:[{k:'intQuote1',l:'Citazione riga 1'},{k:'intQuote2',l:'Citazione riga 2 (blocco oro)'},{k:'intName',l:'Nome intervistato'}],images:Imatch,
+  gen:function(p,I,A){return iPortrait(1080,1620,p,I,A);}},
+ int_banner_top_1506x560:{label:'Interviste · Banner top (1506×560)',group:'Interviste',w:1506,h:560,useComp:false,
+  fields:[{k:'intQuote1',l:'Citazione riga 1'},{k:'intQuote2',l:'Citazione riga 2 (blocco oro)'},{k:'intName',l:'Nome intervistato'}],images:Imatch,
+  gen:function(p,I,A){return iBanner(1506,560,p,I,A);}},
+ int_banner_mid_1506x412:{label:'Interviste · Banner mid (1506×412)',group:'Interviste',w:1506,h:412,useComp:false,
+  fields:[{k:'intQuote1',l:'Citazione riga 1'},{k:'intQuote2',l:'Citazione riga 2 (blocco oro)'},{k:'intName',l:'Nome intervistato'}],images:Imatch,
+  gen:function(p,I,A){return iBanner(1506,412,p,I,A,true);}},
 
  yt_citazione_prot:{label:'YT · Citazione protagonista',group:'YouTube',w:1280,h:720,useComp:false,
   fields:[{k:'ytChip',l:'Pastiglia rossa'},{k:'ytTitle',l:'Citazione'},{k:'ytName',l:'Nome'}],images:Imatch,
@@ -917,7 +1003,10 @@ var MENU=[
    'rp_banner_top_1506x560','rp_banner_mid_1506x412']},
  // Sezioni in costruzione: design e formati propri, ancora da definire.
  {g:'Football Show',k:[]},
- {g:'Interviste',k:[]},
+ {g:'Interviste',k:[
+   'int_landscape_1920x1080','int_portrait_1080x1620',
+   'int_banner_top_1506x560','int_banner_mid_1506x412',
+   'int_landscape_1920x1080-live','int_portrait_1080x1620-live','int_banner_mid_1506x412-live']},
  {g:'Social media',k:[
    'feed_1080x1440','story_1080x1920','fanvoice_1080x1920']},
  {g:'Social media video',k:['story_video_1080x1920','story_video_1080x1920-live']},
@@ -939,13 +1028,13 @@ var ITEMS=(function(){var src={};OTTGEN.items().forEach(function(i){src[i.key]=i
  return out;})();
 var BYKEY={};ITEMS.forEach(function(i){BYKEY[i.key]=i;});
 // naming convention export (come richiesto)
-var FNAME={feed_1080x1440:'feed',story_1080x1920:'story',story_video_1080x1920:'story-video',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'YT-Highlights',yt_gol_collection:'YT-gol-collection',yt_inglese_testata:'YT-testata',yt_inglese_editoriale:'YT-editoriale',yt_parole_classico:'YT-parole-classico',yt_parole_split:'YT-parole-split',yt_parole_volto:'YT-parole-volto',yt_citazione_prot:'YT-citazione',yt_vlog_foto:'YT-vlog',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',rp_landscape_1920x1080:'RP-landscape',rp_portrait_1080x1620:'RP-portrait',rp_banner_top_1506x560:'RP-banner-top',rp_banner_mid_1506x412:'RP-banner-mid',competizioni_1200x1800:'competizioni',format_card_talent:'format-talent',format_card_goleada:'format-goleada',format_card_clasicos:'format-clasicos',format_card_golden:'format-golden'};
+var FNAME={feed_1080x1440:'feed',story_1080x1920:'story',story_video_1080x1920:'story-video',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'YT-Highlights',yt_gol_collection:'YT-gol-collection',yt_inglese_testata:'YT-testata',yt_inglese_editoriale:'YT-editoriale',yt_parole_classico:'YT-parole-classico',yt_parole_split:'YT-parole-split',yt_parole_volto:'YT-parole-volto',yt_citazione_prot:'YT-citazione',yt_vlog_foto:'YT-vlog',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',rp_landscape_1920x1080:'RP-landscape',rp_portrait_1080x1620:'RP-portrait',rp_banner_top_1506x560:'RP-banner-top',rp_banner_mid_1506x412:'RP-banner-mid',int_landscape_1920x1080:'INT-landscape',int_portrait_1080x1620:'INT-portrait',int_banner_top_1506x560:'INT-banner-top',int_banner_mid_1506x412:'INT-banner-mid',competizioni_1200x1800:'competizioni',format_card_talent:'format-talent',format_card_goleada:'format-goleada',format_card_clasicos:'format-clasicos',format_card_golden:'format-golden'};
 function fname(k){if(/-live$/.test(k)){var b=k.replace(/-live$/,'');return (FNAME[b]||b)+'-live';}return FNAME[k]||k;}
 // default text values per format base
 var DEF={home:'West Ham',away:'Portsmouth',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'Preshow 15:10',live:true,hlKind:'Highlights',
  heroKicker:'Como TV · Live Events',heroLine1:'Il grande calcio,',heroLine2:'in diretta.',title:'Como Cup 2026',
  novKicker:'FPF Supertaça · Porto campione',novTitle:'Alzata del trofeo',midKicker:'Como TV · Originals',midLine1:'La tua casa',midLine2:'del calcio',
- badgeName:'Carabao Cup',replName:'LPF Torneo Apertura',name:'Talent Hunters',num:'01',preshow:'Football Show 15:10',ytKicker:'Le parole di',ytTitle:'Abbiamo scritto la storia',ytTitle2:'la storia',ytName:'Mikel Arteta',ytChip:'Le parole di',ytiKicker:'Videopodcast',ytiTitle:'Calcio Inglese',ytiSub:'La corsa al titolo',yteKicker:'Calcio Inglese',yteTitle:'Il crollo dello',yteGold:'United',yteSub:'Videopodcast · Ep. 21',ytvChip:'Vlog',ytvKicker:'Dietro le quinte · Wembley',ytvTitle:'Il giorno della finale',ytgTitle:'Gol Collection',ytsL1:'Abbiamo scritto',ytsL2:'la storia',ytsName:'Mikel Arteta',ytsKicker:'Le parole di',ytoL1:'«Scritta',ytoL2:'la storia»',ytoName:'Arteta'};
+ badgeName:'Carabao Cup',replName:'LPF Torneo Apertura',name:'Talent Hunters',num:'01',preshow:'Football Show 15:10',ytKicker:'Le parole di',ytTitle:'Abbiamo scritto la storia',ytTitle2:'la storia',ytName:'Mikel Arteta',ytChip:'Le parole di',ytiKicker:'Videopodcast',ytiTitle:'Calcio Inglese',ytiSub:'La corsa al titolo',yteKicker:'Calcio Inglese',yteTitle:'Il crollo dello',yteGold:'United',yteSub:'Videopodcast · Ep. 21',ytvChip:'Vlog',ytvKicker:'Dietro le quinte · Wembley',ytvTitle:'Il giorno della finale',ytgTitle:'Gol Collection',ytsL1:'Abbiamo scritto',ytsL2:'la storia',ytsName:'Mikel Arteta',ytsKicker:'Le parole di',ytoL1:'«Scritta',ytoL2:'la storia»',ytoName:'Arteta',intQuote1:'Abbiamo dato',intQuote2:'tutto in campo',intName:'Nome Cognome'};
 var FMTNAMES={talent:'Talent Hunters',goleada:'Goleada',clasicos:'Los Clásicos',golden:'Golden 90'};
 var FMTNUM={talent:'01',goleada:'02',clasicos:'03',golden:'04'};
 
