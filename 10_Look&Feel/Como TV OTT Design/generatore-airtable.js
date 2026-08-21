@@ -359,18 +359,10 @@ function applyEventToGenerator(evt) {
     window.AIRTABLE_REC = { id: evt.id, nome: eventLabel(evt), quando: Date.now() };
   }
 
-  // Foto dall'allegato Airtable. Gli URL degli allegati sono firmati e scadono
-  // dopo poche ore: si scarica adesso e si tiene l'immagine, non l'indirizzo.
+  // Foto: allegato Airtable oppure link nel campo URL.
   if (evt.fotoUrl && typeof fotoNuova === 'function') {
-    if (typeof avviso === 'function') avviso('Scarico la foto da Airtable…');
-    fetch(evt.fotoUrl, { mode: 'cors' })
-      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
-      .then(blob => new Promise((ris, no) => {
-        var reader = new FileReader();
-        reader.onload = function () { ris(reader.result); };
-        reader.onerror = function () { no(new Error('file illeggibile')); };
-        reader.readAsDataURL(blob);
-      }))
+    if (typeof avviso === 'function') avviso('Scarico la foto…');
+    scaricaFoto(evt.fotoUrl)
       .then(dataUri => {
         // fotoNuova azzera i ritagli di TUTTI i formati, riconosce il volto e
         // riancora ogni formato al proprio mirino.
@@ -379,11 +371,11 @@ function applyEventToGenerator(evt) {
         });
       })
       .catch(e => {
-        console.error('Foto Airtable non caricata:', e);
+        console.error('Foto non caricata:', e);
         // Silenzio qui significava esportare 32 grafiche col fondo di default
         // senza accorgersene: va detto, e va detto dove si guarda.
         if (typeof avviso === 'function') {
-          avviso('<b>Foto non caricata da Airtable</b> (' + (e && e.message ? e.message : 'errore') +
+          avviso('<b>Foto non caricata</b> (' + (e && e.message ? e.message : 'errore') +
                  '). Le grafiche useranno lo sfondo di default: carica la foto a mano.', { male: true });
         }
       });
@@ -533,4 +525,48 @@ function airtableDifferenze(evt) {
     m.vecchio = SHARED[m.campo] == null ? '' : String(SHARED[m.campo]);
     return m;
   });
+}
+
+
+// ---- foto da link ----
+// Un link di Google Drive non e' scaricabile da un altro sito: drive.google.com
+// non manda le intestazioni CORS e per giunta il link di condivisione e' una
+// pagina HTML, non un'immagine. L'unica porta che Google lascia aperta e'
+// lh3.googleusercontent.com. La foto va scaricata davvero, non solo puntata:
+// un'immagine di un altro dominio "sporca" la canvas e l'export JPEG fallisce.
+function driveFileId(url) {
+  var m = String(url).match(/drive\.google\.com\/file\/d\/([A-Za-z0-9_-]{10,})/) ||
+          String(url).match(/drive\.google\.com\/.*[?&]id=([A-Za-z0-9_-]{10,})/);
+  return m ? m[1] : null;
+}
+// In ordine di preferenza: originale, poi ridotto a 2000px, poi il link nudo
+// (che si ferma a 1280px, troppo poco per un export a 1920).
+function indirizziFoto(url) {
+  var id = driveFileId(url);
+  if (!id) return [url];
+  var b = 'https://lh3.googleusercontent.com/d/' + id;
+  return [b + '=d', b + '=w2000', b];
+}
+function scaricaFoto(url) {
+  var lista = indirizziFoto(url);
+  function prova(i) {
+    if (i >= lista.length) {
+      return Promise.reject(new Error(driveFileId(url)
+        ? 'Google Drive non la lascia scaricare: il file e\' condiviso con "chiunque abbia il link"?'
+        : 'il sito che la ospita non ne consente il download da un altro dominio'));
+    }
+    return fetch(lista[i], { mode: 'cors' })
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
+      .then(blob => {
+        if (blob.type && blob.type.indexOf('image/') !== 0) throw new Error('non e\' un\'immagine');
+        return new Promise((ris, no) => {
+          var reader = new FileReader();
+          reader.onload = function () { ris(reader.result); };
+          reader.onerror = function () { no(new Error('file illeggibile')); };
+          reader.readAsDataURL(blob);
+        });
+      })
+      .catch(function () { return prova(i + 1); });
+  }
+  return prova(0);
 }
