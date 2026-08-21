@@ -602,6 +602,70 @@ function iBanner(W,H,p,I,A,mid){
 function intSlabInline(gid,txt,x,ybase,size){if(!txt)return'';var pad=Math.round(size*0.27),w=R(estW(up(txt),size,0))+pad*2,h=Math.round(size*1.18),y=ybase-Math.round(h*0.82);
  return '<g transform="rotate(-2 '+x+' '+(y+h/2)+')"><rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" fill="url(#'+gid+')"/>'
   +T(x+pad,y+Math.round(h*0.82),txt,{s:size,w:800,fill:C.n900})+'</g>';}
+
+// ==== FOOTBALL SHOW — su modello di Ale: wordmark "Football Show" in Abril
+// Display Italic con la sfumatura oro della guida (non e' un campo, e' il
+// marchio fisso della rubrica), eyebrow "Speciale" + titolo a due righe (se
+// l'eyebrow e' vuoto il titolo ne prende il posto), data/ora nella STESSA
+// posizione/formula delle grafiche partita (mLandscape/mPortrait) — Ale non
+// ha inseguito il pixel esatto dell'app e noi seguiamo lo stesso principio:
+// stessa logica di calcolo, non lo stesso numero copiato a mano.
+// Font non incorporato (come Mazzard in questo file): va installato in
+// locale per l'export finale; qui c'e' un fallback serif corsivo elegante.
+function fsWordmark(x,y,txt,size,gid){
+ return '<text x="'+x+'" y="'+y+'" font-family="\'Abril Display\',\'Playfair Display\',Georgia,serif" font-style="italic" font-weight="400" font-size="'+size+'" fill="url(#'+gid+')">'+esc(txt)+'</text>';
+}
+// Eyebrow "Speciale" (riga 1, facoltativa) + titolo (riga 2): se l'eyebrow e'
+// vuoto il titolo sale a occupare la sua riga, come chiesto da Ale.
+function fsEyebrowTitle(A,M,eybY,gapEybTtl,p,eybS,ttlS){
+ var hasEyb=!!(p.fsEyebrow&&p.fsEyebrow.trim());
+ var ttlY=hasEyb?(eybY+gapEybTtl):eybY;
+ return (hasEyb?G('t-eyb',A,T(M,eybY,p.fsEyebrow,{s:eybS,w:700,fill:C.ivory,ls:6})):'')
+  +G('t-ttl',A,T(M,ttlY,p.fsTitle,{s:ttlS,w:800,fill:C.ivory,ls:1}));
+}
+function fsLandscape(W,H,p,I,A){
+ var M=R(W*0.032);
+ // stessa catena di calcolo di mLandscape: arriva alla stessa dtY/dtS delle
+ // grafiche partita, anche se qui non mostriamo home/away/kick.
+ var homeS=R(H*0.135),dtS=R(H*0.04);
+ var homeY=R(H*0.47),awayY=homeY+R(homeS*0.76),ulY=awayY+R(H*0.05),dtY=ulY+R(dtS*1.7);
+ var wS=R(H*0.185),wY1=R(H*0.235),wY2=wY1+R(wS*0.98);
+ var eybS=R(H*0.03),ttlS=R(H*0.044),eybY=dtY-R(H*0.135);
+ return '<defs>'+goldGrad('fsG')+'</defs>'+GPHOTO(W,H,A,I)+intPhotoSoft(W,H,'fsl',A,I,R(W*0.5),R(W*0.02),.42)
+  +'<rect width="'+W+'" height="'+H+'" fill="'+SCRIM+'" opacity=".1" pointer-events="none"/>'
+  +G('t-word',A,fsWordmark(M,wY1,'Football',wS,'fsG')+fsWordmark(M,wY2,'Show',wS,'fsG'))
+  +fsEyebrowTitle(A,M,eybY,R(H*0.052),p,eybS,ttlS)
+  +(p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
+  +G('t-dt',A,runsT(M,dtY,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,upper:false,w:800,fill:C.gold,s:dtS}]));
+}
+function fsPortrait(W,H,p,I,A){
+ // stessa catena di calcolo di mPortrait per la data/ora.
+ var M=R(W*0.056),footS=R(W*0.019),bm=R(H*0.05),footY=H-bm,lineY=footY-R(footS*1.7),dtY=lineY-R(W*0.028),dtS=R(W*0.042);
+ var wS=R(W*0.125),wY1=dtY-R(H*0.22),wY2=wY1+R(wS*1.0);
+ var eybS=R(W*0.028),ttlS=R(W*0.04),eybY=dtY-R(H*0.075);
+ var scrim='<defs><linearGradient id="fspS" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".18" stop-color="'+SCRIM+'" stop-opacity=".96"/><stop offset=".5" stop-color="#0A0F24" stop-opacity=".5"/><stop offset=".8" stop-color="#0A0F24" stop-opacity=".05"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>'+goldGrad('fsG')+'</defs>';
+ return GPHOTO(W,H,A,I)+scrim+'<rect width="'+W+'" height="'+H+'" fill="url(#fspS)" pointer-events="none"/>'
+  +(p.showLogo===false?'':brandMark(A,W/2,R(H*0.02),R(H*0.06),true))
+  +(p.live?G('live',A,livePill(W-M-176,R(H*0.03))):'')
+  +G('t-word',A,fsWordmark(M,wY1,'Football',wS,'fsG')+fsWordmark(M,wY2,'Show',wS,'fsG'))
+  +fsEyebrowTitle(A,M,eybY,R(H*0.028),p,eybS,ttlS)
+  +G('t-dt',A,runsT(M,dtY,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,upper:false,w:800,fill:C.gold,s:dtS}]))
+  +hair(W,H,H-5);
+}
+// Banner (top/mid) — striscia bassa, non c'era un modello di Ale: stessa
+// identita' (wordmark + eyebrow/titolo + data/ora), metriche compatte come
+// gli altri banner della piattaforma.
+function fsBanner(W,H,p,I,A,mid){
+ var M=R(W*0.024),dtS=R(H*(mid?0.1:0.088));
+ var wS=R(H*(mid?0.24:0.2)),eybS=R(H*(mid?0.09:0.078)),ttlS=R(H*(mid?0.12:0.105));
+ var wY=R(H*(mid?0.4:0.38)),eybY=R(H*(mid?0.62:0.6)),ttlYbase=R(H*(mid?0.8:0.78)),dtY=R(H*(mid?0.95:0.93));
+ return '<defs>'+goldGrad('fsG')+'</defs>'+GPHOTO(W,H,A,I)+intPhotoSoft(W,H,'fsb'+(mid?'m':'t'),A,I,R(W*0.32),R(W*0.015),.5)
+  +'<rect width="'+W+'" height="'+H+'" fill="'+SCRIM+'" opacity=".12" pointer-events="none"/>'
+  +G('t-word',A,fsWordmark(M,wY,'Football Show',wS,'fsG'))
+  +fsEyebrowTitle(A,M,eybY,R(H*0.16),p,eybS,ttlS)
+  +(p.live?G('live',A,livePill(W-M-150,R(H*0.1))):'')
+  +G('t-dt',A,runsT(M,dtY,{ls:1},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,upper:false,w:800,fill:C.gold,s:dtS}]));
+}
 // STORY 9:16. k attenua il velo blu: 1 = pieno, valori piu' bassi lasciano
 // passare piu' immagine. Serve sui video, dove un velo pesante spegne la clip.
 // gid deve essere diverso per ogni intensita': gli id dei gradienti SVG sono
@@ -758,6 +822,21 @@ var FMT={
  int_banner_mid_1506x412:{label:'Interviste · Banner mid (1506×412)',group:'Interviste',w:1506,h:412,useComp:false,
   fields:[{k:'intQuote1',l:'Citazione riga 1'},{k:'intQuote2',l:'Citazione riga 2 (blocco oro)'},{k:'intName',l:'Nome intervistato'}],images:Imatch,
   gen:function(p,I,A){return iBanner(1506,412,p,I,A,true);}},
+
+ // Football Show — su modello di Ale (landscape/portrait), banner estrapolati
+ // di conseguenza sugli stessi formati di Piattaforma live.
+ fs_landscape_1920x1080:{label:'Football Show · Landscape (1920×1080)',group:'Football Show',w:1920,h:1080,useComp:false,
+  fields:[{k:'fsEyebrow',l:'Speciale (riga 1 — vuoto per nasconderla)'},{k:'fsTitle',l:'Titolo (riga 2)'},{k:'date',l:'Data'},{k:'time',l:'Ora'}],images:Imatch,
+  gen:function(p,I,A){return fsLandscape(1920,1080,p,I,A);}},
+ fs_portrait_1080x1620:{label:'Football Show · Portrait (1080×1620)',group:'Football Show',w:1080,h:1620,useComp:false,
+  fields:[{k:'fsEyebrow',l:'Speciale (riga 1 — vuoto per nasconderla)'},{k:'fsTitle',l:'Titolo (riga 2)'},{k:'date',l:'Data'},{k:'time',l:'Ora'}],images:Imatch,
+  gen:function(p,I,A){return fsPortrait(1080,1620,p,I,A);}},
+ fs_banner_top_1506x560:{label:'Football Show · Banner top (1506×560)',group:'Football Show',w:1506,h:560,useComp:false,
+  fields:[{k:'fsEyebrow',l:'Speciale (riga 1 — vuoto per nasconderla)'},{k:'fsTitle',l:'Titolo (riga 2)'},{k:'date',l:'Data'},{k:'time',l:'Ora'}],images:Imatch,
+  gen:function(p,I,A){return fsBanner(1506,560,p,I,A);}},
+ fs_banner_mid_1506x412:{label:'Football Show · Banner mid (1506×412)',group:'Football Show',w:1506,h:412,useComp:false,
+  fields:[{k:'fsEyebrow',l:'Speciale (riga 1 — vuoto per nasconderla)'},{k:'fsTitle',l:'Titolo (riga 2)'},{k:'date',l:'Data'},{k:'time',l:'Ora'}],images:Imatch,
+  gen:function(p,I,A){return fsBanner(1506,412,p,I,A,true);}},
 
  yt_citazione_prot:{label:'YT · Citazione protagonista',group:'YouTube',w:1280,h:720,useComp:false,
   fields:[{k:'ytChip',l:'Pastiglia rossa'},{k:'ytTitle',l:'Citazione'},{k:'ytName',l:'Nome'}],images:Imatch,
@@ -1002,7 +1081,10 @@ var MENU=[
    'rp_landscape_1920x1080','rp_portrait_1080x1620',
    'rp_banner_top_1506x560','rp_banner_mid_1506x412']},
  // Sezioni in costruzione: design e formati propri, ancora da definire.
- {g:'Football Show',k:[]},
+ {g:'Football Show',k:[
+   'fs_landscape_1920x1080','fs_portrait_1080x1620',
+   'fs_banner_top_1506x560','fs_banner_mid_1506x412',
+   'fs_landscape_1920x1080-live','fs_portrait_1080x1620-live','fs_banner_mid_1506x412-live']},
  {g:'Interviste',k:[
    'int_landscape_1920x1080','int_portrait_1080x1620',
    'int_banner_top_1506x560','int_banner_mid_1506x412',
@@ -1028,13 +1110,13 @@ var ITEMS=(function(){var src={};OTTGEN.items().forEach(function(i){src[i.key]=i
  return out;})();
 var BYKEY={};ITEMS.forEach(function(i){BYKEY[i.key]=i;});
 // naming convention export (come richiesto)
-var FNAME={feed_1080x1440:'feed',story_1080x1920:'story',story_video_1080x1920:'story-video',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'YT-Highlights',yt_gol_collection:'YT-gol-collection',yt_inglese_testata:'YT-testata',yt_inglese_editoriale:'YT-editoriale',yt_parole_classico:'YT-parole-classico',yt_parole_split:'YT-parole-split',yt_parole_volto:'YT-parole-volto',yt_citazione_prot:'YT-citazione',yt_vlog_foto:'YT-vlog',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',rp_landscape_1920x1080:'RP-landscape',rp_portrait_1080x1620:'RP-portrait',rp_banner_top_1506x560:'RP-banner-top',rp_banner_mid_1506x412:'RP-banner-mid',int_landscape_1920x1080:'INT-landscape',int_portrait_1080x1620:'INT-portrait',int_banner_top_1506x560:'INT-banner-top',int_banner_mid_1506x412:'INT-banner-mid',competizioni_1200x1800:'competizioni',format_card_talent:'format-talent',format_card_goleada:'format-goleada',format_card_clasicos:'format-clasicos',format_card_golden:'format-golden'};
+var FNAME={feed_1080x1440:'feed',story_1080x1920:'story',story_video_1080x1920:'story-video',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'YT-Highlights',yt_gol_collection:'YT-gol-collection',yt_inglese_testata:'YT-testata',yt_inglese_editoriale:'YT-editoriale',yt_parole_classico:'YT-parole-classico',yt_parole_split:'YT-parole-split',yt_parole_volto:'YT-parole-volto',yt_citazione_prot:'YT-citazione',yt_vlog_foto:'YT-vlog',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',rp_landscape_1920x1080:'RP-landscape',rp_portrait_1080x1620:'RP-portrait',rp_banner_top_1506x560:'RP-banner-top',rp_banner_mid_1506x412:'RP-banner-mid',int_landscape_1920x1080:'INT-landscape',int_portrait_1080x1620:'INT-portrait',int_banner_top_1506x560:'INT-banner-top',int_banner_mid_1506x412:'INT-banner-mid',fs_landscape_1920x1080:'FS-landscape',fs_portrait_1080x1620:'FS-portrait',fs_banner_top_1506x560:'FS-banner-top',fs_banner_mid_1506x412:'FS-banner-mid',competizioni_1200x1800:'competizioni',format_card_talent:'format-talent',format_card_goleada:'format-goleada',format_card_clasicos:'format-clasicos',format_card_golden:'format-golden'};
 function fname(k){if(/-live$/.test(k)){var b=k.replace(/-live$/,'');return (FNAME[b]||b)+'-live';}return FNAME[k]||k;}
 // default text values per format base
 var DEF={home:'West Ham',away:'Portsmouth',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'Preshow 15:10',live:true,hlKind:'Highlights',
  heroKicker:'Como TV · Live Events',heroLine1:'Il grande calcio,',heroLine2:'in diretta.',title:'Como Cup 2026',
  novKicker:'FPF Supertaça · Porto campione',novTitle:'Alzata del trofeo',midKicker:'Como TV · Originals',midLine1:'La tua casa',midLine2:'del calcio',
- badgeName:'Carabao Cup',replName:'LPF Torneo Apertura',name:'Talent Hunters',num:'01',preshow:'Football Show 15:10',ytKicker:'Le parole di',ytTitle:'Abbiamo scritto la storia',ytTitle2:'la storia',ytName:'Mikel Arteta',ytChip:'Le parole di',ytiKicker:'Videopodcast',ytiTitle:'Calcio Inglese',ytiSub:'La corsa al titolo',yteKicker:'Calcio Inglese',yteTitle:'Il crollo dello',yteGold:'United',yteSub:'Videopodcast · Ep. 21',ytvChip:'Vlog',ytvKicker:'Dietro le quinte · Wembley',ytvTitle:'Il giorno della finale',ytgTitle:'Gol Collection',ytsL1:'Abbiamo scritto',ytsL2:'la storia',ytsName:'Mikel Arteta',ytsKicker:'Le parole di',ytoL1:'«Scritta',ytoL2:'la storia»',ytoName:'Arteta',intQuote1:'Abbiamo dato',intQuote2:'tutto in campo',intName:'Nome Cognome'};
+ badgeName:'Carabao Cup',replName:'LPF Torneo Apertura',name:'Talent Hunters',num:'01',preshow:'Football Show 15:10',ytKicker:'Le parole di',ytTitle:'Abbiamo scritto la storia',ytTitle2:'la storia',ytName:'Mikel Arteta',ytChip:'Le parole di',ytiKicker:'Videopodcast',ytiTitle:'Calcio Inglese',ytiSub:'La corsa al titolo',yteKicker:'Calcio Inglese',yteTitle:'Il crollo dello',yteGold:'United',yteSub:'Videopodcast · Ep. 21',ytvChip:'Vlog',ytvKicker:'Dietro le quinte · Wembley',ytvTitle:'Il giorno della finale',ytgTitle:'Gol Collection',ytsL1:'Abbiamo scritto',ytsL2:'la storia',ytsName:'Mikel Arteta',ytsKicker:'Le parole di',ytoL1:'«Scritta',ytoL2:'la storia»',ytoName:'Arteta',intQuote1:'Abbiamo dato',intQuote2:'tutto in campo',intName:'Nome Cognome',fsEyebrow:'Speciale',fsTitle:'Champions League'};
 var FMTNAMES={talent:'Talent Hunters',goleada:'Goleada',clasicos:'Los Clásicos',golden:'Golden 90'};
 var FMTNUM={talent:'01',goleada:'02',clasicos:'03',golden:'04'};
 
