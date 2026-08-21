@@ -114,6 +114,20 @@ body.editing .top,body.editing #barra,body.editing .panel{display:none}
 body.editing .bars{padding:6px 12px}
 body.editing .main{padding:8px 10px}
 body.editing .stagewrap{padding:16px 16px 30px}
+/* Una riga d'avviso sola per tutto: foto che non arriva da Airtable, dati del
+   record cambiati da quando hai salvato. Sta fra le barre e l'area di lavoro,
+   compare solo quando c'e' qualcosa da dire e porta con se' i suoi pulsanti. */
+.avviso{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 14px 8px;
+ padding:8px 12px;border-radius:9px;font-size:12px;line-height:1.45;
+ border:1px solid #C9A24B55;background:#C9A24B14;color:var(--fg1)}
+.avviso[hidden]{display:none}
+.avviso.male{border-color:#E5484D66;background:#E5484D16}
+.avviso b{color:var(--gold)}
+.avviso .sp{flex:1}
+.avviso button{font:inherit;font-weight:700;cursor:pointer;padding:4px 11px;border-radius:7px;
+ border:1px solid var(--line);background:#FFFFFF0D;color:var(--fg1)}
+.avviso button.primo{border-color:var(--gold);background:var(--gold);color:#0A0F24}
+.avviso label{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
 .bars{position:sticky;top:0;z-index:12;display:flex;flex-direction:column;gap:8px;
  padding:10px 18px;background:rgba(10,15,36,.92);backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
 .bars .photobar{margin:0}
@@ -332,6 +346,7 @@ small.flag{color:#E3C271}
        Gli strumenti non compaiono e scompaiono — sono sempre li' e accenderne
        uno entra nella vista di modifica, rispegnerlo ne esce. -->
 </div>
+<div class="avviso" id="avviso" hidden></div>
 <div class="wrap">
  <div class="panel"><div class="pbody">
    <div class="step"><span class="n">1</span>Contenuto</div>
@@ -1286,13 +1301,93 @@ document.getElementById('cbCompElimina').onclick=function(){
  pushUndo();delete SHARED.compLogoKey;delete SHIMG.logoComp;
  document.getElementById('cbCompMenu').classList.remove('on');
  renderControls();renderStage();refreshThumbs();};
+// ---- avvisi ----
+// Un posto solo per dire le cose che l'utente deve sapere e che prima finivano
+// nella console: la foto di Airtable che non arriva, i dati del record che sono
+// cambiati. Silenzio quando non c'e' niente da dire.
+function avviso(testo,opz){
+ var e=document.getElementById('avviso');if(!e)return;
+ opz=opz||{};
+ e.innerHTML='';e.className='avviso'+(opz.male?' male':'');
+ var t=document.createElement('div');t.innerHTML=testo;e.appendChild(t);
+ var sp=document.createElement('span');sp.className='sp';e.appendChild(sp);
+ (opz.azioni||[]).forEach(function(a){
+  var b=document.createElement('button');b.textContent=a.testo;
+  if(a.primo)b.className='primo';
+  b.onclick=function(){a.fai&&a.fai();};e.appendChild(b);});
+ var x=document.createElement('button');x.textContent='✕';x.title='Chiudi';
+ x.onclick=avvisoVia;e.appendChild(x);
+ e.hidden=false;if(window.rimisura)rimisura();
+}
+function avvisoVia(){var e=document.getElementById('avviso');if(!e)return;
+ e.hidden=true;e.innerHTML='';if(window.rimisura)rimisura();}
+
+// Rilegge da Airtable il record da cui vengono i dati e segnala le differenze.
+// Non tocca niente da solo: propone, e aggiorna solo i campi che spunti. Foto,
+// ritagli, mirini e formati scelti per lo ZIP non vengono sfiorati.
+function controllaAirtable(){
+ avvisoVia();
+ if(!AIRTABLE_REC||!AIRTABLE_REC.id)return;               // dati messi a mano
+ if(typeof airtableLeggiRecord!=='function')return;       // modulo non caricato
+ airtableLeggiRecord(AIRTABLE_REC.id).then(function(evt){
+  var d=airtableDifferenze(evt);
+  if(!d.length){sessStato('✓ riaperta · allineata con Airtable');return;}
+  mostraDifferenze(d,evt);
+ }).catch(function(e){
+  if(e&&e.sparito){avviso('Questa partita <b>non \u00E8 pi\u00F9 su Airtable</b>. La sessione resta com\'\u00E8: controlla i dati prima di esportare.',{male:true});return;}
+  // offline, token scaduto: la sessione funziona lo stesso, si lavora sui dati salvati
+  sessStato('✓ riaperta · Airtable non raggiungibile, dati della sessione');
+ });
+}
+function escHTML(t){return String(t==null?'':t)
+ .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function mostraDifferenze(d,evt){
+ var righe=d.map(function(x,i){
+  return '<label><input type="checkbox" data-i="'+i+'" checked> '+x.etichetta
+   +' <s style="opacity:.6">'+escHTML(x.vecchio||'—')+'</s> → <b>'+escHTML(x.nuovo||'—')+'</b></label>';
+ }).join('&nbsp;&nbsp;·&nbsp;&nbsp;');
+ avviso('<b>Airtable \u00E8 cambiato</b> da quando hai salvato: '+righe,{azioni:[
+  {testo:'Aggiorna',primo:true,fai:function(){
+    var e=document.getElementById('avviso'),usa=[];
+    e.querySelectorAll('input[type=checkbox]').forEach(function(c){if(c.checked)usa.push(d[+c.dataset.i]);});
+    if(!usa.length){avvisoVia();return;}
+    pushUndo();
+    usa.forEach(function(x){SHARED[x.campo]=x.nuovo;});
+    composeComp();                       // la riga competizione e' derivata
+    if(AIRTABLE_REC)AIRTABLE_REC.quando=Date.now();
+    renderControls();renderStage();refreshThumbs();
+    avvisoVia();sessStato('✓ dati aggiornati da Airtable · risalva la sessione');},},
+  {testo:'Tieni questi',fai:avvisoVia}]});
+}
+// ---- una foto nuova: un solo percorso ----
+// Da file, da fotogramma video o da allegato Airtable: cambia solo la provenienza.
+// Una foto diversa invalida OGNI inquadratura, non solo quella del formato che
+// stai guardando: i ritagli erano calcolati su un'altra immagine e il volto sta
+// in un altro punto. Prima azzeravo il ritaglio del solo formato corrente e i
+// pannelli YouTube restavano con l'inquadratura della foto precedente.
+var PHOTO_FONTE=null;     // {tipo:'locale'|'video'|'airtable', url:...}
+// Il record Airtable da cui arrivano i dati correnti. La sessione salva questo
+// legame, non solo la copia dei valori: e' cio' che permette, giorni dopo, di
+// accorgersi che l'orario e' cambiato invece di esportare quello vecchio.
+var AIRTABLE_REC=null;    // {id:'rec…', nome:'West Ham - Portsmouth', quando:…}
+function fotoNuova(d,fonte,cb){
+ if(!d){cb&&cb();return;}
+ pushUndo();
+ SHIMG.photo=d;PHOTO_FONTE=fonte||{tipo:'locale'};
+ ITEMS.forEach(function(it){delete STATE[it.key].adj.photo;});
+ FOCAL={x:0.5,y:0.36,r:FOCAL.r};   // il volto della foto precedente non vale piu'
+ loadNat(d,function(){
+  renderControls();
+  // riconosce il volto e riancora tutti i formati ai rispettivi mirini
+  autoPositionPhotoIfBanner(function(){refreshThumbs();cb&&cb();});
+ });
+}
+
 // ---- blocco FOTO in barra ----
 document.getElementById('cbFotoFile').onclick=function(){
  var i=document.createElement('input');i.type='file';i.accept='image/*';
  i.onchange=function(){var f=i.files&&i.files[0];if(!f)return;
-  var r=new FileReader();r.onload=function(){var d=r.result;
-   pushUndo();SHIMG.photo=d;delete STATE[current].adj.photo;
-   loadNat(d,function(){autoPositionPhotoIfBanner();renderControls();renderStage();refreshThumbs();});};
+  var r=new FileReader();r.onload=function(){fotoNuova(r.result,{tipo:'locale'});};
   r.readAsDataURL(f);};
  i.click();};
 document.getElementById('cbFotoVideo').onclick=function(){
@@ -1401,10 +1496,8 @@ function useVideoFrame(){
  var c=document.createElement('canvas');c.width=Math.round(w*k);c.height=Math.round(h*k);
  c.getContext('2d').drawImage(v,0,0,c.width,c.height);
  var d=c.toDataURL('image/jpeg',0.92);
- pushUndo();SHIMG.photo=d;delete STATE[current].adj.photo;
  exitVideoPick();
- loadNat(d,function(){autoPositionPhotoIfBanner();renderControls();renderStage();refreshThumbs();});
- renderControls();refreshThumbs();
+ fotoNuova(d,{tipo:'video'});
 }
 
 // Contenitore: MP4 se il browser lo sa scrivere, altrimenti WebM.
@@ -1833,7 +1926,10 @@ document.getElementById('sessList').onchange=function(){
    document.getElementById('sessName').value=rec.nome;
    renderControls();renderStage();renderThumbs();
    if(window.fillEventSelect)try{fillEventSelect();}catch(e){}
-   sessStato('✓ riaperta: '+rec.nome);});});
+   sessStato('✓ riaperta: '+rec.nome);
+   // Riaperta identica a come l'avevi lasciata; solo dopo si guarda se Airtable
+   // nel frattempo si e' mosso. Mai cambiare i dati sotto le mani senza dirlo.
+   controllaAirtable();});});
 };
 document.getElementById('sessDel').onclick=function(){
  var sel=document.getElementById('sessList'),id=sel.value;if(!id)return;
@@ -2078,6 +2174,7 @@ function sessRaccogli(){
   if(STATE[it.key].adj.photo)crop[it.key]=STATE[it.key].adj.photo;});
  return {shared:SHARED,vals:vals,crop:crop,volto:FOCAL,
          img:{photo:SHIMG.photo||null,logoComp:SHIMG.logoComp||null},
+         fonte:PHOTO_FONTE,airtable:AIRTABLE_REC,
          export:EXPSEL};
 }
 function sessApplica(d,cb){
@@ -2085,6 +2182,7 @@ function sessApplica(d,cb){
  if(d.shared)Object.keys(d.shared).forEach(function(k){SHARED[k]=d.shared[k];});
  composeComp(); // la riga competizione e' derivata: ricomporla evita testi vecchi
  if(d.volto)FOCAL={x:d.volto.x,y:d.volto.y,r:d.volto.r};
+ PHOTO_FONTE=d.fonte||null;AIRTABLE_REC=d.airtable||null;
  if(d.img){if(d.img.photo)SHIMG.photo=d.img.photo;else delete SHIMG.photo;
            if(d.img.logoComp)SHIMG.logoComp=d.img.logoComp;else delete SHIMG.logoComp;}
  if(d.export)Object.keys(d.export).forEach(function(k){if(BYKEY[k])EXPSEL[k]=d.export[k];});
@@ -2413,24 +2511,48 @@ function trascina(g,svg,applica,base,eRegolazione){
 // Se la libreria non e' raggiungibile (o non trova volti) resta il valore
 // corrente, che si puo' comunque correggere a mano dal ritaglio.
 var faceapiLoaded=false,faceapiLoading=false;
-function autoPositionPhotoIfBanner(){
- if(!SHIMG.photo){applyFocalAll(function(){renderStage();refreshThumbs();});return;}
- function fine(){applyFocalAll(function(){renderStage();refreshThumbs();});}
- if(faceapiLoaded){rilevaVolto(fine);return;}
+// Riconosce il volto (se puo') e riancora TUTTI i formati al proprio mirino.
+// Regola di ferro: il riposizionamento deve avvenire sempre, anche se la rete
+// non c'e', se il CDN e' lento o se il riconoscimento fallisce. Prima non era
+// cosi': un errore dentro il riconoscimento lasciava il seguito senza risposta
+// e i ritagli non venivano mai ricalcolati.
+var FACE_TIMEOUT=7000;
+function autoPositionPhotoIfBanner(cb){
+ var fatto=false;
+ function fine(){ if(fatto)return; fatto=true;
+  applyFocalAll(function(){renderStage();refreshThumbs();cb&&cb();}); }
+ setTimeout(fine,FACE_TIMEOUT);        // rete lenta: si va avanti lo stesso
+ if(!SHIMG.photo){fine();return;}
+ if(faceapiPronta){rilevaVolto(fine);return;}
  if(faceapiLoading){fine();return;}
  faceapiLoading=true;
  var sc=document.createElement('script');
  sc.src='https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
  sc.onerror=function(){faceapiLoading=false;fine();};
- sc.onload=function(){faceapiLoaded=true;faceapiLoading=false;rilevaVolto(fine);};
+ sc.onload=function(){
+  faceapiLoaded=true;
+  // La libreria da sola non basta: i pesi del modello sono file a parte e senza
+  // di quelli detectAllFaces non gira. Non venivano mai caricati.
+  faceapi.nets.tinyFaceDetector.loadFromUri(FACE_PESI)
+   .then(function(){faceapiPronta=true;})
+   .catch(function(){})
+   .then(function(){faceapiLoading=false;rilevaVolto(fine);});
+ };
  document.head.appendChild(sc);
 }
+var FACE_PESI='https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+var faceapiPronta=false;
 function rilevaVolto(cb){
- if(!window.faceapi||!faceapi.TinyFaceDetector){cb();return;}
+ // TinyFaceDetector e' la rete, non le opzioni: passarla a detectAllFaces
+ // faceva fallire la chiamata con un rifiuto non gestito, e il seguito non
+ // veniva mai eseguito. Le opzioni sono TinyFaceDetectorOptions.
+ if(!window.faceapi||!faceapiPronta||!faceapi.TinyFaceDetectorOptions){cb();return;}
  var img=new Image();
  img.onload=function(){
-  Promise.resolve(faceapi.detectAllFaces(img,new faceapi.TinyFaceDetector()))
-   .then(function(d){
+  var p;
+  try{p=Promise.resolve(faceapi.detectAllFaces(img,new faceapi.TinyFaceDetectorOptions()));}
+  catch(e){cb();return;}
+  p.then(function(d){
     if(d&&d.length){var b=d[0].box;
      // il riquadro copre il viso, non la testa: allargato di ~35% per il capo
      FOCAL={x:(b.x+b.width/2)/img.naturalWidth,y:(b.y+b.height/2)/img.naturalHeight,
@@ -2477,6 +2599,6 @@ renderControls();renderStage();renderThumbs();
 prefCarica();prefStato();sessAggiornaElenco();sessProponiNome();passoUI();syncZip();renderSocial();
 loadNat(DEFAULT_PHOTO,function(){applyFocalAll(function(){renderStage();refreshThumbs();});});
 </script>
-<script src="generatore-airtable.js?v=4"></script>
+<script src="generatore-airtable.js?v=5"></script>
 </body>
 </html>

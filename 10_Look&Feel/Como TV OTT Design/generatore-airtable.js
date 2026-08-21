@@ -91,8 +91,7 @@ function loadAirtableEvents() {
     .then(records => {
       EVENTS_DATA = records.map(rec => parseAirtableRecord(rec));
       console.log('Caricati ' + EVENTS_DATA.length + ' eventi da Airtable', EVENTS_DATA);
-      if (records.length > 0) console.log('Primo record raw:', records[0]);
-      renderEventPanel();
+        renderEventPanel();
     })
     .catch(err => {
       console.error('Errore Airtable:', err);
@@ -131,12 +130,6 @@ function airtableFetchAll(baseUrl, params, token) {
 
 function parseAirtableRecord(rec) {
   var fields = rec.fields || {};
-  // Log dei nomi campi per debug
-  if (!window.airtableFieldsLogged) {
-    console.log('Nomi campi Airtable:', Object.keys(fields));
-    window.airtableFieldsLogged = true;
-  }
-
   var partita = fields['Partita'] || '';
   console.log('DEBUG parseAirtableRecord:', {
     partita: partita,
@@ -189,7 +182,6 @@ function parseAirtableRecord(rec) {
     // Se è un array (allegati Airtable), prendi il primo URL
     if (Array.isArray(fotoField) && fotoField.length > 0) {
       fotoUrl = fotoField[0].url || '';
-      console.log('📷 Foto da allegato Airtable:', fotoUrl);
     }
     // Se è una stringa (URL manuale), usala direttamente
     else if (typeof fotoField === 'string') {
@@ -361,46 +353,42 @@ function applyEventToGenerator(evt) {
     SHIMG.logoComp = LOGO_LIB[mappedCompKey].d;
   }
 
-  // Carica foto da Airtable se disponibile
-  if (evt.fotoUrl && typeof loadNat === 'function') {
-    console.log('📷 Carico foto da Airtable:', evt.fotoUrl);
-    console.log('DEBUG: SHIMG=', SHIMG);
-    console.log('DEBUG: STATE[current]=', STATE[current]);
-    // Carica come blob per aggirare CORS, poi converti in data URI
-    fetch(evt.fotoUrl, {mode: 'cors'})
-      .then(r => {
-        console.log('✓ Fetch response:', r.status);
-        return r.blob();
-      })
-      .then(blob => {
-        console.log('✓ Blob caricato, size:', blob.size);
+  // Ricorda da quale record vengono questi dati: e' il legame che permette,
+  // giorni dopo, di riaprire la sessione e accorgersi che l'orario e' cambiato.
+  if (typeof AIRTABLE_REC !== 'undefined') {
+    window.AIRTABLE_REC = { id: evt.id, nome: eventLabel(evt), quando: Date.now() };
+  }
+
+  // Foto dall'allegato Airtable. Gli URL degli allegati sono firmati e scadono
+  // dopo poche ore: si scarica adesso e si tiene l'immagine, non l'indirizzo.
+  if (evt.fotoUrl && typeof fotoNuova === 'function') {
+    if (typeof avviso === 'function') avviso('Scarico la foto da Airtable…');
+    fetch(evt.fotoUrl, { mode: 'cors' })
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
+      .then(blob => new Promise((ris, no) => {
         var reader = new FileReader();
-        reader.onload = function(){
-          console.log('✓ DataURI convertito, lunghezza:', reader.result.length);
-          SHIMG.photo = reader.result;
-          delete STATE[current].adj.photo;
-          // Usa loadNat() come per le foto locali per caricare dimensioni naturali
-          if (typeof loadNat === 'function') {
-            loadNat(reader.result, function(){
-              console.log('✓ Dimensioni foto caricate via loadNat()');
-              if (typeof autoPositionPhotoIfBanner === 'function') {
-                autoPositionPhotoIfBanner();
-              }
-              if (typeof renderControls === 'function') renderControls();
-              if (typeof renderStage === 'function') {
-                console.log('✓ Chiamo renderStage()');
-                renderStage();
-              }
-              if (typeof refreshThumbs === 'function') refreshThumbs();
-              console.log('✓ Foto caricata da Airtable');
-            });
-          }
-        };
+        reader.onload = function () { ris(reader.result); };
+        reader.onerror = function () { no(new Error('file illeggibile')); };
         reader.readAsDataURL(blob);
+      }))
+      .then(dataUri => {
+        // fotoNuova azzera i ritagli di TUTTI i formati, riconosce il volto e
+        // riancora ogni formato al proprio mirino.
+        fotoNuova(dataUri, { tipo: 'airtable', url: evt.fotoUrl }, function () {
+          if (typeof avvisoVia === 'function') avvisoVia();
+        });
       })
       .catch(e => {
-        console.error('❌ Errore caricamento foto Airtable:', e);
+        console.error('Foto Airtable non caricata:', e);
+        // Silenzio qui significava esportare 32 grafiche col fondo di default
+        // senza accorgersene: va detto, e va detto dove si guarda.
+        if (typeof avviso === 'function') {
+          avviso('<b>Foto non caricata da Airtable</b> (' + (e && e.message ? e.message : 'errore') +
+                 '). Le grafiche useranno lo sfondo di default: carica la foto a mano.', { male: true });
+        }
       });
+  } else if (typeof avviso === 'function' && !evt.fotoUrl) {
+    avviso('<b>Nessuna foto su Airtable</b> per questa partita: caricala a mano dal blocco FOTO.');
   }
 
   // Aggiorna i campi nel DOM (aspetta che siano creati)
@@ -504,3 +492,45 @@ function updateFieldsInDOM() {
 window.addEventListener('load', function() {
   setTimeout(loadAirtableEvents, 500);
 });
+
+
+// ---- rilettura di un singolo record ----
+// Serve a riaprire una sessione di giorni prima e confrontare i dati con quelli
+// veri di adesso. Rilegge dall'API, non dall'elenco gia' in memoria: l'elenco e'
+// stato caricato all'avvio e potrebbe essere vecchio quanto la sessione.
+function airtableLeggiRecord(recordId) {
+  var token = null;
+  try { token = AIRTABLE_CONFIG.token || sessionStorage.airtableToken || getAirtableToken(); }
+  catch (e) {}
+  if (!token) return Promise.reject(new Error('token non disponibile'));
+  var url = 'https://api.airtable.com/v0/' + AIRTABLE_CONFIG.baseId + '/' +
+            AIRTABLE_CONFIG.tableId + '/' + encodeURIComponent(recordId);
+  return fetch(url, { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(r => {
+      if (r.status === 404) { var e = new Error('record non trovato'); e.sparito = true; throw e; }
+      if (!r.ok) throw new Error('Airtable error: ' + r.status);
+      return r.json();
+    })
+    .then(rec => parseAirtableRecord(rec));
+}
+
+// Confronto campo per campo fra i dati a schermo e quelli di Airtable adesso.
+// Solo testo: la foto e i ritagli non entrano mai in questo confronto.
+function airtableDifferenze(evt) {
+  if (!evt || typeof SHARED === 'undefined') return [];
+  var mappa = [
+    { campo: 'home',     etichetta: 'Casa',          nuovo: evt.home || '' },
+    { campo: 'away',     etichetta: 'Ospite',        nuovo: evt.away || '' },
+    { campo: 'date',     etichetta: 'Data',          nuovo: evt.date || '' },
+    { campo: 'time',     etichetta: 'Ora',           nuovo: evt.time || '' },
+    { campo: 'compBase', etichetta: 'Competizione',  nuovo: evt.compBase || '' },
+    { campo: 'round',    etichetta: 'Giornata',      nuovo: evt.round || '' }
+  ];
+  return mappa.filter(function (m) {
+    var vecchio = SHARED[m.campo] == null ? '' : String(SHARED[m.campo]);
+    return vecchio.trim() !== String(m.nuovo).trim();
+  }).map(function (m) {
+    m.vecchio = SHARED[m.campo] == null ? '' : String(SHARED[m.campo]);
+    return m;
+  });
+}
