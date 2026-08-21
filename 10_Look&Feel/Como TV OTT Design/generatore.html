@@ -533,18 +533,23 @@ function ytWrap(txt,size,ls,maxW){var words=String(txt||'').split(/\s+/),lines=[
   if(estW(up(t),size,ls)>maxW&&cur){lines.push(cur);cur=w;}else cur=t;});
  if(cur)lines.push(cur);return lines.length?lines:[''];}
 
-// ==== INTERVISTE — "cover" col volto: foto intera del soggetto, etichetta
-// "Intervista" a pastiglia oro, nome grande (cognome staccato in oro, come
-// le squadre in mLandscape) + riga di contesto col trattino oro. Rifatto su
-// riferimento diretto (le grafiche INTERVISTA/INTERVIEW di Como 1907), con
-// la palette e i componenti gia' in uso nel resto del generatore invece del
-// rosso/bianco del club: pastiglia oro (come i chip "Football Show 15:10"),
-// trattino + etichetta oro (come "t-comp" in mLandscape), stesso logo.
-// Pastiglia piena, stesso linguaggio dei chip gia' nel file (ytChip/preshow):
-// sfondo oro, testo blu notte.
-function intTag(x,y,label,size,gid){var pad=Math.round(size*0.85),w=R(estW(up(label),size,3))+pad*2,h=Math.round(size*2.2);
- return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+R(h/2)+'" fill="url(#'+gid+')"/>'
-  +T(x+pad,y+Math.round(h*0.67),label,{s:size,w:800,fill:C.n900,ls:3});}
+// ==== INTERVISTE — "cover" col volto: foto intera del soggetto, virgolette
+// grandi in Abril Display come filigrana, etichetta "Intervista" nello
+// stesso corsivo, nome grande in Mazzard (cognome staccato in oro, come le
+// squadre in mLandscape) + riga di contesto col trattino oro. Struttura sul
+// riferimento diretto (le grafiche INTERVISTA/INTERVIEW di Como 1907), ma il
+// carattere del blocco lo fanno le due famiglie che gia' convivono nel file:
+// l'Abril Display corsivo (gia' incorporato per il wordmark Football Show)
+// per le virgolette e l'etichetta — il tocco editoriale — e il Mazzard
+// dritto e pesante per il nome, che deve restare leggibile e d'impatto.
+function intEyebrow(x,y,label,size,gid){
+ return '<text x="'+x+'" y="'+y+'" font-family="\'Abril Display\',Georgia,serif" font-style="italic" font-weight="400" font-size="'+size+'" fill="url(#'+gid+')">'+esc(label)+'</text>';
+}
+// Virgolette Abril Display, grandi e in trasparenza: filigrana dietro al
+// nome (si disegnano PRIMA, il nome sopra resta leggibile), non un'icona.
+function intQuoteMark(x,y,size,gid,op){
+ return '<text x="'+x+'" y="'+y+'" font-family="\'Abril Display\',Georgia,serif" font-style="italic" font-weight="400" font-size="'+size+'" fill="url(#'+gid+')" opacity="'+(op||1)+'">&#8220;</text>';
+}
 // Trattino + etichetta oro per la riga di contesto (stessa idea di t-comp
 // in mLandscape/mPortrait: tacca verticale + testo).
 function intContext(x,y,txt,size,col){var tickH=R(size*0.85);
@@ -556,21 +561,23 @@ function intTopScrim(gid){return '<linearGradient id="'+gid+'" x1="0" y1="0" x2=
  +'<stop offset="0" stop-color="'+SCRIM+'" stop-opacity=".92"/><stop offset=".36" stop-color="'+SCRIM+'" stop-opacity=".7"/>'
  +'<stop offset=".6" stop-color="#0A0F24" stop-opacity=".3"/><stop offset=".8" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>';}
 
-// Landscape 16:9 — foto piena, testo ancorato in alto (logo, pastiglia
-// "Intervista", nome grande, riga di contesto), come nei riferimenti.
+// Landscape 16:9 — foto piena, virgolette grandi in filigrana dietro al
+// nome, etichetta "Intervista" in Abril corsivo, nome in Mazzard, contesto.
 function iLandscape(W,H,p,I,A){
  var M=R(W*0.032);
  var nm=p.intName||'',ctx=p.intContext||'',tag=p.intTag||'Intervista';
  var parts=splitMark(nm),n1=parts[0]||'',n2=parts.length>1?parts[1]:'';
  var nameS=ytFit(n1,R(H*0.15),-2,R(W*0.6));
  if(n2)nameS=Math.min(nameS,ytFit(n2,R(H*0.15),-2,R(W*0.6)));
- var tagS=R(H*0.026),tagY=R(H*0.205);
+ var eybS=R(H*0.05),eybY=R(H*0.225);
  var n1Y=R(H*0.44),n2Y=n2?(n1Y+R(nameS*0.92)):n1Y,ctxY=(n2?n2Y:n1Y)+R(H*0.1);
+ var qmS=R(H*0.78),qmX=M-R(W*0.014),qmY=R(H*0.62);
  return '<defs>'+intTopScrim('ilT')+goldGrad('ilG')+'</defs>'+GPHOTO(W,H,A,I)
   +'<rect width="'+W+'" height="'+H+'" fill="url(#ilT)" pointer-events="none"/>'
+  +G('t-qmark',A,intQuoteMark(qmX,qmY,qmS,'ilG',.3))
   +(p.showLogo===false?'':brandMark(A,M,R(H*0.047),R(H*0.10)))
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
-  +G('t-tag',A,intTag(M,tagY,tag,tagS,'ilG'))
+  +G('t-tag',A,intEyebrow(M,eybY,tag,eybS,'ilG'))
   +G('t-title',A,T(M,n1Y,n1,{s:nameS,w:800,fill:C.ivory,ls:-2})+(n2?T(M,n2Y,n2,{s:nameS,w:800,fill:C.goldB,ls:-2}):''))
   +(ctx?G('t-name',A,intContext(M,ctxY,ctx,R(H*0.03))):'');
 }
@@ -582,33 +589,35 @@ function iPortrait(W,H,p,I,A){
  var parts=splitMark(nm),n1=parts[0]||'',n2=parts.length>1?parts[1]:'';
  var nameS=ytFit(n1,R(W*0.125),-2,R(W*0.86));
  if(n2)nameS=Math.min(nameS,ytFit(n2,R(W*0.125),-2,R(W*0.86)));
- var tagS=R(W*0.026),tagY=R(H*0.115);
+ var eybS=R(W*0.048),eybY=R(H*0.135);
  var n1Y=R(H*0.255),n2Y=n2?(n1Y+R(nameS*0.92)):n1Y,ctxY=(n2?n2Y:n1Y)+R(H*0.055);
+ var qmS=R(W*0.85),qmX=M-R(W*0.02),qmY=R(H*0.38);
  return '<defs>'+intTopScrim('ipT')+goldGrad('ipG')+'</defs>'+GPHOTO(W,H,A,I)
   +'<rect width="'+W+'" height="'+H+'" fill="url(#ipT)" pointer-events="none"/>'
+  +G('t-qmark',A,intQuoteMark(qmX,qmY,qmS,'ipG',.3))
   +(p.showLogo===false?'':brandMark(A,M,R(H*0.03),R(H*0.055)))
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.03))):'')
-  +G('t-tag',A,intTag(M,tagY,tag,tagS,'ipG'))
+  +G('t-tag',A,intEyebrow(M,eybY,tag,eybS,'ipG'))
   +G('t-title',A,T(M,n1Y,n1,{s:nameS,w:800,fill:C.ivory,ls:-2})+(n2?T(M,n2Y,n2,{s:nameS,w:800,fill:C.goldB,ls:-2}):''))
   +(ctx?G('t-name',A,intContext(M,ctxY,ctx,R(W*0.03))):'')
   +hair(W,H,H-5);
 }
-// Banner mid (1506×412, striscia bassa) — troppo bassa per impilare logo +
-// pastiglia + nome su due righe: nome su una riga sola, pastiglia in linea
-// col logo. Foto piena con velo a sinistra (come mLandscape), non piu' il
-// pannello sfumato a destra: qui il soggetto resta a tutta inquadratura.
+// Banner mid (1506×412, striscia bassa) — troppo bassa per la filigrana e
+// per impilare logo + etichetta + nome su piu' righe: nome su una riga
+// sola, etichetta in Abril corsivo in linea col logo. Foto piena con velo a
+// sinistra (come mLandscape), non piu' il pannello sfumato a destra.
 function iBanner(W,H,p,I,A){
  var M=R(W*0.024);
  var nm=p.intName||'',ctx=p.intContext||'',tag=p.intTag||'Intervista';
- var logoH=R(H*0.16),logoW=brandW(logoH),tagS=R(H*0.13),tagY=R(H*0.09);
- var tagX=M+logoW+R(W*0.02);
+ var logoH=R(H*0.16),logoW=brandW(logoH),eybS=R(H*0.16),eybY=R(H*0.185);
+ var eybX=M+logoW+R(W*0.02);
  var nameS=ytFit(up(nm),R(H*0.32),-2,R(W*0.6)),nameY=R(H*0.62),ctxY=R(H*0.88);
  var leftFade='<linearGradient id="ibL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".55" stop-color="'+SCRIM+'" stop-opacity=".85"/><stop offset=".85" stop-color="#0A0F24" stop-opacity=".1"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>';
  return '<defs>'+leftFade+goldGrad('ibG')+'</defs>'+GPHOTO(W,H,A,I)
   +'<rect width="'+W+'" height="'+H+'" fill="url(#ibL)" pointer-events="none"/>'
   +(p.showLogo===false?'':brandMark(A,M,R(H*0.09),logoH))
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.14))):'')
-  +G('t-tag',A,intTag(tagX,tagY,tag,tagS,'ibG'))
+  +G('t-tag',A,intEyebrow(eybX,eybY,tag,eybS,'ibG'))
   +G('t-title',A,T(M,nameY,nm,{s:nameS,w:800,fill:C.ivory,ls:-2}))
   +(ctx?G('t-name',A,intContext(M,ctxY,ctx,R(H*0.09))):'');
 }
