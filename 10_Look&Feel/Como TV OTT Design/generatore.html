@@ -290,6 +290,7 @@ small.flag{color:#E3C271}
 <div class="bars" id="bars">
  <div class="photobar" id="barra" style="gap:8px;flex-wrap:nowrap;overflow-x:auto;overflow-y:visible">
    <select id="airtableEventSelect" title="Importa una partita da Airtable"><option value="">— partite da Airtable —</option></select>
+  <span class="pbl">Formato</span>
   <select id="fmtSel" title="Formato aperto"></select>
   <span class="tbsep"></span>
   <button class="act ico" id="dlPng" title="Scarica questo formato in JPG">
@@ -1406,7 +1407,7 @@ function renderCompetizioni(show){
  var lib=(typeof LOGO_LIB!=='undefined')?LOGO_LIB:{},mine=customLogos();
  if(SHIMG.logoComp){th.src=SHIMG.logoComp;th.style.visibility='';}else{th.removeAttribute('src');th.style.visibility='hidden';}
  sel.innerHTML='';
- sel.appendChild(opt('','▾ Scegli dalla libreria'));
+ sel.appendChild(opt('','Scegli il logo'));
  Object.keys(lib).sort(function(a,b){return lib[a].l.localeCompare(lib[b].l);})
    .forEach(function(k){sel.appendChild(opt('lib:'+k,lib[k].l));});
  Object.keys(mine).sort(function(a,b){return mine[a].l.localeCompare(mine[b].l);})
@@ -2407,8 +2408,10 @@ document.getElementById('dlPng').onclick=function(){var it=BYKEY[current];busy(t
 document.getElementById('dlAll').onclick=function(){if(!window.JSZip){alert('JSZip non caricato (serve connessione).');return;}
  var sel=ITEMS.filter(function(it){return EXPSEL[it.key];});
  if(!sel.length){alert('Nessun formato selezionato: spunta almeno una miniatura nella colonna di destra.');return;}
- busy(true,'Esporto '+sel.length+' formati…');var zip=new JSZip();
- document.fonts.ready.then(function(){var ch=Promise.resolve();sel.forEach(function(it,i){ch=ch.then(function(){busy(true,'Esporto '+fname(it.key)+'… ('+(i+1)+'/'+sel.length+')');var pfx=('0'+(i+1)).slice(-2)+'_';return rasterize(svgExport(it.key),it.w,it.h).then(function(b){zip.file(pfx+fname(it.key)+'.jpg',b);});});});return ch;})
+ busy(true,'Esporto '+sel.length+' formati…');var zip=new JSZip();var usedNames={};
+ document.fonts.ready.then(function(){var ch=Promise.resolve();sel.forEach(function(it,i){ch=ch.then(function(){busy(true,'Esporto '+fname(it.key)+'… ('+(i+1)+'/'+sel.length+')');
+   var nm=fname(it.key);if(usedNames[nm]){usedNames[nm]++;nm=nm+'-'+usedNames[nm];}else{usedNames[nm]=1;}
+   return rasterize(svgExport(it.key),it.w,it.h).then(function(b){zip.file(nm+'.jpg',b);});});});return ch;})
  .then(function(){return zip.generateAsync({type:'blob'});}).then(function(b){dl(b,'Como_TV_OTT_export.zip');busy(false);}).catch(function(e){busy(false);alert('Errore: '+e);});};
 
 // ---------- Undo / Redo + scorciatoie ----------
