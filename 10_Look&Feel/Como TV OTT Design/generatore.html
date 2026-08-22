@@ -708,14 +708,6 @@ function iBanner(W,H,p,I,A){
  return base+G('t-title',A,intMatchTitle(M,y1,y2,ss,vsS,home,away,'ibG'));
 }
 
-// Foto laterale che si dissolve nel fondo (come ytPhotoSoft, ma parametrica).
-// Usata solo da Football Show qui sotto (Interviste ora e' foto piena).
-function intPhotoSoft(W,H,q,A,I,w,off,feather){var x=W-w+(off||0),f=(feather||0.42);
- return '<defs><linearGradient id="'+q+'mg" x1="0" y1="0" x2="1" y2="0">'
-  +'<stop offset="0" stop-color="#000000"/><stop offset="'+f+'" stop-color="#FFFFFF"/></linearGradient>'
-  +'<mask id="'+q+'mk"><rect x="'+x+'" y="0" width="'+w+'" height="'+H+'" fill="url(#'+q+'mg)"/></mask></defs>'
-  +'<g mask="url(#'+q+'mk)">'+G('photo',A,PH(I,'photo',x,0,w,H),null)+'</g>';}
-
 // ==== FOOTBALL SHOW — su modello di Ale: wordmark "Football Show" in Abril
 // Display Italic con la sfumatura oro della guida (non e' un campo, e' il
 // marchio fisso della rubrica), eyebrow "Speciale" + titolo a due righe (se
@@ -746,8 +738,17 @@ function fsLandscape(W,H,p,I,A){
  var homeY=R(H*0.47),awayY=homeY+R(homeS*0.76),ulY=awayY+R(H*0.05),dtY=ulY+R(dtS*1.7);
  var wS=R(H*0.185),wY1=R(H*0.235),wY2=wY1+R(wS*0.98);
  var eybS=R(H*0.044),ttlS=R(H*0.044),eybY=dtY-R(H*0.135);
- return '<defs>'+goldGrad('fsG')+'</defs>'+bg(W,H)+intPhotoSoft(W,H,'fsl',A,I,R(W*0.5),R(W*0.02),.42)
-  +'<rect width="'+W+'" height="'+H+'" fill="'+SCRIM+'" opacity=".1" pointer-events="none"/>'
+ // Foto a tutto formato, come le grafiche partita (GPHOTO), non piu' un
+ // pannello mascherato: prima intPhotoSoft ritagliava la foto dentro una
+ // striscia stretta (mask legata alle coordinate del FRAME, non della foto)
+ // e muoverla dentro ci si sentiva "tagliata" — qui e' libera su tutto lo
+ // spazio, stessa logica di mLandscape, e l'oscuramento e' un velo sopra la
+ // foto (due gradient rect, lL+bL) che non tocca il livello della foto.
+ var defs='<defs>'+goldGrad('fsG')
+  +'<linearGradient id="fslL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".4" stop-color="'+SCRIM+'" stop-opacity=".82"/><stop offset=".72" stop-color="#0A0F24" stop-opacity=".15"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>'
+  +'<linearGradient id="fsbL" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="'+SCRIM+'" stop-opacity="1"/><stop offset=".45" stop-color="'+SCRIM+'" stop-opacity="0"/></linearGradient></defs>';
+ return GPHOTO(W,H,A,I)+defs
+  +'<rect width="'+W+'" height="'+H+'" fill="url(#fslL)" pointer-events="none"/><rect width="'+W+'" height="'+H+'" fill="url(#fsbL)" pointer-events="none"/>'
   +G('t-word',A,fsWordmark(M,wY1,'Football',wS,'fsG')+fsWordmark(M,wY2,'Show',wS,'fsG'))
   +fsEyebrowTitle(A,M,eybY,R(H*0.052),p,eybS,ttlS)
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
@@ -774,8 +775,15 @@ function fsBanner(W,H,p,I,A,mid){
  var M=R(W*0.024),dtS=R(H*(mid?0.13:0.115));
  var wS=R(H*(mid?0.24:0.2)),eybS=R(H*(mid?0.12:0.105)),ttlS=R(H*(mid?0.12:0.105));
  var wY=R(H*(mid?0.4:0.38)),eybY=R(H*(mid?0.62:0.6)),ttlYbase=R(H*(mid?0.8:0.78)),dtY=R(H*(mid?0.95:0.93));
- return '<defs>'+goldGrad('fsG')+'</defs>'+bg(W,H)+intPhotoSoft(W,H,'fsb'+(mid?'m':'t'),A,I,R(W*0.32),R(W*0.015),.5)
-  +'<rect width="'+W+'" height="'+H+'" fill="'+SCRIM+'" opacity=".12" pointer-events="none"/>'
+ // Foto a tutto formato invece del pannello mascherato — stessa ragione di
+ // fsLandscape: libera su tutto lo spazio, velo sopra invece che maschera
+ // sulla foto. Id del gradiente per varante (top/mid), sono due formati
+ // diversi disegnati insieme nella colonna anteprime.
+ var gid='fsbnL'+(mid?'m':'t');
+ var defs='<defs>'+goldGrad('fsG')
+  +'<linearGradient id="'+gid+'" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".45" stop-color="'+SCRIM+'" stop-opacity=".85"/><stop offset=".78" stop-color="#0A0F24" stop-opacity=".15"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient></defs>';
+ return GPHOTO(W,H,A,I)+defs
+  +'<rect width="'+W+'" height="'+H+'" fill="url(#'+gid+')" pointer-events="none"/>'
   +G('t-word',A,fsWordmark(M,wY,'Football Show',wS,'fsG'))
   +fsEyebrowTitle(A,M,eybY,R(H*0.16),p,eybS,ttlS)
   +(p.live?G('live',A,livePill(W-M-150,R(H*0.1))):'')
