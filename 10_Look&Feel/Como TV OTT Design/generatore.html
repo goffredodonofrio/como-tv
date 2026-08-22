@@ -1479,9 +1479,9 @@ function photoPanMax(s){var it=photoItem();var n=PHOTONAT[curPhotoSrc()];
 // Trascinamento libero: nessun limite, la foto si sposta ovunque (reset con "Centra foto").
 // Limita spostamento e scala perche' la foto continui a coprire il formato:
 // sotto scala 1 il cover non copre piu', e oltre il bordo si scoprirebbe il fondo.
-function photoClamp(a){
+function photoClamp(a,key){
  var nat=PHOTONAT[curPhotoSrc()];if(!a||!nat||nat.w<2)return a;
- var g=coverOf(current,nat);
+ var g=coverOf(key||current,nat);
  a.s=Math.max(1,Math.min(3.5,a.s||1));
  if(a.cx===undefined){a.cx=g.W/2;a.cy=g.H/2;}
  var dw=g.Dw*a.s,dh=g.Dh*a.s;
@@ -1682,7 +1682,32 @@ function fotoNuova(d,fonte,cb){
  });
 }
 
-document.getElementById('fattoBtn').onclick=function(){exitPhotoEdit();refreshThumbs();};
+// Confermando, l'inquadratura passa agli altri formati della stessa famiglia.
+// Non si copiano i numeri — dx e dy vogliono dire cose diverse su una tela di
+// misura diversa. Si prende il punto della FOTO che hai messo sotto il mirino e
+// lo si rimette sotto il mirino degli altri, con lo stesso ingrandimento.
+function propagaFoto(key){
+ var nat=PHOTONAT[curPhotoSrc()];if(!nat||nat.w<2)return 0;
+ var a=STATE[key].adj.photo;if(!a)return 0;
+ var s=a.s||1;if(!(s>0))return 0;
+ var g=coverOf(key,nat),m=mirFor(key);
+ // che punto dell'immagine sta ora sotto il centro del mirino (frazioni 0..1)
+ var u=((m.x*g.W-g.W/2-(a.dx||0))/(s*g.cov)+nat.w/2)/nat.w;
+ var v=((m.y*g.H-g.H/2-(a.dy||0))/(s*g.cov)+nat.h/2)/nat.h;
+ var fam=famigliaMir(key),n=0;
+ ITEMS.forEach(function(it){
+  if(it.key===key||famigliaMir(it.key)!==fam||!photoFullBleed(it.key))return;
+  var q=coverOf(it.key,nat),mm=mirFor(it.key);
+  var aa={s:s,cx:q.W/2,cy:q.H/2,
+   dx:mm.x*q.W-q.W/2-s*q.cov*(u*nat.w-nat.w/2),
+   dy:mm.y*q.H-q.H/2-s*q.cov*(v*nat.h-nat.h/2)};
+  photoClamp(aa,it.key);
+  STATE[it.key].adj.photo=aa;n++;
+ });
+ return n;
+}
+document.getElementById('fattoBtn').onclick=function(){
+ propagaFoto(current);exitPhotoEdit();refreshThumbs();};
 
 // ---- blocco FOTO in barra ----
 document.getElementById('cbFotoFile').onclick=function(){
@@ -2571,8 +2596,12 @@ var MIRDEF={
 // quello di un orizzontale e si spostano tutti gli orizzontali, i verticali
 // restano dove sono. Un orizzontale ha il testo a sinistra e un verticale in
 // basso: il volto va in posti diversi, e tenerli legati sarebbe sbagliato.
-// La divisione e' la stessa delle anteprime, larghezza contro altezza.
-function famigliaMir(key){var it=BYKEY[key];return (it&&it.w>=it.h)?'orizzontali':'verticali';}
+// Il banner-mid sta per conto suo: con un rapporto di 3,66 un'inquadratura
+// buona per un 16:9 li' non vuol dire niente.
+function famigliaMir(key){var it=BYKEY[key];if(!it)return 'orizzontali';
+ var r=it.w/it.h;
+ if(r>=3)return 'banner-mid';
+ return r>=1.5?'orizzontali':'verticali';}
 var MIRUSER={};
 function mirFor(key){
  var f=MIRUSER[famigliaMir(key)];if(f)return f;
