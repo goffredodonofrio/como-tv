@@ -569,8 +569,9 @@ function ytWrap(txt,size,ls,maxW){var words=String(txt||'').split(/\s+/),lines=[
 // ==== INTERVISTE — su riferimento diretto (grafica "UDINESE CALCIO vs.
 // COMO 1907" con citazione lunga). Foto piena, blocco ancorato in basso a
 // sinistra, dal basso verso l'alto: firma opzionale -> citazione (va a capo
-// da sola) -> virgolette -> filetto ornamentale -> titolo partita. Titolo e
-// virgolette in Abril Display corsivo (l'unico taglio disponibile: niente
+// da sola) -> filetto ornamentale -> titolo partita. Le virgolette decorative
+// sono state tolte: la citazione va a bandiera, senza rientro sulla prima
+// riga. Titolo in Abril Display corsivo (l'unico taglio disponibile: niente
 // tondo, ci prendiamo la sua inclinazione invece di forzarne uno finto);
 // citazione in Poppins (Mazzard non ha un taglio arrotondato come quello
 // del riferimento — qui, solo per il corpo della citazione, si esce dalle
@@ -585,9 +586,6 @@ function ytWrap(txt,size,ls,maxW){var words=String(txt||'').split(/\s+/),lines=[
 function AT(x,y,t,o){o=o||{};var w=o.w||400,fill=o.fill||C.ivory,ls=o.ls||0,fs=o.fs||'italic';
  var tx=o.upper===false?esc(t):esc(up(t));
  return '<text x="'+x+'" y="'+y+'" font-family="\'Abril Display\',Georgia,serif" font-style="'+fs+'" font-weight="'+w+'" font-size="'+o.s+'" fill="'+fill+'" letter-spacing="'+ls+'">'+tx+'</text>';}
-// Virgolette Abril Display, piene (non piu' in filigrana): un accento
-// grafico vero e proprio, allineato alla prima riga della citazione.
-function intQuoteMark(x,y,size,gid){return AT(x,y,'“',{s:size,w:400,fill:'url(#'+gid+')',upper:false});}
 // Filetto ornamentale oro: due segmenti + un piccolo rombo al centro, come
 // il divisore sotto il titolo nel riferimento.
 function ornRule(x,y,w,col){col=col||C.gold;var cx=x+w/2,d=8;
@@ -603,8 +601,7 @@ function intMatchTitle(x,y1,y2,ss,vsS,home,away,gid){
   +AT(x,y2,vsTxt,{s:vsS,w:400,fill:C.gold,ls:1})
   +AT(x+vsW,y2,away,{s:ss,w:800,fill:'url(#'+gid+')'});
 }
-// Citazione con a-capo automatico (ytWrap): la prima riga e' rientrata per
-// lasciare spazio alle virgolette, le altre no — come nel riferimento.
+// Citazione con a-capo automatico (ytWrap), tutte le righe a bandiera.
 // Font Poppins (non Mazzard): nel riferimento il corpo della citazione e'
 // un bastone arrotondato, che Mazzard non ha in nessun taglio disponibile.
 var QUOTE_FONT="'Poppins','Quicksand',-apple-system,'Segoe UI',sans-serif";
@@ -627,21 +624,20 @@ function intBottomScrimStrong(gid){return '<linearGradient id="'+gid+'" x1="0" y
 function iLandscape(W,H,p,I,A){
  var M=R(W*0.032),bm=R(H*0.065);
  var home=p.home||'',away=p.away||'',q=p.intQuote||'',nm=p.intName||'';
- var qS=R(H*0.05),lh=R(qS*1.34),maxW=R(W*0.46),qmS=R(H*0.135);
- var indentW=R(qmS*0.5);
- var probe=ytWrap(q,qS,0,Math.max(40,maxW-indentW)),firstLine=probe[0]||'';
- var rest=q.slice(firstLine.length).trim();
- var lines=[firstLine].concat(rest?ytWrap(rest,qS,0,maxW):[]);
+ var qS=R(H*0.05),lh=R(qS*1.34),maxW=R(W*0.46);
+ // Niente virgolette: la citazione va a bandiera, prima riga compresa. Il
+ // rientro serviva solo a scansare il segno.
+ var lines=ytWrap(q,qS,0,maxW);
  var nameS=R(H*0.03),cursorY=H-bm,nameY=null;
  if(nm){nameY=cursorY;cursorY-=R(nameS*1.9);}
  var lineYs=[];for(var i=lines.length-1;i>=0;i--){lineYs[i]=cursorY;cursorY-=lh;}
- var qmY=lineYs[0];
- // il segno di virgolette sale MOLTO sopra la sua baseline (~0.8x la sua
- // dimensione): il distacco dal filetto/titolo deve tenerne conto, non un
- // margine fisso, altrimenti si sovrappongono (bug visto in test).
- cursorY=qmY-R(qmS*0.85);
+ // Tolte le virgolette il filetto va riequilibrato: prima lo spazio sotto era
+ // occupato dal segno. Stesso bianco ottico sopra e sotto — sotto si aggiunge
+ // l'altezza delle maiuscole, perche' li' la misura arriva alla linea di base.
+ var gapF=R(H*0.06);
+ cursorY=lineYs[0]-gapF-R(qS*0.7);
  var dividerY=cursorY,dividerW=R(W*0.16);
- cursorY-=R(H*0.06);
+ cursorY-=gapF;
  var ss=R(H*0.088),vsS=R(H*0.036),titleY2=cursorY,titleY1=titleY2-R(ss*0.85);
  return '<defs>'+intBottomScrimStrong('ilS')+goldGrad('ilG')+'</defs>'+GPHOTO(W,H,A,I)
   +'<rect width="'+W+'" height="'+H+'" fill="url(#ilS)" pointer-events="none"/>'
@@ -649,26 +645,22 @@ function iLandscape(W,H,p,I,A){
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
   +G('t-title',A,intMatchTitle(M,titleY1,titleY2,ss,vsS,home,away,'ilG'))
   +G('t-rule',A,ornRule(M,dividerY,dividerW))
-  +G('t-qmark',A,intQuoteMark(M-R(W*0.006),qmY,qmS,'ilG'))
-  +G('t-name',A,quoteLines(M,M+indentW,lineYs,lines,qS))
+  +G('t-name',A,quoteLines(M,M,lineYs,lines,qS))
   +(nm?G('t-tag',A,AT(M,nameY,'— '+nm,{s:nameS,w:400,fill:C.gold,ls:1})):'');
 }
 // Portrait 2:3 — stessa impaginazione, proporzioni sulla larghezza.
 function iPortrait(W,H,p,I,A){
  var M=R(W*0.072),bm=R(H*0.045);
  var home=p.home||'',away=p.away||'',q=p.intQuote||'',nm=p.intName||'';
- var qS=R(W*0.043),lh=R(qS*1.34),maxW=R(W*0.86),qmS=R(W*0.13);
- var indentW=R(qmS*0.5);
- var probe=ytWrap(q,qS,0,Math.max(40,maxW-indentW)),firstLine=probe[0]||'';
- var rest=q.slice(firstLine.length).trim();
- var lines=[firstLine].concat(rest?ytWrap(rest,qS,0,maxW):[]);
+ var qS=R(W*0.043),lh=R(qS*1.34),maxW=R(W*0.86);
+ var lines=ytWrap(q,qS,0,maxW);
  var nameS=R(W*0.03),cursorY=H-bm,nameY=null;
  if(nm){nameY=cursorY;cursorY-=R(nameS*1.9);}
  var lineYs=[];for(var i=lines.length-1;i>=0;i--){lineYs[i]=cursorY;cursorY-=lh;}
- var qmY=lineYs[0];
- cursorY=qmY-R(qmS*0.85);
+ var gapF=R(H*0.045);
+ cursorY=lineYs[0]-gapF-R(qS*0.7);
  var dividerY=cursorY,dividerW=R(W*0.22);
- cursorY-=R(H*0.045);
+ cursorY-=gapF;
  var ss=R(W*0.075),vsS=R(W*0.032),titleY2=cursorY,titleY1=titleY2-R(ss*0.85);
  return '<defs>'+intBottomScrim('ipS')+goldGrad('ipG')+'</defs>'+GPHOTO(W,H,A,I)
   +'<rect width="'+W+'" height="'+H+'" fill="url(#ipS)" pointer-events="none"/>'
@@ -676,8 +668,7 @@ function iPortrait(W,H,p,I,A){
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.03))):'')
   +G('t-title',A,intMatchTitle(M,titleY1,titleY2,ss,vsS,home,away,'ipG'))
   +G('t-rule',A,ornRule(M,dividerY,dividerW))
-  +G('t-qmark',A,intQuoteMark(M-R(W*0.008),qmY,qmS,'ipG'))
-  +G('t-name',A,quoteLines(M,M+indentW,lineYs,lines,qS))
+  +G('t-name',A,quoteLines(M,M,lineYs,lines,qS))
   +(nm?G('t-tag',A,AT(M,nameY,'— '+nm,{s:nameS,w:400,fill:C.gold,ls:1})):'')
   +hair(W,H,H-5);
 }
