@@ -1706,8 +1706,19 @@ function propagaFoto(key){
  });
  return n;
 }
-document.getElementById('fattoBtn').onclick=function(){
- propagaFoto(current);exitPhotoEdit();refreshThumbs();};
+// La foto si sposta in due modi: col tasto ✥ (editor a schermo pieno) oppure
+// selezionandola e trascinandola nella vista normale. La conferma deve valere
+// in entrambi i casi: prima esisteva solo nell'editor, e chi spostava la foto
+// senza passare di li' non vedeva l'inquadratura arrivare sugli altri formati.
+function confermaFoto(){
+ var n=propagaFoto(current),fam=famigliaMir(current);
+ if(photoEdit)exitPhotoEdit(); else renderStage();
+ refreshThumbs();
+ if(n>0)avviso('Inquadratura portata su <b>'+n+'</b> altri formati '+
+   (fam==='banner-mid'?'banner-mid':fam)+'.');
+ else avvisoVia();
+}
+document.getElementById('fattoBtn').onclick=confermaFoto;
 
 // ---- blocco FOTO in barra ----
 document.getElementById('cbFotoFile').onclick=function(){
@@ -2102,6 +2113,7 @@ function highlightSel(svg){var old=svg.querySelector('.selrect');if(old)old.remo
  var bb;try{bb=el.getBBox();}catch(e){return;}var ct=el.getAttribute('transform');
  var r=document.createElementNS('http://www.w3.org/2000/svg','rect');r.setAttribute('class','selrect');r.setAttribute('x',bb.x);r.setAttribute('y',bb.y);r.setAttribute('width',bb.width);r.setAttribute('height',bb.height);if(ct)r.setAttribute('transform',ct);svg.appendChild(r);
  drawAlignmentGuides(svg,bb,ct);
+ if(window.passoUI)passoUI();
  if(selObj==='photo')return; // la foto si ridimensiona in ritaglio, non alla selezione
  var handleR=6;var corners=[[bb.x,bb.y],[bb.x+bb.width,bb.y],[bb.x,bb.y+bb.height],[bb.x+bb.width,bb.y+bb.height]];
  corners.forEach(function(c,ci){var h=document.createElementNS('http://www.w3.org/2000/svg','circle');h.setAttribute('class','handle'+((ci===1||ci===2)?' nesw':''));h.setAttribute('cx',c[0]);h.setAttribute('cy',c[1]);h.setAttribute('r',handleR);h.setAttribute('fill','var(--gold)');attachResize(h,svg);h.setAttribute('opacity','0.6');if(ct)h.setAttribute('transform',ct);svg.appendChild(h);});}
@@ -2418,7 +2430,8 @@ window.addEventListener('keydown',function(e){
  if(mod&&(e.key==='e'||e.key==='E')){e.preventDefault();document.getElementById('dlAll').click();return;}
  var tag=(e.target.tagName||'').toLowerCase();if(tag==='input'||tag==='select'||tag==='textarea')return;
  var svg=document.querySelector('#stage svg');
- if(photoEdit&&e.key==='Enter'){e.preventDefault();document.getElementById('fattoBtn').click();return;}
+ if(e.key==='Enter'&&(photoEdit||(selObj==='photo'&&photoFullBleed(current)))){
+  e.preventDefault();confermaFoto();return;}
  if(e.key==='Escape'){if(photoEdit){exitPhotoEdit();return;}selObj=null;document.getElementById('selName').textContent='Nessun oggetto selezionato';if(svg)highlightSel(svg);syncScaleSlider();return;}
  if(!selObj||!svg)return;var a=ensureAdj(selObj,svg);var st=e.shiftKey?20:4;var did=false;
  if(e.key==='ArrowLeft'){pushUndoC();a.dx-=st;did=true;}
@@ -2677,7 +2690,8 @@ function toolVai(t){TOOL=(TOOL===t)?null:t;aggiornaModo();}
 function passoUI(){
  if(typeof MIRON==='undefined')return;   // chiamata prima che lo stato esista
  var h=document.getElementById('peHint');if(!h)return;
- var fb=document.getElementById('fattoBtn');if(fb)fb.style.display=photoEdit?'':'none';
+ var fb=document.getElementById('fattoBtn');
+ if(fb)fb.style.display=(photoEdit||(selObj==='photo'&&photoFullBleed(current)))?'':'none';
  var senzaFoto=!photoFullBleed(current);
  var bmano=document.getElementById('tMano');
  if(bmano)bmano.className='act ghost ico'+(TOOL==='mano'?' on':'');
