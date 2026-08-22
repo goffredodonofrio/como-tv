@@ -1400,7 +1400,6 @@ function filePicker(txt,onFile){
 var CUSTOM_LOGO_KEY='comotv_loghi_competizioni';
 function customLogos(){try{return JSON.parse(localStorage.getItem(CUSTOM_LOGO_KEY)||'{}');}catch(e){return {};}}
 function saveCustomLogos(o){try{localStorage.setItem(CUSTOM_LOGO_KEY,JSON.stringify(o));return true;}catch(e){return false;}}
-function isSocialFormat(){var g=CAT[current]||'';return g==='Social media'||g==='Social media video';}
 function renderCompetizioni(show){
  var th=document.getElementById('cbCompTh'),sel=document.getElementById('cbCompSel');
  if(!th||!sel)return;
@@ -1556,22 +1555,24 @@ var SOCIAL_EL=[
 ];
 function renderSocial(){
  var box=document.getElementById('cbSocial');if(!box)return;
- var vale=isSocialFormat();
  if(!box.childNodes.length){
   SOCIAL_EL.forEach(function(e){
    var b=document.createElement('button');b.className='act ghost ico';b.dataset.k=e.k;
    b.innerHTML='<svg viewBox="0 0 20 20">'+e.d+'</svg>';
-   b.onclick=function(){if(b.disabled)return;pushUndo();
+   b.onclick=function(){pushUndo();
     SHARED[e.k]=!acceso(e.k);renderStage();refreshThumbs();renderSocial();};
    box.appendChild(b);});
  }
+ // Attivabili ovunque, non solo sui formati "social": il default per
+ // formato resta quello di sempre (acceso()), ma l'utente puo' sempre
+ // aggiungere o togliere questi elementi a mano su qualsiasi formato —
+ // su un formato il cui gen() non li disegna, il click semplicemente non
+ // cambia nulla in anteprima (non c'e' quell'elemento da mostrare).
  [].forEach.call(box.children,function(b){
   var k=b.dataset.k,e=SOCIAL_EL.filter(function(z){return z.k===k;})[0];
-  // English Comm. non e' un elemento social: vale su tutti i formati
-  var attivabile=vale||!!e.ovunque;
-  b.className='act ghost ico'+(attivabile&&acceso(k)?' on':'');
-  b.disabled=!attivabile;
-  b.title=e.n+(attivabile?(acceso(k)?' · acceso':' · spento'):' · vale solo sui formati social');});
+  b.className='act ghost ico'+(acceso(k)?' on':'');
+  b.disabled=false;
+  b.title=e.n+(acceso(k)?' · acceso':' · spento');});
 }
 function acceso(k){return (k==='english'||k==='showLive')?!!SHARED[k]:SHARED[k]!==false;}
 // ---- blocco COMPETIZIONE in barra ----
