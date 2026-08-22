@@ -1698,7 +1698,7 @@ document.getElementById('cbFotoVideo').onclick=function(){
 document.getElementById('cbFotoVia').onclick=function(){
  pushUndo();delete SHIMG.photo;renderControls();renderStage();refreshThumbs();};
 document.getElementById('tMano').onclick=function(){toolVai('mano');};
-document.getElementById('tMirino').onclick=function(){MIRON=!MIRON;aggiornaModo();};
+document.getElementById('tMirino').onclick=mirinoAccendi;
 // il conteggio dei formati da esportare sta sull'icona ZIP
 function syncZip(){var e=document.getElementById('zipN');if(e)e.textContent='ZIP '+expCount();}
 // ===== Editor foto stile Keynote: rettangolo fisso (maschera), foto spostabile/scalabile dentro =====
@@ -2184,6 +2184,7 @@ document.getElementById('prefReset').onclick=function(){
  if(!confirm('Rimette mirini, posizioni e stili di TUTTI i formati come sono di fabbrica, e cancella il salvataggio su questo computer. Procedo?'))return;
  try{localStorage.removeItem(PREF_KEY);}catch(e){}
  ITEMS.forEach(function(it){var a=STATE[it.key].adj;Object.keys(a).forEach(function(k){if(k!=='photo')delete a[k];});});
+ MIRUSER=null;MIRON=true;
  PREF_DIRTY=false;renderControls();renderStage();renderThumbs();prefStato();};
 // ---- comandi delle sessioni ----
 document.getElementById('sessSave').onclick=function(){
@@ -2517,7 +2518,7 @@ function prefRaccogli(){
   Object.keys(a).forEach(function(k){if(k!=='photo')o[k]=a[k];});
   if(Object.keys(o).length)adj[it.key]=o;
  });
- return {versione:3,mirinoAcceso:MIRON,elementi:adj};
+ return {versione:3,mirinoAcceso:MIRON,mirino:MIRUSER,elementi:adj};
 }
 // Gli spostamenti salvati sono scarti rispetto alla posizione di fabbrica: se
 // quella posizione cambia perche' cambia il disegno, lo scarto vecchio sposta
@@ -2530,6 +2531,7 @@ function prefApplica(d){
  if(!d)return false;
  var vecchie=(d.versione||1)<2;
  if(typeof d.mirinoAcceso==='boolean')MIRON=d.mirinoAcceso;
+ if(d.mirino&&typeof d.mirino.x==='number')MIRUSER=d.mirino;
  if(d.elementi)Object.keys(d.elementi).forEach(function(k){
   if(!STATE[k])return;
   if(vecchie&&(CAT[k]||(BYKEY[k]&&BYKEY[k].group))==='Interviste')return;
@@ -2565,7 +2567,12 @@ var MIRDEF={
  fanvoice_1080x1920:{x:0.50,y:0.19,r:0.17},
  hl_feed_1080x1350:{x:0.50,y:0.23,r:0.20}
 };
+// Spostare il mirino vale per tutti i formati insieme: e' un riferimento solo,
+// non una regolazione per formato. Finche' non lo si tocca, ogni formato usa il
+// suo valore di partenza (il volto va in posti diversi a seconda del layout).
+var MIRUSER=null;
 function mirFor(key){
+ if(MIRUSER)return MIRUSER;
  var b=key.replace(/-live$/,'');
  if(MIRDEF[b])return MIRDEF[b];
  var it=BYKEY[key],r=it.w/it.h;
@@ -2624,12 +2631,16 @@ var TOOL=null, MIRON=true;
 // Un solo posto decide se si e' in modifica: ci si sta finche' e' acceso uno
 // strumento OPPURE il mirino. Cosi' accendere il cerchio non si prende anche la
 // Mano, e spegnere la Mano non fa sparire il cerchio.
+// Solo gli strumenti entrano ed escono dalla modifica. Il mirino e' un
+// riferimento che si accende e si spegne: prima accenderlo apriva l'editor a
+// schermo pieno, che non e' quello che si chiede a un interruttore.
 function aggiornaModo(){
- if(TOOL||MIRON){if(!photoEdit)enterPhotoEdit();else renderStage();}
+ if(TOOL){if(!photoEdit)enterPhotoEdit();else renderStage();}
  else if(photoEdit)exitPhotoEdit();
  else renderStage();
  passoUI();
 }
+function mirinoAccendi(){MIRON=!MIRON;prefTocca();renderStage();passoUI();}
 function toolVai(t){TOOL=(TOOL===t)?null:t;aggiornaModo();}
 function passoUI(){
  if(typeof MIRON==='undefined')return;   // chiamata prima che lo stato esista
@@ -2658,7 +2669,35 @@ function drawFocalUI(svg){
  var it=BYKEY[current],m=mirFor(current),lato=Math.min(it.w,it.h);
  var w=Math.max(3,Math.round(it.w*0.0035));
  var mc={x:it.w*m.x,y:it.h*m.y},mr=m.r*lato;
- svg.appendChild(cerchio('mirg',mc,mr,'#FFD166',true,w,true));
+ var g=cerchio('mirg',mc,mr,'#FFD166',true,w,false);
+ svg.appendChild(g);
+ trascinaMirino(g,svg,it,lato,{x:mc.x,y:mc.y,r:mr});
+}
+// Corpo = sposta, bordo = raggio. Il gesto si ferma qui: non deve diventare
+// anche una selezione dell'oggetto sottostante.
+function trascinaMirino(g,svg,it,lato,base){
+ ['corpo','bordo'].forEach(function(modo){
+  var el=g.querySelector('.gr-'+modo);if(!el)return;
+  el.addEventListener('pointerdown',function(ev){
+   ev.preventDefault();ev.stopPropagation();pushUndo();
+   // Con la tela larga zero il rapporto unita/pixel viene infinito e un
+   // trascinamento manderebbe il mirino a fondo scala: meglio non fare nulla.
+   var k=svgUnitPerPx(svg);if(!isFinite(k)||k<=0)return;
+   var sx=ev.clientX,sy=ev.clientY;
+   function mv(e){
+    var dx=(e.clientX-sx)*k,dy=(e.clientY-sy)*k;
+    if(modo==='corpo')MIRUSER={x:Math.max(0,Math.min(1,(base.x+dx)/it.w)),
+                               y:Math.max(0,Math.min(1,(base.y+dy)/it.h)),
+                               r:base.r/lato};
+    else MIRUSER={x:base.x/it.w,y:base.y/it.h,
+                  r:Math.max(0.04,Math.min(0.6,(base.r+dx)/lato))};
+    var s2=document.querySelector('#stage svg');if(s2)drawFocalUI(s2);
+   }
+   function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);
+    prefTocca();refreshThumbs();}
+   window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);
+  });
+ });
 }
 
 // Avvio delle regolazioni: va in fondo al blocco, dopo che lo stato ha un
