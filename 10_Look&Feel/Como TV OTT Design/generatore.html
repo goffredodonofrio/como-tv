@@ -2184,7 +2184,7 @@ document.getElementById('prefReset').onclick=function(){
  if(!confirm('Rimette mirini, posizioni e stili di TUTTI i formati come sono di fabbrica, e cancella il salvataggio su questo computer. Procedo?'))return;
  try{localStorage.removeItem(PREF_KEY);}catch(e){}
  ITEMS.forEach(function(it){var a=STATE[it.key].adj;Object.keys(a).forEach(function(k){if(k!=='photo')delete a[k];});});
- MIRUSER=null;MIRON=true;
+ MIRUSER={};MIRON=true;
  PREF_DIRTY=false;renderControls();renderStage();renderThumbs();prefStato();};
 // ---- comandi delle sessioni ----
 document.getElementById('sessSave').onclick=function(){
@@ -2531,7 +2531,7 @@ function prefApplica(d){
  if(!d)return false;
  var vecchie=(d.versione||1)<2;
  if(typeof d.mirinoAcceso==='boolean')MIRON=d.mirinoAcceso;
- if(d.mirino&&typeof d.mirino.x==='number')MIRUSER=d.mirino;
+ if(d.mirino&&typeof d.mirino==='object')MIRUSER=d.mirino;
  if(d.elementi)Object.keys(d.elementi).forEach(function(k){
   if(!STATE[k])return;
   if(vecchie&&(CAT[k]||(BYKEY[k]&&BYKEY[k].group))==='Interviste')return;
@@ -2567,12 +2567,15 @@ var MIRDEF={
  fanvoice_1080x1920:{x:0.50,y:0.19,r:0.17},
  hl_feed_1080x1350:{x:0.50,y:0.23,r:0.20}
 };
-// Spostare il mirino vale per tutti i formati insieme: e' un riferimento solo,
-// non una regolazione per formato. Finche' non lo si tocca, ogni formato usa il
-// suo valore di partenza (il volto va in posti diversi a seconda del layout).
-var MIRUSER=null;
+// Spostare il mirino vale per tutti i formati dello stesso orientamento: muovi
+// quello di un orizzontale e si spostano tutti gli orizzontali, i verticali
+// restano dove sono. Un orizzontale ha il testo a sinistra e un verticale in
+// basso: il volto va in posti diversi, e tenerli legati sarebbe sbagliato.
+// La divisione e' la stessa delle anteprime, larghezza contro altezza.
+function famigliaMir(key){var it=BYKEY[key];return (it&&it.w>=it.h)?'orizzontali':'verticali';}
+var MIRUSER={};
 function mirFor(key){
- if(MIRUSER)return MIRUSER;
+ var f=MIRUSER[famigliaMir(key)];if(f)return f;
  var b=key.replace(/-live$/,'');
  if(MIRDEF[b])return MIRDEF[b];
  var it=BYKEY[key],r=it.w/it.h;
@@ -2686,11 +2689,12 @@ function trascinaMirino(g,svg,it,lato,base){
    var sx=ev.clientX,sy=ev.clientY;
    function mv(e){
     var dx=(e.clientX-sx)*k,dy=(e.clientY-sy)*k;
-    if(modo==='corpo')MIRUSER={x:Math.max(0,Math.min(1,(base.x+dx)/it.w)),
-                               y:Math.max(0,Math.min(1,(base.y+dy)/it.h)),
-                               r:base.r/lato};
-    else MIRUSER={x:base.x/it.w,y:base.y/it.h,
-                  r:Math.max(0.04,Math.min(0.6,(base.r+dx)/lato))};
+    var fam=famigliaMir(current);
+    if(modo==='corpo')MIRUSER[fam]={x:Math.max(0,Math.min(1,(base.x+dx)/it.w)),
+                                    y:Math.max(0,Math.min(1,(base.y+dy)/it.h)),
+                                    r:base.r/lato};
+    else MIRUSER[fam]={x:base.x/it.w,y:base.y/it.h,
+                       r:Math.max(0.04,Math.min(0.6,(base.r+dx)/lato))};
     var s2=document.querySelector('#stage svg');if(s2)drawFocalUI(s2);
    }
    function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);
