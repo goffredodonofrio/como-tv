@@ -177,7 +177,7 @@ body.editing .stagewrap{padding:16px 16px 30px}
 .menu.on{display:block}
 /* Dentro #barra (overflow-x:auto) un popover assoluto verrebbe tagliato: vedi
    commento nello script che lo posiziona. */
-#moreMenu{position:fixed;right:auto}
+#moreMenu,#cbCompMenu{position:fixed;right:auto}
 .menu .mst{font-size:11px;color:var(--fg3);padding:6px 9px 8px}
 .menu button{display:block;width:100%;text-align:left;background:none;border:0;color:var(--ivory);
  font:inherit;font-size:12px;padding:8px 9px;border-radius:7px;cursor:pointer}
@@ -304,11 +304,11 @@ small.flag{color:#E3C271}
     <svg viewBox="0 0 20 20"><path d="M2.5 6.5h15v11h-15zM2.5 6.5 5 2.5h10l2.5 4M10 2.5v4M8 10h4M8 12.5h4"/></svg><span id="zipN">ZIP</span></button>
    <button class="act ghost ico on" id="lockBtn" title="Blocca gli elementi: da chiuso non si spostano per sbaglio">
     <svg viewBox="0 0 20 20"><rect x="4" y="8.5" width="12" height="9" rx="1.5"/><path d="M6.8 8.5V6a3.2 3.2 0 0 1 6.4 0v2.5"/></svg></button>
-   <span class="tbsep"></span>
-   <!-- Sessione + Ripristina: usati molto meno di formato/scarica, dietro un
-        menu a comparsa invece che sempre in riga — stesso meccanismo gia'
-        usato per "Aggiungi competizione" (menuwrap/menu), non uno nuovo. -->
-   <span class="menuwrap">
+   <!-- Sessione e Ripristina non servono piu' nell'uso quotidiano: il menu
+        resta nel DOM (elementi con lo stesso id, JS invariato, zero rischio
+        di rompere altro) ma nascosto — non occupa spazio, non si vede. -->
+   <span class="tbsep" style="display:none"></span>
+   <span class="menuwrap" style="display:none">
     <button class="act ghost ico" id="moreBtn" title="Sessione e ripristina">
      <svg viewBox="0 0 20 20"><circle cx="4" cy="10" r="1.7" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1.7" fill="currentColor" stroke="none"/><circle cx="16" cy="10" r="1.7" fill="currentColor" stroke="none"/></svg></button>
     <div class="menu" id="moreMenu" style="min-width:250px">
@@ -332,7 +332,10 @@ small.flag{color:#E3C271}
    </span>
    <span class="peh" id="peHint" style="display:none"></span>
   </div>
- <div class="photobar" id="barraContenuto">
+ <div class="photobar" id="barraContenuto" style="flex-wrap:nowrap;overflow-x:auto;overflow-y:visible">
+  <!-- Una riga sola, come #barra: se non ci sta tutto scorre in
+       orizzontale invece di andare a capo e mangiarsi altezza per lo
+       stage — era il difetto di questa barra rispetto all'altra. -->
   <!-- Richiudibile a mano (come i gruppi di Anteprime): chi non sta
        lavorando su foto/loghi/social recupera una riga intera di altezza
        per lo stage. Ricordato per macchina, non per formato — resta
@@ -1596,8 +1599,13 @@ document.getElementById('cbCompVia').onclick=function(){
  window.addEventListener('resize',function(){if(m.classList.contains('on'))posiziona();});
  m.onclick=function(e){e.stopPropagation();};})();
 (function(){var b=document.getElementById('cbCompNew'),m=document.getElementById('cbCompMenu');
- b.onclick=function(e){e.stopPropagation();m.classList.toggle('on');};
+ // #barraContenuto ora e' overflow-x:auto (una riga sola, vedi sopra): stesso
+ // problema e stessa soluzione di #moreMenu, altrimenti il popover taglia.
+ function posiziona(){var r=b.getBoundingClientRect();
+  m.style.top=(r.bottom+7)+'px';m.style.right=(window.innerWidth-r.right)+'px';m.style.left='auto';}
+ b.onclick=function(e){e.stopPropagation();if(!m.classList.contains('on'))posiziona();m.classList.toggle('on');};
  document.addEventListener('click',function(){m.classList.remove('on');});
+ window.addEventListener('resize',function(){if(m.classList.contains('on'))posiziona();});
  m.onclick=function(e){e.stopPropagation();};})();
 document.getElementById('cbCompCarica').onclick=function(){
  var i=document.createElement('input');i.type='file';i.accept='image/*';
