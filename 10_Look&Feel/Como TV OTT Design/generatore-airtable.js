@@ -400,8 +400,6 @@ function applyEventToGenerator(evt) {
                  '). Le grafiche useranno lo sfondo di default: carica la foto a mano.', { male: true });
         }
       });
-  } else if (typeof avviso === 'function' && !evt.fotoUrl) {
-    avviso('<b>Nessuna foto su Airtable</b> per questa partita: caricala a mano dal blocco FOTO.');
   }
 
   // Aggiorna i campi nel DOM (aspetta che siano creati)
