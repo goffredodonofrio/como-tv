@@ -380,6 +380,17 @@ function applyEventToGenerator(evt) {
     window.AIRTABLE_REC = { id: evt.id, nome: eventLabel(evt), quando: Date.now() };
   }
 
+  // Nuova partita: ritaglio foto e mirino valevano per la partita precedente,
+  // su un'altra foto non hanno senso. Si azzerano SEMPRE al cambio partita,
+  // anche quando questa non porta una foto nuova (fotoNuova fa gia' lo stesso
+  // per adj.photo quando la porta, qui copre anche il caso senza foto e il mirino).
+  if (typeof STATE !== 'undefined' && typeof ITEMS !== 'undefined') {
+    ITEMS.forEach(function (it) { delete STATE[it.key].adj.photo; });
+  }
+  if (typeof MIRUSER !== 'undefined') {
+    Object.keys(MIRUSER).forEach(function (k) { delete MIRUSER[k]; });
+  }
+
   // Foto: allegato Airtable oppure link nel campo URL.
   if (evt.fotoUrl && typeof fotoNuova === 'function') {
     if (typeof avviso === 'function') avviso('Scarico la foto…');
