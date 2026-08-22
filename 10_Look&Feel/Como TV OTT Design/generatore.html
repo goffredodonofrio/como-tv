@@ -27,12 +27,18 @@ body{font-family:'Mazzard',system-ui,sans-serif;background:radial-gradient(120% 
 .top{display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid var(--line);background:rgba(10,15,36,.6)}
 .top b{font-weight:800}.top .tag{font-size:11px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--gold)}
 .wrap{display:flex;flex:1;min-height:0;overflow:hidden}
-.panel{width:322px;flex:none;border-right:1px solid var(--line);height:calc(100vh - var(--th,58px));overflow-y:auto;overflow-x:hidden;position:sticky;top:var(--th,58px)}
+.panel{width:var(--panel-w,322px);flex:none;border-right:1px solid var(--line);height:calc(100vh - var(--th,58px));overflow-y:auto;overflow-x:hidden;position:sticky;top:var(--th,58px)}
 .panel::-webkit-scrollbar{width:0;height:0}
 .panel{scrollbar-width:none}
 .pbody{padding:12px}
+/* Maniglia per allargare il pannello a mano: chi ha un 13" la lascia com'e',
+   chi ha piu' schermo se la tira — la larghezza si ricorda (localStorage),
+   non e' una taglia unica decisa una volta per tutti. */
+.splitter{width:7px;flex:none;cursor:col-resize;position:relative;z-index:5;margin-left:-4px}
+.splitter::after{content:'';position:absolute;top:0;bottom:0;left:3px;width:2px;background:var(--line);transition:background .12s,width .12s}
+.splitter:hover::after,.splitter.dragging::after{background:var(--gold);width:3px}
 .main{flex:1;padding:14px 16px;display:flex;flex-direction:column;gap:11px;min-width:0;min-height:0}
-.step{font-size:10px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin:0 0 5px;display:flex;align-items:center;gap:8px}
+.step{font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin:0 0 5px;display:flex;align-items:center;gap:8px}
 .step .n{width:18px;height:18px;border-radius:50%;background:var(--gold);color:var(--n900);display:inline-flex;align-items:center;justify-content:center;font-size:10px}
 .card{background:rgba(255,255,255,.03);border:1px solid rgba(245,241,230,.08);border-radius:12px;padding:10px;margin-bottom:10px}
 /* Lo step 4 non ha chrome proprio: i contenitori sono i due riquadri interni. */
@@ -45,6 +51,10 @@ body{font-family:'Mazzard',system-ui,sans-serif;background:radial-gradient(120% 
 label{display:block;font-size:11px;letter-spacing:.04em;color:var(--fg3);margin:8px 0 3px}
 label:first-child{margin-top:0}
 input[type=text],select{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(245,241,230,.14);border-radius:8px;color:var(--ivory);font:inherit;font-size:13px;padding:6px 10px;outline:none}
+/* Solo dentro il pannello: la toolbar in alto e' gia' stretta (overflow-x),
+   non le serve altro testo da far stare in riga. */
+.panel label{font-size:12px}
+.panel input[type=text],.panel select{font-size:14px}
 input:focus,select:focus{border-color:var(--gold)}
 select option{background:var(--n800);color:var(--ivory)}
 .rowf{display:flex;gap:8px}.rowf>*{flex:1}
@@ -57,7 +67,7 @@ select option{background:var(--n800);color:var(--ivory)}
 .imgrow .nm{flex:1;font-size:12px;color:var(--fg2)}
 .imgrow input[type=file]{font-size:11px;color:var(--fg3);width:150px}
 .imgrow button{background:transparent;border:1px solid var(--line);color:var(--fg2);border-radius:6px;font-size:11px;padding:4px 8px;cursor:pointer}
-.hintbox{font-size:11px;color:var(--fg3);line-height:1.5;margin-top:6px}
+.hintbox{font-size:12px;color:var(--fg3);line-height:1.5;margin-top:6px}
 .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .toolbar select{width:auto;min-width:220px}
 button.act{background:linear-gradient(160deg,var(--goldB),var(--gold));color:var(--n900);border:none;border-radius:999px;font:inherit;font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding:10px 16px;cursor:pointer}
@@ -357,6 +367,7 @@ small.flag{color:#E3C271}
    <div class="step"><span class="n">2</span>Anteprime</div>
    <div class="thumbs" id="thumbs"></div>
  </div></div>
+ <div class="splitter" id="panelSplitter" title="Trascina per allargare il pannello"></div>
  <div class="main">
   <div class="editbar" id="textBar" style="display:none">
    <span class="pbl" id="textBarTitle" style="color:var(--gold);font-size:11px;font-weight:800;letter-spacing:.18em">TESTO</span>
@@ -2866,6 +2877,35 @@ renderControls();renderStage();renderThumbs();
  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(mis);
  if(window.ResizeObserver){var ro=new ResizeObserver(function(){requestAnimationFrame(mis);});
   ro.observe(b);var swo=document.querySelector('.stagewrap');if(swo)ro.observe(swo);}})();
+// Maniglia larghezza pannello: si ricorda per macchina (localStorage), non per
+// sessione. Il ResizeObserver sopra reagisce solo ai cambi di ALTEZZA dello
+// stage, quindi qui il ridisegno di righelli/cornice va chiamato a mano.
+(function(){
+ var panel=document.querySelector('.panel'),sp=document.getElementById('panelSplitter');
+ if(!panel||!sp)return;
+ var KEY='comotv_panel_w',MIN=280,MAX=640;
+ function apply(w){w=Math.max(MIN,Math.min(MAX,w));document.documentElement.style.setProperty('--panel-w',w+'px');return w;}
+ var saved=parseInt(localStorage.getItem(KEY),10);
+ if(saved)apply(saved);
+ var dragging=false,startX=0,startW=0,pending=false;
+ function refresh(){pending=false;if(window.drawRulers)drawRulers();if(window.stageMarks)stageMarks();}
+ sp.addEventListener('mousedown',function(e){
+  dragging=true;sp.classList.add('dragging');startX=e.clientX;startW=panel.getBoundingClientRect().width;
+  document.body.style.userSelect='none';e.preventDefault();
+ });
+ window.addEventListener('mousemove',function(e){
+  if(!dragging)return;
+  apply(startW+(e.clientX-startX));
+  if(!pending){pending=true;requestAnimationFrame(refresh);}
+ });
+ window.addEventListener('mouseup',function(){
+  if(!dragging)return;
+  dragging=false;sp.classList.remove('dragging');document.body.style.userSelect='';
+  var w=Math.round(panel.getBoundingClientRect().width);
+  try{localStorage.setItem(KEY,w);}catch(e){}
+  refresh();
+ });
+})();
 prefCarica();prefStato();sessAggiornaElenco();sessProponiNome();passoUI();syncZip();renderSocial();
 loadNat(DEFAULT_PHOTO,function(){applyFocalAll(function(){renderStage();refreshThumbs();});});
 </script>
