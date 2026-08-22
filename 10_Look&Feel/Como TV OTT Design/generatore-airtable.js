@@ -380,12 +380,13 @@ function applyEventToGenerator(evt) {
     window.AIRTABLE_REC = { id: evt.id, nome: eventLabel(evt), quando: Date.now() };
   }
 
-  // Nuova partita: ritaglio foto e mirino valevano per la partita precedente,
-  // su un'altra foto non hanno senso. Si azzerano SEMPRE al cambio partita,
-  // anche quando questa non porta una foto nuova (fotoNuova fa gia' lo stesso
-  // per adj.photo quando la porta, qui copre anche il caso senza foto e il mirino).
+  // Nuova partita: ogni regolazione manuale (foto, ma anche testi spostati o
+  // ridimensionati, loghi, ecc.) valeva per la partita precedente, su testi e
+  // dati diversi non ha senso. Si azzera SEMPRE l'intero adj di ogni formato al
+  // cambio partita, anche quando questa non porta una foto nuova (fotoNuova fa
+  // gia' lo stesso per adj.photo quando la porta, qui copre tutto il resto).
   if (typeof STATE !== 'undefined' && typeof ITEMS !== 'undefined') {
-    ITEMS.forEach(function (it) { delete STATE[it.key].adj.photo; });
+    ITEMS.forEach(function (it) { STATE[it.key].adj = {}; });
   }
   if (typeof MIRUSER !== 'undefined') {
     Object.keys(MIRUSER).forEach(function (k) { delete MIRUSER[k]; });
