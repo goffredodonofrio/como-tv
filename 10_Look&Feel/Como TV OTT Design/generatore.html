@@ -578,29 +578,23 @@ function ytWrap(txt,size,ls,maxW){var words=String(txt||'').split(/\s+/),lines=[
 // ==== INTERVISTE — su riferimento diretto (grafica "UDINESE CALCIO vs.
 // COMO 1907" con citazione lunga). Foto piena, blocco ancorato in basso a
 // sinistra, dal basso verso l'alto: firma opzionale -> citazione (va a capo
-// da sola) -> filetto ornamentale -> titolo partita. Le virgolette decorative
-// sono state tolte: la citazione va a bandiera, senza rientro sulla prima
-// riga. Titolo in Abril Display corsivo (l'unico taglio disponibile: niente
+// -> titolo partita. La citazione e' stata tolta dal disegno, insieme alle
+// virgolette e al filetto ornamentale che la accompagnavano: restano il titolo
+// e la firma di chi parla. Titolo in Abril Display corsivo (l'unico taglio disponibile: niente
 // tondo, ci prendiamo la sua inclinazione invece di forzarne uno finto);
 // citazione in Poppins (Mazzard non ha un taglio arrotondato come quello
 // del riferimento — qui, solo per il corpo della citazione, si esce dalle
 // due famiglie di sistema). Titolo partita (home/away) E citazione/firma
-// (intQuote/intName) sono TUTTI campi CONDIVISI (SHAREDKEYS+SHARED, non
+// (intName) sono TUTTI campi CONDIVISI (SHAREDKEYS+SHARED, non
 // STATE per-formato): li si scrive su un formato Interviste e compaiono
 // aggiornati sugli altri tre, com'era gia' per home/away e come l'utente
 // ha chiesto anche per citazione/firma dopo averle trovate "ancorate al
 // formato". Sicuro perche' nessun ALTRO formato del generatore legge
-// intQuote/intName, quindi non c'e' rischio di far comparire la citazione
-// di un'intervista in un formato che non e' un'intervista.
+// intName, quindi non c'e' rischio di far comparire la firma di
+// un'intervista in un formato che non e' un'intervista.
 function AT(x,y,t,o){o=o||{};var w=o.w||400,fill=o.fill||C.ivory,ls=o.ls||0,fs=o.fs||'italic';
  var tx=o.upper===false?esc(t):esc(up(t));
  return '<text x="'+x+'" y="'+y+'" font-family="\'Abril Display\',Georgia,serif" font-style="'+fs+'" font-weight="'+w+'" font-size="'+o.s+'" fill="'+fill+'" letter-spacing="'+ls+'">'+tx+'</text>';}
-// Filetto ornamentale oro: due segmenti + un piccolo rombo al centro, come
-// il divisore sotto il titolo nel riferimento.
-function ornRule(x,y,w,col){col=col||C.gold;var cx=x+w/2,d=8;
- return '<line x1="'+x+'" y1="'+y+'" x2="'+(cx-d*2)+'" y2="'+y+'" stroke="'+col+'" stroke-width="1.5" stroke-opacity=".85"/>'
-  +'<line x1="'+(cx+d*2)+'" y1="'+y+'" x2="'+(x+w)+'" y2="'+y+'" stroke="'+col+'" stroke-width="1.5" stroke-opacity=".85"/>'
-  +'<rect x="'+(cx-d/2)+'" y="'+(y-d/2)+'" width="'+d+'" height="'+d+'" fill="'+col+'" transform="rotate(45 '+cx+' '+y+')"/>';}
 // Titolo partita: riga 1 = home (Abril dritto^H^H^H corsivo, leggero), riga
 // 2 = "vs." piccolo + away grande in oro (stessa idea di t-away in
 // mLandscape: la seconda squadra prende il risalto/il colore).
@@ -610,13 +604,6 @@ function intMatchTitle(x,y1,y2,ss,vsS,home,away,gid){
   +AT(x,y2,vsTxt,{s:vsS,w:400,fill:C.gold,ls:1})
   +AT(x+vsW,y2,away,{s:ss,w:800,fill:'url(#'+gid+')'});
 }
-// Citazione con a-capo automatico (ytWrap), tutte le righe a bandiera.
-// Font Poppins (non Mazzard): nel riferimento il corpo della citazione e'
-// un bastone arrotondato, che Mazzard non ha in nessun taglio disponibile.
-var QUOTE_FONT="'Poppins','Quicksand',-apple-system,'Segoe UI',sans-serif";
-function quoteLines(x,indentX,lineYs,lines,size){var out='';
- for(var i=0;i<lines.length;i++)out+=T(i===0?indentX:x,lineYs[i],lines[i],{s:size,w:400,fill:C.ivory,ls:0,upper:false,family:QUOTE_FONT});
- return out;}
 // Sfumatura scura dal BASSO (dove sta il blocco titolo+citazione) verso
 // l'alto, dove la foto resta pulita.
 function intBottomScrim(gid){return '<linearGradient id="'+gid+'" x1="0" y1="1" x2="0" y2="0">'
@@ -632,52 +619,31 @@ function intBottomScrimStrong(gid){return '<linearGradient id="'+gid+'" x1="0" y
 // piu' coprente e piu' esteso di iPortrait).
 function iLandscape(W,H,p,I,A){
  var M=R(W*0.032),bm=R(H*0.065);
- var home=p.home||'',away=p.away||'',q=p.intQuote||'',nm=p.intName||'';
- var qS=R(H*0.05),lh=R(qS*1.34),maxW=R(W*0.46);
- // Niente virgolette: la citazione va a bandiera, prima riga compresa. Il
- // rientro serviva solo a scansare il segno.
- var lines=ytWrap(q,qS,0,maxW);
+ var home=p.home||'',away=p.away||'',nm=p.intName||'';
  var nameS=R(H*0.03),cursorY=H-bm,nameY=null;
- if(nm){nameY=cursorY;cursorY-=R(nameS*1.9);}
- var lineYs=[];for(var i=lines.length-1;i>=0;i--){lineYs[i]=cursorY;cursorY-=lh;}
- // Tolte le virgolette il filetto va riequilibrato: prima lo spazio sotto era
- // occupato dal segno. Stesso bianco ottico sopra e sotto — sotto si aggiunge
- // l'altezza delle maiuscole, perche' li' la misura arriva alla linea di base.
- var gapF=R(H*0.06);
- cursorY=lineYs[0]-gapF-R(qS*0.7);
- var dividerY=cursorY,dividerW=R(W*0.16);
- cursorY-=gapF;
+ if(nm){nameY=cursorY;cursorY-=R(nameS*2.4);}
  var ss=R(H*0.088),vsS=R(H*0.036),titleY2=cursorY,titleY1=titleY2-R(ss*0.85);
- return '<defs>'+intBottomScrimStrong('ilS')+goldGrad('ilG')+'</defs>'+GPHOTO(W,H,A,I)
+ // Velo leggero: il velo forte serviva a reggere il blocco di citazione, che
+ // occupava mezza grafica. Con due sole righe la foto puo' tornare a vedersi.
+ return '<defs>'+intBottomScrim('ilS')+goldGrad('ilG')+'</defs>'+GPHOTO(W,H,A,I)
   +'<rect width="'+W+'" height="'+H+'" fill="url(#ilS)" pointer-events="none"/>'
   +(p.showLogo===false?'':brandMark(A,M,R(H*0.047),R(H*0.10)))
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
   +G('t-title',A,intMatchTitle(M,titleY1,titleY2,ss,vsS,home,away,'ilG'))
-  +G('t-rule',A,ornRule(M,dividerY,dividerW))
-  +G('t-name',A,quoteLines(M,M,lineYs,lines,qS))
   +(nm?G('t-tag',A,AT(M,nameY,'— '+nm,{s:nameS,w:400,fill:C.gold,ls:1})):'');
 }
 // Portrait 2:3 — stessa impaginazione, proporzioni sulla larghezza.
 function iPortrait(W,H,p,I,A){
  var M=R(W*0.072),bm=R(H*0.045);
- var home=p.home||'',away=p.away||'',q=p.intQuote||'',nm=p.intName||'';
- var qS=R(W*0.043),lh=R(qS*1.34),maxW=R(W*0.86);
- var lines=ytWrap(q,qS,0,maxW);
+ var home=p.home||'',away=p.away||'',nm=p.intName||'';
  var nameS=R(W*0.03),cursorY=H-bm,nameY=null;
- if(nm){nameY=cursorY;cursorY-=R(nameS*1.9);}
- var lineYs=[];for(var i=lines.length-1;i>=0;i--){lineYs[i]=cursorY;cursorY-=lh;}
- var gapF=R(H*0.045);
- cursorY=lineYs[0]-gapF-R(qS*0.7);
- var dividerY=cursorY,dividerW=R(W*0.22);
- cursorY-=gapF;
+ if(nm){nameY=cursorY;cursorY-=R(nameS*2.4);}
  var ss=R(W*0.075),vsS=R(W*0.032),titleY2=cursorY,titleY1=titleY2-R(ss*0.85);
  return '<defs>'+intBottomScrim('ipS')+goldGrad('ipG')+'</defs>'+GPHOTO(W,H,A,I)
   +'<rect width="'+W+'" height="'+H+'" fill="url(#ipS)" pointer-events="none"/>'
   +(p.showLogo===false?'':brandMark(A,M,R(H*0.03),R(H*0.055)))
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.03))):'')
   +G('t-title',A,intMatchTitle(M,titleY1,titleY2,ss,vsS,home,away,'ipG'))
-  +G('t-rule',A,ornRule(M,dividerY,dividerW))
-  +G('t-name',A,quoteLines(M,M,lineYs,lines,qS))
   +(nm?G('t-tag',A,AT(M,nameY,'— '+nm,{s:nameS,w:400,fill:C.gold,ls:1})):'')
   +hair(W,H,H-5);
 }
@@ -934,16 +900,16 @@ var FMT={
  // Interviste — cover col volto dell'intervistato (vedi iLandscape), sui
  // formati di Piattaforma live (landscape, portrait, banner-top, banner-mid).
  int_landscape_1920x1080:{label:'Interviste · Landscape (1920×1080)',group:'Interviste',w:1920,h:1080,useComp:false,
-  fields:[{k:'home',l:'Squadra casa (titolo)'},{k:'away',l:'Squadra ospite (titolo, in risalto)'},{k:'intQuote',l:'Citazione (va a capo da sola)'},{k:'intName',l:'Firma (facoltativa, es. Nome Cognome)'}],images:Imatch,
+  fields:[{k:'home',l:'Squadra casa (titolo)'},{k:'away',l:'Squadra ospite (titolo, in risalto)'},{k:'intName',l:'Firma (facoltativa, es. Nome Cognome)'}],images:Imatch,
   gen:function(p,I,A){return iLandscape(1920,1080,p,I,A);}},
  int_portrait_1200x1800:{label:'Interviste · Portrait (1200×1800)',group:'Interviste',w:1200,h:1800,useComp:false,
-  fields:[{k:'home',l:'Squadra casa (titolo)'},{k:'away',l:'Squadra ospite (titolo, in risalto)'},{k:'intQuote',l:'Citazione (va a capo da sola)'},{k:'intName',l:'Firma (facoltativa, es. Nome Cognome)'}],images:Imatch,
+  fields:[{k:'home',l:'Squadra casa (titolo)'},{k:'away',l:'Squadra ospite (titolo, in risalto)'},{k:'intName',l:'Firma (facoltativa, es. Nome Cognome)'}],images:Imatch,
   gen:function(p,I,A){return iPortrait(1200,1800,p,I,A);}},
  int_banner_top_1920x1080:{label:'Interviste · Banner top (1920×1080)',group:'Interviste',w:1920,h:1080,useComp:false,
-  fields:[{k:'home',l:'Squadra casa (titolo)'},{k:'away',l:'Squadra ospite (titolo, in risalto)'},{k:'intQuote',l:'Citazione (va a capo da sola)'},{k:'intName',l:'Firma (facoltativa, es. Nome Cognome)'}],images:Imatch,
+  fields:[{k:'home',l:'Squadra casa (titolo)'},{k:'away',l:'Squadra ospite (titolo, in risalto)'},{k:'intName',l:'Firma (facoltativa, es. Nome Cognome)'}],images:Imatch,
   gen:function(p,I,A){return iLandscape(1920,1080,p,I,A);}},
  int_banner_mid_1506x412:{label:'Interviste · Banner mid (1506×412)',group:'Interviste',w:1506,h:412,useComp:false,
-  fields:[{k:'home',l:'Squadra casa (titolo)'},{k:'away',l:'Squadra ospite (titolo, in risalto)'},{k:'intQuote',l:'Citazione (va a capo da sola)'},{k:'intName',l:'Firma (facoltativa, es. Nome Cognome)'}],images:Imatch,
+  fields:[{k:'home',l:'Squadra casa (titolo)'},{k:'away',l:'Squadra ospite (titolo, in risalto)'},{k:'intName',l:'Firma (facoltativa, es. Nome Cognome)'}],images:Imatch,
   gen:function(p,I,A){return iBanner(1506,412,p,I,A);}},
 
  // Football Show — su modello di Ale (landscape/portrait), banner estrapolati
@@ -1243,12 +1209,12 @@ var FMTNAMES={talent:'Talent Hunters',goleada:'Goleada',clasicos:'Los Clásicos'
 var FMTNUM={talent:'01',goleada:'02',clasicos:'03',golden:'04'};
 
 // campi CONDIVISI tra tutte le grafiche (modifichi in una -> cambiano tutte)
-// intQuote/intName sono qui (condivisi) e non in DEF (per-formato) apposta:
+// intName e' qui (condiviso) e non in DEF (per-formato) apposta:
 // li legge solo Interviste, nei suoi 4 formati, e li si vuole modificare da
 // uno solo e vederli aggiornati ovunque — stessa logica di home/away, non
 // serve un meccanismo a parte visto che nessun altro formato li tocca.
-var SHAREDKEYS={home:1,away:1,comp:1,compBase:1,round:1,date:1,time:1,preshow:1,english:1,englishLabel:1,hlKind:1,compKey:1,intQuote:1,intName:1};
-var SHARED={home:'West Ham',away:'Portsmouth',compBase:'Carabao Cup',round:'64esimi',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'Football Show 15:10',english:false,englishLabel:'English Commentary',hlKind:'Highlights',compKey:'',showLogo:true,showCta:true,showPreshow:true,showLive:false,intQuote:'It’s going to be a very special season for us. We’ll be competing in three competitions, which is a new experience for this team.',intName:'Nome Cognome'};
+var SHAREDKEYS={home:1,away:1,comp:1,compBase:1,round:1,date:1,time:1,preshow:1,english:1,englishLabel:1,hlKind:1,compKey:1,intName:1};
+var SHARED={home:'West Ham',away:'Portsmouth',compBase:'Carabao Cup',round:'64esimi',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'Football Show 15:10',english:false,englishLabel:'English Commentary',hlKind:'Highlights',compKey:'',showLogo:true,showCta:true,showPreshow:true,showLive:false,intName:'Nome Cognome'};
 function composeComp(){SHARED.comp=(SHARED.compBase||'')+(SHARED.round?(' · '+SHARED.round):'');}
 var ROUNDS=(function(){var a=[];for(var i=1;i<=48;i++)a.push('Giornata '+(i<10?'0'+i:i));return a.concat(['64esimi','32esimi','16esimi','Ottavi','Quarti','Semifinale andata','Semifinale ritorno','Finale andata','Finale ritorno','Finale']);})();
 // Immagini CONDIVISE fra tutti i formati (foto + loghi): carichi una volta -> appaiono ovunque
@@ -2554,14 +2520,23 @@ function prefRaccogli(){
   Object.keys(a).forEach(function(k){if(k!=='photo')o[k]=a[k];});
   if(Object.keys(o).length)adj[it.key]=o;
  });
- return {versione:1,mirini:MIR,volto:{r:FOCAL.r},elementi:adj};
+ return {versione:2,mirini:MIR,volto:{r:FOCAL.r},elementi:adj};
 }
+// Gli spostamenti salvati sono scarti rispetto alla posizione di fabbrica: se
+// quella posizione cambia perche' cambia il disegno, lo scarto vecchio sposta
+// l'elemento nel posto sbagliato. E' quello che e' successo alle Interviste
+// quando sono spariti virgolette e filetto: il filetto finiva sul titolo e la
+// firma sopra la citazione, mentre un formato con lo STESSO disegno ma senza
+// spostamenti salvati (banner-top) restava corretto. Le regolazioni salvate
+// prima di quel cambio vengono quindi ignorate per i soli formati Interviste.
 function prefApplica(d){
  if(!d)return false;
+ var vecchie=(d.versione||1)<2;
  if(d.mirini)Object.keys(d.mirini).forEach(function(k){if(BYKEY[k])MIR[k]=d.mirini[k];});
  if(d.volto&&d.volto.r)FOCAL.r=d.volto.r;
  if(d.elementi)Object.keys(d.elementi).forEach(function(k){
   if(!STATE[k])return;
+  if(vecchie&&(CAT[k]||(BYKEY[k]&&BYKEY[k].group))==='Interviste')return;
   Object.keys(d.elementi[k]).forEach(function(o){if(o!=='photo')STATE[k].adj[o]=d.elementi[k][o];});
  });
  return true;
