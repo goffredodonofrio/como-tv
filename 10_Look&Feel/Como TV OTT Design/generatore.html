@@ -1213,8 +1213,30 @@ var FMTNUM={talent:'01',goleada:'02',clasicos:'03',golden:'04'};
 // li legge solo Interviste, nei suoi 4 formati, e li si vuole modificare da
 // uno solo e vederli aggiornati ovunque — stessa logica di home/away, non
 // serve un meccanismo a parte visto che nessun altro formato li tocca.
-var SHAREDKEYS={home:1,away:1,comp:1,compBase:1,round:1,date:1,time:1,preshow:1,english:1,englishLabel:1,hlKind:1,compKey:1,intName:1};
+// Un testo si scrive una volta e vale per tutti i formati che hanno quel campo:
+// cambiare il titolo sul portrait e ritrovarlo diverso sul banner era il modo
+// piu' rapido di pubblicare due grafiche che si contraddicono.
+// Restano FUORI, e non per dimenticanza:
+//  - name/num delle Format card: sono i quattro format (Talent Hunters, Goleada,
+//    Los Clasicos, Golden 90), condividerli li ridurrebbe a uno solo;
+//  - gli interruttori showLogo/showLive/showCta/showPreshow, che vanno accesi
+//    formato per formato (e' come li hai voluti);
+//  - le immagini, che hanno gia' una loro memoria comune (SHIMG).
+var SHAREDKEYS={home:1,away:1,comp:1,compBase:1,round:1,date:1,time:1,preshow:1,english:1,englishLabel:1,hlKind:1,compKey:1,intName:1,
+ fsEyebrow:1,fsTitle:1,
+ ytKicker:1,ytTitle:1,ytName:1,ytChip:1,ytgTitle:1,
+ ytsL1:1,ytsL2:1,ytsName:1,ytsKicker:1,
+ ytoL1:1,ytoL2:1,ytoName:1,
+ yteKicker:1,yteTitle:1,yteGold:1,yteSub:1,
+ ytiKicker:1,ytiTitle:1,ytiSub:1,
+ ytvChip:1,ytvKicker:1,ytvTitle:1,
+ heroKicker:1,heroLine1:1,heroLine2:1,title:1,
+ novKicker:1,novTitle:1,badgeName:1,replName:1};
 var SHARED={home:'West Ham',away:'Portsmouth',compBase:'Carabao Cup',round:'64esimi',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'Football Show 15:10',english:false,englishLabel:'English Commentary',hlKind:'Highlights',compKey:'',showLogo:true,showCta:true,showPreshow:true,showLive:false,intName:'Nome Cognome'};
+// I campi appena diventati comuni devono partire dal loro valore di fabbrica:
+// prima lo prendeva ogni formato per conto suo da DEF, ora c'e' un valore solo.
+Object.keys(SHAREDKEYS).forEach(function(k){
+ if(SHARED[k]===undefined)SHARED[k]=(DEF[k]!==undefined?DEF[k]:'');});
 function composeComp(){SHARED.comp=(SHARED.compBase||'')+(SHARED.round?(' · '+SHARED.round):'');}
 var ROUNDS=(function(){var a=[];for(var i=1;i<=48;i++)a.push('Giornata '+(i<10?'0'+i:i));return a.concat(['64esimi','32esimi','16esimi','Ottavi','Quarti','Semifinale andata','Semifinale ritorno','Finale andata','Finale ritorno','Finale']);})();
 // Immagini CONDIVISE fra tutti i formati (foto + loghi): carichi una volta -> appaiono ovunque
@@ -2368,17 +2390,25 @@ function rasterize(svgStr,w,h){return new Promise(function(res,rej){var img=new 
   })();
  };
  img.onerror=rej;img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(svgStr)));});}
+// Nome della partita o dell'evento, ripulito per farne un nome di file. Con un
+// programma (noVs) le due righe sono titolo e sottotitolo, non due squadre.
+function nomeEvento(){
+ var a=String(SHARED.home||'').trim(),b=String(SHARED.away||'').trim();
+ var base=b?(a+'-'+b):a;
+ base=base.replace(/[\\\/:*?"<>|]/g,'').replace(/\s+/g,' ').trim().replace(/ /g,'_');
+ return base||'Como_TV_OTT';
+}
 function dl(blob,name){var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(a.href);},3000);}
 function busy(on,t){document.getElementById('busy').className='busy'+(on?' on':'');if(t)document.getElementById('busyTxt').textContent=t;}
-document.getElementById('dlPng').onclick=function(){var it=BYKEY[current];busy(true,'Rendo JPG…');document.fonts.ready.then(function(){return rasterize(svgExport(current),it.w,it.h);}).then(function(b){dl(b,fname(current)+'.jpg');busy(false);});};
+document.getElementById('dlPng').onclick=function(){var it=BYKEY[current];busy(true,'Rendo JPG…');document.fonts.ready.then(function(){return rasterize(svgExport(current),it.w,it.h);}).then(function(b){dl(b,nomeEvento()+'_'+fname(current)+'.jpg');busy(false);});};
 document.getElementById('dlAll').onclick=function(){if(!window.JSZip){alert('JSZip non caricato (serve connessione).');return;}
  var sel=ITEMS.filter(function(it){return EXPSEL[it.key];});
  if(!sel.length){alert('Nessun formato selezionato: spunta almeno una miniatura nella colonna di destra.');return;}
  busy(true,'Esporto '+sel.length+' formati…');var zip=new JSZip();var usedNames={};
  document.fonts.ready.then(function(){var ch=Promise.resolve();sel.forEach(function(it,i){ch=ch.then(function(){busy(true,'Esporto '+fname(it.key)+'… ('+(i+1)+'/'+sel.length+')');
    var nm=fname(it.key);if(usedNames[nm]){usedNames[nm]++;nm=nm+'-'+usedNames[nm];}else{usedNames[nm]=1;}
-   return rasterize(svgExport(it.key),it.w,it.h).then(function(b){zip.file(nm+'.jpg',b);});});});return ch;})
- .then(function(){return zip.generateAsync({type:'blob'});}).then(function(b){dl(b,'Como_TV_OTT_export.zip');busy(false);}).catch(function(e){busy(false);alert('Errore: '+e);});};
+   return rasterize(svgExport(it.key),it.w,it.h).then(function(b){zip.file(nomeEvento()+'_'+nm+'.jpg',b);});});});return ch;})
+ .then(function(){return zip.generateAsync({type:'blob'});}).then(function(b){dl(b,nomeEvento()+'.zip');busy(false);}).catch(function(e){busy(false);alert('Errore: '+e);});};
 
 // ---------- Undo / Redo + scorciatoie ----------
 var undoStack=[],redoStack=[],_lastPush=0;
@@ -2485,7 +2515,9 @@ function sessApplica(d,cb){
            if(d.img.logoComp)SHIMG.logoComp=d.img.logoComp;else delete SHIMG.logoComp;}
  if(d.export)Object.keys(d.export).forEach(function(k){if(BYKEY[k])EXPSEL[k]=d.export[k];});
  ITEMS.forEach(function(it){
-  if(d.vals&&d.vals[it.key])STATE[it.key].vals=d.vals[it.key];
+  if(d.vals&&d.vals[it.key]){var v={};
+   Object.keys(d.vals[it.key]).forEach(function(k){if(!SHAREDKEYS[k])v[k]=d.vals[it.key][k];});
+   STATE[it.key].vals=v;}
   if(d.crop&&d.crop[it.key])STATE[it.key].adj.photo=d.crop[it.key];
   else delete STATE[it.key].adj.photo;});
  // la foto va misurata prima di ridisegnare, altrimenti il ritaglio non regge
