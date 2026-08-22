@@ -574,17 +574,23 @@ function quoteLines(x,indentX,lineYs,lines,size){var out='';
 function intBottomScrim(gid){return '<linearGradient id="'+gid+'" x1="0" y1="1" x2="0" y2="0">'
  +'<stop offset="0" stop-color="'+SCRIM+'" stop-opacity=".97"/><stop offset=".24" stop-color="'+SCRIM+'" stop-opacity=".9"/>'
  +'<stop offset=".55" stop-color="#0A0F24" stop-opacity=".5"/><stop offset=".82" stop-color="#0A0F24" stop-opacity=".08"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>';}
+// Variante piu' coprente, per landscape/banner-top: il testo e' cresciuto
+// e la foto qui deve restare un elemento secondario, non il protagonista.
+function intBottomScrimStrong(gid){return '<linearGradient id="'+gid+'" x1="0" y1="1" x2="0" y2="0">'
+ +'<stop offset="0" stop-color="'+SCRIM+'" stop-opacity=".98"/><stop offset=".32" stop-color="'+SCRIM+'" stop-opacity=".94"/>'
+ +'<stop offset=".62" stop-color="#0A0F24" stop-opacity=".68"/><stop offset=".88" stop-color="#0A0F24" stop-opacity=".2"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>';}
 
-// Landscape 16:9.
+// Landscape 16:9 — testo grande, la foto e' un elemento secondario (velo
+// piu' coprente e piu' esteso di iPortrait).
 function iLandscape(W,H,p,I,A){
- var M=R(W*0.032),bm=R(H*0.07);
+ var M=R(W*0.032),bm=R(H*0.065);
  var home=p.home||'',away=p.away||'',q=p.intQuote||'',nm=p.intName||'';
- var qS=R(H*0.036),lh=R(qS*1.34),maxW=R(W*0.42),qmS=R(H*0.1);
+ var qS=R(H*0.05),lh=R(qS*1.34),maxW=R(W*0.46),qmS=R(H*0.135);
  var indentW=R(qmS*0.5);
  var probe=ytWrap(q,qS,0,Math.max(40,maxW-indentW)),firstLine=probe[0]||'';
  var rest=q.slice(firstLine.length).trim();
  var lines=[firstLine].concat(rest?ytWrap(rest,qS,0,maxW):[]);
- var nameS=R(H*0.024),cursorY=H-bm,nameY=null;
+ var nameS=R(H*0.03),cursorY=H-bm,nameY=null;
  if(nm){nameY=cursorY;cursorY-=R(nameS*1.9);}
  var lineYs=[];for(var i=lines.length-1;i>=0;i--){lineYs[i]=cursorY;cursorY-=lh;}
  var qmY=lineYs[0];
@@ -592,10 +598,10 @@ function iLandscape(W,H,p,I,A){
  // dimensione): il distacco dal filetto/titolo deve tenerne conto, non un
  // margine fisso, altrimenti si sovrappongono (bug visto in test).
  cursorY=qmY-R(qmS*0.85);
- var dividerY=cursorY,dividerW=R(W*0.13);
- cursorY-=R(H*0.055);
- var s2=R(H*0.072),s1=R(H*0.042),vsS=R(H*0.026),titleY2=cursorY,titleY1=titleY2-R(s2*0.85);
- return '<defs>'+intBottomScrim('ilS')+goldGrad('ilG')+'</defs>'+GPHOTO(W,H,A,I)
+ var dividerY=cursorY,dividerW=R(W*0.16);
+ cursorY-=R(H*0.06);
+ var s2=R(H*0.098),s1=R(H*0.058),vsS=R(H*0.036),titleY2=cursorY,titleY1=titleY2-R(s2*0.85);
+ return '<defs>'+intBottomScrimStrong('ilS')+goldGrad('ilG')+'</defs>'+GPHOTO(W,H,A,I)
   +'<rect width="'+W+'" height="'+H+'" fill="url(#ilS)" pointer-events="none"/>'
   +(p.showLogo===false?'':brandMark(A,M,R(H*0.047),R(H*0.10)))
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
@@ -633,21 +639,28 @@ function iPortrait(W,H,p,I,A){
   +(nm?G('t-tag',A,AT(M,nameY,'— '+nm,{s:nameS,w:400,fill:C.gold,ls:1})):'')
   +hair(W,H,H-5);
 }
-// Banner mid (1506×412) — troppo bassa per il blocco citazione: resta solo
-// il titolo partita (con lo stesso lockup Abril) + firma opzionale.
+// Banner mid (1506×412) — troppo bassa per il blocco citazione. Se c'e' una
+// firma, e' lei il protagonista (grande, Mazzard) con la partita piccola
+// sotto (Abril corsivo, riga unica); senza firma resta il titolo partita
+// da solo, come prima.
 function iBanner(W,H,p,I,A){
  var M=R(W*0.024);
  var home=p.home||'',away=p.away||'',nm=p.intName||'';
  var logoH=R(H*0.16);
- var s2=R(H*0.26),s1=R(H*0.13),vsS=R(H*0.09),y1=R(H*0.4),y2=y1+R(s2*0.85);
- var attrY=R(H*0.9),attrS=R(H*0.09);
  var leftFade='<linearGradient id="ibL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".6" stop-color="'+SCRIM+'" stop-opacity=".85"/><stop offset=".88" stop-color="#0A0F24" stop-opacity=".1"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>';
- return '<defs>'+leftFade+goldGrad('ibG')+'</defs>'+GPHOTO(W,H,A,I)
+ var base='<defs>'+leftFade+goldGrad('ibG')+'</defs>'+GPHOTO(W,H,A,I)
   +'<rect width="'+W+'" height="'+H+'" fill="url(#ibL)" pointer-events="none"/>'
   +(p.showLogo===false?'':brandMark(A,M,R(H*0.09),logoH))
-  +(p.live?G('live',A,livePill(W-M-176,R(H*0.14))):'')
-  +G('t-title',A,intMatchTitle(M,y1,y2,s1,s2,vsS,home,away,'ibG'))
-  +(nm?G('t-tag',A,AT(M,attrY,'— '+nm,{s:attrS,w:400,fill:C.gold,ls:1})):'');
+  +(p.live?G('live',A,livePill(W-M-176,R(H*0.14))):'');
+ if(nm){
+  var nameS=ytFit(up(nm),R(H*0.36),-2,R(W*0.62)),nameY=R(H*0.46);
+  var mS=R(H*0.105),mY=R(H*0.75);
+  return base
+   +G('t-title',A,T(M,nameY,nm,{s:nameS,w:800,fill:C.ivory,ls:-2}))
+   +G('t-tag',A,AT(M,mY,home+'  vs.  '+away,{s:mS,w:400,fill:C.gold,ls:1}));
+ }
+ var s2=R(H*0.26),s1=R(H*0.13),vsS=R(H*0.09),y1=R(H*0.4),y2=y1+R(s2*0.85);
+ return base+G('t-title',A,intMatchTitle(M,y1,y2,s1,s2,vsS,home,away,'ibG'));
 }
 
 // Foto laterale che si dissolve nel fondo (come ytPhotoSoft, ma parametrica).
