@@ -165,12 +165,6 @@ body.editing .stagewrap{padding:16px 16px 30px}
 .segsel button.on{background:var(--gold);color:var(--n900)}
 .segsel button svg{width:13px;height:13px;flex:none;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
 .segsel button:not(.on) svg{visibility:hidden;width:0}
-.toolsToggle{background:transparent;border:1px solid var(--line);color:var(--fg2);border-radius:8px;
- font:inherit;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
- padding:7px 11px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;flex:none;white-space:nowrap}
-.toolsToggle:hover{border-color:var(--gold);color:var(--ivory)}
-.toolsToggle .tw{font-size:10px;color:var(--gold);transition:transform .15s;display:inline-block}
-.toolsToggle.closed .tw{transform:rotate(-90deg)}
 .menuwrap{position:relative;flex:none}
 .menu{display:none;position:absolute;right:0;top:calc(100% + 7px);z-index:40;min-width:230px;
  background:#141A31;border:1px solid var(--line);border-radius:10px;padding:7px;box-shadow:0 18px 40px -12px #000}
@@ -302,8 +296,6 @@ small.flag{color:#E3C271}
     <svg viewBox="0 0 20 20"><path d="M10 2.5v11M10 13.5 6 9.5M10 13.5l4-4M3 16.5h14"/></svg></button>
    <button class="act ico" id="dlAll" title="Scarica in un file ZIP i formati spuntati nella colonna di destra">
     <svg viewBox="0 0 20 20"><path d="M2.5 6.5h15v11h-15zM2.5 6.5 5 2.5h10l2.5 4M10 2.5v4M8 10h4M8 12.5h4"/></svg><span id="zipN">ZIP</span></button>
-   <button class="act ghost ico on" id="lockBtn" title="Blocca gli elementi: da chiuso non si spostano per sbaglio">
-    <svg viewBox="0 0 20 20"><rect x="4" y="8.5" width="12" height="9" rx="1.5"/><path d="M6.8 8.5V6a3.2 3.2 0 0 1 6.4 0v2.5"/></svg></button>
    <!-- Sessione e Ripristina non servono piu' nell'uso quotidiano: il menu
         resta nel DOM (elementi con lo stesso id, JS invariato, zero rischio
         di rompere altro) ma nascosto — non occupa spazio, non si vede. -->
@@ -334,14 +326,7 @@ small.flag{color:#E3C271}
    <span class="tbsep"></span>
   <!-- Le due barre erano separate: ora e' tutto lo stesso #barra, una riga
        sola che scorre in orizzontale se non ci sta invece di andare a capo
-       e mangiarsi altezza per lo stage — unica differenza tra le due prima. -->
-  <!-- Richiudibile a mano (come i gruppi di Anteprime): chi non sta
-       lavorando su foto/loghi/social recupera una riga intera di altezza
-       per lo stage. Ricordato per macchina, non per formato — resta
-       coerente con "niente compare/scompare in base al formato aperto". -->
-  <button class="toolsToggle" id="toolsToggle" title="Mostra/nascondi foto, loghi e social">
-   <span class="tw">▾</span>Foto, loghi e social</button>
-  <span id="toolsBody" style="display:contents">
+       e mangiarsi altezza per lo stage. -->
   <span class="pbl">FOTO</span>
   <span class="thmini" id="cbFotoTh" title="La foto e' una sola e vale per tutti i formati"></span>
   <button class="act ghost ico" id="cbFotoFile" title="Carica una foto dal computer">
@@ -364,7 +349,11 @@ small.flag{color:#E3C271}
   <button class="act ghost ico" id="cbFotoVia" title="Torna alla foto di default">
    <svg viewBox="0 0 20 20"><path d="M4.6 4.6l10.8 10.8M15.4 4.6 4.6 15.4"/></svg></button>
   <span class="tbsep"></span>
-  <span class="pbl">LOGO COMPETIZIONE</span>
+  <span class="pbl">SOCIAL</span>
+  <span class="blkSocial" id="cbSocial"></span>
+  <input type="text" id="engLabelInput" title="Testo del pill English Comm. (es. English Commentary, Audio Commentary…)" placeholder="English Commentary" style="width:170px;flex:none">
+  <span class="tbsep"></span>
+  <span class="pbl">LOGO</span>
   <img id="cbCompTh" class="thmini" title="Logo della competizione">
   <select id="cbCompSel" title="Scegli il logo dalla libreria"></select>
   <button class="act ghost ico" id="cbCompVia" title="Togli il logo dalla grafica">
@@ -379,12 +368,7 @@ small.flag{color:#E3C271}
     <button id="cbCompElimina" style="display:none">Elimina questo logo dalla libreria</button>
    </div>
   </span>
-  <span class="tbsep"></span>
-  <span class="pbl">SOCIAL</span>
-  <span class="blkSocial" id="cbSocial"></span>
-  <input type="text" id="engLabelInput" title="Testo del pill English Comm. (es. English Commentary, Audio Commentary…)" placeholder="English Commentary" style="width:170px;flex:none">
   <span class="grow"></span>
-  </span>
  </div>
   <!-- Barra di lavoro sola, sempre visibile: sessione, export, strumenti foto.
        Gli strumenti non compaiono e scompaiono — sono sempre li' e accenderne
@@ -2097,10 +2081,11 @@ function snapToAlign(el,svg,a,threshold){var SNAP=threshold||15;var bb=el.getBBo
  var distBottomToBottom=Math.abs((bb.y+bb.height+a.dy)-(obb.y+obb.height));if(distBottomToBottom<minDistY){minDistY=distBottomToBottom;bestDy=(obb.y+obb.height)-(bb.y+bb.height);}
  var distCenterYToCenter=Math.abs((bb.y+bb.height/2+a.dy)-(obb.y+obb.height/2));if(distCenterYToCenter<minDistY){minDistY=distCenterYToCenter;bestDy=(obb.y+obb.height/2)-(bb.y+bb.height/2);}
  });return{dx:bestDx,dy:bestDy};}
-// Lucchetto: da chiuso (default) niente si sposta o si ridimensiona per sbaglio.
-// La foto resta gestibile entrando in ritaglio, che e' una scelta esplicita.
-// Il doppio clic per modificare i testi continua a funzionare: non muove nulla.
-var LOCKED=true;
+// Il lucchetto (tasto in barra) e' stato tolto: gli elementi sono sempre
+// spostabili/ridimensionabili in vista normale. LOCKED resta come costante
+// spenta invece di essere strappata dalle due guardie che la controllano
+// (attachInteract), cosi' il codice li' non cambia.
+var LOCKED=false;
 function attachInteract(svg){
  var objs=svg.querySelectorAll('[data-obj]');
  objs.forEach(function(el){el.addEventListener('pointerdown',function(ev){if(LOCKED)return;ev.preventDefault();pushUndo();
@@ -2278,11 +2263,6 @@ function sessProponiNome(){
  if(SESS_NOME_TOCCATO)return;
  var inp=document.getElementById('sessName');if(inp)inp.placeholder=sessNomeProposto()||'nome della partita';
 }
-document.getElementById('lockBtn').onclick=function(){
- LOCKED=!LOCKED;this.textContent=LOCKED?'🔒 Bloccato':'🔓 Sbloccato';
- this.className='act ghost'+(LOCKED?' on':'');
- if(LOCKED){selObj=null;document.getElementById('selName').textContent='Nessun oggetto selezionato';}
- prefStato();renderStage();};
 // Azzera gli spostamenti di questo formato ma NON lascia la foto scoperta:
 // il ritaglio viene subito ricalcolato dal mirino.
 document.getElementById('resetPos').onclick=function(){pushUndo();STATE[current].adj={};selObj=null;
@@ -2963,21 +2943,6 @@ renderControls();renderStage();renderThumbs();
   try{localStorage.setItem(KEY,w);}catch(e){}
   refresh();
  });
-})();
-// Riga foto/loghi/social richiudibile: si ricorda per macchina. Chiuderla
-// cambia l'altezza di .stagewrap, che il ResizeObserver di misuraAltezze
-// gia' osserva — niente da richiamare a mano qui.
-(function(){
- var btn=document.getElementById('toolsToggle'),body=document.getElementById('toolsBody');
- if(!btn||!body)return;
- var KEY='comotv_tools_open';
- function apply(open){body.style.display=open?'contents':'none';btn.classList.toggle('closed',!open);}
- apply(localStorage.getItem(KEY)!=='0');
- btn.onclick=function(){
-  var open=body.style.display==='none';
-  apply(open);
-  try{localStorage.setItem(KEY,open?'1':'0');}catch(e){}
- };
 })();
 prefCarica();prefStato();sessAggiornaElenco();sessProponiNome();passoUI();syncZip();renderSocial();
 loadNat(DEFAULT_PHOTO,function(){applyFocalAll(function(){renderStage();refreshThumbs();});});
