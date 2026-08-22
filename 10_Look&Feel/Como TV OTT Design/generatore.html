@@ -346,14 +346,6 @@ small.flag{color:#E3C271}
     <svg viewBox="0 0 20 20"><path d="M10 2v16M2 10h16M10 2 7.6 4.4M10 2l2.4 2.4M10 18l-2.4-2.4M10 18l2.4-2.4M2 10l2.4-2.4M2 10l2.4 2.4M18 10l-2.4-2.4M18 10l-2.4 2.4"/></svg></button>
   <button class="act ghost ico" id="tMirino" title="Mirino — mostra il cerchio del volto in sovraimpressione, resta acceso finché non lo rispegni">
     <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="5.6"/><path d="M10 1.4v3.2M10 15.4v3.2M1.4 10h3.2M15.4 10h3.2"/><circle cx="10" cy="10" r="1.1" fill="currentColor" stroke="none"/></svg></button>
-  <button class="act ghost ico" id="tVolto" title="Volto — traccia un rettangolo sul volto e la foto si allinea">
-    <svg viewBox="0 0 20 20"><rect x="2.5" y="4.5" width="15" height="11" rx="1" stroke-dasharray="3.2 2.4"/><circle cx="10" cy="10" r="2.6"/></svg></button>
-  <!-- Ambito: due opzioni esplicite con la spunta, non un interruttore che
-        cambia faccia. Si vede sempre quale delle due e' attiva. -->
-  <span class="segsel" id="scopeSel">
-   <button id="scopeFam"></button>
-   <button id="scopeUno"></button>
-   </span>
   <button class="act" id="fattoBtn" style="display:none" title="Conferma posizione e dimensione">FATTO</button>
   <button class="act ghost ico" id="cbFotoVia" title="Torna alla foto di default">
    <svg viewBox="0 0 20 20"><path d="M4.6 4.6l10.8 10.8M15.4 4.6 4.6 15.4"/></svg></button>
@@ -1467,6 +1459,7 @@ function stageMarks(st){
 }
 function renderStage(){if(videoPick){renderVideoPicker();return;}if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');svg.style.background='none';applyTextStyles(svg,current);st.className='marks'+(LOCKED?' lock':'');setTimeout(function(){stageMarks(st);},0);
  attachInteract(svg);highlightSel(svg);syncScaleSlider();syncPhotoBar();passoUI();
+ drawFocalUI(svg);   // il mirino si vede anche fuori dalla modifica
  setTimeout(drawRulers,0);}
 // ---- menù foto dedicato (Zoom / Orizzontale / Verticale) ----
 function photoItem(){return BYKEY[current]||{w:1080,h:1080};}
@@ -1506,16 +1499,6 @@ var PEUPD=null;
 // della stessa famiglia, e uscire ogni volta e' scomodo.
 // FATTO: prende l'inquadratura ottenuta a mano e la traduce in mirino — dove sta
 // il volto adesso e quanto e' grande — poi la propaga secondo l'ambito scelto.
-document.getElementById('fattoBtn').onclick=function(){
- if(photoFullBleed(current)){
-  var p=focalToStage(),it=BYKEY[current];
-  if(p){mirSet(current,{x:p.x/it.w,y:p.y/it.h,r:p.r/Math.min(it.w,it.h)});prefTocca();}
- }
- exitPhotoEdit();
- applyFocalAll(function(){renderStage();refreshThumbs();});
-};
-document.getElementById('scopeFam').onclick=function(){MIRSCOPE='famiglia';passoUI();};
-document.getElementById('scopeUno').onclick=function(){MIRSCOPE='formato';passoUI();};
 // ---- ELEMENTI SOCIAL in barra ----
 // Prima comparivano solo aprendo un formato social: chi non ci passava non
 // sapeva nemmeno che esistessero. Ora ci sono sempre e altrove sono spenti.
@@ -1692,13 +1675,14 @@ function fotoNuova(d,fonte,cb){
  pushUndo();
  SHIMG.photo=d;PHOTO_FONTE=fonte||{tipo:'locale'};
  ITEMS.forEach(function(it){delete STATE[it.key].adj.photo;});
- FOCAL={x:0.5,y:0.36,r:FOCAL.r};   // il volto della foto precedente non vale piu'
  loadNat(d,function(){
-  renderControls();
-  // riconosce il volto e riancora tutti i formati ai rispettivi mirini
-  autoPositionPhotoIfBanner(function(){refreshThumbs();cb&&cb();});
+  // La foto entra centrata sul formato: e' Ale a portarla dove serve,
+  // guardando il mirino. Nessun riconoscimento, nessun riposizionamento.
+  renderControls();renderStage();refreshThumbs();cb&&cb();
  });
 }
+
+document.getElementById('fattoBtn').onclick=function(){exitPhotoEdit();refreshThumbs();};
 
 // ---- blocco FOTO in barra ----
 document.getElementById('cbFotoFile').onclick=function(){
@@ -1715,7 +1699,6 @@ document.getElementById('cbFotoVia').onclick=function(){
  pushUndo();delete SHIMG.photo;renderControls();renderStage();refreshThumbs();};
 document.getElementById('tMano').onclick=function(){toolVai('mano');};
 document.getElementById('tMirino').onclick=function(){MIRON=!MIRON;aggiornaModo();};
-document.getElementById('tVolto').onclick=function(){toolVai('volto');};
 // il conteggio dei formati da esportare sta sull'icona ZIP
 function syncZip(){var e=document.getElementById('zipN');if(e)e.textContent='ZIP '+expCount();}
 // ===== Editor foto stile Keynote: rettangolo fisso (maschera), foto spostabile/scalabile dentro =====
@@ -1891,17 +1874,13 @@ function rimisura(){if(!window.misuraAltezze)return;
  misuraAltezze();requestAnimationFrame(misuraAltezze);
  setTimeout(misuraAltezze,120);setTimeout(misuraAltezze,350);}
 function enterPhotoEdit(){if(photoEdit)return;pushUndo();document.body.classList.add('editing');
- // Annulla deve poter tornare indietro su tutto quello che si tocca qui dentro:
- // il ritaglio di questo formato, ma anche i mirini e il cerchio del volto, che
- // valgono su tutti i formati. Prima ripristinava solo il primo.
- PE_BEFORE=JSON.stringify({adj:STATE[current].adj.photo||null,mir:MIR,focal:FOCAL});
- photoEdit=true;SELRECT=null;rimisura();renderStage();}
-function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;TOOL=null;MIRON=false;document.body.classList.remove('editing');rimisura();renderStage();passoUI();}
+ PE_BEFORE=JSON.stringify({adj:STATE[current].adj.photo||null});
+ photoEdit=true;rimisura();renderStage();}
+function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;TOOL=null;document.body.classList.remove('editing');rimisura();renderStage();passoUI();}
 function cancelPhotoEdit(){if(!photoEdit)return;
  var v=null;try{v=JSON.parse(PE_BEFORE||'null');}catch(e){}
- if(v){MIR=v.mir||{};FOCAL=v.focal||FOCAL;
-  if(v.adj)STATE[current].adj.photo=v.adj;else delete STATE[current].adj.photo;}
- exitPhotoEdit();applyFocalAll(function(){renderStage();refreshThumbs();});}
+ if(v){if(v.adj)STATE[current].adj.photo=v.adj;else delete STATE[current].adj.photo;}
+ exitPhotoEdit();renderStage();refreshThumbs();}
 function startTextEdit(objId,el,svg){var field=TEXT_EDIT_MAP[objId];if(!field)return;
  var isShared=SHAREDKEYS[field];var currentVal=isShared?SHARED[field]:(STATE[current].vals[field]||'');
  var wrap=document.querySelector('.stagewrap');if(!wrap)return;
@@ -1996,18 +1975,6 @@ function renderPhotoEditor(){
  PEUPD=function(){var aa=STATE[current].adj.photo;if(aa){photoClamp(aa);peSync();}};
  setTimeout(peSync,0);
  svg.addEventListener('pointerdown',function(ev){ev.preventDefault();
-   if(TOOL==='volto'){ // traccia il rettangolo sul volto
-    var p0=puntoSvg(svg,ev.clientX,ev.clientY);
-    function mvR(e){var p1=puntoSvg(svg,e.clientX,e.clientY);
-     SELRECT={x:Math.min(p0.x,p1.x),y:Math.min(p0.y,p1.y),w:Math.abs(p1.x-p0.x),h:Math.abs(p1.y-p0.y)};
-     drawFocalUI(svg);}
-    function upR(){window.removeEventListener('pointermove',mvR);window.removeEventListener('pointerup',upR);
-     if(SELRECT&&(SELRECT.w<6||SELRECT.h<6))SELRECT=null;
-     // si applica al rilascio: niente Invio da ricordare. Poi torna alla Mano,
-     // che e' quasi sempre il gesto successivo (ritocco fine).
-     if(SELRECT){applicaSelezione();return;}
-     drawFocalUI(svg);passoUI();}
-    window.addEventListener('pointermove',mvR);window.addEventListener('pointerup',upR);return;}
    if(TOOL!=='mano')return;
    // Manipolazione diretta e libera: si sposta e si ridimensiona la foto senza
    // limiti di taratura. Quello che si e' ottenuto diventa mirino solo con FATTO.
@@ -2216,9 +2183,8 @@ document.getElementById('scaleV').addEventListener('blur',function(){syncScaleSl
 document.getElementById('prefReset').onclick=function(){
  if(!confirm('Rimette mirini, posizioni e stili di TUTTI i formati come sono di fabbrica, e cancella il salvataggio su questo computer. Procedo?'))return;
  try{localStorage.removeItem(PREF_KEY);}catch(e){}
- MIR={};FOCAL.r=0.11;
  ITEMS.forEach(function(it){var a=STATE[it.key].adj;Object.keys(a).forEach(function(k){if(k!=='photo')delete a[k];});});
- PREF_DIRTY=false;applyFocalAll(function(){renderControls();renderStage();renderThumbs();});prefStato();};
+ PREF_DIRTY=false;renderControls();renderStage();renderThumbs();prefStato();};
 // ---- comandi delle sessioni ----
 document.getElementById('sessSave').onclick=function(){
  var inp=document.getElementById('sessName');
@@ -2266,7 +2232,7 @@ function sessProponiNome(){
 // il ritaglio viene subito ricalcolato dal mirino.
 document.getElementById('resetPos').onclick=function(){pushUndo();STATE[current].adj={};selObj=null;
  document.getElementById('selName').textContent='Nessun oggetto selezionato';
- anchorCurrent();prefTocca();renderStage();refreshThumbs();};
+ prefTocca();renderStage();refreshThumbs();};
 document.getElementById('scaleR').addEventListener('pointerdown',function(){pushUndo();});
 
 // ---------- thumbnails ----------
@@ -2427,7 +2393,7 @@ window.addEventListener('keydown',function(e){
  var tag=(e.target.tagName||'').toLowerCase();if(tag==='input'||tag==='select'||tag==='textarea')return;
  var svg=document.querySelector('#stage svg');
  if(photoEdit&&e.key==='Enter'){e.preventDefault();document.getElementById('fattoBtn').click();return;}
- if(e.key==='Escape'){if(photoEdit){if(SELRECT){SELRECT=null;renderStage();return;}exitPhotoEdit();return;}selObj=null;document.getElementById('selName').textContent='Nessun oggetto selezionato';if(svg)highlightSel(svg);syncScaleSlider();return;}
+ if(e.key==='Escape'){if(photoEdit){exitPhotoEdit();return;}selObj=null;document.getElementById('selName').textContent='Nessun oggetto selezionato';if(svg)highlightSel(svg);syncScaleSlider();return;}
  if(!selObj||!svg)return;var a=ensureAdj(selObj,svg);var st=e.shiftKey?20:4;var did=false;
  if(e.key==='ArrowLeft'){pushUndoC();a.dx-=st;did=true;}
  else if(e.key==='ArrowRight'){pushUndoC();a.dx+=st;did=true;}
@@ -2500,7 +2466,7 @@ function sessRaccogli(){
  ITEMS.forEach(function(it){
   vals[it.key]=STATE[it.key].vals;
   if(STATE[it.key].adj.photo)crop[it.key]=STATE[it.key].adj.photo;});
- return {shared:SHARED,vals:vals,crop:crop,volto:FOCAL,
+ return {shared:SHARED,vals:vals,crop:crop,
          img:{photo:SHIMG.photo||null,logoComp:SHIMG.logoComp||null},
          fonte:PHOTO_FONTE,airtable:AIRTABLE_REC,
          export:EXPSEL};
@@ -2509,7 +2475,6 @@ function sessApplica(d,cb){
  if(!d){cb&&cb();return;}
  if(d.shared)Object.keys(d.shared).forEach(function(k){SHARED[k]=d.shared[k];});
  composeComp(); // la riga competizione e' derivata: ricomporla evita testi vecchi
- if(d.volto)FOCAL={x:d.volto.x,y:d.volto.y,r:d.volto.r};
  PHOTO_FONTE=d.fonte||null;AIRTABLE_REC=d.airtable||null;
  if(d.img){if(d.img.photo)SHIMG.photo=d.img.photo;else delete SHIMG.photo;
            if(d.img.logoComp)SHIMG.logoComp=d.img.logoComp;else delete SHIMG.logoComp;}
@@ -2552,7 +2517,7 @@ function prefRaccogli(){
   Object.keys(a).forEach(function(k){if(k!=='photo')o[k]=a[k];});
   if(Object.keys(o).length)adj[it.key]=o;
  });
- return {versione:2,mirini:MIR,volto:{r:FOCAL.r},elementi:adj};
+ return {versione:3,mirinoAcceso:MIRON,elementi:adj};
 }
 // Gli spostamenti salvati sono scarti rispetto alla posizione di fabbrica: se
 // quella posizione cambia perche' cambia il disegno, lo scarto vecchio sposta
@@ -2564,8 +2529,7 @@ function prefRaccogli(){
 function prefApplica(d){
  if(!d)return false;
  var vecchie=(d.versione||1)<2;
- if(d.mirini)Object.keys(d.mirini).forEach(function(k){if(BYKEY[k])MIR[k]=d.mirini[k];});
- if(d.volto&&d.volto.r)FOCAL.r=d.volto.r;
+ if(typeof d.mirinoAcceso==='boolean')MIRON=d.mirinoAcceso;
  if(d.elementi)Object.keys(d.elementi).forEach(function(k){
   if(!STATE[k])return;
   if(vecchie&&(CAT[k]||(BYKEY[k]&&BYKEY[k].group))==='Interviste')return;
@@ -2590,55 +2554,24 @@ function prefTocca(){PREF_DIRTY=true;prefStato('salvo…');
  clearTimeout(_prefTO);_prefTO=setTimeout(function(){prefSalva();},450);}
 
 // ---------- ancoraggio del volto ----------
-// Modello "cerchio su cerchio", lo stesso gesto del place di Photoshop.
-// Due cerchi si corrispondono:
-//   FOCAL  = dove sta e quanto e' grande la testa NELLA FOTO
-//            (x,y frazione dell'immagine naturale; r frazione della larghezza)
-//   MIR    = dove deve finire e quanto grande deve venire NEL FORMATO
-//            (x,y frazione W/H; r frazione del lato minore)
-// La scala esce dal rapporto dei raggi, la traslazione dall'allineamento dei
-// centri. Niente euristiche: ingrandisci il mirino, il soggetto viene piu'
-// grande; lo alzi, il soggetto sale.
-var FOCAL={x:0.5,y:0.36,r:0.11};
-// Mirini di partenza. Dove il layout ha esigenze proprie (il testo in basso, il
-// box di Instagram al centro) il valore e' scritto a mano; il resto discende dal
-// rapporto del formato. Sono predefiniti: si regolano a mano e si salvano.
+// Dove va il volto, formato per formato. Non e' una regolazione: e' il
+// riferimento del disegno, dove il layout lascia spazio alla faccia. Un
+// orizzontale ha il testo a sinistra e il volto a destra, un verticale ha il
+// testo in basso e il volto in alto. Il mirino disegna questo, e basta: e'
+// Ale che muove la foto finche' il volto ci finisce dentro.
 var MIRDEF={
  feed_1080x1440:{x:0.50,y:0.21,r:0.20},
  story_1080x1920:{x:0.50,y:0.23,r:0.19},story_video_1080x1920:{x:0.50,y:0.23,r:0.19},
  fanvoice_1080x1920:{x:0.50,y:0.19,r:0.17},
  hl_feed_1080x1350:{x:0.50,y:0.23,r:0.20}
 };
-var MIR={};
 function mirFor(key){
- if(MIR[key])return MIR[key];
  var b=key.replace(/-live$/,'');
  if(MIRDEF[b])return MIRDEF[b];
  var it=BYKEY[key],r=it.w/it.h;
  if(r>=1.5)return {x:0.68,y:0.40,r:0.20};  // orizzontali: testo a sinistra
  if(r<=0.85)return {x:0.50,y:0.27,r:0.20}; // verticali: testo in basso
  return {x:0.50,y:0.32,r:0.20};
-}
-// Le famiglie di orientamento sono le stesse su cui si calcolano i mirini di
-// partenza: un layout orizzontale ha il testo a sinistra, uno verticale in
-// basso, e il volto va in posti diversi. Regolare un mirino significa quasi
-// sempre regolarli tutti quelli fatti allo stesso modo.
-// Il banner-mid (1506x412, rapporto 3,66) e' una forma a se': un mirino tarato
-// su un 16:9 non ci sta dentro allo stesso modo, e infatti ha una metrica sua
-// anche nel disegno. Sta in una famiglia propria, non con gli orizzontali.
-function famiglia(key){var it=BYKEY[key],r=it.w/it.h;
- if(r>=3)return 'banner-mid';
- return r>=1.5?'orizzontali':(r<=0.85?'verticali':'quadrati');}
-function famiglieNome(key){var f=famiglia(key);
- return f==='banner-mid'?'i banner-mid'
-  :(f==='orizzontali'?'gli orizzontali':(f==='verticali'?'i verticali':'i quadrati'));}
-// 'famiglia' = una regolazione sistema tutti i formati con lo stesso orientamento
-// 'formato'  = solo quello su cui stai lavorando
-var MIRSCOPE='famiglia';
-function mirSet(key,m){
- if(MIRSCOPE!=='famiglia'){MIR[key]={x:m.x,y:m.y,r:m.r};return;}
- var f=famiglia(key);
- ITEMS.forEach(function(t){if(famiglia(t.key)===f)MIR[t.key]={x:m.x,y:m.y,r:m.r};});
 }
 // Vero solo dove la foto e' a pieno formato dentro una clip fissa: li' spostare
 // il gruppo fa scorrere la foto nella finestra. Sui pannelli YouTube (ritaglio
@@ -2661,66 +2594,6 @@ function coverOf(key,nat){var it=BYKEY[key],cov=Math.max(it.w/nat.w,it.h/nat.h);
 // 1 la foto viene ancora rimpicciolita e si puo' ingrandire senza perdere nulla;
 // le foto piccole restano protette dal limite fisso.
 var ZOOM_MAX=1.6;
-// Zoom minimo perche' il centro sia raggiungibile senza scoprire il fondo: su
-// una foto orizzontale dentro un 9:16 il margine verticale e' nullo e per
-// alzare il volto bisogna per forza ingrandire.
-function minScaleFor(L,D,a,u){
- var s=0,d1=D+2*u,d2=D-2*u;
- if(d1>0)s=Math.max(s,(2*a+L)/d1);
- if(d2>0)s=Math.max(s,(L-2*a)/d2);
- return s;
-}
-function focalAdjFor(key,nat){
- var g=coverOf(key,nat),W=g.W,H=g.H,m=mirFor(key);
- var raggioTesta=FOCAL.r*g.Dw;                  // raggio della testa a scala 1
- var raggioMirino=m.r*Math.min(W,H);            // raggio richiesto nel formato
- var ux=g.cov*(FOCAL.x*nat.w-nat.w/2),uy=g.cov*(FOCAL.y*nat.h-nat.h/2);
- var tetto=Math.min(3,Math.max(ZOOM_MAX,1.15/g.cov));
- // Tre richieste sullo zoom, vince la piu' esigente: coprire il formato, non
- // fare il volto piu' piccolo del mirino, portarlo nel punto giusto. Cosi' la
- // posizione e' sempre rispettata e la dimensione del mirino fa da minimo.
- var s=Math.max(1,
-   raggioTesta>0?raggioMirino/raggioTesta:1,
-   minScaleFor(W,g.Dw,W*(m.x-0.5),ux),
-   minScaleFor(H,g.Dh,H*(m.y-0.5),uy));
- s=Math.min(tetto,s);
- var dw=g.Dw*s,dh=g.Dh*s;
- var dx=W*m.x-W/2-s*ux, dy=H*m.y-H/2-s*uy;
- dx=Math.max(W-(W+dw)/2,Math.min((dw-W)/2,dx));
- dy=Math.max(H-(H+dh)/2,Math.min((dh-H)/2,dy));
- return {dx:dx,dy:dy,s:s,cx:W/2,cy:H/2};
-}
-// Riallinea tutti i formati ai cerchi correnti: un gesto solo, trenta ritagli.
-// La rotella resta un ritocco locale, valido finche' non si riancora.
-function applyFocalAll(cb){
- loadNat(curPhotoSrc(),function(nat){
-  if(nat&&nat.w>1&&nat.h>1)ITEMS.forEach(function(it){
-   if(photoFullBleed(it.key))STATE[it.key].adj.photo=focalAdjFor(it.key,nat);});
-  cb&&cb();
- });
-}
-function anchorCurrent(){
- var nat=PHOTONAT[curPhotoSrc()];
- if(nat&&nat.w>1&&photoFullBleed(current))STATE[current].adj.photo=focalAdjFor(current,nat);
-}
-// ---- i due cerchi nell'editor di ritaglio ----
-// Il cerchio della testa vive nelle coordinate della foto, quindi va convertito
-// avanti e indietro attraverso la trasformazione del gruppo.
-function focalToStage(){
- var nat=PHOTONAT[curPhotoSrc()];if(!nat||nat.w<2)return null;
- var g=coverOf(current,nat),a=STATE[current].adj.photo||{};
- var s=a.s||1,cx=(a.cx!==undefined?a.cx:g.W/2),cy=(a.cy!==undefined?a.cy:g.H/2),dx=a.dx||0,dy=a.dy||0;
- var px=(g.W-g.Dw)/2+FOCAL.x*g.Dw,py=(g.H-g.Dh)/2+FOCAL.y*g.Dh;
- return {x:dx+cx+(px-cx)*s,y:dy+cy+(py-cy)*s,r:FOCAL.r*g.Dw*s,s:s,Dw:g.Dw,Dh:g.Dh,cx:cx,cy:cy,dx:dx,dy:dy};
-}
-function stageToFocal(px,py){
- var nat=PHOTONAT[curPhotoSrc()];if(!nat||nat.w<2)return null;
- var g=coverOf(current,nat),a=STATE[current].adj.photo||{};
- var s=a.s||1,cx=(a.cx!==undefined?a.cx:g.W/2),cy=(a.cy!==undefined?a.cy:g.H/2),dx=a.dx||0,dy=a.dy||0;
- var qx=(px-dx-cx)/s+cx,qy=(py-dy-cy)/s+cy;
- return {x:Math.max(0,Math.min(1,(qx-(g.W-g.Dw)/2)/g.Dw)),
-         y:Math.max(0,Math.min(1,(qy-(g.H-g.Dh)/2)/g.Dh))};
-}
 function cerchio(cls,c,r,col,tratteggio,w,soloVista){
  var g=document.createElementNS('http://www.w3.org/2000/svg','g');g.setAttribute('class',cls);
  var vis='<circle cx="'+c.x+'" cy="'+c.y+'" r="'+r+'" fill="none" stroke="'+col+'" stroke-width="'+w+'"'
@@ -2746,7 +2619,8 @@ function cerchio(cls,c,r,col,tratteggio,w,soloVista){
 // TOOL: 'mano' o 'volto' — cosa fa il puntatore. Sono alternativi.
 // MIRON: il cerchio e' un interruttore a se', non uno strumento. Se acceso resta
 // in sovraimpressione qualunque cosa tu stia facendo; se spento non si vede.
-var TOOL=null, MIRON=false, SELRECT=null;
+// Il mirino e' un riferimento, non uno strumento: nasce acceso.
+var TOOL=null, MIRON=true;
 // Un solo posto decide se si e' in modifica: ci si sta finche' e' acceso uno
 // strumento OPPURE il mirino. Cosi' accendere il cerchio non si prende anche la
 // Mano, e spegnere la Mano non fa sparire il cerchio.
@@ -2756,153 +2630,38 @@ function aggiornaModo(){
  else renderStage();
  passoUI();
 }
-function toolVai(t){TOOL=(TOOL===t)?null:t;SELRECT=null;aggiornaModo();}
+function toolVai(t){TOOL=(TOOL===t)?null:t;aggiornaModo();}
 function passoUI(){
- if(typeof MIR==='undefined')return;   // chiamata prima che lo stato esista
+ if(typeof MIRON==='undefined')return;   // chiamata prima che lo stato esista
  var h=document.getElementById('peHint');if(!h)return;
  var fb=document.getElementById('fattoBtn');if(fb)fb.style.display=photoEdit?'':'none';
- var sc=document.getElementById('scopeSel'),senzaFoto=!photoFullBleed(current);
- ['mano','volto'].forEach(function(t){
-  var b=document.getElementById('t'+t.charAt(0).toUpperCase()+t.slice(1));if(!b)return;
-  b.className='act ghost ico'+(TOOL===t?' on':'');
-  b.style.display=(senzaFoto&&t!=='mano')?'none':'';
- });
+ var senzaFoto=!photoFullBleed(current);
+ var bmano=document.getElementById('tMano');
+ if(bmano)bmano.className='act ghost ico'+(TOOL==='mano'?' on':'');
  var bm=document.getElementById('tMirino');
  if(bm){bm.className='act ghost ico'+(MIRON?' on':'');bm.style.display=senzaFoto?'none':'';}
- if(sc){sc.style.display=senzaFoto?'none':'';
-  var fam=MIRSCOPE==='famiglia',spunta='<svg viewBox="0 0 20 20"><path d="m4 10.5 4 4 8-9"/></svg>';
-  var bf=document.getElementById('scopeFam'),bu=document.getElementById('scopeUno');
-  bf.className=fam?'on':'';bu.className=fam?'':'on';
-  bf.innerHTML=spunta+'<span>'+famiglieNome(current).replace(/^(gli|i) /,'')+'</span>';
-  bu.innerHTML=spunta+'<span>solo questo</span>';
-  bf.title='La modifica vale per tutti '+famiglieNome(current);
-  bu.title='La modifica vale solo per il formato aperto';
- }
- h.textContent=!TOOL?''
-  :(senzaFoto?'trascina · rotella per lo zoom'
-   :(TOOL==='mano'?('trascina la foto · rotella per lo zoom'+(MIRON?' · il cerchio si sposta dal centro, si ridimensiona dal bordo':''))
-    :'traccia un rettangolo sul volto'));
+ h.textContent=TOOL==='mano'?'trascina la foto · rotella per lo zoom':'';
 }
 
 
 
+// Il mirino non posiziona piu' niente: e' un riferimento fisso disegnato sopra
+// la foto, per dire dove dovrebbe cadere il volto. Ale muove la foto a mano
+// finche' il volto non ci finisce dentro. Sta a schermo anche fuori dalla
+// modifica, e si spegne col suo interruttore. Vive solo nella tela di lavoro:
+// e' aggiunto qui, non nell'SVG generato, quindi in export e nelle anteprime
+// non c'e' per costruzione.
 function drawFocalUI(svg){
- if(!photoEdit)return;
  passoUI();
- [].forEach.call(svg.querySelectorAll('.mirg,.selrt'),function(e){e.remove();});
- if(!photoFullBleed(current))return;
+ [].forEach.call(svg.querySelectorAll('.mirg'),function(e){e.remove();});
+ if(!MIRON||!photoFullBleed(current))return;
  var it=BYKEY[current],m=mirFor(current),lato=Math.min(it.w,it.h);
  var w=Math.max(3,Math.round(it.w*0.0035));
- // Il rettangolo di selezione: solo mentre lo si sta tracciando.
- if(TOOL==='volto'&&SELRECT){
-  var g=document.createElementNS('http://www.w3.org/2000/svg','g');g.setAttribute('class','selrt');
-  g.setAttribute('pointer-events','none');
-  g.innerHTML='<rect x="'+SELRECT.x+'" y="'+SELRECT.y+'" width="'+SELRECT.w+'" height="'+SELRECT.h+'" '
-   +'fill="rgba(0,229,255,.12)" stroke="#00E5FF" stroke-width="'+w+'" stroke-dasharray="'+(w*4)+' '+(w*3)+'"/>';
-  svg.appendChild(g);
- }
- // Il cerchio dipende dal suo interruttore, non dallo strumento: acceso resta
- // visibile durante qualunque attivita'. Con lo strumento Volto e' di sola
- // vista, altrimenti intercetterebbe il rettangolo che stai tracciando sopra.
- if(!MIRON)return;
- var mc={x:it.w*m.x,y:it.h*m.y},mr=m.r*lato,soloVista=(TOOL==='volto');
- var gm=cerchio('mirg',mc,mr,'#FFD166',true,w,soloVista);
- svg.appendChild(gm);
- if(soloVista)return;
- trascina(gm,svg,function(dxu,dyu,modo,base){
-  if(modo==='corpo')mirSet(current,{x:Math.max(0,Math.min(1,(base.x+dxu)/it.w)),y:Math.max(0,Math.min(1,(base.y+dyu)/it.h)),r:m.r});
-  else mirSet(current,{x:m.x,y:m.y,r:Math.max(0.04,Math.min(0.6,(base.r+dxu)/lato))});
- },{x:mc.x,y:mc.y,r:mr},true);
+ var mc={x:it.w*m.x,y:it.h*m.y},mr=m.r*lato;
+ svg.appendChild(cerchio('mirg',mc,mr,'#FFD166',true,w,true));
 }
 
-// Dal rettangolo tracciato sul volto: centro e mezza-diagonale del lato maggiore
-// diventano il punto e il raggio della testa, poi tutti i formati si riallineano.
-function applicaSelezione(){
- if(!SELRECT||SELRECT.w<4||SELRECT.h<4)return false;
- var f=stageToFocal(SELRECT.x+SELRECT.w/2,SELRECT.y+SELRECT.h/2);if(!f)return false;
- var q=focalToStage();if(!q)return false;
- pushUndo();
- FOCAL.x=f.x;FOCAL.y=f.y;
- FOCAL.r=Math.max(0.02,Math.min(0.6,(Math.max(SELRECT.w,SELRECT.h)/2)/(q.Dw*q.s)));
- SELRECT=null;TOOL='mano';
- applyFocalAll(function(){renderStage();refreshThumbs();});
- return true;
-}
-// Trascinamento comune ai due cerchi: corpo = sposta, bordo = raggio.
-function trascina(g,svg,applica,base,eRegolazione){
- ['corpo','bordo'].forEach(function(modo){
-  var el=g.querySelector('.gr-'+modo);if(!el)return;
-  el.addEventListener('pointerdown',function(ev){
-   ev.preventDefault();ev.stopPropagation();pushUndo();
-   var k=svgUnitPerPx(svg),sx=ev.clientX,sy=ev.clientY;
-   function mv(e){applica((e.clientX-sx)*k,(e.clientY-sy)*k,modo,base);
-    var s2=document.querySelector('#stage svg');if(s2)drawFocalUI(s2);}
-   function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);
-    // Nessun riallineamento qui: spostare il cerchio muove il cerchio, la foto
-    // si sposta solo all'Invio del passo 2. Altrimenti l'immagine scappa via
-    // mentre stai ancora decidendo dove vuoi il volto.
-    if(eRegolazione)prefTocca();}
-   window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);
-  });
- });
-}
-// Rilevamento del volto: imposta FOCAL, poi tutti i formati si riallineano.
-// Se la libreria non e' raggiungibile (o non trova volti) resta il valore
-// corrente, che si puo' comunque correggere a mano dal ritaglio.
-var faceapiLoaded=false,faceapiLoading=false;
-// Riconosce il volto (se puo') e riancora TUTTI i formati al proprio mirino.
-// Regola di ferro: il riposizionamento deve avvenire sempre, anche se la rete
-// non c'e', se il CDN e' lento o se il riconoscimento fallisce. Prima non era
-// cosi': un errore dentro il riconoscimento lasciava il seguito senza risposta
-// e i ritagli non venivano mai ricalcolati.
-var FACE_TIMEOUT=7000;
-function autoPositionPhotoIfBanner(cb){
- var fatto=false;
- function fine(){ if(fatto)return; fatto=true;
-  applyFocalAll(function(){renderStage();refreshThumbs();cb&&cb();}); }
- setTimeout(fine,FACE_TIMEOUT);        // rete lenta: si va avanti lo stesso
- if(!SHIMG.photo){fine();return;}
- if(faceapiPronta){rilevaVolto(fine);return;}
- if(faceapiLoading){fine();return;}
- faceapiLoading=true;
- var sc=document.createElement('script');
- sc.src='https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
- sc.onerror=function(){faceapiLoading=false;fine();};
- sc.onload=function(){
-  faceapiLoaded=true;
-  // La libreria da sola non basta: i pesi del modello sono file a parte e senza
-  // di quelli detectAllFaces non gira. Non venivano mai caricati.
-  faceapi.nets.tinyFaceDetector.loadFromUri(FACE_PESI)
-   .then(function(){faceapiPronta=true;})
-   .catch(function(){})
-   .then(function(){faceapiLoading=false;rilevaVolto(fine);});
- };
- document.head.appendChild(sc);
-}
-var FACE_PESI='https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
-var faceapiPronta=false;
-function rilevaVolto(cb){
- // TinyFaceDetector e' la rete, non le opzioni: passarla a detectAllFaces
- // faceva fallire la chiamata con un rifiuto non gestito, e il seguito non
- // veniva mai eseguito. Le opzioni sono TinyFaceDetectorOptions.
- if(!window.faceapi||!faceapiPronta||!faceapi.TinyFaceDetectorOptions){cb();return;}
- var img=new Image();
- img.onload=function(){
-  var p;
-  try{p=Promise.resolve(faceapi.detectAllFaces(img,new faceapi.TinyFaceDetectorOptions()));}
-  catch(e){cb();return;}
-  p.then(function(d){
-    if(d&&d.length){var b=d[0].box;
-     // il riquadro copre il viso, non la testa: allargato di ~35% per il capo
-     FOCAL={x:(b.x+b.width/2)/img.naturalWidth,y:(b.y+b.height/2)/img.naturalHeight,
-            r:Math.max(0.03,Math.min(0.5,(b.width*0.68)/img.naturalWidth))};}
-   }).catch(function(){}).then(cb);
- };
- img.onerror=function(){cb();};
- img.src=SHIMG.photo;
-}
-
-// Avvio delle regolazioni: va in fondo al blocco, dopo che MIR e FOCAL hanno un
+// Avvio delle regolazioni: va in fondo al blocco, dopo che lo stato ha un
 // valore. Le dichiarazioni var si sollevano, le assegnazioni no: chiamarlo
 // prima falliva in silenzio e le regolazioni salvate non tornavano.
 // Il marchio in testa esce dalla libreria gia' incorporata: nessun file esterno.
@@ -2973,7 +2732,7 @@ renderControls();renderStage();renderThumbs();
  function due(n){return (n<10?'0':'')+n;}
  e.textContent='v. '+due(d.getDate())+'/'+due(d.getMonth()+1)+' '+due(d.getHours())+':'+due(d.getMinutes());})();
 prefCarica();prefStato();sessAggiornaElenco();sessProponiNome();passoUI();syncZip();renderSocial();
-loadNat(DEFAULT_PHOTO,function(){applyFocalAll(function(){renderStage();refreshThumbs();});});
+loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
 </script>
 <script src="generatore-airtable.js?v=7"></script>
 </body>
