@@ -2061,6 +2061,79 @@ function useVideoFrame(){
 // cui arrivano le clip dalla regia. Registrare a 30 butterebbe via due frame
 // su cinque proprio sui movimenti veloci, che nel calcio sono quasi tutti.
 var VIDEO_FPS=50;
+// ---- conversione in MP4 per i browser che non lo sanno scrivere ----
+// Firefox registra solo WebM: Instagram lo rifiuta. Invece di rimandare Ale a
+// un altro browser — che non e' una soluzione, e' uno scarico di responsabilita'
+// — la clip viene riscritta in H.264/MP4 con ffmpeg compilato in WebAssembly.
+// Gira dentro un worker, altrimenti bloccherebbe la pagina per minuti; si
+// scarica solo quando serve davvero, quindi su Chrome e Safari non costa nulla.
+// Il core mono-thread non richiede SharedArrayBuffer, che su GitHub Pages non
+// si puo' attivare (servirebbero intestazioni HTTP che Pages non permette).
+var FFBASE='https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/';
+var ffW=null,ffPronto=null;
+function ffCodiceWorker(){return [
+ "var BASE='"+FFBASE+"';",
+ "importScripts(BASE+'ffmpeg-core.js');",
+ "var core=null;",
+ "self.onmessage=function(e){var m=e.data;",
+ " if(m.cmd==='avvia'){",
+ // locateFile non basta: il worker nasce da un blob e i percorsi relativi non
+ // si risolvono. Il wasm si scarica qui e si passa gia' in memoria.
+ "  fetch(BASE+'ffmpeg-core.wasm').then(function(r){if(!r.ok)throw new Error('core non scaricato');return r.arrayBuffer();})",
+ "   .then(function(bin){return createFFmpegCore({wasmBinary:bin,locateFile:function(f){return BASE+f;},",
+ "     print:function(){},printErr:function(t){",
+ "      var g=/time=(\\d+):(\\d+):(\\d+\\.?\\d*)/.exec(t);",
+ "      if(g)self.postMessage({tipo:'avanti',sec:(+g[1])*3600+(+g[2])*60+(+g[3])});}});})",
+ "   .then(function(c){core=c;self.postMessage({tipo:'pronto'});})",
+ "   .catch(function(err){self.postMessage({tipo:'errore',testo:String(err&&err.message||err)});});return;}",
+ " if(m.cmd==='converti'){try{",
+ "   core.FS.writeFile('in.dat',new Uint8Array(m.dati));",
+ "   var code=core.exec.apply(core,m.args);",
+ "   if(code!==0)throw new Error('ffmpeg uscita '+code);",
+ "   var f=core.FS.readFile('out.mp4');",
+ "   try{core.FS.unlink('in.dat');core.FS.unlink('out.mp4');}catch(x){}",
+ "   self.postMessage({tipo:'fatto',dati:f.buffer},[f.buffer]);",
+ "  }catch(err){self.postMessage({tipo:'errore',testo:String(err&&err.message||err)});}}};"
+].join('\n');}
+function ffAvvia(){
+ if(ffPronto)return ffPronto;
+ ffPronto=new Promise(function(ok,no){
+  var w;
+  try{w=new Worker(URL.createObjectURL(new Blob([ffCodiceWorker()],{type:'text/javascript'})));}
+  catch(e){return no(new Error('worker non disponibile'));}
+  var scaduto=setTimeout(function(){no(new Error('convertitore non raggiungibile'));},60000);
+  w.onerror=function(){clearTimeout(scaduto);no(new Error('convertitore non caricato'));};
+  w.onmessage=function(e){
+   if(e.data.tipo==='pronto'){clearTimeout(scaduto);ffW=w;ok(w);}
+   else if(e.data.tipo==='errore'){clearTimeout(scaduto);no(new Error(e.data.testo));}};
+  w.postMessage({cmd:'avvia'});
+ });
+ ffPronto.catch(function(){ffPronto=null;});   // un fallimento non deve bloccare i tentativi futuri
+ return ffPronto;
+}
+// Riscrive una clip in H.264/MP4 a 50 fps. Il -r 50 forza anche il passo
+// costante: MediaRecorder scrive a passo variabile, che i sistemi di montaggio
+// digeriscono male.
+function inMp4(blob,durataAttesa,avanza){
+ return ffAvvia().then(function(w){
+  return blob.arrayBuffer().then(function(buf){
+   return new Promise(function(ok,no){
+    function ascolta(e){
+     var m=e.data;
+     if(m.tipo==='avanti'){if(avanza&&durataAttesa)avanza(Math.min(99,Math.round(m.sec/durataAttesa*100)));return;}
+     w.removeEventListener('message',ascolta);
+     if(m.tipo==='fatto')ok(new Blob([m.dati],{type:'video/mp4'}));
+     else no(new Error(m.testo||'conversione fallita'));
+    }
+    w.addEventListener('message',ascolta);
+    w.postMessage({cmd:'converti',dati:buf,args:[
+     '-i','in.dat','-c:v','libx264','-preset','veryfast','-crf','21',
+     '-pix_fmt','yuv420p','-r',String(VIDEO_FPS),'-c:a','aac','-b:a','128k',
+     '-movflags','+faststart','-y','out.mp4']},[buf]);
+   });
+  });
+ });
+}
 // Contenitore: MP4 se il browser lo sa scrivere, altrimenti WebM.
 function pickVideoMime(){
  if(!window.MediaRecorder)return '';
@@ -2105,12 +2178,22 @@ function exportVideo(){
   rec.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data);};
   rec.onstop=function(){
    if(videoPick&&videoPick.raf)cancelAnimationFrame(videoPick.raf);
-   var isMp4=mime.indexOf('mp4')>=0,ext=isMp4?'mp4':'webm';
+   var isMp4=mime.indexOf('mp4')>=0;
    var blob=new Blob(chunks,{type:mime});
-   dl(blob,nomeEvento()+'_'+fname(current)+'.'+ext);
-   busy(false);
-   if(!isMp4)setTimeout(function(){alert('Questo browser non sa scrivere MP4: il file e\' in WebM ('+Math.round(blob.size/1048576*10)/10+' MB). Instagram lo accetta male — se serve MP4, esporta da Chrome o Safari aggiornati.');},150);
-   if(videoPick){videoPick.rec=null;renderVideoPicker();}
+   var nome=nomeEvento()+'_'+fname(current);
+   if(videoPick){videoPick.rec=null;}
+   if(isMp4){dl(blob,nome+'.mp4');busy(false);renderVideoPicker();return;}
+   // Il browser ha scritto WebM: lo riscriviamo in MP4 invece di scaricare la
+   // responsabilita' sull'utente. La prima volta scarica il convertitore.
+   busy(true,'Converto in MP4… preparo il convertitore');
+   inMp4(blob,OUT-IN,function(p){busy(true,'Converto in MP4… '+p+'%');})
+    .then(function(mp4){dl(mp4,nome+'.mp4');busy(false);
+     avviso('Clip convertita in <b>MP4 H.264</b> a '+VIDEO_FPS+' fps.');})
+    .catch(function(e){
+     dl(blob,nome+'.webm');busy(false);
+     avviso('<b>Conversione in MP4 non riuscita</b> ('+escHTML(e.message)+'). '+
+      'Il file scaricato e\' in WebM: serve una connessione per convertirlo.',{male:true});})
+    .then(function(){if(videoPick)renderVideoPicker();});
   };
   // Il ridisegno usa setInterval, non requestAnimationFrame: in una scheda in
   // secondo piano rAF non viene mai chiamato e il video uscirebbe vuoto senza
