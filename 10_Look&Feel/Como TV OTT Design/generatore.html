@@ -198,6 +198,20 @@ body.editing .stagewrap{padding:16px 16px 30px}
 .vtrans{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:12px;color:var(--fg2)}
 .vtrans input[type=range]{flex:1;min-width:0}
 .vtrans .tm{font-variant-numeric:tabular-nums;min-width:82px;text-align:right;color:var(--fg3)}
+/* Selezione in/out: la porzione che verra' esportata. Le maniglie sono larghe
+   il doppio del filetto perche' si devono poter prendere senza mirare. */
+.vtrim{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:12px;color:var(--fg2)}
+.vtrack{position:relative;flex:1;min-width:0;height:26px;border-radius:6px;
+ background:#FFFFFF0D;border:1px solid var(--line)}
+.vsel{position:absolute;top:0;bottom:0;background:rgba(201,162,75,.22);
+ border-left:2px solid var(--gold);border-right:2px solid var(--gold)}
+.vplay{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ivory);opacity:.8;pointer-events:none}
+.vh{position:absolute;top:-4px;width:13px;height:34px;margin-left:-6px;border-radius:4px;
+ background:var(--gold);cursor:ew-resize;box-shadow:0 2px 8px #0008}
+.vh::after{content:'';position:absolute;left:5px;top:10px;width:3px;height:14px;background:#0A0F24;opacity:.5;border-radius:2px}
+.vtrim .tm{font-variant-numeric:tabular-nums;min-width:128px;text-align:right;color:var(--fg3)}
+.vtrim .tm b{color:var(--gold)}
+.vtrim .tm.lungo b{color:#E5484D}
 .editbar .seg{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.04);border:1px solid rgba(245,241,230,.1);border-radius:8px;padding:6px 10px}
 #textBar{background:rgba(201,162,75,.07);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
 #textBar select{width:auto;min-width:104px;font-size:12px;padding:4px 8px}
@@ -507,8 +521,8 @@ small.flag{color:#E3C271}
    <button class="tbtn tonly" id="txtReset" title="Rimuove le modifiche di stile su questo testo">Ripristina stile</button>
   </div>
   <div class="pebar" id="vidBar">
-   <span class="pbl" style="color:var(--gold)">FOTOGRAMMA DA VIDEO</span>
-   <span class="peh">Tieni la finestra in primo piano durante l'export · la registrazione dura quanto la clip</span>
+   <span class="pbl" style="color:var(--gold)">VIDEO</span>
+   <span class="peh">Trascina la clip per inquadrarla · scegli inizio e fine · l'export registra in tempo reale, tieni la finestra in primo piano</span>
    <button class="act" id="vidExport">🎬 Esporta video</button>
    <button class="act ghost" id="vidUse">Usa solo il fotogramma</button>
    <button class="act ghost" id="vidCancel">Annulla</button>
@@ -1832,6 +1846,9 @@ var PE_BEFORE=null;
 // trasparente) e si sovrappone a ogni fotogramma del video. L'inquadratura del
 // video replica quella che l'SVG applica alla foto: cover-fit + il transform
 // del gruppo 'photo' (trascinamento e zoom fatti dall'utente).
+// L'export video vale solo per i due formati social verticali: altrove il
+// picker serve ancora a prendere un fotogramma, ma non a produrre una clip.
+var FORMATI_VIDEO={story_video_1080x1920:1,'story_video_1080x1920-live':1};
 var videoPick=null;
 
 function overlaySvg(key){var it=BYKEY[key];
@@ -1859,6 +1876,10 @@ function enterVideoPick(file){
  if(photoEdit)exitPhotoEdit();
  videoPick={url:URL.createObjectURL(file),nome:file.name,el:null,raf:0,rec:null};
  document.getElementById('vidBar').classList.add('on');
+ var be=document.getElementById('vidExport');
+ be.disabled=!FORMATI_VIDEO[current];
+ be.title=FORMATI_VIDEO[current]?'Esporta la selezione come clip'
+   :'Disponibile sui formati social video (story-video)';
  renderStage();
 }
 function exitVideoPick(){
@@ -1891,6 +1912,57 @@ function renderVideoPicker(){
  var tm=document.createElement('div');tm.className='tm';tm.textContent='0:00.0 / 0:00.0';
  tr.appendChild(pb);tr.appendChild(sl);tr.appendChild(tm);st.appendChild(tr);
 
+ // ---- selezione in/out: la porzione che verra' esportata ----
+ var trim=document.createElement('div');trim.className='vtrim';
+ var bIn=document.createElement('button');bIn.className='tbtn';bIn.textContent='[ Inizio';
+ bIn.title='Porta l\'inizio della selezione dove sei ora';
+ var track=document.createElement('div');track.className='vtrack';
+ var selv=document.createElement('div');selv.className='vsel';
+ var head=document.createElement('div');head.className='vplay';
+ var hIn=document.createElement('div');hIn.className='vh';hIn.title='Inizio';
+ var hOut=document.createElement('div');hOut.className='vh';hOut.title='Fine';
+ track.appendChild(selv);track.appendChild(head);track.appendChild(hIn);track.appendChild(hOut);
+ var bOut=document.createElement('button');bOut.className='tbtn';bOut.textContent='Fine ]';
+ bOut.title='Porta la fine della selezione dove sei ora';
+ var lab=document.createElement('div');lab.className='tm';
+ trim.appendChild(bIn);trim.appendChild(track);trim.appendChild(bOut);trim.appendChild(lab);
+ st.appendChild(trim);
+
+ var MINSEL=0.3;   // sotto un terzo di secondo non e' una clip
+ function dur(){return videoPick.el&&videoPick.el.duration||0;}
+ function aggiornaTrim(){
+  var D=dur();if(!D)return;
+  var a=videoPick['in']/D*100,b=videoPick.out/D*100;
+  selv.style.left=a+'%';selv.style.width=(b-a)+'%';
+  hIn.style.left=a+'%';hOut.style.left=b+'%';
+  head.style.left=(v.currentTime/D*100)+'%';
+  var sel=videoPick.out-videoPick['in'];
+  lab.innerHTML='selezione <b>'+fmtT(sel)+'</b>';
+  lab.className='tm'+(sel>60?' lungo':'');
+  lab.title=sel>60?'Oltre i 60 secondi: le storie di Instagram non lo accettano':'';
+ }
+ videoPick.aggiornaTrim=aggiornaTrim;
+ function daX(clientX){
+  var r=track.getBoundingClientRect();if(!r.width)return null;
+  return Math.max(0,Math.min(1,(clientX-r.left)/r.width))*dur();
+ }
+ function prendi(h,quale){
+  h.addEventListener('pointerdown',function(ev){
+   ev.preventDefault();ev.stopPropagation();
+   function mv(e){var t=daX(e.clientX);if(t===null)return;
+    if(quale==='in')videoPick['in']=Math.min(t,videoPick.out-MINSEL);
+    else videoPick.out=Math.max(t,videoPick['in']+MINSEL);
+    videoPick['in']=Math.max(0,videoPick['in']);videoPick.out=Math.min(dur(),videoPick.out);
+    v.currentTime=quale==='in'?videoPick['in']:videoPick.out;   // si vede dove si sta tagliando
+    aggiornaTrim();}
+   function up(){window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);}
+   window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);
+  });
+ }
+ prendi(hIn,'in');prendi(hOut,'out');
+ bIn.onclick=function(){videoPick['in']=Math.min(v.currentTime,videoPick.out-MINSEL);aggiornaTrim();};
+ bOut.onclick=function(){videoPick.out=Math.max(v.currentTime,videoPick['in']+MINSEL);aggiornaTrim();};
+
  var overlay=null;
  document.fonts.ready.then(function(){return svgToImage(overlaySvg(current));})
   .then(function(im){overlay=im;drawComposite(ctx,W,H,v,v.videoWidth,v.videoHeight,overlay);});
@@ -1898,17 +1970,27 @@ function renderVideoPicker(){
  function frame(){
   drawComposite(ctx,W,H,v,v.videoWidth,v.videoHeight,overlay);
   if(v.duration){sl.value=Math.round(v.currentTime/v.duration*1000);
-   tm.textContent=fmtT(v.currentTime)+' / '+fmtT(v.duration);}
+   tm.textContent=fmtT(v.currentTime)+' / '+fmtT(v.duration);
+   aggiornaTrim();}
+  // l'anteprima si ferma dove finisce la selezione: quello che vedi e' quello
+  // che esce, senza doverlo immaginare
+  if(!v.paused&&v.currentTime>=videoPick.out){v.pause();pb.textContent='▶';}
   videoPick.raf=requestAnimationFrame(frame);
  }
  function paint(){drawComposite(ctx,W,H,v,v.videoWidth,v.videoHeight,overlay);}
  // Un fotogramma va mostrato subito: il primo istante e' spesso nero o in
  // dissolvenza, quindi ci si sposta un poco dentro e si disegna appena il
  // fotogramma e' decodificato, senza aspettare il ciclo di animazione.
- v.onloadedmetadata=function(){v.currentTime=Math.min(0.4,(v.duration||0)*0.05||0.4);};
+ v.onloadedmetadata=function(){
+  if(videoPick['in']===undefined){videoPick['in']=0;videoPick.out=v.duration||0;}
+  aggiornaTrim();
+  v.currentTime=Math.min(0.4,(v.duration||0)*0.05||0.4);};
  v.onloadeddata=paint;
  v.onseeked=function(){paint();if(!videoPick.raf)frame();};
- pb.onclick=function(){if(v.paused){v.play();pb.textContent='❚❚';}else{v.pause();pb.textContent='▶';}};
+ pb.onclick=function(){if(v.paused){
+   // fuori dalla selezione si riparte dall'inizio di questa
+   if(v.currentTime<videoPick['in']||v.currentTime>=videoPick.out-0.05)v.currentTime=videoPick['in'];
+   v.play();pb.textContent='❚❚';}else{v.pause();pb.textContent='▶';}};
  v.onended=function(){pb.textContent='▶';};
  sl.oninput=function(){if(v.duration)v.currentTime=this.value/1000*v.duration;};
 }
@@ -1933,15 +2015,29 @@ function pickVideoMime(){
  return '';
 }
 
+// Porta il video a un istante preciso e risponde quando ci e' arrivato.
+function vaiAlSecondo(v,t){
+ return new Promise(function(res){
+  if(Math.abs(v.currentTime-t)<0.04)return res();
+  var f=function(){v.removeEventListener('seeked',f);res();};
+  v.addEventListener('seeked',f);v.currentTime=t;
+  setTimeout(res,1500);   // se il salto non risponde si parte lo stesso
+ });
+}
 // Registra in tempo reale il canvas composito, con l'audio della clip.
 function exportVideo(){
  var v=videoPick&&videoPick.el;if(!v||!v.videoWidth)return;
  if(document.hidden){alert('Porta la finestra in primo piano prima di esportare.');return;}
  var mime=pickVideoMime();
  if(!mime){alert('Questo browser non sa registrare video. Usa Chrome o Safari aggiornati.');return;}
+ if(!FORMATI_VIDEO[current]){alert('L\'export video vale sui formati social video (story-video). Qui puoi prendere un fotogramma.');return;}
  var it=BYKEY[current],W=it.w,H=it.h;
  var cv=document.createElement('canvas');cv.width=W;cv.height=H;var ctx=cv.getContext('2d');
- var dur=v.duration||0;
+ // si registra la selezione, non tutta la clip
+ var IN=videoPick['in']||0,OUT=videoPick.out||v.duration||0;
+ if(OUT-IN<0.3){alert('La selezione e\' troppo corta.');return;}
+ if(OUT-IN>60&&!confirm('La selezione dura '+fmtT(OUT-IN)+'. Le storie di Instagram si fermano a 60 secondi. Esporto lo stesso?'))return;
+ var dur=OUT-IN;
  busy(true,'Preparo la grafica…');
  document.fonts.ready.then(function(){return svgToImage(overlaySvg(current));}).then(function(overlay){
   var stream=cv.captureStream(30);
@@ -1956,7 +2052,7 @@ function exportVideo(){
    if(videoPick&&videoPick.raf)cancelAnimationFrame(videoPick.raf);
    var isMp4=mime.indexOf('mp4')>=0,ext=isMp4?'mp4':'webm';
    var blob=new Blob(chunks,{type:mime});
-   dl(blob,fname(current)+'.'+ext);
+   dl(blob,nomeEvento()+'_'+fname(current)+'.'+ext);
    busy(false);
    if(!isMp4)setTimeout(function(){alert('Questo browser non sa scrivere MP4: il file e\' in WebM ('+Math.round(blob.size/1048576*10)/10+' MB). Instagram lo accetta male — se serve MP4, esporta da Chrome o Safari aggiornati.');},150);
    if(videoPick){videoPick.rec=null;renderVideoPicker();}
@@ -1968,10 +2064,13 @@ function exportVideo(){
   var nFrame=0;
   videoPick.timer=setInterval(function(){
    drawComposite(ctx,W,H,v,v.videoWidth,v.videoHeight,overlay);nFrame++;
-   if(dur)busy(true,'Registro… '+Math.round(v.currentTime/dur*100)+'%');
+   if(dur)busy(true,'Registro… '+Math.max(0,Math.min(100,Math.round((v.currentTime-IN)/dur*100)))+'%');
+   if(v.currentTime>=OUT)stopRec();
   },1000/30);
   function stopRec(){
    if(videoPick&&videoPick.timer){clearInterval(videoPick.timer);videoPick.timer=0;}
+   if(fineSel){clearTimeout(fineSel);fineSel=0;}
+   v.ontimeupdate=null;
    document.removeEventListener('visibilitychange',onHide);
    if(rec.state==='recording')rec.stop();
   }
@@ -1981,10 +2080,17 @@ function exportVideo(){
    setTimeout(function(){alert('Export interrotto: la scheda e\' passata in secondo piano. Tieni la finestra in primo piano durante la registrazione.');},100);}}
   document.addEventListener('visibilitychange',onHide);
   v.onended=stopRec;
+  // Il punto di fine non puo' dipendere dal ciclo di disegno: quello rallenta
+  // se la macchina e' carica, e il taglio sforerebbe. Tre reti indipendenti —
+  // l'evento del video, un tempo massimo, e il ciclo — la prima che arriva vince.
+  v.ontimeupdate=function(){if(v.currentTime>=OUT)stopRec();};
+  var fineSel=setTimeout(stopRec,(OUT-IN)*1000+200);
   rec.onerror=function(){stopRec();busy(false);};
-  v.currentTime=0;v.muted=false;v.volume=1;
-  v.play().then(function(){rec.start(200);}).catch(function(e){
-   stopRec();busy(false);alert('Impossibile avviare la riproduzione: '+e.message);});
+  v.muted=false;v.volume=1;
+  // Si aspetta che il salto sia davvero avvenuto prima di far partire il
+  // registratore: avviare e cercare insieme regala i primi fotogrammi sbagliati.
+  vaiAlSecondo(v,IN).then(function(){return v.play();}).then(function(){rec.start(200);})
+   .catch(function(e){stopRec();busy(false);alert('Impossibile avviare la riproduzione: '+e.message);});
  }).catch(function(e){busy(false);alert('Errore nella grafica: '+e.message);});
 }
 
