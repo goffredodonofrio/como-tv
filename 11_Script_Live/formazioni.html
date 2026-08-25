@@ -845,24 +845,84 @@
       return;
     }
 
-    chosen.forEach(function (side) {
-      var fname = "FORMAZIONE " + (clean(side.teamName).toUpperCase() || side.label.toUpperCase()) + ".csv";
-      var blob = new Blob([buildCSV(side)], { type: "text/csv;charset=utf-8" });
-      var a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = fname;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
-    });
+    function fnameOf(side) {
+      return "FORMAZIONE " + (clean(side.teamName).toUpperCase() || side.label.toUpperCase()) + ".csv";
+    }
+
+    if (chosen.length === 1) {
+      saveBlob(new Blob([buildCSV(chosen[0])], { type: "text/csv;charset=utf-8" }), fnameOf(chosen[0]));
+    } else {
+      // due file in un colpo solo: i browser bloccano i download multipli,
+      // quindi le due squadre viaggiano dentro un unico ZIP
+      var files = chosen.map(function (side) { return { name: fnameOf(side), text: buildCSV(side) }; });
+      var zipName = "FORMAZIONI " + chosen.map(function (s) {
+        return (clean(s.teamName).toUpperCase() || s.label.toUpperCase());
+      }).join(" - ") + ".zip";
+      saveBlob(buildZip(files), zipName);
+    }
 
     if (problemi.length) {
       status("warn", '<span class="msg"><b>Esportato con avvisi:</b> ' + esc(problemi.join(" · ")) + '</span>');
     } else {
-      status("ok", '<span class="msg">Scaricat' + (chosen.length > 1 ? 'i <b>2 file</b>' : 'o <b>1 file</b>') + ': ' +
+      status("ok", '<span class="msg">Scaricat' + (chosen.length > 1 ? 'o <b>1 ZIP</b> con 2 CSV' : 'o <b>1 file</b>') + ': ' +
         chosen.map(function (s) { return esc(s.teamName || s.label); }).join(" e ") + '.</span>');
     }
+  }
+
+  function crc32(bytes) {
+    if (!crc32.t) {
+      crc32.t = [];
+      for (var n = 0; n < 256; n++) {
+        var c = n;
+        for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        crc32.t[n] = c >>> 0;
+      }
+    }
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < bytes.length; i++) crc = crc32.t[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function buildZip(files) {   // files: [{name, text}] — ZIP metodo STORE
+    var enc = new TextEncoder();
+    var parts = [], central = [], offset = 0;
+
+    files.forEach(function (f) {
+      var name = enc.encode(f.name), data = enc.encode(f.text), crc = crc32(data);
+
+      var lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+      lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true);
+      lh.setUint16(26, name.length, true);
+      parts.push(lh.buffer, name, data);
+
+      var ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+      ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true);
+      ch.setUint16(28, name.length, true); ch.setUint32(42, offset, true);
+      central.push(ch.buffer, name);
+
+      offset += 30 + name.length + data.length;
+    });
+
+    var centralSize = 0;
+    central.forEach(function (b) { centralSize += b.byteLength || b.length; });
+
+    var eocd = new DataView(new ArrayBuffer(22));
+    eocd.setUint32(0, 0x06054b50, true); eocd.setUint16(8, files.length, true); eocd.setUint16(10, files.length, true);
+    eocd.setUint32(12, centralSize, true); eocd.setUint32(16, offset, true);
+
+    return new Blob(parts.concat(central, [eocd.buffer]), { type: "application/zip" });
+  }
+
+  function saveBlob(blob, fname) {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
   }
 
   document.getElementById("btnCsvAll").addEventListener("click", function () { download([0, 1]); });
