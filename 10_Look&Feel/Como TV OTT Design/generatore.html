@@ -130,6 +130,9 @@ button.act:active{transform:scale(.97)}
    del documento e pannello. Il disegno e' limitato dall'altezza, quindi conta
    l'ingombro verticale: togliere larghezza da sola non regalerebbe nulla. */
 body.editing .top,body.editing #barra,body.editing .panel{display:none}
+body.video .top,body.video #barra{display:none}
+body.video .bars{padding:6px 12px}
+body.video .main{padding:8px 10px}
 body.editing .bars{padding:6px 12px}
 body.editing .main{padding:8px 10px}
 body.editing .stagewrap{padding:16px 16px 30px}
@@ -1578,7 +1581,14 @@ function stageMarks(st){
  n.textContent=fname(current);box.appendChild(n);
  st.appendChild(box);
 }
-function renderStage(){if(videoPick){renderVideoPicker();return;}if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');svg.style.background='none';applyTextStyles(svg,current);st.className='marks'+(LOCKED?' lock':'');setTimeout(function(){stageMarks(st);},0);
+function renderStage(){
+ if(videoPick){
+  // stesso formato e picker gia' in piedi: basta rifare la grafica sovrapposta,
+  // altrimenti il video ripartirebbe da capo a ogni lettera digitata
+  if(videoPick.montato&&videoPick.formato===current&&document.getElementById('vidCanvas')){
+   videoPick.aggiornaGrafica();return;}
+  renderVideoPicker();return;}
+ if(photoEdit){renderPhotoEditor();return;}var st=document.getElementById('stage');st.innerHTML=svgScreen(current);var svg=st.querySelector('svg');svg.style.background='none';applyTextStyles(svg,current);st.className='marks'+(LOCKED?' lock':'');setTimeout(function(){stageMarks(st);},0);
  attachInteract(svg);highlightSel(svg);syncScaleSlider();syncPhotoBar();passoUI();
  drawFocalUI(svg);   // il mirino si vede anche fuori dalla modifica
  setTimeout(drawRulers,0);}
@@ -1895,10 +1905,10 @@ function enterVideoPick(file){
  if(photoEdit)exitPhotoEdit();
  videoPick={url:URL.createObjectURL(file),nome:file.name,el:null,raf:0,rec:null,rvfc:0,fermo:false};
  document.getElementById('vidBar').classList.add('on');
- // Stesso trattamento "schermo pieno" dell'editor foto: la barra formato/social e
- // il pannello CONTENUTO non servono mentre si ritaglia un video, e portano via
- // spazio proprio a chi ne serve di piu' — l'editor video sale in cima.
- document.body.classList.add('editing');
+ // Guadagna spazio come l'editor foto, ma il pannello CONTENUTO resta: chi
+ // monta una story cambia anche squadre, data e ora, e prima per farlo doveva
+ // chiudere il video e ricominciare.
+ document.body.classList.add('video');
  var be=document.getElementById('vidExport');
  be.disabled=!FORMATI_VIDEO[current];
  be.title=FORMATI_VIDEO[current]?'Esporta la selezione come clip'
@@ -1913,7 +1923,7 @@ function exitVideoPick(){
  if(videoPick.el){videoPick.el.pause();videoPick.el.src='';}
  URL.revokeObjectURL(videoPick.url);videoPick=null;
  document.getElementById('vidBar').classList.remove('on');
- document.body.classList.remove('editing');
+ document.body.classList.remove('video');
  rimisura();renderStage();
 }
 function fmtT(t){t=Math.max(0,t||0);var m=Math.floor(t/60),s2=Math.floor(t%60),d=Math.floor((t%1)*10);
@@ -2032,8 +2042,14 @@ function renderVideoPicker(){
  bOut.onclick=function(){videoPick.out=Math.max(v.currentTime,videoPick['in']+MINSEL);aggiornaTrim();};
 
  var overlay=null;
- document.fonts.ready.then(function(){return svgToImage(overlaySvg(current));})
-  .then(function(im){overlay=im;drawComposite(ctx,W,H,v,v.videoWidth,v.videoHeight,overlay);});
+ function caricaGrafica(){
+  return document.fonts.ready.then(function(){return svgToImage(overlaySvg(current));})
+   .then(function(im){overlay=im;drawComposite(ctx,W,H,v,v.videoWidth,v.videoHeight,overlay);});
+ }
+ caricaGrafica();
+ // Appigli per aggiornare la grafica senza rifare tutto: li usa renderStage
+ // quando cambia un testo mentre il video e' aperto.
+ videoPick.montato=true;videoPick.formato=current;videoPick.aggiornaGrafica=caricaGrafica;
 
  function frame(){
   drawComposite(ctx,W,H,v,v.videoWidth,v.videoHeight,overlay);
