@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Classifiche · Como TV</title>
+<style>
+  :root {
+    --ground:     #EDF0F3;
+    --surface:    #FFFFFF;
+    --surface-2:  #F5F7F9;
+    --ink:        #131820;
+    --ink-2:      #5A6472;
+    --hairline:   #D3D9E0;
+    --hairline-2: #E4E8ED;
+    --accent:     #BB2338;
+    --accent-soft:rgba(187, 35, 56, 0.09);
+    --ok:         #1B7A4B;
+    --ok-soft:    rgba(27, 122, 75, 0.10);
+    --warn:       #A66200;
+    --warn-soft:  rgba(166, 98, 0, 0.11);
+    --ui:   "Archivo", -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:     #0E1218;
+      --surface:    #161B23;
+      --surface-2:  #1B222B;
+      --ink:        #E4E9EF;
+      --ink-2:      #8C97A5;
+      --hairline:   #29313D;
+      --hairline-2: #1F262F;
+      --accent:     #FF6076;
+      --accent-soft:rgba(255, 96, 118, 0.13);
+      --ok:         #4FCB8B;
+      --ok-soft:    rgba(79, 203, 139, 0.13);
+      --warn:       #E5A33C;
+      --warn-soft:  rgba(229, 163, 60, 0.14);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 0 24px 80px;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--ui);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1240px; margin: 0 auto; }
+
+  /* ---- header ---- */
+
+  header {
+    display: flex; flex-wrap: wrap; align-items: flex-end;
+    justify-content: space-between; gap: 16px;
+    padding: 34px 0 18px;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  h1 {
+    font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em;
+    margin: 0;
+  }
+
+  .sub {
+    font-size: 12px; letter-spacing: 0.13em; text-transform: uppercase;
+    font-weight: 700; color: var(--ink-2); margin: 0 0 6px;
+  }
+
+  .keystate {
+    font-size: 12px; color: var(--ink-2);
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-2); flex: none; }
+  .dot.on { background: var(--ok); }
+
+  /* ---- controls ---- */
+
+  .controls {
+    display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px;
+    padding: 20px 0;
+  }
+
+  .field { display: flex; flex-direction: column; gap: 5px; }
+
+  label {
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-2);
+  }
+
+  select, input[type="number"], input[type="text"] {
+    font-family: var(--ui); font-size: 14px;
+    padding: 8px 10px;
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--hairline);
+    border-radius: 3px;
+  }
+
+  select { min-width: 260px; }
+  input[type="number"] { width: 92px; font-family: var(--mono); }
+
+  button {
+    font-family: var(--ui); font-size: 13px; font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 9px 16px;
+    border: 1px solid var(--ink);
+    background: var(--ink); color: var(--ground);
+    border-radius: 3px; cursor: pointer;
+  }
+
+  button:hover { opacity: 0.86; }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  button.ghost { background: transparent; color: var(--ink); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  :root:not([data-theme="light"]) button.primary { color: #1A0508; }
+  @media (prefers-color-scheme: light) { button.primary { color: #fff; } }
+
+  button:focus-visible, select:focus-visible, input:focus-visible, td[contenteditable]:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  .spacer { flex: 1 1 auto; }
+
+  .toggles { display: flex; gap: 18px; align-items: center; font-size: 13px; color: var(--ink-2); }
+  .toggles label { font-size: 13px; letter-spacing: 0; text-transform: none; font-weight: 400; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+  /* ---- status bar ---- */
+
+  .status {
+    display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-left: 3px solid var(--hairline);
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+
+  .status.ok    { border-left-color: var(--ok); }
+  .status.warn  { border-left-color: var(--warn); }
+  .status.err   { border-left-color: var(--accent); }
+
+  .status .stamp { font-family: var(--mono); font-size: 12px; }
+  .status .msg { color: var(--ink-2); }
+  .status .msg b { color: var(--ink); font-weight: 600; }
+
+  /* ---- table ---- */
+
+  .tablewrap {
+    overflow-x: auto;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+  }
+
+  table { border-collapse: collapse; width: 100%; min-width: 860px; }
+
+  th, td {
+    padding: 8px 12px; text-align: left;
+    border-bottom: 1px solid var(--hairline-2);
+    font-size: 13.5px;
+  }
+
+  thead th {
+    position: sticky; top: 0;
+    background: var(--surface);
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.13em; text-transform: uppercase;
+    color: var(--ink-2);
+    border-bottom: 1px solid var(--hairline);
+    white-space: nowrap;
+    z-index: 2;
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:nth-child(even) td { background: var(--surface-2); }
+
+  td.num, th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; width: 1%; white-space: nowrap; }
+  td.pos { font-family: var(--mono); font-variant-numeric: tabular-nums; width: 1%; font-weight: 700; }
+  td.api { color: var(--ink-2); font-size: 12.5px; }
+
+  td.graf {
+    font-weight: 600;
+    min-width: 210px;
+    cursor: text;
+  }
+
+  td.graf:hover { background: var(--accent-soft); }
+
+  td.len { font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); width: 1%; text-align: right; }
+  td.len.over { color: var(--warn); font-weight: 700; }
+
+  .flag {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.09em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 2px; white-space: nowrap;
+  }
+  .flag.warn { background: var(--warn-soft); color: var(--warn); }
+  .flag.err  { background: var(--accent-soft); color: var(--accent); }
+  .flag.edit { background: var(--ok-soft); color: var(--ok); }
+
+  .grouphead td {
+    background: var(--ink) !important;
+    color: var(--ground);
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.15em; text-transform: uppercase;
+    padding: 6px 12px;
+  }
+
+  /* ---- empty ---- */
+
+  .empty {
+    padding: 60px 24px; text-align: center;
+    background: var(--surface); border: 1px solid var(--hairline);
+    color: var(--ink-2);
+  }
+
+  .empty h2 { font-size: 1.05rem; color: var(--ink); margin: 0 0 8px; }
+  .empty p { margin: 0 auto; max-width: 52ch; font-size: 14px; }
+
+  /* ---- footer note ---- */
+
+  .note {
+    margin-top: 22px; font-size: 12.5px; color: var(--ink-2);
+    max-width: 84ch; line-height: 1.6;
+  }
+
+  .note code {
+    font-family: var(--mono); font-size: 0.9em;
+    background: var(--surface-2); border: 1px solid var(--hairline-2);
+    border-radius: 3px; padding: 0.1em 0.35em;
+  }
+
+  .maprow { display: flex; gap: 10px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <p class="sub">Como TV · Grafiche Live</p>
+      <h1>Classifiche</h1>
+    </div>
+    <div class="keystate">
+      <span class="dot" id="keyDot"></span>
+      <span id="keyLabel">Chiave non inserita</span>
+      <button class="ghost" id="btnKey" style="padding:5px 11px;font-size:12px">Imposta chiave</button>
+    </div>
+  </header>
+
+  <div class="controls">
+    <div class="field">
+      <label for="comp">Competizione</label>
+      <select id="comp"></select>
+    </div>
+    <div class="field">
+      <label for="season">Stagione</label>
+      <input type="number" id="season" min="2000" max="2100" step="1">
+    </div>
+    <button class="primary" id="btnRefresh">Aggiorna dati</button>
+    <button id="btnCsv" disabled>Scarica CSV</button>
+
+    <div class="spacer"></div>
+
+    <div class="toggles">
+      <label><input type="checkbox" id="optGoals"> colonne GF · GS</label>
+      <label><input type="checkbox" id="optAscii"> esporta senza accenti</label>
+    </div>
+  </div>
+
+  <div class="status" id="status">
+    <span class="msg">Inserisci la chiave API, scegli una competizione e premi <b>Aggiorna dati</b>.</span>
+  </div>
+
+  <div id="out">
+    <div class="empty">
+      <h2>Nessun dato caricato</h2>
+      <p>La pagina interroga API-Football al momento del click. Il CSV che scarichi è già nel formato esatto che <code>CLASSIFICHE Script 5.0</code> si aspetta.</p>
+    </div>
+  </div>
+
+  <p class="note">
+    <b>Nome grafica.</b> La colonna è modificabile: clicca e scrivi il nome come deve apparire in onda.
+    La pagina se lo ricorda su questo computer, e da lì in poi lo riapplica da sola.
+    Il file del logo deve chiamarsi come quel nome, in minuscolo — <code>wba.png</code> per <code>WBA</code>.
+  </p>
+
+  <div class="maprow">
+    <button class="ghost" id="btnMapOut" style="font-size:12px;padding:6px 12px">Esporta mappatura</button>
+    <button class="ghost" id="btnMapIn"  style="font-size:12px;padding:6px 12px">Importa mappatura</button>
+    <button class="ghost" id="btnMapClear" style="font-size:12px;padding:6px 12px">Azzera mappatura</button>
+    <span style="font-size:12px;color:var(--ink-2)" id="mapCount"></span>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ------------------------------------------------------------------
+  // Competizioni. Gli ID sono quelli di API-Football: la pagina mostra
+  // sempre il nome che l'API restituisce, quindi un ID sbagliato si vede
+  // subito nella barra di stato.
+  // ------------------------------------------------------------------
+  var COMPS = [
+    { slug: "serie-a",       nome: "Serie A",              league: 135, season: 2026, file: "CLASSIFICA SERIE A" },
+    { slug: "championship",  nome: "EFL Championship",     league: 40,  season: 2026, file: "CLASSIFICA EFL CHAMPIONSHIP" },
+    { slug: "saudi",         nome: "Saudi Pro League",     league: 307, season: 2026, file: "CLASSIFICA SAUDI PRO LEAGUE" },
+    { slug: "eredivisie",    nome: "Eredivisie",           league: 88,  season: 2026, file: "CLASSIFICA EREDIVISIE" },
+    { slug: "scozia",        nome: "Scottish Premiership", league: 179, season: 2026, file: "CLASSIFICA SCOTTISH PREMIERSHIP" },
+    { slug: "austria",       nome: "Bundesliga Austria",   league: 218, season: 2026, file: "CLASSIFICA BUNDESLIGA AUSTRIA" },
+    { slug: "argentina",     nome: "LPF Argentina",        league: 128, season: 2026, file: "CLASSIFICA LPF ARGENTINA" }
+  ];
+
+  var API   = "https://v3.football.api-sports.io";
+  var KEYSS = "comotv.apifootball.key";
+  var MAPLS = "comotv.classifiche.mappatura";
+
+  var el = {
+    comp:     document.getElementById("comp"),
+    season:   document.getElementById("season"),
+    refresh:  document.getElementById("btnRefresh"),
+    csv:      document.getElementById("btnCsv"),
+    status:   document.getElementById("status"),
+    out:      document.getElementById("out"),
+    keyDot:   document.getElementById("keyDot"),
+    keyLabel: document.getElementById("keyLabel"),
+    btnKey:   document.getElementById("btnKey"),
+    optGoals: document.getElementById("optGoals"),
+    optAscii: document.getElementById("optAscii"),
+    mapOut:   document.getElementById("btnMapOut"),
+    mapIn:    document.getElementById("btnMapIn"),
+    mapClear: document.getElementById("btnMapClear"),
+    mapCount: document.getElementById("mapCount")
+  };
+
+  var state = { rows: [], groups: [], comp: null, stamp: null, leagueName: "" };
+
+  // ---------------- storage ----------------
+
+  function safeGet(store, k) {
+    try { return store.getItem(k); } catch (e) { return null; }
+  }
+  function safeSet(store, k, v) {
+    try { store.setItem(k, v); return true; } catch (e) { return false; }
+  }
+
+  function getKey()      { return safeGet(sessionStorage, KEYSS) || ""; }
+  function setKey(v)     { safeSet(sessionStorage, KEYSS, v); paintKey(); }
+
+  function getMap() {
+    try { return JSON.parse(safeGet(localStorage, MAPLS) || "{}"); } catch (e) { return {}; }
+  }
+  function setMap(m) {
+    safeSet(localStorage, MAPLS, JSON.stringify(m));
+    paintMapCount();
+  }
+
+  function paintMapCount() {
+    var n = Object.keys(getMap()).length;
+    el.mapCount.textContent = n ? n + (n === 1 ? " nome memorizzato" : " nomi memorizzati") : "nessun nome memorizzato";
+  }
+
+  function paintKey() {
+    var has = !!getKey();
+    el.keyDot.className = "dot" + (has ? " on" : "");
+    el.keyLabel.textContent = has ? "Chiave attiva per questa sessione" : "Chiave non inserita";
+  }
+
+  // ---------------- ui helpers ----------------
+
+  function status(kind, html) {
+    el.status.className = "status" + (kind ? " " + kind : "");
+    el.status.innerHTML = html;
+  }
+
+  function stampText(d) {
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  }
+
+  // ---------------- nomi ----------------
+
+  function defaultName(apiName) {
+    return String(apiName || "").toUpperCase().trim();
+  }
+
+  function grafName(apiName) {
+    var m = getMap();
+    return m[apiName] || defaultName(apiName);
+  }
+
+  function stripAccents(s) {
+    return s.normalize ? s.normalize("NFD").replace(/[\u0300-\u036f]/g, "") : s;
+  }
+
+  function nameFlags(name) {
+    var f = [];
+    if (name.indexOf(",") !== -1) f.push({ cls: "err",  txt: "virgola" });
+    if (name.length > 16)         f.push({ cls: "warn", txt: name.length + " car." });
+    return f;
+  }
+
+  // ---------------- fetch ----------------
+
+  function load() {
+    var key = getKey();
+    if (!key) { askKey(); return; }
+
+    var comp = COMPS[el.comp.selectedIndex];
+    var season = parseInt(el.season.value, 10);
+    state.comp = comp;
+
+    el.refresh.disabled = true;
+    status("", '<span class="msg">Interrogazione di API-Football…</span>');
+
+    var url = API + "/standings?league=" + comp.league + "&season=" + season;
+
+    fetch(url, { headers: { "x-apisports-key": key } })
+      .then(function (r) {
+        if (r.status === 401 || r.status === 403) throw new Error("CHIAVE");
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        if (data.errors && !Array.isArray(data.errors) && Object.keys(data.errors).length) {
+          var first = data.errors[Object.keys(data.errors)[0]];
+          throw new Error("API: " + first);
+        }
+        if (!data.response || !data.response.length) throw new Error("VUOTO");
+
+        var lg = data.response[0].league;
+        state.leagueName = lg.name + " · " + lg.country + " · stagione " + lg.season;
+        state.groups = parse(lg.standings);
+        state.stamp = new Date();
+
+        render();
+        el.csv.disabled = false;
+
+        var tot = state.groups.reduce(function (n, g) { return n + g.rows.length; }, 0);
+        status("ok",
+          '<span class="stamp">' + stampText(state.stamp) + '</span>' +
+          '<span class="msg"><b>' + state.leagueName + '</b></span>' +
+          '<span class="msg">' + tot + ' squadre' + (state.groups.length > 1 ? ' · ' + state.groups.length + ' gironi' : '') + '</span>'
+        );
+      })
+      .catch(function (err) {
+        el.csv.disabled = true;
+        if (err.message === "CHIAVE") {
+          status("err", '<span class="msg"><b>Chiave rifiutata.</b> Controlla di aver copiato quella del pannello API-Football.</span>');
+        } else if (err.message === "VUOTO") {
+          status("warn", '<span class="msg"><b>Nessuna classifica</b> per questo campionato in questa stagione. Prova a cambiare l\'anno, o l\'ID del campionato non è quello giusto.</span>');
+        } else if (err instanceof TypeError) {
+          // CORS verificato ok (2026-08-25): se finiamo qui, di solito la chiave
+          // è in un formato che Cloudflare respinge prima dell'API, o manca la rete.
+          status("err", '<span class="msg"><b>Il browser non è riuscito a contattare l\'API.</b> Controlla di aver incollato la chiave esatta dal pannello API-Football (solo lettere e numeri, senza spazi) e la connessione. Dettaglio: ' + err.message + '</span>');
+        } else {
+          status("err", '<span class="msg"><b>Errore.</b> ' + err.message + '</span>');
+        }
+      })
+      .then(function () { el.refresh.disabled = false; });
+  }
+
+  function parse(standings) {
+    // standings è un array di gironi; ogni girone è un array di righe
+    return standings.map(function (grp, i) {
+      var label = (grp[0] && grp[0].group) ? grp[0].group : ("Girone " + (i + 1));
+      return {
+        label: label,
+        rows: grp.map(function (r) {
+          return {
+            pos:  r.rank,
+            api:  r.team.name,
+            pg:   r.all.played,
+            v:    r.all.win,
+            p:    r.all.draw,
+            s:    r.all.lose,
+            gf:   r.all.goals["for"],
+            gs:   r.all.goals.against,
+            pt:   r.points,
+            desc: r.description || ""
+          };
+        })
+      };
+    });
+  }
+
+  // ---------------- render ----------------
+
+  function render() {
+    var multi = state.groups.length > 1;
+    var goals = el.optGoals.checked;
+
+    var h = '<div class="tablewrap"><table><thead><tr>' +
+            '<th class="num">POS</th>' +
+            '<th>Nome grafica</th>' +
+            '<th class="num">car.</th>' +
+            '<th></th>' +
+            '<th>Nome API</th>' +
+            '<th class="num">PG</th><th class="num">V</th><th class="num">P</th><th class="num">S</th>' +
+            (goals ? '<th class="num">GF</th><th class="num">GS</th>' : '') +
+            '<th class="num">PT</th>' +
+            '</tr></thead><tbody>';
+
+    var span = goals ? 12 : 10;
+
+    state.groups.forEach(function (g, gi) {
+      if (multi) h += '<tr class="grouphead"><td colspan="' + span + '">' + esc(g.label) + '</td></tr>';
+
+      g.rows.forEach(function (r, ri) {
+        var name = grafName(r.api);
+        var edited = !!getMap()[r.api];
+        var flags = nameFlags(name);
+
+        h += '<tr>' +
+             '<td class="pos">' + r.pos + '</td>' +
+             '<td class="graf" contenteditable="true" spellcheck="false" data-api="' + esc(r.api) + '" data-g="' + gi + '" data-r="' + ri + '">' + esc(name) + '</td>' +
+             '<td class="len' + (name.length > 16 ? ' over' : '') + '">' + name.length + '</td>' +
+             '<td>' + flags.map(function (f) { return '<span class="flag ' + f.cls + '">' + f.txt + '</span>'; }).join(" ") +
+                      (edited ? ' <span class="flag edit">tuo</span>' : '') + '</td>' +
+             '<td class="api">' + esc(r.api) + '</td>' +
+             '<td class="num">' + r.pg + '</td>' +
+             '<td class="num">' + r.v + '</td>' +
+             '<td class="num">' + r.p + '</td>' +
+             '<td class="num">' + r.s + '</td>' +
+             (goals ? '<td class="num">' + r.gf + '</td><td class="num">' + r.gs + '</td>' : '') +
+             '<td class="num"><b>' + r.pt + '</b></td>' +
+             '</tr>';
+      });
+    });
+
+    h += '</tbody></table></div>';
+    el.out.innerHTML = h;
+
+    Array.prototype.forEach.call(el.out.querySelectorAll("td.graf"), function (td) {
+      td.addEventListener("blur", onNameEdit);
+      td.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") { e.preventDefault(); td.blur(); }
+        if (e.key === "Escape") { td.textContent = grafName(td.dataset.api); td.blur(); }
+      });
+    });
+  }
+
+  function onNameEdit(e) {
+    var td = e.target;
+    var api = td.dataset.api;
+    var val = td.textContent.replace(/\s+/g, " ").trim();
+
+    var m = getMap();
+    if (!val || val === defaultName(api)) { delete m[api]; }
+    else { m[api] = val; }
+    setMap(m);
+
+    render();
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  // ---------------- csv ----------------
+
+  function buildCSV(group) {
+    var goals = el.optGoals.checked;
+    var ascii = el.optAscii.checked;
+
+    var head = ["POSIZIONE", "SQUADRA", "PG", "V", "P", "S", "PT"];
+    if (goals) head = ["POSIZIONE", "SQUADRA", "PG", "V", "P", "S", "PT", "GF", "GS"];
+
+    var lines = [head.join(",")];
+
+    group.rows.forEach(function (r) {
+      var name = grafName(r.api);
+      if (ascii) name = stripAccents(name);
+      name = name.replace(/,/g, " ");          // il parser dello script non gestisce le virgolette
+      var cells = [r.pos, name, r.pg, r.v, r.p, r.s, r.pt];
+      if (goals) cells = [r.pos, name, r.pg, r.v, r.p, r.s, r.pt, r.gf, r.gs];
+      lines.push(cells.join(","));
+    });
+
+    return lines.join("\r\n") + "\r\n";
+  }
+
+  function download() {
+    if (!state.groups.length) return;
+    var comp = state.comp;
+
+    state.groups.forEach(function (g, i) {
+      var suffix = state.groups.length > 1 ? "_" + g.label.replace(/[^\w]+/g, "_").toUpperCase() : "";
+      var fname = comp.file + suffix + ".csv";
+      var blob = new Blob([buildCSV(g)], { type: "text/csv;charset=utf-8" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+    });
+
+    var n = state.groups.length;
+    status("ok",
+      '<span class="stamp">' + stampText(new Date()) + '</span>' +
+      '<span class="msg">Scaricat' + (n > 1 ? 'i <b>' + n + ' file</b>' : 'o <b>1 file</b>') +
+      ' · dati letti alle ' + stampText(state.stamp) + '</span>');
+  }
+
+  // ---------------- mappatura ----------------
+
+  function exportMap() {
+    var blob = new Blob([JSON.stringify(getMap(), null, 2)], { type: "application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "mappatura-squadre.json";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }
+
+  function importMap() {
+    var inp = document.createElement("input");
+    inp.type = "file"; inp.accept = ".json,application/json";
+    inp.addEventListener("change", function () {
+      var f = inp.files && inp.files[0];
+      if (!f) return;
+      var rd = new FileReader();
+      rd.onload = function () {
+        try {
+          var obj = JSON.parse(rd.result);
+          var cur = getMap();
+          Object.keys(obj).forEach(function (k) { cur[k] = obj[k]; });
+          setMap(cur);
+          if (state.groups.length) render();
+          status("ok", '<span class="msg">Mappatura importata: <b>' + Object.keys(obj).length + '</b> nomi.</span>');
+        } catch (e) {
+          status("err", '<span class="msg">Il file non è una mappatura valida.</span>');
+        }
+      };
+      rd.readAsText(f);
+    });
+    inp.click();
+  }
+
+  // ---------------- key ----------------
+
+  function askKey() {
+    var v = window.prompt("Chiave API-Football (resta solo in questa scheda, non viene salvata sul sito):", getKey());
+    if (v === null) return;
+    setKey(v.trim());
+    if (getKey()) status("", '<span class="msg">Chiave impostata. Premi <b>Aggiorna dati</b>.</span>');
+  }
+
+  // ---------------- init ----------------
+
+  COMPS.forEach(function (c) {
+    var o = document.createElement("option");
+    o.textContent = c.nome;
+    el.comp.appendChild(o);
+  });
+
+  el.comp.addEventListener("change", function () {
+    el.season.value = COMPS[el.comp.selectedIndex].season;
+  });
+  el.season.value = COMPS[0].season;
+
+  el.refresh.addEventListener("click", load);
+  el.csv.addEventListener("click", download);
+  el.btnKey.addEventListener("click", askKey);
+  el.optGoals.addEventListener("change", function () { if (state.groups.length) render(); });
+  el.mapOut.addEventListener("click", exportMap);
+  el.mapIn.addEventListener("click", importMap);
+  el.mapClear.addEventListener("click", function () {
+    if (window.confirm("Azzerare tutti i nomi personalizzati su questo computer?")) {
+      setMap({});
+      if (state.groups.length) render();
+    }
+  });
+
+  paintKey();
+  paintMapCount();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Foglio Presenze — Como TV</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --navy-900: #1a2d47;
+            --navy-800: #2a3f57;
+            --navy-700: #3d5370;
+            --navy-600: #506081;
+            --oro: #d4a574;
+            --oro-light: #e8c7a0;
+            --text-light: #f5f5f5;
+            --border-light: #c0c0c0;
+            --bg-input: #f9f9f9;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--navy-900);
+            color: var(--text-light);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        /* ===== LOGIN SCREEN ===== */
+        .login-screen {
+            background: linear-gradient(135deg, var(--navy-800) 0%, var(--navy-700) 100%);
+            border-radius: 12px;
+            padding: 60px 40px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+
+        .login-screen h1 {
+            color: var(--oro);
+            font-size: 32px;
+            margin-bottom: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .login-screen p {
+            color: var(--text-light);
+            margin-bottom: 40px;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--oro);
+            font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-group select,
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid var(--oro);
+            border-radius: 6px;
+            background-color: var(--bg-input);
+            color: var(--navy-900);
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .form-group select:focus,
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--oro-light);
+            box-shadow: 0 0 8px rgba(212, 165, 116, 0.3);
+        }
+
+        .form-group select {
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d4a574' stroke-width='2'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 20px;
+            padding-right: 40px;
+        }
+
+        .btn {
+            padding: 14px 32px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-primary {
+            background-color: var(--oro);
+            color: var(--navy-900);
+            width: 100%;
+            margin-top: 16px;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--oro-light);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(212, 165, 116, 0.4);
+        }
+
+        .btn-secondary {
+            background-color: var(--navy-700);
+            color: var(--text-light);
+            border: 2px solid var(--oro);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--navy-600);
+            box-shadow: 0 4px 12px rgba(212, 165, 116, 0.2);
+        }
+
+        .error-message {
+            color: #ff6b6b;
+            font-size: 13px;
+            margin-top: 8px;
+            display: none;
+            padding: 10px;
+            background-color: rgba(255, 107, 107, 0.1);
+            border-radius: 4px;
+            border-left: 3px solid #ff6b6b;
+        }
+
+        /* ===== DASHBOARD SCREEN ===== */
+        .dashboard-screen {
+            display: none;
+            background: linear-gradient(135deg, var(--navy-800) 0%, var(--navy-700) 100%);
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+            border-bottom: 2px solid var(--oro);
+            padding-bottom: 20px;
+        }
+
+        .dashboard-header h1 {
+            color: var(--oro);
+            font-size: 28px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .user-badge {
+            background-color: var(--oro);
+            color: var(--navy-900);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .btn-logout {
+            background-color: #dc3545;
+            color: white;
+            padding: 10px 20px;
+            font-size: 13px;
+        }
+
+        .btn-logout:hover {
+            background-color: #c82333;
+        }
+
+        /* ===== TABELLA PRESENZE ===== */
+        .presenze-section {
+            margin-bottom: 32px;
+        }
+
+        .presenze-section h2 {
+            color: var(--oro);
+            font-size: 18px;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: var(--bg-input);
+            color: var(--navy-900);
+        }
+
+        table thead {
+            background-color: var(--navy-800);
+            color: var(--oro);
+            text-transform: uppercase;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        table th {
+            padding: 14px 12px;
+            text-align: left;
+            border-bottom: 2px solid var(--oro);
+        }
+
+        table td {
+            padding: 14px 12px;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        table tbody tr:hover {
+            background-color: #f0f0f0;
+        }
+
+        table input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--border-light);
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+        }
+
+        table input:focus {
+            outline: none;
+            border-color: var(--oro);
+            box-shadow: 0 0 4px rgba(212, 165, 116, 0.3);
+        }
+
+        table input[type="date"] {
+            font-size: 12px;
+        }
+
+        .cell-ore {
+            background-color: #f5f5f5;
+            font-weight: 600;
+            color: var(--navy-900);
+        }
+
+        .btn-delete {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .btn-delete:hover {
+            background-color: #c82333;
+            transform: scale(1.05);
+        }
+
+        /* ===== AZIONI ===== */
+        .actions-section {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 32px;
+            flex-wrap: wrap;
+        }
+
+        .btn-add {
+            background-color: var(--oro);
+            color: var(--navy-900);
+            padding: 12px 24px;
+            font-size: 13px;
+        }
+
+        .btn-add:hover {
+            background-color: var(--oro-light);
+            transform: translateY(-2px);
+        }
+
+        .btn-download {
+            background-color: #28a745;
+            color: white;
+            padding: 12px 24px;
+            font-size: 13px;
+        }
+
+        .btn-download:hover {
+            background-color: #218838;
+            transform: translateY(-2px);
+        }
+
+        /* ===== TOTALI MESE ===== */
+        .totali-section {
+            background-color: var(--navy-700);
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid var(--oro);
+            margin-top: 24px;
+        }
+
+        .totali-section h3 {
+            color: var(--oro);
+            font-size: 14px;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .totali-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(212, 165, 116, 0.2);
+        }
+
+        .totali-row:last-child {
+            border-bottom: none;
+        }
+
+        .totali-label {
+            color: var(--text-light);
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .totali-value {
+            color: var(--oro);
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .login-screen,
+            .dashboard-screen {
+                padding: 30px 20px;
+            }
+
+            .login-screen h1 {
+                font-size: 24px;
+            }
+
+            .dashboard-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 16px;
+            }
+
+            .user-info {
+                width: 100%;
+                flex-direction: column;
+            }
+
+            .btn-logout {
+                width: 100%;
+            }
+
+            table {
+                font-size: 12px;
+            }
+
+            table th,
+            table td {
+                padding: 10px 8px;
+            }
+
+            .actions-section {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+        }
+
+        @media print {
+            body {
+                background-color: white;
+                color: var(--navy-900);
+            }
+
+            .dashboard-header,
+            .actions-section {
+                display: none;
+            }
+
+            table {
+                background-color: white;
+            }
+
+            table th {
+                background-color: var(--navy-800);
+                color: var(--oro);
+            }
+
+            .totali-section {
+                background-color: white;
+                border-left: 4px solid var(--navy-800);
+            }
+
+            .totali-section h3 {
+                color: var(--navy-800);
+            }
+
+            .totali-label {
+                color: var(--navy-900);
+            }
+
+            .totali-value {
+                color: var(--navy-800);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- LOGIN SCREEN -->
+    <div class="login-screen" id="loginScreen">
+        <h1>🎬 Como TV</h1>
+        <p>Foglio Presenze — Accedi con le tue credenziali</p>
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="userSelect">Chi sei?</label>
+                <select id="userSelect" required>
+                    <option value="">— Seleziona il tuo nome —</option>
+                    <option value="Federico Caria">Federico Caria</option>
+                    <option value="Manolo Chirico">Manolo Chirico</option>
+                    <option value="Irene Crivellaro">Irene Crivellaro</option>
+                    <option value="Marco Ghironi">Marco Ghironi</option>
+                    <option value="Simone Indovino">Simone Indovino</option>
+                    <option value="Enzo Morreale">Enzo Morreale</option>
+                    <option value="Tommaso Murdocca">Tommaso Murdocca</option>
+                    <option value="Angelo Taglieri">Angelo Taglieri</option>
+                    <option value="Roberto Ugliono">Roberto Ugliono</option>
+                    <option value="Enrico Zambruno">Enrico Zambruno</option>
+                    <option value="Giuseppe Broggini">Giuseppe Broggini</option>
+                    <option value="Nicola Bondavalli">Nicola Bondavalli</option>
+                    <option value="Adele Stigliano">Adele Stigliano</option>
+                    <option value="Samuele Boscolo">Samuele Boscolo</option>
+                    <option value="Simone Solario">Simone Solario</option>
+                    <option value="Giuseppe Catalano">Giuseppe Catalano</option>
+                    <option value="Francesco Castiglione">Francesco Castiglione</option>
+                    <option value="Goffredo d'Onofrio">Goffredo d'Onofrio</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" placeholder="Inserisci password" required>
+            </div>
+            <div class="error-message" id="errorMessage"></div>
+            <button type="submit" class="btn btn-primary">Accedi</button>
+        </form>
+    </div>
+
+    <!-- DASHBOARD SCREEN -->
+    <div class="dashboard-screen" id="dashboardScreen">
+        <div class="dashboard-header">
+            <h1>📋 Presenze — Como TV</h1>
+            <div class="user-info">
+                <span class="user-badge" id="userBadge"></span>
+                <button type="button" class="btn btn-logout" id="logoutBtn">Logout</button>
+            </div>
+        </div>
+
+        <!-- TABELLA PRESENZE -->
+        <div class="presenze-section">
+            <h2>Registro Presenze</h2>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Ora Inizio</th>
+                            <th>Ora Fine</th>
+                            <th>Ore Totali</th>
+                            <th>Note</th>
+                            <th>Azione</th>
+                        </tr>
+                    </thead>
+                    <tbody id="presenceTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- AZIONI -->
+        <div class="actions-section">
+            <button type="button" class="btn btn-add" id="addRowBtn">+ Aggiungi Giorno</button>
+            <button type="button" class="btn btn-download" id="downloadPdfBtn">📥 Scarica PDF</button>
+        </div>
+
+        <!-- TOTALI MESE -->
+        <div class="totali-section">
+            <h3>Totali Mese</h3>
+            <div class="totali-row">
+                <span class="totali-label">Giorni Registrati</span>
+                <span class="totali-value" id="totalDays">0</span>
+            </div>
+            <div class="totali-row">
+                <span class="totali-label">Ore Totali Mese</span>
+                <span class="totali-value" id="totalHours">0.0</span>
+            </div>
+            <div class="totali-row">
+                <span class="totali-label">Media Ore/Giorno</span>
+                <span class="totali-value" id="averageHours">0.0</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== PASSWORD MAPPING =====
+        const credentials = {
+            'Federico Caria': 'CT-42hGMtHbBf!26',
+            'Manolo Chirico': 'CT-IjmGFvy6M6!26',
+            'Irene Crivellaro': 'CT-OF3JRNj2Hx!26',
+            'Marco Ghironi': 'CT-FRI9VsF4Bg!26',
+            'Simone Indovino': 'CT-8HF7w8SzSc!26',
+            'Enzo Morreale': 'CT-HMM0luYwZc!26',
+            'Tommaso Murdocca': 'CT-jViAI5iDOT!26',
+            'Angelo Taglieri': 'CT-hpbK4IdFlC!26',
+            'Roberto Ugliono': 'CT-7Is1SFhRms!26',
+            'Enrico Zambruno': 'CT-4m1eYIcgiT!26',
+            'Giuseppe Broggini': '1zEAARxhOl',
+            'Nicola Bondavalli': 'm9rqpWfi47',
+            'Adele Stigliano': 'YPFElYhlD8',
+            'Samuele Boscolo': 'ntEu2360D3',
+            'Simone Solario': 'rt8z0xbGlU',
+            'Giuseppe Catalano': 'DKDgeTJx7I',
+            'Francesco Castiglione': '6gsALKDrGl',
+            'Goffredo d\'Onofrio': 'TwnCojiMqdjT8dgssv8DNZ'
+        };
+
+        // ===== STATE =====
+        let currentUser = null;
+        let presences = [];
+
+        // ===== DOM ELEMENTS =====
+        const loginScreen = document.getElementById('loginScreen');
+        const dashboardScreen = document.getElementById('dashboardScreen');
+        const loginForm = document.getElementById('loginForm');
+        const userSelect = document.getElementById('userSelect');
+        const passwordInput = document.getElementById('password');
+        const errorMessage = document.getElementById('errorMessage');
+        const userBadge = document.getElementById('userBadge');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const presenceTableBody = document.getElementById('presenceTableBody');
+        const addRowBtn = document.getElementById('addRowBtn');
+        const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+
+        // ===== INITIALIZATION =====
+        window.addEventListener('DOMContentLoaded', () => {
+            loadFromLocalStorage();
+            if (currentUser) {
+                showDashboard();
+            }
+        });
+
+        // ===== LOGIN LOGIC =====
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const selectedUser = userSelect.value;
+            const password = passwordInput.value;
+
+            if (!selectedUser) {
+                showError('Seleziona un dipendente');
+                return;
+            }
+
+            if (credentials[selectedUser] !== password) {
+                showError('Password non corretta');
+                passwordInput.value = '';
+                return;
+            }
+
+            currentUser = selectedUser;
+            saveToLocalStorage();
+            showDashboard();
+        });
+
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorMessage.style.display = 'block';
+            setTimeout(() => {
+                errorMessage.style.display = 'none';
+            }, 4000);
+        }
+
+        // ===== LOGOUT =====
+        logoutBtn.addEventListener('click', () => {
+            currentUser = null;
+            presences = [];
+            localStorage.removeItem('comotvPresenzesData');
+            loginScreen.style.display = 'block';
+            dashboardScreen.style.display = 'none';
+            loginForm.reset();
+            userSelect.value = '';
+            passwordInput.value = '';
+            errorMessage.style.display = 'none';
+        });
+
+        // ===== SHOW/HIDE SCREENS =====
+        function showDashboard() {
+            loginScreen.style.display = 'none';
+            dashboardScreen.style.display = 'block';
+            userBadge.textContent = `👤 ${currentUser}`;
+            renderTable();
+            updateTotals();
+        }
+
+        // ===== TABLE RENDERING =====
+        function renderTable() {
+            presenceTableBody.innerHTML = '';
+            presences.forEach((presence, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><input type="date" class="data-input" value="${presence.data}" data-index="${index}"></td>
+                    <td><input type="time" class="ora-inizio-input" value="${presence.oraInizio}" data-index="${index}"></td>
+                    <td><input type="time" class="ora-fine-input" value="${presence.oraFine}" data-index="${index}"></td>
+                    <td class="cell-ore" id="ore-${index}">${presence.oreTotali.toFixed(1)}</td>
+                    <td><input type="text" class="note-input" value="${presence.note}" data-index="${index}" placeholder="Note..."></td>
+                    <td><button type="button" class="btn-delete" data-index="${index}">✕ Elimina</button></td>
+                `;
+                presenceTableBody.appendChild(row);
+            });
+
+            // Event listeners per input
+            document.querySelectorAll('.data-input').forEach(input => {
+                input.addEventListener('change', updatePresence);
+            });
+            document.querySelectorAll('.ora-inizio-input, .ora-fine-input').forEach(input => {
+                input.addEventListener('change', calculateOre);
+            });
+            document.querySelectorAll('.note-input').forEach(input => {
+                input.addEventListener('change', updatePresence);
+            });
+            document.querySelectorAll('.btn-delete').forEach(btn => {
+                btn.addEventListener('click', deleteRow);
+            });
+        }
+
+        function updatePresence(e) {
+            const index = parseInt(e.target.dataset.index);
+            const row = presences[index];
+
+            if (e.target.classList.contains('data-input')) {
+                row.data = e.target.value;
+            } else if (e.target.classList.contains('note-input')) {
+                row.note = e.target.value;
+            }
+
+            saveToLocalStorage();
+            updateTotals();
+        }
+
+        function calculateOre() {
+            presences.forEach((presence, index) => {
+                const oraInizio = document.querySelector(`.ora-inizio-input[data-index="${index}"]`).value;
+                const oraFine = document.querySelector(`.ora-fine-input[data-index="${index}"]`).value;
+
+                if (oraInizio && oraFine) {
+                    const start = new Date(`2000-01-01T${oraInizio}`);
+                    const end = new Date(`2000-01-01T${oraFine}`);
+                    let diff = (end - start) / (1000 * 60 * 60);
+                    if (diff < 0) diff += 24; // Se fine è il giorno dopo
+                    presence.oreTotali = Math.max(0, diff);
+                    document.getElementById(`ore-${index}`).textContent = presence.oreTotali.toFixed(1);
+                }
+            });
+
+            saveToLocalStorage();
+            updateTotals();
+        }
+
+        function deleteRow(e) {
+            const index = parseInt(e.target.dataset.index);
+            presences.splice(index, 1);
+            saveToLocalStorage();
+            renderTable();
+            updateTotals();
+        }
+
+        // ===== ADD ROW =====
+        addRowBtn.addEventListener('click', () => {
+            const today = new Date().toISOString().split('T')[0];
+            presences.push({
+                data: today,
+                oraInizio: '09:00',
+                oraFine: '17:00',
+                oreTotali: 8,
+                note: ''
+            });
+            saveToLocalStorage();
+            renderTable();
+            updateTotals();
+        });
+
+        // ===== TOTALS =====
+        function updateTotals() {
+            const totalDays = presences.filter(p => p.data).length;
+            const totalHours = presences.reduce((sum, p) => sum + p.oreTotali, 0);
+            const avgHours = totalDays > 0 ? totalHours / totalDays : 0;
+
+            document.getElementById('totalDays').textContent = totalDays;
+            document.getElementById('totalHours').textContent = totalHours.toFixed(1);
+            document.getElementById('averageHours').textContent = avgHours.toFixed(1);
+        }
+
+        // ===== PDF EXPORT =====
+        downloadPdfBtn.addEventListener('click', () => {
+            const element = document.querySelector('.presenze-section');
+            const opt = {
+                margin: 10,
+                filename: `Presenze_${currentUser.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2 },
+                jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
+            };
+            html2pdf().set(opt).from(element).save();
+        });
+
+        // ===== LOCALSTORAGE =====
+        function saveToLocalStorage() {
+            const data = {
+                currentUser,
+                presences
+            };
+            localStorage.setItem('comotvPresenzesData', JSON.stringify(data));
+        }
+
+        function loadFromLocalStorage() {
+            const data = localStorage.getItem('comotvPresenzesData');
+            if (data) {
+                const parsed = JSON.parse(data);
+                currentUser = parsed.currentUser;
+                presences = parsed.presences || [];
+            }
+        }
+    </script>
+</body>
+</html>

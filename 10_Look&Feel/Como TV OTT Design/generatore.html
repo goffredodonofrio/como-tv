@@ -596,6 +596,56 @@ function ytWrap(txt,size,ls,maxW){var words=String(txt||'').split(/\s+/),lines=[
   if(estW(up(t),size,ls)>maxW&&cur){lines.push(cur);cur=w;}else cur=t;});
  if(cur)lines.push(cur);return lines.length?lines:[''];}
 
+// ==== PIATTAFORMA FORMAT — la scrittura di YT-editoriale portata sui formati
+// di Piattaforma live: filetto rosso, occhiello oro spaziato, titolo grande su
+// DUE righe con la seconda in oro, sottotitolo sotto.
+// Le due righe si scrivono, non si spezzano da sole: su una grafica di format
+// il ritorno a capo e' una scelta editoriale, non il risultato di un calcolo.
+// Il blocco sta in basso a sinistra come nel resto della piattaforma — sul
+// riferimento YouTube sta piu' in alto, ma li' la foto e' un pannello laterale
+// su un 16:9 fisso, mentre qui deve reggere anche un 2:3 e un 1506x412.
+function mFormat(W,H,p,I,A){
+ var r=W/H,banner=r>=3,wide=r>=1.5;
+ var q='fm'+W+'x'+H;
+ var M=R(W*(banner?0.024:(wide?0.032:0.072)));
+ var bm=R(H*(banner?0.14:0.075));
+ var L1=p.fmtL1||'',L2=p.fmtL2||'',occ=p.fmtKicker||'',sub=p.fmtSub||'';
+ var ts=R(banner?H*0.26:(wide?H*0.115:W*0.098));
+ // Con la pastiglia LIVE accesa il titolo non deve arrivarci sotto: sul
+ // banner-mid stanno sulla stessa fascia. Lo spazio utile si accorcia.
+ var riserva=(wide&&!banner?R(W*0.30):0)+((p.live&&banner)?206:0);
+ var occS=R(banner?H*0.075:(wide?H*0.031:W*0.029));
+ var subS=R(banner?H*0.070:(wide?H*0.029:W*0.027));
+ // dal basso verso l'alto: sottotitolo -> riga 2 -> riga 1 -> occhiello
+ var y=H-bm,subY=null,y2=null,y1=null,occY=null;
+ if(sub){subY=y;y-=R(subS*2.5);}
+ if(L2){y2=y;y-=R(ts*1.02);}
+ if(L1){y1=y;y-=R(ts*(banner?0.55:0.72));}
+ if(occ)occY=y;
+ // Velo: su un formato largo scurisce da sinistra e lascia respirare la foto a
+ // destra, come nel riferimento; su un verticale sale dal basso.
+ var velo=wide
+  ? '<linearGradient id="'+q+'v" x1="0" y1="0" x2="1" y2="0">'
+    +'<stop offset="0" stop-color="'+SCRIM+'" stop-opacity=".96"/>'
+    +'<stop offset=".46" stop-color="'+SCRIM+'" stop-opacity=".82"/>'
+    +'<stop offset=".78" stop-color="#0A0F24" stop-opacity=".22"/>'
+    +'<stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>'
+  : '<linearGradient id="'+q+'v" x1="0" y1="1" x2="0" y2="0">'
+    +'<stop offset="0" stop-color="'+SCRIM+'" stop-opacity=".97"/>'
+    +'<stop offset=".34" stop-color="'+SCRIM+'" stop-opacity=".9"/>'
+    +'<stop offset=".66" stop-color="#0A0F24" stop-opacity=".45"/>'
+    +'<stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>';
+ return '<defs>'+velo+goldGrad(q+'g')+'</defs>'+GPHOTO(W,H,A,I)
+  +'<rect width="'+W+'" height="'+H+'" fill="url(#'+q+'v)" pointer-events="none"/>'
+  +(p.showLogo===false?'':brandMark(A,M,R(H*(banner?0.14:0.055)),R(H*(banner?0.30:0.10))))
+  +(p.live?G('live',A,livePill(W-M-176,R(H*(banner?0.16:0.055)))):'')
+  +(occ?G('t-comp',A,ytRule(M,occY-R(occS*0.95),R(occS*1.2),R(occS*0.16),C.red)
+     +T(M+R(occS*1.9),occY,occ,{s:occS,w:700,fill:C.gold,ls:R(occS*0.26)})):'')
+  +(L1?G('t-title',A,T(M,y1,L1,{s:ytFit(L1,ts,-1,W-2*M-riserva),w:800,fill:C.ivory,ls:-1})):'')
+  +(L2?G('t-title2',A,T(M,y2,L2,{s:ytFit(L2,ts,-1,W-2*M-riserva),w:800,fill:'url(#'+q+'g)',ls:-1})):'')
+  +(sub?G('t-sub',A,T(M,subY,sub,{s:subS,w:700,fill:'#D8D2C2',upper:false})):'')
+  +hair(W,H,H-5);
+}
 // ==== INTERVISTE — su riferimento diretto (grafica "UDINESE CALCIO vs.
 // COMO 1907" con citazione lunga). Foto piena, blocco ancorato in basso a
 // sinistra, dal basso verso l'alto: firma opzionale -> citazione (va a capo
@@ -919,6 +969,20 @@ var FMT={
       +ytSlab(q,A,'t-title2',40,302,p.ytoL2||'',ss,-2);})()
     +G('t-name',A,ytRule(40,486,40,5)+T(94,502,p.ytoName,{s:40,w:700,fill:C.gold}));}},
 
+ // ---- PIATTAFORMA FORMAT: stesse misure di Piattaforma live ----
+ fmt_landscape_1920x1080:{label:'Format · Landscape (1920×1080)',group:'Format',w:1920,h:1080,useComp:false,
+  fields:[{k:'fmtKicker',l:'Occhiello'},{k:'fmtL1',l:'Riga 1'},{k:'fmtL2',l:'Riga 2 (in oro)'},{k:'fmtSub',l:'Sottotitolo'}],images:Imatch,
+  gen:function(p,I,A){return mFormat(1920,1080,p,I,A);}},
+ fmt_portrait_1200x1800:{label:'Format · Portrait (1200×1800)',group:'Format',w:1200,h:1800,useComp:false,
+  fields:[{k:'fmtKicker',l:'Occhiello'},{k:'fmtL1',l:'Riga 1'},{k:'fmtL2',l:'Riga 2 (in oro)'},{k:'fmtSub',l:'Sottotitolo'}],images:Imatch,
+  gen:function(p,I,A){return mFormat(1200,1800,p,I,A);}},
+ fmt_banner_top_1920x1080:{label:'Format · Banner top (1920×1080)',group:'Format',w:1920,h:1080,useComp:false,
+  fields:[{k:'fmtKicker',l:'Occhiello'},{k:'fmtL1',l:'Riga 1'},{k:'fmtL2',l:'Riga 2 (in oro)'},{k:'fmtSub',l:'Sottotitolo'}],images:Imatch,
+  gen:function(p,I,A){return mFormat(1920,1080,p,I,A);}},
+ fmt_banner_mid_1506x412:{label:'Format · Banner mid (1506×412)',group:'Format',w:1506,h:412,useComp:false,
+  fields:[{k:'fmtKicker',l:'Occhiello'},{k:'fmtL1',l:'Riga 1'},{k:'fmtL2',l:'Riga 2 (in oro)'},{k:'fmtSub',l:'Sottotitolo'}],images:Imatch,
+  gen:function(p,I,A){return mFormat(1506,412,p,I,A);}},
+
  // Interviste — cover col volto dell'intervistato (vedi iLandscape), sui
  // formati di Piattaforma live (landscape, portrait, banner-top, banner-mid).
  int_landscape_1920x1080:{label:'Interviste · Landscape (1920×1080)',group:'Interviste',w:1920,h:1080,useComp:false,
@@ -1196,6 +1260,9 @@ var MENU=[
    'fs_landscape_1920x1080','fs_portrait_1080x1620',
    'fs_banner_top_1920x1080','fs_banner_mid_1506x412',
    'fs_landscape_1920x1080-live','fs_portrait_1080x1620-live','fs_banner_mid_1506x412-live']},
+ {g:'Piattaforma format',k:[
+   'fmt_landscape_1920x1080','fmt_portrait_1200x1800','fmt_banner_top_1920x1080','fmt_banner_mid_1506x412',
+   'fmt_landscape_1920x1080-live','fmt_portrait_1200x1800-live','fmt_banner_mid_1506x412-live']},
  {g:'Interviste',k:[
    'int_landscape_1920x1080','int_portrait_1200x1800',
    'int_banner_top_1920x1080','int_banner_mid_1506x412']},
@@ -1220,10 +1287,12 @@ var ITEMS=(function(){var src={};OTTGEN.items().forEach(function(i){src[i.key]=i
  return out;})();
 var BYKEY={};ITEMS.forEach(function(i){BYKEY[i.key]=i;});
 // naming convention export (come richiesto)
-var FNAME={feed_1080x1440:'feed',story_1080x1920:'story',story_video_1080x1920:'story-video',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'YT-Highlights',yt_gol_collection:'YT-gol-collection',yt_inglese_testata:'YT-testata',yt_inglese_editoriale:'YT-editoriale',yt_parole_classico:'YT-parole-classico',yt_parole_split:'YT-parole-split',yt_parole_volto:'YT-parole-volto',yt_citazione_prot:'YT-citazione',yt_vlog_foto:'YT-vlog',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',rp_landscape_1920x1080:'RP-landscape',rp_portrait_1080x1620:'RP-portrait',rp_banner_top_1506x560:'RP-banner-top',rp_banner_mid_1506x412:'RP-banner-mid',int_landscape_1920x1080:'INT-landscape',int_portrait_1200x1800:'INT-portrait',int_banner_top_1920x1080:'INT-banner-top',int_banner_mid_1506x412:'INT-banner-mid',fs_landscape_1920x1080:'FS-landscape',fs_portrait_1080x1620:'FS-portrait',fs_banner_top_1920x1080:'FS-banner-top',fs_banner_mid_1506x412:'FS-banner-mid',competizioni_1200x1800:'competizioni',format_card_talent:'format-talent',format_card_goleada:'format-goleada',format_card_clasicos:'format-clasicos',format_card_golden:'format-golden'};
+var FNAME={feed_1080x1440:'feed',story_1080x1920:'story',story_video_1080x1920:'story-video',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'YT-Highlights',yt_gol_collection:'YT-gol-collection',yt_inglese_testata:'YT-testata',yt_inglese_editoriale:'YT-editoriale',yt_parole_classico:'YT-parole-classico',yt_parole_split:'YT-parole-split',yt_parole_volto:'YT-parole-volto',yt_citazione_prot:'YT-citazione',yt_vlog_foto:'YT-vlog',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',rp_landscape_1920x1080:'RP-landscape',rp_portrait_1080x1620:'RP-portrait',rp_banner_top_1506x560:'RP-banner-top',rp_banner_mid_1506x412:'RP-banner-mid',int_landscape_1920x1080:'INT-landscape',int_portrait_1200x1800:'INT-portrait',int_banner_top_1920x1080:'INT-banner-top',int_banner_mid_1506x412:'INT-banner-mid',fs_landscape_1920x1080:'FS-landscape',fs_portrait_1080x1620:'FS-portrait',fs_banner_top_1920x1080:'FS-banner-top',fs_banner_mid_1506x412:'FS-banner-mid',competizioni_1200x1800:'competizioni',
+ fmt_landscape_1920x1080:'FMT-landscape',fmt_portrait_1200x1800:'FMT-portrait',
+ fmt_banner_top_1920x1080:'FMT-banner-top',fmt_banner_mid_1506x412:'FMT-banner-mid',format_card_talent:'format-talent',format_card_goleada:'format-goleada',format_card_clasicos:'format-clasicos',format_card_golden:'format-golden'};
 function fname(k){if(/-live$/.test(k)){var b=k.replace(/-live$/,'');return (FNAME[b]||b)+'-live';}return FNAME[k]||k;}
 // default text values per format base
-var DEF={home:'West Ham',away:'Portsmouth',vsLabel:'vs',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'Preshow 15:10',live:true,hlKind:'Highlights',
+var DEF={home:'West Ham',away:'Portsmouth',vsLabel:'vs',fmtKicker:'Il format',fmtL1:'Prima riga',fmtL2:'Seconda riga',fmtSub:'Ogni settimana su Como TV',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'Preshow 15:10',live:true,hlKind:'Highlights',
  heroKicker:'Como TV · Live Events',heroLine1:'Il grande calcio,',heroLine2:'in diretta.',title:'Como Cup 2026',
  novKicker:'FPF Supertaça · Porto campione',novTitle:'Alzata del trofeo',midKicker:'Como TV · Originals',midLine1:'La tua casa',midLine2:'del calcio',
  badgeName:'Carabao Cup',replName:'LPF Torneo Apertura',name:'Talent Hunters',num:'01',preshow:'Football Show 15:10',ytKicker:'Le parole di',ytTitle:'Abbiamo scritto la storia',ytTitle2:'la storia',ytName:'Mikel Arteta',ytChip:'Le parole di',ytiKicker:'Videopodcast',ytiTitle:'Calcio Inglese',ytiSub:'La corsa al titolo',yteKicker:'Calcio Inglese',yteTitle:'Il crollo dello',yteGold:'United',yteSub:'Videopodcast · Ep. 21',ytvChip:'Vlog',ytvKicker:'Dietro le quinte · Wembley',ytvTitle:'Il giorno della finale',ytgTitle:'Gol Collection',ytsL1:'Abbiamo scritto',ytsL2:'la storia',ytsName:'Mikel Arteta',ytsKicker:'Le parole di',ytoL1:'«Scritta',ytoL2:'la storia»',ytoName:'Arteta',fsEyebrow:'Speciale',fsTitle:'Champions League'};
@@ -1244,7 +1313,7 @@ var FMTNUM={talent:'01',goleada:'02',clasicos:'03',golden:'04'};
 //  - gli interruttori showLogo/showLive/showCta/showPreshow, che vanno accesi
 //    formato per formato (e' come li hai voluti);
 //  - le immagini, che hanno gia' una loro memoria comune (SHIMG).
-var SHAREDKEYS={home:1,away:1,comp:1,compBase:1,round:1,date:1,time:1,preshow:1,english:1,englishLabel:1,hlKind:1,compKey:1,intName:1,vsLabel:1,
+var SHAREDKEYS={home:1,away:1,comp:1,compBase:1,round:1,date:1,time:1,preshow:1,english:1,englishLabel:1,hlKind:1,compKey:1,intName:1,vsLabel:1,fmtKicker:1,fmtL1:1,fmtL2:1,fmtSub:1,
  fsEyebrow:1,fsTitle:1,
  ytKicker:1,ytTitle:1,ytName:1,ytChip:1,ytgTitle:1,
  ytsL1:1,ytsL2:1,ytsName:1,ytsKicker:1,
@@ -2582,7 +2651,7 @@ function syncExpBtn(){if(window.syncZip)syncZip();}
 // miniature che contengono.
 var CATCOL={
  'Piattaforma live':'#C9A24B','Piattaforma highlights':'#2FE3F5','Piattaforma replay':'#9B7BF0',
- 'Football Show':'#E8734A','Interviste':'#4FB8E8',
+ 'Football Show':'#E8734A','Piattaforma format':'#6FD08C','Interviste':'#4FB8E8',
  'Social media':'#F05A8C','Social media video':'#FF9F1C','YouTube':'#E5484D','Competizioni':'#3FC98B'};
 var THOPEN={};   // tutti chiusi all'avvio: si apre solo cio' che serve
 // Una miniatura, con la sua casella di export e il click che la rende corrente.
