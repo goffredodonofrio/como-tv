@@ -102,6 +102,8 @@
   .slotrow.manual{grid-template-columns:44px 1fr 1fr 26px;}
   .slotrole{font-family:'Mazzard',system-ui,sans-serif;font-size:9.5px;font-weight:700;letter-spacing:.08em;
     color:var(--fg-3);text-align:center;border:1px solid var(--line-2);border-radius:4px;padding:6px 0;}
+  .slotrole.n{font-size:11.5px;letter-spacing:0;color:var(--gold-bright);border-color:var(--line-gold);
+    font-variant-numeric:tabular-nums;}
   .rowbtn{font-family:'DM Sans',system-ui,sans-serif;font-size:12px;font-weight:500;letter-spacing:0;
     text-transform:none;padding:5px 0;width:26px;text-align:center;
     background:transparent;color:var(--fg-3);border:1px solid var(--line-2);border-radius:4px;}
@@ -185,7 +187,7 @@
   <header class="page">
     <div class="eyebrow">Como TV · Grafiche Live</div>
     <h1>Formazioni</h1>
-    <div class="srcline"><span class="dot"></span>Rose da ESPN · 21 competizioni · allenatore e correzioni a mano · CSV per Formazioni 7.0</div>
+    <div class="srcline"><span class="dot"></span>Rose da ESPN · elenco omologato al portfolio Como TV · allenatore e correzioni a mano · CSV per Formazioni 7.0</div>
   </header>
 
   <div class="teams" id="teams"></div>
@@ -239,6 +241,12 @@
     L'<b>allenatore</b> non arriva da ESPN: si scrive una volta e la pagina lo ricorda per squadra.
   </p>
   <p class="note">
+    <b>Coppe a eliminazione diretta.</b> Carabao Cup, DFB-Pokal, Coupe de France, Taça de Portugal, Scottish Cup,
+    King's Cup, supercoppe, Recopa, Trofeo de Campeones e Supercopa Internacional non hanno un elenco squadre su ESPN:
+    per quelle partite scegli la squadra dal suo <b>campionato</b> (gruppo "Rose per le coppe in palinsesto").
+    Per la <b>Como Cup</b> e le avversarie fuori da ogni elenco c'è <i>✍ scrivi a mano…</i>.
+  </p>
+  <p class="note">
     <b>Il CSV</b> esce già nel formato di <code>Formazioni 7.0.jsx</code>: intestazione, righe 2–12 i titolari
     nell'ordine della colonna, riga 13 l'allenatore (vincolo dello script), dalla 14 la panchina.
     Puoi scaricare entrambe le squadre o una sola.
@@ -250,30 +258,42 @@
 (function () {
   "use strict";
 
-  // Le prime otto sono i campionati Como TV; le altre servono a pescare
-  // le rose di avversarie fuori da quei campionati (coppe, amichevoli).
-  // Tutte verificate su ESPN il 2026-08-25 (standings CORS ok, roster ok).
+  // Elenco omologato al portfolio della piattaforma Como TV (2026-08-25).
+  // Le coppe a eliminazione diretta (Carabao, DFB-Pokal, Coupe de France,
+  // Taça, Scottish Cup, King's Cup, supercoppe, Recopa, Como Cup, Trofeo
+  // de Campeones, Supercopa Internacional) su ESPN non hanno un elenco
+  // squadre: le loro partecipanti si pescano dal campionato di appartenenza
+  // nel gruppo "Rose per le coppe". Tutte le voci sotto sono verificate
+  // (standings CORS ok, roster ok — anche con codici coppa CONMEBOL).
+  var GRPS = ["Competizioni Como TV", "Rose per le coppe in palinsesto", "Altre rose utili"];
   var COMPS = [
-    { nome: "Serie A",              code: "ita.1" },
-    { nome: "EFL Championship",     code: "eng.2" },
-    { nome: "Saudi Pro League",     code: "ksa.1" },
-    { nome: "Eredivisie",           code: "ned.1" },
-    { nome: "Scottish Premiership", code: "sco.1" },
-    { nome: "Bundesliga Austria",   code: "aut.1" },
-    { nome: "LPF Argentina",        code: "arg.1" },
-    { nome: "Serie B",              code: "ita.2" },
-    { nome: "Champions League",     code: "uefa.champions" },
-    { nome: "Europa League",        code: "uefa.europa" },
-    { nome: "Conference League",    code: "uefa.europa.conf" },
-    { nome: "Premier League",       code: "eng.1" },
-    { nome: "League One",           code: "eng.3" },
-    { nome: "LaLiga",               code: "esp.1" },
-    { nome: "Bundesliga",           code: "ger.1" },
-    { nome: "Ligue 1",              code: "fra.1" },
-    { nome: "Primeira Liga",        code: "por.1" },
-    { nome: "Eerste Divisie NL",    code: "ned.2" },
-    { nome: "Scottish Championship",code: "sco.2" },
-    { nome: "Nacional B Argentina", code: "arg.2" }
+    { nome: "EFL Championship",        code: "eng.2",                 grp: 0 },
+    { nome: "Saudi Pro League",        code: "ksa.1",                 grp: 0 },
+    { nome: "Eredivisie",              code: "ned.1",                 grp: 0 },
+    { nome: "Scottish Premiership",    code: "sco.1",                 grp: 0 },
+    { nome: "Scottish Championship",   code: "sco.2",                 grp: 0 },
+    { nome: "Premier Sports Cup",      code: "sco.cis",               grp: 0 },
+    { nome: "Bundesliga Austria",      code: "aut.1",                 grp: 0 },
+    { nome: "LPF Argentina",           code: "arg.1",                 grp: 0 },
+    { nome: "CONMEBOL Libertadores",   code: "conmebol.libertadores", grp: 0 },
+    { nome: "CONMEBOL Sudamericana",   code: "conmebol.sudamericana", grp: 0 },
+    { nome: "Premier League (Carabao)",code: "eng.1",                 grp: 1 },
+    { nome: "League One (Carabao)",    code: "eng.3",                 grp: 1 },
+    { nome: "League Two (Carabao)",    code: "eng.4",                 grp: 1 },
+    { nome: "Bundesliga (DFB-Pokal)",  code: "ger.1",                 grp: 1 },
+    { nome: "2. Bundesliga (DFB-Pokal)", code: "ger.2",               grp: 1 },
+    { nome: "Ligue 1 (Coupe de France)", code: "fra.1",               grp: 1 },
+    { nome: "Ligue 2 (Coupe de France)", code: "fra.2",               grp: 1 },
+    { nome: "Primeira Liga (Taça/Supertaça)", code: "por.1",          grp: 1 },
+    { nome: "Brasileirão (coppe CONMEBOL)", code: "bra.1",            grp: 1 },
+    { nome: "Nacional B Argentina",    code: "arg.2",                 grp: 1 },
+    { nome: "Serie A",                 code: "ita.1",                 grp: 2 },
+    { nome: "Serie B",                 code: "ita.2",                 grp: 2 },
+    { nome: "Champions League",        code: "uefa.champions",        grp: 2 },
+    { nome: "Europa League",           code: "uefa.europa",           grp: 2 },
+    { nome: "Conference League",       code: "uefa.europa.conf",      grp: 2 },
+    { nome: "LaLiga",                  code: "esp.1",                 grp: 2 },
+    { nome: "Eerste Divisie NL",       code: "ned.2",                 grp: 2 }
   ];
 
   var MODULI = ["4-3-3","4-4-2","4-2-3-1","3-5-2","3-4-3","4-3-1-2","4-1-4-1","4-4-1-1","4-5-1","5-3-2","5-4-1","3-4-2-1"];
@@ -469,7 +489,13 @@
         '<div class="side">' + side.label + '</div>' +
         '<div class="row">' +
           '<div class="field"><label>Competizione</label><select data-si="' + si + '" data-k="comp">' +
-            COMPS.map(function (c, i) { return '<option value="' + i + '"' + (i === side.comp ? " selected" : "") + '>' + esc(c.nome) + '</option>'; }).join("") +
+            GRPS.map(function (g, gi) {
+              return '<optgroup label="' + esc(g) + '">' +
+                COMPS.map(function (c, i) {
+                  return c.grp === gi ? '<option value="' + i + '"' + (i === side.comp ? " selected" : "") + '>' + esc(c.nome) + '</option>' : "";
+                }).join("") +
+              '</optgroup>';
+            }).join("") +
           '</select></div>' +
           '<div class="field"><label>Squadra</label><select data-si="' + si + '" data-k="team">' +
             '<option value="">—</option>' +
@@ -507,7 +533,7 @@
   }
 
   function playerLabel(p) {
-    return "#" + (p.num || "–") + " " + p.cognome + (p.nome ? " (" + p.nome + ")" : "") + " · " + p.ruolo;
+    return p.cognome + (p.nome ? " " + p.nome : "") + " · " + p.ruolo;
   }
 
   function slotRowHTML(side, si, zone, k, roleLabel) {
@@ -523,8 +549,10 @@
         '</div>';
     }
 
+    var d = resolve(side, v);
+    var hasNum = d && String(d.num || "").length;
     return '<div class="slotrow">' +
-      '<span class="slotrole">' + roleLabel + '</span>' +
+      '<span class="slotrole' + (hasNum ? " n" : "") + '">' + (hasNum ? esc(d.num) : roleLabel) + '</span>' +
       '<select data-k="slot"' + at + '>' +
         '<option value="">—</option>' +
         side.roster.map(function (p) {
