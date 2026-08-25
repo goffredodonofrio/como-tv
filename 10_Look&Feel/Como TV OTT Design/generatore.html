@@ -1876,7 +1876,7 @@ function drawComposite(ctx,W,H,src,sw,sh,overlay){
 function enterVideoPick(file){
  if(videoPick)exitVideoPick();
  if(photoEdit)exitPhotoEdit();
- videoPick={url:URL.createObjectURL(file),nome:file.name,el:null,raf:0,rec:null};
+ videoPick={url:URL.createObjectURL(file),nome:file.name,el:null,raf:0,rec:null,rvfc:0,fermo:false};
  document.getElementById('vidBar').classList.add('on');
  // Stesso trattamento "schermo pieno" dell'editor foto: la barra formato/social e
  // il pannello CONTENUTO non servono mentre si ritaglia un video, e portano via
@@ -2057,6 +2057,10 @@ function useVideoFrame(){
  fotoNuova(d,{tipo:'video'});
 }
 
+// 50 fotogrammi al secondo: e' lo standard con cui si produce in Europa e con
+// cui arrivano le clip dalla regia. Registrare a 30 butterebbe via due frame
+// su cinque proprio sui movimenti veloci, che nel calcio sono quasi tutti.
+var VIDEO_FPS=50;
 // Contenitore: MP4 se il browser lo sa scrivere, altrimenti WebM.
 function pickVideoMime(){
  if(!window.MediaRecorder)return '';
@@ -2091,11 +2095,11 @@ function exportVideo(){
  var dur=OUT-IN;
  busy(true,'Preparo la grafica…');
  document.fonts.ready.then(function(){return svgToImage(overlaySvg(current));}).then(function(overlay){
-  var stream=cv.captureStream(30);
+  var stream=cv.captureStream(VIDEO_FPS);
   // audio della clip: captureStream sull'elemento video
   var cap=v.captureStream?v.captureStream():(v.mozCaptureStream?v.mozCaptureStream():null);
   if(cap)cap.getAudioTracks().forEach(function(t){stream.addTrack(t);});
-  var rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:10000000});
+  var rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:14000000});
   videoPick.rec=rec;
   var chunks=[];
   rec.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data);};
@@ -2113,12 +2117,28 @@ function exportVideo(){
   // alcun errore. Con setInterval degrada ma non si azzera.
   if(videoPick.raf)cancelAnimationFrame(videoPick.raf);
   var nFrame=0;
-  videoPick.timer=setInterval(function(){
+  // requestVideoFrameCallback scatta a ogni fotogramma DECODIFICATO della clip:
+  // e' l'aggancio esatto alla sorgente, non un timer che le corre accanto.
+  // Dove non c'e', si ripiega su un timer a 20 ms (50 al secondo).
+  var conRVFC=('requestVideoFrameCallback' in HTMLVideoElement.prototype);
+  function dipingi(){
    drawComposite(ctx,W,H,v,v.videoWidth,v.videoHeight,overlay);nFrame++;
    if(dur)busy(true,'Registro… '+Math.max(0,Math.min(100,Math.round((v.currentTime-IN)/dur*100)))+'%');
    if(v.currentTime>=OUT)stopRec();
-  },1000/30);
+  }
+  if(conRVFC){
+   videoPick.rvfc=v.requestVideoFrameCallback(function ciclo(){
+    dipingi();
+    if(videoPick&&!videoPick.fermo)videoPick.rvfc=v.requestVideoFrameCallback(ciclo);
+   });
+   // rete di sicurezza: se la decodifica si ferma, il timer tiene vivo il canvas
+   videoPick.timer=setInterval(dipingi,1000/VIDEO_FPS);
+  }else{
+   videoPick.timer=setInterval(dipingi,1000/VIDEO_FPS);
+  }
   function stopRec(){
+   if(videoPick){videoPick.fermo=true;
+    if(videoPick.rvfc&&v.cancelVideoFrameCallback){try{v.cancelVideoFrameCallback(videoPick.rvfc);}catch(e){}videoPick.rvfc=0;}}
    if(videoPick&&videoPick.timer){clearInterval(videoPick.timer);videoPick.timer=0;}
    if(fineSel){clearTimeout(fineSel);fineSel=0;}
    v.ontimeupdate=null;
