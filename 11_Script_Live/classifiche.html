@@ -202,6 +202,22 @@
   td.len { font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); width: 1%; text-align: right; }
   td.len.over { color: var(--warn); font-weight: 700; }
 
+  td.edit { cursor: text; }
+  td.edit:hover { background: var(--accent-soft); }
+  td.ptcell { font-weight: 700; }
+
+  td.act { white-space: nowrap; width: 1%; text-align: right; }
+  .rowbtn {
+    font-family: var(--mono); font-size: 11px; font-weight: 400;
+    letter-spacing: 0;
+    padding: 2px 7px; margin-left: 4px;
+    background: transparent; color: var(--ink-2);
+    border: 1px solid var(--hairline); border-radius: 3px;
+  }
+  .rowbtn:hover { color: var(--ink); border-color: var(--ink); opacity: 1; }
+  .addrow td { padding: 6px 12px; }
+  .addrow .rowbtn { margin: 0; }
+
   .flag {
     display: inline-block; font-size: 10px; font-weight: 700;
     letter-spacing: 0.09em; text-transform: uppercase;
@@ -255,9 +271,8 @@
       <h1>Classifiche</h1>
     </div>
     <div class="keystate">
-      <span class="dot" id="keyDot"></span>
-      <span id="keyLabel">Chiave non inserita</span>
-      <button class="ghost" id="btnKey" style="padding:5px 11px;font-size:12px">Imposta chiave</button>
+      <span class="dot on"></span>
+      <span>Fonte dati: ESPN · gratuita, nessuna chiave</span>
     </div>
   </header>
 
@@ -272,6 +287,7 @@
     </div>
     <button class="primary" id="btnRefresh">Aggiorna dati</button>
     <button id="btnCsv" disabled>Scarica CSV</button>
+    <button class="ghost" id="btnManual">Tabella manuale</button>
 
     <div class="spacer"></div>
 
@@ -282,13 +298,13 @@
   </div>
 
   <div class="status" id="status">
-    <span class="msg">Inserisci la chiave API, scegli una competizione e premi <b>Aggiorna dati</b>.</span>
+    <span class="msg">Scegli una competizione e premi <b>Aggiorna dati</b>.</span>
   </div>
 
   <div id="out">
     <div class="empty">
       <h2>Nessun dato caricato</h2>
-      <p>La pagina interroga API-Football al momento del click. Il CSV che scarichi è già nel formato esatto che <code>CLASSIFICHE Script 5.0</code> si aspetta.</p>
+      <p>La pagina interroga i dati ESPN al momento del click. Il CSV che scarichi è già nel formato esatto che <code>CLASSIFICHE Script 5.0</code> si aspetta.</p>
     </div>
   </div>
 
@@ -296,6 +312,12 @@
     <b>Nome grafica.</b> La colonna è modificabile: clicca e scrivi il nome come deve apparire in onda.
     La pagina se lo ricorda su questo computer, e da lì in poi lo riapplica da sola.
     Il file del logo deve chiamarsi come quel nome, in minuscolo — <code>wba.png</code> per <code>WBA</code>.
+  </p>
+
+  <p class="note">
+    <b>Correzioni a mano.</b> Anche i numeri si modificano cliccandoci sopra; le frecce spostano le righe
+    (la posizione si rinumera da sola) e <b>Tabella manuale</b> crea una classifica vuota da compilare
+    senza toccare i dati ESPN. Le modifiche manuali valgono finché non premi di nuovo <b>Aggiorna dati</b>.
   </p>
 
   <div class="maprow">
@@ -312,34 +334,80 @@
   "use strict";
 
   // ------------------------------------------------------------------
-  // Competizioni. Gli ID sono quelli di API-Football: la pagina mostra
-  // sempre il nome che l'API restituisce, quindi un ID sbagliato si vede
-  // subito nella barra di stato.
+  // Competizioni. I codici sono quelli dell'API ESPN (la stessa che
+  // alimenta il loro sito: gratuita, senza chiave, con la stagione in
+  // corso). La pagina mostra sempre il nome che l'API restituisce,
+  // quindi un codice sbagliato si vede subito nella barra di stato.
+  // Verificati tutti e 8 il 2026-08-25, penalizzazioni incluse
+  // (Southampton -1) e gironi argentini separati (Group A / Group B).
   // ------------------------------------------------------------------
   var COMPS = [
-    { slug: "serie-a",       nome: "Serie A",              league: 135, season: 2026, file: "CLASSIFICA SERIE A" },
-    { slug: "championship",  nome: "EFL Championship",     league: 40,  season: 2026, file: "CLASSIFICA EFL CHAMPIONSHIP" },
-    { slug: "saudi",         nome: "Saudi Pro League",     league: 307, season: 2026, file: "CLASSIFICA SAUDI PRO LEAGUE" },
-    { slug: "eredivisie",    nome: "Eredivisie",           league: 88,  season: 2026, file: "CLASSIFICA EREDIVISIE" },
-    { slug: "scozia",        nome: "Scottish Premiership", league: 179, season: 2026, file: "CLASSIFICA SCOTTISH PREMIERSHIP" },
-    { slug: "austria",       nome: "Bundesliga Austria",   league: 218, season: 2026, file: "CLASSIFICA BUNDESLIGA AUSTRIA" },
-    { slug: "argentina",     nome: "LPF Argentina",        league: 128, season: 2026, file: "CLASSIFICA LPF ARGENTINA" }
+    { slug: "serie-a",       nome: "Serie A",              code: "ita.1", season: 2026, file: "CLASSIFICA SERIE A" },
+    { slug: "championship",  nome: "EFL Championship",     code: "eng.2", season: 2026, file: "CLASSIFICA EFL CHAMPIONSHIP" },
+    { slug: "saudi",         nome: "Saudi Pro League",     code: "ksa.1", season: 2026, file: "CLASSIFICA SAUDI PRO LEAGUE" },
+    { slug: "eredivisie",    nome: "Eredivisie",           code: "ned.1", season: 2026, file: "CLASSIFICA EREDIVISIE" },
+    { slug: "scozia",        nome: "Scottish Premiership", code: "sco.1", season: 2026, file: "CLASSIFICA SCOTTISH PREMIERSHIP" },
+    { slug: "austria",       nome: "Bundesliga Austria",   code: "aut.1", season: 2026, file: "CLASSIFICA BUNDESLIGA AUSTRIA" },
+    { slug: "argentina",     nome: "LPF Argentina",        code: "arg.1", season: 2026, file: "CLASSIFICA LPF ARGENTINA" }
   ];
 
-  var API   = "https://v3.football.api-sports.io";
-  var KEYSS = "comotv.apifootball.key";
+  var API   = "https://site.api.espn.com/apis/v2/sports/soccer";
   var MAPLS = "comotv.classifiche.mappatura";
+
+  // ------------------------------------------------------------------
+  // Mappatura di serie: nome ESPN -> nome grafica (max 16 caratteri,
+  // limite di CLASSIFICHE Script 5.0). Costruita sulle rose 2026-27 il
+  // 2026-08-25. La colonna editabile della pagina la sovrascrive voce
+  // per voce (override salvato in localStorage su questo computer).
+  // I loghi si agganciano al nome grafica in minuscolo.
+  // ------------------------------------------------------------------
+  var DEFAULT_MAP = {
+    "AS Roma":                               "ROMA",
+    "Internazionale":                        "INTER",
+    "AC Milan":                              "MILAN",
+    "West Bromwich Albion":                  "WEST BROM",
+    "Charlton Athletic":                     "CHARLTON",
+    "Wolverhampton Wanderers":               "WOLVERHAMPTON",
+    "Queens Park Rangers":                   "QPR",
+    "Blackburn Rovers":                      "BLACKBURN",
+    "Bolton Wanderers":                      "BOLTON",
+    "Preston North End":                     "PRESTON",
+    "Sheffield United":                      "SHEFFIELD UTD",
+    "West Ham United":                       "WEST HAM",
+    "Birmingham City":                       "BIRMINGHAM",
+    "Feyenoord Rotterdam":                   "FEYENOORD",
+    "Ajax Amsterdam":                        "AJAX",
+    "PSV Eindhoven":                         "PSV",
+    "Heart of Midlothian":                   "HEARTS",
+    "SC Rheindorf Altach":                   "ALTACH",
+    "WSG Swarovski Tirol":                   "WSG TIROL",
+    "SV Josko Ried":                         "RIED",
+    "SK Sturm Graz":                         "STURM GRAZ",
+    "LASK Linz":                             "LASK",
+    "Estudiantes de La Plata":               "ESTUDIANTES (LP)",
+    "Newell's Old Boys":                     "NEWELL'S",
+    "Talleres (Córdoba)":                    "TALLERES",
+    "Instituto (Córdoba)":                   "INSTITUTO",
+    "Defensa y Justicia":                    "DEF. Y JUSTICIA",
+    "Gimnasia (Mendoza)":                    "GIMNASIA (MZA)",
+    "Central Córdoba (Santiago del Estero)": "CENTRAL CÓRDOBA",
+    "Deportivo Riestra":                     "DEP. RIESTRA",
+    "Argentinos Juniors":                    "ARGENTINOS JRS",
+    "Belgrano (Córdoba)":                    "BELGRANO",
+    "Gimnasia La Plata":                     "GIMNASIA (LP)",
+    "Independiente Rivadavia":               "IND. RIVADAVIA",
+    "Sarmiento (Junín)":                     "SARMIENTO",
+    "Estudiantes de Río Cuarto":             "ESTUDIANTES (RC)"
+  };
 
   var el = {
     comp:     document.getElementById("comp"),
     season:   document.getElementById("season"),
     refresh:  document.getElementById("btnRefresh"),
     csv:      document.getElementById("btnCsv"),
+    manual:   document.getElementById("btnManual"),
     status:   document.getElementById("status"),
     out:      document.getElementById("out"),
-    keyDot:   document.getElementById("keyDot"),
-    keyLabel: document.getElementById("keyLabel"),
-    btnKey:   document.getElementById("btnKey"),
     optGoals: document.getElementById("optGoals"),
     optAscii: document.getElementById("optAscii"),
     mapOut:   document.getElementById("btnMapOut"),
@@ -348,7 +416,7 @@
     mapCount: document.getElementById("mapCount")
   };
 
-  var state = { rows: [], groups: [], comp: null, stamp: null, leagueName: "" };
+  var state = { groups: [], comp: null, stamp: null, leagueName: "", dirty: false };
 
   // ---------------- storage ----------------
 
@@ -359,9 +427,6 @@
     try { store.setItem(k, v); return true; } catch (e) { return false; }
   }
 
-  function getKey()      { return safeGet(sessionStorage, KEYSS) || ""; }
-  function setKey(v)     { safeSet(sessionStorage, KEYSS, v); paintKey(); }
-
   function getMap() {
     try { return JSON.parse(safeGet(localStorage, MAPLS) || "{}"); } catch (e) { return {}; }
   }
@@ -371,14 +436,9 @@
   }
 
   function paintMapCount() {
+    var serie = Object.keys(DEFAULT_MAP).length;
     var n = Object.keys(getMap()).length;
-    el.mapCount.textContent = n ? n + (n === 1 ? " nome memorizzato" : " nomi memorizzati") : "nessun nome memorizzato";
-  }
-
-  function paintKey() {
-    var has = !!getKey();
-    el.keyDot.className = "dot" + (has ? " on" : "");
-    el.keyLabel.textContent = has ? "Chiave attiva per questa sessione" : "Chiave non inserita";
+    el.mapCount.textContent = serie + " nomi di serie" + (n ? " · " + n + (n === 1 ? " tuo" : " tuoi") + " su questo computer" : "");
   }
 
   // ---------------- ui helpers ----------------
@@ -401,7 +461,7 @@
 
   function grafName(apiName) {
     var m = getMap();
-    return m[apiName] || defaultName(apiName);
+    return m[apiName] || DEFAULT_MAP[apiName] || defaultName(apiName);
   }
 
   function stripAccents(s) {
@@ -418,35 +478,30 @@
   // ---------------- fetch ----------------
 
   function load() {
-    var key = getKey();
-    if (!key) { askKey(); return; }
+    if (state.dirty && !window.confirm("Ci sono modifiche fatte a mano: aggiornando dai dati ESPN andranno perse. Continuare?")) return;
 
     var comp = COMPS[el.comp.selectedIndex];
     var season = parseInt(el.season.value, 10);
     state.comp = comp;
 
     el.refresh.disabled = true;
-    status("", '<span class="msg">Interrogazione di API-Football…</span>');
+    status("", '<span class="msg">Interrogazione dei dati ESPN…</span>');
 
-    var url = API + "/standings?league=" + comp.league + "&season=" + season;
+    var url = API + "/" + comp.code + "/standings?season=" + season;
 
-    fetch(url, { headers: { "x-apisports-key": key } })
+    fetch(url)
       .then(function (r) {
-        if (r.status === 401 || r.status === 403) throw new Error("CHIAVE");
         if (!r.ok) throw new Error("HTTP " + r.status);
         return r.json();
       })
       .then(function (data) {
-        if (data.errors && !Array.isArray(data.errors) && Object.keys(data.errors).length) {
-          var first = data.errors[Object.keys(data.errors)[0]];
-          throw new Error("API: " + first);
-        }
-        if (!data.response || !data.response.length) throw new Error("VUOTO");
+        if (!data.children || !data.children.length) throw new Error("VUOTO");
 
-        var lg = data.response[0].league;
-        state.leagueName = lg.name + " · " + lg.country + " · stagione " + lg.season;
-        state.groups = parse(lg.standings);
+        var seasonLabel = data.children.length === 1 ? (data.children[0].name || "") : "";
+        state.leagueName = /[A-Za-z]{3}/.test(seasonLabel) ? seasonLabel : (data.name + " · " + season);
+        state.groups = parse(data.children);
         state.stamp = new Date();
+        state.dirty = false;
 
         render();
         el.csv.disabled = false;
@@ -460,14 +515,10 @@
       })
       .catch(function (err) {
         el.csv.disabled = true;
-        if (err.message === "CHIAVE") {
-          status("err", '<span class="msg"><b>Chiave rifiutata.</b> Controlla di aver copiato quella del pannello API-Football.</span>');
-        } else if (err.message === "VUOTO") {
-          status("warn", '<span class="msg"><b>Nessuna classifica</b> per questo campionato in questa stagione. Prova a cambiare l\'anno, o l\'ID del campionato non è quello giusto.</span>');
+        if (err.message === "VUOTO") {
+          status("warn", '<span class="msg"><b>Nessuna classifica</b> per questo campionato in questa stagione. Prova a cambiare l\'anno.</span>');
         } else if (err instanceof TypeError) {
-          // CORS verificato ok (2026-08-25): se finiamo qui, di solito la chiave
-          // è in un formato che Cloudflare respinge prima dell'API, o manca la rete.
-          status("err", '<span class="msg"><b>Il browser non è riuscito a contattare l\'API.</b> Controlla di aver incollato la chiave esatta dal pannello API-Football (solo lettere e numeri, senza spazi) e la connessione. Dettaglio: ' + err.message + '</span>');
+          status("err", '<span class="msg"><b>Il browser non è riuscito a contattare i dati ESPN.</b> Controlla la connessione; se persiste, ESPN potrebbe aver cambiato l\'API. Dettaglio: ' + err.message + '</span>');
         } else {
           status("err", '<span class="msg"><b>Errore.</b> ' + err.message + '</span>');
         }
@@ -475,31 +526,43 @@
       .then(function () { el.refresh.disabled = false; });
   }
 
-  function parse(standings) {
-    // standings è un array di gironi; ogni girone è un array di righe
-    return standings.map(function (grp, i) {
-      var label = (grp[0] && grp[0].group) ? grp[0].group : ("Girone " + (i + 1));
+  function parse(children) {
+    // children è un array di gironi ESPN; le righe stanno in
+    // standings.entries, con i numeri dentro stats[] indicizzati per nome.
+    // Le penalizzazioni sono già scontate nel valore "points".
+    function stat(entry, name) {
+      for (var i = 0; i < entry.stats.length; i++) {
+        if (entry.stats[i].name === name) return entry.stats[i].value;
+      }
+      return null;
+    }
+
+    return children.map(function (ch, i) {
+      var rows = (ch.standings && ch.standings.entries ? ch.standings.entries : []).map(function (r) {
+        return {
+          pos:  stat(r, "rank"),
+          api:  r.team.displayName || r.team.name,
+          pg:   stat(r, "gamesPlayed"),
+          v:    stat(r, "wins"),
+          p:    stat(r, "ties"),
+          s:    stat(r, "losses"),
+          gf:   stat(r, "pointsFor"),
+          gs:   stat(r, "pointsAgainst"),
+          pt:   stat(r, "points"),
+          desc: ""
+        };
+      });
+      rows.sort(function (a, b) { return a.pos - b.pos; });
       return {
-        label: label,
-        rows: grp.map(function (r) {
-          return {
-            pos:  r.rank,
-            api:  r.team.name,
-            pg:   r.all.played,
-            v:    r.all.win,
-            p:    r.all.draw,
-            s:    r.all.lose,
-            gf:   r.all.goals["for"],
-            gs:   r.all.goals.against,
-            pt:   r.points,
-            desc: r.description || ""
-          };
-        })
+        label: children.length > 1 ? (ch.name || ("Girone " + (i + 1))) : "",
+        rows: rows
       };
     });
   }
 
   // ---------------- render ----------------
+
+  function fmt(x) { return (x === null || x === undefined) ? "" : x; }
 
   function render() {
     var multi = state.groups.length > 1;
@@ -510,37 +573,47 @@
             '<th>Nome grafica</th>' +
             '<th class="num">car.</th>' +
             '<th></th>' +
-            '<th>Nome API</th>' +
+            '<th>Nome fonte</th>' +
             '<th class="num">PG</th><th class="num">V</th><th class="num">P</th><th class="num">S</th>' +
             (goals ? '<th class="num">GF</th><th class="num">GS</th>' : '') +
             '<th class="num">PT</th>' +
+            '<th></th>' +
             '</tr></thead><tbody>';
 
-    var span = goals ? 12 : 10;
+    var span = goals ? 13 : 11;
 
     state.groups.forEach(function (g, gi) {
       if (multi) h += '<tr class="grouphead"><td colspan="' + span + '">' + esc(g.label) + '</td></tr>';
 
       g.rows.forEach(function (r, ri) {
-        var name = grafName(r.api);
-        var edited = !!getMap()[r.api];
+        var name = r.manual ? defaultName(r.api) : grafName(r.api);
+        var edited = !r.manual && !!getMap()[r.api];
         var flags = nameFlags(name);
+        var at = ' data-g="' + gi + '" data-r="' + ri + '"';
+
+        function num(field, extra) {
+          return '<td class="num edit' + (extra || '') + '" contenteditable="true" spellcheck="false" data-f="' + field + '"' + at + '>' + fmt(r[field]) + '</td>';
+        }
 
         h += '<tr>' +
-             '<td class="pos">' + r.pos + '</td>' +
-             '<td class="graf" contenteditable="true" spellcheck="false" data-api="' + esc(r.api) + '" data-g="' + gi + '" data-r="' + ri + '">' + esc(name) + '</td>' +
+             '<td class="pos">' + fmt(r.pos) + '</td>' +
+             '<td class="graf" contenteditable="true" spellcheck="false" data-api="' + esc(r.api) + '"' + at + '>' + esc(name) + '</td>' +
              '<td class="len' + (name.length > 16 ? ' over' : '') + '">' + name.length + '</td>' +
              '<td>' + flags.map(function (f) { return '<span class="flag ' + f.cls + '">' + f.txt + '</span>'; }).join(" ") +
                       (edited ? ' <span class="flag edit">tuo</span>' : '') + '</td>' +
              '<td class="api">' + esc(r.api) + '</td>' +
-             '<td class="num">' + r.pg + '</td>' +
-             '<td class="num">' + r.v + '</td>' +
-             '<td class="num">' + r.p + '</td>' +
-             '<td class="num">' + r.s + '</td>' +
-             (goals ? '<td class="num">' + r.gf + '</td><td class="num">' + r.gs + '</td>' : '') +
-             '<td class="num"><b>' + r.pt + '</b></td>' +
+             num("pg") + num("v") + num("p") + num("s") +
+             (goals ? num("gf") + num("gs") : '') +
+             num("pt", ' ptcell') +
+             '<td class="act">' +
+               '<button class="rowbtn" data-act="up"'   + at + ' title="Sposta su">&uarr;</button>' +
+               '<button class="rowbtn" data-act="down"' + at + ' title="Sposta gi&ugrave;">&darr;</button>' +
+               '<button class="rowbtn" data-act="del"'  + at + ' title="Elimina riga">&times;</button>' +
+             '</td>' +
              '</tr>';
       });
+
+      h += '<tr class="addrow"><td colspan="' + span + '"><button class="rowbtn" data-act="add" data-g="' + gi + '">+ aggiungi riga</button></td></tr>';
     });
 
     h += '</tbody></table></div>';
@@ -548,24 +621,116 @@
 
     Array.prototype.forEach.call(el.out.querySelectorAll("td.graf"), function (td) {
       td.addEventListener("blur", onNameEdit);
-      td.addEventListener("keydown", function (e) {
-        if (e.key === "Enter") { e.preventDefault(); td.blur(); }
-        if (e.key === "Escape") { td.textContent = grafName(td.dataset.api); td.blur(); }
-      });
+      td.addEventListener("keydown", editKeys);
+    });
+    Array.prototype.forEach.call(el.out.querySelectorAll("td.edit"), function (td) {
+      td.addEventListener("blur", onNumEdit);
+      td.addEventListener("keydown", editKeys);
     });
   }
 
+  function editKeys(e) {
+    if (e.key === "Enter") { e.preventDefault(); e.target.blur(); }
+    if (e.key === "Escape") { render(); }
+  }
+
+  function rowAt(td) { return state.groups[+td.dataset.g].rows[+td.dataset.r]; }
+
   function onNameEdit(e) {
     var td = e.target;
-    var api = td.dataset.api;
     var val = td.textContent.replace(/\s+/g, " ").trim();
+    var row = rowAt(td);
 
+    if (row.manual) {
+      // riga scritta a mano: il nome vive nella riga, non nella mappatura
+      row.api = val;
+      state.dirty = true;
+      render();
+      dirtyStatus();
+      return;
+    }
+
+    var api = td.dataset.api;
     var m = getMap();
-    if (!val || val === defaultName(api)) { delete m[api]; }
+    if (!val || val === (DEFAULT_MAP[api] || defaultName(api))) { delete m[api]; }
     else { m[api] = val; }
     setMap(m);
 
     render();
+  }
+
+  function onNumEdit(e) {
+    var td = e.target;
+    var row = rowAt(td);
+    var v = td.textContent.replace(/\s+/g, "").trim();
+    var n = parseInt(v, 10);
+
+    if (v === "" && row.manual) { row[td.dataset.f] = null; state.dirty = true; render(); dirtyStatus(); return; }
+    if (isNaN(n)) { render(); return; }
+    if (n === row[td.dataset.f]) { render(); return; }
+
+    row[td.dataset.f] = n;
+    state.dirty = true;
+    render();
+    dirtyStatus();
+  }
+
+  function renumber(g) {
+    g.rows.forEach(function (r, i) { r.pos = i + 1; });
+  }
+
+  function onRowAction(e) {
+    var btn = e.target.closest ? e.target.closest("button[data-act]") : null;
+    if (!btn) return;
+    var act = btn.dataset.act;
+    var g = state.groups[+btn.dataset.g];
+
+    if (act === "add") {
+      g.rows.push({ pos: g.rows.length + 1, api: "", pg: null, v: null, p: null, s: null, gf: null, gs: null, pt: null, desc: "", manual: true });
+    } else {
+      var r = +btn.dataset.r;
+      if (act === "del") { g.rows.splice(r, 1); }
+      if (act === "up"   && r > 0)                 { var t = g.rows[r]; g.rows[r] = g.rows[r - 1]; g.rows[r - 1] = t; }
+      if (act === "down" && r < g.rows.length - 1) { var u = g.rows[r]; g.rows[r] = g.rows[r + 1]; g.rows[r + 1] = u; }
+      renumber(g);
+    }
+
+    state.dirty = true;
+    el.csv.disabled = !state.groups.some(function (gr) { return gr.rows.length; });
+    render();
+    dirtyStatus();
+  }
+
+  function dirtyStatus() {
+    status("warn",
+      '<span class="stamp">' + stampText(new Date()) + '</span>' +
+      '<span class="msg"><b>' + esc(state.leagueName || "Tabella") + '</b></span>' +
+      '<span class="msg">modificata a mano — il CSV esporta esattamente ci&ograve; che vedi</span>');
+  }
+
+  function manualTable() {
+    if (state.groups.length && !window.confirm("Sostituisco la tabella attuale con una vuota da compilare a mano?")) return;
+
+    var comp = COMPS[el.comp.selectedIndex];
+    var SIZES = { "serie-a": 20, "championship": 24, "saudi": 18, "eredivisie": 18, "scozia": 12, "austria": 12, "argentina": 15 };
+
+    function mk(n) {
+      var rows = [];
+      for (var i = 0; i < n; i++) rows.push({ pos: i + 1, api: "", pg: null, v: null, p: null, s: null, gf: null, gs: null, pt: null, desc: "", manual: true });
+      return rows;
+    }
+
+    state.comp = comp;
+    state.groups = comp.slug === "argentina"
+      ? [{ label: "Group A", rows: mk(15) }, { label: "Group B", rows: mk(15) }]
+      : [{ label: "", rows: mk(SIZES[comp.slug] || 20) }];
+    state.leagueName = comp.nome + " · compilazione manuale";
+    state.stamp = new Date();
+    state.dirty = true;
+
+    render();
+    el.csv.disabled = false;
+    dirtyStatus();
   }
 
   function esc(s) {
@@ -586,7 +751,7 @@
     var lines = [head.join(",")];
 
     group.rows.forEach(function (r) {
-      var name = grafName(r.api);
+      var name = r.manual ? defaultName(r.api) : grafName(r.api);
       if (ascii) name = stripAccents(name);
       name = name.replace(/,/g, " ");          // il parser dello script non gestisce le virgolette
       var cells = [r.pos, name, r.pg, r.v, r.p, r.s, r.pt];
@@ -624,7 +789,11 @@
   // ---------------- mappatura ----------------
 
   function exportMap() {
-    var blob = new Blob([JSON.stringify(getMap(), null, 2)], { type: "application/json" });
+    var merged = {};
+    Object.keys(DEFAULT_MAP).forEach(function (k) { merged[k] = DEFAULT_MAP[k]; });
+    var local = getMap();
+    Object.keys(local).forEach(function (k) { merged[k] = local[k]; });
+    var blob = new Blob([JSON.stringify(merged, null, 2)], { type: "application/json" });
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "mappatura-squadre.json";
@@ -655,15 +824,6 @@
     inp.click();
   }
 
-  // ---------------- key ----------------
-
-  function askKey() {
-    var v = window.prompt("Chiave API-Football (resta solo in questa scheda, non viene salvata sul sito):", getKey());
-    if (v === null) return;
-    setKey(v.trim());
-    if (getKey()) status("", '<span class="msg">Chiave impostata. Premi <b>Aggiorna dati</b>.</span>');
-  }
-
   // ---------------- init ----------------
 
   COMPS.forEach(function (c) {
@@ -679,7 +839,8 @@
 
   el.refresh.addEventListener("click", load);
   el.csv.addEventListener("click", download);
-  el.btnKey.addEventListener("click", askKey);
+  el.manual.addEventListener("click", manualTable);
+  el.out.addEventListener("click", onRowAction);
   el.optGoals.addEventListener("change", function () { if (state.groups.length) render(); });
   el.mapOut.addEventListener("click", exportMap);
   el.mapIn.addEventListener("click", importMap);
@@ -690,7 +851,6 @@
     }
   });
 
-  paintKey();
   paintMapCount();
 })();
 </script>
