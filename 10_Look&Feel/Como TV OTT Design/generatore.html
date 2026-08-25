@@ -1876,11 +1876,15 @@ function enterVideoPick(file){
  if(photoEdit)exitPhotoEdit();
  videoPick={url:URL.createObjectURL(file),nome:file.name,el:null,raf:0,rec:null};
  document.getElementById('vidBar').classList.add('on');
+ // Stesso trattamento "schermo pieno" dell'editor foto: la barra formato/social e
+ // il pannello CONTENUTO non servono mentre si ritaglia un video, e portano via
+ // spazio proprio a chi ne serve di piu' — l'editor video sale in cima.
+ document.body.classList.add('editing');
  var be=document.getElementById('vidExport');
  be.disabled=!FORMATI_VIDEO[current];
  be.title=FORMATI_VIDEO[current]?'Esporta la selezione come clip'
    :'Disponibile sui formati social video (story-video)';
- renderStage();
+ rimisura();renderStage();
 }
 function exitVideoPick(){
  if(!videoPick)return;
@@ -1890,20 +1894,58 @@ function exitVideoPick(){
  if(videoPick.el){videoPick.el.pause();videoPick.el.src='';}
  URL.revokeObjectURL(videoPick.url);videoPick=null;
  document.getElementById('vidBar').classList.remove('on');
- renderStage();
+ document.body.classList.remove('editing');
+ rimisura();renderStage();
 }
 function fmtT(t){t=Math.max(0,t||0);var m=Math.floor(t/60),s2=Math.floor(t%60),d=Math.floor((t%1)*10);
  return m+':'+(s2<10?'0':'')+s2+'.'+d;}
 
+// Stessa logica di photoClamp, ma sulle dimensioni native del VIDEO invece che
+// della foto: dopo il cover-fit (cov), lo spostamento non deve mai scoprire il
+// fondo del crop, e' sempre ancorato al centro del frame (cx/cy fissi a W/2,H/2).
+function clampVideoAdj(a,sw,sh,W,H){
+ if(!sw||!sh)return a;
+ a.s=Math.max(1,Math.min(3.5,a.s||1));
+ var cov=Math.max(W/sw,H/sh),dw=sw*cov*a.s,dh=sh*cov*a.s;
+ a.dx=Math.max(W-(W+dw)/2,Math.min((dw-W)/2,a.dx||0));
+ a.dy=Math.max(H-(H+dh)/2,Math.min((dh-H)/2,a.dy||0));
+ return a;
+}
 function renderVideoPicker(){
  var it=BYKEY[current],W=it.w,H=it.h;
  var st=document.getElementById('stage');st.innerHTML='';st.className='';
  var cv=document.createElement('canvas');cv.width=W;cv.height=H;cv.id='vidCanvas';
- cv.style.cssText='max-width:100%;max-height:62vh;height:auto;display:block;box-shadow:0 30px 80px -30px #000;border-radius:4px;background:#05070F';
+ cv.style.cssText='max-width:100%;max-height:62vh;height:auto;display:block;box-shadow:0 30px 80px -30px #000;border-radius:4px;background:#05070F;cursor:grab;touch-action:none';
  st.appendChild(cv);
  var v=document.createElement('video');v.src=videoPick.url;v.preload='auto';v.playsInline=true;
  v.style.display='none';st.appendChild(v);videoPick.el=v;
  var ctx=cv.getContext('2d');
+
+ // Trascinamento: sposta l'inquadratura del video dentro il crop del formato
+ // aperto (dx/dy in STATE[current].adj.photo, la stessa struttura che usano le
+ // foto — drawComposite() la legge gia'). Rotella per lo zoom, stessa idea del
+ // trascinamento libero della foto: nessun limite se non "non scoprire il bordo".
+ cv.addEventListener('pointerdown',function(ev){
+  if(!v.videoWidth)return;
+  ev.preventDefault();
+  var a=STATE[current].adj.photo||(STATE[current].adj.photo={dx:0,dy:0,s:1,cx:W/2,cy:H/2});
+  var startX=ev.clientX,startY=ev.clientY,startDx=a.dx||0,startDy=a.dy||0;
+  var k=cv.getBoundingClientRect().width/W||1;   // il canvas e' spesso ridotto via CSS (max-width:100%)
+  cv.style.cursor='grabbing';try{cv.setPointerCapture(ev.pointerId);}catch(e){}
+  function mv(e){
+   a.dx=startDx+(e.clientX-startX)/k;a.dy=startDy+(e.clientY-startY)/k;
+   clampVideoAdj(a,v.videoWidth,v.videoHeight,W,H);paint();
+  }
+  function up(){cv.style.cursor='grab';cv.removeEventListener('pointermove',mv);cv.removeEventListener('pointerup',up);}
+  cv.addEventListener('pointermove',mv);cv.addEventListener('pointerup',up);
+ });
+ cv.addEventListener('wheel',function(ev){
+  if(!v.videoWidth)return;
+  ev.preventDefault();
+  var a=STATE[current].adj.photo||(STATE[current].adj.photo={dx:0,dy:0,s:1,cx:W/2,cy:H/2});
+  a.s=(a.s||1)*(ev.deltaY<0?1.08:1/1.08);
+  clampVideoAdj(a,v.videoWidth,v.videoHeight,W,H);paint();
+ },{passive:false});
 
  // trasporto: play/pausa + scrub, il canvas e' l'unica cosa che si guarda
  var tr=document.createElement('div');tr.className='vtrans';
@@ -2103,7 +2145,7 @@ document.getElementById('vidCancel').onclick=exitVideoPick;
 function rimisura(){if(!window.misuraAltezze)return;
  misuraAltezze();requestAnimationFrame(misuraAltezze);
  setTimeout(misuraAltezze,120);setTimeout(misuraAltezze,350);}
-function enterPhotoEdit(){if(photoEdit)return;pushUndo();document.body.classList.add('editing');
+function enterPhotoEdit(){if(photoEdit)return;if(videoPick)exitVideoPick();pushUndo();document.body.classList.add('editing');
  PE_BEFORE=JSON.stringify({adj:STATE[current].adj.photo||null});
  photoEdit=true;rimisura();renderStage();}
 function exitPhotoEdit(){if(!photoEdit)return;photoEdit=false;PEUPD=null;TOOL=null;document.body.classList.remove('editing');rimisura();renderStage();passoUI();}
