@@ -83,8 +83,14 @@
   .teams{display:grid;grid-template-columns:1fr auto 1fr;gap:18px;align-items:start;margin-bottom:16px;}
   .teampanel{background:var(--surface-panel);border:1px solid var(--line-2);border-radius:10px;padding:14px;}
   .teampanel .side{font-family:'Mazzard',system-ui,sans-serif;font-size:10px;font-weight:700;
-    letter-spacing:.26em;text-transform:uppercase;color:var(--gold);margin-bottom:9px;}
+    letter-spacing:.26em;text-transform:uppercase;color:var(--gold);margin-bottom:9px;
+    display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .modebtn{font-family:'DM Sans',system-ui,sans-serif;font-size:11px;font-weight:500;letter-spacing:.02em;
+    text-transform:none;padding:4px 10px;border-radius:4px;
+    background:transparent;color:var(--fg-3);border:1px solid var(--line-2);}
+  .modebtn:hover{color:var(--gold-bright);border-color:var(--line-gold);}
   .teampanel .row{display:grid;grid-template-columns:1.2fr 1fr .8fr;gap:10px;}
+  .teampanel .row.manualrow{grid-template-columns:2.2fr .8fr;}
   .field{display:flex;flex-direction:column;gap:5px;min-width:0;}
   .vs{font-family:'Mazzard',system-ui,sans-serif;font-size:22px;font-weight:800;color:var(--gold);
     align-self:center;padding:0 2px;letter-spacing:.05em;}
@@ -244,7 +250,9 @@
     <b>Coppe a eliminazione diretta.</b> Carabao Cup, DFB-Pokal, Coupe de France, Taça de Portugal, Scottish Cup,
     King's Cup, supercoppe, Recopa, Trofeo de Campeones e Supercopa Internacional non hanno un elenco squadre su ESPN:
     per quelle partite scegli la squadra dal suo <b>campionato</b> (gruppo "Rose per le coppe in palinsesto").
-    Per la <b>Como Cup</b> e le avversarie fuori da ogni elenco c'è <i>✍ scrivi a mano…</i>.
+    Per la <b>Como Cup</b>, le <b>amichevoli</b> e le <b>giovanili</b> c'è il pulsante
+    <b>✍ scrivi da zero</b> in cima al pannello squadra: nome squadra libero, undici e panchina
+    tutti a campi liberi, campo e CSV funzionano identici.
   </p>
   <p class="note">
     <b>Il CSV</b> esce già nel formato di <code>Formazioni 7.0.jsx</code>: intestazione, righe 2–12 i titolari
@@ -304,9 +312,11 @@
 
   // slot: null | {p: indiceRosa} | {m:1, num, nome, cognome}
   function mkSide(label) {
-    return { label: label, comp: 0, teamId: "", teamName: "", roster: [],
+    return { label: label, comp: 0, teamId: "", teamName: "", roster: [], manualMode: false,
              mod: "4-3-3", tit: [], pan: [], custom: {}, coachN: "", coachC: "" };
   }
+
+  function mkManualRow() { return { m: 1, num: "", nome: "", cognome: "" }; }
   var sides = [mkSide("Casa"), mkSide("Trasferta")];
 
   var el = {
@@ -483,11 +493,24 @@
   function renderTeams() {
     var h = "";
     sides.forEach(function (side, si) {
-      var code = COMPS[side.comp].code;
-      var teams = teamsCache[code] || [];
+      var moduloSel = '<div class="field"><label>Modulo</label><select data-si="' + si + '" data-k="mod">' +
+            MODULI.map(function (m) { return '<option' + (m === side.mod ? " selected" : "") + '>' + m + '</option>'; }).join("") +
+          '</select></div>';
+
       h += '<div class="teampanel">' +
-        '<div class="side">' + side.label + '</div>' +
-        '<div class="row">' +
+        '<div class="side">' + side.label +
+          ' <button class="modebtn" data-si="' + si + '" data-act="' + (side.manualMode ? "manual-off" : "manual-on") + '">' +
+          (side.manualMode ? "&#8617; torna alle rose ESPN" : "&#9997; scrivi da zero") + '</button></div>';
+
+      if (side.manualMode) {
+        h += '<div class="row manualrow">' +
+          '<div class="field"><label>Nome squadra</label><input type="text" placeholder="es. Como Primavera" data-si="' + si + '" data-k="tname" value="' + esc(side.teamName) + '"></div>' +
+          moduloSel +
+        '</div>';
+      } else {
+        var code = COMPS[side.comp].code;
+        var teams = teamsCache[code] || [];
+        h += '<div class="row">' +
           '<div class="field"><label>Competizione</label><select data-si="' + si + '" data-k="comp">' +
             GRPS.map(function (g, gi) {
               return '<optgroup label="' + esc(g) + '">' +
@@ -501,11 +524,11 @@
             '<option value="">—</option>' +
             teams.map(function (t) { return '<option value="' + t.id + '"' + (t.id === side.teamId ? " selected" : "") + '>' + esc(t.name) + '</option>'; }).join("") +
           '</select></div>' +
-          '<div class="field"><label>Modulo</label><select data-si="' + si + '" data-k="mod">' +
-            MODULI.map(function (m) { return '<option' + (m === side.mod ? " selected" : "") + '>' + m + '</option>'; }).join("") +
-          '</select></div>' +
-        '</div>' +
-      '</div>';
+          moduloSel +
+        '</div>';
+      }
+
+      h += '</div>';
       if (si === 0) h += '<div class="vs">VS</div>';
     });
     el.teams.innerHTML = h;
@@ -572,7 +595,7 @@
       var h = '<div class="colpanel">' +
         '<h2>' + side.label + (side.teamName ? " — " + esc(side.teamName) : "") + '<small>' + side.mod + '</small></h2>';
 
-      if (!side.roster.length) {
+      if (!side.roster.length && !side.manualMode) {
         h += '<p style="color:var(--fg-3);font-size:13px">Scegli una squadra per caricare la rosa.</p></div>';
         target.innerHTML = h;
         return;
@@ -593,11 +616,14 @@
   function renderBenches() {
     var h = "";
     sides.forEach(function (side, si) {
-      var n = side.pan.filter(function (v) { return v; }).length;
+      var n = side.pan.filter(function (v) {
+        var d = resolve(side, v);
+        return d && (d.cognome || d.nome);
+      }).length;
       h += '<div class="colpanel">' +
         '<h2>Panchina ' + side.label + (side.teamName ? " — " + esc(side.teamName) : "") +
         '<small>' + n + " / " + NBENCH + '</small></h2>';
-      if (!side.roster.length) {
+      if (!side.roster.length && !side.manualMode) {
         h += '<p style="color:var(--fg-3);font-size:13px">Scegli una squadra per caricare la rosa.</p></div>';
         return;
       }
@@ -638,7 +664,8 @@
     if (t.dataset.k === "mod") {
       side.mod = t.value;
       saveMemo(side);
-      autoFill(side);
+      if (side.manualMode) { side.custom = {}; }   // le righe scritte a mano restano
+      else { autoFill(side); }
       renderAll();
     }
 
@@ -668,6 +695,7 @@
 
     if (t.dataset.k === "coachN") { side.coachN = t.value; saveMemo(side); return; }
     if (t.dataset.k === "coachC") { side.coachC = t.value; saveMemo(side); return; }
+    if (t.dataset.k === "tname") { side.teamName = t.value; renderPitch(); return; }
 
     if (t.dataset.k === "mnum" || t.dataset.k === "mnome" || t.dataset.k === "mcog") {
       var arr = slotArr(side, t.dataset.zone);
@@ -694,7 +722,35 @@
       renderAll();
     }
     if (btn.dataset.act === "rev") {
-      arr[k] = null;
+      arr[k] = side.manualMode ? mkManualRow() : null;
+      renderAll();
+    }
+  });
+
+  // modalità "scrivi da zero" (amichevoli, giovanili, Como Cup…)
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest ? e.target.closest("button.modebtn") : null;
+    if (!btn) return;
+    var side = sides[+btn.dataset.si];
+
+    if (btn.dataset.act === "manual-on") {
+      var has = side.tit.some(function (v) { var d = resolve(side, v); return d && (d.cognome || d.nome); });
+      if (has && !window.confirm("Passo alla compilazione da zero: la formazione attuale di " + side.label + " viene svuotata. Continuare?")) return;
+      side.manualMode = true;
+      side.teamId = ""; side.roster = []; side.custom = {};
+      side.tit = []; for (var i = 0; i < 11; i++) side.tit.push(mkManualRow());
+      side.pan = []; for (var j = 0; j < NBENCH; j++) side.pan.push(mkManualRow());
+      side.coachN = ""; side.coachC = "";
+      renderAll();
+      status("", '<span class="msg"><b>' + side.label + ' da zero:</b> scrivi nome squadra, undici, panchina e allenatore. Il campo si aggiorna mentre scrivi.</span>');
+    }
+
+    if (btn.dataset.act === "manual-off") {
+      if (!window.confirm("Torno alle rose ESPN: quello che hai scritto a mano per " + side.label + " viene perso. Continuare?")) return;
+      var fresh = mkSide(side.label);
+      fresh.comp = side.comp;
+      sides[+btn.dataset.si] = fresh;
+      loadTeams(fresh, renderAll);
       renderAll();
     }
   });
@@ -768,11 +824,14 @@
     var problemi = [], bloccanti = [];
 
     chosen.forEach(function (side) {
-      if (!side.roster.length && !side.tit.some(function (v) { return v; })) {
+      if (!side.tit.length) {
         bloccanti.push(side.label + ": nessuna squadra caricata");
         return;
       }
-      var vuoti = side.tit.filter(function (v) { return !resolve(side, v); }).length;
+      var vuoti = side.tit.filter(function (v) {
+        var d = resolve(side, v);
+        return !d || !(d.cognome || d.nome);
+      }).length;
       if (vuoti) bloccanti.push(side.label + ": " + vuoti + " maglie non assegnate");
       if (!side.coachC) problemi.push(side.label + ": manca l'allenatore (riga 13 del CSV)");
     });
