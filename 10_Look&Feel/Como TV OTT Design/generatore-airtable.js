@@ -348,7 +348,11 @@ function applyEventToGenerator(evt) {
   SHARED.time = evt.time || '';
   SHARED.year = evt.year || new Date().getFullYear();
   SHARED.english = evt.english || false;
-  SHARED.noVs = !!evt.noVs;   // i template tolgono il "vs" quando non c'e' un avversario
+  // Un programma non ha due squadre: la parola fra i due nomi si svuota. Se
+  // Ale l'aveva riscritta a mano ("contro", "x"), una partita normale non gliela
+  // sovrascrive: si ripristina solo se era rimasta vuota da un programma.
+  if (evt.noVs) SHARED.vsLabel = '';
+  else if (!String(SHARED.vsLabel || '').trim()) SHARED.vsLabel = 'vs';
 
   // Mappatura competizione
   var mappedCompKey = COMP_MAPPING[evt.compBase] || evt.compKey || '';

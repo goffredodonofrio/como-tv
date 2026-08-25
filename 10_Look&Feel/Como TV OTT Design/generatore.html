@@ -549,11 +549,19 @@ function tf(A,o){return (A&&A[o])?A[o]:'translate(0 0)';}
 function G(obj,A,inner,clip){return '<g data-obj="'+obj+'" transform="'+tf(A,obj)+'"'+(clip?(' clip-path="'+clip+'"'):'')+'>'+inner+'</g>';}
 function T(x,y,t,o){o=o||{};var a=o.anchor||'start';var w=o.w||800;var fill=o.fill||C.ivory;var ls=o.ls||0;var tx=o.upper===false?esc(t):esc(up(t));var fam=o.family||'Mazzard';
  return '<text x="'+x+'" y="'+y+'" font-family="'+fam+'" font-weight="'+w+'" font-size="'+o.s+'" fill="'+fill+'" letter-spacing="'+ls+'" text-anchor="'+a+'">'+tx+'</text>';}
+// La parola fra le due squadre: se e' vuota non si disegna nulla, e nemmeno
+// lo spazio che la separava dal nome. Chi non l'ha mai toccata trova 'vs'.
+function vsRun(p,stile){
+ var t=(p.vsLabel===undefined?'vs':String(p.vsLabel)).trim();
+ if(!t)return [];
+ stile.t=t;stile.sep=true;return [stile];
+}
 function runsT(x,y,o,runs){o=o||{};var a=o.anchor||'start';var ls=o.ls||0;
  var inner=runs.map(function(r,i){var sz=r.s||o.s;var dx=r.dx||0;var tt=up(String(r.t)).trim();
-   if(!dx&&tt==='VS'){dx=Math.round((i>0?(runs[i-1].s||o.s):sz)*0.20);}
-   var txt=r.upper===false?r.t:up(r.t);if(tt==='VS')txt=' '+String(txt).trim()+' ';
-   return '<tspan font-family="Mazzard" font-weight="'+(r.w||800)+'" font-size="'+sz+'" fill="'+(r.fill||C.ivory)+'"'+(tt==='VS'?' font-style="italic"':'')+(dx?(' dx="'+dx+'"'):'')+'>'+esc(txt)+'</tspan>';}).join('');
+   var sep=r.sep||tt==='VS';
+   if(!dx&&sep){dx=Math.round((i>0?(runs[i-1].s||o.s):sz)*0.20);}
+   var txt=r.upper===false?r.t:up(r.t);if(sep)txt=' '+String(txt).trim()+' ';
+   return '<tspan font-family="Mazzard" font-weight="'+(r.w||800)+'" font-size="'+sz+'" fill="'+(r.fill||C.ivory)+'"'+(sep?' font-style="italic"':'')+(dx?(' dx="'+dx+'"'):'')+'>'+esc(txt)+'</tspan>';}).join('');
  return '<text x="'+x+'" y="'+y+'" letter-spacing="'+ls+'" text-anchor="'+a+'">'+inner+'</text>';}
 // Quando e' attivo, la foto non viene disegnata: la grafica esce trasparente
 // li' sotto e si puo' sovrapporre a un video.
@@ -614,7 +622,7 @@ function mPortrait(W,H,p,I,A,hl){
  return GPHOTO(W,H,A,I)+scrim+'<rect width="'+W+'" height="'+H+'" fill="url(#spP)" pointer-events="none"/>'
   +(!hl&&p.live?G('live',A,livePill(W-M-176,R(H*0.04))):'')
   +(p.english?G('eng',A,engPill(M,R(H*0.04),p.englishLabel)):'')
-  +G('t-home',A,runsT(M,homeY,{ls:-3},[{t:p.home,w:800,fill:C.ivory,s:homeS}].concat(p.noVs?[]:[{t:'vs',w:600,fill:C.gold,s:vsS}])))
+  +G('t-home',A,runsT(M,homeY,{ls:-3},[{t:p.home,w:800,fill:C.ivory,s:homeS}].concat(vsRun(p,{w:600,fill:C.gold,s:vsS}))))
   +G('t-away',A,T(M,awayY,p.away,{s:homeS,w:800,ls:-3,fill:C.goldB}))
   +(hl?G('t-hl',A,T(M,dtY,kind,{s:R(dtS*0.92),w:700,fill:C.gold,ls:R(dtS*0.16)})):(G('t-dt',A,runsT(M,dtY,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,w:800,fill:C.gold,upper:false,s:dtS}]))+pv))
   +'<rect x="'+M+'" y="'+lineY+'" width="'+(W-2*M)+'" height="1" fill="#F5F1E6" fill-opacity=".14"/>'
@@ -694,10 +702,11 @@ function AT(x,y,t,o){o=o||{};var w=o.w||400,fill=o.fill||C.ivory,ls=o.ls||0,fs=o
 // Titolo partita: riga 1 = home (Abril dritto^H^H^H corsivo, leggero), riga
 // 2 = "vs." piccolo + away grande in oro (stessa idea di t-away in
 // mLandscape: la seconda squadra prende il risalto/il colore).
-function intMatchTitle(x,y1,y2,ss,vsS,home,away,gid){
- var vsTxt='vs. ',vsW=R(estW(vsTxt,vsS,1));
+function intMatchTitle(x,y1,y2,ss,vsS,home,away,gid,etichetta){
+ var t=(etichetta===undefined?'vs':String(etichetta)).trim();
+ var vsTxt=t?(t+(/[.:]$/.test(t)?'':'.')+' '):'',vsW=t?R(estW(vsTxt,vsS,1)):0;
  return AT(x,y1,home,{s:ss,w:400,fill:C.ivory,ls:1})
-  +AT(x,y2,vsTxt,{s:vsS,w:400,fill:C.gold,ls:1})
+  +(t?AT(x,y2,vsTxt,{s:vsS,w:400,fill:C.gold,ls:1}):'')
   +AT(x+vsW,y2,away,{s:ss,w:800,fill:'url(#'+gid+')'});
 }
 // Sfumatura scura dal BASSO (dove sta il blocco titolo+citazione) verso
@@ -725,7 +734,7 @@ function iLandscape(W,H,p,I,A){
   +'<rect width="'+W+'" height="'+H+'" fill="url(#ilS)" pointer-events="none"/>'
   +(p.showLogo===false?'':brandMark(A,M,R(H*0.047),R(H*0.10)))
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
-  +G('t-title',A,intMatchTitle(M,titleY1,titleY2,ss,vsS,home,away,'ilG'))
+  +G('t-title',A,intMatchTitle(M,titleY1,titleY2,ss,vsS,home,away,'ilG',p.vsLabel))
   +(nm?G('t-tag',A,AT(M,nameY,'— '+nm,{s:nameS,w:400,fill:C.gold,ls:1})):'');
 }
 // Portrait 2:3 — stessa impaginazione, proporzioni sulla larghezza.
@@ -739,7 +748,7 @@ function iPortrait(W,H,p,I,A){
   +'<rect width="'+W+'" height="'+H+'" fill="url(#ipS)" pointer-events="none"/>'
   +(p.showLogo===false?'':brandMark(A,M,R(H*0.03),R(H*0.055)))
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.03))):'')
-  +G('t-title',A,intMatchTitle(M,titleY1,titleY2,ss,vsS,home,away,'ipG'))
+  +G('t-title',A,intMatchTitle(M,titleY1,titleY2,ss,vsS,home,away,'ipG',p.vsLabel))
   +(nm?G('t-tag',A,AT(M,nameY,'— '+nm,{s:nameS,w:400,fill:C.gold,ls:1})):'')
   +hair(W,H,H-5);
 }
@@ -764,10 +773,10 @@ function iBanner(W,H,p,I,A){
   var mS=R(H*0.105),mY=R(H*0.8);
   return base
    +G('t-title',A,T(M,nameY,nm,{s:nameS,w:800,fill:C.ivory,ls:-2}))
-   +G('t-tag',A,AT(M,mY,home+'  vs.  '+away,{s:mS,w:400,fill:C.gold,ls:1}));
+   +G('t-tag',A,AT(M,mY,home+((p.vsLabel===undefined?'vs':String(p.vsLabel)).trim()?'  '+(p.vsLabel===undefined?'vs':String(p.vsLabel)).trim()+'.  ':'  ')+away,{s:mS,w:400,fill:C.gold,ls:1}));
  }
  var ss=R(H*0.22),vsS=R(H*0.09),y1=R(H*0.4),y2=y1+R(ss*0.85);
- return base+G('t-title',A,intMatchTitle(M,y1,y2,ss,vsS,home,away,'ibG'));
+ return base+G('t-title',A,intMatchTitle(M,y1,y2,ss,vsS,home,away,'ibG',p.vsLabel));
 }
 
 // ==== FOOTBALL SHOW — su modello di Ale: wordmark "Football Show" in Abril
@@ -868,7 +877,7 @@ function mStory(p,I,A,k,gid,video){
   +(p.showLive?G('live',A,livePill(W-64-176,89)):'')
   +(p.english?G('eng',A,engPill(64,1316+dy,p.englishLabel)):'')
   +G('t-comp',A,'<rect x="64" y="'+(1390+dy)+'" width="6" height="32" rx="2" fill="'+C.gold+'"/>'+T(88,1420+dy,p.comp,{s:36,w:700,fill:C.gold,ls:5}))
-  +G('t-home',A,runsT(60,1534+dy,{ls:-3},[{t:p.home,w:800,fill:C.ivory,s:R(118*TEAM_SCALE)}].concat(p.noVs?[]:[{t:'vs',w:600,fill:C.gold,s:R(42*TEAM_SCALE)}])))
+  +G('t-home',A,runsT(60,1534+dy,{ls:-3},[{t:p.home,w:800,fill:C.ivory,s:R(118*TEAM_SCALE)}].concat(vsRun(p,{w:600,fill:C.gold,s:R(42*TEAM_SCALE)}))))
   +G('t-away',A,T(60,1534+dy+R(100*TEAM_SCALE),p.away,{s:R(118*TEAM_SCALE),w:800,ls:-3,fill:C.goldB}))
   +(video?'':G('t-dt',A,runsT(64,1724,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:50},{t:p.time,w:800,fill:C.gold,upper:false,s:50}])))
   +(p.showCta===false?'':G('cta',A,'<rect x="64" y="1772" width="440" height="96" rx="48" fill="'+C.ivory+'"/><path d="M120 1804 L120 1836 L150 1820 Z" fill="'+C.n900+'"/>'+T(170,1830,'GUARDA IL LIVE',{s:30,w:800,fill:C.n900,ls:3})))
@@ -896,7 +905,7 @@ function mLandscape(W,H,p,I,A,hl,mid){
   +(!hl&&p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
   +(p.english?G('eng',A,engPill(M,R(H*0.06),p.englishLabel)):'')
   +G('t-comp',A,'<rect x="'+M+'" y="'+(kickY-tickH+R(kickS*0.05))+'" width="'+R(H*0.006)+'" height="'+tickH+'" rx="2" fill="'+C.gold+'"/>'+T(M+R(H*0.02),kickY,p.comp,{s:kickS,w:700,fill:C.gold,ls:5}))
-  +G('t-home',A,runsT(M,homeY,{ls:-3},[{t:p.home,w:800,fill:C.ivory,s:homeS}].concat(p.noVs?[]:[{t:'vs',w:600,fill:C.gold,s:vsS}])))
+  +G('t-home',A,runsT(M,homeY,{ls:-3},[{t:p.home,w:800,fill:C.ivory,s:homeS}].concat(vsRun(p,{w:600,fill:C.gold,s:vsS}))))
   +G('t-away',A,T(M,awayY,p.away,{s:homeS,w:800,ls:-3,fill:C.goldB})+'<rect x="'+M+'" y="'+ulY+'" width="'+R(W*0.17)+'" height="'+ulH+'" rx="2" fill="url(#gL)"/>')
   +(hl?G('t-hl',A,T(M,dtY,kind,{s:R(dtS*0.95),w:700,fill:C.gold,ls:R(dtS*0.16)})):(G('t-dt',A,runsT(M,dtY,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,w:800,fill:C.gold,upper:false,s:dtS}]))+pv));
 }
@@ -922,13 +931,13 @@ function mFanVoice(W,H,p,I,A){
  out+=G('t-sub',A,T(cx,1330,'I nostri telecronisti ti leggeranno',{s:42,w:700,fill:C.ivory,anchor:'middle',upper:false})+T(cx,1382,'durante la diretta del match',{s:42,w:700,fill:C.ivory,anchor:'middle',upper:false}));
  var mW=W-120,ms=R(Math.min(118,R(mW/(estW(up(p.home),1,0)||1)),R(mW/(estW(up(p.away),1,0)||1)))*TEAM_SCALE);
  var dy=1740-70-R(ms); // ancoraggio dal basso: la data chiude sopra la barra IG
- out+=G('t-home',A,runsT(cx,dy,{ls:-3,anchor:'middle'},[{t:p.home,w:800,fill:C.ivory,s:ms}].concat(p.noVs?[]:[{t:'vs',w:600,fill:C.gold,s:R(ms*0.42)}])))
+ out+=G('t-home',A,runsT(cx,dy,{ls:-3,anchor:'middle'},[{t:p.home,w:800,fill:C.ivory,s:ms}].concat(vsRun(p,{w:600,fill:C.gold,s:R(ms*0.42)}))))
   +G('t-away',A,T(cx,dy+R(ms),p.away,{s:ms,w:800,ls:-3,anchor:'middle',fill:C.goldB}))
   +G('t-dt',A,runsT(cx,1740,{ls:2,anchor:'middle'},[{t:p.date+' ',w:700,fill:C.ivory,s:40},{t:p.time,w:800,fill:C.gold,upper:false,s:40}]));
  return out;
 }
 // standard field sets
-var Fmatch=[{k:'home',l:'Squadra casa'},{k:'away',l:'Squadra ospite'},{k:'comp',l:'Competizione (testo)'},{k:'date',l:'Data'},{k:'time',l:'Ora'},{k:'preshow',l:'Preshow (vuoto=off)'}];
+var Fmatch=[{k:'home',l:'Squadra casa'},{k:'vsLabel',l:'Parola fra le squadre (vuoto = niente)'},{k:'away',l:'Squadra ospite'},{k:'comp',l:'Competizione (testo)'},{k:'date',l:'Data'},{k:'time',l:'Ora'},{k:'preshow',l:'Preshow (vuoto=off)'}];
 var Imatch=[{k:'photo',l:'Foto'},{k:'logoComp',l:'Logo competizione'}];
 
 var FMT={
@@ -940,7 +949,7 @@ var FMT={
    +(p.showLogo===false?'':brandMark(A,R(W*MARK_FEED.x),R(H*MARK_FEED.y),R(H*MARK_FEED.h)))
    +(p.showLive?G('live',A,livePill(W-64-176,72)):'')
    +(p.english?G('eng',A,engPill(64,981,p.englishLabel)):'')
-   +G('t-home',A,runsT(60,1126,{ls:-3},[{t:p.home,w:800,fill:C.ivory,s:R(112*TEAM_SCALE)}].concat(p.noVs?[]:[{t:'vs',w:600,fill:C.gold,s:R(40*TEAM_SCALE)}])))
+   +G('t-home',A,runsT(60,1126,{ls:-3},[{t:p.home,w:800,fill:C.ivory,s:R(112*TEAM_SCALE)}].concat(vsRun(p,{w:600,fill:C.gold,s:R(40*TEAM_SCALE)}))))
    +G('t-away',A,T(60,1126+R(100*TEAM_SCALE),p.away,{s:R(112*TEAM_SCALE),w:800,ls:-3,fill:C.goldB}))
    +G('t-dt',A,runsT(64,1314,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:46},{t:p.time,w:800,fill:C.gold,upper:false,s:46}]))
    +((p.preshow&&p.showPreshow!==false)?(function(){var pw=Math.round(estW(up(p.preshow),28,3))+48;return G('cta',A,'<rect x="470" y="1270" width="'+pw+'" height="56" rx="10" fill="url(#gdF)"/>'+T(470+pw/2,1308,p.preshow,{s:28,w:800,fill:C.n900,ls:3,anchor:'middle'}));})():'')
@@ -1297,7 +1306,7 @@ var BYKEY={};ITEMS.forEach(function(i){BYKEY[i.key]=i;});
 var FNAME={feed_1080x1440:'feed',story_1080x1920:'story',story_video_1080x1920:'story-video',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'YT-Highlights',yt_gol_collection:'YT-gol-collection',yt_inglese_testata:'YT-testata',yt_inglese_editoriale:'YT-editoriale',yt_parole_classico:'YT-parole-classico',yt_parole_split:'YT-parole-split',yt_parole_volto:'YT-parole-volto',yt_citazione_prot:'YT-citazione',yt_vlog_foto:'YT-vlog',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',rp_landscape_1920x1080:'RP-landscape',rp_portrait_1080x1620:'RP-portrait',rp_banner_top_1506x560:'RP-banner-top',rp_banner_mid_1506x412:'RP-banner-mid',int_landscape_1920x1080:'INT-landscape',int_portrait_1200x1800:'INT-portrait',int_banner_top_1920x1080:'INT-banner-top',int_banner_mid_1506x412:'INT-banner-mid',fs_landscape_1920x1080:'FS-landscape',fs_portrait_1080x1620:'FS-portrait',fs_banner_top_1920x1080:'FS-banner-top',fs_banner_mid_1506x412:'FS-banner-mid',competizioni_1200x1800:'competizioni',format_card_talent:'format-talent',format_card_goleada:'format-goleada',format_card_clasicos:'format-clasicos',format_card_golden:'format-golden'};
 function fname(k){if(/-live$/.test(k)){var b=k.replace(/-live$/,'');return (FNAME[b]||b)+'-live';}return FNAME[k]||k;}
 // default text values per format base
-var DEF={home:'West Ham',away:'Portsmouth',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'Preshow 15:10',live:true,hlKind:'Highlights',
+var DEF={home:'West Ham',away:'Portsmouth',vsLabel:'vs',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'Preshow 15:10',live:true,hlKind:'Highlights',
  heroKicker:'Como TV · Live Events',heroLine1:'Il grande calcio,',heroLine2:'in diretta.',title:'Como Cup 2026',
  novKicker:'FPF Supertaça · Porto campione',novTitle:'Alzata del trofeo',midKicker:'Como TV · Originals',midLine1:'La tua casa',midLine2:'del calcio',
  badgeName:'Carabao Cup',replName:'LPF Torneo Apertura',name:'Talent Hunters',num:'01',preshow:'Football Show 15:10',ytKicker:'Le parole di',ytTitle:'Abbiamo scritto la storia',ytTitle2:'la storia',ytName:'Mikel Arteta',ytChip:'Le parole di',ytiKicker:'Videopodcast',ytiTitle:'Calcio Inglese',ytiSub:'La corsa al titolo',yteKicker:'Calcio Inglese',yteTitle:'Il crollo dello',yteGold:'United',yteSub:'Videopodcast · Ep. 21',ytvChip:'Vlog',ytvKicker:'Dietro le quinte · Wembley',ytvTitle:'Il giorno della finale',ytgTitle:'Gol Collection',ytsL1:'Abbiamo scritto',ytsL2:'la storia',ytsName:'Mikel Arteta',ytsKicker:'Le parole di',ytoL1:'«Scritta',ytoL2:'la storia»',ytoName:'Arteta',fsEyebrow:'Speciale',fsTitle:'Champions League'};
@@ -1318,7 +1327,7 @@ var FMTNUM={talent:'01',goleada:'02',clasicos:'03',golden:'04'};
 //  - gli interruttori showLogo/showLive/showCta/showPreshow, che vanno accesi
 //    formato per formato (e' come li hai voluti);
 //  - le immagini, che hanno gia' una loro memoria comune (SHIMG).
-var SHAREDKEYS={home:1,away:1,comp:1,compBase:1,round:1,date:1,time:1,preshow:1,english:1,englishLabel:1,hlKind:1,compKey:1,intName:1,
+var SHAREDKEYS={home:1,away:1,comp:1,compBase:1,round:1,date:1,time:1,preshow:1,english:1,englishLabel:1,hlKind:1,compKey:1,intName:1,vsLabel:1,
  fsEyebrow:1,fsTitle:1,
  ytKicker:1,ytTitle:1,ytName:1,ytChip:1,ytgTitle:1,
  ytsL1:1,ytsL2:1,ytsName:1,ytsKicker:1,
@@ -1447,6 +1456,14 @@ function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);va
  SHARED.mode='libero';
  fc.appendChild(pairRow('Competizione',SHARED.compBase,function(v){SHARED.compBase=v;composeComp();},'Giornata / Turno',SHARED.round,function(v){SHARED.round=v;composeComp();}));
  fc.appendChild(pairRow('Squadra casa',SHARED.home,function(v){SHARED.home=v;},'Squadra ospite',SHARED.away,function(v){SHARED.away=v;}));
+ // La parola fra le due squadre: si riscrive o si cancella. Vuota, sparisce
+ // insieme allo spazio che occupava.
+ (function(){var r=document.createElement('div');r.className='rowf';
+  var c=document.createElement('div');c.appendChild(el('label','Parola fra le squadre'));
+  var i=simpleInput(SHARED.vsLabel===undefined?'vs':SHARED.vsLabel,function(v){SHARED.vsLabel=v;});
+  i.placeholder='vuoto = niente';c.appendChild(i);
+  r.appendChild(c);r.appendChild(document.createElement('div'));
+  fc.appendChild(r);})();
  fc.appendChild(pairRow('Data',SHARED.date,function(v){SHARED.date=v;},'Ora',SHARED.time,function(v){SHARED.time=v;}));
  // Football Show + English Commentary affiancati, per non sprecare una riga.
  // Il testo del pill era nella barra in alto: spostato qui, e' un campo di
@@ -2863,6 +2880,9 @@ function sessApplica(d,cb){
  if(d.shared)Object.keys(d.shared).forEach(function(k){SHARED[k]=d.shared[k];});
  composeComp(); // la riga competizione e' derivata: ricomporla evita testi vecchi
  PHOTO_FONTE=d.fonte||null;AIRTABLE_REC=d.airtable||null;
+ // sessioni salvate quando la parola si spegneva con un interruttore invece
+ // che cancellando il campo
+ if(d.shared&&d.shared.noVs)SHARED.vsLabel='';
  if(d.img){if(d.img.photo)SHIMG.photo=d.img.photo;else delete SHIMG.photo;
            if(d.img.logoComp)SHIMG.logoComp=d.img.logoComp;else delete SHIMG.logoComp;}
  if(d.export)Object.keys(d.export).forEach(function(k){if(BYKEY[k])EXPSEL[k]=d.export[k];});
@@ -3168,6 +3188,6 @@ renderControls();renderStage();renderThumbs();
 prefCarica();prefStato();sessAggiornaElenco();sessProponiNome();passoUI();syncZip();renderSocial();
 loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
 </script>
-<script src="generatore-airtable.js?v=9"></script>
+<script src="generatore-airtable.js?v=10"></script>
 </body>
 </html>
