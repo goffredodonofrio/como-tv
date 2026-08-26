@@ -85,15 +85,20 @@
   };
 
   function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return DEMO;   // aperta a mano senza dati: demo dimostrativa
     try {
-      var q = new URLSearchParams(location.search).get("d");
-      if (!q) return DEMO;
       var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
-      return d && d.r && d.r.length ? d : DEMO;
-    } catch (err) { return DEMO; }
+      return d && d.r && d.r.length ? d : null;
+    } catch (err) { return null; }
   }
   var STILL = new URLSearchParams(location.search).get("still") === "1";
   var D = decodeData();
+  if (!D) {
+    // dati presenti ma non validi: MEGLIO NIENTE che una grafica sbagliata in onda
+    document.title = "CLASSIFICA — dati non validi";
+    return;
+  }
   document.title = "CLASSIFICA " + (D.e || "");
 
   function esc(s) {

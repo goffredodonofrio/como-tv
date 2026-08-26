@@ -137,13 +137,13 @@
   };
 
   function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return DEMO;   // aperta a mano senza dati: demo dimostrativa
     try {
-      var q = new URLSearchParams(location.search).get("d");
-      if (!q) return DEMO;
       var json = decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/"))));
       var d = JSON.parse(json);
-      return d && d.t && d.t.length ? d : DEMO;
-    } catch (e) { return DEMO; }
+      return d && d.t && d.t.length ? d : null;
+    } catch (e) { return null; }
   }
 
   // &still=1 → fermo-immagine (miniatura in regia): stato "undici in campo"
@@ -151,6 +151,11 @@
   var STILL = new URLSearchParams(location.search).get("still") === "1";
 
   var D = decodeData();
+  if (!D) {
+    // dati presenti ma non validi: MEGLIO NIENTE che una grafica sbagliata in onda
+    document.title = "FORMAZIONE — dati non validi";
+    return;
+  }
   var KIT = D.k || "#1735C8";
   document.title = "FORMAZIONE " + (D.n || "").toUpperCase();
 
