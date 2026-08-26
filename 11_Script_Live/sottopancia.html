@@ -115,6 +115,14 @@
   </header>
 
   <div class="controls">
+    <div class="field" style="flex:0 0 130px">
+      <label for="fmt">Formato</label>
+      <select id="fmt" style="font-family:'DM Sans',system-ui,sans-serif;font-size:15px;padding:11px 13px;
+        color:var(--ivory);background:var(--surface-panel);border:1px solid var(--line-2);border-radius:5px;">
+        <option value="1" selected>Singolo</option>
+        <option value="2">Doppio</option>
+      </select>
+    </div>
     <div class="field" style="flex:1 1 180px">
       <label for="kk">Occhiello</label>
       <input type="text" id="kk" value="OSPITE IN STUDIO">
@@ -130,6 +138,22 @@
     <button class="primary" id="btnPrev">Anteprima</button>
     <button id="btnRegia">&#128225; Invia alla regia</button>
     <button id="btnSheetCfg" title="Configura il ponte" style="padding:12px 13px">&#9881;</button>
+  </div>
+
+  <div class="controls" id="row2" style="display:none;padding-top:0">
+    <div class="field" style="flex:0 0 130px"></div>
+    <div class="field" style="flex:1 1 180px">
+      <label for="kk2">Occhiello (lato destro)</label>
+      <input type="text" id="kk2" value="OSPITE IN STUDIO">
+    </div>
+    <div class="field" style="flex:2 1 260px">
+      <label for="nn2">Nome e cognome (lato destro)</label>
+      <input type="text" id="nn2" placeholder="es. Marco Ghironi">
+    </div>
+    <div class="field" style="flex:1.5 1 220px">
+      <label for="jj2">Ruolo (lato destro)</label>
+      <input type="text" id="jj2" placeholder="es. Redazione Como TV">
+    </div>
   </div>
 
   <div class="status" id="status">
@@ -154,8 +178,15 @@
   var kk = document.getElementById("kk");
   var nn = document.getElementById("nn");
   var jj = document.getElementById("jj");
+  var kk2 = document.getElementById("kk2");
+  var nn2 = document.getElementById("nn2");
+  var jj2 = document.getElementById("jj2");
+  var fmt = document.getElementById("fmt");
   var prev = document.getElementById("prev");
   var elStatus = document.getElementById("status");
+
+  function doppio() { return fmt.value === "2"; }
+  function engine() { return doppio() ? "sottopancia2-vmix.html" : "sottopancia-vmix.html"; }
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -190,7 +221,15 @@
   }
 
   function dati() {
-    return { k: kk.value.trim(), n: nn.value.trim(), j: jj.value.trim() };
+    var a = { k: kk.value.trim(), n: nn.value.trim(), j: jj.value.trim() };
+    if (!doppio()) return a;
+    return { a: a, b: { k: kk2.value.trim(), n: nn2.value.trim(), j: jj2.value.trim() } };
+  }
+
+  function nomiOk() {
+    if (!nn.value.trim()) return false;
+    if (doppio() && !nn2.value.trim()) return false;
+    return true;
   }
 
   function fitPrev() {
@@ -203,32 +242,42 @@
   function refreshStill() {
     clearTimeout(t);
     t = setTimeout(function () {
-      prev.src = "sottopancia-vmix.html?d=" + b64url(dati()) + "&still=1";
+      prev.src = engine() + "?d=" + b64url(dati()) + "&still=1";
       fitPrev();
-      safeSet(MEMO, JSON.stringify(dati()));
+      safeSet(MEMO, JSON.stringify({ fmt: fmt.value, a: { k: kk.value, n: nn.value, j: jj.value },
+                                     b: { k: kk2.value, n: nn2.value, j: jj2.value } }));
     }, 350);
   }
-  [kk, nn, jj].forEach(function (i) { i.addEventListener("input", refreshStill); });
+  [kk, nn, jj, kk2, nn2, jj2].forEach(function (i) { i.addEventListener("input", refreshStill); });
+
+  fmt.addEventListener("change", function () {
+    document.getElementById("row2").style.display = doppio() ? "flex" : "none";
+    refreshStill();
+  });
 
   document.getElementById("btnPrev").addEventListener("click", function () {
-    if (!nn.value.trim()) { status("err", '<span class="msg"><b>Serve almeno il nome.</b></span>'); return; }
-    prev.src = "sottopancia-vmix.html?d=" + b64url(dati()) + "&n=" + Date.now();
+    if (!nomiOk()) { status("err", '<span class="msg"><b>Serve il nome' + (doppio() ? " di entrambi i lati" : "") + '.</b></span>'); return; }
+    prev.src = engine() + "?d=" + b64url(dati()) + "&n=" + Date.now();
     fitPrev();
   });
 
   document.getElementById("btnRegia").addEventListener("click", function () {
+    if (!nomiOk()) { status("err", '<span class="msg"><b>Serve il nome' + (doppio() ? " di entrambi i lati" : "") + '.</b></span>'); return; }
     var d = dati();
-    if (!d.n) { status("err", '<span class="msg"><b>Serve almeno il nome.</b></span>'); return; }
     var cfg = ponteConfig(false);
     if (!cfg) return;
-    var titolo = window.prompt("Nome in scaletta di regia:", "SOTTOPANCIA " + d.n.toUpperCase());
+    var propostaTitolo = doppio()
+      ? "SOTTOPANCIA 2X " + d.a.n.toUpperCase() + " / " + d.b.n.toUpperCase()
+      : "SOTTOPANCIA " + d.n.toUpperCase();
+    var titolo = window.prompt("Nome in scaletta di regia:", propostaTitolo);
     if (titolo === null) return;
 
     status("", '<span class="msg">Invio alla regia&hellip;</span>');
     fetch(cfg.url, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ token: cfg.token, tipo: "regia-load", grafica: "sottopancia",
+      body: JSON.stringify({ token: cfg.token, tipo: "regia-load",
+                             grafica: doppio() ? "sottopancia2" : "sottopancia",
                              titolo: titolo.trim() || "SOTTOPANCIA", dati: d })
     })
       .then(function (r) { return r.json(); })
@@ -248,9 +297,19 @@
   // riparto dagli ultimi valori usati su questa postazione
   try {
     var m = JSON.parse(safeGet(MEMO) || "{}");
-    if (m.k) kk.value = m.k;
-    if (m.n) nn.value = m.n;
-    if (m.j) jj.value = m.j;
+    if (m.a) {   // memo nuovo (con formato e due lati)
+      if (m.a.k) kk.value = m.a.k;
+      if (m.a.n) nn.value = m.a.n;
+      if (m.a.j) jj.value = m.a.j;
+      if (m.b && m.b.k) kk2.value = m.b.k;
+      if (m.b && m.b.n) nn2.value = m.b.n;
+      if (m.b && m.b.j) jj2.value = m.b.j;
+      if (m.fmt === "2") { fmt.value = "2"; document.getElementById("row2").style.display = "flex"; }
+    } else {     // memo vecchio a tre campi
+      if (m.k) kk.value = m.k;
+      if (m.n) nn.value = m.n;
+      if (m.j) jj.value = m.j;
+    }
   } catch (e) {}
   refreshStill();
   fitPrev();
