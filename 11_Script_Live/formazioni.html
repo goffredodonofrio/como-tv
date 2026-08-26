@@ -234,6 +234,8 @@
     <button class="primary" id="btnCsvAll">Scarica CSV — entrambe</button>
     <button id="btnCsvHome">Solo Casa</button>
     <button id="btnCsvAway">Solo Trasferta</button>
+    <button id="btnSheet">Invia al foglio</button>
+    <button id="btnSheetCfg" title="Configura il ponte verso il foglio Google" style="padding:11px 13px">&#9881;</button>
     <div class="toggles"><label><input type="checkbox" id="optAscii"> esporta senza accenti</label></div>
   </div>
 
@@ -928,6 +930,90 @@
   document.getElementById("btnCsvAll").addEventListener("click", function () { download([0, 1]); });
   document.getElementById("btnCsvHome").addEventListener("click", function () { download([0]); });
   document.getElementById("btnCsvAway").addEventListener("click", function () { download([1]); });
+
+  // ---------------- ponte verso il foglio Google ----------------
+  // L'URL del ponte (Apps Script /exec) e il token si configurano una
+  // volta per postazione col pulsante ⚙ e restano in localStorage:
+  // così non finiscono nel codice pubblicato su Pages.
+
+  var PONTE_URL = "comotv.ponte.url", PONTE_TOKEN = "comotv.ponte.token";
+
+  function ponteConfig(forza) {
+    var url = safeGet(PONTE_URL) || "";
+    var tok = safeGet(PONTE_TOKEN) || "";
+    if (forza || !url) {
+      url = window.prompt("Indirizzo del ponte Apps Script (finisce con /exec):", url);
+      if (url === null) return null;
+      url = url.trim();
+      safeSet(PONTE_URL, url);
+    }
+    if (forza || !tok) {
+      tok = window.prompt("Parola d'ordine del ponte (il TOKEN scelto nello script):", tok);
+      if (tok === null) return null;
+      tok = tok.trim();
+      safeSet(PONTE_TOKEN, tok);
+    }
+    if (!url || !tok) { status("warn", '<span class="msg">Ponte non configurato: servono indirizzo e parola d\'ordine (pulsante &#9881;).</span>'); return null; }
+    return { url: url, token: tok };
+  }
+
+  function ymd() {
+    var d = new Date();
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    return "" + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate());
+  }
+
+  function inviaAlFoglio() {
+    var cfg = ponteConfig(false);
+    if (!cfg) return;
+
+    var pronte = [], problemi = [];
+    sides.forEach(function (side) {
+      if (!side.tit.length) return;
+      var vuoti = side.tit.filter(function (v) {
+        var d = resolve(side, v);
+        return !d || !(d.cognome || d.nome);
+      }).length;
+      if (vuoti) { problemi.push(side.label + ": " + vuoti + " maglie non assegnate"); return; }
+      pronte.push({
+        nome: side.teamName || side.label,
+        lato: side.label === "Trasferta" ? "trasferta" : "casa",
+        modulo: side.mod,
+        titolari: side.tit.map(function (v) { var d = resolve(side, v); return [d.num || "", d.nome || "", d.cognome || ""]; }),
+        allenatore: [side.coachN || "", side.coachC || ""],
+        panchina: side.pan.map(function (v) { return resolve(side, v); })
+          .filter(function (d) { return d && (d.cognome || d.nome); })
+          .map(function (d) { return [d.num || "", d.nome || "", d.cognome || ""]; })
+      });
+    });
+
+    if (!pronte.length) {
+      status("err", '<span class="msg"><b>Niente da inviare.</b> ' + esc(problemi.join(" · ") || "Carica almeno una squadra completa.") + '</span>');
+      return;
+    }
+
+    status("", '<span class="msg">Invio al foglio&hellip;</span>');
+    fetch(cfg.url, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ token: cfg.token, tipo: "formazioni", data: ymd(), squadre: pronte })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.ok) {
+          status("ok", '<span class="msg">Creat' + (res.tabs.length > 1 ? 'i' : 'o') + ' nel foglio: <b>' + esc(res.tabs.join(", ")) + '</b>' +
+            (problemi.length ? ' · non inviata: ' + esc(problemi.join(" · ")) : '') + '</span>');
+        } else {
+          status("err", '<span class="msg"><b>Il foglio ha rifiutato l\'invio:</b> ' + esc(res.errore || "errore sconosciuto") + '</span>');
+        }
+      })
+      .catch(function () {
+        status("err", '<span class="msg"><b>Ponte non raggiungibile.</b> Controlla indirizzo /exec e che la Web App sia pubblicata per "Chiunque" (pulsante &#9881; per ricontrollare i dati).</span>');
+      });
+  }
+
+  document.getElementById("btnSheet").addEventListener("click", inviaAlFoglio);
+  document.getElementById("btnSheetCfg").addEventListener("click", function () { ponteConfig(true); });
 
   // ---------------- init ----------------
 

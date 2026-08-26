@@ -193,7 +193,9 @@
     </div>
     <button class="primary" id="btnRefresh">Aggiorna dati</button>
     <button id="btnCsv" disabled>Scarica CSV</button>
+    <button id="btnSheet" disabled>Invia al foglio</button>
     <button id="btnManual">Tabella manuale</button>
+    <button id="btnSheetCfg" title="Configura il ponte verso il foglio Google" style="padding:11px 13px">&#9881;</button>
 
     <div class="spacer"></div>
 
@@ -377,6 +379,7 @@
     season:   document.getElementById("season"),
     refresh:  document.getElementById("btnRefresh"),
     csv:      document.getElementById("btnCsv"),
+    sheet:    document.getElementById("btnSheet"),
     manual:   document.getElementById("btnManual"),
     status:   document.getElementById("status"),
     out:      document.getElementById("out"),
@@ -487,6 +490,7 @@
 
         render();
         el.csv.disabled = false;
+        el.sheet.disabled = false;
 
         var tot = state.groups.reduce(function (n, g) { return n + g.rows.length; }, 0);
         status("ok",
@@ -497,6 +501,7 @@
       })
       .catch(function (err) {
         el.csv.disabled = true;
+        el.sheet.disabled = true;
         if (err.message === "VUOTO") {
           status("warn", '<span class="msg"><b>Nessuna classifica</b> per questo campionato in questa stagione. Prova a cambiare l\'anno.</span>');
         } else if (err instanceof TypeError) {
@@ -708,7 +713,7 @@
     }
 
     state.dirty = true;
-    el.csv.disabled = !state.groups.some(function (gr) { return gr.rows.length; });
+    el.csv.disabled = el.sheet.disabled = !state.groups.some(function (gr) { return gr.rows.length; });
     render();
     dirtyStatus();
   }
@@ -745,6 +750,7 @@
 
     render();
     el.csv.disabled = false;
+        el.sheet.disabled = false;
     dirtyStatus();
   }
 
@@ -859,6 +865,73 @@
       ' CSV (uno per girone) · dati letti alle ' + stampText(state.stamp) + '</span>');
   }
 
+  // ---------------- ponte verso il foglio Google ----------------
+  // L'URL del ponte (Apps Script /exec) e il token si configurano una
+  // volta per postazione col pulsante ⚙ e restano in localStorage:
+  // così non finiscono nel codice pubblicato su Pages.
+
+  var PONTE_URL = "comotv.ponte.url", PONTE_TOKEN = "comotv.ponte.token";
+
+  function ponteConfig(forza) {
+    var url = safeGet(localStorage, PONTE_URL) || "";
+    var tok = safeGet(localStorage, PONTE_TOKEN) || "";
+    if (forza || !url) {
+      url = window.prompt("Indirizzo del ponte Apps Script (finisce con /exec):", url);
+      if (url === null) return null;
+      url = url.trim();
+      safeSet(localStorage, PONTE_URL, url);
+    }
+    if (forza || !tok) {
+      tok = window.prompt("Parola d'ordine del ponte (il TOKEN scelto nello script):", tok);
+      if (tok === null) return null;
+      tok = tok.trim();
+      safeSet(localStorage, PONTE_TOKEN, tok);
+    }
+    if (!url || !tok) { status("warn", '<span class="msg">Ponte non configurato: servono indirizzo e parola d\'ordine (pulsante &#9881;).</span>'); return null; }
+    return { url: url, token: tok };
+  }
+
+  function ymd() {
+    var d = new Date();
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    return "" + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate());
+  }
+
+  function inviaAlFoglio() {
+    if (!state.groups.length) return;
+    var cfg = ponteConfig(false);
+    if (!cfg) return;
+
+    var gironi = state.groups.map(function (g) {
+      return {
+        label: g.label || "",
+        righe: g.rows.map(function (r) {
+          var nome = r.manual ? defaultName(r.api) : grafName(r.api);
+          return [r.pos, nome, r.pg, r.v, r.p, r.s, r.pt];
+        })
+      };
+    });
+
+    status("", '<span class="msg">Invio al foglio&hellip;</span>');
+    fetch(cfg.url, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ token: cfg.token, tipo: "classifica", data: ymd(),
+                             competizione: state.comp ? state.comp.nome : "", gironi: gironi })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.ok) {
+          status("ok", '<span class="msg">Creat' + (res.tabs.length > 1 ? 'i' : 'o') + ' nel foglio: <b>' + esc(res.tabs.join(", ")) + '</b></span>');
+        } else {
+          status("err", '<span class="msg"><b>Il foglio ha rifiutato l\'invio:</b> ' + esc(res.errore || "errore sconosciuto") + '</span>');
+        }
+      })
+      .catch(function () {
+        status("err", '<span class="msg"><b>Ponte non raggiungibile.</b> Controlla indirizzo /exec e che la Web App sia pubblicata per "Chiunque" (pulsante &#9881; per ricontrollare i dati).</span>');
+      });
+  }
+
   // ---------------- init ----------------
 
   GRPS.forEach(function (g, gi) {
@@ -877,6 +950,8 @@
 
   el.refresh.addEventListener("click", load);
   el.csv.addEventListener("click", download);
+  el.sheet.addEventListener("click", inviaAlFoglio);
+  document.getElementById("btnSheetCfg").addEventListener("click", function () { ponteConfig(true); });
   el.manual.addEventListener("click", manualTable);
   el.out.addEventListener("click", onRowAction);
   el.optGoals.addEventListener("change", function () { if (state.groups.length) render(); });
