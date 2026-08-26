@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Regia · Como TV</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    color-scheme:dark;
+    --gold:#C9A24B;--gold-bright:#E3C271;--red:#E51B20;
+    --ivory:#F5F1E6;--ivory-dim:#D8D2C2;--fg-3:#8A8B96;
+    --surface-panel:rgba(16,22,48,.66);
+    --line-2:rgba(245,241,230,.08);--line-gold:rgba(201,162,75,.28);
+    --ok:#4FCB8B;
+  }
+  body{
+    font-family:'DM Sans',system-ui,sans-serif;font-weight:500;font-size:14px;line-height:1.5;
+    color:var(--ivory);min-height:100vh;
+    background-color:#0A0F24;
+    background-image:
+      radial-gradient(90% 70% at 20% 8%, rgba(36,64,138,.5), transparent 55%),
+      radial-gradient(80% 80% at 92% 108%, rgba(201,162,75,.16), transparent 55%),
+      linear-gradient(165deg,#141B3C 0%,#0E1430 48%,#0A0F24 100%);
+    background-attachment:fixed;
+    padding-bottom:90px;
+  }
+
+  .nav{min-height:58px;position:sticky;top:0;z-index:200;display:flex;align-items:center;gap:18px;
+    padding:0 clamp(20px,4vw,56px);background:rgba(10,15,36,.72);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line-2);}
+  .nav-brand{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:800;letter-spacing:.28em;
+    text-transform:uppercase;color:var(--ivory);text-decoration:none;white-space:nowrap;}
+  .nav-sep{color:rgba(245,241,230,.25);}
+  .nav-here{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.28em;
+    text-transform:uppercase;color:rgba(245,241,230,.45);}
+  .nav-links{margin-left:auto;display:flex;gap:10px;}
+  .nav-links a{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--ivory-dim);text-decoration:none;
+    padding:7px 14px;border:1px solid var(--line-2);border-radius:4px;}
+  .nav-links a:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+
+  .wrap{max-width:860px;margin:0 auto;padding:0 clamp(18px,3vw,32px);}
+  header.page{padding:46px 0 22px;text-align:center;}
+  .eyebrow{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.3em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:12px;}
+  h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(32px,5vw,48px);
+    line-height:.94;letter-spacing:-.02em;text-transform:uppercase;color:var(--ivory);}
+
+  /* stato */
+  #state{
+    display:flex;align-items:center;justify-content:center;gap:14px;
+    margin:26px auto 8px;padding:22px;border-radius:12px;
+    background:var(--surface-panel);border:1px solid var(--line-2);
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:26px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--fg-3);
+  }
+  #state .dot{width:14px;height:14px;border-radius:50%;background:var(--fg-3);flex:none;}
+  #state.standby{color:var(--gold-bright);border-color:var(--line-gold);}
+  #state.standby .dot{background:var(--gold);box-shadow:0 0 12px rgba(201,162,75,.7);}
+  #state.play{color:#FF6B6E;border-color:rgba(229,27,32,.5);}
+  #state.play .dot{background:var(--red);box-shadow:0 0 14px rgba(229,27,32,.9);animation:pulse 1.4s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  #loaded{
+    text-align:center;color:var(--ivory-dim);font-size:15px;margin:10px 0 30px;min-height:24px;
+  }
+  #loaded b{color:var(--ivory);}
+
+  .btns{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  button{
+    font-family:'Mazzard',sans-serif;font-size:20px;font-weight:800;letter-spacing:.14em;
+    text-transform:uppercase;padding:34px 20px;border-radius:12px;cursor:pointer;
+    border:2px solid var(--line-2);background:var(--surface-panel);color:var(--ivory-dim);
+    transition:transform .1s ease;
+  }
+  button:active{transform:scale(.98);}
+  button:disabled{opacity:.35;cursor:default;}
+  #btnPlay{border-color:rgba(79,203,139,.5);color:#4FCB8B;}
+  #btnPlay:hover:not(:disabled){background:rgba(79,203,139,.12);border-color:#4FCB8B;}
+  #btnOut{border-color:rgba(229,27,32,.5);color:#FF6B6E;}
+  #btnOut:hover:not(:disabled){background:rgba(229,27,32,.12);border-color:var(--red);}
+
+  .note{margin-top:34px;font-size:12.5px;color:var(--fg-3);line-height:1.65;text-align:center;}
+  .note code{font-size:.9em;background:rgba(245,241,230,.06);border:1px solid var(--line-2);
+    border-radius:3px;padding:.1em .4em;color:var(--ivory-dim);}
+  .note a{color:var(--gold-bright);}
+  #msg{text-align:center;margin-top:16px;font-size:13px;color:var(--fg-3);min-height:20px;}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="nav-brand" href="../index.html">COMO TV</a>
+  <span class="nav-sep">·</span>
+  <span class="nav-here">Grafiche Live — Regia</span>
+  <div class="nav-links">
+    <a href="classifiche.html">Grafiche Live</a>
+    <a href="../index.html">Home</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+  <header class="page">
+    <div class="eyebrow">Como TV · Regia grafiche</div>
+    <h1>Messa in onda</h1>
+  </header>
+
+  <div id="state"><span class="dot"></span><span id="stateTxt">COLLEGAMENTO&hellip;</span></div>
+  <div id="loaded">&nbsp;</div>
+
+  <div class="btns">
+    <button id="btnPlay" disabled>&#9654; Manda in onda</button>
+    <button id="btnOut" disabled>&#9632; Fuori onda</button>
+  </div>
+
+  <div id="msg"></div>
+
+  <p class="note">
+    In vMix il layer grafiche punta <b>sempre</b> allo stesso indirizzo:
+    <a href="grafica-live.html" target="_blank"><code>grafica-live.html</code></a> (input Web Browser, 1920&times;1080).
+    Il giornalista prepara la formazione e la manda qui con <b>Invia alla regia</b>;
+    quando su questa console lo stato è <b>PRONTA</b>, il pulsante verde fa partire l'animazione in onda.
+    <b>Manda in onda</b> premuto di nuovo = replay. La grafica appare entro un paio di secondi dal click.
+  </p>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
+  var TOKEN = "como_tv_grafiche";
+  var POLL_MS = 1500;
+
+  var elState = document.getElementById("state");
+  var elStateTxt = document.getElementById("stateTxt");
+  var elLoaded = document.getElementById("loaded");
+  var btnPlay = document.getElementById("btnPlay");
+  var btnOut = document.getElementById("btnOut");
+  var msg = document.getElementById("msg");
+
+  var cur = null;
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function paint(j) {
+    cur = j || {};
+    var st = cur.state || "vuoto";
+    elState.className = st === "play" ? "play" : (cur.tipo ? "standby" : "");
+    elStateTxt.textContent = st === "play" ? "IN ONDA" : (cur.tipo ? "PRONTA — STANDBY" : "NESSUNA GRAFICA CARICATA");
+
+    if (cur.tipo && cur.dati) {
+      var chi = cur.tipo === "formazione" ? (cur.dati.n || "") + " · " + (cur.dati.m || "") : cur.tipo;
+      var quando = cur.ts ? new Date(cur.ts).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "";
+      elLoaded.innerHTML = 'Caricata: <b>' + esc(cur.tipo.toUpperCase()) + " — " + esc(chi) + '</b>' + (quando ? " · inviata alle " + quando : "");
+      btnPlay.disabled = false;
+      btnOut.disabled = st !== "play";
+    } else {
+      elLoaded.innerHTML = "In attesa di una grafica dalla pagina Formazioni (&#8220;Invia alla regia&#8221;).";
+      btnPlay.disabled = true;
+      btnOut.disabled = true;
+    }
+  }
+
+  function tick() {
+    fetch(PONTE + "?regia=1", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(paint)
+      .catch(function () {
+        elState.className = "";
+        elStateTxt.textContent = "PONTE NON RAGGIUNGIBILE";
+      });
+  }
+
+  function send(state) {
+    btnPlay.disabled = true; btnOut.disabled = true;
+    msg.textContent = state === "play" ? "Parte tra un istante…" : "Uscita…";
+    fetch(PONTE, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ token: TOKEN, tipo: "regia-state", state: state })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        msg.textContent = res.ok ? "" : ("Errore: " + (res.errore || ""));
+        tick();
+      })
+      .catch(function () { msg.textContent = "Ponte non raggiungibile."; tick(); });
+  }
+
+  btnPlay.addEventListener("click", function () { send("play"); });
+  btnOut.addEventListener("click", function () { send("out"); });
+
+  setInterval(tick, POLL_MS);
+  tick();
+})();
+</script>
+</body>
+</html>

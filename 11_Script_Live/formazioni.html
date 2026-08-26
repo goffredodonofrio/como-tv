@@ -238,8 +238,10 @@
     <button id="btnCsvHome">Solo Casa</button>
     <button id="btnCsvAway">Solo Trasferta</button>
     <button id="btnSheet">Invia al foglio</button>
-    <button id="btnVmixHome">Grafica vMix Casa</button>
-    <button id="btnVmixAway">Grafica vMix Trasferta</button>
+    <button id="btnRegiaHome">&#128225; Regia: Casa</button>
+    <button id="btnRegiaAway">&#128225; Regia: Trasferta</button>
+    <button id="btnVmixHome" title="Anteprima grafica animata in una nuova scheda">Anteprima Casa</button>
+    <button id="btnVmixAway" title="Anteprima grafica animata in una nuova scheda">Anteprima Trasferta</button>
     <button id="btnSheetCfg" title="Configura il ponte verso il foglio Google" style="padding:11px 13px">&#9881;</button>
     <div class="toggles"><label><input type="checkbox" id="optAscii"> esporta senza accenti</label></div>
   </div>
@@ -1035,11 +1037,11 @@
   // della squadra dentro: quell'URL si incolla in vMix come input
   // "Web Browser" 1920x1080. Doppio click o tasto R = replay.
 
-  function grafVmix(si) {
+  function vmixPayload(si) {
     var side = sides[si];
     if (!side.tit.length) {
       status("err", '<span class="msg"><b>' + side.label + ':</b> nessuna squadra caricata.</span>');
-      return;
+      return null;
     }
     var vuoti = side.tit.filter(function (v) {
       var d = resolve(side, v);
@@ -1047,12 +1049,12 @@
     }).length;
     if (vuoti) {
       status("err", '<span class="msg"><b>' + side.label + ':</b> ' + vuoti + ' maglie non assegnate.</span>');
-      return;
+      return null;
     }
 
     function tri(v) { var d = resolve(side, v); return [d.num || "", d.nome || "", d.cognome || ""]; }
 
-    var payload = {
+    return {
       n: side.teamName || side.label,
       m: side.mod,
       k: side.kit,
@@ -1063,6 +1065,12 @@
         .filter(function (d) { return d && (d.cognome || d.nome); })
         .map(function (d) { return [d.num || "", d.nome || "", d.cognome || ""]; })
     };
+  }
+
+  function grafVmix(si) {
+    var side = sides[si];
+    var payload = vmixPayload(si);
+    if (!payload) return;
 
     var b64 = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
       .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -1080,6 +1088,40 @@
 
   document.getElementById("btnVmixHome").addEventListener("click", function () { grafVmix(0); });
   document.getElementById("btnVmixAway").addEventListener("click", function () { grafVmix(1); });
+
+  // ---------------- invio alla regia ----------------
+  // Carica la formazione sul "centralino": la pagina grafica-live.html
+  // (URL fisso dentro vMix) la riceve e la console regia.html decide
+  // quando mandarla in onda.
+
+  function inviaRegia(si) {
+    var payload = vmixPayload(si);
+    if (!payload) return;
+    var cfg = ponteConfig(false);
+    if (!cfg) return;
+
+    status("", '<span class="msg">Carico la regia&hellip;</span>');
+    fetch(cfg.url, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ token: cfg.token, tipo: "regia-load", grafica: "formazione", dati: payload })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.ok) {
+          status("ok", '<span class="msg"><b>' + esc(payload.n) + '</b> caricata in regia (standby). ' +
+            'Vai alla <a href="regia.html" target="_blank" style="color:var(--gold-bright)">console di regia</a> per mandarla in onda.</span>');
+        } else {
+          status("err", '<span class="msg"><b>La regia ha rifiutato il carico:</b> ' + esc(res.errore || "errore sconosciuto") + '</span>');
+        }
+      })
+      .catch(function () {
+        status("err", '<span class="msg"><b>Ponte non raggiungibile.</b> Se lo script è stato appena aggiornato, serve la nuova versione del deployment.</span>');
+      });
+  }
+
+  document.getElementById("btnRegiaHome").addEventListener("click", function () { inviaRegia(0); });
+  document.getElementById("btnRegiaAway").addEventListener("click", function () { inviaRegia(1); });
 
   // ---------------- init ----------------
 
