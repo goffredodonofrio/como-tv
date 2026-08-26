@@ -68,11 +68,6 @@
   if (D.bg !== "trasparente") stage.classList.add("nero");
   if (D.fit === "cover") stage.classList.add("cover");
 
-  function fuoriOnda() {
-    stage.classList.remove("on");
-    stage.classList.add("out");
-  }
-
   var el = null;
 
   if (D.k === "video") {
@@ -89,7 +84,8 @@
       // se l'autoplay con audio è bloccato (anteprime in Chrome), riparto muto
       var p = el.play ? el.play() : null;
       if (p && p.catch) p.catch(function () { el.muted = true; el.play().catch(function () {}); });
-      if (!el.loop) el.addEventListener("ended", fuoriOnda);
+      // a fine clip TENGO L'ULTIMO FRAME: si esce solo con Fuori onda dalla console
+      if (!el.loop) el.addEventListener("ended", function () { el.pause(); });
       // se il documento parte nascosto (input non ancora a video), riparto appena visibile
       document.addEventListener("visibilitychange", function () {
         if (!document.hidden && el.paused && !el.ended) el.play().catch(function () {});
@@ -107,11 +103,8 @@
   }
   stage.appendChild(el);
 
-  // il contributo si toglie da solo alla durata impostata (la console
-  // allinea lo stato del ponte con lo stesso conto alla rovescia)
-  if (!STILL && D.dur && Number(D.dur) > 0) {
-    setTimeout(fuoriOnda, Number(D.dur) * 1000);
-  }
+  // niente uscite automatiche: qualunque contributo resta sull'ultimo
+  // frame finché la console non manda Fuori onda
 
   // niente requestAnimationFrame: in un documento nascosto non scatta mai
   setTimeout(function () { stage.classList.add("on"); }, 30);
