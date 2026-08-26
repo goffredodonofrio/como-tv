@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marcatori · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-SemiBold.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+    transform-origin:center center;
+    font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);
+  }
+
+  #eyebrow{position:absolute;left:128px;top:82px;
+    font-family:'DM Sans',sans-serif;font-weight:600;font-size:22px;letter-spacing:.24em;
+    color:#C9A24B;text-transform:uppercase;white-space:nowrap;opacity:0;}
+  #title{position:absolute;left:125px;top:104px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:76px;letter-spacing:.01em;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;
+    clip-path:inset(0 100% 0 0);}
+  #rule{position:absolute;left:128px;top:196px;width:590px;height:3px;
+    background:linear-gradient(90deg,#C9A24B 0%,rgba(201,162,75,.15) 100%);
+    transform:scaleX(0);transform-origin:left center;}
+
+  .colhead{position:absolute;font-size:20px;color:rgba(245,241,230,.55);opacity:0;}
+  .colhead b{font-family:'Mazzard',sans-serif;font-weight:700;color:#F5F1E6;}
+  .colhead span{position:absolute;text-align:center;width:60px;transform:translateX(-50%);}
+
+  .row{position:absolute;height:46px;border-radius:6px;
+    background:rgba(245,241,230,.05);
+    opacity:0;}
+  .row.hl{box-shadow:inset 0 0 0 1.5px rgba(245,241,230,.45);}
+  .row .pos{position:absolute;left:0;width:70px;text-align:center;top:8px;
+    font-size:26px;color:rgba(245,241,230,.6);font-variant-numeric:tabular-nums;}
+  .row img{position:absolute;left:82px;top:6px;width:34px;height:34px;object-fit:contain;}
+  .row .nm{position:absolute;left:146px;top:8px;max-width:300px;overflow:hidden;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:26px;letter-spacing:.02em;
+    color:#FFFFFF;text-transform:uppercase;white-space:nowrap;}
+  .row .sq{position:absolute;left:460px;top:13px;width:170px;overflow:hidden;
+    font-size:18px;letter-spacing:.04em;color:rgba(245,241,230,.55);
+    text-transform:uppercase;white-space:nowrap;}
+  .row .st{position:absolute;top:8px;width:60px;text-align:center;transform:translateX(-50%);
+    font-family:'Mazzard',sans-serif;font-weight:600;font-size:26px;color:#F5F1E6;font-variant-numeric:tabular-nums;}
+  .row .st.gol{font-family:'Mazzard',sans-serif;font-weight:800;color:#C9A24B;}
+
+  @keyframes wipeIn { to { clip-path:inset(0 0 0 0); } }
+  @keyframes fadeIn { to { opacity:1; } }
+  @keyframes ruleIn { to { transform:scaleX(1); } }
+  @keyframes rowIn {
+    0%   { opacity:0; transform:translateX(-46px); }
+    100% { opacity:1; transform:translateX(0); }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="eyebrow"></div>
+  <div id="title">I MARCATORI</div>
+  <div id="rule"></div>
+  <div id="rows"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // dati: ?d=<base64url {e: eyebrow, t: titolo, r: [[pos,giocatore,squadra,pg,gol,teamId],...]}>
+  var DEMO = {
+    e: "SERIE A 2026-27",
+    r: [[1,"DOUVIKAS","COMO",2,3,2572],[2,"MARTINEZ","INTER",2,2,110],[3,"LUKAKU","NAPOLI",2,2,114],
+        [4,"VLAHOVIC","JUVENTUS",2,2,111],[5,"DYBALA","ROMA",2,1,104],[6,"LEAO","MILAN",2,1,103],
+        [7,"CASTELLANOS","LAZIO",2,1,112],[8,"RETEGUI","ATALANTA",2,1,105],[9,"KEAN","FIORENTINA",2,1,109],
+        [10,"ZAPATA","TORINO",2,1,239]]
+  };
+
+  function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return DEMO;   // aperta a mano senza dati: demo dimostrativa
+    try {
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return d && d.r && d.r.length ? d : null;
+    } catch (err) { return null; }
+  }
+  var STILL = new URLSearchParams(location.search).get("still") === "1";
+  var D = decodeData();
+  if (!D) {
+    // dati presenti ma non validi: MEGLIO NIENTE che una grafica sbagliata in onda
+    document.title = "MARCATORI — dati non validi";
+    document.getElementById("stage").style.display = "none";
+    return;
+  }
+  document.title = "MARCATORI " + (D.e || "");
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    document.getElementById("stage").style.transform = "translate(-50%,-50%) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+
+  // header
+  var eb = document.getElementById("eyebrow");
+  eb.textContent = D.e || "";
+  var tt = document.getElementById("title");
+  tt.textContent = D.t || "I MARCATORI";
+  var rl = document.getElementById("rule");
+  if (STILL) { eb.style.opacity = 1; tt.style.clipPath = "inset(0 0 0 0)"; rl.style.transform = "scaleX(1)"; }
+  else {
+    eb.style.animation = "fadeIn .5s ease .15s forwards";
+    tt.style.animation = "wipeIn .7s cubic-bezier(.2,.7,.3,1) .3s forwards";
+    rl.style.animation = "ruleIn .55s cubic-bezier(.2,.7,.3,1) .85s forwards";
+  }
+
+  // ── tabella: come la classifica, una colonna fino a 12, poi due ──
+  var ROWS = D.r || [];
+  var N = ROWS.length;
+  var due = N > 12;
+  var perCol = due ? Math.ceil(N / 2) : N;
+
+  var COLX = due ? [100, 1020] : [510];
+  var COLW = 800;
+  var TOPH = 336;
+  var TOP0 = 362;
+  var PITCH = 56;
+  var STATX = [665, 762];
+  var LABELS = ["PG", String(D.l || "GOL").toUpperCase()];
+
+  var h = "";
+  COLX.forEach(function (cx, ci) {
+    if (ci * perCol >= N) return;
+    h += '<div class="colhead" style="left:' + cx + 'px;top:' + TOPH + 'px;width:' + COLW + 'px;' +
+      (STILL ? 'opacity:1' : 'animation:fadeIn .5s ease 1s forwards') + '">';
+    LABELS.forEach(function (lb, li) {
+      h += '<span style="left:' + STATX[li] + 'px">' + (li === 1 ? "<b>" + esc(lb) + "</b>" : esc(lb)) + '</span>';
+    });
+    h += '</div>';
+  });
+
+  ROWS.forEach(function (r, i) {
+    var ci = due ? Math.floor(i / perCol) : 0;
+    var ri = due ? (i % perCol) : i;
+    var cx = COLX[ci], cy = TOP0 + ri * PITCH;
+    var squadra = String(r[2] || "");
+    var hl = /\bCOMO\b/i.test(squadra);
+    var logo = r[5] ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + r[5] + ".png" : "";
+    var anim = STILL ? "opacity:1" : "animation: rowIn .5s cubic-bezier(.2,.7,.3,1) " + (1.05 + i * 0.16) + "s forwards";
+
+    h += '<div class="row' + (hl ? " hl" : "") + '" style="left:' + cx + 'px;top:' + cy + 'px;width:' + COLW + 'px;' + anim + '">' +
+      '<span class="pos">' + esc(r[0]) + '</span>' +
+      (logo ? '<img src="' + esc(logo) + '" onerror="this.style.display=\'none\'">' : "") +
+      '<span class="nm">' + esc(r[1]) + '</span>' +
+      '<span class="sq">' + esc(squadra) + '</span>' +
+      '<span class="st" style="left:' + STATX[0] + 'px">' + esc(r[3]) + '</span>' +
+      '<span class="st gol" style="left:' + STATX[1] + 'px">' + esc(r[4]) + '</span>' +
+      '</div>';
+  });
+
+  document.getElementById("rows").innerHTML = h;
+
+  function replay() { location.reload(); }
+  document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
+  document.addEventListener("dblclick", replay);
+})();
+</script>
+</body>
+</html>

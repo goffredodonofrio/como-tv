@@ -244,6 +244,7 @@
     classifica: "classifica-vmix.html",
     risultati:  "risultati-vmix.html",
     sottopancia: "sottopancia-vmix.html",
+    marcatori:  "marcatori-vmix.html",
     video:      "media-vmix.html",
     immagine:   "media-vmix.html",
     web:        "media-vmix.html"
@@ -379,10 +380,16 @@
   function rilevaTipo(url) {
     var yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]{6,})/);
     if (yt) return { tipo: "web", k: "web", yt: yt[1], label: "YOUTUBE" };
+    var dr = url.match(/drive\.google\.com\/(?:file\/d\/([\w-]{10,})|open\?id=([\w-]{10,})|uc\?[^#]*id=([\w-]{10,}))/);
+    if (dr) return { drive: dr[1] || dr[2] || dr[3], label: "GOOGLE DRIVE" };
     var u = url.toLowerCase().split(/[?#]/)[0];
     if (/\.(mp4|webm|m4v|mov|ogv)$/.test(u)) return { tipo: "video", k: "video", label: "VIDEO" };
     if (/\.(png|jpe?g|gif|webp|avif|svg)$/.test(u)) return { tipo: "immagine", k: "img", label: "IMMAGINE" };
     return { tipo: "web", k: "web", label: "PAGINA WEB" };
+  }
+
+  function driveSrc(id) {
+    return "https://drive.usercontent.google.com/download?id=" + id + "&export=download";
   }
 
   document.getElementById("btnAdd").addEventListener("click", function () {
@@ -395,12 +402,9 @@
     addTipo.textContent = v ? rilevaTipo(v).label : "—";
   });
 
-  document.getElementById("btnAddGo").addEventListener("click", function () {
-    var url = addUrl.value.trim();
-    if (!/^https?:\/\//i.test(url)) { msg.textContent = "Serve un URL completo (https://…)."; return; }
-    var det = rilevaTipo(url);
+  function accodaContributo(det, url, nomeFile, avviso) {
     var audio = document.getElementById("addAudio").checked;
-    var dati = { k: det.k, src: url };
+    var dati = { k: det.k, src: det.src || url };
     if (det.yt) dati.src = "https://www.youtube.com/embed/" + det.yt +
       "?autoplay=1&controls=0&rel=0&playsinline=1" + (audio ? "" : "&mute=1");
     if (document.getElementById("addFit").value === "cover") dati.fit = "cover";
@@ -409,12 +413,48 @@
     if (!audio) dati.mute = 1;
     var dur = parseInt(document.getElementById("addDur").value, 10);
     if (dur > 0) dati.dur = dur;
-    var nome = document.getElementById("addNome").value.trim() ||
+    var nome = document.getElementById("addNome").value.trim() || nomeFile ||
       det.label + " " + url.split("/").pop().split("?")[0].slice(0, 30);
-    post({ tipo: "regia-load", grafica: det.tipo, titolo: nome, dati: dati }, "Contributo in scaletta.");
+    post({ tipo: "regia-load", grafica: det.tipo, titolo: nome, dati: dati },
+      avviso ? "Contributo in scaletta. " + avviso : "Contributo in scaletta.");
     addUrl.value = ""; document.getElementById("addNome").value = "";
     document.getElementById("addDur").value = ""; addTipo.textContent = "—";
     addBox.classList.remove("open");
+  }
+
+  document.getElementById("btnAddGo").addEventListener("click", function () {
+    var url = addUrl.value.trim();
+    if (!/^https?:\/\//i.test(url)) { msg.textContent = "Serve un URL completo (https://…)."; return; }
+    var det = rilevaTipo(url);
+
+    if (!det.drive) { accodaContributo(det, url); return; }
+
+    // link Drive: chiedo al ponte di condividere il file col link e dirmi
+    // che tipo è, poi uso il link di download diretto (il /view non è un file)
+    msg.textContent = "Interrogo Drive…";
+    fetch(PONTE, {
+      method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ token: TOKEN, tipo: "drive-info", id: det.drive })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (info) {
+        if (!info.ok) throw new Error(info.errore || "x");
+        var mime = info.mime || "";
+        if (mime.indexOf("video/") === 0) { det.tipo = "video"; det.k = "video"; }
+        else if (mime.indexOf("image/") === 0) { det.tipo = "immagine"; det.k = "img"; }
+        else { det.tipo = "video"; det.k = "video"; }   // Drive senza mime chiaro: quasi sempre clip
+        det.src = driveSrc(det.drive);
+        var avviso = "";
+        if (!info.condiviso) avviso = "Attenzione: non sono riuscito a condividere il file — verifica che sia “Chiunque abbia il link”.";
+        else if (info.bytes > 95 * 1024 * 1024) avviso = "File grande (" + Math.round(info.bytes / 1048576) + " MB): lo streaming diretto da Drive può essere instabile.";
+        accodaContributo(det, url, info.nome, avviso);
+      })
+      .catch(function () {
+        // ponte vecchio o file inaccessibile: provo comunque col link diretto
+        det.tipo = "video"; det.k = "video"; det.src = driveSrc(det.drive);
+        accodaContributo(det, url, null,
+          "Non ho potuto verificare il file: assicurati che su Drive sia “Chiunque abbia il link”.");
+      });
   });
 
   // ── auto-out: un contributo con durata esce da solo, e la console
