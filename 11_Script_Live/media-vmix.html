@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contributo · Playout vMix</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  /* motore universale dei contributi: video, immagini, pagine web.
+     Sfondo trasparente di default (overlay); un contributo pieno
+     imposta bg nero dal payload. color-scheme:dark come gli altri motori. */
+  :root{color-scheme:dark;}
+  html,body{width:100%;height:100%;overflow:hidden;background:transparent;}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+    transform-origin:center center;overflow:hidden;
+    opacity:0;transition:opacity .55s ease;
+  }
+  #stage.on{opacity:1;}
+  #stage.out{opacity:0;transition:opacity .85s ease;}
+  #stage.nero{background:#000;}
+
+  #stage video,#stage img{width:100%;height:100%;object-fit:contain;display:block;}
+  #stage.cover video,#stage.cover img{object-fit:cover;}
+  #stage iframe{width:100%;height:100%;border:0;display:block;}
+</style>
+</head>
+<body>
+
+<div id="stage"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // dati: ?d=<b64 {k: video|img|web, src, fit: contain|cover, loop, mute, dur, bg: nero|trasparente}>
+  function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return null;
+    try {
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return d && d.src ? d : null;
+    } catch (err) { return null; }
+  }
+
+  var Q = new URLSearchParams(location.search);
+  var STILL = Q.get("still") === "1";
+  var MUTO = Q.get("muto") === "1";   // monitor e anteprime della console: mai audio
+  var stage = document.getElementById("stage");
+  var D = decodeData();
+
+  if (!D) {
+    // nessun dato o dati non validi: MEGLIO NIENTE che un contributo sbagliato in onda
+    document.title = "CONTRIBUTO — dati non validi";
+    stage.style.display = "none";
+    return;
+  }
+  document.title = "CONTRIBUTO " + (D.k || "").toUpperCase();
+
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    stage.style.transform = "translate(-50%,-50%) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+
+  if (D.bg !== "trasparente") stage.classList.add("nero");
+  if (D.fit === "cover") stage.classList.add("cover");
+
+  function fuoriOnda() {
+    stage.classList.remove("on");
+    stage.classList.add("out");
+  }
+
+  var el = null;
+
+  if (D.k === "video") {
+    el = document.createElement("video");
+    el.src = D.src;
+    el.playsInline = true;
+    el.loop = !!D.loop;
+    el.muted = MUTO || !!D.mute;
+    if (STILL) {
+      el.preload = "metadata";
+      el.addEventListener("loadeddata", function () { el.pause(); });
+    } else {
+      el.autoplay = true;
+      // se l'autoplay con audio è bloccato (anteprime in Chrome), riparto muto
+      var p = el.play ? el.play() : null;
+      if (p && p.catch) p.catch(function () { el.muted = true; el.play().catch(function () {}); });
+      if (!el.loop) el.addEventListener("ended", fuoriOnda);
+      // se il documento parte nascosto (input non ancora a video), riparto appena visibile
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden && el.paused && !el.ended) el.play().catch(function () {});
+      });
+    }
+  } else if (D.k === "img") {
+    el = document.createElement("img");
+    el.src = D.src;
+    el.alt = "";
+  } else {
+    el = document.createElement("iframe");
+    el.src = D.src;
+    el.setAttribute("allow", "autoplay; encrypted-media");
+    el.setAttribute("allowtransparency", "true");
+  }
+  stage.appendChild(el);
+
+  // il contributo si toglie da solo alla durata impostata (la console
+  // allinea lo stato del ponte con lo stesso conto alla rovescia)
+  if (!STILL && D.dur && Number(D.dur) > 0) {
+    setTimeout(fuoriOnda, Number(D.dur) * 1000);
+  }
+
+  // niente requestAnimationFrame: in un documento nascosto non scatta mai
+  setTimeout(function () { stage.classList.add("on"); }, 30);
+})();
+</script>
+</body>
+</html>

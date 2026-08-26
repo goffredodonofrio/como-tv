@@ -93,6 +93,27 @@
 
   #empty{color:var(--fg-3);font-size:13.5px;padding:18px 6px;}
 
+  /* aggiunta contributi (video / immagini / pagine) */
+  #btnAdd{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--gold-bright);background:transparent;cursor:pointer;
+    border:1px solid var(--line-gold);border-radius:4px;padding:4px 10px;}
+  #btnAdd:hover{background:rgba(201,162,75,.12);}
+  #addbox{display:none;margin:0 0 12px;padding:12px;border:1px dashed var(--line-gold);border-radius:8px;}
+  #addbox.open{display:block;}
+  #addbox .arow{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center;}
+  #addbox input[type=text],#addbox input[type=number],#addbox select{
+    font-family:'DM Sans',sans-serif;font-size:13px;color:var(--ivory);
+    background:rgba(10,15,36,.6);border:1px solid var(--line-2);border-radius:5px;padding:8px 10px;}
+  #addbox input[type=text]{flex:1;min-width:180px;}
+  #addbox input[type=number]{width:86px;}
+  #addbox label.chk{font-size:12.5px;color:var(--ivory-dim);display:flex;gap:5px;align-items:center;}
+  #addTipo{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:800;letter-spacing:.14em;
+    color:var(--gold);border:1px solid var(--line-gold);border-radius:3px;padding:3px 8px;white-space:nowrap;}
+  #btnAddGo{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:800;letter-spacing:.12em;
+    text-transform:uppercase;padding:9px 16px;border-radius:5px;cursor:pointer;
+    background:var(--gold);border:1px solid var(--gold);color:#14161C;}
+  #addbox .hint{font-size:11.5px;color:var(--fg-3);}
+
   /* anteprima / monitor in onda */
   #thumbbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px;
     border:1px solid var(--line-2);background:#070B1D;}
@@ -147,10 +168,27 @@
   <div class="cols">
 
     <div class="panel">
-      <h2>Scaletta <small id="count"></small></h2>
+      <h2>Scaletta <small id="count"></small>
+        <button id="btnAdd" type="button">&#65291; Contributo</button></h2>
+      <div id="addbox">
+        <div class="arow">
+          <input type="text" id="addUrl" placeholder="URL del contributo (video MP4/WebM, immagine, YouTube, pagina web)" autocomplete="off">
+          <span id="addTipo">&mdash;</span>
+        </div>
+        <div class="arow">
+          <input type="text" id="addNome" placeholder="Nome in scaletta" autocomplete="off">
+          <input type="number" id="addDur" min="1" max="3600" placeholder="Durata s" title="Vuota: il video esce a fine clip, immagini e pagine restano finch&eacute; non premi Fuori onda">
+          <select id="addFit"><option value="contain">Intero</option><option value="cover">Riempi</option></select>
+          <select id="addBg"><option value="nero">Sfondo nero</option><option value="trasparente">Sfondo trasparente</option></select>
+          <label class="chk"><input type="checkbox" id="addLoop"> loop</label>
+          <label class="chk"><input type="checkbox" id="addAudio" checked> audio</label>
+          <button id="btnAddGo" type="button">In scaletta</button>
+        </div>
+        <div class="hint">Il tipo viene riconosciuto dall&rsquo;URL. Sfondo trasparente = contributo overlay (es. WebM con alpha).</div>
+      </div>
       <div id="items"></div>
       <div id="empty" style="display:none">Scaletta vuota: carica le grafiche dalle pagine
-        (Formazioni &rarr; &#128225; Regia) e compariranno qui.</div>
+        (Formazioni &rarr; &#128225; Regia) o aggiungi un contributo con &#65291;.</div>
     </div>
 
     <div class="panel">
@@ -205,7 +243,10 @@
     formazione: "formazione-vmix.html",
     classifica: "classifica-vmix.html",
     risultati:  "risultati-vmix.html",
-    sottopancia: "sottopancia-vmix.html"
+    sottopancia: "sottopancia-vmix.html",
+    video:      "media-vmix.html",
+    immagine:   "media-vmix.html",
+    web:        "media-vmix.html"
   };
   function engineOf(tipo) { return ENGINES[tipo] || ENGINES.formazione; }
 
@@ -226,7 +267,7 @@
         if (thumbShownId !== id) return;
         var it0 = null;
         cur.items.forEach(function (x) { if (x.id === id) it0 = x; });
-        thumb.src = engineOf(it0 ? it0.tipo : "formazione") + "?d=" + b64url(dati) + "&still=1";
+        thumb.src = engineOf(it0 ? it0.tipo : "formazione") + "?d=" + b64url(dati) + "&still=1&muto=1";
         fitThumb();
         var it = null;
         cur.items.forEach(function (x) { if (x.id === id) it = x; });
@@ -240,7 +281,7 @@
     thumbShownId = "__live__";
     shownPlayNonce = cur.playNonce;
     document.getElementById("thumbbox").classList.add("onair");
-    thumb.src = engineOf(cur.tipo) + "?d=" + b64url(cur.dati || {}) + "&n=" + cur.playNonce;
+    thumb.src = engineOf(cur.tipo) + "?d=" + b64url(cur.dati || {}) + "&n=" + cur.playNonce + "&muto=1";
     fitThumb();
     var it = null;
     cur.items.forEach(function (x) { if (x.id === cur.onair) it = x; });
@@ -330,11 +371,87 @@
       .catch(function () { msg.textContent = "Ponte non raggiungibile."; });
   }
 
+  // ── contributi esterni: video, immagini, YouTube, pagine web ──
+  var addBox = document.getElementById("addbox");
+  var addUrl = document.getElementById("addUrl");
+  var addTipo = document.getElementById("addTipo");
+
+  function rilevaTipo(url) {
+    var yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]{6,})/);
+    if (yt) return { tipo: "web", k: "web", yt: yt[1], label: "YOUTUBE" };
+    var u = url.toLowerCase().split(/[?#]/)[0];
+    if (/\.(mp4|webm|m4v|mov|ogv)$/.test(u)) return { tipo: "video", k: "video", label: "VIDEO" };
+    if (/\.(png|jpe?g|gif|webp|avif|svg)$/.test(u)) return { tipo: "immagine", k: "img", label: "IMMAGINE" };
+    return { tipo: "web", k: "web", label: "PAGINA WEB" };
+  }
+
+  document.getElementById("btnAdd").addEventListener("click", function () {
+    addBox.classList.toggle("open");
+    if (addBox.classList.contains("open")) addUrl.focus();
+  });
+
+  addUrl.addEventListener("input", function () {
+    var v = addUrl.value.trim();
+    addTipo.textContent = v ? rilevaTipo(v).label : "—";
+  });
+
+  document.getElementById("btnAddGo").addEventListener("click", function () {
+    var url = addUrl.value.trim();
+    if (!/^https?:\/\//i.test(url)) { msg.textContent = "Serve un URL completo (https://…)."; return; }
+    var det = rilevaTipo(url);
+    var audio = document.getElementById("addAudio").checked;
+    var dati = { k: det.k, src: url };
+    if (det.yt) dati.src = "https://www.youtube.com/embed/" + det.yt +
+      "?autoplay=1&controls=0&rel=0&playsinline=1" + (audio ? "" : "&mute=1");
+    if (document.getElementById("addFit").value === "cover") dati.fit = "cover";
+    if (document.getElementById("addBg").value === "trasparente") dati.bg = "trasparente";
+    if (document.getElementById("addLoop").checked) dati.loop = 1;
+    if (!audio) dati.mute = 1;
+    var dur = parseInt(document.getElementById("addDur").value, 10);
+    if (dur > 0) dati.dur = dur;
+    var nome = document.getElementById("addNome").value.trim() ||
+      det.label + " " + url.split("/").pop().split("?")[0].slice(0, 30);
+    post({ tipo: "regia-load", grafica: det.tipo, titolo: nome, dati: dati }, "Contributo in scaletta.");
+    addUrl.value = ""; document.getElementById("addNome").value = "";
+    document.getElementById("addDur").value = ""; addTipo.textContent = "—";
+    addBox.classList.remove("open");
+  });
+
+  // ── auto-out: un contributo con durata esce da solo, e la console
+  //    riallinea lo stato del ponte con lo stesso conto alla rovescia ──
+  var autoOutTimer = null, autoOutTick = null;
+
+  function annullaAutoOut() {
+    if (autoOutTimer) { clearTimeout(autoOutTimer); autoOutTimer = null; }
+    if (autoOutTick) { clearInterval(autoOutTick); autoOutTick = null; }
+  }
+
+  function mandaInOnda(id) {
+    annullaAutoOut();
+    post({ tipo: "regia-state", state: "play", id: id }, "In onda tra un istante…");
+    fetch(PONTE + "?regia=item&id=" + encodeURIComponent(id), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (dati) {
+        if (!dati || !(dati.dur > 0)) return;
+        // +1.5s: il layer vMix aggancia la messa in onda al giro di polling
+        var fine = Date.now() + dati.dur * 1000 + 1500;
+        autoOutTick = setInterval(function () {
+          var s = Math.max(0, Math.ceil((fine - Date.now()) / 1000));
+          msg.textContent = "Auto-out tra " + s + "s";
+        }, 400);
+        autoOutTimer = setTimeout(function () {
+          annullaAutoOut();
+          post({ tipo: "regia-state", state: "out" }, "Uscita automatica.");
+        }, fine - Date.now());
+      })
+      .catch(function () {});
+  }
+
   elItems.addEventListener("click", function (e) {
     var b = e.target.closest ? e.target.closest("button[data-act]") : null;
     if (b) {
       var id = b.dataset.id;
-      if (b.dataset.act === "play") post({ tipo: "regia-state", state: "play", id: id }, "In onda tra un istante…");
+      if (b.dataset.act === "play") mandaInOnda(id);
       if (b.dataset.act === "up") post({ tipo: "regia-move", id: id, dir: "up" });
       if (b.dataset.act === "down") post({ tipo: "regia-move", id: id, dir: "down" });
       if (b.dataset.act === "ren") {
@@ -356,7 +473,10 @@
     }
   });
 
-  btnOut.addEventListener("click", function () { post({ tipo: "regia-state", state: "out" }, "Uscita…"); });
+  btnOut.addEventListener("click", function () {
+    annullaAutoOut();
+    post({ tipo: "regia-state", state: "out" }, "Uscita…");
+  });
 
   // ── riordino con trascinamento ──
   var dragging = null;
