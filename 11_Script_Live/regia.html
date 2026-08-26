@@ -93,11 +93,16 @@
 
   #empty{color:var(--fg-3);font-size:13.5px;padding:18px 6px;}
 
-  /* anteprima */
+  /* anteprima / monitor in onda */
   #thumbbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px;
     border:1px solid var(--line-2);background:#070B1D;}
+  #thumbbox.onair{border-color:rgba(229,27,32,.7);box-shadow:0 0 22px rgba(229,27,32,.3);}
   #thumb{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
     transform-origin:top left;pointer-events:none;}
+  #onairtag{position:absolute;top:8px;right:8px;z-index:2;display:none;
+    font-family:'Mazzard',sans-serif;font-size:10px;font-weight:800;letter-spacing:.16em;
+    color:#fff;background:var(--red);border-radius:3px;padding:3px 9px;}
+  #thumbbox.onair #onairtag{display:block;animation:pulse 1.4s ease-in-out infinite;}
   #thumbcap{margin-top:10px;font-size:12.5px;color:var(--fg-3);min-height:18px;}
 
   #btnOut{
@@ -150,7 +155,7 @@
 
     <div class="panel">
       <h2>Anteprima</h2>
-      <div id="thumbbox"><iframe id="thumb" src="about:blank" scrolling="no"></iframe></div>
+      <div id="thumbbox"><span id="onairtag">IN ONDA</span><iframe id="thumb" src="about:blank" scrolling="no"></iframe></div>
       <div id="thumbcap">Seleziona una grafica in scaletta per vederla.</div>
       <button id="btnOut" disabled>&#9632; Fuori onda</button>
       <div id="msg"></div>
@@ -189,6 +194,7 @@
   var selId = null;
   var thumbShownId = null;
   var lastNonce = null;
+  var shownPlayNonce = null;   // monitor live: quale messa in onda sto già mostrando
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -210,6 +216,7 @@
   function showThumb(id) {
     if (thumbShownId === id) return;
     thumbShownId = id;
+    document.getElementById("thumbbox").classList.remove("onair");
     thumbcap.textContent = "Carico l'anteprima…";
     fetch(PONTE + "?regia=item&id=" + encodeURIComponent(id), { cache: "no-store" })
       .then(function (r) { return r.json(); })
@@ -222,6 +229,18 @@
         thumbcap.textContent = it ? ("Anteprima: " + it.titolo + " — identica alla messa in onda.") : "";
       })
       .catch(function () { thumbcap.textContent = "Anteprima non disponibile."; });
+  }
+
+  function showLive() {
+    // monitor: replica in piccolo l'animazione che sta girando nel layer vMix
+    thumbShownId = "__live__";
+    shownPlayNonce = cur.playNonce;
+    document.getElementById("thumbbox").classList.add("onair");
+    thumb.src = "formazione-vmix.html?d=" + b64url(cur.dati || {}) + "&n=" + cur.playNonce;
+    fitThumb();
+    var it = null;
+    cur.items.forEach(function (x) { if (x.id === cur.onair) it = x; });
+    thumbcap.textContent = "IN ONDA" + (it ? ": " + it.titolo : "") + " — replica locale del layer vMix.";
   }
 
   function paint() {
@@ -258,8 +277,20 @@
     });
     elItems.innerHTML = h;
 
-    if (selId) showThumb(selId);
-    else { thumb.src = "about:blank"; thumbShownId = null; thumbcap.textContent = "Seleziona una grafica in scaletta per vederla."; }
+    // priorità del riquadro: nuova messa in onda → monitor live;
+    // altrimenti l'anteprima della voce selezionata
+    if (st === "play" && cur.dati && cur.playNonce !== shownPlayNonce) {
+      showLive();
+    } else if (st !== "play" && thumbShownId === "__live__") {
+      thumbShownId = null;
+      if (selId) showThumb(selId);
+    } else if (selId && thumbShownId !== "__live__") {
+      showThumb(selId);
+    } else if (!selId) {
+      thumb.src = "about:blank"; thumbShownId = null;
+      document.getElementById("thumbbox").classList.remove("onair");
+      thumbcap.textContent = "Seleziona una grafica in scaletta per vederla.";
+    }
   }
 
   function tick() {
@@ -314,7 +345,11 @@
       return;
     }
     var row = e.target.closest ? e.target.closest(".item") : null;
-    if (row) { selId = row.dataset.id; paint(); }
+    if (row) {
+      selId = row.dataset.id;
+      if (thumbShownId === "__live__") thumbShownId = null;   // il click vince sul monitor
+      paint();
+    }
   });
 
   btnOut.addEventListener("click", function () { post({ tipo: "regia-state", state: "out" }, "Uscita…"); });
