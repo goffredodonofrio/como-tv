@@ -157,6 +157,13 @@
 
   /* ─── export / status / note ─── */
   .exportbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:6px 0 8px;}
+  .seg{display:flex;border:1px solid var(--line-gold);border-radius:6px;overflow:hidden;}
+  .seg button{border:0;border-radius:0;padding:12px 16px;background:var(--surface-panel);
+    color:var(--ivory-dim);letter-spacing:.1em;}
+  .seg button + button{border-left:1px solid var(--line-2);}
+  .seg button:hover{color:var(--gold-bright);}
+  .seg button.act{background:var(--gold);color:#0A0F24;}
+  .seg button.act:hover{background:var(--gold);color:#0A0F24;}
   .toggles label{font-family:'DM Sans',system-ui,sans-serif;font-size:13px;letter-spacing:0;text-transform:none;
     font-weight:500;color:var(--ivory-dim);display:flex;align-items:center;gap:7px;cursor:pointer;}
   .toggles input{accent-color:var(--gold);}
@@ -240,16 +247,17 @@
   <div class="benches" id="benches"></div>
 
   <div class="exportbar">
-    <button class="primary" id="btnCsvAll">Scarica CSV — entrambe</button>
-    <button id="btnCsvHome">Solo Casa</button>
-    <button id="btnCsvAway">Solo Trasferta</button>
+    <div class="seg" id="segTarget" title="Su quale squadra agiscono i pulsanti">
+      <button data-t="both" class="act">Entrambe</button>
+      <button data-t="home">Casa</button>
+      <button data-t="away">Trasferta</button>
+    </div>
+    <button class="primary" id="btnCsv2">Scarica CSV</button>
     <button id="btnSheet">Invia al foglio</button>
-    <button id="btnRegiaHome">&#128225; Regia: Casa</button>
-    <button id="btnRegiaAway">&#128225; Regia: Trasferta</button>
-    <button id="btnVmixHome" title="Anteprima grafica animata in una nuova scheda">Anteprima Casa</button>
-    <button id="btnVmixAway" title="Anteprima grafica animata in una nuova scheda">Anteprima Trasferta</button>
+    <button id="btnRegia2">&#128225; Invia alla regia</button>
+    <button id="btnVmix2" title="Apre la grafica animata in una nuova scheda">Anteprima</button>
     <button id="btnSheetCfg" title="Configura il ponte verso il foglio Google" style="padding:11px 13px">&#9881;</button>
-    <div class="toggles"><label><input type="checkbox" id="optAscii"> esporta senza accenti</label></div>
+    <div class="toggles"><label><input type="checkbox" id="optAscii"> senza accenti</label></div>
   </div>
 
   <div class="status" id="status">
@@ -925,9 +933,28 @@
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
   }
 
-  document.getElementById("btnCsvAll").addEventListener("click", function () { download([0, 1]); });
-  document.getElementById("btnCsvHome").addEventListener("click", function () { download([0]); });
-  document.getElementById("btnCsvAway").addEventListener("click", function () { download([1]); });
+  // ---------------- bersaglio unico per i pulsanti azione ----------------
+  var TGT = "both";
+  document.getElementById("segTarget").addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("button[data-t]") : null;
+    if (!b) return;
+    TGT = b.dataset.t;
+    Array.prototype.forEach.call(document.querySelectorAll("#segTarget button"), function (x) {
+      x.className = x === b ? "act" : "";
+    });
+  });
+  function targetIdx() { return TGT === "home" ? [0] : (TGT === "away" ? [1] : [0, 1]); }
+
+  function sideCompleto(si) {
+    var side = sides[si];
+    if (!side.tit.length) return false;
+    return !side.tit.some(function (v) {
+      var d = resolve(side, v);
+      return !d || !(d.cognome || d.nome);
+    });
+  }
+
+  document.getElementById("btnCsv2").addEventListener("click", function () { download(targetIdx()); });
 
   // ---------------- ponte verso il foglio Google ----------------
   // L'URL del ponte (Apps Script /exec) e il token si configurano una
@@ -964,12 +991,14 @@
     return "" + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate());
   }
 
-  function inviaAlFoglio() {
+  function inviaAlFoglio(which) {
+    which = which || [0, 1];
     var cfg = ponteConfig(false);
     if (!cfg) return;
 
     var pronte = [], problemi = [];
-    sides.forEach(function (side) {
+    sides.forEach(function (side, si) {
+      if (which.indexOf(si) === -1) return;
       if (!side.tit.length) return;
       var vuoti = side.tit.filter(function (v) {
         var d = resolve(side, v);
@@ -1013,7 +1042,7 @@
       });
   }
 
-  document.getElementById("btnSheet").addEventListener("click", inviaAlFoglio);
+  document.getElementById("btnSheet").addEventListener("click", function () { inviaAlFoglio(targetIdx()); });
   document.getElementById("btnSheetCfg").addEventListener("click", function () { ponteConfig(true); });
 
   // ---------------- grafica vMix ----------------
@@ -1070,8 +1099,14 @@
       ' · <a href="' + esc(url) + '" target="_blank" style="color:var(--gold-bright)">link</a></span>');
   }
 
-  document.getElementById("btnVmixHome").addEventListener("click", function () { grafVmix(0); });
-  document.getElementById("btnVmixAway").addEventListener("click", function () { grafVmix(1); });
+  document.getElementById("btnVmix2").addEventListener("click", function () {
+    var list = targetIdx().filter(sideCompleto);
+    if (!list.length) {
+      status("err", '<span class="msg"><b>Nessuna formazione completa</b> per la selezione: controlla le maglie non assegnate.</span>');
+      return;
+    }
+    list.forEach(grafVmix);
+  });
 
   // ---------------- invio alla regia ----------------
   // Carica la formazione sul "centralino": la pagina grafica-live.html
@@ -1092,7 +1127,7 @@
 
     status("", '<span class="msg">Invio alla regia di <b>' + esc(payload.n) + '</b>&hellip;</span>' +
                '<span class="pbar"><span class="pfill" id="pfill"></span></span>');
-    fetch(cfg.url, {
+    return fetch(cfg.url, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ token: cfg.token, tipo: "regia-load", grafica: "formazione",
@@ -1116,8 +1151,21 @@
       });
   }
 
-  document.getElementById("btnRegiaHome").addEventListener("click", function () { inviaRegia(0); });
-  document.getElementById("btnRegiaAway").addEventListener("click", function () { inviaRegia(1); });
+  document.getElementById("btnRegia2").addEventListener("click", function () {
+    var list = targetIdx().filter(sideCompleto);
+    if (!list.length) {
+      status("err", '<span class="msg"><b>Nessuna formazione completa</b> per la selezione: controlla le maglie non assegnate.</span>');
+      return;
+    }
+    (function run(rest) {
+      if (!rest.length) return;
+      var p = inviaRegia(rest[0]);
+      (p && p.then ? p : Promise.resolve()).then(function () {
+        // piccola pausa tra i due invii perché i messaggi restino leggibili
+        setTimeout(function () { run(rest.slice(1)); }, rest.length > 1 ? 700 : 0);
+      });
+    })(list);
+  });
 
   // ---------------- init ----------------
 
