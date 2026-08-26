@@ -60,6 +60,21 @@
 
   .area-icon{width:36px;height:36px;color:var(--gold);flex:0 0 auto;align-self:center;}
 
+  /* ─── HUB 4 AREE ─── */
+  .hub{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:8px 0 52px;}
+  .hub-card{background:rgba(255,255,255,.04);border:1px solid rgba(201,162,75,.18);border-radius:18px;padding:34px 28px;cursor:pointer;text-decoration:none;display:flex;flex-direction:column;gap:14px;transition:background 240ms cubic-bezier(.22,1.2,.36,1),transform 240ms cubic-bezier(.22,1.2,.36,1),box-shadow 240ms cubic-bezier(.22,1.2,.36,1),border-color 240ms ease;}
+  .hub-card:hover{background:rgba(255,255,255,.08);transform:translateY(-5px);border-color:rgba(201,162,75,.5);box-shadow:inset 0 -3px 0 0 var(--gold);}
+  .hub-card:active{transform:scale(.98);}
+  .hub-icon{width:48px;height:48px;color:var(--gold);}
+  .hub-title{font-family:'Mazzard',system-ui,sans-serif;font-size:21px;font-weight:800;letter-spacing:-.01em;text-transform:uppercase;color:var(--ivory);line-height:1.1;}
+  .hub-count{font-family:'Mazzard',system-ui,sans-serif;font-size:12px;font-weight:700;color:var(--gold);letter-spacing:.14em;}
+  .hub-desc{font-size:12.5px;color:var(--fg-3);line-height:1.6;text-wrap:pretty;}
+  .hub-back{display:none;align-items:center;gap:8px;margin:4px 0 26px;cursor:pointer;font-family:'Mazzard',system-ui,sans-serif;font-size:11px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--gold);background:rgba(201,162,75,.1);border:1px solid rgba(201,162,75,.3);border-radius:999px;padding:10px 20px;width:max-content;transition:background 160ms ease;}
+  .hub-back:hover{background:rgba(201,162,75,.2);}
+  .hub-back.show{display:inline-flex;}
+  .main .area{display:none;}
+  .main .area.open{display:block;}
+
   /* ─── DOC CARDS ─── */
   .doc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(288px,1fr));gap:12px;}
   .doc-card{background:rgba(255,255,255,.04);border:none;border-radius:14px;padding:20px;text-decoration:none;display:flex;flex-direction:column;gap:11px;transition:background 240ms cubic-bezier(.22,1.2,.36,1),transform 240ms cubic-bezier(.22,1.2,.36,1),box-shadow 240ms cubic-bezier(.22,1.2,.36,1);}
@@ -208,6 +223,36 @@
 </div>
 
 <div class="main">
+
+  <div class="hub" id="hubGrid">
+    <div class="hub-card" data-area="grafiche" role="button" tabindex="0">
+      <i data-lucide="palette" class="hub-icon" width="48" height="48" stroke-width="1.4"></i>
+      <div class="hub-title">Grafiche</div>
+      <div class="hub-count">02 DOCUMENTI</div>
+      <div class="hub-desc">Generatore OTT e grafiche live — classifiche campionati, formati e export per After Effects.</div>
+    </div>
+    <div class="hub-card" data-area="presenze-dipendenti" role="button" tabindex="0">
+      <i data-lucide="calendar-check" class="hub-icon" width="48" height="48" stroke-width="1.4"></i>
+      <div class="hub-title">Presenze Dipendenti</div>
+      <div class="hub-count">01 DOCUMENTO</div>
+      <div class="hub-desc">Foglio presenze mensile — accesso personale con password, compilazione e stampa PDF.</div>
+    </div>
+    <div class="hub-card" data-area="vmix" role="button" tabindex="0">
+      <i data-lucide="clapperboard" class="hub-icon" width="48" height="48" stroke-width="1.4"></i>
+      <div class="hub-title">Documenti operativi VMIX</div>
+      <div class="hub-count">01 DOCUMENTO</div>
+      <div class="hub-desc">Palinsesto live 2026–27 — partite, competizioni e operatività di regia.</div>
+    </div>
+    <div class="hub-card" data-area="area-personale" role="button" tabindex="0">
+      <i data-lucide="lock" class="hub-icon" width="48" height="48" stroke-width="1.4"></i>
+      <div class="hub-title">Area Personale</div>
+      <div class="hub-count">12 DOCUMENTI</div>
+      <div class="hub-desc">Organigramma, report, design system, analytics OTT e social, budget.</div>
+    </div>
+  </div>
+
+  <div class="hub-back" id="hubBack">← Tutte le aree</div>
+
 
   <!-- GRAFICHE -->
   <div class="area" id="grafiche">
@@ -692,5 +737,32 @@ if (comoNavLiveCount) comoNavLiveCount.textContent = String(comoActiveDocs).padS
 lucide.createIcons();
 </script>
 
+<script>
+(function(){
+  const grid = document.getElementById('hubGrid');
+  const back = document.getElementById('hubBack');
+  const areas = document.querySelectorAll('.main .area');
+  const VALID = ['grafiche','presenze-dipendenti','vmix','area-personale'];
+  function show(areaId){
+    if (areaId && VALID.includes(areaId)) {
+      grid.style.display = 'none';
+      back.classList.add('show');
+      areas.forEach(a => a.classList.toggle('open', a.id === areaId));
+    } else {
+      grid.style.display = 'grid';
+      back.classList.remove('show');
+      areas.forEach(a => a.classList.remove('open'));
+    }
+  }
+  grid.querySelectorAll('.hub-card').forEach(card => {
+    const open = () => { history.replaceState(null,'','#'+card.dataset.area); show(card.dataset.area); window.scrollTo({top:0}); };
+    card.addEventListener('click', open);
+    card.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); open(); } });
+  });
+  back.addEventListener('click', () => { history.replaceState(null,'',location.pathname); show(null); });
+  window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+})();
+</script>
 </body>
 </html>
