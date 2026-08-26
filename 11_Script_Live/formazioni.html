@@ -93,6 +93,9 @@
   .modebtn.off{background:transparent;color:var(--ivory-dim);border-color:var(--line-2);box-shadow:none;
     font-family:'DM Sans',system-ui,sans-serif;font-size:11px;font-weight:500;letter-spacing:.02em;text-transform:none;}
   .modebtn.off:hover{color:var(--gold-bright);border-color:var(--line-gold);background:transparent;}
+  .kit{width:34px;height:26px;padding:2px;border:1px solid var(--line-2);border-radius:4px;
+    background:var(--surface-panel);cursor:pointer;}
+  .kit:hover{border-color:var(--line-gold);}
   .teampanel .row{display:grid;grid-template-columns:1.2fr 1fr .8fr;gap:10px;}
   .teampanel .row.manualrow{grid-template-columns:2.2fr .8fr;}
   .field{display:flex;flex-direction:column;gap:5px;min-width:0;}
@@ -235,6 +238,8 @@
     <button id="btnCsvHome">Solo Casa</button>
     <button id="btnCsvAway">Solo Trasferta</button>
     <button id="btnSheet">Invia al foglio</button>
+    <button id="btnVmixHome">Grafica vMix Casa</button>
+    <button id="btnVmixAway">Grafica vMix Trasferta</button>
     <button id="btnSheetCfg" title="Configura il ponte verso il foglio Google" style="padding:11px 13px">&#9881;</button>
     <div class="toggles"><label><input type="checkbox" id="optAscii"> esporta senza accenti</label></div>
   </div>
@@ -319,7 +324,8 @@
   // slot: null | {p: indiceRosa} | {m:1, num, nome, cognome}
   function mkSide(label) {
     return { label: label, comp: 0, teamId: "", teamName: "", roster: [], manualMode: false,
-             mod: "4-3-3", tit: [], pan: [], custom: {}, coachN: "", coachC: "" };
+             mod: "4-3-3", tit: [], pan: [], custom: {}, coachN: "", coachC: "",
+             kit: label === "Trasferta" ? "#C8102E" : "#1735C8" };
   }
 
   function mkManualRow() { return { m: 1, num: "", nome: "", cognome: "" }; }
@@ -505,8 +511,10 @@
 
       h += '<div class="teampanel">' +
         '<div class="side">' + side.label +
-          ' <button class="modebtn' + (side.manualMode ? " off" : "") + '" data-si="' + si + '" data-act="' + (side.manualMode ? "manual-off" : "manual-on") + '">' +
-          (side.manualMode ? "&#8617; torna alle rose ESPN" : "&#9997; Scrivi da zero") + '</button></div>';
+          ' <span style="display:flex;align-items:center;gap:8px">' +
+          '<input type="color" class="kit" title="Colore maglia nella grafica vMix" data-si="' + si + '" data-k="kit" value="' + esc(side.kit) + '">' +
+          '<button class="modebtn' + (side.manualMode ? " off" : "") + '" data-si="' + si + '" data-act="' + (side.manualMode ? "manual-off" : "manual-on") + '">' +
+          (side.manualMode ? "&#8617; torna alle rose ESPN" : "&#9997; Scrivi da zero") + '</button></span></div>';
 
       if (side.manualMode) {
         h += '<div class="row manualrow">' +
@@ -665,6 +673,10 @@
       side.custom = {};
       if (side.teamId) loadRoster(side);
       else { side.roster = []; side.tit = []; side.pan = []; renderAll(); }
+    }
+
+    if (t.dataset.k === "kit") {
+      side.kit = t.value;
     }
 
     if (t.dataset.k === "mod") {
@@ -1017,6 +1029,57 @@
 
   document.getElementById("btnSheet").addEventListener("click", inviaAlFoglio);
   document.getElementById("btnSheetCfg").addEventListener("click", function () { ponteConfig(true); });
+
+  // ---------------- grafica vMix ----------------
+  // Genera l'URL della grafica animata (formazione-vmix.html) con i dati
+  // della squadra dentro: quell'URL si incolla in vMix come input
+  // "Web Browser" 1920x1080. Doppio click o tasto R = replay.
+
+  function grafVmix(si) {
+    var side = sides[si];
+    if (!side.tit.length) {
+      status("err", '<span class="msg"><b>' + side.label + ':</b> nessuna squadra caricata.</span>');
+      return;
+    }
+    var vuoti = side.tit.filter(function (v) {
+      var d = resolve(side, v);
+      return !d || !(d.cognome || d.nome);
+    }).length;
+    if (vuoti) {
+      status("err", '<span class="msg"><b>' + side.label + ':</b> ' + vuoti + ' maglie non assegnate.</span>');
+      return;
+    }
+
+    function tri(v) { var d = resolve(side, v); return [d.num || "", d.nome || "", d.cognome || ""]; }
+
+    var payload = {
+      n: side.teamName || side.label,
+      m: side.mod,
+      k: side.kit,
+      l: side.teamId ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + side.teamId + ".png" : "",
+      a: [side.coachN || "", side.coachC || ""],
+      t: side.tit.map(tri),
+      p: side.pan.map(function (v) { return resolve(side, v); })
+        .filter(function (d) { return d && (d.cognome || d.nome); })
+        .map(function (d) { return [d.num || "", d.nome || "", d.cognome || ""]; })
+    };
+
+    var b64 = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    var url = new URL("formazione-vmix.html?d=" + b64, location.href).href;
+
+    window.open(url, "_blank");
+    var copiato = "";
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function () {});
+      copiato = " · indirizzo copiato, incollalo in vMix (input Web Browser 1920&times;1080)";
+    }
+    status("ok", '<span class="msg">Grafica di <b>' + esc(side.teamName || side.label) + '</b> aperta' + copiato +
+      ' · <a href="' + esc(url) + '" target="_blank" style="color:var(--gold-bright)">link</a></span>');
+  }
+
+  document.getElementById("btnVmixHome").addEventListener("click", function () { grafVmix(0); });
+  document.getElementById("btnVmixAway").addEventListener("click", function () { grafVmix(1); });
 
   // ---------------- init ----------------
 
