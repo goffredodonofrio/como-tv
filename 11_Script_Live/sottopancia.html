@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sottopancia · Como TV</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    color-scheme:dark;
+    --gold:#C9A24B;--gold-bright:#E3C271;--red:#E51B20;
+    --ivory:#F5F1E6;--ivory-dim:#D8D2C2;--fg-3:#8A8B96;
+    --surface-panel:rgba(16,22,48,.66);
+    --line-2:rgba(245,241,230,.08);--line-gold:rgba(201,162,75,.28);
+    --ok:#4FCB8B;
+  }
+  body{
+    font-family:'DM Sans',system-ui,sans-serif;font-weight:500;font-size:14px;line-height:1.5;
+    color:var(--ivory);min-height:100vh;
+    background-color:#0A0F24;
+    background-image:
+      radial-gradient(90% 70% at 20% 8%, rgba(36,64,138,.5), transparent 55%),
+      radial-gradient(80% 80% at 92% 108%, rgba(201,162,75,.16), transparent 55%),
+      linear-gradient(165deg,#141B3C 0%,#0E1430 48%,#0A0F24 100%);
+    background-attachment:fixed;
+    padding-bottom:90px;
+  }
+
+  .nav{min-height:58px;position:sticky;top:0;z-index:200;display:flex;align-items:center;gap:18px;
+    padding:0 clamp(20px,4vw,56px);background:rgba(10,15,36,.72);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line-2);}
+  .nav-brand{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:800;letter-spacing:.28em;
+    text-transform:uppercase;color:var(--ivory);text-decoration:none;white-space:nowrap;}
+  .nav-sep{color:rgba(245,241,230,.25);}
+  .nav-here{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.28em;
+    text-transform:uppercase;color:rgba(245,241,230,.45);}
+  .nav-links{margin-left:auto;display:flex;gap:10px;}
+  .nav-links a{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--ivory-dim);text-decoration:none;
+    padding:7px 14px;border:1px solid var(--line-2);border-radius:4px;}
+  .nav-links a:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+
+  .wrap{max-width:980px;margin:0 auto;padding:0 clamp(18px,3vw,32px);}
+  header.page{padding:40px 0 20px;border-bottom:1px solid var(--line-gold);}
+  .eyebrow{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.3em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:12px;}
+  h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(30px,4.5vw,46px);
+    line-height:.94;letter-spacing:-.02em;text-transform:uppercase;color:var(--ivory);}
+
+  .controls{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px;padding:22px 0;}
+  .field{display:flex;flex-direction:column;gap:6px;flex:1 1 200px;}
+  label{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
+    letter-spacing:.22em;text-transform:uppercase;color:var(--gold);}
+  input[type=text]{
+    font-family:'DM Sans',system-ui,sans-serif;font-weight:500;font-size:15px;
+    padding:11px 13px;color:var(--ivory);width:100%;
+    background:var(--surface-panel);
+    border:1px solid var(--line-2);border-radius:5px;
+  }
+  input[type=text]:hover{border-color:var(--line-gold);}
+  button{
+    font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.16em;
+    text-transform:uppercase;
+    padding:12px 18px;border-radius:5px;cursor:pointer;
+    background:transparent;color:var(--ivory-dim);border:1px solid var(--line-2);
+  }
+  button:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  button.primary{background:var(--gold);border-color:var(--gold);color:#0A0F24;}
+  button.primary:hover{background:var(--gold-bright);border-color:var(--gold-bright);color:#0A0F24;}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+
+  .status{display:flex;flex-wrap:wrap;gap:10px 26px;align-items:center;
+    padding:13px 16px;background:var(--surface-panel);
+    border:1px solid var(--line-2);border-left:3px solid var(--line-2);
+    border-radius:5px;font-size:13px;margin-bottom:20px;}
+  .status.ok{border-left-color:var(--ok);}
+  .status.err{border-left-color:var(--red);}
+  .status .msg{color:var(--ivory-dim);}
+  .status .msg b{color:var(--ivory);}
+
+  #prevbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:10px;
+    border:1px solid var(--line-2);
+    /* scacchiera: qui sotto c'è l'alfa, in onda si vedrà il programma */
+    background:
+      linear-gradient(45deg, rgba(245,241,230,.05) 25%, transparent 25%, transparent 75%, rgba(245,241,230,.05) 75%),
+      linear-gradient(45deg, rgba(245,241,230,.05) 25%, transparent 25%, transparent 75%, rgba(245,241,230,.05) 75%),
+      #101528;
+    background-size:32px 32px;background-position:0 0,16px 16px;}
+  #prev{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
+    transform-origin:top left;pointer-events:none;}
+  .note{margin-top:16px;font-size:12.5px;color:var(--fg-3);line-height:1.65;}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="nav-brand" href="../index.html">COMO TV</a>
+  <span class="nav-sep">·</span>
+  <span class="nav-here">Grafiche Live — Sottopancia</span>
+  <div class="nav-links">
+    <a href="classifiche.html">Grafiche Live</a>
+    <a href="../index.html">Home</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+  <header class="page">
+    <div class="eyebrow">Como TV · Grafiche Live</div>
+    <h1>Sottopancia</h1>
+  </header>
+
+  <div class="controls">
+    <div class="field" style="flex:1 1 180px">
+      <label for="kk">Occhiello</label>
+      <input type="text" id="kk" value="OSPITE IN STUDIO">
+    </div>
+    <div class="field" style="flex:2 1 260px">
+      <label for="nn">Nome e cognome</label>
+      <input type="text" id="nn" placeholder="es. Angelo Taglieri">
+    </div>
+    <div class="field" style="flex:1.5 1 220px">
+      <label for="jj">Ruolo</label>
+      <input type="text" id="jj" placeholder="es. Redazione Como TV">
+    </div>
+    <button class="primary" id="btnPrev">Anteprima</button>
+    <button id="btnRegia">&#128225; Invia alla regia</button>
+    <button id="btnSheetCfg" title="Configura il ponte" style="padding:12px 13px">&#9881;</button>
+  </div>
+
+  <div class="status" id="status">
+    <span class="msg">Compila i tre campi: l'anteprima suona l'animazione, <b>Invia alla regia</b> la mette in scaletta.</span>
+  </div>
+
+  <div id="prevbox"><iframe id="prev" src="sottopancia-vmix.html?still=1" scrolling="no"></iframe></div>
+  <p class="note">La scacchiera è la parte trasparente: in onda lì si vede il programma.
+  L'anteprima si aggiorna mentre scrivi (fermo-immagine); il pulsante <b>Anteprima</b> fa ripartire l'animazione completa.</p>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var PONTE_URL = "comotv.ponte.url", PONTE_TOKEN = "comotv.ponte.token";
+  var PONTE_DEFAULT = {
+    url: "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec",
+    token: "como_tv_grafiche"
+  };
+  var MEMO = "comotv.sottopancia.ultimo";
+
+  var kk = document.getElementById("kk");
+  var nn = document.getElementById("nn");
+  var jj = document.getElementById("jj");
+  var prev = document.getElementById("prev");
+  var elStatus = document.getElementById("status");
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function status(kind, html) {
+    elStatus.className = "status" + (kind ? " " + kind : "");
+    elStatus.innerHTML = html;
+  }
+  function safeGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function safeSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+  function ponteConfig(forza) {
+    var url = safeGet(PONTE_URL) || PONTE_DEFAULT.url;
+    var tok = safeGet(PONTE_TOKEN) || PONTE_DEFAULT.token;
+    if (forza) {
+      url = window.prompt("Indirizzo del ponte Apps Script (finisce con /exec):", url);
+      if (url === null) return null;
+      safeSet(PONTE_URL, url.trim() || PONTE_DEFAULT.url);
+      tok = window.prompt("Parola d'ordine del ponte:", tok);
+      if (tok === null) return null;
+      safeSet(PONTE_TOKEN, tok.trim() || PONTE_DEFAULT.token);
+      return ponteConfig(false);
+    }
+    return { url: url, token: tok };
+  }
+
+  function b64url(obj) {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(obj))))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function dati() {
+    return { k: kk.value.trim(), n: nn.value.trim(), j: jj.value.trim() };
+  }
+
+  function fitPrev() {
+    var w = document.getElementById("prevbox").clientWidth;
+    prev.style.transform = "scale(" + (w / 1920) + ")";
+  }
+  window.addEventListener("resize", fitPrev);
+
+  var t = null;
+  function refreshStill() {
+    clearTimeout(t);
+    t = setTimeout(function () {
+      prev.src = "sottopancia-vmix.html?d=" + b64url(dati()) + "&still=1";
+      fitPrev();
+      safeSet(MEMO, JSON.stringify(dati()));
+    }, 350);
+  }
+  [kk, nn, jj].forEach(function (i) { i.addEventListener("input", refreshStill); });
+
+  document.getElementById("btnPrev").addEventListener("click", function () {
+    if (!nn.value.trim()) { status("err", '<span class="msg"><b>Serve almeno il nome.</b></span>'); return; }
+    prev.src = "sottopancia-vmix.html?d=" + b64url(dati()) + "&n=" + Date.now();
+    fitPrev();
+  });
+
+  document.getElementById("btnRegia").addEventListener("click", function () {
+    var d = dati();
+    if (!d.n) { status("err", '<span class="msg"><b>Serve almeno il nome.</b></span>'); return; }
+    var cfg = ponteConfig(false);
+    if (!cfg) return;
+    var titolo = window.prompt("Nome in scaletta di regia:", "SOTTOPANCIA " + d.n.toUpperCase());
+    if (titolo === null) return;
+
+    status("", '<span class="msg">Invio alla regia&hellip;</span>');
+    fetch(cfg.url, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ token: cfg.token, tipo: "regia-load", grafica: "sottopancia",
+                             titolo: titolo.trim() || "SOTTOPANCIA", dati: d })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.ok) {
+          status("ok", '<span class="msg"><b>' + esc(titolo) + '</b> aggiunta alla scaletta. ' +
+            '<a href="regia.html" target="_blank" style="color:var(--gold-bright)">Apri la console</a>.</span>');
+        } else {
+          status("err", '<span class="msg"><b>La regia ha rifiutato:</b> ' + esc(res.errore || "errore") + '</span>');
+        }
+      })
+      .catch(function () { status("err", '<span class="msg"><b>Ponte non raggiungibile.</b></span>'); });
+  });
+
+  document.getElementById("btnSheetCfg").addEventListener("click", function () { ponteConfig(true); });
+
+  // riparto dagli ultimi valori usati su questa postazione
+  try {
+    var m = JSON.parse(safeGet(MEMO) || "{}");
+    if (m.k) kk.value = m.k;
+    if (m.n) nn.value = m.n;
+    if (m.j) jj.value = m.j;
+  } catch (e) {}
+  refreshStill();
+  fitPrev();
+})();
+</script>
+</body>
+</html>

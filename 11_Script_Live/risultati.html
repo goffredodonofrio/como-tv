@@ -169,6 +169,7 @@
     <button class="primary" id="btnLoad">Carica partite</button>
     <button id="btnCsv" disabled>Scarica CSV</button>
     <button id="btnSheet" disabled>Invia al foglio</button>
+    <button id="btnRegia" disabled>&#128225; Invia alla regia</button>
     <button id="btnSheetCfg" title="Configura il ponte verso il foglio Google" style="padding:11px 13px">&#9881;</button>
   </div>
 
@@ -344,6 +345,7 @@
     load:   document.getElementById("btnLoad"),
     csv:    document.getElementById("btnCsv"),
     sheet:  document.getElementById("btnSheet"),
+    regia:  document.getElementById("btnRegia"),
     status: document.getElementById("status"),
     out:    document.getElementById("out")
   };
@@ -425,7 +427,7 @@
 
         render();
         var ok = state.matches.length > 0;
-        el.csv.disabled = el.sheet.disabled = !ok;
+        el.csv.disabled = el.sheet.disabled = el.regia.disabled = !ok;
         if (ok) {
           status("ok", '<span class="msg"><b>' + state.matches.length + ' partite trovate.</b> Spunta quelle da mandare in grafica (max ' + MAXEV + ') e correggi le celle se serve.</span>');
         } else {
@@ -433,7 +435,7 @@
         }
       })
       .catch(function (err) {
-        el.csv.disabled = el.sheet.disabled = true;
+        el.csv.disabled = el.sheet.disabled = el.regia.disabled = true;
         if (err instanceof TypeError) {
           status("err", '<span class="msg"><b>Il browser non è riuscito a contattare i dati ESPN.</b> Controlla la connessione. Dettaglio: ' + esc(err.message) + '</span>');
         } else {
@@ -594,9 +596,58 @@
     el.al.value = iso(oggi);
   })();
 
+  // ── invio alla regia (grafica animata vMix) ──
+  function inviaRegia() {
+    var sel = selected();
+    if (!sel.length) { status("warn", '<span class="msg">Nessun evento spuntato.</span>'); return; }
+    var cfg = ponteConfig(false);
+    if (!cfg) return;
+
+    var t1 = window.prompt("Titolo grande della grafica:", "I RISULTATI");
+    if (t1 === null) return;
+    var sub = window.prompt("Riga piccola sotto il titolo:",
+      (state.comp ? state.comp.nome.toUpperCase() : "") + " · GIORNATA ");
+    if (sub === null) return;
+    var titolo = window.prompt("Nome in scaletta di regia:",
+      "RISULTATI " + (state.comp ? state.comp.nome.toUpperCase() : ""));
+    if (titolo === null) return;
+
+    var dati = {
+      t1: t1.trim() || "I RISULTATI",
+      sub: sub.trim(),
+      ev: sel.map(function (m) {
+        var extra = "";
+        if (m.campi[3] && m.campi[3] !== "-") {
+          extra = m.campi[3];
+          if (m.campi[6] || m.campi[9]) extra += " " + (m.campi[6] || "0") + "-" + (m.campi[9] || "0");
+        }
+        return [m.campi[0], m.campi[2], m.campi[4], m.campi[7], m.campi[5], m.campi[8], extra];
+      })
+    };
+
+    status("", '<span class="msg">Invio alla regia&hellip;</span>');
+    fetch(cfg.url, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ token: cfg.token, tipo: "regia-load", grafica: "risultati",
+                             titolo: titolo.trim() || "RISULTATI", dati: dati })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.ok) {
+          status("ok", '<span class="msg"><b>' + esc(titolo) + '</b> aggiunta alla scaletta di regia. ' +
+            '<a href="regia.html" target="_blank" style="color:var(--gold-bright)">Apri la console</a>.</span>');
+        } else {
+          status("err", '<span class="msg"><b>La regia ha rifiutato:</b> ' + esc(res.errore || "errore") + '</span>');
+        }
+      })
+      .catch(function () { status("err", '<span class="msg"><b>Ponte non raggiungibile.</b></span>'); });
+  }
+
   el.load.addEventListener("click", load);
   el.csv.addEventListener("click", download);
   el.sheet.addEventListener("click", inviaAlFoglio);
+  el.regia.addEventListener("click", inviaRegia);
   document.getElementById("btnSheetCfg").addEventListener("click", function () { ponteConfig(true); });
 })();
 </script>

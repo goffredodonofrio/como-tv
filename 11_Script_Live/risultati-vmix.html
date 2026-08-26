@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Risultati · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+    transform-origin:center center;
+    font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);
+  }
+
+  #title{position:absolute;left:0;right:0;top:52px;text-align:center;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:66px;letter-spacing:.01em;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;
+    clip-path:inset(0 100% 0 0);}
+  #sub{position:absolute;left:0;right:0;top:134px;text-align:center;
+    font-family:'DM Sans',sans-serif;font-weight:600;font-size:20px;letter-spacing:.2em;
+    color:#C9A24B;text-transform:uppercase;opacity:0;}
+  #rule{position:absolute;left:50%;top:172px;width:400px;height:2.5px;margin-left:-200px;
+    background:linear-gradient(90deg,rgba(58,76,143,.9) 0%,#C9A24B 100%);
+    transform:scaleX(0);transform-origin:center center;}
+
+  .ev{position:absolute;left:0;width:1920px;height:88px;}
+  .pillL{position:absolute;left:285px;top:0;width:375px;height:88px;
+    background:#10173A;border:1.5px solid rgba(72,94,168,.75);border-radius:18px;
+    opacity:0;}
+  .pillL .comp{position:absolute;left:30px;top:17px;
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:20px;letter-spacing:.1em;
+    color:#C9A24B;text-transform:uppercase;white-space:nowrap;}
+  .pillL .quando{position:absolute;left:30px;bottom:15px;
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:20px;letter-spacing:.06em;
+    color:#C9A24B;text-transform:uppercase;white-space:nowrap;}
+  .pillR{position:absolute;left:630px;top:0;width:1010px;height:88px;
+    background:#141B3E;border:1.5px solid rgba(201,162,75,.65);border-radius:18px;
+    opacity:0;}
+  .pillR .home{position:absolute;left:36px;top:25px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:32px;letter-spacing:.02em;
+    color:#FFFFFF;text-transform:uppercase;white-space:nowrap;}
+  .pillR .away{position:absolute;right:36px;top:25px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:32px;letter-spacing:.02em;
+    color:#FFFFFF;text-transform:uppercase;white-space:nowrap;}
+  .score{position:absolute;left:50%;top:14px;width:280px;transform:translateX(-50%);
+    text-align:center;opacity:0;}
+  .score .s{display:inline-block;min-width:64px;
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:44px;color:#C9A24B;
+    font-variant-numeric:tabular-nums;}
+  .score .dash{display:inline-block;margin:0 6px;font-size:22px;color:rgba(245,241,230,.4);vertical-align:9px;}
+  .extra{position:absolute;left:50%;bottom:5px;transform:translateX(-50%);
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:15px;letter-spacing:.08em;
+    color:rgba(201,162,75,.85);white-space:nowrap;}
+
+  @keyframes wipeIn { to { clip-path:inset(0 0 0 0); } }
+  @keyframes fadeIn { to { opacity:1; } }
+  @keyframes ruleIn { to { transform:scaleX(1); } }
+  @keyframes pillIn {
+    0%   { opacity:0; transform:translateX(-52px); }
+    100% { opacity:1; transform:translateX(0); }
+  }
+  @keyframes scoreIn {
+    0%   { opacity:0; transform:translateX(-50%) scale(.6); }
+    70%  { opacity:1; transform:translateX(-50%) scale(1.12); }
+    100% { opacity:1; transform:translateX(-50%) scale(1); }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="title"></div>
+  <div id="sub"></div>
+  <div id="rule"></div>
+  <div id="evs"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // dati: ?d=<b64 {t1: titolo, sub: sottotitolo,
+  //   ev: [[competizione, dataOrario, casa, ospite, s1, s2, extra],...] (max 8)}>
+  var DEMO = {
+    t1: "Dalla Como Cup ad Anfield: che estate",
+    sub: "I risultati dei test match",
+    ev: [["Serie A","22 ago · 18:30","Inter","Monza","4","1",""],
+         ["Serie A","22 ago · 18:30","Udinese","Como","1","1",""],
+         ["Serie A","22 ago · 20:45","Genoa","Napoli","0","2",""],
+         ["Serie A","22 ago · 20:45","Parma","Cagliari","0","1",""],
+         ["Serie A","23 ago · 18:30","Frosinone","Juventus","0","1",""],
+         ["Serie A","23 ago · 18:30","Venezia","Lecce","0","2",""],
+         ["Serie A","23 ago · 20:45","Atalanta","Sassuolo","2","1",""],
+         ["Serie A","23 ago · 20:45","Torino","Milan","1","2",""]]
+  };
+
+  function decodeData() {
+    try {
+      var q = new URLSearchParams(location.search).get("d");
+      if (!q) return DEMO;
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return d && d.ev && d.ev.length ? d : DEMO;
+    } catch (err) { return DEMO; }
+  }
+  var STILL = new URLSearchParams(location.search).get("still") === "1";
+  var D = decodeData();
+  document.title = "RISULTATI " + (D.sub || "");
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    document.getElementById("stage").style.transform = "translate(-50%,-50%) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+
+  var tt = document.getElementById("title");
+  var sb = document.getElementById("sub");
+  var rl = document.getElementById("rule");
+  tt.textContent = D.t1 || "";
+  sb.textContent = D.sub || "";
+  if (STILL) { tt.style.clipPath = "inset(0 0 0 0)"; sb.style.opacity = 1; rl.style.transform = "scaleX(1)"; }
+  else {
+    tt.style.animation = "wipeIn .8s cubic-bezier(.2,.7,.3,1) .2s forwards";
+    sb.style.animation = "fadeIn .5s ease .8s forwards";
+    rl.style.animation = "ruleIn .55s cubic-bezier(.2,.7,.3,1) .95s forwards";
+  }
+
+  var EV = (D.ev || []).slice(0, 8);
+  var N = EV.length;
+  var PITCH = 94;
+  var TOP0 = 215 + Math.max(0, (752 - N * PITCH) / 2);
+  var T_ROWS = 1.0, STAG = 0.26;
+  var T_SCORE = T_ROWS + N * STAG + 0.5;
+
+  var h = "";
+  EV.forEach(function (e, i) {
+    var y = TOP0 + i * PITCH;
+    var aR = STILL ? "opacity:1" : "animation: pillIn .5s cubic-bezier(.2,.7,.3,1) " + (T_ROWS + i * STAG) + "s forwards";
+    var aL = STILL ? "opacity:1" : "animation: pillIn .5s cubic-bezier(.2,.7,.3,1) " + (T_ROWS + 0.12 + i * STAG) + "s forwards";
+    var aS = STILL ? "opacity:1" : "animation: scoreIn .5s cubic-bezier(.34,1.4,.5,1) " + (T_SCORE + i * 0.14) + "s forwards";
+
+    h += '<div class="ev" style="top:' + y + 'px">' +
+      '<div class="pillL" style="' + aL + '">' +
+        '<span class="comp">' + esc(e[0]) + '</span>' +
+        '<span class="quando">' + esc(e[1]) + '</span>' +
+      '</div>' +
+      '<div class="pillR" style="' + aR + '">' +
+        '<span class="home">' + esc(e[2]) + '</span>' +
+        '<span class="away">' + esc(e[3]) + '</span>' +
+        '<span class="score" style="' + aS + '">' +
+          '<span class="s">' + esc(e[4]) + '</span><span class="dash">&mdash;</span><span class="s">' + esc(e[5]) + '</span>' +
+        '</span>' +
+        (e[6] ? '<span class="extra" style="' + aS + '">' + esc(e[6]) + '</span>' : "") +
+      '</div>' +
+      '</div>';
+  });
+  document.getElementById("evs").innerHTML = h;
+
+  function replay() { location.reload(); }
+  document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
+  document.addEventListener("dblclick", replay);
+})();
+</script>
+</body>
+</html>

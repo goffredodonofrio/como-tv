@@ -207,6 +207,14 @@
       .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   }
 
+  var ENGINES = {
+    formazione: "formazione-vmix.html",
+    classifica: "classifica-vmix.html",
+    risultati:  "risultati-vmix.html",
+    sottopancia: "sottopancia-vmix.html"
+  };
+  function engineOf(tipo) { return ENGINES[tipo] || ENGINES.formazione; }
+
   function fitThumb() {
     var w = document.getElementById("thumbbox").clientWidth;
     thumb.style.transform = "scale(" + (w / 1920) + ")";
@@ -222,7 +230,9 @@
       .then(function (r) { return r.json(); })
       .then(function (dati) {
         if (thumbShownId !== id) return;
-        thumb.src = "formazione-vmix.html?d=" + b64url(dati) + "&still=1";
+        var it0 = null;
+        cur.items.forEach(function (x) { if (x.id === id) it0 = x; });
+        thumb.src = engineOf(it0 ? it0.tipo : "formazione") + "?d=" + b64url(dati) + "&still=1";
         fitThumb();
         var it = null;
         cur.items.forEach(function (x) { if (x.id === id) it = x; });
@@ -236,7 +246,7 @@
     thumbShownId = "__live__";
     shownPlayNonce = cur.playNonce;
     document.getElementById("thumbbox").classList.add("onair");
-    thumb.src = "formazione-vmix.html?d=" + b64url(cur.dati || {}) + "&n=" + cur.playNonce;
+    thumb.src = engineOf(cur.tipo) + "?d=" + b64url(cur.dati || {}) + "&n=" + cur.playNonce;
     fitThumb();
     var it = null;
     cur.items.forEach(function (x) { if (x.id === cur.onair) it = x; });

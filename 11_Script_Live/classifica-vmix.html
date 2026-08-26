@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Classifica · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-SemiBold.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+    transform-origin:center center;
+    font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);
+  }
+
+  #eyebrow{position:absolute;left:128px;top:82px;
+    font-family:'DM Sans',sans-serif;font-weight:600;font-size:22px;letter-spacing:.24em;
+    color:#C9A24B;text-transform:uppercase;white-space:nowrap;opacity:0;}
+  #title{position:absolute;left:125px;top:104px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:76px;letter-spacing:.01em;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;
+    clip-path:inset(0 100% 0 0);}
+  #rule{position:absolute;left:128px;top:196px;width:590px;height:3px;
+    background:linear-gradient(90deg,#C9A24B 0%,rgba(201,162,75,.15) 100%);
+    transform:scaleX(0);transform-origin:left center;}
+
+  .colhead{position:absolute;font-size:20px;color:rgba(245,241,230,.55);opacity:0;}
+  .colhead b{font-family:'Mazzard',sans-serif;font-weight:700;color:#F5F1E6;}
+  .colhead span{position:absolute;text-align:center;width:60px;transform:translateX(-50%);}
+
+  .row{position:absolute;height:46px;border-radius:6px;
+    background:rgba(245,241,230,.05);
+    opacity:0;}
+  .row.hl{box-shadow:inset 0 0 0 1.5px rgba(245,241,230,.45);}
+  .row .pos{position:absolute;left:0;width:70px;text-align:center;top:8px;
+    font-size:26px;color:rgba(245,241,230,.6);font-variant-numeric:tabular-nums;}
+  .row img{position:absolute;left:82px;top:6px;width:34px;height:34px;object-fit:contain;}
+  .row .nm{position:absolute;left:146px;top:8px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:26px;letter-spacing:.02em;
+    color:#FFFFFF;text-transform:uppercase;white-space:nowrap;}
+  .row .st{position:absolute;top:8px;width:60px;text-align:center;transform:translateX(-50%);
+    font-family:'Mazzard',sans-serif;font-weight:600;font-size:26px;color:#F5F1E6;font-variant-numeric:tabular-nums;}
+  .row .st.pt{font-family:'Mazzard',sans-serif;font-weight:800;color:#C9A24B;}
+
+  @keyframes wipeIn { to { clip-path:inset(0 0 0 0); } }
+  @keyframes fadeIn { to { opacity:1; } }
+  @keyframes ruleIn { to { transform:scaleX(1); } }
+  @keyframes rowIn {
+    0%   { opacity:0; transform:translateX(-46px); }
+    100% { opacity:1; transform:translateX(0); }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="eyebrow"></div>
+  <div id="title">LA CLASSIFICA</div>
+  <div id="rule"></div>
+  <div id="rows"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // dati: ?d=<base64url {e: eyebrow, r: [[pos,nome,pg,v,p,s,pt,teamId],...]}>
+  var DEMO = {
+    e: "SERIE A - GIORNATA 1",
+    r: [[1,"ROMA",1,1,0,0,3,104],[2,"INTER",1,1,0,0,3,110],[3,"LECCE",1,1,0,0,3,113],[4,"NAPOLI",1,1,0,0,3,114],
+        [5,"MILAN",1,1,0,0,3,103],[6,"ATALANTA",1,1,0,0,3,105],[7,"CAGLIARI",1,1,0,0,3,2925],[8,"JUVENTUS",1,1,0,0,3,111],
+        [9,"LAZIO",1,1,0,0,3,112],[10,"COMO",1,0,1,0,1,2572],[11,"UDINESE",1,0,1,0,1,118],[12,"SASSUOLO",1,0,0,1,0,3997],
+        [13,"TORINO",1,0,0,1,0,239],[14,"BOLOGNA",1,0,0,1,0,107],[15,"FROSINONE",1,0,0,1,0,3944],[16,"PARMA",1,0,0,1,0,115],
+        [17,"GENOA",1,0,0,1,0,3263],[18,"VENEZIA",1,0,0,1,0,3945],[19,"MONZA",1,0,0,1,0,4007],[20,"FIORENTINA",1,0,0,1,0,109]]
+  };
+
+  function decodeData() {
+    try {
+      var q = new URLSearchParams(location.search).get("d");
+      if (!q) return DEMO;
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return d && d.r && d.r.length ? d : DEMO;
+    } catch (err) { return DEMO; }
+  }
+  var STILL = new URLSearchParams(location.search).get("still") === "1";
+  var D = decodeData();
+  document.title = "CLASSIFICA " + (D.e || "");
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    document.getElementById("stage").style.transform = "translate(-50%,-50%) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+
+  // header
+  var eb = document.getElementById("eyebrow");
+  eb.textContent = D.e || "";
+  var tt = document.getElementById("title");
+  var rl = document.getElementById("rule");
+  if (STILL) { eb.style.opacity = 1; tt.style.clipPath = "inset(0 0 0 0)"; rl.style.transform = "scaleX(1)"; }
+  else {
+    eb.style.animation = "fadeIn .5s ease .15s forwards";
+    tt.style.animation = "wipeIn .7s cubic-bezier(.2,.7,.3,1) .3s forwards";
+    rl.style.animation = "ruleIn .55s cubic-bezier(.2,.7,.3,1) .85s forwards";
+  }
+
+  // ── tabella ──
+  var ROWS = D.r || [];
+  var N = ROWS.length;
+  var due = N > 12;
+  var perCol = due ? Math.ceil(N / 2) : N;
+
+  // geometria (come la reference: due colonne 100..900 / 1020..1820)
+  var COLX = due ? [100, 1020] : [510];
+  var COLW = 800;
+  var TOPH = 336;          // header colonne (PG V P S PT)
+  var TOP0 = 362;          // prima riga
+  var PITCH = 56;
+  var STATX = [523, 583, 643, 703, 763];  // offset dentro la riga
+  var LABELS = ["PG", "V", "P", "S", "PT"];
+
+  var h = "";
+  COLX.forEach(function (cx, ci) {
+    if (ci * perCol >= N) return;
+    h += '<div class="colhead" style="left:' + cx + 'px;top:' + TOPH + 'px;width:' + COLW + 'px;' +
+      (STILL ? 'opacity:1' : 'animation:fadeIn .5s ease 1s forwards') + '">';
+    LABELS.forEach(function (lb, li) {
+      h += '<span style="left:' + STATX[li] + 'px">' + (lb === "PT" ? "<b>PT</b>" : lb) + '</span>';
+    });
+    h += '</div>';
+  });
+
+  ROWS.forEach(function (r, i) {
+    var ci = due ? Math.floor(i / perCol) : 0;
+    var ri = due ? (i % perCol) : i;
+    var cx = COLX[ci], cy = TOP0 + ri * PITCH;
+    var nome = String(r[1] || "");
+    var hl = /\bCOMO\b/i.test(nome);
+    var logo = r[7] ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + r[7] + ".png" : "";
+    var anim = STILL ? "opacity:1" : "animation: rowIn .5s cubic-bezier(.2,.7,.3,1) " + (1.05 + i * 0.16) + "s forwards";
+
+    h += '<div class="row' + (hl ? " hl" : "") + '" style="left:' + cx + 'px;top:' + cy + 'px;width:' + COLW + 'px;' + anim + '">' +
+      '<span class="pos">' + esc(r[0]) + '</span>' +
+      (logo ? '<img src="' + esc(logo) + '" onerror="this.style.display=\'none\'">' : "") +
+      '<span class="nm">' + esc(nome) + '</span>' +
+      '<span class="st" style="left:' + STATX[0] + 'px">' + esc(r[2]) + '</span>' +
+      '<span class="st" style="left:' + STATX[1] + 'px">' + esc(r[3]) + '</span>' +
+      '<span class="st" style="left:' + STATX[2] + 'px">' + esc(r[4]) + '</span>' +
+      '<span class="st" style="left:' + STATX[3] + 'px">' + esc(r[5]) + '</span>' +
+      '<span class="st pt" style="left:' + STATX[4] + 'px">' + esc(r[6]) + '</span>' +
+      '</div>';
+  });
+
+  document.getElementById("rows").innerHTML = h;
+
+  function replay() { location.reload(); }
+  document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
+  document.addEventListener("dblclick", replay);
+})();
+</script>
+</body>
+</html>

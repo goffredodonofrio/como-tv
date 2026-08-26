@@ -194,6 +194,7 @@
     <button class="primary" id="btnRefresh">Aggiorna dati</button>
     <button id="btnCsv" disabled>Scarica CSV</button>
     <button id="btnSheet" disabled>Invia al foglio</button>
+    <button id="btnRegia" disabled>&#128225; Invia alla regia</button>
     <button id="btnManual">Tabella manuale</button>
     <button id="btnSheetCfg" title="Configura il ponte verso il foglio Google" style="padding:11px 13px">&#9881;</button>
 
@@ -380,6 +381,7 @@
     refresh:  document.getElementById("btnRefresh"),
     csv:      document.getElementById("btnCsv"),
     sheet:    document.getElementById("btnSheet"),
+    regia:    document.getElementById("btnRegia"),
     manual:   document.getElementById("btnManual"),
     status:   document.getElementById("status"),
     out:      document.getElementById("out"),
@@ -491,6 +493,7 @@
         render();
         el.csv.disabled = false;
         el.sheet.disabled = false;
+        el.regia.disabled = false;
 
         var tot = state.groups.reduce(function (n, g) { return n + g.rows.length; }, 0);
         status("ok",
@@ -502,6 +505,7 @@
       .catch(function (err) {
         el.csv.disabled = true;
         el.sheet.disabled = true;
+        el.regia.disabled = true;
         if (err.message === "VUOTO") {
           status("warn", '<span class="msg"><b>Nessuna classifica</b> per questo campionato in questa stagione. Prova a cambiare l\'anno.</span>');
         } else if (err instanceof TypeError) {
@@ -532,6 +536,7 @@
         return {
           pos:  stat(r, "rank"),
           diff: 0,
+          tid:  r.team.id || "",
           api:  r.team.displayName || r.team.name,
           pg:   stat(r, "gamesPlayed"),
           v:    stat(r, "wins"),
@@ -713,7 +718,7 @@
     }
 
     state.dirty = true;
-    el.csv.disabled = el.sheet.disabled = !state.groups.some(function (gr) { return gr.rows.length; });
+    el.csv.disabled = el.sheet.disabled = el.regia.disabled = !state.groups.some(function (gr) { return gr.rows.length; });
     render();
     dirtyStatus();
   }
@@ -751,6 +756,7 @@
     render();
     el.csv.disabled = false;
         el.sheet.disabled = false;
+        el.regia.disabled = false;
     dirtyStatus();
   }
 
@@ -935,6 +941,68 @@
       });
   }
 
+  // ---------------- invio alla regia (grafica animata vMix) ----------------
+
+  function inviaRegia() {
+    if (!state.groups.length) return;
+    var cfg = ponteConfig(false);
+    if (!cfg) return;
+
+    // con più gironi si sceglie quale mandare (vuoto = tutti, uno per voce)
+    var gruppi = state.groups;
+    if (state.groups.length > 1) {
+      var r = window.prompt("Quale girone? (1-" + state.groups.length + ", vuoto = tutti)", "1");
+      if (r === null) return;
+      r = r.trim();
+      if (r !== "") {
+        var gi = parseInt(r, 10) - 1;
+        if (isNaN(gi) || gi < 0 || gi >= state.groups.length) { status("err", '<span class="msg">Girone non valido.</span>'); return; }
+        gruppi = [state.groups[gi]];
+      }
+    }
+
+    var eyebrow = window.prompt("Riga sopra il titolo (competizione e giornata):",
+      (state.comp ? state.comp.nome.toUpperCase() : "") + " - GIORNATA ");
+    if (eyebrow === null) return;
+
+    (function run(list) {
+      if (!list.length) return;
+      var g = list[0];
+      var titolo = window.prompt("Nome in scaletta di regia:",
+        "CLASSIFICA " + (state.comp ? state.comp.nome.toUpperCase() : "") + (g.label ? " — " + g.label.toUpperCase() : ""));
+      if (titolo === null) return;
+
+      var dati = {
+        e: eyebrow.trim() + (g.label && state.groups.length > 1 ? " · " + g.label.toUpperCase() : ""),
+        r: g.rows.map(function (row) {
+          var nome = row.manual ? defaultName(row.api) : grafName(row.api);
+          return [row.pos, nome, row.pg, row.v, row.p, row.s, row.pt, row.tid || ""];
+        })
+      };
+
+      status("", '<span class="msg">Invio alla regia&hellip;</span>');
+      fetch(cfg.url, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ token: cfg.token, tipo: "regia-load", grafica: "classifica",
+                               titolo: titolo.trim() || "CLASSIFICA", dati: dati })
+      })
+        .then(function (r2) { return r2.json(); })
+        .then(function (res) {
+          if (res.ok) {
+            status("ok", '<span class="msg"><b>' + esc(titolo) + '</b> aggiunta alla scaletta di regia. ' +
+              '<a href="regia.html" target="_blank" style="color:var(--gold-bright)">Apri la console</a>.</span>');
+            setTimeout(function () { run(list.slice(1)); }, 600);
+          } else {
+            status("err", '<span class="msg"><b>La regia ha rifiutato:</b> ' + esc(res.errore || "errore") + '</span>');
+          }
+        })
+        .catch(function () {
+          status("err", '<span class="msg"><b>Ponte non raggiungibile.</b></span>');
+        });
+    })(gruppi);
+  }
+
   // ---------------- init ----------------
 
   GRPS.forEach(function (g, gi) {
@@ -954,6 +1022,7 @@
   el.refresh.addEventListener("click", load);
   el.csv.addEventListener("click", download);
   el.sheet.addEventListener("click", inviaAlFoglio);
+  el.regia.addEventListener("click", inviaRegia);
   document.getElementById("btnSheetCfg").addEventListener("click", function () { ponteConfig(true); });
   el.manual.addEventListener("click", manualTable);
   el.out.addEventListener("click", onRowAction);
