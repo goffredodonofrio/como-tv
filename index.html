@@ -545,6 +545,7 @@ async function comoSha256(value) {
 function comoOpenModal(href, docKey, label) {
   pendingHref = href;
   pendingDocKey = docKey;
+  comoPopulateUsers(docKey);
   document.getElementById("access-doc-name").textContent = label || COMO_DOC_LABELS[docKey] || "Documento";
   document.getElementById("access-password").value = "";
   document.getElementById("access-error").classList.remove("show");
@@ -560,13 +561,16 @@ function comoCloseModal() {
   pendingDocKey = null;
 }
 
-function comoPopulateUsers() {
+function comoPopulateUsers(docKey) {
   const select = document.getElementById("access-user");
-  select.innerHTML = COMO_ACCESS_USERS
+  const list = docKey
+    ? COMO_ACCESS_USERS.filter(u => comoCanAccess(u, docKey))
+    : COMO_ACCESS_USERS;
+  select.innerHTML = list
     .map(u => `<option value="${u.name.replace(/"/g,'&quot;')}">${u.name}</option>`)
     .join("");
   const lastUser = sessionStorage.getItem("como_access_user");
-  if (lastUser && COMO_ACCESS_USERS.some(u => u.name === lastUser)) select.value = lastUser;
+  if (lastUser && list.some(u => u.name === lastUser)) select.value = lastUser;
 }
 
 function comoMarkProtectedCards() {
