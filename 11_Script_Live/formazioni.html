@@ -169,6 +169,12 @@
   .status.err{border-left-color:var(--red);}
   .status .msg{color:var(--ivory-dim);}
   .status .msg b{color:var(--ivory);}
+  .pbar{height:6px;background:rgba(245,241,230,.08);border-radius:3px;overflow:hidden;
+    flex:1 1 240px;min-width:200px;align-self:center;}
+  .pfill{display:block;height:100%;width:0;background:var(--gold);border-radius:3px;
+    animation:pfill 2.6s cubic-bezier(.2,.7,.3,1) forwards;}
+  @keyframes pfill{0%{width:0}60%{width:72%}100%{width:92%}}
+  .pfill.done{animation:none;width:100%;background:var(--ok);transition:width .25s ease;}
   .note{margin-top:18px;font-size:12.5px;color:var(--fg-3);max-width:92ch;line-height:1.65;}
   .note b{color:var(--ivory-dim);}
   .note code{font-size:.9em;background:rgba(245,241,230,.06);border:1px solid var(--line-2);
@@ -250,28 +256,6 @@
     <span class="msg">Scegli campionato e squadra per ciascun lato: la rosa arriva da ESPN e gli undici si schierano da soli seguendo il modulo.</span>
   </div>
 
-  <p class="note">
-    <b>Come funziona.</b> Gli undici stanno nelle colonne ai lati del campo, la panchina (max 20) qui sotto:
-    ogni maglia si sceglie dal menu, e se selezioni un giocatore già impiegato le due maglie si scambiano.
-    Con la <b>matita ✎</b> correggi a mano numero, nome e cognome di qualunque riga (o scegli
-    <i>✍ scrivi a mano…</i> dal menu per un giocatore che su ESPN non c'è); ⟲ torna al menu.
-    In campo puoi <b>trascinare le maglie</b> dove vuoi: doppio click su una maglia la riporta
-    alla posizione del modulo, e cambiare modulo riparte pulito.
-    L'<b>allenatore</b> non arriva da ESPN: si scrive una volta e la pagina lo ricorda per squadra.
-  </p>
-  <p class="note">
-    <b>Coppe a eliminazione diretta.</b> Carabao Cup, DFB-Pokal, Coupe de France, Taça de Portugal, Scottish Cup,
-    King's Cup, supercoppe, Recopa, Trofeo de Campeones e Supercopa Internacional non hanno un elenco squadre su ESPN:
-    per quelle partite scegli la squadra dal suo <b>campionato</b> (gruppo "Rose per le coppe in palinsesto").
-    Per la <b>Como Cup</b>, le <b>amichevoli</b> e le <b>giovanili</b> c'è il pulsante
-    <b>✍ scrivi da zero</b> in cima al pannello squadra: nome squadra libero, undici e panchina
-    tutti a campi liberi, campo e CSV funzionano identici.
-  </p>
-  <p class="note">
-    <b>Il CSV</b> esce già nel formato di <code>Formazioni 7.0.jsx</code>: intestazione, righe 2–12 i titolari
-    nell'ordine della colonna, riga 13 l'allenatore (vincolo dello script), dalla 14 la panchina.
-    Puoi scaricare entrambe le squadre o una sola.
-  </p>
 
 </div>
 
@@ -1100,18 +1084,23 @@
     var cfg = ponteConfig(false);
     if (!cfg) return;
 
-    status("", '<span class="msg">Carico la regia&hellip;</span>');
+    status("", '<span class="msg">Invio alla regia di <b>' + esc(payload.n) + '</b>&hellip;</span>' +
+               '<span class="pbar"><span class="pfill" id="pfill"></span></span>');
     fetch(cfg.url, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ token: cfg.token, tipo: "regia-load", grafica: "formazione",
-                             titolo: payload.n + " · " + payload.m, dati: payload })
+                             titolo: sides[si].label + " — " + payload.n + " · " + payload.m, dati: payload })
     })
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (res.ok) {
-          status("ok", '<span class="msg"><b>' + esc(payload.n) + '</b> aggiunta alla scaletta di regia. ' +
-            'Dalla <a href="regia.html" target="_blank" style="color:var(--gold-bright)">console</a> la mandi in onda quando vuoi.</span>');
+          var pf = document.getElementById("pfill");
+          if (pf) pf.className = "pfill done";
+          setTimeout(function () {
+            status("ok", '<span class="msg"><b>' + esc(payload.n) + '</b> aggiunta alla scaletta di regia. ' +
+              'Dalla <a href="regia.html" target="_blank" style="color:var(--gold-bright)">console</a> la mandi in onda quando vuoi.</span>');
+          }, 350);
         } else {
           status("err", '<span class="msg"><b>La regia ha rifiutato il carico:</b> ' + esc(res.errore || "errore sconosciuto") + '</span>');
         }

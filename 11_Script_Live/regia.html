@@ -74,8 +74,10 @@
     color:var(--fg-3);font-weight:500;font-size:11px;}
 
   .item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;
-    border:1px solid var(--line-2);margin-bottom:8px;cursor:pointer;background:rgba(245,241,230,.02);}
+    border:1px solid var(--line-2);margin-bottom:8px;cursor:grab;background:rgba(245,241,230,.02);}
   .item:hover{border-color:var(--line-gold);}
+  .item.dragging{opacity:.35;cursor:grabbing;}
+  .item .grip{color:var(--fg-3);font-size:15px;letter-spacing:1px;cursor:grab;user-select:none;}
   .item.sel{border-color:var(--gold);background:rgba(201,162,75,.08);}
   .item.onair{border-color:rgba(229,27,32,.65);background:rgba(229,27,32,.08);}
   .item .tit{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -243,10 +245,12 @@
     cur.items.forEach(function (it) {
       var onair = it.id === cur.onair && st === "play";
       var quando = it.ts ? new Date(it.ts).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "";
-      h += '<div class="item' + (it.id === selId ? " sel" : "") + (onair ? " onair" : "") + '" data-id="' + esc(it.id) + '">' +
+      h += '<div class="item' + (it.id === selId ? " sel" : "") + (onair ? " onair" : "") + '" data-id="' + esc(it.id) + '" draggable="true">' +
+        '<span class="grip" title="Trascina per riordinare">&#8942;&#8942;</span>' +
         '<button class="ib play" data-act="play" data-id="' + esc(it.id) + '" title="Manda in onda">&#9654;</button>' +
         '<span class="tit">' + esc(it.titolo || it.tipo) + '<small>' + esc(it.tipo.toUpperCase()) + (quando ? " · caricata " + quando : "") + '</small></span>' +
         (onair ? '<span class="badge">IN ONDA</span>' : "") +
+        '<button class="ib" data-act="ren" data-id="' + esc(it.id) + '" title="Rinomina">&#9998;</button>' +
         '<button class="ib" data-act="up" data-id="' + esc(it.id) + '" title="Su">&uarr;</button>' +
         '<button class="ib" data-act="down" data-id="' + esc(it.id) + '" title="Gi&ugrave;">&darr;</button>' +
         '<button class="ib" data-act="del" data-id="' + esc(it.id) + '" title="Elimina">&times;</button>' +
@@ -264,6 +268,7 @@
       .then(function (j) {
         if (!j || j.nonce == null) throw new Error("x");
         if (j.nonce === lastNonce) return;
+        if (dragging) return;   // non ridisegno sotto le dita durante un trascinamento
         lastNonce = j.nonce;
         cur = j;
         paint();
@@ -297,6 +302,12 @@
       if (b.dataset.act === "play") post({ tipo: "regia-state", state: "play", id: id }, "In onda tra un istante…");
       if (b.dataset.act === "up") post({ tipo: "regia-move", id: id, dir: "up" });
       if (b.dataset.act === "down") post({ tipo: "regia-move", id: id, dir: "down" });
+      if (b.dataset.act === "ren") {
+        var it = null;
+        cur.items.forEach(function (x) { if (x.id === id) it = x; });
+        var nuovo = window.prompt("Nome in scaletta:", it ? it.titolo : "");
+        if (nuovo !== null && nuovo.trim()) post({ tipo: "regia-rename", id: id, titolo: nuovo.trim() });
+      }
       if (b.dataset.act === "del") {
         if (window.confirm("Elimino questa grafica dalla scaletta?")) post({ tipo: "regia-del", id: id });
       }
@@ -307,6 +318,46 @@
   });
 
   btnOut.addEventListener("click", function () { post({ tipo: "regia-state", state: "out" }, "Uscita…"); });
+
+  // ── riordino con trascinamento ──
+  var dragging = null;
+
+  elItems.addEventListener("dragstart", function (e) {
+    var row = e.target.closest ? e.target.closest(".item") : null;
+    if (!row) return;
+    dragging = row;
+    row.classList.add("dragging");
+    try {
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", row.dataset.id);
+      }
+    } catch (err) {}
+  });
+
+  elItems.addEventListener("dragover", function (e) {
+    if (!dragging) return;
+    e.preventDefault();
+    var row = e.target.closest ? e.target.closest(".item") : null;
+    if (!row || row === dragging) return;
+    var r = row.getBoundingClientRect();
+    if (e.clientY < r.top + r.height / 2) elItems.insertBefore(dragging, row);
+    else elItems.insertBefore(dragging, row.nextSibling);
+  });
+
+  elItems.addEventListener("drop", function (e) { e.preventDefault(); });
+
+  document.addEventListener("dragend", function () {
+    if (!dragging) return;
+    dragging.classList.remove("dragging");
+    dragging = null;
+    var order = Array.prototype.map.call(elItems.querySelectorAll(".item"), function (r) { return r.dataset.id; });
+    // aggiorno subito lo stato locale (niente scatto visivo), poi il centralino
+    var byId = {};
+    cur.items.forEach(function (it) { byId[it.id] = it; });
+    cur.items = order.map(function (id) { return byId[id]; }).filter(Boolean);
+    post({ tipo: "regia-order", order: order }, "Ordine aggiornato.");
+  });
 
   setInterval(tick, POLL_MS);
   tick();
