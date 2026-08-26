@@ -146,6 +146,10 @@
     } catch (e) { return DEMO; }
   }
 
+  // &still=1 → fermo-immagine (miniatura in regia): stato "undici in campo"
+  // subito, senza animazione e senza fase panchina.
+  var STILL = new URLSearchParams(location.search).get("still") === "1";
+
   var D = decodeData();
   var KIT = D.k || "#1735C8";
   document.title = "FORMAZIONE " + (D.n || "").toUpperCase();
@@ -248,16 +252,22 @@
 
   // header
   var lg = document.getElementById("logo");
-  lg.style.animation = "fadeIn .7s ease " + T_HEADER + "s forwards";
-  document.getElementById("team").style.animation = "wipeIn .8s cubic-bezier(.2,.7,.3,1) " + (T_HEADER + 0.15) + "s forwards";
-  document.getElementById("modulo").style.animation = "fadeIn .6s ease " + (T_HEADER + 0.75) + "s forwards";
+  if (STILL) { lg.style.opacity = 1; }
+  else { lg.style.animation = "fadeIn .7s ease " + T_HEADER + "s forwards"; }
+  var elTeam = document.getElementById("team");
+  var elMod = document.getElementById("modulo");
+  if (STILL) { elTeam.style.clipPath = "inset(0 0 0 0)"; elMod.style.opacity = 1; }
+  else {
+    elTeam.style.animation = "wipeIn .8s cubic-bezier(.2,.7,.3,1) " + (T_HEADER + 0.15) + "s forwards";
+    elMod.style.animation = "fadeIn .6s ease " + (T_HEADER + 0.75) + "s forwards";
+  }
 
   // lista titolari
   var listH = "";
   D.t.forEach(function (r, i) {
-    var dIn = T_ROWS + i * STAG;
-    var dOut = T_OUT + i * 0.055;
-    listH += '<div class="prow" style="animation: wipeIn .55s cubic-bezier(.2,.7,.3,1) ' + dIn + 's forwards, wipeOut .4s ease-in ' + dOut + 's forwards">' +
+    var st = STILL ? 'clip-path:inset(0 0 0 0)'
+      : 'animation: wipeIn .55s cubic-bezier(.2,.7,.3,1) ' + (T_ROWS + i * STAG) + 's forwards, wipeOut .4s ease-in ' + (T_OUT + i * 0.055) + 's forwards';
+    listH += '<div class="prow" style="' + st + '">' +
       '<span class="num">' + esc(r[0]) + '</span>' +
       '<span class="nm">' + esc(r[1]) + '<b>' + esc(r[2]) + '</b></span>' +
       '</div>';
@@ -268,30 +278,33 @@
   var coach = document.getElementById("coach");
   document.getElementById("coachName").textContent = ((D.a && D.a[0]) || "") + " " + ((D.a && D.a[1]) || "");
   if (D.a && (D.a[0] || D.a[1])) {
-    coach.style.animation = "fadeIn .6s ease " + T_COACH + "s forwards, fadeOut .4s ease " + (T_OUT + 0.3) + "s forwards";
+    if (STILL) coach.style.opacity = 1;
+    else coach.style.animation = "fadeIn .6s ease " + T_COACH + "s forwards, fadeOut .4s ease " + (T_OUT + 0.3) + "s forwards";
   }
 
-  // panchina
-  var bt = document.getElementById("benchtitle");
-  bt.style.animation = "wipeIn .5s cubic-bezier(.2,.7,.3,1) " + T_BENCH + "s forwards";
-  var bh = "";
-  (D.p || []).slice(0, 20).forEach(function (r, i) {
-    var dIn = T_BENCH + 0.25 + i * 0.085;
-    bh += '<div class="brow" style="animation: wipeIn .45s cubic-bezier(.2,.7,.3,1) ' + dIn + 's forwards">' +
-      '<span class="num">' + esc(r[0]) + '</span>' +
-      '<span class="nm">' + esc(r[1]) + '<b>' + esc(r[2]) + '</b></span>' +
-      '</div>';
-  });
-  document.getElementById("benchrows").innerHTML = bh;
+  // panchina (nel fermo-immagine non c'è: la miniatura mostra gli undici)
+  if (!STILL) {
+    var bt = document.getElementById("benchtitle");
+    bt.style.animation = "wipeIn .5s cubic-bezier(.2,.7,.3,1) " + T_BENCH + "s forwards";
+    var bh = "";
+    (D.p || []).slice(0, 20).forEach(function (r, i) {
+      var dIn = T_BENCH + 0.25 + i * 0.085;
+      bh += '<div class="brow" style="animation: wipeIn .45s cubic-bezier(.2,.7,.3,1) ' + dIn + 's forwards">' +
+        '<span class="num">' + esc(r[0]) + '</span>' +
+        '<span class="nm">' + esc(r[1]) + '<b>' + esc(r[2]) + '</b></span>' +
+        '</div>';
+    });
+    document.getElementById("benchrows").innerHTML = bh;
+  }
 
   // maglie sul campo
   var geo = slotGeo(D.m);
   var dotsH = "";
   D.t.forEach(function (r, i) {
     var g = geo[i] || geo[geo.length - 1];
-    var d = T_ROWS + 0.12 + i * STAG;
-    dotsH += '<div class="jersey" style="left:' + g.x + 'px;top:' + g.y + 'px;' +
-      'animation: pop .55s cubic-bezier(.34,1.4,.5,1) ' + d + 's forwards">' +
+    var st = STILL ? 'transform:translate(-50%,-50%) scale(1)'
+      : 'animation: pop .55s cubic-bezier(.34,1.4,.5,1) ' + (T_ROWS + 0.12 + i * STAG) + 's forwards';
+    dotsH += '<div class="jersey" style="left:' + g.x + 'px;top:' + g.y + 'px;' + st + '">' +
       jerseySVG() +
       '<div class="jn">' + esc(r[0]) + '</div>' +
       '<div class="cg">' + esc(r[2]) + '</div>' +

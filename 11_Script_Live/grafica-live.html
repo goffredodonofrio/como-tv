@@ -5,254 +5,74 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Grafica Live · Como TV</title>
 <style>
-  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
-  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
-  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-SemiBold.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap;}
-  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
-
   *{margin:0;padding:0;box-sizing:border-box;}
-  /* la pagina è TRASPARENTE: vMix mostra il programma sotto quando
-     non c'è grafica. Lo sfondo navy fa parte della grafica (.g-bg)
-     e entra/esce insieme all'animazione. */
+  /* pagina TRASPARENTE: vMix mostra il programma quando non c'è grafica.
+     La grafica vera (sfondo incluso) vive dentro l'iframe del motore
+     formazione-vmix.html: stesso file dell'anteprima → onda identica. */
   html,body{width:100%;height:100%;overflow:hidden;background:transparent;}
-
-  #stage{
-    position:absolute;left:50%;top:50%;width:1920px;height:1080px;
-    transform-origin:center center;
-    font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;
+  #frame{
+    position:absolute;inset:0;border:0;width:100%;height:100%;
+    opacity:0;transition:opacity .55s ease;
   }
-  #content{position:absolute;inset:0;opacity:1;transition:opacity .85s ease;}
-  #content.out{opacity:0;}
-  .g-bg{position:absolute;inset:0;opacity:0;
-    background:
-      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
-      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
-      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);}
-
-  /* ── header ── */
-  .g-logo{position:absolute;left:95px;top:52px;width:130px;height:150px;object-fit:contain;
-    filter:grayscale(1) brightness(1.9);opacity:0;}
-  .g-team{position:absolute;left:262px;top:78px;
-    font-family:'Mazzard',sans-serif;font-weight:800;font-size:72px;letter-spacing:.01em;
-    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;
-    clip-path:inset(0 100% 0 0);}
-  .g-modulo{position:absolute;left:266px;top:175px;
-    font-family:'Mazzard',sans-serif;font-weight:700;font-size:34px;letter-spacing:.28em;
-    color:#C9A24B;opacity:0;}
-
-  /* ── lista titolari ── */
-  .g-list{position:absolute;left:125px;top:262px;width:548px;}
-  .prow{position:relative;height:52px;clip-path:inset(0 100% 0 0);}
-  .prow .num{position:absolute;left:0;bottom:10px;
-    font-family:'Mazzard',sans-serif;font-weight:700;font-size:29px;color:#C9A24B;}
-  .prow .nm{position:absolute;right:0;bottom:8px;font-size:31px;white-space:nowrap;
-    color:#EDE9DC;font-weight:500;letter-spacing:.01em;}
-  .prow .nm b{font-family:'Mazzard',sans-serif;font-weight:800;color:#FFFFFF;margin-left:10px;}
-  .prow::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;
-    background:rgba(245,241,230,.28);}
-
-  .g-coach{position:absolute;left:127px;top:918px;opacity:0;}
-  .g-coach .lbl{font-size:30px;color:#F5F1E6;letter-spacing:.02em;}
-  .g-coach .who{font-family:'Mazzard',sans-serif;font-weight:800;font-size:34px;color:#C9A24B;
-    text-transform:uppercase;letter-spacing:.02em;margin-top:2px;}
-
-  .g-bench{position:absolute;left:125px;top:262px;width:548px;}
-  .g-benchtitle{font-size:34px;color:#F5F1E6;letter-spacing:.03em;margin-bottom:26px;
-    clip-path:inset(0 100% 0 0);}
-  .brow{position:relative;height:33px;clip-path:inset(0 100% 0 0);}
-  .brow .num{position:absolute;left:4px;bottom:5px;
-    font-family:'Mazzard',sans-serif;font-weight:700;font-size:19px;color:#C9A24B;}
-  .brow .nm{position:absolute;right:78px;bottom:4px;font-size:20px;white-space:nowrap;
-    color:#EDE9DC;font-weight:500;}
-  .brow .nm b{font-family:'Mazzard',sans-serif;font-weight:800;color:#FFFFFF;margin-left:8px;}
-  .brow::after{content:"";position:absolute;left:0;right:78px;bottom:0;height:1px;
-    background:rgba(245,241,230,.22);}
-
-  .g-pitch{position:absolute;left:0;top:0;width:1920px;height:1080px;pointer-events:none;}
-  .g-pitch path,.g-pitch rect,.g-pitch circle,.g-pitch line{stroke:rgba(245,241,230,.13);stroke-width:2.5;fill:none;}
-
-  .jersey{position:absolute;width:150px;transform:translate(-50%,-50%) scale(0);text-align:center;}
-  .jersey svg{width:104px;height:auto;display:block;margin:0 auto;
-    filter:drop-shadow(0 10px 22px rgba(0,0,0,.55));}
-  .jersey .jn{position:absolute;left:50%;top:34px;transform:translateX(-50%);
-    font-family:'Mazzard',sans-serif;font-weight:800;font-size:30px;color:#FFFFFF;
-    text-shadow:0 2px 6px rgba(0,0,0,.5);}
-  .jersey .cg{margin-top:6px;font-family:'Mazzard',sans-serif;font-weight:800;font-size:29px;
-    color:#FFFFFF;text-transform:uppercase;letter-spacing:.02em;white-space:nowrap;
-    text-shadow:0 2px 8px rgba(0,0,0,.85),0 0 18px rgba(0,0,0,.6);}
-
-  @keyframes wipeIn  { to { clip-path:inset(0 0 0 0); } }
-  @keyframes wipeOut { to { clip-path:inset(0 100% 0 0); } }
-  @keyframes fadeIn  { to { opacity:1; } }
-  @keyframes fadeOut { to { opacity:0; } }
-  @keyframes pop{
-    0%   { transform:translate(-50%,-50%) scale(0); }
-    70%  { transform:translate(-50%,-50%) scale(1.08); }
-    100% { transform:translate(-50%,-50%) scale(1); }
-  }
+  #frame.on{opacity:1;}
+  #frame.out{opacity:0;transition:opacity .85s ease;}
 </style>
 </head>
 <body>
 
-<div id="stage"><div id="content"></div></div>
+<iframe id="frame" src="about:blank" allowtransparency="true"></iframe>
 
 <script>
 (function () {
   "use strict";
 
-  // ------------------------------------------------------------------
-  // Pagina-display per vMix: URL FISSO, non cambia mai.
-  // Interroga il ponte e obbedisce alla console regia.html:
-  //   standby → schermo di fondo, in attesa
-  //   play    → parte l'animazione della grafica caricata
-  //   out     → dissolvenza di uscita
-  // ------------------------------------------------------------------
   var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
   var POLL_MS = 1500;
 
-  var content = document.getElementById("content");
+  var frame = document.getElementById("frame");
+  var lastPlayNonce = null;
 
-  function esc(s) {
-    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
-    });
+  function b64url(obj) {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(obj))))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   }
 
-  function fit() {
-    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
-    document.getElementById("stage").style.transform = "translate(-50%,-50%) scale(" + s + ")";
-  }
-  window.addEventListener("resize", fit);
-  fit();
-
-  // ── renderer formazione (stesso disegno di formazione-vmix.html) ──
-
-  function jerseySVG(KIT) {
-    function shade(hex, f) {
-      var n = parseInt(hex.slice(1), 16);
-      var r = Math.min(255, Math.round(((n >> 16) & 255) * f));
-      var g = Math.min(255, Math.round(((n >> 8) & 255) * f));
-      var b = Math.min(255, Math.round((n & 255) * f));
-      return "rgb(" + r + "," + g + "," + b + ")";
-    }
-    return '<svg viewBox="0 0 120 112" xmlns="http://www.w3.org/2000/svg">' +
-      '<path d="M40 5 L16 17 L4 44 L27 52 L27 106 L93 106 L93 52 L116 44 L104 17 L80 5 L72 5 Q60 20 48 5 Z" fill="' + KIT + '"/>' +
-      '<path d="M27 52 L27 106 L38 106 L38 30 Z" fill="' + shade(KIT, .72) + '"/>' +
-      '<path d="M93 52 L93 106 L82 106 L82 30 Z" fill="' + shade(KIT, .72) + '"/>' +
-      '<path d="M16 17 L4 44 L27 52 L30 41 Z" fill="' + shade(KIT, .82) + '"/>' +
-      '<path d="M104 17 L116 44 L93 52 L90 41 Z" fill="' + shade(KIT, .82) + '"/>' +
-      '<path d="M48 5 Q60 20 72 5 L67 1 Q60 10 53 1 Z" fill="#F5F1E6"/>' +
-      '<path d="M4 44 L27 52 L25 58 L1 50 Z" fill="rgba(245,241,230,.85)"/>' +
-      '<path d="M116 44 L93 52 L95 58 L119 50 Z" fill="rgba(245,241,230,.85)"/>' +
-      '</svg>';
+  function play(j) {
+    // per ora l'unico motore è la formazione; le prossime grafiche
+    // aggiungeranno qui la loro pagina-motore
+    var src = "formazione-vmix.html?d=" + b64url(j.dati || {}) + "&n=" + j.playNonce;
+    frame.classList.remove("out");
+    frame.src = src;
+    frame.classList.add("on");
   }
 
-  function pitchSVG() {
-    var L = 862, R = 1790, TOP = 300, BOT = 988, CX = (L + R) / 2;
-    var h = '<svg class="g-pitch" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">';
-    h += '<path d="M ' + L + " " + TOP + " L " + L + " " + BOT + " L " + R + " " + BOT + " L " + R + " " + TOP + '"/>';
-    h += '<line x1="' + L + '" y1="' + TOP + '" x2="' + R + '" y2="' + TOP + '"/>';
-    h += '<circle cx="' + CX + '" cy="' + TOP + '" r="132"/>';
-    h += '<rect x="' + (CX - 295) + '" y="' + (BOT - 238) + '" width="590" height="238"/>';
-    h += '<rect x="' + (CX - 148) + '" y="' + (BOT - 88) + '" width="296" height="88"/>';
-    h += '<path d="M ' + (CX - 120) + " " + (BOT - 238) + " A 120 120 0 0 1 " + (CX + 120) + " " + (BOT - 238) + '"/>';
-    h += '<path d="M ' + L + " " + (BOT - 22) + " A 22 22 0 0 0 " + (L + 22) + " " + BOT + '"/>';
-    h += '<path d="M ' + (R - 22) + " " + BOT + " A 22 22 0 0 0 " + R + " " + (BOT - 22) + '"/>';
-    return h + '</svg>';
+  function fadeOut() {
+    frame.classList.remove("on");
+    frame.classList.add("out");
+    setTimeout(function () {
+      frame.src = "about:blank";
+      frame.classList.remove("out");
+    }, 950);
   }
 
-  function slotGeo(mod) {
-    var lines = [1].concat(String(mod || "4-3-3").split("-").map(Number));
-    var out = [];
-    var L = 862, R = 1790;
-    var nOut = lines.length - 1;
-    lines.forEach(function (n, li) {
-      var y = li === 0 ? 878 : (688 - (li - 1) * (nOut > 1 ? (688 - 195) / (nOut - 1) : 0));
-      for (var k = 0; k < n; k++) {
-        out.push({ x: R - 40 - (k + 1) / (n + 1) * (R - L - 80), y: y });
-      }
-    });
-    return out;
+  function clearNow() {
+    frame.classList.remove("on", "out");
+    frame.src = "about:blank";
   }
-
-  function showFormazione(D) {
-    var KIT = D.k || "#1735C8";
-    var T_HEADER = 0.25, T_ROWS = 1.15, STAG = 0.34;
-    var nTit = (D.t || []).length;
-    var T_COACH = T_ROWS + nTit * STAG + 0.35;
-    var T_OUT = Math.max(12.5, T_COACH + 4);
-    var T_BENCH = T_OUT + 0.8;
-
-    var h = '<div class="g-bg" style="animation:fadeIn .5s ease 0s forwards"></div>';
-    if (D.l) h += '<img class="g-logo" src="' + esc(D.l) + '" onerror="this.style.display=\'none\'" style="animation:fadeIn .7s ease ' + T_HEADER + 's forwards">';
-    h += '<div class="g-team" style="animation:wipeIn .8s cubic-bezier(.2,.7,.3,1) ' + (T_HEADER + 0.15) + 's forwards">' + esc((D.n || "").toUpperCase()) + '</div>';
-    h += '<div class="g-modulo" style="animation:fadeIn .6s ease ' + (T_HEADER + 0.75) + 's forwards">' + esc(D.m || "") + '</div>';
-
-    h += '<div class="g-list">';
-    (D.t || []).forEach(function (r, i) {
-      h += '<div class="prow" style="animation: wipeIn .55s cubic-bezier(.2,.7,.3,1) ' + (T_ROWS + i * STAG) + 's forwards, wipeOut .4s ease-in ' + (T_OUT + i * 0.055) + 's forwards">' +
-        '<span class="num">' + esc(r[0]) + '</span>' +
-        '<span class="nm">' + esc(r[1]) + '<b>' + esc(r[2]) + '</b></span></div>';
-    });
-    h += '</div>';
-
-    if (D.a && (D.a[0] || D.a[1])) {
-      h += '<div class="g-coach" style="animation: fadeIn .6s ease ' + T_COACH + 's forwards, fadeOut .4s ease ' + (T_OUT + 0.3) + 's forwards">' +
-        '<div class="lbl">ALLENATORE</div><div class="who">' + esc((D.a[0] || "") + " " + (D.a[1] || "")) + '</div></div>';
-    }
-
-    h += '<div class="g-bench"><div class="g-benchtitle" style="animation: wipeIn .5s cubic-bezier(.2,.7,.3,1) ' + T_BENCH + 's forwards">IN PANCHINA</div>';
-    (D.p || []).slice(0, 20).forEach(function (r, i) {
-      h += '<div class="brow" style="animation: wipeIn .45s cubic-bezier(.2,.7,.3,1) ' + (T_BENCH + 0.25 + i * 0.085) + 's forwards">' +
-        '<span class="num">' + esc(r[0]) + '</span>' +
-        '<span class="nm">' + esc(r[1]) + '<b>' + esc(r[2]) + '</b></span></div>';
-    });
-    h += '</div>';
-
-    h += pitchSVG();
-
-    var geo = slotGeo(D.m);
-    h += '<div>';
-    (D.t || []).forEach(function (r, i) {
-      var g = geo[i] || geo[geo.length - 1];
-      h += '<div class="jersey" style="left:' + g.x + 'px;top:' + g.y + 'px;' +
-        'animation: pop .55s cubic-bezier(.34,1.4,.5,1) ' + (T_ROWS + 0.12 + i * STAG) + 's forwards">' +
-        jerseySVG(KIT) +
-        '<div class="jn">' + esc(r[0]) + '</div>' +
-        '<div class="cg">' + esc(r[2]) + '</div></div>';
-    });
-    h += '</div>';
-
-    content.classList.remove("out");
-    content.innerHTML = h;
-  }
-
-  function clearStage() {
-    content.classList.remove("out");
-    content.innerHTML = "";
-  }
-
-  function fadeOutStage() {
-    content.classList.add("out");
-    setTimeout(function () { content.innerHTML = ""; content.classList.remove("out"); }, 950);
-  }
-
-  // ── ascolto della regia ──
-
-  var lastNonce = null;
 
   function tick() {
     fetch(PONTE + "?regia=1", { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (j) {
-        if (!j || !j.nonce || j.nonce === lastNonce) return;
-        var first = lastNonce === null;
-        lastNonce = j.nonce;
-        // al primo avvio non rieseguo una vecchia messa in onda: parto pulito
-        if (first && j.state !== "play") { clearStage(); return; }
-        if (j.state === "play" && j.tipo === "formazione") showFormazione(j.dati || {});
-        else if (j.state === "out") fadeOutStage();
-        else clearStage();
+        if (!j || j.playNonce == null || j.playNonce === lastPlayNonce) return;
+        var first = lastPlayNonce === null;
+        lastPlayNonce = j.playNonce;
+        // al primo avvio: se c'è una grafica in onda la rimostro (ripresa
+        // dopo un riavvio dell'input vMix), altrimenti resto trasparente
+        if (first && j.state !== "play") { clearNow(); return; }
+        if (j.state === "play" && j.dati) play(j);
+        else if (j.state === "out") fadeOut();
+        else clearNow();
       })
       .catch(function () {});
   }
