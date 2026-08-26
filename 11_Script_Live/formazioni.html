@@ -253,6 +253,7 @@
       <button data-t="away">Trasferta</button>
     </div>
     <button class="primary" id="btnCsv2">Scarica CSV</button>
+    <button id="btnCampetto">Scarica campetto</button>
     <button id="btnSheet">Invia al foglio</button>
     <button id="btnRegia2">&#128225; Invia alla regia</button>
     <button id="btnVmix2" title="Apre la grafica animata in una nuova scheda">Anteprima</button>
@@ -955,6 +956,25 @@
   }
 
   document.getElementById("btnCsv2").addEventListener("click", function () { download(targetIdx()); });
+
+  // campetto A4: prima metà squadra schierata + undici + panchina,
+  // seconda metà righe per gli appunti; si salva come PDF dalla stampa
+  document.getElementById("btnCampetto").addEventListener("click", function () {
+    var list = targetIdx().filter(sideCompleto);
+    if (!list.length) {
+      status("err", '<span class="msg"><b>Nessuna formazione completa</b> per la selezione: controlla le maglie non assegnate.</span>');
+      return;
+    }
+    var pagine = list.map(function (si) {
+      var p = vmixPayload(si);
+      p.lato = sides[si].label;
+      return p;
+    });
+    var b64 = btoa(unescape(encodeURIComponent(JSON.stringify({ s: pagine }))))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    window.open("campetto.html?d=" + b64, "_blank");
+    status("ok", '<span class="msg">Campetto pronto in una nuova scheda: nella finestra di stampa scegli <b>Salva come PDF</b>.</span>');
+  });
 
   // ---------------- ponte verso il foglio Google ----------------
   // L'URL del ponte (Apps Script /exec) e il token si configurano una

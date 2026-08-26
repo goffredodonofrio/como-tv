@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Campetto · Como TV</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  @page{size:A4 portrait;margin:0;}
+  html,body{background:#8A8F9C;}
+  body{font-family:'DM Sans',system-ui,sans-serif;color:#14161C;}
+
+  .page{
+    width:210mm;height:296mm;background:#FFFFFF;
+    margin:8mm auto;box-shadow:0 4px 22px rgba(0,0,0,.35);
+    padding:11mm 12mm 10mm;position:relative;overflow:hidden;
+    page-break-after:always;
+    display:flex;flex-direction:column;
+  }
+  .head,.top,.bench{flex:none;}
+
+  /* barra strumenti (solo schermo) */
+  #tools{position:fixed;top:10px;right:14px;z-index:50;display:flex;gap:8px;}
+  #tools button{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;padding:10px 16px;border-radius:5px;cursor:pointer;
+    background:#C9A24B;border:1px solid #C9A24B;color:#14161C;}
+
+  /* ── intestazione pagina ── */
+  .head{display:flex;align-items:baseline;gap:5mm;border-bottom:.7mm solid #14161C;padding-bottom:2.5mm;}
+  .head .lato{font-family:'Mazzard',sans-serif;font-weight:700;font-size:10pt;letter-spacing:.18em;
+    color:#8A6A1E;text-transform:uppercase;}
+  .head .team{font-family:'Mazzard',sans-serif;font-weight:800;font-size:19pt;letter-spacing:.02em;
+    text-transform:uppercase;}
+  .head .mod{font-family:'Mazzard',sans-serif;font-weight:700;font-size:12pt;color:#555;margin-left:auto;}
+
+  /* ── prima metà: campo + undici ── */
+  .top{display:flex;gap:6mm;margin-top:3.5mm;height:78mm;}
+
+  .pitchbox{position:relative;width:72mm;height:78mm;flex:none;}
+  .pitchbox svg{position:absolute;inset:0;width:100%;height:100%;}
+  .pdot{position:absolute;transform:translate(-50%,-50%);text-align:center;width:22mm;}
+  .pdot .n{display:inline-flex;align-items:center;justify-content:center;
+    width:5.8mm;height:5.8mm;border-radius:50%;border:.4mm solid #14161C;background:#fff;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:7pt;}
+  .pdot .c{display:block;margin-top:.5mm;font-family:'DM Sans',sans-serif;font-weight:700;
+    font-size:6pt;text-transform:uppercase;letter-spacing:.02em;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;}
+
+  .xi{flex:1;min-width:0;}
+  .xi h3, .bench h3{font-family:'Mazzard',sans-serif;font-weight:800;font-size:10pt;
+    letter-spacing:.16em;text-transform:uppercase;border-bottom:.4mm solid #14161C;
+    padding-bottom:1.2mm;margin-bottom:1.6mm;}
+  .xi .r{display:flex;gap:3mm;align-items:baseline;padding:.62mm 0;border-bottom:.2mm solid #D8D8D8;}
+  .xi .r .num{width:8mm;text-align:right;font-family:'Mazzard',sans-serif;font-weight:800;font-size:9pt;}
+  .xi .r .nm{font-size:9pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .xi .r .nm b{font-weight:700;}
+  .xi .all{margin-top:1.8mm;font-size:9pt;}
+  .xi .all b{font-family:'Mazzard',sans-serif;font-weight:800;text-transform:uppercase;}
+
+  /* ── panchina su due colonne ── */
+  .bench{margin-top:3mm;}
+  .bcols{column-count:2;column-gap:8mm;}
+  .bench .r{display:flex;gap:2.5mm;align-items:baseline;padding:.28mm 0;line-height:1.28;
+    border-bottom:.2mm solid #E2E2E2;break-inside:avoid;}
+  .bench .r .num{width:7mm;text-align:right;font-family:'Mazzard',sans-serif;font-weight:800;font-size:8pt;}
+  .bench .r .nm{font-size:8pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .bench .r .nm b{font-weight:700;}
+
+  /* ── seconda metà: appunti ── */
+  .notes{position:relative;flex:1;margin-top:3.5mm;min-height:40mm;}
+  .notes h3{font-family:'Mazzard',sans-serif;font-weight:800;font-size:10pt;
+    letter-spacing:.16em;text-transform:uppercase;border-bottom:.4mm solid #14161C;
+    padding-bottom:1.2mm;}
+  .notes .righe{position:absolute;left:0;right:0;top:9mm;bottom:0;
+    background:repeating-linear-gradient(to bottom, transparent 0, transparent 8.6mm, #C9C9C9 8.6mm, #C9C9C9 8.8mm);}
+
+  .vuoto{padding:30mm 0;text-align:center;color:#555;font-size:12pt;}
+
+  @media print{
+    html,body{background:#fff;}
+    .page{margin:0;box-shadow:none;}
+    #tools{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<div id="tools"><button onclick="window.print()">&#128424; Stampa / Salva PDF</button></div>
+<div id="pages"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return null;
+    try {
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return d && d.s && d.s.length ? d : null;
+    } catch (err) { return null; }
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function slotGeo(mod) {
+    var lines = [1].concat(String(mod || "4-3-3").split("-").map(Number));
+    var out = [];
+    var nOut = lines.length - 1;
+    lines.forEach(function (n, li) {
+      // percentuali dentro il box campo: portiere in basso, attacco in alto
+      var y = li === 0 ? 88 : (66 - (li - 1) * (nOut > 1 ? (66 - 12) / (nOut - 1) : 0));
+      for (var k = 0; k < n; k++) {
+        out.push({ x: 88 - (k + 1) / (n + 1) * 76, y: y });
+      }
+    });
+    return out;
+  }
+
+  function pitchSVG() {
+    // mezzo campo verticale in tratto leggero (unità: viewBox 86x96)
+    return '<svg viewBox="0 0 86 96" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">' +
+      '<g stroke="#9AA0AB" stroke-width="0.55" fill="none">' +
+      '<rect x="1" y="1" width="84" height="94"/>' +
+      '<circle cx="43" cy="1" r="11"/>' +
+      '<rect x="17" y="72" width="52" height="23"/>' +
+      '<rect x="30" y="87" width="26" height="8"/>' +
+      '<path d="M 32 72 A 12 12 0 0 1 54 72"/>' +
+      '</g></svg>';
+  }
+
+  var D = decodeData();
+  var wrap = document.getElementById("pages");
+
+  if (!D) {
+    wrap.innerHTML = '<div class="page"><div class="vuoto">Apri questa pagina dal pulsante <b>Scarica campetto</b> della pagina Formazioni.</div></div>';
+    return;
+  }
+
+  var oggi = new Date();
+  function p2(n) { return (n < 10 ? "0" : "") + n; }
+  var dataStr = p2(oggi.getDate()) + "/" + p2(oggi.getMonth() + 1) + "/" + oggi.getFullYear();
+
+  var h = "";
+  D.s.forEach(function (sq) {
+    var geo = slotGeo(sq.m);
+
+    h += '<div class="page">' +
+      '<div class="head">' +
+        (sq.lato ? '<span class="lato">' + esc(sq.lato) + '</span>' : "") +
+        '<span class="team">' + esc(sq.n) + '</span>' +
+        '<span class="mod">' + esc(sq.m) + ' · ' + dataStr + '</span>' +
+      '</div>';
+
+    // prima metà: campo + undici
+    h += '<div class="top"><div class="pitchbox">' + pitchSVG();
+    (sq.t || []).forEach(function (r, i) {
+      var g = geo[i] || geo[geo.length - 1];
+      h += '<div class="pdot" style="left:' + g.x + '%;top:' + g.y + '%">' +
+        '<span class="n">' + esc(r[0]) + '</span>' +
+        '<span class="c">' + esc(r[2]) + '</span></div>';
+    });
+    h += '</div>';
+
+    h += '<div class="xi"><h3>Formazione</h3>';
+    (sq.t || []).forEach(function (r) {
+      h += '<div class="r"><span class="num">' + esc(r[0]) + '</span>' +
+        '<span class="nm">' + esc(r[1]) + ' <b>' + esc(r[2]) + '</b></span></div>';
+    });
+    if (sq.a && (sq.a[0] || sq.a[1])) {
+      h += '<div class="all">Allenatore: <b>' + esc((sq.a[0] || "") + " " + (sq.a[1] || "")) + '</b></div>';
+    }
+    h += '</div></div>';
+
+    // panchina su due colonne
+    h += '<div class="bench"><h3>Panchina</h3><div class="bcols">';
+    (sq.p || []).forEach(function (r) {
+      h += '<div class="r"><span class="num">' + esc(r[0]) + '</span>' +
+        '<span class="nm">' + esc(r[1]) + ' <b>' + esc(r[2]) + '</b></span></div>';
+    });
+    h += '</div></div>';
+
+    // seconda metà: appunti
+    h += '<div class="notes"><h3>Appunti</h3><div class="righe"></div></div>';
+
+    h += '</div>';
+  });
+  wrap.innerHTML = h;
+
+  document.title = "CAMPETTO " + D.s.map(function (s) { return (s.n || "").toUpperCase(); }).join(" - ");
+
+  // stampa automatica (salta con &noprint=1, utile per i controlli)
+  if (new URLSearchParams(location.search).get("noprint") !== "1") {
+    window.addEventListener("load", function () {
+      setTimeout(function () { window.print(); }, 650);
+    });
+  }
+})();
+</script>
+</body>
+</html>
