@@ -212,7 +212,6 @@
 <div class="header">
   <div class="header-eyebrow"><i data-lucide="folder-open" width="15" height="15" stroke-width="1.5"></i>Workspace operativo</div>
   <div class="header-title">Documenti <em>attivi</em></div>
-  <div class="header-sub">Grafiche, presenze dipendenti, operatività VMIX e area personale. Aggiornati e versionati su GitHub.</div>
 </div>
 
 <div class="main">
@@ -649,6 +648,7 @@ lucide.createIcons();
   const areas = document.querySelectorAll('.main .area');
   const VALID = ['grafiche','presenze-dipendenti','vmix','area-personale'];
   function show(areaId){
+    if (areaId === 'area-personale' && sessionStorage.getItem('como_access_user') !== "Goffredo d'Onofrio") { areaId = null; }
     if (areaId && VALID.includes(areaId)) {
       grid.style.display = 'none';
       back.classList.add('show');
@@ -660,12 +660,17 @@ lucide.createIcons();
     }
   }
   grid.querySelectorAll('.hub-card').forEach(card => {
-    const open = () => { history.replaceState(null,'','#'+card.dataset.area); show(card.dataset.area); window.scrollTo({top:0}); };
+    const open = () => {
+      if (card.dataset.area === 'area-personale' && sessionStorage.getItem('como_access_user') !== "Goffredo d'Onofrio") {
+        comoOpenModal('#area-personale', 'area-personale', 'Area Personale');
+        return;
+      }
+      history.replaceState(null,'','#'+card.dataset.area); show(card.dataset.area); window.scrollTo({top:0}); };
     card.addEventListener('click', open);
     card.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); open(); } });
   });
   back.addEventListener('click', () => { history.replaceState(null,'',location.pathname); show(null); });
-  window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+  window.addEventListener('hashchange', () => { if (typeof comoCloseModal === 'function') comoCloseModal(); show(location.hash.slice(1)); });
   show(location.hash.slice(1));
 })();
 </script>
