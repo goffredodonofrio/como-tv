@@ -47,6 +47,8 @@
     text-transform:uppercase;color:var(--ivory-dim);text-decoration:none;
     padding:7px 14px;border:1px solid var(--line-2);border-radius:4px;}
   .nav-links a:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  .nav-links{flex-wrap:wrap;padding:8px 0;justify-content:flex-end;}
+  .nav-links a.qui{color:var(--gold-bright);border-color:var(--line-gold);background:rgba(201,162,75,.08);}
 
   .wrap{max-width:1400px;margin:0 auto;padding:0 clamp(18px,3vw,32px);}
 
@@ -204,6 +206,12 @@
   <span class="nav-here">Grafiche Live — Formazioni</span>
   <div class="nav-links">
     <a href="classifiche.html">Grafiche Live</a>
+    <a href="classifiche-campionati.html">Classifiche</a>
+    <a href="risultati.html">Risultati</a>
+    <a href="formazioni.html" class="qui">Formazioni</a>
+    <a href="marcatori.html">Marcatori</a>
+    <a href="sottopancia.html">Sottopancia</a>
+    <a href="regia.html">Regia</a>
     <a href="../index.html">Home</a>
   </div>
 </nav>
@@ -272,6 +280,18 @@
 <script>
 (function () {
   "use strict";
+
+  function scegliCanale() {
+    var d = 1;
+    try { var m = parseInt(localStorage.getItem("comotv.regia.canale"), 10); if (m >= 1 && m <= 7) d = m; } catch (e) {}
+    var r = window.prompt("Su quale canale regia? (1 = vMix 1 \u2026 7 = vMix 7)", d);
+    if (r === null) return null;
+    var c = parseInt(r, 10);
+    if (!(c >= 1 && c <= 7)) c = d;
+    try { localStorage.setItem("comotv.regia.canale", String(c)); } catch (e) {}
+    return c;
+  }
+
 
   // Elenco omologato al portfolio della piattaforma Como TV (2026-08-25).
   // Le coppe a eliminazione diretta (Carabao, DFB-Pokal, Coupe de France,
@@ -1130,6 +1150,7 @@
   });
 
   // ---------------- invio alla regia ----------------
+  var __canale = 1;   // scelto al click su "Invia alla regia", vale per entrambe le squadre
   // Carica la formazione sul "centralino": la pagina grafica-live.html
   // (URL fisso dentro vMix) la riceve e la console regia.html decide
   // quando mandarla in onda.
@@ -1151,7 +1172,7 @@
     return fetch(cfg.url, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ token: cfg.token, tipo: "regia-load", grafica: "formazione",
+      body: JSON.stringify({ token: cfg.token, tipo: "regia-load", c: __canale, grafica: "formazione",
                              titolo: titolo, dati: payload })
     })
       .then(function (r) { return r.json(); })
@@ -1178,6 +1199,9 @@
       status("err", '<span class="msg"><b>Nessuna formazione completa</b> per la selezione: controlla le maglie non assegnate.</span>');
       return;
     }
+    var scelto = scegliCanale();
+    if (scelto === null) return;
+    __canale = scelto;
     (function run(rest) {
       if (!rest.length) return;
       var p = inviaRegia(rest[0]);

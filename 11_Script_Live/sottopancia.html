@@ -43,6 +43,8 @@
     text-transform:uppercase;color:var(--ivory-dim);text-decoration:none;
     padding:7px 14px;border:1px solid var(--line-2);border-radius:4px;}
   .nav-links a:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  .nav-links{flex-wrap:wrap;padding:8px 0;justify-content:flex-end;}
+  .nav-links a.qui{color:var(--gold-bright);border-color:var(--line-gold);background:rgba(201,162,75,.08);}
 
   .wrap{max-width:1240px;margin:0 auto;padding:0 clamp(18px,3vw,32px);}
   header.page{padding:40px 0 20px;border-bottom:1px solid var(--line-gold);}
@@ -103,6 +105,12 @@
   <span class="nav-here">Grafiche Live — Sottopancia</span>
   <div class="nav-links">
     <a href="classifiche.html">Grafiche Live</a>
+    <a href="classifiche-campionati.html">Classifiche</a>
+    <a href="risultati.html">Risultati</a>
+    <a href="formazioni.html">Formazioni</a>
+    <a href="marcatori.html">Marcatori</a>
+    <a href="sottopancia.html" class="qui">Sottopancia</a>
+    <a href="regia.html">Regia</a>
     <a href="../index.html">Home</a>
   </div>
 </nav>
@@ -167,6 +175,18 @@
 <script>
 (function () {
   "use strict";
+
+  function scegliCanale() {
+    var d = 1;
+    try { var m = parseInt(localStorage.getItem("comotv.regia.canale"), 10); if (m >= 1 && m <= 7) d = m; } catch (e) {}
+    var r = window.prompt("Su quale canale regia? (1 = vMix 1 \u2026 7 = vMix 7)", d);
+    if (r === null) return null;
+    var c = parseInt(r, 10);
+    if (!(c >= 1 && c <= 7)) c = d;
+    try { localStorage.setItem("comotv.regia.canale", String(c)); } catch (e) {}
+    return c;
+  }
+
 
   var PONTE_URL = "comotv.ponte.url", PONTE_TOKEN = "comotv.ponte.token";
   var PONTE_DEFAULT = {
@@ -272,11 +292,13 @@
     var titolo = window.prompt("Nome in scaletta di regia:", propostaTitolo);
     if (titolo === null) return;
 
-    status("", '<span class="msg">Invio alla regia&hellip;</span>');
+    var __canale = scegliCanale();
+    if (__canale === null) return;
+    status("", '<span class="msg">Invio alla regia (canale ' + __canale + ')&hellip;</span>');
     fetch(cfg.url, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ token: cfg.token, tipo: "regia-load",
+      body: JSON.stringify({ token: cfg.token, tipo: "regia-load", c: __canale,
                              grafica: doppio() ? "sottopancia2" : "sottopancia",
                              titolo: titolo.trim() || "SOTTOPANCIA", dati: d })
     })
