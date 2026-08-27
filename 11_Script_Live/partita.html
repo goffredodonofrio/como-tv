@@ -156,6 +156,15 @@
   #btnTake{background:transparent;color:#4FCB8B;border:2px solid rgba(79,203,139,.5);}
   #btnTake:hover:not(:disabled){background:rgba(79,203,139,.12);border-color:#4FCB8B;}
   #btnTakeOut{background:transparent;color:#FF6B6E;border:2px solid rgba(229,27,32,.5);}
+  #livsel{display:flex;flex-direction:column;gap:5px;align-items:center;margin-bottom:10px;}
+  #livsel .lab{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:700;
+    letter-spacing:.18em;color:var(--fg-3);}
+  #livsel .btns{display:flex;gap:3px;}
+  #livsel button{width:26px;height:26px;padding:0;border-radius:6px;
+    font-family:'Mazzard',sans-serif;font-size:12px;font-weight:800;
+    background:rgba(245,241,230,.06);color:var(--fg-3);border:1px solid var(--line-2);cursor:pointer;}
+  #livsel button.on{background:var(--gold);color:#0A0F24;border-color:var(--gold);}
+  #livsel button.onair{box-shadow:0 0 0 2px rgba(229,27,32,.75);}
   #btnTakeOut:hover:not(:disabled){background:rgba(229,27,32,.12);border-color:var(--red);}
   .takebar button:disabled{opacity:.35;cursor:default;}
   #pgmbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px;
@@ -223,6 +232,15 @@
               
     </div>
     <div class="takecol">
+      <!-- Livelli sovrapposti, come i canali overlay di vMix. Questa console e
+           quella dello studio scrivono sulla STESSA scaletta: senza livello si
+           scalzavano a vicenda. Il 5 sta sopra a tutti. -->
+      <div id="livsel" title="Livello di sovrapposizione: il 5 sta sopra a tutti">
+        <span class="lab">LIVELLO</span>
+        <span class="btns">
+          <button data-liv="1" class="on">1</button><button data-liv="2">2</button><button data-liv="3">3</button><button data-liv="4">4</button><button data-liv="5">5</button>
+        </span>
+      </div>
       <button id="btnTake" disabled>&#9654;<br>In onda</button>
       <button id="btnTakeOut" disabled>&#9632;<br>Fuori onda</button>
     </div>
@@ -592,6 +610,31 @@
   }
 
   var pvw = el("pvw"), pvwcap = el("pvwcap");
+  // Livello su cui questa console manda le grafiche. Studio e partita scrivono
+  // sulla stessa scaletta: senza livello l'una scalzava l'altra.
+  var LIV_LS = "comotv.partita.livello";
+  var LIVELLO = (function () {
+    var v = parseInt(localStorage.getItem(LIV_LS), 10);
+    return (v >= 1 && v <= 5) ? v : 1;
+  })();
+  var livsel = el("livsel");
+  function pittaLivelli() {
+    if (!livsel) return;
+    var b = livsel.querySelectorAll("button");
+    for (var i = 0; i < b.length; i++) {
+      var lv = gScaletta && gScaletta.liv ? gScaletta.liv[String(i + 1)] : null;
+      b[i].classList.toggle("on", (i + 1) === LIVELLO);
+      b[i].classList.toggle("onair", !!(lv && lv.state === "play" && lv.onair));
+    }
+  }
+  if (livsel) livsel.addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("button[data-liv]") : null;
+    if (!b) return;
+    LIVELLO = parseInt(b.dataset.liv, 10) || 1;
+    try { localStorage.setItem(LIV_LS, String(LIVELLO)); } catch (err) {}
+    pittaLivelli();
+  });
+
   var btnTake = el("btnTake"), btnTakeOut = el("btnTakeOut");
 
   function fitMonitor() {
@@ -694,7 +737,7 @@
   btnTake.addEventListener("click", function () {
     if (!sel) return;
     if (sel.tipo === "fase") { setFase(sel.fase); return; }
-    gPost({ tipo: "regia-state", state: "play", id: sel.id }, "Grafica in onda tra un istante…");
+    gPost({ tipo: "regia-state", state: "play", id: sel.id, liv: LIVELLO }, "Grafica in onda tra un istante…");
     var capTipo = sel.itTipo, capTit = sel.titolo;
     fetch(PONTE + "?regia=item&id=" + encodeURIComponent(sel.id) + "&canale=" + CANALE, { cache: "no-store" })
       .then(function (r) { return r.json(); })
@@ -705,7 +748,7 @@
     if (!sel) return;
     if (sel.tipo === "fase") { setFase("off"); return; }
     if (gCd) { clearInterval(gCd); gCd = null; }
-    gPost({ tipo: "regia-state", state: "out" }, "Grafica fuori onda.");
+    gPost({ tipo: "regia-state", state: "out", liv: LIVELLO }, "Grafica fuori onda.");
   });
 
   var gPrimaLettura = true;
@@ -716,13 +759,27 @@
         if (!j || j.nonce == null) return;
         if (gPrimaLettura) {
           gPrimaLettura = false;
-          if (j.state === "play") {
+          // si parte sempre fuori onda: con piu' livelli vanno spenti tutti
+          // quelli rimasti accesi, non solo il primo
+          if (j.liv) {
+            var spenti = 0;
+            for (var L = 1; L <= 5; L++) {
+              var lv = j.liv[String(L)];
+              if (lv && lv.state === "play" && lv.onair) {
+                gPost({ tipo: "regia-state", state: "out", liv: L });
+                spenti++;
+              }
+            }
+            if (spenti) msg.textContent = "All'apertura si parte fuori onda: spente " + spenti +
+                        (spenti === 1 ? " grafica rimasta in onda." : " grafiche rimaste in onda.");
+          } else if (j.state === "play") {
             gPost({ tipo: "regia-state", state: "out" },
               "All'apertura si parte fuori onda: la grafica rimasta in onda è stata spenta.");
           }
         }
         gScaletta = j;
         gPaint();
+        pittaLivelli();
       })
       .catch(function () {});
   }
