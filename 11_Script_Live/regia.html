@@ -229,16 +229,20 @@
     var g = document.getElementById("canaliGriglia");
     var ultimo = null;
     try { ultimo = parseInt(localStorage.getItem(CANALE_LS), 10); } catch (e) {}
-    // versione grafica per i link vMix: alzarla qui quando si pubblicano
+    // versioni grafiche per i link vMix: alzarle qui quando si pubblicano
     // modifiche a shell o motori (la cache di vMix ignora i pari-URL)
-    var VMIX_V = 6;
+    var VMIX_V_STUDIO = 6;    // grafica-live.html (scaletta grafiche)
+    var VMIX_V_PARTITA = 3;   // partita-live.html (bug e schermate match)
+    var BASE = "https://goffredodonofrio.github.io/como-tv/11_Script_Live/";
     var gh = "";
     for (var ci = 1; ci <= N_CANALI; ci++) {
-      var linkVmix = "https://goffredodonofrio.github.io/como-tv/11_Script_Live/grafica-live.html?c=" + ci + "&v=" + VMIX_V;
+      var linkStudio = BASE + "grafica-live.html?c=" + ci + "&v=" + VMIX_V_STUDIO;
+      var linkPartita = BASE + "partita-live.html?c=" + ci + "&v=" + VMIX_V_PARTITA;
       gh += '<div class="cch">' +
         '<a href="regia.html?c=' + ci + '"' + (ci === ultimo ? ' class="ultimo"' : "") + '>' +
         '<b>' + ci + '</b><span>' + (ci === ultimo ? "ultimo usato" : "vMix " + ci) + '</span></a>' +
-        '<button type="button" class="copia" data-link="' + linkVmix + '">Copia link del tuo vMix</button>' +
+        '<button type="button" class="copia" data-link="' + linkPartita + '" data-nome="Partita">&#127967; Partita &middot; copia link</button>' +
+        '<button type="button" class="copia" data-link="' + linkStudio + '" data-nome="Live Studio">&#127908; Live Studio &middot; copia link</button>' +
         '</div>';
     }
     g.innerHTML = gh;
@@ -247,9 +251,10 @@
       if (!b) return;
       var testo = b.dataset.link;
       function fatto() {
+        var vecchio = b.innerHTML;
         b.classList.add("fatto");
-        b.textContent = "Copiato ✓";
-        setTimeout(function () { b.classList.remove("fatto"); b.textContent = "Copia link del tuo vMix"; }, 1800);
+        b.textContent = "Copiato ✓ (" + (b.dataset.nome || "") + ")";
+        setTimeout(function () { b.classList.remove("fatto"); b.innerHTML = vecchio; }, 1800);
       }
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(testo).then(fatto, function () { window.prompt("Copia a mano:", testo); });
@@ -367,7 +372,7 @@
       h += '<div class="item' + (it.id === selId ? " sel" : "") + (onair ? " onair" : "") + '" data-id="' + esc(it.id) + '" draggable="true">' +
         '<span class="grip" title="Trascina per riordinare">&#8942;&#8942;</span>' +
         '<button class="ib play" data-act="play" data-id="' + esc(it.id) + '" title="Manda in onda">&#9654;</button>' +
-        '<span class="tit">' + esc(it.titolo || it.tipo) + '<small>' + esc(it.tipo.toUpperCase()) + (quando ? " · caricata " + quando : "") + '</small></span>' +
+        '<span class="tit">' + esc(it.titolo || it.tipo) + '<small>' + esc(it.tipo.toUpperCase()) + (it.dest ? " · " + (it.dest === "partita" ? "PARTITA" : "LIVE STUDIO") : "") + (quando ? " · caricata " + quando : "") + '</small></span>' +
         (onair ? '<span class="badge">IN ONDA</span>' : "") +
         '<button class="ib" data-act="ren" data-id="' + esc(it.id) + '" title="Rinomina">&#9998;</button>' +
         '<button class="ib" data-act="up" data-id="' + esc(it.id) + '" title="Su">&uarr;</button>' +

@@ -158,7 +158,7 @@
   .benchgrid{display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;}
 
   /* ─── export / status / note ─── */
-  .exportbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:6px 0 8px;}
+  .exportbar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin:6px 0 8px;}
   .seg{display:flex;border:1px solid var(--line-gold);border-radius:6px;overflow:hidden;}
   .seg button{border:0;border-radius:0;padding:12px 16px;background:var(--surface-panel);
     color:var(--ivory-dim);letter-spacing:.1em;}
@@ -288,26 +288,43 @@
 
   function scegliCanale() {
     var s = document.getElementById("canaleSel");
-    var c = s ? parseInt(s.value, 10) : NaN;
+    var p = (s && s.value ? s.value : "1|studio").split("|");
+    var c = parseInt(p[0], 10);
     if (!(c >= 1 && c <= 7)) c = 1;
-    try { localStorage.setItem("comotv.regia.canale", String(c)); } catch (e) {}
-    return c;
+    var dest = p[1] === "partita" ? "partita" : "studio";
+    try {
+      localStorage.setItem("comotv.regia.canale", String(c));
+      localStorage.setItem("comotv.regia.dest", dest);
+    } catch (e) {}
+    return { c: c, dest: dest };
   }
 
-  // menu del canale regia: niente piu' numeri scritti a mano
+
+  // menu destinazione: Partita o Live Studio di ogni vMix
   (function () {
     var s = document.getElementById("canaleSel");
     if (!s) return;
     for (var i = 1; i <= 7; i++) {
-      var o = document.createElement("option");
-      o.value = i; o.textContent = "Canale " + i + " · vMix " + i;
-      s.appendChild(o);
+      var op = document.createElement("option");
+      op.value = i + "|partita"; op.textContent = "vMix " + i + " \u00b7 Partita";
+      s.appendChild(op);
+      var os = document.createElement("option");
+      os.value = i + "|studio"; os.textContent = "vMix " + i + " \u00b7 Live Studio";
+      s.appendChild(os);
     }
-    var m = 1;
-    try { var v = parseInt(localStorage.getItem("comotv.regia.canale"), 10); if (v >= 1 && v <= 7) m = v; } catch (e) {}
-    s.value = m;
+    var c = 1, dest = "studio";
+    try {
+      var v = parseInt(localStorage.getItem("comotv.regia.canale"), 10); if (v >= 1 && v <= 7) c = v;
+      var dd = localStorage.getItem("comotv.regia.dest"); if (dd === "partita" || dd === "studio") dest = dd;
+    } catch (e) {}
+    s.value = c + "|" + dest;
+    if (!s.value) s.value = "1|studio";
     s.addEventListener("change", function () {
-      try { localStorage.setItem("comotv.regia.canale", s.value); } catch (e) {}
+      var p = s.value.split("|");
+      try {
+        localStorage.setItem("comotv.regia.canale", p[0]);
+        localStorage.setItem("comotv.regia.dest", p[1]);
+      } catch (e) {}
     });
   })();
 
@@ -1170,7 +1187,7 @@
   });
 
   // ---------------- invio alla regia ----------------
-  var __canale = 1;   // scelto al click su "Invia alla regia", vale per entrambe le squadre
+  var __canale = { c: 1, dest: "studio" };   // scelto al click, vale per entrambe le squadre
   // Carica la formazione sul "centralino": la pagina grafica-live.html
   // (URL fisso dentro vMix) la riceve e la console regia.html decide
   // quando mandarla in onda.
@@ -1192,7 +1209,7 @@
     return fetch(cfg.url, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ token: cfg.token, tipo: "regia-load", c: __canale, grafica: "formazione",
+      body: JSON.stringify({ token: cfg.token, tipo: "regia-load", c: __canale.c, dest: __canale.dest, grafica: "formazione",
                              titolo: titolo, dati: payload })
     })
       .then(function (r) { return r.json(); })
