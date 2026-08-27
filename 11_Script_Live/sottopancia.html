@@ -53,7 +53,20 @@
   h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(30px,4.5vw,46px);
     line-height:.94;letter-spacing:-.02em;text-transform:uppercase;color:var(--ivory);}
 
-  .controls{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;padding:22px 0;}
+  .controls{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;padding:22px 0 14px;}
+
+  /* i due lati sono due blocchi identici: si allineano sempre, e in
+     formato singolo il destro sparisce lasciando tutto lo spazio */
+  .lati{display:grid;grid-template-columns:1fr;gap:14px;margin-bottom:20px;}
+  .lati.doppio{grid-template-columns:1fr 1fr;}
+  .lato{background:var(--surface-panel);border:1px solid var(--line-2);
+    border-radius:8px;padding:14px 16px 16px;}
+  .latotit{display:none;font-family:'Mazzard',sans-serif;font-size:10px;font-weight:800;
+    letter-spacing:.2em;text-transform:uppercase;color:var(--gold-bright);margin-bottom:12px;}
+  .lati.doppio .latotit{display:block;}
+  .lati.doppio #row2 .latotit{color:var(--gold);}
+  .latocampi{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;}
+  @media (max-width:900px){ .lati.doppio{grid-template-columns:1fr;} }
   .field{display:flex;flex-direction:column;gap:6px;flex:1 1 150px;}
   label{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
     letter-spacing:.22em;text-transform:uppercase;color:var(--gold);}
@@ -131,20 +144,8 @@
         <option value="2">Doppio</option>
       </select>
     </div>
-    <div class="field" style="flex:1 1 180px">
-      <label for="kk">Occhiello</label>
-      <input type="text" id="kk" value="OSPITE IN STUDIO">
-    </div>
-    <div class="field" style="flex:2 1 260px">
-      <label for="nn">Nome e cognome</label>
-      <input type="text" id="nn" placeholder="es. Angelo Taglieri">
-    </div>
-    <div class="field" style="flex:1.5 1 220px">
-      <label for="jj">Ruolo</label>
-      <input type="text" id="jj" placeholder="es. Redazione Como TV">
-    </div>
     <button class="primary" id="btnPrev">Anteprima</button>
-    <div class="field" style="flex:0 0 118px">
+    <div class="field" style="flex:0 0 150px">
       <label for="canaleSel">Regia</label>
       <select id="canaleSel" style="font-family:'DM Sans',system-ui,sans-serif;font-size:15px;padding:11px 13px;
         color:var(--ivory);background:var(--surface-panel);border:1px solid var(--line-2);border-radius:5px;">
@@ -154,19 +155,40 @@
     <button id="btnSheetCfg" title="Configura il ponte" style="padding:12px 13px">&#9881;</button>
   </div>
 
-  <div class="controls" id="row2" style="display:none;padding-top:0">
-    <div class="field" style="flex:0 0 130px"></div>
-    <div class="field" style="flex:1 1 180px">
-      <label for="kk2">Occhiello (lato destro)</label>
-      <input type="text" id="kk2" value="OSPITE IN STUDIO">
+  <div class="lati" id="lati">
+    <div class="lato">
+      <div class="latotit">Lato sinistro</div>
+      <div class="latocampi">
+        <div class="field" style="flex:1 1 150px">
+          <label for="kk">Occhiello</label>
+          <input type="text" id="kk" value="OSPITE IN STUDIO">
+        </div>
+        <div class="field" style="flex:2 1 200px">
+          <label for="nn">Nome e cognome</label>
+          <input type="text" id="nn" placeholder="es. Angelo Taglieri">
+        </div>
+        <div class="field" style="flex:1.5 1 180px">
+          <label for="jj">Ruolo</label>
+          <input type="text" id="jj" placeholder="es. Redazione Como TV">
+        </div>
+      </div>
     </div>
-    <div class="field" style="flex:2 1 260px">
-      <label for="nn2">Nome e cognome (lato destro)</label>
-      <input type="text" id="nn2" placeholder="es. Marco Ghironi">
-    </div>
-    <div class="field" style="flex:1.5 1 220px">
-      <label for="jj2">Ruolo (lato destro)</label>
-      <input type="text" id="jj2" placeholder="es. Redazione Como TV">
+    <div class="lato" id="row2">
+      <div class="latotit">Lato destro</div>
+      <div class="latocampi">
+        <div class="field" style="flex:1 1 150px">
+          <label for="kk2">Occhiello</label>
+          <input type="text" id="kk2" value="OSPITE IN STUDIO">
+        </div>
+        <div class="field" style="flex:2 1 200px">
+          <label for="nn2">Nome e cognome</label>
+          <input type="text" id="nn2" placeholder="es. Marco Ghironi">
+        </div>
+        <div class="field" style="flex:1.5 1 180px">
+          <label for="jj2">Ruolo</label>
+          <input type="text" id="jj2" placeholder="es. Redazione Como TV">
+        </div>
+      </div>
     </div>
   </div>
 
@@ -308,10 +330,11 @@
   }
   [kk, nn, jj, kk2, nn2, jj2].forEach(function (i) { i.addEventListener("input", refreshStill); });
 
-  fmt.addEventListener("change", function () {
-    document.getElementById("row2").style.display = doppio() ? "flex" : "none";
-    refreshStill();
-  });
+  function applicaFormato() {
+    document.getElementById("lati").classList.toggle("doppio", doppio());
+    document.getElementById("row2").style.display = doppio() ? "" : "none";
+  }
+  fmt.addEventListener("change", function () { applicaFormato(); refreshStill(); });
 
   document.getElementById("btnPrev").addEventListener("click", function () {
     if (!nomiOk()) { status("err", '<span class="msg"><b>Serve il nome' + (doppio() ? " di entrambi i lati" : "") + '.</b></span>'); return; }
@@ -364,13 +387,14 @@
       if (m.b && m.b.k) kk2.value = m.b.k;
       if (m.b && m.b.n) nn2.value = m.b.n;
       if (m.b && m.b.j) jj2.value = m.b.j;
-      if (m.fmt === "2") { fmt.value = "2"; document.getElementById("row2").style.display = "flex"; }
+      if (m.fmt === "2") fmt.value = "2";
     } else {     // memo vecchio a tre campi
       if (m.k) kk.value = m.k;
       if (m.n) nn.value = m.n;
       if (m.j) jj.value = m.j;
     }
   } catch (e) {}
+  applicaFormato();
   refreshStill();
   fitPrev();
 })();
