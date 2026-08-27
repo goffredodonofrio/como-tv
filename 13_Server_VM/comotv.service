@@ -1,0 +1,44 @@
+# Servizio del ponte Como TV — si avvia da solo all'accensione della VM
+# e riparte da solo se dovesse fermarsi.
+#
+# Installazione:  cp comotv.service /etc/systemd/system/
+#                 systemctl daemon-reload && systemctl enable --now comotv
+
+[Unit]
+Description=Ponte Como TV — grafiche live
+Documentation=https://github.com/goffredodonofrio/como-tv
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=comotv
+Group=comotv
+
+Environment=COMOTV_PORTA=8080
+Environment=COMOTV_SITO=/var/www/comotv
+Environment=COMOTV_STATO=/var/lib/comotv/stato.json
+Environment=COMOTV_TOKEN=como_tv_grafiche
+# gli invii "Al foglio" continuano ad andare su Apps Script
+Environment=COMOTV_PONTE_FOGLI=https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec
+
+ExecStart=/usr/bin/node /opt/comotv/server.js
+WorkingDirectory=/opt/comotv
+
+# se cade si rialza da solo, sempre
+Restart=always
+RestartSec=2
+
+# il servizio può scrivere solo dove serve davvero
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/comotv
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=comotv
+
+[Install]
+WantedBy=multi-user.target
