@@ -132,7 +132,11 @@
     border:1px solid var(--line-gold);border-radius:12px;overflow:hidden;}
   .pitchwrap svg{display:block;width:100%;height:auto;}
   .dots{position:absolute;inset:0;}
-  .pdot{position:absolute;transform:translate(-50%,-50%);text-align:center;width:104px;
+  /* La casella non e' piu' fissa a 104px: vale --nmw, calcolato sul passo fra
+     le linee del modulo. Il numero resta un cerchio di dimensione fissa, e' solo
+     il nome che si allarga — cosi' due giocatori vicini non si toccano. */
+  .pdot{position:absolute;transform:translate(-50%,-50%);text-align:center;
+    width:var(--nmw,200px);
     cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;}
   .pdot.drag{cursor:grabbing;z-index:20;}
   .pdot .num{display:inline-flex;align-items:center;justify-content:center;
@@ -141,11 +145,13 @@
     background:var(--gold);color:#0A0F24;border:2px solid rgba(245,241,230,.9);
     box-shadow:0 3px 12px rgba(0,0,0,.55);pointer-events:none;}
   .pdot.away .num{background:#20284E;color:var(--ivory);border-color:var(--gold);}
+  /* Niente ritaglio con i puntini: il nome si rimpicciolisce finche' ci sta.
+     Un cognome tagliato a meta' in onda e' peggio di un cognome piccolo. */
   .pdot .nm{display:block;margin-top:3px;pointer-events:none;
-    font-family:'Mazzard',system-ui,sans-serif;font-size:11.5px;font-weight:700;letter-spacing:.02em;
+    font-family:'Mazzard',system-ui,sans-serif;font-size:var(--nmfs,15px);font-weight:700;letter-spacing:.02em;
     text-transform:uppercase;color:#FFFFFF;
     text-shadow:0 1px 3px rgba(0,0,0,1),0 0 10px rgba(0,0,0,.9),0 2px 8px rgba(0,0,0,.9);
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    white-space:nowrap;}
   .pdot.empty .num{background:rgba(245,241,230,.12);color:var(--fg-3);border-style:dashed;border-color:rgba(245,241,230,.3);}
   .teamtag{position:absolute;top:10px;pointer-events:none;
     font-family:'Mazzard',system-ui,sans-serif;font-size:11.5px;font-weight:800;letter-spacing:.2em;
@@ -442,7 +448,10 @@
     lines.forEach(function (n, li) {
       var x = lines.length > 1 ? li / (lines.length - 1) : 0;
       for (var k = 0; k < n; k++) {
-        out.push({ x: 0.08 + x * 0.82, y: (k + 1) / (n + 1), role: roleOfLine(li, lines.length) });
+        // La fascia occupata da ogni squadra passa da 0,82 a 0,92 della sua
+        // meta' campo: le linee si allontanano del 12% e il nome ha piu' spazio.
+        // Oltre non si puo' andare senza far toccare portiere e bandierina.
+        out.push({ x: 0.04 + x * 0.92, y: (k + 1) / (n + 1), role: roleOfLine(li, lines.length) });
       }
     });
     return out;
@@ -601,19 +610,71 @@
     el.teams.innerHTML = h;
   }
 
+
+  // ---------------- misura dei nomi sul campo ----------------
+  // Obiettivo: 200px per nome. Dove il modulo non li concede — un 4-2-3-1 ha
+  // quattro linee per meta' campo, e il passo fra due linee su un campo largo
+  // 800px sta intorno ai 140px — si usa lo spazio che c'e' e si rimpicciolisce
+  // il testo, invece di tagliarlo con i puntini. Un cognome mozzato in onda e'
+  // peggio di un cognome piccolo.
+  var NM_MAX = 200, NM_FS_MAX = 15, NM_FS_MIN = 9;
+  var _mis = null, _fontPronto = false;
+  if (document.fonts && document.fonts.load) {
+    document.fonts.load("700 15px Mazzard").then(function () {
+      _fontPronto = true;
+      if (typeof renderPitch === "function") renderPitch();   // rimisura col font vero
+    }).catch(function () { _fontPronto = true; });
+  } else { _fontPronto = true; }
+  function larghezzaTesto(txt, px) {
+    if (!_mis) _mis = document.createElement("canvas").getContext("2d");
+    _mis.font = "700 " + px + "px Mazzard, system-ui, sans-serif";
+    // il CSS aggiunge 0.02em di spaziatura fra le lettere: va contata
+    return _mis.measureText(txt).width + txt.length * px * 0.02;
+  }
+  // Passo orizzontale fra due linee del modulo, in pixel reali.
+  // Se il campo misura meno di 320px il layout non e' ancora pronto (succede al
+  // primo disegno e a finestra ridisegnata): meglio non congelare le caselle
+  // sul minimo, si usa il valore pieno e si rimisura appena c'e' spazio vero.
+  function passoLinee(mod) {
+    var w = el.pitch ? el.pitch.getBoundingClientRect().width : 0;
+    if (w < 320) return NM_MAX;
+    var linee = linesOf(mod).length;
+    if (linee < 2) return NM_MAX;
+    return w * 0.472 * 0.92 / (linee - 1);
+  }
+  function misuraNome(txt, passo) {
+    var largh = Math.max(64, Math.min(NM_MAX, passo - 14));
+    var fs = NM_FS_MAX, w = larghezzaTesto(txt, fs);
+    // col font di sistema la misura sottostima: si tiene un margine finche'
+    // Mazzard non e' caricato, poi il ridisegno usa la misura vera
+    if (!_fontPronto) w *= 1.12;
+    if (w > largh) fs = Math.max(NM_FS_MIN, Math.floor(fs * largh / w * 10) / 10);
+    return { w: Math.round(largh), fs: fs };
+  }
+
+  // La larghezza del campo cambia con la finestra: le caselle dei nomi sono
+  // calcolate in pixel, quindi vanno rifatte.
+  var _rid = 0;
+  window.addEventListener("resize", function () {
+    clearTimeout(_rid);
+    _rid = setTimeout(function () { if (typeof renderPitch === "function") renderPitch(); }, 180);
+  });
   function renderPitch() {
     var h = "";
     sides.forEach(function (side, si) {
-      var geo = slotGeo(side.mod);
+      var geo = slotGeo(side.mod), passo = passoLinee(side.mod);
       geo.forEach(function (g, k) {
         var c = side.custom[k];
         var px = c ? c.x : (si === 0 ? (1.4 + g.x * 47.2) : (98.6 - g.x * 47.2));
         var py = c ? c.y : (4 + g.y * 92);
         var d = resolve(side, side.tit[k]);
+        var cognome = d ? String(d.cognome || "") : "—";
+        var m = misuraNome(cognome, passo);
         h += '<div class="pdot' + (si === 1 ? " away" : "") + (d ? "" : " empty") + '"' +
-             ' data-si="' + si + '" data-slot="' + k + '" style="left:' + px + '%;top:' + py + '%">' +
+             ' data-si="' + si + '" data-slot="' + k + '"' +
+             ' style="left:' + px + '%;top:' + py + '%;--nmw:' + m.w + 'px;--nmfs:' + m.fs + 'px">' +
              '<span class="num">' + (d ? esc(d.num || "–") : "?") + '</span>' +
-             '<span class="nm">' + (d ? esc(d.cognome) : "—") + '</span>' +
+             '<span class="nm">' + esc(cognome) + '</span>' +
              '</div>';
       });
     });
