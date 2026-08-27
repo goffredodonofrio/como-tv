@@ -155,6 +155,28 @@
     border:1px solid var(--line-2);border-radius:4px;padding:6px 8px;width:150px;}
   #canali .copia:hover{color:var(--gold-bright);border-color:var(--line-gold);}
   #canali .copia.fatto{color:#4FCB8B;border-color:rgba(79,203,139,.5);}
+  /* passo 2: che produzione comandi su questo vMix? */
+  #modi{max-width:720px;margin:60px auto 0;text-align:center;display:none;}
+  #modi h2{font-family:'Mazzard',sans-serif;font-size:14px;font-weight:700;letter-spacing:.24em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:8px;}
+  #modi .sotto{font-size:13px;color:var(--fg-3);margin-bottom:26px;}
+  #modi .sotto a{color:var(--gold-bright);text-decoration:none;}
+  #modi .mgriglia{display:flex;flex-wrap:wrap;gap:18px;justify-content:center;}
+  .mcard{width:300px;padding:24px 20px;border-radius:14px;background:var(--surface-panel);
+    border:1px solid var(--line-2);display:flex;flex-direction:column;gap:10px;}
+  .mcard h3{font-family:'Mazzard',sans-serif;font-size:17px;font-weight:800;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ivory);margin-bottom:6px;}
+  .mcard .mdesc{font-size:12.5px;color:var(--fg-3);margin-bottom:8px;min-height:36px;}
+  .mcard a.apri{display:block;font-family:'Mazzard',sans-serif;font-size:12px;font-weight:800;
+    letter-spacing:.12em;text-transform:uppercase;padding:14px;border-radius:8px;text-decoration:none;
+    background:var(--gold);color:#0A0F24;}
+  .mcard a.apri:hover{background:var(--gold-bright);}
+  .mcard button.copia{font-family:'Mazzard',sans-serif;font-size:9.5px;font-weight:700;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--fg-3);background:transparent;cursor:pointer;
+    border:1px solid var(--line-2);border-radius:5px;padding:9px;}
+  .mcard button.copia:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  .mcard button.copia.fatto{color:#4FCB8B;border-color:rgba(79,203,139,.5);}
+
   #canaleBadge{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:800;letter-spacing:.18em;
     text-transform:uppercase;color:#0A0F24;background:var(--gold);border-radius:4px;
     padding:5px 12px;text-decoration:none;white-space:nowrap;}
@@ -174,7 +196,6 @@
     <a href="formazioni.html">Formazioni</a>
     <a href="marcatori.html">Marcatori</a>
     <a href="sottopancia.html">Sottopancia</a>
-    <a href="partita.html">Partita</a>
     <a href="regia.html" class="qui">Regia</a>
     <a href="../index.html">Home</a>
   </div>
@@ -183,8 +204,27 @@
 <div class="wrap">
 
   <div id="canali" style="display:none">
-    <h2>Quale playout comandi?</h2>
+    <h2>Che vMix stai usando?</h2>
     <div class="griglia" id="canaliGriglia"></div>
+  </div>
+
+  <div id="modi">
+    <h2 id="modiTitolo">vMix &mdash;</h2>
+    <div class="sotto"><a href="regia.html">&larr; cambia vMix</a></div>
+    <div class="mgriglia">
+      <div class="mcard">
+        <h3>&#127967; Partita</h3>
+        <div class="mdesc">Scoreboard, cronometro, presentazione, intervallo e finale &mdash; pi&ugrave; le grafiche del match.</div>
+        <a class="apri" id="apriPartita" href="#">Apri il playout partita</a>
+        <button type="button" class="copia" id="copiaPartita" data-nome="Partita">&#8865; Copia il link per vMix</button>
+      </div>
+      <div class="mcard">
+        <h3>&#127908; Live Studio</h3>
+        <div class="mdesc">La scaletta delle grafiche: classifiche, formazioni, marcatori, risultati, sottopancia.</div>
+        <a class="apri" id="apriStudio" href="#">Apri il playout live studio</a>
+        <button type="button" class="copia" id="copiaStudio" data-nome="Live Studio">&#8865; Copia il link per vMix</button>
+      </div>
+    </div>
   </div>
 
   <div id="console" style="display:none">
@@ -242,49 +282,61 @@
     return (c >= 1 && c <= N_CANALI) ? c : null;
   })();
 
+  // versioni grafiche per i link vMix: alzarle qui quando si pubblicano
+  // modifiche a shell o motori (la cache di vMix ignora i pari-URL)
+  var VMIX_V_STUDIO = 7;    // grafica-live.html (scaletta grafiche)
+  var VMIX_V_PARTITA = 4;   // partita-live.html (bug e schermate match)
+  var BASE = "https://goffredodonofrio.github.io/como-tv/11_Script_Live/";
+  var MODO = new URLSearchParams(location.search).get("modo");
+
+  // ── passo 1: che vMix stai usando? ──
   if (!CANALE) {
     var g = document.getElementById("canaliGriglia");
     var ultimo = null;
     try { ultimo = parseInt(localStorage.getItem(CANALE_LS), 10); } catch (e) {}
-    // versioni grafiche per i link vMix: alzarle qui quando si pubblicano
-    // modifiche a shell o motori (la cache di vMix ignora i pari-URL)
-    var VMIX_V_STUDIO = 6;    // grafica-live.html (scaletta grafiche)
-    var VMIX_V_PARTITA = 3;   // partita-live.html (bug e schermate match)
-    var BASE = "https://goffredodonofrio.github.io/como-tv/11_Script_Live/";
     var gh = "";
     for (var ci = 1; ci <= N_CANALI; ci++) {
-      var linkStudio = BASE + "grafica-live.html?c=" + ci + "&v=" + VMIX_V_STUDIO;
-      var linkPartita = BASE + "partita-live.html?c=" + ci + "&v=" + VMIX_V_PARTITA;
-      gh += '<div class="cch">' +
-        '<a href="regia.html?c=' + ci + '"' + (ci === ultimo ? ' class="ultimo"' : "") + '>' +
-        '<b>' + ci + '</b><span>' + (ci === ultimo ? "ultimo usato" : "vMix " + ci) + '</span></a>' +
-        '<button type="button" class="copia" data-link="' + linkPartita + '" data-nome="Partita">&#127967; Partita &middot; copia link</button>' +
-        '<button type="button" class="copia" data-link="' + linkStudio + '" data-nome="Live Studio">&#127908; Live Studio &middot; copia link</button>' +
-        '</div>';
+      gh += '<a href="regia.html?c=' + ci + '"' + (ci === ultimo ? ' class="ultimo"' : "") + '>' +
+        '<b>' + ci + '</b><span>' + (ci === ultimo ? "ultimo usato" : "vMix " + ci) + '</span></a>';
     }
     g.innerHTML = gh;
-    g.addEventListener("click", function (e) {
-      var b = e.target.closest ? e.target.closest("button.copia") : null;
-      if (!b) return;
-      var testo = b.dataset.link;
-      function fatto() {
-        var vecchio = b.innerHTML;
-        b.classList.add("fatto");
-        b.textContent = "Copiato ✓ (" + (b.dataset.nome || "") + ")";
-        setTimeout(function () { b.classList.remove("fatto"); b.innerHTML = vecchio; }, 1800);
-      }
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(testo).then(fatto, function () { window.prompt("Copia a mano:", testo); });
-      } else {
-        window.prompt("Copia a mano:", testo);
-      }
-    });
     document.getElementById("canali").style.display = "block";
-    return;   // console ferma finché non scegli il canale
+    return;
   }
   try { localStorage.setItem(CANALE_LS, String(CANALE)); } catch (e) {}
+
+  // ── passo 2: Partita o Live Studio? (link vMix + playout) ──
+  if (MODO !== "studio") {
+    document.getElementById("modiTitolo").textContent = "vMix " + CANALE + " — cosa comandi?";
+    document.getElementById("apriPartita").href = "partita.html?c=" + CANALE;
+    document.getElementById("apriStudio").href = "regia.html?c=" + CANALE + "&modo=studio";
+    var linkP = BASE + "partita-live.html?c=" + CANALE + "&v=" + VMIX_V_PARTITA;
+    var linkS = BASE + "grafica-live.html?c=" + CANALE + "&v=" + VMIX_V_STUDIO;
+    [["copiaPartita", linkP], ["copiaStudio", linkS]].forEach(function (cfg) {
+      var b = document.getElementById(cfg[0]);
+      b.addEventListener("click", function () {
+        function fatto() {
+          var vecchio = b.innerHTML;
+          b.classList.add("fatto");
+          b.textContent = "Copiato ✓";
+          setTimeout(function () { b.classList.remove("fatto"); b.innerHTML = vecchio; }, 1800);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(cfg[1]).then(fatto, function () { window.prompt("Copia a mano:", cfg[1]); });
+        } else {
+          window.prompt("Copia a mano:", cfg[1]);
+        }
+      });
+    });
+    document.getElementById("modi").style.display = "block";
+    return;
+  }
+
+  // ── passo 3: console live studio ──
   document.getElementById("console").style.display = "block";
-  document.getElementById("canaleBadge").textContent = "CANALE " + CANALE;
+  var badge = document.getElementById("canaleBadge");
+  badge.textContent = "CANALE " + CANALE + " · LIVE STUDIO";
+  badge.href = "regia.html?c=" + CANALE;
   document.title = "Regia C" + CANALE + " · Como TV";
 
   var elState = document.getElementById("state");
