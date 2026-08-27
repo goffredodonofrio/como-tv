@@ -170,14 +170,26 @@
   }
   setInterval(tickClock, 200);
 
-  function poll() {
-    fetch(PONTE + "?partita=1&canale=" + CANALE, { cache: "no-store" })
-      .then(function (r) { return r.json(); })
-      .then(applica)
-      .catch(function () {});
+  // modalità anteprima (?prev=<b64 stato>): rende lo stato passato
+  // dall'esterno, senza interrogare il ponte — la usa il pannello per
+  // il monitor ANTEPRIMA, così cliccare non tocca mai l'onda
+  var PREV = new URLSearchParams(location.search).get("prev");
+  if (PREV) {
+    try {
+      var jp = JSON.parse(decodeURIComponent(escape(atob(PREV.replace(/-/g, "+").replace(/_/g, "/")))));
+      jp.srv = Date.now();
+      applica(jp);
+    } catch (err) {}
+  } else {
+    var pollFn = function () {
+      fetch(PONTE + "?partita=1&canale=" + CANALE, { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(applica)
+        .catch(function () {});
+    };
+    setInterval(pollFn, POLL_MS);
+    pollFn();
   }
-  setInterval(poll, POLL_MS);
-  poll();
 })();
 </script>
 </body>

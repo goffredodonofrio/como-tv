@@ -134,19 +134,31 @@
   .gitem .gb.fuori{color:#FF6B6E;border-color:rgba(229,27,32,.5);}
   .gitem .gb.fuori:hover{background:rgba(229,27,32,.12);border-color:var(--red);color:#FF6B6E;}
   .gitem .gt{cursor:pointer;}
-  #gprevbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px;
-    border:1px solid var(--line-2);background:#070B1D;margin-top:8px;display:none;}
-  #gprev{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
+  .gitem.sel{border-color:var(--gold);background:rgba(201,162,75,.08);}
+
+  /* monitor ANTEPRIMA (oro) e IN ONDA (rosso quando attivo) */
+  #pvwbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px;
+    border:1px solid var(--line-gold);background:#070B1D;}
+  #pvw{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
     transform-origin:top left;pointer-events:none;}
-  #gprevcap{font-size:11.5px;color:var(--fg-3);margin-top:6px;min-height:16px;}
+  #pvwcap{font-size:11.5px;color:var(--fg-3);margin-top:6px;min-height:16px;}
+  .takebar{display:flex;gap:10px;margin-top:12px;}
+  .takebar button{flex:1;font-family:'Mazzard',sans-serif;font-size:13px;font-weight:800;
+    letter-spacing:.12em;text-transform:uppercase;padding:15px;border-radius:8px;cursor:pointer;}
+  #btnTake{background:transparent;color:#4FCB8B;border:2px solid rgba(79,203,139,.5);}
+  #btnTake:hover:not(:disabled){background:rgba(79,203,139,.12);border-color:#4FCB8B;}
+  #btnTakeOut{background:transparent;color:#FF6B6E;border:2px solid rgba(229,27,32,.5);}
+  #btnTakeOut:hover:not(:disabled){background:rgba(229,27,32,.12);border-color:var(--red);}
+  .takebar button:disabled{opacity:.35;cursor:default;}
+  #pgmbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px;
+    border:1px solid var(--line-2);background:#070B1D;}
+  #pgmbox iframe{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
+    transform-origin:top left;pointer-events:none;}
+  #pgmcap{font-size:11.5px;color:var(--fg-3);margin-top:6px;min-height:16px;}
   .gitem .gonair{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:800;letter-spacing:.14em;
     color:#FF6B6E;border:1px solid rgba(229,27,32,.6);border-radius:3px;padding:2px 7px;white-space:nowrap;}
   #gvuota{color:var(--fg-3);font-size:12.5px;padding:6px 2px;}
-  #gOut,#fOff{width:100%;margin-top:6px;font-family:'Mazzard',sans-serif;font-size:12px;font-weight:800;
-    letter-spacing:.12em;text-transform:uppercase;padding:12px;border-radius:7px;cursor:pointer;
-    border:1.5px solid rgba(229,27,32,.5);background:transparent;color:#FF6B6E;}
-  #gOut:hover:not(:disabled),#fOff:hover:not(:disabled){background:rgba(229,27,32,.12);border-color:var(--red);}
-  #gOut:disabled,#fOff:disabled{opacity:.35;cursor:default;}
+
   .glink{font-size:11.5px;margin-top:8px;color:var(--fg-3);}
   .glink a{color:var(--gold-bright);text-decoration:none;}
 
@@ -267,22 +279,27 @@
       <div class="panel">
         <h2>Player partita</h2>
         <div id="fasi"></div>
-        <button id="fOff" disabled>&#9632; Fuori onda partita</button>
       </div>
       <div class="panel">
         <h2>Grafiche della partita <small id="gcount" style="font-family:'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--fg-3);font-weight:500;font-size:11px"></small></h2>
         <div id="gitems"></div>
         <div id="gvuota" style="display:none">Niente in scaletta su questo canale: prepara formazioni e
           sottopancia dalle loro pagine e inviale alla regia (canale <span class="gcanale"></span>).</div>
-        <div id="gprevbox"><iframe id="gprev" scrolling="no"></iframe></div>
-        <div id="gprevcap"></div>
-        <button id="gOut" disabled>&#9632; Fuori onda grafiche</button>
-        <div class="glink">Le grafiche vanno sul layer grafiche (l'anteprima qui sotto mostra solo il
-          layer partita) · <a id="gRegia" href="regia.html" target="_blank">apri la regia completa</a></div>
+        <div class="glink"><a id="gRegia" href="regia.html" target="_blank">Apri la regia completa del canale</a></div>
       </div>
       <div class="panel">
-        <h2>Anteprima (identica al vMix)</h2>
-        <div id="prevbox"><iframe id="prev" scrolling="no"></iframe></div>
+        <h2>Anteprima</h2>
+        <div id="pvwbox"><iframe id="pvw" scrolling="no"></iframe></div>
+        <div id="pvwcap">Clicca una schermata del player o una grafica: la vedi qui senza toccare l'onda.</div>
+        <div class="takebar">
+          <button id="btnTake" disabled>&#9654; In onda</button>
+          <button id="btnTakeOut" disabled>&#9632; Fuori onda</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>In onda adesso (entrambi i layer)</h2>
+        <div id="pgmbox"><iframe id="pgmA" scrolling="no"></iframe><iframe id="pgmB" scrolling="no"></iframe></div>
+        <div id="pgmcap"></div>
         <div id="msg"></div>
       </div>
     </div>
@@ -489,20 +506,19 @@
     var h = "";
     FASI.forEach(function (x) {
       h += '<div class="gitem" data-fase="' + x.f + '">' +
-        '<button class="gb" data-fplay="' + x.f + '">In onda</button>' +
         '<span class="gt">' + x.t + '<small>' + x.d + '</small></span>' +
         '</div>';
     });
     el("fasi").innerHTML = h;
   })();
+  // click su una schermata = SOLO anteprima (l'onda si tocca coi tasti del monitor)
   el("fasi").addEventListener("click", function (e) {
-    var b = e.target.closest ? e.target.closest("button[data-fplay]") : null;
-    if (!b) return;
-    // la riga in onda mostra FUORI ONDA: cliccarla spegne
-    setFase(b.classList.contains("fuori") ? "off" : b.dataset.fplay);
+    var r = e.target.closest ? e.target.closest(".gitem[data-fase]") : null;
+    if (!r) return;
+    var def = null;
+    FASI.forEach(function (x) { if (x.f === r.dataset.fase) def = x; });
+    selezionaFase(r.dataset.fase, def ? def.t : r.dataset.fase);
   });
-  el("fOff").addEventListener("click", function () { setFase("off"); });
-
   // ── resa dello stato sui controlli ──
   function dipingi() {
     el("vs1").textContent = S.casa.s || "CASA";
@@ -518,21 +534,19 @@
       b.classList.toggle("attivo", parseInt(b.dataset.rec, 10) === (S.rec || 0));
     });
     document.querySelectorAll("#fasi .gitem").forEach(function (r) {
-      var onair = r.dataset.fase === S.fase;
-      r.classList.toggle("onair", onair);
-      var b = r.querySelector("button");
-      b.classList.toggle("fuori", onair);
-      b.textContent = onair ? "Fuori onda" : "In onda";
+      r.classList.toggle("onair", r.dataset.fase === S.fase);
+      r.classList.toggle("sel", !!(sel && sel.tipo === "fase" && sel.fase === r.dataset.fase));
     });
-    el("fOff").disabled = S.fase === "off" || !S.fase;
+    aggiornaTake();
+    aggiornaPgmCap();
   }
   setInterval(dipingi, 250);
 
   // ── grafiche della partita: la scaletta del canale, con play e
   //    fuori onda (stesso centralino della regia, vista compatta) ──
   var gItems = el("gitems");
-  var gOut = el("gOut");
   var gScaletta = { items: [], onair: null, state: "standby" };
+  var sel = null;   // cosa c'è in ANTEPRIMA: {tipo:"fase"|"grafica", ...}
   document.querySelectorAll(".gcanale").forEach(function (x) { x.textContent = CANALE; });
   el("gRegia").href = "regia.html?c=" + CANALE;
 
@@ -546,22 +560,20 @@
     var st = gScaletta.state || "standby";
     el("gcount").textContent = gScaletta.items.length ? gScaletta.items.length + " in scaletta" : "";
     el("gvuota").style.display = gScaletta.items.length ? "none" : "block";
-    gOut.disabled = st !== "play";
     var h = "";
     gScaletta.items.forEach(function (it) {
       var onair = it.id === gScaletta.onair && st === "play";
-      h += '<div class="gitem' + (onair ? " onair" : "") + '">' +
-        (onair
-          ? '<button class="gb fuori" data-gstop="1" title="Togli dall\'onda">Fuori onda</button>'
-          : '<button class="gb" data-gplay="' + gEsc(it.id) + '" title="Manda in onda">In onda</button>') +
-        '<span class="gt" data-gsel="' + gEsc(it.id) + '" data-gtipo="' + gEsc(it.tipo) + '" title="Clicca per l\'anteprima">' +
-        gEsc(it.titolo || it.tipo) + '<small>' + gEsc(it.tipo) + (it.dest ? " · " + (it.dest === "partita" ? "PARTITA" : "LIVE STUDIO") : "") + '</small></span>' +
+      h += '<div class="gitem' + (onair ? " onair" : "") + (sel && sel.tipo === "grafica" && sel.id === it.id ? " sel" : "") + '" data-gsel="' + gEsc(it.id) + '" data-gtipo="' + gEsc(it.tipo) + '">' +
+        '<span class="gt">' + gEsc(it.titolo || it.tipo) + '<small>' + gEsc(it.tipo) + (it.dest ? " · " + (it.dest === "partita" ? "PARTITA" : "LIVE STUDIO") : "") + (onair ? " · IN ONDA" : "") + '</small></span>' +
         '</div>';
     });
     gItems.innerHTML = h;
+    aggiornaTake();
+    aggiornaPgmCap();
   }
 
-  // ── anteprima fermo-immagine + stima dell'animazione ──
+  // ── modello PVW/PGM: click = anteprima, l'onda si tocca solo coi
+  //    tasti del monitor ──
   var ENGINES = {
     formazione: "formazione-vmix.html", classifica: "classifica-vmix.html",
     risultati: "risultati-vmix.html", sottopancia: "sottopancia-vmix.html",
@@ -572,22 +584,62 @@
     return btoa(unescape(encodeURIComponent(JSON.stringify(obj))))
       .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   }
-  function fitGPrev() {
-    var w = el("gprevbox").clientWidth;
-    el("gprev").style.transform = "scale(" + (w / 1920) + ")";
-  }
-  window.addEventListener("resize", fitGPrev);
 
-  function gAnteprima(id, tipo, titolo) {
+  var pvw = el("pvw"), pvwcap = el("pvwcap");
+  var btnTake = el("btnTake"), btnTakeOut = el("btnTakeOut");
+
+  function fitMonitor() {
+    ["pvwbox", "pgmbox"].forEach(function (idBox) {
+      var box = el(idBox);
+      var scala = "scale(" + (box.clientWidth / 1920) + ")";
+      box.querySelectorAll("iframe").forEach(function (fr) { fr.style.transform = scala; });
+    });
+  }
+  window.addEventListener("resize", fitMonitor);
+
+  function selezionaFase(f, titolo) {
+    sel = { tipo: "fase", fase: f, titolo: titolo };
+    // fotografia dello stato locale con la fase scelta: SOLO anteprima
+    var stato = { fase: f, camp: S.camp, casa: S.casa, osp: S.osp,
+                  p1: S.p1, p2: S.p2, rec: S.rec,
+                  clock: { run: false, base: elapsed(), ts: null } };
+    pvw.src = "partita-live.html?prev=" + b64url(stato);
+    pvwcap.textContent = "Anteprima: " + titolo + " — andrà sul layer PARTITA.";
+    fitMonitor();
+    dipingi(); gPaint();
+  }
+
+  function selezionaGrafica(id, tipo) {
+    var it = null;
+    gScaletta.items.forEach(function (x) { if (x.id === id) it = x; });
+    if (!it) return;
+    sel = { tipo: "grafica", id: id, itTipo: tipo, titolo: it.titolo };
+    pvwcap.textContent = "Carico l'anteprima…";
     fetch(PONTE + "?regia=item&id=" + encodeURIComponent(id) + "&canale=" + CANALE, { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (dati) {
-        el("gprevbox").style.display = "block";
-        el("gprev").src = (ENGINES[tipo] || ENGINES.formazione) + "?d=" + b64url(dati) + "&still=1&muto=1";
-        fitGPrev();
-        el("gprevcap").textContent = "Anteprima (fermo-immagine): " + titolo;
+        if (!sel || sel.id !== id) return;
+        pvw.src = (ENGINES[tipo] || ENGINES.formazione) + "?d=" + b64url(dati) + "&still=1&muto=1";
+        pvwcap.textContent = "Anteprima: " + it.titolo + " — andrà sul layer LIVE STUDIO.";
+        fitMonitor();
       })
-      .catch(function () { el("gprevcap").textContent = "Anteprima non disponibile."; });
+      .catch(function () { pvwcap.textContent = "Anteprima non disponibile."; });
+    dipingi(); gPaint();
+  }
+
+  function aggiornaTake() {
+    btnTake.disabled = !sel;
+    if (!sel) { btnTakeOut.disabled = true; return; }
+    btnTakeOut.disabled = sel.tipo === "fase" ? (S.fase === "off" || !S.fase) : (gScaletta.state !== "play");
+  }
+
+  function aggiornaPgmCap() {
+    var faseTxt = "spenta";
+    FASI.forEach(function (x) { if (x.f === S.fase) faseTxt = x.t; });
+    var g = null;
+    gScaletta.items.forEach(function (x) { if (x.id === gScaletta.onair) g = x; });
+    var gTxt = (gScaletta.state === "play" && g) ? g.titolo : "—";
+    el("pgmcap").textContent = "Partita: " + faseTxt + " · Grafiche: " + gTxt;
   }
 
   // stima della durata dell'animazione di ingresso, per il conto alla rovescia
@@ -599,7 +651,6 @@
     if (tipo === "sottopancia" || tipo === "sottopancia2") return 1.5;
     return 2;
   }
-
   var gCd = null;
   function gCountdown(sec, titolo) {
     if (gCd) clearInterval(gCd);
@@ -629,31 +680,26 @@
   }
 
   gItems.addEventListener("click", function (e) {
-    var b = e.target.closest ? e.target.closest("button[data-gplay]") : null;
-    if (b) {
-      var id = b.dataset.gplay;
-      var it = null;
-      gScaletta.items.forEach(function (x) { if (x.id === id) it = x; });
-      gPost({ tipo: "regia-state", state: "play", id: id }, "Grafica in onda tra un istante…");
-      if (it) {
-        fetch(PONTE + "?regia=item&id=" + encodeURIComponent(id) + "&canale=" + CANALE, { cache: "no-store" })
-          .then(function (r) { return r.json(); })
-          .then(function (dati) { gCountdown(stimaAnimazione(it.tipo, dati), it.titolo); })
-          .catch(function () {});
-      }
-      return;
-    }
-    var s = e.target.closest ? e.target.closest("[data-gsel]") : null;
-    if (s) gAnteprima(s.dataset.gsel, s.dataset.gtipo, s.textContent.split("\n")[0]);
-    var stop = e.target.closest ? e.target.closest("button[data-gstop]") : null;
-    if (stop) {
-      if (gCd) { clearInterval(gCd); gCd = null; }
-      gPost({ tipo: "regia-state", state: "out" }, "Grafica fuori onda.");
-    }
+    var r = e.target.closest ? e.target.closest("[data-gsel]") : null;
+    if (r) selezionaGrafica(r.dataset.gsel, r.dataset.gtipo);
   });
-  gOut.addEventListener("click", function () {
+
+  // gli UNICI comandi che toccano l'onda
+  btnTake.addEventListener("click", function () {
+    if (!sel) return;
+    if (sel.tipo === "fase") { setFase(sel.fase); return; }
+    gPost({ tipo: "regia-state", state: "play", id: sel.id }, "Grafica in onda tra un istante…");
+    var capTipo = sel.itTipo, capTit = sel.titolo;
+    fetch(PONTE + "?regia=item&id=" + encodeURIComponent(sel.id) + "&canale=" + CANALE, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (dati) { gCountdown(stimaAnimazione(capTipo, dati), capTit); })
+      .catch(function () {});
+  });
+  btnTakeOut.addEventListener("click", function () {
+    if (!sel) return;
+    if (sel.tipo === "fase") { setFase("off"); return; }
     if (gCd) { clearInterval(gCd); gCd = null; }
-    gPost({ tipo: "regia-state", state: "out" }, "Grafiche fuori onda.");
+    gPost({ tipo: "regia-state", state: "out" }, "Grafica fuori onda.");
   });
 
   function gPoll() {
@@ -669,15 +715,10 @@
   setInterval(gPoll, 2000);
   gPoll();
 
-  // ── anteprima: la stessa pagina che gira dentro vMix ──
-  var prev = el("prev");
-  prev.src = "partita-live.html?c=" + CANALE;
-  function fitPrev() {
-    var w = el("prevbox").clientWidth;
-    prev.style.transform = "scale(" + (w / 1920) + ")";
-  }
-  window.addEventListener("resize", fitPrev);
-  fitPrev();
+  // ── monitor IN ONDA ADESSO: entrambi i layer live, come sul vMix ──
+  el("pgmA").src = "grafica-live.html?c=" + CANALE;
+  el("pgmB").src = "partita-live.html?c=" + CANALE;
+  fitMonitor();
 
   // ── ripartenza: leggo lo stato corrente dal ponte ──
   fetch(PONTE + "?partita=1&canale=" + CANALE, { cache: "no-store" })
