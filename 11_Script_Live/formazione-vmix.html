@@ -75,9 +75,13 @@
   .jersey .jn{position:absolute;left:50%;top:34px;transform:translateX(-50%);
     font-family:'Mazzard',sans-serif;font-weight:800;font-size:30px;color:#FFFFFF;
     text-shadow:0 2px 6px rgba(0,0,0,.5);}
-  .jersey .cg{margin-top:6px;font-family:'Mazzard',sans-serif;font-weight:800;font-size:29px;
-    color:#FFFFFF;text-transform:uppercase;letter-spacing:.02em;white-space:nowrap;
+  /* studio font (dalla reference): corpo più grande e peso Bold, non
+     ExtraBold — il cognome respira e resta leggibile anche in overlay */
+  .jersey .cg{margin-top:7px;font-family:'Mazzard',sans-serif;font-weight:700;font-size:34px;
+    color:#FFFFFF;text-transform:uppercase;letter-spacing:.035em;white-space:nowrap;
     text-shadow:0 2px 8px rgba(0,0,0,.85),0 0 18px rgba(0,0,0,.6);}
+  .jersey .cg.lungo{font-size:29px;}
+  .jersey .cg.lunghissimo{font-size:25px;letter-spacing:.02em;}
 
   /* ── animazioni ── */
   @keyframes wipeIn  { to { clip-path:inset(0 0 0 0); } }
@@ -243,7 +247,17 @@
       for (var k = 0; k < n; k++) {
         // come nella grafica AE: il primo della linea sta a destra
         var x = R - 40 - (k + 1) / (n + 1) * (R - L - 80);
-        out.push({ x: x, y: y });
+        // sfalsamento come la reference: dentro una linea, esterni e
+        // interni stanno su quote alterne (e le linee si alternano tra
+        // loro) — così i cognomi lunghi di maglie vicine non si toccano
+        var off = 0;
+        if (li > 0 && n > 1) {
+          var dist = Math.min(k, n - 1 - k);
+          var sign = (dist % 2 === 0) ? -1 : 1;      // esterni alti, interni bassi
+          if (li === lines.length - 1) sign = -sign;  // attacco invertito: punte basse, centro alto
+          off = sign * 34;
+        }
+        out.push({ x: x, y: y + off });
       }
     });
     return out;
@@ -314,10 +328,12 @@
     var g = geo[i] || geo[geo.length - 1];
     var st = STILL ? 'transform:translate(-50%,-50%) scale(1)'
       : 'animation: pop .55s cubic-bezier(.34,1.4,.5,1) ' + (T_ROWS + 0.12 + i * STAG) + 's forwards';
+    var cgn = String(r[2] || "");
+    var cls = cgn.length > 13 ? " lunghissimo" : (cgn.length > 10 ? " lungo" : "");
     dotsH += '<div class="jersey" style="left:' + g.x + 'px;top:' + g.y + 'px;' + st + '">' +
       jerseySVG() +
       '<div class="jn">' + esc(r[0]) + '</div>' +
-      '<div class="cg">' + esc(r[2]) + '</div>' +
+      '<div class="cg' + cls + '">' + esc(cgn) + '</div>' +
       '</div>';
   });
   document.getElementById("dots").innerHTML = dotsH;
