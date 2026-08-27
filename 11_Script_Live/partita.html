@@ -884,23 +884,17 @@
         if (!j || j.nonce == null) return;
         if (gPrimaLettura) {
           gPrimaLettura = false;
-          // si parte sempre fuori onda: con piu' livelli vanno spenti tutti
-          // quelli rimasti accesi, non solo il primo
+          // NON si spegne niente all'apertura: ricaricare la pagina non
+          // deve far sparire le grafiche dal vMix. Si segnala e basta.
+          var accese = 0;
           if (j.liv) {
-            var spenti = 0;
             for (var L = 1; L <= 5; L++) {
               var lv = j.liv[String(L)];
-              if (lv && lv.state === "play" && lv.onair) {
-                gPost({ tipo: "regia-state", state: "out", liv: L });
-                spenti++;
-              }
+              if (lv && lv.state === "play" && lv.onair) accese++;
             }
-            if (spenti) msg.textContent = "All'apertura si parte fuori onda: spente " + spenti +
-                        (spenti === 1 ? " grafica rimasta in onda." : " grafiche rimaste in onda.");
-          } else if (j.state === "play") {
-            gPost({ tipo: "regia-state", state: "out" },
-              "All'apertura si parte fuori onda: la grafica rimasta in onda è stata spenta.");
-          }
+          } else if (j.state === "play") accese = 1;
+          if (accese) msg.textContent = "Attenzione: " + accese +
+            (accese === 1 ? " grafica è già in onda." : " grafiche sono già in onda.");
         }
         gScaletta = j;
         gPaint();
@@ -924,10 +918,9 @@
       // deve sovrascrivere i suoi click: vale solo a pannello "vergine"
       if (seq > 0) return;
       if (j && j.fase) {
-        // regola di apertura: il playout parte fuori onda — dati e
-        // cronometro si riprendono, la fase in onda no
-        var faseResidua = j.fase !== "off";
-        S = { fase: "off", camp: j.camp || S.camp,
+        // si riprende TUTTO com'è: dati, cronometro e schermata in onda.
+        // Ricaricare la pagina non deve cambiare ciò che sta trasmettendo.
+        S = { fase: j.fase, camp: j.camp || S.camp,
               casa: j.casa || S.casa, osp: j.osp || S.osp,
               p1: j.p1 || 0, p2: j.p2 || 0, rec: j.rec || 0,
               clock: j.clock || S.clock, livFase: j.livFase || S.livFase };
@@ -945,9 +938,9 @@
         el("no").value = S.osp.n || ""; el("so").value = S.osp.s || ""; el("co").value = S.osp.col || "#C50E1F";
         for (var i = 0; i < CAMPIONATI.length; i++) if (CAMPIONATI[i].nome === S.camp) elCamp.value = i;
         riempiSquadre();
-        if (faseResidua) {
-          invia(true);
-          msg.textContent = "All'apertura si parte fuori onda: la schermata rimasta in onda è stata spenta.";
+        if (S.fase && S.fase !== "off") {
+          msg.textContent = "Ripreso il collegamento: in onda c'è " +
+            (FASI.filter(function (x) { return x.f === S.fase; })[0] || { t: S.fase }).t + ".";
         }
       }
       dipingi();
