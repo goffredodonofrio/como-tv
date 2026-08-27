@@ -96,14 +96,21 @@
   /* Modo incorporato: questa console vive dentro la Live Dashboard, che ha
      gia' la sua barra, la sua intestazione, i suoi monitor e la scaletta.
      Qui restano solo i comandi della partita. */
+  /* La dashboard ha gia' i suoi monitor e la sua colonna IN ONDA / FUORI
+     ONDA per le grafiche: qui sarebbero un doppione. L'onda delle
+     schermate del player si comanda dai tasti sulle righe. */
   body.incorporato .nav,
   body.incorporato header.page,
-  body.incorporato .panel.mon,
+  body.incorporato .deck,
   body.incorporato .soloIntero{display:none;}
   body.incorporato{background:transparent;}
   body.incorporato .wrap{padding-top:0;padding-left:0;padding-right:0;}
-  /* uno sotto l'altro e larghi uguale, come i pannelli della dashboard */
-  body.incorporato .sotto{grid-template-columns:1fr;}
+  /* due colonne larghe uguale e alte uguale */
+  body.incorporato .sotto{align-items:stretch;}
+  body.incorporato .colgioco,
+  body.incorporato .colcomandi{display:flex;flex-direction:column;}
+  body.incorporato .colgioco > .panel,
+  body.incorporato .colcomandi > .panel{flex:1;margin-bottom:0;}
 
   /* dentro il box unico: le tre parti restano riconoscibili senza essere
      tre riquadri separati */
@@ -230,6 +237,9 @@
   .lb.on{background:var(--gold);color:#0A0F24;border-color:var(--gold);}
   .lb.on.occupato{background:var(--gold);color:#0A0F24;box-shadow:0 0 0 2px rgba(229,27,32,.8);}
   .lb.esci{margin-left:8px;color:#FF6B6E;border-color:rgba(229,27,32,.45);}
+  .lb.esci:hover{background:rgba(229,27,32,.14);border-color:var(--red);}
+  .lb.entra{margin-left:8px;color:#4FCB8B;border-color:rgba(79,203,139,.45);}
+  .lb.entra:hover{background:rgba(79,203,139,.14);border-color:#4FCB8B;}
   #btnTakeOut:hover:not(:disabled){background:rgba(229,27,32,.12);border-color:var(--red);}
   .takebar button:disabled{opacity:.35;cursor:default;}
   #pgmbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px;
@@ -894,7 +904,12 @@
                    n + '</button>';
           }).join("") +
         '</span>' +
-        (attiva ? '<button class="lb esci" data-foff="' + x.f + '" title="Togli dall\'onda">&#9632;</button>' : "") +
+        // Comandi sulla riga: dentro la dashboard non c'e' la colonna dei
+        // tasti (sarebbe un doppione di quella delle grafiche), quindi
+        // l'onda di ogni schermata si tocca da qui.
+        (attiva
+          ? '<button class="lb esci" data-foff="' + x.f + '" title="Togli dall\'onda">&#9632;</button>'
+          : '<button class="lb entra" data-fon="' + x.f + '" title="Manda in onda">&#9654;</button>') +
         '</div>';
     });
     el("fasi").innerHTML = h;
@@ -902,10 +917,11 @@
   disegnaFasi();
   // click su una schermata = SOLO anteprima (l'onda si tocca coi tasti del monitor)
   el("fasi").addEventListener("click", function (e) {
-    var lb = e.target.closest ? e.target.closest("button[data-fliv],button[data-foff]") : null;
+    var lb = e.target.closest ? e.target.closest("button[data-fliv],button[data-foff],button[data-fon]") : null;
     if (lb) {
       e.stopPropagation();
       if (lb.dataset.fliv) { FASE_LIV[lb.dataset.f] = +lb.dataset.fliv; salvaFaseLiv(); disegnaFasi(); pittaLivPan(); }
+      else if (lb.dataset.fon) { setFase(lb.dataset.fon); }
       else { spegniFase(lb.dataset.foff); }
       return;
     }
