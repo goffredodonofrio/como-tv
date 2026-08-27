@@ -71,7 +71,7 @@
     border:1px solid var(--line-2);border-radius:5px;min-width:120px;
   }
   select:hover,input[type=date]:hover{border-color:var(--line-gold);}
-  #comp{min-width:215px;}
+  #comp{min-width:200px;max-width:200px;}
   input[type=date]{color-scheme:dark;}
   button{
     font-family:'Mazzard',system-ui,sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.09em;
@@ -176,11 +176,12 @@
       <input type="date" id="al">
     </div>
     <button class="primary" id="btnLoad">Carica partite</button>
-    <button id="btnCsv" disabled>Scarica CSV</button>
-    <button id="btnSheet" disabled>Invia al foglio</button>
+    <button id="btnCsv" disabled>CSV</button>
+    <button id="btnSheet" disabled>Al foglio</button>
+    <button id="btnPrevG">Anteprima</button>
     <div class="field" style="flex:0 0 auto">
       <label for="canaleSel">Regia</label>
-      <select id="canaleSel" style="min-width:150px"></select>
+      <select id="canaleSel" style="min-width:0;width:150px"></select>
     </div>
     <button id="btnRegia" disabled>&#128225; Invia alla regia</button>
     <button id="btnSheetCfg" title="Configura il ponte verso il foglio Google" style="padding:11px 13px">&#9881;</button>
@@ -189,6 +190,10 @@
   <div class="status" id="status">
     <span class="msg">Scegli competizione e intervallo di date, poi premi <b>Carica partite</b>.</span>
   </div>
+  <div id="prevGbox" style="display:none;position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:10px;border:1px solid var(--line-2);background:#070B1D;margin-bottom:20px">
+    <iframe id="prevG" style="position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;transform-origin:top left;pointer-events:none" scrolling="no"></iframe>
+  </div>
+
 
   <div id="out">
     <div class="empty">
@@ -700,6 +705,44 @@
   el.sheet.addEventListener("click", inviaAlFoglio);
   el.regia.addEventListener("click", inviaRegia);
   document.getElementById("btnSheetCfg").addEventListener("click", function () { ponteConfig(true); });
+
+  // ── anteprima della grafica: stesso payload dell'invio, senza prompt ──
+  (function () {
+    var bp = document.getElementById("btnPrevG");
+    if (!bp) return;
+    function fitG() {
+      var box = document.getElementById("prevGbox");
+      if (box.style.display === "none") return;
+      document.getElementById("prevG").style.transform = "scale(" + (box.clientWidth / 1920) + ")";
+    }
+    window.addEventListener("resize", fitG);
+    bp.addEventListener("click", function () {
+      var dati = (function () {
+      var sel = selected();
+      if (!sel.length) { status("warn", '<span class="msg">Spunta almeno un evento da vedere.</span>'); return null; }
+      return {
+        t1: "I RISULTATI",
+        sub: (state.comp ? state.comp.nome.toUpperCase() : ""),
+        ev: sel.map(function (m) {
+          var extra = "";
+          if (m.campi[3] && m.campi[3] !== "-") {
+            extra = m.campi[3];
+            if (m.campi[6] || m.campi[9]) extra += " " + (m.campi[6] || "0") + "-" + (m.campi[9] || "0");
+          }
+          return [m.campi[0], m.campi[2], m.campi[4], m.campi[7], m.campi[5], m.campi[8], extra];
+        })
+      };
+    })();
+      if (!dati) return;
+      var b = btoa(unescape(encodeURIComponent(JSON.stringify(dati)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      var box = document.getElementById("prevGbox");
+      box.style.display = "block";
+      document.getElementById("prevG").src = "risultati-vmix.html?d=" + b + "&muto=1&n=" + Date.now();
+      fitG();
+      box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  })();
+
 })();
 </script>
 </body>
