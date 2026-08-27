@@ -1,6 +1,19 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
+<script>
+/* Le Grafiche Live vivono sulla macchina della regia. Su GitHub resta una
+   copia di questa pagina, ma li' parla a un altro ponte: chi la aprisse per
+   sbaglio (un vecchio segnalibro, un input vMix non aggiornato) comanderebbe
+   un sistema che nessuno ascolta, e le grafiche non andrebbero in onda.
+   Da GitHub si viene quindi portati sulla macchina giusta. Sulla VM questo
+   non fa nulla. Se l'indirizzo della macchina cambia, va cambiato anche qui. */
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  var p = location.pathname.replace(/^\/como-tv/, "");
+  location.replace("http://209.227.239.211" + p + location.search + location.hash);
+})();
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Live Match · Como TV</title>
@@ -166,6 +179,7 @@
 
   var S = null;        // stato corrente dal ponte
   var offset = 0;      // Date.now() - orologio server (per il cronometro)
+  var cardAttiva = null; // quale schermata piena è in onda, se c'è
 
   var elBug = document.getElementById("bug");
   var elFull = document.getElementById("full");
@@ -178,9 +192,22 @@
   function applica(j) {
     S = j;
     if (j.srv) offset = Date.now() - j.srv;
+    // Lo scoreboard e la card sono due cose indipendenti, come due
+    // overlay di vMix: possono stare in onda insieme. Prima c'era una
+    // fase sola, quindi mandare la presentazione spegneva il punteggio.
+    // Se il ponte porta ancora il vecchio campo, lo si traduce.
     var fase = j.fase || "off";
+    var bug  = (j.bug != null) ? !!j.bug : (fase === "live");
+    var card = (j.card !== undefined) ? (j.card || null)
+             : ((fase === "pres" || fase === "int" || fase === "fin") ? fase : null);
+    cardAttiva = card;
 
-    if (fase === "live") {
+    // il livello scelto in regia decide chi passa sopra all'altro
+    var lf = j.livFase || {};
+    elBug.style.zIndex = lf.live || 2;
+    elFull.style.zIndex = (card && lf[card]) || 4;
+
+    if (bug) {
       testo("sg1", (j.casa && j.casa.s) || "—");
       testo("sg2", (j.osp && j.osp.s) || "—");
       colore("sw1", j.casa && j.casa.col);
@@ -189,8 +216,11 @@
       if (j.rec > 0) { elRec.textContent = "+" + j.rec; elRec.className = "on"; }
       else elRec.className = "";
       elBug.classList.add("on");
-      elFull.classList.remove("on");
-    } else if (fase === "int" || fase === "fin" || fase === "pres") {
+    } else {
+      elBug.classList.remove("on");
+    }
+
+    if (card) {
       var casa = j.casa || {}, osp = j.osp || {};
 
       // fascia in alto: competizione e giornata
@@ -209,7 +239,7 @@
 
       // al centro: prima del fischio "VS", poi il punteggio
       var pt = document.getElementById("fpunteggio");
-      if (fase === "pres") {
+      if (card === "pres") {
         pt.textContent = "VS";
         pt.className = "vs";
       } else {
@@ -220,24 +250,21 @@
       // cronometro: fermo sul valore d'arrivo (intervallo/finale),
       // nascosto prima del fischio d'inizio
       var cr = document.getElementById("fcrono");
-      cr.textContent = fase === "pres" ? "" : orologio(j);
+      cr.textContent = card === "pres" ? "" : orologio(j);
 
       var et = document.getElementById("fetichetta");
-      et.textContent = fase === "int" ? "Intervallo" : (fase === "fin" ? "Risultato finale" : "");
+      et.textContent = card === "int" ? "Intervallo" : (card === "fin" ? "Risultato finale" : "");
       et.className = et.textContent ? "" : "vuoto";
 
       testo("fnm1", casa.n || casa.s || "");
       testo("fnm2", osp.n || osp.s || "");
 
+      elFull.classList.remove("out");
       elFull.classList.add("on");
-      elBug.classList.remove("on");
-    } else {
-      elBug.classList.remove("on");
-      if (elFull.classList.contains("on")) {
-        elFull.classList.remove("on");
-        elFull.classList.add("out");
-        setTimeout(function () { elFull.classList.remove("out"); }, 420);
-      }
+    } else if (elFull.classList.contains("on")) {
+      elFull.classList.remove("on");
+      elFull.classList.add("out");
+      setTimeout(function () { elFull.classList.remove("out"); }, 420);
     }
   }
 
@@ -279,7 +306,7 @@
   }
   setInterval(function () {
     tickClock();
-    if (S && (S.fase === "int" || S.fase === "fin")) {
+    if (cardAttiva === "int" || cardAttiva === "fin") {
       document.getElementById("fcrono").textContent = orologio(S);
     }
   }, 200);

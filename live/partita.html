@@ -1,6 +1,19 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
+<script>
+/* Le Grafiche Live vivono sulla macchina della regia. Su GitHub resta una
+   copia di questa pagina, ma li' parla a un altro ponte: chi la aprisse per
+   sbaglio (un vecchio segnalibro, un input vMix non aggiornato) comanderebbe
+   un sistema che nessuno ascolta, e le grafiche non andrebbero in onda.
+   Da GitHub si viene quindi portati sulla macchina giusta. Sulla VM questo
+   non fa nulla. Se l'indirizzo della macchina cambia, va cambiato anche qui. */
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  var p = location.pathname.replace(/^\/como-tv/, "");
+  location.replace("http://209.227.239.211" + p + location.search + location.hash);
+})();
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Live Match · Como TV</title>
@@ -454,6 +467,13 @@
   // ── stato del match (specchio locale di quello sul ponte) ──
   var S = {
     livFase: null,
+    // Due caselle indipendenti, come due overlay di vMix:
+    //   bug  = lo scoreboard in alto a sinistra (acceso/spento)
+    //   card = la schermata al centro (presentazione, intervallo, finale)
+    // Prima c'era una fase sola, quindi mandare la presentazione
+    // spegneva per forza il punteggio. "fase" resta come specchio per
+    // le pagine non ancora aggiornate.
+    bug: false, card: null,
     fase: "off", camp: CAMPIONATI[0].nome, giornata: "", stadio: "",
     casa: { n: "", s: "", col: "#1735C8", tid: "", stemma: "" },
     osp:  { n: "", s: "", col: "#C50E1F", tid: "", stemma: "" },
@@ -804,15 +824,32 @@
     invia(true);
   }
   function faseSuLiv(L) {
-    if (!S.fase || S.fase === "off") return null;
-    return FASE_LIV[S.fase] === L ? S.fase : null;
+    if (S.bug && FASE_LIV.live === L) return "live";
+    if (S.card && FASE_LIV[S.card] === L) return S.card;
+    return null;
   }
-  function setFase(f) { S.fase = f; dipingi(); invia(true); disegnaFasi(); }
+  // le pagine vecchie leggono ancora un campo solo: glielo lasciamo
+  function specchioFase() { S.fase = S.card || (S.bug ? "live" : "off"); }
+  function applicaFasi() { specchioFase(); dipingi(); invia(true); disegnaFasi(); }
+  // Lo scoreboard si accende e si spegne per conto suo. Le tre schermate
+  // piene sono la stessa card, quindi una esclude l'altra: premere quella
+  // gia' in onda la toglie.
+  function setFase(f) {
+    if (f === "off") { S.bug = false; S.card = null; }
+    else if (f === "live") S.bug = !S.bug;
+    else S.card = (S.card === f) ? null : f;
+    applicaFasi();
+  }
+  function spegniFase(f) {
+    if (f === "live") S.bug = false;
+    else if (S.card === f) S.card = null;
+    applicaFasi();
+  }
   var _faseVista = null;
   function disegnaFasi() {
     var h = "";
     FASI.forEach(function (x) {
-      var attiva = S.fase === x.f;
+      var attiva = (x.f === "live") ? !!S.bug : (S.card === x.f);
       h += '<div class="gitem' + (attiva ? " onair" : "") +
            (sel && sel.tipo === "fase" && sel.fase === x.f ? " sel" : "") + '" data-fase="' + x.f + '">' +
         '<span class="gt">' + x.t + '<small>' + x.d + (attiva ? " · IN ONDA" : "") + '</small></span>' +
@@ -837,7 +874,7 @@
     if (lb) {
       e.stopPropagation();
       if (lb.dataset.fliv) { FASE_LIV[lb.dataset.f] = +lb.dataset.fliv; salvaFaseLiv(); disegnaFasi(); pittaLivPan(); }
-      else { setFase("off"); }
+      else { spegniFase(lb.dataset.foff); }
       return;
     }
     var r = e.target.closest ? e.target.closest(".gitem[data-fase]") : null;
@@ -860,9 +897,12 @@
     document.querySelectorAll("#recbox button").forEach(function (b) {
       b.classList.toggle("attivo", parseInt(b.dataset.rec, 10) === (S.rec || 0));
     });
-    if (_faseVista !== S.fase) { _faseVista = S.fase; disegnaFasi(); }
+    // due caselle, quindi la firma da confrontare sono entrambe
+    var firma = (S.bug ? "1" : "0") + "|" + (S.card || "");
+    if (_faseVista !== firma) { _faseVista = firma; disegnaFasi(); }
     document.querySelectorAll("#fasi .gitem").forEach(function (r) {
-      r.classList.toggle("onair", r.dataset.fase === S.fase);
+      var f = r.dataset.fase;
+      r.classList.toggle("onair", f === "live" ? !!S.bug : S.card === f);
       r.classList.toggle("sel", !!(sel && sel.tipo === "fase" && sel.fase === r.dataset.fase));
     });
     aggiornaTake();
@@ -1038,8 +1078,11 @@
   }
 
   function aggiornaPgmCap() {
-    var faseTxt = "spenta";
-    FASI.forEach(function (x) { if (x.f === S.fase) faseTxt = x.t; });
+    var accese = [];
+    FASI.forEach(function (x) {
+      if (x.f === "live" ? S.bug : S.card === x.f) accese.push(x.t);
+    });
+    var faseTxt = accese.length ? accese.join(" + ") : "spenta";
     var g = null;
     gScaletta.items.forEach(function (x) { if (x.id === gScaletta.onair) g = x; });
     var gTxt = (gScaletta.state === "play" && g) ? g.titolo : "—";
@@ -1114,9 +1157,9 @@
     // il tasto guarda il LIVELLO mirato: se li' c'e' una schermata del player
     // spegne quella, altrimenti toglie la grafica di quel livello
     var Lm = mira(), fm = faseSuLiv(Lm);
-    if (fm) { setFase("off"); return; }
+    if (fm) { spegniFase(fm); return; }          // solo quella su questo livello
     if (!sel) return;
-    if (sel.tipo === "fase") { setFase("off"); return; }
+    if (sel.tipo === "fase") { spegniFase(sel.fase); return; }
     if (gCd) { clearInterval(gCd); gCd = null; }
     var L = mira();
     gPost({ tipo: "regia-state", state: "out", liv: L }, "Livello " + L + " fuori onda.");
@@ -1165,7 +1208,16 @@
   }
 
   function adotta(j) {
-    S.fase = j.fase || "off";
+    // stato nuovo se c'è, altrimenti si ricava dalla vecchia fase unica
+    if (j.bug != null || j.card !== undefined) {
+      S.bug = !!j.bug;
+      S.card = j.card || null;
+    } else {
+      var f = j.fase || "off";
+      S.bug = (f === "live");
+      S.card = (f === "pres" || f === "int" || f === "fin") ? f : null;
+    }
+    specchioFase();
     S.camp = j.camp || S.camp;
     S.casa = j.casa || S.casa;
     S.osp  = j.osp  || S.osp;
@@ -1227,10 +1279,16 @@
         // si riprende TUTTO com'è: dati, cronometro e schermata in onda.
         // Ricaricare la pagina non deve cambiare ciò che sta trasmettendo.
         S = { fase: j.fase, camp: j.camp || S.camp,
+              // le due caselle vanno riprese qui dentro: questo S viene
+              // costruito da zero, e senza scriverle si perderebbero
+              bug: (j.bug != null) ? !!j.bug : (j.fase === "live"),
+              card: (j.card !== undefined) ? (j.card || null)
+                    : ((j.fase === "pres" || j.fase === "int" || j.fase === "fin") ? j.fase : null),
               giornata: j.giornata || "", stadio: j.stadio || "",
               casa: j.casa || S.casa, osp: j.osp || S.osp,
               p1: j.p1 || 0, p2: j.p2 || 0, rec: j.rec || 0,
               clock: j.clock || S.clock, livFase: j.livFase || S.livFase };
+        specchioFase();
         // livelli delle schermate arrivati dal ponte: hanno la precedenza su
         // quelli salvati in locale, altrimenti due postazioni si contraddicono
         if (j.livFase) {
@@ -1247,9 +1305,14 @@
         el("no").value = S.osp.n || ""; el("so").value = S.osp.s || ""; el("co").value = S.osp.col || "#C50E1F";
         for (var i = 0; i < CAMPIONATI.length; i++) if (CAMPIONATI[i].nome === S.camp) elCamp.value = i;
         riempiSquadre();
-        if (S.fase && S.fase !== "off") {
-          msg.textContent = "Ripreso il collegamento: in onda c'è " +
-            (FASI.filter(function (x) { return x.f === S.fase; })[0] || { t: S.fase }).t + ".";
+        // le righe devono mostrare subito cosa sta trasmettendo
+        disegnaFasi();
+        var inOnda = [];
+        FASI.forEach(function (x) {
+          if (x.f === "live" ? S.bug : S.card === x.f) inOnda.push(x.t);
+        });
+        if (inOnda.length) {
+          msg.textContent = "Ripreso il collegamento: in onda c'è " + inOnda.join(" + ") + ".";
         }
       }
       dipingi();
