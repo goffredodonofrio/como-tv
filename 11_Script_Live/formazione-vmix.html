@@ -261,7 +261,7 @@
           if (li === lines.length - 1) sign = -sign;  // attacco invertito: punte basse, centro alto
           off = sign * 34;
         }
-        out.push({ x: x, y: y + off });
+        out.push({ x: x, y: y + off, off: off, linea: li, posti: n });
       }
     });
     return out;
@@ -327,20 +327,74 @@
 
   // maglie sul campo
   var geo = slotGeo(D.m);
+
+  // ── quanto spazio ha davvero un cognome ──
+  // Lo sfalsamento verticale alterna le quote dentro la linea, ma solo quando i
+  // giocatori sono in numero dispari: in una linea da 4 i due centrali finiscono
+  // sulla STESSA quota a 170px l'uno dall'altro, e i cognomi lunghi si toccano
+  // (e' il caso PICKERING/WHARTON). Invece di indovinare dalla lunghezza del
+  // testo, si misura la distanza dal vicino piu' prossimo alla stessa altezza e
+  // si rimpicciolisce il corpo finche' il nome ci sta dentro.
+  var CG_MAX = 34, CG_MIN = 21, CG_MARGINE = 18;
+  var _cnv = null, _mzOk = false;
+  function largCg(txt, px) {
+    if (!_cnv) _cnv = document.createElement("canvas").getContext("2d");
+    _cnv.font = "700 " + px + "px Mazzard, sans-serif";
+    // Il CSS scrive in maiuscolo: misurare la stringa come arriva sottostima di
+    // parecchio, perche' le maiuscole sono molto piu' larghe delle minuscole.
+    var T = String(txt).toUpperCase();
+    return _cnv.measureText(T).width + T.length * px * 0.035;   // letter-spacing .035em
+  }
+  function spazioPerNome(geo, i) {
+    var g = geo[i], vicino = Infinity;
+    for (var j = 0; j < geo.length; j++) {
+      if (j === i) continue;
+      // conta solo chi sta praticamente alla stessa altezza: piu' in alto o
+      // piu' in basso il cognome passa sopra o sotto senza toccare
+      if (Math.abs(geo[j].y - g.y) > 40) continue;
+      var d = Math.abs(geo[j].x - g.x);
+      if (d < vicino) vicino = d;
+    }
+    // ai bordi del campo il limite e' la cornice, non un vicino
+    var alBordo = Math.min(g.x - 40, 1920 - 40 - g.x) * 2;
+    var s = Math.min(vicino === Infinity ? 520 : vicino, alBordo);
+    return Math.max(120, s - CG_MARGINE);
+  }
+  function corpoCg(txt, spazio) {
+    var f = CG_MAX, w = largCg(txt, f);
+    // finche' Mazzard non e' caricato il canvas misura col ripiego di sistema e
+    // sottostima: si tiene un margine, poi si rimisura col font vero
+    if (!_mzOk) w *= 1.12;
+    if (w > spazio) f = Math.max(CG_MIN, Math.floor(f * spazio / w * 10) / 10);
+    return f;
+  }
+
   var dotsH = "";
   D.t.forEach(function (r, i) {
     var g = geo[i] || geo[geo.length - 1];
     var st = STILL ? 'transform:translate(-50%,-50%) scale(1)'
       : 'animation: pop .55s cubic-bezier(.34,1.4,.5,1) ' + (T_ROWS + 0.12 + i * STAG) + 's forwards';
     var cgn = String(r[2] || "");
-    var cls = cgn.length > 13 ? " lunghissimo" : (cgn.length > 10 ? " lungo" : "");
+    var fsCg = corpoCg(cgn, spazioPerNome(geo, i));
     dotsH += '<div class="jersey" style="left:' + g.x + 'px;top:' + g.y + 'px;' + st + '">' +
       jerseySVG() +
       '<div class="jn">' + esc(r[0]) + '</div>' +
-      '<div class="cg' + cls + '">' + esc(cgn) + '</div>' +
+      '<div class="cg" style="font-size:' + fsCg + 'px">' + esc(cgn) + '</div>' +
       '</div>';
   });
   document.getElementById("dots").innerHTML = dotsH;
+  // Rimisura col font vero appena e' disponibile: succede entro i primi
+  // fotogrammi, mentre le maglie stanno ancora entrando in scena.
+  if (document.fonts && document.fonts.load) {
+    document.fonts.load("700 34px Mazzard").then(function () {
+      _mzOk = true;
+      var cg = document.querySelectorAll("#dots .jersey .cg");
+      D.t.forEach(function (r, i) {
+        if (!cg[i]) return;
+        cg[i].style.fontSize = corpoCg(String(r[2] || ""), spazioPerNome(geo, i)) + "px";
+      });
+    }).catch(function () {});
+  }
 
   // replay: click o tasto R (utile in regia)
   function replay() { location.reload(); }
