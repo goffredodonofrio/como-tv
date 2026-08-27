@@ -138,6 +138,12 @@
     letter-spacing:.2em;text-transform:uppercase;color:var(--fg-3);margin-top:6px;}
   #canali a.ultimo{border-color:var(--line-gold);}
   #canali a.ultimo span{color:var(--gold-bright);}
+  #canali .cch{display:flex;flex-direction:column;gap:8px;align-items:center;}
+  #canali .copia{font-family:'Mazzard',sans-serif;font-size:8.5px;font-weight:700;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--fg-3);background:transparent;cursor:pointer;
+    border:1px solid var(--line-2);border-radius:4px;padding:6px 8px;width:150px;}
+  #canali .copia:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  #canali .copia.fatto{color:#4FCB8B;border-color:rgba(79,203,139,.5);}
   #canaleBadge{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:800;letter-spacing:.18em;
     text-transform:uppercase;color:#0A0F24;background:var(--gold);border-radius:4px;
     padding:5px 12px;text-decoration:none;white-space:nowrap;}
@@ -222,12 +228,34 @@
     var g = document.getElementById("canaliGriglia");
     var ultimo = null;
     try { ultimo = parseInt(localStorage.getItem(CANALE_LS), 10); } catch (e) {}
+    // versione grafica per i link vMix: alzarla qui quando si pubblicano
+    // modifiche a shell o motori (la cache di vMix ignora i pari-URL)
+    var VMIX_V = 6;
     var gh = "";
     for (var ci = 1; ci <= N_CANALI; ci++) {
-      gh += '<a href="regia.html?c=' + ci + '"' + (ci === ultimo ? ' class="ultimo"' : "") + '>' +
-        '<b>' + ci + '</b><span>' + (ci === ultimo ? "ultimo usato" : "vMix " + ci) + '</span></a>';
+      var linkVmix = "https://goffredodonofrio.github.io/como-tv/11_Script_Live/grafica-live.html?c=" + ci + "&v=" + VMIX_V;
+      gh += '<div class="cch">' +
+        '<a href="regia.html?c=' + ci + '"' + (ci === ultimo ? ' class="ultimo"' : "") + '>' +
+        '<b>' + ci + '</b><span>' + (ci === ultimo ? "ultimo usato" : "vMix " + ci) + '</span></a>' +
+        '<button type="button" class="copia" data-link="' + linkVmix + '">Copia link del tuo vMix</button>' +
+        '</div>';
     }
     g.innerHTML = gh;
+    g.addEventListener("click", function (e) {
+      var b = e.target.closest ? e.target.closest("button.copia") : null;
+      if (!b) return;
+      var testo = b.dataset.link;
+      function fatto() {
+        b.classList.add("fatto");
+        b.textContent = "Copiato ✓";
+        setTimeout(function () { b.classList.remove("fatto"); b.textContent = "Copia link del tuo vMix"; }, 1800);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(testo).then(fatto, function () { window.prompt("Copia a mano:", testo); });
+      } else {
+        window.prompt("Copia a mano:", testo);
+      }
+    });
     document.getElementById("canali").style.display = "block";
     return;   // console ferma finché non scegli il canale
   }
