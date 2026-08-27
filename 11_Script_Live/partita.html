@@ -91,6 +91,13 @@
   .riga{display:flex;gap:10px;margin-bottom:10px;}
   .riga > div{flex:1;min-width:0;}
   .riga > div.stretta{flex:0 0 82px;}
+  .logobox{display:flex;align-items:center;gap:8px;}
+  .logoprev{width:38px;height:38px;flex:none;border-radius:6px;
+    background:rgba(10,15,36,.6);border:1px solid var(--line-2);
+    display:flex;align-items:center;justify-content:center;overflow:hidden;}
+  .logoprev img{max-width:100%;max-height:100%;object-fit:contain;}
+  .logoprev.vuoto::after{content:"—";color:var(--fg-3);font-size:13px;}
+  .logobtn{padding:9px 12px;font-size:10px;}
 
   button{
     font-family:'Mazzard',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.09em;
@@ -313,9 +320,31 @@
           <div class="stretta"><label for="cc">Colore</label><input type="color" id="cc" value="#1735C8"></div>
         </div>
         <div class="riga">
+          <div class="logoriga">
+            <label>Logo casa</label>
+            <div class="logobox">
+              <span class="logoprev vuoto" id="lgprev1"></span>
+              <button type="button" class="logobtn" id="lgcarica1">Carica</button>
+              <button type="button" class="logobtn" id="lgtogli1" title="Togli il logo">&times;</button>
+              <input type="file" id="lgfile1" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
+            </div>
+          </div>
+        </div>
+        <div class="riga">
           <div><label for="no">Nome ospite</label><input type="text" id="no"></div>
           <div class="stretta"><label for="so">Sigla</label><input type="text" id="so" maxlength="3" style="text-transform:uppercase"></div>
           <div class="stretta"><label for="co">Colore</label><input type="color" id="co" value="#C50E1F"></div>
+        </div>
+        <div class="riga">
+          <div class="logoriga">
+            <label>Logo ospite</label>
+            <div class="logobox">
+              <span class="logoprev vuoto" id="lgprev2"></span>
+              <button type="button" class="logobtn" id="lgcarica2">Carica</button>
+              <button type="button" class="logobtn" id="lgtogli2" title="Togli il logo">&times;</button>
+              <input type="file" id="lgfile2" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
+            </div>
+          </div>
         </div>
       </div>
       <div class="panel">
@@ -418,8 +447,8 @@
   var S = {
     livFase: null,
     fase: "off", camp: CAMPIONATI[0].nome, giornata: "", stadio: "",
-    casa: { n: "", s: "", col: "#1735C8", tid: "" },
-    osp:  { n: "", s: "", col: "#C50E1F", tid: "" },
+    casa: { n: "", s: "", col: "#1735C8", tid: "", stemma: "" },
+    osp:  { n: "", s: "", col: "#C50E1F", tid: "", stemma: "" },
     p1: 0, p2: 0, rec: 0,
     clock: { run: false, base: 0, ts: null }
   };
@@ -486,12 +515,13 @@
     var sq = c.squadre[idx];
     if (!sq) return;
     if (lato === "casa") {
-      S.casa = { n: sq.n, s: sq.s, col: sq.col, tid: sq.tid || "" };
+      S.casa = { n: sq.n, s: sq.s, col: sq.col, tid: sq.tid || "", stemma: "" };
       el("nc").value = sq.n; el("sc").value = sq.s; el("cc").value = sq.col;
     } else {
-      S.osp = { n: sq.n, s: sq.s, col: sq.col, tid: sq.tid || "" };
+      S.osp = { n: sq.n, s: sq.s, col: sq.col, tid: sq.tid || "", stemma: "" };
       el("no").value = sq.n; el("so").value = sq.s; el("co").value = sq.col;
     }
+    cercaLoghi();
     dipingi(); invia(true);
   }
 
@@ -515,7 +545,92 @@
       var v = el(cfg[0]).value;
       if (cfg[2] === "s") v = v.toUpperCase().slice(0, 3);
       S[cfg[1]][cfg[2]] = v;
+      if (cfg[2] === "n") cercaLoghi();
       dipingi(); invia(false);
+    });
+  });
+
+  // ── loghi delle squadre ──────────────────────────────────────────
+  // Le giovanili non hanno stemmi su nessuna fonte: si caricano una
+  // volta e restano sul server, richiamati per nome squadra. Se la
+  // squadra ha già uno stemma ufficiale (ESPN) quello ha la precedenza.
+  var loghiSalvati = {};
+
+  function chiaveLogo(nome) {
+    return String(nome || "").toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+  }
+
+  function elencoLoghi() {
+    fetch(PONTE + "?loghi=1", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        loghiSalvati = {};
+        (j.loghi || []).forEach(function (l) { loghiSalvati[l.chiave] = l.url; });
+        cercaLoghi();
+      })
+      .catch(function () {});
+  }
+
+  // appena si sceglie o si scrive una squadra, se c'è un logo salvato
+  // con quel nome viene agganciato da solo
+  function cercaLoghi() {
+    [["casa", 1], ["osp", 2]].forEach(function (cfg) {
+      var sq = S[cfg[0]];
+      if (!sq || sq.tid) { mostraLogo(cfg[1]); return; }
+      var url = loghiSalvati[chiaveLogo(sq.n)];
+      if (url && sq.stemma !== url) { sq.stemma = url; invia(false); }
+      mostraLogo(cfg[1]);
+    });
+  }
+
+  function mostraLogo(n) {
+    var sq = n === 1 ? S.casa : S.osp;
+    var box = el("lgprev" + n);
+    if (!box) return;
+    var src = sq.tid ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + sq.tid + ".png" : sq.stemma;
+    if (src) { box.className = "logoprev"; box.innerHTML = '<img src="' + src + '" alt="">'; }
+    else { box.className = "logoprev vuoto"; box.innerHTML = ""; }
+  }
+
+  [1, 2].forEach(function (n) {
+    var file = el("lgfile" + n);
+    el("lgcarica" + n).addEventListener("click", function () { file.click(); });
+    file.addEventListener("change", function () {
+      var f = file.files && file.files[0];
+      if (!f) return;
+      var sq = n === 1 ? S.casa : S.osp;
+      if (!sq.n) { msg.textContent = "Scrivi prima il nome della squadra: il logo viene salvato con quel nome."; file.value = ""; return; }
+      if (f.size > 2 * 1024 * 1024) { msg.textContent = "Immagine troppo grande: massimo 2 MB."; file.value = ""; return; }
+      var lettore = new FileReader();
+      lettore.onload = function () {
+        msg.textContent = "Carico il logo…";
+        fetch(PONTE, {
+          method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ token: TOKEN, tipo: "logo-carica", nome: sq.n, dati: lettore.result })
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            if (!res.ok) { msg.textContent = "Logo rifiutato: " + (res.errore || ""); return; }
+            sq.stemma = res.url;
+            sq.tid = "";                       // il logo caricato vince su quello ufficiale
+            loghiSalvati[chiaveLogo(sq.n)] = res.url;
+            mostraLogo(n);
+            invia(true);
+            msg.textContent = "Logo di " + sq.n + " salvato: resterà disponibile per le prossime partite.";
+          })
+          .catch(function () { msg.textContent = "Ponte non raggiungibile: logo non caricato."; });
+      };
+      lettore.readAsDataURL(f);
+      file.value = "";
+    });
+
+    el("lgtogli" + n).addEventListener("click", function () {
+      var sq = n === 1 ? S.casa : S.osp;
+      sq.stemma = "";
+      mostraLogo(n);
+      invia(true);
     });
   });
 
@@ -1031,6 +1146,7 @@
     })
     .catch(function () {});
   dipingi();
+  elencoLoghi();
 })();
 </script>
 </body>
