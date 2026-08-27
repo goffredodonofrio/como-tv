@@ -600,16 +600,31 @@ const server = http.createServer((req, res) => {
     });
   }
 
+  // ── vecchi indirizzi ──
+  // La cartella si chiamava 11_Script_Live. Finché non sono stati
+  // ricontrollati tutti i vMix e i segnalibri della redazione, il
+  // vecchio indirizzo deve portare alla pagina giusta invece di dare
+  // schermo nero in onda.
+  if (u.pathname.indexOf("/11_Script_Live/") === 0) {
+    res.writeHead(301, { "Location": u.pathname.replace("/11_Script_Live/", "/live/") + (u.search || "") });
+    return res.end();
+  }
+
   // ── indirizzi brevi ──
   const corta = scorciatoia(u.pathname);
   if (corta) {
-    // il numero del canale viene passato alla pagina come se fosse scritto
-    // nell'indirizzo lungo, così le pagine non cambiano di una riga
+    // Si manda sempre il browser sull'indirizzo lungo, non si serve la
+    // pagina qui: altrimenti resterebbe in barra /formazioni, e tutti i
+    // link relativi della pagina (la barra in alto, la home, le altre
+    // schede) cercherebbero i file nella radice invece che in /live/.
+    // Il numero del canale viene passato come se fosse stato scritto a
+    // mano, così le pagine non cambiano di una riga.
+    let coda = u.search || "";
     if (corta.canale && !q.get("c")) {
-      res.writeHead(302, { "Location": corta.file + "?c=" + corta.canale + (u.search ? "&" + u.search.slice(1) : "") });
-      return res.end();
+      coda = "?c=" + corta.canale + (u.search ? "&" + u.search.slice(1) : "");
     }
-    return serviStatico(req, res, corta.file);
+    res.writeHead(302, { "Location": corta.file + coda });
+    return res.end();
   }
 
   // ── pagine ──
