@@ -175,15 +175,13 @@
     text-transform:uppercase;color:#0A0F24;background:var(--gold);border-radius:4px;
     padding:5px 12px;text-decoration:none;white-space:nowrap;}
   #canaleBadge:hover{background:var(--gold-bright);}
-  #livsel{display:flex;flex-direction:column;gap:5px;align-items:center;margin-bottom:10px;}
-  #livsel .lab{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:700;
-    letter-spacing:.18em;color:var(--fg-3);}
-  #livsel .btns{display:flex;gap:3px;}
-  #livsel button{width:26px;height:26px;padding:0;border-radius:6px;
-    font-family:'Mazzard',sans-serif;font-size:12px;font-weight:800;
-    background:rgba(245,241,230,.06);color:var(--fg-3);border:1px solid var(--line-2);cursor:pointer;}
-  #livsel button.on{background:var(--gold);color:#0A0F24;border-color:var(--gold);}
-  #livsel button.onair{box-shadow:0 0 0 2px rgba(229,27,32,.75);}
+.livrow{display:inline-flex;gap:2px;margin-left:8px;vertical-align:middle;}
+  .livrow .lb{width:19px;height:19px;padding:0;border-radius:4px;
+    font-family:'Mazzard',sans-serif;font-size:10px;font-weight:800;line-height:1;
+    background:rgba(245,241,230,.06);color:var(--fg-3);
+    border:1px solid var(--line-2);cursor:pointer;}
+  .livrow .lb.on{background:var(--gold);color:#0A0F24;border-color:var(--gold);}
+  .item .ib.esci{color:#FF6B6E;border-color:rgba(229,27,32,.45);}
 </style>
 </head>
 <body>
@@ -232,12 +230,6 @@
       <!-- Livelli sovrapposti, come i canali overlay di vMix: il 5 sta sopra
            tutti. Scegliere il livello prima di mandare in onda evita che una
            grafica ne scalzi un'altra. -->
-      <div id="livsel" title="Livello di sovrapposizione: il 5 sta sopra a tutti">
-        <span class="lab">LIVELLO</span>
-        <span class="btns">
-          <button data-liv="1" class="on">1</button><button data-liv="2">2</button><button data-liv="3">3</button><button data-liv="4">4</button><button data-liv="5">5</button>
-        </span>
-      </div>
       <button id="btnTake" disabled>&#9654;<br>In onda</button>
       <button id="btnOut" disabled>&#9632;<br>Fuori onda</button>
       <div id="msg"></div>
@@ -417,7 +409,6 @@
   }
 
   function paint() {
-    pittaLivelli();   // segna i livelli che hanno gia' qualcosa in onda
     var st = cur.state || "standby";
     var onairItem = null;
     cur.items.forEach(function (x) { if (x.id === cur.onair) onairItem = x; });
@@ -436,12 +427,25 @@
 
     var h = "";
     cur.items.forEach(function (it) {
-      var onair = it.id === cur.onair && st === "play";
+      // livello della voce e stato del SUO livello: cosi' si vede riga per
+      // riga cosa c'e' in onda e dove, e si puo' togliere solo quella.
+      var L = it.liv || 1;
+      var lv = cur.liv ? cur.liv[String(L)] : null;
+      var onair = lv ? (lv.state === "play" && lv.onair === it.id)
+                     : (it.id === cur.onair && st === "play");
       var quando = it.ts ? new Date(it.ts).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "";
       h += '<div class="item' + (it.id === selId ? " sel" : "") + (onair ? " onair" : "") + '" data-id="' + esc(it.id) + '" draggable="true">' +
         '<span class="grip" title="Trascina per riordinare">&#8942;&#8942;</span>' +
         '<span class="tit">' + esc(it.titolo || it.tipo) + '<small>' + esc(it.tipo.toUpperCase()) + (it.dest ? " · " + (it.dest === "partita" ? "LIVE MATCH" : "LIVE STUDIO") : "") + (quando ? " · caricata " + quando : "") + '</small></span>' +
-        (onair ? '<span class="badge">IN ONDA</span>' : "") +
+        '<span class="livrow" title="Livello di sovrapposizione: il 5 sta sopra a tutti">' +
+          [1,2,3,4,5].map(function (n) {
+            return '<button class="lb' + (n === L ? " on" : "") + '" data-act="liv" data-id="' +
+                   esc(it.id) + '" data-liv="' + n + '">' + n + '</button>';
+          }).join("") +
+        '</span>' +
+        (onair ? '<span class="badge">IN ONDA</span>' +
+                 '<button class="ib esci" data-act="off" data-id="' + esc(it.id) +
+                 '" data-liv="' + L + '" title="Togli dall\'onda questo livello">&#9632;</button>' : "") +
         '<button class="ib" data-act="ren" data-id="' + esc(it.id) + '" title="Rinomina">&#9998;</button>' +
         '<button class="ib" data-act="up" data-id="' + esc(it.id) + '" title="Su">&uarr;</button>' +
         '<button class="ib" data-act="down" data-id="' + esc(it.id) + '" title="Gi&ugrave;">&darr;</button>' +
@@ -474,7 +478,7 @@
         if (primaLettura) {
           primaLettura = false;
           if (j.state === "play") {
-            post({ tipo: "regia-state", state: "out", liv: LIVELLO },
+            post({ tipo: "regia-state", state: "out", liv: (onairItem && onairItem.liv) || 1 },
               "All'apertura si parte fuori onda: la grafica rimasta in onda è stata spenta.");
           }
         }
@@ -533,40 +537,13 @@
 
   // IN ONDA manda la voce che sta in anteprima; FUORI ONDA la toglie:
   // sono gli UNICI comandi che toccano l'onda
-  // Livello scelto per i comandi d'onda. Resta memorizzato sulla postazione:
-  // in regia si tende a usare sempre lo stesso per lo stesso tipo di grafica.
-  var LIV_LS = "comotv.regia.livello";
-  var LIVELLO = (function () {
-    var v = parseInt(localStorage.getItem(LIV_LS), 10);
-    return (v >= 1 && v <= 5) ? v : 1;
-  })();
-  var livsel = document.getElementById("livsel");
-  function pittaLivelli() {
-    if (!livsel) return;
-    var b = livsel.querySelectorAll("button");
-    for (var i = 0; i < b.length; i++) {
-      var L = String(i + 1);
-      b[i].classList.toggle("on", (i + 1) === LIVELLO);
-      // cerchio rosso: su quel livello c'e' gia' qualcosa in onda
-      var lv = cur && cur.liv ? cur.liv[L] : null;
-      b[i].classList.toggle("onair", !!(lv && lv.state === "play" && lv.onair));
-    }
-  }
-  if (livsel) livsel.addEventListener("click", function (e) {
-    var b = e.target.closest ? e.target.closest("button[data-liv]") : null;
-    if (!b) return;
-    LIVELLO = parseInt(b.dataset.liv, 10) || 1;
-    try { localStorage.setItem(LIV_LS, String(LIVELLO)); } catch (err) {}
-    pittaLivelli();
-  });
-
   var btnTake = document.getElementById("btnTake");
   btnTake.addEventListener("click", function () {
     if (!selId) return;
     var it0 = null;
     cur.items.forEach(function (x) { if (x.id === selId) it0 = x; });
     if (!it0) return;
-    post({ tipo: "regia-state", state: "play", id: selId, liv: LIVELLO }, "In onda tra un istante…");
+    post({ tipo: "regia-state", state: "play", id: selId, liv: it0.liv || 1 }, "In onda tra un istante…");
     fetch(PONTE + "?regia=item&id=" + encodeURIComponent(selId) + "&canale=" + CANALE, { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (dati) { countdown(stimaAnimazione(it0.tipo, dati), it0.titolo); })
@@ -577,6 +554,8 @@
     var b = e.target.closest ? e.target.closest("button[data-act]") : null;
     if (b) {
       var id = b.dataset.id;
+      if (b.dataset.act === "liv") post({ tipo: "regia-liv", id: id, liv: +b.dataset.liv });
+      if (b.dataset.act === "off") post({ tipo: "regia-state", state: "out", liv: +b.dataset.liv }, "Livello " + b.dataset.liv + " fuori onda.");
       if (b.dataset.act === "up") post({ tipo: "regia-move", id: id, dir: "up" });
       if (b.dataset.act === "down") post({ tipo: "regia-move", id: id, dir: "down" });
       if (b.dataset.act === "ren") {
@@ -597,7 +576,15 @@
     }
   });
 
-  btnOut.addEventListener("click", function () { fermaCountdown(); post({ tipo: "regia-state", state: "out", liv: LIVELLO }, "Uscita…"); });
+  // Fuori onda: toglie il livello della voce selezionata, non un livello scelto
+  // altrove. Prima con un interruttore globale non si riusciva a spegnere il
+  // livello giusto se la selezione era su un'altra grafica.
+  btnOut.addEventListener("click", function () {
+    fermaCountdown();
+    var it = null;
+    cur.items.forEach(function (x) { if (x.id === selId) it = x; });
+    post({ tipo: "regia-state", state: "out", liv: it ? (it.liv || 1) : 1 }, "Uscita…");
+  });
 
   // ── riordino con trascinamento ──
   var dragging = null;
