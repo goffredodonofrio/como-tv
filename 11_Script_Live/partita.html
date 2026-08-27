@@ -133,11 +133,11 @@
   .gitem .gonair{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:800;letter-spacing:.14em;
     color:#FF6B6E;border:1px solid rgba(229,27,32,.6);border-radius:3px;padding:2px 7px;white-space:nowrap;}
   #gvuota{color:var(--fg-3);font-size:12.5px;padding:6px 2px;}
-  #gOut{width:100%;margin-top:6px;font-family:'Mazzard',sans-serif;font-size:12px;font-weight:800;
+  #gOut,#fOff{width:100%;margin-top:6px;font-family:'Mazzard',sans-serif;font-size:12px;font-weight:800;
     letter-spacing:.12em;text-transform:uppercase;padding:12px;border-radius:7px;cursor:pointer;
     border:1.5px solid rgba(229,27,32,.5);background:transparent;color:#FF6B6E;}
-  #gOut:hover:not(:disabled){background:rgba(229,27,32,.12);border-color:var(--red);}
-  #gOut:disabled{opacity:.35;cursor:default;}
+  #gOut:hover:not(:disabled),#fOff:hover:not(:disabled){background:rgba(229,27,32,.12);border-color:var(--red);}
+  #gOut:disabled,#fOff:disabled{opacity:.35;cursor:default;}
   .glink{font-size:11.5px;margin-top:8px;color:var(--fg-3);}
   .glink a{color:var(--gold-bright);text-decoration:none;}
 
@@ -256,13 +256,9 @@
 
     <div>
       <div class="panel">
-        <h2>In onda</h2>
-        <div class="bottoniera">
-          <button id="fLive">&#9679; Scoreboard live</button>
-          <button id="fInt">Intervallo</button>
-          <button id="fFin">Risultato finale</button>
-          <button id="fOff" class="rosso">&#9632; Spegni tutto</button>
-        </div>
+        <h2>Player partita</h2>
+        <div id="fasi"></div>
+        <button id="fOff" disabled>&#9632; Fuori onda partita</button>
       </div>
       <div class="panel">
         <h2>Grafiche della partita <small id="gcount" style="font-family:'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--fg-3);font-weight:500;font-size:11px"></small></h2>
@@ -457,11 +453,30 @@
     });
   });
 
-  // ── fasi ──
+  // ── player partita: le schermate del match come una scaletta,
+  //    dentro col ▶ e fuori con un tasto solo (stessa logica delle grafiche) ──
+  var FASI = [
+    { f: "pres", t: "PRESENTAZIONE",    d: "Campionato e squadre" },
+    { f: "live", t: "SCOREBOARD LIVE",  d: "Punteggio e cronometro" },
+    { f: "int",  t: "INTERVALLO",       d: "Parziale a schermo pieno" },
+    { f: "fin",  t: "RISULTATO FINALE", d: "Risultato a schermo pieno" }
+  ];
   function setFase(f) { S.fase = f; dipingi(); invia(true); }
-  el("fLive").addEventListener("click", function () { setFase("live"); });
-  el("fInt").addEventListener("click", function () { setFase("int"); });
-  el("fFin").addEventListener("click", function () { setFase("fin"); });
+  (function () {
+    var h = "";
+    FASI.forEach(function (x) {
+      h += '<div class="gitem" data-fase="' + x.f + '">' +
+        '<button class="gb" data-fplay="' + x.f + '" title="Manda in onda">&#9654;</button>' +
+        '<span class="gt">' + x.t + '<small>' + x.d + '</small></span>' +
+        '<span class="gonair" style="display:none">IN ONDA</span>' +
+        '</div>';
+    });
+    el("fasi").innerHTML = h;
+  })();
+  el("fasi").addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("button[data-fplay]") : null;
+    if (b) setFase(b.dataset.fplay);
+  });
   el("fOff").addEventListener("click", function () { setFase("off"); });
 
   // ── resa dello stato sui controlli ──
@@ -478,10 +493,12 @@
     document.querySelectorAll("#recbox button").forEach(function (b) {
       b.classList.toggle("attivo", parseInt(b.dataset.rec, 10) === (S.rec || 0));
     });
-    el("fLive").classList.toggle("attivo", S.fase === "live");
-    el("fInt").classList.toggle("attivo", S.fase === "int");
-    el("fFin").classList.toggle("attivo", S.fase === "fin");
-    el("fOff").classList.toggle("attivo", S.fase === "off");
+    document.querySelectorAll("#fasi .gitem").forEach(function (r) {
+      var onair = r.dataset.fase === S.fase;
+      r.classList.toggle("onair", onair);
+      r.querySelector(".gonair").style.display = onair ? "" : "none";
+    });
+    el("fOff").disabled = S.fase === "off" || !S.fase;
   }
   setInterval(dipingi, 250);
 
