@@ -427,15 +427,51 @@
       .catch(function () { thumbcap.textContent = "Anteprima non disponibile."; });
   }
 
+  // Le grafiche vivono su cinque livelli sovrapposti. I campi in cima alla
+  // risposta del ponte ("state", "onair", "dati") rispecchiano SOLO il
+  // livello 1: sono rimasti per le pagine vecchie. Leggere quelli faceva
+  // dire "PRONTA" alla console mentre il livello 5 stava trasmettendo, e
+  // lasciava il monitor vuoto. Qui si guardano tutti e cinque.
+  function livelliInPlay() {
+    var out = [];
+    for (var L = 1; L <= 5; L++) {
+      var lv = cur.liv && cur.liv[String(L)];
+      if (lv && lv.state === "play" && lv.onair) out.push({ n: L, lv: lv });
+    }
+    return out;
+  }
+  function livelloDiSopra() {          // quello che si vede davanti a tutti
+    var v = livelliInPlay();
+    return v.length ? v[v.length - 1] : null;
+  }
+  function titoloDi(id) {
+    var t = "";
+    (cur.items || []).forEach(function (x) { if (x.id === id) t = x.titolo || x.tipo; });
+    return t;
+  }
+
+  // La didascalia si riscrive a ogni giro (cosi' dice sempre il vero anche
+  // quando cambia un livello sotto), il monitor invece si ricarica solo se
+  // cambia la grafica davanti: ricaricarlo rifarebbe partire l'animazione.
+  function pittaPgmCap() {
+    var v = livelliInPlay();
+    if (!v.length) { pgmcap.textContent = "Nessuna grafica in onda (layer trasparente)."; return; }
+    var sopra = v[v.length - 1];
+    var elenco = v.map(function (x) { return x.n + " · " + titoloDi(x.lv.onair); }).join("   |   ");
+    pgmcap.textContent = v.length > 1
+      ? "In onda su " + v.length + " livelli — " + elenco + " (il monitor mostra il " + sopra.n + ", quello davanti)."
+      : "In onda: " + titoloDi(sopra.lv.onair) + " — replica locale del layer vMix.";
+  }
+
   // monitor IN ONDA: replica dal vivo il layer vMix
   function showLive() {
-    shownPlayNonce = cur.playNonce;
+    var sopra = livelloDiSopra();
+    if (!sopra) { clearLive(); return; }
+    shownPlayNonce = sopra.lv.playNonce;
     document.getElementById("thumbbox").classList.add("onair");
-    thumb.src = engineOf(cur.tipo) + "?d=" + b64url(cur.dati || {}) + "&n=" + cur.playNonce + "&muto=1";
+    thumb.src = engineOf(sopra.lv.tipo) + "?d=" + b64url(sopra.lv.dati || {}) + "&n=" + sopra.lv.playNonce + "&muto=1";
     fitThumb();
-    var it = null;
-    cur.items.forEach(function (x) { if (x.id === cur.onair) it = x; });
-    pgmcap.textContent = "In onda" + (it ? ": " + it.titolo : "") + " — replica locale del layer vMix.";
+    pittaPgmCap();
   }
 
   function clearLive() {
@@ -446,13 +482,14 @@
   }
 
   function paint() {
-    var st = cur.state || "standby";
-    var onairItem = null;
-    cur.items.forEach(function (x) { if (x.id === cur.onair) onairItem = x; });
+    var inPlay = livelliInPlay();
+    var st = inPlay.length ? "play" : "standby";
 
-    elState.className = st === "play" ? "play" : (cur.items.length ? "standby" : "");
-    elStateTxt.textContent = st === "play"
-      ? "IN ONDA — " + (onairItem ? onairItem.titolo.toUpperCase() : "")
+    elState.className = inPlay.length ? "play" : (cur.items.length ? "standby" : "");
+    elStateTxt.textContent = inPlay.length
+      ? "IN ONDA — " + inPlay.map(function (x) {
+          return (inPlay.length > 1 ? "L" + x.n + " " : "") + titoloDi(x.lv.onair).toUpperCase();
+        }).join("  +  ")
       : (cur.items.length ? "PRONTA — " + cur.items.length + " IN SCALETTA" : "SCALETTA VUOTA");
 
     pittaLivPan();
@@ -464,7 +501,10 @@
     elEmpty.style.display = cur.items.length ? "none" : "block";
 
     if (selId && !cur.items.some(function (x) { return x.id === selId; })) selId = null;
-    if (!selId && cur.items.length) selId = cur.onair || cur.items[0].id;
+    if (!selId && cur.items.length) {
+      var sp = livelloDiSopra();
+      selId = (sp && sp.lv.onair) || cur.items[0].id;
+    }
 
     var h = "";
     cur.items.forEach(function (it) {
@@ -501,8 +541,10 @@
 
     // i due monitor sono indipendenti: PGM segue lo stato del ponte,
     // PVW segue solo la selezione
-    if (st === "play" && cur.dati) {
-      if (cur.playNonce !== shownPlayNonce) showLive();
+    var sopra = livelloDiSopra();
+    if (sopra) {
+      if (sopra.lv.playNonce !== shownPlayNonce) showLive();
+      else pittaPgmCap();          // e' cambiato un livello sotto: solo il testo
     } else if (shownPlayNonce !== null || pgmcap.textContent === "") {
       clearLive();
     }
@@ -526,8 +568,16 @@
           // (o un timeout della sessione) non deve far sparire le grafiche
           // dal vMix. Se qualcosa sta trasmettendo lo si segnala soltanto:
           // a toglierlo è l'operatore, col tasto FUORI ONDA.
-          if (j.state === "play") {
-            msg.textContent = "Attenzione: c'è già una grafica in onda su questo canale.";
+          // si contano tutti i livelli, non solo il primo
+          var accesi = 0;
+          for (var L = 1; L <= 5; L++) {
+            var lv = j.liv && j.liv[String(L)];
+            if (lv && lv.state === "play" && lv.onair) accesi++;
+          }
+          if (accesi) {
+            msg.textContent = accesi > 1
+              ? "Attenzione: ci sono già " + accesi + " grafiche in onda su questo canale."
+              : "Attenzione: c'è già una grafica in onda su questo canale.";
           }
         }
         if (j.nonce === lastNonce) return;
