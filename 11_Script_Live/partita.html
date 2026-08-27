@@ -156,24 +156,31 @@
   #btnTake{background:transparent;color:#4FCB8B;border:2px solid rgba(79,203,139,.5);}
   #btnTake:hover:not(:disabled){background:rgba(79,203,139,.12);border-color:#4FCB8B;}
   #btnTakeOut{background:transparent;color:#FF6B6E;border:2px solid rgba(229,27,32,.5);}
-#livpan{display:flex;flex-direction:column;gap:5px;align-items:center;margin-bottom:12px;}
+#livpan{display:flex;flex-direction:column;gap:6px;align-items:center;margin-bottom:12px;}
   #livpan .lab{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:700;
     letter-spacing:.18em;color:var(--fg-3);}
-  #livpan .btns{display:flex;gap:4px;}
-  #livpan button{width:30px;height:30px;padding:0;border-radius:7px;
-    font-family:'Mazzard',sans-serif;font-size:13px;font-weight:800;
+  #livpan .btns{display:flex;gap:6px;}
+  #livpan button{width:38px;height:38px;padding:0;border-radius:9px;
+    font-family:'Mazzard',sans-serif;font-size:15px;font-weight:800;
     background:rgba(245,241,230,.06);color:var(--fg-3);
-    border:1px solid var(--line-2);cursor:pointer;}
-  #livpan button.attivo{color:#FFFFFF;border-color:rgba(229,27,32,.75);background:rgba(229,27,32,.16);}
-  #livpan button.mira{box-shadow:0 0 0 2px var(--gold);}
-  #livpan .cap{font-size:11px;color:var(--fg-3);min-height:14px;text-align:center;max-width:160px;}
-  .livrow{display:inline-flex;gap:2px;margin-left:8px;vertical-align:middle;}
-  .lb{width:19px;height:19px;padding:0;border-radius:4px;
-    font-family:'Mazzard',sans-serif;font-size:10px;font-weight:800;line-height:1;
+    border:1px solid var(--line-2);cursor:pointer;touch-action:manipulation;}
+  #livpan button:hover{background:rgba(245,241,230,.14);color:var(--ivory);}
+  #livpan button.attivo{color:#FF8A8C;border-color:rgba(229,27,32,.7);background:rgba(229,27,32,.18);}
+  #livpan button.mira{box-shadow:0 0 0 3px var(--gold);}
+  #livpan .cap{font-size:11px;color:var(--fg-3);min-height:14px;text-align:center;max-width:170px;}
+  .livrow{display:inline-flex;gap:4px;margin-left:10px;vertical-align:middle;}
+  /* Tasti piu' grandi: 19px erano difficili da centrare col trackpad, e in
+     regia si preme di fretta. touch-action toglie il ritardo del doppio tocco. */
+  .lb{width:28px;height:28px;padding:0;border-radius:6px;
+    font-family:'Mazzard',sans-serif;font-size:12px;font-weight:800;line-height:1;
     background:rgba(245,241,230,.06);color:var(--fg-3);
-    border:1px solid var(--line-2);cursor:pointer;}
+    border:1px solid var(--line-2);cursor:pointer;touch-action:manipulation;}
+  .lb:hover{background:rgba(245,241,230,.14);color:var(--ivory);}
+  /* rosso = quel livello e' occupato, chiunque ci sia sopra */
+  .lb.occupato{color:#FF8A8C;border-color:rgba(229,27,32,.55);background:rgba(229,27,32,.14);}
   .lb.on{background:var(--gold);color:#0A0F24;border-color:var(--gold);}
-  .lb.esci{margin-left:6px;color:#FF6B6E;border-color:rgba(229,27,32,.45);}
+  .lb.on.occupato{background:var(--gold);color:#0A0F24;box-shadow:0 0 0 2px rgba(229,27,32,.8);}
+  .lb.esci{margin-left:8px;color:#FF6B6E;border-color:rgba(229,27,32,.45);}
   #btnTakeOut:hover:not(:disabled){background:rgba(229,27,32,.12);border-color:var(--red);}
   .takebar button:disabled{opacity:.35;cursor:default;}
   #pgmbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px;
@@ -562,8 +569,11 @@
         '<span class="gt">' + x.t + '<small>' + x.d + (attiva ? " · IN ONDA" : "") + '</small></span>' +
         '<span class="livrow" title="Livello di sovrapposizione: il 5 sta sopra a tutti">' +
           [1,2,3,4,5].map(function (n) {
-            return '<button class="lb' + (n === FASE_LIV[x.f] ? " on" : "") +
-                   '" data-fliv="' + n + '" data-f="' + x.f + '">' + n + '</button>';
+            var occ = !!titoloSuLiv(n);
+            return '<button class="lb' + (n === FASE_LIV[x.f] ? " on" : "") + (occ ? " occupato" : "") +
+                   '" data-fliv="' + n + '" data-f="' + x.f + '"' +
+                   ' title="' + (occ ? "Livello " + n + " occupato" : "Livello " + n + " libero") + '">' +
+                   n + '</button>';
           }).join("") +
         '</span>' +
         (attiva ? '<button class="lb esci" data-foff="' + x.f + '" title="Togli dall\'onda">&#9632;</button>' : "") +
@@ -639,8 +649,11 @@
         '<span class="gt">' + gEsc(it.titolo || it.tipo) + '<small>' + gEsc(it.tipo) + (it.dest ? " · " + (it.dest === "partita" ? "LIVE MATCH" : "LIVE STUDIO") : "") + (onair ? " · IN ONDA" : "") + '</small></span>' +
         '<span class="livrow" title="Livello di sovrapposizione: il 5 sta sopra a tutti">' +
           [1,2,3,4,5].map(function (n) {
-            return '<button class="lb' + (n === L ? " on" : "") + '" data-gact="liv" data-gid="' +
-                   gEsc(it.id) + '" data-liv="' + n + '">' + n + '</button>';
+            var occ = !!titoloSuLiv(n);
+            return '<button class="lb' + (n === L ? " on" : "") + (occ ? " occupato" : "") +
+                   '" data-gact="liv" data-gid="' + gEsc(it.id) + '" data-liv="' + n + '"' +
+                   ' title="' + (occ ? "Livello " + n + " occupato" : "Livello " + n + " libero") + '">' +
+                   n + '</button>';
           }).join("") +
         '</span>' +
         (onair ? '<button class="lb esci" data-gact="off" data-liv="' + L +
@@ -669,21 +682,24 @@
   // Livello su cui agiscono i due tasti d'onda: di norma segue la grafica
   // scelta, cliccando un livello nel pannello si punta quello.
   var LIVMIRA = null;
-  function statoLiv(L) { return (gScaletta.liv && gScaletta.liv[String(L)]) || null; }
+  // gScaletta e' dichiarata piu' avanti: al primo disegno delle fasi esiste
+  // come nome ma non ha ancora valore (le var si sollevano, i valori no).
+  function scaletta() { return (typeof gScaletta !== "undefined" && gScaletta) || { items: [] }; }
+  function statoLiv(L) { var g = scaletta(); return (g.liv && g.liv[String(L)]) || null; }
   function titoloSuLiv(L) {
     // prima le schermate del player, poi le grafiche della scaletta
     var f = faseSuLiv(L);
     if (f) { var d = null; FASI.forEach(function (x) { if (x.f === f) d = x; }); return d ? d.t : f; }
     var lv = statoLiv(L); if (!lv || lv.state !== "play" || !lv.onair) return "";
     var t = "";
-    (gScaletta.items || []).forEach(function (x) { if (x.id === lv.onair) t = x.titolo || x.tipo; });
+    (scaletta().items || []).forEach(function (x) { if (x.id === lv.onair) t = x.titolo || x.tipo; });
     return t;
   }
   function livDiSelezione() {
     if (sel && sel.tipo === "fase") return FASE_LIV[sel.fase] || 1;
     if (!sel || sel.tipo !== "grafica") return 1;
     var it = null;
-    (gScaletta.items || []).forEach(function (x) { if (x.id === sel.id) it = x; });
+    (scaletta().items || []).forEach(function (x) { if (x.id === sel.id) it = x; });
     return it ? (it.liv || 1) : 1;
   }
   function mira() { return LIVMIRA || livDiSelezione(); }

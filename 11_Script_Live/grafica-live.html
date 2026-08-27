@@ -86,9 +86,20 @@
     f.onload = function () {
       if (String(mio) !== String(f.dataset.gen)) return;
       if (f.src.indexOf("about:blank") >= 0) return;
-      f.classList.remove("muto");
-      void f.offsetWidth;               // senza il ricalcolo la dissolvenza non parte
-      f.classList.add("on");
+      // 'load' dice che le risorse ci sono, NON che il documento ha gia'
+      // disegnato: in quel buco il compositore puo' mostrare la tela di base
+      // dell'iframe, ed e' il lampo che restava. Si aspetta un fotogramma
+      // della finestra figlia, che scatta quando sta per disegnare davvero.
+      var scopri = function () {
+        if (String(mio) !== String(f.dataset.gen)) return;
+        f.classList.remove("muto");
+        void f.offsetWidth;             // senza il ricalcolo la dissolvenza non parte
+        f.classList.add("on");
+      };
+      var w = null;
+      try { w = f.contentWindow; } catch (e) {}
+      if (w && w.requestAnimationFrame) w.requestAnimationFrame(function () { w.requestAnimationFrame(scopri); });
+      else requestAnimationFrame(function () { requestAnimationFrame(scopri); });
     };
     f.src = eng + "?d=" + b64url(j.dati || {}) + "&n=" + j.playNonce;
   }
