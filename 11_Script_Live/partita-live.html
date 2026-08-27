@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Partita Live · Como TV</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  /* input vMix DEDICATO alla partita: trasparente, convive col layer
+     grafiche. color-scheme:dark come gli altri motori. */
+  :root{color-scheme:dark;}
+  html,body{width:100%;height:100%;overflow:hidden;background:transparent;}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+    transform-origin:center center;
+    font-family:'DM Sans',system-ui,sans-serif;
+  }
+
+  /* ── scorebug (in alto a sinistra, stile Como TV) ── */
+  #bug{position:absolute;left:64px;top:46px;height:58px;display:none;
+    align-items:stretch;filter:drop-shadow(0 8px 22px rgba(0,0,0,.35));}
+  #bug.on{display:flex;}
+  #bugbar{width:6px;background:linear-gradient(180deg,#C9A24B 0%,#AC8C47 100%);
+    border-radius:3px 0 0 3px;}
+  #bugclock{display:flex;align-items:center;gap:10px;padding:0 18px;
+    background:linear-gradient(180deg,rgba(30,35,54,.94) 0%,rgba(16,21,40,.94) 100%);}
+  #clock{font-family:'Mazzard',sans-serif;font-weight:700;font-size:27px;color:#F5F1E6;
+    font-variant-numeric:tabular-nums;letter-spacing:.03em;min-width:78px;text-align:center;}
+  #rec{display:none;font-family:'Mazzard',sans-serif;font-weight:800;font-size:17px;
+    color:#10152A;background:#C9A24B;border-radius:4px;padding:3px 8px;}
+  #rec.on{display:block;}
+  #bugteams{display:flex;align-items:center;gap:0;
+    background:linear-gradient(180deg,rgba(60,64,82,.92) 0%,rgba(26,31,51,.94) 55%,rgba(22,27,47,.94) 100%);
+    border-radius:0 6px 6px 0;padding:0 20px;}
+  .tm{display:flex;align-items:center;gap:9px;}
+  .tm .sw{width:5px;height:26px;border-radius:2.5px;}
+  .tm .sg{font-family:'Mazzard',sans-serif;font-weight:800;font-size:26px;color:#FFFFFF;
+    letter-spacing:.05em;}
+  #score{font-family:'Mazzard',sans-serif;font-weight:800;font-size:29px;color:#C9A24B;
+    font-variant-numeric:tabular-nums;letter-spacing:.05em;padding:0 18px;}
+
+  /* ── schermate piene: intervallo e finale ── */
+  #full{position:absolute;inset:0;display:none;color:#F5F1E6;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);}
+  #full.on{display:block;}
+  #fcamp{position:absolute;left:0;right:0;top:270px;text-align:center;
+    font-weight:600;font-size:24px;letter-spacing:.3em;color:#C9A24B;text-transform:uppercase;}
+  #ftit{position:absolute;left:0;right:0;top:308px;text-align:center;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:96px;letter-spacing:.02em;
+    color:#F5F1E6;text-transform:uppercase;}
+  #frule{position:absolute;left:50%;top:452px;width:520px;height:3px;transform:translateX(-50%);
+    background:linear-gradient(90deg,rgba(201,162,75,.15) 0%,#C9A24B 50%,rgba(201,162,75,.15) 100%);}
+  #fteams{position:absolute;left:0;right:0;top:540px;display:flex;
+    align-items:center;justify-content:center;gap:70px;}
+  .fteam{display:flex;flex-direction:column;align-items:center;gap:16px;width:520px;}
+  .fteam .fsw{width:74px;height:8px;border-radius:4px;}
+  .fteam .fnm{font-family:'Mazzard',sans-serif;font-weight:800;font-size:46px;color:#FFFFFF;
+    text-transform:uppercase;text-align:center;line-height:1.05;letter-spacing:.02em;}
+  #fscore{font-family:'Mazzard',sans-serif;font-weight:800;font-size:150px;color:#C9A24B;
+    font-variant-numeric:tabular-nums;letter-spacing:.03em;white-space:nowrap;}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="bug">
+    <div id="bugbar"></div>
+    <div id="bugclock"><span id="clock">00:00</span><span id="rec"></span></div>
+    <div id="bugteams">
+      <span class="tm"><span class="sw" id="sw1"></span><span class="sg" id="sg1">&mdash;</span></span>
+      <span id="score">0 - 0</span>
+      <span class="tm"><span class="sg" id="sg2">&mdash;</span><span class="sw" id="sw2"></span></span>
+    </div>
+  </div>
+
+  <div id="full">
+    <div id="fcamp"></div>
+    <div id="ftit"></div>
+    <div id="frule"></div>
+    <div id="fteams">
+      <div class="fteam"><div class="fsw" id="fsw1"></div><div class="fnm" id="fnm1"></div></div>
+      <div id="fscore">0 - 0</div>
+      <div class="fteam"><div class="fsw" id="fsw2"></div><div class="fnm" id="fnm2"></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
+  var POLL_MS = 1000;
+
+  var CANALE = (function () {
+    var c = parseInt(new URLSearchParams(location.search).get("c"), 10);
+    return (c >= 1 && c <= 7) ? c : 1;
+  })();
+
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    document.getElementById("stage").style.transform = "translate(-50%,-50%) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+
+  var S = null;        // stato corrente dal ponte
+  var offset = 0;      // Date.now() - orologio server (per il cronometro)
+
+  var elBug = document.getElementById("bug");
+  var elFull = document.getElementById("full");
+  var elClock = document.getElementById("clock");
+  var elRec = document.getElementById("rec");
+
+  function testo(id, v) { document.getElementById(id).textContent = v; }
+  function colore(id, v) { document.getElementById(id).style.background = v || "#8A8B96"; }
+
+  function applica(j) {
+    S = j;
+    if (j.srv) offset = Date.now() - j.srv;
+    var fase = j.fase || "off";
+
+    if (fase === "live") {
+      testo("sg1", (j.casa && j.casa.s) || "—");
+      testo("sg2", (j.osp && j.osp.s) || "—");
+      colore("sw1", j.casa && j.casa.col);
+      colore("sw2", j.osp && j.osp.col);
+      testo("score", (j.p1 || 0) + " - " + (j.p2 || 0));
+      if (j.rec > 0) { elRec.textContent = "+" + j.rec; elRec.className = "on"; }
+      else elRec.className = "";
+      elBug.classList.add("on");
+      elFull.classList.remove("on");
+    } else if (fase === "int" || fase === "fin") {
+      testo("fcamp", j.camp || "");
+      testo("ftit", fase === "int" ? "INTERVALLO" : "RISULTATO FINALE");
+      testo("fnm1", (j.casa && j.casa.n) || "");
+      testo("fnm2", (j.osp && j.osp.n) || "");
+      colore("fsw1", j.casa && j.casa.col);
+      colore("fsw2", j.osp && j.osp.col);
+      testo("fscore", (j.p1 || 0) + " - " + (j.p2 || 0));
+      elFull.classList.add("on");
+      elBug.classList.remove("on");
+    } else {
+      elBug.classList.remove("on");
+      elFull.classList.remove("on");
+    }
+  }
+
+  // cronometro: calcolato in locale sull'ancora del server (zero deriva
+  // dal polling; il tempo scorre fluido anche tra un poll e l'altro)
+  function tickClock() {
+    if (!S || !S.clock) { elClock.textContent = "00:00"; return; }
+    var ck = S.clock;
+    var sec = ck.base || 0;
+    if (ck.run && ck.ts) sec += Math.max(0, (Date.now() - offset - ck.ts) / 1000);
+    sec = Math.max(0, Math.floor(sec));
+    var m = Math.floor(sec / 60), s = sec % 60;
+    elClock.textContent = (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+  }
+  setInterval(tickClock, 200);
+
+  function poll() {
+    fetch(PONTE + "?partita=1&canale=" + CANALE, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(applica)
+      .catch(function () {});
+  }
+  setInterval(poll, POLL_MS);
+  poll();
+})();
+</script>
+</body>
+</html>
