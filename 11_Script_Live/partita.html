@@ -289,6 +289,16 @@
         </div></div>
         <div class="riga">
           <div>
+            <label for="giornata">Giornata</label>
+            <input type="text" id="giornata" placeholder="es. 12&ordf; giornata">
+          </div>
+          <div>
+            <label for="stadio">Stadio</label>
+            <input type="text" id="stadio" placeholder="es. Stadio Sinigaglia &middot; Como">
+          </div>
+        </div>
+        <div class="riga">
+          <div>
             <label for="sqc">Squadra casa</label>
             <select id="sqc"></select>
           </div>
@@ -359,19 +369,19 @@
   //    quando ci sarà una fonte dati, questo elenco diventa un fallback ──
   var CAMPIONATI = [
     { nome: "Under 17 – Girone B", squadre: [
-      { n: "Como",          s: "COM", col: "#1735C8" },
-      { n: "Atalanta",      s: "ATA", col: "#1E5AA0" },
-      { n: "Cagliari",      s: "CAG", col: "#AD1E2D" },
-      { n: "Hellas Verona", s: "VER", col: "#FFD100" },
-      { n: "Inter",         s: "INT", col: "#0A2A6B" },
-      { n: "L.R. Vicenza",  s: "VIC", col: "#D8121A" },
-      { n: "Mantova",       s: "MAN", col: "#C8102E" },
-      { n: "Milan",         s: "MIL", col: "#C50E1F" },
-      { n: "Monza",         s: "MON", col: "#D2001C" },
-      { n: "Padova",        s: "PAD", col: "#B31E23" },
-      { n: "Südtirol",      s: "SUD", col: "#DD0741" },
-      { n: "Udinese",       s: "UDI", col: "#5C5F66" },
-      { n: "Venezia",       s: "VEN", col: "#FF7A00" }
+      { n: "Como",          s: "COM", col: "#1735C8" , tid: "2572" },
+      { n: "Atalanta",      s: "ATA", col: "#1E5AA0" , tid: "105" },
+      { n: "Cagliari",      s: "CAG", col: "#AD1E2D" , tid: "2925" },
+      { n: "Hellas Verona", s: "VER", col: "#FFD100" , tid: "119" },
+      { n: "Inter",         s: "INT", col: "#0A2A6B" , tid: "110" },
+      { n: "L.R. Vicenza",  s: "VIC", col: "#D8121A" , tid: "120" },
+      { n: "Mantova",       s: "MAN", col: "#C8102E" , tid: "3991" },
+      { n: "Milan",         s: "MIL", col: "#C50E1F" , tid: "103" },
+      { n: "Monza",         s: "MON", col: "#D2001C" , tid: "4007" },
+      { n: "Padova",        s: "PAD", col: "#B31E23" , tid: "3952" },
+      { n: "Südtirol",      s: "SUD", col: "#DD0741" , tid: "11139" },
+      { n: "Udinese",       s: "UDI", col: "#5C5F66" , tid: "118" },
+      { n: "Venezia",       s: "VEN", col: "#FF7A00" , tid: "17530" }
     ]},
     { nome: "Como Cup", squadre: [
       { n: "Como", s: "COM", col: "#1735C8" }
@@ -407,9 +417,9 @@
   // ── stato del match (specchio locale di quello sul ponte) ──
   var S = {
     livFase: null,
-    fase: "off", camp: CAMPIONATI[0].nome,
-    casa: { n: "", s: "", col: "#1735C8" },
-    osp:  { n: "", s: "", col: "#C50E1F" },
+    fase: "off", camp: CAMPIONATI[0].nome, giornata: "", stadio: "",
+    casa: { n: "", s: "", col: "#1735C8", tid: "" },
+    osp:  { n: "", s: "", col: "#C50E1F", tid: "" },
     p1: 0, p2: 0, rec: 0,
     clock: { run: false, base: 0, ts: null }
   };
@@ -476,10 +486,10 @@
     var sq = c.squadre[idx];
     if (!sq) return;
     if (lato === "casa") {
-      S.casa = { n: sq.n, s: sq.s, col: sq.col };
+      S.casa = { n: sq.n, s: sq.s, col: sq.col, tid: sq.tid || "" };
       el("nc").value = sq.n; el("sc").value = sq.s; el("cc").value = sq.col;
     } else {
-      S.osp = { n: sq.n, s: sq.s, col: sq.col };
+      S.osp = { n: sq.n, s: sq.s, col: sq.col, tid: sq.tid || "" };
       el("no").value = sq.n; el("so").value = sq.s; el("co").value = sq.col;
     }
     dipingi(); invia(true);
@@ -491,6 +501,13 @@
   });
   elSqc.addEventListener("change", function () { applicaSquadra("casa", parseInt(elSqc.value, 10)); });
   elSqo.addEventListener("change", function () { applicaSquadra("osp", parseInt(elSqo.value, 10)); });
+
+  [["giornata", "giornata"], ["stadio", "stadio"]].forEach(function (cfg) {
+    el(cfg[0]).addEventListener("input", function () {
+      S[cfg[1]] = el(cfg[0]).value;
+      invia(false);
+    });
+  });
 
   [["nc", "casa", "n"], ["sc", "casa", "s"], ["cc", "casa", "col"],
    ["no", "osp", "n"], ["so", "osp", "s"], ["co", "osp", "col"]].forEach(function (cfg) {
@@ -758,7 +775,8 @@
   function selezionaFase(f, titolo) {
     sel = { tipo: "fase", fase: f, titolo: titolo };
     // fotografia dello stato locale con la fase scelta: SOLO anteprima
-    var stato = { fase: f, camp: S.camp, casa: S.casa, osp: S.osp,
+    var stato = { fase: f, camp: S.camp, giornata: S.giornata, stadio: S.stadio,
+                  casa: S.casa, osp: S.osp,
                   p1: S.p1, p2: S.p2, rec: S.rec,
                   clock: { run: false, base: elapsed(), ts: null } };
     pvw.src = "partita-live.html?prev=" + b64url(stato);
@@ -938,6 +956,8 @@
       try { localStorage.setItem(FASE_LIV_LS, JSON.stringify(FASE_LIV)); } catch (e) {}
       if (typeof disegnaFasi === "function") disegnaFasi();
     }
+    S.giornata = j.giornata || ""; S.stadio = j.stadio || "";
+    metti("giornata", S.giornata); metti("stadio", S.stadio);
     metti("nc", S.casa.n); metti("sc", S.casa.s); metti("cc", S.casa.col);
     metti("no", S.osp.n);  metti("so", S.osp.s);  metti("co", S.osp.col);
     if (!campoInUso(elCamp)) {
@@ -983,6 +1003,7 @@
         // si riprende TUTTO com'è: dati, cronometro e schermata in onda.
         // Ricaricare la pagina non deve cambiare ciò che sta trasmettendo.
         S = { fase: j.fase, camp: j.camp || S.camp,
+              giornata: j.giornata || "", stadio: j.stadio || "",
               casa: j.casa || S.casa, osp: j.osp || S.osp,
               p1: j.p1 || 0, p2: j.p2 || 0, rec: j.rec || 0,
               clock: j.clock || S.clock, livFase: j.livFase || S.livFase };
@@ -996,6 +1017,7 @@
           try { localStorage.setItem(FASE_LIV_LS, JSON.stringify(FASE_LIV)); } catch (e) {}
           disegnaFasi();
         }
+        el("giornata").value = S.giornata; el("stadio").value = S.stadio;
         el("nc").value = S.casa.n || ""; el("sc").value = S.casa.s || ""; el("cc").value = S.casa.col || "#1735C8";
         el("no").value = S.osp.n || ""; el("so").value = S.osp.s || ""; el("co").value = S.osp.col || "#C50E1F";
         for (var i = 0; i < CAMPIONATI.length; i++) if (CAMPIONATI[i].nome === S.camp) elCamp.value = i;
