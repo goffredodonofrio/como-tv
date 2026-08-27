@@ -17,7 +17,7 @@
      sotto, il 5 sopra: scorebug in basso, schermate piene in alto. */
   .liv{
     position:absolute;inset:0;border:0;width:100%;height:100%;
-    opacity:0;transition:opacity .55s ease;pointer-events:none;
+    opacity:0;transition:opacity .55s ease;pointer-events:none;background:transparent;color-scheme:dark;
   }
   .liv.on{opacity:1;}
   .liv.out{opacity:0;transition:opacity .85s ease;}
@@ -47,7 +47,7 @@
   })();
 
   var frame = [];
-  for (var i = 1; i <= NLIV; i++) frame[i] = document.getElementById("liv" + i);
+  for (var i = 1; i <= NLIV; i++) { frame[i] = document.getElementById("liv" + i); frame[i].dataset.gen = "0"; }
   var ultimo = {};        // playNonce gia' servito, livello per livello
   var primaVolta = true;
 
@@ -68,16 +68,26 @@
     web:        "media-vmix.html"
   };
 
+  // Il livello resta invisibile finche' il documento non e' caricato: si
+  // accende solo al 'load'. Accenderlo subito, come si faceva prima, mostrava
+  // per un fotogramma la tela bianca del browser — il lampo che si vedeva
+  // entrando col sottopancia sopra il punteggio.
   function play(L, j) {
     var f = frame[L]; if (!f) return;
     var eng = ENGINES[j.tipo] || ENGINES.formazione;
-    f.classList.remove("out");
+    f.classList.remove("on", "out");
+    var mio = ++f.dataset.gen;          // scarta i 'load' di caricamenti superati
+    f.onload = function () {
+      if (String(mio) !== String(f.dataset.gen)) return;
+      if (f.src.indexOf("about:blank") >= 0) return;
+      f.classList.add("on");
+    };
     f.src = eng + "?d=" + b64url(j.dati || {}) + "&n=" + j.playNonce;
-    f.classList.add("on");
   }
 
   function fadeOut(L) {
     var f = frame[L]; if (!f) return;
+    f.dataset.gen = String((+f.dataset.gen || 0) + 1);   // annulla un 'load' in arrivo
     f.classList.remove("on");
     f.classList.add("out");
     setTimeout(function () {
@@ -88,6 +98,7 @@
 
   function clearNow(L) {
     var f = frame[L]; if (!f) return;
+    f.dataset.gen = String((+f.dataset.gen || 0) + 1);
     f.classList.remove("on", "out");
     f.src = "about:blank";
   }

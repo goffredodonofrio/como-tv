@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Regia · Como TV</title>
+<title>Live Studio · Como TV</title>
 <style>
   @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
   @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
@@ -175,7 +175,18 @@
     text-transform:uppercase;color:#0A0F24;background:var(--gold);border-radius:4px;
     padding:5px 12px;text-decoration:none;white-space:nowrap;}
   #canaleBadge:hover{background:var(--gold-bright);}
-.livrow{display:inline-flex;gap:2px;margin-left:8px;vertical-align:middle;}
+#livpan{display:flex;flex-direction:column;gap:5px;align-items:center;margin-bottom:12px;}
+  #livpan .lab{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:700;
+    letter-spacing:.18em;color:var(--fg-3);}
+  #livpan .btns{display:flex;gap:4px;}
+  #livpan button{width:30px;height:30px;padding:0;border-radius:7px;
+    font-family:'Mazzard',sans-serif;font-size:13px;font-weight:800;
+    background:rgba(245,241,230,.06);color:var(--fg-3);
+    border:1px solid var(--line-2);cursor:pointer;}
+  #livpan button.attivo{color:#FFFFFF;border-color:rgba(229,27,32,.75);background:rgba(229,27,32,.16);}
+  #livpan button.mira{box-shadow:0 0 0 2px var(--gold);}
+  #livpan .cap{font-size:11px;color:var(--fg-3);min-height:14px;text-align:center;max-width:160px;}
+  .livrow{display:inline-flex;gap:2px;margin-left:8px;vertical-align:middle;}
   .livrow .lb{width:19px;height:19px;padding:0;border-radius:4px;
     font-family:'Mazzard',sans-serif;font-size:10px;font-weight:800;line-height:1;
     background:rgba(245,241,230,.06);color:var(--fg-3);
@@ -189,7 +200,7 @@
 <nav class="nav">
   <a class="nav-brand" href="../index.html">COMO TV</a>
   <span class="nav-sep">·</span>
-  <span class="nav-here">Grafiche Live — Regia</span>
+  <span class="nav-here">Grafiche Live — Live Studio</span>
   <div class="nav-links">
     <a href="classifiche.html">Grafiche Live</a>
     <a href="classifiche-campionati.html">Classifiche</a>
@@ -197,7 +208,8 @@
     <a href="formazioni.html">Formazioni</a>
     <a href="marcatori.html">Marcatori</a>
     <a href="sottopancia.html">Sottopancia</a>
-    <a href="regia.html" class="qui">Regia</a>
+    <a href="regia.html" class="qui">Live Studio</a>
+    <a href="partita.html">Live Match</a>
     <a href="../index.html">Home</a>
   </div>
 </nav>
@@ -214,7 +226,7 @@
 
   <header class="page">
     <div class="eyebrow">Como TV · Regia grafiche</div>
-    <h1 style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">Messa in onda
+    <h1 style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">Live Studio
       <a id="canaleBadge" href="regia.html" title="Cambia canale">CANALE&nbsp;&mdash;</a></h1>
   </header>
 
@@ -227,9 +239,15 @@
       <div id="thumbcap">Clicca una grafica in scaletta: la vedi qui senza toccare l'onda.</div>
     </div>
     <div class="takecol">
-      <!-- Livelli sovrapposti, come i canali overlay di vMix: il 5 sta sopra
-           tutti. Scegliere il livello prima di mandare in onda evita che una
-           grafica ne scalzi un'altra. -->
+      <!-- I livelli attivi, qui dove si comanda l'onda: si clicca un livello e
+           i due tasti agiscono su QUELLO. Prima il "Fuori onda" guardava lo
+           stato complessivo, che rispecchia solo il livello 1: con una grafica
+           sul 3 restava spento. -->
+      <div id="livpan">
+        <span class="lab">LIVELLI</span>
+        <span class="btns" id="livbtns"></span>
+        <span class="cap" id="livcap"></span>
+      </div>
       <button id="btnTake" disabled>&#9654;<br>In onda</button>
       <button id="btnOut" disabled>&#9632;<br>Fuori onda</button>
       <div id="msg"></div>
@@ -319,7 +337,7 @@
   var badge = document.getElementById("canaleBadge");
   badge.textContent = "CANALE " + CANALE + " · LIVE STUDIO";
   badge.href = "regia.html";
-  document.title = "Regia C" + CANALE + " · Como TV";
+  document.title = "Live Studio C" + CANALE + " · Como TV";
 
   var elState = document.getElementById("state");
   var elStateTxt = document.getElementById("stateTxt");
@@ -418,7 +436,11 @@
       ? "IN ONDA — " + (onairItem ? onairItem.titolo.toUpperCase() : "")
       : (cur.items.length ? "PRONTA — " + cur.items.length + " IN SCALETTA" : "SCALETTA VUOTA");
 
-    btnOut.disabled = st !== "play";
+    pittaLivPan();
+    // il tasto guarda il livello mirato, non lo stato complessivo: con una
+    // grafica sul livello 3 lo stato generale dice "standby" e il tasto
+    // restava spento anche se c'era da spegnere
+    btnOut.disabled = !titoloSuLiv(mira());
     elCount.textContent = cur.items.length ? cur.items.length + " / 12" : "";
     elEmpty.style.display = cur.items.length ? "none" : "block";
 
@@ -537,13 +559,63 @@
 
   // IN ONDA manda la voce che sta in anteprima; FUORI ONDA la toglie:
   // sono gli UNICI comandi che toccano l'onda
+  // Livello su cui agiscono i due tasti d'onda. Di norma segue la grafica
+  // selezionata; cliccando un livello nel pannello si punta quello.
+  var LIVMIRA = null;
+  var livbtns = document.getElementById("livbtns");
+  var livcap = document.getElementById("livcap");
+
+  function statoLiv(L) {
+    return (cur.liv && cur.liv[String(L)]) || null;
+  }
+  function titoloSuLiv(L) {
+    var lv = statoLiv(L); if (!lv || lv.state !== "play" || !lv.onair) return "";
+    var t = "";
+    cur.items.forEach(function (x) { if (x.id === lv.onair) t = x.titolo || x.tipo; });
+    return t;
+  }
+  function livDiSelezione() {
+    var it = null;
+    cur.items.forEach(function (x) { if (x.id === selId) it = x; });
+    return it ? (it.liv || 1) : 1;
+  }
+  function mira() { return LIVMIRA || livDiSelezione(); }
+
+  function pittaLivPan() {
+    if (!livbtns) return;
+    var h = "", m = mira();
+    for (var L = 1; L <= 5; L++) {
+      var acceso = !!titoloSuLiv(L);
+      h += '<button data-liv="' + L + '"' +
+           ' class="' + (acceso ? "attivo " : "") + (L === m ? "mira" : "") + '"' +
+           ' title="' + (acceso ? "In onda: " + esc(titoloSuLiv(L)) : "Livello libero") + '">' +
+           L + '</button>';
+    }
+    livbtns.innerHTML = h;
+    var t = titoloSuLiv(m);
+    livcap.textContent = t ? ("Livello " + m + ": " + t) : ("Livello " + m + " libero");
+  }
+  if (livbtns) livbtns.addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("button[data-liv]") : null;
+    if (!b) return;
+    LIVMIRA = +b.dataset.liv;
+    // se su quel livello c'e' qualcosa, la porto anche in anteprima
+    var lv = statoLiv(LIVMIRA);
+    if (lv && lv.state === "play" && lv.onair) selId = lv.onair;
+    paint();
+  });
+
   var btnTake = document.getElementById("btnTake");
   btnTake.addEventListener("click", function () {
     if (!selId) return;
     var it0 = null;
     cur.items.forEach(function (x) { if (x.id === selId) it0 = x; });
     if (!it0) return;
-    post({ tipo: "regia-state", state: "play", id: selId, liv: it0.liv || 1 }, "In onda tra un istante…");
+    var L = mira();
+    // se ho puntato un livello diverso da quello della grafica, la grafica si
+    // sposta li': un solo posto dove sta scritto il livello, niente doppioni
+    if ((it0.liv || 1) !== L) post({ tipo: "regia-liv", id: selId, liv: L });
+    post({ tipo: "regia-state", state: "play", id: selId, liv: L }, "In onda tra un istante…");
     fetch(PONTE + "?regia=item&id=" + encodeURIComponent(selId) + "&canale=" + CANALE, { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (dati) { countdown(stimaAnimazione(it0.tipo, dati), it0.titolo); })
@@ -572,6 +644,7 @@
     var row = e.target.closest ? e.target.closest(".item") : null;
     if (row) {
       selId = row.dataset.id;
+      LIVMIRA = null;   // torna a seguire il livello della grafica scelta
       paint();
     }
   });
@@ -581,9 +654,8 @@
   // livello giusto se la selezione era su un'altra grafica.
   btnOut.addEventListener("click", function () {
     fermaCountdown();
-    var it = null;
-    cur.items.forEach(function (x) { if (x.id === selId) it = x; });
-    post({ tipo: "regia-state", state: "out", liv: it ? (it.liv || 1) : 1 }, "Uscita…");
+    var L = mira();
+    post({ tipo: "regia-state", state: "out", liv: L }, "Livello " + L + " fuori onda.");
   });
 
   // ── riordino con trascinamento ──
