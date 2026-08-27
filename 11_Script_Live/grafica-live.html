@@ -12,29 +12,33 @@
      motori, altrimenti Chrome rende opachi gli iframe trasparenti. */
   :root{color-scheme:dark;}
   html,body{width:100%;height:100%;overflow:hidden;background:transparent;}
+
   /* Cinque livelli sovrapposti, come i canali overlay di vMix: ognuno vive per
      conto suo, quindi una grafica non ne scalza piu' un'altra. Il livello 1 sta
      sotto, il 5 sopra: scorebug in basso, schermate piene in alto. */
-  .liv{
+  .liv{position:absolute;inset:0;pointer-events:none;}
+
+  /* DUE telai per livello. Il contenuto nuovo si carica in quello nascosto e
+     compare solo quando ha gia' disegnato; poi i due si scambiano. Cosi' non
+     esiste l'istante in cui un documento non ancora dipinto e' agganciato al
+     livello in onda — era da li' che veniva il lampo bianco, la tela di base
+     dell'iframe prima che il CSS della pagina entrasse in vigore. */
+  .fr{
     position:absolute;inset:0;border:0;width:100%;height:100%;
-    opacity:0;transition:opacity .55s ease;pointer-events:none;background:transparent;color-scheme:dark;
+    opacity:0;transition:opacity .55s ease;pointer-events:none;
+    background:transparent;color-scheme:dark;
   }
-  .liv.on{opacity:1;}
-  .liv.out{opacity:0;transition:opacity .85s ease;}
-  /* Sparire di colpo, senza dissolvenza: serve un istante prima di cambiare
-     documento. Lasciando correre la dissolvenza in uscita mentre l'iframe
-     carica, per mezzo secondo si vede la tela bianca del browser dissolversi:
-     e' il lampo che si notava entrando col sottopancia sopra il punteggio. */
-  .liv.muto{opacity:0!important;transition:none!important;}
+  .fr.on{opacity:1;}
+  .fr.muto{opacity:0!important;transition:none!important;}
 </style>
 </head>
 <body>
 
-<iframe class="liv" id="liv1" style="z-index:1" src="about:blank" allowtransparency="true"></iframe>
-<iframe class="liv" id="liv2" style="z-index:2" src="about:blank" allowtransparency="true"></iframe>
-<iframe class="liv" id="liv3" style="z-index:3" src="about:blank" allowtransparency="true"></iframe>
-<iframe class="liv" id="liv4" style="z-index:4" src="about:blank" allowtransparency="true"></iframe>
-<iframe class="liv" id="liv5" style="z-index:5" src="about:blank" allowtransparency="true"></iframe>
+<div class="liv" style="z-index:1"><iframe class="fr muto" id="l1a" src="about:blank" allowtransparency="true"></iframe><iframe class="fr muto" id="l1b" src="about:blank" allowtransparency="true"></iframe></div>
+<div class="liv" style="z-index:2"><iframe class="fr muto" id="l2a" src="about:blank" allowtransparency="true"></iframe><iframe class="fr muto" id="l2b" src="about:blank" allowtransparency="true"></iframe></div>
+<div class="liv" style="z-index:3"><iframe class="fr muto" id="l3a" src="about:blank" allowtransparency="true"></iframe><iframe class="fr muto" id="l3b" src="about:blank" allowtransparency="true"></iframe></div>
+<div class="liv" style="z-index:4"><iframe class="fr muto" id="l4a" src="about:blank" allowtransparency="true"></iframe><iframe class="fr muto" id="l4b" src="about:blank" allowtransparency="true"></iframe></div>
+<div class="liv" style="z-index:5"><iframe class="fr muto" id="l5a" src="about:blank" allowtransparency="true"></iframe><iframe class="fr muto" id="l5b" src="about:blank" allowtransparency="true"></iframe></div>
 
 <script>
 (function () {
@@ -43,6 +47,7 @@
   var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
   var POLL_MS = 1500;
   var NLIV = 5;
+  var DISS = 550;    // durata della dissolvenza, allineata al CSS
 
   // canale playout: ogni vMix carica il SUO url (?c=1..7) e ascolta
   // solo la scaletta di quel canale
@@ -51,8 +56,13 @@
     return (c >= 1 && c <= 7) ? c : 1;
   })();
 
-  var frame = [];
-  for (var i = 1; i <= NLIV; i++) { frame[i] = document.getElementById("liv" + i); frame[i].dataset.gen = "0"; }
+  // stato di ogni livello: i due telai e quale dei due e' davanti
+  var L = {};
+  for (var i = 1; i <= NLIV; i++) {
+    L[i] = { a: document.getElementById("l" + i + "a"),
+             b: document.getElementById("l" + i + "b"),
+             fronte: "a", gen: 0 };
+  }
   var ultimo = {};        // playNonce gia' servito, livello per livello
   var primaVolta = true;
 
@@ -73,68 +83,77 @@
     web:        "media-vmix.html"
   };
 
-  // Il livello resta invisibile finche' il documento non e' caricato: si
-  // accende solo al 'load'. Accenderlo subito, come si faceva prima, mostrava
-  // per un fotogramma la tela bianca del browser — il lampo che si vedeva
-  // entrando col sottopancia sopra il punteggio.
-  function play(L, j) {
-    var f = frame[L]; if (!f) return;
+  function davanti(n) { return L[n].fronte === "a" ? L[n].a : L[n].b; }
+  function dietro(n)  { return L[n].fronte === "a" ? L[n].b : L[n].a; }
+
+  // Il documento ha davvero disegnato? 'load' non basta: dice che le risorse
+  // ci sono. Un fotogramma della finestra figlia scatta quando sta per dipingere.
+  function alPrimoDisegno(f, poi) {
+    // Rete di sicurezza obbligatoria: requestAnimationFrame NON scatta in un
+    // documento che il browser non sta disegnando (scheda nascosta, input non
+    // in programma). Senza questo, in quei casi la grafica non comparirebbe
+    // MAI — e in onda perdere una grafica e' peggio di un lampo.
+    var fatto = false;
+    function una() { if (fatto) return; fatto = true; poi(); }
+    setTimeout(una, 400);
+    var w = null;
+    try { w = f.contentWindow; } catch (e) {}
+    if (w && w.requestAnimationFrame) w.requestAnimationFrame(function () { w.requestAnimationFrame(una); });
+    else requestAnimationFrame(function () { requestAnimationFrame(una); });
+  }
+
+  function spegni(f) { f.classList.add("muto"); f.classList.remove("on"); f.src = "about:blank"; }
+
+  function play(n, j) {
+    var st = L[n], back = dietro(n), front = davanti(n);
     var eng = ENGINES[j.tipo] || ENGINES.formazione;
-    f.classList.add("muto");            // invisibile all'istante, niente dissolvenza
-    f.classList.remove("on", "out");
-    var mio = ++f.dataset.gen;          // scarta i 'load' di caricamenti superati
-    f.onload = function () {
-      if (String(mio) !== String(f.dataset.gen)) return;
-      if (f.src.indexOf("about:blank") >= 0) return;
-      // 'load' dice che le risorse ci sono, NON che il documento ha gia'
-      // disegnato: in quel buco il compositore puo' mostrare la tela di base
-      // dell'iframe, ed e' il lampo che restava. Si aspetta un fotogramma
-      // della finestra figlia, che scatta quando sta per disegnare davvero.
-      var scopri = function () {
-        if (String(mio) !== String(f.dataset.gen)) return;
-        f.classList.remove("muto");
-        void f.offsetWidth;             // senza il ricalcolo la dissolvenza non parte
-        f.classList.add("on");
-      };
-      var w = null;
-      try { w = f.contentWindow; } catch (e) {}
-      if (w && w.requestAnimationFrame) w.requestAnimationFrame(function () { w.requestAnimationFrame(scopri); });
-      else requestAnimationFrame(function () { requestAnimationFrame(scopri); });
+    var mio = ++st.gen;
+    back.classList.add("muto");
+    back.classList.remove("on");
+    back.style.zIndex = 2;      // il nuovo entra sopra il vecchio
+    front.style.zIndex = 1;
+    back.onload = function () {
+      if (mio !== st.gen) return;
+      if (back.src.indexOf("about:blank") >= 0) return;
+      alPrimoDisegno(back, function () {
+        if (mio !== st.gen) return;
+        back.classList.remove("muto");
+        void back.offsetWidth;   // senza il ricalcolo la dissolvenza non parte
+        back.classList.add("on");
+        front.classList.remove("on");          // dissolvenza incrociata
+        setTimeout(function () {
+          if (mio !== st.gen) return;
+          spegni(front);
+          st.fronte = (st.fronte === "a") ? "b" : "a";
+        }, DISS + 150);
+      });
     };
-    f.src = eng + "?d=" + b64url(j.dati || {}) + "&n=" + j.playNonce;
+    back.src = eng + "?d=" + b64url(j.dati || {}) + "&n=" + j.playNonce;
   }
 
-  function fadeOut(L) {
-    var f = frame[L]; if (!f) return;
-    f.dataset.gen = String((+f.dataset.gen || 0) + 1);   // annulla un 'load' in arrivo
-    f.classList.remove("muto");         // qui la dissolvenza SERVE: il contenuto resta
-    f.classList.remove("on");
-    f.classList.add("out");
-    setTimeout(function () {
-      f.src = "about:blank";
-      f.classList.remove("out");
-    }, 950);
+  function fadeOut(n) {
+    var st = L[n], front = davanti(n);
+    st.gen++;                                  // annulla un caricamento in arrivo
+    front.classList.remove("muto");            // qui la dissolvenza SERVE
+    front.classList.remove("on");
+    setTimeout(function () { spegni(front); }, 900);
   }
 
-  function clearNow(L) {
-    var f = frame[L]; if (!f) return;
-    f.dataset.gen = String((+f.dataset.gen || 0) + 1);
-    f.classList.add("muto");            // via subito, senza far vedere il bianco
-    f.classList.remove("on", "out");
-    f.src = "about:blank";
+  function clearNow(n) {
+    var st = L[n];
+    st.gen++;
+    spegni(st.a); spegni(st.b);
   }
 
   // Applica lo stato di UN livello. Non tocca gli altri: e' tutto il punto.
-  function applica(L, st) {
-    if (!st || st.playNonce == null || st.playNonce === ultimo[L]) return;
-    var prima = ultimo[L] === undefined;
-    ultimo[L] = st.playNonce;
-    // al primo giro: se c'e' una grafica in onda la rimostro (ripresa dopo un
-    // riavvio dell'input vMix), altrimenti resto trasparente
-    if (prima && primaVolta && st.state !== "play") { clearNow(L); return; }
-    if (st.state === "play" && st.dati) play(L, st);
-    else if (st.state === "out") fadeOut(L);
-    else clearNow(L);
+  function applica(n, s) {
+    if (!s || s.playNonce == null || s.playNonce === ultimo[n]) return;
+    var prima = ultimo[n] === undefined;
+    ultimo[n] = s.playNonce;
+    if (prima && primaVolta && s.state !== "play") { clearNow(n); return; }
+    if (s.state === "play" && s.dati) play(n, s);
+    else if (s.state === "out") fadeOut(n);
+    else clearNow(n);
   }
 
   function tick() {
@@ -143,8 +162,7 @@
       .then(function (j) {
         if (!j) return;
         if (j.liv) {
-          // ponte aggiornato: ogni livello ha il suo stato
-          for (var L = 1; L <= NLIV; L++) applica(L, j.liv[L] || j.liv[String(L)]);
+          for (var n = 1; n <= NLIV; n++) applica(n, j.liv[n] || j.liv[String(n)]);
         } else {
           // ponte non ancora aggiornato: si comporta come prima, tutto sul
           // livello 1. Cosi' la pagina nuova funziona anche col ponte vecchio.
