@@ -156,6 +156,22 @@
     else clearNow(n);
   }
 
+
+  // ── ricarica automatica ──────────────────────────────────────────
+  // Questa pagina resta accesa per ore dentro vMix: senza questo
+  // controllo continuerebbe a girare la versione caricata all'avvio,
+  // anche dopo un aggiornamento del disegno. Il ponte dichiara la
+  // versione delle pagine: se cambia, ci si ricarica da soli — ma mai
+  // mentre qualcosa è in onda, per non far sparire una grafica.
+  var verIniziale = null;
+  function controllaVersione(j, inOnda) {
+    if (!j || !j.ver) return;
+    if (verIniziale === null) { verIniziale = j.ver; return; }
+    if (j.ver === verIniziale) return;
+    if (inOnda) return;               // si aspetta il fuori onda
+    location.reload();
+  }
+
   function tick() {
     fetch(PONTE + "?regia=1&canale=" + CANALE, { cache: "no-store" })
       .then(function (r) { return r.json(); })
@@ -169,6 +185,12 @@
           applica(1, j);
         }
         primaVolta = false;
+        var qualcosaInOnda = false;
+        for (var k in ultimo) {
+          var st = j.liv ? (j.liv[k] || j.liv[String(k)]) : j;
+          if (st && st.state === "play") qualcosaInOnda = true;
+        }
+        controllaVersione(j, qualcosaInOnda);
       })
       .catch(function () {});
   }
