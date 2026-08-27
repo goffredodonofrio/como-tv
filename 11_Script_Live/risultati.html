@@ -454,6 +454,12 @@
           var st = (c.status && c.status.type) || {};
           var detail = String(st.detail || "");
           var rig = (home && home.shootoutScore != null) || (away && away.shootoutScore != null);
+          // ESPN manda 0-0 anche quando la partita non si e' giocata: e' il
+          // suo valore di partenza, non un risultato. Vale per quelle in
+          // calendario (state "pre") e anche per le RINVIATE, che sono "post"
+          // ma con completed:false — quelle sfuggivano al primo controllo.
+          // Il punteggio si mostra se si sta giocando o se e' stata completata.
+          var haPunteggio = st.state === "in" || st.completed === true;
           var matchStatus = "-";
           if (rig) matchStatus = "d.c.r.";
           else if (/AET/i.test(detail)) matchStatus = "d.t.s.";
@@ -464,6 +470,7 @@
             tid2: away && away.team ? String(away.team.id || "") : "",
             checked: i < MAXEV,
             finita: st.state === "post",
+            haPunteggio: haPunteggio,
             statoBreve: st.shortDetail || st.detail || "",
             campi: [
               comp.nome,
@@ -471,10 +478,10 @@
               dataOrario(ev.date),
               matchStatus,
               home ? grafName(home.team.displayName || home.team.name) : "",
-              home ? (home.score != null ? String(home.score) : "") : "",
+              home && haPunteggio && home.score != null ? String(home.score) : "",
               home && home.shootoutScore != null ? String(home.shootoutScore) : "",
               away ? grafName(away.team.displayName || away.team.name) : "",
-              away ? (away.score != null ? String(away.score) : "") : "",
+              away && haPunteggio && away.score != null ? String(away.score) : "",
               away && away.shootoutScore != null ? String(away.shootoutScore) : ""
             ]
           };
