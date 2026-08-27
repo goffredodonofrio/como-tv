@@ -439,11 +439,22 @@
     btnTake.disabled = !selId;
   }
 
+  // regola di apertura: un playout parte SEMPRE fuori onda — se una
+  // sessione precedente ha lasciato una grafica in onda, la spegniamo
+  var primaLettura = true;
+
   function tick() {
     fetch(PONTE + "?regia=1&canale=" + CANALE, { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (!j || j.nonce == null) throw new Error("x");
+        if (primaLettura) {
+          primaLettura = false;
+          if (j.state === "play") {
+            post({ tipo: "regia-state", state: "out" },
+              "All'apertura si parte fuori onda: la grafica rimasta in onda è stata spenta.");
+          }
+        }
         if (j.nonce === lastNonce) return;
         if (dragging) return;   // non ridisegno sotto le dita durante un trascinamento
         lastNonce = j.nonce;

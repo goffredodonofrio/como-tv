@@ -703,11 +703,19 @@
     gPost({ tipo: "regia-state", state: "out" }, "Grafica fuori onda.");
   });
 
+  var gPrimaLettura = true;
   function gPoll() {
     fetch(PONTE + "?regia=1&canale=" + CANALE, { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (!j || j.nonce == null) return;
+        if (gPrimaLettura) {
+          gPrimaLettura = false;
+          if (j.state === "play") {
+            gPost({ tipo: "regia-state", state: "out" },
+              "All'apertura si parte fuori onda: la grafica rimasta in onda è stata spenta.");
+          }
+        }
         gScaletta = j;
         gPaint();
       })
@@ -730,7 +738,10 @@
       // deve sovrascrivere i suoi click: vale solo a pannello "vergine"
       if (seq > 0) return;
       if (j && j.fase) {
-        S = { fase: j.fase, camp: j.camp || S.camp,
+        // regola di apertura: il playout parte fuori onda — dati e
+        // cronometro si riprendono, la fase in onda no
+        var faseResidua = j.fase !== "off";
+        S = { fase: "off", camp: j.camp || S.camp,
               casa: j.casa || S.casa, osp: j.osp || S.osp,
               p1: j.p1 || 0, p2: j.p2 || 0, rec: j.rec || 0,
               clock: j.clock || S.clock };
@@ -738,6 +749,10 @@
         el("no").value = S.osp.n || ""; el("so").value = S.osp.s || ""; el("co").value = S.osp.col || "#C50E1F";
         for (var i = 0; i < CAMPIONATI.length; i++) if (CAMPIONATI[i].nome === S.camp) elCamp.value = i;
         riempiSquadre();
+        if (faseResidua) {
+          invia(true);
+          msg.textContent = "All'apertura si parte fuori onda: la schermata rimasta in onda è stata spenta.";
+        }
       }
       dipingi();
     })
