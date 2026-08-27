@@ -533,18 +533,54 @@
     { f: "int",  t: "INTERVALLO",       d: "Parziale a schermo pieno" },
     { f: "fin",  t: "RISULTATO FINALE", d: "Risultato a schermo pieno" }
   ];
-  function setFase(f) { S.fase = f; dipingi(); invia(true); }
-  (function () {
+  // Livello di ogni schermata del player: il punteggio sta tipicamente basso,
+  // le schermate piene in alto. Resta memorizzato sulla postazione.
+  var FASE_LIV_LS = "comotv.partita.faseliv";
+  var FASE_LIV = (function () {
+    var d = { pres: 4, live: 2, int: 4, fin: 4 };
+    try {
+      var v = JSON.parse(localStorage.getItem(FASE_LIV_LS) || "null");
+      if (v) FASI.forEach(function (x) { if (v[x.f] >= 1 && v[x.f] <= 5) d[x.f] = v[x.f]; });
+    } catch (e) {}
+    return d;
+  })();
+  function salvaFaseLiv() {
+    try { localStorage.setItem(FASE_LIV_LS, JSON.stringify(FASE_LIV)); } catch (e) {}
+  }
+  function faseSuLiv(L) {
+    if (!S.fase || S.fase === "off") return null;
+    return FASE_LIV[S.fase] === L ? S.fase : null;
+  }
+  function setFase(f) { S.fase = f; dipingi(); invia(true); disegnaFasi(); }
+  var _faseVista = null;
+  function disegnaFasi() {
     var h = "";
     FASI.forEach(function (x) {
-      h += '<div class="gitem" data-fase="' + x.f + '">' +
-        '<span class="gt">' + x.t + '<small>' + x.d + '</small></span>' +
+      var attiva = S.fase === x.f;
+      h += '<div class="gitem' + (attiva ? " onair" : "") +
+           (sel && sel.tipo === "fase" && sel.fase === x.f ? " sel" : "") + '" data-fase="' + x.f + '">' +
+        '<span class="gt">' + x.t + '<small>' + x.d + (attiva ? " · IN ONDA" : "") + '</small></span>' +
+        '<span class="livrow" title="Livello di sovrapposizione: il 5 sta sopra a tutti">' +
+          [1,2,3,4,5].map(function (n) {
+            return '<button class="lb' + (n === FASE_LIV[x.f] ? " on" : "") +
+                   '" data-fliv="' + n + '" data-f="' + x.f + '">' + n + '</button>';
+          }).join("") +
+        '</span>' +
+        (attiva ? '<button class="lb esci" data-foff="' + x.f + '" title="Togli dall\'onda">&#9632;</button>' : "") +
         '</div>';
     });
     el("fasi").innerHTML = h;
-  })();
+  }
+  disegnaFasi();
   // click su una schermata = SOLO anteprima (l'onda si tocca coi tasti del monitor)
   el("fasi").addEventListener("click", function (e) {
+    var lb = e.target.closest ? e.target.closest("button[data-fliv],button[data-foff]") : null;
+    if (lb) {
+      e.stopPropagation();
+      if (lb.dataset.fliv) { FASE_LIV[lb.dataset.f] = +lb.dataset.fliv; salvaFaseLiv(); disegnaFasi(); pittaLivPan(); }
+      else { setFase("off"); }
+      return;
+    }
     var r = e.target.closest ? e.target.closest(".gitem[data-fase]") : null;
     if (!r) return;
     var def = null;
@@ -565,6 +601,7 @@
     document.querySelectorAll("#recbox button").forEach(function (b) {
       b.classList.toggle("attivo", parseInt(b.dataset.rec, 10) === (S.rec || 0));
     });
+    if (_faseVista !== S.fase) { _faseVista = S.fase; disegnaFasi(); }
     document.querySelectorAll("#fasi .gitem").forEach(function (r) {
       r.classList.toggle("onair", r.dataset.fase === S.fase);
       r.classList.toggle("sel", !!(sel && sel.tipo === "fase" && sel.fase === r.dataset.fase));
@@ -634,12 +671,16 @@
   var LIVMIRA = null;
   function statoLiv(L) { return (gScaletta.liv && gScaletta.liv[String(L)]) || null; }
   function titoloSuLiv(L) {
+    // prima le schermate del player, poi le grafiche della scaletta
+    var f = faseSuLiv(L);
+    if (f) { var d = null; FASI.forEach(function (x) { if (x.f === f) d = x; }); return d ? d.t : f; }
     var lv = statoLiv(L); if (!lv || lv.state !== "play" || !lv.onair) return "";
     var t = "";
     (gScaletta.items || []).forEach(function (x) { if (x.id === lv.onair) t = x.titolo || x.tipo; });
     return t;
   }
   function livDiSelezione() {
+    if (sel && sel.tipo === "fase") return FASE_LIV[sel.fase] || 1;
     if (!sel || sel.tipo !== "grafica") return 1;
     var it = null;
     (gScaletta.items || []).forEach(function (x) { if (x.id === sel.id) it = x; });
@@ -664,8 +705,17 @@
       var b = e.target.closest ? e.target.closest("button[data-lp]") : null;
       if (!b) return;
       LIVMIRA = +b.dataset.lp;
-      var lv = statoLiv(LIVMIRA);
-      if (lv && lv.state === "play" && lv.onair) selezionaGrafica(lv.onair, null);
+      var f = faseSuLiv(LIVMIRA);
+      if (f) {
+        var def = null;
+        FASI.forEach(function (x) { if (x.f === f) def = x; });
+        selezionaFase(f, def ? def.t : f);
+        disegnaFasi();
+      }
+      else {
+        var lv = statoLiv(LIVMIRA);
+        if (lv && lv.state === "play" && lv.onair) selezionaGrafica(lv.onair, null);
+      }
       pittaLivPan(); aggiornaTake();
     });
   })();
@@ -715,9 +765,10 @@
     pittaLivPan();
     btnTake.disabled = !sel;
     if (!sel) { btnTakeOut.disabled = !titoloSuLiv(mira()); return; }
+    btnTake.disabled = false;
     // per le grafiche il tasto guarda il LIVELLO mirato: lo stato complessivo
     // rispecchia solo il livello 1 e teneva spento il tasto a torto
-    btnTakeOut.disabled = sel.tipo === "fase" ? (S.fase === "off" || !S.fase) : !titoloSuLiv(mira());
+    btnTakeOut.disabled = !titoloSuLiv(mira());
   }
 
   function aggiornaPgmCap() {
@@ -794,6 +845,10 @@
       .catch(function () {});
   });
   btnTakeOut.addEventListener("click", function () {
+    // il tasto guarda il LIVELLO mirato: se li' c'e' una schermata del player
+    // spegne quella, altrimenti toglie la grafica di quel livello
+    var Lm = mira(), fm = faseSuLiv(Lm);
+    if (fm) { setFase("off"); return; }
     if (!sel) return;
     if (sel.tipo === "fase") { setFase("off"); return; }
     if (gCd) { clearInterval(gCd); gCd = null; }

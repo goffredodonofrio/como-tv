@@ -21,6 +21,11 @@
   }
   .liv.on{opacity:1;}
   .liv.out{opacity:0;transition:opacity .85s ease;}
+  /* Sparire di colpo, senza dissolvenza: serve un istante prima di cambiare
+     documento. Lasciando correre la dissolvenza in uscita mentre l'iframe
+     carica, per mezzo secondo si vede la tela bianca del browser dissolversi:
+     e' il lampo che si notava entrando col sottopancia sopra il punteggio. */
+  .liv.muto{opacity:0!important;transition:none!important;}
 </style>
 </head>
 <body>
@@ -75,11 +80,14 @@
   function play(L, j) {
     var f = frame[L]; if (!f) return;
     var eng = ENGINES[j.tipo] || ENGINES.formazione;
+    f.classList.add("muto");            // invisibile all'istante, niente dissolvenza
     f.classList.remove("on", "out");
     var mio = ++f.dataset.gen;          // scarta i 'load' di caricamenti superati
     f.onload = function () {
       if (String(mio) !== String(f.dataset.gen)) return;
       if (f.src.indexOf("about:blank") >= 0) return;
+      f.classList.remove("muto");
+      void f.offsetWidth;               // senza il ricalcolo la dissolvenza non parte
       f.classList.add("on");
     };
     f.src = eng + "?d=" + b64url(j.dati || {}) + "&n=" + j.playNonce;
@@ -88,6 +96,7 @@
   function fadeOut(L) {
     var f = frame[L]; if (!f) return;
     f.dataset.gen = String((+f.dataset.gen || 0) + 1);   // annulla un 'load' in arrivo
+    f.classList.remove("muto");         // qui la dissolvenza SERVE: il contenuto resta
     f.classList.remove("on");
     f.classList.add("out");
     setTimeout(function () {
@@ -99,6 +108,7 @@
   function clearNow(L) {
     var f = frame[L]; if (!f) return;
     f.dataset.gen = String((+f.dataset.gen || 0) + 1);
+    f.classList.add("muto");            // via subito, senza far vedere il bianco
     f.classList.remove("on", "out");
     f.src = "about:blank";
   }
