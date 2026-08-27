@@ -290,14 +290,22 @@
     <div class="colcomandi">
       <div class="panel">
         <h2>Campionato e squadre</h2>
-        <div class="riga"><div>
-          <label for="camp">Campionato</label>
-          <select id="camp"></select>
-        </div></div>
         <div class="riga">
           <div>
-            <label for="giornata">Giornata</label>
-            <input type="text" id="giornata" placeholder="es. 12&ordf; giornata">
+            <label for="competizione">Competizione</label>
+            <select id="competizione"></select>
+          </div>
+          <div>
+            <label for="girone">Girone</label>
+            <select id="girone"></select>
+          </div>
+        </div>
+        <select id="camp" style="display:none"></select>
+        <div class="riga">
+          <div>
+            <label for="giornataSel">Giornata</label>
+            <select id="giornataSel"></select>
+            <input type="text" id="giornata" placeholder="scrivi la giornata" style="display:none;margin-top:6px">
           </div>
           <div>
             <label for="stadio">Stadio</label>
@@ -496,6 +504,107 @@
     o.value = i; o.textContent = c.nome;
     elCamp.appendChild(o);
   });
+
+  // ── competizione e girone: due menu' al posto di un nome unico ──
+  // I nomi in elenco sono del tipo "Under 17 – Girone B": il trattino lungo
+  // separa la competizione dal girone. Si sdoppia da li', cosi' l'elenco resta
+  // l'unica fonte e non c'e' una seconda tabella da tenere allineata.
+  function spezza(nome) {
+    var i = String(nome).indexOf("\u2013");                 // trattino lungo
+    if (i < 0) i = String(nome).indexOf(" - ");
+    if (i < 0) return { comp: String(nome).trim(), gir: "" };
+    return { comp: String(nome).slice(0, i).trim(), gir: String(nome).slice(i + 1).trim() };
+  }
+  var elComp = el("competizione"), elGir = el("girone");
+  function competizioni() {
+    var v = [];
+    CAMPIONATI.forEach(function (c) {
+      var n = spezza(c.nome).comp;
+      if (v.indexOf(n) < 0) v.push(n);
+    });
+    return v;
+  }
+  function gironiDi(comp) {
+    var v = [];
+    CAMPIONATI.forEach(function (c, i) {
+      var p = spezza(c.nome);
+      if (p.comp === comp) v.push({ i: i, gir: p.gir });
+    });
+    return v;
+  }
+  function riempiCompetizioni() {
+    elComp.innerHTML = "";
+    competizioni().forEach(function (n) {
+      var o = document.createElement("option");
+      o.value = n; o.textContent = n;
+      elComp.appendChild(o);
+    });
+  }
+  function riempiGironi(comp, indiceVoluto) {
+    var g = gironiDi(comp);
+    elGir.innerHTML = "";
+    g.forEach(function (x) {
+      var o = document.createElement("option");
+      o.value = x.i; o.textContent = x.gir || "\u2014";      // senza girone: trattino
+      elGir.appendChild(o);
+    });
+    // una competizione con un girone solo non e' una scelta: il menu' si spegne
+    elGir.disabled = g.length < 2;
+    if (indiceVoluto != null) {
+      for (var k = 0; k < elGir.options.length; k++)
+        if (+elGir.options[k].value === +indiceVoluto) { elGir.selectedIndex = k; return; }
+    }
+    elGir.selectedIndex = 0;
+  }
+  // i due menu' scrivono nel select nascosto: da li' in poi tutto come prima
+  function sincronizzaCamp() {
+    elCamp.value = elGir.value;
+    elCamp.dispatchEvent(new Event("change"));
+  }
+  // e al contrario: se il campionato cambia da altrove, i due menu' lo seguono
+  function allineaDaCamp() {
+    var i = parseInt(elCamp.value, 10) || 0;
+    var p = spezza((CAMPIONATI[i] || {}).nome || "");
+    elComp.value = p.comp;
+    riempiGironi(p.comp, i);
+  }
+  riempiCompetizioni();
+  elComp.addEventListener("change", function () { riempiGironi(elComp.value); sincronizzaCamp(); });
+  elGir.addEventListener("change", sincronizzaCamp);
+  allineaDaCamp();
+
+  // ── giornata: menu' con i valori d'uso, piu' la via libera per i casi strani ──
+  var GIORNATE = (function () {
+    var v = ["\u2014"];
+    for (var n = 1; n <= 38; n++) v.push(n + "\u00AA giornata");
+    return v.concat(["Ottavi di finale", "Quarti di finale", "Semifinale",
+                     "Finale", "Andata", "Ritorno", "Altro (scrivi)"]);
+  })();
+  var elGio = el("giornataSel"), elGioTxt = el("giornata");
+  GIORNATE.forEach(function (t) {
+    var o = document.createElement("option");
+    o.value = t; o.textContent = t;
+    elGio.appendChild(o);
+  });
+  function giornataDalMenu() {
+    if (elGio.value === "Altro (scrivi)") {
+      elGioTxt.style.display = "";
+      S.giornata = elGioTxt.value.trim();
+    } else {
+      elGioTxt.style.display = "none";
+      S.giornata = (elGio.value === "\u2014") ? "" : elGio.value;
+    }
+    invia(true);
+  }
+  elGio.addEventListener("change", giornataDalMenu);
+  // Riporta un valore qualsiasi dentro il menu': se non e' fra quelli previsti
+  // resta scritto a mano, senza perderlo.
+  function mettiGiornata(v) {
+    v = String(v || "").trim();
+    if (!v) { elGio.value = "\u2014"; elGioTxt.style.display = "none"; return; }
+    if (GIORNATE.indexOf(v) >= 0) { elGio.value = v; elGioTxt.style.display = "none"; return; }
+    elGio.value = "Altro (scrivi)"; elGioTxt.value = v; elGioTxt.style.display = "";
+  }
 
   function riempiSquadre() {
     var c = CAMPIONATI[parseInt(elCamp.value, 10)] || CAMPIONATI[0];
@@ -1072,7 +1181,7 @@
       if (typeof disegnaFasi === "function") disegnaFasi();
     }
     S.giornata = j.giornata || ""; S.stadio = j.stadio || "";
-    metti("giornata", S.giornata); metti("stadio", S.stadio);
+    mettiGiornata(S.giornata); metti("stadio", S.stadio);
     metti("nc", S.casa.n); metti("sc", S.casa.s); metti("cc", S.casa.col);
     metti("no", S.osp.n);  metti("so", S.osp.s);  metti("co", S.osp.col);
     if (!campoInUso(elCamp)) {
@@ -1132,7 +1241,8 @@
           try { localStorage.setItem(FASE_LIV_LS, JSON.stringify(FASE_LIV)); } catch (e) {}
           disegnaFasi();
         }
-        el("giornata").value = S.giornata; el("stadio").value = S.stadio;
+        mettiGiornata(S.giornata); el("stadio").value = S.stadio;
+        allineaDaCamp();
         el("nc").value = S.casa.n || ""; el("sc").value = S.casa.s || ""; el("cc").value = S.casa.col || "#1735C8";
         el("no").value = S.osp.n || ""; el("so").value = S.osp.s || ""; el("co").value = S.osp.col || "#C50E1F";
         for (var i = 0; i < CAMPIONATI.length; i++) if (CAMPIONATI[i].nome === S.camp) elCamp.value = i;

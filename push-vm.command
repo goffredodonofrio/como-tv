@@ -105,7 +105,7 @@ fi
 # ────────────────────────────────────────────
 echo "🔎 Controllo le pagine sulla VM..."
 TUTTO_OK=1
-for pagina in "11_Script_Live/classifiche.html" "11_Script_Live/regia.html" "11_Script_Live/partita.html"; do
+for pagina in "live/classifiche.html" "live/regia.html" "live/partita.html"; do
   CODICE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://$VM/$pagina")"
   if [ "$CODICE" = "200" ]; then
     echo "   ✓ $pagina"
@@ -122,8 +122,8 @@ if [ "$TUTTO_OK" = "1" ]; then
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "  ✅ Grafiche live aggiornate e funzionanti"
   echo ""
-  echo "  Redazione:  http://$VM/11_Script_Live/classifiche.html"
-  echo "  Regia:      http://$VM/11_Script_Live/regia.html"
+  echo "  Redazione:  http://$VM/live/classifiche.html"
+  echo "  Regia:      http://$VM/live/regia.html"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo ""
   echo "  I vMix non vanno toccati: al riavvio dell'input"
