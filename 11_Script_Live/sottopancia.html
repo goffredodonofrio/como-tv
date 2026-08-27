@@ -145,6 +145,12 @@
       <input type="text" id="jj" placeholder="es. Redazione Como TV">
     </div>
     <button class="primary" id="btnPrev">Anteprima</button>
+    <div class="field" style="flex:0 0 150px">
+      <label for="canaleSel">Regia</label>
+      <select id="canaleSel" style="font-family:'DM Sans',system-ui,sans-serif;font-size:15px;padding:11px 13px;
+        color:var(--ivory);background:var(--surface-panel);border:1px solid var(--line-2);border-radius:5px;">
+      </select>
+    </div>
     <button id="btnRegia">&#128225; Invia alla regia</button>
     <button id="btnSheetCfg" title="Configura il ponte" style="padding:12px 13px">&#9881;</button>
   </div>
@@ -178,15 +184,30 @@
   "use strict";
 
   function scegliCanale() {
-    var d = 1;
-    try { var m = parseInt(localStorage.getItem("comotv.regia.canale"), 10); if (m >= 1 && m <= 7) d = m; } catch (e) {}
-    var r = window.prompt("Su quale canale regia? (1 = vMix 1 \u2026 7 = vMix 7)", d);
-    if (r === null) return null;
-    var c = parseInt(r, 10);
-    if (!(c >= 1 && c <= 7)) c = d;
+    var s = document.getElementById("canaleSel");
+    var c = s ? parseInt(s.value, 10) : NaN;
+    if (!(c >= 1 && c <= 7)) c = 1;
     try { localStorage.setItem("comotv.regia.canale", String(c)); } catch (e) {}
     return c;
   }
+
+  // menu del canale regia: niente piu' numeri scritti a mano
+  (function () {
+    var s = document.getElementById("canaleSel");
+    if (!s) return;
+    for (var i = 1; i <= 7; i++) {
+      var o = document.createElement("option");
+      o.value = i; o.textContent = "Canale " + i + " · vMix " + i;
+      s.appendChild(o);
+    }
+    var m = 1;
+    try { var v = parseInt(localStorage.getItem("comotv.regia.canale"), 10); if (v >= 1 && v <= 7) m = v; } catch (e) {}
+    s.value = m;
+    s.addEventListener("change", function () {
+      try { localStorage.setItem("comotv.regia.canale", s.value); } catch (e) {}
+    });
+  })();
+
 
 
   var PONTE_URL = "comotv.ponte.url", PONTE_TOKEN = "comotv.ponte.token";
