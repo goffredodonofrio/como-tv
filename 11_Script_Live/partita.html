@@ -120,6 +120,27 @@
   #crono.fermo{color:var(--ivory-dim);}
   .bottoniera{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:10px;}
 
+  /* scaletta grafiche del canale (mini-regia) */
+  .gitem{display:flex;align-items:center;gap:10px;padding:8px 11px;border-radius:7px;
+    border:1px solid var(--line-2);margin-bottom:7px;background:rgba(245,241,230,.02);}
+  .gitem.onair{border-color:rgba(229,27,32,.65);background:rgba(229,27,32,.08);}
+  .gitem .gt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-size:13.5px;color:var(--ivory);}
+  .gitem .gt small{display:block;font-size:10.5px;color:var(--fg-3);text-transform:uppercase;}
+  .gitem .gb{font-size:13px;padding:5px 10px;border-radius:5px;cursor:pointer;letter-spacing:0;
+    background:transparent;color:#4FCB8B;border:1px solid rgba(79,203,139,.45);font-weight:700;}
+  .gitem .gb:hover{background:rgba(79,203,139,.12);border-color:#4FCB8B;color:#4FCB8B;}
+  .gitem .gonair{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:800;letter-spacing:.14em;
+    color:#FF6B6E;border:1px solid rgba(229,27,32,.6);border-radius:3px;padding:2px 7px;white-space:nowrap;}
+  #gvuota{color:var(--fg-3);font-size:12.5px;padding:6px 2px;}
+  #gOut{width:100%;margin-top:6px;font-family:'Mazzard',sans-serif;font-size:12px;font-weight:800;
+    letter-spacing:.12em;text-transform:uppercase;padding:12px;border-radius:7px;cursor:pointer;
+    border:1.5px solid rgba(229,27,32,.5);background:transparent;color:#FF6B6E;}
+  #gOut:hover:not(:disabled){background:rgba(229,27,32,.12);border-color:var(--red);}
+  #gOut:disabled{opacity:.35;cursor:default;}
+  .glink{font-size:11.5px;margin-top:8px;color:var(--fg-3);}
+  .glink a{color:var(--gold-bright);text-decoration:none;}
+
   /* anteprima */
   #prevbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:10px;
     border:1px solid var(--line-2);
@@ -242,6 +263,15 @@
           <button id="fFin">Risultato finale</button>
           <button id="fOff" class="rosso">&#9632; Spegni tutto</button>
         </div>
+      </div>
+      <div class="panel">
+        <h2>Grafiche della partita <small id="gcount" style="font-family:'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--fg-3);font-weight:500;font-size:11px"></small></h2>
+        <div id="gitems"></div>
+        <div id="gvuota" style="display:none">Niente in scaletta su questo canale: prepara formazioni e
+          sottopancia dalle loro pagine e inviale alla regia (canale <span class="gcanale"></span>).</div>
+        <button id="gOut" disabled>&#9632; Fuori onda grafiche</button>
+        <div class="glink">Le grafiche vanno sul layer grafiche (l'anteprima qui sotto mostra solo il
+          layer partita) · <a id="gRegia" href="regia.html" target="_blank">apri la regia completa</a></div>
       </div>
       <div class="panel">
         <h2>Anteprima (identica al vMix)</h2>
@@ -454,6 +484,69 @@
     el("fOff").classList.toggle("attivo", S.fase === "off");
   }
   setInterval(dipingi, 250);
+
+  // ── grafiche della partita: la scaletta del canale, con play e
+  //    fuori onda (stesso centralino della regia, vista compatta) ──
+  var gItems = el("gitems");
+  var gOut = el("gOut");
+  var gScaletta = { items: [], onair: null, state: "standby" };
+  document.querySelectorAll(".gcanale").forEach(function (x) { x.textContent = CANALE; });
+  el("gRegia").href = "regia.html?c=" + CANALE;
+
+  function gEsc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+    });
+  }
+
+  function gPaint() {
+    var st = gScaletta.state || "standby";
+    el("gcount").textContent = gScaletta.items.length ? gScaletta.items.length + " in scaletta" : "";
+    el("gvuota").style.display = gScaletta.items.length ? "none" : "block";
+    gOut.disabled = st !== "play";
+    var h = "";
+    gScaletta.items.forEach(function (it) {
+      var onair = it.id === gScaletta.onair && st === "play";
+      h += '<div class="gitem' + (onair ? " onair" : "") + '">' +
+        '<button class="gb" data-gplay="' + gEsc(it.id) + '" title="Manda in onda">&#9654;</button>' +
+        '<span class="gt">' + gEsc(it.titolo || it.tipo) + '<small>' + gEsc(it.tipo) + '</small></span>' +
+        (onair ? '<span class="gonair">IN ONDA</span>' : "") +
+        '</div>';
+    });
+    gItems.innerHTML = h;
+  }
+
+  function gPost(body, testo) {
+    fetch(PONTE, {
+      method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(Object.assign({ token: TOKEN, c: CANALE }, body))
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        msg.textContent = res.ok ? (testo || "") : ("Errore: " + (res.errore || ""));
+        gPoll();
+      })
+      .catch(function () { msg.textContent = "Ponte non raggiungibile."; });
+  }
+
+  gItems.addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("button[data-gplay]") : null;
+    if (b) gPost({ tipo: "regia-state", state: "play", id: b.dataset.gplay }, "Grafica in onda tra un istante…");
+  });
+  gOut.addEventListener("click", function () { gPost({ tipo: "regia-state", state: "out" }, "Grafiche fuori onda."); });
+
+  function gPoll() {
+    fetch(PONTE + "?regia=1&canale=" + CANALE, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || j.nonce == null) return;
+        gScaletta = j;
+        gPaint();
+      })
+      .catch(function () {});
+  }
+  setInterval(gPoll, 2000);
+  gPoll();
 
   // ── anteprima: la stessa pagina che gira dentro vMix ──
   var prev = el("prev");
