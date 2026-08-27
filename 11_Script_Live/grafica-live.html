@@ -7,22 +7,29 @@
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
   /* pagina TRASPARENTE: vMix mostra il programma quando non c'è grafica.
-     La grafica vera vive dentro l'iframe del motore: stesso file
+     La grafica vera vive dentro gli iframe dei motori: stesso file
      dell'anteprima → onda identica. color-scheme:dark allineato ai
      motori, altrimenti Chrome rende opachi gli iframe trasparenti. */
   :root{color-scheme:dark;}
   html,body{width:100%;height:100%;overflow:hidden;background:transparent;}
-  #frame{
+  /* Cinque livelli sovrapposti, come i canali overlay di vMix: ognuno vive per
+     conto suo, quindi una grafica non ne scalza piu' un'altra. Il livello 1 sta
+     sotto, il 5 sopra: scorebug in basso, schermate piene in alto. */
+  .liv{
     position:absolute;inset:0;border:0;width:100%;height:100%;
-    opacity:0;transition:opacity .55s ease;
+    opacity:0;transition:opacity .55s ease;pointer-events:none;
   }
-  #frame.on{opacity:1;}
-  #frame.out{opacity:0;transition:opacity .85s ease;}
+  .liv.on{opacity:1;}
+  .liv.out{opacity:0;transition:opacity .85s ease;}
 </style>
 </head>
 <body>
 
-<iframe id="frame" src="about:blank" allowtransparency="true"></iframe>
+<iframe class="liv" id="liv1" style="z-index:1" src="about:blank" allowtransparency="true"></iframe>
+<iframe class="liv" id="liv2" style="z-index:2" src="about:blank" allowtransparency="true"></iframe>
+<iframe class="liv" id="liv3" style="z-index:3" src="about:blank" allowtransparency="true"></iframe>
+<iframe class="liv" id="liv4" style="z-index:4" src="about:blank" allowtransparency="true"></iframe>
+<iframe class="liv" id="liv5" style="z-index:5" src="about:blank" allowtransparency="true"></iframe>
 
 <script>
 (function () {
@@ -30,6 +37,7 @@
 
   var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
   var POLL_MS = 1500;
+  var NLIV = 5;
 
   // canale playout: ogni vMix carica il SUO url (?c=1..7) e ascolta
   // solo la scaletta di quel canale
@@ -38,8 +46,10 @@
     return (c >= 1 && c <= 7) ? c : 1;
   })();
 
-  var frame = document.getElementById("frame");
-  var lastPlayNonce = null;
+  var frame = [];
+  for (var i = 1; i <= NLIV; i++) frame[i] = document.getElementById("liv" + i);
+  var ultimo = {};        // playNonce gia' servito, livello per livello
+  var primaVolta = true;
 
   function b64url(obj) {
     return btoa(unescape(encodeURIComponent(JSON.stringify(obj))))
@@ -58,41 +68,57 @@
     web:        "media-vmix.html"
   };
 
-  function play(j) {
+  function play(L, j) {
+    var f = frame[L]; if (!f) return;
     var eng = ENGINES[j.tipo] || ENGINES.formazione;
-    var src = eng + "?d=" + b64url(j.dati || {}) + "&n=" + j.playNonce;
-    frame.classList.remove("out");
-    frame.src = src;
-    frame.classList.add("on");
+    f.classList.remove("out");
+    f.src = eng + "?d=" + b64url(j.dati || {}) + "&n=" + j.playNonce;
+    f.classList.add("on");
   }
 
-  function fadeOut() {
-    frame.classList.remove("on");
-    frame.classList.add("out");
+  function fadeOut(L) {
+    var f = frame[L]; if (!f) return;
+    f.classList.remove("on");
+    f.classList.add("out");
     setTimeout(function () {
-      frame.src = "about:blank";
-      frame.classList.remove("out");
+      f.src = "about:blank";
+      f.classList.remove("out");
     }, 950);
   }
 
-  function clearNow() {
-    frame.classList.remove("on", "out");
-    frame.src = "about:blank";
+  function clearNow(L) {
+    var f = frame[L]; if (!f) return;
+    f.classList.remove("on", "out");
+    f.src = "about:blank";
+  }
+
+  // Applica lo stato di UN livello. Non tocca gli altri: e' tutto il punto.
+  function applica(L, st) {
+    if (!st || st.playNonce == null || st.playNonce === ultimo[L]) return;
+    var prima = ultimo[L] === undefined;
+    ultimo[L] = st.playNonce;
+    // al primo giro: se c'e' una grafica in onda la rimostro (ripresa dopo un
+    // riavvio dell'input vMix), altrimenti resto trasparente
+    if (prima && primaVolta && st.state !== "play") { clearNow(L); return; }
+    if (st.state === "play" && st.dati) play(L, st);
+    else if (st.state === "out") fadeOut(L);
+    else clearNow(L);
   }
 
   function tick() {
     fetch(PONTE + "?regia=1&canale=" + CANALE, { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (j) {
-        if (!j || j.playNonce == null || j.playNonce === lastPlayNonce) return;
-        var first = lastPlayNonce === null;
-        lastPlayNonce = j.playNonce;
-        // al primo avvio: se c'è una grafica in onda la rimostro (ripresa
-        // dopo un riavvio dell'input vMix), altrimenti resto trasparente
-        if (first && j.state !== "play") { clearNow(); return; }
-        if (j.state === "play" && j.dati) play(j);
-        else if (j.state === "out") fadeOut();
-        else clearNow();
+        if (!j) return;
+        if (j.liv) {
+          // ponte aggiornato: ogni livello ha il suo stato
+          for (var L = 1; L <= NLIV; L++) applica(L, j.liv[L] || j.liv[String(L)]);
+        } else {
+          // ponte non ancora aggiornato: si comporta come prima, tutto sul
+          // livello 1. Cosi' la pagina nuova funziona anche col ponte vecchio.
+          applica(1, j);
+        }
+        primaVolta = false;
       })
       .catch(function () {});
   }
