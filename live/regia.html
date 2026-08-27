@@ -188,6 +188,12 @@
     text-transform:uppercase;color:#0A0F24;background:var(--gold);border-radius:4px;
     padding:5px 12px;text-decoration:none;white-space:nowrap;}
   #canaleBadge:hover{background:var(--gold-bright);}
+  /* porta alla console del Live Match: prima ci si arrivava solo dalla
+     schermata dei canali, che ora ha solo il link del playout */
+  .badgelink{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:800;letter-spacing:.18em;
+    text-decoration:none;padding:6px 12px;border-radius:6px;
+    color:var(--gold);border:1px solid var(--line-gold);background:transparent;}
+  .badgelink:hover{background:rgba(201,162,75,.12);color:var(--gold-bright);}
 #livpan{display:flex;flex-direction:column;gap:6px;align-items:center;margin-bottom:12px;}
   #livpan .lab{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:700;
     letter-spacing:.18em;color:var(--fg-3);}
@@ -246,7 +252,8 @@
   <header class="page">
     <div class="eyebrow">Como TV · Regia grafiche</div>
     <h1 style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">Live Studio
-      <a id="canaleBadge" href="regia.html" title="Cambia canale">CANALE&nbsp;&mdash;</a></h1>
+      <a id="canaleBadge" href="regia.html" title="Cambia canale">CANALE&nbsp;&mdash;</a>
+      <a id="vaiPartita" class="badgelink" href="partita.html" title="Console del Live Match di questo canale">LIVE&nbsp;MATCH&nbsp;&rarr;</a></h1>
   </header>
 
   <div id="state"><span class="dot"></span><span id="stateTxt">COLLEGAMENTO&hellip;</span></div>
@@ -307,8 +314,11 @@
 
   // versioni grafiche per i link vMix: alzarle qui quando si pubblicano
   // modifiche a shell o motori (la cache di vMix ignora i pari-URL)
-  var VMIX_V_STUDIO = 7;    // grafica-live.html (scaletta grafiche)
-  var VMIX_V_PARTITA = 4;   // partita-live.html (bug e schermate match)
+  // Un solo playout per macchina: la stessa pagina porta le grafiche sui
+  // cinque livelli e le due parti del Live Match. Niente piu' due sorgenti
+  // vMix da tenere allineate.
+  var VMIX_V_STUDIO = 7;    // resta per l'adattamento automatico sulla VM
+  var VMIX_V_PARTITA = 4;
   var BASE = "https://goffredodonofrio.github.io/como-tv/live/";
   var MODO = new URLSearchParams(location.search).get("modo");
 
@@ -319,14 +329,11 @@
     try { ultimo = parseInt(localStorage.getItem(CANALE_LS), 10); } catch (e) {}
     var gh = "";
     for (var ci = 1; ci <= N_CANALI; ci++) {
-      var linkStudio = BASE + "grafica-live.html?c=" + ci + "&v=" + VMIX_V_STUDIO;
-      var linkMatch = BASE + "partita-live.html?c=" + ci + "&v=" + VMIX_V_PARTITA;
+      var linkLive = BASE + "grafica-live.html?c=" + ci + "&v=" + VMIX_V_STUDIO;
       gh += '<div class="cch">' +
-        '<div class="tilenum' + (ci === ultimo ? " ultimo" : "") + '"><b>' + ci + '</b><span>' + (ci === ultimo ? "ultimo usato" : "vMix " + ci) + '</span></div>' +
-        '<button type="button" class="copia" data-link="' + linkStudio + '" data-nome="Live Studio">&#8865; Link vMix &middot; Live Studio</button>' +
-        '<button type="button" class="copia" data-link="' + linkMatch + '" data-nome="Live Match">&#8865; Link vMix &middot; Live Match</button>' +
-        '<a class="apri" href="partita.html?c=' + ci + '">&#9654; Playout Live Match</a>' +
-        '<a class="apri" href="regia.html?c=' + ci + '">&#9654; Playout Live Studio</a>' +
+        '<a class="tilenum' + (ci === ultimo ? " ultimo" : "") + '" href="regia.html?c=' + ci + '" title="Apri la regia di questo canale"><b>' + ci + '</b><span>' + (ci === ultimo ? "ultimo usato" : "vMix " + ci) + '</span></a>' +
+        '<button type="button" class="copia" data-link="' + linkLive + '" data-nome="vMix ' + ci + '">&#8865; LINK LIVE</button>' +
+        '<a class="apri" href="' + linkLive + '" target="_blank">&#9654; PLAYOUT LIVE</a>' +
         '</div>';
     }
     g.innerHTML = gh;
@@ -356,6 +363,7 @@
   var badge = document.getElementById("canaleBadge");
   badge.textContent = "CANALE " + CANALE + " · LIVE STUDIO";
   badge.href = "regia.html";
+  document.getElementById("vaiPartita").href = "partita.html?c=" + CANALE;
   document.title = "Live Studio C" + CANALE + " · Como TV";
 
   var elState = document.getElementById("state");
@@ -517,7 +525,7 @@
       var quando = it.ts ? new Date(it.ts).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "";
       h += '<div class="item' + (it.id === selId ? " sel" : "") + (onair ? " onair" : "") + '" data-id="' + esc(it.id) + '" draggable="true">' +
         '<span class="grip" title="Trascina per riordinare">&#8942;&#8942;</span>' +
-        '<span class="tit">' + esc(it.titolo || it.tipo) + '<small>' + esc(it.tipo.toUpperCase()) + (it.dest ? " · " + (it.dest === "partita" ? "LIVE MATCH" : "LIVE STUDIO") : "") + (quando ? " · caricata " + quando : "") + '</small></span>' +
+        '<span class="tit">' + esc(it.titolo || it.tipo) + '<small>' + esc(it.tipo.toUpperCase()) + (quando ? " · caricata " + quando : "") + '</small></span>' +
         '<span class="livrow" title="Livello di sovrapposizione: il 5 sta sopra a tutti">' +
           [1,2,3,4,5].map(function (n) {
             var occ = cur.liv && cur.liv[String(n)] &&

@@ -448,8 +448,12 @@ const SCORCIATOIE = {
 const SCORCIATOIE_CANALE = {
   "regia":   "/live/regia.html",
   "partita": "/live/partita.html",
-  "match":   "/live/partita-live.html",   // layer vMix Live Match
-  "studio":  "/live/grafica-live.html"    // layer vMix Live Studio
+  // Il playout e' uno solo: porta le grafiche sui cinque livelli e le due
+  // parti del Live Match. E' questo l'indirizzo da mettere nei vMix.
+  "playout": "/live/grafica-live.html",
+  // vecchi nomi, per gli input non ancora ripuntati
+  "studio":  "/live/grafica-live.html",
+  "match":   "/live/partita-live.html"
 };
 
 function scorciatoia(percorso) {

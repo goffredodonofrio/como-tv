@@ -92,6 +92,16 @@
     padding:16px;margin-bottom:16px;}
   .panel h2{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.2em;
     text-transform:uppercase;color:var(--gold);margin-bottom:12px;}
+
+  /* Pannelli a tendina: durante una diretta servono poche cose alla volta,
+     il resto si chiude e la console resta corta. La scelta resta salvata
+     sulla postazione. */
+  .panel h2.tendina{cursor:pointer;user-select:none;display:flex;align-items:center;gap:9px;}
+  .panel h2.tendina::before{content:"\25BE";font-size:11px;line-height:1;color:var(--gold);
+    transition:transform .18s ease;}
+  .panel.chiuso h2.tendina{margin-bottom:0;}
+  .panel.chiuso h2.tendina::before{transform:rotate(-90deg);}
+  .panel.chiuso > *:not(h2){display:none;}
   label{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
     letter-spacing:.18em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:5px;}
   select,input[type=text]{
@@ -279,7 +289,7 @@
       <button id="btnTakeOut" disabled>&#9632;<br>Fuori onda</button>
     </div>
     <div class="panel mon">
-              <h2>In onda adesso (entrambi i layer)</h2>
+              <h2>In onda adesso</h2>
               <div id="pgmbox"><iframe id="pgmA" scrolling="no"></iframe><iframe id="pgmB" scrolling="no"></iframe></div>
               <div id="pgmcap"></div>
               <div id="msg"></div>
@@ -1201,6 +1211,29 @@
   // giro se c'è un nostro invio in corso o se sta scrivendo in un campo.
   var nonceApplicato = null;
 
+  // ── pannelli a tendina ──────────────────────────────────────────────
+  // Si chiudono e si riaprono cliccando il titolo. Restano come li lasci,
+  // anche dopo aver ricaricato la pagina.
+  (function () {
+    var APRIBILI = ["PLAYER LIVE MATCH", "CAMPIONATO E SQUADRE", "PUNTEGGIO", "CRONOMETRO"];
+    var LS = "comotv.partita.tendine";
+    var chiusi = {};
+    try { chiusi = JSON.parse(localStorage.getItem(LS) || "{}") || {}; } catch (e) {}
+    document.querySelectorAll(".panel > h2").forEach(function (h) {
+      var nome = (h.childNodes[0] ? h.childNodes[0].nodeValue || "" : "").trim().toUpperCase();
+      if (APRIBILI.indexOf(nome) < 0) return;
+      var pan = h.parentNode;
+      h.classList.add("tendina");
+      h.title = "Clicca per chiudere o riaprire";
+      if (chiusi[nome]) pan.classList.add("chiuso");
+      h.addEventListener("click", function () {
+        var oraChiuso = pan.classList.toggle("chiuso");
+        chiusi[nome] = oraChiuso;
+        try { localStorage.setItem(LS, JSON.stringify(chiusi)); } catch (e) {}
+      });
+    });
+  })();
+
   function campoInUso(e) { return e && document.activeElement === e; }
   function metti(id, v) {
     var e = el(id);
@@ -1262,8 +1295,11 @@
   setInterval(partitaPoll, 2000);
 
   // ── monitor IN ONDA ADESSO: entrambi i layer live, come sul vMix ──
+  // Un solo playout: la pagina delle grafiche porta gia' dentro le due
+  // parti del Live Match. Il secondo telaio le disegnerebbe una seconda
+  // volta sopra le prime, quindi resta spento.
   el("pgmA").src = "grafica-live.html?c=" + CANALE;
-  el("pgmB").src = "partita-live.html?c=" + CANALE;
+  el("pgmB").src = "about:blank";
   fitMonitor();
 
   // ── ripartenza: leggo lo stato corrente dal ponte ──

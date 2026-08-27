@@ -323,43 +323,33 @@
 
   function scegliCanale() {
     var s = document.getElementById("canaleSel");
-    var p = (s && s.value ? s.value : "1|studio").split("|");
-    var c = parseInt(p[0], 10);
+    // il vecchio menu salvava "3|studio": si tiene solo il numero
+    var c = parseInt(((s && s.value) || "1").split("|")[0], 10);
     if (!(c >= 1 && c <= 7)) c = 1;
-    var dest = p[1] === "partita" ? "partita" : "studio";
-    try {
-      localStorage.setItem("comotv.regia.canale", String(c));
-      localStorage.setItem("comotv.regia.dest", dest);
-    } catch (e) {}
-    return { c: c, dest: dest };
+    try { localStorage.setItem("comotv.regia.canale", String(c)); } catch (e) {}
+    return { c: c, dest: "" };
   }
 
 
-  // menu destinazione: Partita o Live Studio di ogni vMix
+  // Una sola destinazione per macchina: il playout di quel vMix porta tutto,
+  // grafiche e partita insieme, quindi non c'e' piu' da scegliere fra
+  // "Live Studio" e "Live Match".
   (function () {
     var s = document.getElementById("canaleSel");
     if (!s) return;
     for (var i = 1; i <= 7; i++) {
       var op = document.createElement("option");
-      op.value = i + "|partita"; op.textContent = "vMix " + i + " \u00b7 Live Match";
+      op.value = String(i); op.textContent = "vMix " + i;
       s.appendChild(op);
-      var os = document.createElement("option");
-      os.value = i + "|studio"; os.textContent = "vMix " + i + " \u00b7 Live Studio";
-      s.appendChild(os);
     }
-    var c = 1, dest = "studio";
+    var c = 1;
     try {
       var v = parseInt(localStorage.getItem("comotv.regia.canale"), 10); if (v >= 1 && v <= 7) c = v;
-      var dd = localStorage.getItem("comotv.regia.dest"); if (dd === "partita" || dd === "studio") dest = dd;
     } catch (e) {}
-    s.value = c + "|" + dest;
-    if (!s.value) s.value = "1|studio";
+    s.value = String(c);
+    if (!s.value) s.value = "1";
     s.addEventListener("change", function () {
-      var p = s.value.split("|");
-      try {
-        localStorage.setItem("comotv.regia.canale", p[0]);
-        localStorage.setItem("comotv.regia.dest", p[1]);
-      } catch (e) {}
+      try { localStorage.setItem("comotv.regia.canale", s.value); } catch (e) {}
     });
   })();
 

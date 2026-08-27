@@ -43,6 +43,15 @@
   }
   .fr.on{opacity:1;}
   .fr.muto{opacity:0!important;transition:none!important;}
+
+  /* Le due parti del Live Match (scoreboard e schermata al centro) vivono
+     qui dentro, ciascuna sul livello scelto in regia: cosi' una sola sorgente
+     vMix porta tutto, grafiche e partita insieme. Sono trasparenti e non
+     disegnano nulla finche' la regia non le manda in onda. */
+  .mt{
+    position:absolute;inset:0;border:0;width:100%;height:100%;
+    pointer-events:none;background:transparent;color-scheme:dark;
+  }
 </style>
 </head>
 <body>
@@ -52,6 +61,10 @@
 <div class="liv" style="z-index:3"><iframe class="fr muto" id="l3a" src="about:blank" allowtransparency="true"></iframe><iframe class="fr muto" id="l3b" src="about:blank" allowtransparency="true"></iframe></div>
 <div class="liv" style="z-index:4"><iframe class="fr muto" id="l4a" src="about:blank" allowtransparency="true"></iframe><iframe class="fr muto" id="l4b" src="about:blank" allowtransparency="true"></iframe></div>
 <div class="liv" style="z-index:5"><iframe class="fr muto" id="l5a" src="about:blank" allowtransparency="true"></iframe><iframe class="fr muto" id="l5b" src="about:blank" allowtransparency="true"></iframe></div>
+
+<!-- Live Match: scoreboard e schermata al centro, ognuno sul suo livello -->
+<iframe class="mt" id="mbug" src="about:blank" allowtransparency="true"></iframe>
+<iframe class="mt" id="mcard" src="about:blank" allowtransparency="true"></iframe>
 
 <script>
 (function () {
@@ -208,8 +221,35 @@
       .catch(function () {});
   }
 
+  // ── Live Match dentro lo stesso playout ─────────────────────────────
+  // Le due parti si montano una volta sola e restano lì: sono trasparenti
+  // e si accendono da sole quando la regia le manda in onda. Qui si segue
+  // soltanto il livello su cui stanno, per farle scorrere fra le grafiche.
+  var mBug = document.getElementById("mbug");
+  var mCard = document.getElementById("mcard");
+  mBug.src = "partita-live.html?c=" + CANALE + "&solo=bug";
+  mCard.src = "partita-live.html?c=" + CANALE + "&solo=card";
+  mBug.style.zIndex = 2;
+  mCard.style.zIndex = 4;
+
+  function tickPartita() {
+    fetch(PONTE + "?partita=1&canale=" + CANALE, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j) return;
+        var lf = j.livFase || {};
+        var card = (j.card !== undefined) ? (j.card || null)
+                 : ((j.fase === "pres" || j.fase === "int" || j.fase === "fin") ? j.fase : null);
+        mBug.style.zIndex = lf.live || 2;
+        mCard.style.zIndex = (card && lf[card]) || 4;
+      })
+      .catch(function () {});
+  }
+
   setInterval(tick, POLL_MS);
   tick();
+  setInterval(tickPartita, POLL_MS);
+  tickPartita();
 })();
 </script>
 </body>
