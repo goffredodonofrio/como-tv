@@ -423,8 +423,9 @@
   //    e ogni stato porta una sequenza crescente così due click
   //    ravvicinati non possono superarsi in rete (il ponte scarta
   //    le scritture in ritardo) ──
-  var tInvio = null, inVolo = false, daRifare = false, seq = 0;
+  var tInvio = null, inVolo = false, daRifare = false, seq = 0, inCoda = false;
   function spedisci() {
+    inCoda = false;
     if (inVolo) { daRifare = true; return; }
     inVolo = true;
     seq = Math.max(seq + 1, Date.now());
@@ -443,8 +444,11 @@
   }
   function invia(subito) {
     clearTimeout(tInvio);
+    inCoda = true;
     tInvio = setTimeout(spedisci, subito ? 0 : 400);
   }
+  // c'è qualcosa di nostro ancora da spedire?
+  function staScrivendo() { return inCoda || inVolo || daRifare; }
 
   // ── campionato e squadre ──
   var elCamp = el("camp"), elSqc = el("sqc"), elSqo = el("sqo");
@@ -904,6 +908,63 @@
   setInterval(gPoll, 2000);
   gPoll();
 
+  // ── allineamento fra postazioni ─────────────────────────────────
+  // La stessa partita può essere aperta su più schermi (desktop, telefono,
+  // tablet a bordo campo): quando uno cambia punteggio, cronometro o
+  // squadre, gli altri si aggiornano da soli. Non si sovrascrive mai
+  // quello che l'operatore sta facendo in questo momento: si salta il
+  // giro se c'è un nostro invio in corso o se sta scrivendo in un campo.
+  var nonceApplicato = null;
+
+  function campoInUso(e) { return e && document.activeElement === e; }
+  function metti(id, v) {
+    var e = el(id);
+    if (e && !campoInUso(e)) e.value = v == null ? "" : v;
+  }
+
+  function adotta(j) {
+    S.fase = j.fase || "off";
+    S.camp = j.camp || S.camp;
+    S.casa = j.casa || S.casa;
+    S.osp  = j.osp  || S.osp;
+    S.p1 = j.p1 || 0; S.p2 = j.p2 || 0; S.rec = j.rec || 0;
+    S.clock = j.clock || S.clock;
+    if (j.livFase) {
+      S.livFase = j.livFase;
+      FASI.forEach(function (x) {
+        var v = j.livFase[x.f];
+        if (v >= 1 && v <= 5) FASE_LIV[x.f] = v;
+      });
+      try { localStorage.setItem(FASE_LIV_LS, JSON.stringify(FASE_LIV)); } catch (e) {}
+      if (typeof disegnaFasi === "function") disegnaFasi();
+    }
+    metti("nc", S.casa.n); metti("sc", S.casa.s); metti("cc", S.casa.col);
+    metti("no", S.osp.n);  metti("so", S.osp.s);  metti("co", S.osp.col);
+    if (!campoInUso(elCamp)) {
+      for (var i = 0; i < CAMPIONATI.length; i++) {
+        if (CAMPIONATI[i].nome === S.camp && elCamp.value !== String(i)) {
+          elCamp.value = i; riempiSquadre();
+        }
+      }
+    }
+    dipingi();
+  }
+
+  function partitaPoll() {
+    fetch(PONTE + "?partita=1&canale=" + CANALE, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j) return;
+        if (j.srv) offset = Date.now() - j.srv;
+        if (!j.nonce || j.nonce === nonceApplicato) return;
+        if (staScrivendo()) return;      // prima finisce quello che stiamo mandando noi
+        nonceApplicato = j.nonce;
+        adotta(j);
+      })
+      .catch(function () {});
+  }
+  setInterval(partitaPoll, 2000);
+
   // ── monitor IN ONDA ADESSO: entrambi i layer live, come sul vMix ──
   el("pgmA").src = "grafica-live.html?c=" + CANALE;
   el("pgmB").src = "partita-live.html?c=" + CANALE;
@@ -917,6 +978,7 @@
       // se l'operatore ha già toccato qualcosa, la risposta (lenta) non
       // deve sovrascrivere i suoi click: vale solo a pannello "vergine"
       if (seq > 0) return;
+      if (j && j.nonce) nonceApplicato = j.nonce;
       if (j && j.fase) {
         // si riprende TUTTO com'è: dati, cronometro e schermata in onda.
         // Ricaricare la pagina non deve cambiare ciò che sta trasmettendo.
