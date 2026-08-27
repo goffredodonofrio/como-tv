@@ -407,6 +407,7 @@
 
   // ── stato del match (specchio locale di quello sul ponte) ──
   var S = {
+    livFase: null,
     fase: "off", camp: CAMPIONATI[0].nome,
     casa: { n: "", s: "", col: "#1735C8" },
     osp:  { n: "", s: "", col: "#C50E1F" },
@@ -553,6 +554,10 @@
   })();
   function salvaFaseLiv() {
     try { localStorage.setItem(FASE_LIV_LS, JSON.stringify(FASE_LIV)); } catch (e) {}
+    // viaggia anche nello stato del match: cosi' la scelta la vedono tutte le
+    // console del canale, come gia' succede per le grafiche
+    S.livFase = FASE_LIV;
+    invia(true);
   }
   function faseSuLiv(L) {
     if (!S.fase || S.fase === "off") return null;
@@ -926,7 +931,17 @@
         S = { fase: "off", camp: j.camp || S.camp,
               casa: j.casa || S.casa, osp: j.osp || S.osp,
               p1: j.p1 || 0, p2: j.p2 || 0, rec: j.rec || 0,
-              clock: j.clock || S.clock };
+              clock: j.clock || S.clock, livFase: j.livFase || S.livFase };
+        // livelli delle schermate arrivati dal ponte: hanno la precedenza su
+        // quelli salvati in locale, altrimenti due postazioni si contraddicono
+        if (j.livFase) {
+          FASI.forEach(function (x) {
+            var v = j.livFase[x.f];
+            if (v >= 1 && v <= 5) FASE_LIV[x.f] = v;
+          });
+          try { localStorage.setItem(FASE_LIV_LS, JSON.stringify(FASE_LIV)); } catch (e) {}
+          disegnaFasi();
+        }
         el("nc").value = S.casa.n || ""; el("sc").value = S.casa.s || ""; el("cc").value = S.casa.col || "#1735C8";
         el("no").value = S.osp.n || ""; el("so").value = S.osp.s || ""; el("co").value = S.osp.col || "#C50E1F";
         for (var i = 0; i < CAMPIONATI.length; i++) if (CAMPIONATI[i].nome === S.camp) elCamp.value = i;
