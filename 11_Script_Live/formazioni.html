@@ -254,6 +254,19 @@
     <span class="msg">Scegli campionato e squadra per ciascun lato: la rosa arriva da ESPN e gli undici si schierano da soli seguendo il modulo.</span>
   </div>
 
+  <div id="prevFbox" style="display:none;margin-bottom:20px">
+    <div style="position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:10px;
+                border:1px solid var(--line-gold);background:#070B1D">
+      <iframe id="prevF" style="position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
+                                transform-origin:top left;color-scheme:dark" scrolling="no"></iframe>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px">
+      <span id="prevFcap" style="flex:1;min-width:240px;font-size:12.5px;color:var(--fg-3)"></span>
+      <button id="btnPosReset">&#8635; Rimetti in ordine</button>
+      <button id="btnPrevChiudi">Chiudi anteprima</button>
+    </div>
+  </div>
+
   <div class="teams" id="teams"></div>
 
   <div class="main">
@@ -383,7 +396,7 @@
   // slot: null | {p: indiceRosa} | {m:1, num, nome, cognome}
   function mkSide(label) {
     return { label: label, comp: 0, teamId: "", teamName: "", roster: [], manualMode: false,
-             mod: "4-3-3", tit: [], pan: [], custom: {}, coachN: "", coachC: "",
+             mod: "4-3-3", tit: [], pan: [], custom: {}, posGraf: null, coachN: "", coachC: "",
              kit: label === "Trasferta" ? "#C8102E" : "#1735C8" };
   }
 
@@ -797,6 +810,7 @@
 
     if (t.dataset.k === "mod") {
       side.mod = t.value;
+      side.posGraf = null;   // un altro modulo = un altro schieramento
       saveMemo(side);
       if (side.manualMode) { side.custom = {}; }   // le righe scritte a mano restano
       else { autoFill(side); }
@@ -1214,6 +1228,7 @@
       k: side.kit,
       l: side.teamId ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + side.teamId + ".png" : "",
       a: [side.coachN || "", side.coachC || ""],
+      g: side.posGraf || undefined,
       t: side.tit.map(tri),
       p: side.pan.map(function (v) { return resolve(side, v); })
         .filter(function (d) { return d && (d.cognome || d.nome); })
@@ -1221,24 +1236,63 @@
     };
   }
 
+  // ── anteprima incorporata: la grafica vera, con le maglie trascinabili ──
+  var latoInPreview = null;
+
   function grafVmix(si) {
     var side = sides[si];
     var payload = vmixPayload(si);
     if (!payload) return;
 
+    latoInPreview = si;
     var b64 = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
       .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-    var url = new URL("formazione-vmix.html?d=" + b64, location.href).href;
 
-    window.open(url, "_blank");
-    var copiato = "";
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url).then(function () {});
-      copiato = " · indirizzo copiato, incollalo in vMix (input Web Browser 1920&times;1080)";
-    }
-    status("ok", '<span class="msg">Grafica di <b>' + esc(side.teamName || side.label) + '</b> aperta' + copiato +
-      ' · <a href="' + esc(url) + '" target="_blank" style="color:var(--gold-bright)">link</a></span>');
+    var box = document.getElementById("prevFbox");
+    box.style.display = "block";
+    document.getElementById("prevF").src = "formazione-vmix.html?d=" + b64 + "&edit=1";
+    fitPrevF();
+    document.getElementById("prevFcap").innerHTML =
+      "<b>" + esc(side.teamName || side.label) + "</b> — trascina le maglie per sistemare i nomi; " +
+      "doppio click su una maglia per rimetterla al suo posto.";
+    box.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
+
+  function fitPrevF() {
+    var box = document.getElementById("prevFbox");
+    if (!box || box.style.display === "none") return;
+    var w = box.firstElementChild.clientWidth;
+    document.getElementById("prevF").style.transform = "scale(" + (w / 1920) + ")";
+  }
+  window.addEventListener("resize", fitPrevF);
+
+  // le posizioni sistemate a mano tornano dalla grafica e restano
+  // attaccate al lato: partiranno col prossimo invio in regia
+  window.addEventListener("message", function (ev) {
+    if (!ev.data || ev.data.comotv !== "formazione-posizioni") return;
+    if (latoInPreview === null) return;
+    var side = sides[latoInPreview];
+    side.posGraf = ev.data.mosse ? ev.data.g : null;
+    var cap = document.getElementById("prevFcap");
+    if (ev.data.mosse) {
+      cap.innerHTML = "<b>" + esc(side.teamName || side.label) + "</b> &mdash; " + ev.data.mosse +
+        (ev.data.mosse === 1 ? " maglia sistemata" : " maglie sistemate") +
+        ": partiranno cos&igrave; con <b>Invia alla regia</b>.";
+    } else {
+      cap.innerHTML = "<b>" + esc(side.teamName || side.label) + "</b> &mdash; schieramento automatico dal modulo. " +
+        "Trascina le maglie per sistemare i nomi.";
+    }
+  });
+
+  document.getElementById("btnPosReset").addEventListener("click", function () {
+    var fr = document.getElementById("prevF");
+    if (fr.contentWindow) fr.contentWindow.postMessage({ comotv: "formazione-reset" }, "*");
+  });
+  document.getElementById("btnPrevChiudi").addEventListener("click", function () {
+    document.getElementById("prevFbox").style.display = "none";
+    document.getElementById("prevF").src = "about:blank";
+    latoInPreview = null;
+  });
 
   function anteprimaLato(si, nome) {
     if (!sideCompleto(si)) {

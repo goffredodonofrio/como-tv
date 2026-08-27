@@ -89,6 +89,13 @@
 
   /* ── animazioni ── */
   @keyframes wipeIn  { to { clip-path:inset(0 0 0 0); } }
+  /* modalità "sistema le maglie": attiva solo con &edit=1, mai in onda */
+  #stage.edit .jersey{cursor:grab;}
+  #stage.edit .jersey:hover svg{filter:drop-shadow(0 0 0 2px #C9A24B) drop-shadow(0 10px 22px rgba(0,0,0,.55));}
+  #stage.edit .jersey.presa{cursor:grabbing;z-index:30;}
+  #stage.edit .jersey.presa svg{filter:drop-shadow(0 0 18px rgba(201,162,75,.9));}
+  #stage.edit .jersey.spostata .jn{color:#C9A24B;}
+
   @keyframes wipeOut { to { clip-path:inset(0 100% 0 0); } }
   @keyframes fadeIn  { to { opacity:1; } }
   @keyframes fadeOut { to { opacity:0; } }
@@ -327,6 +334,16 @@
 
   // maglie sul campo
   var geo = slotGeo(D.m);
+  var geoAuto = geo.map(function (g) { return { x: g.x, y: g.y }; });   // schieramento da modulo
+
+  // posizioni sistemate a mano dal giornalista: d.g = [[x,y],...] in
+  // coordinate del palco (1920x1080). Se mancano vale il modulo.
+  if (D.g && D.g.length) {
+    D.g.forEach(function (pos, i) {
+      if (geo[i] && pos && pos.length === 2) { geo[i].x = pos[0]; geo[i].y = pos[1]; }
+    });
+  }
+  var EDIT = new URLSearchParams(location.search).get("edit") === "1";
 
   // ── quanto spazio ha davvero un cognome ──
   // Lo sfalsamento verticale alterna le quote dentro la linea, ma solo quando i
@@ -372,11 +389,11 @@
   var dotsH = "";
   D.t.forEach(function (r, i) {
     var g = geo[i] || geo[geo.length - 1];
-    var st = STILL ? 'transform:translate(-50%,-50%) scale(1)'
+    var st = (STILL || EDIT) ? 'transform:translate(-50%,-50%) scale(1)'
       : 'animation: pop .55s cubic-bezier(.34,1.4,.5,1) ' + (T_ROWS + 0.12 + i * STAG) + 's forwards';
     var cgn = String(r[2] || "");
     var fsCg = corpoCg(cgn, spazioPerNome(geo, i));
-    dotsH += '<div class="jersey" style="left:' + g.x + 'px;top:' + g.y + 'px;' + st + '">' +
+    dotsH += '<div class="jersey" data-i="' + i + '" style="left:' + g.x + 'px;top:' + g.y + 'px;' + st + '">' +
       jerseySVG() +
       '<div class="jn">' + esc(r[0]) + '</div>' +
       '<div class="cg" style="font-size:' + fsCg + 'px">' + esc(cgn) + '</div>' +
@@ -396,10 +413,109 @@
     }).catch(function () {});
   }
 
+  // ------------------------------------------------------------------
+  // MODALITÀ "SISTEMA LE MAGLIE" (&edit=1)
+  // Il giornalista trascina gli omini sulla grafica vera; la pagina
+  // Formazioni riceve le posizioni e le spedisce con la grafica.
+  // Niente di tutto questo si attiva in onda.
+  // ------------------------------------------------------------------
+  if (EDIT) {
+    var palco = document.getElementById("stage");
+    palco.classList.add("edit");
+    var maglie = Array.prototype.slice.call(document.querySelectorAll(".jersey"));
+    var presa = null;
+
+    // limiti di trascinamento: la fascia del campo per intero — le punte
+    // partono sopra la linea di metà campo (y~161), il portiere sta a y~878
+    var LIM = { x1: 862, x2: 1790, y1: 130, y2: 1000 };
+
+    function coordPalco(e) {
+      var r = palco.getBoundingClientRect();
+      return { x: (e.clientX - r.left) / (r.width / 1920),
+               y: (e.clientY - r.top) / (r.height / 1080) };
+    }
+
+    // dopo ogni spostamento i cognomi vengono rimisurati: chi ha più
+    // spazio cresce, chi ne ha meno rimpicciolisce
+    function ridisegnaNomi() {
+      maglie.forEach(function (n, i) {
+        var cg = n.querySelector(".cg");
+        if (cg) cg.style.fontSize = corpoCg(cg.textContent, spazioPerNome(geo, i)) + "px";
+      });
+    }
+
+    function segnaSpostata(n, i) {
+      var mossa = Math.abs(geo[i].x - geoAuto[i].x) > 1 || Math.abs(geo[i].y - geoAuto[i].y) > 1;
+      n.classList.toggle("spostata", mossa);
+      return mossa;
+    }
+
+    function avvisaPagina() {
+      var mosse = 0;
+      maglie.forEach(function (n, i) { if (segnaSpostata(n, i)) mosse++; });
+      try {
+        parent.postMessage({
+          comotv: "formazione-posizioni",
+          g: geo.map(function (g) { return [Math.round(g.x), Math.round(g.y)]; }),
+          mosse: mosse
+        }, "*");
+      } catch (err) {}
+    }
+
+    palco.addEventListener("pointerdown", function (e) {
+      var j = e.target.closest ? e.target.closest(".jersey") : null;
+      if (!j) return;
+      e.preventDefault();
+      presa = { nodo: j, i: parseInt(j.dataset.i, 10) };
+      j.classList.add("presa");
+      if (j.setPointerCapture) j.setPointerCapture(e.pointerId);
+    });
+
+    document.addEventListener("pointermove", function (e) {
+      if (!presa) return;
+      var pt = coordPalco(e);
+      var x = Math.max(LIM.x1, Math.min(LIM.x2, pt.x));
+      var y = Math.max(LIM.y1, Math.min(LIM.y2, pt.y));
+      geo[presa.i].x = x; geo[presa.i].y = y;
+      presa.nodo.style.left = x + "px";
+      presa.nodo.style.top = y + "px";
+      ridisegnaNomi();
+    });
+
+    document.addEventListener("pointerup", function () {
+      if (!presa) return;
+      presa.nodo.classList.remove("presa");
+      presa = null;
+      avvisaPagina();
+    });
+
+    // doppio click su una maglia: torna al posto che le dà il modulo
+    palco.addEventListener("dblclick", function (e) {
+      var j = e.target.closest ? e.target.closest(".jersey") : null;
+      if (!j) return;
+      var i = parseInt(j.dataset.i, 10);
+      geo[i].x = geoAuto[i].x; geo[i].y = geoAuto[i].y;
+      j.style.left = geo[i].x + "px"; j.style.top = geo[i].y + "px";
+      ridisegnaNomi(); avvisaPagina();
+    });
+
+    // "Rimetti in ordine" dalla pagina Formazioni
+    window.addEventListener("message", function (ev) {
+      if (!ev.data || ev.data.comotv !== "formazione-reset") return;
+      maglie.forEach(function (n, i) {
+        geo[i].x = geoAuto[i].x; geo[i].y = geoAuto[i].y;
+        n.style.left = geo[i].x + "px"; n.style.top = geo[i].y + "px";
+      });
+      ridisegnaNomi(); avvisaPagina();
+    });
+
+    avvisaPagina();   // stato iniziale (posizioni già sistemate in un giro precedente)
+  }
+
   // replay: click o tasto R (utile in regia)
   function replay() { location.reload(); }
   document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
-  document.addEventListener("dblclick", replay);
+  if (!EDIT) document.addEventListener("dblclick", replay);
 })();
 </script>
 </body>
