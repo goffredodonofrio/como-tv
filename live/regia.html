@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Live Studio · Como TV</title>
+<title>Live Dashboard · Como TV</title>
 <style>
   @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
   @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
@@ -188,12 +188,10 @@
     text-transform:uppercase;color:#0A0F24;background:var(--gold);border-radius:4px;
     padding:5px 12px;text-decoration:none;white-space:nowrap;}
   #canaleBadge:hover{background:var(--gold-bright);}
-  /* porta alla console del Live Match: prima ci si arrivava solo dalla
-     schermata dei canali, che ora ha solo il link del playout */
-  .badgelink{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:800;letter-spacing:.18em;
-    text-decoration:none;padding:6px 12px;border-radius:6px;
-    color:var(--gold);border:1px solid var(--line-gold);background:transparent;}
-  .badgelink:hover{background:rgba(201,162,75,.12);color:var(--gold-bright);}
+  /* Il Live Match incorporato: e' la sua console, mostrata qui dentro.
+     Il telaio si adatta in altezza al contenuto, cosi' non compaiono
+     due barre di scorrimento una dentro l'altra. */
+  #matchFrame{width:100%;border:0;display:block;background:transparent;margin-top:16px;}
 #livpan{display:flex;flex-direction:column;gap:6px;align-items:center;margin-bottom:12px;}
   #livpan .lab{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:700;
     letter-spacing:.18em;color:var(--fg-3);}
@@ -226,7 +224,7 @@
 <nav class="nav">
   <a class="nav-brand" href="../index.html">COMO TV</a>
   <span class="nav-sep">·</span>
-  <span class="nav-here">Grafiche Live — Live Studio</span>
+  <span class="nav-here">Grafiche Live — Live Dashboard</span>
   <div class="nav-links">
     <a href="classifiche.html">Grafiche Live</a>
     <a href="classifiche-campionati.html">Classifiche</a>
@@ -251,9 +249,8 @@
 
   <header class="page">
     <div class="eyebrow">Como TV · Regia grafiche</div>
-    <h1 style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">Live Studio
-      <a id="canaleBadge" href="regia.html" title="Cambia canale">CANALE&nbsp;&mdash;</a>
-      <a id="vaiPartita" class="badgelink" href="partita.html" title="Console del Live Match di questo canale">LIVE&nbsp;MATCH&nbsp;&rarr;</a></h1>
+    <h1 style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">Live Dashboard
+      <a id="canaleBadge" href="regia.html" title="Cambia canale">CANALE&nbsp;&mdash;</a></h1>
   </header>
 
   <div id="state"><span class="dot"></span><span id="stateTxt">COLLEGAMENTO&hellip;</span></div>
@@ -291,6 +288,12 @@
     <div id="empty" style="display:none">Scaletta vuota: carica le grafiche dalle pagine
       (Formazioni &rarr; &#128225; Regia) e compariranno qui.</div>
   </div>
+
+  <!-- Il Live Match dello stesso canale: stessa pagina, stessa onda.
+       E' la console vera, mostrata qui senza la sua barra e i suoi
+       monitor, cosi' non c'e' codice doppio da tenere allineato. I suoi
+       pannelli arrivano gia' a tendina e partono chiusi. -->
+  <iframe id="matchFrame" src="about:blank" title="Comandi del Live Match"></iframe>
 
   </div>
 
@@ -333,7 +336,7 @@
       gh += '<div class="cch">' +
         '<a class="tilenum' + (ci === ultimo ? " ultimo" : "") + '" href="regia.html?c=' + ci + '" title="Apri la regia di questo canale"><b>' + ci + '</b><span>' + (ci === ultimo ? "ultimo usato" : "vMix " + ci) + '</span></a>' +
         '<button type="button" class="copia" data-link="' + linkLive + '" data-nome="vMix ' + ci + '">&#8865; LINK LIVE</button>' +
-        '<a class="apri" href="' + linkLive + '" target="_blank">&#9654; PLAYOUT LIVE</a>' +
+        '<a class="apri" href="regia.html?c=' + ci + '">&#9654; PLAYOUT LIVE</a>' +
         '</div>';
     }
     g.innerHTML = gh;
@@ -361,10 +364,28 @@
   // ── console live studio ──
   document.getElementById("console").style.display = "block";
   var badge = document.getElementById("canaleBadge");
-  badge.textContent = "CANALE " + CANALE + " · LIVE STUDIO";
+  badge.textContent = "CANALE " + CANALE + " · LIVE DASHBOARD";
   badge.href = "regia.html";
-  document.getElementById("vaiPartita").href = "partita.html?c=" + CANALE;
-  document.title = "Live Studio C" + CANALE + " · Como TV";
+
+  // ── Live Match nella stessa pagina ──────────────────────────────────
+  // Si carica la console vera in un telaio e la si fa crescere quanto il
+  // suo contenuto: un solo posto da guardare durante la diretta.
+  (function () {
+    var fr = document.getElementById("matchFrame");
+    fr.src = "partita.html?c=" + CANALE + "&incorporato=1";
+
+    function adatta() {
+      try {
+        var d = fr.contentDocument;
+        if (!d || !d.body) return;
+        var alt = Math.max(d.body.scrollHeight, d.documentElement.scrollHeight);
+        if (alt > 40) fr.style.height = alt + "px";
+      } catch (e) {}       // se un giorno finisse su un altro indirizzo
+    }
+    fr.addEventListener("load", function () { adatta(); setTimeout(adatta, 400); });
+    setInterval(adatta, 800);   // le tendine interne cambiano l'altezza
+  })();
+  document.title = "Live Dashboard C" + CANALE + " · Como TV";
 
   var elState = document.getElementById("state");
   var elStateTxt = document.getElementById("stateTxt");
@@ -421,6 +442,7 @@
   function showPvw(id) {
     if (thumbShownId === id) return;
     thumbShownId = id;
+    pvw.style.visibility = "visible";
     thumbcap.textContent = "Carico l'anteprima…";
     fetch(PONTE + "?regia=item&id=" + encodeURIComponent(id) + "&canale=" + CANALE, { cache: "no-store" })
       .then(function (r) { return r.json(); })
@@ -477,6 +499,7 @@
     if (!sopra) { clearLive(); return; }
     shownPlayNonce = sopra.lv.playNonce;
     document.getElementById("thumbbox").classList.add("onair");
+    thumb.style.visibility = "visible";
     thumb.src = engineOf(sopra.lv.tipo) + "?d=" + b64url(sopra.lv.dati || {}) + "&n=" + sopra.lv.playNonce + "&muto=1";
     fitThumb();
     pittaPgmCap();
@@ -486,6 +509,9 @@
     shownPlayNonce = null;
     document.getElementById("thumbbox").classList.remove("onair");
     thumb.src = "about:blank";
+    // Un telaio su about:blank dipinge la sua tela bianca e copre il
+    // riquadro scuro: si nasconde, cosi' il monitor spento resta nero.
+    thumb.style.visibility = "hidden";
     pgmcap.textContent = "Nessuna grafica in onda (layer trasparente).";
   }
 
@@ -557,7 +583,7 @@
       clearLive();
     }
     if (selId) showPvw(selId);
-    else { pvw.src = "about:blank"; thumbShownId = null; thumbcap.textContent = "Clicca una grafica in scaletta: la vedi qui senza toccare l'onda."; }
+    else { pvw.src = "about:blank"; pvw.style.visibility = "hidden"; thumbShownId = null; thumbcap.textContent = "Clicca una grafica in scaletta: la vedi qui senza toccare l'onda."; }
     btnTake.disabled = !selId;
   }
 

@@ -93,6 +93,25 @@
   .panel h2{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.2em;
     text-transform:uppercase;color:var(--gold);margin-bottom:12px;}
 
+  /* Modo incorporato: questa console vive dentro la Live Dashboard, che ha
+     gia' la sua barra, la sua intestazione, i suoi monitor e la scaletta.
+     Qui restano solo i comandi della partita. */
+  body.incorporato .nav,
+  body.incorporato header.page,
+  body.incorporato .panel.mon,
+  body.incorporato .soloIntero{display:none;}
+  body.incorporato{background:transparent;}
+  body.incorporato .wrap{padding-top:0;padding-left:0;padding-right:0;}
+  /* uno sotto l'altro e larghi uguale, come i pannelli della dashboard */
+  body.incorporato .sotto{grid-template-columns:1fr;}
+
+  /* dentro il box unico: le tre parti restano riconoscibili senza essere
+     tre riquadri separati */
+  .sotto-titolo{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
+    letter-spacing:.18em;text-transform:uppercase;color:var(--fg-3);
+    margin:22px 0 10px;padding-top:14px;border-top:1px solid var(--line-2);}
+  .panel h2 + .sotto-titolo{margin-top:0;padding-top:0;border-top:0;}
+
   /* Pannelli a tendina: durante una diretta servono poche cose alla volta,
      il resto si chiude e la console resta corta. La scelta resta salvata
      sulla postazione. */
@@ -302,7 +321,7 @@
         <h2>Player Live Match</h2>
         <div id="fasi"></div>
       </div>
-      <div class="panel">
+      <div class="panel soloIntero">
         <h2>Grafiche del Live Match <small id="gcount" style="font-family:'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--fg-3);font-weight:500;font-size:11px"></small></h2>
         <div id="gitems"></div>
         <div id="gvuota" style="display:none">Niente in scaletta su questo canale: prepara formazioni e
@@ -312,7 +331,8 @@
     </div>
     <div class="colcomandi">
       <div class="panel">
-        <h2>Campionato e squadre</h2>
+        <h2>Campionato, punteggio e cronometro</h2>
+        <h3 class="sotto-titolo">Campionato e squadre</h3>
         <div class="riga">
           <div>
             <label for="competizione">Competizione</label>
@@ -377,9 +397,7 @@
             </div>
           </div>
         </div>
-      </div>
-      <div class="panel">
-        <h2>Punteggio</h2>
+        <h3 class="sotto-titolo">Punteggio</h3>
         <div class="scorebox">
           <div class="lato">
             <span class="sig" id="vs1">CASA</span>
@@ -393,9 +411,7 @@
             <span class="pm"><button data-p="2" data-d="1">+1</button><button data-p="2" data-d="-1">&minus;1</button></span>
           </div>
         </div>
-      </div>
-      <div class="panel">
-        <h2>Cronometro</h2>
+        <h3 class="sotto-titolo">Cronometro</h3>
         <div id="crono" class="fermo">00:00</div>
         <div class="bottoniera">
           <button class="primary" id="btnStart">&#9654; Start</button>
@@ -453,6 +469,12 @@
     var c = parseInt(new URLSearchParams(location.search).get("c"), 10);
     return (c >= 1 && c <= N_CANALI) ? c : null;
   })();
+
+  // Dentro la Live Dashboard questa console appare come una sua sezione:
+  // niente barra, niente intestazione, niente monitor doppi.
+  if (new URLSearchParams(location.search).get("incorporato") === "1") {
+    document.body.classList.add("incorporato");
+  }
 
   if (!CANALE) {
     var g = document.getElementById("canaliGriglia");
@@ -1070,7 +1092,7 @@
       .then(function (dati) {
         if (!sel || sel.id !== id) return;
         pvw.src = (ENGINES[tipo] || ENGINES.formazione) + "?d=" + b64url(dati) + "&still=1&muto=1";
-        pvwcap.textContent = "Anteprima: " + it.titolo + " — andrà sul layer LIVE STUDIO.";
+        pvwcap.textContent = "Anteprima: " + it.titolo + " — andrà in onda sul playout.";
         fitMonitor();
       })
       .catch(function () { pvwcap.textContent = "Anteprima non disponibile."; });
@@ -1215,10 +1237,13 @@
   // Si chiudono e si riaprono cliccando il titolo. Restano come li lasci,
   // anche dopo aver ricaricato la pagina.
   (function () {
-    var APRIBILI = ["PLAYER LIVE MATCH", "CAMPIONATO E SQUADRE", "PUNTEGGIO", "CRONOMETRO"];
+    var APRIBILI = ["PLAYER LIVE MATCH", "CAMPIONATO, PUNTEGGIO E CRONOMETRO"];
     var LS = "comotv.partita.tendine";
     var chiusi = {};
     try { chiusi = JSON.parse(localStorage.getItem(LS) || "{}") || {}; } catch (e) {}
+    // dentro la dashboard partono chiuse: la si apre quando serve
+    var dentro = document.body.classList.contains("incorporato");
+    if (dentro) APRIBILI.forEach(function (k) { if (chiusi[k] === undefined) chiusi[k] = true; });
     document.querySelectorAll(".panel > h2").forEach(function (h) {
       var nome = (h.childNodes[0] ? h.childNodes[0].nodeValue || "" : "").trim().toUpperCase();
       if (APRIBILI.indexOf(nome) < 0) return;
