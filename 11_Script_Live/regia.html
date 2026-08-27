@@ -90,8 +90,12 @@
   .ib{font-family:'DM Sans',sans-serif;font-size:13px;padding:5px 9px;border-radius:5px;cursor:pointer;
     background:transparent;color:var(--fg-3);border:1px solid var(--line-2);}
   .ib:hover{color:var(--gold-bright);border-color:var(--line-gold);}
-  .ib.play{color:#4FCB8B;border-color:rgba(79,203,139,.45);font-weight:700;}
+  .ib.play,.ib.out{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:800;
+    letter-spacing:.08em;text-transform:uppercase;padding:7px 11px;white-space:nowrap;}
+  .ib.play{color:#4FCB8B;border-color:rgba(79,203,139,.45);}
   .ib.play:hover{background:rgba(79,203,139,.12);border-color:#4FCB8B;color:#4FCB8B;}
+  .ib.out{color:#FF6B6E;border-color:rgba(229,27,32,.5);}
+  .ib.out:hover{background:rgba(229,27,32,.12);border-color:var(--red);color:#FF6B6E;}
 
   #empty{color:var(--fg-3);font-size:13.5px;padding:18px 6px;}
 
@@ -371,9 +375,10 @@
       var quando = it.ts ? new Date(it.ts).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "";
       h += '<div class="item' + (it.id === selId ? " sel" : "") + (onair ? " onair" : "") + '" data-id="' + esc(it.id) + '" draggable="true">' +
         '<span class="grip" title="Trascina per riordinare">&#8942;&#8942;</span>' +
-        '<button class="ib play" data-act="play" data-id="' + esc(it.id) + '" title="Manda in onda">&#9654;</button>' +
+        (onair
+          ? '<button class="ib out" data-act="stop" data-id="' + esc(it.id) + '" title="Togli dall\'onda">Fuori onda</button>'
+          : '<button class="ib play" data-act="play" data-id="' + esc(it.id) + '" title="Manda in onda">In onda</button>') +
         '<span class="tit">' + esc(it.titolo || it.tipo) + '<small>' + esc(it.tipo.toUpperCase()) + (it.dest ? " · " + (it.dest === "partita" ? "PARTITA" : "LIVE STUDIO") : "") + (quando ? " · caricata " + quando : "") + '</small></span>' +
-        (onair ? '<span class="badge">IN ONDA</span>' : "") +
         '<button class="ib" data-act="ren" data-id="' + esc(it.id) + '" title="Rinomina">&#9998;</button>' +
         '<button class="ib" data-act="up" data-id="' + esc(it.id) + '" title="Su">&uarr;</button>' +
         '<button class="ib" data-act="down" data-id="' + esc(it.id) + '" title="Gi&ugrave;">&darr;</button>' +
@@ -431,11 +436,47 @@
       .catch(function () { msg.textContent = "Ponte non raggiungibile."; });
   }
 
+  // stima della durata dell'animazione di ingresso, per il conto alla rovescia
+  function stimaAnimazione(tipo, dati) {
+    var n;
+    if (tipo === "formazione") { n = dati && dati.p ? dati.p.length : 20; return 13.6 + n * 0.085 + 0.5; }
+    if (tipo === "classifica" || tipo === "marcatori") { n = dati && dati.r ? dati.r.length : 20; return 1.05 + n * 0.16 + 0.55; }
+    if (tipo === "risultati") { n = dati && dati.ev ? dati.ev.length : 8; return 1.3 + n * 0.22 + 0.9; }
+    if (tipo === "sottopancia" || tipo === "sottopancia2") return 1.5;
+    return 2;
+  }
+  var cdTimer = null;
+  function countdown(sec, titolo) {
+    if (cdTimer) clearInterval(cdTimer);
+    var fine = Date.now() + sec * 1000 + 1500;   // +1.5s di aggancio vMix
+    cdTimer = setInterval(function () {
+      var s2 = Math.ceil((fine - Date.now()) / 1000);
+      if (s2 > 0) {
+        msg.textContent = "Animazione di “" + titolo + "” in corso: " + s2 + "s…";
+      } else {
+        clearInterval(cdTimer); cdTimer = null;
+        msg.textContent = "“" + titolo + "” ferma sull'ultimo frame — esce solo con FUORI ONDA.";
+      }
+    }, 250);
+  }
+  function fermaCountdown() { if (cdTimer) { clearInterval(cdTimer); cdTimer = null; } }
+
   elItems.addEventListener("click", function (e) {
     var b = e.target.closest ? e.target.closest("button[data-act]") : null;
     if (b) {
       var id = b.dataset.id;
-      if (b.dataset.act === "play") post({ tipo: "regia-state", state: "play", id: id }, "In onda tra un istante…");
+      if (b.dataset.act === "play") {
+        post({ tipo: "regia-state", state: "play", id: id }, "In onda tra un istante…");
+        var it0 = null;
+        cur.items.forEach(function (x) { if (x.id === id) it0 = x; });
+        if (it0) {
+          fetch(PONTE + "?regia=item&id=" + encodeURIComponent(id) + "&canale=" + CANALE, { cache: "no-store" })
+            .then(function (r) { return r.json(); })
+            .then(function (dati) { countdown(stimaAnimazione(it0.tipo, dati), it0.titolo); })
+            .catch(function () {});
+        }
+      }
+      if (b.dataset.act === "stop") { fermaCountdown(); post({ tipo: "regia-state", state: "out" }, "Fuori onda."); }
       if (b.dataset.act === "up") post({ tipo: "regia-move", id: id, dir: "up" });
       if (b.dataset.act === "down") post({ tipo: "regia-move", id: id, dir: "down" });
       if (b.dataset.act === "ren") {
@@ -457,7 +498,7 @@
     }
   });
 
-  btnOut.addEventListener("click", function () { post({ tipo: "regia-state", state: "out" }, "Uscita…"); });
+  btnOut.addEventListener("click", function () { fermaCountdown(); post({ tipo: "regia-state", state: "out" }, "Uscita…"); });
 
   // ── riordino con trascinamento ──
   var dragging = null;

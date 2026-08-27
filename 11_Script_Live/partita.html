@@ -127,9 +127,18 @@
   .gitem .gt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
     font-size:13.5px;color:var(--ivory);}
   .gitem .gt small{display:block;font-size:10.5px;color:var(--fg-3);text-transform:uppercase;}
-  .gitem .gb{font-size:13px;padding:5px 10px;border-radius:5px;cursor:pointer;letter-spacing:0;
-    background:transparent;color:#4FCB8B;border:1px solid rgba(79,203,139,.45);font-weight:700;}
+  .gitem .gb{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:800;letter-spacing:.08em;
+    text-transform:uppercase;padding:7px 11px;border-radius:5px;cursor:pointer;white-space:nowrap;
+    background:transparent;color:#4FCB8B;border:1px solid rgba(79,203,139,.45);}
   .gitem .gb:hover{background:rgba(79,203,139,.12);border-color:#4FCB8B;color:#4FCB8B;}
+  .gitem .gb.fuori{color:#FF6B6E;border-color:rgba(229,27,32,.5);}
+  .gitem .gb.fuori:hover{background:rgba(229,27,32,.12);border-color:var(--red);color:#FF6B6E;}
+  .gitem .gt{cursor:pointer;}
+  #gprevbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px;
+    border:1px solid var(--line-2);background:#070B1D;margin-top:8px;display:none;}
+  #gprev{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
+    transform-origin:top left;pointer-events:none;}
+  #gprevcap{font-size:11.5px;color:var(--fg-3);margin-top:6px;min-height:16px;}
   .gitem .gonair{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:800;letter-spacing:.14em;
     color:#FF6B6E;border:1px solid rgba(229,27,32,.6);border-radius:3px;padding:2px 7px;white-space:nowrap;}
   #gvuota{color:var(--fg-3);font-size:12.5px;padding:6px 2px;}
@@ -265,6 +274,8 @@
         <div id="gitems"></div>
         <div id="gvuota" style="display:none">Niente in scaletta su questo canale: prepara formazioni e
           sottopancia dalle loro pagine e inviale alla regia (canale <span class="gcanale"></span>).</div>
+        <div id="gprevbox"><iframe id="gprev" scrolling="no"></iframe></div>
+        <div id="gprevcap"></div>
         <button id="gOut" disabled>&#9632; Fuori onda grafiche</button>
         <div class="glink">Le grafiche vanno sul layer grafiche (l'anteprima qui sotto mostra solo il
           layer partita) · <a id="gRegia" href="regia.html" target="_blank">apri la regia completa</a></div>
@@ -352,19 +363,31 @@
   var el = function (id) { return document.getElementById(id); };
   var msg = el("msg");
 
-  // ── invio al ponte (debounce leggero sui campi di testo) ──
-  var tInvio = null;
+  // ── invio al ponte: serializzato e numerato — un solo POST in volo,
+  //    e ogni stato porta una sequenza crescente così due click
+  //    ravvicinati non possono superarsi in rete (il ponte scarta
+  //    le scritture in ritardo) ──
+  var tInvio = null, inVolo = false, daRifare = false, seq = 0;
+  function spedisci() {
+    if (inVolo) { daRifare = true; return; }
+    inVolo = true;
+    seq = Math.max(seq + 1, Date.now());
+    S.cSeq = seq;
+    fetch(PONTE, {
+      method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ token: TOKEN, tipo: "partita-set", c: CANALE, stato: S })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) { if (!res.ok) msg.textContent = "Errore: " + (res.errore || ""); })
+      .catch(function () { msg.textContent = "Ponte non raggiungibile."; })
+      .then(function () {
+        inVolo = false;
+        if (daRifare) { daRifare = false; spedisci(); }
+      });
+  }
   function invia(subito) {
     clearTimeout(tInvio);
-    tInvio = setTimeout(function () {
-      fetch(PONTE, {
-        method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ token: TOKEN, tipo: "partita-set", c: CANALE, stato: S })
-      })
-        .then(function (r) { return r.json(); })
-        .then(function (res) { msg.textContent = res.ok ? "" : ("Errore: " + (res.errore || "")); })
-        .catch(function () { msg.textContent = "Ponte non raggiungibile."; });
-    }, subito ? 0 : 400);
+    tInvio = setTimeout(spedisci, subito ? 0 : 400);
   }
 
   // ── campionato e squadre ──
@@ -466,16 +489,17 @@
     var h = "";
     FASI.forEach(function (x) {
       h += '<div class="gitem" data-fase="' + x.f + '">' +
-        '<button class="gb" data-fplay="' + x.f + '" title="Manda in onda">&#9654;</button>' +
+        '<button class="gb" data-fplay="' + x.f + '">In onda</button>' +
         '<span class="gt">' + x.t + '<small>' + x.d + '</small></span>' +
-        '<span class="gonair" style="display:none">IN ONDA</span>' +
         '</div>';
     });
     el("fasi").innerHTML = h;
   })();
   el("fasi").addEventListener("click", function (e) {
     var b = e.target.closest ? e.target.closest("button[data-fplay]") : null;
-    if (b) setFase(b.dataset.fplay);
+    if (!b) return;
+    // la riga in onda mostra FUORI ONDA: cliccarla spegne
+    setFase(b.classList.contains("fuori") ? "off" : b.dataset.fplay);
   });
   el("fOff").addEventListener("click", function () { setFase("off"); });
 
@@ -496,7 +520,9 @@
     document.querySelectorAll("#fasi .gitem").forEach(function (r) {
       var onair = r.dataset.fase === S.fase;
       r.classList.toggle("onair", onair);
-      r.querySelector(".gonair").style.display = onair ? "" : "none";
+      var b = r.querySelector("button");
+      b.classList.toggle("fuori", onair);
+      b.textContent = onair ? "Fuori onda" : "In onda";
     });
     el("fOff").disabled = S.fase === "off" || !S.fase;
   }
@@ -525,12 +551,68 @@
     gScaletta.items.forEach(function (it) {
       var onair = it.id === gScaletta.onair && st === "play";
       h += '<div class="gitem' + (onair ? " onair" : "") + '">' +
-        '<button class="gb" data-gplay="' + gEsc(it.id) + '" title="Manda in onda">&#9654;</button>' +
-        '<span class="gt">' + gEsc(it.titolo || it.tipo) + '<small>' + gEsc(it.tipo) + (it.dest ? " · " + (it.dest === "partita" ? "PARTITA" : "LIVE STUDIO") : "") + '</small></span>' +
-        (onair ? '<span class="gonair">IN ONDA</span>' : "") +
+        (onair
+          ? '<button class="gb fuori" data-gstop="1" title="Togli dall\'onda">Fuori onda</button>'
+          : '<button class="gb" data-gplay="' + gEsc(it.id) + '" title="Manda in onda">In onda</button>') +
+        '<span class="gt" data-gsel="' + gEsc(it.id) + '" data-gtipo="' + gEsc(it.tipo) + '" title="Clicca per l\'anteprima">' +
+        gEsc(it.titolo || it.tipo) + '<small>' + gEsc(it.tipo) + (it.dest ? " · " + (it.dest === "partita" ? "PARTITA" : "LIVE STUDIO") : "") + '</small></span>' +
         '</div>';
     });
     gItems.innerHTML = h;
+  }
+
+  // ── anteprima fermo-immagine + stima dell'animazione ──
+  var ENGINES = {
+    formazione: "formazione-vmix.html", classifica: "classifica-vmix.html",
+    risultati: "risultati-vmix.html", sottopancia: "sottopancia-vmix.html",
+    sottopancia2: "sottopancia2-vmix.html", marcatori: "marcatori-vmix.html",
+    video: "media-vmix.html", immagine: "media-vmix.html", web: "media-vmix.html"
+  };
+  function b64url(obj) {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(obj))))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function fitGPrev() {
+    var w = el("gprevbox").clientWidth;
+    el("gprev").style.transform = "scale(" + (w / 1920) + ")";
+  }
+  window.addEventListener("resize", fitGPrev);
+
+  function gAnteprima(id, tipo, titolo) {
+    fetch(PONTE + "?regia=item&id=" + encodeURIComponent(id) + "&canale=" + CANALE, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (dati) {
+        el("gprevbox").style.display = "block";
+        el("gprev").src = (ENGINES[tipo] || ENGINES.formazione) + "?d=" + b64url(dati) + "&still=1&muto=1";
+        fitGPrev();
+        el("gprevcap").textContent = "Anteprima (fermo-immagine): " + titolo;
+      })
+      .catch(function () { el("gprevcap").textContent = "Anteprima non disponibile."; });
+  }
+
+  // stima della durata dell'animazione di ingresso, per il conto alla rovescia
+  function stimaAnimazione(tipo, dati) {
+    var n;
+    if (tipo === "formazione") { n = dati && dati.p ? dati.p.length : 20; return 13.6 + n * 0.085 + 0.5; }
+    if (tipo === "classifica" || tipo === "marcatori") { n = dati && dati.r ? dati.r.length : 20; return 1.05 + n * 0.16 + 0.55; }
+    if (tipo === "risultati") { n = dati && dati.ev ? dati.ev.length : 8; return 1.3 + n * 0.22 + 0.9; }
+    if (tipo === "sottopancia" || tipo === "sottopancia2") return 1.5;
+    return 2;
+  }
+
+  var gCd = null;
+  function gCountdown(sec, titolo) {
+    if (gCd) clearInterval(gCd);
+    var fine = Date.now() + sec * 1000 + 1500;   // +1.5s di aggancio vMix
+    gCd = setInterval(function () {
+      var s2 = Math.ceil((fine - Date.now()) / 1000);
+      if (s2 > 0) {
+        msg.textContent = "Animazione di “" + titolo + "” in corso: " + s2 + "s…";
+      } else {
+        clearInterval(gCd); gCd = null;
+        msg.textContent = "“" + titolo + "” ferma sull'ultimo frame — esce solo con FUORI ONDA.";
+      }
+    }, 250);
   }
 
   function gPost(body, testo) {
@@ -548,9 +630,31 @@
 
   gItems.addEventListener("click", function (e) {
     var b = e.target.closest ? e.target.closest("button[data-gplay]") : null;
-    if (b) gPost({ tipo: "regia-state", state: "play", id: b.dataset.gplay }, "Grafica in onda tra un istante…");
+    if (b) {
+      var id = b.dataset.gplay;
+      var it = null;
+      gScaletta.items.forEach(function (x) { if (x.id === id) it = x; });
+      gPost({ tipo: "regia-state", state: "play", id: id }, "Grafica in onda tra un istante…");
+      if (it) {
+        fetch(PONTE + "?regia=item&id=" + encodeURIComponent(id) + "&canale=" + CANALE, { cache: "no-store" })
+          .then(function (r) { return r.json(); })
+          .then(function (dati) { gCountdown(stimaAnimazione(it.tipo, dati), it.titolo); })
+          .catch(function () {});
+      }
+      return;
+    }
+    var s = e.target.closest ? e.target.closest("[data-gsel]") : null;
+    if (s) gAnteprima(s.dataset.gsel, s.dataset.gtipo, s.textContent.split("\n")[0]);
+    var stop = e.target.closest ? e.target.closest("button[data-gstop]") : null;
+    if (stop) {
+      if (gCd) { clearInterval(gCd); gCd = null; }
+      gPost({ tipo: "regia-state", state: "out" }, "Grafica fuori onda.");
+    }
   });
-  gOut.addEventListener("click", function () { gPost({ tipo: "regia-state", state: "out" }, "Grafiche fuori onda."); });
+  gOut.addEventListener("click", function () {
+    if (gCd) { clearInterval(gCd); gCd = null; }
+    gPost({ tipo: "regia-state", state: "out" }, "Grafiche fuori onda.");
+  });
 
   function gPoll() {
     fetch(PONTE + "?regia=1&canale=" + CANALE, { cache: "no-store" })
@@ -580,6 +684,9 @@
     .then(function (r) { return r.json(); })
     .then(function (j) {
       if (j.srv) offset = Date.now() - j.srv;
+      // se l'operatore ha già toccato qualcosa, la risposta (lenta) non
+      // deve sovrascrivere i suoi click: vale solo a pannello "vergine"
+      if (seq > 0) return;
       if (j && j.fase) {
         S = { fase: j.fase, camp: j.camp || S.camp,
               casa: j.casa || S.casa, osp: j.osp || S.osp,
