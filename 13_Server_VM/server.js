@@ -472,12 +472,30 @@ const TIPI = {
   ".mp4": "video/mp4", ".webm": "video/webm", ".txt": "text/plain; charset=utf-8"
 };
 
+// Cosa non esce da qui: le cartelle di servizio, i file nascosti e
+// tutto ciò che è codice o procedura invece che pagina.
+const CARTELLE_CHIUSE = ["13_Server_VM", "8_Push Script"];
+const ESTENSIONI_CHIUSE = [".sh", ".command", ".gs", ".py", ".jsx", ".md", ".service", ".timer", ".conf"];
+
+function consentito(rel) {
+  const pezzi = rel.split("/").filter(Boolean);
+  if (pezzi.some(p => p.startsWith("."))) return false;            // .git, .gitignore…
+  if (pezzi.length && CARTELLE_CHIUSE.indexOf(pezzi[0]) >= 0) return false;
+  if (ESTENSIONI_CHIUSE.indexOf(path.extname(rel).toLowerCase()) >= 0) return false;
+  return true;
+}
+
 function serviStatico(req, res, percorso) {
   let rel = decodeURIComponent(percorso.split("?")[0]);
   if (rel.endsWith("/")) rel += "index.html";
   const file = path.join(CONFIG.SITO, rel);
   // nessuna uscita dalla cartella del sito
   if (!file.startsWith(path.resolve(CONFIG.SITO))) { res.writeHead(403).end("vietato"); return; }
+  // Nella cartella del sito c'è il clone del repo: accanto alle pagine
+  // finiscono anche .git, il codice di questo server e gli script di
+  // installazione. Non sono roba da mettere in mano a chi passa: chi
+  // conosce l'indirizzo potrebbe leggersi come funziona il ponte.
+  if (!consentito(rel)) { res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" }).end("non trovato"); return; }
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) { res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" }).end("non trovato"); return; }
     const tipo = TIPI[path.extname(file).toLowerCase()] || "application/octet-stream";
