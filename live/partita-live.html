@@ -107,10 +107,15 @@
   #fstadio.vuoto{display:none;}
 
   /* corpo: nessun fondo pieno, solo un filo d'oro sopra e sotto */
-  #fcorpo{position:relative;display:flex;align-items:center;justify-content:center;
+  /* Stemmi e nomi condividono la STESSA griglia a tre colonne: prima gli
+     stemmi stavano in tre colonne centrate e i nomi in due meta', quindi i
+     centri cadevano a 35px di distanza e le squadre risultavano storte
+     rispetto al proprio stemma. */
+  #fcorpo{position:relative;display:grid;grid-template-columns:1fr 340px 1fr;
+    align-items:center;
     padding:34px 30px 30px;
     border-top:1px solid rgba(201,162,75,.30);}
-  .fstemma{width:230px;display:flex;align-items:center;justify-content:center;}
+  .fstemma{display:flex;align-items:center;justify-content:center;}
   .fstemma img{width:152px;height:152px;object-fit:contain;
     filter:drop-shadow(0 8px 22px rgba(0,0,0,.55));}
   /* squadre senza stemma (giovanili): scudetto con la sigla */
@@ -120,7 +125,7 @@
     letter-spacing:.04em;text-shadow:0 3px 10px rgba(0,0,0,.55);
     box-shadow:inset 0 0 0 3px rgba(245,241,230,.75), 0 8px 22px rgba(0,0,0,.5);}
 
-  #fcentro{width:400px;text-align:center;}
+  #fcentro{text-align:center;}
   #fpunteggio{font-family:'Mazzard',sans-serif;font-weight:800;font-size:96px;color:#C9A24B;
     font-variant-numeric:tabular-nums;letter-spacing:.03em;line-height:1;
     text-shadow:0 4px 20px rgba(0,0,0,.55);}
@@ -134,14 +139,16 @@
   #fetichetta.vuoto{display:none;}
 
   /* fascia coi nomi: velo chiarissimo, filo d'oro di separazione */
-  #fnomi{display:flex;align-items:stretch;
+  #fnomi{display:grid;grid-template-columns:1fr 340px 1fr;align-items:stretch;
+    padding:0 30px;
     border-top:1px solid rgba(201,162,75,.30);
     background:rgba(245,241,230,.06);}
-  #fnomi div{flex:1;text-align:center;padding:18px 18px;
-    font-family:'Mazzard',sans-serif;font-weight:800;font-size:34px;letter-spacing:.05em;
+  #fnomi div{text-align:center;padding:18px 10px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:32px;letter-spacing:.04em;
     color:#F5F1E6;text-transform:uppercase;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  #fnomi .sep{flex:0 0 1px;padding:0;background:rgba(245,241,230,.16);}
+  /* il filo verticale sta al centro della colonna di mezzo */
+  #fnomi .sep{justify-self:center;width:1px;padding:0;background:rgba(245,241,230,.16);}
 
 </style>
 </head>
@@ -293,6 +300,7 @@
 
       testo("fnm1", casa.n || casa.s || "");
       testo("fnm2", osp.n || osp.s || "");
+      adattaNome("fnm1"); adattaNome("fnm2");
 
       elFull.classList.remove("out");
       elFull.classList.add("on");
@@ -315,6 +323,19 @@
     } else {
       var sig = String(sq.s || "").slice(0, 3).toUpperCase();
       box.innerHTML = '<div class="fsigla" style="background:' + (sq.col || "#243F8A") + '">' + sig + '</div>';
+    }
+  }
+
+  // I nomi lunghi si stringono invece di essere tagliati a meta' parola:
+  // "Blackburn Rovers" non deve diventare "Blackburn Rove…".
+  function adattaNome(id) {
+    var e = document.getElementById(id);
+    e.style.fontSize = "";
+    var base = parseFloat(getComputedStyle(e).fontSize) || 32;
+    var f = base;
+    while (e.scrollWidth > e.clientWidth && f > base * 0.6) {
+      f -= 1;
+      e.style.fontSize = f + "px";
     }
   }
 
