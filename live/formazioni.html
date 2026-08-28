@@ -404,7 +404,7 @@
   function mkSide(label) {
     return { label: label, comp: 0, teamId: "", teamName: "", roster: [], manualMode: false,
              mod: "4-3-3", tit: [], pan: [], custom: {}, posGraf: null, coachN: "", coachC: "",
-             kit: label === "Trasferta" ? "#C8102E" : "#1735C8" };
+             kit: label === "Trasferta" ? "#C8102E" : "#1735C8", maglia: "" };
   }
 
   function mkManualRow() { return { m: 1, num: "", nome: "", cognome: "" }; }
@@ -595,6 +595,13 @@
         '<div class="side">' + side.label +
           ' <span style="display:flex;align-items:center;gap:8px">' +
           '<input type="color" class="kit" title="Colore maglia nella grafica vMix" data-si="' + si + '" data-k="kit" value="' + esc(side.kit) + '">' +
+          '<select class="magliaSel" data-si="' + si + '" title="Maglia nella grafica: disegnata col colore, o la foto vera dal magazzino">' +
+            '<option value=""' + (side.maglia === "" ? " selected" : "") + '>Maglia disegnata</option>' +
+            '<option value="casa"' + (side.maglia === "casa" ? " selected" : "") + (magliaUrl(side, "casa") ? "" : " disabled") + '>Foto casa' + (magliaUrl(side, "casa") ? "" : " (da caricare)") + '</option>' +
+            '<option value="trasferta"' + (side.maglia === "trasferta" ? " selected" : "") + (magliaUrl(side, "trasferta") ? "" : " disabled") + '>Foto trasferta' + (magliaUrl(side, "trasferta") ? "" : " (da caricare)") + '</option>' +
+          '</select>' +
+          '<button class="modebtn" data-si="' + si + '" data-act="maglia-su" title="Carica il PNG della maglia (sfondo trasparente)">&#8682; Maglia</button>' +
+          '<input type="file" class="magliaFile" data-si="' + si + '" accept="image/png,image/webp" hidden>' +
           '<button class="modebtn' + (side.manualMode ? " off" : "") + '" data-si="' + si + '" data-act="' + (side.manualMode ? "manual-off" : "manual-on") + '">' +
           (side.manualMode ? "&#8617; torna alle rose ESPN" : "&#9997; Scrivi da zero") + '</button></span></div>';
 
@@ -1234,6 +1241,7 @@
       n: side.teamName || side.label,
       m: side.mod,
       k: side.kit,
+      mg: side.maglia ? magliaUrl(side, side.maglia) || undefined : undefined,
       l: side.teamId ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + side.teamId + ".png" : "",
       a: [side.coachN || "", side.coachC || ""],
       g: side.posGraf || undefined,
@@ -1243,6 +1251,79 @@
         .map(function (d) { return [d.num || "", d.nome || "", d.cognome || ""]; })
     };
   }
+
+  // ── le maglie vere: il magazzino del ponte ──────────────────────────
+  // Convenzione: maglia-<squadra>-casa.png / -trasferta.png nel deposito
+  // dei loghi. Caricata una volta, resta per tutte le prossime grafiche.
+  var MAGLIE = {};                 // chiave file -> url
+  function slugM(nome) {
+    return String(nome || "").toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+  }
+  function magliaUrl(side, dove) {
+    var k = "maglia-" + slugM(side.teamName || side.label) + "-" + dove;
+    return MAGLIE[k] || "";
+  }
+  function caricaElencoMaglie(poi) {
+    var cfg = ponteConfig(false);
+    if (!cfg) { if (poi) poi(); return; }
+    fetch(cfg.url + "?loghi=1", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        MAGLIE = {};
+        (j.loghi || []).forEach(function (x) {
+          if (/^maglia-/.test(x.chiave)) MAGLIE[x.chiave] = x.url;
+        });
+        if (poi) poi();
+      })
+      .catch(function () { if (poi) poi(); });
+  }
+  caricaElencoMaglie();
+
+  document.addEventListener("change", function (e) {
+    var t = e.target;
+    if (t.classList && t.classList.contains("magliaSel")) {
+      sides[+t.dataset.si].maglia = t.value;
+      renderAll();
+      return;
+    }
+    if (t.classList && t.classList.contains("magliaFile") && t.files && t.files[0]) {
+      var si = +t.dataset.si, side = sides[si];
+      var dove = window.confirm("OK = maglia di CASA · Annulla = maglia da TRASFERTA") ? "casa" : "trasferta";
+      var lettore = new FileReader();
+      lettore.onload = function () {
+        var cfg = ponteConfig(false);
+        if (!cfg) return;
+        status("", '<span class="msg">Carico la maglia di ' + esc(side.teamName || side.label) + ' (' + dove + ')&hellip;</span>');
+        fetch(cfg.url, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ token: cfg.token, tipo: "logo-carica",
+                                 nome: "maglia " + (side.teamName || side.label) + " " + dove,
+                                 dati: lettore.result })
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            if (!res.ok) throw new Error(res.errore || "carico fallito");
+            caricaElencoMaglie(function () {
+              side.maglia = dove;
+              renderAll();
+              status("ok", '<span class="msg">Maglia <b>' + dove + '</b> di <b>' + esc(side.teamName || side.label) + '</b> nel magazzino: resta per le prossime grafiche.</span>');
+            });
+          })
+          .catch(function (err) { status("err", '<span class="msg">Maglia non caricata: ' + esc(err.message) + '</span>'); });
+      };
+      lettore.readAsDataURL(t.files[0]);
+      t.value = "";
+    }
+  });
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest('button[data-act="maglia-su"]') : null;
+    if (!b) return;
+    var inp = document.querySelector('.magliaFile[data-si="' + b.dataset.si + '"]');
+    if (inp) inp.click();
+  });
 
   // ── anteprima incorporata: la grafica vera, con le maglie trascinabili ──
   var latoInPreview = null;
