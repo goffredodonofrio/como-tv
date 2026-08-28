@@ -59,7 +59,7 @@ const CONFIG = {
 // regia[c]   = { nonce, items:[{id,tipo,titolo,dest,ts,liv}], liv:{1..5:{state,onair,playNonce}} }
 // voci[c][id]= dati completi della grafica
 // partita[c] = { fase, camp, casa, osp, p1, p2, rec, clock, cSeq, srvTs, nonce }
-let S = { regia: {}, voci: {}, partita: {} };
+let S = { regia: {}, voci: {}, partita: {}, progetti: {} };
 
 function canaleDi(v) {
   const c = parseInt(v, 10);
@@ -111,7 +111,8 @@ function carica() {
   try {
     if (fs.existsSync(CONFIG.STATO)) {
       const letto = JSON.parse(fs.readFileSync(CONFIG.STATO, "utf8"));
-      if (letto && letto.regia) S = Object.assign({ regia: {}, voci: {}, partita: {} }, letto);
+      if (letto && letto.regia) S = Object.assign({ regia: {}, voci: {}, partita: {}, progetti: {} }, letto);
+      if (!S.progetti) S.progetti = {};
       // stato salvato prima dei livelli: quello che era in onda finisce
       // sul livello 1, così un aggiornamento del ponte non spegne nulla
       let convertiti = 0;
@@ -375,6 +376,95 @@ function inoltra(corpo) {
   }
 }
 
+// ─────────────────────────────────────────────── progetti
+// Un progetto e' una scaletta senza canale: la redazione lo riempie nei
+// giorni prima (Football Show del lunedi', preparato il sabato) e il
+// giorno del live lo si versa nel canale. Resta finche' non viene
+// cancellato a mano.
+function progettoCrea(p) {
+  const nome = String(p.nome || "").trim();
+  if (!nome) throw new Error("manca il nome del progetto");
+  const id = String(Date.now());
+  S.progetti[id] = { nome: nome, creato: Date.now(), items: [] };
+  salva();
+  return { ok: true, id: id, nome: nome };
+}
+
+function progettoDi(p) {
+  const pr = S.progetti[String(p.id || "")];
+  if (!pr) throw new Error("progetto inesistente (forse cancellato)");
+  return pr;
+}
+
+function progettoAggiungi(p) {
+  const pr = progettoDi(p);
+  if (pr.items.length >= CONFIG.MAX_SCALETTA) {
+    throw new Error("progetto pieno (" + CONFIG.MAX_SCALETTA + " grafiche)");
+  }
+  const base = p.titolo || p.grafica || "grafica";
+  let titolo = base, n = 2;
+  while (pr.items.some(i => i.titolo === titolo)) { titolo = base + " (" + n + ")"; n++; }
+  pr.items.push({
+    tipo: p.grafica || "formazione", titolo: titolo,
+    liv: livelloDi(p.liv), dati: p.dati || {}, ts: Date.now()
+  });
+  salva();
+  return { ok: true, id: p.id, nome: pr.nome, quante: pr.items.length };
+}
+
+function progettoElenco() {
+  const out = Object.keys(S.progetti).map(id => ({
+    id: id, nome: S.progetti[id].nome, creato: S.progetti[id].creato,
+    quante: S.progetti[id].items.length
+  }));
+  out.sort((a, b) => b.creato - a.creato);
+  return { ok: true, progetti: out };
+}
+
+function progettoLeggi(p) {
+  const pr = progettoDi(p);
+  return { ok: true, nome: pr.nome,
+           items: pr.items.map(i => ({ tipo: i.tipo, titolo: i.titolo, liv: i.liv })) };
+}
+
+function progettoDel(p) {
+  const pr = progettoDi(p);
+  delete S.progetti[String(p.id)];
+  salva();
+  return { ok: true, nome: pr.nome };
+}
+
+// Versa il progetto nel canale SOSTITUENDO la scaletta — ma cio' che sta
+// in onda in questo momento non si tocca: resta in scaletta e sui suoi
+// livelli, il resto viene rimpiazzato dalle grafiche del progetto.
+function progettoCarica(p) {
+  const pr = progettoDi(p);
+  const c = canaleDi(p.c);
+  const ix = regiaDi(c);
+  const inOnda = new Set();
+  for (const L of Object.keys(ix.liv)) {
+    const lv = ix.liv[L];
+    if (lv && lv.state === "play" && lv.onair) inOnda.add(lv.onair);
+  }
+  const tenuti = ix.items.filter(i => inOnda.has(i.id));
+  // le voci che escono liberano i loro dati
+  for (const i of ix.items) {
+    if (!inOnda.has(i.id)) delete S.voci[c][i.id];
+  }
+  const nuovi = [];
+  for (const it of pr.items) {
+    if (tenuti.length + nuovi.length >= CONFIG.MAX_SCALETTA) break;
+    const id = String(Date.now()) + String(Math.floor(Math.random() * 1000));
+    S.voci[c][id] = it.dati || {};
+    nuovi.push({ id: id, tipo: it.tipo, titolo: it.titolo, dest: "", ts: Date.now(), liv: it.liv || 1 });
+  }
+  ix.items = tenuti.concat(nuovi);
+  ix.nonce = Date.now();
+  salva(); annuncia(c, "regia");
+  return { ok: true, canale: c, nome: pr.nome, caricate: nuovi.length,
+           tenuteInOnda: tenuti.length, nonce: ix.nonce };
+}
+
 // ─────────────────────────────────────────────── loghi delle squadre
 // Le giovanili non hanno stemmi su nessuna fonte pubblica: la redazione
 // li carica una volta e restano qui, richiamati per nome squadra.
@@ -593,6 +683,12 @@ const server = http.createServer((req, res) => {
           case "regia-order":  out = regiaOrder(p); break;
           case "regia-rename": out = regiaRename(p); break;
           case "regia-liv":    out = regiaLiv(p); break;
+          case "progetto-crea":     out = progettoCrea(p); break;
+          case "progetto-aggiungi": out = progettoAggiungi(p); break;
+          case "progetto-elenco":   out = progettoElenco(); break;
+          case "progetto-leggi":    out = progettoLeggi(p); break;
+          case "progetto-del":      out = progettoDel(p); break;
+          case "progetto-carica":   out = progettoCarica(p); break;
           case "partita-set":  out = partitaSet(p); break;
           case "logo-carica":  out = logoSalva(p); break;
           case "logo-togli":   out = logoCancella(p); break;

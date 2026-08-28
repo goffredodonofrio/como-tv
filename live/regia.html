@@ -119,6 +119,12 @@
   .ib.out:hover{background:rgba(229,27,32,.12);border-color:var(--red);color:#FF6B6E;}
 
   #empty{color:var(--fg-3);font-size:13.5px;padding:18px 6px;}
+  /* progetti: le grafiche preparate nei giorni prima, pronte da versare qui */
+  .prog{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;
+    border:1px solid var(--line-2);margin-bottom:8px;background:rgba(245,241,230,.03);}
+  .prog .tit{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-size:14.5px;color:var(--ivory);}
+  .prog .tit small{display:block;font-size:11px;color:var(--fg-3);}
 
   /* monitor ANTEPRIMA (PVW, cornice oro) e IN ONDA (PGM, cornice rossa) */
   #pvwbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px;
@@ -291,6 +297,14 @@
     <div id="items"></div>
     <div id="empty" style="display:none">Scaletta vuota: carica le grafiche dalle pagine
       (Formazioni &rarr; &#128225; Regia) e compariranno qui.</div>
+  </div>
+
+  <!-- I progetti preparati dalla redazione (dalle pagine delle grafiche,
+       destinazione "Nuovo progetto"). Caricarne uno SOSTITUISCE la scaletta
+       di questo canale, ma non tocca mai cio' che e' in onda. -->
+  <div class="panel" id="progpanel" style="display:none">
+    <h2>Progetti <small id="progcount"></small></h2>
+    <div id="proglist"></div>
   </div>
 
   <!-- Il Live Match dello stesso canale: stessa pagina, stessa onda.
@@ -843,6 +857,69 @@
     cur.items = order.map(function (id) { return byId[id]; }).filter(Boolean);
     post({ tipo: "regia-order", order: order }, "Ordine aggiornato.");
   });
+
+  // ── progetti: preparati prima, versati qui il giorno del live ──────
+  (function () {
+    var pan = document.getElementById("progpanel");
+    var lista = document.getElementById("proglist");
+    var conta = document.getElementById("progcount");
+
+    function dipingi(pr) {
+      if (!pr.length) { pan.style.display = "none"; return; }
+      pan.style.display = "";
+      conta.textContent = pr.length;
+      var h = "";
+      pr.forEach(function (x) {
+        var d = x.creato ? new Date(x.creato) : null;
+        var quando = d ? d.toLocaleDateString("it-IT", { day: "numeric", month: "short" }) : "";
+        h += '<div class="prog" data-id="' + x.id + '" data-nome="' + esc(x.nome) + '">' +
+          '<div class="tit">&#128193; ' + esc(x.nome) +
+            '<small>' + x.quante + (x.quante === 1 ? " grafica" : " grafiche") +
+            (quando ? " &middot; creato il " + quando : "") + '</small></div>' +
+          '<button type="button" class="ib play" data-az="carica">&#9654; Carica qui</button>' +
+          '<button type="button" class="ib out" data-az="elimina">Elimina</button>' +
+          '</div>';
+      });
+      lista.innerHTML = h;
+    }
+
+    function aggiorna() {
+      fetch(PONTE, {
+        method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ token: TOKEN, tipo: "progetto-elenco" })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { if (j.ok) dipingi(j.progetti || []); })
+        .catch(function () {});   // senza elenco il pannello resta com'e'
+    }
+
+    lista.addEventListener("click", function (e) {
+      var b = e.target.closest ? e.target.closest("button[data-az]") : null;
+      if (!b) return;
+      var box = b.closest(".prog");
+      var id = box.dataset.id, nome = box.dataset.nome;
+      if (b.dataset.az === "carica") {
+        if (!window.confirm('Carico "' + nome + '" su questo canale?\n\nLa scaletta attuale viene SOSTITUITA (quello che e\u2019 in onda resta in onda).')) return;
+        post({ tipo: "progetto-carica", id: id }, 'Progetto "' + nome + '" caricato.');
+        setTimeout(aggiorna, 800);
+      } else {
+        if (!window.confirm('Elimino il progetto "' + nome + '"?\n\nLe sue grafiche vanno perse (le scalette gia\u2019 caricate non vengono toccate).')) return;
+        fetch(PONTE, {
+          method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ token: TOKEN, tipo: "progetto-del", id: id })
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            msg.textContent = j.ok ? 'Progetto "' + nome + '" eliminato.' : ("Errore: " + (j.errore || ""));
+            aggiorna();
+          })
+          .catch(function () { msg.textContent = "Ponte non raggiungibile."; });
+      }
+    });
+
+    aggiorna();
+    setInterval(aggiorna, 30000);   // la redazione puo' salvarne mentre la regia e' aperta
+  })();
 
   setInterval(tick, POLL_MS);
   tick();

@@ -223,6 +223,7 @@
 </div>
 
 <script src="scavalco.js"></script>
+<script src="destinazione.js"></script>
 <script>
 (function () {
   "use strict";
@@ -230,6 +231,7 @@
   var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
   if (window.Scavalco) Scavalco.carica(PONTE);
   var TOKEN = "como_tv_grafiche";
+  if (window.Destinazione) Destinazione.adotta(document.getElementById("canaleSel"), PONTE, TOKEN);
 
   function el(id) { return document.getElementById(id); }
   function esc(s) {
@@ -665,14 +667,13 @@
     var proposta = (MODO === "tabellone" ? "TABELLONE " : "GIRONI ") + (d.e || "").toUpperCase();
     var titolo = window.prompt("Nome in scaletta di regia:", proposta.trim());
     if (titolo === null) return;
-    var c = parseInt(el("canaleSel").value, 10) || 1;
-    el("stato").innerHTML = '<span>Invio alla regia (vMix ' + c + ')&hellip;</span>' +
+    el("stato").innerHTML = '<span>Invio a ' + Destinazione.dove() + '&hellip;</span>' +
       '<span class="pbar"><span class="pfill" id="pfill"></span></span>';
     fetch(PONTE, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ token: TOKEN, tipo: "regia-load", c: c,
-                             grafica: MODO, titolo: titolo.trim() || proposta, dati: d })
+      body: JSON.stringify(Object.assign({ token: TOKEN }, Destinazione.corpo({
+                             grafica: MODO, titolo: titolo.trim() || proposta, dati: d })))
     })
       .then(function (r) { return r.json(); })
       .then(function (res) {
@@ -680,7 +681,7 @@
           var pf = document.getElementById("pfill");
           if (pf) pf.className = "pfill done";
           setTimeout(function () {
-            stato("ok", "In scaletta su vMix " + c + ". Mandala in onda dalla regia.");
+            stato("ok", "Aggiunta a " + Destinazione.dove() + ". Dalla regia la mandi in onda.");
           }, 350);
         } else stato("err", "Errore: " + (res.errore || "sconosciuto"));
       })

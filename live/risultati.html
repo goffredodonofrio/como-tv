@@ -220,6 +220,7 @@
 </div>
 
 <script src="scavalco.js"></script>
+<script src="destinazione.js"></script>
 <script>
 (function () {
   "use strict";
@@ -598,6 +599,7 @@
     token: "como_tv_grafiche"
   };
   if (window.Scavalco) Scavalco.carica(PONTE_DEFAULT.url);
+  if (window.Destinazione) Destinazione.adotta(document.getElementById("canaleSel"), PONTE_DEFAULT.url, PONTE_DEFAULT.token);
 
   function ponteConfig(forza) {
     var url = safeGet(PONTE_URL) || PONTE_DEFAULT.url;
@@ -703,17 +705,17 @@
 
     var __canale = scegliCanale();
     if (__canale === null) return;
-    status("", '<span class="msg">Invio alla regia (vMix ' + __canale.c + ')&hellip;</span>');
+    status("", '<span class="msg">Invio a ' + Destinazione.dove() + '&hellip;</span>');
     fetch(cfg.url, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ token: cfg.token, tipo: "regia-load", c: __canale.c, dest: __canale.dest, grafica: "risultati",
-                             titolo: titolo.trim() || "RISULTATI", dati: dati })
+      body: JSON.stringify(Object.assign({ token: cfg.token }, Destinazione.corpo({ grafica: "risultati",
+                             titolo: titolo.trim() || "RISULTATI", dati: dati })))
     })
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (res.ok) {
-          status("ok", '<span class="msg"><b>' + esc(titolo) + '</b> aggiunta alla scaletta di regia. ' +
+          status("ok", '<span class="msg"><b>' + esc(titolo) + '</b> aggiunta a ' + Destinazione.dove() + '. ' +
             '<a href="regia.html" target="_blank" style="color:var(--gold-bright)">Apri la console</a>.</span>');
         } else {
           status("err", '<span class="msg"><b>La regia ha rifiutato:</b> ' + esc(res.errore || "errore") + '</span>');
