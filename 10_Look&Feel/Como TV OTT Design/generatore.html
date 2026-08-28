@@ -945,15 +945,18 @@ var FMT={
  // cosi' il PNG esportato si appoggia sopra il video in montaggio e il
  // filmato guarda da sotto, come nel riferimento (Welbeck / Carabao Cup).
  feed_maschera_1080x1440:{label:'Feed maschera 3:4',group:'Match',w:1080,h:1440,useComp:true,
-  fields:[{k:'comp',l:'Competizione (testo)'},{k:'mkTitle',l:'Titolo'},{k:'mkSub',l:'Sottotitolo (vuoto = niente)'}],images:[],
-  gen:function(p,I,A){var W=1080,cx=W/2;
+  fields:[{k:'comp',l:'Competizione (testo)'},{k:'mkTitle',l:'Titolo'},{k:'mkSub',l:'Sottotitolo (vuoto = niente)'}],images:[{k:'photo',l:'Foto (o fotogramma dal video)'}],
+  gen:function(p,I,A){var W=1080,H=1440,cx=W/2;
    var size=92,L=ytWrap(p.mkTitle,size,-1,950);
    if(L.length>2){size=ytFit(p.mkTitle,92,-1,1860);L=ytWrap(p.mkTitle,size,-1,950);}
    L=L.slice(0,2);
    var step=Math.round(size*1.04);
    var BH=468+L.length*step;                    // la fascia respira col titolo
    var out='<defs><radialGradient id="mkBg" cx="50%" cy="0%" r="130%"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".5" stop-color="#141B3C"/><stop offset="1" stop-color="#0A0F24"/></radialGradient></defs>'
-    +'<rect width="'+W+'" height="'+BH+'" fill="url(#mkBg)"/>'
+    // lo strato foto/video sta SOTTO la fascia: senza media resta vuoto
+    // (niente segnaposto), cosi' l'export tiene la trasparenza
+    +(ph(I,'photo')?GPHOTO(W,H,A,I):G('photo',A,''))
+    +'<rect width="'+W+'" height="'+BH+'" fill="url(#mkBg)"/>' 
     +(p.showLogo===false?'':brandMark(A,cx,64,118,true))
     +G('t-comp',A,T(cx,320,p.comp,{s:34,w:800,fill:C.gold,ls:8,anchor:'middle'}));
    var ty=424,tx='';L.forEach(function(l,i){tx+=T(cx,ty+i*step,l,{s:size,w:800,fill:C.ivory,ls:-1,anchor:'middle'});});
@@ -1894,7 +1897,7 @@ var PE_BEFORE=null;
 // del gruppo 'photo' (trascinamento e zoom fatti dall'utente).
 // L'export video vale solo per i due formati social verticali: altrove il
 // picker serve ancora a prendere un fotogramma, ma non a produrre una clip.
-var FORMATI_VIDEO={story_video_1080x1920:1,'story_video_1080x1920-live':1};
+var FORMATI_VIDEO={story_video_1080x1920:1,'story_video_1080x1920-live':1,feed_maschera_1080x1440:1};
 var videoPick=null;
 
 function overlaySvg(key){var it=BYKEY[key];
