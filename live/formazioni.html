@@ -102,16 +102,18 @@
   .teams{display:grid;grid-template-columns:1fr auto 1fr;gap:18px;align-items:start;margin-bottom:16px;}
   .teampanel{background:var(--surface-panel);border:1px solid var(--line-2);border-radius:10px;padding:14px;}
   .teampanel .side{font-family:'Mazzard',system-ui,sans-serif;font-size:10px;font-weight:700;
-    letter-spacing:.26em;text-transform:uppercase;color:var(--gold);margin-bottom:9px;
+    letter-spacing:.26em;text-transform:uppercase;color:var(--gold);margin-top:11px;
     display:flex;align-items:center;justify-content:space-between;gap:10px;}
-  .modebtn{font-family:'Mazzard',system-ui,sans-serif;font-size:10px;font-weight:700;letter-spacing:.12em;
-    text-transform:uppercase;padding:6px 12px;border-radius:4px;
+  .modebtn{font-family:'Mazzard',system-ui,sans-serif;font-size:9px;font-weight:700;letter-spacing:.1em;
+    text-transform:uppercase;padding:4px 9px;border-radius:4px;
     background:var(--gold);color:#0A0F24;border:1px solid var(--gold);
     box-shadow:0 2px 10px rgba(201,162,75,.35);}
   .modebtn:hover{background:var(--gold-bright);border-color:var(--gold-bright);color:#0A0F24;}
   .modebtn.off{background:transparent;color:var(--ivory-dim);border-color:var(--line-2);box-shadow:none;
-    font-family:'DM Sans',system-ui,sans-serif;font-size:11px;font-weight:500;letter-spacing:.02em;text-transform:none;}
+    font-family:'DM Sans',system-ui,sans-serif;font-size:10px;font-weight:500;letter-spacing:.02em;text-transform:none;}
   .modebtn.off:hover{color:var(--gold-bright);border-color:var(--line-gold);background:transparent;}
+  .modebtn.verde{background:rgba(79,203,139,.14);border-color:rgba(79,203,139,.55);color:#7BDCAA;box-shadow:none;}
+  .modebtn.verde:hover{background:rgba(79,203,139,.24);border-color:#4FCB8B;color:#8FE8BB;}
   .kit{width:34px;height:26px;padding:2px;border:1px solid var(--line-2);border-radius:4px;
     background:var(--surface-panel);cursor:pointer;}
   .kit:hover{border-color:var(--line-gold);}
@@ -255,7 +257,10 @@
         <button data-t="away">Trasferta</button>
       </div>
     </div>
-    <button id="btnCampetto">Scarica il campetto</button>
+    <div class="field" style="flex:0 0 auto">
+      <label>Campetto</label>
+      <button id="btnCampetto">Scarica il campetto</button>
+    </div>
     <button class="primary" id="btnCsv2">CSV</button>
     <button id="btnSheet">Al foglio</button>
     <div class="field" style="flex:0 0 auto">
@@ -263,13 +268,11 @@
       <select id="canaleSel" style="min-width:150px"></select>
     </div>
     <button id="btnRegia2">&#128225; Invia alla regia</button>
-    <button id="btnPrevCasa" title="Apre la grafica animata della squadra di casa">Anteprima casa</button>
-    <button id="btnPrevTra" title="Apre la grafica animata della squadra in trasferta">Anteprima trasferta</button>
     <input type="checkbox" id="optAscii" style="display:none">
   </div>
 
   <div class="status" id="status">
-    <span class="msg">Scegli campionato e squadra per ciascun lato: la rosa arriva da ESPN e gli undici si schierano da soli seguendo il modulo.</span>
+    <span class="msg"></span>
   </div>
 
   <div id="prevFbox" style="display:none;margin-bottom:20px">
@@ -593,8 +596,7 @@
             MODULI.map(function (m) { return '<option' + (m === side.mod ? " selected" : "") + '>' + m + '</option>'; }).join("") +
           '</select></div>';
 
-      h += '<div class="teampanel">' +
-        '<div class="side">' + side.label +
+      var lineaLato = '<div class="side">' + side.label +
           ' <span style="display:flex;align-items:center;gap:8px">' +
           '<input type="color" class="kit" title="Colore maglia nella grafica vMix" data-si="' + si + '" data-k="kit" value="' + esc(side.kit) + '">' +
           '<select class="magliaSel" data-si="' + si + '" title="Maglia nella grafica: disegnata col colore, o la foto vera dal magazzino">' +
@@ -607,7 +609,10 @@
           '<button class="modebtn" data-si="' + si + '" data-act="maglia-su" title="Carica il PNG della maglia (sfondo trasparente)">&#8682; Maglia</button>' +
           '<input type="file" class="magliaFile" data-si="' + si + '" accept="image/png,image/webp" hidden>' +
           '<button class="modebtn' + (side.manualMode ? " off" : "") + '" data-si="' + si + '" data-act="' + (side.manualMode ? "manual-off" : "manual-on") + '">' +
-          (side.manualMode ? "&#8617; torna alle rose ESPN" : "&#9997; Scrivi da zero") + '</button></span></div>';
+          (side.manualMode ? "&#8617; torna alle rose ESPN" : "&#9997; Scrivi da zero") + '</button>' +
+          '<button class="modebtn verde" data-si="' + si + '" data-act="anteprima" title="Apre la grafica animata di questa squadra">Anteprima</button>' +
+          '</span></div>';
+      h += '<div class="teampanel">';
 
       if (side.manualMode) {
         h += '<div class="row manualrow">' +
@@ -635,7 +640,7 @@
         '</div>';
       }
 
-      h += '</div>';
+      h += lineaLato + '</div>';
       if (si === 0) h += '<div class="vs">VS</div>';
     });
     el.teams.innerHTML = h;
@@ -1415,8 +1420,12 @@
     }
     grafVmix(si);
   }
-  document.getElementById("btnPrevCasa").addEventListener("click", function () { anteprimaLato(0, "di casa"); });
-  document.getElementById("btnPrevTra").addEventListener("click", function () { anteprimaLato(1, "in trasferta"); });
+  el.teams.addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest('button[data-act="anteprima"]') : null;
+    if (!b) return;
+    var si = +b.dataset.si;
+    anteprimaLato(si, si === 0 ? "di casa" : "in trasferta");
+  });
 
   // ---------------- invio alla regia ----------------
   var __canale = { c: 1, dest: "studio" };   // scelto al click, vale per entrambe le squadre
@@ -1486,7 +1495,7 @@
   loadTeams(sides[0], function () {
     teamsCache[COMPS[sides[1].comp].code] = teamsCache[COMPS[sides[0].comp].code];
     renderAll();
-    status("", '<span class="msg">Scegli le due squadre: la rosa arriva da ESPN e gli undici si schierano da soli seguendo il modulo.</span>');
+    status("", '<span class="msg"></span>');   // il "Carico le squadre" ha finito il suo lavoro
   });
   renderAll();
 })();
