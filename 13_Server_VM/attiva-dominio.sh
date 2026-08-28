@@ -16,6 +16,7 @@ set -euo pipefail
 
 DOMINIO_APICE="projects-cloud.it"
 DOMINIO_WWW="www.projects-cloud.it"
+DOMINIO_LIVE="live.projects-cloud.it"
 MIO_IP="$(curl -s --max-time 8 https://api.ipify.org || hostname -I | awk '{print $1}')"
 
 echo "→ questa macchina e' $MIO_IP"
@@ -24,7 +25,7 @@ echo "→ questa macchina e' $MIO_IP"
 #    quelli, altrimenti la verifica fallirebbe e Let's Encrypt conta i
 #    tentativi falliti ──
 NOMI=()
-for n in "$DOMINIO_APICE" "$DOMINIO_WWW"; do
+for n in "$DOMINIO_APICE" "$DOMINIO_WWW" "$DOMINIO_LIVE"; do
   RISOLTO="$(dig +short A "$n" @8.8.8.8 | tail -1)"
   if [ "$RISOLTO" = "$MIO_IP" ]; then
     echo "  ✓ $n -> $RISOLTO"
