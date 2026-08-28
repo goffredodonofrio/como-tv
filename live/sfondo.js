@@ -1,10 +1,15 @@
 /**
  * ═══════════════════════════════════════════════════════════════════
- *  POLVERE D'ORO — sfondo animato delle grafiche a schermo pieno
+ *  SFONDO VIVO — il fondo animato delle grafiche a schermo pieno
  * ═══════════════════════════════════════════════════════════════════
  *
- *  Un pulviscolo dorato che attraversa lentamente il fondo blu, dietro
- *  al contenuto. Deve farsi notare solo se lo cerchi.
+ *  Due cose, entrambe dietro al contenuto e volutamente sottotono:
+ *
+ *   1) il blu respira — due aloni larghissimi che derivano su cicli di
+ *      un minuto e mezzo, cosi' il fondo non e' mai una tinta piatta;
+ *   2) un pulviscolo dorato lo attraversa lentamente.
+ *
+ *  Devono farsi notare solo se li cerchi.
  *
  *  Perche' e' fatto cosi'
  *  ──────────────────────
@@ -51,10 +56,43 @@
   tela.style.cssText =
     "position:absolute;left:0;top:0;width:1920px;height:1080px;" +
     "pointer-events:none;";
-  // primo figlio: sta sopra al fondo blu e sotto a tutto il contenuto
+  // in cima al fondo (aloni compresi) e sotto a tutto il contenuto
   stage.insertBefore(tela, stage.firstChild);
 
   var g = tela.getContext("2d");
+
+  // ── 1) il blu che respira ──────────────────────────────────────────
+  // Due aloni molto larghi che derivano avanti e indietro su cicli
+  // lunghi e diversi fra loro, cosi' non tornano mai in fase. Sono
+  // gradienti animati solo per trasformazione: li muove la scheda
+  // grafica, la CPU non se ne accorge. Niente sfocature: un gradiente
+  // e' gia' morbido, e il filtro blur su superfici cosi' grandi
+  // costerebbe piu' di tutto il resto messo insieme.
+  var stile = document.createElement("style");
+  stile.textContent =
+    "#aloni{position:absolute;inset:0;overflow:hidden;pointer-events:none;}" +
+    "#aloni i{position:absolute;display:block;border-radius:50%;will-change:transform;}" +
+    "#aloni .a1{width:1500px;height:1100px;left:-280px;top:-260px;" +
+      "background:radial-gradient(closest-side,rgba(42,74,158,.42),transparent 72%);" +
+      "animation:derivaA 96s ease-in-out infinite alternate;}" +
+    "#aloni .a2{width:1300px;height:1000px;right:-240px;bottom:-240px;" +
+      "background:radial-gradient(closest-side,rgba(24,36,86,.55),transparent 72%);" +
+      "animation:derivaB 132s ease-in-out infinite alternate;}" +
+    "#aloni .a3{width:900px;height:700px;left:38%;top:22%;" +
+      "background:radial-gradient(closest-side,rgba(201,162,75,.07),transparent 70%);" +
+      "animation:derivaC 168s ease-in-out infinite alternate;}" +
+    "@keyframes derivaA{from{transform:translate(0,0) scale(1)}" +
+      "to{transform:translate(260px,140px) scale(1.18)}}" +
+    "@keyframes derivaB{from{transform:translate(0,0) scale(1.08)}" +
+      "to{transform:translate(-300px,-160px) scale(1)}}" +
+    "@keyframes derivaC{from{transform:translate(-120px,60px) scale(.9)}" +
+      "to{transform:translate(140px,-80px) scale(1.25)}}";
+  document.head.appendChild(stile);
+
+  var aloni = document.createElement("div");
+  aloni.id = "aloni";
+  aloni.innerHTML = '<i class="a1"></i><i class="a2"></i><i class="a3"></i>';
+  stage.insertBefore(aloni, stage.firstChild);   // sotto la polvere
 
   // il granello, disegnato una volta sola: un dischetto d'oro sfumato
   var seme = document.createElement("canvas");
