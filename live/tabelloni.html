@@ -88,6 +88,8 @@
   button:hover{color:var(--gold-bright);border-color:var(--line-gold);}
   button.primary{background:var(--gold);color:#0A0F24;border-color:var(--gold);}
   button.primary:hover{background:var(--gold-bright);color:#0A0F24;}
+  #btnPrev,#btnPrevG{background:rgba(79,203,139,.14);border-color:rgba(79,203,139,.55);color:#7BDCAA;}
+  #btnPrev:hover,#btnPrevG:hover{background:rgba(79,203,139,.24);border-color:#4FCB8B;color:#8FE8BB;}
   .bottoniera{display:flex;gap:9px;flex-wrap:wrap;align-items:center;}
 
   /* barra dei comandi, in alto come nelle altre grafiche */
@@ -185,11 +187,18 @@
     <div class="campo"><label for="compEspn">Squadre da</label><select id="compEspn"></select></div>
     <button id="btnEspn">Carica</button>
     <div class="sep"></div>
-    <button id="btnPrev">&#128065; Anteprima</button>
+    <button id="btnPrev">Anteprima</button>
     <div class="campo"><label for="canaleSel">Seleziona vMix o progetto</label><select id="canaleSel" style="width:120px"></select></div>
-    <button id="btnRegia" class="primary">&#128225; In regia</button>
+    <button id="btnRegia">&#128225; Invia alla regia</button>
   </div>
   <div id="espnStato">Scegli una competizione e premi Carica: le sue squadre entrano nei menù con i loro stemmi.</div>
+  <div id="stato">Compila i campi e premi Anteprima.</div>
+  <div id="prevwrap" style="display:none;margin:14px 0 20px">
+    <div id="prevbox"><iframe id="prev" src="about:blank" scrolling="no"></iframe></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:8px">
+      <button id="btnPrevChiudi">Chiudi anteprima</button>
+    </div>
+  </div>
 
   <div class="panel">
     <h2>Competizione</h2>
@@ -209,18 +218,11 @@
     </div>
   </div>
 
-  <div class="due">
+  <div>
     <div>
       <div class="panel">
         <h2 id="capoDati">Il tabellone</h2>
         <div id="campi"></div>
-      </div>
-    </div>
-    <div>
-      <div class="panel">
-        <h2>Anteprima</h2>
-        <div id="prevbox"><iframe id="prev" src="about:blank" scrolling="no"></iframe></div>
-        <div id="stato">Compila i campi e premi Anteprima.</div>
       </div>
     </div>
   </div>
@@ -653,13 +655,20 @@
     el("prev").style.transform = "scale(" + (box.clientWidth / 1920) + ")";
   }
   window.addEventListener("resize", adattaPrev);
+  el("btnPrevChiudi").addEventListener("click", function () {
+    el("prevwrap").style.display = "none";
+    el("prev").src = "about:blank";
+  });
+
 
   el("btnPrev").addEventListener("click", function () {
     if (MODO === "tabellone") propagaVincitori();
     var d = dati();
     if (!valido(d)) { stato("err", "Scrivi almeno le squadre del primo turno."); return; }
+    el("prevwrap").style.display = "block";
     el("prev").src = motore() + "?d=" + b64url(d) + "&n=" + Date.now();
     adattaPrev();
+    el("prevwrap").scrollIntoView({ behavior: "smooth", block: "nearest" });
     stato("", "Anteprima aggiornata.");
   });
 

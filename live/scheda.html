@@ -77,6 +77,8 @@
   button:hover{color:var(--gold-bright);border-color:var(--line-gold);}
   button.primary{background:var(--gold);color:#0A0F24;border-color:var(--gold);}
   button.primary:hover{background:var(--gold-bright);color:#0A0F24;}
+  #btnPrev,#btnPrevG{background:rgba(79,203,139,.14);border-color:rgba(79,203,139,.55);color:#7BDCAA;}
+  #btnPrev:hover,#btnPrevG:hover{background:rgba(79,203,139,.24);border-color:#4FCB8B;color:#8FE8BB;}
 
   .barra{display:flex;align-items:end;gap:8px;flex-wrap:wrap;
     padding:12px 14px;border-radius:10px;margin-bottom:16px;
@@ -151,13 +153,21 @@
       etichetta + valore e la foto grande. Tutto scritto a mano dalla redazione.</div>
   </header>
 
-  <div class="barra">
-    <button id="btnPrev">&#128065; Anteprima</button>
+  <div class="barra" id="labarra">
+    <button id="btnPrev">Anteprima</button>
     <div class="campo"><label for="canaleSel">Seleziona vMix o progetto</label><select id="canaleSel" style="width:150px"></select></div>
-    <button id="btnRegia" class="primary">&#128225; In regia</button>
+    <button id="btnRegia">&#128225; Invia alla regia</button>
   </div>
 
-  <div class="due">
+  <div id="stato">Compila i campi e premi Anteprima.</div>
+  <div id="prevwrap" style="display:none;margin:14px 0 20px">
+    <div id="prevbox"><iframe id="prev" src="about:blank" scrolling="no"></iframe></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:8px">
+      <button id="btnPrevChiudi">Chiudi anteprima</button>
+    </div>
+  </div>
+
+  <div>
     <div>
       <div class="panel">
         <h2>Testata</h2>
@@ -198,13 +208,6 @@
       </div>
     </div>
 
-    <div>
-      <div class="panel">
-        <h2>Anteprima</h2>
-        <div id="prevbox"><iframe id="prev" src="about:blank" scrolling="no"></iframe></div>
-        <div id="stato">Compila i campi e premi Anteprima.</div>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -362,14 +365,21 @@
     el("prev").style.transform = "scale(" + (el("prevbox").clientWidth / 1920) + ")";
   }
   window.addEventListener("resize", adattaPrev);
+  el("btnPrevChiudi").addEventListener("click", function () {
+    el("prevwrap").style.display = "none";
+    el("prev").src = "about:blank";
+  });
+
 
   el("btnPrev").addEventListener("click", function () {
     stato("", "Preparo l'anteprima…");
     assicuraFoto().then(function () {
       var d = dati();
       if (!valido(d)) return;
+      el("prevwrap").style.display = "block";
       el("prev").src = "scheda-vmix.html?d=" + b64url(d) + "&n=" + Date.now();
       adattaPrev();
+      el("prevwrap").scrollIntoView({ behavior: "smooth", block: "nearest" });
       stato("", "Anteprima aggiornata.");
     }).catch(function (e) { stato("err", "Foto non salvata: " + e.message); });
   });
