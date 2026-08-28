@@ -151,6 +151,20 @@
     <button id="tabG">Gironi</button>
   </div>
 
+  <datalist id="squadreESPN"></datalist>
+
+  <div class="panel">
+    <h2>Squadre da ESPN</h2>
+    <div class="riga">
+      <div><label for="compEspn">Prendi le squadre da</label><select id="compEspn"></select></div>
+      <div style="flex:0 0 auto"><label>&nbsp;</label><button id="btnEspn">Carica</button></div>
+    </div>
+    <div id="espnStato" style="font-size:13px;color:var(--fg-3)">
+      Carica una competizione e i suoi nomi compariranno fra i suggerimenti dei campi
+      squadra, con colore e stemma veri. Le nostre squadre si scrivono a mano come sempre.
+    </div>
+  </div>
+
   <div class="panel">
     <h2>Competizione</h2>
     <div class="riga">
@@ -222,6 +236,119 @@
 
   var MODO = "tabellone";     // oppure "gruppi"
 
+  // ── squadre da ESPN ─────────────────────────────────────────────────
+  // L'elenco delle competizioni e' lo stesso delle classifiche: una sola
+  // fonte, cosi' non ci sono due tabelle da tenere allineate. Caricando
+  // una competizione, i suoi nomi finiscono nei suggerimenti di TUTTI i
+  // campi squadra; scegliendone uno arrivano anche colore e stemma veri.
+  // Scrivere a mano continua a funzionare come prima: chi non e' su ESPN
+  // (giovanili, tornei nostri) si digita e basta.
+  // Si usa l'indirizzo delle classifiche, non quello degli elenchi squadre:
+  // e' l'unico dei due che ESPN autorizza a essere letto da un browser
+  // (access-control-allow-origin). L'altro risponde solo da server, e dal
+  // browser fallirebbe senza dire perche'.
+  var API_STAND = "https://site.api.espn.com/apis/v2/sports/soccer/";
+  var COMPS = [
+    { nome: "Serie A", code: "ita.1" },
+    { nome: "EFL Championship", code: "eng.2" },
+    { nome: "Saudi Pro League", code: "ksa.1" },
+    { nome: "Eredivisie", code: "ned.1" },
+    { nome: "Scottish Premiership", code: "sco.1" },
+    { nome: "Scottish Championship", code: "sco.2" },
+    { nome: "Premier Sports Cup", code: "sco.cis" },
+    { nome: "Bundesliga Austria", code: "aut.1" },
+    { nome: "LPF Argentina", code: "arg.1" },
+    { nome: "CONMEBOL Libertadores", code: "conmebol.libertadores" },
+    { nome: "CONMEBOL Sudamericana", code: "conmebol.sudamericana" },
+    { nome: "Premier League", code: "eng.1" },
+    { nome: "League One", code: "eng.3" },
+    { nome: "League Two", code: "eng.4" },
+    { nome: "Serie B", code: "ita.2" },
+    { nome: "Champions League", code: "uefa.champions" },
+    { nome: "Europa League", code: "uefa.europa" },
+    { nome: "Conference League", code: "uefa.europa.conf" },
+    { nome: "LaLiga", code: "esp.1" },
+    { nome: "Bundesliga", code: "ger.1" },
+    { nome: "2. Bundesliga", code: "ger.2" },
+    { nome: "Ligue 1", code: "fra.1" },
+    { nome: "Ligue 2", code: "fra.2" },
+    { nome: "Primeira Liga", code: "por.1" },
+    { nome: "Eerste Divisie NL", code: "ned.2" },
+    { nome: "Brasileirão", code: "bra.1" },
+    { nome: "Nacional B Argentina", code: "arg.2" }
+  ];
+  var ROSA = {};              // nome minuscolo -> {n, s, c, l}
+  var STAGIONE = 2026;
+
+  (function () {
+    var s = el("compEspn");
+    COMPS.forEach(function (c) {
+      var o = document.createElement("option");
+      o.value = c.code; o.textContent = c.nome;
+      s.appendChild(o);
+    });
+    try {
+      var ult = localStorage.getItem("comotv.tabelloni.comp");
+      if (ult) s.value = ult;
+    } catch (e) {}
+  })();
+
+  function caricaSquadre() {
+    var code = el("compEspn").value;
+    var nome = el("compEspn").options[el("compEspn").selectedIndex].textContent;
+    try { localStorage.setItem("comotv.tabelloni.comp", code); } catch (e) {}
+    el("espnStato").textContent = "Carico le squadre di " + nome + "…";
+    fetch(API_STAND + code + "/standings?season=" + STAGIONE, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        // le coppe hanno i gironi dentro "children": si prendono tutti
+        var gruppi = (j.children && j.children.length) ? j.children : [j];
+        var voci = [];
+        gruppi.forEach(function (ch) {
+          var ent = (ch.standings && ch.standings.entries) ? ch.standings.entries : [];
+          ent.forEach(function (e) { if (e.team) voci.push(e.team); });
+        });
+        if (!voci.length) throw new Error("nessuna squadra");
+        var dl = el("squadreESPN"), nuove = 0;
+        voci.forEach(function (t) {
+          var n = t.displayName || t.name || "";
+          if (!n || ROSA[n.toLowerCase()]) return;
+          ROSA[n.toLowerCase()] = {
+            n: n,
+            s: t.abbreviation || "",
+            // il colore ESPN non c'e' su questo indirizzo: resta quello
+            // scelto qui, che tanto si vede solo per chi non ha stemma
+            l: t.id ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + t.id + ".png" : ""
+          };
+          var o = document.createElement("option");
+          o.value = n;
+          dl.appendChild(o);
+          nuove++;
+        });
+        el("espnStato").innerHTML = '<span class="ok">' + nuove + " squadre di " + nome +
+          " pronte nei suggerimenti. In tutto ne conosco " + Object.keys(ROSA).length + ".</span>";
+      })
+      .catch(function () {
+        el("espnStato").innerHTML = '<span class="err">Non sono riuscito a leggere ' + nome +
+          " da ESPN. Le squadre si possono comunque scrivere a mano.</span>";
+      });
+  }
+  el("btnEspn").addEventListener("click", caricaSquadre);
+
+  // Nome scelto fra i suggerimenti: arrivano anche colore e stemma.
+  // Se il nome e' scritto a mano e non risulta, non si tocca nulla.
+  function agganciaESPN(campo) {
+    var v = (campo.value || "").trim().toLowerCase();
+    var t = ROSA[v];
+    if (!t) { campo.dataset.logo = ""; return false; }
+    campo.dataset.logo = t.l || "";
+    if (t.c) {
+      var col = document.getElementById(campo.id.replace(/n$/, "c"));
+      if (col) col.value = t.c;
+    }
+    return true;
+  }
+
   // ── una sola destinazione per macchina ──
   (function () {
     var s = el("canaleSel");
@@ -273,7 +400,7 @@
     var id = "t" + k + "_" + j + "_" + lato;
     return '<div class="riga">' +
       '<div><label for="' + id + 'n">Squadra</label>' +
-        '<input type="text" id="' + id + 'n" data-ruolo="nome" placeholder="nome"></div>' +
+        '<input type="text" id="' + id + 'n" data-ruolo="nome" list="squadreESPN" placeholder="nome o scegli da ESPN"></div>' +
       '<div class="stretta"><label for="' + id + 'c">Colore</label>' +
         '<input type="color" id="' + id + 'c" value="#243F8A"></div>' +
       '<div class="mini"><label for="' + id + 'g">Gol</label>' +
@@ -300,7 +427,7 @@
         var id = "g" + g + "_" + s;
         h += '<div class="riga" data-g="' + g + '" data-s="' + s + '">' +
           '<div><label for="' + id + 'n">Squadra ' + (s + 1) + '</label>' +
-            '<input type="text" id="' + id + 'n" placeholder="nome"></div>' +
+            '<input type="text" id="' + id + 'n" list="squadreESPN" placeholder="nome o scegli da ESPN"></div>' +
           '<div class="stretta"><label for="' + id + 'c">Colore</label>' +
             '<input type="color" id="' + id + 'c" value="' + TAVOLOZZA[(g * ns + s) % TAVOLOZZA.length] + '"></div>' +
           '<div class="mini"><label for="' + id + 'pg">PG</label><input type="number" id="' + id + 'pg" min="0" placeholder="0"></div>' +
@@ -325,7 +452,8 @@
     var vinceA = +ag.value > +bg.value;
     return {
       n: (vinceA ? an.value : bn.value).trim(),
-      c: (vinceA ? el("t" + k + "_" + j + "_ac") : el("t" + k + "_" + j + "_bc")).value
+      c: (vinceA ? el("t" + k + "_" + j + "_ac") : el("t" + k + "_" + j + "_bc")).value,
+      l: (vinceA ? an : bn).dataset.logo || ""
     };
   }
 
@@ -344,6 +472,7 @@
           if (!campoN) return;
           if (vin && (campoN.value.trim() === "" || campoN.dataset.auto === "1")) {
             campoN.value = vin.n; campoN.dataset.auto = "1";
+            campoN.dataset.logo = vin.l || "";
             if (campoC) campoC.value = vin.c;
           }
         });
@@ -360,8 +489,8 @@
       for (var j = 0; j < quanti; j++) {
         var pre = "t" + k + "_" + j + "_";
         m.push({
-          a: { n: el(pre + "an").value.trim(), c: el(pre + "ac").value },
-          b: { n: el(pre + "bn").value.trim(), c: el(pre + "bc").value },
+          a: squadra(pre + "an", pre + "ac"),
+          b: squadra(pre + "bn", pre + "bc"),
           ga: el(pre + "ag").value === "" ? "" : +el(pre + "ag").value,
           gb: el(pre + "bg").value === "" ? "" : +el(pre + "bg").value
         });
@@ -380,8 +509,9 @@
         var pre = "g" + i + "_" + s;
         var nome = el(pre + "n").value.trim();
         if (!nome) continue;
+        var sq = squadra(pre + "n", pre + "c");
         righe.push({
-          n: nome, c: el(pre + "c").value,
+          n: sq.n, c: sq.c, l: sq.l,
           pg: num(pre + "pg"), v: num(pre + "v"), p: num(pre + "p"),
           s: num(pre + "s"), pt: num(pre + "pt")
         });
@@ -392,6 +522,16 @@
              q: parseInt(el("qual").value, 10) || 0, g: g };
   }
   function num(id) { var e = el(id); return e && e.value !== "" ? +e.value : null; }
+
+  // una squadra: nome, colore e — se viene da ESPN — lo stemma vero
+  function squadra(idN, idC) {
+    var n = el(idN), c = el(idC);
+    var o = { n: n.value.trim(), c: c.value };
+    var t = ROSA[o.n.toLowerCase()];
+    var logo = (n.dataset.logo || (t ? t.l : "")) || "";
+    if (logo) o.l = logo;
+    return o;
+  }
 
   function dati() { return MODO === "tabellone" ? datiTabellone() : datiGruppi(); }
   function motore() { return MODO === "tabellone" ? "tabellone-vmix.html" : "gruppi-vmix.html"; }
@@ -465,6 +605,9 @@
 
   // scrivendo un risultato del primo turno i turni dopo si aggiornano
   el("campi").addEventListener("input", function (e) {
+    if (e.target.tagName === "INPUT" && e.target.type === "text" && /n$/.test(e.target.id || "")) {
+      agganciaESPN(e.target);
+    }
     if (MODO !== "tabellone") return;
     if (e.target.type === "number" || e.target.dataset.ruolo === "nome") propagaVincitori();
   });
