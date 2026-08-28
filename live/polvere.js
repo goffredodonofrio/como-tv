@@ -31,7 +31,19 @@
   if (!stage) return;
 
   var L = 960, A = 540;              // tela a meta' risoluzione
-  var GRANELLI = 90;
+
+  // Quanta polvere e quanto in fretta. Quella in onda e' "media",
+  // scelta guardandola a schermo pieno. Le altre due restano per poter
+  // confrontare senza toccare il file: basta aggiungere &polvere=quieta
+  // (o forte) all'indirizzo della grafica.
+  var TARATURE = {
+    quieta: { n: 90,  v: 1,   op: 1   },   // quasi ferma, quella di partenza
+    media:  { n: 130, v: 2.5, op: 1.3 },   // in onda
+    forte:  { n: 180, v: 4,   op: 1.6 }
+  };
+  var scelta = (new URLSearchParams(location.search).get("polvere") || "").toLowerCase();
+  var T = TARATURE[scelta] || TARATURE.media;
+  var GRANELLI = T.n;
 
   var tela = document.createElement("canvas");
   tela.id = "polvere";
@@ -62,9 +74,9 @@
       x: sparso ? Math.random() * L : L + Math.random() * 60,
       y: Math.random() * A,
       r: 1.1 + Math.random() * 3.4,          // raggio sulla tela dimezzata
-      vx: -(0.04 + Math.random() * 0.20),    // deriva verso sinistra, lenta
-      vy: (Math.random() - 0.5) * 0.05,      // un filo di oscillazione
-      a: 0.05 + Math.random() * 0.20,        // opacita' massima
+      vx: -(0.04 + Math.random() * 0.20) * T.v,   // deriva verso sinistra
+      vy: (Math.random() - 0.5) * 0.05 * T.v,     // un filo di oscillazione
+      a: (0.05 + Math.random() * 0.20) * T.op,    // opacita' massima
       t: Math.random() * 6.283,              // fase del respiro
       f: 0.004 + Math.random() * 0.010       // velocita' del respiro
     };
