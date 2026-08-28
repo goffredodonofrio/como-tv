@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scheda · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+    transform-origin:center center;
+    font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);
+  }
+
+  /* ── la foto: mezza scena a destra, sfumata nel navy ── */
+  #fotobox{position:absolute;right:0;top:0;width:1060px;height:1080px;overflow:hidden;
+    opacity:0;transform:translateX(70px);}
+  #fotobox img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;
+    filter:brightness(.82) saturate(1.05);}
+  #fotobox .velo{position:absolute;inset:0;
+    background:
+      linear-gradient(90deg,#0A0F26 0%,rgba(10,15,38,.92) 16%,rgba(10,15,38,.55) 36%,rgba(10,15,38,.16) 62%,rgba(10,15,38,.35) 100%),
+      linear-gradient(0deg,rgba(7,11,29,.85) 0%,transparent 34%),
+      linear-gradient(180deg,rgba(7,11,29,.6) 0%,transparent 26%);}
+
+  /* ── testata ── */
+  #titolo{position:absolute;left:128px;top:110px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:88px;letter-spacing:.01em;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;line-height:1;
+    clip-path:inset(0 100% 0 0);}
+  #sotto{position:absolute;left:130px;top:212px;
+    font-family:'DM Sans',sans-serif;font-weight:500;font-size:27px;letter-spacing:.2em;
+    color:rgba(245,241,230,.65);text-transform:uppercase;white-space:nowrap;opacity:0;}
+
+  /* ── i campi: etichetta sopra, valore in oro sotto, righina sotto ── */
+  #campi{position:absolute;left:130px;top:300px;width:640px;}
+  .campo{padding:17px 0 15px;border-bottom:1px solid rgba(245,241,230,.14);
+    opacity:0;transform:translateY(22px);}
+  .campo .eti{font-family:'Mazzard',sans-serif;font-weight:700;font-size:19px;letter-spacing:.16em;
+    color:rgba(245,241,230,.5);text-transform:uppercase;}
+  .campo .val{margin-top:7px;font-family:'DM Sans',sans-serif;font-weight:500;font-size:30px;
+    line-height:1.32;color:#C9A24B;}
+  #nota{margin-top:16px;font-size:23px;color:rgba(245,241,230,.75);
+    opacity:0;transform:translateY(22px);}
+
+  @keyframes wipeIn { to { clip-path:inset(0 0 0 0); } }
+  @keyframes fadeIn { to { opacity:1; } }
+  @keyframes salita { to { opacity:1; transform:translateY(0); } }
+  @keyframes daDestra { to { opacity:1; transform:translateX(0); } }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="fotobox" style="display:none"><img id="foto" alt=""><div class="velo"></div></div>
+  <div id="titolo"></div>
+  <div id="sotto"></div>
+  <div id="campi"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { n:"AEK ATENE", s:"GRECIA",
+  //     c:[["ALLENATORE","Marko Nikolic"],["STELLA","Luka Jović"],
+  //        ["GIOCATORI PIÙ PREZIOSI","Luka Jović, Lovro Majer, …"],
+  //        ["PARTECIPAZIONI UCL","14"],["MIGLIOR PIAZZAMENTO UCL","Quarti di finale"]],
+  //     nt:"1968–1969", img:"/loghi/foto-....jpg" }
+  var DEMO = {
+    n: "AEK ATENE", s: "GRECIA",
+    c: [["ALLENATORE", "Marko Nikolic"],
+        ["STELLA", "Luka Jović"],
+        ["GIOCATORI PIÙ PREZIOSI", "Luka Jović, Lovro Majer, Harold Moukoudi, Oleksandr Zubkov, Kaan Kairinen"],
+        ["PARTECIPAZIONI UCL", "14"],
+        ["MIGLIOR PIAZZAMENTO UCL", "Quarti di finale"]],
+    nt: "1968–1969"
+  };
+
+  function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return DEMO;
+    try {
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return (d && d.n && d.c && d.c.length) ? d : null;
+    } catch (err) { return null; }
+  }
+  var STILL = new URLSearchParams(location.search).get("still") === "1";
+  var D = decodeData();
+  if (!D) {
+    document.title = "SCHEDA — dati non validi";
+    document.getElementById("stage").style.display = "none";
+    return;
+  }
+  document.title = "SCHEDA " + (D.n || "");
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    document.getElementById("stage").style.transform = "translate(-50%,-50%) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+  function el(id) { return document.getElementById(id); }
+
+  // testata
+  el("titolo").textContent = D.n || "";
+  el("sotto").textContent = D.s || "";
+  if (STILL) {
+    el("titolo").style.clipPath = "inset(0 0 0 0)";
+    el("sotto").style.opacity = 1;
+  } else {
+    el("titolo").style.animation = "wipeIn .8s cubic-bezier(.2,.7,.3,1) .25s forwards";
+    el("sotto").style.animation = "fadeIn .5s ease .7s forwards";
+  }
+  // il titolo lungo non deve toccare la foto
+  (function () {
+    var t = el("titolo");
+    var largo = t.scrollWidth;
+    if (largo > 720) t.style.fontSize = Math.max(46, Math.floor(88 * 720 / largo)) + "px";
+  })();
+
+  // i campi (fino a 6) + la nota finale
+  var campi = (D.c || []).slice(0, 6);
+  var h = "";
+  campi.forEach(function (x, i) {
+    h += '<div class="campo" style="' +
+      (STILL ? "opacity:1;transform:none" : "animation:salita .55s cubic-bezier(.2,.7,.3,1) " + (0.85 + i * 0.14).toFixed(2) + "s forwards") +
+      '"><div class="eti">' + esc(x[0]) + '</div><div class="val">' + esc(x[1]) + '</div></div>';
+  });
+  if (D.nt) {
+    h += '<div id="nota" style="' +
+      (STILL ? "opacity:1;transform:none" : "animation:salita .55s ease " + (0.9 + campi.length * 0.14).toFixed(2) + "s forwards") +
+      '">' + esc(D.nt) + '</div>';
+  }
+  el("campi").innerHTML = h;
+
+  // tanti campi = righe piu' strette, per restare dentro lo schermo
+  if (campi.length >= 6) {
+    el("campi").style.top = "280px";
+    document.querySelectorAll(".campo").forEach(function (c) { c.style.padding = "12px 0 10px"; });
+  }
+
+  // la foto
+  if (D.img) {
+    el("fotobox").style.display = "";
+    el("foto").src = D.img;
+    if (STILL) { el("fotobox").style.opacity = 1; el("fotobox").style.transform = "none"; }
+    else el("fotobox").style.animation = "daDestra .9s cubic-bezier(.2,.7,.3,1) .5s forwards";
+  }
+
+  function replay() { location.reload(); }
+  document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
+  document.addEventListener("dblclick", replay);
+})();
+</script>
+<script src="sfondo.js"></script>
+</body>
+</html>
