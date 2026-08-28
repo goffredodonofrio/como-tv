@@ -439,6 +439,9 @@ function progettoDel(p) {
 // livelli, il resto viene rimpiazzato dalle grafiche del progetto.
 function progettoCarica(p) {
   const pr = progettoDi(p);
+  if (!pr.items.length) {
+    throw new Error('il progetto "' + pr.nome + '" \u00e8 vuoto: mandagli le grafiche dalle loro pagine, poi caricalo');
+  }
   const c = canaleDi(p.c);
   const ix = regiaDi(c);
   const inOnda = new Set();
