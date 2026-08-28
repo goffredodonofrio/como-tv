@@ -627,13 +627,20 @@ const server = http.createServer((req, res) => {
     });
   }
 
+  // Como TV puo' essere servita anche sotto un prefisso di percorso
+  // (projects-cloud.it/como-tv): nginx lo toglie prima di passarci la
+  // richiesta e ce lo dichiara in questa intestazione. I reindirizzi
+  // devono rimetterlo, altrimenti butterebbero il browser fuori dal
+  // prefisso a ogni scorciatoia.
+  const PREFISSO = String(req.headers["x-forwarded-prefix"] || "");
+
   // ── vecchi indirizzi ──
   // La cartella si chiamava 11_Script_Live. Finché non sono stati
   // ricontrollati tutti i vMix e i segnalibri della redazione, il
   // vecchio indirizzo deve portare alla pagina giusta invece di dare
   // schermo nero in onda.
   if (u.pathname.indexOf("/11_Script_Live/") === 0) {
-    res.writeHead(301, { "Location": u.pathname.replace("/11_Script_Live/", "/live/") + (u.search || "") });
+    res.writeHead(301, { "Location": PREFISSO + u.pathname.replace("/11_Script_Live/", "/live/") + (u.search || "") });
     return res.end();
   }
 
@@ -650,7 +657,7 @@ const server = http.createServer((req, res) => {
     if (corta.canale && !q.get("c")) {
       coda = "?c=" + corta.canale + (u.search ? "&" + u.search.slice(1) : "");
     }
-    res.writeHead(302, { "Location": corta.file + coda });
+    res.writeHead(302, { "Location": PREFISSO + corta.file + coda });
     return res.end();
   }
 

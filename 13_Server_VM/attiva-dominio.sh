@@ -14,8 +14,8 @@
 #
 set -euo pipefail
 
-DOMINIO_LIVE="live.projects-cloud.it"
 DOMINIO_APICE="projects-cloud.it"
+DOMINIO_WWW="www.projects-cloud.it"
 MIO_IP="$(curl -s --max-time 8 https://api.ipify.org || hostname -I | awk '{print $1}')"
 
 echo "→ questa macchina e' $MIO_IP"
@@ -24,7 +24,7 @@ echo "→ questa macchina e' $MIO_IP"
 #    quelli, altrimenti la verifica fallirebbe e Let's Encrypt conta i
 #    tentativi falliti ──
 NOMI=()
-for n in "$DOMINIO_LIVE" "$DOMINIO_APICE"; do
+for n in "$DOMINIO_APICE" "$DOMINIO_WWW"; do
   RISOLTO="$(dig +short A "$n" @8.8.8.8 | tail -1)"
   if [ "$RISOLTO" = "$MIO_IP" ]; then
     echo "  ✓ $n -> $RISOLTO"
@@ -37,7 +37,7 @@ done
 if [ "${#NOMI[@]}" -eq 0 ]; then
   echo ""
   echo "✗ Nessun nome punta ancora a questa macchina: DNS non pronto."
-  echo "  Serve un record A su Netsons:  live -> $MIO_IP"
+  echo "  Serve un record A su Netsons:  @ (apice) -> $MIO_IP"
   echo "  Rilancia questo script quando il dominio e' attivo."
   exit 1
 fi
@@ -51,8 +51,9 @@ certbot --nginx $ARGS --redirect --agree-tos --non-interactive \
   -m goffredo.donofrio@gmail.com
 
 echo ""
-echo "→ nuovo indirizzo del sito: https://$DOMINIO_LIVE"
-echo "https://$DOMINIO_LIVE" > /etc/comotv-indirizzo
+# Como TV vive sotto il suo percorso: l'apice resta per i progetti futuri
+echo "→ nuovo indirizzo del sito: https://$DOMINIO_APICE/como-tv"
+echo "https://$DOMINIO_APICE/como-tv" > /etc/comotv-indirizzo
 
 echo "→ riscrivo le pagine con il nuovo indirizzo…"
 /usr/local/bin/comotv-aggiorna --solo-riscrittura
@@ -61,8 +62,8 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  ✅ Dominio attivo."
 echo ""
-echo "  Regia:    https://$DOMINIO_LIVE/regia/1"
-echo "  Playout:  https://$DOMINIO_LIVE/playout/1  (…/7)"
+echo "  Regia:    https://$DOMINIO_APICE/como-tv/regia/1"
+echo "  Playout:  https://$DOMINIO_APICE/como-tv/playout/1  (…/7)"
 echo ""
 echo "  I vecchi indirizzi con l'IP continuano a funzionare."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
