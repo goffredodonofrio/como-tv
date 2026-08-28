@@ -89,10 +89,27 @@
   button.primary:hover{background:var(--gold-bright);color:#0A0F24;}
   .bottoniera{display:flex;gap:9px;flex-wrap:wrap;align-items:center;}
 
-  /* scelta fra tabellone e gironi */
-  .tabs{display:flex;gap:9px;margin-bottom:18px;}
-  .tabs button{flex:0 0 auto;padding:13px 26px;font-size:13px;}
-  .tabs button.attivo{background:var(--gold);color:#0A0F24;border-color:var(--gold);}
+  /* barra dei comandi, in alto come nelle altre grafiche */
+  .barra{display:flex;align-items:end;gap:10px;flex-wrap:wrap;
+    padding:14px 16px;border-radius:10px;margin-bottom:8px;
+    background:var(--surface-panel);border:1px solid var(--line-2);}
+  .barra .gruppo{display:flex;gap:8px;}
+  .barra .campo{display:flex;flex-direction:column;gap:5px;}
+  .barra .campo label{margin-bottom:0;}
+  .barra .sep{width:1px;align-self:stretch;background:var(--line-2);margin:0 4px;}
+  .barra button.attivo{background:var(--gold);color:#0A0F24;border-color:var(--gold);}
+  #espnStato{font-size:13px;color:var(--fg-3);margin-bottom:16px;padding:0 4px;min-height:20px;}
+  #espnStato .ok{color:var(--ok);} #espnStato .err{color:#FF6B6E;}
+
+  /* campo squadra: menù, stemma e (se serve) scrittura a mano */
+  .sqbox{flex:1;min-width:0;}
+  .sqriga{display:flex;align-items:center;gap:9px;}
+  .sqriga select,.sqriga input[type=text]{flex:1;min-width:0;}
+  .stemmino{flex:0 0 34px;width:34px;height:34px;border-radius:6px;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(245,241,230,.05);border:1px solid var(--line-2);}
+  .stemmino img{width:26px;height:26px;object-fit:contain;}
+  .stemmino.vuoto{opacity:.35;}
 
   /* un incontro del tabellone */
   .inc{border:1px solid var(--line-2);border-radius:9px;padding:12px;margin-bottom:10px;
@@ -122,8 +139,6 @@
 
 <nav class="nav">
   <a class="nav-brand" href="../index.html">COMO TV</a>
-  <span class="nav-sep">·</span>
-  <span class="nav-here">Grafiche Live — Tabelloni e Gruppi</span>
   <div class="nav-links">
     <a href="classifiche.html">Grafiche Live</a>
     <a href="classifiche-campionati.html">Classifiche</a>
@@ -146,24 +161,20 @@
       riempiono da soli con chi passa, e restano correggibili a mano.</div>
   </header>
 
-  <div class="tabs">
-    <button id="tabT" class="attivo">Tabellone</button>
-    <button id="tabG">Gironi</button>
-  </div>
-
-  <datalist id="squadreESPN"></datalist>
-
-  <div class="panel">
-    <h2>Squadre da ESPN</h2>
-    <div class="riga">
-      <div><label for="compEspn">Prendi le squadre da</label><select id="compEspn"></select></div>
-      <div style="flex:0 0 auto"><label>&nbsp;</label><button id="btnEspn">Carica</button></div>
+  <div class="barra">
+    <div class="gruppo">
+      <button id="tabT" class="attivo">Tabellone</button>
+      <button id="tabG">Gironi</button>
     </div>
-    <div id="espnStato" style="font-size:13px;color:var(--fg-3)">
-      Carica una competizione e i suoi nomi compariranno fra i suggerimenti dei campi
-      squadra, con colore e stemma veri. Le nostre squadre si scrivono a mano come sempre.
-    </div>
+    <div class="sep"></div>
+    <div class="campo"><label for="compEspn">Squadre da</label><select id="compEspn"></select></div>
+    <button id="btnEspn">Carica</button>
+    <div class="sep"></div>
+    <button id="btnPrev">&#128065; Anteprima</button>
+    <div class="campo"><label for="canaleSel">Regia</label><select id="canaleSel" style="width:120px"></select></div>
+    <button id="btnRegia" class="primary">&#128225; In regia</button>
   </div>
+  <div id="espnStato">Scegli una competizione e premi Carica: le sue squadre entrano nei menù con i loro stemmi.</div>
 
   <div class="panel">
     <h2>Competizione</h2>
@@ -195,16 +206,6 @@
         <h2>Anteprima</h2>
         <div id="prevbox"><iframe id="prev" src="about:blank" scrolling="no"></iframe></div>
         <div id="stato">Compila i campi e premi Anteprima.</div>
-      </div>
-      <div class="panel">
-        <h2>Invio</h2>
-        <div class="riga">
-          <div><label for="canaleSel">Macchina</label><select id="canaleSel"></select></div>
-        </div>
-        <div class="bottoniera">
-          <button id="btnPrev">&#128065; Anteprima</button>
-          <button id="btnRegia" class="primary">&#128225; Invia alla regia</button>
-        </div>
       </div>
     </div>
   </div>
@@ -278,6 +279,7 @@
     { nome: "Nacional B Argentina", code: "arg.2" }
   ];
   var ROSA = {};              // nome minuscolo -> {n, s, c, l}
+  var PER_COMP = {};          // nome competizione -> [nomi squadra]
   var STAGIONE = 2026;
 
   (function () {
@@ -309,10 +311,13 @@
           ent.forEach(function (e) { if (e.team) voci.push(e.team); });
         });
         if (!voci.length) throw new Error("nessuna squadra");
-        var dl = el("squadreESPN"), nuove = 0;
+        var nuove = 0;
+        PER_COMP[nome] = PER_COMP[nome] || [];
         voci.forEach(function (t) {
           var n = t.displayName || t.name || "";
-          if (!n || ROSA[n.toLowerCase()]) return;
+          if (!n) return;
+          if (PER_COMP[nome].indexOf(n) < 0) PER_COMP[nome].push(n);
+          if (ROSA[n.toLowerCase()]) return;
           ROSA[n.toLowerCase()] = {
             n: n,
             s: t.abbreviation || "",
@@ -320,13 +325,13 @@
             // scelto qui, che tanto si vede solo per chi non ha stemma
             l: t.id ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + t.id + ".png" : ""
           };
-          var o = document.createElement("option");
-          o.value = n;
-          dl.appendChild(o);
           nuove++;
         });
+        PER_COMP[nome].sort();
+        riempiSquadreSelect();
         el("espnStato").innerHTML = '<span class="ok">' + nuove + " squadre di " + nome +
-          " pronte nei suggerimenti. In tutto ne conosco " + Object.keys(ROSA).length + ".</span>";
+          " nei menù. In tutto ne conosco " + Object.keys(ROSA).length +
+          " da " + Object.keys(PER_COMP).length + " competizioni.</span>";
       })
       .catch(function () {
         el("espnStato").innerHTML = '<span class="err">Non sono riuscito a leggere ' + nome +
@@ -335,19 +340,80 @@
   }
   el("btnEspn").addEventListener("click", caricaSquadre);
 
-  // Nome scelto fra i suggerimenti: arrivano anche colore e stemma.
-  // Se il nome e' scritto a mano e non risulta, non si tocca nulla.
-  function agganciaESPN(campo) {
-    var v = (campo.value || "").trim().toLowerCase();
-    var t = ROSA[v];
-    if (!t) { campo.dataset.logo = ""; return false; }
-    campo.dataset.logo = t.l || "";
-    if (t.c) {
-      var col = document.getElementById(campo.id.replace(/n$/, "c"));
-      if (col) col.value = t.c;
-    }
-    return true;
+  // ── i menù delle squadre ────────────────────────────────────────────
+  // Si ricostruiscono ogni volta che arrivano squadre nuove da ESPN, e
+  // ogni volta che cambiano i campi (cambio taglia del tabellone, numero
+  // di gironi). La scelta gia' fatta non si perde.
+  function riempiSquadreSelect() {
+    var comps = Object.keys(PER_COMP).sort();
+    document.querySelectorAll("select.sqsel").forEach(function (sel) {
+      var id = sel.dataset.per;
+      var campo = el(id + "n");
+      var scelto = campo ? campo.value.trim() : "";
+      var h = '<option value="">— da definire —</option>';
+      comps.forEach(function (nomeComp) {
+        h += '<optgroup label="' + esc(nomeComp) + '">';
+        PER_COMP[nomeComp].forEach(function (n) {
+          h += '<option value="' + esc(n) + '"' + (n === scelto ? " selected" : "") + '>' + esc(n) + '</option>';
+        });
+        h += '</optgroup>';
+      });
+      h += '<option value="__mano">&#9998; scrivi a mano…</option>';
+      sel.innerHTML = h;
+      // gia' scritto a mano e non presente in nessun elenco: resta il testo
+      if (scelto && !ROSA[scelto.toLowerCase()]) mostraScrittura(id, true);
+      else pittaStemmino(id);
+    });
   }
+
+  // Dopo la propagazione dei vincitori il campo e' aggiornato ma il menu'
+  // no: qui i menu' si allineano a cio' che c'e' scritto, senza ricostruirli
+  // (ricostruirli chiuderebbe una tendina aperta sotto il mouse).
+  function allineaSelect() {
+    document.querySelectorAll("select.sqsel").forEach(function (sel) {
+      var campo = el(sel.dataset.per + "n");
+      if (!campo) return;
+      var v = campo.value.trim();
+      if (sel.value === v) return;
+      var ce = false;
+      for (var i = 0; i < sel.options.length; i++) if (sel.options[i].value === v) { ce = true; break; }
+      if (ce) { sel.value = v; pittaStemmino(sel.dataset.per); }
+    });
+  }
+
+  function mostraScrittura(id, si) {
+    var sel = el(id + "sel"), inp = el(id + "n");
+    if (!sel || !inp) return;
+    sel.style.display = si ? "none" : "";
+    inp.style.display = si ? "" : "none";
+    if (si) inp.focus();
+  }
+
+  function pittaStemmino(id) {
+    var box = el(id + "logo"), campo = el(id + "n");
+    if (!box || !campo) return;
+    var l = campo.dataset.logo || "";
+    box.innerHTML = l ? '<img src="' + esc(l) + '" onerror="this.style.display=\'none\'">' : "";
+    box.classList.toggle("vuoto", !l);
+  }
+
+  // scelta dal menù: il nome finisce nel campo, e con lui stemma e sigla
+  document.addEventListener("change", function (e) {
+    var sel = e.target;
+    if (!sel.classList || !sel.classList.contains("sqsel")) return;
+    var id = sel.dataset.per, campo = el(id + "n");
+    if (sel.value === "__mano") {
+      campo.value = ""; campo.dataset.logo = "";
+      pittaStemmino(id); mostraScrittura(id, true);
+      return;
+    }
+    campo.value = sel.value;
+    var t = ROSA[sel.value.toLowerCase()];
+    campo.dataset.logo = t ? (t.l || "") : "";
+    if (t && t.c) { var col = el(id + "c"); if (col) col.value = t.c; }
+    pittaStemmino(id);
+    if (MODO === "tabellone") propagaVincitori();
+  });
 
   // ── una sola destinazione per macchina ──
   (function () {
@@ -394,18 +460,31 @@
     });
     el("campi").innerHTML = h;
     coloriIniziali();
+    riempiSquadreSelect();
   }
 
   function latoCampi(k, j, lato) {
     var id = "t" + k + "_" + j + "_" + lato;
-    return '<div class="riga">' +
-      '<div><label for="' + id + 'n">Squadra</label>' +
-        '<input type="text" id="' + id + 'n" data-ruolo="nome" list="squadreESPN" placeholder="nome o scegli da ESPN"></div>' +
+    return '<div class="riga">' + campoSquadra(id) +
       '<div class="stretta"><label for="' + id + 'c">Colore</label>' +
         '<input type="color" id="' + id + 'c" value="#243F8A"></div>' +
       '<div class="mini"><label for="' + id + 'g">Gol</label>' +
         '<input type="number" id="' + id + 'g" min="0" max="99" placeholder=""></div>' +
       '</div>';
+  }
+
+  // Una squadra si SCEGLIE da un menu' (ESPN, con lo stemma che viene
+  // dietro) oppure si scrive. Il campo di testo resta la fonte di
+  // verita': il menu' non fa altro che riempirlo, cosi' tutto il resto
+  // della pagina continua a leggere una cosa sola.
+  function campoSquadra(id, etichetta) {
+    return '<div class="sqbox">' +
+      '<label for="' + id + 'sel">' + (etichetta || "Squadra") + '</label>' +
+      '<div class="sqriga">' +
+        '<span class="stemmino" id="' + id + 'logo"></span>' +
+        '<select id="' + id + 'sel" class="sqsel" data-per="' + id + '"></select>' +
+        '<input type="text" id="' + id + 'n" data-ruolo="nome" placeholder="scrivi il nome" style="display:none">' +
+      '</div></div>';
   }
 
   function coloriIniziali() {
@@ -426,8 +505,7 @@
       for (var s = 0; s < ns; s++) {
         var id = "g" + g + "_" + s;
         h += '<div class="riga" data-g="' + g + '" data-s="' + s + '">' +
-          '<div><label for="' + id + 'n">Squadra ' + (s + 1) + '</label>' +
-            '<input type="text" id="' + id + 'n" list="squadreESPN" placeholder="nome o scegli da ESPN"></div>' +
+          campoSquadra(id, "Squadra " + (s + 1)) +
           '<div class="stretta"><label for="' + id + 'c">Colore</label>' +
             '<input type="color" id="' + id + 'c" value="' + TAVOLOZZA[(g * ns + s) % TAVOLOZZA.length] + '"></div>' +
           '<div class="mini"><label for="' + id + 'pg">PG</label><input type="number" id="' + id + 'pg" min="0" placeholder="0"></div>' +
@@ -440,6 +518,7 @@
       h += '</div>';
     }
     el("campi").innerHTML = h;
+    riempiSquadreSelect();
   }
 
   // ── dai campi ai dati ───────────────────────────────────────────────
@@ -478,6 +557,7 @@
         });
       }
     }
+    allineaSelect();
   }
 
   function datiTabellone() {
@@ -606,7 +686,9 @@
   // scrivendo un risultato del primo turno i turni dopo si aggiornano
   el("campi").addEventListener("input", function (e) {
     if (e.target.tagName === "INPUT" && e.target.type === "text" && /n$/.test(e.target.id || "")) {
-      agganciaESPN(e.target);
+      // scritta a mano: nessuno stemma, ma il colore resta quello scelto
+      e.target.dataset.logo = "";
+      pittaStemmino(e.target.id.replace(/n$/, ""));
     }
     if (MODO !== "tabellone") return;
     if (e.target.type === "number" || e.target.dataset.ruolo === "nome") propagaVincitori();
@@ -614,6 +696,9 @@
 
   mostra("tabellone");
   adattaPrev();
+  // all'apertura si ricarica l'ultima competizione usata: i menù sono
+  // gia' pieni senza dover premere niente
+  try { if (localStorage.getItem("comotv.tabelloni.comp")) caricaSquadre(); } catch (e) {}
 })();
 </script>
 </body>
