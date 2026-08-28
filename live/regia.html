@@ -150,6 +150,9 @@
   }
   #btnOut:hover:not(:disabled){background:rgba(229,27,32,.12);border-color:var(--red);}
   #btnOut:disabled{opacity:.35;cursor:default;}
+  #btnProg{border:2px solid var(--line-gold);background:transparent;color:var(--gold-bright);
+    font-size:11px;}
+  #btnProg:hover{background:rgba(200,164,88,.12);border-color:var(--gold-bright);}
 
   #msg{margin-top:12px;font-size:13px;color:var(--fg-3);min-height:20px;}
   .note{margin-top:22px;font-size:12.5px;color:var(--fg-3);line-height:1.65;}
@@ -283,6 +286,7 @@
       </div>
       <button id="btnTake" disabled>&#9654;<br>In onda</button>
       <button id="btnOut" disabled>&#9632;<br>Fuori onda</button>
+      <button id="btnProg" type="button">&#128193;<br>Apri progetto</button>
       <div id="msg"></div>
     </div>
     <div class="panel mon">
@@ -915,6 +919,24 @@
           })
           .catch(function () { msg.textContent = "Ponte non raggiungibile."; });
       }
+    });
+
+    document.getElementById("btnProg").addEventListener("click", function () {
+      fetch(PONTE, {
+        method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ token: TOKEN, tipo: "progetto-elenco" })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          var pr = (j.ok && j.progetti) || [];
+          dipingi(pr);
+          if (!pr.length) {
+            msg.textContent = "Nessun progetto salvato: si creano dalle pagine delle grafiche (menu Regia \u2192 Nuovo progetto).";
+            return;
+          }
+          pan.scrollIntoView({ behavior: "smooth", block: "center" });
+        })
+        .catch(function () { msg.textContent = "Ponte non raggiungibile."; });
     });
 
     aggiorna();
