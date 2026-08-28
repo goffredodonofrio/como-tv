@@ -48,7 +48,7 @@ const CONFIG = {
   LOGHI: process.env.COMOTV_LOGHI || "/var/lib/comotv/loghi",
 
   CANALI: 7,
-  MAX_SCALETTA: 12,
+  MAX_SCALETTA: 30,
 
   // gli invii "Al foglio" continuano ad andare qui
   PONTE_FOGLI: process.env.COMOTV_PONTE_FOGLI ||
