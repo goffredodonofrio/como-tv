@@ -311,8 +311,14 @@
           ent.forEach(function (e) { if (e.team) voci.push(e.team); });
         });
         if (!voci.length) throw new Error("nessuna squadra");
+        // Si SOSTITUISCE, non si accumula: nei menu' restano solo le
+        // squadre dell'ultima competizione caricata. Quelle gia' scelte
+        // negli incontri non si perdono: il nome resta scritto nel campo
+        // col suo stemma, e il menu' di quello slot passa alla scrittura.
+        ROSA = {};
+        PER_COMP = {};
         var nuove = 0;
-        PER_COMP[nome] = PER_COMP[nome] || [];
+        PER_COMP[nome] = [];
         voci.forEach(function (t) {
           var n = t.displayName || t.name || "";
           if (!n) return;
@@ -330,8 +336,7 @@
         PER_COMP[nome].sort();
         riempiSquadreSelect();
         el("espnStato").innerHTML = '<span class="ok">' + nuove + " squadre di " + nome +
-          " nei menù. In tutto ne conosco " + Object.keys(ROSA).length +
-          " da " + Object.keys(PER_COMP).length + " competizioni.</span>";
+          " nei menù.</span>";
       })
       .catch(function () {
         el("espnStato").innerHTML = '<span class="err">Non sono riuscito a leggere ' + nome +
@@ -352,11 +357,9 @@
       var scelto = campo ? campo.value.trim() : "";
       var h = '<option value="">— da definire —</option>';
       comps.forEach(function (nomeComp) {
-        h += '<optgroup label="' + esc(nomeComp) + '">';
         PER_COMP[nomeComp].forEach(function (n) {
           h += '<option value="' + esc(n) + '"' + (n === scelto ? " selected" : "") + '>' + esc(n) + '</option>';
         });
-        h += '</optgroup>';
       });
       h += '<option value="__mano">&#9998; scrivi a mano…</option>';
       sel.innerHTML = h;
