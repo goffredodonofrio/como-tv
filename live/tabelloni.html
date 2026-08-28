@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<script>
+/* Le Grafiche Live vivono sulla macchina della regia. Su GitHub resta una
+   copia di questa pagina, ma li' parla a un altro ponte: chi la aprisse per
+   sbaglio (un vecchio segnalibro, un input vMix non aggiornato) comanderebbe
+   un sistema che nessuno ascolta, e le grafiche non andrebbero in onda.
+   Da GitHub si viene quindi portati sulla macchina giusta. Sulla VM questo
+   non fa nulla. Se l'indirizzo della macchina cambia, va cambiato anche qui. */
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  var p = location.pathname.replace(/^\/como-tv/, "");
+  location.replace("http://209.227.239.211" + p + location.search + location.hash);
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tabelloni e Gruppi · Como TV</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    color-scheme:dark;
+    --gold:#C9A24B;--gold-bright:#E3C271;--red:#E51B20;
+    --ivory:#F5F1E6;--ivory-dim:#D8D2C2;--fg-3:#8A8B96;
+    --surface-panel:rgba(16,22,48,.66);
+    --line-2:rgba(245,241,230,.08);--line-gold:rgba(201,162,75,.28);
+    --ok:#4FCB8B;
+  }
+  body{
+    font-family:'DM Sans',system-ui,sans-serif;font-weight:500;font-size:14px;line-height:1.5;
+    color:var(--ivory);min-height:100vh;
+    background-color:#0A0F24;
+    background-image:
+      radial-gradient(90% 70% at 20% 8%, rgba(36,64,138,.5), transparent 55%),
+      radial-gradient(80% 80% at 92% 108%, rgba(201,162,75,.16), transparent 55%),
+      linear-gradient(165deg,#141B3C 0%,#0E1430 48%,#0A0F24 100%);
+    background-attachment:fixed;padding-bottom:90px;
+  }
+  .nav{min-height:58px;position:sticky;top:0;z-index:200;display:flex;align-items:center;gap:18px;
+    padding:0 clamp(20px,4vw,56px);background:rgba(10,15,36,.72);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line-2);}
+  .nav-brand{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:800;letter-spacing:.28em;
+    text-transform:uppercase;color:var(--ivory);text-decoration:none;white-space:nowrap;}
+  .nav-sep{color:rgba(245,241,230,.25);}
+  .nav-here{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.28em;
+    text-transform:uppercase;color:rgba(245,241,230,.45);}
+  .nav-links{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap;padding:8px 0;justify-content:flex-end;}
+  .nav-links a{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--ivory-dim);text-decoration:none;
+    padding:7px 14px;border:1px solid var(--line-2);border-radius:4px;}
+  .nav-links a:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  .nav-links a.qui{color:var(--gold-bright);border-color:var(--line-gold);background:rgba(201,162,75,.08);}
+
+  .wrap{max-width:1500px;margin:0 auto;padding:0 clamp(18px,3vw,32px);}
+  header.page{padding:38px 0 18px;}
+  .eyebrow{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.3em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:10px;}
+  h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(28px,4vw,42px);
+    line-height:.94;letter-spacing:-.02em;text-transform:uppercase;color:var(--ivory);}
+  .sub{color:var(--fg-3);font-size:13.5px;margin-top:10px;}
+
+  .panel{background:var(--surface-panel);border:1px solid var(--line-2);border-radius:10px;
+    padding:16px;margin-bottom:16px;}
+  .panel h2{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:12px;}
+  label{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
+    letter-spacing:.18em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:5px;}
+  input[type=text],input[type=number],select{
+    width:100%;padding:10px 12px;border-radius:7px;background:rgba(245,241,230,.05);
+    border:1px solid var(--line-2);color:var(--ivory);font-family:'DM Sans',sans-serif;font-size:14px;}
+  input[type=color]{width:100%;height:41px;padding:3px;border-radius:7px;
+    background:rgba(245,241,230,.05);border:1px solid var(--line-2);cursor:pointer;}
+  input:focus,select:focus{outline:none;border-color:var(--line-gold);}
+  .riga{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;align-items:end;}
+  .riga > div{flex:1;min-width:0;}
+  .riga > div.stretta{flex:0 0 92px;}
+  .riga > div.mini{flex:0 0 74px;}
+
+  button{font-family:'Mazzard',sans-serif;font-weight:700;font-size:12px;letter-spacing:.12em;
+    text-transform:uppercase;padding:11px 18px;border-radius:7px;cursor:pointer;
+    background:rgba(245,241,230,.06);color:var(--ivory-dim);border:1px solid var(--line-2);}
+  button:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  button.primary{background:var(--gold);color:#0A0F24;border-color:var(--gold);}
+  button.primary:hover{background:var(--gold-bright);color:#0A0F24;}
+  .bottoniera{display:flex;gap:9px;flex-wrap:wrap;align-items:center;}
+
+  /* scelta fra tabellone e gironi */
+  .tabs{display:flex;gap:9px;margin-bottom:18px;}
+  .tabs button{flex:0 0 auto;padding:13px 26px;font-size:13px;}
+  .tabs button.attivo{background:var(--gold);color:#0A0F24;border-color:var(--gold);}
+
+  /* un incontro del tabellone */
+  .inc{border:1px solid var(--line-2);border-radius:9px;padding:12px;margin-bottom:10px;
+    background:rgba(245,241,230,.02);}
+  .inc .capo{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--fg-3);margin-bottom:9px;}
+  .turnobox{margin-bottom:18px;}
+  .turnobox > h3{font-family:'Mazzard',sans-serif;font-size:13px;font-weight:800;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--ivory);margin-bottom:10px;
+    padding-bottom:7px;border-bottom:1px solid var(--line-2);}
+  .autoc{color:var(--fg-3);font-size:12px;margin-left:8px;font-family:'DM Sans',sans-serif;
+    letter-spacing:0;text-transform:none;font-weight:500;}
+
+  /* anteprima */
+  #prevbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:9px;
+    border:1px solid var(--line-gold);background:#070B1D;}
+  #prev{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
+    transform-origin:top left;}
+  #stato{margin-top:10px;font-size:13px;color:var(--fg-3);min-height:20px;}
+  #stato .ok{color:var(--ok);} #stato .err{color:#FF6B6E;}
+
+  .due{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;}
+  @media (max-width:1080px){ .due{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="nav-brand" href="../index.html">COMO TV</a>
+  <span class="nav-sep">·</span>
+  <span class="nav-here">Grafiche Live — Tabelloni e Gruppi</span>
+  <div class="nav-links">
+    <a href="classifiche.html">Grafiche Live</a>
+    <a href="classifiche-campionati.html">Classifiche</a>
+    <a href="risultati.html">Risultati</a>
+    <a href="formazioni.html">Formazioni</a>
+    <a href="marcatori.html">Marcatori</a>
+    <a href="sottopancia.html">Sottopancia</a>
+    <a href="tabelloni.html" class="qui">Tabelloni</a>
+    <a href="regia.html">Regia</a>
+    <a href="../index.html">Home</a>
+  </div>
+</nav>
+
+<div class="wrap">
+  <header class="page">
+    <div class="eyebrow">Como TV · Grafiche Live</div>
+    <h1>Tabelloni e Gruppi</h1>
+    <div class="sub">I tabelloni delle nostre coppe e le classifiche dei gironi.
+      Squadre, colori, loghi e risultati si scrivono qui; i turni successivi si
+      riempiono da soli con chi passa, e restano correggibili a mano.</div>
+  </header>
+
+  <div class="tabs">
+    <button id="tabT" class="attivo">Tabellone</button>
+    <button id="tabG">Gironi</button>
+  </div>
+
+  <div class="panel">
+    <h2>Competizione</h2>
+    <div class="riga">
+      <div><label for="comp">Nome della coppa</label>
+        <input type="text" id="comp" placeholder="es. Como Cup 2026"></div>
+      <div><label for="titolo">Titolo in grafica</label>
+        <input type="text" id="titolo" placeholder="IL TABELLONE"></div>
+      <div class="stretta" id="boxTaglia"><label for="taglia">Squadre</label>
+        <select id="taglia"><option value="4">4</option><option value="8" selected>8</option><option value="16">16</option></select></div>
+      <div class="stretta" id="boxNg" style="display:none"><label for="ng">Gironi</label>
+        <select id="ng"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></div>
+      <div class="stretta" id="boxNs" style="display:none"><label for="ns">Squadre per girone</label>
+        <select id="ns"><option>3</option><option selected>4</option><option>5</option><option>6</option></select></div>
+      <div class="stretta" id="boxQ" style="display:none"><label for="qual">Passano</label>
+        <select id="qual"><option>0</option><option>1</option><option selected>2</option><option>3</option></select></div>
+    </div>
+  </div>
+
+  <div class="due">
+    <div>
+      <div class="panel">
+        <h2 id="capoDati">Il tabellone</h2>
+        <div id="campi"></div>
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <h2>Anteprima</h2>
+        <div id="prevbox"><iframe id="prev" src="about:blank" scrolling="no"></iframe></div>
+        <div id="stato">Compila i campi e premi Anteprima.</div>
+      </div>
+      <div class="panel">
+        <h2>Invio</h2>
+        <div class="riga">
+          <div><label for="canaleSel">Macchina</label><select id="canaleSel"></select></div>
+        </div>
+        <div class="bottoniera">
+          <button id="btnPrev">&#128065; Anteprima</button>
+          <button id="btnRegia" class="primary">&#128225; Invia alla regia</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
+  var TOKEN = "como_tv_grafiche";
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function b64url(obj) {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(obj))))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function stato(cls, txt) { el("stato").innerHTML = '<span class="' + cls + '">' + txt + '</span>'; }
+
+  // colori di partenza, per non lasciare tutto blu
+  var TAVOLOZZA = ["#1735C8","#C50E1F","#2E7D46","#C98A1B","#7A4FA0","#1B7FA0",
+                   "#B0121A","#1E4FA0","#3E7D2E","#A0631B","#5A3FA0","#177FA0",
+                   "#8A1B2E","#2A4FA8","#4E7D1B","#A0451B"];
+
+  var MODO = "tabellone";     // oppure "gruppi"
+
+  // ── una sola destinazione per macchina ──
+  (function () {
+    var s = el("canaleSel");
+    for (var i = 1; i <= 7; i++) {
+      var o = document.createElement("option");
+      o.value = String(i); o.textContent = "vMix " + i;
+      s.appendChild(o);
+    }
+    var c = 1;
+    try { var v = parseInt(localStorage.getItem("comotv.regia.canale"), 10); if (v >= 1 && v <= 7) c = v; } catch (e) {}
+    s.value = String(c);
+    s.addEventListener("change", function () {
+      try { localStorage.setItem("comotv.regia.canale", s.value); } catch (e) {}
+    });
+  })();
+
+  // ── nomi dei turni, dal numero di squadre ──
+  function turniDi(n) {
+    if (n === 16) return ["Ottavi di finale", "Quarti di finale", "Semifinali", "Finale"];
+    if (n === 8)  return ["Quarti di finale", "Semifinali", "Finale"];
+    return ["Semifinali", "Finale"];
+  }
+
+  // ── i campi del tabellone ───────────────────────────────────────────
+  // Solo il primo turno si scrive per intero. Dagli altri in poi i nomi
+  // arrivano da chi ha vinto: si scrivono soltanto i risultati. Restano
+  // comunque modificabili, perche' in coppa capita di tutto.
+  function campiTabellone() {
+    var n = parseInt(el("taglia").value, 10);
+    var nomi = turniDi(n);
+    var h = "";
+    nomi.forEach(function (nt, k) {
+      var quanti = n / Math.pow(2, k + 1);
+      h += '<div class="turnobox" data-turno="' + k + '"><h3>' + esc(nt) +
+           (k > 0 ? '<span class="autoc">nomi presi da chi passa</span>' : '') + '</h3>';
+      for (var j = 0; j < quanti; j++) {
+        h += '<div class="inc" data-t="' + k + '" data-i="' + j + '">' +
+          '<div class="capo">Incontro ' + (j + 1) + '</div>' +
+          latoCampi(k, j, "a") + latoCampi(k, j, "b") +
+          '</div>';
+      }
+      h += '</div>';
+    });
+    el("campi").innerHTML = h;
+    coloriIniziali();
+  }
+
+  function latoCampi(k, j, lato) {
+    var id = "t" + k + "_" + j + "_" + lato;
+    return '<div class="riga">' +
+      '<div><label for="' + id + 'n">Squadra</label>' +
+        '<input type="text" id="' + id + 'n" data-ruolo="nome" placeholder="nome"></div>' +
+      '<div class="stretta"><label for="' + id + 'c">Colore</label>' +
+        '<input type="color" id="' + id + 'c" value="#243F8A"></div>' +
+      '<div class="mini"><label for="' + id + 'g">Gol</label>' +
+        '<input type="number" id="' + id + 'g" min="0" max="99" placeholder=""></div>' +
+      '</div>';
+  }
+
+  function coloriIniziali() {
+    var c = 0;
+    document.querySelectorAll('#campi .turnobox[data-turno="0"] input[type=color]').forEach(function (e) {
+      e.value = TAVOLOZZA[c % TAVOLOZZA.length]; c++;
+    });
+  }
+
+  // ── i campi dei gironi ──
+  function campiGironi() {
+    var ng = parseInt(el("ng").value, 10), ns = parseInt(el("ns").value, 10);
+    var h = "";
+    for (var g = 0; g < ng; g++) {
+      h += '<div class="turnobox" data-girone="' + g + '"><h3>' +
+           '<input type="text" id="gn' + g + '" value="Girone ' + String.fromCharCode(65 + g) + '" ' +
+           'style="width:auto;display:inline-block;padding:5px 9px;font-size:13px"></h3>';
+      for (var s = 0; s < ns; s++) {
+        var id = "g" + g + "_" + s;
+        h += '<div class="riga" data-g="' + g + '" data-s="' + s + '">' +
+          '<div><label for="' + id + 'n">Squadra ' + (s + 1) + '</label>' +
+            '<input type="text" id="' + id + 'n" placeholder="nome"></div>' +
+          '<div class="stretta"><label for="' + id + 'c">Colore</label>' +
+            '<input type="color" id="' + id + 'c" value="' + TAVOLOZZA[(g * ns + s) % TAVOLOZZA.length] + '"></div>' +
+          '<div class="mini"><label for="' + id + 'pg">PG</label><input type="number" id="' + id + 'pg" min="0" placeholder="0"></div>' +
+          '<div class="mini"><label for="' + id + 'v">V</label><input type="number" id="' + id + 'v" min="0" placeholder="0"></div>' +
+          '<div class="mini"><label for="' + id + 'p">N</label><input type="number" id="' + id + 'p" min="0" placeholder="0"></div>' +
+          '<div class="mini"><label for="' + id + 's">P</label><input type="number" id="' + id + 's" min="0" placeholder="0"></div>' +
+          '<div class="mini"><label for="' + id + 'pt">PT</label><input type="number" id="' + id + 'pt" min="0" placeholder="0"></div>' +
+          '</div>';
+      }
+      h += '</div>';
+    }
+    el("campi").innerHTML = h;
+  }
+
+  // ── dai campi ai dati ───────────────────────────────────────────────
+  function vincitoreDi(k, j) {
+    var an = el("t" + k + "_" + j + "_an"), bn = el("t" + k + "_" + j + "_bn");
+    var ag = el("t" + k + "_" + j + "_ag"), bg = el("t" + k + "_" + j + "_bg");
+    if (!an || !bn) return null;
+    if (ag.value === "" || bg.value === "") return null;
+    if (+ag.value === +bg.value) return null;
+    var vinceA = +ag.value > +bg.value;
+    return {
+      n: (vinceA ? an.value : bn.value).trim(),
+      c: (vinceA ? el("t" + k + "_" + j + "_ac") : el("t" + k + "_" + j + "_bc")).value
+    };
+  }
+
+  // riempie i turni successivi con chi passa, senza cancellare
+  // eventuali correzioni gia' scritte a mano
+  function propagaVincitori() {
+    var n = parseInt(el("taglia").value, 10);
+    var nomi = turniDi(n);
+    for (var k = 1; k < nomi.length; k++) {
+      var quanti = n / Math.pow(2, k + 1);
+      for (var j = 0; j < quanti; j++) {
+        [["a", j * 2], ["b", j * 2 + 1]].forEach(function (par) {
+          var vin = vincitoreDi(k - 1, par[1]);
+          var campoN = el("t" + k + "_" + j + "_" + par[0] + "n");
+          var campoC = el("t" + k + "_" + j + "_" + par[0] + "c");
+          if (!campoN) return;
+          if (vin && (campoN.value.trim() === "" || campoN.dataset.auto === "1")) {
+            campoN.value = vin.n; campoN.dataset.auto = "1";
+            if (campoC) campoC.value = vin.c;
+          }
+        });
+      }
+    }
+  }
+
+  function datiTabellone() {
+    var n = parseInt(el("taglia").value, 10);
+    var nomi = turniDi(n);
+    var r = [];
+    for (var k = 0; k < nomi.length; k++) {
+      var quanti = n / Math.pow(2, k + 1), m = [];
+      for (var j = 0; j < quanti; j++) {
+        var pre = "t" + k + "_" + j + "_";
+        m.push({
+          a: { n: el(pre + "an").value.trim(), c: el(pre + "ac").value },
+          b: { n: el(pre + "bn").value.trim(), c: el(pre + "bc").value },
+          ga: el(pre + "ag").value === "" ? "" : +el(pre + "ag").value,
+          gb: el(pre + "bg").value === "" ? "" : +el(pre + "bg").value
+        });
+      }
+      r.push({ n: nomi[k], m: m });
+    }
+    return { e: el("comp").value.trim(), t: (el("titolo").value.trim() || "IL TABELLONE"), r: r };
+  }
+
+  function datiGruppi() {
+    var ng = parseInt(el("ng").value, 10), ns = parseInt(el("ns").value, 10);
+    var g = [];
+    for (var i = 0; i < ng; i++) {
+      var righe = [];
+      for (var s = 0; s < ns; s++) {
+        var pre = "g" + i + "_" + s;
+        var nome = el(pre + "n").value.trim();
+        if (!nome) continue;
+        righe.push({
+          n: nome, c: el(pre + "c").value,
+          pg: num(pre + "pg"), v: num(pre + "v"), p: num(pre + "p"),
+          s: num(pre + "s"), pt: num(pre + "pt")
+        });
+      }
+      g.push({ n: el("gn" + i).value.trim() || ("Girone " + String.fromCharCode(65 + i)), r: righe });
+    }
+    return { e: el("comp").value.trim(), t: (el("titolo").value.trim() || "I GIRONI"),
+             q: parseInt(el("qual").value, 10) || 0, g: g };
+  }
+  function num(id) { var e = el(id); return e && e.value !== "" ? +e.value : null; }
+
+  function dati() { return MODO === "tabellone" ? datiTabellone() : datiGruppi(); }
+  function motore() { return MODO === "tabellone" ? "tabellone-vmix.html" : "gruppi-vmix.html"; }
+
+  function valido(d) {
+    if (MODO === "tabellone") {
+      var primo = d.r[0].m;
+      return primo.some(function (x) { return x.a.n || x.b.n; });
+    }
+    return d.g.some(function (x) { return x.r.length; });
+  }
+
+  // ── anteprima ──
+  function adattaPrev() {
+    var box = el("prevbox");
+    el("prev").style.transform = "scale(" + (box.clientWidth / 1920) + ")";
+  }
+  window.addEventListener("resize", adattaPrev);
+
+  el("btnPrev").addEventListener("click", function () {
+    if (MODO === "tabellone") propagaVincitori();
+    var d = dati();
+    if (!valido(d)) { stato("err", "Scrivi almeno le squadre del primo turno."); return; }
+    el("prev").src = motore() + "?d=" + b64url(d) + "&n=" + Date.now();
+    adattaPrev();
+    stato("", "Anteprima aggiornata.");
+  });
+
+  // ── invio alla regia ──
+  el("btnRegia").addEventListener("click", function () {
+    if (MODO === "tabellone") propagaVincitori();
+    var d = dati();
+    if (!valido(d)) { stato("err", "Scrivi almeno le squadre del primo turno."); return; }
+    var proposta = (MODO === "tabellone" ? "TABELLONE " : "GIRONI ") + (d.e || "").toUpperCase();
+    var titolo = window.prompt("Nome in scaletta di regia:", proposta.trim());
+    if (titolo === null) return;
+    var c = parseInt(el("canaleSel").value, 10) || 1;
+    stato("", "Invio alla regia (vMix " + c + ")…");
+    fetch(PONTE, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ token: TOKEN, tipo: "regia-load", c: c,
+                             grafica: MODO, titolo: titolo.trim() || proposta, dati: d })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.ok) stato("ok", "In scaletta su vMix " + c + ". Mandala in onda dalla regia.");
+        else stato("err", "Errore: " + (res.errore || "sconosciuto"));
+      })
+      .catch(function () { stato("err", "Ponte non raggiungibile."); });
+  });
+
+  // ── passaggio fra tabellone e gironi ──
+  function mostra(modo) {
+    MODO = modo;
+    el("tabT").classList.toggle("attivo", modo === "tabellone");
+    el("tabG").classList.toggle("attivo", modo === "gruppi");
+    el("boxTaglia").style.display = modo === "tabellone" ? "" : "none";
+    el("boxNg").style.display = modo === "gruppi" ? "" : "none";
+    el("boxNs").style.display = modo === "gruppi" ? "" : "none";
+    el("boxQ").style.display  = modo === "gruppi" ? "" : "none";
+    el("capoDati").textContent = modo === "tabellone" ? "Il tabellone" : "I gironi";
+    el("titolo").placeholder = modo === "tabellone" ? "IL TABELLONE" : "I GIRONI";
+    if (modo === "tabellone") campiTabellone(); else campiGironi();
+  }
+  el("tabT").addEventListener("click", function () { mostra("tabellone"); });
+  el("tabG").addEventListener("click", function () { mostra("gruppi"); });
+  el("taglia").addEventListener("change", campiTabellone);
+  el("ng").addEventListener("change", campiGironi);
+  el("ns").addEventListener("change", campiGironi);
+
+  // scrivendo un risultato del primo turno i turni dopo si aggiornano
+  el("campi").addEventListener("input", function (e) {
+    if (MODO !== "tabellone") return;
+    if (e.target.type === "number" || e.target.dataset.ruolo === "nome") propagaVincitori();
+  });
+
+  mostra("tabellone");
+  adattaPrev();
+})();
+</script>
+</body>
+</html>

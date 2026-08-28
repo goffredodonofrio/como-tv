@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tabellone · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-SemiBold.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+    transform-origin:center center;
+    font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);
+  }
+
+  /* ── intestazione, come le altre grafiche ── */
+  #eyebrow{position:absolute;left:128px;top:82px;
+    font-family:'DM Sans',sans-serif;font-weight:600;font-size:22px;letter-spacing:.24em;
+    color:#C9A24B;text-transform:uppercase;white-space:nowrap;opacity:0;}
+  #title{position:absolute;left:125px;top:104px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:76px;letter-spacing:.01em;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;
+    clip-path:inset(0 100% 0 0);}
+  #rule{position:absolute;left:128px;top:212px;width:300px;height:3px;
+    background:linear-gradient(90deg,#C9A24B 0%,rgba(201,162,75,.15) 100%);
+    transform:scaleX(0);transform-origin:left center;}
+
+  /* ── etichette dei turni ── */
+  .turno{position:absolute;
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:19px;letter-spacing:.22em;
+    color:#C9A24B;text-transform:uppercase;text-align:center;opacity:0;}
+
+  /* ── incontro ── */
+  .m{position:absolute;border-radius:10px;overflow:hidden;
+    background:rgba(16,23,58,.78);
+    box-shadow:inset 0 0 0 1px rgba(245,241,230,.09), 0 8px 26px rgba(0,0,0,.34);
+    opacity:0;}
+  .m .lato{display:flex;align-items:center;height:50%;padding:0 14px;gap:11px;}
+  .m .lato + .lato{border-top:1px solid rgba(245,241,230,.08);}
+  .m img{width:30px;height:30px;object-fit:contain;flex:none;}
+  .m .sigla{width:30px;height:30px;flex:none;border-radius:5px;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:12px;color:#FFF;
+    box-shadow:inset 0 0 0 1.5px rgba(245,241,230,.55);}
+  .m .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:23px;letter-spacing:.02em;
+    color:rgba(245,241,230,.72);text-transform:uppercase;}
+  .m .gol{flex:none;width:38px;text-align:center;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:26px;
+    font-variant-numeric:tabular-nums;color:rgba(245,241,230,.55);}
+  /* chi passa: nome pieno e punteggio in oro */
+  .m .lato.vince .nm{color:#F5F1E6;}
+  .m .lato.vince .gol{color:#C9A24B;}
+  .m .lato.vince{background:rgba(201,162,75,.07);}
+
+  /* ── raccordi fra i turni ── */
+  .filo{position:absolute;background:rgba(201,162,75,.30);opacity:0;}
+
+  /* ── vincitore ── */
+  .coppa{position:absolute;text-align:center;opacity:0;}
+  .coppa .et{font-family:'Mazzard',sans-serif;font-weight:700;font-size:17px;
+    letter-spacing:.26em;color:#C9A24B;text-transform:uppercase;margin-bottom:12px;}
+  .coppa .nome{font-family:'Mazzard',sans-serif;font-weight:800;font-size:44px;
+    letter-spacing:.02em;color:#F5F1E6;text-transform:uppercase;}
+  .coppa img{width:96px;height:96px;object-fit:contain;margin-bottom:10px;
+    filter:drop-shadow(0 8px 22px rgba(0,0,0,.5));}
+
+  /* colonne affollate (ottavi): stessa struttura, tutto un filo piu' piccolo */
+  #albero.fitto .m .nm{font-size:19px;}
+  #albero.fitto .m .gol{font-size:21px;width:32px;}
+  #albero.fitto .m img,#albero.fitto .m .sigla{width:24px;height:24px;}
+  #albero.fitto .m .sigla{font-size:10px;}
+  #albero.fitto .m .lato{padding:0 11px;gap:9px;}
+
+  @keyframes wipeIn { to { clip-path:inset(0 0 0 0); } }
+  @keyframes fadeIn { to { opacity:1; } }
+  @keyframes ruleIn { to { transform:scaleX(1); } }
+  @keyframes boxIn {
+    0%   { opacity:0; transform:translateX(-30px); }
+    100% { opacity:1; transform:translateX(0); }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="eyebrow"></div>
+  <div id="title">IL TABELLONE</div>
+  <div id="rule"></div>
+  <div id="albero"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { e:"COMO CUP",  t:"IL TABELLONE",
+  //     r:[ { n:"Quarti", m:[ {a:{n:"Como",l:"…url…",c:"#1735C8"}, b:{…}, ga:2, gb:1}, … ] }, … ] }
+  //   r = i turni, dal primo alla finale. m = gli incontri del turno.
+  //   ga/gb = i gol; vuoti se la partita non si e' ancora giocata.
+  var DEMO = {
+    e: "COMO CUP 2026", t: "IL TABELLONE",
+    r: [
+      { n: "Quarti di finale", m: [
+        { a:{n:"Como",c:"#1735C8"},      b:{n:"Lecco",c:"#1E4FA0"},   ga:3, gb:1 },
+        { a:{n:"Varese",c:"#C50E1F"},    b:{n:"Monza",c:"#B0121A"},   ga:0, gb:2 },
+        { a:{n:"Legnano",c:"#2E7D46"},   b:{n:"Saronno",c:"#7A4FA0"}, ga:1, gb:1 },
+        { a:{n:"Seregno",c:"#C98A1B"},   b:{n:"Cantù",c:"#1B7FA0"},   ga:2, gb:0 }
+      ]},
+      { n: "Semifinali", m: [
+        { a:{n:"Como",c:"#1735C8"},      b:{n:"Monza",c:"#B0121A"},   ga:2, gb:1 },
+        { a:{n:"Legnano",c:"#2E7D46"},   b:{n:"Seregno",c:"#C98A1B"}, ga:0, gb:3 }
+      ]},
+      { n: "Finale", m: [
+        { a:{n:"Como",c:"#1735C8"},      b:{n:"Seregno",c:"#C98A1B"}, ga:2, gb:0 }
+      ]}
+    ]
+  };
+
+  function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return DEMO;
+    try {
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return (d && d.r && d.r.length) ? d : null;
+    } catch (err) { return null; }
+  }
+  var STILL = new URLSearchParams(location.search).get("still") === "1";
+  var D = decodeData();
+  if (!D) {
+    // dati presenti ma illeggibili: meglio niente che un tabellone sbagliato
+    document.title = "TABELLONE — dati non validi";
+    document.getElementById("stage").style.display = "none";
+    return;
+  }
+  document.title = "TABELLONE " + (D.e || "");
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    document.getElementById("stage").style.transform = "translate(-50%,-50%) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+
+  // ── intestazione ──
+  var eb = document.getElementById("eyebrow");
+  eb.textContent = D.e || "";
+  var tt = document.getElementById("title");
+  tt.textContent = D.t || "IL TABELLONE";
+  var rl = document.getElementById("rule");
+  if (STILL) { eb.style.opacity = 1; tt.style.clipPath = "inset(0 0 0 0)"; rl.style.transform = "scaleX(1)"; }
+  else {
+    eb.style.animation = "fadeIn .5s ease .15s forwards";
+    tt.style.animation = "wipeIn .7s cubic-bezier(.2,.7,.3,1) .3s forwards";
+    rl.style.animation = "ruleIn .55s cubic-bezier(.2,.7,.3,1) .85s forwards";
+  }
+
+  // ── geometria ──────────────────────────────────────────────────────
+  // Le colonne si dividono lo spazio disponibile: due turni (semifinali
+  // e finale) o quattro (dagli ottavi) vengono da soli, senza numeri
+  // scritti a mano per ogni caso.
+  var TURNI = D.r;
+  var NT = TURNI.length;
+  var vincitore = ultimoVincitore();
+  var conCoppa = !!vincitore;
+
+  var X0 = 104, X1 = conCoppa ? 1560 : 1816;     // se c'e' il vincitore gli si lascia posto
+  var BOXW = Math.min(390, Math.floor((X1 - X0 - (NT - 1) * 60) / NT));
+  var GAP = NT > 1 ? Math.floor((X1 - X0 - NT * BOXW) / (NT - 1)) : 0;
+  var Y0 = 300, Y1 = 1012;                       // fascia verticale utile
+
+  function colX(k) { return X0 + k * (BOXW + GAP); }
+
+  // centri verticali: il primo turno si spartisce la fascia, ogni turno
+  // successivo si mette a meta' fra i due incontri che lo alimentano
+  var centri = [];
+  var n0 = TURNI[0].m.length;
+  var passo = (Y1 - Y0) / n0;
+  // L'altezza dell'incontro si adatta al passo: con otto incontri nella
+  // prima colonna i riquadri da 92px si toccherebbero. Sotto una certa
+  // misura si rimpicciolisce anche il testo, altrimenti trabocca.
+  var ALT = Math.max(58, Math.min(92, Math.floor(passo - 14)));
+  if (ALT < 84) document.getElementById("albero").classList.add("fitto");
+  centri[0] = [];
+  for (var i = 0; i < n0; i++) centri[0].push(Y0 + passo * (i + 0.5));
+  for (var k = 1; k < NT; k++) {
+    centri[k] = [];
+    for (var j = 0; j < TURNI[k].m.length; j++) {
+      var a = centri[k - 1][j * 2], b = centri[k - 1][j * 2 + 1];
+      centri[k].push(b == null ? a : (a + b) / 2);
+    }
+  }
+
+  function ultimoVincitore() {
+    var ult = D.r[D.r.length - 1];
+    if (!ult || !ult.m || ult.m.length !== 1) return null;
+    var f = ult.m[0];
+    if (f.ga === "" || f.gb === "" || f.ga == null || f.gb == null) return null;
+    if (+f.ga === +f.gb) return null;
+    return +f.ga > +f.gb ? f.a : f.b;
+  }
+
+  // ── disegno ────────────────────────────────────────────────────────
+  var h = "";
+  var ritardo = 1.0;                 // parte dopo l'intestazione
+
+  function stemma(sq) {
+    if (sq && sq.l) return '<img src="' + esc(sq.l) + '" onerror="this.style.display=\'none\'">';
+    var sig = String((sq && (sq.s || sq.n)) || "").slice(0, 3).toUpperCase();
+    return '<span class="sigla" style="background:' + esc((sq && sq.c) || "#243F8A") + '">' + esc(sig) + '</span>';
+  }
+
+  function lato(sq, gol, vince) {
+    return '<div class="lato' + (vince ? " vince" : "") + '">' +
+      stemma(sq) +
+      '<span class="nm">' + esc((sq && sq.n) || "—") + '</span>' +
+      '<span class="gol">' + (gol === "" || gol == null ? "" : esc(gol)) + '</span>' +
+      '</div>';
+  }
+
+  TURNI.forEach(function (t, k) {
+    var cx = colX(k);
+    // etichetta del turno, sopra la colonna
+    var etAnim = STILL ? "opacity:1" : "animation:fadeIn .45s ease " + ritardo.toFixed(2) + "s forwards";
+    h += '<div class="turno" style="left:' + cx + 'px;top:' + (Y0 - 52) + 'px;width:' + BOXW + 'px;' + etAnim + '">' +
+         esc(t.n || "") + '</div>';
+
+    t.m.forEach(function (m, j) {
+      var cy = centri[k][j];
+      var giocata = !(m.ga === "" || m.ga == null || m.gb === "" || m.gb == null);
+      var vinceA = giocata && +m.ga > +m.gb;
+      var vinceB = giocata && +m.gb > +m.ga;
+      var anim = STILL ? "opacity:1" : "animation:boxIn .5s cubic-bezier(.2,.7,.3,1) " +
+                 (ritardo + j * 0.09).toFixed(2) + "s forwards";
+      h += '<div class="m" style="left:' + cx + 'px;top:' + (cy - ALT / 2) + 'px;' +
+           'width:' + BOXW + 'px;height:' + ALT + 'px;' + anim + '">' +
+           lato(m.a, m.ga, vinceA) + lato(m.b, m.gb, vinceB) + '</div>';
+    });
+
+    // raccordi verso il turno successivo
+    if (k < NT - 1) {
+      var xd = cx + BOXW, xm = xd + Math.floor(GAP / 2);
+      TURNI[k + 1].m.forEach(function (_, j) {
+        var y1 = centri[k][j * 2], y2 = centri[k][j * 2 + 1];
+        if (y2 == null) return;
+        var ym = centri[k + 1][j];
+        var fa = STILL ? "opacity:1" : "animation:fadeIn .4s ease " + (ritardo + 0.35).toFixed(2) + "s forwards";
+        h += '<div class="filo" style="left:' + xd + 'px;top:' + (y1 - 1) + 'px;width:' + (xm - xd) + 'px;height:2px;' + fa + '"></div>';
+        h += '<div class="filo" style="left:' + xd + 'px;top:' + (y2 - 1) + 'px;width:' + (xm - xd) + 'px;height:2px;' + fa + '"></div>';
+        h += '<div class="filo" style="left:' + (xm - 1) + 'px;top:' + y1 + 'px;width:2px;height:' + (y2 - y1) + 'px;' + fa + '"></div>';
+        h += '<div class="filo" style="left:' + xm + 'px;top:' + (ym - 1) + 'px;width:' + (colX(k + 1) - xm) + 'px;height:2px;' + fa + '"></div>';
+      });
+    }
+    ritardo += 0.45;
+  });
+
+  // ── il vincitore, se la finale e' stata giocata ──
+  if (conCoppa) {
+    var cy = centri[NT - 1][0];
+    var cAnim = STILL ? "opacity:1" : "animation:fadeIn .6s ease " + (ritardo + 0.2).toFixed(2) + "s forwards";
+    h += '<div class="coppa" style="left:' + (X1 + 40) + 'px;top:' + (cy - 110) + 'px;width:280px;' + cAnim + '">' +
+      (vincitore.l ? '<img src="' + esc(vincitore.l) + '" onerror="this.style.display=\'none\'">'
+                   : '<div class="sigla" style="width:96px;height:96px;font-size:34px;margin:0 auto 10px;background:' +
+                     esc(vincitore.c || "#243F8A") + '">' + esc(String(vincitore.s || vincitore.n).slice(0, 3).toUpperCase()) + '</div>') +
+      '<div class="et">Vincitore</div>' +
+      '<div class="nome">' + esc(vincitore.n || "") + '</div>' +
+      '</div>';
+  }
+
+  document.getElementById("albero").innerHTML = h;
+
+  function replay() { location.reload(); }
+  document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
+  document.addEventListener("dblclick", replay);
+})();
+</script>
+<script src="sfondo.js"></script>
+</body>
+</html>

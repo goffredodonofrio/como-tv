@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gruppi · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-SemiBold.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+    transform-origin:center center;
+    font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);
+  }
+
+  #eyebrow{position:absolute;left:128px;top:82px;
+    font-family:'DM Sans',sans-serif;font-weight:600;font-size:22px;letter-spacing:.24em;
+    color:#C9A24B;text-transform:uppercase;white-space:nowrap;opacity:0;}
+  #title{position:absolute;left:125px;top:104px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:76px;letter-spacing:.01em;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;
+    clip-path:inset(0 100% 0 0);}
+  #rule{position:absolute;left:128px;top:212px;width:300px;height:3px;
+    background:linear-gradient(90deg,#C9A24B 0%,rgba(201,162,75,.15) 100%);
+    transform:scaleX(0);transform-origin:left center;}
+
+  /* ── un girone ── */
+  .gr{position:absolute;opacity:0;}
+  .gr .cap{font-family:'Mazzard',sans-serif;font-weight:700;font-size:21px;letter-spacing:.22em;
+    color:#C9A24B;text-transform:uppercase;margin-bottom:14px;}
+  .gr .th{display:flex;align-items:center;gap:11px;padding:0 14px 8px;
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:13px;letter-spacing:.14em;
+    color:rgba(245,241,230,.42);text-transform:uppercase;}
+  .gr .rg{display:flex;align-items:center;gap:11px;height:54px;padding:0 14px;
+    border-radius:8px;background:rgba(245,241,230,.04);margin-bottom:7px;}
+  /* chi passa il turno */
+  .gr .rg.passa{background:rgba(201,162,75,.10);
+    box-shadow:inset 0 0 0 1px rgba(201,162,75,.28);}
+  .gr .pos{width:26px;flex:none;font-family:'Mazzard',sans-serif;font-weight:800;font-size:19px;
+    color:rgba(245,241,230,.45);}
+  .gr .rg.passa .pos{color:#C9A24B;}
+  .gr img{width:30px;height:30px;object-fit:contain;flex:none;}
+  .gr .sigla{width:30px;height:30px;flex:none;border-radius:5px;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:12px;color:#FFF;
+    box-shadow:inset 0 0 0 1.5px rgba(245,241,230,.55);}
+  .gr .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:23px;letter-spacing:.02em;
+    color:#F5F1E6;text-transform:uppercase;}
+  .gr .st{width:44px;flex:none;text-align:center;
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:20px;
+    font-variant-numeric:tabular-nums;color:rgba(245,241,230,.62);}
+  .gr .st.pt{color:#C9A24B;font-weight:800;font-size:23px;}
+  .gr .th span{width:44px;text-align:center;flex:none;}
+  .gr .th .sp{flex:1;}
+
+  /* quattro gironi: tutto un filo piu' compatto */
+  #gironi.fitto .gr .rg{height:46px;margin-bottom:5px;}
+  #gironi.fitto .gr .nm{font-size:20px;}
+  #gironi.fitto .gr img,#gironi.fitto .gr .sigla{width:25px;height:25px;}
+  #gironi.fitto .gr .st{font-size:18px;width:38px;}
+  #gironi.fitto .gr .st.pt{font-size:20px;}
+  #gironi.fitto .gr .th span{width:38px;}
+
+  @keyframes wipeIn { to { clip-path:inset(0 0 0 0); } }
+  @keyframes fadeIn { to { opacity:1; } }
+  @keyframes ruleIn { to { transform:scaleX(1); } }
+  @keyframes grIn {
+    0%   { opacity:0; transform:translateY(24px); }
+    100% { opacity:1; transform:translateY(0); }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="eyebrow"></div>
+  <div id="title">I GIRONI</div>
+  <div id="rule"></div>
+  <div id="gironi"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { e:"COMO CUP", t:"I GIRONI", q:2,
+  //     g:[ { n:"Girone A", r:[ {n:"Como",l:"…",c:"#1735C8",pg:3,v:2,p:1,s:0,pt:7}, … ] }, … ] }
+  //   q = quante squadre passano il turno (evidenziate). 0 = nessuna.
+  var DEMO = {
+    e: "COMO CUP 2026", t: "I GIRONI", q: 2,
+    g: [
+      { n: "Girone A", r: [
+        { n:"Como",   c:"#1735C8", pg:3, v:3, p:0, s:0, pt:9 },
+        { n:"Lecco",  c:"#1E4FA0", pg:3, v:2, p:0, s:1, pt:6 },
+        { n:"Varese", c:"#C50E1F", pg:3, v:1, p:0, s:2, pt:3 },
+        { n:"Cantù",  c:"#1B7FA0", pg:3, v:0, p:0, s:3, pt:0 }
+      ]},
+      { n: "Girone B", r: [
+        { n:"Monza",   c:"#B0121A", pg:3, v:2, p:1, s:0, pt:7 },
+        { n:"Legnano", c:"#2E7D46", pg:3, v:2, p:0, s:1, pt:6 },
+        { n:"Saronno", c:"#7A4FA0", pg:3, v:1, p:1, s:1, pt:4 },
+        { n:"Seregno", c:"#C98A1B", pg:3, v:0, p:0, s:3, pt:0 }
+      ]}
+    ]
+  };
+
+  function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return DEMO;
+    try {
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return (d && d.g && d.g.length) ? d : null;
+    } catch (err) { return null; }
+  }
+  var STILL = new URLSearchParams(location.search).get("still") === "1";
+  var D = decodeData();
+  if (!D) {
+    document.title = "GRUPPI — dati non validi";
+    document.getElementById("stage").style.display = "none";
+    return;
+  }
+  document.title = "GRUPPI " + (D.e || "");
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    document.getElementById("stage").style.transform = "translate(-50%,-50%) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+
+  var eb = document.getElementById("eyebrow");
+  eb.textContent = D.e || "";
+  var tt = document.getElementById("title");
+  tt.textContent = D.t || "I GIRONI";
+  var rl = document.getElementById("rule");
+  if (STILL) { eb.style.opacity = 1; tt.style.clipPath = "inset(0 0 0 0)"; rl.style.transform = "scaleX(1)"; }
+  else {
+    eb.style.animation = "fadeIn .5s ease .15s forwards";
+    tt.style.animation = "wipeIn .7s cubic-bezier(.2,.7,.3,1) .3s forwards";
+    rl.style.animation = "ruleIn .55s cubic-bezier(.2,.7,.3,1) .85s forwards";
+  }
+
+  // ── disposizione ───────────────────────────────────────────────────
+  // Uno o due gironi stanno affiancati; da tre in su si va su due righe,
+  // che e' l'unico modo di tenerli leggibili su 1080 di altezza.
+  var G = D.g;
+  var NG = G.length;
+  var COLONNE = NG <= 2 ? NG : 2;
+  var RIGHE = Math.ceil(NG / COLONNE);
+  if (RIGHE > 1) document.getElementById("gironi").classList.add("fitto");
+
+  var X0 = 128, X1 = 1792;
+  var LARG = Math.floor((X1 - X0 - (COLONNE - 1) * 70) / COLONNE);
+  var Y0 = 296;
+  var ALTRIGA = RIGHE > 1 ? 372 : 700;
+
+  var passano = parseInt(D.q, 10);
+  if (isNaN(passano) || passano < 0) passano = 0;
+
+  var h = "";
+  G.forEach(function (gr, i) {
+    var col = i % COLONNE, rig = Math.floor(i / COLONNE);
+    var x = X0 + col * (LARG + 70);
+    var y = Y0 + rig * ALTRIGA;
+    var anim = STILL ? "opacity:1" : "animation:grIn .55s cubic-bezier(.2,.7,.3,1) " +
+               (1.0 + i * 0.18).toFixed(2) + "s forwards";
+    h += '<div class="gr" style="left:' + x + 'px;top:' + y + 'px;width:' + LARG + 'px;' + anim + '">' +
+         '<div class="cap">' + esc(gr.n || "") + '</div>' +
+         '<div class="th"><span style="width:26px"></span><span style="width:30px"></span>' +
+         '<span class="sp"></span><span>PG</span><span>V</span><span>N</span><span>P</span><span>PT</span></div>';
+    (gr.r || []).forEach(function (sq, k) {
+      var passa = passano > 0 && k < passano;
+      var stemma = sq.l
+        ? '<img src="' + esc(sq.l) + '" onerror="this.style.display=\'none\'">'
+        : '<span class="sigla" style="background:' + esc(sq.c || "#243F8A") + '">' +
+          esc(String(sq.s || sq.n || "").slice(0, 3).toUpperCase()) + '</span>';
+      h += '<div class="rg' + (passa ? " passa" : "") + '">' +
+        '<span class="pos">' + (k + 1) + '</span>' + stemma +
+        '<span class="nm">' + esc(sq.n || "") + '</span>' +
+        '<span class="st">' + esc(sq.pg == null ? "" : sq.pg) + '</span>' +
+        '<span class="st">' + esc(sq.v  == null ? "" : sq.v)  + '</span>' +
+        '<span class="st">' + esc(sq.p  == null ? "" : sq.p)  + '</span>' +
+        '<span class="st">' + esc(sq.s  == null ? "" : sq.s)  + '</span>' +
+        '<span class="st pt">' + esc(sq.pt == null ? "" : sq.pt) + '</span>' +
+        '</div>';
+    });
+    h += '</div>';
+  });
+
+  document.getElementById("gironi").innerHTML = h;
+
+  function replay() { location.reload(); }
+  document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
+  document.addEventListener("dblclick", replay);
+})();
+</script>
+<script src="sfondo.js"></script>
+</body>
+</html>
