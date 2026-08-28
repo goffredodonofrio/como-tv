@@ -1244,7 +1244,8 @@
       m: side.mod,
       k: side.kit,
       mg: side.maglia ? magliaUrl(side, side.maglia) || undefined : undefined,
-      l: side.teamId ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + side.teamId + ".png" : "",
+      l: LOGHI_SCAVALCO[slugM(side.teamName || "")] ||
+         (side.teamId ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + side.teamId + ".png" : ""),
       a: [side.coachN || "", side.coachC || ""],
       g: side.posGraf || undefined,
       t: side.tit.map(tri),
@@ -1258,6 +1259,7 @@
   // Convenzione: maglia-<squadra>-casa.png / -trasferta.png nel deposito
   // dei loghi. Caricata una volta, resta per tutte le prossime grafiche.
   var MAGLIE = {};                 // chiave file -> url
+  var LOGHI_SCAVALCO = {};         // slug squadra -> logo che sostituisce ESPN
   function slugM(nome) {
     return String(nome || "").toLowerCase()
       .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -1289,9 +1291,12 @@
     fetch(cfg.url + "?loghi=1", { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (j) {
-        MAGLIE = {};
+        MAGLIE = {}; LOGHI_SCAVALCO = {};
         (j.loghi || []).forEach(function (x) {
           if (/^maglia-/.test(x.chiave)) MAGLIE[x.chiave] = x.url;
+          // un logo caricato col nome della squadra scavalca quello ESPN:
+          // serve per gli stemmi neri, illeggibili sul fondo navy (Juve)
+          else LOGHI_SCAVALCO[x.chiave] = x.url;
         });
         if (poi) poi();
       })
