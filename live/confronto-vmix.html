@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Confronto · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-SemiBold.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+    transform-origin:center center;
+    font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);
+  }
+
+  #eyebrow{position:absolute;left:128px;top:82px;
+    font-family:'DM Sans',sans-serif;font-weight:600;font-size:22px;letter-spacing:.24em;
+    color:#C9A24B;text-transform:uppercase;white-space:nowrap;opacity:0;}
+  #title{position:absolute;left:125px;top:104px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:76px;letter-spacing:.01em;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;
+    clip-path:inset(0 100% 0 0);}
+  #rule{position:absolute;left:128px;top:212px;width:300px;height:3px;
+    background:linear-gradient(90deg,#C9A24B 0%,rgba(201,162,75,.15) 100%);
+    transform:scaleX(0);transform-origin:left center;}
+
+  /* ── le due teste: chi si confronta ── */
+  .testa{position:absolute;top:268px;width:560px;display:flex;align-items:center;gap:22px;opacity:0;}
+  .testa.dx{flex-direction:row-reverse;text-align:right;}
+  .testa img{width:96px;height:96px;object-fit:contain;flex:none;
+    filter:drop-shadow(0 8px 22px rgba(0,0,0,.5));}
+  .testa .tondo{width:92px;height:92px;flex:none;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:36px;color:#FFF;
+    box-shadow:inset 0 0 0 3px rgba(245,241,230,.7), 0 8px 22px rgba(0,0,0,.5);}
+  .testa .chi{min-width:0;}
+  .testa .nome{font-family:'Mazzard',sans-serif;font-weight:800;font-size:40px;letter-spacing:.01em;
+    color:#F5F1E6;text-transform:uppercase;line-height:1.05;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .testa .sotto{font-family:'DM Sans',sans-serif;font-weight:500;font-size:19px;letter-spacing:.14em;
+    color:rgba(245,241,230,.55);text-transform:uppercase;margin-top:6px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+  /* ── le righe delle statistiche ── */
+  .riga{position:absolute;left:128px;width:1664px;height:74px;opacity:0;}
+  .riga .eti{position:absolute;left:50%;top:8px;transform:translateX(-50%);
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:21px;letter-spacing:.2em;
+    color:rgba(245,241,230,.6);text-transform:uppercase;white-space:nowrap;}
+  .riga .val{position:absolute;top:2px;font-family:'Mazzard',sans-serif;font-weight:800;
+    font-size:34px;font-variant-numeric:tabular-nums;color:rgba(245,241,230,.65);}
+  .riga .val.sx{left:0;} .riga .val.dx{right:0;text-align:right;}
+  .riga .val.vince{color:#C9A24B;}
+  /* barre specchiate dal centro */
+  .riga .traccia{position:absolute;top:52px;height:8px;width:660px;
+    background:rgba(245,241,230,.07);border-radius:4px;overflow:hidden;}
+  .riga .traccia.sx{right:calc(50% + 130px);} .riga .traccia.dx{left:calc(50% + 130px);}
+  .riga .pieno{position:absolute;top:0;height:100%;border-radius:4px;
+    background:rgba(245,241,230,.45);}
+  .riga .traccia.sx .pieno{right:0;} .riga .traccia.dx .pieno{left:0;}
+  .riga .pieno.vince{background:#C9A24B;}
+
+  @keyframes wipeIn { to { clip-path:inset(0 0 0 0); } }
+  @keyframes fadeIn { to { opacity:1; } }
+  @keyframes ruleIn { to { transform:scaleX(1); } }
+  @keyframes rigaIn {
+    0%   { opacity:0; transform:translateY(18px); }
+    100% { opacity:1; transform:translateY(0); }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="eyebrow"></div>
+  <div id="title">IL CONFRONTO</div>
+  <div id="rule"></div>
+  <div id="corpo"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { e:"SERIE A", t:"IL CONFRONTO",
+  //     a:{n:"Como", s:"sottotitolo", l:"…logo/foto…", num:"10", c:"#1735C8"},
+  //     b:{…},
+  //     st:[["Possesso %", 62, 38], ["Tiri", 14, 9], …] }
+  //   Vale per squadra vs squadra e giocatore vs giocatore: cambia solo
+  //   cio' che c'e' nella testa (stemma, o tondo col numero).
+  var DEMO = {
+    e: "SERIE A · 3ª GIORNATA", t: "IL CONFRONTO",
+    a: { n: "Como",  s: "in casa",    c: "#1735C8" },
+    b: { n: "Inter", s: "in trasferta", c: "#0B1B4D" },
+    st: [["Possesso %", 54, 46], ["Tiri", 15, 11], ["Tiri in porta", 6, 4],
+         ["Calci d'angolo", 7, 3], ["Falli", 9, 14], ["Passaggi riusciti %", 88, 84]]
+  };
+
+  function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return DEMO;
+    try {
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return (d && d.a && d.b && d.st && d.st.length) ? d : null;
+    } catch (err) { return null; }
+  }
+  var STILL = new URLSearchParams(location.search).get("still") === "1";
+  var D = decodeData();
+  if (!D) {
+    document.title = "CONFRONTO — dati non validi";
+    document.getElementById("stage").style.display = "none";
+    return;
+  }
+  document.title = "CONFRONTO " + ((D.a.n || "") + " " + (D.b.n || "")).trim();
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    document.getElementById("stage").style.transform = "translate(-50%,-50%) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+
+  var eb = document.getElementById("eyebrow"); eb.textContent = D.e || "";
+  var tt = document.getElementById("title"); tt.textContent = D.t || "IL CONFRONTO";
+  var rl = document.getElementById("rule");
+  if (STILL) { eb.style.opacity = 1; tt.style.clipPath = "inset(0 0 0 0)"; rl.style.transform = "scaleX(1)"; }
+  else {
+    eb.style.animation = "fadeIn .5s ease .15s forwards";
+    tt.style.animation = "wipeIn .7s cubic-bezier(.2,.7,.3,1) .3s forwards";
+    rl.style.animation = "ruleIn .55s cubic-bezier(.2,.7,.3,1) .85s forwards";
+  }
+
+  // la testa: stemma/foto se c'e', altrimenti tondo col numero o le iniziali
+  function faccia(q) {
+    if (q.l) return '<img src="' + esc(q.l) + '" onerror="this.style.display=\'none\'">';
+    var dentro = q.num ? esc(q.num) : esc(String(q.n || "").slice(0, 2).toUpperCase());
+    return '<div class="tondo" style="background:' + esc(q.c || "#243F8A") + '">' + dentro + '</div>';
+  }
+  function testa(q, lato) {
+    var anim = STILL ? "opacity:1" : "animation:fadeIn .55s ease " + (lato === "dx" ? "1.15s" : "1.0s") + " forwards";
+    var x = lato === "sx" ? "left:128px" : "right:128px";
+    return '<div class="testa ' + lato + '" style="' + x + ';' + anim + '">' +
+      faccia(q) +
+      '<div class="chi"><div class="nome">' + esc(q.n || "") + '</div>' +
+      (q.s ? '<div class="sotto">' + esc(q.s) + '</div>' : "") + '</div></div>';
+  }
+
+  // il numero dentro un valore, per le barre: "62%" -> 62, "1.8" -> 1.8
+  function numero(v) {
+    var m = String(v == null ? "" : v).replace(",", ".").match(/-?\d+(\.\d+)?/);
+    return m ? parseFloat(m[0]) : null;
+  }
+
+  var h = testa(D.a, "sx") + testa(D.b, "dx");
+
+  var Y0 = 452, PASSO = Math.min(96, Math.floor((1040 - Y0) / D.st.length));
+  D.st.forEach(function (r, i) {
+    var eti = r[0], va = r[1], vb = r[2];
+    var na = numero(va), nb = numero(vb);
+    var tot = (na || 0) + (nb || 0);
+    var wa = 0, wb = 0;
+    if (na != null && nb != null && tot > 0) { wa = Math.round(660 * na / tot); wb = 660 - wa; }
+    var vinceA = na != null && nb != null && na > nb;
+    var vinceB = na != null && nb != null && nb > na;
+    var anim = STILL ? "opacity:1" : "animation:rigaIn .5s cubic-bezier(.2,.7,.3,1) " + (1.25 + i * 0.14).toFixed(2) + "s forwards";
+    h += '<div class="riga" style="top:' + (Y0 + i * PASSO) + 'px;' + anim + '">' +
+      '<span class="val sx' + (vinceA ? " vince" : "") + '">' + esc(va) + '</span>' +
+      '<span class="eti">' + esc(eti) + '</span>' +
+      '<span class="val dx' + (vinceB ? " vince" : "") + '">' + esc(vb) + '</span>' +
+      '<span class="traccia sx"><span class="pieno' + (vinceA ? " vince" : "") + '" style="width:' + wa + 'px"></span></span>' +
+      '<span class="traccia dx"><span class="pieno' + (vinceB ? " vince" : "") + '" style="width:' + wb + 'px"></span></span>' +
+      '</div>';
+  });
+
+  document.getElementById("corpo").innerHTML = h;
+
+  function replay() { location.reload(); }
+  document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
+  document.addEventListener("dblclick", replay);
+})();
+</script>
+<script src="sfondo.js"></script>
+</body>
+</html>

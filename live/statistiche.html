@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<script>
+/* Le Grafiche Live vivono sulla macchina della regia. Su GitHub resta una
+   copia di questa pagina, ma li' parla a un altro ponte: chi la aprisse per
+   sbaglio comanderebbe un sistema che nessuno ascolta. Da GitHub si viene
+   quindi portati sulla macchina giusta. Sulla VM questo non fa nulla. */
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  var p = location.pathname.replace(/^\/como-tv/, "");
+  location.replace("http://209.227.239.211" + p + location.search + location.hash);
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Statistiche · Como TV</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    color-scheme:dark;
+    --gold:#C9A24B;--gold-bright:#E3C271;--red:#E51B20;
+    --ivory:#F5F1E6;--ivory-dim:#D8D2C2;--fg-3:#8A8B96;
+    --surface-panel:rgba(16,22,48,.66);
+    --line-2:rgba(245,241,230,.08);--line-gold:rgba(201,162,75,.28);
+    --ok:#4FCB8B;
+  }
+  body{
+    font-family:'DM Sans',system-ui,sans-serif;font-weight:500;font-size:14px;line-height:1.5;
+    color:var(--ivory);min-height:100vh;
+    background-color:#0A0F24;
+    background-image:
+      radial-gradient(90% 70% at 20% 8%, rgba(36,64,138,.5), transparent 55%),
+      radial-gradient(80% 80% at 92% 108%, rgba(201,162,75,.16), transparent 55%),
+      linear-gradient(165deg,#141B3C 0%,#0E1430 48%,#0A0F24 100%);
+    background-attachment:fixed;padding-bottom:90px;
+  }
+  .nav{min-height:58px;position:sticky;top:0;z-index:200;display:flex;align-items:center;gap:18px;
+    padding:0 clamp(20px,4vw,56px);background:rgba(10,15,36,.72);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line-2);}
+  .nav-brand{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:800;letter-spacing:.28em;
+    text-transform:uppercase;color:var(--ivory);text-decoration:none;white-space:nowrap;}
+  .nav-links{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap;padding:8px 0;justify-content:flex-end;}
+  .nav-links a{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--ivory-dim);text-decoration:none;
+    padding:7px 14px;border:1px solid var(--line-2);border-radius:4px;}
+  .nav-links a:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  .nav-links a.qui{color:var(--gold-bright);border-color:var(--line-gold);background:rgba(201,162,75,.08);}
+
+  .wrap{max-width:1500px;margin:0 auto;padding:0 clamp(18px,3vw,32px);}
+  header.page{padding:38px 0 18px;}
+  .eyebrow{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.3em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:10px;}
+  h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(28px,4vw,42px);
+    line-height:.94;letter-spacing:-.02em;text-transform:uppercase;color:var(--ivory);}
+  .sub{color:var(--fg-3);font-size:13.5px;margin-top:10px;}
+
+  .panel{background:var(--surface-panel);border:1px solid var(--line-2);border-radius:10px;
+    padding:16px;margin-bottom:16px;}
+  .panel h2{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:12px;}
+  label{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
+    letter-spacing:.18em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:5px;}
+  input[type=text],select{
+    width:100%;padding:10px 12px;border-radius:7px;background:rgba(245,241,230,.05);
+    border:1px solid var(--line-2);color:var(--ivory);font-family:'DM Sans',sans-serif;font-size:14px;}
+  input[type=color]{width:100%;height:41px;padding:3px;border-radius:7px;
+    background:rgba(245,241,230,.05);border:1px solid var(--line-2);cursor:pointer;}
+  input:focus,select:focus{outline:none;border-color:var(--line-gold);}
+  .riga{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;align-items:end;}
+  .riga > div{flex:1;min-width:0;}
+  .riga > div.stretta{flex:0 0 92px;}
+  .riga > div.mini{flex:0 0 74px;}
+
+  button{font-family:'Mazzard',sans-serif;font-weight:700;font-size:12px;letter-spacing:.12em;
+    text-transform:uppercase;padding:11px 18px;border-radius:7px;cursor:pointer;
+    background:rgba(245,241,230,.06);color:var(--ivory-dim);border:1px solid var(--line-2);}
+  button:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  button.primary{background:var(--gold);color:#0A0F24;border-color:var(--gold);}
+  button.primary:hover{background:var(--gold-bright);color:#0A0F24;}
+
+  /* barra dei comandi, in alto come nelle altre grafiche */
+  .barra{display:flex;align-items:end;gap:10px;flex-wrap:wrap;
+    padding:14px 16px;border-radius:10px;margin-bottom:8px;
+    background:var(--surface-panel);border:1px solid var(--line-2);}
+  .barra .gruppo{display:flex;gap:8px;}
+  .barra .campo{display:flex;flex-direction:column;gap:5px;}
+  .barra .campo label{margin-bottom:0;}
+  .barra .sep{width:1px;align-self:stretch;background:var(--line-2);margin:0 4px;}
+  .barra button.attivo{background:var(--gold);color:#0A0F24;border-color:var(--gold);}
+  #espnStato{font-size:13px;color:var(--fg-3);margin-bottom:16px;padding:0 4px;min-height:20px;}
+  #espnStato .ok{color:var(--ok);} #espnStato .err{color:#FF6B6E;}
+
+  /* barra di avanzamento dell'invio, come nelle altre grafiche */
+  #stato{margin-top:10px;font-size:13px;color:var(--fg-3);min-height:20px;
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  #stato .ok{color:var(--ok);} #stato .err{color:#FF6B6E;}
+  .pbar{height:6px;background:rgba(245,241,230,.08);border-radius:3px;overflow:hidden;
+    flex:1 1 240px;min-width:200px;align-self:center;}
+  .pfill{display:block;height:100%;width:0;background:var(--gold);border-radius:3px;
+    animation:pfill 2.6s cubic-bezier(.2,.7,.3,1) forwards;}
+  @keyframes pfill{0%{width:0}60%{width:72%}100%{width:92%}}
+  .pfill.done{animation:none;width:100%;background:var(--ok);transition:width .25s ease;}
+
+  /* riga di statistica */
+  .strow{display:flex;gap:10px;margin-bottom:8px;align-items:center;}
+  .strow input.eti{flex:2;}
+  .strow input.va,.strow input.vb{flex:1;}
+  .strow .via{flex:0 0 auto;padding:9px 13px;color:#FF6B6E;border-color:rgba(229,27,32,.4);}
+  .strow .via:hover{background:rgba(229,27,32,.12);border-color:var(--red);}
+
+  /* anteprima */
+  #prevbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:9px;
+    border:1px solid var(--line-gold);background:#070B1D;}
+  #prev{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
+    transform-origin:top left;}
+
+  .due{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;}
+  @media (max-width:1080px){ .due{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="nav-brand" href="../index.html">COMO TV</a>
+  <div class="nav-links">
+    <a href="classifiche.html">Grafiche Live</a>
+    <a href="classifiche-campionati.html">Classifiche</a>
+    <a href="risultati.html">Risultati</a>
+    <a href="formazioni.html">Formazioni</a>
+    <a href="marcatori.html">Marcatori</a>
+    <a href="sottopancia.html">Sottopancia</a>
+    <a href="tabelloni.html">Tabelloni</a>
+    <a href="statistiche.html" class="qui">Statistiche</a>
+    <a href="regia.html">Regia</a>
+    <a href="../index.html">Home</a>
+  </div>
+</nav>
+
+<div class="wrap">
+  <header class="page">
+    <div class="eyebrow">Como TV · Grafiche Live</div>
+    <h1>Statistiche</h1>
+    <div class="sub">Confronti fra squadre, duelli fra giocatori e la scheda del singolo.
+      Squadre e rose arrivano da ESPN; tutto resta scrivibile a mano.</div>
+  </header>
+
+  <div class="barra">
+    <div class="gruppo">
+      <button id="tabSq" class="attivo">Squadra vs Squadra</button>
+      <button id="tabDu">Giocatore vs Giocatore</button>
+      <button id="tabGi">Scheda giocatore</button>
+    </div>
+    <div class="sep"></div>
+    <div class="campo"><label for="compEspn">Squadre da</label><select id="compEspn"></select></div>
+    <button id="btnEspn">Carica</button>
+    <div class="sep"></div>
+    <button id="btnPrev">&#128065; Anteprima</button>
+    <div class="campo"><label for="canaleSel">Regia</label><select id="canaleSel" style="width:120px"></select></div>
+    <button id="btnRegia" class="primary">&#128225; In regia</button>
+  </div>
+  <div id="espnStato">Scegli una competizione e premi Carica: squadre e rose entrano nei menù.</div>
+
+  <div class="panel">
+    <h2>Intestazione</h2>
+    <div class="riga">
+      <div><label for="occhiello">Occhiello</label>
+        <input type="text" id="occhiello" placeholder="es. Serie A · 3ª giornata"></div>
+      <div><label for="titolo">Titolo in grafica</label>
+        <input type="text" id="titolo" placeholder=""></div>
+    </div>
+  </div>
+
+  <div class="due">
+    <div>
+      <div class="panel" id="panA"></div>
+      <div class="panel" id="panB"></div>
+      <div class="panel">
+        <h2>Statistiche <small style="font-family:'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--fg-3);font-weight:500;font-size:11px">etichetta + valori, righe libere</small></h2>
+        <div id="strows"></div>
+        <button id="btnAddRiga">+ Aggiungi riga</button>
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <h2>Anteprima</h2>
+        <div id="prevbox"><iframe id="prev" src="about:blank" scrolling="no"></iframe></div>
+        <div id="stato">Compila i campi e premi Anteprima.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
+  var TOKEN = "como_tv_grafiche";
+  var API = "https://site.api.espn.com/apis/site/v2/sports/soccer";
+  var API_STAND = "https://site.api.espn.com/apis/v2/sports/soccer/";
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function b64url(obj) {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(obj))))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function stato(cls, txt) { el("stato").innerHTML = '<span class="' + cls + '">' + txt + '</span>'; }
+
+  var TAVOLOZZA = ["#1735C8","#C50E1F","#2E7D46","#C98A1B","#7A4FA0","#1B7FA0"];
+
+  // ── le tre modalita' ────────────────────────────────────────────────
+  //   sq = squadra vs squadra   (motore confronto, grafica "confronto")
+  //   du = giocatore vs giocatore (stesso motore, grafica "duello")
+  //   gi = scheda del singolo   (motore giocatore, grafica "giocatore")
+  var MODO = "sq";
+  var PRESET = {
+    sq: ["Possesso %", "Tiri", "Tiri in porta", "Calci d'angolo", "Falli", "Passaggi riusciti %"],
+    du: ["Presenze", "Gol", "Assist", "Tiri in porta", "Minuti giocati"],
+    gi: ["Presenze", "Gol", "Assist", "Tiri in porta", "Minuti giocati", "Ammonizioni"]
+  };
+  var TITOLI = { sq: "IL CONFRONTO", du: "IL DUELLO", gi: "LA SCHEDA" };
+
+  // ── una sola destinazione per macchina ──
+  (function () {
+    var s = el("canaleSel");
+    for (var i = 1; i <= 7; i++) {
+      var o = document.createElement("option");
+      o.value = String(i); o.textContent = "vMix " + i;
+      s.appendChild(o);
+    }
+    var c = 1;
+    try { var v = parseInt(localStorage.getItem("comotv.regia.canale"), 10); if (v >= 1 && v <= 7) c = v; } catch (e) {}
+    s.value = String(c);
+    s.addEventListener("change", function () {
+      try { localStorage.setItem("comotv.regia.canale", s.value); } catch (e) {}
+    });
+  })();
+
+  // ── ESPN: competizioni (le stesse delle Classifiche), squadre, rose ──
+  var COMPS = [];               // riempite leggendo l'elenco delle Classifiche non serve:
+  // l'elenco e' cablato qui come nei Tabelloni, ripreso dallo stesso insieme
+  [["Serie A","ita.1"],["EFL Championship","eng.2"],["Saudi Pro League","ksa.1"],
+   ["Eredivisie","ned.1"],["Scottish Premiership","sco.1"],["Scottish Championship","sco.2"],
+   ["Premier Sports Cup","sco.cis"],["Bundesliga Austria","aut.1"],["LPF Argentina","arg.1"],
+   ["CONMEBOL Libertadores","conmebol.libertadores"],["CONMEBOL Sudamericana","conmebol.sudamericana"],
+   ["Premier League","eng.1"],["League One","eng.3"],["League Two","eng.4"],["Serie B","ita.2"],
+   ["Champions League","uefa.champions"],["Europa League","uefa.europa"],
+   ["Conference League","uefa.europa.conf"],["LaLiga","esp.1"],["Bundesliga","ger.1"],
+   ["2. Bundesliga","ger.2"],["Ligue 1","fra.1"],["Ligue 2","fra.2"],["Primeira Liga","por.1"],
+   ["Eerste Divisie NL","ned.2"],["Brasileirão","bra.1"],["Nacional B Argentina","arg.2"]
+  ].forEach(function (x) { COMPS.push({ nome: x[0], code: x[1] }); });
+
+  var SQUADRE = [];             // [{id, n, l}] dell'ultima competizione caricata
+  var ROSE = {};                // teamId -> [{n, num, ruolo}]
+
+  (function () {
+    var s = el("compEspn");
+    COMPS.forEach(function (c) {
+      var o = document.createElement("option");
+      o.value = c.code; o.textContent = c.nome;
+      s.appendChild(o);
+    });
+    try { var u = localStorage.getItem("comotv.stat.comp"); if (u) s.value = u; } catch (e) {}
+  })();
+
+  function caricaSquadre() {
+    var code = el("compEspn").value;
+    var nome = el("compEspn").options[el("compEspn").selectedIndex].textContent;
+    try { localStorage.setItem("comotv.stat.comp", code); } catch (e) {}
+    el("espnStato").textContent = "Carico le squadre di " + nome + "…";
+    fetch(API_STAND + code + "/standings", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var gruppi = (j.children && j.children.length) ? j.children : [j];
+        SQUADRE = []; ROSE = {};
+        gruppi.forEach(function (ch) {
+          var ent = (ch.standings && ch.standings.entries) ? ch.standings.entries : [];
+          ent.forEach(function (e) {
+            var t = e.team || {};
+            if (!t.id) return;
+            SQUADRE.push({ id: t.id, n: t.displayName || t.name || "",
+              l: "https://a.espncdn.com/i/teamlogos/soccer/500/" + t.id + ".png" });
+          });
+        });
+        if (!SQUADRE.length) throw new Error("vuoto");
+        SQUADRE.sort(function (a, b) { return a.n.localeCompare(b.n); });
+        riempiMenuSquadre();
+        el("espnStato").innerHTML = '<span class="ok">' + SQUADRE.length + " squadre di " + nome +
+          " nei menù. Scegli la squadra e la rosa arriva da sola.</span>";
+      })
+      .catch(function () {
+        el("espnStato").innerHTML = '<span class="err">Non sono riuscito a leggere ' + nome +
+          " da ESPN. Si puo' comunque scrivere tutto a mano.</span>";
+      });
+  }
+  el("btnEspn").addEventListener("click", caricaSquadre);
+
+  function caricaRosa(teamId, poi) {
+    if (ROSE[teamId]) { poi(ROSE[teamId]); return; }
+    var code = el("compEspn").value;
+    fetch(API + "/" + code + "/teams/" + teamId + "/roster", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        ROSE[teamId] = (d.athletes || []).map(function (a) {
+          return { n: a.fullName || a.displayName || "", num: a.jersey || "",
+                   ruolo: (a.position && a.position.name) || "" };
+        }).filter(function (x) { return x.n; });
+        poi(ROSE[teamId]);
+      })
+      .catch(function () { poi([]); });
+  }
+
+  // ── i riquadri A e B (o solo A per la scheda) ───────────────────────
+  // Un riquadro = menu' squadra ESPN + (per i giocatori) menu' della rosa
+  // + i campi scritti, che sono la fonte di verita' e restano modificabili.
+  function riquadro(pre, titolo, conGiocatore) {
+    return '<h2>' + titolo + '</h2>' +
+      '<div class="riga">' +
+      '<div><label for="' + pre + 'sq">Squadra (ESPN)</label><select id="' + pre + 'sq"></select></div>' +
+      (conGiocatore ? '<div><label for="' + pre + 'gio">Giocatore</label><select id="' + pre + 'gio"><option value="">—</option></select></div>' : "") +
+      '</div>' +
+      '<div class="riga">' +
+      '<div><label for="' + pre + 'n">Nome in grafica</label><input type="text" id="' + pre + 'n" placeholder="scrivi o scegli sopra"></div>' +
+      '<div><label for="' + pre + 's">Sottotitolo</label><input type="text" id="' + pre + 's" placeholder="es. Attaccante · Como"></div>' +
+      (conGiocatore ? '<div class="mini"><label for="' + pre + 'num">N°</label><input type="text" id="' + pre + 'num" maxlength="2"></div>' : "") +
+      '<div class="stretta"><label for="' + pre + 'c">Colore</label><input type="color" id="' + pre + 'c" value="#1735C8"></div>' +
+      '</div>';
+  }
+
+  function riempiMenuSquadre() {
+    ["a", "b"].forEach(function (pre) {
+      var s = el(pre + "sq");
+      if (!s) return;
+      var scelto = s.value;
+      var h = '<option value="">— scrivi a mano —</option>';
+      SQUADRE.forEach(function (q) {
+        h += '<option value="' + esc(q.id) + '"' + (String(q.id) === scelto ? " selected" : "") + '>' + esc(q.n) + '</option>';
+      });
+      s.innerHTML = h;
+    });
+  }
+
+  // scelta squadra: nome (e per il confronto lo stemma) + rosa nel menu'
+  document.addEventListener("change", function (e) {
+    var t = e.target;
+    if (/^(a|b)sq$/.test(t.id || "")) {
+      var pre = t.id.charAt(0);
+      var q = null;
+      SQUADRE.forEach(function (x) { if (String(x.id) === t.value) q = x; });
+      if (q) {
+        var campoN = el(pre + "n");
+        if (MODO === "sq") { campoN.value = q.n; campoN.dataset.logo = q.l; }
+        else { el(pre + "s").value = q.n; }
+        var gio = el(pre + "gio");
+        if (gio) {
+          gio.innerHTML = '<option value="">carico la rosa…</option>';
+          caricaRosa(t.value, function (rosa) {
+            var h = '<option value="">— scrivi a mano —</option>';
+            rosa.forEach(function (g, i) {
+              h += '<option value="' + i + '">' + esc((g.num ? g.num + " · " : "") + g.n) + '</option>';
+            });
+            gio.innerHTML = h;
+            gio.dataset.team = t.value;
+          });
+        }
+      }
+      var col = el(pre + "c");
+      if (col && MODO === "sq") col.value = TAVOLOZZA[pre === "a" ? 0 : 1];
+    }
+    if (/^(a|b)gio$/.test(t.id || "")) {
+      var pre2 = t.id.charAt(0);
+      var rosa = ROSE[t.dataset.team] || [];
+      var g = rosa[parseInt(t.value, 10)];
+      if (g) {
+        el(pre2 + "n").value = g.n;
+        el(pre2 + "n").dataset.logo = "";
+        var num = el(pre2 + "num"); if (num) num.value = g.num || "";
+        var sq = "";
+        SQUADRE.forEach(function (x) { if (String(x.id) === t.dataset.team) sq = x.n; });
+        el(pre2 + "s").value = (g.ruolo ? g.ruolo + " · " : "") + sq;
+      }
+    }
+  });
+
+  // ── le righe di statistica ──────────────────────────────────────────
+  function rigaStat(eti, va, vb) {
+    var due = MODO !== "gi";
+    return '<div class="strow">' +
+      '<input type="text" class="eti" placeholder="etichetta" value="' + esc(eti || "") + '">' +
+      '<input type="text" class="va" placeholder="' + (due ? "valore A" : "valore") + '" value="' + esc(va || "") + '">' +
+      (due ? '<input type="text" class="vb" placeholder="valore B" value="' + esc(vb || "") + '">' : "") +
+      '<button type="button" class="via" title="Togli la riga">&times;</button></div>';
+  }
+  function preparaRighe() {
+    el("strows").innerHTML = PRESET[MODO].map(function (x) { return rigaStat(x); }).join("");
+  }
+  el("btnAddRiga").addEventListener("click", function () {
+    el("strows").insertAdjacentHTML("beforeend", rigaStat());
+  });
+  el("strows").addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("button.via") : null;
+    if (b) b.parentNode.remove();
+  });
+
+  // ── dai campi ai dati del motore ────────────────────────────────────
+  function lato(pre) {
+    var n = el(pre + "n");
+    var num = el(pre + "num");
+    var o = { n: n.value.trim(), s: el(pre + "s").value.trim(), c: el(pre + "c").value };
+    if (num && num.value.trim()) o.num = num.value.trim();
+    if (n.dataset.logo) o.l = n.dataset.logo;
+    return o;
+  }
+  function statRighe(due) {
+    var v = [];
+    document.querySelectorAll("#strows .strow").forEach(function (r) {
+      var eti = r.querySelector(".eti").value.trim();
+      var va = r.querySelector(".va").value.trim();
+      var vb = due ? r.querySelector(".vb").value.trim() : null;
+      if (!eti) return;
+      if (due) { if (va === "" && vb === "") return; v.push([eti, va, vb]); }
+      else { if (va === "") return; v.push([eti, va]); }
+    });
+    return v;
+  }
+  function dati() {
+    var e = el("occhiello").value.trim();
+    var t = el("titolo").value.trim() || TITOLI[MODO];
+    if (MODO === "gi") return { e: e, t: t, g: lato("a"), st: statRighe(false) };
+    return { e: e, t: t, a: lato("a"), b: lato("b"), st: statRighe(true) };
+  }
+  function motore() { return MODO === "gi" ? "giocatore-vmix.html" : "confronto-vmix.html"; }
+  function grafica() { return MODO === "sq" ? "confronto" : (MODO === "du" ? "duello" : "giocatore"); }
+  function valido(d) {
+    if (!d.st.length) { stato("err", "Serve almeno una riga di statistica con i valori."); return false; }
+    if (MODO === "gi") { if (!d.g.n) { stato("err", "Serve il nome del giocatore."); return false; } }
+    else if (!d.a.n || !d.b.n) { stato("err", "Servono i nomi di tutti e due i lati."); return false; }
+    return true;
+  }
+
+  // ── anteprima e invio ───────────────────────────────────────────────
+  function adattaPrev() {
+    el("prev").style.transform = "scale(" + (el("prevbox").clientWidth / 1920) + ")";
+  }
+  window.addEventListener("resize", adattaPrev);
+
+  el("btnPrev").addEventListener("click", function () {
+    var d = dati();
+    if (!valido(d)) return;
+    el("prev").src = motore() + "?d=" + b64url(d) + "&n=" + Date.now();
+    adattaPrev();
+    stato("", "Anteprima aggiornata.");
+  });
+
+  el("btnRegia").addEventListener("click", function () {
+    var d = dati();
+    if (!valido(d)) return;
+    var proposta = (MODO === "sq" ? "CONFRONTO " + d.a.n + " - " + d.b.n
+                  : MODO === "du" ? "DUELLO " + d.a.n + " - " + d.b.n
+                  : "SCHEDA " + d.g.n).toUpperCase();
+    var titolo = window.prompt("Nome in scaletta di regia:", proposta);
+    if (titolo === null) return;
+    var c = parseInt(el("canaleSel").value, 10) || 1;
+    el("stato").innerHTML = '<span>Invio alla regia (vMix ' + c + ')&hellip;</span>' +
+      '<span class="pbar"><span class="pfill" id="pfill"></span></span>';
+    fetch(PONTE, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ token: TOKEN, tipo: "regia-load", c: c,
+                             grafica: grafica(), titolo: titolo.trim() || proposta, dati: d })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.ok) {
+          var pf = document.getElementById("pfill");
+          if (pf) pf.className = "pfill done";
+          setTimeout(function () {
+            stato("ok", "In scaletta su vMix " + c + ". Mandala in onda dalla regia.");
+          }, 350);
+        } else stato("err", "Errore: " + (res.errore || "sconosciuto"));
+      })
+      .catch(function () { stato("err", "Ponte non raggiungibile."); });
+  });
+
+  // ── passaggio fra le modalita' ──────────────────────────────────────
+  function mostra(m) {
+    MODO = m;
+    el("tabSq").classList.toggle("attivo", m === "sq");
+    el("tabDu").classList.toggle("attivo", m === "du");
+    el("tabGi").classList.toggle("attivo", m === "gi");
+    el("titolo").placeholder = TITOLI[m];
+    var conG = m !== "sq";
+    el("panA").innerHTML = riquadro("a", m === "gi" ? "Il giocatore" : (m === "du" ? "Giocatore A" : "Squadra A"), conG);
+    el("panB").style.display = m === "gi" ? "none" : "";
+    if (m !== "gi") el("panB").innerHTML = riquadro("b", m === "du" ? "Giocatore B" : "Squadra B", conG);
+    ["a", "b"].forEach(function (pre) {
+      var c = el(pre + "c");
+      if (c) c.value = TAVOLOZZA[pre === "a" ? 0 : 1];
+    });
+    riempiMenuSquadre();
+    preparaRighe();
+  }
+  el("tabSq").addEventListener("click", function () { mostra("sq"); });
+  el("tabDu").addEventListener("click", function () { mostra("du"); });
+  el("tabGi").addEventListener("click", function () { mostra("gi"); });
+
+  // arrivando dall'indice si apre direttamente la modalita' chiesta
+  var m0 = new URLSearchParams(location.search).get("modo");
+  mostra(m0 === "du" || m0 === "gi" ? m0 : "sq");
+  adattaPrev();
+  try { if (localStorage.getItem("comotv.stat.comp")) caricaSquadre(); } catch (e) {}
+})();
+</script>
+</body>
+</html>
