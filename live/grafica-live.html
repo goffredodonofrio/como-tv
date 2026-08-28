@@ -67,6 +67,12 @@
 <iframe class="mt" id="mbug" src="about:blank" allowtransparency="true"></iframe>
 <iframe class="mt" id="mcard" src="about:blank" allowtransparency="true"></iframe>
 
+<!-- Lo stinger: la transizione di rete copre lo schermo mentre sotto la
+     grafica entra o esce. Vale per tutte le grafiche tranne le formazioni,
+     che hanno gia' la loro coreografia di ingresso. -->
+<video id="stinger" src="/loghi/transizione.webm" muted playsinline preload="auto"
+       style="position:absolute;left:0;top:0;width:100%;height:100%;z-index:90;display:none;pointer-events:none"></video>
+
 <script>
 (function () {
   "use strict";
@@ -115,6 +121,25 @@
     web:        "media-vmix.html"
   };
 
+  // ── stinger ─────────────────────────────────────────────────────
+  // Il video copre tutto lo schermo da ~0.25s a ~0.95s: lo scambio della
+  // grafica avviene a 400ms, in piena copertura. Se il video non e' ancora
+  // scaricato si torna alla dissolvenza di sempre: mai perdere una grafica.
+  var stinger = document.getElementById("stinger");
+  var COPERTURA = 400;
+  function stingerPronto() { return stinger && stinger.readyState >= 3; }
+  var stingerGuardia = null;
+  function stingerVia() {
+    stinger.style.display = "block";
+    try { stinger.currentTime = 0; } catch (e) {}
+    var pr = stinger.play();
+    if (pr && pr.catch) pr.catch(function () { stinger.style.display = "none"; });
+    // paracadute: se il video si inceppa non deve restare a coprire l'onda
+    if (stingerGuardia) clearTimeout(stingerGuardia);
+    stingerGuardia = setTimeout(function () { stinger.style.display = "none"; }, 2500);
+  }
+  stinger.addEventListener("ended", function () { stinger.style.display = "none"; });
+
   function davanti(n) { return L[n].fronte === "a" ? L[n].a : L[n].b; }
   function dietro(n)  { return L[n].fronte === "a" ? L[n].b : L[n].a; }
 
@@ -149,23 +174,35 @@
       if (back.src.indexOf("about:blank") >= 0) return;
       alPrimoDisegno(back, function () {
         if (mio !== st.gen) return;
-        back.classList.remove("muto");
-        void back.offsetWidth;   // senza il ricalcolo la dissolvenza non parte
-        back.classList.add("on");
-        front.classList.remove("on");          // dissolvenza incrociata
-        setTimeout(function () {
+        var conStinger = j.tipo !== "formazione" && stingerPronto();
+        function scambia() {
           if (mio !== st.gen) return;
-          spegni(front);
-          st.fronte = (st.fronte === "a") ? "b" : "a";
-        }, DISS + 150);
+          back.classList.remove("muto");
+          void back.offsetWidth;   // senza il ricalcolo la dissolvenza non parte
+          back.classList.add("on");
+          front.classList.remove("on");          // dissolvenza incrociata
+          setTimeout(function () {
+            if (mio !== st.gen) return;
+            spegni(front);
+            st.fronte = (st.fronte === "a") ? "b" : "a";
+          }, DISS + 150);
+        }
+        if (conStinger) { stingerVia(); setTimeout(scambia, COPERTURA); }
+        else scambia();
       });
     };
+    st.tipo = j.tipo;
     back.src = eng + "?d=" + b64url(j.dati || {}) + "&n=" + j.playNonce;
   }
 
   function fadeOut(n) {
     var st = L[n], front = davanti(n);
     st.gen++;                                  // annulla un caricamento in arrivo
+    if (st.tipo !== "formazione" && stingerPronto()) {
+      stingerVia();
+      setTimeout(function () { spegni(front); }, COPERTURA);   // sparisce sotto copertura
+      return;
+    }
     front.classList.remove("muto");            // qui la dissolvenza SERVE
     front.classList.remove("on");
     setTimeout(function () { spegni(front); }, 900);
