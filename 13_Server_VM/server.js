@@ -505,7 +505,12 @@ function serviStatico(req, res, percorso) {
     const tipo = TIPI[path.extname(file).toLowerCase()] || "application/octet-stream";
     // le pagine non si mettono in cache: gli aggiornamenti sono immediati,
     // niente più numeri di versione da cambiare su vMix
-    const cache = tipo.startsWith("text/html") ? "no-store" : "public, max-age=3600";
+    // Pagine e script non si mettono MAI in cache: sono il codice delle
+    // grafiche, e un vMix acceso da ore deve prendere la versione nuova
+    // appena si riavvia l'input, senza numeri di versione da cambiare.
+    // Font e immagini invece cambiano quasi mai: quelli restano in cache.
+    const vivo = tipo.startsWith("text/html") || tipo.startsWith("application/javascript");
+    const cache = vivo ? "no-store" : "public, max-age=3600";
     res.writeHead(200, { "Content-Type": tipo, "Cache-Control": cache });
     fs.createReadStream(file).pipe(res);
   });
