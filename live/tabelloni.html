@@ -101,6 +101,15 @@
   #espnStato{font-size:13px;color:var(--fg-3);margin-bottom:16px;padding:0 4px;min-height:20px;}
   #espnStato .ok{color:var(--ok);} #espnStato .err{color:#FF6B6E;}
 
+  /* barra di avanzamento dell'invio, come nelle altre grafiche */
+  #stato{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .pbar{height:6px;background:rgba(245,241,230,.08);border-radius:3px;overflow:hidden;
+    flex:1 1 240px;min-width:200px;align-self:center;}
+  .pfill{display:block;height:100%;width:0;background:var(--gold);border-radius:3px;
+    animation:pfill 2.6s cubic-bezier(.2,.7,.3,1) forwards;}
+  @keyframes pfill{0%{width:0}60%{width:72%}100%{width:92%}}
+  .pfill.done{animation:none;width:100%;background:var(--ok);transition:width .25s ease;}
+
   /* campo squadra: menù, stemma e (se serve) scrittura a mano */
   .sqbox{flex:1;min-width:0;}
   .sqriga{display:flex;align-items:center;gap:9px;}
@@ -652,7 +661,8 @@
     var titolo = window.prompt("Nome in scaletta di regia:", proposta.trim());
     if (titolo === null) return;
     var c = parseInt(el("canaleSel").value, 10) || 1;
-    stato("", "Invio alla regia (vMix " + c + ")…");
+    el("stato").innerHTML = '<span>Invio alla regia (vMix ' + c + ')&hellip;</span>' +
+      '<span class="pbar"><span class="pfill" id="pfill"></span></span>';
     fetch(PONTE, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -661,8 +671,13 @@
     })
       .then(function (r) { return r.json(); })
       .then(function (res) {
-        if (res.ok) stato("ok", "In scaletta su vMix " + c + ". Mandala in onda dalla regia.");
-        else stato("err", "Errore: " + (res.errore || "sconosciuto"));
+        if (res.ok) {
+          var pf = document.getElementById("pfill");
+          if (pf) pf.className = "pfill done";
+          setTimeout(function () {
+            stato("ok", "In scaletta su vMix " + c + ". Mandala in onda dalla regia.");
+          }, 350);
+        } else stato("err", "Errore: " + (res.errore || "sconosciuto"));
       })
       .catch(function () { stato("err", "Ponte non raggiungibile."); });
   });

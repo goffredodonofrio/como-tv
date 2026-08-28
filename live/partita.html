@@ -291,8 +291,6 @@
 
 <nav class="nav">
   <a class="nav-brand" href="../index.html">COMO TV</a>
-  <span class="nav-sep">·</span>
-  <span class="nav-here">Grafiche Live — Live Match</span>
   <div class="nav-links">
     <a href="classifiche.html">Grafiche Live</a>
     <a href="classifiche-campionati.html">Classifiche</a>
@@ -1149,8 +1147,21 @@
                   clock: { run: false, base: elapsed(), ts: null } };
     pvw.src = "partita-live.html?prev=" + b64url(stato);
     pvwcap.textContent = "Anteprima: " + titolo + " — andrà sul layer LIVE MATCH.";
+    mandaAnteprimaSu("partita-live.html?prev=" + b64url(stato),
+                     "Anteprima: " + titolo + " — schermata del Live Match.");
     fitMonitor();
     dipingi(); gPaint();
+  }
+
+  // Dentro la Dashboard i monitor di questa console sono nascosti (ci
+  // sono gia' quelli della pagina madre): l'anteprima si manda su, al
+  // monitor della Dashboard, altrimenti cliccare una schermata non
+  // mostra niente da nessuna parte.
+  function mandaAnteprimaSu(src, didascalia) {
+    if (!document.body.classList.contains("incorporato")) return;
+    try {
+      parent.postMessage({ comotv: "anteprima", src: src, cap: didascalia }, "*");
+    } catch (e) {}
   }
 
   function selezionaGrafica(id, tipo) {
@@ -1165,6 +1176,8 @@
         if (!sel || sel.id !== id) return;
         pvw.src = (ENGINES[tipo] || ENGINES.formazione) + "?d=" + b64url(dati) + "&still=1&muto=1";
         pvwcap.textContent = "Anteprima: " + it.titolo + " — andrà in onda sul playout.";
+        mandaAnteprimaSu((ENGINES[tipo] || ENGINES.formazione) + "?d=" + b64url(dati) + "&still=1&muto=1",
+                         "Anteprima: " + it.titolo + " — andrà in onda sul playout.");
         fitMonitor();
       })
       .catch(function () { pvwcap.textContent = "Anteprima non disponibile."; });

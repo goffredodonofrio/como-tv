@@ -226,8 +226,6 @@
 
 <nav class="nav">
   <a class="nav-brand" href="../index.html">COMO TV</a>
-  <span class="nav-sep">·</span>
-  <span class="nav-here">Grafiche Live — Live Dashboard</span>
   <div class="nav-links">
     <a href="classifiche.html">Grafiche Live</a>
     <a href="classifiche-campionati.html">Classifiche</a>
@@ -445,8 +443,25 @@
 
   // monitor ANTEPRIMA: il fermo-immagine della voce selezionata —
   // cliccare in scaletta NON tocca mai quello che è in onda
+  // Anteprima arrivata dal Live Match incorporato: occupa il monitor
+  // finche' non si clicca una grafica della scaletta.
+  var anteprimaMatch = false;
+  window.addEventListener("message", function (e) {
+    var d = e.data;
+    if (!d || d.comotv !== "anteprima") return;
+    var fr = document.getElementById("matchFrame");
+    if (!fr || e.source !== fr.contentWindow) return;   // solo dal telaio nostro
+    anteprimaMatch = true;
+    thumbShownId = null;
+    pvw.style.visibility = "visible";
+    pvw.src = String(d.src);
+    fitThumb();
+    thumbcap.textContent = String(d.cap || "Anteprima dal Live Match.");
+  });
+
   function showPvw(id) {
     if (thumbShownId === id) return;
+    anteprimaMatch = false;
     thumbShownId = id;
     pvw.style.visibility = "visible";
     thumbcap.textContent = "Carico l'anteprima…";
@@ -592,7 +607,8 @@
     } else if (shownPlayNonce !== null || pgmcap.textContent === "") {
       clearLive();
     }
-    if (selId) showPvw(selId);
+    if (anteprimaMatch) { /* il monitor sta mostrando il Live Match: si lascia stare */ }
+    else if (selId) showPvw(selId);
     else { pvw.src = "about:blank"; pvw.style.visibility = "hidden"; thumbShownId = null; thumbcap.textContent = "Clicca una grafica in scaletta: la vedi qui senza toccare l'onda."; }
     btnTake.disabled = !selId;
   }
@@ -769,6 +785,7 @@
     if (row) {
       selId = row.dataset.id;
       LIVMIRA = null;   // torna a seguire il livello della grafica scelta
+      anteprimaMatch = false;   // il clic riprende il monitor al Live Match
       paint();
     }
   });
