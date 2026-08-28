@@ -599,6 +599,8 @@
             '<option value=""' + (side.maglia === "" ? " selected" : "") + '>Maglia disegnata</option>' +
             '<option value="casa"' + (side.maglia === "casa" ? " selected" : "") + (magliaUrl(side, "casa") ? "" : " disabled") + '>Foto casa' + (magliaUrl(side, "casa") ? "" : " (da caricare)") + '</option>' +
             '<option value="trasferta"' + (side.maglia === "trasferta" ? " selected" : "") + (magliaUrl(side, "trasferta") ? "" : " disabled") + '>Foto trasferta' + (magliaUrl(side, "trasferta") ? "" : " (da caricare)") + '</option>' +
+            (magliaUrl(side, "terza") ? '<option value="terza"' + (side.maglia === "terza" ? " selected" : "") + '>Foto terza</option>' : '') +
+            (magliaUrl(side, "quarta") ? '<option value="quarta"' + (side.maglia === "quarta" ? " selected" : "") + '>Foto quarta</option>' : '') +
           '</select>' +
           '<button class="modebtn" data-si="' + si + '" data-act="maglia-su" title="Carica il PNG della maglia (sfondo trasparente)">&#8682; Maglia</button>' +
           '<input type="file" class="magliaFile" data-si="' + si + '" accept="image/png,image/webp" hidden>' +
@@ -1261,9 +1263,25 @@
       .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
       .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
   }
+  // L'archivio usa nomi da collezione ("milan", "inter", "manunited"),
+  // ESPN nomi per esteso ("AC Milan", "Internazionale"): si prova
+  // l'aggancio esatto e poi il contenimento, preferendo la chiave piu'
+  // lunga. Sotto i 4 caratteri niente contenimento: troppi falsi amici.
   function magliaUrl(side, dove) {
-    var k = "maglia-" + slugM(side.teamName || side.label) + "-" + dove;
-    return MAGLIE[k] || "";
+    var mio = slugM(side.teamName || side.label);
+    var k = "maglia-" + mio + "-" + dove;
+    if (MAGLIE[k]) return MAGLIE[k];
+    var fine = "-" + dove, meglio = "", lungo = 0;
+    for (var chiave in MAGLIE) {
+      if (chiave.slice(-fine.length) !== fine) continue;
+      var squadra = chiave.slice(7, -fine.length);
+      if (squadra.length < 4) continue;
+      var mioC = "-" + mio + "-", sqC = "-" + squadra + "-";
+      if (mioC.indexOf(sqC) < 0 && sqC.indexOf(mioC) < 0
+          && mio.indexOf(squadra) !== 0 && squadra.indexOf(mio) !== 0) continue;
+      if (squadra.length > lungo) { lungo = squadra.length; meglio = MAGLIE[chiave]; }
+    }
+    return meglio;
   }
   function caricaElencoMaglie(poi) {
     var cfg = ponteConfig(false);
