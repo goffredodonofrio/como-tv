@@ -62,6 +62,16 @@
   .tm .sw{width:5px;height:26px;border-radius:2.5px;}
   .tm .sg{font-family:'Mazzard',sans-serif;font-weight:800;font-size:26px;color:#FFFFFF;
     letter-spacing:.05em;}
+  /* espulsioni: un cartellino rosso accanto alla sigla, col numero se
+     sono piu' di uno. Sparisce da solo quando non ce ne sono. */
+  .rc{display:none;align-items:center;margin:0 3px;}
+  .rc.on{display:inline-flex;}
+  /* il numero sta DENTRO il cartellino: fuori si confondeva col punteggio */
+  .rc i{display:flex;align-items:center;justify-content:center;
+    width:15px;height:21px;border-radius:2.5px;background:#E51B20;
+    box-shadow:0 1px 3px rgba(0,0,0,.5);
+    font-family:'Mazzard',sans-serif;font-style:normal;font-weight:800;
+    font-size:12px;color:#FFFFFF;line-height:1;}
   #score{font-family:'Mazzard',sans-serif;font-weight:800;font-size:29px;color:#C9A24B;
     font-variant-numeric:tabular-nums;letter-spacing:.05em;padding:0 18px;}
 
@@ -142,9 +152,9 @@
     <div id="bugbar"></div>
     <div id="bugclock"><span id="clock">00:00</span><span id="rec"></span></div>
     <div id="bugteams">
-      <span class="tm"><span class="sw" id="sw1"></span><span class="sg" id="sg1">&mdash;</span></span>
+      <span class="tm"><span class="sw" id="sw1"></span><span class="sg" id="sg1">&mdash;</span><span class="rc" id="rc1"></span></span>
       <span id="score">0 - 0</span>
-      <span class="tm"><span class="sg" id="sg2">&mdash;</span><span class="sw" id="sw2"></span></span>
+      <span class="tm"><span class="rc" id="rc2"></span><span class="sg" id="sg2">&mdash;</span><span class="sw" id="sw2"></span></span>
     </div>
   </div>
 
@@ -202,6 +212,14 @@
 
   function testo(id, v) { document.getElementById(id).textContent = v; }
   function colore(id, v) { document.getElementById(id).style.background = v || "#8A8B96"; }
+  // un cartellino, e il numero solo se le espulsioni sono piu' di una
+  function rossi(id, n) {
+    var e = document.getElementById(id);
+    n = parseInt(n, 10) || 0;
+    if (n < 1) { e.className = "rc"; e.innerHTML = ""; return; }
+    e.innerHTML = "<i>" + (n > 1 ? n : "") + "</i>";
+    e.className = "rc on";
+  }
 
   function applica(j) {
     S = j;
@@ -229,6 +247,7 @@
       colore("sw1", j.casa && j.casa.col);
       colore("sw2", j.osp && j.osp.col);
       testo("score", (j.p1 || 0) + " - " + (j.p2 || 0));
+      rossi("rc1", j.rc1); rossi("rc2", j.rc2);
       if (j.rec > 0) { elRec.textContent = "+" + j.rec; elRec.className = "on"; }
       else elRec.className = "";
       elBug.classList.add("on");
