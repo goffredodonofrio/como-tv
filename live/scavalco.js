@@ -40,6 +40,10 @@ window.Scavalco = (function () {
     if (!MAP || !nome) return "";
     var mio = slugS(nome);
     if (MAP[mio]) return MAP[mio];
+    // slug corto o vuoto ("-", "FT", orari): niente aggancio elastico.
+    // La stringa vuota e' prefisso di tutto e farebbe vincere una chiave
+    // qualsiasi (e' successo: Match Status "-" pescava la Juventus).
+    if (mio.length < 4) return "";
     var meglio = "", lungo = 0;
     for (var chiave in MAP) {
       if (chiave.length < 4) continue;
