@@ -2224,7 +2224,9 @@ function exportVideo(){
   var stream=cv.captureStream(VIDEO_FPS);
   // audio della clip: captureStream sull'elemento video
   var cap=v.captureStream?v.captureStream():(v.mozCaptureStream?v.mozCaptureStream():null);
-  if(cap)cap.getAudioTracks().forEach(function(t){stream.addTrack(t);});
+  // SOLO la prima traccia audio: le registrazioni di vMix possono portare
+  // Master + bus nello stesso file, e sommarle produce eco/phasing.
+  if(cap){var tAudio=cap.getAudioTracks();if(tAudio.length)stream.addTrack(tAudio[0]);}
   var rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:14000000});
   videoPick.rec=rec;
   var chunks=[];
