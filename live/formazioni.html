@@ -331,6 +331,7 @@
 </div>
 
 <script src="destinazione.js"></script>
+<script src="giovanili.js"></script>
 <script>
 (function () {
   "use strict";
@@ -379,6 +380,9 @@
   var COMPS = [
     { band: "🇮🇹", nome: "Serie A",                 code: "ita.1" },
     { band: "🇮🇹", nome: "Serie B",                 code: "ita.2" },
+    { band: "🇮🇹", nome: "Primavera 1",             code: "giovanili.primavera1" },
+    { band: "🇮🇹", nome: "Under 17",                code: "giovanili.u17" },
+    { band: "🇮🇹", nome: "Under 18",                code: "giovanili.u18" },
     { band: "🇸🇦", nome: "Saudi Pro League",        code: "ksa.1" },
     { band: "🇦🇷", nome: "LPF Argentina",           code: "arg.1" },
     { band: "🇦🇷", nome: "Nacional B Argentina",    code: "arg.2" },
@@ -520,6 +524,14 @@
   function loadTeams(side, then) {
     var code = COMPS[side.comp].code;
     if (teamsCache[code]) { then(); return; }
+    // i campionati giovanili non stanno su ESPN: squadre dal database interno
+    if (window.GIOVANILI && GIOVANILI.mia(code)) {
+      teamsCache[code] = GIOVANILI.squadre(code);
+      if (!teamsCache[code].length) {
+        status("", '<span class="msg"><b>' + esc(COMPS[side.comp].nome) + '</b>: nessuna squadra ancora nel database interno (si scrive tutto a mano, o si aggiunge la rosa in giovanili.js).</span>');
+      }
+      then(); return;
+    }
     status("", '<span class="msg">Carico le squadre di <b>' + esc(COMPS[side.comp].nome) + '</b>…</span>');
     // l'endpoint /teams non manda gli header CORS: l'elenco squadre si
     // ricava dalle classifiche (apis/v2), che il browser può leggere.
@@ -543,6 +555,14 @@
 
   function loadRoster(side) {
     var code = COMPS[side.comp].code;
+    if (window.GIOVANILI && GIOVANILI.mia(code)) {
+      side.roster = GIOVANILI.rosa(code, side.teamId);
+      loadMemo(side);
+      autoFill(side);
+      renderAll();
+      status("ok", '<span class="msg"><b>' + esc(side.teamName) + '</b>: rosa di ' + side.roster.length + ' giocatori dal database interno (i numeri di maglia si scrivono qui).</span>');
+      return;
+    }
     status("", '<span class="msg">Carico la rosa di <b>' + esc(side.teamName) + '</b>…</span>');
     fetch(API + "/" + code + "/teams/" + side.teamId + "/roster")
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
