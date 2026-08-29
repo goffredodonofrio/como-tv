@@ -139,7 +139,32 @@ window.GIOVANILI = (function () {
       { id: "vicenza-under-17", n: "Vicenza Under 17", rosa: [] }
     ] },
     { nome: "Under 18", code: "giovanili.u18", squadre: [
-      { id: "como-u18", n: "Como Under 18", rosa: [] },
+      // Rosa dalla distinta ufficiale Hellas Verona-Como del 30/08/2026
+      // (1^ giornata U18): numeri di maglia veri. Ruoli dei tre nuovi
+      // (Mascetti, Mornati, Colugnat) messi a centrocampo, da confermare.
+      // Allenatore: Giovanni Fietta.
+      { id: "como-u18", n: "Como Under 18", rosa: [
+        { num: "1",  nome: "Dylan",         cognome: "Sgarbi",        ruolo: "G" },
+        { num: "12", nome: "Lorenzo Luigi", cognome: "Ginelli",       ruolo: "G" },
+        { num: "2",  nome: "Matteo",        cognome: "Zanaria",       ruolo: "D" },
+        { num: "3",  nome: "Mattia",        cognome: "Arioli",        ruolo: "D" },
+        { num: "5",  nome: "Adam",          cognome: "Asfour",        ruolo: "D" },
+        { num: "6",  nome: "Lorenzo",       cognome: "Canepari",      ruolo: "D" },
+        { num: "13", nome: "Tommaso",       cognome: "Sportoletti",   ruolo: "D" },
+        { num: "15", nome: "Davide",        cognome: "Mezzanotte",    ruolo: "D" },
+        { num: "4",  nome: "Gabriele",      cognome: "Gardanini",     ruolo: "M" },
+        { num: "8",  nome: "Sebastian",     cognome: "Burlacu",       ruolo: "M" },
+        { num: "10", nome: "Thomas",        cognome: "Boccia",        ruolo: "M" },
+        { num: "14", nome: "Francesco",     cognome: "Mascetti",      ruolo: "M" },
+        { num: "16", nome: "Pietro",        cognome: "Mornati",       ruolo: "M" },
+        { num: "17", nome: "Stefano",       cognome: "Arui",          ruolo: "M" },
+        { num: "18", nome: "Marco",         cognome: "Colugnat",      ruolo: "M" },
+        { num: "20", nome: "Oliver",        cognome: "Nilsson Galic", ruolo: "M" },
+        { num: "7",  nome: "Mattia",        cognome: "Terranova",     ruolo: "F" },
+        { num: "9",  nome: "Leonardo",      cognome: "Casati",        ruolo: "F" },
+        { num: "11", nome: "Francesco",     cognome: "Lembo",         ruolo: "F" },
+        { num: "19", nome: "Diego",         cognome: "Martinez",      ruolo: "F" }
+      ] },
       { id: "atalanta-under-18", n: "Atalanta Under 18", rosa: [] },
       { id: "bologna-under-18", n: "Bologna Under 18", rosa: [] },
       { id: "cagliari-under-18", n: "Cagliari Under 18", rosa: [] },
