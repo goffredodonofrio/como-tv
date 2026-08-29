@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Volti · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+    transform-origin:center center;
+    font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;
+    background:
+      radial-gradient(120% 90% at 50% 0%, rgba(28,48,110,.5), transparent 55%),
+      radial-gradient(90% 70% at 50% 110%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);
+  }
+
+  /* ── testata centrale, come nella reference del Panda ── */
+  #title{position:absolute;left:50%;top:56px;transform:translateX(-50%);
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:64px;letter-spacing:.01em;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;opacity:0;}
+  #sotto{position:absolute;left:50%;top:140px;transform:translateX(-50%);
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:24px;letter-spacing:.2em;
+    color:#C9A24B;text-transform:uppercase;white-space:nowrap;opacity:0;}
+  #filo{position:absolute;left:50%;top:184px;width:260px;height:3px;
+    transform:translateX(-50%) scaleX(0);
+    background:linear-gradient(90deg,transparent,#C9A24B,transparent);}
+
+  /* ── le card ── */
+  .card{position:absolute;border:1.5px solid rgba(201,162,75,.55);border-radius:16px;
+    overflow:hidden;background:rgba(16,23,58,.4);
+    opacity:0;transform:translateY(28px);}
+  .card .foto{position:absolute;left:0;top:0;width:100%;overflow:hidden;background:#0E1738;}
+  .card .foto img{width:100%;height:100%;object-fit:cover;display:block;
+    filter:brightness(.92) saturate(1.03);}
+  .card .foto i{position:absolute;left:0;right:0;bottom:0;height:46%;
+    background:linear-gradient(0deg,rgba(13,18,44,.94) 0%,rgba(13,18,44,.4) 55%,transparent 100%);}
+  .card .chi{position:absolute;left:0;right:0;text-align:center;}
+  .card .nome{font-family:'Mazzard',sans-serif;font-weight:700;letter-spacing:.18em;
+    color:#F5F1E6;text-transform:uppercase;}
+  .card .cognome{font-family:'Mazzard',sans-serif;font-weight:800;letter-spacing:.03em;
+    color:#C9A24B;text-transform:uppercase;line-height:1.05;}
+  .card .cfilo{margin:10px auto 0;width:120px;height:2px;
+    background:linear-gradient(90deg,transparent,rgba(201,162,75,.8),transparent);}
+  .card .prov{font-family:'DM Sans',sans-serif;font-weight:500;letter-spacing:.16em;
+    color:rgba(245,241,230,.75);text-transform:uppercase;}
+
+  @keyframes fadeIn { to { opacity:1; } }
+  @keyframes ruleIn { to { transform:translateX(-50%) scaleX(1); } }
+  @keyframes salita { to { opacity:1; transform:translateY(0); } }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="title"></div>
+  <div id="sotto"></div>
+  <div id="filo"></div>
+  <div id="griglia"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { t:"I NUOVI VOLTI DELL'ESTATE DEL COMO",
+  //     s:"QUANTI ASSI NELLA MANICA PER FABREGAS",
+  //     card:[{ n:"Luis Milla", p:"Getafe", f:"/loghi/foto-....jpg" }, …] }
+  //   Da 2 a 8 card; la griglia si adatta da sola.
+  var DEMO = {
+    t: "I NUOVI VOLTI DELL'ESTATE DEL COMO",
+    s: "QUANTI ASSI NELLA MANICA PER FÀBREGAS",
+    card: [
+      { n: "Luis Milla", p: "Getafe" }, { n: "Kaiki Bruno", p: "Cruzeiro" },
+      { n: "Mattia Liberali", p: "Catanzaro" }, { n: "Andrés Cuenca", p: "Barcellona" },
+      { n: "Yan Couto", p: "Borussia Dortmund" }, { n: "Trevoh Chalobah", p: "Chelsea" },
+      { n: "Willy Kambwala", p: "Villarreal" }, { n: "Samuele Ricci", p: "Milan" }
+    ]
+  };
+
+  function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return DEMO;
+    try {
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return (d && d.card && d.card.length) ? d : null;
+    } catch (err) { return null; }
+  }
+  var STILL = new URLSearchParams(location.search).get("still") === "1";
+  var D = decodeData();
+  if (!D) {
+    document.title = "VOLTI — dati non validi";
+    document.getElementById("stage").style.display = "none";
+    return;
+  }
+  document.title = "VOLTI " + (D.t || "");
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    document.getElementById("stage").style.transform = "translate(-50%,-50%) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+  function el(id) { return document.getElementById(id); }
+
+  // testata
+  el("title").textContent = D.t || "";
+  el("sotto").textContent = D.s || "";
+  if (STILL) {
+    el("title").style.opacity = 1; el("sotto").style.opacity = 1;
+    el("filo").style.transform = "translateX(-50%) scaleX(1)";
+  } else {
+    el("title").style.animation = "fadeIn .6s ease .2s forwards";
+    el("sotto").style.animation = "fadeIn .5s ease .45s forwards";
+    el("filo").style.animation = "ruleIn .55s cubic-bezier(.2,.7,.3,1) .65s forwards";
+  }
+  // il titolo lungo si restringe da solo
+  (function () {
+    var t = el("title");
+    if (t.scrollWidth > 1700) t.style.fontSize = Math.max(40, Math.floor(64 * 1700 / t.scrollWidth)) + "px";
+  })();
+
+  // ── la griglia si adatta al numero di card (2..8) ──
+  var card = D.card.slice(0, 8);
+  var n = card.length;
+  var righe = n > 4 ? 2 : 1;
+  var perRiga = Math.ceil(n / righe);
+  var GAP = 28;
+  var AREA_TOP = 226, AREA_H = 1080 - AREA_TOP - 54;
+  var CH = righe === 2 ? Math.floor((AREA_H - GAP) / 2) : Math.min(560, AREA_H);
+  var CW = Math.min(320, Math.floor((1920 - 2 * 130 - GAP * (perRiga - 1)) / perRiga));
+  var FH = Math.floor(CH * 0.66);        // la foto occupa i due terzi della card
+
+  var h = "";
+  card.forEach(function (c, i) {
+    var r = Math.floor(i / perRiga);
+    var inRiga = (r === righe - 1) ? (n - perRiga * r) : perRiga;
+    var kInRiga = i - r * perRiga;
+    var x0 = (1920 - (inRiga * CW + (inRiga - 1) * GAP)) / 2;
+    var x = x0 + kInRiga * (CW + GAP);
+    var y = AREA_TOP + r * (CH + GAP) + (righe === 1 ? Math.floor((AREA_H - CH) / 2) : 0);
+
+    var parole = String(c.n || "").trim().split(/\s+/);
+    var cognome = parole.length > 1 ? parole.slice(-1)[0] : parole[0] || "";
+    var davanti = parole.length > 1 ? parole.slice(0, -1).join(" ") : "";
+
+    var sNome = Math.round(CH * 0.045), sCog = Math.round(CH * 0.075), sProv = Math.round(CH * 0.038);
+    var anim = STILL ? "opacity:1;transform:none"
+      : "animation:salita .6s cubic-bezier(.2,.7,.3,1) " + (0.55 + i * 0.12).toFixed(2) + "s forwards";
+
+    h += '<div class="card" style="left:' + x + 'px;top:' + y + 'px;width:' + CW + 'px;height:' + CH + 'px;' + anim + '">' +
+      '<div class="foto" style="height:' + FH + 'px">' +
+        (c.f ? '<img src="' + esc(c.f) + '">' : '<div style="width:100%;height:100%;background:linear-gradient(160deg,#1B2C66,#0E1738)"></div>') +
+        '<i></i></div>' +
+      '<div class="chi" style="top:' + (FH + Math.round(CH * 0.045)) + 'px">' +
+        (davanti ? '<div class="nome" style="font-size:' + sNome + 'px">' + esc(davanti) + '</div>' : "") +
+        '<div class="cognome" style="font-size:' + sCog + 'px">' + esc(cognome) + '</div>' +
+        '<div class="cfilo"></div>' +
+        (c.p ? '<div class="prov" style="font-size:' + sProv + 'px;margin-top:' + Math.round(CH * 0.03) + 'px">' + esc(c.p) + '</div>' : "") +
+      '</div></div>';
+  });
+  el("griglia").innerHTML = h;
+
+  function replay() { location.reload(); }
+  document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
+  document.addEventListener("dblclick", replay);
+})();
+</script>
+<script src="sfondo.js"></script>
+</body>
+</html>
