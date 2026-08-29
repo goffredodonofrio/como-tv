@@ -1941,6 +1941,7 @@ function exitVideoPick(){
  if(videoPick.timer)clearInterval(videoPick.timer);
  if(videoPick.rec&&videoPick.rec.state==='recording')videoPick.rec.stop();
  if(videoPick.el){videoPick.el.pause();videoPick.el.src='';}
+ if(videoPick.actx){try{videoPick.actx.close();}catch(e){}}
  URL.revokeObjectURL(videoPick.url);videoPick=null;
  document.getElementById('vidBar').classList.remove('on');
  document.body.classList.remove('video');
@@ -1967,6 +1968,23 @@ function renderVideoPicker(){
  cv.style.cssText='max-width:100%;max-height:62vh;height:auto;display:block;box-shadow:0 30px 80px -30px #000;border-radius:4px;background:#05070F;cursor:grab;touch-action:none';
  var v=document.createElement('video');v.src=videoPick.url;v.preload='auto';v.playsInline=true;
  v.style.display='none';videoPick.el=v;
+ // L'audio passa da un incrocio WebAudio che tiene SOLO i canali 1-2.
+ // Le registrazioni vMix in 5.1 portano il programma anche sul centro
+ // (bus A): il downmix del browser lo sommerebbe al fronte, con l'eco
+ // sentito negli export. Cosi' si ascolta e si registra il solo Master.
+ try{
+  var actx=new (window.AudioContext||window.webkitAudioContext)();
+  var asrc=actx.createMediaElementSource(v);
+  var asp=actx.createChannelSplitter(6);
+  var amg=actx.createChannelMerger(2);
+  asrc.connect(asp);
+  asp.connect(amg,0,0);asp.connect(amg,1,1);
+  amg.connect(actx.destination);
+  var adest=actx.createMediaStreamDestination();
+  amg.connect(adest);
+  videoPick.actx=actx;videoPick.adest=adest;
+  v.addEventListener('play',function(){if(actx.state==='suspended')actx.resume();});
+ }catch(e){videoPick.actx=null;videoPick.adest=null;}
  var ctx=cv.getContext('2d');
 
  // Trascinamento: sposta l'inquadratura del video dentro il crop del formato
@@ -2223,10 +2241,14 @@ function exportVideo(){
  document.fonts.ready.then(function(){return svgToImage(overlaySvg(current));}).then(function(overlay){
   var stream=cv.captureStream(VIDEO_FPS);
   // audio della clip: captureStream sull'elemento video
-  var cap=v.captureStream?v.captureStream():(v.mozCaptureStream?v.mozCaptureStream():null);
-  // SOLO la prima traccia audio: le registrazioni di vMix possono portare
-  // Master + bus nello stesso file, e sommarle produce eco/phasing.
-  if(cap){var tAudio=cap.getAudioTracks();if(tAudio.length)stream.addTrack(tAudio[0]);}
+  // audio dalla rotaia pulita (soli canali 1-2); captureStream come riserva
+  if(videoPick.adest){
+   var tPulite=videoPick.adest.stream.getAudioTracks();
+   if(tPulite.length)stream.addTrack(tPulite[0]);
+  }else{
+   var cap=v.captureStream?v.captureStream():(v.mozCaptureStream?v.mozCaptureStream():null);
+   if(cap){var tAudio=cap.getAudioTracks();if(tAudio.length)stream.addTrack(tAudio[0]);}
+  }
   var rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:14000000});
   videoPick.rec=rec;
   var chunks=[];
