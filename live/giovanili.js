@@ -68,7 +68,28 @@ window.GIOVANILI = (function () {
         { num: "51", nome: "Mattia",       cognome: "Terranova",        ruolo: "F" },
         { num: "78", nome: "Francesco",    cognome: "Lembo",            ruolo: "F" },
         { num: "79", nome: "Diego",        cognome: "Martinez",         ruolo: "F" }
-      ] }
+      ] },
+      // le avversarie del girone: solo nome (rose scritte a mano),
+      // servono per menu' e magliette dal magazzino
+      { id: "albinoleffe-primavera", n: "AlbinoLeffe Primavera", rosa: [] },
+      { id: "atalanta-primavera", n: "Atalanta Primavera", rosa: [] },
+      { id: "bologna-primavera", n: "Bologna Primavera", rosa: [] },
+      { id: "cagliari-primavera", n: "Cagliari Primavera", rosa: [] },
+      { id: "cesena-primavera", n: "Cesena Primavera", rosa: [] },
+      { id: "empoli-primavera", n: "Empoli Primavera", rosa: [] },
+      { id: "fiorentina-primavera", n: "Fiorentina Primavera", rosa: [] },
+      { id: "genoa-primavera", n: "Genoa Primavera", rosa: [] },
+      { id: "hellas-verona-primavera", n: "Hellas Verona Primavera", rosa: [] },
+      { id: "inter-primavera", n: "Inter Primavera", rosa: [] },
+      { id: "juventus-primavera", n: "Juventus Primavera", rosa: [] },
+      { id: "lazio-primavera", n: "Lazio Primavera", rosa: [] },
+      { id: "lecce-primavera", n: "Lecce Primavera", rosa: [] },
+      { id: "milan-primavera", n: "Milan Primavera", rosa: [] },
+      { id: "monza-primavera", n: "Monza Primavera", rosa: [] },
+      { id: "parma-primavera", n: "Parma Primavera", rosa: [] },
+      { id: "roma-primavera", n: "Roma Primavera", rosa: [] },
+      { id: "sassuolo-primavera", n: "Sassuolo Primavera", rosa: [] },
+      { id: "torino-primavera", n: "Torino Primavera", rosa: [] }
     ] },
     { nome: "Under 17", code: "giovanili.u17", squadre: [
       { id: "como-u17", n: "Como Under 17", rosa: [
@@ -103,9 +124,42 @@ window.GIOVANILI = (function () {
         { num: "", nome: "Matteo",    cognome: "Manfredini",      ruolo: "F" },
         { num: "", nome: "Filippo",   cognome: "Gussoni",         ruolo: "F" },
         { num: "", nome: "Samuele Filippo", cognome: "Insinga",   ruolo: "F" }
-      ] }
+      ] },
+      { id: "atalanta-under-17", n: "Atalanta Under 17", rosa: [] },
+      { id: "cagliari-under-17", n: "Cagliari Under 17", rosa: [] },
+      { id: "hellas-verona-under-17", n: "Hellas Verona Under 17", rosa: [] },
+      { id: "inter-under-17", n: "Inter Under 17", rosa: [] },
+      { id: "mantova-under-17", n: "Mantova Under 17", rosa: [] },
+      { id: "milan-under-17", n: "Milan Under 17", rosa: [] },
+      { id: "monza-under-17", n: "Monza Under 17", rosa: [] },
+      { id: "padova-under-17", n: "Padova Under 17", rosa: [] },
+      { id: "sudtirol-under-17", n: "Südtirol Under 17", rosa: [] },
+      { id: "udinese-under-17", n: "Udinese Under 17", rosa: [] },
+      { id: "venezia-under-17", n: "Venezia Under 17", rosa: [] },
+      { id: "vicenza-under-17", n: "Vicenza Under 17", rosa: [] }
     ] },
-    { nome: "Under 18", code: "giovanili.u18", squadre: [] }
+    { nome: "Under 18", code: "giovanili.u18", squadre: [
+      { id: "como-u18", n: "Como Under 18", rosa: [] },
+      { id: "atalanta-under-18", n: "Atalanta Under 18", rosa: [] },
+      { id: "bologna-under-18", n: "Bologna Under 18", rosa: [] },
+      { id: "cagliari-under-18", n: "Cagliari Under 18", rosa: [] },
+      { id: "cesena-under-18", n: "Cesena Under 18", rosa: [] },
+      { id: "fiorentina-under-18", n: "Fiorentina Under 18", rosa: [] },
+      { id: "frosinone-under-18", n: "Frosinone Under 18", rosa: [] },
+      { id: "genoa-under-18", n: "Genoa Under 18", rosa: [] },
+      { id: "hellas-verona-under-18", n: "Hellas Verona Under 18", rosa: [] },
+      { id: "inter-under-18", n: "Inter Under 18", rosa: [] },
+      { id: "juventus-under-18", n: "Juventus Under 18", rosa: [] },
+      { id: "lazio-under-18", n: "Lazio Under 18", rosa: [] },
+      { id: "lecce-under-18", n: "Lecce Under 18", rosa: [] },
+      { id: "milan-under-18", n: "Milan Under 18", rosa: [] },
+      { id: "monza-under-18", n: "Monza Under 18", rosa: [] },
+      { id: "napoli-under-18", n: "Napoli Under 18", rosa: [] },
+      { id: "parma-under-18", n: "Parma Under 18", rosa: [] },
+      { id: "roma-under-18", n: "Roma Under 18", rosa: [] },
+      { id: "sassuolo-under-18", n: "Sassuolo Under 18", rosa: [] },
+      { id: "torino-under-18", n: "Torino Under 18", rosa: [] }
+    ] }
   ];
 
   function mia(code) { return String(code || "").indexOf("giovanili.") === 0; }
