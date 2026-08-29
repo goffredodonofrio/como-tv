@@ -123,6 +123,13 @@
     filter:grayscale(1) contrast(1.06) brightness(1.02);}
   .fcerchio .d1{position:absolute;inset:0;background:#C9A24B;mix-blend-mode:multiply;pointer-events:none;}
   .fcerchio .d2{position:absolute;inset:0;background:#141B3C;mix-blend-mode:lighten;pointer-events:none;}
+  /* nel duello la foto e' una quinta verticale a colori (640x1080):
+     l'editor ha le stesse proporzioni, niente bicromia */
+  .frettv{position:relative;width:160px;height:270px;border-radius:9px;overflow:hidden;
+    flex:none;background:#10173A;cursor:grab;
+    box-shadow:inset 0 0 0 2px rgba(245,241,230,.4), 0 6px 18px rgba(0,0,0,.4);}
+  .frettv:active{cursor:grabbing;}
+  .frettv img{position:absolute;user-select:none;pointer-events:none;}
   .fcomandi{display:flex;flex-direction:column;gap:8px;min-width:0;}
   .fcomandi label{margin:0;}
   .fcomandi input[type=range]{width:200px;accent-color:#C9A24B;}
@@ -396,8 +403,8 @@
       '</div>' +
       (conGiocatore
         ? '<div class="fedit" id="' + pre + 'fedit" style="display:none">' +
-          '<div class="fcerchio" id="' + pre + 'fc"><img id="' + pre + 'fimg" draggable="false"><i class="d1"></i><i class="d2"></i></div>' +
-          '<div class="fcomandi"><label>Trascina la foto per inquadrare il viso</label>' +
+          '<div class="frettv" id="' + pre + 'fc"><img id="' + pre + 'fimg" draggable="false"></div>' +
+          '<div class="fcomandi"><label>Trascina la foto per inquadrare la figura</label>' +
           '<input type="range" id="' + pre + 'fz" min="100" max="320" value="100">' +
           '<button type="button" class="ftogli" data-per="' + pre + '">Togli la foto</button></div>' +
           '</div>'
@@ -465,21 +472,27 @@
   // inquadrata (un quadrato di 512), quindi in onda arriva identica
   // all'editor e il motore non deve sapere nulla di spostamenti.
   var FOTO = { a: null, b: null };     // {img, ox, oy, z}
-  var D_ED = 150;                      // diametro dell'editor
+  // le misure dipendono dalla modalita': tondo per la scheda giocatore,
+  // quinta verticale (stesse proporzioni del motore duello) per il duello
+  function fdim() {
+    // duello e scheda giocatore: quinta verticale a colori (640x1080)
+    return { w: 160, h: 270, ow: 640, oh: 1080 };
+  }
 
   function fotoDisegna(pre) {
     var f = FOTO[pre];
     var im = el(pre + "fimg");
     if (!f || !im) return;
-    var base = D_ED / Math.min(f.img.naturalWidth, f.img.naturalHeight);
+    var d = fdim();
+    var base = Math.max(d.w / f.img.naturalWidth, d.h / f.img.naturalHeight);
     var sc = base * f.z;
     var w = f.img.naturalWidth * sc, h = f.img.naturalHeight * sc;
-    // la foto deve sempre coprire il cerchio: gli spostamenti si fermano al bordo
-    f.ox = Math.max(-(w - D_ED) / 2, Math.min((w - D_ED) / 2, f.ox));
-    f.oy = Math.max(-(h - D_ED) / 2, Math.min((h - D_ED) / 2, f.oy));
+    // la foto deve sempre coprire il riquadro: gli spostamenti si fermano al bordo
+    f.ox = Math.max(-(w - d.w) / 2, Math.min((w - d.w) / 2, f.ox));
+    f.oy = Math.max(-(h - d.h) / 2, Math.min((h - d.h) / 2, f.oy));
     im.style.width = w + "px"; im.style.height = h + "px";
-    im.style.left = (D_ED / 2 - w / 2 + f.ox) + "px";
-    im.style.top = (D_ED / 2 - h / 2 + f.oy) + "px";
+    im.style.left = (d.w / 2 - w / 2 + f.ox) + "px";
+    im.style.top = (d.h / 2 - h / 2 + f.oy) + "px";
   }
 
   document.addEventListener("click", function (e) {
@@ -521,7 +534,7 @@
   // trascinamento dentro il cerchio
   var fdrag = null;
   document.addEventListener("pointerdown", function (e) {
-    var c = e.target.closest ? e.target.closest(".fcerchio") : null;
+    var c = e.target.closest ? e.target.closest(".fcerchio, .frettv") : null;
     if (!c) return;
     var pre = c.id.charAt(0);
     if (!FOTO[pre]) return;
@@ -542,15 +555,16 @@
   function fotoCotta(pre) {
     var f = FOTO[pre];
     if (!f) return null;
-    var F = 512 / D_ED;
-    var base = D_ED / Math.min(f.img.naturalWidth, f.img.naturalHeight);
+    var d = fdim();
+    var F = d.ow / d.w;
+    var base = Math.max(d.w / f.img.naturalWidth, d.h / f.img.naturalHeight);
     var sc = base * f.z;
     var tela = document.createElement("canvas");
-    tela.width = tela.height = 512;
+    tela.width = d.ow; tela.height = d.oh;
     var g = tela.getContext("2d");
     g.drawImage(f.img,
-      (D_ED / 2 - f.img.naturalWidth * sc / 2 + f.ox) * F,
-      (D_ED / 2 - f.img.naturalHeight * sc / 2 + f.oy) * F,
+      (d.w / 2 - f.img.naturalWidth * sc / 2 + f.ox) * F,
+      (d.h / 2 - f.img.naturalHeight * sc / 2 + f.oy) * F,
       f.img.naturalWidth * sc * F, f.img.naturalHeight * sc * F);
     return tela.toDataURL("image/jpeg", 0.85);
   }
@@ -632,7 +646,11 @@
     if (MODO === "gi") return { e: e, t: t, g: lato("a"), st: statRighe(false) };
     return { e: e, t: t, a: lato("a"), b: lato("b"), st: statRighe(true) };
   }
-  function motore() { return MODO === "gi" ? "giocatore-vmix.html" : "confronto-vmix.html"; }
+  function motore() {
+    return MODO === "gi" ? "giocatore-vmix.html"
+         : MODO === "du" ? "duello-vmix.html"
+         : "confronto-vmix.html";
+  }
   function grafica() { return MODO === "sq" ? "confronto" : (MODO === "du" ? "duello" : "giocatore"); }
   function valido(d) {
     if (!d.st.length) { stato("err", "Serve almeno una riga di statistica con i valori."); return false; }

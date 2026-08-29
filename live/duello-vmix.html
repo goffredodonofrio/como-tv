@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Duello · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+    transform-origin:center center;
+    font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;
+    background:
+      radial-gradient(120% 90% at 50% 0%, rgba(28,48,110,.5), transparent 55%),
+      radial-gradient(90% 70% at 50% 110%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);
+  }
+
+  /* ── le due quinte: i giocatori a tutta altezza, sfumati verso il centro ── */
+  .quinta{position:absolute;top:0;width:600px;height:1080px;overflow:hidden;opacity:0;}
+  .quinta.sx{left:0;transform:translateX(-60px);
+    -webkit-mask-image:linear-gradient(270deg,transparent 0,rgba(0,0,0,.3) 14%,rgba(0,0,0,.75) 32%,#000 52%);
+            mask-image:linear-gradient(270deg,transparent 0,rgba(0,0,0,.3) 14%,rgba(0,0,0,.75) 32%,#000 52%);}
+  .quinta.dx{right:0;transform:translateX(60px);
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.3) 14%,rgba(0,0,0,.75) 32%,#000 52%);
+            mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.3) 14%,rgba(0,0,0,.75) 32%,#000 52%);}
+  .quinta img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;
+    filter:brightness(.84) saturate(1.05);}
+  .quinta .velo{position:absolute;inset:0;
+    background:
+      linear-gradient(0deg,rgba(7,11,29,.9) 0%,rgba(7,11,29,.25) 30%,transparent 45%),
+      linear-gradient(180deg,rgba(7,11,29,.55) 0%,transparent 22%);}
+  /* segnaposto della bozza: sagoma su gradiente, al posto della foto vera */
+  .quinta .finta{position:absolute;inset:0;}
+
+  /* ── nome e ruolo, appoggiati in basso sulla quinta ── */
+  .chi{position:absolute;bottom:64px;width:520px;opacity:0;transform:translateY(24px);}
+  .chi.sx{left:64px;text-align:left;}
+  .chi.dx{right:64px;text-align:right;}
+  .chi .num{font-family:'Mazzard',sans-serif;font-weight:800;font-size:44px;color:#C9A24B;
+    line-height:1;margin-bottom:6px;}
+  .chi .nome{font-family:'Mazzard',sans-serif;font-weight:800;font-size:58px;letter-spacing:.01em;
+    color:#F5F1E6;text-transform:uppercase;line-height:1.02;}
+  .chi .sotto{font-family:'DM Sans',sans-serif;font-weight:500;font-size:22px;letter-spacing:.16em;
+    color:rgba(245,241,230,.6);text-transform:uppercase;margin-top:10px;}
+  .chi .filo{width:150px;height:3px;margin-top:18px;
+    background:linear-gradient(90deg,#C9A24B,rgba(201,162,75,.1));}
+  .chi.dx .filo{margin-left:auto;background:linear-gradient(270deg,#C9A24B,rgba(201,162,75,.1));}
+
+  /* ── testata centrale ── */
+  #eyebrow{position:absolute;left:50%;top:88px;transform:translateX(-50%);
+    font-family:'DM Sans',sans-serif;font-weight:600;font-size:22px;letter-spacing:.24em;
+    color:#C9A24B;text-transform:uppercase;white-space:nowrap;opacity:0;}
+  #title{position:absolute;left:50%;top:112px;transform:translateX(-50%);
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:68px;letter-spacing:.01em;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;opacity:0;}
+  #rule{position:absolute;left:50%;top:214px;width:220px;height:3px;transform:translateX(-50%) scaleX(0);
+    background:linear-gradient(90deg,transparent,#C9A24B,transparent);}
+
+  /* ── le statistiche al centro, fra le due quinte ── */
+  .riga{position:absolute;left:50%;transform:translateX(-50%);width:820px;height:74px;opacity:0;}
+  .riga .eti{position:absolute;left:50%;top:8px;transform:translateX(-50%);
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:20px;letter-spacing:.2em;
+    color:rgba(245,241,230,.6);text-transform:uppercase;white-space:nowrap;}
+  .riga .val{position:absolute;top:2px;font-family:'Mazzard',sans-serif;font-weight:800;
+    font-size:36px;font-variant-numeric:tabular-nums;color:rgba(245,241,230,.65);}
+  .riga .val.sx{left:0;} .riga .val.dx{right:0;text-align:right;}
+  .riga .val.vince{color:#C9A24B;}
+  .riga .traccia{position:absolute;top:52px;height:8px;width:290px;
+    background:rgba(245,241,230,.07);border-radius:4px;overflow:hidden;}
+  .riga .traccia.sx{right:calc(50% + 120px);} .riga .traccia.dx{left:calc(50% + 120px);}
+  .riga .pieno{position:absolute;top:0;height:100%;border-radius:4px;
+    background:rgba(245,241,230,.45);}
+  .riga .traccia.sx .pieno{right:0;} .riga .traccia.dx .pieno{left:0;}
+  .riga .pieno.vince{background:#C9A24B;}
+
+  @keyframes fadeIn { to { opacity:1; } }
+  @keyframes ruleIn { to { transform:translateX(-50%) scaleX(1); } }
+  @keyframes quintaIn { to { opacity:1; transform:translateX(0); } }
+  @keyframes salita { to { opacity:1; transform:translateY(0); } }
+  @keyframes rigaIn {
+    0%   { opacity:0; transform:translateX(-50%) translateY(18px); }
+    100% { opacity:1; transform:translateX(-50%) translateY(0); }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div class="quinta sx" id="qsx"></div>
+  <div class="quinta dx" id="qdx"></div>
+  <div id="eyebrow"></div>
+  <div id="title">IL DUELLO</div>
+  <div id="rule"></div>
+  <div id="corpo"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // Dati: come il confronto — { e, t, a:{n,s,num,f}, b:{…}, st:[[eti,va,vb]…] }
+  // La foto (f) qui e' un ritratto verticale a colori, non il tondo.
+  var DEMO = {
+    e: "SERIE A · 3ª GIORNATA", t: "IL DUELLO",
+    a: { n: "Nico Paz",  s: "Como · Trequartista", num: "10" },
+    b: { n: "Lautaro Martínez", s: "Inter · Attaccante", num: "10" },
+    st: [["Gol", 4, 6], ["Assist", 5, 2], ["Tiri in porta", 12, 18],
+         ["Passaggi chiave", 21, 9], ["Dribbling riusciti", 17, 6]]
+  };
+
+  function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return DEMO;
+    try {
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return (d && d.a && d.b && d.st && d.st.length) ? d : null;
+    } catch (err) { return null; }
+  }
+  var STILL = new URLSearchParams(location.search).get("still") === "1";
+  var D = decodeData();
+  if (!D) {
+    document.title = "DUELLO — dati non validi";
+    document.getElementById("stage").style.display = "none";
+    return;
+  }
+  document.title = "DUELLO " + ((D.a.n || "") + " " + (D.b.n || "")).trim();
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    document.getElementById("stage").style.transform = "translate(-50%,-50%) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+  function el(id) { return document.getElementById(id); }
+
+  // testata
+  el("eyebrow").textContent = D.e || "";
+  el("title").textContent = D.t || "IL DUELLO";
+  if (STILL) {
+    el("eyebrow").style.opacity = 1; el("title").style.opacity = 1;
+    el("rule").style.transform = "translateX(-50%) scaleX(1)";
+  } else {
+    el("eyebrow").style.animation = "fadeIn .5s ease .2s forwards";
+    el("title").style.animation = "fadeIn .6s ease .35s forwards";
+    el("rule").style.animation = "ruleIn .55s cubic-bezier(.2,.7,.3,1) .8s forwards";
+  }
+
+  // le quinte: foto verticale a colori; senza foto, un fondale di squadra
+  function quinta(q, lato) {
+    var box = el(lato === "sx" ? "qsx" : "qdx");
+    var dentro = q.f
+      ? '<img src="' + esc(q.f) + '">'
+      : '<div class="finta" style="background:linear-gradient(' + (lato === "sx" ? "115deg" : "245deg") +
+        ', #1B2C66 0%, #0E1738 55%, #0A0F24 100%)"></div>';
+    box.innerHTML = dentro + '<div class="velo"></div>';
+    if (STILL) { box.style.opacity = 1; box.style.transform = "none"; }
+    else box.style.animation = "quintaIn .8s cubic-bezier(.2,.7,.3,1) " + (lato === "sx" ? ".25s" : ".4s") + " forwards";
+  }
+  quinta(D.a, "sx");
+  quinta(D.b, "dx");
+
+  // nome e ruolo in basso sulle quinte
+  function chi(q, lato) {
+    var anim = STILL ? "opacity:1;transform:none" : "animation:salita .6s cubic-bezier(.2,.7,.3,1) " + (lato === "sx" ? ".8s" : ".95s") + " forwards";
+    return '<div class="chi ' + lato + '" style="' + anim + '">' +
+      (q.num ? '<div class="num">' + esc(q.num) + '</div>' : "") +
+      '<div class="nome">' + esc(q.n || "") + '</div>' +
+      (q.s ? '<div class="sotto">' + esc(q.s) + '</div>' : "") +
+      '<div class="filo"></div></div>';
+  }
+
+  function numero(v) {
+    var m = String(v == null ? "" : v).replace(",", ".").match(/-?\d+(\.\d+)?/);
+    return m ? parseFloat(m[0]) : null;
+  }
+
+  var h = chi(D.a, "sx") + chi(D.b, "dx");
+  var Y0 = 292, PASSO = Math.min(100, Math.floor((1010 - Y0) / D.st.length));
+  D.st.forEach(function (r, i) {
+    var eti = r[0], va = r[1], vb = r[2];
+    var na = numero(va), nb = numero(vb);
+    var tot = (na || 0) + (nb || 0);
+    var wa = 0, wb = 0;
+    if (na != null && nb != null && tot > 0) { wa = Math.round(290 * na / tot); wb = 290 - wa; }
+    var vinceA = na != null && nb != null && na > nb;
+    var vinceB = na != null && nb != null && nb > na;
+    var anim = STILL ? "opacity:1" : "animation:rigaIn .5s cubic-bezier(.2,.7,.3,1) " + (1.1 + i * 0.14).toFixed(2) + "s forwards";
+    h += '<div class="riga" style="top:' + (Y0 + i * PASSO) + 'px;' + anim + '">' +
+      '<span class="val sx' + (vinceA ? " vince" : "") + '">' + esc(va) + '</span>' +
+      '<span class="eti">' + esc(eti) + '</span>' +
+      '<span class="val dx' + (vinceB ? " vince" : "") + '">' + esc(vb) + '</span>' +
+      '<span class="traccia sx"><span class="pieno' + (vinceA ? " vince" : "") + '" style="width:' + wa + 'px"></span></span>' +
+      '<span class="traccia dx"><span class="pieno' + (vinceB ? " vince" : "") + '" style="width:' + wb + 'px"></span></span>' +
+      '</div>';
+  });
+
+  document.getElementById("corpo").innerHTML = h;
+
+  function replay() { location.reload(); }
+  document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
+  document.addEventListener("dblclick", replay);
+})();
+</script>
+<script src="sfondo.js"></script>
+</body>
+</html>
