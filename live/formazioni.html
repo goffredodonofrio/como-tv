@@ -790,9 +790,26 @@
       '<span class="slotrole' + (hasNum ? " n" : "") + '">' + (hasNum ? esc(d.num) : roleLabel) + '</span>' +
       '<select data-k="slot"' + at + '>' +
         '<option value="">—</option>' +
-        side.roster.map(function (p) {
-          return '<option value="' + p.idx + '"' + (v && v.p === p.idx ? " selected" : "") + '>' + esc(playerLabel(p)) + '</option>';
-        }).join("") +
+        (function () {
+          // la rosa divisa per ruolo: ogni gruppo col suo titoletto
+          var GRUPPI = [["G", "Portieri"], ["D", "Difensori"], ["M", "Centrocampisti"], ["F", "Attaccanti"]];
+          var per = {};
+          side.roster.forEach(function (p) { (per[p.ruolo] = per[p.ruolo] || []).push(p); });
+          function voce(p) {
+            var nome = p.cognome + (p.nome ? " " + p.nome : "") + (p.num ? " · " + p.num : "");
+            return '<option value="' + p.idx + '"' + (v && v.p === p.idx ? " selected" : "") + '>' + esc(nome) + '</option>';
+          }
+          var h2 = "";
+          GRUPPI.forEach(function (g) {
+            if (!per[g[0]]) return;
+            h2 += '<optgroup label="' + g[1] + '">' + per[g[0]].map(voce).join("") + '</optgroup>';
+            delete per[g[0]];
+          });
+          Object.keys(per).forEach(function (r) {
+            h2 += '<optgroup label="Altri">' + per[r].map(voce).join("") + '</optgroup>';
+          });
+          return h2;
+        })() +
         '<option value="M">✍ scrivi a mano…</option>' +
       '</select>' +
       '<button class="rowbtn" title="Correggi a mano nome e numero" data-act="edit"' + at + '>✎</button>' +
@@ -935,11 +952,18 @@
 
     if (btn.dataset.act === "edit") {
       var cur = resolve(side, arr[k]);
-      arr[k] = { m: 1, num: cur ? cur.num : "", nome: cur ? cur.nome : "", cognome: cur ? cur.cognome : "" };
+      var prima = (arr[k] && !arr[k].m) ? arr[k].p : undefined;
+      arr[k] = { m: 1, num: cur ? cur.num : "", nome: cur ? cur.nome : "", cognome: cur ? cur.cognome : "", orig: prima };
       renderAll();
+      // il cursore va dritto sul nome, gia' selezionato: si scrive e basta
+      var campo = document.querySelector('input[data-k="mnome"][data-si="' + btn.dataset.si +
+        '"][data-zone="' + btn.dataset.zone + '"][data-slot="' + btn.dataset.slot + '"]');
+      if (campo) { campo.focus(); campo.select(); }
     }
     if (btn.dataset.act === "rev") {
-      arr[k] = side.manualMode ? mkManualRow() : null;
+      var orig = arr[k] && arr[k].orig;
+      arr[k] = (orig != null && side.roster[orig]) ? { p: orig }
+             : side.manualMode ? mkManualRow() : null;
       renderAll();
     }
   });
