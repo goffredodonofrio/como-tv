@@ -1323,8 +1323,20 @@
       m: side.mod,
       k: side.kit,
       mg: side.maglia ? magliaUrl(side, side.maglia) || undefined : undefined,
-      l: LOGHI_SCAVALCO[slugM(side.teamName || "")] ||
-         (side.teamId ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + side.teamId + ".png" : ""),
+      l: (function () {
+        // magazzino prima (anche col nome senza la coda "Primavera"/"Under"),
+        // poi lo stemma del club senior per le giovanili, poi ESPN
+        var mio = slugM(side.teamName || "");
+        var corto = mio.replace(/-(primavera|under-\d+|u\d+)$/, "");
+        if (LOGHI_SCAVALCO[mio]) return LOGHI_SCAVALCO[mio];
+        if (LOGHI_SCAVALCO[corto]) return LOGHI_SCAVALCO[corto];
+        var code = COMPS[side.comp].code;
+        if (window.GIOVANILI && GIOVANILI.mia(code)) {
+          var t = GIOVANILI.tid(code, side.teamId);
+          return t ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + t + ".png" : "";
+        }
+        return side.teamId ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + side.teamId + ".png" : "";
+      })(),
       a: [side.coachN || "", side.coachC || ""],
       g: side.posGraf || undefined,
       t: side.tit.map(tri),

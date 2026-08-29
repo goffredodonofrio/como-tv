@@ -20,7 +20,7 @@ window.GIOVANILI = (function () {
   var COMPS = [
     // Rosa Como Primavera 26/27 copiata da Transfermarkt il 29/08/2026.
     { nome: "Primavera 1", code: "giovanili.primavera1", squadre: [
-      { id: "como-primavera", n: "Como Primavera", rosa: [
+      { id: "como-primavera", n: "Como Primavera", tid: "2572", rosa: [
         { num: "33", nome: "Nicol\u00f2",  cognome: "Bensi",            ruolo: "G" },
         { num: "1",  nome: "Mattia",       cognome: "Damioli",          ruolo: "G" },
         { num: "24", nome: "Lorenzo Luigi", cognome: "Ginelli",          ruolo: "G" },
@@ -72,27 +72,27 @@ window.GIOVANILI = (function () {
       // le avversarie del girone: solo nome (rose scritte a mano),
       // servono per menu' e magliette dal magazzino
       { id: "albinoleffe-primavera", n: "AlbinoLeffe Primavera", rosa: [] },
-      { id: "atalanta-primavera", n: "Atalanta Primavera", rosa: [] },
-      { id: "bologna-primavera", n: "Bologna Primavera", rosa: [] },
-      { id: "cagliari-primavera", n: "Cagliari Primavera", rosa: [] },
-      { id: "cesena-primavera", n: "Cesena Primavera", rosa: [] },
-      { id: "empoli-primavera", n: "Empoli Primavera", rosa: [] },
-      { id: "fiorentina-primavera", n: "Fiorentina Primavera", rosa: [] },
-      { id: "genoa-primavera", n: "Genoa Primavera", rosa: [] },
-      { id: "hellas-verona-primavera", n: "Hellas Verona Primavera", rosa: [] },
-      { id: "inter-primavera", n: "Inter Primavera", rosa: [] },
-      { id: "juventus-primavera", n: "Juventus Primavera", rosa: [] },
-      { id: "lazio-primavera", n: "Lazio Primavera", rosa: [] },
-      { id: "lecce-primavera", n: "Lecce Primavera", rosa: [] },
-      { id: "milan-primavera", n: "Milan Primavera", rosa: [] },
-      { id: "monza-primavera", n: "Monza Primavera", rosa: [] },
-      { id: "parma-primavera", n: "Parma Primavera", rosa: [] },
-      { id: "roma-primavera", n: "Roma Primavera", rosa: [] },
-      { id: "sassuolo-primavera", n: "Sassuolo Primavera", rosa: [] },
-      { id: "torino-primavera", n: "Torino Primavera", rosa: [] }
+      { id: "atalanta-primavera", n: "Atalanta Primavera", tid: "105", rosa: [] },
+      { id: "bologna-primavera", n: "Bologna Primavera", tid: "107", rosa: [] },
+      { id: "cagliari-primavera", n: "Cagliari Primavera", tid: "2925", rosa: [] },
+      { id: "cesena-primavera", n: "Cesena Primavera", tid: "3337", rosa: [] },
+      { id: "empoli-primavera", n: "Empoli Primavera", tid: "2574", rosa: [] },
+      { id: "fiorentina-primavera", n: "Fiorentina Primavera", tid: "109", rosa: [] },
+      { id: "genoa-primavera", n: "Genoa Primavera", tid: "3263", rosa: [] },
+      { id: "hellas-verona-primavera", n: "Hellas Verona Primavera", tid: "119", rosa: [] },
+      { id: "inter-primavera", n: "Inter Primavera", tid: "110", rosa: [] },
+      { id: "juventus-primavera", n: "Juventus Primavera", tid: "111", rosa: [] },
+      { id: "lazio-primavera", n: "Lazio Primavera", tid: "112", rosa: [] },
+      { id: "lecce-primavera", n: "Lecce Primavera", tid: "113", rosa: [] },
+      { id: "milan-primavera", n: "Milan Primavera", tid: "103", rosa: [] },
+      { id: "monza-primavera", n: "Monza Primavera", tid: "4007", rosa: [] },
+      { id: "parma-primavera", n: "Parma Primavera", tid: "115", rosa: [] },
+      { id: "roma-primavera", n: "Roma Primavera", tid: "104", rosa: [] },
+      { id: "sassuolo-primavera", n: "Sassuolo Primavera", tid: "3997", rosa: [] },
+      { id: "torino-primavera", n: "Torino Primavera", tid: "239", rosa: [] }
     ] },
     { nome: "Under 17", code: "giovanili.u17", squadre: [
-      { id: "como-u17", n: "Como Under 17", rosa: [
+      { id: "como-u17", n: "Como Under 17", tid: "2572", rosa: [
         { num: "", nome: "Tommaso",   cognome: "Vischi",          ruolo: "G" },
         { num: "", nome: "Alessandro",cognome: "Posocco",         ruolo: "G" },
         { num: "", nome: "Matteo",    cognome: "Visentin",        ruolo: "G" },
@@ -143,7 +143,7 @@ window.GIOVANILI = (function () {
       // (1^ giornata U18): numeri di maglia veri. Ruoli dei tre nuovi
       // (Mascetti, Mornati, Colugnat) messi a centrocampo, da confermare.
       // Allenatore: Giovanni Fietta.
-      { id: "como-u18", n: "Como Under 18", rosa: [
+      { id: "como-u18", n: "Como Under 18", tid: "2572", rosa: [
         { num: "1",  nome: "Dylan",         cognome: "Sgarbi",        ruolo: "G" },
         { num: "12", nome: "Lorenzo Luigi", cognome: "Ginelli",       ruolo: "G" },
         { num: "2",  nome: "Matteo",        cognome: "Zanaria",       ruolo: "D" },
@@ -196,6 +196,13 @@ window.GIOVANILI = (function () {
     var c = comp(code);
     return c ? c.squadre.map(function (q) { return { id: q.id, name: q.n }; }) : [];
   }
+  function tid(code, id) {
+    var c = comp(code);
+    if (!c) return "";
+    for (var i = 0; i < c.squadre.length; i++)
+      if (c.squadre[i].id === String(id)) return c.squadre[i].tid || "";
+    return "";
+  }
   function rosa(code, id) {
     var c = comp(code);
     if (!c) return [];
@@ -209,5 +216,5 @@ window.GIOVANILI = (function () {
     return [];
   }
 
-  return { COMPS: COMPS, mia: mia, squadre: squadre, rosa: rosa };
+  return { COMPS: COMPS, mia: mia, squadre: squadre, rosa: rosa, tid: tid };
 })();
