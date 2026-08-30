@@ -350,7 +350,12 @@ function regiaMove(p) {
 // nessun canale. La pagina lo legge all'apertura e lo riscrive a ogni
 // modifica: cosi' i dati sono gli stessi da qualsiasi computer.
 function budgetSet(p) {
+  // la richiesta d'invio al Drive e l'ultimo esito NON appartengono alla
+  // pagina: un salvataggio automatico non deve cancellarli dalla bacheca
+  const vecchio = S.budget || {};
   S.budget = p.stato || {};
+  if (vecchio.richiesta) S.budget.richiesta = vecchio.richiesta;
+  if (vecchio.esito && !S.budget.esito) S.budget.esito = vecchio.esito;
   S.budget.srvTs = Date.now();
   salva();
   return { ok: true, fatture: (S.budget.fatture || []).length };
