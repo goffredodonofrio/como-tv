@@ -43,6 +43,9 @@ var COMP_MAPPING = {
 };
 
 function getAirtableToken() {
+  // PAT di macchina (airtable-pat.js, vive solo sulla VM): niente prompt
+  if (window.AIRTABLE_PAT) return window.AIRTABLE_PAT;
+
   // Prova sessionStorage
   if (sessionStorage.airtableToken) return sessionStorage.airtableToken;
 
