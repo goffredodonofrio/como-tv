@@ -26,7 +26,8 @@
     transform:rotate(-8deg) scale(1.4);transform-origin:center;}
 
   /* campo di calcio (SVG) */
-  #campo{position:absolute;left:0;bottom:0;width:1920px;height:1080px;pointer-events:none;opacity:0;transition:transform .8s cubic-bezier(.3,.7,.3,1);}
+  #campo{position:absolute;left:0;bottom:0;width:1920px;height:1080px;pointer-events:none;opacity:0;transition:transform .8s cubic-bezier(.3,.7,.3,1);
+    will-change:transform;transform:translateZ(0);backface-visibility:hidden;}
   #campo.on{animation:fadeIn 1s ease .3s forwards;}
 
   /* ── testata ── */
@@ -38,7 +39,8 @@
   #modulo{position:absolute;left:266px;top:150px;font-family:'Mazzard',sans-serif;font-weight:800;
     font-size:28px;letter-spacing:.32em;color:#C9A24B;opacity:0;}
 
-  #pitch{position:absolute;left:0;top:0;width:1920px;height:1080px;pointer-events:none;transition:transform .8s cubic-bezier(.3,.7,.3,1);}
+  #pitch{position:absolute;left:0;top:0;width:1920px;height:1080px;pointer-events:none;transition:transform .8s cubic-bezier(.3,.7,.3,1);
+    will-change:transform;transform:translateZ(0);backface-visibility:hidden;}
 
   /* ── MAGLIETTA in campo (stato finale) ── */
   .pcard{position:absolute;transform:translate(-50%,-50%);opacity:0;transition:opacity .55s ease;text-align:center;}
@@ -293,6 +295,25 @@
   pitch.innerHTML = h;
   var pcards = pitch.querySelectorAll(".pcard");
 
+  // ── pre-decodifica delle foto ──────────────────────────────────────
+  // Senza questo il browser decodifica ogni foto (460px) proprio quando
+  // la card entra in ribalta: e' da lì che nasce lo "scatto" all'ingresso
+  // del reparto. Le scaldiamo tutte all'avvio — decode() e' asincrono e
+  // non blocca — così l'iniezione poi e' istantanea.
+  (function () {
+    var urls = [MAGLIA];
+    titolari.forEach(function (r) {
+      urls.push((r && r[3]) || ("/loghi/foto-premium-" + (r && r[0]) + ".png"));
+    });
+    urls.push("/loghi/foto-cesc.png");
+    urls.forEach(function (u) {
+      if (!u) return;
+      var im = new Image();
+      im.src = u;
+      if (im.decode) im.decode().catch(function () {});
+    });
+  })();
+
   // ── panchina lunga con Cesc ──
   var conPanca = D.p && D.p.length;
   if (conPanca) {
@@ -343,7 +364,7 @@
   if (STILL) {
     el("tile").style.opacity = 1; el("campo").classList.add("on"); el("campo").style.opacity = 1;
     el("logo").style.opacity = 1; el("team").style.clipPath = "inset(0 0 0 0)"; el("modulo").style.opacity = 1;
-    if (conPanca) { el("panca").style.opacity = 1; el("campo").style.transform = "translateX(-190px)"; el("pitch").style.transform = "translateX(-190px)"; }
+    if (conPanca) { el("panca").style.opacity = 1; el("campo").style.transform = "translateX(-190px) translateZ(0)"; el("pitch").style.transform = "translateX(-190px) translateZ(0)"; }
     pcards.forEach(function (c) { c.style.opacity = 1; });
     return;
   }
@@ -399,8 +420,8 @@
     pcards.forEach(function (c) { c.style.opacity = 1; });
     if (conPanca) {
       // il campo e le magliette scorrono a sinistra, la panchina entra nello spazio
-      el("campo").style.transform = "translateX(-190px)";
-      el("pitch").style.transform = "translateX(-190px)";
+      el("campo").style.transform = "translateX(-190px) translateZ(0)";
+      el("pitch").style.transform = "translateX(-190px) translateZ(0)";
       setTimeout(function(){ el("panca").classList.add("in"); }, 300 * SLOW);
     }
   }, fine);
