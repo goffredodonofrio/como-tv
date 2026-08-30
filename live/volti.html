@@ -113,6 +113,11 @@
     text-transform:uppercase;color:var(--ivory-dim);margin-bottom:9px;
     padding-bottom:7px;border-bottom:1px solid var(--line-2);}
   .cbox .mt{margin-top:8px;}
+  #segN button{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:800;width:30px;height:26px;
+    padding:0;border-radius:5px;cursor:pointer;background:transparent;color:var(--ivory-dim);
+    border:1px solid var(--line-2);letter-spacing:0;}
+  #segN button:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  #segN button.on{background:var(--gold);border-color:var(--gold);color:#0A0F24;}
 
   /* mini editor della foto: quadrato, colori veri, trascinabile */
   .fedit{display:flex;gap:12px;align-items:center;margin-top:10px;}
@@ -186,7 +191,9 @@
   </div>
 
   <div class="panel">
-    <h2>Le card <small style="font-family:'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--fg-3);font-weight:500;font-size:11px">le vuote non compaiono in grafica</small></h2>
+    <h2 style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">Le card
+      <span id="segN" style="display:inline-flex;gap:4px"></span>
+      <small style="font-family:'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--fg-3);font-weight:500;font-size:11px">scegli quanti volti; le card vuote non compaiono in grafica</small></h2>
     <div class="cards" id="cards"></div>
   </div>
 </div>
@@ -225,6 +232,35 @@
       '</div></div>';
   }
   el("cards").innerHTML = h;
+
+  // ── quanti volti: da 2 a 8, si parte da 4 e la scelta resta sulla
+  //    postazione. Le card oltre il numero scelto spariscono (e non
+  //    finiscono in grafica), ma non perdono quello che c'era scritto.
+  var N_LS = "comotv.volti.quanti";
+  var nScelti = (function () {
+    var v = parseInt(localStorage.getItem(N_LS), 10);
+    return (v >= 2 && v <= 8) ? v : 4;
+  })();
+  function applicaN() {
+    for (var i = 0; i < N; i++) {
+      el("n" + i).closest(".cbox").style.display = i < nScelti ? "" : "none";
+    }
+    var bs = el("segN").querySelectorAll("button");
+    bs.forEach(function (b) { b.classList.toggle("on", +b.textContent === nScelti); });
+  }
+  (function () {
+    var hh = "";
+    for (var k = 2; k <= 8; k++) hh += '<button type="button">' + k + "</button>";
+    el("segN").innerHTML = hh;
+    el("segN").addEventListener("click", function (e) {
+      var b = e.target.closest ? e.target.closest("button") : null;
+      if (!b) return;
+      nScelti = +b.textContent;
+      try { localStorage.setItem(N_LS, String(nScelti)); } catch (err) {}
+      applicaN();
+    });
+    applicaN();
+  })();
 
   // ── foto: editor quadrato, ritaglio 512 nel magazzino ──────────────
   var W_ED = 130, OUT = 512;
@@ -334,7 +370,7 @@
   // ── dai campi ai dati del motore ────────────────────────────────────
   function dati() {
     var card = [];
-    for (var i = 0; i < N; i++) {
+    for (var i = 0; i < nScelti; i++) {
       var n = el("n" + i).value.trim();
       if (!n) continue;
       var c = { n: n, p: el("p" + i).value.trim() };
