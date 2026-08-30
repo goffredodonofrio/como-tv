@@ -1341,7 +1341,7 @@
     pvw.src = "partita-live.html?prev=" + b64url(stato);
     pvwcap.textContent = "Anteprima: " + titolo + " — andrà sul layer LIVE MATCH.";
     mandaAnteprimaSu("partita-live.html?prev=" + b64url(stato),
-                     "Anteprima: " + titolo + " — schermata del Live Match.");
+                     "Anteprima: " + titolo + " — schermata del Live Match.", f);
     fitMonitor();
     dipingi(); gPaint();
   }
@@ -1350,12 +1350,25 @@
   // sono gia' quelli della pagina madre): l'anteprima si manda su, al
   // monitor della Dashboard, altrimenti cliccare una schermata non
   // mostra niente da nessuna parte.
-  function mandaAnteprimaSu(src, didascalia) {
+  function mandaAnteprimaSu(src, didascalia, fase) {
     if (!document.body.classList.contains("incorporato")) return;
     try {
-      parent.postMessage({ comotv: "anteprima", src: src, cap: didascalia }, "*");
+      parent.postMessage({ comotv: "anteprima", src: src, cap: didascalia, fase: fase || null }, "*");
     } catch (e) {}
   }
+
+  // La regia comanda le schermate del player coi SUOI tasti In onda /
+  // Fuori onda: il player e' autonomo, non passa dalla scaletta grafiche.
+  window.addEventListener("message", function (e) {
+    var d = e.data;
+    if (!d || !d.comotv) return;
+    if (d.comotv === "fase-take" && d.f) {
+      if (d.f === "live") S.bug = true;
+      else S.card = d.f;
+      applicaFasi();
+    }
+    if (d.comotv === "fase-out" && d.f) spegniFase(d.f);
+  });
 
   function selezionaGrafica(id, tipo) {
     var it = null;

@@ -137,6 +137,9 @@
   #thumbbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px;
     border:1px solid var(--line-2);background:#070B1D;}
   #thumbbox.onair{border-color:rgba(229,27,32,.7);box-shadow:0 0 22px rgba(229,27,32,.3);}
+  /* il Live Match nel monitor: trasparente, si accende da solo come sul vMix */
+  #thumbMatch{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
+    transform-origin:top left;pointer-events:none;background:transparent;color-scheme:dark;z-index:2;}
   #thumb{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
     transform-origin:top left;pointer-events:none;background:transparent;color-scheme:dark;}
   #onairtag{position:absolute;top:8px;right:8px;z-index:2;display:none;
@@ -295,7 +298,7 @@
     </div>
     <div class="panel mon">
       <h2>In onda adesso</h2>
-      <div id="thumbbox"><span id="onairtag">IN ONDA</span><iframe id="thumb" src="about:blank" scrolling="no"></iframe></div>
+      <div id="thumbbox"><span id="onairtag">IN ONDA</span><iframe id="thumb" src="about:blank" scrolling="no"></iframe><iframe id="thumbMatch" src="about:blank" scrolling="no" allowtransparency="true"></iframe></div>
       <div id="pgmcap" style="margin-top:8px;font-size:12.5px;color:var(--fg-3);min-height:16px"></div>
     </div>
   </div>
@@ -467,6 +470,8 @@
   function fitThumb() {
     var w = document.getElementById("thumbbox").clientWidth;
     thumb.style.transform = "scale(" + (w / 1920) + ")";
+    var tm = document.getElementById("thumbMatch");
+    if (tm) tm.style.transform = "scale(" + (w / 1920) + ")";
     pvw.style.transform = "scale(" + (document.getElementById("pvwbox").clientWidth / 1920) + ")";
   }
   window.addEventListener("resize", fitThumb);
@@ -476,22 +481,27 @@
   // Anteprima arrivata dal Live Match incorporato: occupa il monitor
   // finche' non si clicca una grafica della scaletta.
   var anteprimaMatch = false;
+  var anteprimaFase = null;   // quale schermata del player sta in anteprima
   window.addEventListener("message", function (e) {
     var d = e.data;
     if (!d || d.comotv !== "anteprima") return;
     var fr = document.getElementById("matchFrame");
     if (!fr || e.source !== fr.contentWindow) return;   // solo dal telaio nostro
     anteprimaMatch = true;
+    anteprimaFase = d.fase || null;
     thumbShownId = null;
     pvw.style.visibility = "visible";
     pvw.src = String(d.src);
     fitThumb();
     thumbcap.textContent = String(d.cap || "Anteprima dal Live Match.");
+    // i tasti In onda / Fuori onda devono accendersi subito per la fase
+    try { paint(); } catch (err) {}
   });
 
   function showPvw(id) {
     if (thumbShownId === id) return;
     anteprimaMatch = false;
+    anteprimaFase = null;
     thumbShownId = id;
     pvw.style.visibility = "visible";
     thumbcap.textContent = "Carico l'anteprima…";
@@ -536,12 +546,17 @@
   // cambia la grafica davanti: ricaricarlo rifarebbe partire l'animazione.
   function pittaPgmCap() {
     var v = livelliInPlay();
-    if (!v.length) { pgmcap.textContent = "Nessuna grafica in onda (layer trasparente)."; return; }
+    var matchTxt = matchInOnda.length ? "Live Match: " + matchInOnda.join(" + ") : "";
+    if (!v.length) {
+      pgmcap.textContent = matchTxt ? matchTxt + " — in onda." : "Nessuna grafica in onda (layer trasparente).";
+      return;
+    }
     var sopra = v[v.length - 1];
     var elenco = v.map(function (x) { return x.n + " · " + titoloDi(x.lv.onair); }).join("   |   ");
-    pgmcap.textContent = v.length > 1
+    pgmcap.textContent = (v.length > 1
       ? "In onda su " + v.length + " livelli — " + elenco + " (il monitor mostra il " + sopra.n + ", quello davanti)."
-      : "In onda: " + titoloDi(sopra.lv.onair) + " — replica locale del layer vMix.";
+      : "In onda: " + titoloDi(sopra.lv.onair) + " — replica locale del layer vMix.")
+      + (matchTxt ? "   ·   " + matchTxt : "");
   }
 
   // monitor IN ONDA: replica dal vivo il layer vMix
@@ -558,13 +573,52 @@
 
   function clearLive() {
     shownPlayNonce = null;
-    document.getElementById("thumbbox").classList.remove("onair");
     thumb.src = "about:blank";
     // Un telaio su about:blank dipinge la sua tela bianca e copre il
     // riquadro scuro: si nasconde, cosi' il monitor spento resta nero.
     thumb.style.visibility = "hidden";
-    pgmcap.textContent = "Nessuna grafica in onda (layer trasparente).";
+    aggiornaCorniceOnair();
+    pittaPgmCap();
   }
+
+  // ── il Live Match nel monitor IN ONDA ─────────────────────────────
+  // Il monitor replicava solo i livelli delle grafiche: le schermate del
+  // player (scoreboard, intervallo, radiocronaca…) andavano in onda sul
+  // vMix ma qui non si vedevano, e sembravano perse. Il telaio
+  // trasparente sopra la replica mostra anche loro, come sul playout.
+  var matchInOnda = [];
+  var NOMI_FASI_PGM = { pres: "Presentazione", live: "Scoreboard",
+                        int: "Intervallo", fin: "Risultato finale", radio: "Radiocronaca" };
+  function aggiornaCorniceOnair() {
+    var grafiche = false;
+    try { grafiche = livelliInPlay().length > 0; } catch (e) {}
+    document.getElementById("thumbbox").classList.toggle("onair", grafiche || matchInOnda.length > 0);
+  }
+  (function () {
+    var tm = document.getElementById("thumbMatch");
+    tm.src = "partita-live.html?c=" + CANALE;
+    function pollMatchPgm() {
+      fetch(PONTE + "?partita=1&canale=" + CANALE, { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (!j) return;
+          var bug = (j.bug != null) ? !!j.bug : (j.fase === "live");
+          var card = (j.card !== undefined) ? (j.card || null)
+                   : ((j.fase === "pres" || j.fase === "int" || j.fase === "fin") ? j.fase : null);
+          var v = [];
+          if (bug) v.push(NOMI_FASI_PGM.live);
+          if (card) v.push(NOMI_FASI_PGM[card] || card);
+          if (v.join("+") !== matchInOnda.join("+")) {
+            matchInOnda = v;
+            aggiornaCorniceOnair();
+            pittaPgmCap();
+          }
+        })
+        .catch(function () {});
+    }
+    setInterval(pollMatchPgm, 2000);
+    pollMatchPgm();
+  })();
 
   function paint() {
     var inPlay = livelliInPlay();
@@ -581,7 +635,7 @@
     // il tasto guarda il livello mirato, non lo stato complessivo: con una
     // grafica sul livello 3 lo stato generale dice "standby" e il tasto
     // restava spento anche se c'era da spegnere
-    btnOut.disabled = !titoloSuLiv(mira());
+    btnOut.disabled = !titoloSuLiv(mira()) && !(anteprimaMatch && anteprimaFase);
     elCount.textContent = cur.items.length ? cur.items.length + " / 30" : "";
     elEmpty.style.display = cur.items.length ? "none" : "block";
 
@@ -640,7 +694,7 @@
     if (anteprimaMatch) { /* il monitor sta mostrando il Live Match: si lascia stare */ }
     else if (selId) showPvw(selId);
     else { pvw.src = "about:blank"; pvw.style.visibility = "hidden"; thumbShownId = null; thumbcap.textContent = "Clicca una grafica in scaletta: la vedi qui senza toccare l'onda."; }
-    btnTake.disabled = !selId;
+    btnTake.disabled = !selId && !(anteprimaMatch && anteprimaFase);
   }
 
   // regola di apertura: un playout parte SEMPRE fuori onda — se una
@@ -775,7 +829,19 @@
   });
 
   var btnTake = document.getElementById("btnTake");
+  function comandaFase(azione) {
+    var fr = document.getElementById("matchFrame");
+    if (!fr) return false;
+    try { fr.contentWindow.postMessage({ comotv: azione, f: anteprimaFase }, "*"); } catch (e) { return false; }
+    return true;
+  }
   btnTake.addEventListener("click", function () {
+    // in anteprima c'e' una schermata del Live Match: si comanda quella,
+    // in autonomia — la scaletta delle grafiche non c'entra
+    if (anteprimaMatch && anteprimaFase) {
+      if (comandaFase("fase-take")) msg.textContent = "Live Match in onda tra un istante\u2026";
+      return;
+    }
     if (!selId) return;
     var it0 = null;
     cur.items.forEach(function (x) { if (x.id === selId) it0 = x; });
@@ -819,6 +885,7 @@
       selId = row.dataset.id;
       LIVMIRA = null;   // torna a seguire il livello della grafica scelta
       anteprimaMatch = false;   // il clic riprende il monitor al Live Match
+      anteprimaFase = null;
       paint();
     }
   });
@@ -827,6 +894,10 @@
   // altrove. Prima con un interruttore globale non si riusciva a spegnere il
   // livello giusto se la selezione era su un'altra grafica.
   btnOut.addEventListener("click", function () {
+    if (anteprimaMatch && anteprimaFase) {
+      if (comandaFase("fase-out")) msg.textContent = "Schermata del Live Match fuori onda.";
+      return;
+    }
     fermaCountdown();
     var L = mira();
     post({ tipo: "regia-state", state: "out", liv: L }, "Livello " + L + " fuori onda.");
