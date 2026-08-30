@@ -223,6 +223,45 @@
   #radiochi b{font-family:'Mazzard',sans-serif;font-weight:800;color:#F5F1E6;}
   #radiochi.vuoto{display:none;}
 
+  /* ── RECAP RISULTATO: la barra bassa dopo un gol ──
+     Due metà coi colori delle squadre, il punteggio in mezzo su navy e
+     oro, un filo dorato che le divide. Entra da sotto. */
+  #recap{position:absolute;left:50%;bottom:96px;transform:translateX(-50%) translateY(40px);
+    display:flex;align-items:stretch;height:150px;opacity:0;visibility:hidden;
+    border-radius:14px;overflow:hidden;
+    box-shadow:0 26px 70px rgba(0,0,0,.5), inset 0 0 0 1px rgba(245,241,230,.10);}
+  #recap.on{visibility:visible;animation:recapIn .55s cubic-bezier(.2,.7,.3,1) forwards;}
+  #recap.out{animation:recapOut .4s ease forwards;}
+  @keyframes recapIn { to { opacity:1; transform:translateX(-50%) translateY(0); } }
+  @keyframes recapOut { from { opacity:1; } to { opacity:0; transform:translateX(-50%) translateY(-18px); } }
+
+  .rcpteam{display:flex;align-items:center;gap:22px;padding:0 34px;min-width:520px;
+    background:linear-gradient(180deg, rgba(20,29,66,.92), rgba(10,15,38,.94));}
+  .rcpteam.casa{flex-direction:row;}
+  .rcpteam.osp{flex-direction:row-reverse;text-align:right;}
+  .rcpteam .rcpstemma{width:96px;height:96px;flex:none;display:flex;align-items:center;justify-content:center;}
+  .rcpteam .rcpstemma img{width:96px;height:96px;object-fit:contain;
+    filter:drop-shadow(0 6px 16px rgba(0,0,0,.5));}
+  .rcpteam .rcpsig{width:78px;height:92px;display:flex;align-items:center;justify-content:center;
+    border-radius:10px 10px 42% 42%;font-family:'Mazzard',sans-serif;font-weight:800;font-size:30px;
+    color:#FFF;letter-spacing:.03em;box-shadow:inset 0 0 0 3px rgba(245,241,230,.7);}
+  .rcpteam .rcpnome{font-family:'Mazzard',sans-serif;font-weight:800;font-size:38px;letter-spacing:.02em;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;line-height:1.02;}
+  /* la striscia colorata del club, sul bordo interno verso il centro */
+  .rcpteam .rcpbarra{position:absolute;top:0;bottom:0;width:8px;}
+  .rcpteam.casa{position:relative;} .rcpteam.osp{position:relative;}
+  .rcpteam.casa .rcpbarra{right:0;} .rcpteam.osp .rcpbarra{left:0;}
+
+  .rcpscore{display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:0 30px;background:linear-gradient(180deg,#12193C,#0A1026);
+    border-left:2px solid rgba(201,162,75,.55);border-right:2px solid rgba(201,162,75,.55);}
+  .rcpscore .rcpnum{font-family:'Mazzard',sans-serif;font-weight:800;font-size:70px;line-height:1;
+    color:#C9A24B;font-variant-numeric:tabular-nums;letter-spacing:.04em;
+    text-shadow:0 3px 14px rgba(0,0,0,.55);white-space:nowrap;}
+  .rcpscore .rcpsub{margin-top:6px;font-family:'Mazzard',sans-serif;font-weight:700;font-size:13px;
+    letter-spacing:.26em;color:rgba(245,241,230,.72);text-transform:uppercase;white-space:nowrap;}
+  .rcpscore .rcpsub.vuoto{display:none;}
+
 </style>
 </head>
 <body>
@@ -274,6 +313,23 @@
       <div id="radiochi" class="vuoto"></div>
     </div>
   </div>
+
+  <div id="recap">
+    <div class="rcpteam casa">
+      <div class="rcpstemma" id="rcst1"></div>
+      <div class="rcpnome" id="rcnm1"></div>
+      <span class="rcpbarra" id="rcbar1"></span>
+    </div>
+    <div class="rcpscore">
+      <div class="rcpnum"><span id="rcp1">0</span> - <span id="rcp2">0</span></div>
+      <div class="rcpsub" id="rcpsub"></div>
+    </div>
+    <div class="rcpteam osp">
+      <div class="rcpstemma" id="rcst2"></div>
+      <div class="rcpnome" id="rcnm2"></div>
+      <span class="rcpbarra" id="rcbar2"></span>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -308,6 +364,7 @@
   var elBug = document.getElementById("bug");
   var elFull = document.getElementById("full");
   var elRadio = document.getElementById("radio");
+  var elRecap = document.getElementById("recap");
   var elClock = document.getElementById("clock");
   var elRec = document.getElementById("rec");
 
@@ -341,12 +398,37 @@
     // il pannello bucato resta per presentazione, intervallo e finale
     var cardRadio = card === "radio";
     if (cardRadio) card = null;
+    var cardRecap = card === "recap";
+    if (cardRecap) card = null;
 
     // il livello scelto in regia decide chi passa sopra all'altro
     var lf = j.livFase || {};
     elBug.style.zIndex = lf.live || 2;
     elFull.style.zIndex = (card && lf[card]) || 4;
     elRadio.style.zIndex = lf.radio || 5;
+    elRecap.style.zIndex = lf.recap || 3;
+
+    if (cardRecap) {
+      stemmaRecap("rcst1", j.casa || {});
+      stemmaRecap("rcst2", j.osp || {});
+      document.getElementById("rcbar1").style.background = (j.casa && j.casa.col) || "#243F8A";
+      document.getElementById("rcbar2").style.background = (j.osp && j.osp.col) || "#8A1020";
+      testo("rcnm1", (j.casa && (j.casa.n || j.casa.s)) || "");
+      testo("rcnm2", (j.osp && (j.osp.n || j.osp.s)) || "");
+      adattaNome("rcnm1"); adattaNome("rcnm2");
+      testo("rcp1", j.p1 || 0);
+      testo("rcp2", j.p2 || 0);
+      var rsub = document.getElementById("rcpsub");
+      var sotto = [j.camp, j.giornata].filter(Boolean).join(" \u00b7 ");
+      rsub.textContent = sotto;
+      rsub.className = "rcpsub" + (sotto ? "" : " vuoto");
+      elRecap.classList.remove("out");
+      elRecap.classList.add("on");
+    } else if (elRecap.classList.contains("on")) {
+      elRecap.classList.remove("on");
+      elRecap.classList.add("out");
+      setTimeout(function () { elRecap.classList.remove("out"); }, 420);
+    }
 
     if (cardRadio) {
       stemmaRadio("rb1", j.casa || {});
@@ -497,6 +579,20 @@
     return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
+  }
+
+  // lo stemma nella barra recap: stessa logica del cartello radio
+  function stemmaRecap(id, sq) {
+    var box = document.getElementById(id);
+    if (sq.stemma) {
+      box.innerHTML = '<img src="' + escRadio(sq.stemma) + '" onerror="this.parentNode.innerHTML=\'\'">';
+    } else if (sq.tid) {
+      box.innerHTML = '<img src="https://a.espncdn.com/i/teamlogos/soccer/500/' + sq.tid +
+        '.png" onerror="this.parentNode.innerHTML=\'\'">';
+    } else {
+      var sig = String(sq.s || "").slice(0, 3).toUpperCase();
+      box.innerHTML = '<div class="rcpsig" style="background:' + (sq.col || "#243F8A") + '">' + sig + '</div>';
+    }
   }
 
   // lo stemma dentro la sfera scura del cartello radiocronaca
