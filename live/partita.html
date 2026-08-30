@@ -470,6 +470,14 @@
           </div>
         </div>
 
+        <!-- Radiocronaca: chi racconta la partita quando in onda c'e' solo
+             l'audio. Il nome finisce nel cartello RADIOCRONACA del player. -->
+        <h3 class="sotto-titolo" style="margin-top:14px">Radiocronaca</h3>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="radioNome" placeholder="Nome del radiocronista" style="flex:1">
+          <select id="radioNomeSel" style="flex:1"></select>
+        </div>
+
       </div>
     </div>
   </div>
@@ -477,6 +485,7 @@
 </div>
 
 <script src="scavalco.js"></script>
+<script src="redazione.js"></script>
 <script>
 (function () {
   "use strict";
@@ -600,6 +609,7 @@
     casa: { n: "", s: "", col: "#1735C8", tid: "", stemma: "" },
     osp:  { n: "", s: "", col: "#C50E1F", tid: "", stemma: "" },
     p1: 0, p2: 0, rec: 0, rc1: 0, rc2: 0,
+    radioNome: "",
     clock: { run: false, base: 0, ts: null }
   };
   var offset = 0;   // Date.now() - orologio del server
@@ -942,19 +952,42 @@
     });
   });
 
+  // ── radiocronista: scrittura libera o scelta dalla lista redazione ──
+  (function () {
+    var inp = el("radioNome"), sel = el("radioNomeSel");
+    if (!inp || !sel) return;
+    var nomi = (window.REDAZIONE && REDAZIONE.NOMI) ? REDAZIONE.NOMI.slice() : [];
+    nomi.sort(function (a, b) { return a.localeCompare(b, "it"); });
+    var h = '<option value="">\u2014 o scegli dalla lista \u2014</option>';
+    nomi.forEach(function (n) { h += '<option>' + n + '</option>'; });
+    sel.innerHTML = h;
+    sel.addEventListener("change", function () {
+      if (!sel.value) return;
+      inp.value = sel.value;
+      S.radioNome = sel.value;
+      invia(true);
+      sel.selectedIndex = 0;
+    });
+    inp.addEventListener("input", function () {
+      S.radioNome = inp.value.trim();
+      invia();
+    });
+  })();
+
   // ── player partita: le schermate del match come una scaletta,
   //    dentro col ▶ e fuori con un tasto solo (stessa logica delle grafiche) ──
   var FASI = [
     { f: "pres", t: "PRESENTAZIONE",    d: "Campionato e squadre" },
     { f: "live", t: "SCOREBOARD LIVE",  d: "Punteggio e cronometro" },
     { f: "int",  t: "INTERVALLO",       d: "Parziale a schermo pieno" },
-    { f: "fin",  t: "RISULTATO FINALE", d: "Risultato a schermo pieno" }
+    { f: "fin",  t: "RISULTATO FINALE", d: "Risultato a schermo pieno" },
+    { f: "radio", t: "RADIOCRONACA",    d: "Cartello per l'audio cronaca" }
   ];
   // Livello di ogni schermata del player: il punteggio sta tipicamente basso,
   // le schermate piene in alto. Resta memorizzato sulla postazione.
   var FASE_LIV_LS = "comotv.partita.faseliv";
   var FASE_LIV = (function () {
-    var d = { pres: 4, live: 2, int: 4, fin: 4 };
+    var d = { pres: 4, live: 2, int: 4, fin: 4, radio: 5 };
     try {
       var v = JSON.parse(localStorage.getItem(FASE_LIV_LS) || "null");
       if (v) FASI.forEach(function (x) { if (v[x.f] >= 1 && v[x.f] <= 5) d[x.f] = v[x.f]; });
@@ -1197,9 +1230,11 @@
   function selezionaFase(f, titolo) {
     sel = { tipo: "fase", fase: f, titolo: titolo };
     // fotografia dello stato locale con la fase scelta: SOLO anteprima
+    // (bug e card espliciti: "radio" non esiste nel vecchio campo unico)
     var stato = { fase: f, camp: S.camp, giornata: S.giornata, stadio: S.stadio,
+                  bug: f === "live", card: (f === "live" || f === "off") ? null : f,
                   casa: S.casa, osp: S.osp,
-                  p1: S.p1, p2: S.p2, rec: S.rec,
+                  p1: S.p1, p2: S.p2, rec: S.rec, radioNome: S.radioNome || "",
                   clock: { run: false, base: elapsed(), ts: null } };
     pvw.src = "partita-live.html?prev=" + b64url(stato);
     pvwcap.textContent = "Anteprima: " + titolo + " — andrà sul layer LIVE MATCH.";
@@ -1501,6 +1536,7 @@
               casa: j.casa || S.casa, osp: j.osp || S.osp,
               p1: j.p1 || 0, p2: j.p2 || 0, rec: j.rec || 0,
               rc1: j.rc1 || 0, rc2: j.rc2 || 0,
+              radioNome: j.radioNome || "",
               clock: j.clock || S.clock, livFase: j.livFase || S.livFase };
         specchioFase();
         // livelli delle schermate arrivati dal ponte: hanno la precedenza su
@@ -1517,6 +1553,7 @@
         allineaDaCamp();
         el("nc").value = S.casa.n || ""; el("sc").value = S.casa.s || ""; el("cc").value = S.casa.col || "#1735C8";
         el("no").value = S.osp.n || ""; el("so").value = S.osp.s || ""; el("co").value = S.osp.col || "#C50E1F";
+        el("radioNome").value = S.radioNome || "";
         for (var i = 0; i < CAMPIONATI.length; i++) if (CAMPIONATI[i].nome === S.camp) elCamp.value = i;
         riempiSquadre();
         // le righe devono mostrare subito cosa sta trasmettendo

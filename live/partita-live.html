@@ -151,6 +151,51 @@
   /* il filo verticale sta al centro della colonna di mezzo */
   #fnomi .sep{justify-self:center;width:1px;padding:0;background:rgba(245,241,230,.16);}
 
+  /* ── cartello RADIOCRONACA ──
+     Va in onda quando la partita e' solo audio: copre tutto lo schermo
+     con il suo fondo, come nella reference del Panda. */
+  #radio{position:absolute;left:0;top:0;width:1920px;height:1080px;
+    opacity:0;visibility:hidden;
+    background:
+      radial-gradient(120% 90% at 50% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 80% at 50% 115%, rgba(20,32,78,.7), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A1026 45%,#070B1D 100%);}
+  #radio.on{visibility:visible;animation:radioIn .6s ease forwards;}
+  #radio.out{animation:radioOut .4s ease forwards;}
+  @keyframes radioIn { to { opacity:1; } }
+  @keyframes radioOut { from { opacity:1; } to { opacity:0; } }
+
+  #radiorow{position:absolute;left:50%;top:400px;transform:translate(-50%,-50%);
+    display:flex;align-items:center;gap:110px;}
+  .rball{width:400px;height:400px;border-radius:50%;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(120% 120% at 32% 24%, rgba(38,52,104,.85), rgba(11,17,40,.95) 66%);
+    box-shadow:0 26px 70px rgba(0,0,0,.55), inset 0 0 0 1px rgba(245,241,230,.07);}
+  .rball img{width:230px;height:230px;object-fit:contain;
+    filter:drop-shadow(0 8px 24px rgba(0,0,0,.5));}
+  .rball .fsigla{transform:scale(1.4);}
+  #radiomid{display:flex;align-items:center;gap:44px;}
+  .rnum{font-family:'Mazzard',sans-serif;font-weight:800;font-size:150px;line-height:1;
+    color:#F5F1E6;font-variant-numeric:tabular-nums;
+    text-shadow:0 6px 26px rgba(0,0,0,.5);}
+  #radiovs{font-family:Georgia,'Times New Roman',serif;font-style:italic;font-size:54px;
+    color:#C9A24B;padding-bottom:10px;}
+  #radioclock{position:absolute;left:50%;top:640px;transform:translateX(-50%);
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:30px;letter-spacing:.14em;
+    color:rgba(245,241,230,.75);font-variant-numeric:tabular-nums;}
+  #radioclock.vuoto{display:none;}
+
+  #radiosotto{position:absolute;left:50%;top:730px;transform:translateX(-50%);
+    text-align:center;width:1200px;}
+  #radiocomp{font-family:'Mazzard',sans-serif;font-weight:700;font-size:27px;letter-spacing:.3em;
+    color:#C9A24B;text-transform:uppercase;white-space:nowrap;}
+  #radiofilo{margin:18px auto 0;width:300px;height:2px;
+    background:linear-gradient(90deg,transparent,#C9A24B,transparent);}
+  #radiochi{margin-top:22px;font-family:'DM Sans',sans-serif;font-weight:500;font-size:29px;
+    letter-spacing:.2em;color:rgba(245,241,230,.82);text-transform:uppercase;white-space:nowrap;}
+  #radiochi b{font-family:'Mazzard',sans-serif;font-weight:800;color:#F5F1E6;}
+  #radiochi.vuoto{display:none;}
+
 </style>
 </head>
 <body>
@@ -180,6 +225,24 @@
     </div>
     <div id="fnomi">
       <div id="fnm1"></div><div class="sep"></div><div id="fnm2"></div>
+    </div>
+  </div>
+
+  <div id="radio">
+    <div id="radiorow">
+      <div class="rball" id="rb1"></div>
+      <div id="radiomid">
+        <span class="rnum" id="rn1">0</span>
+        <span id="radiovs">vs</span>
+        <span class="rnum" id="rn2">0</span>
+      </div>
+      <div class="rball" id="rb2"></div>
+    </div>
+    <div id="radioclock" class="vuoto">00:00</div>
+    <div id="radiosotto">
+      <div id="radiocomp"></div>
+      <div id="radiofilo"></div>
+      <div id="radiochi" class="vuoto"></div>
     </div>
   </div>
 </div>
@@ -215,6 +278,7 @@
 
   var elBug = document.getElementById("bug");
   var elFull = document.getElementById("full");
+  var elRadio = document.getElementById("radio");
   var elClock = document.getElementById("clock");
   var elRec = document.getElementById("rec");
 
@@ -244,10 +308,36 @@
     if (SOLO === "bug") card = null;
     cardAttiva = card;
 
+    // il cartello radiocronaca e' una schermata sua, a schermo pieno:
+    // il pannello bucato resta per presentazione, intervallo e finale
+    var cardRadio = card === "radio";
+    if (cardRadio) card = null;
+
     // il livello scelto in regia decide chi passa sopra all'altro
     var lf = j.livFase || {};
     elBug.style.zIndex = lf.live || 2;
     elFull.style.zIndex = (card && lf[card]) || 4;
+    elRadio.style.zIndex = lf.radio || 5;
+
+    if (cardRadio) {
+      stemmaRadio("rb1", j.casa || {});
+      stemmaRadio("rb2", j.osp || {});
+      testo("rn1", j.p1 || 0);
+      testo("rn2", j.p2 || 0);
+      testo("radiocomp", [j.camp, j.giornata].filter(Boolean).join(" \u00b7 ") || "COMO TV");
+      var rchi = document.getElementById("radiochi");
+      if (j.radioNome) {
+        rchi.innerHTML = "RADIOCRONACA DI <b>" + escRadio(j.radioNome) + "</b>";
+        rchi.className = "";
+      } else rchi.className = "vuoto";
+      aggiornaRadioClock();
+      elRadio.classList.remove("out");
+      elRadio.classList.add("on");
+    } else if (elRadio.classList.contains("on")) {
+      elRadio.classList.remove("on");
+      elRadio.classList.add("out");
+      setTimeout(function () { elRadio.classList.remove("out"); }, 420);
+    }
 
     if (bug) {
       testo("sg1", (j.casa && j.casa.s) || "—");
@@ -312,6 +402,34 @@
     }
   }
 
+  function escRadio(v) {
+    return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  // lo stemma dentro la sfera scura del cartello radiocronaca
+  function stemmaRadio(id, sq) {
+    var box = document.getElementById(id);
+    if (sq.stemma) {
+      box.innerHTML = '<img src="' + escRadio(sq.stemma) + '" onerror="this.parentNode.innerHTML=\'\'">';
+    } else if (sq.tid) {
+      box.innerHTML = '<img src="https://a.espncdn.com/i/teamlogos/soccer/500/' + sq.tid +
+        '.png" onerror="this.parentNode.innerHTML=\'\'">';
+    } else {
+      var sig = String(sq.s || "").slice(0, 3).toUpperCase();
+      box.innerHTML = '<div class="fsigla" style="background:' + (sq.col || "#243F8A") + '">' + sig + '</div>';
+    }
+  }
+
+  // il cronometro del cartello: visibile solo a partita cominciata
+  function aggiornaRadioClock(){
+    var e = document.getElementById("radioclock");
+    if (!S || !S.clock || (!S.clock.run && !(S.clock.base > 0))) { e.className = "vuoto"; return; }
+    e.className = "";
+    e.textContent = orologio(S);
+  }
+
   // stemma della squadra: immagine vera se c'è, altrimenti scudetto
   // con il colore e la sigla — così funziona anche per le giovanili
   function stemma(id, sq) {
@@ -368,6 +486,7 @@
     if (cardAttiva === "int" || cardAttiva === "fin") {
       document.getElementById("fcrono").textContent = orologio(S);
     }
+    if (cardAttiva === "radio") aggiornaRadioClock();
   }, 200);
 
 
