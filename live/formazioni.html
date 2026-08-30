@@ -116,6 +116,8 @@
   .modebtn.verde{background:rgba(79,203,139,.14);border-color:rgba(79,203,139,.55);color:#7BDCAA;box-shadow:none;}
   .modebtn.verde:hover{background:rgba(79,203,139,.24);border-color:#4FCB8B;color:#8FE8BB;}
   .modebtn.viola{background:rgba(139,92,246,.16);border-color:rgba(139,92,246,.55);color:#C4ACFB;box-shadow:none;}
+  .modebtn.rosso{background:rgba(229,27,32,.14);border-color:rgba(229,27,32,.5);color:#FF8A8D;box-shadow:none;width:30px;padding:0;}
+  .modebtn.rosso:hover{background:rgba(229,27,32,.26);border-color:#E51B20;color:#FFB0B2;}
   .modebtn.viola:hover{background:rgba(139,92,246,.28);border-color:#8B5CF6;color:#D5C4FD;}
   .kit{width:34px;height:26px;padding:2px;border:1px solid var(--line-2);border-radius:4px;
     background:var(--surface-panel);cursor:pointer;}
@@ -135,10 +137,15 @@
     align-items:baseline;gap:8px;flex-wrap:wrap;}
   .colpanel h2 small{font-family:'DM Sans',system-ui,sans-serif;font-size:11px;letter-spacing:0;
     text-transform:none;color:var(--fg-3);font-weight:500;}
-  .slotrow{display:grid;grid-template-columns:26px 1fr 26px;gap:6px;align-items:center;margin-bottom:5px;}
-  .slotrow.manual{grid-template-columns:44px 1fr 1fr 26px;}
+  .slotrow{display:grid;grid-template-columns:16px 26px 1fr 26px;gap:6px;align-items:center;margin-bottom:5px;}
+  .slotrow.manual{grid-template-columns:16px 44px 1fr 1fr 26px;}
   .slotrole{font-family:'Mazzard',system-ui,sans-serif;font-size:9.5px;font-weight:700;letter-spacing:.08em;
     color:var(--fg-3);text-align:center;border:1px solid var(--line-2);border-radius:4px;padding:6px 0;}
+  .draghand{cursor:grab;touch-action:none;user-select:none;color:var(--fg-3);font-size:12px;
+    text-align:center;line-height:1;letter-spacing:-2px;}
+  .draghand:hover{color:var(--gold-bright);}
+  .slotrow.dragging{opacity:.4;}
+  .slotrow.drophere{outline:2px dashed var(--gold);outline-offset:1px;border-radius:5px;}
   .slotrole.n{font-size:11.5px;letter-spacing:0;color:var(--gold-bright);border-color:var(--line-gold);
     font-variant-numeric:tabular-nums;}
   .rowbtn{font-family:'DM Sans',system-ui,sans-serif;font-size:12px;font-weight:500;letter-spacing:0;
@@ -664,6 +671,7 @@
           '<input type="file" class="magliaFile" data-si="' + si + '" accept="image/png,image/webp" hidden>' +
           '<button class="modebtn' + (side.manualMode ? " off" : "") + '" data-si="' + si + '" data-act="' + (side.manualMode ? "manual-off" : "manual-on") + '">' +
           (side.manualMode ? "torna alle rose ESPN" : "Scrivi da zero") + '</button>' +
+          '<button class="modebtn rosso" data-si="' + si + '" data-act="svuota" title="Cancella tutti i campi per scriverli a mano">&#10005;</button>' +
           '<button class="modebtn verde" data-si="' + si + '" data-act="anteprima" title="Apre la grafica animata di questa squadra">Anteprima</button>' +
           '<button class="modebtn viola" data-si="' + si + '" data-act="campetto" title="Campetto in PDF di questa squadra">Campetto</button>' +
           '</span></div>';
@@ -782,8 +790,10 @@
     var v = zone === "tit" ? side.tit[k] : side.pan[k];
     var at = ' data-si="' + si + '" data-zone="' + zone + '" data-slot="' + k + '"';
 
+    var hand = zone === "tit" ? '<span class="draghand" title="Trascina per scambiare" ' + at + '>&#8942;&#8942;</span>' : '<span></span>';
+
     if (v && v.m) {
-      return '<div class="slotrow manual">' +
+      return '<div class="slotrow manual">' + hand +
         '<input type="text" placeholder="N°" value="' + esc(v.num) + '" data-k="mnum"' + at + '>' +
         '<input type="text" placeholder="Nome" value="' + esc(v.nome) + '" data-k="mnome"' + at + '>' +
         '<input type="text" placeholder="Cognome" value="' + esc(v.cognome) + '" data-k="mcog"' + at + '>' +
@@ -793,7 +803,7 @@
 
     var d = resolve(side, v);
     var hasNum = d && String(d.num || "").length;
-    return '<div class="slotrow">' +
+    return '<div class="slotrow">' + hand +
       '<span class="slotrole' + (hasNum ? " n" : "") + '">' + (hasNum ? esc(d.num) : roleLabel) + '</span>' +
       '<select data-k="slot"' + at + '>' +
         '<option value="">—</option>' +
@@ -981,6 +991,17 @@
     if (!btn) return;
     var side = sides[+btn.dataset.si];
 
+    if (btn.dataset.act === "svuota") {
+      // cancella TUTTI i campi (undici, panchina, allenatore): restano input
+      // manuali vuoti, pronti per la scrittura a mano
+      side.manualMode = true; side.teamId = ""; side.roster = [];
+      side.tit = []; for (var sv = 0; sv < 11; sv++) side.tit.push(mkManualRow());
+      side.pan = []; for (var sw = 0; sw < NBENCH; sw++) side.pan.push(mkManualRow());
+      side.coachN = ""; side.coachC = ""; side.custom = {};
+      renderAll();
+      status("", '<span class="msg"><b>' + side.label + ' svuotata:</b> scrivi a mano numero, nome e cognome.</span>');
+      return;
+    }
     if (btn.dataset.act === "manual-on") {
       var has = side.tit.some(function (v) { var d = resolve(side, v); return d && (d.cognome || d.nome); });
       if (has && !window.confirm("Passo alla compilazione da zero: la formazione attuale di " + side.label + " viene svuotata. Continuare?")) return;
@@ -1002,6 +1023,63 @@
       renderAll();
     }
   });
+
+  // ---------------- drag verticale nella lista: scambia i giocatori ----------------
+  // Si prende uno slot dalla sua maniglia (il badge a sinistra) e lo si porta
+  // su un altro: i due giocatori si scambiano di posto. Solo fra titolari
+  // della stessa squadra.
+  var rord = null;
+  function slotFromRow(row) {
+    var sel = row.querySelector("[data-si]");
+    return sel ? { si: +sel.dataset.si, k: +sel.dataset.slot, zone: sel.dataset.zone } : null;
+  }
+  function onRoleDown(e) {
+    var role = e.target.closest ? e.target.closest(".draghand") : null;
+    if (!role) return;
+    var row = role.closest(".slotrow");
+    var info = slotFromRow(row);
+    if (!info || info.zone !== "tit") return;    // solo gli undici titolari
+    e.preventDefault();
+    rord = { si: info.si, from: info.k, row: row, to: info.k };
+    row.classList.add("dragging");
+    role.setPointerCapture && role.setPointerCapture(e.pointerId);
+  }
+  function onRoleMove(e) {
+    if (!rord) return;
+    document.querySelectorAll(".slotrow.drophere").forEach(function (r) { r.classList.remove("drophere"); });
+    // la riga bersaglio e' quella titolare della stessa squadra piu' vicina
+    // alla Y del cursore (robusto anche senza elementFromPoint)
+    var col = rord.si === 0 ? el.colHome : el.colAway;
+    var righe = col.querySelectorAll(".slotrow");
+    var best = null, bestd = 1e9;
+    righe.forEach(function (r) {
+      var info = slotFromRow(r);
+      if (!info || info.zone !== "tit") return;
+      var b = r.getBoundingClientRect(), c = b.top + b.height / 2, d = Math.abs(e.clientY - c);
+      if (d < bestd) { bestd = d; best = { row: r, k: info.k }; }
+    });
+    if (best && best.k !== rord.from) { best.row.classList.add("drophere"); rord.to = best.k; }
+    else rord.to = rord.from;
+  }
+  function onRoleUp() {
+    if (!rord) return;
+    document.querySelectorAll(".slotrow.drophere").forEach(function (r) { r.classList.remove("drophere"); });
+    if (rord.row) rord.row.classList.remove("dragging");
+    if (rord.to !== rord.from) {
+      var side = sides[rord.si], t = side.tit;
+      var tmp = t[rord.from]; t[rord.from] = t[rord.to]; t[rord.to] = tmp;
+      // le posizioni trascinate a mano seguono lo scambio
+      var cf = side.custom[rord.from], ct = side.custom[rord.to];
+      if (ct) side.custom[rord.from] = ct; else delete side.custom[rord.from];
+      if (cf) side.custom[rord.to] = cf; else delete side.custom[rord.to];
+      renderAll();
+    }
+    rord = null;
+  }
+  el.colHome.addEventListener("pointerdown", onRoleDown);
+  el.colAway.addEventListener("pointerdown", onRoleDown);
+  document.addEventListener("pointermove", onRoleMove);
+  document.addEventListener("pointerup", onRoleUp);
 
   // ---------------- drag delle maglie ----------------
 
