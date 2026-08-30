@@ -50,6 +50,9 @@ window.Scavalco = (function () {
       var mioC = "-" + mio + "-", kC = "-" + chiave + "-";
       if (mioC.indexOf(kC) < 0 && kC.indexOf(mioC) < 0
           && mio.indexOf(chiave) !== 0 && chiave.indexOf(mio) !== 0) continue;
+      // omonimi lontani (piu' di una parola di differenza): meglio niente
+      // che lo stemma di un altro club
+      if (Math.abs(mio.split("-").length - chiave.split("-").length) > 1) continue;
       if (chiave.length > lungo) { lungo = chiave.length; meglio = MAP[chiave]; }
     }
     return meglio;
