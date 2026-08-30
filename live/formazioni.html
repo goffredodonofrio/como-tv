@@ -137,8 +137,8 @@
     align-items:baseline;gap:8px;flex-wrap:wrap;}
   .colpanel h2 small{font-family:'DM Sans',system-ui,sans-serif;font-size:11px;letter-spacing:0;
     text-transform:none;color:var(--fg-3);font-weight:500;}
-  .slotrow{display:grid;grid-template-columns:16px 26px 1fr 26px;gap:6px;align-items:center;margin-bottom:5px;}
-  .slotrow.manual{grid-template-columns:16px 44px 1fr 1fr 26px;}
+  .slotrow{display:grid;grid-template-columns:16px 26px 1fr 26px 24px;gap:6px;align-items:center;margin-bottom:5px;}
+  .slotrow.manual{grid-template-columns:16px 44px 1fr 1fr 26px 24px;}
   .slotrole{font-family:'Mazzard',system-ui,sans-serif;font-size:9.5px;font-weight:700;letter-spacing:.08em;
     color:var(--fg-3);text-align:center;border:1px solid var(--line-2);border-radius:4px;padding:6px 0;}
   .draghand{cursor:grab;touch-action:none;user-select:none;color:var(--fg-3);font-size:12px;
@@ -152,6 +152,8 @@
     text-transform:none;padding:5px 0;width:26px;text-align:center;
     background:transparent;color:var(--fg-3);border:1px solid var(--line-2);border-radius:4px;}
   .rowbtn:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  .rowbtn.x{color:#FF8A8D;border-color:rgba(229,27,32,.4);width:24px;}
+  .rowbtn.x:hover{color:#FFB0B2;border-color:#E51B20;background:rgba(229,27,32,.12);}
   .coachrow{display:grid;grid-template-columns:34px 1fr 1fr;gap:6px;align-items:center;
     margin-top:11px;padding-top:11px;border-top:1px solid var(--line-2);}
   .coachrow .slotrole{color:var(--gold-bright);border-color:var(--line-gold);}
@@ -671,7 +673,6 @@
           '<input type="file" class="magliaFile" data-si="' + si + '" accept="image/png,image/webp" hidden>' +
           '<button class="modebtn' + (side.manualMode ? " off" : "") + '" data-si="' + si + '" data-act="' + (side.manualMode ? "manual-off" : "manual-on") + '">' +
           (side.manualMode ? "torna alle rose ESPN" : "Scrivi da zero") + '</button>' +
-          '<button class="modebtn rosso" data-si="' + si + '" data-act="svuota" title="Cancella tutti i campi per scriverli a mano">&#10005;</button>' +
           '<button class="modebtn verde" data-si="' + si + '" data-act="anteprima" title="Apre la grafica animata di questa squadra">Anteprima</button>' +
           '<button class="modebtn viola" data-si="' + si + '" data-act="campetto" title="Campetto in PDF di questa squadra">Campetto</button>' +
           '</span></div>';
@@ -798,6 +799,7 @@
         '<input type="text" placeholder="Nome" value="' + esc(v.nome) + '" data-k="mnome"' + at + '>' +
         '<input type="text" placeholder="Cognome" value="' + esc(v.cognome) + '" data-k="mcog"' + at + '>' +
         '<button class="rowbtn" title="Torna al menu" data-act="rev"' + at + '>&#10226;</button>' +
+        '<button class="rowbtn x" title="Cancella questo campo" data-act="clear"' + at + '>&#10005;</button>' +
         '</div>';
     }
 
@@ -830,6 +832,7 @@
         '<option value="M">✍ scrivi a mano…</option>' +
       '</select>' +
       '<button class="rowbtn" title="Correggi a mano nome e numero" data-act="edit"' + at + '>✎</button>' +
+      '<button class="rowbtn x" title="Cancella questo campo" data-act="clear"' + at + '>&#10005;</button>' +
       '</div>';
   }
 
@@ -977,6 +980,14 @@
         '"][data-zone="' + btn.dataset.zone + '"][data-slot="' + btn.dataset.slot + '"]');
       if (campo) { campo.focus(); campo.select(); }
     }
+    if (btn.dataset.act === "clear") {
+      arr[k] = mkManualRow();     // campo vuoto, con gli input pronti alla scrittura
+      renderAll();
+      var c2 = document.querySelector('input[data-k="mnum"][data-si="' + btn.dataset.si +
+        '"][data-zone="' + btn.dataset.zone + '"][data-slot="' + btn.dataset.slot + '"]');
+      if (c2) c2.focus();
+      return;
+    }
     if (btn.dataset.act === "rev") {
       var orig = arr[k] && arr[k].orig;
       arr[k] = (orig != null && side.roster[orig]) ? { p: orig }
@@ -991,17 +1002,6 @@
     if (!btn) return;
     var side = sides[+btn.dataset.si];
 
-    if (btn.dataset.act === "svuota") {
-      // cancella TUTTI i campi (undici, panchina, allenatore): restano input
-      // manuali vuoti, pronti per la scrittura a mano
-      side.manualMode = true; side.teamId = ""; side.roster = [];
-      side.tit = []; for (var sv = 0; sv < 11; sv++) side.tit.push(mkManualRow());
-      side.pan = []; for (var sw = 0; sw < NBENCH; sw++) side.pan.push(mkManualRow());
-      side.coachN = ""; side.coachC = ""; side.custom = {};
-      renderAll();
-      status("", '<span class="msg"><b>' + side.label + ' svuotata:</b> scrivi a mano numero, nome e cognome.</span>');
-      return;
-    }
     if (btn.dataset.act === "manual-on") {
       var has = side.tit.some(function (v) { var d = resolve(side, v); return d && (d.cognome || d.nome); });
       if (has && !window.confirm("Passo alla compilazione da zero: la formazione attuale di " + side.label + " viene svuotata. Continuare?")) return;
