@@ -26,7 +26,7 @@
     transform:rotate(-8deg) scale(1.4);transform-origin:center;}
 
   /* campo di calcio (SVG) */
-  #campo{position:absolute;left:0;bottom:0;width:1920px;height:1080px;pointer-events:none;opacity:0;}
+  #campo{position:absolute;left:0;bottom:0;width:1920px;height:1080px;pointer-events:none;opacity:0;transition:transform .8s cubic-bezier(.3,.7,.3,1);}
   #campo.on{animation:fadeIn 1s ease .3s forwards;}
 
   /* ── testata ── */
@@ -38,18 +38,16 @@
   #modulo{position:absolute;left:266px;top:150px;font-family:'Mazzard',sans-serif;font-weight:800;
     font-size:28px;letter-spacing:.32em;color:#C9A24B;opacity:0;}
 
-  #pitch{position:absolute;left:0;top:0;width:1920px;height:1080px;pointer-events:none;}
+  #pitch{position:absolute;left:0;top:0;width:1920px;height:1080px;pointer-events:none;transition:transform .8s cubic-bezier(.3,.7,.3,1);}
 
   /* ── MAGLIETTA in campo (stato finale) ── */
-  .pcard{position:absolute;transform:translate(-50%,-50%);opacity:0;transition:opacity .35s ease;text-align:center;}
+  .pcard{position:absolute;transform:translate(-50%,-50%);opacity:0;transition:opacity .55s ease;text-align:center;}
   .jersey{position:relative;width:132px;height:132px;margin:0 auto;}
   .jersey img{width:132px;height:132px;object-fit:contain;filter:drop-shadow(0 8px 16px rgba(0,0,0,.5));}
-  .jersey .jn{position:absolute;left:0;right:0;top:44%;transform:translateY(-50%);
-    font-family:'Mazzard',sans-serif;font-weight:800;font-size:40px;color:#F5F1E6;
-    text-shadow:0 2px 8px rgba(0,0,0,.6);}
   .pcard .pnome{font-family:'Mazzard',sans-serif;font-weight:800;font-size:20px;letter-spacing:.04em;
-    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;margin-top:2px;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;margin-top:4px;
     text-shadow:0 2px 8px rgba(0,0,0,.7);}
+  .pcard .pnome .pnum{color:#C9A24B;margin-right:8px;}
   .pcard .pnome small{display:block;font-family:'DM Sans',sans-serif;font-weight:500;font-size:12px;
     color:rgba(245,241,230,.72);text-transform:none;margin-top:0;}
 
@@ -57,8 +55,8 @@
   #ribalta{position:absolute;left:0;right:0;top:300px;height:560px;
     display:flex;align-items:center;justify-content:center;gap:30px;pointer-events:none;}
   .bigcard{width:270px;opacity:0;transform:translateY(60px) scale(.94);position:relative;}
-  .bigcard.in{animation:bigIn .5s cubic-bezier(.2,.75,.3,1) forwards;}
-  .bigcard.out{animation:bigOut .45s cubic-bezier(.5,0,.7,.4) forwards;}
+  .bigcard.in{animation:bigIn .7s cubic-bezier(.2,.75,.3,1) forwards;}
+  .bigcard.out{animation:bigOut .6s cubic-bezier(.5,0,.7,.4) forwards;}
   @keyframes bigIn{to{opacity:1;transform:translateY(0) scale(1);}}
   /* uscita: la foto rimpicciolisce e sale, "trasformandosi" nella maglietta */
   @keyframes bigOut{to{opacity:0;transform:translateY(-120px) scale(.42);}}
@@ -264,8 +262,8 @@
   titolari.forEach(function (r, i) {
     var g = slots[i], num = r[0] || "", nome = r[1] || "", cognome = r[2] || "";
     h += '<div class="pcard" data-i="' + i + '" style="left:' + g.x + 'px;top:' + g.y + 'px">' +
-      '<div class="jersey"><img src="' + esc(MAGLIA) + '" onerror="this.style.opacity=.15"><span class="jn">' + esc(num) + '</span></div>' +
-      '<div class="pnome">' + esc(cognome) + (nome ? '<small>' + esc(nome) + '</small>' : '') + '</div></div>';
+      '<div class="jersey"><img src="' + esc(MAGLIA) + '" onerror="this.style.opacity=.15"></div>' +
+      '<div class="pnome"><span class="pnum">' + esc(num) + '</span>' + esc(cognome) + (nome ? '<small>' + esc(nome) + '</small>' : '') + '</div></div>';
   });
   pitch.innerHTML = h;
   var pcards = pitch.querySelectorAll(".pcard");
@@ -317,7 +315,7 @@
   if (STILL) {
     el("tile").style.opacity = 1; el("campo").classList.add("on"); el("campo").style.opacity = 1;
     el("logo").style.opacity = 1; el("team").style.clipPath = "inset(0 0 0 0)"; el("modulo").style.opacity = 1;
-    if (conPanca) el("panca").style.opacity = 1;
+    if (conPanca) { el("panca").style.opacity = 1; el("campo").style.transform = "translateX(-190px)"; el("pitch").style.transform = "translateX(-190px)"; }
     pcards.forEach(function (c) { c.style.opacity = 1; });
     return;
   }
@@ -332,7 +330,7 @@
   el("modulo").style.animation = "fadeIn .5s ease .7s forwards";
 
   var ribalta = el("ribalta"), reparto = el("reparto");
-  var T0 = 1000 * SLOW, PER = 1600 * SLOW;
+  var T0 = 1200 * SLOW, PER = 2500 * SLOW;
 
   righe.forEach(function (r, li) {
     var inizio = T0 + li * PER;
@@ -343,7 +341,7 @@
         reparto.className = "in";
         ribalta.innerHTML = r.map(function (_, k) { return bigHTML(titolari[startIdx[li] + k] || []); }).join("");
         var bigs = ribalta.querySelectorAll(".bigcard");
-        bigs.forEach(function (b, k) { setTimeout(function () { b.classList.add("in"); }, k * 80); });
+        bigs.forEach(function (b, k) { setTimeout(function () { b.classList.add("in"); }, k * 130); });
       });
     }, inizio);
     // la foto si "trasforma" nella maglietta in campo
@@ -351,16 +349,21 @@
       reparto.className = "out";
       ribalta.querySelectorAll(".bigcard").forEach(function (b) { b.classList.add("out"); });
       for (var k = 0; k < r.length; k++) {
-        (function (pc) { setTimeout(function(){ if (pc) pc.style.opacity = 1; }, 260 * SLOW); })(pcards[startIdx[li] + k]);
+        (function (pc) { setTimeout(function(){ if (pc) pc.style.opacity = 1; }, 360 * SLOW); })(pcards[startIdx[li] + k]);
       }
-    }, inizio + PER - 420 * SLOW);
+    }, inizio + PER - 620 * SLOW);
   });
 
   var fine = T0 + righe.length * PER;
   setTimeout(function () {
     ribalta.innerHTML = ""; reparto.className = "";
     pcards.forEach(function (c) { c.style.opacity = 1; });
-    if (conPanca) el("panca").classList.add("in");
+    if (conPanca) {
+      // il campo e le magliette scorrono a sinistra, la panchina entra nello spazio
+      el("campo").style.transform = "translateX(-190px)";
+      el("pitch").style.transform = "translateX(-190px)";
+      setTimeout(function(){ el("panca").classList.add("in"); }, 300 * SLOW);
+    }
   }, fine);
 
   document.addEventListener("dblclick", function(){ location.reload(); });
