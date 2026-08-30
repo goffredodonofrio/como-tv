@@ -356,6 +356,30 @@ function budgetSet(p) {
   return { ok: true, fatture: (S.budget.fatture || []).length };
 }
 
+// La pagina chiede l'invio al Drive: la richiesta resta in bacheca e lo
+// script "Budget Drive" (trigger a tempo su Apps Script) la ritira entro
+// un minuto, scrive il foglio e riporta l'esito. Cosi' non serve nessuna
+// web app pubblica e lo script delle grafiche non viene toccato.
+function budgetInvia(p) {
+  if (!p.fatture || !p.fatture.length) return { ok: false, errore: "nessuna fattura nel pacchetto" };
+  if (!S.budget) S.budget = {};
+  S.budget.richiesta = {
+    quando: Date.now(), servita: null,
+    pacchetto: { fatture: p.fatture, forecast: p.forecast || {}, categorie: p.categorie || [] }
+  };
+  delete S.budget.esito;
+  salva();
+  return { ok: true, inCoda: true };
+}
+
+function budgetEsito(p) {
+  if (!S.budget) S.budget = {};
+  S.budget.esito = p.esito || { ok: false, errore: "esito vuoto" };
+  delete S.budget.richiesta;
+  salva();
+  return { ok: true };
+}
+
 function partitaSet(p) {
   const c = canaleDi(p.c);
   const stato = p.stato || {};
@@ -694,6 +718,16 @@ const server = http.createServer((req, res) => {
     if (q.get("regia")) return json(res, statoRegia(canaleDi(q.get("canale") || q.get("c"))));
     if (q.get("partita")) return json(res, statoPartita(canaleDi(q.get("canale") || q.get("c"))));
     if (q.get("loghi")) return json(res, logoElenco());
+    if (q.get("budget") === "drive") {
+      // la bacheca per lo script del Drive: consegna la richiesta pendente
+      // (e non la riconsegna per 10 minuti, contro i doppioni)
+      var ric = S.budget && S.budget.richiesta;
+      if (!ric) return json(res, {});
+      if (ric.servita && Date.now() - ric.servita < 10 * 60 * 1000) return json(res, {});
+      ric.servita = Date.now();
+      salva();
+      return json(res, ric.pacchetto || {});
+    }
     if (q.get("budget")) return json(res, S.budget || {});
     return json(res, { ok: true, servizio: "Ponte Como TV", canali: CONFIG.CANALI, versione: 1 });
   }
@@ -727,7 +761,8 @@ const server = http.createServer((req, res) => {
           case "progetto-carica":   out = progettoCarica(p); break;
           case "partita-set":  out = partitaSet(p); break;
           case "budget-set":   out = budgetSet(p); break;
-          case "budget-drive": out = await inoltra(p, CONFIG.PONTE_BUDGET); break;
+          case "budget-invia": out = budgetInvia(p); break;
+          case "budget-esito": out = budgetEsito(p); break;
           case "logo-carica":  out = logoSalva(p); break;
           case "logo-togli":   out = logoCancella(p); break;
           // questi vivono sui Fogli Google: si inoltrano
