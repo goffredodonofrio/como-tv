@@ -52,7 +52,11 @@ const CONFIG = {
 
   // gli invii "Al foglio" continuano ad andare qui
   PONTE_FOGLI: process.env.COMOTV_PONTE_FOGLI ||
-    "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec"
+    "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec",
+  // Il budget MediaOps parla a un progetto Apps Script SEPARATO ("Budget
+  // Drive"): quello delle grafiche resta suo e non viene mai toccato.
+  PONTE_BUDGET: process.env.COMOTV_PONTE_BUDGET ||
+    "https://script.google.com/macros/s/AKfycbxiJai4HubfJnfuA78yMYW1jUQYHiig-jL_IeZ_tPaMAk58Itu17n2mg1SMdXsfv0s/exec",
 };
 
 // ─────────────────────────────────────────────── stato in memoria
@@ -371,10 +375,10 @@ function partitaSet(p) {
 // ─────────────────────────────────────────────── inoltro ad Apps Script
 // Gli invii ai Fogli Google (e la lettura dei file su Drive) restano
 // dove hanno senso: qui vengono solo passati avanti.
-function inoltra(corpo) {
+function inoltra(corpo, indirizzo) {
   return new Promise((risolvi) => {
     const dati = Buffer.from(JSON.stringify(corpo), "utf8");
-    const u = new URL(CONFIG.PONTE_FOGLI);
+    const u = new URL(indirizzo || CONFIG.PONTE_FOGLI);
     const req = https.request({
       hostname: u.hostname, path: u.pathname + u.search, method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8", "Content-Length": dati.length }
@@ -723,7 +727,7 @@ const server = http.createServer((req, res) => {
           case "progetto-carica":   out = progettoCarica(p); break;
           case "partita-set":  out = partitaSet(p); break;
           case "budget-set":   out = budgetSet(p); break;
-          case "budget-drive": out = await inoltra(p); break;
+          case "budget-drive": out = await inoltra(p, CONFIG.PONTE_BUDGET); break;
           case "logo-carica":  out = logoSalva(p); break;
           case "logo-togli":   out = logoCancella(p); break;
           // questi vivono sui Fogli Google: si inoltrano
