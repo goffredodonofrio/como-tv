@@ -288,6 +288,23 @@ function regiaDel(p) {
   return { ok: true, canale: c, nonce: ix.nonce, state: ix.state, onair: ix.onair };
 }
 
+// Svuota la playlist del canale: via tutte le voci, ma i progetti salvati
+// non vengono toccati. Con qualcosa in onda si rifiuta: prima Fuori onda.
+function regiaSvuota(p) {
+  const c = canaleDi(p.c);
+  const ix = regiaDi(c);
+  for (const L of Object.keys(ix.liv)) {
+    const lv = ix.liv[L];
+    if (lv.state === "play" && lv.onair) throw new Error("c'è una grafica IN ONDA: prima Fuori onda, poi si svuota");
+  }
+  ix.items = [];
+  for (const L of Object.keys(ix.liv)) ix.liv[L].onair = null;
+  S.voci[c] = {};
+  ix.nonce = Date.now();
+  salva(); annuncia(c, "regia");
+  return { ok: true, canale: c, nonce: ix.nonce };
+}
+
 function regiaRename(p) {
   const c = canaleDi(p.c);
   const ix = regiaDi(c);
@@ -682,6 +699,7 @@ const server = http.createServer((req, res) => {
           case "regia-load":   out = regiaLoad(p); break;
           case "regia-state":  out = regiaState(p); break;
           case "regia-del":    out = regiaDel(p); break;
+          case "regia-svuota": out = regiaSvuota(p); break;
           case "regia-move":   out = regiaMove(p); break;
           case "regia-order":  out = regiaOrder(p); break;
           case "regia-rename": out = regiaRename(p); break;

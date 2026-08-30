@@ -17,7 +17,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Live Dashboard · Como TV</title>
+<title>Regia · Como TV</title>
 <style>
   @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
   @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
@@ -153,6 +153,11 @@
   }
   #btnOut:hover:not(:disabled){background:rgba(229,27,32,.12);border-color:var(--red);}
   #btnOut:disabled{opacity:.35;cursor:default;}
+  #btnSvuota{float:right;font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
+    letter-spacing:.14em;text-transform:uppercase;padding:6px 12px;border-radius:6px;cursor:pointer;
+    background:transparent;color:#FF6B6E;border:1px solid rgba(229,27,32,.45);}
+  #btnSvuota:hover:not(:disabled){background:rgba(229,27,32,.12);border-color:var(--red);}
+  #btnSvuota:disabled{opacity:.35;cursor:default;}
   #btnProg{border:2px solid var(--line-gold);background:transparent;color:var(--gold-bright);
     font-size:11px;}
   #btnProg:hover{background:rgba(200,164,88,.12);border-color:var(--gold-bright);}
@@ -269,7 +274,7 @@
 
   <header class="page">
     <div class="eyebrow">Como TV · Regia grafiche</div>
-    <h1 style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">Live Dashboard
+    <h1 style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span id="titoloRegia">Regia</span>
       <a id="canaleBadge" href="regia.html" title="Cambia canale">CANALE&nbsp;&mdash;</a></h1>
   </header>
 
@@ -303,19 +308,21 @@
     </div>
   </div>
 
-  <div class="panel">
-    <h2>Scaletta <small id="count"></small></h2>
-    <div id="items"></div>
-    <div id="empty" style="display:none">Scaletta vuota: carica le grafiche dalle pagine
-      (Formazioni &rarr; &#128225; Regia) e compariranno qui.</div>
-  </div>
-
   <!-- I progetti preparati dalla redazione (dalle pagine delle grafiche,
        destinazione "Nuovo progetto"). Caricarne uno SOSTITUISCE la scaletta
        di questo canale, ma non tocca mai cio' che e' in onda. -->
   <div class="panel" id="progpanel" style="display:none">
     <h2>Progetti <small id="progcount"></small></h2>
     <div id="proglist"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Scaletta <small id="count"></small>
+      <button id="btnSvuota" type="button" title="Toglie tutte le grafiche dalla scaletta del canale. I progetti salvati restano.">Svuota la scaletta</button>
+    </h2>
+    <div id="items"></div>
+    <div id="empty" style="display:none">Scaletta vuota: carica le grafiche dalle pagine
+      (Formazioni &rarr; &#128225; Regia) e compariranno qui.</div>
   </div>
 
   <!-- Il Live Match dello stesso canale: stessa pagina, stessa onda.
@@ -393,7 +400,7 @@
   // ── console live studio ──
   document.getElementById("console").style.display = "block";
   var badge = document.getElementById("canaleBadge");
-  badge.textContent = "CANALE " + CANALE + " · LIVE DASHBOARD";
+  badge.textContent = "CANALE " + CANALE + " · REGIA";
   badge.href = "regia.html";
 
   // ── Live Match nella stessa pagina ──────────────────────────────────
@@ -414,7 +421,8 @@
     fr.addEventListener("load", function () { adatta(); setTimeout(adatta, 400); });
     setInterval(adatta, 800);   // le tendine interne cambiano l'altezza
   })();
-  document.title = "Live Dashboard C" + CANALE + " · Como TV";
+  document.title = "Regia - vMix " + CANALE + " · Como TV";
+  document.getElementById("titoloRegia").textContent = "Regia - vMix " + CANALE;
 
   var elState = document.getElementById("state");
   var elStateTxt = document.getElementById("stateTxt");
@@ -636,6 +644,7 @@
     // grafica sul livello 3 lo stato generale dice "standby" e il tasto
     // restava spento anche se c'era da spegnere
     btnOut.disabled = !titoloSuLiv(mira()) && !(anteprimaMatch && anteprimaFase);
+    btnSvuota.disabled = !cur.items.length;
     elCount.textContent = cur.items.length ? cur.items.length + " / 30" : "";
     elEmpty.style.display = cur.items.length ? "none" : "block";
 
@@ -893,6 +902,15 @@
   // Fuori onda: toglie il livello della voce selezionata, non un livello scelto
   // altrove. Prima con un interruttore globale non si riusciva a spegnere il
   // livello giusto se la selezione era su un'altra grafica.
+  var btnSvuota = document.getElementById("btnSvuota");
+  btnSvuota.addEventListener("click", function () {
+    if (!cur.items.length) return;
+    if (!window.confirm("Svuoto la scaletta del canale " + CANALE + "?\n\nVia tutte le " +
+        cur.items.length + " grafiche in playlist. I progetti salvati NON vengono toccati.\n" +
+        "Se qualcosa \u00e8 in onda, prima va messa fuori onda.")) return;
+    post({ tipo: "regia-svuota" }, "Scaletta svuotata. I progetti sono al loro posto.");
+  });
+
   btnOut.addEventListener("click", function () {
     if (anteprimaMatch && anteprimaFase) {
       if (comandaFase("fase-out")) msg.textContent = "Schermata del Live Match fuori onda.";
