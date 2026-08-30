@@ -843,13 +843,32 @@
     var valCorr = d ? vocePlayer(d) : "";
     return '<div class="slotrow">' + hand +
       '<span class="slotrole' + (hasNum ? " n" : "") + '">' + (hasNum ? esc(d.num) : roleLabel) + '</span>' +
-      // input con ricerca: scrivi il cognome e la lista si filtra da sola
-      '<input class="slotpick" list="' + dlId + '" data-k="slot"' + at +
-        ' value="' + esc(valCorr) + '" placeholder="Cerca il giocatore\u2026" autocomplete="off">' +
-      '<datalist id="' + dlId + '">' +
-        side.roster.map(function (p) { return '<option value="' + esc(vocePlayer(p)) + '"></option>'; }).join("") +
-        '<option value="' + MANO_LABEL + '"></option>' +
-      '</datalist>' +
+      // combobox: si apre come un menu\u2019 (voci per ruolo) e filtra mentre scrivi
+      '<div class="combo">' +
+        '<input class="slotpick" data-k="slot"' + at +
+          ' value="' + esc(valCorr) + '" placeholder="Scegli o scrivi\u2026" autocomplete="off">' +
+        '<span class="combocar" aria-hidden="true">\u25be</span>' +
+        '<div class="combolist">' +
+          (function () {
+            var GRUPPI = [["G","Portieri"],["D","Difensori"],["M","Centrocampisti"],["F","Attaccanti"]];
+            var per = {};
+            side.roster.forEach(function (p) { (per[p.ruolo] = per[p.ruolo] || []).push(p); });
+            function riga(p) {
+              var vv = vocePlayer(p);
+              return '<div class="comboopt' + (v && v.p === p.idx ? " sel" : "") + '" data-val="' + esc(vv) + '">' + esc(vv) + '</div>';
+            }
+            var h2 = "";
+            GRUPPI.forEach(function (g) {
+              if (!per[g[0]]) return;
+              h2 += '<div class="combogrp">' + g[1] + '</div>' + per[g[0]].map(riga).join("");
+              delete per[g[0]];
+            });
+            Object.keys(per).forEach(function (r) { h2 += '<div class="combogrp">Altri</div>' + per[r].map(riga).join(""); });
+            h2 += '<div class="comboopt mano" data-val="' + MANO_LABEL + '">' + MANO_LABEL + '</div>';
+            return h2;
+          })() +
+        '</div>' +
+      '</div>' +
       '<button class="rowbtn" title="Correggi a mano nome e numero" data-act="edit"' + at + '>✎</button>' +
       '<button class="rowbtn x" title="Cancella questo campo" data-act="clear"' + at + '>&#10005;</button>' +
       '</div>';
@@ -1043,6 +1062,72 @@
       loadTeams(fresh, renderAll);
       renderAll();
     }
+  });
+
+  // ---------------- combobox dei giocatori (dropdown + ricerca) ----------------
+  function comboFiltra(combo) {
+    var q = combo.querySelector(".slotpick").value.trim().toLowerCase();
+    combo.querySelectorAll(".comboopt").forEach(function (o) {
+      if (o.classList.contains("mano")) { o.classList.remove("nascosta"); return; }
+      o.classList.toggle("nascosta", q !== "" && o.dataset.val.toLowerCase().indexOf(q) < 0);
+    });
+    // i titoli di gruppo spariscono se il gruppo e' tutto filtrato
+    combo.querySelectorAll(".combogrp").forEach(function (g) {
+      var vis = false, n = g.nextElementSibling;
+      while (n && n.classList.contains("comboopt") && !n.classList.contains("mano")) {
+        if (!n.classList.contains("nascosta")) vis = true;
+        n = n.nextElementSibling;
+      }
+      g.classList.toggle("nascosta", !vis);
+    });
+  }
+  function comboChiudi() {
+    document.querySelectorAll(".combo.open").forEach(function (c) { c.classList.remove("open"); });
+  }
+  document.addEventListener("focusin", function (e) {
+    var pick = e.target.closest ? e.target.closest(".slotpick") : null;
+    if (!pick) { return; }
+    comboChiudi();
+    var combo = pick.closest(".combo");
+    combo.classList.add("open");
+    pick.dataset.prima = pick.value;          // per ripristinare se non si sceglie
+    // aprendo uno slot gia' compilato mostro TUTTA la lista (non filtro per
+    // il nome corrente); il testo e' selezionato, cosi' digitando lo sostituisci
+    combo.querySelectorAll(".nascosta").forEach(function (o) { o.classList.remove("nascosta"); });
+    try { pick.select(); } catch (e) {}
+  });
+  document.addEventListener("input", function (e) {
+    var pick = e.target.closest ? e.target.closest(".slotpick") : null;
+    if (!pick) return;
+    var combo = pick.closest(".combo");
+    combo.classList.add("open");
+    comboFiltra(combo);
+  });
+  document.addEventListener("mousedown", function (e) {
+    var opt = e.target.closest ? e.target.closest(".comboopt") : null;
+    if (opt) {
+      e.preventDefault();                     // non far perdere il focus prima del click
+      var combo = opt.closest(".combo"), pick = combo.querySelector(".slotpick");
+      pick.value = opt.dataset.val;
+      combo.classList.remove("open");
+      pick.dispatchEvent(new Event("change", { bubbles: true }));
+      return;
+    }
+    if (!(e.target.closest && e.target.closest(".combo"))) comboChiudi();
+  });
+  // se si esce senza scegliere una voce valida, ripristino il valore di prima
+  document.addEventListener("focusout", function (e) {
+    var pick = e.target.closest ? e.target.closest(".slotpick") : null;
+    if (!pick) return;
+    setTimeout(function () {
+      var combo = pick.closest(".combo");
+      if (combo && combo.classList.contains("open")) return;   // scelta in corso
+      var val = pick.value.trim();
+      if (val && val !== MANO_LABEL) {
+        var side = sides[+pick.dataset.si];
+        if (side && idxDaVoce(side, val) == null) pick.value = pick.dataset.prima || "";
+      }
+    }, 150);
   });
 
   // ---------------- drag verticale nella lista: scambia i giocatori ----------------
