@@ -152,7 +152,7 @@
     text-transform:none;padding:5px 0;width:26px;text-align:center;
     background:transparent;color:var(--fg-3);border:1px solid var(--line-2);border-radius:4px;}
   .rowbtn:hover{color:var(--gold-bright);border-color:var(--line-gold);}
-  .rowbtn.x{color:#FF8A8D;border-color:rgba(229,27,32,.4);width:24px;}
+.slotpick{width:100%;font-family:'DM Sans',system-ui,sans-serif;font-size:13.5px;padding:8px 10px;\n    color:var(--ivory);background:var(--surface-panel);border:1px solid var(--line-2);border-radius:5px;}\n  .slotpick:focus{outline:none;border-color:var(--gold);}\n    .rowbtn.x{color:#FF8A8D;border-color:rgba(229,27,32,.4);width:24px;}
   .rowbtn.x:hover{color:#FFB0B2;border-color:#E51B20;background:rgba(229,27,32,.12);}
   .coachrow{display:grid;grid-template-columns:34px 1fr 1fr;gap:6px;align-items:center;
     margin-top:11px;padding-top:11px;border-top:1px solid var(--line-2);}
@@ -787,6 +787,18 @@
     return p.cognome + (p.nome ? " " + p.nome : "") + " · " + p.ruolo;
   }
 
+  var MANO_LABEL = "\u270d Scrivi a mano\u2026";
+  function vocePlayer(p) {
+    return p.cognome + (p.nome ? " " + p.nome : "") + (p.num ? " \u00b7 " + p.num : "");
+  }
+  function idxDaVoce(side, testo) {
+    testo = String(testo).trim().toLowerCase();
+    for (var i = 0; i < side.roster.length; i++) {
+      if (vocePlayer(side.roster[i]).toLowerCase() === testo) return side.roster[i].idx;
+    }
+    return null;
+  }
+
   function slotRowHTML(side, si, zone, k, roleLabel) {
     var v = zone === "tit" ? side.tit[k] : side.pan[k];
     var at = ' data-si="' + si + '" data-zone="' + zone + '" data-slot="' + k + '"';
@@ -805,32 +817,17 @@
 
     var d = resolve(side, v);
     var hasNum = d && String(d.num || "").length;
+    var dlId = "dl-" + si + "-" + zone + "-" + k;
+    var valCorr = d ? vocePlayer(d) : "";
     return '<div class="slotrow">' + hand +
       '<span class="slotrole' + (hasNum ? " n" : "") + '">' + (hasNum ? esc(d.num) : roleLabel) + '</span>' +
-      '<select data-k="slot"' + at + '>' +
-        '<option value="">—</option>' +
-        (function () {
-          // la rosa divisa per ruolo: ogni gruppo col suo titoletto
-          var GRUPPI = [["G", "Portieri"], ["D", "Difensori"], ["M", "Centrocampisti"], ["F", "Attaccanti"]];
-          var per = {};
-          side.roster.forEach(function (p) { (per[p.ruolo] = per[p.ruolo] || []).push(p); });
-          function voce(p) {
-            var nome = p.cognome + (p.nome ? " " + p.nome : "") + (p.num ? " · " + p.num : "");
-            return '<option value="' + p.idx + '"' + (v && v.p === p.idx ? " selected" : "") + '>' + esc(nome) + '</option>';
-          }
-          var h2 = "";
-          GRUPPI.forEach(function (g) {
-            if (!per[g[0]]) return;
-            h2 += '<optgroup label="' + g[1] + '">' + per[g[0]].map(voce).join("") + '</optgroup>';
-            delete per[g[0]];
-          });
-          Object.keys(per).forEach(function (r) {
-            h2 += '<optgroup label="Altri">' + per[r].map(voce).join("") + '</optgroup>';
-          });
-          return h2;
-        })() +
-        '<option value="M">✍ scrivi a mano…</option>' +
-      '</select>' +
+      // input con ricerca: scrivi il cognome e la lista si filtra da sola
+      '<input class="slotpick" list="' + dlId + '" data-k="slot"' + at +
+        ' value="' + esc(valCorr) + '" placeholder="Cerca il giocatore\u2026" autocomplete="off">' +
+      '<datalist id="' + dlId + '">' +
+        side.roster.map(function (p) { return '<option value="' + esc(vocePlayer(p)) + '"></option>'; }).join("") +
+        '<option value="' + MANO_LABEL + '"></option>' +
+      '</datalist>' +
       '<button class="rowbtn" title="Correggi a mano nome e numero" data-act="edit"' + at + '>✎</button>' +
       '<button class="rowbtn x" title="Cancella questo campo" data-act="clear"' + at + '>&#10005;</button>' +
       '</div>';
@@ -926,13 +923,15 @@
     if (t.dataset.k === "slot") {
       var zone = t.dataset.zone, k = +t.dataset.slot;
       var arr = slotArr(side, zone);
-      if (t.value === "M") {
+      var val = String(t.value).trim();
+      if (val === MANO_LABEL) {
         var cur = resolve(side, arr[k]);
         arr[k] = { m: 1, num: cur ? cur.num : "", nome: cur ? cur.nome : "", cognome: cur ? cur.cognome : "" };
-      } else if (t.value === "") {
+      } else if (val === "") {
         arr[k] = null;
       } else {
-        var idx = +t.value;
+        var idx = idxDaVoce(side, val);
+        if (idx == null) return;   // testo non ancora riconosciuto: si aspetta
         var other = findPlayer(side, idx, zone, k);
         var prev = arr[k];
         arr[k] = { p: idx };
