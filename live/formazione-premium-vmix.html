@@ -60,11 +60,20 @@
   @keyframes bigIn{to{opacity:1;transform:translateY(0) scale(1);}}
   /* uscita: la foto rimpicciolisce e sale, "trasformandosi" nella maglietta */
   @keyframes bigOut{to{opacity:0;transform:translateY(-120px) scale(.42);}}
-  .bigcard .bfoto{width:100%;height:430px;position:relative;overflow:hidden;}
+  /* flip 3D: prima la FOTO, poi gira e mostra il NUMERO, poi va nella maglietta */
+  .bigcard .bflip{width:100%;height:430px;position:relative;perspective:1200px;}
+  .bigcard .bface{position:absolute;inset:0;overflow:hidden;backface-visibility:hidden;-webkit-backface-visibility:hidden;
+    transition:transform .55s cubic-bezier(.4,.05,.3,1);}
+  .bigcard .bfoto{transform:rotateY(0deg);}
+  .bigcard .bnumface{transform:rotateY(180deg);display:flex;align-items:center;justify-content:center;
+    border-radius:20px;background:radial-gradient(120% 100% at 50% 30%, rgba(40,58,120,.9), rgba(10,16,40,.96));
+    box-shadow:inset 0 0 0 1.5px rgba(201,162,75,.5);}
+  .bigcard.flip .bfoto{transform:rotateY(-180deg);}
+  .bigcard.flip .bnumface{transform:rotateY(0deg);}
   .bigcard .bfoto img{position:absolute;left:50%;bottom:0;transform:translateX(-50%);height:460px;width:auto;
     filter:drop-shadow(0 14px 28px rgba(0,0,0,.6));}
-  .bigcard .bnum{position:absolute;left:6px;top:2px;font-family:'Mazzard',sans-serif;font-weight:800;
-    font-size:120px;line-height:.8;color:rgba(245,241,230,.96);text-shadow:0 6px 22px rgba(0,0,0,.7);letter-spacing:-.03em;}
+  .bigcard .bnumface .bignum{font-family:'Mazzard',sans-serif;font-weight:800;font-size:220px;line-height:.8;
+    color:#C9A24B;text-shadow:0 8px 30px rgba(0,0,0,.6);letter-spacing:-.04em;}
   .bigcard .bchi{text-align:center;margin-top:6px;}
   .bigcard .bcog{font-family:'Mazzard',sans-serif;font-weight:800;font-size:34px;letter-spacing:.03em;
     color:#F5F1E6;text-transform:uppercase;white-space:nowrap;line-height:1;text-shadow:0 2px 10px rgba(0,0,0,.6);}
@@ -289,8 +298,11 @@
   function bigHTML(r) {
     var num = r[0] || "", nome = r[1] || "", cognome = r[2] || "";
     var foto = r[3] || ("/loghi/foto-premium-" + num + ".png");
-    return '<div class="bigcard"><div class="bfoto"><span class="bnum">' + esc(num) + '</span>' +
-      '<img src="' + esc(foto) + '" onerror="this.style.display=\'none\'"></div>' +
+    return '<div class="bigcard">' +
+      '<div class="bflip">' +
+        '<div class="bface bfoto"><img src="' + esc(foto) + '" onerror="this.style.display=\'none\'"></div>' +
+        '<div class="bface bnumface"><span class="bignum">' + esc(num) + '</span></div>' +
+      '</div>' +
       '<div class="bchi"><div class="bcog">' + esc(cognome) + '</div>' +
       (nome ? '<div class="bnom">' + esc(nome) + '</div>' : '') + '<div class="bfilo"></div></div></div>';
   }
@@ -337,11 +349,17 @@
     setTimeout(function () {
       wipe(function () {
         // a metà spazzata: entra il reparto grande
-        reparto.textContent = repartoNome(li, righe.length);
+        var rn = repartoNome(li, righe.length);
+        reparto.textContent = rn;
+        reparto.style.fontSize = rn.length > 8 ? "70px" : "104px";
         reparto.className = "in";
         ribalta.innerHTML = r.map(function (_, k) { return bigHTML(titolari[startIdx[li] + k] || []); }).join("");
         var bigs = ribalta.querySelectorAll(".bigcard");
         bigs.forEach(function (b, k) { setTimeout(function () { b.classList.add("in"); }, k * 130); });
+        // FOTO → (giro) → NUMERO: il flip parte a meta' della permanenza
+        setTimeout(function () {
+          bigs.forEach(function (b, k) { setTimeout(function () { b.classList.add("flip"); }, k * 90); });
+        }, PER * 0.42);
       });
     }, inizio);
     // la foto si "trasforma" nella maglietta in campo
