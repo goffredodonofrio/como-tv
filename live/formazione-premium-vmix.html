@@ -51,13 +51,23 @@
   .pcard .pnome small{display:block;font-family:'DM Sans',sans-serif;font-weight:500;font-size:12px;
     color:rgba(245,241,230,.72);text-transform:none;margin-top:0;}
 
+  /* velo che oscura i reparti gia' schierati mentre entra quello nuovo */
+  #dim{position:absolute;inset:0;z-index:5;pointer-events:none;opacity:0;
+    background:radial-gradient(120% 90% at 50% 45%, rgba(7,11,29,.55), rgba(7,11,29,.82));}
+  #dim.on{animation:dimIn .7s ease forwards;}
+  #dim.off{animation:dimOut .7s ease forwards;}
+  @keyframes dimIn{from{opacity:0}to{opacity:1}}
+  @keyframes dimOut{from{opacity:1}to{opacity:0}}
+  #ribalta{z-index:10;}
+  #reparto{z-index:11;}
+
   /* ── RIBALTA: la foto grande del reparto ── */
   #ribalta{position:absolute;left:0;right:0;top:300px;height:560px;
     display:flex;align-items:center;justify-content:center;gap:30px;pointer-events:none;}
   .bigcard{width:270px;opacity:0;transform:translateY(60px) scale(.94);position:relative;
     will-change:transform,opacity;}
-  .bigcard.in{animation:bigIn .7s cubic-bezier(.2,.75,.3,1) forwards;}
-  .bigcard.out{animation:bigOut .6s cubic-bezier(.5,0,.7,.4) forwards;}
+  .bigcard.in{animation:bigIn .85s cubic-bezier(.16,.84,.28,1) forwards;}
+  .bigcard.out{animation:bigOut .7s cubic-bezier(.45,0,.35,1) forwards;}
   @keyframes bigIn{to{opacity:1;transform:translateY(0) scale(1);}}
   /* uscita: la foto rimpicciolisce e sale, "trasformandosi" nella maglietta */
   @keyframes bigOut{to{opacity:0;transform:translateY(-120px) scale(.42);}}
@@ -147,6 +157,7 @@
   <div id="team"></div>
   <div id="modulo"></div>
   <div id="pitch"></div>
+  <div id="dim"></div>
   <div id="ribalta"></div>
   <div id="reparto"></div>
   <div id="wipe"></div>
@@ -347,7 +358,11 @@
   el("modulo").style.animation = "fadeIn .5s ease .7s forwards";
 
   var ribalta = el("ribalta"), reparto = el("reparto");
-  var T0 = 1400 * SLOW, PER = 3200 * SLOW;
+  var T0 = 1700 * SLOW, PER = 4400 * SLOW;
+
+  // il velo si accende poco prima del primo reparto e resta acceso: i
+  // reparti gia' schierati restano in ombra, il pacchetto in ribalta risalta
+  setTimeout(function () { el("dim").className = "on"; }, T0 - 200 * SLOW);
 
   righe.forEach(function (r, li) {
     var inizio = T0 + li * PER;
@@ -360,11 +375,11 @@
         reparto.className = "in";
         ribalta.innerHTML = r.map(function (_, k) { return bigHTML(titolari[startIdx[li] + k] || []); }).join("");
         var bigs = ribalta.querySelectorAll(".bigcard");
-        bigs.forEach(function (b, k) { setTimeout(function () { b.classList.add("in"); }, k * 130); });
+        bigs.forEach(function (b, k) { setTimeout(function () { b.classList.add("in"); }, k * 150); });
         // FOTO → (giro) → NUMERO: il flip parte a meta' della permanenza
         setTimeout(function () {
           bigs.forEach(function (b, k) { setTimeout(function () { b.classList.add("flip"); }, k * 90); });
-        }, PER * 0.42);
+        }, PER * 0.5);
       });
     }, inizio);
     // la foto si "trasforma" nella maglietta in campo
@@ -380,6 +395,7 @@
   var fine = T0 + righe.length * PER;
   setTimeout(function () {
     ribalta.innerHTML = ""; reparto.className = "";
+    el("dim").className = "off";                // via il velo: tutte le magliette a piena luce
     pcards.forEach(function (c) { c.style.opacity = 1; });
     if (conPanca) {
       // il campo e le magliette scorrono a sinistra, la panchina entra nello spazio
