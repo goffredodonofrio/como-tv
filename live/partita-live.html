@@ -167,10 +167,24 @@
 
   #radiorow{position:absolute;left:50%;top:400px;transform:translate(-50%,-50%);
     display:flex;align-items:center;gap:110px;}
-  .rball{width:400px;height:400px;border-radius:50%;flex:none;
+  /* la polvere di stelle sta dietro il contenuto del cartello */
+  #radiodust{position:absolute;left:0;top:0;width:1920px;height:1080px;
+    pointer-events:none;opacity:.9;}
+  #radiorow,#radioclock,#radiosotto{position:absolute;z-index:2;}
+  .rball{position:relative;width:400px;height:400px;border-radius:50%;flex:none;
     display:flex;align-items:center;justify-content:center;
     background:radial-gradient(120% 120% at 32% 24%, rgba(38,52,104,.85), rgba(11,17,40,.95) 66%);
     box-shadow:0 26px 70px rgba(0,0,0,.55), inset 0 0 0 1px rgba(245,241,230,.07);}
+  /* l'alone: un cerchio d'oro sfumato dietro la sfera che respira di
+     luminosita', non di dimensione — il logo resta fermo */
+  .rball::before{content:"";position:absolute;left:50%;top:50%;
+    width:118%;height:118%;transform:translate(-50%,-50%);border-radius:50%;
+    background:radial-gradient(circle, rgba(201,162,75,.42) 0%, rgba(201,162,75,.14) 46%, transparent 68%);
+    z-index:-1;animation:radioAlone 3.8s ease-in-out infinite;}
+  @keyframes radioAlone {
+    0%,100% { opacity:.35; }
+    50%     { opacity:1; }
+  }
   .rball img{width:230px;height:230px;object-fit:contain;
     filter:drop-shadow(0 8px 24px rgba(0,0,0,.5));}
   .rball .fsigla{transform:scale(1.4);}
@@ -229,6 +243,7 @@
   </div>
 
   <div id="radio">
+    <canvas id="radiodust" width="960" height="540"></canvas>
     <div id="radiorow">
       <div class="rball" id="rb1"></div>
       <div id="radiomid">
@@ -333,10 +348,12 @@
       aggiornaRadioClock();
       elRadio.classList.remove("out");
       elRadio.classList.add("on");
+      polvereRadio(true);
     } else if (elRadio.classList.contains("on")) {
       elRadio.classList.remove("on");
       elRadio.classList.add("out");
       setTimeout(function () { elRadio.classList.remove("out"); }, 420);
+      polvereRadio(false);
     }
 
     if (bug) {
@@ -400,6 +417,64 @@
       elFull.classList.add("out");
       setTimeout(function () { elFull.classList.remove("out"); }, 420);
     }
+  }
+
+  // ── polvere di stelle dietro il cartello radiocronaca ──────────────
+  // Stessa idea dello sfondo delle grafiche piene, ma isolata qui: un
+  // granello e' un dischetto sfumato disegnato una volta, ricopiato a
+  // mezza risoluzione. Gira SOLO mentre il cartello e' in onda, cosi'
+  // non pesa sul resto (lo scoreboard in overlay resta leggero).
+  var polvereRAF = null, polvereGranelli = null, polvereSprite = null;
+  function polvereRadio(accendi) {
+    var cv = document.getElementById("radiodust");
+    if (!cv) return;
+    if (!accendi) {
+      if (polvereRAF) { cancelAnimationFrame(polvereRAF); polvereRAF = null; }
+      return;
+    }
+    if (polvereRAF) return;           // gia' in moto
+    var g = cv.getContext("2d"), W = cv.width, H = cv.height;
+    if (!polvereSprite) {
+      polvereSprite = document.createElement("canvas");
+      polvereSprite.width = polvereSprite.height = 16;
+      var sg = polvereSprite.getContext("2d");
+      var rad = sg.createRadialGradient(8, 8, 0, 8, 8, 8);
+      rad.addColorStop(0, "rgba(232,210,150,.9)");
+      rad.addColorStop(1, "rgba(232,210,150,0)");
+      sg.fillStyle = rad; sg.fillRect(0, 0, 16, 16);
+    }
+    if (!polvereGranelli) {
+      polvereGranelli = [];
+      for (var i = 0; i < 120; i++) {
+        polvereGranelli.push({
+          x: Math.random() * W, y: Math.random() * H,
+          r: 1.2 + Math.random() * 2.6,
+          vy: -(0.15 + Math.random() * 0.5),
+          vx: (Math.random() - 0.5) * 0.25,
+          a: 0.25 + Math.random() * 0.5,
+          f: 0.6 + Math.random() * 1.2, ph: Math.random() * 6.28
+        });
+      }
+    }
+    var t0 = null;
+    function frame(ts) {
+      if (t0 === null) t0 = ts;
+      var t = (ts - t0) / 1000;
+      g.clearRect(0, 0, W, H);
+      g.globalCompositeOperation = "lighter";
+      polvereGranelli.forEach(function (p2) {
+        p2.y += p2.vy; p2.x += p2.vx;
+        if (p2.y < -8) { p2.y = H + 8; p2.x = Math.random() * W; }
+        if (p2.x < -8) p2.x = W + 8; else if (p2.x > W + 8) p2.x = -8;
+        var luc = p2.a * (0.55 + 0.45 * Math.sin(t * p2.f + p2.ph));
+        g.globalAlpha = Math.max(0, luc);
+        var d = p2.r * 4;
+        g.drawImage(polvereSprite, p2.x - d / 2, p2.y - d / 2, d, d);
+      });
+      g.globalAlpha = 1; g.globalCompositeOperation = "source-over";
+      polvereRAF = requestAnimationFrame(frame);
+    }
+    polvereRAF = requestAnimationFrame(frame);
   }
 
   function escRadio(v) {
