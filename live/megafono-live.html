@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<script>
+/* Come le altre Grafiche Live, questa pagina vive sulla macchina della regia.
+   Su GitHub resta una copia che parla a un ponte muto: chi la aprisse per
+   sbaglio non vedrebbe nulla. Da GitHub si viene portati sulla macchina giusta. */
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  location.replace("https://projects-cloud.it" + location.pathname + location.search + location.hash);
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Playout Megafono · Como TV</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-SemiBold.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{color-scheme:dark;}
+  /* pagina TRASPARENTE: il PLAYOUT MEGAFONO è un input vMix a sé; quando non
+     c'è nessun avviso non disegna nulla e lascia passare il programma. */
+  html,body{width:100%;height:100%;overflow:hidden;background:transparent;}
+
+  /* il cartello dell'avviso: nascosto finché la regia non chiama */
+  #avviso{
+    position:absolute;left:50%;bottom:6%;top:auto;transform:translate(-50%,14px) scale(.96);
+    display:flex;align-items:center;gap:22px;
+    padding:18px 34px 18px 28px;border-radius:16px;
+    background:linear-gradient(180deg, rgba(10,15,36,.93), rgba(7,11,29,.96));
+    border:2px solid rgba(201,162,75,.55);
+    box-shadow:0 26px 70px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05);
+    opacity:0;pointer-events:none;visibility:hidden;
+    will-change:opacity,transform;
+  }
+  #avviso.on{
+    opacity:1;visibility:visible;
+    transform:translate(-50%,0) scale(1);
+    transition:opacity .45s ease, transform .55s cubic-bezier(.18,.85,.28,1);
+  }
+  #avviso.off{
+    opacity:0;visibility:visible;
+    transform:translate(-50%,14px) scale(.97);
+    transition:opacity .6s ease, transform .6s ease;
+  }
+
+  /* megafono arancione fosforescente, con alone e piccolo ancheggio */
+  #ico{width:60px;height:60px;flex:0 0 auto;filter:
+      drop-shadow(0 0 10px rgba(255,120,20,.85)) drop-shadow(0 0 26px rgba(255,90,0,.55));
+      animation:squilla 1.05s ease-in-out infinite;transform-origin:60% 60%;}
+  #ico path,#ico line{stroke:#FF7A1A;}
+  #ico .fill{fill:#FF7A1A;}
+  #ico .wave{stroke:#FF9A3D;opacity:.9;}
+  @keyframes squilla{
+    0%,100%{transform:rotate(-9deg);}
+    50%{transform:rotate(9deg);}
+  }
+
+  #testo{display:flex;flex-direction:column;gap:6px;min-width:0;}
+  #eyebrow{
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:13px;letter-spacing:.4em;
+    color:#FF9A3D;text-transform:uppercase;
+    text-shadow:0 0 12px rgba(255,120,20,.5);
+  }
+  /* il NOME DELLA GRAFICA PRONTA: lampeggia oro ↔ blu (flip netto) */
+  #nome{
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:40px;line-height:1.02;
+    letter-spacing:.012em;text-transform:uppercase;white-space:nowrap;
+    animation:oroblu 1.15s steps(1,end) infinite;
+  }
+  @keyframes oroblu{
+    0%,49.9%{
+      color:#F0CE7B;
+      text-shadow:0 0 16px rgba(240,206,123,.7), 0 0 44px rgba(240,206,123,.4);
+    }
+    50%,100%{
+      color:#3E82FF;
+      text-shadow:0 0 16px rgba(62,130,255,.75), 0 0 46px rgba(62,130,255,.45);
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="avviso">
+  <svg id="ico" viewBox="0 0 100 100" fill="none" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <!-- corpo del megafono -->
+    <path class="fill" stroke="none" d="M14 40 L54 26 L54 74 L14 60 Z"/>
+    <path d="M14 40 L54 26 L54 74 L14 60 Z"/>
+    <path class="fill" stroke="none" d="M22 58 L22 76 L33 76 L31 61 Z"/>
+    <path d="M22 58 L22 76 L33 76 L31 61 Z"/>
+    <!-- onde sonore -->
+    <path class="wave" d="M64 40 Q72 50 64 60"/>
+    <path class="wave" d="M72 33 Q86 50 72 67"/>
+  </svg>
+  <div id="testo">
+    <div id="eyebrow">Grafica pronta</div>
+    <div id="nome">—</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
+  var POLL_MS = 1200;
+  var DURATA_MS = 12000;   // quanto resta a video l'avviso prima di svanire
+
+  // canale playout: ogni vMix carica il SUO url (?c=1..7) e ascolta solo
+  // il megafono di quel canale
+  var CANALE = (function () {
+    var c = parseInt(new URLSearchParams(location.search).get("c"), 10);
+    return (c >= 1 && c <= 7) ? c : 1;
+  })();
+
+  var box = document.getElementById("avviso");
+  var elNome = document.getElementById("nome");
+  var ultimoSeq = null;    // ultimo avviso già mostrato
+  var timerVia = null;
+  var primaVolta = true;
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function mostra(titolo) {
+    elNome.innerHTML = esc(titolo);
+    box.classList.remove("off");
+    // riavvio pulito dell'ingresso anche se già a video
+    void box.offsetWidth;
+    box.classList.add("on");
+    if (timerVia) clearTimeout(timerVia);
+    timerVia = setTimeout(nascondi, DURATA_MS);
+  }
+
+  function nascondi() {
+    box.classList.remove("on");
+    box.classList.add("off");
+  }
+
+  function applica(m) {
+    if (!m || m.seq == null) return;
+    // al primo giro NON si mostra nulla: un avviso vecchio in memoria non
+    // deve ricomparire solo perché il playout è stato riaperto
+    if (primaVolta) { ultimoSeq = m.seq; return; }
+    if (m.seq === ultimoSeq) return;   // niente di nuovo
+    ultimoSeq = m.seq;
+    mostra(m.titolo);
+  }
+
+  function tick() {
+    fetch(PONTE + "?regia=1&canale=" + CANALE, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j) return;
+        applica(j.megafono);
+        primaVolta = false;
+      })
+      .catch(function () {});
+  }
+
+  setInterval(tick, POLL_MS);
+  tick();
+
+  // prova rapida senza regia: ?demo=NOME mostra un avviso di esempio
+  var demo = new URLSearchParams(location.search).get("demo");
+  if (demo) { primaVolta = false; setTimeout(function () { mostra(demo); }, 400); }
+})();
+</script>
+</body>
+</html>

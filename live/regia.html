@@ -117,6 +117,14 @@
   .ib.play:hover{background:rgba(79,203,139,.12);border-color:#4FCB8B;color:#4FCB8B;}
   .ib.out{color:#FF6B6E;border-color:rgba(229,27,32,.5);}
   .ib.out:hover{background:rgba(229,27,32,.12);border-color:var(--red);color:#FF6B6E;}
+  /* megafono: avviso silenzioso alla regia, arancione fosforescente */
+  .ib.megafono{border-color:rgba(255,122,26,.5);padding:4px 8px;
+    box-shadow:0 0 9px rgba(255,122,26,.25);}
+  .ib.megafono:hover{background:rgba(255,122,26,.16);border-color:#FF7A1A;
+    box-shadow:0 0 15px rgba(255,122,26,.55);}
+  .ib.megafono svg{width:16px;height:16px;display:block;
+    filter:drop-shadow(0 0 5px rgba(255,122,26,.9));}
+  .ib.megafono.fatto{background:rgba(255,122,26,.24);border-color:#FF9A3D;}
 
   #empty{color:var(--fg-3);font-size:13.5px;padding:18px 6px;}
   /* progetti: le grafiche preparate nei giorni prima, pronte da versare qui */
@@ -201,6 +209,8 @@
     text-transform:uppercase;color:var(--fg-3);background:transparent;cursor:pointer;
     border:1px solid var(--line-2);border-radius:4px;padding:7px 6px;width:190px;}
   #canali .copia:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  #canali .copia.mega{color:#FF9A3D;border-color:rgba(255,122,26,.45);}
+  #canali .copia.mega:hover{color:#FFB55E;border-color:#FF7A1A;box-shadow:0 0 12px rgba(255,122,26,.4);}
   #canali .copia.fatto{color:#4FCB8B;border-color:rgba(79,203,139,.5);}
   #canaleBadge{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:800;letter-spacing:.18em;
     text-transform:uppercase;color:#0A0F24;background:var(--gold);border-radius:4px;
@@ -369,9 +379,11 @@
     var gh = "";
     for (var ci = 1; ci <= N_CANALI; ci++) {
       var linkLive = BASE + "grafica-live.html?c=" + ci + "&v=" + VMIX_V_STUDIO;
+      var linkMega = BASE + "megafono-live.html?c=" + ci;
       gh += '<div class="cch">' +
         '<a class="tilenum' + (ci === ultimo ? " ultimo" : "") + '" href="regia.html?c=' + ci + '" title="Apri la regia di questo canale"><b>' + ci + '</b><span>' + (ci === ultimo ? "ultimo usato" : "vMix " + ci) + '</span></a>' +
         '<button type="button" class="copia" data-link="' + linkLive + '" data-nome="vMix ' + ci + '">&#8865; LINK LIVE</button>' +
+        '<button type="button" class="copia mega" data-link="' + linkMega + '" data-nome="Megafono vMix ' + ci + '">&#128227; LINK MEGAFONO</button>' +
         '<a class="apri" href="regia.html?c=' + ci + '">&#9654; PLAYOUT LIVE</a>' +
         '</div>';
     }
@@ -684,6 +696,14 @@
                  '" data-liv="' + L + '" title="Togli dall\'onda questo livello">&#9632;</button>'
                : '<button class="ib entra" data-act="on" data-id="' + esc(it.id) +
                  '" data-liv="' + L + '" title="Manda in onda sul livello ' + L + '">&#9654;</button>') +
+        '<button class="ib megafono" data-act="megafono" data-id="' + esc(it.id) +
+          '" title="Avvisa in silenzio la regia: il nome lampeggia oro/blu sul PLAYOUT MEGAFONO">' +
+          '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+            '<path d="M3 10 L14.5 5.5 L14.5 18.5 L3 14 Z" fill="#FF7A1A"/>' +
+            '<path d="M6 14.2 L6 19.5 L9.2 19.5 L8 15 Z" fill="#FF7A1A"/>' +
+            '<path d="M17 9 Q20.2 12 17 15" stroke="#FF9A3D" stroke-width="2" stroke-linecap="round"/>' +
+            '<path d="M19.2 7 Q23.6 12 19.2 17" stroke="#FF9A3D" stroke-width="2" stroke-linecap="round" opacity=".65"/>' +
+          '</svg></button>' +
         '<button class="ib" data-act="ren" data-id="' + esc(it.id) + '" title="Rinomina">&#9998;</button>' +
         '<button class="ib" data-act="up" data-id="' + esc(it.id) + '" title="Su">&uarr;</button>' +
         '<button class="ib" data-act="down" data-id="' + esc(it.id) + '" title="Gi&ugrave;">&darr;</button>' +
@@ -876,6 +896,13 @@
       if (b.dataset.act === "on") {
         selId = id; paint();
         post({ tipo: "regia-state", state: "play", id: id, liv: +b.dataset.liv }, "Grafica in onda tra un istante…");
+      }
+      if (b.dataset.act === "megafono") {
+        var itm = null;
+        cur.items.forEach(function (x) { if (x.id === id) itm = x; });
+        var nome = itm ? (itm.titolo || itm.tipo) : "";
+        post({ tipo: "regia-megafono", titolo: nome },
+             "📣 Avviso mandato al PLAYOUT MEGAFONO: " + nome);
       }
       if (b.dataset.act === "up") post({ tipo: "regia-move", id: id, dir: "up" });
       if (b.dataset.act === "down") post({ tipo: "regia-move", id: id, dir: "down" });

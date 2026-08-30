@@ -181,6 +181,7 @@ function statoRegia(c) {
   const out = {
     canale: c, nonce: ix.nonce, playNonce: uno.playNonce,
     state: uno.state, onair: uno.onair, items: ix.items, liv: liv,
+    megafono: ix.megafono || null,
     ver: versionePagine()
   };
   if (uno.onair) {
@@ -307,6 +308,22 @@ function regiaSvuota(p) {
   ix.nonce = Date.now();
   salva(); annuncia(c, "regia");
   return { ok: true, canale: c, nonce: ix.nonce };
+}
+
+// Megafono: un avviso silenzioso a chi è in regia. Non tocca l'onda né la
+// scaletta: deposita solo il nome della grafica "pronta". Il PLAYOUT MEGAFONO
+// del canale (megafono-live.html?c=…) lo fa lampeggiare oro/blu e poi svanisce.
+// Ogni click alza un seq: è così che il playout capisce che è un avviso NUOVO.
+function regiaMegafono(p) {
+  const c = canaleDi(p.c);
+  const ix = regiaDi(c);
+  const titolo = String(p.titolo || "").slice(0, 80).trim();
+  if (!titolo) throw new Error("niente da annunciare");
+  const seq = ((ix.megafono && ix.megafono.seq) || 0) + 1;
+  ix.megafono = { titolo, seq, ts: Date.now() };
+  ix.nonce = Date.now();
+  salva(); annuncia(c, "regia");
+  return { ok: true, canale: c, seq: seq, nonce: ix.nonce };
 }
 
 function regiaRename(p) {
@@ -758,6 +775,7 @@ const server = http.createServer((req, res) => {
           case "regia-order":  out = regiaOrder(p); break;
           case "regia-rename": out = regiaRename(p); break;
           case "regia-liv":    out = regiaLiv(p); break;
+          case "regia-megafono": out = regiaMegafono(p); break;
           case "progetto-crea":     out = progettoCrea(p); break;
           case "progetto-aggiungi": out = progettoAggiungi(p); break;
           case "progetto-elenco":   out = progettoElenco(); break;
