@@ -342,6 +342,16 @@ function regiaMove(p) {
   return { ok: true, canale: c, nonce: ix.nonce };
 }
 
+// Stato del budget MediaOps: un pacchetto solo (fatture + forecast),
+// nessun canale. La pagina lo legge all'apertura e lo riscrive a ogni
+// modifica: cosi' i dati sono gli stessi da qualsiasi computer.
+function budgetSet(p) {
+  S.budget = p.stato || {};
+  S.budget.srvTs = Date.now();
+  salva();
+  return { ok: true, fatture: (S.budget.fatture || []).length };
+}
+
 function partitaSet(p) {
   const c = canaleDi(p.c);
   const stato = p.stato || {};
@@ -680,6 +690,7 @@ const server = http.createServer((req, res) => {
     if (q.get("regia")) return json(res, statoRegia(canaleDi(q.get("canale") || q.get("c"))));
     if (q.get("partita")) return json(res, statoPartita(canaleDi(q.get("canale") || q.get("c"))));
     if (q.get("loghi")) return json(res, logoElenco());
+    if (q.get("budget")) return json(res, S.budget || {});
     return json(res, { ok: true, servizio: "Ponte Como TV", canali: CONFIG.CANALI, versione: 1 });
   }
 
@@ -711,6 +722,8 @@ const server = http.createServer((req, res) => {
           case "progetto-del":      out = progettoDel(p); break;
           case "progetto-carica":   out = progettoCarica(p); break;
           case "partita-set":  out = partitaSet(p); break;
+          case "budget-set":   out = budgetSet(p); break;
+          case "budget-drive": out = await inoltra(p); break;
           case "logo-carica":  out = logoSalva(p); break;
           case "logo-togli":   out = logoCancella(p); break;
           // questi vivono sui Fogli Google: si inoltrano
