@@ -36,7 +36,14 @@
       linear-gradient(0deg,rgba(7,11,29,.85) 0%,transparent 34%),
       linear-gradient(180deg,rgba(7,11,29,.6) 0%,transparent 26%);}
 
-  /* ── il giocatore e' il titolo: lockup di Focus, alto e grande ── */
+  /* ── intestazione: occhiello + titolo (mostrati solo se compilati) ── */
+  #testa{position:absolute;left:130px;top:64px;width:820px;opacity:0;transform:translateY(24px);}
+  #testa .occhiello{font-family:'Mazzard',sans-serif;font-weight:700;font-size:24px;letter-spacing:.28em;
+    color:#C9A24B;text-transform:uppercase;line-height:1;}
+  #testa .titolone{font-family:'Mazzard',sans-serif;font-weight:800;font-size:54px;letter-spacing:.01em;
+    color:#F5F1E6;text-transform:uppercase;line-height:1.02;margin-top:12px;white-space:nowrap;}
+
+  /* ── il giocatore: lockup di Focus, alto e grande ── */
   #chi{position:absolute;left:130px;top:118px;width:760px;opacity:0;transform:translateY(24px);}
   #chi .kicker{font-family:'Mazzard',sans-serif;font-weight:700;font-size:38px;letter-spacing:.2em;
     color:#F5F1E6;text-transform:uppercase;line-height:1;}
@@ -72,6 +79,7 @@
 
 <div id="stage">
   <div id="fotobox" style="display:none"><img id="foto" alt=""><div class="velo"></div></div>
+  <div id="testa"></div>
   <div id="chi"></div>
   <div id="righe"></div>
 </div>
@@ -128,6 +136,19 @@
   var parole = String(g.n || "").trim().split(/\s+/);
   var cognome = parole.length > 1 ? parole.slice(-1)[0] : parole[0] || "";
   var davanti = parole.length > 1 ? parole.slice(0, -1).join(" ") : "";
+
+  // intestazione (occhiello + titolo): compare solo se compilata; allora il
+  // giocatore scende per farle spazio
+  var conTesta = !!(D.e || D.t);
+  el("testa").innerHTML =
+    (D.e ? '<div class="occhiello">' + esc(D.e) + '</div>' : "") +
+    (D.t ? '<div class="titolone">' + esc(D.t) + '</div>' : "");
+  if (conTesta) {
+    el("chi").style.top = "236px";
+    if (STILL) el("testa").style.opacity = 1;
+    else el("testa").style.animation = "salita .6s cubic-bezier(.2,.7,.3,1) .12s forwards";
+  }
+
   el("chi").innerHTML =
     (davanti ? '<div class="kicker">' + esc(davanti) + '</div>' : "") +
     '<div class="nome">' + esc(cognome) + '</div>' +
@@ -149,8 +170,8 @@
     else el("fotobox").style.animation = "daDestra .9s cubic-bezier(.2,.7,.3,1) .5s forwards";
   }
 
-  // le statistiche: piu' spazio se non c'e' il sottotitolo
-  var Y0 = g.s ? 452 : 404;
+  // le statistiche: piu' spazio se non c'e' il sottotitolo; scendono se c'e' l'intestazione
+  var Y0 = (conTesta ? 118 : 0) + (g.s ? 452 : 404);
   var PASSO = Math.min(100, Math.floor((1030 - Y0) / D.st.length));
   var h = "";
   D.st.forEach(function (r, i) {
