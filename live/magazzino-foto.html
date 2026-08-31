@@ -278,7 +278,7 @@
   el("selTeam").addEventListener("change", function(){
     var id = this.value; if(!id){ svuotaGriglia(); return; }
     var t = squadre.filter(function(x){return x.id===id;})[0];
-    teamName = t ? t.name : ""; manuali = []; coachCog = "";   // ogni squadra ha il suo allenatore
+    teamName = t ? t.name : ""; manuali = [];
     var comp = COMPS[+el("selComp").value];
     stato("", "Carico la rosa di <b>"+esc(teamName)+"</b>…");
     fetch(API+"/"+comp.code+"/teams/"+id+"/roster")
@@ -298,7 +298,7 @@
       });
   });
 
-  function svuotaGriglia(){ rosa=[]; manuali=[]; teamName=""; coachCog=""; render(); }
+  function svuotaGriglia(){ rosa=[]; manuali=[]; teamName=""; render(); }
 
   function tuttiGiocatori(){
     var m = {}; var out = [];
@@ -313,15 +313,17 @@
       el("aggiungibox").style.display="none"; return; }
     el("vuoto").style.display="none"; el("aggiungibox").style.display="flex";
     var players = tuttiGiocatori();
-    // card ALLENATORE in testa: il cognome si scrive a mano (ESPN non lo dà)
-    var coachCard = '<div class="pcard coach" id="pc-coach">' +
-        '<div class="foto" data-coach="1" data-cog="">' +
+    // card ALLENATORE in testa: la foto è della SQUADRA (chiave coach-<squadra>),
+    // così non dipende dal cognome. Il nome allenatore si scrive a mano nell'editor Formazioni.
+    var coachKey = "coach-" + slug(teamName);
+    var coachCard = '<div class="pcard coach" id="pc-'+esc(coachKey)+'">' +
+        '<div class="foto" data-cog="'+esc(coachKey)+'">' +
           '<img alt="">' +
-          '<div class="vuoto"><span class="plus">+</span><span>Foto allenatore<br><b>scrivi il cognome</b>, poi trascina</span></div>' +
+          '<div class="vuoto"><span class="plus">+</span><span>Foto dell\'allenatore<br>di '+esc(teamName)+'</span></div>' +
           '<button class="rmv" type="button" title="Togli la foto">&times;</button>' +
           '<div class="caric">Carico…</div>' +
         '</div>' +
-        '<div class="meta"><input class="coachcog" placeholder="Cognome allenatore" autocomplete="off" spellcheck="false" value="'+esc(coachCog)+'">' +
+        '<div class="meta"><span class="nm">Allenatore<small>'+esc(teamName)+' · nome a mano in Formazioni</small></span>' +
         '<span class="dot"></span></div>' +
       '</div>';
     g.innerHTML = coachCard + players.map(function(p){
@@ -338,23 +340,10 @@
       '</div>';
     }).join("");
     el("copertura").style.display = "flex";
-    // aggancio la card allenatore: aggiorna id/data-cog e controlla mentre scrivi
-    var cInp = g.querySelector(".coachcog");
-    if(cInp){
-      function sincCoach(){
-        var s=cInp.value.trim();
-        var box=cInp.closest(".pcard"), foto=box.querySelector(".foto");
-        box.id="pc-"+slug(s); box.dataset.cog=s; foto.dataset.cog=s;
-        box.classList.remove("has"); box.querySelector("img").src="";
-        coachCog=s; if(s) controlla(s);
-      }
-      cInp.addEventListener("input", sincCoach);
-      if(coachCog) sincCoach();
-    }
+    controlla(coachKey);                       // foto allenatore della squadra
     players.forEach(function(p){ controlla(p.cognome); });
     aggiornaCopertura();
   }
-  var coachCog = "";   // cognome allenatore digitato (persiste tra i render)
 
   // c'è già la foto in magazzino?
   function controlla(cognome){
