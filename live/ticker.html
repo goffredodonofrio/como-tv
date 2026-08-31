@@ -162,6 +162,7 @@
           <label><input type="checkbox" value="cls" checked> Classifica</label>
           <label><input type="checkbox" value="ris" checked> Risultati</label>
           <label><input type="checkbox" value="pro"> Prossime partite</label>
+          <label><input type="checkbox" value="mar"> Marcatori</label>
         </div>
       </div>
       <div id="crawlprev">Scegli e premi «Costruisci».</div>
@@ -230,12 +231,23 @@
 
   // ── crawl: dati ESPN SELEZIONABILI (competizione + cosa mostrare) ──
   var COMPS = [
-    {n:"Serie A",code:"ita.1"},{n:"Serie B",code:"ita.2"},{n:"Champions League",code:"uefa.champions"},
-    {n:"Europa League",code:"uefa.europa"},{n:"Conference League",code:"uefa.europa.conf"},
-    {n:"Premier League",code:"eng.1"},{n:"LaLiga",code:"esp.1"},{n:"Bundesliga",code:"ger.1"},
-    {n:"Ligue 1",code:"fra.1"},{n:"Eredivisie",code:"ned.1"},{n:"Primeira Liga",code:"por.1"}
+    {b:"🇮🇹",n:"Serie A",code:"ita.1"},{b:"🇮🇹",n:"Serie B",code:"ita.2"},
+    {b:"🇮🇹",n:"Primavera 1",code:"giovanili.primavera1"},{b:"🇮🇹",n:"Under 17",code:"giovanili.u17"},
+    {b:"🇮🇹",n:"Under 18",code:"giovanili.u18"},{b:"🇸🇦",n:"Saudi Pro League",code:"ksa.1"},
+    {b:"🇦🇷",n:"LPF Argentina",code:"arg.1"},{b:"🇦🇷",n:"Nacional B Argentina",code:"arg.2"},
+    {b:"🇦🇹",n:"Bundesliga Austria",code:"aut.1"},{b:"🇧🇷",n:"Brasileirão",code:"bra.1"},
+    {b:"🇫🇷",n:"Ligue 1",code:"fra.1"},{b:"🇫🇷",n:"Ligue 2",code:"fra.2"},
+    {b:"🇩🇪",n:"Bundesliga",code:"ger.1"},{b:"🇩🇪",n:"2. Bundesliga",code:"ger.2"},
+    {b:"🏴",n:"EFL Championship",code:"eng.2"},{b:"🏴",n:"Premier League",code:"eng.1"},
+    {b:"🏴",n:"League One",code:"eng.3"},{b:"🏴",n:"League Two",code:"eng.4"},
+    {b:"🇳🇱",n:"Eredivisie",code:"ned.1"},{b:"🇳🇱",n:"Eerste Divisie",code:"ned.2"},
+    {b:"🇵🇹",n:"Primeira Liga",code:"por.1"},{b:"🏴",n:"Scottish Premiership",code:"sco.1"},
+    {b:"🏴",n:"Scottish Championship",code:"sco.2"},{b:"🏴",n:"Premier Sports Cup",code:"sco.cis"},
+    {b:"🇪🇸",n:"LaLiga",code:"esp.1"},{b:"🇪🇺",n:"Champions League",code:"uefa.champions"},
+    {b:"🇪🇺",n:"Europa League",code:"uefa.europa"},{b:"🇪🇺",n:"Conference League",code:"uefa.europa.conf"},
+    {b:"🌎",n:"CONMEBOL Libertadores",code:"conmebol.libertadores"},{b:"🌎",n:"CONMEBOL Sudamericana",code:"conmebol.sudamericana"}
   ];
-  el("crComp").innerHTML = COMPS.map(function(c,i){ return '<option value="'+i+'">'+esc(c.n)+'</option>'; }).join("");
+  el("crComp").innerHTML = COMPS.map(function(c,i){ return '<option value="'+i+'">'+esc((c.b?c.b+" ":"")+c.n)+'</option>'; }).join("");
 
   var crawlText = "";
   function pintaCrawlPrev(){
@@ -253,11 +265,13 @@
     if(!vuoi.length){ crawlText=""; el("crawlprev").textContent="Scegli almeno una voce (Classifica, Risultati, Prossime)."; el("crawlnote").textContent=""; return; }
     el("crawlprev").textContent="Carico i dati di "+comp.n+"…"; el("crawlnote").textContent="";
     var base="https://site.api.espn.com/apis/site/v2/sports/soccer/"+comp.code;
+    var anno=(function(){var d=new Date();return d.getMonth()>=6?d.getFullYear():d.getFullYear()-1;})();
     Promise.all([
       (vuoi.indexOf("ris")>=0||vuoi.indexOf("pro")>=0) ? fetch(base+"/scoreboard").then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}) : Promise.resolve(null),
-      (vuoi.indexOf("cls")>=0) ? fetch("https://site.api.espn.com/apis/v2/sports/soccer/"+comp.code+"/standings").then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}) : Promise.resolve(null)
+      (vuoi.indexOf("cls")>=0) ? fetch("https://site.api.espn.com/apis/v2/sports/soccer/"+comp.code+"/standings").then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}) : Promise.resolve(null),
+      (vuoi.indexOf("mar")>=0) ? fetch(base+"/statistics?season="+anno).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}) : Promise.resolve(null)
     ]).then(function(res){
-      var sb=res[0], st=res[1], blocchi=[], note=[];
+      var sb=res[0], st=res[1], mk=res[2], blocchi=[], note=[];
 
       if(vuoi.indexOf("ris")>=0){
         var ris=[];
@@ -294,6 +308,17 @@
         });
         cls.sort(function(a,b){return (a.pos||99)-(b.pos||99);});
         if(cls.length){ blocchi.push("CLASSIFICA "+comp.n.toUpperCase()+" · "+cls.slice(0,10).map(function(r){return (r.pos!=null?r.pos+"° ":"")+r.nm+(r.pts!=null?" "+r.pts+"PT":"");}).join(" · ")); note.push("classifica "+cls.length); }
+      }
+
+      if(vuoi.indexOf("mar")>=0){
+        var gl=((mk&&mk.stats)||[]).filter(function(x){return x.name==="goalsLeaders";})[0];
+        var mar=((gl&&gl.leaders)||[]).slice(0,10).map(function(l){
+          var a=l.athlete||{}, dn=(a.displayName||a.shortName||"").trim();
+          var cog=dn?dn.split(" ").slice(-1)[0].toUpperCase():"";
+          var g=(l.value!=null?Math.round(l.value):"");
+          return cog+(g!==""?" "+g:"");
+        }).filter(function(s){return s;});
+        if(mar.length){ blocchi.push("MARCATORI "+comp.n.toUpperCase()+" · "+mar.join(" · ")); note.push(mar.length+" marcatori"); }
       }
 
       crawlText = blocchi.join(" |||| ");

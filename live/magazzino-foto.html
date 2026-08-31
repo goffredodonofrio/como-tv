@@ -113,6 +113,19 @@
     font-size:12px;color:var(--gold-bright);letter-spacing:.1em;text-transform:uppercase;z-index:3;}
   .pcard.busy .caric{display:flex;}
 
+  /* card allenatore: cornice oro + cognome scrivibile */
+  .pcard.coach{border-color:var(--line-gold);}
+  .pcard.coach .foto{background:repeating-conic-gradient(#1c1636 0% 25%, #15102c 0% 50%) 50%/22px 22px;}
+  .pcard.coach::before{content:"ALLENATORE";position:absolute;z-index:4;top:8px;left:8px;
+    font-family:'Mazzard',sans-serif;font-size:9px;font-weight:800;letter-spacing:.14em;color:#0A0F24;
+    background:var(--gold-bright);border-radius:4px;padding:3px 7px;}
+  .pcard.coach{position:relative;}
+  .coachcog{flex:1;min-width:0;background:var(--bg-2);border:1px solid var(--line-2);border-radius:6px;
+    color:var(--ivory);font-family:'Mazzard',sans-serif;font-weight:700;font-size:13px;letter-spacing:.02em;
+    text-transform:uppercase;padding:6px 9px;}
+  .coachcog:focus{outline:none;border-color:var(--line-gold);}
+  .coachcog::placeholder{color:var(--fg-3);text-transform:none;font-weight:500;letter-spacing:0;}
+
   .aggiungi{margin-top:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
   .aggiungi input{font-family:'DM Sans',sans-serif;font-size:14px;padding:9px 12px;width:220px;
     background:var(--bg-2);color:var(--ivory);border:1px solid var(--line-2);border-radius:8px;}
@@ -300,7 +313,18 @@
       el("aggiungibox").style.display="none"; return; }
     el("vuoto").style.display="none"; el("aggiungibox").style.display="flex";
     var players = tuttiGiocatori();
-    g.innerHTML = players.map(function(p){
+    // card ALLENATORE in testa: il cognome si scrive a mano (ESPN non lo dà)
+    var coachCard = '<div class="pcard coach" id="pc-coach">' +
+        '<div class="foto" data-coach="1" data-cog="">' +
+          '<img alt="">' +
+          '<div class="vuoto"><span class="plus">+</span><span>Foto allenatore<br><b>scrivi il cognome</b>, poi trascina</span></div>' +
+          '<button class="rmv" type="button" title="Togli la foto">&times;</button>' +
+          '<div class="caric">Carico…</div>' +
+        '</div>' +
+        '<div class="meta"><input class="coachcog" placeholder="Cognome allenatore" autocomplete="off" spellcheck="false" value="'+esc(coachCog)+'">' +
+        '<span class="dot"></span></div>' +
+      '</div>';
+    g.innerHTML = coachCard + players.map(function(p){
       var id = slug(p.cognome);
       return '<div class="pcard" data-cog="'+esc(p.cognome)+'" id="pc-'+esc(id)+'">' +
         '<div class="foto" data-cog="'+esc(p.cognome)+'">' +
@@ -314,9 +338,23 @@
       '</div>';
     }).join("");
     el("copertura").style.display = "flex";
+    // aggancio la card allenatore: aggiorna id/data-cog e controlla mentre scrivi
+    var cInp = g.querySelector(".coachcog");
+    if(cInp){
+      function sincCoach(){
+        var s=cInp.value.trim();
+        var box=cInp.closest(".pcard"), foto=box.querySelector(".foto");
+        box.id="pc-"+slug(s); box.dataset.cog=s; foto.dataset.cog=s;
+        box.classList.remove("has"); box.querySelector("img").src="";
+        coachCog=s; if(s) controlla(s);
+      }
+      cInp.addEventListener("input", sincCoach);
+      if(coachCog) sincCoach();
+    }
     players.forEach(function(p){ controlla(p.cognome); });
     aggiornaCopertura();
   }
+  var coachCog = "";   // cognome allenatore digitato (persiste tra i render)
 
   // c'è già la foto in magazzino?
   function controlla(cognome){
@@ -329,8 +367,8 @@
   }
 
   function aggiornaCopertura(){
-    var tot = el("griglia").querySelectorAll(".pcard").length;
-    var con = el("griglia").querySelectorAll(".pcard.has").length;
+    var tot = el("griglia").querySelectorAll(".pcard:not(.coach)").length;
+    var con = el("griglia").querySelectorAll(".pcard:not(.coach).has").length;
     el("covNum").textContent = con+"/"+tot;
     el("covBar").style.width = tot ? Math.round(con/tot*100)+"%" : "0%";
     el("covTxt").textContent = "giocatori con foto" + (tot&&con<tot ? " — mancano "+(tot-con) : (tot?" — completa ✓":""));
@@ -338,6 +376,7 @@
 
   // ── caricamento ──
   function carica(cognome, file){
+    if(!cognome){ stato("err","Scrivi prima il <b>cognome dell'allenatore</b>, poi trascina la foto."); return; }
     var card = el("pc-"+slug(cognome)); if(!card) return;
     if(!/^image\/(png|webp)$/.test(file.type)){ stato("err","<b>"+esc(cognome)+":</b> serve un PNG (o WEBP) scontornato."); return; }
     if(file.size > 2*1024*1024){ stato("err","<b>"+esc(cognome)+":</b> foto troppo grande (max 2 MB)."); return; }
