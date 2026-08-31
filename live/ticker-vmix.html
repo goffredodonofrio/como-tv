@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<script>
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  location.replace("https://projects-cloud.it" + location.pathname + location.search + location.hash);
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ticker · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-SemiBold.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{color-scheme:dark;}
+  /* overlay: la pagina è trasparente, la striscia vive in basso */
+  html,body{width:100%;height:100%;overflow:hidden;background:transparent;}
+
+  #stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:center center;
+    font-family:'DM Sans',system-ui,sans-serif;}
+
+  /* ── striscia in basso ── */
+  #ticker{position:absolute;left:0;right:0;bottom:40px;transform:translateY(140%);}
+  #ticker.on{transform:translateY(0);transition:transform .7s cubic-bezier(.2,.75,.3,1);}
+
+  /* riga principale: logo + (categoria sopra) titolone */
+  #main{display:flex;align-items:stretch;height:144px;
+    background:linear-gradient(180deg, rgba(16,23,58,.97), rgba(10,15,38,.98));
+    border-top:3px solid #C9A24B;
+    box-shadow:0 -10px 40px rgba(0,0,0,.45);}
+
+  /* blocco logo Como TV a sinistra */
+  #eti{flex:0 0 auto;width:196px;display:flex;align-items:center;justify-content:center;
+    padding:14px 24px 14px 96px;border-right:2px solid rgba(201,162,75,.38);}
+  #eti img{height:90px;width:auto;object-fit:contain;
+    filter:drop-shadow(0 3px 8px rgba(0,0,0,.5));}
+
+  /* colonna testo: categoria (occhiello elegante) + titolone */
+  #titocol{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;
+    padding:0 24px 0 32px;}
+  /* occhiello: barretta nel colore-categoria + testo oro uniforme, ben distanziato */
+  #catlabel{display:flex;align-items:center;gap:13px;font-family:'Mazzard',sans-serif;font-weight:700;
+    font-size:16px;letter-spacing:.28em;text-transform:uppercase;color:#E3C271;line-height:1;
+    margin-bottom:13px;white-space:nowrap;}
+  #catlabel::before{content:"";flex:none;width:30px;height:3px;border-radius:2px;background:var(--cat,#E3C271);}
+  #catlabel.diretta::before{width:12px;height:12px;border-radius:50%;animation:blink 1s steps(1,end) infinite;}
+  @keyframes blink{50%{opacity:.25;}}
+
+  /* titolone: ruota tra i titoli */
+  #titowrap{position:relative;overflow:hidden;height:98px;}
+  .tito{position:absolute;left:0;right:24px;top:50%;transform:translateY(-50%);
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:45px;line-height:1.0;letter-spacing:.005em;
+    color:#F5F1E6;text-transform:uppercase;opacity:0;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .tito.in{opacity:1;animation:titoIn .55s cubic-bezier(.2,.75,.3,1);}
+  .tito.out{animation:titoOut .45s ease forwards;}
+  @keyframes titoIn{from{opacity:0;transform:translateY(calc(-50% + 26px));}to{opacity:1;transform:translateY(-50%);}}
+  @keyframes titoOut{to{opacity:0;transform:translateY(calc(-50% - 26px));}}
+
+  /* crawl in basso: scorre in continuo */
+  #crawl{display:flex;align-items:center;height:52px;background:rgba(6,10,26,.98);overflow:hidden;
+    border-top:1px solid rgba(201,162,75,.35);}
+  #crawltag{flex:0 0 auto;align-self:stretch;display:flex;align-items:center;padding:0 22px 0 96px;
+    background:rgba(201,162,75,.14);color:#E3C271;font-family:'Mazzard',sans-serif;font-weight:800;font-size:19px;
+    letter-spacing:.12em;text-transform:uppercase;white-space:nowrap;
+    clip-path:polygon(0 0, 100% 0, calc(100% - 20px) 100%, 0 100%);}
+  #crawlvp{flex:1;min-width:0;overflow:hidden;position:relative;height:100%;}
+  #crawltrack{position:absolute;top:0;left:0;height:100%;display:flex;align-items:center;white-space:nowrap;
+    will-change:transform;}
+  #crawltrack .seg{font-family:'DM Sans',sans-serif;font-weight:500;font-size:23px;letter-spacing:.02em;
+    color:#EDE8DB;padding:0 6px;}
+  #crawltrack .sep{color:#C9A24B;font-weight:800;padding:0 20px;}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="ticker">
+    <div id="main">
+      <div id="eti"><img id="etilogo" src="/loghi/como-tv-logo.png" alt="Como TV" onerror="this.style.display='none'"></div>
+      <div id="titocol"><div id="catlabel"></div><div id="titowrap"></div></div>
+    </div>
+    <div id="crawl">
+      <div id="crawltag">TOP NEWS</div>
+      <div id="crawlvp"><div id="crawltrack"></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // etichette preimpostate: chiave -> nome della categoria + colore dell'occhiello
+  var ETICH = {
+    ultimora:  { nome: "ULTIM'ORA",      cat: "#E3C271" },
+    mercato:   { nome: "CALCIOMERCATO",  cat: "#E3C271" },
+    topnews:   { nome: "TOP NEWS",       cat: "#7FB4E6" },
+    risultati: { nome: "RISULTATI",      cat: "#6FD3A0" },
+    diretta:   { nome: "IN DIRETTA",     cat: "#FF7A7C" }
+  };
+
+  var DEMO = {
+    et: "ultimora",
+    ti: [
+      "FIORENTINA, IN CHIUSURA L'ARRIVO DI GNONTO DEL LEEDS · OPERAZIONE IN PRESTITO CON DIRITTO DI RISCATTO",
+      "COMO, PER LA DIFESA SI TRATTA VALLE DEL BARCELLONA · PRESTITO CON DIRITTO DI RISCATTO",
+      "SERIE A, 2ª GIORNATA: IL COMO ESPUGNA NAPOLI 2-1 CON LA DOPPIETTA DI DOUVIKAS"
+    ],
+    cr: "2ª GIORNATA: NAPOLI-COMO 1-2 · CAGLIARI-INTER 0-1 · LAZIO-GENOA 1-0 · ATALANTA-PISA 2-0 |||| PROSSIMA CHAMPIONS: COMO-LIPSIA 10 SET · FEYENOORD-COMO 14 OTT · COMO-MAN UTD 21 OTT"
+  };
+
+  function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return DEMO;
+    try {
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return (d && ((d.ti && d.ti.length) || d.cr)) ? d : null;
+    } catch (e) { return null; }
+  }
+  var STILL = new URLSearchParams(location.search).get("still") === "1";
+  var SLOW = parseFloat(new URLSearchParams(location.search).get("slow")) || 1;
+  var D = decodeData();
+  if (!D) { document.getElementById("stage").style.display = "none"; return; }
+
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
+  function fit(){ var s=Math.min(window.innerWidth/1920, window.innerHeight/1080);
+    document.getElementById("stage").style.transform="translate(-50%,-50%) scale("+s+")"; }
+  window.addEventListener("resize", fit); fit();
+
+  // ── categoria (occhiello sopra il titolo) ──
+  var conf = ETICH[D.et] || ETICH.topnews;
+  var cat = document.getElementById("catlabel");
+  cat.textContent = conf.nome;
+  cat.style.setProperty("--cat", conf.cat);
+  if (D.et === "diretta") cat.classList.add("diretta");
+  document.getElementById("crawltag").textContent = "SERIE A · RISULTATI E PROSSIME";
+
+  // ── crawl: costruisco il nastro (duplicato per lo scorrimento continuo) ──
+  var crawl = String(D.cr || "").trim();
+  (function () {
+    if (!crawl) { document.getElementById("crawl").style.display = "none"; return; }
+    // "||||" separa blocchi, "·" separa voci: metto un pallino oro tra le voci
+    function pezzo(txt) {
+      return txt.split("·").map(function (v, i) {
+        return (i ? '<span class="sep">•</span>' : "") + '<span class="seg">' + esc(v.trim()) + "</span>";
+      }).join("");
+    }
+    var blocchi = crawl.split("||||").map(function (b) { return pezzo(b.trim()); })
+      .join('<span class="sep">•</span>');
+    var track = document.getElementById("crawltrack");
+    // due copie affiancate: quando la prima esce, la seconda copre il vuoto
+    track.innerHTML = '<div class="uno" style="display:flex;align-items:center">' + blocchi +
+      '<span class="sep">•</span></div><div class="uno" style="display:flex;align-items:center">' + blocchi +
+      '<span class="sep">•</span></div>';
+  })();
+
+  // ── titolone rotante ──
+  var wrap = document.getElementById("titowrap");
+  var titoli = (D.ti || []).filter(function (t) { return String(t || "").trim(); });
+  var idx = 0, cur = null;
+  function mostraTito(t) {
+    var el = document.createElement("div");
+    el.className = "tito in"; el.innerHTML = esc(t).replace(/\s·\s/g, "<br>");
+    wrap.appendChild(el);
+    if (cur) { var vecchio = cur; vecchio.className = "tito out";
+      setTimeout(function () { if (vecchio.parentNode) vecchio.parentNode.removeChild(vecchio); }, 500); }
+    cur = el;
+  }
+  function ruota() { if (!titoli.length) return; mostraTito(titoli[idx % titoli.length]); idx++; }
+
+  // ── avvio ──
+  function avvia() {
+    document.getElementById("ticker").classList.add("on");
+    setTimeout(ruota, 450);
+    if (titoli.length > 1 && !STILL) setInterval(ruota, 6000 * SLOW);
+
+    // scorrimento del crawl: velocità costante in px/s, durata dal contenuto
+    var track = document.getElementById("crawltrack");
+    var uno = track.querySelector(".uno");
+    if (uno) {
+      requestAnimationFrame(function () {
+        var w = uno.getBoundingClientRect().width / (Math.min(window.innerWidth/1920, window.innerHeight/1080) || 1);
+        var vel = 190;                              // px/s a risoluzione piena
+        var dur = Math.max(12, w / vel);
+        if (STILL) return;
+        track.animate(
+          [{ transform: "translateX(0)" }, { transform: "translateX(" + (-w) + "px)" }],
+          { duration: dur * 1000 * SLOW, iterations: Infinity, easing: "linear" }
+        );
+      });
+    }
+  }
+
+  if (STILL) { document.getElementById("ticker").classList.add("on"); ruota(); }
+  else avvia();
+
+  document.addEventListener("dblclick", function () { location.reload(); });
+})();
+</script>
+</body>
+</html>

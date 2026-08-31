@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<script>
+/* Le Grafiche Live vivono sulla macchina della regia: da GitHub si viene
+   portati alla macchina giusta. */
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  location.replace("https://projects-cloud.it" + location.pathname + location.search + location.hash);
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ticker · Como TV</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  :root{
+    --bg:#0A0F24; --bg-2:#070B1D; --panel:rgba(245,241,230,.03);
+    --gold:#C9A24B; --gold-bright:#E3C271; --ivory:#F5F1E6; --ivory-dim:#D8D2C2;
+    --fg-3:#8A8B96; --line-2:rgba(245,241,230,.08); --line-gold:rgba(201,162,75,.28);
+    --ok:#4FCB8B; --red:#E51B20;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{background:radial-gradient(120% 80% at 50% -10%, rgba(24,42,96,.35), transparent 60%), var(--bg);
+    color:var(--ivory);font-family:'DM Sans',system-ui,sans-serif;min-height:100vh;}
+  a{color:var(--gold-bright);text-decoration:none;}
+  .wrap{max-width:1120px;margin:0 auto;padding:22px 22px 90px;}
+
+  .nav{display:flex;align-items:center;gap:8px;margin-bottom:24px;flex-wrap:wrap;}
+  .nav .brand{font-family:'Mazzard',sans-serif;font-weight:800;font-size:15px;letter-spacing:.08em;color:var(--ivory);margin-right:10px;}
+  .nav a{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ivory-dim);border:1px solid var(--line-2);border-radius:4px;padding:7px 12px;}
+  .nav a:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  .nav a.qui{color:var(--gold-bright);border-color:var(--line-gold);background:rgba(201,162,75,.08);}
+
+  .sub{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--gold);margin-bottom:8px;}
+  h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:32px;letter-spacing:-.01em;text-transform:uppercase;line-height:1;margin-bottom:6px;}
+  .hint{color:var(--fg-3);font-size:13.5px;margin-bottom:22px;}
+
+  .barra{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:22px;
+    background:var(--panel);border:1px solid var(--line-2);border-radius:12px;padding:16px;}
+  .campo{display:flex;flex-direction:column;gap:6px;}
+  .campo label{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-3);}
+  select,input,textarea{font-family:'DM Sans',sans-serif;font-size:14px;padding:9px 12px;
+    background:var(--bg-2);color:var(--ivory);border:1px solid var(--line-2);border-radius:8px;}
+  select:focus,input:focus,textarea:focus{outline:none;border-color:var(--line-gold);}
+  select option{background:#141B3C;color:var(--ivory);}
+  .flex1{flex:1;min-width:180px;}
+  button{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    padding:11px 16px;border-radius:8px;cursor:pointer;border:1px solid var(--line-gold);background:transparent;color:var(--gold-bright);}
+  button:hover{background:rgba(201,162,75,.12);}
+  button.primario{background:var(--gold);color:#0A0F24;border-color:var(--gold);}
+  button.primario:hover{background:var(--gold-bright);border-color:var(--gold-bright);}
+
+  .griglia{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;}
+  .card{background:var(--panel);border:1px solid var(--line-2);border-radius:12px;padding:16px;}
+  .card h2{font-family:'Mazzard',sans-serif;font-size:13px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--ivory);margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .card h2 small{font-family:'DM Sans',sans-serif;font-size:11px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--fg-3);}
+  .card .desc{color:var(--fg-3);font-size:12.5px;margin-bottom:12px;}
+
+  /* etichette come chip radio */
+  .etichette{display:flex;gap:8px;flex-wrap:wrap;}
+  .etichette label{cursor:pointer;font-family:'Mazzard',sans-serif;font-size:12px;font-weight:800;letter-spacing:.06em;
+    text-transform:uppercase;padding:9px 14px;border-radius:20px;border:1px solid var(--line-2);color:var(--fg-3);}
+  .etichette input{display:none;}
+  .etichette label:hover{border-color:var(--line-gold);color:var(--ivory);}
+  .etichette input:checked + span{}
+  .etichette label.on{background:rgba(201,162,75,.16);border-color:var(--gold);color:var(--gold-bright);}
+
+  #titoli{width:100%;min-height:150px;resize:vertical;line-height:1.6;}
+  .subhint{font-size:12px;color:var(--fg-3);margin-top:8px;}
+
+  #crawlprev{background:var(--bg-2);border:1px solid var(--line-2);border-radius:8px;padding:12px 14px;
+    font-size:13px;color:var(--ivory-dim);line-height:1.6;min-height:60px;max-height:150px;overflow:auto;}
+  #crawlprev .sep{color:var(--gold);font-weight:800;padding:0 6px;}
+
+  /* righe titolo con contatore */
+  .titrow{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;
+    background:var(--bg-2);border:1px solid var(--line-2);border-radius:9px;padding:10px;}
+  .titrow .tnum{flex:none;width:24px;height:24px;border-radius:6px;background:rgba(201,162,75,.16);
+    color:var(--gold-bright);font-family:'Mazzard',sans-serif;font-weight:800;font-size:12px;
+    display:flex;align-items:center;justify-content:center;margin-top:3px;}
+  .titrow .tlines{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;}
+  .tline{display:flex;align-items:center;gap:8px;}
+  .tline input{flex:1;min-width:0;font-size:14px;padding:8px 10px;background:var(--bg);
+    border:1px solid var(--line-2);border-radius:7px;color:var(--ivory);}
+  .tline input:focus{outline:none;border-color:var(--line-gold);}
+  .tline .tcount{flex:none;width:52px;text-align:right;font-family:'DM Sans',sans-serif;font-size:11px;
+    color:var(--fg-3);font-variant-numeric:tabular-nums;}
+  .tline .tcount.over{color:#FF6B6E;font-weight:700;}
+  .titrow .trm{flex:none;align-self:center;background:transparent;border:1px solid rgba(229,27,32,.4);
+    color:#FF9A9C;padding:6px 9px;font-size:13px;border-radius:6px;}
+  .titrow .trm:hover{background:rgba(229,27,32,.12);border-color:var(--red);}
+
+  .crtoggles{display:flex;gap:16px;flex-wrap:wrap;}
+  .crtoggles label{display:flex;align-items:center;gap:7px;font-size:13.5px;color:var(--ivory-dim);cursor:pointer;}
+  .crtoggles input{width:16px;height:16px;accent-color:var(--gold);}
+
+  #stato{font-size:13.5px;color:var(--ivory-dim);min-height:20px;margin:16px 0 10px;}
+  #stato b{color:var(--ivory);} #stato.err{color:#FF9A9C;} #stato.ok{color:var(--ok);}
+
+  /* anteprima come le altre pagine: il motore vero, scalato */
+  #prevbox{margin-top:20px;background:var(--panel);border:1px solid var(--line-2);border-radius:12px;padding:16px;display:none;}
+  #prevframe-holder{position:relative;width:100%;aspect-ratio:1920/1080;overflow:hidden;border-radius:8px;background:#05070f;}
+  #prevF{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;transform-origin:top left;}
+
+  @media(max-width:760px){ .griglia{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="nav">
+    <a class="brand" href="../index.html">COMO TV</a>
+    <a href="../index.html">Home</a>
+    <a href="classifiche.html">Catalogo</a>
+    <a href="formazioni.html">Formazioni</a>
+    <a href="classifiche-campionati.html">Classifiche</a>
+    <a href="ticker.html" class="qui">Ticker</a>
+    <a href="regia.html">Regia</a>
+  </div>
+
+  <div class="sub">Como TV · Grafiche Live</div>
+  <h1>Ticker</h1>
+  <p class="hint">La striscia in basso in stile Sky: scegli l'etichetta, scrivi i titoli (ruotano da soli). Il crawl coi risultati e la classifica si riempie in automatico.</p>
+
+  <div class="barra">
+    <div class="campo"><label for="canaleSel">Destinazione (vMix o progetto)</label><select id="canaleSel" style="min-width:200px"></select></div>
+    <div style="flex:1"></div>
+    <button id="btnPrev" type="button">&#128065; Anteprima</button>
+    <button id="btnSend" class="primario" type="button">&#128225; Invia alla regia</button>
+  </div>
+
+  <div class="griglia">
+    <div class="card">
+      <h2>Etichetta</h2>
+      <div class="desc">Il tag della striscia. Scegli, non scrivere.</div>
+      <div class="etichette" id="etichette">
+        <label class="on"><input type="radio" name="et" value="ultimora" checked><span>Ultim'ora</span></label>
+        <label><input type="radio" name="et" value="mercato"><span>Calciomercato</span></label>
+        <label><input type="radio" name="et" value="topnews"><span>Top News</span></label>
+        <label><input type="radio" name="et" value="risultati"><span>Risultati</span></label>
+        <label><input type="radio" name="et" value="diretta"><span>In diretta</span></label>
+      </div>
+
+      <h2 style="margin-top:22px">Titoli <small>ruotano a rotazione ogni 6&nbsp;s</small></h2>
+      <div class="desc">Un titolo per riquadro, fino a due righe. Il contatore diventa rosso se superi la misura della striscia.</div>
+      <div id="titolist"></div>
+      <button id="btnAddTit" type="button" style="margin-top:10px;padding:8px 13px;font-size:10px">+ Aggiungi titolo</button>
+    </div>
+
+    <div class="card">
+      <h2>Crawl dai dati <button id="btnCrawl" type="button" style="padding:6px 11px;font-size:10px">&#8635; Costruisci</button></h2>
+      <div class="desc">La riga che scorre in basso, dai dati ESPN. Scegli la competizione e cosa mostrare: niente da scrivere a mano.</div>
+      <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:14px">
+        <div class="campo"><label for="crComp">Competizione</label><select id="crComp"></select></div>
+        <div class="crtoggles" id="crToggles">
+          <label><input type="checkbox" value="cls" checked> Classifica</label>
+          <label><input type="checkbox" value="ris" checked> Risultati</label>
+          <label><input type="checkbox" value="pro"> Prossime partite</label>
+        </div>
+      </div>
+      <div id="crawlprev">Scegli e premi «Costruisci».</div>
+      <div class="subhint" id="crawlnote"></div>
+    </div>
+  </div>
+
+  <div id="stato"></div>
+
+  <div id="prevbox">
+    <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-3);margin-bottom:10px">Anteprima — la grafica vera</div>
+    <div id="prevframe-holder"><iframe id="prevF" src="about:blank" scrolling="no"></iframe></div>
+  </div>
+
+</div>
+
+<script src="destinazione.js"></script>
+<script>
+(function () {
+  "use strict";
+  function el(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
+  function status(cls, html){ var s=el("stato"); s.className=cls||""; s.innerHTML=html||""; }
+
+  var PONTE_DEFAULT = {
+    url: "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec",
+    token: "como_tv_grafiche"
+  };
+  if (window.Destinazione) Destinazione.adotta(el("canaleSel"), PONTE_DEFAULT.url, PONTE_DEFAULT.token);
+
+  // ── etichette (chip radio) ──
+  el("etichette").addEventListener("change", function(){
+    [].forEach.call(this.querySelectorAll("label"), function(l){ l.classList.toggle("on", l.querySelector("input").checked); });
+  });
+  function etichettaScelta(){ var r=el("etichette").querySelector("input:checked"); return r?r.value:"ultimora"; }
+
+  function b64url(obj){ return btoa(unescape(encodeURIComponent(JSON.stringify(obj)))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
+
+  // ── titoli: righe con contatore, max caratteri per riga ──
+  var MAXLEN = 46;                        // caratteri per riga della striscia
+  var titRows = [{ r1: "Fiorentina, in chiusura Gnonto del Leeds", r2: "Prestito con diritto di riscatto" }, { r1: "", r2: "" }];
+  function cont(inp){ var c=inp.parentNode.querySelector(".tcount"); c.textContent=inp.value.length+"/"+MAXLEN; c.classList.toggle("over", inp.value.length>MAXLEN); }
+  function renderTit(){
+    var box=el("titolist"); box.innerHTML="";
+    titRows.forEach(function(t, i){
+      var row=document.createElement("div"); row.className="titrow";
+      row.innerHTML='<span class="tnum">'+(i+1)+'</span>'+
+        '<div class="tlines">'+
+          '<div class="tline"><input class="tl1" placeholder="Riga 1" value="'+esc(t.r1||"")+'"><span class="tcount"></span></div>'+
+          '<div class="tline"><input class="tl2" placeholder="Riga 2 (facoltativa)" value="'+esc(t.r2||"")+'"><span class="tcount"></span></div>'+
+        '</div>'+
+        (titRows.length>1?'<button class="trm" type="button" title="Togli il titolo">&times;</button>':'');
+      box.appendChild(row);
+      var i1=row.querySelector(".tl1"), i2=row.querySelector(".tl2");
+      i1.addEventListener("input", function(){ t.r1=i1.value; cont(i1); });
+      i2.addEventListener("input", function(){ t.r2=i2.value; cont(i2); });
+      var rm=row.querySelector(".trm"); if(rm) rm.addEventListener("click", function(){ titRows.splice(i,1); renderTit(); });
+      cont(i1); cont(i2);
+    });
+  }
+  el("btnAddTit").addEventListener("click", function(){ titRows.push({r1:"",r2:""}); renderTit();
+    var last=el("titolist").querySelector(".titrow:last-child .tl1"); if(last) last.focus(); });
+  renderTit();
+  function titoli(){ return titRows.map(function(t){ var a=(t.r1||"").trim(), b=(t.r2||"").trim();
+    return b ? a+" · "+b : a; }).filter(Boolean); }
+
+  // ── crawl: dati ESPN SELEZIONABILI (competizione + cosa mostrare) ──
+  var COMPS = [
+    {n:"Serie A",code:"ita.1"},{n:"Serie B",code:"ita.2"},{n:"Champions League",code:"uefa.champions"},
+    {n:"Europa League",code:"uefa.europa"},{n:"Conference League",code:"uefa.europa.conf"},
+    {n:"Premier League",code:"eng.1"},{n:"LaLiga",code:"esp.1"},{n:"Bundesliga",code:"ger.1"},
+    {n:"Ligue 1",code:"fra.1"},{n:"Eredivisie",code:"ned.1"},{n:"Primeira Liga",code:"por.1"}
+  ];
+  el("crComp").innerHTML = COMPS.map(function(c,i){ return '<option value="'+i+'">'+esc(c.n)+'</option>'; }).join("");
+
+  var crawlText = "";
+  function pintaCrawlPrev(){
+    var h = crawlText.split("||||").map(function(b){
+      return b.split("·").map(function(v,i){ return (i?'<span class="sep">•</span>':'')+esc(v.trim()); }).join("");
+    }).join('<span class="sep">•</span>');
+    el("crawlprev").innerHTML = h || "—";
+  }
+  function attivi(){ return [].map.call(el("crToggles").querySelectorAll("input:checked"), function(i){return i.value;}); }
+  function nomeSquadra(t){ return (t&&(t.shortDisplayName||t.abbreviation||t.displayName||t.name))||""; }
+
+  function costruisciCrawl(){
+    var comp = COMPS[+el("crComp").value] || COMPS[0];
+    var vuoi = attivi();
+    if(!vuoi.length){ crawlText=""; el("crawlprev").textContent="Scegli almeno una voce (Classifica, Risultati, Prossime)."; el("crawlnote").textContent=""; return; }
+    el("crawlprev").textContent="Carico i dati di "+comp.n+"…"; el("crawlnote").textContent="";
+    var base="https://site.api.espn.com/apis/site/v2/sports/soccer/"+comp.code;
+    Promise.all([
+      (vuoi.indexOf("ris")>=0||vuoi.indexOf("pro")>=0) ? fetch(base+"/scoreboard").then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}) : Promise.resolve(null),
+      (vuoi.indexOf("cls")>=0) ? fetch("https://site.api.espn.com/apis/v2/sports/soccer/"+comp.code+"/standings").then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}) : Promise.resolve(null)
+    ]).then(function(res){
+      var sb=res[0], st=res[1], blocchi=[], note=[];
+
+      if(vuoi.indexOf("ris")>=0){
+        var ris=[];
+        ((sb&&sb.events)||[]).forEach(function(e){
+          var c=e.competitions&&e.competitions[0]; if(!c||!c.status||!c.status.type||!c.status.type.completed)return;
+          var cs=c.competitors||[]; if(cs.length<2)return;
+          var h=cs.filter(function(x){return x.homeAway==="home";})[0]||cs[0], a=cs.filter(function(x){return x.homeAway==="away";})[0]||cs[1];
+          if(h.score!=null&&a.score!=null) ris.push(nomeSquadra(h.team).toUpperCase()+"-"+nomeSquadra(a.team).toUpperCase()+" "+h.score+"-"+a.score);
+        });
+        if(ris.length){ blocchi.push("RISULTATI · "+ris.join(" · ")); note.push(ris.length+" risultati"); }
+      }
+
+      if(vuoi.indexOf("pro")>=0){
+        var pro=[];
+        ((sb&&sb.events)||[]).forEach(function(e){
+          var c=e.competitions&&e.competitions[0]; if(!c||!c.status||!c.status.type)return;
+          if(c.status.type.completed||c.status.type.state==="in")return;   // solo in programma
+          var cs=c.competitors||[]; if(cs.length<2)return;
+          var h=cs.filter(function(x){return x.homeAway==="home";})[0]||cs[0], a=cs.filter(function(x){return x.homeAway==="away";})[0]||cs[1];
+          var d=e.date?new Date(e.date).toLocaleDateString("it-IT",{day:"numeric",month:"short"}):"";
+          pro.push(nomeSquadra(h.team).toUpperCase()+"-"+nomeSquadra(a.team).toUpperCase()+(d?" "+d:""));
+        });
+        if(pro.length){ blocchi.push("PROSSIME · "+pro.join(" · ")); note.push(pro.length+" prossime"); }
+      }
+
+      if(vuoi.indexOf("cls")>=0){
+        var cls=[];
+        ((st&&st.children)||[]).forEach(function(ch){
+          (((ch.standings&&ch.standings.entries))||[]).forEach(function(en){
+            var pos=null, pts=null;
+            (en.stats||[]).forEach(function(s){ if(s.name==="rank"||s.type==="rank")pos=s.value; if(s.name==="points"||s.type==="points")pts=s.value; });
+            cls.push({pos:pos, nm:nomeSquadra(en.team).toUpperCase(), pts:pts});
+          });
+        });
+        cls.sort(function(a,b){return (a.pos||99)-(b.pos||99);});
+        if(cls.length){ blocchi.push("CLASSIFICA "+comp.n.toUpperCase()+" · "+cls.slice(0,10).map(function(r){return (r.pos!=null?r.pos+"° ":"")+r.nm+(r.pts!=null?" "+r.pts+"PT":"");}).join(" · ")); note.push("classifica "+cls.length); }
+      }
+
+      crawlText = blocchi.join(" |||| ");
+      if(!crawlText){ el("crawlprev").textContent="Nessun dato disponibile adesso per "+comp.n+" (fuori dai giorni di gara). Riprova o scegli un'altra voce."; el("crawlnote").textContent=""; return; }
+      el("crawlnote").textContent = comp.n+" — "+note.join(" · ");
+      pintaCrawlPrev();
+    });
+  }
+
+  el("btnCrawl").addEventListener("click", costruisciCrawl);
+  el("crComp").addEventListener("change", costruisciCrawl);
+
+  // ── payload ──
+  function payload(){ return { et: etichettaScelta(), ti: titoli(), cr: crawlText }; }
+
+  // ── anteprima ──
+  function scalaPrev(){ var box=el("prevframe-holder"); el("prevF").style.transform="scale("+(box.clientWidth/1920)+")"; }
+  window.addEventListener("resize", scalaPrev);
+  el("btnPrev").addEventListener("click", function(){
+    var p=payload();
+    if(!p.ti.length && !p.cr){ status("err","<b>Niente da mostrare:</b> scrivi almeno un titolo."); return; }
+    el("prevbox").style.display="block";
+    el("prevF").src = "ticker-vmix.html?d=" + b64url(p);
+    scalaPrev(); status("","Anteprima aggiornata.");
+    el("prevbox").scrollIntoView({behavior:"smooth", block:"nearest"});
+  });
+
+  // ── invio in regia ──
+  el("btnSend").addEventListener("click", function(){
+    var p=payload();
+    if(!p.ti.length){ status("err","<b>Manca il titolo.</b> Scrivi almeno un titolo da mandare in onda."); return; }
+    var nomiEt={ultimora:"ULTIM'ORA",mercato:"CALCIOMERCATO",topnews:"TOP NEWS",risultati:"RISULTATI",diretta:"IN DIRETTA"};
+    var titolo = "TICKER — " + (nomiEt[p.et]||"") + (p.ti[0]?": "+p.ti[0].split(" · ")[0].slice(0,40):"");
+    status("","Invio del ticker a " + (window.Destinazione?Destinazione.dove():"regia") + "…");
+    fetch(PONTE_DEFAULT.url, {
+      method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body: JSON.stringify(Object.assign({ token: PONTE_DEFAULT.token },
+        Destinazione.corpo({ grafica:"ticker", titolo: titolo, dati: p })))
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if(res && res.ok) status("ok","<b>Ticker</b> aggiunto a " + (window.Destinazione?Destinazione.dove():"regia") + ". Dalla <a href='regia.html' target='_blank'>console</a> lo mandi in onda.");
+      else status("err","<b>La regia ha rifiutato:</b> " + esc((res&&res.errore)||"errore"));
+    })
+    .catch(function(e){ status("err","<b>Ponte non raggiungibile:</b> " + esc(e.message)); });
+  });
+
+  // avvio
+  costruisciCrawl();
+})();
+</script>
+</body>
+</html>
