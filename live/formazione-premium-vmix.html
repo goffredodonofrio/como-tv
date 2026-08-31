@@ -122,10 +122,16 @@
   @keyframes repOut{to{opacity:0;transform:translateY(-50%) translateX(-50px) rotate(90deg);}}
 
   /* ── WIPE a bande diagonali ── */
-  #wipe{position:absolute;inset:0;pointer-events:none;z-index:40;overflow:hidden;display:none;}
-  #wipe.go{display:block;}
+  /* MAI display:none: con display:none le bande non vengono disegnate e, alla
+     prima spazzata, layout+paint cadono sullo stesso frame in cui iniziano a
+     muoversi → e' quello lo "scatto in partenza". Le teniamo sempre a video
+     (fuori campo a sinistra quando ferme) e promosse su GPU: l'animazione
+     parte gia' calda. #wipe resta invisibile perche' le bande sono traslate
+     via e overflow:hidden le ritaglia. */
+  #wipe{position:absolute;inset:0;pointer-events:none;z-index:40;overflow:hidden;
+    transform:translateZ(0);}
   #wipe .banda{position:absolute;top:-20%;height:140%;width:34%;
-    transform:skewX(-14deg) translateX(-260%);}
+    transform:skewX(-14deg) translateX(-260%);will-change:transform;backface-visibility:hidden;}
   #wipe.go .banda{animation:bandaGo .8s cubic-bezier(.55,0,.3,1) forwards;}
   @keyframes bandaGo{
     0%{transform:skewX(-14deg) translateX(-260%);}
