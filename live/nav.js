@@ -73,6 +73,51 @@
     }).join("");
     if (document.body.firstChild) document.body.insertBefore(nav, document.body.firstChild);
     else document.body.appendChild(nav);
+    montaOrologio();
+  }
+
+  // orologio in alto a destra della testata: ora ITALIANA (Europe/Rome),
+  // HH:MM:SS, su ogni pagina. Se la pagina ha la testata <header class="page">
+  // ci si ancora dentro (a destra); altrimenti resta fisso in alto a destra.
+  function montaOrologio() {
+    if (document.getElementById("cnav-ora")) return;
+    var stile = document.createElement("style");
+    stile.textContent =
+      "#cnav-ora{font-family:'Mazzard',system-ui,sans-serif;font-weight:800;" +
+      "  font-size:clamp(40px,5.5vw,66px);line-height:1;letter-spacing:.04em;" +
+      "  color:#E3C271;font-variant-numeric:tabular-nums;" +
+      "  text-shadow:0 2px 10px rgba(0,0,0,.55);pointer-events:none;z-index:290;}";
+    document.head.appendChild(stile);
+    var o = document.createElement("div");
+    o.id = "cnav-ora";
+    var header = document.querySelector("header.page");
+    if (header) {
+      if (getComputedStyle(header).position === "static") header.style.position = "relative";
+      o.style.position = "absolute";
+      o.style.top = "50%";       // centrato in verticale, all'altezza del titolo
+      o.style.transform = "translateY(-50%)";
+      o.style.right = "0";
+      header.appendChild(o);
+    } else {
+      o.style.position = "fixed";
+      o.style.top = "58px";      // sotto il menù
+      o.style.right = "22px";
+      document.body.appendChild(o);
+    }
+    function tic() {
+      var t;
+      try {
+        t = new Date().toLocaleTimeString("it-IT", { timeZone: "Europe/Rome", hour12: false,
+          hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      } catch (e) {
+        var d = new Date();
+        function due(n) { return (n < 10 ? "0" : "") + n; }
+        t = due(d.getHours()) + ":" + due(d.getMinutes()) + ":" + due(d.getSeconds());
+      }
+      o.textContent = t;
+    }
+    tic();
+    setInterval(tic, 1000);
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", monta);

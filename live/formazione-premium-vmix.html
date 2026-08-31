@@ -49,11 +49,30 @@
   #modulo{position:absolute;left:266px;top:150px;font-family:'Mazzard',sans-serif;font-weight:800;
     font-size:28px;letter-spacing:.32em;color:#C9A24B;opacity:0;}
 
-  #pitch{position:absolute;left:0;top:0;width:1920px;height:1080px;pointer-events:none;transition:transform .8s cubic-bezier(.3,.7,.3,1);
+  /* le maglie stanno SOPRA il velo (z 6 > dim 5): staccano sempre e non si
+     perdono mai, qualunque sia la luminosita' dello stadio dietro. */
+  #pitch{position:absolute;left:0;top:0;width:1920px;height:1080px;pointer-events:none;z-index:6;
+    transition:transform .8s cubic-bezier(.3,.7,.3,1);
     will-change:transform;transform:translateZ(0);backface-visibility:hidden;}
 
-  /* ── MAGLIETTA in campo (stato finale) ── */
-  .pcard{position:absolute;transform:translate(-50%,-50%);opacity:0;transition:opacity .55s ease;text-align:center;}
+  /* ── GIOCATORE al suo posto sul campo ──────────────────────────────────
+     Campo VUOTO all'inizio. La FIGURA con la foto appare direttamente alla
+     posizione del giocatore, GIRA su se stessa (foto → maglia) e posandosi
+     si rimpicciolisce nella maglia definitiva con numero e nome. Tutto
+     avviene sul posto: niente palco separato, niente convivenze. */
+  .pcard{position:absolute;transform:translate(-50%,-50%);text-align:center;}
+  /* la maglia definitiva (stato finale), nascosta finche' non atterra.
+     Lo scambio con la maglia grande e' ISTANTANEO (i pixel coincidono: non si
+     vede) — niente dissolvenza sulla maglia, o si crea un mini-flash. Il nome
+     invece appare in dissolvenza. */
+  .pjer{opacity:1;transition:opacity .4s ease;}
+  .pjer .jersey{opacity:0;}
+  .pcard.su .pjer .jersey{opacity:1;}
+  .pjer .pnome{opacity:0;transition:opacity .45s ease;}
+  .pcard.su .pjer .pnome{opacity:1;}
+  /* durante la presentazione di un reparto, le maglie gia' atterrate vanno in
+     secondo piano: le figure che crescono non ci si accavallano piu' sopra */
+  .pcard.tenue .pjer{opacity:.35;}
   .jersey{position:relative;width:132px;height:132px;margin:0 auto;}
   .jersey img{width:132px;height:132px;object-fit:contain;filter:drop-shadow(0 8px 16px rgba(0,0,0,.5));}
   .pcard .pnome{font-family:'Mazzard',sans-serif;font-weight:800;font-size:20px;letter-spacing:.04em;
@@ -62,10 +81,43 @@
   .pcard .pnome .pnum{color:#C9A24B;margin-right:8px;}
   .pcard .pnome small{display:block;font-family:'DM Sans',sans-serif;font-weight:500;font-size:12px;
     color:rgba(245,241,230,.72);text-transform:none;margin-top:0;}
+  /* il flipper 3D alla posizione: faccia FOTO (riquadro navy/oro) e faccia
+     MAGLIA (sola maglia). Cresce dal punto, gira, poi si posa rimpicciolendo. */
+  .pflip{position:absolute;left:50%;bottom:-24px;transform:translateX(-50%) scale(.5);
+    transform-origin:center bottom;width:250px;height:340px;perspective:1100px;
+    opacity:0;pointer-events:none;will-change:transform,opacity;
+    transition:transform .6s cubic-bezier(.2,.75,.25,1), opacity .4s ease;}
+  .pcard.giu .pflip{bottom:auto;top:-24px;transform-origin:center top;}
+  .pcard.entra .pflip{opacity:1;transform:translateX(-50%) scale(1);}
+  .pface{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;
+    transition:transform .8s cubic-bezier(.45,.08,.25,1);}
+  .pfoto{transform:rotateY(0deg);border-radius:18px;overflow:hidden;
+    background:linear-gradient(180deg,#1a2550 0%,#0c1230 100%);
+    border:2px solid rgba(201,162,75,.55);box-shadow:0 18px 50px rgba(0,0,0,.6);}
+  .pfoto img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top;}
+  .pfoto .pvelo{position:absolute;inset:0;background:linear-gradient(180deg,transparent 45%,rgba(7,11,29,.88) 88%);}
+  .pfoto .pfnum{position:absolute;top:8px;right:14px;font-family:'Mazzard',sans-serif;font-weight:800;
+    font-size:64px;line-height:1;color:#F5F1E6;text-shadow:0 3px 14px rgba(0,0,0,.8);}
+  .pfoto .pchi{position:absolute;left:0;right:0;bottom:10px;text-align:center;}
+  .pfoto .pnomef{font-family:'DM Sans',sans-serif;font-weight:500;font-size:16px;color:rgba(245,241,230,.8);}
+  .pfoto .pcogf{font-family:'Mazzard',sans-serif;font-weight:800;font-size:24px;letter-spacing:.02em;
+    color:#F5F1E6;text-transform:uppercase;line-height:1.05;}
+  .pfoto .pfilo{margin:7px auto 0;width:90px;height:2.5px;
+    background:linear-gradient(90deg,transparent,#C9A24B,transparent);}
+  .pmag{transform:rotateY(-180deg);display:flex;align-items:center;justify-content:center;}
+  .pmag img{width:210px;height:210px;object-fit:contain;filter:drop-shadow(0 10px 22px rgba(0,0,0,.55));}
+  /* GIRA su se stessa: foto → maglia */
+  .pcard.gira .pfoto{transform:rotateY(180deg);}
+  .pcard.gira .pmag{transform:rotateY(0deg);}
+  /* la POSA la guida il JS (tecnica FLIP): la maglia grande scivola e
+     rimpicciolisce ESATTAMENTE sopra la maglia finale — un solo oggetto in
+     movimento, scambio invisibile a fine corsa. */
+  .pcard.entra{z-index:8;}
 
-  /* velo che oscura i reparti gia' schierati mentre entra quello nuovo */
+  /* velo che scurisce SOLO lo stadio/campo dietro (le maglie sono sopra, z 6).
+     Cosi' lo si puo' tenere leggero senza far sparire le maglie schierate. */
   #dim{position:absolute;inset:0;z-index:5;pointer-events:none;opacity:0;
-    background:radial-gradient(120% 95% at 50% 45%, rgba(6,9,24,.78), rgba(4,6,16,.92));}
+    background:radial-gradient(120% 95% at 50% 45%, rgba(6,9,24,.55), rgba(4,6,16,.74));}
   #dim.on{animation:dimIn .7s ease forwards;}
   #dim.off{animation:dimOut .7s ease forwards;}
   @keyframes dimIn{from{opacity:0}to{opacity:1}}
@@ -74,42 +126,43 @@
   #reparto{z-index:11;}
 
   /* ── RIBALTA: la foto grande del reparto ── */
-  #ribalta{position:absolute;left:0;right:0;top:300px;height:560px;
-    display:flex;align-items:center;justify-content:center;gap:30px;pointer-events:none;}
-  .bigcard{width:270px;opacity:0;transform:translateY(60px) scale(.94);position:relative;
-    will-change:transform,opacity;}
-  .bigcard.in{animation:bigIn .85s cubic-bezier(.16,.84,.28,1) forwards;}
-  .bigcard.out{animation:bigOut .7s cubic-bezier(.45,0,.35,1) forwards;}
-  @keyframes bigIn{to{opacity:1;transform:translateY(0) scale(1);}}
-  /* uscita: la foto rimpicciolisce e sale, "trasformandosi" nella maglietta */
-  @keyframes bigOut{to{opacity:0;transform:translateY(-120px) scale(.42);}}
-  /* flip 3D: prima la FOTO, poi gira e mostra il NUMERO, poi va nella maglietta */
-  .bigcard .bflip{width:100%;height:360px;position:relative;perspective:1200px;}
-  .bigcard .bflip{transform:translateZ(0);}
-  .bigcard .bface{position:absolute;inset:0;overflow:hidden;backface-visibility:hidden;-webkit-backface-visibility:hidden;
-    will-change:transform;transition:transform .6s cubic-bezier(.45,.05,.25,1);}
-  .bigcard .bfoto{transform:rotateY(0deg);}
-  .bigcard .bnumface{transform:rotateY(180deg);display:flex;align-items:center;justify-content:center;
-    border-radius:20px;background:radial-gradient(120% 100% at 50% 30%, rgba(40,58,120,.85), rgba(10,16,40,.95));
-    box-shadow:inset 0 0 0 1.5px rgba(201,162,75,.5);}
-  .bigcard.flip .bfoto{transform:rotateY(-180deg);}
-  .bigcard.flip .bnumface{transform:rotateY(0deg);}
-  /* la foto riempie il riquadro ancorata alla TESTA (mai tagliata): qualunque
-     sia l'inquadratura sorgente, il taglio cade sempre al petto, coerente. */
-  .bigcard .bfoto img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top;
-    filter:drop-shadow(0 14px 28px rgba(0,0,0,.6));}
-  /* la maglietta in filigrana dietro il numero: cosi' il numero si legge bene */
-  .bigcard .bnumface .bmaglia{position:absolute;left:0;top:0;width:100%;height:100%;
-    object-fit:cover;opacity:.4;filter:drop-shadow(0 8px 18px rgba(0,0,0,.5));}
-  .bigcard .bnumface .bignum{position:relative;z-index:2;font-family:'Mazzard',sans-serif;font-weight:800;
-    font-size:210px;line-height:.8;color:#F5F1E6;text-shadow:0 8px 30px rgba(0,0,0,.7);letter-spacing:-.04em;}
-  .bigcard .bchi{text-align:center;margin-top:6px;}
+  #ribalta{position:absolute;left:0;right:0;top:300px;height:560px;pointer-events:none;}
+  /* ogni reparto e' un gruppo impilato: nascono TUTTI all'avvio (card a
+     opacity 0), cosi' alla spazzata non si costruisce nulla — solo si accende
+     il gruppo giusto. E' la costruzione a meta' wipe che bloccava il thread. */
+  #ribalta .rgrp{position:absolute;inset:0;
+    display:flex;align-items:center;justify-content:center;gap:22px;}
+  /* la FIGURA con la foto: riquadro navy/oro con la foto, numero e nome.
+     Quando ha finito la presentazione si TRASFORMA in sola maglia (il
+     riquadro e i testi sfumano, resta la maglia) e vola al suo posto. */
+  .bigcard{width:270px;flex:0 0 270px;opacity:0;transform:translateY(54px) scale(.95);position:relative;
+    will-change:transform,opacity;transition:transform .6s cubic-bezier(.16,.84,.28,1), opacity .5s ease;}
+  .bigcard.mostra{opacity:1;transform:none;}
+  .bigcard .bcorpo{position:relative;width:100%;height:360px;border-radius:18px;overflow:hidden;
+    background:linear-gradient(180deg,#1a2550 0%,#0c1230 100%);
+    border:2px solid rgba(201,162,75,.55);
+    box-shadow:0 18px 50px rgba(0,0,0,.6);
+    transition:opacity .4s ease;}
+  /* la foto ancorata alla TESTA (mai tagliata): il taglio cade al petto */
+  .bigcard .bcorpo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top;}
+  .bigcard .bvelo{position:absolute;inset:0;background:linear-gradient(180deg,transparent 45%,rgba(7,11,29,.85) 90%);}
+  .bigcard .bfnum{position:absolute;top:8px;right:14px;font-family:'Mazzard',sans-serif;font-weight:800;
+    font-size:64px;line-height:1;color:#F5F1E6;text-shadow:0 3px 14px rgba(0,0,0,.8);}
+  .bigcard .bchi{text-align:center;margin-top:10px;transition:opacity .35s ease;}
   .bigcard .bcog{font-family:'Mazzard',sans-serif;font-weight:800;font-size:34px;letter-spacing:.03em;
     color:#F5F1E6;text-transform:uppercase;white-space:nowrap;line-height:1;text-shadow:0 2px 10px rgba(0,0,0,.6);}
   .bigcard .bnom{font-family:'DM Sans',sans-serif;font-weight:500;font-size:18px;letter-spacing:.04em;
     color:rgba(245,241,230,.72);margin-top:3px;}
   .bigcard .bfilo{margin:10px auto 0;width:120px;height:3px;
     background:linear-gradient(90deg,transparent,#C9A24B,transparent);}
+  /* la faccia-MAGLIA del morph: sola maglia, senza riquadro */
+  .bigcard .bmagface{position:absolute;left:0;top:0;width:100%;height:360px;
+    display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .45s ease;}
+  .bigcard .bmagface img{width:210px;height:210px;object-fit:contain;
+    filter:drop-shadow(0 10px 22px rgba(0,0,0,.55));}
+  .bigcard.maglia .bcorpo{opacity:0;}
+  .bigcard.maglia .bchi{opacity:0;}
+  .bigcard.maglia .bmagface{opacity:1;}
 
   /* etichetta reparto verticale */
   #reparto{position:absolute;right:-24px;top:50%;transform:translateY(-50%) rotate(90deg);
@@ -121,23 +174,30 @@
     to{opacity:1;transform:translateY(-50%) translateX(0) rotate(90deg);}}
   @keyframes repOut{to{opacity:0;transform:translateY(-50%) translateX(-50px) rotate(90deg);}}
 
-  /* ── WIPE a bande diagonali ── */
-  /* MAI display:none: con display:none le bande non vengono disegnate e, alla
-     prima spazzata, layout+paint cadono sullo stesso frame in cui iniziano a
-     muoversi → e' quello lo "scatto in partenza". Le teniamo sempre a video
-     (fuori campo a sinistra quando ferme) e promosse su GPU: l'animazione
-     parte gia' calda. #wipe resta invisibile perche' le bande sono traslate
-     via e overflow:hidden le ritaglia. */
-  #wipe{position:absolute;inset:0;pointer-events:none;z-index:40;overflow:hidden;
-    transform:translateZ(0);}
-  #wipe .banda{position:absolute;top:-20%;height:140%;width:34%;
-    transform:skewX(-14deg) translateX(-260%);will-change:transform;backface-visibility:hidden;}
-  #wipe.go .banda{animation:bandaGo .8s cubic-bezier(.55,0,.3,1) forwards;}
-  @keyframes bandaGo{
-    0%{transform:skewX(-14deg) translateX(-260%);}
-    45%{transform:skewX(-14deg) translateX(0%);}
-    55%{transform:skewX(-14deg) translateX(0%);}
-    100%{transform:skewX(-14deg) translateX(260%);}
+  /* ── WIPE: UNA sola lama che spazza e rivela ──────────────────────────
+     Logica nuova: un unico pannello (solo transform, tutto su GPU) attraversa
+     lo schermo una volta. Sotto, il reparto e' gia' posato: e' la lama che,
+     scorrendo, lo scopre. Le card NON si animano — cosi' non c'e' nulla di
+     pesante da disegnare durante il movimento e la spazzata resta fluida.
+     Sempre a video (nessun display:none), a riposo e' fuori campo a sinistra.
+     Colori Como: blu nel corpo, oro brillante sul bordo di testa. */
+  #wipe{position:absolute;inset:0;pointer-events:none;z-index:40;overflow:hidden;}
+  /* larga e centrata (left:-50% + width:200%): a translateX 0 sborda di 50%
+     per lato, cosi' c'e' una finestra ampia in cui copre TUTTO lo schermo.
+     La sosta al centro (44%→56%) tiene lo schermo coperto mentre avviene lo
+     scambio reparto: e' questo a sincronizzare, cosi' i numeri vecchi non
+     restano un attimo. */
+  /* lama VETRO: semitrasparente. Non copre piu' — e' una luce oro-navy che
+     passa, mentre sotto i reparti si scambiano in dissolvenza (vedi .bigcard
+     transition:opacity). Trasparente sul bordo di coda, oro brillante in testa. */
+  #wipe .lama{position:absolute;top:-14%;height:128%;left:-50%;width:200%;
+    transform:skewX(-12deg) translateX(-190%);will-change:transform;backface-visibility:hidden;
+    background:linear-gradient(90deg,rgba(10,16,38,0) 0%,rgba(19,28,70,.40) 45%,rgba(40,60,120,.5) 70%,rgba(201,162,75,.85) 93%,rgba(227,194,113,.95) 100%);
+    box-shadow:0 0 90px rgba(201,162,75,.28);}
+  #wipe.go .lama{animation:lamaGo 1.8s cubic-bezier(.4,0,.6,1) forwards;}
+  @keyframes lamaGo{
+    0%{transform:skewX(-12deg) translateX(-190%);}
+    100%{transform:skewX(-12deg) translateX(190%);}
   }
 
   /* ── panchina lunga (destra) ── */
@@ -273,15 +333,17 @@
     // si stringe in prospettiva, quindi le linee alte sono meno larghe
     lines.forEach(function (n, li) {
       var t = nOut > 0 ? (li) / (nOut) : 0;          // 0 = basso, 1 = alto
-      var y = 930 - t * 640;
+      var y = 934 - t * 660;
       var semi = 780 - t * 260;                       // metà larghezza della linea
       var cx = 960, riga = [];
       for (var k = 0; k < n; k++) {
         var x = n === 1 ? cx : cx - semi + (k + 0.5) / n * (2 * semi);
         var off = 0;
         if (li > 0 && n > 1) {
+          // zig-zag: i LATI vanno in su e il centro in giu' — anche in attacco,
+          // cosi' le punte esterne (Douvikas/Diao) non scendono addosso ai
+          // nomi/maglie del centrocampo.
           var dist = Math.min(k, n - 1 - k), sign = (dist % 2 === 0) ? -1 : 1;
-          if (li === lines.length - 1) sign = -sign;
           off = sign * 26;
         }
         riga.push({ x: x, y: y + off, linea: li });
@@ -301,15 +363,26 @@
     return "Centrocampo";
   }
 
-  // ── le magliette in campo (stato finale) ──
+  // ── i giocatori in campo: tessera numero + card foto (stile reference) ──
   var pitch = el("pitch");
   var titolari = D.t.slice(0, slots.length);
   var h = "";
   titolari.forEach(function (r, i) {
     var g = slots[i], num = r[0] || "", nome = r[1] || "", cognome = r[2] || "";
-    h += '<div class="pcard" data-i="' + i + '" style="left:' + g.x + 'px;top:' + g.y + 'px">' +
-      '<div class="jersey"><img src="' + esc(MAGLIA) + '" onerror="this.style.opacity=.15"></div>' +
-      '<div class="pnome"><span class="pnum">' + esc(num) + '</span>' + esc(cognome) + (nome ? '<small>' + esc(nome) + '</small>' : '') + '</div></div>';
+    var foto = r[3] || ("/loghi/foto-premium-" + num + ".png");
+    // linee alte: la figura cresce verso il basso, per non uscire dallo schermo
+    var giu = g.y < 460 ? " giu" : "";
+    h += '<div class="pcard' + giu + '" data-i="' + i + '" style="left:' + g.x + 'px;top:' + g.y + 'px">' +
+      '<div class="pjer">' +
+        '<div class="jersey"><img src="' + esc(MAGLIA) + '" onerror="this.style.opacity=.15"></div>' +
+        '<div class="pnome"><span class="pnum">' + esc(num) + '</span>' + esc(cognome) + (nome ? '<small>' + esc(nome) + '</small>' : '') + '</div>' +
+      '</div>' +
+      '<div class="pflip">' +
+        '<div class="pface pfoto"><img src="' + esc(foto) + '" onerror="this.style.display=\'none\'">' +
+          '<div class="pvelo"></div><div class="pfnum">' + esc(num) + '</div>' +
+          '<div class="pchi"><div class="pnomef">' + esc(nome) + '</div><div class="pcogf">' + esc(cognome) + '</div><div class="pfilo"></div></div></div>' +
+        '<div class="pface pmag"><img src="' + esc(MAGLIA) + '" onerror="this.style.opacity=.15"></div>' +
+      '</div></div>';
   });
   pitch.innerHTML = h;
   var pcards = pitch.querySelectorAll(".pcard");
@@ -352,31 +425,13 @@
     if (D.l) { var ps = el("pancastemma"); ps.src = D.l; ps.onerror=function(){ps.style.display="none";}; }
   } else el("panca").style.display = "none";
 
-  // ── card grande (ribalta) ──
-  function bigHTML(r) {
-    var num = r[0] || "", nome = r[1] || "", cognome = r[2] || "";
-    var foto = r[3] || ("/loghi/foto-premium-" + num + ".png");
-    return '<div class="bigcard">' +
-      '<div class="bflip">' +
-        '<div class="bface bfoto"><img src="' + esc(foto) + '" onerror="this.style.display=\'none\'"></div>' +
-        '<div class="bface bnumface"><img class="bmaglia" src="' + esc(MAGLIA) + '" onerror="this.style.display=\'none\'"><span class="bignum">' + esc(num) + '</span></div>' +
-      '</div>' +
-      '<div class="bchi"><div class="bcog">' + esc(cognome) + '</div>' +
-      (nome ? '<div class="bnom">' + esc(nome) + '</div>' : '') + '<div class="bfilo"></div></div></div>';
-  }
-
-  // ── wipe a bande diagonali ──
-  var COLBANDE = ["rgba(201,162,75,.92)", "rgba(20,32,78,.95)", "#0A1026"];
-  (function(){
-    var w = el("wipe"), s = "";
-    for (var i = 0; i < 3; i++) s += '<div class="banda" style="left:'+(i*30)+'%;background:'+COLBANDE[i]+';animation-delay:'+(i*0.08)+'s"></div>';
-    w.innerHTML = s;
-  })();
+  // ── wipe: UNA sola lama che spazza ──
+  el("wipe").innerHTML = '<div class="lama"></div>';
   function wipe(cb) {
     var w = el("wipe");
     w.classList.remove("go"); void w.offsetWidth; w.classList.add("go");
-    if (cb) setTimeout(cb, 360 * SLOW);       // a metà spazzata cambio il contenuto sotto
-    setTimeout(function(){ w.classList.remove("go"); }, 820 * SLOW);
+    if (cb) setTimeout(cb, 900 * SLOW);       // a metà (dentro la sosta, schermo coperto) scambio il reparto
+    setTimeout(function(){ w.classList.remove("go"); }, 1900 * SLOW);
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -386,7 +441,7 @@
     el("tile").style.opacity = 1; el("campo").classList.add("on"); el("campo").style.opacity = 1;
     el("logo").style.opacity = 1; el("team").style.clipPath = "inset(0 0 0 0)"; el("modulo").style.opacity = 1;
     if (conPanca) { el("panca").style.opacity = 1; el("campo").style.transform = "translateX(-190px) translateZ(0)"; el("pitch").style.transform = "translateX(-190px) translateZ(0)"; }
-    pcards.forEach(function (c) { c.style.opacity = 1; });
+    pcards.forEach(function (c) { c.classList.add("su"); });
     return;
   }
 
@@ -399,69 +454,81 @@
   el("team").style.animation = "daSx .7s cubic-bezier(.2,.7,.3,1) .35s forwards";
   el("modulo").style.animation = "fadeIn .5s ease .7s forwards";
 
-  var ribalta = el("ribalta"), reparto = el("reparto");
-  var T0 = 1700 * SLOW, PER = 4400 * SLOW;
+  var reparto = el("reparto");
+  var T0 = 2100 * SLOW, PER = 3800 * SLOW;
 
-  // il velo si accende poco prima del primo reparto e resta acceso: i
-  // reparti gia' schierati restano in ombra, il pacchetto in ribalta risalta
-  setTimeout(function () { el("dim").className = "on"; }, T0 - 200 * SLOW);
+  // il velo leggero resta acceso durante la presentazione: spinge indietro lo
+  // stadio, le tessere sono sopra (z 6) e restano leggibili
+  setTimeout(function () { el("dim").className = "on"; }, T0 - 900 * SLOW);
 
-  // la card del reparto resta in scena finche' NON arriva la spazzata
-  // successiva: e' la wipe a coprire lo scambio. Sotto la spazzata il
-  // reparto precedente "atterra" in campo come maglietta e, insieme,
-  // entra il reparto nuovo. Cosi': giocatore appare -> wipe -> reparto dopo.
-  function atterra(li) {                        // le magliette del reparto li vanno a piena luce
-    var r = righe[li];
-    for (var k = 0; k < r.length; k++) {
-      var pc = pcards[startIdx[li] + k];
-      if (pc) pc.style.opacity = 1;
-    }
-  }
-  righe.forEach(function (r, li) {
-    var inizio = T0 + li * PER;
+  // LA POSA (tecnica FLIP): misura dove sta la maglia grande e dove sta
+  // quella definitiva, e porta la grande esattamente sopra la piccola —
+  // stessa posizione, stessa taglia al pixel. Un solo oggetto si muove; lo
+  // scambio avviene a corsa finita ed e' invisibile perche' i pixel coincidono.
+  var stage = el("stage");
+  function posaFluida(pc) {
+    var flip = pc.querySelector(".pflip");
+    var mia = pc.querySelector(".pmag img");
+    var sua = pc.querySelector(".jersey img");
+    if (!flip || !mia || !sua) { pc.classList.add("su"); if (flip) flip.style.opacity = "0"; return; }
+    var sr = stage.getBoundingClientRect(), sc = (sr.width / 1920) || 1;
+    function centro(e) { var r = e.getBoundingClientRect();
+      return { x: (r.left + r.width / 2 - sr.left) / sc, y: (r.top + r.height / 2 - sr.top) / sc, w: r.width / sc }; }
+    var A = centro(mia), B = centro(sua);
+    var sf = B.w / A.w;
+    flip.style.transformOrigin = "125px 170px";      // il centro della maglia dentro il flipper
+    flip.style.transition = "transform .62s cubic-bezier(.45,.02,.28,1)";
+    flip.style.transform = "translateX(-50%) translate(" + (B.x - A.x) + "px," + (B.y - A.y) + "px) scale(" + sf + ")";
+    // a fine corsa: scambio secco (pixel coincidenti, non si vede), nome in dissolvenza
     setTimeout(function () {
-      wipe(function () {
-        // a metà spazzata: il reparto precedente atterra in campo,
-        // poi entra il reparto grande nuovo (le card vecchie sono sostituite)
-        if (li > 0) atterra(li - 1);
-        var rn = repartoNome(li, righe.length);
-        reparto.textContent = rn;
-        reparto.style.fontSize = rn.length > 8 ? "70px" : "104px";
-        reparto.className = ""; void reparto.offsetWidth;   // ri-attiva la slide-in
-        reparto.className = "in";
-        ribalta.innerHTML = r.map(function (_, k) { return bigHTML(titolari[startIdx[li] + k] || []); }).join("");
-        var bigs = ribalta.querySelectorAll(".bigcard");
-        // paga ADESSO (sotto la spazzata) il costo di layout+paint delle card —
-        // ombre, gradienti, flip 3D — poi anima al frame dopo: e' quel costo
-        // pagato sulla prima frame dell'ingresso a far "scattare" i reparti.
-        void ribalta.offsetWidth;
-        requestAnimationFrame(function () { requestAnimationFrame(function () {
-          bigs.forEach(function (b, k) { setTimeout(function () { b.classList.add("in"); }, k * 150); });
-        }); });
-        // FOTO → (giro) → NUMERO: il flip parte a meta' della permanenza
-        setTimeout(function () {
-          bigs.forEach(function (b, k) { setTimeout(function () { b.classList.add("flip"); }, k * 90); });
-        }, PER * 0.5);
+      pc.classList.add("su");
+      flip.style.transition = "none";
+      flip.style.opacity = "0";
+    }, 640 * SLOW);
+  }
+
+  // REPARTI, sul posto: campo vuoto; le FIGURE con la foto appaiono
+  // direttamente alla posizione di ciascun giocatore, GIRANO su se stesse
+  // (foto → maglia) e posandosi si rimpiccioliscono nella maglia definitiva.
+  righe.forEach(function (r, li) {
+    var tShow = T0 + li * PER;
+    setTimeout(function () {
+      var rn = repartoNome(li, righe.length);
+      reparto.textContent = rn;
+      reparto.style.fontSize = rn.length > 8 ? "70px" : "104px";
+      reparto.className = ""; void reparto.offsetWidth; reparto.className = "in";
+      // le maglie gia' atterrate vanno in secondo piano (si riaccendono alla fine)
+      pcards.forEach(function (pc, i) {
+        var attivo = i >= startIdx[li] && i < startIdx[li] + r.length;
+        pc.classList.toggle("tenue", !attivo);
       });
-    }, inizio);
+      r.forEach(function (_, k) {
+        var pc = pcards[startIdx[li] + k];
+        setTimeout(function () { pc.classList.add("entra"); }, k * 140 * SLOW);
+      });
+    }, tShow);
+    // gira su se stessa (foto → maglia), poi si posa nella maglia in campo
+    setTimeout(function () {
+      reparto.className = "out";
+      r.forEach(function (_, k) {
+        var pc = pcards[startIdx[li] + k];
+        setTimeout(function () { pc.classList.add("gira"); }, k * 110 * SLOW);
+        setTimeout(function () { posaFluida(pc); }, 820 * SLOW + k * 110 * SLOW);
+      });
+    }, tShow + PER - 1600 * SLOW);
   });
 
-  // chiusura: un'ultima spazzata copre l'uscita dell'ultimo reparto,
-  // fa atterrare le sue magliette e toglie il velo — coerente con gli altri
+  // CHIUSURA: tutte le maglie a piena luce, via il velo, entra la panchina.
   var fine = T0 + righe.length * PER;
   setTimeout(function () {
-    wipe(function () {
-      atterra(righe.length - 1);
-      ribalta.innerHTML = ""; reparto.className = "";
-      el("dim").className = "off";              // via il velo: tutte le magliette a piena luce
-      pcards.forEach(function (c) { c.style.opacity = 1; });
-      if (conPanca) {
-        // il campo e le magliette scorrono a sinistra, la panchina entra nello spazio
-        el("campo").style.transform = "translateX(-190px) translateZ(0)";
-        el("pitch").style.transform = "translateX(-190px) translateZ(0)";
-        setTimeout(function(){ el("panca").classList.add("in"); }, 300 * SLOW);
-      }
-    });
+    reparto.className = "out";
+    el("dim").className = "off";
+    pcards.forEach(function (pc) { pc.classList.remove("tenue"); pc.classList.add("su"); });
+    if (conPanca) {
+      el("campo").style.transform = "translateX(-190px) translateZ(0)";
+      el("pitch").style.transform = "translateX(-190px) translateZ(0)";
+      setTimeout(function(){ el("panca").classList.add("in"); }, 350 * SLOW);
+    }
   }, fine);
 
   document.addEventListener("dblclick", function(){ location.reload(); });
