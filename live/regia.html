@@ -804,6 +804,22 @@
     elScalVuoto.style.display = (cur.items.length && !visibili.length) ? "block" : "none";
   }
 
+  // Sincronizza col ponte la grafica selezionata ("armata"): così un pulsante
+  // fisico (Stream Deck → ?take=1&canale=N) può mandare in onda quella pronta
+  // senza sapere nulla della selezione dentro la pagina. Spedisce solo quando
+  // l'armata cambia davvero e NON tocca mai l'onda.
+  var ultimoArmato = null;
+  function sincronizzaArmato() {
+    var chiave = selId ? (selId + "@" + mira()) : "";
+    if (chiave === ultimoArmato) return;
+    ultimoArmato = chiave;
+    fetch(PONTE, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ token: TOKEN, c: CANALE, tipo: "regia-arma", id: selId || "", liv: mira() })
+    }).catch(function () {});
+  }
+
   function paint() {
     var inPlay = livelliInPlay();
     var st = inPlay.length ? "play" : "standby";
@@ -844,6 +860,8 @@
     else if (selId) showPvw(selId);
     else { pvw.src = "about:blank"; pvw.style.visibility = "hidden"; thumbShownId = null; thumbcap.textContent = "Clicca una grafica in scaletta: la vedi qui senza toccare l'onda."; }
     btnTake.disabled = !selId && !(anteprimaMatch && anteprimaFase);
+
+    sincronizzaArmato();   // tiene il ponte al corrente di cosa è pronto a partire
   }
 
   // regola di apertura: un playout parte SEMPRE fuori onda — se una

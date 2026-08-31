@@ -182,6 +182,7 @@ function statoRegia(c) {
     canale: c, nonce: ix.nonce, playNonce: uno.playNonce,
     state: uno.state, onair: uno.onair, items: ix.items, liv: liv,
     megafono: ix.megafono || null,
+    armato: ix.armato || null,
     ver: versionePagine()
   };
   if (uno.onair) {
@@ -276,6 +277,24 @@ function regiaState(p) {
   return { ok: true, canale: c, nonce: ix.nonce, state: lv.state, onair: lv.onair, liv: livelloDi(L) };
 }
 
+// "Arma" la grafica selezionata in regia: il ponte ricorda qual è pronta a
+// partire, così un pulsante fisico (Stream Deck) può mandarla in onda con una
+// sola chiamata, senza sapere nulla della selezione dentro la pagina.
+// NON tocca l'onda e NON alza il nonce: armare non deve ridisegnare i playout.
+function regiaArma(p) {
+  const c = canaleDi(p.c);
+  const ix = regiaDi(c);
+  const id = p.id ? String(p.id) : "";
+  if (!id) {
+    ix.armato = null;
+  } else {
+    const it = ix.items.find(i => i.id === id);
+    ix.armato = it ? { id: id, liv: (p.liv != null ? livelloDi(p.liv) : (it.liv || 1)) } : null;
+  }
+  salva();
+  return { ok: true, canale: c, armato: ix.armato };
+}
+
 function regiaDel(p) {
   const c = canaleDi(p.c);
   const ix = regiaDi(c);
@@ -287,6 +306,7 @@ function regiaDel(p) {
   for (const L of Object.keys(ix.liv)) {
     if (ix.liv[L].onair === p.id) ix.liv[L].onair = null;
   }
+  if (ix.armato && ix.armato.id === p.id) ix.armato = null;
   delete S.voci[c][p.id];
   ix.nonce = Date.now();
   salva(); annuncia(c, "regia");
@@ -304,6 +324,7 @@ function regiaSvuota(p) {
   }
   ix.items = [];
   for (const L of Object.keys(ix.liv)) ix.liv[L].onair = null;
+  ix.armato = null;
   S.voci[c] = {};
   ix.nonce = Date.now();
   salva(); annuncia(c, "regia");
@@ -733,6 +754,28 @@ const server = http.createServer((req, res) => {
 
   // ── letture compatibili con il vecchio ponte ──
   if (req.method === "GET" && (u.pathname === "/api" || u.pathname === "/exec")) {
+    // TAKE da pulsante fisico (Stream Deck): manda in onda la grafica ARMATA
+    // del canale con UNA sola GET (token in coda, così qualsiasi tasto HTTP la
+    // può chiamare). Riusa regiaState → l'SSE spinge il play al playout subito.
+    //   ?take=1&canale=N&token=…     → in onda l'armata
+    //   ?take=out&canale=N&token=…   → fuori onda il livello dell'armata (o &liv=L)
+    if (q.get("take") != null) {
+      const tok = q.get("token") || q.get("t") || "";
+      if (tok !== CONFIG.TOKEN) return json(res, { ok: false, errore: "token non valido" }, 403);
+      const c = canaleDi(q.get("canale") || q.get("c"));
+      const ix = regiaDi(c);
+      try {
+        if (String(q.get("take")) === "out") {
+          const L = q.get("liv") != null ? q.get("liv") : (ix.armato ? ix.armato.liv : 1);
+          return json(res, regiaState({ c: c, state: "out", liv: L }));
+        }
+        const arm = ix.armato;
+        if (!arm || !arm.id) return json(res, { ok: false, errore: "niente di armato su questo canale: selezionala in regia" });
+        return json(res, regiaState({ c: c, state: "play", id: arm.id, liv: arm.liv }));
+      } catch (err) {
+        return json(res, { ok: false, errore: err.message });
+      }
+    }
     if (q.get("regia") === "item" && q.get("id")) {
       const c = canaleDi(q.get("canale") || q.get("c"));
       return json(res, (S.voci[c] && S.voci[c][q.get("id")]) || {});
@@ -775,6 +818,7 @@ const server = http.createServer((req, res) => {
           case "regia-order":  out = regiaOrder(p); break;
           case "regia-rename": out = regiaRename(p); break;
           case "regia-liv":    out = regiaLiv(p); break;
+          case "regia-arma":   out = regiaArma(p); break;
           case "regia-megafono": out = regiaMegafono(p); break;
           case "progetto-crea":     out = progettoCrea(p); break;
           case "progetto-aggiungi": out = progettoAggiungi(p); break;

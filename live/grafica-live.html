@@ -209,26 +209,31 @@
     location.reload();
   }
 
+  // Applica un intero stato-regia (dal poll O dallo stream): stessa logica.
+  // applica() e' idempotente sul playNonce, quindi poll e stream possono
+  // arrivare entrambi senza far ripartire due volte la stessa grafica.
+  function applicaStato(j) {
+    if (!j) return;
+    if (j.liv) {
+      for (var n = 1; n <= NLIV; n++) applica(n, j.liv[n] || j.liv[String(n)]);
+    } else {
+      // ponte non ancora aggiornato: si comporta come prima, tutto sul
+      // livello 1. Cosi' la pagina nuova funziona anche col ponte vecchio.
+      applica(1, j);
+    }
+    primaVolta = false;
+    var qualcosaInOnda = false;
+    for (var k in ultimo) {
+      var st = j.liv ? (j.liv[k] || j.liv[String(k)]) : j;
+      if (st && st.state === "play") qualcosaInOnda = true;
+    }
+    controllaVersione(j, qualcosaInOnda);
+  }
+
   function tick() {
     fetch(PONTE + "?regia=1&canale=" + CANALE, { cache: "no-store" })
       .then(function (r) { return r.json(); })
-      .then(function (j) {
-        if (!j) return;
-        if (j.liv) {
-          for (var n = 1; n <= NLIV; n++) applica(n, j.liv[n] || j.liv[String(n)]);
-        } else {
-          // ponte non ancora aggiornato: si comporta come prima, tutto sul
-          // livello 1. Cosi' la pagina nuova funziona anche col ponte vecchio.
-          applica(1, j);
-        }
-        primaVolta = false;
-        var qualcosaInOnda = false;
-        for (var k in ultimo) {
-          var st = j.liv ? (j.liv[k] || j.liv[String(k)]) : j;
-          if (st && st.state === "play") qualcosaInOnda = true;
-        }
-        controllaVersione(j, qualcosaInOnda);
-      })
+      .then(applicaStato)
       .catch(function () {});
   }
 
@@ -243,24 +248,46 @@
   mBug.style.zIndex = 2;
   mCard.style.zIndex = 4;
 
+  function applicaPartita(j) {
+    if (!j) return;
+    var lf = j.livFase || {};
+    var card = (j.card !== undefined) ? (j.card || null)
+             : ((j.fase === "pres" || j.fase === "int" || j.fase === "fin") ? j.fase : null);
+    mBug.style.zIndex = lf.live || 2;
+    mCard.style.zIndex = (card && lf[card]) || 4;
+  }
+
   function tickPartita() {
     fetch(PONTE + "?partita=1&canale=" + CANALE, { cache: "no-store" })
       .then(function (r) { return r.json(); })
-      .then(function (j) {
-        if (!j) return;
-        var lf = j.livFase || {};
-        var card = (j.card !== undefined) ? (j.card || null)
-                 : ((j.fase === "pres" || j.fase === "int" || j.fase === "fin") ? j.fase : null);
-        mBug.style.zIndex = lf.live || 2;
-        mCard.style.zIndex = (card && lf[card]) || 4;
-      })
+      .then(applicaPartita)
       .catch(function () {});
+  }
+
+  // ── tempo reale (SSE) ───────────────────────────────────────────────
+  // Il ponte spinge ogni comando appena arriva: la grafica va in onda in
+  // pochi millisecondi (es. il TAKE da Stream Deck) invece di aspettare il
+  // prossimo giro di poll. Il poll qui sotto resta acceso come rete di
+  // sicurezza: se lo stream cade, si continua col vecchio comportamento.
+  function apriStream() {
+    if (!window.EventSource) return;
+    var url = PONTE.replace(/\/(exec|api)$/, "/api/stream") + "?canale=" + CANALE;
+    var es;
+    try { es = new EventSource(url); } catch (e) { return; }
+    es.addEventListener("regia", function (ev) {
+      try { applicaStato(JSON.parse(ev.data)); } catch (e) {}
+    });
+    es.addEventListener("partita", function (ev) {
+      try { applicaPartita(JSON.parse(ev.data)); } catch (e) {}
+    });
+    // EventSource riprova da solo se lo stream cade (retry dal server).
   }
 
   setInterval(tick, POLL_MS);
   tick();
   setInterval(tickPartita, POLL_MS);
   tickPartita();
+  apriStream();
 })();
 </script>
 </body>
