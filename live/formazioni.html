@@ -703,16 +703,17 @@
       } else {
         var code = COMPS[side.comp].code;
         var teams = teamsCache[code] || [];
+        var labComp = function (c) { return (c.band ? c.band + " " : "") + c.nome; };
+        var vociComp = COMPS.map(function (c, i) { return { val: i, lab: labComp(c), sel: i === side.comp }; });
+        var vociTeam = [{ val: "", lab: "—", sel: !side.teamId }].concat(
+          teams.map(function (t) { return { val: t.id, lab: t.name, sel: t.id === side.teamId }; }));
         h += '<div class="row">' +
-          '<div class="field"><label>Competizione</label><select data-si="' + si + '" data-k="comp">' +
-            COMPS.map(function (c, i) {
-              return '<option value="' + i + '"' + (i === side.comp ? " selected" : "") + '>' + esc((c.band ? c.band + " " : "") + c.nome) + '</option>';
-            }).join("") +
-          '</select></div>' +
-          '<div class="field"><label>Squadra</label><select data-si="' + si + '" data-k="team">' +
-            '<option value="">—</option>' +
-            teams.map(function (t) { return '<option value="' + t.id + '"' + (t.id === side.teamId ? " selected" : "") + '>' + esc(t.name) + '</option>'; }).join("") +
-          '</select></div>' +
+          '<div class="field"><label>Competizione</label>' +
+            comboRicercabile("comp", si, side.comp, labComp(COMPS[side.comp]), [{ titolo: "", voci: vociComp }]) +
+          '</div>' +
+          '<div class="field"><label>Squadra</label>' +
+            comboRicercabile("team", si, side.teamId || "", (side.teamId ? (side.teamName || "") : "—"), [{ titolo: "", voci: vociTeam }]) +
+          '</div>' +
           moduloSel +
         '</div>';
       }
@@ -926,17 +927,21 @@
     var side = sides[+t.dataset.si];
 
     if (t.dataset.k === "comp") {
-      side.comp = +t.value;
+      var nc = parseInt(t.dataset.val, 10);
+      if (isNaN(nc) || nc === side.comp) return;   // niente di nuovo: non azzerare la squadra
+      side.comp = nc;
       side.teamId = ""; side.teamName = ""; side.roster = []; side.tit = []; side.pan = []; side.custom = {};
       loadTeams(side, renderAll);
       renderAll();
     }
 
     if (t.dataset.k === "team") {
-      side.teamId = t.value;
+      var tv = t.dataset.val;
+      if (tv === undefined || tv === side.teamId) return;   // stessa squadra: no-op
+      side.teamId = tv;
       var teams = teamsCache[COMPS[side.comp].code] || [];
       var found = null;
-      for (var i = 0; i < teams.length; i++) if (teams[i].id === t.value) found = teams[i];
+      for (var i = 0; i < teams.length; i++) if (teams[i].id === tv) found = teams[i];
       side.teamName = found ? found.name : "";
       side.custom = {};
       if (side.teamId) loadRoster(side);
@@ -1059,12 +1064,35 @@
     }
   });
 
+  // combobox ricercabile generico (competizione, squadra): stessa UX del
+  // dropdown giocatori — dropdown a gruppi + filtro mentre scrivi — ma qui
+  // il DISPLAY (nome) e' separato dal VALORE (indice/id) via data-lab/data-val.
+  function comboRicercabile(k, si, valCorr, labCorr, gruppi) {
+    var opts = "";
+    (gruppi || []).forEach(function (g) {
+      var voci = g.voci || [];
+      if (!voci.length) return;
+      if (g.titolo) opts += '<div class="combogrp">' + esc(g.titolo) + '</div>';
+      voci.forEach(function (o) {
+        opts += '<div class="comboopt' + (o.sel ? " sel" : "") + '" data-val="' + esc(String(o.val)) +
+                '" data-lab="' + esc(o.lab) + '">' + esc(o.lab) + '</div>';
+      });
+    });
+    return '<div class="combo">' +
+      '<input class="slotpick" data-k="' + k + '" data-si="' + si + '" data-val="' + esc(String(valCorr)) +
+        '" data-lab="' + esc(labCorr) + '" value="' + esc(labCorr) + '" placeholder="Scegli o scrivi…" autocomplete="off">' +
+      '<span class="combocar" aria-hidden="true">▾</span>' +
+      '<div class="combolist">' + opts + '</div>' +
+    '</div>';
+  }
+
   // ---------------- combobox dei giocatori (dropdown + ricerca) ----------------
   function comboFiltra(combo) {
     var q = combo.querySelector(".slotpick").value.trim().toLowerCase();
     combo.querySelectorAll(".comboopt").forEach(function (o) {
       if (o.classList.contains("mano")) { o.classList.remove("nascosta"); return; }
-      o.classList.toggle("nascosta", q !== "" && o.dataset.val.toLowerCase().indexOf(q) < 0);
+      var testo = (o.dataset.lab != null ? o.dataset.lab : o.textContent).toLowerCase();
+      o.classList.toggle("nascosta", q !== "" && testo.indexOf(q) < 0);
     });
     // i titoli di gruppo spariscono se il gruppo e' tutto filtrato
     combo.querySelectorAll(".combogrp").forEach(function (g) {
@@ -1103,7 +1131,12 @@
     if (opt) {
       e.preventDefault();                     // non far perdere il focus prima del click
       var combo = opt.closest(".combo"), pick = combo.querySelector(".slotpick");
-      pick.value = opt.dataset.val;
+      // display = etichetta leggibile; valore reale = data-val (per i giocatori
+      // i due coincidono, per competizione/squadra no)
+      pick.value = (opt.dataset.lab != null ? opt.dataset.lab : opt.dataset.val);
+      pick.dataset.val = opt.dataset.val;
+      pick.dataset.lab = pick.value;
+      pick.dataset.prima = pick.value;
       combo.classList.remove("open");
       pick.dispatchEvent(new Event("change", { bubbles: true }));
       return;
@@ -1117,10 +1150,15 @@
     setTimeout(function () {
       var combo = pick.closest(".combo");
       if (combo && combo.classList.contains("open")) return;   // scelta in corso
-      var val = pick.value.trim();
-      if (val && val !== MANO_LABEL) {
-        var side = sides[+pick.dataset.si];
-        if (side && idxDaVoce(side, val) == null) pick.value = pick.dataset.prima || "";
+      if (pick.dataset.k === "slot") {
+        var val = pick.value.trim();
+        if (val && val !== MANO_LABEL) {
+          var side = sides[+pick.dataset.si];
+          if (side && idxDaVoce(side, val) == null) pick.value = pick.dataset.prima || "";
+        }
+      } else {
+        // competizione/squadra: input di sola ricerca → rimetto l'etichetta scelta
+        pick.value = pick.dataset.lab || pick.value;
       }
     }, 150);
   });
