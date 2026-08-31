@@ -87,6 +87,16 @@
   select:hover,input[type=date]:hover{border-color:var(--line-gold);}
   #comp{min-width:200px;max-width:200px;}
   input[type=date]{color-scheme:dark;}
+  /* riga titolo + sottotitolo della grafica: campi grandi, comodi da scrivere */
+  .grafit{display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;padding:2px 0 20px;}
+  .grafit .field{flex:1;min-width:260px;}
+  .grafit input[type=text]{
+    font-family:'DM Sans',system-ui,sans-serif;font-weight:600;font-size:18px;letter-spacing:.01em;
+    padding:13px 15px;color:var(--ivory);background:var(--surface-panel);
+    border:1px solid var(--line-2);border-radius:6px;width:100%;}
+  .grafit input[type=text]:hover{border-color:var(--line-gold);}
+  .grafit input[type=text]:focus{outline:none;border-color:var(--gold);}
+  .grafit input[type=text]::placeholder{color:var(--ivory);opacity:.4;}
   button{
     font-family:'Mazzard',system-ui,sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.09em;
     text-transform:uppercase;
@@ -215,6 +225,18 @@
     </div>
     <!-- "Al foglio" resta in pensione: segnaposto invisibile per il codice -->
     <button id="btnSheet" style="display:none" disabled></button>
+  </div>
+
+  <!-- titolo e sottotitolo della grafica, sempre visibili e modificabili -->
+  <div class="grafit">
+    <div class="field">
+      <label for="titoloG">Titolo grande della grafica</label>
+      <input type="text" id="titoloG" placeholder="I RISULTATI" maxlength="60">
+    </div>
+    <div class="field">
+      <label for="sottoT">Riga piccola sotto il titolo</label>
+      <input type="text" id="sottoT" placeholder="SERIE A · GIORNATA" maxlength="60">
+    </div>
   </div>
 
   <div class="status" id="status">
@@ -421,6 +443,8 @@
     csv:    document.getElementById("btnCsv"),
     sheet:  document.getElementById("btnSheet"),
     regia:  document.getElementById("btnRegia"),
+    titoloG:document.getElementById("titoloG"),
+    sottoT: document.getElementById("sottoT"),
     status: document.getElementById("status"),
     out:    document.getElementById("out")
   };
@@ -689,18 +713,15 @@
     var cfg = ponteConfig(false);
     if (!cfg) return;
 
-    var t1 = window.prompt("Titolo grande della grafica:", "I RISULTATI");
-    if (t1 === null) return;
-    var sub = window.prompt("Riga piccola sotto il titolo:",
-      (state.comp ? state.comp.nome.toUpperCase() : "") + " · GIORNATA ");
-    if (sub === null) return;
+    var t1 = el.titoloG.value.trim() || "I RISULTATI";
+    var sub = el.sottoT.value.trim() || (state.comp ? state.comp.nome.toUpperCase() : "");
     var titolo = window.prompt("Nome in scaletta di regia:",
       "RISULTATI " + (state.comp ? state.comp.nome.toUpperCase() : ""));
     if (titolo === null) return;
 
     var dati = {
-      t1: t1.trim() || "I RISULTATI",
-      sub: sub.trim(),
+      t1: t1,
+      sub: sub,
       ev: sel.map(function (m) {
         var extra = "";
         if (m.campi[3] && m.campi[3] !== "-") {
@@ -739,7 +760,7 @@
   el.sheet.addEventListener("click", inviaAlFoglio);
   el.regia.addEventListener("click", inviaRegia);
 
-  // ── anteprima della grafica: stesso payload dell'invio, senza prompt ──
+  // ── anteprima della grafica: stesso payload dell'invio, titolo dai campi ──
   (function () {
     var bp = document.getElementById("btnPrevG");
     if (!bp) return;
@@ -749,13 +770,12 @@
       document.getElementById("prevG").style.transform = "scale(" + (box.clientWidth / 1920) + ")";
     }
     window.addEventListener("resize", fitG);
-    bp.addEventListener("click", function () {
-      var dati = (function () {
+    function datiPrev() {
       var sel = selected();
-      if (!sel.length) { status("warn", '<span class="msg">Spunta almeno un evento da vedere.</span>'); return null; }
+      if (!sel.length) return null;
       return {
-        t1: "I RISULTATI",
-        sub: (state.comp ? state.comp.nome.toUpperCase() : ""),
+        t1: el.titoloG.value.trim() || "I RISULTATI",
+        sub: el.sottoT.value.trim() || (state.comp ? state.comp.nome.toUpperCase() : ""),
         ev: sel.map(function (m) {
           var extra = "";
           if (m.campi[3] && m.campi[3] !== "-") {
@@ -767,15 +787,22 @@
                   (window.Scavalco && Scavalco.url(m.campi[7])) || m.tid2 || ""];
         })
       };
-    })();
-      if (!dati) return;
+    }
+    function render(scroll) {
+      var dati = datiPrev();
+      if (!dati) { if (scroll) status("warn", '<span class="msg">Spunta almeno un evento da vedere.</span>'); return; }
       var b = btoa(unescape(encodeURIComponent(JSON.stringify(dati)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
       var box = document.getElementById("prevGbox");
       box.style.display = "block";
       document.getElementById("prevG").src = "risultati-vmix.html?d=" + b + "&muto=1&n=" + Date.now();
       fitG();
-      box.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    });
+      if (scroll) box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    bp.addEventListener("click", function () { render(true); });
+    // scrivendo il titolo/sottotitolo l'anteprima già aperta si aggiorna dal vivo
+    function liveIfOpen() { if (document.getElementById("prevGbox").style.display !== "none") render(false); }
+    el.titoloG.addEventListener("input", liveIfOpen);
+    el.sottoT.addEventListener("input", liveIfOpen);
   })();
 
 })();

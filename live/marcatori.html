@@ -86,6 +86,16 @@
   }
   select:hover{border-color:var(--line-gold);}
   #comp{min-width:215px;}
+  /* riga occhiello + titolo della grafica: campi grandi, comodi da scrivere */
+  .grafit{display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;padding:2px 0 20px;}
+  .grafit .field{flex:1;min-width:260px;}
+  .grafit input[type=text]{
+    font-family:'DM Sans',system-ui,sans-serif;font-weight:600;font-size:18px;letter-spacing:.01em;
+    padding:13px 15px;color:var(--ivory);background:var(--surface-panel);
+    border:1px solid var(--line-2);border-radius:6px;width:100%;}
+  .grafit input[type=text]:hover{border-color:var(--line-gold);}
+  .grafit input[type=text]:focus{outline:none;border-color:var(--gold);}
+  .grafit input[type=text]::placeholder{color:var(--ivory);opacity:.4;}
   button{
     font-family:'Mazzard',system-ui,sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.09em;
     text-transform:uppercase;
@@ -206,6 +216,18 @@
     </div>
   </div>
 
+  <!-- occhiello e titolo della grafica, sempre visibili e modificabili -->
+  <div class="grafit">
+    <div class="field">
+      <label for="occhielloG">Occhiello (riga sopra il titolo)</label>
+      <input type="text" id="occhielloG" placeholder="SERIE A 2026-27" maxlength="60">
+    </div>
+    <div class="field">
+      <label for="titoloG">Titolo grande della grafica</label>
+      <input type="text" id="titoloG" placeholder="I MARCATORI" maxlength="60">
+    </div>
+  </div>
+
   <div class="status" id="status"><span class="msg" id="statusMsg">Scegli la competizione e premi <b>Carica</b>.</span></div>
   <div id="prevGbox" style="display:none;position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:10px;border:1px solid var(--line-2);background:#070B1D;margin-bottom:20px">
     <iframe id="prevG" style="position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;transform-origin:top left;pointer-events:none" scrolling="no"></iframe>
@@ -300,6 +322,16 @@
   var elComp = document.getElementById("comp");
   var elStag = document.getElementById("stag");
   var elStat = document.getElementById("stat");
+  var elTit  = document.getElementById("titoloG");
+  var elOcc  = document.getElementById("occhielloG");
+  // il titolo di default segue la statistica scelta (Gol → I MARCATORI, Assist → GLI ASSIST)
+  function titDefaultVal() { return elStat.value === "assistsLeaders" ? "GLI ASSIST" : "I MARCATORI"; }
+  // l'occhiello di default segue competizione + stagione
+  function occDefaultVal() { var c = compSel(); return (c ? c.nome.toUpperCase() : "") + " " + elStag.options[elStag.selectedIndex].text; }
+  function aggiornaOccPh() { elOcc.placeholder = occDefaultVal(); }
+  elStat.addEventListener("change", function () { elTit.placeholder = titDefaultVal(); });
+  document.getElementById("comp").addEventListener("change", aggiornaOccPh);
+  elStag.addEventListener("change", aggiornaOccPh);
   var elOut = document.getElementById("out");
   var elStatus = document.getElementById("status");
   var elStatusMsg = document.getElementById("statusMsg");
@@ -312,6 +344,7 @@
     o.value = c.slug; o.textContent = (c.band ? c.band + " " : "") + c.nome;
     elComp.appendChild(o);
   });
+  aggiornaOccPh();   // placeholder occhiello iniziale (competizione + stagione)
 
   function compSel() {
     var slug = elComp.value;
@@ -468,15 +501,11 @@
     if (!righe.length) { setStatus("warn", "La tabella è vuota."); return; }
     var c = compSel();
     var stagTxt = elStag.options[elStag.selectedIndex].text;
-    var eyebrow = window.prompt("Occhiello della grafica:", c.nome.toUpperCase() + " " + stagTxt);
-    if (eyebrow === null) return;
-    var titDefault = (elStat.value === "assistsLeaders" ? "GLI ASSIST" : "I MARCATORI");
-    var titoloGrande = window.prompt("Titolo grande della grafica:", titDefault);
-    if (titoloGrande === null) return;
+    var eyebrow = elOcc.value.trim() || (c.nome.toUpperCase() + " " + stagTxt);
     var titolo = window.prompt("Nome in scaletta:",
       (elStat.value === "assistsLeaders" ? "ASSIST " : "MARCATORI ") + c.nome.toUpperCase());
     if (titolo === null) return;
-    var dati = { e: eyebrow, r: righe, t: titoloGrande.trim() || titDefault };
+    var dati = { e: eyebrow, r: righe, t: elTit.value.trim() || titDefaultVal() };
     if (elStat.value === "assistsLeaders") { dati.l = "ASSIST"; }
     var __canale = scegliCanale();
     if (__canale === null) return;
@@ -504,22 +533,29 @@
       document.getElementById("prevG").style.transform = "scale(" + (box.clientWidth / 1920) + ")";
     }
     window.addEventListener("resize", fitG);
-    bp.addEventListener("click", function () {
-      var dati = (function () {
+    function datiPrev() {
       var righe = leggi();
-      if (!righe.length) { setStatus("warn", "La tabella è vuota."); return null; }
-      var dati = { e: compSel().nome.toUpperCase() + " " + elStag.options[elStag.selectedIndex].text, r: righe };
-      if (elStat.value === "assistsLeaders") { dati.t = "GLI ASSIST"; dati.l = "ASSIST"; }
+      if (!righe.length) return null;
+      var dati = { e: elOcc.value.trim() || occDefaultVal(), r: righe,
+                   t: elTit.value.trim() || titDefaultVal() };
+      if (elStat.value === "assistsLeaders") { dati.l = "ASSIST"; }
       return dati;
-    })();
-      if (!dati) return;
+    }
+    function render(scroll) {
+      var dati = datiPrev();
+      if (!dati) { if (scroll) setStatus("warn", "La tabella è vuota."); return; }
       var b = btoa(unescape(encodeURIComponent(JSON.stringify(dati)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
       var box = document.getElementById("prevGbox");
       box.style.display = "block";
       document.getElementById("prevG").src = "marcatori-vmix.html?d=" + b + "&muto=1&n=" + Date.now();
       fitG();
-      box.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    });
+      if (scroll) box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    bp.addEventListener("click", function () { render(true); });
+    // scrivendo occhiello o titolo, l'anteprima già aperta si aggiorna dal vivo
+    function liveIfOpen() { if (document.getElementById("prevGbox").style.display !== "none") render(false); }
+    elTit.addEventListener("input", liveIfOpen);
+    elOcc.addEventListener("input", liveIfOpen);
   })();
 
 })();

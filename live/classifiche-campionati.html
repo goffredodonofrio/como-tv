@@ -90,6 +90,16 @@
     border:1px solid var(--line-2);border-radius:5px;min-width:120px;
   }
   select:hover{border-color:var(--line-gold);}
+  /* riga occhiello + titolo della grafica: campi grandi, comodi da scrivere */
+  .grafit{display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;padding:2px 0 20px;}
+  .grafit .field{flex:1;min-width:260px;}
+  .grafit input[type=text]{
+    font-family:'DM Sans',system-ui,sans-serif;font-weight:600;font-size:18px;letter-spacing:.01em;
+    padding:13px 15px;color:var(--ivory);background:var(--surface-panel);
+    border:1px solid var(--line-2);border-radius:6px;width:100%;}
+  .grafit input[type=text]:hover{border-color:var(--line-gold);}
+  .grafit input[type=text]:focus{outline:none;border-color:var(--gold);}
+  .grafit input[type=text]::placeholder{color:var(--ivory);opacity:.4;}
   #comp{min-width:200px;max-width:200px;}
   button{
     font-family:'Mazzard',system-ui,sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.09em;
@@ -245,6 +255,18 @@
     </div>
     <!-- "Al foglio" resta in pensione: segnaposto invisibile per il codice -->
     <button id="btnSheet" style="display:none" disabled></button>
+  </div>
+
+  <!-- occhiello e titolo della grafica, sempre visibili e modificabili -->
+  <div class="grafit">
+    <div class="field">
+      <label for="occhielloG">Occhiello (riga sopra il titolo)</label>
+      <input type="text" id="occhielloG" placeholder="SERIE A - GIORNATA" maxlength="60">
+    </div>
+    <div class="field">
+      <label for="titoloG">Titolo grande della grafica</label>
+      <input type="text" id="titoloG" placeholder="LA CLASSIFICA" maxlength="60">
+    </div>
   </div>
 
   <div class="status" id="status">
@@ -451,6 +473,8 @@
     sheet:    document.getElementById("btnSheet"),
     regia:    document.getElementById("btnRegia"),
     manual:   document.getElementById("btnManual"),
+    titoloG:  document.getElementById("titoloG"),
+    occhielloG: document.getElementById("occhielloG"),
     status:   document.getElementById("status"),
     out:      document.getElementById("out"),
     optGoals: document.getElementById("optGoals"),
@@ -1030,12 +1054,9 @@
       }
     }
 
-    var eyebrow = window.prompt("Riga sopra il titolo (competizione e giornata):",
-      (state.comp ? state.comp.nome.toUpperCase() : "") + " - GIORNATA ");
-    if (eyebrow === null) return;
+    var eyebrow = el.occhielloG.value.trim() || ((state.comp ? state.comp.nome.toUpperCase() : "") + " - GIORNATA");
 
-    var titoloGrande = window.prompt("Titolo grande della grafica:", "LA CLASSIFICA");
-    if (titoloGrande === null) return;
+    var titoloGrande = el.titoloG.value.trim() || "LA CLASSIFICA";
 
     (function run(list) {
       if (!list.length) return;
@@ -1088,6 +1109,9 @@
   });
 
   el.comp.addEventListener("change", paintSeasons);
+  // placeholder occhiello = competizione + " - GIORNATA", segue il menù
+  function aggiornaOccPh() { var c = COMPS[el.comp.selectedIndex]; el.occhielloG.placeholder = (c ? c.nome.toUpperCase() : "") + " - GIORNATA"; }
+  el.comp.addEventListener("change", aggiornaOccPh);
 
   el.refresh.addEventListener("click", load);
   el.csv.addEventListener("click", download);
@@ -1098,9 +1122,10 @@
   el.optGoals.addEventListener("change", function () { if (state.groups.length) render(); });
 
   paintSeasons();
+  aggiornaOccPh();
 
 
-  // ── anteprima della grafica: stesso payload dell'invio, senza prompt ──
+  // ── anteprima della grafica: stesso payload dell'invio, titolo/occhiello dai campi ──
   (function () {
     var bp = document.getElementById("btnPrevG");
     if (!bp) return;
@@ -1110,27 +1135,34 @@
       document.getElementById("prevG").style.transform = "scale(" + (box.clientWidth / 1920) + ")";
     }
     window.addEventListener("resize", fitG);
-    bp.addEventListener("click", function () {
-      var dati = (function () {
-      if (!state.groups.length) { status("warn", '<span class="msg">Prima carica una classifica.</span>'); return null; }
+    function datiPrev() {
+      if (!state.groups.length) return null;
       var g = state.groups[0];
       return {
-        e: (state.comp ? state.comp.nome.toUpperCase() : "") + (g.label && state.groups.length > 1 ? " · " + g.label.toUpperCase() : ""),
+        e: (el.occhielloG.value.trim() || (state.comp ? state.comp.nome.toUpperCase() : "")) + (g.label && state.groups.length > 1 ? " · " + g.label.toUpperCase() : ""),
+        t: el.titoloG.value.trim() || "LA CLASSIFICA",
         r: g.rows.map(function (row) {
           var nome = row.manual ? defaultName(row.api) : grafName(row.api);
           return [row.pos, nome, row.pg, row.v, row.p, row.s, row.pt,
                   (window.Scavalco && Scavalco.url(row.dn)) || row.tid || ""];
         })
       };
-    })();
-      if (!dati) return;
+    }
+    function render(scroll) {
+      var dati = datiPrev();
+      if (!dati) { if (scroll) status("warn", '<span class="msg">Prima carica una classifica.</span>'); return; }
       var b = btoa(unescape(encodeURIComponent(JSON.stringify(dati)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
       var box = document.getElementById("prevGbox");
       box.style.display = "block";
       document.getElementById("prevG").src = "classifica-vmix.html?d=" + b + "&muto=1&n=" + Date.now();
       fitG();
-      box.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    });
+      if (scroll) box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    bp.addEventListener("click", function () { render(true); });
+    // scrivendo occhiello o titolo, l'anteprima già aperta si aggiorna dal vivo
+    function liveIfOpen() { if (document.getElementById("prevGbox").style.display !== "none") render(false); }
+    el.titoloG.addEventListener("input", liveIfOpen);
+    el.occhielloG.addEventListener("input", liveIfOpen);
   })();
 
 })();
