@@ -248,6 +248,47 @@
   .item .ib.esci:hover{background:rgba(229,27,32,.14);border-color:var(--red);}
   .item .ib.entra{color:#4FCB8B;border-color:rgba(79,203,139,.45);}
   .item .ib.entra:hover{background:rgba(79,203,139,.14);border-color:#4FCB8B;}
+
+  /* ── toolbar scaletta: ricerca + filtri per tipo ── */
+  #scalbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;}
+  /* accento "attrezzo" celeste: ricerca/filtri distinti dall'oro-azione */
+  :root{--cel:#57B6E6;--cel-bright:#8AD0F2;--cel-line:rgba(87,182,230,.34);}
+  #scalCerca{flex:0 0 230px;max-width:100%;background:rgba(87,182,230,.06);border:1px solid var(--cel-line);
+    border-radius:8px;padding:9px 13px;color:var(--ivory);font-family:'DM Sans',sans-serif;font-size:13px;}
+  #scalCerca:focus{outline:none;border-color:var(--cel);background:rgba(87,182,230,.10);
+    box-shadow:0 0 0 3px rgba(87,182,230,.12);}
+  #scalCerca::placeholder{color:var(--fg-3);}
+  #scalFiltri{display:flex;gap:6px;flex-wrap:wrap;}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-family:'DM Sans',sans-serif;font-size:12px;
+    padding:6px 12px;border-radius:20px;cursor:pointer;background:transparent;color:var(--fg-3);
+    border:1px solid var(--line-2);white-space:nowrap;}
+  .chip:hover{color:var(--cel-bright);border-color:var(--cel-line);}
+  .chip.on{background:rgba(87,182,230,.16);color:var(--cel-bright);border-color:var(--cel);}
+  .chip b{font-weight:500;opacity:.55;margin-left:2px;}
+  /* pallino del colore-famiglia: sui chip e su ogni riga della scaletta */
+  .famdot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--fam,#8A8FA6);
+    box-shadow:0 0 0 1px rgba(0,0,0,.35), 0 0 8px -1px var(--fam,#8A8FA6);}
+  .item .famdot{margin-right:2px;}
+  #scalvuoto{display:none;color:var(--fg-3);font-size:13px;padding:14px 4px;}
+
+  /* ── riga: livello come badge, azioni secondarie a scomparsa ── */
+  .item .livbadge{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:800;letter-spacing:.03em;
+    color:var(--gold-bright);border:1px solid var(--line-gold);border-radius:6px;padding:5px 9px;cursor:pointer;
+    background:rgba(201,162,75,.07);white-space:nowrap;}
+  .item .livbadge:hover{background:rgba(201,162,75,.16);}
+  .item .livbadge.occ{color:#FF8A8C;border-color:rgba(229,27,32,.5);background:rgba(229,27,32,.1);}
+  .item .ib.piu{color:var(--fg-3);font-size:15px;line-height:1;padding:5px 10px;}
+  .item.exp .ib.piu{color:var(--gold-bright);border-color:var(--line-gold);background:rgba(201,162,75,.1);}
+  .item{flex-wrap:wrap;}
+  .item .secondarie{display:none;}
+  .item.exp .secondarie{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    width:100%;margin-top:10px;padding-top:10px;border-top:1px solid var(--line-2);}
+  .item .secondarie .livlab{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--fg-3);}
+  .item .livrow{margin-left:0;}
+  .item .secondarie .ib{margin-left:2px;}
+  .item .ib.del{margin-left:auto;color:#FF8A8C;border-color:rgba(229,27,32,.35);}
+  .item .ib.del:hover{color:#FF6B6E;border-color:var(--red);background:rgba(229,27,32,.12);}
   select option{background-color:#141B3C;color:#F5F1E6;}
 </style>
 </head>
@@ -330,7 +371,12 @@
     <h2>Scaletta <small id="count"></small>
       <button id="btnSvuota" type="button" title="Toglie tutte le grafiche dalla scaletta del canale. I progetti salvati restano.">Svuota la scaletta</button>
     </h2>
+    <div id="scalbar">
+      <input id="scalCerca" type="search" placeholder="Cerca in scaletta&hellip;" autocomplete="off" spellcheck="false">
+      <div id="scalFiltri"></div>
+    </div>
     <div id="items"></div>
+    <div id="scalvuoto">Nessuna grafica corrisponde al filtro. <a href="#" id="scalReset" style="color:var(--gold-bright)">Azzera</a></div>
     <div id="empty" style="display:none">Scaletta vuota: carica le grafiche dalle pagine
       (Formazioni &rarr; &#128225; Regia) e compariranno qui.</div>
   </div>
@@ -441,6 +487,9 @@
   var elItems = document.getElementById("items");
   var elEmpty = document.getElementById("empty");
   var elCount = document.getElementById("count");
+  var elCerca = document.getElementById("scalCerca");
+  var elFiltri = document.getElementById("scalFiltri");
+  var elScalVuoto = document.getElementById("scalvuoto");
   var thumb = document.getElementById("thumb");
   var thumbcap = document.getElementById("thumbcap");
   var btnOut = document.getElementById("btnOut");
@@ -448,6 +497,8 @@
 
   var cur = { items: [] };
   var selId = null;
+  var filtro = { q: "", tipo: "" };   // ricerca + filtro-tipo della scaletta
+  var espansoId = null;               // riga con le opzioni aperte (una alla volta)
   var thumbShownId = null;
   var lastNonce = null;
   var shownPlayNonce = null;   // monitor live: quale messa in onda sto già mostrando
@@ -641,6 +692,117 @@
     pollMatchPgm();
   })();
 
+  // etichette amichevoli per i filtri (piu' tipi tecnici → una sola voce)
+  var TIPO_LABEL = { formazione:"Formazioni","formazione-premium":"Formazioni",
+    classifica:"Classifiche",risultati:"Risultati",marcatori:"Marcatori",tabellone:"Tabelloni",
+    gruppi:"Gruppi",sottopancia:"Sottopancia",sottopancia2:"Sottopancia",
+    confronto:"Confronti",duello:"Duelli",giocatore:"Giocatori",scheda:"Schede",
+    focus:"Focus",volti:"Volti",video:"Media",immagine:"Media",web:"Media" };
+  function etichettaTipo(t) { return TIPO_LABEL[t] || (t ? String(t).toUpperCase() : "Altro"); }
+
+  // colore-famiglia (solo in console, aiuta a riconoscere i tipi a colpo d'occhio)
+  var FAM_COLORE = {
+    "Formazioni":"#5EA9D8",
+    "Confronti":"#A98BD0", "Duelli":"#A98BD0",
+    "Classifiche":"#5FB98E", "Risultati":"#5FB98E", "Marcatori":"#5FB98E", "Tabelloni":"#5FB98E", "Gruppi":"#5FB98E",
+    "Giocatori":"#D69A5B", "Schede":"#D69A5B", "Focus":"#D69A5B", "Volti":"#D69A5B",
+    "Sottopancia":"#8FA6C2",
+    "Media":"#CE7FA6"
+  };
+  function famColore(label) { return FAM_COLORE[label] || "#8A8FA6"; }
+
+  function megafonoBtn(id) {
+    return '<button class="ib megafono" data-act="megafono" data-id="' + esc(id) +
+      '" title="Avvisa in silenzio la regia: il nome lampeggia oro/blu sul PLAYOUT MEGAFONO">' +
+      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+        '<path d="M3 10 L14.5 5.5 L14.5 18.5 L3 14 Z" fill="#FF7A1A"/>' +
+        '<path d="M6 14.2 L6 19.5 L9.2 19.5 L8 15 Z" fill="#FF7A1A"/>' +
+        '<path d="M17 9 Q20.2 12 17 15" stroke="#FF9A3D" stroke-width="2" stroke-linecap="round"/>' +
+        '<path d="M19.2 7 Q23.6 12 19.2 17" stroke="#FF9A3D" stroke-width="2" stroke-linecap="round" opacity=".65"/>' +
+      '</svg></button>';
+  }
+
+  // Rende SOLO la lista scaletta (niente monitor): la chiamano sia paint()
+  // sia i filtri/ricerca, cosi' digitare non ricarica le anteprime.
+  function renderItems() {
+    var st = livelliInPlay().length ? "play" : "standby";
+    var filtroAttivo = !!(filtro.q || filtro.tipo);
+
+    // chip dei tipi presenti, con conteggi (sempre sull'elenco intero)
+    var conteggi = {}, ordine = [];
+    cur.items.forEach(function (it) {
+      var e = etichettaTipo(it.tipo);
+      if (!(e in conteggi)) { conteggi[e] = 0; ordine.push(e); }
+      conteggi[e]++;
+    });
+    var chips = '<button class="chip' + (filtro.tipo ? "" : " on") + '" data-filtro="">Tutti <b>' + cur.items.length + '</b></button>';
+    ordine.sort().forEach(function (e) {
+      chips += '<button class="chip' + (filtro.tipo === e ? " on" : "") + '" data-filtro="' + esc(e) +
+               '" style="--fam:' + famColore(e) + '"><span class="famdot"></span>' + esc(e) + ' <b>' + conteggi[e] + '</b></button>';
+    });
+    elFiltri.innerHTML = cur.items.length ? chips : "";
+
+    var visibili = cur.items.filter(function (it) {
+      if (filtro.tipo && etichettaTipo(it.tipo) !== filtro.tipo) return false;
+      if (filtro.q) {
+        var hay = ((it.titolo || "") + " " + (it.tipo || "")).toLowerCase();
+        if (hay.indexOf(filtro.q) < 0) return false;
+      }
+      return true;
+    });
+
+    elCount.textContent = cur.items.length
+      ? (filtroAttivo ? visibili.length + " di " + cur.items.length : cur.items.length + " / 30")
+      : "";
+
+    var h = "";
+    visibili.forEach(function (it) {
+      var L = it.liv || 1;
+      var lv = cur.liv ? cur.liv[String(L)] : null;
+      var onair = lv ? (lv.state === "play" && lv.onair === it.id)
+                     : (it.id === cur.onair && st === "play");
+      var occL = cur.liv && cur.liv[String(L)] && cur.liv[String(L)].state === "play" &&
+                 cur.liv[String(L)].onair && cur.liv[String(L)].onair !== it.id;
+      var quando = it.ts ? new Date(it.ts).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "";
+      var esp = (espansoId === it.id);
+      h += '<div class="item' + (it.id === selId ? " sel" : "") + (onair ? " onair" : "") + (esp ? " exp" : "") +
+        '" data-id="' + esc(it.id) + '" draggable="' + (filtroAttivo ? "false" : "true") +
+        '" style="--fam:' + famColore(etichettaTipo(it.tipo)) + '">' +
+        (filtroAttivo ? '' : '<span class="grip" title="Trascina per riordinare">&#8942;&#8942;</span>') +
+        '<span class="famdot" title="' + esc(etichettaTipo(it.tipo)) + '"></span>' +
+        '<span class="tit">' + esc(it.titolo || it.tipo) + '<small>' + esc(it.tipo.toUpperCase()) + (quando ? " · caricata " + quando : "") + '</small></span>' +
+        '<button class="livbadge' + (occL ? " occ" : "") + '" data-act="exp" data-id="' + esc(it.id) +
+          '" title="Livello ' + L + (occL ? " — occupato altrove" : "") + '. Clic per le opzioni">L' + L + '</button>' +
+        (onair ? '<span class="badge">IN ONDA</span>' +
+                 '<button class="ib esci" data-act="off" data-id="' + esc(it.id) +
+                 '" data-liv="' + L + '" title="Togli dall\'onda questo livello">&#9632;</button>'
+               : '<button class="ib entra" data-act="on" data-id="' + esc(it.id) +
+                 '" data-liv="' + L + '" title="Manda in onda sul livello ' + L + '">&#9654;</button>') +
+        megafonoBtn(it.id) +
+        '<button class="ib piu" data-act="exp" data-id="' + esc(it.id) + '" title="Altre opzioni (livello, rinomina, sposta, elimina)">&#8943;</button>' +
+        '<div class="secondarie">' +
+          '<span class="livlab">Livello</span>' +
+          '<span class="livrow" title="Livello di sovrapposizione: il 5 sta sopra a tutti">' +
+            [1,2,3,4,5].map(function (n) {
+              var occ = cur.liv && cur.liv[String(n)] &&
+                        cur.liv[String(n)].state === "play" && cur.liv[String(n)].onair;
+              return '<button class="lb' + (n === L ? " on" : "") + (occ ? " occupato" : "") +
+                     '" data-act="liv" data-id="' + esc(it.id) + '" data-liv="' + n + '"' +
+                     ' title="' + (occ ? "Livello " + n + " occupato" : "Livello " + n + " libero") + '">' +
+                     n + '</button>';
+            }).join("") +
+          '</span>' +
+          '<button class="ib" data-act="ren" data-id="' + esc(it.id) + '" title="Rinomina">&#9998; Rinomina</button>' +
+          '<button class="ib" data-act="up" data-id="' + esc(it.id) + '" title="Sposta su">&uarr;</button>' +
+          '<button class="ib" data-act="down" data-id="' + esc(it.id) + '" title="Sposta gi&ugrave;">&darr;</button>' +
+          '<button class="ib del" data-act="del" data-id="' + esc(it.id) + '" title="Elimina dalla scaletta">&times; Elimina</button>' +
+        '</div>' +
+        '</div>';
+    });
+    elItems.innerHTML = h;
+    elScalVuoto.style.display = (cur.items.length && !visibili.length) ? "block" : "none";
+  }
+
   function paint() {
     var inPlay = livelliInPlay();
     var st = inPlay.length ? "play" : "standby";
@@ -658,7 +820,6 @@
     // restava spento anche se c'era da spegnere
     btnOut.disabled = !titoloSuLiv(mira()) && !(anteprimaMatch && anteprimaFase);
     btnSvuota.disabled = !cur.items.length;
-    elCount.textContent = cur.items.length ? cur.items.length + " / 30" : "";
     elEmpty.style.display = cur.items.length ? "none" : "block";
 
     if (selId && !cur.items.some(function (x) { return x.id === selId; })) selId = null;
@@ -667,50 +828,7 @@
       selId = (sp && sp.lv.onair) || cur.items[0].id;
     }
 
-    var h = "";
-    cur.items.forEach(function (it) {
-      // livello della voce e stato del SUO livello: cosi' si vede riga per
-      // riga cosa c'e' in onda e dove, e si puo' togliere solo quella.
-      var L = it.liv || 1;
-      var lv = cur.liv ? cur.liv[String(L)] : null;
-      var onair = lv ? (lv.state === "play" && lv.onair === it.id)
-                     : (it.id === cur.onair && st === "play");
-      var quando = it.ts ? new Date(it.ts).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "";
-      h += '<div class="item' + (it.id === selId ? " sel" : "") + (onair ? " onair" : "") + '" data-id="' + esc(it.id) + '" draggable="true">' +
-        '<span class="grip" title="Trascina per riordinare">&#8942;&#8942;</span>' +
-        '<span class="tit">' + esc(it.titolo || it.tipo) + '<small>' + esc(it.tipo.toUpperCase()) + (quando ? " · caricata " + quando : "") + '</small></span>' +
-        '<span class="livrow" title="Livello di sovrapposizione: il 5 sta sopra a tutti">' +
-          [1,2,3,4,5].map(function (n) {
-            var occ = cur.liv && cur.liv[String(n)] &&
-                      cur.liv[String(n)].state === "play" && cur.liv[String(n)].onair;
-            return '<button class="lb' + (n === L ? " on" : "") + (occ ? " occupato" : "") +
-                   '" data-act="liv" data-id="' + esc(it.id) + '" data-liv="' + n + '"' +
-                   ' title="' + (occ ? "Livello " + n + " occupato" : "Livello " + n + " libero") + '">' +
-                   n + '</button>';
-          }).join("") +
-        '</span>' +
-        // stessi tasti delle schermate del player: verde per mandare in
-        // onda, rosso per togliere, sulla riga stessa
-        (onair ? '<span class="badge">IN ONDA</span>' +
-                 '<button class="ib esci" data-act="off" data-id="' + esc(it.id) +
-                 '" data-liv="' + L + '" title="Togli dall\'onda questo livello">&#9632;</button>'
-               : '<button class="ib entra" data-act="on" data-id="' + esc(it.id) +
-                 '" data-liv="' + L + '" title="Manda in onda sul livello ' + L + '">&#9654;</button>') +
-        '<button class="ib megafono" data-act="megafono" data-id="' + esc(it.id) +
-          '" title="Avvisa in silenzio la regia: il nome lampeggia oro/blu sul PLAYOUT MEGAFONO">' +
-          '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
-            '<path d="M3 10 L14.5 5.5 L14.5 18.5 L3 14 Z" fill="#FF7A1A"/>' +
-            '<path d="M6 14.2 L6 19.5 L9.2 19.5 L8 15 Z" fill="#FF7A1A"/>' +
-            '<path d="M17 9 Q20.2 12 17 15" stroke="#FF9A3D" stroke-width="2" stroke-linecap="round"/>' +
-            '<path d="M19.2 7 Q23.6 12 19.2 17" stroke="#FF9A3D" stroke-width="2" stroke-linecap="round" opacity=".65"/>' +
-          '</svg></button>' +
-        '<button class="ib" data-act="ren" data-id="' + esc(it.id) + '" title="Rinomina">&#9998;</button>' +
-        '<button class="ib" data-act="up" data-id="' + esc(it.id) + '" title="Su">&uarr;</button>' +
-        '<button class="ib" data-act="down" data-id="' + esc(it.id) + '" title="Gi&ugrave;">&darr;</button>' +
-        '<button class="ib" data-act="del" data-id="' + esc(it.id) + '" title="Elimina">&times;</button>' +
-        '</div>';
-    });
-    elItems.innerHTML = h;
+    renderItems();
 
     // i due monitor sono indipendenti: PGM segue lo stato del ponte,
     // PVW segue solo la selezione
@@ -891,6 +1009,7 @@
     var b = e.target.closest ? e.target.closest("button[data-act]") : null;
     if (b) {
       var id = b.dataset.id;
+      if (b.dataset.act === "exp") { espansoId = (espansoId === id ? null : id); renderItems(); return; }
       if (b.dataset.act === "liv") post({ tipo: "regia-liv", id: id, liv: +b.dataset.liv });
       if (b.dataset.act === "off") post({ tipo: "regia-state", state: "out", liv: +b.dataset.liv }, "Livello " + b.dataset.liv + " fuori onda.");
       if (b.dataset.act === "on") {
@@ -949,10 +1068,28 @@
     post({ tipo: "regia-state", state: "out", liv: L }, "Livello " + L + " fuori onda.");
   });
 
+  // ── ricerca + filtri della scaletta ──
+  elCerca.addEventListener("input", function () {
+    filtro.q = this.value.toLowerCase().trim();
+    renderItems();
+  });
+  elFiltri.addEventListener("click", function (e) {
+    var c = e.target.closest ? e.target.closest("[data-filtro]") : null;
+    if (!c) return;
+    filtro.tipo = c.dataset.filtro || "";
+    renderItems();
+  });
+  document.getElementById("scalReset").addEventListener("click", function (e) {
+    e.preventDefault();
+    filtro.q = ""; filtro.tipo = ""; elCerca.value = "";
+    renderItems();
+  });
+
   // ── riordino con trascinamento ──
   var dragging = null;
 
   elItems.addEventListener("dragstart", function (e) {
+    if (filtro.q || filtro.tipo) return;   // niente riordino mentre si filtra
     var row = e.target.closest ? e.target.closest(".item") : null;
     if (!row) return;
     dragging = row;
