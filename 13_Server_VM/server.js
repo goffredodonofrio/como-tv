@@ -47,7 +47,7 @@ const CONFIG = {
   // loghi delle squadre caricati dalla redazione (giovanili, amichevoli…)
   LOGHI: process.env.COMOTV_LOGHI || "/var/lib/comotv/loghi",
 
-  CANALI: 7,
+  CANALI: 8,
   MAX_SCALETTA: 30,
 
   // gli invii "Al foglio" continuano ad andare qui

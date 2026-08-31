@@ -15,13 +15,16 @@ window.Destinazione = (function () {
   "use strict";
   var sel = null, ponte = "", token = "", progetti = [];
   var LS = "comotv.regia.destinazione";
+  var N_CANALI = 8;
+  // l'ottavo vMix e' quello della regia: ha un nome suo, non "vMix 8"
+  function nomeCanale(c) { return c == 8 ? "VMIX REGIA" : "vMix " + c; }
 
   function ricostruisci() {
     var scelto = null;
     try { scelto = localStorage.getItem(LS); } catch (e) {}
     if (sel.value) scelto = sel.value;              // una scelta gia' fatta vince
     var h = "";
-    for (var i = 1; i <= 7; i++) h += '<option value="' + i + '">vMix ' + i + "</option>";
+    for (var i = 1; i <= N_CANALI; i++) h += '<option value="' + i + '">' + nomeCanale(i) + "</option>";
     if (progetti.length) {
       h += '<optgroup label="Progetti">';
       progetti.forEach(function (p) {
@@ -89,7 +92,7 @@ window.Destinazione = (function () {
       return { tipo: "progetto", id: id, nome: nome };
     }
     var c = parseInt(v, 10);
-    return { tipo: "canale", c: (c >= 1 && c <= 7) ? c : 1 };
+    return { tipo: "canale", c: (c >= 1 && c <= N_CANALI) ? c : 1 };
   }
 
   // il corpo della richiesta: stesso payload, comando diverso
@@ -102,7 +105,7 @@ window.Destinazione = (function () {
   // per i messaggi di conferma: "vMix 3" oppure "progetto FOOTBALL SHOW"
   function dove() {
     var d = corrente();
-    return d.tipo === "progetto" ? 'progetto "' + d.nome + '"' : "vMix " + d.c;
+    return d.tipo === "progetto" ? 'progetto "' + d.nome + '"' : nomeCanale(d.c);
   }
 
   return { adotta: adotta, corrente: corrente, corpo: corpo, dove: dove, ricarica: carica };
