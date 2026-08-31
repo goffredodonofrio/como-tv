@@ -810,9 +810,19 @@ const server = http.createServer((req, res) => {
     const file = path.join(CONFIG.LOGHI, nome);
     return fs.stat(file, (err, st) => {
       if (err || !st.isFile()) { res.writeHead(404).end("non trovato"); return; }
+      // rivalidazione invece di cache fissa: la foto resta cache-abile, ma il
+      // browser controlla a ogni uso se e' cambiata (etag = mtime+dimensione).
+      // Se il Panda la ri-carica si vede SUBITO; se e' uguale, 304 leggero.
+      const etag = '"' + st.mtimeMs.toString(36) + "-" + st.size.toString(36) + '"';
+      if (req.headers["if-none-match"] === etag) {
+        res.writeHead(304, { "ETag": etag, "Cache-Control": "no-cache", "Access-Control-Allow-Origin": "*" });
+        return res.end();
+      }
       res.writeHead(200, {
         "Content-Type": TIPI[path.extname(file).toLowerCase()] || "image/png",
-        "Cache-Control": "public, max-age=600",
+        "Cache-Control": "no-cache",
+        "ETag": etag,
+        "Last-Modified": st.mtime.toUTCString(),
         "Access-Control-Allow-Origin": "*"
       });
       fs.createReadStream(file).pipe(res);
