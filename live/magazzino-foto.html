@@ -163,8 +163,8 @@
         </ul>
       </div>
     </div>
-    <div class="foot">Il nome del file lo mette la pagina in automatico (<b>squadra + cognome</b>): tu non devi rinominare niente.
-      La foto caricata <b>sostituisce</b> quella vecchia. Se un giocatore non è in elenco, aggiungilo in fondo col suo cognome.</div>
+    <div class="foot">Il nome del file lo mette la pagina in automatico (dal <b>cognome</b>): tu non devi rinominare niente.
+      La foto caricata <b>sostituisce</b> quella vecchia dello stesso giocatore. Se un giocatore non è in elenco, aggiungilo in fondo col suo cognome.</div>
   </div>
 
   <div class="barra">
@@ -218,11 +218,10 @@
   // stesso slug del ponte (accenti via, non-alfanum -> trattino, taglio a 48)
   function slug(s){ return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
     .replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,48); }
-  // chiave file in magazzino: foto-premium-<squadra>-<cognome>  (com'è vista dal premium)
-  function chiaveFoto(teamName, cognome){ return slug("foto-premium-" + slug(teamName) + "-" + slug(cognome)); }
-  function urlFoto(teamName, cognome){ return "/loghi/" + chiaveFoto(teamName, cognome) + ".png"; }
-  // vecchio nome (solo-cognome) delle prime foto Como: per non darle per mancanti
-  function urlFotoLegacy(cognome){ return "/loghi/foto-premium-" + slug(cognome) + ".png"; }
+  // chiave file in magazzino: foto-premium-<cognome>  (com'è vista dal premium).
+  // La squadra serve solo a sfogliare la rosa, non entra nel nome del file.
+  function nomeFoto(cognome){ return "foto-premium-" + slug(cognome); }
+  function urlFoto(cognome){ return "/loghi/" + nomeFoto(cognome) + ".png"; }
 
   function stato(cls, html){ var s=el("stato"); s.className=cls||""; s.innerHTML=html||""; }
 
@@ -319,13 +318,14 @@
     aggiornaCopertura();
   }
 
-  // c'è già la foto? (prova il nome nuovo, poi il vecchio solo-cognome)
+  // c'è già la foto in magazzino?
   function controlla(cognome){
     var card = el("pc-"+slug(cognome)); if(!card) return;
     var img = card.querySelector("img");
-    function prova(url, poi){ var im=new Image(); im.onload=function(){ card.classList.add("has"); img.src=url; aggiornaCopertura(); };
-      im.onerror=poi; im.src=url + "?t=" + Date.now(); }
-    prova(urlFoto(teamName, cognome), function(){ prova(urlFotoLegacy(cognome), function(){ card.classList.remove("has"); }); });
+    var url = urlFoto(cognome), im = new Image();
+    im.onload = function(){ card.classList.add("has"); img.src = url; aggiornaCopertura(); };
+    im.onerror = function(){ card.classList.remove("has"); };
+    im.src = url + "?t=" + Date.now();
   }
 
   function aggiornaCopertura(){
@@ -345,11 +345,11 @@
     var rd = new FileReader();
     rd.onload = function(){
       fetch(PONTE, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
-        body: JSON.stringify({ token:TOKEN, tipo:"logo-carica", nome:"foto-premium-"+slug(teamName)+"-"+slug(cognome), dati: rd.result }) })
+        body: JSON.stringify({ token:TOKEN, tipo:"logo-carica", nome:nomeFoto(cognome), dati: rd.result }) })
       .then(function(r){ return r.json(); })
       .then(function(res){
         card.classList.remove("busy");
-        if(res && res.ok){ card.classList.add("has"); card.querySelector("img").src = (res.url||urlFoto(teamName,cognome))+"?t="+Date.now();
+        if(res && res.ok){ card.classList.add("has"); card.querySelector("img").src = (res.url||urlFoto(cognome))+"?t="+Date.now();
           aggiornaCopertura(); stato("ok","<b>"+esc(cognome)+"</b>: foto salvata in magazzino."); }
         else stato("err","<b>"+esc(cognome)+":</b> "+esc((res&&res.errore)||"errore")); })
       .catch(function(e){ card.classList.remove("busy"); stato("err","<b>"+esc(cognome)+":</b> "+esc(e.message)); });
@@ -360,7 +360,7 @@
   function rimuovi(cognome){
     if(!window.confirm("Tolgo la foto di "+cognome+" dal magazzino?")) return;
     fetch(PONTE, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body: JSON.stringify({ token:TOKEN, tipo:"logo-togli", nome:"foto-premium-"+slug(teamName)+"-"+slug(cognome) }) })
+      body: JSON.stringify({ token:TOKEN, tipo:"logo-togli", nome:nomeFoto(cognome) }) })
     .then(function(r){ return r.json(); })
     .then(function(){ var card=el("pc-"+slug(cognome)); if(card){ card.classList.remove("has"); card.querySelector("img").src=""; }
       aggiornaCopertura(); stato("","Foto di <b>"+esc(cognome)+"</b> rimossa."); })
