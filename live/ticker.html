@@ -113,8 +113,16 @@
   .crvoce .cv-rm:hover{background:rgba(229,27,32,.12);border-color:var(--red);}
   .crvuoto{color:var(--fg-3);font-size:12.5px;padding:6px 2px;}
 
-  #stato{font-size:13.5px;color:var(--ivory-dim);min-height:20px;margin:16px 0 10px;}
+  #stato{font-size:13.5px;color:var(--ivory-dim);min-height:20px;margin:16px 0 10px;
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
   #stato b{color:var(--ivory);} #stato.err{color:#FF9A9C;} #stato.ok{color:var(--ok);}
+  /* barra di avanzamento dell'invio, come nelle altre grafiche */
+  .pbar{height:6px;background:rgba(245,241,230,.08);border-radius:3px;overflow:hidden;
+    flex:1 1 240px;min-width:200px;align-self:center;}
+  .pfill{display:block;height:100%;width:0;background:var(--gold);border-radius:3px;
+    animation:pfill 2.6s cubic-bezier(.2,.7,.3,1) forwards;}
+  @keyframes pfill{0%{width:0}60%{width:72%}100%{width:92%}}
+  .pfill.done{animation:none;width:100%;background:var(--ok);transition:width .25s ease;}
 
   /* anteprima come le altre pagine: il motore vero, scalato */
   #prevbox{margin-top:20px;background:var(--panel);border:1px solid var(--line-2);border-radius:12px;padding:16px;display:none;}
@@ -403,8 +411,15 @@
     var p=payload();
     if(!p.ti.length){ status("err","<b>Manca il titolo.</b> Scrivi almeno un titolo da mandare in onda."); return; }
     var nomiEt={ultimora:"ULTIM'ORA",mercato:"CALCIOMERCATO",topnews:"TOP NEWS",risultati:"RISULTATI",diretta:"IN DIRETTA"};
-    var titolo = "TICKER — " + (nomiEt[p.et]||"") + (p.ti[0]?": "+p.ti[0].split(" · ")[0].slice(0,40):"");
-    status("","Invio del ticker a " + (window.Destinazione?Destinazione.dove():"regia") + "…");
+    var proposta = "TICKER — " + (nomiEt[p.et]||"") + (p.ti[0]?": "+p.ti[0].split(" · ")[0].slice(0,40):"");
+    // conferma il nome in scaletta, come negli altri editor
+    var titolo = window.prompt("Nome in scaletta di regia:", proposta.trim());
+    if(titolo===null) return;
+    titolo = titolo.trim() || proposta;
+    var dove = window.Destinazione?Destinazione.dove():"regia";
+    el("stato").className=""; el("stato").innerHTML =
+      '<span>Invio del ticker a ' + esc(dove) + '&hellip;</span>' +
+      '<span class="pbar"><span class="pfill" id="pfill"></span></span>';
     fetch(PONTE_DEFAULT.url, {
       method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
       body: JSON.stringify(Object.assign({ token: PONTE_DEFAULT.token },
@@ -412,7 +427,10 @@
     })
     .then(function(r){ return r.json(); })
     .then(function(res){
-      if(res && res.ok) status("ok","<b>Ticker</b> aggiunto a " + (window.Destinazione?Destinazione.dove():"regia") + ". Dalla <a href='regia.html' target='_blank'>console</a> lo mandi in onda.");
+      if(res && res.ok){
+        var pf=el("pfill"); if(pf) pf.className="pfill done";
+        setTimeout(function(){ status("ok","<b>Ticker</b> aggiunto a " + esc(dove) + ". Dalla <a href='regia.html' target='_blank'>console</a> lo mandi in onda."); }, 350);
+      }
       else status("err","<b>La regia ha rifiutato:</b> " + esc((res&&res.errore)||"errore"));
     })
     .catch(function(e){ status("err","<b>Ponte non raggiungibile:</b> " + esc(e.message)); });

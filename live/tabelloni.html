@@ -122,6 +122,12 @@
     background:rgba(245,241,230,.05);border:1px solid var(--line-2);}
   .stemmino img{width:26px;height:26px;object-fit:contain;}
   .stemmino.vuoto{opacity:.35;}
+  .matita{flex:0 0 auto;width:34px;height:34px;border-radius:6px;cursor:pointer;
+    background:rgba(245,241,230,.05);border:1px solid var(--line-2);color:var(--fg-3);
+    font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;
+    transition:color .12s,border-color .12s,background .12s;}
+  .matita:hover{color:var(--ivory);border-color:var(--fg-3);}
+  .matita.on{color:#0A0F26;background:var(--oro,#C9A24B);border-color:var(--oro,#C9A24B);}
 
   /* un incontro del tabellone */
   .inc{border:1px solid var(--line-2);border-radius:9px;padding:12px;margin-bottom:10px;
@@ -457,6 +463,19 @@
     if (MODO === "tabellone") propagaVincitori();
   });
 
+  // matita: apre il nome per modificarlo TENENDO lo stemma preso da ESPN.
+  // (il menù "scrivi a mano" azzera invece lo stemma: serve quando la
+  // squadra non e' in elenco.) La fonte di verita' resta il campo di testo.
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest(".matita") : null;
+    if (!b) return;
+    var id = b.dataset.per, inp = el(id + "n");
+    if (!inp) return;
+    var aperto = inp.style.display !== "none";
+    mostraScrittura(id, !aperto);   // toggle: non tocca dataset.logo
+    b.classList.toggle("on", !aperto);
+  });
+
   // ── una sola destinazione per macchina ──
   (function () {
     var s = el("canaleSel");
@@ -526,6 +545,7 @@
         '<span class="stemmino" id="' + id + 'logo"></span>' +
         '<select id="' + id + 'sel" class="sqsel" data-per="' + id + '"></select>' +
         '<input type="text" id="' + id + 'n" data-ruolo="nome" placeholder="scrivi il nome" style="display:none">' +
+        '<button type="button" class="matita" data-per="' + id + '" title="Modifica il nome (tieni lo stemma)" aria-label="Modifica il nome">&#9998;</button>' +
       '</div></div>';
   }
 
@@ -739,11 +759,9 @@
 
   // scrivendo un risultato del primo turno i turni dopo si aggiornano
   el("campi").addEventListener("input", function (e) {
-    if (e.target.tagName === "INPUT" && e.target.type === "text" && /n$/.test(e.target.id || "")) {
-      // scritta a mano: nessuno stemma, ma il colore resta quello scelto
-      e.target.dataset.logo = "";
-      pittaStemmino(e.target.id.replace(/n$/, ""));
-    }
+    // Digitare nel nome NON tocca lo stemma: lo stemma lo decide solo il menù
+    // (squadra ESPN → stemma; "scrivi a mano" → nessuno). Cosi' con la matita
+    // si puo' accorciare "Estudiantes de La Plata" in "ESTUDIANTES" tenendo il logo.
     if (MODO !== "tabellone") return;
     if (e.target.type === "number" || e.target.dataset.ruolo === "nome") propagaVincitori();
   });
