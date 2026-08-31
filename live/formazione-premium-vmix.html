@@ -400,14 +400,28 @@
   // reparti gia' schierati restano in ombra, il pacchetto in ribalta risalta
   setTimeout(function () { el("dim").className = "on"; }, T0 - 200 * SLOW);
 
+  // la card del reparto resta in scena finche' NON arriva la spazzata
+  // successiva: e' la wipe a coprire lo scambio. Sotto la spazzata il
+  // reparto precedente "atterra" in campo come maglietta e, insieme,
+  // entra il reparto nuovo. Cosi': giocatore appare -> wipe -> reparto dopo.
+  function atterra(li) {                        // le magliette del reparto li vanno a piena luce
+    var r = righe[li];
+    for (var k = 0; k < r.length; k++) {
+      var pc = pcards[startIdx[li] + k];
+      if (pc) pc.style.opacity = 1;
+    }
+  }
   righe.forEach(function (r, li) {
     var inizio = T0 + li * PER;
     setTimeout(function () {
       wipe(function () {
-        // a metà spazzata: entra il reparto grande
+        // a metà spazzata: il reparto precedente atterra in campo,
+        // poi entra il reparto grande nuovo (le card vecchie sono sostituite)
+        if (li > 0) atterra(li - 1);
         var rn = repartoNome(li, righe.length);
         reparto.textContent = rn;
         reparto.style.fontSize = rn.length > 8 ? "70px" : "104px";
+        reparto.className = ""; void reparto.offsetWidth;   // ri-attiva la slide-in
         reparto.className = "in";
         ribalta.innerHTML = r.map(function (_, k) { return bigHTML(titolari[startIdx[li] + k] || []); }).join("");
         var bigs = ribalta.querySelectorAll(".bigcard");
@@ -418,27 +432,24 @@
         }, PER * 0.5);
       });
     }, inizio);
-    // la foto si "trasforma" nella maglietta in campo
-    setTimeout(function () {
-      reparto.className = "out";
-      ribalta.querySelectorAll(".bigcard").forEach(function (b) { b.classList.add("out"); });
-      for (var k = 0; k < r.length; k++) {
-        (function (pc) { setTimeout(function(){ if (pc) pc.style.opacity = 1; }, 360 * SLOW); })(pcards[startIdx[li] + k]);
-      }
-    }, inizio + PER - 620 * SLOW);
   });
 
+  // chiusura: un'ultima spazzata copre l'uscita dell'ultimo reparto,
+  // fa atterrare le sue magliette e toglie il velo — coerente con gli altri
   var fine = T0 + righe.length * PER;
   setTimeout(function () {
-    ribalta.innerHTML = ""; reparto.className = "";
-    el("dim").className = "off";                // via il velo: tutte le magliette a piena luce
-    pcards.forEach(function (c) { c.style.opacity = 1; });
-    if (conPanca) {
-      // il campo e le magliette scorrono a sinistra, la panchina entra nello spazio
-      el("campo").style.transform = "translateX(-190px) translateZ(0)";
-      el("pitch").style.transform = "translateX(-190px) translateZ(0)";
-      setTimeout(function(){ el("panca").classList.add("in"); }, 300 * SLOW);
-    }
+    wipe(function () {
+      atterra(righe.length - 1);
+      ribalta.innerHTML = ""; reparto.className = "";
+      el("dim").className = "off";              // via il velo: tutte le magliette a piena luce
+      pcards.forEach(function (c) { c.style.opacity = 1; });
+      if (conPanca) {
+        // il campo e le magliette scorrono a sinistra, la panchina entra nello spazio
+        el("campo").style.transform = "translateX(-190px) translateZ(0)";
+        el("pitch").style.transform = "translateX(-190px) translateZ(0)";
+        setTimeout(function(){ el("panca").classList.add("in"); }, 300 * SLOW);
+      }
+    });
   }, fine);
 
   document.addEventListener("dblclick", function(){ location.reload(); });

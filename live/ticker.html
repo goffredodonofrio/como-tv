@@ -107,7 +107,12 @@
   .crvoce .cv-comp{font-weight:600;color:var(--ivory);}
   .crvoce .cv-tipo{color:var(--gold-bright);font-family:'Mazzard',sans-serif;font-weight:700;font-size:11px;
     letter-spacing:.08em;text-transform:uppercase;background:rgba(201,162,75,.12);border-radius:5px;padding:3px 8px;}
-  .crvoce .cv-n{flex:1;text-align:right;color:var(--fg-3);font-size:11.5px;}
+  .crvoce .cv-et{flex:1;min-width:120px;background:var(--bg);border:1px solid var(--line-2);border-radius:6px;
+    color:var(--gold-bright);font-family:'Mazzard',sans-serif;font-weight:700;font-size:12px;letter-spacing:.05em;
+    text-transform:uppercase;padding:6px 9px;}
+  .crvoce .cv-et:focus{outline:none;border-color:var(--gold);}
+  .crvoce .cv-et::placeholder{color:var(--fg-3);text-transform:uppercase;font-weight:600;opacity:.7;}
+  .crvoce .cv-n{flex:none;text-align:right;color:var(--fg-3);font-size:11.5px;white-space:nowrap;}
   .crvoce .cv-rm{flex:none;background:transparent;border:1px solid rgba(229,27,32,.4);color:#FF9A9C;
     padding:5px 8px;font-size:12px;border-radius:6px;}
   .crvoce .cv-rm:hover{background:rgba(229,27,32,.12);border-color:var(--red);}
@@ -176,7 +181,7 @@
 
     <div class="card">
       <h2>Crawl dai dati <button id="btnCrawl" type="button" style="padding:6px 11px;font-size:10px">&#8635; Aggiorna</button></h2>
-      <div class="desc">La riga che scorre in basso, dai dati ESPN. Aggiungi <b>più voci</b>: ognuna è una competizione + un dato (es. Prossime di Serie A <i>e</i> di Eredivisie). Niente da scrivere a mano.</div>
+      <div class="desc">La riga che scorre in basso, dai dati ESPN. Aggiungi <b>più voci</b>: ognuna è una competizione + un dato (es. Prossime di Serie A <i>e</i> di Eredivisie). I dati arrivano da soli; il <b>titolo in oro</b> è modificabile (vuoto = automatico, es. <i>CLASSIFICA SERIE A</i>).</div>
       <div style="display:flex;gap:9px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
         <div class="campo" style="flex:1;min-width:150px"><label for="crComp">Competizione</label><select id="crComp"></select></div>
         <div class="campo"><label for="crTipo">Dato</label><select id="crTipo">
@@ -304,25 +309,39 @@
   }
   var anno=(function(){var d=new Date();return d.getMonth()>=6?d.getFullYear():d.getFullYear()-1;})();
   var TIPO_NOME = {cls:"Classifica", ris:"Risultati", pro:"Prossime", mar:"Marcatori"};
+  // etichetta in oro davanti ai dati nel crawl. Di default e' TIPO + COMPETIZIONE
+  // (es. "CLASSIFICA SERIE A"); ogni voce puo' pero' avere un titolo scritto a
+  // mano (v.et) — es. "FUORI CASA SEMPRE 3 PUNTI" sulle ultime trasferte.
+  var DEFLABEL = {cls:"CLASSIFICA", ris:"RISULTATI", pro:"PROSSIME", mar:"MARCATORI"};
+  function autoHdr(v){ var c=COMPS[v.ci]||COMPS[0]; return DEFLABEL[v.tipo]+" "+c.n.toUpperCase(); }
+  function hdrVoce(v){ var e=(v.et||"").trim(); return e ? e.toUpperCase().replace(/[·|]/g," ").replace(/\s+/g," ").trim() : autoHdr(v); }
+  var ULTIMI = null;   // cache dei dati ESPN: cambiare il titolo non rifa' la fetch
 
   // ── voci del crawl: ognuna = competizione + un dato ──
-  var voci = [{ci:0, tipo:"cls"}];    // default: Serie A · Classifica
+  var voci = [{ci:0, tipo:"cls", et:""}];    // default: Serie A · Classifica
   function renderVoci(){
     var box=el("crVoci");
     if(!voci.length){ box.innerHTML='<div class="crvuoto">Nessuna voce: aggiungine una qui sopra.</div>'; return; }
     box.innerHTML = voci.map(function(v,i){ var c=COMPS[v.ci]||COMPS[0];
       return '<div class="crvoce"><span class="cv-comp">'+esc((c.b?c.b+" ":"")+c.n)+'</span>'+
         '<span class="cv-tipo">'+esc(TIPO_NOME[v.tipo]||v.tipo)+'</span>'+
+        '<input class="cv-et" type="text" data-i="'+i+'" value="'+esc(v.et||"")+'" placeholder="'+esc(autoHdr(v))+'" title="Titolo in oro nel crawl — lascia vuoto per quello automatico" maxlength="42">'+
         '<span class="cv-n" id="cvn-'+i+'"></span>'+
         '<button class="cv-rm" type="button" data-i="'+i+'" title="Togli">&times;</button></div>';
     }).join("");
   }
   el("btnAddVoce").addEventListener("click", function(){
-    voci.push({ci:+el("crComp").value, tipo:el("crTipo").value}); renderVoci(); costruisciCrawl();
+    voci.push({ci:+el("crComp").value, tipo:el("crTipo").value, et:""}); renderVoci(); costruisciCrawl();
   });
   el("crVoci").addEventListener("click", function(e){
     var rm=e.target.closest ? e.target.closest(".cv-rm") : null; if(!rm)return;
     voci.splice(+rm.dataset.i,1); renderVoci(); costruisciCrawl();
+  });
+  // titolo a mano di una voce: aggiorna il testo in oro senza rifare la fetch
+  el("crVoci").addEventListener("input", function(e){
+    var inp=e.target.closest ? e.target.closest(".cv-et") : null; if(!inp)return;
+    var v=voci[+inp.dataset.i]; if(!v)return;
+    v.et=inp.value; componiCrawl();
   });
 
   // costruisce il blocco di UNA voce → Promise di {blocco,n} o null
@@ -337,7 +356,7 @@
           cls.push({pos:pos,nm:nomeSquadra(en.team).toUpperCase(),pts:pts}); }); });
         cls.sort(function(a,b){return (a.pos||99)-(b.pos||99);});
         if(!cls.length)return null;
-        return {blocco:"CLASSIFICA "+c.n.toUpperCase()+" · "+cls.slice(0,10).map(function(r){return (r.pos!=null?r.pos+"° ":"")+r.nm+(r.pts!=null?" "+r.pts+"PT":"");}).join(" · "), n:cls.length};
+        return {data:cls.slice(0,10).map(function(r){return (r.pos!=null?r.pos+"° ":"")+r.nm+(r.pts!=null?" "+r.pts+"PT":"");}), n:cls.length};
       });
     }
     if(v.tipo==="mar"){
@@ -345,7 +364,7 @@
         var gl=((mk&&mk.stats)||[]).filter(function(x){return x.name==="goalsLeaders";})[0];
         var mar=((gl&&gl.leaders)||[]).slice(0,10).map(function(l){ var a=l.athlete||{},dn=(a.displayName||a.shortName||"").trim(),cog=dn?dn.split(" ").slice(-1)[0].toUpperCase():"",g=(l.value!=null?Math.round(l.value):""); return cog+(g!==""?" "+g:""); }).filter(Boolean);
         if(!mar.length)return null;
-        return {blocco:"MARCATORI "+c.n.toUpperCase()+" · "+mar.join(" · "), n:mar.length};
+        return {data:mar, n:mar.length};
       });
     }
     // ris / pro dallo scoreboard, con finestra date allargata (così "prossime"
@@ -368,24 +387,27 @@
       });
       if(!out.length)return null;
       var tot=out.length; out=out.slice(0,12);   // il turno + margine: crawl non infinito
-      return {blocco:(v.tipo==="ris"?"RISULTATI ":"PROSSIME ")+c.n.toUpperCase()+" · "+out.join(" · "), n:tot};
+      return {data:out, n:tot};
     });
   }
 
-  function costruisciCrawl(){
-    if(!voci.length){ crawlText=""; el("crawlprev").textContent="Aggiungi una o più voci qui sopra."; el("crawlnote").textContent=""; return; }
-    el("crawlprev").textContent="Carico i dati…"; el("crawlnote").textContent="";
-    Promise.all(voci.map(bloccoVoce)).then(function(res){
-      var blocchi=[], vuote=0;
-      res.forEach(function(r,i){ var cvn=el("cvn-"+i);
-        if(r&&r.blocco){ blocchi.push(r.blocco); if(cvn)cvn.textContent=r.n+" voci"; }
-        else { vuote++; if(cvn)cvn.textContent="nessun dato"; }
-      });
-      crawlText = blocchi.join(" |||| ");
-      if(!crawlText){ el("crawlprev").textContent="Nessun dato disponibile per le voci scelte (forse fuori dai giorni di gara)."; el("crawlnote").textContent=""; return; }
-      el("crawlnote").textContent = blocchi.length+" blocchi nel crawl" + (vuote?" · "+vuote+" senza dati ora":"");
-      pintaCrawlPrev();
+  // compone il crawl dai dati in cache + le etichette correnti (niente fetch):
+  // così modificare il titolo di una voce aggiorna subito l'anteprima.
+  function componiCrawl(){
+    var res=ULTIMI||[]; var blocchi=[], vuote=0;
+    res.forEach(function(r,i){ var cvn=el("cvn-"+i); if(!voci[i])return;
+      if(r&&r.data&&r.data.length){ blocchi.push(hdrVoce(voci[i])+" · "+r.data.join(" · ")); if(cvn)cvn.textContent=r.n+" voci"; }
+      else { vuote++; if(cvn)cvn.textContent="nessun dato"; }
     });
+    crawlText = blocchi.join(" |||| ");
+    if(!crawlText){ el("crawlprev").textContent="Nessun dato disponibile per le voci scelte (forse fuori dai giorni di gara)."; el("crawlnote").textContent=""; return; }
+    el("crawlnote").textContent = blocchi.length+" blocchi nel crawl" + (vuote?" · "+vuote+" senza dati ora":"");
+    pintaCrawlPrev();
+  }
+  function costruisciCrawl(){
+    if(!voci.length){ crawlText=""; ULTIMI=null; el("crawlprev").textContent="Aggiungi una o più voci qui sopra."; el("crawlnote").textContent=""; return; }
+    el("crawlprev").textContent="Carico i dati…"; el("crawlnote").textContent="";
+    Promise.all(voci.map(bloccoVoce)).then(function(res){ ULTIMI=res; componiCrawl(); });
   }
 
   el("btnCrawl").addEventListener("click", costruisciCrawl);
