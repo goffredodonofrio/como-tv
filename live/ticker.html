@@ -100,6 +100,19 @@
   .crtoggles label{display:flex;align-items:center;gap:7px;font-size:13.5px;color:var(--ivory-dim);cursor:pointer;}
   .crtoggles input{width:16px;height:16px;accent-color:var(--gold);}
 
+  /* lista voci del crawl (competizione + dato) */
+  .crvoci{display:flex;flex-direction:column;gap:7px;margin-bottom:12px;}
+  .crvoce{display:flex;align-items:center;gap:10px;background:var(--bg-2);border:1px solid var(--line-2);
+    border-radius:8px;padding:8px 10px;font-size:13px;}
+  .crvoce .cv-comp{font-weight:600;color:var(--ivory);}
+  .crvoce .cv-tipo{color:var(--gold-bright);font-family:'Mazzard',sans-serif;font-weight:700;font-size:11px;
+    letter-spacing:.08em;text-transform:uppercase;background:rgba(201,162,75,.12);border-radius:5px;padding:3px 8px;}
+  .crvoce .cv-n{flex:1;text-align:right;color:var(--fg-3);font-size:11.5px;}
+  .crvoce .cv-rm{flex:none;background:transparent;border:1px solid rgba(229,27,32,.4);color:#FF9A9C;
+    padding:5px 8px;font-size:12px;border-radius:6px;}
+  .crvoce .cv-rm:hover{background:rgba(229,27,32,.12);border-color:var(--red);}
+  .crvuoto{color:var(--fg-3);font-size:12.5px;padding:6px 2px;}
+
   #stato{font-size:13.5px;color:var(--ivory-dim);min-height:20px;margin:16px 0 10px;}
   #stato b{color:var(--ivory);} #stato.err{color:#FF9A9C;} #stato.ok{color:var(--ok);}
 
@@ -154,18 +167,20 @@
     </div>
 
     <div class="card">
-      <h2>Crawl dai dati <button id="btnCrawl" type="button" style="padding:6px 11px;font-size:10px">&#8635; Costruisci</button></h2>
-      <div class="desc">La riga che scorre in basso, dai dati ESPN. Scegli la competizione e cosa mostrare: niente da scrivere a mano.</div>
-      <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:14px">
-        <div class="campo"><label for="crComp">Competizione</label><select id="crComp"></select></div>
-        <div class="crtoggles" id="crToggles">
-          <label><input type="checkbox" value="cls" checked> Classifica</label>
-          <label><input type="checkbox" value="ris" checked> Risultati</label>
-          <label><input type="checkbox" value="pro"> Prossime partite</label>
-          <label><input type="checkbox" value="mar"> Marcatori</label>
-        </div>
+      <h2>Crawl dai dati <button id="btnCrawl" type="button" style="padding:6px 11px;font-size:10px">&#8635; Aggiorna</button></h2>
+      <div class="desc">La riga che scorre in basso, dai dati ESPN. Aggiungi <b>più voci</b>: ognuna è una competizione + un dato (es. Prossime di Serie A <i>e</i> di Eredivisie). Niente da scrivere a mano.</div>
+      <div style="display:flex;gap:9px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
+        <div class="campo" style="flex:1;min-width:150px"><label for="crComp">Competizione</label><select id="crComp"></select></div>
+        <div class="campo"><label for="crTipo">Dato</label><select id="crTipo">
+          <option value="pro">Prossime partite</option>
+          <option value="cls">Classifica</option>
+          <option value="ris">Risultati</option>
+          <option value="mar">Marcatori</option>
+        </select></div>
+        <button id="btnAddVoce" type="button" style="padding:9px 13px;font-size:10px">+ Aggiungi</button>
       </div>
-      <div id="crawlprev">Scegli e premi «Costruisci».</div>
+      <div id="crVoci" class="crvoci"></div>
+      <div id="crawlprev">Aggiungi una o più voci.</div>
       <div class="subhint" id="crawlnote"></div>
     </div>
   </div>
@@ -256,80 +271,95 @@
     }).join('<span class="sep">•</span>');
     el("crawlprev").innerHTML = h || "—";
   }
-  function attivi(){ return [].map.call(el("crToggles").querySelectorAll("input:checked"), function(i){return i.value;}); }
   function nomeSquadra(t){ return (t&&(t.shortDisplayName||t.abbreviation||t.displayName||t.name))||""; }
+  var anno=(function(){var d=new Date();return d.getMonth()>=6?d.getFullYear():d.getFullYear()-1;})();
+  var TIPO_NOME = {cls:"Classifica", ris:"Risultati", pro:"Prossime", mar:"Marcatori"};
+
+  // ── voci del crawl: ognuna = competizione + un dato ──
+  var voci = [{ci:0, tipo:"cls"}];    // default: Serie A · Classifica
+  function renderVoci(){
+    var box=el("crVoci");
+    if(!voci.length){ box.innerHTML='<div class="crvuoto">Nessuna voce: aggiungine una qui sopra.</div>'; return; }
+    box.innerHTML = voci.map(function(v,i){ var c=COMPS[v.ci]||COMPS[0];
+      return '<div class="crvoce"><span class="cv-comp">'+esc((c.b?c.b+" ":"")+c.n)+'</span>'+
+        '<span class="cv-tipo">'+esc(TIPO_NOME[v.tipo]||v.tipo)+'</span>'+
+        '<span class="cv-n" id="cvn-'+i+'"></span>'+
+        '<button class="cv-rm" type="button" data-i="'+i+'" title="Togli">&times;</button></div>';
+    }).join("");
+  }
+  el("btnAddVoce").addEventListener("click", function(){
+    voci.push({ci:+el("crComp").value, tipo:el("crTipo").value}); renderVoci(); costruisciCrawl();
+  });
+  el("crVoci").addEventListener("click", function(e){
+    var rm=e.target.closest ? e.target.closest(".cv-rm") : null; if(!rm)return;
+    voci.splice(+rm.dataset.i,1); renderVoci(); costruisciCrawl();
+  });
+
+  // costruisce il blocco di UNA voce → Promise di {blocco,n} o null
+  function bloccoVoce(v){
+    var c=COMPS[v.ci]||COMPS[0], base="https://site.api.espn.com/apis/site/v2/sports/soccer/"+c.code;
+    function J(u){ return fetch(u).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}); }
+    if(v.tipo==="cls"){
+      return J("https://site.api.espn.com/apis/v2/sports/soccer/"+c.code+"/standings").then(function(st){
+        var cls=[];
+        ((st&&st.children)||[]).forEach(function(ch){ (((ch.standings&&ch.standings.entries))||[]).forEach(function(en){
+          var pos=null,pts=null; (en.stats||[]).forEach(function(s){ if(s.name==="rank"||s.type==="rank")pos=s.value; if(s.name==="points"||s.type==="points")pts=s.value; });
+          cls.push({pos:pos,nm:nomeSquadra(en.team).toUpperCase(),pts:pts}); }); });
+        cls.sort(function(a,b){return (a.pos||99)-(b.pos||99);});
+        if(!cls.length)return null;
+        return {blocco:"CLASSIFICA "+c.n.toUpperCase()+" · "+cls.slice(0,10).map(function(r){return (r.pos!=null?r.pos+"° ":"")+r.nm+(r.pts!=null?" "+r.pts+"PT":"");}).join(" · "), n:cls.length};
+      });
+    }
+    if(v.tipo==="mar"){
+      return J(base+"/statistics?season="+anno).then(function(mk){
+        var gl=((mk&&mk.stats)||[]).filter(function(x){return x.name==="goalsLeaders";})[0];
+        var mar=((gl&&gl.leaders)||[]).slice(0,10).map(function(l){ var a=l.athlete||{},dn=(a.displayName||a.shortName||"").trim(),cog=dn?dn.split(" ").slice(-1)[0].toUpperCase():"",g=(l.value!=null?Math.round(l.value):""); return cog+(g!==""?" "+g:""); }).filter(Boolean);
+        if(!mar.length)return null;
+        return {blocco:"MARCATORI "+c.n.toUpperCase()+" · "+mar.join(" · "), n:mar.length};
+      });
+    }
+    // ris / pro dallo scoreboard, con finestra date allargata (così "prossime"
+    // prende il prossimo turno anche se è tra qualche giorno)
+    function ymd(d){ return ""+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0"); }
+    var oggi=new Date(), da=new Date(oggi), a=new Date(oggi);
+    if(v.tipo==="pro"){ a.setDate(a.getDate()+16); } else { da.setDate(da.getDate()-6); }
+    var range=ymd(da)+"-"+ymd(a);
+    return J(base+"/scoreboard?dates="+range).then(function(sb){
+      var out=[];
+      ((sb&&sb.events)||[]).forEach(function(e){
+        var cc=e.competitions&&e.competitions[0]; if(!cc||!cc.status||!cc.status.type)return;
+        var done=cc.status.type.completed, live=cc.status.type.state==="in";
+        if(v.tipo==="ris" && !done)return;
+        if(v.tipo==="pro" && (done||live))return;
+        var cs=cc.competitors||[]; if(cs.length<2)return;
+        var h=cs.filter(function(x){return x.homeAway==="home";})[0]||cs[0], a=cs.filter(function(x){return x.homeAway==="away";})[0]||cs[1];
+        if(v.tipo==="ris"){ if(h.score!=null&&a.score!=null) out.push(nomeSquadra(h.team).toUpperCase()+"-"+nomeSquadra(a.team).toUpperCase()+" "+h.score+"-"+a.score); }
+        else { var d=e.date?new Date(e.date).toLocaleDateString("it-IT",{day:"numeric",month:"short"}):""; out.push(nomeSquadra(h.team).toUpperCase()+"-"+nomeSquadra(a.team).toUpperCase()+(d?" "+d:"")); }
+      });
+      if(!out.length)return null;
+      var tot=out.length; out=out.slice(0,12);   // il turno + margine: crawl non infinito
+      return {blocco:(v.tipo==="ris"?"RISULTATI ":"PROSSIME ")+c.n.toUpperCase()+" · "+out.join(" · "), n:tot};
+    });
+  }
 
   function costruisciCrawl(){
-    var comp = COMPS[+el("crComp").value] || COMPS[0];
-    var vuoi = attivi();
-    if(!vuoi.length){ crawlText=""; el("crawlprev").textContent="Scegli almeno una voce (Classifica, Risultati, Prossime)."; el("crawlnote").textContent=""; return; }
-    el("crawlprev").textContent="Carico i dati di "+comp.n+"…"; el("crawlnote").textContent="";
-    var base="https://site.api.espn.com/apis/site/v2/sports/soccer/"+comp.code;
-    var anno=(function(){var d=new Date();return d.getMonth()>=6?d.getFullYear():d.getFullYear()-1;})();
-    Promise.all([
-      (vuoi.indexOf("ris")>=0||vuoi.indexOf("pro")>=0) ? fetch(base+"/scoreboard").then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}) : Promise.resolve(null),
-      (vuoi.indexOf("cls")>=0) ? fetch("https://site.api.espn.com/apis/v2/sports/soccer/"+comp.code+"/standings").then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}) : Promise.resolve(null),
-      (vuoi.indexOf("mar")>=0) ? fetch(base+"/statistics?season="+anno).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}) : Promise.resolve(null)
-    ]).then(function(res){
-      var sb=res[0], st=res[1], mk=res[2], blocchi=[], note=[];
-
-      if(vuoi.indexOf("ris")>=0){
-        var ris=[];
-        ((sb&&sb.events)||[]).forEach(function(e){
-          var c=e.competitions&&e.competitions[0]; if(!c||!c.status||!c.status.type||!c.status.type.completed)return;
-          var cs=c.competitors||[]; if(cs.length<2)return;
-          var h=cs.filter(function(x){return x.homeAway==="home";})[0]||cs[0], a=cs.filter(function(x){return x.homeAway==="away";})[0]||cs[1];
-          if(h.score!=null&&a.score!=null) ris.push(nomeSquadra(h.team).toUpperCase()+"-"+nomeSquadra(a.team).toUpperCase()+" "+h.score+"-"+a.score);
-        });
-        if(ris.length){ blocchi.push("RISULTATI · "+ris.join(" · ")); note.push(ris.length+" risultati"); }
-      }
-
-      if(vuoi.indexOf("pro")>=0){
-        var pro=[];
-        ((sb&&sb.events)||[]).forEach(function(e){
-          var c=e.competitions&&e.competitions[0]; if(!c||!c.status||!c.status.type)return;
-          if(c.status.type.completed||c.status.type.state==="in")return;   // solo in programma
-          var cs=c.competitors||[]; if(cs.length<2)return;
-          var h=cs.filter(function(x){return x.homeAway==="home";})[0]||cs[0], a=cs.filter(function(x){return x.homeAway==="away";})[0]||cs[1];
-          var d=e.date?new Date(e.date).toLocaleDateString("it-IT",{day:"numeric",month:"short"}):"";
-          pro.push(nomeSquadra(h.team).toUpperCase()+"-"+nomeSquadra(a.team).toUpperCase()+(d?" "+d:""));
-        });
-        if(pro.length){ blocchi.push("PROSSIME · "+pro.join(" · ")); note.push(pro.length+" prossime"); }
-      }
-
-      if(vuoi.indexOf("cls")>=0){
-        var cls=[];
-        ((st&&st.children)||[]).forEach(function(ch){
-          (((ch.standings&&ch.standings.entries))||[]).forEach(function(en){
-            var pos=null, pts=null;
-            (en.stats||[]).forEach(function(s){ if(s.name==="rank"||s.type==="rank")pos=s.value; if(s.name==="points"||s.type==="points")pts=s.value; });
-            cls.push({pos:pos, nm:nomeSquadra(en.team).toUpperCase(), pts:pts});
-          });
-        });
-        cls.sort(function(a,b){return (a.pos||99)-(b.pos||99);});
-        if(cls.length){ blocchi.push("CLASSIFICA "+comp.n.toUpperCase()+" · "+cls.slice(0,10).map(function(r){return (r.pos!=null?r.pos+"° ":"")+r.nm+(r.pts!=null?" "+r.pts+"PT":"");}).join(" · ")); note.push("classifica "+cls.length); }
-      }
-
-      if(vuoi.indexOf("mar")>=0){
-        var gl=((mk&&mk.stats)||[]).filter(function(x){return x.name==="goalsLeaders";})[0];
-        var mar=((gl&&gl.leaders)||[]).slice(0,10).map(function(l){
-          var a=l.athlete||{}, dn=(a.displayName||a.shortName||"").trim();
-          var cog=dn?dn.split(" ").slice(-1)[0].toUpperCase():"";
-          var g=(l.value!=null?Math.round(l.value):"");
-          return cog+(g!==""?" "+g:"");
-        }).filter(function(s){return s;});
-        if(mar.length){ blocchi.push("MARCATORI "+comp.n.toUpperCase()+" · "+mar.join(" · ")); note.push(mar.length+" marcatori"); }
-      }
-
+    if(!voci.length){ crawlText=""; el("crawlprev").textContent="Aggiungi una o più voci qui sopra."; el("crawlnote").textContent=""; return; }
+    el("crawlprev").textContent="Carico i dati…"; el("crawlnote").textContent="";
+    Promise.all(voci.map(bloccoVoce)).then(function(res){
+      var blocchi=[], vuote=0;
+      res.forEach(function(r,i){ var cvn=el("cvn-"+i);
+        if(r&&r.blocco){ blocchi.push(r.blocco); if(cvn)cvn.textContent=r.n+" voci"; }
+        else { vuote++; if(cvn)cvn.textContent="nessun dato"; }
+      });
       crawlText = blocchi.join(" |||| ");
-      if(!crawlText){ el("crawlprev").textContent="Nessun dato disponibile adesso per "+comp.n+" (fuori dai giorni di gara). Riprova o scegli un'altra voce."; el("crawlnote").textContent=""; return; }
-      el("crawlnote").textContent = comp.n+" — "+note.join(" · ");
+      if(!crawlText){ el("crawlprev").textContent="Nessun dato disponibile per le voci scelte (forse fuori dai giorni di gara)."; el("crawlnote").textContent=""; return; }
+      el("crawlnote").textContent = blocchi.length+" blocchi nel crawl" + (vuote?" · "+vuote+" senza dati ora":"");
       pintaCrawlPrev();
     });
   }
 
   el("btnCrawl").addEventListener("click", costruisciCrawl);
-  el("crComp").addEventListener("change", costruisciCrawl);
+  renderVoci();
 
   // ── payload ──
   function payload(){ return { et: etichettaScelta(), ti: titoli(), cr: crawlText }; }
