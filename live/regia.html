@@ -101,6 +101,12 @@
   .item:hover{border-color:var(--line-gold);}
   .item.dragging{opacity:.35;cursor:grabbing;}
   .item .grip{color:var(--fg-3);font-size:15px;letter-spacing:1px;cursor:grab;user-select:none;}
+  /* appena arrivata: si vede subito cosa c'e' di nuovo in cima alla scaletta */
+  .nuovo{display:inline-block;margin-left:8px;vertical-align:middle;
+    font-family:'Mazzard',sans-serif;font-size:9px;font-weight:800;letter-spacing:.16em;
+    text-transform:uppercase;color:#0A0F24;background:var(--gold);border-radius:4px;padding:2px 6px;
+    animation:nuovoLampo 1.6s ease-in-out infinite;}
+  @keyframes nuovoLampo{0%,100%{opacity:1}50%{opacity:.45}}
   .item.sel{border-color:var(--gold);background:rgba(201,162,75,.08);}
   .item.onair{border-color:rgba(229,27,32,.65);background:rgba(229,27,32,.08);}
   .item .tit{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -294,7 +300,7 @@
 </head>
 <body>
 
-<script src="nav.js"></script>
+<script src="nav.js" data-senza-menu></script>
 
 <div class="wrap">
 
@@ -319,6 +325,20 @@
       <h2>Anteprima</h2>
       <div id="pvwbox"><iframe id="pvw" src="about:blank" scrolling="no"></iframe></div>
       <div id="thumbcap">Clicca una grafica in scaletta: la vedi qui senza toccare l'onda.</div>
+      <!-- durata della clip in anteprima: stessi numeroni dell'onda -->
+      <div id="pvwtempo" style="display:none;margin-top:10px;text-align:center">
+        <div style="display:flex;justify-content:center;align-items:flex-start;gap:26px">
+          <div>
+            <div id="pvdur" style="font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(38px,4.2vw,66px);line-height:1;color:#F5F1E6;font-variant-numeric:tabular-nums"></div>
+            <div style="margin-top:5px;font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--fg-3)">durata</div>
+          </div>
+          <div style="font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(38px,4.2vw,66px);line-height:1;color:rgba(245,241,230,.25)">|</div>
+          <div>
+            <div id="pvcd" style="font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(38px,4.2vw,66px);line-height:1;color:var(--gold-bright);font-variant-numeric:tabular-nums"></div>
+            <div style="margin-top:5px;font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--fg-3)">al take</div>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="takecol">
       <!-- I livelli attivi, qui dove si comanda l'onda: si clicca un livello e
@@ -333,21 +353,73 @@
       <button id="btnTake" disabled>&#9654;<br>In onda</button>
       <button id="btnOut" disabled>&#9632;<br>Fuori onda</button>
       <button id="btnProg" type="button">&#128193;<br>Apri progetto</button>
+      <button id="btnVideo" type="button">&#127916;<br>Carica video</button>
       <div id="msg"></div>
     </div>
     <div class="panel mon">
       <h2>In onda adesso</h2>
       <div id="thumbbox"><span id="onairtag">IN ONDA</span><iframe id="thumb" src="about:blank" scrolling="no"></iframe><iframe id="thumbMatch" src="about:blank" scrolling="no" allowtransparency="true"></iframe></div>
       <div id="pgmcap" style="margin-top:8px;font-size:12.5px;color:var(--fg-3);min-height:16px"></div>
+      <!-- cronometro dell'onda: DURATA | COUNTDOWN (si ferma a zero), cifre grandi -->
+      <div id="pgmtempo" style="display:none;margin-top:10px;text-align:center">
+        <div style="height:8px;background:rgba(245,241,230,.08);border-radius:4px;overflow:hidden"><i id="ptfill" style="display:block;height:100%;width:0;background:var(--gold);border-radius:4px;transition:width .25s linear"></i></div>
+        <div style="display:flex;justify-content:center;align-items:flex-start;gap:26px;margin-top:10px">
+          <div>
+            <div id="ptdur" style="font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(38px,4.2vw,66px);line-height:1;color:#F5F1E6;font-variant-numeric:tabular-nums"></div>
+            <div style="margin-top:5px;font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--fg-3)">durata</div>
+          </div>
+          <div style="font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(38px,4.2vw,66px);line-height:1;color:rgba(245,241,230,.25)">|</div>
+          <div>
+            <div id="ptcd" style="font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(38px,4.2vw,66px);line-height:1;color:var(--gold-bright);font-variant-numeric:tabular-nums"></div>
+            <div id="ptcdlab" style="margin-top:5px;font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--fg-3)">restano</div>
+          </div>
+        </div>
+        <div id="ptsub" style="margin-top:7px;font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--fg-3)"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CARICA VIDEO: upload immediato di un contributo MP4 che finisce dritto
+       in scaletta di QUESTO canale, come una grafica. Origine: cloud (locale);
+       il NAS Synology arrivera' come seconda origine. -->
+  <div id="videoDialog" style="display:none;position:fixed;inset:0;z-index:400;background:rgba(4,6,16,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+    <div style="width:min(560px,92vw);background:linear-gradient(180deg,#141B3C,#0E1430);border:1px solid var(--line-gold);border-radius:12px;padding:24px">
+      <h2 style="margin-bottom:14px">Carica video &middot; <span id="vdCanale" style="color:var(--gold-bright)"></span></h2>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div><label style="display:block;margin-bottom:5px">File MP4 (H.264, max 800 MB)</label>
+          <input type="file" id="vdFile" accept="video/mp4" style="width:100%"></div>
+        <div><label style="display:block;margin-bottom:5px">Nome in scaletta</label>
+          <input type="text" id="vdNome" placeholder="VIDEO — …" style="width:100%;padding:10px 12px;background:var(--surface-panel);border:1px solid var(--line-2);border-radius:6px;color:var(--ivory);font-size:15px"></div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="vdLoop" style="accent-color:var(--gold)"> Loop</label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="vdMute" style="accent-color:var(--gold)"> Muto</label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="vdCover" style="accent-color:var(--gold)"> Riempi (cover)</label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="vdTrasp" style="accent-color:var(--gold)"> Sfondo trasparente</label>
+        </div>
+        <div id="vdBarra" style="display:none;height:8px;background:rgba(245,241,230,.08);border-radius:4px;overflow:hidden"><i id="vdFill" style="display:block;height:100%;width:0;background:var(--gold)"></i></div>
+        <div id="vdStato" style="min-height:18px;font-size:13px;color:var(--fg-3)"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button id="vdAnnulla" type="button">Annulla</button>
+          <button id="vdVia" type="button" style="background:var(--gold);border-color:var(--gold);color:#0A0F24">&#8682; Carica e metti in scaletta</button>
+        </div>
+      </div>
     </div>
   </div>
 
   <!-- I progetti preparati dalla redazione (dalle pagine delle grafiche,
-       destinazione "Nuovo progetto"). Caricarne uno SOSTITUISCE la scaletta
-       di questo canale, ma non tocca mai cio' che e' in onda. -->
-  <div class="panel" id="progpanel" style="display:none">
-    <h2>Progetti <small id="progcount"></small></h2>
-    <div id="proglist"></div>
+       destinazione "Nuovo progetto"). Si aprono in una FINESTRA dal tasto
+       "Apri progetto": caricarne uno SOSTITUISCE la scaletta di questo
+       canale, ma non tocca mai cio' che e' in onda. -->
+  <div id="progDialog" style="display:none;position:fixed;inset:0;z-index:400;background:rgba(4,6,16,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+    <div style="width:min(620px,92vw);max-height:80vh;overflow:auto;background:linear-gradient(180deg,#141B3C,#0E1430);border:1px solid var(--line-gold);border-radius:12px;padding:24px">
+      <h2 style="margin-bottom:14px">Progetti <small id="progcount"></small></h2>
+      <div id="proglist"></div>
+      <div id="progvuoto" style="display:none;color:var(--fg-3);font-size:13px;padding:8px 2px">
+        Nessun progetto salvato: si creano dalle pagine delle grafiche (destinazione &rarr; &#10133; Nuovo progetto).</div>
+      <div style="display:flex;justify-content:flex-end;margin-top:14px">
+        <button id="progChiudi" type="button">Chiudi</button>
+      </div>
+    </div>
   </div>
 
   <div class="panel">
@@ -552,6 +624,7 @@
     pvw.src = String(d.src);
     fitThumb();
     thumbcap.textContent = String(d.cap || "Anteprima dal Live Match.");
+    document.getElementById("pvwtempo").style.display = "none";
     // i tasti In onda / Fuori onda devono accendersi subito per la fase
     try { paint(); } catch (err) {}
   });
@@ -572,6 +645,15 @@
         pvw.src = engineOf(it ? it.tipo : "formazione") + "?d=" + b64url(dati) + "&still=1&muto=1";
         fitThumb();
         thumbcap.textContent = it ? ("Anteprima: " + it.titolo) : "";
+        // clip video: la DURATA in anteprima, con gli stessi numeroni dell'onda
+        var pvt = document.getElementById("pvwtempo");
+        if (it && it.tipo === "video" && dati && dati.dur) {
+          var s = Math.round(dati.dur), m = Math.floor(s / 60);
+          var t = (m < 10 ? "0" : "") + m + ":" + ((s % 60) < 10 ? "0" : "") + (s % 60);
+          document.getElementById("pvdur").textContent = t;
+          document.getElementById("pvcd").textContent = t;
+          pvt.style.display = "block";
+        } else pvt.style.display = "none";
       })
       .catch(function () { thumbcap.textContent = "Anteprima non disponibile."; });
   }
@@ -683,7 +765,7 @@
     classifica:"Classifiche",risultati:"Risultati",marcatori:"Marcatori",tabellone:"Tabelloni",
     gruppi:"Gruppi",sottopancia:"Sottopancia",sottopancia2:"Sottopancia",
     confronto:"Confronti",duello:"Duelli",giocatore:"Giocatori",scheda:"Schede",
-    focus:"Focus",volti:"Volti",video:"Media",immagine:"Media",web:"Media" };
+    focus:"Focus",volti:"Volti",video:"Video",immagine:"Video",web:"Video" };
   function etichettaTipo(t) { return TIPO_LABEL[t] || (t ? String(t).toUpperCase() : "Altro"); }
 
   // colore-famiglia (solo in console, aiuta a riconoscere i tipi a colpo d'occhio)
@@ -693,7 +775,7 @@
     "Classifiche":"#5FB98E", "Risultati":"#5FB98E", "Marcatori":"#5FB98E", "Tabelloni":"#5FB98E", "Gruppi":"#5FB98E",
     "Giocatori":"#D69A5B", "Schede":"#D69A5B", "Focus":"#D69A5B", "Volti":"#D69A5B",
     "Sottopancia":"#8FA6C2",
-    "Media":"#CE7FA6"
+    "Video":"#CE7FA6"
   };
   function famColore(label) { return FAM_COLORE[label] || "#8A8FA6"; }
 
@@ -756,7 +838,9 @@
         '" style="--fam:' + famColore(etichettaTipo(it.tipo)) + '">' +
         (filtroAttivo ? '' : '<span class="grip" title="Trascina per riordinare">&#8942;&#8942;</span>') +
         '<span class="famdot" title="' + esc(etichettaTipo(it.tipo)) + '"></span>' +
-        '<span class="tit">' + esc(it.titolo || it.tipo) + '<small>' + esc(it.tipo.toUpperCase()) + (quando ? " · caricata " + quando : "") + '</small></span>' +
+        '<span class="tit">' + esc(it.titolo || it.tipo) +
+          (it.ts && (Date.now() - it.ts) < 90000 ? ' <span class="nuovo">nuovo</span>' : '') +
+          '<small>' + esc(it.tipo.toUpperCase()) + (quando ? " · caricata " + quando : "") + '</small></span>' +
         '<button class="livbadge' + (occL ? " occ" : "") + '" data-act="exp" data-id="' + esc(it.id) +
           '" title="Livello ' + L + (occL ? " — occupato altrove" : "") + '. Clic per le opzioni">L' + L + '</button>' +
         (onair ? '<span class="badge">IN ONDA</span>' +
@@ -843,7 +927,7 @@
     }
     if (anteprimaMatch) { /* il monitor sta mostrando il Live Match: si lascia stare */ }
     else if (selId) showPvw(selId);
-    else { pvw.src = "about:blank"; pvw.style.visibility = "hidden"; thumbShownId = null; thumbcap.textContent = "Clicca una grafica in scaletta: la vedi qui senza toccare l'onda."; }
+    else { pvw.src = "about:blank"; pvw.style.visibility = "hidden"; thumbShownId = null; thumbcap.textContent = "Clicca una grafica in scaletta: la vedi qui senza toccare l'onda."; document.getElementById("pvwtempo").style.display = "none"; }
     btnTake.disabled = !selId && !(anteprimaMatch && anteprimaFase);
 
     sincronizzaArmato();   // tiene il ponte al corrente di cosa è pronto a partire
@@ -914,6 +998,8 @@
     if (tipo === "focus" || tipo === "scheda") return 2.6;
     if (tipo === "duello") { n = dati && dati.st ? dati.st.length : 5; return 1.1 + n * 0.14 + 0.7; }
     if (tipo === "volti") { n = dati && dati.card ? dati.card.length : 8; return 0.55 + n * 0.12 + 0.7; }
+    // contributi video del PAT: il conto alla rovescia segue la durata vera
+    if (tipo === "video") return (dati && dati.dur) ? dati.dur : 8;
     return 2;
   }
   var cdTimer = null;
@@ -1130,16 +1216,18 @@
     post({ tipo: "regia-order", order: order }, "Ordine aggiornato.");
   });
 
-  // ── progetti: preparati prima, versati qui il giorno del live ──────
+  // ── progetti: preparati prima, versati qui il giorno del live.
+  //    Vivono in una FINESTRA aperta dal tasto "Apri progetto". ──────
   (function () {
-    var pan = document.getElementById("progpanel");
+    var dlg = document.getElementById("progDialog");
     var lista = document.getElementById("proglist");
     var conta = document.getElementById("progcount");
+    var vuoto = document.getElementById("progvuoto");
+    document.getElementById("progChiudi").addEventListener("click", function () { dlg.style.display = "none"; });
 
     function dipingi(pr) {
-      if (!pr.length) { pan.style.display = "none"; return; }
-      pan.style.display = "";
-      conta.textContent = pr.length;
+      vuoto.style.display = pr.length ? "none" : "block";
+      conta.textContent = pr.length || "";
       var h = "";
       pr.forEach(function (x) {
         var d = x.creato ? new Date(x.creato) : null;
@@ -1175,7 +1263,7 @@
       if (b.dataset.az === "carica") {
         if (!window.confirm('Carico "' + nome + '" su questo canale?\n\nLa scaletta attuale viene SOSTITUITA (quello che e\u2019 in onda resta in onda).')) return;
         post({ tipo: "progetto-carica", id: id }, 'Progetto "' + nome + '" caricato.');
-        setTimeout(aggiorna, 800);
+        dlg.style.display = "none";
       } else {
         if (!window.confirm('Elimino il progetto "' + nome + '"?\n\nLe sue grafiche vanno perse (le scalette gia\u2019 caricate non vengono toccate).')) return;
         fetch(PONTE, {
@@ -1192,25 +1280,170 @@
     });
 
     document.getElementById("btnProg").addEventListener("click", function () {
-      fetch(PONTE, {
-        method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ token: TOKEN, tipo: "progetto-elenco" })
-      })
-        .then(function (r) { return r.json(); })
-        .then(function (j) {
-          var pr = (j.ok && j.progetti) || [];
-          dipingi(pr);
-          if (!pr.length) {
-            msg.textContent = "Nessun progetto salvato: si creano dalle pagine delle grafiche (menu Regia \u2192 Nuovo progetto).";
-            return;
-          }
-          pan.scrollIntoView({ behavior: "smooth", block: "center" });
-        })
-        .catch(function () { msg.textContent = "Ponte non raggiungibile."; });
+      lista.innerHTML = ""; vuoto.style.display = "none";
+      dlg.style.display = "flex";
+      aggiorna();   // elenco fresco a ogni apertura
+    });
+  })();
+
+  // ── cronometro dell'onda: sotto il monitor PGM, per TUTTO cio' che e' in
+  //    onda. Video: durata vera, trascorso, quanto resta. Grafiche: countdown
+  //    dell'animazione e poi "in onda da". Il tempo parte dal playNonce del
+  //    ponte (e' il Date.now del take), cosi' regge anche a pagina ricaricata.
+  (function () {
+    var box = document.getElementById("pgmtempo"), fill = document.getElementById("ptfill");
+    var eDur = document.getElementById("ptdur"), eCd = document.getElementById("ptcd"), eCdLab = document.getElementById("ptcdlab");
+    if (!box) return;
+    var cacheDati = {};
+    function mmss(s) { s = Math.max(0, Math.floor(s)); var m = Math.floor(s / 60); return (m < 10 ? "0" : "") + m + ":" + ((s % 60) < 10 ? "0" : "") + (s % 60); }
+    setInterval(function () {
+      var sopra = livelloDiSopra();
+      if (!sopra || !sopra.lv.onair) { box.style.display = "none"; return; }
+      var it = null; cur.items.forEach(function (x) { if (x.id === sopra.lv.onair) it = x; });
+      if (!it) { box.style.display = "none"; return; }
+      if (cacheDati[it.id] === undefined) {
+        cacheDati[it.id] = null;   // in caricamento
+        fetch(PONTE + "?regia=item&id=" + encodeURIComponent(it.id) + "&canale=" + CANALE, { cache: "no-store" })
+          .then(function (r) { return r.json(); })
+          .then(function (d) { cacheDati[it.id] = d || {}; })
+          .catch(function () { cacheDati[it.id] = {}; });
+      }
+      var dati = cacheDati[it.id] || {};
+      var sub = document.getElementById("ptsub");
+      var trascorso = Math.max(0, (Date.now() - sopra.lv.playNonce) / 1000);
+      box.style.display = "block";
+      if (it.tipo === "video" && dati.dur) {
+        var dur = dati.dur, resta = Math.max(0, dur - trascorso);
+        eDur.textContent = mmss(dur);
+        if (dati.loop) {
+          fill.style.background = "var(--gold)";
+          fill.style.width = ((trascorso % dur) / dur * 100) + "%";
+          eCd.style.color = "#F5F1E6";
+          eCd.textContent = mmss(trascorso);
+          eCdLab.textContent = "trascorso";
+          sub.textContent = "in loop";
+        } else if (resta > 0) {
+          fill.style.background = "var(--gold)";
+          fill.style.width = Math.min(100, trascorso / dur * 100) + "%";
+          eCd.style.color = "var(--gold-bright)";
+          eCd.textContent = mmss(resta);
+          eCdLab.textContent = "restano";
+          sub.textContent = "";
+        } else {
+          // il countdown SI FERMA a zero
+          fill.style.background = "var(--ok)";
+          fill.style.width = "100%";
+          eCd.style.color = "var(--ok)";
+          eCd.textContent = "00:00";
+          eCdLab.textContent = "restano";
+          sub.textContent = "clip finita — esce col fuori onda";
+        }
+      } else {
+        var stima = stimaAnimazione(it.tipo, dati);
+        eDur.textContent = mmss(stima);
+        if (trascorso < stima) {
+          fill.style.background = "var(--gold)";
+          fill.style.width = Math.min(100, trascorso / stima * 100) + "%";
+          eCd.style.color = "var(--gold-bright)";
+          eCd.textContent = mmss(stima - trascorso);
+          eCdLab.textContent = "restano";
+          sub.textContent = "animazione d'ingresso";
+        } else {
+          fill.style.background = "var(--ok)";
+          fill.style.width = "100%";
+          eCd.style.color = "var(--ok)";
+          eCd.textContent = "00:00";
+          eCdLab.textContent = "restano";
+          sub.textContent = "in onda da " + mmss(trascorso);
+        }
+      }
+    }, 250);
+  })();
+
+  // ── CARICA VIDEO: upload immediato → dritto in scaletta di questo canale ──
+  (function () {
+    var dlg = document.getElementById("videoDialog");
+    var btn = document.getElementById("btnVideo");
+    if (!dlg || !btn) return;
+    var BASE_VIDEO = PONTE.replace(/\/(api|exec)$/, "") + "/video/";
+    function vd(id) { return document.getElementById(id); }
+    function vstato(t, colore) { vd("vdStato").textContent = t || ""; vd("vdStato").style.color = colore || "var(--fg-3)"; }
+
+    btn.addEventListener("click", function () {
+      vd("vdCanale").textContent = nomeCanale(CANALE);
+      vstato(""); vd("vdBarra").style.display = "none"; vd("vdFill").style.width = "0";
+      dlg.style.display = "flex";
+    });
+    vd("vdAnnulla").addEventListener("click", function () { dlg.style.display = "none"; });
+    vd("vdFile").addEventListener("change", function () {
+      var f = vd("vdFile").files[0];
+      if (f && !vd("vdNome").value.trim()) {
+        vd("vdNome").value = "VIDEO — " + f.name.replace(/\.mp4$/i, "").replace(/[-_]+/g, " ").toUpperCase();
+      }
     });
 
-    aggiorna();
-    setInterval(aggiorna, 30000);   // la redazione puo' salvarne mentre la regia e' aperta
+    function postV(corpo) {
+      return fetch(PONTE, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(Object.assign({ token: TOKEN }, corpo)) })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { if (!j.ok) throw new Error(j.errore || "errore"); return j; });
+    }
+    function durataDi(f) {
+      return new Promise(function (res) {
+        var v = document.createElement("video");
+        v.preload = "metadata";
+        v.src = URL.createObjectURL(f);
+        v.addEventListener("loadedmetadata", function () { res(v.duration || 0); URL.revokeObjectURL(v.src); });
+        v.addEventListener("error", function () { res(0); });
+      });
+    }
+
+    vd("vdVia").addEventListener("click", function () {
+      var f = vd("vdFile").files[0];
+      if (!f) { vstato("Scegli prima un file MP4.", "#FF9A9C"); return; }
+      if (!/\.mp4$/i.test(f.name)) { vstato("Solo MP4 (H.264).", "#FF9A9C"); return; }
+      if (f.size > 800 * 1048576) { vstato("File troppo grande: massimo 800 MB.", "#FF9A9C"); return; }
+      var titolo = vd("vdNome").value.trim() || ("VIDEO — " + f.name.replace(/\.mp4$/i, "").toUpperCase());
+      // pezzi da 8MB, TRE alla volta (il ponte li scrive alla posizione giusta)
+      var PEZZO = 8 * 1048576, tot = Math.ceil(f.size / PEZZO), fatti = 0;
+      var offs = []; for (var o = 0; o < f.size; o += PEZZO) offs.push(o);
+      vd("vdVia").disabled = true; vd("vdBarra").style.display = "block";
+      vstato("Carico " + f.name + "…");
+      Promise.all([durataDi(f), postV({ tipo: "video-inizia", nome: f.name, tot: f.size })]).then(function (r) {
+        var dur = r[0], ini = r[1];
+        function operaio() {
+          if (!offs.length) return Promise.resolve();
+          var off = offs.shift();
+          return f.slice(off, Math.min(off + PEZZO, f.size)).arrayBuffer().then(function (buf) {
+            var b = "", u = new Uint8Array(buf);
+            for (var i = 0; i < u.length; i += 0x8000) b += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+            return postV({ tipo: "video-pezzo", id: ini.id, off: off, dati: btoa(b) });
+          }).then(function () {
+            fatti++;
+            vd("vdFill").style.width = Math.round(fatti / tot * 100) + "%";
+            return operaio();
+          });
+        }
+        return Promise.all([operaio(), operaio(), operaio()]).then(function () {
+          return postV({ tipo: "video-fine", id: ini.id });
+        }).then(function (fine) {
+          // dritto in scaletta di QUESTO canale, come una grafica
+          return postV({ tipo: "regia-load", c: CANALE, grafica: "video", titolo: titolo,
+            dati: { k: "video", src: BASE_VIDEO + fine.file,
+                    fit: vd("vdCover").checked ? "cover" : "contain",
+                    loop: vd("vdLoop").checked, mute: vd("vdMute").checked,
+                    bg: vd("vdTrasp").checked ? "trasparente" : "nero", dur: dur } });
+        }).then(function () {
+          vd("vdVia").disabled = false; dlg.style.display = "none";
+          vd("vdFile").value = ""; vd("vdNome").value = "";
+          msg.textContent = "🎬 “" + titolo + "” in scaletta: In onda quando vuoi.";
+          lastNonce = null; tick();
+        });
+      }).catch(function (err) {
+        vd("vdVia").disabled = false;
+        vstato("Caricamento fallito: " + err.message, "#FF9A9C");
+      });
+    });
   })();
 
   setInterval(tick, POLL_MS);

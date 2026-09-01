@@ -77,10 +77,23 @@
     el.loop = !!D.loop;
     el.muted = MUTO || !!D.mute;
     if (STILL) {
-      el.preload = "metadata";
+      // fermo-immagine per le anteprime: NON il frame 0 (spesso e' nero),
+      // ma un fotogramma dentro la clip — 10% della durata, al massimo 2s
+      el.preload = "auto";
+      el.addEventListener("loadedmetadata", function () {
+        try { el.currentTime = Math.min(2, (el.duration || 5) * 0.1) || 0.5; } catch (e) {}
+      });
+      el.addEventListener("seeked", function () { el.pause(); });
       el.addEventListener("loadeddata", function () { el.pause(); });
     } else {
       el.autoplay = true;
+      // niente "flashino" all'avvio: la scena resta invisibile finche' il
+      // primo fotogramma non e' pronto da disegnare (poi appare in un soffio)
+      stage.style.opacity = "0";
+      stage.style.transition = "opacity .18s ease";
+      var pronta = function () { stage.style.opacity = "1"; };
+      el.addEventListener("canplay", pronta, { once: true });
+      setTimeout(pronta, 1500);   // rete di sicurezza: mai restare invisibili
       // se l'autoplay con audio è bloccato (anteprime in Chrome), riparto muto
       var p = el.play ? el.play() : null;
       if (p && p.catch) p.catch(function () { el.muted = true; el.play().catch(function () {}); });

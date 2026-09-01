@@ -47,6 +47,10 @@ const CONFIG = {
   // loghi delle squadre caricati dalla redazione (giovanili, amichevoli…)
   LOGHI: process.env.COMOTV_LOGHI || "/var/lib/comotv/loghi",
 
+  // contributi video del PAT (origine "cloud"): accanto allo stato, cosi'
+  // dev e produzione hanno cartelle separate senza configurare nulla
+  VIDEO: process.env.COMOTV_VIDEO || null,   // risolta a runtime da STATO
+
   CANALI: 8,
   MAX_SCALETTA: 30,
 
@@ -216,6 +220,11 @@ function statoPartita(c) {
 }
 
 // ─────────────────────────────────────────────── comandi
+// Quante voci nuove sono arrivate di fila, e quando: serve per tenere in
+// ordine una raffica di invii senza scompigliare il resto della scaletta.
+// Sta solo in memoria: se il ponte riparte, la prossima voce va in cima.
+const RAFFICHE = new Map();
+
 function regiaLoad(p) {
   const c = canaleDi(p.c);
   const ix = regiaDi(c);
@@ -230,11 +239,19 @@ function regiaLoad(p) {
   let titolo = base, n = 2;
   while (ix.items.some(i => i.titolo === titolo)) { titolo = base + " (" + n + ")"; n++; }
 
-  ix.items.push({
+  // Le novita' entrano IN CIMA alla scaletta: in diretta si vedono subito e
+  // l'ordine gia' sistemato piu' in basso non si tocca. Se pero' arrivano in
+  // raffica (piu' grafiche spedite una dopo l'altra) restano fra loro
+  // nell'ordine di invio, tutte in testa: si accodano all'ultima arrivata.
+  const ora = Date.now();
+  const raff = RAFFICHE.get(c);
+  const posto = (raff && ora - raff.fino < 60000) ? Math.min(raff.quanti, ix.items.length) : 0;
+  ix.items.splice(posto, 0, {
     id, tipo: p.grafica || "formazione", titolo,
     dest: p.dest === "partita" ? "partita" : (p.dest === "studio" ? "studio" : ""),
-    ts: Date.now(), liv: livelloDi(p.liv)
+    ts: ora, liv: livelloDi(p.liv)
   });
+  RAFFICHE.set(c, { fino: ora, quanti: posto + 1 });
   ix.nonce = Date.now();
   salva(); annuncia(c, "regia");
   return { ok: true, canale: c, id, nonce: ix.nonce };
@@ -325,6 +342,7 @@ function regiaSvuota(p) {
   ix.items = [];
   for (const L of Object.keys(ix.liv)) ix.liv[L].onair = null;
   ix.armato = null;
+  RAFFICHE.delete(c);
   S.voci[c] = {};
   ix.nonce = Date.now();
   salva(); annuncia(c, "regia");
@@ -367,6 +385,9 @@ function regiaOrder(p) {
   });
   for (const resto of mappa.values()) nuovo.push(resto);   // voci non citate: in coda, mai perse
   ix.items = nuovo;
+  // la regia ha messo mano all'ordine: la raffica e' chiusa, la prossima
+  // novita' torna in cima invece di accodarsi dove non c'entra piu' nulla
+  RAFFICHE.delete(c);
   ix.nonce = Date.now();
   salva(); annuncia(c, "regia");
   return { ok: true, canale: c, nonce: ix.nonce };
@@ -379,6 +400,7 @@ function regiaMove(p) {
   const j = i + (p.dir === "up" ? -1 : 1);
   if (i === -1 || j < 0 || j >= ix.items.length) return { ok: true, canale: c, nonce: ix.nonce };
   const t = ix.items[i]; ix.items[i] = ix.items[j]; ix.items[j] = t;
+  RAFFICHE.delete(c);          // ordine toccato a mano: raffica chiusa
   ix.nonce = Date.now();
   salva(); annuncia(c, "regia");
   return { ok: true, canale: c, nonce: ix.nonce };
@@ -560,6 +582,7 @@ function progettoCarica(p) {
     nuovi.push({ id: id, tipo: it.tipo, titolo: it.titolo, dest: "", ts: Date.now(), liv: it.liv || 1 });
   }
   ix.items = tenuti.concat(nuovi);
+  RAFFICHE.delete(c);          // scaletta sostituita: la prossima novita' va in cima
   ix.nonce = Date.now();
   salva(); annuncia(c, "regia");
   return { ok: true, canale: c, nome: pr.nome, caricate: nuovi.length,
@@ -603,7 +626,13 @@ function logoElenco() {
   try {
     const file = fs.readdirSync(CONFIG.LOGHI);
     return { ok: true, loghi: file.filter(f => Object.values(TIPI_LOGO).includes(path.extname(f)))
-      .map(f => ({ chiave: path.basename(f, path.extname(f)), url: "/loghi/" + f })) };
+      .map(f => {
+        // peso e data servono al Magazzino; le pagine vecchie leggono
+        // solo chiave e url e non si accorgono di nulla
+        let size = 0, ts = 0;
+        try { const st = fs.statSync(path.join(CONFIG.LOGHI, f)); size = st.size; ts = Math.floor(st.mtimeMs); } catch (err) {}
+        return { chiave: path.basename(f, path.extname(f)), url: "/loghi/" + f, size, ts };
+      }) };
   } catch (err) {
     return { ok: true, loghi: [] };
   }
@@ -617,6 +646,167 @@ function logoCancella(p) {
     if (fs.existsSync(f)) { fs.unlinkSync(f); tolti++; }
   }
   return { ok: true, tolti: tolti };
+}
+
+// ─────────────────────────────────────────────── contributi video (PAT)
+// L'origine "cloud" del PAT Video: i file MP4 caricati dal browser vivono
+// accanto allo stato (dev e produzione restano separati da soli). L'upload
+// arriva A PEZZI da ~2MB in base64 dentro i normali POST JSON: cosi' non
+// serve toccare nginx (che ha il suo tetto sulle richieste) ne' aprire
+// nuovi percorsi. Il file si serve con gli HTTP Range, che al <video>
+// servono per durata e ricerca.
+function cartellaVideo() {
+  return CONFIG.VIDEO || path.join(path.dirname(CONFIG.STATO), "video");
+}
+const MAX_VIDEO = 800 * 1024 * 1024;          // 800 MB a file: oltre non e' un contributo
+const CARICHI = new Map();                     // id -> upload in corso
+
+function slugVideoNome(nome) {
+  const base = String(nome || "").replace(/\.[^.]*$/, "");
+  const chiave = slug(base) || "clip";
+  return chiave + ".mp4";
+}
+
+function videoInizia(p) {
+  const dir = cartellaVideo();
+  fs.mkdirSync(dir, { recursive: true });
+  // pulizia di upload rimasti a meta' (piu' vecchi di un giorno)
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (f.startsWith(".up-") && Date.now() - fs.statSync(path.join(dir, f)).mtimeMs > 864e5) {
+        fs.unlinkSync(path.join(dir, f));
+      }
+    }
+  } catch (err) {}
+  const nome = slugVideoNome(p.nome);
+  const tot = parseInt(p.tot, 10) || 0;
+  if (tot > MAX_VIDEO) throw new Error("file troppo grande (massimo 800 MB)");
+  const id = String(Date.now()) + String(Math.floor(Math.random() * 10000));
+  const tmp = path.join(dir, ".up-" + id);
+  // i pezzi arrivano IN PARALLELO e in qualsiasi ordine: ognuno dichiara il
+  // suo scostamento e viene scritto alla posizione giusta nel file
+  const fd = fs.openSync(tmp, "w");
+  CARICHI.set(id, { nome, tmp, fd, scritti: 0, tot });
+  return { ok: true, id, nome };
+}
+
+function videoPezzo(p) {
+  const c = CARICHI.get(String(p.id || ""));
+  if (!c) throw new Error("upload sconosciuto (scaduto o mai iniziato)");
+  const off = parseInt(p.off, 10);
+  const buf = Buffer.from(String(p.dati || ""), "base64");
+  if (!buf.length) throw new Error("pezzo vuoto");
+  if (isNaN(off) || off < 0 || off + buf.length > MAX_VIDEO) throw new Error("scostamento non valido");
+  fs.writeSync(c.fd, buf, 0, buf.length, off);
+  c.scritti += buf.length;
+  return { ok: true, scritti: c.scritti };
+}
+
+function videoFine(p) {
+  const c = CARICHI.get(String(p.id || ""));
+  if (!c) throw new Error("upload sconosciuto");
+  CARICHI.delete(String(p.id));
+  try { fs.closeSync(c.fd); } catch (err) {}
+  if (!c.scritti) { try { fs.unlinkSync(c.tmp); } catch (err) {} throw new Error("nessun dato ricevuto"); }
+  if (c.tot && c.scritti < c.tot) {
+    try { fs.unlinkSync(c.tmp); } catch (err) {}
+    throw new Error("upload incompleto: ricevuti " + c.scritti + " byte su " + c.tot);
+  }
+  const finale = path.join(cartellaVideo(), c.nome);
+  try { fs.unlinkSync(finale); } catch (err) {}   // ricaricare = sostituire
+  fs.renameSync(c.tmp, finale);
+  return { ok: true, file: c.nome, url: "/video/" + c.nome, bytes: c.scritti };
+}
+
+// ── origine NAS ────────────────────────────────────────────────────────
+// Il NAS della redazione tiene l'archivio vero (SHOW → data → MATERIALE).
+// Un'attivita' pianificata su DSM manda qui l'elenco dei file ogni paio di
+// minuti: cosi' il catalogo si vede anche da fuori, mentre i BYTE dei video
+// restano in LAN (il playout li pesca direttamente dal NAS).
+// Sta solo in memoria: e' una fotografia che il NAS rinfresca da solo, non
+// merita di ingrassare lo stato su disco.
+let NAS = { base: "", file: [], ts: 0 };
+const MAX_NAS_FILE = 3000;
+
+function videoNasSet(p) {
+  const base = String(p.base || "").trim();
+  if (!/^https:\/\//.test(base)) throw new Error("serve una base https (il playout e' https: in http il browser blocca i video)");
+  const dentro = Array.isArray(p.file) ? p.file : [];
+  const file = [];
+  for (const f of dentro) {
+    const rel = String((f && f.p) || "").replace(/\\/g, "/").replace(/^\/+/, "");
+    if (!rel || rel.indexOf("..") >= 0) continue;
+    if (!/\.mp4$/i.test(rel)) continue;
+    file.push({ p: rel, size: Number(f.size) || 0, ts: Number(f.ts) || 0 });
+    if (file.length >= MAX_NAS_FILE) break;
+  }
+  file.sort((a, b) => b.ts - a.ts);
+  NAS = { base: base.replace(/\/+$/, "") + "/", file: file, ts: Date.now() };
+  return { ok: true, ricevuti: file.length, base: NAS.base };
+}
+
+function videoElenco() {
+  try {
+    const dir = cartellaVideo();
+    const out = fs.readdirSync(dir)
+      .filter(f => f.endsWith(".mp4") && !f.startsWith("."))
+      .map(f => { const st = fs.statSync(path.join(dir, f));
+                  return { file: f, url: "/video/" + f, size: st.size, ts: Math.floor(st.mtimeMs) }; });
+    out.sort((a, b) => b.ts - a.ts);
+    return { ok: true, video: out, nas: NAS, spazio: spazioDisco(out) };
+  } catch (err) { return { ok: true, video: [], nas: NAS, spazio: spazioDisco([]) }; }
+}
+
+// quanto pesano i contributi caricati e quanto disco resta: i video sono
+// l'unica cosa qui dentro che cresce davvero, meglio vederlo per tempo
+function spazioDisco(elenco) {
+  const usato = elenco.reduce((t, v) => t + (v.size || 0), 0);
+  let libero = 0;
+  try { const s = fs.statfsSync(cartellaVideo()); libero = s.bavail * s.bsize; } catch (err) {}
+  return { usato, libero };
+}
+
+// ── quanto spazio c'e' e quanto ne occupano i contenuti ──────────────
+// Serve al Magazzino: numeri veri, non stime. Il disco lo chiede al
+// sistema; foto e video si contano cartella per cartella.
+function pesoCartella(dir, filtro) {
+  let n = 0, bytes = 0;
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (f.startsWith(".")) continue;
+      if (filtro && !filtro(f)) continue;
+      try {
+        const st = fs.statSync(path.join(dir, f));
+        if (st.isFile()) { n++; bytes += st.size; }
+      } catch (err) {}
+    }
+  } catch (err) {}
+  return { n, bytes };
+}
+
+function magazzinoStato() {
+  let disco = null;
+  try {
+    const s = fs.statfsSync(CONFIG.STATO.replace(/\/[^/]*$/, "") || "/");
+    const totale = s.blocks * s.bsize;
+    const libero = s.bavail * s.bsize;
+    disco = { totale, libero, usato: totale - libero };
+  } catch (err) {}
+  return {
+    ok: true,
+    disco,
+    video: pesoCartella(cartellaVideo(), f => /\.mp4$/i.test(f)),
+    foto: pesoCartella(CONFIG.LOGHI)
+  };
+}
+
+function videoCancella(p) {
+  const f = path.basename(String(p.file || ""));
+  if (!f.endsWith(".mp4")) throw new Error("file non valido");
+  const percorso = path.join(cartellaVideo(), f);
+  if (!fs.existsSync(percorso)) throw new Error("file inesistente");
+  fs.unlinkSync(percorso);
+  return { ok: true, file: f };
 }
 
 // ─────────────────────────────────────────────── indirizzi brevi
@@ -783,6 +973,8 @@ const server = http.createServer((req, res) => {
     if (q.get("regia")) return json(res, statoRegia(canaleDi(q.get("canale") || q.get("c"))));
     if (q.get("partita")) return json(res, statoPartita(canaleDi(q.get("canale") || q.get("c"))));
     if (q.get("loghi")) return json(res, logoElenco());
+    if (q.get("video")) return json(res, videoElenco());
+    if (q.get("magazzino")) return json(res, magazzinoStato());
     if (q.get("budget") === "drive") {
       // la bacheca per lo script del Drive: consegna la richiesta pendente
       // (e non la riconsegna per 10 minuti, contro i doppioni)
@@ -802,7 +994,7 @@ const server = http.createServer((req, res) => {
     let corpo = "";
     req.on("data", d => {
       corpo += d;
-      if (corpo.length > 4e6) { req.destroy(); }      // guardia anti-abuso
+      if (corpo.length > 24e6) { req.destroy(); }     // guardia anti-abuso (i pezzi video arrivano a ~11MB in base64)
     });
     req.on("end", async () => {
       let p, out;
@@ -832,6 +1024,11 @@ const server = http.createServer((req, res) => {
           case "budget-esito": out = budgetEsito(p); break;
           case "logo-carica":  out = logoSalva(p); break;
           case "logo-togli":   out = logoCancella(p); break;
+          case "video-inizia": out = videoInizia(p); break;
+          case "video-pezzo":  out = videoPezzo(p); break;
+          case "video-fine":   out = videoFine(p); break;
+          case "video-togli":  out = videoCancella(p); break;
+          case "video-nas":    out = videoNasSet(p); break;
           // questi vivono sui Fogli Google: si inoltrano
           case "formazioni":
           case "classifica":
@@ -846,6 +1043,35 @@ const server = http.createServer((req, res) => {
       json(res, out);
     });
     return;
+  }
+
+  // ── contributi video del PAT: serviti con gli HTTP Range ──
+  if (u.pathname.startsWith("/video/")) {
+    const nome = path.basename(decodeURIComponent(u.pathname));
+    const file = path.join(cartellaVideo(), nome);
+    if (!nome.endsWith(".mp4") || nome.startsWith(".")) { res.writeHead(404).end("non trovato"); return; }
+    return fs.stat(file, (err, st) => {
+      if (err || !st.isFile()) { res.writeHead(404).end("non trovato"); return; }
+      const range = req.headers.range;
+      const base = { "Content-Type": "video/mp4", "Accept-Ranges": "bytes",
+                     "Cache-Control": "no-cache", "Access-Control-Allow-Origin": "*" };
+      if (range) {
+        const m = /bytes=(\d*)-(\d*)/.exec(range);
+        let a = m && m[1] ? parseInt(m[1], 10) : 0;
+        let b = m && m[2] ? parseInt(m[2], 10) : st.size - 1;
+        if (isNaN(a) || a < 0) a = 0;
+        if (isNaN(b) || b >= st.size) b = st.size - 1;
+        if (a > b) { res.writeHead(416, { "Content-Range": "bytes */" + st.size }); return res.end(); }
+        res.writeHead(206, Object.assign({}, base, {
+          "Content-Length": b - a + 1,
+          "Content-Range": "bytes " + a + "-" + b + "/" + st.size
+        }));
+        fs.createReadStream(file, { start: a, end: b }).pipe(res);
+      } else {
+        res.writeHead(200, Object.assign({}, base, { "Content-Length": st.size }));
+        fs.createReadStream(file).pipe(res);
+      }
+    });
   }
 
   // ── loghi caricati dalla redazione ──

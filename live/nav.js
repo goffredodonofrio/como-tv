@@ -13,6 +13,11 @@
 (function () {
   "use strict";
 
+  // <script src="nav.js" data-senza-menu></script> monta SOLO l'orologio:
+  // per le pagine di lavoro della regia, dove il menu' non serve.
+  var SOLO_ORA = !!(document.currentScript && document.currentScript.dataset &&
+                    document.currentScript.dataset.senzaMenu != null);
+
   // ordine e formati del menù — specchio del catalogo (classifiche.html)
   var VOCI = [
     ["../index.html",              "Home"],
@@ -29,10 +34,15 @@
     ["volti.html",                 "Volti"],
     ["sottopancia.html",           "Sottopancia"],
     ["ticker.html",                "Ticker"],
+    ["magazzino.html",             "Magazzino"],
     ["regia.html",                 "Regia"]
   ];
 
   var qui = (location.pathname.split("/").pop() || "").toLowerCase();
+  // le pagine "figlie" accendono comunque la voce del loro capofila
+  var FIGLIE = { "magazzino-foto.html": "magazzino.html", "video.html": "magazzino.html",
+                 "classifiche-campionati.html": "classifiche-campionati.html" };
+  if (FIGLIE[qui]) qui = FIGLIE[qui];
 
   // stile autonomo (colori cablati: il menù è identico su ogni pagina, non
   // eredita variabili che potrebbero cambiare da una pagina all'altra)
@@ -58,6 +68,7 @@
   }
 
   function monta() {
+    if (SOLO_ORA) { montaOrologio(); return; }
     if (document.getElementById("cnav-stile") == null) {
       var st = document.createElement("style");
       st.id = "cnav-stile";
@@ -94,10 +105,20 @@
     if (header) {
       if (getComputedStyle(header).position === "static") header.style.position = "relative";
       o.style.position = "absolute";
-      o.style.top = "50%";       // centrato in verticale, all'altezza del titolo
       o.style.transform = "translateY(-50%)";
       o.style.right = "0";
       header.appendChild(o);
+      // in linea col TITOLO, non col centro della testata (che comprende
+      // anche occhiello e sottotitolo): si misura l'h1 e ci si allinea.
+      var titolo = header.querySelector("h1");
+      var allinea = function () {
+        o.style.top = titolo ? (titolo.offsetTop + titolo.offsetHeight / 2) + "px" : "50%";
+      };
+      allinea();
+      window.addEventListener("resize", allinea);
+      // i caratteri Mazzard arrivano dopo e cambiano l'altezza del titolo
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(allinea);
+      setTimeout(allinea, 600);
     } else {
       o.style.position = "fixed";
       o.style.top = "58px";      // sotto il menù

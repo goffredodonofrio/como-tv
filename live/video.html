@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<script>
+/* Le Grafiche Live vivono sulla macchina della regia. Su GitHub resta una
+   copia di questa pagina, ma li' parla a un altro ponte: chi la aprisse per
+   sbaglio comanderebbe un sistema che nessuno ascolta. */
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  location.replace("https://projects-cloud.it" + location.pathname + location.search + location.hash);
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video · Como TV</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    color-scheme:dark;
+    --gold:#C9A24B;--gold-bright:#E3C271;--ivory:#F5F1E6;--ivory-dim:#D8D2C2;--fg-3:#8A8B96;
+    --surface-panel:rgba(16,22,48,.66);
+    --line-2:rgba(245,241,230,.08);--line-gold:rgba(201,162,75,.28);
+    --ok:#4FCB8B;--red:#E51B20;
+  }
+  body{font-family:'DM Sans',system-ui,sans-serif;font-weight:500;font-size:14px;line-height:1.5;
+    color:var(--ivory);min-height:100vh;background-color:#0A0F24;
+    background-image:
+      radial-gradient(90% 70% at 20% 8%, rgba(36,64,138,.5), transparent 55%),
+      radial-gradient(80% 80% at 92% 108%, rgba(201,162,75,.16), transparent 55%),
+      linear-gradient(165deg,#141B3C 0%,#0E1430 48%,#0A0F24 100%);
+    background-attachment:fixed;padding-bottom:90px;}
+  .wrap{max-width:1400px;margin:0 auto;padding:0 clamp(18px,3vw,32px);}
+  header.page{padding:40px 0 20px;border-bottom:1px solid var(--line-gold);}
+  .eyebrow{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.3em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:12px;}
+  h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(30px,4.5vw,46px);
+    line-height:.94;letter-spacing:-.02em;text-transform:uppercase;color:var(--ivory);}
+  .srcline{margin-top:10px;font-size:12.5px;color:var(--fg-3);}
+
+  /* barra dei comandi, come nelle altre grafiche */
+  .controls{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;padding:22px 0;}
+  .field{display:flex;flex-direction:column;gap:6px;}
+  label{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
+    letter-spacing:.22em;text-transform:uppercase;color:var(--gold);}
+  select,input[type=file]{
+    font-family:'DM Sans',sans-serif;font-weight:500;font-size:14px;
+    padding:9px 12px;color:var(--ivory);background:var(--surface-panel);
+    border:1px solid var(--line-2);border-radius:5px;min-width:120px;}
+  select:hover{border-color:var(--line-gold);}
+  button{font-family:'Mazzard',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.09em;
+    text-transform:uppercase;padding:10px 13px;border-radius:5px;cursor:pointer;
+    background:transparent;color:var(--ivory-dim);border:1px solid var(--line-2);}
+  button:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  button:disabled{opacity:.35;cursor:default;}
+  button.carica{background:var(--gold);border-color:var(--gold);color:#0A0F24;}
+  button.carica:hover{background:var(--gold-bright);border-color:var(--gold-bright);}
+  #btnPrevG{background:rgba(79,203,139,.14);border-color:rgba(79,203,139,.55);color:#7BDCAA;}
+  #btnPrevG:hover{background:rgba(79,203,139,.24);border-color:#4FCB8B;color:#8FE8BB;}
+  #btnRegia{white-space:nowrap;}
+  #barra{flex:1 1 200px;height:8px;background:rgba(245,241,230,.08);border-radius:4px;overflow:hidden;display:none;align-self:center;}
+  #barra i{display:block;height:100%;width:0;background:var(--gold);border-radius:4px;}
+
+  /* opzioni della messa in onda */
+  .opzioni{display:flex;gap:18px;align-items:center;flex-wrap:wrap;padding:0 0 18px;}
+  .opzioni label{display:flex;align-items:center;gap:7px;letter-spacing:.14em;cursor:pointer;}
+  .opzioni input[type=checkbox]{width:16px;height:16px;accent-color:var(--gold);}
+
+  /* stato, come nelle altre grafiche */
+  .status{display:flex;flex-wrap:wrap;gap:10px 26px;align-items:center;
+    padding:13px 16px;background:var(--surface-panel);
+    border:1px solid var(--line-2);border-left:3px solid var(--line-2);
+    border-radius:5px;font-size:13px;margin-bottom:20px;}
+  .status.ok{border-left-color:var(--ok);}
+  .status.warn{border-left-color:var(--gold-bright);}
+  .status.err{border-left-color:var(--red);}
+  .status .msg{color:var(--ivory-dim);}
+  .status .msg b{color:var(--ivory);}
+
+  /* anteprima nel MOTORE vero, 16:9 scalato — come le altre grafiche */
+  #prevGbox{display:none;position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;
+    border-radius:10px;border:1px solid var(--line-2);background:#070B1D;margin-bottom:20px;}
+  #prevG{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
+    transform-origin:top left;pointer-events:none;}
+
+  /* catalogo */
+  h2{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--gold);margin:6px 0 12px;}
+  .clip{display:flex;align-items:center;gap:14px;background:var(--surface-panel);
+    border:1px solid var(--line-2);border-radius:10px;padding:12px 16px;margin-bottom:10px;flex-wrap:wrap;cursor:pointer;}
+  .clip:hover{border-color:var(--line-gold);}
+  .clip.sel{border-color:var(--gold);background:rgba(201,162,75,.08);}
+  .clip .nome{font-family:'Mazzard',sans-serif;font-weight:700;font-size:14px;color:var(--ivory);
+    text-transform:uppercase;letter-spacing:.03em;}
+  .clip .meta{color:var(--fg-3);font-size:12px;white-space:nowrap;}
+  .clip .spazio{flex:1;}
+  .clip .orig{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--gold-bright);background:rgba(201,162,75,.12);
+    border-radius:5px;padding:3px 8px;}
+  .clip button.rosso{border-color:rgba(229,27,32,.4);color:#FF9A9C;}
+  .clip button.rosso:hover{background:rgba(229,27,32,.12);border-color:var(--red);}
+  #vuoto{color:var(--fg-3);padding:14px 4px;}
+</style>
+</head>
+<body>
+<script src="nav.js"></script>
+<div class="wrap">
+  <header class="page">
+    <div class="eyebrow">Como TV · Grafiche Live</div>
+    <h1>Video</h1>
+    <div class="srcline">I contributi video in scaletta come una grafica: scegli la clip, guardala in anteprima e mandala in regia — dalla console parte coi soliti comandi.</div>
+  </header>
+
+  <div class="controls">
+    <div class="field"><label for="origine">Origine</label>
+      <select id="origine"><option value="cloud">Cloud</option><option value="nas">NAS redazione</option></select></div>
+    <div class="field" style="flex:1;min-width:220px"><label for="file">Carica un MP4 (H.264, max 800 MB)</label>
+      <input type="file" id="file" accept="video/mp4" style="width:100%"></div>
+    <button class="carica" id="btnCarica" type="button">&#8682; Carica</button>
+    <div id="barra"><i id="barrafill"></i></div>
+    <button id="btnPrevG" type="button">Anteprima</button>
+    <div class="field" style="flex:0 0 auto;margin-left:auto">
+      <label for="canaleSel">Seleziona vMix o progetto</label>
+      <select id="canaleSel" style="min-width:0;width:118px"></select>
+    </div>
+    <button id="btnRegia" type="button">&#128225; Invia alla regia</button>
+  </div>
+
+  <div class="opzioni">
+    <label><input type="checkbox" id="opLoop"> Loop</label>
+    <label><input type="checkbox" id="opMute"> Muto</label>
+    <label><input type="checkbox" id="opCover"> Riempi lo schermo (cover)</label>
+    <label><input type="checkbox" id="opTrasp"> Sfondo trasparente</label>
+  </div>
+
+  <div class="status" id="status"><span class="msg" id="statusMsg">Scegli una clip dal catalogo, oppure caricane una nuova.</span></div>
+
+  <div id="prevGbox"><iframe id="prevG" scrolling="no"></iframe></div>
+  <div id="prevcap" style="display:none;margin:-12px 0 20px;font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ivory-dim)">
+    <span style="color:var(--gold)">Anteprima</span> · <span id="prevnome"></span> · durata <span id="prevdur" style="color:var(--gold-bright)">…</span></div>
+
+  <h2>Catalogo <button id="btnAggiorna" type="button" style="padding:6px 11px;font-size:10px">&#8635; Aggiorna</button>
+    <small id="nasinfo" style="font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--fg-3)"></small></h2>
+  <!-- navigazione dell'archivio NAS: briciole di pane + ricerca -->
+  <div id="navbar" style="display:none;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+    <div id="briciole" style="font-size:13px;color:var(--ivory-dim)"></div>
+    <span style="flex:1"></span>
+    <input id="cerca" type="search" placeholder="Cerca in tutto l'archivio&hellip;" autocomplete="off" spellcheck="false"
+      style="min-width:240px;padding:9px 12px;background:var(--surface-panel);border:1px solid var(--line-2);border-radius:5px;color:var(--ivory);font-size:14px">
+  </div>
+  <div id="clips"></div>
+  <div id="vuoto" style="display:none">Nessun contributo: usa "Carica" qui sopra.</div>
+</div>
+
+<script src="destinazione.js"></script>
+<script>
+(function () {
+  "use strict";
+  var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
+  var TOKEN = "como_tv_grafiche";
+  var BASE_VIDEO = PONTE.replace(/\/(api|exec)$/, "") + "/video/";
+
+  function el(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
+  function stato(cls, html){ el("status").className = "status" + (cls ? " " + cls : ""); el("statusMsg").innerHTML = html || ""; }
+  function mb(n){ return (n/1048576).toFixed(1)+" MB"; }
+  function b64url(obj){ return btoa(unescape(encodeURIComponent(JSON.stringify(obj)))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
+  function post(corpo){
+    return fetch(PONTE, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body: JSON.stringify(Object.assign({ token: TOKEN }, corpo)) })
+      .then(function(r){ return r.json(); })
+      .then(function(j){ if(!j.ok) throw new Error(j.errore||"errore"); return j; });
+  }
+  if (window.Destinazione) Destinazione.adotta(el("canaleSel"), PONTE, TOKEN);
+  if (PONTE.indexOf("script.google") >= 0) {
+    stato("err", "<b>Questa pagina funziona solo sulla macchina della regia</b> (projects-cloud): qui il ponte video non c'è.");
+  }
+
+  // ── stato del catalogo ──────────────────────────────────────────────
+  // Due origini: CLOUD (i file caricati qui) e NAS (l'archivio della
+  // redazione, ad albero: SHOW → data → MATERIALE). La clip scelta e' sempre
+  // un oggetto {origine, chiave, nome, src}: il resto della pagina non deve
+  // sapere da dove viene.
+  var DURATE = {}, SCELTO = null;
+  var CLOUD = [], NAS = { base: "", file: [], ts: 0 };
+  var ORIGINE = "cloud", CARTELLA = "", CERCA = "";
+
+  // i nomi hanno spazi (e a volte uno spazio prima di ".mp4"): ogni pezzo
+  // del percorso va codificato, lasciando intatte le barre
+  function urlNas(rel){ return NAS.base + rel.split("/").map(encodeURIComponent).join("/"); }
+
+  function payload(){
+    if (!SCELTO) return null;
+    return { k:"video", src: SCELTO.src,
+             fit: el("opCover").checked ? "cover" : "contain",
+             loop: el("opLoop").checked, mute: el("opMute").checked,
+             bg: el("opTrasp").checked ? "trasparente" : "nero",
+             dur: DURATE[SCELTO.chiave] || 0 };
+  }
+
+  // ── anteprima nel motore vero (media-vmix), come le altre grafiche ──
+  function fitG(){ var box = el("prevGbox"); if (box.style.display === "none") return;
+    el("prevG").style.transform = "scale(" + (box.clientWidth / 1920) + ")"; }
+  window.addEventListener("resize", fitG);
+  function fmtDur(s){ if(!s) return "…"; s=Math.round(s); var m=Math.floor(s/60);
+    return (m<10?"0":"")+m+":"+((s%60)<10?"0":"")+(s%60); }
+  function pintaCap(){
+    if (!SCELTO) { el("prevcap").style.display = "none"; return; }
+    el("prevcap").style.display = "block";
+    el("prevnome").textContent = SCELTO.nome.replace(/\.mp4$/,"");
+    el("prevdur").textContent = fmtDur(DURATE[SCELTO.chiave]);
+  }
+  function anteprima(scroll){
+    var p = payload();
+    if (!p) { if (scroll) stato("warn", "Seleziona prima una clip dal catalogo."); return; }
+    var box = el("prevGbox");
+    box.style.display = "block";
+    // QUI l'anteprima suona (serve a controllare il contributo); restano muti
+    // i monitor della console, dove l'audio non deve mai uscire.
+    el("prevG").src = "media-vmix.html?d=" + b64url(p) + "&n=" + Date.now();
+    pintaCap();
+    fitG();
+    if (scroll) box.scrollIntoView({ behavior:"smooth", block:"nearest" });
+  }
+  el("btnPrevG").addEventListener("click", function(){ anteprima(true); });
+  // cambiando le opzioni, l'anteprima gia' aperta si aggiorna dal vivo
+  ["opLoop","opMute","opCover","opTrasp"].forEach(function(id){
+    el(id).addEventListener("change", function(){ if (el("prevGbox").style.display !== "none") anteprima(false); });
+  });
+
+  // ── catalogo: due origini ───────────────────────────────────────────
+  function carica() {
+    fetch(PONTE + "?video=1", { cache: "no-store" })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        CLOUD = (j && j.video) || [];
+        NAS = (j && j.nas) || { base:"", file:[], ts:0 };
+        var n = NAS.file.length;
+        var sp = (j && j.spazio) || null;
+        var gb = function(b){ return (b/1073741824).toFixed(1) + " GB"; };
+        el("nasinfo").innerHTML =
+          (sp ? '<b style="color:' + (sp.libero < 10*1073741824 ? "#FF9A9C" : "var(--ivory-dim)") + '">' +
+                gb(sp.usato) + " caricati &middot; " + gb(sp.libero) + " liberi sul cloud</b>" +
+                (sp.libero < 10*1073741824 ? " — spazio quasi finito, elimina qualche clip" : "") : "") +
+          (n ? (sp ? " &nbsp;·&nbsp; " : "") + n + " file dal NAS" : "");
+        render();
+      })
+      .catch(function(){ stato("err", "Ponte non raggiungibile."); });
+  }
+
+  function misuraDurata(chiave, src){
+    if (DURATE[chiave] != null) { pintaDurata(chiave); return; }
+    var m = document.createElement("video");
+    m.preload = "metadata"; m.src = src;
+    m.addEventListener("loadedmetadata", function(){ DURATE[chiave] = m.duration; pintaDurata(chiave); });
+  }
+  function pintaDurata(chiave){
+    var e = document.querySelector('.dur[data-k="' + CSS.escape(chiave) + '"]');
+    if (e && DURATE[chiave]) e.textContent = Math.round(DURATE[chiave]) + "s";
+  }
+
+  function render(){
+    ORIGINE = el("origine").value;
+    el("navbar").style.display = ORIGINE === "nas" ? "flex" : "none";
+    if (ORIGINE === "cloud") return renderCloud();
+    renderNas();
+  }
+
+  function renderCloud(){
+    el("vuoto").style.display = CLOUD.length ? "none" : "block";
+    el("clips").innerHTML = CLOUD.map(function(c){
+      var sel = SCELTO && SCELTO.origine === "cloud" && SCELTO.chiave === c.file;
+      return '<div class="clip' + (sel ? " sel" : "") + '" data-file="' + esc(c.file) + '">' +
+        '<span class="orig">CLOUD</span>' +
+        '<span class="nome">' + esc(c.file.replace(/\.mp4$/,"")) + '</span>' +
+        '<span class="meta">' + mb(c.size) + ' &middot; <span class="dur" data-k="' + esc(c.file) + '">…</span></span>' +
+        '<span class="spazio"></span>' +
+        '<button type="button" class="rosso" data-az="togli" title="Elimina dal catalogo cloud">&times; Elimina</button>' +
+        '</div>';
+    }).join("");
+    CLOUD.forEach(function(c){ misuraDurata(c.file, BASE_VIDEO + c.file); });
+  }
+
+  function renderNas(){
+    // briciole di pane
+    var pezzi = CARTELLA ? CARTELLA.split("/").filter(Boolean) : [];
+    var b = '<a href="#" data-vai="" style="color:var(--gold-bright)">Archivio</a>', cammino = "";
+    pezzi.forEach(function(p){ cammino += p + "/";
+      b += ' <span style="opacity:.4">/</span> <a href="#" data-vai="' + esc(cammino) + '" style="color:var(--gold-bright)">' + esc(p) + '</a>'; });
+    el("briciole").innerHTML = b;
+
+    if (!NAS.file.length) {
+      el("vuoto").style.display = "block";
+      el("vuoto").textContent = "NAS non collegato: l'attività pianificata su DSM non ha ancora mandato il catalogo.";
+      el("clips").innerHTML = ""; return;
+    }
+    el("vuoto").style.display = "none";
+
+    var righe = "", ora = Date.now();
+    if (CERCA) {
+      // ricerca: risultati piatti su tutto l'archivio
+      var q = CERCA.toLowerCase();
+      var trovati = NAS.file.filter(function(f){ return f.p.toLowerCase().indexOf(q) >= 0; }).slice(0, 200);
+      if (!trovati.length) righe = '<div id="vuoto2" style="color:var(--fg-3);padding:14px 4px">Nessun file trovato per «' + esc(CERCA) + '».</div>';
+      trovati.forEach(function(f){ righe += rigaFile(f, true, ora); });
+    } else {
+      // dentro la cartella corrente: prima le sottocartelle, poi i file
+      var cartelle = {}, file = [];
+      NAS.file.forEach(function(f){
+        if (CARTELLA && f.p.indexOf(CARTELLA) !== 0) return;
+        var resto = f.p.slice(CARTELLA.length);
+        var taglio = resto.indexOf("/");
+        if (taglio >= 0) {
+          var nome = resto.slice(0, taglio);
+          if (!cartelle[nome]) cartelle[nome] = { n: 0, ts: 0 };
+          cartelle[nome].n++;
+          if (f.ts > cartelle[nome].ts) cartelle[nome].ts = f.ts;
+        } else file.push(f);
+      });
+      Object.keys(cartelle)
+        .sort(function(a, c){ return cartelle[c].ts - cartelle[a].ts; })
+        .forEach(function(nome){
+          righe += '<div class="clip" data-cartella="' + esc(CARTELLA + nome + "/") + '">' +
+            '<span class="orig" style="background:rgba(245,241,230,.08);color:var(--ivory-dim)">CARTELLA</span>' +
+            '<span class="nome">&#128193; ' + esc(nome) + '</span>' +
+            '<span class="meta">' + cartelle[nome].n + (cartelle[nome].n === 1 ? " file" : " file") + '</span>' +
+            '<span class="spazio"></span><span class="meta" style="opacity:.6">apri &rsaquo;</span></div>';
+        });
+      file.forEach(function(f){ righe += rigaFile(f, false, ora); });
+    }
+    el("clips").innerHTML = righe;
+  }
+
+  function rigaFile(f, conCammino, ora){
+    var nome = f.p.split("/").pop();
+    var sel = SCELTO && SCELTO.origine === "nas" && SCELTO.chiave === f.p;
+    // un file toccato da meno di 5 minuti potrebbe essere ancora in scrittura
+    var fresco = f.ts && (ora - f.ts) < 5*60*1000;
+    var quando = f.ts ? new Date(f.ts).toLocaleDateString("it-IT",{day:"numeric",month:"short"}) : "";
+    return '<div class="clip' + (sel ? " sel" : "") + '" data-nas="' + esc(f.p) + '">' +
+      '<span class="orig">NAS</span>' +
+      '<span class="nome">' + esc(nome.replace(/\s*\.mp4$/i,"")) + '</span>' +
+      '<span class="meta">' + mb(f.size) + (quando ? " &middot; " + esc(quando) : "") +
+        ' &middot; <span class="dur" data-k="' + esc(f.p) + '">…</span></span>' +
+      (fresco ? '<span class="orig" style="background:rgba(229,27,32,.16);color:#FF9A9C">forse in registrazione</span>' : "") +
+      (conCammino ? '<span class="meta" style="opacity:.55;flex-basis:100%">' + esc(f.p) + '</span>' : "") +
+      '<span class="spazio"></span></div>';
+  }
+
+  el("origine").addEventListener("change", function(){ CARTELLA = ""; CERCA = ""; el("cerca").value = ""; render(); });
+  el("cerca").addEventListener("input", function(){ CERCA = el("cerca").value.trim(); render(); });
+  el("btnAggiorna").addEventListener("click", carica);
+
+  el("clips").addEventListener("click", function(e){
+    var vai = e.target.closest ? e.target.closest("[data-cartella]") : null;
+    if (vai) { CARTELLA = vai.dataset.cartella; render(); return; }
+    var b = e.target.closest ? e.target.closest("button[data-az]") : null;
+    var riga = e.target.closest ? e.target.closest(".clip") : null;
+    if (!riga) return;
+
+    if (b && b.dataset.az === "togli") {
+      var file = riga.dataset.file;
+      if (!window.confirm("Elimino «" + file + "» dal catalogo cloud?")) return;
+      post({ tipo: "video-togli", file: file })
+        .then(function(){ stato("ok", "<b>" + esc(file) + "</b> eliminato.");
+          if (SCELTO && SCELTO.chiave === file){ SCELTO = null; el("prevGbox").style.display = "none"; el("prevcap").style.display = "none"; }
+          carica(); })
+        .catch(function(err){ stato("err", esc(err.message)); });
+      return;
+    }
+
+    if (riga.dataset.nas != null) {
+      var p = riga.dataset.nas;
+      SCELTO = { origine:"nas", chiave:p, nome:p.split("/").pop(), src:urlNas(p) };
+      misuraDurata(p, SCELTO.src);
+      stato("", "Selezionata dal NAS: <b>" + esc(SCELTO.nome) + "</b>. L'anteprima funziona solo dalla rete della redazione; da fuori resta nera ma l'invio in regia va comunque.");
+    } else if (riga.dataset.file != null) {
+      var c = riga.dataset.file;
+      SCELTO = { origine:"cloud", chiave:c, nome:c, src: BASE_VIDEO + c };
+      stato("", "Selezionata: <b>" + esc(c) + "</b>. Regola le opzioni, guarda l'anteprima e invia alla regia.");
+    } else return;
+
+    document.querySelectorAll(".clip").forEach(function(x){
+      x.classList.toggle("sel", x.dataset.nas === SCELTO.chiave || x.dataset.file === SCELTO.chiave);
+    });
+    anteprima(true);
+  });
+
+  el("briciole").addEventListener("click", function(e){
+    var a = e.target.closest ? e.target.closest("a[data-vai]") : null;
+    if (!a) return;
+    e.preventDefault();
+    CARTELLA = a.dataset.vai; CERCA = ""; el("cerca").value = ""; render();
+  });
+
+  // ── invio in regia: il video e' una grafica come le altre ──
+  el("btnRegia").addEventListener("click", function(){
+    var p = payload();
+    if (!p) { stato("warn", "Seleziona prima una clip dal catalogo."); return; }
+    var nomeBase = SCELTO.nome.replace(/\s*\.mp4$/i, "").replace(/[-_]+/g, " ").toUpperCase();
+    var titolo = window.prompt("Nome in scaletta di regia:", "VIDEO — " + nomeBase);
+    if (titolo === null) return;
+    stato("", "Invio a " + (window.Destinazione?Destinazione.dove():"regia") + "…");
+    fetch(PONTE, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body: JSON.stringify(Object.assign({ token: TOKEN },
+        Destinazione.corpo({ grafica: "video", titolo: titolo.trim() || ("VIDEO " + nomeBase), dati: p }))) })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if (j.ok) stato("ok", "<b>" + esc(titolo) + "</b> aggiunto a " + Destinazione.dove() + ". Dalla <a href='regia.html' target='_blank' style='color:var(--gold-bright)'>console</a> lo mandi in onda.");
+        else stato("err", "La regia ha rifiutato: " + esc(j.errore||"errore"));
+      })
+      .catch(function(){ stato("err", "Ponte non raggiungibile."); });
+  });
+
+  // ── carica: pezzi da 8MB, TRE alla volta ──
+  el("btnCarica").addEventListener("click", function(){
+    var f = el("file").files[0];
+    if (!f) { stato("warn", "Scegli prima un file MP4."); return; }
+    if (!/\.mp4$/i.test(f.name)) { stato("err", "Solo MP4 (H.264): questo si chiama «" + esc(f.name) + "»."); return; }
+    if (f.size > 800*1048576) { stato("err", "File troppo grande: massimo 800 MB."); return; }
+    var PEZZO = 8*1048576, tot = Math.ceil(f.size / PEZZO), fatti = 0;
+    var offs = []; for (var o = 0; o < f.size; o += PEZZO) offs.push(o);
+    var btn = el("btnCarica"); btn.disabled = true;
+    el("barra").style.display = "block"; el("barrafill").style.width = "0";
+    stato("", "Carico <b>" + esc(f.name) + "</b> (" + mb(f.size) + ")…");
+    post({ tipo: "video-inizia", nome: f.name, tot: f.size }).then(function(ini){
+      function operaio() {
+        if (!offs.length) return Promise.resolve();
+        var off = offs.shift();
+        return f.slice(off, Math.min(off+PEZZO, f.size)).arrayBuffer().then(function(buf){
+          var b = "", u = new Uint8Array(buf);
+          for (var i = 0; i < u.length; i += 0x8000) b += String.fromCharCode.apply(null, u.subarray(i, i+0x8000));
+          return post({ tipo: "video-pezzo", id: ini.id, off: off, dati: btoa(b) });
+        }).then(function(){
+          fatti++;
+          el("barrafill").style.width = Math.round(fatti/tot*100) + "%";
+          return operaio();
+        });
+      }
+      return Promise.all([operaio(), operaio(), operaio()]).then(function(){
+        return post({ tipo: "video-fine", id: ini.id });
+      }).then(function(fine){
+        btn.disabled = false; el("barra").style.display = "none"; el("file").value = "";
+        stato("ok", "<b>" + esc(fine.file) + "</b> caricato (" + mb(fine.bytes) + "). È nel catalogo.");
+        SCELTO = { origine:"cloud", chiave:fine.file, nome:fine.file, src: BASE_VIDEO + fine.file };
+        el("origine").value = "cloud"; CARTELLA = ""; CERCA = ""; el("cerca").value = "";
+        carica();
+      });
+    }).catch(function(err){
+      btn.disabled = false; el("barra").style.display = "none";
+      stato("err", "Caricamento fallito: " + esc(err.message));
+    });
+  });
+
+  carica();
+})();
+</script>
+</body>
+</html>

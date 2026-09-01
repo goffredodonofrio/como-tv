@@ -172,6 +172,7 @@
         <h2>Foto</h2>
         <div class="riga">
           <div style="flex:0 0 auto"><button type="button" id="fbtn">Carica la foto</button>
+            <button type="button" id="fmag">&#128193; Dal magazzino</button>
             <input type="file" id="ffile" accept="image/*" hidden></div>
         </div>
         <div class="fedit" id="fedit" style="display:none">
@@ -239,12 +240,16 @@
 </div>
 
 <script src="destinazione.js"></script>
+<script src="sceglifoto.js"></script>
 <script>
 (function () {
   "use strict";
 
   var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
   var TOKEN = "como_tv_grafiche";
+  // le immagini stanno accanto al ponte: in dev /como-tv-dev/loghi,
+  // in produzione /como-tv/loghi (cosi' ogni ambiente vede le SUE foto)
+  var BASEIMG = PONTE.replace(/\/(api|exec)$/, "");
   if (window.Destinazione) Destinazione.adotta(document.getElementById("canaleSel"), PONTE, TOKEN);
 
   function el(id) { return document.getElementById(id); }
@@ -275,6 +280,25 @@
   }
 
   el("fbtn").addEventListener("click", function () { el("ffile").click(); });
+  // ── seconda strada: pescare una foto gia' in magazzino ──
+  // Arriva pulita (non "sporca"): se non la si ritocca viene riusata
+  // com'e', senza creare un doppione nel magazzino.
+  if (window.SceltaFoto) {
+    SceltaFoto.adotta(PONTE, TOKEN);
+    el("fmag").addEventListener("click", function () {
+      SceltaFoto.apri(function (url) {
+        var img = new Image();
+        img.onload = function () {
+          FOTO = { img: img, ox: 0, oy: 0, z: 1, sporca: false, url: url };
+          el("fedit").style.display = "";
+          el("fimg").src = url;
+          el("fz").value = 100;
+          fotoDisegna();
+        };
+        img.src = url;
+      });
+    });
+  }
   el("ftogli").addEventListener("click", function () {
     FOTO = null; el("fedit").style.display = "none"; el("ffile").value = "";
   });
@@ -340,7 +364,7 @@
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (!res.ok || !res.url) throw new Error(res.errore || "salvataggio foto fallito");
-        FOTO.url = res.url + "?t=" + Date.now();
+        FOTO.url = BASEIMG + res.url + "?t=" + Date.now();
         FOTO.sporca = false;
       });
   }

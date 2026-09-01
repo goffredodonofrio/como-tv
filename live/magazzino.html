@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<script>
+/* Le Grafiche Live vivono sulla macchina della regia. Su GitHub resta una
+   copia di questa pagina, ma li' parla a un altro ponte: chi la aprisse per
+   sbaglio comanderebbe un sistema che nessuno ascolta. */
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  location.replace("https://projects-cloud.it" + location.pathname + location.search + location.hash);
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Magazzino · Como TV</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    color-scheme:dark;
+    --gold:#C9A24B;--gold-bright:#E3C271;--ivory:#F5F1E6;--ivory-dim:#D8D2C2;--fg-3:#8A8B96;
+    --surface-panel:rgba(16,22,48,.66);
+    --line-2:rgba(245,241,230,.08);--line-gold:rgba(201,162,75,.28);
+    --ok:#4FCB8B;--red:#E51B20;
+  }
+  body{font-family:'DM Sans',system-ui,sans-serif;font-weight:500;font-size:14px;line-height:1.5;
+    color:var(--ivory);min-height:100vh;background-color:#0A0F24;
+    background-image:
+      radial-gradient(90% 70% at 20% 8%, rgba(36,64,138,.5), transparent 55%),
+      radial-gradient(80% 80% at 92% 108%, rgba(201,162,75,.16), transparent 55%),
+      linear-gradient(165deg,#141B3C 0%,#0E1430 48%,#0A0F24 100%);
+    background-attachment:fixed;padding-bottom:90px;}
+  .wrap{max-width:1400px;margin:0 auto;padding:0 clamp(18px,3vw,32px);}
+  header.page{padding:40px 0 20px;border-bottom:1px solid var(--line-gold);}
+  .eyebrow{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.3em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:12px;}
+  h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(30px,4.5vw,46px);
+    line-height:.94;letter-spacing:-.02em;text-transform:uppercase;color:var(--ivory);}
+  .srcline{margin-top:10px;font-size:12.5px;color:var(--fg-3);}
+  h2{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--gold);margin:8px 0 12px;display:flex;align-items:center;gap:10px;}
+  label{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
+    letter-spacing:.22em;text-transform:uppercase;color:var(--gold);}
+  select,input[type=file],input[type=text],input[type=search]{
+    font-family:'DM Sans',sans-serif;font-weight:500;font-size:14px;
+    padding:9px 12px;color:var(--ivory);background:var(--surface-panel);
+    border:1px solid var(--line-2);border-radius:5px;}
+  select:hover{border-color:var(--line-gold);}
+  button{font-family:'Mazzard',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.09em;
+    text-transform:uppercase;padding:10px 13px;border-radius:5px;cursor:pointer;
+    background:transparent;color:var(--ivory-dim);border:1px solid var(--line-2);}
+  button:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  button:disabled{opacity:.35;cursor:default;}
+  button.carica{background:var(--gold);border-color:var(--gold);color:#0A0F24;}
+  button.carica:hover{background:var(--gold-bright);border-color:var(--gold-bright);}
+  button.rosso{border-color:rgba(229,27,32,.4);color:#FF9A9C;}
+  button.rosso:hover{background:rgba(229,27,32,.12);border-color:var(--red);}
+  #btnPrevG{background:rgba(79,203,139,.14);border-color:rgba(79,203,139,.55);color:#7BDCAA;}
+  #btnPrevG:hover{background:rgba(79,203,139,.24);border-color:#4FCB8B;color:#8FE8BB;}
+
+  /* ── DASHBOARD: i numeri grandi ── */
+  .cruscotto{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin:24px 0 10px;}
+  .tessera{background:var(--surface-panel);border:1px solid var(--line-2);border-radius:12px;padding:20px 22px;}
+  .tessera.spicca{border-color:var(--line-gold);background:rgba(201,162,75,.07);}
+  .tessera .num{font-family:'Mazzard',sans-serif;font-weight:800;line-height:1;
+    font-size:clamp(34px,4.4vw,54px);color:var(--ivory);font-variant-numeric:tabular-nums;}
+  .tessera.spicca .num{color:var(--gold-bright);}
+  .tessera .eti{margin-top:8px;font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
+    letter-spacing:.22em;text-transform:uppercase;color:var(--fg-3);}
+  .tessera .sotto{margin-top:4px;font-size:12.5px;color:var(--ivory-dim);}
+  .barradisco{height:10px;background:rgba(245,241,230,.08);border-radius:5px;overflow:hidden;display:flex;margin:6px 0 26px;}
+  .barradisco i{display:block;height:100%;}
+  .barradisco .bvideo{background:#CE7FA6;}
+  .barradisco .bfoto{background:var(--gold);}
+  .barradisco .baltro{background:rgba(245,241,230,.22);}
+  .legenda{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--fg-3);margin-top:-18px;margin-bottom:24px;}
+  .legenda span{display:flex;align-items:center;gap:7px;}
+  .legenda i{width:10px;height:10px;border-radius:3px;display:block;}
+
+  /* ── linguette ── */
+  .linguette{display:flex;gap:10px;border-bottom:1px solid var(--line-2);margin-bottom:22px;}
+  .linguette button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;
+    font-size:12px;letter-spacing:.18em;padding:12px 4px;margin-right:16px;color:var(--fg-3);}
+  .linguette button.on{color:var(--gold-bright);border-bottom-color:var(--gold);}
+
+  /* ── barra comandi ── */
+  .controls{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;padding:0 0 18px;}
+  .field{display:flex;flex-direction:column;gap:6px;}
+  #barra,#barraF{flex:1 1 200px;height:8px;background:rgba(245,241,230,.08);border-radius:4px;overflow:hidden;display:none;align-self:center;}
+  #barra i,#barraF i{display:block;height:100%;width:0;background:var(--gold);border-radius:4px;}
+  .opzioni{display:flex;gap:18px;align-items:center;flex-wrap:wrap;padding:0 0 18px;}
+  .opzioni label{display:flex;align-items:center;gap:7px;letter-spacing:.14em;cursor:pointer;}
+  .opzioni input[type=checkbox]{width:16px;height:16px;accent-color:var(--gold);}
+
+  .status{display:flex;flex-wrap:wrap;gap:10px 26px;align-items:center;
+    padding:13px 16px;background:var(--surface-panel);
+    border:1px solid var(--line-2);border-left:3px solid var(--line-2);
+    border-radius:5px;font-size:13px;margin-bottom:20px;}
+  .status.ok{border-left-color:var(--ok);}
+  .status.warn{border-left-color:var(--gold-bright);}
+  .status.err{border-left-color:var(--red);}
+  .status .msg{color:var(--ivory-dim);} .status .msg b{color:var(--ivory);}
+
+  /* ── anteprima video nel motore ── */
+  #prevGbox{display:none;position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;
+    border-radius:10px;border:1px solid var(--line-2);background:#070B1D;margin-bottom:12px;}
+  #prevG{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
+    transform-origin:top left;pointer-events:none;}
+
+  /* ── righe del catalogo video ── */
+  .clip{display:flex;align-items:center;gap:14px;background:var(--surface-panel);
+    border:1px solid var(--line-2);border-radius:10px;padding:12px 16px;margin-bottom:10px;flex-wrap:wrap;cursor:pointer;}
+  .clip:hover{border-color:var(--line-gold);}
+  .clip.sel{border-color:var(--gold);background:rgba(201,162,75,.08);}
+  .clip .nome{font-family:'Mazzard',sans-serif;font-weight:700;font-size:14px;color:var(--ivory);
+    text-transform:uppercase;letter-spacing:.03em;}
+  .clip .meta{color:var(--fg-3);font-size:12px;white-space:nowrap;}
+  .clip .spazio{flex:1;}
+  .clip .orig{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--gold-bright);background:rgba(201,162,75,.12);
+    border-radius:5px;padding:3px 8px;}
+  #vuoto{color:var(--fg-3);padding:14px 4px;}
+
+  /* ── griglia foto ── */
+  .grigliaF{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}
+  .fcard{background:var(--surface-panel);border:1px solid var(--line-2);border-radius:10px;
+    padding:10px;display:flex;flex-direction:column;gap:8px;}
+  .fcard:hover{border-color:var(--line-gold);}
+  .fcard .prev{height:110px;border-radius:7px;background:#0A0F24 center/contain no-repeat;
+    border:1px solid var(--line-2);}
+  .fcard .nm{font-size:12px;color:var(--ivory);word-break:break-all;line-height:1.3;}
+  .fcard .pe{font-size:11px;color:var(--fg-3);}
+  .fcard button{padding:6px 8px;font-size:9px;}
+  .filtriF{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;}
+  .chip{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;padding:8px 12px;border-radius:20px;cursor:pointer;
+    border:1px solid var(--line-2);color:var(--ivory-dim);background:transparent;}
+  .chip.on{border-color:var(--gold);color:var(--gold-bright);background:rgba(201,162,75,.1);}
+</style>
+</head>
+<body>
+<script src="nav.js"></script>
+<div class="wrap">
+  <header class="page">
+    <div class="eyebrow">Como TV · Grafiche Live</div>
+    <h1>Magazzino</h1>
+    <div class="srcline">Foto e video che alimentano le grafiche: quanto spazio resta, cosa c'è dentro, cosa si può buttare.</div>
+  </header>
+
+  <!-- ── i numeri ── -->
+  <div class="cruscotto">
+    <div class="tessera spicca"><div class="num" id="nLibero">…</div><div class="eti">spazio libero</div>
+      <div class="sotto" id="sLibero">&nbsp;</div></div>
+    <div class="tessera"><div class="num" id="nVideo">…</div><div class="eti">video</div>
+      <div class="sotto" id="sVideo">&nbsp;</div></div>
+    <div class="tessera"><div class="num" id="nFoto">…</div><div class="eti">immagini</div>
+      <div class="sotto" id="sFoto">&nbsp;</div></div>
+    <div class="tessera"><div class="num" id="nContenuti">…</div><div class="eti">occupati dai contenuti</div>
+      <div class="sotto" id="sContenuti">&nbsp;</div></div>
+  </div>
+  <div class="barradisco"><i class="bvideo" id="bVideo"></i><i class="bfoto" id="bFoto"></i><i class="baltro" id="bAltro"></i></div>
+  <div class="legenda">
+    <span><i class="bvideo" style="background:#CE7FA6"></i> video</span>
+    <span><i class="bfoto" style="background:var(--gold)"></i> immagini</span>
+    <span><i class="baltro" style="background:rgba(245,241,230,.22)"></i> sistema e resto</span>
+    <span style="margin-left:auto"><button id="btnRicarica" type="button" style="padding:6px 11px;font-size:10px">&#8635; Aggiorna</button></span>
+  </div>
+
+  <div class="linguette">
+    <button id="tabVideo" class="on" type="button">&#127916; Video</button>
+    <button id="tabFoto" type="button">&#128247; Immagini</button>
+  </div>
+
+  <!-- ══════════ VIDEO ══════════ -->
+  <div id="sezVideo">
+    <div class="controls">
+      <div class="field"><label for="origine">Origine</label>
+        <select id="origine"><option value="cloud">Cloud</option><option value="nas">NAS redazione</option></select></div>
+      <div class="field" style="flex:1;min-width:220px"><label for="file">Carica un MP4 (H.264, max 800 MB)</label>
+        <input type="file" id="file" accept="video/mp4" style="width:100%"></div>
+      <button class="carica" id="btnCarica" type="button">&#8682; Carica</button>
+      <div id="barra"><i id="barrafill"></i></div>
+      <button id="btnPrevG" type="button">Anteprima</button>
+      <div class="field" style="flex:0 0 auto;margin-left:auto">
+        <label for="canaleSel">Seleziona vMix o progetto</label>
+        <select id="canaleSel" style="min-width:0;width:118px"></select>
+      </div>
+      <button id="btnRegia" type="button">&#128225; Invia alla regia</button>
+    </div>
+
+    <div class="opzioni">
+      <label><input type="checkbox" id="opLoop"> Loop</label>
+      <label><input type="checkbox" id="opMute"> Muto</label>
+      <label><input type="checkbox" id="opCover"> Riempi lo schermo (cover)</label>
+      <label><input type="checkbox" id="opTrasp"> Sfondo trasparente</label>
+    </div>
+
+    <div class="status" id="status"><span class="msg" id="statusMsg">Scegli una clip dal catalogo, oppure caricane una nuova.</span></div>
+
+    <div id="prevGbox"><iframe id="prevG" scrolling="no"></iframe></div>
+    <div id="prevcap" style="display:none;margin:0 0 20px;font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ivory-dim)">
+      <span style="color:var(--gold)">Anteprima</span> · <span id="prevnome"></span> · durata <span id="prevdur" style="color:var(--gold-bright)">…</span></div>
+
+    <h2>Catalogo <small id="nasinfo" style="font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--fg-3)"></small></h2>
+    <div id="navbar" style="display:none;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+      <div id="briciole" style="font-size:13px;color:var(--ivory-dim)"></div>
+      <span style="flex:1"></span>
+      <input id="cerca" type="search" placeholder="Cerca in tutto l'archivio&hellip;" autocomplete="off" spellcheck="false" style="min-width:240px">
+    </div>
+    <div id="clips"></div>
+    <div id="vuoto" style="display:none">Nessun contributo: usa "Carica" qui sopra.</div>
+  </div>
+
+  <!-- ══════════ IMMAGINI ══════════ -->
+  <div id="sezFoto" style="display:none">
+    <div class="controls">
+      <div class="field" style="flex:1;min-width:220px"><label for="fileF">Carica un'immagine (PNG, JPG, WEBP, SVG — max 2 MB)</label>
+        <input type="file" id="fileF" accept="image/png,image/jpeg,image/webp,image/svg+xml" style="width:100%"></div>
+      <div class="field" style="flex:1;min-width:200px"><label for="nomeF">Nome (senza estensione)</label>
+        <input type="text" id="nomeF" placeholder="es. foto-premium-nkounkou" style="width:100%"></div>
+      <button class="carica" id="btnCaricaF" type="button">&#8682; Carica</button>
+      <div id="barraF"><i id="barraFfill"></i></div>
+      <a href="magazzino-foto.html" style="margin-left:auto"><button type="button">&#128046; Foto Premium giocatori &rsaquo;</button></a>
+    </div>
+
+    <div class="status" id="statusF"><span class="msg" id="statusFMsg">Filtra o cerca, e cancella quello che non serve più.</span></div>
+
+    <div class="filtriF">
+      <button class="chip on" data-f="tutto" type="button">Tutte</button>
+      <button class="chip" data-f="foto-premium" type="button">Foto premium</button>
+      <button class="chip" data-f="loghi" type="button">Stemmi e loghi</button>
+      <span style="flex:1"></span>
+      <input id="cercaF" type="search" placeholder="Cerca per nome&hellip;" autocomplete="off" spellcheck="false" style="min-width:220px">
+    </div>
+    <div id="grigliaF" class="grigliaF"></div>
+    <div id="vuotoF" style="display:none;color:var(--fg-3);padding:14px 4px">Nessuna immagine.</div>
+  </div>
+</div>
+
+<script src="destinazione.js"></script>
+<script>
+(function () {
+  "use strict";
+  var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
+  var TOKEN = "como_tv_grafiche";
+  var BASE_VIDEO = PONTE.replace(/\/(api|exec)$/, "") + "/video/";
+  var BASE_FOTO  = PONTE.replace(/\/(api|exec)$/, "");   // i /loghi/... stanno accanto al ponte
+
+  function el(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
+  function peso(n){ if(!n) return "0 MB";
+    if (n >= 1073741824) return (n/1073741824).toFixed(1).replace(".",",") + " GB";
+    if (n >= 1048576) return (n/1048576).toFixed(0) + " MB";
+    return (n/1024).toFixed(0) + " KB"; }
+  function b64url(o){ return btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
+  function post(corpo){
+    return fetch(PONTE, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body: JSON.stringify(Object.assign({ token: TOKEN }, corpo)) })
+      .then(function(r){ return r.json(); })
+      .then(function(j){ if(!j.ok) throw new Error(j.errore||"errore"); return j; });
+  }
+  function stato(cls, html){ el("status").className = "status" + (cls?" "+cls:""); el("statusMsg").innerHTML = html||""; }
+  function statoF(cls, html){ el("statusF").className = "status" + (cls?" "+cls:""); el("statusFMsg").innerHTML = html||""; }
+  if (window.Destinazione) Destinazione.adotta(el("canaleSel"), PONTE, TOKEN);
+  if (PONTE.indexOf("script.google") >= 0) stato("err", "<b>Questa pagina funziona solo sulla macchina della regia.</b>");
+
+  // ── linguette ──
+  el("tabVideo").addEventListener("click", function(){ mostra("video"); });
+  el("tabFoto").addEventListener("click", function(){ mostra("foto"); });
+  function mostra(q){
+    el("tabVideo").classList.toggle("on", q === "video");
+    el("tabFoto").classList.toggle("on", q === "foto");
+    el("sezVideo").style.display = q === "video" ? "" : "none";
+    el("sezFoto").style.display  = q === "foto" ? "" : "none";
+    if (q === "foto" && !FOTO.length) caricaFoto();
+    try { location.hash = q; } catch(e){}
+  }
+
+  // ══════════ DASHBOARD ══════════
+  function cruscotto(){
+    fetch(PONTE + "?magazzino=1", { cache:"no-store" })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        var d = j.disco, v = j.video || {n:0,bytes:0}, f = j.foto || {n:0,bytes:0};
+        el("nVideo").textContent = v.n;   el("sVideo").textContent = peso(v.bytes);
+        el("nFoto").textContent  = f.n;   el("sFoto").textContent  = peso(f.bytes);
+        el("nContenuti").textContent = peso(v.bytes + f.bytes);
+        el("sContenuti").textContent = "video + immagini";
+        if (d) {
+          el("nLibero").textContent = peso(d.libero);
+          el("sLibero").textContent = "su " + peso(d.totale) + " totali";
+          var altro = Math.max(0, d.usato - v.bytes - f.bytes);
+          el("bVideo").style.width = (v.bytes / d.totale * 100) + "%";
+          el("bFoto").style.width  = (f.bytes / d.totale * 100) + "%";
+          el("bAltro").style.width = (altro   / d.totale * 100) + "%";
+          // avviso quando lo spazio si stringe davvero
+          if (d.libero < 5 * 1073741824) stato("err", "<b>Attenzione: meno di 5 GB liberi.</b> Conviene cancellare qualche video.");
+        }
+      })
+      .catch(function(){ el("nLibero").textContent = "—"; });
+  }
+  el("btnRicarica").addEventListener("click", function(){ cruscotto(); caricaVideo(); if (FOTO.length) caricaFoto(); });
+
+  // ══════════ VIDEO ══════════
+  var DURATE = {}, SCELTO = null;
+  var CLOUD = [], NAS = { base:"", file:[], ts:0 };
+  var CARTELLA = "", CERCA = "";
+  function urlNas(rel){ return NAS.base + rel.split("/").map(encodeURIComponent).join("/"); }
+  function payload(){
+    if (!SCELTO) return null;
+    return { k:"video", src: SCELTO.src,
+             fit: el("opCover").checked ? "cover" : "contain",
+             loop: el("opLoop").checked, mute: el("opMute").checked,
+             bg: el("opTrasp").checked ? "trasparente" : "nero",
+             dur: DURATE[SCELTO.chiave] || 0 };
+  }
+  function fmtDur(s){ if(!s) return "…"; s=Math.round(s); var m=Math.floor(s/60);
+    return (m<10?"0":"")+m+":"+((s%60)<10?"0":"")+(s%60); }
+  function pintaCap(){
+    if (!SCELTO) { el("prevcap").style.display="none"; return; }
+    el("prevcap").style.display = "block";
+    el("prevnome").textContent = SCELTO.nome.replace(/\s*\.mp4$/i,"");
+    el("prevdur").textContent = fmtDur(DURATE[SCELTO.chiave]);
+  }
+  function fitG(){ var b = el("prevGbox"); if (b.style.display === "none") return;
+    el("prevG").style.transform = "scale(" + (b.clientWidth/1920) + ")"; }
+  window.addEventListener("resize", fitG);
+  function anteprima(scroll){
+    var p = payload();
+    if (!p) { if (scroll) stato("warn","Seleziona prima una clip."); return; }
+    var b = el("prevGbox"); b.style.display = "block";
+    el("prevG").src = "media-vmix.html?d=" + b64url(p) + "&n=" + Date.now();
+    pintaCap(); fitG();
+    if (scroll) b.scrollIntoView({behavior:"smooth", block:"nearest"});
+  }
+  el("btnPrevG").addEventListener("click", function(){ anteprima(true); });
+  ["opLoop","opMute","opCover","opTrasp"].forEach(function(id){
+    el(id).addEventListener("change", function(){ if (el("prevGbox").style.display !== "none") anteprima(false); });
+  });
+
+  function caricaVideo(){
+    fetch(PONTE + "?video=1", { cache:"no-store" })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        CLOUD = (j && j.video) || [];
+        NAS = (j && j.nas) || { base:"", file:[], ts:0 };
+        el("nasinfo").textContent = NAS.file.length
+          ? (NAS.file.length + " file dal NAS · aggiornato " + new Date(NAS.ts).toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"}))
+          : "NAS non collegato";
+        renderVideo();
+      })
+      .catch(function(){ stato("err","Ponte non raggiungibile."); });
+  }
+  function misuraDurata(k, src){
+    if (DURATE[k] != null) { pintaDurata(k); return; }
+    var m = document.createElement("video"); m.preload = "metadata"; m.src = src;
+    m.addEventListener("loadedmetadata", function(){ DURATE[k] = m.duration; pintaDurata(k); });
+  }
+  function pintaDurata(k){
+    var e = document.querySelector('.dur[data-k="' + CSS.escape(k) + '"]');
+    if (e && DURATE[k]) e.textContent = Math.round(DURATE[k]) + "s";
+  }
+  function renderVideo(){
+    var nas = el("origine").value === "nas";
+    el("navbar").style.display = nas ? "flex" : "none";
+    if (!nas) return renderCloud();
+    renderNas();
+  }
+  function renderCloud(){
+    el("vuoto").style.display = CLOUD.length ? "none" : "block";
+    el("clips").innerHTML = CLOUD.map(function(c){
+      var sel = SCELTO && SCELTO.origine==="cloud" && SCELTO.chiave===c.file;
+      return '<div class="clip'+(sel?" sel":"")+'" data-file="'+esc(c.file)+'">' +
+        '<span class="orig">CLOUD</span>' +
+        '<span class="nome">'+esc(c.file.replace(/\.mp4$/,""))+'</span>' +
+        '<span class="meta">'+peso(c.size)+' &middot; <span class="dur" data-k="'+esc(c.file)+'">…</span></span>' +
+        '<span class="spazio"></span>' +
+        '<button type="button" class="rosso" data-az="togli">&times; Elimina</button></div>';
+    }).join("");
+    CLOUD.forEach(function(c){ misuraDurata(c.file, BASE_VIDEO + c.file); });
+  }
+  function renderNas(){
+    var pezzi = CARTELLA ? CARTELLA.split("/").filter(Boolean) : [];
+    var b = '<a href="#" data-vai="" style="color:var(--gold-bright)">Archivio</a>', cam = "";
+    pezzi.forEach(function(p){ cam += p + "/";
+      b += ' <span style="opacity:.4">/</span> <a href="#" data-vai="'+esc(cam)+'" style="color:var(--gold-bright)">'+esc(p)+'</a>'; });
+    el("briciole").innerHTML = b;
+    if (!NAS.file.length) { el("vuoto").style.display="block";
+      el("vuoto").textContent = "NAS non collegato."; el("clips").innerHTML=""; return; }
+    el("vuoto").style.display = "none";
+    var righe = "", ora = Date.now();
+    if (CERCA) {
+      var q = CERCA.toLowerCase();
+      var tr = NAS.file.filter(function(f){ return f.p.toLowerCase().indexOf(q)>=0; }).slice(0,200);
+      if (!tr.length) righe = '<div style="color:var(--fg-3);padding:14px 4px">Nessun file per «'+esc(CERCA)+'».</div>';
+      tr.forEach(function(f){ righe += rigaNas(f, true, ora); });
+    } else {
+      var cart = {}, file = [];
+      NAS.file.forEach(function(f){
+        if (CARTELLA && f.p.indexOf(CARTELLA) !== 0) return;
+        var resto = f.p.slice(CARTELLA.length), t = resto.indexOf("/");
+        if (t >= 0) { var n = resto.slice(0,t);
+          if (!cart[n]) cart[n] = {n:0, ts:0};
+          cart[n].n++; if (f.ts > cart[n].ts) cart[n].ts = f.ts;
+        } else file.push(f);
+      });
+      Object.keys(cart).sort(function(a,c){ return cart[c].ts - cart[a].ts; }).forEach(function(n){
+        righe += '<div class="clip" data-cartella="'+esc(CARTELLA+n+"/")+'">' +
+          '<span class="orig" style="background:rgba(245,241,230,.08);color:var(--ivory-dim)">CARTELLA</span>' +
+          '<span class="nome">&#128193; '+esc(n)+'</span>' +
+          '<span class="meta">'+cart[n].n+' file</span><span class="spazio"></span>' +
+          '<span class="meta" style="opacity:.6">apri &rsaquo;</span></div>';
+      });
+      file.forEach(function(f){ righe += rigaNas(f, false, ora); });
+    }
+    el("clips").innerHTML = righe;
+  }
+  function rigaNas(f, conCammino, ora){
+    var nome = f.p.split("/").pop();
+    var sel = SCELTO && SCELTO.origine==="nas" && SCELTO.chiave===f.p;
+    var fresco = f.ts && (ora - f.ts) < 5*60*1000;
+    var quando = f.ts ? new Date(f.ts).toLocaleDateString("it-IT",{day:"numeric",month:"short"}) : "";
+    return '<div class="clip'+(sel?" sel":"")+'" data-nas="'+esc(f.p)+'">' +
+      '<span class="orig">NAS</span><span class="nome">'+esc(nome.replace(/\s*\.mp4$/i,""))+'</span>' +
+      '<span class="meta">'+peso(f.size)+(quando?" &middot; "+esc(quando):"")+' &middot; <span class="dur" data-k="'+esc(f.p)+'">…</span></span>' +
+      (fresco ? '<span class="orig" style="background:rgba(229,27,32,.16);color:#FF9A9C">forse in registrazione</span>' : "") +
+      (conCammino ? '<span class="meta" style="opacity:.55;flex-basis:100%">'+esc(f.p)+'</span>' : "") +
+      '<span class="spazio"></span></div>';
+  }
+  el("origine").addEventListener("change", function(){ CARTELLA=""; CERCA=""; el("cerca").value=""; renderVideo(); });
+  el("cerca").addEventListener("input", function(){ CERCA = el("cerca").value.trim(); renderVideo(); });
+  el("briciole").addEventListener("click", function(e){
+    var a = e.target.closest ? e.target.closest("a[data-vai]") : null;
+    if (!a) return; e.preventDefault();
+    CARTELLA = a.dataset.vai; CERCA=""; el("cerca").value=""; renderVideo();
+  });
+  el("clips").addEventListener("click", function(e){
+    var vai = e.target.closest ? e.target.closest("[data-cartella]") : null;
+    if (vai) { CARTELLA = vai.dataset.cartella; renderVideo(); return; }
+    var b = e.target.closest ? e.target.closest("button[data-az]") : null;
+    var riga = e.target.closest ? e.target.closest(".clip") : null;
+    if (!riga) return;
+    if (b && b.dataset.az === "togli") {
+      var f = riga.dataset.file;
+      if (!window.confirm("Elimino «"+f+"» dal cloud?\n\nSe è in una scaletta di regia, quella voce non troverà più il video.")) return;
+      post({ tipo:"video-togli", file:f }).then(function(){
+        stato("ok","<b>"+esc(f)+"</b> eliminato.");
+        if (SCELTO && SCELTO.chiave===f){ SCELTO=null; el("prevGbox").style.display="none"; el("prevcap").style.display="none"; }
+        caricaVideo(); cruscotto();
+      }).catch(function(err){ stato("err", esc(err.message)); });
+      return;
+    }
+    if (riga.dataset.nas != null) {
+      var p = riga.dataset.nas;
+      SCELTO = { origine:"nas", chiave:p, nome:p.split("/").pop(), src:urlNas(p) };
+      misuraDurata(p, SCELTO.src);
+      stato("", "Dal NAS: <b>"+esc(SCELTO.nome)+"</b>. L'anteprima funziona solo dalla rete della redazione.");
+    } else if (riga.dataset.file != null) {
+      var c = riga.dataset.file;
+      SCELTO = { origine:"cloud", chiave:c, nome:c, src: BASE_VIDEO + c };
+      stato("", "Selezionata: <b>"+esc(c)+"</b>.");
+    } else return;
+    document.querySelectorAll(".clip").forEach(function(x){
+      x.classList.toggle("sel", x.dataset.nas===SCELTO.chiave || x.dataset.file===SCELTO.chiave); });
+    anteprima(true);
+  });
+  el("btnRegia").addEventListener("click", function(){
+    var p = payload();
+    if (!p) { stato("warn","Seleziona prima una clip."); return; }
+    var base = SCELTO.nome.replace(/\s*\.mp4$/i,"").replace(/[-_]+/g," ").toUpperCase();
+    var titolo = window.prompt("Nome in scaletta di regia:", "VIDEO — " + base);
+    if (titolo === null) return;
+    stato("", "Invio a " + (window.Destinazione?Destinazione.dove():"regia") + "…");
+    fetch(PONTE, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body: JSON.stringify(Object.assign({ token:TOKEN },
+        Destinazione.corpo({ grafica:"video", titolo: titolo.trim()||("VIDEO "+base), dati:p }))) })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if (j.ok) stato("ok","<b>"+esc(titolo)+"</b> aggiunto a "+Destinazione.dove()+". Dalla <a href='regia.html' target='_blank' style='color:var(--gold-bright)'>console</a> lo mandi in onda.");
+        else stato("err","La regia ha rifiutato: "+esc(j.errore||"errore"));
+      }).catch(function(){ stato("err","Ponte non raggiungibile."); });
+  });
+  el("btnCarica").addEventListener("click", function(){
+    var f = el("file").files[0];
+    if (!f) { stato("warn","Scegli prima un file MP4."); return; }
+    if (!/\.mp4$/i.test(f.name)) { stato("err","Solo MP4 (H.264)."); return; }
+    if (f.size > 800*1048576) { stato("err","File troppo grande: massimo 800 MB."); return; }
+    var PEZZO = 8*1048576, tot = Math.ceil(f.size/PEZZO), fatti = 0;
+    var offs = []; for (var o = 0; o < f.size; o += PEZZO) offs.push(o);
+    var btn = el("btnCarica"); btn.disabled = true;
+    el("barra").style.display="block"; el("barrafill").style.width="0";
+    stato("", "Carico <b>"+esc(f.name)+"</b> ("+peso(f.size)+")…");
+    post({ tipo:"video-inizia", nome:f.name, tot:f.size }).then(function(ini){
+      function operaio(){
+        if (!offs.length) return Promise.resolve();
+        var off = offs.shift();
+        return f.slice(off, Math.min(off+PEZZO, f.size)).arrayBuffer().then(function(buf){
+          var b = "", u = new Uint8Array(buf);
+          for (var i = 0; i < u.length; i += 0x8000) b += String.fromCharCode.apply(null, u.subarray(i, i+0x8000));
+          return post({ tipo:"video-pezzo", id:ini.id, off:off, dati:btoa(b) });
+        }).then(function(){ fatti++; el("barrafill").style.width = Math.round(fatti/tot*100)+"%"; return operaio(); });
+      }
+      return Promise.all([operaio(),operaio(),operaio()])
+        .then(function(){ return post({ tipo:"video-fine", id:ini.id }); })
+        .then(function(fine){
+          btn.disabled=false; el("barra").style.display="none"; el("file").value="";
+          stato("ok","<b>"+esc(fine.file)+"</b> caricato ("+peso(fine.bytes)+").");
+          SCELTO = { origine:"cloud", chiave:fine.file, nome:fine.file, src:BASE_VIDEO+fine.file };
+          el("origine").value="cloud"; CARTELLA=""; CERCA=""; el("cerca").value="";
+          caricaVideo(); cruscotto();
+        });
+    }).catch(function(err){
+      btn.disabled=false; el("barra").style.display="none";
+      stato("err","Caricamento fallito: "+esc(err.message));
+    });
+  });
+
+  // ══════════ IMMAGINI ══════════
+  var FOTO = [], FILTRO = "tutto", CERCAF = "";
+  function caricaFoto(){
+    fetch(PONTE + "?loghi=1", { cache:"no-store" })
+      .then(function(r){ return r.json(); })
+      .then(function(j){ FOTO = (j && j.loghi) || []; FOTO.sort(function(a,b){ return (b.ts||0)-(a.ts||0); }); renderFoto(); })
+      .catch(function(){ statoF("err","Ponte non raggiungibile."); });
+  }
+  function renderFoto(){
+    var v = FOTO.filter(function(f){
+      if (FILTRO === "foto-premium" && f.chiave.indexOf("foto-premium") !== 0) return false;
+      if (FILTRO === "loghi" && f.chiave.indexOf("foto-premium") === 0) return false;
+      if (CERCAF && f.chiave.toLowerCase().indexOf(CERCAF.toLowerCase()) < 0) return false;
+      return true;
+    });
+    el("vuotoF").style.display = v.length ? "none" : "block";
+    el("grigliaF").innerHTML = v.map(function(f){
+      return '<div class="fcard" data-chiave="'+esc(f.chiave)+'">' +
+        '<div class="prev" style="background-image:url(\''+esc(BASE_FOTO + f.url)+'\')"></div>' +
+        '<div class="nm">'+esc(f.chiave)+'</div>' +
+        '<div class="pe">'+peso(f.size)+'</div>' +
+        '<button type="button" class="rosso" data-az="togliF">&times; Elimina</button></div>';
+    }).join("");
+    statoF("", v.length + " immagini mostrate su " + FOTO.length + " in archivio.");
+  }
+  document.querySelectorAll(".chip[data-f]").forEach(function(c){
+    c.addEventListener("click", function(){
+      document.querySelectorAll(".chip[data-f]").forEach(function(x){ x.classList.toggle("on", x===c); });
+      FILTRO = c.dataset.f; renderFoto();
+    });
+  });
+  el("cercaF").addEventListener("input", function(){ CERCAF = el("cercaF").value.trim(); renderFoto(); });
+  el("grigliaF").addEventListener("click", function(e){
+    var b = e.target.closest ? e.target.closest("button[data-az='togliF']") : null;
+    if (!b) return;
+    var chiave = b.closest(".fcard").dataset.chiave;
+    if (!window.confirm("Elimino l'immagine «"+chiave+"»?\n\nLe grafiche che la usano mostreranno il ripiego.")) return;
+    post({ tipo:"logo-togli", nome:chiave })
+      .then(function(){ statoF("ok","<b>"+esc(chiave)+"</b> eliminata."); caricaFoto(); cruscotto(); })
+      .catch(function(err){ statoF("err", esc(err.message)); });
+  });
+  el("btnCaricaF").addEventListener("click", function(){
+    var f = el("fileF").files[0];
+    var nome = el("nomeF").value.trim() || (f ? f.name.replace(/\.[^.]+$/,"") : "");
+    if (!f) { statoF("warn","Scegli prima un'immagine."); return; }
+    if (f.size > 2*1048576) { statoF("err","Immagine troppo grande: massimo 2 MB."); return; }
+    if (!nome) { statoF("warn","Serve un nome."); return; }
+    var btn = el("btnCaricaF"); btn.disabled = true;
+    el("barraF").style.display="block"; el("barraFfill").style.width="40%";
+    var rd = new FileReader();
+    rd.onload = function(){
+      post({ tipo:"logo-carica", nome:nome, dati:rd.result })
+        .then(function(j){
+          btn.disabled=false; el("barraF").style.display="none";
+          el("fileF").value=""; el("nomeF").value="";
+          statoF("ok","<b>"+esc(j.nome)+"</b> caricata.");
+          caricaFoto(); cruscotto();
+        })
+        .catch(function(err){ btn.disabled=false; el("barraF").style.display="none";
+          statoF("err","Caricamento fallito: "+esc(err.message)); });
+    };
+    rd.readAsDataURL(f);
+  });
+
+  // ── avvio ──
+  cruscotto();
+  caricaVideo();
+  if ((location.hash || "").indexOf("foto") >= 0) mostra("foto");
+})();
+</script>
+</body>
+</html>
