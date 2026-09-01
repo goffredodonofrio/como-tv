@@ -30,6 +30,7 @@
     ["statistiche.html",           "Statistiche"],
     ["tabelloni.html",             "Tabelloni"],
     ["focus.html",                 "Focus"],
+    ["dichiarazioni.html",         "Dichiarazioni"],
     ["scheda.html",                "Scheda"],
     ["volti.html",                 "Volti"],
     ["sottopancia.html",           "Sottopancia"],

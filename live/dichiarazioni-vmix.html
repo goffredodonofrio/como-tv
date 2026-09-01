@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dichiarazioni · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-SemiBold.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+    transform-origin:center center;
+    font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);
+  }
+
+  /* ── la foto: mezza scena a DESTRA, sfumata nel navy ── */
+  #fotobox{position:absolute;right:0;top:0;width:980px;height:1080px;overflow:hidden;
+    opacity:0;transform:translateX(70px);
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.25) 16%,rgba(0,0,0,.7) 34%,#000 52%);
+            mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.25) 16%,rgba(0,0,0,.7) 34%,#000 52%);}
+  #fotobox img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;object-position:center top;
+    filter:brightness(.84) saturate(1.05);}
+  #fotobox .velo{position:absolute;inset:0;
+    background:
+      linear-gradient(90deg,rgba(10,15,38,.32) 0%,rgba(10,15,38,.08) 45%,rgba(10,15,38,.35) 100%),
+      linear-gradient(0deg,rgba(7,11,29,.88) 0%,transparent 32%),
+      linear-gradient(180deg,rgba(7,11,29,.55) 0%,transparent 24%);}
+
+  /* ── occhiello ── */
+  #occhiello{position:absolute;left:130px;top:120px;
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:26px;letter-spacing:.28em;
+    color:#C9A24B;text-transform:uppercase;white-space:nowrap;opacity:0;}
+
+  /* ── la virgoletta d'apertura, grande e in filigrana ── */
+  #apice{position:absolute;left:112px;top:150px;
+    font-family:Georgia,'Times New Roman',serif;font-weight:700;font-size:280px;line-height:1;
+    color:rgba(201,162,75,.22);opacity:0;pointer-events:none;}
+
+  /* ── la dichiarazione ── */
+  #frase{position:absolute;left:130px;top:250px;width:830px;
+    font-family:Georgia,'Times New Roman',serif;font-style:italic;font-weight:700;
+    font-size:60px;line-height:1.26;color:#F5F1E6;
+    text-shadow:0 3px 18px rgba(0,0,0,.5);}
+  #frase .r{display:block;opacity:0;}
+
+  /* ── il filo e la firma ── */
+  #filo{position:absolute;left:130px;width:300px;height:3px;
+    background:linear-gradient(90deg,#C9A24B 0%,rgba(201,162,75,.12) 100%);
+    transform:scaleX(0);transform-origin:left center;}
+  #chi{position:absolute;left:130px;width:840px;opacity:0;}
+  #chi .nome{font-family:'Mazzard',sans-serif;font-weight:800;font-size:52px;line-height:1.05;
+    letter-spacing:.02em;color:#C9A24B;text-transform:uppercase;white-space:nowrap;}
+  #chi .ruolo{margin-top:8px;font-family:'DM Sans',sans-serif;font-weight:500;font-size:26px;
+    letter-spacing:.14em;color:rgba(245,241,230,.72);text-transform:uppercase;}
+
+  @keyframes fadeIn { to { opacity:1; } }
+  @keyframes ruleIn { to { transform:scaleX(1); } }
+  @keyframes salita { to { opacity:1; transform:translateY(0); } }
+  @keyframes daDestra { to { opacity:1; transform:translateX(0); } }
+  .su{transform:translateY(26px);}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="fotobox" style="display:none"><img id="foto" alt=""><div class="velo"></div></div>
+  <div id="apice">&ldquo;</div>
+  <div id="occhiello"></div>
+  <div id="frase"></div>
+  <div id="filo"></div>
+  <div id="chi"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // dati: ?d=<base64url {e:"occhiello", q:"la dichiarazione",
+  //                      n:"Cesc Fàbregas", r:"Allenatore", f:"…foto…"}>
+  var DEMO = {
+    e: "COMO · CONFERENZA STAMPA",
+    q: "Abbiamo giocato con personalità fino alla fine: questa squadra ha carattere e vuole continuare a crescere.",
+    n: "Cesc Fàbregas",
+    r: "Allenatore Como 1907",
+    f: "/loghi/foto-cesc.png"
+  };
+
+  function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return DEMO;
+    try {
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return (d && d.q) ? d : null;
+    } catch (err) { return null; }
+  }
+  var STILL = new URLSearchParams(location.search).get("still") === "1";
+  var D = decodeData();
+  if (!D) {
+    // dati presenti ma illeggibili: MEGLIO NIENTE che una frase sbagliata in onda
+    document.title = "DICHIARAZIONI — dati non validi";
+    document.getElementById("stage").style.display = "none";
+    return;
+  }
+  document.title = "DICHIARAZIONI " + (D.n || "");
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function el(id) { return document.getElementById(id); }
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    el("stage").style.transform = "translate(-50%,-50%) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+
+  // ── la foto, a destra ──
+  if (D.f) {
+    el("fotobox").style.display = "";
+    el("foto").src = D.f;
+    el("foto").onerror = function () { el("fotobox").style.display = "none"; };
+    if (STILL) { el("fotobox").style.opacity = 1; el("fotobox").style.transform = "none"; }
+    else el("fotobox").style.animation = "daDestra .9s cubic-bezier(.2,.7,.3,1) .35s forwards";
+  }
+
+  // ── occhiello ──
+  if (D.e) {
+    el("occhiello").textContent = D.e;
+    if (STILL) el("occhiello").style.opacity = 1;
+    else el("occhiello").style.animation = "fadeIn .5s ease .25s forwards";
+  }
+
+  // ── la dichiarazione: entra riga per riga, come si legge ──
+  // Il testo si adatta da solo: le frasi lunghe rimpiccioliscono invece
+  // di sbordare, cosi' in onda non si perde mai una parola.
+  var frase = el("frase");
+  var testo = String(D.q || "").trim();
+  if (!/[»"”]$/.test(testo)) testo = testo + "”";
+  frase.innerHTML = '<span class="r" id="r0">' + esc(testo) + '</span>';
+  (function () {
+    var MAXH = 470, fs = 60;
+    while (frase.scrollHeight > MAXH && fs > 30) { fs -= 2; frase.style.fontSize = fs + "px"; }
+  })();
+
+  // le righe vere del paragrafo non sono separabili: si anima il blocco
+  var r0 = el("r0");
+  if (STILL) r0.style.opacity = 1;
+  else r0.style.animation = "fadeIn .7s ease .5s forwards";
+
+  // ── firma: filo, nome e ruolo, sotto la frase ──
+  var sottoY = 250 + Math.min(470, frase.scrollHeight) + 54;
+  el("filo").style.top = sottoY + "px";
+  el("chi").style.top = (sottoY + 30) + "px";
+  el("chi").innerHTML = '<div class="nome">' + esc(D.n || "") + '</div>' +
+                        (D.r ? '<div class="ruolo">' + esc(D.r) + '</div>' : "");
+  if (STILL) { el("filo").style.transform = "scaleX(1)"; el("chi").style.opacity = 1; }
+  else {
+    el("filo").style.animation = "ruleIn .6s cubic-bezier(.2,.7,.3,1) 1.05s forwards";
+    el("chi").classList.add("su");
+    el("chi").style.animation = "salita .6s cubic-bezier(.2,.7,.3,1) 1.2s forwards";
+  }
+
+  // la virgoletta grande accompagna l'ingresso
+  if (STILL) el("apice").style.opacity = 1;
+  else el("apice").style.animation = "fadeIn .8s ease .35s forwards";
+
+  function replay() { location.reload(); }
+  document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
+  document.addEventListener("dblclick", replay);
+})();
+</script>
+<script src="sfondo.js"></script>
+</body>
+</html>
