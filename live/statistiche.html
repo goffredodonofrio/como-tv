@@ -388,6 +388,12 @@
       '</div>' +
       '<div class="riga">' +
       '<div><label for="' + pre + 'n">Nome in grafica</label><input type="text" id="' + pre + 'n" placeholder="scrivi o scegli sopra"></div>' +
+      // nella scheda giocatore le due righe si possono correggere a mano:
+      // "Angel Di Maria" va diviso Angel / Di Maria, non Angel Di / Maria
+      (MODO === "gi"
+        ? '<div><label for="' + pre + 'nome">Riga piccola</label><input type="text" id="' + pre + 'nome" placeholder="es. Ángel"></div>' +
+          '<div><label for="' + pre + 'cog">Riga grande</label><input type="text" id="' + pre + 'cog" placeholder="es. Di María"></div>'
+        : "") +
       '<div><label for="' + pre + 's">Sottotitolo</label><input type="text" id="' + pre + 's" placeholder="es. Attaccante · Como"></div>' +
       (conGiocatore ? '<div class="mini"><label for="' + pre + 'num">N°</label><input type="text" id="' + pre + 'num" maxlength="2"></div>' : "") +
       (conGiocatore
@@ -453,12 +459,45 @@
       if (g) {
         el(pre2 + "n").value = g.n;
         el(pre2 + "n").dataset.logo = "";
+        proponiDivisione(pre2, true);     // nuovo giocatore: si riparte dalla proposta
         var num = el(pre2 + "num"); if (num) num.value = g.num || "";
         var sq = "";
         SQUADRE.forEach(function (x) { if (String(x.id) === t.dataset.team) sq = x.n; });
         el(pre2 + "s").value = (g.ruolo ? g.ruolo + " · " : "") + sq;
       }
     }
+  });
+
+  // ── come si divide un nome ──────────────────────────────────────────
+  // La grafica scrive la riga piccola sopra e il cognome grande sotto.
+  // Prendere l'ultima parola come cognome sbaglia con le particelle:
+  // "Ángel Di María" diventerebbe "Ángel Di" / "María". Qui il cognome
+  // si allarga all'indietro finche' trova particelle (di, de, van, dos…).
+  var PARTICELLE = ["di","de","del","della","dello","dei","degli","da","dal","dalla",
+                    "das","dos","van","von","der","den","ter","ten","la","le","el",
+                    "al","bin","ibn","mc","mac","o'","st","san","santa","do","du"];
+  function dividiNome(intero) {
+    var p = String(intero || "").trim().split(/\s+/).filter(Boolean);
+    if (p.length <= 1) return { nome: "", cognome: p[0] || "" };
+    var i = p.length - 1;
+    while (i > 1 && PARTICELLE.indexOf(p[i - 1].toLowerCase().replace(/[.,]/g, "")) >= 0) i--;
+    return { nome: p.slice(0, i).join(" "), cognome: p.slice(i).join(" ") };
+  }
+  // riempie le due righe con la proposta; se sono state corrette a mano
+  // non le tocca piu' (a meno che non si scelga un altro giocatore)
+  function proponiDivisione(pre, forza) {
+    var cn = el(pre + "nome"), cc = el(pre + "cog");
+    if (!cn || !cc) return;
+    if (!forza && (cn.dataset.mano === "1" || cc.dataset.mano === "1")) return;
+    var d = dividiNome(el(pre + "n").value);
+    cn.value = d.nome; cc.value = d.cognome;
+    if (forza) { delete cn.dataset.mano; delete cc.dataset.mano; }
+  }
+  document.addEventListener("input", function (e) {
+    var m = /^(a|b)(n|nome|cog)$/.exec(e.target.id || "");
+    if (!m) return;
+    if (m[2] === "n") proponiDivisione(m[1], false);   // scrivendo il nome intero
+    else e.target.dataset.mano = "1";                  // corretto a mano: comanda l'operatore
   });
 
   // ── la foto nel cerchietto ──────────────────────────────────────────
@@ -636,6 +675,12 @@
     var o = { n: n.value.trim(), s: el(pre + "s").value.trim(),
               c: col ? col.value : "#243F8A" };
     if (num && num.value.trim()) o.num = num.value.trim();
+    // scheda giocatore: le due righe come le ha volute chi compila
+    var cn = el(pre + "nome"), cc = el(pre + "cog");
+    if (cn && cc && (cn.value.trim() || cc.value.trim())) {
+      o.pre = cn.value.trim();
+      o.cog = cc.value.trim();
+    }
     if (n.dataset.logo) o.l = n.dataset.logo;
     if (FOTO[pre] && FOTO[pre].url) o.f = FOTO[pre].url;
     return o;
