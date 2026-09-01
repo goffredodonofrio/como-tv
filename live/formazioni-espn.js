@@ -103,6 +103,44 @@
     return "C";
   }
 
+  // da un giocatore ESPN alla nostra terna [numero, nome, cognome]
+  function terna(x) {
+    var a = x.athlete || {};
+    var cognome = a.lastName || (a.displayName || "").split(" ").slice(-1)[0] || "";
+    var intero = a.fullName || a.displayName || cognome;
+    var nome = intero.length > cognome.length ? intero.slice(0, intero.length - cognome.length).trim() : "";
+    // la foto segue la regola del Premium: un archivio solo per tutte le grafiche
+    var slug = cognome.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    return [x.jersey || "", nome, cognome, slug ? "/loghi/foto-premium-" + slug + ".png" : ""];
+  }
+
+  // I CAMBI: stanno nei keyEvents del summary, col minuto. Il primo
+  // partecipante e' chi ENTRA, il secondo chi ESCE (cosi' li scrive ESPN).
+  // I numeri di maglia si pescano dal roster della stessa squadra.
+  function cambiDi(sommario, blocco) {
+    var idT = String((blocco.team || {}).id || "");
+    var anagrafe = {};
+    (blocco.roster || []).forEach(function (x) {
+      var id = ((x.athlete || {}).id);
+      if (id != null) anagrafe[String(id)] = terna(x);
+    });
+    var lista = [];
+    (sommario.keyEvents || []).forEach(function (e) {
+      var t = String((e.type || {}).type || (e.type || {}).text || "").toLowerCase();
+      if (t.indexOf("sub") < 0) return;
+      if (String((e.team || {}).id || "") !== idT) return;
+      var p = e.participants || [];
+      var dentro = anagrafe[String(((p[0] || {}).athlete || {}).id)];
+      var esce = anagrafe[String(((p[1] || {}).athlete || {}).id)];
+      if (!dentro || !esce) return;
+      lista.push({ m: (e.clock || {}).displayValue || "", o: esce, i: dentro,
+                   ordine: (e.clock || {}).value || 0 });
+    });
+    lista.sort(function (a, b) { return a.ordine - b.ordine; });
+    return lista.map(function (c) { return { m: c.m, o: c.o, i: c.i }; });
+  }
+
   // mette gli undici nelle caselle del modulo, reparto per reparto
   function schiera(mod, undici) {
     var lines = linee(mod);
@@ -310,6 +348,10 @@
           var iRose = indiceRose(comp);
           var a = applica(sides[0], casa, iRose);
           var b = applica(sides[1], fuori, iRose);
+          // chi li vuole (la grafica Cambi) se li prende da qui; le altre
+          // pagine semplicemente non li guardano
+          a.cambi = cambiDi(d, casa);
+          b.cambi = cambiDi(d, fuori);
 
           var avvisi = [];
           [[sides[0], a], [sides[1], b]].forEach(function (x) {
@@ -339,5 +381,6 @@
     cercaPartite();
   }
 
-  window.FormazioniEspn = { monta: monta, competizioni: COMPETIZIONI, schiera: schiera };
+  window.FormazioniEspn = { monta: monta, competizioni: COMPETIZIONI,
+                            schiera: schiera, cambiDi: cambiDi, terna: terna };
 })();

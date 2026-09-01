@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cambi · vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+
+  /* stesso fondale delle altre grafiche: navy con l'alone, piu' la polvere
+     d'oro di sfondo.js che si aggancia da sola allo stage */
+  #stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+    transform-origin:center center;font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;overflow:hidden;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);}
+
+  /* ── testata, in alto a sinistra ── */
+  #logo{position:absolute;left:74px;top:44px;width:112px;height:112px;object-fit:contain;
+    filter:drop-shadow(0 6px 18px rgba(0,0,0,.45));opacity:0;}
+  #team{position:absolute;left:206px;top:52px;font-family:'Mazzard',sans-serif;font-weight:800;
+    font-size:52px;letter-spacing:.01em;color:#F5F1E6;text-transform:uppercase;white-space:nowrap;
+    clip-path:inset(0 100% 0 0);}
+  #fase{position:absolute;left:210px;top:120px;font-family:'Mazzard',sans-serif;font-weight:800;
+    font-size:23px;letter-spacing:.28em;color:#C9A24B;opacity:0;white-space:nowrap;}
+  #fase b{color:#F5F1E6;font-weight:800;}
+
+  /* il campo, disegnato per bene e visto dall'alto: la porta a sinistra,
+     si attacca verso destra */
+  #campo{position:absolute;left:0;top:0;width:1920px;height:1080px;pointer-events:none;opacity:0;}
+  #campo.on{animation:sfuma 1.1s ease .2s forwards;}
+  @keyframes sfuma{to{opacity:1;}}
+
+  #pitch{position:absolute;left:0;top:0;width:1920px;height:1080px;z-index:6;}
+
+  /* ── la carta del giocatore ───────────────────────────────────────────
+     Davanti chi ha cominciato, dietro chi e' entrato: la carta GIRA su se
+     stessa al minuto del cambio. Le misure le decide lo script sul reparto
+     piu' affollato, cosi' le carte non si toccano mai. */
+  .pcard{position:absolute;transform:translate(-50%,-50%);text-align:center;
+    width:var(--cw);height:var(--ch);perspective:1200px;opacity:0;}
+  .pcard.dentro{animation:entra .5s cubic-bezier(.34,1.4,.5,1) forwards;}
+  @keyframes entra{from{opacity:0;transform:translate(-50%,-50%) scale(.74);}
+                   to{opacity:1;transform:translate(-50%,-50%) scale(1);}}
+
+  .gir{position:relative;width:100%;height:100%;transform-style:preserve-3d;
+    transition:transform 1s cubic-bezier(.45,.08,.25,1);}
+  .pcard.girata .gir{transform:rotateY(180deg);}
+  /* la rotazione esplicita sulle DUE facce e' quello che fa funzionare
+     davvero il nascondimento del retro: senza, si leggono i due nomi
+     sovrapposti */
+  .faccia{position:absolute;inset:0;transform:rotateY(0deg);
+    backface-visibility:hidden;-webkit-backface-visibility:hidden;
+    display:flex;flex-direction:column;align-items:center;justify-content:flex-start;}
+  .dietro{transform:rotateY(180deg);}
+
+  /* il ritratto: la foto del giocatore incorniciata. Se la foto non c'e'
+     (succede spesso per gli avversari) la cornice mostra la MAGLIA. */
+  .ritratto{position:relative;width:var(--fw);height:var(--fh);border-radius:12px;overflow:hidden;
+    background:linear-gradient(180deg,#1a2550 0%,#0c1230 100%);
+    box-shadow:inset 0 0 0 2px rgba(201,162,75,.45), 0 12px 28px rgba(0,0,0,.55);}
+  .ritratto .ph{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top;}
+  .ritratto .mg{display:none;position:absolute;left:50%;top:50%;width:76%;height:76%;
+    transform:translate(-50%,-54%);object-fit:contain;filter:drop-shadow(0 8px 16px rgba(0,0,0,.5));}
+  .ritratto.senza .mg{display:block;}
+  .ritratto .velo{position:absolute;inset:0;
+    background:linear-gradient(180deg,transparent 55%,rgba(7,11,29,.85) 94%);}
+  .ritratto .nu{position:absolute;top:2px;right:9px;font-family:'Mazzard',sans-serif;font-weight:800;
+    font-size:calc(var(--fw) * .30);line-height:1;color:#F5F1E6;text-shadow:0 3px 12px rgba(0,0,0,.85);}
+  /* chi e' entrato: cornice in oro pieno, si riconosce fino alla fine */
+  .dietro .ritratto{box-shadow:inset 0 0 0 3px rgba(227,194,113,.9), 0 12px 30px rgba(0,0,0,.6);}
+  .dietro .ritratto::after{content:"";position:absolute;inset:0;border-radius:12px;
+    background:radial-gradient(80% 60% at 50% 25%, rgba(201,162,75,.22), rgba(201,162,75,0) 70%);}
+
+  .nome{font-family:'Mazzard',sans-serif;font-weight:800;font-size:var(--nf);letter-spacing:.02em;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;margin-top:6px;
+    text-shadow:0 2px 8px rgba(0,0,0,.8);}
+  .nome .num{color:#C9A24B;margin-right:6px;}
+  .nome small{display:block;font-family:'DM Sans',sans-serif;font-weight:500;
+    font-size:calc(var(--nf) * .62);color:rgba(245,241,230,.7);text-transform:none;line-height:1.25;}
+  .dietro .nome .num{color:#E3C271;}
+
+  /* il minuto del cambio: compare sopra la carta un attimo prima che giri */
+  .min{position:absolute;top:calc(var(--fh) * -.12);left:50%;
+    transform:translate(-50%,-8px) scale(.8);
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:calc(var(--nf) * 1.05);letter-spacing:.06em;
+    color:#0A0F24;background:linear-gradient(180deg,#E3C271,#C9A24B);
+    padding:4px 12px;border-radius:13px;white-space:nowrap;opacity:0;
+    box-shadow:0 6px 18px rgba(0,0,0,.55);
+    transition:opacity .35s ease, transform .45s cubic-bezier(.2,1.3,.4,1);z-index:3;}
+  .pcard.conmin .min{opacity:1;transform:translate(-50%,0) scale(1);}
+  .min .via{color:rgba(10,15,36,.55);margin-left:5px;}
+
+  /* ── la striscia in basso ── */
+  #conta{position:absolute;left:74px;bottom:34px;display:flex;align-items:center;gap:13px;opacity:0;}
+  #conta .voce{font-family:'Mazzard',sans-serif;font-weight:800;font-size:19px;letter-spacing:.18em;
+    text-transform:uppercase;color:rgba(245,241,230,.5);transition:color .5s ease;}
+  #conta .voce.qui{color:#E3C271;}
+  #conta .filo{width:40px;height:2px;background:rgba(201,162,75,.45);}
+  @keyframes accendi{to{opacity:1;}}
+
+  #cornice{position:absolute;left:48px;right:48px;top:28px;bottom:28px;border-radius:20px;
+    box-shadow:inset 0 0 0 2px rgba(201,162,75,.14);pointer-events:none;}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="campo"></div>
+
+  <img id="logo" alt="">
+  <div id="team"></div>
+  <div id="fase"></div>
+
+  <div id="pitch"></div>
+
+  <div id="conta">
+    <span class="voce qui" id="v1">Come hanno iniziato</span>
+    <span class="filo"></span>
+    <span class="voce" id="v2">Come è finita</span>
+  </div>
+  <div id="cornice"></div>
+</div>
+
+<script src="sfondo.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // dati: ?d=<base64url {
+  //   n: "Como", m: "4-2-3-1", k: "#1735C8", mg: "…maglia.png", l: "…logo.png",
+  //   t: [[num, nome, cognome, foto] x 11],     ← chi ha cominciato
+  //   c: [ { m: "58'", o: [..], i: [..] } ]     ← i cambi, in ordine
+  // }>
+  var DEMO = {
+    n: "Como", m: "4-2-3-1", l: "https://a.espncdn.com/i/teamlogos/soccer/500/2572.png",
+    t: [["1","Jean","Butez"],["27","Yan","Couto"],["4","Jacobo","Ramón"],
+        ["99","Trevoh","Chalobah"],["3","Álex","Valle"],
+        ["6","Luis","Milla"],["7","Lucas","Da Cunha"],
+        ["11","Assane","Diao"],["10","Nico","Paz"],["20","Martin","Baturina"],
+        ["9","Anastasios","Douvikas"]],
+    c: [ { m: "58'", o: ["20","Martin","Baturina"], i: ["8","Maxence","Caqueret"] },
+         { m: "63'", o: ["7","Lucas","Da Cunha"],   i: ["5","Máximo","Perrone"] },
+         { m: "72'", o: ["11","Assane","Diao"],     i: ["2","Ignace","Van der Brempt"] },
+         { m: "80'", o: ["10","Nico","Paz"],        i: ["16","Alberto","Moreno"] },
+         { m: "86'", o: ["27","Yan","Couto"],       i: ["28","Ivan","Smolcic"] } ]
+  };
+
+  function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return DEMO;
+    try {
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return (d && d.t && d.t.length) ? d : null;
+    } catch (e) { return null; }
+  }
+  var Q = new URLSearchParams(location.search);
+  var STILL = Q.get("still") === "1";
+  var SLOW = parseFloat(Q.get("slow")) || 1;
+  var D = decodeData();
+  if (!D) { document.title = "CAMBI — dati non validi"; document.getElementById("stage").style.display = "none"; return; }
+  document.title = "CAMBI " + (D.n || "").toUpperCase();
+
+  var MAGLIA = D.mg || "/loghi/maglia-como-casa.png";
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
+  function el(id){ return document.getElementById(id); }
+  function fit(){ var s=Math.min(window.innerWidth/1920, window.innerHeight/1080);
+    el("stage").style.transform="translate(-50%,-50%) scale("+s+")"; }
+  window.addEventListener("resize", fit); fit();
+
+  // ══ il campo, in orizzontale ══════════════════════════════════════════
+  //   La porta della squadra sta a SINISTRA e si attacca verso destra: cosi'
+  //   il campo e' lungo quanto il fotogramma e le carte hanno spazio in
+  //   altezza, dove prima si accavallavano.
+  var X0 = 236, X1 = 1872, Y0 = 162, Y1 = 1034;
+  var W = X1 - X0, H = Y1 - Y0;
+
+  function campoSVG() {
+    var cy = (Y0 + Y1) / 2;
+    var areaH = H * 0.62, areaW = W * 0.135;          // area di rigore
+    var pglH = H * 0.28, pglW = W * 0.045;            // area piccola
+    var s = '<svg viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080">';
+    s += '<defs><linearGradient id="erba" x1="0" y1="0" x2="1" y2="0">' +
+         '<stop offset="0" stop-color="rgba(36,64,138,.20)"/>' +
+         '<stop offset="1" stop-color="rgba(20,32,78,.05)"/></linearGradient></defs>';
+    s += '<rect x="' + X0 + '" y="' + Y0 + '" width="' + W + '" height="' + H + '" rx="10" fill="url(#erba)"/>';
+    s += '<g stroke="rgba(245,241,230,.16)" stroke-width="3" fill="none" stroke-linejoin="round">';
+    // perimetro e meta' campo
+    s += '<rect x="' + X0 + '" y="' + Y0 + '" width="' + W + '" height="' + H + '" rx="10"/>';
+    s += '<line x1="' + (X0 + W / 2) + '" y1="' + Y0 + '" x2="' + (X0 + W / 2) + '" y2="' + Y1 + '"/>';
+    s += '<circle cx="' + (X0 + W / 2) + '" cy="' + cy + '" r="' + (H * 0.17) + '"/>';
+    s += '<circle cx="' + (X0 + W / 2) + '" cy="' + cy + '" r="5" fill="rgba(245,241,230,.16)" stroke="none"/>';
+    // aree, a sinistra e a destra
+    [0, 1].forEach(function (lato) {
+      var xa = lato ? X1 - areaW : X0, xp = lato ? X1 - pglW : X0;
+      s += '<rect x="' + xa + '" y="' + (cy - areaH / 2) + '" width="' + areaW + '" height="' + areaH + '"/>';
+      s += '<rect x="' + xp + '" y="' + (cy - pglH / 2) + '" width="' + pglW + '" height="' + pglH + '"/>';
+      // dischetto e arco dell'area
+      var dx = lato ? X1 - areaW * 0.62 : X0 + areaW * 0.62;
+      s += '<circle cx="' + dx + '" cy="' + cy + '" r="5" fill="rgba(245,241,230,.16)" stroke="none"/>';
+      var ax = lato ? X1 - areaW : X0 + areaW, r = H * 0.15;
+      s += '<path d="M ' + ax + ' ' + (cy - r * 0.72) + ' A ' + r + ' ' + r + ' 0 0 ' + (lato ? 0 : 1) +
+           ' ' + ax + ' ' + (cy + r * 0.72) + '"/>';
+      // porta, appena accennata
+      var gx = lato ? X1 : X0, gw = 12 * (lato ? 1 : -1);
+      s += '<rect x="' + Math.min(gx, gx + gw) + '" y="' + (cy - H * 0.085) + '" width="12" height="' +
+           (H * 0.17) + '" stroke="rgba(201,162,75,.4)"/>';
+    });
+    s += '</g>';
+    // angoli
+    s += '<g stroke="rgba(245,241,230,.12)" stroke-width="3" fill="none">';
+    s += '<path d="M ' + (X0 + 26) + ' ' + Y0 + ' A 26 26 0 0 1 ' + X0 + ' ' + (Y0 + 26) + '"/>';
+    s += '<path d="M ' + (X1 - 26) + ' ' + Y0 + ' A 26 26 0 0 0 ' + X1 + ' ' + (Y0 + 26) + '"/>';
+    s += '<path d="M ' + (X0 + 26) + ' ' + Y1 + ' A 26 26 0 0 0 ' + X0 + ' ' + (Y1 - 26) + '"/>';
+    s += '<path d="M ' + (X1 - 26) + ' ' + Y1 + ' A 26 26 0 0 1 ' + X1 + ' ' + (Y1 - 26) + '"/>';
+    s += '</g></svg>';
+    return s;
+  }
+  el("campo").innerHTML = campoSVG();
+
+  // ══ geometria: una colonna per reparto, i giocatori sparsi in altezza ══
+  function slotGeo(mod) {
+    var lines = [1].concat(String(mod || "4-3-3").split("-").map(Number));
+    var nOut = lines.length - 1;
+    var out = [], nMax = Math.max.apply(null, lines);
+    lines.forEach(function (n, li) {
+      var t = nOut > 0 ? li / nOut : 0;
+      var x = X0 + 96 + t * (W - 200);
+      var passo = Math.min(244, (H - 24) / n);
+      for (var k = 0; k < n; k++) {
+        // ordine della lista: portiere, terzino DESTRO, centrale destro… e la
+        // destra di chi attacca verso destra e' la parte BASSA del quadro
+        var y = (Y0 + Y1) / 2 + (k - (n - 1) / 2) * passo;
+        // scarto orizzontale a zig-zag: i reparti folti respirano
+        var scarto = n > 3 ? ((k % 2 === 0) ? -1 : 1) * 26 : 0;
+        out.push({ x: x + scarto, y: y });
+      }
+    });
+    return { posti: out, nMax: nMax };
+  }
+
+  var geoOut = slotGeo(D.m), geo = geoOut.posti;
+  // le carte si dimensionano sul reparto piu' affollato: cosi' non si toccano
+  var altezza = Math.max(148, Math.min(232, (H - 24) / geoOut.nMax - 12));
+  var fotoH = Math.round(altezza - 52), fotoW = Math.round(fotoH * 0.76);
+  var st = document.documentElement.style;
+  st.setProperty("--fh", fotoH + "px");
+  st.setProperty("--fw", fotoW + "px");
+  st.setProperty("--cw", (fotoW + 26) + "px");
+  st.setProperty("--ch", Math.round(altezza) + "px");
+  st.setProperty("--nf", Math.max(14, Math.round(fotoW * 0.145)) + "px");
+
+  var TIT = (D.t || []).slice(0, geo.length);
+  var CAMBI = (D.c || []).filter(function (c) { return c && c.o && c.i; });
+
+  // il file della foto segue la regola del Premium: l'archivio e' uno solo
+  function slugCog(c) {
+    return String(c || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  }
+  function fotoDi(r) {
+    if (r[3]) return r[3];
+    return r[2] ? "/loghi/foto-premium-" + slugCog(r[2]) + ".png" : "";
+  }
+  function faccia(r, dietro) {
+    var foto = fotoDi(r);
+    return '<div class="faccia' + (dietro ? " dietro" : "") + '">' +
+        '<div class="ritratto' + (foto ? "" : " senza") + '">' +
+          (foto ? '<img class="ph" src="' + esc(foto) + '" alt="" ' +
+                  'onerror="this.style.display=\'none\';this.parentNode.classList.add(\'senza\')">' : '') +
+          '<img class="mg" src="' + esc(MAGLIA) + '" alt="" onerror="this.style.opacity=.15">' +
+          '<div class="velo"></div>' +
+          '<div class="nu">' + esc(r[0] || "") + '</div>' +
+        '</div>' +
+        '<div class="nome"><span class="num">' + esc(r[0] || "") + '</span>' + esc(r[2] || "") +
+          (r[1] ? '<small>' + esc(r[1]) + '</small>' : '') +
+        '</div>' +
+      '</div>';
+  }
+
+  var html = "";
+  TIT.forEach(function (r, i) {
+    var g = geo[i];
+    html += '<div class="pcard" data-i="' + i + '" style="left:' + Math.round(g.x) + 'px;top:' + Math.round(g.y) + 'px">' +
+        '<div class="min"></div>' +
+        '<div class="gir">' + faccia(r, false) + '<div class="retro"></div></div>' +
+      '</div>';
+  });
+  el("pitch").innerHTML = html;
+  var carte = [].slice.call(document.querySelectorAll(".pcard"));
+
+  // a quale carta tocca un cambio: si cerca per numero di maglia, poi per cognome
+  function cartaDi(g) {
+    var num = String(g[0] || "").trim(), cog = String(g[2] || "").trim().toLowerCase();
+    for (var i = 0; i < TIT.length; i++) if (num && String(TIT[i][0]).trim() === num) return i;
+    for (var j = 0; j < TIT.length; j++) if (cog && String(TIT[j][2]).trim().toLowerCase() === cog) return j;
+    return -1;
+  }
+
+  function preparaCambio(idx, c) {
+    var carta = carte[idx]; if (!carta) return;
+    var gir = carta.querySelector(".gir");
+    if (!carta.dataset.pronta) {
+      var vuoto = gir.querySelector(".retro");
+      if (vuoto) vuoto.outerHTML = faccia(c.i, true);
+      carta.dataset.pronta = "1";
+    }
+    carta.querySelector(".min").innerHTML = esc(c.m || "") + '<span class="via">&#8595;</span>';
+  }
+  function eseguiCambio(idx, c, subito) {
+    var carta = carte[idx]; if (!carta) return;
+    preparaCambio(idx, c);
+    if (subito) { carta.classList.add("conmin", "girata"); return; }
+    carta.classList.add("conmin");
+    setTimeout(function () { carta.classList.add("girata"); }, 620 * SLOW);
+  }
+  function fase(testo, acceso) {
+    el("fase").innerHTML = testo;
+    el("fase").style.animation = "accendi .5s ease forwards";
+    if (acceso) { el("v1").classList.toggle("qui", acceso === 1); el("v2").classList.toggle("qui", acceso === 2); }
+  }
+
+  // ── avvio ──
+  if (D.l) { el("logo").src = D.l; el("logo").onerror = function () { this.style.display = "none"; }; }
+  el("team").textContent = D.n || "";
+
+  if (STILL) {
+    el("logo").style.opacity = 1;
+    el("team").style.clipPath = "inset(0 0 0 0)";
+    el("conta").style.opacity = 1;
+    el("campo").style.opacity = 1;
+    carte.forEach(function (c) { c.style.opacity = 1; });
+    CAMBI.forEach(function (c) { var i = cartaDi(c.o); if (i >= 0) eseguiCambio(i, c, true); });
+    fase(CAMBI.length ? "<b>" + CAMBI.length + "</b> cambi" : "Nessun cambio", 2);
+    el("fase").style.opacity = 1;
+    return;
+  }
+
+  el("campo").classList.add("on");
+  el("logo").style.animation = "accendi .6s ease .2s forwards";
+  var stAnim = document.createElement("style");
+  stAnim.textContent = "@keyframes scopri{to{clip-path:inset(0 0 0 0);}}";
+  document.head.appendChild(stAnim);
+  el("team").style.animation = "scopri .8s cubic-bezier(.3,.8,.3,1) .35s forwards";
+  el("conta").style.animation = "accendi .6s ease .9s forwards";
+  fase("Formazione iniziale", 1);
+
+  var T_CARTA = 0.1, T_PRIMO = 1.5, PASSO = 2.6;
+  carte.forEach(function (c, i) {
+    setTimeout(function () { c.classList.add("dentro"); }, (0.6 + i * T_CARTA) * 1000 * SLOW);
+  });
+
+  var partenza = (0.6 + TIT.length * T_CARTA + T_PRIMO) * 1000 * SLOW;
+  if (CAMBI.length) {
+    setTimeout(function () { fase("I cambi", 2); }, partenza - 500 * SLOW);
+    CAMBI.forEach(function (c, k) {
+      setTimeout(function () {
+        var i = cartaDi(c.o); if (i >= 0) eseguiCambio(i, c, false);
+      }, partenza + k * PASSO * 1000 * SLOW);
+    });
+    setTimeout(function () { fase("<b>" + CAMBI.length + "</b> cambi", 2); },
+               partenza + CAMBI.length * PASSO * 1000 * SLOW + 600);
+  }
+
+  document.addEventListener("dblclick", function () { location.reload(); });
+})();
+</script>
+</body>
+</html>

@@ -24,6 +24,7 @@
     ["classifiche.html",           "Catalogo"],
     ["formazioni.html",            "Formazioni"],
     ["formazioni-premium.html",    "Premium"],
+    ["cambi.html",                 "Cambi"],
     ["risultati.html",             "Risultati"],
     ["classifiche-campionati.html","Classifiche"],
     ["marcatori.html",             "Marcatori"],
