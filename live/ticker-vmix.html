@@ -9,7 +9,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ticker · Grafica vMix</title>
+<title>Crawl orizzontale · Grafica vMix</title>
 <style>
   @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
   @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
@@ -53,22 +53,31 @@
 
   /* titolone: ruota tra i titoli */
   #titowrap{position:relative;overflow:hidden;height:98px;}
-  .tito{position:absolute;left:0;right:24px;top:50%;transform:translateY(-50%);
-    font-family:'Mazzard',sans-serif;font-weight:800;font-size:45px;line-height:1.0;letter-spacing:.005em;
-    color:#F5F1E6;text-transform:uppercase;opacity:0;
+  /* Il cambio titolo e' uno SCORRIMENTO da sotto a sopra: il titolo nuovo
+     arriva da sotto e spinge fuori il vecchio verso l'alto, tutti e due
+     insieme, come un rullo. Niente dissolvenze: solo transform, e ogni
+     titolo occupa tutta l'altezza della finestra, quindi non c'e' mai un
+     istante con due testi leggibili sovrapposti. */
+  .tito{position:absolute;left:0;right:24px;top:0;height:100%;
+    display:flex;align-items:center;
+    transform:translateY(100%) translateZ(0);backface-visibility:hidden;
+    will-change:transform;
+    transition:transform .8s cubic-bezier(.24,.74,.22,1);}
+  .tito b{font-family:'Mazzard',sans-serif;font-weight:800;font-size:45px;line-height:1.0;letter-spacing:.005em;
+    color:#F5F1E6;text-transform:uppercase;
     display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
-  .tito.in{opacity:1;animation:titoIn .55s cubic-bezier(.2,.75,.3,1);}
-  .tito.out{animation:titoOut .45s ease forwards;}
-  @keyframes titoIn{from{opacity:0;transform:translateY(calc(-50% + 26px));}to{opacity:1;transform:translateY(-50%);}}
-  @keyframes titoOut{to{opacity:0;transform:translateY(calc(-50% - 26px));}}
+  .tito.in{transform:translateY(0) translateZ(0);}
+  .tito.out{transform:translateY(-100%) translateZ(0);}
 
   /* crawl in basso: scorre in continuo */
   #crawl{display:flex;align-items:center;height:52px;background:rgba(6,10,26,.98);overflow:hidden;
     border-top:1px solid rgba(201,162,75,.35);}
-  #crawltag{flex:0 0 auto;align-self:stretch;display:flex;align-items:center;padding:0 22px 0 96px;
-    background:rgba(201,162,75,.14);color:#E3C271;font-family:'Mazzard',sans-serif;font-weight:800;font-size:19px;
-    letter-spacing:.12em;text-transform:uppercase;white-space:nowrap;
+  /* dove il crawl "muore": il logo Como TV, fermo, a sinistra */
+  #crawltag{flex:0 0 auto;align-self:stretch;display:flex;align-items:center;padding:0 26px 0 96px;
+    background:rgba(201,162,75,.14);white-space:nowrap;
     clip-path:polygon(0 0, 100% 0, calc(100% - 20px) 100%, 0 100%);}
+  #crawltag img{height:34px;width:auto;object-fit:contain;
+    filter:drop-shadow(0 2px 5px rgba(0,0,0,.5));}
   #crawlvp{flex:1;min-width:0;overflow:hidden;position:relative;height:100%;}
   #crawltrack{position:absolute;top:0;left:0;height:100%;display:flex;align-items:center;white-space:nowrap;
     will-change:transform;}
@@ -89,7 +98,7 @@
       <div id="titocol"><div id="catlabel"></div><div id="titowrap"></div></div>
     </div>
     <div id="crawl">
-      <div id="crawltag">TOP NEWS</div>
+      <div id="crawltag"><img src="/loghi/como-tv-logo.png" alt="Como TV" onerror="this.parentNode.style.display='none'"></div>
       <div id="crawlvp"><div id="crawltrack"></div></div>
     </div>
   </div>
@@ -142,7 +151,6 @@
   cat.textContent = conf.nome;
   cat.style.setProperty("--cat", conf.cat);
   if (D.et === "diretta") cat.classList.add("diretta");
-  document.getElementById("crawltag").textContent = "SERIE A · RISULTATI E PROSSIME";
 
   // ── crawl: costruisco il nastro (duplicato per lo scorrimento continuo) ──
   var crawl = String(D.cr || "").trim();
@@ -170,13 +178,36 @@
   var wrap = document.getElementById("titowrap");
   var titoli = (D.ti || []).filter(function (t) { return String(t || "").trim(); });
   var idx = 0, cur = null;
+
   function mostraTito(t) {
+    var vecchio = cur;
     var el = document.createElement("div");
-    el.className = "tito in"; el.innerHTML = esc(t).replace(/\s·\s/g, "<br>");
+    el.className = "tito";
+    el.innerHTML = '<b>' + esc(t).replace(/\s·\s/g, "<br>") + '</b>';
     wrap.appendChild(el);
-    if (cur) { var vecchio = cur; vecchio.className = "tito out";
-      setTimeout(function () { if (vecchio.parentNode) vecchio.parentNode.removeChild(vecchio); }, 500); }
     cur = el;
+    // il costo di calcolo e disegno del titolo nuovo si paga ADESSO, mentre
+    // e' ancora fuori quadro: cosi' il rullo parte gia' "caldo" e non perde
+    // il primo fotogramma (era da li' che veniva lo scatto).
+    void el.offsetWidth;
+
+    if (STILL) {
+      el.style.transition = "none";     // in anteprima il titolo e' gia' a posto
+      el.classList.add("in");
+      if (vecchio && vecchio.parentNode) vecchio.parentNode.removeChild(vecchio);
+      return;
+    }
+    // il nuovo sale da sotto e il vecchio esce sopra NELLO STESSO MOMENTO:
+    // un movimento solo, continuo, come un rullo che gira.
+    // Il cambio di classe arriva subito dopo il reflow qui sopra: la
+    // transizione parte lo stesso e non dipende dai fotogrammi, cosi' se
+    // la sorgente e' in pausa il titolo non resta bloccato fuori campo.
+    el.classList.add("in");
+    if (vecchio) {
+      vecchio.classList.remove("in");
+      vecchio.classList.add("out");
+      setTimeout(function () { if (vecchio.parentNode) vecchio.parentNode.removeChild(vecchio); }, 1000);
+    }
   }
   function ruota() { if (!titoli.length) return; mostraTito(titoli[idx % titoli.length]); idx++; }
 
@@ -190,16 +221,19 @@
     var track = document.getElementById("crawltrack");
     var uno = track.querySelector(".uno");
     if (uno) {
-      requestAnimationFrame(function () {
-        var w = uno.getBoundingClientRect().width / (Math.min(window.innerWidth/1920, window.innerHeight/1080) || 1);
+      (function () {
+        // offsetWidth e' in pixel di layout ed e' INTERO: la misura scalata
+        // lasciava una frazione di pixel e a ogni giro il crawl faceva un
+        // saltino. Le due copie sono identiche, quindi il rientro e' esatto.
+        var w = uno.offsetWidth;
         var vel = 190;                              // px/s a risoluzione piena
         var dur = Math.max(12, w / vel);
         if (STILL) return;
         track.animate(
-          [{ transform: "translateX(0)" }, { transform: "translateX(" + (-w) + "px)" }],
+          [{ transform: "translate3d(0,0,0)" }, { transform: "translate3d(" + (-w) + "px,0,0)" }],
           { duration: dur * 1000 * SLOW, iterations: Infinity, easing: "linear" }
         );
-      });
+      })();
     }
   }
 

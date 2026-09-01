@@ -42,6 +42,7 @@
   var qui = (location.pathname.split("/").pop() || "").toLowerCase();
   // le pagine "figlie" accendono comunque la voce del loro capofila
   var FIGLIE = { "magazzino-foto.html": "magazzino.html", "video.html": "magazzino.html",
+                 "barra.html": "ticker.html",
                  "classifiche-campionati.html": "classifiche-campionati.html" };
   if (FIGLIE[qui]) qui = FIGLIE[qui];
 
