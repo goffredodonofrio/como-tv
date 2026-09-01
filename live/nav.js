@@ -141,6 +141,30 @@
     setInterval(tic, 1000);
   }
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", monta);
-  else monta();
+  // ── segnale d'ambiente ──────────────────────────────────────────────
+  // Dev e produzione sono identiche a vedersi e si distinguono solo dal
+  // "-dev" nell'indirizzo: e' bastato per perderci progetti e foto,
+  // creati di qua e cercati di la'. In dev lo si vede a colpo d'occhio;
+  // in produzione non compare nulla.
+  function segnalaDev() {
+    if (location.pathname.indexOf("/como-tv-dev/") < 0) return;
+    if (document.getElementById("cnav-dev")) return;
+    var st = document.createElement("style");
+    st.textContent =
+      "#cnav-dev-riga{position:fixed;left:0;right:0;top:0;height:4px;z-index:9998;" +
+      "  background:repeating-linear-gradient(90deg,#FF7A1A 0 22px,#0A0F24 22px 44px);pointer-events:none;}" +
+      "#cnav-dev{position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:9999;" +
+      "  font-family:'Mazzard',system-ui,sans-serif;font-size:10px;font-weight:800;letter-spacing:.2em;" +
+      "  text-transform:uppercase;color:#0A0F24;background:#FF7A1A;padding:5px 16px 4px;" +
+      "  border-radius:0 0 8px 8px;box-shadow:0 3px 12px rgba(0,0,0,.5);pointer-events:none;}";
+    document.head.appendChild(st);
+    var riga = document.createElement("div"); riga.id = "cnav-dev-riga";
+    var b = document.createElement("div"); b.id = "cnav-dev";
+    b.textContent = "DEV · ambiente di prova";
+    document.body.appendChild(riga);
+    document.body.appendChild(b);
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function(){ monta(); segnalaDev(); });
+  else { monta(); segnalaDev(); }
 })();
