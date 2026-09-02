@@ -271,6 +271,11 @@
   .chip:hover{color:var(--cel-bright);border-color:var(--cel-line);}
   .chip.on{background:rgba(87,182,230,.16);color:var(--cel-bright);border-color:var(--cel);}
   .chip b{font-weight:500;opacity:.55;margin-left:2px;}
+  /* le sigle non sono famiglie di grafiche ma reparti: si distinguono in oro */
+  .chip.sigla{font-family:'Mazzard',system-ui,sans-serif;font-weight:700;font-size:11px;
+    letter-spacing:.14em;color:var(--gold-bright);border-color:var(--line-gold);}
+  .chip.sigla:hover{background:rgba(201,162,75,.12);}
+  .chip.sigla.on{background:rgba(201,162,75,.2);color:var(--gold-bright);border-color:var(--gold);}
   /* pallino del colore-famiglia: sui chip e su ogni riga della scaletta */
   .famdot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--fam,#8A8FA6);
     box-shadow:0 0 0 1px rgba(0,0,0,.35), 0 0 8px -1px var(--fam,#8A8FA6);}
@@ -353,7 +358,7 @@
       <button id="btnTake" disabled>&#9654;<br>In onda</button>
       <button id="btnOut" disabled>&#9632;<br>Fuori onda</button>
       <button id="btnProg" type="button">&#128193;<br>Apri progetto</button>
-      <button id="btnVideo" type="button">&#127916;<br>Carica video</button>
+      <button id="btnVideo" type="button">&#127916;<br>Carica contributo</button>
       <div id="msg"></div>
     </div>
     <div class="panel mon">
@@ -379,12 +384,12 @@
     </div>
   </div>
 
-  <!-- CARICA VIDEO: upload immediato di un contributo MP4 che finisce dritto
+  <!-- CARICA CONTRIBUTO: upload immediato di un MP4 che finisce dritto
        in scaletta di QUESTO canale, come una grafica. Origine: cloud (locale);
        il NAS Synology arrivera' come seconda origine. -->
   <div id="videoDialog" style="display:none;position:fixed;inset:0;z-index:400;background:rgba(4,6,16,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center">
     <div style="width:min(560px,92vw);background:linear-gradient(180deg,#141B3C,#0E1430);border:1px solid var(--line-gold);border-radius:12px;padding:24px">
-      <h2 style="margin-bottom:14px">Carica video &middot; <span id="vdCanale" style="color:var(--gold-bright)"></span></h2>
+      <h2 style="margin-bottom:14px">Carica contributo &middot; <span id="vdCanale" style="color:var(--gold-bright)"></span></h2>
       <div style="display:flex;flex-direction:column;gap:12px">
         <div><label style="display:block;margin-bottom:5px">File MP4 (H.264, max 800 MB)</label>
           <input type="file" id="vdFile" accept="video/mp4" style="width:100%"></div>
@@ -557,7 +562,11 @@
 
   var cur = { items: [] };
   var selId = null;
-  var filtro = { q: "", tipo: "" };   // ricerca + filtro-tipo della scaletta
+  // ricerca + filtro-tipo + filtro-sigla della scaletta
+  var filtro = { q: "", tipo: "", sigla: "" };
+  // le sigle di reparto che si usano nei nomi in scaletta: un chip per ognuna,
+  // cosi' si isola al volo la roba di chi ci sta lavorando
+  var SIGLE = ["GFR", "MCH"];
   var espansoId = null;               // riga con le opzioni aperte (una alla volta)
   var thumbShownId = null;
   var lastNonce = null;
@@ -800,7 +809,7 @@
   // sia i filtri/ricerca, cosi' digitare non ricarica le anteprime.
   function renderItems() {
     var st = livelliInPlay().length ? "play" : "standby";
-    var filtroAttivo = !!(filtro.q || filtro.tipo);
+    var filtroAttivo = !!(filtro.q || filtro.tipo || filtro.sigla);
 
     // chip dei tipi presenti, con conteggi (sempre sull'elenco intero)
     var conteggi = {}, ordine = [];
@@ -814,10 +823,20 @@
       chips += '<button class="chip' + (filtro.tipo === e ? " on" : "") + '" data-filtro="' + esc(e) +
                '" style="--fam:' + famColore(e) + '"><span class="famdot"></span>' + esc(e) + ' <b>' + conteggi[e] + '</b></button>';
     });
+    // i chip delle sigle: compaiono solo se in scaletta c'e' davvero qualcosa
+    SIGLE.forEach(function (sg) {
+      var n = cur.items.filter(function (it) {
+        return String(it.titolo || "").toUpperCase().indexOf(sg) >= 0;
+      }).length;
+      if (!n) return;
+      chips += '<button class="chip sigla' + (filtro.sigla === sg ? " on" : "") +
+               '" data-sigla="' + sg + '">' + sg + ' <b>' + n + '</b></button>';
+    });
     elFiltri.innerHTML = cur.items.length ? chips : "";
 
     var visibili = cur.items.filter(function (it) {
       if (filtro.tipo && etichettaTipo(it.tipo) !== filtro.tipo) return false;
+      if (filtro.sigla && String(it.titolo || "").toUpperCase().indexOf(filtro.sigla) < 0) return false;
       if (filtro.q) {
         var hay = ((it.titolo || "") + " " + (it.tipo || "")).toLowerCase();
         if (hay.indexOf(filtro.q) < 0) return false;
@@ -1170,6 +1189,12 @@
     renderItems();
   });
   elFiltri.addEventListener("click", function (e) {
+    var sg = e.target.closest ? e.target.closest("[data-sigla]") : null;
+    if (sg) {                                   // ricliccando la stessa sigla si spegne
+      filtro.sigla = (filtro.sigla === sg.dataset.sigla) ? "" : sg.dataset.sigla;
+      renderItems();
+      return;
+    }
     var c = e.target.closest ? e.target.closest("[data-filtro]") : null;
     if (!c) return;
     filtro.tipo = c.dataset.filtro || "";
@@ -1177,7 +1202,7 @@
   });
   document.getElementById("scalReset").addEventListener("click", function (e) {
     e.preventDefault();
-    filtro.q = ""; filtro.tipo = ""; elCerca.value = "";
+    filtro.q = ""; filtro.tipo = ""; filtro.sigla = ""; elCerca.value = "";
     renderItems();
   });
 
@@ -1366,7 +1391,7 @@
     }, 250);
   })();
 
-  // ── CARICA VIDEO: upload immediato → dritto in scaletta di questo canale ──
+  // ── CARICA CONTRIBUTO: upload immediato → dritto in scaletta di questo canale ──
   (function () {
     var dlg = document.getElementById("videoDialog");
     var btn = document.getElementById("btnVideo");
