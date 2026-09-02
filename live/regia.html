@@ -1421,12 +1421,43 @@
             '<small>' + (x.quante ? x.quante + (x.quante === 1 ? " grafica" : " grafiche") : "vuoto: mandagli le grafiche dalle loro pagine") +
             (quando ? " &middot; creato il " + quando : "") + '</small></div>' +
           (x.quante
-            ? '<button type="button" class="ib play" data-az="carica">&#9654; Carica qui</button>'
+            // se e' gia' quello caricato su questo canale il tasto cambia
+            // mestiere: non ricarica da capo, aggiunge le novita' e basta
+            ? (String(x.id) === String(cur.prog || "")
+                ? '<button type="button" class="ib play" data-az="carica" ' +
+                  'title="Porta gi\u00f9 le grafiche nuove senza toccare l\u2019ordine">' +
+                  '&#8635; Aggiorna</button>'
+                : '<button type="button" class="ib play" data-az="carica">&#9654; Carica qui</button>')
             : '<button type="button" class="ib" disabled style="opacity:.4;cursor:default">vuoto</button>') +
           '<button type="button" class="ib out" data-az="elimina">Elimina</button>' +
           '</div>';
       });
       lista.innerHTML = h;
+    }
+
+    // il ponte risponde quante ne ha aggiunte, aggiornate e tolte: lo si
+    // riferisce, invece di dire genericamente "caricato"
+    function inviaProgetto(id, nome) {
+      fetch(PONTE, {
+        method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ token: TOKEN, c: CANALE, sid: SESSIONE,
+                               tipo: "progetto-carica", id: id })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (chiaveRifiutata(j)) { inviaProgetto(id, nome); return; }
+          if (!j.ok) { msg.textContent = "Errore: " + (j.errore || ""); return; }
+          var pezzi = [];
+          if (j.caricate) pezzi.push(j.caricate + (j.caricate === 1 ? " nuova in cima" : " nuove in cima"));
+          if (j.aggiornate) pezzi.push(j.aggiornate + " aggiornate al loro posto");
+          if (j.tolte) pezzi.push(j.tolte + (j.tolte === 1 ? " tolta" : " tolte"));
+          msg.textContent = '"' + nome + '": ' +
+            (pezzi.length ? pezzi.join(", ") + "." : "niente di nuovo.") +
+            (j.aggiornamento ? " L\u2019ordine \u00e8 rimasto il tuo." : "");
+          lastNonce = null;   // forza il refresh della scaletta
+          tick();
+        })
+        .catch(function () { msg.textContent = "Ponte non raggiungibile."; });
     }
 
     function aggiorna() {
@@ -1445,8 +1476,16 @@
       var box = b.closest(".prog");
       var id = box.dataset.id, nome = box.dataset.nome;
       if (b.dataset.az === "carica") {
-        if (!window.confirm('Carico "' + nome + '" su questo canale?\n\nLa scaletta attuale viene SOSTITUITA (quello che e\u2019 in onda resta in onda).')) return;
-        post({ tipo: "progetto-carica", id: id }, 'Progetto "' + nome + '" caricato.');
+        var stesso = String(id) === String(cur.prog || "");
+        var domanda = stesso
+          ? 'Aggiorno "' + nome + '" su questo canale?\n\n' +
+            'L\u2019ordine che hai sistemato NON si tocca. Le grafiche nuove del ' +
+            'progetto entrano in cima; quelle tolte dal progetto escono, tranne ' +
+            'se sono in onda.'
+          : 'Carico "' + nome + '" su questo canale?\n\n' +
+            'La scaletta attuale viene SOSTITUITA (quello che e\u2019 in onda resta in onda).';
+        if (!window.confirm(domanda)) return;
+        inviaProgetto(id, nome);
         dlg.style.display = "none";
       } else {
         if (!window.confirm('Elimino il progetto "' + nome + '"?\n\nLe sue grafiche vanno perse (le scalette gia\u2019 caricate non vengono toccate).')) return;

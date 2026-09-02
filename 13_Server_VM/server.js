@@ -265,6 +265,7 @@ function statoRegia(c) {
     canale: c, nonce: ix.nonce, playNonce: uno.playNonce,
     state: uno.state, onair: uno.onair, items: ix.items, liv: liv,
     megafono: ix.megafono || null,
+    prog: ix.prog || null,          // quale progetto e' caricato su questo canale
     armato: ix.armato || null,
     presa: presaPubblica(c),
 
@@ -594,6 +595,10 @@ function progettoCrea(p) {
   return { ok: true, id: id, nome: nome };
 }
 
+function nuovoId() {
+  return String(Date.now()) + String(Math.floor(Math.random() * 1000));
+}
+
 function progettoDi(p) {
   const pr = S.progetti[String(p.id || "")];
   if (!pr) throw new Error("progetto inesistente (forse cancellato)");
@@ -609,6 +614,10 @@ function progettoAggiungi(p) {
   let titolo = base, n = 2;
   while (pr.items.some(i => i.titolo === titolo)) { titolo = base + " (" + n + ")"; n++; }
   pr.items.push({
+    // il "pid" e' il segno di riconoscimento della grafica dentro il
+    // progetto: serve a ritrovarla nella scaletta quando il progetto viene
+    // riaggiornato, invece di reimportare tutto da capo
+    pid: nuovoId(),
     tipo: p.grafica || "formazione", titolo: titolo,
     liv: livelloDi(p.liv), dati: p.dati || {}, ts: Date.now()
   });
@@ -646,6 +655,11 @@ function progettoCarica(p) {
   if (!pr.items.length) {
     throw new Error('il progetto "' + pr.nome + '" \u00e8 vuoto: mandagli le grafiche dalle loro pagine, poi caricalo');
   }
+  // i progetti vecchi non hanno il segno di riconoscimento: glielo do adesso
+  let daSalvare = false;
+  for (const it of pr.items) { if (!it.pid) { it.pid = nuovoId(); daSalvare = true; } }
+
+  const idProg = String(p.id || "");
   const c = canaleDi(p.c);
   const ix = regiaDi(c);
   const inOnda = new Set();
@@ -653,24 +667,68 @@ function progettoCarica(p) {
     const lv = ix.liv[L];
     if (lv && lv.state === "play" && lv.onair) inOnda.add(lv.onair);
   }
-  const tenuti = ix.items.filter(i => inOnda.has(i.id));
-  // le voci che escono liberano i loro dati
-  for (const i of ix.items) {
-    if (!inOnda.has(i.id)) delete S.voci[c][i.id];
+
+  // È lo STESSO progetto gia' caricato su questo canale? Allora non si
+  // ricomincia da capo: l'ordine che la regia si e' costruita e' lavoro suo e
+  // non si tocca. Si aggiornano le grafiche che c'erano gia', si tolgono
+  // quelle sparite dal progetto e le nuove entrano in cima, dove si vedono.
+  const aggiorna = (ix.prog === idProg);
+
+  const voceViva = new Map();      // pid -> voce di scaletta
+  if (aggiorna) {
+    for (const i of ix.items) { if (i.prog === idProg && i.pid) voceViva.set(i.pid, i); }
   }
+
+  const restano = [];
   const nuovi = [];
-  for (const it of pr.items) {
-    if (tenuti.length + nuovi.length >= CONFIG.MAX_SCALETTA) break;
-    const id = String(Date.now()) + String(Math.floor(Math.random() * 1000));
-    S.voci[c][id] = it.dati || {};
-    nuovi.push({ id: id, tipo: it.tipo, titolo: it.titolo, dest: "", ts: Date.now(), liv: it.liv || 1 });
+  let aggiornate = 0, tolte = 0;
+
+  if (aggiorna) {
+    const pidVivi = new Set(pr.items.map(i => i.pid));
+    for (const i of ix.items) {
+      const mia = (i.prog === idProg);
+      // resta: quello che e' in onda, quello che non viene da questo progetto,
+      // e quello che nel progetto c'e' ancora
+      if (inOnda.has(i.id) || !mia || pidVivi.has(i.pid)) { restano.push(i); }
+      else { delete S.voci[c][i.id]; tolte++; }
+    }
+    for (const it of pr.items) {
+      const gia = voceViva.get(it.pid);
+      if (!gia) continue;
+      // la grafica c'era gia': si rinfrescano i dati e il nome, la POSIZIONE no
+      gia.titolo = it.titolo;
+      gia.liv = it.liv || gia.liv || 1;
+      S.voci[c][gia.id] = it.dati || {};
+      aggiornate++;
+    }
+  } else {
+    // progetto diverso (o primo caricamento): la scaletta viene sostituita,
+    // come e' sempre stato. Resta solo quello che e' in onda adesso.
+    for (const i of ix.items) {
+      if (inOnda.has(i.id)) restano.push(i);
+      else { delete S.voci[c][i.id]; }
+    }
   }
-  ix.items = tenuti.concat(nuovi);
-  RAFFICHE.delete(c);          // scaletta sostituita: la prossima novita' va in cima
+
+  for (const it of pr.items) {
+    if (aggiorna && voceViva.has(it.pid)) continue;      // c'era gia'
+    if (restano.length + nuovi.length >= CONFIG.MAX_SCALETTA) break;
+    const id = nuovoId();
+    S.voci[c][id] = it.dati || {};
+    nuovi.push({ id: id, tipo: it.tipo, titolo: it.titolo, dest: "",
+                 ts: Date.now(), liv: it.liv || 1, prog: idProg, pid: it.pid });
+  }
+
+  // le novita' in cima, il resto nell'ordine in cui stava
+  ix.items = nuovi.concat(restano);
+  ix.prog = idProg;
+  RAFFICHE.delete(c);          // le prossime novita' ripartono dalla cima
   ix.nonce = Date.now();
+  if (daSalvare) { /* i pid nuovi vanno scritti col resto */ }
   salva(); annuncia(c, "regia");
-  return { ok: true, canale: c, nome: pr.nome, caricate: nuovi.length,
-           tenuteInOnda: tenuti.length, nonce: ix.nonce };
+  return { ok: true, canale: c, nome: pr.nome, aggiornamento: aggiorna,
+           caricate: nuovi.length, aggiornate: aggiornate, tolte: tolte,
+           tenuteInOnda: restano.filter(i => inOnda.has(i.id)).length, nonce: ix.nonce };
 }
 
 // ─────────────────────────────────────────────── loghi delle squadre
