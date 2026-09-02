@@ -19,6 +19,8 @@ window.Destinazione = (function () {
   // l'ottavo vMix e' quello della regia: ha un nome suo, non "vMix 8"
   function nomeCanale(c) { return c == 8 ? "VMIX REGIA" : "vMix " + c; }
 
+  var guasto = "";      // se l'elenco non arriva, il menu' lo dice
+
   function ricostruisci() {
     var scelto = null;
     try { scelto = localStorage.getItem(LS); } catch (e) {}
@@ -32,7 +34,11 @@ window.Destinazione = (function () {
       });
       h += "</optgroup>";
     }
+    if (!progetti.length && guasto) {
+      h += '<option value="" disabled>\u26a0\ufe0f ' + esc(guasto) + "</option>";
+    }
     h += '<option value="__nuovo">➕ Nuovo progetto…</option>';
+    if (guasto) h += '<option value="__chiave">\ud83d\udd11 Rimetti la chiave e riprova</option>';
     sel.innerHTML = h;
     // riprendo la scelta salvata, se esiste ancora
     if (scelto && [].some.call(sel.options, function (o) { return o.value === scelto; })) sel.value = scelto;
@@ -45,17 +51,42 @@ window.Destinazione = (function () {
     });
   }
 
-  function carica() {
+  // Quando l'elenco non arriva il menu' resta coi soli vMix. Prima non lo
+  // diceva a nessuno: sembrava che i progetti non esistessero, e invece
+  // c'erano — era la chiave a non passare. Adesso il menu' lo scrive, e se e'
+  // questione di chiave la richiede.
+  function guaio(testo) {
+    guasto = testo || "";
+    ricostruisci();
+  }
+
+  function carica(giaRiprovato) {
     return fetch(ponte, {
       method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ token: token, tipo: "progetto-elenco" })
     })
       .then(function (r) { return r.json(); })
-      .then(function (j) { if (j.ok) { progetti = j.progetti || []; ricostruisci(); } })
-      .catch(function () { /* senza elenco restano i vMix: nessun danno */ });
+      .then(function (j) {
+        if (j && j.ok) { progetti = j.progetti || []; guasto = ""; ricostruisci(); return; }
+        var err = (j && j.errore) || "";
+        if (!giaRiprovato && window.ChiaveComoTV && ChiaveComoTV.rifiutata(err, "contributo")) {
+          token = ChiaveComoTV.valore("contributo");
+          return carica(true);
+        }
+        guaio(/chiave|token/i.test(err) ? "progetti non visibili: chiave" : "progetti non caricati");
+      })
+      .catch(function () { guaio("progetti non caricati: ponte irraggiungibile"); });
   }
 
   function cambio() {
+    if (sel.value === "__chiave") {
+      ricostruisci();
+      if (window.ChiaveComoTV) {
+        var nuova = ChiaveComoTV.cambia("contributo");
+        if (nuova) { token = nuova; carica(true); }
+      }
+      return;
+    }
     if (sel.value === "__nuovo") {
       var nome = window.prompt("Nome del nuovo progetto (es. Football Show 01/09):");
       if (!nome || !nome.trim()) { ricostruisci(); return; }
