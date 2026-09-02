@@ -23,6 +23,12 @@
   var DOVE = { contributo: "comotv.chiave.contributo", comando: "comotv.chiave.comando" };
 
   function leggi(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }
+  // Se il prompt non c'e' (browser incorporati, chioschi) la pagina non deve
+  // morire: si va avanti senza chiave e l'invio dira' che manca.
+  function chiedi(testo, preimpostato) {
+    try { return (window.prompt(testo, preimpostato || "") || "").trim(); }
+    catch (e) { return ""; }
+  }
   function scrivi(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 
   function domanda(profilo) {
@@ -42,7 +48,7 @@
     var mia = leggi(DOVE[profilo]);
     if (!mia && profilo === "contributo") mia = leggi(DOVE.comando);
     if (mia) return mia;
-    var v = (window.prompt(domanda(profilo), "") || "").trim();
+    var v = chiedi(domanda(profilo));
     if (v) scrivi(DOVE[profilo], v);
     return v;
   }
@@ -50,7 +56,7 @@
   function cambia(profilo) {
     profilo = profilo === "comando" ? "comando" : "contributo";
     var attuale = leggi(DOVE[profilo]);
-    var v = (window.prompt(domanda(profilo), attuale) || "").trim();
+    var v = chiedi(domanda(profilo), attuale);
     if (v) { scrivi(DOVE[profilo], v); return v; }
     return attuale;
   }

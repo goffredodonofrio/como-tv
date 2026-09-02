@@ -1039,7 +1039,9 @@ const server = http.createServer((req, res) => {
       // il passaggio si accetta ancora il vecchio token, ma lo si annota:
       // finche' compare in registro, c'e' uno Stream Deck da aggiornare.
       const okNuova = CONFIG.CHIAVE_COMANDO && tok === CONFIG.CHIAVE_COMANDO;
-      const okVecchia = tok === CONFIG.TOKEN;
+      // la vecchia vale solo se le chiavi non sono ancora configurate, oppure
+      // durante il passaggio: tolta la rete di sicurezza non apre piu' niente
+      const okVecchia = (!CONFIG.CHIAVE_COMANDO || CONFIG.VECCHIO_OK) && tok === CONFIG.TOKEN;
       if (!okNuova && !okVecchia) return json(res, { ok: false, errore: "chiave non valida" }, 403);
       if (!okNuova && CONFIG.CHIAVE_COMANDO) {
         console.log("[take] chiave VECCHIA usata da " + (req.socket.remoteAddress || "?") +
