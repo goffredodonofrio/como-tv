@@ -1222,6 +1222,15 @@ const server = http.createServer((req, res) => {
 //               Puo' fare anche tutto quello che puo' il contributo.
 // Leggere non richiede nulla, come prima: il playout dei vMix deve poter
 // leggere sempre, altrimenti va nero.
+// ── LE PAGINE DI LAVORO SONO APERTE ───────────────────────────────────
+// I giornalisti lavorano da ovunque e da qualsiasi computer: chiedere una
+// chiave per compilare una grafica li blocca e basta. Quindi tutto cio' che
+// PREPARA (mandare in scaletta, scrivere in un progetto, caricare una foto)
+// non chiede niente. Cio' che MANDA IN ONDA resta della regia, e la chiave
+// di comando serve come prima: nessuno mette una grafica sullo schermo
+// passando di qui. Con COMOTV_LAVORO_APERTO=0 si richiude tutto.
+const LAVORO_APERTO = process.env.COMOTV_LAVORO_APERTO !== "0";
+
 // ── DA CASA NOSTRA NIENTE CHIAVE ──────────────────────────────────────
 // Il magazzino sta su un indirizzo pubblico e /api risponde a chiunque: la
 // chiave e' l'unica cosa che impedisce a un estraneo di sovrascrivere le foto
@@ -1255,6 +1264,12 @@ const OP_COMANDO = new Set([
 function permesso(p, ip) {
   const K = CONFIG;
   const t = String(p.token || "");
+  // preparare e' aperto, mandare in onda no
+  if (LAVORO_APERTO && !OP_COMANDO.has(p.tipo)) {
+    const suo = K.CHIAVI.find(x => x.chiave === t);
+    if (suo) p.__chi = suo.nome || "";   // se ha una password sua, resta scritto chi
+    return;
+  }
   // dalla redazione il caricamento delle foto passa senza chiave
   if (SENZA_CHIAVE_DA_CASA.has(p.tipo) && daCasa(ip)) return;
   // finche' le chiavi nuove non sono configurate vale il vecchio token:

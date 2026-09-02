@@ -51,6 +51,12 @@
     var mia = leggi(DOVE[profilo]);
     if (!mia && profilo === "contributo") mia = leggi(DOVE.comando);
     if (mia) return mia;
+    // Le pagine di lavoro non chiedono piu' niente all'apertura: compilare una
+    // grafica e mandarla in scaletta e' aperto, e mettere davanti una finestra
+    // che chiede una chiave bloccava chi doveva solo lavorare. Se un domani il
+    // ponte tornasse a chiederla, la richiesta parte da rifiutata(): si chiede
+    // quando serve davvero, non per ogni evenienza.
+    if (profilo !== "comando") return "";
     var v = chiedi(testo || domanda(profilo));
     if (v) scrivi(DOVE[profilo], v);
     return v;
