@@ -33,9 +33,27 @@ echo "$COMOTV_INDIRIZZO" > /etc/comotv-indirizzo
 if [ "$SOLO_RISCRITTURA" -eq 0 ]; then
   echo "→ scarico le pagine aggiornate…"
   cd "$SITO"
+  # Ogni tanto GitHub rifiuta la richiesta senza credenziali: git chiede un
+  # nome utente, qui non c'è nessuno a digitarlo e muore. Capita a raffiche,
+  # e il risultato è il peggiore possibile — il push è andato ma le pagine
+  # restano quelle vecchie, senza che nessuno se ne accorga. Si riprova.
+  scaricato=0
+  for attesa in 0 3 7 15; do
+    [ "$attesa" -gt 0 ] && sleep "$attesa"
+    if git fetch --quiet origin 2>/dev/null; then scaricato=1; break; fi
+    echo "   GitHub non risponde, riprovo…"
+  done
+  if [ "$scaricato" -eq 0 ]; then
+    echo
+    echo "✗ NON sono riuscito a scaricare da GitHub."
+    echo "  Le pagine online restano quelle di prima: il push non è perso,"
+    echo "  ma non è ancora arrivato qui. Riprova fra un minuto con:"
+    echo "      comotv-aggiorna"
+    echo "  (in ogni caso il controllo automatico riprova da solo ogni 3 minuti)"
+    exit 1
+  fi
   # le pagine sul server non si modificano a mano: si riparte sempre
   # da quelle pubblicate, poi si riapplicano gli adattamenti
-  git fetch --quiet origin
   git reset --hard --quiet origin/main
 fi
 
