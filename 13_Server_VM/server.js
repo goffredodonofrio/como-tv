@@ -165,6 +165,74 @@ function annuncia(c, tipo) {
 }
 
 // ─────────────────────────────────────────────── letture
+// ── LA PRESA DEL CANALE ────────────────────────────────────────────────
+// Comanda una console alla volta. Chi apre la regia "prende" il canale e
+// manda un battito ogni 15 secondi; se il battito manca per un minuto la
+// presa scade da sola (computer spento, scheda chiusa) e il canale torna
+// libero senza che nessuno debba sbloccarlo.
+//
+// Cosa NON tocca, di proposito:
+//   · il playout in vMix, che legge soltanto;
+//   · i contributi (regia-load): un inviato deve poter mandare in scaletta
+//     da fuori anche mentre un altro sta comandando. Quello che arriva in
+//     scaletta non va in onda da solo: lo arma e lo manda chi comanda.
+//
+// Sta in memoria e non nello stato salvato: al riavvio del ponte nessuno
+// tiene in mano niente, ed e' giusto cosi'.
+const PRESE = new Map();                 // canale -> { id, chi, dal, ultimo }
+const PRESA_SCADE = 60000;
+
+function presaViva(c) {
+  const p = PRESE.get(c);
+  if (!p) return null;
+  if (Date.now() - p.ultimo > PRESA_SCADE) { PRESE.delete(c); return null; }
+  return p;
+}
+function presaPubblica(c) {
+  const p = presaViva(c);
+  return p ? { chi: p.chi, dal: p.dal, id: p.id } : null;
+}
+
+// Chi non ha la presa non comanda. Le chiamate SENZA sessione (il tasto
+// fisico dello Stream Deck, una pagina vecchia) passano: bloccarle
+// spegnerebbe cose che oggi funzionano.
+function guardiaPresa(p, c) {
+  const viva = presaViva(c);
+  if (!viva || !p.sid) return;
+  if (viva.id !== String(p.sid)) {
+    throw new Error("il comando di questo canale e' adesso su un altro computer (" + viva.chi + ")");
+  }
+}
+
+function regiaPresa(p) {
+  const c = canaleDi(p.c);
+  const id = String(p.sid || "").slice(0, 40);
+  if (!id) throw new Error("manca l'identificativo della console");
+  const chi = String(p.chi || "").slice(0, 40) || "un'altra console";
+  const viva = presaViva(c);
+  if (viva && viva.id !== id && !p.forza) {
+    return { ok: false, occupato: true, presa: presaPubblica(c) };
+  }
+  const dal = (viva && viva.id === id) ? viva.dal : Date.now();
+  PRESE.set(c, { id, chi, dal, ultimo: Date.now() });
+  annuncia(c, "regia");
+  return { ok: true, presa: presaPubblica(c) };
+}
+function regiaBattito(p) {
+  const c = canaleDi(p.c);
+  const viva = presaViva(c);
+  if (!viva) return { ok: true, tua: false, presa: null };          // libero
+  if (viva.id !== String(p.sid || "")) return { ok: true, tua: false, presa: presaPubblica(c) };
+  viva.ultimo = Date.now();
+  return { ok: true, tua: true, presa: presaPubblica(c) };
+}
+function regiaMolla(p) {
+  const c = canaleDi(p.c);
+  const viva = presaViva(c);
+  if (viva && viva.id === String(p.sid || "")) { PRESE.delete(c); annuncia(c, "regia"); }
+  return { ok: true };
+}
+
 function statoRegia(c) {
   const ix = regiaDi(c);
   const liv = {};
@@ -187,6 +255,8 @@ function statoRegia(c) {
     state: uno.state, onair: uno.onair, items: ix.items, liv: liv,
     megafono: ix.megafono || null,
     armato: ix.armato || null,
+    presa: presaPubblica(c),
+
     ver: versionePagine()
   };
   if (uno.onair) {
@@ -270,6 +340,7 @@ function regiaLiv(p) {
 
 function regiaState(p) {
   const c = canaleDi(p.c);
+  guardiaPresa(p, c);
   const ix = regiaDi(c);
   // il livello arriva dal comando; se non c'è si usa quello della grafica
   let L = p.liv;
@@ -314,6 +385,7 @@ function regiaArma(p) {
 
 function regiaDel(p) {
   const c = canaleDi(p.c);
+  guardiaPresa(p, c);
   const ix = regiaDi(c);
   for (const L of Object.keys(ix.liv)) {
     const lv = ix.liv[L];
@@ -334,6 +406,7 @@ function regiaDel(p) {
 // non vengono toccati. Con qualcosa in onda si rifiuta: prima Fuori onda.
 function regiaSvuota(p) {
   const c = canaleDi(p.c);
+  guardiaPresa(p, c);
   const ix = regiaDi(c);
   for (const L of Object.keys(ix.liv)) {
     const lv = ix.liv[L];
@@ -1011,6 +1084,9 @@ const server = http.createServer((req, res) => {
           case "regia-rename": out = regiaRename(p); break;
           case "regia-liv":    out = regiaLiv(p); break;
           case "regia-arma":   out = regiaArma(p); break;
+          case "regia-presa":   out = regiaPresa(p); break;
+          case "regia-battito": out = regiaBattito(p); break;
+          case "regia-molla":   out = regiaMolla(p); break;
           case "regia-megafono": out = regiaMegafono(p); break;
           case "progetto-crea":     out = progettoCrea(p); break;
           case "progetto-aggiungi": out = progettoAggiungi(p); break;

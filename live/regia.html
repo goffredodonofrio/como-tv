@@ -276,6 +276,25 @@
     letter-spacing:.14em;color:var(--gold-bright);border-color:var(--line-gold);}
   .chip.sigla:hover{background:rgba(201,162,75,.12);}
   .chip.sigla.on{background:rgba(201,162,75,.2);color:var(--gold-bright);border-color:var(--gold);}
+
+  /* ── sola lettura: il comando e' su un altro computer ──
+     Non basta scriverlo: i tasti che mandano in onda vanno spenti davvero,
+     altrimenti si clicca e si scopre il rifiuto solo dopo. */
+  #barraPresa{display:none;position:fixed;left:0;right:0;bottom:0;z-index:600;
+    align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;
+    padding:12px 18px;background:linear-gradient(180deg,rgba(120,60,10,.96),rgba(80,38,6,.98));
+    border-top:2px solid #FF9A3C;color:#FFE6C7;font-size:14px;
+    box-shadow:0 -8px 26px rgba(0,0,0,.5);}
+  #barraPresa b{color:#fff;}
+  #barraPresa button{font-family:'Mazzard',system-ui,sans-serif;font-size:11px;font-weight:700;
+    letter-spacing:.12em;text-transform:uppercase;padding:9px 15px;border-radius:6px;cursor:pointer;
+    background:#FF9A3C;border:1px solid #FF9A3C;color:#3A1B00;}
+  #barraPresa button:hover{background:#FFB169;}
+  body.solo-lettura .pgm, body.solo-lettura .btn-take, body.solo-lettura [data-act="play"],
+  body.solo-lettura [data-act="off"], body.solo-lettura [data-act="del"],
+  body.solo-lettura #btnSvuota, body.solo-lettura #btnArma{
+    opacity:.4;pointer-events:none;filter:grayscale(.6);}
+  body.solo-lettura{padding-bottom:56px;}
   /* pallino del colore-famiglia: sui chip e su ogni riga della scaletta */
   .famdot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--fam,#8A8FA6);
     box-shadow:0 0 0 1px rgba(0,0,0,.35), 0 0 8px -1px var(--fam,#8A8FA6);}
@@ -559,6 +578,103 @@
   var thumbcap = document.getElementById("thumbcap");
   var btnOut = document.getElementById("btnOut");
   var msg = document.getElementById("msg");
+
+  // ══ LA PRESA DEL CANALE ═══════════════════════════════════════════════
+  //  Comanda una console alla volta. All'apertura si prende il canale; se e'
+  //  gia' in mano a qualcun altro si chiede conferma prima di togliergliela,
+  //  e chi la perde se lo vede scritto invece di credere di comandare.
+  //  Il playout e i contributi non c'entrano: quelli restano liberi.
+  var SESSIONE = (function () {
+    try {
+      var v = sessionStorage.getItem("comotv.regia.sid");
+      if (!v) { v = String(Date.now()) + "-" + Math.random().toString(36).slice(2, 8);
+                sessionStorage.setItem("comotv.regia.sid", v); }
+      return v;
+    } catch (e) { return String(Date.now()) + "-" + Math.random().toString(36).slice(2, 8); }
+  })();
+  // Come ci si presenta agli altri. Si chiede UNA VOLTA per computer: senza
+  // un nome il messaggio "il comando e' su un altro computer" non aiuta
+  // nessuno a capire su quale.
+  var IONOME = (function () {
+    var v = "";
+    try { v = localStorage.getItem("comotv.regia.chi") || ""; } catch (e) {}
+    if (!v) {
+      v = (window.prompt("Come si chiama questo computer?\n" +
+            "Lo vedranno gli altri quando lo stesso canale e' aperto in due.\n" +
+            "(es. Regia studio, Portatile Marco, MediaOps)", "") || "").trim().slice(0, 40);
+      if (v) { try { localStorage.setItem("comotv.regia.chi", v); } catch (e) {} }
+    }
+    return v || "una console";
+  })();
+  var COMANDO = true;          // finche' non si scopre il contrario
+
+  function chiedePresa(forza) {
+    return fetch(PONTE, {
+      method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ token: TOKEN, c: CANALE, tipo: "regia-presa",
+                             sid: SESSIONE, chi: IONOME, forza: !!forza })
+    }).then(function (r) { return r.json(); });
+  }
+
+  function quandoDa(ts) {
+    var m = Math.max(0, Math.round((Date.now() - ts) / 60000));
+    return m < 1 ? "da poco" : (m === 1 ? "da 1 minuto" : "da " + m + " minuti");
+  }
+
+  function segnalaComando(ho, altro) {
+    COMANDO = ho;
+    document.body.classList.toggle("solo-lettura", !ho);
+    var b = document.getElementById("barraPresa");
+    if (!b) {
+      b = document.createElement("div");
+      b.id = "barraPresa";
+      document.body.appendChild(b);
+    }
+    if (ho) { b.style.display = "none"; return; }
+    b.style.display = "flex";
+    b.innerHTML = '<span><b>Sola lettura.</b> Il comando di questo canale &egrave; su ' +
+      (altro && altro.chi ? esc(altro.chi) : "un altro computer") +
+      (altro && altro.dal ? " " + quandoDa(altro.dal) : "") + '.</span>' +
+      '<button type="button" id="prendiComando">Prendi il comando</button>';
+    document.getElementById("prendiComando").onclick = function () {
+      if (!window.confirm("Il comando passa a questo computer: l'altra console andr\u00e0 in sola lettura.\n\nProcedo?")) return;
+      chiedePresa(true).then(function (res) {
+        if (res && res.ok) { segnalaComando(true); msg.textContent = "Comando preso."; }
+      });
+    };
+  }
+
+  function apriPresa() {
+    chiedePresa(false).then(function (res) {
+      if (res && res.ok) { segnalaComando(true); return; }
+      // occupato: si decide adesso, non a meta' diretta
+      var p = res && res.presa;
+      var testo = "Questo canale \u00e8 gi\u00e0 aperto su " + ((p && p.chi) || "un altro computer") +
+        (p && p.dal ? " " + quandoDa(p.dal) : "") + ".\n\n" +
+        "OK = prendo io il comando (l'altro passa in sola lettura)\n" +
+        "Annulla = guardo soltanto";
+      if (window.confirm(testo)) {
+        chiedePresa(true).then(function (r2) { segnalaComando(!!(r2 && r2.ok), p); });
+      } else segnalaComando(false, p);
+    }).catch(function () { /* ponte gia' segnalato altrove */ });
+  }
+
+  function battito() {
+    fetch(PONTE, {
+      method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ token: TOKEN, c: CANALE, tipo: "regia-battito", sid: SESSIONE })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res) return;
+        if (res.tua) { if (!COMANDO) segnalaComando(true); return; }
+        // non e' piu' nostra: se il canale e' libero la riprendiamo (era solo
+        // un buco di rete), se e' di un altro passiamo in sola lettura
+        if (!res.presa) chiedePresa(false).then(function (r2) { segnalaComando(!!(r2 && r2.ok)); });
+        else if (COMANDO) segnalaComando(false, res.presa);
+      })
+      .catch(function () {});
+  }
 
   var cur = { items: [] };
   var selId = null;
@@ -1002,7 +1118,7 @@
     fetch(PONTE, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(Object.assign({ token: TOKEN, c: CANALE }, body))
+      body: JSON.stringify(Object.assign({ token: TOKEN, c: CANALE, sid: SESSIONE }, body))
     })
       .then(function (r) { return r.json(); })
       .then(function (res) {
@@ -1478,6 +1594,18 @@
   })();
 
   setInterval(tick, POLL_MS);
+
+  // la presa si chiede all'apertura e si tiene viva col battito
+  apriPresa();
+  setInterval(battito, 15000);
+  // chiudendo la scheda il canale torna libero subito, senza aspettare il minuto
+  window.addEventListener("pagehide", function () {
+    try {
+      var corpo = JSON.stringify({ token: TOKEN, c: CANALE, tipo: "regia-molla", sid: SESSIONE });
+      if (navigator.sendBeacon) navigator.sendBeacon(PONTE, new Blob([corpo], { type: "text/plain" }));
+      else fetch(PONTE, { method: "POST", body: corpo, keepalive: true });
+    } catch (e) {}
+  });
   tick();
   fitThumb();
 })();
