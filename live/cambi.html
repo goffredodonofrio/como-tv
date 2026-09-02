@@ -50,11 +50,23 @@
   button.rosso{background:transparent;border-color:rgba(229,27,32,.4);color:#FF9A9C;padding:7px 10px;}
   button.rosso:hover{background:rgba(229,27,32,.14);}
 
-  /* la barra di comando, come negli altri editor */
+  /* la barra di comando, la stessa di Formazioni e Formazioni Premium */
   .comando{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;
     background:var(--surface-panel);border:1px solid var(--line-2);border-radius:10px;padding:12px 14px;}
-  .comando .campo label{font-size:10px;letter-spacing:.16em;color:var(--fg-3);}
-  .notacomando{font-size:12.5px;color:var(--fg-3);align-self:center;text-align:right;max-width:420px;}
+  .comando .campo label,.field label{font-size:10px;letter-spacing:.16em;color:var(--fg-3);
+    text-transform:uppercase;}
+  .field{display:flex;flex-direction:column;gap:5px;min-width:0;}
+  .seg{display:flex;border:1px solid var(--line-gold);border-radius:6px;overflow:hidden;}
+  .seg button{border:0;border-radius:0;padding:12px 16px;background:var(--surface-panel);
+    color:var(--gold);}
+  .seg button + button{border-left:1px solid var(--line-2);}
+  .seg button:hover{color:var(--gold-bright);background:var(--surface-panel);}
+  .seg button.act,.seg button.act:hover{background:var(--gold);color:#0A0F24;}
+  #btnRegia2{white-space:nowrap;background:#4FA3E8;border-color:#4FA3E8;color:#0A0F24;}
+  #btnRegia2:hover{background:#74B9F0;border-color:#74B9F0;color:#0A0F24;}
+  #btnCsv2{background:rgba(45,212,191,.14);border:1px solid rgba(45,212,191,.55);
+    color:#6EE7D4;white-space:nowrap;}
+  #btnCsv2:hover{background:rgba(45,212,191,.24);}
 
   /* il blocco manuale, gemello di quello ESPN ma in blu acciaio */
   #manbar{background:linear-gradient(180deg,rgba(94,132,214,.15),rgba(94,132,214,.05));
@@ -141,11 +153,23 @@
   </header>
 
   <div class="comando">
-    <div class="campo"><label for="canaleSel">Destinazione (vMix o progetto)</label>
-      <select id="canaleSel" style="min-width:210px"></select></div>
-    <div style="flex:1"></div>
-    <div class="notacomando">Anteprima e invio stanno su ogni squadra, qui sotto:
-      la destinazione vale per tutte e due.</div>
+    <div class="field" style="flex:0 0 auto">
+      <label>Modifica le formazioni</label>
+      <div class="seg" id="segTarget" title="Su quale squadra agiscono i pulsanti">
+        <button data-t="both" class="act">Entrambe</button>
+        <button data-t="home">Casa</button>
+        <button data-t="away">Trasferta</button>
+      </div>
+    </div>
+    <div class="field" style="flex:0 0 auto;margin-left:auto">
+      <label for="canaleSel">Seleziona vMix o progetto</label>
+      <select id="canaleSel" style="min-width:0;width:290px;max-width:100%"></select>
+    </div>
+    <button id="btnRegia2">&#128225; Invia alla regia</button>
+    <div class="field" style="flex:0 0 auto">
+      <label>Scarica CSV</label>
+      <button id="btnCsv2">CSV</button>
+    </div>
   </div>
 
   <!-- la barra delle formazioni ufficiali la costruisce formazioni-espn.js -->
@@ -443,7 +467,7 @@
     el("stato").className = "";
     el("stato").innerHTML = '<span>Invio a ' + esc(dove) + '&hellip;</span>' +
       '<span class="pbar"><span class="pfill" id="pfill"></span></span>';
-    fetch(PONTE, {
+    return fetch(PONTE, {
       method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(Object.assign({ token: TOKEN },
         Destinazione.corpo({ grafica: "cambi", titolo: titolo, dati: p })))
@@ -459,6 +483,74 @@
       })
       .catch(function (err) { status("err", "<b>Non inviato:</b> " + esc(err.message)); });
   }
+
+  // ══ la barra in alto: su chi agiscono i pulsanti ═════════════════════
+  var TGT = "both";
+  el("segTarget").addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("button[data-t]") : null;
+    if (!b) return;
+    TGT = b.dataset.t;
+    Array.prototype.forEach.call(document.querySelectorAll("#segTarget button"), function (x) {
+      x.className = x === b ? "act" : "";
+    });
+  });
+  function bersagli() { return TGT === "home" ? [0] : (TGT === "away" ? [1] : [0, 1]); }
+
+  el("btnRegia2").addEventListener("click", function () {
+    var lista = bersagli().filter(function (si) { return !!payload(si); });
+    if (!lista.length) {
+      status("err", "<b>Nessuna formazione completa</b> per la selezione: servono tutti e undici i titolari.");
+      return;
+    }
+    (function fila(resto) {
+      if (!resto.length) return;
+      var pr = inviaRegia(resto[0]);
+      (pr && pr.then ? pr : Promise.resolve()).then(function () {
+        // una pausa tra i due invii, cosi' i messaggi restano leggibili
+        setTimeout(function () { fila(resto.slice(1)); }, resto.length > 1 ? 700 : 0);
+      });
+    })(lista);
+  });
+
+  // ── il CSV: gli undici e i cambi, una riga per giocatore ──────────────
+  function csvDi(si) {
+    var p = payload(si);
+    if (!p) return null;
+    function cella(v) {
+      v = String(v == null ? "" : v);
+      return /[";\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+    }
+    function chi(t) { return t ? ((t[1] || "") + " " + (t[2] || "")).trim() : ""; }
+    var righe = [["squadra", "modulo", "tipo", "minuto", "numero", "nome", "cognome", "al posto di"]];
+    p.t.forEach(function (t) {
+      righe.push([p.n, p.m, "titolare", "", t[0] || "", t[1] || "", t[2] || "", ""]);
+    });
+    p.c.forEach(function (c) {
+      righe.push([p.n, p.m, "cambio", c.m || "", c.i[0] || "", c.i[1] || "", c.i[2] || "",
+                  ((c.o[0] ? c.o[0] + " " : "") + chi(c.o)).trim()]);
+    });
+    return { nome: "cambi-" + (p.n || "squadra").toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".csv",
+             testo: righe.map(function (r) { return r.map(cella).join(";"); }).join("\r\n") };
+  }
+
+  el("btnCsv2").addEventListener("click", function () {
+    var fatti = bersagli().map(csvDi).filter(Boolean);
+    if (!fatti.length) {
+      status("err", "<b>Niente da esportare:</b> servono tutti e undici i titolari.");
+      return;
+    }
+    fatti.forEach(function (f, i) {
+      setTimeout(function () {
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob(["\ufeff" + f.testo], { type: "text/csv;charset=utf-8" }));
+        a.download = f.nome;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+      }, i * 350);
+    });
+    status("ok", fatti.length === 1 ? "Scaricato <b>" + esc(fatti[0].nome) + "</b>."
+                                    : "Scaricati <b>" + fatti.length + " CSV</b>.");
+  });
 
   // ══ le formazioni ufficiali: stesso modulo delle altre pagine ═════════
   if (window.FormazioniEspn) {
