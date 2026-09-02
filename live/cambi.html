@@ -79,6 +79,7 @@
     border-radius:5px;background:var(--surface-panel);cursor:pointer;}
   .kit::-webkit-color-swatch-wrapper{padding:0;}
   .kit::-webkit-color-swatch{border:0;border-radius:3px;}
+  .magliaSel{flex:0 1 168px;min-width:100px;padding:7px 9px;font-size:12.5px;}
   .lato button{padding:7px 10px;font-size:9.5px;}
 
   /* le due colonne di lavoro */
@@ -200,6 +201,48 @@
   }
   var sides = [mkSide("Casa"), mkSide("Trasferta")];
 
+  // ── le maglie vere del magazzino ────────────────────────────────────
+  // Stessa ricerca della pagina Formazioni: l'archivio usa nomi da
+  // collezione ("milan"), ESPN nomi per esteso ("AC Milan"). Si prova
+  // l'aggancio esatto, poi il contenimento, e sotto i 4 caratteri niente:
+  // meglio nessuna maglia che quella di un altro club.
+  var MAGLIE = {};
+  function slugM(nome) {
+    return String(nome || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+  }
+  function magliaUrl(side, dove) {
+    var mio = slugM(side.teamName || "");
+    if (!mio) return "";
+    var k = "maglia-" + mio + "-" + dove;
+    if (MAGLIE[k]) return MAGLIE[k];
+    if (mio.length < 4) return "";
+    var fine = "-" + dove, meglio = "", lungo = 0;
+    for (var chiave in MAGLIE) {
+      if (chiave.slice(-fine.length) !== fine) continue;
+      var squadra = chiave.slice(7, -fine.length);
+      if (squadra.length < 4) continue;
+      var mioC = "-" + mio + "-", sqC = "-" + squadra + "-";
+      if (mioC.indexOf(sqC) < 0 && sqC.indexOf(mioC) < 0
+          && mio.indexOf(squadra) !== 0 && squadra.indexOf(mio) !== 0) continue;
+      if (Math.abs(mio.split("-").length - squadra.split("-").length) > 1) continue;
+      if (squadra.length > lungo) { lungo = squadra.length; meglio = MAGLIE[chiave]; }
+    }
+    return meglio;
+  }
+  function caricaMaglie() {
+    fetch(PONTE + "?loghi=1", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        MAGLIE = {};
+        (j.loghi || []).forEach(function (x) {
+          if (/^maglia-/.test(x.chiave)) MAGLIE[x.chiave] = x.url;
+        });
+        renderSquadre();
+      })
+      .catch(function () {});
+  }
+
   // la foto segue la regola del Premium: un archivio solo per tutte le grafiche
   function slugCog(c) {
     return String(c || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -246,7 +289,16 @@
               return '<option' + (m === side.mod ? " selected" : "") + '>' + m + '</option>'; }).join("") + '</select></div>' +
         '</div>' +
         '<div class="lato">' + side.label +
-          '<input type="color" class="kit" data-si="' + si + '" data-k="kit" title="Colore maglia nella grafica" value="' + esc(side.kit) + '">' +
+          '<input type="color" class="kit" data-si="' + si + '" data-k="kit" title="Colore della maglia disegnata" value="' + esc(side.kit) + '">' +
+          '<select class="magliaSel" data-si="' + si + '" title="La maglia nella grafica: disegnata col colore, oppure la foto vera dal magazzino">' +
+            '<option value=""' + (side.maglia === "" ? " selected" : "") + '>Maglia disegnata</option>' +
+            '<option value="casa"' + (side.maglia === "casa" ? " selected" : "") +
+              (magliaUrl(side, "casa") ? "" : " disabled") + '>Maglia Casa' +
+              (magliaUrl(side, "casa") ? "" : " (non in archivio)") + '</option>' +
+            '<option value="trasferta"' + (side.maglia === "trasferta" ? " selected" : "") +
+              (magliaUrl(side, "trasferta") ? "" : " disabled") + '>Maglia Trasferta' +
+              (magliaUrl(side, "trasferta") ? "" : " (non in archivio)") + '</option>' +
+          '</select>' +
           '<button class="verde" data-si="' + si + '" data-act="prev">Anteprima</button>' +
           '<button class="primario" data-si="' + si + '" data-act="regia">&#128225; Invia</button>' +
         '</div>' +
@@ -308,7 +360,13 @@
     if (si == null) return;
     var side = sides[+si];
     if (t.dataset.k === "tname") { side.teamName = t.value; return; }
-    if (t.dataset.k === "kit") { side.kit = t.value; return; }
+    if (t.dataset.k === "kit") {
+      side.kit = t.value;
+      // scegliere un colore vuol dire volere la maglia disegnata: altrimenti
+      // il colore non si vedrebbe da nessuna parte
+      if (side.maglia) { side.maglia = ""; renderSquadre(); }
+      return;
+    }
     if (t.dataset.i != null && t.dataset.c) { scriviTit(side, +t.dataset.i, t.dataset.c, t.value); return; }
     if (t.dataset.k2 != null && t.dataset.c2) {
       var c = side.cambi[+t.dataset.k2]; if (!c) return;
@@ -323,6 +381,7 @@
     var side = sides[+si];
     if (t.dataset.k === "comp") { side.comp = +t.value; return; }
     if (t.dataset.k === "mod") { side.mod = t.value; renderLavoro(); return; }
+    if (t.classList && t.classList.contains("magliaSel")) { side.maglia = t.value; return; }
     if (t.dataset.k2 != null && t.dataset.c2 === "o") {
       var c = side.cambi[+t.dataset.k2];
       if (c) c.o = undici(side)[+t.value];
@@ -347,10 +406,12 @@
     var side = sides[si];
     var xi = undici(side).filter(function (t) { return t[0] || t[2]; });
     if (xi.length < 11) return null;
+    var mg = side.maglia ? magliaUrl(side, side.maglia) : "";
     return {
       n: side.teamName || side.label,
       m: side.mod,
       k: side.kit,
+      mg: mg || undefined,
       l: side.teamId ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + side.teamId + ".png" : "",
       t: undici(side),
       c: side.cambi.filter(function (c) { return c.o && c.i && (c.i[0] || c.i[2]); })
@@ -418,6 +479,7 @@
   if (window.Destinazione) Destinazione.adotta(el("canaleSel"), PONTE, TOKEN);
 
   renderAll();
+  caricaMaglie();
 })();
 </script>
 </body>
