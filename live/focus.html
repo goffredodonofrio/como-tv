@@ -228,17 +228,17 @@
           <div class="numbox">
             <div class="numcapo">Riquadro 1</div>
             <label for="v1">Valore</label><input type="text" id="v1" placeholder="es. 151">
-            <label for="l1" style="margin-top:8px">Etichetta</label><input type="text" id="l1" placeholder="es. PRESENZE">
+            <label for="l1" style="margin-top:8px">Etichetta</label><input type="text" id="l1" list="vocilist" placeholder="es. PRESENZE">
           </div>
           <div class="numbox">
             <div class="numcapo">Riquadro 2</div>
             <label for="v2">Valore</label><input type="text" id="v2" placeholder="es. 42">
-            <label for="l2" style="margin-top:8px">Etichetta</label><input type="text" id="l2" placeholder="es. GOL">
+            <label for="l2" style="margin-top:8px">Etichetta</label><input type="text" id="l2" list="vocilist" placeholder="es. GOL">
           </div>
           <div class="numbox">
             <div class="numcapo">Riquadro 3</div>
             <label for="v3">Valore</label><input type="text" id="v3" placeholder="es. 50">
-            <label for="l3" style="margin-top:8px">Etichetta</label><input type="text" id="l3" placeholder="es. ASSIST">
+            <label for="l3" style="margin-top:8px">Etichetta</label><input type="text" id="l3" list="vocilist" placeholder="es. ASSIST">
           </div>
         </div>
         <div class="numnota">In grafica compaiono solo i riquadri compilati: lasciane vuoti quanti vuoi.</div>
@@ -476,6 +476,48 @@
     var box = el("ufbar");
     if (!box || !window.PartitaEspn) return;
     var GIOCATORI = [];    // [{nome, ruolo, squadra, stat:{}}]
+    var SCELTO = null;     // il giocatore scelto adesso
+
+    // le voci che ESPN sa dare per un giocatore in una partita, scritte
+    // sempre allo stesso modo: cosi' l'etichetta e il numero si trovano
+    var VOCI_GIO = [
+      ["totalGoals",     "GOL"],
+      ["goalAssists",    "ASSIST"],
+      ["totalShots",     "TIRI"],
+      ["shotsOnTarget",  "TIRI IN PORTA"],
+      ["offsides",       "FUORIGIOCO"],
+      ["foulsSuffered",  "FALLI SUBITI"],
+      ["foulsCommitted", "FALLI COMMESSI"],
+      ["yellowCards",    "AMMONIZIONI"],
+      ["redCards",       "ESPULSIONI"],
+      ["appearances",    "PRESENZE"],
+      ["subIns",         "SUBENTRI"],
+      ["saves",          "PARATE"],
+      ["goalsConceded",  "GOL SUBITI"],
+      ["shotsFaced",     "TIRI AFFRONTATI"]
+    ];
+    (function () {
+      var dl = document.createElement("datalist");
+      dl.id = "vocilist";
+      dl.innerHTML = VOCI_GIO.map(function (v) {
+        return '<option value="' + v[1] + '"></option>';
+      }).join("");
+      document.body.appendChild(dl);
+    })();
+    // cambiata un'etichetta con una voce che ESPN conosce, il numero accanto
+    // si riempie da se'. Scrivere qualcosa di diverso resta sempre possibile.
+    ["l1", "l2", "l3"].forEach(function (id) {
+      el(id).addEventListener("change", function () {
+        if (!SCELTO) return;
+        var eti = (this.value || "").trim().toUpperCase();
+        VOCI_GIO.forEach(function (v) {
+          if (v[1] === eti) {
+            var n = SCELTO.stat[v[0]];
+            el("v" + id.charAt(1)).value = (n === undefined || n === null) ? "0" : String(n);
+          }
+        });
+      });
+    });
     // questa pagina non aveva bisogno di ripulire testo per l'HTML: i nomi
     // dei giocatori finiscono dentro un menu', quindi da qui in poi serve
     function esc(x) {
@@ -533,6 +575,7 @@
     function riempi(i) {
       var g = GIOCATORI[i];
       if (!g) return;
+      SCELTO = g;
       var parti = g.nome.split(" ");
       el("k").value = (parti.length > 1 ? parti.shift() : "").toUpperCase();
       el("n").value = parti.join(" ") || g.nome;

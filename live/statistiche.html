@@ -681,12 +681,54 @@
   function rigaStat(eti, va, vb) {
     var due = MODO !== "gi";
     return '<div class="strow">' +
-      '<input type="text" class="eti" placeholder="etichetta" value="' + esc(eti || "") + '">' +
+      '<input type="text" class="eti" list="vocilist" placeholder="etichetta \u2014 scrivi o scegli" ' +
+        'value="' + esc(eti || "") + '">' +
       '<input type="text" class="va" placeholder="' + (due ? "valore A" : "valore") + '" value="' + esc(va || "") + '">' +
       (due ? '<input type="text" class="vb" placeholder="valore B" value="' + esc(vb || "") + '">' : "") +
       '<button type="button" class="via" title="Togli la riga">&times;</button></div>';
   }
+  // l'elenco che appare scrivendo nell'etichetta: cambia con la modalita'
+  function aggiornaVocabolario() {
+    var dl = el("vocilist");
+    if (!dl) {
+      dl = document.createElement("datalist");
+      dl.id = "vocilist";
+      document.body.appendChild(dl);
+    }
+    dl.innerHTML = vocabolario().map(function (v) {
+      return '<option value="' + esc(v[1]) + '"></option>';
+    }).join("");
+  }
+
+  // scritta l'etichetta, se e' una voce che ESPN conosce e i dati della
+  // partita ci sono, il valore si riempie da se'. Resta comunque scrivibile.
+  function valoriPerEtichetta(riga) {
+    var eti = (riga.querySelector(".eti").value || "").trim().toLowerCase();
+    if (!eti) return;
+    var voce = null;
+    vocabolario().forEach(function (v) { if (v[1].toLowerCase() === eti) voce = v; });
+    if (!voce) return;
+    var va = riga.querySelector(".va"), vb = riga.querySelector(".vb");
+    if (MODO === "sq") {
+      if (!SQUADRA_A && !SQUADRA_B) return;
+      if (va) va.value = valore(SQUADRA_A[voce[0]], voce[2]);
+      if (vb) vb.value = valore(SQUADRA_B[voce[0]], voce[2]);
+    } else {
+      var sa = STAT_GIO[nomeScelto("a")], sb = STAT_GIO[nomeScelto("b")];
+      if (!sa && !sb) return;
+      if (va) va.value = sa ? (sa[voce[0]] !== undefined ? sa[voce[0]] : "0") : "";
+      if (vb) vb.value = sb ? (sb[voce[0]] !== undefined ? sb[voce[0]] : "0") : "";
+    }
+  }
+  document.addEventListener("change", function (e) {
+    if (e.target.classList && e.target.classList.contains("eti")) {
+      var r = e.target.closest(".strow");
+      if (r) valoriPerEtichetta(r);
+    }
+  });
+
   function preparaRighe() {
+    aggiornaVocabolario();
     el("strows").innerHTML = PRESET[MODO].map(function (x) { return rigaStat(x); }).join("");
   }
   el("btnAddRiga").addEventListener("click", function () {
@@ -831,6 +873,59 @@
   // testo normali, si correggono tutti a mano e si possono aggiungere righe.
   // Chi vuole fare tutto da se' semplicemente non tocca questo pannello.
 
+  // ── TUTTE le voci che ESPN sa dare, con la dicitura nostra ────────────
+  // Servono a due cose: riempirle in automatico e offrirle nel menu' a
+  // tendina dell'etichetta, cosi' si scrive "Tiri in porta" e non "tiri in
+  // porta" o "Tiri porta" — che poi non si riconoscono piu' fra loro.
+  var VOCABOLARIO_SQ = [
+    ["possessionPct",       "Possesso %",              "pct"],
+    ["totalShots",          "Tiri",                    "num"],
+    ["shotsOnTarget",       "Tiri in porta",           "num"],
+    ["shotPct",             "Precisione tiri %",       "fraz"],
+    ["blockedShots",        "Tiri respinti",           "num"],
+    ["wonCorners",          "Calci d'angolo",          "num"],
+    ["offsides",            "Fuorigioco",              "num"],
+    ["foulsCommitted",      "Falli",                   "num"],
+    ["yellowCards",         "Ammonizioni",             "num"],
+    ["redCards",            "Espulsioni",              "num"],
+    ["saves",               "Parate",                  "num"],
+    ["penaltyKickGoals",    "Rigori segnati",          "num"],
+    ["penaltyKickShots",    "Rigori calciati",         "num"],
+    ["accuratePasses",      "Passaggi riusciti",       "num"],
+    ["totalPasses",         "Passaggi totali",         "num"],
+    ["passPct",             "Passaggi riusciti %",     "fraz"],
+    ["accurateCrosses",     "Cross riusciti",          "num"],
+    ["totalCrosses",        "Cross totali",            "num"],
+    ["crossPct",            "Precisione cross %",      "fraz"],
+    ["accurateLongBalls",   "Lanci lunghi riusciti",   "num"],
+    ["totalLongBalls",      "Lanci lunghi",            "num"],
+    ["longballPct",         "Precisione lanci %",      "fraz"],
+    ["effectiveTackles",    "Contrasti vinti",         "num"],
+    ["totalTackles",        "Contrasti totali",        "num"],
+    ["tacklePct",           "Precisione contrasti %",  "fraz"],
+    ["interceptions",       "Intercetti",              "num"],
+    ["effectiveClearance",  "Respinte riuscite",       "num"],
+    ["totalClearance",      "Respinte totali",         "num"]
+  ];
+  var VOCABOLARIO_GIO = [
+    ["totalGoals",     "Gol",             "num"],
+    ["goalAssists",    "Assist",          "num"],
+    ["totalShots",     "Tiri",            "num"],
+    ["shotsOnTarget",  "Tiri in porta",   "num"],
+    ["offsides",       "Fuorigioco",      "num"],
+    ["foulsSuffered",  "Falli subiti",    "num"],
+    ["foulsCommitted", "Falli commessi",  "num"],
+    ["yellowCards",    "Ammonizioni",     "num"],
+    ["redCards",       "Espulsioni",      "num"],
+    ["ownGoals",       "Autogol",         "num"],
+    ["appearances",    "Presenze",        "num"],
+    ["subIns",         "Subentri",        "num"],
+    ["saves",          "Parate",          "num"],
+    ["goalsConceded",  "Gol subiti",      "num"],
+    ["shotsFaced",     "Tiri affrontati", "num"]
+  ];
+  function vocabolario() { return MODO === "sq" ? VOCABOLARIO_SQ : VOCABOLARIO_GIO; }
+
   // le sei voci del confronto squadra: nome ESPN, etichetta nostra, formato
   var VOCI_SQ = [
     ["possessionPct",  "Possesso %",          "pct"],
@@ -857,6 +952,7 @@
     ["yellowCards",    "Ammonizioni"]
   ];
 
+  var SQUADRA_A = null, SQUADRA_B = null;   // le statistiche delle due squadre
   var STAT_GIO = {};        // "id giocatore" -> {nome: valore}
   var PORTIERE = {};        // chi para, per dargli le voci giuste
 
@@ -924,6 +1020,7 @@
 
         if (MODO === "sq") {
           var mc = mappaStat(casa.statistics), mf = mappaStat(fuori.statistics);
+          SQUADRA_A = mc; SQUADRA_B = mf;   // servono al menu' delle etichette
           function nomeDi(t) { var x = t.team || {}; return x.displayName || x.name || ""; }
           function logoDi(t) {
             var x = t.team || {};
@@ -962,22 +1059,23 @@
     });
   }
 
+  // il menu' dei giocatori porta l'indice nella rosa, non il nome: il nome
+  // va ripescato di li', altrimenti non si trova mai la statistica
+  function nomeScelto(pre) {
+    var g = el(pre + "gio");
+    if (g && g.value !== "" && g.dataset.team) {
+      var r = (ROSE[g.dataset.team] || [])[+g.value];
+      if (r && r.n) return r.n;
+    }
+    var n = el(pre + "n");
+    return n ? n.value.trim() : "";
+  }
+
   // riempie le righe coi numeri dei giocatori scelti nei menu'
   function riempiDaGiocatori() {
     if (MODO === "sq") return false;
-    // il menu' dei giocatori porta l'indice nella rosa, non il nome: il nome
-    // va ripescato di li', altrimenti non si trova mai la statistica
-    function scelto(pre) {
-      var g = el(pre + "gio");
-      if (g && g.value !== "" && g.dataset.team) {
-        var r = (ROSE[g.dataset.team] || [])[+g.value];
-        if (r && r.n) return r.n;
-      }
-      var n = el(pre + "n");
-      return n ? n.value.trim() : "";
-    }
-    var na = scelto("a");
-    var nb = MODO === "du" ? scelto("b") : "";
+    var na = nomeScelto("a");
+    var nb = MODO === "du" ? nomeScelto("b") : "";
     var sa = STAT_GIO[na], sb = STAT_GIO[nb];
     if (!sa && !sb) return false;
     var voci = PORTIERE[na] || PORTIERE[nb] ? VOCI_PORT : VOCI_GIO;

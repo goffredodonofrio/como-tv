@@ -254,12 +254,46 @@
 
   // ── i campi liberi ──────────────────────────────────────────────────
   var PRESET = ["ALLENATORE", "STELLA", "GIOCATORI PIÙ PREZIOSI", "PARTECIPAZIONI UCL", "MIGLIOR PIAZZAMENTO UCL"];
+  // le voci che la classifica ESPN sa dare, scritte sempre allo stesso modo
+  var VOCI_CLASSIFICA = [
+    ["rank",              "POSIZIONE"],
+    ["points",            "PUNTI"],
+    ["gamesPlayed",       "PARTITE"],
+    ["wins",              "VITTORIE"],
+    ["ties",              "PAREGGI"],
+    ["losses",            "SCONFITTE"],
+    ["pointDifferential", "DIFFERENZA RETI"]
+  ];
+  var NUMERI_SQ = null;      // la riga di classifica della squadra scelta
+
   function rigaCampo(eti, val) {
     return '<div class="crow">' +
-      '<input type="text" class="eti" placeholder="etichetta" value="' + esc(eti || "") + '">' +
+      '<input type="text" class="eti" list="vocilist" placeholder="etichetta \u2014 scrivi o scegli" ' +
+        'value="' + esc(eti || "") + '">' +
       '<input type="text" class="val" placeholder="valore" value="' + esc(val || "") + '">' +
       '<button type="button" class="via" title="Togli la riga">&times;</button></div>';
   }
+  (function () {
+    var dl = document.createElement("datalist");
+    dl.id = "vocilist";
+    dl.innerHTML = VOCI_CLASSIFICA.map(function (v) {
+      return '<option value="' + esc(v[1]) + '"></option>';
+    }).join("");
+    document.body.appendChild(dl);
+  })();
+  // scritta un'etichetta che la classifica conosce, il valore arriva da se'
+  document.addEventListener("change", function (e) {
+    if (!e.target.classList || !e.target.classList.contains("eti") || !NUMERI_SQ) return;
+    var riga = e.target.closest(".crow");
+    if (!riga) return;
+    var eti = (e.target.value || "").trim().toLowerCase();
+    VOCI_CLASSIFICA.forEach(function (v) {
+      if (v[1].toLowerCase() === eti && NUMERI_SQ[v[0]] !== undefined) {
+        riga.querySelector(".val").value = NUMERI_SQ[v[0]];
+      }
+    });
+  });
+
   el("crows").innerHTML = PRESET.map(function (x) { return rigaCampo(x); }).join("");
   el("btnAddRiga").addEventListener("click", function () {
     if (document.querySelectorAll("#crows .crow").length >= 6) {
@@ -493,6 +527,14 @@
           var m = {};
           (voce.stats || []).forEach(function (x) { m[x.name] = x.displayValue; });
           var tris = String(m.overall || "").split("-");   // vittorie-pareggi-sconfitte
+          // ESPN non sempre scrive vittorie/pareggi/sconfitte a parte: dal
+          // riassunto "2-0-0" si ricavano, e cosi' il menu' li trova sempre
+          if (tris.length === 3) {
+            if (m.wins === undefined) m.wins = tris[0];
+            if (m.ties === undefined) m.ties = tris[1];
+            if (m.losses === undefined) m.losses = tris[2];
+          }
+          voce.__numeri = m;
           var campi = [
             ["POSIZIONE", m.rank || ""],
             ["PUNTI", m.points || ""],
@@ -514,7 +556,9 @@
             var id = (t && t.id) || e.id || "";
             if ((id && String(id) === String(c.id)) || (nome && nome === c.n)) voce = e;
           });
-          return voce ? { nome: c.n, comp: comp.nome, campi: numeri(voce) } : null;
+          if (!voce) return null;
+          var campi = numeri(voce);
+          return { nome: c.n, comp: comp.nome, campi: campi, numeri: voce.__numeri };
         }).filter(Boolean);
 
         if (!righeSq.length) {
@@ -545,6 +589,7 @@
     function riempi(i) {
       var r = righeSq[i];
       if (!r) return;
+      NUMERI_SQ = r.numeri || null;
       el("n").value = r.nome.toUpperCase();
       if (!el("s").value.trim()) el("s").value = r.comp.toUpperCase();
       el("crows").innerHTML = r.campi.map(function (c) { return rigaCampo(c[0], c[1]); }).join("");
