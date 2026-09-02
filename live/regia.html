@@ -394,6 +394,7 @@
       <button id="btnTake" disabled>&#9654;<br>In onda</button>
       <button id="btnOut" disabled>&#9632;<br>Fuori onda</button>
       <button id="btnProg" type="button">&#128193;<br>Apri progetto</button>
+      <button id="btnProgNuovo" type="button">&#10133;<br>Nuovo progetto</button>
       <button id="btnVideo" type="button">&#127916;<br>Carica contributo</button>
       <div id="msg"></div>
     </div>
@@ -1426,6 +1427,8 @@
     document.getElementById("progChiudi").addEventListener("click", function () { dlg.style.display = "none"; });
 
     var TUTTI = [];      // l'elenco, per sapere dove si puo' copiare
+    var APERTI = {};     // quali progetti sono aperti: un aggiornamento non
+                         // deve richiuderli in faccia a chi ci sta lavorando
 
     function dipingi(pr) {
       vuoto.style.display = pr.length ? "none" : "block";
@@ -1458,6 +1461,12 @@
       });
       TUTTI = pr;
       lista.innerHTML = h;
+      // riapro quelli che erano aperti, col loro contenuto aggiornato
+      Object.keys(APERTI).forEach(function (id) {
+        if (!APERTI[id]) return;
+        var t = lista.querySelector('[data-wrap="' + id + '"] button[data-az="dentro"]');
+        if (t) { APERTI[id] = false; apri(id, t); }
+      });
     }
 
     // il ponte risponde quante ne ha aggiunte, aggiornate e tolte: lo si
@@ -1485,6 +1494,33 @@
         .catch(function () { msg.textContent = "Ponte non raggiungibile."; });
     }
 
+    // La regia apre il progetto e la redazione se lo trova nel menu' della
+    // destinazione: non serve che nessuno "carichi" niente, basta il nome.
+    document.getElementById("btnProgNuovo").addEventListener("click", function () {
+      var nome = window.prompt(
+        "Nome del progetto nuovo.\n\n" +
+        "Appena creato compare nel menu\u2019 \u201cSeleziona vMix o progetto\u201d di " +
+        "tutte le pagine delle grafiche: alla redazione basta scegliere questo nome " +
+        "invece di un vMix, e le grafiche finiscono qui dentro invece che in onda.", "");
+      if (nome === null) return;
+      nome = nome.trim();
+      if (!nome) { msg.textContent = "Serve un nome per il progetto."; return; }
+      fetch(PONTE, {
+        method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ token: TOKEN, tipo: "progetto-crea", nome: nome })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (chiaveRifiutata(j)) return;
+          if (!j.ok) { msg.textContent = "Non creato: " + (j.errore || ""); return; }
+          msg.textContent = 'Progetto "' + j.nome + '" creato. Di\u2019 alla redazione di ' +
+            "sceglierlo nella destinazione al posto del vMix.";
+          dlg.style.display = "flex";
+          aggiorna();
+        })
+        .catch(function () { msg.textContent = "Ponte non raggiungibile."; });
+    });
+
     function aggiorna() {
       fetch(PONTE, {
         method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -1501,10 +1537,12 @@
       if (!dentro) return;
       if (dentro.style.display !== "none") {          // era aperto: si chiude
         dentro.style.display = "none";
+        APERTI[id] = false;
         if (tasto) tasto.innerHTML = "&#9662;";
         return;
       }
       dentro.style.display = "block";
+      APERTI[id] = true;
       if (tasto) tasto.innerHTML = "&#9652;";
       dentro.innerHTML = '<div class="vuoto">Leggo il progetto&hellip;</div>';
       fetch(PONTE, {
@@ -1521,13 +1559,15 @@
               '<span class="vt">' + esc(it.titolo) + '<em>' + esc(it.tipo) +
                 ' &middot; livello ' + (it.liv || 1) + '</em></span>' +
               (altri.length
-                ? '<select class="dove"><option value="">&mdash; copia in&hellip; &mdash;</option>' +
+                ? '<select class="dove"><option value="">&mdash; scegli il progetto &mdash;</option>' +
                   altri.map(function (x) {
                     return '<option value="' + x.id + '">' + esc(x.nome) + "</option>";
                   }).join("") + "</select>" +
-                  '<button type="button" class="ib" data-az="copia">Copia in</button>'
+                  '<button type="button" class="ib" data-az="copia" title="Lascia questa e ne mette una uguale di la\u2019">Copia in</button>' +
+                  '<button type="button" class="ib" data-az="sposta" title="La porta di la\u2019 e la toglie da qui">Sposta in</button>'
                 : '<span class="vt" style="flex:0 0 auto;color:var(--fg-3);font-size:12px">' +
-                  "nessun altro progetto dove copiarla</span>") +
+                  "nessun altro progetto</span>") +
+              '<button type="button" class="ib out" data-az="scarta" title="Togli questa grafica dal progetto">&times;</button>' +
               "</div>";
           }).join("");
         })
@@ -1538,26 +1578,60 @@
       var b = e.target.closest ? e.target.closest("button[data-az]") : null;
       if (!b) return;
 
-      if (b.dataset.az === "copia") {
+      // ── copia / sposta: la grafica va in un altro progetto ──
+      if (b.dataset.az === "copia" || b.dataset.az === "sposta") {
+        var muove = b.dataset.az === "sposta";
         var voce = b.closest(".voce");
         var wrap = b.closest(".progwrap");
         var sel = voce.querySelector(".dove");
-        if (!sel || !sel.value) { msg.textContent = "Scegli prima in quale progetto copiarla."; return; }
+        if (!sel || !sel.value) {
+          msg.textContent = "Scegli prima il progetto di destinazione."; return;
+        }
+        var titolo = voce.querySelector(".vt").firstChild.textContent.trim();
         var dove = sel.options[sel.selectedIndex].textContent;
+        if (muove && !window.confirm('Sposto "' + titolo + '" in "' + dove + '"?\n\n' +
+              "Sparisce da questo progetto. Le scalette gi\u00e0 caricate non si toccano.")) return;
         b.disabled = true;
+        // quando la copio, apro anche il progetto di destinazione: si vede
+        // subito che e' arrivata, senza andarla a cercare
+        APERTI[sel.value] = true;
         fetch(PONTE, {
           method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({ token: TOKEN, tipo: "progetto-copia",
+          body: JSON.stringify({ token: TOKEN, tipo: muove ? "progetto-sposta" : "progetto-copia",
                                  da: wrap.dataset.wrap, pid: voce.dataset.pid, a: sel.value })
         })
           .then(function (r) { return r.json(); })
           .then(function (j) {
             b.disabled = false;
-            if (!j.ok) { msg.textContent = "Non copiata: " + (j.errore || ""); return; }
-            msg.textContent = '"' + j.titolo + '" copiata in "' + j.a + '" (' + j.quante +
-              (j.quante === 1 ? " grafica)." : " grafiche).");
-            sel.value = "";
-            aggiorna();          // i conteggi dell'elenco cambiano
+            if (!j.ok) { msg.textContent = (muove ? "Non spostata: " : "Non copiata: ") + (j.errore || ""); return; }
+            msg.textContent = '"' + j.titolo + (muove ? '" spostata in "' : '" copiata in "') + j.a +
+              '" (' + j.quante + (j.quante === 1 ? " grafica)." : " grafiche).");
+            aggiorna();          // conteggi ed elenchi aperti si rifanno
+          })
+          .catch(function () { b.disabled = false; msg.textContent = "Ponte non raggiungibile."; });
+        return;
+      }
+
+      // ── togliere una grafica dal progetto ──
+      if (b.dataset.az === "scarta") {
+        var voce2 = b.closest(".voce");
+        var wrap2 = b.closest(".progwrap");
+        var tit2 = voce2.querySelector(".vt").firstChild.textContent.trim();
+        if (!window.confirm('Tolgo "' + tit2 + '" dal progetto?\n\n' +
+              "Sparisce dall\u2019archivio. Le scalette gi\u00e0 caricate non si toccano.")) return;
+        b.disabled = true;
+        fetch(PONTE, {
+          method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ token: TOKEN, tipo: "progetto-togli",
+                                 id: wrap2.dataset.wrap, pid: voce2.dataset.pid })
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            b.disabled = false;
+            if (!j.ok) { msg.textContent = "Non tolta: " + (j.errore || ""); return; }
+            msg.textContent = '"' + j.titolo + '" tolta da "' + j.nome + '" (restano ' +
+              j.quante + (j.quante === 1 ? " grafica)." : " grafiche).");
+            aggiorna();
           })
           .catch(function () { b.disabled = false; msg.textContent = "Ponte non raggiungibile."; });
         return;

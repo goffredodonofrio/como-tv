@@ -696,6 +696,28 @@ function progettoDel(p) {
 // Versa il progetto nel canale SOSTITUENDO la scaletta — ma cio' che sta
 // in onda in questo momento non si tocca: resta in scaletta e sui suoi
 // livelli, il resto viene rimpiazzato dalle grafiche del progetto.
+// Toglie UNA grafica da un progetto. Il progetto e' archivio: quello che e'
+// gia' sceso in una scaletta non viene toccato, resta dov'e'.
+function progettoTogli(p) {
+  const pr = progettoDi(p);
+  const prima = pr.items.length;
+  const via = pr.items.find(i => String(i.pid) === String(p.pid));
+  if (!via) throw new Error("grafica non trovata in questo progetto");
+  pr.items = pr.items.filter(i => String(i.pid) !== String(p.pid));
+  salva();
+  return { ok: true, nome: pr.nome, titolo: via.titolo,
+           quante: pr.items.length, tolte: prima - pr.items.length };
+}
+
+// Spostare = copiare di la' e togliere di qua, in un colpo solo: se la copia
+// non riesce, di qua non si tocca niente.
+function progettoSposta(p) {
+  const esito = progettoCopia(p);
+  progettoTogli({ id: p.da, pid: p.pid });
+  return { ok: true, spostata: true, da: esito.da, a: esito.a,
+           titolo: esito.titolo, quante: esito.quante };
+}
+
 function progettoCarica(p) {
   const pr = progettoDi(p);
   if (!pr.items.length) {
@@ -1292,6 +1314,8 @@ function permesso(p, ip) {
           case "progetto-del":      out = progettoDel(p); break;
           case "progetto-carica":   out = progettoCarica(p); break;
           case "progetto-copia":    out = progettoCopia(p); break;
+          case "progetto-togli":    out = progettoTogli(p); break;
+          case "progetto-sposta":   out = progettoSposta(p); break;
           case "partita-set":  out = partitaSet(p); break;
           case "budget-set":   out = budgetSet(p); break;
           case "budget-invia": out = budgetInvia(p); break;
