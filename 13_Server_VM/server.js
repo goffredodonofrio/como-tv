@@ -42,6 +42,18 @@ const CONFIG = {
   // un ponte non ancora configurato continua a funzionare come prima.
   CHIAVE_COMANDO: process.env.COMOTV_CHIAVE_COMANDO || "",
   CHIAVE_CONTRIBUTO: process.env.COMOTV_CHIAVE_CONTRIBUTO || "",
+  // Una password a testa, invece di una sola che gira fra tutti. Si scrive
+  //   COMOTV_CHIAVI="panda:xxxx,marco:yyyy"
+  // Chi lavora da casa se la digita una volta sul suo computer e non deve
+  // piu' chiederla a nessuno; e se un giorno una va tolta, si toglie quella
+  // sola senza cambiare la chiave a tutta la redazione.
+  CHIAVI: String(process.env.COMOTV_CHIAVI || "")
+    .split(",").map(x => x.trim()).filter(Boolean)
+    .map(x => {
+      const i = x.indexOf(":");
+      return i > 0 ? { nome: x.slice(0, i).trim(), chiave: x.slice(i + 1).trim() }
+                   : { nome: "", chiave: x };
+    }).filter(x => x.chiave),
   // Passaggio: con COMOTV_VECCHIO_OK=1 il vecchio token continua a valere,
   // ma SOLO come contributo. Serve nel momento del cambio, quando in giro ci
   // sono ancora pagine aperte con dentro la chiave vecchia: quelle possono
@@ -795,7 +807,10 @@ function logoSalva(p) {
     if (fs.existsSync(vecchio)) fs.unlinkSync(vecchio);
   }
   fs.writeFileSync(path.join(CONFIG.LOGHI, chiave + est), buf);
-  return { ok: true, nome: nome, url: "/loghi/" + chiave + est };
+  // resta scritto chi l'ha caricata, se ha una password sua: quando una foto
+  // cambia e nessuno sa perche', questa riga risponde
+  if (p.__chi) console.log("[foto] " + chiave + est + " caricata da " + p.__chi);
+  return { ok: true, nome: nome, url: "/loghi/" + chiave + est, chi: p.__chi || undefined };
 }
 
 function logoElenco() {
@@ -1195,6 +1210,12 @@ const RETE_CASA = String(process.env.COMOTV_RETE || "")
   .split(",").map(x => x.trim()).filter(Boolean);
 const SENZA_CHIAVE_DA_CASA = new Set(["logo-carica"]);
 
+// Le password personali aprono SOLO il magazzino delle foto. Non sono chiavi
+// di contributo ridotte: chi ne ha una carica le foto e basta, non manda
+// grafiche in scaletta e non tocca la regia. Cosi' darne una a chi lavora da
+// casa non allarga niente di quello che puo' fare.
+const OP_MAGAZZINO = new Set(["logo-carica"]);
+
 function daCasa(ip) {
   if (!RETE_CASA.length || !ip) return false;
   const pulito = String(ip).replace(/^::ffff:/, "").trim();
@@ -1216,11 +1237,20 @@ function permesso(p, ip) {
   if (SENZA_CHIAVE_DA_CASA.has(p.tipo) && daCasa(ip)) return;
   // finche' le chiavi nuove non sono configurate vale il vecchio token:
   // un ponte aggiornato ma non ancora configurato non si pianta
-  if (!K.CHIAVE_COMANDO && !K.CHIAVE_CONTRIBUTO) {
+  if (!K.CHIAVE_COMANDO && !K.CHIAVE_CONTRIBUTO && !K.CHIAVI.length) {
     if (t !== K.TOKEN) throw new Error("token non valido");
     return;
   }
   const comanda = K.CHIAVE_COMANDO && t === K.CHIAVE_COMANDO;
+  const personale = K.CHIAVI.find(x => x.chiave === t);
+  if (personale) {
+    // password personale: vale per il magazzino e per nient'altro
+    if (!OP_MAGAZZINO.has(p.tipo)) {
+      throw new Error("questa password vale solo per caricare le foto in magazzino");
+    }
+    p.__chi = personale.nome || "";
+    return;
+  }
   const contribuisce = (K.CHIAVE_CONTRIBUTO && t === K.CHIAVE_CONTRIBUTO) ||
                        (K.VECCHIO_OK && t === K.TOKEN);
   if (!comanda && !contribuisce) throw new Error("chiave non valida");

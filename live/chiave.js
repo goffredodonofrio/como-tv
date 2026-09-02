@@ -41,22 +41,25 @@
         "Si digita una volta sola su questo dispositivo.";
   }
 
-  function valore(profilo) {
+  // "testo" permette a una pagina di spiegare a modo suo che cosa sta
+  // chiedendo: al magazzino serve una password che apre solo il magazzino,
+  // e chiamarla "chiave delle Grafiche Live" confonderebbe chi ce l'ha.
+  function valore(profilo, testo) {
     profilo = profilo === "comando" ? "comando" : "contributo";
     // in regia vale anche la sola chiave di comando; in una pagina di lavoro
     // va bene tutte e due, cosi' chi sta in regia non ne digita una seconda
     var mia = leggi(DOVE[profilo]);
     if (!mia && profilo === "contributo") mia = leggi(DOVE.comando);
     if (mia) return mia;
-    var v = chiedi(domanda(profilo));
+    var v = chiedi(testo || domanda(profilo));
     if (v) scrivi(DOVE[profilo], v);
     return v;
   }
 
-  function cambia(profilo) {
+  function cambia(profilo, testo) {
     profilo = profilo === "comando" ? "comando" : "contributo";
     var attuale = leggi(DOVE[profilo]);
-    var v = chiedi(domanda(profilo), attuale);
+    var v = chiedi(testo || domanda(profilo), attuale);
     if (v) { scrivi(DOVE[profilo], v); return v; }
     return attuale;
   }
