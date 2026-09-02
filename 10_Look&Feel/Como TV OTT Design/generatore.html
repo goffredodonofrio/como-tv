@@ -978,22 +978,29 @@ var FMT={
  // Solo la fascia alta e' disegnata: il resto del quadro resta TRASPARENTE,
  // cosi' il PNG esportato si appoggia sopra il video in montaggio e il
  // filmato guarda da sotto, come nel riferimento (Welbeck / Carabao Cup).
- feed_maschera_1080x1920:{label:'Feed maschera 9:16',group:'Match',w:1080,h:1920,useComp:true,
+ feed_maschera_1080x1920:{label:'Story maschera 9:16',group:'Match',w:1080,h:1920,useComp:true,
   fields:[{k:'comp',l:'Competizione (testo)'},{k:'mkTitle',l:'Titolo'},{k:'mkSub',l:'Sottotitolo (vuoto = niente)'}],images:[{k:'photo',l:'Foto (o fotogramma dal video)'}],
   gen:function(p,I,A){var W=1080,H=1920,cx=W/2;
    var size=92,L=ytWrap(p.mkTitle,size,-1,950);
    if(L.length>2){size=ytFit(p.mkTitle,92,-1,1860);L=ytWrap(p.mkTitle,size,-1,950);}
    L=L.slice(0,2);
    var step=Math.round(size*1.04);
-   var BH=468+L.length*step;                    // la fascia respira col titolo
+   // La fascia era stata disegnata per un quadro 3:4: alta ~660px su 1440,
+   // copriva il 46% dell'immagine. Portando il quadro a 9:16 la stessa fascia
+   // ne copriva solo il 34% e diventava una strisciolina sopra il video.
+   // Qui torna a valere quel 46%, e il blocco dei testi scende di conseguenza:
+   // altrimenti il navy in piu' resterebbe vuoto sotto il sottotitolo.
+   var BH34=468+L.length*step;                  // la fascia respira col titolo
+   var BH=Math.round(BH34*H/1440);
+   var giu=Math.round((BH-BH34)/2);             // il respiro in piu', diviso sopra e sotto
    var out='<defs><radialGradient id="mkBg" cx="50%" cy="0%" r="130%"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".5" stop-color="#141B3C"/><stop offset="1" stop-color="#0A0F24"/></radialGradient></defs>'
     // lo strato foto/video sta SOTTO la fascia: senza media resta vuoto
     // (niente segnaposto), cosi' l'export tiene la trasparenza
     +(ph(I,'photo')?GPHOTO(W,H,A,I):G('photo',A,''))
     +'<rect width="'+W+'" height="'+BH+'" fill="url(#mkBg)"/>' 
-    +(p.showLogo===false?'':brandMark(A,cx,64,118,true))
-    +G('t-comp',A,T(cx,320,p.comp,{s:34,w:800,fill:C.gold,ls:8,anchor:'middle'}));
-   var ty=424,tx='';L.forEach(function(l,i){tx+=T(cx,ty+i*step,l,{s:size,w:800,fill:C.ivory,ls:-1,anchor:'middle'});});
+    +(p.showLogo===false?'':brandMark(A,cx,64+giu,118,true))
+    +G('t-comp',A,T(cx,320+giu,p.comp,{s:34,w:800,fill:C.gold,ls:8,anchor:'middle'}));
+   var ty=424+giu,tx='';L.forEach(function(l,i){tx+=T(cx,ty+i*step,l,{s:size,w:800,fill:C.ivory,ls:-1,anchor:'middle'});});
    out+=G('t-title',A,tx);
    if(p.mkSub)out+=G('t-sub',A,T(cx,ty+(L.length-1)*step+72,p.mkSub,{s:34,w:400,fill:C.ivory,upper:false,anchor:'middle'}));
    return out;}},
@@ -1358,7 +1365,7 @@ var ITEMS=(function(){var src={};OTTGEN.items().forEach(function(i){src[i.key]=i
  return out;})();
 var BYKEY={};ITEMS.forEach(function(i){BYKEY[i.key]=i;});
 // naming convention export (come richiesto)
-var FNAME={feed_1080x1440:'feed',feed_maschera_1080x1920:'feed-maschera',story_1080x1920:'story',story_video_1080x1920:'story-video',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'YT-Highlights',yt_gol_collection:'YT-gol-collection',yt_inglese_testata:'YT-testata',yt_inglese_editoriale:'YT-editoriale',yt_parole_classico:'YT-parole-classico',yt_parole_split:'YT-parole-split',yt_parole_volto:'YT-parole-volto',yt_citazione_prot:'YT-citazione',yt_vlog_foto:'YT-vlog',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',rp_landscape_1920x1080:'RP-landscape',rp_portrait_1080x1620:'RP-portrait',rp_banner_top_1506x560:'RP-banner-top',rp_banner_mid_1506x412:'RP-banner-mid',int_landscape_1920x1080:'INT-landscape',int_portrait_1200x1800:'INT-portrait',int_banner_top_1920x1080:'INT-banner-top',int_banner_mid_1506x412:'INT-banner-mid',fs_landscape_1920x1080:'FS-landscape',fs_portrait_1080x1620:'FS-portrait',fs_banner_top_1920x1080:'FS-banner-top',fs_banner_mid_1506x412:'FS-banner-mid',competizioni_1200x1800:'competizioni',
+var FNAME={feed_1080x1440:'feed',feed_maschera_1080x1920:'story-maschera',story_1080x1920:'story',story_video_1080x1920:'story-video',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'YT-Highlights',yt_gol_collection:'YT-gol-collection',yt_inglese_testata:'YT-testata',yt_inglese_editoriale:'YT-editoriale',yt_parole_classico:'YT-parole-classico',yt_parole_split:'YT-parole-split',yt_parole_volto:'YT-parole-volto',yt_citazione_prot:'YT-citazione',yt_vlog_foto:'YT-vlog',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',rp_landscape_1920x1080:'RP-landscape',rp_portrait_1080x1620:'RP-portrait',rp_banner_top_1506x560:'RP-banner-top',rp_banner_mid_1506x412:'RP-banner-mid',int_landscape_1920x1080:'INT-landscape',int_portrait_1200x1800:'INT-portrait',int_banner_top_1920x1080:'INT-banner-top',int_banner_mid_1506x412:'INT-banner-mid',fs_landscape_1920x1080:'FS-landscape',fs_portrait_1080x1620:'FS-portrait',fs_banner_top_1920x1080:'FS-banner-top',fs_banner_mid_1506x412:'FS-banner-mid',competizioni_1200x1800:'competizioni',
  fmt_landscape_1920x1080:'FMT-landscape',fmt_portrait_1200x1800:'FMT-portrait',
  fmt_banner_top_1920x1080:'FMT-banner-top',fmt_banner_mid_1506x412:'FMT-banner-mid',format_card_talent:'format-talent',format_card_goleada:'format-goleada',format_card_clasicos:'format-clasicos',format_card_golden:'format-golden'};
 function fname(k){if(/-live$/.test(k)){var b=k.replace(/-live$/,'');return (FNAME[b]||b)+'-live';}return FNAME[k]||k;}
