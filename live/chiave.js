@@ -65,15 +65,34 @@
     try { localStorage.removeItem(DOVE[profilo === "comando" ? "comando" : "contributo"]); } catch (e) {}
   }
 
-  // Da chiamare quando il ponte risponde "chiave non valida": invece di
-  // lasciare l'operatore davanti a un errore muto, gli si richiede la chiave.
+  // Due rifiuti diversi, che non vanno confusi:
+  //
+  //   "chiave non valida"  → la chiave e' sbagliata. Si richiede: riscrivendola
+  //                          bene il lavoro riprende.
+  //   "richiede la chiave di comando"  → la chiave e' giusta, ma quel gesto
+  //                          non spetta a chi lo sta facendo. Richiederla non
+  //                          serve a niente: chi non ce l'ha non ce l'ha, e
+  //                          insistere lo lascerebbe a girare a vuoto. In
+  //                          regia invece ha senso, perche' li' la chiave di
+  //                          comando ci deve stare.
+  function serveComando(errore) {
+    return /richiede la chiave di comando/i.test(String(errore || ""));
+  }
+
   function rifiutata(errore, profilo) {
-    if (!/chiave non valida|token non valido|richiede la chiave/i.test(String(errore || ""))) return false;
-    window.alert("La chiave non e' valida per questa operazione.\n\n" +
-                 "Controlla di averla scritta giusta: te la richiedo adesso.");
+    var e = String(errore || "");
+    var sbagliata = /chiave non valida|token non valido/i.test(e);
+    var manca = serveComando(e) && profilo === "comando";
+    if (!sbagliata && !manca) return false;
+    window.alert(sbagliata
+      ? "La chiave non e' valida per questa operazione.\n\n" +
+        "Controlla di averla scritta giusta: te la richiedo adesso."
+      : "Per questo comando serve la chiave di COMANDO della regia.\n\n" +
+        "Te la chiedo adesso.");
     scorda(profilo);
     return !!cambia(profilo);
   }
 
-  window.ChiaveComoTV = { valore: valore, cambia: cambia, scorda: scorda, rifiutata: rifiutata };
+  window.ChiaveComoTV = { valore: valore, cambia: cambia, scorda: scorda,
+                          rifiutata: rifiutata, serveComando: serveComando };
 })();

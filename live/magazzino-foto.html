@@ -159,6 +159,15 @@
   .vuotomsg{color:var(--fg-3);font-size:13.5px;padding:30px 4px;}
 
   @media(max-width:640px){ .guida .cols{grid-template-columns:1fr;} }
+  /* la via d'uscita quando la chiave e' quella sbagliata: prima l'unico
+     modo era svuotare i dati del browser, e nessuno lo sapeva */
+  #chiavebox{font-size:12.5px;color:var(--fg-3);margin:0 0 14px;
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  #chiavebox button{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:800;
+    letter-spacing:.1em;text-transform:uppercase;padding:7px 12px;border-radius:6px;
+    cursor:pointer;background:rgba(201,162,75,.14);color:var(--gold-bright);
+    border:1px solid var(--line-gold);}
+  #chiavebox button:hover{background:rgba(201,162,75,.26);}
 </style>
 </head>
 <body>
@@ -236,6 +245,10 @@ document.addEventListener("DOMContentLoaded", function () {
   </div>
 
   <div id="stato"></div>
+  <div id="chiavebox">
+    Il caricamento non passa? Quasi sempre è la chiave sbagliata su questo computer.
+    <button type="button" id="btnChiave">Cambia la chiave</button>
+  </div>
   <div id="griglia" class="griglia"></div>
   <div id="vuoto" class="vuotomsg">Scegli una competizione e una squadra per vedere i giocatori.</div>
 
@@ -252,6 +265,25 @@ document.addEventListener("DOMContentLoaded", function () {
 
   var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
   var TOKEN = (window.ChiaveComoTV ? ChiaveComoTV.valore() : "");
+
+  // Se il ponte risponde "chiave non valida" non c'e' niente da fare in
+  // pagina: la chiave va cambiata. Prima l'errore si vedeva e basta, e chi
+  // aveva la chiave sbagliata restava bloccato senza capire perche'.
+  function alPonte(corpo) {
+    function prova() {
+      return fetch(PONTE, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+                            body: JSON.stringify(Object.assign({ token: TOKEN }, corpo)) })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (res && !res.ok && window.ChiaveComoTV && ChiaveComoTV.rifiutata(res.errore, "contributo")) {
+            TOKEN = ChiaveComoTV.valore();
+            return prova();                 // riprovo con quella nuova
+          }
+          return res;
+        });
+    }
+    return prova();
+  }
   var API = "https://site.api.espn.com/apis/site/v2/sports/soccer";
 
   var COMPS = [
@@ -407,6 +439,12 @@ document.addEventListener("DOMContentLoaded", function () {
     el("covTxt").textContent = "giocatori con foto" + (tot&&con<tot ? " — mancano "+(tot-con) : (tot?" — completa ✓":""));
   }
 
+  el("btnChiave").addEventListener("click", function () {
+    if (!window.ChiaveComoTV) return;
+    var nuova = ChiaveComoTV.cambia("contributo");
+    if (nuova) { TOKEN = nuova; stato("ok", "Chiave aggiornata su questo computer. Riprova a caricare."); }
+  });
+
   // ── caricamento ──
   function carica(cognome, file){
     if(!cognome){ stato("err","Scrivi prima il <b>cognome dell'allenatore</b>, poi trascina la foto."); return; }
@@ -416,9 +454,7 @@ document.addEventListener("DOMContentLoaded", function () {
     card.classList.add("busy");
     var rd = new FileReader();
     rd.onload = function(){
-      fetch(PONTE, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
-        body: JSON.stringify({ token:TOKEN, tipo:"logo-carica", nome:nomeFoto(cognome), dati: rd.result }) })
-      .then(function(r){ return r.json(); })
+      alPonte({ tipo:"logo-carica", nome:nomeFoto(cognome), dati: rd.result })
       .then(function(res){
         card.classList.remove("busy");
         if(res && res.ok){ card.classList.add("has"); card.querySelector("img").src = (res.url||urlFoto(cognome))+"?t="+Date.now();
@@ -431,10 +467,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function rimuovi(cognome){
     if(!window.confirm("Tolgo la foto di "+cognome+" dal magazzino?")) return;
-    fetch(PONTE, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body: JSON.stringify({ token:TOKEN, tipo:"logo-togli", nome:nomeFoto(cognome) }) })
-    .then(function(r){ return r.json(); })
-    .then(function(){ var card=el("pc-"+slug(cognome)); if(card){ card.classList.remove("has"); card.querySelector("img").src=""; }
+    alPonte({ tipo:"logo-togli", nome:nomeFoto(cognome) })
+    .then(function(res){
+      if(!res || !res.ok){
+        // Togliere una foto richiede la chiave di comando, che i giornalisti
+        // non hanno. Prima la card si svuotava lo stesso e sembrava fatto,
+        // mentre in magazzino la foto c'era ancora.
+        stato("err","<b>"+esc(cognome)+":</b> "+esc((res&&res.errore)||"errore")+
+          ". La foto <b>non</b> \u00e8 stata tolta: per cancellare serve la chiave di comando della regia.");
+        return;
+      }
+      var card=el("pc-"+slug(cognome)); if(card){ card.classList.remove("has"); card.querySelector("img").src=""; }
       aggiornaCopertura(); stato("","Foto di <b>"+esc(cognome)+"</b> rimossa."); })
     .catch(function(e){ stato("err", esc(e.message)); });
   }

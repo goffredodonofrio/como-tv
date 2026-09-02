@@ -352,7 +352,16 @@
     return fetch(PONTE, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
       body: JSON.stringify(Object.assign({ token: TOKEN }, corpo)) })
       .then(function(r){ return r.json(); })
-      .then(function(j){ if(!j.ok) throw new Error(j.errore||"errore"); return j; });
+      .then(function(j){
+        // chiave sbagliata: si richiede invece di lasciare l'operatore
+        // davanti a un errore che in pagina non si puo' risolvere
+        if(!j.ok && window.ChiaveComoTV && ChiaveComoTV.rifiutata(j.errore, "contributo")){
+          TOKEN = ChiaveComoTV.valore();
+          return post(corpo);
+        }
+        if(!j.ok) throw new Error(j.errore||"errore");
+        return j;
+      });
   }
   function stato(cls, html){ el("status").className = "status" + (cls?" "+cls:""); el("statusMsg").innerHTML = html||""; }
   function statoF(cls, html){ el("statusF").className = "status" + (cls?" "+cls:""); el("statusFMsg").innerHTML = html||""; }

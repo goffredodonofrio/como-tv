@@ -292,21 +292,12 @@
      e il suggerimento spariva: si sbagliava riquadro. */
   ::placeholder{color:var(--ivory);opacity:.5;text-transform:none;
     font-weight:500;letter-spacing:0;}
-  /* il blocco "a mano", gemello di quello ESPN ma in blu acciaio */
-  #manbar{background:linear-gradient(180deg,rgba(94,132,214,.15),rgba(94,132,214,.05));
-    border:1px solid rgba(94,132,214,.42);box-shadow:inset 3px 0 0 rgba(94,132,214,.8);
-    border-radius:10px;padding:12px 14px;margin:0 0 16px;}
-  #manbar .mantitolo{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;
-    letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:8px;}
-  #manbar .mannota{font-size:12.5px;color:var(--fg-3);line-height:1.5;}
-  #manbar .mannota b{color:var(--ivory);}
 </style>
 </head>
 <body>
 
 <script src="nav.js"></script>
 <script src="chiave.js"></script>
-<script src="formazioni-espn.js"></script>
 
 <div class="wrap">
 
@@ -350,17 +341,6 @@
 
   <div class="sotto">
     <div class="colgioco">
-      <!-- il pannello verde-acqua lo costruisce formazioni-espn.js -->
-      <div id="ufbar"></div>
-
-      <div id="manbar">
-        <div class="mantitolo">Anagrafica della partita modalità manuale</div>
-        <div class="mannota">Il pannello sopra riempie solo l'anagrafica della gara:
-          competizione, stadio, nomi, sigle e colori. <b>Punteggio, cronometro,
-          recuperi e cartellini non li tocca nessuno tranne te</b> — quella roba va
-          in onda in diretta e non deve muoversi da sola.</div>
-      </div>
-
       <div class="panel">
         <h2>Player Live Match</h2>
         <div id="fasi"></div>
@@ -1702,63 +1682,6 @@
     })
     .catch(function () {});
   dipingi();
-  // ══ L'ANAGRAFICA DELLA PARTITA DA ESPN ════════════════════════════════
-  // Riempie soltanto le caselle scritte — competizione, stadio, nomi, sigle,
-  // colori — che sono poi quelle che vanno in onda. Punteggio e cronometro
-  // restano fuori di proposito: sono in diretta e li muove solo l'operatore.
-  (function () {
-    var box = el("ufbar");
-    if (!box || !window.PartitaEspn) return;
-    function scrivi(id, v) {
-      var e = el(id);
-      if (!e || v === undefined || v === null || v === "") return 0;
-      e.value = v;
-      e.dispatchEvent(new Event("input", { bubbles: true }));
-      e.dispatchEvent(new Event("change", { bubbles: true }));
-      return 1;
-    }
-    function colore(c) { return c ? "#" + String(c).replace("#", "") : ""; }
-
-    PartitaEspn.pannello(box, {
-      titolo: "Anagrafica della partita con dati ESPN",
-      tasto: "Prendi la partita",
-      prendi: function (d, part, comp, nota) {
-        var h = d.header || {};
-        var c = ((h.competitions || [])[0]) || {};
-        var chi = c.competitors || [];
-        var casa = chi.filter(function (x) { return x.homeAway === "home"; })[0];
-        var fuori = chi.filter(function (x) { return x.homeAway === "away"; })[0];
-        if (!casa || !fuori) {
-          nota("<b>Squadre non leggibili</b> in questa partita: impostala a mano.", "err");
-          return;
-        }
-        var n = 0;
-        var lega = (h.league || {}).name || comp.nome;
-        n += scrivi("campTxt", lega);
-        var v = ((d.gameInfo || {}).venue || {});
-        n += scrivi("stadio", v.fullName || "");
-        [[casa, "nc", "sc", "cc"], [fuori, "no", "so", "co"]].forEach(function (x) {
-          var t = x[0].team || {};
-          n += scrivi(x[1], t.displayName || t.name || "");
-          n += scrivi(x[2], (t.abbreviation || "").toUpperCase());
-          n += scrivi(x[3], colore(t.color));
-        });
-        var pc = casa.score, po = fuori.score;
-        var risultato = (pc !== undefined && po !== undefined) ? (" Su ESPN sta <b>" + pc + " - " + po + "</b>") : "";
-        nota("<b>" + esc((casa.team || {}).displayName) + " - " + esc((fuori.team || {}).displayName) +
-             "</b>: " + n + " caselle riempite (competizione, stadio, nomi, sigle, colori). " +
-             "<b>Punteggio e cronometro restano tuoi.</b>" + risultato +
-             ", ma non lo tocco: mettilo tu quando vuoi.", "ok");
-      }
-    });
-
-    function esc(x) {
-      return String(x == null ? "" : x).replace(/[&<>"']/g, function (ch) {
-        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
-      });
-    }
-  })();
-
   elencoLoghi();
 })();
 </script>
