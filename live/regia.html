@@ -610,12 +610,28 @@
   })();
   var COMANDO = true;          // finche' non si scopre il contrario
 
+  // Il ponte puo' rifiutare per due motivi diversi, e vanno detti diversi:
+  // il canale e' di un altro (si puo' forzare), oppure la chiave non basta
+  // (e allora forzare non serve a niente: va cambiata la chiave).
+  function chiaveRifiutata(res) {
+    if (!res || res.ok || !window.ChiaveComoTV) return false;
+    if (!/chiave|token/i.test(String(res.errore || ""))) return false;
+    var nuova = ChiaveComoTV.rifiutata(res.errore, "comando");
+    if (nuova) TOKEN = ChiaveComoTV.valore("comando");
+    return !!nuova;
+  }
+
   function chiedePresa(forza) {
     return fetch(PONTE, {
       method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ token: TOKEN, c: CANALE, tipo: "regia-presa",
                              sid: SESSIONE, chi: IONOME, forza: !!forza })
-    }).then(function (r) { return r.json(); });
+    }).then(function (r) { return r.json(); })
+      .then(function (res) {
+        // chiave sbagliata: la si richiede e si riprova una volta
+        if (chiaveRifiutata(res)) return chiedePresa(forza);
+        return res;
+      });
   }
 
   function quandoDa(ts) {
@@ -637,11 +653,23 @@
     b.innerHTML = '<span><b>Sola lettura.</b> Il comando di questo canale &egrave; su ' +
       (altro && altro.chi ? esc(altro.chi) : "un altro computer") +
       (altro && altro.dal ? " " + quandoDa(altro.dal) : "") + '.</span>' +
-      '<button type="button" id="prendiComando">Prendi il comando</button>';
+      '<button type="button" id="prendiComando">Prendi il comando</button>' +
+      '<button type="button" id="cambiaChiave" style="background:transparent;border-color:#FFC08A;color:#FFE6C7">Cambia chiave</button>';
+    document.getElementById("cambiaChiave").onclick = function () {
+      if (!window.ChiaveComoTV) return;
+      var v = ChiaveComoTV.cambia("comando");
+      if (!v) return;
+      TOKEN = v;
+      chiedePresa(false).then(function (res) {
+        if (res && res.ok) { segnalaComando(true); msg.textContent = "Comando preso."; }
+        else msg.textContent = "Ancora niente: " + ((res && res.errore) || "chiave rifiutata");
+      });
+    };
     document.getElementById("prendiComando").onclick = function () {
       if (!window.confirm("Il comando passa a questo computer: l'altra console andr\u00e0 in sola lettura.\n\nProcedo?")) return;
       chiedePresa(true).then(function (res) {
-        if (res && res.ok) { segnalaComando(true); msg.textContent = "Comando preso."; }
+        if (res && res.ok) { segnalaComando(true); msg.textContent = "Comando preso."; return; }
+        msg.textContent = "Comando NON preso: " + ((res && res.errore) || "il ponte ha rifiutato");
       });
     };
   }
@@ -649,6 +677,12 @@
   function apriPresa() {
     chiedePresa(false).then(function (res) {
       if (res && res.ok) { segnalaComando(true); return; }
+      if (res && !res.occupato) {
+        // non e' occupato: e' la chiave che non va. Forzare non servirebbe.
+        segnalaComando(false, null);
+        msg.textContent = "Comando non disponibile: " + (res.errore || "chiave non valida");
+        return;
+      }
       // occupato: si decide adesso, non a meta' diretta
       var p = res && res.presa;
       var testo = "Questo canale \u00e8 gi\u00e0 aperto su " + ((p && p.chi) || "un altro computer") +
@@ -1124,6 +1158,7 @@
     })
       .then(function (r) { return r.json(); })
       .then(function (res) {
+        if (chiaveRifiutata(res)) { post(body, okMsg); return; }
         msg.textContent = res.ok ? (okMsg || "") : ("Errore: " + (res.errore || ""));
         lastNonce = null;   // forza il refresh al prossimo giro
         tick();
