@@ -144,24 +144,43 @@
      e il suggerimento spariva: si sbagliava riquadro. */
   ::placeholder{color:var(--ivory);opacity:.5;text-transform:none;
     font-weight:500;letter-spacing:0;}
+  /* il blocco "a mano", gemello di quello ESPN ma in blu acciaio */
+  #manbar{background:linear-gradient(180deg,rgba(94,132,214,.15),rgba(94,132,214,.05));
+    border:1px solid rgba(94,132,214,.42);box-shadow:inset 3px 0 0 rgba(94,132,214,.8);
+    border-radius:10px;padding:12px 14px;margin:0 0 16px;}
+  #manbar .mantitolo{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;
+    letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:8px;}
+  #manbar .mannota{font-size:12.5px;color:var(--fg-3);line-height:1.5;}
+  #manbar .mannota b{color:var(--ivory);}
 </style>
 </head>
 <body>
 
 <script src="nav.js"></script>
+<script src="formazioni-espn.js"></script>
 
 <div class="wrap">
   <header class="page">
     <div class="eyebrow">Como TV · Grafiche Live</div>
     <h1>Focus</h1>
     <div class="sub">Il racconto di un protagonista: nome, numeri, storia e la sua foto grande.
-      Tutto scritto a mano dalla redazione.</div>
+      I numeri di una partita puoi prenderli da ESPN, oppure scrivere tutto a mano.</div>
   </header>
 
   <div class="barra" id="labarra">
     <button id="btnPrev">Anteprima</button>
     <div class="campo" style="margin-left:auto"><label for="canaleSel">Seleziona vMix o progetto</label><select id="canaleSel" style="min-width:0;width:290px;max-width:100%"></select></div>
     <button id="btnRegia">&#128225; Invia alla regia</button>
+  </div>
+
+  <!-- il pannello verde-acqua lo costruisce formazioni-espn.js -->
+  <div id="ufbar"></div>
+
+  <div id="manbar">
+    <div class="mantitolo">Focus del giocatore modalità manuale</div>
+    <div class="mannota">Nome, numeri e racconto sono tuoi. Il pannello sopra serve solo
+      se vuoi partire dai numeri di un giocatore in una partita: sono quelli di
+      <b>quella</b> gara, non della stagione — ESPN la stagione non la dà. Correggili pure.</div>
   </div>
 
   <div id="stato">Compila i campi e premi Anteprima.</div>
@@ -447,6 +466,89 @@
       })
       .catch(function () { stato("err", "Ponte non raggiungibile."); });
   }
+
+  // ══ IL FOCUS DAI NUMERI DELLA PARTITA (dati ESPN) ═════════════════════
+  // ESPN non pubblica i totali di stagione da queste chiamate: quello che si
+  // puo' prendere sono i numeri del giocatore in una singola gara. Utile per
+  // il focus del dopopartita; per tutto il resto si scrive a mano, e comunque
+  // ogni campo riempito qui resta modificabile.
+  (function () {
+    var box = el("ufbar");
+    if (!box || !window.PartitaEspn) return;
+    var GIOCATORI = [];    // [{nome, ruolo, squadra, stat:{}}]
+    // questa pagina non aveva bisogno di ripulire testo per l'HTML: i nomi
+    // dei giocatori finiscono dentro un menu', quindi da qui in poi serve
+    function esc(x) {
+      return String(x == null ? "" : x).replace(/[&<>"']/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+      });
+    }
+
+    PartitaEspn.pannello(box, {
+      titolo: "Numeri del giocatore nella partita con dati ESPN",
+      tasto: "Prendi i giocatori",
+      prendi: function (d, part, comp, nota) {
+        GIOCATORI = [];
+        (d.rosters || []).forEach(function (t) {
+          var squadra = (t.team || {}).displayName || "";
+          (t.roster || []).forEach(function (p) {
+            var at = p.athlete || {};
+            if (!at.displayName || !p.stats || !p.stats.length) return;
+            var m = {};
+            p.stats.forEach(function (x) { m[x.name] = x.displayValue; });
+            GIOCATORI.push({ nome: at.displayName, squadra: squadra,
+                             ruolo: (p.position || {}).abbreviation || "",
+                             num: p.jersey || "", stat: m });
+          });
+        });
+        if (!GIOCATORI.length) {
+          nota("<b>Nessun dato sui giocatori</b> per questa partita: ESPN li pubblica " +
+               "a gara cominciata. Nel frattempo scrivi il focus a mano.", "err");
+          return;
+        }
+        GIOCATORI.sort(function (a, b) {
+          var g = (+b.stat.totalGoals || 0) - (+a.stat.totalGoals || 0);
+          return g || a.nome.localeCompare(b.nome);
+        });
+        el("ufQuale").innerHTML = GIOCATORI.map(function (g, i) {
+          var gol = +g.stat.totalGoals || 0;
+          return '<option value="' + i + '">' + esc((g.num ? g.num + " \u00b7 " : "") + g.nome) +
+                 " \u2014 " + esc(g.squadra) + (gol ? " (" + gol + (gol === 1 ? " gol)" : " gol)") : "") +
+                 "</option>";
+        }).join("");
+        el("ufSceglie").style.display = "flex";
+        riempi(0);
+        nota("<b>" + GIOCATORI.length + " giocatori</b> con statistiche. In cima chi ha segnato. " +
+             "Scegline uno qui sotto: sono i numeri di <b>questa partita</b>, non della stagione.", "ok");
+      }
+    });
+
+    box.insertAdjacentHTML("beforeend",
+      '<div class="ufriga" id="ufSceglie" style="display:none;margin-top:10px">' +
+        '<div class="field" style="flex:1 1 320px;min-width:260px"><label>Quale giocatore</label>' +
+          '<select id="ufQuale"></select></div>' +
+        '<button type="button" id="ufRiempi">&#8681; Rimetti i numeri</button>' +
+      '</div>');
+
+    function riempi(i) {
+      var g = GIOCATORI[i];
+      if (!g) return;
+      var parti = g.nome.split(" ");
+      el("k").value = (parti.length > 1 ? parti.shift() : "").toUpperCase();
+      el("n").value = parti.join(" ") || g.nome;
+      el("s").value = g.squadra.toUpperCase();
+      // il portiere ha numeri suoi: parate e gol subiti, non tiri e assist
+      var tris = g.ruolo === "G"
+        ? [["PARATE", g.stat.saves], ["GOL SUBITI", g.stat.goalsConceded], ["TIRI AFFRONTATI", g.stat.shotsFaced]]
+        : [["GOL", g.stat.totalGoals], ["TIRI", g.stat.totalShots], ["TIRI IN PORTA", g.stat.shotsOnTarget]];
+      tris.forEach(function (t, k) {
+        el("l" + (k + 1)).value = t[0];
+        el("v" + (k + 1)).value = (t[1] === undefined || t[1] === null) ? "" : String(t[1]);
+      });
+    }
+    el("ufQuale").addEventListener("change", function () { riempi(+this.value); });
+    el("ufRiempi").addEventListener("click", function () { riempi(+el("ufQuale").value); });
+  })();
 
   adattaPrev();
 })();

@@ -138,24 +138,42 @@
      e il suggerimento spariva: si sbagliava riquadro. */
   ::placeholder{color:var(--ivory);opacity:.5;text-transform:none;
     font-weight:500;letter-spacing:0;}
+  /* il blocco "a mano", gemello di quello ESPN ma in blu acciaio */
+  #manbar{background:linear-gradient(180deg,rgba(94,132,214,.15),rgba(94,132,214,.05));
+    border:1px solid rgba(94,132,214,.42);box-shadow:inset 3px 0 0 rgba(94,132,214,.8);
+    border-radius:10px;padding:12px 14px;margin:0 0 16px;}
+  #manbar .mantitolo{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;
+    letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:8px;}
+  #manbar .mannota{font-size:12.5px;color:var(--fg-3);line-height:1.5;}
 </style>
 </head>
 <body>
 
 <script src="nav.js"></script>
+<script src="formazioni-espn.js"></script>
 
 <div class="wrap">
   <header class="page">
     <div class="eyebrow">Como TV · Grafiche Live</div>
     <h1>Scheda</h1>
     <div class="sub">La carta d'identità di una squadra o di un avversario: titolo, campi liberi
-      etichetta + valore e la foto grande. Tutto scritto a mano dalla redazione.</div>
+      etichetta + valore e la foto grande. I numeri di classifica puoi prenderli da ESPN, oppure scrivere tutto a mano.</div>
   </header>
 
   <div class="barra" id="labarra">
     <button id="btnPrev">Anteprima</button>
     <div class="campo" style="margin-left:auto"><label for="canaleSel">Seleziona vMix o progetto</label><select id="canaleSel" style="min-width:0;width:290px;max-width:100%"></select></div>
     <button id="btnRegia">&#128225; Invia alla regia</button>
+  </div>
+
+  <!-- il pannello verde-acqua lo costruisce formazioni-espn.js -->
+  <div id="ufbar"></div>
+
+  <div id="manbar">
+    <div class="mantitolo">Scheda squadra modalità manuale</div>
+    <div class="mannota">Titolo, campi e nota qui sotto sono tuoi: scrivili come vuoi.
+      Il pannello sopra serve solo se ti fa comodo partire dai numeri di classifica
+      di una squadra — e anche in quel caso resta tutto correggibile.</div>
   </div>
 
   <div id="stato">Compila i campi e premi Anteprima.</div>
@@ -434,6 +452,106 @@
       })
       .catch(function () { stato("err", "Ponte non raggiungibile."); });
   }
+
+  // ══ LA SCHEDA DALLA CLASSIFICA (dati ESPN) ════════════════════════════
+  // Si sceglie una partita, poi quale delle due squadre: la carta d'identita'
+  // si riempie coi numeri di classifica. Tutto resta scrivibile a mano, e chi
+  // vuole compilare da zero non tocca questo pannello.
+  (function () {
+    var box = el("ufbar");
+    if (!box || !window.PartitaEspn) return;
+    var righeSq = [];            // [{nome, comp, campi:[[eti,val]], nota}]
+
+    PartitaEspn.pannello(box, {
+      titolo: "Scheda squadra dalla classifica con dati ESPN",
+      tasto: "Prendi i numeri",
+      prendi: function (d, part, comp, nota) {
+        var gruppi = ((d.standings || {}).groups) || [];
+        var voci = [];
+        gruppi.forEach(function (g) {
+          ((g.standings || {}).entries || []).forEach(function (e) { voci.push(e); });
+        });
+        if (!voci.length) {
+          nota("<b>Classifica non disponibile</b> per questa competizione: " +
+               "le coppe a eliminazione non ne hanno una. Scrivi la scheda a mano.", "err");
+          return;
+        }
+        // le due squadre di questa partita, come le chiama ESPN
+        var chi = [];
+        (d.rosters || []).forEach(function (t) {
+          var tm = t.team || {};
+          if (tm.displayName) chi.push({ id: tm.id, n: tm.displayName });
+        });
+        if (!chi.length) {
+          ((d.boxscore || {}).teams || []).forEach(function (t) {
+            var tm = t.team || {};
+            if (tm.displayName) chi.push({ id: tm.id, n: tm.displayName });
+          });
+        }
+
+        function numeri(voce) {
+          var m = {};
+          (voce.stats || []).forEach(function (x) { m[x.name] = x.displayValue; });
+          var tris = String(m.overall || "").split("-");   // vittorie-pareggi-sconfitte
+          var campi = [
+            ["POSIZIONE", m.rank || ""],
+            ["PUNTI", m.points || ""],
+            ["PARTITE", m.gamesPlayed || ""],
+            ["VITTORIE", tris[0] !== undefined ? tris[0] : (m.wins || "")],
+            ["PAREGGI", tris[1] !== undefined ? tris[1] : (m.ties || "")],
+            ["DIFFERENZA RETI", m.pointDifferential || ""]
+          ].filter(function (r) { return String(r[1]) !== ""; });
+          return campi;
+        }
+
+        righeSq = chi.map(function (c) {
+          var voce = null;
+          voci.forEach(function (e) {
+            // dentro la classifica ESPN la squadra a volte e' un oggetto e a
+            // volte solo il nome: vanno bene tutte e due
+            var t = e.team;
+            var nome = (typeof t === "string") ? t : ((t && (t.displayName || t.name)) || "");
+            var id = (t && t.id) || e.id || "";
+            if ((id && String(id) === String(c.id)) || (nome && nome === c.n)) voce = e;
+          });
+          return voce ? { nome: c.n, comp: comp.nome, campi: numeri(voce) } : null;
+        }).filter(Boolean);
+
+        if (!righeSq.length) {
+          nota("<b>Le due squadre non sono in questa classifica</b> " +
+               "(succede nelle coppe). Scrivi la scheda a mano.", "err");
+          return;
+        }
+        var sel = el("ufQuale");
+        sel.innerHTML = righeSq.map(function (r, i) {
+          return '<option value="' + i + '">' + esc(r.nome) + "</option>";
+        }).join("");
+        el("ufSceglie").style.display = "flex";
+        riempi(0);
+        nota("<b>" + esc(righeSq[0].nome) + "</b>: scheda compilata dalla classifica di " +
+             esc(comp.nome) + ". Cambia squadra qui sotto se volevi l'altra; " +
+             "etichette e valori si correggono tutti a mano.", "ok");
+      }
+    });
+
+    // la riga in piu': quale delle due squadre
+    box.insertAdjacentHTML("beforeend",
+      '<div class="ufriga" id="ufSceglie" style="display:none;margin-top:10px">' +
+        '<div class="field" style="flex:0 0 auto"><label>Quale squadra</label>' +
+          '<select id="ufQuale" style="width:260px"></select></div>' +
+        '<button type="button" id="ufRiempi">&#8681; Rimetti i numeri</button>' +
+      '</div>');
+
+    function riempi(i) {
+      var r = righeSq[i];
+      if (!r) return;
+      el("n").value = r.nome.toUpperCase();
+      if (!el("s").value.trim()) el("s").value = r.comp.toUpperCase();
+      el("crows").innerHTML = r.campi.map(function (c) { return rigaCampo(c[0], c[1]); }).join("");
+    }
+    el("ufQuale").addEventListener("change", function () { riempi(+this.value); });
+    el("ufRiempi").addEventListener("click", function () { riempi(+el("ufQuale").value); });
+  })();
 
   adattaPrev();
 })();
