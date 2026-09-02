@@ -37,6 +37,17 @@ const CONFIG = {
 
   // parola d'ordine attesa nei comandi (la stessa cablata nelle pagine)
   TOKEN: process.env.COMOTV_TOKEN || "como_tv_grafiche",
+  // DUE LIVELLI, dall'ambiente (mai scritte qui: questo file sta su un repo
+  // pubblico). Vuote = livelli spenti, e vale solo il vecchio TOKEN: cosi'
+  // un ponte non ancora configurato continua a funzionare come prima.
+  CHIAVE_COMANDO: process.env.COMOTV_CHIAVE_COMANDO || "",
+  CHIAVE_CONTRIBUTO: process.env.COMOTV_CHIAVE_CONTRIBUTO || "",
+  // Passaggio: con COMOTV_VECCHIO_OK=1 il vecchio token continua a valere,
+  // ma SOLO come contributo. Serve nel momento del cambio, quando in giro ci
+  // sono ancora pagine aperte con dentro la chiave vecchia: quelle possono
+  // mandare in scaletta, non mandare in onda. Si toglie appena tutti hanno
+  // ricaricato.
+  VECCHIO_OK: process.env.COMOTV_VECCHIO_OK === "1",
 
   // cartella con le pagine (live, assets, index.html…)
   SITO: process.env.COMOTV_SITO || "/var/www/comotv",
@@ -1024,7 +1035,16 @@ const server = http.createServer((req, res) => {
     //   ?take=out&canale=N&token=…   → fuori onda il livello dell'armata (o &liv=L)
     if (q.get("take") != null) {
       const tok = q.get("token") || q.get("t") || "";
-      if (tok !== CONFIG.TOKEN) return json(res, { ok: false, errore: "token non valido" }, 403);
+      // Il tasto fisico manda in onda: vuole la chiave di COMANDO. Durante
+      // il passaggio si accetta ancora il vecchio token, ma lo si annota:
+      // finche' compare in registro, c'e' uno Stream Deck da aggiornare.
+      const okNuova = CONFIG.CHIAVE_COMANDO && tok === CONFIG.CHIAVE_COMANDO;
+      const okVecchia = tok === CONFIG.TOKEN;
+      if (!okNuova && !okVecchia) return json(res, { ok: false, errore: "chiave non valida" }, 403);
+      if (!okNuova && CONFIG.CHIAVE_COMANDO) {
+        console.log("[take] chiave VECCHIA usata da " + (req.socket.remoteAddress || "?") +
+                    " — questo pulsante va aggiornato");
+      }
       const c = canaleDi(q.get("canale") || q.get("c"));
       const ix = regiaDi(c);
       try {
@@ -1062,6 +1082,41 @@ const server = http.createServer((req, res) => {
     return json(res, { ok: true, servizio: "Ponte Como TV", canali: CONFIG.CANALI, versione: 1 });
   }
 
+// ── CHI PUO' FARE COSA ────────────────────────────────────────────────
+// Due livelli soltanto:
+//   CONTRIBUTO  manda roba in scaletta e carica materiale. Lo hanno gli
+//               inviati e i giornalisti, anche da fuori. Quello che arriva
+//               in scaletta NON va in onda da solo.
+//   COMANDO     mette in onda, toglie, cancella, svuota. Solo la regia.
+//               Puo' fare anche tutto quello che puo' il contributo.
+// Leggere non richiede nulla, come prima: il playout dei vMix deve poter
+// leggere sempre, altrimenti va nero.
+const OP_COMANDO = new Set([
+  "regia-state", "regia-del", "regia-svuota", "regia-move", "regia-order",
+  "regia-rename", "regia-liv", "regia-arma", "regia-megafono",
+  "regia-presa", "regia-battito", "regia-molla",
+  "progetto-del", "progetto-carica",
+  "logo-togli", "video-togli", "video-nas"
+]);
+
+function permesso(p) {
+  const K = CONFIG;
+  const t = String(p.token || "");
+  // finche' le chiavi nuove non sono configurate vale il vecchio token:
+  // un ponte aggiornato ma non ancora configurato non si pianta
+  if (!K.CHIAVE_COMANDO && !K.CHIAVE_CONTRIBUTO) {
+    if (t !== K.TOKEN) throw new Error("token non valido");
+    return;
+  }
+  const comanda = K.CHIAVE_COMANDO && t === K.CHIAVE_COMANDO;
+  const contribuisce = (K.CHIAVE_CONTRIBUTO && t === K.CHIAVE_CONTRIBUTO) ||
+                       (K.VECCHIO_OK && t === K.TOKEN);
+  if (!comanda && !contribuisce) throw new Error("chiave non valida");
+  if (OP_COMANDO.has(p.tipo) && !comanda) {
+    throw new Error("questa operazione richiede la chiave di comando della regia");
+  }
+}
+
   // ── comandi ──
   if (req.method === "POST" && (u.pathname === "/api" || u.pathname === "/exec")) {
     let corpo = "";
@@ -1073,7 +1128,7 @@ const server = http.createServer((req, res) => {
       let p, out;
       try { p = JSON.parse(corpo); } catch (err) { return json(res, { ok: false, errore: "richiesta illeggibile" }); }
       try {
-        if (p.token !== CONFIG.TOKEN) throw new Error("token non valido");
+        permesso(p);
         switch (p.tipo) {
           case "regia-load":   out = regiaLoad(p); break;
           case "regia-state":  out = regiaState(p); break;
