@@ -7,7 +7,10 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -c 'cd /var/www/comotv && git fetch -q origin main && if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then echo "novita su GitHub: aggiorno"; /usr/local/bin/comotv-aggiorna; else echo "niente di nuovo"; fi'
+# GitHub ogni tanto rifiuta la richiesta senza credenziali e git muore: se
+# succede proprio nel giro in cui c'era il push, le pagine restano vecchie e
+# nessuno se ne accorge. Si riprova tre volte prima di rimandare al giro dopo.
+ExecStart=/bin/bash -c 'cd /var/www/comotv || exit 0; ok=0; for a in 0 4 10; do [ $a -gt 0 ] && sleep $a; if git fetch -q origin main 2>/dev/null; then ok=1; break; fi; done; if [ $ok -eq 0 ]; then echo "GitHub non risponde: riprovo al prossimo giro"; exit 0; fi; if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then echo "novita su GitHub: aggiorno"; /usr/local/bin/comotv-aggiorna; else echo "niente di nuovo"; fi'
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=comotv-sync
