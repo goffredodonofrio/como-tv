@@ -636,8 +636,42 @@ function progettoElenco() {
 
 function progettoLeggi(p) {
   const pr = progettoDi(p);
+  // i progetti vecchi non hanno il segno di riconoscimento: glielo do qui,
+  // cosi' anche loro si possono copiare voce per voce
+  let daSalvare = false;
+  for (const i of pr.items) { if (!i.pid) { i.pid = nuovoId(); daSalvare = true; } }
+  if (daSalvare) salva();
   return { ok: true, nome: pr.nome,
-           items: pr.items.map(i => ({ tipo: i.tipo, titolo: i.titolo, liv: i.liv })) };
+           items: pr.items.map(i => ({ pid: i.pid, tipo: i.tipo, titolo: i.titolo, liv: i.liv })) };
+}
+
+// Copia UNA grafica da un progetto a un altro. Serve a non rifare due volte
+// lo stesso lavoro: la formazione preparata per il pre-partita finisce anche
+// nel progetto del post, senza ricompilarla.
+function progettoCopia(p) {
+  const da = S.progetti[String(p.da || "")];
+  const a = S.progetti[String(p.a || "")];
+  if (!da) throw new Error("progetto di partenza inesistente");
+  if (!a) throw new Error("progetto di destinazione inesistente");
+  if (String(p.da) === String(p.a)) throw new Error("\u00e8 lo stesso progetto");
+  if (a.items.length >= CONFIG.MAX_SCALETTA) {
+    throw new Error('"' + a.nome + '" \u00e8 pieno (' + CONFIG.MAX_SCALETTA + " grafiche)");
+  }
+  const it = da.items.find(i => String(i.pid) === String(p.pid));
+  if (!it) throw new Error("grafica non trovata nel progetto di partenza");
+
+  // titoli mai uguali dentro lo stesso progetto
+  let titolo = it.titolo, n = 2;
+  while (a.items.some(i => i.titolo === titolo)) { titolo = it.titolo + " (" + n + ")"; n++; }
+
+  a.items.push({
+    pid: nuovoId(),              // nel progetto nuovo e' una grafica sua
+    tipo: it.tipo, titolo: titolo, liv: it.liv || 1,
+    dati: JSON.parse(JSON.stringify(it.dati || {})),   // copia staccata: toccarne una non tocca l'altra
+    ts: Date.now()
+  });
+  salva();
+  return { ok: true, da: da.nome, a: a.nome, titolo: titolo, quante: a.items.length };
 }
 
 function progettoDel(p) {
@@ -1151,6 +1185,22 @@ const server = http.createServer((req, res) => {
 //               Puo' fare anche tutto quello che puo' il contributo.
 // Leggere non richiede nulla, come prima: il playout dei vMix deve poter
 // leggere sempre, altrimenti va nero.
+// ── DA CASA NOSTRA NIENTE CHIAVE ──────────────────────────────────────
+// Il magazzino sta su un indirizzo pubblico e /api risponde a chiunque: la
+// chiave e' l'unica cosa che impedisce a un estraneo di sovrascrivere le foto
+// che poi vanno in onda. Toglierla del tutto aprirebbe il magazzino al mondo.
+// Cosi' invece dalla rete Como TV (da dove escono i vMix e la redazione) il
+// caricamento non chiede niente, e da fuori la chiave serve come prima.
+const RETE_CASA = String(process.env.COMOTV_RETE || "")
+  .split(",").map(x => x.trim()).filter(Boolean);
+const SENZA_CHIAVE_DA_CASA = new Set(["logo-carica"]);
+
+function daCasa(ip) {
+  if (!RETE_CASA.length || !ip) return false;
+  const pulito = String(ip).replace(/^::ffff:/, "").trim();
+  return RETE_CASA.indexOf(pulito) >= 0;
+}
+
 const OP_COMANDO = new Set([
   "regia-state", "regia-del", "regia-svuota", "regia-move", "regia-order",
   "regia-rename", "regia-liv", "regia-arma", "regia-megafono",
@@ -1159,9 +1209,11 @@ const OP_COMANDO = new Set([
   "logo-togli", "video-togli", "video-nas"
 ]);
 
-function permesso(p) {
+function permesso(p, ip) {
   const K = CONFIG;
   const t = String(p.token || "");
+  // dalla redazione il caricamento delle foto passa senza chiave
+  if (SENZA_CHIAVE_DA_CASA.has(p.tipo) && daCasa(ip)) return;
   // finche' le chiavi nuove non sono configurate vale il vecchio token:
   // un ponte aggiornato ma non ancora configurato non si pianta
   if (!K.CHIAVE_COMANDO && !K.CHIAVE_CONTRIBUTO) {
@@ -1188,7 +1240,7 @@ function permesso(p) {
       let p, out;
       try { p = JSON.parse(corpo); } catch (err) { return json(res, { ok: false, errore: "richiesta illeggibile" }); }
       try {
-        permesso(p);
+        permesso(p, req.headers["x-real-ip"] || req.socket.remoteAddress);
         switch (p.tipo) {
           case "regia-load":   out = regiaLoad(p); break;
           case "regia-state":  out = regiaState(p); break;
@@ -1209,6 +1261,7 @@ function permesso(p) {
           case "progetto-leggi":    out = progettoLeggi(p); break;
           case "progetto-del":      out = progettoDel(p); break;
           case "progetto-carica":   out = progettoCarica(p); break;
+          case "progetto-copia":    out = progettoCopia(p); break;
           case "partita-set":  out = partitaSet(p); break;
           case "budget-set":   out = budgetSet(p); break;
           case "budget-invia": out = budgetInvia(p); break;

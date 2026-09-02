@@ -139,6 +139,22 @@
   .prog .tit{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
     font-size:14.5px;color:var(--ivory);}
   .prog .tit small{display:block;font-size:11px;color:var(--fg-3);}
+  /* il progetto si apre e mostra che cosa contiene: da qui una grafica si
+     copia in un altro progetto, senza doverla rifare */
+  .progwrap{margin-bottom:8px;}
+  .progwrap .prog{margin-bottom:0;}
+  .dentro{border:1px solid var(--line-2);border-top:0;border-radius:0 0 8px 8px;
+    background:rgba(245,241,230,.02);padding:6px 10px 10px;}
+  .voce{display:flex;align-items:center;gap:10px;padding:7px 4px;font-size:13.5px;
+    color:var(--ivory-dim);border-top:1px solid rgba(245,241,230,.05);}
+  .voce:first-child{border-top:0;}
+  .voce .vt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .voce .vt em{font-style:normal;color:var(--fg-3);font-size:11px;margin-left:8px;}
+  .voce select{font-family:'DM Sans',system-ui,sans-serif;font-size:12.5px;padding:6px 8px;
+    border-radius:6px;background:rgba(245,241,230,.06);color:var(--ivory);
+    border:1px solid rgba(245,241,230,.16);max-width:230px;}
+  .voce .ib{flex:0 0 auto;}
+  .dentro .vuoto{font-size:12.5px;color:var(--fg-3);padding:6px 4px;}
 
   /* monitor ANTEPRIMA (PVW, cornice oro) e IN ONDA (PGM, cornice rossa) */
   #pvwbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px;
@@ -1409,6 +1425,8 @@
     var vuoto = document.getElementById("progvuoto");
     document.getElementById("progChiudi").addEventListener("click", function () { dlg.style.display = "none"; });
 
+    var TUTTI = [];      // l'elenco, per sapere dove si puo' copiare
+
     function dipingi(pr) {
       vuoto.style.display = pr.length ? "none" : "block";
       conta.textContent = pr.length || "";
@@ -1416,7 +1434,11 @@
       pr.forEach(function (x) {
         var d = x.creato ? new Date(x.creato) : null;
         var quando = d ? d.toLocaleDateString("it-IT", { day: "numeric", month: "short" }) : "";
-        h += '<div class="prog" data-id="' + x.id + '" data-nome="' + esc(x.nome) + '">' +
+        h += '<div class="progwrap" data-wrap="' + x.id + '">' +
+          '<div class="prog" data-id="' + x.id + '" data-nome="' + esc(x.nome) + '">' +
+          (x.quante
+            ? '<button type="button" class="ib" data-az="dentro" title="Vedi che cosa contiene">&#9662;</button>'
+            : '') +
           '<div class="tit">&#128193; ' + esc(x.nome) +
             '<small>' + (x.quante ? x.quante + (x.quante === 1 ? " grafica" : " grafiche") : "vuoto: mandagli le grafiche dalle loro pagine") +
             (quando ? " &middot; creato il " + quando : "") + '</small></div>' +
@@ -1430,8 +1452,11 @@
                 : '<button type="button" class="ib play" data-az="carica">&#9654; Carica qui</button>')
             : '<button type="button" class="ib" disabled style="opacity:.4;cursor:default">vuoto</button>') +
           '<button type="button" class="ib out" data-az="elimina">Elimina</button>' +
+          '</div>' +
+          '<div class="dentro" data-dentro="' + x.id + '" style="display:none"></div>' +
           '</div>';
       });
+      TUTTI = pr;
       lista.innerHTML = h;
     }
 
@@ -1470,11 +1495,78 @@
         .catch(function () {});   // senza elenco il pannello resta com'e'
     }
 
+    // ── che cosa c'e' dentro un progetto, e da qui la copia ─────────────
+    function apri(id, tasto) {
+      var dentro = lista.querySelector('[data-dentro="' + id + '"]');
+      if (!dentro) return;
+      if (dentro.style.display !== "none") {          // era aperto: si chiude
+        dentro.style.display = "none";
+        if (tasto) tasto.innerHTML = "&#9662;";
+        return;
+      }
+      dentro.style.display = "block";
+      if (tasto) tasto.innerHTML = "&#9652;";
+      dentro.innerHTML = '<div class="vuoto">Leggo il progetto&hellip;</div>';
+      fetch(PONTE, {
+        method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ token: TOKEN, tipo: "progetto-leggi", id: id })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (!j.ok) { dentro.innerHTML = '<div class="vuoto">' + esc(j.errore || "errore") + "</div>"; return; }
+          var altri = TUTTI.filter(function (x) { return String(x.id) !== String(id); });
+          if (!j.items.length) { dentro.innerHTML = '<div class="vuoto">Nessuna grafica.</div>'; return; }
+          dentro.innerHTML = j.items.map(function (it) {
+            return '<div class="voce" data-pid="' + esc(it.pid) + '">' +
+              '<span class="vt">' + esc(it.titolo) + '<em>' + esc(it.tipo) +
+                ' &middot; livello ' + (it.liv || 1) + '</em></span>' +
+              (altri.length
+                ? '<select class="dove"><option value="">&mdash; copia in&hellip; &mdash;</option>' +
+                  altri.map(function (x) {
+                    return '<option value="' + x.id + '">' + esc(x.nome) + "</option>";
+                  }).join("") + "</select>" +
+                  '<button type="button" class="ib" data-az="copia">Copia in</button>'
+                : '<span class="vt" style="flex:0 0 auto;color:var(--fg-3);font-size:12px">' +
+                  "nessun altro progetto dove copiarla</span>") +
+              "</div>";
+          }).join("");
+        })
+        .catch(function () { dentro.innerHTML = '<div class="vuoto">Ponte non raggiungibile.</div>'; });
+    }
+
     lista.addEventListener("click", function (e) {
       var b = e.target.closest ? e.target.closest("button[data-az]") : null;
       if (!b) return;
+
+      if (b.dataset.az === "copia") {
+        var voce = b.closest(".voce");
+        var wrap = b.closest(".progwrap");
+        var sel = voce.querySelector(".dove");
+        if (!sel || !sel.value) { msg.textContent = "Scegli prima in quale progetto copiarla."; return; }
+        var dove = sel.options[sel.selectedIndex].textContent;
+        b.disabled = true;
+        fetch(PONTE, {
+          method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ token: TOKEN, tipo: "progetto-copia",
+                                 da: wrap.dataset.wrap, pid: voce.dataset.pid, a: sel.value })
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            b.disabled = false;
+            if (!j.ok) { msg.textContent = "Non copiata: " + (j.errore || ""); return; }
+            msg.textContent = '"' + j.titolo + '" copiata in "' + j.a + '" (' + j.quante +
+              (j.quante === 1 ? " grafica)." : " grafiche).");
+            sel.value = "";
+            aggiorna();          // i conteggi dell'elenco cambiano
+          })
+          .catch(function () { b.disabled = false; msg.textContent = "Ponte non raggiungibile."; });
+        return;
+      }
+
       var box = b.closest(".prog");
+      if (!box) return;
       var id = box.dataset.id, nome = box.dataset.nome;
+      if (b.dataset.az === "dentro") { apri(id, b); return; }
       if (b.dataset.az === "carica") {
         var stesso = String(id) === String(cur.prog || "");
         var domanda = stesso
