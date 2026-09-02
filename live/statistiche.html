@@ -99,6 +99,18 @@
   .barra .campo select{padding:8px 9px;font-size:13px;}
   .barra .sep{width:1px;align-self:stretch;background:var(--line-2);margin:0 3px;}
   .barra button.attivo{background:var(--gold);color:#0A0F24;border-color:var(--gold);}
+  /* il blocco "a mano", gemello di quello ESPN ma in blu acciaio: si deve
+     capire a colpo d'occhio che cosa arriva da fuori e che cosa scrivi tu */
+  #manbar{background:linear-gradient(180deg,rgba(94,132,214,.15),rgba(94,132,214,.05));
+    border:1px solid rgba(94,132,214,.42);box-shadow:inset 3px 0 0 rgba(94,132,214,.8);
+    border-radius:10px;padding:12px 14px;margin:0 0 16px;}
+  #manbar .mantitolo{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;
+    letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:10px;}
+  #manbar .manriga{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;}
+  #manbar .mannota{flex:1 1 260px;font-size:12.5px;color:var(--fg-3);line-height:1.5;}
+  #manbar .campo{display:flex;flex-direction:column;gap:5px;min-width:0;}
+  #manbar label{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
+    letter-spacing:.18em;text-transform:uppercase;color:var(--gold);}
   #espnStato{font-size:13px;color:var(--fg-3);margin-bottom:16px;padding:0 4px;min-height:20px;}
   #espnStato .ok{color:var(--ok);} #espnStato .err{color:#FF6B6E;}
 
@@ -171,6 +183,7 @@
 <body>
 
 <script src="nav.js"></script>
+<script src="formazioni-espn.js"></script>
 
 <div class="wrap">
   <header class="page">
@@ -190,14 +203,25 @@
       </div>
     </div>
     <div class="sep"></div>
-    <div class="campo"><label for="compEspn">Squadre da</label><select id="compEspn" style="max-width:190px"></select></div>
-    <button class="carica" id="btnEspn">Carica</button>
-    <div class="sep"></div>
     <button id="btnPrev">Anteprima</button>
     <div class="campo" style="margin-left:auto"><label for="canaleSel">Seleziona vMix o progetto</label><select id="canaleSel" style="min-width:0;width:290px;max-width:100%"></select></div>
     <button id="btnRegia">&#128225; Invia alla regia</button>
   </div>
-  <div id="espnStato">Scegli una competizione e premi Carica: squadre e rose entrano nei menù.</div>
+  <!-- il pannello verde-acqua lo costruisce formazioni-espn.js -->
+  <div id="ufbar"></div>
+
+  <div id="manbar">
+    <div class="mantitolo">Statistiche scritte a mano</div>
+    <div class="manriga">
+      <div class="campo"><label for="compEspn">Squadre da</label>
+        <select id="compEspn" style="width:230px"></select></div>
+      <button class="carica" id="btnEspn">Carica squadre e rose</button>
+      <div class="mannota">Serve solo a riempire i menù di squadre e giocatori qui sotto:
+        i numeri li scrivi tu. Nessun dato di partita viene toccato.</div>
+    </div>
+    <div id="espnStato"></div>
+  </div>
+
   <div id="stato">Compila i campi e premi Anteprima.</div>
   <div id="prevwrap" style="display:none;margin:14px 0 20px">
     <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
@@ -801,6 +825,176 @@
   el("tabSq").addEventListener("click", function () { mostra("sq"); });
   el("tabDu").addEventListener("click", function () { mostra("du"); });
   el("tabGi").addEventListener("click", function () { mostra("gi"); });
+
+  // ══ I DATI DELLA PARTITA DA ESPN ══════════════════════════════════════
+  // Riempie quello che ESPN sa e basta: etichette e valori restano campi di
+  // testo normali, si correggono tutti a mano e si possono aggiungere righe.
+  // Chi vuole fare tutto da se' semplicemente non tocca questo pannello.
+
+  // le sei voci del confronto squadra: nome ESPN, etichetta nostra, formato
+  var VOCI_SQ = [
+    ["possessionPct",  "Possesso %",          "pct"],
+    ["totalShots",     "Tiri",                "num"],
+    ["shotsOnTarget",  "Tiri in porta",       "num"],
+    ["wonCorners",     "Calci d'angolo",      "num"],
+    ["foulsCommitted", "Falli",               "num"],
+    ["passPct",        "Passaggi riusciti %", "fraz"]
+  ];
+  // per il duello e la scheda: i numeri di QUEL giocatore in QUELLA partita
+  var VOCI_GIO = [
+    ["totalGoals",     "Gol"],
+    ["goalAssists",    "Assist"],
+    ["totalShots",     "Tiri"],
+    ["shotsOnTarget",  "Tiri in porta"],
+    ["foulsSuffered",  "Falli subiti"],
+    ["yellowCards",    "Ammonizioni"]
+  ];
+  var VOCI_PORT = [
+    ["saves",          "Parate"],
+    ["goalsConceded",  "Gol subiti"],
+    ["shotsFaced",     "Tiri affrontati"],
+    ["foulsCommitted", "Falli"],
+    ["yellowCards",    "Ammonizioni"]
+  ];
+
+  var STAT_GIO = {};        // "id giocatore" -> {nome: valore}
+  var PORTIERE = {};        // chi para, per dargli le voci giuste
+
+  function valore(v, formato) {
+    if (v === undefined || v === null || v === "") return "";
+    if (formato === "fraz") {                 // ESPN scrive 0.8 per l'80%
+      var n = parseFloat(v);
+      return isNaN(n) ? String(v) : Math.round(n * 100) + "%";
+    }
+    if (formato === "pct") {
+      var p = parseFloat(v);
+      return isNaN(p) ? String(v) : (Math.round(p * 10) / 10) + "%";
+    }
+    return String(v);
+  }
+  function mappaStat(lista) {
+    var m = {};
+    (lista || []).forEach(function (x) { m[x.name] = x.displayValue; });
+    return m;
+  }
+  function scriviRighe(righe) {
+    el("strows").innerHTML = righe.map(function (r) { return rigaStat(r[0], r[1], r[2]); }).join("");
+  }
+
+  function pannelloEspn() {
+    var box = el("ufbar");
+    if (!box || !window.PartitaEspn) return;
+    PartitaEspn.pannello(box, {
+      titolo: "Statistiche della partita con dati ESPN",
+      tasto: "Prendi le statistiche",
+      prendi: function (d, part, comp, nota) {
+        var sq = ((d.boxscore || {}).teams) || [];
+        if (sq.length < 2) {
+          nota("<b>Statistiche non ancora disponibili</b> per questa partita: " +
+               "ESPN le pubblica a partita cominciata. Nel frattempo si scrive tutto a mano.", "err");
+          return;
+        }
+        var casa = sq.filter(function (t) { return t.homeAway === "home"; })[0] || sq[0];
+        var fuori = sq.filter(function (t) { return t.homeAway === "away"; })[0] || sq[1];
+
+        // le rose della partita entrano nei menu' come se avessi premuto
+        // "Carica squadre e rose": cosi' i giocatori si scelgono dall'elenco
+        SQUADRE = []; STAT_GIO = {}; PORTIERE = {};
+        (d.rosters || []).forEach(function (t) {
+          var tm = t.team || {};
+          if (tm.id) SQUADRE.push({ id: tm.id, n: tm.displayName || tm.name || "",
+            l: (window.Scavalco && Scavalco.url(tm.displayName || tm.name)) ||
+               "https://a.espncdn.com/i/teamlogos/soccer/500/" + tm.id + ".png" });
+          var rosa = [];
+          (t.roster || []).forEach(function (p) {
+            var at = p.athlete || {};
+            var nome = at.displayName || at.fullName || "";
+            if (!nome) return;
+            rosa.push({ n: nome, num: p.jersey || at.jersey || "",
+                        ruolo: (p.position || {}).abbreviation || "" });
+            if (p.stats && p.stats.length) {
+              STAT_GIO[nome] = mappaStat(p.stats);
+              PORTIERE[nome] = ((p.position || {}).abbreviation || "") === "G";
+            }
+          });
+          if (tm.id) ROSE[tm.id] = rosa;
+        });
+        SQUADRE.sort(function (a, b) { return a.n.localeCompare(b.n); });
+        riempiMenuSquadre();
+
+        if (MODO === "sq") {
+          var mc = mappaStat(casa.statistics), mf = mappaStat(fuori.statistics);
+          function nomeDi(t) { var x = t.team || {}; return x.displayName || x.name || ""; }
+          function logoDi(t) {
+            var x = t.team || {};
+            return (window.Scavalco && Scavalco.url(nomeDi(t))) ||
+                   "https://a.espncdn.com/i/teamlogos/soccer/500/" + x.id + ".png";
+          }
+          var an = el("an"), bn = el("bn");
+          an.value = nomeDi(casa); an.dataset.logo = logoDi(casa);
+          bn.value = nomeDi(fuori); bn.dataset.logo = logoDi(fuori);
+          // i colori societari, se ESPN li ha: restano modificabili
+          var ca = (casa.team || {}).color, cb = (fuori.team || {}).color;
+          if (ca && el("ac")) el("ac").value = "#" + String(ca).replace("#", "");
+          if (cb && el("bc")) el("bc").value = "#" + String(cb).replace("#", "");
+          if (!el("occhiello").value.trim()) el("occhiello").value = comp.nome;
+
+          var quante = 0;
+          scriviRighe(VOCI_SQ.map(function (v) {
+            var a = valore(mc[v[0]], v[2]), b = valore(mf[v[0]], v[2]);
+            if (a !== "" || b !== "") quante++;
+            return [v[1], a, b];
+          }));
+          nota("<b>" + esc(nomeDi(casa)) + " - " + esc(nomeDi(fuori)) + ":</b> " + quante +
+               " statistiche caricate. Sono tutte modificabili qui sotto, e con " +
+               "<b>+ Aggiungi riga</b> ne metti altre a mano.", "ok");
+          return;
+        }
+
+        // duello e scheda: i menu' sono pronti, i numeri arrivano quando
+        // scegli il giocatore (o subito, se ne avevi gia' uno scelto)
+        var fatte = riempiDaGiocatori();
+        nota("<b>Rose della partita caricate</b> (" + Object.keys(STAT_GIO).length +
+             " giocatori con statistiche). Scegli la squadra e il giocatore qui sotto: " +
+             "i numeri di questa partita entrano da soli." +
+             (fatte ? " Righe compilate per chi era gi\u00e0 scelto." : ""), "ok");
+      }
+    });
+  }
+
+  // riempie le righe coi numeri dei giocatori scelti nei menu'
+  function riempiDaGiocatori() {
+    if (MODO === "sq") return false;
+    // il menu' dei giocatori porta l'indice nella rosa, non il nome: il nome
+    // va ripescato di li', altrimenti non si trova mai la statistica
+    function scelto(pre) {
+      var g = el(pre + "gio");
+      if (g && g.value !== "" && g.dataset.team) {
+        var r = (ROSE[g.dataset.team] || [])[+g.value];
+        if (r && r.n) return r.n;
+      }
+      var n = el(pre + "n");
+      return n ? n.value.trim() : "";
+    }
+    var na = scelto("a");
+    var nb = MODO === "du" ? scelto("b") : "";
+    var sa = STAT_GIO[na], sb = STAT_GIO[nb];
+    if (!sa && !sb) return false;
+    var voci = PORTIERE[na] || PORTIERE[nb] ? VOCI_PORT : VOCI_GIO;
+    scriviRighe(voci.map(function (v) {
+      return [v[1], sa ? (sa[v[0]] || "0") : "", MODO === "du" ? (sb ? (sb[v[0]] || "0") : "") : undefined];
+    }));
+    return true;
+  }
+  // quando cambio giocatore, se ho i dati della partita li riporto
+  document.addEventListener("change", function (e) {
+    var t = e.target;
+    if (/^(a|b)gio$/.test(t.id || "") && Object.keys(STAT_GIO).length) {
+      setTimeout(riempiDaGiocatori, 0);
+    }
+  });
+
+  pannelloEspn();
 
   // arrivando dall'indice si apre direttamente la modalita' chiesta
   var m0 = new URLSearchParams(location.search).get("modo");
