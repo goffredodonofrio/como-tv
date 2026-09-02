@@ -100,6 +100,8 @@
 
   /* righe etichetta + valore, libere */
   .crow{display:flex;gap:10px;margin-bottom:8px;align-items:center;}
+  .etipair{flex:1;display:flex;gap:6px;min-width:0;}
+  .etipair > *{flex:1;min-width:0;}
   .crow input.eti{flex:1;}
   .crow input.val{flex:2;}
   .crow .via{flex:0 0 auto;padding:9px 13px;color:#FF6B6E;border-color:rgba(229,27,32,.4);}
@@ -266,35 +268,55 @@
   ];
   var NUMERI_SQ = null;      // la riga di classifica della squadra scelta
 
+  function opzioniVoci(scelta) {
+    var h = '<option value="">\u2014 scegli una voce \u2014</option>';
+    VOCI_CLASSIFICA.forEach(function (v) {
+      h += '<option value="' + esc(v[1]) + '"' +
+           (scelta && scelta === v[1] ? " selected" : "") + ">" + esc(v[1]) + "</option>";
+    });
+    return h;
+  }
+
   function rigaCampo(eti, val) {
     return '<div class="crow">' +
-      '<input type="text" class="eti" list="vocilist" placeholder="etichetta \u2014 scrivi o scegli" ' +
-        'value="' + esc(eti || "") + '">' +
+      // Menu' e campo: il menu' e' un aiuto, quello che va in onda e' il
+      // testo scritto accanto. Le voci di classifica portano anche il numero.
+      '<div class="etipair">' +
+        '<select class="etisel">' + opzioniVoci(eti) + '</select>' +
+        '<input type="text" class="eti" placeholder="oppure scrivila tu" value="' + esc(eti || "") + '">' +
+      '</div>' +
       '<input type="text" class="val" placeholder="valore" value="' + esc(val || "") + '">' +
       '<button type="button" class="via" title="Togli la riga">&times;</button></div>';
   }
-  (function () {
-    var dl = document.createElement("datalist");
-    dl.id = "vocilist";
-    dl.innerHTML = VOCI_CLASSIFICA.map(function (v) {
-      return '<option value="' + esc(v[1]) + '"></option>';
-    }).join("");
-    document.body.appendChild(dl);
-  })();
-  // scritta un'etichetta che la classifica conosce, il valore arriva da se'
-  document.addEventListener("change", function (e) {
-    if (!e.target.classList || !e.target.classList.contains("eti") || !NUMERI_SQ) return;
-    var riga = e.target.closest(".crow");
-    if (!riga) return;
-    var eti = (e.target.value || "").trim().toLowerCase();
+  // scelta o scritta una voce che la classifica conosce, il valore arriva
+  function valorePerEtichetta(riga) {
+    if (!NUMERI_SQ || !riga) return;
+    var eti = (riga.querySelector(".eti").value || "").trim().toLowerCase();
     VOCI_CLASSIFICA.forEach(function (v) {
       if (v[1].toLowerCase() === eti && NUMERI_SQ[v[0]] !== undefined) {
         riga.querySelector(".val").value = NUMERI_SQ[v[0]];
       }
     });
+  }
+  document.addEventListener("change", function (e) {
+    var t = e.target;
+    if (!t.classList) return;
+    if (t.classList.contains("etisel")) {
+      var r1 = t.closest(".crow");
+      if (r1 && t.value) { r1.querySelector(".eti").value = t.value; valorePerEtichetta(r1); }
+      return;
+    }
+    if (t.classList.contains("eti")) {
+      var r2 = t.closest(".crow");
+      if (!r2) return;
+      var sel = r2.querySelector(".etisel");
+      if (sel) sel.value = [].some.call(sel.options, function (o) { return o.value === t.value; }) ? t.value : "";
+      valorePerEtichetta(r2);
+    }
   });
 
-  el("crows").innerHTML = PRESET.map(function (x) { return rigaCampo(x); }).join("");
+  // righe vuote all'inizio: l'etichetta la sceglie chi scrive
+  el("crows").innerHTML = PRESET.map(function () { return rigaCampo(); }).join("");
   el("btnAddRiga").addEventListener("click", function () {
     if (document.querySelectorAll("#crows .crow").length >= 6) {
       stato("err", "Sei righe sono il massimo che sta nella grafica.");

@@ -149,7 +149,9 @@
 
   /* riga di statistica */
   .strow{display:flex;gap:10px;margin-bottom:8px;align-items:center;}
-  .strow input.eti{flex:2;}
+  .etipair{flex:2;display:flex;gap:6px;min-width:0;}
+  .etipair > *{flex:1;min-width:0;}
+  .strow input.eti{flex:1;}
   .strow input.va,.strow input.vb{flex:1;}
   .strow .via{flex:0 0 auto;padding:9px 13px;color:#FF6B6E;border-color:rgba(229,27,32,.4);}
   .strow .via:hover{background:rgba(229,27,32,.12);border-color:var(--red);}
@@ -681,23 +683,24 @@
   function rigaStat(eti, va, vb) {
     var due = MODO !== "gi";
     return '<div class="strow">' +
-      '<input type="text" class="eti" list="vocilist" placeholder="etichetta \u2014 scrivi o scegli" ' +
-        'value="' + esc(eti || "") + '">' +
+      // Menu' e campo, come nel Live Match: il menu' e' un aiuto, quello che
+      // va in onda e' sempre il testo scritto accanto. Scegliendo una voce
+      // che ESPN conosce arriva anche il numero.
+      '<div class="etipair">' +
+        '<select class="etisel">' + opzioniVoci(eti) + '</select>' +
+        '<input type="text" class="eti" placeholder="oppure scrivila tu" value="' + esc(eti || "") + '">' +
+      '</div>' +
       '<input type="text" class="va" placeholder="' + (due ? "valore A" : "valore") + '" value="' + esc(va || "") + '">' +
       (due ? '<input type="text" class="vb" placeholder="valore B" value="' + esc(vb || "") + '">' : "") +
       '<button type="button" class="via" title="Togli la riga">&times;</button></div>';
   }
-  // l'elenco che appare scrivendo nell'etichetta: cambia con la modalita'
-  function aggiornaVocabolario() {
-    var dl = el("vocilist");
-    if (!dl) {
-      dl = document.createElement("datalist");
-      dl.id = "vocilist";
-      document.body.appendChild(dl);
-    }
-    dl.innerHTML = vocabolario().map(function (v) {
-      return '<option value="' + esc(v[1]) + '"></option>';
-    }).join("");
+  function opzioniVoci(scelta) {
+    var h = '<option value="">\u2014 scegli una statistica \u2014</option>';
+    vocabolario().forEach(function (v) {
+      h += '<option value="' + esc(v[1]) + '"' +
+           (scelta && scelta === v[1] ? " selected" : "") + ">" + esc(v[1]) + "</option>";
+    });
+    return h;
   }
 
   // scritta l'etichetta, se e' una voce che ESPN conosce e i dati della
@@ -721,15 +724,27 @@
     }
   }
   document.addEventListener("change", function (e) {
-    if (e.target.classList && e.target.classList.contains("eti")) {
-      var r = e.target.closest(".strow");
-      if (r) valoriPerEtichetta(r);
+    var t = e.target;
+    if (!t.classList) return;
+    if (t.classList.contains("etisel")) {
+      var r1 = t.closest(".strow");
+      if (r1 && t.value) { r1.querySelector(".eti").value = t.value; valoriPerEtichetta(r1); }
+      return;
+    }
+    if (t.classList.contains("eti")) {
+      var r2 = t.closest(".strow");
+      if (!r2) return;
+      // scritta a mano una voce fuori elenco, il menu' torna in folle
+      var sel = r2.querySelector(".etisel");
+      if (sel) sel.value = [].some.call(sel.options, function (o) { return o.value === t.value; }) ? t.value : "";
+      valoriPerEtichetta(r2);
     }
   });
 
   function preparaRighe() {
-    aggiornaVocabolario();
-    el("strows").innerHTML = PRESET[MODO].map(function (x) { return rigaStat(x); }).join("");
+    // si parte da righe vuote: l'etichetta la sceglie chi scrive, dal menu'
+    // o a mano. PRESET dice soltanto quante righe preparare.
+    el("strows").innerHTML = PRESET[MODO].map(function () { return rigaStat(); }).join("");
   }
   el("btnAddRiga").addEventListener("click", function () {
     el("strows").insertAdjacentHTML("beforeend", rigaStat());

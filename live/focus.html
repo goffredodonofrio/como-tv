@@ -152,6 +152,8 @@
     letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:8px;}
   #manbar .mannota{font-size:12.5px;color:var(--fg-3);line-height:1.5;}
   #manbar .mannota b{color:var(--ivory);}
+  /* il menu' delle voci dentro i riquadri dei numeri */
+  .numbox .etisel{width:100%;font-size:13px;padding:8px 10px;}
 </style>
 </head>
 <body>
@@ -228,17 +230,17 @@
           <div class="numbox">
             <div class="numcapo">Riquadro 1</div>
             <label for="v1">Valore</label><input type="text" id="v1" placeholder="es. 151">
-            <label for="l1" style="margin-top:8px">Etichetta</label><input type="text" id="l1" list="vocilist" placeholder="es. PRESENZE">
+            <label for="l1" style="margin-top:8px">Etichetta</label><select class="etisel" data-per="1"></select><input type="text" id="l1" placeholder="es. PRESENZE" style="margin-top:6px">
           </div>
           <div class="numbox">
             <div class="numcapo">Riquadro 2</div>
             <label for="v2">Valore</label><input type="text" id="v2" placeholder="es. 42">
-            <label for="l2" style="margin-top:8px">Etichetta</label><input type="text" id="l2" list="vocilist" placeholder="es. GOL">
+            <label for="l2" style="margin-top:8px">Etichetta</label><select class="etisel" data-per="2"></select><input type="text" id="l2" placeholder="es. GOL" style="margin-top:6px">
           </div>
           <div class="numbox">
             <div class="numcapo">Riquadro 3</div>
             <label for="v3">Valore</label><input type="text" id="v3" placeholder="es. 50">
-            <label for="l3" style="margin-top:8px">Etichetta</label><input type="text" id="l3" list="vocilist" placeholder="es. ASSIST">
+            <label for="l3" style="margin-top:8px">Etichetta</label><select class="etisel" data-per="3"></select><input type="text" id="l3" placeholder="es. ASSIST" style="margin-top:6px">
           </div>
         </div>
         <div class="numnota">In grafica compaiono solo i riquadri compilati: lasciane vuoti quanti vuoi.</div>
@@ -496,26 +498,36 @@
       ["goalsConceded",  "GOL SUBITI"],
       ["shotsFaced",     "TIRI AFFRONTATI"]
     ];
-    (function () {
-      var dl = document.createElement("datalist");
-      dl.id = "vocilist";
-      dl.innerHTML = VOCI_GIO.map(function (v) {
-        return '<option value="' + v[1] + '"></option>';
-      }).join("");
-      document.body.appendChild(dl);
-    })();
-    // cambiata un'etichetta con una voce che ESPN conosce, il numero accanto
-    // si riempie da se'. Scrivere qualcosa di diverso resta sempre possibile.
-    ["l1", "l2", "l3"].forEach(function (id) {
-      el(id).addEventListener("change", function () {
-        if (!SCELTO) return;
-        var eti = (this.value || "").trim().toUpperCase();
-        VOCI_GIO.forEach(function (v) {
-          if (v[1] === eti) {
-            var n = SCELTO.stat[v[0]];
-            el("v" + id.charAt(1)).value = (n === undefined || n === null) ? "0" : String(n);
-          }
-        });
+    // Menu' e campo, come nel Live Match: il menu' e' un aiuto, quello che
+    // va in onda e' il testo scritto sotto. Scegliendo una voce conosciuta
+    // arriva anche il numero — se prima hai preso un giocatore da ESPN.
+    document.querySelectorAll(".etisel").forEach(function (sel) {
+      sel.innerHTML = '<option value="">\u2014 scegli una voce \u2014</option>' +
+        VOCI_GIO.map(function (v) { return '<option value="' + v[1] + '">' + v[1] + "</option>"; }).join("");
+      sel.addEventListener("change", function () {
+        if (!this.value) return;
+        var i = this.dataset.per;
+        el("l" + i).value = this.value;
+        numeroPerEtichetta(i);
+      });
+    });
+    function numeroPerEtichetta(i) {
+      if (!SCELTO) return;
+      var eti = (el("l" + i).value || "").trim().toUpperCase();
+      VOCI_GIO.forEach(function (v) {
+        if (v[1] === eti) {
+          var n = SCELTO.stat[v[0]];
+          el("v" + i).value = (n === undefined || n === null) ? "0" : String(n);
+        }
+      });
+    }
+    ["1", "2", "3"].forEach(function (i) {
+      el("l" + i).addEventListener("change", function () {
+        // scritta a mano una voce fuori elenco, il menu' torna in folle
+        var sel = document.querySelector('.etisel[data-per="' + i + '"]');
+        if (sel) sel.value = [].some.call(sel.options, function (o) { return o.value === el("l" + i).value; })
+                             ? el("l" + i).value : "";
+        numeroPerEtichetta(i);
       });
     });
     // questa pagina non aveva bisogno di ripulire testo per l'HTML: i nomi
