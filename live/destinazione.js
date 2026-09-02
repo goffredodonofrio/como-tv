@@ -82,6 +82,22 @@ window.Destinazione = (function () {
     ricostruisci();
     sel.addEventListener("change", cambio);
     carica();
+
+    // L'elenco dei progetti si leggeva una volta sola, all'apertura della
+    // pagina: un progetto creato dalla regia mentre la redazione aveva gia'
+    // la pagina davanti non compariva, e bisognava sapere di dover ricaricare.
+    // Ora si rilegge da solo. Non mentre si sta scegliendo, pero': rifare le
+    // voci sotto il dito chiuderebbe il menu' aperto.
+    function rinfresca() {
+      if (document.hidden) return;
+      if (document.activeElement === sel) return;
+      carica();
+    }
+    setInterval(rinfresca, 45000);
+    window.addEventListener("focus", rinfresca);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) rinfresca();
+    });
   }
 
   function corrente() {
