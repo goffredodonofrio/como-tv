@@ -2375,7 +2375,10 @@ function inMp4(blob,durataAttesa,avanza){
     }
     w.addEventListener('message',ascolta);
     w.postMessage({cmd:'converti',dati:buf,args:[
-     '-i','in.dat','-c:v','libx264','-preset','veryfast','-crf','21',
+     // crf 18 invece di 21 e preset piu' lento: questo passaggio c'e' solo
+     // sui browser che non sanno scrivere MP4 da soli, ed e' una seconda
+     // compressione sopra la prima — conviene perderci qualche secondo
+     '-i','in.dat','-c:v','libx264','-preset','faster','-crf','18',
      '-pix_fmt','yuv420p','-r',String(VIDEO_FPS),'-c:a','aac','-b:a','128k',
      '-movflags','+faststart','-y','out.mp4']},[buf]);
    });
@@ -2416,7 +2419,14 @@ function exportVideo(){
  var dur=OUT-IN;
  busy(true,'Preparo la grafica…');
  document.fonts.ready.then(function(){return svgToImage(overlaySvg(current));}).then(function(overlay){
-  var stream=cv.captureStream(VIDEO_FPS);
+  // captureStream(0) non produce fotogrammi da solo: li chiediamo noi, uno per
+  // ogni fotogramma davvero decodificato dalla clip. Prima il canvas veniva
+  // catturato 50 volte al secondo a prescindere: da una sorgente a 25 fps
+  // meta' erano copie, e quando il disegno non stava dietro ne saltavano —
+  // ed e' da li' che veniva lo scatto.
+  var stream=cv.captureStream(0);
+  var vtrack=stream.getVideoTracks()[0];
+  function segnaFotogramma(){ if(vtrack&&vtrack.requestFrame)vtrack.requestFrame(); }
   // audio della clip: captureStream sull'elemento video
   // audio dalla rotaia pulita (soli canali 1-2); captureStream come riserva
   if(videoPick.adest){
@@ -2426,7 +2436,10 @@ function exportVideo(){
    var cap=v.captureStream?v.captureStream():(v.mozCaptureStream?v.mozCaptureStream():null);
    if(cap){var tAudio=cap.getAudioTracks();if(tAudio.length)stream.addTrack(tAudio[0]);}
   }
-  var rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:14000000});
+  // 14 Mbit per un 1080x1920 pieno di erba, folla e movimento erano pochi: e'
+  // esattamente il contenuto che la compressione fatica di piu' a tenere, e si
+  // vedeva la sgranatura. A 26 il file pesa di piu' ma e' pulito.
+  var rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:26000000,audioBitsPerSecond:192000});
   videoPick.rec=rec;
   var chunks=[];
   rec.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data);};
@@ -2458,8 +2471,11 @@ function exportVideo(){
   // e' l'aggancio esatto alla sorgente, non un timer che le corre accanto.
   // Dove non c'e', si ripiega su un timer a 20 ms (50 al secondo).
   var conRVFC=('requestVideoFrameCallback' in HTMLVideoElement.prototype);
+  var ultimoDisegno=0;
   function dipingi(){
    drawComposite(ctx,W,H,v,v.videoWidth,v.videoHeight,overlay);nFrame++;
+   segnaFotogramma();                       // questo, e solo questo, entra nel filmato
+   ultimoDisegno=Date.now();
    if(dur)busy(true,'Registro… '+Math.max(0,Math.min(100,Math.round((v.currentTime-IN)/dur*100)))+'%');
    if(v.currentTime>=OUT)stopRec();
   }
@@ -2468,8 +2484,13 @@ function exportVideo(){
     dipingi();
     if(videoPick&&!videoPick.fermo)videoPick.rvfc=v.requestVideoFrameCallback(ciclo);
    });
-   // rete di sicurezza: se la decodifica si ferma, il timer tiene vivo il canvas
-   videoPick.timer=setInterval(dipingi,1000/VIDEO_FPS);
+   // Rete di sicurezza, non secondo motore: prima questo timer disegnava
+   // sempre, in parallelo a rVFC, e si arrivava a cento disegni al secondo di
+   // un quadro 1080x1920 — la macchina non stava dietro e i fotogrammi
+   // saltavano. Ora interviene solo se la decodifica si e' davvero fermata.
+   videoPick.timer=setInterval(function(){
+    if(Date.now()-ultimoDisegno>140)dipingi();
+   },1000/VIDEO_FPS);
   }else{
    videoPick.timer=setInterval(dipingi,1000/VIDEO_FPS);
   }
