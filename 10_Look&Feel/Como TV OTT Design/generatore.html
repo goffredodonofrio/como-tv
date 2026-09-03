@@ -519,7 +519,7 @@ small.flag{color:#E3C271}
   </div>
   <div class="pebar" id="vidBar">
    <span class="pbl" style="color:var(--gold)">VIDEO</span>
-   <span class="peh">Trascina la clip per inquadrarla · scegli inizio e fine · l'export registra in tempo reale, tieni la finestra in primo piano</span>
+   <span class="peh">Trascina la clip dove vuoi · rotella per ingrandirla o rimpicciolirla · scegli inizio e fine · l'export registra in tempo reale, tieni la finestra in primo piano</span>
    <button class="act" id="vidExport">🎬 Esporta video</button>
    <button class="act ghost" id="vidUse">Usa solo il fotogramma</button>
    <button class="act ghost" id="vidCancel">Annulla</button>
@@ -2114,12 +2114,22 @@ function fmtT(t){t=Math.max(0,t||0);var m=Math.floor(t/60),s2=Math.floor(t%60),d
 // Stessa logica di photoClamp, ma sulle dimensioni native del VIDEO invece che
 // della foto: dopo il cover-fit (cov), lo spostamento non deve mai scoprire il
 // fondo del crop, e' sempre ancorato al centro del frame (cx/cy fissi a W/2,H/2).
+// La clip si sposta e si ridimensiona come si vuole. Prima il movimento era
+// legato alla copertura: il video non poteva mai scoprire un bordo, quindi in
+// pratica lo si spostava solo lungo l'asse che avanzava — sull'altro non si
+// muoveva di un pixel e sembrava bloccato. E lo zoom non poteva scendere sotto
+// la copertura, quindi non si poteva rimpicciolire la clip per farla stare
+// dentro una parte del quadro.
+// Ora i limiti servono solo a non perdere la clip fuori dallo schermo:
+// si puo' rimpicciolire fino a un quinto e allontanare fino a una volta e
+// mezza il quadro. Se resta un bordo vuoto, e' una scelta di chi impagina —
+// sulle maschere e' proprio quello che serve.
 function clampVideoAdj(a,sw,sh,W,H){
  if(!sw||!sh)return a;
- a.s=Math.max(PHOTO_MIN_ZOOM,Math.min(3.5,a.s||PHOTO_MIN_ZOOM));
- var cov=Math.max(W/sw,H/sh),dw=sw*cov*a.s,dh=sh*cov*a.s;
- a.dx=Math.max(W-(W+dw)/2,Math.min((dw-W)/2,a.dx||0));
- a.dy=Math.max(H-(H+dh)/2,Math.min((dh-H)/2,a.dy||0));
+ a.s=Math.max(0.2,Math.min(6,a.s||PHOTO_MIN_ZOOM));
+ var lim=1.5;                       // quanto ci si puo' allontanare dal centro
+ a.dx=Math.max(-W*lim,Math.min(W*lim,a.dx||0));
+ a.dy=Math.max(-H*lim,Math.min(H*lim,a.dy||0));
  return a;
 }
 function renderVideoPicker(){
