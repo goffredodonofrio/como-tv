@@ -31,6 +31,9 @@ body{font-family:'Mazzard',system-ui,sans-serif;background:radial-gradient(120% 
 .panel::-webkit-scrollbar{width:0;height:0}
 .panel{scrollbar-width:none}
 .pbody{padding:12px}
+.pbody .fissi{position:sticky;top:0;z-index:4;background:var(--n900,#0A0F24);
+  padding-bottom:8px;margin-bottom:2px;
+  box-shadow:0 10px 14px -10px rgba(0,0,0,.7)}
 /* Maniglia per allargare il pannello a mano: chi ha un 13" la lascia com'e',
    chi ha piu' schermo se la tira — la larghezza si ricorda (localStorage),
    non e' una taglia unica decisa una volta per tutti. */
@@ -452,8 +455,13 @@ small.flag{color:#E3C271}
 <div id="buildStamp" title="Data della versione caricata dal browser. Se non corrisponde all'ultima pubblicazione stai vedendo una copia in cache: ricarica tenendo premuto Maiusc."></div>
 <div class="wrap">
  <div class="panel"><div class="pbody">
+   <!-- I campi restano appesi in cima: scorrendo per cercare un formato non
+        devono sparire, altrimenti per cambiare una parola si torna su ogni
+        volta. Scorrono solo le anteprime, sotto. -->
+   <div class="fissi">
    <div class="step"><span class="n">1</span>Contenuto</div>
    <div class="card" id="fieldsCard"></div>
+   </div>
    <!-- Anteprime nella colonna, sotto il contenuto: in fondo alla pagina davano
         fastidio mentre si lavora. Tutti i gruppi chiusi, si apre cio' che serve. -->
    <div class="step"><span class="n">2</span>Anteprime</div>
@@ -494,7 +502,11 @@ small.flag{color:#E3C271}
    <button class="act ghost" id="vidUse">Usa solo il fotogramma</button>
    <button class="act ghost" id="vidCancel">Annulla</button>
   </div>
-  <div class="stagewrap"><canvas id="rulerTop" class="ruler"></canvas><canvas id="rulerLeft" class="ruler"></canvas><div id="rulerCorner"></div><div id="stage"></div></div>
+  <!-- Il righello (le tacche coi numeri sopra e a sinistra) e' stato tolto:
+       nessuno misurava niente e si prendeva 20px per lato, che su un portatile
+       si sentono. I canvas restano nel documento, spenti, perche' drawRulers()
+       li cerca ancora: il giorno che servisse basta togliere hidden. -->
+  <div class="stagewrap"><canvas id="rulerTop" class="ruler" hidden></canvas><canvas id="rulerLeft" class="ruler" hidden></canvas><div id="rulerCorner" hidden></div><div id="stage"></div></div>
  </div>
 </div>
 <div class="busy" id="busy"><div class="spin"></div><div id="busyTxt">Esporto…</div></div>
@@ -2511,6 +2523,8 @@ function niceStep(sc){var u=64/sc;var pow=Math.pow(10,Math.floor(Math.log(u)/Mat
 window.drawRulers=drawRulers;
 function drawRulers(){var wrap=document.querySelector('.stagewrap');var svg=document.querySelector('#stage svg');if(!svg||!svg.viewBox)return;
  var wr=wrap.getBoundingClientRect(),sr=artRect(svg);var RB=20,GAP=22,GAPV=38;
+ // righello spento: non si disegna e non si occupa spazio
+ if(document.getElementById('rulerTop').hasAttribute('hidden'))return;
  var left=sr.left-wr.left+wrap.scrollLeft,top=sr.top-wr.top+wrap.scrollTop;
  var vw=svg.viewBox.baseVal.width,vh=svg.viewBox.baseVal.height,sc=sr.width/vw;
  var tc=document.getElementById('rulerTop'),lc=document.getElementById('rulerLeft'),co=document.getElementById('rulerCorner');
