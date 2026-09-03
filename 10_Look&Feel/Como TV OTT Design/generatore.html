@@ -27,7 +27,7 @@ body{font-family:'Mazzard',system-ui,sans-serif;background:radial-gradient(120% 
 .top{display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid var(--line);background:rgba(10,15,36,.6)}
 .top b{font-weight:800}.top .tag{font-size:11px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--gold)}
 .wrap{display:flex;flex:1;min-height:0;overflow:hidden}
-.panel{width:var(--panel-w,322px);flex:none;border-right:1px solid var(--line);height:calc(100vh - var(--th,58px));overflow-y:auto;overflow-x:hidden;position:sticky;top:var(--th,58px)}
+.panel{width:var(--panel-w,400px);flex:none;border-right:1px solid var(--line);height:calc(100vh - var(--th,58px));overflow-y:auto;overflow-x:hidden;position:sticky;top:var(--th,58px)}
 .panel::-webkit-scrollbar{width:0;height:0}
 .panel{scrollbar-width:none}
 .pbody{padding:12px}
@@ -236,7 +236,10 @@ body.editing .stagewrap{padding:16px 16px 30px}
    restano separati da un'etichetta verticale che fa da segnaposto. */
 /* Un blocco per categoria: intestazione col suo colore, miniature a due colonne
    che compaiono solo quando il blocco e' aperto. */
-.catblk{border-radius:10px;margin-bottom:6px;overflow:hidden;border:1px solid}
+.catblk{border-radius:10px;margin-bottom:6px;border:1px solid}
+/* l'intestazione della famiglia aperta resta appesa mentre si scorrono le sue
+   miniature: si sa sempre in che famiglia si sta lavorando */
+.catblk:not(.chiuso) > .thgrpH{position:sticky;top:0;z-index:3}
 .catblk .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:8px}
 .catblk.chiuso .grid{display:none}
 /* Dove una categoria ha sia orizzontali sia verticali le due famiglie stanno in
@@ -2798,14 +2801,18 @@ var CATCOL={
  'Piattaforma live':'#C9A24B','Piattaforma highlights':'#2FE3F5','Piattaforma replay':'#9B7BF0',
  'Football Show':'#E8734A','Piattaforma format':'#6FD08C','Interviste':'#4FB8E8',
  'Social media':'#F05A8C','Social media video':'#FF9F1C','YouTube':'#E5484D','Competizioni':'#3FC98B'};
-var THOPEN={};   // tutti chiusi all'avvio: si apre solo cio' che serve
-// ...tranne quello del formato aperto. Da quando il formato si sceglie solo
-// da qui (la tendina in barra non c'e' piu'), trovarli tutti chiusi vorrebbe
-// dire non avere nessun modo visibile di cambiarlo.
-function apriGruppoCorrente(){
-  var g=CAT[current]; if(!g){var it=BYKEY[current]; g=it&&it.group;}
-  if(g) THOPEN[g]=true;
-}
+// Una famiglia alla volta, e sempre quella che stai editando. Con piu'
+// famiglie aperte insieme la colonna diventava un elenco lungo in cui il
+// formato su cui stai lavorando si perdeva; e passando da PIATTAFORMA LIVE a
+// SOCIAL MEDIA restavano aperte tutte e due. Ora aprirne una chiude l'altra.
+// null = nessuno ha ancora deciso, quindi si apre quella del formato aperto.
+// Da li' in poi comanda chi clicca: se il ridisegno rimettesse ogni volta la
+// famiglia del formato corrente, aprirne un'altra non servirebbe a niente —
+// e infatti al primo tentativo si richiudeva da sola.
+var THOPEN=null;
+function gruppoDi(k){ var g=CAT[k]; if(!g){var it=BYKEY[k]; g=it&&it.group;} return g||null; }
+function apriSolo(g){ THOPEN={}; if(g) THOPEN[g]=true; }
+function apriGruppoCorrente(){ apriSolo(gruppoDi(current)); }
 // Una miniatura, con la sua casella di export e il click che la rende corrente.
 function creaThumb(it){
  var d=document.createElement('div');d.className='thumb'+(it.key===current?' sel':'');
@@ -2816,9 +2823,30 @@ function creaThumb(it){
  cb.title=EXPSEL[it.key]?'Nell\'export':'Escluso dall\'export';
  cb.onclick=function(e){e.stopPropagation();EXPSEL[it.key]=!EXPSEL[it.key];renderThumbs();syncExpBtn();};
  d.appendChild(cb);
- d.onclick=function(){current=it.key;selObj=null;document.getElementById('fmtSel').value=it.key;renderControls();renderStage();renderThumbs();};
+ d.onclick=function(){
+   current=it.key;selObj=null;document.getElementById('fmtSel').value=it.key;
+   apriGruppoCorrente();            // la famiglia del formato scelto resta l'unica aperta
+   renderControls();renderStage();renderThumbs();
+ };
  return d;
 }
+// La famiglia aperta va portata sotto gli occhi: se sta in fondo alla colonna
+// uno la apre e non vede niente cambiare.
+function portaInCima(){
+  setTimeout(function(){
+    var box=document.getElementById('thumbs'); if(!box) return;
+    var ap=box.querySelector('.catblk:not(.chiuso)'); if(!ap) return;
+    var col=document.querySelector('.panel'); if(!col) return;
+    // sotto il blocco dei campi, che resta appeso in cima
+    var fissi=document.querySelector('.pbody .fissi');
+    var alto=fissi?fissi.getBoundingClientRect().height:0;
+    var y=ap.getBoundingClientRect().top-col.getBoundingClientRect().top+col.scrollTop-alto-6;
+    // scorrimento secco: quello morbido, a pagina non in primo piano, il
+    // browser lo rimanda e la famiglia resta dove non si vede
+    col.scrollTop=Math.max(0,y);
+  },80);
+}
+
 function renderThumbs(){
  var box=document.getElementById('thumbs');if(!box)return;
  box.innerHTML='';
@@ -2827,9 +2855,9 @@ function renderThumbs(){
  var gruppi=MENU.map(function(m){
   return {g:m.g,items:ITEMS.filter(function(it){return (CAT[it.key]||it.group)===m.g;})};
  });
- apriGruppoCorrente();
+ if(THOPEN===null) apriGruppoCorrente();
  gruppi.forEach(function(gr){
-  var aperto=!!THOPEN[gr.g],nSel=gr.items.filter(function(it){return EXPSEL[it.key];}).length;
+  var aperto=!!(THOPEN&&THOPEN[gr.g]),nSel=gr.items.filter(function(it){return EXPSEL[it.key];}).length;
   var col=CATCOL[gr.g]||'#C9A24B';
   var blocco=document.createElement('div');blocco.className='catblk'+(aperto?'':' chiuso');
   blocco.style.borderColor=col+'38';
@@ -2847,7 +2875,11 @@ function renderThumbs(){
   hd.appendChild(gcb);
   hd.appendChild(document.createTextNode(gr.g));
   var tn=document.createElement('span');tn.className='tn';tn.textContent=nSel+'/'+gr.items.length;hd.appendChild(tn);
-  hd.onclick=function(){THOPEN[gr.g]=!aperto;renderThumbs();};
+  hd.onclick=function(){
+    if(aperto) THOPEN={};            // richiudo quella che stavo guardando
+    else apriSolo(gr.g);             // ne apro una sola: le altre si chiudono
+    renderThumbs(); portaInCima();
+  };
   blocco.appendChild(hd);
   var oriz=gr.items.filter(function(it){return it.w>=it.h;}),
       vert=gr.items.filter(function(it){return it.h>it.w;});
