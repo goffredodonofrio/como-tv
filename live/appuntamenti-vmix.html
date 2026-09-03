@@ -136,6 +136,7 @@
   //   grafica non distingue fra un derby e una serata di gala.
   var DEMO = {
     e: "COMO TV", t: "PROSSIMI APPUNTAMENTI",
+    f: ["/loghi/foto-premium-paz.png"],
     ap: [
       { g: "GIO", d: "04", m: "SET", o: "20:45", c: "SERIE A · 3ª GIORNATA",
         a: { n: "Genoa" }, b: { n: "Como" }, no: "Stadio Luigi Ferraris" },
@@ -234,17 +235,32 @@
   }
 
   // ── le righe ────────────────────────────────────────────────────────
-  // Lo spazio fra il filo d'oro e il fondo si divide fra le voci: con tre
-  // respirano, con cinque si stringono, ma il blocco data resta grande —
-  // e' quello che si deve leggere anche da lontano.
-  var voci = D.ap.slice(0, 5);
+  // UNA SCALA SOLA. Prima le misure erano fisse e solo il passo cambiava col
+  // numero di voci: a cinque righe il passo scendeva a 141px mentre il blocco
+  // data ne occupava 145, e il "SET" di una riga finiva addosso al "SAB" di
+  // quella sotto. Ora si ricava un fattore dal passo disponibile e TUTTO
+  // scende insieme — giorno, mese, nomi, ora, stemmi, filo. Le proporzioni
+  // restano quelle disegnate e cambia solo la taglia: e' l'unico modo perche'
+  // due cartelli con un numero diverso di voci sembrino la stessa grafica.
+  var MAX = 6;                                  // oltre il sesto non si legge
+  var voci = D.ap.slice(0, MAX);
   // La riga si allarga fin dove arriva il pannello delle foto: senza foto
   // prende tutto il quadro, se no i nomi lunghi si tagliano per lasciare
   // spazio a un pannello che non c'e'.
   var LARGA = foto ? 1000 : 1664;
-  var Y0 = 296, FONDO = 1004;
-  var PASSO = Math.min(184, Math.floor((FONDO - Y0) / voci.length));
-  var ALTA = PASSO - 18;
+  var SU = 296, GIU = 1004;
+  // il passo non passa i 190: con tre voci il blocco non si stira, si centra
+  var PASSO = Math.min(190, Math.floor((GIU - SU) / voci.length));
+  var Y0 = Math.round(SU + ((GIU - SU) - PASSO * voci.length) / 2);
+  var ALTA = PASSO - 14;
+  // 177 e' il passo con cui la grafica e' stata disegnata, a quattro voci
+  var k = Math.max(0.60, Math.min(1.10, PASSO / 177));
+  function q(base, minimo) { return Math.max(minimo || 0, Math.round(base * k)); }
+  var MIS = {
+    data: q(176, 116), num: q(92, 52), gio: q(23, 15), mes: q(25, 16),
+    filo: q(104, 62), comp: q(20, 14), nomi: q(44, 26), stemma: q(58, 34),
+    lab: q(16, 11), ora: q(56, 34), nota: q(21, 14), gap: q(34, 16)
+  };
 
   var h = "";
   voci.forEach(function (v, i) {
@@ -254,47 +270,59 @@
 
     // il centro della riga: una partita coi due stemmi, oppure un titolo
     var centro;
+    var mStemma = 'width:' + MIS.stemma + 'px;height:' + MIS.stemma + 'px';
     if (v.a || v.b) {
       var A = v.a || {}, B = v.b || {};
-      centro = '<div class="sfida">' +
-        (A.l ? '<img src="' + esc(A.l) + '" onerror="this.style.display=\'none\'">' : "") +
-        '<div class="nomi">' + esc(A.n || "") + '<em>&ndash;</em>' + esc(B.n || "") + '</div>' +
-        (B.l ? '<img src="' + esc(B.l) + '" onerror="this.style.display=\'none\'">' : "") +
+      centro = '<div class="sfida" style="gap:' + q(16, 9) + 'px">' +
+        (A.l ? '<img style="' + mStemma + '" src="' + esc(A.l) + '" onerror="this.style.display=\'none\'">' : "") +
+        '<div class="nomi" style="font-size:' + MIS.nomi + 'px">' +
+          esc(A.n || "") + '<em>&ndash;</em>' + esc(B.n || "") + '</div>' +
+        (B.l ? '<img style="' + mStemma + '" src="' + esc(B.l) + '" onerror="this.style.display=\'none\'">' : "") +
         '</div>';
     } else {
-      centro = '<div class="nomi">' + esc(v.ti || "") + '</div>';
+      centro = '<div class="nomi" style="font-size:' + MIS.nomi + 'px">' + esc(v.ti || "") + '</div>';
     }
 
     h += '<div class="ap" style="top:' + y + 'px;height:' + ALTA + 'px;width:' + LARGA + 'px;' + anim + '">' +
-      '<div class="data">' +
-        (v.g ? '<div class="gio">' + esc(v.g) + '</div>' : "") +
-        '<div class="num">' + esc(v.d || "") + '</div>' +
-        (v.m ? '<div class="mes">' + esc(v.m) + '</div>' : "") +
+      '<div class="data" style="flex:0 0 ' + MIS.data + 'px">' +
+        (v.g ? '<div class="gio" style="font-size:' + MIS.gio + 'px">' + esc(v.g) + '</div>' : "") +
+        '<div class="num" style="font-size:' + MIS.num + 'px">' + esc(v.d || "") + '</div>' +
+        (v.m ? '<div class="mes" style="font-size:' + MIS.mes + 'px">' + esc(v.m) + '</div>' : "") +
       '</div>' +
-      '<div class="filo"></div>' +
+      '<div class="filo" style="height:' + MIS.filo + 'px;margin:0 ' + MIS.gap + 'px"></div>' +
       '<div class="chi">' +
-        (v.c ? '<div class="comp">' + esc(v.c) + '</div>' : "") +
+        (v.c ? '<div class="comp" style="font-size:' + MIS.comp + 'px;margin-bottom:' + q(9, 4) + 'px">' + esc(v.c) + '</div>' : "") +
         centro +
-        (v.no ? '<div class="nota">' + esc(v.no) + '</div>' : "") +
+        (v.no ? '<div class="nota" style="font-size:' + MIS.nota + 'px;margin-top:' + q(8, 4) + 'px">' + esc(v.no) + '</div>' : "") +
       '</div>' +
-      (v.o ? '<div class="ora"><div class="lab">ore</div><div class="h">' + esc(v.o) + '</div></div>' : "") +
+      (v.o ? '<div class="ora"><div class="lab" style="font-size:' + MIS.lab + 'px">ore</div>' +
+             '<div class="h" style="font-size:' + MIS.ora + 'px">' + esc(v.o) + '</div></div>' : "") +
       (i < voci.length - 1 ? '<span class="sep"></span>' : "") +
       '</div>';
   });
   document.getElementById("corpo").innerHTML = h;
 
-  // Il nome della coppia si adatta alla riga invece di essere tagliato: con
-  // due stemmi e nomi lunghi ("Como - Fiorentina", peggio "Como Primavera -
-  // Inter Primavera") a corpo 44 non ci sta, e i puntini in onda sono la cosa
-  // peggiore che possa capitare a un cartello di appuntamenti. Si misura e si
-  // scende, riga per riga: quelle corte restano grandi.
-  Array.prototype.forEach.call(document.querySelectorAll(".ap .nomi"), function (n) {
-    var s = 44;
-    while (n.scrollWidth > n.clientWidth + 1 && s > 26) {
-      s -= 2;
-      n.style.fontSize = s + "px";
-    }
+  // I nomi si stringono per stare nella riga invece di essere tagliati: i
+  // puntini in onda su un cartello di appuntamenti sono la cosa peggiore.
+  // Va rifatto DOPO che gli stemmi sono arrivati: sono immagini, arrivano
+  // dalla rete, e finche' non ci sono la riga e' piu' larga di quanto sara' —
+  // era per questo che "DERBY COU..." tornava tagliato dopo essere stato
+  // sistemato. Si rimisura a ogni stemma che arriva, e a font pronti.
+  function adattaNomi() {
+    Array.prototype.forEach.call(document.querySelectorAll(".ap .nomi"), function (n) {
+      n.style.fontSize = MIS.nomi + "px";
+      var s = MIS.nomi, minimo = Math.max(20, Math.round(MIS.nomi * 0.62));
+      while (n.scrollWidth > n.clientWidth + 1 && s > minimo) {
+        s -= 1;
+        n.style.fontSize = s + "px";
+      }
+    });
+  }
+  adattaNomi();
+  Array.prototype.forEach.call(document.querySelectorAll(".sfida img"), function (im) {
+    if (!im.complete) { im.addEventListener("load", adattaNomi); im.addEventListener("error", adattaNomi); }
   });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(adattaNomi);
 
   function replay() { location.reload(); }
   document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
