@@ -321,6 +321,21 @@ small.flag{color:#E3C271}
 <style>
   /* Il menu' del sito dentro la barra: si apre al clic e si chiude appena
      scegli o clicchi fuori. Le voci restano tutte, ma non rubano una riga. */
+  /* Quando la barra non ci sta, invece di andare a capo (e rubare un'altra
+     riga di altezza su un portatile) i gruppi in coda si ritirano dentro un
+     pulsante "..." e si riprendono il loro posto appena c'e' spazio. */
+  .tbovf{position:relative;flex:none;display:none}
+  .tbovf.serve{display:inline-flex}
+  .tbovfbtn{font-family:'Mazzard',sans-serif;font-size:15px;font-weight:800;color:#E3C271;
+    background:rgba(245,241,230,.06);border:1px solid rgba(245,241,230,.14);border-radius:8px;
+    padding:6px 13px;cursor:pointer;line-height:1.1}
+  .tbovfbtn:hover{border-color:rgba(201,162,75,.45)}
+  .tbovfpan{display:none;position:absolute;right:0;top:calc(100% + 7px);z-index:60;
+    background:#0E1430;border:1px solid rgba(245,241,230,.14);border-radius:10px;
+    box-shadow:0 18px 40px rgba(0,0,0,.6);padding:10px 12px;max-width:min(92vw,620px)}
+  .tbovfpan.on{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .tbovfpan .tbsep{display:none}
+
   .sitomenu{position:relative;flex:none}
   .sitobtn{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:800;letter-spacing:.2em;
     text-transform:uppercase;color:#F5F1E6;background:rgba(245,241,230,.06);
@@ -3336,6 +3351,103 @@ loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
   document.addEventListener('click',function(){p.classList.remove('on');});
   document.addEventListener('keydown',function(e){if(e.key==='Escape')p.classList.remove('on');});
   p.addEventListener('click',function(e){e.stopPropagation();});
+})();
+</script>
+<script>
+// ── La barra su una riga sola ──────────────────────────────────────────────
+// Prima, quando i comandi non ci stavano, la barra andava a capo: nessuno
+// perdeva pezzi ma si mangiava un'altra riga di schermo, che sul portatile e'
+// la cosa che manca. Ora i gruppi in coda entrano in un pulsante "..." e ne
+// escono appena la finestra si allarga. Quali entrano non lo decido a gusto:
+// entra sempre l'ULTIMO che non ci sta, e la barra e' gia' ordinata come si
+// lavora — prima cosa apri, poi cosa esporti, poi cosa aggiungi.
+(function(){
+  var barra=document.getElementById('barra');
+  if(!barra) return;
+
+  // i gruppi si ricavano dai separatori che ci sono gia'
+  var gruppi=[], corrente=null;
+  [].slice.call(barra.children).forEach(function(el){
+    if(el.classList.contains('grow')) return;          // lo spaziatore resta in fondo
+    if(el.classList.contains('tbsep')){ corrente=null; return; }
+    if(!corrente){ corrente=document.createElement('span'); corrente.className='tbgrp';
+      corrente.style.cssText='display:inline-flex;align-items:center;gap:8px;flex:none';
+      el.parentNode.insertBefore(corrente,el); gruppi.push(corrente); }
+    corrente.appendChild(el);
+  });
+  if(gruppi.length<3) return;
+
+  var ovf=document.createElement('div');
+  ovf.className='tbovf';
+  ovf.innerHTML='<button type="button" class="tbovfbtn" title="Altri comandi">&#8943;</button>'+
+                '<div class="tbovfpan"></div>';
+  var grow=barra.querySelector('.grow');
+  barra.insertBefore(ovf, grow||null);
+  var pan=ovf.querySelector('.tbovfpan'), btn=ovf.querySelector('.tbovfbtn');
+  btn.addEventListener('click',function(e){e.stopPropagation();pan.classList.toggle('on');});
+  document.addEventListener('click',function(){pan.classList.remove('on');});
+  pan.addEventListener('click',function(e){e.stopPropagation();});
+
+  // i primi due gruppi non si toccano: il menu' del sito e cio' che si esporta
+  var mobili=gruppi.slice(2);
+  var fuori=[];                                        // quelli finiti nel pannello
+
+  function sfora(){ return barra.scrollWidth > barra.clientWidth + 2; }
+
+  function sistema(){
+    // Il "..." occupa spazio anche lui: se resta in mezzo mentre si prova a far
+    // rientrare l'ultimo gruppo, quel gruppo non ci sta MAI e resta prigioniero
+    // del pannello anche a finestra larga. Quindi prima lo si toglie di mezzo,
+    // si rimette dentro tutto, e solo se davvero non ci sta lo si riaccende.
+    ovf.classList.remove('serve');
+    while(fuori.length){ barra.insertBefore(fuori.pop(), ovf); }
+
+    if(!sfora()) return;                      // ci sta tutto: niente "..."
+
+    ovf.classList.add('serve');               // da qui in poi occupa spazio
+    var giro=0;
+    while(sfora() && fuori.length<mobili.length && giro++<12){
+      var v=mobili[mobili.length-1-fuori.length];
+      pan.insertBefore(v, pan.firstChild);
+      fuori.push(v);
+    }
+  }
+
+  // Il conto va rifatto anche quando la barra cambia da sola: i gruppi FOTO e
+  // SOCIAL si riempiono dopo, a formato scelto, e al primo giro non c'erano
+  // ancora. Senza questo la barra si tagliava e il "..." non compariva mai.
+  // Il conto va rifatto piu' volte dopo ogni scossone: subito, al fotogramma
+  // dopo e mezzo secondo dopo. Con un solo colpo si misurava un layout ancora
+  // a meta' — e la barra restava tagliata col "..." spento.
+  // Niente requestAnimationFrame: quando la pagina non e' in primo piano il
+  // browser lo congela, e con esso si congelava tutto il conto. Due timer
+  // semplici, uno subito e uno quando il layout si e' assestato.
+  var mioMovimento=false, t1=null, t2=null;
+  function giroSicuro(){
+    mioMovimento=true;
+    try{ sistema(); } finally { mioMovimento=false; }
+  }
+  function ricalcola(){
+    clearTimeout(t1); clearTimeout(t2);
+    t1=setTimeout(giroSicuro,60);
+    t2=setTimeout(giroSicuro,420);
+  }
+  window.addEventListener('resize',ricalcola);
+  if(window.ResizeObserver) new ResizeObserver(ricalcola).observe(barra);
+  new MutationObserver(function(){ if(!mioMovimento) ricalcola(); })
+    .observe(barra,{childList:true,subtree:true,attributes:true,attributeFilter:['style','hidden','class']});
+
+  // Perche' il metro funzioni, niente deve poter rimpicciolirsi: con lo
+  // spaziatore elastico e la tendina delle partite che si stringe, la barra
+  // "ci stava" secondo i conti mentre sullo schermo si tagliava. Tolto lo
+  // spaziatore e fissata la tendina, sforare torna a voler dire sforare.
+  if(grow) grow.style.display='none';
+  var tend=document.getElementById('airtableEventSelect');
+  if(tend) tend.style.flex='0 0 200px';
+  barra.style.flexWrap='nowrap';
+  giroSicuro();
+  setTimeout(giroSicuro,600);   // dopo che font e select hanno preso la loro misura
+  if(document.fonts&&document.fonts.ready) document.fonts.ready.then(giroSicuro);
 })();
 </script>
 </body>
