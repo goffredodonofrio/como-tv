@@ -1053,12 +1053,36 @@ var FMT={
  // cosi' il PNG esportato si appoggia sopra il video in montaggio e il
  // filmato guarda da sotto, come nel riferimento (Welbeck / Carabao Cup).
  feed_maschera_1080x1920:{label:'Story maschera 9:16',group:'Match',w:1080,h:1920,useComp:true,
-  fields:[{k:'comp',l:'Competizione (testo)'},{k:'mkTitle',l:'Titolo'},{k:'mkSub',l:'Sottotitolo (vuoto = niente)'}],images:[{k:'photo',l:'Foto (o fotogramma dal video)'}],
+  fields:[{k:'comp',l:'Competizione (testo)'},{k:'mkTitle',l:'Titolo (un · dove vuoi andare a capo)'},{k:'mkSub',l:'Sottotitolo (vuoto = niente)'}],images:[{k:'photo',l:'Foto (o fotogramma dal video)'}],
   gen:function(p,I,A){var W=1080,H=1920,cx=W/2;
-   var size=92,L=ytWrap(p.mkTitle,size,-1,950);
-   if(L.length>2){size=ytFit(p.mkTitle,92,-1,1860);L=ytWrap(p.mkTitle,size,-1,950);}
-   L=L.slice(0,2);
-   var step=Math.round(size*1.04);
+   // Dove va a capo il titolo e' una scelta editoriale, non un calcolo: nessuna
+   // formula indovina "RETEGUI / TORNA A SEGNARE" invece di "RETEGUI TORNA A /
+   // SEGNARE" — quello lo decide chi scrive. Mettendo un · nel titolo si sceglie
+   // il punto, con la stessa convenzione che il ticker usa gia' per i titoloni.
+   // Senza ·, si spezza da solo come prima.
+   var size=92,L;
+   var aMano=String(p.mkTitle||'').split(/\s*·\s*|\n+/).filter(function(x){return x.trim();});
+   if(aMano.length>1){
+    L=aMano.slice(0,2);
+    // Scelte le righe a mano, il corpo si adatta a riempirle: sul riferimento
+    // pubblicato la riga piu' lunga arriva a 900 dei 950 disponibili, cioe' il
+    // titolo occupa la misura invece di galleggiarci in mezzo. Qui si puo' fare
+    // senza rischi perche' le righe sono decise: crescendo non si spezzano
+    // diversamente, come accadrebbe con la spezzatura automatica.
+    var piuLunga=0;
+    L.forEach(function(l){piuLunga=Math.max(piuLunga,estW(up(l),size,-1));});
+    // 863 e' misurato: estW e' una stima e sottovaluta di circa il 4%, quindi
+    // per far finire la riga vera a 900 (il 94,6% della misura, come sul
+    // riferimento) il bersaglio della stima va messo piu' basso.
+    if(piuLunga>0)size=Math.max(48,Math.min(118,Math.round(size*863/piuLunga)));
+   }else{
+    L=ytWrap(p.mkTitle,size,-1,950);
+    if(L.length>2){size=ytFit(p.mkTitle,92,-1,1860);L=ytWrap(p.mkTitle,size,-1,950);}
+    L=L.slice(0,2);
+   }
+   // Le due righe del titolo stanno piu' strette che nel resto delle grafiche:
+   // sul riferimento il passo e' 0.92 del corpo, non 1.04.
+   var step=Math.round(size*0.92);
    // MISURE FISSE, prese dal riferimento pubblicato. Il video deve avere una
    // finestra sempre uguale, altrimenti chi monta non sa mai quanto spazio ha:
    //   fascia alta   720   il navy col logo, la competizione, titolo e occhiello
@@ -1068,8 +1092,18 @@ var FMT={
    var FIN=Math.round(W);                       // finestra quadrata: alta quanto e' larga
    var BH=Math.round((H-FIN)*0.857);            // 720 su 1920, il resto va sotto
    var BASSA=H-FIN-BH;                          // 120
-   var BH34=468+L.length*step;
-   var giu=Math.round((BH-BH34)/2);             // i testi al centro della fascia
+   // Geometria misurata sul riferimento pubblicato, prendendo il bordo basso
+   // della fascia come metro. Il blocco NON e' centrato: e' appoggiato in
+   // basso, e le parti stanno piu' vicine fra loro. Centrato com'era prima
+   // usciva troppo in alto — chi monta i post lo vedeva subito, e infatti
+   // e' arrivato come "e' tutto piu' schiacciato in basso nei nostri".
+   // Si costruisce dal basso verso l'alto, cosi' un titolo di una riga sola
+   // resta appoggiato dov'e' appoggiato quello di due.
+   var subY=Math.round(BH*0.94);                // il sottotitolo, in fondo
+   var tyUlt=subY-Math.round(BH*0.060);         // ultima riga del titolo
+   var ty=tyUlt-(L.length-1)*step;              // prima riga del titolo
+   var occY=ty-Math.round(BH*0.154);            // l'occhiello sopra il titolo
+   var logoY=occY-Math.round(BH*0.103)-118;     // il logo, alto 118
    var out='<defs><radialGradient id="mkBg" cx="50%" cy="0%" r="130%"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".5" stop-color="#141B3C"/><stop offset="1" stop-color="#0A0F24"/></radialGradient></defs>'
     // lo strato foto/video sta SOTTO la fascia: senza media resta vuoto
     // (niente segnaposto), cosi' l'export tiene la trasparenza
@@ -1078,11 +1112,13 @@ var FMT={
     // la striscia sotto la finestra: chiude l'inquadratura e da' al video un
     // appoggio, invece di lasciarlo cadere fino al bordo
     +'<rect y="'+(H-BASSA)+'" width="'+W+'" height="'+BASSA+'" fill="#0A0F24"/>'
-    +(p.showLogo===false?'':brandMark(A,cx,64+giu,118,true))
-    +G('t-comp',A,T(cx,320+giu,p.comp,{s:34,w:800,fill:C.gold,ls:8,anchor:'middle'}));
-   var ty=424+giu,tx='';L.forEach(function(l,i){tx+=T(cx,ty+i*step,l,{s:size,w:800,fill:C.ivory,ls:-1,anchor:'middle'});});
+    +(p.showLogo===false?'':brandMark(A,cx,logoY,118,true))
+    +G('t-comp',A,T(cx,occY,p.comp,{s:34,w:800,fill:C.gold,ls:8,anchor:'middle'}));
+   var tx='';L.forEach(function(l,i){tx+=T(cx,ty+i*step,l,{s:size,w:800,fill:C.ivory,ls:-1,anchor:'middle'});});
    out+=G('t-title',A,tx);
-   if(p.mkSub)out+=G('t-sub',A,T(cx,ty+(L.length-1)*step+72,p.mkSub,{s:34,w:400,fill:C.ivory,upper:false,anchor:'middle'}));
+   // il sottotitolo del riferimento e' un semibold, non un tondo: a 34px in
+   // regular su questo fondo si perdeva sotto il titolo
+   if(p.mkSub)out+=G('t-sub',A,T(cx,subY,p.mkSub,{s:34,w:600,fill:C.ivory,upper:false,anchor:'middle'}));
    return out;}},
 
  youtube_1280x720:{label:'YouTube 16:9',group:'Social media',w:1280,h:720,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){var W=1280,H=720,cx=W/2;
