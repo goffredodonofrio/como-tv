@@ -75,7 +75,12 @@ const CONFIG = {
   VIDEO: process.env.COMOTV_VIDEO || null,   // risolta a runtime da STATO
 
   CANALI: 8,
-  MAX_SCALETTA: 30,
+  // Nessun tetto alle grafiche in scaletta: trenta bastavano per una partita,
+  // non per una giornata intera o per un progetto d'archivio. Resta un numero
+  // altissimo come rete di sicurezza contro un invio impazzito che riempirebbe
+  // il disco e il polling della console — non e' un limite che si incontra
+  // lavorando. Si cambia con COMOTV_MAX_SCALETTA.
+  MAX_SCALETTA: parseInt(process.env.COMOTV_MAX_SCALETTA, 10) || 5000,
 
   // gli invii "Al foglio" continuano ad andare qui
   PONTE_FOGLI: process.env.COMOTV_PONTE_FOGLI ||
@@ -323,7 +328,7 @@ function regiaLoad(p) {
   const c = canaleDi(p.c);
   const ix = regiaDi(c);
   if (ix.items.length >= CONFIG.MAX_SCALETTA) {
-    throw new Error("scaletta piena (" + CONFIG.MAX_SCALETTA + " grafiche): elimina qualcosa dalla console");
+    throw new Error("scaletta piena (" + CONFIG.MAX_SCALETTA + " grafiche): \u00e8 il tetto di sicurezza, non un limite di lavoro \u2014 svuota qualcosa dalla console");
   }
   const id = String(Date.now()) + String(Math.floor(Math.random() * 1000));
   S.voci[c][id] = p.dati || {};
