@@ -1974,6 +1974,28 @@
                "?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3" +
                (t ? "&start=" + t : "") };
       }
+      // Google Drive: il link che si copia dal browser finisce in /view, che
+      // manda x-frame-options SAMEORIGIN e quindi in una finestra non si apre —
+      // resta nero. Lo stesso file su /preview quell'intestazione non la manda
+      // ed e' fatto apposta per essere incorporato. Il file deve pero' essere
+      // condiviso con "chiunque abbia il link": il vMix non e' collegato a
+      // nessun account Google, e a file riservato vedrebbe la richiesta di
+      // accesso al posto del video.
+      var g = u.match(/(?:drive|docs)\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:[^#]*&)?id=)([A-Za-z0-9_-]{10,})/);
+      if (g) {
+        // NON il player di Drive in una finestra: quello vuole un clic sul play,
+        // e in onda un clic non c'e'. drive.usercontent serve il file vero —
+        // provato: content-type video/mp4, accept-ranges bytes e CORS aperto —
+        // quindi va al lettore video e si comporta come un contributo caricato:
+        // parte da solo, tiene loop, muto e l'ultimo fotogramma.
+        // confirm=t salta la pagina di avviso antivirus dei file grandi.
+        return { k: "video", che: "Google Drive",
+                 src: "https://drive.usercontent.google.com/download?id=" + g[1] +
+                      "&export=download&confirm=t",
+                 nota: "Il file deve essere condiviso con <b>chiunque abbia il link</b>. " +
+                       "E arriva in diretta da Google mentre va in onda: per un contributo " +
+                       "importante il caricamento resta pi\u00f9 sicuro." };
+      }
       var v = u.match(/vimeo\.com\/(?:video\/)?(\d{6,})/);
       if (v) {
         return { k: "web", che: "Vimeo",
@@ -1988,9 +2010,10 @@
       var n = vd("vdLinkNota");
       if (!L) { n.textContent = ""; return; }
       n.innerHTML = L.k === "video"
-        ? "Riconosciuto: <b>" + L.che + "</b>. Va al lettore video: loop, muto e ultimo fotogramma funzionano."
+        ? "Riconosciuto: <b>" + L.che + "</b>. Va al lettore video: loop, muto e ultimo fotogramma funzionano." +
+          (L.nota ? "<br>" + L.nota : "")
         : "Riconosciuto: <b>" + L.che + "</b>. Parte <b>muto</b> — con l\'audio i player non partono da soli — " +
-          "e le spunte qui sotto non lo toccano.";
+          "e le spunte qui sotto non lo toccano." + (L.nota ? "<br>" + L.nota : "");
     });
 
     vd("vdVia").addEventListener("click", function () {
