@@ -85,10 +85,17 @@
   .deck .mon{margin-bottom:0;}
   .takecol{display:flex;flex-direction:column;gap:12px;justify-content:center;}
   .takecol button{font-family:'Mazzard',sans-serif;font-size:13px;font-weight:800;
-    letter-spacing:.1em;text-transform:uppercase;padding:22px 8px;border-radius:10px;
-    cursor:pointer;line-height:1.6;}
+    letter-spacing:.1em;text-transform:uppercase;padding:8px;border-radius:10px;
+    cursor:pointer;line-height:1.5;}
+  /* I cinque comandi non superano mai l'altezza delle anteprime: il blocco viene
+     misurato su quella (in JS, perche' dipende dalla larghezza della colonna) e
+     i pulsanti se la dividono in parti uguali. Prima erano alti a padding fisso
+     e la colonna arrivava a 677px contro i 328px dell'anteprima. */
+  #comandi{display:flex;flex-direction:column;gap:10px;}
+  #comandi button{flex:1 1 0;min-height:0;}
   .takecol #msg{margin-top:0;font-size:11.5px;text-align:center;}
-  @media (max-width:1080px){ .deck{grid-template-columns:1fr;} .takecol{flex-direction:row;} .takecol button{flex:1;} }
+  @media (max-width:1080px){ .deck{grid-template-columns:1fr;} .takecol{flex-direction:row;}
+    #comandi{flex-direction:row;flex:1;height:auto !important;} .takecol button{flex:1;padding:14px 8px;} }
 
   .panel{background:var(--surface-panel);border:1px solid var(--line-2);border-radius:10px;padding:16px;}
   .panel h2{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.2em;
@@ -168,6 +175,9 @@
   /* titolo e piede fermi, l’elenco scorre in mezzo: allargando la finestra lo
      spazio va tutto ai progetti, e il tasto Chiudi resta sempre sotto gli occhi */
   #progCard > h2, #progFoot{flex:0 0 auto;}
+  /* la testata e' la presa: si afferra li' e si sposta la finestra */
+  #progTitolo{cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none;}
+  #progTitolo:active{cursor:grabbing;}
   #progScroll{flex:1;min-height:0;overflow:auto;margin-right:-8px;padding-right:8px;}
   /* l’angolino di trascinamento del browser, su fondo scuro, non si vede:
      glielo si accende sotto, nell’angolo esatto in cui va preso */
@@ -208,9 +218,14 @@
     background:transparent;color:#FF6B6E;border:1px solid rgba(229,27,32,.45);}
   #btnSvuota:hover:not(:disabled){background:rgba(229,27,32,.12);border-color:var(--red);}
   #btnSvuota:disabled{opacity:.35;cursor:default;}
-  #btnProg{border:2px solid var(--line-gold);background:transparent;color:var(--gold-bright);
-    font-size:11px;}
-  #btnProg:hover{background:rgba(200,164,88,.12);border-color:var(--gold-bright);}
+  /* i due tasti dei progetti sono la stessa famiglia: stesso oro, stesso fondo */
+  #btnProg, #btnProgNuovo{border:2px solid rgba(201,162,75,.5);background:transparent;
+    color:var(--gold-bright);font-size:11px;}
+  #btnProg:hover, #btnProgNuovo:hover{background:rgba(200,164,88,.12);border-color:var(--gold-bright);}
+  /* il contributo e' un'altra cosa: azzurro, quello degli invii alla regia.
+     Prima era il grigio di sistema del browser, che su questo fondo spariva. */
+  #btnVideo{border:2px solid rgba(79,163,232,.5);background:transparent;color:#7FBEF0;font-size:11px;}
+  #btnVideo:hover{background:rgba(79,163,232,.14);border-color:#4FA3E8;}
 
   #msg{margin-top:12px;font-size:13px;color:var(--fg-3);min-height:20px;}
   .note{margin-top:22px;font-size:12.5px;color:var(--fg-3);line-height:1.65;}
@@ -411,11 +426,13 @@
         <span class="btns" id="livbtns"></span>
         <span class="cap" id="livcap"></span>
       </div>
-      <button id="btnTake" disabled>&#9654;<br>In onda</button>
-      <button id="btnOut" disabled>&#9632;<br>Fuori onda</button>
-      <button id="btnProg" type="button">&#128193;<br>Apri progetto</button>
-      <button id="btnProgNuovo" type="button">&#10133;<br>Nuovo progetto</button>
-      <button id="btnVideo" type="button">&#127916;<br>Carica contributo</button>
+      <div id="comandi">
+        <button id="btnTake" disabled>&#9654;<br>In onda</button>
+        <button id="btnOut" disabled>&#9632;<br>Fuori onda</button>
+        <button id="btnProgNuovo" type="button">&#10133;<br>Nuovo progetto</button>
+        <button id="btnProg" type="button">&#128193;<br>Apri progetto</button>
+        <button id="btnVideo" type="button">&#127916;<br>Carica contributo</button>
+      </div>
       <div id="msg"></div>
     </div>
     <div class="panel mon">
@@ -474,14 +491,14 @@
        canale, ma non tocca mai cio' che e' in onda. -->
   <div id="progDialog" style="display:none;position:fixed;inset:0;z-index:400;background:rgba(4,6,16,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center">
     <div id="progCard">
-      <h2 style="margin-bottom:14px">Progetti <small id="progcount"></small></h2>
+      <h2 id="progTitolo" style="margin-bottom:14px">Progetti <small id="progcount"></small></h2>
       <div id="progScroll">
         <div id="proglist"></div>
         <div id="progvuoto" style="display:none;color:var(--fg-3);font-size:13px;padding:8px 2px">
           Nessun progetto salvato: si creano dalle pagine delle grafiche (destinazione &rarr; &#10133; Nuovo progetto).</div>
       </div>
       <div id="progFoot" style="display:flex;align-items:center;gap:12px;margin-top:14px">
-        <small style="color:var(--fg-3);font-size:11.5px">&#8690; Trascina l’angolo in basso a destra per allargare la finestra.</small>
+        <small style="color:var(--fg-3);font-size:11.5px">&#8690; Trascina l’angolo per allargarla, il titolo per spostarla.</small>
         <button id="progChiudi" type="button" style="margin-left:auto">Chiudi</button>
       </div>
     </div>
@@ -810,6 +827,15 @@
     var tm = document.getElementById("thumbMatch");
     if (tm) tm.style.transform = "scale(" + (w / 1920) + ")";
     pvw.style.transform = "scale(" + (document.getElementById("pvwbox").clientWidth / 1920) + ")";
+    misuraComandi();
+  }
+  // l'altezza dell'anteprima dipende dalla larghezza della colonna (16:9), quindi
+  // non si puo' scrivere in CSS: si misura. Sotto i 1080px i comandi vanno in riga
+  // e la misura non serve piu'.
+  function misuraComandi() {
+    var box = document.getElementById("pvwbox"), com = document.getElementById("comandi");
+    if (!box || !com) return;
+    com.style.height = window.innerWidth > 1080 ? Math.round(box.getBoundingClientRect().height) + "px" : "";
   }
   window.addEventListener("resize", fitThumb);
 
@@ -1463,8 +1489,10 @@
     function ricordata() {
       try { return JSON.parse(localStorage.getItem(RIC) || "null"); } catch (e) { return null; }
     }
-    function ricorda(w, h) {
-      try { localStorage.setItem(RIC, JSON.stringify({ w: w, h: h })); } catch (e) {}
+    function ricorda(d) {
+      var v = ricordata() || {};
+      for (var k in d) v[k] = d[k];
+      try { localStorage.setItem(RIC, JSON.stringify(v)); } catch (e) {}
     }
     // Lo spazio davvero libero. Certe barre stanno fisse sopra la finestra:
     // l'avviso "sola lettura" in fondo, la fascia dell'ambiente in cima. Se la
@@ -1504,10 +1532,35 @@
       var r = ricordata();
       card.style.width = (r && r.w ? r.w : 620) + "px";
       card.style.height = (r && r.h) ? r.h + "px" : "";   // senza misura: alta quanto serve
+      var suoposto = r && r.l !== undefined && r.t !== undefined;
+      if (suoposto) { card.style.left = r.l + "px"; card.style.top = r.t + "px"; }
       dlg.style.display = "flex";
-      centraFino = Date.now() + 1500;
-      sistema(true);
+      centraFino = suoposto ? 0 : Date.now() + 1500;
+      sistema(!suoposto);
     }
+
+    // ── spostarla: si afferra la testata e la si porta dove serve ──────────
+    (function () {
+      var tit = document.getElementById("progTitolo"), preso = null;
+      tit.addEventListener("pointerdown", function (e) {
+        if (e.button) return;
+        preso = { x: e.clientX - card.offsetLeft, y: e.clientY - card.offsetTop };
+        tit.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      });
+      tit.addEventListener("pointermove", function (e) {
+        if (!preso) return;
+        var s = spazio(), lw = window.innerWidth;
+        card.style.left = Math.max(12, Math.min(e.clientX - preso.x, lw - card.offsetWidth - 12)) + "px";
+        card.style.top = Math.max(s.su, Math.min(e.clientY - preso.y, s.giu - card.offsetHeight)) + "px";
+      });
+      tit.addEventListener("pointerup", function () {
+        if (!preso) return;
+        preso = null;
+        ricorda({ l: Math.round(parseFloat(card.style.left)), t: Math.round(parseFloat(card.style.top)) });
+      });
+      tit.addEventListener("pointercancel", function () { preso = null; });
+    })();
     if (window.ResizeObserver) {
       var attesa = null;
       new ResizeObserver(function () {
@@ -1519,7 +1572,7 @@
         if (!scelta) return;
         clearTimeout(attesa);
         attesa = setTimeout(function () {
-          ricorda(Math.round(card.offsetWidth), Math.round(card.offsetHeight));
+          ricorda({ w: Math.round(card.offsetWidth), h: Math.round(card.offsetHeight) });
         }, 300);
       }).observe(card);
     }
