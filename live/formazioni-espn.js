@@ -400,9 +400,16 @@
     });
   }
 
+  // stile(): lo stile del pannello verde-acqua, esposto. Prima veniva iniettato
+  // solo costruendo il pannello di questo file, quindi una pagina che ne
+  // costruisce uno proprio con le stesse classi non prendeva niente e i campi
+  // le finivano impilati a piena larghezza. Meglio esporre l'iniezione che
+  // copiare il CSS altrove: la faccia dei pannelli resta descritta in un posto.
   window.FormazioniEspn = { monta: monta, competizioni: COMPETIZIONI,
-                            schiera: schiera, cambiDi: cambiDi, terna: terna };
+                            schiera: schiera, cambiDi: cambiDi, terna: terna,
+                            stile: stile };
   // lo stesso pannello verde-acqua, per le grafiche che dei dati partita
   // fanno un altro uso: statistiche, tabellino, scheda squadra, focus
-  window.PartitaEspn = { pannello: pannello, competizioni: COMPETIZIONI, terna: terna };
+  window.PartitaEspn = { pannello: pannello, competizioni: COMPETIZIONI, terna: terna,
+                         stile: stile };
 })();

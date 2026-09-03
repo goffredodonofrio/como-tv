@@ -83,20 +83,27 @@
   .part .q{flex:0 0 96px;font-size:12px;color:var(--gold-bright);font-variant-numeric:tabular-nums;}
   .part .s{flex:1;min-width:0;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
-  /* ── le righe degli appuntamenti ── */
+  /* ── le righe degli appuntamenti ──
+     Due righe di campi con i segnaposto, come le statistiche e il Live Match:
+     niente micro-etichette d'oro su ogni casella, che a sette caselle per riga
+     diventavano una parete illeggibile. */
   .ap{border:1px solid var(--line-2);border-radius:9px;padding:12px;margin-bottom:10px;
     background:rgba(245,241,230,.02);}
-  .ap .cima{display:flex;gap:10px;align-items:center;margin-bottom:10px;}
-  .ap .cima .n{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.2em;
-    text-transform:uppercase;color:var(--gold);flex:1;}
-  .ap .ib{padding:6px 10px;font-size:10.5px;}
+  .ap:hover{border-color:var(--line-gold);}
+  .aprow{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+  .aprow:last-child{margin-bottom:0;}
+  .aprow .num{flex:0 0 26px;font-family:'Mazzard',sans-serif;font-size:15px;font-weight:800;
+    color:var(--gold);text-align:center;}
+  .aprow .g{flex:0 0 74px;} .aprow .d{flex:0 0 62px;}
+  .aprow .m{flex:0 0 74px;} .aprow .o{flex:0 0 84px;}
+  .aprow .c{flex:1;min-width:0;}
+  .aprow .sq{flex:1;min-width:0;display:flex;gap:6px;align-items:center;}
+  .aprow .sq img{width:24px;height:24px;object-fit:contain;flex:0 0 auto;}
+  .aprow .no{flex:1;min-width:0;}
+  .ap .ib{flex:0 0 auto;padding:9px 11px;font-size:10.5px;}
   .ap .ib.out{border-color:rgba(229,27,32,.4);color:#FF9A9C;}
   .ap .ib.out:hover{background:rgba(229,27,32,.12);border-color:var(--red);color:#FF9A9C;}
-  .quando{display:grid;grid-template-columns:88px 78px 88px 96px 1fr;gap:10px;margin-bottom:10px;}
-  .cosa{display:grid;grid-template-columns:150px 1fr 1fr;gap:10px;}
-  .cosa.evento{grid-template-columns:150px 2fr;}
-  .stemmino{display:flex;align-items:center;gap:8px;}
-  .stemmino img{width:26px;height:26px;object-fit:contain;flex:0 0 auto;}
+  .ap .ib.corta{padding:9px 8px;font-size:10px;color:var(--gold-bright);border-color:var(--line-gold);}
 
   /* ── foto ── */
   .fotoslot{display:flex;gap:12px;align-items:center;}
@@ -135,22 +142,27 @@
     <button id="btnPrev">Anteprima</button>
     <div class="campo" style="margin-left:auto;flex:0 0 auto"><label for="canaleSel">Seleziona vMix o progetto</label>
       <select id="canaleSel" style="width:290px;max-width:100%"></select></div>
+
     <button id="btnRegia">&#128225; Invia alla regia</button>
   </div>
 
   <!-- ══ dal calendario ══ -->
-  <div class="ufbar">
+  <!-- il pannello verde-acqua: stesse classi di formazioni-espn.js, cosi' e'
+       identico a quello di Formazioni, Cambi e Statistiche. Il contenitore dei
+       campi qui si chiama .field: chiamandolo .campo non prendeva niente e i
+       campi finivano impilati a piena larghezza. -->
+  <div class="ufbar" id="ufbar">
     <div class="uftitolo">&#9662; Partite dal calendario</div>
     <div class="ufriga">
-      <div class="campo" style="flex:0 0 220px"><label for="compSel">Competizione</label>
+      <div class="field" style="flex:0 0 230px"><label for="compSel">Competizione</label>
         <select id="compSel"></select></div>
-      <div class="campo" style="flex:0 0 150px"><label for="dal">Dal</label>
+      <div class="field" style="flex:0 0 160px"><label for="dal">Dal</label>
         <input type="date" id="dal"></div>
-      <div class="campo" style="flex:0 0 150px"><label for="al">Al</label>
+      <div class="field" style="flex:0 0 160px"><label for="al">Al</label>
         <input type="date" id="al"></div>
-      <div class="campo" style="flex:0 0 auto"><label>&nbsp;</label>
+      <div class="field" style="flex:0 0 auto">
         <button type="button" id="btnCerca">&#8681; Cerca le partite</button></div>
-      <div class="campo" style="flex:0 0 auto"><label>&nbsp;</label>
+      <div class="field" style="flex:0 0 auto">
         <button type="button" id="btnSoloComo">Solo Como</button></div>
     </div>
     <div id="espnStato" style="font-size:12.5px;color:var(--fg-3);min-height:18px;margin-top:4px"></div>
@@ -215,6 +227,9 @@
   var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
   var TOKEN = (window.ChiaveComoTV ? ChiaveComoTV.valore() : "");
   var API = "https://site.api.espn.com/apis/site/v2/sports/soccer";
+  // lo stile del pannello verde-acqua vive in formazioni-espn.js: si chiede a
+  // lui, cosi' questo pannello e' identico a quello di Formazioni e Statistiche
+  if (window.PartitaEspn && PartitaEspn.stile) PartitaEspn.stile();
   if (window.Scavalco) Scavalco.carica(PONTE);
   if (window.SceltaFoto) SceltaFoto.adotta(PONTE, TOKEN);
 
@@ -245,30 +260,33 @@
     el("righe").innerHTML = RIGHE.map(function (r, i) {
       var evento = r.tipo === "evento";
       return '<div class="ap" data-i="' + i + '">' +
-        '<div class="cima"><span class="n">Appuntamento ' + (i + 1) + "</span>" +
-          '<button type="button" class="ib" data-az="tipo">' +
-            (evento ? "&#9917; Diventa partita" : "&#127916; Diventa evento") + "</button>" +
+        '<div class="aprow">' +
+          '<span class="num">' + (i + 1) + "</span>" +
+          '<input type="text" class="g" data-k="g" maxlength="4" placeholder="DOM" value="' + esc(r.g) + '">' +
+          '<input type="text" class="d" data-k="d" maxlength="2" placeholder="14" value="' + esc(r.d) + '">' +
+          '<input type="text" class="m" data-k="m" maxlength="4" placeholder="SET" value="' + esc(r.m) + '">' +
+          '<input type="text" class="o" data-k="o" maxlength="5" placeholder="21:00" value="' + esc(r.o) + '">' +
+          '<input type="text" class="c" data-k="c" placeholder="Competizione o rubrica" value="' + esc(r.c) + '">' +
+          '<button type="button" class="ib" data-az="tipo">' + (evento ? "&#9917; partita" : "&#127916; evento") + "</button>" +
           '<button type="button" class="ib" data-az="su" title="Sposta su">&#9650;</button>' +
-          '<button type="button" class="ib" data-az="giu" title="Sposta giù">&#9660;</button>' +
-          '<button type="button" class="ib out" data-az="via">&times;</button>' +
+          '<button type="button" class="ib" data-az="giu" title="Sposta gi\u00f9">&#9660;</button>' +
+          '<button type="button" class="ib out" data-az="via" title="Togli">&times;</button>' +
         "</div>" +
-        '<div class="quando">' +
-          '<div><label>Giorno</label><input type="text" data-k="g" maxlength="4" placeholder="DOM" value="' + esc(r.g) + '"></div>' +
-          '<div><label>Data</label><input type="text" data-k="d" maxlength="2" placeholder="14" value="' + esc(r.d) + '"></div>' +
-          '<div><label>Mese</label><input type="text" data-k="m" maxlength="4" placeholder="SET" value="' + esc(r.m) + '"></div>' +
-          '<div><label>Ora</label><input type="text" data-k="o" maxlength="5" placeholder="21:00" value="' + esc(r.o) + '"></div>' +
-          '<div><label>Competizione o rubrica</label><input type="text" data-k="c" placeholder="es. Serie A · 4ª giornata" value="' + esc(r.c) + '"></div>' +
-        "</div>" +
-        '<div class="cosa' + (evento ? " evento" : "") + '">' +
-          '<div><label>Nota sotto</label><input type="text" data-k="no" placeholder="es. Stadio Sinigaglia" value="' + esc(r.no) + '"></div>' +
+        '<div class="aprow">' +
+          '<span class="num">&nbsp;</span>' +
           (evento
-            ? '<div><label>Titolo dell\'evento</label><input type="text" data-k="ti" placeholder="es. Football Show — puntata speciale" value="' + esc(r.ti) + '"></div>'
-            : '<div><label>Squadra di casa</label><div class="stemmino">' +
+            ? '<input type="text" class="c" data-k="ti" placeholder="Titolo dell\'evento" value="' + esc(r.ti) + '">'
+            : '<span class="sq">' +
                 (r.al ? '<img src="' + esc(r.al) + '" onerror="this.style.display=\'none\'">' : "") +
-                '<input type="text" data-k="an" placeholder="es. Como" value="' + esc(r.an) + '"></div></div>' +
-              '<div><label>Squadra in trasferta</label><div class="stemmino">' +
+                '<input type="text" data-k="an" placeholder="Squadra di casa" value="' + esc(r.an) + '">' +
+                '<button type="button" class="ib corta" data-az="corta" data-lato="an" title="Accorcia il nome">&#8676;</button>' +
+              "</span>" +
+              '<span class="sq">' +
                 (r.bl ? '<img src="' + esc(r.bl) + '" onerror="this.style.display=\'none\'">' : "") +
-                '<input type="text" data-k="bn" placeholder="es. Fiorentina" value="' + esc(r.bn) + '"></div></div>') +
+                '<input type="text" data-k="bn" placeholder="Squadra in trasferta" value="' + esc(r.bn) + '">' +
+                '<button type="button" class="ib corta" data-az="corta" data-lato="bn" title="Accorcia il nome">&#8676;</button>' +
+              "</span>") +
+          '<input type="text" class="no" data-k="no" placeholder="Nota sotto: stadio, studio, dove" value="' + esc(r.no) + '">' +
         "</div></div>";
     }).join("") || '<div style="color:var(--fg-3);font-size:12.5px;padding:6px 2px">Nessun appuntamento: prendine dal calendario qui sopra, o aggiungine uno a mano.</div>';
   }
@@ -285,12 +303,31 @@
     });
   }
 
+  // A tre voci il tipo e' grande e un nome come "Bolton Wanderers" arriva al
+  // minimo leggibile e va in puntini: nessun corpo lo risolve, va accorciato.
+  // Un clic toglie un pezzo di coda alla volta, cosi' si decide dove fermarsi.
+  var CODA = /[\s]+(united|city|county|town|wanderers|albion|rovers|athletic|calcio|fc|f\.c\.|1907|primavera|women|femminile|under\s*\d+)$/i;
+  function accorcia(n) {
+    var v = String(n || "").trim();
+    var t = v.replace(CODA, "").trim();
+    if (t && t !== v) return t;
+    // niente coda riconosciuta: si tolgono le parole da destra
+    var p = v.split(/\s+/);
+    return p.length > 1 ? p.slice(0, -1).join(" ") : v;
+  }
+
   el("righe").addEventListener("click", function (e) {
     var b = e.target.closest ? e.target.closest("button[data-az]") : null;
     if (!b) return;
     leggiModulo();
     var i = +b.closest(".ap").dataset.i;
     var az = b.dataset.az;
+    if (az === "corta") {
+      var lato = b.dataset.lato;
+      RIGHE[i][lato] = accorcia(RIGHE[i][lato]);
+      dipingi();
+      return;
+    }
     if (az === "via") RIGHE.splice(i, 1);
     else if (az === "su" && i > 0) RIGHE.splice(i - 1, 0, RIGHE.splice(i, 1)[0]);
     else if (az === "giu" && i < RIGHE.length - 1) RIGHE.splice(i + 1, 0, RIGHE.splice(i, 1)[0]);
