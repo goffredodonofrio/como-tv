@@ -65,9 +65,17 @@
   @media (max-width:1250px){ .fam-griglia{grid-template-columns:repeat(2,1fr);} }
   @media (max-width:800px){ .fam-griglia{grid-template-columns:1fr;} }
 
+  /* Tutta la scheda porta all'editor, non solo il tasto: chi guarda
+     l'anteprima e' gia' convinto, e cercare il pulsante e' un passaggio in
+     piu'. Il tasto resta, perche' e' quello che si raggiunge da tastiera. */
   .fam{background:var(--surface-panel);border:1px solid var(--line-2);border-radius:12px;
-    overflow:hidden;display:flex;flex-direction:column;}
-  .fam:hover{border-color:var(--line-gold);}
+    overflow:hidden;display:flex;flex-direction:column;cursor:pointer;
+    transition:border-color .15s ease, transform .15s ease, box-shadow .15s ease;}
+  .fam:hover{border-color:var(--line-gold);transform:translateY(-3px);
+    box-shadow:0 12px 30px rgba(0,0,0,.45);}
+  /* l'anteprima e' un iframe: senza questo si mangia il clic e la scheda
+     sembrerebbe cliccabile ovunque tranne che sulla figura */
+  .anle iframe{pointer-events:none;}
   /* l'anteprima e' il motore VERO, scalato: il catalogo non invecchia mai */
   .anle{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;background:#070B1D;}
   .anle.trasparente{
@@ -371,7 +379,7 @@
     h += '<h2 class="sezione">' + sz.nome + '</h2><div class="fam-griglia">';
     sz.fam.forEach(function (f) {
       var q = f.demo ? "&d=" + codifica(f.demo) : "";
-      h += '<div class="fam">' +
+      h += '<div class="fam" data-e="' + f.e + '" title="Apri l\'editor di ' + f.n + '">' +
         '<div class="anle' + (f.alpha ? " trasparente" : "") + '">' +
           '<iframe data-m="' + f.m + '" data-q="' + q + '" loading="lazy" scrolling="no" title="' + f.n + '"></iframe>' +
         '</div>' +
@@ -404,6 +412,25 @@
     if (!b) return;
     var fr = b.closest(".fam").querySelector("iframe");
     fr.src = b.dataset.m + "?n=" + Date.now() + b.dataset.q;
+  });
+
+  // Il clic sulla scheda apre l'editor. I due pulsanti in fondo restano
+  // padroni del loro clic: Animazione fa la sua cosa, e il link fa gia' da se'.
+  document.getElementById("catalogo").addEventListener("click", function (e) {
+    if (!e.target.closest) return;
+    if (e.target.closest(".fbtns")) return;          // li' comandano i pulsanti
+    var card = e.target.closest(".fam");
+    if (!card || !card.dataset.e) return;
+    // cmd/ctrl o rotella: nuova scheda, come ci si aspetta da un link
+    if (e.metaKey || e.ctrlKey || e.shiftKey) window.open(card.dataset.e, "_blank");
+    else location.href = card.dataset.e;
+  });
+  // rotella del mouse: nuova scheda anche col tasto centrale
+  document.getElementById("catalogo").addEventListener("auxclick", function (e) {
+    if (e.button !== 1 || !e.target.closest) return;
+    if (e.target.closest(".fbtns")) return;
+    var card = e.target.closest(".fam");
+    if (card && card.dataset.e) { e.preventDefault(); window.open(card.dataset.e, "_blank"); }
   });
 })();
 </script>
