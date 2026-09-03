@@ -467,6 +467,15 @@
       <div style="display:flex;flex-direction:column;gap:12px">
         <div><label style="display:block;margin-bottom:5px">File MP4 (H.264, max 800 MB)</label>
           <input type="file" id="vdFile" accept="video/mp4" style="width:100%"></div>
+        <div style="display:flex;align-items:center;gap:10px;color:var(--fg-3);font-size:11px;
+                    font-family:'Mazzard',sans-serif;letter-spacing:.2em;text-transform:uppercase">
+          <i style="flex:1;height:1px;background:var(--line-2)"></i>oppure<i style="flex:1;height:1px;background:var(--line-2)"></i>
+        </div>
+        <div><label style="display:block;margin-bottom:5px">Link a un video gi&agrave; online</label>
+          <input type="text" id="vdLink" placeholder="YouTube, Vimeo o link diretto a un .mp4"
+                 autocomplete="off" spellcheck="false"
+                 style="width:100%;padding:10px 12px;background:var(--surface-panel);border:1px solid var(--line-2);border-radius:6px;color:var(--ivory);font-size:15px">
+          <div id="vdLinkNota" style="margin-top:6px;font-size:12px;color:var(--fg-3);min-height:16px"></div></div>
         <div><label style="display:block;margin-bottom:5px">Nome in scaletta</label>
           <input type="text" id="vdNome" placeholder="VIDEO — …" style="width:100%;padding:10px 12px;background:var(--surface-panel);border:1px solid var(--line-2);border-radius:6px;color:var(--ivory);font-size:15px"></div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px">
@@ -1943,9 +1952,75 @@
       });
     }
 
+    // ── un video che sta gia' online ────────────────────────────────────
+    // Non si scarica e non si ricarica: si manda in onda l'indirizzo. YouTube
+    // e Vimeo non si possono dare al lettore video come fossero un file — sono
+    // pagine — quindi diventano il loro player dentro una finestra web, che il
+    // motore dei contributi sa gia' aprire. Un link che punta davvero a un file
+    // (.mp4, .webm) invece va al lettore video vero, cosi' tiene loop, muto e
+    // l'ultimo fotogramma come un contributo caricato.
+    function leggiLink(u) {
+      u = String(u || "").trim();
+      if (!u) return null;
+      if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+      var id = "", t = 0;
+      var m = u.match(/[?&]t=(\d+)/) || u.match(/[?&]start=(\d+)/);
+      if (m) t = parseInt(m[1], 10) || 0;
+      var y = u.match(/(?:youtube\.com\/(?:watch\?[^#]*\bv=|embed\/|live\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
+      if (y) {
+        id = y[1];
+        return { k: "web", che: "YouTube",
+          src: "https://www.youtube.com/embed/" + id +
+               "?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3" +
+               (t ? "&start=" + t : "") };
+      }
+      var v = u.match(/vimeo\.com\/(?:video\/)?(\d{6,})/);
+      if (v) {
+        return { k: "web", che: "Vimeo",
+          src: "https://player.vimeo.com/video/" + v[1] + "?autoplay=1&muted=1&title=0&byline=0&portrait=0" +
+               (t ? "#t=" + t + "s" : "") };
+      }
+      if (/\.(mp4|webm|m4v|mov)(\?|$)/i.test(u)) return { k: "video", che: "file video", src: u };
+      return { k: "web", che: "pagina web", src: u };
+    }
+    vd("vdLink").addEventListener("input", function () {
+      var L = leggiLink(vd("vdLink").value);
+      var n = vd("vdLinkNota");
+      if (!L) { n.textContent = ""; return; }
+      n.innerHTML = L.k === "video"
+        ? "Riconosciuto: <b>" + L.che + "</b>. Va al lettore video: loop, muto e ultimo fotogramma funzionano."
+        : "Riconosciuto: <b>" + L.che + "</b>. Parte <b>muto</b> — con l\'audio i player non partono da soli — " +
+          "e le spunte qui sotto non lo toccano.";
+    });
+
     vd("vdVia").addEventListener("click", function () {
       var f = vd("vdFile").files[0];
-      if (!f) { vstato("Scegli prima un file MP4.", "#FF9A9C"); return; }
+      var L = leggiLink(vd("vdLink").value);
+      if (L) {
+        // niente da caricare: l'indirizzo va dritto in scaletta
+        var tit = vd("vdNome").value.trim() ||
+          ("VIDEO \u2014 " + (L.che === "pagina web" ? "LINK" : L.che.toUpperCase()));
+        vd("vdVia").disabled = true;
+        vstato("Metto in scaletta\u2026");
+        postV({ tipo: "regia-load", c: CANALE, grafica: L.k === "video" ? "video" : "web", titolo: tit,
+                dati: L.k === "video"
+                  ? { k: "video", src: L.src, fit: vd("vdCover").checked ? "cover" : "contain",
+                      loop: vd("vdLoop").checked, mute: vd("vdMute").checked,
+                      bg: vd("vdTrasp").checked ? "trasparente" : "nero" }
+                  : { k: "web", src: L.src, bg: vd("vdTrasp").checked ? "trasparente" : "nero" } })
+          .then(function () {
+            vd("vdVia").disabled = false; dlg.style.display = "none";
+            vd("vdLink").value = ""; vd("vdNome").value = ""; vd("vdLinkNota").textContent = "";
+            msg.textContent = "\uD83C\uDFAC \u201c" + tit + "\u201d in scaletta: In onda quando vuoi.";
+            lastNonce = null; tick();
+          })
+          .catch(function (err) {
+            vd("vdVia").disabled = false;
+            vstato("Non messo in scaletta: " + err.message, "#FF9A9C");
+          });
+        return;
+      }
+      if (!f) { vstato("Scegli un file MP4 oppure incolla un link.", "#FF9A9C"); return; }
       if (!/\.mp4$/i.test(f.name)) { vstato("Solo MP4 (H.264).", "#FF9A9C"); return; }
       if (f.size > 800 * 1048576) { vstato("File troppo grande: massimo 800 MB.", "#FF9A9C"); return; }
       var titolo = vd("vdNome").value.trim() || ("VIDEO — " + f.name.replace(/\.mp4$/i, "").toUpperCase());
