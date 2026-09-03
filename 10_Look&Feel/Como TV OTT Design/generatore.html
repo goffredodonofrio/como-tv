@@ -2824,27 +2824,23 @@ function creaThumb(it){
  cb.onclick=function(e){e.stopPropagation();EXPSEL[it.key]=!EXPSEL[it.key];renderThumbs();syncExpBtn();};
  d.appendChild(cb);
  d.onclick=function(){
+   var cambioFamiglia = gruppoDi(it.key)!==gruppoDi(current);
    current=it.key;selObj=null;document.getElementById('fmtSel').value=it.key;
    apriGruppoCorrente();            // la famiglia del formato scelto resta l'unica aperta
    renderControls();renderStage();renderThumbs();
+   if(cambioFamiglia) portaInCima();
  };
  return d;
 }
 // La famiglia aperta va portata sotto gli occhi: se sta in fondo alla colonna
 // uno la apre e non vede niente cambiare.
+// La famiglia aperta e' gia' la prima dell'elenco: basta riportare la colonna
+// in alto perche' finisca sotto i campi, sempre nello stesso punto.
 function portaInCima(){
   setTimeout(function(){
-    var box=document.getElementById('thumbs'); if(!box) return;
-    var ap=box.querySelector('.catblk:not(.chiuso)'); if(!ap) return;
-    var col=document.querySelector('.panel'); if(!col) return;
-    // sotto il blocco dei campi, che resta appeso in cima
-    var fissi=document.querySelector('.pbody .fissi');
-    var alto=fissi?fissi.getBoundingClientRect().height:0;
-    var y=ap.getBoundingClientRect().top-col.getBoundingClientRect().top+col.scrollTop-alto-6;
-    // scorrimento secco: quello morbido, a pagina non in primo piano, il
-    // browser lo rimanda e la famiglia resta dove non si vede
-    col.scrollTop=Math.max(0,y);
-  },80);
+    var col=document.querySelector('.panel');
+    if(col) col.scrollTop=0;      // secco: quello morbido, a pagina non in
+  },80);                          // primo piano, il browser lo rimanda
 }
 
 function renderThumbs(){
@@ -2855,6 +2851,16 @@ function renderThumbs(){
  var gruppi=MENU.map(function(m){
   return {g:m.g,items:ITEMS.filter(function(it){return (CAT[it.key]||it.group)===m.g;})};
  });
+ // La famiglia aperta va in cima all'elenco, sopra tutte le altre: quella su
+ // cui si lavora sta sempre nello stesso punto dello schermo, invece di
+ // stare ogni volta a un'altezza diversa a seconda di quale sia. Quando si
+ // passa a un'altra, torna al suo posto nell'ordine dichiarato: l'elenco non
+ // si rimescola, si sposta una voce sola e si sa sempre dov'e' il resto.
+ if(THOPEN){
+  var iApr=-1;
+  gruppi.forEach(function(gr,i){ if(THOPEN[gr.g]) iApr=i; });
+  if(iApr>0) gruppi.unshift(gruppi.splice(iApr,1)[0]);
+ }
  if(THOPEN===null) apriGruppoCorrente();
  gruppi.forEach(function(gr){
   var aperto=!!(THOPEN&&THOPEN[gr.g]),nSel=gr.items.filter(function(it){return EXPSEL[it.key];}).length;
