@@ -94,9 +94,17 @@
   .fcard .cp{background:none;border:0;padding:0;font-family:'DM Sans',sans-serif;font-size:10.5px;
     letter-spacing:0;text-transform:none;color:var(--gold);cursor:pointer;}
   .fcard .cp:hover{color:var(--gold-bright);}
-  .manca{border-style:dashed;border-color:rgba(245,241,230,.14);opacity:.75;}
-  .manca .prev{background:rgba(10,15,36,.35);display:flex;align-items:center;justify-content:center;
-    color:var(--fg-3);font-size:11px;text-align:center;padding:6px;cursor:default;}
+  /* Chi manca deve saltare all'occhio: prima era grigio tratteggiato su fondo
+     navy e si perdeva dentro le altre tessere. L'ambra e' l'unico colore caldo
+     su questo fondo freddo, quindi si legge da lontano senza gridare. */
+  .manca{border-style:dashed;border-color:rgba(237,127,47,.5);background:rgba(237,127,47,.07);}
+  .manca .prev{background:rgba(237,127,47,.06);display:flex;align-items:center;justify-content:center;
+    color:var(--ivory);font-family:'Mazzard',sans-serif;font-weight:800;font-size:13px;
+    letter-spacing:.02em;text-align:center;padding:8px;cursor:default;line-height:1.25;
+    border-color:rgba(237,127,47,.22);}
+  .manca .k{color:#F0A868;font-family:'Mazzard',sans-serif;font-weight:700;font-size:10px;
+    letter-spacing:.18em;text-transform:uppercase;}
+  .gruppo .eti .senza{color:#F0A868;}
 
   /* ── la lente ── */
   #lente{display:none;position:fixed;inset:0;z-index:500;background:rgba(4,6,16,.86);
@@ -204,7 +212,17 @@
     }
     if (k.indexOf("foto-premium-") === 0) return { fam: "giocatori", cog: k.slice(13) };
     if (k.indexOf("coach-") === 0) return { fam: "giocatori", cog: k.slice(6), coach: true };
-    if (k.indexOf("foto-") === 0) return { fam: "altre" };
+    if (k.indexOf("foto-") === 0) {
+      // Anche qui il nome dice gia' tutto, basta leggerlo: le foto di servizio
+      // portano davanti la grafica per cui sono state fatte, le altre sono
+      // volti chiamati per nome e cognome (mentre il Premium usa il solo
+      // cognome). Erano 53 file in fila senza un ordine visibile.
+      var r = k.slice(5);
+      if (r.indexOf("demo-") === 0)   return { fam: "altre", sotto: "demo",   eti: r.slice(5) };
+      if (r.indexOf("focus-") === 0)  return { fam: "altre", sotto: "focus",  eti: r.slice(6) };
+      if (r.indexOf("scheda-") === 0) return { fam: "altre", sotto: "scheda", eti: r.slice(7) };
+      return { fam: "altre", sotto: "volti", eti: r };
+    }
     return { fam: "stemmi", sq: k };
   }
 
@@ -245,8 +263,8 @@
       '</div>';
   }
   function tesseraVuota(testo) {
-    return '<div class="fcard manca"><div class="prev">' + esc(testo) + '</div>' +
-      '<div class="k">&mdash;</div><div class="p"><span>manca</span></div></div>';
+    return '<div class="fcard manca"><div class="prev">' + esc(testo) + "</div>" +
+      '<div class="k">Foto da caricare</div></div>';
   }
 
   // ══════════ VISTE PIATTE ══════════
@@ -268,6 +286,25 @@
             return tessera(f, f.info.kit);
           }).join("") + "</div></div>";
       }).join("") || '<div class="carico">Nessuna maglia.</div>';
+      return;
+    }
+    if (SEZIONE === "altre") {
+      var SOTTO = [
+        { k: "volti",  eti: "Volti (nome e cognome)", spiega: "usati da duello, scheda e focus: qui il nome del file e' nome + cognome, non il solo cognome del Premium" },
+        { k: "focus",  eti: "Focus",   spiega: "fatte per la grafica Focus" },
+        { k: "scheda", eti: "Scheda",  spiega: "fatte per la grafica Scheda" },
+        { k: "demo",   eti: "Demo e prove", spiega: "materiale di prova, non roba da mandare in onda" }
+      ];
+      el("conta").innerHTML = v.length + " file" + (CERCA ? " che corrispondono" : "");
+      el("vistaPiatta").innerHTML = SOTTO.map(function (S) {
+        var q = v.filter(function (f) { return f.info.sotto === S.k; });
+        if (!q.length) return "";
+        return '<div class="gruppo"><div class="eti">' + esc(S.eti) + " &middot; " + q.length + "</div>" +
+          '<div class="vuotoeti" style="margin:-4px 0 8px">' + esc(S.spiega) + "</div>" +
+          '<div class="griglia">' + q.map(function (f) {
+            return tessera(f, (f.info.eti || f.chiave).replace(/-/g, " "));
+          }).join("") + "</div></div>";
+      }).join("") || '<div class="carico">Niente qui.</div>';
       return;
     }
     el("conta").innerHTML = v.length + " file" + (CERCA ? " che corrispondono" : "");
@@ -393,7 +430,8 @@
         if (f) ha.push({ f: f, cog: cog }); else no.push(cog);
       });
       var testa = '<div class="eti">Volti &mdash; ' + ha.length + " su " + rosa.length +
-        (coach ? " &middot; allenatore sì" : "") + "</div>";
+        (no.length ? ' <span class="senza">&middot; ' + no.length + " da caricare</span>" : "") +
+        (coach ? " &middot; allenatore s\u00ec" : "") + "</div>";
       var corpo = "";
       if (coach) corpo += tessera(coach, "allenatore");
       corpo += ha.map(function (x) { return tessera(x.f, x.cog); }).join("");
