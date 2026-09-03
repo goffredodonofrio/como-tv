@@ -556,6 +556,11 @@ function vsRun(p,stile){
  stile.t=t;stile.sep=true;return [stile];
 }
 function runsT(x,y,o,runs){o=o||{};var a=o.anchor||'start';var ls=o.ls||0;
+ // un pezzo rimasto di sola punteggiatura (il " \u00b7 " fra data e ora, quando
+ // data e ora non ci sono) non va disegnato: sarebbe un puntino orfano
+ runs=runs.filter(function(r){
+   return String(r.t==null?'':r.t).replace(/[\u00b7\u2013\u2014\-\/|,;:\s]/g,'')!=='';
+ });
  var inner=runs.map(function(r,i){var sz=r.s||o.s;var dx=r.dx||0;var tt=up(String(r.t)).trim();
    var sep=r.sep||tt==='VS';
    if(!dx&&sep){dx=Math.round((i>0?(runs[i-1].s||o.s):sz)*0.20);}
@@ -1471,7 +1476,13 @@ ITEMS.forEach(function(it){var meta=OTTGEN.meta(it.base);var vals={};
 var current=ITEMS[0].key;
 function getV(k,fk){return SHAREDKEYS[fk]?SHARED[fk]:STATE[k].vals[fk];}
 function setV(k,fk,v){if(SHAREDKEYS[fk])SHARED[fk]=v;else STATE[k].vals[fk]=v;}
-function P(key){var p=Object.assign({},SHARED,STATE[key].vals);p.live=!!(BYKEY[key]&&BYKEY[key].liveOn);return p;}
+function P(key){var p=Object.assign({},SHARED,STATE[key].vals);p.live=!!(BYKEY[key]&&BYKEY[key].liveOn);
+ // Data e ora si disegnano in dieci punti diversi, ognuno a modo suo: invece
+ // di mettere un controllo in ognuno (e dimenticarne uno) si svuotano qui,
+ // una volta sola per tutti i formati. Il separatore rimasto da solo lo
+ // scarta runsT, che non disegna i pezzi fatti di sola punteggiatura.
+ if(p.showData===false){p.date='';p.time='';}
+ return p;}
 var _thumbTO;function refreshThumbs(){clearTimeout(_thumbTO);_thumbTO=setTimeout(renderThumbs,120);if(window.sessProponiNome)sessProponiNome();}
 
 // adj -> transform string
@@ -1760,6 +1771,11 @@ var SOCIAL_EL=[
  // English Commentary: bandiera britannica in tondo. La croce e' una fascia
  // spessa e le diagonali sono sottili: con tutti i tratti uguali sembrava una
  // ruota. I pesi diversi sono cio' che la fa riconoscere a 19px.
+ // Data e ora: un interruttore come gli altri, cosi' si tolgono senza dover
+ // svuotare i campi (e riscriverli quando servono di nuovo).
+ {k:'showData',  n:'Data e ora',
+  d:'<rect x="3.2" y="4.8" width="13.6" height="12" rx="2"/>'
+   +'<path d="M3.2 8.6h13.6M7 2.9v3.6M13 2.9v3.6"/>'},
  {k:'english',   n:'English Comm.',ovunque:true,
   d:'<circle cx="10" cy="10" r="7.4"/>'
    +'<path d="M5.2 5.2 14.8 14.8M14.8 5.2 5.2 14.8" stroke-width="1"/>'
@@ -1796,8 +1812,11 @@ function acceso(k){return (k==='english'||k==='showLive')?!!SHARED[k]:SHARED[k]!
 // del formato a quelli condivisi) e l'elemento tornerebbe a farsi vedere.
 (function(){
  var b=document.getElementById('cbSocialTutti'); if(!b) return;
- var SPENTI={showLogo:false,showCta:false,showPreshow:false,showLive:false,english:false};
- var DIPARTENZA={showLogo:true,showCta:true,showPreshow:true,showLive:false,english:false};
+ // niente elenchi scritti a mano: si legge da SOCIAL_EL, cosi' un elemento
+ // aggiunto domani entra nel "via tutti" senza che nessuno se ne ricordi
+ var SPENTOSEMPRE={showLive:1,english:1};      // questi nascono spenti
+ function SPENTI(){var o={};SOCIAL_EL.forEach(function(e){o[e.k]=false;});return o;}
+ function DIPARTENZA(){var o={};SOCIAL_EL.forEach(function(e){o[e.k]=!SPENTOSEMPRE[e.k];});return o;}
  function qualcunoAcceso(){ return SOCIAL_EL.some(function(e){return acceso(e.k);}); }
  function applica(valori){
   SOCIAL_EL.forEach(function(e){ SHARED[e.k]=valori[e.k]; });
@@ -1815,7 +1834,7 @@ function acceso(k){return (k==='english'||k==='showLive')?!!SHARED[k]:SHARED[k]!
  }
  b.onclick=function(){
   pushUndo();
-  applica(qualcunoAcceso()?SPENTI:DIPARTENZA);
+  applica(qualcunoAcceso()?SPENTI():DIPARTENZA());
   renderControls();renderStage();refreshThumbs();renderSocial();
  };
  var vecchia=window.renderSocial;
