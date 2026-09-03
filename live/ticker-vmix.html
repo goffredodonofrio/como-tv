@@ -177,19 +177,28 @@
   // ── titolone rotante ──
   var wrap = document.getElementById("titowrap");
   var titoli = (D.ti || []).filter(function (t) { return String(t || "").trim(); });
-  var idx = 0, cur = null;
+  var idx = 0, cur = null, pronto = null;
 
-  function mostraTito(t) {
-    var vecchio = cur;
+  // Il titolo si costruisce e si fa disegnare MENTRE il precedente e' ancora
+  // in onda: sta sotto il bordo della finestra, invisibile. Prima si costruiva
+  // nell'istante in cui doveva partire, e il primo fotogramma del movimento si
+  // portava dietro il calcolo del testo e la sua prima pennellata — con due
+  // righe a corpo 45 e il taglio a due righe non e' gratis.
+  function costruisci(t) {
     var el = document.createElement("div");
     el.className = "tito";
     el.innerHTML = '<b>' + esc(t).replace(/\s·\s/g, "<br>") + '</b>';
+    el.__t = t;
     wrap.appendChild(el);
+    void el.offsetHeight;
+    return el;
+  }
+
+  function mostraTito(t) {
+    var vecchio = cur;
+    var el = (pronto && pronto.__t === t) ? pronto : costruisci(t);
+    pronto = null;
     cur = el;
-    // il costo di calcolo e disegno del titolo nuovo si paga ADESSO, mentre
-    // e' ancora fuori quadro: cosi' il rullo parte gia' "caldo" e non perde
-    // il primo fotogramma (era da li' che veniva lo scatto).
-    void el.offsetWidth;
 
     if (STILL) {
       el.style.transition = "none";     // in anteprima il titolo e' gia' a posto
@@ -197,19 +206,72 @@
       if (vecchio && vecchio.parentNode) vecchio.parentNode.removeChild(vecchio);
       return;
     }
-    // il nuovo sale da sotto e il vecchio esce sopra NELLO STESSO MOMENTO:
-    // un movimento solo, continuo, come un rullo che gira.
-    // Il cambio di classe arriva subito dopo il reflow qui sopra: la
-    // transizione parte lo stesso e non dipende dai fotogrammi, cosi' se
-    // la sorgente e' in pausa il titolo non resta bloccato fuori campo.
-    el.classList.add("in");
+    // Il nuovo sale da sotto e il vecchio esce sopra NELLO STESSO MOMENTO: un
+    // movimento solo, continuo, come un rullo che gira. Si muove con animate()
+    // e non piu' con una transizione di classe: la transizione vuole che lo
+    // stato di partenza sia stato dipinto almeno una volta, e quando non lo era
+    // il primo fotogramma partiva da dove capitava. animate() non ha quel
+    // problema, ed e' lo stesso motore con cui gia' scorre il crawl.
+    var tempi = { duration: 800 * SLOW, easing: "cubic-bezier(.24,.74,.22,1)", fill: "forwards" };
+    el.animate([{ transform: "translateY(100%)" }, { transform: "translateY(0)" }], tempi);
     if (vecchio) {
-      vecchio.classList.remove("in");
-      vecchio.classList.add("out");
-      setTimeout(function () { if (vecchio.parentNode) vecchio.parentNode.removeChild(vecchio); }, 1000);
+      vecchio.animate([{ transform: "translateY(0)" }, { transform: "translateY(-100%)" }], tempi);
+      // Si toglie a tempo, NON alla fine dell'animazione: se la sorgente e' in
+      // pausa i fotogrammi si fermano, l'animazione non finisce mai e i titoli
+      // vecchi resterebbero nel DOM per sempre. Provato: crescevano di uno a
+      // ogni giro. Il timer scatta comunque.
+      setTimeout(function () {
+        if (vecchio.parentNode) vecchio.parentNode.removeChild(vecchio);
+      }, 800 * SLOW + 200);
     }
+    // rete di sicurezza: qui dentro stanno al massimo il titolo in onda, quello
+    // che sta uscendo e quello gia' pronto. Tutto il resto e' roba dimenticata.
+    Array.prototype.forEach.call(wrap.querySelectorAll(".tito"), function (x) {
+      if (x !== el && x !== vecchio && x.parentNode) x.parentNode.removeChild(x);
+    });
+    // e adesso, con sei secondi davanti, si prepara quello dopo
+    if (titoli.length > 1) pronto = costruisci(titoli[idx % titoli.length]);
   }
-  function ruota() { if (!titoli.length) return; mostraTito(titoli[idx % titoli.length]); idx++; }
+  function ruota() {
+    if (!titoli.length) return;
+    var t = titoli[idx % titoli.length];
+    idx++;
+    mostraTito(t);
+  }
+
+  // ── il nastro che scorre ────────────────────────────────────────────
+  // La distanza deve essere la larghezza VERA di una copia: le due copie sono
+  // identiche, quindi se il nastro scorre esattamente di quella il rientro e'
+  // invisibile. Sbagliarla di poco si vede benissimo — uno strappo a ogni giro.
+  //
+  // Due trappole, trovate misurando:
+  //  · offsetWidth e' intero, la larghezza vera ha i decimali (2599,2 contro
+  //    2599). Un quinto di pixel per giro non si nota, ma tanto vale prenderlo.
+  //  · la misura va presa DOPO che i font sono applicati. Col font di ripiego
+  //    il testo era largo 2650, poi arrivava DM Sans e si stringeva a 2599:
+  //    l'animazione continuava a percorrere 2650 e a ogni giro il crawl
+  //    saltava indietro di 51 pixel. Era questo lo scatto nella parte dati.
+  var anCrawl = null;
+  function partiCrawl(track, uno) {
+    function vai() {
+      var w = uno.getBoundingClientRect().width / scalaOra();
+      if (anCrawl) anCrawl.cancel();
+      var vel = 190;                                // px/s a risoluzione piena
+      var dur = Math.max(12, w / vel);
+      anCrawl = track.animate(
+        [{ transform: "translate3d(0,0,0)" }, { transform: "translate3d(" + (-w) + "px,0,0)" }],
+        { duration: dur * 1000 * SLOW, iterations: Infinity, easing: "linear" }
+      );
+    }
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(vai);
+    else vai();
+  }
+  // la fascia e' disegnata a 1920 e poi scalata: la larghezza in pixel di
+  // schermo va riportata alle unita' del progetto, se no la distanza e' scalata
+  function scalaOra() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    return s > 0 ? s : 1;
+  }
 
   // ── avvio ──
   function avvia() {
@@ -220,21 +282,7 @@
     // scorrimento del crawl: velocità costante in px/s, durata dal contenuto
     var track = document.getElementById("crawltrack");
     var uno = track.querySelector(".uno");
-    if (uno) {
-      (function () {
-        // offsetWidth e' in pixel di layout ed e' INTERO: la misura scalata
-        // lasciava una frazione di pixel e a ogni giro il crawl faceva un
-        // saltino. Le due copie sono identiche, quindi il rientro e' esatto.
-        var w = uno.offsetWidth;
-        var vel = 190;                              // px/s a risoluzione piena
-        var dur = Math.max(12, w / vel);
-        if (STILL) return;
-        track.animate(
-          [{ transform: "translate3d(0,0,0)" }, { transform: "translate3d(" + (-w) + "px,0,0)" }],
-          { duration: dur * 1000 * SLOW, iterations: Infinity, easing: "linear" }
-        );
-      })();
-    }
+    if (uno && !STILL) partiCrawl(track, uno);
   }
 
   if (STILL) { document.getElementById("ticker").classList.add("on"); ruota(); }
