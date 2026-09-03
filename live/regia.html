@@ -152,9 +152,29 @@
   .voce .vt em{font-style:normal;color:var(--fg-3);font-size:11px;margin-left:8px;}
   .voce select{font-family:'DM Sans',system-ui,sans-serif;font-size:12.5px;padding:6px 8px;
     border-radius:6px;background:rgba(245,241,230,.06);color:var(--ivory);
-    border:1px solid rgba(245,241,230,.16);max-width:230px;}
+    border:1px solid rgba(245,241,230,.16);max-width:min(360px,42%);}
   .voce .ib{flex:0 0 auto;}
   .dentro .vuoto{font-size:12.5px;color:var(--fg-3);padding:6px 4px;}
+
+  /* La finestra dei progetti si ridimensiona: dentro un progetto i nomi delle
+     grafiche sono lunghi e a 620px si leggevano a meta’. Si trascina l’angolo
+     in basso a destra; la misura scelta resta per la volta dopo. Il ridimensio-
+     namento e’ quello del browser, quindi funziona uguale su Mac e su PC. */
+  #progCard{position:absolute;box-sizing:border-box;display:flex;flex-direction:column;
+    background:linear-gradient(180deg,#141B3C,#0E1430);
+    border:1px solid var(--line-gold);border-radius:12px;padding:24px;
+    overflow:hidden;resize:both;
+    min-width:420px;min-height:260px;max-width:96vw;max-height:94vh;}
+  /* titolo e piede fermi, l’elenco scorre in mezzo: allargando la finestra lo
+     spazio va tutto ai progetti, e il tasto Chiudi resta sempre sotto gli occhi */
+  #progCard > h2, #progFoot{flex:0 0 auto;}
+  #progScroll{flex:1;min-height:0;overflow:auto;margin-right:-8px;padding-right:8px;}
+  /* l’angolino di trascinamento del browser, su fondo scuro, non si vede:
+     glielo si accende sotto, nell’angolo esatto in cui va preso */
+  #progCard::after{content:"";position:absolute;right:4px;bottom:4px;
+    width:14px;height:14px;pointer-events:none;opacity:.7;
+    background:linear-gradient(135deg,transparent 46%,var(--line-gold) 46%,var(--line-gold) 56%,
+      transparent 56%,transparent 68%,var(--line-gold) 68%,var(--line-gold) 78%,transparent 78%);}
 
   /* monitor ANTEPRIMA (PVW, cornice oro) e IN ONDA (PGM, cornice rossa) */
   #pvwbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px;
@@ -453,13 +473,16 @@
        "Apri progetto": caricarne uno SOSTITUISCE la scaletta di questo
        canale, ma non tocca mai cio' che e' in onda. -->
   <div id="progDialog" style="display:none;position:fixed;inset:0;z-index:400;background:rgba(4,6,16,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center">
-    <div style="width:min(620px,92vw);max-height:80vh;overflow:auto;background:linear-gradient(180deg,#141B3C,#0E1430);border:1px solid var(--line-gold);border-radius:12px;padding:24px">
+    <div id="progCard">
       <h2 style="margin-bottom:14px">Progetti <small id="progcount"></small></h2>
-      <div id="proglist"></div>
-      <div id="progvuoto" style="display:none;color:var(--fg-3);font-size:13px;padding:8px 2px">
-        Nessun progetto salvato: si creano dalle pagine delle grafiche (destinazione &rarr; &#10133; Nuovo progetto).</div>
-      <div style="display:flex;justify-content:flex-end;margin-top:14px">
-        <button id="progChiudi" type="button">Chiudi</button>
+      <div id="progScroll">
+        <div id="proglist"></div>
+        <div id="progvuoto" style="display:none;color:var(--fg-3);font-size:13px;padding:8px 2px">
+          Nessun progetto salvato: si creano dalle pagine delle grafiche (destinazione &rarr; &#10133; Nuovo progetto).</div>
+      </div>
+      <div id="progFoot" style="display:flex;align-items:center;gap:12px;margin-top:14px">
+        <small style="color:var(--fg-3);font-size:11.5px">&#8690; Trascina l’angolo in basso a destra per allargare la finestra.</small>
+        <button id="progChiudi" type="button" style="margin-left:auto">Chiudi</button>
       </div>
     </div>
   </div>
@@ -1421,10 +1444,88 @@
   //    Vivono in una FINESTRA aperta dal tasto "Apri progetto". ──────
   (function () {
     var dlg = document.getElementById("progDialog");
+    var card = document.getElementById("progCard");
     var lista = document.getElementById("proglist");
     var conta = document.getElementById("progcount");
     var vuoto = document.getElementById("progvuoto");
     document.getElementById("progChiudi").addEventListener("click", function () { dlg.style.display = "none"; });
+
+    // ── la finestra: si allarga trascinando l'angolo e si ricorda com'era ──
+    //    Chi versa i progetti il giorno del live la allarga una volta e la
+    //    ritrova cosi'. Il trascinamento e' quello del browser, uguale su Mac
+    //    e su PC; qui ci sono solo la misura di partenza e i limiti.
+    var RIC = "comotv.regia.finestraProgetti";
+    // L'ultima misura decisa dal codice. Serve a distinguere una finestra tirata
+    // per l'angolo da una rimpicciolita d'ufficio perche' lo schermo e' piccolo:
+    // la seconda non deve cancellare la misura scelta su un monitor piu' grande.
+    var mia = { w: 0, h: 0 };
+
+    function ricordata() {
+      try { return JSON.parse(localStorage.getItem(RIC) || "null"); } catch (e) { return null; }
+    }
+    function ricorda(w, h) {
+      try { localStorage.setItem(RIC, JSON.stringify({ w: w, h: h })); } catch (e) {}
+    }
+    // Lo spazio davvero libero. Certe barre stanno fisse sopra la finestra:
+    // l'avviso "sola lettura" in fondo, la fascia dell'ambiente in cima. Se la
+    // finestra ci finisce sotto, il tasto Chiudi non si clicca piu'.
+    function spazio() {
+      var lh = window.innerHeight, su = 0, giu = 0;
+      Array.prototype.forEach.call(document.body.children, function (e) {
+        if (e === dlg || !e.offsetHeight) return;
+        var st = getComputedStyle(e);
+        if (st.position !== "fixed" || st.visibility === "hidden") return;
+        if ((parseInt(st.zIndex, 10) || 0) <= 400) return;   // ci passa sotto: non da' noia
+        var b = e.getBoundingClientRect();
+        if (b.top <= 1) su = Math.max(su, b.bottom);
+        else if (b.bottom >= lh - 1) giu = Math.max(giu, b.height);
+      });
+      return { su: su + 12, giu: lh - giu - 12 };
+    }
+    // La rimette a posto: mai piu' grande dello spazio libero, mai fuori dallo
+    // schermo. Centrandola solo quando si apre — mentre ci si legge dentro deve
+    // stare ferma, anche se cresce perche' si e' aperto un progetto.
+    function sistema(centrare) {
+      var s = spazio(), lw = window.innerWidth, alta = s.giu - s.su;
+      if (card.offsetWidth > lw - 24) card.style.width = (lw - 24) + "px";
+      if (card.offsetHeight > alta) card.style.height = alta + "px";
+      var l = centrare ? (lw - card.offsetWidth) / 2 : (parseFloat(card.style.left) || 12);
+      var t = centrare ? s.su + (alta - card.offsetHeight) / 2 : (parseFloat(card.style.top) || s.su);
+      card.style.left = Math.max(12, Math.min(l, lw - card.offsetWidth - 12)) + "px";
+      card.style.top = Math.max(s.su, Math.min(t, s.giu - card.offsetHeight)) + "px";
+      mia.w = card.offsetWidth; mia.h = card.offsetHeight;
+    }
+    // Senza una misura salvata la finestra apre alta quanto serve, ma l'elenco
+    // dei progetti arriva dal ponte un istante dopo: al momento di centrarla e'
+    // ancora vuota e finirebbe bassa. Per il primo secondo e mezzo si ricentra
+    // mentre cresce; dopo sta ferma, che e' quello che serve mentre ci si legge.
+    var centraFino = 0;
+    function mostra() {
+      var r = ricordata();
+      card.style.width = (r && r.w ? r.w : 620) + "px";
+      card.style.height = (r && r.h) ? r.h + "px" : "";   // senza misura: alta quanto serve
+      dlg.style.display = "flex";
+      centraFino = Date.now() + 1500;
+      sistema(true);
+    }
+    if (window.ResizeObserver) {
+      var attesa = null;
+      new ResizeObserver(function () {
+        if (dlg.style.display === "none") return;
+        // se la misura non e' quella che ha messo il codice, l'ha tirata chi lavora
+        var scelta = (card.offsetWidth !== mia.w || card.offsetHeight !== mia.h);
+        if (Date.now() < centraFino) { sistema(true); return; }   // si sta ancora aprendo
+        sistema(false);
+        if (!scelta) return;
+        clearTimeout(attesa);
+        attesa = setTimeout(function () {
+          ricorda(Math.round(card.offsetWidth), Math.round(card.offsetHeight));
+        }, 300);
+      }).observe(card);
+    }
+    window.addEventListener("resize", function () {
+      if (dlg.style.display !== "none") sistema(false);
+    });
 
     var TUTTI = [];      // l'elenco, per sapere dove si puo' copiare
     var APERTI = {};     // quali progetti sono aperti: un aggiornamento non
@@ -1516,7 +1617,7 @@
           msg.textContent = 'Progetto "' + j.nome + '" creato. Compare da solo nel menu\u2019 ' +
             "della destinazione di tutte le grafiche, anche a pagina gi\u00e0 aperta: " +
             "di\u2019 alla redazione di sceglierlo al posto del vMix.";
-          dlg.style.display = "flex";
+          mostra();
           aggiorna();
         })
         .catch(function () { msg.textContent = "Ponte non raggiungibile."; });
@@ -1671,7 +1772,7 @@
 
     document.getElementById("btnProg").addEventListener("click", function () {
       lista.innerHTML = ""; vuoto.style.display = "none";
-      dlg.style.display = "flex";
+      mostra();
       aggiorna();   // elenco fresco a ogni apertura
     });
   })();
