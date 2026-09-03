@@ -34,6 +34,13 @@ body{font-family:'Mazzard',system-ui,sans-serif;background:radial-gradient(120% 
 .pbody .fissi{position:sticky;top:0;z-index:4;background:var(--n900,#0A0F24);
   padding-bottom:8px;margin-bottom:2px;
   box-shadow:0 10px 14px -10px rgba(0,0,0,.7)}
+/* Il blocco dei contenuti in verde acqua: e' quello che si compila, e a colpo
+   d'occhio si distingue dalle anteprime che stanno sotto. */
+.pbody .fissi .card{background:linear-gradient(180deg,rgba(45,212,191,.12),rgba(45,212,191,.05));
+  border:1px solid rgba(45,212,191,.4);box-shadow:inset 3px 0 0 rgba(45,212,191,.75)}
+.pbody .fissi .step{color:#6EE7D4}
+.pbody .fissi .step .n{background:rgba(45,212,191,.22);color:#8FF0DF}
+.pbody .fissi .card label{color:rgba(110,231,212,.85)}
 /* Maniglia per allargare il pannello a mano: chi ha un 13" la lascia com'e',
    chi ha piu' schermo se la tira — la larghezza si ricorda (localStorage),
    non e' una taglia unica decisa una volta per tutti. */
@@ -123,7 +130,13 @@ button.act:active{transform:scale(.97)}
 /* La tendina delle partite si prendeva 300px fissi e da sola faceva andare a
    capo tutta la barra su un portatile. Ora parte da 200 e cresce solo se
    avanza spazio: il nome della partita si legge lo stesso. */
-#airtableEventSelect{flex:1 1 200px;min-width:150px;max-width:320px}
+/* Verde acqua: e' il colore che in questo progetto vuol dire "roba che arriva
+   da fuori" — lo stesso del pannello ESPN. La tendina delle partite pesca da
+   Airtable, quindi e' esattamente quello. */
+#airtableEventSelect{flex:1 1 200px;min-width:150px;max-width:320px;
+ background:rgba(45,212,191,.12)!important;border-color:rgba(45,212,191,.45)!important;color:#8FF0DF!important}
+#airtableEventSelect:focus{border-color:rgba(45,212,191,.8)!important}
+#airtableEventSelect option{background:#0E1430;color:var(--ivory)}
 /* Bottoni-icona: quadrati, disegno a tratto che segue il colore del testo,
    cosi' l'icona si accende insieme al bottone quando lo strumento e' attivo. */
 .photobar .ico,.pebar .ico{padding:6px 7px;display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:0}
@@ -391,10 +404,9 @@ small.flag{color:#E3C271}
        secondo posto e occupava mezza barra: resta qui, nascosta, perche' mezzo
        codice legge e scrive fmtSel.value. -->
   <select id="fmtSel" title="Formato aperto" hidden style="display:none"></select>
-  <button class="act ico" id="dlPng" title="Scarica questo formato in JPG">
-    <svg viewBox="0 0 20 20"><path d="M10 2.5v11M10 13.5 6 9.5M10 13.5l4-4M3 16.5h14"/></svg></button>
-   <button class="act ico" id="dlAll" title="Scarica in un file ZIP i formati spuntati nella colonna di destra">
-    <svg viewBox="0 0 20 20"><path d="M2.5 6.5h15v11h-15zM2.5 6.5 5 2.5h10l2.5 4M10 2.5v4M8 10h4M8 12.5h4"/></svg><span id="zipN">ZIP</span></button>
+  <!-- scarica e ZIP sono stati spostati in fondo alla barra: sono l'ultima cosa
+       che si fa, e stando in mezzo agli strumenti di composizione si premevano
+       per sbaglio. Vedi il gruppo "tbcoda" in fondo. -->
    <!-- Sessione e Ripristina non servono piu' nell'uso quotidiano: il menu
         resta nel DOM (elementi con lo stesso id, JS invariato, zero rischio
         di rompere altro) ma nascosto — non occupa spazio, non si vede. -->
@@ -468,6 +480,13 @@ small.flag{color:#E3C271}
    </div>
   </span>
   <span class="grow"></span>
+  <span class="tbsep tbfisso"></span>
+  <span class="tbcoda tbfisso">
+   <button class="act ico" id="dlPng" title="Scarica questo formato in JPG">
+    <svg viewBox="0 0 20 20"><path d="M10 2.5v11M10 13.5 6 9.5M10 13.5l4-4M3 16.5h14"/></svg></button>
+   <button class="act ico" id="dlAll" title="Scarica in un file ZIP i formati spuntati nella colonna di destra">
+    <svg viewBox="0 0 20 20"><path d="M2.5 6.5h15v11h-15zM2.5 6.5 5 2.5h10l2.5 4M10 2.5v4M8 10h4M8 12.5h4"/></svg><span id="zipN">ZIP</span></button>
+  </span>
  </div>
   <!-- Barra di lavoro sola, sempre visibile: sessione, export, strumenti foto.
        Gli strumenti non compaiono e scompaiono — sono sempre li' e accenderne
@@ -3551,14 +3570,19 @@ loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
   ovf.innerHTML='<button type="button" class="tbovfbtn" title="Altri comandi">&#8943;</button>'+
                 '<div class="tbovfpan"></div>';
   var grow=barra.querySelector('.grow');
-  barra.insertBefore(ovf, grow||null);
+  barra.insertBefore(ovf, grow||null);   // prima dello spazio: il "..." resta con gli strumenti
   var pan=ovf.querySelector('.tbovfpan'), btn=ovf.querySelector('.tbovfbtn');
   btn.addEventListener('click',function(e){e.stopPropagation();pan.classList.toggle('on');});
   document.addEventListener('click',function(){pan.classList.remove('on');});
   pan.addEventListener('click',function(e){e.stopPropagation();});
 
-  // i primi due gruppi non si toccano: il menu' del sito e cio' che si esporta
-  var mobili=gruppi.slice(2);
+  // Non si ritirano mai: il menu' del sito, la scelta della partita e i due
+  // tasti di scarico in fondo. Sono l'inizio e la fine del lavoro — nasconderli
+  // dietro un "..." sarebbe esattamente il contrario di quello che serve.
+  var mobili=gruppi.filter(function(g,i){
+   if(i<2) return false;
+   return !g.querySelector('.tbfisso') && !g.classList.contains('tbfisso');
+  });
   var fuori=[];                                        // quelli finiti nel pannello
 
   function sfora(){ return barra.scrollWidth > barra.clientWidth + 2; }
@@ -3610,7 +3634,9 @@ loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
   // spaziatore elastico e la tendina delle partite che si stringe, la barra
   // "ci stava" secondo i conti mentre sullo schermo si tagliava. Tolto lo
   // spaziatore e fissata la tendina, sforare torna a voler dire sforare.
-  if(grow) grow.style.display='none';
+  // lo spaziatore resta acceso e spinge scarica/ZIP contro il bordo destro;
+  // per i conti lo si esclude a mano, che e' quello che serviva davvero
+  if(grow) grow.style.flex='1 1 0';
   var tend=document.getElementById('airtableEventSelect');
   if(tend) tend.style.flex='0 0 200px';
   barra.style.flexWrap='nowrap';
