@@ -1040,19 +1040,25 @@ var FMT={
    if(L.length>2){size=ytFit(p.mkTitle,92,-1,1860);L=ytWrap(p.mkTitle,size,-1,950);}
    L=L.slice(0,2);
    var step=Math.round(size*1.04);
-   // La fascia era stata disegnata per un quadro 3:4: alta ~660px su 1440,
-   // copriva il 46% dell'immagine. Portando il quadro a 9:16 la stessa fascia
-   // ne copriva solo il 34% e diventava una strisciolina sopra il video.
-   // Qui torna a valere quel 46%, e il blocco dei testi scende di conseguenza:
-   // altrimenti il navy in piu' resterebbe vuoto sotto il sottotitolo.
-   var BH34=468+L.length*step;                  // la fascia respira col titolo
-   var BH=Math.round(BH34*H/1440);
-   var giu=Math.round((BH-BH34)/2);             // il respiro in piu', diviso sopra e sotto
+   // MISURE FISSE, prese dal riferimento pubblicato. Il video deve avere una
+   // finestra sempre uguale, altrimenti chi monta non sa mai quanto spazio ha:
+   //   fascia alta   720   il navy col logo, la competizione, titolo e occhiello
+   //   finestra     1080   quadrata, e' li' che si vede il video
+   //   fascia bassa  120   la striscia scura che chiude
+   // 720+1080+120 = 1920. Il blocco dei testi si centra nella fascia alta.
+   var FIN=Math.round(W);                       // finestra quadrata: alta quanto e' larga
+   var BH=Math.round((H-FIN)*0.857);            // 720 su 1920, il resto va sotto
+   var BASSA=H-FIN-BH;                          // 120
+   var BH34=468+L.length*step;
+   var giu=Math.round((BH-BH34)/2);             // i testi al centro della fascia
    var out='<defs><radialGradient id="mkBg" cx="50%" cy="0%" r="130%"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".5" stop-color="#141B3C"/><stop offset="1" stop-color="#0A0F24"/></radialGradient></defs>'
     // lo strato foto/video sta SOTTO la fascia: senza media resta vuoto
     // (niente segnaposto), cosi' l'export tiene la trasparenza
     +(ph(I,'photo')?GPHOTO(W,H,A,I):G('photo',A,''))
-    +'<rect width="'+W+'" height="'+BH+'" fill="url(#mkBg)"/>' 
+    +'<rect width="'+W+'" height="'+BH+'" fill="url(#mkBg)"/>'
+    // la striscia sotto la finestra: chiude l'inquadratura e da' al video un
+    // appoggio, invece di lasciarlo cadere fino al bordo
+    +'<rect y="'+(H-BASSA)+'" width="'+W+'" height="'+BASSA+'" fill="#0A0F24"/>'
     +(p.showLogo===false?'':brandMark(A,cx,64+giu,118,true))
     +G('t-comp',A,T(cx,320+giu,p.comp,{s:34,w:800,fill:C.gold,ls:8,anchor:'middle'}));
    var ty=424+giu,tx='';L.forEach(function(l,i){tx+=T(cx,ty+i*step,l,{s:size,w:800,fill:C.ivory,ls:-1,anchor:'middle'});});
