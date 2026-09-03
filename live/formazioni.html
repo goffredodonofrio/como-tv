@@ -1611,8 +1611,22 @@
   // ESPN nomi per esteso ("AC Milan", "Internazionale"): si prova
   // l'aggancio esatto e poi il contenimento, preferendo la chiave piu'
   // lunga. Sotto i 4 caratteri niente contenimento: troppi falsi amici.
+  // Le giovanili giocano con la maglia della prima squadra, ma il nome porta il
+  // marcatore dietro ("Napoli Under 18") e l'aggancio elastico lo scarta: due
+  // parole di differenza da "napoli" sono oltre la soglia — e quella soglia sta
+  // li' per non far vestire all'Estudiantes la maglia dell'Estudiantes de Rio
+  // Cuarto. Quindi la soglia non si allarga: si toglie il marcatore e si cerca
+  // il club. Prima si prova col nome intero, cosi' se una giovanile ha una
+  // maglia sua in archivio quella vince.
+  var MARCATORE_GIOVANILE = /-(primavera|women|femminile|(under|u)-?(1[4-9]|2[0-3]))$/;
   function magliaUrl(side, dove) {
     var mio = slugM(side.teamName || side.label);
+    var sua = magliaDi(mio, dove);
+    if (sua) return sua;
+    var club = mio.replace(MARCATORE_GIOVANILE, "");
+    return club !== mio ? magliaDi(club, dove) : "";
+  }
+  function magliaDi(mio, dove) {
     var k = "maglia-" + mio + "-" + dove;
     if (MAGLIE[k]) return MAGLIE[k];
     if (mio.length < 4) return "";   // slug corto/vuoto: mai l'aggancio elastico
