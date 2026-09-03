@@ -935,7 +935,7 @@ function mStory(p,I,A,k,gid,video){
   +GPHOTO(W,H,A,I)
   +'<rect width="'+W+'" height="'+H+'" fill="url(#'+gid+')" pointer-events="none"/>'
   +(p.showLogo===false?'':brandMark(A,R(W*MARK_STORY.x),R(H*MARK_STORY.y),R(H*MARK_STORY.h)))
-  +(p.showLive?G('live',A,livePill(W-64-176,89)):'')
+  +(p.live?G('live',A,livePill(W-64-176,89)):'')
   +(p.english?G('eng',A,engPill(64,1316+dy,p.englishLabel)):'')
   +G('t-comp',A,'<rect x="64" y="'+(1390+dy)+'" width="6" height="32" rx="2" fill="'+C.gold+'"/>'+T(88,1420+dy,p.comp,{s:36,w:700,fill:C.gold,ls:5}))
   +G('t-home',A,runsT(60,1534+dy,{ls:-3},[{t:p.home,w:800,fill:C.ivory,s:R(118*TEAM_SCALE)}].concat(vsRun(p,{w:600,fill:C.gold,s:R(42*TEAM_SCALE)}))))
@@ -1016,7 +1016,7 @@ var FMT={
    +GPHOTO(W,H,A,I)
    +'<rect width="'+W+'" height="'+H+'" fill="url(#sF)" pointer-events="none"/>'
    +(p.showLogo===false?'':brandMark(A,R(W*MARK_FEED.x),R(H*MARK_FEED.y),R(H*MARK_FEED.h)))
-   +(p.showLive?G('live',A,livePill(W-64-176,72)):'')
+   +(p.live?G('live',A,livePill(W-64-176,72)):'')
    +(p.english?G('eng',A,engPill(64,981,p.englishLabel)):'')
    +G('t-home',A,runsT(60,1126,{ls:-3},[{t:p.home,w:800,fill:C.ivory,s:R(112*TEAM_SCALE)}].concat(vsRun(p,{w:600,fill:C.gold,s:R(40*TEAM_SCALE)}))))
    +G('t-away',A,T(60,1126+R(100*TEAM_SCALE),p.away,{s:R(112*TEAM_SCALE),w:800,ls:-3,fill:C.goldB}))
@@ -1066,7 +1066,7 @@ var FMT={
    +'<linearGradient id="ytS" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="'+SCRIM+'" stop-opacity=".84"/><stop offset=".3" stop-color="'+SCRIM+'" stop-opacity=".66"/><stop offset=".58" stop-color="#0A0F24" stop-opacity=".36"/><stop offset="1" stop-color="#0A0F24" stop-opacity=".22"/></linearGradient></defs>'
    +'<rect width="'+W+'" height="'+H+'" fill="url(#ytS)" pointer-events="none"/><rect width="'+W+'" height="'+H+'" fill="url(#ytB)" pointer-events="none"/>'
    +(p.showLogo===false?'':brandMark(A,54,34,72))
-   +(p.showLive?G('live',A,livePill(W-54-176,44)):'')
+   +(p.live?G('live',A,livePill(W-54-176,44)):'')
    +G('t-comp',A,T(cx,561,'Highlights · '+p.comp,{s:24,w:800,fill:C.goldB,ls:6.5,anchor:'middle'}))
    +G('t-match',A,T(cx,636,p.home+'-'+p.away,{s:77,w:800,fill:C.ivory,ls:-1,anchor:'middle'}));}},
 
@@ -1456,7 +1456,7 @@ var SHAREDKEYS={home:1,away:1,comp:1,compBase:1,round:1,date:1,time:1,preshow:1,
  ytvChip:1,ytvKicker:1,ytvTitle:1,
  heroKicker:1,heroLine1:1,heroLine2:1,title:1,
  novKicker:1,novTitle:1,badgeName:1,replName:1};
-var SHARED={home:'West Ham',away:'Portsmouth',compBase:'Carabao Cup',round:'64esimi',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'Football Show 15:10',english:false,englishLabel:'English Commentary',hlKind:'Highlights',compKey:'',showLogo:true,showCta:true,showPreshow:true,showLive:false,intName:'Nome Cognome'};
+var SHARED={home:'West Ham',away:'Portsmouth',compBase:'Carabao Cup',round:'64esimi',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'Football Show 15:10',english:false,englishLabel:'English Commentary',hlKind:'Highlights',compKey:'',showLogo:true,showCta:true,showPreshow:true,intName:'Nome Cognome'};   // showLive non c'e': finche' nessuno preme, decide il formato
 // I campi appena diventati comuni devono partire dal loro valore di fabbrica:
 // prima lo prendeva ogni formato per conto suo da DEF, ora c'e' un valore solo.
 Object.keys(SHAREDKEYS).forEach(function(k){
@@ -1478,7 +1478,14 @@ ITEMS.forEach(function(it){var meta=OTTGEN.meta(it.base);var vals={};
 var current=ITEMS[0].key;
 function getV(k,fk){return SHAREDKEYS[fk]?SHARED[fk]:STATE[k].vals[fk];}
 function setV(k,fk,v){if(SHAREDKEYS[fk])SHARED[fk]=v;else STATE[k].vals[fk]=v;}
-function P(key){var p=Object.assign({},SHARED,STATE[key].vals);p.live=!!(BYKEY[key]&&BYKEY[key].liveOn);
+function P(key){var p=Object.assign({},SHARED,STATE[key].vals);
+ // La pill LIVE era decisa in due modi diversi: dieci formati guardavano
+ // liveOn (una proprieta' del formato, che l'interruttore non toccava) e tre
+ // guardavano showLive (l'interruttore, che il formato non toccava). Da qui
+ // in poi la verita' e' una sola: se qualcuno ha premuto il pulsante vale
+ // quello, altrimenti vale come nasce il formato. Ogni formato continua a
+ // disegnarla con le sue misure: qui si decide solo se c'e' o non c'e'.
+ p.live=(p.showLive===undefined)?!!(BYKEY[key]&&BYKEY[key].liveOn):!!p.showLive;
  // Data e ora si disegnano in dieci punti diversi, ognuno a modo suo: invece
  // di mettere un controllo in ognuno (e dimenticarne uno) si svuotano qui,
  // una volta sola per tutti i formati. Il separatore rimasto da solo lo
@@ -1805,7 +1812,14 @@ function renderSocial(){
   b.title=e.n+(acceso(k)?' · acceso':' · spento');});
  if(window.__aggiornaViaTutti)window.__aggiornaViaTutti();
 }
-function acceso(k){return (k==='english'||k==='showLive')?!!SHARED[k]:SHARED[k]!==false;}
+function acceso(k){
+ if(k==='showLive'){
+  // non toccata: e' accesa se il formato aperto nasce live
+  if(SHARED.showLive===undefined) return !!(BYKEY[current]&&BYKEY[current].liveOn);
+  return !!SHARED.showLive;
+ }
+ return (k==='english')?!!SHARED[k]:SHARED[k]!==false;
+}
 
 // Togliere gli elementi uno per uno, e su ogni formato, era una tortura. Qui
 // si spengono tutti insieme e per tutti i formati: oltre a spegnere le
@@ -1818,7 +1832,9 @@ function acceso(k){return (k==='english'||k==='showLive')?!!SHARED[k]:SHARED[k]!
  // aggiunto domani entra nel "via tutti" senza che nessuno se ne ricordi
  var SPENTOSEMPRE={showLive:1,english:1};      // questi nascono spenti
  function SPENTI(){var o={};SOCIAL_EL.forEach(function(e){o[e.k]=false;});return o;}
- function DIPARTENZA(){var o={};SOCIAL_EL.forEach(function(e){o[e.k]=!SPENTOSEMPRE[e.k];});return o;}
+ function DIPARTENZA(){var o={};SOCIAL_EL.forEach(function(e){o[e.k]=!SPENTOSEMPRE[e.k];});
+  o.showLive=undefined;   // torna a "decide il formato": i -live riaccendono
+  return o;}
  function qualcunoAcceso(){ return SOCIAL_EL.some(function(e){return acceso(e.k);}); }
  function applica(valori){
   SOCIAL_EL.forEach(function(e){ SHARED[e.k]=valori[e.k]; });
