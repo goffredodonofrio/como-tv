@@ -1983,18 +1983,22 @@
       // accesso al posto del video.
       var g = u.match(/(?:drive|docs)\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:[^#]*&)?id=)([A-Za-z0-9_-]{10,})/);
       if (g) {
-        // NON il player di Drive in una finestra: quello vuole un clic sul play,
-        // e in onda un clic non c'e'. drive.usercontent serve il file vero —
-        // provato: content-type video/mp4, accept-ranges bytes e CORS aperto —
-        // quindi va al lettore video e si comporta come un contributo caricato:
-        // parte da solo, tiene loop, muto e l'ultimo fotogramma.
-        // confirm=t salta la pagina di avviso antivirus dei file grandi.
-        return { k: "video", che: "Google Drive",
-                 src: "https://drive.usercontent.google.com/download?id=" + g[1] +
-                      "&export=download&confirm=t",
-                 nota: "Il file deve essere condiviso con <b>chiunque abbia il link</b>. " +
-                       "E arriva in diretta da Google mentre va in onda: per un contributo " +
-                       "importante il caricamento resta pi\u00f9 sicuro." };
+        // Google NON lascia suonare i suoi file da un altro sito, e non c'entra
+        // come e' condiviso il file. Sull'indirizzo che serve il contenuto vero
+        // mette due intestazioni che chiudono la porta:
+        //   cross-origin-resource-policy: same-site  → vietato incorporarlo
+        //   content-disposition: attachment          → "questo si scarica, non si suona"
+        // Il lettore video quindi rifiuta, e non c'e' parametro che lo eviti.
+        // Il player di Drive in una finestra (/preview) si aprirebbe, ma vuole
+        // un clic sul play e in onda un clic non c'e'.
+        // Quello che funziona e' portare il file qui: si scarica da Drive e lo
+        // si carica come contributo, e da quel momento e' roba nostra — parte
+        // da solo, non dipende da Google e non fa buffering in diretta.
+        return { k: "no", che: "Google Drive",
+                 src: "https://drive.google.com/file/d/" + g[1] + "/preview",
+                 nota: "Google non lascia riprodurre i suoi file da un altro sito: non dipende " +
+                       "da come hai condiviso il file. <b>Scaricalo da Drive e caricalo qui sopra " +
+                       "come file</b>: cos\u00ec parte da solo e non dipende da Google mentre sei in onda." };
       }
       var v = u.match(/vimeo\.com\/(?:video\/)?(\d{6,})/);
       if (v) {
@@ -2009,6 +2013,10 @@
       var L = leggiLink(vd("vdLink").value);
       var n = vd("vdLinkNota");
       if (!L) { n.textContent = ""; return; }
+      if (L.k === "no") {
+        n.innerHTML = '<b style="color:#FF9A9C">' + L.che + ": non si pu\u00f2 mandare in onda per link.</b><br>" + L.nota;
+        return;
+      }
       n.innerHTML = L.k === "video"
         ? "Riconosciuto: <b>" + L.che + "</b>. Va al lettore video: loop, muto e ultimo fotogramma funzionano." +
           (L.nota ? "<br>" + L.nota : "")
@@ -2019,6 +2027,10 @@
     vd("vdVia").addEventListener("click", function () {
       var f = vd("vdFile").files[0];
       var L = leggiLink(vd("vdLink").value);
+      if (L && L.k === "no") {
+        vstato(L.che + ": va scaricato da Drive e caricato qui come file.", "#FF9A9C");
+        return;
+      }
       if (L) {
         // niente da caricare: l'indirizzo va dritto in scaletta
         var tit = vd("vdNome").value.trim() ||
