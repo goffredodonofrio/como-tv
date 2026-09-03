@@ -111,6 +111,10 @@
   #manbar .campo{display:flex;flex-direction:column;gap:5px;min-width:0;}
   #manbar label{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
     letter-spacing:.18em;text-transform:uppercase;color:var(--gold);}
+  /* i due risultati proposti da ESPN: attuale e parziale del primo tempo */
+  #risEspn .risb{font-size:11px;padding:6px 11px;margin:0 8px 0 0;border-radius:6px;
+    background:rgba(45,212,191,.14);border:1px solid rgba(45,212,191,.45);color:#7FE7DA;}
+  #risEspn .risb:hover{background:rgba(45,212,191,.24);border-color:#2DD4BF;}
   #espnStato{font-size:13px;color:var(--fg-3);margin-bottom:16px;padding:0 4px;min-height:20px;}
   #espnStato .ok{color:var(--ok);} #espnStato .err{color:#FF6B6E;}
 
@@ -243,6 +247,20 @@
       <div><label for="titolo">Titolo in grafica</label>
         <input type="text" id="titolo" placeholder=""></div>
     </div>
+  </div>
+
+  <div class="panel" id="panRis">
+    <h2>Risultato <small style="font-family:'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--fg-3);font-weight:500;font-size:11px">facoltativo: compare fra i due stemmi. Vuoto = non si vede</small></h2>
+    <div class="riga">
+      <div class="stretta"><label for="risa">Gol squadra A</label>
+        <input type="text" id="risa" inputmode="numeric" placeholder="—"></div>
+      <div class="stretta"><label for="risb">Gol squadra B</label>
+        <input type="text" id="risb" inputmode="numeric" placeholder="—"></div>
+      <div><label for="risf">Momento della partita</label>
+        <input type="text" id="risf" placeholder="es. PRIMO TEMPO, FINALE, 63&#39;" autocomplete="off"></div>
+      <div style="flex:0 0 auto"><button type="button" id="risVia" style="padding:11px 14px">Svuota</button></div>
+    </div>
+    <div id="risEspn" style="display:none;font-size:12.5px;color:var(--fg-3);padding-top:2px"></div>
   </div>
 
   <div>
@@ -808,8 +826,76 @@
     var e = el("occhiello").value.trim();
     var t = el("titolo").value.trim() || TITOLI[MODO];
     if (MODO === "gi") return { e: e, t: t, g: lato("a"), st: statRighe(false) };
-    return { e: e, t: t, a: lato("a"), b: lato("b"), st: statRighe(true) };
+    var d = { e: e, t: t, a: lato("a"), b: lato("b"), st: statRighe(true) };
+    if (MODO === "sq") { var r = risultato(); if (r) d.r = r; }
+    return d;
   }
+  // ── il risultato del confronto ────────────────────────────────────
+  // Serve tutt'e due i numeri: mezzo risultato in onda e' peggio di niente.
+  function risultato() {
+    var a = el("risa").value.trim(), b = el("risb").value.trim();
+    if (a === "" || b === "") return null;
+    return { a: a, b: b, f: el("risf").value.trim() };
+  }
+  // ── il risultato da ESPN, parziale del primo tempo compreso ───────────
+  // ESPN tiene il punteggio corrente in competitors[].score e, tempo per tempo,
+  // in competitors[].linescores: linescores[0] e' il primo tempo. Quindi:
+  // all'intervallo il punteggio corrente E' gia' il parziale, e a partita
+  // ripresa o finita il parziale si ripesca comunque da linescores.
+  function faseEspn(st) {
+    var t = (st || {}).type || {}, n = t.name || "";
+    if (n === "STATUS_HALFTIME") return "PRIMO TEMPO";
+    if (n === "STATUS_FULL_TIME") return "FINALE";
+    var c = String(st && st.displayClock || "").trim();
+    if (c) return c;
+    return t.shortDetail || t.detail || "";
+  }
+  function punteggioEspn(d, casa, fuori) {
+    var box = el("risEspn");
+    box.style.display = "none"; box.innerHTML = "";
+    var comp = (((d.header || {}).competitions) || [])[0] || {};
+    var cc = comp.competitors || [];
+    function perId(id) {
+      return cc.filter(function (c) { return String((c.team || {}).id) === String(id); })[0];
+    }
+    function perLato(v) { return cc.filter(function (c) { return c.homeAway === v; })[0]; }
+    // si aggancia per id alla squadra che sta a sinistra, non alla casa: se il
+    // boxscore non dicesse chi gioca in casa, i numeri finirebbero invertiti
+    var ca = perId(((casa || {}).team || {}).id) || perLato("home");
+    var cf = perId(((fuori || {}).team || {}).id) || perLato("away");
+    if (!ca || !cf || ca.score == null || cf.score == null) return;
+    if ((((comp.status || {}).type) || {}).state === "pre") return;   // non ancora giocata
+
+    var ora = { a: ca.score, b: cf.score, f: faseEspn(comp.status) };
+    var la = (ca.linescores || [])[0], lb = (cf.linescores || [])[0];
+    var pt = (la && lb) ? { a: la.displayValue, b: lb.displayValue, f: "PRIMO TEMPO" } : null;
+    scriviRisultato(ora.a, ora.b, ora.f);
+
+    var h = "Da ESPN: ";
+    h += '<button type="button" class="risb" data-a="' + esc(ora.a) + '" data-b="' + esc(ora.b) +
+         '" data-f="' + esc(ora.f) + '">' + esc(ora.a) + "&ndash;" + esc(ora.b) +
+         (ora.f ? " &middot; " + esc(ora.f) : "") + "</button>";
+    if (pt && !(pt.a === ora.a && pt.b === ora.b && ora.f === "PRIMO TEMPO")) {
+      h += '<button type="button" class="risb" data-a="' + esc(pt.a) + '" data-b="' + esc(pt.b) +
+           '" data-f="PRIMO TEMPO">' + esc(pt.a) + "&ndash;" + esc(pt.b) + " &middot; primo tempo</button>";
+    }
+    h += "<span> &nbsp;restano modificabili a mano.</span>";
+    box.innerHTML = h;
+    box.style.display = "block";
+    Array.prototype.forEach.call(box.querySelectorAll("button"), function (b) {
+      b.addEventListener("click", function () {
+        scriviRisultato(b.dataset.a, b.dataset.b, b.dataset.f);
+      });
+    });
+  }
+
+  function scriviRisultato(a, b, fase) {
+    el("risa").value = a == null ? "" : String(a);
+    el("risb").value = b == null ? "" : String(b);
+    if (fase !== undefined) el("risf").value = fase || "";
+  }
+  el("risVia").addEventListener("click", function () { scriviRisultato("", "", ""); });
+
   function motore() {
     return MODO === "gi" ? "giocatore-vmix.html"
          : MODO === "du" ? "duello-vmix.html"
@@ -890,6 +976,7 @@
     var conG = m !== "sq";
     el("panA").innerHTML = riquadro("a", m === "gi" ? "Il giocatore" : (m === "du" ? "Giocatore A" : "Squadra A"), conG);
     el("panB").style.display = m === "gi" ? "none" : "";
+    el("panRis").style.display = m === "sq" ? "" : "none";   // solo squadra vs squadra
     if (m !== "gi") el("panB").innerHTML = riquadro("b", m === "du" ? "Giocatore B" : "Squadra B", conG);
     ["a", "b"].forEach(function (pre) {
       var c = el(pre + "c");
@@ -1070,6 +1157,7 @@
           if (ca && el("ac")) el("ac").value = "#" + String(ca).replace("#", "");
           if (cb && el("bc")) el("bc").value = "#" + String(cb).replace("#", "");
           if (!el("occhiello").value.trim()) el("occhiello").value = comp.nome;
+          punteggioEspn(d, casa, fuori);
 
           var quante = 0;
           scriviRighe(VOCI_SQ.map(function (v) {
@@ -1078,7 +1166,9 @@
             return [v[1], a, b];
           }));
           nota("<b>" + esc(nomeDi(casa)) + " - " + esc(nomeDi(fuori)) + ":</b> " + quante +
-               " statistiche caricate. Sono tutte modificabili qui sotto, e con " +
+               " statistiche caricate" +
+               (el("risa").value ? " e risultato " + esc(el("risa").value) + "-" + esc(el("risb").value) : "") +
+               ". Sono tutte modificabili qui sotto, e con " +
                "<b>+ Aggiungi riga</b> ne metti altre a mano.", "ok");
           return;
         }
