@@ -1443,12 +1443,23 @@ var MENU=[
 var SOLO=(function(){
  try{ return new URLSearchParams(location.search).get('solo')||''; }catch(e){ return ''; }
 })();
-var FAMIGLIE_SOLO={
- social:['Social media','Social media video']
-};
-if(FAMIGLIE_SOLO[SOLO]){
- var tenute=FAMIGLIE_SOLO[SOLO];
- MENU=MENU.filter(function(m){return tenute.indexOf(m.g)>=0;});
+if(SOLO==='social'){
+ // "Social" non e' una famiglia, e' una FORMA: verticale. Le due famiglie
+ // social restano intere; dalle altre si tiene ogni formato piu' alto che
+ // largo — story, portrait, feed — perche' sono quelli che il team social e
+ // l'editing pubblicano davvero, e stavano sparsi in sette famiglie diverse.
+ // Scritto cosi' invece che con un elenco a mano: un formato verticale
+ // aggiunto domani compare qui da solo, senza che nessuno se ne ricordi.
+ var mis={};
+ OTTGEN.items().forEach(function(i){mis[i.key]={w:i.w,h:i.h};});
+ var intere={'Social media':1,'Social media video':1};
+ MENU=MENU.map(function(m){
+  if(intere[m.g])return m;
+  return {g:m.g,k:m.k.filter(function(k){
+   var d=mis[k.replace(/-live$/,'')];
+   return d&&d.h>d.w;
+  })};
+ }).filter(function(m){return m.k.length;});
  document.title='Como TV \u2014 Social media video e maschere';
 }
 
