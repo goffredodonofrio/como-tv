@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Prossimi appuntamenti · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:block;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:block;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:block;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:block;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;background:transparent;overflow:hidden;}
+  #stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:center center;
+    color:#F5F1E6;font-family:'DM Sans',sans-serif;overflow:hidden;
+    background:
+      radial-gradient(120% 90% at 6% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);}
+
+  /* ── testata: la stessa scrittura del resto delle grafiche ── */
+  #eyebrow{position:absolute;left:128px;top:82px;
+    font-weight:700;font-size:22px;letter-spacing:.24em;color:#C9A24B;text-transform:uppercase;
+    white-space:nowrap;opacity:0;}
+  #title{position:absolute;left:125px;top:104px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:76px;letter-spacing:.01em;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;clip-path:inset(0 100% 0 0);}
+  #rule{position:absolute;left:128px;top:212px;width:300px;height:3px;
+    background:linear-gradient(90deg,#C9A24B 0%,rgba(201,162,75,.15) 100%);
+    transform:scaleX(0);transform-origin:left center;}
+
+  /* ── le foto: un pannello a destra, non due tondi affiancati ──
+     Il taglio e' diagonale e il bordo sinistro sfuma nel fondo, cosi' la
+     foto entra nella grafica invece di starci appoggiata sopra. Bicromia
+     navy/oro come nel resto della casa. */
+  #foto{position:absolute;right:0;top:0;width:756px;height:100%;opacity:0;
+    clip-path:polygon(120px 0, 100% 0, 100% 100%, 0 100%);}
+  #foto .f{position:absolute;right:0;overflow:hidden;background:#0A0F24;}
+  #foto .f img{width:100%;height:100%;object-fit:cover;display:block;
+    filter:grayscale(1) contrast(1.08) brightness(1.02);}
+  #foto .f i{position:absolute;inset:0;}
+  #foto .f .d1{background:#C9A24B;mix-blend-mode:multiply;}
+  #foto .f .d2{background:#141B3C;mix-blend-mode:lighten;}
+  /* una sola foto: tutta l'altezza. Due: tagliate in diagonale, una sopra
+     l'altra, con un filo d'oro sulla giunzione */
+  #foto.uno .f1{top:0;height:100%;width:100%;}
+  #foto.due .f1{top:0;height:52%;width:100%;clip-path:polygon(0 0, 100% 0, 100% 100%, 96px 100%);}
+  #foto.due .f2{bottom:0;height:52%;width:100%;clip-path:polygon(150px 0, 100% 0, 100% 100%, 54px 100%);}
+  #foto .filo{position:absolute;left:0;right:0;height:3px;background:rgba(201,162,75,.55);
+    transform:rotate(-3.1deg);transform-origin:center;}
+  /* il velo che fonde la foto col fondo: forte a sinistra, nulla a destra */
+  #velo{position:absolute;right:0;top:0;width:756px;height:100%;pointer-events:none;
+    background:
+      linear-gradient(90deg,#0A0F26 0%, rgba(10,15,38,.92) 16%, rgba(10,15,38,.45) 42%, rgba(10,15,38,.12) 72%, rgba(10,15,38,.30) 100%),
+      linear-gradient(0deg, rgba(7,11,29,.85) 0%, transparent 30%);}
+
+  /* ── le righe degli appuntamenti ── */
+  .ap{position:absolute;left:128px;display:flex;align-items:center;gap:0;opacity:0;}
+  /* IL BLOCCO DATA: e' la cosa che si deve leggere per prima, da lontano */
+  .ap .data{flex:0 0 176px;text-align:center;}
+  .ap .gio{font-weight:700;font-size:23px;letter-spacing:.2em;color:rgba(245,241,230,.6);
+    text-transform:uppercase;line-height:1;}
+  .ap .num{font-family:'Mazzard',sans-serif;font-weight:800;font-size:92px;line-height:.88;
+    letter-spacing:-.02em;color:#E3C271;font-variant-numeric:tabular-nums;margin:6px 0 2px;
+    text-shadow:0 4px 18px rgba(0,0,0,.45);}
+  .ap .mes{font-family:'Mazzard',sans-serif;font-weight:700;font-size:25px;letter-spacing:.2em;
+    color:#C9A24B;text-transform:uppercase;line-height:1;}
+  .ap .filo{flex:0 0 auto;width:2px;height:104px;margin:0 34px;
+    background:linear-gradient(180deg,transparent,rgba(201,162,75,.75) 22%,rgba(201,162,75,.75) 78%,transparent);}
+  .ap .chi{flex:1;min-width:0;}
+  .ap .comp{font-weight:700;font-size:20px;letter-spacing:.2em;color:#C9A24B;
+    text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:9px;}
+  .ap .sfida{display:flex;align-items:center;gap:16px;min-width:0;}
+  .ap .sfida img{width:58px;height:58px;object-fit:contain;flex:0 0 auto;
+    filter:drop-shadow(0 4px 12px rgba(0,0,0,.55));}
+  .ap .nomi{font-family:'Mazzard',sans-serif;font-weight:800;font-size:44px;line-height:1.02;
+    letter-spacing:.005em;color:#F5F1E6;text-transform:uppercase;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .ap .nomi em{font-style:normal;color:rgba(245,241,230,.45);margin:0 12px;}
+  .ap .nota{font-weight:500;font-size:21px;color:rgba(245,241,230,.55);margin-top:8px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* L'ORA: allineata a destra, cifre tabellari, la seconda cosa che si legge */
+  .ap .ora{flex:0 0 auto;text-align:right;padding-left:26px;}
+  .ap .ora .lab{font-weight:700;font-size:16px;letter-spacing:.24em;color:rgba(245,241,230,.45);
+    text-transform:uppercase;margin-bottom:4px;}
+  .ap .ora .h{font-family:'Mazzard',sans-serif;font-weight:800;font-size:56px;line-height:1;
+    color:#F5F1E6;font-variant-numeric:tabular-nums;letter-spacing:-.01em;}
+  .ap .sep{position:absolute;left:0;right:-40px;bottom:0;height:1px;
+    background:linear-gradient(90deg,rgba(245,241,230,.16),rgba(245,241,230,.02));}
+
+  @keyframes fadeIn{to{opacity:1;}}
+  @keyframes wipeIn{to{clip-path:inset(0 0 0 0);}}
+  @keyframes ruleIn{to{transform:scaleX(1);}}
+  @keyframes apIn{0%{opacity:0;transform:translateX(46px);}100%{opacity:1;transform:translateX(0);}}
+  @keyframes fotoIn{0%{opacity:0;transform:scale(1.06);}100%{opacity:1;transform:scale(1);}}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="foto"></div>
+  <div id="velo"></div>
+  <div id="eyebrow"></div>
+  <div id="title">PROSSIMI APPUNTAMENTI</div>
+  <div id="rule"></div>
+  <div id="corpo"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { e:"COMO TV", t:"PROSSIMI APPUNTAMENTI",
+  //     f:["…foto…","…foto…"],                    (0, 1 o 2)
+  //     ap:[ { g:"DOM", d:"14", m:"SET", o:"21:00", c:"CHAMPIONS LEAGUE",
+  //            a:{n:"COMO", l:"…stemma…"}, b:{n:"LIPSIA", l:"…stemma…"},
+  //            no:"Stadio Sinigaglia" },
+  //          { g:"LUN", d:"22", m:"SET", o:"21:00", c:"FOOTBALL SHOW",
+  //            ti:"PUNTATA SPECIALE" } ] }
+  //   Ogni riga e' una partita (a + b) oppure un titolo libero (ti): la
+  //   grafica non distingue fra un derby e una serata di gala.
+  var DEMO = {
+    e: "COMO TV", t: "PROSSIMI APPUNTAMENTI",
+    ap: [
+      { g: "GIO", d: "04", m: "SET", o: "20:45", c: "SERIE A · 3ª GIORNATA",
+        a: { n: "Genoa" }, b: { n: "Como" }, no: "Stadio Luigi Ferraris" },
+      { g: "DOM", d: "14", m: "SET", o: "18:00", c: "SERIE A · 4ª GIORNATA",
+        a: { n: "Como" }, b: { n: "Fiorentina" }, no: "Stadio Sinigaglia" },
+      { g: "LUN", d: "15", m: "SET", o: "21:00", c: "FOOTBALL SHOW",
+        ti: "LA PUNTATA DEL LUNEDÌ", no: "In diretta dallo studio" },
+      { g: "MER", d: "24", m: "SET", o: "20:30", c: "PRIMAVERA 1",
+        a: { n: "Como Primavera" }, b: { n: "Inter Primavera" } }
+    ]
+  };
+
+  function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return DEMO;
+    try {
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return (d && d.ap && d.ap.length) ? d : null;
+    } catch (err) { return null; }
+  }
+  var STILL = new URLSearchParams(location.search).get("still") === "1";
+  var D = decodeData();
+  if (!D) {
+    document.title = "APPUNTAMENTI — dati non validi";
+    document.getElementById("stage").style.display = "none";
+    return;
+  }
+  document.title = "APPUNTAMENTI " + (D.ap.length) + " voci";
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    document.getElementById("stage").style.transform = "translate(-50%,-50%) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit); fit();
+
+  // ── le foto ─────────────────────────────────────────────────────────
+  var foto = (D.f || []).filter(function (u) { return String(u || "").trim(); }).slice(0, 2);
+  (function () {
+    var box = document.getElementById("foto");
+    if (!foto.length) { box.style.display = "none"; document.getElementById("velo").style.display = "none"; return; }
+    box.className = foto.length > 1 ? "due" : "uno";
+    var h = "";
+    foto.forEach(function (u, i) {
+      h += '<div class="f f' + (i + 1) + '"><img src="' + esc(u) + '" onerror="this.parentNode.style.display=\'none\'">' +
+        '<i class="d1"></i><i class="d2"></i></div>';
+    });
+    if (foto.length > 1) h += '<div class="filo" style="top:52%"></div>';
+    box.innerHTML = h;
+    if (STILL) box.style.opacity = 1;
+    else box.style.animation = "fotoIn 1.1s cubic-bezier(.2,.7,.3,1) .1s forwards";
+  })();
+
+  // ── testata ─────────────────────────────────────────────────────────
+  var eb = document.getElementById("eyebrow"); eb.textContent = D.e || "COMO TV";
+  var tt = document.getElementById("title"); tt.textContent = D.t || "PROSSIMI APPUNTAMENTI";
+  var rl = document.getElementById("rule");
+  if (STILL) { eb.style.opacity = 1; tt.style.clipPath = "inset(0 0 0 0)"; rl.style.transform = "scaleX(1)"; }
+  else {
+    eb.style.animation = "fadeIn .5s ease .15s forwards";
+    tt.style.animation = "wipeIn .7s cubic-bezier(.2,.7,.3,1) .3s forwards";
+    rl.style.animation = "ruleIn .55s cubic-bezier(.2,.7,.3,1) .85s forwards";
+  }
+
+  // ── le righe ────────────────────────────────────────────────────────
+  // Lo spazio fra il filo d'oro e il fondo si divide fra le voci: con tre
+  // respirano, con cinque si stringono, ma il blocco data resta grande —
+  // e' quello che si deve leggere anche da lontano.
+  var voci = D.ap.slice(0, 5);
+  // La riga si allarga fin dove arriva il pannello delle foto: senza foto
+  // prende tutto il quadro, se no i nomi lunghi si tagliano per lasciare
+  // spazio a un pannello che non c'e'.
+  var LARGA = foto.length ? 1000 : 1664;
+  var Y0 = 296, FONDO = 1004;
+  var PASSO = Math.min(184, Math.floor((FONDO - Y0) / voci.length));
+  var ALTA = PASSO - 18;
+
+  var h = "";
+  voci.forEach(function (v, i) {
+    var y = Y0 + i * PASSO;
+    var anim = STILL ? "opacity:1"
+      : "animation:apIn .62s cubic-bezier(.2,.72,.28,1) " + (1.0 + i * 0.16).toFixed(2) + "s forwards";
+
+    // il centro della riga: una partita coi due stemmi, oppure un titolo
+    var centro;
+    if (v.a || v.b) {
+      var A = v.a || {}, B = v.b || {};
+      centro = '<div class="sfida">' +
+        (A.l ? '<img src="' + esc(A.l) + '" onerror="this.style.display=\'none\'">' : "") +
+        '<div class="nomi">' + esc(A.n || "") + '<em>&ndash;</em>' + esc(B.n || "") + '</div>' +
+        (B.l ? '<img src="' + esc(B.l) + '" onerror="this.style.display=\'none\'">' : "") +
+        '</div>';
+    } else {
+      centro = '<div class="nomi">' + esc(v.ti || "") + '</div>';
+    }
+
+    h += '<div class="ap" style="top:' + y + 'px;height:' + ALTA + 'px;width:' + LARGA + 'px;' + anim + '">' +
+      '<div class="data">' +
+        (v.g ? '<div class="gio">' + esc(v.g) + '</div>' : "") +
+        '<div class="num">' + esc(v.d || "") + '</div>' +
+        (v.m ? '<div class="mes">' + esc(v.m) + '</div>' : "") +
+      '</div>' +
+      '<div class="filo"></div>' +
+      '<div class="chi">' +
+        (v.c ? '<div class="comp">' + esc(v.c) + '</div>' : "") +
+        centro +
+        (v.no ? '<div class="nota">' + esc(v.no) + '</div>' : "") +
+      '</div>' +
+      (v.o ? '<div class="ora"><div class="lab">ore</div><div class="h">' + esc(v.o) + '</div></div>' : "") +
+      (i < voci.length - 1 ? '<span class="sep"></span>' : "") +
+      '</div>';
+  });
+  document.getElementById("corpo").innerHTML = h;
+
+  // Il nome della coppia si adatta alla riga invece di essere tagliato: con
+  // due stemmi e nomi lunghi ("Como - Fiorentina", peggio "Como Primavera -
+  // Inter Primavera") a corpo 44 non ci sta, e i puntini in onda sono la cosa
+  // peggiore che possa capitare a un cartello di appuntamenti. Si misura e si
+  // scende, riga per riga: quelle corte restano grandi.
+  Array.prototype.forEach.call(document.querySelectorAll(".ap .nomi"), function (n) {
+    var s = 44;
+    while (n.scrollWidth > n.clientWidth + 1 && s > 26) {
+      s -= 2;
+      n.style.fontSize = s + "px";
+    }
+  });
+
+  function replay() { location.reload(); }
+  document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
+  document.addEventListener("dblclick", replay);
+})();
+</script>
+<script src="sfondo.js"></script>
+</body>
+</html>

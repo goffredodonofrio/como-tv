@@ -33,6 +33,7 @@
     ["focus.html",                 "Focus"],
     ["dichiarazioni.html",         "Dichiarazioni"],
     ["scheda.html",                "Scheda"],
+    ["appuntamenti.html",          "Appuntamenti"],
     ["volti.html",                 "Volti"],
     ["sottopancia.html",           "Sottopancia"],
     ["ticker.html",                "Ticker"],
