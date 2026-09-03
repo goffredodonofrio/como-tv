@@ -28,25 +28,35 @@
     background:linear-gradient(90deg,#C9A24B 0%,rgba(201,162,75,.15) 100%);
     transform:scaleX(0);transform-origin:left center;}
 
-  /* ── le foto: un pannello a destra, non due tondi affiancati ──
-     Il taglio e' diagonale e il bordo sinistro sfuma nel fondo, cosi' la
-     foto entra nella grafica invece di starci appoggiata sopra. Bicromia
-     navy/oro come nel resto della casa. */
-  #foto{position:absolute;right:0;top:0;width:756px;height:100%;opacity:0;
+  /* ── LA FOTO: una sola, un pannello a destra tagliato in diagonale ──
+     Non due tondi affiancati: quello e' il duello.
+     L'ingresso: la foto sta gia' li' e viene SCOPERTA da una tenda navy che
+     scorre via verso destra, con una lama d'oro sul suo bordo d'attacco.
+     Tutto in transform, mai in clip-path animata: la tenda che scorre gira
+     sul compositore, un clip-path che si muove no — e su una macchina che
+     manda in onda la differenza si vede.
+     Poi la foto non si ferma: deriva lentissima per tutto il tempo in cui
+     resta in onda, se no un cartello fermo quindici secondi muore. */
+  #foto{position:absolute;right:0;top:0;width:756px;height:100%;overflow:hidden;
     clip-path:polygon(120px 0, 100% 0, 100% 100%, 0 100%);}
-  #foto .f{position:absolute;right:0;overflow:hidden;background:#0A0F24;}
-  #foto .f img{width:100%;height:100%;object-fit:cover;display:block;
-    filter:grayscale(1) contrast(1.08) brightness(1.02);}
+  #foto .f{position:absolute;inset:0;overflow:hidden;background:#0A0F24;}
+  #foto .f img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;display:block;
+    filter:grayscale(1) contrast(1.08) brightness(1.02);
+    transform:scale(1.14) translateX(10px);transform-origin:62% 42%;will-change:transform;}
   #foto .f i{position:absolute;inset:0;}
   #foto .f .d1{background:#C9A24B;mix-blend-mode:multiply;}
   #foto .f .d2{background:#141B3C;mix-blend-mode:lighten;}
-  /* una sola foto: tutta l'altezza. Due: tagliate in diagonale, una sopra
-     l'altra, con un filo d'oro sulla giunzione */
-  #foto.uno .f1{top:0;height:100%;width:100%;}
-  #foto.due .f1{top:0;height:52%;width:100%;clip-path:polygon(0 0, 100% 0, 100% 100%, 96px 100%);}
-  #foto.due .f2{bottom:0;height:52%;width:100%;clip-path:polygon(150px 0, 100% 0, 100% 100%, 54px 100%);}
-  #foto .filo{position:absolute;left:0;right:0;height:3px;background:rgba(201,162,75,.55);
-    transform:rotate(-3.1deg);transform-origin:center;}
+  /* la tenda: copre tutto il pannello e se ne va verso destra */
+  #tenda{position:absolute;inset:0;transform:translate3d(0,0,0);will-change:transform;
+    background:linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);}
+  /* la lama d'oro sul bordo d'attacco: viaggia con la tenda e si spegne dopo */
+  #lama{position:absolute;left:-10px;top:-6%;width:10px;height:112%;
+    background:linear-gradient(180deg,transparent,#E3C271 14%,#FFF3D2 50%,#E3C271 86%,transparent);
+    box-shadow:0 0 34px 10px rgba(227,194,113,.55);transform:skewX(-6deg);}
+  /* il filo d'oro che resta sul taglio, a tenda uscita */
+  #taglio{position:absolute;left:118px;top:0;width:3px;height:100%;
+    background:linear-gradient(180deg,transparent,rgba(201,162,75,.75) 18%,rgba(201,162,75,.75) 82%,transparent);
+    opacity:0;transform:skewX(-6.6deg);transform-origin:top center;}
   /* il velo che fonde la foto col fondo: forte a sinistra, nulla a destra */
   #velo{position:absolute;right:0;top:0;width:756px;height:100%;pointer-events:none;
     background:
@@ -91,13 +101,18 @@
   @keyframes wipeIn{to{clip-path:inset(0 0 0 0);}}
   @keyframes ruleIn{to{transform:scaleX(1);}}
   @keyframes apIn{0%{opacity:0;transform:translateX(46px);}100%{opacity:1;transform:translateX(0);}}
-  @keyframes fotoIn{0%{opacity:0;transform:scale(1.06);}100%{opacity:1;transform:scale(1);}}
+  /* la tenda esce oltre il bordo destro del quadro, quindi non passa mai
+     davanti al testo */
+  @keyframes tendaVia{0%{transform:translate3d(0,0,0);}100%{transform:translate3d(115%,0,0);}}
+  /* la deriva: parte gia' in movimento e rallenta, non finisce mai di stringere */
+  @keyframes fotoDeriva{0%{transform:scale(1.14) translateX(10px);}100%{transform:scale(1) translateX(0);}}
+  @keyframes filoSu{0%{opacity:0;}100%{opacity:1;}}
 </style>
 </head>
 <body>
 
 <div id="stage">
-  <div id="foto"></div>
+  <div id="foto"><div id="tenda"><div id="lama"></div></div><div id="taglio"></div></div>
   <div id="velo"></div>
   <div id="eyebrow"></div>
   <div id="title">PROSSIMI APPUNTAMENTI</div>
@@ -111,7 +126,7 @@
 
   // Dati: ?d=<base64url>
   //   { e:"COMO TV", t:"PROSSIMI APPUNTAMENTI",
-  //     f:["…foto…","…foto…"],                    (0, 1 o 2)
+  //     f:["…foto…"],                              (0 o 1: si usa la prima)
   //     ap:[ { g:"DOM", d:"14", m:"SET", o:"21:00", c:"CHAMPIONS LEAGUE",
   //            a:{n:"COMO", l:"…stemma…"}, b:{n:"LIPSIA", l:"…stemma…"},
   //            no:"Stadio Sinigaglia" },
@@ -161,21 +176,50 @@
   }
   window.addEventListener("resize", fit); fit();
 
-  // ── le foto ─────────────────────────────────────────────────────────
-  var foto = (D.f || []).filter(function (u) { return String(u || "").trim(); }).slice(0, 2);
+  // ── la foto ─────────────────────────────────────────────────────────
+  // Una sola. Se ne arrivano due (dati vecchi) si prende la prima: la grafica
+  // e' stata rifatta per una foto, non per un collage.
+  var foto = (D.f || []).filter(function (u) { return String(u || "").trim(); })[0] || "";
   (function () {
     var box = document.getElementById("foto");
-    if (!foto.length) { box.style.display = "none"; document.getElementById("velo").style.display = "none"; return; }
-    box.className = foto.length > 1 ? "due" : "uno";
-    var h = "";
-    foto.forEach(function (u, i) {
-      h += '<div class="f f' + (i + 1) + '"><img src="' + esc(u) + '" onerror="this.parentNode.style.display=\'none\'">' +
-        '<i class="d1"></i><i class="d2"></i></div>';
-    });
-    if (foto.length > 1) h += '<div class="filo" style="top:52%"></div>';
-    box.innerHTML = h;
-    if (STILL) box.style.opacity = 1;
-    else box.style.animation = "fotoIn 1.1s cubic-bezier(.2,.7,.3,1) .1s forwards";
+    var tenda = document.getElementById("tenda");
+    var taglio = document.getElementById("taglio");
+    if (!foto) {
+      box.style.display = "none";
+      document.getElementById("velo").style.display = "none";
+      return;
+    }
+    var f = document.createElement("div");
+    f.className = "f";
+    f.innerHTML = '<img src="' + esc(foto) + '" onerror="this.style.display=\'none\'">' +
+      '<i class="d1"></i><i class="d2"></i>';
+    box.insertBefore(f, tenda);
+
+    var img = f.querySelector("img");
+    if (STILL) {
+      // in anteprima si vede il risultato, non lo spettacolo
+      tenda.style.display = "none";
+      taglio.style.opacity = 1;
+      img.style.transform = "scale(1) translateX(0)";
+      return;
+    }
+    // La tenda parte quando la foto e' pronta: scoprire un rettangolo vuoto
+    // e' il modo piu' sicuro di rovinare l'effetto. Se la foto non arriva
+    // entro un secondo si parte comunque, che una tenda che non si apre e'
+    // peggio di una foto che arriva in ritardo.
+    var partita = false;
+    function apri() {
+      if (partita) return;
+      partita = true;
+      tenda.style.animation = "tendaVia 1.05s cubic-bezier(.62,.02,.28,1) .28s forwards";
+      taglio.style.animation = "filoSu .5s ease 1.05s forwards";
+      // 22 secondi: piu' del tempo in cui il cartello resta in onda, cosi' la
+      // deriva non arriva mai a fermarsi davanti a chi guarda
+      img.style.animation = "fotoDeriva 22s cubic-bezier(.16,.7,.2,1) forwards";
+    }
+    if (img.complete && img.naturalWidth) apri();
+    else { img.addEventListener("load", apri); img.addEventListener("error", apri); }
+    setTimeout(apri, 1000);
   })();
 
   // ── testata ─────────────────────────────────────────────────────────
@@ -197,7 +241,7 @@
   // La riga si allarga fin dove arriva il pannello delle foto: senza foto
   // prende tutto il quadro, se no i nomi lunghi si tagliano per lasciare
   // spazio a un pannello che non c'e'.
-  var LARGA = foto.length ? 1000 : 1664;
+  var LARGA = foto ? 1000 : 1664;
   var Y0 = 296, FONDO = 1004;
   var PASSO = Math.min(184, Math.floor((FONDO - Y0) / voci.length));
   var ALTA = PASSO - 18;
