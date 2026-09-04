@@ -385,6 +385,15 @@
   var startIdx = []; (function(){ var s=0; righe.forEach(function(r){ startIdx.push(s); s+=r.length; }); })();
 
 
+  // Stessa regola dell'editor: minuscolo, via gli accenti, tutto quello che
+  // non e' lettera o cifra diventa trattino. "Al-Dosari" e "Nico Paz" devono
+  // dare lo stesso nome di file da tutte e due le parti, se no la foto c'e'
+  // ma non la trova nessuno.
+  function slugCognome(c) {
+    return String(c || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  }
+
   // ── i giocatori in campo: tessera numero + card foto (stile reference) ──
   var pitch = el("pitch");
   var titolari = D.t.slice(0, slots.length);
@@ -393,7 +402,14 @@
   var h = "";
   titolari.forEach(function (r, i) {
     var g = slots[i], num = r[0] || "", nome = r[1] || "", cognome = r[2] || "";
-    var foto = r[3] || ("/loghi/foto-premium-" + num + ".png");
+    // Quando la formazione arriva da ESPN la foto ce l'ha gia' scritta
+    // dentro. Quando invece la si batte a mano, r[3] e' vuoto e bisogna
+    // indovinarla: si cerca per COGNOME, che e' come sono nominate le
+    // novantasette foto in magazzino, con la stessa regola che usa l'editor.
+    // Prima si cercava per numero di maglia — di quelle in magazzino ce ne
+    // sono due, e sembrano avanzi di prova: le formazioni scritte a mano
+    // restavano senza foto e nessuno capiva perche'.
+    var foto = r[3] || ("/loghi/foto-premium-" + slugCognome(cognome) + ".png");
     // linee alte: la figura cresce verso il basso, per non uscire dallo schermo
     var giu = g.y < 460 ? " giu" : "";
     h += '<div class="pcard' + giu + '" data-i="' + i + '" style="left:' + g.x + 'px;top:' + g.y + 'px">' +
