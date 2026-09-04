@@ -1247,8 +1247,23 @@ async function airtableEventi() {
 // stesso che produce le maschere per i social. La copia sta in ottgen.js e
 // si rifa' con estrai-motore.py — riscrivere l'estetica a mano avrebbe
 // voluto dire due maschere che dopo un mese non si somigliano piu'.
-const OTTGEN = require("./ottgen.js");
 const MASCHERA = "feed_maschera_1080x1920";
+
+// Il motore si carica alla PRIMA maschera, non all'avvio. Non e' pigrizia:
+// aggiorna.sh copia solo server.js, e su una macchina dove ottgen.js non e'
+// ancora arrivato un require in cima farebbe morire tutto il ponte —
+// scalette, messa in onda, grafiche live — per una funzione che serve a un
+// pannello di montaggio. Cosi' invece si ferma solo la maschera, e lo dice.
+let MOTORE = null;
+function motore() {
+  if (MOTORE) return MOTORE;
+  try { MOTORE = require("./ottgen.js"); }
+  catch (e) {
+    throw new Error("il motore delle grafiche non e' su questa macchina (" +
+                    e.message + "): serve ottgen.js accanto a server.js");
+  }
+  return MOTORE;
+}
 
 // ── come si scrive, qualunque cosa arrivi ─────────────────────────────
 // Chi incolla non deve ricordarsi le convenzioni: le applica il ponte.
@@ -1290,14 +1305,15 @@ function comeSottotitolo(t) {
 }
 
 function svgTitolo(p) {
-  const formato = OTTGEN.items().filter((i) => i.key === MASCHERA)[0];
+  const G = motore();
+  const formato = G.items().filter((i) => i.key === MASCHERA)[0];
   if (!formato) throw new Error("il motore non conosce " + MASCHERA);
 
   // Dove va a capo il titolo lo decide chi scrive, non una formula: il
   // motore spezza sul "·", e il pannello ha due caselle apposta.
   const titolo = [p.t1, p.t2].map(comeTitolo).filter(Boolean).join(" · ");
 
-  let svg = OTTGEN.svgFor(formato, {
+  let svg = G.svgFor(formato, {
     comp: String(p.comp || "").toUpperCase(),
     mkTitle: titolo,
     mkSub: comeSottotitolo(p.sott)

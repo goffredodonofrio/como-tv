@@ -23,7 +23,11 @@
 (function () {
   "use strict";
 
-  var PONTE = "https://projects-cloud.it/como-tv-dev/api";
+  // Il ponte. Da qui arrivano le partite e qui si disegna la maschera.
+  // Per tornare a lavorare in sviluppo basta rimettere "como-tv-dev": il
+  // resto del pannello non cambia, e le due macchine hanno lo stesso ponte
+  // con la stessa chiave Airtable e lo stesso motore delle grafiche.
+  var PONTE = "https://projects-cloud.it/como-tv/api";
   var eventi = [], scelto = null;
 
   // La lettura scende in profondita' e a valle servono ancora: tenerli qui

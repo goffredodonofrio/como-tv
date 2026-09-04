@@ -85,6 +85,13 @@ if [ "$SOLO_RISCRITTURA" -eq 0 ] && [ -f "$NUOVO" ] && ! cmp -s "$NUOVO" "$INUSO
   if node --check "$NUOVO" 2>/dev/null; then
     echo "→ il ponte è cambiato: lo sostituisco e riavvio…"
     install -o comotv -g comotv -m 644 "$NUOVO" "$INUSO"
+    # ottgen.js viaggia col ponte: server.js lo carica per disegnare le
+    # maschere del pannello Premiere. Senza, quella funzione non va — e
+    # se un domani il caricamento tornasse in cima al file, morirebbe
+    # tutto il ponte per una funzione di montaggio.
+    if [ -f "$SITO/13_Server_VM/ottgen.js" ]; then
+      install -o comotv -g comotv -m 644 "$SITO/13_Server_VM/ottgen.js" /opt/comotv/ottgen.js
+    fi
     # aggiorna.sh si sostituisce con uno spostamento, non riscrivendosi:
     # il file in esecuzione resta valido fino alla fine
     if [ -f "$SITO/13_Server_VM/aggiorna.sh" ]; then
