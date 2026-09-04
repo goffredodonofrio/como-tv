@@ -296,6 +296,70 @@
     }
   }
 
+  // ── la prova che decide i titoli-come-PNG ──────────────────────────
+  // L'idea: se il testo non si scrive dentro una grafica, non chiediamo a
+  // Premiere di scriverlo — gli diamo un'immagine, che e' l'unica cosa che
+  // oggi sappiamo di saper mettere in timeline.
+  //
+  // Perche' funzioni servono tre cose, e nessuna delle tre e' scontata
+  // dentro UXP. Invece di scriverle a fede e scoprirlo fra tre giri, si
+  // provano qui, in venti secondi: disegnare, salvare, importare.
+  async function provaPng() {
+    pulisci();
+    dico("Prova: comporre un titolo come immagine", "si");
+    dico("");
+
+    // 1 · disegnare
+    var dati = null;
+    try {
+      var c = document.createElement("canvas");
+      c.width = 600; c.height = 200;
+      var g = c.getContext("2d");
+      g.fillStyle = "rgba(0,0,0,0)"; g.fillRect(0, 0, 600, 200);
+      g.fillStyle = "#FFFFFF";
+      g.font = "bold 64px Nexa-Bold, sans-serif";
+      g.fillText("COMO TV", 20, 120);
+      dati = c.toDataURL("image/png");
+      dico("1 · disegnare: sì (" + Math.round(dati.length / 1024) + " KB)", "si");
+      dico("   font Nexa-Bold: " + (g.font.indexOf("Nexa") >= 0 ? "accettato" : "sostituito"), "forse");
+    } catch (e) { dico("1 · disegnare: NO — " + mess(e), "no"); }
+
+    // 2 · salvare su disco
+    var percorso = "";
+    if (dati) {
+      try {
+        var uxp = require("uxp");
+        var fsl = uxp.storage.localFileSystem;
+        var formati = uxp.storage.formats;
+        var cartella = await fsl.getTemporaryFolder();
+        var file = await cartella.createEntry("comotv-prova.png", { overwrite: true });
+        var b64 = dati.split(",")[1];
+        var bin = atob(b64);
+        var buf = new ArrayBuffer(bin.length), vista = new Uint8Array(buf);
+        for (var i = 0; i < bin.length; i++) vista[i] = bin.charCodeAt(i);
+        await file.write(buf, { format: formati.binary });
+        percorso = file.nativePath || "";
+        dico("2 · salvare: sì", "si");
+        dico("   " + percorso);
+      } catch (e) { dico("2 · salvare: NO — " + mess(e), "no"); }
+    }
+
+    // 3 · importare nel progetto
+    var ppro = premiere();
+    if (!ppro) { dico("3 · importare: manca l'API", "no"); return; }
+    var progetto = await ppro.Project.getActiveProject();
+    if (percorso) {
+      try {
+        var radice = await progetto.getRootItem();
+        var esito = await progetto.importFiles([percorso], true, radice, false);
+        dico("3 · importare: " + (esito === false ? "rifiutato" : "sì"), esito === false ? "no" : "si");
+      } catch (e) {
+        dico("3 · importare: NO — " + mess(e), "no");
+        dico("   il progetto espone: " + metodiDi(progetto));
+      }
+    }
+  }
+
   // ── il nome della sequenza ─────────────────────────────────────────
   // Le sequenze del master si chiamano "2_DATA_PARTITA_NOME_9-16": DATA,
   // PARTITA e NOME sono segnaposto, non parole. Chi monta li sostituisce a
@@ -474,17 +538,18 @@
 
     // Dove: sulla V2, all'attacco della maschera che c'e' adesso — cosi'
     // prende il posto di quella vecchia invece di aggiungersi.
-    var quando = null, fine = null;
+    var quando = null, fine = null, vecchie = null;
     try {
       var v2 = await sequenza.getVideoTrack(1);
       var sopra = await v2.getTrackItems(ppro.Constants.TrackItemType.CLIP, false);
       if (sopra && sopra.length) {
+        vecchie = sopra;
         quando = await sopra[0].getStartTime();
         // Serve anche DOVE FINISCE. Un PNG entra in timeline con la durata
         // di default — cinque secondi — e se la maschera vecchia era piu'
         // lunga ne resta in coda un pezzo: due clip su V2 invece di una.
         // E' il "non aggiunge" che avevo promesso e che non mantenevo.
-        try { fine = await sopra[0].getEndTime(); } catch (e) {}
+        try { fine = await sopra[sopra.length - 1].getEndTime(); } catch (e) {}
         dico("Prende il posto di quella che c'e' adesso.");
       }
     } catch (e) {}
@@ -504,6 +569,19 @@
     // "Requires locked access": l'azione non va solo ESEGUITA dentro il
     // lucchetto, va anche COSTRUITA li' dentro. Fabbricarla fuori e portarla
     // dentro non basta — il progetto non si lascia leggere mentre e' libero.
+    // Coprire non basta: la maschera vecchia va TOLTA. Allungare quella
+    // nuova sopra l'altra lasciava due clip su V2 — il referto le elencava
+    // tutte e due. Prima si svuota la traccia, poi si mette la nuova.
+    try {
+      if (vecchie && vecchie.length) {
+        await progetto.lockedAccess(function () {
+          var via = editor.createRemoveItemsAction(vecchie, false, true);
+          progetto.executeTransaction(function (g) { g.addAction(via); }, "Como TV: via la vecchia");
+        });
+        dico("Tolte le " + vecchie.length + " maschere che c'erano.");
+      }
+    } catch (e) { dico("Non tolgo le vecchie: " + mess(e), "forse"); }
+
     try {
       await progetto.lockedAccess(function () {
         var azione = editor.createOverwriteItemAction(trovato.pezzo, quando, 1, -1);
@@ -956,6 +1034,9 @@
     scrivi().catch(function (e) { dico("Errore: " + e.message, "no"); });
   });
   el("btnCopia").addEventListener("click", mandaReferto);
+  el("btnPng").addEventListener("click", function () {
+    provaPng().catch(function (e) { dico("Errore: " + mess(e), "no"); });
+  });
   el("btnMask").addEventListener("click", function () {
     mettiTutto().catch(function (e) { dico("Errore: " + mess(e), "no"); });
   });
