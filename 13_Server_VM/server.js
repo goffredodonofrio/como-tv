@@ -1250,19 +1250,46 @@ async function airtableEventi() {
 const OTTGEN = require("./ottgen.js");
 const MASCHERA = "feed_maschera_1080x1920";
 
+// ── come si scrive, qualunque cosa arrivi ─────────────────────────────
+// Chi incolla non deve ricordarsi le convenzioni: le applica il ponte.
+// Il titolo va sempre in maiuscolo, il sottotitolo mai.
+function comeTitolo(t) { return String(t || "").trim().toUpperCase(); }
+
+// Il sottotitolo: minuscolo, con la sola iniziale maiuscola. Punto.
+//
+// C'era il dubbio che abbassare tutto rovinasse i nomi propri —
+// "GENOA-COMO" che diventa "Genoa-como" — e avevo scritto una regola
+// furba che rialzava le iniziali di ogni parola. Ma nella maschera i nomi
+// delle squadre non ci vanno: il dubbio non esisteva, e la regola furba
+// avrebbe solo prodotto "Serie A · 5ª Giornata" dove serve "5ª giornata".
+// Meno intelligenza, piu' aderenza a quello che serve.
+function comeSottotitolo(t) {
+  const x = String(t || "").trim().toLowerCase();
+  return x ? x.charAt(0).toUpperCase() + x.slice(1) : "";
+}
+
 function svgTitolo(p) {
   const formato = OTTGEN.items().filter((i) => i.key === MASCHERA)[0];
   if (!formato) throw new Error("il motore non conosce " + MASCHERA);
 
   // Dove va a capo il titolo lo decide chi scrive, non una formula: il
   // motore spezza sul "·", e il pannello ha due caselle apposta.
-  const titolo = [p.t1, p.t2].filter((t) => String(t || "").trim()).join(" · ");
+  const titolo = [p.t1, p.t2].map(comeTitolo).filter(Boolean).join(" · ");
 
-  return OTTGEN.svgFor(formato, {
+  let svg = OTTGEN.svgFor(formato, {
     comp: String(p.comp || "").toUpperCase(),
     mkTitle: titolo,
-    mkSub: p.sott || ""
+    mkSub: comeSottotitolo(p.sott)
   }, {}, {}, "");
+
+  // Il sottotitolo un filo piu' leggero: nel generatore e' un semibold, e
+  // sotto un titolo cosi' grasso pesa troppo. E' l'UNICA differenza fra
+  // questa maschera e quella dei social — se un giorno si vuole tornare
+  // identici, si toglie questa riga; se si vuole cambiare anche la', si
+  // cambia il generatore e questa riga sparisce da se'.
+  svg = svg.replace(/(<g data-obj="t-sub"[^>]*>\s*<text[^>]*?)font-weight="600"/,
+                    '$1font-weight="400"');
+  return svg;
 }
 
 function pngDelTitolo(p) {
