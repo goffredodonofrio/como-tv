@@ -1062,6 +1062,171 @@ function videoPreleva(p) {
   return { ok: true, id };
 }
 
+// ── LE PARTITE DA AIRTABLE ─────────────────────────────────────────────
+// Serve al pannello di Premiere: il montatore sceglie la partita da una tendina
+// e il nome della competizione si scrive da solo, senza che nessuno lo digiti.
+// Oggi quel passaggio a mano produce refusi che finiscono in onda.
+//
+// Il token NON puo' stare nel pannello, ne' nel browser: sta qui, in una
+// variabile d'ambiente, e chi chiede riceve solo le partite. E' la stessa
+// ragione per cui gli altri ponti stanno qui e non nelle pagine.
+//
+// Il filtro e la mappatura sono quelli gia' scritti in generatore-airtable.js:
+// da due giorni indietro in avanti, niente RINVIATA e niente PRE SHOW (slot
+// interni di studio che non diventano mai grafiche), i FOOTBALL SHOW invece
+// restano perche' sono programmi con una loro grafica.
+const AT_BASE = "appdDMcS8JQ4PTdLB";
+const AT_TAB = "tblXKPRWFCLw5pVSt";
+const AT_COMP = {
+  "Bundesliga Austria": "bundesliga_austria", "Eredivisie": "eredivisie",
+  "Scottish Premiership": "scottish_premiership", "Saudi Pro League": "saudi_pro",
+  "Carabao Cup": "carabao", "DFB-Pokal": "dfb_pokal", "Coppa di Germania": "dfb_pokal",
+  "Coupe de France": "coupe_france", "Premier Sports Cup": "scottish_lc",
+  "Scottish Cup": "scottish_cup", "Ta\u00e7a de Portugal": "taca", "SuperSport HNL": "hnl",
+  "Copa Libertadores": "libertadores", "Copa Sudamericana": "sudamericana",
+  "Recopa Sudamericana": "recopa", "LPF Argentina": "lpf",
+  "Clausura Liga Profesional": "lpf", "Supercopa Internacional": "supercopa_int",
+  "Trofeo de Campeones": "trofeo_campeones", "Saudi Super Cup": "saudi_super",
+  "Scottish Championship": "scottish_championship", "Championship": "scottish_championship",
+  "EFL Championship": "efl_championship", "Supertaça Portugal": "supertaca",
+  "Serie A": "serie_a", "Coppa Italia": "coppa_italia",
+  "Coppa Italia Primavera": "coppa_italia_primavera", "Primavera 1": "primavera1",
+  "Studio Live": ""
+};
+let AT_CACHE = { quando: 0, dati: null };
+
+function atLeggi(url) {
+  return new Promise((ok, no) => {
+    const tok = process.env.COMOTV_AIRTABLE_PAT || "";
+    if (!tok) { no(new Error("manca la chiave di Airtable sul ponte (COMOTV_AIRTABLE_PAT)")); return; }
+    const req = https.get(url, { headers: { Authorization: "Bearer " + tok } }, (res) => {
+      let t = "";
+      res.setEncoding("utf8");
+      res.on("data", (c) => { t += c; });
+      res.on("end", () => {
+        if (res.statusCode !== 200) { no(new Error("Airtable risponde " + res.statusCode)); return; }
+        try { ok(JSON.parse(t)); } catch (e) { no(new Error("risposta non leggibile")); }
+      });
+    });
+    req.on("error", (e) => no(new Error("Airtable non raggiungibile: " + e.message)));
+    req.setTimeout(20000, () => { req.destroy(); no(new Error("Airtable non risponde")); });
+  });
+}
+
+// "PARMA-COMO 3-4 (dcr)" → casa e ospite puliti. Due cose che i dati veri
+// hanno insegnato, e che il parsing di prima sbagliava:
+//
+//  · l'etichetta della lingua sta dentro il nome: "GENOA-COMO [ITA]" faceva
+//    diventare l'ospite "COMO [ITA]". Va tolta e tenuta a parte — 33 righe su
+//    181 ce l'hanno, e la stessa partita compare tre volte, una per lingua.
+//  · un programma con un trattino dentro veniva letto come partita:
+//    "FOOTBALL SHOW: Live pre partita Genoa-Como" diventava una sfida fra
+//    "FOOTBALL SHOW: LIVE PRE PARTITA GENOA" e "COMO". Per riconoscerlo non
+//    basta guardare i trattini: si guarda la competizione, che per i programmi
+//    e' "Studio Live" — verificato, tutte e 16 le righe cosi' sono programmi e
+//    nessuna partita vera comincia con un simbolo.
+function atPartita(testo, competizione) {
+  let grezza = String(testo || "");
+  const et = grezza.match(/\[([^\]]+)\]/);
+  const lingua = et ? et[1].trim().toUpperCase() : "";
+  grezza = grezza.replace(/\s*\[[^\]]*\]\s*/g, " ");
+  const pulita = grezza
+    .replace(/\s+RINVIATA.*$/i, "")
+    .replace(/\s*\(\d+-\d+.*?\).*$/i, "")
+    .replace(/\s+\d+-\d+\s*(dcr)?.*$/i, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  const eProgramma = competizione === "Studio Live" || /^[^A-Za-z0-9]/.test(pulita);
+  if (eProgramma) {
+    const t = pulita.replace(/^[^A-Za-z0-9]+/, "").trim();
+    const due = t.indexOf(":");
+    return due > 0
+      ? { casa: t.slice(0, due).trim().toUpperCase(), ospite: t.slice(due + 1).trim().toUpperCase(),
+          programma: true, lingua, pulita: t }
+      : { casa: t.toUpperCase(), ospite: "", programma: true, lingua, pulita: t };
+  }
+
+  const p = pulita.split("-");
+  const casa = (p[0] || "").trim().replace(/^\d+\s*/, "").toUpperCase();
+  const ospite = (p.slice(1).join("-") || "").trim().replace(/^\d+\s*/, "").toUpperCase();
+  if (!ospite) return { casa, ospite: "", programma: true, lingua, pulita };
+  return { casa, ospite, programma: false, lingua, pulita };
+}
+
+// Quello che si legge nella tendina: "gio 4 set · Genoa-Como · Serie A".
+// La data serve piu' del nome, perche' le stesse due squadre tornano.
+const GIORNI = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"];
+const MESI = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
+function etichettaEvento(r) {
+  const d = new Date(r.quando);
+  const quando = isNaN(d) ? "" : GIORNI[d.getDay()] + " " + d.getDate() + " " + MESI[d.getMonth()];
+  const chi = r.programma ? (r.ospite ? r.casa + ": " + r.ospite : r.casa)
+                          : r.casa + "-" + r.ospite;
+  return [quando, chi, r.competizione].filter(Boolean).join(" \u00b7 ");
+}
+
+async function airtableEventi() {
+  if (AT_CACHE.dati && Date.now() - AT_CACHE.quando < 60000) return AT_CACHE.dati;
+  const formula = "AND(" +
+    "IS_AFTER({Data | Orario}, DATEADD(TODAY(), -2, 'days')), " +
+    "NOT({Partita} = BLANK()), " +
+    'NOT(FIND("RINVIATA", UPPER({Partita}))), ' +
+    'NOT(FIND("PRE SHOW", UPPER({Partita})))' +
+    ")";
+  const base = "https://api.airtable.com/v0/" + AT_BASE + "/" + AT_TAB;
+  let offset = "", righe = [], giri = 0;
+  do {
+    const q = new URLSearchParams({
+      filterByFormula: formula, pageSize: "100",
+      "sort[0][field]": "Data | Orario", "sort[0][direction]": "asc"
+    });
+    if (offset) q.set("offset", offset);
+    const j = await atLeggi(base + "?" + q.toString());
+    (j.records || []).forEach((r) => {
+      const f = r.fields || {};
+      const comp = f["Competizione"] || "";
+      const p = atPartita(f["Partita"], comp);
+      righe.push({
+        id: r.id,
+        quando: f["Data | Orario"] || "",
+        competizione: comp,
+        compKey: AT_COMP[comp] !== undefined ? AT_COMP[comp] : "",
+        partita: f["Partita"] || "",
+        casa: p.casa, ospite: p.ospite, programma: p.programma,
+        lingua: p.lingua,                       // ITA, ENG, AUDIO ONLY: e' un feed, non un nome
+        turno: f["Turno"] || ""
+      });
+    });
+    offset = j.offset || "";
+  } while (offset && ++giri < 20);
+
+  // Una tendina vuole una riga per partita. Airtable ne ha una per FEED: la
+  // stessa GENOA-COMO compare in ITA, ENG e AUDIO ONLY. Chi monta sceglie la
+  // partita, non la lingua del commento — quindi si accorpano per giorno piu'
+  // squadre, e le lingue restano dentro come dato, non come tre voci uguali.
+  const unite = new Map();
+  righe.forEach((r) => {
+    const chiave = r.quando.slice(0, 10) + "|" + r.casa + "|" + r.ospite;
+    const gia = unite.get(chiave);
+    if (gia) {
+      if (r.lingua && gia.lingue.indexOf(r.lingua) < 0) gia.lingue.push(r.lingua);
+      gia.ids.push(r.id);
+      return;
+    }
+    unite.set(chiave, Object.assign({}, r, {
+      lingue: r.lingua ? [r.lingua] : [], ids: [r.id],
+      etichetta: etichettaEvento(r)
+    }));
+  });
+  const eventi = Array.from(unite.values());
+  eventi.forEach((e) => { delete e.lingua; delete e.id; });
+
+  const fuori = { ok: true, quante: eventi.length, righe: righe.length, eventi: eventi };
+  AT_CACHE = { quando: Date.now(), dati: fuori };
+  return fuori;
+}
+
 // ── che cosa c'e' in una cartella di Drive ─────────────────────────────
 // Una cartella non e' un file: non si "scarica". Si legge la sua pagina
 // pubblica e si tira fuori l'elenco, poi si sceglie quale video portare qui.
@@ -1396,6 +1561,12 @@ const server = http.createServer((req, res) => {
     }
     // come va il prelievo di un file da un link
     if (q.get("preleva")) return json(res, videoPrelievo(q.get("preleva")));
+    // le partite per il pannello di Premiere (e per chiunque altro serva)
+    if (q.get("partite")) {
+      return airtableEventi()
+        .then((d) => json(res, d))
+        .catch((e) => json(res, { ok: false, errore: e.message }));
+    }
     if (q.get("regia") === "item" && q.get("id")) {
       const c = canaleDi(q.get("canale") || q.get("c"));
       return json(res, (S.voci[c] && S.voci[c][q.get("id")]) || {});
