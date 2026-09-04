@@ -932,75 +932,11 @@
     }
   }
 
-  // ── scrivere ───────────────────────────────────────────────────────
-  // Milestone 0. Prima guarda (se non l'ha gia' fatto), poi prova a
-  // scrivere davvero nel primo campo di testo che ha trovato.
-  //
-  // Le vie per scrivere sono piu' d'una e non sono sicuro di quale sia
-  // quella buona su Premiere 26: si provano in fila e si dice quale ha
-  // funzionato. Se falliscono tutte si stampano i metodi che il
-  // parametro espone davvero — che e' la risposta vera alla domanda.
-  async function scrivi() {
-    if (!scelto) return;
-    var testo = scelto.competizione || "";
-
-    if (!testi.length) {
-      dico("Prima guardo la timeline, non so ancora dove scrivere.", "forse");
-      await leggiTimeline();
-      if (!testi.length) {
-        dico("");
-        dico("Nessun campo di testo trovato: non c'e' dove scrivere.", "no");
-        dico("E' la risposta che cercavamo — vuol dire strada lunga:", "forse");
-        dico("modello di grafica animata esportato da dentro Premiere.", "forse");
-        return;
-      }
-    }
-
-    var b = testi[0];
-    dico("");
-    dico("Provo a scrivere “" + testo + "”");
-    dico("dentro: " + b.dove + " → " + b.comp + " → " + b.nome);
-    dico("(se fa danni, Ctrl+Z annulla)", "forse");
-
-    var ppro = premiere();
-    var progetto = await ppro.Project.getActiveProject();
-
-    // Il keyframe si PRENDE, non si crea: questo parametro non si anima, ma
-    // il suo valore vive comunque dentro un keyframe. Si prende quello che
-    // c'e', gli si cambia il valore, e si rimette dov'era.
-    var preso = await keyframeDi(b.param, b.pezzo, SEQ, PPRO, function (r) { dico("· " + r); });
-    if (!preso.kf) { dico("Non prendo il keyframe: " + preso.errore, "no"); return; }
-    dico("· keyframe preso (" + preso.come + "), conteneva: “" +
-         String(preso.kf.value).replace(/\s+/g, " ").slice(0, 60) + "”");
-
-    try { preso.kf.value = testo; }
-    catch (e) { dico("Non cambio il valore: " + mess(e), "no"); return; }
-
-    try {
-      var azione = b.param.createSetValueAction(preso.kf, true);
-      await progetto.lockedAccess(function () {
-        progetto.executeTransaction(function (gruppo) {
-          gruppo.addAction(azione);
-        }, "Como TV: competizione");
-      });
-      dico("✓ scritto (keyframe preso + transazione)", "si");
-      return;
-    } catch (e) { dico("· via 1 no: " + mess(e), "forse"); }
-
-    // via 2: la transazione presa dal progetto senza lockedAccess intorno
-    try {
-      var az2 = b.param.createSetValueAction(preso.kf, true);
-      await progetto.executeTransaction(function (gruppo) {
-        gruppo.addAction(az2);
-      }, "Como TV: competizione");
-      dico("✓ scritto (transazione senza lock)", "si");
-      return;
-    } catch (e) { dico("· via 2 no: " + mess(e), "forse"); }
-
-    dico("");
-    dico("Non sono riuscito a scrivere. Il parametro espone:", "no");
-    dico(metodiDi(b.param));
-  }
+  // Qui stava "scrivi la competizione": il tentativo di infilare il testo
+  // dentro la grafica nativa. Non si puo' — dimostrato il 2026-09-04, e il
+  // perche' sta nel LEGGIMI — quindi la funzione e il suo pulsante se ne
+  // vanno. Un comando che non puo' riuscire non va lasciato in giro spento:
+  // chi lo trova ci prova, e non capisce.
 
   // ── portarmi il referto ────────────────────────────────────────────
   // Il pannello gira su un PC di montaggio e io leggo da un Mac: una foto
@@ -1032,9 +968,6 @@
   el("partita").addEventListener("change", mostra);
   el("btnLeggi").addEventListener("click", function () {
     leggiTimeline().catch(function (e) { dico("Errore: " + e.message, "no"); });
-  });
-  el("btnScrivi").addEventListener("click", function () {
-    scrivi().catch(function (e) { dico("Errore: " + e.message, "no"); });
   });
   el("btnCopia").addEventListener("click", mandaReferto);
   el("btnPng").addEventListener("click", function () {
