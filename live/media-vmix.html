@@ -155,25 +155,64 @@
     el.setAttribute("allow", "autoplay; encrypted-media");
     el.setAttribute("allowtransparency", "true");
 
-    // L'AUDIO DEI PLAYER INCORPORATI. YouTube e Vimeo non partono da soli se
-    // hanno l'audio acceso: e' una regola dei browser, non una loro scelta.
-    // Quindi si parte muti — se no non parte niente — e appena il video e'
-    // avviato gli si dice di togliere il muto. Funziona dove il browser lo
-    // consente (nel vMix di solito si', in una scheda qualsiasi spesso no):
-    // se non funziona resta muto, che e' esattamente dove si era prima.
-    if (!STILL && !MUTO && !D.mute) {
+    // ── L'AUDIO DEI PLAYER INCORPORATI ──────────────────────────────
+    // Il problema non e' il player: e' la regola dei browser, che non lasciano
+    // partire da soli i video con l'audio acceso. Quindi si parte muti (se no
+    // non parte niente) e appena il video E' AVVIATO gli si toglie il muto —
+    // il divieto vale sull'avvio, non su un video che sta gia' andando.
+    //
+    // Con YouTube si usa la sua API vera invece di sparare messaggi alla cieca:
+    // dice quando il player e' pronto e quando ha davvero cominciato, e li' il
+    // comando arriva a destinazione. Prima insistevo a tempo sperando di
+    // beccare il momento giusto.
+    var voglioAudio = !STILL && !MUTO && !D.mute;
+    var idYT = (String(D.src).match(/youtube(?:-nocookie)?\.com\/embed\/([A-Za-z0-9_-]{6,})/) || [])[1];
+
+    if (voglioAudio && idYT) {
+      var acceso = false;
+      window.__voceYT = function (p) {
+        try {
+          p.unMute();
+          p.setVolume(100);
+          acceso = !p.isMuted();
+        } catch (e) {}
+      };
+      var partiYT = function () {
+        try {
+          // il riferimento resta a portata: serve per capire, dall'esterno, se
+        // l'audio si e' davvero acceso — con prova-audio.html si controlla
+        // dentro il vMix senza dover indovinare
+        window.__playerYT = new YT.Player(el, {
+            events: {
+              onReady: function (e) { window.__voceYT(e.target); },
+              onStateChange: function (e) {
+                // 1 = sta suonando: e' il momento in cui il divieto non vale piu'
+                if (e.data === 1 && !acceso) {
+                  window.__voceYT(e.target);
+                  setTimeout(function () { window.__voceYT(e.target); }, 400);
+                }
+              }
+            }
+          });
+        } catch (e) {}
+      };
+      if (window.YT && window.YT.Player) setTimeout(partiYT, 0);
+      else {
+        window.onYouTubeIframeAPIReady = partiYT;
+        var sc = document.createElement("script");
+        sc.src = "https://www.youtube.com/iframe_api";
+        document.head.appendChild(sc);
+      }
+    } else if (voglioAudio) {
+      // Vimeo e il resto: non hanno un'API caricabile qui, si parla a messaggi
       var voce = function () {
         var w = el.contentWindow;
         if (!w) return;
         try {
-          w.postMessage(JSON.stringify({ event: "command", func: "unMute", args: [] }), "*");
-          w.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [100] }), "*");
-          w.postMessage(JSON.stringify({ method: "setMuted", value: false }), "*");   // Vimeo
+          w.postMessage(JSON.stringify({ method: "setMuted", value: false }), "*");
           w.postMessage(JSON.stringify({ method: "setVolume", value: 1 }), "*");
         } catch (e) {}
       };
-      // qualche colpo: il player ci mette un attimo a stare in ascolto, e
-      // insistere una manciata di volte costa niente
       el.addEventListener("load", function () {
         [300, 900, 1800, 3000].forEach(function (t) { setTimeout(voce, t); });
       });

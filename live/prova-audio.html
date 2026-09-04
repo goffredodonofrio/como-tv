@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prova audio YouTube · Como TV</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:system-ui,sans-serif;background:#0A0F24;color:#F5F1E6;padding:18px;line-height:1.5;}
+  h1{font-size:19px;margin-bottom:4px;}
+  .sub{font-size:13px;color:#8A8B96;margin-bottom:16px;max-width:760px;}
+  .fila{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;}
+  #vid{width:480px;max-width:100%;aspect-ratio:16/9;background:#000;border:1px solid rgba(245,241,230,.14);border-radius:8px;}
+  .quadro{flex:1;min-width:280px;}
+  .voce{display:flex;justify-content:space-between;gap:14px;padding:9px 12px;border-radius:7px;
+    background:rgba(245,241,230,.05);margin-bottom:7px;font-size:15px;}
+  .voce b{font-variant-numeric:tabular-nums;}
+  .si{color:#4FCB8B;} .no{color:#FF6B6E;} .forse{color:#E3C271;}
+  .esito{margin-top:12px;padding:12px 14px;border-radius:8px;font-size:15px;
+    border:1px solid rgba(201,162,75,.4);background:rgba(201,162,75,.08);}
+  button{font-family:inherit;font-size:14px;font-weight:600;padding:11px 16px;border-radius:7px;
+    cursor:pointer;background:rgba(245,241,230,.06);color:#F5F1E6;
+    border:1px solid rgba(245,241,230,.2);margin:10px 8px 0 0;}
+  button:hover{border-color:#C9A24B;}
+  input{font-family:inherit;font-size:14px;padding:9px 11px;border-radius:6px;width:100%;
+    background:rgba(245,241,230,.08);border:1px solid rgba(245,241,230,.2);color:#F5F1E6;margin-bottom:10px;}
+  .nota{margin-top:14px;font-size:12.5px;color:#8A8B96;max-width:760px;}
+</style>
+</head>
+<body>
+
+<h1>Prova audio di un video YouTube</h1>
+<div class="sub">Da aprire <b>dentro vMix</b>, come sorgente browser. Dice cosa risponde davvero il
+  player: se il muto si toglie da solo, l'audio dei link funziona; se si toglie solo col pulsante,
+  vuol dire che il browser del vMix blocca l'avvio con l'audio e la strada e' un'altra.</div>
+
+<input type="text" id="link" value="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+       placeholder="Incolla un link YouTube e ricarica">
+
+<div class="fila">
+  <div id="vid"></div>
+  <div class="quadro">
+    <div class="voce"><span>API di YouTube</span><b id="sApi">…</b></div>
+    <div class="voce"><span>Player pronto</span><b id="sPronto">…</b></div>
+    <div class="voce"><span>Sta suonando</span><b id="sSuona">…</b></div>
+    <div class="voce"><span>Muto</span><b id="sMuto">…</b></div>
+    <div class="voce"><span>Volume</span><b id="sVol">…</b></div>
+    <div class="esito" id="esito">Aspetto il player&hellip;</div>
+    <button type="button" id="btnMano">Togli il muto a mano</button>
+    <button type="button" id="btnRi">Riprova da solo</button>
+  </div>
+</div>
+
+<div class="nota">Il pulsante &ldquo;a mano&rdquo; funziona sempre, perch&eacute; un clic &egrave; un
+  gesto dell'utente e i browser lo accettano. Quello che conta &egrave; la riga <b>Muto</b> <i>prima</i>
+  di toccare qualsiasi cosa: se dice gi&agrave; &ldquo;no&rdquo;, l'audio dei contributi da link
+  funziona in onda.</div>
+
+<script>
+(function () {
+  "use strict";
+  function el(id) { return document.getElementById(id); }
+  function segna(id, testo, classe) {
+    var e = el(id);
+    e.textContent = testo;
+    e.className = classe || "";
+  }
+  function idDi(u) {
+    var m = String(u || "").match(
+      /(?:youtube\.com\/(?:watch\?[^#]*\bv=|embed\/|live\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
+    return m ? m[1] : "dQw4w9WgXcQ";
+  }
+
+  var player = null, toccato = false;
+
+  function guarda() {
+    if (!player || !player.getPlayerState) return;
+    try {
+      var st = player.getPlayerState();          // 1 = sta suonando
+      var muto = player.isMuted();
+      segna("sSuona", st === 1 ? "sì" : "no", st === 1 ? "si" : "forse");
+      segna("sMuto", muto ? "sì" : "no", muto ? "no" : "si");
+      segna("sVol", String(Math.round(player.getVolume())), "");
+      if (st === 1 && !muto && !toccato) {
+        el("esito").innerHTML = "<b class='si'>Funziona.</b> Il player suona con l'audio senza che " +
+          "nessuno abbia toccato niente: i contributi da link YouTube avranno il suono anche in onda.";
+      } else if (st === 1 && muto) {
+        el("esito").innerHTML = "<b class='no'>Parte muto e resta muto.</b> Questo browser non lascia " +
+          "togliere il muto da solo. Con un link YouTube il contributo andra' in onda senza audio: " +
+          "per averlo bisogna portare qui il file, come si fa con Drive.";
+      } else if (st === 1 && !muto && toccato) {
+        el("esito").innerHTML = "<b class='forse'>L'audio c'e' solo dopo il clic.</b> Vuol dire che il " +
+          "browser lo permette a un gesto dell'utente ma non da solo — e in onda un clic non c'e'.";
+      }
+    } catch (e) {}
+  }
+  setInterval(guarda, 500);
+
+  function avvia() {
+    segna("sApi", "caricata", "si");
+    try {
+      player = new YT.Player("vid", {
+        videoId: idDi(el("link").value),
+        playerVars: { autoplay: 1, mute: 1, controls: 0, rel: 0, playsinline: 1, modestbranding: 1 },
+        events: {
+          onReady: function (e) {
+            segna("sPronto", "sì", "si");
+            e.target.unMute();
+            e.target.setVolume(100);
+            e.target.playVideo();
+          },
+          onStateChange: function (e) {
+            if (e.data === 1) { e.target.unMute(); e.target.setVolume(100); }
+          },
+          onError: function () { el("esito").textContent = "Il video non si carica: link sbagliato o non incorporabile."; }
+        }
+      });
+    } catch (err) { segna("sApi", "errore", "no"); }
+  }
+
+  el("btnMano").addEventListener("click", function () {
+    toccato = true;
+    if (player) { try { player.unMute(); player.setVolume(100); player.playVideo(); } catch (e) {} }
+  });
+  el("btnRi").addEventListener("click", function () {
+    if (player) { try { player.unMute(); player.setVolume(100); } catch (e) {} }
+  });
+
+  window.onYouTubeIframeAPIReady = avvia;
+  var sc = document.createElement("script");
+  sc.src = "https://www.youtube.com/iframe_api";
+  sc.onerror = function () {
+    segna("sApi", "non raggiungibile", "no");
+    el("esito").textContent = "L'API di YouTube non si carica: questo browser non arriva a youtube.com.";
+  };
+  document.head.appendChild(sc);
+})();
+</script>
+</body>
+</html>
