@@ -227,18 +227,25 @@
   #thumbcap, #pgmcap{display:none;}
   /* ── il punto da cui parte la clip ── */
   /* Una barra sola, come sui player: il tempo, il cursore, e i tasti. */
-  #cue{margin-top:10px;padding:8px 10px;border-radius:8px;display:flex;align-items:center;gap:10px;
+  #cue{margin-top:12px;padding:12px 14px;border-radius:10px;display:flex;align-items:center;gap:14px;
     border:1px solid rgba(79,163,232,.4);background:rgba(79,163,232,.07);}
-  #cue .tc{flex:0 0 auto;font-family:'Mazzard',sans-serif;font-weight:800;font-size:14px;
+  #cue .tc{flex:0 0 auto;font-family:'Mazzard',sans-serif;font-weight:800;font-size:19px;
     color:#A8D4F7;font-variant-numeric:tabular-nums;letter-spacing:.02em;white-space:nowrap;}
+  /* La pista tiene due cose diverse: il CURSORE, dove stai guardando, e il
+     SEGNO d'oro, da dove parte quando va in onda. */
+  #cue .pista{flex:1;min-width:80px;position:relative;display:flex;align-items:center;}
+  #cue .inpunto{flex:0 0 auto;font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--gold-bright);white-space:nowrap;
+    font-variant-numeric:tabular-nums;}
   /* il fotogramma si guarda nell'ANTEPRIMA, non in una finestrella in piu':
      due finestre in tutto, come e' giusto in una regia */
   #pvwvid{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:contain;
     background:#070B1D;display:block;}
-  #cue input[type=range]{flex:1;min-width:60px;accent-color:#4FA3E8;height:20px;}
-  #cue .segno{flex:0 0 auto;font-size:11px;color:#7FBEF0;min-width:64px;text-align:right;}
-  #cue button{flex:0 0 auto;font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
-    letter-spacing:.1em;text-transform:uppercase;padding:7px 9px;border-radius:6px;cursor:pointer;
+  #cue input[type=range]{flex:1;min-width:0;accent-color:#4FA3E8;height:26px;}
+  #cue .segno{position:absolute;top:1px;bottom:1px;width:3px;border-radius:2px;
+    background:var(--gold);box-shadow:0 0 8px rgba(201,162,75,.85);pointer-events:none;}
+  #cue button{flex:0 0 auto;font-family:'Mazzard',sans-serif;font-size:15px;font-weight:700;
+    padding:8px 14px;border-radius:7px;cursor:pointer;
     background:transparent;color:var(--ivory-dim);border:1px solid var(--line-2);}
   #cue button:hover{color:#A8D4F7;border-color:#4FA3E8;}
 
@@ -451,12 +458,14 @@
       <!-- IL PUNTO DA CUI PARTE: serve in diretta. La clip del gol e' gia' in
            scaletta, la si riprende dal punto giusto e si manda in onda quello. -->
       <div id="cue" style="display:none">
-        <span class="tc" id="cueTC">00:00 / 00:00</span>
-        <input type="range" id="cueA" min="0" max="100" step="0.1" value="0">
-        <button type="button" id="cueVia" title="Torna all\'inizio">&#8635;</button>
-        <button type="button" id="cuePlay" title="Guarda da qui">&#9654;</button>
-        <button type="button" id="cueAudio" title="Ascolta l\'anteprima">&#128263;</button>
-        <span class="segno" id="cueSegno">&nbsp;</span>
+        <span class="tc" id="cueTC">0:00 / 0:00</span>
+        <span class="pista">
+          <input type="range" id="cueA" min="0" max="100" step="0.1" value="0">
+          <i class="segno" id="cueSegno"></i>
+        </span>
+        <button type="button" id="cueVia" title="Riporta il punto di partenza all\'inizio">&#8635;</button>
+        <button type="button" id="cuePlay" title="Guarda da dove parte">&#9654;</button>
+        <span class="inpunto" id="cueIn">parte da 0:00</span>
       </div>
       <!-- durata della clip in anteprima: stessi numeroni dell'onda -->
       <div id="pvwtempo" style="display:none;margin-top:10px;text-align:center">
@@ -952,7 +961,7 @@
   }
   function cueApri(id, dati) {
     var v = document.getElementById("pvwvid");
-    metro(v, document.getElementById("vuPvw"), cueSuono);
+    metro(v, document.getElementById("vuPvw"), true);
     cueChiudi();
     CUE.id = id;
     // il contributo si guarda con un lettore vero al posto del telaio: e' quello
@@ -977,6 +986,14 @@
   }
   function cueDisegna() {
     document.getElementById("cueTC").textContent = cueMmss(CUE.da) + " / " + cueMmss(CUE.dur);
+    cueSegnoDisegna();
+  }
+  function cueSegnoDisegna() {
+    var pista = document.querySelector("#cue .pista"), sg = document.getElementById("cueSegno");
+    if (!pista || !CUE.dur) return;
+    var w = pista.clientWidth, pom = 18;                  // il pomello ha una sua larghezza
+    sg.style.left = Math.round(pom / 2 + (w - pom) * (CUE.da / CUE.dur) - 1) + "px";
+    document.getElementById("cueIn").textContent = "parte da " + cueMmss(CUE.da);
   }
   // IL CURSORE E' LA VERITA'. Non c'e' niente da confermare: dove sta il
   // cursore, da li' parte la clip quando va in onda. Di suo sta all'inizio;
@@ -991,16 +1008,9 @@
   function cueSalva() {
     if (!CUE.id || !CUE.dur) return;
     if (Math.abs(CUE.da - cueUltimo) < 0.15) return;      // niente di nuovo da dire
-    if (!COMANDO) {
-      document.getElementById("cueSegno").textContent = "sola lettura";
-      return;
-    }
+    if (!COMANDO) { document.getElementById("cueIn").textContent = "sola lettura"; return; }
     cueUltimo = CUE.da;
     post({ tipo: "regia-taglio", id: CUE.id, da: CUE.da, a: 0 }, null);
-    var sg = document.getElementById("cueSegno");
-    sg.textContent = CUE.da > 0.05 ? "parte da qui" : "dall\u2019inizio";
-    clearTimeout(sg.__t);
-    sg.__t = setTimeout(function () { sg.innerHTML = "&nbsp;"; }, 2500);
   }
 
   document.getElementById("cueA").addEventListener("input", function () {
@@ -1011,12 +1021,14 @@
     cueDisegna();
   });
   document.getElementById("cueA").addEventListener("change", cueSalva);
-  // mentre scorre, il cursore lo segue
+  // Mentre l'anteprima scorre si muove SOLO il cursore: il segno resta dove
+  // l'hai messo. Era questo il difetto — guardare la clip spostava il punto di
+  // partenza, e in onda partiva da dove ti eri fermato a guardare.
   document.getElementById("pvwvid").addEventListener("timeupdate", function () {
     if (this.paused || !CUE.dur) return;
-    CUE.da = this.currentTime;
-    document.getElementById("cueA").value = String(CUE.da);
-    cueDisegna();
+    document.getElementById("cueA").value = String(this.currentTime);
+    document.getElementById("cueTC").textContent =
+      cueMmss(this.currentTime) + " / " + cueMmss(CUE.dur);
   });
   document.getElementById("cueVia").addEventListener("click", function () {
     CUE.da = 0;
@@ -1109,30 +1121,15 @@
     requestAnimationFrame(disegna);
   })();
 
-  // L'AUDIO DELL'ANTEPRIMA. Cercare il punto di un gol guardando solo le
-  // immagini e' un supplizio: col boato si trova in un secondo. E' l'audio del
-  // monitor di anteprima, non tocca l'onda. La scelta resta fra una clip e
-  // l'altra: chi lo accende lo vuole acceso per tutta la partita.
-  var cueSuono = false;
-  try { cueSuono = localStorage.getItem("comotv.regia.anteprimaSuono") === "1"; } catch (e) {}
+  // L'anteprima si sente e basta: premi play e, se la clip ha l'audio, lo senti;
+  // se non ce l'ha non senti niente — e le barrette te lo dicono anche a occhio.
+  // Un tasto per il muto in mezzo non serviva a nessuno.
   function cueAudioDisegna() {
-    var b = document.getElementById("cueAudio"), v = document.getElementById("pvwvid");
-    // se il metro c'e', comanda lui il volume: toccare "muted" a un elemento
-    // gia' dentro il grafo non fa piu' niente
+    var v = document.getElementById("pvwvid");
     v.muted = false;
-    metroSuono(v, cueSuono);
-    if (!METRI.some(function (x) { return x.video === v; })) v.muted = !cueSuono;
-    b.innerHTML = cueSuono ? "&#128266;" : "&#128263;";
-    b.style.color = cueSuono ? "#A8D4F7" : "";
-    b.style.borderColor = cueSuono ? "#4FA3E8" : "";
-    b.title = cueSuono ? "Anteprima con audio \u2014 clicca per zittirla"
-                       : "Anteprima muta \u2014 clicca per sentirla";
+    metroSuono(v, true);
+    if (!METRI.some(function (x) { return x.video === v; })) v.muted = false;
   }
-  document.getElementById("cueAudio").addEventListener("click", function () {
-    cueSuono = !cueSuono;
-    try { localStorage.setItem("comotv.regia.anteprimaSuono", cueSuono ? "1" : "0"); } catch (e) {}
-    cueAudioDisegna();
-  });
 
   // LA REPLICA DELL'ONDA. Sta dentro il suo telaio ed e' muta di proposito: se
   // suonasse, in sala si sentirebbe due volte. Ma il suo audio si puo' misurare
@@ -1152,15 +1149,19 @@
   });
   document.getElementById("cuePlay").addEventListener("click", function () {
     var v = document.getElementById("pvwvid");
-    if (v.paused) { v.play().catch(function () {}); this.innerHTML = "&#10073;&#10073;"; }
-    else { v.pause(); this.innerHTML = "&#9654;"; }
+    if (v.paused) {
+      // si guarda sempre da dove parte: e' la prova del punto scelto
+      if (Math.abs(v.currentTime - CUE.da) > 1) { try { v.currentTime = CUE.da; } catch (e) {} }
+      v.play().catch(function () {});
+      this.innerHTML = "&#10073;&#10073;";
+    } else { v.pause(); this.innerHTML = "&#9654;"; }
   });
   document.getElementById("pvwvid").addEventListener("pause", function () {
     document.getElementById("cuePlay").innerHTML = "&#9654;";
-    // arrivata in fondo NON si sposta il punto: guardare tutta la clip non
-    // deve significare farla ripartire dalla fine
-    if (this.ended) return;
-    cueSalva();
+    // il cursore torna a mostrare il punto scelto, che non si e' mai mosso
+    if (!CUE.dur) return;
+    document.getElementById("cueA").value = String(CUE.da);
+    cueDisegna();
   });
 
   function showPvw(id) {
