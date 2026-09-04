@@ -381,12 +381,21 @@
   // ESPN scrive gli orari in UTC: "2026-09-04T18:45Z" e' un 20:45 italiano.
   // Convertirli e' obbligatorio, non un vezzo: un cartello con l'ora sbagliata
   // e' peggio di nessun cartello.
+  // Lo zero davanti al giorno non lo vogliamo da nessuna parte: ne' dal
+  // database, ne' battuto a mano, ne' da un appuntamento salvato mesi fa.
+  function giornoPulito(d) {
+    return String(d == null ? "" : d).trim().replace(/^0+(?=\d)/, "");
+  }
+
   function pezziData(iso8601) {
     var t = new Date(iso8601);
     if (isNaN(t)) return { g: "", d: "", m: "", o: "" };
     var opt = { timeZone: "Europe/Rome" };
     var g = t.toLocaleDateString("it-IT", Object.assign({ weekday: "short" }, opt));
-    var d = t.toLocaleDateString("it-IT", Object.assign({ day: "2-digit" }, opt));
+    // "numeric", non "2-digit": il 4 settembre e' il 4, non il 04. Con lo
+    // zero davanti la data pescata dal database usciva diversa da quella
+    // scritta a mano, e nella stessa grafica si leggevano tutte e due.
+    var d = t.toLocaleDateString("it-IT", Object.assign({ day: "numeric" }, opt));
     var m = t.toLocaleDateString("it-IT", Object.assign({ month: "short" }, opt));
     var o = t.toLocaleTimeString("it-IT", Object.assign({ hour: "2-digit", minute: "2-digit", hour12: false }, opt));
     return { g: g.replace(".", "").toUpperCase(), d: d, m: m.replace(".", "").toUpperCase(), o: o };
@@ -488,7 +497,7 @@
   function dati() {
     leggiModulo();
     var ap = RIGHE.map(function (r) {
-      var o = { g: r.g.trim(), d: r.d.trim(), m: r.m.trim(), o: r.o.trim(),
+      var o = { g: r.g.trim(), d: giornoPulito(r.d), m: r.m.trim(), o: r.o.trim(),
                 c: r.c.trim(), no: r.no.trim() };
       if (r.tipo === "evento") o.ti = r.ti.trim();
       else {
