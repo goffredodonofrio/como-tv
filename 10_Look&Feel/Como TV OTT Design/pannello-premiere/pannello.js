@@ -26,6 +26,11 @@
   var PONTE = "https://projects-cloud.it/como-tv-dev/api";
   var eventi = [], scelto = null;
 
+  // Quello che la lettura della timeline ha trovato e che somiglia a un
+  // campo di testo. Serve al pulsante "Scrivi": senza aver guardato prima,
+  // non c'e' modo di sapere dove scrivere.
+  var testi = [];
+
   function el(id) { return document.getElementById(id); }
 
   // ── il diario ──────────────────────────────────────────────────────
@@ -105,6 +110,7 @@
   // stampa il perche' e i metodi disponibili, e si va avanti col resto.
   async function leggiTimeline() {
     pulisci();
+    testi = [];
     var ppro = premiere();
     if (!ppro) { dico("Non trovo l'API di Premiere (require).", "no"); return; }
     dico("API di Premiere: c'e'.", "si");
@@ -197,6 +203,12 @@
           var par = await comp.getParam(p);
           var pn = await par.getDisplayName();
           righe.push("[" + p + "] " + pn);
+          // Un campo che si chiama "Source Text", "Testo" o simili e' il
+          // candidato: viene messo da parte per il pulsante "Scrivi", che
+          // altrimenti non saprebbe dove mettere le mani.
+          if (/text|testo|sorgente/i.test(pn)) {
+            testi.push({ dove: nome, comp: etichetta, nome: pn, param: par });
+          }
         } catch (e) {}
       }
       if (righe.length) {
@@ -206,27 +218,91 @@
   }
 
   // ── scrivere ───────────────────────────────────────────────────────
-  // Milestone 0. Finche' il "Leggi la timeline" non dice dove sta il
-  // parametro di testo, questo non puo' sapere dove scrivere: quindi
-  // per adesso spiega che cosa gli manca invece di provare a caso e
-  // fallire in un modo che non insegna niente.
-  function scrivi() {
+  // Milestone 0. Prima guarda (se non l'ha gia' fatto), poi prova a
+  // scrivere davvero nel primo campo di testo che ha trovato.
+  //
+  // Le vie per scrivere sono piu' d'una e non sono sicuro di quale sia
+  // quella buona su Premiere 26: si provano in fila e si dice quale ha
+  // funzionato. Se falliscono tutte si stampano i metodi che il
+  // parametro espone davvero — che e' la risposta vera alla domanda.
+  async function scrivi() {
     if (!scelto) return;
-    pulisci();
-    dico("Da scrivere: “" + (scelto.competizione || "") + "”");
+    var testo = scelto.competizione || "";
+
+    if (!testi.length) {
+      dico("Prima guardo la timeline, non so ancora dove scrivere.", "forse");
+      await leggiTimeline();
+      if (!testi.length) {
+        dico("");
+        dico("Nessun campo di testo trovato: non c'e' dove scrivere.", "no");
+        dico("E' la risposta che cercavamo — vuol dire strada lunga:", "forse");
+        dico("modello di grafica animata esportato da dentro Premiere.", "forse");
+        return;
+      }
+    }
+
+    var b = testi[0];
     dico("");
-    dico("Manca il passo che decide il progetto: dove.", "forse");
-    dico("Premi 'Leggi la timeline' con il master aperto e mandami");
-    dico("quello che esce. Da li' si sa se il testo si scrive dentro");
-    dico("la grafica nativa o se serve passare dal modello di grafica");
-    dico("animata esportato da Premiere.");
+    dico("Provo a scrivere “" + testo + "”");
+    dico("dentro: " + b.dove + " → " + b.comp + " → " + b.nome);
+    dico("(se fa danni, Ctrl+Z annulla)", "forse");
+
+    var ppro = premiere();
+    var progetto = await ppro.Project.getActiveProject();
+
+    // via 1: l'azione dentro una transazione — la strada documentata
+    try {
+      var azione = b.param.createSetValueAction(testo, true);
+      await progetto.lockedAccess(function () {
+        progetto.executeTransaction(function (gruppo) {
+          gruppo.addAction(azione);
+        }, "Como TV: competizione");
+      });
+      dico("✓ scritto (azione + transazione)", "si");
+      return;
+    } catch (e) { dico("· via 1 no: " + e.message, "forse"); }
+
+    // via 2: dritto per dritto, senza transazione
+    try {
+      await b.param.setValue(testo, true);
+      dico("✓ scritto (setValue diretto)", "si");
+      return;
+    } catch (e) { dico("· via 2 no: " + e.message, "forse"); }
+
+    dico("");
+    dico("Non sono riuscito a scrivere. Il parametro espone:", "no");
+    dico(metodiDi(b.param));
+  }
+
+  // ── portarmi il referto ────────────────────────────────────────────
+  // Ricopiare a mano un elenco lungo da un PC all'altro e' il modo piu'
+  // sicuro di perdere per strada proprio la riga che serve.
+  function copiaReferto() {
+    var testo = el("diario").textContent;
+    var b = el("btnCopia");
+    function bene() { b.textContent = "Copiato ✓"; setTimeout(function () { b.textContent = "Copia il referto"; }, 2000); }
+    try {
+      var uxp = require("uxp");
+      if (uxp && uxp.clipboard && uxp.clipboard.setContent) {
+        uxp.clipboard.setContent({ "text/plain": testo });
+        bene(); return;
+      }
+    } catch (e) {}
+    try {
+      navigator.clipboard.writeText(testo).then(bene, function () {
+        b.textContent = "Non ci riesco — fai uno screenshot";
+      });
+    } catch (e) { b.textContent = "Non ci riesco — fai uno screenshot"; }
   }
 
   el("partita").addEventListener("change", mostra);
   el("btnLeggi").addEventListener("click", function () {
     leggiTimeline().catch(function (e) { dico("Errore: " + e.message, "no"); });
   });
-  el("btnScrivi").addEventListener("click", scrivi);
+  el("btnScrivi").addEventListener("click", function () {
+    scrivi().catch(function (e) { dico("Errore: " + e.message, "no"); });
+  });
+  el("btnCopia").addEventListener("click", copiaReferto);
 
   caricaPartite();
 })();
