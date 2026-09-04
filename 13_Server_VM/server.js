@@ -1255,17 +1255,41 @@ const MASCHERA = "feed_maschera_1080x1920";
 // Il titolo va sempre in maiuscolo, il sottotitolo mai.
 function comeTitolo(t) { return String(t || "").trim().toUpperCase(); }
 
-// Il sottotitolo: minuscolo, con la sola iniziale maiuscola. Punto.
+// Il sottotitolo: minuscolo, con la sola iniziale maiuscola. Con due
+// eccezioni, che non sono capricci ma cose che abbassate diventano
+// sbagliate:
 //
-// C'era il dubbio che abbassare tutto rovinasse i nomi propri —
-// "GENOA-COMO" che diventa "Genoa-como" — e avevo scritto una regola
-// furba che rialzava le iniziali di ogni parola. Ma nella maschera i nomi
-// delle squadre non ci vanno: il dubbio non esisteva, e la regola furba
-// avrebbe solo prodotto "Serie A · 5ª Giornata" dove serve "5ª giornata".
-// Meno intelligenza, piu' aderenza a quello che serve.
+//  · una lettera sola in mezzo alle parole e' un nome, non una parola.
+//    "Serie A" abbassato diventa "Serie a", che nessuno scriverebbe mai.
+//  · i nomi delle competizioni li conosciamo — arrivano da Airtable — e
+//    quindi non c'e' bisogno di indovinare come vanno scritti: si rimette
+//    la grafia buona. "uefa champions league" torna "UEFA Champions League".
+//
+// Fuori da queste due, si abbassa e basta: "5ª GIORNATA" deve diventare
+// "5ª giornata", ed e' il motivo per cui la regola esiste.
+function nomiDelleCompetizioni() {
+  const d = AT_CACHE && AT_CACHE.dati;
+  if (!d || !d.eventi) return [];
+  const visti = {};
+  d.eventi.forEach((e) => { if (e.competizione) visti[e.competizione] = 1; });
+  // dalle piu' lunghe: "Coppa Italia Primavera" prima di "Coppa Italia"
+  return Object.keys(visti).sort((a, b) => b.length - a.length);
+}
+
 function comeSottotitolo(t) {
-  const x = String(t || "").trim().toLowerCase();
-  return x ? x.charAt(0).toUpperCase() + x.slice(1) : "";
+  let x = String(t || "").trim().toLowerCase();
+  if (!x) return "";
+
+  // le competizioni tornano come le scrive chi fa il palinsesto
+  nomiDelleCompetizioni().forEach((nome) => {
+    const dove = x.indexOf(nome.toLowerCase());
+    if (dove >= 0) x = x.slice(0, dove) + nome + x.slice(dove + nome.length);
+  });
+
+  // una lettera sola fra spazi e' una sigla: Serie A, Girone B
+  x = x.replace(/(^|[\s·])([a-z])(?=$|[\s·])/g, (t, prima, l) => prima + l.toUpperCase());
+
+  return x.charAt(0).toUpperCase() + x.slice(1);
 }
 
 function svgTitolo(p) {
