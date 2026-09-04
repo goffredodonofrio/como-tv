@@ -200,7 +200,9 @@
   // getStartValue() su questo parametro torna vuoto, quindi si passa da
   // getValueAtTime, che pero' vuole un tempo: e i modi di fabbricarne uno
   // sono piu' d'uno. Si provano in fila e si dice quale ha risposto.
-  async function sondaTesto(par, pezzo, sequenza, ppro, rientro) {
+  // I modi di fabbricare un tempo sono piu' d'uno e non tutti valgono per
+  // tutti i parametri: si preparano tutti e si prova in fila.
+  async function tempiPossibili(pezzo, sequenza, ppro) {
     var tempi = [];
     function aggiungi(come, f) { try { tempi.push([come, f()]); } catch (e) {} }
     aggiungi("TIME_ZERO", function () { return ppro.TickTime.TIME_ZERO; });
@@ -210,6 +212,36 @@
       try { tempi.push([extra[i][0], await pezzo[extra[i][1]]()]); } catch (e) {}
     }
     try { tempi.push(["testina", await sequenza.getPlayerPosition()]); } catch (e) {}
+    return tempi;
+  }
+
+  // Il keyframe che TIENE il valore. Non si crea — createKeyframe su questo
+  // parametro risponde sempre "Illegal Parameter type", perche' il testo non
+  // si anima — si prende quello che c'e' gia'. Lo dice l'API stessa, dentro
+  // l'errore di getValueAtTime: "Use GetKeyframeAtTime to get a keyframe
+  // object at time. The value can be extracted from the keyframe object."
+  async function keyframeDi(par, pezzo, sequenza, ppro) {
+    var tempi = await tempiPossibili(pezzo, sequenza, ppro);
+    for (var t = 0; t < tempi.length; t++) {
+      try {
+        var k = await par.getKeyframePtr(tempi[t][1]);
+        if (k) return { kf: k, come: tempi[t][0], tempo: tempi[t][1] };
+      } catch (e) { if (t === tempi.length - 1) return { errore: mess(e) }; }
+    }
+    return { errore: "nessun tempo ha dato un keyframe" };
+  }
+
+  async function sondaTesto(par, pezzo, sequenza, ppro, rientro) {
+    var tempi = await tempiPossibili(pezzo, sequenza, ppro);
+
+    var preso = await keyframeDi(par, pezzo, sequenza, ppro);
+    if (preso.kf) {
+      dico(rientro + "  keyframe preso (" + preso.come + ")", "si");
+      dico(rientro + "    contiene: “" + String(preso.kf.value).replace(/\s+/g, " ").slice(0, 90) + "”", "si");
+      dico(rientro + "    espone: " + metodiDi(preso.kf));
+      return;
+    }
+    dico(rientro + "  keyframe non preso: " + preso.errore, "forse");
 
     // "Illegal Parameter type" puo' voler dire due cose molto diverse: che
     // gli passo il tipo sbagliato, o che QUESTO parametro non accetta
@@ -353,7 +385,7 @@
           righe.push(voce);
 
           if (/source text|^text$|testo sorgente/i.test(pn)) {
-            testi.push({ dove: nome, comp: etichetta, nome: pn, param: par });
+            testi.push({ dove: nome, comp: etichetta, nome: pn, param: par, pezzo: pezzo });
             righe.push("   ↑ e' questo il campo del testo — lo sondo:");
             sonde.push(par);
           }
@@ -419,24 +451,31 @@
     var ppro = premiere();
     var progetto = await ppro.Project.getActiveProject();
 
-    // createSetValueAction non vuole il testo nudo: vuole un keyframe, che
-    // si fabbrica dal valore. E' il passaggio che mi era sfuggito.
+    // Il keyframe si PRENDE, non si crea: questo parametro non si anima, ma
+    // il suo valore vive comunque dentro un keyframe. Si prende quello che
+    // c'e', gli si cambia il valore, e si rimette dov'era.
+    var preso = await keyframeDi(b.param, b.pezzo, SEQ, PPRO);
+    if (!preso.kf) { dico("Non prendo il keyframe: " + preso.errore, "no"); return; }
+    dico("· keyframe preso (" + preso.come + "), conteneva: “" +
+         String(preso.kf.value).replace(/\s+/g, " ").slice(0, 60) + "”");
+
+    try { preso.kf.value = testo; }
+    catch (e) { dico("Non cambio il valore: " + mess(e), "no"); return; }
+
     try {
-      var kf = b.param.createKeyframe(testo);
-      var azione = b.param.createSetValueAction(kf, true);
+      var azione = b.param.createSetValueAction(preso.kf, true);
       await progetto.lockedAccess(function () {
         progetto.executeTransaction(function (gruppo) {
           gruppo.addAction(azione);
         }, "Como TV: competizione");
       });
-      dico("✓ scritto (keyframe + transazione)", "si");
+      dico("✓ scritto (keyframe preso + transazione)", "si");
       return;
     } catch (e) { dico("· via 1 no: " + mess(e), "forse"); }
 
     // via 2: la transazione presa dal progetto senza lockedAccess intorno
     try {
-      var kf2 = b.param.createKeyframe(testo);
-      var az2 = b.param.createSetValueAction(kf2, true);
+      var az2 = b.param.createSetValueAction(preso.kf, true);
       await progetto.executeTransaction(function (gruppo) {
         gruppo.addAction(az2);
       }, "Como TV: competizione");
