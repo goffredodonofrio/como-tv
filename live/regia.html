@@ -208,22 +208,18 @@
   #thumbbox.onair #onairtag{display:block;animation:pulse 1.4s ease-in-out infinite;}
   #thumbcap{margin-top:10px;font-size:12.5px;color:var(--fg-3);min-height:18px;}
   /* ── il punto da cui parte la clip ── */
-  #cue{margin-top:12px;padding:12px;border-radius:9px;
+  /* Una barra sola, come sui player: il tempo, il cursore, e i tasti. */
+  #cue{margin-top:10px;padding:8px 10px;border-radius:8px;display:flex;align-items:center;gap:10px;
     border:1px solid rgba(79,163,232,.4);background:rgba(79,163,232,.07);}
+  #cue .tc{flex:0 0 auto;font-family:'Mazzard',sans-serif;font-weight:800;font-size:14px;
+    color:#A8D4F7;font-variant-numeric:tabular-nums;letter-spacing:.02em;white-space:nowrap;}
   /* il fotogramma si guarda nell'ANTEPRIMA, non in una finestrella in piu':
      due finestre in tutto, come e' giusto in una regia */
   #pvwvid{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:contain;
     background:#070B1D;display:block;}
-  #cue .cuecur{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
-  #cue .cuecur label{flex:0 0 74px;font-family:'Mazzard',sans-serif;font-size:9.5px;font-weight:700;
-    letter-spacing:.16em;text-transform:uppercase;color:#7FBEF0;}
-  #cue input[type=range]{flex:1;min-width:0;accent-color:#4FA3E8;height:20px;}
-  #cue .cuecur .t{flex:0 0 58px;text-align:right;font-family:'Mazzard',sans-serif;font-weight:800;
-    font-size:15px;color:#A8D4F7;font-variant-numeric:tabular-nums;}
-  #cue .cuefondo{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px;}
-  #cue .cuefondo span{flex:1;min-width:120px;font-size:11.5px;color:var(--fg-3);}
-  #cue button{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.1em;
-    text-transform:uppercase;padding:8px 11px;border-radius:6px;cursor:pointer;
+  #cue input[type=range]{flex:1;min-width:60px;accent-color:#4FA3E8;height:20px;}
+  #cue button{flex:0 0 auto;font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
+    letter-spacing:.1em;text-transform:uppercase;padding:7px 9px;border-radius:6px;cursor:pointer;
     background:transparent;color:var(--ivory-dim);border:1px solid var(--line-2);}
   #cue button:hover{color:#A8D4F7;border-color:#4FA3E8;}
   #cue #cueOk{color:#7FBEF0;border-color:rgba(79,163,232,.5);background:rgba(79,163,232,.12);}
@@ -437,17 +433,11 @@
       <!-- IL PUNTO DA CUI PARTE: serve in diretta. La clip del gol e' gia' in
            scaletta, la si riprende dal punto giusto e si manda in onda quello. -->
       <div id="cue" style="display:none">
-        <div class="cuecur"><label for="cueA">Parte da</label>
-          <input type="range" id="cueA" min="0" max="100" step="0.1" value="0">
-          <span class="t" id="cueTA">0:00</span></div>
-        <div class="cuecur"><label for="cueB">Finisce a</label>
-          <input type="range" id="cueB" min="0" max="100" step="0.1" value="100">
-          <span class="t" id="cueTB">0:00</span></div>
-        <div class="cuefondo">
-          <span id="cueNota">&nbsp;</span>
-          <button type="button" id="cueVia">Da capo</button>
-          <button type="button" id="cueOk">&#10003; Fissa il punto</button>
-        </div>
+        <span class="tc" id="cueTC">00:00 / 00:00</span>
+        <input type="range" id="cueA" min="0" max="100" step="0.1" value="0">
+        <button type="button" id="cueVia" title="Torna all\'inizio">&#8635;</button>
+        <button type="button" id="cuePlay" title="Guarda da qui">&#9654;</button>
+        <button type="button" id="cueOk">&#10003; Parte da qui</button>
       </div>
       <!-- durata della clip in anteprima: stessi numeroni dell'onda -->
       <div id="pvwtempo" style="display:none;margin-top:10px;text-align:center">
@@ -927,14 +917,15 @@
   // in onda solo un pezzo — il gol dentro un'azione lunga. Qui si sposta il
   // cursore guardando il fotogramma, si fissa, e il TAKE parte da li'.
   // Il file non si tocca: al playout arrivano solo due secondi.
-  var CUE = { id: null, da: 0, a: 0, dur: 0 };
+  var CUE = { id: null, da: 0, dur: 0 };
   function cueMmss(t) {
     t = Math.max(0, Math.round(t || 0));
-    return Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0");
+    var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+    return (h ? h + ":" + String(m).padStart(2, "0") : String(m)) + ":" + String(sec).padStart(2, "0");
   }
   function cueChiudi() {
     document.getElementById("cue").style.display = "none";
-    CUE = { id: null, da: 0, a: 0, dur: 0 };
+    CUE = { id: null, da: 0, dur: 0 };
     var v = document.getElementById("pvwvid");
     v.style.display = "none";
     pvw.style.display = "";                       // torna il telaio delle grafiche
@@ -945,7 +936,7 @@
     cueChiudi();
     CUE.id = id;
     // il contributo si guarda con un lettore vero al posto del telaio: e' quello
-    // che permette di scorrerlo fotogramma per fotogramma senza ricaricare nulla
+    // che permette di scorrerlo senza ricaricare niente
     pvw.style.display = "none";
     v.style.display = "block";
     v.src = dati.src;
@@ -955,42 +946,46 @@
       if (!isFinite(d) || d <= 0) return;
       CUE.dur = d;
       CUE.da = Math.min(parseFloat(dati.da) || 0, d - 0.2);
-      CUE.a = Math.min(parseFloat(dati.a) || d, d);
-      document.getElementById("cueA").max = document.getElementById("cueB").max = String(d);
+      document.getElementById("cueA").max = String(d);
       document.getElementById("cueA").value = String(CUE.da);
-      document.getElementById("cueB").value = String(CUE.a);
-      document.getElementById("cue").style.display = "block";
+      document.getElementById("cue").style.display = "flex";
       cueDisegna();
       try { v.currentTime = CUE.da; } catch (e) {}
     }, { once: true });
     v.addEventListener("error", cueChiudi, { once: true });
   }
   function cueDisegna() {
-    document.getElementById("cueTA").textContent = cueMmss(CUE.da);
-    document.getElementById("cueTB").textContent = cueMmss(CUE.a);
-    var tutto = CUE.da <= 0.05 && CUE.a >= CUE.dur - 0.05;
-    document.getElementById("cueNota").textContent = tutto
-      ? "Va in onda tutta: " + cueMmss(CUE.dur) + "."
-      : "In onda " + cueMmss(CUE.a - CUE.da) + " dei " + cueMmss(CUE.dur) + ".";
+    document.getElementById("cueTC").textContent = cueMmss(CUE.da) + " / " + cueMmss(CUE.dur);
   }
   document.getElementById("cueA").addEventListener("input", function () {
-    CUE.da = Math.min(parseFloat(this.value) || 0, CUE.a - 0.2);
-    this.value = String(CUE.da);
-    try { document.getElementById("pvwvid").currentTime = CUE.da; } catch (e) {}
+    CUE.da = Math.min(parseFloat(this.value) || 0, CUE.dur - 0.2);
+    var v = document.getElementById("pvwvid");
+    v.pause();
+    try { v.currentTime = CUE.da; } catch (e) {}
     cueDisegna();
   });
-  document.getElementById("cueB").addEventListener("input", function () {
-    CUE.a = Math.max(parseFloat(this.value) || 0, CUE.da + 0.2);
-    this.value = String(CUE.a);
-    try { document.getElementById("pvwvid").currentTime = CUE.a; } catch (e) {}
+  // mentre scorre, il cursore lo segue
+  document.getElementById("pvwvid").addEventListener("timeupdate", function () {
+    if (this.paused || !CUE.dur) return;
+    CUE.da = this.currentTime;
+    document.getElementById("cueA").value = String(CUE.da);
     cueDisegna();
   });
   document.getElementById("cueVia").addEventListener("click", function () {
-    CUE.da = 0; CUE.a = CUE.dur;
+    CUE.da = 0;
     document.getElementById("cueA").value = "0";
-    document.getElementById("cueB").value = String(CUE.dur);
-    try { document.getElementById("pvwvid").currentTime = 0; } catch (e) {}
+    var v = document.getElementById("pvwvid");
+    v.pause();
+    try { v.currentTime = 0; } catch (e) {}
     cueDisegna();
+  });
+  document.getElementById("cuePlay").addEventListener("click", function () {
+    var v = document.getElementById("pvwvid");
+    if (v.paused) { v.play().catch(function () {}); this.innerHTML = "&#10073;&#10073;"; }
+    else { v.pause(); this.innerHTML = "&#9654;"; }
+  });
+  document.getElementById("pvwvid").addEventListener("pause", function () {
+    document.getElementById("cuePlay").innerHTML = "&#9654;";
   });
   document.getElementById("cueOk").addEventListener("click", function () {
     if (!CUE.id) return;
@@ -998,11 +993,9 @@
     if (!COMANDO) { msg.textContent = "Sola lettura: il comando di questo canale e\u2019 altrove."; return; }
     var b = document.getElementById("cueOk");
     b.disabled = true;
-    post({ tipo: "regia-taglio", id: CUE.id, da: CUE.da, a: CUE.a < CUE.dur - 0.05 ? CUE.a : 0 },
-         CUE.da > 0.05 || CUE.a < CUE.dur - 0.05
-           ? "Parte da " + cueMmss(CUE.da) + ": il prossimo In onda comincia da li\u2019."
-           : "Rimessa intera: riparte da capo.");
-    // l'anteprima si rifa' col taglio nuovo
+    post({ tipo: "regia-taglio", id: CUE.id, da: CUE.da, a: 0 },
+         CUE.da > 0.05 ? "Parte da " + cueMmss(CUE.da) + ": il prossimo In onda comincia da li\u2019."
+                       : "Rimessa da capo.");
     setTimeout(function () { b.disabled = false; thumbShownId = null; lastNonce = null; tick(); }, 400);
   });
 
