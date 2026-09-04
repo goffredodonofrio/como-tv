@@ -8,12 +8,37 @@
 | Pezzo | Stato |
 |---|---|
 | Ponte che serve le partite (`?partite=1`) | **fatto e verificato** — 157 voci |
-| Tendina delle partite dentro il pannello | scritta, **mai girata dentro Premiere** |
-| Scrittura del testo nella grafica | **da provare** — è la Milestone 0 |
+| Tendina delle partite dentro il pannello | **gira dentro Premiere** (26.3.2) |
+| Lettura della timeline | **funziona**: progetto, sequenza, tracce, componenti |
+| Scrittura nelle grafiche **native** | **non si può** — vedi sotto |
+| Scrittura in un **modello di grafica animata** | prossimo passo |
 
-Tutto quello che sta in questa cartella non è mai stato eseguito: qui non c'è
-Premiere. Il primo avvio è anche il primo collaudo, ed è normale che qualcosa
-non torni al primo colpo.
+## Milestone 0 — l'esito
+
+**Le grafiche native di Premiere non sono scrivibili da UXP.** Non è
+un'impressione: è misurato sul master vero, il 2026-09-04.
+
+Il campo c'è e si vede. `V3`, `V4` e `V5` sono `Graphic`, ognuna con quattro
+componenti, e dentro `AE.ADBE Text` il parametro `[0] Testo sorgente`. Ma il
+suo **valore** non si raggiunge per nessuna via:
+
+| Domanda | Risposta di Premiere |
+|---|---|
+| `getStartValue()` | nullo |
+| `getValueAtTime(t)` | *«not supported for these value types. Use GetKeyframeAtTime»* |
+| `getKeyframePtr(t)` | `Illegal Parameter type` — **16 forme di tempo diverse** |
+| `getKeyframeListAsTickTimes()` | nessun keyframe |
+| `areKeyframesSupported()` | no |
+| `isTimeVarying()` | no |
+| `createKeyframe(x)` | `Illegal Parameter type` con testo, numero, booleano, oggetto |
+
+Gli altri parametri della stessa grafica (opacità, posizione, scala) si leggono
+senza problemi. È **quel tipo di valore** a non essere supportato, non la
+grafica e non il pannello.
+
+Conseguenza: si prende la strada che il handoff aveva già previsto come
+ripiego — **modello di grafica animata esportato da dentro Premiere**, senza
+After Effects. Lì i parametri di testo sono stringhe vere e supportate.
 
 ## Come stanno insieme le tre macchine
 
