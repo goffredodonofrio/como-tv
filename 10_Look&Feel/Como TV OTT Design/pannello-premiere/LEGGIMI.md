@@ -46,8 +46,11 @@ Sul Mac: doppio clic su `pubblica.command`.
 Sul PC: il comando qui sotto, poi **Reload** in UDT. Due gesti.
 
 ```powershell
-$d="$HOME\ComoTV\pannello-premiere"; New-Item $d -ItemType Directory -Force | Out-Null; "manifest.json","index.html","pannello.js","LEGGIMI.md" | ForEach-Object { Invoke-WebRequest "https://projects-cloud.it/como-tv-dev/pannello/$_`?v=$(Get-Random)" -OutFile "$d\$_" -UseBasicParsing }; explorer $d
+$d="$HOME\ComoTV\pannello-premiere"; New-Item $d -ItemType Directory -Force | Out-Null; "manifest.json","index.html","pannello.js" | ForEach-Object { Invoke-WebRequest "https://projects-cloud.it/como-tv-dev/pannello/$_`?v=$(Get-Random)" -OutFile "$d\$_" -UseBasicParsing }; explorer $d
 ```
+
+Il plugin sono **tre file**: manifest, pagina e codice. Questo LEGGIMI non serve
+sul PC — e il ponte non serve i `.md`, quindi chiederlo darebbe un 404.
 
 Il `?v=` in coda non è un vezzo: la VM dice ai browser di tenersi i file per
 un'ora, e senza quello si riscaricherebbe la versione vecchia credendo di

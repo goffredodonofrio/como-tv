@@ -26,7 +26,9 @@ rm -f /tmp/comotv-pannello.zip
 
 echo "→ deposito sulla VM"
 ssh "$VM" "mkdir -p $DOVE" || exit 1
-scp -q manifest.json index.html pannello.js LEGGIMI.md /tmp/comotv-pannello.zip "$VM:$DOVE/" || exit 1
+# LEGGIMI.md non sale: il ponte non serve i .md, e chiederlo dal PC darebbe
+# un 404 su un file che al plugin non serve. Sta nello zip, per chi lo vuole.
+scp -q manifest.json index.html pannello.js /tmp/comotv-pannello.zip "$VM:$DOVE/" || exit 1
 ssh "$VM" "chmod 644 $DOVE/*"
 
 echo "✓ fatto. Sul PC: rilancia il comando di aggiornamento, poi Reload in UDT."
