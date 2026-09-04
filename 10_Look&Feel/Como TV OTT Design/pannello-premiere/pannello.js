@@ -145,20 +145,62 @@
     try { radice = await progetto.getRootItem(); }
     catch (e) { return { errore: "non apro il progetto: " + mess(e) }; }
 
-    var cerco = nomeFile.toLowerCase(), coda = [radice], visti = 0;
+    var cerco = nomeFile.toLowerCase(), coda = [[radice, ""]], visti = 0, raccontato = false;
     while (coda.length && visti < 5000) {
-      var it = coda.shift(); visti++;
-      var figli = null;
-      try { figli = await it.getItems(); } catch (e) {}
-      if (figli && figli.length) {
-        for (var i = 0; i < figli.length; i++) coda.push(figli[i]);
-        continue;
-      }
+      var g = coda.shift(), it = g[0], dove = g[1];
+      visti++;
+
       var n = "";
       try { n = it.name || ""; } catch (e) {}
-      if (n.toLowerCase() === cerco) return { pezzo: it };
+      if (n.toLowerCase() === cerco) return { pezzo: it, visti: visti };
+
+      // Una cartella del progetto non si apre com'e': va prima convertita in
+      // FolderItem. Senza il cast, getItems() non esiste e la ricerca si
+      // ferma al primo piano — sei elementi invece di quarantatre.
+      var figli = null, perche = "";
+      var cartella = it;
+      try { if (PPRO && PPRO.FolderItem && PPRO.FolderItem.cast) cartella = PPRO.FolderItem.cast(it) || it; }
+      catch (e) { perche = "cast: " + mess(e); }
+      try { figli = await cartella.getItems(); }
+      catch (e) { perche = perche || mess(e); }
+
+      if (figli && figli.length) {
+        for (var i = 0; i < figli.length; i++) coda.push([figli[i], dove + "/" + n]);
+        continue;
+      }
+      // Il primo che non si apre racconta perche': se sbaglio strada, si
+      // vede subito invece di sembrare un progetto vuoto.
+      if (!raccontato && perche && !/\./.test(n)) {
+        raccontato = true;
+        dico("   “" + n + "” non si apre: " + perche, "forse");
+        dico("   espone: " + metodiDi(it));
+      }
     }
     return { errore: "non trovo “" + nomeFile + "” fra i " + visti + " elementi del progetto" };
+  }
+
+  // Serve solo quando la ricerca fallisce: elenca il primo piano del
+  // progetto, per capire se l'albero e' davvero cosi' piatto o se e' la
+  // discesa a non funzionare.
+  async function raccontaProgetto(progetto) {
+    try {
+      var radice = await progetto.getRootItem();
+      var cart = radice;
+      try { if (PPRO && PPRO.FolderItem && PPRO.FolderItem.cast) cart = PPRO.FolderItem.cast(radice) || radice; } catch (e) {}
+      var figli = await cart.getItems();
+      dico("Primo piano del progetto (" + (figli ? figli.length : 0) + "):", "forse");
+      for (var i = 0; figli && i < figli.length; i++) {
+        var n = ""; try { n = figli[i].name || "(senza nome)"; } catch (e) {}
+        var q = "?"; 
+        try {
+          var c = figli[i];
+          if (PPRO && PPRO.FolderItem && PPRO.FolderItem.cast) c = PPRO.FolderItem.cast(figli[i]) || figli[i];
+          var d = await c.getItems();
+          q = d ? d.length + " dentro" : "non apribile";
+        } catch (e) { q = "non apribile"; }
+        dico("   · " + n + "  [" + q + "]");
+      }
+    } catch (e) { dico("Non elenco il progetto: " + mess(e), "no"); }
   }
 
   async function mettiMaschera() {
@@ -177,7 +219,11 @@
     SEQ = sequenza; PPRO = ppro;
 
     var trovato = await cercaNelProgetto(progetto, m.file);
-    if (!trovato.pezzo) { dico(trovato.errore, "no"); return; }
+    if (!trovato.pezzo) {
+      dico(trovato.errore, "no");
+      await raccontaProgetto(progetto);
+      return;
+    }
     dico("Trovata nel progetto.", "si");
 
     // Dove: sulla V2, all'attacco della maschera che c'e' adesso — cosi'
