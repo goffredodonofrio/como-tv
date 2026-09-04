@@ -26,6 +26,10 @@
   var PONTE = "https://projects-cloud.it/como-tv-dev/api";
   var eventi = [], scelto = null;
 
+  // La lettura scende in profondita' e a valle servono ancora: tenerli qui
+  // evita di passarli di mano in mano attraverso quattro funzioni.
+  var SEQ = null, PPRO = null;
+
   // Quello che la lettura della timeline ha trovato e che somiglia a un
   // campo di testo. Serve al pulsante "Scrivi": senza aver guardato prima,
   // non c'e' modo di sapere dove scrivere.
@@ -141,6 +145,7 @@
       sequenza = await progetto.getActiveSequence();
       if (!sequenza) { dico("Nessuna sequenza aperta.", "no"); return; }
       dico("Sequenza: " + (sequenza.name || "(senza nome)"), "si");
+      SEQ = sequenza; PPRO = ppro;
     } catch (e) {
       dico("Non arrivo alla sequenza: " + e.message, "no");
       dico("Project espone: " + metodiDi(ppro.Project));
@@ -178,6 +183,49 @@
     dico("e' li' che il pannello andra' a scrivere.", "forse");
   }
 
+  // ── la sonda sul "Testo sorgente" ──────────────────────────────────
+  // createKeyframe("Eredivisie") risponde "Illegal Parameter type": il testo
+  // di una grafica non e' una stringa. Per sapere che cosa sia, si legge
+  // quello che c'e' adesso — il valore vero dice il tipo meglio di qualunque
+  // documentazione, e finora ha avuto ragione ogni volta.
+  //
+  // getStartValue() su questo parametro torna vuoto, quindi si passa da
+  // getValueAtTime, che pero' vuole un tempo: e i modi di fabbricarne uno
+  // sono piu' d'uno. Si provano in fila e si dice quale ha risposto.
+  async function sondaTesto(par, pezzo, sequenza, ppro, rientro) {
+    var tempi = [];
+    function aggiungi(come, f) { try { tempi.push([come, f()]); } catch (e) {} }
+    aggiungi("TIME_ZERO", function () { return ppro.TickTime.TIME_ZERO; });
+    aggiungi("0 secondi", function () { return ppro.TickTime.createWithSeconds(0); });
+    var extra = [["inizio clip", "getInPoint"], ["attacco clip", "getStartTime"]];
+    for (var i = 0; i < extra.length; i++) {
+      try { tempi.push([extra[i][0], await pezzo[extra[i][1]]()]); } catch (e) {}
+    }
+    try { tempi.push(["testina", await sequenza.getPlayerPosition()]); } catch (e) {}
+
+    if (!tempi.length) { dico(rientro + "  non riesco a fabbricare un tempo", "no"); return; }
+
+    for (var t = 0; t < tempi.length; t++) {
+      var v;
+      try { v = await par.getValueAtTime(tempi[t][1]); }
+      catch (e) { dico(rientro + "  (" + tempi[t][0] + ") no: " + e.message, "forse"); continue; }
+
+      var tipo = typeof v;
+      var classe = v && v.constructor ? v.constructor.name : "";
+      dico(rientro + "  (" + tempi[t][0] + ") tipo: " + tipo + (classe ? " / " + classe : ""), "si");
+      if (v === null || v === undefined) { dico(rientro + "    vuoto"); continue; }
+      if (tipo !== "object") { dico(rientro + "    valore: “" + String(v).slice(0, 120) + "”", "si"); return; }
+
+      try { dico(rientro + "    campi: " + Object.keys(v).join(", ")); } catch (e) {}
+      dico(rientro + "    espone: " + metodiDi(v));
+      try {
+        var j = JSON.stringify(v);
+        if (j && j !== "{}") dico(rientro + "    dentro: " + j.slice(0, 400));
+      } catch (e) {}
+      return;
+    }
+  }
+
   // getStartValue() non restituisce il valore: restituisce il KEYFRAME che
   // lo contiene, e stampandolo si ottiene "[object Object]". Il valore va
   // tirato fuori da li', e non so ancora per quale via: si provano quelle
@@ -201,7 +249,7 @@
       try {
         if (typeof k[via] === "function") {
           var v = await k[via]();
-          if (v !== undefined && typeof v !== "object" && String(v) !== "[object Object]") {
+          if (v !== undefined && typeof v !== "object" && !/^\[object /.test(String(v))) {
             return { testo: String(v).replace(/\s+/g, " ").slice(0, 70) };
           }
         }
@@ -265,7 +313,7 @@
       // sottotitolo e quale la competizione. Dei filtri (opacita', movimento)
       // bastano i nomi.
       var eTesto = /text/i.test(etichetta);
-      var righe = [], inciampo = "";
+      var righe = [], inciampo = "", sonde = [];
       for (var p = 0; p < quanti; p++) {
         try {
           var par = await comp.getParam(p);
@@ -281,8 +329,10 @@
           }
           righe.push(voce);
 
-          if (/source text|^text$|testo/i.test(pn)) {
+          if (/source text|^text$|testo sorgente/i.test(pn)) {
             testi.push({ dove: nome, comp: etichetta, nome: pn, param: par });
+            righe.push("   ↑ e' questo il campo del testo — lo sondo:");
+            sonde.push(par);
           }
         } catch (e) { if (!inciampo) inciampo = e.message || String(e); }
       }
@@ -293,6 +343,9 @@
         if (eTesto) {
           dico(rientro + "  " + etichetta + ":", "si");
           righe.forEach(function (r) { dico(rientro + "    " + r); });
+          for (var q = 0; q < sonde.length; q++) {
+            await sondaTesto(sonde[q], pezzo, SEQ, PPRO, rientro + "  ");
+          }
         } else {
           dico(rientro + "  " + etichetta + " → " + righe.join(" · "));
         }
