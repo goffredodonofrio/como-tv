@@ -138,6 +138,7 @@
     focus:      "focus-vmix.html",
     dichiarazioni: "dichiarazioni-vmix.html",
     barra:      "barra-vmix.html",
+    appuntamenti: "appuntamenti-vmix.html",
     cambi:      "cambi-vmix.html",
     scheda:     "scheda-vmix.html",
     volti:      "volti-vmix.html",
@@ -169,7 +170,19 @@
 
   function play(n, j) {
     var st = L[n], back = dietro(n), front = davanti(n);
-    var eng = ENGINES[j.tipo] || ENGINES.formazione;
+    // Un tipo sconosciuto NON diventa una formazione. Il ripiego serviva ai
+    // ponti vecchi, che mandavano lo stato senza dire il tipo — quel caso si
+    // riconosce dal tipo vuoto. Ma su un tipo che c'e' e non conosciamo, il
+    // ripiego faceva una cosa peggiore che fallire: mandava in onda la
+    // grafica sbagliata coi dati di un'altra, e sembrava un difetto della
+    // grafica. E' successo con gli appuntamenti: mancava una riga qui, e in
+    // onda si vedeva il campo delle formazioni.
+    var eng = ENGINES[j.tipo] || (j.tipo ? null : ENGINES.formazione);
+    if (!eng) {
+      console.error("Como TV — nessun motore per la grafica \"" + j.tipo +
+                    "\": va aggiunta a ENGINES in grafica-live.html");
+      return;
+    }
     var mio = ++st.gen;
     back.classList.add("muto");
     back.classList.remove("on");
