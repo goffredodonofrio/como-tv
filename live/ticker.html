@@ -721,14 +721,28 @@
   }
   // prima di spedire, le foto ritagliate diventano file veri sulla macchina
   function fotoSalvaTutte() {
-    var da = CONT.filter(function (c) { return c.foto && c.foto.img && c.foto.sporca; });
-    return da.reduce(function (catena, c) {
+    // Il nome del file lo faceva il TITOLO della scheda. Finche' i titoli
+    // erano diversi funzionava; ma le schede Appuntamenti si chiamano tutte
+    // "Prossimi appuntamenti" — glielo scrivo io — e due schede con lo
+    // stesso titolo davano lo stesso nome: la seconda foto sovrascriveva la
+    // prima nel magazzino, e in onda si vedeva due volte la stessa.
+    //
+    // Adesso nel nome c'e' anche il POSTO della scheda, che e' diverso per
+    // definizione. Le quattro caselle riusano sempre gli stessi quattro
+    // file: e' roba di lavoro, non archivio, e non ha senso accumularla.
+    var da = [];
+    CONT.forEach(function (c, i) {
+      if (c.foto && c.foto.img && c.foto.sporca) da.push({ c: c, i: i });
+    });
+    return da.reduce(function (catena, x) {
+      var c = x.c;
       return catena.then(function () {
         var nome = (c.t || "crawl").trim().toLowerCase();
         return fetch(PONTE_DEFAULT.url, {
           method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify({ token: PONTE_DEFAULT.token, tipo: "logo-carica",
-                                 nome: "foto crawl " + nome, dati: fotoCotta(c.foto) })
+                                 nome: "foto crawl " + (x.i + 1) + " " + nome,
+                                 dati: fotoCotta(c.foto) })
         })
         .then(function (r) { return r.json(); })
         .then(function (res) {
