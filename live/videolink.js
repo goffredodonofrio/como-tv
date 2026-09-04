@@ -34,10 +34,13 @@ window.VideoLink = (function () {
     var y = u.match(/(?:youtube\.com\/(?:watch\?[^#]*\bv=|embed\/|live\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
     if (y) {
       return { k: "web", che: "YouTube",
+        // enablejsapi serve a poterlo comandare dopo: parte muto perche' se no
+        // non parte, e appena e' avviato gli si toglie il muto dal playout
         src: "https://www.youtube.com/embed/" + y[1] +
-             "?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3" +
+             "?autoplay=1&mute=1&enablejsapi=1&controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3" +
              (t ? "&start=" + t : ""),
-        nota: "Parte <b>muto</b>: con l’audio i player non partono da soli." };
+        nota: "Parte muto — i player non partono da soli con l’audio — e il muto viene tolto " +
+              "appena parte. Se il tuo browser lo blocca resta muto: nel vMix di solito funziona." };
     }
 
     var cart = u.match(/drive\.google\.com\/drive\/(?:u\/\d+\/)?folders\/([A-Za-z0-9_-]{10,})/);
@@ -63,7 +66,8 @@ window.VideoLink = (function () {
       return { k: "web", che: "Vimeo",
         src: "https://player.vimeo.com/video/" + v[1] + "?autoplay=1&muted=1&title=0&byline=0&portrait=0" +
              (t ? "#t=" + t + "s" : ""),
-        nota: "Parte <b>muto</b>: con l’audio i player non partono da soli." };
+        nota: "Parte muto — i player non partono da soli con l’audio — e il muto viene tolto " +
+              "appena parte. Se il tuo browser lo blocca resta muto: nel vMix di solito funziona." };
     }
 
     if (/\.(mp4|webm|m4v|mov)(\?|$)/i.test(u)) {

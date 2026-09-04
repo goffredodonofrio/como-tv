@@ -488,14 +488,19 @@ function regiaTaglio(p) {
   const ix = regiaDi(c);
   const it = ix.items.find(i => i.id === p.id);
   if (!it) throw new Error("grafica non trovata in scaletta");
-  if (!it.dati || it.dati.k !== "video") throw new Error("il taglio vale solo per i contributi video");
+  // Il carico della voce NON sta dentro la voce: la scaletta tiene i cartellini
+  // (id, titolo, tipo) e i dati veri stanno in S.voci[canale][id]. Cercarli in
+  // it.dati faceva rispondere "non e' un contributo video" a un contributo
+  // video, e il taglio non veniva mai salvato: in onda ripartiva da capo.
+  const dati = S.voci[c] && S.voci[c][p.id];
+  if (!dati || dati.k !== "video") throw new Error("il taglio vale solo per i contributi video");
   const da = Math.max(0, parseFloat(p.da) || 0);
   const a = Math.max(0, parseFloat(p.a) || 0);
-  if (da) it.dati.da = Math.round(da * 10) / 10; else delete it.dati.da;
-  if (a > da) it.dati.a = Math.round(a * 10) / 10; else delete it.dati.a;
+  if (da) dati.da = Math.round(da * 10) / 10; else delete dati.da;
+  if (a > da) dati.a = Math.round(a * 10) / 10; else delete dati.a;
   ix.nonce = Date.now();
   salva(); annuncia(c, "regia");
-  return { ok: true, canale: c, nonce: ix.nonce, da: it.dati.da || 0, a: it.dati.a || 0 };
+  return { ok: true, canale: c, nonce: ix.nonce, da: dati.da || 0, a: dati.a || 0 };
 }
 
 function regiaOrder(p) {

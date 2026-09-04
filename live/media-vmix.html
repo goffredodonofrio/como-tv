@@ -123,7 +123,21 @@
       setTimeout(pronta, 1500);   // rete di sicurezza: mai restare invisibili
       // se l'autoplay con audio è bloccato (anteprime in Chrome), riparto muto
       var p = el.play ? el.play() : null;
-      if (p && p.catch) p.catch(function () { el.muted = true; el.play().catch(function () {}); });
+      if (p && p.catch) p.catch(function () {
+        // partire e' piu' importante che partire con l'audio: si mette il muto
+        // e si parte. Ma subito dopo si riprova a toglierlo — il blocco vale
+        // sull'AVVIO, non su un video che sta gia' andando, e in molti browser
+        // (il vMix fra questi) da li' in poi l'audio torna. Se non torna resta
+        // muto, che e' dove si era comunque.
+        var loVolevo = !(MUTO || D.mute);
+        el.muted = true;
+        el.play().then(function () {
+          if (!loVolevo) return;
+          [200, 800, 2000].forEach(function (t) {
+            setTimeout(function () { if (!el.paused) el.muted = false; }, t);
+          });
+        }).catch(function () {});
+      });
       // a fine clip TENGO L'ULTIMO FRAME: si esce solo con Fuori onda dalla console
       if (!el.loop) el.addEventListener("ended", function () { el.pause(); });
       // se il documento parte nascosto (input non ancora a video), riparto appena visibile
@@ -140,6 +154,30 @@
     el.src = D.src;
     el.setAttribute("allow", "autoplay; encrypted-media");
     el.setAttribute("allowtransparency", "true");
+
+    // L'AUDIO DEI PLAYER INCORPORATI. YouTube e Vimeo non partono da soli se
+    // hanno l'audio acceso: e' una regola dei browser, non una loro scelta.
+    // Quindi si parte muti — se no non parte niente — e appena il video e'
+    // avviato gli si dice di togliere il muto. Funziona dove il browser lo
+    // consente (nel vMix di solito si', in una scheda qualsiasi spesso no):
+    // se non funziona resta muto, che e' esattamente dove si era prima.
+    if (!STILL && !MUTO && !D.mute) {
+      var voce = function () {
+        var w = el.contentWindow;
+        if (!w) return;
+        try {
+          w.postMessage(JSON.stringify({ event: "command", func: "unMute", args: [] }), "*");
+          w.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [100] }), "*");
+          w.postMessage(JSON.stringify({ method: "setMuted", value: false }), "*");   // Vimeo
+          w.postMessage(JSON.stringify({ method: "setVolume", value: 1 }), "*");
+        } catch (e) {}
+      };
+      // qualche colpo: il player ci mette un attimo a stare in ascolto, e
+      // insistere una manciata di volte costa niente
+      el.addEventListener("load", function () {
+        [300, 900, 1800, 3000].forEach(function (t) { setTimeout(voce, t); });
+      });
+    }
   }
   stage.appendChild(el);
 
