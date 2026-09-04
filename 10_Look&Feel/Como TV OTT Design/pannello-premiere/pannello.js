@@ -269,6 +269,33 @@
     return fuori;
   }
 
+  // La maschera appena messa va allungata fino a dove finiva la vecchia,
+  // se no ne resta un pezzo scoperto. Non so quale sia il metodo giusto —
+  // e a questo punto della giornata ho imparato a non fingere di saperlo:
+  // si prova, e se non va si stampa cosa quel pezzo di timeline sa fare.
+  async function pareggiaDurata(progetto, sequenza, ppro, quando, fine) {
+    if (!fine) return;
+    var v2, pezzi;
+    try {
+      v2 = await sequenza.getVideoTrack(1);
+      pezzi = await v2.getTrackItems(ppro.Constants.TrackItemType.CLIP, false);
+    } catch (e) { return; }
+    if (!pezzi || pezzi.length < 2) return;      // gia' a posto: una sola clip
+
+    dico("Su V2 sono rimaste " + pezzi.length + " clip: allungo la nuova.", "forse");
+    var nuova = pezzi[0];
+    try {
+      await progetto.lockedAccess(function () {
+        var az = nuova.createSetEndAction(fine);
+        progetto.executeTransaction(function (g) { g.addAction(az); }, "Como TV: durata maschera");
+      });
+      dico("✓ durata pareggiata.", "si");
+    } catch (e) {
+      dico("Non allungo la maschera: " + mess(e), "forse");
+      dico("   la clip espone: " + metodiDi(nuova));
+    }
+  }
+
   // ── il nome della sequenza ─────────────────────────────────────────
   // Le sequenze del master si chiamano "2_DATA_PARTITA_NOME_9-16": DATA,
   // PARTITA e NOME sono segnaposto, non parole. Chi monta li sostituisce a
@@ -293,8 +320,28 @@
     // davanti e il formato in coda. "2_..._9-16" diventava "...", e chi
     // correggeva un titolo si ritrovava la sequenza sfregiata.
     var modello = MODELLI[vecchio] || vecchio;
-    if (!/DATA|PARTITA|NOME/.test(modello)) return "";
+    if (!/DATA|PARTITA|NOME/.test(modello)) modello = modelloDa(vecchio);
+    if (!modello) return "";
     return modello.replace(/DATA/g, data).replace(/PARTITA/g, partita).replace(/NOME/g, comp);
+  }
+
+  // Da "1_20260905_AJAX-PSV_EREDIVISIE_9-16" torna indietro a
+  // "1_DATA_PARTITA_NOME_9-16". Rifiutarsi di rinominare, come facevo, era
+  // sicuro ma scomodo: obbligava a riaprire la sequenza dal master ogni
+  // volta che il pannello si ricaricava. La data a otto cifre e' un'ancora
+  // affidabile — nessun altro pezzo del nome ha quella forma — e da li' si
+  // sa che i due segmenti dopo sono la partita e la competizione.
+  function modelloDa(nome) {
+    var p = String(nome).split("_");
+    for (var i = 0; i < p.length; i++) {
+      if (/^\d{8}$/.test(p[i]) && i + 2 <= p.length - 1) {
+        return p.slice(0, i).concat(["DATA", "PARTITA", "NOME"]).concat(p.slice(i + 3)).join("_");
+      }
+      if (/^\d{8}$/.test(p[i]) && i + 2 === p.length + 0) {
+        return p.slice(0, i).concat(["DATA", "PARTITA", "NOME"]).join("_");
+      }
+    }
+    return "";
   }
 
   async function rinomina(progetto, sequenza) {
@@ -427,12 +474,17 @@
 
     // Dove: sulla V2, all'attacco della maschera che c'e' adesso — cosi'
     // prende il posto di quella vecchia invece di aggiungersi.
-    var quando = null;
+    var quando = null, fine = null;
     try {
       var v2 = await sequenza.getVideoTrack(1);
       var sopra = await v2.getTrackItems(ppro.Constants.TrackItemType.CLIP, false);
       if (sopra && sopra.length) {
         quando = await sopra[0].getStartTime();
+        // Serve anche DOVE FINISCE. Un PNG entra in timeline con la durata
+        // di default — cinque secondi — e se la maschera vecchia era piu'
+        // lunga ne resta in coda un pezzo: due clip su V2 invece di una.
+        // E' il "non aggiunge" che avevo promesso e che non mantenevo.
+        try { fine = await sopra[0].getEndTime(); } catch (e) {}
         dico("Prende il posto di quella che c'e' adesso.");
       }
     } catch (e) {}
@@ -460,6 +512,7 @@
         }, "Como TV: maschera " + m.file);
       });
       dico("✓ messa su V2.", "si");
+      await pareggiaDurata(progetto, sequenza, ppro, quando, fine);
       dico("Se non è dove volevi: Ctrl+Z.", "forse");
     } catch (e) {
       dico("Non riesco a metterla: " + mess(e), "no");
