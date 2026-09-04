@@ -125,7 +125,6 @@
   @keyframes dimIn{from{opacity:0}to{opacity:1}}
   @keyframes dimOut{from{opacity:1}to{opacity:0}}
   #ribalta{z-index:10;}
-  #reparto{z-index:11;}
 
   /* ── RIBALTA: la foto grande del reparto ── */
   #ribalta{position:absolute;left:0;right:0;top:300px;height:560px;pointer-events:none;}
@@ -166,39 +165,11 @@
   .bigcard.maglia .bchi{opacity:0;}
   .bigcard.maglia .bmagface{opacity:1;}
 
-  /* etichetta reparto verticale */
-  /* L'etichetta ruota di 90° ATTORNO AL PROPRIO CENTRO, e il centro di una
-     riga di testo dipende da quanto e' lunga: "Centrocampo" e' quasi il
-     doppio di "Difesa", quindi il suo centro cadeva piu' a sinistra e la
-     parola usciva disallineata dalle altre. Prima non si notava solo perche'
-     era rimpicciolita a 70px, il che nascondeva un difetto con un altro.
-     La larghezza a zero toglie di mezzo il problema: il box non ha piu' una
-     larghezza da cui dipendere, e text-align:center fa traboccare il testo
-     di quanto serve da tutte e due le parti. Cosi' il centro sta sempre
-     nello stesso punto, qualunque parola ci sia dentro. */
-  #reparto{position:absolute;right:166px;top:50%;transform:translateY(-50%) rotate(90deg);
-    transform-origin:center;width:0;text-align:center;
-    font-family:'Mazzard',sans-serif;font-weight:800;font-size:104px;
-    letter-spacing:.03em;color:rgba(201,162,75,.9);text-transform:uppercase;white-space:nowrap;opacity:0;}
-  /* L'ingresso del reparto e' LETTERA PER LETTERA. Prima la parola entrava
-     tutta insieme scivolando: pulito, ma in una grafica dove le figure
-     girano su se stesse e una lama scopre il campo, era la cosa piu' timida
-     dello schermo.
-     Il blocco e' ruotato di 90°, quindi l'asse Y locale delle lettere
-     corre in ORIZZONTALE sullo schermo: ogni lettera arriva da destra e si
-     posa, sfalsata di poco rispetto alla precedente. Si muovono solo
-     transform e opacity — dentro vMix e' l'unica cosa che non costa. */
-  #reparto{opacity:1;}
-  #reparto span{display:inline-block;opacity:0;transform:translateY(90px) scale(.86);}
-  #reparto.in span{animation:lettIn .52s cubic-bezier(.16,.86,.28,1.06) forwards;}
-  @keyframes lettIn{
-    from{opacity:0;transform:translateY(90px) scale(.86);}
-    60%{opacity:1;}
-    to{opacity:1;transform:translateY(0) scale(1);}}
-  /* All'uscita se ne vanno insieme: sfilarle una a una farebbe aspettare
-     il reparto dopo, e il ritmo lo detta lui. */
-  #reparto.out{animation:repOut .3s ease forwards;}
-  @keyframes repOut{to{opacity:0;transform:translateY(-50%) translateX(-50px) rotate(90deg);}}
+  /* Qui stava l'etichetta verticale del reparto — PORTIERE, DIFESA,
+     CENTROCAMPO, ATTACCO — grande in oro sul fianco destro. Tolta su
+     richiesta: in una grafica dove le figure girano su se stesse e una
+     lama scopre il campo era una didascalia, e diceva una cosa che il
+     campo dice gia' da solo — chi sta davanti e chi sta dietro si vede.
 
   /* ── WIPE: UNA sola lama che spazza e rivela ──────────────────────────
      Logica nuova: un unico pannello (solo transform, tutto su GPU) attraversa
@@ -265,7 +236,6 @@
   <div id="pitch"></div>
   <div id="dim"></div>
   <div id="ribalta"></div>
-  <div id="reparto"></div>
   <div id="wipe"></div>
   <div id="panca"><img id="pancastemma" alt=""><div class="coach"></div><h3>Panchina</h3><div id="pancarighe"></div></div>
 </div>
@@ -414,12 +384,6 @@
   var slots = []; righe.forEach(function (r) { r.forEach(function (g) { slots.push(g); }); });
   var startIdx = []; (function(){ var s=0; righe.forEach(function(r){ startIdx.push(s); s+=r.length; }); })();
 
-  function repartoNome(li, tot) {
-    if (li === 0) return "Portiere";
-    if (li === tot - 1) return "Attacco";
-    if (li === 1) return "Difesa";
-    return "Centrocampo";
-  }
 
   // ── i giocatori in campo: tessera numero + card foto (stile reference) ──
   var pitch = el("pitch");
@@ -516,7 +480,6 @@
   el("team").style.animation = "daSx .7s cubic-bezier(.2,.7,.3,1) .35s forwards";
   el("modulo").style.animation = "fadeIn .5s ease .7s forwards";
 
-  var reparto = el("reparto");
   var T0 = 2100 * SLOW, PER = 3800 * SLOW;
 
   // il velo leggero resta acceso durante la presentazione: spinge indietro lo
@@ -557,16 +520,6 @@
   righe.forEach(function (r, li) {
     var tShow = T0 + li * PER;
     setTimeout(function () {
-      var rn = repartoNome(li, righe.length);
-      // Tutti allo stesso corpo. Prima "Centrocampo" scendeva a 70px perche'
-      // e' l'unico oltre gli otto caratteri, e in onda si vedeva: tre
-      // reparti grandi e uno piccolo. A 104px ci sta lo stesso — la parola
-      // corre lungo i 1080 dell'altezza, non lungo la larghezza.
-      reparto.style.fontSize = "104px";
-      reparto.innerHTML = rn.split("").map(function (c, n) {
-        return '<span style="animation-delay:' + (n * 42 * SLOW) + 'ms">' + c + '</span>';
-      }).join("");
-      reparto.className = ""; void reparto.offsetWidth; reparto.className = "in";
       // le maglie gia' atterrate vanno in secondo piano (si riaccendono alla fine)
       pcards.forEach(function (pc, i) {
         var attivo = i >= startIdx[li] && i < startIdx[li] + r.length;
@@ -579,7 +532,6 @@
     }, tShow);
     // gira su se stessa (foto → maglia), poi si posa nella maglia in campo
     setTimeout(function () {
-      reparto.className = "out";
       r.forEach(function (_, k) {
         var pc = pcards[startIdx[li] + k];
         setTimeout(function () { pc.classList.add("gira"); }, k * 110 * SLOW);
@@ -591,7 +543,6 @@
   // CHIUSURA: tutte le maglie a piena luce, via il velo, entra la panchina.
   var fine = T0 + righe.length * PER;
   setTimeout(function () {
-    reparto.className = "out";
     el("dim").className = "off";
     pcards.forEach(function (pc) { pc.classList.remove("tenue"); pc.classList.add("su"); });
     if (conPanca) {
