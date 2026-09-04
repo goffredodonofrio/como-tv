@@ -159,6 +159,8 @@
   .aprow:last-child{margin-bottom:0;}
   .apedit .aprow + .aprow{margin-bottom:9px;}
   .apedit input{font-size:12.5px;padding:6px 7px;}
+  .loclab{font-size:12.5px;line-height:1.55;color:var(--fg-3);
+    background:var(--bg-1);border:1px solid var(--line-2);border-radius:8px;padding:9px 11px;}
   .apgg{flex:0 0 42px;text-align:center;}
   .apmm{flex:0 0 58px;text-align:center;text-transform:uppercase;}
   .apchi{flex:1;min-width:0;}
@@ -426,6 +428,7 @@
   var CONT = [];
   for (var k = 0; k < MAX_CONT; k++) CONT.push(nuovoContenuto());
   function pieno(c){
+    if (c.tipo === "locandina") return !!(c.foto && c.foto.img);
     if (c.tipo === "appuntamenti") return apPieni(c).length > 0 || !!(c.foto && c.foto.img);
     return !!((c.t || "").trim() || (c.foto && c.foto.img));
   }
@@ -450,6 +453,7 @@
     var c = CONT[i];
     if (c.tipo === t) return;
     c.tipo = t;
+    if (t === "locandina") { c.apf = "s"; }
     if (t === "appuntamenti" && (!c.ap || !c.ap.length)) {
       c.ap = [nuovaRiga(), nuovaRiga(), nuovaRiga(), nuovaRiga()];
       if (!(c.t || "").trim()) c.t = "Prossimi appuntamenti";
@@ -463,8 +467,7 @@
     return '<div class="apmis">' +
         '<span class="apmislab">Foto</span>' +
         ['s|piccola|quattro appuntamenti',
-         'm|media|due appuntamenti',
-         'g|tutta la colonna|con una sola partita esce in grande, con piu\u2019 di una l\u2019elenco sta sulla foto'
+         'm|media|due appuntamenti'
         ].map(function (v) {
           var p = v.split("|");
           return '<button type="button" class="apmisb' + (mis === p[0] ? " qui" : "") +
@@ -497,6 +500,7 @@
       '<div class="cctipo">'+
         '<button type="button" class="cctb'+(c.tipo!=="appuntamenti"?" qui":"")+'" data-tipo="notizia" data-i="'+i+'">Notizia</button>'+
         '<button type="button" class="cctb'+(c.tipo==="appuntamenti"?" qui":"")+'" data-tipo="appuntamenti" data-i="'+i+'">Appuntamenti</button>'+
+        '<button type="button" class="cctb'+(c.tipo==="locandina"?" qui":"")+'" data-tipo="locandina" data-i="'+i+'">Locandina</button>'+
       '</div>'+
       '<div class="ccfoto">'+
         (conFoto
@@ -514,11 +518,15 @@
             : '<div class="ccsug">Senza foto la colonna parte dal testo.</div>')+
         '</div>'+
       '</div>'+
+      (c.tipo === "locandina" ? '' :
       '<div><span class="cclab">Occhiello</span>'+
         '<input type="text" class="ccampo" data-campo="e" data-i="'+i+'" placeholder="es. SERIE A · 2ª GIORNATA" value="'+esc(c.e||"")+'"></div>'+
       '<div><span class="cclab">Titolo</span>'+
-        '<input type="text" class="ccampo" data-campo="t" data-i="'+i+'" placeholder="es. Nico Paz trascina il Como" value="'+esc(c.t||"")+'"></div>'+
-      (c.tipo === "appuntamenti"
+        '<input type="text" class="ccampo" data-campo="t" data-i="'+i+'" placeholder="es. Nico Paz trascina il Como" value="'+esc(c.t||"")+'"></div>')+
+      (c.tipo === "locandina"
+        ? '<div class="loclab">La locandina &egrave; gi&agrave; una grafica finita: va in onda cos&igrave;&rsquo;com&rsquo;&egrave;, '+
+          'senza occhiello, titolo n&eacute; testo. Basta caricarla qui sopra.</div>'
+        : c.tipo === "appuntamenti"
         ? '<div><span class="cclab">Appuntamenti</span>' + righeApHTML(c, i) + '</div>'
         : '<div><span class="cclab">Testo</span>'+
             '<textarea class="ccampo" data-campo="x" data-i="'+i+'" placeholder="Il piccolo testo sotto il titolo…">'+esc(c.x||"")+'</textarea></div>')+
@@ -786,6 +794,7 @@
       if (perAnteprima && c.foto && c.foto.img && c.foto.sporca) o.f = fotoCotta(c.foto);
       // gli appuntamenti viaggiano col cartello, come tutto il resto: in
       // onda la colonna non deve andare a cercarsi niente
+      if (c.tipo === "locandina") { o.loc = 1; o.e = ""; o.t = ""; o.x = ""; }
       if (c.tipo === "appuntamenti") {
         o.apf = c.apf || "s";
         o.ap = apPieni(c).map(function (r) {
