@@ -278,6 +278,49 @@
     return fuori;
   }
 
+  // Togliere le maschere vecchie da V2. Passare un ARRAY a
+  // createRemoveItemsAction risponde "Illegal Parameter type": vuole una
+  // TrackItemSelection, che e' una classe a se' — c'era nell'elenco delle
+  // classi e non l'avevo collegata.
+  //
+  // Non e' un dettaglio estetico: finche' non funziona ogni pressione del
+  // pulsante AGGIUNGE una maschera invece di sostituirla, e dopo cinque
+  // prove la traccia ha cinque clip sovrapposte. E' l'esatto contrario di
+  // quello che il pulsante promette.
+  async function togliVecchie(progetto, editor, ppro, vecchie) {
+    var modi = [];
+
+    // il modo giusto, se la classe fa quello che sembra
+    modi.push(["selezione", function () {
+      var sel = ppro.TrackItemSelection.createEmptySelection();
+      for (var i = 0; i < vecchie.length; i++) sel.addItem(vecchie[i], false);
+      return editor.createRemoveItemsAction(sel, false, ppro.Constants.MediaType.VIDEO);
+    }]);
+    modi.push(["selezione senza tipo", function () {
+      var sel = ppro.TrackItemSelection.createEmptySelection();
+      for (var i = 0; i < vecchie.length; i++) sel.addItem(vecchie[i], false);
+      return editor.createRemoveItemsAction(sel, false, true);
+    }]);
+    modi.push(["elenco", function () {
+      return editor.createRemoveItemsAction(vecchie, false, true);
+    }]);
+
+    for (var m = 0; m < modi.length; m++) {
+      try {
+        await progetto.lockedAccess(function () {
+          var via = modi[m][1]();
+          progetto.executeTransaction(function (g) { g.addAction(via); }, "Como TV: via le vecchie");
+        });
+        dico("Tolte le " + vecchie.length + " maschere che c'erano (" + modi[m][0] + ").", "si");
+        return true;
+      } catch (e) { dico("· via " + modi[m][0] + ": " + mess(e), "forse"); }
+    }
+    dico("Non riesco a togliere le vecchie: la traccia si sporca.", "no");
+    dico("   TrackItemSelection espone: " + metodiDi(ppro.TrackItemSelection));
+    dico("   l'editor espone: " + metodiDi(editor));
+    return false;
+  }
+
   // La maschera appena messa va allungata fino a dove finiva la vecchia,
   // se no ne resta un pezzo scoperto. Non so quale sia il metodo giusto —
   // e a questo punto della giornata ho imparato a non fingere di saperlo:
@@ -584,15 +627,7 @@
     // Coprire non basta: la maschera vecchia va TOLTA. Allungare quella
     // nuova sopra l'altra lasciava due clip su V2 — il referto le elencava
     // tutte e due. Prima si svuota la traccia, poi si mette la nuova.
-    try {
-      if (vecchie && vecchie.length) {
-        await progetto.lockedAccess(function () {
-          var via = editor.createRemoveItemsAction(vecchie, false, true);
-          progetto.executeTransaction(function (g) { g.addAction(via); }, "Como TV: via la vecchia");
-        });
-        dico("Tolte le " + vecchie.length + " maschere che c'erano.");
-      }
-    } catch (e) { dico("Non tolgo le vecchie: " + mess(e), "forse"); }
+    if (vecchie && vecchie.length) await togliVecchie(progetto, editor, ppro, vecchie);
 
     try {
       await progetto.lockedAccess(function () {
