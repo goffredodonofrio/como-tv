@@ -220,28 +220,61 @@
   // si anima — si prende quello che c'e' gia'. Lo dice l'API stessa, dentro
   // l'errore di getValueAtTime: "Use GetKeyframeAtTime to get a keyframe
   // object at time. The value can be extracted from the keyframe object."
-  async function keyframeDi(par, pezzo, sequenza, ppro) {
+  async function keyframeDi(par, pezzo, sequenza, ppro, racconta) {
     var tempi = await tempiPossibili(pezzo, sequenza, ppro);
-    for (var t = 0; t < tempi.length; t++) {
+
+    // Il tempo migliore non lo indovino: lo chiedo. Se il parametro sa
+    // elencare i tempi dei suoi keyframe, quelli sono giusti per definizione.
+    try {
+      var suoi = await par.getKeyframeListAsTickTimes();
+      if (racconta) racconta("tempi suoi: " + (suoi && suoi.length ? suoi.length : "nessuno"));
+      if (suoi && suoi.length) {
+        for (var q = 0; q < suoi.length; q++) tempi.unshift(["suo #" + q, suoi[q]]);
+      }
+    } catch (e) { if (racconta) racconta("non elenca i suoi tempi: " + mess(e)); }
+
+    // ...e comunque non e' detto che voglia un TickTime: puo' volere i
+    // secondi, o i tick nudi. Si prova ogni forma di ogni tempo.
+    var forme = [];
+    tempi.forEach(function (t) {
+      forme.push([t[0], t[1]]);
+      try { if (t[1] && typeof t[1].seconds === "number") forme.push([t[0] + " (secondi)", t[1].seconds]); } catch (e) {}
+      try { if (t[1] && typeof t[1].ticks !== "undefined") forme.push([t[0] + " (tick)", t[1].ticks]); } catch (e) {}
+    });
+    forme.push(["zero nudo", 0]);
+
+    var ultimo = "";
+    for (var f = 0; f < forme.length; f++) {
       try {
-        var k = await par.getKeyframePtr(tempi[t][1]);
-        if (k) return { kf: k, come: tempi[t][0], tempo: tempi[t][1] };
-      } catch (e) { if (t === tempi.length - 1) return { errore: mess(e) }; }
+        var k = await par.getKeyframePtr(forme[f][1]);
+        if (k) return { kf: k, come: forme[f][0] };
+        ultimo = "risposta vuota";
+      } catch (e) { ultimo = mess(e); }
     }
-    return { errore: "nessun tempo ha dato un keyframe" };
+    return { errore: ultimo || "nessuna forma di tempo ha funzionato",
+             provate: forme.length };
   }
 
   async function sondaTesto(par, pezzo, sequenza, ppro, rientro) {
     var tempi = await tempiPossibili(pezzo, sequenza, ppro);
 
-    var preso = await keyframeDi(par, pezzo, sequenza, ppro);
+    var preso = await keyframeDi(par, pezzo, sequenza, ppro, function (r) {
+      dico(rientro + "  " + r, "forse");
+    });
     if (preso.kf) {
       dico(rientro + "  keyframe preso (" + preso.come + ")", "si");
       dico(rientro + "    contiene: “" + String(preso.kf.value).replace(/\s+/g, " ").slice(0, 90) + "”", "si");
       dico(rientro + "    espone: " + metodiDi(preso.kf));
       return;
     }
-    dico(rientro + "  keyframe non preso: " + preso.errore, "forse");
+    dico(rientro + "  keyframe non preso dopo " + preso.provate +
+         " forme di tempo — ultimo: " + preso.errore, "no");
+    // Se nemmeno cosi' si prende, la strada corta e' chiusa e si passa al
+    // modello di grafica animata. Ma prima: che cosa risponde il parametro
+    // alle altre domande? Sono le ultime rimaste.
+    try { dico(rientro + "    varia nel tempo: " + await par.isTimeVarying()); } catch (e) { dico(rientro + "    varia nel tempo: " + mess(e)); }
+    try { var v0 = await par.getStartValue(); dico(rientro + "    valore d'attacco: " + (v0 === null ? "nullo" : v0 === undefined ? "assente" : String(v0))); }
+    catch (e) { dico(rientro + "    valore d'attacco: " + mess(e)); }
 
     // "Illegal Parameter type" puo' voler dire due cose molto diverse: che
     // gli passo il tipo sbagliato, o che QUESTO parametro non accetta
@@ -454,7 +487,7 @@
     // Il keyframe si PRENDE, non si crea: questo parametro non si anima, ma
     // il suo valore vive comunque dentro un keyframe. Si prende quello che
     // c'e', gli si cambia il valore, e si rimette dov'era.
-    var preso = await keyframeDi(b.param, b.pezzo, SEQ, PPRO);
+    var preso = await keyframeDi(b.param, b.pezzo, SEQ, PPRO, function (r) { dico("· " + r); });
     if (!preso.kf) { dico("Non prendo il keyframe: " + preso.errore, "no"); return; }
     dico("· keyframe preso (" + preso.come + "), conteneva: “" +
          String(preso.kf.value).replace(/\s+/g, " ").slice(0, 60) + "”");
