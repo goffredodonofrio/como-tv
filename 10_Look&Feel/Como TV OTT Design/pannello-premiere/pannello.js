@@ -42,6 +42,15 @@
 
   function el(id) { return document.getElementById(id); }
 
+  // Un sp-textfield vuoto non ha ancora un .value: chiederlo e chiamarci
+  // .trim() sopra fa saltare tutto il pulsante, e sembra che il pannello
+  // sia rotto invece che semplicemente vuoto.
+  function testoDi(id) {
+    var e = el(id);
+    var v = e && e.value;
+    return v === undefined || v === null ? "" : String(v).trim();
+  }
+
   // ── il diario ──────────────────────────────────────────────────────
   function dico(testo, classe) {
     var d = el("diario");
@@ -180,7 +189,7 @@
   // Finche' quel modello non esiste, questa funzione non finge: dice cosa
   // manca e chi lo deve fare.
   async function scriviTesti(progetto, sequenza, ppro) {
-    var valori = [el("t1").value.trim(), el("t2").value.trim(), el("sott").value.trim()];
+    var valori = [testoDi("t1"), testoDi("t2"), testoDi("sott")];
     if (!valori[0] && !valori[1] && !valori[2]) { dico("Nessun testo da mettere."); return; }
 
     var visto = [];
