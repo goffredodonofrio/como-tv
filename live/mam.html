@@ -176,6 +176,7 @@
         <input type="text" id="url" placeholder="https://…/index.m3u8  oppure  srt://…:7000"></label>
       <div class="stretto"><button id="btnRec" class="oro">Registra</button></div>
       <div class="stretto"><button id="btnRicevi" title="Ci mettiamo in ascolto noi: l'indirizzo da dare a chi trasmette compare qui sotto">Ricevi</button></div>
+      <div class="stretto"><button id="btnGuarda" title="Vedi il flusso senza registrarlo: tiene solo gli ultimi venti secondi e non lascia niente sul disco">Guarda</button></div>
     </div>
     <div class="avviso ok" id="ascolto" style="display:none"></div>
     <div class="aiuto">Le sorgenti arrivano dalla tabella <em>AWS</em> di Airtable. Se il flusso cade,
@@ -420,6 +421,27 @@
     }).catch(function (e) { dice(e.message); });
   });
 
+  // GUARDA: solo per vedere. Stesso motore del registratore, ma tiene una
+  // finestra di venti secondi e butta il resto mentre va — serve a sapere se
+  // il flusso c'e' ed e' quello giusto, senza scrivere niente da cancellare.
+  el("btnGuarda").addEventListener("click", function () {
+    if (REG && REG.guarda && REG.stato === "registra") {
+      manda({ tipo: "clip-ferma", id: REG.id })
+        .then(function () { REG = null; aggiorna(); dice("Anteprima chiusa.", true); })
+        .catch(function (e) { dice(e.message); });
+      return;
+    }
+    var url = el("url").value.trim();
+    manda({
+      tipo: "clip-avvia", guarda: true,
+      ricevi: !url,                       // senza indirizzo: aspettiamo noi
+      url: url, titolo: "anteprima", sorgente: url ? "" : "in ascolto"
+    }).then(function (d) {
+      REG = d.reg; aggiorna(); mostraAscolto(d.reg);
+      dice(d.reg.ascolto ? "In ascolto: dai l'indirizzo a chi trasmette." : "Anteprima aperta.", true);
+    }).catch(function (e) { dice(e.message); });
+  });
+
   el("btnRicevi").addEventListener("click", function () {
     var ev = el("evento").selectedOptions[0];
     manda({
@@ -529,7 +551,7 @@
     el("boxOut").className = "box" + (fuori !== null ? " messo" : "");
     var d = (dentro !== null && fuori !== null) ? fuori - dentro : null;
     el("vDur").textContent = d !== null && d > 0 ? d.toFixed(1) + "s" : "—";
-    el("btnTaglia").disabled = !(REG && d !== null && d > 0.5);
+    el("btnTaglia").disabled = !(REG && !REG.guarda && d !== null && d > 0.5);
   }
   function segnaIn() { dentro = el("player").currentTime; if (fuori !== null && fuori <= dentro) fuori = null; mostraInOut(); }
   function segnaOut() { fuori = el("player").currentTime; if (dentro !== null && dentro >= fuori) dentro = null; mostraInOut(); }
@@ -696,10 +718,12 @@
                          DISCO.liberi + " GB liberi ≈ " + DISCO.partite + " partite") : "";
     el("disco").textContent = disco;
     if (!REG) { s.className = ""; t.textContent = "Nessuna registrazione"; coda.textContent = ""; return; }
-    s.className = REG.stato === "registra" ? (REG.attesa ? "ferma" : "registra") : "ferma";
+    s.className = REG.stato === "registra" ? (REG.attesa || REG.guarda ? "ferma" : "registra") : "ferma";
     t.textContent = (REG.stato === "registra"
-        ? (REG.attesa ? "In ascolto \u00b7 " : "Registra \u00b7 ")
+        ? (REG.attesa ? "In ascolto \u00b7 " : (REG.guarda ? "Guarda \u00b7 non sta registrando \u00b7 " : "Registra \u00b7 "))
         : REG.stato + " \u00b7 ") + REG.titolo;
+    el("btnGuarda").className = (REG.guarda && REG.stato === "registra") ? "acceso" : "";
+    el("btnGuarda").textContent = (REG.guarda && REG.stato === "registra") ? "Chiudi anteprima" : "Guarda";
     coda.textContent = orologio(REG.durata) +
       (REG.kickoff && REG.kickoff["1"] !== undefined ? " · 1ºT " + orologio(REG.kickoff["1"]) : "") +
       (REG.kickoff && REG.kickoff["2"] !== undefined ? " · 2ºT " + orologio(REG.kickoff["2"]) : "");

@@ -291,16 +291,30 @@ function argomentiIngresso(url) {
 function avviaProcesso(r) {
   const dir = cartellaReg(r.id);
   assicura(dir);
+  // DUE MODI, stesso motore.
+  //   registra: la playlist cresce e non dimentica niente — e' il DVR, e
+  //             alla fine c'e' tutta la partita.
+  //   guarda:   tiene solo gli ultimi venti secondi e butta il resto mentre
+  //             va. Serve a VEDERE il flusso — c'e'? e' quello giusto? il
+  //             suono c'e'? — senza scrivere un file che poi qualcuno deve
+  //             ricordarsi di cancellare. Costa un pugno di megabyte.
+  const finestra = r.guarda
+    ? ["-hls_list_size", "10",
+       "-hls_flags", "delete_segments+program_date_time+independent_segments+temp_file"]
+    : ["-hls_list_size", "0",
+       "-hls_flags", "append_list+program_date_time+independent_segments+temp_file",
+       "-hls_playlist_type", "event"];
+
   const args = ["-hide_banner", "-loglevel", "warning", "-nostdin"]
     .concat(argomentiIngresso(r.urlLetto || r.url))
     .concat([
-      "-t", String(MAX_SECONDI),
+      "-t", String(r.guarda ? Math.min(MAX_SECONDI, 10800) : MAX_SECONDI),
       "-c", "copy",                       // rimultiplexing: la CPU resta libera
       "-f", "hls",
-      "-hls_time", String(SEGMENTO),
-      "-hls_list_size", "0",              // la playlist non dimentica niente
-      "-hls_flags", "append_list+program_date_time+independent_segments+temp_file",
-      "-hls_playlist_type", "event",      // cresce: e' esattamente un DVR
+      "-hls_time", String(SEGMENTO)
+    ])
+    .concat(finestra)
+    .concat([
       "-hls_segment_type", "mpegts",
       "-hls_segment_filename", path.join(dir, "s%05d.ts"),
       playlistDi(r.id)
@@ -346,7 +360,7 @@ function avviaProcesso(r) {
       if (code !== 0 && !r.errore) r.errore = ultimaRiga(coda) || ("ffmpeg e' uscito con " + code);
     }
     scrivi(); annuncia(0, "clip");
-    if (r.durata > 0 && INTEGRALE_DA_SOLO) integrale(r);
+    if (r.durata > 0 && INTEGRALE_DA_SOLO && !r.guarda) integrale(r);
   });
   PROC.set(r.id, pr);
 }
@@ -451,6 +465,7 @@ async function clipAvvia(p) {
     competizione: String(p.competizione || "").slice(0, 80),
     sorgente: String(p.sorgente || "").slice(0, 80),
     url: url,
+    guarda: !!p.guarda,
     ascolto: ascolto,
     urlLetto: risolta.url !== url ? risolta.url : "",
     rendition: risolta.scelta ? (risolta.scelta.ris || "?") + " · " +
@@ -485,6 +500,18 @@ function clipFerma(p) {
       r.finita = Date.now(); r.durata = durataRegistrata(r.id); scrivi(); annuncia(0, "clip");
     }, 1500);
   } else { r.finita = r.finita || Date.now(); r.durata = durataRegistrata(r.id); }
+  // Un'anteprima non e' un documento: quando si chiude, sparisce. Lasciarla
+  // in elenco vorrebbe dire riempire la lista di righe da zero secondi che
+  // qualcuno dovra' cancellare a mano.
+  if (r.guarda) {
+    const via = r.id;
+    setTimeout(() => {
+      try { fs.rmSync(cartellaReg(via), { recursive: true, force: true }); } catch (e) {}
+      delete R.reg[via];
+      scrivi(); annuncia(0, "clip");
+    }, 2500);
+    return { ok: true, chiusa: true };
+  }
   scrivi(); annuncia(0, "clip");
   return { ok: true, reg: pubblica(r) };
 }
