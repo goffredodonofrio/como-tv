@@ -1683,6 +1683,20 @@ function permesso(p, ip) {
     req.on("end", async () => {
       let p, out;
       try { p = JSON.parse(corpo); } catch (err) { return json(res, { ok: false, errore: "richiesta illeggibile" }); }
+      // Il referto del pannello Premiere. Non chiede la chiave apposta: il
+      // pannello gira su un PC di montaggio, e mettergli in tasca una chiave
+      // del ponte per spedire un pezzo di testo sarebbe uno scambio pessimo.
+      // Non tocca niente, non legge niente: scrive solo in coda a un file che
+      // leggo io. Cappato in lunghezza, e solo qui in sviluppo.
+      if (p.tipo === "referto") {
+        try {
+          const t = String(p.testo || "").slice(0, 200000);
+          const dove = path.join(path.dirname(CONFIG.STATO), "referti.txt");
+          fs.appendFileSync(dove,
+            "\n\n═══ " + new Date().toISOString() + " ═══ " + (p.da || "pannello") + "\n" + t);
+          return json(res, { ok: true });
+        } catch (err) { return json(res, { ok: false, errore: err.message }); }
+      }
       try {
         permesso(p, req.headers["x-real-ip"] || req.socket.remoteAddress);
         switch (p.tipo) {

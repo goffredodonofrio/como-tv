@@ -115,6 +115,14 @@
     if (!ppro) { dico("Non trovo l'API di Premiere (require).", "no"); return; }
     dico("API di Premiere: c'e'.", "si");
 
+    // La domanda "esiste un modo per toccare le grafiche?" non ha risposta
+    // nella documentazione pubblica. Ma l'ha qui: queste sono le classi che
+    // la versione installata espone davvero. Vale piu' di qualsiasi pagina.
+    try {
+      dico("Classi dell'API: " + Object.keys(ppro).sort().join(", "));
+      dico("");
+    } catch (e) { dico("Non elenco le classi: " + e.message, "forse"); }
+
     var progetto, sequenza;
     try {
       progetto = await ppro.Project.getActiveProject();
@@ -163,12 +171,14 @@
   // Di un singolo elemento in timeline interessa una cosa sola: se
   // dentro la sua catena c'e' un parametro di TESTO scrivibile.
   async function raccontaPezzo(pezzo, rientro) {
-    var nome = "(senza nome)";
-    try {
-      var vp = await pezzo.getProjectItem();
-      nome = (vp && vp.name) || pezzo.name || nome;
-    } catch (e) { try { nome = pezzo.name || nome; } catch (e2) {} }
-    dico(rientro + "· " + nome);
+    // Le grafiche native non hanno un elemento nel progetto — sono nate in
+    // timeline — quindi getProjectItem() non da' un nome e prima uscivano
+    // tutte come "(senza nome)". Il nome vero sta altrove: si prova in fila.
+    var nome = "";
+    try { var vp = await pezzo.getProjectItem(); nome = (vp && vp.name) || ""; } catch (e) {}
+    if (!nome) { try { nome = await pezzo.getName(); } catch (e) {} }
+    if (!nome) { try { nome = pezzo.name || ""; } catch (e) {} }
+    dico(rientro + "· " + (nome || "(senza nome)"));
 
     var catena;
     try { catena = await pezzo.getComponentChain(); }
@@ -185,17 +195,27 @@
       dico(rientro + "  la catena espone: " + metodiDi(catena));
       return;
     }
+    dico(rientro + "  componenti: " + n);
+    // Un elemento senza componenti non e' un silenzio da interpretare: e' la
+    // risposta. Ma per capire se manca il contenuto o manca la strada per
+    // arrivarci, serve sapere che cosa quell'elemento sa fare.
+    if (!n) {
+      dico(rientro + "  l'elemento espone: " + metodiDi(pezzo), "forse");
+      return;
+    }
 
     for (var c = 0; c < n; c++) {
       var comp, etichetta = "?";
       try {
         comp = await catena.getComponentAtIndex(c);
         etichetta = (await comp.getMatchName()) || "";
-      } catch (e) { continue; }
+      } catch (e) { dico(rientro + "  [" + c + "] non leggibile: " + e.message, "forse"); continue; }
 
       var quanti = 0;
       try { quanti = await comp.getParamCount(); } catch (e) {}
-      if (!quanti) continue;
+      // Anche i componenti senza parametri vanno detti: il nome basta a
+      // riconoscere una grafica, e prima li saltavo in silenzio.
+      if (!quanti) { dico(rientro + "  " + etichetta + " (nessun parametro)"); continue; }
 
       var righe = [];
       for (var p = 0; p < quanti; p++) {
@@ -275,24 +295,30 @@
   }
 
   // ── portarmi il referto ────────────────────────────────────────────
-  // Ricopiare a mano un elenco lungo da un PC all'altro e' il modo piu'
-  // sicuro di perdere per strada proprio la riga che serve.
-  function copiaReferto() {
-    var testo = el("diario").textContent;
+  // Il pannello gira su un PC di montaggio e io leggo da un Mac: una foto
+  // allo schermo perde proprio le righe lunghe, che sono quelle che
+  // servono. Lo manda al ponte, che lo scrive in coda a un file.
+  //
+  // Non porta con se' nessuna chiave: dare a un plugin installato su sette
+  // macchine una chiave del ponte, per spedire del testo, sarebbe uno
+  // scambio pessimo. Dall'altra parte quell'operazione non tocca niente.
+  function mandaReferto() {
     var b = el("btnCopia");
-    function bene() { b.textContent = "Copiato ✓"; setTimeout(function () { b.textContent = "Copia il referto"; }, 2000); }
-    try {
-      var uxp = require("uxp");
-      if (uxp && uxp.clipboard && uxp.clipboard.setContent) {
-        uxp.clipboard.setContent({ "text/plain": testo });
-        bene(); return;
-      }
-    } catch (e) {}
-    try {
-      navigator.clipboard.writeText(testo).then(bene, function () {
-        b.textContent = "Non ci riesco — fai uno screenshot";
+    b.textContent = "Mando…";
+    fetch(PONTE, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ tipo: "referto", da: "pannello Premiere",
+                             testo: el("diario").textContent })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        b.textContent = j.ok ? "Mandato ✓" : "Non è partito";
+        setTimeout(function () { b.textContent = "Mandami il referto"; }, 3000);
+      })
+      .catch(function () {
+        b.textContent = "Non è partito — fai uno screenshot";
       });
-    } catch (e) { b.textContent = "Non ci riesco — fai uno screenshot"; }
   }
 
   el("partita").addEventListener("change", mostra);
@@ -302,7 +328,7 @@
   el("btnScrivi").addEventListener("click", function () {
     scrivi().catch(function (e) { dico("Errore: " + e.message, "no"); });
   });
-  el("btnCopia").addEventListener("click", copiaReferto);
+  el("btnCopia").addEventListener("click", mandaReferto);
 
   caricaPartite();
 })();
