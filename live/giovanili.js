@@ -92,38 +92,41 @@ window.GIOVANILI = (function () {
       { id: "torino-primavera", n: "Torino Primavera", tid: "239", rosa: [] }
     ] },
     { nome: "Under 17", code: "giovanili.u17", squadre: [
-      { id: "como-u17", n: "Como Under 17", tid: "2572", rosa: [
-        { num: "", nome: "Tommaso",   cognome: "Vischi",          ruolo: "G" },
-        { num: "", nome: "Alessandro",cognome: "Posocco",         ruolo: "G" },
-        { num: "", nome: "Matteo",    cognome: "Visentin",        ruolo: "G" },
-        { num: "", nome: "Simone",    cognome: "Bossi",           ruolo: "G" },
-        { num: "", nome: "Nicolò",    cognome: "Pessina",         ruolo: "G" },
-        { num: "", nome: "Denis",     cognome: "Nikolli",         ruolo: "D" },
-        { num: "", nome: "Tommaso",   cognome: "Vernile",         ruolo: "D" },
-        { num: "", nome: "William Carlo", cognome: "Cascella",    ruolo: "D" },
-        { num: "", nome: "Matteo",    cognome: "Moscato",         ruolo: "D" },
-        { num: "", nome: "Michael",   cognome: "Parodi",          ruolo: "D" },
-        { num: "", nome: "Davide",    cognome: "Perna",           ruolo: "D" },
-        { num: "", nome: "Alessandro",cognome: "Tondini",         ruolo: "D" },
-        { num: "", nome: "Angelo",    cognome: "Pisani",          ruolo: "D" },
-        { num: "", nome: "Manuel",    cognome: "Ortelli",         ruolo: "M" },
-        { num: "", nome: "Oliver",    cognome: "Nilsson Galic",   ruolo: "M" },
-        { num: "", nome: "Filippo",   cognome: "Briccola",        ruolo: "M" },
-        { num: "", nome: "Gabriele",  cognome: "Gardanini",       ruolo: "M" },
-        { num: "", nome: "Riccardo",  cognome: "Battista",        ruolo: "M" },
-        { num: "", nome: "Leonardo",  cognome: "Tiozzo",          ruolo: "M" },
-        { num: "", nome: "Rayan",     cognome: "Allaraj",         ruolo: "M" },
-        { num: "", nome: "Francesco", cognome: "De Blasio",       ruolo: "M" },
-        { num: "", nome: "Mattia",    cognome: "Perugini",        ruolo: "M" },
-        { num: "", nome: "Riccardo",  cognome: "Rottigni",        ruolo: "M" },
-        { num: "", nome: "Edoardo",   cognome: "Bonzi",           ruolo: "M" },
-        { num: "", nome: "Gabriele",  cognome: "Farsaci",         ruolo: "M" },
-        { num: "", nome: "Ilias",     cognome: "Khoubaba",        ruolo: "M" },
-        { num: "", nome: "Giovanni",  cognome: "Lopes",           ruolo: "F" },
-        { num: "", nome: "Achille",   cognome: "Cauli",           ruolo: "F" },
-        { num: "", nome: "Matteo",    cognome: "Manfredini",      ruolo: "F" },
-        { num: "", nome: "Filippo",   cognome: "Gussoni",         ruolo: "F" },
-        { num: "", nome: "Samuele Filippo", cognome: "Insinga",   ruolo: "F" }
+      // Rosa e staff ufficiali del club, dai fogli della societa' del
+      // 2026-09-04: non piu' Transfermarkt, che aveva otto giocatori non
+      // piu' in rosa e sette ruoli diversi da quelli veri.
+      { id: "como-u17", n: "Como Under 17", tid: "2572",
+        allenatore: { nome: "Salvatore", cognome: "Leotta" }, rosa: [
+        { num: "", nome: "Simone",          cognome: "Bossi",               ruolo: "G" },
+        { num: "", nome: "Simone",          cognome: "Caputo",              ruolo: "G" },
+        { num: "", nome: "Tommaso",         cognome: "Vischi",              ruolo: "G" },
+        { num: "", nome: "Matteo",          cognome: "Visentin",            ruolo: "G" },
+        { num: "", nome: "Filippo",         cognome: "Briccola",            ruolo: "D" },
+        { num: "", nome: "William Carlo",   cognome: "Cascella",            ruolo: "D" },
+        { num: "", nome: "Yuri",            cognome: "De Oliveira Baratto", ruolo: "D" },
+        { num: "", nome: "Gabriele",        cognome: "Farsaci",             ruolo: "D" },
+        { num: "", nome: "Matteo",          cognome: "Manfredini",          ruolo: "D" },
+        { num: "", nome: "Jayden",          cognome: "Marshall",            ruolo: "D" },
+        { num: "", nome: "Denis",           cognome: "Nikolli",             ruolo: "D" },
+        { num: "", nome: "Michael",         cognome: "Parodi",              ruolo: "D" },
+        { num: "", nome: "Davide",          cognome: "Perna",               ruolo: "D" },
+        { num: "", nome: "Tommaso",         cognome: "Vernile",             ruolo: "D" },
+        { num: "", nome: "Riccardo",        cognome: "Battista",            ruolo: "M" },
+        { num: "", nome: "Francesco",       cognome: "De Blasio",           ruolo: "M" },
+        { num: "", nome: "Giovanni",        cognome: "Di Iulio",            ruolo: "M" },
+        { num: "", nome: "Gabriele",        cognome: "Gardanini",           ruolo: "M" },
+        { num: "", nome: "Alessandro",      cognome: "Grigioni",            ruolo: "M" },
+        { num: "", nome: "Manuel",          cognome: "Ortelli",             ruolo: "M" },
+        { num: "", nome: "Mattia",          cognome: "Perugini",            ruolo: "M" },
+        { num: "", nome: "Guglielmo",       cognome: "Tosi",                ruolo: "M" },
+        { num: "", nome: "Achille",         cognome: "Cauli",               ruolo: "F" },
+        { num: "", nome: "Oliver",          cognome: "Galic",               ruolo: "F" },
+        { num: "", nome: "Filippo",         cognome: "Gussoni",             ruolo: "F" },
+        { num: "", nome: "Samuele Filippo", cognome: "Insinga",             ruolo: "F" },
+        { num: "", nome: "Zebedee",         cognome: "Kennedy",             ruolo: "F" },
+        { num: "", nome: "Matteo",          cognome: "Moscato",             ruolo: "F" },
+        { num: "", nome: "Riccardo",        cognome: "Rottigni",            ruolo: "F" },
+        { num: "", nome: "Leonardo",        cognome: "Tiozzo",              ruolo: "F" }
       ] },
       { id: "atalanta-under-17", n: "Atalanta Under 17", tid: "105", rosa: [] },
       { id: "cagliari-under-17", n: "Cagliari Under 17", tid: "2925", rosa: [] },
@@ -222,5 +225,18 @@ window.GIOVANILI = (function () {
     return [];
   }
 
-  return { COMPS: COMPS, mia: mia, squadre: squadre, rosa: rosa, tid: tid };
+  // L'allenatore, quando il club ce l'ha dato. Serve a non farlo battere a
+  // mano: e' il campo dove un refuso passa piu' facilmente, perche' e' uno
+  // solo e nessuno lo ricontrolla.
+  function allenatore(code, id) {
+    var c = comp(code);          // comp(), non mia(): mia dice solo SE e' nostra
+    if (!c) return null;
+    for (var i = 0; i < c.squadre.length; i++) {
+      if (c.squadre[i].id === String(id)) return c.squadre[i].allenatore || null;
+    }
+    return null;
+  }
+
+  return { COMPS: COMPS, mia: mia, squadre: squadre, rosa: rosa, tid: tid,
+           allenatore: allenatore };
 })();
