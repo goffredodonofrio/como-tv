@@ -1255,18 +1255,18 @@ const MASCHERA = "feed_maschera_1080x1920";
 // Il titolo va sempre in maiuscolo, il sottotitolo mai.
 function comeTitolo(t) { return String(t || "").trim().toUpperCase(); }
 
-// Il sottotitolo: minuscolo, con la sola iniziale maiuscola. Con due
-// eccezioni, che non sono capricci ma cose che abbassate diventano
-// sbagliate:
+// Il sottotitolo: minuscolo, con la sola iniziale maiuscola. Con
+// un'eccezione, che non e' un capriccio ma una cosa che abbassata diventa
+// sbagliata: i nomi delle competizioni. Non c'e' bisogno di indovinare come
+// vanno scritti, li abbiamo — arrivano da Airtable — quindi dopo aver
+// abbassato tutto si rimette la grafia buona di quelli che si riconoscono.
 //
-//  · una lettera sola in mezzo alle parole e' un nome, non una parola.
-//    "Serie A" abbassato diventa "Serie a", che nessuno scriverebbe mai.
-//  · i nomi delle competizioni li conosciamo — arrivano da Airtable — e
-//    quindi non c'e' bisogno di indovinare come vanno scritti: si rimette
-//    la grafia buona. "uefa champions league" torna "UEFA Champions League".
+// Nessuna regola generica sulle lettere sole. Sarebbe il rimedio ovvio a
+// "Serie a", ed e' peggio del male: alza anche le preposizioni, e "fase a
+// gironi" diventa "fase A gironi". "Serie A" lo rimette il dizionario.
 //
-// Fuori da queste due, si abbassa e basta: "5ª GIORNATA" deve diventare
-// "5ª giornata", ed e' il motivo per cui la regola esiste.
+// Fuori da questa, si abbassa e basta: "5ª GIORNATA" deve diventare "5ª
+// giornata", ed e' il motivo per cui la regola esiste.
 function nomiDelleCompetizioni() {
   const d = AT_CACHE && AT_CACHE.dati;
   if (!d || !d.eventi) return [];
@@ -1285,9 +1285,6 @@ function comeSottotitolo(t) {
     const dove = x.indexOf(nome.toLowerCase());
     if (dove >= 0) x = x.slice(0, dove) + nome + x.slice(dove + nome.length);
   });
-
-  // una lettera sola fra spazi e' una sigla: Serie A, Girone B
-  x = x.replace(/(^|[\s·])([a-z])(?=$|[\s·])/g, (t, prima, l) => prima + l.toUpperCase());
 
   return x.charAt(0).toUpperCase() + x.slice(1);
 }
