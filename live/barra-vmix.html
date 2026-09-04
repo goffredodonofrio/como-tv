@@ -87,10 +87,37 @@
      galleggiare; riempire avrebbe tagliato il quaranta per cento della
      larghezza, cioe' proprio i nomi delle squadre. */
   .scheda.loc .foto{top:0;height:1080px;display:flex;align-items:flex-start;}
-  .scheda.loc .foto img{width:100%;height:auto;max-height:1080px;object-fit:contain;
-    filter:none;}
-  .scheda.loc .foto .velo{display:none;}
+  /* La locandina INTERA, appoggiata in alto: larga quanto la colonna, alta
+     630 dei 1080. */
+  .scheda.loc .foto img.avanti{position:relative;z-index:2;
+    width:100%;height:auto;max-height:1080px;object-fit:contain;filter:none;}
+  /* E i 450 che avanzano non restano vuoti: li riempie la locandina stessa,
+     ingrandita a coprire e sfocata. Non e' un trucco per nascondere il
+     problema — e' il modo di non rifare una grafica gia' fatta: i colori
+     sotto sono i suoi, quindi la colonna sembra pensata per lei invece che
+     adattata. Rigenerarla nel formato della colonna sarebbe piu' pulito,
+     ma vuol dire rifare un lavoro finito. */
+  .scheda.loc .foto img.dietro{position:absolute;inset:0;z-index:1;
+    width:100%;height:100%;object-fit:cover;
+    filter:blur(46px) saturate(1.1) brightness(.52);transform:scale(1.12);}
+  /* un velo che chiude verso il fondo della colonna, cosi' lo sfocato non
+     finisce di netto contro il bordo */
+  .scheda.loc .foto .velo{display:block;z-index:3;
+    background:linear-gradient(180deg,transparent 0%,transparent 52%,
+      rgba(10,15,36,.35) 74%,rgba(10,15,36,.72) 90%,#0A0F24 100%);}
   .scheda.loc .testo{display:none;}
+
+  /* Lo spazio sotto la locandina non e' un avanzo da nascondere: e' la
+     firma. Un filo dorato che chiude la locandina e il marchio sotto —
+     cosi' la colonna finisce, invece di smettere. */
+  .locfirma{position:absolute;left:0;right:0;top:630px;bottom:0;z-index:4;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding-bottom:60px;}
+  .locfirma .filo{position:absolute;top:0;left:34px;right:30px;height:2px;margin:0;
+    transform:none;border-radius:1px;
+    background:linear-gradient(90deg,rgba(201,162,75,0),#C9A24B 22%,#C9A24B 78%,rgba(201,162,75,0));}
+  .locfirma img{width:150px;height:auto;opacity:.92;
+    filter:drop-shadow(0 4px 14px rgba(0,0,0,.5));}
 
   /* stemma in fondo alla colonna */
   .stemma{position:absolute;left:34px;bottom:34px;width:74px;height:74px;object-fit:contain;opacity:0;}
@@ -295,14 +322,30 @@
                   (!loc && appunt && c.apf === "m" ? " media" : "");
     var conFoto = !!c.f;
     s.innerHTML =
-      (conFoto ? '<div class="foto"><img alt=""><div class="velo"></div></div>' : '') +
+      (conFoto
+        ? '<div class="foto">' +
+            (c.loc ? '<img class="dietro" alt="">' : '') +
+            '<img class="avanti" alt=""><div class="velo"></div></div>'
+        : '') +
       '<div class="testo"' + (conFoto ? '' : ' style="top:120px"') + '>' +
         '<div class="occhiello"></div><div class="titolo"></div>' +
         '<div class="filo"></div><div class="corpo"></div>' +
       '</div>' +
       (c.l ? '<img class="stemma" alt="">' : '');
 
-    var img = s.querySelector(".foto img");
+    var img = s.querySelector(".foto img.avanti");
+    var sotto = s.querySelector(".foto img.dietro");
+    if (sotto) sotto.src = c.f;
+    if (loc) {
+      // La firma sotto la locandina. Il marchio si prende dal magazzino
+      // della macchina che serve la pagina: se non c'e', il filo resta e
+      // basta — meglio senza marchio che con un rettangolo rotto.
+      var firma = document.createElement("div");
+      firma.className = "locfirma";
+      firma.innerHTML = '<i class="filo"></i>' +
+        '<img alt="" src="/loghi/como-tv-logo.png" onerror="this.style.display=\'none\'">';
+      s.appendChild(firma);
+    }
     if (img) {
       img.src = c.f;
       // se la foto non arriva, la scheda resta valida: il testo sale in cima
