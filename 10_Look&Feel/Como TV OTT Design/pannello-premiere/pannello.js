@@ -59,6 +59,14 @@
 
   // Quando qualcosa non risponde come previsto, la domanda vera e'
   // "che cosa sa fare questo oggetto?". La risposta sta nel prototipo.
+  // Non tutto quello che viene lanciato e' un Error: alcuni rifiuti dell'API
+  // arrivano nudi, e chiedendone .message si stampa "undefined" — che sembra
+  // un difetto nostro invece della risposta che e'.
+  function mess(e) {
+    if (!e) return "senza motivo";
+    return e.message || e.description || String(e);
+  }
+
   function metodiDi(o) {
     if (!o) return "(niente)";
     var visti = {}, fuori = [];
@@ -203,12 +211,27 @@
     }
     try { tempi.push(["testina", await sequenza.getPlayerPosition()]); } catch (e) {}
 
+    // "Illegal Parameter type" puo' voler dire due cose molto diverse: che
+    // gli passo il tipo sbagliato, o che QUESTO parametro non accetta
+    // keyframe affatto. La prima si aggiusta, la seconda chiude la strada e
+    // manda al modello di grafica animata. Le distingue una domanda sola.
+    try { dico(rientro + "  accetta keyframe: " + (await par.areKeyframesSupported() ? "sì" : "NO"), "si"); }
+    catch (e) { dico(rientro + "  accetta keyframe: non risponde (" + mess(e) + ")", "forse"); }
+
+    // E se li accetta, di che tipo li vuole: si offrono valori di specie
+    // diversa e si guarda quale non viene rifiutato.
+    var assaggi = [["testo", "Eredivisie"], ["numero", 0], ["vero/falso", true], ["oggetto vuoto", {}]];
+    for (var a = 0; a < assaggi.length; a++) {
+      try { par.createKeyframe(assaggi[a][1]); dico(rientro + "    keyframe da " + assaggi[a][0] + ": accettato", "si"); }
+      catch (e) { dico(rientro + "    keyframe da " + assaggi[a][0] + ": " + mess(e), "forse"); }
+    }
+
     if (!tempi.length) { dico(rientro + "  non riesco a fabbricare un tempo", "no"); return; }
 
     for (var t = 0; t < tempi.length; t++) {
       var v;
       try { v = await par.getValueAtTime(tempi[t][1]); }
-      catch (e) { dico(rientro + "  (" + tempi[t][0] + ") no: " + e.message, "forse"); continue; }
+      catch (e) { dico(rientro + "  (" + tempi[t][0] + ") no: " + mess(e), "forse"); continue; }
 
       var tipo = typeof v;
       var classe = v && v.constructor ? v.constructor.name : "";
@@ -235,7 +258,7 @@
   async function valoreDi(par) {
     var k;
     try { k = await par.getStartValue(); }
-    catch (e) { return { nota: "non leggibile (" + e.message + ")" }; }
+    catch (e) { return { nota: "non leggibile (" + mess(e) + ")" }; }
     if (k === undefined || k === null) return {};
 
     if (typeof k === "string" || typeof k === "number" || typeof k === "boolean") {
@@ -408,7 +431,7 @@
       });
       dico("✓ scritto (keyframe + transazione)", "si");
       return;
-    } catch (e) { dico("· via 1 no: " + e.message, "forse"); }
+    } catch (e) { dico("· via 1 no: " + mess(e), "forse"); }
 
     // via 2: la transazione presa dal progetto senza lockedAccess intorno
     try {
@@ -419,7 +442,7 @@
       }, "Como TV: competizione");
       dico("✓ scritto (transazione senza lock)", "si");
       return;
-    } catch (e) { dico("· via 2 no: " + e.message, "forse"); }
+    } catch (e) { dico("· via 2 no: " + mess(e), "forse"); }
 
     dico("");
     dico("Non sono riuscito a scrivere. Il parametro espone:", "no");
