@@ -17,7 +17,7 @@ VM=root@209.227.239.211
 DOVE=/var/www/comotv-dev/pannello
 
 echo "→ controllo che il js sia sano prima di spedirlo"
-node --check pannello.js || { echo "✗ pannello.js ha un errore di sintassi: non spedisco"; exit 1; }
+for j in pannello.js maschere.js; do node --check "$j" || { echo "✗ $j ha un errore di sintassi: non spedisco"; exit 1; }; done
 python3 -c "import json;json.load(open('manifest.json'))" || { echo "✗ manifest.json non e' json valido"; exit 1; }
 
 echo "→ impacchetto (serve solo a chi preferisce scaricare a mano)"
@@ -28,7 +28,7 @@ echo "→ deposito sulla VM"
 ssh "$VM" "mkdir -p $DOVE" || exit 1
 # LEGGIMI.md non sale: il ponte non serve i .md, e chiederlo dal PC darebbe
 # un 404 su un file che al plugin non serve. Sta nello zip, per chi lo vuole.
-scp -q manifest.json index.html pannello.js /tmp/comotv-pannello.zip "$VM:$DOVE/" || exit 1
+scp -q manifest.json index.html pannello.js maschere.js /tmp/comotv-pannello.zip "$VM:$DOVE/" || exit 1
 
 # Il plugin minimo: copia nuda dell'esempio ufficiale, niente di nostro
 # dentro. Serve a separare "Premiere non carica i pannelli" da "il nostro

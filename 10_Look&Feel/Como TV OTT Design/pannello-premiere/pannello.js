@@ -117,7 +117,106 @@
       : d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" });
     el("vSquadre").textContent = scelto.programma ? "(programma)"
       : (scelto.casa + " – " + scelto.ospite);
-    el("btnScrivi").disabled = false;
+
+    // La maschera e' il vero lavoro del pannello: il testo non si scrive,
+    // ma scegliere il PNG giusto fra ventinove e' esattamente il passaggio
+    // dove oggi nasce l'errore che va in onda.
+    var m = window.Maschere.per(scelto.competizione);
+    var b = el("btnMask"), v = el("vMask");
+    if (m.file) {
+      v.textContent = m.file; v.className = "";
+      b.disabled = false; b.textContent = "Metti la maschera su V2";
+    } else if (m.manca) {
+      v.textContent = "non esiste"; v.className = "no";
+      b.disabled = true; b.textContent = "Maschera da fare";
+    } else {
+      v.textContent = "competizione nuova"; v.className = "forse";
+      b.disabled = true; b.textContent = "Maschera sconosciuta";
+    }
+  }
+
+  // ── mettere la maschera ────────────────────────────────────────────
+  // I ventinove PNG sono gia' dentro il progetto: non c'e' niente da
+  // importare da Y:\\, basta ritrovare il pezzo giusto nel bin. Cercarlo per
+  // nome invece che per percorso vuol dire anche che il pannello continua a
+  // funzionare se un domani gli asset cambiano cartella.
+  async function cercaNelProgetto(progetto, nomeFile) {
+    var radice;
+    try { radice = await progetto.getRootItem(); }
+    catch (e) { return { errore: "non apro il progetto: " + mess(e) }; }
+
+    var cerco = nomeFile.toLowerCase(), coda = [radice], visti = 0;
+    while (coda.length && visti < 5000) {
+      var it = coda.shift(); visti++;
+      var figli = null;
+      try { figli = await it.getItems(); } catch (e) {}
+      if (figli && figli.length) {
+        for (var i = 0; i < figli.length; i++) coda.push(figli[i]);
+        continue;
+      }
+      var n = "";
+      try { n = it.name || ""; } catch (e) {}
+      if (n.toLowerCase() === cerco) return { pezzo: it };
+    }
+    return { errore: "non trovo “" + nomeFile + "” fra i " + visti + " elementi del progetto" };
+  }
+
+  async function mettiMaschera() {
+    if (!scelto) return;
+    var m = window.Maschere.per(scelto.competizione);
+    if (!m.file) return;
+
+    pulisci();
+    dico("Maschera da mettere: " + m.file);
+
+    var ppro = premiere();
+    if (!ppro) { dico("Non trovo l'API di Premiere.", "no"); return; }
+    var progetto = await ppro.Project.getActiveProject();
+    var sequenza = await progetto.getActiveSequence();
+    if (!sequenza) { dico("Nessuna sequenza aperta.", "no"); return; }
+    SEQ = sequenza; PPRO = ppro;
+
+    var trovato = await cercaNelProgetto(progetto, m.file);
+    if (!trovato.pezzo) { dico(trovato.errore, "no"); return; }
+    dico("Trovata nel progetto.", "si");
+
+    // Dove: sulla V2, all'attacco della maschera che c'e' adesso — cosi'
+    // prende il posto di quella vecchia invece di aggiungersi.
+    var quando = null;
+    try {
+      var v2 = await sequenza.getVideoTrack(1);
+      var sopra = await v2.getTrackItems(ppro.Constants.TrackItemType.CLIP, false);
+      if (sopra && sopra.length) {
+        quando = await sopra[0].getStartTime();
+        dico("Prende il posto di quella che c'e' adesso.");
+      }
+    } catch (e) {}
+    if (!quando) {
+      try { quando = await sequenza.getPlayerPosition(); dico("La metto dove sta la testina."); }
+      catch (e) { dico("Non so a che punto metterla: " + mess(e), "no"); return; }
+    }
+
+    var editor;
+    try { editor = await ppro.SequenceEditor.getEditor(sequenza); }
+    catch (e) {
+      dico("Non ottengo l'editor della sequenza: " + mess(e), "no");
+      dico("SequenceEditor espone: " + metodiDi(ppro.SequenceEditor));
+      return;
+    }
+
+    try {
+      var azione = editor.createOverwriteItemAction(trovato.pezzo, quando, 1, -1);
+      await progetto.lockedAccess(function () {
+        progetto.executeTransaction(function (gruppo) {
+          gruppo.addAction(azione);
+        }, "Como TV: maschera " + m.file);
+      });
+      dico("✓ messa su V2.", "si");
+      dico("Se non e' dove volevi: Ctrl+Z.", "forse");
+    } catch (e) {
+      dico("Non riesco a metterla: " + mess(e), "no");
+      dico("L'editor espone: " + metodiDi(editor));
+    }
   }
 
   // ── Premiere ───────────────────────────────────────────────────────
@@ -556,6 +655,9 @@
     scrivi().catch(function (e) { dico("Errore: " + e.message, "no"); });
   });
   el("btnCopia").addEventListener("click", mandaReferto);
+  el("btnMask").addEventListener("click", function () {
+    mettiMaschera().catch(function (e) { dico("Errore: " + mess(e), "no"); });
+  });
 
   caricaPartite();
 })();
