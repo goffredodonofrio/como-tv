@@ -24,10 +24,11 @@
   "use strict";
 
   // Il ponte. Da qui arrivano le partite e qui si disegna la maschera.
-  // Per tornare a lavorare in sviluppo basta rimettere "como-tv-dev": il
-  // resto del pannello non cambia, e le due macchine hanno lo stesso ponte
-  // con la stessa chiave Airtable e lo stesso motore delle grafiche.
-  var PONTE = "https://projects-cloud.it/como-tv/api";
+  // Finche' si lavora sta su "como-tv-dev", cosi' le mie correzioni al
+  // ponte non passano dalla macchina che manda in onda. Al momento di fare
+  // il pacchetto si toglie il "-dev" e basta: le due parti hanno lo stesso
+  // ponte, la stessa chiave Airtable e lo stesso motore delle grafiche.
+  var PONTE = "https://projects-cloud.it/como-tv-dev/api";
   var eventi = [], scelto = null;
 
   // La lettura scende in profondita' e a valle servono ancora: tenerli qui
