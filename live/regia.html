@@ -206,7 +206,25 @@
     font-family:'Mazzard',sans-serif;font-size:10px;font-weight:800;letter-spacing:.16em;
     color:#fff;background:var(--red);border-radius:3px;padding:3px 9px;}
   #thumbbox.onair #onairtag{display:block;animation:pulse 1.4s ease-in-out infinite;}
-  #thumbcap{margin-top:10px;font-size:12.5px;color:var(--fg-3);min-height:18px;}
+  /* ── le barrette dell'audio ──
+     Due canali, come su un mixer. Servono a una domanda sola e frequente:
+     questa clip ha il suono o no? Si vede prima di mandarla, non dopo. */
+  /* Due colonnine dentro il monitor: a sinistra in anteprima, a destra in onda,
+     come su un mixer. Occupano cinque pixel e rispondono a colpo d'occhio alla
+     domanda "questa clip ha il suono?". Quando restano a zero la traccia
+     diventa ambra: silenzio annunciato, non silenzio scoperto in onda. */
+  .vu{position:absolute;top:10px;bottom:10px;display:none;gap:3px;z-index:3;pointer-events:none;}
+  .vu.sx{left:10px;} .vu.dx{right:10px;}
+  .vu i{width:5px;height:100%;border-radius:3px;background:rgba(245,241,230,.13);
+    position:relative;overflow:hidden;box-shadow:0 0 0 1px rgba(4,6,16,.55);}
+  .vu i b{position:absolute;left:0;right:0;bottom:0;height:0;border-radius:3px;
+    background:linear-gradient(0deg,#4FCB8B 0%,#4FCB8B 62%,#E3C271 82%,#E51B20 100%);
+    transition:height .05s linear;}
+  .vu.muta i{background:rgba(255,122,26,.30);}
+  /* Le due didascalie sotto i monitor non le legge nessuno: il titolo si vede
+     in scaletta e lo stato dell'onda si vede dall'onda. Restano nel codice
+     perche' ci si scrive dentro, ma non a schermo. */
+  #thumbcap, #pgmcap{display:none;}
   /* ── il punto da cui parte la clip ── */
   /* Una barra sola, come sui player: il tempo, il cursore, e i tasti. */
   #cue{margin-top:10px;padding:8px 10px;border-radius:8px;display:flex;align-items:center;gap:10px;
@@ -218,12 +236,11 @@
   #pvwvid{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:contain;
     background:#070B1D;display:block;}
   #cue input[type=range]{flex:1;min-width:60px;accent-color:#4FA3E8;height:20px;}
+  #cue .segno{flex:0 0 auto;font-size:11px;color:#7FBEF0;min-width:64px;text-align:right;}
   #cue button{flex:0 0 auto;font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
     letter-spacing:.1em;text-transform:uppercase;padding:7px 9px;border-radius:6px;cursor:pointer;
     background:transparent;color:var(--ivory-dim);border:1px solid var(--line-2);}
   #cue button:hover{color:#A8D4F7;border-color:#4FA3E8;}
-  #cue #cueOk{color:#7FBEF0;border-color:rgba(79,163,232,.5);background:rgba(79,163,232,.12);}
-  #cue #cueOk:hover{background:rgba(79,163,232,.24);}
 
   #btnOut{
     border:2px solid rgba(229,27,32,.5);background:transparent;color:#FF6B6E;
@@ -370,7 +387,7 @@
   #barraPresa button:hover{background:#FFB169;}
   body.solo-lettura .pgm, body.solo-lettura .btn-take, body.solo-lettura [data-act="play"],
   body.solo-lettura [data-act="off"], body.solo-lettura [data-act="del"],
-  body.solo-lettura #btnSvuota, body.solo-lettura #btnArma, body.solo-lettura #cueOk{
+  body.solo-lettura #btnSvuota, body.solo-lettura #btnArma{
     opacity:.4;pointer-events:none;filter:grayscale(.6);}
   body.solo-lettura{padding-bottom:56px;}
   /* pallino del colore-famiglia: sui chip e su ogni riga della scaletta */
@@ -428,7 +445,8 @@
     <div class="panel mon">
       <h2>Anteprima</h2>
       <div id="pvwbox"><iframe id="pvw" src="about:blank" scrolling="no"></iframe>
-        <video id="pvwvid" preload="metadata" muted playsinline style="display:none"></video></div>
+        <video id="pvwvid" preload="metadata" muted playsinline style="display:none"></video>
+        <div class="vu sx" id="vuPvw" title="Livelli audio"><i><b></b></i><i><b></b></i></div></div>
       <div id="thumbcap">Clicca una grafica in scaletta: la vedi qui senza toccare l'onda.</div>
       <!-- IL PUNTO DA CUI PARTE: serve in diretta. La clip del gol e' gia' in
            scaletta, la si riprende dal punto giusto e si manda in onda quello. -->
@@ -437,7 +455,8 @@
         <input type="range" id="cueA" min="0" max="100" step="0.1" value="0">
         <button type="button" id="cueVia" title="Torna all\'inizio">&#8635;</button>
         <button type="button" id="cuePlay" title="Guarda da qui">&#9654;</button>
-        <button type="button" id="cueOk">&#10003; Parte da qui</button>
+        <button type="button" id="cueAudio" title="Ascolta l\'anteprima">&#128263;</button>
+        <span class="segno" id="cueSegno">&nbsp;</span>
       </div>
       <!-- durata della clip in anteprima: stessi numeroni dell'onda -->
       <div id="pvwtempo" style="display:none;margin-top:10px;text-align:center">
@@ -475,7 +494,7 @@
     </div>
     <div class="panel mon">
       <h2>In onda adesso</h2>
-      <div id="thumbbox"><span id="onairtag">IN ONDA</span><iframe id="thumb" src="about:blank" scrolling="no"></iframe><iframe id="thumbMatch" src="about:blank" scrolling="no" allowtransparency="true"></iframe></div>
+      <div id="thumbbox"><div class="vu dx" id="vuPgm" title="Livelli audio di quello che e&#39; in onda"><i><b></b></i><i><b></b></i></div><span id="onairtag">IN ONDA</span><iframe id="thumb" src="about:blank" scrolling="no"></iframe><iframe id="thumbMatch" src="about:blank" scrolling="no" allowtransparency="true"></iframe></div>
       <div id="pgmcap" style="margin-top:8px;font-size:12.5px;color:var(--fg-3);min-height:16px"></div>
       <!-- cronometro dell'onda: DURATA | COUNTDOWN (si ferma a zero), cifre grandi -->
       <div id="pgmtempo" style="display:none;margin-top:10px;text-align:center">
@@ -933,6 +952,7 @@
   }
   function cueApri(id, dati) {
     var v = document.getElementById("pvwvid");
+    metro(v, document.getElementById("vuPvw"), cueSuono);
     cueChiudi();
     CUE.id = id;
     // il contributo si guarda con un lettore vero al posto del telaio: e' quello
@@ -949,6 +969,7 @@
       document.getElementById("cueA").max = String(d);
       document.getElementById("cueA").value = String(CUE.da);
       document.getElementById("cue").style.display = "flex";
+      cueAudioDisegna();
       cueDisegna();
       try { v.currentTime = CUE.da; } catch (e) {}
     }, { once: true });
@@ -957,6 +978,31 @@
   function cueDisegna() {
     document.getElementById("cueTC").textContent = cueMmss(CUE.da) + " / " + cueMmss(CUE.dur);
   }
+  // IL CURSORE E' LA VERITA'. Non c'e' niente da confermare: dove sta il
+  // cursore, da li' parte la clip quando va in onda. Di suo sta all'inizio;
+  // se lo si sposta, si sposta anche il punto di partenza.
+  //
+  // Si salva quando si MOLLA il cursore (evento change), non mentre lo si
+  // trascina (input): trascinando arrivano decine di eventi al secondo e il
+  // ponte non merita di riceverli tutti. E si salva anche quando si mette in
+  // pausa, perche' lasciar correre la clip e fermarla sul punto giusto e' il
+  // modo piu' naturale di cercarlo.
+  var cueUltimo = -1;
+  function cueSalva() {
+    if (!CUE.id || !CUE.dur) return;
+    if (Math.abs(CUE.da - cueUltimo) < 0.15) return;      // niente di nuovo da dire
+    if (!COMANDO) {
+      document.getElementById("cueSegno").textContent = "sola lettura";
+      return;
+    }
+    cueUltimo = CUE.da;
+    post({ tipo: "regia-taglio", id: CUE.id, da: CUE.da, a: 0 }, null);
+    var sg = document.getElementById("cueSegno");
+    sg.textContent = CUE.da > 0.05 ? "parte da qui" : "dall\u2019inizio";
+    clearTimeout(sg.__t);
+    sg.__t = setTimeout(function () { sg.innerHTML = "&nbsp;"; }, 2500);
+  }
+
   document.getElementById("cueA").addEventListener("input", function () {
     CUE.da = Math.min(parseFloat(this.value) || 0, CUE.dur - 0.2);
     var v = document.getElementById("pvwvid");
@@ -964,6 +1010,7 @@
     try { v.currentTime = CUE.da; } catch (e) {}
     cueDisegna();
   });
+  document.getElementById("cueA").addEventListener("change", cueSalva);
   // mentre scorre, il cursore lo segue
   document.getElementById("pvwvid").addEventListener("timeupdate", function () {
     if (this.paused || !CUE.dur) return;
@@ -978,6 +1025,130 @@
     v.pause();
     try { v.currentTime = 0; } catch (e) {}
     cueDisegna();
+    cueSalva();
+  });
+  // ══ LE BARRETTE DELL'AUDIO ═══════════════════════════════════════════
+  // Rispondono a una domanda sola e frequente: questa clip ha il suono?
+  // Prima si scopriva mandandola in onda.
+  //
+  // Due cose da sapere su come sono fatte:
+  //  · il suono si MISURA senza per forza farlo sentire. Il video entra in un
+  //    analizzatore e da li' non prosegue verso le casse, a meno che non lo si
+  //    voglia: cosi' la replica dell'onda si puo' misurare restando muta, che
+  //    e' come deve stare — se no in sala si sentirebbe due volte.
+  //  · createMediaElementSource dirotta l'audio dell'elemento dentro il grafo:
+  //    da quel momento e' il grafo a decidere se si sente. Per questo il
+  //    collegamento alle casse si fa e si disfa a comando, e non si tocca piu'
+  //    la proprieta' "muted" dell'elemento.
+  var AC = null, METRI = [];
+  function contesto() {
+    if (AC) return AC;
+    try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; }
+    return AC;
+  }
+  document.addEventListener("click", function () {          // serve un gesto per partire
+    var c = contesto();
+    if (c && c.state === "suspended") c.resume().catch(function () {});
+  }, true);
+
+  // Un metro per elemento video. L'audio entra nel grafo e da li' esce verso le
+  // casse SOLO attraverso un volume che comandiamo noi: cosi' la replica
+  // dell'onda si misura restando muta.
+  function metro(video, box, siSente) {
+    if (!video || !box) return null;
+    var gia = METRI.filter(function (x) { return x.video === video; })[0];
+    if (gia) { gia.box = box; metroSuono(video, siSente); return gia; }
+    var c = contesto();
+    if (!c) return null;
+    try {
+      var src = c.createMediaElementSource(video);
+      var split = c.createChannelSplitter(2);
+      var aL = c.createAnalyser(), aR = c.createAnalyser();
+      aL.fftSize = aR.fftSize = 512;
+      src.connect(split);
+      split.connect(aL, 0);
+      try { split.connect(aR, 1); } catch (e) { split.connect(aR, 0); }   // mono: due volte lo stesso
+      var vol = c.createGain();
+      vol.gain.value = siSente ? 1 : 0;
+      src.connect(vol);
+      vol.connect(c.destination);
+      var m = { video: video, box: box, vol: vol,
+                an: [aL, aR], buf: new Uint8Array(aL.frequencyBinCount), zero: 0 };
+      METRI.push(m);
+      return m;
+    } catch (e) { return null; }
+  }
+  function metroSuono(video, si) {
+    var m = METRI.filter(function (x) { return x.video === video; })[0];
+    if (m) { try { m.vol.gain.value = si ? 1 : 0; } catch (e) {} }
+  }
+  function livello(an, buf) {
+    an.getByteTimeDomainData(buf);
+    var picco = 0;
+    for (var i = 0; i < buf.length; i++) {
+      var d = Math.abs(buf[i] - 128) / 128;
+      if (d > picco) picco = d;
+    }
+    return Math.min(100, Math.round(picco * 145));   // un filo di guadagno: il parlato e' basso
+  }
+  (function disegna() {
+    METRI.forEach(function (m) {
+      if (!m.box) return;
+      var vivo = m.video && !m.video.paused && !m.video.ended && m.video.readyState > 1;
+      m.box.style.display = vivo ? "flex" : "none";
+      if (!vivo) { m.zero = 0; return; }
+      var barre = m.box.querySelectorAll("i > b");
+      var l = livello(m.an[0], m.buf), r = livello(m.an[1], m.buf);
+      barre[0].style.height = l + "%";
+      barre[1].style.height = r + "%";
+      if (Math.max(l, r) < 2) m.zero++; else m.zero = 0;
+      var muta = m.zero > 90;                        // circa un secondo e mezzo a zero
+      m.box.classList.toggle("muta", muta);
+      m.box.title = muta ? "Nessun audio in questa clip" : "Livelli audio";
+    });
+    requestAnimationFrame(disegna);
+  })();
+
+  // L'AUDIO DELL'ANTEPRIMA. Cercare il punto di un gol guardando solo le
+  // immagini e' un supplizio: col boato si trova in un secondo. E' l'audio del
+  // monitor di anteprima, non tocca l'onda. La scelta resta fra una clip e
+  // l'altra: chi lo accende lo vuole acceso per tutta la partita.
+  var cueSuono = false;
+  try { cueSuono = localStorage.getItem("comotv.regia.anteprimaSuono") === "1"; } catch (e) {}
+  function cueAudioDisegna() {
+    var b = document.getElementById("cueAudio"), v = document.getElementById("pvwvid");
+    // se il metro c'e', comanda lui il volume: toccare "muted" a un elemento
+    // gia' dentro il grafo non fa piu' niente
+    v.muted = false;
+    metroSuono(v, cueSuono);
+    if (!METRI.some(function (x) { return x.video === v; })) v.muted = !cueSuono;
+    b.innerHTML = cueSuono ? "&#128266;" : "&#128263;";
+    b.style.color = cueSuono ? "#A8D4F7" : "";
+    b.style.borderColor = cueSuono ? "#4FA3E8" : "";
+    b.title = cueSuono ? "Anteprima con audio \u2014 clicca per zittirla"
+                       : "Anteprima muta \u2014 clicca per sentirla";
+  }
+  document.getElementById("cueAudio").addEventListener("click", function () {
+    cueSuono = !cueSuono;
+    try { localStorage.setItem("comotv.regia.anteprimaSuono", cueSuono ? "1" : "0"); } catch (e) {}
+    cueAudioDisegna();
+  });
+
+  // LA REPLICA DELL'ONDA. Sta dentro il suo telaio ed e' muta di proposito: se
+  // suonasse, in sala si sentirebbe due volte. Ma il suo audio si puo' misurare
+  // lo stesso — entra nel grafo e non prosegue verso le casse — e cosi' le
+  // barrette dicono se quello che sta andando in onda ha davvero il suono.
+  document.getElementById("thumb").addEventListener("load", function () {
+    var fr = this;
+    setTimeout(function () {
+      try {
+        var d = fr.contentDocument;
+        var v = d && d.querySelector("video");
+        if (!v) { document.getElementById("vuPgm").style.display = "none"; return; }
+        v.muted = false;                 // nel grafo, non nelle casse
+        metro(v, document.getElementById("vuPgm"), false);
+      } catch (e) {}
+    }, 300);
   });
   document.getElementById("cuePlay").addEventListener("click", function () {
     var v = document.getElementById("pvwvid");
@@ -986,17 +1157,10 @@
   });
   document.getElementById("pvwvid").addEventListener("pause", function () {
     document.getElementById("cuePlay").innerHTML = "&#9654;";
-  });
-  document.getElementById("cueOk").addEventListener("click", function () {
-    if (!CUE.id) return;
-    // fissare il punto cambia cosa andra' in onda: e' un comando
-    if (!COMANDO) { msg.textContent = "Sola lettura: il comando di questo canale e\u2019 altrove."; return; }
-    var b = document.getElementById("cueOk");
-    b.disabled = true;
-    post({ tipo: "regia-taglio", id: CUE.id, da: CUE.da, a: 0 },
-         CUE.da > 0.05 ? "Parte da " + cueMmss(CUE.da) + ": il prossimo In onda comincia da li\u2019."
-                       : "Rimessa da capo.");
-    setTimeout(function () { b.disabled = false; thumbShownId = null; lastNonce = null; tick(); }, 400);
+    // arrivata in fondo NON si sposta il punto: guardare tutta la clip non
+    // deve significare farla ripartire dalla fine
+    if (this.ended) return;
+    cueSalva();
   });
 
   function showPvw(id) {
@@ -1395,7 +1559,9 @@
         msg.textContent = "Animazione di “" + titolo + "” in corso: " + s2 + "s…";
       } else {
         clearInterval(cdTimer); cdTimer = null;
-        msg.textContent = "“" + titolo + "” ferma sull'ultimo frame — esce solo con FUORI ONDA.";
+        // che sia ferma sull'ultimo fotogramma lo si vede dal monitor: scriverlo
+        // ogni volta riempiva la riga dei messaggi di roba gia' nota
+        msg.textContent = "";
       }
     }, 250);
   }
@@ -1437,7 +1603,9 @@
     }
     livbtns.innerHTML = h;
     var t = titoloSuLiv(m);
-    livcap.textContent = t ? ("Livello " + m + ": " + t) : ("Livello " + m + " libero");
+    // Solo se il livello e' libero: il titolo di quello che c'e' sopra si legge
+    // gia' in scaletta, ripeterlo qui e' rumore.
+    livcap.textContent = t ? "" : ("Livello " + m + " libero");
   }
   if (livbtns) livbtns.addEventListener("click", function (e) {
     var b = e.target.closest ? e.target.closest("button[data-liv]") : null;
