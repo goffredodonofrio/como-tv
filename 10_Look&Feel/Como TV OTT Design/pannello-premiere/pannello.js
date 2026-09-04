@@ -145,7 +145,7 @@
     try { radice = await progetto.getRootItem(); }
     catch (e) { return { errore: "non apro il progetto: " + mess(e) }; }
 
-    var cerco = nomeFile.toLowerCase(), coda = [[radice, ""]], visti = 0, raccontato = false;
+    var cerco = nomeFile.toLowerCase(), coda = [[radice, ""]], visti = 0, raccontato = "";
     while (coda.length && visti < 5000) {
       var g = coda.shift(), it = g[0], dove = g[1];
       visti++;
@@ -168,15 +168,15 @@
         for (var i = 0; i < figli.length; i++) coda.push([figli[i], dove + "/" + n]);
         continue;
       }
-      // Il primo che non si apre racconta perche': se sbaglio strada, si
-      // vede subito invece di sembrare un progetto vuoto.
+      // Il primo che non si apre si annota, ma si racconta solo se la
+      // ricerca poi fallisce: una sequenza non e' una cartella, e dirlo
+      // mentre tutto funziona sarebbe rumore che nasconde il resto.
       if (!raccontato && perche && !/\./.test(n)) {
-        raccontato = true;
-        dico("   “" + n + "” non si apre: " + perche, "forse");
-        dico("   espone: " + metodiDi(it));
+        raccontato = "“" + n + "” non si apre: " + perche + "\n   espone: " + metodiDi(it);
       }
     }
-    return { errore: "non trovo “" + nomeFile + "” fra i " + visti + " elementi del progetto" };
+    return { errore: "non trovo “" + nomeFile + "” fra i " + visti + " elementi del progetto",
+             nota: raccontato };
   }
 
   // Serve solo quando la ricerca fallisce: elenca il primo piano del
@@ -221,6 +221,7 @@
     var trovato = await cercaNelProgetto(progetto, m.file);
     if (!trovato.pezzo) {
       dico(trovato.errore, "no");
+      if (trovato.nota) dico("   " + trovato.nota, "forse");
       await raccontaProgetto(progetto);
       return;
     }
@@ -250,15 +251,18 @@
       return;
     }
 
+    // "Requires locked access": l'azione non va solo ESEGUITA dentro il
+    // lucchetto, va anche COSTRUITA li' dentro. Fabbricarla fuori e portarla
+    // dentro non basta — il progetto non si lascia leggere mentre e' libero.
     try {
-      var azione = editor.createOverwriteItemAction(trovato.pezzo, quando, 1, -1);
       await progetto.lockedAccess(function () {
+        var azione = editor.createOverwriteItemAction(trovato.pezzo, quando, 1, -1);
         progetto.executeTransaction(function (gruppo) {
           gruppo.addAction(azione);
         }, "Como TV: maschera " + m.file);
       });
       dico("✓ messa su V2.", "si");
-      dico("Se non e' dove volevi: Ctrl+Z.", "forse");
+      dico("Se non è dove volevi: Ctrl+Z.", "forse");
     } catch (e) {
       dico("Non riesco a metterla: " + mess(e), "no");
       dico("L'editor espone: " + metodiDi(editor));
