@@ -91,5 +91,14 @@ window.Maschere = (function () {
 
   function tutte() { return TAVOLA; }
 
-  return { per: per, tutte: tutte, chiave: chiave };
+  // Serve a riconoscere in timeline le maschere del vecchio modo, per
+  // toglierle: adesso la competizione sta scritta dentro la maschera che
+  // disegna il ponte, e i ventinove PNG non ci vanno piu' sopra.
+  var NOMI = {};
+  Object.keys(TAVOLA).forEach(function (k) { NOMI[TAVOLA[k].toLowerCase()] = 1; });
+  function eUnaMaschera(nomeFile) {
+    return !!NOMI[String(nomeFile || "").toLowerCase()];
+  }
+
+  return { per: per, tutte: tutte, chiave: chiave, eUnaMaschera: eUnaMaschera };
 })();

@@ -1243,69 +1243,26 @@ async function airtableEventi() {
 //  Il disegno passa da rsvg-convert: si scrive un SVG e torna un PNG.
 //  Nessuna libreria da mantenere, nessun browser da tenere in piedi.
 
-const TITOLO_MISURE = {
-  // Story 9:16. Le misure sono in pixel del formato finale, cosi' il PNG
-  // entra in timeline a grandezza naturale e non va scalato a mano.
-  "9-16": { w: 1080, h: 1920, x: 84, y1: 1440, riga: 96, sotto: 96, corpo: 78, corpoSotto: 42 },
-  "16-9": { w: 1920, h: 1080, x: 96, y1: 820,  riga: 84, sotto: 84, corpo: 68, corpoSotto: 38 },
-  "4-5":  { w: 1080, h: 1350, x: 84, y1: 1010, riga: 92, sotto: 92, corpo: 74, corpoSotto: 40 },
-  "3-4":  { w: 1080, h: 1440, x: 84, y1: 1090, riga: 92, sotto: 92, corpo: 74, corpoSotto: 40 }
-};
-
-function xmlSicuro(t) {
-  return String(t == null ? "" : t)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;").replace(/'/g, "&apos;");
-}
-
-// Quanto e' larga una riga. rsvg non lo dice, quindi si stima: per un
-// bastone grasso in maiuscolo la larghezza media di un carattere sta
-// attorno al 58% del corpo. E' una stima, non una misura — per questo il
-// margine e' generoso: meglio un titolo un filo piu' piccolo del necessario
-// che uno che esce dall'inquadratura.
-function largaCirca(testo, corpo) { return String(testo).length * corpo * 0.58; }
-
-// Un titolo lungo non si taglia e non va a capo da solo: si rimpicciolisce
-// finche' ci sta. Chi incolla non deve sapere quanto e' lungo il suo testo.
-function corpoCheCiSta(testo, corpo, larghezza) {
-  let c = corpo;
-  while (c > corpo * 0.6 && largaCirca(testo, c) > larghezza) c -= 2;
-  return c;
-}
+// Il disegno non lo facciamo noi: lo fa il motore del generatore, quello
+// stesso che produce le maschere per i social. La copia sta in ottgen.js e
+// si rifa' con estrai-motore.py — riscrivere l'estetica a mano avrebbe
+// voluto dire due maschere che dopo un mese non si somigliano piu'.
+const OTTGEN = require("./ottgen.js");
+const MASCHERA = "feed_maschera_1080x1920";
 
 function svgTitolo(p) {
-  const m = TITOLO_MISURE[p.formato] || TITOLO_MISURE["9-16"];
-  const utile = m.w - m.x * 2;
-  const righe = [];
-  let y = m.y1;
+  const formato = OTTGEN.items().filter((i) => i.key === MASCHERA)[0];
+  if (!formato) throw new Error("il motore non conosce " + MASCHERA);
 
-  // Le due righe del titolo prendono lo STESSO corpo, quello che va bene
-  // alla piu' lunga: due righe di misure diverse non sono un titolo su due
-  // righe, sono due titoli.
-  const testi = [p.t1, p.t2].filter((t) => String(t || "").trim());
-  let corpo = m.corpo;
-  testi.forEach((t) => { corpo = Math.min(corpo, corpoCheCiSta(t.toUpperCase(), m.corpo, utile)); });
+  // Dove va a capo il titolo lo decide chi scrive, non una formula: il
+  // motore spezza sul "·", e il pannello ha due caselle apposta.
+  const titolo = [p.t1, p.t2].filter((t) => String(t || "").trim()).join(" · ");
 
-  testi.forEach((t) => {
-    righe.push('<text x="' + m.x + '" y="' + y + '" class="tit" style="font-size:' + corpo + 'px">' +
-               xmlSicuro(t).toUpperCase() + "</text>");
-    y += Math.round(corpo * 1.22);
-  });
-  if (String(p.sott || "").trim()) {
-    const cs = corpoCheCiSta(p.sott, m.corpoSotto, utile);
-    righe.push('<text x="' + m.x + '" y="' + (y + Math.round(cs * 0.9)) + '" class="sot" ' +
-               'style="font-size:' + cs + 'px">' + xmlSicuro(p.sott) + "</text>");
-  }
-  // Niente sfondo: il PNG va sopra il video, deve essere trasparente.
-  return '<?xml version="1.0" encoding="UTF-8"?>' +
-    '<svg xmlns="http://www.w3.org/2000/svg" width="' + m.w + '" height="' + m.h + '" ' +
-    'viewBox="0 0 ' + m.w + " " + m.h + '">' +
-    "<style>" +
-    ".tit{font-family:'Mazzard M ExtraBold','Mazzard M',sans-serif;font-weight:800;" +
-    "font-size:" + m.corpo + "px;fill:#FFFFFF;letter-spacing:0.5px}" +
-    ".sot{font-family:'Mazzard M',sans-serif;font-weight:400;" +
-    "font-size:" + m.corpoSotto + "px;fill:#C9A24B;letter-spacing:1.5px}" +
-    "</style>" + righe.join("") + "</svg>";
+  return OTTGEN.svgFor(formato, {
+    comp: String(p.comp || "").toUpperCase(),
+    mkTitle: titolo,
+    mkSub: p.sott || ""
+  }, {}, {}, "");
 }
 
 function pngDelTitolo(p) {
@@ -1663,7 +1620,7 @@ const server = http.createServer((req, res) => {
     if (q.get("titolo") !== null) {
       return pngDelTitolo({
         t1: q.get("titolo") || "", t2: q.get("t2") || "",
-        sott: q.get("sott") || "", formato: q.get("formato") || "9-16"
+        sott: q.get("sott") || "", comp: q.get("comp") || ""
       }).then((buf) => {
         res.writeHead(200, { "Content-Type": "image/png", "Content-Length": buf.length,
                              "Cache-Control": "no-store" });

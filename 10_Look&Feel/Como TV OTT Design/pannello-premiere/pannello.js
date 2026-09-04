@@ -128,16 +128,11 @@
     el("vSquadre").textContent = scelto.programma ? "(programma)"
       : (scelto.casa + " – " + scelto.ospite);
 
-    // La maschera e' il vero lavoro del pannello: il testo non si scrive,
-    // ma scegliere il PNG giusto fra ventinove e' esattamente il passaggio
-    // dove oggi nasce l'errore che va in onda.
-    var m = window.Maschere.per(scelto.competizione);
-    var v = el("vMask");
-    if (m.file) { v.textContent = m.file; v.className = ""; }
-    else if (m.manca) { v.textContent = "il PNG non esiste"; v.className = "no"; }
-    else { v.textContent = "competizione mai vista"; v.className = "forse"; }
-    // Il pulsante resta acceso anche senza maschera: nome e testi valgono
-    // lo stesso, e spegnere tutto per un PNG mancante toglierebbe il resto.
+    // La maschera non si sceglie piu' fra ventinove PNG: si disegna, e la
+    // competizione ci finisce dentro scritta. Non c'e' piu' un caso "il file
+    // non esiste", che era il caso di Champions, Serie A e altre quattro.
+    el("vMask").textContent = "disegnata dal ponte";
+    el("vMask").className = "si";
     el("btnMask").disabled = false;
 
     // Il nome si puo' proporre solo conoscendo quello attuale, che sta in
@@ -162,11 +157,9 @@
     if (!sequenza) { dico("Nessuna sequenza aperta.", "no"); return; }
     PPRO = ppro; SEQ = sequenza;
 
-    await mettiMaschera(progetto, sequenza, ppro);
+    await componiMaschera(progetto, sequenza, ppro);
     dico("");
     await rinomina(progetto, sequenza);
-    dico("");
-    await scriviTesti(progetto, sequenza, ppro);
   }
 
   // ── i tre testi ────────────────────────────────────────────────────
@@ -184,136 +177,142 @@
   //
   // Finche' quel modello non esiste, questa funzione non finge: dice cosa
   // manca e chi lo deve fare.
-  // ── il titolo, disegnato dal ponte e messo in timeline ─────────────
-  // Il giro completo: il ponte disegna il PNG (li' il font c'e' e il
-  // canvas di UXP non serve), il pannello lo scarica, lo salva, lo importa
-  // e lo mette dove stavano le grafiche native — che vengono tolte.
+  // ── comporre la maschera e metterla in timeline ────────────────────
+  // Una sola immagine per tutto. La maschera del generatore contiene gia'
+  // la competizione (in oro, come testo), il logo, il titolo e il
+  // sottotitolo: non ci sono piu' un PNG per la competizione e tre grafiche
+  // per i testi, c'e' un PNG solo che prende il posto di tutti.
   //
-  // Si riconoscono per quello che sono, non per il numero di traccia: una
-  // grafica di testo ha un componente "AE.ADBE Text". Cosi' l'endtag su V5
-  // o un logo su V6 non li tocca nessuno, anche se domani le tracce
-  // cambiano ordine.
-  async function graficheDiTesto(sequenza, ppro) {
-    var fuori = [], quante = 0;
+  // Il disegno lo fa il ponte con il motore del generatore, cosi' questa
+  // maschera e' la STESSA che esce per i social — non una che le somiglia.
+  async function componiMaschera(progetto, sequenza, ppro) {
+    // 1 · che cosa sostituiamo. Si riconoscono per quello che sono, non per
+    // il numero di traccia: le grafiche di testo dal componente AE.ADBE
+    // Text, le maschere vecchie dal nome del file. Cosi' l'endtag e i loghi
+    // non li tocca nessuno, oggi e anche se domani le tracce cambiano.
+    var da = await daSostituire(sequenza, ppro);
+    if (!da.pezzi.length) {
+      dico("Non trovo ne' maschere ne' grafiche di testo da sostituire.", "no");
+      dico("Apri la sequenza del master: e' da quella che prendo posizione", "forse");
+      dico("e durata, e su una timeline vuota non ho da dove copiarle.", "forse");
+      return;
+    }
+    dico("Sostituisco " + da.pezzi.length + " element" +
+         (da.pezzi.length === 1 ? "o" : "i") + " su V" + (da.traccia + 1) + ".");
+
+    // 2 · il disegno, dal ponte
+    var nomeFile = "maschera-" + Date.now() + ".png";
+    var giro = PONTE +
+      "?comp=" + encodeURIComponent(scelto.competizione || "") +
+      "&titolo=" + encodeURIComponent(testoDi("t1")) +
+      "&t2=" + encodeURIComponent(testoDi("t2")) +
+      "&sott=" + encodeURIComponent(testoDi("sott"));
+    var percorso = "";
+    try {
+      var r = await fetch(giro, { cache: "no-store" });
+      var buf = await r.arrayBuffer();
+      if (buf.byteLength < 2000) throw new Error("il ponte non ha disegnato niente");
+      var uxp = require("uxp");
+      var cartella = await uxp.storage.localFileSystem.getTemporaryFolder();
+      var file = await cartella.createEntry(nomeFile, { overwrite: true });
+      await file.write(buf, { format: uxp.storage.formats.binary });
+      percorso = file.nativePath;
+      dico("Maschera disegnata (" + Math.round(buf.byteLength / 1024) + " KB).", "si");
+    } catch (e) { dico("Non ottengo la maschera: " + mess(e), "no"); return; }
+
+    // 3 · dentro il progetto
+    var immagine = null;
+    try {
+      var radice = await progetto.getRootItem();
+      await progetto.importFiles([percorso], true, radice, false);
+      immagine = (await cercaNelProgetto(progetto, nomeFile)).pezzo;
+      if (!immagine) throw new Error("importata ma non la ritrovo nel progetto");
+    } catch (e) { dico("Non importo la maschera: " + mess(e), "no"); return; }
+
+    // 4 · via le vecchie, dentro la nuova
+    var editor;
+    try { editor = await ppro.SequenceEditor.getEditor(sequenza); }
+    catch (e) { dico("Non ottengo l'editor: " + mess(e), "no"); return; }
+
+    await togliVecchie(progetto, editor, ppro, da.pezzi);
+
+    try {
+      await progetto.lockedAccess(function () {
+        var az = editor.createOverwriteItemAction(immagine, da.inizio, da.traccia, -1);
+        progetto.executeTransaction(function (g) { g.addAction(az); }, "Como TV: maschera");
+      });
+      dico("✓ maschera messa su V" + (da.traccia + 1) + ".", "si");
+    } catch (e) { dico("Non metto la maschera: " + mess(e), "no"); return; }
+
+    if (da.fine) await pareggiaTraccia(progetto, sequenza, ppro, da.traccia, da.fine);
+    dico("Se non è come volevi: Ctrl+Z.", "forse");
+  }
+
+  // Le clip che la maschera nuova rimpiazza, con le misure da cui copiare
+  // posizione e durata.
+  async function daSostituire(sequenza, ppro) {
+    var fuori = { pezzi: [], traccia: 99, inizio: null, fine: null };
+    var quante = 0;
     try { quante = await sequenza.getVideoTrackCount(); } catch (e) { return fuori; }
+
     for (var i = 0; i < quante; i++) {
       var pezzi = [];
       try {
         var tr = await sequenza.getVideoTrack(i);
         pezzi = await tr.getTrackItems(ppro.Constants.TrackItemType.CLIP, false);
       } catch (e) { continue; }
+
       for (var k = 0; k < (pezzi || []).length; k++) {
-        var catena, n = 0, testo = false;
-        try { catena = await pezzi[k].getComponentChain(); n = await catena.getComponentCount(); }
-        catch (e) { continue; }
-        for (var c = 0; c < n && !testo; c++) {
+        var nome = "";
+        try { var vp = await pezzi[k].getProjectItem(); nome = (vp && vp.name) || ""; } catch (e) {}
+        if (!nome) { try { nome = await pezzi[k].getName(); } catch (e) {} }
+
+        var nostra = /^maschera-\d+\.png$/i.test(nome) || /^titolo-\d+\.png$/i.test(nome);
+        var vecchiaMaschera = window.Maschere.eUnaMaschera(nome);
+        var grafica = false;
+        if (!nostra && !vecchiaMaschera) {
           try {
-            var comp = await catena.getComponentAtIndex(c);
-            if (/AE\.ADBE Text/i.test(await comp.getMatchName())) testo = true;
+            var catena = await pezzi[k].getComponentChain();
+            var n = await catena.getComponentCount();
+            for (var c = 0; c < n && !grafica; c++) {
+              var comp = await catena.getComponentAtIndex(c);
+              if (/AE\.ADBE Text/i.test(await comp.getMatchName())) grafica = true;
+            }
           } catch (e) {}
         }
-        if (testo) fuori.push({ traccia: i, pezzo: pezzi[k] });
+        if (!nostra && !vecchiaMaschera && !grafica) continue;
+
+        fuori.pezzi.push(pezzi[k]);
+        if (i < fuori.traccia) fuori.traccia = i;
+        try {
+          var a = await pezzi[k].getStartTime();
+          if (!fuori.inizio || a.seconds < fuori.inizio.seconds) fuori.inizio = a;
+        } catch (e) {}
+        try {
+          var b = await pezzi[k].getEndTime();
+          if (!fuori.fine || b.seconds > fuori.fine.seconds) fuori.fine = b;
+        } catch (e) {}
       }
     }
+    if (fuori.traccia === 99) fuori.traccia = 1;
     return fuori;
   }
 
-  // Il formato lo dice il nome della sequenza: "..._9-16", "..._16-9".
-  function formatoDi(nome) {
-    var m = String(nome || "").match(/(\d+-\d+)\s*$/);
-    return m ? m[1] : "9-16";
-  }
-
-  async function scriviTesti(progetto, sequenza, ppro) {
-    var valori = [testoDi("t1"), testoDi("t2"), testoDi("sott")];
-    if (!valori[0] && !valori[1] && !valori[2]) { dico("Nessun testo da mettere."); return; }
-
-    // Il ponte disegna, il pannello porta. Il nome del file cambia ogni
-    // volta: Premiere tiene in cache i media per percorso, e riusare lo
-    // stesso nome vorrebbe dire rivedere il titolo di prima.
-    var formato = formatoDi(sequenza.name);
-    var giro = PONTE + "?titolo=" + encodeURIComponent(valori[0]) +
-               "&t2=" + encodeURIComponent(valori[1]) +
-               "&sott=" + encodeURIComponent(valori[2]) +
-               "&formato=" + encodeURIComponent(formato);
-    var nomeFile = "titolo-" + Date.now() + ".png";
-    var percorso = "";
-    try {
-      var r = await fetch(giro, { cache: "no-store" });
-      var buf = await r.arrayBuffer();
-      if (buf.byteLength < 500) throw new Error("il ponte non ha disegnato niente");
-      var uxp = require("uxp");
-      var cartella = await uxp.storage.localFileSystem.getTemporaryFolder();
-      var file = await cartella.createEntry(nomeFile, { overwrite: true });
-      await file.write(buf, { format: uxp.storage.formats.binary });
-      percorso = file.nativePath;
-      dico("Titolo disegnato (" + formato + ", " + Math.round(buf.byteLength / 1024) + " KB).", "si");
-    } catch (e) { dico("Non ottengo il titolo: " + mess(e), "no"); return; }
-
-    var immagine = null;
-    try {
-      var radice = await progetto.getRootItem();
-      await progetto.importFiles([percorso], true, radice, false);
-      var cercata = await cercaNelProgetto(progetto, nomeFile);
-      immagine = cercata.pezzo;
-      if (!immagine) throw new Error("importata ma non la ritrovo nel progetto");
-    } catch (e) { dico("Non importo il titolo: " + mess(e), "no"); return; }
-
-    // Le grafiche di testo che c'erano: da qui si prendono le misure e poi
-    // se ne vanno. Se non ce n'e' nessuna non si inventa una posizione.
-    var vecchie = await graficheDiTesto(sequenza, ppro);
-    if (!vecchie.length) {
-      dico("Non trovo le grafiche di testo: non so dove mettere il titolo.", "no");
-      dico("Il PNG e' comunque nel progetto: " + nomeFile, "forse");
-      return;
-    }
-    var traccia = vecchie[0].traccia, inizio = null, finiva = null;
-    try { inizio = await vecchie[0].pezzo.getStartTime(); } catch (e) {}
-    for (var q = 0; q < vecchie.length; q++) {
-      try {
-        var f = await vecchie[q].pezzo.getEndTime();
-        if (!finiva || f.seconds > finiva.seconds) finiva = f;
-      } catch (e) {}
-      if (vecchie[q].traccia < traccia) traccia = vecchie[q].traccia;
-    }
-    if (!inizio) { dico("Non capisco da dove partono le grafiche.", "no"); return; }
-
-    var editor;
-    try { editor = await ppro.SequenceEditor.getEditor(sequenza); }
-    catch (e) { dico("Non ottengo l'editor: " + mess(e), "no"); return; }
-
-    await togliVecchie(progetto, editor, ppro, vecchie.map(function (v) { return v.pezzo; }));
-
-    try {
-      await progetto.lockedAccess(function () {
-        var az = editor.createOverwriteItemAction(immagine, inizio, traccia, -1);
-        progetto.executeTransaction(function (g) { g.addAction(az); }, "Como TV: titolo");
-      });
-      dico("✓ titolo messo su V" + (traccia + 1) + ".", "si");
-    } catch (e) { dico("Non metto il titolo: " + mess(e), "no"); return; }
-
-    if (finiva) await pareggiaTitolo(progetto, sequenza, ppro, traccia, finiva);
-    return;
-  }
-
-  // Come per la maschera: un PNG entra con la durata di default e va
-  // allungato fino a dove finivano le grafiche che ha sostituito.
-  async function pareggiaTitolo(progetto, sequenza, ppro, traccia, fine) {
+  // Un PNG entra in timeline con la durata di default: va allungato fino a
+  // dove finiva quello che ha sostituito.
+  async function pareggiaTraccia(progetto, sequenza, ppro, traccia, fine) {
     try {
       var tr = await sequenza.getVideoTrack(traccia);
       var pezzi = await tr.getTrackItems(ppro.Constants.TrackItemType.CLIP, false);
       if (!pezzi || !pezzi.length) return;
       await progetto.lockedAccess(function () {
         var az = pezzi[0].createSetEndAction(fine);
-        progetto.executeTransaction(function (g) { g.addAction(az); }, "Como TV: durata titolo");
+        progetto.executeTransaction(function (g) { g.addAction(az); }, "Como TV: durata");
       });
-      dico("✓ durata del titolo pareggiata.", "si");
-    } catch (e) { dico("Durata del titolo non pareggiata: " + mess(e), "forse"); }
+      dico("✓ durata pareggiata.", "si");
+    } catch (e) { dico("Durata non pareggiata: " + mess(e), "forse"); }
   }
 
-  // Qui stavano la vecchia scriviTesti e "campiScrivibili": cercavano nelle
-  // grafiche un campo di testo scrivibile, e non lo trovavano mai perche'
-  // non esiste. Ora il testo non si cerca dentro Premiere: si disegna fuori.
 
   async function togliVecchie(progetto, editor, ppro, vecchie) {
     var modi = [];
@@ -539,76 +538,11 @@
     } catch (e) { dico("Non elenco il progetto: " + mess(e), "no"); }
   }
 
-  async function mettiMaschera(progetto, sequenza, ppro) {
-    var m = window.Maschere.per(scelto.competizione);
-    if (!m.file) {
-      dico("Maschera: " + (m.manca ? "manca il PNG di " + m.manca : "competizione mai vista"), "no");
-      return;
-    }
-    dico("Maschera da mettere: " + m.file);
-
-    var trovato = await cercaNelProgetto(progetto, m.file);
-    if (!trovato.pezzo) {
-      dico(trovato.errore, "no");
-      if (trovato.nota) dico("   " + trovato.nota, "forse");
-      await raccontaProgetto(progetto);
-      return;
-    }
-    dico("Trovata nel progetto.", "si");
-
-    // Dove: sulla V2, all'attacco della maschera che c'e' adesso — cosi'
-    // prende il posto di quella vecchia invece di aggiungersi.
-    var quando = null, fine = null, vecchie = null;
-    try {
-      var v2 = await sequenza.getVideoTrack(1);
-      var sopra = await v2.getTrackItems(ppro.Constants.TrackItemType.CLIP, false);
-      if (sopra && sopra.length) {
-        vecchie = sopra;
-        quando = await sopra[0].getStartTime();
-        // Serve anche DOVE FINISCE. Un PNG entra in timeline con la durata
-        // di default — cinque secondi — e se la maschera vecchia era piu'
-        // lunga ne resta in coda un pezzo: due clip su V2 invece di una.
-        // E' il "non aggiunge" che avevo promesso e che non mantenevo.
-        try { fine = await sopra[sopra.length - 1].getEndTime(); } catch (e) {}
-        dico("Prende il posto di quella che c'e' adesso.");
-      }
-    } catch (e) {}
-    if (!quando) {
-      try { quando = await sequenza.getPlayerPosition(); dico("La metto dove sta la testina."); }
-      catch (e) { dico("Non so a che punto metterla: " + mess(e), "no"); return; }
-    }
-
-    var editor;
-    try { editor = await ppro.SequenceEditor.getEditor(sequenza); }
-    catch (e) {
-      dico("Non ottengo l'editor della sequenza: " + mess(e), "no");
-      dico("SequenceEditor espone: " + metodiDi(ppro.SequenceEditor));
-      return;
-    }
-
-    // "Requires locked access": l'azione non va solo ESEGUITA dentro il
-    // lucchetto, va anche COSTRUITA li' dentro. Fabbricarla fuori e portarla
-    // dentro non basta — il progetto non si lascia leggere mentre e' libero.
-    // Coprire non basta: la maschera vecchia va TOLTA. Allungare quella
-    // nuova sopra l'altra lasciava due clip su V2 — il referto le elencava
-    // tutte e due. Prima si svuota la traccia, poi si mette la nuova.
-    if (vecchie && vecchie.length) await togliVecchie(progetto, editor, ppro, vecchie);
-
-    try {
-      await progetto.lockedAccess(function () {
-        var azione = editor.createOverwriteItemAction(trovato.pezzo, quando, 1, -1);
-        progetto.executeTransaction(function (gruppo) {
-          gruppo.addAction(azione);
-        }, "Como TV: maschera " + m.file);
-      });
-      dico("✓ messa su V2.", "si");
-      await pareggiaDurata(progetto, sequenza, ppro, quando, fine);
-      dico("Se non è dove volevi: Ctrl+Z.", "forse");
-    } catch (e) {
-      dico("Non riesco a metterla: " + mess(e), "no");
-      dico("L'editor espone: " + metodiDi(editor));
-    }
-  }
+  // Qui stava mettiMaschera, quella che pescava uno dei ventinove PNG di
+  // competizione. Non serve piu': la maschera del generatore la competizione
+  // ce l'ha dentro, scritta in oro. Sei competizioni non avevano il PNG —
+  // Champions compresa, ventiquattro eventi nei prossimi due mesi — e ora
+  // non serve piu' farlo.
 
   // ── Premiere ───────────────────────────────────────────────────────
   function premiere() {
