@@ -29,6 +29,15 @@ ssh "$VM" "mkdir -p $DOVE" || exit 1
 # LEGGIMI.md non sale: il ponte non serve i .md, e chiederlo dal PC darebbe
 # un 404 su un file che al plugin non serve. Sta nello zip, per chi lo vuole.
 scp -q manifest.json index.html pannello.js /tmp/comotv-pannello.zip "$VM:$DOVE/" || exit 1
-ssh "$VM" "chmod 644 $DOVE/*"
+
+# Il plugin minimo: copia nuda dell'esempio ufficiale, niente di nostro
+# dentro. Serve a separare "Premiere non carica i pannelli" da "il nostro
+# pannello ha qualcosa che non va": senza, si correggerebbe al buio.
+ssh "$VM" "mkdir -p $DOVE/prova"
+scp -q prova/manifest.json prova/index.html "$VM:$DOVE/prova/" || exit 1
+# 644 ai file e 755 alle cartelle, distinti: un chmod 644 dato in blocco
+# toglie alle cartelle il permesso di attraversamento, e da fuori il
+# risultato e' un 404 su file che invece ci sono.
+ssh "$VM" "find $DOVE -type f -exec chmod 644 {} + ; find $DOVE -type d -exec chmod 755 {} +"
 
 echo "✓ fatto. Sul PC: rilancia il comando di aggiornamento, poi Reload in UDT."
