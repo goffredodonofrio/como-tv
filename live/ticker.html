@@ -147,6 +147,13 @@
   .cctb.qui{background:var(--gold);color:#0A0F24;border-color:var(--gold);}
   /* le righe degli appuntamenti: corte e in fila, si riempiono a tastiera
      senza staccare le mani dai tasti */
+  /* quanto e' grande la foto: tre misure, e la piu' grande cambia il taglio */
+  .apmis{display:flex;align-items:center;gap:5px;margin-bottom:7px;}
+  .apmislab{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-3);margin-right:3px;}
+  .apmisb{flex:1;font-size:11px;font-weight:600;padding:5px 4px;border-radius:6px;cursor:pointer;
+    background:var(--bg-1);color:var(--fg-3);border:1px solid var(--line-2);}
+  .apmisb:hover{border-color:var(--gold);}
+  .apmisb.qui{background:rgba(201,162,75,.16);color:var(--gold);border-color:var(--gold);}
   .apedit{background:var(--bg-1);border:1px solid var(--line-2);border-radius:8px;padding:8px;}
   .aprow{display:flex;gap:5px;margin-bottom:5px;}
   .aprow:last-child{margin-bottom:0;}
@@ -415,7 +422,7 @@
   //    scarti della foto (ox, oy) sono in frazioni del riquadro: cosi'
   //    valgono uguali sia qui che sulla foto vera da 420x560.
   var MAX_CONT = 4, W_OUT = 420, H_OUT = 560;
-  function nuovoContenuto(){ return { tipo:"notizia", e:"", t:"", x:"", foto:null, stemma:"", ap:null }; }
+  function nuovoContenuto(){ return { tipo:"notizia", e:"", t:"", x:"", foto:null, stemma:"", ap:null, apf:"s" }; }
   var CONT = [];
   for (var k = 0; k < MAX_CONT; k++) CONT.push(nuovoContenuto());
   function pieno(c){
@@ -452,7 +459,19 @@
   }
 
   function righeApHTML(c, i) {
-    return '<div class="apedit">' +
+    var mis = c.apf || "s";
+    return '<div class="apmis">' +
+        '<span class="apmislab">Foto</span>' +
+        ['s|piccola|quattro appuntamenti',
+         'm|media|due appuntamenti',
+         'g|tutta la colonna|con una sola partita esce in grande, con piu\u2019 di una l\u2019elenco sta sulla foto'
+        ].map(function (v) {
+          var p = v.split("|");
+          return '<button type="button" class="apmisb' + (mis === p[0] ? " qui" : "") +
+                 '" data-apf="' + p[0] + '" data-i="' + i + '" title="' + p[2] + '">' + p[1] + '</button>';
+        }).join("") +
+      '</div>' +
+      '<div class="apedit">' +
       (c.ap || []).map(function (r, n) {
         function campo(k, ph, cls) {
           return '<input type="text" class="ccampo ' + cls + '" data-ap="' + i + '" ' +
@@ -571,6 +590,7 @@
     var d = b.dataset;
     if (d.rm != null) { CONT[+d.rm] = nuovoContenuto(); renderCont(); anteprima(); return; }
     if (d.tipo) { tipoScheda(+d.i, d.tipo); return; }
+    if (d.apf) { CONT[+d.i].apf = d.apf; renderCont(); anteprima(); return; }
     if (d.carica != null) { iUpload = +d.carica; el("ffile").click(); return; }
     if (d.mag != null) {
       var i = +d.mag;
@@ -639,7 +659,7 @@
         et: etichettaScelta(),
         tit: titRows,
         cont: CONT.map(function (c) {
-          var o = { tipo: c.tipo, e: c.e, t: c.t, x: c.x, stemma: c.stemma, ap: c.ap };
+          var o = { tipo: c.tipo, e: c.e, t: c.t, x: c.x, stemma: c.stemma, ap: c.ap, apf: c.apf };
           // Dell'immagine si tiene solo quello che serve a rifarla: l'oggetto
           // Image non si puo' scrivere, e non serve.
           if (c.foto) o.foto = { src: c.foto.src, url: c.foto.url, z: c.foto.z,
@@ -656,7 +676,7 @@
         var leggera = JSON.parse(localStorage.getItem(CHIAVE_BOZZA) || "null") || {};
         leggera = { modo: MODO, et: etichettaScelta(), tit: titRows,
           cont: CONT.map(function (c) {
-            var o = { tipo: c.tipo, e: c.e, t: c.t, x: c.x, stemma: c.stemma, ap: c.ap };
+            var o = { tipo: c.tipo, e: c.e, t: c.t, x: c.x, stemma: c.stemma, ap: c.ap, apf: c.apf };
             if (c.foto && c.foto.url) o.foto = { url: c.foto.url, src: c.foto.url, z: c.foto.z,
                                                  ox: c.foto.ox, oy: c.foto.oy, sporca: false };
             return o;
@@ -689,7 +709,7 @@
       var c = CONT[i];
       c.tipo = o.tipo || "notizia";
       c.e = o.e || ""; c.t = o.t || ""; c.x = o.x || "";
-      c.stemma = o.stemma || ""; c.ap = o.ap || null;
+      c.stemma = o.stemma || ""; c.ap = o.ap || null; c.apf = o.apf || "s";
       if (o.foto && o.foto.src) {
         // l'immagine si ricarica da sola; il ritaglio si rimette dopo
         (function (n, fo) {
@@ -767,6 +787,7 @@
       // gli appuntamenti viaggiano col cartello, come tutto il resto: in
       // onda la colonna non deve andare a cercarsi niente
       if (c.tipo === "appuntamenti") {
+        o.apf = c.apf || "s";
         o.ap = apPieni(c).map(function (r) {
           return { d:(r.d||"").trim(), m:(r.m||"").trim().toUpperCase(),
                    c:(r.c||"").trim(), ti:(r.chi||"").trim(), o:(r.o||"").trim() };

@@ -71,6 +71,43 @@
      poco perche' un nome di squadra si legga da tre metri. */
   .scheda.appunt .foto{height:420px;}
   .scheda.appunt .testo{top:470px;}
+  /* foto media: due appuntamenti, ma la faccia si vede */
+  .scheda.appunt.media .foto{height:640px;}
+  .scheda.appunt.media .testo{top:690px;}
+
+  /* ── una partita sola, in grande ──────────────────────────────────────
+     Cita la card verticale delle partite: foto a tutta colonna, i nomi
+     impilati col "vs" in oro, sotto la data e l'ora, in fondo la striscia
+     della competizione. Non e' quella grafica rimpicciolita — quella e'
+     2:3, questa colonna e' quasi tre volte piu' alta che larga — ma e' la
+     stessa lingua: la foto porta tutto e il testo sta appoggiato in fondo. */
+  .scheda.grande .foto{height:1080px;}
+  .scheda.grande .foto .velo{
+    background:linear-gradient(180deg,rgba(10,15,36,.18) 0%,transparent 26%,
+      rgba(12,18,44,.72) 62%,rgba(10,15,36,.96) 82%,#0A0F24 100%);}
+  .scheda.grande .testo{top:auto;bottom:150px;left:34px;right:30px;}
+  /* l'elenco appoggiato sulla foto: le righe hanno bisogno di un fondo
+     loro, se no i numeri finiscono su una maglia chiara e spariscono */
+  .scheda.grande.elenco .testo{top:520px;bottom:auto;}
+  .scheda.grande.elenco .corpo{background-color:rgba(8,12,30,.62);
+    border-radius:10px;padding:4px 14px;
+    border:1px solid rgba(201,162,75,.18);}
+  .scheda.grande.elenco .foto .velo{
+    background:linear-gradient(180deg,rgba(10,15,36,.15) 0%,transparent 22%,
+      rgba(12,18,44,.62) 52%,rgba(10,15,36,.92) 88%,#0A0F24 100%);}
+  .grsq{font-family:'Mazzard',sans-serif;font-weight:800;line-height:1.02;
+    text-transform:uppercase;letter-spacing:-.005em;}
+  .grsq .a{color:#F5F1E6;}
+  .grsq .b{color:#C9A24B;}
+  .grsq .vs{font-family:'Mazzard',sans-serif;font-weight:800;font-size:.42em;
+    color:#C9A24B;font-style:italic;margin-left:.28em;letter-spacing:.02em;}
+  .grquando{margin-top:20px;font-family:'Mazzard',sans-serif;font-weight:800;font-size:34px;
+    letter-spacing:.03em;color:#F5F1E6;text-transform:uppercase;}
+  .grquando i{font-style:normal;color:#C9A24B;}
+  .grcomp{position:absolute;left:34px;right:30px;bottom:56px;padding-top:20px;
+    border-top:1px solid rgba(201,162,75,.34);
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:15px;letter-spacing:.19em;
+    text-transform:uppercase;color:#C9A24B;}
   .scheda.appunt .titolo{font-size:34px;}
   .scheda.appunt .filo{margin-top:14px;}
   .scheda.appunt .corpo{margin-top:18px;}
@@ -253,6 +290,43 @@
 
   var V2 = String(D.v) === "2";
 
+  // ── una partita sola, in grande ──────────────────────────────────────
+  // "Ajax-PSV" diventa due righe col "vs" in mezzo, come nella card delle
+  // partite. Se il nome non ha il trattino resta una riga sola: un evento
+  // ("Football Show") non ha due squadre e non va spezzato per forza.
+  function unaPartita(v, scheda) {
+    var chi = String(v.ti || ((v.a && v.a.n) || "") +
+                     (v.b && v.b.n ? "-" + v.b.n : "")).trim();
+    var due = chi.split(/\s*[-–]\s*/);
+    var corpo;
+    if (due.length >= 2) {
+      var a = due[0], b = due.slice(1).join("-");
+      // Il corpo lo decide la riga piu' lunga: due righe di misure diverse
+      // non sono una sfida, sono due titoli.
+      var lungo = Math.max(a.length, b.length);
+      var s = lungo > 15 ? 38 : lungo > 12 ? 46 : lungo > 9 ? 54 : 62;
+      corpo = '<div class="grsq" style="font-size:' + s + 'px">' +
+        '<div><span class="a">' + esc(a) + '</span><span class="vs">vs</span></div>' +
+        '<div><span class="b">' + esc(b) + '</span></div></div>';
+    } else {
+      corpo = '<div class="grsq" style="font-size:44px"><div class="a">' + esc(chi) + '</div></div>';
+    }
+    var quando = [];
+    if (v.d) quando.push(esc(giornoPulito(v.d)) + (v.m ? " " + esc(v.m) : ""));
+    if (v.o) quando.push('<i>' + esc(v.o) + '</i>');
+    if (quando.length) corpo += '<div class="grquando">' + quando.join(" · ") + '</div>';
+
+    // La competizione va in fondo alla colonna, staccata: e' un'etichetta,
+    // non una riga del blocco.
+    if (v.c) {
+      var strip = document.createElement("div");
+      strip.className = "grcomp";
+      strip.textContent = v.c;
+      scheda.appendChild(strip);
+    }
+    return corpo;
+  }
+
   // ── le righe degli appuntamenti ──────────────────────────────────────
   // Arrivano dalla pagina Appuntamenti nella stessa forma con cui le disegna
   // la grafica a schermo intero: {g,d,m,o,c,ti,a,b,no}. Non si ricompongono
@@ -292,7 +366,18 @@
     // stessa foto, stessa entrata da destra — solo con il corpo fatto di
     // righe invece che di testo libero.
     var appunt = !!(c.ap && c.ap.length);
-    s.className = "scheda" + (appunt ? " appunt" : "");
+    // "g" vuole la foto a tutta colonna e una partita sola: con quattro
+    // righe sopra una foto alta 1080 non ci sta niente, e imporre una
+    // scelta e' meglio che stringere finche' non si legge piu'.
+    // "g" = foto a tutta colonna. Che cosa ci va sopra non lo decide un
+    // altro comando: lo dice quanti appuntamenti ci sono. Uno solo diventa
+    // la partita in grande, come nella card verticale; piu' d'uno resta
+    // l'elenco, appoggiato sulla foto. Nessuna scelta da fare due volte.
+    var pieno = appunt && c.apf === "g" && !!c.f;
+    var grande = pieno && c.ap.length === 1;
+    s.className = "scheda" + (appunt ? " appunt" : "") +
+                  (grande ? " grande" : pieno ? " grande elenco"
+                          : (appunt && c.apf === "m" ? " media" : ""));
     var conFoto = !!c.f;
     s.innerHTML =
       (conFoto ? '<div class="foto"><img alt=""><div class="velo"></div></div>' : '') +
@@ -317,11 +402,21 @@
     s.querySelector(".occhiello").textContent = c.e || "";
     s.querySelector(".titolo").textContent = c.t || "";
     var corpo = s.querySelector(".corpo");
-    if (appunt) corpo.innerHTML = righeAppuntamenti(c.ap);
+    if (grande) corpo.innerHTML = unaPartita(c.ap[0], s);
+    else if (appunt) corpo.innerHTML = righeAppuntamenti(c.ap);
     else corpo.textContent = c.x || "";
     el("barra").insertBefore(s, el("pallini"));
 
-    var testoY = appunt ? 470 : (conFoto ? 614 : 120);
+    if (grande) return s;      // misure fisse: niente da adattare
+    if (pieno) {
+      // L'elenco sulla foto: si appoggia in fondo, e quanto sale lo decide
+      // quanto e' alto. Cosi' due appuntamenti lasciano vedere la faccia e
+      // quattro no, ma nessuno dei due esce dalla colonna.
+      var alt = corpo.scrollHeight;
+      s.querySelector(".testo").style.top = Math.max(300, 1010 - alt - 120) + "px";
+      return s;
+    }
+    var testoY = appunt ? (c.apf === "m" ? 690 : 470) : (conFoto ? 614 : 120);
     var t = s.querySelector(".titolo"), fs = appunt ? 34 : 46;
     while (t.scrollHeight > 190 && fs > 26) { fs -= 2; t.style.fontSize = fs + "px"; }
     // quello che resta fra il titolo e lo stemma in fondo alla colonna
