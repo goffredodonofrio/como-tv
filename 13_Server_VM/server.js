@@ -1036,6 +1036,71 @@ function videoPreleva(p) {
   return { ok: true, id };
 }
 
+// ── che cosa c'e' in una cartella di Drive ─────────────────────────────
+// Una cartella non e' un file: non si "scarica". Si legge la sua pagina
+// pubblica e si tira fuori l'elenco, poi si sceglie quale video portare qui.
+//
+// Si legge l'HTML, non un'API: per l'API servirebbe una chiave Google che qui
+// non c'e', e per una cartella condivisa con "chiunque abbia il link" la pagina
+// basta. Il prezzo e' che Google puo' cambiare il suo HTML quando vuole e
+// questo smette di funzionare: per questo, se non trova niente, lo dice invece
+// di far finta che la cartella sia vuota — cosi' si capisce subito che e'
+// cambiato qualcosa e si torna a incollare il link del singolo file.
+function drivePagina(indirizzo, salti) {
+  return new Promise((ok, no) => {
+    if (salti > 5) { no(new Error("troppi rimbalzi")); return; }
+    let u;
+    try { u = new URL(indirizzo); } catch (err) { no(new Error("indirizzo non valido")); return; }
+    const mod = u.protocol === "https:" ? https : http;
+    const req = mod.get(u, { headers: { "User-Agent": "Mozilla/5.0 (ComoTV-ponte)", "Accept-Language": "it" } }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        drivePagina(new URL(res.headers.location, u).href, salti + 1).then(ok, no);
+        return;
+      }
+      if (res.statusCode !== 200) { res.resume(); no(new Error("la cartella risponde " + res.statusCode)); return; }
+      let t = "";
+      res.setEncoding("utf8");
+      res.on("data", (c) => { if (t.length < 4e6) t += c; });
+      res.on("end", () => ok(t));
+    });
+    req.on("error", (e) => no(new Error("non raggiungibile: " + e.message)));
+    req.setTimeout(30000, () => { req.destroy(); no(new Error("la cartella non risponde")); });
+  });
+}
+
+function driveSmonta(t) {
+  const fuori = [], visti = new Set();
+  // il nome sta nell'aria-label della tessera, l'id in un data-id poco dopo
+  const rx = /aria-label="([^"]{3,140}?)\s*(?:Video|Immagine|Audio|File PDF|Cartella)?"/g;
+  let m;
+  while ((m = rx.exec(t))) {
+    const coda = t.slice(rx.lastIndex, rx.lastIndex + 700);
+    const d = coda.match(/data-id="([A-Za-z0-9_-]{20,})"/);
+    if (!d || visti.has(d[1])) continue;
+    visti.add(d[1]);
+    const nome = m[1].replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&quot;/g, '"')
+                     .replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+    if (!/\.(mp4|mov|m4v|webm)$/i.test(nome)) continue;      // qui servono i video
+    fuori.push({ id: d[1], nome });
+  }
+  return fuori;
+}
+
+async function driveCartella(p) {
+  const id = String(p.id || "").trim();
+  if (!/^[A-Za-z0-9_-]{10,}$/.test(id)) throw new Error("id cartella non valido");
+  const t = await drivePagina("https://drive.google.com/drive/folders/" + id, 0);
+  const titolo = (t.match(/<title>([^<]*)<\/title>/) || [, ""])[1]
+    .replace(/ - Google Drive$/, "").replace(/&#39;/g, "'").replace(/&amp;/g, "&").trim();
+  const file = driveSmonta(t);
+  if (!file.length) {
+    throw new Error("non trovo video in quella cartella: o non ce ne sono, o non e\u2019 condivisa " +
+                    "con chiunque abbia il link. In alternativa apri il file e incolla il suo link.");
+  }
+  return { ok: true, cartella: titolo, file };
+}
+
 function videoPrelievo(id) {
   const st = PRELIEVI.get(String(id || ""));
   if (!st) return { ok: false, errore: "prelievo sconosciuto" };
@@ -1456,6 +1521,7 @@ function permesso(p, ip) {
           case "video-pezzo":  out = videoPezzo(p); break;
           case "video-fine":   out = videoFine(p); break;
           case "video-preleva": out = videoPreleva(p); break;
+          case "drive-cartella": out = await driveCartella(p); break;
           case "video-togli":  out = videoCancella(p); break;
           case "video-nas":    out = videoNasSet(p); break;
           // questi vivono sui Fogli Google: si inoltrano

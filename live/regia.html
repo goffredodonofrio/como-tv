@@ -224,6 +224,10 @@
   #btnProg:hover, #btnProgNuovo:hover{background:rgba(200,164,88,.12);border-color:var(--gold-bright);}
   /* il contributo e' un'altra cosa: azzurro, quello degli invii alla regia.
      Prima era il grigio di sistema del browser, che su questo fondo spariva. */
+  #vdElenco .vdscelta{display:block;width:100%;text-align:left;margin-bottom:6px;
+    font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:0;
+    text-transform:none;padding:9px 11px;word-break:break-word;}
+  #vdElenco .vdscelta:last-child{margin-bottom:0;}
   #btnVideo{border:2px solid rgba(79,163,232,.5);background:transparent;color:#7FBEF0;font-size:11px;}
   #btnVideo:hover{background:rgba(79,163,232,.14);border-color:#4FA3E8;}
 
@@ -475,7 +479,9 @@
           <input type="text" id="vdLink" placeholder="YouTube, Vimeo o link diretto a un .mp4"
                  autocomplete="off" spellcheck="false"
                  style="width:100%;padding:10px 12px;background:var(--surface-panel);border:1px solid var(--line-2);border-radius:6px;color:var(--ivory);font-size:15px">
-          <div id="vdLinkNota" style="margin-top:6px;font-size:12px;color:var(--fg-3);min-height:16px"></div></div>
+          <div id="vdLinkNota" style="margin-top:6px;font-size:12px;color:var(--fg-3);min-height:16px"></div>
+          <div id="vdElenco" style="display:none;margin-top:8px;padding:10px;border-radius:8px;
+               border:1px solid var(--line-gold);background:rgba(201,162,75,.06)"></div></div>
         <div><label style="display:block;margin-bottom:5px">Nome in scaletta</label>
           <input type="text" id="vdNome" placeholder="VIDEO — …" style="width:100%;padding:10px 12px;background:var(--surface-panel);border:1px solid var(--line-2);border-radius:6px;color:var(--ivory);font-size:15px"></div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px">
@@ -1981,6 +1987,8 @@
       // condiviso con "chiunque abbia il link": il vMix non e' collegato a
       // nessun account Google, e a file riservato vedrebbe la richiesta di
       // accesso al posto del video.
+      var cart = u.match(/drive\.google\.com\/drive\/(?:u\/\d+\/)?folders\/([A-Za-z0-9_-]{10,})/);
+      if (cart) return { k: "cartella", che: "Cartella Drive", id: cart[1] };
       var g = u.match(/(?:drive|docs)\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:[^#]*&)?id=)([A-Za-z0-9_-]{10,})/);
       if (g) {
         // Google NON lascia suonare i suoi file da un altro sito, e non c'entra
@@ -2017,6 +2025,11 @@
       var L = leggiLink(vd("vdLink").value);
       var n = vd("vdLinkNota");
       if (!L) { n.textContent = ""; return; }
+      if (L.k === "cartella") {
+        n.innerHTML = "Riconosciuto: <b>" + L.che + "</b>. Guardo che cosa c\u2019\u00e8 dentro\u2026";
+        cercaCartella(L.id);
+        return;
+      }
       if (L.k === "preleva") {
         n.innerHTML = "Riconosciuto: <b>" + L.che + "</b>. " + L.nota;
         return;
@@ -2028,9 +2041,49 @@
           "e le spunte qui sotto non lo toccano." + (L.nota ? "<br>" + L.nota : "");
     });
 
+    // L'elenco della cartella: si sceglie un video e il campo del link diventa
+    // quello del file scelto, cosi' da li' in poi e' la strada gia' collaudata.
+    var giroCartella = 0;
+    function cercaCartella(id) {
+      var mio = ++giroCartella;
+      postV({ tipo: "drive-cartella", id: id })
+        .then(function (r) {
+          if (mio !== giroCartella) return;              // ne e' arrivata una piu' fresca
+          vd("vdElenco").innerHTML =
+            '<div style="font-size:12px;color:var(--gold-bright);margin-bottom:6px">&#128193; ' +
+            esc(r.cartella) + " &middot; " + r.file.length +
+            (r.file.length === 1 ? " video" : " video") + " &mdash; scegline uno</div>" +
+            r.file.map(function (x) {
+              return '<button type="button" class="vdscelta" data-fid="' + esc(x.id) +
+                '" data-nome="' + esc(x.nome) + '">' + esc(x.nome) + "</button>";
+            }).join("");
+          vd("vdElenco").style.display = "block";
+        })
+        .catch(function (err) {
+          if (mio !== giroCartella) return;
+          vd("vdElenco").style.display = "none";
+          vd("vdLinkNota").innerHTML = '<b style="color:#FF9A9C">Cartella non letta.</b> ' + esc(err.message);
+        });
+    }
+    vd("vdElenco").addEventListener("click", function (e) {
+      var b = e.target.closest ? e.target.closest("button[data-fid]") : null;
+      if (!b) return;
+      giroCartella++;                                    // la scelta chiude la ricerca
+      vd("vdLink").value = "https://drive.google.com/file/d/" + b.dataset.fid + "/view";
+      vd("vdNome").value = vd("vdNome").value.trim() ||
+        ("VIDEO \u2014 " + b.dataset.nome.replace(/\.[^.]+$/, "").toUpperCase());
+      vd("vdElenco").style.display = "none";
+      var L = leggiLink(vd("vdLink").value);
+      vd("vdLinkNota").innerHTML = "Scelto: <b>" + esc(b.dataset.nome) + "</b>. " + L.nota;
+    });
+
     vd("vdVia").addEventListener("click", function () {
       var f = vd("vdFile").files[0];
       var L = leggiLink(vd("vdLink").value);
+      if (L && L.k === "cartella") {
+        vstato("Quella \u00e8 una cartella: scegli quale video, qui sotto.", "#FF9A9C");
+        return;
+      }
       // il ponte va a prendersi il file, poi lo mette in scaletta come un
       // contributo qualsiasi: da quel momento Google non c'entra piu' niente
       if (L && L.k === "preleva") {
