@@ -170,10 +170,24 @@
   #reparto{position:absolute;right:-24px;top:50%;transform:translateY(-50%) rotate(90deg);
     transform-origin:center;font-family:'Mazzard',sans-serif;font-weight:800;font-size:104px;
     letter-spacing:.03em;color:rgba(201,162,75,.9);text-transform:uppercase;white-space:nowrap;opacity:0;}
-  #reparto.in{animation:repIn .5s cubic-bezier(.2,.7,.3,1) forwards;}
-  #reparto.out{animation:repOut .35s ease forwards;}
-  @keyframes repIn{from{opacity:0;transform:translateY(-50%) translateX(70px) rotate(90deg);}
-    to{opacity:1;transform:translateY(-50%) translateX(0) rotate(90deg);}}
+  /* L'ingresso del reparto e' LETTERA PER LETTERA. Prima la parola entrava
+     tutta insieme scivolando: pulito, ma in una grafica dove le figure
+     girano su se stesse e una lama scopre il campo, era la cosa piu' timida
+     dello schermo.
+     Il blocco e' ruotato di 90°, quindi l'asse Y locale delle lettere
+     corre in ORIZZONTALE sullo schermo: ogni lettera arriva da destra e si
+     posa, sfalsata di poco rispetto alla precedente. Si muovono solo
+     transform e opacity — dentro vMix e' l'unica cosa che non costa. */
+  #reparto{opacity:1;}
+  #reparto span{display:inline-block;opacity:0;transform:translateY(90px) scale(.86);}
+  #reparto.in span{animation:lettIn .52s cubic-bezier(.16,.86,.28,1.06) forwards;}
+  @keyframes lettIn{
+    from{opacity:0;transform:translateY(90px) scale(.86);}
+    60%{opacity:1;}
+    to{opacity:1;transform:translateY(0) scale(1);}}
+  /* All'uscita se ne vanno insieme: sfilarle una a una farebbe aspettare
+     il reparto dopo, e il ritmo lo detta lui. */
+  #reparto.out{animation:repOut .3s ease forwards;}
   @keyframes repOut{to{opacity:0;transform:translateY(-50%) translateX(-50px) rotate(90deg);}}
 
   /* ── WIPE: UNA sola lama che spazza e rivela ──────────────────────────
@@ -534,8 +548,14 @@
     var tShow = T0 + li * PER;
     setTimeout(function () {
       var rn = repartoNome(li, righe.length);
-      reparto.textContent = rn;
-      reparto.style.fontSize = rn.length > 8 ? "70px" : "104px";
+      // Tutti allo stesso corpo. Prima "Centrocampo" scendeva a 70px perche'
+      // e' l'unico oltre gli otto caratteri, e in onda si vedeva: tre
+      // reparti grandi e uno piccolo. A 104px ci sta lo stesso — la parola
+      // corre lungo i 1080 dell'altezza, non lungo la larghezza.
+      reparto.style.fontSize = "104px";
+      reparto.innerHTML = rn.split("").map(function (c, n) {
+        return '<span style="animation-delay:' + (n * 42 * SLOW) + 'ms">' + c + '</span>';
+      }).join("");
       reparto.className = ""; void reparto.offsetWidth; reparto.className = "in";
       // le maglie gia' atterrate vanno in secondo piano (si riaccendono alla fine)
       pcards.forEach(function (pc, i) {
