@@ -30,6 +30,11 @@
   // evita di passarli di mano in mano attraverso quattro funzioni.
   var SEQ = null, PPRO = null;
 
+  // Da nome nuovo a nome col segnaposto. Serve a ripremere il pulsante
+  // senza rovinare quello che la prima passata ha gia' sistemato: il
+  // modello e' l'unica cosa che sa dov'era DATA e dov'era NOME.
+  var MODELLI = {};
+
   // Quello che la lettura della timeline ha trovato e che somiglia a un
   // campo di testo. Serve al pulsante "Scrivi": senza aver guardato prima,
   // non c'e' modo di sapere dove scrivere.
@@ -133,7 +138,8 @@
     // Il nome si puo' proporre solo conoscendo quello attuale, che sta in
     // Premiere: finche' non si e' guardata la sequenza si mostra la forma.
     var vn = el("vNome");
-    vn.textContent = SEQ && SEQ.name ? nomeProposto(SEQ.name) : nomeProposto("DATA_PARTITA_NOME");
+    vn.textContent = (SEQ && SEQ.name ? nomeProposto(SEQ.name) : "") ||
+                     nomeProposto("DATA_PARTITA_NOME") + "  (forma)";
   }
 
   // ── il pulsante unico ──────────────────────────────────────────────
@@ -261,17 +267,27 @@
     var partita = scelto.programma ? scelto.casa : (scelto.casa + "-" + scelto.ospite);
     var comp = (scelto.competizione || "").toUpperCase();
 
-    if (/DATA|PARTITA|NOME/.test(vecchio)) {
-      return vecchio.replace(/DATA/g, data).replace(/PARTITA/g, partita).replace(/NOME/g, comp);
-    }
-    // Una sequenza gia' rinominata non ha piu' i segnaposto: non la si
-    // tocca a indovinare, si propone il nome pieno e decide chi guarda.
-    return [data, partita, comp].filter(Boolean).join("_");
+    // Il modello e' il nome com'era PRIMA di ogni rinomina. Alla seconda
+    // passata i segnaposto non ci sono piu', e ricostruire il nome da zero
+    // — come facevo — butta via quello che Airtable non sa: il numero
+    // davanti e il formato in coda. "2_..._9-16" diventava "...", e chi
+    // correggeva un titolo si ritrovava la sequenza sfregiata.
+    var modello = MODELLI[vecchio] || vecchio;
+    if (!/DATA|PARTITA|NOME/.test(modello)) return "";
+    return modello.replace(/DATA/g, data).replace(/PARTITA/g, partita).replace(/NOME/g, comp);
   }
 
   async function rinomina(progetto, sequenza) {
     var vecchio = sequenza.name || "";
     var nuovo = nomeProposto(vecchio);
+    if (!nuovo) {
+      dico("Il nome non lo tocco: “" + vecchio + "”", "forse");
+      dico("Non ha i segnaposto DATA_PARTITA_NOME e non so quale fosse il", "forse");
+      dico("modello, quindi rifarlo da zero butterebbe via il numero davanti", "forse");
+      dico("e il formato in coda. Riapri la sequenza dal master, o rimetti il", "forse");
+      dico("nome col segnaposto: da li' in poi ci penso io.", "forse");
+      return;
+    }
     dico("Da: " + vecchio);
     dico("A:  " + nuovo, "si");
     if (nuovo === vecchio) { dico("Gia' cosi': non tocco niente.", "forse"); return; }
@@ -292,6 +308,10 @@
           gruppo.addAction(azione);
         }, "Como TV: nome sequenza");
       });
+      // Da adesso il nome nuovo sa da dove viene: ripremere il pulsante
+      // con un titolo corretto rifara' la stessa sostituzione, non un
+      // nome inventato.
+      MODELLI[nuovo] = MODELLI[vecchio] || vecchio;
       dico("✓ rinominata.", "si");
       dico("Se non ti torna: Ctrl+Z.", "forse");
     } catch (e) {
