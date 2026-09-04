@@ -122,23 +122,125 @@
     // ma scegliere il PNG giusto fra ventinove e' esattamente il passaggio
     // dove oggi nasce l'errore che va in onda.
     var m = window.Maschere.per(scelto.competizione);
-    var b = el("btnMask"), v = el("vMask");
-    if (m.file) {
-      v.textContent = m.file; v.className = "";
-      b.disabled = false; b.textContent = "Metti la maschera su V2";
-    } else if (m.manca) {
-      v.textContent = "non esiste"; v.className = "no";
-      b.disabled = true; b.textContent = "Maschera da fare";
-    } else {
-      v.textContent = "competizione nuova"; v.className = "forse";
-      b.disabled = true; b.textContent = "Maschera sconosciuta";
-    }
+    var v = el("vMask");
+    if (m.file) { v.textContent = m.file; v.className = ""; }
+    else if (m.manca) { v.textContent = "il PNG non esiste"; v.className = "no"; }
+    else { v.textContent = "competizione mai vista"; v.className = "forse"; }
+    // Il pulsante resta acceso anche senza maschera: nome e testi valgono
+    // lo stesso, e spegnere tutto per un PNG mancante toglierebbe il resto.
+    el("btnMask").disabled = false;
 
     // Il nome si puo' proporre solo conoscendo quello attuale, che sta in
     // Premiere: finche' non si e' guardata la sequenza si mostra la forma.
     var vn = el("vNome");
     vn.textContent = SEQ && SEQ.name ? nomeProposto(SEQ.name) : nomeProposto("DATA_PARTITA_NOME");
-    el("btnNome").disabled = false;
+  }
+
+  // ── il pulsante unico ──────────────────────────────────────────────
+  // Un clic solo, e rifa' tutto da capo. Ripremerlo dopo aver corretto un
+  // titolo deve dare lo stesso risultato di averlo scritto giusto la prima
+  // volta: e' la differenza fra uno strumento e una trappola.
+  async function mettiTutto() {
+    if (!scelto) return;
+    pulisci();
+
+    var ppro = premiere();
+    if (!ppro) { dico("Non trovo l'API di Premiere.", "no"); return; }
+    var progetto = await ppro.Project.getActiveProject();
+    var sequenza = await progetto.getActiveSequence();
+    if (!sequenza) { dico("Nessuna sequenza aperta.", "no"); return; }
+    PPRO = ppro; SEQ = sequenza;
+
+    await mettiMaschera(progetto, sequenza, ppro);
+    dico("");
+    await rinomina(progetto, sequenza);
+    dico("");
+    await scriviTesti(progetto, sequenza, ppro);
+  }
+
+  // ── i tre testi ────────────────────────────────────────────────────
+  // Qui casca l'asino, e vale la pena scrivere perche'.
+  //
+  // Le grafiche native del master tengono il testo in un parametro
+  // "arbitrario": un blocco binario, non una stringa. Provato in ogni modo
+  // il 2026-09-04 — sedici forme di tempo, quattro tipi di valore — e non
+  // si scrive. Non e' un limite nostro: e' un tipo che UXP non maneggia.
+  //
+  // Un MODELLO DI GRAFICA ANIMATA invece espone i suoi campi come stringhe
+  // vere. Si esporta da dentro Premiere (Grafica → Esporta come modello di
+  // grafica animata), senza After Effects, e l'aspetto non cambia di un
+  // pixel perche' e' la stessa grafica impacchettata.
+  //
+  // Finche' quel modello non esiste, questa funzione non finge: dice cosa
+  // manca e chi lo deve fare.
+  async function scriviTesti(progetto, sequenza, ppro) {
+    var valori = [el("t1").value.trim(), el("t2").value.trim(), el("sott").value.trim()];
+    if (!valori[0] && !valori[1] && !valori[2]) { dico("Nessun testo da mettere."); return; }
+
+    var campi = await campiScrivibili(sequenza, ppro);
+    if (!campi.length) {
+      dico("I testi non li so ancora mettere.", "no");
+      dico("Le grafiche native tengono il testo in un formato che UXP non", "forse");
+      dico("sa scrivere — verificato, non supposto. Serve il modello di", "forse");
+      dico("grafica animata: in timeline seleziona le tre grafiche, poi", "forse");
+      dico("Grafica → Esporta come modello di grafica animata. Fatto una", "forse");
+      dico("volta, da li' in poi i testi li mette il pannello.", "forse");
+      return;
+    }
+
+    dico("Campi di testo scrivibili: " + campi.length, "si");
+    for (var i = 0; i < campi.length && i < valori.length; i++) {
+      if (!valori[i]) continue;
+      try {
+        await progetto.lockedAccess(function () {
+          var az = campi[i].par.createSetValueAction(valori[i], true);
+          progetto.executeTransaction(function (g) { g.addAction(az); }, "Como TV: testo");
+        });
+        dico("✓ " + campi[i].nome + " ← “" + valori[i] + "”", "si");
+      } catch (e) {
+        dico("· " + campi[i].nome + ": " + mess(e), "forse");
+      }
+    }
+  }
+
+  // Un campo scrivibile e' un parametro di testo che NON sia di quelli
+  // arbitrari: si riconoscono perche' il loro valore si lascia leggere.
+  async function campiScrivibili(sequenza, ppro) {
+    var fuori = [];
+    var quante = 0;
+    try { quante = await sequenza.getVideoTrackCount(); } catch (e) { return fuori; }
+    for (var i = 0; i < quante; i++) {
+      var pezzi = [];
+      try {
+        var tr = await sequenza.getVideoTrack(i);
+        pezzi = await tr.getTrackItems(ppro.Constants.TrackItemType.CLIP, false);
+      } catch (e) { continue; }
+      for (var k = 0; k < (pezzi || []).length; k++) {
+        var catena;
+        try { catena = await pezzi[k].getComponentChain(); } catch (e) { continue; }
+        var n = 0;
+        try { n = await catena.getComponentCount(); } catch (e) { continue; }
+        for (var c = 0; c < n; c++) {
+          var comp;
+          try { comp = await catena.getComponentAtIndex(c); } catch (e) { continue; }
+          var q = 0;
+          try { q = await comp.getParamCount(); } catch (e) {}
+          for (var p = 0; p < q; p++) {
+            try {
+              var par = await comp.getParam(p);
+              var pn = par.displayName || "";
+              if (!/text|testo/i.test(pn)) continue;
+              // La prova del nove: un parametro arbitrario non si lascia
+              // leggere. Se il valore torna, e' una stringa vera.
+              var v = await par.getStartValue();
+              if (v === null || v === undefined) continue;
+              fuori.push({ par: par, nome: "V" + (i + 1) + " · " + pn });
+            } catch (e) {}
+          }
+        }
+      }
+    }
+    return fuori;
   }
 
   // ── il nome della sequenza ─────────────────────────────────────────
@@ -167,17 +269,7 @@
     return [data, partita, comp].filter(Boolean).join("_");
   }
 
-  async function rinomina() {
-    if (!scelto) return;
-    pulisci();
-
-    var ppro = premiere();
-    if (!ppro) { dico("Non trovo l'API di Premiere.", "no"); return; }
-    var progetto = await ppro.Project.getActiveProject();
-    var sequenza = await progetto.getActiveSequence();
-    if (!sequenza) { dico("Nessuna sequenza aperta.", "no"); return; }
-    PPRO = ppro; SEQ = sequenza;
-
+  async function rinomina(progetto, sequenza) {
     var vecchio = sequenza.name || "";
     var nuovo = nomeProposto(vecchio);
     dico("Da: " + vecchio);
@@ -276,20 +368,13 @@
     } catch (e) { dico("Non elenco il progetto: " + mess(e), "no"); }
   }
 
-  async function mettiMaschera() {
-    if (!scelto) return;
+  async function mettiMaschera(progetto, sequenza, ppro) {
     var m = window.Maschere.per(scelto.competizione);
-    if (!m.file) return;
-
-    pulisci();
+    if (!m.file) {
+      dico("Maschera: " + (m.manca ? "manca il PNG di " + m.manca : "competizione mai vista"), "no");
+      return;
+    }
     dico("Maschera da mettere: " + m.file);
-
-    var ppro = premiere();
-    if (!ppro) { dico("Non trovo l'API di Premiere.", "no"); return; }
-    var progetto = await ppro.Project.getActiveProject();
-    var sequenza = await progetto.getActiveSequence();
-    if (!sequenza) { dico("Nessuna sequenza aperta.", "no"); return; }
-    SEQ = sequenza; PPRO = ppro;
 
     var trovato = await cercaNelProgetto(progetto, m.file);
     if (!trovato.pezzo) {
@@ -778,11 +863,8 @@
     scrivi().catch(function (e) { dico("Errore: " + e.message, "no"); });
   });
   el("btnCopia").addEventListener("click", mandaReferto);
-  el("btnNome").addEventListener("click", function () {
-    rinomina().catch(function (e) { dico("Errore: " + mess(e), "no"); });
-  });
   el("btnMask").addEventListener("click", function () {
-    mettiMaschera().catch(function (e) { dico("Errore: " + mess(e), "no"); });
+    mettiTutto().catch(function (e) { dico("Errore: " + mess(e), "no"); });
   });
 
   caricaPartite();
