@@ -36,9 +36,62 @@ Gli altri parametri della stessa grafica (opacità, posizione, scala) si leggono
 senza problemi. È **quel tipo di valore** a non essere supportato, non la
 grafica e non il pannello.
 
-Conseguenza: si prende la strada che il handoff aveva già previsto come
-ripiego — **modello di grafica animata esportato da dentro Premiere**, senza
-After Effects. Lì i parametri di testo sono stringhe vere e supportate.
+### Il perché, letto dentro il file di progetto
+
+Aperto `20260831_COMO TV_MASTER.prproj` (è XML compresso), il campo si trova
+così:
+
+```xml
+<ArbVideoComponentParam …>
+  <Name>Testo sorgente</Name>
+  <StartKeyframeValue Encoding="base64">pAEAAAAAAABEMyIR…</StartKeyframeValue>
+```
+
+**`Arb` sta per *arbitrary***: il valore non è una stringa, è un blocco binario
+(un FlatBuffer) che contiene lo stile del testo. Non è un limite del pannello e
+non è un limite di Premiere 26: è un tipo di parametro che l'API UXP non sa
+maneggiare, e non lo saprà finché Adobe non lo aggiunge. Scriverlo vorrebbe
+dire fabbricare quel binario a mano, che non è una strada.
+
+Conseguenza: per il **testo** si prende la strada che il handoff aveva già
+previsto come ripiego — **modello di grafica animata esportato da dentro
+Premiere**, senza After Effects. Lì i parametri di testo sono stringhe vere.
+
+## Quello che il master dice, e il handoff non sapeva
+
+Letto dal file, non dedotto.
+
+**1. I formati sono dieci, non uno.** Oltre a `1_` e `2_DATA_PARTITA_NOME_9-16`
+ci sono `CLIP SOCIAL_CLEAN_4-5`, `CLIP SOCIAL_NOME_CLEAN_3-4`,
+`CLIP CLEAN 16-9`, `MASTER_VOD_16-9`, e per gli highlights e la partita intera
+le varianti `_ITA`, `_ENG`, `_INTERNATIONAL SOUND`. La "decisione aperta n.1"
+del handoff ha una risposta concreta.
+
+**2. Il font è Nexa-Bold, non Mazzard.** Nei nove blocchi di testo del master:
+`Nexa-Bold` ×7, `MazzardM-ExtraBold` ×1, `DMSans-Regular` ×1. Il handoff dice
+di installare Mazzard e DM Sans su ogni macchina dei montatori: **è la lista
+sbagliata**. Se manca Nexa-Bold, Premiere sostituisce in silenzio — il rischio
+descritto è reale, ma riguarda un font che nessuno aveva in elenco.
+
+**3. I PNG del master e i nomi di Airtable non coincidono.** Sui prossimi 157
+eventi ci sono 19 competizioni. Solo 8 hanno un PNG che si chiama come
+Airtable. Delle altre 11:
+
+| Airtable dice | il master ha | |
+|---|---|---|
+| Bundesliga Austria | `bundesliga austriaca.png` | stesso oggetto, altro nome |
+| Coppa di Germania | `dfb-pokal.png` | stesso oggetto, altro nome |
+| Championship | `efl championship.png` | stesso oggetto, altro nome |
+| Apertura / Clausura Liga Profesional | `liga profesional argentina.png` | stesso oggetto, altro nome |
+| Serie A · UEFA Champions League · UEFA Youth League · Under 17 · Under 18 · EVENTO REC | — | **il PNG non c'è** |
+
+La Champions da sola sono 24 righe: è la competizione più frequente dei
+prossimi due mesi e non ha una maschera.
+
+> Nota che chiude un cerchio: `efl championship.png` **esiste nel master**, ma
+> in `generatore-airtable.js` la riga `'Championship': 'scottish_championship'`
+> manda la Championship inglese sul logo scozzese. L'asset giusto c'è, è la
+> mappatura a sbagliare.
 
 ## Come stanno insieme le tre macchine
 
