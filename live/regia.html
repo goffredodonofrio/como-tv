@@ -247,6 +247,9 @@
   #cue button{flex:0 0 auto;font-family:'Mazzard',sans-serif;font-size:15px;font-weight:700;
     padding:8px 14px;border-radius:7px;cursor:pointer;
     background:transparent;color:var(--ivory-dim);border:1px solid var(--line-2);}
+  #cue #cueSegna{font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--gold-bright);border-color:var(--line-gold);background:rgba(201,162,75,.12);}
+  #cue #cueSegna:hover{background:rgba(201,162,75,.24);border-color:var(--gold);color:var(--gold-bright);}
   #cue button:hover{color:#A8D4F7;border-color:#4FA3E8;}
 
   #btnOut{
@@ -463,8 +466,9 @@
           <input type="range" id="cueA" min="0" max="100" step="0.1" value="0">
           <i class="segno" id="cueSegno"></i>
         </span>
-        <button type="button" id="cueVia" title="Riporta il punto di partenza all\'inizio">&#8635;</button>
-        <button type="button" id="cuePlay" title="Guarda da dove parte">&#9654;</button>
+        <button type="button" id="cueSegna" title="Lascia qui il segno: da qui partira\' in onda">&#9873; Segna qui</button>
+        <button type="button" id="cuePlay" title="Guarda e ascolta dal segno">&#9654;</button>
+        <button type="button" id="cueVia" title="Riporta il segno all\'inizio">&#8635;</button>
         <span class="inpunto" id="cueIn">parte da 0:00</span>
       </div>
       <!-- durata della clip in anteprima: stessi numeroni dell'onda -->
@@ -1013,14 +1017,27 @@
     post({ tipo: "regia-taglio", id: CUE.id, da: CUE.da, a: 0 }, null);
   }
 
+  // IL CURSORE NON DECIDE NIENTE. Si scorre per guardare, e basta: il punto di
+  // partenza lo mette il pulsante, e da quel momento sta li' finche' non lo si
+  // rimette. Cosi' guardare l'anteprima non puo' rovinare la scelta, e cambiare
+  // idea e' un clic.
   document.getElementById("cueA").addEventListener("input", function () {
-    CUE.da = Math.min(parseFloat(this.value) || 0, CUE.dur - 0.2);
+    var t = Math.min(parseFloat(this.value) || 0, CUE.dur - 0.2);
     var v = document.getElementById("pvwvid");
     v.pause();
-    try { v.currentTime = CUE.da; } catch (e) {}
-    cueDisegna();
+    try { v.currentTime = t; } catch (e) {}
+    document.getElementById("cueTC").textContent = cueMmss(t) + " / " + cueMmss(CUE.dur);
   });
-  document.getElementById("cueA").addEventListener("change", cueSalva);
+  document.getElementById("cueSegna").addEventListener("click", function () {
+    var v = document.getElementById("pvwvid");
+    CUE.da = Math.min(v.currentTime || 0, CUE.dur - 0.2);
+    cueSegnoDisegna();
+    cueSalva();
+    // un lampo: si vede che il segno e' stato messo
+    var sg = document.getElementById("cueSegno");
+    sg.style.transition = "none"; sg.style.width = "7px";
+    setTimeout(function () { sg.style.transition = "width .25s ease"; sg.style.width = "3px"; }, 30);
+  });
   // Mentre l'anteprima scorre si muove SOLO il cursore: il segno resta dove
   // l'hai messo. Era questo il difetto — guardare la clip spostava il punto di
   // partenza, e in onda partiva da dove ti eri fermato a guardare.
@@ -1039,6 +1056,8 @@
     cueDisegna();
     cueSalva();
   });
+  // se la finestra cambia misura il segno va rimesso al suo posto
+  window.addEventListener("resize", function () { if (CUE.dur) cueSegnoDisegna(); });
   // ══ LE BARRETTE DELL'AUDIO ═══════════════════════════════════════════
   // Rispondono a una domanda sola e frequente: questa clip ha il suono?
   // Prima si scopriva mandandola in onda.
@@ -1150,18 +1169,14 @@
   document.getElementById("cuePlay").addEventListener("click", function () {
     var v = document.getElementById("pvwvid");
     if (v.paused) {
-      // si guarda sempre da dove parte: e' la prova del punto scelto
-      if (Math.abs(v.currentTime - CUE.da) > 1) { try { v.currentTime = CUE.da; } catch (e) {} }
+      // sempre dal segno: quello che senti e' esattamente quello che andra' in onda
+      try { v.currentTime = CUE.da; } catch (e) {}
       v.play().catch(function () {});
       this.innerHTML = "&#10073;&#10073;";
     } else { v.pause(); this.innerHTML = "&#9654;"; }
   });
   document.getElementById("pvwvid").addEventListener("pause", function () {
     document.getElementById("cuePlay").innerHTML = "&#9654;";
-    // il cursore torna a mostrare il punto scelto, che non si e' mai mosso
-    if (!CUE.dur) return;
-    document.getElementById("cueA").value = String(CUE.da);
-    cueDisegna();
   });
 
   function showPvw(id) {
