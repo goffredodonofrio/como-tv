@@ -15,16 +15,45 @@ Tutto quello che sta in questa cartella non è mai stato eseguito: qui non c'è
 Premiere. Il primo avvio è anche il primo collaudo, ed è normale che qualcosa
 non torni al primo colpo.
 
-## Installarlo (una volta)
+## Come stanno insieme le tre macchine
 
-1. Da Creative Cloud installa **UXP Developer Tools**.
-2. Apri Premiere con il master aperto.
-3. In UXP Developer Tools: **Add Plugin** → scegli il `manifest.json` di questa
-   cartella.
-4. Sulla riga del plugin: **Load**.
+Il pannello si **scrive** sul Mac e **gira** su un PC Windows di montaggio. Sono
+due macchine diverse, e senza un canale in mezzo ogni correzione sarebbe una
+chiavetta.
+
+```
+   Mac (si scrive)  ──►  VM projects-cloud.it  ──►  PC Windows (Premiere)
+        pubblica.command        /como-tv-dev/pannello/        un comando + Reload
+```
+
+La VM fa da tramite perché è l'unico posto che vedono tutte e due, ed è già il
+canale di tutto il resto. Sul PC **non serve git, non serve scompattare niente**.
+
+### Una volta sola, sul PC
+
+1. Da **Creative Cloud** installa **UXP Developer Tool** (cerca `UXP`).
+2. Apri **PowerShell** e incolla il comando di aggiornamento qui sotto: crea la
+   cartella e scarica i file.
+3. Apri **Premiere** con il master aperto. *Prima di UDT*: UDT si aggancia a
+   Premiere già in esecuzione, se lo apri dopo non lo vede.
+4. In **UXP Developer Tool**: `Add Plugin` → scegli il `manifest.json` dentro
+   `C:\Users\<utente>\ComoTV\pannello-premiere` → poi `Load`.
 5. In Premiere: **Finestra → Estensioni → Como TV**.
 
-Dopo ogni modifica ai file basta **Reload** da UXP Developer Tools.
+### Ogni volta che il pannello cambia
+
+Sul Mac: doppio clic su `pubblica.command`.
+Sul PC: il comando qui sotto, poi **Reload** in UDT. Due gesti.
+
+```powershell
+$d="$HOME\ComoTV\pannello-premiere"; New-Item $d -ItemType Directory -Force | Out-Null; "manifest.json","index.html","pannello.js","LEGGIMI.md" | ForEach-Object { Invoke-WebRequest "https://projects-cloud.it/como-tv-dev/pannello/$_`?v=$(Get-Random)" -OutFile "$d\$_" -UseBasicParsing }; explorer $d
+```
+
+Il `?v=` in coda non è un vezzo: la VM dice ai browser di tenersi i file per
+un'ora, e senza quello si riscaricherebbe la versione vecchia credendo di
+aggiornare.
+
+Chi preferisce a mano: `https://projects-cloud.it/como-tv-dev/pannello/comotv-pannello.zip`
 
 ## Che cosa guardare, in ordine
 
