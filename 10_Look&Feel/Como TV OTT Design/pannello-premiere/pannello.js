@@ -120,6 +120,7 @@
   async function leggiTimeline() {
     pulisci();
     testi = [];
+    kfRaccontato = false;
     var ppro = premiere();
     if (!ppro) { dico("Non trovo l'API di Premiere (require).", "no"); return; }
     dico("API di Premiere: c'e'.", "si");
@@ -175,6 +176,39 @@
     dico("— fine —", "si");
     dico("Serve la riga di un parametro di testo su V2/V3/V4/V5:", "forse");
     dico("e' li' che il pannello andra' a scrivere.", "forse");
+  }
+
+  // getStartValue() non restituisce il valore: restituisce il KEYFRAME che
+  // lo contiene, e stampandolo si ottiene "[object Object]". Il valore va
+  // tirato fuori da li', e non so ancora per quale via: si provano quelle
+  // plausibili e, se falliscono tutte, si dice che cosa il keyframe espone —
+  // cosi' la volta dopo la via giusta si legge invece di indovinarla.
+  var kfRaccontato = false;
+  async function valoreDi(par) {
+    var k;
+    try { k = await par.getStartValue(); }
+    catch (e) { return { nota: "non leggibile (" + e.message + ")" }; }
+    if (k === undefined || k === null) return {};
+
+    if (typeof k === "string" || typeof k === "number" || typeof k === "boolean") {
+      return { testo: String(k).replace(/\s+/g, " ").slice(0, 70) };
+    }
+    if (k.value !== undefined && typeof k.value !== "object") {
+      return { testo: String(k.value).replace(/\s+/g, " ").slice(0, 70) };
+    }
+    for (var i = 0; i < 3; i++) {
+      var via = ["getValue", "value", "toString"][i];
+      try {
+        if (typeof k[via] === "function") {
+          var v = await k[via]();
+          if (v !== undefined && typeof v !== "object" && String(v) !== "[object Object]") {
+            return { testo: String(v).replace(/\s+/g, " ").slice(0, 70) };
+          }
+        }
+      } catch (e) {}
+    }
+    if (!kfRaccontato) { kfRaccontato = true; return { nota: "il keyframe espone: " + metodiDi(k) }; }
+    return {};
   }
 
   // Di un singolo elemento in timeline interessa una cosa sola: se
@@ -241,13 +275,9 @@
           var voce = "[" + p + "] " + pn;
 
           if (eTesto) {
-            try {
-              var k = await par.getStartValue();
-              var v = k && k.value !== undefined ? k.value : k;
-              if (v !== undefined && v !== null && String(v) !== "") {
-                voce += " = “" + String(v).replace(/\s+/g, " ").slice(0, 70) + "”";
-              }
-            } catch (e2) {}
+            var v = await valoreDi(par);
+            if (v.testo) voce += " = “" + v.testo + "”";
+            else if (v.nota) voce += "  ← " + v.nota;
           }
           righe.push(voce);
 
