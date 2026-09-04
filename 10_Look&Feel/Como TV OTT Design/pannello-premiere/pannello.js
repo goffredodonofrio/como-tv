@@ -309,20 +309,15 @@
     dico("Prova: comporre un titolo come immagine", "si");
     dico("");
 
-    // 1 · disegnare
-    var dati = null;
-    try {
-      var c = document.createElement("canvas");
-      c.width = 600; c.height = 200;
-      var g = c.getContext("2d");
-      g.fillStyle = "rgba(0,0,0,0)"; g.fillRect(0, 0, 600, 200);
-      g.fillStyle = "#FFFFFF";
-      g.font = "bold 64px Nexa-Bold, sans-serif";
-      g.fillText("COMO TV", 20, 120);
-      dati = c.toDataURL("image/png");
-      dico("1 · disegnare: sì (" + Math.round(dati.length / 1024) + " KB)", "si");
-      dico("   font Nexa-Bold: " + (g.font.indexOf("Nexa") >= 0 ? "accettato" : "sostituito"), "forse");
-    } catch (e) { dico("1 · disegnare: NO — " + mess(e), "no"); }
+    // 1 · disegnare — GIA' RISPOSTO: no. Il canvas di UXP non ha fillText,
+    // quindi il PNG non si compone dentro Premiere e lo fara' la VM, dove
+    // il font si installa e il disegno si controlla. Qui si continua con un
+    // quadrato d'oro finto: i due passi dopo sono quelli ancora ignoti, e
+    // sono loro a dire se l'idea sta in piedi.
+    var PROVA = "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGklEQVR4nGM4ucj7PyWYYdSAUQNGDRguBgAA2QG1Hwgbp60AAAAASUVORK5CYII=";
+    var dati = "data:image/png;base64," + PROVA;
+    dico("1 · disegnare: no — il canvas di UXP non sa scrivere testo.", "forse");
+    dico("   lo fara' la VM. Intanto proseguo con un PNG finto.", "forse");
 
     // 2 · salvare su disco
     var percorso = "";
@@ -343,6 +338,14 @@
         dico("   " + percorso);
       } catch (e) { dico("2 · salvare: NO — " + mess(e), "no"); }
     }
+
+    // 2bis · scaricare un binario dal ponte: e' cosi' che arrivera' il PNG
+    // vero, e non e' scontato che dentro UXP una fetch binaria funzioni.
+    try {
+      var r = await fetch(PONTE.replace("/api", "") + "/pannello/comotv-pannello.zip?v=" + Date.now());
+      var buf2 = await r.arrayBuffer();
+      dico("2bis · scaricare dal ponte: sì (" + Math.round(buf2.byteLength / 1024) + " KB)", "si");
+    } catch (e) { dico("2bis · scaricare dal ponte: NO — " + mess(e), "no"); }
 
     // 3 · importare nel progetto
     var ppro = premiere();
