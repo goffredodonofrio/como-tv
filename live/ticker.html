@@ -622,6 +622,90 @@
     disegna(drag.i);
   });
   el("contenuti").addEventListener("pointerup", function(){ if (drag) { drag = null; anteprima(); } });
+  // ── la bozza ─────────────────────────────────────────────────────────
+  // Questa pagina si riempie a mano, con calma, e prima d'ora una ricarica
+  // buttava via tutto. Non e' un caso raro: capita di ricaricare per prendere
+  // una correzione, e si perdeva mezz'ora di lavoro.
+  //
+  // La bozza sta nel browser di chi scrive, non sul ponte: e' roba sua,
+  // finche' non la manda in scaletta non deve vederla nessun altro.
+  var CHIAVE_BOZZA = "comotv.ticker.bozza";
+
+  function bozzaScrivi() {
+    try {
+      var d = {
+        modo: MODO,
+        et: etichettaScelta(),
+        tit: titRows,
+        cont: CONT.map(function (c) {
+          var o = { tipo: c.tipo, e: c.e, t: c.t, x: c.x, stemma: c.stemma, ap: c.ap };
+          // Dell'immagine si tiene solo quello che serve a rifarla: l'oggetto
+          // Image non si puo' scrivere, e non serve.
+          if (c.foto) o.foto = { src: c.foto.src, url: c.foto.url, z: c.foto.z,
+                                 ox: c.foto.ox, oy: c.foto.oy, sporca: c.foto.sporca };
+          return o;
+        })
+      };
+      localStorage.setItem(CHIAVE_BOZZA, JSON.stringify(d));
+    } catch (e) {
+      // Una foto presa dal disco e' un dataURL da megabyte e puo' non
+      // entrarci. Meglio una bozza senza foto che nessuna bozza: si
+      // riscrive togliendo le immagini pesanti.
+      try {
+        var leggera = JSON.parse(localStorage.getItem(CHIAVE_BOZZA) || "null") || {};
+        leggera = { modo: MODO, et: etichettaScelta(), tit: titRows,
+          cont: CONT.map(function (c) {
+            var o = { tipo: c.tipo, e: c.e, t: c.t, x: c.x, stemma: c.stemma, ap: c.ap };
+            if (c.foto && c.foto.url) o.foto = { url: c.foto.url, src: c.foto.url, z: c.foto.z,
+                                                 ox: c.foto.ox, oy: c.foto.oy, sporca: false };
+            return o;
+          }) };
+        localStorage.setItem(CHIAVE_BOZZA, JSON.stringify(leggera));
+      } catch (e2) {}
+    }
+  }
+
+  var attesaBozza = null;
+  function bozzaSalva() {
+    clearTimeout(attesaBozza);
+    attesaBozza = setTimeout(bozzaScrivi, 400);   // si scrive a riposo, non a ogni tasto
+  }
+
+  function bozzaRileggi() {
+    var d;
+    try { d = JSON.parse(localStorage.getItem(CHIAVE_BOZZA) || "null"); } catch (e) { return false; }
+    if (!d || !d.cont) return false;
+
+    if (d.modo === "v1" || d.modo === "v2" || d.modo === "orizz") {
+      MODO = d.modo;
+      var r = el("modi").querySelector('input[value="' + MODO + '"]'); if (r) r.checked = true;
+    }
+    if (d.et) { var re = el("etichette").querySelector('input[value="' + d.et + '"]'); if (re) re.checked = true; }
+    if (d.tit && d.tit.length) titRows = d.tit;
+
+    d.cont.forEach(function (o, i) {
+      if (i >= CONT.length || !o) return;
+      var c = CONT[i];
+      c.tipo = o.tipo || "notizia";
+      c.e = o.e || ""; c.t = o.t || ""; c.x = o.x || "";
+      c.stemma = o.stemma || ""; c.ap = o.ap || null;
+      if (o.foto && o.foto.src) {
+        // l'immagine si ricarica da sola; il ritaglio si rimette dopo
+        (function (n, fo) {
+          var img = new Image();
+          img.onload = function () {
+            CONT[n].foto = { img: img, src: fo.src, ox: fo.ox || 0, oy: fo.oy || 0,
+                             z: fo.z || 1, sporca: !!fo.sporca, url: fo.url || "" };
+            renderCont(); anteprima();
+          };
+          img.src = fo.src;
+        })(i, o.foto);
+      }
+    });
+    return true;
+  }
+
+  if (bozzaRileggi()) { applicaModo(); renderTit(); }
   renderCont();
 
   // il ritaglio vero, alle misure della colonna in onda
@@ -688,6 +772,7 @@
   window.addEventListener("resize", scalaPrev);
   var attesa = null, RUOTA = false;
   function anteprima(subito){
+    bozzaSalva();
     clearTimeout(attesa);
     attesa = setTimeout(disegnaPrev, subito ? 0 : 420);
   }
