@@ -138,6 +138,12 @@
     margin-bottom:3px;display:block;}
   .contcard input[type=text],.contcard textarea{width:100%;font-size:13px;padding:7px 9px;}
   .contcard textarea{min-height:56px;resize:vertical;line-height:1.45;}
+  /* l'elenco degli appuntamenti presi: si legge, non si modifica — si
+     modificano nella loro pagina, che e' il punto di tutto */
+  .ccapp{background:var(--bg-1);border:1px solid var(--line-2);border-radius:8px;
+    padding:8px 10px;font-size:12.5px;line-height:1.7;margin-bottom:7px;}
+  .ccapp b{color:var(--gold);}
+  .ccapp i{color:var(--fg-3);font-style:normal;}
   .ccstemma{display:flex;align-items:center;gap:7px;}
   .ccstemma img{height:26px;max-width:52px;object-fit:contain;}
   .ccpiu{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
@@ -390,11 +396,63 @@
   //    scarti della foto (ox, oy) sono in frazioni del riquadro: cosi'
   //    valgono uguali sia qui che sulla foto vera da 420x560.
   var MAX_CONT = 4, W_OUT = 420, H_OUT = 560;
-  function nuovoContenuto(){ return { e:"", t:"", x:"", foto:null, stemma:"" }; }
+  function nuovoContenuto(){ return { e:"", t:"", x:"", foto:null, stemma:"", ap:null }; }
   var CONT = [];
   for (var k = 0; k < MAX_CONT; k++) CONT.push(nuovoContenuto());
-  function pieno(c){ return !!((c.t || "").trim() || (c.foto && c.foto.img)); }
-  function quantiPieni(){ return CONT.filter(pieno).length; }
+  function pieno(c){ return !!((c.t || "").trim() || (c.foto && c.foto.img) || (c.ap && c.ap.length)); }
+
+  // ── i prossimi appuntamenti, presi da dove sono gia' scritti ──────────
+  // Non si ricompongono qui. Gli appuntamenti si scrivono una volta sola
+  // nella pagina Appuntamenti, e questa scheda legge QUELLI: se il rischio
+  // fosse la poca liberta' si potrebbe discutere, ma il rischio vero e' che
+  // i due cartelli dicano cose diverse perche' qualcuno ne ha aggiornato uno
+  // solo — e in onda quello si vede.
+  //
+  // Si cercano in scaletta: la voce piu' recente di tipo "appuntamenti".
+  // Nessun archivio nuovo da tenere allineato, nessun doppio inserimento.
+  function pescaAppuntamenti(i) {
+    var c = CONT[i];
+    status("", "Cerco gli appuntamenti in scaletta&hellip;");
+
+    // Si guarda in TUTTI i canali, non solo in quello scelto qui sopra: la
+    // destinazione di questo cartello puo' essere un progetto, e comunque
+    // gli appuntamenti li ha composti qualcun altro, magari altrove. Si
+    // prende il piu' recente che si trova.
+    var canali = [1, 2, 3, 4];
+    Promise.all(canali.map(function (n) {
+      return fetch(PONTE_DEFAULT.url + "?regia=1&canale=" + n, { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (ix) {
+          return ((ix && ix.items) || [])
+            .filter(function (v) { return v.tipo === "appuntamenti"; })
+            .map(function (v) { return { c: n, id: v.id, ts: v.ts || 0, titolo: v.titolo || "" }; });
+        })
+        .catch(function () { return []; });
+    })).then(function (liste) {
+      var tutte = [].concat.apply([], liste).sort(function (a, b) { return b.ts - a.ts; });
+      if (!tutte.length) {
+        throw new Error("In nessuna scaletta c\u2019\u00e8 un cartello Appuntamenti. " +
+                        "Componilo prima nella sua pagina, poi torna qui.");
+      }
+      var u = tutte[0];
+      return fetch(PONTE_DEFAULT.url + "?regia=item&id=" + encodeURIComponent(u.id) +
+                   "&canale=" + u.c, { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (v) { return { v: v, u: u }; });
+    }).then(function (r) {
+      var d = r.v && r.v.dati ? r.v.dati : r.v;
+      if (!d || !d.ap || !d.ap.length) throw new Error("Quel cartello non ha appuntamenti dentro.");
+      c.ap = d.ap.slice(0, 4);
+      if (!(c.e || "").trim()) c.e = d.e || "Como TV";
+      if (!(c.t || "").trim()) c.t = d.t || "Prossimi appuntamenti";
+      renderCont();
+      anteprima();
+      status("ok", "Presi <b>" + c.ap.length + "</b> appuntamenti da &ldquo;" +
+                   esc(r.u.titolo) + "&rdquo; (canale " + r.u.c + ").");
+    }).catch(function (e) { status("no", esc(e.message)); });
+  }
+
+  function togliAppuntamenti(i) { CONT[i].ap = null; renderCont(); }
 
   function cardHTML(c, i){
     var conFoto = !!(c.foto && c.foto.img);
@@ -423,8 +481,22 @@
         '<input type="text" class="ccampo" data-campo="e" data-i="'+i+'" placeholder="es. SERIE A · 2ª GIORNATA" value="'+esc(c.e||"")+'"></div>'+
       '<div><span class="cclab">Titolo</span>'+
         '<input type="text" class="ccampo" data-campo="t" data-i="'+i+'" placeholder="es. Nico Paz trascina il Como" value="'+esc(c.t||"")+'"></div>'+
-      '<div><span class="cclab">Testo</span>'+
-        '<textarea class="ccampo" data-campo="x" data-i="'+i+'" placeholder="Il piccolo testo sotto il titolo…">'+esc(c.x||"")+'</textarea></div>'+
+      (c.ap && c.ap.length
+        ? '<div><span class="cclab">Prossimi appuntamenti</span>'+
+            '<div class="ccapp">'+
+              c.ap.map(function(v){
+                var chi = v.ti || (((v.a&&v.a.n)||"") + (v.b&&v.b.n ? "-"+v.b.n : ""));
+                return '<div><b>'+esc(String(v.d||"").replace(/^0+(?=\d)/,""))+' '+esc(v.m||"")+'</b> '+
+                       esc(chi)+(v.o ? ' <i>ore '+esc(v.o)+'</i>' : '')+'</div>';
+              }).join('')+
+            '</div>'+
+            '<button type="button" class="ccbtn" data-app="'+i+'">Riprendili aggiornati</button> '+
+            '<button type="button" class="ccbtn btnrosso" data-appno="'+i+'">Torna al testo</button>'+
+          '</div>'
+        : '<div><span class="cclab">Testo</span>'+
+            '<textarea class="ccampo" data-campo="x" data-i="'+i+'" placeholder="Il piccolo testo sotto il titolo…">'+esc(c.x||"")+'</textarea>'+
+            '<button type="button" class="ccbtn" data-app="'+i+'" style="margin-top:7px">&#128197; Metti i prossimi appuntamenti</button>'+
+          '</div>')+
       '<div><span class="cclab">Stemma</span><div class="ccstemma">'+
         '<button type="button" class="ccbtn" data-stem="'+i+'">&#128193; Scegli</button>'+
         (c.stemma ? '<img src="'+esc(c.stemma)+'" alt=""><button type="button" class="ccbtn btnrosso" data-stemno="'+i+'">Togli</button>' : '')+
@@ -492,6 +564,8 @@
     if (!b) return;
     var d = b.dataset;
     if (d.rm != null) { CONT[+d.rm] = nuovoContenuto(); renderCont(); anteprima(); return; }
+    if (d.app != null) { pescaAppuntamenti(+d.app); return; }
+    if (d.appno != null) { togliAppuntamenti(+d.appno); anteprima(); return; }
     if (d.carica != null) { iUpload = +d.carica; el("ffile").click(); return; }
     if (d.mag != null) {
       var i = +d.mag;
@@ -578,8 +652,11 @@
       if (c.stemma) o.l = c.stemma;
       if (c.foto && c.foto.url) o.f = c.foto.url;
       if (perAnteprima && c.foto && c.foto.img && c.foto.sporca) o.f = fotoCotta(c.foto);
+      // gli appuntamenti viaggiano col cartello, come tutto il resto: in
+      // onda la colonna non deve andare a cercarsi niente
+      if (c.ap && c.ap.length) o.ap = c.ap;
       return o;
-    }).filter(function(o){ return o.t || o.f; });   // i riquadri vuoti restano fuori
+    }).filter(function(o){ return o.t || o.f || (o.ap && o.ap.length); });
 
     var d = { v: (MODO === "v2" ? "2" : "1"), co: co, t: (co[0] ? co[0].t : "") };
     if (MODO === "v2") { d.et = etichettaScelta(); d.ti = titoli(); d.cr = cr; }

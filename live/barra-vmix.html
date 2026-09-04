@@ -62,6 +62,41 @@
   .corpo{margin-top:20px;font-family:'DM Sans',sans-serif;font-weight:500;font-size:23px;
     line-height:1.5;color:#D8D2C2;opacity:0;}
 
+  /* ── la scheda "prossimi appuntamenti" ───────────────────────────────
+     Non e' la grafica a schermo intero rimpicciolita: quella ha un blocco
+     data da 176px, qui la colonna intera ne ha 356. Stesso linguaggio —
+     numero grande, mese piccolo, filo dorato, ora a destra — ma
+     riproporzionato, e la foto si accorcia per far posto a quattro righe.
+     Con la foto alta 560 ne restavano 290 in quattro: 72px l'una, troppo
+     poco perche' un nome di squadra si legga da tre metri. */
+  .scheda.appunt .foto{height:420px;}
+  .scheda.appunt .testo{top:470px;}
+  .scheda.appunt .titolo{font-size:34px;}
+  .scheda.appunt .filo{margin-top:14px;}
+  .scheda.appunt .corpo{margin-top:18px;}
+
+  .apr{display:flex;align-items:center;padding:13px 0;}
+  .apr + .apr{border-top:1px solid rgba(201,162,75,.16);}
+  .apd{flex:0 0 62px;text-align:center;}
+  .apn{font-family:'Mazzard',sans-serif;font-weight:800;font-size:36px;line-height:.95;
+    color:#F5F1E6;}
+  .apm{font-family:'Mazzard',sans-serif;font-weight:700;font-size:13px;letter-spacing:.16em;
+    color:#C9A24B;margin-top:3px;}
+  .apf{flex:0 0 2px;align-self:stretch;margin:2px 14px;border-radius:1px;
+    background:linear-gradient(180deg,rgba(201,162,75,.15),#C9A24B,rgba(201,162,75,.15));}
+  .apc{flex:1;min-width:0;}
+  .apcomp{font-family:'Mazzard',sans-serif;font-weight:700;font-size:12px;letter-spacing:.14em;
+    text-transform:uppercase;color:#C9A24B;margin-bottom:4px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .apt{font-family:'Mazzard',sans-serif;font-weight:800;font-size:19px;line-height:1.12;
+    text-transform:uppercase;color:#F5F1E6;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .apo{flex:0 0 auto;margin-left:12px;text-align:right;}
+  .apolab{font-family:'DM Sans',sans-serif;font-size:11px;letter-spacing:.12em;
+    text-transform:uppercase;color:#8A8B96;}
+  .apoh{font-family:'Mazzard',sans-serif;font-weight:800;font-size:20px;color:#F5F1E6;
+    line-height:1.1;}
+
   /* stemma in fondo alla colonna */
   .stemma{position:absolute;left:34px;bottom:34px;width:74px;height:74px;object-fit:contain;opacity:0;}
 
@@ -198,7 +233,7 @@
   // ── i contenuti: fino a 4, e la forma vecchia (un contenuto solo) vale ancora ──
   var MAX_CONTENUTI = 4;
   var CONTENUTI = (Array.isArray(D.co) && D.co.length ? D.co : [{ e: D.e, t: D.t, x: D.x, f: D.f, l: D.l }])
-    .filter(function (c) { return c && (String(c.t || "").trim() || c.f); })
+    .filter(function (c) { return c && (String(c.t || "").trim() || c.f || (c.ap && c.ap.length)); })
     .slice(0, MAX_CONTENUTI);
   if (!CONTENUTI.length) CONTENUTI = [{ t: D.t || "" }];
   document.title = "BARRA " + (CONTENUTI[0].t || "");
@@ -218,12 +253,46 @@
 
   var V2 = String(D.v) === "2";
 
+  // ── le righe degli appuntamenti ──────────────────────────────────────
+  // Arrivano dalla pagina Appuntamenti nella stessa forma con cui le disegna
+  // la grafica a schermo intero: {g,d,m,o,c,ti,a,b,no}. Non si ricompongono
+  // e non si riscrivono a mano — si scrivono una volta sola, li'.
+  function righeAppuntamenti(ap) {
+    return ap.slice(0, 4).map(function (v) {
+      var chi = v.ti ? esc(v.ti)
+              : esc(((v.a && v.a.n) || "") + (v.b && v.b.n ? "-" + v.b.n : ""));
+      return '<div class="apr">' +
+          '<div class="apd">' +
+            '<div class="apn">' + esc(giornoPulito(v.d)) + '</div>' +
+            (v.m ? '<div class="apm">' + esc(v.m) + '</div>' : '') +
+          '</div>' +
+          '<div class="apf"></div>' +
+          '<div class="apc">' +
+            (v.c ? '<div class="apcomp">' + esc(v.c) + '</div>' : '') +
+            '<div class="apt">' + chi + '</div>' +
+          '</div>' +
+          (v.o ? '<div class="apo"><div class="apolab">ore</div>' +
+                 '<div class="apoh">' + esc(v.o) + '</div></div>' : '') +
+        '</div>';
+    }).join("");
+  }
+
+  // Lo zero davanti al giorno non lo vogliamo: gli appuntamenti salvati
+  // prima della correzione del 4 settembre ce l'hanno gia' scritto dentro.
+  function giornoPulito(d) {
+    return String(d == null ? "" : d).trim().replace(/^0+(?=\d)/, "");
+  }
+
   // ── una scheda: foto, occhiello, titolo, filo, testo, stemma ──────────
   //    si costruisce gia' misurata, mentre e' ancora invisibile: quando
   //    entra in dissolvenza non deve piu' muovere niente.
   function costruisci(c) {
     var s = document.createElement("div");
-    s.className = "scheda";
+    // Gli appuntamenti sono una scheda come le altre — stessa rotazione,
+    // stessa foto, stessa entrata da destra — solo con il corpo fatto di
+    // righe invece che di testo libero.
+    var appunt = !!(c.ap && c.ap.length);
+    s.className = "scheda" + (appunt ? " appunt" : "");
     var conFoto = !!c.f;
     s.innerHTML =
       (conFoto ? '<div class="foto"><img alt=""><div class="velo"></div></div>' : '') +
@@ -247,16 +316,29 @@
 
     s.querySelector(".occhiello").textContent = c.e || "";
     s.querySelector(".titolo").textContent = c.t || "";
-    s.querySelector(".corpo").textContent = c.x || "";
+    var corpo = s.querySelector(".corpo");
+    if (appunt) corpo.innerHTML = righeAppuntamenti(c.ap);
+    else corpo.textContent = c.x || "";
     el("barra").insertBefore(s, el("pallini"));
 
-    var testoY = conFoto ? 614 : 120;
-    var t = s.querySelector(".titolo"), fs = 46;
+    var testoY = appunt ? 470 : (conFoto ? 614 : 120);
+    var t = s.querySelector(".titolo"), fs = appunt ? 34 : 46;
     while (t.scrollHeight > 190 && fs > 26) { fs -= 2; t.style.fontSize = fs + "px"; }
-    var corpo = s.querySelector(".corpo"), fc = 23;
     // quello che resta fra il titolo e lo stemma in fondo alla colonna
     var spazio = 1080 - 34 - 74 - 24 - (testoY + t.offsetHeight + 90);
-    while (corpo.scrollHeight > spazio && fc > 15) { fc -= 1; corpo.style.fontSize = fc + "px"; }
+    if (appunt) {
+      // Le righe non si rimpiccioliscono di corpo: si stringono di
+      // interlinea. Un appuntamento con la data a 24px in mezzo ad altri a
+      // 36 sembrerebbe meno importante, e non lo e'.
+      var righe = corpo.querySelectorAll(".apr"), p = 13;
+      while (corpo.scrollHeight > spazio && p > 4) {
+        p -= 1;
+        for (var i = 0; i < righe.length; i++) righe[i].style.padding = p + "px 0";
+      }
+    } else {
+      var fc = 23;
+      while (corpo.scrollHeight > spazio && fc > 15) { fc -= 1; corpo.style.fontSize = fc + "px"; }
+    }
     return s;
   }
 
