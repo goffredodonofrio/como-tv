@@ -605,6 +605,35 @@
       });
   }
 
+  // ── il conteggio dei caratteri ─────────────────────────────────────
+  // Le misure non sono un capriccio: oltre quelle il motore rimpicciolisce
+  // il titolo per farlo stare nella riga, e una maschera con il titolo a
+  // corpo ridotto si riconosce a occhio fra le altre. Meglio saperlo mentre
+  // si scrive che dopo averla messa in timeline.
+  //
+  // Non si blocca la scrittura: tagliare a meta' parola sarebbe peggio del
+  // problema, e chi scrive deve poter sforare e decidere lui come tagliare.
+  var MISURE = { t1: 14, t2: 14, sott: 56 };
+
+  function conta(id) {
+    var quanti = testoDi(id).length, limite = MISURE[id];
+    var c = el("conta-" + id);
+    if (!c) return;
+    c.textContent = quanti + "/" + limite;
+    c.className = "conta" + (quanti > limite ? " oltre" : quanti === limite ? " pieno" : "");
+  }
+
+  Object.keys(MISURE).forEach(function (id) {
+    var campo = el(id);
+    if (!campo) return;
+    // sp-textfield non manda "change", ma "input" si': e' quello che serve,
+    // perche' il numero deve muoversi mentre si scrive.
+    ["input", "change", "keyup"].forEach(function (evento) {
+      campo.addEventListener(evento, function () { conta(id); });
+    });
+    conta(id);
+  });
+
   el("partita").addEventListener("change", mostra);
   el("btnCopia").addEventListener("click", mandaReferto);
   el("btnMask").addEventListener("click", function () {
