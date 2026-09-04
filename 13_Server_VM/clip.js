@@ -27,6 +27,7 @@ const fs = require("fs");
 const path = require("path");
 const https = require("https");
 const { spawn, execFile } = require("child_process");
+const dgram = require("dgram");
 
 const ATTIVO = process.env.COMOTV_CLIP === "1";
 
@@ -78,8 +79,20 @@ const INTEGRALE_DA_SOLO = process.env.COMOTV_CLIP_INTEGRALE === "1";
 //
 //  Le porte rispecchiano quelle di Mola (10001 in su): dodici, quante sono
 //  le partite del picco.
-const PORTE = [];
-for (let i = 10001; i <= 10012; i++) PORTE.push(i);
+// Le porte sono della MACCHINA, non del ponte: dev e produzione girano sulla
+// stessa e non possono ascoltare sullo stesso numero. Quindi l'intervallo si
+// configura, e i due ambienti ne hanno uno per uno — altrimenti il secondo
+// che prova a mettersi in ascolto fallisce con un "indirizzo occupato" nel
+// momento peggiore, cioe' quando qualcuno sta per registrare una partita.
+const PORTE = (function () {
+  const t = String(process.env.COMOTV_CLIP_PORTE || "10001-10012");
+  const m = /^(\d+)\s*-\s*(\d+)$/.exec(t.trim());
+  const a = m ? parseInt(m[1], 10) : 10001;
+  const b = m ? parseInt(m[2], 10) : 10012;
+  const fuori = [];
+  for (let i = a; i <= b && fuori.length < 32; i++) fuori.push(i);
+  return fuori.length ? fuori : [10001];
+})();
 const IP_PUBBLICO = process.env.COMOTV_IP_PUBBLICO || "209.227.239.211";
 // Una porta aperta sul mondo senza parola d'ordine e' un invito a spingerci
 // dentro qualsiasi cosa. Con la passphrase, chi non ce l'ha non entra.
@@ -133,6 +146,20 @@ function vivo(pid, id) {
     const riga = fs.readFileSync("/proc/" + pid + "/cmdline", "utf8");
     return riga.indexOf(id) >= 0 && riga.indexOf("hls_segment_filename") >= 0;
   } catch (e) { return false; }        // niente /proc: meglio dirlo morto
+}
+
+// Chiedere al sistema, non al proprio registro: sulla stessa macchina girano
+// due ponti, e un riavvio puo' lasciare in giro un ffmpeg che tiene la porta.
+function portaLibera(porta) {
+  try {
+    const s = dgram.createSocket("udp4");
+    let libera = true;
+    s.on("error", () => { libera = false; });
+    try { s.bind({ port: porta, exclusive: true }); } catch (e) { libera = false; }
+    const stato = s.address ? true : true;
+    try { s.close(); } catch (e) {}
+    return libera;
+  } catch (e) { return false; }
 }
 
 function assicura(d) { try { fs.mkdirSync(d, { recursive: true }); } catch (e) {} }
@@ -345,6 +372,17 @@ function avviaProcesso(r) {
     // visibile nel DVR, ma il seguito c'e'.
     if (r.stato === "registra" && (Date.now() - r.avviata) / 1000 < MAX_SECONDI) {
       r.riagganci = (r.riagganci || 0) + 1;
+      // Riagganciarsi ha senso se il flusso c'era e se n'e' andato. Se invece
+      // non e' mai partito — porta occupata, indirizzo sbagliato — riprovare
+      // ogni due secondi per duecento volte non aggiusta niente: nasconde
+      // l'errore e basta.
+      const maiPartita = durataRegistrata(r.id) === 0;
+      if (maiPartita && (r.riagganci > 4)) {
+        r.errore = ultimaRiga(coda) || "non riesco ad aprire questa sorgente";
+        r.stato = "errore"; r.finita = Date.now();
+        scrivi(); annuncia(0, "clip");
+        return;
+      }
       if (r.riagganci <= MAX_RIAGGANCI) {
         r.ultimoRiaggancio = Date.now();
         scrivi(); annuncia(0, "clip");
@@ -433,10 +471,21 @@ async function clipAvvia(p) {
   // "ricevi": non andiamo a prendere niente, ci mettiamo in ascolto e
   // consegniamo l'indirizzo a cui trasmettere.
   if (p.ricevi) {
+    // UN ASCOLTO ALLA VOLTA.
+    // Premere due volte apriva due ascolti su due porte diverse: chi
+    // trasmette ne trova uno solo, e la pagina ti mostra l'altro — che resta
+    // vuoto per sempre. Se ce n'e' gia' uno in attesa, si torna quello.
+    const gia = Object.keys(R.reg).map((k) => R.reg[k]).find((x) =>
+      x.stato === "registra" && x.ascolto && vivo(x.pid, x.id) &&
+      (!!x.guarda === !!p.guarda) && durataRegistrata(x.id) === 0);
+    if (gia) return { ok: true, id: gia.id, gia: true, reg: pubblica(gia) };
+
     const usate = Object.keys(R.reg)
       .filter((k) => R.reg[k].stato === "registra" && R.reg[k].ascolto)
       .map((k) => R.reg[k].ascolto.porta);
-    const porta = PORTE.find((x) => usate.indexOf(x) < 0);
+    // e non basta il nostro registro: sulla macchina c'e' anche l'altro
+    // ambiente, e possono restare processi orfani di un riavvio
+    const porta = PORTE.find((x) => usate.indexOf(x) < 0 && portaLibera(x));
     if (!porta) throw new Error("tutte le porte di ascolto sono occupate");
     const coda = "?mode=listener&latency=300" + (PASSPHRASE ? "&passphrase=" + PASSPHRASE : "") +
                  "&listen_timeout=7200000000";

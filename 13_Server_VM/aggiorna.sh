@@ -81,7 +81,16 @@ chown -R comotv:comotv "$SITO" 2>/dev/null || true
 #    nulla. Lo stato (scalette e messa in onda) è su disco e viene ripreso.
 NUOVO="$SITO/13_Server_VM/server.js"
 INUSO="/opt/comotv/server.js"
-if [ "$SOLO_RISCRITTURA" -eq 0 ] && [ -f "$NUOVO" ] && ! cmp -s "$NUOVO" "$INUSO"; then
+# clip.js viaggia col ponte come ottgen.js: server.js lo carica per il MAM
+# (registrazione, DVR, taglio). Senza, il require fallisce e il MAM non
+# esiste — il resto del ponte funziona lo stesso, ma la pagina non parla con
+# nessuno. Va guardato anche da solo: puo' cambiare lui senza che server.js
+# si muova di una riga, e allora nessuno lo installerebbe mai.
+CAMBIA_CLIP=0
+if [ -f "$SITO/13_Server_VM/clip.js" ] && ! cmp -s "$SITO/13_Server_VM/clip.js" /opt/comotv/clip.js; then
+  CAMBIA_CLIP=1
+fi
+if [ "$SOLO_RISCRITTURA" -eq 0 ] && [ -f "$NUOVO" ] && { ! cmp -s "$NUOVO" "$INUSO" || [ "$CAMBIA_CLIP" -eq 1 ]; }; then
   if node --check "$NUOVO" 2>/dev/null; then
     echo "→ il ponte è cambiato: lo sostituisco e riavvio…"
     install -o comotv -g comotv -m 644 "$NUOVO" "$INUSO"
@@ -91,6 +100,9 @@ if [ "$SOLO_RISCRITTURA" -eq 0 ] && [ -f "$NUOVO" ] && ! cmp -s "$NUOVO" "$INUSO
     # tutto il ponte per una funzione di montaggio.
     if [ -f "$SITO/13_Server_VM/ottgen.js" ]; then
       install -o comotv -g comotv -m 644 "$SITO/13_Server_VM/ottgen.js" /opt/comotv/ottgen.js
+    fi
+    if [ -f "$SITO/13_Server_VM/clip.js" ] && node --check "$SITO/13_Server_VM/clip.js" 2>/dev/null; then
+      install -o comotv -g comotv -m 644 "$SITO/13_Server_VM/clip.js" /opt/comotv/clip.js
     fi
     # aggiorna.sh si sostituisce con uno spostamento, non riscrivendosi:
     # il file in esecuzione resta valido fino alla fine
