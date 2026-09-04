@@ -226,23 +226,46 @@
       // riconoscere una grafica, e prima li saltavo in silenzio.
       if (!quanti) { dico(rientro + "  " + etichetta + " (nessun parametro)"); continue; }
 
+      // Del componente del testo interessa anche il CONTENUTO: e' l'unico
+      // modo di capire quale delle grafiche e' il titolo, quale il
+      // sottotitolo e quale la competizione. Dei filtri (opacita', movimento)
+      // bastano i nomi.
+      var eTesto = /text/i.test(etichetta);
       var righe = [], inciampo = "";
       for (var p = 0; p < quanti; p++) {
         try {
           var par = await comp.getParam(p);
-          var pn = await par.getDisplayName();
-          righe.push("[" + p + "] " + pn);
-          // Un campo che si chiama "Source Text", "Testo" o simili e' il
-          // candidato: viene messo da parte per il pulsante "Scrivi", che
-          // altrimenti non saprebbe dove mettere le mani.
-          if (/text|testo|sorgente/i.test(pn)) {
+          // displayName e' una PROPRIETA', non un metodo: chiamarlo come
+          // funzione faceva fallire tutti e 22 i parametri in silenzio.
+          var pn = par.displayName || "";
+          var voce = "[" + p + "] " + pn;
+
+          if (eTesto) {
+            try {
+              var k = await par.getStartValue();
+              var v = k && k.value !== undefined ? k.value : k;
+              if (v !== undefined && v !== null && String(v) !== "") {
+                voce += " = “" + String(v).replace(/\s+/g, " ").slice(0, 70) + "”";
+              }
+            } catch (e2) {}
+          }
+          righe.push(voce);
+
+          if (/source text|^text$|testo/i.test(pn)) {
             testi.push({ dove: nome, comp: etichetta, nome: pn, param: par });
           }
         } catch (e) { if (!inciampo) inciampo = e.message || String(e); }
       }
 
       if (righe.length) {
-        dico(rientro + "  " + etichetta + " → " + righe.join(" · "));
+        // Il testo va a capo per riga: 22 parametri su una riga sola non si
+        // leggono. I filtri restano compatti, sono solo nomi.
+        if (eTesto) {
+          dico(rientro + "  " + etichetta + ":", "si");
+          righe.forEach(function (r) { dico(rientro + "    " + r); });
+        } else {
+          dico(rientro + "  " + etichetta + " → " + righe.join(" · "));
+        }
         continue;
       }
 
@@ -290,22 +313,28 @@
     var ppro = premiere();
     var progetto = await ppro.Project.getActiveProject();
 
-    // via 1: l'azione dentro una transazione — la strada documentata
+    // createSetValueAction non vuole il testo nudo: vuole un keyframe, che
+    // si fabbrica dal valore. E' il passaggio che mi era sfuggito.
     try {
-      var azione = b.param.createSetValueAction(testo, true);
+      var kf = b.param.createKeyframe(testo);
+      var azione = b.param.createSetValueAction(kf, true);
       await progetto.lockedAccess(function () {
         progetto.executeTransaction(function (gruppo) {
           gruppo.addAction(azione);
         }, "Como TV: competizione");
       });
-      dico("✓ scritto (azione + transazione)", "si");
+      dico("✓ scritto (keyframe + transazione)", "si");
       return;
     } catch (e) { dico("· via 1 no: " + e.message, "forse"); }
 
-    // via 2: dritto per dritto, senza transazione
+    // via 2: la transazione presa dal progetto senza lockedAccess intorno
     try {
-      await b.param.setValue(testo, true);
-      dico("✓ scritto (setValue diretto)", "si");
+      var kf2 = b.param.createKeyframe(testo);
+      var az2 = b.param.createSetValueAction(kf2, true);
+      await progetto.executeTransaction(function (gruppo) {
+        gruppo.addAction(az2);
+      }, "Como TV: competizione");
+      dico("✓ scritto (transazione senza lock)", "si");
       return;
     } catch (e) { dico("· via 2 no: " + e.message, "forse"); }
 
