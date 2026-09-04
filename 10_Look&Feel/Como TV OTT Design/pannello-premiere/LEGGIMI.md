@@ -10,8 +10,30 @@
 | Ponte che serve le partite (`?partite=1`) | **fatto e verificato** — 157 voci |
 | Tendina delle partite dentro il pannello | **gira dentro Premiere** (26.3.2) |
 | Lettura della timeline | **funziona**: progetto, sequenza, tracce, componenti |
-| Scrittura nelle grafiche **native** | **non si può** — vedi sotto |
-| Scrittura in un **modello di grafica animata** | prossimo passo |
+| **Mettere la maschera giusta su V2** | **funziona** — 2026-09-04 |
+| Scrittura del testo nelle grafiche native | **non si può** — vedi sotto |
+| Modello di grafica animata (per il testo) | non provato; l'attrezzo c'è |
+
+## Come funziona adesso
+
+Il montatore sceglie la partita dalla tendina. Il pannello sa quale maschera
+vuole quella competizione, la **ritrova dentro il progetto** (per nome, non per
+percorso: se gli asset cambiano cartella su `Y:` continua a funzionare) e la
+mette su **V2**, al posto di quella che c'è. `Ctrl+Z` annulla.
+
+Quando la maschera non esiste — Champions, Serie A, Under 17, Under 18, UEFA
+Youth League, EVENTO REC — **lo dice e spegne il pulsante**, invece di metterne
+una sbagliata.
+
+Tre cose imparate a caro prezzo, perché non stanno nella documentazione:
+
+1. Una cartella del progetto non si apre com'è: va convertita con
+   `FolderItem.cast(item)`. Senza, la ricerca si ferma al primo piano.
+2. `Requires locked access` non vuol dire che manca il lucchetto: vuol dire che
+   l'azione va **costruita** dentro `lockedAccess`, non solo eseguita.
+3. `SequenceEditor` sa anche `insertMogrtFromPath` e `insertMogrtFromLibrary`:
+   se un giorno si torna sul testo, l'attrezzo per i modelli di grafica animata
+   c'è già.
 
 ## Milestone 0 — l'esito
 
