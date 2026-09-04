@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<script>
+/* Come la regia: su GitHub questa pagina parlerebbe a un ponte che non
+   esiste. Si viene portati sulla macchina giusta. */
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  location.replace("https://projects-cloud.it" + location.pathname + location.search + location.hash);
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAM Como TV</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    color-scheme:dark;
+    --gold:#C9A24B;--gold-bright:#E3C271;--red:#E51B20;
+    --ivory:#F5F1E6;--ivory-dim:#D8D2C2;--fg-3:#8A8B96;
+    --surface-panel:rgba(16,22,48,.66);
+    --line-2:rgba(245,241,230,.08);--line-gold:rgba(201,162,75,.28);
+    --ok:#4FCB8B;
+  }
+  body{
+    font-family:'DM Sans',system-ui,sans-serif;font-weight:500;font-size:14px;line-height:1.5;
+    color:var(--ivory);min-height:100vh;
+    background-color:#0A0F24;
+    background-image:
+      radial-gradient(90% 70% at 20% 8%, rgba(36,64,138,.5), transparent 55%),
+      radial-gradient(80% 80% at 92% 108%, rgba(201,162,75,.16), transparent 55%),
+      linear-gradient(165deg,#141B3C 0%,#0E1430 48%,#0A0F24 100%);
+    background-attachment:fixed;
+    padding-bottom:90px;
+  }
+  .wrap{max-width:1500px;margin:0 auto;padding:0 clamp(18px,3vw,32px);}
+  header.page{padding:34px 0 14px;}
+  .eyebrow{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.3em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:10px;}
+  h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(28px,4vw,42px);
+    line-height:.94;letter-spacing:-.02em;text-transform:uppercase;color:var(--ivory);}
+  .occhiello{color:var(--fg-3);margin-top:10px;max-width:70ch;}
+
+  .pannello{background:var(--surface-panel);border:1px solid var(--line-2);border-radius:10px;padding:16px;}
+  .titolino{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.26em;
+    text-transform:uppercase;color:var(--fg-3);margin-bottom:10px;}
+
+  select,input[type=text],input[type=number]{
+    font-family:'DM Sans',sans-serif;font-size:14px;color:var(--ivory);
+    background:rgba(10,15,36,.7);border:1px solid var(--line-2);border-radius:8px;
+    padding:9px 11px;width:100%;}
+  select:focus,input:focus{outline:none;border-color:var(--line-gold);}
+  label.campo{display:block;}
+  label.campo>span{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--fg-3);display:block;margin-bottom:6px;}
+
+  button{font-family:'Mazzard',sans-serif;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    font-size:12px;color:var(--ivory);background:rgba(10,15,36,.7);
+    border:1px solid var(--line-2);border-radius:8px;padding:10px 14px;cursor:pointer;}
+  button:hover:not(:disabled){border-color:var(--line-gold);color:var(--gold-bright);}
+  button:disabled{opacity:.35;cursor:not-allowed;}
+  button.oro{background:rgba(201,162,75,.14);border-color:var(--line-gold);color:var(--gold-bright);}
+  button.rosso{background:rgba(229,27,32,.16);border-color:rgba(229,27,32,.5);color:#FF8A8D;}
+  button.acceso{background:rgba(79,203,139,.14);border-color:rgba(79,203,139,.45);color:var(--ok);}
+
+  .riga{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;}
+  .riga>*{flex:1 1 200px;}
+  .riga .stretto{flex:0 0 auto;}
+
+  #stato{display:flex;align-items:center;gap:12px;margin:16px 0;padding:14px 18px;border-radius:10px;
+    background:var(--surface-panel);border:1px solid var(--line-2);
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:17px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--fg-3);}
+  #stato .dot{width:12px;height:12px;border-radius:50%;background:var(--fg-3);flex:none;}
+  #stato.registra{color:#FF6B6E;border-color:rgba(229,27,32,.5);}
+  #stato.registra .dot{background:var(--red);box-shadow:0 0 12px rgba(229,27,32,.9);animation:pulse 1.4s ease-in-out infinite;}
+  #stato.ferma{color:var(--gold-bright);border-color:var(--line-gold);}
+  #stato.ferma .dot{background:var(--gold);}
+  #stato .coda{margin-left:auto;font-size:12px;letter-spacing:.16em;color:var(--fg-3);}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  /* Fasce, non colonne: il taglio e le clip si leggono da sinistra a destra,
+     e ogni comando ha la stessa misura del suo gemello. */
+  .deck{display:flex;flex-direction:column;gap:16px;}
+  .visore{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px;align-items:start;}
+  @media (max-width:1000px){.visore{grid-template-columns:1fr;}}
+
+  .fila{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;}
+  .gruppo{display:flex;gap:8px;}
+  .gruppo button{min-width:74px;}
+  .gruppo.paritaria button{flex:1 1 0;min-width:120px;}
+  .sep{width:1px;align-self:stretch;background:var(--line-2);margin:0 2px;}
+  .etichetta{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:700;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--fg-3);margin-bottom:6px;display:block;}
+  .colonnina{display:flex;flex-direction:column;}
+  .colonnina.cresce{flex:1 1 200px;}
+
+  video{width:100%;aspect-ratio:16/9;background:#05070F;border-radius:8px;display:block;}
+  video.verticale{aspect-ratio:9/16;max-height:420px;margin:0 auto;}
+  video.quadrotto{aspect-ratio:4/3;}
+
+  .barra{margin-top:10px;}
+  input[type=range]{width:100%;accent-color:var(--gold);}
+  .tempi{display:flex;justify-content:space-between;font-family:'Mazzard',sans-serif;
+    font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--fg-3);margin-top:4px;}
+  .trasporto{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+  .trasporto button{flex:1 1 auto;padding:9px 10px;}
+
+  .numeroni{font-family:'Mazzard',sans-serif;font-weight:800;font-size:30px;letter-spacing:.02em;
+    color:var(--ivory);text-align:center;line-height:1.1;}
+  .numeroni small{display:block;font-size:10px;letter-spacing:.26em;color:var(--fg-3);margin-bottom:4px;}
+  .inout{display:flex;gap:10px;}
+  .inout .box{background:rgba(10,15,36,.55);border:1px solid var(--line-2);border-radius:8px;
+    padding:10px 14px;min-width:104px;}
+  .inout .box.messo{border-color:var(--line-gold);}
+  .preset{display:flex;gap:8px;}
+  .scelte{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;}
+  .scelte.tre{grid-template-columns:repeat(3,1fr);}
+
+  .elenco{display:flex;flex-direction:column;gap:8px;max-height:520px;overflow:auto;}
+  /* le clip e i pezzi dell'HL scorrono in orizzontale: si vedono tutti senza
+     spingere in basso il resto della pagina */
+  .striscia{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;align-items:stretch;}
+  .striscia .voce{flex:0 0 300px;flex-direction:column;align-items:flex-start;gap:6px;}
+  .striscia .voce .azioni{display:flex;gap:12px;margin-top:auto;padding-top:4px;}
+  .striscia.pezzi .voce{flex:0 0 250px;}
+  .striscia .vuoto{flex:1;}
+  .voce{background:rgba(10,15,36,.55);border:1px solid var(--line-2);border-radius:8px;padding:10px 12px;
+    display:flex;gap:10px;align-items:center;}
+  .voce .testo{flex:1;min-width:0;}
+  .voce .nome{font-family:'Mazzard',sans-serif;font-weight:700;font-size:13px;letter-spacing:.04em;
+    text-transform:uppercase;color:var(--ivory);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .voce .dett{font-size:12px;color:var(--fg-3);}
+  .voce a{color:var(--gold-bright);text-decoration:none;font-family:'Mazzard',sans-serif;font-size:11px;
+    font-weight:700;letter-spacing:.14em;text-transform:uppercase;}
+  .voce.lavora{opacity:.6;}
+  .voce.errore{border-color:rgba(229,27,32,.45);}
+  .vuoto{color:var(--fg-3);font-size:13px;padding:8px 2px;}
+
+  .avviso{margin:14px 0;padding:12px 16px;border-radius:8px;font-size:13px;
+    background:rgba(229,27,32,.12);border:1px solid rgba(229,27,32,.4);color:#FF9A9C;display:none;}
+  .avviso.ok{background:rgba(79,203,139,.12);border-color:rgba(79,203,139,.4);color:var(--ok);}
+  .avviso.vedi{display:block;}
+  .aiuto{color:var(--fg-3);font-size:12px;margin-top:10px;}
+  kbd{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.1em;
+    border:1px solid var(--line-2);border-radius:4px;padding:1px 6px;color:var(--ivory-dim);}
+</style>
+</head>
+<body>
+
+<script src="nav.js"></script>
+
+<div class="wrap">
+  <header class="page">
+    <div class="eyebrow">Como TV · Archivio e clip</div>
+    <h1>MAM Como TV</h1>
+    <p class="occhiello">Registra il flusso di una partita, torna indietro dove serve e taglia.
+      La clip esce mentre la partita è ancora in corso, e da lì va nelle grafiche o nel montaggio.</p>
+  </header>
+
+  <div class="avviso" id="avviso"></div>
+
+  <!-- ── che cosa si registra ────────────────────────────────────── -->
+  <section class="pannello" style="margin-bottom:16px">
+    <div class="titolino">La registrazione</div>
+    <div class="riga">
+      <label class="campo"><span>Evento</span>
+        <select id="evento"><option value="">— senza evento —</option></select></label>
+      <label class="campo"><span>Sorgente</span>
+        <select id="sorgente"><option value="">— scegli —</option></select></label>
+      <label class="campo"><span>Indirizzo del flusso</span>
+        <input type="text" id="url" placeholder="https://…/index.m3u8  oppure  srt://…:7000"></label>
+      <div class="stretto"><button id="btnRec" class="oro">Registra</button></div>
+    </div>
+    <div class="aiuto">Le sorgenti arrivano dalla tabella <em>AWS</em> di Airtable. Se il flusso cade,
+      la registrazione si riaggancia da sola e il buco resta visibile nella barra.</div>
+  </section>
+
+  <div id="stato"><span class="dot"></span><span id="statoTesto">Nessuna registrazione</span>
+    <span class="coda" id="statoCoda"></span></div>
+  <div class="aiuto" id="disco" style="margin:-8px 0 16px"></div>
+
+  <!-- ── il visore, poi il taglio, poi le clip: fasce, non colonne ── -->
+  <div class="deck">
+
+    <div class="visore">
+      <section class="pannello">
+        <div class="titolino">Flusso registrato · DVR</div>
+        <video id="player" controls playsinline></video>
+        <div class="barra">
+          <input type="range" id="barra" min="0" max="100" value="0" step="0.1">
+          <div class="tempi"><span id="tPos">0:00</span><span id="tTot">0:00</span></div>
+        </div>
+        <div class="trasporto">
+          <button data-salta="-30">− 30&Prime;</button>
+          <button data-salta="-10">− 10&Prime;</button>
+          <button data-salta="-3">− 3&Prime;</button>
+          <button data-salta="3">+ 3&Prime;</button>
+          <button data-salta="10">+ 10&Prime;</button>
+          <button id="btnLive" class="oro">Torna al live</button>
+        </div>
+      </section>
+
+      <section class="pannello">
+        <div class="titolino">Segni e fischio d'inizio</div>
+        <label class="campo" style="margin-bottom:10px"><span>Che cos'è</span>
+          <input type="text" id="markerTesto" placeholder="es. gol Douvikas"></label>
+        <div class="gruppo" style="margin-bottom:10px">
+          <button id="btnMarker" style="flex:1">Segna qui</button>
+          <button data-kick="1">1º T</button>
+          <button data-kick="2">2º T</button>
+        </div>
+        <div class="elenco" style="max-height:250px" id="marker"></div>
+      </section>
+    </div>
+
+    <!-- ── il taglio: una riga sola, da sinistra a destra ── -->
+    <section class="pannello">
+      <div class="titolino">Taglio</div>
+      <div class="fila">
+        <div class="inout">
+          <div class="box" id="boxIn"><div class="numeroni"><small>Entrata</small><span id="vIn">—</span></div></div>
+          <div class="box" id="boxOut"><div class="numeroni"><small>Uscita</small><span id="vOut">—</span></div></div>
+          <div class="box"><div class="numeroni"><small>Durata</small><span id="vDur">—</span></div></div>
+        </div>
+
+        <div class="colonnina"><span class="etichetta">Segna</span>
+          <div class="gruppo paritaria">
+            <button id="btnIn" class="oro">Entrata (I)</button>
+            <button id="btnOut" class="oro">Uscita (O)</button>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="colonnina"><span class="etichetta">Formato</span>
+          <div class="gruppo scelte-formato">
+            <button id="f169" class="acceso">16:9</button>
+            <button id="f43">4:3</button>
+            <button id="f916">9:16</button>
+          </div>
+        </div>
+
+        <div class="colonnina"><span class="etichetta">Durata all'indietro</span>
+          <div class="preset">
+            <button data-preset="15">15&Prime;</button>
+            <button data-preset="30">30&Prime;</button>
+            <button data-preset="60">60&Prime;</button>
+          </div>
+        </div>
+
+        <div class="colonnina"><span class="etichetta">Precisione</span>
+          <button id="btnPreciso">Taglio ai secondi</button>
+        </div>
+
+        <div class="colonnina cresce"><span class="etichetta">&nbsp;</span>
+          <button id="btnTaglia" class="oro" style="padding:14px" disabled>Taglia</button>
+        </div>
+      </div>
+      <div class="aiuto"><kbd>I</kbd> entrata · <kbd>O</kbd> uscita · <kbd>T</kbd> taglia ·
+        <kbd>spazio</kbd> pausa</div>
+    </section>
+
+    <!-- ── le clip, in fila ── -->
+    <section class="pannello">
+      <div class="titolino">Clip</div>
+      <div class="striscia" id="clip"><div class="vuoto">Ancora nessuna clip.</div></div>
+      <video id="anteprima" controls playsinline style="display:none;max-width:520px;margin-top:12px"></video>
+    </section>
+
+    <!-- ── gli highlights: una sequenza che si corregge ── -->
+    <section class="pannello">
+      <div class="titolino">Highlights</div>
+      <div class="fila" style="margin-bottom:12px">
+        <div class="colonnina"><span class="etichetta">Da cosa</span>
+          <div class="gruppo">
+            <button id="hlEspn" class="acceso">ESPN</button>
+            <button id="hlClip" class="acceso">Clip</button>
+            <button id="hlMarker" class="acceso">Segni</button>
+          </div>
+        </div>
+        <div class="colonnina"><span class="etichetta">Maniglie (prima / dopo)</span>
+          <div class="gruppo">
+            <input type="number" id="hlPre" value="8" min="0" max="60" style="width:74px">
+            <input type="number" id="hlPost" value="6" min="0" max="60" style="width:74px">
+          </div>
+        </div>
+        <div class="colonnina"><span class="etichetta">&nbsp;</span>
+          <button id="btnGenera" class="oro">Genera HL</button></div>
+        <div class="sep"></div>
+        <div class="colonnina"><span class="etichetta">Esporta</span>
+          <div class="gruppo">
+            <button id="hlMp4">Video MP4</button>
+            <button id="hlXml">Per Premiere</button>
+          </div>
+        </div>
+        <div class="colonnina cresce"><span class="etichetta">&nbsp;</span>
+          <div class="aiuto" id="hlStato" style="margin:0">Nessuna sequenza.</div></div>
+      </div>
+      <div class="striscia pezzi" id="hlPezzi"></div>
+    </section>
+
+  </div>
+
+  <!-- ── le registrazioni di prima ───────────────────────────────── -->
+  <section class="pannello" style="margin-top:16px">
+    <div class="titolino">Registrazioni</div>
+    <div class="elenco" id="registrazioni"><div class="vuoto">Nessuna registrazione.</div></div>
+  </section>
+</div>
+
+<script src="chiave.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // L'indirizzo del ponte: qui c'e' quello di Apps Script perche' la macchina
+  // lo riscrive quando installa la pagina (/api in produzione,
+  // /como-tv-dev/api in dev). E' voluto, non un residuo.
+  var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
+  var BASE = PONTE.replace(/\/(api|exec)$/, "");
+  var TOKEN = (window.ChiaveComoTV ? ChiaveComoTV.valore() : "");
+
+  var el = function (id) { return document.getElementById(id); };
+  // Il Generatore delle grafiche statiche: sta nel Look&Feel, e la clip ci
+  // arriva per indirizzo, non come file da ricaricare a mano. "solo=social"
+  // e' la porta d'ingresso dei social: apre la stessa pagina con i soli
+  // formati verticali, che sono quelli in cui esce una clip di partita.
+  var GENERATORE = "../10_Look%26Feel/Como%20TV%20OTT%20Design/generatore.html?solo=social";
+  var REG = null;          // la registrazione aperta in pagina
+  var CLIP = [];
+  var dentro = null, fuori = null;
+  var formato = "16:9", preciso = false;
+  var hls = null, seguiLive = true, apertaId = "", DISCO = null;
+
+  function orologio(s) {
+    if (s === null || s === undefined || !isFinite(s)) return "—";
+    s = Math.max(0, Math.floor(s));
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), q = s % 60;
+    var mm = h ? (m < 10 ? "0" + m : m) : m;
+    return (h ? h + ":" : "") + mm + ":" + (q < 10 ? "0" + q : q);
+  }
+  function peso(b) {
+    if (!b) return "";
+    return b > 1e9 ? (b / 1e9).toFixed(1) + " GB" : Math.round(b / 1e6) + " MB";
+  }
+  function dice(testo, buona) {
+    var a = el("avviso");
+    a.textContent = testo;
+    a.className = "avviso vedi" + (buona ? " ok" : "");
+    if (buona) setTimeout(function () { a.className = "avviso"; }, 4000);
+  }
+
+  function manda(corpo) {
+    corpo.token = TOKEN;
+    return fetch(PONTE, {
+      method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(corpo)
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok) throw new Error(d.errore || "il ponte ha detto no");
+      return d;
+    });
+  }
+
+  // ── le tendine ──────────────────────────────────────────────────
+
+  fetch(PONTE + "?partite=1").then(function (r) { return r.json(); }).then(function (d) {
+    if (!d.eventi) return;
+    d.eventi.forEach(function (e) {
+      var o = document.createElement("option");
+      o.value = (e.ids && e.ids[0]) || "";
+      o.textContent = e.etichetta;
+      o.dataset.titolo = (e.programma ? e.casa : e.casa + "-" + e.ospite);
+      o.dataset.comp = e.competizione || "";
+      el("evento").appendChild(o);
+    });
+  }).catch(function () {});
+
+  manda({ tipo: "clip-sorgenti" }).then(function (d) {
+    (d.sorgenti || []).forEach(function (s) {
+      var o = document.createElement("option");
+      o.value = s.url;
+      o.textContent = s.nome + " · " + s.campo + " · " + s.tipo.toUpperCase();
+      el("sorgente").appendChild(o);
+    });
+  }).catch(function (e) { dice("Sorgenti non lette: " + e.message); });
+
+  el("sorgente").addEventListener("change", function () { el("url").value = this.value; });
+
+  // ── il registratore ─────────────────────────────────────────────
+
+  el("btnRec").addEventListener("click", function () {
+    if (REG && REG.stato === "registra") {
+      manda({ tipo: "clip-ferma", id: REG.id })
+        .then(function () { aggiorna(); dice("Registrazione fermata. L'integrale si sta ricucendo.", true); })
+        .catch(function (e) { dice(e.message); });
+      return;
+    }
+    var url = el("url").value.trim();
+    if (!url) { dice("Manca l'indirizzo del flusso."); return; }
+    var ev = el("evento").selectedOptions[0];
+    manda({
+      tipo: "clip-avvia", url: url,
+      evento: el("evento").value,
+      titolo: (ev && ev.dataset.titolo) || "senza evento",
+      competizione: (ev && ev.dataset.comp) || "",
+      sorgente: el("sorgente").value ? el("sorgente").selectedOptions[0].textContent : "a mano"
+    }).then(function (d) {
+      REG = d.reg; aggiorna();
+      dice("Registrazione avviata.", true);
+    }).catch(function (e) { dice(e.message); });
+  });
+
+  // ── il player ───────────────────────────────────────────────────
+
+  function apri(r) {
+    var v = el("player");
+    apertaId = r.id;
+    if (hls) { hls.destroy(); hls = null; }
+    // Passato l'anello i segmenti non ci sono piu': se resta l'integrale si
+    // guarda quello, ed e' un file normale.
+    if (r.materiale === "integrale") {
+      v.src = BASE + "/clip/" + r.id + "/integrale.mp4";
+      v.play().catch(function () {});
+      return;
+    }
+    if (r.materiale === "scaduto") {
+      v.removeAttribute("src"); v.load();
+      dice("Di questa registrazione non c'è più materiale sul disco: restano i dati e le clip.");
+      return;
+    }
+    var indirizzo = BASE + "/clip/" + r.id + "/live.m3u8";
+    if (window.Hls && Hls.isSupported()) {
+      hls = new Hls({ liveSyncDuration: 8, backBufferLength: 60 * 60 });
+      hls.on(Hls.Events.ERROR, function (ev, dati) {
+        if (!dati.fatal) return;
+        if (dati.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          // La playlist nasce qualche secondo dopo il via: il 404 dei primi
+          // istanti non e' un guasto, e' che non c'e' ancora niente da
+          // leggere. Chi molla qui lascia il player nero per sempre.
+          setTimeout(function () { try { hls.startLoad(); } catch (e) {} }, 2000);
+        } else if (dati.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          hls.recoverMediaError();
+        }
+      });
+      hls.loadSource(indirizzo);
+      hls.attachMedia(v);
+    } else if (v.canPlayType("application/vnd.apple.mpegurl")) {
+      v.src = indirizzo;                      // Safari se la cava da solo
+    } else {
+      dice("Questo browser non sa leggere l'HLS.");
+    }
+    v.play().catch(function () {});
+  }
+
+  el("player").addEventListener("timeupdate", function () {
+    var v = el("player");
+    var tot = REG ? (REG.durata || v.duration || 0) : (v.duration || 0);
+    el("tPos").textContent = orologio(v.currentTime);
+    el("tTot").textContent = orologio(tot);
+    if (tot) { el("barra").max = tot; el("barra").value = v.currentTime; }
+  });
+  el("barra").addEventListener("input", function () {
+    seguiLive = false;
+    el("player").currentTime = parseFloat(this.value);
+  });
+  document.querySelectorAll("[data-salta]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      seguiLive = false;
+      el("player").currentTime = Math.max(0, el("player").currentTime + parseFloat(b.dataset.salta));
+    });
+  });
+  el("btnLive").addEventListener("click", function () {
+    seguiLive = true;
+    var v = el("player");
+    if (hls && hls.liveSyncPosition) v.currentTime = hls.liveSyncPosition;
+    else if (v.duration) v.currentTime = v.duration;
+    v.play().catch(function () {});
+  });
+
+  // ── entrata, uscita, taglio ─────────────────────────────────────
+
+  function mostraInOut() {
+    el("vIn").textContent = orologio(dentro);
+    el("vOut").textContent = orologio(fuori);
+    el("boxIn").className = "box" + (dentro !== null ? " messo" : "");
+    el("boxOut").className = "box" + (fuori !== null ? " messo" : "");
+    var d = (dentro !== null && fuori !== null) ? fuori - dentro : null;
+    el("vDur").textContent = d !== null && d > 0 ? d.toFixed(1) + "s" : "—";
+    el("btnTaglia").disabled = !(REG && d !== null && d > 0.5);
+  }
+  function segnaIn() { dentro = el("player").currentTime; if (fuori !== null && fuori <= dentro) fuori = null; mostraInOut(); }
+  function segnaOut() { fuori = el("player").currentTime; if (dentro !== null && dentro >= fuori) dentro = null; mostraInOut(); }
+
+  el("btnIn").addEventListener("click", segnaIn);
+  el("btnOut").addEventListener("click", segnaOut);
+  document.querySelectorAll("[data-preset]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      // il preset guarda indietro: l'azione e' appena successa
+      fuori = el("player").currentTime;
+      dentro = Math.max(0, fuori - parseFloat(b.dataset.preset));
+      mostraInOut();
+    });
+  });
+  // 16:9 e' il flusso com'e'; 4:3 e 9:16 ritagliano, quindi ricodificano.
+  [["f169", "16:9"], ["f43", "4:3"], ["f916", "9:16"]].forEach(function (x) {
+    el(x[0]).addEventListener("click", function () {
+      formato = x[1];
+      ["f169", "f43", "f916"].forEach(function (id) {
+        el(id).className = (id === x[0]) ? "acceso" : "";
+      });
+    });
+  });
+  el("btnPreciso").addEventListener("click", function () {
+    preciso = !preciso;
+    this.className = preciso ? "acceso" : "";
+    this.textContent = preciso ? "Preciso al fotogramma" : "Taglio ai secondi";
+  });
+
+  el("btnTaglia").addEventListener("click", function () {
+    if (!REG) return;
+    el("btnTaglia").disabled = true;
+    manda({
+      tipo: "clip-taglia", reg: REG.id, dentro: dentro, fuori: fuori,
+      formato: formato, preciso: preciso,
+      titolo: el("markerTesto").value.trim() || ""
+    }).then(function (d) {
+      dice("Clip in lavorazione.", true);
+      dentro = null; fuori = null; mostraInOut();
+      aggiorna();
+    }).catch(function (e) { dice(e.message); mostraInOut(); });
+  });
+
+  // ── marker e fischio d'inizio ───────────────────────────────────
+
+  el("btnMarker").addEventListener("click", function () {
+    if (!REG) { dice("Prima serve una registrazione."); return; }
+    manda({ tipo: "clip-marker", reg: REG.id, secondi: el("player").currentTime,
+            testo: el("markerTesto").value.trim() })
+      .then(function () { el("markerTesto").value = ""; aggiorna(); })
+      .catch(function (e) { dice(e.message); });
+  });
+  document.querySelectorAll("[data-kick]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (!REG) { dice("Prima serve una registrazione."); return; }
+      manda({ tipo: "clip-kickoff", reg: REG.id, tempo: b.dataset.kick,
+              secondi: el("player").currentTime })
+        .then(function () { dice("Fischio del " + b.dataset.kick + "º tempo segnato qui.", true); aggiorna(); })
+        .catch(function (e) { dice(e.message); });
+    });
+  });
+
+  // ── che cosa c'e' in giro ───────────────────────────────────────
+
+  function disegnaMarker(r) {
+    var c = el("marker");
+    c.innerHTML = "";
+    var m = (r && r.marker) || [];
+    if (!m.length) { c.innerHTML = '<div class="vuoto">Nessun segno.</div>'; return; }
+    m.forEach(function (x) {
+      var d = document.createElement("div");
+      d.className = "voce";
+      d.innerHTML = '<div class="testo"><div class="nome">' + orologio(x.secondi) + " · " +
+        (x.testo || x.tipo || "segno") + '</div></div>';
+      var a = document.createElement("a");
+      a.href = "#"; a.textContent = "vai";
+      a.addEventListener("click", function (e) {
+        e.preventDefault(); seguiLive = false; el("player").currentTime = x.secondi;
+      });
+      d.appendChild(a);
+      c.appendChild(d);
+    });
+  }
+
+  function disegnaClip() {
+    var c = el("clip");
+    c.innerHTML = "";
+    if (!CLIP.length) { c.innerHTML = '<div class="vuoto">Ancora nessuna clip.</div>'; return; }
+    CLIP.forEach(function (x) {
+      var d = document.createElement("div");
+      d.className = "voce " + (x.stato === "pronta" ? "" : x.stato);
+      var dett = x.formato + " · " + (x.durataVera || x.durata) + "s" +
+        (x.peso ? " · " + peso(x.peso) : "") +
+        (x.troncata ? " · accorciata" : "") +
+        (x.stato === "lavora" ? " · in lavorazione" : "") +
+        (x.stato === "errore" ? " · " + (x.errore || "errore") : "");
+      d.innerHTML = '<div class="nome" title="' + x.titolo.replace(/"/g, "") + '">' + x.titolo + '</div>' +
+                    '<div class="dett">' + dett + "</div>";
+      if (x.stato === "pronta") {
+        var url = BASE + "/clip/_clip/" + x.id + ".mp4";
+        var az = document.createElement("div");
+        az.className = "azioni";
+        var a = document.createElement("a");
+        a.href = "#"; a.textContent = "vedi";
+        a.addEventListener("click", function (e) {
+          e.preventDefault();
+          var v = el("anteprima");
+          v.style.display = "block";
+          v.className = x.formato === "9:16" ? "verticale" : (x.formato === "4:3" ? "quadrotto" : "");
+          v.src = url; v.play().catch(function () {});
+        });
+        var gr = document.createElement("a");
+        gr.href = GENERATORE + "&clip=" + encodeURIComponent(url) +
+                  "&titolo=" + encodeURIComponent(x.titolo) +
+                  (x.evento ? "&evento=" + encodeURIComponent(x.evento) : "");
+        gr.target = "_blank"; gr.rel = "noopener"; gr.textContent = "grafica";
+        var g = document.createElement("a");
+        g.href = url + "?scarica=1"; g.textContent = "scarica";
+        az.appendChild(a); az.appendChild(gr); az.appendChild(g);
+        d.appendChild(az);
+      }
+      c.appendChild(d);
+    });
+  }
+
+  function disegnaRegistrazioni(reg) {
+    var c = el("registrazioni");
+    c.innerHTML = "";
+    if (!reg.length) { c.innerHTML = '<div class="vuoto">Nessuna registrazione.</div>'; return; }
+    reg.forEach(function (r) {
+      var d = document.createElement("div");
+      d.className = "voce";
+      var dett = orologio(r.durata) + " · " + r.stato +
+        (r.sorgente ? " · " + r.sorgente : "") +
+        (r.materiale === "scaduto" ? " · materiale scaduto" : "") +
+        (r.materiale === "integrale" ? " · solo integrale" : "") +
+        (r.integrale === "pronto" ? " · integrale pronto" : "") +
+        (r.integrale === "lavora" ? " · integrale in ricucitura" : "") +
+        (r.errore ? " · " + r.errore : "");
+      d.innerHTML = '<div class="testo"><div class="nome">' + r.titolo + '</div>' +
+                    '<div class="dett">' + dett + "</div></div>";
+      var a = document.createElement("a");
+      a.href = "#"; a.textContent = (REG && REG.id === r.id) ? "aperta" : "apri";
+      a.addEventListener("click", function (e) { e.preventDefault(); REG = r; apri(r); aggiorna(); });
+      d.appendChild(a);
+      if (r.stato !== "registra" && r.materiale === "segmenti" && r.integrale !== "pronto") {
+        var g = document.createElement("a");
+        g.href = "#"; g.textContent = "integrale"; g.style.marginLeft = "10px";
+        g.addEventListener("click", function (e) {
+          e.preventDefault();
+          manda({ tipo: "clip-integrale", reg: r.id })
+            .then(function () { dice("Integrale in ricucitura.", true); aggiorna(); })
+            .catch(function (er) { dice(er.message); });
+        });
+        d.appendChild(g);
+      }
+      c.appendChild(d);
+    });
+  }
+
+  function disegnaStato() {
+    var s = el("stato"), t = el("statoTesto"), coda = el("statoCoda");
+    var disco = DISCO ? (DISCO.aperte + "/" + DISCO.tetto + " aperte · " +
+                         DISCO.liberi + " GB liberi ≈ " + DISCO.partite + " partite") : "";
+    el("disco").textContent = disco;
+    if (!REG) { s.className = ""; t.textContent = "Nessuna registrazione"; coda.textContent = ""; return; }
+    s.className = REG.stato === "registra" ? "registra" : "ferma";
+    t.textContent = (REG.stato === "registra" ? "Registra · " : REG.stato + " · ") + REG.titolo;
+    coda.textContent = orologio(REG.durata) +
+      (REG.kickoff && REG.kickoff["1"] !== undefined ? " · 1ºT " + orologio(REG.kickoff["1"]) : "") +
+      (REG.kickoff && REG.kickoff["2"] !== undefined ? " · 2ºT " + orologio(REG.kickoff["2"]) : "");
+    el("btnRec").textContent = REG.stato === "registra" ? "Ferma" : "Registra";
+    el("btnRec").className = REG.stato === "registra" ? "rosso" : "oro";
+  }
+
+  function aggiorna() {
+    return manda({ tipo: "clip-stato" }).then(function (d) {
+      var reg = d.reg || [];
+      if (REG) {
+        var mio = reg.filter(function (r) { return r.id === REG.id; })[0];
+        if (mio) REG = mio;
+      } else if (reg.length) {
+        // se c'e' una registrazione in corso e' quella che interessa; se non
+        // c'e', si apre l'ultima: la pagina serve anche a rivedere e tagliare
+        // a partita finita, non solo in diretta
+        REG = reg[0];
+      }
+      if (REG && REG.id !== apertaId) apri(REG);
+      CLIP = (d.clip || []).filter(function (c) { return !REG || c.reg === REG.id; });
+      DISCO = d.disco || null;
+      disegnaStato(); disegnaClip(); disegnaMarker(REG); disegnaRegistrazioni(reg);
+      // la sequenza si riprende dal ponte: l'export va avanti anche se
+      // qualcuno ricarica la pagina, e due persone vedono la stessa cosa
+      if (REG) {
+        manda({ tipo: "clip-hl-elenco", reg: REG.id }).then(function (h) {
+          var mia = (h.seq || []).filter(function (q) { return !SEQ || q.id === SEQ.id; })[0] || (h.seq || [])[0];
+          if (mia) { SEQ = mia; disegnaHl(); }
+          else if (SEQ) { SEQ = null; disegnaHl(); }
+        }).catch(function () {});
+      }
+    }).catch(function (e) { dice(e.message); });
+  }
+
+  // ── HIGHLIGHTS ──────────────────────────────────────────────────
+  //
+  //  Una sequenza e' un elenco di pezzi, non un video: si genera in un
+  //  colpo dai marker e dalle clip, poi si corregge pezzo per pezzo, e solo
+  //  alla fine diventa un file. Il video si fa una volta, quando la
+  //  sequenza e' quella giusta.
+
+  var SEQ = null;
+  var fonti = { espn: true, clip: true, marker: true };
+
+  [["hlEspn", "espn"], ["hlClip", "clip"], ["hlMarker", "marker"]].forEach(function (x) {
+    el(x[0]).addEventListener("click", function () {
+      fonti[x[1]] = !fonti[x[1]];
+      this.className = fonti[x[1]] ? "acceso" : "";
+    });
+  });
+
+  el("btnGenera").addEventListener("click", function () {
+    if (!REG) { dice("Prima serve una registrazione."); return; }
+    el("btnGenera").disabled = true;
+    dice("Genero la sequenza…", true);
+    manda({ tipo: "clip-hl-genera", reg: REG.id, fonti: fonti,
+            pre: parseFloat(el("hlPre").value) || 8,
+            post: parseFloat(el("hlPost").value) || 6 })
+      .then(function (d) {
+        SEQ = d.seq;
+        (SEQ.avvisi || []).forEach(function (a) { dice(a); });
+        if (!SEQ.avvisi || !SEQ.avvisi.length) dice("Sequenza pronta: " + SEQ.pezzi.length + " pezzi.", true);
+        disegnaHl();
+      })
+      .catch(function (e) { dice(e.message); })
+      .then(function () { el("btnGenera").disabled = false; });
+  });
+
+  function pezzoManda(corpo) {
+    corpo.tipo = "clip-hl-pezzo"; corpo.seq = SEQ.id;
+    return manda(corpo).then(function (d) { SEQ = d.seq; disegnaHl(); })
+                       .catch(function (e) { dice(e.message); });
+  }
+
+  function disegnaHl() {
+    var c = el("hlPezzi");
+    c.innerHTML = "";
+    if (!SEQ || !SEQ.pezzi.length) {
+      c.innerHTML = '<div class="vuoto">Nessuna sequenza. «Genera HL» la costruisce dai segni, dalle clip e dagli eventi ESPN.</div>';
+      el("hlStato").textContent = "Nessuna sequenza.";
+      return;
+    }
+    var tot = SEQ.pezzi.reduce(function (a, x) { return a + (x.fuori - x.dentro); }, 0);
+    var ex = SEQ.export || {};
+    el("hlStato").innerHTML = SEQ.pezzi.length + " pezzi · " + orologio(tot) +
+      (SEQ.scarto ? " · orologio tarato di " + SEQ.scarto + "s" : "") +
+      (ex.stato === "lavora" ? " · esporto " + ex.fatti + "/" + ex.quanti : "") +
+      (ex.stato === "errore" ? " · export fallito: " + ex.errore : "") +
+      (ex.stato === "pronto" ? ' · <a href="' + BASE + ex.file + '?scarica=1" style="color:var(--gold-bright)">scarica MP4</a>' : "") +
+      (SEQ.premiere ? ' · <a href="' + BASE + SEQ.premiere.file + '?scarica=1" style="color:var(--gold-bright)">scarica XML</a>' : "");
+
+    SEQ.pezzi.forEach(function (x, i) {
+      var d = document.createElement("div");
+      d.className = "voce";
+      d.innerHTML = '<div class="nome">' + (i + 1) + ". " + x.titolo + '</div>' +
+        '<div class="dett">' + orologio(x.dentro) + " → " + orologio(x.fuori) +
+        " · " + (Math.round((x.fuori - x.dentro) * 10) / 10) + "s · " + x.fonte +
+        (x.mano ? " · a mano" : "") + "</div>";
+      var az = document.createElement("div");
+      az.className = "azioni";
+      function tasto(testo, cosa, titolo) {
+        var a = document.createElement("a");
+        a.href = "#"; a.textContent = testo; if (titolo) a.title = titolo;
+        a.addEventListener("click", function (e) { e.preventDefault(); cosa(); });
+        az.appendChild(a);
+      }
+      tasto("vai", function () {
+        seguiLive = false; el("player").currentTime = x.dentro;
+        el("player").play().catch(function () {});
+      });
+      tasto("−1", function () { pezzoManda({ pezzo: x.id, dentro: x.dentro - 1 }); }, "entra un secondo prima");
+      tasto("+1", function () { pezzoManda({ pezzo: x.id, dentro: x.dentro + 1 }); }, "entra un secondo dopo");
+      tasto("+fine", function () { pezzoManda({ pezzo: x.id, fuori: x.fuori + 1 }); }, "un secondo in più alla fine");
+      tasto("−fine", function () { pezzoManda({ pezzo: x.id, fuori: x.fuori - 1 }); }, "un secondo in meno");
+      tasto("tara qui", function () {
+        manda({ tipo: "clip-hl-taratura", seq: SEQ.id, pezzo: x.id,
+                secondi: el("player").currentTime })
+          .then(function (d) { SEQ = d.seq; disegnaHl(); dice("Orologio tarato: " + SEQ.scarto + "s.", true); })
+          .catch(function (e) { dice(e.message); });
+      }, "l'azione è dove sta il player adesso: sposta tutti gli altri della stessa quantità");
+      tasto("togli", function () { pezzoManda({ pezzo: x.id, togli: 1 }); });
+      d.appendChild(az);
+      c.appendChild(d);
+    });
+  }
+
+  el("hlMp4").addEventListener("click", function () {
+    if (!SEQ) { dice("Prima genera la sequenza."); return; }
+    manda({ tipo: "clip-hl-esporta", seq: SEQ.id, formato: formato })
+      .then(function () { dice("Esporto il video in " + formato + "…", true); })
+      .catch(function (e) { dice(e.message); });
+  });
+  el("hlXml").addEventListener("click", function () {
+    if (!SEQ) { dice("Prima genera la sequenza."); return; }
+    manda({ tipo: "clip-hl-esporta", seq: SEQ.id, come: "premiere" })
+      .then(function (d) {
+        SEQ.premiere = d.premiere; disegnaHl();
+        dice(d.premiere.integrale ? "XML pronto." :
+             "XML pronto, ma manca l'integrale: in Premiere andrà ricollegato al file.", true);
+      })
+      .catch(function (e) { dice(e.message); });
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    var k = e.key.toLowerCase();
+    if (k === "i") { segnaIn(); e.preventDefault(); }
+    else if (k === "o") { segnaOut(); e.preventDefault(); }
+    else if (k === "t") { if (!el("btnTaglia").disabled) el("btnTaglia").click(); e.preventDefault(); }
+    else if (k === " ") {
+      var v = el("player");
+      if (v.paused) v.play().catch(function () {}); else v.pause();
+      e.preventDefault();
+    }
+  });
+
+  mostraInOut();
+  disegnaHl();
+  aggiorna();
+  setInterval(aggiorna, 3000);
+})();
+</script>
+</body>
+</html>

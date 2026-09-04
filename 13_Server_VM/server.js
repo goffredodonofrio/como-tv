@@ -31,6 +31,13 @@ const fs = require("fs");
 const path = require("path");
 const { URL } = require("url");
 
+// ── Clip Live (registrazione del flusso, DVR, taglio) ─────────────────
+// Vive in un file suo e resta SPENTO se non lo si accende con COMOTV_CLIP=1:
+// il ponte di produzione carica queste righe e non cambia di comportamento.
+let CLIP = null;
+try { CLIP = require("./clip.js"); } catch (e) { CLIP = null; }
+
+
 // ─────────────────────────────────────────────── configurazione
 const CONFIG = {
   PORTA: parseInt(process.env.COMOTV_PORTA || "8080", 10),
@@ -1764,7 +1771,8 @@ const OP_COMANDO = new Set([
   "regia-rename", "regia-taglio", "regia-liv", "regia-arma", "regia-megafono",
   "regia-presa", "regia-battito", "regia-molla",
   "progetto-del", "progetto-carica",
-  "logo-togli", "video-togli", "video-nas"
+  "logo-togli", "video-togli", "video-nas",
+  "clip-elimina"
 ]);
 
 function permesso(p, ip) {
@@ -1870,7 +1878,9 @@ function permesso(p, ip) {
           case "classifica":
           case "eventi":
           case "drive-info":   out = await inoltra(p); break;
-          default: throw new Error("tipo di invio sconosciuto: " + p.tipo);
+          default:
+            if (CLIP && CLIP.attivo() && /^clip-/.test(p.tipo)) { out = await CLIP.azione(p); break; }
+            throw new Error("tipo di invio sconosciuto: " + p.tipo);
         }
         if (out.ok === undefined) out.ok = true;
       } catch (err) {
@@ -1969,11 +1979,19 @@ function permesso(p, ip) {
     return res.end();
   }
 
+  // ── playlist, segmenti e clip di Clip Live ──
+  if (CLIP && CLIP.attivo() && CLIP.serviHttp(req, res, u)) return;
+
   // ── pagine ──
   serviStatico(req, res, u.pathname);
 });
 
 carica();
+// la cartella di lavoro sta accanto allo stato: dev e produzione restano
+// separati senza configurare niente, come per i contributi video
+if (CLIP) CLIP.avvio({
+  dir: process.env.COMOTV_CLIP_DIR || path.join(path.dirname(CONFIG.STATO), "clip")
+});
 server.listen(CONFIG.PORTA, () => {
   console.log("Ponte Como TV in ascolto sulla porta " + CONFIG.PORTA);
   console.log("  pagine da:  " + CONFIG.SITO);

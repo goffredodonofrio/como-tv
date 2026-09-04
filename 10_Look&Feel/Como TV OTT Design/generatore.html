@@ -2174,7 +2174,13 @@ function drawComposite(ctx,W,H,src,sw,sh,overlay){
 function enterVideoPick(file){
  if(videoPick)exitVideoPick();
  if(photoEdit)exitPhotoEdit();
- videoPick={url:URL.createObjectURL(file),nome:file.name,el:null,raf:0,rec:null,rvfc:0,fermo:false};
+ // Il video puo' arrivare in due modi: un file scelto dal computer, oppure
+ // un INDIRIZZO — e' cosi' che il MAM manda qui la clip appena tagliata,
+ // senza farla scaricare e ricaricare a mano.
+ var daFuori=(typeof file==='string');
+ videoPick={url:daFuori?file:URL.createObjectURL(file),
+            nome:daFuori?(file.split('/').pop()||'clip'):file.name,
+            esterno:daFuori,el:null,raf:0,rec:null,rvfc:0,fermo:false};
  document.getElementById('vidBar').classList.add('on');
  // Guadagna spazio come l'editor foto, ma il pannello CONTENUTO resta: chi
  // monta una story cambia anche squadre, data e ora, e prima per farlo doveva
@@ -2193,7 +2199,7 @@ function exitVideoPick(){
  if(videoPick.rec&&videoPick.rec.state==='recording')videoPick.rec.stop();
  if(videoPick.el){videoPick.el.pause();videoPick.el.src='';}
  if(videoPick.actx){try{videoPick.actx.close();}catch(e){}}
- URL.revokeObjectURL(videoPick.url);videoPick=null;
+ if(!videoPick.esterno)URL.revokeObjectURL(videoPick.url);videoPick=null;
  document.getElementById('vidBar').classList.remove('on');
  document.body.classList.remove('video');
  rimisura();renderStage();
@@ -3690,6 +3696,62 @@ loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
   giroSicuro();
   setTimeout(giroSicuro,600);   // dopo che font e select hanno preso la loro misura
   if(document.fonts&&document.fonts.ready) document.fonts.ready.then(giroSicuro);
+})();
+</script>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════
+//  UNA CLIP CHE ARRIVA DAL MAM
+// ══════════════════════════════════════════════════════════════════════
+//
+//  La pagina del MAM (live/mam.html) apre questa con ?clip=<indirizzo> —
+//  piu' &titolo= e &evento= se li conosce. Qui si entra dritti nel
+//  prendi-fotogramma con quella clip gia' dentro: si sceglie l'istante,
+//  "Usa solo il fotogramma", e la grafica esce in tutti i formati.
+//
+//  La clip e' servita dal ponte, cioe' dalla stessa casa di questa pagina:
+//  il canvas non si sporca e il fotogramma si puo' leggere. Un indirizzo di
+//  un altro sito non viene accettato — non per diffidenza verso chi clicca,
+//  ma perche' li' il fotogramma non si potrebbe leggere comunque, e si
+//  aprirebbe una porta per far entrare roba di fuori in una pagina di lavoro.
+(function () {
+  var q; try { q = new URLSearchParams(location.search); } catch (e) { return; }
+  var clip = q.get('clip'); if (!clip) return;
+
+  var suo = (clip.charAt(0) === '/' && clip.charAt(1) !== '/') ||
+            clip.indexOf(location.origin + '/') === 0;
+  if (!suo) { console.log('[mam] indirizzo non di casa, ignorato'); return; }
+
+  // la partita, se il MAM sa quale e': la tendina si riempie da Airtable e
+  // puo' metterci un attimo, quindi si aspetta senza insistere all'infinito
+  var ev = q.get('evento');
+  if (ev) {
+    var tend = document.getElementById('airtableEventSelect'), giri = 0;
+    var attesa = setInterval(function () {
+      if (++giri > 40) return clearInterval(attesa);        // 20 secondi e basta
+      if (!tend || !tend.options.length) return;
+      for (var i = 0; i < tend.options.length; i++) {
+        if (tend.options[i].value === ev) {
+          clearInterval(attesa);
+          tend.value = ev;
+          tend.dispatchEvent(new Event('change', { bubbles: true }));
+          return;
+        }
+      }
+    }, 500);
+  }
+
+  function apri() {
+    if (typeof enterVideoPick !== 'function') return setTimeout(apri, 200);
+    enterVideoPick(clip);
+    var t = q.get('titolo');
+    if (t) {
+      var a = document.getElementById('avviso');
+      if (a) { a.textContent = 'Clip dal MAM: ' + t + ' — scegli il fotogramma e premi \u00abUsa solo il fotogramma\u00bb.'; a.hidden = false; }
+    }
+  }
+  if (document.readyState === 'complete') setTimeout(apri, 300);
+  else window.addEventListener('load', function () { setTimeout(apri, 300); });
 })();
 </script>
 </body>
