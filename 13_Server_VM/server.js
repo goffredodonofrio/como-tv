@@ -477,6 +477,27 @@ function regiaRename(p) {
   return { ok: true, canale: c, nonce: ix.nonce };
 }
 
+// Sposta il punto d'inizio (e di fine) di un contributo GIA' in scaletta.
+// Serve in diretta: la clip del gol e' li' dentro, la si riprende dal punto
+// giusto e si manda in onda quel pezzo. Il file non si tocca, e nemmeno il
+// resto della voce — titolo, posizione e livello restano quelli.
+// Il playout costruisce il suo indirizzo dai dati della voce nel momento in
+// cui va in onda, quindi il taglio cambiato adesso vale al prossimo TAKE.
+function regiaTaglio(p) {
+  const c = canaleDi(p.c);
+  const ix = regiaDi(c);
+  const it = ix.items.find(i => i.id === p.id);
+  if (!it) throw new Error("grafica non trovata in scaletta");
+  if (!it.dati || it.dati.k !== "video") throw new Error("il taglio vale solo per i contributi video");
+  const da = Math.max(0, parseFloat(p.da) || 0);
+  const a = Math.max(0, parseFloat(p.a) || 0);
+  if (da) it.dati.da = Math.round(da * 10) / 10; else delete it.dati.da;
+  if (a > da) it.dati.a = Math.round(a * 10) / 10; else delete it.dati.a;
+  ix.nonce = Date.now();
+  salva(); annuncia(c, "regia");
+  return { ok: true, canale: c, nonce: ix.nonce, da: it.dati.da || 0, a: it.dati.a || 0 };
+}
+
 function regiaOrder(p) {
   const c = canaleDi(p.c);
   const ix = regiaDi(c);
@@ -1435,7 +1456,7 @@ function daCasa(ip) {
 
 const OP_COMANDO = new Set([
   "regia-state", "regia-del", "regia-svuota", "regia-move", "regia-order",
-  "regia-rename", "regia-liv", "regia-arma", "regia-megafono",
+  "regia-rename", "regia-taglio", "regia-liv", "regia-arma", "regia-megafono",
   "regia-presa", "regia-battito", "regia-molla",
   "progetto-del", "progetto-carica",
   "logo-togli", "video-togli", "video-nas"
@@ -1496,6 +1517,7 @@ function permesso(p, ip) {
           case "regia-move":   out = regiaMove(p); break;
           case "regia-order":  out = regiaOrder(p); break;
           case "regia-rename": out = regiaRename(p); break;
+          case "regia-taglio": out = regiaTaglio(p); break;
           case "regia-liv":    out = regiaLiv(p); break;
           case "regia-arma":   out = regiaArma(p); break;
           case "regia-presa":   out = regiaPresa(p); break;
