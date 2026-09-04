@@ -1994,11 +1994,15 @@
         // Quello che funziona e' portare il file qui: si scarica da Drive e lo
         // si carica come contributo, e da quel momento e' roba nostra — parte
         // da solo, non dipende da Google e non fa buffering in diretta.
-        return { k: "no", che: "Google Drive",
-                 src: "https://drive.google.com/file/d/" + g[1] + "/preview",
-                 nota: "Google non lascia riprodurre i suoi file da un altro sito: non dipende " +
-                       "da come hai condiviso il file. <b>Scaricalo da Drive e caricalo qui sopra " +
-                       "come file</b>: cos\u00ec parte da solo e non dipende da Google mentre sei in onda." };
+        // A noi il file lo da' lo stesso: al ponte non serve un'origine, quelle
+        // intestazioni non gli vietano niente. Quindi lo scarica lui e da quel
+        // momento e' un contributo nostro, servito da questa macchina.
+        return { k: "preleva", che: "Google Drive",
+                 src: "https://drive.usercontent.google.com/download?id=" + g[1] +
+                      "&export=download&confirm=t",
+                 nota: "Google non lascia riprodurre i suoi file da un altro sito \u2014 e non dipende " +
+                       "da come l\u2019hai condiviso. <b>Lo porta qui il ponte</b>: lo scarica una volta " +
+                       "e va in onda da questa macchina, senza dipendere da Google mentre trasmetti." };
       }
       var v = u.match(/vimeo\.com\/(?:video\/)?(\d{6,})/);
       if (v) {
@@ -2013,8 +2017,8 @@
       var L = leggiLink(vd("vdLink").value);
       var n = vd("vdLinkNota");
       if (!L) { n.textContent = ""; return; }
-      if (L.k === "no") {
-        n.innerHTML = '<b style="color:#FF9A9C">' + L.che + ": non si pu\u00f2 mandare in onda per link.</b><br>" + L.nota;
+      if (L.k === "preleva") {
+        n.innerHTML = "Riconosciuto: <b>" + L.che + "</b>. " + L.nota;
         return;
       }
       n.innerHTML = L.k === "video"
@@ -2027,8 +2031,56 @@
     vd("vdVia").addEventListener("click", function () {
       var f = vd("vdFile").files[0];
       var L = leggiLink(vd("vdLink").value);
-      if (L && L.k === "no") {
-        vstato(L.che + ": va scaricato da Drive e caricato qui come file.", "#FF9A9C");
+      // il ponte va a prendersi il file, poi lo mette in scaletta come un
+      // contributo qualsiasi: da quel momento Google non c'entra piu' niente
+      if (L && L.k === "preleva") {
+        var tp = vd("vdNome").value.trim() || ("VIDEO \u2014 " + L.che.toUpperCase());
+        vd("vdVia").disabled = true; vd("vdBarra").style.display = "block";
+        vd("vdFill").style.width = "4%";
+        vstato("Il ponte sta scaricando il file da " + L.che + "\u2026");
+        postV({ tipo: "video-preleva", url: L.src, nome: tp })
+          .then(function (via) {
+            return new Promise(function (ok, no) {
+              var tentativi = 0;
+              (function guarda() {
+                if (++tentativi > 600) { no(new Error("il prelievo non finisce piu\u2019")); return; }
+                fetch(PONTE + "?preleva=" + encodeURIComponent(via.id), { cache: "no-store" })
+                  .then(function (r) { return r.json(); })
+                  .then(function (st) {
+                    if (st.errore) { no(new Error(st.errore)); return; }
+                    if (st.tot) {
+                      vd("vdFill").style.width = Math.max(4, Math.round(st.scritti / st.tot * 100)) + "%";
+                      vstato("Scarico da " + L.che + ": " +
+                             (st.scritti / 1048576).toFixed(0) + " di " + (st.tot / 1048576).toFixed(0) + " MB\u2026");
+                    } else {
+                      vstato("Scarico da " + L.che + ": " + (st.scritti / 1048576).toFixed(0) + " MB\u2026");
+                    }
+                    if (st.fatto) { ok(st); return; }
+                    setTimeout(guarda, 700);
+                  })
+                  .catch(no);
+              })();
+            });
+          })
+          .then(function (st) {
+            vstato("Preso. Lo metto in scaletta\u2026");
+            return postV({ tipo: "regia-load", c: CANALE, grafica: "video", titolo: tp,
+              dati: { k: "video", src: BASE_VIDEO + st.file,
+                      fit: vd("vdCover").checked ? "cover" : "contain",
+                      loop: vd("vdLoop").checked, mute: vd("vdMute").checked,
+                      bg: vd("vdTrasp").checked ? "trasparente" : "nero" } });
+          })
+          .then(function () {
+            vd("vdVia").disabled = false; vd("vdBarra").style.display = "none";
+            dlg.style.display = "none";
+            vd("vdLink").value = ""; vd("vdNome").value = ""; vd("vdLinkNota").textContent = "";
+            msg.textContent = "\uD83C\uDFAC \u201c" + tp + "\u201d in scaletta: In onda quando vuoi.";
+            lastNonce = null; tick();
+          })
+          .catch(function (err) {
+            vd("vdVia").disabled = false; vd("vdBarra").style.display = "none";
+            vstato("Non preso: " + err.message, "#FF9A9C");
+          });
         return;
       }
       if (L) {

@@ -936,6 +936,114 @@ function videoFine(p) {
   return { ok: true, file: c.nome, url: "/video/" + c.nome, bytes: c.scritti };
 }
 
+// ── prelievo da un link ────────────────────────────────────────────────
+// Google, e non solo lui, non lascia suonare i propri file da un altro sito:
+// sull'indirizzo che serve il contenuto mette cross-origin-resource-policy
+// same-site e content-disposition: attachment, e il lettore video li rifiuta.
+// A NOI pero' il file lo da': qui non c'e' un browser e non c'e' un'origine,
+// quelle intestazioni non vietano niente. Quindi lo scarica il ponte, e da quel
+// momento e' un contributo come tutti gli altri — servito da questa macchina,
+// senza dipendere da Google mentre si e' in onda, che per mezzo giga in diretta
+// e' comunque la scelta giusta.
+const PRELIEVI = new Map();
+
+function prelievoPulisci() {
+  const ora = Date.now();
+  for (const [k, v] of PRELIEVI) if (ora - v.nato > 36e5) PRELIEVI.delete(k);
+}
+
+function prelievoScarica(indirizzo, st, salti) {
+  if (salti > 5) { prelievoFallito(st, "troppi rimbalzi fra indirizzi"); return; }
+  let u;
+  try { u = new URL(indirizzo); } catch (err) { prelievoFallito(st, "indirizzo non valido"); return; }
+  if (u.protocol !== "http:" && u.protocol !== "https:") { prelievoFallito(st, "serve un indirizzo http o https"); return; }
+  const mod = u.protocol === "https:" ? https : http;
+  const req = mod.get(u, { headers: { "User-Agent": "ComoTV-ponte/1.0", "Accept": "*/*" } }, (res) => {
+    // i rimbalzi: drive.google.com manda a drive.usercontent, e quello puo'
+    // rimbalzare ancora
+    if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+      res.resume();
+      prelievoScarica(new URL(res.headers.location, u).href, st, salti + 1);
+      return;
+    }
+    if (res.statusCode !== 200) { res.resume(); prelievoFallito(st, "il link risponde " + res.statusCode); return; }
+
+    const tipo = String(res.headers["content-type"] || "").toLowerCase();
+    // Se torna una pagina invece di un video, il file non e' pubblico o il link
+    // e' sbagliato: salvarla come .mp4 vorrebbe dire scoprirlo in onda.
+    if (/^text\/|application\/xhtml|application\/json/.test(tipo)) {
+      res.resume();
+      prelievoFallito(st, "quel link non da' un video ma una pagina: se e' Google Drive, " +
+                          "il file va condiviso con chiunque abbia il link");
+      return;
+    }
+    const dichiarata = parseInt(res.headers["content-length"], 10) || 0;
+    if (dichiarata > MAX_VIDEO) { res.resume(); prelievoFallito(st, "file troppo grande (massimo 800 MB)"); return; }
+    st.tot = dichiarata;
+
+    // il nome: quello chiesto, se no quello che dichiara il server, se no il
+    // pezzo finale dell'indirizzo
+    if (!st.nome) {
+      const cd = String(res.headers["content-disposition"] || "");
+      const m = cd.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+      st.nome = slugVideoNome(m ? decodeURIComponent(m[1]) : path.basename(u.pathname) || "contributo");
+    }
+
+    const dir = cartellaVideo();
+    fs.mkdirSync(dir, { recursive: true });
+    const tmp = path.join(dir, ".giu-" + st.id);
+    const out = fs.createWriteStream(tmp);
+    st.tmp = tmp;
+
+    res.on("data", (c) => {
+      st.scritti += c.length;
+      if (st.scritti > MAX_VIDEO) {
+        req.destroy(); out.destroy();
+        try { fs.unlinkSync(tmp); } catch (err) {}
+        prelievoFallito(st, "file troppo grande (massimo 800 MB)");
+      }
+    });
+    res.pipe(out);
+    out.on("finish", () => {
+      if (st.errore) return;
+      const finale = path.join(dir, st.nome);
+      try { fs.unlinkSync(finale); } catch (err) {}
+      try { fs.renameSync(tmp, finale); } catch (err) { prelievoFallito(st, "non riesco a salvare: " + err.message); return; }
+      st.file = st.nome; st.fatto = true;
+      console.log("[preleva] " + st.nome + " (" + st.scritti + " byte) da " + u.host);
+    });
+    out.on("error", (e) => prelievoFallito(st, e.message));
+  });
+  req.on("error", (e) => prelievoFallito(st, "non raggiungibile: " + e.message));
+  req.setTimeout(60000, () => { req.destroy(); prelievoFallito(st, "il link non risponde"); });
+}
+
+function prelievoFallito(st, perche) {
+  if (st.errore) return;
+  st.errore = perche; st.fatto = true;
+  if (st.tmp) { try { fs.unlinkSync(st.tmp); } catch (err) {} }
+}
+
+function videoPreleva(p) {
+  prelievoPulisci();
+  const u = String(p.url || "").trim();
+  if (!/^https?:\/\//i.test(u)) throw new Error("serve un indirizzo http o https");
+  const id = String(Date.now()) + String(Math.floor(Math.random() * 10000));
+  const st = { id, nome: slugVideoNome(p.nome || ""), scritti: 0, tot: 0,
+               fatto: false, errore: "", file: "", tmp: "", nato: Date.now() };
+  PRELIEVI.set(id, st);
+  prelievoScarica(u, st, 0);
+  return { ok: true, id };
+}
+
+function videoPrelievo(id) {
+  const st = PRELIEVI.get(String(id || ""));
+  if (!st) return { ok: false, errore: "prelievo sconosciuto" };
+  return { ok: !st.errore, id: st.id, scritti: st.scritti, tot: st.tot,
+           fatto: st.fatto, errore: st.errore || undefined,
+           file: st.file || undefined, url: st.file ? "/video/" + st.file : undefined };
+}
+
 // ── origine NAS ────────────────────────────────────────────────────────
 // Il NAS della redazione tiene l'archivio vero (SHOW → data → MATERIALE).
 // Un'attivita' pianificata su DSM manda qui l'elenco dei file ogni paio di
@@ -1195,6 +1303,8 @@ const server = http.createServer((req, res) => {
         return json(res, { ok: false, errore: err.message });
       }
     }
+    // come va il prelievo di un file da un link
+    if (q.get("preleva")) return json(res, videoPrelievo(q.get("preleva")));
     if (q.get("regia") === "item" && q.get("id")) {
       const c = canaleDi(q.get("canale") || q.get("c"));
       return json(res, (S.voci[c] && S.voci[c][q.get("id")]) || {});
@@ -1345,6 +1455,7 @@ function permesso(p, ip) {
           case "video-inizia": out = videoInizia(p); break;
           case "video-pezzo":  out = videoPezzo(p); break;
           case "video-fine":   out = videoFine(p); break;
+          case "video-preleva": out = videoPreleva(p); break;
           case "video-togli":  out = videoCancella(p); break;
           case "video-nas":    out = videoNasSet(p); break;
           // questi vivono sui Fogli Google: si inoltrano
