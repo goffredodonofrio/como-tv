@@ -1227,6 +1227,103 @@ async function airtableEventi() {
   return fuori;
 }
 
+// ══════════════════════════════════════════════════════════════════════
+//  IL TITOLO COME IMMAGINE
+// ══════════════════════════════════════════════════════════════════════
+//
+//  Le grafiche native di Premiere tengono il testo in un parametro che UXP
+//  non sa scrivere — provato in ogni modo il 2026-09-04. E il canvas dentro
+//  UXP non sa disegnare testo, quindi il pannello non puo' comporlo da se'.
+//
+//  Restava una sola strada: comporlo QUI, dove il font si installa e il
+//  disegno si controlla, e mandare al pannello un PNG bell'e' fatto. Mettere
+//  immagini in timeline il pannello lo sa gia' fare — e' come mette le
+//  maschere delle competizioni.
+//
+//  Il disegno passa da rsvg-convert: si scrive un SVG e torna un PNG.
+//  Nessuna libreria da mantenere, nessun browser da tenere in piedi.
+
+const TITOLO_MISURE = {
+  // Story 9:16. Le misure sono in pixel del formato finale, cosi' il PNG
+  // entra in timeline a grandezza naturale e non va scalato a mano.
+  "9-16": { w: 1080, h: 1920, x: 84, y1: 1440, riga: 96, sotto: 96, corpo: 78, corpoSotto: 42 },
+  "16-9": { w: 1920, h: 1080, x: 96, y1: 820,  riga: 84, sotto: 84, corpo: 68, corpoSotto: 38 },
+  "4-5":  { w: 1080, h: 1350, x: 84, y1: 1010, riga: 92, sotto: 92, corpo: 74, corpoSotto: 40 },
+  "3-4":  { w: 1080, h: 1440, x: 84, y1: 1090, riga: 92, sotto: 92, corpo: 74, corpoSotto: 40 }
+};
+
+function xmlSicuro(t) {
+  return String(t == null ? "" : t)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+
+// Quanto e' larga una riga. rsvg non lo dice, quindi si stima: per un
+// bastone grasso in maiuscolo la larghezza media di un carattere sta
+// attorno al 58% del corpo. E' una stima, non una misura — per questo il
+// margine e' generoso: meglio un titolo un filo piu' piccolo del necessario
+// che uno che esce dall'inquadratura.
+function largaCirca(testo, corpo) { return String(testo).length * corpo * 0.58; }
+
+// Un titolo lungo non si taglia e non va a capo da solo: si rimpicciolisce
+// finche' ci sta. Chi incolla non deve sapere quanto e' lungo il suo testo.
+function corpoCheCiSta(testo, corpo, larghezza) {
+  let c = corpo;
+  while (c > corpo * 0.6 && largaCirca(testo, c) > larghezza) c -= 2;
+  return c;
+}
+
+function svgTitolo(p) {
+  const m = TITOLO_MISURE[p.formato] || TITOLO_MISURE["9-16"];
+  const utile = m.w - m.x * 2;
+  const righe = [];
+  let y = m.y1;
+
+  // Le due righe del titolo prendono lo STESSO corpo, quello che va bene
+  // alla piu' lunga: due righe di misure diverse non sono un titolo su due
+  // righe, sono due titoli.
+  const testi = [p.t1, p.t2].filter((t) => String(t || "").trim());
+  let corpo = m.corpo;
+  testi.forEach((t) => { corpo = Math.min(corpo, corpoCheCiSta(t.toUpperCase(), m.corpo, utile)); });
+
+  testi.forEach((t) => {
+    righe.push('<text x="' + m.x + '" y="' + y + '" class="tit" style="font-size:' + corpo + 'px">' +
+               xmlSicuro(t).toUpperCase() + "</text>");
+    y += Math.round(corpo * 1.22);
+  });
+  if (String(p.sott || "").trim()) {
+    const cs = corpoCheCiSta(p.sott, m.corpoSotto, utile);
+    righe.push('<text x="' + m.x + '" y="' + (y + Math.round(cs * 0.9)) + '" class="sot" ' +
+               'style="font-size:' + cs + 'px">' + xmlSicuro(p.sott) + "</text>");
+  }
+  // Niente sfondo: il PNG va sopra il video, deve essere trasparente.
+  return '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<svg xmlns="http://www.w3.org/2000/svg" width="' + m.w + '" height="' + m.h + '" ' +
+    'viewBox="0 0 ' + m.w + " " + m.h + '">' +
+    "<style>" +
+    ".tit{font-family:'Mazzard M ExtraBold','Mazzard M',sans-serif;font-weight:800;" +
+    "font-size:" + m.corpo + "px;fill:#FFFFFF;letter-spacing:0.5px}" +
+    ".sot{font-family:'Mazzard M',sans-serif;font-weight:400;" +
+    "font-size:" + m.corpoSotto + "px;fill:#C9A24B;letter-spacing:1.5px}" +
+    "</style>" + righe.join("") + "</svg>";
+}
+
+function pngDelTitolo(p) {
+  return new Promise((ok, no) => {
+    const svg = svgTitolo(p);
+    const cp = require("child_process").spawn("rsvg-convert", ["-f", "png"]);
+    const pezzi = [], errori = [];
+    cp.stdout.on("data", (d) => pezzi.push(d));
+    cp.stderr.on("data", (d) => errori.push(d));
+    cp.on("error", (e) => no(new Error("rsvg-convert non parte: " + e.message)));
+    cp.on("close", (codice) => {
+      if (codice !== 0) return no(new Error(Buffer.concat(errori).toString().trim() || "disegno fallito"));
+      ok(Buffer.concat(pezzi));
+    });
+    cp.stdin.end(svg);
+  });
+}
+
 // ── che cosa c'e' in una cartella di Drive ─────────────────────────────
 // Una cartella non e' un file: non si "scarica". Si legge la sua pagina
 // pubblica e si tira fuori l'elenco, poi si sceglie quale video portare qui.
@@ -1562,6 +1659,17 @@ const server = http.createServer((req, res) => {
     // come va il prelievo di un file da un link
     if (q.get("preleva")) return json(res, videoPrelievo(q.get("preleva")));
     // le partite per il pannello di Premiere (e per chiunque altro serva)
+    // Il titolo disegnato: torna un PNG, non un json.
+    if (q.get("titolo") !== null) {
+      return pngDelTitolo({
+        t1: q.get("titolo") || "", t2: q.get("t2") || "",
+        sott: q.get("sott") || "", formato: q.get("formato") || "9-16"
+      }).then((buf) => {
+        res.writeHead(200, { "Content-Type": "image/png", "Content-Length": buf.length,
+                             "Cache-Control": "no-store" });
+        res.end(buf);
+      }).catch((e) => json(res, { ok: false, errore: e.message }));
+    }
     if (q.get("partite")) {
       return airtableEventi()
         .then((d) => json(res, d))

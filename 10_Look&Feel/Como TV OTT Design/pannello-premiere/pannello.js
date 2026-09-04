@@ -35,10 +35,6 @@
   // modello e' l'unica cosa che sa dov'era DATA e dov'era NOME.
   var MODELLI = {};
 
-  // Quello che la lettura della timeline ha trovato e che somiglia a un
-  // campo di testo. Serve al pulsante "Scrivi": senza aver guardato prima,
-  // non c'e' modo di sapere dove scrivere.
-  var testi = [];
 
   function el(id) { return document.getElementById(id); }
 
@@ -188,48 +184,17 @@
   //
   // Finche' quel modello non esiste, questa funzione non finge: dice cosa
   // manca e chi lo deve fare.
-  async function scriviTesti(progetto, sequenza, ppro) {
-    var valori = [testoDi("t1"), testoDi("t2"), testoDi("sott")];
-    if (!valori[0] && !valori[1] && !valori[2]) { dico("Nessun testo da mettere."); return; }
-
-    var visto = [];
-    var campi = await campiScrivibili(sequenza, ppro, visto);
-    if (!campi.length) {
-      dico("I testi non li so ancora mettere.", "no");
-      // Senza questo elenco non si distingue "il modello non c'e' ancora"
-      // da "c'e' ma non lo riconosco": due situazioni che portano a due
-      // mosse diverse, e finora il referto le confondeva.
-      dico("Quello che ho guardato:", "forse");
-      for (var z = 0; z < visto.length; z++) dico("   " + visto[z]);
-      dico("");
-      dico("Le grafiche native tengono il testo in un formato che UXP non", "forse");
-      dico("sa scrivere — verificato, non supposto. Serve il modello di", "forse");
-      dico("grafica animata: in timeline seleziona le tre grafiche, poi", "forse");
-      dico("Grafica → Esporta come modello di grafica animata. Fatto una", "forse");
-      dico("volta, da li' in poi i testi li mette il pannello.", "forse");
-      return;
-    }
-
-    dico("Campi di testo scrivibili: " + campi.length, "si");
-    for (var i = 0; i < campi.length && i < valori.length; i++) {
-      if (!valori[i]) continue;
-      try {
-        await progetto.lockedAccess(function () {
-          var az = campi[i].par.createSetValueAction(valori[i], true);
-          progetto.executeTransaction(function (g) { g.addAction(az); }, "Como TV: testo");
-        });
-        dico("✓ " + campi[i].nome + " ← “" + valori[i] + "”", "si");
-      } catch (e) {
-        dico("· " + campi[i].nome + ": " + mess(e), "forse");
-      }
-    }
-  }
-
-  // Un campo scrivibile e' un parametro di testo che NON sia di quelli
-  // arbitrari: si riconoscono perche' il loro valore si lascia leggere.
-  async function campiScrivibili(sequenza, ppro, visto) {
-    var fuori = [];
-    var quante = 0;
+  // ── il titolo, disegnato dal ponte e messo in timeline ─────────────
+  // Il giro completo: il ponte disegna il PNG (li' il font c'e' e il
+  // canvas di UXP non serve), il pannello lo scarica, lo salva, lo importa
+  // e lo mette dove stavano le grafiche native — che vengono tolte.
+  //
+  // Si riconoscono per quello che sono, non per il numero di traccia: una
+  // grafica di testo ha un componente "AE.ADBE Text". Cosi' l'endtag su V5
+  // o un logo su V6 non li tocca nessuno, anche se domani le tracce
+  // cambiano ordine.
+  async function graficheDiTesto(sequenza, ppro) {
+    var fuori = [], quante = 0;
     try { quante = await sequenza.getVideoTrackCount(); } catch (e) { return fuori; }
     for (var i = 0; i < quante; i++) {
       var pezzi = [];
@@ -238,55 +203,118 @@
         pezzi = await tr.getTrackItems(ppro.Constants.TrackItemType.CLIP, false);
       } catch (e) { continue; }
       for (var k = 0; k < (pezzi || []).length; k++) {
-        var nome = "";
-        try { var vp = await pezzi[k].getProjectItem(); nome = (vp && vp.name) || ""; } catch (e) {}
-        if (!nome) { try { nome = await pezzi[k].getName(); } catch (e) {} }
-
-        var catena;
-        try { catena = await pezzi[k].getComponentChain(); }
-        catch (e) { if (visto) visto.push("V" + (i + 1) + " · " + nome + ": niente catena"); continue; }
-        var n = 0;
-        try { n = await catena.getComponentCount(); } catch (e) { continue; }
-
-        var elenco = [];
-        for (var c = 0; c < n; c++) {
-          var comp;
-          try { comp = await catena.getComponentAtIndex(c); } catch (e) { continue; }
-          var etich = ""; try { etich = await comp.getMatchName(); } catch (e) {}
-          var q = 0;
-          try { q = await comp.getParamCount(); } catch (e) {}
-          elenco.push(etich + " (" + q + ")");
-          for (var p = 0; p < q; p++) {
-            try {
-              var par = await comp.getParam(p);
-              var pn = par.displayName || "";
-              if (!/text|testo/i.test(pn)) continue;
-              // La prova del nove: un parametro arbitrario non si lascia
-              // leggere. Se il valore torna, e' una stringa vera.
-              var v = await par.getStartValue();
-              if (v === null || v === undefined) {
-                if (visto) visto.push("V" + (i + 1) + " · " + nome + " → “" + pn + "” non si legge (arbitrario)");
-                continue;
-              }
-              fuori.push({ par: par, nome: "V" + (i + 1) + " · " + pn });
-            } catch (e) {}
-          }
+        var catena, n = 0, testo = false;
+        try { catena = await pezzi[k].getComponentChain(); n = await catena.getComponentCount(); }
+        catch (e) { continue; }
+        for (var c = 0; c < n && !testo; c++) {
+          try {
+            var comp = await catena.getComponentAtIndex(c);
+            if (/AE\.ADBE Text/i.test(await comp.getMatchName())) testo = true;
+          } catch (e) {}
         }
-        if (visto) visto.push("V" + (i + 1) + " · " + (nome || "(senza nome)") + ": " + elenco.join(", "));
+        if (testo) fuori.push({ traccia: i, pezzo: pezzi[k] });
       }
     }
     return fuori;
   }
 
-  // Togliere le maschere vecchie da V2. Passare un ARRAY a
-  // createRemoveItemsAction risponde "Illegal Parameter type": vuole una
-  // TrackItemSelection, che e' una classe a se' — c'era nell'elenco delle
-  // classi e non l'avevo collegata.
-  //
-  // Non e' un dettaglio estetico: finche' non funziona ogni pressione del
-  // pulsante AGGIUNGE una maschera invece di sostituirla, e dopo cinque
-  // prove la traccia ha cinque clip sovrapposte. E' l'esatto contrario di
-  // quello che il pulsante promette.
+  // Il formato lo dice il nome della sequenza: "..._9-16", "..._16-9".
+  function formatoDi(nome) {
+    var m = String(nome || "").match(/(\d+-\d+)\s*$/);
+    return m ? m[1] : "9-16";
+  }
+
+  async function scriviTesti(progetto, sequenza, ppro) {
+    var valori = [testoDi("t1"), testoDi("t2"), testoDi("sott")];
+    if (!valori[0] && !valori[1] && !valori[2]) { dico("Nessun testo da mettere."); return; }
+
+    // Il ponte disegna, il pannello porta. Il nome del file cambia ogni
+    // volta: Premiere tiene in cache i media per percorso, e riusare lo
+    // stesso nome vorrebbe dire rivedere il titolo di prima.
+    var formato = formatoDi(sequenza.name);
+    var giro = PONTE + "?titolo=" + encodeURIComponent(valori[0]) +
+               "&t2=" + encodeURIComponent(valori[1]) +
+               "&sott=" + encodeURIComponent(valori[2]) +
+               "&formato=" + encodeURIComponent(formato);
+    var nomeFile = "titolo-" + Date.now() + ".png";
+    var percorso = "";
+    try {
+      var r = await fetch(giro, { cache: "no-store" });
+      var buf = await r.arrayBuffer();
+      if (buf.byteLength < 500) throw new Error("il ponte non ha disegnato niente");
+      var uxp = require("uxp");
+      var cartella = await uxp.storage.localFileSystem.getTemporaryFolder();
+      var file = await cartella.createEntry(nomeFile, { overwrite: true });
+      await file.write(buf, { format: uxp.storage.formats.binary });
+      percorso = file.nativePath;
+      dico("Titolo disegnato (" + formato + ", " + Math.round(buf.byteLength / 1024) + " KB).", "si");
+    } catch (e) { dico("Non ottengo il titolo: " + mess(e), "no"); return; }
+
+    var immagine = null;
+    try {
+      var radice = await progetto.getRootItem();
+      await progetto.importFiles([percorso], true, radice, false);
+      var cercata = await cercaNelProgetto(progetto, nomeFile);
+      immagine = cercata.pezzo;
+      if (!immagine) throw new Error("importata ma non la ritrovo nel progetto");
+    } catch (e) { dico("Non importo il titolo: " + mess(e), "no"); return; }
+
+    // Le grafiche di testo che c'erano: da qui si prendono le misure e poi
+    // se ne vanno. Se non ce n'e' nessuna non si inventa una posizione.
+    var vecchie = await graficheDiTesto(sequenza, ppro);
+    if (!vecchie.length) {
+      dico("Non trovo le grafiche di testo: non so dove mettere il titolo.", "no");
+      dico("Il PNG e' comunque nel progetto: " + nomeFile, "forse");
+      return;
+    }
+    var traccia = vecchie[0].traccia, inizio = null, finiva = null;
+    try { inizio = await vecchie[0].pezzo.getStartTime(); } catch (e) {}
+    for (var q = 0; q < vecchie.length; q++) {
+      try {
+        var f = await vecchie[q].pezzo.getEndTime();
+        if (!finiva || f.seconds > finiva.seconds) finiva = f;
+      } catch (e) {}
+      if (vecchie[q].traccia < traccia) traccia = vecchie[q].traccia;
+    }
+    if (!inizio) { dico("Non capisco da dove partono le grafiche.", "no"); return; }
+
+    var editor;
+    try { editor = await ppro.SequenceEditor.getEditor(sequenza); }
+    catch (e) { dico("Non ottengo l'editor: " + mess(e), "no"); return; }
+
+    await togliVecchie(progetto, editor, ppro, vecchie.map(function (v) { return v.pezzo; }));
+
+    try {
+      await progetto.lockedAccess(function () {
+        var az = editor.createOverwriteItemAction(immagine, inizio, traccia, -1);
+        progetto.executeTransaction(function (g) { g.addAction(az); }, "Como TV: titolo");
+      });
+      dico("✓ titolo messo su V" + (traccia + 1) + ".", "si");
+    } catch (e) { dico("Non metto il titolo: " + mess(e), "no"); return; }
+
+    if (finiva) await pareggiaTitolo(progetto, sequenza, ppro, traccia, finiva);
+    return;
+  }
+
+  // Come per la maschera: un PNG entra con la durata di default e va
+  // allungato fino a dove finivano le grafiche che ha sostituito.
+  async function pareggiaTitolo(progetto, sequenza, ppro, traccia, fine) {
+    try {
+      var tr = await sequenza.getVideoTrack(traccia);
+      var pezzi = await tr.getTrackItems(ppro.Constants.TrackItemType.CLIP, false);
+      if (!pezzi || !pezzi.length) return;
+      await progetto.lockedAccess(function () {
+        var az = pezzi[0].createSetEndAction(fine);
+        progetto.executeTransaction(function (g) { g.addAction(az); }, "Como TV: durata titolo");
+      });
+      dico("✓ durata del titolo pareggiata.", "si");
+    } catch (e) { dico("Durata del titolo non pareggiata: " + mess(e), "forse"); }
+  }
+
+  // Qui stavano la vecchia scriviTesti e "campiScrivibili": cercavano nelle
+  // grafiche un campo di testo scrivibile, e non lo trovavano mai perche'
+  // non esiste. Ora il testo non si cerca dentro Premiere: si disegna fuori.
+
   async function togliVecchie(progetto, editor, ppro, vecchie) {
     var modi = [];
 
@@ -348,72 +376,9 @@
     }
   }
 
-  // ── la prova che decide i titoli-come-PNG ──────────────────────────
-  // L'idea: se il testo non si scrive dentro una grafica, non chiediamo a
-  // Premiere di scriverlo — gli diamo un'immagine, che e' l'unica cosa che
-  // oggi sappiamo di saper mettere in timeline.
-  //
-  // Perche' funzioni servono tre cose, e nessuna delle tre e' scontata
-  // dentro UXP. Invece di scriverle a fede e scoprirlo fra tre giri, si
-  // provano qui, in venti secondi: disegnare, salvare, importare.
-  async function provaPng() {
-    pulisci();
-    dico("Prova: comporre un titolo come immagine", "si");
-    dico("");
-
-    // 1 · disegnare — GIA' RISPOSTO: no. Il canvas di UXP non ha fillText,
-    // quindi il PNG non si compone dentro Premiere e lo fara' la VM, dove
-    // il font si installa e il disegno si controlla. Qui si continua con un
-    // quadrato d'oro finto: i due passi dopo sono quelli ancora ignoti, e
-    // sono loro a dire se l'idea sta in piedi.
-    var PROVA = "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGklEQVR4nGM4ucj7PyWYYdSAUQNGDRguBgAA2QG1Hwgbp60AAAAASUVORK5CYII=";
-    var dati = "data:image/png;base64," + PROVA;
-    dico("1 · disegnare: no — il canvas di UXP non sa scrivere testo.", "forse");
-    dico("   lo fara' la VM. Intanto proseguo con un PNG finto.", "forse");
-
-    // 2 · salvare su disco
-    var percorso = "";
-    if (dati) {
-      try {
-        var uxp = require("uxp");
-        var fsl = uxp.storage.localFileSystem;
-        var formati = uxp.storage.formats;
-        var cartella = await fsl.getTemporaryFolder();
-        var file = await cartella.createEntry("comotv-prova.png", { overwrite: true });
-        var b64 = dati.split(",")[1];
-        var bin = atob(b64);
-        var buf = new ArrayBuffer(bin.length), vista = new Uint8Array(buf);
-        for (var i = 0; i < bin.length; i++) vista[i] = bin.charCodeAt(i);
-        await file.write(buf, { format: formati.binary });
-        percorso = file.nativePath || "";
-        dico("2 · salvare: sì", "si");
-        dico("   " + percorso);
-      } catch (e) { dico("2 · salvare: NO — " + mess(e), "no"); }
-    }
-
-    // 2bis · scaricare un binario dal ponte: e' cosi' che arrivera' il PNG
-    // vero, e non e' scontato che dentro UXP una fetch binaria funzioni.
-    try {
-      var r = await fetch(PONTE.replace("/api", "") + "/pannello/comotv-pannello.zip?v=" + Date.now());
-      var buf2 = await r.arrayBuffer();
-      dico("2bis · scaricare dal ponte: sì (" + Math.round(buf2.byteLength / 1024) + " KB)", "si");
-    } catch (e) { dico("2bis · scaricare dal ponte: NO — " + mess(e), "no"); }
-
-    // 3 · importare nel progetto
-    var ppro = premiere();
-    if (!ppro) { dico("3 · importare: manca l'API", "no"); return; }
-    var progetto = await ppro.Project.getActiveProject();
-    if (percorso) {
-      try {
-        var radice = await progetto.getRootItem();
-        var esito = await progetto.importFiles([percorso], true, radice, false);
-        dico("3 · importare: " + (esito === false ? "rifiutato" : "sì"), esito === false ? "no" : "si");
-      } catch (e) {
-        dico("3 · importare: NO — " + mess(e), "no");
-        dico("   il progetto espone: " + metodiDi(progetto));
-      }
-    }
-  }
+  // Qui stava "Prova: titoli come PNG". Ha risposto — salvare sì, scaricare
+  // dal ponte sì, importare sì — e una prova che ha risposto non si tiene
+  // in giro: diventa il codice vero, che sta piu' sotto.
 
   // ── il nome della sequenza ─────────────────────────────────────────
   // Le sequenze del master si chiamano "2_DATA_PARTITA_NOME_9-16": DATA,
@@ -654,333 +619,12 @@
   // Percorre la sequenza e racconta che cosa c'e' dentro. Ogni passo e'
   // protetto: se un metodo non esiste o si chiama in un altro modo, si
   // stampa il perche' e i metodi disponibili, e si va avanti col resto.
-  async function leggiTimeline() {
-    pulisci();
-    testi = [];
-    kfRaccontato = false;
-    var ppro = premiere();
-    if (!ppro) { dico("Non trovo l'API di Premiere (require).", "no"); return; }
-    dico("API di Premiere: c'e'.", "si");
-
-    // La domanda "esiste un modo per toccare le grafiche?" non ha risposta
-    // nella documentazione pubblica. Ma l'ha qui: queste sono le classi che
-    // la versione installata espone davvero. Vale piu' di qualsiasi pagina.
-    try {
-      dico("Classi dell'API: " + Object.keys(ppro).sort().join(", "));
-      dico("");
-    } catch (e) { dico("Non elenco le classi: " + e.message, "forse"); }
-
-    var progetto, sequenza;
-    try {
-      progetto = await ppro.Project.getActiveProject();
-      if (!progetto) { dico("Nessun progetto aperto.", "no"); return; }
-      dico("Progetto: " + (progetto.name || "(senza nome)"));
-      sequenza = await progetto.getActiveSequence();
-      if (!sequenza) { dico("Nessuna sequenza aperta.", "no"); return; }
-      dico("Sequenza: " + (sequenza.name || "(senza nome)"), "si");
-      SEQ = sequenza; PPRO = ppro;
-    } catch (e) {
-      dico("Non arrivo alla sequenza: " + e.message, "no");
-      dico("Project espone: " + metodiDi(ppro.Project));
-      return;
-    }
-
-    var quante;
-    try { quante = await sequenza.getVideoTrackCount(); }
-    catch (e) {
-      dico("Non conto le tracce: " + e.message, "no");
-      dico("La sequenza espone: " + metodiDi(sequenza));
-      return;
-    }
-    dico("Tracce video: " + quante);
-    dico("");
-
-    for (var i = 0; i < quante; i++) {
-      var traccia, pezzi = [];
-      try {
-        traccia = await sequenza.getVideoTrack(i);
-        pezzi = await traccia.getTrackItems(ppro.Constants.TrackItemType.CLIP, false);
-      } catch (e) {
-        dico("V" + (i + 1) + ": non leggo gli elementi (" + e.message + ")", "forse");
-        if (traccia) dico("   la traccia espone: " + metodiDi(traccia));
-        continue;
-      }
-      if (!pezzi || !pezzi.length) { dico("V" + (i + 1) + ": vuota"); continue; }
-      dico("V" + (i + 1) + ": " + pezzi.length + " element" + (pezzi.length === 1 ? "o" : "i"), "si");
-
-      for (var k = 0; k < pezzi.length; k++) await raccontaPezzo(pezzi[k], "   ");
-      dico("");
-    }
-    dico("— fine —", "si");
-    dico("Serve la riga di un parametro di testo su V2/V3/V4/V5:", "forse");
-    dico("e' li' che il pannello andra' a scrivere.", "forse");
-  }
-
-  // ── la sonda sul "Testo sorgente" ──────────────────────────────────
-  // createKeyframe("Eredivisie") risponde "Illegal Parameter type": il testo
-  // di una grafica non e' una stringa. Per sapere che cosa sia, si legge
-  // quello che c'e' adesso — il valore vero dice il tipo meglio di qualunque
-  // documentazione, e finora ha avuto ragione ogni volta.
-  //
-  // getStartValue() su questo parametro torna vuoto, quindi si passa da
-  // getValueAtTime, che pero' vuole un tempo: e i modi di fabbricarne uno
-  // sono piu' d'uno. Si provano in fila e si dice quale ha risposto.
-  // I modi di fabbricare un tempo sono piu' d'uno e non tutti valgono per
-  // tutti i parametri: si preparano tutti e si prova in fila.
-  async function tempiPossibili(pezzo, sequenza, ppro) {
-    var tempi = [];
-    function aggiungi(come, f) { try { tempi.push([come, f()]); } catch (e) {} }
-    aggiungi("TIME_ZERO", function () { return ppro.TickTime.TIME_ZERO; });
-    aggiungi("0 secondi", function () { return ppro.TickTime.createWithSeconds(0); });
-    var extra = [["inizio clip", "getInPoint"], ["attacco clip", "getStartTime"]];
-    for (var i = 0; i < extra.length; i++) {
-      try { tempi.push([extra[i][0], await pezzo[extra[i][1]]()]); } catch (e) {}
-    }
-    try { tempi.push(["testina", await sequenza.getPlayerPosition()]); } catch (e) {}
-    return tempi;
-  }
-
-  // Il keyframe che TIENE il valore. Non si crea — createKeyframe su questo
-  // parametro risponde sempre "Illegal Parameter type", perche' il testo non
-  // si anima — si prende quello che c'e' gia'. Lo dice l'API stessa, dentro
-  // l'errore di getValueAtTime: "Use GetKeyframeAtTime to get a keyframe
-  // object at time. The value can be extracted from the keyframe object."
-  async function keyframeDi(par, pezzo, sequenza, ppro, racconta) {
-    var tempi = await tempiPossibili(pezzo, sequenza, ppro);
-
-    // Il tempo migliore non lo indovino: lo chiedo. Se il parametro sa
-    // elencare i tempi dei suoi keyframe, quelli sono giusti per definizione.
-    try {
-      var suoi = await par.getKeyframeListAsTickTimes();
-      if (racconta) racconta("tempi suoi: " + (suoi && suoi.length ? suoi.length : "nessuno"));
-      if (suoi && suoi.length) {
-        for (var q = 0; q < suoi.length; q++) tempi.unshift(["suo #" + q, suoi[q]]);
-      }
-    } catch (e) { if (racconta) racconta("non elenca i suoi tempi: " + mess(e)); }
-
-    // ...e comunque non e' detto che voglia un TickTime: puo' volere i
-    // secondi, o i tick nudi. Si prova ogni forma di ogni tempo.
-    var forme = [];
-    tempi.forEach(function (t) {
-      forme.push([t[0], t[1]]);
-      try { if (t[1] && typeof t[1].seconds === "number") forme.push([t[0] + " (secondi)", t[1].seconds]); } catch (e) {}
-      try { if (t[1] && typeof t[1].ticks !== "undefined") forme.push([t[0] + " (tick)", t[1].ticks]); } catch (e) {}
-    });
-    forme.push(["zero nudo", 0]);
-
-    var ultimo = "";
-    for (var f = 0; f < forme.length; f++) {
-      try {
-        var k = await par.getKeyframePtr(forme[f][1]);
-        if (k) return { kf: k, come: forme[f][0] };
-        ultimo = "risposta vuota";
-      } catch (e) { ultimo = mess(e); }
-    }
-    return { errore: ultimo || "nessuna forma di tempo ha funzionato",
-             provate: forme.length };
-  }
-
-  async function sondaTesto(par, pezzo, sequenza, ppro, rientro) {
-    var tempi = await tempiPossibili(pezzo, sequenza, ppro);
-
-    var preso = await keyframeDi(par, pezzo, sequenza, ppro, function (r) {
-      dico(rientro + "  " + r, "forse");
-    });
-    if (preso.kf) {
-      dico(rientro + "  keyframe preso (" + preso.come + ")", "si");
-      dico(rientro + "    contiene: “" + String(preso.kf.value).replace(/\s+/g, " ").slice(0, 90) + "”", "si");
-      dico(rientro + "    espone: " + metodiDi(preso.kf));
-      return;
-    }
-    dico(rientro + "  keyframe non preso dopo " + preso.provate +
-         " forme di tempo — ultimo: " + preso.errore, "no");
-    // Se nemmeno cosi' si prende, la strada corta e' chiusa e si passa al
-    // modello di grafica animata. Ma prima: che cosa risponde il parametro
-    // alle altre domande? Sono le ultime rimaste.
-    try { dico(rientro + "    varia nel tempo: " + await par.isTimeVarying()); } catch (e) { dico(rientro + "    varia nel tempo: " + mess(e)); }
-    try { var v0 = await par.getStartValue(); dico(rientro + "    valore d'attacco: " + (v0 === null ? "nullo" : v0 === undefined ? "assente" : String(v0))); }
-    catch (e) { dico(rientro + "    valore d'attacco: " + mess(e)); }
-
-    // "Illegal Parameter type" puo' voler dire due cose molto diverse: che
-    // gli passo il tipo sbagliato, o che QUESTO parametro non accetta
-    // keyframe affatto. La prima si aggiusta, la seconda chiude la strada e
-    // manda al modello di grafica animata. Le distingue una domanda sola.
-    try { dico(rientro + "  accetta keyframe: " + (await par.areKeyframesSupported() ? "sì" : "NO"), "si"); }
-    catch (e) { dico(rientro + "  accetta keyframe: non risponde (" + mess(e) + ")", "forse"); }
-
-    // E se li accetta, di che tipo li vuole: si offrono valori di specie
-    // diversa e si guarda quale non viene rifiutato.
-    var assaggi = [["testo", "Eredivisie"], ["numero", 0], ["vero/falso", true], ["oggetto vuoto", {}]];
-    for (var a = 0; a < assaggi.length; a++) {
-      try { par.createKeyframe(assaggi[a][1]); dico(rientro + "    keyframe da " + assaggi[a][0] + ": accettato", "si"); }
-      catch (e) { dico(rientro + "    keyframe da " + assaggi[a][0] + ": " + mess(e), "forse"); }
-    }
-
-    if (!tempi.length) { dico(rientro + "  non riesco a fabbricare un tempo", "no"); return; }
-
-    for (var t = 0; t < tempi.length; t++) {
-      var v;
-      try { v = await par.getValueAtTime(tempi[t][1]); }
-      catch (e) { dico(rientro + "  (" + tempi[t][0] + ") no: " + mess(e), "forse"); continue; }
-
-      var tipo = typeof v;
-      var classe = v && v.constructor ? v.constructor.name : "";
-      dico(rientro + "  (" + tempi[t][0] + ") tipo: " + tipo + (classe ? " / " + classe : ""), "si");
-      if (v === null || v === undefined) { dico(rientro + "    vuoto"); continue; }
-      if (tipo !== "object") { dico(rientro + "    valore: “" + String(v).slice(0, 120) + "”", "si"); return; }
-
-      try { dico(rientro + "    campi: " + Object.keys(v).join(", ")); } catch (e) {}
-      dico(rientro + "    espone: " + metodiDi(v));
-      try {
-        var j = JSON.stringify(v);
-        if (j && j !== "{}") dico(rientro + "    dentro: " + j.slice(0, 400));
-      } catch (e) {}
-      return;
-    }
-  }
-
-  // getStartValue() non restituisce il valore: restituisce il KEYFRAME che
-  // lo contiene, e stampandolo si ottiene "[object Object]". Il valore va
-  // tirato fuori da li', e non so ancora per quale via: si provano quelle
-  // plausibili e, se falliscono tutte, si dice che cosa il keyframe espone —
-  // cosi' la volta dopo la via giusta si legge invece di indovinarla.
-  var kfRaccontato = false;
-  async function valoreDi(par) {
-    var k;
-    try { k = await par.getStartValue(); }
-    catch (e) { return { nota: "non leggibile (" + mess(e) + ")" }; }
-    if (k === undefined || k === null) return {};
-
-    if (typeof k === "string" || typeof k === "number" || typeof k === "boolean") {
-      return { testo: String(k).replace(/\s+/g, " ").slice(0, 70) };
-    }
-    if (k.value !== undefined && typeof k.value !== "object") {
-      return { testo: String(k.value).replace(/\s+/g, " ").slice(0, 70) };
-    }
-    for (var i = 0; i < 3; i++) {
-      var via = ["getValue", "value", "toString"][i];
-      try {
-        if (typeof k[via] === "function") {
-          var v = await k[via]();
-          if (v !== undefined && typeof v !== "object" && !/^\[object /.test(String(v))) {
-            return { testo: String(v).replace(/\s+/g, " ").slice(0, 70) };
-          }
-        }
-      } catch (e) {}
-    }
-    if (!kfRaccontato) { kfRaccontato = true; return { nota: "il keyframe espone: " + metodiDi(k) }; }
-    return {};
-  }
-
-  // Di un singolo elemento in timeline interessa una cosa sola: se
-  // dentro la sua catena c'e' un parametro di TESTO scrivibile.
-  async function raccontaPezzo(pezzo, rientro) {
-    // Le grafiche native non hanno un elemento nel progetto — sono nate in
-    // timeline — quindi getProjectItem() non da' un nome e prima uscivano
-    // tutte come "(senza nome)". Il nome vero sta altrove: si prova in fila.
-    var nome = "";
-    try { var vp = await pezzo.getProjectItem(); nome = (vp && vp.name) || ""; } catch (e) {}
-    if (!nome) { try { nome = await pezzo.getName(); } catch (e) {} }
-    if (!nome) { try { nome = pezzo.name || ""; } catch (e) {} }
-    dico(rientro + "· " + (nome || "(senza nome)"));
-
-    var catena;
-    try { catena = await pezzo.getComponentChain(); }
-    catch (e) {
-      dico(rientro + "  niente catena (" + e.message + ")", "forse");
-      dico(rientro + "  l'elemento espone: " + metodiDi(pezzo));
-      return;
-    }
-
-    var n = 0;
-    try { n = await catena.getComponentCount(); }
-    catch (e) {
-      dico(rientro + "  non conto i componenti: " + e.message, "forse");
-      dico(rientro + "  la catena espone: " + metodiDi(catena));
-      return;
-    }
-    dico(rientro + "  componenti: " + n);
-    // Un elemento senza componenti non e' un silenzio da interpretare: e' la
-    // risposta. Ma per capire se manca il contenuto o manca la strada per
-    // arrivarci, serve sapere che cosa quell'elemento sa fare.
-    if (!n) {
-      dico(rientro + "  l'elemento espone: " + metodiDi(pezzo), "forse");
-      return;
-    }
-
-    for (var c = 0; c < n; c++) {
-      var comp, etichetta = "?";
-      try {
-        comp = await catena.getComponentAtIndex(c);
-        etichetta = (await comp.getMatchName()) || "";
-      } catch (e) { dico(rientro + "  [" + c + "] non leggibile: " + e.message, "forse"); continue; }
-
-      var quanti = 0;
-      try { quanti = await comp.getParamCount(); } catch (e) {}
-      // Anche i componenti senza parametri vanno detti: il nome basta a
-      // riconoscere una grafica, e prima li saltavo in silenzio.
-      if (!quanti) { dico(rientro + "  " + etichetta + " (nessun parametro)"); continue; }
-
-      // Del componente del testo interessa anche il CONTENUTO: e' l'unico
-      // modo di capire quale delle grafiche e' il titolo, quale il
-      // sottotitolo e quale la competizione. Dei filtri (opacita', movimento)
-      // bastano i nomi.
-      var eTesto = /text/i.test(etichetta);
-      var righe = [], inciampo = "", sonde = [];
-      for (var p = 0; p < quanti; p++) {
-        try {
-          var par = await comp.getParam(p);
-          // displayName e' una PROPRIETA', non un metodo: chiamarlo come
-          // funzione faceva fallire tutti e 22 i parametri in silenzio.
-          var pn = par.displayName || "";
-          var voce = "[" + p + "] " + pn;
-
-          if (eTesto) {
-            var v = await valoreDi(par);
-            if (v.testo) voce += " = “" + v.testo + "”";
-            else if (v.nota) voce += "  ← " + v.nota;
-          }
-          righe.push(voce);
-
-          if (/source text|^text$|testo sorgente/i.test(pn)) {
-            testi.push({ dove: nome, comp: etichetta, nome: pn, param: par, pezzo: pezzo });
-            righe.push("   ↑ e' questo il campo del testo — lo sondo:");
-            sonde.push(par);
-          }
-        } catch (e) { if (!inciampo) inciampo = e.message || String(e); }
-      }
-
-      if (righe.length) {
-        // Il testo va a capo per riga: 22 parametri su una riga sola non si
-        // leggono. I filtri restano compatti, sono solo nomi.
-        if (eTesto) {
-          dico(rientro + "  " + etichetta + ":", "si");
-          righe.forEach(function (r) { dico(rientro + "    " + r); });
-          for (var q = 0; q < sonde.length; q++) {
-            await sondaTesto(sonde[q], pezzo, SEQ, PPRO, rientro + "  ");
-          }
-        } else {
-          dico(rientro + "  " + etichetta + " → " + righe.join(" · "));
-        }
-        continue;
-      }
-
-      // Qui prima non stampavo niente, e il referto sembrava dire "questa
-      // grafica non ha parametri" mentre diceva soltanto che io non ero
-      // riuscito a leggerli. Sono due cose diverse: la prima chiude il
-      // progetto, la seconda e' un mio errore di chiamata.
-      dico(rientro + "  " + etichetta + ": dichiara " + quanti +
-           " parametri ma non ne leggo nessuno", "forse");
-      if (inciampo) dico(rientro + "    inciampo: " + inciampo, "forse");
-      dico(rientro + "    il componente espone: " + metodiDi(comp));
-    }
-  }
-
-  // Qui stava "scrivi la competizione": il tentativo di infilare il testo
-  // dentro la grafica nativa. Non si puo' — dimostrato il 2026-09-04, e il
-  // perche' sta nel LEGGIMI — quindi la funzione e il suo pulsante se ne
-  // vanno. Un comando che non puo' riuscire non va lasciato in giro spento:
-  // chi lo trova ci prova, e non capisce.
+  // Qui stavano "leggi la timeline" e le sue sonde: circa trecento righe
+  // che servivano a rispondere a una domanda sola — si puo' scrivere il
+  // testo dentro una grafica nativa? La risposta e' no, e' documentata nel
+  // LEGGIMI con tutte le prove, e il codice che l'ha ottenuta ha finito il
+  // suo lavoro. Tenerlo qui spento vorrebbe dire far credere a chi legge
+  // che serva ancora a qualcosa.
 
   // ── portarmi il referto ────────────────────────────────────────────
   // Il pannello gira su un PC di montaggio e io leggo da un Mac: una foto
@@ -1010,13 +654,7 @@
   }
 
   el("partita").addEventListener("change", mostra);
-  el("btnLeggi").addEventListener("click", function () {
-    leggiTimeline().catch(function (e) { dico("Errore: " + e.message, "no"); });
-  });
   el("btnCopia").addEventListener("click", mandaReferto);
-  el("btnPng").addEventListener("click", function () {
-    provaPng().catch(function (e) { dico("Errore: " + mess(e), "no"); });
-  });
   el("btnMask").addEventListener("click", function () {
     mettiTutto().catch(function (e) { dico("Errore: " + mess(e), "no"); });
   });
