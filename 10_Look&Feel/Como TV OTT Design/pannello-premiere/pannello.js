@@ -616,11 +616,12 @@
   var MISURE = { t1: 14, t2: 14, sott: 56 };
 
   function conta(id) {
-    var quanti = testoDi(id).length, limite = MISURE[id];
-    var c = el("conta-" + id);
-    if (!c) return;
-    c.textContent = quanti + "/" + limite;
-    c.className = "conta" + (quanti > limite ? " oltre" : quanti === limite ? " pieno" : "");
+    var quanti = testoDi(id).length;
+    var n = el("n-" + id);
+    if (!n) return;
+    n.textContent = String(quanti);
+    // Al limite esatto si e' ancora dentro: il rosso comincia dopo.
+    n.className = quanti > MISURE[id] ? "oltre" : "";
   }
 
   Object.keys(MISURE).forEach(function (id) {
