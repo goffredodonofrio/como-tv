@@ -44,6 +44,15 @@
   }
   function pulisci() { el("diario").textContent = ""; }
 
+  // Il diario e' fatto di righe separate. Chiedendone il testo in blocco si
+  // riottiene tutto attaccato, e un referto senza a capo e' illeggibile
+  // proprio dove conta: va ricomposto riga per riga.
+  function testoDiario() {
+    var fuori = [], f = el("diario").children;
+    for (var i = 0; i < f.length; i++) fuori.push(f[i].textContent);
+    return fuori.join("\n");
+  }
+
   // Quando qualcosa non risponde come previsto, la domanda vera e'
   // "che cosa sa fare questo oggetto?". La risposta sta nel prototipo.
   function metodiDi(o) {
@@ -217,7 +226,7 @@
       // riconoscere una grafica, e prima li saltavo in silenzio.
       if (!quanti) { dico(rientro + "  " + etichetta + " (nessun parametro)"); continue; }
 
-      var righe = [];
+      var righe = [], inciampo = "";
       for (var p = 0; p < quanti; p++) {
         try {
           var par = await comp.getParam(p);
@@ -229,11 +238,22 @@
           if (/text|testo|sorgente/i.test(pn)) {
             testi.push({ dove: nome, comp: etichetta, nome: pn, param: par });
           }
-        } catch (e) {}
+        } catch (e) { if (!inciampo) inciampo = e.message || String(e); }
       }
+
       if (righe.length) {
         dico(rientro + "  " + etichetta + " → " + righe.join(" · "));
+        continue;
       }
+
+      // Qui prima non stampavo niente, e il referto sembrava dire "questa
+      // grafica non ha parametri" mentre diceva soltanto che io non ero
+      // riuscito a leggerli. Sono due cose diverse: la prima chiude il
+      // progetto, la seconda e' un mio errore di chiamata.
+      dico(rientro + "  " + etichetta + ": dichiara " + quanti +
+           " parametri ma non ne leggo nessuno", "forse");
+      if (inciampo) dico(rientro + "    inciampo: " + inciampo, "forse");
+      dico(rientro + "    il componente espone: " + metodiDi(comp));
     }
   }
 
@@ -309,7 +329,7 @@
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ tipo: "referto", da: "pannello Premiere",
-                             testo: el("diario").textContent })
+                             testo: testoDiario() })
     })
       .then(function (r) { return r.json(); })
       .then(function (j) {
