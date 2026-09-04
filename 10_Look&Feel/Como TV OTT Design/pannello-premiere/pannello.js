@@ -133,6 +133,79 @@
       v.textContent = "competizione nuova"; v.className = "forse";
       b.disabled = true; b.textContent = "Maschera sconosciuta";
     }
+
+    // Il nome si puo' proporre solo conoscendo quello attuale, che sta in
+    // Premiere: finche' non si e' guardata la sequenza si mostra la forma.
+    var vn = el("vNome");
+    vn.textContent = SEQ && SEQ.name ? nomeProposto(SEQ.name) : nomeProposto("DATA_PARTITA_NOME");
+    el("btnNome").disabled = false;
+  }
+
+  // ── il nome della sequenza ─────────────────────────────────────────
+  // Le sequenze del master si chiamano "2_DATA_PARTITA_NOME_9-16": DATA,
+  // PARTITA e NOME sono segnaposto, non parole. Chi monta li sostituisce a
+  // mano, ed e' l'altro punto dove un refuso entra nel progetto e ci resta.
+  //
+  // Il pannello ha gia' tutto: la data, le due squadre, la competizione.
+  // Le mette al posto dei segnaposto e lascia intatto il resto del nome —
+  // il numero davanti e il formato in coda dicono cose che Airtable non sa.
+  function nomeProposto(vecchio) {
+    if (!scelto) return "";
+    var d = new Date(scelto.quando);
+    var data = isNaN(d) ? "" :
+      String(d.getFullYear()) +
+      ("0" + (d.getMonth() + 1)).slice(-2) +
+      ("0" + d.getDate()).slice(-2);
+    var partita = scelto.programma ? scelto.casa : (scelto.casa + "-" + scelto.ospite);
+    var comp = (scelto.competizione || "").toUpperCase();
+
+    if (/DATA|PARTITA|NOME/.test(vecchio)) {
+      return vecchio.replace(/DATA/g, data).replace(/PARTITA/g, partita).replace(/NOME/g, comp);
+    }
+    // Una sequenza gia' rinominata non ha piu' i segnaposto: non la si
+    // tocca a indovinare, si propone il nome pieno e decide chi guarda.
+    return [data, partita, comp].filter(Boolean).join("_");
+  }
+
+  async function rinomina() {
+    if (!scelto) return;
+    pulisci();
+
+    var ppro = premiere();
+    if (!ppro) { dico("Non trovo l'API di Premiere.", "no"); return; }
+    var progetto = await ppro.Project.getActiveProject();
+    var sequenza = await progetto.getActiveSequence();
+    if (!sequenza) { dico("Nessuna sequenza aperta.", "no"); return; }
+    PPRO = ppro; SEQ = sequenza;
+
+    var vecchio = sequenza.name || "";
+    var nuovo = nomeProposto(vecchio);
+    dico("Da: " + vecchio);
+    dico("A:  " + nuovo, "si");
+    if (nuovo === vecchio) { dico("Gia' cosi': non tocco niente.", "forse"); return; }
+
+    // La sequenza in timeline e la sua voce nel progetto sono due cose
+    // diverse: il nome sta sulla seconda, e si ritrova per nome.
+    var trovato = await cercaNelProgetto(progetto, vecchio);
+    if (!trovato.pezzo) {
+      dico("Non trovo la sequenza nel progetto: " + trovato.errore, "no");
+      if (trovato.nota) dico("   " + trovato.nota, "forse");
+      return;
+    }
+
+    try {
+      await progetto.lockedAccess(function () {
+        var azione = trovato.pezzo.createSetNameAction(nuovo);
+        progetto.executeTransaction(function (gruppo) {
+          gruppo.addAction(azione);
+        }, "Como TV: nome sequenza");
+      });
+      dico("✓ rinominata.", "si");
+      dico("Se non ti torna: Ctrl+Z.", "forse");
+    } catch (e) {
+      dico("Non riesco a rinominare: " + mess(e), "no");
+      dico("La voce di progetto espone: " + metodiDi(trovato.pezzo));
+    }
   }
 
   // ── mettere la maschera ────────────────────────────────────────────
@@ -705,6 +778,9 @@
     scrivi().catch(function (e) { dico("Errore: " + e.message, "no"); });
   });
   el("btnCopia").addEventListener("click", mandaReferto);
+  el("btnNome").addEventListener("click", function () {
+    rinomina().catch(function (e) { dico("Errore: " + mess(e), "no"); });
+  });
   el("btnMask").addEventListener("click", function () {
     mettiMaschera().catch(function (e) { dico("Errore: " + mess(e), "no"); });
   });
