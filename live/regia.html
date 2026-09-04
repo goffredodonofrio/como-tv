@@ -455,7 +455,7 @@
     <div class="panel mon">
       <h2>Anteprima</h2>
       <div id="pvwbox"><iframe id="pvw" src="about:blank" scrolling="no"></iframe>
-        <video id="pvwvid" preload="metadata" muted playsinline style="display:none"></video>
+        <video id="pvwvid" preload="auto" muted playsinline style="display:none"></video>
         <div class="vu sx" id="vuPvw" title="Livelli audio"><i><b></b></i><i><b></b></i></div></div>
       <div id="thumbcap">Clicca una grafica in scaletta: la vedi qui senza toccare l'onda.</div>
       <!-- IL PUNTO DA CUI PARTE: serve in diretta. La clip del gol e' gia' in
@@ -1172,12 +1172,23 @@
       // sempre dal segno: quello che senti e' esattamente quello che andra' in onda
       try { v.currentTime = CUE.da; } catch (e) {}
       v.play().catch(function () {});
-      this.innerHTML = "&#10073;&#10073;";
-    } else { v.pause(); this.innerHTML = "&#9654;"; }
+    } else { v.pause(); }
   });
-  document.getElementById("pvwvid").addEventListener("pause", function () {
-    document.getElementById("cuePlay").innerHTML = "&#9654;";
-  });
+  // Il tasto racconta quello che sta succedendo davvero. Saltando in mezzo a un
+  // file da mezzo giga il lettore deve prima prendersi i dati di quel punto: se
+  // nel frattempo il tasto resta uguale sembra che il clic non sia arrivato.
+  (function () {
+    var v = document.getElementById("pvwvid"), b = document.getElementById("cuePlay");
+    function segna() {
+      if (v.readyState < 3 && !v.paused) { b.innerHTML = "&hellip;"; b.style.opacity = ".6"; return; }
+      b.style.opacity = "";
+      b.innerHTML = v.paused ? "&#9654;" : "&#10073;&#10073;";
+    }
+    ["play", "playing", "pause", "waiting", "seeking", "seeked", "canplay"].forEach(function (e) {
+      v.addEventListener(e, segna);
+    });
+  })();
+
 
   function showPvw(id) {
     if (thumbShownId === id) return;
