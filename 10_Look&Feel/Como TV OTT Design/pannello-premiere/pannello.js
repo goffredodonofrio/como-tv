@@ -183,9 +183,16 @@
     var valori = [el("t1").value.trim(), el("t2").value.trim(), el("sott").value.trim()];
     if (!valori[0] && !valori[1] && !valori[2]) { dico("Nessun testo da mettere."); return; }
 
-    var campi = await campiScrivibili(sequenza, ppro);
+    var visto = [];
+    var campi = await campiScrivibili(sequenza, ppro, visto);
     if (!campi.length) {
       dico("I testi non li so ancora mettere.", "no");
+      // Senza questo elenco non si distingue "il modello non c'e' ancora"
+      // da "c'e' ma non lo riconosco": due situazioni che portano a due
+      // mosse diverse, e finora il referto le confondeva.
+      dico("Quello che ho guardato:", "forse");
+      for (var z = 0; z < visto.length; z++) dico("   " + visto[z]);
+      dico("");
       dico("Le grafiche native tengono il testo in un formato che UXP non", "forse");
       dico("sa scrivere — verificato, non supposto. Serve il modello di", "forse");
       dico("grafica animata: in timeline seleziona le tre grafiche, poi", "forse");
@@ -211,7 +218,7 @@
 
   // Un campo scrivibile e' un parametro di testo che NON sia di quelli
   // arbitrari: si riconoscono perche' il loro valore si lascia leggere.
-  async function campiScrivibili(sequenza, ppro) {
+  async function campiScrivibili(sequenza, ppro, visto) {
     var fuori = [];
     var quante = 0;
     try { quante = await sequenza.getVideoTrackCount(); } catch (e) { return fuori; }
@@ -222,15 +229,24 @@
         pezzi = await tr.getTrackItems(ppro.Constants.TrackItemType.CLIP, false);
       } catch (e) { continue; }
       for (var k = 0; k < (pezzi || []).length; k++) {
+        var nome = "";
+        try { var vp = await pezzi[k].getProjectItem(); nome = (vp && vp.name) || ""; } catch (e) {}
+        if (!nome) { try { nome = await pezzi[k].getName(); } catch (e) {} }
+
         var catena;
-        try { catena = await pezzi[k].getComponentChain(); } catch (e) { continue; }
+        try { catena = await pezzi[k].getComponentChain(); }
+        catch (e) { if (visto) visto.push("V" + (i + 1) + " · " + nome + ": niente catena"); continue; }
         var n = 0;
         try { n = await catena.getComponentCount(); } catch (e) { continue; }
+
+        var elenco = [];
         for (var c = 0; c < n; c++) {
           var comp;
           try { comp = await catena.getComponentAtIndex(c); } catch (e) { continue; }
+          var etich = ""; try { etich = await comp.getMatchName(); } catch (e) {}
           var q = 0;
           try { q = await comp.getParamCount(); } catch (e) {}
+          elenco.push(etich + " (" + q + ")");
           for (var p = 0; p < q; p++) {
             try {
               var par = await comp.getParam(p);
@@ -239,11 +255,15 @@
               // La prova del nove: un parametro arbitrario non si lascia
               // leggere. Se il valore torna, e' una stringa vera.
               var v = await par.getStartValue();
-              if (v === null || v === undefined) continue;
+              if (v === null || v === undefined) {
+                if (visto) visto.push("V" + (i + 1) + " · " + nome + " → “" + pn + "” non si legge (arbitrario)");
+                continue;
+              }
               fuori.push({ par: par, nome: "V" + (i + 1) + " · " + pn });
             } catch (e) {}
           }
         }
+        if (visto) visto.push("V" + (i + 1) + " · " + (nome || "(senza nome)") + ": " + elenco.join(", "));
       }
     }
     return fuori;
