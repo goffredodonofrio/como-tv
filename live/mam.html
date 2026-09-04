@@ -175,9 +175,13 @@
       <label class="campo"><span>Indirizzo del flusso</span>
         <input type="text" id="url" placeholder="https://…/index.m3u8  oppure  srt://…:7000"></label>
       <div class="stretto"><button id="btnRec" class="oro">Registra</button></div>
+      <div class="stretto"><button id="btnRicevi" title="Ci mettiamo in ascolto noi: l'indirizzo da dare a chi trasmette compare qui sotto">Ricevi</button></div>
     </div>
+    <div class="avviso ok" id="ascolto" style="display:none"></div>
     <div class="aiuto">Le sorgenti arrivano dalla tabella <em>AWS</em> di Airtable. Se il flusso cade,
-      la registrazione si riaggancia da sola e il buco resta visibile nella barra.</div>
+      la registrazione si riaggancia da sola e il buco resta visibile nella barra.
+      <strong>Ricevi</strong> serve quando è l'altra parte a spingere verso di noi:
+      apre una porta in ascolto e ti dà l'indirizzo da consegnare.</div>
   </section>
 
   <div id="stato"><span class="dot"></span><span id="statoTesto">Nessuna registrazione</span>
@@ -415,6 +419,39 @@
       dice("Registrazione avviata.", true);
     }).catch(function (e) { dice(e.message); });
   });
+
+  el("btnRicevi").addEventListener("click", function () {
+    var ev = el("evento").selectedOptions[0];
+    manda({
+      tipo: "clip-avvia", ricevi: true,
+      evento: el("evento").value,
+      titolo: (ev && ev.dataset.titolo) || "in ascolto",
+      competizione: (ev && ev.dataset.comp) || "",
+      sorgente: "in ascolto"
+    }).then(function (d) {
+      REG = d.reg; aggiorna(); mostraAscolto(d.reg);
+    }).catch(function (e) { dice(e.message); });
+  });
+
+  // L'indirizzo da consegnare a chi trasmette. Sta in chiaro e in grande:
+  // e' l'unica cosa che serve all'altra parte, e va copiato senza errori.
+  function mostraAscolto(r) {
+    var a = el("ascolto");
+    if (!r || !r.ascolto) { a.style.display = "none"; return; }
+    a.style.display = "block";
+    a.innerHTML = '<div style="font-family:Mazzard,sans-serif;font-size:10px;letter-spacing:.22em;' +
+      'text-transform:uppercase;margin-bottom:6px">In ascolto sulla porta ' + r.ascolto.porta +
+      (r.attesa ? " \u00b7 nessuno sta ancora trasmettendo" : " \u00b7 flusso in arrivo") + '</div>' +
+      '<code style="display:block;word-break:break-all;color:var(--ivory)">' + r.ascolto.indirizzo + '</code>' +
+      '<div style="margin-top:8px"><button id="copiaAscolto">Copia l\u2019indirizzo</button></div>';
+    var b = el("copiaAscolto");
+    if (b) b.addEventListener("click", function () {
+      try {
+        navigator.clipboard.writeText(r.ascolto.indirizzo);
+        dice("Indirizzo copiato: incollalo nell'uscita SRT di chi trasmette.", true);
+      } catch (e) { dice("Copialo a mano: " + r.ascolto.indirizzo); }
+    });
+  }
 
   // ── il player ───────────────────────────────────────────────────
 
@@ -659,8 +696,10 @@
                          DISCO.liberi + " GB liberi ≈ " + DISCO.partite + " partite") : "";
     el("disco").textContent = disco;
     if (!REG) { s.className = ""; t.textContent = "Nessuna registrazione"; coda.textContent = ""; return; }
-    s.className = REG.stato === "registra" ? "registra" : "ferma";
-    t.textContent = (REG.stato === "registra" ? "Registra · " : REG.stato + " · ") + REG.titolo;
+    s.className = REG.stato === "registra" ? (REG.attesa ? "ferma" : "registra") : "ferma";
+    t.textContent = (REG.stato === "registra"
+        ? (REG.attesa ? "In ascolto \u00b7 " : "Registra \u00b7 ")
+        : REG.stato + " \u00b7 ") + REG.titolo;
     coda.textContent = orologio(REG.durata) +
       (REG.kickoff && REG.kickoff["1"] !== undefined ? " · 1ºT " + orologio(REG.kickoff["1"]) : "") +
       (REG.kickoff && REG.kickoff["2"] !== undefined ? " · 2ºT " + orologio(REG.kickoff["2"]) : "");
@@ -684,6 +723,7 @@
       CLIP = (d.clip || []).filter(function (c) { return !REG || c.reg === REG.id; });
       DISCO = d.disco || null;
       disegnaStato(); disegnaClip(); disegnaMarker(REG); disegnaRegistrazioni(reg);
+      mostraAscolto(REG && REG.ascolto && REG.stato === "registra" ? REG : null);
       // la sequenza si riprende dal ponte: l'export va avanti anche se
       // qualcuno ricarica la pagina, e due persone vedono la stessa cosa
       if (REG) {

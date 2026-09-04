@@ -60,10 +60,30 @@ const MIN_GB = parseInt(process.env.COMOTV_CLIP_MIN_GB || "10", 10);
 // L'anello: quanti giorni resta il MATERIALE (segmenti e integrale) di una
 // registrazione finita. Le clip tagliate e i dati (marker, kickoff) restano.
 const GIORNI = parseFloat(process.env.COMOTV_CLIP_GIORNI || "3");
+// Quante volte si riparte se il flusso cade. Alto: una partita dura due ore
+// e chi trasmette puo' staccare piu' volte senza che sia un guasto nostro.
+const MAX_RIAGGANCI = parseInt(process.env.COMOTV_CLIP_RIAGGANCI || "200", 10);
 // L'integrale raddoppia il disco: gli stessi secondi, scritti due volte. Con
 // dodici partite insieme non e' sostenibile, quindi di suo non si fa e si
 // chiede quando serve (o lo fara' il lavoro notturno che porta al server).
 const INTEGRALE_DA_SOLO = process.env.COMOTV_CLIP_INTEGRALE === "1";
+
+// ── QUANDO SIAMO NOI AD ASPETTARE ─────────────────────────────────────
+//
+//  Di solito andiamo noi a prendere il flusso (caller). Ma chi gestisce le
+//  macchine dall'altra parte puo' non voler aprire il proprio firewall a un
+//  indirizzo nuovo: e' piu' semplice che siano loro a spingere verso di noi.
+//  Allora ascoltiamo noi: si sceglie una porta libera, si consegna un
+//  indirizzo, e chi trasmette lo incolla nella sua uscita SRT.
+//
+//  Le porte rispecchiano quelle di Mola (10001 in su): dodici, quante sono
+//  le partite del picco.
+const PORTE = [];
+for (let i = 10001; i <= 10012; i++) PORTE.push(i);
+const IP_PUBBLICO = process.env.COMOTV_IP_PUBBLICO || "209.227.239.211";
+// Una porta aperta sul mondo senza parola d'ordine e' un invito a spingerci
+// dentro qualsiasi cosa. Con la passphrase, chi non ce l'ha non entra.
+const PASSPHRASE = process.env.COMOTV_CLIP_PASS || "";
 
 let DIR = "";                       // cartella di lavoro, decisa da server.js
 // L'SSE del ponte manda lo stato della REGIA a un canale: una registrazione
@@ -100,6 +120,20 @@ function liberiGB() {
   catch (e) { return 999; }
 }
 function playlistDi(id) { return path.join(cartellaReg(id), "live.m3u8"); }
+
+// C'e' ancora, quel processo? Il segnale 0 non fa niente: chiede e basta.
+// Ma un numero di processo si riusa: dopo un riavvio quel numero puo' essere
+// diventato di qualcun altro. Quindi non basta che esista: deve essere
+// l'ffmpeg che scrive PROPRIO in questa registrazione.
+function vivo(pid, id) {
+  if (!pid) return false;
+  try { process.kill(pid, 0); } catch (e) { return false; }
+  if (!id) return true;
+  try {
+    const riga = fs.readFileSync("/proc/" + pid + "/cmdline", "utf8");
+    return riga.indexOf(id) >= 0 && riga.indexOf("hls_segment_filename") >= 0;
+  } catch (e) { return false; }        // niente /proc: meglio dirlo morto
+}
 
 function assicura(d) { try { fs.mkdirSync(d, { recursive: true }); } catch (e) {} }
 
@@ -163,6 +197,25 @@ function segmenti(id) {
     t0 += dur; dur = 0; ora = 0;
   }
   return fuori;
+}
+
+// I fotogrammi al secondo del materiale. Serve per la sequenza di Premiere,
+// che ragiona in FRAME e non in secondi: darle 25 quando il flusso e' a 50
+// vorrebbe dire una sequenza lunga il doppio e ogni taglio nel punto
+// sbagliato. Il vMix di Como TV manda 1080p50, misurato il 2026-09-05.
+function probeFps(file) {
+  return new Promise((si) => {
+    execFile(FFPROBE, ["-v", "error", "-select_streams", "v:0",
+                       "-show_entries", "stream=r_frame_rate",
+                       "-of", "default=nw=1:nk=1", file], { timeout: 20000 },
+      (err, out) => {
+        if (err) return si(0);
+        const m = /(\d+)\s*\/\s*(\d+)/.exec(String(out).trim());
+        if (!m) { const n = parseFloat(out); return si(isFinite(n) ? n : 0); }
+        const n = parseInt(m[2], 10) ? parseInt(m[1], 10) / parseInt(m[2], 10) : 0;
+        si(n);
+      });
+  });
 }
 
 function probe(file) {
@@ -253,7 +306,13 @@ function avviaProcesso(r) {
       playlistDi(r.id)
     ]);
 
-  const pr = spawn(FFMPEG, args, { stdio: ["ignore", "ignore", "pipe"] });
+  // STACCATO dal ponte: se il ponte si riavvia — un aggiornamento, un
+  // errore, systemd — l'ffmpeg che sta registrando la partita non deve
+  // morire con lui. Continua a scrivere; al riavvio il ponte lo ritrova dal
+  // suo numero di processo e riprende a seguirlo.
+  const pr = spawn(FFMPEG, args, { stdio: ["ignore", "ignore", "pipe"], detached: true });
+  pr.unref();
+  r.pid = pr.pid;
   let coda = "";
   pr.stderr.on("data", (d) => { coda = (coda + d).slice(-4000); });
   pr.on("error", (e) => {
@@ -262,12 +321,29 @@ function avviaProcesso(r) {
   });
   pr.on("close", (code) => {
     PROC.delete(r.id);
-    r.finita = Date.now();
     r.durata = durataRegistrata(r.id);
+
+    // NESSUNO L'HA FERMATA: allora non e' finita, e' caduta.
+    // Sull'SRT non esiste il "riprova da solo" che l'http ha: quando chi
+    // trasmette stacca — un attimo di rete, il vMix che si riavvia, la
+    // pubblicita' — ffmpeg esce e senza questo la partita finirebbe li'.
+    // Si riparte scrivendo in coda alla STESSA playlist: il buco resta
+    // visibile nel DVR, ma il seguito c'e'.
+    if (r.stato === "registra" && (Date.now() - r.avviata) / 1000 < MAX_SECONDI) {
+      r.riagganci = (r.riagganci || 0) + 1;
+      if (r.riagganci <= MAX_RIAGGANCI) {
+        r.ultimoRiaggancio = Date.now();
+        scrivi(); annuncia(0, "clip");
+        setTimeout(() => { if (r.stato === "registra") avviaProcesso(r); }, 2000);
+        return;
+      }
+      r.errore = "il flusso e' caduto " + r.riagganci + " volte: mi fermo";
+    }
+
+    r.finita = Date.now();
     if (r.stato === "registra") {
-      // non l'ha fermata nessuno: o e' finita da sola (tetto) o e' caduta
       r.stato = code === 0 ? "ferma" : "errore";
-      if (code !== 0) r.errore = ultimaRiga(coda) || ("ffmpeg e' uscito con " + code);
+      if (code !== 0 && !r.errore) r.errore = ultimaRiga(coda) || ("ffmpeg e' uscito con " + code);
     }
     scrivi(); annuncia(0, "clip");
     if (r.durata > 0 && INTEGRALE_DA_SOLO) integrale(r);
@@ -338,7 +414,27 @@ function integrale(r) {
 // ── le azioni che arrivano dal ponte ──────────────────────────────────
 
 async function clipAvvia(p) {
-  const url = String(p.url || "").trim();
+  let url = String(p.url || "").trim();
+  let ascolto = null;
+  // "ricevi": non andiamo a prendere niente, ci mettiamo in ascolto e
+  // consegniamo l'indirizzo a cui trasmettere.
+  if (p.ricevi) {
+    const usate = Object.keys(R.reg)
+      .filter((k) => R.reg[k].stato === "registra" && R.reg[k].ascolto)
+      .map((k) => R.reg[k].ascolto.porta);
+    const porta = PORTE.find((x) => usate.indexOf(x) < 0);
+    if (!porta) throw new Error("tutte le porte di ascolto sono occupate");
+    const coda = "?mode=listener&latency=300" + (PASSPHRASE ? "&passphrase=" + PASSPHRASE : "") +
+                 "&listen_timeout=7200000000";
+    url = "srt://0.0.0.0:" + porta + coda;
+    ascolto = {
+      porta: porta,
+      // quello che si consegna a chi trasmette: loro sono il caller
+      indirizzo: "srt://" + IP_PUBBLICO + ":" + porta + "?mode=caller&latency=300" +
+                 (PASSPHRASE ? "&passphrase=" + PASSPHRASE : ""),
+      passphrase: PASSPHRASE || ""
+    };
+  }
   if (!/^(https?|srt):\/\//i.test(url)) throw new Error("sorgente non valida: serve un indirizzo http(s) o srt");
   const quante = Object.keys(R.reg).filter((k) => R.reg[k].stato === "registra").length;
   if (quante >= MAX_REG) throw new Error("ci sono gia' " + MAX_REG + " registrazioni aperte");
@@ -355,6 +451,7 @@ async function clipAvvia(p) {
     competizione: String(p.competizione || "").slice(0, 80),
     sorgente: String(p.sorgente || "").slice(0, 80),
     url: url,
+    ascolto: ascolto,
     urlLetto: risolta.url !== url ? risolta.url : "",
     rendition: risolta.scelta ? (risolta.scelta.ris || "?") + " · " +
                Math.round(risolta.scelta.banda / 1000) + " kbps" : "",
@@ -378,9 +475,26 @@ function clipFerma(p) {
   const r = R.reg[p.id];
   if (!r) throw new Error("registrazione sconosciuta");
   const pr = PROC.get(r.id);
-  r.stato = "ferma";
+  r.stato = "ferma";            // messo PRIMA di uccidere: cosi' il riaggancio non riparte
   if (pr) { try { pr.kill("SIGINT"); } catch (e) {} }   // SIGINT: chiude la playlist per bene
-  else { r.finita = r.finita || Date.now(); r.durata = durataRegistrata(r.id); }
+  else if (vivo(r.pid, r.id)) {
+    // adottato dopo un riavvio del ponte: non e' piu' un figlio, ma il
+    // numero di processo basta per chiudergli la playlist come si deve
+    try { process.kill(r.pid, "SIGINT"); } catch (e) {}
+    setTimeout(() => {
+      r.finita = Date.now(); r.durata = durataRegistrata(r.id); scrivi(); annuncia(0, "clip");
+    }, 1500);
+  } else { r.finita = r.finita || Date.now(); r.durata = durataRegistrata(r.id); }
+  scrivi(); annuncia(0, "clip");
+  return { ok: true, reg: pubblica(r) };
+}
+
+function clipRinomina(p) {
+  const r = R.reg[p.id || p.reg];
+  if (!r) throw new Error("registrazione sconosciuta");
+  if (p.titolo) r.titolo = String(p.titolo).slice(0, 160);
+  if (p.evento !== undefined) r.evento = String(p.evento || "").slice(0, 64);
+  if (p.competizione !== undefined) r.competizione = String(p.competizione || "").slice(0, 80);
   scrivi(); annuncia(0, "clip");
   return { ok: true, reg: pubblica(r) };
 }
@@ -390,7 +504,9 @@ function clipKickoff(p) {
   if (!r) throw new Error("registrazione sconosciuta");
   const tempo = String(p.tempo || "1") === "2" ? "2" : "1";
   if (p.secondi === null || p.secondi === "") delete r.kickoff[tempo];
-  else r.kickoff[tempo] = num(p.secondi, 0, MAX_SECONDI, 0);
+  // Puo' essere NEGATIVO: si comincia a registrare a partita gia' iniziata
+  // piu' spesso di quanto si creda, e il fischio resta il riferimento.
+  else r.kickoff[tempo] = num(p.secondi, -MAX_SECONDI, MAX_SECONDI, 0);
   scrivi(); annuncia(0, "clip");
   return { ok: true, kickoff: r.kickoff };
 }
@@ -579,8 +695,12 @@ function orologio(s) {
 }
 
 function pubblica(r) {
-  const vive = !!PROC.get(r.id);
+  const vive = !!PROC.get(r.id) || (r.stato === "registra" && vivo(r.pid, r.id));
+  const scritto = durataRegistrata(r.id);
   return Object.assign({}, r, {
+    // in ascolto e ancora nessun byte: non e' rotta, sta aspettando che
+    // dall'altra parte comincino a trasmettere
+    attesa: !!(r.ascolto && r.stato === "registra" && vive && scritto === 0),
     materiale: fs.existsSync(playlistDi(r.id)) ? "segmenti"
              : (fs.existsSync(path.join(cartellaReg(r.id), "integrale.mp4")) ? "integrale" : "scaduto"),
     durata: r.stato === "registra" ? durataRegistrata(r.id) : (r.durata || durataRegistrata(r.id)),
@@ -770,22 +890,68 @@ async function hlGenera(p) {
     try {
       espn = await espnEventi(r.evento);
     } catch (e) { avvisi.push("ESPN: " + e.message); }
+    // L'orologio e' la strada buona: ogni segmento porta l'ora in cui e' stato
+    // scritto, ogni evento ESPN porta la sua, e si incrociano. Ma vale solo
+    // sul VIVO: su una replica — o su una registrazione ripresa da un file —
+    // le due ore non c'entrano niente fra loro. Allora si torna ai minuti,
+    // contati dal fischio d'inizio, che e' quello che HL Auto-Cut fa da
+    // sempre. Serve pero' che il fischio sia stato segnato.
+    const k1 = r.kickoff ? r.kickoff["1"] : undefined;
+    const k2 = r.kickoff ? r.kickoff["2"] : undefined;
+    let perOrologio = 0, perMinuti = 0;
+
+    function daiMinuti(e) {
+      const m = /(\d+)/.exec(String(e.minuto || ""));
+      if (!m) return null;
+      const min = parseInt(m[1], 10);
+      const rec = /\+\s*(\d+)/.exec(String(e.minuto || ""));
+      const extra = rec ? parseInt(rec[1], 10) : 0;
+      if (e.periodo === 2 || min > 45) {
+        if (k2 === undefined) return null;
+        return k2 + (Math.max(46, min) - 46) * 60 + extra * 60;
+      }
+      if (k1 === undefined) return null;
+      return k1 + (min - 1) * 60 + extra * 60;
+    }
+
     espn.forEach((e) => {
-      const s = secondiDaOra(r.id, e.ora);
-      if (s === null) return;
+      let s = secondiDaOra(r.id, e.ora);
+      let via = "orologio";
+      if (s === null || s - pre < -60 || s - pre > durata) {
+        const alt = daiMinuti(e);
+        if (alt === null) return;
+        s = alt; via = "minuti";
+      }
+      if (via === "orologio") perOrologio++; else perMinuti++;
+      // QUANTO SI PUO' STRINGERE.
+      // L'orologio dice il secondo: bastano le maniglie strette.
+      // Il minuto no: "30'" vuol dire che il cronometro stava fra 29:00 e
+      // 30:00, e l'azione puo' essere in un punto qualsiasi di quei sessanta
+      // secondi. Un pezzo di quattordici secondi la mancherebbe quasi sempre.
+      // Quindi da minuti il pezzo copre il minuto intero: si arriva larghi e
+      // si stringe guardando, con -1/+1 o con "tara qui".
       const dentro = s - pre;
       if (dentro < -60 || dentro > durata) return;      // e' di un'altra partita, o fuori registrazione
       pezzi.push({
         id: nuovoId("p"),
-        dentro: Math.max(0, dentro), fuori: Math.min(durata, s + post), base: dentro,
-        titolo: nomePezzo(e), tipo: e.tipo, minuto: e.minuto,
+        dentro: Math.max(0, dentro),
+        fuori: Math.min(durata, via === "minuti" ? s + 60 + post : s + post),
+        base: dentro,
+        titolo: nomePezzo(e) + (via === "minuti" ? " (nel minuto)" : ""),
+        tipo: e.tipo, minuto: e.minuto,
         squadra: e.squadra, giocatore: e.giocatore,
-        fonte: "espn", ora: e.ora
+        fonte: "espn", ora: e.ora, via: via
       });
     });
+    if (perMinuti && !perOrologio) {
+      avvisi.push("gli eventi ESPN sono stati messi contando i minuti dal fischio d'inizio: " +
+                  "l'orologio del flusso non corrisponde a quello della partita (registrazione differita?)");
+    }
     if (espn.length && !pezzi.some((x) => x.fonte === "espn")) {
-      avvisi.push("ESPN ha " + espn.length + " eventi ma nessuno cade dentro la registrazione: " +
-                  "controlla la taratura dell'orologio");
+      avvisi.push("ESPN ha " + espn.length + " eventi ma nessuno cade dentro la registrazione. " +
+                  (r.kickoff && (r.kickoff["1"] !== undefined || r.kickoff["2"] !== undefined)
+                    ? "Controlla il fischio d'inizio, o tara l'orologio su un pezzo."
+                    : "Segna il fischio d'inizio (1\u00ba T e 2\u00ba T) e riprova: senza, i minuti non si possono collocare."));
     }
   }
 
@@ -999,10 +1165,18 @@ async function hlEsportaPremiere(q, percorso) {
   const nome = (r ? r.titolo.replace(/[^A-Za-z0-9 _-]/g, "") : "integrale") + ".mp4";
   const via = String(percorso || "").trim() || (c1 ? integrale : nome);
   const info = c1 ? await probe(integrale) : {};
-  const fps = 25;                                   // i flussi che registriamo sono a 25
+  // il ritmo si misura sul materiale, non si suppone: integrale se c'e',
+  // altrimenti un segmento qualsiasi della registrazione
+  const segs = segmenti(q.reg);
+  const daMisurare = c1 ? integrale : (segs.length ? segs[Math.floor(segs.length / 2)].file : "");
+  let fps = daMisurare ? await probeFps(daMisurare) : 0;
+  if (!fps || fps < 5 || fps > 240) fps = 25;
+  const ntsc = (Math.abs(fps - 29.97) < 0.05 || Math.abs(fps - 23.976) < 0.05 ||
+                Math.abs(fps - 59.94) < 0.05) ? "TRUE" : "FALSE";
+  const fpsInt = Math.round(fps);
   const frame = (s) => Math.round(s * fps);
   const durataFile = frame(info.durata || (r && r.durata) || 7200);
-  const rate = "<rate><timebase>" + fps + "</timebase><ntsc>FALSE</ntsc></rate>";
+  const rate = "<rate><timebase>" + fpsInt + "</timebase><ntsc>" + ntsc + "</ntsc></rate>";
   const tc = "<timecode>" + rate + "<string>00:00:00:00</string><frame>0</frame>" +
              "<displayformat>NDF</displayformat></timecode>";
   const url = "file://localhost" + (via.charAt(0) === "/" ? "" : "/") + encodeURI(via).replace(/#/g, "%23");
@@ -1046,7 +1220,7 @@ async function hlEsportaPremiere(q, percorso) {
   fs.writeFileSync(file, xml);
   q.premiere = {
     stato: "pronto", file: "/clip/" + CARTELLA_HL + "/" + q.id + ".xml",
-    media: via, integrale: c1
+    media: via, integrale: c1, fps: Math.round(fps * 100) / 100
   };
   scrivi(); annuncia(0, "clip");
   return q.premiere;
@@ -1210,6 +1384,7 @@ function anello() {
 const AZIONI = {
   "clip-avvia": clipAvvia,
   "clip-ferma": clipFerma,
+  "clip-rinomina": clipRinomina,
   "clip-stato": clipStato,
   "clip-taglia": clipTaglia,
   "clip-marker": clipMarker,
@@ -1258,15 +1433,22 @@ function avvio(opz) {
   // Il ponte si e' riavviato: gli ffmpeg che stava seguendo sono morti con
   // lui. Meglio dirlo che lasciare in pagina una registrazione che sembra
   // viva e non scrive piu' niente.
+  let adottate = 0;
   Object.keys(R.reg).forEach((k) => {
     const r = R.reg[k];
-    if (r.stato === "registra") {
-      r.stato = "interrotta";
-      r.finita = Date.now();
-      r.durata = durataRegistrata(r.id);
-      r.errore = "il ponte si e' riavviato durante la registrazione";
+    if (r.stato !== "registra") return;
+    if (vivo(r.pid, r.id)) {
+      // sta ancora scrivendo: si riprende a seguirla, non e' successo niente
+      adottate++;
+      r.adottata = Date.now();
+      return;
     }
+    r.stato = "interrotta";
+    r.finita = Date.now();
+    r.durata = durataRegistrata(r.id);
+    r.errore = "il ponte si e' riavviato e il registratore non c'era piu'";
   });
+  if (adottate) console.log("[clip] riprese " + adottate + " registrazioni che stavano gia' andando");
   Object.keys(R.clip).forEach((k) => {
     if (R.clip[k].stato === "lavora") { R.clip[k].stato = "errore"; R.clip[k].errore = "ponte riavviato"; }
   });
