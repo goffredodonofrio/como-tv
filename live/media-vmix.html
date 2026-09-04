@@ -34,7 +34,9 @@
 (function () {
   "use strict";
 
-  // dati: ?d=<b64 {k: video|img|web, src, fit: contain|cover, loop, mute, dur, bg: nero|trasparente}>
+  // dati: ?d=<b64 {k: video|img|web, src, fit: contain|cover, loop, mute, dur,
+  //                 da, a,                       secondi: da dove parte, dove finisce
+  //                 bg: nero|trasparente}>
   function decodeData() {
     var q = new URLSearchParams(location.search).get("d");
     if (!q) return null;
@@ -74,14 +76,39 @@
     el = document.createElement("video");
     el.src = D.src;
     el.playsInline = true;
-    el.loop = !!D.loop;
+    // Il loop lo governiamo noi quando c'e' un punto di fine: quello nativo
+    // tornerebbe al fotogramma zero, non al punto d'inizio scelto.
+    el.loop = !!D.loop && !D.a;
     el.muted = MUTO || !!D.mute;
+
+    // ── da dove a dove ──────────────────────────────────────────────
+    // Un contributo di due minuti da cui servono gli ultimi trenta secondi
+    // non si taglia in montaggio: si dice al lettore dove partire e dove
+    // fermarsi. Il file resta intero, cambia solo cosa si vede.
+    var DA = Math.max(0, parseFloat(D.da) || 0);
+    var A = Math.max(0, parseFloat(D.a) || 0);
+    if (DA) {
+      el.addEventListener("loadedmetadata", function () {
+        try { el.currentTime = Math.min(DA, (el.duration || DA) - 0.05); } catch (e) {}
+      }, { once: true });
+    }
+    if (A > DA) {
+      el.addEventListener("timeupdate", function () {
+        if (el.currentTime < A) return;
+        if (D.loop) { try { el.currentTime = DA; } catch (e) {} return; }
+        el.pause();                       // e resta sull'ultimo fotogramma, come a fine clip
+      });
+    }
     if (STILL) {
       // fermo-immagine per le anteprime: NON il frame 0 (spesso e' nero),
       // ma un fotogramma dentro la clip — 10% della durata, al massimo 2s
       el.preload = "auto";
       el.addEventListener("loadedmetadata", function () {
-        try { el.currentTime = Math.min(2, (el.duration || 5) * 0.1) || 0.5; } catch (e) {}
+        // il fotogramma fermo va preso DENTRO il pezzo scelto, se ce n'e' uno
+        var d0 = Math.max(0, parseFloat(D.da) || 0);
+        var d1 = Math.max(0, parseFloat(D.a) || 0) || (el.duration || 5);
+        var q = d0 + Math.min(2, (d1 - d0) * 0.1);
+        try { el.currentTime = q || 0.5; } catch (e) {}
       });
       el.addEventListener("seeked", function () { el.pause(); });
       el.addEventListener("loadeddata", function () { el.pause(); });

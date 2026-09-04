@@ -37,6 +37,7 @@
     ["volti.html",                 "Volti"],
     ["sottopancia.html",           "Sottopancia"],
     ["ticker.html",                "Ticker"],
+    ["contributi.html",            "Contributi"],
     ["magazzino.html",             "Magazzino"],
     ["regia.html",                 "Regia"]
   ];
