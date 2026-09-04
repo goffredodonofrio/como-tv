@@ -250,6 +250,19 @@
     } catch (e) { dico("Non metto la maschera: " + mess(e), "no"); return; }
 
     if (da.fine) await pareggiaTraccia(progetto, sequenza, ppro, da.traccia, da.fine);
+
+    // Controllo finale: e' rimasta in giro qualcuna delle vecchie? Se la
+    // rimozione fallisce a meta', la grafica nativa resta SOPRA la maschera
+    // nuova e in onda si legge il suo segnaposto — "Sottotitolo" — insieme
+    // al testo vero. Meglio dirlo qui che farlo scoprire guardando.
+    var resta = await daSostituire(sequenza, ppro);
+    var vecchieRimaste = resta.pezzi.length - 1;   // la nostra non conta
+    if (vecchieRimaste > 0) {
+      dico("");
+      dico("⚠ Sono rimaste " + vecchieRimaste + " grafiche vecchie sopra la maschera.", "no");
+      dico("In onda si vedrebbero i loro segnaposto insieme al testo giusto:", "no");
+      dico("toglile a mano da V3, V4 e V5, oppure Ctrl+Z e riprova.", "forse");
+    }
     dico("Se non è come volevi: Ctrl+Z.", "forse");
   }
 
