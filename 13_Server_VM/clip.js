@@ -49,7 +49,7 @@ const MAX_CLIP = 900;
 // non e' una scelta, e' che si sta cambiando l'inquadratura.
 const FORMATI = {
   "16:9": { vf: "" },
-  "4:3":  { vf: "crop=ih*4/3:ih,scale=1440:1080" },
+  "3:4":  { vf: "crop=ih*3/4:ih,scale=1080:1440" },
   "9:16": { vf: "crop=ih*9/16:ih,scale=1080:1920" }
 };
 // Il picco dichiarato e' 10-12 partite insieme (Goffredo, 2026-09-04): il
@@ -603,6 +603,7 @@ function clipMarker(p) {
       secondi: num(p.secondi, 0, MAX_SECONDI, 0),
       testo: String(p.testo || "").slice(0, 200),
       tipo: String(p.tipoAzione || "").slice(0, 40),
+    inSequenza: !!p.inSequenza,
       fonte: String(p.fonte || "mano").slice(0, 20),
       chi: String(p.__chi || p.chi || "").slice(0, 40),
       quando: Date.now()
@@ -662,6 +663,7 @@ function clipTaglia(p) {
     formato: formato,
     preciso: preciso,
     tipo: String(p.tipoAzione || "").slice(0, 40),
+    inSequenza: !!p.inSequenza,
     minuto: String(p.minuto || "").slice(0, 12),
     chi: String(p.__chi || p.chi || "").slice(0, 40),
     creata: Date.now(),
@@ -713,6 +715,7 @@ function taglioDaIntegrale(r, p, dentro, fuori, durata) {
     dentro: dentro, fuori: fuori, durata: durata, troncata: false,
     formato: formato, preciso: preciso,
     tipo: String(p.tipoAzione || "").slice(0, 40),
+    inSequenza: !!p.inSequenza,
     minuto: String(p.minuto || "").slice(0, 12),
     chi: String(p.__chi || p.chi || "").slice(0, 40),
     creata: Date.now(), stato: "lavora", peso: 0, da: "integrale"
@@ -780,6 +783,9 @@ function esegui(c, args, lista, riserva) {
       const dur = d.durata || (c.fuori - c.dentro) || 3;
       c.mini = await miniatura(fuoriFile, path.join(DIR, CARTELLA_CLIP, c.id + ".jpg"), dur / 3)
         ? "/clip/" + CARTELLA_CLIP + "/" + c.id + ".jpg" : "";
+      // l'Inserisci di Premiere: la clip, appena pronta, va dritta nella
+      // sequenza della sua partita, senza un secondo gesto
+      if (c.inSequenza) { try { hlAggiungi({ clip: c.id }); } catch (e) {} }
     } else {
       c.stato = "errore"; c.errore = ultimaRiga(coda) || ("ffmpeg e' uscito con " + code);
     }
@@ -1477,7 +1483,7 @@ function hlElimina(p) {
   const q = seqDi(p);
   try { fs.rmSync(path.join(DIR, CARTELLA_HL, q.id), { recursive: true, force: true }); } catch (e) {}
   try { fs.unlinkSync(path.join(DIR, CARTELLA_HL, q.id + ".xml")); } catch (e) {}
-  ["", "_16x9", "_4x3", "_9x16"].forEach((sf) => {
+  ["", "_16x9", "_3x4", "_9x16"].forEach((sf) => {
     try { fs.unlinkSync(path.join(DIR, CARTELLA_HL, q.id + sf + ".mp4")); } catch (e) {}
   });
   delete R.seq[q.id];
@@ -2650,7 +2656,7 @@ function dataScritta(ms) {
 }
 
 const FORMATI_DETTI = { "verticale": "9:16", "verticali": "9:16", "story": "9:16",
-  "orizzontale": "16:9", "orizzontali": "16:9", "quadrotto": "4:3", "quadrata": "4:3" };
+  "orizzontale": "16:9", "orizzontali": "16:9", "feed": "3:4", "quadrotto": "3:4", "quadrata": "3:4" };
 const GENERI_DETTI = { "clip": "clip", "clips": "clip", "integrale": "integrale",
   "integrali": "integrale", "hl": "hl", "highlight": "hl", "highlights": "hl",
   "sequenza": "hl", "partita": "partita", "partite": "partita", "segno": "segno",
@@ -2663,7 +2669,7 @@ function leggiDomanda(q) {
                   "i": 1, "gli": 1, "un": 1, "una": 1, "con": 1, "in": 1, "a": 1, "da": 1 };
   let giorno = 0, mese = -1, anno = 0;
   parole.forEach((p) => {
-    if (/^(9:16|16:9|4:3)$/.test(p)) { fuori.formato = p; return; }
+    if (/^(9:16|16:9|3:4)$/.test(p)) { fuori.formato = p; return; }
     if (FORMATI_DETTI[p]) { fuori.formato = FORMATI_DETTI[p]; return; }
     if (GENERI_DETTI[p]) { fuori.genere = GENERI_DETTI[p]; return; }
     if (p === "oggi" || p === "ieri") {
@@ -2829,7 +2835,7 @@ function clipGrafica(p) {
     reg: c.reg, evento: c.evento,
     titolo: String(p.titolo || "").slice(0, 160) || (c.titolo + " · con grafica"),
     dentro: c.dentro, fuori: c.fuori, durata: c.durata,
-    formato: W > H ? "16:9" : (Math.abs(W / H - 4 / 3) < 0.05 ? "4:3" : "9:16"),
+    formato: W > H ? "16:9" : (Math.abs(W / H - 3 / 4) < 0.05 ? "3:4" : "9:16"),
     preciso: true, grafica: true, daClip: c.id,
     tipo: c.tipo || "", minuto: c.minuto || "",
     chi: String(p.__chi || p.chi || "").slice(0, 40),
@@ -3164,6 +3170,23 @@ const AZIONI = {
              ripresa: pg.ancora, cartelle: pg.cartelle,
              oggetti: pg.oggetti.slice(0, quante) };
   },
+  // Un fotogramma preso dal file vero. Dal browser non si puo': il video
+  // sta su un altro dominio e il canvas si rifiuta di leggerlo. Qui invece
+  // ffmpeg apre il file, salta al secondo giusto e ne tira fuori uno.
+  "clip-fotogramma": (p) => new Promise((ok, no) => {
+    const r = R.reg[String(p.reg || "")];
+    if (!r) return no(new Error("registrazione sconosciuta"));
+    const sec = Math.max(0, +p.secondi || 0);
+    const via = r.arch ? viaArchivio(r)
+      : fs.existsSync(path.join(cartellaReg(r.id), "integrale.mp4")) ? path.join(cartellaReg(r.id), "integrale.mp4")
+      : (segmenti(r.id).length ? playlistDi(r.id) : null);
+    if (!via) return no(new Error("di questa registrazione non c'e' materiale da cui prendere un fotogramma"));
+    const nome = "f" + nuovoId("") + ".jpg", fuori = path.join(DIR, CARTELLA_CLIP, nome);
+    execFile(FFMPEG, ["-hide_banner", "-loglevel", "error", "-ss", String(sec), "-i", via,
+                      "-frames:v", "1", "-q:v", "2", "-y", fuori], { timeout: 60000 },
+      (e) => e ? no(new Error("fotogramma non riuscito: " + e.message))
+               : ok({ ok: true, file: "/clip/" + CARTELLA_CLIP + "/" + nome, secondi: sec }));
+  }),
   "clip-trascrivi": trascriviChiedi,
   "clip-parlato": (p) => {
     const d = PARLATO[String(p.reg || "")];
