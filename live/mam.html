@@ -372,6 +372,9 @@
     color:var(--fumo);min-width:74px;}
   .scheda .az p{margin:0;font-size:12.5px;line-height:1.45;flex:1;}
   .scheda .az.hl{background:rgba(201,162,75,.10);}
+  .scheda .az.apri{cursor:pointer;}
+  .scheda .az.apri:hover{background:rgba(10,15,36,.05);}
+  .scheda .az.apri u::after{content:' \\25B6';font-size:9px;color:var(--gold);}
   .scheda .tempo{padding:var(--s3) var(--s4) 4px;font-family:'Mazzard',sans-serif;
     font-size:10px;font-weight:700;letter-spacing:.24em;color:var(--fumo);}
   .scheda footer{padding:var(--s3) var(--s4);border-top:1px solid var(--linea);
@@ -988,6 +991,26 @@
     v.src = url; v.play().catch(function () {});
     capo();
   }
+  // Il video non e' qui: sta in un secchio S3 da sette giga. Non lo si
+  // scarica — si chiede un indirizzo firmato e lo si apre al secondo
+  // giusto, che e' l'unica cosa che interessa.
+  function apriDaArchivio(a, dove, nome) {
+    manda({ tipo: "clip-archivio-link", rec: a }).then(function (d) {
+      var sc = el("scheda"); if (sc) sc.remove();
+      mostraNelCentro(d.url, "16:9", nome);
+      var v = el("player");
+      if (dove && v) {
+        var vai = function () {
+          try { v.currentTime = dove; } catch (e) {}
+          v.removeEventListener("loadedmetadata", vai);
+        };
+        v.addEventListener("loadedmetadata", vai);
+      }
+      dice("Dall'archivio \u00b7 " + (d.peso ? Math.round(d.peso / 1e9) + " GB" : "") +
+           " \u00b7 nessun byte copiato", true);
+    }).catch(function (e) { dice(e.message); });
+  }
+
   function tornaAlContenuto() {
     guardando = null;
     if (REG) { apertaId = ""; apri(REG); }
@@ -1569,12 +1592,17 @@
       titolo("Negli appunti della redazione", RIS.azioni.length);
       RIS.azioni.forEach(function (a) {
         var qui = REGISTRAZIONI.filter(function (x) { return x.evento === a.rec; })[0];
+        var inArchivio = a.archivio && a.dove;
         var v = riga((a.hl ? "\u2605 " : "") + (a.testo || a.tipo),
              a.partita + " \u00b7 " + a.minuto + (a.tempo === 2 ? " (2\u00b0T)" : "") +
              (a.competizione ? " \u00b7 " + a.competizione : ""),
-             qui ? "guarda" : "", data(Date.parse(a.quando)));
+             qui ? "guarda" : (inArchivio ? "archivio" : ""), data(Date.parse(a.quando)));
         if (qui) v.addEventListener("click", function () { vaiA(qui.id, null, "tutto"); });
-        else {
+        else if (inArchivio) {
+          v.addEventListener("click", function () {
+            apriDaArchivio(a.rec, a.dove, a.partita + " \u00b7 " + a.minuto);
+          });
+        } else {
           v.style.opacity = ".78";
           v.addEventListener("click", function () { apriAppunti(a.rec); });
         }
@@ -1610,7 +1638,8 @@
           righe += '<div class="tempo">' + (tempo === 1 ? "Primo tempo" : "Secondo tempo") + '</div>';
         }
         if (r.hl) hl++;
-        righe += '<div class="az' + (r.hl ? " hl" : "") + '">' +
+        righe += '<div class="az' + (r.hl ? " hl" : "") +
+                 (r.dove ? " apri\" data-dove=\"" + r.dove : "") + '">' +
                  '<u>' + (r.hl ? "\u2605 " : "") + r.m + '</u>' +
                  '<i>' + (r.t || "") + '</i><p>' + r.x + '</p></div>';
       });
@@ -1622,6 +1651,12 @@
         '<footer>Il video di questa partita non \u00e8 collegato al MAM: ' +
         'gli appunti dicono <b>quale minuto</b>, il file sta in archivio.</footer></div>';
       document.body.appendChild(s);
+      s.querySelectorAll(".az.apri").forEach(function (r) {
+        r.addEventListener("click", function () {
+          apriDaArchivio(d.rec, +r.dataset.dove, d.partita + " \u00b7 " +
+                         (r.querySelector("u") ? r.querySelector("u").textContent.trim() : ""));
+        });
+      });
       var via = function (e) { if (e) e.preventDefault(); s.remove(); };
       s.addEventListener("click", function (e) { if (e.target === s) via(); });
       el("schedaChiudi").addEventListener("click", via);
