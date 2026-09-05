@@ -962,7 +962,166 @@ function nomePezzo(x) {
   return [x.minuto, x.tipo, x.giocatore || x.squadra].filter(Boolean).join(" ").trim() || "pezzo";
 }
 
+
+// ══════════════════════════════════════════════════════════════════════
+//  GLI APPUNTI DELLA REDAZIONE
+// ══════════════════════════════════════════════════════════════════════
+//
+//  ESPN da' i FATTI: gol, rigori, cartellini, con il minuto esatto. Gli
+//  appunti danno il GIUDIZIO: la parata che vale il pezzo, l'occasione,
+//  la giocata. Nessuna delle due basta da sola — il grezzo lo puo' fare
+//  solo chi non sbaglia i minuti, il senso solo chi guardava.
+//
+//  Il parser e' quello di HL Auto-Cut, portato qui: stesse regole, stesse
+//  eccezioni, comprese quelle imparate sul campo (la riga "2-0 Como
+//  raddoppia" e' un punteggio, non un minuto; "NOTE" non e' una sezione
+//  da saltare, se no si spegne il parser per tutta la cella).
+
+const TIPI_APPUNTI = [
+  ["Gol", ["gol", "goal", "rete", "segna", "raddoppi", "pareggi"]],
+  ["Rigore", ["rigore", "penalty", "dal dischetto"]],
+  ["Parata", ["parata", "para ", "miracolo", "respinge", "salva", "rifless", "vola", "paraton"]],
+  ["Palo", ["traversa", "legno", "palo"]],
+  ["Cartellino", ["giallo", "rosso", "cartellino", "ammoni", "espuls"]],
+  ["Occasione", ["occasione", "chance", "tiro", "conclusion", "punizione",
+                 "colpo di testa", "assist", "contropiede", "brivido"]],
+  ["Skill", ["skill", "dribbling", "numero", "tunnel", "giocata", "tacco"]]
+];
+
+function tipoDellaRiga(t) {
+  const b = senzaAccenti(t);
+  for (const [nome, chiavi] of TIPI_APPUNTI) if (chiavi.some((k) => b.indexOf(k) >= 0)) return nome;
+  return "";
+}
+
+// Se la riga e' un'intestazione di sezione: 1, 2, 3, 4, null (da saltare)
+// oppure false (non e' un'intestazione).
+function sezioneDi(riga) {
+  const t = riga.replace(/[*_#>\s]+/g, " ").trim().toUpperCase();
+  if (!t) return false;
+  if (t.length > 40) return false;               // una riga lunga e' prosa, non un titolo
+  if (/SUPPLEMENT/.test(t)) return /SECONDO|2/.test(t) ? 4 : 3;
+  if (/^PRIMO TEMPO/.test(t) || t === "1T" || t === "PT" || t === "1° TEMPO") return 1;
+  if (/^SECONDO TEMPO/.test(t) || t === "2T" || t === "ST" || t === "2° TEMPO") return 2;
+  if (/^(GOL RATING|RATING|RIGORI|SEQUENZA RIGORI|FORMAZION)/.test(t)) return null;
+  return false;
+}
+
+// Il tempo in testa alla riga: 45+2 | 9'50" | 63' | 12:30
+function tempoInTesta(s) {
+  const t = s.replace(/^\s+/, "");
+  if (/^\d{1,2}\s*[-–—]\s*\d{1,2}(?!\d)/.test(t)) return null;   // e' un punteggio
+  let m = /^(\d{1,2}):(\d{2})\b\s*['’]?\s*(.*)$/.exec(t);
+  if (m) return { min: +m[1], sec: +m[2], stopp: 0, resto: m[3].trim() };
+  m = /^(\d{1,3})(?:\s*\+\s*(\d{1,2}))?\s*(?:['’](?:\s*(\d{1,2})\s*["”]?)?)?\s*(.*)$/.exec(t);
+  if (!m) return null;
+  const resto = (m[4] || "").replace(/^[\s\-–:.]+/, "");
+  if (!m[2] && !m[3] && !/^['’]/.test(t.slice(String(m[1]).length)) && !resto) return null;
+  return { min: +m[1], sec: m[3] ? +m[3] : 0, stopp: m[2] ? +m[2] : 0, resto: resto };
+}
+
+function leggiAppunti(testo, durataTempo) {
+  const dur = durataTempo || 45;
+  const fuori = [];
+  let sezione = 1;
+  String(testo || "").split("\n").forEach((grezza) => {
+    if (!grezza.trim()) return;
+    const pulita = grezza.replace(/^[\s>*_#\-]+/, "").replace(/[*_]+$/, "").trim();
+    const sez = sezioneDi(pulita);
+    if (sez !== false) { sezione = sez; return; }
+    if (sezione === null) return;                       // dentro rating o rigori
+    const hl = /\\\*|(^|\s)\*(?!\*)/.test(grezza);      // il marcatore della redazione
+    const grassetto = grezza.indexOf("**") >= 0;
+    const riga = pulita.replace(/\*/g, "").replace(/\\/g, "").trim();
+    const t = tempoInTesta(riga);
+    if (!t) return;                                     // prosa senza riferimento
+    let dentroTempo;
+    if (sezione === 1 || sezione === 3) dentroTempo = t.min * 60 + t.sec + t.stopp * 60;
+    else {
+      const base = sezione === 2 ? dur : (2 * dur + 15);
+      const off = t.min >= base ? (t.min - base) : t.min;
+      dentroTempo = off * 60 + t.sec + t.stopp * 60;
+    }
+    fuori.push({
+      sezione: sezione === 3 ? 1 : (sezione === 4 ? 2 : sezione),
+      dentroTempo: dentroTempo,
+      minuto: t.stopp ? (t.min + "+" + t.stopp) : (t.min + "'"),
+      testo: t.resto || riga,
+      tipo: tipoDellaRiga(t.resto || riga),
+      hl: hl, forte: grassetto
+    });
+  });
+  return fuori;
+}
+
+async function appuntiDi(recId) {
+  const rec = await airtableRecord(recId);
+  const f = (rec && rec.fields) || {};
+  return leggiAppunti(f["Appunti"] || "", 45);
+}
+
 // ── costruire la sequenza ─────────────────────────────────────────────
+
+// Quanto conta un'azione, quando i tre minuti non bastano per tutte.
+// Non e' una classifica di bellezza: e' l'ordine in cui si rinuncia.
+function pesoAzione(tipo, hl) {
+  const t = senzaAccenti(tipo || "");
+  if (hl) return 5;                                  // marcata dalla redazione: non si tocca
+  if (/goal|gol|own|penalty|rigore/.test(t)) return 4;
+  if (/red|rosso|espuls/.test(t)) return 4;
+  if (/parata|palo|traversa/.test(t)) return 3;
+  if (/card|cartellino|giallo|ammoni/.test(t)) return 2;
+  return 1;                                          // occasioni, skill, il resto
+}
+
+// I TRE MINUTI.
+// Un highlight ha una durata voluta, non una durata che viene fuori. Si
+// parte da tutti i pezzi con le maniglie normali e si aggiusta:
+//   troppo lungo  -> si rinuncia partendo da quelli che pesano meno, e se
+//                    restano solo i gol si stringono le maniglie
+//   troppo corto  -> si allungano le maniglie fino a un tetto, e il resto
+//                    lo mette una persona trascinando dai suggerimenti
+function stringiAllaDurata(pezzi, voluta, pre, post) {
+  if (!voluta || !pezzi.length) return { pezzi: pezzi, nota: "" };
+  const durata = () => pezzi.reduce((a, x) => a + (x.fuori - x.dentro), 0);
+  let tolti = 0;
+  while (durata() > voluta && pezzi.length > 1) {
+    let peggio = 0;
+    for (let i = 1; i < pezzi.length; i++) {
+      if (pezzi[i].peso < pezzi[peggio].peso) peggio = i;
+    }
+    if (pezzi[peggio].peso >= 4) break;              // restano solo i gol: non si butta piu'
+    pezzi.splice(peggio, 1); tolti++;
+  }
+  // ancora lungo: si stringono le maniglie, mai sotto il minimo
+  if (durata() > voluta) {
+    const troppo = durata() - voluta, quanti = pezzi.length;
+    const taglia = Math.min(troppo / quanti, (pre + post) - 7);
+    if (taglia > 0.5) {
+      pezzi.forEach((x) => {
+        const meta = taglia * (pre / (pre + post));
+        x.dentro = Math.round((x.dentro + meta) * 10) / 10;
+        x.fuori = Math.round((x.fuori - (taglia - meta)) * 10) / 10;
+      });
+    }
+  }
+  // corto: si allarga, ma con misura
+  if (durata() < voluta * 0.85) {
+    const manca = voluta - durata();
+    const piu = Math.min(manca / pezzi.length, 6) / 2;
+    pezzi.forEach((x) => {
+      x.dentro = Math.max(0, Math.round((x.dentro - piu) * 10) / 10);
+      x.fuori = Math.round((x.fuori + piu) * 10) / 10;
+    });
+  }
+  const finale = durata();
+  let nota = "";
+  if (tolti) nota = "Per stare nei " + Math.round(voluta / 60) + " minuti ho lasciato fuori " +
+    tolti + (tolti === 1 ? " azione" : " azioni") + " fra le meno importanti.";
+  else if (finale < voluta * 0.8) nota = "La sequenza dura " + Math.round(finale) + "s sui " +
+    Math.round(voluta) + " voluti: guarda i suggerimenti dagli appunti per riempirla.";
+  return { pezzi: pezzi, nota: nota };
+}
 
 async function hlGenera(p) {
   const r = R.reg[p.reg];
@@ -1067,6 +1226,51 @@ async function hlGenera(p) {
     }
   }
 
+  // ── IL DOPPIO CONTROLLO ──────────────────────────────────────────
+  //
+  //  Il grezzo lo fa ESPN. Poi si guardano gli appunti dei giornalisti:
+  //  quello che coincide CONFERMA il pezzo e gli presta le parole di chi
+  //  guardava ("gol di Diao" diventa "tacco di Diao su cross di Paz");
+  //  quello che non coincide non entra da solo — resta un SUGGERIMENTO,
+  //  perche' un'occasione la sceglie una persona, non una regola.
+  const suggerimenti = [];
+  if (fonti.appunti !== false && r.evento) {
+    let note = [];
+    try { note = await appuntiDi(r.evento); } catch (e) { avvisi.push("Appunti: " + e.message); }
+    const k1 = r.kickoff ? r.kickoff["1"] : undefined;
+    const k2 = r.kickoff ? r.kickoff["2"] : undefined;
+    note.forEach((n) => {
+      const k = n.sezione === 2 ? k2 : k1;
+      const quando = (k === undefined) ? null : k + n.dentroTempo;
+      // c'e' gia' un pezzo li' vicino? allora e' la stessa azione
+      let vicino = null;
+      if (quando !== null) {
+        pezzi.forEach((x) => {
+          const centro = x.dentro + pre;
+          if (Math.abs(centro - quando) <= 75 && (!vicino || Math.abs(vicino.dentro + pre - quando) > Math.abs(centro - quando))) vicino = x;
+        });
+      }
+      if (vicino) {
+        vicino.confermato = true;
+        if (n.hl) vicino.hl = true;
+        if (n.testo && n.testo.length > 3) vicino.nota = n.testo.slice(0, 120);
+        return;
+      }
+      suggerimenti.push({
+        id: nuovoId("g"), minuto: n.minuto, tempo: n.sezione,
+        titolo: (n.minuto + " " + (n.tipo ? n.tipo + " · " : "") + n.testo).slice(0, 140),
+        tipo: n.tipo, hl: n.hl, testo: n.testo,
+        secondi: quando, collocabile: quando !== null && quando >= 0 && quando <= durata,
+        peso: pesoAzione(n.tipo, n.hl)
+      });
+    });
+    if (note.length && (k1 === undefined && k2 === undefined)) {
+      avvisi.push("Gli appunti ci sono (" + note.length + " azioni) ma senza i fischi d'inizio " +
+                  "non so dove cadono: segnali e rigenera.");
+    }
+  }
+
+  pezzi.forEach((x) => { x.peso = pesoAzione(x.tipo, x.hl); });
   pezzi.sort((a, b) => a.dentro - b.dentro);
 
   // Due pezzi sovrapposti fanno un highlight che si ripete. Quando succede
@@ -1082,11 +1286,18 @@ async function hlGenera(p) {
     tenuti.push(x);
   });
 
+  // I tre minuti: la durata di un highlight e' una decisione, non un caso.
+  const voluta = num(p.durata, 15, 1800, 180);
+  const stretta = stringiAllaDurata(tenuti, voluta, pre, post);
+  if (stretta.nota) avvisi.push(stretta.nota);
+
   const q = {
     id: nuovoId("s"),
     reg: r.id,
     titolo: String(p.titolo || "").slice(0, 160) || ("HL " + r.titolo),
-    pezzi: tenuti,
+    pezzi: stretta.pezzi,
+    voluta: voluta,
+    suggerimenti: suggerimenti.sort((a, b) => (a.secondi || 0) - (b.secondi || 0)),
     pre: pre, post: post, scarto: 0,
     avvisi: avvisi,
     creata: Date.now(),
@@ -1162,6 +1373,31 @@ function hlAggiungi(p) {
   const dove = (p.dove === undefined || p.dove === null) ? q.pezzi.length
              : Math.max(0, Math.min(q.pezzi.length, Math.round(num(p.dove, 0, 999, 0))));
   q.pezzi.splice(dove, 0, pezzo);
+  scrivi(); annuncia(0, "clip");
+  return { ok: true, seq: q };
+}
+
+// Un suggerimento degli appunti entra nella sequenza solo se qualcuno lo
+// sceglie. E' la differenza fra un elenco di fatti e un highlight.
+function hlSuggerimento(p) {
+  const q = seqDi(p);
+  const g = (q.suggerimenti || []).find((x) => x.id === p.suggerimento);
+  if (!g) throw new Error("suggerimento sconosciuto");
+  if (g.secondi === null || g.secondi === undefined) {
+    throw new Error("non so dove cade: segna prima il fischio d'inizio");
+  }
+  const r = R.reg[q.reg];
+  const durata = r ? (r.durata || durataRegistrata(q.reg)) : 99999;
+  const dentro = Math.max(0, g.secondi - (q.pre || HL_PRE));
+  const pezzo = {
+    id: nuovoId("p"),
+    dentro: dentro, fuori: Math.min(durata, g.secondi + (q.post || HL_POST)),
+    base: dentro, titolo: g.titolo, tipo: g.tipo || "", minuto: g.minuto,
+    fonte: "appunti", hl: g.hl, peso: g.peso
+  };
+  q.pezzi.push(pezzo);
+  q.pezzi.sort((a, b) => a.dentro - b.dentro);
+  q.suggerimenti = q.suggerimenti.filter((x) => x.id !== g.id);
   scrivi(); annuncia(0, "clip");
   return { ok: true, seq: q };
 }
@@ -2064,6 +2300,7 @@ const AZIONI = {
   "clip-hl-elenco": hlElenco,
   "clip-hl-pezzo": hlPezzo,
   "clip-hl-aggiungi": hlAggiungi,
+  "clip-hl-suggerimento": hlSuggerimento,
   "clip-hl-ordina": hlOrdina,
   "clip-hl-taratura": hlTaratura,
   "clip-hl-esporta": hlEsporta,
