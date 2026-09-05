@@ -2226,6 +2226,7 @@ async function archivioScandaglia(p) {
       const tag = (/\[([A-Z]{2,4})\]/.exec(String(f["Partita"] || "")) || [])[1] || "";
       const scelta = scegliMateriale(meglio, tag);
       if (!scelta) return;
+      meglio.presa = rec.id;
 
       const pezzi = scelta.pezzi.map((x) => Object.assign({}, x, {
         da: daKickoffPezzo(x.file, quando)
@@ -2243,11 +2244,41 @@ async function archivioScandaglia(p) {
     offset = j.offset || "";
   } while (offset);
 
+  // 3) Le partite che Airtable non conosce. La base parte da meta' 2025, il
+  //    secchio dal 2023: in mezzo ci sono migliaia di cartelle con dentro
+  //    una partita intera e nessun record a cui agganciarle. Non avranno
+  //    appunti ne' calcio d'inizio, ma esistono, e un archivio che le
+  //    nasconde perche' manca una riga in un database non e' un archivio.
+  //    Prendono un'identita' loro, fatta dal percorso, e stanno in elenco.
+  let soleS3 = 0;
+  Object.keys(ARCHIVIO).forEach((k) => { if (k.indexOf("s3:") === 0 && ARCHIVIO[k].bucket === bucket) delete ARCHIVIO[k]; });
+  Object.keys(gruppi).forEach((k) => {
+    const gr = gruppi[k];
+    if (gr.presa) return;
+    const scelta = scegliMateriale(gr, "");
+    if (!scelta || scelta.fonte === "unico") return;      // non e' una partita intera: si lascia stare
+    const g = gr.giorno;
+    const quando = new Date(Date.UTC(+g.slice(0, 4), +g.slice(4, 6) - 1, +g.slice(6, 8), 18, 0)).toISOString();
+    const pezzi = scelta.pezzi.slice().sort((x, y) => {
+      const ox = oraNelNome(x.file), oy = oraNelNome(y.file);
+      return ((ox ? (ox.h % 12) * 3600 + ox.m * 60 + ox.s : 0) - (oy ? (oy.h % 12) * 3600 + oy.m * 60 + oy.s : 0));
+    });
+    // la competizione e' il pezzo di percorso subito sopra la stagione o la partita
+    const via = gr.dove.split("/");
+    const comp = via.slice(1, -1).filter((x) => !/^(stagione|partite|\d{4}|\d{2}-\d{2}|turno|round|giornata|andata|ritorno|fase)/i.test(x)).pop() || "";
+    const id = "s3:" + crypto.createHash("sha1").update(gr.dove).digest("hex").slice(0, 14);
+    ARCHIVIO[id] = { bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
+      partita: gr.partita.replace(/[_]+/g, " ").trim(), competizione: comp.replace(/[_]+/g, " "),
+      variante: "", giorno: g, dove: gr.dove, fonte: scelta.fonte, pezzi: pezzi,
+      kickoff: null, sicuro: false, quando: quando, soloS3: true };
+    soleS3++;
+  });
+
   scriviArchivio();
   return { ok: true, oggettiVisti: visti, fileTenuti: tenuti,
            cartellePartita: Object.keys(gruppi).length,
            partiteViste: tornate, agganciate: agganciate, intere: intere,
-           conKickoff: conKickoff, senzaAggancio: orfane.slice(0, 15) };
+           conKickoff: conKickoff, soloS3: soleS3, senzaAggancio: orfane.slice(0, 15) };
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -2520,6 +2551,23 @@ function secondoNelFile(rec, r) {
   return { pezzo: i, secondi: Math.round(t - pezzi[i].da) };
 }
 
+// Le partite dell'archivio per nome, competizione e data: e' l'unico modo
+// di trovare le quattromila che Airtable non conosce.
+function cercaNellArchivio(q, limite) {
+  if (!q.parole.length && !q.quando) return [];
+  const fuori = [];
+  Object.keys(ARCHIVIO).forEach((rec) => {
+    const a = ARCHIVIO[rec], ms = Date.parse(a.quando);
+    if (!quandoTorna(ms, q)) return;
+    const testo = comeSiCerca([a.partita, a.competizione, dataScritta(ms)]);
+    if (!tutteDentro(testo, q.parole)) return;
+    fuori.push({ rec: rec, partita: a.partita, competizione: a.competizione || "", quando: a.quando,
+                 pezzi: (a.pezzi || []).length || 1, soloS3: !!a.soloS3, fonte: a.fonte || "" });
+  });
+  fuori.sort((x, y) => (Date.parse(y.quando) || 0) - (Date.parse(x.quando) || 0));
+  return fuori.slice(0, limite);
+}
+
 function cercaNegliAppunti(q, limite) {
   const fuori = [];
   Object.keys(APPUNTI).forEach((rec) => {
@@ -2779,12 +2827,14 @@ function clipCerca(p) {
 
   // il quinto fronte: quello che e' stato detto a voce
   const dette = q.parole.length ? cercaNelParlato(q, limite) : [];
+  // il sesto: le partite dell'archivio, per nome
+  const archivio = (q.genere && q.genere !== "partita") ? [] : cercaNellArchivio(q, limite);
 
   return {
     ok: true,
     domanda: { parole: q.parole, formato: q.formato, genere: q.genere, quando: q.quando },
-    quante: partite.length + clip.length + segni.length + azioni.length + dette.length,
-    azioni: azioni, dette: dette,
+    quante: partite.length + clip.length + segni.length + azioni.length + dette.length + archivio.length,
+    azioni: azioni, dette: dette, archivio: archivio,
     partite: partite.slice(0, limite),
     clip: clip.slice(0, limite),
     segni: segni.slice(0, limite)
@@ -3200,13 +3250,19 @@ const AZIONI = {
   // L'elenco di quello che l'archivio sa gia' offrire: serve alla tendina
   // delle partite, che altrimenti conosce solo quelle di oggi.
   "clip-archivio-partite": (p) => {
-    const quante = num(p.quante, 1, 2000, 400);
+    const quante = num(p.quante, 1, 8000, 400);
+    // qualche cartella porta una data che non puo' essere vera (2028): e'
+    // un errore di chi l'ha scritta, non del calendario. Si tiene, ma in
+    // fondo e con il segno, invece di farla comparire come prima cosa.
+    const domani = Date.now() + 2 * 86400000;
     const fuori = Object.keys(ARCHIVIO).map((rec) => {
-      const a = ARCHIVIO[rec];
+      const a = ARCHIVIO[rec], ms = Date.parse(a.quando) || 0;
       return { rec: rec, titolo: a.partita, quando: a.quando, variante: a.variante,
+               competizione: a.competizione || "", soloS3: !!a.soloS3,
+               dataSospetta: !!a.soloS3 && ms > domani,
                pezzi: (a.pezzi || []).length || 1, sicuro: !!a.sicuro,
                kickoff: a.kickoff === undefined ? null : a.kickoff };
-    }).sort((x, y) => (Date.parse(y.quando) || 0) - (Date.parse(x.quando) || 0));
+    }).sort((x, y) => (x.dataSospetta - y.dataSospetta) || ((Date.parse(y.quando) || 0) - (Date.parse(x.quando) || 0)));
     return { ok: true, quante: fuori.length, partite: fuori.slice(0, quante) };
   },
   "clip-archivio-link": async (p) => {

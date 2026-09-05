@@ -73,7 +73,10 @@
 
   /* Sopra si guarda, sotto si monta: le colonne prendono quello che resta,
      la timeline si tiene la sua fascia e non la molla. */
-  .lavoro{flex:1 1 auto;min-height:0;display:grid;grid-template-rows:minmax(0,1fr) 152px;}
+  .lavoro{flex:1 1 auto;min-height:0;display:grid;grid-template-rows:minmax(0,1fr);}
+  .colCentro{display:flex;flex-direction:column;min-height:0;}
+  .colCentro #centro{flex:0 0 auto;}
+  .colCentro .timeline{flex:0 0 190px;height:190px;margin:var(--s2) calc(-1 * clamp(10px,1.2vw,18px)) calc(-14px);border-top:1px solid var(--linea);}
   .tre{display:grid;grid-template-columns:272px minmax(0,1fr);min-height:0;}
 
   .timeline{border-top:1px solid var(--linea);background:rgba(10,15,36,.035);
@@ -100,39 +103,46 @@
   .tlpista .ora{position:absolute;top:2px;font-size:9px;font-weight:700;color:var(--fumo);
     transform:translateX(3px);font-variant-numeric:tabular-nums;pointer-events:none;}
 
-  /* V1: la partita, un blocco solo che occupa tutto il suo tempo */
-  .tlpista .nastro{position:absolute;left:0;right:0;top:15px;height:45px;
-    background:linear-gradient(180deg,#1B2440,#141C33);border:1px solid #0A0F24;
+  /* LA SEQUENZA SULLA TIMELINE. Come Premiere: V1 con i blocchi delle
+     clip e la loro miniatura, A1 con l'audio, il righello in timecode, la
+     testina rossa che e' la stessa del monitor Programma. Si trascina un
+     blocco per riordinare, se ne prende un bordo per accorciarlo. */
+  .tlpista .clipV{position:absolute;top:17px;height:46px;background:#1B2440;border:1px solid #0A0F24;
+    border-radius:3px;overflow:hidden;cursor:grab;color:rgba(245,241,230,.92);}
+  .tlpista .clipV img{position:absolute;left:0;top:0;height:100%;width:auto;opacity:.75;}
+  .tlpista .clipV .tt{position:absolute;left:6px;right:6px;top:4px;font-family:'Mazzard',sans-serif;
+    font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 2px rgba(0,0,0,.8);}
+  .tlpista .clipV .dd{position:absolute;left:6px;bottom:3px;font-size:9px;opacity:.8;font-variant-numeric:tabular-nums;}
+  .tlpista .clipV.sel{outline:2px solid var(--gold);outline-offset:-2px;}
+  .tlpista .clipV .bordo{position:absolute;top:0;bottom:0;width:7px;cursor:ew-resize;z-index:2;}
+  .tlpista .clipV .bordo.sx{left:0;} .tlpista .clipV .bordo.dx{right:0;}
+  .tlpista .clipV .bordo:hover,.tlpista .clipV.sel .bordo{background:rgba(201,162,75,.55);}
+  .tlpista .clipA{position:absolute;top:66px;height:34px;background:#2E8B57;border:1px solid #1F6B41;
     border-radius:3px;overflow:hidden;}
-  .tlpista .nastro b{position:absolute;left:7px;top:5px;color:rgba(245,241,230,.9);
-    font-family:'Mazzard',sans-serif;font-size:10px;font-weight:800;letter-spacing:.08em;
-    text-transform:uppercase;pointer-events:none;}
-  .tlpista .onda{position:absolute;left:0;right:0;bottom:0;height:18px;
-    background:repeating-linear-gradient(90deg,rgba(201,162,75,.35) 0 1px,transparent 1px 4px);}
-  .tlpista .presa{position:absolute;top:15px;height:45px;background:rgba(201,162,75,.34);
-    border-left:1px solid var(--gold);border-right:1px solid var(--gold);}
-  .tlpista .maniglia{position:absolute;top:15px;height:45px;width:9px;background:var(--gold);
-    cursor:ew-resize;z-index:3;}
-  .tlpista .maniglia::after{content:'';position:absolute;left:3.5px;top:38%;width:2px;height:24%;
-    background:rgba(10,15,36,.7);}
-  .tlpista .segno{position:absolute;top:17px;height:12px;width:3px;border-radius:2px;
-    background:var(--gold);cursor:pointer;z-index:2;}
-  .tlpista .segno.gol{background:var(--red);}
-  .tlpista .segno:hover{transform:scaleX(2.4);}
-
-  /* SEQ: i pezzi gia' montati, sulla stessa scala del tempo della partita
-     quando vengono da questa partita */
-  .tlpista .pezzo{position:absolute;top:62px;height:44px;background:var(--gold);
-    border:1px solid var(--gold-deep);border-radius:3px;overflow:hidden;cursor:pointer;
-    color:var(--scuro);font-size:9.5px;font-weight:700;padding:3px 5px;line-height:1.15;}
-  .tlpista .pezzo:hover{background:#D8B45E;}
-  .tlpista .pezzo.fuori{background:rgba(201,162,75,.35);border-style:dashed;}
-
-  .tlpista .capo{position:absolute;top:0;bottom:0;width:1px;background:var(--red);
-    z-index:5;pointer-events:none;}
+  .tlpista .clipA::before{content:'';position:absolute;inset:0;
+    background:repeating-linear-gradient(90deg,rgba(255,255,255,.28) 0 1px,transparent 1px 3px),
+               linear-gradient(180deg,transparent 0 30%,rgba(255,255,255,.18) 30% 70%,transparent 70%);}
+  .tlpista .ins{position:absolute;top:15px;height:86px;width:2px;background:var(--gold);z-index:6;}
+  .tlpista .capo{position:absolute;top:0;bottom:0;width:1px;background:var(--red);z-index:5;pointer-events:none;}
   .tlpista .capo::before{content:'';position:absolute;top:0;left:-5px;border-left:5.5px solid transparent;
     border-right:5.5px solid transparent;border-top:8px solid var(--red);}
   .tlpista .vuoto2{position:absolute;inset:15px 0 0;display:flex;align-items:center;
+    justify-content:center;color:var(--fumo);font-size:11px;}
+  .tltraccia-nome.a1{color:#2E8B57;height:36px;}
+  .tlcima .esp{display:flex;gap:6px;align-items:center;margin-left:auto;}
+  .tlcima .esportati a{font-size:10px;color:var(--gold-deep);font-weight:700;margin-left:8px;text-decoration:none;}
+  .tlcima .esportati .lavora{font-size:10px;color:var(--fumo);margin-left:8px;}
+  #sequenza{display:none!important;}
+
+  /* Il marcatore: M apre il riquadro sopra il monitor, come il pannello
+     marcatore di Premiere. Si scrive, invio, sparisce. */
+  .segnaBox{position:absolute;left:0;right:0;top:34px;z-index:20;background:var(--carta);
+    border:1px solid var(--gold-deep);border-radius:8px;padding:8px;display:flex;gap:6px;
+    align-items:center;box-shadow:0 10px 30px rgba(10,15,36,.22);}
+  .segnaBox input{flex:1 1 auto;min-width:0;}
+  .segnaBox button.b{height:30px;padding:0 10px;font-size:10px;}
+  .binSugg{margin-top:var(--s3);}
     justify-content:center;color:var(--fumo);font-size:11px;}
   @media (max-width:1240px){.tre{grid-template-columns:220px minmax(0,1fr);}}
   .col{padding:14px clamp(10px,1.2vw,18px);overflow:auto;min-height:0;}
@@ -315,8 +325,9 @@
      Premiere: sotto il video il timecode di dove sei e di quanto dura, la
      barretta con le parentesi di entrata e uscita, la fila dei comandi a
      icone. Le icone sono quelle: chi monta le riconosce senza leggere. */
-  .monitori{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3);align-items:start;}
-  .monitor{min-width:0;}
+  .monitori{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start;}
+  .monitor{min-width:0;position:relative;}
+  .monitor + .monitor{border-left:1px solid var(--linea);padding-left:22px;}
   .monitor.attivo .mbarra{color:var(--gold-deep);}
   .monitor .capo{margin-bottom:5px;}
   .monitor .capo span{font-size:10px;}
@@ -345,6 +356,8 @@
   .tr.oro{color:var(--gold-deep);} .tr.play{width:36px;}
   .tr:disabled{opacity:.3;cursor:default;}
   .binCapo{margin-top:var(--s3);}
+  #evento option.futura{background:#FDECEC;color:#8E1216;}
+  #evento optgroup{font-style:normal;color:var(--gold-deep);}
   #bin .griglia{grid-template-columns:1fr 1fr;}
   @media (max-width:1240px){#bin .griglia{grid-template-columns:1fr;}}
   .arch{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;cursor:pointer;font-size:11.5px;}
@@ -592,7 +605,7 @@
 <div class="lavoro">
 <div class="tre">
   <div class="col">
-    <h2>Contenuti <span id="nPartite">—</span></h2>
+    <h2 class="soloLive">Contenuti <span id="nPartite">—</span></h2>
     <!-- Non solo partite: qui dentro sta anche quello che arriva dal NAS o
          da un telefono. Un file caricato e' materiale come una diretta. -->
     <!-- il caricamento da file resta nel codice ma non in vista: si entra dagli
@@ -610,12 +623,17 @@
          stanza. -->
     <h2 class="binCapo">Clip <span id="nClip">—</span></h2>
     <div id="bin"></div>
+    <!-- I suggerimenti degli appunti: materiale da prendere, quindi stanno
+         nel progetto, non sopra la sequenza. -->
+    <div class="suggeriti binSugg" id="seqSugg" hidden>
+      <h2>Dagli appunti <span id="suggConto"></span></h2>
+      <div class="pezzi" id="suggPezzi"></div>
+    </div>
     <div id="segniCol"></div>
   </div>
 
-  <div class="col" id="centro"></div>
-
-</div>
+  <div class="col colCentro">
+    <div id="centro"></div>
 
 <!-- LA TIMELINE.
      La partita distesa, il cursore che si sposta, i tagli fatti li' sopra:
@@ -627,18 +645,24 @@
   <div class="tlcima">
     <span class="et">Timeline</span>
     <span id="tlNome">—</span>
-    <span class="gruppo" style="margin-left:auto">
+    <span class="esp">
+      <span class="esportati" id="seqEsportati"></span>
+      <button class="b piccolo" id="seqXml" title="l’XML per Premiere: la sequenza con i tagli, da aprire e rifinire">Per Premiere</button>
+      <button class="b piccolo" id="seqMp4">Solo 16:9</button>
+      <button class="b piccolo oro" id="seqTutti" title="16:9, 3:4 e 9:16 in un colpo: il montaggio e’ lo stesso, cambia solo il ritaglio">Esporta tutti i formati</button>
+      <span class="stacco" style="width:1px;height:18px;background:var(--linea);margin:0 4px"></span>
       <button class="b piccolo" id="tlMeno" title="allontana (−)">−</button>
-      <button class="b piccolo" id="tlTutto" title="tutta la partita (\\)">tutto</button>
+      <button class="b piccolo" id="tlTutto" title="tutta la sequenza (\\)">tutto</button>
       <button class="b piccolo" id="tlPiu" title="avvicina (+)">+</button>
     </span>
   </div>
   <div class="tlcorpo" id="tlCorpo">
     <div class="tlnomi">
       <div class="tltraccia-nome">V1</div>
-      <div class="tltraccia-nome seq">SEQ</div>
+      <div class="tltraccia-nome a1">A1</div>
     </div>
     <div class="tlpista" id="tlPista"></div>
+  </div>
   </div>
 </div>
 </div>
@@ -732,8 +756,9 @@
     ARCH_LISTA.slice(0, ARCH_MOSTRA).forEach(function (p) {
       var d = new Date(p.quando), q = isFinite(d) ? ("0"+d.getDate()).slice(-2) + "/" + ("0"+(d.getMonth()+1)).slice(-2) + "/" + String(d.getFullYear()).slice(-2) : "";
       var r = document.createElement("div"); r.className = "arch";
-      r.innerHTML = '<span class="q">' + q + '</span><span class="n" title="' + p.titolo.replace(/"/g, "") + '">' +
-                    p.titolo + '</span><span class="k">' + (aperte[p.rec] ? "aperta" : (p.pezzi > 1 ? p.pezzi + " parti" : "")) + '</span>';
+      r.innerHTML = '<span class="q"' + (p.dataSospetta ? ' title="data della cartella non credibile" style="color:#B3151A"' : '') + '>' + q +
+                    '</span><span class="n" title="' + String(p.titolo).replace(/"/g, "") + (p.competizione ? " \u00b7 " + p.competizione : "") + '">' +
+                    p.titolo + '</span><span class="k">' + (aperte[p.rec] ? "aperta" : (p.pezzi > 1 ? p.pezzi + " parti" : (p.soloS3 ? "S3" : ""))) + '</span>';
       r.addEventListener("click", function () { apriDaArchivio(p.rec, null, p.titolo, 0); });
       box.appendChild(r);
     });
@@ -749,6 +774,9 @@
   function albero() { alberoSolo(); alberoArchivio(); }
   function alberoSolo() {
     var c = el("albero"); c.innerHTML = "";
+    // in archivio la partita si sceglie dalla tendina o dall'elenco
+    // Archivio: rifare qui la lista delle registrazioni era un doppione
+    if (MODO === "archivio") return;
     if (!REGISTRAZIONI.length) {
       c.innerHTML = '<div class="vuoto">Ancora niente.<br>Con <b>Live</b> si registra un flusso, oppure si carica un file qui sopra.</div>';
       el("nPartite").textContent = "0"; return;
@@ -901,7 +929,7 @@
           '<input type="range" id="slider" min="0" max="100" value="0" step="0.1" hidden>' +
           '<div class="pista" id="pista" hidden></div>' +
           '<div class="trasporto">' +
-            tr("btnMarker", "segno", "Aggiungi marcatore (M)") +
+            tr("btnSegnaApri", "segno", "Aggiungi marcatore (M)") +
             tr("btnIn", "dentro", "Segna entrata (I)", "oro") + tr("btnOut", "fuori", "Segna uscita (O)", "oro") +
             '<span class="stacco"></span>' +
             tr("btnVaiIn", "vaiDentro", "Vai all’entrata (shift+I)") +
@@ -915,6 +943,14 @@
             tr("btnFoto", "foto", "Esporta fotogramma") +
             '<span class="stacco"></span>' +
             tr("btnLive", "live", "Torna al live") +
+          '</div>' +
+          '<div class="segnaBox" id="segnaBox" hidden>' +
+            '<input type="text" id="markerTesto" placeholder="che cos’è: es. gol Douvikas">' +
+            '<button class="b oro" id="btnMarker">Segna</button>' +
+            '<button class="b" data-kick="1" title="il fischio del primo tempo è qui">1º T</button>' +
+            '<button class="b" data-kick="2" title="il fischio del secondo tempo è qui">2º T</button>' +
+            '<button class="b" id="btnVoce" title="trascrive la telecronaca dei cinque minuti attorno a dove sei">Voce</button>' +
+            '<button class="b" id="segnaChiudi" title="chiudi (esc)">×</button>' +
           '</div>' +
         '</div>' +
         // ── PROGRAMMA ──
@@ -946,29 +982,7 @@
         '<button class="b" id="btnPreciso" title="Ai secondi si copia e basta: un secondo. Al fotogramma si ricodifica: qualche secondo in piu’, ma parte esatta.">Ai secondi</button>' +
         '<span class="aiuto" style="margin:0 0 0 auto"><kbd id="aiutoTasti">?</kbd></span>' +
       '</div>' +
-      '<div class="segnafila">' +
-        '<input type="text" id="markerTesto" placeholder="segna che cos’è: es. gol Douvikas">' +
-        '<button class="b" data-kick="1">1º T</button>' +
-        '<button class="b" data-kick="2">2º T</button>' +
-        '<button class="b" id="btnVoce" title="Trascrive la telecronaca dei cinque minuti attorno a dove sei.">Voce</button>' +
-      '</div>' +
-      '<div class="sequenza" id="sequenza" hidden>' +
-        '<div class="cima"><span class="et">Sequenza</span>' +
-          '<span id="seqConto"></span>' +
-          '<span class="gruppo" style="margin-left:auto">' +
-            '<button class="b oro" id="seqTutti" title="16:9, 3:4 e 9:16 in un colpo: il montaggio e\u2019 lo stesso, cambia solo il ritaglio">Esporta tutti i formati</button>' +
-            '<button class="b" id="seqMp4">Solo ' + formato + '</button>' +
-            '<button class="b" id="seqXml">Per Premiere</button></span></div>' +
-        '<div class="pezzi" id="seqPezzi"></div>' +
-        '<div class="esportati" id="seqEsportati"></div>' +
-        // I suggerimenti sono quello che i giornalisti hanno scritto e ESPN
-        // non sa: parate, occasioni, giocate. Stanno accanto alla sequenza,
-        // non dentro: entrano solo se qualcuno li sceglie.
-        '<div class="suggeriti" id="seqSugg" hidden>' +
-          '<div class="et">Dagli appunti <span id="suggConto"></span></div>' +
-          '<div class="pezzi" id="suggPezzi"></div>' +
-        '</div>' +
-      '</div>';
+      '<div class="sequenza" id="sequenza" hidden><span id="seqConto"></span><div id="seqPezzi"></div></div>';
 
     telaioForma();
     el("capoTorna").addEventListener("click", function (e) { e.preventDefault(); tornaAlContenuto(); });
@@ -1020,6 +1034,19 @@
       disegnaPista(); disegnaTimeline(); disegnaScrub();
     });
     attaccaPista(); attaccaTimeline();
+
+    // ── il riquadro del marcatore ──
+    function segnaApri(si) {
+      var b = el("segnaBox"); if (!b) return;
+      b.hidden = (si === undefined) ? !b.hidden : !si;
+      if (!b.hidden) { el("markerTesto").focus(); el("markerTesto").select(); }
+    }
+    el("btnSegnaApri").addEventListener("click", function () { segnaApri(); });
+    el("segnaChiudi").addEventListener("click", function () { segnaApri(false); });
+    el("markerTesto").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); el("btnMarker").click(); segnaApri(false); }
+      if (e.key === "Escape") { e.preventDefault(); segnaApri(false); }
+    });
 
     // ── il monitor Sorgente ──
     var vs = el("player");
@@ -1151,9 +1178,8 @@
       var e = el("monS").querySelector("." + k); if (e) sotto += e.offsetHeight + 5;
     });
     var tg = c.querySelector(".taglio"); if (tg) sotto += tg.offsetHeight + 12;
-    var sf = c.querySelector(".segnafila"); if (sf) sotto += sf.offsetHeight + 6;
-    var seq = el("sequenza"); if (seq && !seq.hidden) sotto += seq.offsetHeight + 10;
-    var largo = (c.clientWidth - 16) / 2;
+    var tl = el("timeline"); if (tl) sotto += 190 + 10;
+    var largo = (c.clientWidth - 28 - 23) / 2 - 2;
     var alto = Math.max(120, col.clientHeight - sotto - 44);
     var r = { "16:9": 16/9, "3:4": 3/4, "9:16": 9/16 }[formato] || 16/9;
     var w = Math.min(largo, alto * r), h = w / r;
@@ -1190,7 +1216,10 @@
   function sorgentePezzo(x) {
     if (x.clip) {
       var cl = CLIP.filter(function (k) { return k.id === x.clip; })[0];
-      if (cl && cl.stato === "pronta") return { url: BASE + "/clip/_clip/" + x.clip + ".mp4", da: 0, a: null };
+      // il file della clip vale finche' il pezzo e' quello: se lo si e'
+      // accorciato o allungato sulla timeline, si torna alla partita
+      if (cl && cl.stato === "pronta" && Math.abs(cl.dentro - x.dentro) < 0.05 && Math.abs(cl.fuori - x.fuori) < 0.05)
+        return { url: BASE + "/clip/_clip/" + x.clip + ".mp4", da: 0, a: null };
     }
     var r = regDiSeq(); if (!r) return null;
     if (r.materiale === "archivio" && r.via) return { url: r.via, da: x.dentro, a: x.fuori };
@@ -1241,6 +1270,7 @@
     if (el("pPos")) el("pPos").textContent = tc(oraT);
     var x = pz[PROG.i];
     targaP(x ? ((PROG.i + 1) + ". " + x.titolo) : null, x ? Math.round(x.fuori - x.dentro) + "s" : "");
+    disegnaTimeline();
   }
   function targaP(nome, coda) {
     var t = el("targaP"); if (!t) return;
@@ -1486,103 +1516,199 @@
     document.addEventListener("mouseup", function () { lato = null; });
   }
 
-  // ── LA TIMELINE ─────────────────────────────────────────────────
+  // ── LA TIMELINE E' LA SEQUENZA ──────────────────────────────────
   //
-  //  Stessa finestra e stessa lente della traccia piccola: sono lo stesso
-  //  tempo guardato da due distanze. Qui pero' c'e' spazio per il nastro
-  //  della partita, i segni e i pezzi gia' montati, e soprattutto per il
-  //  gesto: si prende il cursore e lo si porta dove serve.
+  //  Come in Premiere: sotto i monitor non c'e' la partita, c'e' il
+  //  montaggio. V1 con i blocchi delle clip e la loro miniatura, A1 con
+  //  l'audio, il righello in timecode, la testina rossa che e' la stessa
+  //  del monitor Programma. Si trascina un blocco per riordinare, se ne
+  //  prende un bordo per accorciarlo o allungarlo, si clicca sul righello
+  //  per andare li'. Una clip dal progetto si lascia cadere dove si vuole.
+  //  Canc toglie il pezzo scelto.
+  var TL = { sel: null, ghost: null, ins: null, trim: null, drag: null };
+
+  function progPos() {
+    var pz = pezziProg(), v = el("programma"); if (PROG.i < 0 || !pz[PROG.i]) return 0;
+    var acc = 0;
+    for (var i = 0; i < PROG.i; i++) acc += pz[i].fuori - pz[i].dentro;
+    var d = pz[PROG.i].fuori - pz[PROG.i].dentro;
+    return acc + Math.max(0, Math.min(d, (v ? v.currentTime : 0) - PROG.da));
+  }
+  function finestraSeq() {
+    var tot = durataSeq(); if (!tot) return null;
+    if (LENTE <= 1) return { a: 0, b: tot, tot: tot };
+    var largo = tot / LENTE, a = Math.max(0, Math.min(tot - largo, progPos() - largo / 2));
+    return { a: a, b: a + largo, tot: tot };
+  }
+  function pulito(x) { return String(x || "").replace(/[<>&"]/g, function (c) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]; }); }
+
   function disegnaTimeline() {
     var p = el("tlPista"); if (!p) return;
-    var f = finestra(), v = el("player");
-    if (!f) { p.innerHTML = '<div class="vuoto2">Scegli un contenuto: la partita si distende qui.</div>'; return; }
-    var largo = p.clientWidth || 900, out = [];
-    var nome = el("tlNome"); if (nome) nome.textContent = REG ? REG.titolo : "—";
+    var pz = pezziProg(), tot = durataSeq(), largo = p.clientWidth || 900, out = [];
+    var nome = el("tlNome");
+    if (nome) nome.textContent = SEQ ? (SEQ.titolo || "sequenza") + " · " + pz.length + " pezzi · " + tc(tot) : "—";
+    if (el("seqMp4")) el("seqMp4").textContent = "Solo " + formato;
+    if (!pz.length) {
+      p.innerHTML = '<div class="vuoto2">La sequenza è vuota: segna entrata e uscita nella Sorgente e premi , (Inserisci), oppure trascina qui una clip dal progetto.</div>';
+      return;
+    }
+    var f = finestraSeq();
+    var X = function (t) { return (t - f.a) / (f.b - f.a) * largo; };
 
-    var passi = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
-    var passo = passi.find(function (x) { return (f.b - f.a) / x <= 16; }) || 3600;
+    var passi = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+    var passo = passi.find(function (x) { return (f.b - f.a) / x <= 12; }) || 1800;
     for (var t = Math.ceil(f.a / passo) * passo; t < f.b; t += passo) {
-      var x = xDi(t, f, largo), grande = (t % (passo * 4) === 0);
-      out.push('<span class="tacca' + (grande ? " grande" : "") + '" style="left:' + x + 'px"></span>');
-      if (grande) out.push('<span class="ora" style="left:' + x + 'px">' + orologio(t) + '</span>');
+      var grande = (t % (passo * 2) === 0);
+      out.push('<span class="tacca' + (grande ? " grande" : "") + '" style="left:' + X(t) + 'px"></span>');
+      if (grande) out.push('<span class="ora" style="left:' + X(t) + 'px">' + tc(t) + '</span>');
     }
     out.push('<span class="righello"></span>');
 
-    // V1: il nastro della partita, con dentro il nome
-    var xa = xDi(0, f, largo), xb = xDi(f.tot, f, largo);
-    out.push('<span class="nastro" style="left:' + Math.max(0, xa) + 'px;right:auto;width:' +
-             (Math.min(largo, xb) - Math.max(0, xa)) + 'px"><b>' +
-             (REG ? REG.titolo : "") + '</b><i class="onda"></i></span>');
-
-    ((REG && REG.marker) || []).forEach(function (m) {
-      if (m.secondi < f.a || m.secondi > f.b) return;
-      out.push('<span class="segno' + (/gol|goal/i.test(m.tipo || m.testo || "") ? " gol" : "") +
-               '" style="left:' + xDi(m.secondi, f, largo) + 'px" data-vai="' + m.secondi +
-               '" title="' + String(m.testo || "").replace(/"/g, "") + '"></span>');
+    var acc = 0;
+    pz.forEach(function (x, i) {
+      var dentroX = x.dentro, fuoriX = x.fuori;
+      if (TL.ghost && TL.ghost.id === x.id) { dentroX = TL.ghost.dentro; fuoriX = TL.ghost.fuori; }
+      var d = fuoriX - dentroX, a = acc, b = acc + d; acc += d;
+      if (b < f.a || a > f.b) return;
+      var xa = Math.max(0, X(a)), xb = Math.min(largo, X(b)), w = Math.max(8, xb - xa);
+      var cl = x.clip ? CLIP.filter(function (k) { return k.id === x.clip; })[0] : null;
+      var img = (cl && cl.mini) ? '<img src="' + BASE + cl.mini + '" alt="">' : "";
+      out.push('<div class="clipV' + (TL.sel === x.id ? " sel" : "") + '" data-pezzo="' + x.id + '" data-i="' + i +
+               '" style="left:' + xa + 'px;width:' + w + 'px">' + img +
+               '<span class="bordo sx" data-lato="sx"></span>' +
+               '<span class="tt">' + (i + 1) + '. ' + pulito(x.titolo) + '</span>' +
+               '<span class="dd">' + d.toFixed(1) + 's</span>' +
+               '<span class="bordo dx" data-lato="dx"></span></div>');
+      out.push('<div class="clipA" data-pezzo="' + x.id + '" style="left:' + xa + 'px;width:' + w + 'px"></div>');
     });
-
-    if (dentro !== null || fuori !== null) {
-      var a = dentro === null ? f.a : dentro, b = fuori === null ? f.b : fuori;
-      var pa = Math.max(0, xDi(a, f, largo)), pb = Math.min(largo, xDi(b, f, largo));
-      if (pb > pa) out.push('<span class="presa" style="left:' + pa + 'px;width:' + (pb - pa) + 'px"></span>');
-      if (dentro !== null) out.push('<span class="maniglia" data-lato="in" style="left:' + (pa - 4) + 'px"></span>');
-      if (fuori !== null) out.push('<span class="maniglia" data-lato="out" style="left:' + (pb - 5) + 'px"></span>');
+    if (TL.ins !== null) {
+      var acc2 = 0;
+      for (var k = 0; k < TL.ins && k < pz.length; k++) acc2 += pz[k].fuori - pz[k].dentro;
+      out.push('<span class="ins" style="left:' + (X(acc2) - 1) + 'px"></span>');
     }
-
-    // SEQ: i pezzi montati. Quelli che vengono da questa partita stanno al
-    // loro posto nel tempo; gli altri si mettono in fila all'inizio, in
-    // chiaro, perche' non hanno un posto qui dentro.
-    var fuoriPosto = 0;
-    ((SEQ && SEQ.pezzi) || []).forEach(function (z, i) {
-      var suo = (z.reg === (REG && REG.id));
-      if (suo && z.dentro !== undefined) {
-        var za = xDi(z.dentro, f, largo), zb = xDi(z.fuori, f, largo);
-        if (zb < 0 || za > largo) return;
-        out.push('<span class="pezzo" data-vai="' + z.dentro + '" style="left:' + Math.max(0, za) +
-                 'px;width:' + Math.max(14, Math.min(largo, zb) - Math.max(0, za)) + 'px">' +
-                 (i + 1) + '. ' + String(z.titolo || "").slice(0, 22) + '</span>');
-      } else {
-        out.push('<span class="pezzo fuori" style="left:' + (fuoriPosto * 78 + 2) +
-                 'px;width:74px" title="' + String(z.titolo || "").replace(/"/g, "") + '">' +
-                 (i + 1) + '. ' + String(z.titolo || "").slice(0, 16) + '</span>');
-        fuoriPosto++;
-      }
-    });
-
-    if (v) out.push('<span class="capo" style="left:' + xDi(v.currentTime, f, largo) + 'px"></span>');
+    out.push('<span class="capo" style="left:' + X(progPos()) + 'px"></span>');
     p.innerHTML = out.join("");
+  }
+
+  function tempoSeq(e) {
+    var p = el("tlPista"), f = finestraSeq(); if (!p || !f) return null;
+    var r = p.getBoundingClientRect();
+    return Math.max(0, Math.min(f.tot, f.a + (e.clientX - r.left) / r.width * (f.b - f.a)));
+  }
+  function pezzoAlTempo(t) {
+    var pz = pezziProg(), acc = 0;
+    for (var i = 0; i < pz.length; i++) {
+      var d = pz[i].fuori - pz[i].dentro;
+      if (t < acc + d || i === pz.length - 1) return { i: i, dentro: Math.max(0, Math.min(d, t - acc)) };
+      acc += d;
+    }
+    return null;
+  }
+  // dove cadrebbe, fra i pezzi, un punto del puntatore
+  function indiceInserimento(e) {
+    var pz = pezziProg(); if (!pz.length) return 0;
+    var t = tempoSeq(e); if (t === null) return pz.length;
+    var acc = 0;
+    for (var i = 0; i < pz.length; i++) {
+      var d = pz[i].fuori - pz[i].dentro;
+      if (t < acc + d / 2) return i;
+      acc += d;
+    }
+    return pz.length;
   }
 
   function attaccaTimeline() {
     var p = el("tlPista"); if (!p || p.dataset.viva) return;
     p.dataset.viva = "1";
-    var lato = null;
-    function tempoQui(e) {
-      var f = finestra(); if (!f) return null;
-      var r = p.getBoundingClientRect();
-      return Math.max(0, Math.min(f.tot, f.a + (e.clientX - r.left) / r.width * (f.b - f.a)));
-    }
     p.addEventListener("mousedown", function (e) {
-      var d = e.target.dataset || {};
-      if (d.lato) { lato = d.lato; e.preventDefault(); return; }
-      if (d.vai) { seguiLive = false; el("player").currentTime = +d.vai; return; }
-      var t = tempoQui(e);
-      if (t !== null) { seguiLive = false; el("player").currentTime = t; }
+      var vp = el("programma");
+      var bordo = e.target.closest ? e.target.closest(".bordo") : null;
+      var blocco = e.target.closest ? e.target.closest(".clipV, .clipA") : null;
+      var pz = pezziProg();
+      if (bordo && blocco) {
+        var x = pz.filter(function (z) { return z.id === blocco.dataset.pezzo; })[0]; if (!x) return;
+        TL.trim = { id: x.id, lato: bordo.dataset.lato, x0: e.clientX, dentro: x.dentro, fuori: x.fuori };
+        TL.sel = x.id; e.preventDefault(); disegnaTimeline(); return;
+      }
+      if (blocco) {
+        var i = pz.findIndex(function (z) { return z.id === blocco.dataset.pezzo; }); if (i < 0) return;
+        TL.sel = pz[i].id; TL.drag = { id: pz[i].id, i: i, x0: e.clientX, mosso: false };
+        MON = "p"; el("monS").classList.remove("attivo"); el("monP").classList.add("attivo");
+        progVai(i, false); e.preventDefault(); disegnaTimeline(); return;
+      }
+      var t = tempoSeq(e); if (t === null) return;
+      var dove = pezzoAlTempo(t); if (!dove) return;
+      TL.sel = null;
+      progVai(dove.i, vp && !vp.paused, dove.dentro);
     });
     document.addEventListener("mousemove", function (e) {
-      if (!lato) return;
-      var t = tempoQui(e); if (t === null) return;
-      if (lato === "in") dentro = (fuori !== null && t >= fuori) ? fuori - 0.2 : t;
-      else fuori = (dentro !== null && t <= dentro) ? dentro + 0.2 : t;
-      mostraInOut();
+      var f = finestraSeq(); if (!f) return;
+      var p2 = el("tlPista"), largo = p2 ? p2.clientWidth || 900 : 900;
+      if (TL.trim) {
+        var dt = (e.clientX - TL.trim.x0) / largo * (f.b - f.a);
+        var d0 = TL.trim.dentro, f0 = TL.trim.fuori, tot = durataAperta() || 99999;
+        var g = { id: TL.trim.id, dentro: d0, fuori: f0 };
+        if (TL.trim.lato === "sx") g.dentro = Math.max(0, Math.min(f0 - 0.5, d0 + dt));
+        else g.fuori = Math.max(d0 + 0.5, Math.min(tot, f0 + dt));
+        TL.ghost = g; disegnaTimeline(); return;
+      }
+      if (TL.drag) {
+        if (Math.abs(e.clientX - TL.drag.x0) > 6) TL.drag.mosso = true;
+        if (!TL.drag.mosso) return;
+        TL.ins = indiceInserimento(e); disegnaTimeline();
+      }
     });
-    document.addEventListener("mouseup", function () { lato = null; });
+    document.addEventListener("mouseup", function () {
+      if (TL.trim && TL.ghost && SEQ) {
+        var g = TL.ghost;
+        manda({ tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: g.id, dentro: g.dentro, fuori: g.fuori })
+          .then(function (r) { SEQ = r.seq; disegnaSequenza(); })
+          .catch(function (er) { dice(er.message); disegnaTimeline(); });
+      }
+      if (TL.drag && TL.drag.mosso && TL.ins !== null && SEQ) {
+        var ordine = pezziProg().map(function (z) { return z.id; });
+        var da = ordine.indexOf(TL.drag.id), a = TL.ins;
+        if (da >= 0) {
+          ordine.splice(da, 1);
+          if (a > da) a--;
+          ordine.splice(a, 0, TL.drag.id);
+          manda({ tipo: "clip-hl-ordina", seq: SEQ.id, ordine: ordine })
+            .then(function (r) { SEQ = r.seq; disegnaSequenza(); })
+            .catch(function (er) { dice(er.message); });
+        }
+      }
+      TL.trim = null; TL.ghost = null; TL.drag = null; TL.ins = null;
+      disegnaTimeline();
+    });
+
+    // UNA CLIP DAL PROGETTO. Si prende a sinistra e si lascia cadere qui,
+    // nel punto in cui la si vuole: la linea dorata dice dove finira'.
+    p.addEventListener("dragover", function (e) {
+      e.preventDefault(); e.dataTransfer.dropEffect = "copy";
+      TL.ins = indiceInserimento(e); disegnaTimeline();
+    });
+    p.addEventListener("dragleave", function () { TL.ins = null; disegnaTimeline(); });
+    p.addEventListener("drop", function (e) {
+      e.preventDefault();
+      var dati = ""; try { dati = e.dataTransfer.getData("text/plain") || ""; } catch (er) {}
+      var dove = indiceInserimento(e); TL.ins = null;
+      if (dati.indexOf("clip:") === 0) {
+        var corpo = { tipo: "clip-hl-aggiungi", clip: dati.slice(5), dove: dove };
+        if (SEQ) corpo.seq = SEQ.id;
+        manda(corpo).then(function (r) {
+          SEQ = r.seq; disegnaSequenza(); destraMateriale();
+          dice(r.gia ? "Questa clip e' gia' nella sequenza." : "Clip inserita nella sequenza.", true);
+        }).catch(function (er) { dice(er.message); });
+      } else disegnaTimeline();
+    });
+
     var q = function (id, f) { var b = el(id); if (b) b.addEventListener("click", f); };
     q("tlPiu", function () { LENTE = Math.min(32, LENTE * 2); disegnaTutto(); });
     q("tlMeno", function () { LENTE = Math.max(1, LENTE / 2); disegnaTutto(); });
     q("tlTutto", function () { LENTE = 1; disegnaTutto(); });
     window.addEventListener("resize", disegnaTutto);
   }
+
   function disegnaScrub() {
     var sc = el("scrubS"), v = el("player"), tot = durataAperta(); if (!sc) return;
     if (!tot) { sc.innerHTML = ""; return; }
@@ -1692,7 +1818,14 @@
                      else if (e.altKey) { dentro = null; mostraInOut(); } else segnaIn(); return; }
     if (k === "o") { e.preventDefault(); if (e.shiftKey) { if (fuori !== null) v.currentTime = fuori; }
                      else if (e.altKey) { fuori = null; mostraInOut(); } else segnaOut(); return; }
-    if (k === "m") { var bm = el("btnMarker"); if (bm) { e.preventDefault(); bm.click(); } return; }
+    if (k === "m") { var bm = el("btnSegnaApri"); if (bm) { e.preventDefault(); bm.click(); } return; }
+    if ((k === "delete" || k === "backspace") && TL.sel && SEQ) {
+      e.preventDefault();
+      manda({ tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: TL.sel, togli: 1 })
+        .then(function (r) { SEQ = r.seq; TL.sel = null; PROG.i = -1; disegnaSequenza(); destraMateriale(); })
+        .catch(function (er) { dice(er.message); });
+      return;
+    }
     if (k === "home") { e.preventDefault(); seguiLive = false; v.currentTime = 0; return; }
     if (k === "end") { e.preventDefault(); v.currentTime = Math.max(0, durataAperta() - 1); return; }
     if (k === "+" || k === "=") { e.preventDefault(); LENTE = Math.min(32, LENTE * 2); disegnaTutto(); return; }
@@ -1874,11 +2007,21 @@
       return String(x || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     }
 
+    // Una sola forma per tutte le date della tendina, live e archivio:
+    // gg/mm/aa e poi la partita. Quelle ancora da giocare hanno un fondo
+    // rosso leggero, cosi' si vede a colpo d'occhio dove finisce il passato.
+    function dataOpz(iso) {
+      var d = new Date(iso); if (!isFinite(d)) return "        ";
+      return ("0"+d.getDate()).slice(-2) + "/" + ("0"+(d.getMonth()+1)).slice(-2) + "/" + String(d.getFullYear()).slice(-2);
+    }
+
     // tendine
     fetch(PONTE + "?partite=1").then(function (r) { return r.json(); }).then(function (dd) {
       (dd.eventi || []).forEach(function (e) {
         var o = document.createElement("option");
-        o.value = (e.ids && e.ids[0]) || ""; o.textContent = e.etichetta;
+        o.value = (e.ids && e.ids[0]) || "";
+        o.textContent = dataOpz(e.quando) + "  " + (e.partita || e.etichetta || "");
+        if (Date.parse(e.quando) > Date.now()) o.className = "futura";
         o.dataset.titolo = (e.programma ? e.casa : e.casa + "-" + e.ospite);
         o.dataset.comp = e.competizione || "";
         if (el("evento")) el("evento").appendChild(o);
@@ -1887,18 +2030,17 @@
     // Le partite gia' in archivio: la tendina conosceva solo quelle di oggi,
     // e invece qui dentro ce ne sono mille. Sceglierne una la apre — non c'e'
     // niente da registrare, il materiale esiste gia'.
-    manda({ tipo:"clip-archivio-partite", quante: MODO === "archivio" ? 800 : 60 }).then(function (dd) {
+    manda({ tipo:"clip-archivio-partite", quante: MODO === "archivio" ? 6000 : 60 }).then(function (dd) {
       var sel = el("evento"); if (!sel || !(dd.partite || []).length) return;
       var g = document.createElement("optgroup");
       g.label = "Archivio \u00b7 " + dd.quante + " partite";
       ARCH_LISTA = dd.partite; alberoArchivio();
-      dd.partite.forEach(function (p) {
+      // in tendina le piu' recenti: le altre si trovano cercando
+      dd.partite.slice(0, 800).forEach(function (p) {
         var o = document.createElement("option");
-        var d = new Date(p.quando);
         o.value = "arc:" + p.rec;
-        o.textContent = (isFinite(d) ? ("0"+d.getDate()).slice(-2) + "/" +
-          ("0"+(d.getMonth()+1)).slice(-2) + "/" + String(d.getFullYear()).slice(-2) + "  " : "") +
-          p.titolo + (p.pezzi > 1 ? "  (" + p.pezzi + " parti)" : "");
+        o.textContent = dataOpz(p.quando) + "  " + p.titolo + (p.pezzi > 1 ? "  (" + p.pezzi + " parti)" : "") +
+                        (p.soloS3 ? "  \u00b7 solo archivio" : "");
         o.dataset.arch = p.rec;
         g.appendChild(o);
       });
@@ -2161,7 +2303,7 @@
         "<span class='durata'>" + dur + "</span>" +
         "<span class='fonte'>" + (a.t === "hl" ? "sequenza" : a.t === "integrale" ? "registrazione" : (a.o.tipo || "clip")) + "</span></div>" +
         "<div class='testo'><div class='nome'>" + nome + "</div><div class='sotto'>" +
-        (a.t === "hl" ? (a.o.pezzi || []).length + " pezzi" : a.t) + "</div></div>";
+        (a.t === "hl" ? (a.o.pezzi || []).length + " pezzi · " + dur : dur + " · " + fmt) + "</div></div>";
       if (a.t === "clip" && a.o.stato === "pronta") {
         d.draggable = true;
         d.addEventListener("dragstart", function (e) {
@@ -2408,6 +2550,15 @@
              (c.durataVera || c.durata) + "s") + (c.partita ? " · " + c.partita : ""),
              "vedi", data(c.creata))
           .addEventListener("click", function () { vaiA(c.reg, null, c.seq ? "hl" : "clip"); });
+      });
+    }
+    // Le partite dell'archivio trovate per nome: si aprono nella Sorgente.
+    if (RIS.archivio && RIS.archivio.length) {
+      titolo("Nell\u2019archivio", RIS.archivio.length);
+      RIS.archivio.forEach(function (a) {
+        riga(a.partita, (a.competizione || "") + (a.pezzi > 1 ? " \u00b7 " + a.pezzi + " parti" : "") +
+             (a.soloS3 ? " \u00b7 senza appunti" : ""), "apri", data(Date.parse(a.quando)))
+          .addEventListener("click", function () { apriDaArchivio(a.rec, null, a.partita, 0); });
       });
     }
     // Le azioni scritte dai giornalisti nelle partite passate. Quasi
