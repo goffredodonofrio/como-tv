@@ -73,6 +73,25 @@
     display:flex;justify-content:space-between;padding-bottom:8px;border-bottom:1px solid var(--linea);}
   .col h2 span{color:var(--gold-deep);}
 
+  .carica{border:1px dashed var(--linea-oro);border-radius:9px;padding:11px;text-align:center;
+    margin-bottom:14px;background:rgba(201,162,75,.06);}
+  .carica.sopra{background:rgba(201,162,75,.18);border-color:var(--gold-deep);}
+  .carica .aiuto{margin-top:6px;font-size:11px;}
+  .avanza{height:5px;border-radius:3px;background:rgba(10,15,36,.12);margin-top:9px;overflow:hidden;}
+  .avanza i{display:block;height:100%;width:0;background:var(--gold-deep);transition:width .2s;}
+
+  /* i contenuti hanno una faccia: una lista di righe di testo non si guarda,
+     si legge — e leggere venti titoli per trovare una partita e' il modo
+     piu' lento di cercare */
+  .foglia .facc{width:52px;height:30px;border-radius:5px;object-fit:cover;flex:none;
+    background:var(--scuro);}
+  .foglia .vuota{width:52px;height:30px;border-radius:5px;flex:none;
+    background:linear-gradient(135deg,#1b2a5e,#0d1430);}
+  .foglia{align-items:center!important;padding-left:10px!important;}
+  .foglia .righe{min-width:0;flex:1;}
+  .foglia .tit{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .foglia .sotto2{font-size:10px;color:var(--inchiostro-3);}
+
   .ramo>.testa{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;
     font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;
     text-transform:uppercase;color:var(--inchiostro-2);}
@@ -293,7 +312,15 @@
 
 <div class="tre">
   <div class="col">
-    <h2>Partite <span id="nPartite">—</span></h2>
+    <h2>Contenuti <span id="nPartite">—</span></h2>
+    <!-- Non solo partite: qui dentro sta anche quello che arriva dal NAS o
+         da un telefono. Un file caricato e' materiale come una diretta. -->
+    <div class="carica" id="zonaCarica">
+      <input type="file" id="fileIn" accept="video/*" hidden>
+      <button class="b" id="btnCarica">Carica un file</button>
+      <div class="aiuto" style="margin-top:6px">o trascinalo qui</div>
+      <div class="avanza" id="avanza" hidden><i></i></div>
+    </div>
     <div id="albero"></div>
   </div>
 
@@ -374,12 +401,12 @@
   function albero() {
     var c = el("albero"); c.innerHTML = "";
     if (!REGISTRAZIONI.length) {
-      c.innerHTML = '<div class="vuoto">Nessuna partita registrata.<br>Con <b>Live</b> se ne comincia una.</div>';
+      c.innerHTML = '<div class="vuoto">Ancora niente.<br>Con <b>Live</b> si registra un flusso, oppure si carica un file qui sopra.</div>';
       el("nPartite").textContent = "0"; return;
     }
     var gruppi = {};
     REGISTRAZIONI.forEach(function (r) {
-      var g = r.competizione || "Senza competizione";
+      var g = r.competizione || (r.origine === "file" ? "Caricati" : "Senza competizione");
       (gruppi[g] = gruppi[g] || []).push(r);
     });
     el("nPartite").textContent = REGISTRAZIONI.length;
@@ -392,15 +419,97 @@
         var f = document.createElement("div");
         f.className = "foglia" + (REG && r.id === REG.id ? " scelta" : "");
         var quando = new Date(r.avviata);
-        f.innerHTML = (r.stato === "registra" && !r.attesa ? "<span class='rec'></span>" : "") +
-          "<span>" + r.titolo + "</span><span class='quando'>" +
-          ("0"+quando.getDate()).slice(-2) + "/" + ("0"+(quando.getMonth()+1)).slice(-2) + "</span>";
+        var data = ("0"+quando.getDate()).slice(-2) + "/" + ("0"+(quando.getMonth()+1)).slice(-2);
+        var da = r.origine === "file" ? "file" : (r.ascolto ? "in ascolto" : "SRT");
+        f.innerHTML =
+          (r.mini ? "<img class='facc' src='" + BASE + r.mini + "' alt=''>" : "<span class='vuota'></span>") +
+          "<div class='righe'>" +
+            "<div class='tit'>" +
+              (r.stato === "registra" && !r.attesa ? "<span class='rec'></span> " : "") + r.titolo +
+            "</div>" +
+            "<div class='sotto2'>" + da + " · " + orologio(r.durata) +
+              (r.stato === "carica" ? " · caricamento" : "") + "</div>" +
+          "</div>" +
+          "<span class='quando'>" + data + "</span>";
         f.addEventListener("click", function () { REG = r; ASSET = 0; disegna(); });
         ramo.appendChild(f);
       });
       c.appendChild(ramo);
     });
   }
+
+  // ── CARICARE UN FILE ────────────────────────────────────────────
+  //
+  //  Il file viaggia a pezzi: un video da un giga in una richiesta sola non
+  //  arriva, e se cade si ricomincia da capo. A pezzi si vede anche a che
+  //  punto e', che su un caricamento lungo e' l'unica cosa che tiene calmo
+  //  chi guarda.
+  var PEZZO = 4 * 1024 * 1024;
+
+  function leggiPezzo(file, da) {
+    return new Promise(function (res, rej) {
+      var fr = new FileReader();
+      fr.onload = function () { res(String(fr.result).split(",")[1] || ""); };
+      fr.onerror = function () { rej(new Error("non riesco a leggere il file")); };
+      fr.readAsDataURL(file.slice(da, Math.min(file.size, da + PEZZO)));
+    });
+  }
+
+  function carica(file) {
+    if (!file) return;
+    if (!/^video\//.test(file.type) && !/\.(mp4|mov|m4v|mkv|ts)$/i.test(file.name)) {
+      dice("Questo non sembra un video."); return;
+    }
+    var ev = el("evento") ? el("evento").selectedOptions[0] : null;
+    var barra = el("avanza");
+    barra.hidden = false; barra.firstElementChild.style.width = "0";
+    el("btnCarica").disabled = true;
+    dice("Carico " + file.name + "…", true);
+
+    manda({ tipo: "clip-carica-inizia", peso: file.size,
+            titolo: file.name.replace(/\.[^.]+$/, ""),
+            evento: (el("evento") ? el("evento").value : ""),
+            competizione: (ev && ev.dataset ? ev.dataset.comp : "") })
+      .then(function (d) {
+        var id = d.id, da = 0;
+        function avanti() {
+          if (da >= file.size) return manda({ tipo: "clip-carica-fine", id: id });
+          return leggiPezzo(file, da).then(function (b64) {
+            return manda({ tipo: "clip-carica-pezzo", id: id, pezzo: b64 });
+          }).then(function (r) {
+            da += PEZZO;
+            barra.firstElementChild.style.width = Math.min(100, r.quanto || 0) + "%";
+            return avanti();
+          });
+        }
+        return avanti();
+      })
+      .then(function (d) {
+        barra.hidden = true; el("btnCarica").disabled = false;
+        REG = d.reg; ASSET = 0;
+        dice("Caricato: " + d.reg.titolo + " · " + orologio(d.reg.durata) + ".", true);
+        aggiorna();
+      })
+      .catch(function (e) {
+        barra.hidden = true; el("btnCarica").disabled = false;
+        dice(e.message);
+      });
+  }
+
+  el("btnCarica").addEventListener("click", function () { el("fileIn").click(); });
+  el("fileIn").addEventListener("change", function () { carica(this.files && this.files[0]); this.value = ""; });
+  (function () {
+    var z = el("zonaCarica");
+    ["dragenter", "dragover"].forEach(function (t) {
+      z.addEventListener(t, function (e) { e.preventDefault(); z.classList.add("sopra"); });
+    });
+    ["dragleave", "drop"].forEach(function (t) {
+      z.addEventListener(t, function (e) { e.preventDefault(); z.classList.remove("sopra"); });
+    });
+    z.addEventListener("drop", function (e) {
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) carica(e.dataTransfer.files[0]);
+    });
+  })();
 
   // ── colonna 2, vista LIVE: il visore e il taglio ────────────────
   function centroLive() {

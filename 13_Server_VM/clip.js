@@ -807,6 +807,20 @@ function pubblica(r) {
 }
 
 function clipStato(p) {
+  // occasione buona per dare una faccia alle registrazioni in corso
+  Object.keys(R.reg).forEach((k) => {
+    const r = R.reg[k];
+    if (!r.mini && r.stato !== "carica" && r.materialeTolto === undefined) {
+      miniaturaViva(r).catch(() => {});
+    }
+    // un caricamento lasciato a meta' — la finestra chiusa, la rete caduta —
+    // non deve restare in elenco per sempre a dire "caricamento"
+    if (r.stato === "carica" && !CARICHI_MAM.get(r.id) && Date.now() - r.avviata > 120000) {
+      try { fs.rmSync(cartellaReg(r.id), { recursive: true, force: true }); } catch (e) {}
+      delete R.reg[k];
+      scrivi();
+    }
+  });
   const soloReg = p && p.reg ? String(p.reg) : "";
   const reg = Object.keys(R.reg)
     .map((k) => pubblica(R.reg[k]))
@@ -1842,6 +1856,113 @@ function probeMisure(file) {
   });
 }
 
+
+// ══════════════════════════════════════════════════════════════════════
+//  CONTENUTI CARICATI A MANO
+// ══════════════════════════════════════════════════════════════════════
+//
+//  Non tutto quello che serve nasce da un SRT. Un montato che torna dal
+//  NAS, un contributo girato con il telefono, un vecchio integrale: sono
+//  materiale come gli altri e devono stare nello stesso posto, altrimenti
+//  l'archivio diventa due archivi.
+//
+//  Un file caricato diventa una REGISTRAZIONE come le altre, con
+//  l'integrale gia' pronto al posto dei segmenti. Non e' un trucco: una
+//  registrazione e' "materiale con una linea del tempo", e un file lo e'
+//  esattamente quanto un flusso. Cosi' taglio, highlights, ricerca,
+//  miniature e grafica funzionano gia' tutti, senza una riga in piu'.
+
+const MAX_CARICO = parseInt(process.env.COMOTV_CLIP_MAX_FILE || "2000", 10) * 1024 * 1024;
+const CARICHI_MAM = new Map();
+
+function caricaInizia(p) {
+  const gb = liberiGB();
+  if (gb < MIN_GB) throw new Error("sul disco restano " + gb.toFixed(1) + " GB: troppo pochi");
+  const peso = num(p.peso, 1, MAX_CARICO, 0);
+  if (!peso) throw new Error("file troppo grande: al massimo " + Math.round(MAX_CARICO / 1e6) + " MB");
+
+  const r = {
+    id: nuovoId("r"),
+    evento: String(p.evento || "").slice(0, 64),
+    titolo: String(p.titolo || "").slice(0, 160) || "contenuto",
+    competizione: String(p.competizione || "").slice(0, 80),
+    sorgente: "caricato",
+    origine: "file",
+    url: "",
+    stato: "carica",
+    avviata: Date.now(), finita: 0, durata: 0,
+    kickoff: {}, marker: [],
+    chi: String(p.__chi || p.chi || "").slice(0, 40),
+    errore: ""
+  };
+  assicura(cartellaReg(r.id));
+  R.reg[r.id] = r;
+  CARICHI_MAM.set(r.id, {
+    via: path.join(cartellaReg(r.id), "integrale.mp4"),
+    scritti: 0, peso: peso, quando: Date.now()
+  });
+  scrivi();
+  return { ok: true, id: r.id, reg: pubblica(r) };
+}
+
+function caricaPezzo(p) {
+  const c = CARICHI_MAM.get(p.id);
+  if (!c) throw new Error("caricamento sconosciuto (o scaduto)");
+  const dati = Buffer.from(String(p.pezzo || ""), "base64");
+  if (!dati.length) throw new Error("pezzo vuoto");
+  if (c.scritti + dati.length > c.peso + 1024) throw new Error("il file e' piu' lungo di quanto dichiarato");
+  fs.appendFileSync(c.via, dati);
+  c.scritti += dati.length;
+  return { ok: true, scritti: c.scritti, quanto: Math.round(c.scritti / c.peso * 100) };
+}
+
+async function caricaFine(p) {
+  const c = CARICHI_MAM.get(p.id);
+  const r = R.reg[p.id];
+  if (!c || !r) throw new Error("caricamento sconosciuto");
+  CARICHI_MAM.delete(p.id);
+
+  const d = await probe(c.via);
+  if (!d.durata) {
+    try { fs.rmSync(cartellaReg(r.id), { recursive: true, force: true }); } catch (e) {}
+    delete R.reg[r.id]; scrivi();
+    throw new Error("questo file non e' un video che so leggere");
+  }
+  r.stato = "ferma";
+  r.finita = Date.now();
+  r.durata = Math.round(d.durata * 10) / 10;
+  r.integrale = "pronto";
+  r.integraleDurata = r.durata;
+  r.integralePeso = d.peso || c.scritti;
+  r.mini = await miniatura(c.via, path.join(cartellaReg(r.id), "mini.jpg"), r.durata / 3)
+    ? "/clip/" + r.id + "/mini.jpg" : "";
+  scrivi(); annuncia(0, "clip");
+  return { ok: true, reg: pubblica(r) };
+}
+
+// La miniatura di una registrazione che sta ancora andando: si prende dal
+// materiale gia' scritto, cosi' la colonna dei contenuti non e' una lista di
+// riquadri vuoti mentre la partita e' in corso.
+async function miniaturaViva(r) {
+  if (r.mini || r.miniInCorso) return;
+  r.miniInCorso = true;
+  let da = "", quando = 0.5;
+  const integrale = path.join(cartellaReg(r.id), "integrale.mp4");
+  const segs = segmenti(r.id);
+  if (segs.length >= 4) {
+    // dal mezzo di quello che c'e': l'inizio di una registrazione e' spesso
+    // il cartello o il campo vuoto prima del fischio
+    da = segs[Math.floor(segs.length / 2)].file;
+  } else if (fs.existsSync(integrale)) {
+    da = integrale; quando = Math.max(1, (r.durata || 6) / 3);
+  }
+  if (!da) { r.miniInCorso = false; return; }
+  const ok = await miniatura(da, path.join(cartellaReg(r.id), "mini.jpg"), quando);
+  r.mini = ok ? "/clip/" + r.id + "/mini.jpg" : "";
+  r.miniInCorso = false;
+  scrivi();
+}
+
 // ── l'anello ──────────────────────────────────────────────────────────
 //
 //  Dodici partite in una sera sono una quarantina di giga: il disco della VM
@@ -1861,8 +1982,9 @@ function anello() {
   const vecchie = Date.now() - 600000;
   Object.keys(R.reg).forEach((k) => {
     const r = R.reg[k];
-    if (r.stato === "registra" || PROC.get(r.id)) return;
+    if (r.stato === "registra" || r.stato === "carica" || PROC.get(r.id)) return;
     if (durataRegistrata(r.id) > 0) return;
+    if (r.origine === "file" && r.integrale === "pronto") return;
     if ((r.finita || r.avviata) > vecchie) return;
     if (Object.keys(R.clip).some((c) => R.clip[c].reg === r.id)) return;
     try { fs.rmSync(cartellaReg(r.id), { recursive: true, force: true }); } catch (e) {}
@@ -1898,6 +2020,9 @@ const AZIONI = {
   "clip-sorgenti": clipSorgenti,
   "clip-cerca": clipCerca,
   "clip-grafica": clipGrafica,
+  "clip-carica-inizia": caricaInizia,
+  "clip-carica-pezzo": caricaPezzo,
+  "clip-carica-fine": caricaFine,
   "clip-hl-genera": hlGenera,
   "clip-hl-elenco": hlElenco,
   "clip-hl-pezzo": hlPezzo,
