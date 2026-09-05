@@ -621,6 +621,13 @@
     '</div>';
   }
   function renderCont(){
+    // Le partite servono a disegnare la tendina della locandina. Prima si
+    // chiedevano solo premendo il pulsante "Locandina": una scheda tornata
+    // dalla bozza gia' impostata cosi' restava su "Carico…" per sempre,
+    // perche' nessuno andava a prenderle. Si chiedono qui, dove si disegna.
+    if (PARTITE === null && CONT.some(function (c) { return c.tipo === "locandina"; })) {
+      partite(function () { renderCont(); });
+    }
     el("contenuti").innerHTML = CONT.map(cardHTML).join("");
     CONT.forEach(function(c, i){ if (c.foto && c.foto.img) { immagineDi(i).src = c.foto.src; disegna(i); } });
     aggiornaStato();
@@ -763,7 +770,8 @@
         et: etichettaScelta(),
         tit: titRows,
         cont: CONT.map(function (c) {
-          var o = { tipo: c.tipo, e: c.e, t: c.t, x: c.x, stemma: c.stemma, ap: c.ap, apf: c.apf };
+          var o = { tipo: c.tipo, e: c.e, t: c.t, x: c.x, stemma: c.stemma, ap: c.ap,
+                    apf: c.apf, loc: c.loc };
           // Dell'immagine si tiene solo quello che serve a rifarla: l'oggetto
           // Image non si puo' scrivere, e non serve.
           if (c.foto) o.foto = { src: c.foto.src, url: c.foto.url, z: c.foto.z,
@@ -780,7 +788,8 @@
         var leggera = JSON.parse(localStorage.getItem(CHIAVE_BOZZA) || "null") || {};
         leggera = { modo: MODO, et: etichettaScelta(), tit: titRows,
           cont: CONT.map(function (c) {
-            var o = { tipo: c.tipo, e: c.e, t: c.t, x: c.x, stemma: c.stemma, ap: c.ap, apf: c.apf };
+            var o = { tipo: c.tipo, e: c.e, t: c.t, x: c.x, stemma: c.stemma, ap: c.ap,
+                      apf: c.apf, loc: c.loc };
             if (c.foto && c.foto.url) o.foto = { url: c.foto.url, src: c.foto.url, z: c.foto.z,
                                                  ox: c.foto.ox, oy: c.foto.oy, sporca: false };
             return o;
@@ -814,6 +823,7 @@
       c.tipo = o.tipo || "notizia";
       c.e = o.e || ""; c.t = o.t || ""; c.x = o.x || "";
       c.stemma = o.stemma || ""; c.ap = o.ap || null; c.apf = o.apf || "s";
+      c.loc = o.loc || null;
       if (o.foto && o.foto.src) {
         // l'immagine si ricarica da sola; il ritaglio si rimette dopo
         (function (n, fo) {
