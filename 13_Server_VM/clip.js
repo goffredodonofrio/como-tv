@@ -1958,15 +1958,6 @@ async function s3Tutto(prefisso, tetto) {
 const ARCH_BUCKET = process.env.COMOTV_S3_ARCHIVIO || "mola-italy-como-archive";
 const ARCH_RADICE = process.env.COMOTV_S3_RADICE || "TEMP/";
 
-function pezziChiave(k) {
-  const p = k.split("/");
-  if (p.length < 4 || !/^\d{8}$/.test(p[1])) return null;
-  const i = p.findIndex((x) => /^(CLEANFEED|TAGLI)$/i.test(x));
-  if (i < 3) return null;
-  return { giorno: p[1], partita: p[2], variante: p.slice(3, i).join(" "),
-           reparto: p[i].toUpperCase(), file: p[p.length - 1] };
-}
-
 // Le parole che contano di un nome di partita: via i punteggi, via "vs",
 // via le sigle corte. Restano i nomi delle squadre, che e' quello su cui
 // due scritture diverse della stessa partita si incontrano.
@@ -1974,11 +1965,11 @@ function paroleSquadre(x) {
   return senzaAccenti(String(x || "").replace(/\[.*?\]/g, " ").replace(/\(.*?\)/g, " "))
     .split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && w !== "rigori" && !/^\d+$/.test(w));
 }
+
 // Como-Juventus e Como U20-Juventus U20 hanno le stesse parole lunghe: la
 // differenza sta tutta in tre lettere, che il filtro di sopra butterebbe
-// via. Il livello si guarda a parte, e se non coincide non sono la stessa
-// partita — mai. E' l'errore piu' facile da fare e il piu' brutto da
-// scoprire dopo, con la clip gia' pubblicata.
+// via. Il livello si guarda a parte, ed e' l'errore piu' facile da fare e
+// il piu' brutto da scoprire dopo, con la clip gia' pubblicata.
 function livelloDi(x) {
   const t = senzaAccenti(String(x || ""));
   const u = /\bu\s?(\d{2})\b/.exec(t);
@@ -1988,26 +1979,17 @@ function livelloDi(x) {
   return "";
 }
 function quantoSiSomigliano(a, b, livA) {
-  // Airtable a volte l'eta' non la scrive nel titolo ma nella competizione
-  // ("HELLAS VERONA-COMO" in "Under 18"): il livello si puo' passare da
-  // fuori, altrimenti si legge dal nome.
   const la = (livA === undefined ? livelloDi(a) : livA), lb = livelloDi(b);
-  // due livelli dichiarati e diversi: non sono la stessa partita, mai.
   if (la && lb && la !== lb) return 0;
   const A = new Set(paroleSquadre(a)), B = new Set(paroleSquadre(b));
   if (!A.size || !B.size) return 0;
   let insieme = 0; A.forEach((w) => { if (B.has(w)) insieme++; });
   const s = insieme / Math.max(A.size, B.size);
-  // uno lo dice e l'altro tace: puo' darsi, ma solo se il nome combacia
-  // in pieno — e la partita resta segnata come non sicura.
   return (la === lb) ? s : s * 0.55;
 }
 
-// L'orologio del MultiCorder scrive le ore su dodici senza dire se e'
-// mattina o sera. Non e' un problema: fra le due letture si tiene quella
-// che cade vicino al calcio d'inizio, e l'ambiguita' si scioglie da sola.
-// L'ora sta in fondo, ma non sempre in ultima posizione: i nomi vecchi
-// hanno un "- Output 1" appiccicato dopo. Si prende l'ultima che si trova.
+// L'ora sta in fondo al nome, ma non sempre in ultima posizione: i nomi
+// vecchi hanno un "- Output 1" appiccicato dopo. Si prende l'ultima.
 function oraNelNome(file) {
   const tutte = String(file).match(/\b(\d{2})-(\d{2})-(\d{2})\b/g);
   if (!tutte || !tutte.length) return null;
@@ -2020,30 +2002,86 @@ function minutiRoma(ms) {
   return m ? (+m[1] * 60 + +m[2]) : null;
 }
 
-// Quanti secondi dopo l'inizio del file comincia la partita. Se il conto
-// non sta in piedi si dice, invece di inventare un numero: un kickoff
-// sbagliato manda fuori bersaglio tutti gli appunti di quella partita.
 // Quanti secondi separano il calcio d'inizio dall'inizio di questo file.
-// Negativo per il primo pezzo, che comincia prima; positivo per il secondo
-// tempo, che comincia un'ora dopo. E' la misura che permette di dire, per
-// una qualsiasi azione, in QUALE file sta e a che punto.
+// L'orologio del registratore scrive le ore su dodici senza dire se e'
+// mattina o sera: fra le due letture si tiene quella che cade vicino al
+// calcio d'inizio, e l'ambiguita' si scioglie da sola.
 function daKickoffPezzo(file, quandoMs) {
   const o = oraNelNome(file), dentro = minutiRoma(quandoMs);
   if (!o || dentro === null) return null;
   let meglio = null;
   [o.h % 12, (o.h % 12) + 12].forEach((h) => {
-    [-1440, 0, 1440].forEach((giro) => {            // la mezzanotte in mezzo
+    [-1440, 0, 1440].forEach((giro) => {
       const d = (h * 60 + o.m + giro) - dentro;
       if (meglio === null || Math.abs(d) < Math.abs(meglio)) meglio = d;
     });
   });
-  if (meglio === null || Math.abs(meglio) > 300) return null;   // troppo lontano: non e' lui
+  if (meglio === null || Math.abs(meglio) > 300) return null;
   return Math.round(meglio * 60 + o.s);
 }
 function kickoffNelFile(file, quandoMs) {
   const da = daKickoffPezzo(file, quandoMs);
   return da === null ? null : Math.max(0, -da);
 }
+
+// L'archivio non ha una forma sola: ne ha due, e sono di due epoche.
+//
+//   TEMP/20260904/GENOA-COMO/[AUDIO ITA]/CLEANFEED/file.mp4      (le recenti)
+//   BACKUP/CALCIO/…/20260303_COMO-INTER/EXPORT/…PARTITA INTERA…  (le altre)
+//
+//  In tutte e due, da qualche parte nel percorso, c'e' un segmento che dice
+//  il giorno — da solo, oppure incollato al nome della partita. Trovato
+//  quello, il resto viene dietro. Cercare la forma invece della cartella
+//  fa la differenza fra indicizzare seimila oggetti e indicizzarne
+//  trecentomila.
+function pezziChiave(k) {
+  const p = k.split("/");
+  for (let i = 0; i < p.length - 1; i++) {
+    let giorno = "", partita = "", primo = i;
+    if (/^\d{8}$/.test(p[i])) { giorno = p[i]; partita = p[i + 1] || ""; primo = i + 1; }
+    else {
+      const m = /^(\d{8})[_\s-]+(.+)$/.exec(p[i]);
+      if (!m) continue;
+      giorno = m[1]; partita = m[2];
+    }
+    if (!/^20\d{2}(0\d|1[0-2])([0-2]\d|3[01])$/.test(giorno)) continue;
+    return { giorno: giorno, partita: partita, gruppo: p.slice(0, primo + 1).join("/"),
+             dentro: p.slice(primo + 1, p.length - 1).join("/"), file: p[p.length - 1] };
+  }
+  return null;
+}
+
+// Dentro una cartella partita c'e' di tutto: le clip social, gli scarichi
+// delle camere, le interviste, le iso. Niente di tutto questo e' la
+// partita, e prenderne uno per sbaglio significa aprire un file di tre
+// giga che non c'entra niente.
+const NON_E_LA_PARTITA = /clip[ _]?social|tifos|scarich|camere|iso[_ ]|intervist|conferenz|social|highlight|magazine|promo|sigla|grafic/i;
+const E_LA_PARTITA = /partita[ _]intera|full[ _]match|cleanfeed/i;
+const VIDEO = /\.(mp4|mxf|mov|ts|m4v)$/i;
+
+function scegliMateriale(gruppo, tag) {
+  const buoni = gruppo.file.filter((f) =>
+    VIDEO.test(f.file) && (E_LA_PARTITA.test(f.dentro + " " + f.file) ||
+                           !NON_E_LA_PARTITA.test(f.dentro + " " + f.file)));
+  if (!buoni.length) return null;
+  const vuole = (f) => !tag || (f.dentro + " " + f.file).toUpperCase().indexOf(tag) >= 0;
+  const conTag = buoni.filter(vuole);
+  const campo = conTag.length ? conTag : buoni;
+
+  // 1) l'export "partita intera": un file solo, gia' pronto
+  const intere = campo.filter((f) => E_LA_PARTITA.test(f.file) && !/cleanfeed/i.test(f.dentro));
+  // 2) il cleanfeed, che ha l'ora nel nome e quindi si sa dove sta il tempo
+  const puliti = campo.filter((f) => /cleanfeed/i.test(f.dentro));
+  // 3) i pezzi con l'orologio nel nome: un file per tempo
+  const conOra = campo.filter((f) => oraNelNome(f.file));
+
+  if (puliti.length) return { fonte: "intero", pezzi: [piuGrosso(puliti)] };
+  if (conOra.length > 1) return { fonte: "pezzi", pezzi: conOra };
+  if (intere.length) return { fonte: "intera", pezzi: [piuGrosso(intere)] };
+  if (conOra.length) return { fonte: "pezzi", pezzi: conOra };
+  return { fonte: "unico", pezzi: [piuGrosso(campo)] };
+}
+function piuGrosso(v) { return v.slice().sort((a, b) => b.peso - a.peso)[0]; }
 
 let ARCHIVIO = {};       // recId -> { chiave, peso, variante, kickoff, ... }
 
@@ -2113,40 +2151,39 @@ async function archivioScandaglia(p) {
   const bucket = p.bucket || ARCH_BUCKET;
   const giorni = num(p.giorni, 1, 3650, 400);
   const limite = Date.now() - giorni * 86400000;
+  const minimo = num(p.minimoMB, 1, 100000, 700) * 1000000;
 
-  // 1) l'archivio, raccolto per cartella di partita. Il CLEANFEED e' la
-  //    registrazione intera ed e' quello che si vuole; ma non tutte le
-  //    partite ce l'hanno — le piu' vecchie stanno spezzate nei TAGLI, un
-  //    file per tempo. In quel caso si tengono i pezzi, in ordine di ora.
-  const perGiorno = {}, gruppi = {};
-  let visti = 0, ripresa = "", giri = 0;
+  // 1) tutto l'archivio, non un ramo solo. Trecentomila oggetti si elencano
+  //    in un minuto; quello che si tiene sono i file video abbastanza
+  //    grossi da poter essere una partita, raggruppati per cartella-partita.
+  const gruppi = {}, perGiorno = {};
+  let visti = 0, tenuti = 0, ripresa = "", giri = 0;
   do {
-    const pg = await s3Pagina(ARCH_RADICE, ripresa, bucket, "");
+    const pg = await s3Pagina(p.prefisso || "", ripresa, bucket, "");
     pg.oggetti.forEach((o) => {
       visti++;
+      if (o.peso < minimo || !VIDEO.test(o.chiave)) return;
       const z = pezziChiave(o.chiave);
       if (!z) return;
       const g = z.giorno;
       const quando = Date.UTC(+g.slice(0, 4), +g.slice(4, 6) - 1, +g.slice(6, 8));
       if (quando < limite) return;
-      const id = g + "|" + z.partita + "|" + z.variante;
-      let gr = gruppi[id];
+      tenuti++;
+      let gr = gruppi[z.gruppo];
       if (!gr) {
-        gr = gruppi[id] = { giorno: g, partita: z.partita, variante: z.variante,
-                            pulito: [], tagli: [] };
+        gr = gruppi[z.gruppo] = { giorno: g, partita: z.partita, dove: z.gruppo, file: [] };
         (perGiorno[g] = perGiorno[g] || []).push(gr);
       }
-      (z.reparto === "CLEANFEED" ? gr.pulito : gr.tagli)
-        .push({ chiave: o.chiave, peso: o.peso, file: z.file });
+      gr.file.push({ chiave: o.chiave, peso: o.peso, file: z.file, dentro: z.dentro });
     });
     ripresa = pg.ancora;
-  } while (ripresa && ++giri < 200);
+  } while (ripresa && ++giri < 2000);
 
-  // 2) le partite di Airtable, giorno per giorno, appaiate per nome
+  // 2) le partite di Airtable, appaiate per giorno e per nome
   const base = "https://api.airtable.com/v0/" + AT_BASE + "/" + AT_PARTITE;
   const formula = "AND(IS_AFTER({Data | Orario}, DATEADD(TODAY(), -" + Math.round(giorni) +
     ", 'days')), NOT({Partita} = BLANK()))";
-  let offset = "", tornate = 0, agganciate = 0, conKickoff = 0;
+  let offset = "", tornate = 0, agganciate = 0, conKickoff = 0, intere = 0;
   const orfane = [];
   do {
     const q = new URLSearchParams({ filterByFormula: formula, pageSize: "100" });
@@ -2156,59 +2193,225 @@ async function archivioScandaglia(p) {
       tornate++;
       const f = rec.fields || {}, quando = Date.parse(f["Data | Orario"] || "");
       if (!quando) return;
-      const d = new Date(quando);
-      // la registrazione puo' cadere nel giorno prima o dopo, secondo il fuso
       const candidati = [];
       [0, -1, 1].forEach((salto) => {
         const g = new Date(quando + salto * 86400000);
         const chiave = g.getUTCFullYear() + String(g.getUTCMonth() + 1).padStart(2, "0") +
                        String(g.getUTCDate()).padStart(2, "0");
-        (perGiorno[chiave] || []).forEach((o) => candidati.push(o));
+        (perGiorno[chiave] || []).forEach((x) => candidati.push(x));
       });
-      let meglio = null, punteggio = 0;
-      const tag = /\[([A-Z]{2,4})\]/.exec(String(f["Partita"] || ""));
       const livello = livelloDi(String(f["Partita"] || "") + " " + String(f["Competizione"] || ""));
+      let meglio = null, punteggio = 0;
       candidati.forEach((gr) => {
-        let s = quantoSiSomigliano(f["Partita"], gr.partita, livello);
-        if (s > 0 && tag) {
-          // fra due versioni audio della stessa partita vince quella che il
-          // titolo di Airtable indica: [ITA] con [AUDIO ITA]. Nei nomi
-          // vecchi la lingua non e' nella cartella ma dentro il file.
-          const dove = (gr.variante + " " + gr.tagli.concat(gr.pulito)
-                        .map((x) => x.file).join(" ")).toUpperCase();
-          s += (dove.indexOf(tag[1]) >= 0) ? 0.2 : -0.1;
-        }
+        const s = quantoSiSomigliano(f["Partita"], gr.partita, livello);
         if (s > punteggio) { punteggio = s; meglio = gr; }
       });
       if (!meglio || punteggio < 0.5) {
-        if (candidati.length) orfane.push(f["Partita"] + " (" + d.toISOString().slice(0, 10) + ")");
+        if (candidati.length) orfane.push(f["Partita"] + " (" +
+          new Date(quando).toISOString().slice(0, 10) + ")");
         return;
       }
-      // il materiale: l'intero se c'e', altrimenti i pezzi in ordine di ora
-      const intero = meglio.pulito.slice().sort((a, b) => b.peso - a.peso)[0];
-      const pezzi = intero ? [intero]
-        : meglio.tagli.slice().sort((a, b) => {
-            const oa = oraNelNome(a.file), ob = oraNelNome(b.file);
-            return ((oa ? (oa.h % 12) * 3600 + oa.m * 60 + oa.s : 0) -
-                    (ob ? (ob.h % 12) * 3600 + ob.m * 60 + ob.s : 0));
-          });
-      if (!pezzi.length) return;
-      pezzi.forEach((x) => { x.da = daKickoffPezzo(x.file, quando); });
+      const tag = (/\[([A-Z]{2,4})\]/.exec(String(f["Partita"] || "")) || [])[1] || "";
+      const scelta = scegliMateriale(meglio, tag);
+      if (!scelta) return;
+
+      const pezzi = scelta.pezzi.map((x) => Object.assign({}, x, {
+        da: daKickoffPezzo(x.file, quando)
+      })).sort((x, y) => (x.da === null ? 0 : x.da) - (y.da === null ? 0 : y.da));
       const kick = kickoffNelFile(pezzi[0].file, quando);
       if (kick !== null) conKickoff++;
+      if (scelta.fonte === "intera" || scelta.fonte === "intero") intere++;
       agganciate++;
       ARCHIVIO[rec.id] = { bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
-        partita: f["Partita"] || "", variante: meglio.variante, giorno: meglio.giorno,
-        fonte: intero ? "intero" : "pezzi", pezzi: pezzi,
-        kickoff: kick, sicuro: punteggio >= 0.8 && !!intero, quando: f["Data | Orario"] };
+        partita: f["Partita"] || "", competizione: f["Competizione"] || "",
+        variante: "", giorno: meglio.giorno, dove: meglio.dove,
+        fonte: scelta.fonte, pezzi: pezzi, kickoff: kick,
+        sicuro: punteggio >= 0.8 && scelta.fonte !== "unico", quando: f["Data | Orario"] };
     });
     offset = j.offset || "";
   } while (offset);
 
   scriviArchivio();
-  return { ok: true, oggettiVisti: visti, giorniConCleanfeed: Object.keys(perGiorno).length,
-           partiteViste: tornate, agganciate: agganciate, conKickoff: conKickoff,
-           senzaAggancio: orfane.slice(0, 12) };
+  return { ok: true, oggettiVisti: visti, fileTenuti: tenuti,
+           cartellePartita: Object.keys(gruppi).length,
+           partiteViste: tornate, agganciate: agganciate, intere: intere,
+           conKickoff: conKickoff, senzaAggancio: orfane.slice(0, 15) };
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  QUELLO CHE E' STATO DETTO
+// ══════════════════════════════════════════════════════════════════════
+//
+//  I giornalisti scrivono le azioni che contano, e sono precisi. Ma in due
+//  ore di telecronaca si dicono altre mille cose — il nome di chi ha fatto
+//  il fallo, la formazione, il precedente, la battuta — che nessuno mette
+//  negli appunti perche' nessuno puo' scrivere tutto.
+//
+//  La trascrizione le rende cercabili. Non sostituisce gli appunti: quelli
+//  dicono COSA E' SUCCESSO, questa dice COSA SI E' DETTO, e le due cose si
+//  sommano invece di farsi concorrenza.
+//
+//  Gira in casa, su questa macchina, con whisper.cpp: l'audio delle nostre
+//  partite non esce da qui. Il prezzo e' il tempo — due processori sono
+//  due processori — e per questo si lavora una cosa alla volta e mai
+//  mentre c'e' una registrazione in corso: la diretta viene prima.
+
+const WHISPER = process.env.COMOTV_WHISPER || "/opt/whisper.cpp/build/bin/whisper-cli";
+const MODELLO = process.env.COMOTV_WHISPER_MODELLO || "/opt/whisper.cpp/models/ggml-small.bin";
+const LINGUA_MAM = process.env.COMOTV_WHISPER_LINGUA || "it";
+
+let PARLATO = {};        // regId -> { lingua, pezzi: [{a, b, x}] }
+const CODA_VOCE = [];
+let voceAlLavoro = null;
+
+function fileParlato() { return path.join(DIR, "parlato.json"); }
+function leggiParlato() {
+  try { PARLATO = JSON.parse(fs.readFileSync(fileParlato(), "utf8")) || {}; }
+  catch (e) { PARLATO = {}; }
+}
+function scriviParlato() {
+  try {
+    const tmp = fileParlato() + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(PARLATO));
+    fs.renameSync(tmp, fileParlato());
+  } catch (e) { console.log("[clip] parlato non salvato: " + e.message); }
+}
+function whisperCe() { return fs.existsSync(WHISPER) && fs.existsSync(MODELLO); }
+
+// Da dove si prendono i byte dell'audio: il disco se ci sono, l'indirizzo
+// firmato se la partita sta in archivio. Con -ss e -t si scarica solo il
+// pezzo che serve, non tutto il file.
+function sorgenteAudio(r) {
+  if (r.arch) return viaArchivio(r);
+  const integrale = path.join(cartellaReg(r.id), "integrale.mp4");
+  if (fs.existsSync(integrale)) return integrale;
+  const segs = segmenti(r.id);
+  if (segs.length) return null;          // dai segmenti si passa per la lista
+  return null;
+}
+
+function trascriviChiedi(p) {
+  if (!whisperCe()) {
+    return { ok: false, errore: "il motore di trascrizione non e' installato su questa macchina" };
+  }
+  const r = R.reg[String(p.reg || "")];
+  if (!r) return { ok: false, errore: "registrazione sconosciuta" };
+  const da = num(p.da, 0, MAX_SECONDI, 0);
+  const durataTotale = r.durata || 0;
+  const a = num(p.a, 0, MAX_SECONDI, durataTotale || (da + 600));
+  if (a - da < 5) return { ok: false, errore: "un pezzo cosi' corto non ha niente da dire" };
+
+  const gia = CODA_VOCE.find((x) => x.reg === r.id && x.da === da && x.a === a);
+  if (gia || (voceAlLavoro && voceAlLavoro.reg === r.id && voceAlLavoro.da === da)) {
+    return { ok: true, giaInCoda: true, quantiInCoda: CODA_VOCE.length + (voceAlLavoro ? 1 : 0) };
+  }
+  CODA_VOCE.push({ reg: r.id, da: da, a: a, chiesta: Date.now() });
+  giraLaCoda();
+  return { ok: true, inCoda: true, quantiInCoda: CODA_VOCE.length + (voceAlLavoro ? 1 : 0),
+           minuti: Math.round((a - da) / 60) };
+}
+
+// Una alla volta, e mai sopra una diretta: due processori non si dividono
+// in tre. Se c'e' una registrazione in corso la coda aspetta — l'archivio
+// non scappa, la partita si'.
+function giraLaCoda() {
+  if (voceAlLavoro || !CODA_VOCE.length) return;
+  const registrando = Object.keys(R.reg).some((k) => R.reg[k].stato === "registra");
+  if (registrando) { setTimeout(giraLaCoda, 60000); return; }
+  voceAlLavoro = CODA_VOCE.shift();
+  trascriviDavvero(voceAlLavoro)
+    .catch((e) => console.log("[clip] trascrizione fallita: " + e.message))
+    .then(() => { voceAlLavoro = null; annuncia(0, "clip"); setTimeout(giraLaCoda, 1000); });
+}
+
+// I nomi propri sono quelli che il modello sbaglia — "Henry Kane" per Harry
+// Kane, "o Lise" per Olise — ed e' un peccato, perche' sono esattamente le
+// parole che poi si cercano. La cura e' dirglieli prima: i cognomi stanno
+// gia' negli appunti di quella partita, scritti da chi guardava.
+function nomiDaSuggerire(r) {
+  const a = ARCHIVIO[r.evento] ? APPUNTI[r.evento] : APPUNTI[r.evento];
+  const parole = new Set();
+  (r.titolo || "").split(/[^A-Za-zÀ-ÿ]+/).forEach((w) => { if (w.length > 3) parole.add(w); });
+  if (a) {
+    a.righe.forEach((x) => {
+      String(x.x || "").split(/[^A-Za-zÀ-ÿ']+/).forEach((w) => {
+        // i cognomi in una riga di appunti sono le parole con la maiuscola
+        // gli appunti sono scritti in maiuscolo, e passando "KANE" al
+        // modello si ottiene un modello che urla: si rimette la forma
+        // normale di un cognome, che e' quella che poi si cerca
+        if (w.length > 3 && w[0] === w[0].toUpperCase()) {
+          parole.add(w[0].toUpperCase() + w.slice(1).toLowerCase());
+        }
+      });
+    });
+  }
+  const lista = [...parole].slice(0, 60).join(", ");
+  return lista ? ("Telecronaca di calcio. Nomi: " + lista + ".") : "";
+}
+
+function trascriviDavvero(lavoro) {
+  const r = R.reg[lavoro.reg];
+  if (!r) return Promise.reject(new Error("registrazione sparita"));
+  const via = sorgenteAudio(r);
+  const dir = cartellaReg(r.id);
+  const wav = path.join(dir, "voce.wav");
+  const partenza = Date.now();
+
+  return new Promise((ok, no) => {
+    // audio solo, mono, sedicimila: e' quello che vuole il modello, e pesa
+    // un centesimo del video
+    const args = via
+      ? ["-hide_banner", "-loglevel", "error", "-ss", String(lavoro.da), "-i", via,
+         "-t", String(lavoro.a - lavoro.da), "-vn", "-ac", "1", "-ar", "16000",
+         "-c:a", "pcm_s16le", "-y", wav]
+      : null;
+    if (!args) return no(new Error("di questa registrazione non c'e' audio raggiungibile"));
+    execFile("ffmpeg", args, { timeout: 3600000 }, (e) => e ? no(e) : ok());
+  }).then(() => new Promise((ok, no) => {
+    const suggeriti = nomiDaSuggerire(r);
+    const args = ["-m", MODELLO, "-l", LINGUA_MAM, "-f", wav, "-oj", "-of",
+                  path.join(dir, "voce"), "-t", "2", "-np", "-nt"];
+    if (suggeriti) args.push("--prompt", suggeriti);
+    execFile(WHISPER, args,
+             { timeout: 6 * 3600000, maxBuffer: 64 * 1024 * 1024 }, (e) => e ? no(e) : ok());
+  })).then(() => {
+    const j = JSON.parse(fs.readFileSync(path.join(dir, "voce.json"), "utf8"));
+    const pezzi = (j.transcription || []).map((t) => ({
+      a: Math.round((t.offsets.from / 1000 + lavoro.da) * 10) / 10,
+      b: Math.round((t.offsets.to / 1000 + lavoro.da) * 10) / 10,
+      x: String(t.text || "").trim()
+    })).filter((t) => t.x);
+
+    const dentro = PARLATO[r.id] || (PARLATO[r.id] = { lingua: LINGUA_MAM, pezzi: [] });
+    // si rifa' la finestra invece di accodare: chiedere due volte lo stesso
+    // pezzo non deve raddoppiare quello che ci si trova dentro
+    dentro.pezzi = dentro.pezzi.filter((t) => t.b <= lavoro.da || t.a >= lavoro.a)
+                               .concat(pezzi)
+                               .sort((x, y) => x.a - y.a);
+    scriviParlato();
+    try { fs.unlinkSync(wav); } catch (e) {}
+    console.log("[clip] trascritti " + Math.round((lavoro.a - lavoro.da) / 60) + " minuti di " +
+                r.titolo + " in " + Math.round((Date.now() - partenza) / 1000) + "s: " +
+                pezzi.length + " frasi");
+  });
+}
+
+// Le frasi che contengono le parole cercate, con dentro quale partita e a
+// che secondo sono state dette.
+function cercaNelParlato(q, limite) {
+  const fuori = [];
+  Object.keys(PARLATO).forEach((regId) => {
+    const r = R.reg[regId];
+    if (!r) return;
+    const capo = comeSiCerca([r.titolo, r.competizione]);
+    if (!quandoTorna(r.avviata, q)) return;
+    PARLATO[regId].pezzi.forEach((t) => {
+      if (!tutteDentro(comeSiCerca([t.x, capo]), q.parole)) return;
+      fuori.push({ reg: regId, partita: r.titolo, secondi: t.a, testo: t.x,
+                   quando: r.avviata });
+    });
+  });
+  return fuori.slice(0, limite);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -2562,11 +2765,14 @@ function clipCerca(p) {
   const azioni = (q.genere && q.genere !== "segno") ? []
     : (q.parole.length || q.quando ? cercaNegliAppunti(q, limite) : []);
 
+  // il quinto fronte: quello che e' stato detto a voce
+  const dette = q.parole.length ? cercaNelParlato(q, limite) : [];
+
   return {
     ok: true,
     domanda: { parole: q.parole, formato: q.formato, genere: q.genere, quando: q.quando },
-    quante: partite.length + clip.length + segni.length + azioni.length,
-    azioni: azioni,
+    quante: partite.length + clip.length + segni.length + azioni.length + dette.length,
+    azioni: azioni, dette: dette,
     partite: partite.slice(0, limite),
     clip: clip.slice(0, limite),
     segni: segni.slice(0, limite)
@@ -2952,6 +3158,14 @@ const AZIONI = {
              ripresa: pg.ancora, cartelle: pg.cartelle,
              oggetti: pg.oggetti.slice(0, quante) };
   },
+  "clip-trascrivi": trascriviChiedi,
+  "clip-parlato": (p) => {
+    const d = PARLATO[String(p.reg || "")];
+    return { ok: true, pezzi: (d && d.pezzi) || [],
+             inCorso: !!(voceAlLavoro && voceAlLavoro.reg === p.reg),
+             inCoda: CODA_VOCE.filter((x) => x.reg === p.reg).length,
+             motore: whisperCe() };
+  },
   "clip-archivio-scandaglia": archivioScandaglia,
   "clip-archivio-apri": archivioApri,
   // L'elenco di quello che l'archivio sa gia' offrire: serve alla tendina
@@ -3034,6 +3248,7 @@ function avvio(opz) {
   leggi();
   leggiArchivioAppunti();
   leggiArchivio();
+  leggiParlato();
   // Il ponte si e' riavviato: gli ffmpeg che stava seguendo sono morti con
   // lui. Meglio dirlo che lasciare in pagina una registrazione che sembra
   // viva e non scrive piu' niente.

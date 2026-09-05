@@ -183,6 +183,30 @@
   .telaio .forma{position:absolute;left:9px;top:9px;background:rgba(201,162,75,.92);color:var(--scuro);
     border-radius:4px;padding:2px 8px;font-family:'Mazzard',sans-serif;font-size:10px;
     font-weight:800;letter-spacing:.12em;pointer-events:none;}
+  /* Chi guarda una clip deve sapere che sta guardando QUELLA clip: al
+     centro passa di tutto — il live, l'integrale, un montato — e senza un
+     cartellino si perde il filo dopo il terzo giro. */
+  .telaio .targa{position:absolute;left:9px;bottom:9px;right:9px;display:flex;gap:8px;
+    align-items:center;background:rgba(10,15,36,.82);color:var(--carta);border-radius:6px;
+    padding:5px 10px;pointer-events:none;backdrop-filter:blur(3px);}
+  .telaio .targa b{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:800;
+    letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;flex:1;}
+  .telaio .targa i{font-style:normal;font-size:10px;color:var(--gold);letter-spacing:.14em;
+    font-weight:800;white-space:nowrap;}
+
+  /* La pista: dove stanno entrata, uscita e i segni della partita. Non e'
+     una timeline di montaggio — e' il minimo per vedere che cosa si sta
+     per tagliare senza doverlo immaginare. */
+  .pista{position:relative;height:16px;margin-top:2px;border-radius:4px;
+    background:rgba(10,15,36,.07);cursor:pointer;overflow:hidden;}
+  .pista .presa{position:absolute;top:0;bottom:0;background:rgba(201,162,75,.42);
+    border-left:2px solid var(--gold-deep);border-right:2px solid var(--gold-deep);}
+  .pista .capo{position:absolute;top:0;bottom:0;width:2px;background:var(--inchiostro);}
+  .pista .segno{position:absolute;top:3px;bottom:3px;width:3px;border-radius:2px;
+    background:var(--inchiostro-3);}
+  .pista .segno.gol{background:var(--red);}
+  .pista .segno:hover{background:var(--gold-deep);}
   video{width:100%;background:var(--scuro);border-radius:9px;display:block;border:1px solid var(--linea);}
   video.v{aspect-ratio:9/16;max-height:52vh;margin:0 auto;}
   video.q{aspect-ratio:4/3;}
@@ -632,8 +656,10 @@
       '<div class="capo"><span id="capoNome">—</span>' +
         '<a href="#" id="capoTorna" hidden>← torna al contenuto</a></div>' +
       '<div class="telaio" id="telaio"><video id="player" controls playsinline></video>' +
-        '<span class="forma" id="forma">16:9</span></div>' +
+        '<span class="forma" id="forma">16:9</span>' +
+        '<span class="targa" id="targa" hidden><b></b><i></i></span></div>' +
       '<div class="barra"><input type="range" id="slider" min="0" max="100" value="0" step="0.1">' +
+      '<div class="pista" id="pista"></div>' +
       '<div class="tempi"><span id="tPos">0:00</span><span id="tTot">0:00</span></div></div>' +
       '<div class="trasporto">' +
         '<button class="b" data-salta="-30">− 30″</button>' +
@@ -742,6 +768,16 @@
       el("tPos").textContent = orologio(v.currentTime);
       el("tTot").textContent = orologio(tot);
       if (tot) { el("slider").max = tot; el("slider").value = v.currentTime; }
+      disegnaPista();
+    });
+    // sulla pista: un segno ci porta dove sta, il resto e' un salto
+    el("pista").addEventListener("click", function (e) {
+      var v = el("player"), tot = (REG && REG.durata) || v.duration || 0;
+      if (!tot) return;
+      seguiLive = false;
+      if (e.target.dataset && e.target.dataset.vai) { v.currentTime = +e.target.dataset.vai; return; }
+      var r = this.getBoundingClientRect();
+      v.currentTime = Math.max(0, Math.min(tot, (e.clientX - r.left) / r.width * tot));
     });
     el("slider").addEventListener("input", function () { seguiLive = false; el("player").currentTime = parseFloat(this.value); });
     c.querySelectorAll("[data-salta]").forEach(function (b) {
@@ -950,7 +986,31 @@
     });
   })();
 
+  // La pista: la banda dorata e' quello che si sta per tagliare, i trattini
+  // sono i segni della partita, la riga scura e' dove siamo adesso.
+  function disegnaPista() {
+    var p = el("pista"), v = el("player"); if (!p || !v) return;
+    var tot = (REG && REG.durata) || v.duration || 0;
+    if (!tot) { p.innerHTML = ""; return; }
+    var pezzi = "";
+    if (dentro !== null || fuori !== null) {
+      var a = Math.max(0, dentro === null ? 0 : dentro);
+      var b = Math.min(tot, fuori === null ? tot : fuori);
+      if (b > a) pezzi += '<span class="presa" style="left:' + (a / tot * 100) +
+                          '%;width:' + ((b - a) / tot * 100) + '%"></span>';
+    }
+    ((REG && REG.marker) || []).forEach(function (m) {
+      if (m.secondi > tot) return;
+      pezzi += '<span class="segno' + (/gol|goal/i.test(m.tipo || m.testo || "") ? " gol" : "") +
+               '" style="left:' + (m.secondi / tot * 100) + '%" title="' +
+               String(m.testo || "").replace(/"/g, "") + '" data-vai="' + m.secondi + '"></span>';
+    });
+    pezzi += '<span class="capo" style="left:' + (v.currentTime / tot * 100) + '%"></span>';
+    p.innerHTML = pezzi;
+  }
+
   function mostraInOut() {
+    disegnaPista();
     if (!el("vIn")) return;
     el("vIn").textContent = orologio(dentro);
     el("vOut").textContent = orologio(fuori);
@@ -960,6 +1020,40 @@
     el("vDur").textContent = d !== null && d > 0 ? d.toFixed(1) + "s" : "—";
     el("btnTaglia").disabled = !(REG && !REG.guarda && d !== null && d > 0.5);
   }
+  // I tasti. Chi monta tiene una mano sulla tastiera e non la sposta: ogni
+  // viaggio verso il mouse e' un secondo perso, e in una partita di secondi
+  // ce ne sono novanta volte sessanta.
+  var TASTI = { "j": -5, "l": 5, "arrowleft": -1, "arrowright": 1 };
+  document.addEventListener("keydown", function (e) {
+    var t = e.target.tagName;
+    if (t === "INPUT" || t === "TEXTAREA" || t === "SELECT" || e.metaKey || e.ctrlKey) return;
+    var v = el("player"); if (!v) return;
+    var k = e.key.toLowerCase();
+    if (k === " " || k === "k") { e.preventDefault(); v.paused ? v.play().catch(function(){}) : v.pause(); return; }
+    if (TASTI[k] !== undefined) {
+      e.preventDefault(); seguiLive = false;
+      var passo = TASTI[k];
+      if (e.shiftKey) passo = passo > 0 ? 0.2 : -0.2;        // a fotogrammi, quasi
+      if (e.altKey) passo *= 10;
+      v.currentTime = Math.max(0, v.currentTime + passo);
+      return;
+    }
+    if (k === "i") { e.preventDefault(); segnaIn(); return; }
+    if (k === "o") { e.preventDefault(); segnaOut(); return; }
+    if (k === "g" && dentro !== null) { e.preventDefault(); v.currentTime = dentro; return; }
+    if (k === "h" && fuori !== null) { e.preventDefault(); v.currentTime = fuori; return; }
+    if (k === "x" || k === "enter") {
+      var b = el("btnTaglia");
+      if (b && !b.disabled) { e.preventDefault(); b.click(); }
+      return;
+    }
+    if (k === "1" || k === "2" || k === "3") {
+      var f = ["16:9", "4:3", "9:16"][+k - 1];
+      var bf = document.querySelector('#formati button[data-f="' + f + '"]');
+      if (bf) { e.preventDefault(); bf.click(); }
+    }
+  });
+
   function segnaIn() { if (!el("player")) return; dentro = el("player").currentTime; if (fuori !== null && fuori <= dentro) fuori = null; mostraInOut(); }
   function segnaOut() { if (!el("player")) return; fuori = el("player").currentTime; if (dentro !== null && dentro >= fuori) dentro = null; mostraInOut(); }
   function taglia() {
@@ -989,7 +1083,7 @@
     formato = fmt || formato;
     accendiFormati(); telaioForma();
     v.src = url; v.play().catch(function () {});
-    capo();
+    capo(); targa(nome, fmt);
   }
   // Il video non e' qui: sta in un secchio S3 da sette giga. Non lo si
   // scarica — si chiede un indirizzo firmato e lo si apre al secondo
@@ -1021,8 +1115,18 @@
     }).catch(function (e) { dice(e.message); });
   }
 
+  // Il cartellino in basso al video: che cosa sto guardando, e in che forma.
+  function targa(nome, fmt, coda) {
+    var t = el("targa"); if (!t) return;
+    if (!nome) { t.hidden = true; return; }
+    t.querySelector("b").textContent = nome;
+    t.querySelector("i").textContent = [fmt || formato, coda].filter(Boolean).join("  \u00b7  ");
+    t.hidden = false;
+  }
+
   function tornaAlContenuto() {
     guardando = null;
+    targa(null);
     if (REG) { apertaId = ""; apri(REG); }
     capo();
   }
