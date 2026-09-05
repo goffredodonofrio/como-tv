@@ -730,14 +730,20 @@ function taglioDaIntegrale(r, p, dentro, fuori, durata) {
 function codifica(args, preciso, ritaglio, sting) {
   let fuori = ["-hide_banner", "-loglevel", "error", "-nostdin"].concat(args);
   if (!preciso) {
-    fuori = fuori.concat(["-c", "copy", "-avoid_negative_ts", "make_zero"]);
+    // Il video si ricopia, l'audio no: certe partite hanno la telecronaca
+    // in 5.1 a sei canali, e un MP4 con l'audio multicanale Firefox si
+    // rifiuta di aprirlo — dice "file danneggiato", che sembra un guasto
+    // e invece e' una scelta. Ricodificare l'audio costa niente e la clip
+    // esce leggibile ovunque.
+    fuori = fuori.concat(["-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-ac", "2",
+                          "-avoid_negative_ts", "make_zero"]);
   } else {
     // il ritaglio PRIMA, lo sting DOPO: l'etichetta va misurata sul formato
     // che esce davvero, non su quello che entra
     const vf = [ritaglio, sting].filter(Boolean).join(",");
     if (vf) fuori = fuori.concat(["-vf", vf]);
     fuori = fuori.concat(["-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-                          "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k"]);
+                          "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-ac", "2"]);
   }
   return fuori.concat(["-movflags", "+faststart"]);
 }

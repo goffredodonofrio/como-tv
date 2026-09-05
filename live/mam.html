@@ -205,15 +205,44 @@
   body.modo-archivio #ascolto,
   body.modo-archivio .riga-stato{display:none!important;}
   body.modo-live .soloArchivio{display:none!important;}
-  .pista{position:relative;height:16px;margin-top:2px;border-radius:4px;
-    background:rgba(10,15,36,.07);cursor:pointer;overflow:hidden;}
-  .pista .presa{position:absolute;top:0;bottom:0;background:rgba(201,162,75,.42);
-    border-left:2px solid var(--gold-deep);border-right:2px solid var(--gold-deep);}
-  .pista .capo{position:absolute;top:0;bottom:0;width:2px;background:var(--inchiostro);}
-  .pista .segno{position:absolute;top:3px;bottom:3px;width:3px;border-radius:2px;
-    background:var(--inchiostro-3);}
+  /* La traccia. Presa da Premiere quello che serve davvero: un righello
+     con i minuti, i marcatori sopra, la parte scelta in chiaro con due
+     maniglie da trascinare, e la testina rossa. Non serve altro per
+     decidere un taglio — il resto di Premiere e' per il montaggio lungo. */
+  .pista{position:relative;height:38px;margin-top:3px;border-radius:5px;
+    background:rgba(10,15,36,.06);cursor:text;overflow:hidden;user-select:none;
+    border:1px solid var(--linea);}
+  .pista .righello{position:absolute;left:0;right:0;top:0;height:13px;
+    border-bottom:1px solid rgba(10,15,36,.10);}
+  .pista .tacca{position:absolute;top:6px;width:1px;height:7px;background:rgba(10,15,36,.28);}
+  .pista .tacca.grande{top:2px;height:11px;background:rgba(10,15,36,.45);}
+  .pista .ora{position:absolute;top:1px;font-size:8.5px;font-weight:700;letter-spacing:.06em;
+    color:var(--fumo);transform:translateX(2px);font-variant-numeric:tabular-nums;}
+  .pista .presa{position:absolute;top:13px;bottom:0;background:rgba(201,162,75,.30);}
+  .pista .maniglia{position:absolute;top:13px;bottom:0;width:9px;background:var(--gold-deep);
+    cursor:ew-resize;border-radius:2px;}
+  .pista .maniglia::after{content:'';position:absolute;left:3.5px;top:35%;width:2px;height:30%;
+    background:rgba(255,255,255,.85);}
+  .pista .segno{position:absolute;top:15px;height:10px;width:3px;border-radius:2px;
+    background:var(--inchiostro-3);cursor:pointer;}
   .pista .segno.gol{background:var(--red);}
   .pista .segno:hover{background:var(--gold-deep);}
+  .pista .capo{position:absolute;top:0;bottom:0;width:1px;background:var(--red);pointer-events:none;}
+  .pista .capo::before{content:'';position:absolute;top:0;left:-4px;border-left:4.5px solid transparent;
+    border-right:4.5px solid transparent;border-top:6px solid var(--red);}
+
+  /* Il foglio dei tasti: si apre con ? e si chiude con qualunque cosa. */
+  .tasti{position:fixed;inset:0;background:rgba(10,15,36,.45);z-index:70;display:flex;
+    align-items:center;justify-content:center;padding:var(--s4);}
+  .tasti>div{background:var(--carta);border:1px solid var(--linea);border-radius:10px;
+    padding:var(--s4);max-width:640px;width:100%;box-shadow:0 18px 50px rgba(10,15,36,.28);}
+  .tasti h4{margin:0 0 var(--s3);font-family:'Mazzard',sans-serif;font-size:11px;font-weight:800;
+    letter-spacing:.24em;text-transform:uppercase;color:var(--gold-deep);}
+  .tasti table{width:100%;border-collapse:collapse;font-size:12px;}
+  .tasti td{padding:4px 0;vertical-align:top;}
+  .tasti td:first-child{width:170px;white-space:nowrap;}
+  .tasti kbd{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:800;background:var(--bianco);
+    border:1px solid var(--linea);border-bottom-width:2px;border-radius:4px;padding:1px 5px;margin-right:3px;}
   video{width:100%;background:var(--scuro);border-radius:9px;display:block;border:1px solid var(--linea);}
   video.v{aspect-ratio:9/16;max-height:52vh;margin:0 auto;}
   video.q{aspect-ratio:4/3;}
@@ -534,6 +563,20 @@
   var hls = null, apertaId = "", seguiLive = true;
   var dentro = null, fuori = null, formato = "16:9", preciso = false;
 
+  // Il timecode come lo legge un montatore: ore, minuti, secondi e
+  // FOTOGRAMMI. "1:23" non dice niente a chi deve tagliare sul frame;
+  // 00:01:23:12 si', ed e' la stessa lingua del pannello di Premiere.
+  var FPS = 25;
+  function tc(s) {
+    if (s === null || s === undefined || !isFinite(s)) return "--:--:--:--";
+    s = Math.max(0, s);
+    var f = Math.round((s - Math.floor(s)) * FPS);
+    var t = Math.floor(s); if (f >= FPS) { f = 0; t++; }
+    var due = function (n) { return ("0" + n).slice(-2); };
+    return due(Math.floor(t / 3600)) + ":" + due(Math.floor((t % 3600) / 60)) +
+           ":" + due(t % 60) + ":" + due(f);
+  }
+
   function orologio(s) {
     if (s === null || s === undefined || !isFinite(s)) return "—";
     s = Math.max(0, Math.floor(s));
@@ -712,7 +755,8 @@
         '<button class="b" id="btnMarker">Segna qui</button>' +
         '<button class="b" data-kick="1">1º T</button>' +
         '<button class="b" data-kick="2">2º T</button>' +
-        '<span class="aiuto" style="margin:0 0 0 auto"><kbd>I</kbd> <kbd>O</kbd> <kbd>T</kbd></span>' +
+        '<button class="b" id="btnVoce" title="Trascrive la telecronaca dei cinque minuti attorno a dove sei. Gira in casa: un minuto di audio, un minuto di macchina.">Voce</button>' +
+        '<span class="aiuto" style="margin:0 0 0 auto"><kbd id="aiutoTasti">?</kbd></span>' +
       '</div>' +
       // LA SEQUENZA IN LAVORAZIONE.
       // Si monta trascinando: si prende una clip da destra e la si lascia
@@ -782,20 +826,12 @@
       var v = this;
       if (!el("tPos")) return;                     // la vista e' cambiata: non c'e' piu' dove scrivere
       var tot = REG ? (REG.durata || v.duration || 0) : (v.duration || 0);
-      el("tPos").textContent = orologio(v.currentTime);
-      el("tTot").textContent = orologio(tot);
+      el("tPos").textContent = tc(v.currentTime);
+      el("tTot").textContent = tc(tot);
       if (tot) { el("slider").max = tot; el("slider").value = v.currentTime; }
       disegnaPista();
     });
-    // sulla pista: un segno ci porta dove sta, il resto e' un salto
-    el("pista").addEventListener("click", function (e) {
-      var v = el("player"), tot = (REG && REG.durata) || v.duration || 0;
-      if (!tot) return;
-      seguiLive = false;
-      if (e.target.dataset && e.target.dataset.vai) { v.currentTime = +e.target.dataset.vai; return; }
-      var r = this.getBoundingClientRect();
-      v.currentTime = Math.max(0, Math.min(tot, (e.clientX - r.left) / r.width * tot));
-    });
+    attaccaPista();
     el("slider").addEventListener("input", function () { seguiLive = false; el("player").currentTime = parseFloat(this.value); });
     c.querySelectorAll("[data-salta]").forEach(function (b) {
       b.addEventListener("click", function () {
@@ -807,6 +843,18 @@
       seguiLive = true; var v = el("player");
       if (hls && hls.liveSyncPosition) v.currentTime = hls.liveSyncPosition; else if (v.duration) v.currentTime = v.duration;
       v.play().catch(function () {});
+    });
+    if (el("aiutoTasti")) el("aiutoTasti").addEventListener("click", fogliettoTasti);
+    if (el("btnVoce")) el("btnVoce").addEventListener("click", function () {
+      if (!REG) return dice("Scegli prima un contenuto.");
+      var q = el("player") ? el("player").currentTime : 0;
+      manda({ tipo: "clip-trascrivi", reg: REG.id,
+              da: Math.max(0, Math.round(q - 150)), a: Math.round(q + 150) })
+        .then(function (d) {
+          dice(d.giaInCoda ? "Gi\u00e0 in coda."
+               : "Trascrivo cinque minuti \u00b7 ci vuole altrettanto \u00b7 " +
+                 d.quantiInCoda + " in coda", true);
+        }).catch(function (e) { dice(e.message); });
     });
     el("btnIn").addEventListener("click", segnaIn);
     el("btnOut").addEventListener("click", segnaOut);
@@ -1003,34 +1051,98 @@
     });
   })();
 
-  // La pista: la banda dorata e' quello che si sta per tagliare, i trattini
-  // sono i segni della partita, la riga scura e' dove siamo adesso.
+  // ── LA TRACCIA ──────────────────────────────────────────────────
+  //
+  //  Un righello con i minuti, i segni della partita, la parte scelta con
+  //  due maniglie, la testina. Si legge in un colpo d'occhio che cosa si
+  //  sta per tagliare, invece di doverlo immaginare guardando due numeri.
+  var LENTE = 1;                 // 1 = tutta la partita, 8 = un ottavo
+
+  function durataAperta() {
+    var v = el("player");
+    return (REG && REG.durata) || (v && v.duration) || 0;
+  }
+  // La finestra che si vede: con la lente stretta segue la testina.
+  function finestra() {
+    var tot = durataAperta(), v = el("player");
+    if (!tot) return null;
+    if (LENTE <= 1) return { a: 0, b: tot, tot: tot };
+    var largo = tot / LENTE, meta = (v ? v.currentTime : 0) - largo / 2;
+    var a = Math.max(0, Math.min(tot - largo, meta));
+    return { a: a, b: a + largo, tot: tot };
+  }
+  function xDi(t, f, largo) { return (t - f.a) / (f.b - f.a) * largo; }
+
   function disegnaPista() {
-    var p = el("pista"), v = el("player"); if (!p || !v) return;
-    var tot = (REG && REG.durata) || v.duration || 0;
-    if (!tot) { p.innerHTML = ""; return; }
-    var pezzi = "";
-    if (dentro !== null || fuori !== null) {
-      var a = Math.max(0, dentro === null ? 0 : dentro);
-      var b = Math.min(tot, fuori === null ? tot : fuori);
-      if (b > a) pezzi += '<span class="presa" style="left:' + (a / tot * 100) +
-                          '%;width:' + ((b - a) / tot * 100) + '%"></span>';
+    var p = el("pista"); if (!p) return;
+    var f = finestra(), v = el("player");
+    if (!f) { p.innerHTML = ""; return; }
+    var largo = p.clientWidth || 600, dentroF = f.b - f.a, out = [];
+
+    // il righello: un passo che dia una decina di tacche, non trecento
+    var passi = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800];
+    var passo = passi.find(function (x) { return dentroF / x <= 14; }) || 3600;
+    for (var t = Math.ceil(f.a / passo) * passo; t < f.b; t += passo) {
+      var x = xDi(t, f, largo), grande = (t % (passo * 5) === 0);
+      out.push('<span class="tacca' + (grande ? " grande" : "") + '" style="left:' + x + 'px"></span>');
+      if (grande) out.push('<span class="ora" style="left:' + x + 'px">' + orologio(t) + '</span>');
     }
+    out.push('<span class="righello"></span>');
+
     ((REG && REG.marker) || []).forEach(function (m) {
-      if (m.secondi > tot) return;
-      pezzi += '<span class="segno' + (/gol|goal/i.test(m.tipo || m.testo || "") ? " gol" : "") +
-               '" style="left:' + (m.secondi / tot * 100) + '%" title="' +
-               String(m.testo || "").replace(/"/g, "") + '" data-vai="' + m.secondi + '"></span>';
+      if (m.secondi < f.a || m.secondi > f.b) return;
+      out.push('<span class="segno' + (/gol|goal/i.test(m.tipo || m.testo || "") ? " gol" : "") +
+               '" style="left:' + xDi(m.secondi, f, largo) + 'px" data-vai="' + m.secondi +
+               '" title="' + String(m.testo || "").replace(/"/g, "") + '"></span>');
     });
-    pezzi += '<span class="capo" style="left:' + (v.currentTime / tot * 100) + '%"></span>';
-    p.innerHTML = pezzi;
+
+    if (dentro !== null || fuori !== null) {
+      var a = dentro === null ? f.a : dentro, b = fuori === null ? f.b : fuori;
+      var xa = Math.max(0, xDi(a, f, largo)), xb = Math.min(largo, xDi(b, f, largo));
+      if (xb > xa) out.push('<span class="presa" style="left:' + xa + 'px;width:' + (xb - xa) + 'px"></span>');
+      if (dentro !== null && xa >= -5 && xa <= largo)
+        out.push('<span class="maniglia" data-lato="in" style="left:' + (xa - 4) + 'px"></span>');
+      if (fuori !== null && xb >= -5 && xb <= largo)
+        out.push('<span class="maniglia" data-lato="out" style="left:' + (xb - 5) + 'px"></span>');
+    }
+    if (v) out.push('<span class="capo" style="left:' + xDi(v.currentTime, f, largo) + 'px"></span>');
+    p.innerHTML = out.join("");
+  }
+
+  // Trascinare una maniglia sposta entrata o uscita. E' il gesto che in
+  // Premiere si fa sulle estremita' di una clip, ed e' l'unico modo per
+  // aggiustare un taglio senza rimettersi a contare i secondi.
+  function tempoAlPuntatore(e) {
+    var p = el("pista"), f = finestra(); if (!p || !f) return null;
+    var r = p.getBoundingClientRect();
+    var q = (e.clientX - r.left) / r.width;
+    return Math.max(0, Math.min(f.tot, f.a + q * (f.b - f.a)));
+  }
+  function attaccaPista() {
+    var p = el("pista"); if (!p || p.dataset.viva) return;
+    p.dataset.viva = "1";
+    var lato = null;
+    p.addEventListener("mousedown", function (e) {
+      if (e.target.dataset && e.target.dataset.lato) { lato = e.target.dataset.lato; e.preventDefault(); return; }
+      if (e.target.dataset && e.target.dataset.vai) { el("player").currentTime = +e.target.dataset.vai; return; }
+      var t = tempoAlPuntatore(e);
+      if (t !== null) { seguiLive = false; el("player").currentTime = t; }
+    });
+    document.addEventListener("mousemove", function (e) {
+      if (!lato) return;
+      var t = tempoAlPuntatore(e); if (t === null) return;
+      if (lato === "in") { dentro = (fuori !== null && t >= fuori) ? fuori - 0.2 : t; }
+      else { fuori = (dentro !== null && t <= dentro) ? dentro + 0.2 : t; }
+      mostraInOut();
+    });
+    document.addEventListener("mouseup", function () { lato = null; });
   }
 
   function mostraInOut() {
     disegnaPista();
     if (!el("vIn")) return;
-    el("vIn").textContent = orologio(dentro);
-    el("vOut").textContent = orologio(fuori);
+    el("vIn").textContent = dentro === null ? "--:--:--:--" : tc(dentro);
+    el("vOut").textContent = fuori === null ? "--:--:--:--" : tc(fuori);
     el("boxIn").className = "box" + (dentro !== null ? " messo" : "");
     el("boxOut").className = "box" + (fuori !== null ? " messo" : "");
     var d = (dentro !== null && fuori !== null) ? fuori - dentro : null;
@@ -1041,25 +1153,76 @@
   // viaggio verso il mouse e' un secondo perso, e in una partita di secondi
   // ce ne sono novanta volte sessanta.
   var TASTI = { "j": -5, "l": 5, "arrowleft": -1, "arrowright": 1 };
+  var AIUTO = [
+    ["spazio · K", "ferma e riparte"],
+    ["J · L", "indietro e avanti di 5\u2033 (con alt: 50\u2033)"],
+    ["\u2190 \u2192", "un secondo \u00b7 con shift un fotogramma"],
+    ["\u2191 \u2193", "al segno precedente e successivo"],
+    ["I \u00b7 O", "entrata e uscita qui"],
+    ["shift+I \u00b7 shift+O", "vai all'entrata, vai all'uscita"],
+    ["alt+I \u00b7 alt+O", "togli entrata, togli uscita"],
+    ["M", "metti un segno dove sei"],
+    ["home \u00b7 fine", "inizio e fine"],
+    ["+ \u00b7 \u2212 \u00b7 \\", "avvicina, allontana, tutta la partita"],
+    ["1 \u00b7 2 \u00b7 3", "16:9 \u00b7 4:3 \u00b7 9:16"],
+    ["T", "esporta la clip"],
+    ["?", "questo foglio"]
+  ];
+  function fogliettoTasti() {
+    var vecchio = el("tasti"); if (vecchio) { vecchio.remove(); return; }
+    var d = document.createElement("div");
+    d.className = "tasti"; d.id = "tasti";
+    d.innerHTML = "<div><h4>Comandi</h4><table>" + AIUTO.map(function (r) {
+      return "<tr><td>" + r[0].split(" ").map(function (x) {
+        return /^[·\u00b7]$/.test(x) ? x : "<kbd>" + x + "</kbd>";
+      }).join(" ") + "</td><td>" + r[1] + "</td></tr>";
+    }).join("") + "</table></div>";
+    document.body.appendChild(d);
+    d.addEventListener("click", function () { d.remove(); });
+  }
+
+  // I tasti sono quelli di Premiere dove Premiere ne ha uno: chi monta li
+  // ha gia' nelle dita e non deve impararne altri. Dove Premiere non
+  // c'entra (i formati, l'esportazione) si e' scelto il piu' vicino.
   document.addEventListener("keydown", function (e) {
     var t = e.target.tagName;
     if (t === "INPUT" || t === "TEXTAREA" || t === "SELECT" || e.metaKey || e.ctrlKey) return;
     var v = el("player"); if (!v) return;
     var k = e.key.toLowerCase();
+    var foglio = el("tasti");
+    if (foglio) { foglio.remove(); if (k === "escape" || k === "?") { e.preventDefault(); return; } }
+    if (k === "?" || (k === "/" && e.shiftKey)) { e.preventDefault(); fogliettoTasti(); return; }
     if (k === " " || k === "k") { e.preventDefault(); v.paused ? v.play().catch(function(){}) : v.pause(); return; }
     if (TASTI[k] !== undefined) {
       e.preventDefault(); seguiLive = false;
       var passo = TASTI[k];
-      if (e.shiftKey) passo = passo > 0 ? 0.2 : -0.2;        // a fotogrammi, quasi
-      if (e.altKey) passo *= 10;
+      if (e.shiftKey && (k === "arrowleft" || k === "arrowright")) passo = passo / Math.abs(passo) / FPS;
+      else if (e.altKey) passo *= 10;
       v.currentTime = Math.max(0, v.currentTime + passo);
       return;
     }
-    if (k === "i") { e.preventDefault(); segnaIn(); return; }
-    if (k === "o") { e.preventDefault(); segnaOut(); return; }
-    if (k === "g" && dentro !== null) { e.preventDefault(); v.currentTime = dentro; return; }
-    if (k === "h" && fuori !== null) { e.preventDefault(); v.currentTime = fuori; return; }
-    if (k === "x" || k === "enter") {
+    // su e giu': di segno in segno, come Premiere salta di taglio in taglio
+    if (k === "arrowup" || k === "arrowdown") {
+      e.preventDefault(); seguiLive = false;
+      var segni = ((REG && REG.marker) || []).map(function (m) { return m.secondi; }).sort(function (a, b) { return a - b; });
+      var ora = v.currentTime;
+      var meta = (k === "arrowdown")
+        ? segni.find(function (x) { return x > ora + 0.3; })
+        : segni.filter(function (x) { return x < ora - 0.3; }).pop();
+      if (meta !== undefined) v.currentTime = meta;
+      return;
+    }
+    if (k === "i") { e.preventDefault(); if (e.shiftKey) { if (dentro !== null) v.currentTime = dentro; }
+                     else if (e.altKey) { dentro = null; mostraInOut(); } else segnaIn(); return; }
+    if (k === "o") { e.preventDefault(); if (e.shiftKey) { if (fuori !== null) v.currentTime = fuori; }
+                     else if (e.altKey) { fuori = null; mostraInOut(); } else segnaOut(); return; }
+    if (k === "m") { var bm = el("btnMarker"); if (bm) { e.preventDefault(); bm.click(); } return; }
+    if (k === "home") { e.preventDefault(); seguiLive = false; v.currentTime = 0; return; }
+    if (k === "end") { e.preventDefault(); v.currentTime = Math.max(0, durataAperta() - 1); return; }
+    if (k === "+" || k === "=") { e.preventDefault(); LENTE = Math.min(16, LENTE * 2); disegnaPista(); return; }
+    if (k === "-") { e.preventDefault(); LENTE = Math.max(1, LENTE / 2); disegnaPista(); return; }
+    if (k === "\\") { e.preventDefault(); LENTE = 1; disegnaPista(); return; }
+    if (k === "t") {
       var b = el("btnTaglia");
       if (b && !b.disabled) { e.preventDefault(); b.click(); }
       return;
