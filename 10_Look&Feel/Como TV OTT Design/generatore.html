@@ -2153,9 +2153,27 @@ var videoPick=null;
 
 function overlaySvg(key){var it=BYKEY[key];
  return withTextStyles(OTTGEN.svgFor(it,P(key),imgsFor(key),adjMap(key),FONTCSS,true),key);}
-function svgToImage(str){return new Promise(function(res,rej){var im=new Image();
- im.onload=function(){res(im);};im.onerror=rej;
- im.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(str)));});}
+// Un SVG diventa immagine passando da un BLOB, non da un indirizzo "data:".
+// Motivo: i font sono incorporati nell'SVG in base64, quindi la stringa pesa
+// megabyte — e un data: da megabyte alcuni browser (Firefox) lo rifiutano in
+// silenzio: l'immagine non carica, la promessa resta appesa e l'export "non
+// scarica" senza dire perche'. Un blob non ha quel limite. Se per qualche
+// motivo il blob non va, si riprova alla vecchia maniera invece di arrendersi.
+function svgToImage(str){return new Promise(function(res,rej){
+ var url=null;
+ function pulisci(){if(url){try{URL.revokeObjectURL(url);}catch(e){}url=null;}}
+ function conData(){var im2=new Image();
+  im2.onload=function(){res(im2);};
+  im2.onerror=function(){rej(new Error('la grafica non si lascia disegnare'));};
+  try{im2.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(str)));}
+  catch(e){rej(e);}}
+ try{
+  url=URL.createObjectURL(new Blob([str],{type:'image/svg+xml;charset=utf-8'}));
+  var im=new Image();
+  im.onload=function(){pulisci();res(im);};
+  im.onerror=function(){pulisci();conData();};
+  im.src=url;
+ }catch(e){conData();}});}
 
 // Disegna un fotogramma composito: video inquadrato come la foto + grafica sopra.
 function drawComposite(ctx,W,H,src,sw,sh,overlay){
@@ -3151,7 +3169,19 @@ function rasterize(svgStr,w,h){return new Promise(function(res,rej){var img=new 
    },'image/jpeg',JPG_Q[i]);
   })();
  };
- img.onerror=rej;img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(svgStr)));});}
+ img.onerror=function(){rej(new Error('la grafica non si lascia disegnare'));};
+ // stessa ragione di svgToImage: blob, non data:
+ var url=null;
+ try{url=URL.createObjectURL(new Blob([svgStr],{type:'image/svg+xml;charset=utf-8'}));
+  var vecchio=img.onload;
+  img.onload=function(){try{URL.revokeObjectURL(url);}catch(e){}vecchio.call(img);};
+  img.onerror=function(){try{URL.revokeObjectURL(url);}catch(e){}
+   var im2=new Image();im2.onload=function(){img=im2;vecchio.call(im2);};
+   im2.onerror=function(){rej(new Error('la grafica non si lascia disegnare'));};
+   try{im2.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(svgStr)));}catch(e){rej(e);}};
+  img.src=url;
+ }catch(e){img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(svgStr)));}
+ });}
 // Nome della partita o dell'evento, ripulito per farne un nome di file. Con un
 // programma (noVs) le due righe sono titolo e sottotitolo, non due squadre.
 function nomeEvento(){
@@ -3162,7 +3192,13 @@ function nomeEvento(){
 }
 function dl(blob,name){var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(a.href);},3000);}
 function busy(on,t){document.getElementById('busy').className='busy'+(on?' on':'');if(t)document.getElementById('busyTxt').textContent=t;}
-document.getElementById('dlPng').onclick=function(){var it=BYKEY[current];busy(true,'Rendo JPG…');document.fonts.ready.then(function(){return rasterize(svgExport(current),it.w,it.h);}).then(function(b){dl(b,nomeEvento()+'_'+fname(current)+'.jpg');busy(false);});};
+document.getElementById('dlPng').onclick=function(){var it=BYKEY[current];busy(true,'Rendo JPG…');
+ document.fonts.ready.then(function(){return rasterize(svgExport(current),it.w,it.h);})
+ .then(function(b){dl(b,nomeEvento()+'_'+fname(current)+'.jpg');busy(false);})
+ // Senza questo, un export fallito lasciava la pagina con "Rendo JPG..."
+ // e nient'altro: il classico "non scarica" e non si sa perche'.
+ .catch(function(e){busy(false);alert('Non sono riuscito a esportare: '+(e&&e.message?e.message:e)+
+  '\n\nSe succede solo su questo browser, provalo su un altro e dimmelo.');});};
 document.getElementById('dlAll').onclick=function(){if(!window.JSZip){alert('JSZip non caricato (serve connessione).');return;}
  var sel=ITEMS.filter(function(it){return EXPSEL[it.key];});
  if(!sel.length){alert('Nessun formato selezionato: spunta almeno una miniatura nella colonna di destra.');return;}

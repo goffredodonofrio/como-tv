@@ -33,16 +33,22 @@
     --ombra:0 1px 2px rgba(10,15,36,.06), 0 6px 18px rgba(10,15,36,.05);
     --barra:52px;
   }
+  /* La pagina non scorre: sta dentro uno schermo di portatile e basta.
+     A scorrere sono le colonne, ognuna per conto suo — cosi' mentre cerchi
+     nella griglia non perdi di vista il visore, e mentre guardi il visore
+     non perdi la lista delle partite. */
+  html,body{height:100%;overflow:hidden;}
   body{
     font-family:'DM Sans',system-ui,sans-serif;font-weight:500;font-size:14px;line-height:1.45;
-    color:var(--inchiostro);min-height:100vh;background-color:var(--carta);
+    color:var(--inchiostro);background-color:var(--carta);
+    display:flex;flex-direction:column;
     background-image:
       radial-gradient(90% 70% at 18% 4%, rgba(255,255,255,.9), transparent 60%),
       radial-gradient(70% 70% at 95% 100%, rgba(201,162,75,.13), transparent 60%);
-    background-attachment:fixed;padding-bottom:var(--barra);}
+    background-attachment:fixed;}
 
-  .testata{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
-    padding:13px clamp(14px,3vw,26px);position:sticky;top:0;z-index:50;
+  .testata{display:flex;align-items:center;gap:18px;flex:0 0 auto;
+    padding:11px clamp(14px,3vw,26px);z-index:50;
     background:var(--scuro);color:var(--carta);border-bottom:2px solid var(--gold);}
   .marchio{font-family:'Mazzard',sans-serif;font-weight:800;font-size:15px;letter-spacing:.2em;
     text-transform:uppercase;white-space:nowrap;}
@@ -57,9 +63,10 @@
     font-size:10px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;}
   .torna:hover{color:var(--gold-bright);}
 
-  .tre{display:grid;grid-template-columns:270px minmax(0,1fr) 400px;min-height:calc(100vh - 118px);}
-  @media (max-width:1240px){.tre{grid-template-columns:1fr;}}
-  .col{padding:16px clamp(12px,1.4vw,20px);overflow:auto;}
+  .tre{display:grid;grid-template-columns:262px minmax(0,1fr) 380px;
+    flex:1 1 auto;min-height:0;}
+  @media (max-width:1240px){.tre{grid-template-columns:200px minmax(0,1fr) 320px;}}
+  .col{padding:14px clamp(10px,1.2vw,18px);overflow:auto;min-height:0;}
   .col + .col{border-left:1px solid var(--linea);}
   .col h2{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.26em;
     text-transform:uppercase;color:var(--inchiostro-3);margin-bottom:14px;
@@ -79,7 +86,13 @@
     box-shadow:0 0 8px rgba(229,27,32,.8);animation:batte 1.4s ease-in-out infinite;}
 
   /* ── le linguette: sono la navigazione, non un filtro ───────────── */
-  .linguette{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
+  .linguette{display:flex;gap:6px;align-items:center;margin-bottom:13px;flex-wrap:wrap;}
+  .linguette .stacco{width:1px;align-self:stretch;background:var(--linea);margin:2px 5px;}
+  .linguette .forme{display:flex;gap:5px;align-items:center;}
+  .linguette .forme button{padding:6px 11px;font-size:9px;}
+  .linguette .et2{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:700;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--inchiostro-3);margin-right:2px;}
+  .linguette .conta2{margin-left:6px;opacity:.55;font-size:9px;}
   .linguette button{background:var(--carta-2);border:1px solid var(--linea);border-radius:20px;
     color:var(--inchiostro-2);cursor:pointer;padding:7px 15px;
     font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;}
@@ -87,6 +100,10 @@
   .linguette button.acceso{background:var(--scuro);border-color:var(--scuro);color:var(--carta);}
   .linguette button.live{border-color:rgba(229,27,32,.45);color:#9E1418;}
   .linguette button.live.acceso{background:var(--red);border-color:var(--red);color:#fff;}
+  /* quando una clip finisce in un formato, la sua linguetta lo dice */
+  @keyframes arrivata{0%,100%{box-shadow:0 0 0 0 rgba(166,124,46,0)}
+    35%{box-shadow:0 0 0 5px rgba(166,124,46,.35)}}
+  .linguette button.arrivata{animation:arrivata 1.1s ease-out 2;border-color:var(--gold-deep);color:var(--gold-deep);}
   .linguette .pallino{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);
     margin-right:7px;vertical-align:1px;animation:batte 1.4s ease-in-out infinite;}
   @keyframes batte{0%,100%{opacity:1}50%{opacity:.3}}
@@ -113,15 +130,25 @@
   .scheda .sotto{font-size:11px;color:var(--inchiostro-3);margin-top:3px;}
 
   /* ── il visore ─────────────────────────────────────────────────── */
-  video{width:100%;aspect-ratio:16/9;background:var(--scuro);border-radius:9px;display:block;
-    border:1px solid var(--linea);}
-  video.v{aspect-ratio:9/16;max-height:60vh;margin:0 auto;}
+  /* IL RITAGLIO SI VEDE PRIMA DI TAGLIARE.
+     Il telaio ha la forma del formato scelto e il video ci sta dentro con
+     object-fit:cover — che e' esattamente quello che fa ffmpeg quando
+     esporta (crop centrato). Quindi quello che vedi qui e' quello che esce:
+     se in 9:16 l'azione finisce fuori, lo scopri adesso e non dopo. */
+  .telaio{background:var(--scuro);border:1px solid var(--linea);border-radius:9px;
+    overflow:hidden;margin:0 auto;position:relative;display:flex;align-items:center;justify-content:center;}
+  .telaio video{width:100%;height:100%;object-fit:cover;display:block;background:var(--scuro);}
+  .telaio .forma{position:absolute;left:9px;top:9px;background:rgba(201,162,75,.92);color:var(--scuro);
+    border-radius:4px;padding:2px 8px;font-family:'Mazzard',sans-serif;font-size:10px;
+    font-weight:800;letter-spacing:.12em;pointer-events:none;}
+  video{width:100%;background:var(--scuro);border-radius:9px;display:block;border:1px solid var(--linea);}
+  video.v{aspect-ratio:9/16;max-height:52vh;margin:0 auto;}
   video.q{aspect-ratio:4/3;}
-  .barra{margin-top:10px;}
+  .barra{margin-top:9px;}
   input[type=range]{width:100%;accent-color:var(--gold-deep);}
   .tempi{display:flex;justify-content:space-between;font-family:'Mazzard',sans-serif;
     font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--inchiostro-3);margin-top:4px;}
-  .trasporto{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap;}
+  .trasporto{display:flex;gap:7px;margin-top:9px;flex-wrap:nowrap;}
   .trasporto button{flex:1 1 auto;}
 
   button.b{font-family:'Mazzard',sans-serif;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
@@ -143,11 +170,22 @@
     background:var(--bianco);border:1px solid var(--linea);border-radius:8px;padding:9px 11px;width:100%;}
   select:focus,input:focus{outline:none;border-color:var(--gold-deep);}
 
-  .inout{display:flex;gap:9px;}
+  /* La riga del taglio: forma, entrata, uscita, durata, precisione, esporta.
+     Una riga sola, e se lo schermo e' stretto si stringe invece di andare
+     a capo — a capo vorrebbe dire far scorrere la pagina. */
+  .taglio{display:flex;gap:10px;align-items:stretch;margin-top:11px;flex-wrap:nowrap;}
+  .taglio > *{display:flex;align-items:center;}
+  .taglio .inout .box{display:flex;flex-direction:column;justify-content:center;}
+  .taglio .gruppo{flex:0 0 auto;}
+  .taglio button.b{padding:11px 12px;white-space:nowrap;}
+  .taglio button.b i{font-style:normal;opacity:.55;margin-left:7px;font-size:9px;
+    border:1px solid currentColor;border-radius:3px;padding:0 4px;}
+  .taglio button.grosso{flex:1 1 auto;padding:14px 12px;font-size:12px;}
+  .inout{display:flex;gap:9px;flex:0 1 auto;min-width:0;}
   .inout .box{background:var(--bianco);border:1px solid var(--linea);border-radius:8px;
-    padding:9px 13px;min-width:96px;text-align:center;}
+    padding:7px 11px;min-width:84px;text-align:center;}
   .inout .box.messo{border-color:var(--gold-deep);background:rgba(201,162,75,.10);}
-  .numeroni{font-family:'Mazzard',sans-serif;font-weight:800;font-size:24px;line-height:1.1;}
+  .numeroni{font-family:'Mazzard',sans-serif;font-weight:800;font-size:20px;line-height:1.15;}
   .numeroni small{display:block;font-size:9px;letter-spacing:.24em;color:var(--inchiostro-3);margin-bottom:3px;}
 
   /* ── la console: qui si opera, ed e' scura apposta ──────────────── */
@@ -214,7 +252,7 @@
     border:1px solid var(--linea);background:var(--bianco);border-radius:4px;padding:1px 6px;}
   .aiuto{color:var(--inchiostro-3);font-size:12px;margin-top:10px;}
 
-  .stato{position:fixed;left:0;right:0;bottom:0;height:var(--barra);z-index:60;
+  .stato{flex:0 0 var(--barra);height:var(--barra);z-index:60;
     display:flex;align-items:center;gap:22px;padding:0 clamp(14px,3vw,26px);
     background:var(--scuro);color:var(--carta);border-top:2px solid var(--gold);font-size:12px;overflow-x:auto;}
   .stato .voce2{display:flex;align-items:center;gap:8px;white-space:nowrap;}
@@ -246,14 +284,24 @@
   </div>
 
   <div class="col">
+    <!-- Tre gruppi, non sette fratelli: dove sto, che cosa guardo, che forma
+         ha. Prima erano in fila e si escludevano — non si poteva chiedere
+         "le clip in 9:16", che e' la domanda del social. -->
     <div class="linguette" id="linguette">
       <button class="live acceso" data-v="live">Live</button>
+      <span class="stacco"></span>
       <button data-v="tutto">Tutto</button>
       <button data-v="clip">Clip</button>
       <button data-v="hl">Highlights</button>
       <button data-v="integrale">Integrali</button>
-      <button data-v="9:16">9:16</button>
-      <button data-v="4:3">4:3</button>
+      <span class="stacco"></span>
+      <span class="forme" id="forme">
+        <span class="et2">Forma</span>
+        <button class="acceso" data-forma="">Tutte</button>
+        <button data-forma="16:9">16:9</button>
+        <button data-forma="4:3">4:3</button>
+        <button data-forma="9:16">9:16</button>
+      </span>
     </div>
     <div class="avviso" id="avviso"></div>
     <div id="centro"></div>
@@ -283,7 +331,8 @@
   var TOKEN = (window.ChiaveComoTV ? ChiaveComoTV.valore() : "");
   var el = function (id) { return document.getElementById(id); };
 
-  var VISTA = "live";          // quale linguetta
+  var VISTA = "live";          // dove sto: live, un tipo di materiale, o una ricerca
+  var FORMA = "";              // e con che forma, che e' un'altra domanda
   var REG = null;              // la registrazione scelta
   var REGISTRAZIONI = [], CLIP = [], SEQ = null, DISCO = null, ASSET = 0;
   var hls = null, apertaId = "", seguiLive = true;
@@ -343,7 +392,8 @@
   function centroLive() {
     var c = el("centro");
     c.innerHTML =
-      '<video id="player" controls playsinline></video>' +
+      '<div class="telaio" id="telaio"><video id="player" controls playsinline></video>' +
+        '<span class="forma" id="forma">16:9</span></div>' +
       '<div class="barra"><input type="range" id="slider" min="0" max="100" value="0" step="0.1">' +
       '<div class="tempi"><span id="tPos">0:00</span><span id="tTot">0:00</span></div></div>' +
       '<div class="trasporto">' +
@@ -354,31 +404,34 @@
         '<button class="b" data-salta="10">+ 10″</button>' +
         '<button class="b oro" id="btnLive">Torna al live</button>' +
       '</div>' +
-      '<div class="fila" style="margin-top:16px">' +
+      // UNA RIGA SOLA: si sceglie la forma, si segnano entrata e uscita, si
+      // manda. Niente altro in mezzo: durante una partita ogni riga in piu'
+      // e' un posto dove perdere tempo.
+      '<div class="taglio">' +
+        '<div class="gruppo" id="formati">' +
+          '<button class="b scuro" data-f="16:9">16:9</button>' +
+          '<button class="b" data-f="4:3">4:3</button>' +
+          '<button class="b" data-f="9:16">9:16</button></div>' +
         '<div class="inout">' +
           '<div class="box" id="boxIn"><div class="numeroni"><small>Entrata</small><span id="vIn">—</span></div></div>' +
           '<div class="box" id="boxOut"><div class="numeroni"><small>Uscita</small><span id="vOut">—</span></div></div>' +
           '<div class="box"><div class="numeroni"><small>Durata</small><span id="vDur">—</span></div></div>' +
         '</div>' +
-        '<div class="colonnina"><span class="et">Segna</span><div class="gruppo pari">' +
-          '<button class="b oro" id="btnIn">Entrata (I)</button>' +
-          '<button class="b oro" id="btnOut">Uscita (O)</button></div></div>' +
-        '<div class="colonnina"><span class="et">Formato</span><div class="gruppo" id="formati">' +
-          '<button class="b scuro" data-f="16:9">16:9</button>' +
-          '<button class="b" data-f="4:3">4:3</button>' +
-          '<button class="b" data-f="9:16">9:16</button></div></div>' +
-        '<div class="colonnina"><span class="et">All’indietro</span><div class="gruppo" id="preset">' +
-          '<button class="b" data-p="15">15″</button><button class="b" data-p="30">30″</button>' +
-          '<button class="b" data-p="60">60″</button></div></div>' +
-        '<div class="colonnina"><span class="et">Precisione</span>' +
-          '<button class="b" id="btnPreciso">Ai secondi</button></div>' +
-        '<div class="colonnina cresce"><span class="et">&nbsp;</span>' +
-          '<button class="b oro" id="btnTaglia" style="padding:14px" disabled>Taglia</button></div>' +
-      '</div>' +
-      '<div class="aiuto"><kbd>I</kbd> entrata · <kbd>O</kbd> uscita · <kbd>T</kbd> taglia · <kbd>spazio</kbd> pausa</div>';
+        '<div class="gruppo">' +
+          '<button class="b oro" id="btnIn">Entrata<i>I</i></button>' +
+          '<button class="b oro" id="btnOut">Uscita<i>O</i></button></div>' +
+        '<button class="b" id="btnPreciso" title="Ai secondi si copia e basta: un secondo. Al fotogramma si ricodifica: qualche secondo in piu\u2019, ma parte esatta.">Ai secondi</button>' +
+        '<button class="b oro grosso" id="btnTaglia" disabled>Esporta<i>T</i></button>' +
+      '</div>';
 
+    telaioForma();
     el("player").addEventListener("timeupdate", function () {
-      var v = el("player"), tot = REG ? (REG.durata || v.duration || 0) : (v.duration || 0);
+      // Si usa l'elemento che ha generato l'evento, non uno cercato per id:
+      // cambiando vista il visore sparisce dal documento ma continua a
+      // battere ancora un istante, e la ricerca per id tornava "niente".
+      var v = this;
+      if (!el("tPos")) return;                     // la vista e' cambiata: non c'e' piu' dove scrivere
+      var tot = REG ? (REG.durata || v.duration || 0) : (v.duration || 0);
       el("tPos").textContent = orologio(v.currentTime);
       el("tTot").textContent = orologio(tot);
       if (tot) { el("slider").max = tot; el("slider").value = v.currentTime; }
@@ -397,18 +450,12 @@
     });
     el("btnIn").addEventListener("click", segnaIn);
     el("btnOut").addEventListener("click", segnaOut);
-    c.querySelectorAll("#preset button").forEach(function (b) {
-      b.addEventListener("click", function () {
-        fuori = el("player").currentTime;
-        dentro = Math.max(0, fuori - parseFloat(b.dataset.p));
-        mostraInOut();
-      });
-    });
     c.querySelectorAll("#formati button").forEach(function (b) {
       b.addEventListener("click", function () {
         formato = b.dataset.f;
         c.querySelectorAll("#formati button").forEach(function (x) { x.className = "b"; });
         b.className = "b scuro";
+        telaioForma();                 // il visore prende subito quella forma
       });
     });
     el("btnPreciso").addEventListener("click", function () {
@@ -420,6 +467,31 @@
     mostraInOut();
     if (REG) apri(REG);
   }
+
+  // Il telaio prende la forma del formato scelto, e si tiene dentro
+  // l'altezza che la colonna ha davvero: la pagina non deve mai scorrere.
+  function telaioForma() {
+    var t = el("telaio"), c = el("centro"); if (!t || !c) return;
+    // Al primo giro la colonna puo' non avere ancora un'altezza: si aspetta
+    // il disegno invece di calcolare su zero e lasciare un telaio invisibile.
+    var col = c.parentElement;
+    if (!col || !col.clientHeight || !c.clientWidth) { requestAnimationFrame(telaioForma); return; }
+    // Si misura la COLONNA, non il contenuto: il contenuto e' alto quanto il
+    // telaio, e chiedere a lui quanto spazio c'e' e' un cane che si morde la
+    // coda — al primo giro rispondeva "niente" e il visore restava un
+    // francobollo.
+    var linguette = el("linguette");
+    var sopra = (linguette ? linguette.offsetHeight + 14 : 0);
+    var sotto = 186;                        // barra, trasporto e riga del taglio
+    var r = { "16:9": 16/9, "4:3": 4/3, "9:16": 9/16 }[formato] || 16/9;
+    var alto = Math.max(170, col.clientHeight - sopra - sotto - 24);
+    var largo = c.clientWidth;
+    var w = Math.min(largo, alto * r), h = w / r;
+    t.style.width = Math.round(w) + "px";
+    t.style.height = Math.round(h) + "px";
+    if (el("forma")) el("forma").textContent = formato;
+  }
+  window.addEventListener("resize", function () { if (VISTA === "live") telaioForma(); });
 
   function mostraInOut() {
     if (!el("vIn")) return;
@@ -435,9 +507,18 @@
   function segnaOut() { if (!el("player")) return; fuori = el("player").currentTime; if (dentro !== null && dentro >= fuori) dentro = null; mostraInOut(); }
   function taglia() {
     if (!REG) return;
+    var suo = formato;                      // dove andra' a finire
     el("btnTaglia").disabled = true;
-    manda({ tipo:"clip-taglia", reg:REG.id, dentro:dentro, fuori:fuori, formato:formato, preciso:preciso })
-      .then(function () { dice("Clip in lavorazione.", true); dentro = null; fuori = null; mostraInOut(); aggiorna(); })
+    manda({ tipo:"clip-taglia", reg:REG.id, dentro:dentro, fuori:fuori, formato:suo, preciso:preciso })
+      .then(function () {
+        // La clip finisce nel menu del suo formato: invece di dirlo e basta,
+        // la linguetta si accende un momento. Non ti porto li' io: durante
+        // una partita si resta sul live, e la si va a prendere quando serve.
+        dice("Clip in lavorazione: la trovi in Clip · " + suo + ".", true);
+        var b = document.querySelector('#linguette [data-forma="' + suo + '"]');
+        if (b) { b.classList.add("arrivata"); setTimeout(function () { b.classList.remove("arrivata"); }, 2400); }
+        dentro = null; fuori = null; mostraInOut(); aggiorna();
+      })
       .catch(function (e) { dice(e.message); mostraInOut(); });
   }
 
@@ -634,15 +715,44 @@
   }
 
   // ── viste d'archivio ────────────────────────────────────────────
-  function assetVisibili() {
+  function tuttoIlMateriale() {
     var lista = [];
     CLIP.forEach(function (c) { lista.push({ t:"clip", o:c }); });
     if (REG && REG.integrale === "pronto") lista.push({ t:"integrale", o:REG });
     if (SEQ) lista.push({ t:"hl", o:SEQ });
-    return lista.filter(function (a) {
-      if (VISTA === "tutto") return true;
-      if (VISTA === "9:16" || VISTA === "4:3") return a.t === "clip" && a.o.formato === VISTA;
-      return a.t === VISTA;
+    return lista;
+  }
+  // Il tipo e la forma si sommano: "clip" e "9:16" insieme vogliono dire le
+  // clip verticali, non due elenchi separati.
+  function assetVisibili() {
+    return tuttoIlMateriale().filter(function (a) {
+      if (VISTA !== "tutto" && a.t !== VISTA) return false;
+      if (FORMA) {
+        var f = a.t === "clip" ? a.o.formato : (a.t === "hl" && a.o.export ? a.o.export.formato : "16:9");
+        if (f !== FORMA) return false;
+      }
+      return true;
+    });
+  }
+  // quanti ce ne sono per ogni linguetta, con la forma scelta gia' applicata
+  function conteggi() {
+    var c = { tutto:0, clip:0, hl:0, integrale:0 };
+    tuttoIlMateriale().forEach(function (a) {
+      if (FORMA) {
+        var f = a.t === "clip" ? a.o.formato : (a.t === "hl" && a.o.export ? a.o.export.formato : "16:9");
+        if (f !== FORMA) return;
+      }
+      c.tutto++; c[a.t]++;
+    });
+    return c;
+  }
+  function segnaConteggi() {
+    var c = conteggi();
+    document.querySelectorAll("#linguette [data-v]").forEach(function (b) {
+      var k = b.dataset.v;
+      if (k === "live") return;
+      var n = c[k] || 0;
+      b.innerHTML = b.dataset.nome + (n ? " <span class='conta2'>" + n + "</span>" : "");
     });
   }
   function centroArchivio() {
@@ -733,11 +843,7 @@
         }
         tasto("vai", function () {
           // per guardarlo serve il visore: si passa alla vista live
-          VISTA = "live"; ASSET = 0;
-          document.querySelectorAll("#linguette button").forEach(function (b) {
-            b.className = (b.dataset.v === "live" ? "live acceso" : "");
-          });
-          disegna();
+          VISTA = "live"; ASSET = 0; accendiLinguette(); disegna();
           var giri = 0, attesa = setInterval(function () {
             var vv = el("player");
             if (++giri > 30) return clearInterval(attesa);
@@ -927,13 +1033,9 @@
   el("q").addEventListener("input", function () {
     var q = this.value.trim();
     clearTimeout(attesaCerca);
-    if (!q) { RIS = null; VISTA = vistaPrima; 
-      document.querySelectorAll("#linguette button").forEach(function (x) {
-        x.className = (x.dataset.v === "live" ? "live" : "") + (x.dataset.v === VISTA ? " acceso" : "");
-      });
-      disegna(); return; }
+    if (!q) { RIS = null; VISTA = vistaPrima; accendiLinguette(); disegna(); return; }
     if (VISTA !== "cerca") { vistaPrima = VISTA; VISTA = "cerca";
-      document.querySelectorAll("#linguette button").forEach(function (x) {
+      document.querySelectorAll("#linguette [data-v]").forEach(function (x) {
         x.className = (x.dataset.v === "live" ? "live" : "");
       });
       if (hls) { hls.destroy(); hls = null; apertaId = ""; }
@@ -988,19 +1090,36 @@
     // la linguetta LIVE si accende da sola quando qualcosa sta girando
     var b = document.querySelector('#linguette [data-v="live"]');
     if (b) b.innerHTML = (aperte.length ? "<span class='pallino'></span>" : "") + "Live";
+    segnaConteggi();
   }
 
-  document.querySelectorAll("#linguette button").forEach(function (b) {
+  document.querySelectorAll("#linguette [data-v]").forEach(function (b) {
+    b.dataset.nome = b.textContent;
     b.addEventListener("click", function () {
       VISTA = b.dataset.v; ASSET = 0;
-      document.querySelectorAll("#linguette button").forEach(function (x) {
-        x.className = (x.dataset.v === "live" ? "live" : "");
-      });
-      b.className = (VISTA === "live" ? "live acceso" : "acceso");
+      accendiLinguette();
       if (VISTA !== "live" && hls) { hls.destroy(); hls = null; apertaId = ""; }
       disegna();
     });
   });
+  document.querySelectorAll("#linguette [data-forma]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      FORMA = b.dataset.forma; ASSET = 0;
+      // scegliere una forma mentre si e' sul live vuol dire voler vedere
+      // quel materiale: si passa a "tutto" invece di non far succedere niente
+      if (VISTA === "live" || VISTA === "cerca") VISTA = "tutto";
+      accendiLinguette();
+      disegna();
+    });
+  });
+  function accendiLinguette() {
+    document.querySelectorAll("#linguette [data-v]").forEach(function (x) {
+      x.className = (x.dataset.v === "live" ? "live" : "") + (x.dataset.v === VISTA ? " acceso" : "");
+    });
+    document.querySelectorAll("#linguette [data-forma]").forEach(function (x) {
+      x.className = (x.dataset.forma === FORMA ? "acceso" : "");
+    });
+  }
 
   document.addEventListener("keydown", function (e) {
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
