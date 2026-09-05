@@ -240,6 +240,9 @@ body.editing .stagewrap{padding:16px 16px 30px}
 #textBar{background:rgba(201,162,75,.07);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
 #textBar select{width:auto;min-width:104px;font-size:12px;padding:4px 8px}
 .tbtn{background:transparent;border:1px solid var(--line);color:var(--fg2);border-radius:6px;font:inherit;font-size:12px;line-height:1;padding:5px 9px;cursor:pointer;transition:all .12s}
+/* I due tasti della selezione fanno la stessa cosa ai due capi: se hanno
+   misure diverse sembrano due comandi diversi. Stessa larghezza. */
+.vtrim .tbtn{min-width:92px;text-align:center}
 .tbtn:hover{border-color:var(--gold);color:var(--ivory)}
 .tbtn.on{background:linear-gradient(160deg,var(--goldB),var(--gold));color:var(--n900);border-color:transparent;font-weight:800}
 .sw{width:19px;height:19px;border-radius:50%;border:2px solid rgba(245,241,230,.22);cursor:pointer;padding:0}
@@ -2208,6 +2211,16 @@ function enterVideoPick(file){
  be.disabled=!FORMATI_VIDEO[current];
  be.title=FORMATI_VIDEO[current]?'Esporta la selezione come clip'
    :'Disponibile sui formati social video (story-video)';
+ // Un tasto spento senza spiegazione e' un tasto rotto: il perche' va
+ // scritto accanto, non nascosto in un suggerimento che nessuno sfiora.
+ (function(){
+  var nota=document.getElementById('vidPerche');
+  if(!nota){nota=document.createElement('span');nota.id='vidPerche';
+   nota.style.cssText='font-size:11px;color:var(--fg2);opacity:.85';
+   be.parentNode.insertBefore(nota,be.nextSibling);}
+  nota.textContent=FORMATI_VIDEO[current]?''
+   :'— per esportare il video scegli un formato story/feed verticale; qui puoi prendere un fotogramma';
+ })();
  rimisura();renderStage();
 }
 function exitVideoPick(){
@@ -3777,8 +3790,29 @@ loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
     }, 500);
   }
 
+  // L'export video vale solo sui formati verticali con la maschera: se la
+  // clip arriva dal MAM e resta selezionato un formato qualsiasi, il tasto
+  // "Esporta video" e' spento e sembra rotto. Quindi si sceglie subito un
+  // formato che sa farlo, e chi vuole un fotogramma cambia formato dopo.
+  function formatoDaVideo() {
+    if (typeof FORMATI_VIDEO !== 'object' || typeof BYKEY !== 'object') return "";
+    var voluti = ['story_video_1080x1920', 'feed_maschera_1080x1920', 'story_video_1080x1920-live'];
+    for (var i = 0; i < voluti.length; i++) if (BYKEY[voluti[i]]) return voluti[i];
+    return "";
+  }
+
   function apri() {
     if (typeof enterVideoPick !== 'function') return setTimeout(apri, 200);
+    var k = formatoDaVideo();
+    if (k && typeof current !== 'undefined' && !FORMATI_VIDEO[current]) {
+      try {
+        current = k;
+        var selF = document.getElementById('fmtSel'); if (selF) selF.value = k;
+        if (typeof apriGruppoCorrente === 'function') apriGruppoCorrente();
+        if (typeof renderControls === 'function') renderControls();
+        if (typeof renderThumbs === 'function') renderThumbs();
+      } catch (e) {}
+    }
     enterVideoPick(clip);
     var t = q.get('titolo');
     if (t) {
