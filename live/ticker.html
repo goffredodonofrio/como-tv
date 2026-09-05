@@ -159,8 +159,16 @@
   .aprow:last-child{margin-bottom:0;}
   .apedit .aprow + .aprow{margin-bottom:9px;}
   .apedit input{font-size:12.5px;padding:6px 7px;}
-  .loclab{font-size:12.5px;line-height:1.55;color:var(--fg-3);
-    background:var(--bg-1);border:1px solid var(--line-2);border-radius:8px;padding:9px 11px;}
+  .locbox{background:var(--bg-1);border:1px solid var(--line-2);border-radius:8px;padding:9px 10px;}
+  .locsel{width:100%;font-size:12.5px;padding:7px 8px;margin-bottom:8px;}
+  .locriga{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
+  .locet{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-3);
+    flex:0 0 82px;}
+  .locriga input{flex:1;min-width:0;font-size:12.5px;padding:6px 8px;}
+  .locdue{display:flex;gap:8px;}
+  .locdue .locriga{flex:1;margin-bottom:0;}
+  .locdue .locet{flex:0 0 auto;}
+  .locsug{margin-top:8px;font-size:12px;line-height:1.5;color:var(--fg-3);}
   .apgg{flex:0 0 42px;text-align:center;}
   .apmm{flex:0 0 58px;text-align:center;text-transform:uppercase;}
   .apchi{flex:1;min-width:0;}
@@ -424,11 +432,13 @@
   //    scarti della foto (ox, oy) sono in frazioni del riquadro: cosi'
   //    valgono uguali sia qui che sulla foto vera da 420x560.
   var MAX_CONT = 4, W_OUT = 420, H_OUT = 560;
-  function nuovoContenuto(){ return { tipo:"notizia", e:"", t:"", x:"", foto:null, stemma:"", ap:null, apf:"s" }; }
+  function nuovoContenuto(){ return { tipo:"notizia", e:"", t:"", x:"", foto:null, stemma:"",
+                                      ap:null, apf:"s", loc:null }; }
+  function nuovaLocandina(){ return { comp:"", casa:"", ospite:"", data:"", ora:"" }; }
   var CONT = [];
   for (var k = 0; k < MAX_CONT; k++) CONT.push(nuovoContenuto());
   function pieno(c){
-    if (c.tipo === "locandina") return !!(c.foto && c.foto.img);
+    if (c.tipo === "locandina") return !!(c.loc && (c.loc.casa || "").trim());
     if (c.tipo === "appuntamenti") return apPieni(c).length > 0 || !!(c.foto && c.foto.img);
     return !!((c.t || "").trim() || (c.foto && c.foto.img));
   }
@@ -438,6 +448,48 @@
     return (c.ap || []).filter(function (r) { return (r.chi || "").trim(); });
   }
   function quantiPieni(){ return CONT.filter(pieno).length; }
+
+  // ── le partite, per la locandina ─────────────────────────────────────
+  // Stesso elenco che usa il pannello Premiere: arriva dal ponte, che legge
+  // Airtable con la chiave sua. Qui non c'e' nessuna chiave e non ci deve
+  // essere: la pagina chiede "le partite" e basta.
+  var PARTITE = null;
+  function partite(poi) {
+    if (PARTITE) { poi(PARTITE); return; }
+    fetch(PONTE_DEFAULT.url + "?partite=1", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        PARTITE = (j.eventi || []).filter(function (e) { return !e.programma; });
+        poi(PARTITE);
+      })
+      .catch(function () { PARTITE = []; poi(PARTITE); });
+  }
+
+  var MESI = ["GEN","FEB","MAR","APR","MAG","GIU","LUG","AGO","SET","OTT","NOV","DIC"];
+  function dallaPartita(e) {
+    var d = new Date(e.quando);
+    return {
+      comp: e.competizione || "",
+      casa: e.casa || "", ospite: e.ospite || "",
+      data: isNaN(d) ? "" : d.getDate() + " " + MESI[d.getMonth()],
+      ora: isNaN(d) ? "" : ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2)
+    };
+  }
+
+  // L'indirizzo della locandina E' la locandina: il ponte la disegna quando
+  // qualcuno la chiede. Non si genera un file da caricare — cosi' se si
+  // corregge un nome, la grafica in onda cambia senza rifare niente.
+  function urlLocandina(c) {
+    var L = c.loc || {}, q = [];
+    function agg(k, v) { if (String(v || "").trim()) q.push(k + "=" + encodeURIComponent(v)); }
+    agg("comp", L.comp); agg("casa", L.casa); agg("ospite", L.ospite);
+    agg("data", L.data); agg("ora", L.ora);
+    // Al ponte serve il NOME del file nel magazzino, non un indirizzo: e'
+    // lui che se lo va a leggere dal disco per metterlo dentro il disegno.
+    var foto = c.foto && c.foto.url ? String(c.foto.url).split("?")[0].split("/").pop() : "";
+    agg("foto", foto);
+    return PONTE_DEFAULT.url + "?locandina=1&" + q.join("&");
+  }
 
   // ── notizia o appuntamenti ───────────────────────────────────────────
   // Prima questa scheda andava a pescare gli appuntamenti gia' composti nel
@@ -453,13 +505,46 @@
     var c = CONT[i];
     if (c.tipo === t) return;
     c.tipo = t;
-    if (t === "locandina") { c.apf = "s"; }
+    if (t === "locandina") {
+      c.apf = "s";
+      if (!c.loc) c.loc = nuovaLocandina();
+      // le partite si chiedono solo quando servono davvero
+      partite(function () { renderCont(); });
+    }
     if (t === "appuntamenti" && (!c.ap || !c.ap.length)) {
       c.ap = [nuovaRiga(), nuovaRiga(), nuovaRiga(), nuovaRiga()];
       if (!(c.t || "").trim()) c.t = "Prossimi appuntamenti";
       if (!(c.e || "").trim()) c.e = "Como TV";
     }
     renderCont(); anteprima();
+  }
+
+  // La locandina la disegna il ponte nel formato della colonna. Qui si
+  // sceglie la partita e si controllano i campi: sono gia' pieni, ma un
+  // nome lungo o una competizione scritta male si correggono a mano —
+  // in onda va quello che c'e' scritto qui, non quello che dice Airtable.
+  function locandinaHTML(c, i) {
+    var L = c.loc || nuovaLocandina();
+    function campo(k, et, ph) {
+      return '<div class="locriga"><span class="locet">' + et + '</span>' +
+        '<input type="text" class="ccampo" data-loc="' + i + '" data-lock="' + k + '" ' +
+        'placeholder="' + ph + '" value="' + esc(L[k] || "") + '"></div>';
+    }
+    return '<div class="locbox">' +
+        '<div class="locet" style="margin-bottom:5px">Scegli la partita</div>' +
+        '<select class="locsel" data-locsel="' + i + '"><option value="">' +
+          (PARTITE === null ? "Carico\u2026" : "\u2014 scegli \u2014") + '</option>' +
+          (PARTITE || []).map(function (e, n) {
+            return '<option value="' + n + '">' + esc(e.etichetta) + "</option>";
+          }).join("") +
+        '</select>' +
+        campo("casa", "Casa", "Ajax") +
+        campo("ospite", "Ospite", "PSV") +
+        campo("comp", "Competizione", "Eredivisie \u00b7 giornata 5") +
+        '<div class="locdue">' + campo("data", "Data", "5 SET") + campo("ora", "Ora", "20:00") + '</div>' +
+        '<div class="locsug">La foto qui sopra diventa lo sfondo. Il resto lo disegna ' +
+        'il ponte, gi&agrave; nella forma della colonna.</div>' +
+      '</div>';
   }
 
   function righeApHTML(c, i) {
@@ -524,8 +609,7 @@
       '<div><span class="cclab">Titolo</span>'+
         '<input type="text" class="ccampo" data-campo="t" data-i="'+i+'" placeholder="es. Nico Paz trascina il Como" value="'+esc(c.t||"")+'"></div>')+
       (c.tipo === "locandina"
-        ? '<div class="loclab">La locandina &egrave; gi&agrave; una grafica finita: va in onda cos&igrave;&rsquo;com&rsquo;&egrave;, '+
-          'senza occhiello, titolo n&eacute; testo. Basta caricarla qui sopra.</div>'
+        ? locandinaHTML(c, i)
         : c.tipo === "appuntamenti"
         ? '<div><span class="cclab">Appuntamenti</span>' + righeApHTML(c, i) + '</div>'
         : '<div><span class="cclab">Testo</span>'+
@@ -619,6 +703,18 @@
     if (t.dataset.zoom != null) {
       var f = CONT[+t.dataset.zoom].foto;
       if (f) { f.z = t.value / 100; f.sporca = true; disegna(+t.dataset.zoom); anteprima(); }
+      return;
+    }
+    if (t.dataset.locsel != null) {
+      var ci = +t.dataset.locsel, ev = (PARTITE || [])[+t.value];
+      if (ev) { CONT[ci].loc = dallaPartita(ev); renderCont(); anteprima(); }
+      return;
+    }
+    if (t.dataset.loc != null) {
+      var cl = CONT[+t.dataset.loc];
+      if (!cl.loc) cl.loc = nuovaLocandina();
+      cl.loc[t.dataset.lock] = t.value;
+      aggiornaStato(); anteprima();
       return;
     }
     if (t.dataset.ap != null) {
@@ -794,7 +890,10 @@
       if (perAnteprima && c.foto && c.foto.img && c.foto.sporca) o.f = fotoCotta(c.foto);
       // gli appuntamenti viaggiano col cartello, come tutto il resto: in
       // onda la colonna non deve andare a cercarsi niente
-      if (c.tipo === "locandina") { o.loc = 1; o.e = ""; o.t = ""; o.x = ""; }
+      if (c.tipo === "locandina") {
+        o.loc = 1; o.e = ""; o.t = ""; o.x = "";
+        o.f = urlLocandina(c);      // il disegno lo fa il ponte, al volo
+      }
       if (c.tipo === "appuntamenti") {
         o.apf = c.apf || "s";
         o.ap = apPieni(c).map(function (r) {

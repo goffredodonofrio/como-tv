@@ -1336,9 +1336,9 @@ function svgTitolo(p) {
   return svg;
 }
 
-function pngDelTitolo(p) {
+// Un disegnatore solo per tutti: gli SVG cambiano, rsvg-convert no.
+function pngDaSvg(svg) {
   return new Promise((ok, no) => {
-    const svg = svgTitolo(p);
     const cp = require("child_process").spawn("rsvg-convert", ["-f", "png"]);
     const pezzi = [], errori = [];
     cp.stdout.on("data", (d) => pezzi.push(d));
@@ -1350,6 +1350,133 @@ function pngDelTitolo(p) {
     });
     cp.stdin.end(svg);
   });
+}
+
+function pngDelTitolo(p) { return pngDaSvg(svgTitolo(p)); }
+
+// ══════════════════════════════════════════════════════════════════════
+//  LA LOCANDINA DELLA COLONNA
+// ══════════════════════════════════════════════════════════════════════
+//
+//  La colonna del ticker e' 420x1080: quasi tre volte piu' alta che larga.
+//  Una locandina fatta per i social e' 2:3, e li' dentro o si rimpicciolisce
+//  lasciando meta' colonna vuota, o si taglia perdendo i nomi delle squadre.
+//  Provate tutte e due: si vede che sono sbagliate.
+//
+//  Quindi la locandina della colonna si DISEGNA nel formato della colonna.
+//  Non e' la stessa cosa di scrivere sopra una locandina finita — quello lo
+//  avevo fatto ed era il testo di qualcun altro coperto dal nostro. Qui il
+//  testo e' parte del disegno, e il disegno e' fatto per questo spazio.
+//
+//  Si disegna al doppio, 840x2160, perche' in onda la colonna e' scalata e
+//  un PNG alla misura esatta si vede sgranato sui bordi delle lettere.
+
+// Dentro un SVG cinque caratteri vanno protetti, se no un nome con la
+// "&" spacca il disegno. C'era quando il titolo lo componevamo a mano, ed
+// e' andata via col resto: qui serve ancora.
+function xmlSicuro(t) {
+  return String(t == null ? "" : t)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+
+const LOC = { W: 840, H: 2160, m: 62 };
+
+// Quanto e' larga una riga: rsvg non lo dice, quindi si stima. Per un
+// bastone grasso in maiuscolo il carattere medio sta attorno al 58% del
+// corpo. Stima, non misura — per questo il margine e' generoso: meglio un
+// nome un filo piu' piccolo che uno che esce dall'inquadratura.
+//
+// Questa funzione c'era gia' quando il titolo lo disegnavamo a mano; e' andata
+// via quando il titolo e' passato al motore del generatore. Qui serve ancora,
+// perche' la locandina della colonna la disegniamo noi.
+function corpoCheCiSta(testo, corpo, larghezza) {
+  let c = corpo;
+  while (c > corpo * 0.5 && String(testo).length * c * 0.58 > larghezza) c -= 2;
+  return c;
+}
+
+// Le foto stanno nel magazzino della macchina: si prendono da li' e si
+// mettono DENTRO l'svg, perche' rsvg non va a prendersi niente in rete.
+function dentroLoSvg(nomeFile) {
+  if (!nomeFile) return "";
+  const pulito = String(nomeFile).replace(/^.*[\\/]/, "");   // mai fuori dalla cartella
+  if (!/^[A-Za-z0-9._ -]+$/.test(pulito)) return "";
+  try {
+    const via = path.join(CONFIG.LOGHI, pulito);
+    const b = fs.readFileSync(via);
+    const tipo = /\.png$/i.test(pulito) ? "image/png"
+               : /\.webp$/i.test(pulito) ? "image/webp" : "image/jpeg";
+    return "data:" + tipo + ";base64," + b.toString("base64");
+  } catch (e) { return ""; }
+}
+
+function svgLocandina(p) {
+  const W = LOC.W, H = LOC.H, m = LOC.m, utile = W - m * 2;
+  const foto = dentroLoSvg(p.foto);
+  const marchio = dentroLoSvg("como-tv-logo.png");
+
+  // Costruita dal BASSO: cosi' un nome corto e uno lungo finiscono appoggiati
+  // alla stessa riga, invece di galleggiare a altezze diverse.
+  const yMarchio = H - 150;          // il marchio, in fondo
+  const yFilo    = yMarchio - 78;
+  const yQuando  = yFilo - 54;
+  const yOspite  = yQuando - 122;
+  const yCasa    = yOspite - 116;
+  const yComp    = yCasa - 118;
+  const finFoto  = yComp - 150;      // dove la foto smette di contare
+
+  const casa = comeTitolo(p.casa), ospite = comeTitolo(p.ospite);
+  // Un corpo solo per tutt'e due: due misure diverse non sono una sfida.
+  let corpo = 104;
+  [casa, ospite].forEach((t) => { corpo = Math.min(corpo, corpoCheCiSta(t, 104, utile - 90)); });
+
+  const quando = [p.data, p.ora].filter(Boolean);
+
+  return '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" ' +
+    'width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
+    "<defs>" +
+      '<linearGradient id="giu" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0" stop-color="#0A0F24" stop-opacity="0.10"/>' +
+        '<stop offset="0.34" stop-color="#0A0F24" stop-opacity="0.22"/>' +
+        '<stop offset="0.72" stop-color="#0F1533" stop-opacity="0.88"/>' +
+        '<stop offset="1" stop-color="#0A0F24"/></linearGradient>' +
+      '<linearGradient id="filo" x1="0" y1="0" x2="1" y2="0">' +
+        '<stop offset="0" stop-color="#C9A24B" stop-opacity="0"/>' +
+        '<stop offset="0.2" stop-color="#C9A24B"/>' +
+        '<stop offset="0.8" stop-color="#C9A24B"/>' +
+        '<stop offset="1" stop-color="#C9A24B" stop-opacity="0"/></linearGradient>' +
+      "<style>" +
+        ".sq{font-family:'Mazzard M ExtraBold','Mazzard M',sans-serif;font-weight:800;" +
+        "letter-spacing:-1px}" +
+        ".vs{font-family:'Mazzard M',sans-serif;font-weight:700;font-style:italic;" +
+        "font-size:44px;fill:#C9A24B}" +
+        ".cp{font-family:'Mazzard M',sans-serif;font-weight:700;font-size:30px;" +
+        "fill:#C9A24B;letter-spacing:9px}" +
+        ".qd{font-family:'Mazzard M ExtraBold','Mazzard M',sans-serif;font-weight:800;" +
+        "font-size:54px;fill:#F5F1E6;letter-spacing:2px}" +
+        ".or{fill:#C9A24B}" +
+      "</style>" +
+    "</defs>" +
+    // il fondo della colonna, lo stesso della barra
+    '<rect width="' + W + '" height="' + H + '" fill="#0E1430"/>' +
+    (foto ? '<image xlink:href="' + foto + '" x="0" y="0" width="' + W + '" height="' + finFoto +
+            '" preserveAspectRatio="xMidYMid slice"/>' : "") +
+    '<rect width="' + W + '" height="' + H + '" fill="url(#giu)"/>' +
+    (p.comp ? '<text x="' + m + '" y="' + yComp + '" class="cp">' +
+              xmlSicuro(String(p.comp).toUpperCase()) + "</text>" : "") +
+    '<text x="' + m + '" y="' + yCasa + '" class="sq" style="font-size:' + corpo + 'px" fill="#F5F1E6">' +
+      xmlSicuro(casa) + (ospite ? ' <tspan class="vs">vs</tspan>' : "") + "</text>" +
+    (ospite ? '<text x="' + m + '" y="' + yOspite + '" class="sq" style="font-size:' + corpo +
+              'px" fill="#C9A24B">' + xmlSicuro(ospite) + "</text>" : "") +
+    (quando.length ? '<text x="' + m + '" y="' + yQuando + '" class="qd">' +
+       xmlSicuro(String(p.data || "").toUpperCase()) +
+       (p.ora ? ' <tspan class="or">\u00b7 ' + xmlSicuro(p.ora) + "</tspan>" : "") + "</text>" : "") +
+    '<rect x="' + m + '" y="' + yFilo + '" width="' + utile + '" height="3" fill="url(#filo)"/>' +
+    (marchio ? '<image xlink:href="' + marchio + '" x="' + (W / 2 - 46) + '" y="' + yMarchio +
+               '" width="92" height="156" preserveAspectRatio="xMidYMid meet"/>' : "") +
+    "</svg>";
 }
 
 // ── che cosa c'e' in una cartella di Drive ─────────────────────────────
@@ -1697,6 +1824,24 @@ const server = http.createServer((req, res) => {
                              "Cache-Control": "no-store" });
         res.end(buf);
       }).catch((e) => json(res, { ok: false, errore: e.message }));
+    }
+    // La locandina della colonna, disegnata qui e non ritagliata altrove.
+    if (q.get("locandina") !== null) {
+      // Il disegno si costruisce DENTRO la promessa. Fuori, un errore nel
+      // comporre l'svg esce dalla catena, nessuno lo raccoglie e Node chiude
+      // il processo: e' successo, e il ponte e' caduto per una funzione che
+      // mancava. Una grafica sbagliata non deve poter spegnere la regia.
+      return Promise.resolve()
+        .then(() => svgLocandina({
+          comp: q.get("comp") || "", casa: q.get("casa") || "", ospite: q.get("ospite") || "",
+          data: q.get("data") || "", ora: q.get("ora") || "", foto: q.get("foto") || ""
+        }))
+        .then(pngDaSvg)
+        .then((buf) => {
+          res.writeHead(200, { "Content-Type": "image/png", "Content-Length": buf.length,
+                               "Cache-Control": "no-store" });
+          res.end(buf);
+        }).catch((e) => json(res, { ok: false, errore: e.message }));
     }
     if (q.get("partite")) {
       return airtableEventi()
