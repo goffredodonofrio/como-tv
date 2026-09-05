@@ -28,6 +28,7 @@ const path = require("path");
 const https = require("https");
 const { spawn, execFile } = require("child_process");
 const dgram = require("dgram");
+const crypto = require("crypto");
 
 const ATTIVO = process.env.COMOTV_CLIP === "1";
 
@@ -1821,6 +1822,114 @@ async function clipSorgenti() {
 
 
 // ══════════════════════════════════════════════════════════════════════
+//  L'ARCHIVIO DELLE PARTITE INTERE (S3)
+// ══════════════════════════════════════════════════════════════════════
+//
+//  Le partite intere stanno in un bucket S3, caricate a mano con Cyberduck.
+//  Il MAM non le copia: S3 parla HTTP e capisce le richieste per intervallo
+//  di byte, quindi per tagliare venti secondi da una partita di sette giga
+//  si scaricano poche decine di mega. L'archivio resta dov'e'; qui dentro
+//  arriva solo l'indice — e i pezzi che servono, quando servono.
+//
+//  Le chiavi non stanno ne' qui ne' nel repo: le legge dall'ambiente, da un
+//  file solo-root. Se non ci sono, tutta questa parte semplicemente non c'e'.
+
+const S3 = {
+  bucket: process.env.COMOTV_S3_BUCKET || "",
+  id: process.env.COMOTV_S3_ID || "",
+  segreto: process.env.COMOTV_S3_SEGRETO || "",
+  regione: process.env.COMOTV_S3_REGIONE || ""     // se manca, si chiede al bucket
+};
+function s3Acceso() { return !!(S3.bucket && S3.id && S3.segreto); }
+
+// L'unica codifica che AWS accetta nella firma: encodeURIComponent lascia
+// stare cinque caratteri che invece vanno codificati.
+function uriAws(x) {
+  return encodeURIComponent(x).replace(/[!'()*]/g,
+    (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+}
+function uriChiave(k) { return String(k).split("/").map(uriAws).join("/"); }
+function sha256(x) { return crypto.createHash("sha256").update(x).digest("hex"); }
+function hmac(k, x) { return crypto.createHmac("sha256", k).update(x).digest(); }
+
+// In quale regione sta il bucket. Non si indovina: si bussa alla porta e lo
+// dice lui in un'intestazione, anche quando risponde di no.
+let regioneVista = "";
+async function s3Regione() {
+  if (S3.regione) return S3.regione;
+  if (regioneVista) return regioneVista;
+  const r = await fetch("https://" + S3.bucket + ".s3.amazonaws.com/",
+                        { method: "HEAD", signal: AbortSignal.timeout(15000) });
+  regioneVista = r.headers.get("x-amz-bucket-region") || "us-east-1";
+  return regioneVista;
+}
+
+// Un indirizzo firmato che vale per un po'. Serve a tutto: a ffmpeg per
+// tagliare, al browser per guardare, a noi per elencare.
+async function s3Firma(chiave, cerca, quanto) {
+  const regione = await s3Regione();
+  const host = S3.bucket + ".s3." + regione + ".amazonaws.com";
+  const ora = new Date().toISOString().replace(/[-:]|\.\d{3}/g, "");
+  const giorno = ora.slice(0, 8);
+  const ambito = giorno + "/" + regione + "/s3/aws4_request";
+
+  const q = Object.assign({}, cerca || {}, {
+    "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+    "X-Amz-Credential": S3.id + "/" + ambito,
+    "X-Amz-Date": ora,
+    "X-Amz-Expires": String(quanto || 3600),
+    "X-Amz-SignedHeaders": "host"
+  });
+  const query = Object.keys(q).sort()
+    .map((k) => uriAws(k) + "=" + uriAws(q[k])).join("&");
+  const via = "/" + (chiave ? uriChiave(chiave) : "");
+
+  const richiesta = ["GET", via, query, "host:" + host, "", "host", "UNSIGNED-PAYLOAD"].join("\n");
+  const daFirmare = ["AWS4-HMAC-SHA256", ora, ambito, sha256(richiesta)].join("\n");
+  let k = hmac("AWS4" + S3.segreto, giorno);
+  k = hmac(k, regione); k = hmac(k, "s3"); k = hmac(k, "aws4_request");
+  const firma = crypto.createHmac("sha256", k).update(daFirmare).digest("hex");
+
+  return "https://" + host + via + "?" + query + "&X-Amz-Signature=" + firma;
+}
+
+function fraTag(xml, tag) {
+  const dentro = [], re = new RegExp("<" + tag + ">([\\s\\S]*?)</" + tag + ">", "g");
+  let m; while ((m = re.exec(xml))) dentro.push(m[1]);
+  return dentro;
+}
+
+// Una pagina dell'elenco. S3 ne da' mille per volta e dice dove riprendere.
+async function s3Pagina(prefisso, ripresa) {
+  const cerca = { "list-type": "2", "max-keys": "1000" };
+  if (prefisso) cerca.prefix = prefisso;
+  if (ripresa) cerca["continuation-token"] = ripresa;
+  const url = await s3Firma("", cerca, 300);
+  const r = await fetch(url, { signal: AbortSignal.timeout(30000) });
+  const xml = await r.text();
+  if (!r.ok) {
+    const m = /<Message>([\s\S]*?)<\/Message>/.exec(xml);
+    throw new Error("S3 ha detto no (" + r.status + "): " + (m ? m[1] : xml.slice(0, 200)));
+  }
+  const oggetti = fraTag(xml, "Contents").map((c) => ({
+    chiave: (fraTag(c, "Key")[0] || "").replace(/&amp;/g, "&"),
+    peso: +(fraTag(c, "Size")[0] || 0),
+    quando: fraTag(c, "LastModified")[0] || ""
+  })).filter((o) => o.peso > 0);
+  return { oggetti: oggetti,
+           ancora: (fraTag(xml, "IsTruncated")[0] === "true") ? fraTag(xml, "NextContinuationToken")[0] : "" };
+}
+
+async function s3Tutto(prefisso, tetto) {
+  const fuori = []; let ripresa = "", giri = 0;
+  do {
+    const p = await s3Pagina(prefisso, ripresa);
+    fuori.push(...p.oggetti); ripresa = p.ancora;
+  } while (ripresa && ++giri < 60 && fuori.length < (tetto || 20000));
+  return fuori;
+}
+
+// ══════════════════════════════════════════════════════════════════════
 //  L'ARCHIVIO DEGLI APPUNTI
 // ══════════════════════════════════════════════════════════════════════
 //
@@ -2518,6 +2627,17 @@ const AZIONI = {
   "clip-elimina": clipElimina,
   "clip-sorgenti": clipSorgenti,
   "clip-cerca": clipCerca,
+  "clip-archivio-stato": async () => {
+    if (!s3Acceso()) return { ok: true, acceso: false };
+    return { ok: true, acceso: true, bucket: S3.bucket, regione: await s3Regione() };
+  },
+  "clip-archivio-elenca": async (p) => {
+    if (!s3Acceso()) return { ok: false, errore: "l'archivio S3 non e' configurato" };
+    const pg = await s3Pagina(p.prefisso || "", p.ripresa || "");
+    const quante = num(p.quante, 1, 1000, 40);
+    return { ok: true, quanti: pg.oggetti.length, ancora: !!pg.ancora,
+             ripresa: pg.ancora, oggetti: pg.oggetti.slice(0, quante) };
+  },
   "clip-appunti-importa": appuntiImporta,
   "clip-appunti-partita": (p) => {
     const a = APPUNTI[String(p.rec || "")];
