@@ -227,6 +227,32 @@
   .capo a:hover{color:var(--inchiostro);}
   /* la riga per segnare, sotto il taglio */
   .segnafila{display:flex;gap:var(--s1);align-items:center;margin-top:var(--s2);}
+
+  /* la sequenza che si sta montando */
+  .sequenza{margin-top:var(--s2);border:1px solid var(--linea);border-radius:9px;
+    background:var(--carta-2);padding:var(--s2);box-shadow:var(--ombra);}
+  .sequenza.pronta{border-color:var(--linea-oro);}
+  .sequenza.sopra{border-color:var(--gold-deep);background:rgba(201,162,75,.12);}
+  .sequenza .cima{display:flex;align-items:center;gap:var(--s2);margin-bottom:var(--s1);}
+  .sequenza .cima .et{margin:0;}
+  .sequenza .cima button.b{height:28px;font-size:9px;padding:0 9px;}
+  .sequenza .pezzi{display:flex;gap:var(--s1);overflow-x:auto;min-height:52px;align-items:stretch;}
+  .pezzo{flex:0 0 132px;border:1px solid var(--linea);border-radius:7px;background:var(--bianco);
+    padding:5px 7px;cursor:grab;position:relative;display:flex;flex-direction:column;justify-content:center;}
+  .pezzo:hover{border-color:var(--linea-oro);}
+  .pezzo.trascino{opacity:.4;}
+  .pezzo .n{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:800;color:var(--gold-deep);
+    letter-spacing:.1em;}
+  .pezzo .tt{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pezzo .dd{font-size:10px;color:var(--inchiostro-3);}
+  .pezzo .via{position:absolute;top:2px;right:5px;color:var(--inchiostro-3);text-decoration:none;
+    font-size:13px;line-height:1;}
+  .pezzo .via:hover{color:var(--red);}
+  .sequenza .invito{color:var(--inchiostro-3);font-size:12px;display:flex;align-items:center;
+    justify-content:center;width:100%;border:1px dashed var(--linea-oro);border-radius:7px;}
+  /* mentre si trascina, la striscia si fa vedere anche se e' vuota */
+  body.trascinando .sequenza[hidden]{display:block!important;}
+  .scheda[draggable]{cursor:grab;}
   .segnafila input{flex:1 1 auto;}
   .scheda-sotto{margin-top:var(--s4);}
   .scheda-sotto .dati td:first-child{width:46%;font-size:11px;}
@@ -267,13 +293,14 @@
   .console button.b.oro{background:var(--gold);border-color:var(--gold);color:var(--scuro);}
   .console button.b.rosso{background:var(--red);border-color:var(--red);color:#fff;}
   .console button.b.acceso{background:var(--carta);color:var(--scuro);border-color:var(--carta);}
-  .console .riga-stato{display:flex;align-items:center;gap:10px;margin-top:13px;padding-top:12px;
-    border-top:1px solid rgba(245,241,230,.14);font-family:'Mazzard',sans-serif;font-size:13px;
-    font-weight:800;letter-spacing:.1em;text-transform:uppercase;}
+  .console .riga-stato{display:flex;align-items:center;gap:var(--s1);margin-top:var(--s2);padding-top:var(--s2);
+    border-top:1px solid rgba(245,241,230,.14);font-family:'Mazzard',sans-serif;font-size:11px;
+    font-weight:800;letter-spacing:.08em;text-transform:uppercase;line-height:1.25;}
+  .console .riga-stato span:nth-child(2){min-width:0;overflow:hidden;text-overflow:ellipsis;}
   .console .dot{width:11px;height:11px;border-radius:50%;background:rgba(245,241,230,.35);flex:none;}
   .console .dot.rec{background:var(--red);box-shadow:0 0 10px rgba(229,27,32,.9);animation:batte 1.4s ease-in-out infinite;}
   .console .dot.ok{background:#4FCB8B;}
-  .console .coda{margin-left:auto;font-size:11px;letter-spacing:.14em;color:rgba(245,241,230,.6);}
+  .console .coda{margin-left:auto;font-size:10px;letter-spacing:.1em;color:rgba(245,241,230,.6);flex:none;}
   .indirizzo{margin-top:11px;background:rgba(201,162,75,.16);border:1px solid rgba(201,162,75,.4);
     border-radius:8px;padding:10px 12px;font-size:12px;word-break:break-all;}
   .indirizzo code{color:var(--gold-bright);}
@@ -597,10 +624,37 @@
         '<button class="b" data-kick="1">1º T</button>' +
         '<button class="b" data-kick="2">2º T</button>' +
         '<span class="aiuto" style="margin:0 0 0 auto"><kbd>I</kbd> <kbd>O</kbd> <kbd>T</kbd></span>' +
+      '</div>' +
+      // LA SEQUENZA IN LAVORAZIONE.
+      // Si monta trascinando: si prende una clip da destra e la si lascia
+      // cadere qui, nel punto in cui la si vuole. Non c'e' un comando
+      // "comincia a montare" — la sequenza nasce al primo pezzo lasciato
+      // cadere, perche' un comando in piu' da ricordare e' un comando che
+      // nessuno usa.
+      '<div class="sequenza" id="sequenza" hidden>' +
+        '<div class="cima"><span class="et">Sequenza</span>' +
+          '<span id="seqConto"></span>' +
+          '<span class="gruppo" style="margin-left:auto">' +
+            '<button class="b" id="seqMp4">Esporta MP4</button>' +
+            '<button class="b" id="seqXml">Per Premiere</button></span></div>' +
+        '<div class="pezzi" id="seqPezzi"></div>' +
       '</div>';
 
     telaioForma();
     el("capoTorna").addEventListener("click", function (e) { e.preventDefault(); tornaAlContenuto(); });
+    el("seqMp4").addEventListener("click", function () {
+      if (!SEQ) return;
+      manda({ tipo: "clip-hl-esporta", seq: SEQ.id, formato: formato })
+        .then(function () { dice("Esporto la sequenza in " + formato + "…", true); })
+        .catch(function (e) { dice(e.message); });
+    });
+    el("seqXml").addEventListener("click", function () {
+      if (!SEQ) return;
+      manda({ tipo: "clip-hl-esporta", seq: SEQ.id, come: "premiere" })
+        .then(function (d) { dice(d.premiere.integrale ? "XML pronto." :
+          "XML pronto, ma manca l’integrale: in Premiere andrà ricollegato.", true); aggiorna(); })
+        .catch(function (e) { dice(e.message); });
+    });
     el("btnMarker").addEventListener("click", function () {
       if (!REG) { dice("Prima scegli un contenuto."); return; }
       manda({ tipo:"clip-marker", reg:REG.id, secondi: el("player") ? el("player").currentTime : 0,
@@ -674,7 +728,8 @@
     // francobollo.
     var linguette = el("linguette");
     var sopra = (linguette ? linguette.offsetHeight + 14 : 0);
-    var sotto = 186;                        // barra, trasporto e riga del taglio
+    var seq = el("sequenza");
+    var sotto = 186 + ((seq && !seq.hidden) ? seq.offsetHeight + 10 : 0);
     var r = { "16:9": 16/9, "4:3": 4/3, "9:16": 9/16 }[formato] || 16/9;
     var alto = Math.max(170, col.clientHeight - sopra - sotto - 24);
     var largo = c.clientWidth;
@@ -684,6 +739,113 @@
     if (el("forma")) el("forma").textContent = formato;
   }
   window.addEventListener("resize", telaioForma);
+
+  // ── TRASCINARE ──────────────────────────────────────────────────
+  //
+  //  Una clip si prende da destra e si lascia cadere nella striscia: dove
+  //  la lasci, li' finisce. Dentro la striscia i pezzi si riordinano allo
+  //  stesso modo. Nessun comando "aggiungi": il gesto e' il comando.
+  var pezzoTrascinato = null;
+
+  function disegnaSequenza() {
+    var box = el("sequenza"); if (!box) return;
+    var pezzi = (SEQ && SEQ.pezzi) || [];
+    var eraNascosta = box.hidden;
+    box.hidden = !pezzi.length;
+    // Comparendo, la striscia si prende dello spazio: il visore deve
+    // restringersi, altrimenti la sequenza finisce sotto il bordo e sembra
+    // che il trascinamento non abbia fatto niente.
+    if (eraNascosta !== box.hidden) setTimeout(telaioForma, 0);
+    box.className = "sequenza" + (pezzi.length ? " pronta" : "");
+    var c = el("seqPezzi"); if (!c) return;
+    el("seqConto").textContent = pezzi.length
+      ? pezzi.length + " pezzi · " + orologio(pezzi.reduce(function (a, x) { return a + (x.fuori - x.dentro); }, 0))
+      : "";
+    c.innerHTML = "";
+    if (!pezzi.length) {
+      c.innerHTML = '<div class="invito">trascina qui una clip per cominciare a montare</div>';
+      return;
+    }
+    pezzi.forEach(function (x, i) {
+      var d = document.createElement("div");
+      d.className = "pezzo"; d.draggable = true; d.dataset.pezzo = x.id;
+      d.innerHTML = "<div class='n'>" + (i + 1) + "</div>" +
+        "<div class='tt' title='" + String(x.titolo).replace(/'/g, "") + "'>" + x.titolo + "</div>" +
+        "<div class='dd'>" + Math.round(x.fuori - x.dentro) + "s · " + orologio(x.dentro) + "</div>" +
+        "<a href='#' class='via' title='togli'>×</a>";
+      d.addEventListener("click", function (e) {
+        if (e.target.classList.contains("via")) return;
+        tornaAlContenuto();
+        var giri = 0, att = setInterval(function () {
+          var v = el("player");
+          if (++giri > 30) return clearInterval(att);
+          if (!v || !v.duration) return;
+          clearInterval(att); seguiLive = false; v.currentTime = x.dentro; v.play().catch(function () {});
+        }, 250);
+      });
+      d.querySelector(".via").addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        manda({ tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: x.id, togli: 1 })
+          .then(function (r) { SEQ = r.seq; disegnaSequenza(); destraMateriale(); })
+          .catch(function (er) { dice(er.message); });
+      });
+      d.addEventListener("dragstart", function (e) {
+        pezzoTrascinato = x.id; d.classList.add("trascino");
+        e.dataTransfer.effectAllowed = "move";
+        try { e.dataTransfer.setData("text/plain", "pezzo:" + x.id); } catch (er) {}
+      });
+      d.addEventListener("dragend", function () { pezzoTrascinato = null; d.classList.remove("trascino"); });
+      c.appendChild(d);
+    });
+  }
+
+  // in quale posizione cade quello che sto lasciando
+  function posizioneDiCaduta(x) {
+    var c = el("seqPezzi");
+    var figli = [].slice.call(c.querySelectorAll(".pezzo"));
+    for (var i = 0; i < figli.length; i++) {
+      var b = figli[i].getBoundingClientRect();
+      if (x < b.left + b.width / 2) return i;
+    }
+    return figli.length;
+  }
+
+  (function () {
+    var box = el("sequenza");
+    if (!box) return;
+    ["dragenter", "dragover"].forEach(function (t) {
+      box.addEventListener(t, function (e) {
+        e.preventDefault(); e.dataTransfer.dropEffect = "move";
+        box.classList.add("sopra");
+      });
+    });
+    box.addEventListener("dragleave", function () { box.classList.remove("sopra"); });
+    box.addEventListener("drop", function (e) {
+      e.preventDefault(); box.classList.remove("sopra");
+      var dove = posizioneDiCaduta(e.clientX);
+      var dati = "";
+      try { dati = e.dataTransfer.getData("text/plain") || ""; } catch (er) {}
+
+      if (pezzoTrascinato || dati.indexOf("pezzo:") === 0) {
+        // riordino: si rimette la lista nell'ordine nuovo
+        var id = pezzoTrascinato || dati.slice(6);
+        var ordine = SEQ.pezzi.map(function (x) { return x.id; }).filter(function (x) { return x !== id; });
+        ordine.splice(Math.min(dove, ordine.length), 0, id);
+        manda({ tipo: "clip-hl-ordina", seq: SEQ.id, ordine: ordine })
+          .then(function (r) { SEQ = r.seq; disegnaSequenza(); })
+          .catch(function (er) { dice(er.message); });
+        return;
+      }
+      if (dati.indexOf("clip:") === 0) {
+        manda({ tipo: "clip-hl-aggiungi", clip: dati.slice(5), seq: SEQ ? SEQ.id : "", dove: dove })
+          .then(function (r) {
+            SEQ = r.seq; disegnaSequenza(); destraMateriale();
+            dice(r.gia ? "Quella clip era già nella sequenza." : "Pezzo aggiunto.", !r.gia);
+          })
+          .catch(function (er) { dice(er.message); });
+      }
+    });
+  })();
 
   function mostraInOut() {
     if (!el("vIn")) return;
@@ -776,11 +938,15 @@
           '<select id="sorgente"><option value="">— scegli —</option><option value="__mano">indirizzo a mano…</option></select></div>' +
         '<div class="colonnina" id="rigaUrl" hidden>' +
           '<input type="text" id="url" placeholder="srt://…  ·  https://…m3u8"></div>' +
-        '<div class="gruppo pari">' +
+        // Tre tasti in fila non ci stanno in una colonna da 250 pixel:
+        // "Registra" usciva dal bordo. Registra e' quello che si preme
+        // davvero, quindi prende una riga sua e gli altri due si dividono
+        // quella sopra.
+        '<div class="gruppo pari" style="margin-bottom:var(--s1)">' +
           '<button class="b" id="btnGuarda">Guarda</button>' +
           '<button class="b" id="btnRicevi">Ricevi</button>' +
-          '<button class="b oro" id="btnRec">Registra</button>' +
         '</div>' +
+        '<button class="b oro" id="btnRec" style="width:100%">Registra</button>' +
         '<div id="ascolto"></div>' +
         '<div class="riga-stato"><span class="dot" id="cDot"></span><span id="cTesto">Nessuna registrazione</span>' +
           '<span class="coda" id="cCoda"></span></div>' +
@@ -1047,6 +1213,15 @@
         "<span class='fonte'>" + (a.t === "hl" ? "sequenza" : a.t === "integrale" ? "registrazione" : (a.o.tipo || "clip")) + "</span></div>" +
         "<div class='testo'><div class='nome'>" + nome + "</div><div class='sotto'>" +
         (a.t === "hl" ? (a.o.pezzi || []).length + " pezzi" : a.t) + "</div></div>";
+      if (a.t === "clip" && a.o.stato === "pronta") {
+        d.draggable = true;
+        d.addEventListener("dragstart", function (e) {
+          document.body.classList.add("trascinando");
+          e.dataTransfer.effectAllowed = "copy";
+          try { e.dataTransfer.setData("text/plain", "clip:" + a.o.id); } catch (er) {}
+        });
+        d.addEventListener("dragend", function () { document.body.classList.remove("trascinando"); });
+      }
       d.addEventListener("click", function () {
         ASSET = i;
         var suo = a.t === "clip" ? BASE + "/clip/_clip/" + a.o.id + ".mp4"
@@ -1349,7 +1524,7 @@
     firmaVecchia = "";                     // un gesto dell'utente ridisegna sempre
     albero(); consoleSinistra();
     if (!el("player")) centroLavoro();     // la finestra di lavorazione si costruisce una volta
-    disegnaConsole();
+    disegnaConsole(); disegnaSequenza();
     if (VISTA === "cerca") { disegnaRisultati(); return; }
     destraMateriale();
   }
@@ -1373,7 +1548,7 @@
       CLIP = (d.clip || []).filter(function (c) { return !REG || c.reg === REG.id; });
       barra();
       if (REG && el("player") && !guardando) apri(REG);
-      disegnaConsole(); capo();
+      disegnaConsole(); capo(); disegnaSequenza();
       if (VISTA === "cerca") { albero(); return; }      // sta cercando: non si tocca la lista
       if (cambiato()) destraMateriale();
       // Se non e' cambiato niente NON si ridisegna: rifare la griglia ogni

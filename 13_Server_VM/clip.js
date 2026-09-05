@@ -1129,6 +1129,43 @@ function hlPezzo(p) {
   return { ok: true, seq: q };
 }
 
+// Aggiungere un pezzo prendendolo da una clip gia' tagliata: e' il gesto
+// del trascinamento. Se una sequenza non c'e' ancora, nasce qui — perche'
+// "comincio a montare" non deve essere un comando in piu' da ricordare.
+function hlAggiungi(p) {
+  const c = R.clip[p.clip];
+  if (!c) throw new Error("clip sconosciuta");
+  let q = p.seq ? R.seq[p.seq] : null;
+  if (!q) {
+    q = Object.keys(R.seq).map((k) => R.seq[k])
+      .filter((x) => x.reg === c.reg).sort((a, b) => b.creata - a.creata)[0];
+  }
+  if (!q) {
+    const r = R.reg[c.reg];
+    q = {
+      id: nuovoId("s"), reg: c.reg,
+      titolo: "HL " + (r ? r.titolo : ""),
+      pezzi: [], pre: HL_PRE, post: HL_POST, scarto: 0, avvisi: [],
+      creata: Date.now(), chi: String(p.__chi || p.chi || "").slice(0, 40), export: null
+    };
+    R.seq[q.id] = q;
+  }
+  if (q.pezzi.some((x) => x.clip === c.id)) {
+    return { ok: true, seq: q, gia: true };     // gia' dentro: non si duplica
+  }
+  const pezzo = {
+    id: nuovoId("p"), dentro: c.dentro, fuori: c.fuori, base: c.dentro,
+    titolo: c.titolo, tipo: c.tipo || "", minuto: c.minuto || "",
+    fonte: "clip", clip: c.id, mano: true
+  };
+  // dove lo si e' lasciato cadere, non per forza in fondo
+  const dove = (p.dove === undefined || p.dove === null) ? q.pezzi.length
+             : Math.max(0, Math.min(q.pezzi.length, Math.round(num(p.dove, 0, 999, 0))));
+  q.pezzi.splice(dove, 0, pezzo);
+  scrivi(); annuncia(0, "clip");
+  return { ok: true, seq: q };
+}
+
 function hlOrdina(p) {
   const q = seqDi(p);
   const ordine = Array.isArray(p.ordine) ? p.ordine : [];
@@ -2026,6 +2063,7 @@ const AZIONI = {
   "clip-hl-genera": hlGenera,
   "clip-hl-elenco": hlElenco,
   "clip-hl-pezzo": hlPezzo,
+  "clip-hl-aggiungi": hlAggiungi,
   "clip-hl-ordina": hlOrdina,
   "clip-hl-taratura": hlTaratura,
   "clip-hl-esporta": hlEsporta,
