@@ -352,32 +352,32 @@
 
   /* la partita come l'ha scritta il giornalista: quando il video non c'e',
      questo e' tutto quello che c'e' da vedere — e spesso basta */
-  .scheda{position:fixed;inset:0;background:rgba(10,15,36,.42);z-index:60;
+  .foglio{position:fixed;inset:0;background:rgba(10,15,36,.42);z-index:60;
     display:flex;align-items:center;justify-content:center;padding:var(--s4);}
-  .scheda>div{background:var(--carta);border:1px solid var(--linea);border-radius:10px;
+  .foglio>div{background:var(--carta);border:1px solid var(--linea);border-radius:10px;
     width:min(720px,100%);max-height:100%;display:flex;flex-direction:column;
     box-shadow:0 18px 50px rgba(10,15,36,.28);}
-  .scheda header{padding:var(--s3) var(--s4);border-bottom:1px solid var(--linea);
+  .foglio header{padding:var(--s3) var(--s4);border-bottom:1px solid var(--linea);
     display:flex;align-items:baseline;gap:var(--s2);}
-  .scheda header b{font-family:'Mazzard',sans-serif;font-size:15px;letter-spacing:.02em;}
-  .scheda header span{color:var(--fumo);font-size:11px;flex:1;}
-  .scheda header a{color:var(--gold-deep);font-size:11px;text-decoration:none;font-weight:700;}
-  .scheda .righe{overflow-y:auto;padding:var(--s2) 0;}
-  .scheda .az{display:flex;gap:var(--s3);padding:7px var(--s4);align-items:baseline;
+  .foglio header b{font-family:'Mazzard',sans-serif;font-size:15px;letter-spacing:.02em;}
+  .foglio header span{color:var(--fumo);font-size:11px;flex:1;}
+  .foglio header a{color:var(--gold-deep);font-size:11px;text-decoration:none;font-weight:700;}
+  .foglio .righe{overflow-y:auto;padding:var(--s2) 0;}
+  .foglio .az{display:flex;gap:var(--s3);padding:7px var(--s4);align-items:baseline;
     border-bottom:1px solid rgba(10,15,36,.05);}
-  .scheda .az:last-child{border-bottom:0;}
-  .scheda .az u{font-variant-numeric:tabular-nums;text-decoration:none;font-weight:700;
+  .foglio .az:last-child{border-bottom:0;}
+  .foglio .az u{font-variant-numeric:tabular-nums;text-decoration:none;font-weight:700;
     font-size:12px;min-width:44px;color:var(--gold-deep);}
-  .scheda .az i{font-style:normal;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  .foglio .az i{font-style:normal;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
     color:var(--fumo);min-width:74px;}
-  .scheda .az p{margin:0;font-size:12.5px;line-height:1.45;flex:1;}
-  .scheda .az.hl{background:rgba(201,162,75,.10);}
-  .scheda .az.apri{cursor:pointer;}
-  .scheda .az.apri:hover{background:rgba(10,15,36,.05);}
-  .scheda .az.apri u::after{content:' \\25B6';font-size:9px;color:var(--gold);}
-  .scheda .tempo{padding:var(--s3) var(--s4) 4px;font-family:'Mazzard',sans-serif;
+  .foglio .az p{margin:0;font-size:12.5px;line-height:1.45;flex:1;}
+  .foglio .az.hl{background:rgba(201,162,75,.10);}
+  .foglio .az.apri{cursor:pointer;}
+  .foglio .az.apri:hover{background:rgba(10,15,36,.05);}
+  .foglio .az.apri u::after{content:' \\25B6';font-size:9px;color:var(--gold);}
+  .foglio .tempo{padding:var(--s3) var(--s4) 4px;font-family:'Mazzard',sans-serif;
     font-size:10px;font-weight:700;letter-spacing:.24em;color:var(--fumo);}
-  .scheda footer{padding:var(--s3) var(--s4);border-top:1px solid var(--linea);
+  .foglio footer{padding:var(--s3) var(--s4);border-top:1px solid var(--linea);
     font-size:11px;color:var(--fumo);line-height:1.5;}
   .risultati h3{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.24em;
     text-transform:uppercase;color:var(--inchiostro-3);margin:16px 0 9px;
@@ -582,7 +582,7 @@
 
     manda({ tipo: "clip-carica-inizia", peso: file.size,
             titolo: file.name.replace(/\.[^.]+$/, ""),
-            evento: (el("evento") ? el("evento").value : ""),
+            evento: (el("evento") ? el("evento").value.replace(/^arc:/, "") : ""),
             competizione: (ev && ev.dataset ? ev.dataset.comp : "") })
       .then(function (d) {
         var id = d.id, da = 0;
@@ -994,20 +994,30 @@
   // Il video non e' qui: sta in un secchio S3 da sette giga. Non lo si
   // scarica — si chiede un indirizzo firmato e lo si apre al secondo
   // giusto, che e' l'unica cosa che interessa.
-  function apriDaArchivio(a, dove, nome) {
-    manda({ tipo: "clip-archivio-link", rec: a }).then(function (d) {
-      var sc = el("scheda"); if (sc) sc.remove();
-      mostraNelCentro(d.url, "16:9", nome);
-      var v = el("player");
-      if (dove && v) {
-        var vai = function () {
-          try { v.currentTime = dove; } catch (e) {}
-          v.removeEventListener("loadedmetadata", vai);
-        };
-        v.addEventListener("loadedmetadata", vai);
-      }
-      dice("Dall'archivio \u00b7 " + (d.peso ? Math.round(d.peso / 1e9) + " GB" : "") +
-           " \u00b7 nessun byte copiato", true);
+  function apriDaArchivio(rec, dove, nome, pezzo) {
+    dice("Apro dall'archivio\u2026");
+    manda({ tipo: "clip-archivio-apri", rec: rec, pezzo: pezzo || 0 }).then(function (d) {
+      var sc = el("foglio"); if (sc) sc.remove();
+      guardando = null;
+      return aggiorna().then(function () {
+        vaiA(d.reg.id, (dove || dove === 0) ? dove : null, "tutto");
+        // il file d'archivio ci mette qualche secondo a farsi conoscere: il
+        // salto si aggancia all'evento, non a un'attesa a tempo
+        var v = el("player");
+        if (v && dove) {
+          var vai = function () {
+            if (!v.duration) return;
+            try { v.currentTime = dove; } catch (e) {}
+            v.removeEventListener("loadedmetadata", vai);
+            v.removeEventListener("durationchange", vai);
+          };
+          v.addEventListener("loadedmetadata", vai);
+          v.addEventListener("durationchange", vai);
+          vai();
+        }
+        dice(d.giaAperta ? "Gi\u00e0 fra i contenuti" :
+             "Dall'archivio \u00b7 nessun byte copiato", true);
+      });
     }).catch(function (e) { dice(e.message); });
   }
 
@@ -1030,9 +1040,16 @@
 
   function apri(r) {
     var v = el("player"); if (!v) return;
-    if (apertaId === r.id && hls) return;          // gia' aperta: non ricominciare
+    // L'indirizzo di una partita d'archivio e' firmato e cambia a ogni giro
+    // di aggiornamento: riattaccarlo vorrebbe dire ricaricare il video ogni
+    // tre secondi e riportarlo a zero sotto le mani di chi sta lavorando.
+    if (apertaId === r.id && (hls || r.materiale === "archivio")) return;
     apertaId = r.id;
     if (hls) { hls.destroy(); hls = null; }
+    if (r.materiale === "archivio") {                 // i byte sono su S3, non qui
+      if (r.via) { v.src = r.via; v.play().catch(function(){}); }
+      return;
+    }
     if (r.materiale === "integrale") { v.src = BASE + "/clip/" + r.id + "/integrale.mp4"; v.play().catch(function(){}); return; }
     if (r.materiale === "scaduto") { v.removeAttribute("src"); v.load(); return; }
     var indirizzo = BASE + "/clip/" + r.id + "/live.m3u8";
@@ -1085,6 +1102,30 @@
         if (el("evento")) el("evento").appendChild(o);
       });
     }).catch(function () {});
+    // Le partite gia' in archivio: la tendina conosceva solo quelle di oggi,
+    // e invece qui dentro ce ne sono mille. Sceglierne una la apre — non c'e'
+    // niente da registrare, il materiale esiste gia'.
+    manda({ tipo:"clip-archivio-partite", quante: 500 }).then(function (dd) {
+      var sel = el("evento"); if (!sel || !(dd.partite || []).length) return;
+      var g = document.createElement("optgroup");
+      g.label = "Archivio \u00b7 " + dd.quante + " partite";
+      dd.partite.forEach(function (p) {
+        var o = document.createElement("option");
+        var d = new Date(p.quando);
+        o.value = "arc:" + p.rec;
+        o.textContent = (isFinite(d) ? ("0"+d.getDate()).slice(-2) + "/" +
+          ("0"+(d.getMonth()+1)).slice(-2) + "/" + String(d.getFullYear()).slice(-2) + "  " : "") +
+          p.titolo + (p.pezzi > 1 ? "  (" + p.pezzi + " parti)" : "");
+        o.dataset.arch = p.rec;
+        g.appendChild(o);
+      });
+      sel.appendChild(g);
+      sel.addEventListener("change", function () {
+        var o = sel.selectedOptions[0];
+        if (o && o.dataset.arch) apriDaArchivio(o.dataset.arch, null, o.textContent, 0);
+      });
+    }).catch(function () {});
+
     manda({ tipo:"clip-sorgenti" }).then(function (dd) {
       (dd.sorgenti || []).forEach(function (x) {
         var o = document.createElement("option");
@@ -1103,7 +1144,7 @@
 
     function avvia(extra) {
       var ev = el("evento").selectedOptions[0];
-      var corpo = { tipo:"clip-avvia", evento: el("evento").value,
+      var corpo = { tipo:"clip-avvia", evento: el("evento").value.replace(/^arc:/, ""),
         titolo: (ev && ev.dataset.titolo) || (extra.guarda ? "anteprima" : "senza evento"),
         competizione: (ev && ev.dataset.comp) || "",
         url: el("url").value.trim(),
@@ -1600,7 +1641,7 @@
         if (qui) v.addEventListener("click", function () { vaiA(qui.id, null, "tutto"); });
         else if (inArchivio) {
           v.addEventListener("click", function () {
-            apriDaArchivio(a.rec, a.dove, a.partita + " \u00b7 " + a.minuto);
+            apriDaArchivio(a.rec, a.dove, a.partita, a.pezzo);
           });
         } else {
           v.style.opacity = ".78";
@@ -1625,9 +1666,9 @@
   // cercare il file, prima di andarlo a cercare.
   function apriAppunti(rec) {
     manda({ tipo: "clip-appunti-partita", rec: rec }).then(function (d) {
-      var vecchia = el("scheda"); if (vecchia) vecchia.remove();
+      var vecchia = el("foglio"); if (vecchia) vecchia.remove();
       var s = document.createElement("div");
-      s.className = "scheda"; s.id = "scheda";
+      s.className = "foglio"; s.id = "foglio";
       var d0 = new Date(d.quando);
       var quando = isFinite(d0) ? ("0"+d0.getDate()).slice(-2) + "/" +
                    ("0"+(d0.getMonth()+1)).slice(-2) + "/" + d0.getFullYear() : "";
@@ -1639,27 +1680,27 @@
         }
         if (r.hl) hl++;
         righe += '<div class="az' + (r.hl ? " hl" : "") +
-                 (r.dove ? " apri\" data-dove=\"" + r.dove : "") + '">' +
+                 (r.dove ? " apri\" data-dove=\"" + r.dove +
+                           "\" data-pezzo=\"" + (r.pezzo || 0) : "") + '">' +
                  '<u>' + (r.hl ? "\u2605 " : "") + r.m + '</u>' +
                  '<i>' + (r.t || "") + '</i><p>' + r.x + '</p></div>';
       });
       s.innerHTML = '<div><header><b>' + d.partita + '</b>' +
         '<span>' + (d.competizione || "") + (quando ? " \u00b7 " + quando : "") +
         " \u00b7 " + d.righe.length + ' azioni' + (hl ? " \u00b7 " + hl + " segnate per gli HL" : "") +
-        '</span><a href="#" id="schedaChiudi">chiudi</a></header>' +
+        '</span><a href="#" id="foglioChiudi">chiudi</a></header>' +
         '<div class="righe">' + (righe || '<div class="az"><p>Nessuna azione.</p></div>') + '</div>' +
         '<footer>Il video di questa partita non \u00e8 collegato al MAM: ' +
         'gli appunti dicono <b>quale minuto</b>, il file sta in archivio.</footer></div>';
       document.body.appendChild(s);
       s.querySelectorAll(".az.apri").forEach(function (r) {
         r.addEventListener("click", function () {
-          apriDaArchivio(d.rec, +r.dataset.dove, d.partita + " \u00b7 " +
-                         (r.querySelector("u") ? r.querySelector("u").textContent.trim() : ""));
+          apriDaArchivio(d.rec, +r.dataset.dove, d.partita, +r.dataset.pezzo || 0);
         });
       });
       var via = function (e) { if (e) e.preventDefault(); s.remove(); };
       s.addEventListener("click", function (e) { if (e.target === s) via(); });
-      el("schedaChiudi").addEventListener("click", via);
+      el("foglioChiudi").addEventListener("click", via);
       document.addEventListener("keydown", function esc(e) {
         if (e.key === "Escape") { via(); document.removeEventListener("keydown", esc); }
       });

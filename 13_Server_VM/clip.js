@@ -699,8 +699,8 @@ function clipTaglia(p) {
 // Stessa clip, presa dall'integrale invece che dai segmenti: cambia solo da
 // dove si leggono i byte.
 function taglioDaIntegrale(r, p, dentro, fuori, durata) {
-  const file = path.join(cartellaReg(r.id), "integrale.mp4");
-  if (!fs.existsSync(file)) {
+  const file = r.arch ? viaArchivio(r) : path.join(cartellaReg(r.id), "integrale.mp4");
+  if (!r.arch && !fs.existsSync(file)) {
     throw new Error("di questa registrazione non c'e' piu' materiale sul disco");
   }
   const formato = FORMATI[p.formato] ? String(p.formato) : "16:9";
@@ -818,8 +818,12 @@ function pubblica(r) {
     // in ascolto e ancora nessun byte: non e' rotta, sta aspettando che
     // dall'altra parte comincino a trasmettere
     attesa: !!(r.ascolto && r.stato === "registra" && vive && scritto === 0),
-    materiale: fs.existsSync(playlistDi(r.id)) ? "segmenti"
+    // una partita d'archivio non ha byte qui: ha un indirizzo, che scade e
+    // quindi si rifa' ogni volta che qualcuno chiede lo stato
+    materiale: r.arch ? "archivio"
+             : fs.existsSync(playlistDi(r.id)) ? "segmenti"
              : (fs.existsSync(path.join(cartellaReg(r.id), "integrale.mp4")) ? "integrale" : "scaduto"),
+    via: r.arch ? viaArchivio(r) : undefined,
     durata: r.stato === "registra" ? durataRegistrata(r.id) : (r.durata || durataRegistrata(r.id)),
     viva: vive
   });
@@ -1868,8 +1872,14 @@ async function s3Regione(bucket) {
 // Un indirizzo firmato che vale per un po'. Serve a tutto: a ffmpeg per
 // tagliare, al browser per guardare, a noi per elencare.
 async function s3Firma(chiave, cerca, quanto, bucket) {
+  return firmaConRegione(await s3Regione(bucket), chiave, cerca, quanto, bucket);
+}
+
+// La firma vera e' un conto, non una domanda: una volta saputa la regione
+// si fa qui e adesso. Serve dove non si puo' aspettare — dentro il taglio,
+// che e' scritto per lavorare su un file e non deve sapere di internet.
+function firmaConRegione(regione, chiave, cerca, quanto, bucket) {
   const secchio = bucket || S3.bucket;
-  const regione = await s3Regione(bucket);
   const host = secchio + ".s3." + regione + ".amazonaws.com";
   const ora = new Date().toISOString().replace(/[-:]|\.\d{3}/g, "");
   const giorno = ora.slice(0, 8);
@@ -1977,12 +1987,20 @@ function livelloDi(x) {
   if (/\bprimavera\b/.test(t)) return "primavera";
   return "";
 }
-function quantoSiSomigliano(a, b) {
-  if (livelloDi(a) !== livelloDi(b)) return 0;
+function quantoSiSomigliano(a, b, livA) {
+  // Airtable a volte l'eta' non la scrive nel titolo ma nella competizione
+  // ("HELLAS VERONA-COMO" in "Under 18"): il livello si puo' passare da
+  // fuori, altrimenti si legge dal nome.
+  const la = (livA === undefined ? livelloDi(a) : livA), lb = livelloDi(b);
+  // due livelli dichiarati e diversi: non sono la stessa partita, mai.
+  if (la && lb && la !== lb) return 0;
   const A = new Set(paroleSquadre(a)), B = new Set(paroleSquadre(b));
   if (!A.size || !B.size) return 0;
   let insieme = 0; A.forEach((w) => { if (B.has(w)) insieme++; });
-  return insieme / Math.max(A.size, B.size);
+  const s = insieme / Math.max(A.size, B.size);
+  // uno lo dice e l'altro tace: puo' darsi, ma solo se il nome combacia
+  // in pieno — e la partita resta segnata come non sicura.
+  return (la === lb) ? s : s * 0.55;
 }
 
 // L'orologio del MultiCorder scrive le ore su dodici senza dire se e'
@@ -2005,20 +2023,77 @@ function minutiRoma(ms) {
 // Quanti secondi dopo l'inizio del file comincia la partita. Se il conto
 // non sta in piedi si dice, invece di inventare un numero: un kickoff
 // sbagliato manda fuori bersaglio tutti gli appunti di quella partita.
-function kickoffNelFile(file, quandoMs) {
+// Quanti secondi separano il calcio d'inizio dall'inizio di questo file.
+// Negativo per il primo pezzo, che comincia prima; positivo per il secondo
+// tempo, che comincia un'ora dopo. E' la misura che permette di dire, per
+// una qualsiasi azione, in QUALE file sta e a che punto.
+function daKickoffPezzo(file, quandoMs) {
   const o = oraNelNome(file), dentro = minutiRoma(quandoMs);
   if (!o || dentro === null) return null;
   let meglio = null;
   [o.h % 12, (o.h % 12) + 12].forEach((h) => {
-    const parte = h * 60 + o.m;
-    const scarto = dentro - parte;                  // minuti di pre-partita
-    if (scarto >= -5 && scarto <= 90 && (meglio === null || scarto < meglio)) meglio = scarto;
+    [-1440, 0, 1440].forEach((giro) => {            // la mezzanotte in mezzo
+      const d = (h * 60 + o.m + giro) - dentro;
+      if (meglio === null || Math.abs(d) < Math.abs(meglio)) meglio = d;
+    });
   });
-  if (meglio === null) return null;
-  return Math.max(0, Math.round(meglio * 60 - o.s));
+  if (meglio === null || Math.abs(meglio) > 300) return null;   // troppo lontano: non e' lui
+  return Math.round(meglio * 60 + o.s);
+}
+function kickoffNelFile(file, quandoMs) {
+  const da = daKickoffPezzo(file, quandoMs);
+  return da === null ? null : Math.max(0, -da);
 }
 
 let ARCHIVIO = {};       // recId -> { chiave, peso, variante, kickoff, ... }
+
+// L'indirizzo firmato di una partita d'archivio. Vale sei ore: piu' che
+// abbastanza per una sessione di montaggio, e se scade si rifa' da solo
+// alla prossima richiesta di stato.
+function viaArchivio(r) {
+  return firmaConRegione(r.arch.regione, r.arch.chiave, {}, 21600, r.arch.bucket);
+}
+
+// Una partita che sta su S3 diventa una registrazione come le altre. Non
+// e' un trucco: il MAM chiama "registrazione" del materiale con una linea
+// del tempo, e questa ce l'ha. Da qui in poi taglio, formati, sequenza,
+// ricerca e grafica funzionano senza sapere che i byte sono a Francoforte.
+async function archivioApri(p) {
+  const a = ARCHIVIO[String(p.rec || "")];
+  if (!a) return { ok: false, errore: "questa partita non e' nell'indice dell'archivio" };
+  const pezzi = a.pezzi && a.pezzi.length ? a.pezzi : [{ chiave: a.chiave, peso: a.peso }];
+  const i = Math.min(Math.max(0, num(p.pezzo, 0, pezzi.length - 1, 0)), pezzi.length - 1);
+  const scelto = pezzi[i];
+
+  const gia = Object.keys(R.reg).map((k) => R.reg[k])
+    .find((r) => r.arch && r.arch.chiave === scelto.chiave);
+  if (gia) return { ok: true, reg: pubblica(gia), giaAperta: true };
+
+  const regione = await s3Regione(a.bucket);
+  const arch = { rec: p.rec, bucket: a.bucket, chiave: scelto.chiave, regione: regione, pezzo: i };
+  const url = firmaConRegione(regione, scelto.chiave, {}, 3600, a.bucket);
+  let durata = 0;
+  try {
+    durata = Math.round(+(await new Promise((ok, no) => {
+      execFile("ffprobe", ["-v", "error", "-show_entries", "format=duration",
+                           "-of", "default=nw=1:nk=1", url],
+               { timeout: 60000 }, (e, out) => e ? no(e) : ok(String(out).trim()));
+    })) || 0);
+  } catch (e) { durata = 0; }
+
+  const r = {
+    id: nuovoId("r"), evento: a.rec || "",
+    titolo: (a.partita || "partita") + (pezzi.length > 1 ? " · " + (i + 1) + "ª parte" : ""),
+    competizione: "", sorgente: "archivio", origine: "archivio", url: "",
+    stato: "finita", avviata: Date.parse(a.quando) || Date.now(), finita: Date.now(),
+    durata: durata, kickoff: (i === 0 && a.kickoff !== null && a.kickoff !== undefined)
+      ? { "1": a.kickoff } : {},
+    marker: [], chi: String(p.__chi || "").slice(0, 40), errore: "", arch: arch
+  };
+  assicura(cartellaReg(r.id));
+  R.reg[r.id] = r; scrivi(); annuncia(0, "clip");
+  return { ok: true, reg: pubblica(r) };
+}
 
 function fileArchivio() { return path.join(DIR, "archivio.json"); }
 function leggiArchivio() {
@@ -2092,8 +2167,9 @@ async function archivioScandaglia(p) {
       });
       let meglio = null, punteggio = 0;
       const tag = /\[([A-Z]{2,4})\]/.exec(String(f["Partita"] || ""));
+      const livello = livelloDi(String(f["Partita"] || "") + " " + String(f["Competizione"] || ""));
       candidati.forEach((gr) => {
-        let s = quantoSiSomigliano(f["Partita"], gr.partita);
+        let s = quantoSiSomigliano(f["Partita"], gr.partita, livello);
         if (s > 0 && tag) {
           // fra due versioni audio della stessa partita vince quella che il
           // titolo di Airtable indica: [ITA] con [AUDIO ITA]. Nei nomi
@@ -2117,6 +2193,7 @@ async function archivioScandaglia(p) {
                     (ob ? (ob.h % 12) * 3600 + ob.m * 60 + ob.s : 0));
           });
       if (!pezzi.length) return;
+      pezzi.forEach((x) => { x.da = daKickoffPezzo(x.file, quando); });
       const kick = kickoffNelFile(pezzi[0].file, quando);
       if (kick !== null) conKickoff++;
       agganciate++;
@@ -2213,9 +2290,19 @@ async function appuntiImporta(p) {
 // e' una stima invece di far finta di no.
 function secondoNelFile(rec, r) {
   const a = ARCHIVIO[rec];
-  if (!a || a.kickoff === null || a.kickoff === undefined) return null;
-  const intervallo = 15 * 60;
-  return Math.round(a.kickoff + (r.s === 2 ? 45 * 60 + intervallo : 0) + (r.d || 0));
+  if (!a) return null;
+  // secondi dal calcio d'inizio: il secondo tempo comincia un'ora dopo,
+  // quarantacinque di gioco piu' un intervallo che nessuno cronometra
+  const t = (r.s === 2 ? 60 * 60 : 0) + (r.d || 0);
+  const pezzi = (a.pezzi || []).filter((x) => x.da !== null && x.da !== undefined);
+  if (!pezzi.length) {
+    if (a.kickoff === null || a.kickoff === undefined) return null;
+    return { pezzo: 0, secondi: Math.round(a.kickoff + t) };
+  }
+  let i = -1;
+  pezzi.forEach((x, k) => { if (x.da <= t) i = k; });
+  if (i < 0) return null;                    // l'azione cade prima del materiale
+  return { pezzo: i, secondi: Math.round(t - pezzi[i].da) };
 }
 
 function cercaNegliAppunti(q, limite) {
@@ -2227,10 +2314,12 @@ function cercaNegliAppunti(q, limite) {
     a.righe.forEach((r) => {
       const testo = comeSiCerca([r.x, r.t, r.m, capo]);
       if (!tutteDentro(testo, q.parole)) return;
+      const dove = secondoNelFile(rec, r);
       fuori.push({
         rec: rec, partita: a.partita, competizione: a.competizione, quando: a.quando,
         minuto: r.m, tempo: r.s, tipo: r.t, testo: r.x, hl: !!r.hl,
-        archivio: !!ARCHIVIO[rec], dove: secondoNelFile(rec, r)
+        archivio: !!ARCHIVIO[rec], dove: (dove || {}).secondi || null,
+        pezzo: (dove || {}).pezzo || 0
       });
     });
   });
@@ -2699,6 +2788,12 @@ async function miniaturaViva(r) {
     da = segs[Math.floor(segs.length / 2)].file;
   } else if (fs.existsSync(integrale)) {
     da = integrale; quando = Math.max(1, (r.durata || 6) / 3);
+  } else if (r.arch) {
+    // una partita d'archivio la faccia ce l'ha, sta solo a Parigi: si va a
+    // prendere un fotogramma dieci minuti dopo il fischio, che e' gioco
+    // sicuro e non il cartello del prepartita
+    da = viaArchivio(r);
+    quando = ((r.kickoff && r.kickoff["1"]) || 300) + 600;
   }
   if (!da) { r.miniInCorso = false; return; }
   const ok = await miniatura(da, path.join(cartellaReg(r.id), "mini.jpg"), quando);
@@ -2858,6 +2953,19 @@ const AZIONI = {
              oggetti: pg.oggetti.slice(0, quante) };
   },
   "clip-archivio-scandaglia": archivioScandaglia,
+  "clip-archivio-apri": archivioApri,
+  // L'elenco di quello che l'archivio sa gia' offrire: serve alla tendina
+  // delle partite, che altrimenti conosce solo quelle di oggi.
+  "clip-archivio-partite": (p) => {
+    const quante = num(p.quante, 1, 2000, 400);
+    const fuori = Object.keys(ARCHIVIO).map((rec) => {
+      const a = ARCHIVIO[rec];
+      return { rec: rec, titolo: a.partita, quando: a.quando, variante: a.variante,
+               pezzi: (a.pezzi || []).length || 1, sicuro: !!a.sicuro,
+               kickoff: a.kickoff === undefined ? null : a.kickoff };
+    }).sort((x, y) => (Date.parse(y.quando) || 0) - (Date.parse(x.quando) || 0));
+    return { ok: true, quante: fuori.length, partite: fuori.slice(0, quante) };
+  },
   "clip-archivio-link": async (p) => {
     const a = ARCHIVIO[String(p.rec || "")];
     if (!a) return { ok: false, errore: "questa partita non e' nell'indice dell'archivio" };
@@ -2872,7 +2980,10 @@ const AZIONI = {
     const arc = ARCHIVIO[String(p.rec || "")];
     return { ok: true, rec: p.rec, partita: a.partita, competizione: a.competizione,
              quando: a.quando, archivio: !!arc,
-             righe: a.righe.map((r) => Object.assign({}, r, { dove: secondoNelFile(p.rec, r) })) };
+             righe: a.righe.map((r) => {
+               const d = secondoNelFile(p.rec, r) || {};
+               return Object.assign({}, r, { dove: d.secondi || null, pezzo: d.pezzo || 0 });
+             }) };
   },
   "clip-appunti-stato": () => ({ ok: true, partite: Object.keys(APPUNTI).length,
     azioni: Object.keys(APPUNTI).reduce((a, k) => a + APPUNTI[k].righe.length, 0) }),
