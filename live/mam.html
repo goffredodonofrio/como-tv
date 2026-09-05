@@ -198,6 +198,13 @@
   /* La pista: dove stanno entrata, uscita e i segni della partita. Non e'
      una timeline di montaggio — e' il minimo per vedere che cosa si sta
      per tagliare senza doverlo immaginare. */
+  body.modo-archivio .soloLive{display:none!important;}
+  /* questi due la classe se la riscrivono da soli a ogni aggiornamento:
+     si nascondono per nome, che nessuno gli tocca */
+  body.modo-archivio #btnRec,
+  body.modo-archivio #ascolto,
+  body.modo-archivio .riga-stato{display:none!important;}
+  body.modo-live .soloArchivio{display:none!important;}
   .pista{position:relative;height:16px;margin-top:2px;border-radius:4px;
     background:rgba(10,15,36,.07);cursor:pointer;overflow:hidden;}
   .pista .presa{position:absolute;top:0;bottom:0;background:rgba(201,162,75,.42);
@@ -442,7 +449,7 @@
 <body>
 
 <div class="testata">
-  <div class="marchio">MAM<small>Como TV</small></div>
+  <div class="marchio">MAM<small id="qualeMam">Como TV</small></div>
   <div class="cerca">
     <span class="lente">⌕</span>
     <input type="text" id="q" placeholder="Genoa-Como del 4 settembre · gol di Diao · le clip 9:16 di settembre">
@@ -509,6 +516,16 @@
   var GEN = "../10_Look%26Feel/Como%20TV%20OTT%20Design/generatore.html?solo=social";
   var TOKEN = (window.ChiaveComoTV ? ChiaveComoTV.valore() : "");
   var el = function (id) { return document.getElementById(id); };
+
+  // Due porte sulla stessa macchina. Il MAM LIVE prende gli SRT e taglia
+  // mentre la partita va; il MAM ARCHIVIO apre le mille partite gia'
+  // giocate. Sotto e' lo stesso codice — cambia quello che si vede, perche'
+  // chi entra per registrare non deve inciampare nell'archivio e chi entra
+  // per cercare non deve avere sotto le mani il tasto Registra.
+  var MODO = /modo=archivio/.test(location.search) ? "archivio" : "live";
+  document.body.classList.add("modo-" + MODO);
+  if (el("qualeMam")) el("qualeMam").textContent = (MODO === "archivio" ? "Archivio" : "Live");
+  document.title = "MAM " + (MODO === "archivio" ? "ARCHIVIO" : "LIVE") + " — Como TV";
 
   var VISTA = "tutto";         // che materiale guardo a destra (o "cerca")
   var FORMA = "";              // e con che forma, che e' un'altra domanda
@@ -1178,19 +1195,19 @@
       '<div class="console">' +
         '<div class="colonnina"><span class="et">Partita</span>' +
           '<select id="evento"><option value="">— senza evento —</option></select></div>' +
-        '<div class="colonnina"><span class="et">Sorgente</span>' +
+        '<div class="colonnina soloLive"><span class="et">Sorgente</span>'  +
           '<select id="sorgente"><option value="">— scegli —</option><option value="__mano">indirizzo a mano…</option></select></div>' +
-        '<div class="colonnina" id="rigaUrl" hidden>' +
+        '<div class="colonnina soloLive" id="rigaUrl" hidden>' +
           '<input type="text" id="url" placeholder="srt://…  ·  https://…m3u8"></div>' +
         // Tre tasti in fila non ci stanno in una colonna da 250 pixel:
         // "Registra" usciva dal bordo. Registra e' quello che si preme
         // davvero, quindi prende una riga sua e gli altri due si dividono
         // quella sopra.
-        '<div class="gruppo pari" style="margin-bottom:var(--s1)">' +
+        '<div class="gruppo pari soloLive" style="margin-bottom:var(--s1)">' +
           '<button class="b" id="btnGuarda">Guarda</button>' +
           '<button class="b" id="btnRicevi">Ricevi</button>' +
         '</div>' +
-        '<button class="b oro" id="btnRec" style="width:100%">Registra</button>' +
+        '<button class="b oro soloLive" id="btnRec" style="width:100%">Registra</button>' +
         '<div id="ascolto"></div>' +
         '<div class="riga-stato"><span class="dot" id="cDot"></span><span id="cTesto">Nessuna registrazione</span>' +
           '<span class="coda" id="cCoda"></span></div>' +
@@ -1209,7 +1226,7 @@
     // Le partite gia' in archivio: la tendina conosceva solo quelle di oggi,
     // e invece qui dentro ce ne sono mille. Sceglierne una la apre — non c'e'
     // niente da registrare, il materiale esiste gia'.
-    manda({ tipo:"clip-archivio-partite", quante: 500 }).then(function (dd) {
+    manda({ tipo:"clip-archivio-partite", quante: MODO === "archivio" ? 800 : 60 }).then(function (dd) {
       var sel = el("evento"); if (!sel || !(dd.partite || []).length) return;
       var g = document.createElement("optgroup");
       g.label = "Archivio \u00b7 " + dd.quante + " partite";
