@@ -686,8 +686,12 @@ function clipTaglia(p) {
     c.rincorsa = Math.round(scarto * 100) / 100;      // quanto comincia prima
     c.dentro = Math.round((dentro - scarto) * 100) / 100;
   }
-  esegui(c, codifica(args, preciso, ritaglio,
-                     sting ? filtroSting(r, c, path.join(DIR, CARTELLA_CLIP), c.id) : ""), lista);
+  const stingFiltro = sting ? filtroSting(r, c, path.join(DIR, CARTELLA_CLIP), c.id) : "";
+  // la riserva: gli stessi secondi, ma ricodificati
+  const riserva = preciso ? null : codifica(
+    ["-f", "concat", "-safe", "0", "-ss", String(Math.max(0, scarto)), "-i", lista,
+     "-t", String(quanto)], true, ritaglio, stingFiltro);
+  esegui(c, codifica(args, preciso, ritaglio, stingFiltro), lista, riserva);
   return { ok: true, clip: c };
 }
 
@@ -737,13 +741,27 @@ function codifica(args, preciso, ritaglio, sting) {
   return fuori.concat(["-movflags", "+faststart"]);
 }
 
-function esegui(c, args, lista) {
+function esegui(c, args, lista, riserva) {
   const fuoriFile = fileClip(c.id);
   const pr = spawn(FFMPEG, args.concat(["-y", fuoriFile]), { stdio: ["ignore", "ignore", "pipe"] });
   let coda = "";
   pr.stderr.on("data", (d) => { coda = (coda + d).slice(-2000); });
   pr.on("error", (e) => { c.stato = "errore"; c.errore = e.message; scrivi(); annuncia(0, "clip"); });
   pr.on("close", async (code) => {
+    // IL TAGLIO IN COPIA NON SEMPRE PUO'.
+    // Se il flusso e' caduto e ripartito, i tempi dentro i segmenti si
+    // accavallano e ricopiare i byte fallisce ("Error muxing a packet").
+    // Non e' una ragione per non avere la clip: si rifa' ricodificando, che
+    // costa qualche secondo e non ha quel problema. Meglio una clip lenta
+    // che un errore — soprattutto se a chiederla e' stato il giro
+    // automatico, dove nessuno sta guardando.
+    if (code !== 0 && riserva) {
+      // la lista dei segmenti serve ancora alla riserva: la si porta avanti
+      // e la cancella lei alla fine, invece di toglierla di mezzo adesso
+      c.rifattaPreciso = true;
+      esegui(c, riserva, lista, null);
+      return;
+    }
     if (lista) { try { fs.unlinkSync(lista); } catch (e) {} }
     ["t1", "t2", "t3"].forEach((t) => {
       try { fs.unlinkSync(path.join(DIR, CARTELLA_CLIP, c.id + "." + t + ".txt")); } catch (e) {}
@@ -905,7 +923,7 @@ function secondiDaOra(id, ms) {
 }
 
 async function airtableRecord(recId) {
-  return atLeggi("https://api.airtable.com/v0/" + AT_BASE + "/tblXKPRWFCLw5pVSt/" + recId);
+  return atLeggi("https://api.airtable.com/v0/" + AT_BASE + "/" + AT_PARTITE + "/" + recId);
 }
 
 // Gli eventi ufficiali della partita. Si cerca anche il giorno prima e dopo:
@@ -947,6 +965,7 @@ async function espnEventi(recId) {
   const sm = await rr.json();
   return (sm.keyEvents || []).filter((k) => ESPN_UTILI.test(((k.type || {}).text) || ""))
     .map((k) => ({
+      id: String(k.id || ((k.type || {}).id || "") + "-" + (((k.clock || {}).displayValue) || "")),
       tipo: (k.type || {}).text || "",
       minuto: ((k.clock || {}).displayValue) || "",
       periodo: (k.periodo || (k.period || {}).number) || 0,
@@ -1447,7 +1466,9 @@ function hlElimina(p) {
   const q = seqDi(p);
   try { fs.rmSync(path.join(DIR, CARTELLA_HL, q.id), { recursive: true, force: true }); } catch (e) {}
   try { fs.unlinkSync(path.join(DIR, CARTELLA_HL, q.id + ".xml")); } catch (e) {}
-  try { fs.unlinkSync(path.join(DIR, CARTELLA_HL, q.id + ".mp4")); } catch (e) {}
+  ["", "_16x9", "_4x3", "_9x16"].forEach((sf) => {
+    try { fs.unlinkSync(path.join(DIR, CARTELLA_HL, q.id + sf + ".mp4")); } catch (e) {}
+  });
   delete R.seq[q.id];
   scrivi();
   return { ok: true };
@@ -1459,7 +1480,21 @@ function hlElimina(p) {
 //  incollare pezzi codificati in modo diverso da' un file che si vede male
 //  o non si vede affatto. Si paga qualche secondo di CPU e si dorme la notte.
 
-async function hlEsportaVideo(q, formato) {
+// TUTTI I FORMATI IN UN COLPO.
+// Il montaggio e' lo stesso: cambia solo il ritaglio. Farlo premere tre
+// volte vuol dire tre attese e tre occasioni di dimenticarne uno — e chi
+// pubblica li vuole tutti, non uno.
+async function hlEsportaTutti(q, formati) {
+  q.esportati = q.esportati || {};
+  for (const f of formati) {
+    await hlEsportaVideo(q, f, true);
+  }
+  q.export = { stato: "pronto", tutti: true, formati: formati,
+               fatti: formati.length, quanti: formati.length };
+  scrivi(); annuncia(0, "clip");
+}
+
+async function hlEsportaVideo(q, formato, dentroUnGiro) {
   const dir = path.join(DIR, CARTELLA_HL, q.id);
   assicura(dir);
   const r = R.reg[q.reg];
@@ -1469,7 +1504,8 @@ async function hlEsportaVideo(q, formato) {
   if (usaIntegrale && !fs.existsSync(integrale)) throw new Error("non c'e' piu' materiale per questa registrazione");
 
   const ritaglio = (FORMATI[formato] || FORMATI["16:9"]).vf;
-  q.export = { stato: "lavora", formato: formato, fatti: 0, quanti: q.pezzi.length, file: "" };
+  q.export = { stato: "lavora", formato: formato, fatti: 0, quanti: q.pezzi.length, file: "",
+               tutti: !!dentroUnGiro };
   scrivi(); annuncia(0, "clip");
 
   const parti = [];
@@ -1510,7 +1546,8 @@ async function hlEsportaVideo(q, formato) {
 
   const listaFin = path.join(dir, "tutti.txt");
   fs.writeFileSync(listaFin, parti.map((x) => "file '" + x + "'").join("\n") + "\n");
-  const finale = path.join(DIR, CARTELLA_HL, q.id + ".mp4");
+  const suffisso = "_" + String(formato).replace(":", "x");
+  const finale = path.join(DIR, CARTELLA_HL, q.id + suffisso + ".mp4");
   await new Promise((si, no) => {
     const pr = spawn(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin",
       "-f", "concat", "-safe", "0", "-i", listaFin, "-c", "copy",
@@ -1520,12 +1557,18 @@ async function hlEsportaVideo(q, formato) {
   });
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}   // i pezzi non servono piu'
   const d = await probe(finale);
-  const mini = await miniatura(finale, path.join(DIR, CARTELLA_HL, q.id + ".jpg"),
-                               (d.durata || 6) / 3);
-  q.mini = mini ? "/clip/" + CARTELLA_HL + "/" + q.id + ".jpg" : "";
+  if (!q.mini) {
+    const mini = await miniatura(finale, path.join(DIR, CARTELLA_HL, q.id + ".jpg"), (d.durata || 6) / 3);
+    q.mini = mini ? "/clip/" + CARTELLA_HL + "/" + q.id + ".jpg" : "";
+  }
+  q.esportati = q.esportati || {};
+  q.esportati[formato] = {
+    file: "/clip/" + CARTELLA_HL + "/" + q.id + suffisso + ".mp4",
+    durata: d.durata ? Math.round(d.durata * 10) / 10 : 0, peso: d.peso || 0
+  };
   q.export = { stato: "pronto", formato: formato, fatti: q.pezzi.length, quanti: q.pezzi.length,
-               file: "/clip/" + CARTELLA_HL + "/" + q.id + ".mp4",
-               durata: d.durata ? Math.round(d.durata * 10) / 10 : 0, peso: d.peso || 0 };
+               file: q.esportati[formato].file,
+               durata: q.esportati[formato].durata, peso: q.esportati[formato].peso };
   scrivi(); annuncia(0, "clip");
   return q.export;
 }
@@ -1620,14 +1663,16 @@ async function hlEsporta(p) {
   if (String(p.come) === "premiere") {
     return { ok: true, premiere: await hlEsportaPremiere(q, p.percorso) };
   }
-  const formato = FORMATI[p.formato] ? String(p.formato) : "16:9";
   if (q.export && q.export.stato === "lavora") return { ok: true, export: q.export };
+  const elenco = Array.isArray(p.formati) ? p.formati.filter((f) => FORMATI[f]) : [];
+  const formati = elenco.length ? elenco
+                : [FORMATI[p.formato] ? String(p.formato) : "16:9"];
   // non si aspetta l'export per rispondere: la pagina guarda lo stato
-  hlEsportaVideo(q, formato).catch((e) => {
+  hlEsportaTutti(q, formati).catch((e) => {
     q.export = { stato: "errore", errore: e.message };
     scrivi(); annuncia(0, "clip");
   });
-  return { ok: true, export: q.export };
+  return { ok: true, export: q.export, formati: formati };
 }
 
 
@@ -1731,6 +1776,7 @@ function nomeScarico(c, r) {
 
 const AT_BASE = "appdDMcS8JQ4PTdLB";
 const AT_AWS = "tblgZRXXCCWhI327U";
+const AT_PARTITE = "tblXKPRWFCLw5pVSt";
 let SORG_CACHE = { quando: 0, dati: null };
 
 function atLeggi(url) {
@@ -1771,6 +1817,99 @@ async function clipSorgenti() {
   const d = { ok: true, quante: fuori.length, sorgenti: fuori };
   SORG_CACHE = { quando: Date.now(), dati: d };
   return d;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+//  L'ARCHIVIO DEGLI APPUNTI
+// ══════════════════════════════════════════════════════════════════════
+//
+//  Novecentonovanta partite giocate hanno gia' dentro 9.595 azioni
+//  tipizzate: gol, parate, pali, occasioni, con minuto e descrizione. Sono
+//  scritte da chi guardava e oggi vivono dentro una cella di Airtable, che
+//  e' come dire che non esistono: nessuno le cerca perche' non si possono
+//  cercare.
+//
+//  Portarle qui non richiede di avere il video: un'azione trovata dice
+//  QUALE partita e QUALE minuto, e il materiale sta sul server della
+//  redazione. E' l'ottanta per cento del valore di un archivio, senza un
+//  byte di video.
+//
+//  Stanno in un file loro: cambiano una volta ogni tanto e sono tante,
+//  quindi non devono appesantire il registro che si riscrive a ogni clip.
+
+let APPUNTI = {};        // recId -> { partita, competizione, quando, righe[] }
+
+function fileAppunti() { return path.join(DIR, "appunti.json"); }
+
+function leggiArchivioAppunti() {
+  try { APPUNTI = JSON.parse(fs.readFileSync(fileAppunti(), "utf8")) || {}; }
+  catch (e) { APPUNTI = {}; }
+}
+function scriviArchivioAppunti() {
+  try {
+    const tmp = fileAppunti() + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(APPUNTI));
+    fs.renameSync(tmp, fileAppunti());
+  } catch (e) { console.log("[clip] archivio appunti non salvato: " + e.message); }
+}
+
+async function appuntiImporta(p) {
+  const giorni = num(p.giorni, 1, 3650, 400);
+  const tetto = num(p.quante, 1, 5000, 1200);
+  const formula = "AND(IS_BEFORE({Data | Orario}, TODAY()), " +
+    "IS_AFTER({Data | Orario}, DATEADD(TODAY(), -" + Math.round(giorni) + ", 'days')), " +
+    "NOT({Partita} = BLANK()))";
+  const base = "https://api.airtable.com/v0/" + AT_BASE + "/" + AT_PARTITE;
+  let offset = "", giri = 0, viste = 0, conRighe = 0, righe = 0;
+
+  do {
+    const q = new URLSearchParams({
+      filterByFormula: formula, pageSize: "100",
+      "sort[0][field]": "Data | Orario", "sort[0][direction]": "desc"
+    });
+    if (offset) q.set("offset", offset);
+    const j = await atLeggi(base + "?" + q.toString());
+    (j.records || []).forEach((rec) => {
+      if (viste >= tetto) return;
+      viste++;
+      const f = rec.fields || {};
+      const note = leggiAppunti(f["Appunti"] || "", 45);
+      if (!note.length) { delete APPUNTI[rec.id]; return; }
+      conRighe++; righe += note.length;
+      APPUNTI[rec.id] = {
+        partita: f["Partita"] || "", competizione: f["Competizione"] || "",
+        quando: f["Data | Orario"] || "",
+        righe: note.map((n) => ({
+          m: n.minuto, t: n.tipo, x: n.testo.slice(0, 180), s: n.sezione,
+          d: n.dentroTempo, hl: n.hl ? 1 : 0
+        }))
+      };
+    });
+    offset = j.offset || "";
+  } while (offset && ++giri < 30 && viste < tetto);
+
+  scriviArchivioAppunti();
+  return { ok: true, partiteViste: viste, partiteConAzioni: conRighe, azioni: righe };
+}
+
+function cercaNegliAppunti(q, limite) {
+  const fuori = [];
+  Object.keys(APPUNTI).forEach((rec) => {
+    const a = APPUNTI[rec];
+    const capo = comeSiCerca([a.partita, a.competizione, dataScritta(Date.parse(a.quando))]);
+    if (!quandoTorna(Date.parse(a.quando), q)) return;
+    a.righe.forEach((r) => {
+      const testo = comeSiCerca([r.x, r.t, r.m, capo]);
+      if (!tutteDentro(testo, q.parole)) return;
+      fuori.push({
+        rec: rec, partita: a.partita, competizione: a.competizione, quando: a.quando,
+        minuto: r.m, tempo: r.s, tipo: r.t, testo: r.x, hl: !!r.hl
+      });
+    });
+  });
+  fuori.sort((a, b) => (Date.parse(b.quando) || 0) - (Date.parse(a.quando) || 0));
+  return fuori.slice(0, limite);
 }
 
 // ── i file: playlist, segmenti, clip ──────────────────────────────────
@@ -2003,10 +2142,16 @@ function clipCerca(p) {
   clip.sort((a, b) => (b.creata || 0) - (a.creata || 0));
   segni.sort((a, b) => (b.quando || 0) - (a.quando || 0));
 
+  // il quarto fronte: le azioni scritte dai giornalisti nelle partite
+  // passate, anche quelle di cui qui non c'e' un fotogramma
+  const azioni = (q.genere && q.genere !== "segno") ? []
+    : (q.parole.length || q.quando ? cercaNegliAppunti(q, limite) : []);
+
   return {
     ok: true,
     domanda: { parole: q.parole, formato: q.formato, genere: q.genere, quando: q.quando },
-    quante: partite.length + clip.length + segni.length,
+    quante: partite.length + clip.length + segni.length + azioni.length,
+    azioni: azioni,
     partite: partite.slice(0, limite),
     clip: clip.slice(0, limite),
     segni: segni.slice(0, limite)
@@ -2236,6 +2381,87 @@ async function miniaturaViva(r) {
   scrivi();
 }
 
+
+// ══════════════════════════════════════════════════════════════════════
+//  IL GIRO AUTOMATICO — mentre la partita va
+// ══════════════════════════════════════════════════════════════════════
+//
+//  Finora i segni li metteva una persona e gli highlights nascevano quando
+//  qualcuno premeva un tasto. Ma il valore vero e' un altro: che venti
+//  secondi dopo il gol la clip del gol ESISTA GIA', senza che nessuno
+//  l'abbia chiesta. Il social apre il MAM e la trova.
+//
+//  Ogni minuto, per ogni registrazione agganciata a una partita, si chiede
+//  a ESPN che cosa e' successo. Gli eventi nuovi diventano segni; quelli
+//  che contano — gol, rigori, rossi — diventano anche una clip tagliata.
+//
+//  Due prudenze. La prima: si taglia solo cio' che e' gia' stato scritto
+//  su disco, mai oltre il bordo. La seconda: un evento si mette una volta
+//  sola, e il conto di quelli gia' visti sta nella registrazione, quindi
+//  sopravvive a un riavvio del ponte.
+
+const GIRO_ESPN = parseInt(process.env.COMOTV_CLIP_GIRO || "60", 10) * 1000;
+// che cosa merita di essere gia' tagliato: "gol" (di suo), "tutto", "no"
+const PRETAGLIO = String(process.env.COMOTV_CLIP_PRETAGLIO || "gol").toLowerCase();
+
+function meritaTaglio(tipo) {
+  if (PRETAGLIO === "no") return false;
+  if (PRETAGLIO === "tutto") return true;
+  const t = senzaAccenti(tipo || "");
+  return /goal|gol|penalty|rigore|own/.test(t) || /red card|rosso/.test(t);
+}
+
+async function giroEspn() {
+  const vive = Object.keys(R.reg).map((k) => R.reg[k])
+    .filter((r) => r.stato === "registra" && r.evento && !r.guarda);
+  for (const r of vive) {
+    let eventi = [];
+    try { eventi = await espnEventi(r.evento); } catch (e) { continue; }
+    if (!eventi.length) continue;
+    r.espnVisti = r.espnVisti || [];
+    const durata = durataRegistrata(r.id);
+    let nuovi = 0;
+
+    for (const e of eventi) {
+      if (r.espnVisti.indexOf(e.id) >= 0) continue;
+      // dove cade: sul vivo l'orologio, altrimenti i minuti dal fischio
+      let s = secondiDaOra(r.id, e.ora);
+      if (s === null || s < 0 || s > durata) {
+        const m = /(\d+)/.exec(String(e.minuto || ""));
+        const k = (e.periodo === 2 || (m && +m[1] > 45)) ? (r.kickoff || {})["2"] : (r.kickoff || {})["1"];
+        if (k === undefined || !m) continue;               // non so dove metterlo: lo lascio a dopo
+        const min = +m[1];
+        s = k + ((e.periodo === 2 || min > 45) ? (Math.max(46, min) - 46) : (min - 1)) * 60;
+      }
+      if (s < 0 || s > durata) continue;                   // fuori da quello che c'e' scritto
+
+      r.espnVisti.push(e.id);
+      nuovi++;
+      r.marker = (r.marker || []).concat([{
+        id: nuovoId("m"), secondi: Math.round(s * 10) / 10,
+        testo: nomePezzo(e), tipo: e.tipo, fonte: "espn", chi: "", quando: Date.now()
+      }]).sort((a, b) => a.secondi - b.secondi);
+
+      // e se conta, la clip esce da sola
+      if (meritaTaglio(e.tipo)) {
+        const dentro = Math.max(0, s - HL_PRE);
+        const fuori = Math.min(durata, s + HL_POST + 6);
+        if (fuori - dentro > 3) {
+          try {
+            clipTaglia({ reg: r.id, dentro: dentro, fuori: fuori,
+                         titolo: nomePezzo(e), tipoAzione: e.tipo, minuto: e.minuto,
+                         chi: "ESPN", sting: false });
+          } catch (err) { /* il taglio riprovera' al giro dopo */ }
+        }
+      }
+    }
+    if (nuovi) {
+      console.log("[clip] " + r.titolo + ": " + nuovi + " eventi nuovi da ESPN");
+      scrivi(); annuncia(0, "clip");
+    }
+  }
+}
+
 // ── l'anello ──────────────────────────────────────────────────────────
 //
 //  Dodici partite in una sera sono una quarantina di giga: il disco della VM
@@ -2292,6 +2518,9 @@ const AZIONI = {
   "clip-elimina": clipElimina,
   "clip-sorgenti": clipSorgenti,
   "clip-cerca": clipCerca,
+  "clip-appunti-importa": appuntiImporta,
+  "clip-appunti-stato": () => ({ ok: true, partite: Object.keys(APPUNTI).length,
+    azioni: Object.keys(APPUNTI).reduce((a, k) => a + APPUNTI[k].righe.length, 0) }),
   "clip-grafica": clipGrafica,
   "clip-carica-inizia": caricaInizia,
   "clip-carica-pezzo": caricaPezzo,
@@ -2337,6 +2566,7 @@ function avvio(opz) {
   assicura(path.join(DIR, CARTELLA_CLIP));
   assicura(path.join(DIR, CARTELLA_HL));
   leggi();
+  leggiArchivioAppunti();
   // Il ponte si e' riavviato: gli ffmpeg che stava seguendo sono morti con
   // lui. Meglio dirlo che lasciare in pagina una registrazione che sembra
   // viva e non scrive piu' niente.
@@ -2362,6 +2592,16 @@ function avvio(opz) {
   scrivi();
   anello();
   setInterval(anello, 3600000).unref();
+  setInterval(() => { giroEspn().catch(() => {}); }, GIRO_ESPN).unref();
+  // Gli appunti delle partite appena giocate: la redazione li scrive nei
+  // giorni dopo, quindi si ripassa una finestra corta e si lascia stare
+  // il resto dell'archivio, che non cambia piu'.
+  const rinfresca = () => appuntiImporta({ giorni: 30, quante: 200 }).catch(() => {});
+  setTimeout(() => {
+    if (!Object.keys(APPUNTI).length) appuntiImporta({ giorni: 400, quante: 1500 }).catch(() => {});
+    else rinfresca();
+  }, 30000).unref();
+  setInterval(rinfresca, 6 * 3600000).unref();
   console.log("[clip] Clip Live acceso, cartella " + DIR +
               " — fino a " + MAX_REG + " registrazioni, materiale per " + GIORNI + " giorni, " +
               Math.round(liberiGB()) + " GB liberi");

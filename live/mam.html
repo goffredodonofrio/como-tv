@@ -248,6 +248,23 @@
   .pezzo .via{position:absolute;top:2px;right:5px;color:var(--inchiostro-3);text-decoration:none;
     font-size:13px;line-height:1;}
   .pezzo .via:hover{color:var(--red);}
+  .esportati{display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;margin-top:var(--s1);
+    font-size:11px;}
+  .esportati .et{margin:0;}
+  .esportati a{color:var(--gold-deep);text-decoration:none;font-family:'Mazzard',sans-serif;
+    font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;}
+  .esportati a:hover{color:var(--inchiostro);}
+  .esportati .lavora{color:var(--inchiostro-2);}
+  .esportati .male{color:#8E1216;}
+  .suggeriti{margin-top:var(--s2);padding-top:var(--s2);border-top:1px dashed var(--linea);}
+  .suggeriti .et{margin-bottom:var(--s1);}
+  .sugg{flex:0 0 176px;border:1px dashed var(--linea);border-radius:7px;background:var(--carta);
+    padding:5px 7px;cursor:pointer;display:flex;flex-direction:column;justify-content:center;}
+  .sugg:hover{border-style:solid;border-color:var(--gold-deep);background:rgba(201,162,75,.10);}
+  .sugg.fuori{opacity:.45;cursor:not-allowed;}
+  .sugg .mm{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:800;color:var(--gold-deep);
+    letter-spacing:.1em;}
+  .sugg .tt{font-size:11px;line-height:1.25;max-height:29px;overflow:hidden;}
   .sequenza .invito{color:var(--inchiostro-3);font-size:12px;display:flex;align-items:center;
     justify-content:center;width:100%;border:1px dashed var(--linea-oro);border-radius:7px;}
   /* mentre si trascina, la striscia si fa vedere anche se e' vuota */
@@ -635,13 +652,28 @@
         '<div class="cima"><span class="et">Sequenza</span>' +
           '<span id="seqConto"></span>' +
           '<span class="gruppo" style="margin-left:auto">' +
-            '<button class="b" id="seqMp4">Esporta MP4</button>' +
+            '<button class="b oro" id="seqTutti" title="16:9, 4:3 e 9:16 in un colpo: il montaggio e\u2019 lo stesso, cambia solo il ritaglio">Esporta tutti i formati</button>' +
+            '<button class="b" id="seqMp4">Solo ' + formato + '</button>' +
             '<button class="b" id="seqXml">Per Premiere</button></span></div>' +
         '<div class="pezzi" id="seqPezzi"></div>' +
+        '<div class="esportati" id="seqEsportati"></div>' +
+        // I suggerimenti sono quello che i giornalisti hanno scritto e ESPN
+        // non sa: parate, occasioni, giocate. Stanno accanto alla sequenza,
+        // non dentro: entrano solo se qualcuno li sceglie.
+        '<div class="suggeriti" id="seqSugg" hidden>' +
+          '<div class="et">Dagli appunti <span id="suggConto"></span></div>' +
+          '<div class="pezzi" id="suggPezzi"></div>' +
+        '</div>' +
       '</div>';
 
     telaioForma();
     el("capoTorna").addEventListener("click", function (e) { e.preventDefault(); tornaAlContenuto(); });
+    el("seqTutti").addEventListener("click", function () {
+      if (!SEQ) return;
+      manda({ tipo: "clip-hl-esporta", seq: SEQ.id, formati: ["16:9", "4:3", "9:16"] })
+        .then(function () { dice("Esporto i tre formati: ci vuole qualche minuto, puoi continuare a lavorare.", true); })
+        .catch(function (e) { dice(e.message); });
+    });
     el("seqMp4").addEventListener("click", function () {
       if (!SEQ) return;
       manda({ tipo: "clip-hl-esporta", seq: SEQ.id, formato: formato })
@@ -751,7 +783,7 @@
     var box = el("sequenza"); if (!box) return;
     var pezzi = (SEQ && SEQ.pezzi) || [];
     var eraNascosta = box.hidden;
-    box.hidden = !pezzi.length;
+    box.hidden = !pezzi.length && !(SEQ && SEQ.suggerimenti && SEQ.suggerimenti.length);
     // Comparendo, la striscia si prende dello spazio: il visore deve
     // restringersi, altrimenti la sequenza finisce sotto il bordo e sembra
     // che il trascinamento non abbia fatto niente.
@@ -762,6 +794,7 @@
       ? pezzi.length + " pezzi · " + orologio(pezzi.reduce(function (a, x) { return a + (x.fuori - x.dentro); }, 0))
       : "";
     c.innerHTML = "";
+    disegnaSuggerimenti(); disegnaEsportati();
     if (!pezzi.length) {
       c.innerHTML = '<div class="invito">trascina qui una clip per cominciare a montare</div>';
       return;
@@ -795,6 +828,47 @@
         try { e.dataTransfer.setData("text/plain", "pezzo:" + x.id); } catch (er) {}
       });
       d.addEventListener("dragend", function () { pezzoTrascinato = null; d.classList.remove("trascino"); });
+      c.appendChild(d);
+    });
+  }
+
+  function disegnaEsportati() {
+    var box = el("seqEsportati"); if (!box || !SEQ) return;
+    var e = SEQ.export || {}, fatti = SEQ.esportati || {};
+    var righe = [];
+    if (e.stato === "lavora") {
+      righe.push("<span class='lavora'>esporto " + (e.formato || "") +
+                 (e.tutti ? " (e poi gli altri)" : "") + "…</span>");
+    }
+    if (e.stato === "errore") righe.push("<span class='male'>export fallito: " + (e.errore || "") + "</span>");
+    Object.keys(fatti).forEach(function (f) {
+      righe.push("<a href='" + BASE + fatti[f].file + "?scarica=1'>" + f + " · " +
+                 orologio(fatti[f].durata) + "</a>");
+    });
+    if (SEQ.premiere) righe.push("<a href='" + BASE + SEQ.premiere.file + "?scarica=1'>XML Premiere</a>");
+    box.innerHTML = righe.length ? "<span class='et'>Pronti</span>" + righe.join("") : "";
+  }
+
+  function disegnaSuggerimenti() {
+    var box = el("seqSugg"); if (!box) return;
+    var g = (SEQ && SEQ.suggerimenti) || [];
+    box.hidden = !g.length;
+    if (!g.length) return;
+    var dentro = g.filter(function (x) { return x.collocabile; }).length;
+    el("suggConto").textContent = g.length + (dentro < g.length ? " · " + dentro + " collocabili" : "");
+    var c = el("suggPezzi"); c.innerHTML = "";
+    g.forEach(function (x) {
+      var d = document.createElement("div");
+      d.className = "sugg" + (x.collocabile ? "" : " fuori");
+      d.title = x.collocabile ? "aggiungi alla sequenza"
+        : "non so dove cade: segna il fischio d’inizio del tempo giusto";
+      d.innerHTML = "<div class='mm'>" + x.minuto + (x.tipo ? " · " + x.tipo : "") +
+        (x.hl ? " ★" : "") + "</div><div class='tt'>" + x.testo + "</div>";
+      if (x.collocabile) d.addEventListener("click", function () {
+        manda({ tipo: "clip-hl-suggerimento", seq: SEQ.id, suggerimento: x.id })
+          .then(function (r) { SEQ = r.seq; disegnaSequenza(); dice("Aggiunto: " + x.testo.slice(0, 40) + "…", true); })
+          .catch(function (e) { dice(e.message); });
+      });
       c.appendChild(d);
     });
   }
@@ -1459,6 +1533,22 @@
              (c.durataVera || c.durata) + "s") + (c.partita ? " · " + c.partita : ""),
              "vedi", data(c.creata))
           .addEventListener("click", function () { vaiA(c.reg, null, c.seq ? "hl" : "clip"); });
+      });
+    }
+    // Le azioni scritte dai giornalisti nelle partite passate. Quasi
+    // sempre il video non e' qui: la riga dice dove andarlo a prendere —
+    // quale partita, quale minuto. Quando invece la registrazione c'e',
+    // la riga si apre come tutte le altre.
+    if (RIS.azioni && RIS.azioni.length) {
+      titolo("Negli appunti della redazione", RIS.azioni.length);
+      RIS.azioni.forEach(function (a) {
+        var qui = REGISTRAZIONI.filter(function (x) { return x.evento === a.rec; })[0];
+        var v = riga((a.hl ? "\u2605 " : "") + (a.testo || a.tipo),
+             a.partita + " \u00b7 " + a.minuto + (a.tempo === 2 ? " (2\u00b0T)" : "") +
+             (a.competizione ? " \u00b7 " + a.competizione : ""),
+             qui ? "guarda" : "", data(Date.parse(a.quando)));
+        if (qui) v.addEventListener("click", function () { vaiA(qui.id, null, "tutto"); });
+        else { v.className = "voce"; v.style.opacity = ".72"; }
       });
     }
     if (RIS.segni.length) {
