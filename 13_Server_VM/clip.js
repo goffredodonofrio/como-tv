@@ -2519,6 +2519,12 @@ const AZIONI = {
   "clip-sorgenti": clipSorgenti,
   "clip-cerca": clipCerca,
   "clip-appunti-importa": appuntiImporta,
+  "clip-appunti-partita": (p) => {
+    const a = APPUNTI[String(p.rec || "")];
+    if (!a) return { ok: false, errore: "di questa partita non ci sono appunti" };
+    return { ok: true, rec: p.rec, partita: a.partita, competizione: a.competizione,
+             quando: a.quando, righe: a.righe };
+  },
   "clip-appunti-stato": () => ({ ok: true, partite: Object.keys(APPUNTI).length,
     azioni: Object.keys(APPUNTI).reduce((a, k) => a + APPUNTI[k].righe.length, 0) }),
   "clip-grafica": clipGrafica,

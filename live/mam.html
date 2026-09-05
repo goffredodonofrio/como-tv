@@ -350,6 +350,32 @@
     letter-spacing:.14em;text-transform:uppercase;}
   .schede button.acceso{color:var(--inchiostro);border-bottom-color:var(--gold-deep);}
 
+  /* la partita come l'ha scritta il giornalista: quando il video non c'e',
+     questo e' tutto quello che c'e' da vedere — e spesso basta */
+  .scheda{position:fixed;inset:0;background:rgba(10,15,36,.42);z-index:60;
+    display:flex;align-items:center;justify-content:center;padding:var(--s4);}
+  .scheda>div{background:var(--carta);border:1px solid var(--linea);border-radius:10px;
+    width:min(720px,100%);max-height:100%;display:flex;flex-direction:column;
+    box-shadow:0 18px 50px rgba(10,15,36,.28);}
+  .scheda header{padding:var(--s3) var(--s4);border-bottom:1px solid var(--linea);
+    display:flex;align-items:baseline;gap:var(--s2);}
+  .scheda header b{font-family:'Mazzard',sans-serif;font-size:15px;letter-spacing:.02em;}
+  .scheda header span{color:var(--fumo);font-size:11px;flex:1;}
+  .scheda header a{color:var(--gold-deep);font-size:11px;text-decoration:none;font-weight:700;}
+  .scheda .righe{overflow-y:auto;padding:var(--s2) 0;}
+  .scheda .az{display:flex;gap:var(--s3);padding:7px var(--s4);align-items:baseline;
+    border-bottom:1px solid rgba(10,15,36,.05);}
+  .scheda .az:last-child{border-bottom:0;}
+  .scheda .az u{font-variant-numeric:tabular-nums;text-decoration:none;font-weight:700;
+    font-size:12px;min-width:44px;color:var(--gold-deep);}
+  .scheda .az i{font-style:normal;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--fumo);min-width:74px;}
+  .scheda .az p{margin:0;font-size:12.5px;line-height:1.45;flex:1;}
+  .scheda .az.hl{background:rgba(201,162,75,.10);}
+  .scheda .tempo{padding:var(--s3) var(--s4) 4px;font-family:'Mazzard',sans-serif;
+    font-size:10px;font-weight:700;letter-spacing:.24em;color:var(--fumo);}
+  .scheda footer{padding:var(--s3) var(--s4);border-top:1px solid var(--linea);
+    font-size:11px;color:var(--fumo);line-height:1.5;}
   .risultati h3{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.24em;
     text-transform:uppercase;color:var(--inchiostro-3);margin:16px 0 9px;
     display:flex;gap:9px;align-items:center;}
@@ -1548,7 +1574,10 @@
              (a.competizione ? " \u00b7 " + a.competizione : ""),
              qui ? "guarda" : "", data(Date.parse(a.quando)));
         if (qui) v.addEventListener("click", function () { vaiA(qui.id, null, "tutto"); });
-        else { v.className = "voce"; v.style.opacity = ".72"; }
+        else {
+          v.style.opacity = ".78";
+          v.addEventListener("click", function () { apriAppunti(a.rec); });
+        }
       });
     }
     if (RIS.segni.length) {
@@ -1560,6 +1589,46 @@
           .addEventListener("click", function () { vaiA(m.reg, m.secondi, "live"); });
       });
     }
+  }
+
+  // Il video di questa partita non e' collegato al MAM. Quello che c'e' —
+  // e non e' poco — sono gli appunti di chi l'ha guardata: la partita
+  // intera, minuto per minuto. Serve a decidere se vale la pena andare a
+  // cercare il file, prima di andarlo a cercare.
+  function apriAppunti(rec) {
+    manda({ tipo: "clip-appunti-partita", rec: rec }).then(function (d) {
+      var vecchia = el("scheda"); if (vecchia) vecchia.remove();
+      var s = document.createElement("div");
+      s.className = "scheda"; s.id = "scheda";
+      var d0 = new Date(d.quando);
+      var quando = isFinite(d0) ? ("0"+d0.getDate()).slice(-2) + "/" +
+                   ("0"+(d0.getMonth()+1)).slice(-2) + "/" + d0.getFullYear() : "";
+      var righe = "", tempo = 0, hl = 0;
+      d.righe.forEach(function (r) {
+        if (r.s !== tempo) {
+          tempo = r.s;
+          righe += '<div class="tempo">' + (tempo === 1 ? "Primo tempo" : "Secondo tempo") + '</div>';
+        }
+        if (r.hl) hl++;
+        righe += '<div class="az' + (r.hl ? " hl" : "") + '">' +
+                 '<u>' + (r.hl ? "\u2605 " : "") + r.m + '</u>' +
+                 '<i>' + (r.t || "") + '</i><p>' + r.x + '</p></div>';
+      });
+      s.innerHTML = '<div><header><b>' + d.partita + '</b>' +
+        '<span>' + (d.competizione || "") + (quando ? " \u00b7 " + quando : "") +
+        " \u00b7 " + d.righe.length + ' azioni' + (hl ? " \u00b7 " + hl + " segnate per gli HL" : "") +
+        '</span><a href="#" id="schedaChiudi">chiudi</a></header>' +
+        '<div class="righe">' + (righe || '<div class="az"><p>Nessuna azione.</p></div>') + '</div>' +
+        '<footer>Il video di questa partita non \u00e8 collegato al MAM: ' +
+        'gli appunti dicono <b>quale minuto</b>, il file sta in archivio.</footer></div>';
+      document.body.appendChild(s);
+      var via = function (e) { if (e) e.preventDefault(); s.remove(); };
+      s.addEventListener("click", function (e) { if (e.target === s) via(); });
+      el("schedaChiudi").addEventListener("click", via);
+      document.addEventListener("keydown", function esc(e) {
+        if (e.key === "Escape") { via(); document.removeEventListener("keydown", esc); }
+      });
+    }).catch(function (e) { dice(e.message); });
   }
 
   // dal risultato al materiale: si sceglie la partita, si va alla vista
