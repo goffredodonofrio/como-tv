@@ -2265,7 +2265,16 @@ function renderVideoPicker(){
  var cv=document.createElement('canvas');cv.width=W;cv.height=H;cv.id='vidCanvas';
  cv.style.cssText='max-width:100%;max-height:62vh;height:auto;display:block;box-shadow:0 30px 80px -30px #000;border-radius:4px;background:#05070F;cursor:grab;touch-action:none';
  var v=document.createElement('video');v.src=videoPick.url;v.preload='auto';v.playsInline=true;
- v.style.display='none';videoPick.el=v;
+ // NON display:none.
+ // Un video non disegnato non viene "presentato" dal browser, e
+ // requestVideoFrameCallback — che e' l'aggancio a ogni fotogramma
+ // decodificato — non scatta mai. Resta solo il timer di riserva, che nelle
+ // finestre senza fuoco viene rallentato a un colpo al secondo: il canvas si
+ // ridisegna una volta ogni tanto e l'export esce FERMO, un'immagine sola
+ // per tutta la durata. Quindi il video resta nel documento, grande due
+ // pixel e quasi trasparente: si decodifica per davvero e non si vede.
+ v.style.cssText='position:absolute;left:0;bottom:0;width:2px;height:2px;opacity:.01;pointer-events:none;z-index:-1';
+ videoPick.el=v;
  // L'audio passa da un incrocio WebAudio che tiene SOLO i canali 1-2.
  // Le registrazioni vMix in 5.1 portano il programma anche sul centro
  // (bus A): il downmix del browser lo sommerebbe al fronte, con l'eco
@@ -2566,6 +2575,15 @@ function exportVideo(){
   rec.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data);};
   rec.onstop=function(){
    if(videoPick&&videoPick.raf)cancelAnimationFrame(videoPick.raf);
+   // Un file che esce fermo e' peggio di un errore: sembra riuscito. Se i
+   // fotogrammi disegnati sono troppo pochi per la durata, lo si dice.
+   var attesi=Math.max(4,(OUT-IN)*8);
+   if(nFrame<attesi){
+    avviso('<b>Il video e\' uscito quasi fermo</b> ('+nFrame+' fotogrammi in '+
+     fmtT(OUT-IN)+'). Succede quando la finestra perde il fuoco durante la '+
+     'registrazione: il browser rallenta il disegno. Tieni questa finestra '+
+     'davanti, senza cambiare programma, finche\' non compare "Converto in MP4".',{male:true});
+   }
    var isMp4=mime.indexOf('mp4')>=0;
    var blob=new Blob(chunks,{type:mime});
    var nome=nomeEvento()+'_'+fname(current);
@@ -2597,7 +2615,10 @@ function exportVideo(){
    drawComposite(ctx,W,H,v,v.videoWidth,v.videoHeight,overlay);nFrame++;
    segnaFotogramma();                       // questo, e solo questo, entra nel filmato
    ultimoDisegno=Date.now();
-   if(dur)busy(true,'Registro… '+Math.max(0,Math.min(100,Math.round((v.currentTime-IN)/dur*100)))+'%');
+   // Nel messaggio ci va anche l'avvertimento: la registrazione passa dal
+   // disegno sullo schermo, e se la finestra va dietro il disegno si ferma.
+   if(dur)busy(true,'Registro… '+Math.max(0,Math.min(100,Math.round((v.currentTime-IN)/dur*100)))+
+    '%  ·  tieni questa finestra davanti');
    if(v.currentTime>=OUT)stopRec();
   }
   if(conRVFC){
