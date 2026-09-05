@@ -182,6 +182,17 @@
   .locsug{margin-top:8px;font-size:12px;line-height:1.5;color:var(--fg-2);}
   .locmira{margin-top:9px;padding-top:8px;border-top:1px solid var(--line-2);}
   .locmira input[type=range]{flex:1;min-width:0;accent-color:var(--gold);}
+  /* il riquadro ha le proporzioni della colonna in onda: 420x1080 */
+  .locmirabox{position:relative;width:86px;height:221px;margin:0 auto 8px;
+    border-radius:6px;overflow:hidden;cursor:grab;
+    background:#0A0F24;border:1px solid rgba(201,162,75,.34);}
+  .locmirabox.tira{cursor:grabbing;}
+  .locmirabox img{width:100%;height:100%;object-fit:cover;user-select:none;pointer-events:none;}
+  /* i due terzi alti sono la foto: sotto ci va il testo, e vederlo aiuta a
+     non lasciare la faccia dove poi arrivano le squadre */
+  .locmiragriglia{position:absolute;left:0;right:0;top:65%;bottom:0;pointer-events:none;
+    background:linear-gradient(180deg,rgba(10,15,36,.15),rgba(10,15,36,.72));
+    border-top:1px solid rgba(201,162,75,.4);}
   .apgg{flex:0 0 42px;text-align:center;}
   .apmm{flex:0 0 58px;text-align:center;text-transform:uppercase;}
   .apchi{flex:1;min-width:0;}
@@ -512,6 +523,21 @@
       .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   }
 
+  // Per far vedere e trascinare la foto nell'editor serve un indirizzo che il
+  // browser possa caricare. Se e' stata caricata a mano, c'e' gia'. Se viene
+  // da Drive, il ponte l'ha gia' portata in magazzino quando ha disegnato la
+  // locandina, e li' si chiama col suo id: stessa regola dei due lati, se
+  // cambia una va cambiata l'altra.
+  function fotoVisibile(c) {
+    if (c.foto && c.foto.src) return c.foto.src;
+    var link = c.loc && c.loc.foto;
+    if (!link) return "";
+    var m = String(link).match(/drive\.google\.com\/file\/d\/([A-Za-z0-9_-]{10,})/) ||
+            String(link).match(/drive\.google\.com\/.*[?&]id=([A-Za-z0-9_-]{10,})/);
+    if (m) return BASEIMG + "/loghi/foto-partita-" + m[1] + ".jpg";
+    return link;
+  }
+
   // Il magazzino, chiesto una volta e tenuto: serve solo a sapere se una
   // foto c'e' gia'.
   var MAGAZZINO = null;
@@ -615,15 +641,29 @@
         campo("ospite", "Ospite", "PSV") +
         campo("comp", "Competizione", "Eredivisie \u00b7 giornata 5") +
         '<div class="locdue">' + campo("data", "Data", "5 SET") + campo("ora", "Ora", "20:00") + '</div>' +
-        '<div class="locmira">' +
-          '<div class="locet" style="flex:0 0 auto;margin-bottom:4px">Inquadratura</div>' +
-          '<div class="locriga"><span class="locet" style="flex:0 0 62px">Orizz.</span>' +
-            '<input type="range" min="0" max="100" step="1" data-mira="' + i + '" data-mirak="fx" ' +
-            'value="' + (L.fx == null ? 50 : L.fx) + '"></div>' +
-          '<div class="locriga"><span class="locet" style="flex:0 0 62px">Vert.</span>' +
-            '<input type="range" min="0" max="100" step="1" data-mira="' + i + '" data-mirak="fy" ' +
-            'value="' + (L.fy == null ? 32 : L.fy) + '"></div>' +
-        '</div>' +
+        (function () {
+          var src = fotoVisibile(c);
+          if (!src) return "";
+          var fx = L.fx == null ? 50 : L.fx, fy = L.fy == null ? 32 : L.fy;
+          // Il riquadro ha le proporzioni della colonna: quello che si vede
+          // qui e' quello che va in onda. I cursori restano per la
+          // precisione, ma vanno nello stesso verso del trascinamento —
+          // a destra la foto va a destra.
+          return '<div class="locmira">' +
+            '<div class="locet" style="margin-bottom:5px">Inquadratura &mdash; trascina la foto</div>' +
+            '<div class="locmirabox" data-tira="' + i + '">' +
+              '<img draggable="false" src="' + esc(src) + '" ' +
+              'style="object-position:' + fx + '% ' + fy + '%">' +
+              '<i class="locmiragriglia"></i>' +
+            '</div>' +
+            '<div class="locriga"><span class="locet" style="flex:0 0 52px">Orizz.</span>' +
+              '<input type="range" min="0" max="100" step="1" data-mira="' + i + '" data-mirak="fx" ' +
+              'value="' + (100 - fx) + '"></div>' +
+            '<div class="locriga"><span class="locet" style="flex:0 0 52px">Vert.</span>' +
+              '<input type="range" min="0" max="100" step="1" data-mira="' + i + '" data-mirak="fy" ' +
+              'value="' + (100 - fy) + '"></div>' +
+          '</div>';
+        })() +
         '<div class="locsug">' +
           (L.foto
             ? '&#10003; Sfondo preso da <b>Airtable</b> (Foto Piattaforma). Per cambiarlo, ' +
@@ -797,6 +837,69 @@
   // non succede niente di male.
   el("contenuti").addEventListener("change", function(e){ campiScheda(e); });
   el("contenuti").addEventListener("input", campiScheda);
+
+  // La foto della partita vive in magazzino solo dopo che il ponte ha
+  // disegnato la locandina la prima volta: se il riquadro la chiede un
+  // attimo prima, trova un 404 e resta nero per sempre. Quindi si riprova,
+  // poche volte e piano: "error" non risale, si ascolta in cattura.
+  el("contenuti").addEventListener("error", function (ev) {
+    var im = ev.target;
+    if (!im || im.tagName !== "IMG" || !im.parentNode ||
+        !im.parentNode.classList.contains("locmirabox")) return;
+    var n = (+im.dataset.riprove || 0) + 1;
+    if (n > 3) return;
+    im.dataset.riprove = n;
+    var url = im.src.split("?")[0];
+    setTimeout(function(){ im.src = url + "?t=" + Date.now(); }, 1400 * n);
+  }, true);
+
+  // Trascinare la foto e' il modo naturale di inquadrare: si guarda il
+  // riquadro e si sposta quello che si vede, senza tradurre niente in numeri.
+  // I cursori restano per la precisione e seguono il dito.
+  el("contenuti").addEventListener("pointerdown", function (ev) {
+    var box = ev.target.closest ? ev.target.closest(".locmirabox") : null;
+    if (!box) return;
+    var i = +box.dataset.tira, c = CONT[i];
+    if (!c) return;
+    if (!c.loc) c.loc = nuovaLocandina();
+    var im = box.querySelector("img");
+    if (!im || !im.naturalWidth) return;   // foto non ancora arrivata: niente da spostare
+    // Quanta foto resta fuori dal riquadro: e' tutto lo spazio che il
+    // trascinamento ha a disposizione. Se non ne avanza (foto della stessa
+    // forma della colonna) non c'e' niente da spostare, e il conto lo dice
+    // da solo invece di far scattare la foto da un capo all'altro.
+    var r = box.getBoundingClientRect();
+    var sc = Math.max(r.width / im.naturalWidth, r.height / im.naturalHeight);
+    var fuoriX = im.naturalWidth * sc - r.width, fuoriY = im.naturalHeight * sc - r.height;
+    var x0 = ev.clientX, y0 = ev.clientY;
+    var fx0 = c.loc.fx == null ? 50 : c.loc.fx, fy0 = c.loc.fy == null ? 32 : c.loc.fy;
+    box.classList.add("tira");
+    try { box.setPointerCapture(ev.pointerId); } catch (e) {}
+    ev.preventDefault();
+    function muovi(e2) {
+      // La foto va dove va il dito: portandola a destra si scopre la sua
+      // parte sinistra, quindi il punto guardato dal ponte diminuisce.
+      var fx = fuoriX > 0 ? fx0 - (e2.clientX - x0) / fuoriX * 100 : fx0;
+      var fy = fuoriY > 0 ? fy0 - (e2.clientY - y0) / fuoriY * 100 : fy0;
+      c.loc.fx = Math.max(0, Math.min(100, Math.round(fx)));
+      c.loc.fy = Math.max(0, Math.min(100, Math.round(fy)));
+      im.style.objectPosition = c.loc.fx + "% " + c.loc.fy + "%";
+      var p = box.parentNode;
+      var cx = p.querySelector('[data-mirak="fx"]'), cy = p.querySelector('[data-mirak="fy"]');
+      if (cx) cx.value = 100 - c.loc.fx;
+      if (cy) cy.value = 100 - c.loc.fy;
+    }
+    function molla() {
+      box.classList.remove("tira");
+      box.removeEventListener("pointermove", muovi);
+      box.removeEventListener("pointerup", molla);
+      box.removeEventListener("pointercancel", molla);
+      anteprima();          // la locandina si ridisegna una volta sola, alla fine
+    }
+    box.addEventListener("pointermove", muovi);
+    box.addEventListener("pointerup", molla);
+    box.addEventListener("pointercancel", molla);
+  });
   function campiScheda(e){
     var t = e.target;
     if (t.dataset.zoom != null) {
@@ -812,7 +915,14 @@
     if (t.dataset.mira != null) {
       var cm = CONT[+t.dataset.mira];
       if (!cm.loc) cm.loc = nuovaLocandina();
-      cm.loc[t.dataset.mirak] = +t.value;
+      // Il cursore dice "sposta la foto", il ponte vuole "che punto guardare":
+      // sono due modi opposti di dire la stessa cosa, e il valore si rovescia
+      // qui. Prima non si rovesciava, e a destra la foto andava a sinistra.
+      cm.loc[t.dataset.mirak] = 100 - (+t.value);
+      var box = cardDi(+t.dataset.mira);
+      var im = box && box.querySelector(".locmirabox img");
+      if (im) im.style.objectPosition = (cm.loc.fx == null ? 50 : cm.loc.fx) + "% " +
+                                        (cm.loc.fy == null ? 32 : cm.loc.fy) + "%";
       anteprima();                       // niente renderCont: il cursore resta sotto il dito
       return;
     }
