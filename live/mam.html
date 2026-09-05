@@ -218,7 +218,13 @@
   .voce a{color:var(--gold-deep);text-decoration:none;font-family:'Mazzard',sans-serif;font-size:10px;
     font-weight:700;letter-spacing:.12em;text-transform:uppercase;white-space:nowrap;}
   .voce a:hover{color:var(--inchiostro);}
-  .voce .azioni{display:flex;gap:9px;}
+  .voce .azioni{display:flex;gap:9px;align-items:center;}
+  a.togli{color:var(--inchiostro-3)!important;}
+  a.togli:hover{color:var(--red)!important;}
+  a.togli.sicuro{color:#fff!important;background:var(--red);border-radius:5px;padding:2px 8px;}
+  a.togli.grande{display:inline-block;border:1px solid var(--linea);border-radius:8px;
+    padding:10px 14px;background:var(--bianco);}
+  a.togli.grande.sicuro{border-color:var(--red);}
 
   .dati{width:100%;font-size:13px;}
   .dati tr{border-bottom:1px solid var(--linea);}
@@ -696,6 +702,51 @@
     }
   }
 
+  // TOGLIERE UNA CLIP.
+  //
+  //  Due passi, non uno: "elimina" diventa "sicuro?" e solo il secondo click
+  //  cancella. Un file video non torna indietro, e in una griglia di
+  //  francobolli tutti uguali il dito sbaglia bersaglio facilmente.
+  //
+  //  Serve la chiave di REGIA, non quella di lavoro: tagliare e guardare li
+  //  puo' fare chiunque, buttare no. Se non ce l'hai in tasca te la chiede
+  //  al momento, invece di dirti solo che non si puo'.
+  function elimina(id, quando) {
+    manda({ tipo: "clip-elimina", clip: id })
+      .then(function () { dice("Clip eliminata.", true); if (quando) quando(); aggiorna(); })
+      .catch(function (e) {
+        if (!/chiave/i.test(e.message)) { dice(e.message); return; }
+        var k = window.ChiaveComoTV ? ChiaveComoTV.valore("comando",
+          "Per eliminare una clip serve la chiave di COMANDO della regia.\n\n" +
+          "Tagliare e guardare li puo' fare chiunque; buttare no.") : "";
+        if (!k) { dice("Serve la chiave di comando della regia."); return; }
+        TOKEN = k;
+        manda({ tipo: "clip-elimina", clip: id })
+          .then(function () { dice("Clip eliminata.", true); if (quando) quando(); aggiorna(); })
+          .catch(function (e2) { dice(e2.message); });
+      });
+  }
+  // il tasto che si trasforma in domanda invece di aprire una finestra
+  function tastoElimina(id, dopo) {
+    var a = document.createElement("a");
+    a.href = "#"; a.textContent = "elimina"; a.className = "togli";
+    var chiesto = false, torna = null;
+    a.addEventListener("click", function (e) {
+      e.preventDefault();
+      if (!chiesto) {
+        chiesto = true; a.textContent = "sicuro?"; a.classList.add("sicuro");
+        torna = setTimeout(function () {
+          chiesto = false; a.textContent = "elimina"; a.classList.remove("sicuro");
+        }, 4000);
+        return;
+      }
+      clearTimeout(torna);
+      a.textContent = "…";
+      elimina(id, dopo);
+    });
+    return a;
+  }
+
   function voceClip(x) {
     var v = document.createElement("div"); v.className = "voce";
     v.innerHTML = "<div class='testo'><div class='nome'>" + x.titolo + "</div><div class='dett'>" +
@@ -709,7 +760,8 @@
                (x.evento ? "&evento=" + encodeURIComponent(x.evento) : "");
       g.target = "_blank"; g.rel = "noopener"; g.textContent = "grafica";
       var s2 = document.createElement("a"); s2.href = url + "?scarica=1"; s2.textContent = "scarica";
-      az.appendChild(g); az.appendChild(s2); v.appendChild(az);
+      az.appendChild(g); az.appendChild(s2); az.appendChild(tastoElimina(x.id));
+      v.appendChild(az);
     }
     return v;
   }
@@ -922,6 +974,10 @@
       var s2 = document.createElement("a"); s2.href = url + "?scarica=1";
       s2.innerHTML = '<button class="b">Scarica</button>';
       az2.appendChild(g); az2.appendChild(s2); corpo.appendChild(az2);
+      var az3 = document.createElement("div"); az3.style.marginTop = "10px";
+      var t = tastoElimina(o.id, function () { ASSET = 0; });
+      t.className = "togli grande";
+      az3.appendChild(t); corpo.appendChild(az3);
     }
   }
 
