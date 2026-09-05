@@ -162,7 +162,10 @@
   .tlins{position:absolute;top:44px;bottom:0;width:2px;background:var(--tl-giallo);z-index:6;pointer-events:none;}
   .tlvuoto{position:absolute;left:0;right:0;top:44px;bottom:0;display:flex;align-items:center;justify-content:center;
     color:#7A7A7A;font-size:11px;pointer-events:none;}
-  .colCentro .timeline{flex:0 0 240px;height:240px;margin:var(--s2) calc(-1 * clamp(10px,1.2vw,18px)) -14px;}
+  /* La timeline attraversa tutto lo schermo, come in Premiere: sta fissa in
+     basso sopra la barra di stato, e le colonne le lasciano il posto. */
+  .timeline{position:fixed;left:0;right:0;bottom:var(--barra);height:240px;z-index:55;}
+  .lavoro{padding-bottom:240px;}
 
     justify-content:center;color:var(--fumo);font-size:11px;}
   .tltraccia-nome.a1{color:#2E8B57;height:36px;}
@@ -305,6 +308,39 @@
   /* La pista: dove stanno entrata, uscita e i segni della partita. Non e'
      una timeline di montaggio — e' il minimo per vedere che cosa si sta
      per tagliare senza doverlo immaginare. */
+  /* IN ARCHIVIO TUTTO E' SCURO, COME PREMIERE. Gli stessi token del design,
+     rimappati: la carta diventa il grigio dei pannelli, l'oro diventa il blu.
+     Cosi' ogni componente cambia pelle senza cambiare una riga. */
+  body.modo-archivio{color-scheme:dark;
+    --carta:#1E1E1E;--carta-2:#2A2A2A;--bianco:#2B2B2B;
+    --inchiostro:#E2E2E2;--inchiostro-2:#C0C0C0;--inchiostro-3:#A2A2A2;--fumo:#8A8A8A;
+    --gold:#2D8CEB;--gold-bright:#5AA7F2;--gold-deep:#4CA3F0;
+    --linea:rgba(255,255,255,.10);--linea-oro:rgba(45,140,235,.55);
+    --scuro:#141414;--ombra:none;
+    background:var(--carta);color:var(--inchiostro);}
+  body.modo-archivio button.b.oro{color:#fff;}
+  body.modo-archivio button.b.scuro{background:#2D8CEB;border-color:#2D8CEB;color:#fff;}
+  body.modo-archivio input,body.modo-archivio select,body.modo-archivio textarea{
+    background:#2B2B2B;color:#E2E2E2;border-color:#3A3A3A;}
+  body.modo-archivio ::placeholder{color:#8A8A8A;}
+  body.modo-archivio .console{background:#2A2A2A;color:#E2E2E2;}
+  body.modo-archivio .mini .telo{background:#0F0F0F;}
+  body.modo-archivio .telaio{border-color:#333;}
+  body.modo-archivio .col + .col{border-left-color:#0F0F0F;}
+  body.modo-archivio .stato{border-top-color:#2D8CEB;}
+  body.modo-archivio .voce,body.modo-archivio .scheda{background:#2A2A2A;}
+  body.modo-archivio .scheda.scelta{outline:2px solid #2D8CEB;}
+  body.modo-archivio .segnaBox{background:#2A2A2A;border-color:#2D8CEB;}
+  body.modo-archivio .foglio>div,body.modo-archivio .tasti>div{background:#232323;}
+  body.modo-archivio .risultati h3 b{color:#5AA7F2;}
+  /* dove il design scrive "carta" su "scuro" (testa, barra di stato, targa,
+     console) il rimappaggio farebbe scuro su scuro: qui il testo resta chiaro */
+  body.modo-archivio .testa,body.modo-archivio .marchio,body.modo-archivio .marchio small,
+  body.modo-archivio .stato,body.modo-archivio .stato .val,body.modo-archivio .stato .e,
+  body.modo-archivio .telaio .targa,body.modo-archivio .console,body.modo-archivio .console .et,
+  body.modo-archivio .torna{color:#E2E2E2;}
+  body.modo-archivio .testa{background:#141414;border-bottom:1px solid #0F0F0F;}
+  body.modo-archivio .stato{background:#141414;}
   body.modo-archivio .soloLive{display:none!important;}
   /* questi due la classe se la riscrivono da soli a ogni aggiornamento:
      si nascondono per nome, che nessuno gli tocca */
@@ -392,6 +428,15 @@
   .tr.oro{color:var(--gold-deep);} .tr.play{width:36px;}
   .tr:disabled{opacity:.3;cursor:default;}
   .binCapo{margin-top:var(--s3);}
+  /* Il bin di Premiere: la clip e' il suo fotogramma. Passandoci sopra con
+     il cursore la si scorre (hover scrub); i comandi compaiono solo allora. */
+  .mini video.anteprima{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;pointer-events:none;background:#000;}
+  .mini.scorro video.anteprima{opacity:1;}
+  .mini .cursorino{position:absolute;top:0;bottom:0;width:1px;background:#2D8CEB;display:none;pointer-events:none;}
+  .mini.scorro .cursorino{display:block;}
+  .mini img,.mini video{-webkit-user-drag:none;user-drag:none;pointer-events:none;}
+  .scheda .comandi{display:none;}
+  .scheda:hover .comandi{display:flex;}
   #evento option.futura{background:#FDECEC;color:#8E1216;}
   #evento optgroup{font-style:normal;color:var(--gold-deep);}
   #bin .griglia{grid-template-columns:1fr 1fr;}
@@ -665,7 +710,7 @@
       <h2>Dagli appunti <span id="suggConto"></span></h2>
       <div class="pezzi" id="suggPezzi"></div>
     </div>
-    <div id="segniCol"></div>
+    <div id="segniCol" class="soloLive"></div>
   </div>
 
   <div class="col colCentro">
@@ -1103,7 +1148,7 @@
     var vs = el("player");
     var iconaPlay = function (v, b) { if (b) b.innerHTML = v.paused ? IC.play : IC.pausa; };
     vs.addEventListener("play", function () { iconaPlay(vs, el("btnPlay")); });
-    vs.addEventListener("pause", function () { iconaPlay(vs, el("btnPlay")); });
+    vs.addEventListener("pause", function () { iconaPlay(vs, el("btnPlay")); if (SHUTTLE.dir > 0) { SHUTTLE.rate = 0; SHUTTLE.dir = 0; vs.playbackRate = 1; } });
     el("btnPlay").addEventListener("click", function () { vs.paused ? vs.play().catch(function(){}) : vs.pause(); });
     el("btnVaiIn").addEventListener("click", function () { if (dentro !== null) { seguiLive = false; vs.currentTime = dentro; } });
     el("btnVaiOut").addEventListener("click", function () { if (fuori !== null) { seguiLive = false; vs.currentTime = fuori; } });
@@ -1229,7 +1274,7 @@
       var e = el("monS").querySelector("." + k); if (e) sotto += e.offsetHeight + 5;
     });
     var tg = c.querySelector(".taglio"); if (tg) sotto += tg.offsetHeight + 12;
-    var tl = el("timeline"); if (tl) sotto += 240 + 10;
+    // la timeline e' fuori dalla colonna: la colonna e' gia' alta il giusto
     var largo = (c.clientWidth - 28 - 23) / 2 - 2;
     var alto = Math.max(120, col.clientHeight - sotto - 44);
     var r = { "16:9": 16/9, "3:4": 3/4, "9:16": 9/16 }[formato] || 16/9;
@@ -1822,99 +1867,171 @@
   // I tasti. Chi monta tiene una mano sulla tastiera e non la sposta: ogni
   // viaggio verso il mouse e' un secondo perso, e in una partita di secondi
   // ce ne sono novanta volte sessanta.
-  var TASTI = { "j": -5, "l": 5, "arrowleft": -1, "arrowright": 1 };
   var AIUTO = [
-    ["spazio · K", "ferma e riparte"],
-    ["J · L", "indietro e avanti di 5\u2033 (con alt: 50\u2033)"],
-    ["\u2190 \u2192", "un secondo \u00b7 con shift un fotogramma"],
-    ["\u2191 \u2193", "al segno precedente e successivo"],
-    ["I \u00b7 O", "entrata e uscita qui"],
-    [", \u00b7 .", "inserisci nella sequenza \u00b7 esporta la clip"],
-    ["shift+I \u00b7 shift+O", "vai all'entrata, vai all'uscita"],
-    ["alt+I \u00b7 alt+O", "togli entrata, togli uscita"],
-    ["M", "metti un segno dove sei"],
-    ["home \u00b7 fine", "inizio e fine"],
-    ["+ \u00b7 \u2212 \u00b7 \\", "avvicina, allontana, tutta la partita"],
-    ["1 \u00b7 2 \u00b7 3", "16:9 \u00b7 3:4 \u00b7 9:16"],
-    ["T", "esporta la clip"],
-    ["?", "questo foglio"]
+    ["spazio", "riproduci / ferma"],
+    ["J · K · L", "indietro · ferma · avanti; premuto di nuovo raddoppia (2× 4× 8×)"],
+    ["← →", "un fotogramma · con shift cinque"],
+    ["↑ ↓", "punto di montaggio precedente / successivo (segni nella Sorgente, pezzi nel Programma)"],
+    ["home · fine", "inizio e fine"],
+    ["I · O", "segna entrata · segna uscita"],
+    ["shift+I · shift+O", "vai all’entrata · vai all’uscita"],
+    ["ctrl+shift+I · ctrl+shift+O", "togli entrata · togli uscita  (ctrl+shift+X: entrambe)"],
+    ["M", "marcatore · shift+M al prossimo · ctrl+shift+M al precedente"],
+    [",", "inserisci nella sequenza"],
+    [".", "sovrascrivi → esporta come clip singola"],
+    ["Q · W", "taglia il pezzo fino al cursore: la testa (Q) o la coda (W)"],
+    ["ctrl+K", "dividi il pezzo al cursore"],
+    ["canc", "togli il pezzo scelto"],
+    ["S", "calamita (snap)"],
+    ["shift+E", "esporta fotogramma"],
+    ["ctrl+M", "esporta la sequenza in tutti i formati"],
+    ["= · − · \\\\", "avvicina · allontana · tutta la sequenza"],
+    ["1 · 2 · 3", "16:9 · 3:4 · 9:16"],
+    ["T", "esporta la clip (entrata→uscita)"],
+    ["esc", "chiude riquadri e foglietti"],
+    ["?", "questo foglietto"]
   ];
   function fogliettoTasti() {
     var vecchio = el("tasti"); if (vecchio) { vecchio.remove(); return; }
     var d = document.createElement("div");
     d.className = "tasti"; d.id = "tasti";
-    d.innerHTML = "<div><h4>Comandi</h4><table>" + AIUTO.map(function (r) {
+    d.innerHTML = "<div><h4>Comandi · quelli di Premiere</h4><table>" + AIUTO.map(function (r) {
       return "<tr><td>" + r[0].split(" ").map(function (x) {
-        return /^[·\u00b7]$/.test(x) ? x : "<kbd>" + x + "</kbd>";
+        return /^[··]$/.test(x) ? x : "<kbd>" + x + "</kbd>";
       }).join(" ") + "</td><td>" + r[1] + "</td></tr>";
     }).join("") + "</table></div>";
     document.body.appendChild(d);
     d.addEventListener("click", function () { d.remove(); });
   }
 
-  // I tasti sono quelli di Premiere dove Premiere ne ha uno: chi monta li
-  // ha gia' nelle dita e non deve impararne altri. Dove Premiere non
-  // c'entra (i formati, l'esportazione) si e' scelto il piu' vicino.
+  // ── J K L: lo shuttle di Premiere ──
+  // L avanti, J indietro, K ferma. Premuti di nuovo raddoppiano. Il browser
+  // non sa andare all'indietro: lo si imita a passi, che e' quello che si
+  // vede anche in Premiere sotto una certa velocita'.
+  var SHUTTLE = { dir: 0, rate: 0, timer: null };
+  function shuttle(v, dir) {
+    if (SHUTTLE.dir !== dir) SHUTTLE.rate = 0;
+    SHUTTLE.dir = dir; SHUTTLE.rate = SHUTTLE.rate ? Math.min(8, SHUTTLE.rate * 2) : 1;
+    clearInterval(SHUTTLE.timer); SHUTTLE.timer = null;
+    if (dir > 0) { v.playbackRate = SHUTTLE.rate; v.play().catch(function () {}); }
+    else {
+      v.pause();
+      SHUTTLE.timer = setInterval(function () { v.currentTime = Math.max(0, v.currentTime - SHUTTLE.rate * 0.2); }, 200);
+    }
+  }
+  function fermaShuttle(v) {
+    clearInterval(SHUTTLE.timer); SHUTTLE.timer = null; SHUTTLE.rate = 0; SHUTTLE.dir = 0;
+    v.playbackRate = 1; v.pause();
+  }
+  // il secondo del MATERIALE su cui sta il Programma (il pezzo puo' venire
+  // dal file della clip, che parte da zero, o dalla partita intera)
+  function tempoNelMateriale() {
+    var vp = el("programma"), x = pezziProg()[PROG.i]; if (!vp || !x) return null;
+    return PROG.a === null ? x.dentro + vp.currentTime : vp.currentTime;
+  }
+  function pezzoScelto() {
+    var pz = pezziProg();
+    return pz.filter(function (z) { return z.id === TL.sel; })[0] || pz[PROG.i] || null;
+  }
+  function ritocca(campi) {
+    var x = pezzoScelto(); if (!x || !SEQ) return;
+    manda(Object.assign({ tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: x.id }, campi))
+      .then(function (r) { SEQ = r.seq; disegnaSequenza(); }).catch(function (er) { dice(er.message); });
+  }
+  function vicinoSegno(v, avanti) {
+    var segni = ((REG && REG.marker) || []).map(function (m) { return m.secondi; }).sort(function (a, b) { return a - b; });
+    var ora = v.currentTime;
+    var meta = avanti ? segni.find(function (x) { return x > ora + 0.3; })
+                      : segni.filter(function (x) { return x < ora - 0.3; }).pop();
+    if (meta !== undefined) { seguiLive = false; v.currentTime = meta; }
+  }
+
   document.addEventListener("keydown", function (e) {
     var t = e.target.tagName;
-    if (t === "INPUT" || t === "TEXTAREA" || t === "SELECT" || e.metaKey || e.ctrlKey) return;
-    // il video che riceve i tasti e' quello del monitor toccato per ultimo:
-    // spazio sul Programma riproduce la sequenza, non la partita
+    if (t === "INPUT" || t === "TEXTAREA" || t === "SELECT") return;
+    var mod = e.metaKey || e.ctrlKey;
     var v = (MON === "p" && el("programma")) ? el("programma") : el("player"); if (!v) return;
+    var vp = el("programma");
     var k = e.key.toLowerCase();
-    if (k === "," ) { var bi = el("btnInserisci"); if (bi) { e.preventDefault(); bi.click(); } return; }
-    if (k === "." ) { var bt = el("btnTaglia"); if (bt && !bt.disabled) { e.preventDefault(); bt.click(); } return; }
-    if (MON === "p" && (k === "home" || k === "end")) {
-      e.preventDefault(); (k === "home" ? el("pInizio") : el("pFine")).click(); return;
-    }
-    if (MON === "p" && (k === "arrowup" || k === "arrowdown")) {
-      e.preventDefault(); progVai(PROG.i + (k === "arrowdown" ? 1 : -1), !v.paused); return;
-    }
     var foglio = el("tasti");
     if (foglio) { foglio.remove(); if (k === "escape" || k === "?") { e.preventDefault(); return; } }
+    if (k === "escape") { var sb = el("segnaBox"); if (sb) sb.hidden = true; var fg = el("foglio"); if (fg) fg.remove(); return; }
     if (k === "?" || (k === "/" && e.shiftKey)) { e.preventDefault(); fogliettoTasti(); return; }
-    if (k === " " || k === "k") { e.preventDefault(); v.paused ? v.play().catch(function(){}) : v.pause(); return; }
-    if (TASTI[k] !== undefined) {
+
+    // ── trasporto ──
+    if (k === " ") { e.preventDefault(); if (SHUTTLE.rate) fermaShuttle(v); else v.paused ? v.play().catch(function(){}) : v.pause(); return; }
+    if (k === "k" && !mod) { e.preventDefault(); fermaShuttle(v); return; }
+    if (k === "l" && !mod) { e.preventDefault(); seguiLive = false; shuttle(v, 1); return; }
+    if (k === "j" && !mod) { e.preventDefault(); seguiLive = false; shuttle(v, -1); return; }
+    if (k === "arrowleft" || k === "arrowright") {
       e.preventDefault(); seguiLive = false;
-      var passo = TASTI[k];
-      if (e.shiftKey && (k === "arrowleft" || k === "arrowright")) passo = passo / Math.abs(passo) / FPS;
-      else if (e.altKey) passo *= 10;
-      v.currentTime = Math.max(0, v.currentTime + passo);
-      return;
+      var passo = (e.shiftKey ? 5 : 1) / FPS * (k === "arrowright" ? 1 : -1);
+      v.currentTime = Math.max(0, v.currentTime + passo); return;
     }
-    // su e giu': di segno in segno, come Premiere salta di taglio in taglio
+    if (k === "home") { e.preventDefault(); seguiLive = false; if (MON === "p") el("pInizio").click(); else v.currentTime = 0; return; }
+    if (k === "end") { e.preventDefault(); if (MON === "p") el("pFine").click(); else v.currentTime = Math.max(0, durataAperta() - 1); return; }
     if (k === "arrowup" || k === "arrowdown") {
-      e.preventDefault(); seguiLive = false;
-      var segni = ((REG && REG.marker) || []).map(function (m) { return m.secondi; }).sort(function (a, b) { return a - b; });
-      var ora = v.currentTime;
-      var meta = (k === "arrowdown")
-        ? segni.find(function (x) { return x > ora + 0.3; })
-        : segni.filter(function (x) { return x < ora - 0.3; }).pop();
-      if (meta !== undefined) v.currentTime = meta;
+      e.preventDefault();
+      if (MON === "p") progVai(PROG.i + (k === "arrowdown" ? 1 : -1), vp && !vp.paused);
+      else vicinoSegno(v, k === "arrowdown");
       return;
     }
-    if (k === "i") { e.preventDefault(); if (e.shiftKey) { if (dentro !== null) v.currentTime = dentro; }
-                     else if (e.altKey) { dentro = null; mostraInOut(); } else segnaIn(); return; }
-    if (k === "o") { e.preventDefault(); if (e.shiftKey) { if (fuori !== null) v.currentTime = fuori; }
-                     else if (e.altKey) { fuori = null; mostraInOut(); } else segnaOut(); return; }
-    if (k === "m") { var bm = el("btnSegnaApri"); if (bm) { e.preventDefault(); bm.click(); } return; }
-    if ((k === "delete" || k === "backspace") && TL.sel && SEQ) {
+
+    // ── entrata e uscita ──
+    if (k === "x" && mod && e.shiftKey) { e.preventDefault(); dentro = null; fuori = null; mostraInOut(); return; }
+    if (k === "i") {
       e.preventDefault();
-      manda({ tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: TL.sel, togli: 1 })
+      if (mod && e.shiftKey) { dentro = null; mostraInOut(); }
+      else if (e.shiftKey) { if (dentro !== null) { seguiLive = false; el("player").currentTime = dentro; } }
+      else if (e.altKey) { dentro = null; mostraInOut(); }
+      else segnaIn();
+      return;
+    }
+    if (k === "o") {
+      e.preventDefault();
+      if (mod && e.shiftKey) { fuori = null; mostraInOut(); }
+      else if (e.shiftKey) { if (fuori !== null) { seguiLive = false; el("player").currentTime = fuori; } }
+      else if (e.altKey) { fuori = null; mostraInOut(); }
+      else segnaOut();
+      return;
+    }
+
+    // ── marcatori ──
+    if (k === "m" && !mod && !e.shiftKey) { var bm = el("btnSegnaApri"); if (bm) { e.preventDefault(); bm.click(); } return; }
+    if (k === "m" && e.shiftKey && !mod) { e.preventDefault(); vicinoSegno(el("player"), true); return; }
+    if (k === "m" && e.shiftKey && mod) { e.preventDefault(); vicinoSegno(el("player"), false); return; }
+    if (k === "m" && mod) { e.preventDefault(); var st = el("seqTutti"); if (st && SEQ) st.click(); return; }
+
+    // ── montaggio ──
+    if (k === ",") { var bi = el("btnInserisci"); if (bi && !bi.disabled) { e.preventDefault(); bi.click(); } return; }
+    if (k === ".") { var bt = el("btnTaglia"); if (bt && !bt.disabled) { e.preventDefault(); bt.click(); } return; }
+    if (k === "q" && !mod) { e.preventDefault(); var a1 = tempoNelMateriale(); if (a1 !== null) ritocca({ dentro: a1 }); return; }
+    if (k === "w" && !mod) { e.preventDefault(); var a2 = tempoNelMateriale(); if (a2 !== null) ritocca({ fuori: a2 }); return; }
+    if (k === "k" && mod) {
+      e.preventDefault();
+      var x = pezziProg()[PROG.i], a3 = tempoNelMateriale();
+      if (x && a3 !== null && SEQ) {
+        manda({ tipo: "clip-hl-dividi", seq: SEQ.id, pezzo: x.id, a: a3 })
+          .then(function (r) { SEQ = r.seq; disegnaSequenza(); }).catch(function (er) { dice(er.message); });
+      }
+      return;
+    }
+    if ((k === "delete" || k === "backspace") && SEQ) {
+      var xs = pezzoScelto(); if (!xs) return;
+      e.preventDefault();
+      manda({ tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: xs.id, togli: 1 })
         .then(function (r) { SEQ = r.seq; TL.sel = null; PROG.i = -1; disegnaSequenza(); destraMateriale(); })
         .catch(function (er) { dice(er.message); });
       return;
     }
-    if (k === "home") { e.preventDefault(); seguiLive = false; v.currentTime = 0; return; }
-    if (k === "end") { e.preventDefault(); v.currentTime = Math.max(0, durataAperta() - 1); return; }
+    if (k === "s" && !mod) { e.preventDefault(); var cal = document.querySelector(".tlstrumenti i[title^='calamita']"); if (cal) cal.classList.toggle("on"); return; }
+
+    // ── esportazioni e viste ──
+    if (k === "e" && e.shiftKey) { e.preventDefault(); (MON === "p" ? el("pFoto") : el("btnFoto")).click(); return; }
+    if (k === "t" && !mod) { var bt2 = el("btnTaglia"); if (bt2 && !bt2.disabled) { e.preventDefault(); bt2.click(); } return; }
     if (k === "+" || k === "=") { e.preventDefault(); LENTE = Math.min(32, LENTE * 2); disegnaTutto(); return; }
     if (k === "-") { e.preventDefault(); LENTE = Math.max(1, LENTE / 2); disegnaTutto(); return; }
     if (k === "\\") { e.preventDefault(); LENTE = 1; disegnaTutto(); return; }
-    if (k === "t") {
-      var b = el("btnTaglia");
-      if (b && !b.disabled) { e.preventDefault(); b.click(); }
-      return;
-    }
     if (k === "1" || k === "2" || k === "3") {
       var f = ["16:9", "3:4", "9:16"][+k - 1];
       var bf = document.querySelector('#formati button[data-f="' + f + '"]');
@@ -2386,13 +2503,30 @@
       // IL FOTOGRAMMA. Una griglia di rettangoli vuoti non e' un archivio:
       // si dovrebbe leggere ogni titolo per capire che cosa si ha davanti.
       var mini = a.o.mini ? BASE + a.o.mini : "";
+      var urlAnte = (a.t === "clip" && a.o.stato === "pronta") ? BASE + "/clip/_clip/" + a.o.id + ".mp4" : "";
       d.innerHTML = "<div class='mini" + (fmt === "9:16" ? " v" : fmt === "3:4" ? " q" : "") + "'>" +
-        (mini ? "<img class='telo' src='" + mini + "' alt=''>" : "<span class='telo'></span>") +
+        (mini ? "<img class='telo' src='" + mini + "' alt='' draggable='false'>" : "<span class='telo'></span>") +
+        (urlAnte ? "<video class='anteprima' muted preload='none' playsinline></video><span class='cursorino'></span>" : "") +
         "<span class='formato'>" + fmt + "</span>" +
         "<span class='durata'>" + dur + "</span>" +
         "<span class='fonte'>" + (a.t === "hl" ? "sequenza" : a.t === "integrale" ? "registrazione" : (a.o.tipo || "clip")) + "</span></div>" +
         "<div class='testo'><div class='nome'>" + nome + "</div><div class='sotto'>" +
         (a.t === "hl" ? (a.o.pezzi || []).length + " pezzi · " + dur : dur + " · " + fmt) + "</div></div>";
+      // HOVER SCRUB, come nel bin di Premiere: si scorre la clip passandoci
+      // sopra, senza aprirla. Il video si carica solo alla prima passata.
+      if (urlAnte) {
+        var box = d.querySelector(".mini"), vid = box.querySelector("video.anteprima"), cur = box.querySelector(".cursorino");
+        box.addEventListener("mouseenter", function () {
+          if (!vid.src) { vid.src = urlAnte; vid.load(); }
+          box.classList.add("scorro");
+        });
+        box.addEventListener("mousemove", function (e) {
+          var r = box.getBoundingClientRect(), q = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+          cur.style.left = (q * 100) + "%";
+          if (vid.duration) { try { vid.currentTime = q * vid.duration; } catch (er) {} }
+        });
+        box.addEventListener("mouseleave", function () { box.classList.remove("scorro"); });
+      }
       if (a.t === "clip" && a.o.stato === "pronta") {
         d.draggable = true;
         d.addEventListener("dragstart", function (e) {

@@ -1376,6 +1376,23 @@ function hlPezzo(p) {
   return { ok: true, seq: q };
 }
 
+// Il Ctrl+K di Premiere: il pezzo si divide dove sta il cursore, e le due
+// meta' restano al loro posto. Serve per togliere il centro di un'azione
+// lunga senza rifare entrata e uscita da capo.
+function hlDividi(p) {
+  const q = seqDi(p);
+  const i = q.pezzi.findIndex((x) => x.id === p.pezzo);
+  if (i < 0) throw new Error("pezzo sconosciuto");
+  const x = q.pezzi[i];
+  const a = +p.a;
+  if (!(a > x.dentro + 0.2 && a < x.fuori - 0.2)) throw new Error("il taglio cadrebbe sul bordo del pezzo");
+  const nuovo = Object.assign({}, x, { id: nuovoId("p"), dentro: a, base: a, mano: true });
+  x.fuori = a; x.mano = true;
+  q.pezzi.splice(i + 1, 0, nuovo);
+  scrivi(); annuncia(0, "clip");
+  return { ok: true, seq: q, nuovo: nuovo.id };
+}
+
 // Aggiungere un pezzo prendendolo da una clip gia' tagliata: e' il gesto
 // del trascinamento. Se una sequenza non c'e' ancora, nasce qui — perche'
 // "comincio a montare" non deve essere un comando in piu' da ricordare.
@@ -3293,6 +3310,7 @@ const AZIONI = {
   "clip-hl-genera": hlGenera,
   "clip-hl-elenco": hlElenco,
   "clip-hl-pezzo": hlPezzo,
+  "clip-hl-dividi": hlDividi,
   "clip-hl-aggiungi": hlAggiungi,
   "clip-hl-suggerimento": hlSuggerimento,
   "clip-hl-ordina": hlOrdina,
