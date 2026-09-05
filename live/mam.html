@@ -63,9 +63,9 @@
     font-size:10px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;}
   .torna:hover{color:var(--gold-bright);}
 
-  .tre{display:grid;grid-template-columns:262px minmax(0,1fr) 380px;
+  .tre{display:grid;grid-template-columns:250px minmax(0,1fr) 340px;
     flex:1 1 auto;min-height:0;}
-  @media (max-width:1240px){.tre{grid-template-columns:200px minmax(0,1fr) 320px;}}
+  @media (max-width:1240px){.tre{grid-template-columns:200px minmax(0,1fr) 290px;}}
   .col{padding:14px clamp(10px,1.2vw,18px);overflow:auto;min-height:0;}
   .col + .col{border-left:1px solid var(--linea);}
   .col h2{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.26em;
@@ -105,7 +105,8 @@
     box-shadow:0 0 8px rgba(229,27,32,.8);animation:batte 1.4s ease-in-out infinite;}
 
   /* ── le linguette: sono la navigazione, non un filtro ───────────── */
-  .linguette{display:flex;gap:6px;align-items:center;margin-bottom:13px;flex-wrap:wrap;}
+  .linguette{display:flex;gap:5px;align-items:center;margin-bottom:12px;flex-wrap:wrap;}
+  .linguette button{padding:6px 11px;}
   .linguette .stacco{width:1px;align-self:stretch;background:var(--linea);margin:2px 5px;}
   .linguette .forme{display:flex;gap:5px;align-items:center;}
   .linguette .forme button{padding:6px 11px;font-size:9px;}
@@ -127,7 +128,7 @@
     margin-right:7px;vertical-align:1px;animation:batte 1.4s ease-in-out infinite;}
   @keyframes batte{0%,100%{opacity:1}50%{opacity:.3}}
 
-  .griglia{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;}
+  .griglia{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;}
   .scheda{background:var(--carta-2);border:1px solid var(--linea);border-radius:10px;overflow:hidden;
     cursor:pointer;box-shadow:var(--ombra);transition:border-color .12s, transform .12s;}
   .scheda:hover{border-color:var(--linea-oro);transform:translateY(-1px);}
@@ -199,6 +200,18 @@
   /* La riga del taglio: forma, entrata, uscita, durata, precisione, esporta.
      Una riga sola, e se lo schermo e' stretto si stringe invece di andare
      a capo — a capo vorrebbe dire far scorrere la pagina. */
+  /* l'intestazione della finestra di lavorazione: che cosa sto guardando */
+  .capo{display:flex;align-items:baseline;gap:12px;margin-bottom:10px;
+    font-family:'Mazzard',sans-serif;font-size:13px;font-weight:800;letter-spacing:.06em;
+    text-transform:uppercase;}
+  .capo a{margin-left:auto;color:var(--gold-deep);text-decoration:none;font-size:10px;
+    font-weight:700;letter-spacing:.14em;}
+  .capo a:hover{color:var(--inchiostro);}
+  /* la riga per segnare, sotto il taglio */
+  .segnafila{display:flex;gap:8px;align-items:center;margin-top:10px;}
+  .segnafila input{flex:1 1 auto;}
+  .scheda-sotto .dati td:first-child{width:40%;}
+
   .taglio{display:flex;gap:10px;align-items:stretch;margin-top:11px;flex-wrap:nowrap;}
   .taglio > *{display:flex;align-items:center;}
   .taglio .inout .box{display:flex;flex-direction:column;justify-content:center;}
@@ -321,23 +334,21 @@
       <div class="aiuto" style="margin-top:6px">o trascinalo qui</div>
       <div class="avanza" id="avanza" hidden><i></i></div>
     </div>
+    <div id="console"></div>
     <div id="albero"></div>
+    <div id="segniCol"></div>
   </div>
 
+  <div class="col" id="centro"></div>
+
   <div class="col">
-    <!-- Tre gruppi, non sette fratelli: dove sto, che cosa guardo, che forma
-         ha. Prima erano in fila e si escludevano — non si poteva chiedere
-         "le clip in 9:16", che e' la domanda del social. -->
     <div class="linguette" id="linguette">
-      <button class="live acceso" data-v="live">Live</button>
-      <span class="stacco"></span>
-      <button data-v="tutto">Tutto</button>
+      <button class="acceso" data-v="tutto">Tutto</button>
       <button data-v="clip">Clip</button>
       <button data-v="hl">Highlights</button>
       <button data-v="integrale">Integrali</button>
       <span class="stacco"></span>
       <span class="forme" id="forme">
-        <span class="et2">Forma</span>
         <button class="acceso" data-forma="">Tutte</button>
         <button data-forma="16:9">16:9</button>
         <button data-forma="4:3">4:3</button>
@@ -345,10 +356,8 @@
       </span>
     </div>
     <div class="avviso" id="avviso"></div>
-    <div id="centro"></div>
+    <div id="destra"></div>
   </div>
-
-  <div class="col" id="destra"></div>
 </div>
 
 <div class="stato">
@@ -372,7 +381,7 @@
   var TOKEN = (window.ChiaveComoTV ? ChiaveComoTV.valore() : "");
   var el = function (id) { return document.getElementById(id); };
 
-  var VISTA = "live";          // dove sto: live, un tipo di materiale, o una ricerca
+  var VISTA = "tutto";         // che materiale guardo a destra (o "cerca")
   var FORMA = "";              // e con che forma, che e' un'altra domanda
   var REG = null;              // la registrazione scelta
   var REGISTRAZIONI = [], CLIP = [], SEQ = null, DISCO = null, ASSET = 0;
@@ -512,9 +521,11 @@
   })();
 
   // ── colonna 2, vista LIVE: il visore e il taglio ────────────────
-  function centroLive() {
+  function centroLavoro() {
     var c = el("centro");
     c.innerHTML =
+      '<div class="capo"><span id="capoNome">—</span>' +
+        '<a href="#" id="capoTorna" hidden>← torna al contenuto</a></div>' +
       '<div class="telaio" id="telaio"><video id="player" controls playsinline></video>' +
         '<span class="forma" id="forma">16:9</span></div>' +
       '<div class="barra"><input type="range" id="slider" min="0" max="100" value="0" step="0.1">' +
@@ -545,9 +556,35 @@
           '<button class="b oro" id="btnOut">Uscita<i>O</i></button></div>' +
         '<button class="b" id="btnPreciso" title="Ai secondi si copia e basta: un secondo. Al fotogramma si ricodifica: qualche secondo in piu\u2019, ma parte esatta.">Ai secondi</button>' +
         '<button class="b oro grosso" id="btnTaglia" disabled>Esporta<i>T</i></button>' +
+      '</div>' +
+      // segnare un'azione e' lavorazione, quindi sta nella finestra di
+      // lavorazione: si guarda, si segna, si taglia, senza spostare gli occhi
+      '<div class="segnafila">' +
+        '<input type="text" id="markerTesto" placeholder="segna che cos\u2019è: es. gol Douvikas">' +
+        '<button class="b" id="btnMarker">Segna qui</button>' +
+        '<button class="b" data-kick="1">1º T</button>' +
+        '<button class="b" data-kick="2">2º T</button>' +
+        '<span class="aiuto" style="margin:0 0 0 auto"><kbd>I</kbd> <kbd>O</kbd> <kbd>T</kbd></span>' +
       '</div>';
 
     telaioForma();
+    el("capoTorna").addEventListener("click", function (e) { e.preventDefault(); tornaAlContenuto(); });
+    el("btnMarker").addEventListener("click", function () {
+      if (!REG) { dice("Prima scegli un contenuto."); return; }
+      manda({ tipo:"clip-marker", reg:REG.id, secondi: el("player") ? el("player").currentTime : 0,
+              testo: el("markerTesto").value.trim() })
+        .then(function () { el("markerTesto").value = ""; aggiorna(); })
+        .catch(function (e) { dice(e.message); });
+    });
+    c.querySelectorAll("[data-kick]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        if (!REG) { dice("Prima scegli un contenuto."); return; }
+        manda({ tipo:"clip-kickoff", reg:REG.id, tempo:b.dataset.kick,
+                secondi: el("player") ? el("player").currentTime : 0 })
+          .then(function () { dice("Fischio del " + b.dataset.kick + "º tempo segnato.", true); aggiorna(); })
+          .catch(function (e) { dice(e.message); });
+      });
+    });
     el("player").addEventListener("timeupdate", function () {
       // Si usa l'elemento che ha generato l'evento, non uno cercato per id:
       // cambiando vista il visore sparisce dal documento ma continua a
@@ -614,7 +651,7 @@
     t.style.height = Math.round(h) + "px";
     if (el("forma")) el("forma").textContent = formato;
   }
-  window.addEventListener("resize", function () { if (VISTA === "live") telaioForma(); });
+  window.addEventListener("resize", telaioForma);
 
   function mostraInOut() {
     if (!el("vIn")) return;
@@ -645,6 +682,35 @@
       .catch(function (e) { dice(e.message); mostraInOut(); });
   }
 
+  // Guardare una clip gia' fatta non e' un altro mestiere: si guarda dove
+  // si guarda tutto, al centro. Con un modo per tornare al contenuto.
+  var guardando = null;
+  function mostraNelCentro(url, fmt, nome) {
+    var v = el("player"); if (!v) return;
+    if (hls) { hls.destroy(); hls = null; }
+    apertaId = ""; guardando = nome || "clip";
+    formato = fmt || formato;
+    accendiFormati(); telaioForma();
+    v.src = url; v.play().catch(function () {});
+    capo();
+  }
+  function tornaAlContenuto() {
+    guardando = null;
+    if (REG) { apertaId = ""; apri(REG); }
+    capo();
+  }
+  function capo() {
+    var n = el("capoNome"), t = el("capoTorna");
+    if (!n) return;
+    n.textContent = guardando ? guardando : (REG ? REG.titolo : "niente di scelto");
+    t.hidden = !guardando;
+  }
+  function accendiFormati() {
+    document.querySelectorAll("#formati button").forEach(function (b) {
+      b.className = (b.dataset.f === formato) ? "b scuro" : "b";
+    });
+  }
+
   function apri(r) {
     var v = el("player"); if (!v) return;
     if (apertaId === r.id && hls) return;          // gia' aperta: non ricominciare
@@ -666,10 +732,11 @@
   }
 
   // ── colonna 3, vista LIVE: la console ───────────────────────────
-  function destraLive() {
-    var d = el("destra");
+  function consoleSinistra() {
+    var d = el("console");
+    if (d.dataset.fatta) { disegnaConsole(); return; }
+    d.dataset.fatta = "1";
     d.innerHTML =
-      '<h2>Il flusso</h2>' +
       '<div class="console">' +
         '<div class="fila" style="gap:10px">' +
           '<div class="colonnina cresce"><span class="et">Partita</span><select id="evento"><option value="">— senza evento —</option></select></div>' +
@@ -685,16 +752,7 @@
         '<div id="ascolto"></div>' +
         '<div class="riga-stato"><span class="dot" id="cDot"></span><span id="cTesto">Nessuna registrazione</span>' +
           '<span class="coda" id="cCoda"></span></div>' +
-      '</div>' +
-      '<h2>Segni <span id="nSegni">—</span></h2>' +
-      '<div class="fila" style="margin-bottom:10px">' +
-        '<div class="colonnina cresce"><input type="text" id="markerTesto" placeholder="es. gol Douvikas"></div>' +
-        '<div class="gruppo"><button class="b" id="btnMarker">Segna qui</button>' +
-        '<button class="b" data-kick="1">1º T</button><button class="b" data-kick="2">2º T</button></div>' +
-      '</div>' +
-      '<div id="marker"></div>' +
-      '<h2 style="margin-top:18px">Ultime clip <span id="nClip">—</span></h2>' +
-      '<div id="clipRecenti"></div>';
+      '</div>';
 
     // tendine
     fetch(PONTE + "?partite=1").then(function (r) { return r.json(); }).then(function (dd) {
@@ -747,21 +805,6 @@
       }
       avvia({ guarda:true }).catch(function (e) { dice(e.message); });
     });
-    el("btnMarker").addEventListener("click", function () {
-      if (!REG) { dice("Prima serve una registrazione."); return; }
-      manda({ tipo:"clip-marker", reg:REG.id, secondi: el("player") ? el("player").currentTime : 0,
-              testo: el("markerTesto").value.trim() })
-        .then(function () { el("markerTesto").value = ""; aggiorna(); }).catch(function (e) { dice(e.message); });
-    });
-    d.querySelectorAll("[data-kick]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        if (!REG) { dice("Prima serve una registrazione."); return; }
-        manda({ tipo:"clip-kickoff", reg:REG.id, tempo:b.dataset.kick,
-                secondi: el("player") ? el("player").currentTime : 0 })
-          .then(function () { dice("Fischio del " + b.dataset.kick + "º tempo segnato.", true); aggiorna(); })
-          .catch(function (e) { dice(e.message); });
-      });
-    });
     disegnaConsole();
   }
 
@@ -795,11 +838,11 @@
       } else { a.className = ""; a.innerHTML = ""; }
     }
     // segni
-    var m = el("marker");
+    var m = el("segniCol");
     if (m) {
       var segni = (REG && REG.marker) || [];
-      el("nSegni").textContent = segni.length;
-      m.innerHTML = segni.length ? "" : '<div class="vuoto">Nessun segno.</div>';
+      m.innerHTML = segni.length
+        ? '<h2 style="margin-top:16px">Segni <span>' + segni.length + '</span></h2>' : "";
       segni.forEach(function (x) {
         var v = document.createElement("div"); v.className = "voce";
         v.innerHTML = "<div class='testo'><div class='nome'>" + orologio(x.secondi) + " · " +
@@ -810,13 +853,7 @@
         v.appendChild(a2); m.appendChild(v);
       });
     }
-    var cr = el("clipRecenti");
-    if (cr) {
-      var mie = CLIP.slice(0, 6);
-      el("nClip").textContent = CLIP.length;
-      cr.innerHTML = mie.length ? "" : '<div class="vuoto">Ancora nessuna clip.</div>';
-      mie.forEach(function (x) { cr.appendChild(voceClip(x)); });
-    }
+
   }
 
   // TOGLIERE UNA CLIP.
@@ -925,8 +962,8 @@
       b.innerHTML = b.dataset.nome + (n ? " <span class='conta2'>" + n + "</span>" : "");
     });
   }
-  function centroArchivio() {
-    var c = el("centro"), lista = assetVisibili();
+  function destraMateriale() {
+    var c = el("destra"), lista = assetVisibili();
     if (!lista.length) {
       if (VISTA === "hl" && REG) {
         c.innerHTML = '<div class="vuoto">Nessuna sequenza su questa partita.<br>' +
@@ -942,14 +979,14 @@
           manda({ tipo: "clip-hl-genera", reg: REG.id,
                   pre: parseFloat(el("hlPre").value) || 8,
                   post: parseFloat(el("hlPost").value) || 6 })
-            .then(function (d) { SEQ = d.seq; ASSET = 0; centroArchivio();
+            .then(function (d) { SEQ = d.seq; ASSET = 0; destraMateriale();
               dice("Sequenza pronta: " + d.seq.pezzi.length + " pezzi.", true); })
             .catch(function (e) { dice(e.message); el("btnGenera").disabled = false; });
         });
       } else {
         c.innerHTML = '<div class="vuoto">Niente con questa linguetta, su questa partita.</div>';
       }
-      destraArchivio(null); return;
+      schedaSotto(null); return;
     }
     var g = document.createElement("div"); g.className = "griglia"; c.innerHTML = ""; c.appendChild(g);
     lista.forEach(function (a, i) {
@@ -971,7 +1008,14 @@
         "<span class='fonte'>" + (a.t === "hl" ? "sequenza" : a.t === "integrale" ? "registrazione" : (a.o.tipo || "clip")) + "</span></div>" +
         "<div class='testo'><div class='nome'>" + nome + "</div><div class='sotto'>" +
         (a.t === "hl" ? (a.o.pezzi || []).length + " pezzi" : a.t) + "</div></div>";
-      d.addEventListener("click", function () { ASSET = i; disegna(); });
+      d.addEventListener("click", function () {
+        ASSET = i;
+        var suo = a.t === "clip" ? BASE + "/clip/_clip/" + a.o.id + ".mp4"
+                : a.t === "integrale" ? BASE + "/clip/" + a.o.id + "/integrale.mp4"
+                : (a.o.export && a.o.export.stato === "pronto" ? BASE + a.o.export.file : "");
+        if (suo) mostraNelCentro(suo, fmt, nome);
+        destraMateriale();
+      });
 
       // I COMANDI SULLA SCHEDA. Prima stavano solo nel dettaglio: per
       // scaricare tre clip di fila bisognava sceglierle una per una e poi
@@ -1001,17 +1045,17 @@
       }
       g.appendChild(d);
     });
-    destraArchivio(lista[ASSET] || lista[0]);
+    schedaSotto(lista[ASSET] || lista[0]);
   }
 
-  function destraArchivio(a) {
-    var d = el("destra");
-    if (!a) { d.innerHTML = '<h2>Dettaglio</h2><div class="vuoto">Niente di scelto.</div>'; return; }
-    var url = a.t === "clip" ? BASE + "/clip/_clip/" + a.o.id + ".mp4"
-            : a.t === "integrale" ? BASE + "/clip/" + a.o.id + "/integrale.mp4" : "";
-    d.innerHTML = '<h2>Dettaglio</h2>' +
-      (url ? '<video controls playsinline class="' + (a.t === "clip" && a.o.formato === "9:16" ? "v" : "") + '" src="' + url + '"></video>' : '') +
-      '<div id="corpo"></div>';
+  // Sotto la griglia, i dati di quello che hai scelto. Il video non ci sta
+  // piu': si guarda al centro, dove si guarda tutto il resto.
+  function schedaSotto(a) {
+    var d = document.createElement("div");
+    d.className = "scheda-sotto";
+    el("destra").appendChild(d);
+    if (!a) { d.innerHTML = ""; return; }
+    d.innerHTML = '<h2 style="margin-top:16px">Scheda</h2><div id="corpo"></div>';
     var corpo = el("corpo");
     if (a.t === "hl") {
       var q = a.o;
@@ -1029,7 +1073,7 @@
       // flusso e' uno solo per tutta la partita.
       function ritocca(corpoRichiesta) {
         corpoRichiesta.tipo = "clip-hl-pezzo"; corpoRichiesta.seq = q.id;
-        manda(corpoRichiesta).then(function (d) { SEQ = d.seq; centroArchivio(); })
+        manda(corpoRichiesta).then(function (d) { SEQ = d.seq; destraMateriale(); })
           .catch(function (e) { dice(e.message); });
       }
       q.pezzi.forEach(function (x, n) {
@@ -1045,8 +1089,7 @@
           az.appendChild(a2);
         }
         tasto("vai", function () {
-          // per guardarlo serve il visore: si passa alla vista live
-          VISTA = "live"; ASSET = 0; accendiLinguette(); disegna();
+          tornaAlContenuto();               // il visore mostra la registrazione
           var giri = 0, attesa = setInterval(function () {
             var vv = el("player");
             if (++giri > 30) return clearInterval(attesa);
@@ -1063,7 +1106,7 @@
           var vv = el("player");
           if (!vv || !vv.duration) { dice("Apri il live e porta il visore dove sta l’azione, poi tara."); return; }
           manda({ tipo:"clip-hl-taratura", seq:q.id, pezzo:x.id, secondi:vv.currentTime })
-            .then(function (d) { SEQ = d.seq; centroArchivio();
+            .then(function (d) { SEQ = d.seq; destraMateriale();
               dice("Orologio tarato di " + d.seq.scarto + "s: si sono spostati tutti.", true); })
             .catch(function (e) { dice(e.message); });
         }, "l’azione è dove sta il visore adesso: sposta tutti gli altri della stessa quantità");
@@ -1099,7 +1142,7 @@
       });
       el("hlXml").addEventListener("click", function () {
         manda({ tipo:"clip-hl-esporta", seq:q.id, come:"premiere" })
-          .then(function (d) { SEQ.premiere = d.premiere; centroArchivio();
+          .then(function (d) { SEQ.premiere = d.premiere; destraMateriale();
             dice(d.premiere.integrale ? "XML pronto." :
                  "XML pronto, ma manca l’integrale: in Premiere andrà ricollegato.", true); })
           .catch(function (e) { dice(e.message); });
@@ -1146,7 +1189,7 @@
   }
 
   function disegnaRisultati() {
-    var c = el("centro"); c.innerHTML = "";
+    var c = el("destra"); c.innerHTML = "";
     var box = document.createElement("div"); box.className = "risultati"; c.appendChild(box);
     if (!RIS || RIS.vuota) { box.innerHTML = '<div class="vuoto">Scrivi che cosa cerchi.</div>'; return; }
 
@@ -1246,7 +1289,7 @@
         x.className = (x.dataset.v === "live" ? "live" : "");
       });
       if (hls) { hls.destroy(); hls = null; apertaId = ""; }
-      el("destra").innerHTML = '<h2>Dettaglio</h2><div class="vuoto">Scegli un risultato.</div>';
+
     }
     attesaCerca = setTimeout(function () { cerca(q); }, 280);
   });
@@ -1255,12 +1298,20 @@
   });
 
   // ── il giro ─────────────────────────────────────────────────────
+  // IL CENTRO NON CAMBIA MESTIERE.
+  //
+  //  Prima le linguette sostituivano la finestra di lavorazione con una
+  //  griglia: si arrivava, si sceglieva "Clip", e il visore spariva. Ma il
+  //  giro vero e' uno solo — si arriva, si lavora la clip, la si spedisce —
+  //  e quel giro sta tutto al centro. Il materiale prodotto e' un'altra
+  //  cosa: sta a destra, e da li' non toglie niente.
   function disegna() {
     firmaVecchia = "";                     // un gesto dell'utente ridisegna sempre
-    if (VISTA === "cerca") { albero(); disegnaRisultati(); return; }
-    albero();
-    if (VISTA === "live") { centroLive(); destraLive(); disegnaConsole(); }
-    else centroArchivio();
+    albero(); consoleSinistra();
+    if (!el("player")) centroLavoro();     // la finestra di lavorazione si costruisce una volta
+    disegnaConsole();
+    if (VISTA === "cerca") { disegnaRisultati(); return; }
+    destraMateriale();
   }
 
   // la firma di quello che si vede: se non cambia, non si tocca
@@ -1281,9 +1332,10 @@
       if (!REG && REGISTRAZIONI.length) REG = REGISTRAZIONI[0];
       CLIP = (d.clip || []).filter(function (c) { return !REG || c.reg === REG.id; });
       barra();
-      if (VISTA === "cerca") { albero(); return; }      // sta cercando: non si tocca niente
-      if (VISTA === "live") { if (REG && el("player")) apri(REG); disegnaConsole(); }
-      else if (cambiato()) centroArchivio();
+      if (REG && el("player") && !guardando) apri(REG);
+      disegnaConsole(); capo();
+      if (VISTA === "cerca") { albero(); return; }      // sta cercando: non si tocca la lista
+      if (cambiato()) destraMateriale();
       // Se non e' cambiato niente NON si ridisegna: rifare la griglia ogni
       // tre secondi buttava via le miniature prima che finissero di
       // caricarsi (e con loro la posizione dello scorrimento). Una lista che
@@ -1292,7 +1344,7 @@
       if (REG) {
         manda({ tipo:"clip-hl-elenco", reg:REG.id }).then(function (h) {
           SEQ = (h.seq || [])[0] || null;
-          if (VISTA === "hl") centroArchivio();
+          if (VISTA === "hl") destraMateriale();
         }).catch(function () {});
       }
     }).catch(function (e) { el("sPonte").textContent = "non risponde"; el("sPonteP").className = "pallino"; });
@@ -1310,8 +1362,6 @@
     el("sLav").textContent = lav ? lav + " in lavorazione" : "niente in coda";
     el("sPonte").textContent = "risponde"; el("sPonteP").className = "pallino ok";
     // la linguetta LIVE si accende da sola quando qualcosa sta girando
-    var b = document.querySelector('#linguette [data-v="live"]');
-    if (b) b.innerHTML = (aperte.length ? "<span class='pallino'></span>" : "") + "Live";
     segnaConteggi();
   }
 
@@ -1319,9 +1369,7 @@
     b.dataset.nome = b.textContent;
     b.addEventListener("click", function () {
       VISTA = b.dataset.v; ASSET = 0;
-      accendiLinguette();
-      if (VISTA !== "live" && hls) { hls.destroy(); hls = null; apertaId = ""; }
-      disegna();
+      accendiLinguette(); disegna();
     });
   });
   document.querySelectorAll("#linguette [data-forma]").forEach(function (b) {
@@ -1329,14 +1377,14 @@
       FORMA = b.dataset.forma; ASSET = 0;
       // scegliere una forma mentre si e' sul live vuol dire voler vedere
       // quel materiale: si passa a "tutto" invece di non far succedere niente
-      if (VISTA === "live" || VISTA === "cerca") VISTA = "tutto";
+      if (VISTA === "cerca") VISTA = "tutto";
       accendiLinguette();
       disegna();
     });
   });
   function accendiLinguette() {
     document.querySelectorAll("#linguette [data-v]").forEach(function (x) {
-      x.className = (x.dataset.v === "live" ? "live" : "") + (x.dataset.v === VISTA ? " acceso" : "");
+      x.className = (x.dataset.v === VISTA ? "acceso" : "");
     });
     document.querySelectorAll("#linguette [data-forma]").forEach(function (x) {
       x.className = (x.dataset.forma === FORMA ? "acceso" : "");
@@ -1345,7 +1393,6 @@
 
   document.addEventListener("keydown", function (e) {
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
-    if (VISTA !== "live") return;
     var k = e.key.toLowerCase();
     if (k === "i") { segnaIn(); e.preventDefault(); }
     else if (k === "o") { segnaOut(); e.preventDefault(); }
