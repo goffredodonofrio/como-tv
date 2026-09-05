@@ -1440,6 +1440,23 @@ function peso(dir) {
 function anello() {
   const limite = Date.now() - GIORNI * 86400000;
   let tolti = 0;
+
+  // Le registrazioni che non hanno mai ricevuto un byte non sono materiale:
+  // sono ascolti aperti e richiusi, prove, tentativi. Lasciarle in elenco
+  // riempie la colonna delle partite di righe da zero secondi tutte uguali,
+  // e chi cerca la partita di ieri non la trova piu'. Dopo dieci minuti se
+  // ne vanno da sole, con la loro cartella vuota.
+  const vecchie = Date.now() - 600000;
+  Object.keys(R.reg).forEach((k) => {
+    const r = R.reg[k];
+    if (r.stato === "registra" || PROC.get(r.id)) return;
+    if (durataRegistrata(r.id) > 0) return;
+    if ((r.finita || r.avviata) > vecchie) return;
+    if (Object.keys(R.clip).some((c) => R.clip[c].reg === r.id)) return;
+    try { fs.rmSync(cartellaReg(r.id), { recursive: true, force: true }); } catch (e) {}
+    delete R.reg[r.id];
+    tolti++;
+  });
   Object.keys(R.reg).forEach((k) => {
     const r = R.reg[k];
     if (r.stato === "registra" || PROC.get(r.id)) return;
