@@ -47,6 +47,12 @@
     color:#F5F1E6;text-transform:uppercase;}
   .card .cognome{font-family:'Mazzard',sans-serif;font-weight:800;letter-spacing:.03em;
     color:#C9A24B;text-transform:uppercase;line-height:1.05;}
+  /* Il testo sta dentro uno span inline-block, e non e' un vezzo: un div e'
+     largo quanto la card qualsiasi cosa contenga, quindi misurarlo non dice
+     niente su quanto e' lungo il nome. Lo span invece si stringe addosso al
+     testo, ed e' l'unico modo di sapere se ci sta. nowrap perche' altrimenti
+     andrebbe a capo da solo e la misura tornerebbe a mentire. */
+  .card .nome span,.card .cognome span{display:inline-block;white-space:nowrap;}
   .card .cfilo{margin:10px auto 0;width:120px;height:2px;
     background:linear-gradient(90deg,transparent,rgba(201,162,75,.8),transparent);}
   .card .prov{font-family:'DM Sans',sans-serif;font-weight:500;letter-spacing:.16em;
@@ -153,9 +159,21 @@
     var x = x0 + kInRiga * (CW + GAP);
     var y = AREA_TOP + r * (CH + GAP) + (righe === 1 ? Math.floor((AREA_H - CH) / 2) : 0);
 
-    var parole = String(c.n || "").trim().split(/\s+/);
-    var cognome = parole.length > 1 ? parole.slice(-1)[0] : parole[0] || "";
-    var davanti = parole.length > 1 ? parole.slice(0, -1).join(" ") : "";
+    // Nome e cognome arrivano separati dall'editor. Prima si tirava a
+    // indovinare tagliando all'ultima parola, e "Marc-Andre' ter Stegen"
+    // diventava TER sulla riga piccola e STEGEN su quella grande: il "ter"
+    // e' parte del cognome, e nessuna regola sa dirlo. Le grafiche gia' in
+    // scaletta hanno solo il nome intero: per quelle si taglia come prima,
+    // altrimenti sparirebbero dalla playlist della regia.
+    var cognome, davanti;
+    if (c.c != null) {
+      cognome = String(c.c || "").trim();
+      davanti = String(c.n || "").trim();
+    } else {
+      var parole = String(c.n || "").trim().split(/\s+/);
+      cognome = parole.length > 1 ? parole.slice(-1)[0] : parole[0] || "";
+      davanti = parole.length > 1 ? parole.slice(0, -1).join(" ") : "";
+    }
 
     var sNome = Math.round(CH * 0.045), sCog = Math.round(CH * 0.075), sProv = Math.round(CH * 0.038);
     var anim = STILL ? "opacity:1;transform:none"
@@ -166,13 +184,46 @@
         (c.f ? '<img src="' + esc(c.f) + '">' : '<div style="width:100%;height:100%;background:linear-gradient(160deg,#1B2C66,#0E1738)"></div>') +
         '<i></i></div>' +
       '<div class="chi" style="top:' + (FH + Math.round(CH * 0.045)) + 'px">' +
-        (davanti ? '<div class="nome" style="font-size:' + sNome + 'px">' + esc(davanti) + '</div>' : "") +
-        '<div class="cognome" style="font-size:' + sCog + 'px">' + esc(cognome) + '</div>' +
+        (davanti ? '<div class="nome" style="font-size:' + sNome + 'px"><span>' + esc(davanti) + '</span></div>' : "") +
+        '<div class="cognome" style="font-size:' + sCog + 'px"><span>' + esc(cognome) + '</span></div>' +
         '<div class="cfilo"></div>' +
         (c.p ? '<div class="prov" style="font-size:' + sProv + 'px;margin-top:' + Math.round(CH * 0.03) + 'px">' + esc(c.p) + '</div>' : "") +
       '</div></div>';
   });
   el("griglia").innerHTML = h;
+
+  // Un cognome di due parole e' piu' largo di uno solo, e la card e' stretta:
+  // se non ci sta si restringe, come fa gia' il titolo. Sotto una certa
+  // misura restringere non serve piu' a niente, e allora meglio due righe che
+  // un carattere che non si legge da casa.
+  function stringi(t) {
+    var sp = t.firstChild;
+    var largo = t.clientWidth - 10;          // due dita d'aria ai lati della card
+    // Ogni giro riparte dalla misura di partenza, mai da quella gia'
+    // ristretta: il primo giro misura col carattere di ripiego e stringe
+    // troppo, e se il secondo non potesse allargare resterebbe cosi'.
+    if (!t.dataset.px) t.dataset.px = parseFloat(t.style.fontSize) || 0;
+    var px = +t.dataset.px;
+    if (!sp || !largo || !px) return;
+    t.style.fontSize = px + "px";
+    sp.style.whiteSpace = "";
+    var min = Math.round(px * 0.62);
+    for (var g = 0; g < 8 && sp.clientWidth > largo && px > min; g++) {
+      var nuovo = Math.max(min, Math.floor(px * largo / sp.clientWidth));
+      if (nuovo >= px) break;                // non si restringe piu': inutile insistere
+      px = nuovo; t.style.fontSize = px + "px";
+    }
+    // Nemmeno al minimo ci sta: meglio due righe che un carattere che da
+    // casa non si legge.
+    if (sp.clientWidth > largo) sp.style.whiteSpace = "normal";
+  }
+  function incolonna() {
+    Array.prototype.forEach.call(el("griglia").querySelectorAll(".nome,.cognome"), stringi);
+  }
+  // Prima che il Mazzard sia caricato le misure sono quelle del carattere di
+  // ripiego, che e' piu' largo: si restringerebbe roba che invece ci sta.
+  incolonna();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(incolonna);
 
   function replay() { location.reload(); }
   document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });

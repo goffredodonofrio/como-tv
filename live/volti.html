@@ -113,6 +113,14 @@
     text-transform:uppercase;color:var(--ivory-dim);margin-bottom:9px;
     padding-bottom:7px;border-bottom:1px solid var(--line-2);}
   .cbox .mt{margin-top:8px;}
+  /* Nome e cognome sono due campi separati perche' la grafica li tratta in
+     due modi diversi, e indovinare dove finisce l'uno non si puo': "Marc-Andre'
+     ter Stegen" non si taglia all'ultima parola. Il cognome e' piu' largo
+     perche' e' quello che si vede, e quello che piu' spesso e' composto. */
+  .cbox .due{display:flex;gap:8px;}
+  .cbox .due > div:first-child{flex:0 0 40%;min-width:0;}
+  .cbox .due > div:last-child{flex:1;min-width:0;}
+  .cbox .due input{width:100%;}
   #segN button{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:800;width:30px;height:26px;
     padding:0;border-radius:5px;cursor:pointer;background:transparent;color:var(--ivory-dim);
     border:1px solid var(--line-2);letter-spacing:0;}
@@ -213,8 +221,12 @@
   var h = "";
   for (var i = 0; i < N; i++) {
     h += '<div class="cbox"><div class="ccapo">Card ' + (i + 1) + '</div>' +
-      '<label for="n' + i + '">Nome e cognome</label>' +
-      '<input type="text" id="n' + i + '" placeholder="es. Luis Milla">' +
+      '<div class="due">' +
+        '<div><label for="n' + i + '">Nome</label>' +
+        '<input type="text" id="n' + i + '" placeholder="es. Marc-Andr&egrave;"></div>' +
+        '<div><label for="c' + i + '">Cognome</label>' +
+        '<input type="text" id="c' + i + '" placeholder="es. ter Stegen"></div>' +
+      '</div>' +
       '<div class="mt"><label for="p' + i + '">Provenienza / riga sotto</label>' +
       '<input type="text" id="p' + i + '" placeholder="es. Getafe"></div>' +
       '<div class="mt"><button type="button" class="fbtn" data-i="' + i + '">Carica la foto</button>' +
@@ -383,9 +395,12 @@
   function dati() {
     var card = [];
     for (var i = 0; i < nScelti; i++) {
-      var n = el("n" + i).value.trim();
-      if (!n) continue;
-      var c = { n: n, p: el("p" + i).value.trim() };
+      // Il cognome e' la riga grande in oro: e' lui che fa la card. Il nome
+      // e' la rifinitura sopra, e puo' mancare.
+      var cog = el("c" + i).value.trim(), nom = el("n" + i).value.trim();
+      if (!cog && !nom) continue;
+      if (!cog) { cog = nom; nom = ""; }      // scritto solo di la': vale come cognome
+      var c = { n: nom, c: cog, p: el("p" + i).value.trim() };
       if (FOTO[i] && FOTO[i].url) c.f = FOTO[i].url;
       card.push(c);
     }
@@ -393,7 +408,7 @@
   }
   function valido(d) {
     if (!d.t) { stato("err", "Serve il titolo."); return false; }
-    if (d.card.length < 2) { stato("err", "Servono almeno due card col nome."); return false; }
+    if (d.card.length < 2) { stato("err", "Servono almeno due card col cognome."); return false; }
     return true;
   }
 
