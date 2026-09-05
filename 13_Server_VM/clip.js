@@ -1726,6 +1726,122 @@ function clipCerca(p) {
   };
 }
 
+
+// ══════════════════════════════════════════════════════════════════════
+//  LA GRAFICA ADDOSSO ALLA CLIP
+// ══════════════════════════════════════════════════════════════════════
+//
+//  Il generatore la grafica la sa disegnare — font, maschere, dati della
+//  partita, e le modifiche fatte a mano da chi la sta preparando. Quello
+//  che non sa fare bene e' incollarla su un video: registra il canvas in
+//  tempo reale, quindi dipende da dove hai il mouse, dalla finestra in
+//  primo piano, dal browser. Sei secondi di clip, sei secondi di attesa, e
+//  se la finestra passa dietro esce un'immagine ferma.
+//
+//  Quindi si dividono i compiti: il generatore manda qui il suo strato
+//  trasparente (un PNG), il ponte lo incolla con ffmpeg. Nessuna finestra
+//  da tenere davanti, un secondo invece di sei, e funziona anche a
+//  portatile chiuso.
+//
+//  L'inquadratura arriva insieme al PNG: sono gli stessi numeri con cui il
+//  generatore mostra la foto (spostamento e zoom), riprodotti qui con
+//  scale+crop. Se non arrivano, si fa quello che fa lui di suo: riempire
+//  il riquadro dal centro.
+
+function clipGrafica(p) {
+  const c = R.clip[p.clip];
+  if (!c) throw new Error("clip sconosciuta");
+  if (c.stato !== "pronta") throw new Error("la clip non e' ancora pronta");
+  const dati = String(p.png || "");
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(dati.replace(/\s/g, ""));
+  if (!m) throw new Error("la grafica non e' arrivata come PNG");
+  const png = Buffer.from(m[1], "base64");
+  if (png.length > 12 * 1024 * 1024) throw new Error("grafica troppo pesante");
+
+  const W = Math.round(num(p.w, 16, 4096, 1080));
+  const H = Math.round(num(p.h, 16, 4096, 1920));
+  const inq = p.inquadratura || {};
+  const dx = num(inq.dx, -9999, 9999, 0), dy = num(inq.dy, -9999, 9999, 0);
+  const zoom = num(inq.s, 0.1, 8, 1);
+  const cx = num(inq.cx, -9999, 9999, 0), cy = num(inq.cy, -9999, 9999, 0);
+
+  const nuova = {
+    id: nuovoId("c"),
+    reg: c.reg, evento: c.evento,
+    titolo: String(p.titolo || "").slice(0, 160) || (c.titolo + " · con grafica"),
+    dentro: c.dentro, fuori: c.fuori, durata: c.durata,
+    formato: W > H ? "16:9" : (Math.abs(W / H - 4 / 3) < 0.05 ? "4:3" : "9:16"),
+    preciso: true, grafica: true, daClip: c.id,
+    tipo: c.tipo || "", minuto: c.minuto || "",
+    chi: String(p.__chi || p.chi || "").slice(0, 40),
+    creata: Date.now(), stato: "lavora", peso: 0
+  };
+  R.clip[nuova.id] = nuova;
+  scrivi();
+
+  const strato = path.join(DIR, CARTELLA_CLIP, nuova.id + ".png");
+  fs.writeFileSync(strato, png);
+  const dentroFile = fileClip(c.id);
+
+  // Le misure vere della clip servono per riprodurre l'inquadratura: si
+  // chiedono al file invece di fidarsi di quello che dice la pagina.
+  probeMisure(dentroFile).then((mis) => {
+    const sw = mis.w || 1920, sh = mis.h || 1080;
+    const cov = Math.max(W / sw, H / sh);
+    const scala = cov * zoom;
+    const lw = Math.max(2, Math.round(sw * scala)), lh = Math.max(2, Math.round(sh * scala));
+    // dove finisce l'angolo in alto a sinistra dell'immagine, con lo stesso
+    // conto che fa il generatore sul canvas
+    const x0 = dx + cx + zoom * ((W - sw * cov) / 2 - cx);
+    const y0 = dy + cy + zoom * ((H - sh * cov) / 2 - cy);
+    const cropX = Math.min(Math.max(0, Math.round(-x0)), Math.max(0, lw - W));
+    const cropY = Math.min(Math.max(0, Math.round(-y0)), Math.max(0, lh - H));
+
+    const filtro = "[0:v]scale=" + lw + ":" + lh + ",crop=" + W + ":" + H + ":" + cropX + ":" + cropY +
+                   ",setsar=1[v0];[v0][1:v]overlay=0:0:format=auto[v]";
+    const fuoriFile = fileClip(nuova.id);
+    const args = ["-hide_banner", "-loglevel", "error", "-nostdin",
+      "-i", dentroFile, "-i", strato,
+      "-filter_complex", filtro, "-map", "[v]", "-map", "0:a?",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-y", fuoriFile];
+
+    const pr = spawn(FFMPEG, args, { stdio: ["ignore", "ignore", "pipe"] });
+    let coda = "";
+    pr.stderr.on("data", (d) => { coda = (coda + d).slice(-2000); });
+    pr.on("error", (e) => { nuova.stato = "errore"; nuova.errore = e.message; scrivi(); });
+    pr.on("close", async (code) => {
+      try { fs.unlinkSync(strato); } catch (e) {}
+      if (code === 0) {
+        const d = await probe(fuoriFile);
+        nuova.stato = "pronta"; nuova.peso = d.peso || 0;
+        if (d.durata) nuova.durataVera = Math.round(d.durata * 100) / 100;
+        nuova.mini = await miniatura(fuoriFile, path.join(DIR, CARTELLA_CLIP, nuova.id + ".jpg"),
+                                     (d.durata || 3) / 3)
+          ? "/clip/" + CARTELLA_CLIP + "/" + nuova.id + ".jpg" : "";
+      } else {
+        nuova.stato = "errore";
+        nuova.errore = ultimaRiga(coda) || ("ffmpeg e' uscito con " + code);
+      }
+      scrivi(); annuncia(0, "clip");
+    });
+  }).catch((e) => { nuova.stato = "errore"; nuova.errore = e.message; scrivi(); });
+
+  return { ok: true, clip: nuova };
+}
+
+function probeMisure(file) {
+  return new Promise((si) => {
+    execFile(FFPROBE, ["-v", "error", "-select_streams", "v:0",
+                       "-show_entries", "stream=width,height",
+                       "-of", "csv=p=0", file], { timeout: 20000 }, (err, out) => {
+      if (err) return si({});
+      const p = String(out).trim().split(",");
+      si({ w: parseInt(p[0], 10) || 0, h: parseInt(p[1], 10) || 0 });
+    });
+  });
+}
+
 // ── l'anello ──────────────────────────────────────────────────────────
 //
 //  Dodici partite in una sera sono una quarantina di giga: il disco della VM
@@ -1781,6 +1897,7 @@ const AZIONI = {
   "clip-elimina": clipElimina,
   "clip-sorgenti": clipSorgenti,
   "clip-cerca": clipCerca,
+  "clip-grafica": clipGrafica,
   "clip-hl-genera": hlGenera,
   "clip-hl-elenco": hlElenco,
   "clip-hl-pezzo": hlPezzo,

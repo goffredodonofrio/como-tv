@@ -3822,6 +3822,63 @@ loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
     return "";
   }
 
+  // ── MANDA AL MAM ────────────────────────────────────────────────
+  //
+  //  Invece di registrare il canvas in tempo reale — che dipende dalla
+  //  finestra in primo piano e da come gira la macchina — si manda al ponte
+  //  il solo STRATO della grafica, trasparente, e li' ffmpeg lo incolla
+  //  sulla clip. Il generatore continua a fare quello che sa fare (disegnare)
+  //  e smette di fare quello che gli riesce male (montare).
+  function indirizzoPonte() {
+    var p = location.pathname;
+    if (p.indexOf('/como-tv-dev/') >= 0) return '/como-tv-dev/api';
+    if (p.indexOf('/como-tv/') >= 0) return '/como-tv/api';
+    return '/api';
+  }
+  function pngTrasparente(svgStr, w, h) {
+    return svgToImage(svgStr).then(function (im) {
+      return new Promise(function (res, rej) {
+        var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        var x = cv.getContext('2d'); x.clearRect(0, 0, w, h); x.drawImage(im, 0, 0, w, h);
+        cv.toBlob(function (b) {
+          if (!b) { rej(new Error('la grafica non si lascia disegnare')); return; }
+          var fr = new FileReader();
+          fr.onload = function () { res(fr.result); };
+          fr.onerror = function () { rej(new Error('non riesco a leggere la grafica')); };
+          fr.readAsDataURL(b);
+        }, 'image/png');
+      });
+    });
+  }
+  function mandaAlMam() {
+    var idc = /\/_clip\/([A-Za-z0-9_-]+)\.mp4/.exec(clip);
+    if (!idc) { alert('Questa clip non arriva dal MAM.'); return; }
+    var it = BYKEY[current];
+    if (!it) return;
+    var adj = (STATE[current] && STATE[current].adj && STATE[current].adj.photo) || {};
+    busy(true, 'Mando la grafica al MAM…');
+    document.fonts.ready
+      .then(function () { return pngTrasparente(overlaySvg(current), it.w, it.h); })
+      .then(function (png) {
+        return fetch(indirizzoPonte(), {
+          method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            tipo: 'clip-grafica', clip: idc[1], png: png, w: it.w, h: it.h,
+            titolo: (q.get('titolo') || 'clip') + ' · ' + fname(current),
+            inquadratura: { dx: adj.dx || 0, dy: adj.dy || 0, s: adj.s || 1,
+                            cx: adj.cx || 0, cy: adj.cy || 0 }
+          })
+        }).then(function (r) { return r.json(); });
+      })
+      .then(function (d) {
+        busy(false);
+        if (!d.ok) throw new Error(d.errore || 'il ponte ha detto no');
+        avviso('<b>Grafica mandata al MAM.</b> La clip con la grafica si sta preparando li\': ' +
+               'la trovi fra le clip della partita, senza aspettare qui.');
+      })
+      .catch(function (e) { busy(false); alert('Non sono riuscito a mandarla: ' + (e.message || e)); });
+  }
+
   function apri() {
     if (typeof enterVideoPick !== 'function') return setTimeout(apri, 200);
     var k = formatoDaVideo();
@@ -3835,6 +3892,15 @@ loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
       } catch (e) {}
     }
     enterVideoPick(clip);
+    var barra = document.getElementById('vidBar');
+    if (barra && !document.getElementById('vidMam')) {
+      var b = document.createElement('button');
+      b.id = 'vidMam'; b.className = 'act';
+      b.textContent = '\u2b06 Manda al MAM';
+      b.title = 'Il ponte incolla questa grafica sulla clip con ffmpeg: niente registrazione in tempo reale';
+      barra.insertBefore(b, document.getElementById('vidExport'));
+      b.addEventListener('click', mandaAlMam);
+    }
     var t = q.get('titolo');
     if (t) {
       var a = document.getElementById('avviso');
