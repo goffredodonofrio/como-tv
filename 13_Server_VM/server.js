@@ -1173,6 +1173,16 @@ function etichettaEvento(r) {
   return [quando, chi, r.competizione].filter(Boolean).join(" \u00b7 ");
 }
 
+// "Foto Piattaforma" e' l'unico campo di Airtable che porta un'immagine, ed
+// e' pieno su 73 record su 1200 — per questo cercandolo su tre record non lo
+// si trova. Puo' essere un allegato (elenco) o un link scritto a mano.
+// Stessa lettura del generatore, in generatore-airtable.js.
+function fotoDellEvento(campo) {
+  if (!campo) return "";
+  if (Array.isArray(campo)) return (campo[0] && campo[0].url) || "";
+  return typeof campo === "string" ? campo : "";
+}
+
 async function airtableEventi() {
   if (AT_CACHE.dati && Date.now() - AT_CACHE.quando < 60000) return AT_CACHE.dati;
   const formula = "AND(" +
@@ -1201,6 +1211,7 @@ async function airtableEventi() {
         compKey: AT_COMP[comp] !== undefined ? AT_COMP[comp] : "",
         partita: f["Partita"] || "",
         casa: p.casa, ospite: p.ospite, programma: p.programma,
+        foto: fotoDellEvento(f["Foto Piattaforma"]),
         lingua: p.lingua,                       // ITA, ENG, AUDIO ONLY: e' un feed, non un nome
         turno: f["Turno"] || ""
       });
@@ -1411,15 +1422,115 @@ function dentroLoSvg(nomeFile) {
   } catch (e) { return ""; }
 }
 
+// Un link di Drive non e' un'immagine: la pagina di condivisione e' HTML.
+// L'unica porta che Google lascia aperta e' lh3.googleusercontent.com, e si
+// prova prima l'originale, poi il ridotto a 2000px, poi il link nudo (che si
+// ferma a 1280). E' l'ordine che usa gia' il generatore: se cambia la, va
+// cambiato anche qui.
+function idDiDrive(url) {
+  const u = String(url || "");
+  const m = u.match(/drive\.google\.com\/file\/d\/([A-Za-z0-9_-]{10,})/) ||
+            u.match(/drive\.google\.com\/.*[?&]id=([A-Za-z0-9_-]{10,})/);
+  return m ? m[1] : null;
+}
+function indirizziFoto(url) {
+  const id = idDiDrive(url);
+  if (!id) return [url];
+  const b = "https://lh3.googleusercontent.com/d/" + id;
+  return [b + "=d", b + "=w2000", b];
+}
+
+// La foto scaricata resta in magazzino: la locandina si ridisegna a ogni
+// richiesta, e ripescarla da Google ogni volta vorrebbe dire dipendere da
+// loro mentre si trasmette.
+async function fotoDaLink(url) {
+  const id = idDiDrive(url);
+  const nome = "foto-partita-" + (id || String(url).replace(/[^A-Za-z0-9]+/g, "").slice(-24)) + ".jpg";
+  const via = path.join(CONFIG.LOGHI, nome);
+  try { return { nome: nome, dati: fs.readFileSync(via) }; } catch (e) {}
+
+  const prove = indirizziFoto(url);
+  for (let i = 0; i < prove.length; i++) {
+    try {
+      const r = await fetch(prove[i]);
+      if (!r.ok) continue;
+      const tipo = r.headers.get("content-type") || "";
+      if (tipo.indexOf("image/") !== 0) continue;   // e' la pagina HTML, non la foto
+      const buf = Buffer.from(await r.arrayBuffer());
+      if (buf.length < 2000) continue;
+      try { fs.writeFileSync(via, buf); } catch (e) {}
+      return { nome: nome, dati: buf };
+    } catch (e) {}
+  }
+  return null;
+}
+
+// Quanto e' grande una foto, letto dai primi byte. Serve per incorniciarla:
+// senza le misure vere non si puo' decidere dove tagliare, e si finisce a
+// prendere la striscia centrale sperando che il soggetto sia li' — che e'
+// proprio quello che non succede quasi mai.
+function misureImmagine(buf) {
+  if (!buf || buf.length < 24) return null;
+  // PNG: le misure stanno nell'IHDR, sempre nella stessa posizione
+  if (buf[0] === 0x89 && buf[1] === 0x50) {
+    return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+  }
+  // JPEG: si scorrono i segmenti fino a un SOF, che porta altezza e larghezza
+  if (buf[0] === 0xFF && buf[1] === 0xD8) {
+    let i = 2;
+    while (i + 9 < buf.length) {
+      if (buf[i] !== 0xFF) { i++; continue; }
+      const marc = buf[i + 1];
+      if (marc >= 0xC0 && marc <= 0xCF && marc !== 0xC4 && marc !== 0xC8 && marc !== 0xCC) {
+        return { h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) };
+      }
+      i += 2 + buf.readUInt16BE(i + 2);
+    }
+  }
+  return null;
+}
+
+// La foto: il dato per metterla dentro l'svg, e le sue misure per
+// incorniciarla.
+function leggiFoto(nomeFile) {
+  if (!nomeFile) return null;
+  const pulito = String(nomeFile).replace(/^.*[\\/]/, "");
+  if (!/^[A-Za-z0-9._ -]+$/.test(pulito)) return null;
+  try {
+    const buf = fs.readFileSync(path.join(CONFIG.LOGHI, pulito));
+    const tipo = /\.png$/i.test(pulito) ? "image/png"
+               : /\.webp$/i.test(pulito) ? "image/webp" : "image/jpeg";
+    const mis = misureImmagine(buf) || { w: 16, h: 9 };
+    return { dati: "data:" + tipo + ";base64," + buf.toString("base64"), w: mis.w, h: mis.h };
+  } catch (e) { return null; }
+}
+
+// L'inquadratura: la foto riempie il riquadro e si sposta dietro di esso.
+// fx e fy vanno da 0 a 100 e dicono che punto della foto tenere al centro:
+// 50/50 e' il centro geometrico, che per una persona quasi mai e' il punto
+// giusto — la testa sta in alto e il soggetto e' spesso da una parte.
+function inquadra(foto, W, H, fx, fy) {
+  const scala = Math.max(W / foto.w, H / foto.h);
+  const lw = foto.w * scala, lh = foto.h * scala;
+  return {
+    x: Math.round((W - lw) * (fx / 100)),
+    y: Math.round((H - lh) * (fy / 100)),
+    w: Math.round(lw), h: Math.round(lh)
+  };
+}
+
 function svgLocandina(p) {
   const W = LOC.W, H = LOC.H, m = LOC.m, utile = W - m * 2;
-  const foto = dentroLoSvg(p.foto);
-  const marchio = dentroLoSvg("como-tv-logo.png");
+  const foto = leggiFoto(p.foto);
+  const fx = Math.max(0, Math.min(100, parseFloat(p.fx) >= 0 ? parseFloat(p.fx) : 50));
+  const fy = Math.max(0, Math.min(100, parseFloat(p.fy) >= 0 ? parseFloat(p.fy) : 32));
 
   // Costruita dal BASSO: cosi' un nome corto e uno lungo finiscono appoggiati
   // alla stessa riga, invece di galleggiare a altezze diverse.
-  const yMarchio = H - 150;          // il marchio, in fondo
-  const yFilo    = yMarchio - 78;
+  // Niente marchio in fondo: la colonna ha gia' il suo, e ripeterlo dentro
+  // la locandina voleva dire dirlo due volte nello stesso schermo. Lo spazio
+  // che avanza va alla foto, che e' la cosa che si guarda.
+  const yFilo    = H - 96;
   const yQuando  = yFilo - 54;
   const yOspite  = yQuando - 122;
   const yCasa    = yOspite - 116;
@@ -1461,8 +1572,15 @@ function svgLocandina(p) {
     "</defs>" +
     // il fondo della colonna, lo stesso della barra
     '<rect width="' + W + '" height="' + H + '" fill="#0E1430"/>' +
-    (foto ? '<image xlink:href="' + foto + '" x="0" y="0" width="' + W + '" height="' + finFoto +
-            '" preserveAspectRatio="xMidYMid slice"/>' : "") +
+    (foto ? (function () {
+      // Il ritaglio si calcola, non si delega a preserveAspectRatio: quello
+      // offre nove ancoraggi, e il soggetto non sta quasi mai in uno dei nove.
+      const q = inquadra(foto, W, finFoto, fx, fy);
+      return '<clipPath id="cornice"><rect x="0" y="0" width="' + W + '" height="' + finFoto + '"/></clipPath>' +
+        '<g clip-path="url(#cornice)"><image xlink:href="' + foto.dati + '" x="' + q.x +
+        '" y="' + q.y + '" width="' + q.w + '" height="' + q.h +
+        '" preserveAspectRatio="none"/></g>';
+    })() : "") +
     '<rect width="' + W + '" height="' + H + '" fill="url(#giu)"/>' +
     (p.comp ? '<text x="' + m + '" y="' + yComp + '" class="cp">' +
               xmlSicuro(String(p.comp).toUpperCase()) + "</text>" : "") +
@@ -1474,8 +1592,6 @@ function svgLocandina(p) {
        xmlSicuro(String(p.data || "").toUpperCase()) +
        (p.ora ? ' <tspan class="or">\u00b7 ' + xmlSicuro(p.ora) + "</tspan>" : "") + "</text>" : "") +
     '<rect x="' + m + '" y="' + yFilo + '" width="' + utile + '" height="3" fill="url(#filo)"/>' +
-    (marchio ? '<image xlink:href="' + marchio + '" x="' + (W / 2 - 46) + '" y="' + yMarchio +
-               '" width="92" height="156" preserveAspectRatio="xMidYMid meet"/>' : "") +
     "</svg>";
 }
 
@@ -1831,10 +1947,18 @@ const server = http.createServer((req, res) => {
       // comporre l'svg esce dalla catena, nessuno lo raccoglie e Node chiude
       // il processo: e' successo, e il ponte e' caduto per una funzione che
       // mancava. Una grafica sbagliata non deve poter spegnere la regia.
+      const chiestaFoto = q.get("foto") || "";
       return Promise.resolve()
-        .then(() => svgLocandina({
+        // Una foto puo' arrivare come nome di file in magazzino (l'ha caricata
+        // chi prepara il cartello) o come link, di solito di Drive, che e'
+        // quello che scrive la redazione su Airtable. Nel secondo caso la
+        // scarica il ponte: dal browser non si potrebbe, Google non lo lascia.
+        .then(() => /^https?:/i.test(chiestaFoto) ? fotoDaLink(chiestaFoto) : null)
+        .then((presa) => svgLocandina({
           comp: q.get("comp") || "", casa: q.get("casa") || "", ospite: q.get("ospite") || "",
-          data: q.get("data") || "", ora: q.get("ora") || "", foto: q.get("foto") || ""
+          data: q.get("data") || "", ora: q.get("ora") || "",
+          fx: q.get("fx"), fy: q.get("fy"),
+          foto: presa ? presa.nome : chiestaFoto
         }))
         .then(pngDaSvg)
         .then((buf) => {

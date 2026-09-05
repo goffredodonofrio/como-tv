@@ -180,6 +180,8 @@
   .locdue .locriga{flex:1;margin-bottom:0;}
   .locdue .locet{flex:0 0 auto;}
   .locsug{margin-top:8px;font-size:12px;line-height:1.5;color:var(--fg-2);}
+  .locmira{margin-top:9px;padding-top:8px;border-top:1px solid var(--line-2);}
+  .locmira input[type=range]{flex:1;min-width:0;accent-color:var(--gold);}
   .apgg{flex:0 0 42px;text-align:center;}
   .apmm{flex:0 0 58px;text-align:center;text-transform:uppercase;}
   .apchi{flex:1;min-width:0;}
@@ -445,7 +447,8 @@
   var MAX_CONT = 4, W_OUT = 420, H_OUT = 560;
   function nuovoContenuto(){ return { tipo:"notizia", e:"", t:"", x:"", foto:null, stemma:"",
                                       ap:null, apf:"s", loc:null }; }
-  function nuovaLocandina(){ return { comp:"", casa:"", ospite:"", data:"", ora:"" }; }
+  function nuovaLocandina(){ return { comp:"", casa:"", ospite:"", data:"", ora:"",
+                                     fx:50, fy:32 }; }
   var CONT = [];
   for (var k = 0; k < MAX_CONT; k++) CONT.push(nuovoContenuto());
   function pieno(c){
@@ -483,7 +486,11 @@
       comp: e.competizione || "",
       casa: e.casa || "", ospite: e.ospite || "",
       data: isNaN(d) ? "" : d.getDate() + " " + MESI[d.getMonth()],
-      ora: isNaN(d) ? "" : ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2)
+      ora: isNaN(d) ? "" : ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2),
+      // La foto che la redazione ha messo su Airtable, nel campo "Foto
+      // Piattaforma": e' un link di Drive, e a scaricarlo ci pensa il ponte
+      // — dal browser Google non lo lascia fare.
+      foto: e.foto || ""
     };
   }
 
@@ -526,6 +533,7 @@
   function fotoDellaPartita(i) {
     var c = CONT[i], chiave = nomeFotoPartita(c.loc);
     if (!chiave) return;
+    if (c.loc && c.loc.foto) return;      // ce l'ha gia' Airtable: non si cerca altro
     magazzino(function (m) {
       if (!m[chiave]) return;                    // non c'e': la carica lui
       if (c.foto && c.foto.img && c.foto.sporca) return;  // ne ha gia' messa una nuova
@@ -541,9 +549,17 @@
     function agg(k, v) { if (String(v || "").trim()) q.push(k + "=" + encodeURIComponent(v)); }
     agg("comp", L.comp); agg("casa", L.casa); agg("ospite", L.ospite);
     agg("data", L.data); agg("ora", L.ora);
+    // L'inquadratura: dove guardare dentro la foto. Una foto orizzontale in
+    // una colonna verticale tiene solo la striscia centrale, e il soggetto
+    // quasi mai sta li'.
+    q.push("fx=" + (L.fx == null ? 50 : L.fx));
+    q.push("fy=" + (L.fy == null ? 32 : L.fy));
     // Al ponte serve il NOME del file nel magazzino, non un indirizzo: e'
     // lui che se lo va a leggere dal disco per metterlo dentro il disegno.
-    var foto = c.foto && c.foto.url ? String(c.foto.url).split("?")[0].split("/").pop() : "";
+    // Ordine: comanda quella scelta a mano qui, perche' se qualcuno l'ha
+    // messa aveva un motivo. Se non c'e', quella di Airtable.
+    var foto = c.foto && c.foto.url ? String(c.foto.url).split("?")[0].split("/").pop()
+             : (L.foto || "");
     agg("foto", foto);
     return PONTE_DEFAULT.url + "?locandina=1&" + q.join("&");
   }
@@ -599,8 +615,21 @@
         campo("ospite", "Ospite", "PSV") +
         campo("comp", "Competizione", "Eredivisie \u00b7 giornata 5") +
         '<div class="locdue">' + campo("data", "Data", "5 SET") + campo("ora", "Ora", "20:00") + '</div>' +
-        '<div class="locsug">La foto qui sopra diventa lo sfondo. Il resto lo disegna ' +
-        'il ponte, gi&agrave; nella forma della colonna.</div>' +
+        '<div class="locmira">' +
+          '<div class="locet" style="flex:0 0 auto;margin-bottom:4px">Inquadratura</div>' +
+          '<div class="locriga"><span class="locet" style="flex:0 0 62px">Orizz.</span>' +
+            '<input type="range" min="0" max="100" step="1" data-mira="' + i + '" data-mirak="fx" ' +
+            'value="' + (L.fx == null ? 50 : L.fx) + '"></div>' +
+          '<div class="locriga"><span class="locet" style="flex:0 0 62px">Vert.</span>' +
+            '<input type="range" min="0" max="100" step="1" data-mira="' + i + '" data-mirak="fy" ' +
+            'value="' + (L.fy == null ? 32 : L.fy) + '"></div>' +
+        '</div>' +
+        '<div class="locsug">' +
+          (L.foto
+            ? '&#10003; Sfondo preso da <b>Airtable</b> (Foto Piattaforma). Per cambiarlo, ' +
+              'carica una foto qui sopra: quella scelta a mano ha la precedenza.'
+            : 'Questa partita su Airtable non ha una foto: caricala qui sopra e diventa lo sfondo.') +
+          ' Il resto lo disegna il ponte, gi&agrave; nella forma della colonna.</div>' +
       '</div>';
   }
 
@@ -762,7 +791,13 @@
     if (d.stemno != null) { CONT[+d.stemno].stemma = ""; renderCont(); anteprima(); return; }
   });
   // i campi si scrivono senza ridisegnare le schede: il fuoco non si perde
-  el("contenuti").addEventListener("input", function(e){
+  // Le tendine mandano "input" nei browser di oggi, ma non tutti i motori si
+  // comportano uguale e dentro vMix non e' il momento di scoprirlo: si
+  // ascoltano tutti e due. Il codice e' idempotente, se arrivano entrambi
+  // non succede niente di male.
+  el("contenuti").addEventListener("change", function(e){ campiScheda(e); });
+  el("contenuti").addEventListener("input", campiScheda);
+  function campiScheda(e){
     var t = e.target;
     if (t.dataset.zoom != null) {
       var f = CONT[+t.dataset.zoom].foto;
@@ -772,6 +807,13 @@
     if (t.dataset.locsel != null) {
       var ci = +t.dataset.locsel, ev = (PARTITE || [])[+t.value];
       if (ev) { CONT[ci].loc = dallaPartita(ev); renderCont(); anteprima(); fotoDellaPartita(ci); }
+      return;
+    }
+    if (t.dataset.mira != null) {
+      var cm = CONT[+t.dataset.mira];
+      if (!cm.loc) cm.loc = nuovaLocandina();
+      cm.loc[t.dataset.mirak] = +t.value;
+      anteprima();                       // niente renderCont: il cursore resta sotto il dito
       return;
     }
     if (t.dataset.loc != null) {
@@ -791,7 +833,8 @@
       return;
     }
     if (t.dataset.campo) { CONT[+t.dataset.i][t.dataset.campo] = t.value; aggiornaStato(); anteprima(); }
-  });
+  }
+
   // trascinare la foto per inquadrarla
   var drag = null;
   el("contenuti").addEventListener("pointerdown", function(e){
