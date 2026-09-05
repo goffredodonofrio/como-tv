@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAM Como TV · bozza di interfaccia</title>
+<meta name="theme-color" content="#0A0F24">
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-display:swap;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  /* ══════════════════════════════════════════════════════════════
+     COMO TV — CARTA
+     Non e' un tema nuovo: sono gli stessi due colori del design system,
+     scambiati di ruolo. L'avorio smette di essere l'inchiostro e diventa
+     la carta; il navy smette di essere il campo e diventa l'inchiostro.
+     L'oro resta l'oro, ma sul chiaro si usa la versione profonda: il
+     #C9A24B su avorio non si legge.
+     Perche': le tre colonne dell'archivio sono LETTURA — nomi, minuti,
+     metadati, righe piccole. Il campo navy e' fatto per la messa in onda,
+     dove si guarda un'immagine e si preme un tasto, non per stare a
+     leggere.
+     Restano scure due cose sole, e apposta: la testata e la barra di
+     stato — sono strumenti, non testo — e i riquadri del video, perche'
+     un fotogramma su fondo chiaro sembra sempre slavato.
+     ══════════════════════════════════════════════════════════════ */
+  :root{
+    color-scheme:light;
+    --carta:#F5F1E6;            /* l'avorio del sistema, ora fondo */
+    --carta-2:#FFFDF7;          /* le schede, un filo piu' chiare del fondo */
+    --inchiostro:#0A0F24;       /* il navy del sistema, ora testo */
+    --inchiostro-2:#464E6E;     /* secondario: leggibile, non grigio morto */
+    --inchiostro-3:#6B7290;     /* terziario: etichette, conteggi */
+    --gold:#C9A24B;--gold-bright:#E3C271;--gold-deep:#A67C2E;
+    --red:#E51B20;--ok:#2E9E68;
+    --linea:rgba(10,15,36,.10);
+    --linea-oro:rgba(166,124,46,.35);
+    --scuro:#0A0F24;            /* testata, barra di stato, riquadri video */
+    --scuro-2:#141B3C;
+    --ombra:0 1px 2px rgba(10,15,36,.06), 0 6px 18px rgba(10,15,36,.05);
+    --barra:52px;
+  }
+  body{
+    font-family:'DM Sans',system-ui,sans-serif;font-weight:500;font-size:14px;line-height:1.45;
+    color:var(--inchiostro);min-height:100vh;
+    background-color:var(--carta);
+    /* la stessa luce dei fondi navy, ribaltata: calda, appena accennata */
+    background-image:
+      radial-gradient(90% 70% at 18% 4%, rgba(255,255,255,.9), transparent 60%),
+      radial-gradient(70% 70% at 95% 100%, rgba(201,162,75,.13), transparent 60%);
+    background-attachment:fixed;
+    padding-bottom:calc(var(--barra) + 12px);
+  }
+  .mazz{font-family:'Mazzard',sans-serif;text-transform:uppercase;}
+
+  /* ── testata: identita, ricerca, i due modi ───────────────────── */
+  .testata{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+    padding:14px clamp(16px,3vw,28px);position:sticky;top:0;z-index:50;
+    background:var(--scuro);color:var(--carta);
+    border-bottom:2px solid var(--gold);}
+  .marchio{font-family:'Mazzard',sans-serif;font-weight:800;font-size:15px;letter-spacing:.2em;
+    text-transform:uppercase;white-space:nowrap;}
+  .marchio small{display:block;font-size:9px;letter-spacing:.26em;color:var(--gold-bright);font-weight:700;}
+  .cerca{flex:1 1 340px;display:flex;gap:8px;align-items:center;
+    background:rgba(245,241,230,.10);border:1px solid rgba(245,241,230,.16);border-radius:10px;padding:9px 13px;}
+  .cerca input{flex:1;background:none;border:none;color:var(--carta);font-family:inherit;font-size:14px;}
+  .cerca input::placeholder{color:rgba(245,241,230,.45);}
+  .cerca input:focus{outline:none;}
+  .cerca .lente{color:rgba(245,241,230,.55);}
+  .cerca button{background:none;border:none;color:var(--gold-bright);cursor:pointer;
+    font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;}
+  .modi{display:flex;gap:0;border:1px solid rgba(245,241,230,.2);border-radius:10px;overflow:hidden;}
+  .modi button{background:none;border:none;color:rgba(245,241,230,.7);cursor:pointer;padding:10px 18px;
+    font-family:'Mazzard',sans-serif;font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;}
+  .modi button.acceso{background:var(--gold);color:var(--scuro);}
+
+  /* ── tre colonne ───────────────────────────────────────────────── */
+  .tre{display:grid;grid-template-columns:280px minmax(0,1fr) 370px;gap:0;
+    min-height:calc(100vh - 190px);}
+  .col + .col{border-left:1px solid var(--linea);}
+  @media (max-width:1200px){.tre{grid-template-columns:1fr;}}
+  .col{padding:16px clamp(12px,1.4vw,20px);overflow:auto;}
+  .col h2{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.26em;
+    text-transform:uppercase;color:var(--inchiostro-3);margin-bottom:14px;
+    display:flex;justify-content:space-between;padding-bottom:8px;border-bottom:1px solid var(--linea);}
+  .col h2 span{color:var(--gold-deep);}
+
+  /* albero delle partite */
+  .ramo{margin-bottom:4px;}
+  .ramo>.testa{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;cursor:pointer;
+    font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--inchiostro-2);}
+  .ramo>.testa:hover{background:rgba(10,15,36,.04);}
+  .ramo .conta{margin-left:auto;color:var(--inchiostro-3);font-family:'DM Sans';font-size:11px;letter-spacing:0;text-transform:none;}
+  .foglia{display:flex;gap:8px;align-items:baseline;padding:8px 10px 8px 26px;border-radius:7px;
+    cursor:pointer;font-size:13px;color:var(--inchiostro);}
+  .foglia:hover{background:rgba(10,15,36,.045);}
+  .foglia.scelta{background:rgba(201,162,75,.16);box-shadow:inset 2px 0 0 var(--gold-deep);
+    color:var(--inchiostro);font-weight:700;}
+  .foglia .quando{margin-left:auto;color:var(--inchiostro-3);font-size:11px;}
+
+  /* filtri + griglia */
+  .filtri{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+  .filtri button{background:var(--carta-2);border:1px solid var(--linea);border-radius:20px;
+    color:var(--inchiostro-2);cursor:pointer;padding:6px 13px;
+    font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;}
+  .filtri button.acceso{background:var(--scuro);border-color:var(--scuro);color:var(--carta);}
+  .griglia{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;}
+  .scheda{background:var(--carta-2);border:1px solid var(--linea);border-radius:10px;overflow:hidden;
+    cursor:pointer;box-shadow:var(--ombra);transition:border-color .12s, transform .12s;}
+  .scheda:hover{border-color:var(--linea-oro);transform:translateY(-1px);}
+  .scheda.scelta{border-color:var(--gold-deep);box-shadow:0 0 0 2px rgba(166,124,46,.28), var(--ombra);}
+  /* La cella e' SEMPRE 16:9, anche per una clip verticale: righe allineate e
+     nessun buco. Il verticale si vede dentro, in colonna, come fa qualunque
+     archivio serio — la forma del materiale la dice il francobollo, non il
+     riquadro. */
+  .mini{position:relative;aspect-ratio:16/9;background:var(--scuro);overflow:hidden;
+    display:flex;align-items:center;justify-content:center;}
+  .mini .telo{background:linear-gradient(135deg,#1b2a5e,#0d1430);height:100%;aspect-ratio:16/9;}
+  .mini.v .telo{aspect-ratio:9/16;height:100%;box-shadow:0 0 0 1px rgba(245,241,230,.08);}
+  .mini.q .telo{aspect-ratio:4/3;height:100%;box-shadow:0 0 0 1px rgba(245,241,230,.08);}
+  .mini .durata{position:absolute;right:6px;bottom:6px;background:rgba(10,15,36,.85);border-radius:4px;
+    color:var(--carta);padding:2px 6px;font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.06em;}
+  .mini .formato{position:absolute;left:6px;top:6px;background:rgba(201,162,75,.9);color:#0A0F24;border-radius:4px;
+    padding:2px 6px;font-family:'Mazzard',sans-serif;font-size:9px;font-weight:800;letter-spacing:.1em;}
+  .mini .fonte{position:absolute;left:6px;bottom:6px;font-size:10px;color:rgba(245,241,230,.9);
+    background:rgba(10,15,36,.8);border-radius:4px;padding:2px 6px;}
+  .scheda .testo{padding:9px 10px 11px;}
+  .scheda .nome{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.04em;
+    text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .scheda .sotto{font-size:11px;color:var(--inchiostro-3);margin-top:3px;}
+
+  /* dettaglio */
+  .schede{display:flex;gap:2px;border-bottom:1px solid var(--linea);margin:14px 0;}
+  .schede button{background:none;border:none;border-bottom:2px solid transparent;color:var(--inchiostro-3);cursor:pointer;
+    padding:8px 11px;font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;}
+  .schede button.acceso{color:var(--inchiostro);border-bottom-color:var(--gold-deep);}
+  .visore{aspect-ratio:16/9;background:var(--scuro);border-radius:8px;display:flex;align-items:center;
+    justify-content:center;color:rgba(245,241,230,.65);font-size:12px;border:1px solid var(--linea);}
+  .dati{width:100%;font-size:13px;}
+  .dati tr{border-bottom:1px solid var(--linea);}
+  .dati td{padding:7px 0;vertical-align:top;}
+  .dati td:first-child{color:var(--inchiostro-3);width:42%;font-size:12px;}
+  .segno{display:flex;gap:10px;align-items:baseline;padding:9px 11px;border-radius:7px;
+    background:var(--carta-2);border:1px solid var(--linea);margin-bottom:6px;}
+  .segno .min{font-family:'Mazzard',sans-serif;font-weight:800;color:var(--gold-deep);font-size:12px;min-width:44px;}
+  .segno .chi{margin-left:auto;color:var(--inchiostro-3);font-size:11px;}
+  .azioni{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
+  .azioni button{flex:1 1 auto;background:var(--carta-2);border:1px solid var(--linea);border-radius:8px;
+    color:var(--inchiostro);cursor:pointer;padding:11px 12px;box-shadow:var(--ombra);
+    font-family:'Mazzard',sans-serif;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;}
+  .azioni button.oro{background:var(--gold);border-color:var(--gold-deep);color:var(--scuro);}
+  .azioni button:hover{border-color:var(--gold-deep);}
+
+  /* ── la barra di stato, sempre visibile ────────────────────────── */
+  .stato{position:fixed;left:0;right:0;bottom:0;height:var(--barra);z-index:60;
+    display:flex;align-items:center;gap:22px;padding:0 clamp(16px,3vw,28px);
+    background:var(--scuro);color:var(--carta);border-top:2px solid var(--gold);
+    font-size:12px;overflow-x:auto;}
+  .stato .voce{display:flex;align-items:center;gap:8px;white-space:nowrap;}
+  .stato .pallino{width:9px;height:9px;border-radius:50%;background:rgba(245,241,230,.35);flex:none;}
+  .stato .pallino.rec{background:var(--red);box-shadow:0 0 9px rgba(229,27,32,.9);animation:batte 1.4s ease-in-out infinite;}
+  .stato .pallino.ok{background:#4FCB8B;}
+  .stato .et{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:700;letter-spacing:.2em;
+    text-transform:uppercase;color:rgba(245,241,230,.5);}
+  .stato .val{font-family:'Mazzard',sans-serif;font-size:13px;font-weight:800;letter-spacing:.04em;}
+  .stato .barretta{width:90px;height:5px;border-radius:3px;background:rgba(245,241,230,.16);overflow:hidden;}
+  .stato .barretta i{display:block;height:100%;background:var(--gold);}
+  @keyframes batte{0%,100%{opacity:1}50%{opacity:.35}}
+
+  .nota{margin:0 auto;max-width:1500px;padding:16px clamp(16px,3vw,28px);
+    color:var(--inchiostro-2);font-size:12px;border-top:1px solid var(--linea);}
+  .nota b{color:var(--inchiostro);font-weight:700;}
+  .vuoto{color:var(--inchiostro-3);font-size:13px;padding:10px 2px;}
+</style>
+</head>
+<body>
+
+<div class="testata">
+  <div class="marchio">MAM<small>Como TV</small></div>
+  <div class="cerca">
+    <span class="lente">⌕</span>
+    <input type="text" id="q" placeholder="Genoa-Como del 4 settembre · gol di Diao · tutte le clip 9:16 di settembre">
+    <button id="avanzata">Ricerca avanzata</button>
+  </div>
+  <div class="modi">
+    <button class="acceso" id="mDiretta">Diretta</button>
+    <button id="mArchivio">Archivio</button>
+  </div>
+</div>
+
+<div class="tre">
+  <div class="col">
+    <h2>Partite <span id="nPartite">—</span></h2>
+    <div id="albero"></div>
+  </div>
+
+  <div class="col">
+    <h2>Materiale <span id="nAsset">—</span></h2>
+    <div class="filtri" id="filtri">
+      <button class="acceso" data-f="tutto">Tutto</button>
+      <button data-f="clip">Clip</button>
+      <button data-f="hl">Highlights</button>
+      <button data-f="integrale">Integrali</button>
+      <button data-f="9:16">9:16</button>
+      <button data-f="4:3">4:3</button>
+      <button data-f="hl-marcato">Marcate HL</button>
+    </div>
+    <div class="griglia" id="griglia"></div>
+  </div>
+
+  <div class="col">
+    <h2>Dettaglio</h2>
+    <div class="visore" id="visore">niente di scelto</div>
+    <div class="schede" id="schede">
+      <button class="acceso" data-s="generale">Generale</button>
+      <button data-s="metadati">Metadati</button>
+      <button data-s="marker">Marker</button>
+      <button data-s="premiere">Per Premiere</button>
+    </div>
+    <div id="dettaglio"></div>
+  </div>
+</div>
+
+<div class="nota">
+  <b>Bozza di interfaccia</b> — le tre colonne sono la grammatica dei MAM che mi hai
+  mandato (contenitori → materiale → dettaglio), ma i contenitori qui sono <b>le partite</b>,
+  non le cartelle: nessuno di noi cerca una cartella, si cerca una partita.
+  In basso, la barra di stato: è il «Process Status» di Marsis, tradotto in quello che
+  a Como TV serve sapere davvero mentre si lavora.
+</div>
+
+<div class="stato">
+  <div class="voce"><span class="pallino rec"></span><span class="et">In registrazione</span>
+    <span class="val" id="sRec">—</span></div>
+  <div class="voce"><span class="et">Disco</span><span class="val" id="sDisco">—</span>
+    <span class="barretta"><i id="sBarra" style="width:14%"></i></span></div>
+  <div class="voce"><span class="et">In lavorazione</span><span class="val" id="sLav">—</span></div>
+  <div class="voce"><span class="pallino ok"></span><span class="et">Ponte</span><span class="val" id="sPonte">—</span></div>
+  <div class="voce" style="margin-left:auto"><span class="et" id="sFonte">esempio</span></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
+  var el = function (id) { return document.getElementById(id); };
+
+  // Dati d'esempio: servono a far vedere la FORMA. Se il ponte ha materiale
+  // vero, quello vince e questi spariscono.
+  var DEMO = {
+    partite: [
+      { comp: "Serie A", voci: [
+        { id: "p1", nome: "Genoa-Como", quando: "ven 4 set", clip: 6, hl: 1, integrale: true },
+        { id: "p2", nome: "Como-Lazio", quando: "dom 30 ago", clip: 4, hl: 1, integrale: true } ] },
+      { comp: "Eredivisie", voci: [
+        { id: "p3", nome: "Ajax-PSV", quando: "sab 5 set", clip: 3, hl: 0, integrale: true } ] },
+      { comp: "Copa Sudamericana", voci: [
+        { id: "p4", nome: "Univ. Católica-Boca", quando: "gio 3 set", clip: 5, hl: 1, integrale: false } ] }
+    ],
+    asset: {
+      p1: [
+        { t: "clip", nome: "30' Gol Assane Diao", dur: "0:14", fmt: "16:9", fonte: "ESPN", chi: "Solario", hl: true },
+        { t: "clip", nome: "25' Gol Baturina", dur: "0:12", fmt: "9:16", fonte: "ESPN", chi: "Murdocca", hl: true },
+        { t: "clip", nome: "Parata di Butez", dur: "0:11", fmt: "16:9", fonte: "appunti", chi: "Ghironi" },
+        { t: "clip", nome: "Esultanza sotto la curva", dur: "0:22", fmt: "9:16", fonte: "a mano", chi: "Murdocca" },
+        { t: "clip", nome: "40' Gol Nico Paz", dur: "0:15", fmt: "4:3", fonte: "ESPN", chi: "Solario", hl: true },
+        { t: "hl", nome: "Highlights 90\"", dur: "1:32", fmt: "16:9", fonte: "sequenza", chi: "Solario" },
+        { t: "integrale", nome: "Integrale partita", dur: "2:04:11", fmt: "16:9", fonte: "registrazione", chi: "MAM" }
+      ]
+    },
+    marker: {
+      p1: [
+        { min: "19'", testo: "Gol Osmajic", chi: "ESPN" },
+        { min: "25'", testo: "Gol Baturina", chi: "ESPN" },
+        { min: "28'", testo: "Parata di Butez", chi: "appunti · Ghironi" },
+        { min: "30'", testo: "Gol Assane Diao", chi: "ESPN" },
+        { min: "40'", testo: "Gol Nico Paz", chi: "ESPN" },
+        { min: "63'", testo: "Occasione Douvikas", chi: "a mano · Milani" },
+        { min: "78'", testo: "Gol Assane Diao", chi: "ESPN" }
+      ]
+    }
+  };
+
+  var DATI = DEMO, scelta = { partita: "p1", asset: 0, filtro: "tutto", scheda: "generale" };
+
+  function orologio(s) {
+    s = Math.max(0, Math.round(s));
+    var h = Math.floor(s/3600), m = Math.floor((s%3600)/60), q = s%60;
+    return (h ? h + ":" + ("0"+m).slice(-2) : m) + ":" + ("0"+q).slice(-2);
+  }
+
+  function albero() {
+    var c = el("albero"); c.innerHTML = "";
+    var quante = 0;
+    DATI.partite.forEach(function (g) {
+      var r = document.createElement("div"); r.className = "ramo";
+      var t = document.createElement("div"); t.className = "testa";
+      t.innerHTML = "<span>" + g.comp + "</span><span class='conta'>" + g.voci.length + "</span>";
+      r.appendChild(t);
+      g.voci.forEach(function (p) {
+        quante++;
+        var f = document.createElement("div");
+        f.className = "foglia" + (p.id === scelta.partita ? " scelta" : "");
+        f.innerHTML = "<span>" + p.nome + "</span><span class='quando'>" + p.quando + "</span>";
+        f.addEventListener("click", function () { scelta.partita = p.id; scelta.asset = 0; disegna(); });
+        r.appendChild(f);
+      });
+      c.appendChild(r);
+    });
+    el("nPartite").textContent = quante;
+  }
+
+  function assetVisibili() {
+    var lista = (DATI.asset[scelta.partita] || []);
+    return lista.filter(function (a) {
+      if (scelta.filtro === "tutto") return true;
+      if (scelta.filtro === "hl-marcato") return !!a.hl;
+      if (scelta.filtro === "9:16" || scelta.filtro === "4:3") return a.fmt === scelta.filtro;
+      return a.t === scelta.filtro;
+    });
+  }
+
+  function griglia() {
+    var c = el("griglia"); c.innerHTML = "";
+    var lista = assetVisibili();
+    el("nAsset").textContent = lista.length;
+    if (!lista.length) { c.innerHTML = "<div class='vuoto'>Niente con questo filtro.</div>"; return; }
+    lista.forEach(function (a, i) {
+      var d = document.createElement("div");
+      d.className = "scheda" + (i === scelta.asset ? " scelta" : "");
+      d.innerHTML =
+        "<div class='mini" + (a.fmt === "9:16" ? " v" : a.fmt === "4:3" ? " q" : "") + "'>" +
+          "<span class='telo'></span>" +
+          "<span class='formato'>" + a.fmt + "</span>" +
+          "<span class='durata'>" + a.dur + "</span>" +
+          "<span class='fonte'>" + a.fonte + "</span>" +
+        "</div>" +
+        "<div class='testo'><div class='nome'>" + a.nome + "</div>" +
+        "<div class='sotto'>" + (a.t === "integrale" ? "integrale" : a.t === "hl" ? "sequenza" : "clip") +
+        " · " + a.chi + "</div></div>";
+      d.addEventListener("click", function () { scelta.asset = i; disegna(); });
+      c.appendChild(d);
+    });
+  }
+
+  function dettaglio() {
+    var lista = assetVisibili(), a = lista[scelta.asset];
+    var box = el("dettaglio");
+    if (!a) { box.innerHTML = "<div class='vuoto'>Scegli qualcosa dalla griglia.</div>"; return; }
+    el("visore").textContent = a.nome + " · " + a.dur;
+
+    if (scelta.scheda === "marker") {
+      var m = DATI.marker[scelta.partita] || [];
+      box.innerHTML = m.length ? "" : "<div class='vuoto'>Nessun segno su questa partita.</div>";
+      m.forEach(function (x) {
+        var d = document.createElement("div"); d.className = "segno";
+        d.innerHTML = "<span class='min'>" + x.min + "</span><span>" + x.testo +
+                      "</span><span class='chi'>" + x.chi + "</span>";
+        box.appendChild(d);
+      });
+      return;
+    }
+    if (scelta.scheda === "premiere") {
+      box.innerHTML =
+        "<table class='dati'>" +
+        "<tr><td>Sequenza</td><td>xmeml, apre in Premiere</td></tr>" +
+        "<tr><td>Media</td><td>integrale della partita</td></tr>" +
+        "<tr><td>Fotogrammi</td><td>misurati sul materiale (50p)</td></tr>" +
+        "<tr><td>Marker</td><td>uno per azione, con minuto e giocatore</td></tr>" +
+        "</table>" +
+        "<div class='azioni'>" +
+        "<button class='oro'>Scarica XML</button>" +
+        "<button>Copia percorso</button>" +
+        "<button>Manda al pannello Premiere</button>" +
+        "</div>" +
+        "<div class='vuoto' style='margin-top:12px'>Il montatore non esce da Premiere: " +
+        "da qui la sequenza arriva nel pannello che già usa.</div>";
+      return;
+    }
+    if (scelta.scheda === "metadati") {
+      box.innerHTML =
+        "<table class='dati'>" +
+        "<tr><td>Partita</td><td>Genoa-Como</td></tr>" +
+        "<tr><td>Competizione</td><td>Serie A</td></tr>" +
+        "<tr><td>Data</td><td>ven 4 settembre 2026</td></tr>" +
+        "<tr><td>Evento Airtable</td><td>recPQjuZLU8hijmzc</td></tr>" +
+        "<tr><td>Feed</td><td>ITA · vMix SRT-01</td></tr>" +
+        "<tr><td>Minuto</td><td>30'</td></tr>" +
+        "<tr><td>Giocatore</td><td>Assane Diao</td></tr>" +
+        "<tr><td>Squadra</td><td>Como</td></tr>" +
+        "<tr><td>Tagliata da</td><td>" + a.chi + "</td></tr>" +
+        "</table>";
+      return;
+    }
+    box.innerHTML =
+      "<table class='dati'>" +
+      "<tr><td>Nome</td><td>" + a.nome + "</td></tr>" +
+      "<tr><td>Tipo</td><td>" + (a.t === "hl" ? "sequenza highlights" : a.t) + "</td></tr>" +
+      "<tr><td>Formato</td><td>" + a.fmt + "</td></tr>" +
+      "<tr><td>Durata</td><td>" + a.dur + "</td></tr>" +
+      "<tr><td>Da</td><td>" + a.fonte + "</td></tr>" +
+      "</table>" +
+      "<div class='azioni'>" +
+      "<button class='oro'>Grafica social</button>" +
+      "<button>9:16</button>" +
+      "<button>Scarica</button>" +
+      "<button>Rifai il taglio</button>" +
+      "</div>";
+  }
+
+  function disegna() { albero(); griglia(); dettaglio(); }
+
+  document.querySelectorAll("#filtri button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      scelta.filtro = b.dataset.f; scelta.asset = 0;
+      document.querySelectorAll("#filtri button").forEach(function (x) { x.className = ""; });
+      b.className = "acceso"; disegna();
+    });
+  });
+  document.querySelectorAll("#schede button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      scelta.scheda = b.dataset.s;
+      document.querySelectorAll("#schede button").forEach(function (x) { x.className = ""; });
+      b.className = "acceso"; dettaglio();
+    });
+  });
+  el("mDiretta").addEventListener("click", function () { location.href = "mam.html"; });
+
+  // la barra di stato legge il ponte vero
+  function stato() {
+    fetch(PONTE, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+                   body: JSON.stringify({ tipo: "clip-stato" }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error("no");
+        var aperte = (d.reg || []).filter(function (r) { return r.stato === "registra"; });
+        var lav = (d.clip || []).filter(function (c) { return c.stato === "lavora"; }).length;
+        el("sRec").textContent = aperte.length ? aperte.length + " · " + orologio(aperte[0].durata || 0) : "nessuna";
+        el("sDisco").textContent = (d.disco ? d.disco.liberi + " GB · ~" + d.disco.partite + " partite" : "—");
+        if (d.disco) el("sBarra").style.width = Math.max(4, Math.min(100, 100 - d.disco.liberi / 79 * 100)) + "%";
+        el("sLav").textContent = lav ? lav + " in lavorazione" : "niente in coda";
+        el("sPonte").textContent = "risponde";
+        el("sFonte").textContent = (d.reg && d.reg.length) ? "dati veri dal ponte" : "materiale d'esempio";
+      })
+      .catch(function () {
+        el("sPonte").textContent = "non risponde";
+        el("sFonte").textContent = "materiale d'esempio";
+      });
+  }
+
+  disegna(); stato(); setInterval(stato, 5000);
+})();
+</script>
+</body>
+</html>
