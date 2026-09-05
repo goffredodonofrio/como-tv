@@ -1430,6 +1430,172 @@ function peso(dir) {
   return tot;
 }
 
+
+// ══════════════════════════════════════════════════════════════════════
+//  CERCARE
+// ══════════════════════════════════════════════════════════════════════
+//
+//  Non un linguaggio da imparare: si scrive come si parla. «Genoa-Como del
+//  4 settembre», «gol di Diao», «le verticali di settembre». Chi cerca in
+//  redazione non sa — e non deve sapere — come si chiama un campo.
+//
+//  Si cerca in tre posti insieme, perche' sono tre domande diverse:
+//    partite  — «dov'e' quella partita»
+//    clip     — «dov'e' quel pezzo che avevamo tagliato»
+//    segni    — «dov'e' quell'azione», ed e' la piu' preziosa: sono i
+//               marker di ESPN, degli appunti e quelli messi a mano, cioe'
+//               il minuto per minuto che oggi muore dentro una cella.
+//
+//  Tutte le parole devono trovarsi (e non "una qualsiasi"): chi scrive due
+//  parole sta restringendo, non allargando.
+
+const MESI_N = ["gennaio","febbraio","marzo","aprile","maggio","giugno","luglio",
+                "agosto","settembre","ottobre","novembre","dicembre"];
+const GIORNI_N = ["domenica","lunedi","martedi","mercoledi","giovedi","venerdi","sabato"];
+
+function senzaAccenti(t) {
+  return String(t || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+// Il testo su cui si cerca: tutto quello che di quella cosa qualcuno
+// potrebbe ricordare, scritto in tutti i modi in cui potrebbe scriverlo.
+function comeSiCerca(pezzi) {
+  return senzaAccenti(pezzi.filter(Boolean).join(" ")).replace(/[^a-z0-9:\/\s'-]/g, " ");
+}
+function dataScritta(ms) {
+  if (!ms) return "";
+  const d = new Date(ms);
+  const gg = d.getDate(), mm = d.getMonth() + 1;
+  return [GIORNI_N[d.getDay()], gg + " " + MESI_N[d.getMonth()], gg + "/" + mm,
+          ("0" + gg).slice(-2) + "/" + ("0" + mm).slice(-2), d.getFullYear()].join(" ");
+}
+
+const FORMATI_DETTI = { "verticale": "9:16", "verticali": "9:16", "story": "9:16",
+  "orizzontale": "16:9", "orizzontali": "16:9", "quadrotto": "4:3", "quadrata": "4:3" };
+const GENERI_DETTI = { "clip": "clip", "clips": "clip", "integrale": "integrale",
+  "integrali": "integrale", "hl": "hl", "highlight": "hl", "highlights": "hl",
+  "sequenza": "hl", "partita": "partita", "partite": "partita", "segno": "segno",
+  "segni": "segno", "marker": "segno" };
+
+function leggiDomanda(q) {
+  const parole = senzaAccenti(q).split(/\s+/).filter(Boolean);
+  const fuori = { parole: [], formato: "", genere: "", quando: null };
+  const salta = { "del": 1, "della": 1, "di": 1, "il": 1, "lo": 1, "la": 1, "le": 1,
+                  "i": 1, "gli": 1, "un": 1, "una": 1, "con": 1, "in": 1, "a": 1, "da": 1 };
+  let giorno = 0, mese = -1, anno = 0;
+  parole.forEach((p) => {
+    if (/^(9:16|16:9|4:3)$/.test(p)) { fuori.formato = p; return; }
+    if (FORMATI_DETTI[p]) { fuori.formato = FORMATI_DETTI[p]; return; }
+    if (GENERI_DETTI[p]) { fuori.genere = GENERI_DETTI[p]; return; }
+    if (p === "oggi" || p === "ieri") {
+      const d = new Date(); if (p === "ieri") d.setDate(d.getDate() - 1);
+      giorno = d.getDate(); mese = d.getMonth(); anno = d.getFullYear(); return;
+    }
+    const im = MESI_N.indexOf(p);
+    if (im >= 0) { mese = im; return; }
+    if (/^\d{1,2}$/.test(p) && +p >= 1 && +p <= 31) { giorno = +p; return; }
+    if (/^\d{4}$/.test(p)) { anno = +p; return; }
+    const dm = /^(\d{1,2})[\/-](\d{1,2})$/.exec(p);
+    if (dm) { giorno = +dm[1]; mese = +dm[2] - 1; return; }
+    if (salta[p] || p.length < 2) return;
+    fuori.parole.push(p);
+  });
+  if (mese >= 0 || giorno) fuori.quando = { giorno: giorno, mese: mese, anno: anno };
+  return fuori;
+}
+
+function quandoTorna(ms, q) {
+  if (!q.quando || !ms) return true;
+  const d = new Date(ms);
+  if (q.quando.mese >= 0 && d.getMonth() !== q.quando.mese) return false;
+  if (q.quando.giorno && d.getDate() !== q.quando.giorno) return false;
+  if (q.quando.anno && d.getFullYear() !== q.quando.anno) return false;
+  return true;
+}
+function tutteDentro(testo, parole) {
+  return parole.every((p) => testo.indexOf(p) >= 0);
+}
+
+function clipCerca(p) {
+  const q = leggiDomanda(String(p.q || ""));
+  const limite = num(p.limite, 1, 200, 40);
+  if (!q.parole.length && !q.quando && !q.formato && !q.genere) {
+    return { ok: true, vuota: true, partite: [], clip: [], segni: [] };
+  }
+
+  // il testo di una registrazione vale anche per le sue clip e i suoi segni:
+  // «il gol di Diao in Genoa-Como» e' una frase sola, non due ricerche
+  const testoReg = {};
+  Object.keys(R.reg).forEach((k) => {
+    const r = R.reg[k];
+    testoReg[k] = comeSiCerca([r.titolo, r.competizione, r.sorgente, dataScritta(r.avviata)]);
+  });
+
+  const partite = [], clip = [], segni = [];
+
+  Object.keys(R.reg).forEach((k) => {
+    const r = R.reg[k];
+    if (q.genere && q.genere !== "partita" && q.genere !== "integrale") return;
+    if (q.genere === "integrale" && r.integrale !== "pronto") return;
+    if (!quandoTorna(r.avviata, q)) return;
+    if (!tutteDentro(testoReg[k], q.parole)) return;
+    partite.push(Object.assign({}, pubblica(r), { marker: undefined, quanteClip:
+      Object.keys(R.clip).filter((c) => R.clip[c].reg === k).length }));
+  });
+
+  Object.keys(R.clip).forEach((k) => {
+    const c = R.clip[k];
+    if (q.genere && q.genere !== "clip") return;
+    if (q.formato && c.formato !== q.formato) return;
+    const r = R.reg[c.reg];
+    if (!quandoTorna(c.creata || (r && r.avviata), q)) return;
+    const testo = comeSiCerca([c.titolo, c.tipo, c.minuto, c.chi, c.formato,
+                               testoReg[c.reg] || ""]);
+    if (!tutteDentro(testo, q.parole)) return;
+    clip.push(Object.assign({}, c, { partita: r ? r.titolo : "" }));
+  });
+
+  Object.keys(R.reg).forEach((k) => {
+    const r = R.reg[k];
+    if (q.genere && q.genere !== "segno") return;
+    if (q.formato) return;                       // un segno non ha formato
+    if (!quandoTorna(r.avviata, q)) return;
+    (r.marker || []).forEach((m) => {
+      const testo = comeSiCerca([m.testo, m.tipo, m.fonte, m.chi, testoReg[k]]);
+      if (!tutteDentro(testo, q.parole)) return;
+      segni.push({ id: m.id, reg: k, partita: r.titolo, competizione: r.competizione,
+                   secondi: m.secondi, testo: m.testo, tipo: m.tipo, fonte: m.fonte,
+                   quando: r.avviata });
+    });
+  });
+
+  // I segni delle sequenze: un pezzo di highlight e' anche lui un'azione
+  Object.keys(R.seq).forEach((k) => {
+    const s = R.seq[k];
+    if (q.genere && q.genere !== "hl") return;
+    const r = R.reg[s.reg];
+    if (!quandoTorna(s.creata, q)) return;
+    const testo = comeSiCerca([s.titolo, testoReg[s.reg] || ""]);
+    if (!tutteDentro(testo, q.parole)) return;
+    clip.push({ id: s.id, seq: true, reg: s.reg, titolo: s.titolo, formato: "16:9",
+                durata: Math.round(s.pezzi.reduce((a, x) => a + (x.fuori - x.dentro), 0)),
+                stato: "pronta", pezzi: s.pezzi.length, creata: s.creata,
+                partita: r ? r.titolo : "" });
+  });
+
+  partite.sort((a, b) => b.avviata - a.avviata);
+  clip.sort((a, b) => (b.creata || 0) - (a.creata || 0));
+  segni.sort((a, b) => (b.quando || 0) - (a.quando || 0));
+
+  return {
+    ok: true,
+    domanda: { parole: q.parole, formato: q.formato, genere: q.genere, quando: q.quando },
+    quante: partite.length + clip.length + segni.length,
+    partite: partite.slice(0, limite),
+    clip: clip.slice(0, limite),
+    segni: segni.slice(0, limite)
+  };
+}
+
 // ── l'anello ──────────────────────────────────────────────────────────
 //
 //  Dodici partite in una sera sono una quarantina di giga: il disco della VM
@@ -1484,6 +1650,7 @@ const AZIONI = {
   "clip-kickoff": clipKickoff,
   "clip-elimina": clipElimina,
   "clip-sorgenti": clipSorgenti,
+  "clip-cerca": clipCerca,
   "clip-hl-genera": hlGenera,
   "clip-hl-elenco": hlElenco,
   "clip-hl-pezzo": hlPezzo,

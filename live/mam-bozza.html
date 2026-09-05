@@ -192,6 +192,19 @@
     letter-spacing:.14em;text-transform:uppercase;}
   .schede button.acceso{color:var(--inchiostro);border-bottom-color:var(--gold-deep);}
 
+  .risultati h3{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.24em;
+    text-transform:uppercase;color:var(--inchiostro-3);margin:16px 0 9px;
+    display:flex;gap:9px;align-items:center;}
+  .risultati h3:first-child{margin-top:0;}
+  .risultati h3 i{flex:1;height:1px;background:var(--linea);font-style:normal;}
+  .risultati h3 b{color:var(--gold-deep);font-weight:700;}
+  .letta{font-size:12px;color:var(--inchiostro-3);margin-bottom:14px;}
+  .letta em{font-style:normal;color:var(--inchiostro);background:rgba(201,162,75,.18);
+    border-radius:4px;padding:1px 7px;margin-right:5px;}
+  .voce.cliccabile{cursor:pointer;}
+  .voce.cliccabile:hover{border-color:var(--gold-deep);}
+  .voce .quando2{color:var(--inchiostro-3);font-size:11px;white-space:nowrap;}
+
   .avviso{margin:0 0 12px;padding:11px 14px;border-radius:8px;font-size:13px;display:none;
     background:#FDECEC;border:1px solid rgba(229,27,32,.35);color:#8E1216;}
   .avviso.ok{background:#E9F6EF;border-color:rgba(46,158,104,.4);color:#1D6B45;}
@@ -707,8 +720,135 @@
     }
   }
 
+  // ── cercare ─────────────────────────────────────────────────────
+  //
+  //  La ricerca non e' una linguetta in piu': quando c'e' una domanda nella
+  //  barra, la colonna centrale risponde a quella e basta. Si svuota la
+  //  barra e si torna esattamente dov'eravamo.
+  var RIS = null, vistaPrima = "live", attesaCerca = 0;
+
+  function cerca(q) {
+    manda({ tipo: "clip-cerca", q: q }).then(function (d) {
+      RIS = d; disegnaRisultati();
+    }).catch(function (e) { dice(e.message); });
+  }
+
+  function disegnaRisultati() {
+    var c = el("centro"); c.innerHTML = "";
+    var box = document.createElement("div"); box.className = "risultati"; c.appendChild(box);
+    if (!RIS || RIS.vuota) { box.innerHTML = '<div class="vuoto">Scrivi che cosa cerchi.</div>'; return; }
+
+    // far vedere COME e' stata capita la domanda: se sbaglia, si vede subito
+    var q = RIS.domanda || {}, letta = [];
+    (q.parole || []).forEach(function (p) { letta.push("<em>" + p + "</em>"); });
+    if (q.formato) letta.push("<em>formato " + q.formato + "</em>");
+    if (q.genere) letta.push("<em>" + q.genere + "</em>");
+    if (q.quando) {
+      var mesi = ["gennaio","febbraio","marzo","aprile","maggio","giugno","luglio",
+                  "agosto","settembre","ottobre","novembre","dicembre"];
+      letta.push("<em>" + (q.quando.giorno || "") + " " +
+                 (q.quando.mese >= 0 ? mesi[q.quando.mese] : "") + " " + (q.quando.anno || "") + "</em>");
+    }
+    var l = document.createElement("div"); l.className = "letta";
+    l.innerHTML = "Cerco: " + letta.join(" ") + " · " + RIS.quante + " risultati";
+    box.appendChild(l);
+
+    if (!RIS.quante) { box.innerHTML += '<div class="vuoto">Niente. Prova con meno parole.</div>'; return; }
+
+    function titolo(t, n) {
+      var h = document.createElement("h3");
+      h.innerHTML = t + " <b>" + n + "</b> <i></i>";
+      box.appendChild(h);
+    }
+    function riga(nome, dett, coda, quando) {
+      var v = document.createElement("div"); v.className = "voce cliccabile";
+      v.innerHTML = "<div class='testo'><div class='nome'>" + nome + "</div>" +
+                    "<div class='dett'>" + dett + "</div></div>" +
+                    (quando ? "<span class='quando2'>" + quando + "</span>" : "") +
+                    (coda ? "<a href='#'>" + coda + "</a>" : "");
+      box.appendChild(v); return v;
+    }
+    function data(ms) {
+      if (!ms) return "";
+      var d = new Date(ms);
+      return ("0"+d.getDate()).slice(-2) + "/" + ("0"+(d.getMonth()+1)).slice(-2);
+    }
+
+    if (RIS.partite.length) {
+      titolo("Partite", RIS.partite.length);
+      RIS.partite.forEach(function (r) {
+        riga(r.titolo, (r.competizione || "senza competizione") + " · " + orologio(r.durata) +
+             " · " + (r.quanteClip || 0) + " clip", "apri", data(r.avviata))
+          .addEventListener("click", function () { vaiA(r.id, null, "tutto"); });
+      });
+    }
+    if (RIS.clip.length) {
+      titolo("Clip e sequenze", RIS.clip.length);
+      RIS.clip.forEach(function (c) {
+        riga(c.titolo, (c.seq ? c.pezzi + " pezzi · sequenza" : c.formato + " · " +
+             (c.durataVera || c.durata) + "s") + (c.partita ? " · " + c.partita : ""),
+             "vedi", data(c.creata))
+          .addEventListener("click", function () { vaiA(c.reg, null, c.seq ? "hl" : "clip"); });
+      });
+    }
+    if (RIS.segni.length) {
+      titolo("Segni nelle partite", RIS.segni.length);
+      RIS.segni.forEach(function (m) {
+        riga(m.testo || m.tipo || "segno",
+             m.partita + " · " + orologio(m.secondi) + (m.fonte ? " · " + m.fonte : ""),
+             "guarda", data(m.quando))
+          .addEventListener("click", function () { vaiA(m.reg, m.secondi, "live"); });
+      });
+    }
+  }
+
+  // dal risultato al materiale: si sceglie la partita, si va alla vista
+  // giusta e — se e' un segno — il player ci salta dentro.
+  function vaiA(idReg, secondi, vista) {
+    var r = REGISTRAZIONI.filter(function (x) { return x.id === idReg; })[0];
+    if (r) REG = r;
+    el("q").value = ""; RIS = null;
+    VISTA = vista || "tutto";
+    document.querySelectorAll("#linguette button").forEach(function (x) {
+      x.className = (x.dataset.v === "live" ? "live" : "") + (x.dataset.v === VISTA ? " acceso" : "");
+    });
+    disegna();
+    if (secondi !== null && secondi !== undefined) {
+      var giri = 0;
+      var attesa = setInterval(function () {
+        var v = el("player");
+        if (++giri > 30) return clearInterval(attesa);
+        if (!v || !v.duration) return;
+        clearInterval(attesa);
+        seguiLive = false; v.currentTime = secondi; v.play().catch(function () {});
+      }, 300);
+    }
+  }
+
+  el("q").addEventListener("input", function () {
+    var q = this.value.trim();
+    clearTimeout(attesaCerca);
+    if (!q) { RIS = null; VISTA = vistaPrima; 
+      document.querySelectorAll("#linguette button").forEach(function (x) {
+        x.className = (x.dataset.v === "live" ? "live" : "") + (x.dataset.v === VISTA ? " acceso" : "");
+      });
+      disegna(); return; }
+    if (VISTA !== "cerca") { vistaPrima = VISTA; VISTA = "cerca";
+      document.querySelectorAll("#linguette button").forEach(function (x) {
+        x.className = (x.dataset.v === "live" ? "live" : "");
+      });
+      if (hls) { hls.destroy(); hls = null; apertaId = ""; }
+      el("destra").innerHTML = '<h2>Dettaglio</h2><div class="vuoto">Scegli un risultato.</div>';
+    }
+    attesaCerca = setTimeout(function () { cerca(q); }, 280);
+  });
+  el("q").addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { this.value = ""; this.dispatchEvent(new Event("input")); this.blur(); }
+  });
+
   // ── il giro ─────────────────────────────────────────────────────
   function disegna() {
+    if (VISTA === "cerca") { albero(); disegnaRisultati(); return; }
     albero();
     if (VISTA === "live") { centroLive(); destraLive(); disegnaConsole(); }
     else centroArchivio();
@@ -722,6 +862,7 @@
       if (!REG && REGISTRAZIONI.length) REG = REGISTRAZIONI[0];
       CLIP = (d.clip || []).filter(function (c) { return !REG || c.reg === REG.id; });
       barra();
+      if (VISTA === "cerca") { albero(); return; }      // sta cercando: non si tocca niente
       if (VISTA === "live") { if (REG && el("player")) apri(REG); disegnaConsole(); }
       else centroArchivio();
       albero();
