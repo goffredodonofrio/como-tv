@@ -115,7 +115,8 @@
   .scheda.scelta{border-color:var(--gold-deep);box-shadow:0 0 0 2px rgba(166,124,46,.28), var(--ombra);}
   .mini{position:relative;aspect-ratio:16/9;background:var(--scuro);overflow:hidden;
     display:flex;align-items:center;justify-content:center;}
-  .mini .telo{background:linear-gradient(135deg,#1b2a5e,#0d1430);height:100%;aspect-ratio:16/9;}
+  .mini .telo{background:linear-gradient(135deg,#1b2a5e,#0d1430);height:100%;aspect-ratio:16/9;
+    display:block;object-fit:cover;}
   .mini.v .telo{aspect-ratio:9/16;box-shadow:0 0 0 1px rgba(245,241,230,.08);}
   .mini.q .telo{aspect-ratio:4/3;box-shadow:0 0 0 1px rgba(245,241,230,.08);}
   .mini .durata{position:absolute;right:6px;bottom:6px;background:rgba(10,15,36,.85);border-radius:4px;
@@ -128,6 +129,12 @@
   .scheda .nome{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.04em;
     text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .scheda .sotto{font-size:11px;color:var(--inchiostro-3);margin-top:3px;}
+  /* i comandi della clip stanno sulla clip: per scaricarne tre di fila non
+     si deve piu' sceglierle una per una e poi andarle a cercare a destra */
+  .scheda .comandi{display:flex;gap:12px;padding:0 10px 10px;}
+  .scheda .comandi a{color:var(--gold-deep);text-decoration:none;font-family:'Mazzard',sans-serif;
+    font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;}
+  .scheda .comandi a:hover{color:var(--inchiostro);}
 
   /* ── il visore ─────────────────────────────────────────────────── */
   /* IL RITAGLIO SI VEDE PRIMA DI TAGLIARE.
@@ -212,6 +219,7 @@
   .voce{background:var(--bianco);border:1px solid var(--linea);border-radius:8px;padding:9px 11px;
     display:flex;gap:9px;align-items:center;margin-bottom:7px;box-shadow:var(--ombra);}
   .voce .testo{flex:1;min-width:0;}
+  .voce .minivoce{width:58px;height:33px;object-fit:cover;border-radius:5px;flex:none;background:var(--scuro);}
   .voce .nome{font-family:'Mazzard',sans-serif;font-weight:700;font-size:12px;letter-spacing:.04em;
     text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .voce .dett{font-size:11px;color:var(--inchiostro-3);}
@@ -749,7 +757,8 @@
 
   function voceClip(x) {
     var v = document.createElement("div"); v.className = "voce";
-    v.innerHTML = "<div class='testo'><div class='nome'>" + x.titolo + "</div><div class='dett'>" +
+    v.innerHTML = (x.mini ? "<img class='minivoce' src='" + BASE + x.mini + "' alt=''>" : "") +
+      "<div class='testo'><div class='nome'>" + x.titolo + "</div><div class='dett'>" +
       x.formato + " · " + (x.durataVera || x.durata) + "s" + (x.peso ? " · " + peso(x.peso) : "") +
       (x.stato === "lavora" ? " · in lavorazione" : "") + (x.stato === "errore" ? " · errore" : "") + "</div></div>";
     if (x.stato === "pronta") {
@@ -821,7 +830,7 @@
               '<button class="b oro" id="btnGenera">Genera HL</button></div></div>';
         el("btnGenera").addEventListener("click", function () {
           this.disabled = true;
-          manda({ tipo:"clip-hl-genera", reg:REG.id,
+          manda({ tipo: "clip-hl-genera", reg: REG.id,
                   pre: parseFloat(el("hlPre").value) || 8,
                   post: parseFloat(el("hlPost").value) || 6 })
             .then(function (d) { SEQ = d.seq; ASSET = 0; centroArchivio();
@@ -835,24 +844,57 @@
     }
     var g = document.createElement("div"); g.className = "griglia"; c.innerHTML = ""; c.appendChild(g);
     lista.forEach(function (a, i) {
-      var fmt = a.t === "clip" ? a.o.formato : "16:9";
+      var fmt = a.t === "clip" ? a.o.formato : (a.t === "hl" && a.o.export ? a.o.export.formato : "16:9");
       var dur = a.t === "clip" ? (a.o.durataVera || a.o.durata) + "s"
               : a.t === "integrale" ? orologio(a.o.durata)
-              : orologio((a.o.pezzi || []).reduce(function (s, x) { return s + (x.fuori - x.dentro); }, 0));
+              : orologio((a.o.pezzi || []).reduce(function (s2, x) { return s2 + (x.fuori - x.dentro); }, 0));
       var nome = a.t === "clip" ? a.o.titolo : a.t === "integrale" ? "Integrale" : a.o.titolo;
       var d = document.createElement("div");
       d.className = "scheda" + (i === ASSET ? " scelta" : "");
+
+      // IL FOTOGRAMMA. Una griglia di rettangoli vuoti non e' un archivio:
+      // si dovrebbe leggere ogni titolo per capire che cosa si ha davanti.
+      var mini = a.o.mini ? BASE + a.o.mini : "";
       d.innerHTML = "<div class='mini" + (fmt === "9:16" ? " v" : fmt === "4:3" ? " q" : "") + "'>" +
-        "<span class='telo'></span><span class='formato'>" + fmt + "</span>" +
+        (mini ? "<img class='telo' src='" + mini + "' alt=''>" : "<span class='telo'></span>") +
+        "<span class='formato'>" + fmt + "</span>" +
         "<span class='durata'>" + dur + "</span>" +
         "<span class='fonte'>" + (a.t === "hl" ? "sequenza" : a.t === "integrale" ? "registrazione" : (a.o.tipo || "clip")) + "</span></div>" +
         "<div class='testo'><div class='nome'>" + nome + "</div><div class='sotto'>" +
         (a.t === "hl" ? (a.o.pezzi || []).length + " pezzi" : a.t) + "</div></div>";
       d.addEventListener("click", function () { ASSET = i; disegna(); });
+
+      // I COMANDI SULLA SCHEDA. Prima stavano solo nel dettaglio: per
+      // scaricare tre clip di fila bisognava sceglierle una per una e poi
+      // andare a destra ogni volta.
+      if (a.t === "clip" && a.o.stato === "pronta") {
+        var url = BASE + "/clip/_clip/" + a.o.id + ".mp4";
+        var az = document.createElement("div"); az.className = "comandi";
+        var gr = document.createElement("a");
+        gr.href = GEN + "&clip=" + encodeURIComponent(url) + "&titolo=" + encodeURIComponent(a.o.titolo) +
+                  (a.o.evento ? "&evento=" + encodeURIComponent(a.o.evento) : "");
+        gr.target = "_blank"; gr.rel = "noopener"; gr.textContent = "grafica";
+        var sc = document.createElement("a"); sc.href = url + "?scarica=1"; sc.textContent = "scarica";
+        [gr, sc].forEach(function (x) { x.addEventListener("click", function (e) { e.stopPropagation(); }); });
+        var el2 = tastoElimina(a.o.id, function () { ASSET = 0; });
+        el2.addEventListener("click", function (e) { e.stopPropagation(); });
+        az.appendChild(gr); az.appendChild(sc); az.appendChild(el2);
+        d.appendChild(az);
+      } else if (a.t !== "clip") {
+        var url2 = a.t === "integrale" ? BASE + "/clip/" + a.o.id + "/integrale.mp4"
+                 : (a.o.export && a.o.export.stato === "pronto" ? BASE + a.o.export.file : "");
+        if (url2) {
+          var az2 = document.createElement("div"); az2.className = "comandi";
+          var s3 = document.createElement("a"); s3.href = url2 + "?scarica=1"; s3.textContent = "scarica";
+          s3.addEventListener("click", function (e) { e.stopPropagation(); });
+          az2.appendChild(s3); d.appendChild(az2);
+        }
+      }
       g.appendChild(d);
     });
     destraArchivio(lista[ASSET] || lista[0]);
   }
+
   function destraArchivio(a) {
     var d = el("destra");
     if (!a) { d.innerHTML = '<h2>Dettaglio</h2><div class="vuoto">Niente di scelto.</div>'; return; }
@@ -1105,10 +1147,21 @@
 
   // ── il giro ─────────────────────────────────────────────────────
   function disegna() {
+    firmaVecchia = "";                     // un gesto dell'utente ridisegna sempre
     if (VISTA === "cerca") { albero(); disegnaRisultati(); return; }
     albero();
     if (VISTA === "live") { centroLive(); destraLive(); disegnaConsole(); }
     else centroArchivio();
+  }
+
+  // la firma di quello che si vede: se non cambia, non si tocca
+  var firmaVecchia = "";
+  function cambiato() {
+    var f = [VISTA, FORMA, ASSET, REG ? REG.id + REG.stato + REG.integrale : "-",
+      CLIP.map(function (c) { return c.id + c.stato + (c.mini ? "1" : "0"); }).join(","),
+      SEQ ? SEQ.id + SEQ.pezzi.length + (SEQ.export ? SEQ.export.stato : "") : "-"].join("|");
+    if (f === firmaVecchia) return false;
+    firmaVecchia = f; return true;
   }
 
   function aggiorna() {
@@ -1121,7 +1174,11 @@
       barra();
       if (VISTA === "cerca") { albero(); return; }      // sta cercando: non si tocca niente
       if (VISTA === "live") { if (REG && el("player")) apri(REG); disegnaConsole(); }
-      else centroArchivio();
+      else if (cambiato()) centroArchivio();
+      // Se non e' cambiato niente NON si ridisegna: rifare la griglia ogni
+      // tre secondi buttava via le miniature prima che finissero di
+      // caricarsi (e con loro la posizione dello scorrimento). Una lista che
+      // si rigenera da sola sotto le mani e' peggio di una lista vecchia.
       albero();
       if (REG) {
         manda({ tipo:"clip-hl-elenco", reg:REG.id }).then(function (h) {

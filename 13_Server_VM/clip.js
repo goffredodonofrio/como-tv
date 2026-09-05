@@ -444,6 +444,10 @@ function integrale(r) {
       const vera = d.durata || 0;
       const scarto = atteso ? Math.abs(vera - atteso) / atteso : 0;
       r.integraleDurata = Math.round(vera * 10) / 10;
+      if (vera > 6) {
+        r.mini = await miniatura(fuori, path.join(cartellaReg(r.id), "mini.jpg"), vera / 2)
+          ? "/clip/" + r.id + "/mini.jpg" : "";
+      }
       if (atteso && scarto > 0.03) {
         r.integrale = "sospetto";
         r.integraleErrore = "l'integrale dura " + Math.round(vera) + "s ma la registrazione " +
@@ -640,11 +644,16 @@ function clipTaglia(p) {
 
   const formato = FORMATI[p.formato] ? String(p.formato) : "16:9";
   const ritaglio = FORMATI[formato].vf;
-  const preciso = !!p.preciso || !!ritaglio;
+  // Lo sting (la fascia con partita e azione bruciata nei primi tre
+  // secondi) esiste, ma di suo e' SPENTO: costa una ricodifica, e per
+  // riconoscere una clip basta la miniatura. Si accende chiedendolo.
+  const sting = p.sting === true && fontCe();
+  const preciso = !!p.preciso || !!ritaglio || sting;
 
   const c = {
     id: nuovoId("c"),
     reg: r.id,
+    sting: sting,
     evento: r.evento,
     titolo: String(p.titolo || "").slice(0, 160) || (r.titolo + " " + orologio(dentro)),
     dentro: dentro, fuori: dentro + quanto, durata: quanto,
@@ -677,7 +686,8 @@ function clipTaglia(p) {
     c.rincorsa = Math.round(scarto * 100) / 100;      // quanto comincia prima
     c.dentro = Math.round((dentro - scarto) * 100) / 100;
   }
-  esegui(c, codifica(args, preciso, ritaglio), lista);
+  esegui(c, codifica(args, preciso, ritaglio,
+                     sting ? filtroSting(r, c, path.join(DIR, CARTELLA_CLIP), c.id) : ""), lista);
   return { ok: true, clip: c };
 }
 
@@ -690,7 +700,8 @@ function taglioDaIntegrale(r, p, dentro, fuori, durata) {
   }
   const formato = FORMATI[p.formato] ? String(p.formato) : "16:9";
   const ritaglio = FORMATI[formato].vf;
-  const preciso = !!p.preciso || !!ritaglio;
+  const sting = p.sting === true && fontCe();
+  const preciso = !!p.preciso || !!ritaglio || sting;
   const c = {
     id: nuovoId("c"), reg: r.id, evento: r.evento,
     titolo: String(p.titolo || "").slice(0, 160) || (r.titolo + " " + orologio(dentro)),
@@ -704,18 +715,22 @@ function taglioDaIntegrale(r, p, dentro, fuori, durata) {
   R.clip[c.id] = c;
   scrivi();
   esegui(c, codifica(["-ss", String(dentro), "-i", file, "-t", String(durata)],
-                     preciso, ritaglio), null);
+                     preciso, ritaglio,
+                     sting ? filtroSting(r, c, path.join(DIR, CARTELLA_CLIP), c.id) : ""), null);
   return { ok: true, clip: c };
 }
 
 // Come si scrive la clip: ricopiando i byte, o ricodificando quando il taglio
 // deve essere preciso o l'immagine va ritagliata in verticale.
-function codifica(args, preciso, ritaglio) {
+function codifica(args, preciso, ritaglio, sting) {
   let fuori = ["-hide_banner", "-loglevel", "error", "-nostdin"].concat(args);
   if (!preciso) {
     fuori = fuori.concat(["-c", "copy", "-avoid_negative_ts", "make_zero"]);
   } else {
-    if (ritaglio) fuori = fuori.concat(["-vf", ritaglio]);
+    // il ritaglio PRIMA, lo sting DOPO: l'etichetta va misurata sul formato
+    // che esce davvero, non su quello che entra
+    const vf = [ritaglio, sting].filter(Boolean).join(",");
+    if (vf) fuori = fuori.concat(["-vf", vf]);
     fuori = fuori.concat(["-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
                           "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k"]);
   }
@@ -730,10 +745,16 @@ function esegui(c, args, lista) {
   pr.on("error", (e) => { c.stato = "errore"; c.errore = e.message; scrivi(); annuncia(0, "clip"); });
   pr.on("close", async (code) => {
     if (lista) { try { fs.unlinkSync(lista); } catch (e) {} }
+    ["t1", "t2", "t3"].forEach((t) => {
+      try { fs.unlinkSync(path.join(DIR, CARTELLA_CLIP, c.id + "." + t + ".txt")); } catch (e) {}
+    });
     if (code === 0) {
       const d = await probe(fuoriFile);
       c.stato = "pronta"; c.peso = d.peso || 0;
       if (d.durata) c.durataVera = Math.round(d.durata * 100) / 100;
+      const dur = d.durata || (c.fuori - c.dentro) || 3;
+      c.mini = await miniatura(fuoriFile, path.join(DIR, CARTELLA_CLIP, c.id + ".jpg"), dur / 3)
+        ? "/clip/" + CARTELLA_CLIP + "/" + c.id + ".jpg" : "";
     } else {
       c.stato = "errore"; c.errore = ultimaRiga(coda) || ("ffmpeg e' uscito con " + code);
     }
@@ -746,6 +767,7 @@ function clipElimina(p) {
     const c = R.clip[p.clip];
     if (!c) throw new Error("clip sconosciuta");
     try { fs.unlinkSync(fileClip(c.id)); } catch (e) {}
+    try { fs.unlinkSync(path.join(DIR, CARTELLA_CLIP, c.id + ".jpg")); } catch (e) {}
     delete R.clip[p.clip];
     scrivi(); annuncia(0, "clip");
     return { ok: true };
@@ -1211,6 +1233,9 @@ async function hlEsportaVideo(q, formato) {
   });
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}   // i pezzi non servono piu'
   const d = await probe(finale);
+  const mini = await miniatura(finale, path.join(DIR, CARTELLA_HL, q.id + ".jpg"),
+                               (d.durata || 6) / 3);
+  q.mini = mini ? "/clip/" + CARTELLA_HL + "/" + q.id + ".jpg" : "";
   q.export = { stato: "pronto", formato: formato, fatti: q.pezzi.length, quanti: q.pezzi.length,
                file: "/clip/" + CARTELLA_HL + "/" + q.id + ".mp4",
                durata: d.durata ? Math.round(d.durata * 10) / 10 : 0, peso: d.peso || 0 };
@@ -1318,6 +1343,98 @@ async function hlEsporta(p) {
   return { ok: true, export: q.export };
 }
 
+
+// ── LO STING ──────────────────────────────────────────────────────────
+//
+//  Una clip esportata, da sola, non dice che cos'e'. Finisce in una
+//  cartella o in una chat insieme ad altre venti e nessuno sa piu' quale
+//  sia: stesso formato, stessa durata, stesso fotogramma d'apertura.
+//
+//  Quindi le prime tre secondi portano una fascia in basso con: chi siamo,
+//  che partita e', e che azione. Non e' una grafica da messa in onda — per
+//  quella c'e' la regia — e' un'etichetta: serve a riconoscerla.
+//
+//  Costa una ricodifica: il taglio in copia dura un secondo, con lo sting
+//  quanto la clip. Per questo si puo' spegnere.
+
+const FONT_DIR = process.env.COMOTV_FONT || "/var/www/comotv/assets/fonts";
+const FONT_GROSSO = path.join(FONT_DIR, "MazzardM-ExtraBold.ttf");
+const FONT_MEDIO = path.join(FONT_DIR, "MazzardM-Bold.ttf");
+
+function fontCe() {
+  try { return fs.existsSync(FONT_GROSSO) && fs.existsSync(FONT_MEDIO); } catch (e) { return false; }
+}
+
+// Il testo va su un file, non dentro il filtro: dentro il filtro ogni
+// apostrofo, due punti o accento diventa un carattere da proteggere, e basta
+// un nome con l'apostrofo per far fallire l'export senza dire perche'.
+function scriviTesto(dove, testo) {
+  fs.writeFileSync(dove, String(testo || "").slice(0, 120) + "\n", "utf8");
+  return dove.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+}
+
+function filtroSting(r, c, cartella, id) {
+  if (!fontCe()) return "";
+  const occhiello = ["COMO TV", r.competizione || ""].filter(Boolean).join("  \u00b7  ").toUpperCase();
+  const partita = String(r.titolo || "").toUpperCase();
+  const azione = String(c.titolo || "").toUpperCase();
+
+  const f1 = scriviTesto(path.join(cartella, id + ".t1.txt"), occhiello);
+  const f2 = scriviTesto(path.join(cartella, id + ".t2.txt"), partita);
+  const f3 = scriviTesto(path.join(cartella, id + ".t3.txt"), azione);
+  const font1 = FONT_MEDIO.replace(/:/g, "\\:");
+  const font2 = FONT_GROSSO.replace(/:/g, "\\:");
+
+  // Tre secondi, con una comparsa e una sparizione: un cartello che appare
+  // di scatto e sparisce di scatto sembra un errore di montaggio.
+  const q = "between(t,0.25,3.25)";
+  const alfa = "if(lt(t,0.55),(t-0.25)/0.3,if(gt(t,2.85),(3.25-t)/0.4,1))";
+
+  return [
+    // la fascia: navy del sistema, non nero
+    "drawbox=x=0:y=ih-ih/4.6:w=iw:h=ih/4.6:color=0x0A0F24@0.62:t=fill:enable='" + q + "'",
+    // il filo d'oro che la regge
+    "drawbox=x=0:y=ih-ih/4.6:w=iw:h=max(2\\,ih/540):color=0xC9A24B@0.95:t=fill:enable='" + q + "'",
+    "drawtext=fontfile='" + font1 + "':textfile='" + f1 + "':fontcolor=0xE3C271:" +
+      "fontsize=ih/40:x=iw/22:y=ih-ih/5.4:alpha='" + alfa + "':enable='" + q + "'",
+    "drawtext=fontfile='" + font2 + "':textfile='" + f2 + "':fontcolor=0xF5F1E6:" +
+      "fontsize=ih/17:x=iw/22:y=ih-ih/6.6:alpha='" + alfa + "':enable='" + q + "'",
+    "drawtext=fontfile='" + font1 + "':textfile='" + f3 + "':fontcolor=0xD8D2C2:" +
+      "fontsize=ih/30:x=iw/22:y=ih-ih/13.5:alpha='" + alfa + "':enable='" + q + "'"
+  ].join(",");
+}
+
+// ── LA MINIATURA ──────────────────────────────────────────────────────
+//
+//  Una griglia di rettangoli vuoti non e' un archivio: si legge il titolo
+//  di ognuno o non si riconosce niente. Un fotogramma della clip lo dice a
+//  colpo d'occhio, ed e' l'unica cosa che si guarda davvero quando se ne
+//  hanno venti davanti.
+//
+//  Si prende a un terzo della clip, non all'inizio: il primo fotogramma e'
+//  spesso la fine dell'azione precedente, o una dissolvenza.
+
+function miniatura(file, fuori, quando) {
+  return new Promise((si) => {
+    const pr = spawn(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin",
+      "-ss", String(Math.max(0, quando)), "-i", file, "-frames:v", "1",
+      "-vf", "scale=640:-2", "-q:v", "4", "-y", fuori], { stdio: "ignore" });
+    pr.on("error", () => si(false));
+    pr.on("close", (code) => si(code === 0));
+  });
+}
+
+// il nome con cui la clip arriva sul computer di chi la scarica
+function nomeScarico(c, r) {
+  function pulisci(t) {
+    return String(t || "").normalize("NFKD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^A-Za-z0-9 _-]/g, " ").replace(/\s+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+  }
+  const pezzi = [pulisci(r && r.titolo), pulisci(c.titolo), (c.formato || "").replace(":", "x")]
+    .filter(Boolean);
+  return (pezzi.join("_") || c.id) + ".mp4";
+}
+
 // ── le sorgenti: la tabella AWS di Airtable ───────────────────────────
 //
 //  Non si cablano gli indirizzi qui dentro: cambiano a ogni stagione e chi
@@ -1371,7 +1488,8 @@ async function clipSorgenti() {
 
 // ── i file: playlist, segmenti, clip ──────────────────────────────────
 
-const TIPI = { ".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t", ".mp4": "video/mp4", ".xml": "application/xml" };
+const TIPI = { ".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t", ".mp4": "video/mp4",
+               ".xml": "application/xml", ".jpg": "image/jpeg" };
 
 function serviHttp(req, res, u) {
   if (!ATTIVO || !u.pathname.startsWith("/clip/")) return false;
@@ -1394,7 +1512,19 @@ function serviHttp(req, res, u) {
       "Access-Control-Allow-Origin": "*"
     };
     if (u.searchParams.get("scarica")) {
-      base["Content-Disposition"] = 'attachment; filename="' + pezzi[pezzi.length - 1] + '"';
+      // Un file che si chiama "cmto1k971pzmb.mp4" sul computer di chi lo
+      // riceve non vuol dire niente. Si scarica col nome della partita e
+      // dell'azione, che e' l'altra meta' del problema che risolve lo sting.
+      let nome = pezzi[pezzi.length - 1];
+      const idc = /^([A-Za-z0-9_-]+)\.mp4$/.exec(nome);
+      if (idc && R.clip[idc[1]]) nome = nomeScarico(R.clip[idc[1]], R.reg[R.clip[idc[1]].reg]);
+      else if (idc && R.seq[idc[1]]) {
+        const q = R.seq[idc[1]], rr = R.reg[q.reg];
+        nome = ((rr ? rr.titolo.replace(/[^A-Za-z0-9 _-]/g, "").replace(/\s+/g, "-") : "HL") + "_highlights.mp4");
+      } else if (nome === "integrale.mp4" && pezzi.length > 1 && R.reg[pezzi[0]]) {
+        nome = R.reg[pezzi[0]].titolo.replace(/[^A-Za-z0-9 _-]/g, "").replace(/\s+/g, "-") + "_integrale.mp4";
+      }
+      base["Content-Disposition"] = 'attachment; filename="' + nome + '"';
     }
     const range = req.headers.range;
     if (range && est !== ".m3u8") {
