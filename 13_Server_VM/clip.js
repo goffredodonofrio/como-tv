@@ -1956,6 +1956,46 @@ function atLeggi(url) {
   });
 }
 
+// ── I FLUSSI IN ONDA ADESSO ────────────────────────────────────────
+//  Cinquanta encoder e canali in tendina, e nessuno sa a memoria su quale
+//  passa la partita. Il MAM lo scopre: prova ogni sorgente per qualche
+//  secondo, tiene quelle che rispondono con un fotogramma e le mostra. La
+//  sonda gira solo se qualcuno la guarda (la pagina LIVE aperta) e non piu'
+//  di una volta ogni due minuti.
+let FLUSSI = { quando: 0, voci: [], inCorso: false, chiesto: 0 };
+function sondaFlusso(sorg) {
+  return new Promise((ok) => {
+    let url = sorg.url;
+    if (/^srt:/i.test(url) && !/mode=/i.test(url)) url += (url.indexOf("?") >= 0 ? "&" : "?") + "mode=caller&latency=300&timeout=4000000";
+    const nome = "v" + nuovoId("") + ".jpg", fuori = path.join(DIR, CARTELLA_CLIP, nome);
+    execFile(FFMPEG, ["-hide_banner", "-loglevel", "error", "-rw_timeout", "6000000", "-i", url,
+                      "-frames:v", "1", "-q:v", "5", "-vf", "scale=320:-1", "-y", fuori], { timeout: 12000 },
+      (e) => ok(Object.assign({}, sorg, { viva: !e, mini: e ? "" : "/clip/" + CARTELLA_CLIP + "/" + nome, visto: Date.now() })));
+  });
+}
+async function sondaFlussi() {
+  if (FLUSSI.inCorso) return;
+  FLUSSI.inCorso = true;
+  try {
+    const lista = ((await clipSorgenti()).sorgenti || []);
+    const esiti = [];
+    let i = 0;
+    const lavora = async () => { while (i < lista.length) { const s = lista[i++]; esiti.push(await sondaFlusso(s)); } };
+    await Promise.all([lavora(), lavora(), lavora(), lavora(), lavora(), lavora(), lavora(), lavora()]);
+    // le miniature vecchie si buttano
+    FLUSSI.voci.forEach((v) => { if (v.mini) { try { fs.unlinkSync(path.join(DIR, v.mini.replace(/^\/clip\//, ""))); } catch (e) {} } });
+    FLUSSI.voci = esiti; FLUSSI.quando = Date.now();
+    console.log("[clip] sonda flussi: " + esiti.filter((x) => x.viva).length + " in onda su " + esiti.length);
+  } catch (e) { console.log("[clip] sonda flussi: " + e.message); }
+  finally { FLUSSI.inCorso = false; }
+}
+function flussiVivi(p) {
+  FLUSSI.chiesto = Date.now();
+  if (p && p.subito && !FLUSSI.inCorso) FLUSSI.quando = 0;
+  if (Date.now() - FLUSSI.quando > 120000 && !FLUSSI.inCorso) sondaFlussi();
+  return { ok: true, inCorso: FLUSSI.inCorso, quando: FLUSSI.quando, quante: FLUSSI.voci.length,
+           vivi: FLUSSI.voci.filter((v) => v.viva).map((v) => ({ nome: v.nome, campo: v.campo, tipo: v.tipo, url: v.url, mini: v.mini })) };
+}
 async function clipSorgenti() {
   if (SORG_CACHE.dati && Date.now() - SORG_CACHE.quando < 300000) return SORG_CACHE.dati;
   const j = await atLeggi("https://api.airtable.com/v0/" + AT_BASE + "/" + AT_AWS + "?pageSize=100");
@@ -4102,6 +4142,7 @@ const AZIONI = {
   "clip-kickoff": clipKickoff,
   "clip-elimina": clipElimina,
   "clip-sorgenti": clipSorgenti,
+  "clip-flussi-vivi": flussiVivi,
   "clip-cerca": clipCerca,
   "clip-archivio-stato": async () => {
     if (!s3Acceso()) return { ok: true, acceso: false };

@@ -434,6 +434,13 @@
   body.mam .console .ricezione .b.oro{background:#C9A24B;border-color:#A67C2E;color:#0A0F24;}
   body.mam .console .ricezione .b.rosso{background:#B3261E;border-color:#8E1216;color:#fff;}
   body.mam .console .ricezione .b.acceso{background:#2D8CEB;border-color:#2D8CEB;color:#fff;}
+  /* i flussi in onda adesso: miniature, si clicca quella giusta */
+  body.mam .console .vivi{flex:1;min-width:0;display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;}
+  body.mam .console .vivi .nota{font-size:11px;color:#8A8A8A;line-height:26px;}
+  body.mam .console .vivi .flusso{width:78px;cursor:pointer;border-radius:3px;border:1px solid #3A3A3A;overflow:hidden;background:#1B1B1B;}
+  body.mam .console .vivi .flusso:hover,body.mam .console .vivi .flusso.scelto{border-color:#2D8CEB;}
+  body.mam .console .vivi .flusso img{display:block;width:78px;height:44px;object-fit:cover;background:#000;}
+  body.mam .console .vivi .flusso span{display:block;font-size:9.5px;color:#D0D0D0;padding:3px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.03em;}
   body.modo-live .soloArchivio{display:none!important;}
   /* La traccia. Presa da Premiere quello che serve davvero: un righello
      con i minuti, i marcatori sopra, la parte scelta in chiaro con due
@@ -627,6 +634,22 @@
   #evento option.futura{background:#FDECEC;color:#8E1216;}
   #evento option.senzaVideo{color:#8A8A8A;}
   #evento option.passata{color:#8A8A8A;}
+  /* MAM LIVE, la colonna Sorgenti: l'elenco delle registrazioni come la
+     vista elenco di Premiere — righe basse, fotogramma, nome, da dove e
+     quanto, data; la scelta ha la barra blu a sinistra */
+  body.mam #albero .sez{display:flex;align-items:center;gap:8px;padding:10px 12px 6px;}
+  body.mam #albero .sez .et{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#9A9A9A;font-weight:700;}
+  body.mam #albero .sez b{color:#5AA7F2;font-size:11px;font-weight:700;}
+  body.mam .ramo{border-top:1px solid #0F0F0F;}
+  body.mam .foglia{display:flex;align-items:center;gap:10px;padding:6px 12px 6px 9px;border-bottom:1px solid #1B1B1B;cursor:pointer;border-left:3px solid transparent;background:none;border-radius:0;margin:0;}
+  body.mam .foglia:hover{background:#2A2A2A;}
+  body.mam .foglia.scelta{background:#22364F;border-left-color:#2D8CEB;}
+  body.mam .foglia .facc,body.mam .foglia .vuota{width:56px;height:32px;border-radius:2px;object-fit:cover;background:#0F0F0F;flex:none;display:block;}
+  body.mam .foglia .righe{flex:1;min-width:0;}
+  body.mam .foglia .tit{font-size:12px;color:#E6E6E6;font-weight:700;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  body.mam .foglia .sotto2{font-size:10.5px;color:#9A9A9A;margin-top:1px;}
+  body.mam .foglia .quando{font-size:11px;color:#9A9A9A;margin-left:auto;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  body.mam .foglia .rec{display:inline-block;width:7px;height:7px;border-radius:50%;background:#E05A3B;animation:batte 1.4s ease-in-out infinite;margin-right:5px;vertical-align:1px;}
   #evento optgroup{font-style:normal;color:var(--gold-deep);}
   #bin .griglia{grid-template-columns:1fr 1fr;}
   @media (max-width:1240px){#bin .griglia{grid-template-columns:1fr;}}
@@ -1078,7 +1101,7 @@
   function albero() { alberoSolo(); }
   function alberoSolo() {
     var c = el("albero"); c.innerHTML = "";
-    if (MODO !== "archivio") c.innerHTML = '<h2 style="margin-top:14px">Registrazioni <span id="nPartite">—</span></h2>';
+    if (MODO !== "archivio") c.innerHTML = '<div class="sez"><span class="et">Registrazioni</span><b id="nPartite">\u2014</b></div>';
     // in archivio la partita si sceglie dalla tendina o dall'elenco
     // Archivio: rifare qui la lista delle registrazioni era un doppione
     if (MODO === "archivio") return;
@@ -1089,38 +1112,31 @@
       if (el("nPartite")) el("nPartite").textContent = "0";
       return;
     }
-    var gruppi = {};
-    REGISTRAZIONI.forEach(function (r) {
-      var g = r.competizione || (r.origine === "file" ? "Caricati" : "Senza competizione");
-      (gruppi[g] = gruppi[g] || []).push(r);
-    });
+    // Una lista sola, dalla piu' recente, come la vista elenco di Premiere:
+    // fotogramma, nome, da dove e quanto dura, la data. I gruppi per
+    // competizione erano quasi tutti "senza competizione": rumore.
     if (el("nPartite")) el("nPartite").textContent = REGISTRAZIONI.length;
-    Object.keys(gruppi).forEach(function (g) {
-      var ramo = document.createElement("div"); ramo.className = "ramo";
-      var t = document.createElement("div"); t.className = "testa";
-      t.innerHTML = "<span>" + g + "</span><span class='conta'>" + gruppi[g].length + "</span>";
-      ramo.appendChild(t);
-      gruppi[g].forEach(function (r) {
-        var f = document.createElement("div");
-        f.className = "foglia" + (REG && r.id === REG.id ? " scelta" : "");
-        var quando = new Date(r.avviata);
-        var data = ("0"+quando.getDate()).slice(-2) + "/" + ("0"+(quando.getMonth()+1)).slice(-2);
-        var da = r.origine === "file" ? "file" : (r.ascolto ? "in ascolto" : "SRT");
-        f.innerHTML =
-          (r.mini ? "<img class='facc' src='" + BASE + r.mini + "' alt=''>" : "<span class='vuota'></span>") +
-          "<div class='righe'>" +
-            "<div class='tit'>" +
-              (r.stato === "registra" && !r.attesa ? "<span class='rec'></span> " : "") + r.titolo +
-            "</div>" +
-            "<div class='sotto2'>" + da + " · " + orologio(r.durata) +
-              (r.stato === "carica" ? " · caricamento" : "") + "</div>" +
-          "</div>" +
-          "<span class='quando'>" + data + "</span>";
-        f.addEventListener("click", function () { REG = r; ASSET = 0; disegna(); });
-        ramo.appendChild(f);
-      });
-      c.appendChild(ramo);
+    var ramo = document.createElement("div"); ramo.className = "ramo";
+    REGISTRAZIONI.slice().sort(function (x, y) { return (y.avviata || 0) - (x.avviata || 0); }).forEach(function (r) {
+      var f = document.createElement("div");
+      f.className = "foglia" + (REG && r.id === REG.id ? " scelta" : "");
+      f.dataset.nome = String(r.titolo || "").toLowerCase();
+      var quando = new Date(r.avviata);
+      var data = ("0"+quando.getDate()).slice(-2) + "/" + ("0"+(quando.getMonth()+1)).slice(-2) + "/" + String(quando.getFullYear()).slice(2);
+      var da = r.origine === "file" ? "file" : r.arch ? "archivio" : (r.ascolto ? (r.attesa ? "in ascolto" : "SRT ricevuto") : "SRT");
+      var vivo = r.stato === "registra";
+      f.innerHTML =
+        (r.mini ? "<img class='facc' src='" + BASE + r.mini + "' alt=''>" : "<span class='vuota'></span>") +
+        "<div class='righe'>" +
+          "<div class='tit'>" + (vivo && !r.attesa ? "<span class='rec'></span>" : "") + r.titolo + "</div>" +
+          "<div class='sotto2'>" + (vivo ? (r.attesa ? "in attesa del flusso" : "REGISTRA") : da) + " \u00b7 " + orologio(r.durata) +
+            (r.stato === "carica" ? " \u00b7 caricamento" : "") + "</div>" +
+        "</div>" +
+        "<span class='quando'>" + data + "</span>";
+      f.addEventListener("click", function () { REG = r; ASSET = 0; disegna(); });
+      ramo.appendChild(f);
     });
+    c.appendChild(ramo);
   }
 
   // ── CARICARE UN FILE ────────────────────────────────────────────
@@ -2868,6 +2884,7 @@
           '<select id="evento"><option value="">\u2014 scegli la partita \u2014</option></select></div>' +
         '<div class="colonnina soloLive"><span class="et">Sorgente</span>'  +
           '<select id="sorgente"><option value="">\u2014 il flusso da cui registrare \u2014</option><option value="__mano">indirizzo a mano\u2026</option></select></div>' +
+        '<div class="colonnina soloLive" id="rigaVivi"><span class="et">In onda</span><div class="vivi" id="vivi"><span class="nota">cerco i flussi che trasmettono\u2026</span></div></div>' +
         '<div class="colonnina soloLive" id="rigaUrl" hidden><span class="et">\u00a0</span>' +
           '<input type="text" id="url" placeholder="srt://\u2026  \u00b7  https://\u2026m3u8"></div>' +
         // LA RICEZIONE, spiegata. Due modi: REGISTRA va a prendere il flusso
@@ -3094,6 +3111,38 @@
       avvia({ guarda:true }).catch(function (e) { dice(e.message); });
     });
     disegnaConsole();
+    if (MODO !== "archivio") { aggiornaVivi(true); setInterval(aggiornaVivi, 8000); }
+  }
+
+  // "Scelgo la partita e tac, appare": il MAM prova tutte le sorgenti e
+  // mostra quelle che trasmettono adesso; un clic e la vedi nel monitor
+  function aggiornaVivi(subito) {
+    var box = el("vivi"); if (!box) return;
+    manda({ tipo: "clip-flussi-vivi", subito: !!subito }).then(function (d) {
+      var vivi = d.vivi || [];
+      if (!vivi.length) {
+        box.innerHTML = "<span class='nota'>" + (d.inCorso ? "cerco i flussi che trasmettono\u2026" : "nessun flusso in onda adesso") + "</span>";
+        return;
+      }
+      var scelto = el("sorgente") ? el("sorgente").value : "";
+      box.innerHTML = "";
+      vivi.forEach(function (v) {
+        var f = document.createElement("div"); f.className = "flusso" + (v.url === scelto ? " scelto" : "");
+        f.title = v.nome + " \u00b7 " + v.tipo.toUpperCase() + " \u00b7 clicca: lo vedi nel monitor";
+        f.innerHTML = (v.mini ? "<img src='" + BASE + v.mini + "?t=" + (d.quando || 0) + "' alt=''>" : "") + "<span>" + v.nome + "</span>";
+        f.addEventListener("click", function () {
+          var sel = el("sorgente"); if (!sel) return;
+          var o = Array.prototype.find.call(sel.options, function (x) { return x.value === v.url; });
+          if (!o) { o = document.createElement("option"); o.value = v.url; o.textContent = v.nome + " \u00b7 " + v.tipo.toUpperCase(); sel.appendChild(o); }
+          sel.value = v.url; sel.dispatchEvent(new Event("change"));
+          document.querySelectorAll("#vivi .flusso").forEach(function (x) { x.classList.toggle("scelto", x === f); });
+          // si guarda subito, senza registrare: e' il "tac"
+          if (el("btnGuarda") && !(REG && REG.guarda && REG.stato === "registra")) el("btnGuarda").click();
+          else dice("Sorgente scelta: " + v.nome + ".", true);
+        });
+        box.appendChild(f);
+      });
+    }).catch(function () {});
   }
 
   function disegnaConsole() {
@@ -3424,7 +3473,7 @@
     ["progetto", "sorgenti", "info"].forEach(function (k) { var p = el("pane" + k.charAt(0).toUpperCase() + k.slice(1)); if (p) p.hidden = (k !== t); });
     var cerca = el("projCerca");
     if (cerca) cerca.placeholder = MODO === "archivio" ? "azioni: appunti, ESPN, telecronaca \u00b7 Invio"
-      : t === "sorgenti" ? "filtra le partite \u00b7 Invio cerca in appunti e telecronaca" : t === "progetto" ? "cerca nel progetto \u00b7 Invio cerca a fondo" : "";
+      : t === "sorgenti" ? "filtra le registrazioni" : t === "progetto" ? "filtra il progetto" : "";
     if (t === "info") disegnaInfo();
     filtraProgetto();
   }
@@ -3447,9 +3496,12 @@
       if (MODO === "archivio") {
         if (el("projN")) el("projN").textContent = RIS && RIS.quante ? RIS.quante + " risultati" : "";
       } else {
-        var f = el("eventoCerca"); if (f && f.value !== q) { f.value = q; f.dispatchEvent(new Event("input")); }
-        var sel = el("evento"); var vis = sel ? Array.prototype.filter.call(sel.options, function (o) { return o.value && !o.hidden; }).length : 0;
-        if (el("projN")) el("projN").textContent = vis + " partite";
+        // in LIVE la barra filtra l'elenco delle registrazioni
+        var viste = 0;
+        document.querySelectorAll("#albero .foglia").forEach(function (f) {
+          var ok2 = !q || (f.dataset.nome || "").indexOf(q) >= 0; f.hidden = !ok2; if (ok2) viste++;
+        });
+        if (el("projN")) el("projN").textContent = RIS && RIS.quante ? RIS.quante + " risultati" : (viste + (viste === 1 ? " registrazione" : " registrazioni"));
       }
     } else if (el("projN")) el("projN").textContent = "";
   }
@@ -3480,6 +3532,7 @@
         if (e.key === "Escape") { c.value = ""; filtraProgetto(); var rr = el("risultati"); if (rr) rr.innerHTML = ""; RIS = null; return; }
         if (e.key !== "Enter") return;
         e.preventDefault();
+        if (MODO !== "archivio") return;              // il LIVE filtra e basta: l'archivio e' l'altro prodotto
         var q = c.value.trim(); if (!q) return;
         vaiTab("sorgenti"); el("q").value = q; cerca(q);
       });
@@ -3723,7 +3776,7 @@
       });
     }
     // Le partite dell'archivio trovate per nome: si aprono nella Sorgente.
-    if (RIS.archivio && RIS.archivio.length) {
+    if (RIS.archivio && RIS.archivio.length && MODO === "archivio") {
       titolo("Nell\u2019archivio", RIS.archivio.length);
       RIS.archivio.forEach(function (a) {
         riga(a.partita, (a.competizione || "") + (a.pezzi > 1 ? " \u00b7 " + a.pezzi + " parti" : "") +
