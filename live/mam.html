@@ -553,6 +553,7 @@
   .scheda .comandi{display:none;}
   .scheda:hover .comandi{display:flex;}
   #evento option.futura{background:#FDECEC;color:#8E1216;}
+  #evento option.senzaVideo{color:#8A8A8A;}
   #evento optgroup{font-style:normal;color:var(--gold-deep);}
   #bin .griglia{grid-template-columns:1fr 1fr;}
   @media (max-width:1240px){#bin .griglia{grid-template-columns:1fr;}}
@@ -2821,41 +2822,86 @@
     }
 
     // tendine
-    fetch(PONTE + "?partite=1").then(function (r) { return r.json(); }).then(function (dd) {
-      (dd.eventi || []).forEach(function (e) {
-        var o = document.createElement("option");
-        o.value = (e.ids && e.ids[0]) || "";
-        o.textContent = dataOpz(e.quando) + "  " + (e.partita || e.etichetta || "");
-        if (Date.parse(e.quando) > Date.now()) o.className = "futura";
-        o.dataset.titolo = (e.programma ? e.casa : e.casa + "-" + e.ospite);
-        o.dataset.comp = e.competizione || "";
-        if (el("evento")) el("evento").appendChild(o);
+    var eventiPronti = fetch(PONTE + "?partite=1").then(function (r) { return r.json(); })
+      .then(function (dd) { return dd.eventi || []; }).catch(function () { return []; });
+    var archivioPronto = manda({ tipo:"clip-archivio-partite", quante: MODO === "archivio" ? 6000 : 60 })
+      .then(function (dd) { ARCH_LISTA = dd.partite || []; return ARCH_LISTA; }).catch(function () { return []; });
+
+    if (MODO !== "archivio") {
+      // MAM LIVE: la tendina sceglie l'evento da registrare; sotto, un
+      // gruppo con le ultime partite d'archivio, per riaprirle al volo
+      eventiPronti.then(function (eventi) {
+        eventi.forEach(function (e) {
+          var o = document.createElement("option");
+          o.value = (e.ids && e.ids[0]) || "";
+          o.textContent = dataOpz(e.quando) + "  " + (e.partita || e.etichetta || "");
+          if (Date.parse(e.quando) > Date.now()) o.className = "futura";
+          o.dataset.titolo = (e.programma ? e.casa : e.casa + "-" + e.ospite);
+          o.dataset.comp = e.competizione || "";
+          if (el("evento")) el("evento").appendChild(o);
+        });
       });
-    }).catch(function () {});
-    // Le partite gia' in archivio: la tendina conosceva solo quelle di oggi,
-    // e invece qui dentro ce ne sono mille. Sceglierne una la apre — non c'e'
-    // niente da registrare, il materiale esiste gia'.
-    manda({ tipo:"clip-archivio-partite", quante: MODO === "archivio" ? 6000 : 60 }).then(function (dd) {
-      var sel = el("evento"); if (!sel || !(dd.partite || []).length) return;
-      var g = document.createElement("optgroup");
-      g.label = "Archivio \u00b7 " + dd.quante + " partite";
-      ARCH_LISTA = dd.partite;
-      // TUTTE, in tendina: con il filtro testuale seimila voci non fanno paura,
-      // e cosi' la tendina e' fedele all'archivio — e' l'unico elenco che serve
-      dd.partite.forEach(function (p) {
-        var o = document.createElement("option");
-        o.value = "arc:" + p.rec;
-        o.textContent = dataOpz(p.quando) + "  " + p.titolo + (p.pezzi > 1 ? "  (" + p.pezzi + " parti)" : "") +
-                        (p.soloS3 ? "  \u00b7 solo archivio" : "");
-        o.dataset.arch = p.rec;
-        g.appendChild(o);
+      archivioPronto.then(function (partite) {
+        var sel = el("evento"); if (!sel || !partite.length) return;
+        var g = document.createElement("optgroup");
+        g.label = "Archivio \u00b7 " + partite.length + " partite";
+        partite.forEach(function (p) {
+          var o = document.createElement("option");
+          o.value = "arc:" + p.rec;
+          o.textContent = dataOpz(p.quando) + "  " + p.titolo + (p.pezzi > 1 ? "  (" + p.pezzi + " parti)" : "") +
+                          (p.soloS3 ? "  \u00b7 solo archivio" : "");
+          o.dataset.arch = p.rec;
+          g.appendChild(o);
+        });
+        sel.appendChild(g);
+        sel.addEventListener("change", function () {
+          var o = sel.selectedOptions[0];
+          if (o && o.dataset.arch) apriDaArchivio(o.dataset.arch, null, o.textContent, 0);
+        });
       });
-      sel.appendChild(g);
-      sel.addEventListener("change", function () {
-        var o = sel.selectedOptions[0];
-        if (o && o.dataset.arch) apriDaArchivio(o.dataset.arch, null, o.textContent, 0);
+    } else {
+      // MAM ARCHIVIO: UNA lista sola, dalla piu' recente. Ogni partita che
+      // Airtable conosce c'e', con il suo stato: il video su S3 (si apre),
+      // giocata ma non ancora caricata con Cyberduck (lo dice), ancora da
+      // giocare (fondo rosso). Piu' le partite che stanno solo su S3.
+      Promise.all([eventiPronti, archivioPronto]).then(function (r) {
+        var eventi = r[0], partite = r[1], sel = el("evento"); if (!sel) return;
+        var perRec = {}; partite.forEach(function (p) { perRec[p.rec] = p; });
+        var voci = [], visti = {};
+        eventi.forEach(function (e) {
+          var rec = (e.ids && e.ids[0]) || "";
+          var p = rec ? perRec[rec] : null; if (p) visti[rec] = true;
+          voci.push({ quando: e.quando, titolo: e.partita || e.etichetta || "", rec: rec, arch: p,
+                      futura: Date.parse(e.quando) > Date.now() });
+        });
+        partite.forEach(function (p) {
+          if (visti[p.rec]) return;
+          voci.push({ quando: p.quando, titolo: p.titolo, rec: p.rec, arch: p, futura: false });
+        });
+        voci.sort(function (x, y) { return (Date.parse(y.quando) || 0) - (Date.parse(x.quando) || 0); });
+        var conVideo = 0;
+        voci.forEach(function (v) {
+          var o = document.createElement("option");
+          o.value = v.arch ? "arc:" + v.rec : "ev:" + v.rec;
+          var stato = "";
+          if (v.arch) { conVideo++; stato = (v.arch.pezzi > 1 ? "  (" + v.arch.pezzi + " parti)" : "") + (v.arch.soloS3 ? "  \u00b7 solo archivio" : ""); }
+          else if (v.futura) stato = "  \u00b7 da giocare";
+          else stato = "  \u00b7 video non ancora su S3";
+          o.textContent = dataOpz(v.quando) + "  " + v.titolo + stato;
+          if (v.futura) o.className = "futura"; else if (!v.arch) o.className = "senzaVideo";
+          if (v.arch) o.dataset.arch = v.rec;
+          o.dataset.titolo = v.titolo;
+          sel.appendChild(o);
+        });
+        sel.addEventListener("change", function () {
+          var o = sel.selectedOptions[0]; if (!o || !o.value) return;
+          if (o.dataset.arch) return apriDaArchivio(o.dataset.arch, null, o.dataset.titolo, 0);
+          dice(o.className === "futura" ? "Ancora da giocare: niente video."
+             : "Il video non \u00e8 ancora su S3 (Cyberduck): appena caricato, compare qui.");
+        });
+        if (el("nPartite")) el("nPartite").textContent = conVideo;
       });
-    }).catch(function () {});
+    }
 
     manda({ tipo:"clip-sorgenti" }).then(function (dd) {
       (dd.sorgenti || []).forEach(function (x) {

@@ -2367,7 +2367,8 @@ async function archivioScandaglia(p) {
       if (kick !== null) conKickoff++;
       if (scelta.fonte === "intera" || scelta.fonte === "intero") intere++;
       agganciate++;
-      ARCHIVIO[rec.id] = { bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
+      const orologioPrima = (ARCHIVIO[rec.id] || {}).orologio;
+      ARCHIVIO[rec.id] = { orologio: orologioPrima, bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
         partita: f["Partita"] || "", competizione: f["Competizione"] || "",
         variante: "", giorno: meglio.giorno, dove: meglio.dove,
         fonte: scelta.fonte, pezzi: pezzi, kickoff: kick,
@@ -2383,7 +2384,12 @@ async function archivioScandaglia(p) {
   //    nasconde perche' manca una riga in un database non e' un archivio.
   //    Prendono un'identita' loro, fatta dal percorso, e stanno in elenco.
   let soleS3 = 0;
-  Object.keys(ARCHIVIO).forEach((k) => { if (k.indexOf("s3:") === 0 && ARCHIVIO[k].bucket === bucket) delete ARCHIVIO[k]; });
+  const orologiSoleS3 = {};
+  Object.keys(ARCHIVIO).forEach((k) => {
+    if (k.indexOf("s3:") !== 0 || ARCHIVIO[k].bucket !== bucket) return;
+    if (ARCHIVIO[k].orologio) orologiSoleS3[k] = ARCHIVIO[k].orologio;   // l'id e' stabile: si ritrova
+    delete ARCHIVIO[k];
+  });
   Object.keys(gruppi).forEach((k) => {
     const gr = gruppi[k];
     if (gr.presa) return;
@@ -2399,7 +2405,7 @@ async function archivioScandaglia(p) {
     const via = gr.dove.split("/");
     const comp = via.slice(1, -1).filter((x) => !/^(stagione|partite|\d{4}|\d{2}-\d{2}|turno|round|giornata|andata|ritorno|fase)/i.test(x)).pop() || "";
     const id = "s3:" + crypto.createHash("sha1").update(gr.dove).digest("hex").slice(0, 14);
-    ARCHIVIO[id] = { bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
+    ARCHIVIO[id] = { orologio: orologiSoleS3[id], bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
       partita: gr.partita.replace(/[_]+/g, " ").trim(), competizione: comp.replace(/[_]+/g, " "),
       variante: "", giorno: g, dove: gr.dove, fonte: scelta.fonte, pezzi: pezzi,
       kickoff: null, sicuro: false, quando: quando, soloS3: true };
@@ -2846,6 +2852,39 @@ function orologiInCoda() {
   giraOrologi();
   return CODA_OROLOGI.length;
 }
+
+// L'archivio cresce quando qualcuno carica con Cyberduck, e nessuno avvisa
+// il MAM. Ogni ora si guardano gli ultimi dieci giorni su S3: se compare una
+// cartella-partita nuova si rifa' l'indice. Alle cinque del mattino si
+// rifa' comunque, per le cartelle vecchie riordinate a mano.
+let cartelleRecenti = null, scandaglioInCorso = false;
+async function controllaArchivioNuovo() {
+  if (!s3Acceso() || scandaglioInCorso) return;
+  try {
+    const oggi = new Date(), viste = [];
+    for (let i = 0; i < 10; i++) {
+      const d = new Date(oggi.getTime() - i * 86400000);
+      const g = d.getUTCFullYear() + ("0" + (d.getUTCMonth() + 1)).slice(-2) + ("0" + d.getUTCDate()).slice(-2);
+      const pg = await s3Pagina("TEMP/" + g + "/", "", ARCH_BUCKET, "/");
+      (pg.cartelle || []).forEach((c) => viste.push(c));
+    }
+    const firma = viste.sort().join("|");
+    const ora = new Date().getHours();
+    const nuove = cartelleRecenti !== null && firma !== cartelleRecenti;
+    cartelleRecenti = firma;
+    if (!nuove && !(ora === 5 && !ultimoScandaglioOggi())) return;
+    scandaglioInCorso = true;
+    console.log("[clip] archivio: " + (nuove ? "cartelle nuove su S3" : "giro delle cinque") + ", rifaccio l'indice");
+    const r = await archivioScandaglia({});
+    console.log("[clip] archivio: indice rifatto, " + (r.partiteViste || 0) + " partite viste, " + (r.intere || 0) + " intere");
+    ultimoScandaglio = Date.now();
+  } catch (e) { console.log("[clip] archivio: controllo non riuscito: " + e.message); }
+  finally { scandaglioInCorso = false; }
+}
+let ultimoScandaglio = 0;
+function ultimoScandaglioOggi() { return new Date(ultimoScandaglio).toDateString() === new Date().toDateString(); }
+setTimeout(controllaArchivioNuovo, 90000);
+setInterval(controllaArchivioNuovo, 3600000);
 
 // Le partite dell'archivio per nome, competizione e data: e' l'unico modo
 // di trovare le quattromila che Airtable non conosce.
