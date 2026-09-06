@@ -3366,7 +3366,8 @@ function cercaNeiFatti(q, limite) {
       if (!tutteDentro(testo, q.parole)) return;
       const d = (x.min - (x.periodo === 2 ? 45 : 0)) * 60 + x.stopp * 60;
       const dove = secondoNelFile(rec, { s: x.periodo, d: Math.max(0, d) });
-      fuori.push({
+      const nellAzione = q.parole.length ? tutteDentro(comeSiCerca([ita, x.tipo, x.giocatore, x.squadra, x.testo]), q.parole) : false;
+      fuori.push({ peso: nellAzione ? 1 : 0,
         rec: rec, partita: info.partita || e.nome, competizione: info.competizione || "", quando: quando,
         minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), tempo: x.periodo, tipo: ita,
         testo: [ita, x.giocatore, x.squadra ? "(" + x.squadra + ")" : ""].filter(Boolean).join(" "),
@@ -3390,7 +3391,10 @@ function cercaNegliAppunti(q, limite) {
       if (!tutteDentro(testo, q.parole)) return;
       const rit = ritardoDi(a.telecronista);
       const dove = secondoNelFile(rec, { s: r.s, d: Math.max(0, (r.d || 0) - rit) });
-      fuori.push({
+      // le parole nell'azione valgono piu' delle parole nel nome della partita:
+      // "como" sta in mille titoli, "Paz palo" in una riga sola
+      const nellAzione = q.parole.length ? tutteDentro(comeSiCerca([r.x, r.t, r.m]), q.parole) : false;
+      fuori.push({ peso: nellAzione ? 1 : 0,
         rec: rec, partita: a.partita, competizione: a.competizione, quando: a.quando,
         minuto: r.m, tempo: r.s, tipo: r.t, testo: r.x, hl: !!r.hl,
         fonte: a.fonte === "storico" ? "storico" : "appunti", telecronista: a.telecronista || "",
@@ -3401,9 +3405,17 @@ function cercaNegliAppunti(q, limite) {
     });
   });
   cercaNeiFatti(q, limite).forEach((x) => fuori.push(x));
-  fuori.sort((a, b) => ((Date.parse(b.quando) || 0) - (Date.parse(a.quando) || 0)) ||
+  fuori.sort((a, b) => ((b.peso || 0) - (a.peso || 0)) ||
+                       ((Date.parse(b.quando) || 0) - (Date.parse(a.quando) || 0)) ||
                        ((a.tempo || 0) - (b.tempo || 0)) || ((a.d || 0) - (b.d || 0)));
-  return fuori.slice(0, limite);
+  // non piu' di otto righe per partita: chi cerca un giocatore vuole vedere
+  // le partite, non centocinquanta righe della stessa
+  const perPartita = {}, scelte = [];
+  fuori.forEach((x) => {
+    perPartita[x.rec] = (perPartita[x.rec] || 0) + 1;
+    if (perPartita[x.rec] <= 8) scelte.push(x);
+  });
+  return scelte.slice(0, limite);
 }
 
 // ── i file: playlist, segmenti, clip ──────────────────────────────────
