@@ -3008,7 +3008,7 @@ async function calibraOrologio(rec, rifai) {
       throw new Error("la prova del nove non torna (al 70' legge " + Math.round(c70 / 60) + "')");
     }
     if (firmaMateriale() !== firma0) throw new Error("il materiale e' cambiato durante la lettura");
-    a.orologio = esito;
+    a.orologio = esito; delete a.orologioFallito;
     // le partite gia' aperte nel progetto imparano il fischio vero: il fermo
     // immagine, l'Info e la miniatura si rifanno sul calcio d'inizio letto
     const kick0 = (a.kickoff !== null && a.kickoff !== undefined) ? a.kickoff : null;
@@ -3057,7 +3057,7 @@ function giraOrologi() {
   // a coda finita, le partite non lette si ritentano una volta: un sondaggio
   // caduto su un replay o su una grafica spenta la seconda volta cade altrove
   if (!CODA_OROLOGI.length) {
-    if (!orologiInMoto && orologiFalliti && !orologiRipassati) { orologiRipassati = true; orologiInCoda(); }
+    if (!orologiInMoto && !orologiRipassati) { orologiRipassati = true; Object.keys(ARCHIVIO).forEach((k) => { if (ARCHIVIO[k].orologioFallito && !ARCHIVIO[k].orologio) delete ARCHIVIO[k].orologioFallito; }); orologiInCoda(true); }
     return;
   }
   const registrando = registrandoDavvero();
@@ -3069,17 +3069,23 @@ function giraOrologi() {
   const rec = CODA_OROLOGI.shift();
   orologiInMoto++;
   calibraOrologio(rec).then(() => { orologiFatti++; })
-    .catch((e) => { orologiFalliti++; console.log("[clip] cronometro non letto (" + rec + "): " + e.message); })
+    .catch((e) => {
+      orologiFalliti++; console.log("[clip] cronometro non letto (" + rec + "): " + e.message);
+      // ci si ricorda del fallimento: a un riavvio non si ricomincia dalle
+      // stesse partite senza grafica; si ritentano solo nel giro finale
+      if (ARCHIVIO[rec]) { ARCHIVIO[rec].orologioFallito = { quando: new Date().toISOString(), motivo: String(e.message).slice(0, 80) }; scriviArchivio(); }
+    })
     .then(() => { orologiInMoto--; setTimeout(giraOrologi, 500); });
   setTimeout(giraOrologi, 3000);       // e intanto parte la seconda
 }
-function orologiInCoda() {
+function orologiInCoda(ripasso) {
   if (!CODA_OROLOGI.length) orologiRipassati = false;
   const gia = new Set(CODA_OROLOGI);
   Object.keys(APPUNTI).forEach((rec) => {
     const a = ARCHIVIO[rec];
     if (!a || a.orologio || gia.has(rec)) return;
     if (!(APPUNTI[rec].righe || []).length) return;
+    if (a.orologioFallito && !ripasso) return;        // gia' provata: al giro finale
     CODA_OROLOGI.push(rec);
   });
   CODA_OROLOGI.sort((x, y) => prioritaPartita(x) - prioritaPartita(y));
