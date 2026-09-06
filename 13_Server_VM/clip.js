@@ -1956,6 +1956,105 @@ function atLeggi(url) {
   });
 }
 
+
+// ── IL FOGLIO DEI FEED: quale partita passa su quale encoder ──────────
+//  MediaOps tiene un foglio Google con, per ogni partita, la SOURCE (TATA 03,
+//  SRT-CP9K-12…), il MAIN FEED e il BACKUP FEED (srt://…), l'ingresso vMix.
+//  Il MAM lo legge ogni dieci minuti (e' un CSV pubblico) e cosi', scelta
+//  la partita, sa da solo da dove prenderla: e' il "tac, appare".
+const FOGLIO_FEED = process.env.COMOTV_FOGLIO_FEED ||
+  "https://docs.google.com/spreadsheets/d/1QMqP8J376LDInU8aI9VUEzoNAAvvMpDxohEHjjoNF_U/export?format=csv&gid=80696019";
+let FEED = { quando: 0, righe: [], errore: "" };
+function fileFeed() { return path.join(DIR, "feed.json"); }
+function prendiTesto(url, salti) {
+  return new Promise((ok, no) => {
+    const req = https.get(url, { headers: { "User-Agent": "curl/8.5.0 comotv" } }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && (salti || 0) < 4) {
+        res.resume(); return prendiTesto(res.headers.location, (salti || 0) + 1).then(ok, no);
+      }
+      if (res.statusCode !== 200) { res.resume(); return no(new Error("il foglio risponde " + res.statusCode)); }
+      let b = ""; res.setEncoding("utf8"); res.on("data", (d) => { b += d; }); res.on("end", () => ok(b));
+    });
+    req.on("error", no); req.setTimeout(20000, () => req.destroy(new Error("foglio: tempo scaduto")));
+  });
+}
+// un CSV con le virgolette fatte bene: celle con virgole e a capo dentro
+function leggiCsv(testo) {
+  const righe = [], riga = []; let cella = "", dentro = false;
+  for (let i = 0; i < testo.length; i++) {
+    const c = testo[i];
+    if (dentro) {
+      if (c === '"') { if (testo[i + 1] === '"') { cella += '"'; i++; } else dentro = false; }
+      else cella += c;
+    } else if (c === '"') dentro = true;
+    else if (c === ",") { riga.push(cella); cella = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && testo[i + 1] === "\n") i++; riga.push(cella); righe.push(riga.slice()); riga.length = 0; cella = ""; }
+    else cella += c;
+  }
+  if (cella.length || riga.length) { riga.push(cella); righe.push(riga.slice()); }
+  return righe;
+}
+const MESI_EN = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+function quandoGmt(data, ora) {
+  // "Mon, 01-Dec-25" + "17:00"  →  2025-12-01T17:00Z
+  const m = /(\d{1,2})-([A-Za-z]{3})-(\d{2,4})/.exec(String(data || ""));
+  const h = /(\d{1,2}):(\d{2})/.exec(String(ora || ""));
+  if (!m || MESI_EN[m[2].toLowerCase()] === undefined) return "";
+  const anno = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+  return new Date(Date.UTC(anno, MESI_EN[m[2].toLowerCase()], +m[1], h ? +h[1] : 12, h ? +h[2] : 0)).toISOString();
+}
+async function leggiFoglioFeed() {
+  try {
+    const righe = leggiCsv(await prendiTesto(FOGLIO_FEED));
+    const testa = (righe[0] || []).map((x) => String(x).trim().toUpperCase());
+    const col = (nome) => testa.findIndex((x) => x.indexOf(nome) === 0);
+    const iComp = col("COMPETIZIONE"), iPart = col("PARTITA"), iData = col("DATE"), iOra = col("TIME"),
+          iSrc = col("SOURCE"), iMain = col("MAIN FEED"), iBack = col("BACKUP FEED"), iVmix = col("VMIX SRT"), iVmixIt = col("VMIX ITALY");
+    const fuori = [];
+    righe.slice(1).forEach((r) => {
+      const partita = String(r[iPart] || "").replace(/\s+/g, " ").trim();
+      const quando = quandoGmt(r[iData], r[iOra]);
+      if (!partita || !quando) return;
+      const celle = [r[iMain], r[iBack]].map((x) => String(x || "").trim());
+      const pass = celle.map((x) => (/passphrase\s*:\s*(\S+)/i.exec(x) || [])[1]).filter(Boolean)[0] || "";
+      const urls = celle.filter((x) => /^srt:\/\/|^https?:\/\//i.test(x));
+      fuori.push({ competizione: String(r[iComp] || "").trim(), partita: partita, quando: quando,
+                   source: String(r[iSrc] || "").trim(), main: urls[0] || "", backup: urls[1] || "", passphrase: pass,
+                   vmix: String(r[iVmix] || "").trim(), vmixItaly: String(r[iVmixIt] || "").trim(),
+                   senzaCleanfeed: /NO NEED/i.test(String(r[iSrc] || "")) });
+    });
+    FEED = { quando: Date.now(), righe: fuori, errore: "" };
+    try { fs.writeFileSync(fileFeed(), JSON.stringify(FEED)); } catch (e) {}
+    console.log("[clip] foglio feed: " + fuori.length + " righe");
+  } catch (e) { FEED.errore = e.message; console.log("[clip] foglio feed: " + e.message); }
+}
+function leggiFeedSalvato() { try { FEED = JSON.parse(fs.readFileSync(fileFeed(), "utf8")) || FEED; } catch (e) {} }
+// la riga del foglio per una partita: stesso giorno (piu' o meno dodici ore)
+// e stesse squadre — il nome uguale prima, poi le parole
+function feedPerPartita(nomePartita, quandoIso) {
+  const t0 = Date.parse(quandoIso || "");
+  const norm = (x) => String(x || "").toUpperCase().replace(/\[[^\]]*\]|\(.*?\)/g, " ").replace(/\s\d+\s*-\s*\d+.*$/, "").replace(/\s+VS\.?\s+/g, "-").replace(/\s*-\s*/g, "-").replace(/[^A-Z0-9\-]+/g, " ").trim();
+  const mio = norm(nomePartita);
+  const vicine = FEED.righe.filter((r) => !t0 || Math.abs(Date.parse(r.quando) - t0) <= 12 * 3600000);
+  let meglio = vicine.find((r) => norm(r.partita) === mio);
+  if (!meglio) {
+    const mie = squadreDi(nomePartita);
+    let punteggio = 0;
+    vicine.forEach((r) => {
+      const loro = squadreDi(r.partita);
+      const n = mie.filter((a) => loro.some((b) => b.tutto === a.tutto || a.parole.some((w) => b.tutto.indexOf(w) >= 0) || b.parole.some((w) => a.tutto.indexOf(w) >= 0))).length;
+      if (n > punteggio) { punteggio = n; meglio = r; }
+    });
+    if (punteggio < Math.min(2, mie.length)) meglio = null;
+  }
+  if (!meglio) return null;
+  // l'indirizzo pronto da dare a ffmpeg: caller, con la passphrase se c'e'
+  const pronto = (u) => !u ? "" : u + (u.indexOf("?") >= 0 ? "&" : "?") + "mode=caller&latency=300" + (meglio.passphrase ? "&passphrase=" + encodeURIComponent(meglio.passphrase) : "");
+  return Object.assign({}, meglio, { mainPronto: pronto(meglio.main), backupPronto: pronto(meglio.backup) });
+}
+setTimeout(leggiFoglioFeed, 15000);
+setInterval(leggiFoglioFeed, 600000);
+
 // ── I FLUSSI IN ONDA ADESSO ────────────────────────────────────────
 //  Cinquanta encoder e canali in tendina, e nessuno sa a memoria su quale
 //  passa la partita. Il MAM lo scopre: prova ogni sorgente per qualche
@@ -4149,6 +4248,11 @@ const AZIONI = {
   "clip-elimina": clipElimina,
   "clip-sorgenti": clipSorgenti,
   "clip-flussi-vivi": flussiVivi,
+  "clip-feed-partita": async (p) => {
+    if (p.rinfresca || !FEED.righe.length) await leggiFoglioFeed();
+    const f = feedPerPartita(String(p.partita || ""), String(p.quando || ""));
+    return { ok: true, feed: f, righe: FEED.righe.length, letto: FEED.quando, errore: FEED.errore };
+  },
   "clip-cerca": clipCerca,
   "clip-archivio-stato": async () => {
     if (!s3Acceso()) return { ok: true, acceso: false };
@@ -4321,6 +4425,7 @@ function avvio(opz) {
   leggiArchivio();
   leggiStorici();
   leggiEspn();
+  leggiFeedSalvato();
   rinominaMaterialeArchivio();
   leggiParlato();
   // Il ponte si e' riavviato: gli ffmpeg che stava seguendo sono morti con

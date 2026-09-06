@@ -434,6 +434,9 @@
   body.mam .console .ricezione .b.oro{background:#C9A24B;border-color:#A67C2E;color:#0A0F24;}
   body.mam .console .ricezione .b.rosso{background:#B3261E;border-color:#8E1216;color:#fff;}
   body.mam .console .ricezione .b.acceso{background:#2D8CEB;border-color:#2D8CEB;color:#fff;}
+  body.mam .console #rigaFeed{padding-top:0;border-top:0;margin-top:-4px;}
+  body.mam .console .notaFeed{flex:1;min-width:0;font-size:11px;line-height:1.4;color:#9A9A9A;}
+  body.mam .console .notaFeed b{color:#D0D0D0;} body.mam .console .notaFeed a{color:#5AA7F2;text-decoration:none;font-weight:700;}
   /* i flussi in onda adesso: miniature, si clicca quella giusta */
   body.mam .console .vivi{flex:1;min-width:0;display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;}
   body.mam .console .vivi .nota{font-size:11px;color:#8A8A8A;line-height:26px;}
@@ -2884,6 +2887,7 @@
           '<select id="evento"><option value="">\u2014 scegli la partita \u2014</option></select></div>' +
         '<div class="colonnina soloLive"><span class="et">Sorgente</span>'  +
           '<select id="sorgente"><option value="">\u2014 il flusso da cui registrare \u2014</option><option value="__mano">indirizzo a mano\u2026</option></select></div>' +
+        '<div class="colonnina soloLive" id="rigaFeed" hidden><span class="et">\u00a0</span><div class="notaFeed" id="notaFeed"></div></div>' +
         '<div class="colonnina soloLive" id="rigaVivi"><span class="et">In onda</span><div class="vivi" id="vivi"><span class="nota">cerco i flussi che trasmettono\u2026</span></div></div>' +
         '<div class="colonnina soloLive" id="rigaUrl" hidden><span class="et">\u00a0</span>' +
           '<input type="text" id="url" placeholder="srt://\u2026  \u00b7  https://\u2026m3u8"></div>' +
@@ -2975,12 +2979,14 @@
           o.value = (e.ids && e.ids[0]) || "";
           var p = pesa(e);
           o.textContent = (p === 0 ? "OGGI " : "") + dataOpz(e.quando) + "  " + (e.partita || e.etichetta || "");
+          o.dataset.quando = e.quando || "";
           if (p === 2) o.className = "passata";
           o.dataset.titolo = (e.programma ? e.casa : e.casa + "-" + e.ospite);
           o.dataset.comp = e.competizione || "";
           if (el("evento")) el("evento").appendChild(o);
         });
         var sel0 = el("evento"); if (sel0 && sel0.options[0]) sel0.options[0].textContent = "\u2014 " + eventi.length + " eventi: scegli \u2014";
+        if (sel0) sel0.addEventListener("change", agganciaFeed);
       });
       // il LIVE e' uno strumento da diretta: l'archivio sta nel MAM ARCHIVIO
       // e qui non compare (niente gruppo in tendina, niente ricerca storica)
@@ -3112,6 +3118,47 @@
     });
     disegnaConsole();
     if (MODO !== "archivio") { aggiornaVivi(true); setInterval(aggiornaVivi, 8000); }
+  }
+
+  // Il foglio dei feed di MediaOps dice su quale encoder passa la partita:
+  // scelta la partita, la Sorgente si imposta da sola sul main (il backup
+  // resta a un clic) e parte l'anteprima. Se il foglio dice "no need
+  // cleanfeed" o non la conosce, lo si dice e si lascia fare a mano.
+  var FEED_SCELTO = null;
+  function opzioneSorgente(sel, url, nome) {
+    var o = Array.prototype.find.call(sel.options, function (x) { return x.value === url; });
+    if (!o) { o = document.createElement("option"); o.value = url; sel.insertBefore(o, sel.options[1] || null); }
+    o.textContent = nome; return o;
+  }
+  function agganciaFeed() {
+    var sel = el("evento"), riga = el("rigaFeed"), nota = el("notaFeed");
+    var o = sel && sel.selectedOptions[0];
+    if (!o || !o.value || !riga) { if (riga) riga.hidden = true; FEED_SCELTO = null; return; }
+    riga.hidden = false; nota.textContent = "cerco la partita nel foglio dei feed\u2026";
+    manda({ tipo: "clip-feed-partita", partita: o.dataset.titolo || o.textContent, quando: o.dataset.quando || "" }).then(function (d) {
+      var f = d.feed; FEED_SCELTO = f;
+      if (!f) { nota.innerHTML = "non \u00e8 nel foglio dei feed: scegli la sorgente a mano, oppure <b>Ricevi</b>."; return; }
+      if (f.senzaCleanfeed || !f.mainPronto) {
+        nota.innerHTML = "dal foglio: <b>" + (f.source || "nessun cleanfeed") + "</b> \u00b7 nessun feed da prendere: usa <b>Ricevi</b>" + (f.vmix ? " \u00b7 vMix " + f.vmix : "") + ".";
+        return;
+      }
+      var ss = el("sorgente");
+      if (f.backupPronto) opzioneSorgente(ss, f.backupPronto, f.source + " \u00b7 backup");
+      opzioneSorgente(ss, f.mainPronto, f.source + " \u00b7 main");
+      ss.value = f.mainPronto; ss.dispatchEvent(new Event("change"));
+      nota.innerHTML = "dal foglio: <b>" + f.source + "</b> \u00b7 main" +
+        (f.backupPronto ? " \u00b7 <a href='#' id='usaBackup'>passa al backup</a>" : "") +
+        (f.vmix ? " \u00b7 vMix " + f.vmix : "") + (f.vmixItaly ? " \u00b7 " + f.vmixItaly : "") + (f.passphrase ? " \u00b7 con passphrase" : "");
+      var ub = el("usaBackup");
+      if (ub) ub.addEventListener("click", function (e) {
+        e.preventDefault(); ss.value = f.backupPronto; ss.dispatchEvent(new Event("change"));
+        nota.innerHTML = "dal foglio: <b>" + f.source + "</b> \u00b7 <b>backup</b>" + (f.vmix ? " \u00b7 vMix " + f.vmix : "");
+        if (REG && REG.guarda && REG.stato === "registra") { el("btnGuarda").click(); setTimeout(function () { el("btnGuarda").click(); }, 800); }
+        else dice("Sorgente: backup di " + f.source + ".", true);
+      });
+      // il "tac": si guarda subito, senza registrare
+      if (!(REG && REG.stato === "registra") && el("btnGuarda")) el("btnGuarda").click();
+    }).catch(function (e) { nota.textContent = "foglio dei feed non raggiungibile: " + e.message; });
   }
 
   // "Scelgo la partita e tac, appare": il MAM prova tutte le sorgenti e
