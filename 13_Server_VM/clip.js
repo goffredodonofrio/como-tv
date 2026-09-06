@@ -857,6 +857,9 @@ function pubblica(r) {
              : fs.existsSync(playlistDi(r.id)) ? "segmenti"
              : (fs.existsSync(path.join(cartellaReg(r.id), "integrale.mp4")) ? "integrale" : "scaduto"),
     via: r.arch ? viaArchivio(r) : undefined,
+    // la miniatura si promette solo se il file c'e': una sfilza di 404 ogni
+    // tre secondi non e' un'anteprima
+    mini: (r.mini && fs.existsSync(path.join(DIR, String(r.mini).replace(/^\/clip\//, "")))) ? r.mini : "",
     durata: r.stato === "registra" ? durataRegistrata(r.id) : (r.durata || durataRegistrata(r.id)),
     viva: vive
   });
@@ -2690,7 +2693,7 @@ function sorgenteAudio(r) {
   const integrale = path.join(cartellaReg(r.id), "integrale.mp4");
   if (fs.existsSync(integrale)) return integrale;
   const segs = segmenti(r.id);
-  if (segs.length) return null;          // dai segmenti si passa per la lista
+  if (segs.length) return playlistDi(r.id);   // la lista locale: ffmpeg la legge come un file solo
   return null;
 }
 
@@ -2795,6 +2798,13 @@ function trascriviDavvero(lavoro) {
          "-c:a", "pcm_s16le", "-y", wav]
       : null;
     if (!args) return no(new Error("di questa registrazione non c'e' audio raggiungibile"));
+    // l'audio gia' tirato fuori si tiene: un riavvio non deve far riscaricare
+    // sette giga da S3 per riavere gli stessi centosessanta minuti di parlato
+    try {
+      const atteso = (lavoro.a - lavoro.da) * 32000;      // mono, 16 kHz, 16 bit
+      const c = fs.statSync(wav);
+      if (c.size > atteso * 0.97) { console.log("[clip] audio gia' pronto: " + Math.round(c.size / 1e6) + " MB"); return ok(); }
+    } catch (e) { /* non c'e': si estrae */ }
     // a bassa priorita': la trascrizione e' lavoro di notte, non deve
     // rallentare ne' una diretta ne' le altre code
     execFile("nice", ["-n", "15", "ffmpeg"].concat(args), { timeout: 3600000 }, (e) => e ? no(e) : ok());
@@ -4317,6 +4327,16 @@ const AZIONI = {
       (e) => e ? no(new Error("fotogramma non riuscito: " + e.message))
                : ok({ ok: true, file: "/clip/" + CARTELLA_CLIP + "/" + nome, secondi: sec }));
   }),
+  "clip-reg-evento": (p) => {
+    const r = R.reg[String(p.id || "")];
+    if (!r) throw new Error("registrazione sconosciuta");
+    if (r.arch) throw new Error("una partita d'archivio ha gia' il suo evento");
+    r.evento = String(p.evento || "").slice(0, 64);
+    if (p.titolo) r.titolo = String(p.titolo).slice(0, 160);
+    if (p.competizione !== undefined) r.competizione = String(p.competizione || "").slice(0, 80);
+    scrivi(); annuncia(0, "clip");
+    return { ok: true, reg: pubblica(r) };
+  },
   "clip-trascrivi": trascriviChiedi,
   "clip-parlato-locale": () => ({ ok: true, inCoda: parlatoLocaleInCoda(), coda: CODA_VOCE.length, alLavoro: voceAlLavoro ? voceAlLavoro.reg : "" }),
   "clip-parlato": (p) => {
