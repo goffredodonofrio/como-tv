@@ -643,6 +643,8 @@
   body.mam #albero .sez{display:flex;align-items:center;gap:8px;padding:10px 12px 6px;}
   body.mam #albero .sez .et{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#9A9A9A;font-weight:700;}
   body.mam #albero .sez b{color:#5AA7F2;font-size:11px;font-weight:700;}
+  body.mam #albero .sez.altre a{color:#5AA7F2;text-decoration:none;cursor:pointer;}
+  body.mam #albero .vuoto{padding:8px 12px 10px;font-size:11px;color:#8A8A8A;}
   body.mam .ramo{border-top:1px solid #0F0F0F;}
   body.mam .foglia{display:flex;align-items:center;gap:10px;padding:6px 12px 6px 9px;border-bottom:1px solid #1B1B1B;cursor:pointer;border-left:3px solid transparent;background:none;border-radius:0;margin:0;}
   body.mam .foglia:hover{background:#2A2A2A;}
@@ -1115,12 +1117,20 @@
       if (el("nPartite")) el("nPartite").textContent = "0";
       return;
     }
-    // Una lista sola, dalla piu' recente, come la vista elenco di Premiere:
-    // fotogramma, nome, da dove e quanto dura, la data. I gruppi per
-    // competizione erano quasi tutti "senza competizione": rumore.
-    if (el("nPartite")) el("nPartite").textContent = REGISTRAZIONI.length;
-    var ramo = document.createElement("div"); ramo.className = "ramo";
+    // Il LIVE e' il presente: in alto quello che sta succedendo ADESSO
+    // (registra, in ascolto, anteprima), sotto le ultime 48 ore per il
+    // lavoro del dopo-partita. Il resto e' passato: sta nell'Archivio, e qui
+    // compare solo se lo si chiede.
+    var ora = Date.now(), inCorso = [], recenti = [], vecchie = [];
     REGISTRAZIONI.slice().sort(function (x, y) { return (y.avviata || 0) - (x.avviata || 0); }).forEach(function (r) {
+      if (r.stato === "registra" || r.stato === "carica") inCorso.push(r);
+      else if ((r.finita || r.avviata || 0) > ora - 48 * 3600000) recenti.push(r);
+      else vecchie.push(r);
+    });
+    if (el("nPartite")) el("nPartite").textContent = inCorso.length ? inCorso.length + " in corso" : recenti.length + " recenti";
+    c.querySelector(".sez .et").textContent = "In corso";
+    var ramo = document.createElement("div"); ramo.className = "ramo";
+    var disegnaVoce = function (r) {
       var f = document.createElement("div");
       f.className = "foglia" + (REG && r.id === REG.id ? " scelta" : "");
       f.dataset.nome = String(r.titolo || "").toLowerCase();
@@ -1138,8 +1148,23 @@
         "<span class='quando'>" + data + "</span>";
       f.addEventListener("click", function () { REG = r; ASSET = 0; disegna(); });
       ramo.appendChild(f);
-    });
+    };
+    if (!inCorso.length) { var v0 = document.createElement("div"); v0.className = "vuoto"; v0.textContent = "Niente in corso: scegli la partita, poi Registra o Ricevi."; ramo.appendChild(v0); }
+    inCorso.forEach(disegnaVoce);
     c.appendChild(ramo);
+    if (recenti.length) {
+      var s2 = document.createElement("div"); s2.className = "sez"; s2.innerHTML = "<span class='et'>Ultime 48 ore</span><b>" + recenti.length + "</b>"; c.appendChild(s2);
+      var ramo2 = document.createElement("div"); ramo2.className = "ramo"; c.appendChild(ramo2);
+      var ramoPrima = ramo; ramo = ramo2; recenti.forEach(disegnaVoce); ramo = ramoPrima;
+    }
+    if (vecchie.length) {
+      var s3 = document.createElement("div"); s3.className = "sez altre";
+      s3.innerHTML = "<a href='#' class='et'>Mostra le altre " + vecchie.length + " \u2193</a>";
+      var ramo3 = document.createElement("div"); ramo3.className = "ramo"; ramo3.hidden = true;
+      s3.querySelector("a").addEventListener("click", function (e) { e.preventDefault(); ramo3.hidden = !ramo3.hidden; this.textContent = ramo3.hidden ? "Mostra le altre " + vecchie.length + " \u2193" : "Nascondi le altre \u2191"; });
+      c.appendChild(s3); c.appendChild(ramo3);
+      var ramoPrima2 = ramo; ramo = ramo3; vecchie.forEach(disegnaVoce); ramo = ramoPrima2;
+    }
   }
 
   // ── CARICARE UN FILE ────────────────────────────────────────────
