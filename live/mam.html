@@ -368,7 +368,8 @@
   body.modo-archivio .console{background:none;border-radius:0;padding:0;box-shadow:none;border:0;}
   body.modo-archivio .console .colonnina{flex-direction:row;align-items:center;gap:8px;margin:0;padding:8px 12px;border-bottom:1px solid #0F0F0F;}
   body.modo-archivio .console .colonnina .et,body.modo-archivio .projCerca .chip{flex:0 0 46px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#9A9A9A;font-weight:700;margin:0;}
-  body.modo-archivio .console #eventoCerca{flex:0 0 32%;min-width:0;height:26px;margin:0!important;font-size:12px;border-radius:3px;}
+  body.modo-archivio .console #eventoCerca{flex:0 0 32%;min-width:0;height:26px;margin:0!important;font-size:12px;border-radius:3px;color:#E2E2E2;background:#1B1B1B;border:1px solid #3A3A3A;}
+  body.modo-archivio .console #eventoCerca::placeholder{color:#7A7A7A;}
   body.modo-archivio .console #evento{flex:1;min-width:0;height:26px;font-size:12px;border-radius:3px;}
   body.modo-archivio .console #ascolto{display:none;}
   body.modo-live .soloArchivio{display:none!important;}
@@ -2885,18 +2886,22 @@
       // giocare (fondo rosso). Piu' le partite che stanno solo su S3.
       Promise.all([eventiPronti, archivioPronto]).then(function (r) {
         var eventi = r[0], partite = r[1], sel = el("evento"); if (!sel) return;
+        // In tendina stanno SOLO le partite intere che hanno il video: niente
+        // da giocare, niente pezzi, niente "non ancora su S3" (quelle si
+        // trovano in ricerca). Tutte scritte allo stesso modo, dalla piu' recente.
         var perRec = {}; partite.forEach(function (p) { perRec[p.rec] = p; });
         var voci = [], visti = {};
         eventi.forEach(function (e) {
           var rec = (e.ids && e.ids[0]) || "";
-          var p = rec ? perRec[rec] : null; if (p) visti[rec] = true;
-          voci.push({ quando: e.quando, titolo: e.partita || e.etichetta || "", rec: rec, arch: p,
-                      futura: Date.parse(e.quando) > Date.now() });
+          var p = rec ? perRec[rec] : null; if (!p) return;
+          visti[rec] = true;
+          voci.push({ quando: e.quando, titolo: e.partita || e.etichetta || "", rec: rec, arch: p, futura: false });
         });
         partite.forEach(function (p) {
           if (visti[p.rec]) return;
           voci.push({ quando: p.quando, titolo: p.titolo, rec: p.rec, arch: p, futura: false });
         });
+        voci = voci.filter(function (v) { return v.arch && v.arch.intera !== false && Date.parse(v.quando) <= Date.now(); });
         // una cartella S3 con una data nel futuro e' un errore di battitura nel
         // nome (20270729 per 20250729): va in fondo, segnata, non in cima
         voci.forEach(function (v) { if (v.arch && Date.parse(v.quando) > Date.now()) v.sospetta = true; });
@@ -2920,21 +2925,25 @@
         voci.forEach(function (v) {
           var o = document.createElement("option");
           o.value = v.arch ? "arc:" + v.rec : "ev:" + v.rec;
-          var stato = "";
-          if (v.arch) { conVideo++; stato = (v.arch.pezzi > 1 ? "  (" + v.arch.pezzi + " parti)" : "") + (v.arch.soloS3 ? "  \u00b7 solo archivio" : "") + (v.sospetta ? "  \u00b7 data da verificare" : ""); }
-          else if (v.futura) stato = "  \u00b7 da giocare";
-          else stato = "  \u00b7 video non ancora su S3";
-          o.textContent = dataOpz(v.quando) + "  " + v.titolo + stato;
-          if (v.futura) o.className = "futura"; else if (!v.arch) o.className = "senzaVideo";
-          if (v.arch) o.dataset.arch = v.rec;
-          o.dataset.titolo = v.titolo;
+          conVideo++;
+          // una partita si scrive in un modo solo: MAIUSCOLO, SQUADRA-SQUADRA
+          var nome = String(v.titolo).toUpperCase().replace(/\s+VS\.?\s+/g, "-").replace(/\s*-\s*/g, "-").replace(/\s+/g, " ").trim();
+          o.textContent = dataOpz(v.quando) + "  " + nome;
+          o.dataset.arch = v.rec; o.dataset.parti = v.arch.pezzi || 1;
+          o.dataset.titolo = nome;
           sel.appendChild(o);
         });
         sel.addEventListener("change", function () {
-          var o = sel.selectedOptions[0]; if (!o || !o.value) return;
-          if (o.dataset.arch) return apriDaArchivio(o.dataset.arch, null, o.dataset.titolo, 0);
-          dice(o.className === "futura" ? "Ancora da giocare: niente video."
-             : "Il video non \u00e8 ancora su S3 (Cyberduck): appena caricato, compare qui.");
+          var o = sel.selectedOptions[0]; if (!o || !o.value || !o.dataset.arch) return;
+          // una partita in due file (primo e secondo tempo) entra tutta: prima
+          // il secondo tempo in silenzio, poi il primo, che e' quello che si apre
+          var parti = +o.dataset.parti || 1, rec = o.dataset.arch, titolo = o.dataset.titolo;
+          var altre = []; for (var i = parti - 1; i >= 1; i--) altre.push(i);
+          var giro = function () {
+            if (!altre.length) return apriDaArchivio(rec, null, titolo, 0);
+            manda({ tipo: "clip-archivio-apri", rec: rec, pezzo: altre.shift() }).then(giro).catch(function () { giro(); });
+          };
+          giro();
         });
         if (el("nPartite")) el("nPartite").textContent = conVideo;
         if (sel.options[0]) sel.options[0].textContent = "\u2014 " + voci.length + " partite: scegli \u2014";

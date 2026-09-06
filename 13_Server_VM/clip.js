@@ -4124,10 +4124,15 @@ const AZIONI = {
     const domani = Date.now() + 2 * 86400000;
     const fuori = Object.keys(ARCHIVIO).map((rec) => {
       const a = ARCHIVIO[rec], ms = Date.parse(a.quando) || 0;
+      // "intera": la partita c'e' tutta — un file da cento minuti in su, oppure
+      // i due tempi. Prima della misura ci si fida della forma del materiale.
+      const pz = a.pezzi || [];
+      const minuti = pz.reduce((t, x) => t + (x.minuti || 0), 0);
+      const intera = a.misurato ? (minuti >= 85) : (a.fonte === "intero" || a.fonte === "intera" || pz.length >= 2);
       return { rec: rec, titolo: a.partita, quando: a.quando, variante: a.variante,
                competizione: a.competizione || "", soloS3: !!a.soloS3,
                dataSospetta: !!a.soloS3 && ms > domani,
-               pezzi: (a.pezzi || []).length || 1, sicuro: !!a.sicuro,
+               pezzi: pz.length || 1, sicuro: !!a.sicuro, intera: intera, minuti: Math.round(minuti),
                kickoff: a.kickoff === undefined ? null : a.kickoff };
     }).sort((x, y) => (x.dataSospetta - y.dataSospetta) || ((Date.parse(y.quando) || 0) - (Date.parse(x.quando) || 0)));
     return { ok: true, quante: fuori.length, partite: fuori.slice(0, quante) };
