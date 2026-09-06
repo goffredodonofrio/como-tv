@@ -2813,9 +2813,15 @@ async function calibraOrologio(rec, rifai) {
 // registra: mille partite sono una notte di lavoro e qualche decina di giga
 // dal bucket. Si accende a mano (clip-archivio-orologi).
 const CODA_OROLOGI = [];
-let orologiFatti = 0, orologiFalliti = 0;
+let orologiFatti = 0, orologiFalliti = 0, orologiRipassati = false;
 function giraOrologi() {
-  if (orologioAlLavoro || !CODA_OROLOGI.length) return;
+  if (orologioAlLavoro) return;
+  // a coda finita, le partite non lette si ritentano una volta: un sondaggio
+  // caduto su un replay o su una grafica spenta la seconda volta cade altrove
+  if (!CODA_OROLOGI.length) {
+    if (orologiFalliti && !orologiRipassati) { orologiRipassati = true; orologiInCoda(); }
+    return;
+  }
   const registrando = Object.keys(R.reg).some((k) => R.reg[k].stato === "registra");
   if (registrando) { setTimeout(giraOrologi, 60000); return; }
   const rec = CODA_OROLOGI.shift();
@@ -2824,6 +2830,7 @@ function giraOrologi() {
     .then(() => setTimeout(giraOrologi, 500));
 }
 function orologiInCoda() {
+  if (!CODA_OROLOGI.length) orologiRipassati = false;
   const gia = new Set(CODA_OROLOGI);
   Object.keys(APPUNTI).forEach((rec) => {
     const a = ARCHIVIO[rec];
