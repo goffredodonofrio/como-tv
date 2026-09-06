@@ -2721,6 +2721,38 @@ function trascriviChiedi(p) {
 // Una alla volta, e mai sopra una diretta: due processori non si dividono
 // in tre. Se c'e' una registrazione in corso la coda aspetta — l'archivio
 // non scappa, la partita si'.
+// Un whisper che macina due ore non deve morire con il servizio: se al
+// riavvio si trova un voce.json piu' fresco del biglietto, quel lavoro e'
+// finito — magari da un processo rimasto orfano — e si prende.
+function metteDentroParlato(regId, finestra, j) {
+  const pezzi = (j.transcription || []).map((t) => ({
+    a: Math.round((t.offsets.from / 1000 + finestra.da) * 10) / 10,
+    b: Math.round((t.offsets.to / 1000 + finestra.da) * 10) / 10,
+    x: String(t.text || "").trim()
+  })).filter((t) => t.x);
+  if (!pezzi.length) return 0;
+  const dentro = PARLATO[regId] || (PARLATO[regId] = { lingua: LINGUA_MAM, pezzi: [] });
+  if (finestra.intera) dentro.intera = new Date().toISOString();
+  dentro.pezzi = dentro.pezzi.filter((t) => t.b <= finestra.da || t.a >= finestra.a).concat(pezzi).sort((x, y) => x.a - y.a);
+  scriviParlato();
+  return pezzi.length;
+}
+function raccogliParlato() {
+  Object.keys(R.reg).forEach((k) => {
+    const dir = cartellaReg(k), biglietto = path.join(dir, "voce.corso.json"), esito = path.join(dir, "voce.json");
+    let f, e;
+    try { f = JSON.parse(fs.readFileSync(biglietto, "utf8")); e = fs.statSync(esito); } catch (x) { return; }
+    if (e.mtimeMs < (f.quando || 0)) return;                 // il json e' di prima: whisper sta ancora macinando
+    if (voceAlLavoro && voceAlLavoro.reg === k) return;      // ci sta lavorando qualcuno adesso
+    try {
+      const n = metteDentroParlato(k, f, JSON.parse(fs.readFileSync(esito, "utf8")));
+      fs.unlinkSync(biglietto);
+      if (n) console.log("[clip] raccolta una trascrizione rimasta indietro: " + ((R.reg[k] || {}).titolo || k) + " (" + n + " pezzi)");
+    } catch (x) { console.log("[clip] raccolta non riuscita (" + k + "): " + x.message); }
+  });
+}
+setInterval(raccogliParlato, 120000);
+
 // Quello che sta sul disco della VM (le dirette registrate) si trascrive
 // senza spendere niente: a fine registrazione entra in coda tutta, e le
 // registrazioni gia' sul disco si mettono in coda una volta al giorno di notte
@@ -2745,6 +2777,10 @@ function giraLaCoda() {
   if (voceAlLavoro || !CODA_VOCE.length) return;
   const registrando = registrandoDavvero();
   if (registrando) { setTimeout(giraLaCoda, 60000); return; }
+  // una alla volta DAVVERO: dopo un riavvio puo' restare in giro un whisper
+  // orfano che sta ancora macinando, e due su due core vanno la meta'
+  try { execFileSync("pgrep", ["-f", "whisper-cli"], { stdio: "ignore" }); setTimeout(giraLaCoda, 60000); return; }
+  catch (e) { /* nessuno sta macinando: si parte */ }
   voceAlLavoro = CODA_VOCE.shift();
   trascriviDavvero(voceAlLavoro)
     .catch((e) => console.log("[clip] trascrizione fallita: " + e.message))
@@ -2809,6 +2845,9 @@ function trascriviDavvero(lavoro) {
     // rallentare ne' una diretta ne' le altre code
     execFile("nice", ["-n", "15", "ffmpeg"].concat(args), { timeout: 3600000 }, (e) => e ? no(e) : ok());
   }).then(() => new Promise((ok, no) => {
+    // il biglietto accanto al lavoro: se il servizio muore mentre whisper
+    // macina, chi riparte sa che finestra stava trascrivendo e la raccoglie
+    try { fs.writeFileSync(path.join(dir, "voce.corso.json"), JSON.stringify({ da: lavoro.da, a: lavoro.a, intera: !!lavoro.intera, quando: Date.now() })); } catch (e) {}
     const suggeriti = nomiDaSuggerire(r);
     const args = ["-m", MODELLO, "-l", LINGUA_MAM, "-f", wav, "-oj", "-of",
                   path.join(dir, "voce"), "-t", "2", "-np", "-nt"];
@@ -2816,6 +2855,7 @@ function trascriviDavvero(lavoro) {
     execFile("nice", ["-n", "15", WHISPER].concat(args),
              { timeout: 6 * 3600000, maxBuffer: 64 * 1024 * 1024 }, (e) => e ? no(e) : ok());
   })).then(() => {
+    try { fs.unlinkSync(path.join(dir, "voce.corso.json")); } catch (e) {}
     const j = JSON.parse(fs.readFileSync(path.join(dir, "voce.json"), "utf8"));
     const pezzi = (j.transcription || []).map((t) => ({
       a: Math.round((t.offsets.from / 1000 + lavoro.da) * 10) / 10,
@@ -4481,6 +4521,7 @@ function avvio(opz) {
   leggiStorici();
   leggiEspn();
   leggiFeedSalvato();
+  setTimeout(raccogliParlato, 5000);
   rinominaMaterialeArchivio();
   leggiParlato();
   // Il ponte si e' riavviato: gli ffmpeg che stava seguendo sono morti con
