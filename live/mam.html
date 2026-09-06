@@ -362,6 +362,22 @@
   body.modo-archivio #btnRec,
   body.modo-archivio #ascolto,
   body.modo-archivio .riga-stato{display:none!important;}
+  /* La pista sotto i monitor, come in Premiere: alta abbastanza da prenderla
+     senza mirare, un righello leggero, la testina blu con la testa larga in
+     alto. Si trascina da qualunque punto, anche sopra la linea. */
+  body.mam .scrub{height:22px;margin-top:2px;border-radius:0;overflow:visible;cursor:ew-resize;
+    background:#1B1B1B;border-top:1px solid #0F0F0F;
+    background-image:repeating-linear-gradient(90deg,#3A3A3A 0 1px,transparent 1px 2%),repeating-linear-gradient(90deg,#4C4C4C 0 1px,transparent 1px 10%);
+    background-size:100% 5px,100% 9px;background-repeat:no-repeat;background-position:0 100%,0 100%;}
+  body.mam .scrub .capo{width:1px;background:#2D8CEB;top:0;bottom:0;margin-left:0;z-index:2;}
+  body.mam .scrub .capo::before{content:'';position:absolute;top:0;left:-6px;width:13px;height:12px;background:#2D8CEB;
+    border-radius:3px 3px 7px 7px;box-shadow:0 0 0 1px rgba(0,0,0,.35);}
+  body.mam .scrub .segno{top:12px;bottom:0;width:2px;background:#8A8A8A;}
+  body.mam .scrub .segno.gol{background:#E05A3B;}
+  body.mam .scrub .presa{top:12px;bottom:0;background:rgba(45,140,235,.28);}
+  body.mam .scrub .par{top:11px;bottom:0;width:5px;background:#2D8CEB;}
+  body.mam .scrub .pez{top:12px;bottom:0;background:#3B5F8A;border-right:1px solid #1B1B1B;}
+  body.mam .scrub .pez.ora{background:#5A88C2;}
   /* il bollo "16:9" sopra il video copriva il cronometro della regia: il
      formato lo dicono gia' i tasti a lato del monitor */
   .telaio .forma{display:none!important;}
@@ -1321,10 +1337,35 @@
       }).catch(function (e) { dice(e.message); });
     });
     el("btnFoto").addEventListener("click", function () { fotogramma(REG && REG.id, vs.currentTime); });
+    // La pista si PRENDE: dal mousedown in poi la testina segue il mouse
+    // finche' non lo si lascia. Mentre si trascina il video salta ai
+    // fotogrammi chiave (fastSeek: veloce, su un file da sette giga conta);
+    // al rilascio si ferma sul fotogramma esatto.
+    var scrubUltimo = 0; window.SCRUB_S = null;   // globale: la legge disegnaScrub, che sta fuori da qui
+    function scrubA(e) {
+      var tot = durataAperta(), sc = el("scrubS"); if (!tot || !sc) return null;
+      var r = sc.getBoundingClientRect();
+      return Math.max(0, Math.min(tot, (e.clientX - r.left) / r.width * tot));
+    }
     el("scrubS").addEventListener("mousedown", function (e) {
-      var tot = durataAperta(); if (!tot) return;
-      var r = this.getBoundingClientRect();
-      seguiLive = false; vs.currentTime = Math.max(0, Math.min(tot, (e.clientX - r.left) / r.width * tot));
+      var t = scrubA(e); if (t === null) return;
+      e.preventDefault(); seguiLive = false; window.SCRUB_S = t;
+      try { vs.fastSeek ? vs.fastSeek(t) : (vs.currentTime = t); } catch (er) {}
+      disegnaScrub();
+      var muovi = function (ev) {
+        var t2 = scrubA(ev); if (t2 === null) return;
+        window.SCRUB_S = t2; disegnaScrub();
+        var ora = Date.now();
+        if (ora - scrubUltimo > 70) { scrubUltimo = ora; try { vs.fastSeek ? vs.fastSeek(t2) : (vs.currentTime = t2); } catch (er) {} }
+        if (el("tPos")) el("tPos").textContent = tc(t2);
+      };
+      var lascia = function (ev) {
+        document.removeEventListener("mousemove", muovi); document.removeEventListener("mouseup", lascia);
+        var t3 = scrubA(ev); window.SCRUB_S = null;
+        if (t3 !== null) { try { vs.currentTime = t3; } catch (er) {} }
+        disegnaScrub();
+      };
+      document.addEventListener("mousemove", muovi); document.addEventListener("mouseup", lascia);
     });
     // quale monitor ascolta la tastiera: l'ultimo toccato
     ["monS", "monP"].forEach(function (id) {
@@ -2138,7 +2179,8 @@
       out.push('<span class="segno' + (/gol|goal/i.test(m.tipo || m.testo || "") ? " gol" : "") +
                '" style="left:' + (m.secondi / tot * 100) + '%"></span>');
     });
-    if (v) out.push('<span class="capo" style="left:' + (v.currentTime / tot * 100) + '%"></span>');
+    var pos = (typeof window.SCRUB_S === "number") ? window.SCRUB_S : (v ? v.currentTime : 0);
+    if (v) out.push('<span class="capo" style="left:' + (pos / tot * 100) + '%"></span>');
     sc.innerHTML = out.join("");
   }
   function disegnaTutto() { disegnaPista(); disegnaTimeline(); disegnaScrub(); }

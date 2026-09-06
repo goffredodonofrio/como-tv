@@ -3104,8 +3104,10 @@ function durateInCoda() {
     if (a.misurato || gia.has(rec)) return;
     CODA_DURATE.push(rec);
   });
-  // stesso ordine dei cronometri, cosi' le durate stanno sempre davanti
-  CODA_DURATE.sort((x, y) => prioritaPartita(x) - prioritaPartita(y));
+  // prima le partite che qualcuno ha gia' aperto nel progetto (il nome e il
+  // materiale devono essere giusti subito), poi lo stesso ordine dei cronometri
+  const aperte = new Set(Object.keys(R.reg).map((k) => (R.reg[k].arch || {}).rec).filter(Boolean));
+  CODA_DURATE.sort((x, y) => ((aperte.has(x) ? 0 : 1) - (aperte.has(y) ? 0 : 1)) || (prioritaPartita(x) - prioritaPartita(y)));
   giraDurate();
   return CODA_DURATE.length;
 }
