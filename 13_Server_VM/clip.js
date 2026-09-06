@@ -2276,7 +2276,7 @@ async function archivioApri(p) {
 
   const r = {
     id: nuovoId("r"), evento: a.rec || "",
-    titolo: (a.partita || "partita") + (pezzi.length > 1 ? " · " + (i + 1) + "ª parte" : ""),
+    titolo: titoloMateriale(a, i),
     competizione: "", sorgente: "archivio", origine: "archivio", url: "",
     stato: "finita", avviata: Date.parse(a.quando) || Date.now(), finita: Date.now(),
     durata: durata, kickoff: (i === 0 && a.kickoff !== null && a.kickoff !== undefined)
@@ -2288,6 +2288,32 @@ async function archivioApri(p) {
   return { ok: true, reg: pubblica(r) };
 }
 
+// Il nome del materiale e' il nome della partita — MAIUSCOLO, SQUADRA-SQUADRA,
+// con il risultato se c'e' o la data se no — e un suffisso solo quando il file
+// e' davvero un tempo. "1ª parte" era il nome del file, non della partita.
+function titoloMateriale(a, i) {
+  let nome = String(a.partita || "partita").toUpperCase().replace(/\s+VS\.?\s+/g, "-").replace(/\s*-\s*/g, "-").replace(/\s+/g, " ").trim();
+  if (!/\b\d+-\d+\b/.test(nome)) {
+    const d = new Date(a.quando || 0);
+    if (isFinite(d) && d.getTime()) nome += " \u00b7 " + String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + String(d.getFullYear()).slice(2);
+  }
+  const pezzi = (a.pezzi && a.pezzi.length) ? a.pezzi : [{}];
+  const x = pezzi[i] || {};
+  if (pezzi.length <= 1 || (x.minuti && x.minuti >= 85)) return nome;
+  return nome + (i === 0 ? " \u00b7 1\u00ba tempo" : i === 1 ? " \u00b7 2\u00ba tempo" : " \u00b7 " + (i + 1) + "\u00aa parte");
+}
+// le partite gia' aperte prendono il nome nuovo (all'avvio e dopo le durate)
+function rinominaMaterialeArchivio() {
+  let n = 0;
+  Object.keys(R.reg).forEach((k) => {
+    const r = R.reg[k]; if (!r.arch) return;
+    const a = ARCHIVIO[r.arch.rec]; if (!a) return;
+    const t = titoloMateriale(a, r.arch.pezzo || 0);
+    if (t !== r.titolo) { r.titolo = t; n++; }
+  });
+  if (n) scrivi();
+  return n;
+}
 function fileArchivio() { return path.join(DIR, "archivio.json"); }
 function leggiArchivio() {
   try { ARCHIVIO = JSON.parse(fs.readFileSync(fileArchivio(), "utf8")) || {}; }
@@ -3051,6 +3077,7 @@ async function misuraPartita(rec) {
     console.log("[clip] durate: " + (a.partita || rec) + " → " + pezzi.length + " file → " + nuovi.length + " (" + fonte + ": " + nuovi.map((x) => x.minuti + "'").join(" + ") + ")");
   }
   a.misurato = new Date().toISOString();
+  rinominaMaterialeArchivio();
   if (++durateDaScrivere >= 20) { durateDaScrivere = 0; scriviArchivio(); }
 }
 function giraDurate() {
@@ -4223,6 +4250,7 @@ function avvio(opz) {
   leggiArchivio();
   leggiStorici();
   leggiEspn();
+  rinominaMaterialeArchivio();
   leggiParlato();
   // Il ponte si e' riavviato: gli ffmpeg che stava seguendo sono morti con
   // lui. Meglio dirlo che lasciare in pagina una registrazione che sembra
