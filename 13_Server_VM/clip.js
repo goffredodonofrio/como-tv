@@ -882,7 +882,7 @@ function clipStato(p) {
     .filter((r) => !soloReg || r.id === soloReg)
     .sort((a, b) => b.avviata - a.avviata);
   const clip = Object.keys(R.clip)
-    .map((k) => R.clip[k])
+    .map((k) => Object.assign({}, R.clip[k], { nome: nomeScarico(R.clip[k], R.reg[R.clip[k].reg]) }))
     .filter((c) => !soloReg || c.reg === soloReg)
     .sort((a, b) => b.creata - a.creata);
   const gb = liberiGB();
@@ -1695,6 +1695,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro) {
     file: "/clip/" + CARTELLA_HL + "/" + q.id + suffisso + ".mp4",
     durata: d.durata ? Math.round(d.durata * 10) / 10 : 0, peso: d.peso || 0
   };
+  q.esportati[formato].nome = nomeScaricoSeq(q, R.reg[q.reg], formato, ".mp4");
   q.export = { stato: "pronto", formato: formato, fatti: q.pezzi.length, quanti: q.pezzi.length,
                file: q.esportati[formato].file,
                durata: q.esportati[formato].durata, peso: q.esportati[formato].peso };
@@ -1784,6 +1785,7 @@ async function hlEsportaPremiere(q, percorso) {
     stato: "pronto", file: "/clip/" + CARTELLA_HL + "/" + q.id + ".xml",
     media: via, integrale: c1, fps: Math.round(fps * 100) / 100
   };
+  q.premiere.nome = nomeScaricoSeq(q, R.reg[q.reg], "", ".xml");
   scrivi(); annuncia(0, "clip");
   return q.premiere;
 }
@@ -1887,15 +1889,30 @@ function miniatura(file, fuori, quando) {
   });
 }
 
-// il nome con cui la clip arriva sul computer di chi la scarica
+// IL NOME DEI FILE. Una regola sola, per tutto quello che esce:
+//   AAAAMMGG_PARTITA_Nome_16x9.mp4       (una clip)
+//   AAAAMMGG_PARTITA_HL_16x9.mp4         (una sequenza)
+//   AAAAMMGG_PARTITA_HL.xml              (per Premiere)
+// Prima la data, cosi' i file si ordinano da soli in una cartella; poi la
+// partita, poi che cos'e', poi la forma. Chi lo riceve capisce tutto dal
+// nome, che e' l'unica cosa che viaggia insieme al file.
+function pulisciNome(t) {
+  return String(t || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9 _-]/g, " ").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+}
+function giornoDi(r) {
+  const d = r && r.avviata ? new Date(r.avviata) : null;
+  return (d && isFinite(d)) ? d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0") : "";
+}
 function nomeScarico(c, r) {
-  function pulisci(t) {
-    return String(t || "").normalize("NFKD").replace(/[̀-ͯ]/g, "")
-      .replace(/[^A-Za-z0-9 _-]/g, " ").replace(/\s+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
-  }
-  const pezzi = [pulisci(r && r.titolo), pulisci(c.titolo), (c.formato || "").replace(":", "x")]
-    .filter(Boolean);
+  const pezzi = [giornoDi(r), pulisciNome(r && r.titolo), pulisciNome(c.titolo), (c.formato || "").replace(":", "x")].filter(Boolean);
   return (pezzi.join("_") || c.id) + ".mp4";
+}
+function nomeScaricoSeq(q, r, formato, est) {
+  const cosa = pulisciNome(String(q.titolo || "HL").replace(/^HL\s+/i, "")) ;
+  const pezzi = [giornoDi(r), pulisciNome(r && r.titolo), "HL", cosa && cosa !== pulisciNome(r && r.titolo) ? cosa : "",
+                 formato ? formato.replace(":", "x") : ""].filter(Boolean);
+  return pezzi.join("_") + (est || ".mp4");
 }
 
 // ── le sorgenti: la tabella AWS di Airtable ───────────────────────────
@@ -2734,11 +2751,12 @@ function serviHttp(req, res, u) {
       // riceve non vuol dire niente. Si scarica col nome della partita e
       // dell'azione, che e' l'altra meta' del problema che risolve lo sting.
       let nome = pezzi[pezzi.length - 1];
-      const idc = /^([A-Za-z0-9_-]+)\.mp4$/.exec(nome);
-      if (idc && R.clip[idc[1]]) nome = nomeScarico(R.clip[idc[1]], R.reg[R.clip[idc[1]].reg]);
-      else if (idc && R.seq[idc[1]]) {
-        const q = R.seq[idc[1]], rr = R.reg[q.reg];
-        nome = ((rr ? rr.titolo.replace(/[^A-Za-z0-9 _-]/g, "").replace(/\s+/g, "-") : "HL") + "_highlights.mp4");
+      const idc = /^([A-Za-z0-9-]+?)(?:_(16x9|3x4|9x16))?\.(mp4|xml)$/.exec(nome);
+      const idSeq = idc ? (R.seq[idc[1]] ? idc[1] : (pezzi.length > 1 && R.seq[pezzi[pezzi.length - 2]] ? pezzi[pezzi.length - 2] : null)) : null;
+      if (idc && idc[3] === "mp4" && R.clip[idc[1]]) nome = nomeScarico(R.clip[idc[1]], R.reg[R.clip[idc[1]].reg]);
+      else if (idc && idSeq) {
+        const q = R.seq[idSeq];
+        nome = nomeScaricoSeq(q, R.reg[q.reg], idc[2] ? idc[2].replace("x", ":") : (idc[3] === "mp4" ? "16:9" : ""), "." + idc[3]);
       } else if (nome === "integrale.mp4" && pezzi.length > 1 && R.reg[pezzi[0]]) {
         nome = R.reg[pezzi[0]].titolo.replace(/[^A-Za-z0-9 _-]/g, "").replace(/\s+/g, "-") + "_integrale.mp4";
       }
