@@ -2300,7 +2300,10 @@ function titoloMateriale(a, i) {
   const pezzi = (a.pezzi && a.pezzi.length) ? a.pezzi : [{}];
   const x = pezzi[i] || {};
   if (pezzi.length <= 1 || (x.minuti && x.minuti >= 85)) return nome;
-  return nome + (i === 0 ? " \u00b7 1\u00ba tempo" : i === 1 ? " \u00b7 2\u00ba tempo" : " \u00b7 " + (i + 1) + "\u00aa parte");
+  // due file sono i due tempi; di piu' (una serata di boxe, un evento a
+  // blocchi) sono parti numerate
+  if (pezzi.length === 2) return nome + (i === 0 ? " \u00b7 1\u00ba tempo" : " \u00b7 2\u00ba tempo");
+  return nome + " \u00b7 parte " + (i + 1) + " di " + pezzi.length;
 }
 // le partite gia' aperte prendono il nome nuovo (all'avvio e dopo le durate)
 function rinominaMaterialeArchivio() {
