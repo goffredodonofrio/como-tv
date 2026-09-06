@@ -933,6 +933,7 @@
   var REG = null;              // la registrazione scelta
   var REGISTRAZIONI = [], CLIP = [], SEQ = null, SEQS = [], DISCO = null, ASSET = 0;
   var ESPORTAZIONI_APERTE = false, ORD = "tipo", TAB = "sorgenti";
+  var AREA = "timeline";      // dove sta l'attenzione: progetto o timeline (per Canc)
   var hls = null, apertaId = "", seguiLive = true;
   var dentro = null, fuori = null, formato = "16:9", preciso = false;
 
@@ -1305,6 +1306,7 @@
     // quale monitor ascolta la tastiera: l'ultimo toccato
     ["monS", "monP"].forEach(function (id) {
       el(id).addEventListener("mousedown", function () {
+        AREA = "monitor";
         MON = id === "monS" ? "s" : "p";
         el("monS").classList.toggle("attivo", MON === "s");
         el("monP").classList.toggle("attivo", MON === "p");
@@ -1815,12 +1817,21 @@
     var f = finestraSeq();
     var X = function (t) { return (t - f.a) / (f.b - f.a) * largo; };
 
-    // il righello: timecode pieni alle tacche grandi, come Premiere
-    var passi = [1, 2, 4, 8, 10, 15, 30, 60, 120, 300, 600];
-    var passo = passi.find(function (x) { return (f.b - f.a) / x <= 10; }) || 1800;
+    // IL RIGHELLO SEGUE I PIXEL, non i secondi: un'etichetta ogni ~150 px,
+    // qualunque sia la lente. Da vicino si arriva ai fotogrammi
+    // (00:00:02:10), da lontano le unita' salgono in fretta — secondi,
+    // cinque, trenta, minuti — cosi' non si affolla mai. E' la regola di
+    // Premiere, e si legge senza pensarci.
+    var fr = 1 / FPS, pxSec = largo / (f.b - f.a);
+    var candidati = [fr, 2 * fr, 5 * fr, 10 * fr, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
+    var passo = candidati.find(function (x) { return x * pxSec >= 150; }) || 3600;
+    var sotto = passo <= 2 * fr ? fr : passo <= 10 * fr ? fr : passo <= 1 ? 5 * fr
+              : passo <= 5 ? 1 : passo <= 30 ? 5 : passo <= 120 ? 15 : passo <= 600 ? 60 : passo <= 1800 ? 300 : 600;
     var r = [];
-    for (var t = Math.ceil(f.a / (passo / 4)) * (passo / 4); t < f.b; t += passo / 4) {
-      var grande = Math.abs(t / passo - Math.round(t / passo)) < 1e-6;
+    for (var k = Math.ceil(f.a / sotto); k * sotto < f.b; k++) {
+      var t = k * sotto, rapp = t / passo;
+      var grande = Math.abs(rapp - Math.round(rapp)) < 1e-4;
+      if (sotto * pxSec < 5 && !grande) continue;          // tacche minori solo se distinguibili
       r.push('<span class="tacca' + (grande ? " grande" : "") + '" style="left:' + X(t) + 'px"></span>');
       if (grande) r.push('<span class="ora" style="left:' + X(t) + 'px">' + tc(t) + '</span>');
     }
@@ -1903,6 +1914,7 @@
     var p = el("tlPista"); if (!p || p.dataset.viva) return;
     p.dataset.viva = "1";
     p.addEventListener("mousedown", function (e) {
+      AREA = "timeline";
       var vp = el("programma");
       var bordo = e.target.closest ? e.target.closest(".bordo") : null;
       var blocco = e.target.closest ? e.target.closest(".clipV, .clipA") : null;
@@ -1997,15 +2009,16 @@
         var idr = dati.slice(8);
         var reg = REGISTRAZIONI.filter(function (x) { return x.id === idr; })[0] || REG;
         if (!reg) return;
-        var vs = el("player"), a0, b0;
-        if (REG && reg.id === REG.id && dentro !== null && fuori !== null) { a0 = dentro; b0 = fuori; }
-        else { var tq = vs ? vs.currentTime : 0; a0 = Math.max(0, tq - 10); b0 = tq + 10; }
-        var corpoP = { tipo: "clip-hl-inserisci", reg: reg.id, dentro: a0, fuori: b0, dove: dove, titolo: reg.titolo + " " + orologio(a0) };
+        // come in Premiere: il materiale trascinato va giu' TUTTO, per tutta
+        // la sua durata, e poi lo si taglia in timeline. Entrata e uscita
+        // restano il gesto della virgola.
+        var durataTutta = reg.durata || durataAperta() || 0;
+        if (!durataTutta) return dice("Di questa partita non conosco ancora la durata: riprova fra un attimo.");
+        var corpoP = { tipo: "clip-hl-inserisci", reg: reg.id, dentro: 0, fuori: durataTutta, dove: dove, titolo: reg.titolo };
         if (SEQ && SEQ.reg === reg.id) { corpoP.seq = SEQ.id; ricorda(); }
         manda(corpoP).then(function (r) {
           SEQ = r.seq; disegnaSequenza(); destraMateriale();
-          dice((dentro !== null && fuori !== null ? "Inserito entrata\u2192uscita." : "Inseriti venti secondi attorno alla testina: segna entrata e uscita per scegliere tu."), true);
-          dentro = null; fuori = null; mostraInOut();
+          dice("Inserita tutta la partita (" + tc(durataTutta) + "): ora si taglia in timeline.", true);
         }).catch(function (er) { dice(er.message); });
         return;
       }
@@ -2137,7 +2150,7 @@
     ["Q · W", "taglia il pezzo fino al cursore: la testa (Q) o la coda (W)"],
     ["ctrl+K", "dividi il pezzo al cursore"],
     ["\u2318Z \u00b7 \u2318\u21e7Z", "annulla \u00b7 ripeti (trenta passi)"],
-    ["canc", "togli il pezzo scelto"],
+    ["canc", "togli il pezzo scelto in timeline \u00b7 la sequenza scelta nel progetto"],
     ["V \u00b7 C", "selezione \u00b7 lametta: clicca sul pezzo dove vuoi tagliare"],
     ["S", "calamita (snap)"],
     ["shift+E", "esporta fotogramma"],
@@ -2572,6 +2585,17 @@
       if (!x) return dice("Nessun pezzo in sequenza: entrata, uscita, virgola.");
       if (a3 !== null && !(a3 > x.dentro + 0.2 && a3 < x.fuori - 0.2)) return dice("La testina e' sul bordo fra due pezzi: clicca sul righello dentro il pezzo (o trascina la testina), poi " + MOD + "K.");
       if (x && a3 !== null && SEQ) dividiA(x, a3);
+      return;
+    }
+    // Canc con l'attenzione sul progetto toglie la SEQUENZA scelta
+    if ((k === "delete" || k === "backspace") && AREA === "progetto" && SEQ) {
+      e.preventDefault();
+      var nomeSeq = SEQ.titolo, idSeq = SEQ.id;
+      if (!confirm("Togliere la sequenza \u201c" + nomeSeq + "\u201d? Non si annulla.")) return;
+      manda({ tipo: "clip-hl-elimina", seq: idSeq }).then(function () {
+        SEQS = SEQS.filter(function (x) { return x.id !== idSeq; }); SEQ = SEQS[0] || null; PROG.i = -1; TL.sel = null;
+        disegnaSequenza(); destraMateriale(); dice("Sequenza tolta.", true);
+      }).catch(function (er) { dice(er.message); });
       return;
     }
     if ((k === "delete" || k === "backspace") && SEQ) {
@@ -3135,7 +3159,7 @@
       d.addEventListener("click", function () {
         ASSET = i;
         if (a.t === "partita") { tornaAlContenuto(); return; }          // la Sorgente torna alla partita
-        if (a.t === "hl") { SEQ = a.o; PROG.i = -1; TL.sel = null; disegnaSequenza(); destraMateriale(); return; }
+        if (a.t === "hl") { SEQ = a.o; PROG.i = -1; TL.sel = null; AREA = "progetto"; disegnaSequenza(); destraMateriale(); return; }
         var suo = BASE + "/clip/_clip/" + a.o.id + ".mp4";
         mostraNelCentro(suo, fmt, nome);
         destraMateriale();
