@@ -2718,6 +2718,26 @@ function trascriviChiedi(p) {
 // Una alla volta, e mai sopra una diretta: due processori non si dividono
 // in tre. Se c'e' una registrazione in corso la coda aspetta — l'archivio
 // non scappa, la partita si'.
+// Quello che sta sul disco della VM (le dirette registrate) si trascrive
+// senza spendere niente: a fine registrazione entra in coda tutta, e le
+// registrazioni gia' sul disco si mettono in coda una volta al giorno di notte
+function parlatoLocaleInCoda() {
+  if (!whisperCe()) return 0;
+  let n = 0;
+  Object.keys(R.reg).forEach((k) => {
+    const r = R.reg[k];
+    if (r.arch || r.guarda || r.stato === "registra" || r.stato === "carica") return;
+    if ((r.durata || 0) < 600) return;
+    if (PARLATO[r.id] && PARLATO[r.id].intera) return;
+    if (CODA_VOCE.some((x) => x.reg === r.id) || (voceAlLavoro && voceAlLavoro.reg === r.id)) return;
+    const via = sorgenteAudio(r); if (!via || /^https?:/i.test(via)) return;   // solo il disco locale: niente traffico
+    CODA_VOCE.push({ reg: r.id, da: 0, a: r.durata, chiesta: Date.now(), intera: true }); n++;
+  });
+  CODA_VOCE.sort((x, y) => ((R.reg[y.reg] || {}).avviata || 0) - ((R.reg[x.reg] || {}).avviata || 0));
+  giraLaCoda();
+  return n;
+}
+setInterval(() => { const h = new Date().getHours(); if (h >= 1 && h < 6) parlatoLocaleInCoda(); }, 1800000);
 function giraLaCoda() {
   if (voceAlLavoro || !CODA_VOCE.length) return;
   const registrando = registrandoDavvero();
@@ -2794,6 +2814,7 @@ function trascriviDavvero(lavoro) {
     })).filter((t) => t.x);
 
     const dentro = PARLATO[r.id] || (PARLATO[r.id] = { lingua: LINGUA_MAM, pezzi: [] });
+    if (lavoro.intera) dentro.intera = new Date().toISOString();
     // si rifa' la finestra invece di accodare: chiedere due volte lo stesso
     // pezzo non deve raddoppiare quello che ci si trova dentro
     dentro.pezzi = dentro.pezzi.filter((t) => t.b <= lavoro.da || t.a >= lavoro.a)
@@ -3179,6 +3200,15 @@ function giraOrologi() {
     .then(() => { orologiInMoto--; setTimeout(giraOrologi, 500); });
   setTimeout(giraOrologi, 3000);       // e intanto parte la seconda
 }
+// Ogni cronometro costa ~50 MB letti da S3: AWS ne regala 100 GB al mese,
+// oltre si paga. Il filtro tiene la coda dentro il gratuito: il Como e la
+// stagione in corso; il resto quando (e se) si decide di spendere.
+let FILTRO_OROLOGI = process.env.COMOTV_OROLOGI_FILTRO || "como|2026";
+function passaFiltro(a) {
+  if (!FILTRO_OROLOGI) return true;
+  const testo = ((a.partita || "") + " " + (a.quando || "")).toLowerCase();
+  return FILTRO_OROLOGI.split("|").some((p) => p && testo.indexOf(p.toLowerCase()) >= 0);
+}
 function orologiInCoda(ripasso) {
   if (!CODA_OROLOGI.length) orologiRipassati = false;
   const gia = new Set(CODA_OROLOGI);
@@ -3187,6 +3217,7 @@ function orologiInCoda(ripasso) {
     if (!a || a.orologio || gia.has(rec)) return;
     if (!(APPUNTI[rec].righe || []).length) return;
     if (a.orologioFallito && !ripasso) return;        // gia' provata: al giro finale
+    if (!passaFiltro(a)) return;
     CODA_OROLOGI.push(rec);
   });
   CODA_OROLOGI.sort((x, y) => prioritaPartita(x) - prioritaPartita(y));
@@ -4287,6 +4318,7 @@ const AZIONI = {
                : ok({ ok: true, file: "/clip/" + CARTELLA_CLIP + "/" + nome, secondi: sec }));
   }),
   "clip-trascrivi": trascriviChiedi,
+  "clip-parlato-locale": () => ({ ok: true, inCoda: parlatoLocaleInCoda(), coda: CODA_VOCE.length, alLavoro: voceAlLavoro ? voceAlLavoro.reg : "" }),
   "clip-parlato": (p) => {
     const d = PARLATO[String(p.reg || "")];
     return { ok: true, pezzi: (d && d.pezzi) || [],
@@ -4324,8 +4356,9 @@ const AZIONI = {
              inMoto: durateInMoto, misurate: Object.keys(ARCHIVIO).filter((k) => ARCHIVIO[k].misurato).length };
   },
   "clip-archivio-orologi": (p) => {
+    if (typeof p.filtro === "string") { FILTRO_OROLOGI = p.filtro; CODA_OROLOGI.length = 0; }
     if (p.avvia) orologiInCoda();
-    return { ok: true, inCoda: CODA_OROLOGI.length, fatti: orologiFatti, falliti: orologiFalliti,
+    return { ok: true, inCoda: CODA_OROLOGI.length, fatti: orologiFatti, falliti: orologiFalliti, filtro: FILTRO_OROLOGI,
              alLavoro: orologioAlLavoro || "", inMoto: orologiInMoto, lettore: tesseractCe(),
              letti: Object.keys(ARCHIVIO).filter((k) => ARCHIVIO[k].orologio).length };
   },
