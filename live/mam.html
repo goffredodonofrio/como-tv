@@ -388,6 +388,19 @@
   .tltraccia .ms.on{color:#fff;background:#3C7EA6;border-radius:2px;}
   .tlcorsia.spenta .clipV{opacity:.25;}
   .tlcorsia.bloccata::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(135deg,transparent 0 6px,rgba(255,255,255,.05) 6px 8px);pointer-events:none;}
+  .menubar{height:26px;background:#141414;border-bottom:1px solid #0F0F0F;display:flex;align-items:stretch;
+    padding:0 8px;font-family:'Inter',system-ui,sans-serif;font-size:12px;color:#D8D8D8;position:relative;z-index:90;}
+  .menubar > button{background:transparent;border:0;color:inherit;padding:0 10px;cursor:default;font:inherit;}
+  .menubar > button:hover,.menubar > button.aperto{background:#2D8CEB;color:#fff;}
+  .menubar .tendina{position:absolute;top:26px;background:#2A2A2A;border:1px solid #444;min-width:250px;
+    padding:4px 0;box-shadow:0 10px 30px rgba(0,0,0,.5);z-index:95;}
+  .menubar .tendina div{display:flex;justify-content:space-between;gap:24px;padding:5px 14px;cursor:default;white-space:nowrap;}
+  .menubar .tendina div:hover{background:#2D8CEB;color:#fff;}
+  .menubar .tendina div.spenta{opacity:.4;pointer-events:none;}
+  .menubar .tendina div kbd{font:inherit;font-size:11px;color:#9A9A9A;border:0;background:transparent;padding:0;}
+  .menubar .tendina div:hover kbd{color:#E0F0FF;}
+  .menubar .tendina hr{border:0;border-top:1px solid #444;margin:4px 0;}
+  body:not(.mam) .menubar{display:none;}
   /* Il foglio dei tasti: si apre con ? e si chiude con qualunque cosa. */
   .tasti{position:fixed;inset:0;background:rgba(10,15,36,.45);z-index:70;display:flex;
     align-items:center;justify-content:center;padding:var(--s4);}
@@ -449,6 +462,7 @@
   .tr.oro{color:var(--gold-deep);} .tr.play{width:36px;}
   .tr:disabled{opacity:.3;cursor:default;}
   .binCapo{margin-top:var(--s3);}
+  #bin h2.sez{margin-top:var(--s3);} #bin h2.sez .apri{margin-left:6px;font-style:normal;color:var(--gold-deep);}
   /* Il bin di Premiere: la clip e' il suo fotogramma. Passandoci sopra con
      il cursore la si scorre (hover scrub); i comandi compaiono solo allora. */
   .mini video.anteprima{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;pointer-events:none;background:#000;}
@@ -695,6 +709,10 @@
 </head>
 <body>
 
+<!-- LA BARRA DEI MENU', come in Premiere: le stesse azioni dei tasti e
+     delle icone, elencate per nome con la scorciatoia accanto. Serve a chi
+     non ha ancora i tasti nelle dita, e a chi vuole vedere che cosa c'e'. -->
+<nav class="menubar" id="menubar"></nav>
 <div class="testata">
   <div class="marchio">MAM<small id="qualeMam">Como TV</small></div>
   <div class="cerca">
@@ -723,7 +741,6 @@
          e da qui si portano nella sequenza. Quando si cerca, qui compaiono
          i risultati — la ricerca e' un filtro sul progetto, non un'altra
          stanza. -->
-    <h2 class="binCapo">Clip tagliate <span id="nClip">—</span></h2>
     <div id="bin"></div>
     <!-- I suggerimenti degli appunti: materiale da prendere, quindi stanno
          nel progetto, non sopra la sequenza. -->
@@ -820,7 +837,8 @@
   var VISTA = "tutto";         // che materiale guardo a destra (o "cerca")
   var FORMA = "";              // e con che forma, che e' un'altra domanda
   var REG = null;              // la registrazione scelta
-  var REGISTRAZIONI = [], CLIP = [], SEQ = null, DISCO = null, ASSET = 0;
+  var REGISTRAZIONI = [], CLIP = [], SEQ = null, SEQS = [], DISCO = null, ASSET = 0;
+  var ESPORTAZIONI_APERTE = false;   // la sezione delle uscite, chiusa finche' non serve
   var hls = null, apertaId = "", seguiLive = true;
   var dentro = null, fuori = null, formato = "16:9", preciso = false;
 
@@ -2000,6 +2018,122 @@
     ["esc", "chiude riquadri e foglietti"],
     ["?", "questo foglietto"]
   ];
+  // ── i menu' ──
+  var K2 = function (key, o) { document.dispatchEvent(new KeyboardEvent("keydown", Object.assign({ key: key, bubbles: true, cancelable: true }, o || {}))); };
+  var clicca = function (id) { var b = el(id); if (b && !b.disabled) b.click(); };
+  var MENU = [
+    ["File", [
+      ["Apri partita\u2026", function () { var f = el("eventoCerca"); if (f) { f.focus(); f.select(); } }, ""],
+      ["Importa file\u2026", function () { clicca("fileIn"); }, ""],
+      ["Nuova sequenza", function () {
+        if (!REG) return dice("Scegli prima una partita.");
+        manda({ tipo: "clip-hl-nuova", reg: REG.id }).then(function (r) { SEQ = r.seq; SEQS.unshift(r.seq); PROG.i = -1; TL.sel = null; disegnaSequenza(); destraMateriale(); dice("Sequenza nuova.", true); })
+          .catch(function (e) { dice(e.message); });
+      }, ""],
+      "-",
+      ["Esporta fotogramma", function () { K2("E", { shiftKey: true }); }, "\u21e7E"],
+      ["Esporta clip (entrata\u2192uscita)", function () { clicca("btnTaglia"); }, "T"],
+      ["Esporta sequenza \u00b7 tutti i formati", function () { clicca("seqTutti"); }, "\u2318M"],
+      ["Esporta sequenza \u00b7 solo questo formato", function () { clicca("seqMp4"); }, ""],
+      ["Esporta XML per Premiere", function () { clicca("seqXml"); }, ""],
+      "-",
+      ["Torna a Como TV", function () { location.href = "../index.html"; }, ""]
+    ]],
+    ["Modifica", [
+      ["Annulla", null, "\u2318Z"],
+      "-",
+      ["Dividi al cursore", function () { K2("k", { ctrlKey: true }); }, "\u2318K"],
+      ["Togli il pezzo scelto", function () { K2("Delete"); }, "\u232b"],
+      ["Togli entrata e uscita", function () { K2("x", { ctrlKey: true, shiftKey: true }); }, "\u2318\u21e7X"],
+      "-",
+      ["Calamita", function () { K2("s"); }, "S"]
+    ]],
+    ["Clip", [
+      ["Segna entrata", function () { K2("i"); }, "I"],
+      ["Segna uscita", function () { K2("o"); }, "O"],
+      ["Vai all\u2019entrata", function () { K2("i", { shiftKey: true }); }, "\u21e7I"],
+      ["Vai all\u2019uscita", function () { K2("o", { shiftKey: true }); }, "\u21e7O"],
+      "-",
+      ["Inserisci nella sequenza", function () { clicca("btnInserisci"); }, ","],
+      ["Sovrascrivi \u2192 esporta come clip", function () { clicca("btnTaglia"); }, "."],
+      "-",
+      ["Taglia la testa al cursore", function () { K2("q"); }, "Q"],
+      ["Taglia la coda al cursore", function () { K2("w"); }, "W"]
+    ]],
+    ["Sequenza", [
+      ["Riproduci / ferma", function () { MON = "p"; K2(" "); }, "spazio"],
+      ["Vai all\u2019inizio", function () { clicca("pInizio"); }, "home"],
+      ["Vai alla fine", function () { clicca("pFine"); }, "fine"],
+      ["Pezzo precedente / successivo", null, "\u2191 \u2193"],
+      "-",
+      ["Genera HL da appunti ed ESPN", function () {
+        if (!REG) return dice("Scegli prima una partita.");
+        manda({ tipo: "clip-hl-genera", reg: REG.id, pre: 8, post: 6 })
+          .then(function (d) { SEQ = d.seq; SEQS.unshift(d.seq); PROG.i = -1; TL.sel = null; disegnaSequenza(); destraMateriale(); dice("Sequenza generata: " + d.seq.pezzi.length + " pezzi.", true); })
+          .catch(function (e) { dice(e.message); });
+      }, ""],
+      "-",
+      ["Avvicina", function () { K2("="); }, "="],
+      ["Allontana", function () { K2("-"); }, "\u2212"],
+      ["Tutta la sequenza", function () { K2("\\"); }, "\\"]
+    ]],
+    ["Marcatori", [
+      ["Aggiungi marcatore", function () { clicca("btnSegnaApri"); }, "M"],
+      ["Marcatore successivo", function () { K2("m", { shiftKey: true }); }, "\u21e7M"],
+      ["Marcatore precedente", function () { K2("m", { ctrlKey: true, shiftKey: true }); }, "\u2318\u21e7M"],
+      "-",
+      ["Il fischio del 1\u00ba tempo \u00e8 qui", function () { var b = document.querySelector('[data-kick="1"]'); if (b) b.click(); }, ""],
+      ["Il fischio del 2\u00ba tempo \u00e8 qui", function () { var b = document.querySelector('[data-kick="2"]'); if (b) b.click(); }, ""],
+      "-",
+      ["Trascrivi la voce qui intorno", function () { clicca("btnVoce"); }, ""]
+    ]],
+    ["Esporta", [
+      ["Fotogramma", function () { K2("E", { shiftKey: true }); }, "\u21e7E"],
+      ["Clip (entrata\u2192uscita)", function () { clicca("btnTaglia"); }, "T"],
+      "-",
+      ["Sequenza \u00b7 tutti i formati", function () { clicca("seqTutti"); }, "\u2318M"],
+      ["Sequenza \u00b7 solo questo formato", function () { clicca("seqMp4"); }, ""],
+      ["XML per Premiere", function () { clicca("seqXml"); }, ""]
+    ]],
+    ["Finestra", [
+      ["MAM Live", function () { location.href = "mam.html"; }, ""],
+      ["MAM Archivio", function () { location.href = "mam.html?modo=archivio"; }, ""],
+      ["Generatore grafiche", function () { window.open(GEN, "_blank"); }, ""],
+      "-",
+      ["Home Como TV", function () { location.href = "../index.html"; }, ""]
+    ]],
+    ["Aiuto", [
+      ["Comandi da tastiera", function () { fogliettoTasti(); }, "?"]
+    ]]
+  ];
+  function costruisciMenu() {
+    var nav = el("menubar"); if (!nav) return;
+    var aperta = null;
+    function chiudi() { if (aperta) { aperta.t.remove(); aperta.b.classList.remove("aperto"); aperta = null; } }
+    MENU.forEach(function (m) {
+      var b = document.createElement("button"); b.textContent = m[0]; nav.appendChild(b);
+      function apri() {
+        chiudi();
+        var t = document.createElement("div"); t.className = "tendina";
+        t.style.left = b.offsetLeft + "px";
+        m[1].forEach(function (v) {
+          if (v === "-") { t.appendChild(document.createElement("hr")); return; }
+          var d = document.createElement("div");
+          d.innerHTML = "<span>" + v[0] + "</span>" + (v[2] ? "<kbd>" + v[2] + "</kbd>" : "");
+          if (!v[1]) d.className = "spenta";
+          else d.addEventListener("click", function (e) { e.stopPropagation(); chiudi(); v[1](); });
+          t.appendChild(d);
+        });
+        nav.appendChild(t); b.classList.add("aperto"); aperta = { t: t, b: b };
+      }
+      b.addEventListener("click", function (e) { e.stopPropagation(); if (aperta && aperta.b === b) chiudi(); else apri(); });
+      b.addEventListener("mouseenter", function () { if (aperta && aperta.b !== b) apri(); });
+    });
+    document.addEventListener("click", chiudi);
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") chiudi(); });
+  }
+  costruisciMenu();
+
   function fogliettoTasti() {
     var vecchio = el("tasti"); if (vecchio) { vecchio.remove(); return; }
     var d = document.createElement("div");
@@ -2542,11 +2676,13 @@
   }
 
   // ── viste d'archivio ────────────────────────────────────────────
+  // Il progetto, come in Premiere: il MATERIALE (la partita), le SEQUENZE,
+  // e in fondo, chiuse, le ESPORTAZIONI — che sono uscite, non progetto.
   function tuttoIlMateriale() {
     var lista = [];
+    if (REG) lista.push({ t:"partita", o:REG });
+    (SEQS.length ? SEQS : (SEQ ? [SEQ] : [])).forEach(function (q) { lista.push({ t:"hl", o:q }); });
     CLIP.forEach(function (c) { lista.push({ t:"clip", o:c }); });
-    if (REG && REG.integrale === "pronto") lista.push({ t:"integrale", o:REG });
-    if (SEQ) lista.push({ t:"hl", o:SEQ });
     return lista;
   }
   // Il tipo e la forma si sommano: "clip" e "9:16" insieme vogliono dire le
@@ -2585,7 +2721,7 @@
   function destraMateriale() {
     var c = el("bin"), lista = assetVisibili();
     if (!c) return;
-    if (el("nClip")) el("nClip").textContent = lista.length;
+
     if (!lista.length) {
       if (VISTA === "hl" && REG) {
         c.innerHTML = '<div class="vuoto">Nessuna sequenza su questa partita.<br>' +
@@ -2606,19 +2742,33 @@
             .catch(function (e) { dice(e.message); el("btnGenera").disabled = false; });
         });
       } else {
-        c.innerHTML = '<div class="vuoto">Niente con questa linguetta, su questa partita.</div>';
+        c.innerHTML = '<div class="vuoto">Scegli una partita: qui compaiono il materiale e le sequenze.</div>';
       }
       schedaSotto(null); return;
     }
-    var g = document.createElement("div"); g.className = "griglia"; c.innerHTML = ""; c.appendChild(g);
+    c.innerHTML = "";
+    var sezioni = { partita: "Materiale", hl: "Sequenze", clip: "Esportazioni" }, griglie = {};
+    function grigliaDi(t) {
+      if (griglie[t]) return griglie[t];
+      var h = document.createElement("h2"); h.className = "sez";
+      var quanti = lista.filter(function (x) { return x.t === t; }).length;
+      h.innerHTML = sezioni[t] + " <span>" + quanti + "</span>" +
+        (t === "clip" ? '<i class="apri">' + (ESPORTAZIONI_APERTE ? "\u25BE" : "\u25B8") + '</i>' : "");
+      if (t === "clip") { h.style.cursor = "pointer"; h.addEventListener("click", function () { ESPORTAZIONI_APERTE = !ESPORTAZIONI_APERTE; destraMateriale(); }); }
+      c.appendChild(h);
+      var g = document.createElement("div"); g.className = "griglia"; c.appendChild(g);
+      if (t === "clip" && !ESPORTAZIONI_APERTE) g.hidden = true;
+      griglie[t] = g; return g;
+    }
     lista.forEach(function (a, i) {
+      var g = grigliaDi(a.t);
       var fmt = (a.t === "clip" ? a.o.formato : (a.t === "hl" && a.o.export ? a.o.export.formato : "")) || "16:9";
       var dur = a.t === "clip" ? (a.o.durataVera || a.o.durata) + "s"
-              : a.t === "integrale" ? orologio(a.o.durata)
+              : a.t === "partita" ? orologio(a.o.durata)
               : orologio((a.o.pezzi || []).reduce(function (s2, x) { return s2 + (x.fuori - x.dentro); }, 0));
-      var nome = a.t === "clip" ? a.o.titolo : a.t === "integrale" ? "Integrale" : a.o.titolo;
+      var nome = a.o.titolo;
       var d = document.createElement("div");
-      d.className = "scheda" + (i === ASSET ? " scelta" : "");
+      d.className = "scheda" + ((a.t === "hl" && SEQ && a.o.id === SEQ.id) || (a.t === "partita") ? " scelta" : "");
 
       // IL FOTOGRAMMA. Una griglia di rettangoli vuoti non e' un archivio:
       // si dovrebbe leggere ogni titolo per capire che cosa si ha davanti.
@@ -2629,7 +2779,7 @@
         (urlAnte ? "<video class='anteprima' muted preload='none' playsinline></video><span class='cursorino'></span>" : "") +
         "<span class='formato'>" + fmt + "</span>" +
         "<span class='durata'>" + dur + "</span>" +
-        "<span class='fonte'>" + (a.t === "hl" ? "sequenza" : a.t === "integrale" ? "registrazione" : (a.o.tipo || "clip")) + "</span></div>" +
+        "<span class='fonte'>" + (a.t === "hl" ? "sequenza" : a.t === "partita" ? "partita" : (a.o.tipo || "clip")) + "</span></div>" +
         "<div class='testo'><div class='nome'>" + nome + "</div><div class='sotto'>" +
         (a.t === "hl" ? (a.o.pezzi || []).length + " pezzi · " + dur : dur + " · " + fmt) + "</div></div>";
       // HOVER SCRUB, come nel bin di Premiere: si scorre la clip passandoci
@@ -2658,10 +2808,10 @@
       }
       d.addEventListener("click", function () {
         ASSET = i;
-        var suo = a.t === "clip" ? BASE + "/clip/_clip/" + a.o.id + ".mp4"
-                : a.t === "integrale" ? BASE + "/clip/" + a.o.id + "/integrale.mp4"
-                : (a.o.export && a.o.export.stato === "pronto" ? BASE + a.o.export.file : "");
-        if (suo) mostraNelCentro(suo, fmt, nome);
+        if (a.t === "partita") { tornaAlContenuto(); return; }          // la Sorgente torna alla partita
+        if (a.t === "hl") { SEQ = a.o; PROG.i = -1; TL.sel = null; disegnaSequenza(); destraMateriale(); return; }
+        var suo = BASE + "/clip/_clip/" + a.o.id + ".mp4";
+        mostraNelCentro(suo, fmt, nome);
         destraMateriale();
       });
 
@@ -2682,9 +2832,8 @@
         el2.addEventListener("click", function (e) { e.stopPropagation(); });
         az.appendChild(gr); az.appendChild(sc); az.appendChild(el2);
         d.appendChild(az);
-      } else if (a.t !== "clip") {
-        var url2 = a.t === "integrale" ? BASE + "/clip/" + a.o.id + "/integrale.mp4"
-                 : (a.o.export && a.o.export.stato === "pronto" ? BASE + a.o.export.file : "");
+      } else if (a.t === "hl") {
+        var url2 = (a.o.export && a.o.export.stato === "pronto" ? BASE + a.o.export.file : "");
         if (url2) {
           var az2 = document.createElement("div"); az2.className = "comandi";
           var s3 = document.createElement("a"); s3.href = url2 + "?scarica=1"; s3.textContent = "scarica";
@@ -3074,7 +3223,11 @@
       albero();
       if (REG) {
         manda({ tipo:"clip-hl-elenco", reg:REG.id }).then(function (h) {
-          SEQ = (h.seq || [])[0] || null;
+          SEQS = h.seq || [];
+          // la sequenza scelta resta scelta: il giro non la cambia sotto le mani
+          var mia = SEQ && SEQS.filter(function (x) { return x.id === SEQ.id; })[0];
+          // una sequenza appena nata puo' non essere ancora nell'elenco: si tiene
+          SEQ = mia || ((SEQ && SEQ.reg === REG.id) ? SEQ : (SEQS[0] || null));
           if (VISTA === "hl") destraMateriale();
         }).catch(function () {});
       }

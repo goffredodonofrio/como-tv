@@ -1404,6 +1404,21 @@ function hlInserisci(p) {
   return { ok: true, seq: q, pezzo: pezzo.id };
 }
 
+// File > Nuova sequenza: una sequenza vuota, con un nome, sulla partita
+// aperta. Prima nasceva solo al primo pezzo; a volte si vuole cominciare
+// dal titolo, come in Premiere.
+function hlNuova(p) {
+  const r = R.reg[String(p.reg || "")];
+  if (!r) throw new Error("registrazione sconosciuta");
+  const q = { id: nuovoId("s"), reg: r.id,
+    titolo: String(p.titolo || "").slice(0, 160) || ("HL " + r.titolo),
+    pezzi: [], pre: HL_PRE, post: HL_POST, scarto: 0, avvisi: [],
+    creata: Date.now(), chi: String(p.__chi || p.chi || "").slice(0, 40), export: null };
+  R.seq[q.id] = q;
+  scrivi(); annuncia(0, "clip");
+  return { ok: true, seq: q };
+}
+
 // Il Ctrl+K di Premiere: il pezzo si divide dove sta il cursore, e le due
 // meta' restano al loro posto. Serve per togliere il centro di un'azione
 // lunga senza rifare entrata e uscita da capo.
@@ -3344,6 +3359,7 @@ const AZIONI = {
   "clip-hl-pezzo": hlPezzo,
   "clip-hl-dividi": hlDividi,
   "clip-hl-inserisci": hlInserisci,
+  "clip-hl-nuova": hlNuova,
   "clip-hl-aggiungi": hlAggiungi,
   "clip-hl-suggerimento": hlSuggerimento,
   "clip-hl-ordina": hlOrdina,
