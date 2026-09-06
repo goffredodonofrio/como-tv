@@ -2874,6 +2874,9 @@ async function calibraOrologio(rec, rifai) {
   if (orologiAttivi.size >= OROLOGI_INSIEME + 1) throw new Error("troppe letture insieme: riprova fra un minuto");
   orologiAttivi.add(rec);
   orologioAlLavoro = a.partita || rec;
+  // se il materiale cambia durante la lettura, la lettura non vale
+  const firmaMateriale = () => (a.pezzi || []).map((x) => x.chiave).join("|") + "#" + a.kickoff;
+  const firma0 = firmaMateriale();
   try {
     const regione = await s3Regione(a.bucket);
     const vie = {};
@@ -2920,6 +2923,7 @@ async function calibraOrologio(rec, rifai) {
     if (esito.scarto !== null && Math.abs(esito.scarto) > 60) {
       throw new Error("la prova del nove non torna (al 70' legge " + Math.round(c70 / 60) + "')");
     }
+    if (firmaMateriale() !== firma0) throw new Error("il materiale e' cambiato durante la lettura");
     a.orologio = esito;
     scriviArchivio();
     console.log("[clip] cronometro letto: " + (a.partita || rec) + " → fischio a " + esito.inizio1 +
@@ -2954,9 +2958,11 @@ function giraOrologi() {
   }
   const registrando = Object.keys(R.reg).some((k) => R.reg[k].stato === "registra");
   if (registrando) { setTimeout(giraOrologi, 60000); return; }
+  // le durate cambiano il materiale: leggere il cronometro nel frattempo
+  // vuol dire prendere i due fotogrammi da file diversi. Si aspetta che
+  // finiscano (un'ora), e intanto la macchina respira
+  if (CODA_DURATE.length || durateInMoto) { setTimeout(giraOrologi, 60000); return; }
   const rec = CODA_OROLOGI.shift();
-  // se le durate cambiano il materiale dopo la lettura, misuraPartita butta
-  // il cronometro e rimette la partita in testa alla coda: si va avanti
   orologiInMoto++;
   calibraOrologio(rec).then(() => { orologiFatti++; })
     .catch((e) => { orologiFalliti++; console.log("[clip] cronometro non letto (" + rec + "): " + e.message); })
