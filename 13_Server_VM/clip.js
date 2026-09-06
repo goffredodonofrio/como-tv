@@ -3173,8 +3173,28 @@ const ESPN_LEGHE = {
 };
 function legheDi(comp) { return ESPN_LEGHE[String(comp || "").trim()] || []; }
 // le due squadre dal titolo: via risultato, parentesi e sigle audio
+// Gli esonimi: la redazione scrive Salisburgo, Colonia, Lipsia, San Paolo;
+// ESPN scrive Salzburg, Köln, Leipzig, São Paulo. Si traduce prima di cercare.
+const ESONIMI = [
+  ["SALISBURGO", "Salzburg"], ["VIENNA", "Vienna"], ["COLONIA", "Koln"], ["AMBURGO", "Hamburg"], ["FRIBURGO", "Freiburg"],
+  ["MAGONZA", "Mainz"], ["LIPSIA", "Leipzig"], ["AUGUSTA", "Augsburg"], ["STOCCARDA", "Stuttgart"], ["NORIMBERGA", "Nurnberg"],
+  ["FRANCOFORTE", "Frankfurt"], ["BAYERN MONACO", "Bayern Munich"], ["MONACO 1860", "1860 Munich"], ["BRUNSWICK", "Braunschweig"],
+  ["PARIGI", "Paris"], ["MARSIGLIA", "Marseille"], ["NIZZA", "Nice"], ["LILLA", "Lille"], ["TOLOSA", "Toulouse"], ["LIONE", "Lyon"],
+  ["SIVIGLIA", "Sevilla"], ["LISBONA", "Lisbon"], ["ATENE", "Athens"], ["SALONICCO", "Thessaloniki"], ["ZAGABRIA", "Zagreb"],
+  ["SPALATO", "Split"], ["VARSAVIA", "Warsaw"], ["PRAGA", "Prague"], ["BRUGES", "Brugge"], ["ANVERSA", "Antwerp"], ["GAND", "Gent"],
+  ["COPENAGHEN", "Copenhagen"], ["STOCCOLMA", "Stockholm"], ["BASILEA", "Basel"], ["ZURIGO", "Zurich"], ["BERNA", "Bern"],
+  ["GINEVRA", "Geneva"], ["LOSANNA", "Lausanne"], ["ATLETICO MINEIRO", "AtleticoMG"], ["ATHLETICO PARANAENSE", "AthleticoPR"],
+  ["SAN PAOLO", "Sao Paulo"], ["RIAD", "Riyadh"], ["GEDDA", "Jeddah"], ["IL CAIRO", "Cairo"], ["DEP. RIESTRA", "Deportivo Riestra"],
+  ["INDEP. MEDELLIN", "Independiente Medellin"], ["U. DE CHILE", "Universidad de Chile"], ["UNIV. CATOLICA", "Universidad Catolica"],
+  ["HEART OF MIDLOTIAN", "Hearts"], ["HEART OF MIDLOTHIAN", "Hearts"], ["DUNDEE UTD", "Dundee United"], ["KILMARNOK", "Kilmarnock"]
+];
+function conEsonimi(t) {
+  let u = String(t || "");
+  ESONIMI.forEach(([ita, eng]) => { u = u.replace(new RegExp("\\b" + ita.replace(/[.]/g, "\\.") + "\\b", "gi"), eng); });
+  return u;
+}
 function squadreDi(partita) {
-  const t = String(partita || "").replace(/\[[^\]]*\]|\(.*?\)/g, " ").replace(/\s\d+\s*-\s*\d+.*$/, "").trim();
+  const t = conEsonimi(String(partita || "").replace(/\[[^\]]*\]|\(.*?\)/g, " ").replace(/\s\d+\s*-\s*\d+.*$/, "")).trim();
   return t.split(/\s+vs\.?\s+|\s+-\s+|-/i).map((x) => ({
     tutto: nomeSemplice(x),
     // le parole lunghe del nome: "DEP. RIESTRA" trova "Deportivo Riestra" per "riestra"
@@ -3227,8 +3247,14 @@ async function espnTrova(rec) {
                                           dt: Math.abs((Date.parse(ev.date) || 0) - t0) }))
         .filter((x) => x.n >= 1 && x.dt < 30 * 3600000)
         .sort((x, y) => (y.n - x.n) || (x.dt - y.dt));
-      // tutte e due le squadre: una sola combacia anche con la partita sbagliata
+      // tutte e due le squadre; una sola basta se quel giorno, in quella lega,
+      // quella squadra gioca in una partita sola (l'altra e' scritta male)
       if (buoni.length && buoni[0].n >= Math.min(2, squadre.length)) { trovato = buoni[0].ev; legaTrovata = lega; break; }
+      if (buoni.length && buoni[0].n === 1) {
+        const sq = squadre.find((x) => squadraCombacia(x, buoni[0].ev));
+        const altre = eventi.filter((ev) => ev !== buoni[0].ev && squadraCombacia(sq, ev));
+        if (!altre.length && buoni[0].dt < 6 * 3600000) { trovato = buoni[0].ev; legaTrovata = lega; break; }
+      }
     }
     if (trovato) break;
   }
@@ -3314,6 +3340,15 @@ function espnInCoda(rifai) {
 }
 // I fatti come risultati di ricerca: stessa forma delle azioni degli
 // appunti, con "fonte: espn", cosi' in pagina stanno nella stessa lista
+const TIPI_ESPN = [
+  [/own goal/i, "Autogol"], [/penalty.*(missed|saved)/i, "Rigore sbagliato"], [/penalty/i, "Rigore"],
+  [/goal.*(cancel|disallow)|no goal|var/i, "Gol annullato (VAR)"], [/goal/i, "Gol"],
+  [/yellow/i, "Ammonizione"], [/red/i, "Espulsione"], [/substitution/i, "Sostituzione"]
+];
+function tipoItaliano(tipo) {
+  for (const [re, ita] of TIPI_ESPN) if (re.test(tipo || "")) return ita;
+  return tipo || "";
+}
 function cercaNeiFatti(q, limite) {
   const fuori = [];
   Object.keys(ESPN).forEach((rec) => {
@@ -3324,14 +3359,17 @@ function cercaNeiFatti(q, limite) {
     if (!quandoTorna(Date.parse(quando), q)) return;
     const capo = comeSiCerca([info.partita, info.competizione, dataScritta(Date.parse(quando))]);
     e.eventi.forEach((x) => {
-      const testo = comeSiCerca([x.tipo, x.giocatore, x.squadra, x.testo, capo]);
+      const ita = tipoItaliano(x.tipo);
+      const testo = comeSiCerca([ita, x.tipo, x.giocatore, x.squadra, x.testo, capo,
+                                 /Gol/.test(ita) ? "goal rete segna" : "", /Espuls/.test(ita) ? "rosso cartellino" : "",
+                                 /Ammon/.test(ita) ? "giallo cartellino" : "", /Sostit/.test(ita) ? "cambio" : ""]);
       if (!tutteDentro(testo, q.parole)) return;
       const d = (x.min - (x.periodo === 2 ? 45 : 0)) * 60 + x.stopp * 60;
       const dove = secondoNelFile(rec, { s: x.periodo, d: Math.max(0, d) });
       fuori.push({
         rec: rec, partita: info.partita || e.nome, competizione: info.competizione || "", quando: quando,
-        minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), tempo: x.periodo, tipo: x.tipo,
-        testo: [x.tipo, x.giocatore, x.squadra ? "(" + x.squadra + ")" : ""].filter(Boolean).join(" "),
+        minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), tempo: x.periodo, tipo: ita,
+        testo: [ita, x.giocatore, x.squadra ? "(" + x.squadra + ")" : ""].filter(Boolean).join(" "),
         hl: false, fonte: "espn", archivio: !!ARCHIVIO[rec], dove: (dove || {}).secondi || null,
         pezzo: (dove || {}).pezzo || 0, d: Math.max(0, d),
         orologio: !!(ARCHIVIO[rec] && ARCHIVIO[rec].orologio)
