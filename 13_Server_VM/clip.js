@@ -2314,6 +2314,12 @@ function rinominaMaterialeArchivio() {
   Object.keys(R.reg).forEach((k) => {
     const r = R.reg[k]; if (!r.arch) return;
     const a = ARCHIVIO[r.arch.rec]; if (!a) return;
+    // se le durate hanno tolto il file di questa voce (un doppione, un taglio)
+    // la voce non ha piu' materiale dietro: se non ha clip, se ne va
+    const pz = a.pezzi || [];
+    if (pz.length && !pz.some((x) => x.chiave === r.arch.chiave) && !Object.keys(R.clip).some((c) => R.clip[c].reg === r.id)) {
+      delete R.reg[k]; n++; return;
+    }
     const t = titoloMateriale(a, r.arch.pezzo || 0);
     if (t !== r.titolo) { r.titolo = t; n++; }
   });
@@ -2575,7 +2581,7 @@ function trascriviChiedi(p) {
 // non scappa, la partita si'.
 function giraLaCoda() {
   if (voceAlLavoro || !CODA_VOCE.length) return;
-  const registrando = Object.keys(R.reg).some((k) => R.reg[k].stato === "registra");
+  const registrando = registrandoDavvero();
   if (registrando) { setTimeout(giraLaCoda, 60000); return; }
   voceAlLavoro = CODA_VOCE.shift();
   trascriviDavvero(voceAlLavoro)
@@ -2987,6 +2993,16 @@ async function calibraOrologio(rec, rifai) {
 // Tutte le partite con appunti e materiale, una alla volta, mai mentre si
 // registra: mille partite sono una notte di lavoro e qualche decina di giga
 // dal bucket. Si accende a mano (clip-archivio-orologi).
+// "Registrando davvero": un flusso che arriva. Un ascolto aperto in attesa
+// (zero byte) o un'anteprima non fermano le code di notte.
+function registrandoDavvero() {
+  return Object.keys(R.reg).some((k) => {
+    const r = R.reg[k];
+    if (r.stato !== "registra" || r.guarda) return false;
+    if (r.ascolto && durataRegistrata(r.id) === 0) return false;
+    return true;
+  });
+}
 const CODA_OROLOGI = [];
 let orologiFatti = 0, orologiFalliti = 0, orologiRipassati = false, orologiInMoto = 0, orologiRimandati = 0;
 const OROLOGI_INSIEME = 2;          // due partite alla volta: ffmpeg e tesseract pesano poco, S3 aspetta
@@ -3004,7 +3020,7 @@ function giraOrologi() {
     if (!orologiInMoto && orologiFalliti && !orologiRipassati) { orologiRipassati = true; orologiInCoda(); }
     return;
   }
-  const registrando = Object.keys(R.reg).some((k) => R.reg[k].stato === "registra");
+  const registrando = registrandoDavvero();
   if (registrando) { setTimeout(giraOrologi, 60000); return; }
   // le durate cambiano il materiale: leggere il cronometro nel frattempo
   // vuol dire prendere i due fotogrammi da file diversi. Si aspetta che
@@ -3088,7 +3104,7 @@ async function misuraPartita(rec) {
 }
 function giraDurate() {
   if (durateInMoto >= DURATE_INSIEME || !CODA_DURATE.length) { if (!CODA_DURATE.length && !durateInMoto) scriviArchivio(); return; }
-  const registrando = Object.keys(R.reg).some((k) => R.reg[k].stato === "registra");
+  const registrando = registrandoDavvero();
   if (registrando) { setTimeout(giraDurate, 60000); return; }
   const rec = CODA_DURATE.shift();
   durateInMoto++;
