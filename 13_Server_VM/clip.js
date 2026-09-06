@@ -2931,6 +2931,16 @@ async function calibraOrologio(rec, rifai) {
     }
     if (firmaMateriale() !== firma0) throw new Error("il materiale e' cambiato durante la lettura");
     a.orologio = esito;
+    // le partite gia' aperte nel progetto imparano il fischio vero: il fermo
+    // immagine, l'Info e la miniatura si rifanno sul calcio d'inizio letto
+    const kick0 = (a.kickoff !== null && a.kickoff !== undefined) ? a.kickoff : null;
+    if (kick0 !== null) Object.keys(R.reg).forEach((k) => {
+      const r = R.reg[k];
+      if (!r.arch || r.arch.rec !== rec || (r.arch.pezzo || 0) !== 0) return;
+      r.kickoff = { "1": Math.max(0, Math.round(kick0 + esito.inizio1)), "2": Math.max(0, Math.round(kick0 + esito.inizio2)) };
+      r.mini = ""; miniaturaViva(r).catch(() => {});
+    });
+    scrivi();
     scriviArchivio();
     console.log("[clip] cronometro letto: " + (a.partita || rec) + " → fischio a " + esito.inizio1 +
                 "s dalla stima, ripresa a " + esito.inizio2 + "s" + (esito.verificato ? " ✓" : " (scarto " + esito.scarto + ")"));
@@ -3890,6 +3900,8 @@ async function miniaturaViva(r) {
     // prendere un fotogramma dieci minuti dopo il fischio, che e' gioco
     // sicuro e non il cartello del prepartita
     da = viaArchivio(r);
+    // dieci minuti dopo il fischio VERO, se il cronometro e' stato letto:
+    // l'inizio della registrazione e' il "coming soon", non la partita
     quando = ((r.kickoff && r.kickoff["1"]) || 300) + 600;
   }
   if (!da) { r.miniInCorso = false; return; }

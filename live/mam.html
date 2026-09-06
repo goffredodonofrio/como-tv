@@ -3238,6 +3238,19 @@
       // sopra, senza aprirla. Il video si carica solo alla prima passata.
       if (urlAnte) {
         var box = d.querySelector(".mini"), vid = box.querySelector("video.anteprima"), cur = box.querySelector(".cursorino");
+        // Su un file da sette giga che sta su S3 ogni salto costa mezzo
+        // secondo, e un salto nuovo annulla quello in corso: chiederne uno a
+        // ogni pixel voleva dire non vederne mai nessuno. Si salta uno alla
+        // volta, e quando il salto e' finito si va dove sta il mouse ADESSO.
+        var voluto = null, salto = false;
+        var vai = function () {
+          if (salto || voluto === null || !vid.duration) return;
+          salto = true; var t = voluto; voluto = null;
+          try { vid.currentTime = t; } catch (er) { salto = false; }
+        };
+        vid.addEventListener("seeked", function () { salto = false; vai(); });
+        vid.addEventListener("loadedmetadata", vai);
+        vid.addEventListener("error", function () { salto = false; });
         box.addEventListener("mouseenter", function () {
           if (!vid.src) { vid.src = urlAnte; vid.load(); }
           box.classList.add("scorro");
@@ -3245,9 +3258,9 @@
         box.addEventListener("mousemove", function (e) {
           var r = box.getBoundingClientRect(), q = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
           cur.style.left = (q * 100) + "%";
-          if (vid.duration) { try { vid.currentTime = q * vid.duration; } catch (er) {} }
+          if (vid.duration) { voluto = q * vid.duration; vai(); }
         });
-        box.addEventListener("mouseleave", function () { box.classList.remove("scorro"); });
+        box.addEventListener("mouseleave", function () { box.classList.remove("scorro"); voluto = null; });
       }
       // la partita si prende dal Materiale e si lascia cadere in timeline:
       // entra l'intervallo entrata→uscita se e' segnato, altrimenti venti
