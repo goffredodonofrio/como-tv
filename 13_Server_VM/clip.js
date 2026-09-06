@@ -1070,22 +1070,23 @@ function tempoInTesta(s) {
   if (/^\d{1,2}\s*[-–—]\s*\d{1,2}(?!\d)/.test(t)) return null;   // e' un punteggio
   let m = /^(\d{1,2}):(\d{2})\b\s*['’]?\s*(.*)$/.exec(t);
   if (m) return { min: +m[1], sec: +m[2], stopp: 0, resto: m[3].trim() };
-  m = /^(\d{1,3})(?:\s*\+\s*(\d{1,2}))?\s*(?:['’](?:\s*(\d{1,2})\s*["”]?)?)?\s*(.*)$/.exec(t);
+  // il recupero puo' stare prima dell'apice (45+2') o dopo (90'+3)
+  m = /^(\d{1,3})(?:\s*\+\s*(\d{1,2}))?\s*(?:['’](?:\s*\+\s*(\d{1,2}))?(?:\s*(\d{1,2})\s*["”]?)?)?\s*(.*)$/.exec(t);
   if (!m) return null;
-  const resto = (m[4] || "").replace(/^[\s\-–:.]+/, "");
-  if (!m[2] && !m[3] && !/^['’]/.test(t.slice(String(m[1]).length)) && !resto) return null;
-  return { min: +m[1], sec: m[3] ? +m[3] : 0, stopp: m[2] ? +m[2] : 0, resto: resto };
+  const resto = (m[5] || "").replace(/^[\s\-–:.]+/, "");
+  if (!m[2] && !m[3] && !m[4] && !/^['’]/.test(t.slice(String(m[1]).length)) && !resto) return null;
+  return { min: +m[1], sec: m[4] ? +m[4] : 0, stopp: m[2] ? +m[2] : (m[3] ? +m[3] : 0), resto: resto };
 }
 
 function leggiAppunti(testo, durataTempo) {
   const dur = durataTempo || 45;
   const fuori = [];
-  let sezione = 1;
+  let sezione = 1, titoli = 0;
   String(testo || "").split("\n").forEach((grezza) => {
     if (!grezza.trim()) return;
     const pulita = grezza.replace(/^[\s>*_#\-]+/, "").replace(/[*_]+$/, "").trim();
     const sez = sezioneDi(pulita);
-    if (sez !== false) { sezione = sez; return; }
+    if (sez !== false) { sezione = sez; titoli++; return; }
     if (sezione === null) return;                       // dentro rating o rigori
     const hl = /\\\*|(^|\s)\*(?!\*)/.test(grezza);      // il marcatore della redazione
     const grassetto = grezza.indexOf("**") >= 0;
@@ -1105,9 +1106,17 @@ function leggiAppunti(testo, durataTempo) {
       minuto: t.stopp ? (t.min + "+" + t.stopp) : (t.min + "'"),
       testo: t.resto || riga,
       tipo: tipoDellaRiga(t.resto || riga),
-      hl: hl, forte: grassetto
+      hl: hl, forte: grassetto, minutoVero: t.min, secVero: t.sec, stoppVero: t.stopp
     });
   });
+  // chi non scrive "secondo tempo" lo dice con i numeri: dal 46' in poi e'
+  // ripresa, e il tempo dentro il tempo si conta da li'
+  if (!titoli) fuori.forEach((r) => {
+    if (r.sezione === 1 && r.minutoVero >= 46) {
+      r.sezione = 2; r.dentroTempo = (r.minutoVero - dur) * 60 + r.secVero + r.stoppVero * 60;
+    }
+  });
+  fuori.forEach((r) => { delete r.minutoVero; delete r.secVero; delete r.stoppVero; });
   return fuori;
 }
 
@@ -1930,7 +1939,9 @@ let SORG_CACHE = { quando: 0, dati: null };
 
 function atLeggi(url) {
   return new Promise((si, no) => {
-    const tok = process.env.COMOTV_AIRTABLE_PAT || "";
+    // la base storica ha una chiave sua: si sceglie dall'indirizzo
+    const storica = url.indexOf("/" + AT_STORICA + "/") >= 0;
+    const tok = (storica && process.env.COMOTV_AIRTABLE_PAT_STORICO) || process.env.COMOTV_AIRTABLE_PAT || "";
     if (!tok) { no(new Error("manca la chiave di Airtable sul ponte (COMOTV_AIRTABLE_PAT)")); return; }
     const req = https.get(url, { headers: { Authorization: "Bearer " + tok } }, (res) => {
       let t = "";
@@ -2334,8 +2345,20 @@ async function archivioScandaglia(p) {
     if (offset) q.set("offset", offset);
     const j = await atLeggi(base + "?" + q.toString());
     (j.records || []).forEach((rec) => {
+      const f = rec.fields || {};
+      aggancia(rec.id, f["Partita"] || "", f["Competizione"] || "", f["Data | Orario"] || "");
+    });
+    offset = j.offset || "";
+  } while (offset);
+  // ...e gli eventi della base storica, letti dall'ultimo import
+  STORICI.forEach((e) => aggancia(e.id, e.partita, e.competizione, e.quando));
+
+  function aggancia(recId, nomePartita, nomeComp, quandoIso) {
+    {
       tornate++;
-      const f = rec.fields || {}, quando = Date.parse(f["Data | Orario"] || "");
+      const f = { "Partita": nomePartita, "Competizione": nomeComp, "Data | Orario": quandoIso };
+      const rec = { id: recId };
+      const quando = Date.parse(quandoIso || "");
       if (!quando) return;
       const candidati = [];
       [0, -1, 1].forEach((salto) => {
@@ -2373,9 +2396,8 @@ async function archivioScandaglia(p) {
         variante: "", giorno: meglio.giorno, dove: meglio.dove,
         fonte: scelta.fonte, pezzi: pezzi, kickoff: kick,
         sicuro: punteggio >= 0.8 && scelta.fonte !== "unico", quando: f["Data | Orario"] };
-    });
-    offset = j.offset || "";
-  } while (offset);
+    }
+  }
 
   // 3) Le partite che Airtable non conosce. La base parte da meta' 2025, il
   //    secchio dal 2023: in mezzo ci sono migliaia di cartelle con dentro
@@ -2544,7 +2566,12 @@ function nomiDaSuggerire(r) {
       });
     });
   }
-  const lista = [...parole].slice(0, 60).join(", ");
+  // le rose di ESPN hanno la grafia ufficiale: sono i nomi migliori
+  const e = ESPN[r.evento];
+  if (e && e.rose) Object.keys(e.rose).forEach((sq) => e.rose[sq].forEach((n) => {
+    const cognome = String(n).split(/\s+/).pop(); if (cognome && cognome.length > 2) parole.add(cognome);
+  }));
+  const lista = [...parole].slice(0, 80).join(", ");
   return lista ? ("Telecronaca di calcio. Nomi: " + lista + ".") : "";
 }
 
@@ -2686,6 +2713,66 @@ async function appuntiImporta(p) {
   return { ok: true, partiteViste: viste, partiteConAzioni: conRighe, azioni: righe };
 }
 
+// ── LA BASE STORICA (2021 → ottobre 2025) ─────────────────────────
+//  Prima della base di oggi ce n'era un'altra, con tremilaseicento partite
+//  e gli stessi appunti per tempo. Il MAM non la sapeva. Si legge per id
+//  di campo (i nomi non sono esposti), si tiene in appunti.json con le
+//  altre e in storici.json come elenco di eventi da agganciare a S3.
+const AT_STORICA = "app3Q50LflohJszRj", AT_STORICA_TAB = "tblNrLWnDRU6aHtkF";
+const ST = { partita: "fldmjmdjDuLYA0YZj", giorno: "fld6wMroEYwLGEnAW", ora: "fldXzEfFf4R42Uy5W",
+             competizione: "fldzTqQ1ikWxZx2Ts", telecronista: "fldOECoJujTvlZEwc", appunti: "fldy0ecGL4j9HtpQX" };
+let STORICI = [];
+function fileStorici() { return path.join(DIR, "storici.json"); }
+function leggiStorici() { try { STORICI = JSON.parse(fs.readFileSync(fileStorici(), "utf8")) || []; } catch (e) { STORICI = []; } }
+// la data e' un giorno e l'ora un testo "20:45": insieme fanno l'orario di
+// Roma, che e' quello che serve per leggere l'ora nel nome del file
+function quandoStorico(giorno, ora) {
+  const m = /^(\d{1,2})[:.](\d{2})/.exec(String(ora || "").trim());
+  if (!giorno) return "";
+  const hh = m ? +m[1] : 18, mm = m ? +m[2] : 0;
+  const locale = new Date(giorno + "T" + String(hh).padStart(2, "0") + ":" + String(mm).padStart(2, "0") + ":00");
+  // il fuso di Roma: la VM sta in UTC, quindi si corregge a mano (+1 o +2)
+  const sRoma = new Date(locale.getTime()).toLocaleString("en-GB", { timeZone: "Europe/Rome", hour12: false });
+  const mr = /(\d{2}):(\d{2})/.exec(sRoma);
+  const scarto = mr ? ((+mr[1] * 60 + +mr[2]) - (hh * 60 + mm)) : 0;
+  const norm = ((scarto + 720) % 1440) - 720;
+  return new Date(locale.getTime() - norm * 60000).toISOString();
+}
+async function appuntiStoriciImporta(p) {
+  const base = "https://api.airtable.com/v0/" + AT_STORICA + "/" + AT_STORICA_TAB;
+  let offset = "", viste = 0, conRighe = 0, righe = 0, giri = 0;
+  const eventi = [];
+  do {
+    const q = new URLSearchParams({ pageSize: "100", returnFieldsByFieldId: "true" });
+    if (offset) q.set("offset", offset);
+    const j = await atLeggi(base + "?" + q.toString());
+    (j.records || []).forEach((rec) => {
+      const f = rec.fields || {};
+      const partita = String(f[ST.partita] || "").replace(/\s+/g, " ").trim();
+      const quando = quandoStorico(f[ST.giorno], f[ST.ora]);
+      if (!partita || !quando) return;
+      viste++;
+      const comp = (f[ST.competizione] && f[ST.competizione].name) || f[ST.competizione] || "";
+      const tele = (f[ST.telecronista] && f[ST.telecronista].name) || f[ST.telecronista] || "";
+      eventi.push({ id: rec.id, partita: partita, competizione: String(comp).trim(), quando: quando });
+      const note = leggiAppunti(f[ST.appunti] || "", 45);
+      if (!note.length) { if (APPUNTI[rec.id] && APPUNTI[rec.id].fonte === "storico") delete APPUNTI[rec.id]; return; }
+      conRighe++; righe += note.length;
+      APPUNTI[rec.id] = {
+        partita: partita, competizione: String(comp).trim(), quando: quando, fonte: "storico",
+        telecronista: String(tele).trim(),
+        righe: note.map((n) => ({ m: n.minuto, t: n.tipo, x: n.testo.slice(0, 180), s: n.sezione, d: n.dentroTempo, hl: n.hl ? 1 : 0 }))
+      };
+    });
+    offset = j.offset || "";
+  } while (offset && ++giri < 60);
+  STORICI = eventi;
+  try { fs.writeFileSync(fileStorici(), JSON.stringify(STORICI)); } catch (e) {}
+  scriviArchivioAppunti();
+  console.log("[clip] base storica: " + viste + " partite, " + conRighe + " con appunti, " + righe + " righe");
+  return { ok: true, partiteViste: viste, partiteConAzioni: conRighe, azioni: righe };
+}
+
 // Dove cade un appunto dentro il file d'archivio. Il primo tempo e' una
 // somma semplice; il secondo passa per l'intervallo, che dura quindici
 // minuti quando va bene e non lo sa nessuno con precisione. Si dice che
@@ -2777,12 +2864,15 @@ async function leggiOrologioSicuro(fascia, t) {
 // e' cominciata la partita, uno nel secondo dice dove e' cominciata la
 // ripresa. Un terzo fotogramma, al 70', controlla che il conto torni.
 let orologioAlLavoro = null;
+const orologiAttivi = new Set();     // le partite in lettura in questo momento (la coda piu' una a domanda)
 async function calibraOrologio(rec, rifai) {
   const a = ARCHIVIO[rec];
   if (!a) throw new Error("questa partita non e' nell'indice dell'archivio");
   if (a.orologio && !rifai) return a.orologio;
   if (!tesseractCe()) throw new Error("sulla macchina manca tesseract: il cronometro non si puo' leggere");
-  if (orologioAlLavoro) throw new Error("sto gia' leggendo il cronometro di " + orologioAlLavoro);
+  if (orologiAttivi.has(rec)) throw new Error("sto gia' leggendo il cronometro di " + (a.partita || rec));
+  if (orologiAttivi.size >= OROLOGI_INSIEME + 1) throw new Error("troppe letture insieme: riprova fra un minuto");
+  orologiAttivi.add(rec);
   orologioAlLavoro = a.partita || rec;
   try {
     const regione = await s3Regione(a.bucket);
@@ -2835,28 +2925,43 @@ async function calibraOrologio(rec, rifai) {
     console.log("[clip] cronometro letto: " + (a.partita || rec) + " → fischio a " + esito.inizio1 +
                 "s dalla stima, ripresa a " + esito.inizio2 + "s" + (esito.verificato ? " ✓" : " (scarto " + esito.scarto + ")"));
     return esito;
-  } finally { orologioAlLavoro = null; }
+  } finally {
+    orologiAttivi.delete(rec);
+    const altro = Array.from(orologiAttivi)[0];
+    orologioAlLavoro = altro ? ((ARCHIVIO[altro] || {}).partita || altro) : null;
+  }
 }
 
 // Tutte le partite con appunti e materiale, una alla volta, mai mentre si
 // registra: mille partite sono una notte di lavoro e qualche decina di giga
 // dal bucket. Si accende a mano (clip-archivio-orologi).
 const CODA_OROLOGI = [];
-let orologiFatti = 0, orologiFalliti = 0, orologiRipassati = false;
+let orologiFatti = 0, orologiFalliti = 0, orologiRipassati = false, orologiInMoto = 0, orologiRimandati = 0;
+const OROLOGI_INSIEME = 2;          // due partite alla volta: ffmpeg e tesseract pesano poco, S3 aspetta
+// prima il Como, poi le partite piu' recenti: e' l'ordine in cui servono
+function prioritaPartita(rec) {
+  const a = ARCHIVIO[rec] || {};
+  const como = /\bCOMO\b/i.test(a.partita || "") ? 0 : 1;
+  return como * 1e13 + (1e13 - (Date.parse(a.quando) || 0));
+}
 function giraOrologi() {
-  if (orologioAlLavoro) return;
+  if (orologiInMoto >= OROLOGI_INSIEME) return;
   // a coda finita, le partite non lette si ritentano una volta: un sondaggio
   // caduto su un replay o su una grafica spenta la seconda volta cade altrove
   if (!CODA_OROLOGI.length) {
-    if (orologiFalliti && !orologiRipassati) { orologiRipassati = true; orologiInCoda(); }
+    if (!orologiInMoto && orologiFalliti && !orologiRipassati) { orologiRipassati = true; orologiInCoda(); }
     return;
   }
   const registrando = Object.keys(R.reg).some((k) => R.reg[k].stato === "registra");
   if (registrando) { setTimeout(giraOrologi, 60000); return; }
   const rec = CODA_OROLOGI.shift();
+  // se le durate cambiano il materiale dopo la lettura, misuraPartita butta
+  // il cronometro e rimette la partita in testa alla coda: si va avanti
+  orologiInMoto++;
   calibraOrologio(rec).then(() => { orologiFatti++; })
     .catch((e) => { orologiFalliti++; console.log("[clip] cronometro non letto (" + rec + "): " + e.message); })
-    .then(() => setTimeout(giraOrologi, 500));
+    .then(() => { orologiInMoto--; setTimeout(giraOrologi, 500); });
+  setTimeout(giraOrologi, 3000);       // e intanto parte la seconda
 }
 function orologiInCoda() {
   if (!CODA_OROLOGI.length) orologiRipassati = false;
@@ -2867,8 +2972,87 @@ function orologiInCoda() {
     if (!(APPUNTI[rec].righe || []).length) return;
     CODA_OROLOGI.push(rec);
   });
+  CODA_OROLOGI.sort((x, y) => prioritaPartita(x) - prioritaPartita(y));
   giraOrologi();
   return CODA_OROLOGI.length;
+}
+
+// ── LE DURATE MISURATE ─────────────────────────────────────────────
+//  Il peso di un file dice poco: 3,3 GB sono un tempo o una partita intera
+//  a bitrate basso. ffprobe legge l'indice del file (qualche MB) e dice i
+//  minuti. Con i minuti la scelta del materiale si fa da sola: un file da
+//  cento minuti in su e' la partita intera e basta lui; due da 45-75 sono i
+//  due tempi; sotto i 35 e' un taglio di regia e si scarta, se c'e' altro.
+function durataFile(via) {
+  return new Promise((ok) => {
+    execFile("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", via],
+      { timeout: 90000 }, (e, so) => {
+        const sec = parseFloat(String(so || "").trim());
+        ok(e || !isFinite(sec) ? null : Math.round(sec / 60 * 10) / 10);
+      });
+  });
+}
+const CODA_DURATE = [];
+let durateInMoto = 0, durateFatte = 0, durateFallite = 0, durateCambiate = 0, durateDaScrivere = 0;
+const DURATE_INSIEME = 2;
+async function misuraPartita(rec) {
+  const a = ARCHIVIO[rec];
+  if (!a) return;
+  const regione = await s3Regione(a.bucket);
+  const pezzi = (a.pezzi && a.pezzi.length) ? a.pezzi : [{ chiave: a.chiave, peso: a.peso, file: (a.chiave || "").split("/").pop() }];
+  for (const x of pezzi) {
+    if (x.minuti !== undefined && x.minuti !== null) continue;
+    x.minuti = await durataFile(firmaConRegione(regione, x.chiave, {}, 3600, a.bucket));
+  }
+  const misurati = pezzi.filter((x) => x.minuti);
+  const intere = misurati.filter((x) => x.minuti >= 100);
+  const tempi = misurati.filter((x) => x.minuti >= 40 && x.minuti < 100);
+  let nuovi = pezzi, fonte = a.fonte;
+  if (intere.length) {
+    // la piu' lunga: se sono due uguali (la partita salvata due volte), una basta
+    nuovi = [intere.slice().sort((x, y) => y.minuti - x.minuti)[0]]; fonte = "intero";
+  } else if (tempi.length >= 2) {
+    nuovi = tempi.slice().sort((x, y) => ((x.da === null || x.da === undefined) ? 0 : x.da) - ((y.da === null || y.da === undefined) ? 0 : y.da)); fonte = "pezzi";
+  } else if (tempi.length === 1 && pezzi.length > 1) {
+    // un tempo solo e dei tagli: si tiene il tempo, si lasciano i tagli sotto i 35'
+    nuovi = pezzi.filter((x) => !x.minuti || x.minuti >= 35); fonte = "pezzi";
+  }
+  const prima = pezzi.map((x) => x.chiave).join("|"), dopo = nuovi.map((x) => x.chiave).join("|");
+  if (prima !== dopo) {
+    const capoCambiato = nuovi[0].chiave !== pezzi[0].chiave;
+    a.pezzi = nuovi; a.chiave = nuovi[0].chiave; a.peso = nuovi[0].peso; a.fonte = fonte;
+    if (capoCambiato) {
+      a.kickoff = a.quando ? kickoffNelFile(nuovi[0].file, Date.parse(a.quando)) : a.kickoff;
+      if (a.orologio) { delete a.orologio; if (CODA_OROLOGI.indexOf(rec) < 0 && APPUNTI[rec]) CODA_OROLOGI.unshift(rec); }
+    }
+    durateCambiate++;
+    console.log("[clip] durate: " + (a.partita || rec) + " → " + pezzi.length + " file → " + nuovi.length + " (" + fonte + ": " + nuovi.map((x) => x.minuti + "'").join(" + ") + ")");
+  }
+  a.misurato = new Date().toISOString();
+  if (++durateDaScrivere >= 20) { durateDaScrivere = 0; scriviArchivio(); }
+}
+function giraDurate() {
+  if (durateInMoto >= DURATE_INSIEME || !CODA_DURATE.length) { if (!CODA_DURATE.length && !durateInMoto) scriviArchivio(); return; }
+  const registrando = Object.keys(R.reg).some((k) => R.reg[k].stato === "registra");
+  if (registrando) { setTimeout(giraDurate, 60000); return; }
+  const rec = CODA_DURATE.shift();
+  durateInMoto++;
+  misuraPartita(rec).then(() => { durateFatte++; })
+    .catch((e) => { durateFallite++; console.log("[clip] durate non misurate (" + rec + "): " + e.message); })
+    .then(() => { durateInMoto--; setTimeout(giraDurate, 200); });
+  setTimeout(giraDurate, 1500);
+}
+function durateInCoda() {
+  const gia = new Set(CODA_DURATE);
+  Object.keys(ARCHIVIO).forEach((rec) => {
+    const a = ARCHIVIO[rec];
+    if (a.misurato || gia.has(rec)) return;
+    CODA_DURATE.push(rec);
+  });
+  // stesso ordine dei cronometri, cosi' le durate stanno sempre davanti
+  CODA_DURATE.sort((x, y) => prioritaPartita(x) - prioritaPartita(y));
+  giraDurate();
+  return CODA_DURATE.length;
 }
 
 // L'archivio cresce quando qualcuno carica con Cyberduck, e nessuno avvisa
@@ -2921,6 +3105,230 @@ function cercaNellArchivio(q, limite) {
   return fuori.slice(0, limite);
 }
 
+
+// ── I FATTI DI ESPN ─────────────────────────────────────────────────
+//  Gli appunti danno il giudizio; ESPN da' i fatti: gol, rigori,
+//  cartellini, sostituzioni, VAR, con il minuto e il giocatore, e le rose
+//  con la grafia ufficiale. Per ogni partita agganciata all'archivio si
+//  cerca l'evento ESPN (stesso giorno, stesse squadre), si scaricano i
+//  fatti e si tengono in espn.json. Poi diventano risultati di ricerca
+//  come le azioni degli appunti, con il secondo dal cronometro. E sui gol,
+//  dove ci sono tutte e due le fonti, si misura di quanto ogni telecronista
+//  scrive in ritardo.
+let ESPN = {}, RITARDI = {};
+function fileEspn() { return path.join(DIR, "espn.json"); }
+function fileRitardi() { return path.join(DIR, "ritardi.json"); }
+function leggiEspn() {
+  try { ESPN = JSON.parse(fs.readFileSync(fileEspn(), "utf8")) || {}; } catch (e) { ESPN = {}; }
+  try { RITARDI = JSON.parse(fs.readFileSync(fileRitardi(), "utf8")) || {}; } catch (e) { RITARDI = {}; }
+}
+function scriviEspn() {
+  try { fs.writeFileSync(fileEspn() + ".tmp", JSON.stringify(ESPN)); fs.renameSync(fileEspn() + ".tmp", fileEspn()); } catch (e) {}
+  try { fs.writeFileSync(fileRitardi(), JSON.stringify(RITARDI)); } catch (e) {}
+}
+// il bordo di ESPN respinge i client che non conosce: questa forma passa
+function espnPrendi(url) {
+  return new Promise((ok, no) => {
+    const req = https.get(url, { headers: { "User-Agent": "curl/8.5.0 comotv-sonda" } }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); return no(new Error("ESPN risponde " + res.statusCode)); }
+      let b = ""; res.setEncoding("utf8");
+      res.on("data", (d) => { b += d; });
+      res.on("end", () => { try { ok(JSON.parse(b)); } catch (e) { no(new Error("ESPN: risposta non leggibile")); } });
+    });
+    req.on("error", no);
+    req.setTimeout(20000, () => { req.destroy(new Error("ESPN: tempo scaduto")); });
+  });
+}
+// in quali leghe ESPN puo' stare questa partita: la competizione dice
+// quasi tutto, e dove e' ambigua si provano piu' codici
+const ESPN_LEGHE = {
+  "Serie A": ["ita.1"], "Serie B": ["ita.2"], "Coppa Italia": ["ita.coppa_italia"],
+  "Eredivisie": ["ned.1"], "Scottish Premiership": ["sco.1"], "Scottish Championship": ["sco.2"],
+  "Championship": ["sco.2", "eng.2"], "EFL Championship": ["eng.2"],
+  "Scottish Cup": ["sco.tennents"], "Coppa di Scozia": ["sco.tennents"],
+  "Premier Sports Cup": ["sco.cis"], "Scottish League Cup": ["sco.cis"], "Scottish League Cup ": ["sco.cis"],
+  "Saudi Pro League": ["ksa.1"], "King's Cup": ["ksa.kings.cup"],
+  "Bundesliga Austria": ["aut.1"], "Bundesliga Austriaca": ["aut.1"],
+  "Coppa di Germania": ["ger.dfb_pokal"], "DFB-Pokal": ["ger.dfb_pokal"],
+  "Carabao Cup": ["eng.league_cup"], "Coppa di Francia": ["fra.coupe_de_france"], "Coupe de France": ["fra.coupe_de_france"],
+  "Coppa di Portogallo": ["por.taca.portugal"], "Taça de Portugal": ["por.taca.portugal"],
+  "Copa Libertadores": ["conmebol.libertadores"], "Copa Sudamericana": ["conmebol.sudamericana"],
+  "Recopa": ["conmebol.recopa"], "Recopa Sudamericana": ["conmebol.recopa"],
+  "LPF Argentina": ["arg.1"], "Liga Profesional": ["arg.1"], "Clausura Liga Profesional": ["arg.1"],
+  "Apertura Liga Profesional": ["arg.1"], "Copa de la Liga Profesional": ["arg.1"],
+  "Super League Grecia": ["gre.1"], "Brasileirao": ["bra.1"], "Copa America": ["conmebol.america"],
+  "Como 1907 | Prima Squadra": ["ita.1", "ita.coppa_italia", "ita.2"]
+};
+function legheDi(comp) { return ESPN_LEGHE[String(comp || "").trim()] || []; }
+// le due squadre dal titolo: via risultato, parentesi e sigle audio
+function squadreDi(partita) {
+  const t = String(partita || "").replace(/\[[^\]]*\]|\(.*?\)/g, " ").replace(/\s\d+\s*-\s*\d+.*$/, "").trim();
+  return t.split(/\s+vs\.?\s+|\s+-\s+|-/i).map((x) => ({
+    tutto: nomeSemplice(x),
+    // le parole lunghe del nome: "DEP. RIESTRA" trova "Deportivo Riestra" per "riestra"
+    parole: x.split(/[^A-Za-zÀ-ÿ]+/).map((w) => nomeSemplice(w)).filter((w) => w.length >= 4 && !/^(real|club|atletico|deportivo|sporting|united|city|town|athletic|football)$/.test(w))
+  })).filter((x) => x.tutto.length >= 3);
+}
+function squadraCombacia(nostra, ev) {
+  const nomi = [];
+  ((ev.competitions || [])[0] || {}).competitors && ev.competitions[0].competitors.forEach((c) => {
+    const tm = c.team || {};
+    [tm.displayName, tm.shortDisplayName, tm.name, tm.location, tm.abbreviation].forEach((n) => { if (n) nomi.push(nomeSemplice(n)); });
+  });
+  [ev.name, ev.shortName].forEach((n) => { if (n) nomi.push(nomeSemplice(n)); });
+  if (nomi.some((n) => n.length >= 4 && (n.indexOf(nostra.tutto) >= 0 || nostra.tutto.indexOf(n) >= 0))) return true;
+  return nostra.parole.some((w) => nomi.some((n) => n.indexOf(w) >= 0));
+}
+const espnCache = {};
+async function espnScoreboard(lega, giorno) {
+  const k = lega + "|" + giorno;
+  if (espnCache[k]) return espnCache[k];
+  const d = await espnPrendi("https://site.api.espn.com/apis/site/v2/sports/soccer/" + lega + "/scoreboard?dates=" + giorno + "&limit=200");
+  espnCache[k] = d.events || [];
+  if (Object.keys(espnCache).length > 400) Object.keys(espnCache).slice(0, 200).forEach((x) => delete espnCache[x]);
+  return espnCache[k];
+}
+function minutoEspn(v) {
+  const m = /(\d{1,3})'?\s*(?:\+\s*(\d{1,2}))?/.exec(String(v || ""));
+  return m ? { min: +m[1], stopp: m[2] ? +m[2] : 0 } : null;
+}
+function espnDatiDi(rec) {
+  const a = ARCHIVIO[rec] || APPUNTI[rec] || (STORICI.find((e) => e.id === rec) || null);
+  return a ? { partita: a.partita, competizione: a.competizione, quando: a.quando } : null;
+}
+async function espnTrova(rec) {
+  const info = espnDatiDi(rec);
+  if (!info || !info.quando) throw new Error("partita senza data");
+  const leghe = legheDi(info.competizione);
+  if (!leghe.length) { ESPN[rec] = { mancante: "competizione non coperta", quando: info.quando }; return ESPN[rec]; }
+  const squadre = squadreDi(info.partita);
+  if (squadre.length < 2) { ESPN[rec] = { mancante: "titolo senza due squadre", quando: info.quando }; return ESPN[rec]; }
+  const t0 = Date.parse(info.quando);
+  let trovato = null, legaTrovata = "";
+  for (const lega of leghe) {
+    for (const salto of [0, -1, 1]) {
+      const g = new Date(t0 + salto * 86400000);
+      const giorno = g.getUTCFullYear() + String(g.getUTCMonth() + 1).padStart(2, "0") + String(g.getUTCDate()).padStart(2, "0");
+      let eventi = [];
+      try { eventi = await espnScoreboard(lega, giorno); } catch (e) { continue; }
+      const buoni = eventi.map((ev) => ({ ev: ev, n: squadre.filter((sq) => squadraCombacia(sq, ev)).length,
+                                          dt: Math.abs((Date.parse(ev.date) || 0) - t0) }))
+        .filter((x) => x.n >= 1 && x.dt < 30 * 3600000)
+        .sort((x, y) => (y.n - x.n) || (x.dt - y.dt));
+      // tutte e due le squadre: una sola combacia anche con la partita sbagliata
+      if (buoni.length && buoni[0].n >= Math.min(2, squadre.length)) { trovato = buoni[0].ev; legaTrovata = lega; break; }
+    }
+    if (trovato) break;
+  }
+  if (!trovato) { ESPN[rec] = { mancante: "non trovata su ESPN", quando: info.quando }; return ESPN[rec]; }
+  const sm = await espnPrendi("https://site.api.espn.com/apis/site/v2/sports/soccer/" + legaTrovata + "/summary?event=" + trovato.id);
+  const eventi = (sm.keyEvents || []).map((k) => {
+    const tipo = ((k.type || {}).text) || "";
+    const mm = minutoEspn((k.clock || {}).displayValue);
+    if (!mm || /kickoff|half|end |full|start/i.test(tipo)) return null;
+    const periodo = ((k.period || {}).number) || (mm.min > 45 ? 2 : 1);
+    return { tipo: tipo, min: mm.min, stopp: mm.stopp, periodo: periodo,
+             squadra: ((k.team || {}).displayName) || "",
+             giocatore: (((k.participants || [])[0] || {}).athlete || {}).displayName || "",
+             testo: k.shortText || k.text || "" };
+  }).filter(Boolean);
+  const rose = {};
+  (sm.rosters || []).forEach((r) => {
+    const nome = ((r.team || {}).displayName) || "?";
+    rose[nome] = (r.roster || []).map((x) => (x.athlete || {}).displayName).filter(Boolean);
+  });
+  const comp = (trovato.competitions || [])[0] || {};
+  const casaOsp = (comp.competitors || []).map((c) => ((c.team || {}).displayName) || "");
+  ESPN[rec] = { id: trovato.id, lega: legaTrovata, quando: trovato.date || info.quando, nome: trovato.name || "",
+                squadre: casaOsp, eventi: eventi, rose: rose, letto: new Date().toISOString() };
+  misuraRitardo(rec);
+  return ESPN[rec];
+}
+// Un telecronista scrive il minuto DOPO aver visto l'azione. Sui gol, dove
+// ESPN dice il minuto vero, si misura di quanto: la mediana per persona e'
+// il suo ritardo, e si sottrae a tutte le sue righe.
+function misuraRitardo(rec) {
+  const a = APPUNTI[rec], e = ESPN[rec];
+  if (!a || !e || !e.eventi || !a.telecronista) return;
+  const goalEspn = e.eventi.filter((x) => /goal/i.test(x.tipo) && !/cancel|disallow|no goal/i.test(x.tipo));
+  const goalNostri = a.righe.filter((r) => /gol/i.test(r.t || "") || /\bgol\b|\bgoal\b/i.test(r.x || ""));
+  goalEspn.forEach((g) => {
+    const mg = g.min + g.stopp;
+    let meglio = null;
+    goalNostri.forEach((r) => {
+      const mn = /^(\d+)(?:\+(\d+))?/.exec(r.m || ""); if (!mn) return;
+      const mr = +mn[1] + (mn[2] ? +mn[2] : 0);
+      const d = mr - mg;
+      if (Math.abs(d) <= 4 && (meglio === null || Math.abs(d) < Math.abs(meglio))) meglio = d;
+    });
+    if (meglio === null) return;
+    const t = a.telecronista;
+    RITARDI[t] = RITARDI[t] || { valori: [] };
+    RITARDI[t].valori.push(meglio);
+    if (RITARDI[t].valori.length > 400) RITARDI[t].valori.shift();
+  });
+}
+function ritardoDi(telecronista) {
+  const r = RITARDI[telecronista || ""];
+  if (!r || r.valori.length < 6) return 0;
+  const v = r.valori.slice().sort((x, y) => x - y);
+  const med = v[Math.floor(v.length / 2)];
+  return Math.abs(med) <= 3 ? med * 60 : 0;
+}
+const CODA_ESPN = [];
+let espnInMoto = false, espnFatti = 0, espnTrovati = 0, espnFalliti = 0, espnDaScrivere = 0;
+function giraEspn() {
+  if (espnInMoto || !CODA_ESPN.length) { if (!CODA_ESPN.length && !espnInMoto) scriviEspn(); return; }
+  espnInMoto = true;
+  const rec = CODA_ESPN.shift();
+  espnTrova(rec).then((e) => { espnFatti++; if (e && !e.mancante) espnTrovati++; })
+    .catch((er) => { espnFalliti++; console.log("[clip] espn (" + rec + "): " + er.message); })
+    .then(() => {
+      espnInMoto = false;
+      if (++espnDaScrivere >= 25) { espnDaScrivere = 0; scriviEspn(); }
+      setTimeout(giraEspn, 250);         // con garbo: quattro richieste al secondo bastano
+    });
+}
+function espnInCoda(rifai) {
+  const gia = new Set(CODA_ESPN);
+  Object.keys(ARCHIVIO).forEach((rec) => {
+    if (rec.indexOf("s3:") === 0 || gia.has(rec)) return;
+    if (ESPN[rec] && !(rifai && ESPN[rec].mancante)) return;
+    CODA_ESPN.push(rec);
+  });
+  CODA_ESPN.sort((x, y) => prioritaPartita(x) - prioritaPartita(y));
+  giraEspn();
+  return CODA_ESPN.length;
+}
+// I fatti come risultati di ricerca: stessa forma delle azioni degli
+// appunti, con "fonte: espn", cosi' in pagina stanno nella stessa lista
+function cercaNeiFatti(q, limite) {
+  const fuori = [];
+  Object.keys(ESPN).forEach((rec) => {
+    const e = ESPN[rec];
+    if (!e || !e.eventi) return;
+    const info = espnDatiDi(rec) || {};
+    const quando = info.quando || e.quando;
+    if (!quandoTorna(Date.parse(quando), q)) return;
+    const capo = comeSiCerca([info.partita, info.competizione, dataScritta(Date.parse(quando))]);
+    e.eventi.forEach((x) => {
+      const testo = comeSiCerca([x.tipo, x.giocatore, x.squadra, x.testo, capo]);
+      if (!tutteDentro(testo, q.parole)) return;
+      const d = (x.min - (x.periodo === 2 ? 45 : 0)) * 60 + x.stopp * 60;
+      const dove = secondoNelFile(rec, { s: x.periodo, d: Math.max(0, d) });
+      fuori.push({
+        rec: rec, partita: info.partita || e.nome, competizione: info.competizione || "", quando: quando,
+        minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), tempo: x.periodo, tipo: x.tipo,
+        testo: [x.tipo, x.giocatore, x.squadra ? "(" + x.squadra + ")" : ""].filter(Boolean).join(" "),
+        hl: false, fonte: "espn", archivio: !!ARCHIVIO[rec], dove: (dove || {}).secondi || null,
+        pezzo: (dove || {}).pezzo || 0, d: Math.max(0, d),
+        orologio: !!(ARCHIVIO[rec] && ARCHIVIO[rec].orologio)
+      });
+    });
+  });
+  return fuori;
+}
+
 function cercaNegliAppunti(q, limite) {
   const fuori = [];
   Object.keys(APPUNTI).forEach((rec) => {
@@ -2930,17 +3338,21 @@ function cercaNegliAppunti(q, limite) {
     a.righe.forEach((r) => {
       const testo = comeSiCerca([r.x, r.t, r.m, capo]);
       if (!tutteDentro(testo, q.parole)) return;
-      const dove = secondoNelFile(rec, r);
+      const rit = ritardoDi(a.telecronista);
+      const dove = secondoNelFile(rec, { s: r.s, d: Math.max(0, (r.d || 0) - rit) });
       fuori.push({
         rec: rec, partita: a.partita, competizione: a.competizione, quando: a.quando,
         minuto: r.m, tempo: r.s, tipo: r.t, testo: r.x, hl: !!r.hl,
+        fonte: a.fonte === "storico" ? "storico" : "appunti", telecronista: a.telecronista || "",
         archivio: !!ARCHIVIO[rec], dove: (dove || {}).secondi || null,
-        pezzo: (dove || {}).pezzo || 0, d: r.d || 0,
+        pezzo: (dove || {}).pezzo || 0, d: Math.max(0, (r.d || 0) - rit),
         orologio: !!(ARCHIVIO[rec] && ARCHIVIO[rec].orologio)
       });
     });
   });
-  fuori.sort((a, b) => (Date.parse(b.quando) || 0) - (Date.parse(a.quando) || 0));
+  cercaNeiFatti(q, limite).forEach((x) => fuori.push(x));
+  fuori.sort((a, b) => ((Date.parse(b.quando) || 0) - (Date.parse(a.quando) || 0)) ||
+                       ((a.tempo || 0) - (b.tempo || 0)) || ((a.d || 0) - (b.d || 0)));
   return fuori.slice(0, limite);
 }
 
@@ -3601,6 +4013,7 @@ const AZIONI = {
              motore: whisperCe() };
   },
   "clip-archivio-scandaglia": archivioScandaglia,
+  "clip-appunti-storici": appuntiStoriciImporta,
   // legge il cronometro di una partita (o restituisce quello gia' letto) e
   // dice dove cade un minuto degli appunti, se glielo si chiede
   "clip-archivio-orologio": async (p) => {
@@ -3613,10 +4026,25 @@ const AZIONI = {
     }
     return fuori;
   },
+  "clip-archivio-espn": (p) => {
+    if (p.avvia) espnInCoda(!!p.rifai);
+    const rit = {}; Object.keys(RITARDI).forEach((t) => { rit[t] = { n: RITARDI[t].valori.length, secondi: ritardoDi(t) }; });
+    return { ok: true, inCoda: CODA_ESPN.length, fatti: espnFatti, trovati: espnTrovati, falliti: espnFalliti,
+             inMoto: espnInMoto, partiteConFatti: Object.keys(ESPN).filter((k) => ESPN[k] && ESPN[k].eventi).length,
+             mancanti: Object.keys(ESPN).filter((k) => ESPN[k] && ESPN[k].mancante).length, ritardi: rit };
+  },
+  "clip-archivio-espn-partita": async (p) => {
+    const e = await espnTrova(String(p.rec || "")); scriviEspn(); return { ok: true, espn: e };
+  },
+  "clip-archivio-durate": (p) => {
+    if (p.avvia) durateInCoda();
+    return { ok: true, inCoda: CODA_DURATE.length, fatte: durateFatte, fallite: durateFallite, cambiate: durateCambiate,
+             inMoto: durateInMoto, misurate: Object.keys(ARCHIVIO).filter((k) => ARCHIVIO[k].misurato).length };
+  },
   "clip-archivio-orologi": (p) => {
     if (p.avvia) orologiInCoda();
     return { ok: true, inCoda: CODA_OROLOGI.length, fatti: orologiFatti, falliti: orologiFalliti,
-             alLavoro: orologioAlLavoro || "", lettore: tesseractCe(),
+             alLavoro: orologioAlLavoro || "", inMoto: orologiInMoto, lettore: tesseractCe(),
              letti: Object.keys(ARCHIVIO).filter((k) => ARCHIVIO[k].orologio).length };
   },
   "clip-archivio-apri": archivioApri,
@@ -3710,6 +4138,8 @@ function avvio(opz) {
   leggi();
   leggiArchivioAppunti();
   leggiArchivio();
+  leggiStorici();
+  leggiEspn();
   leggiParlato();
   // Il ponte si e' riavviato: gli ffmpeg che stava seguendo sono morti con
   // lui. Meglio dirlo che lasciare in pagina una registrazione che sembra
