@@ -362,6 +362,15 @@
   body.modo-archivio #btnRec,
   body.modo-archivio #ascolto,
   body.modo-archivio .riga-stato{display:none!important;}
+  /* MAM ARCHIVIO: la scelta della partita e' UNA riga, sopra la ricerca:
+     etichetta · filtro · tendina. Niente scheda, niente seconda casella
+     che sembra una ricerca. Sotto, la riga "Cerca" per le azioni. */
+  body.modo-archivio .console{background:none;border-radius:0;padding:0;box-shadow:none;border:0;}
+  body.modo-archivio .console .colonnina{flex-direction:row;align-items:center;gap:8px;margin:0;padding:8px 12px;border-bottom:1px solid #0F0F0F;}
+  body.modo-archivio .console .colonnina .et,body.modo-archivio .projCerca .chip{flex:0 0 46px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#9A9A9A;font-weight:700;margin:0;}
+  body.modo-archivio .console #eventoCerca{flex:0 0 32%;min-width:0;height:26px;margin:0!important;font-size:12px;border-radius:3px;}
+  body.modo-archivio .console #evento{flex:1;min-width:0;height:26px;font-size:12px;border-radius:3px;}
+  body.modo-archivio .console #ascolto{display:none;}
   body.modo-live .soloArchivio{display:none!important;}
   /* La traccia. Presa da Premiere quello che serve davvero: un righello
      con i minuti, i marcatori sopra, la parte scelta in chiaro con due
@@ -2788,6 +2797,16 @@
         '<div class="riga-stato"><span class="dot" id="cDot"></span><span id="cTesto">Nessuna registrazione</span>' +
           '<span class="coda" id="cCoda"></span></div>' +
       '</div>';
+    if (MODO === "archivio") {
+      // prima si sceglie la partita, poi si cerca: la riga sale sopra la ricerca
+      var pc = document.querySelector(".projCerca");
+      if (pc && pc.parentNode) pc.parentNode.insertBefore(d, pc);
+      var et = d.querySelector(".colonnina .et"); if (et) et.textContent = "Partita";
+      el("eventoCerca").placeholder = "filtra\u2026";
+      el("evento").options[0].textContent = "\u2014 scegli la partita \u2014";
+      var lente = pc && pc.querySelector(".lente2"); if (lente) { lente.textContent = "Cerca"; lente.className = "chip"; }
+      if (el("projCerca")) el("projCerca").placeholder = "azioni: appunti, ESPN, telecronaca \u00b7 Invio";
+    }
 
     // Mille voci in una tendina non si scorrono: si scrive e restano
     // solo quelle che contengono le parole. Invio prende la prima.
@@ -2918,6 +2937,12 @@
              : "Il video non \u00e8 ancora su S3 (Cyberduck): appena caricato, compare qui.");
         });
         if (el("nPartite")) el("nPartite").textContent = conVideo;
+        if (sel.options[0]) sel.options[0].textContent = "\u2014 " + voci.length + " partite: scegli \u2014";
+        var f = el("eventoCerca");
+        if (f) f.addEventListener("input", function () {
+          var vis = Array.prototype.filter.call(sel.options, function (o) { return o.value && !o.hidden; }).length;
+          sel.options[0].textContent = "\u2014 " + vis + (f.value.trim() ? " trovate" : " partite") + ": scegli \u2014";
+        });
       });
     }
 
@@ -3283,7 +3308,8 @@
     document.querySelectorAll(".projTabs button").forEach(function (b) { b.classList.toggle("on", b.dataset.t === t); });
     ["progetto", "sorgenti", "info"].forEach(function (k) { var p = el("pane" + k.charAt(0).toUpperCase() + k.slice(1)); if (p) p.hidden = (k !== t); });
     var cerca = el("projCerca");
-    if (cerca) cerca.placeholder = t === "sorgenti" ? "filtra le partite \u00b7 Invio cerca in appunti e telecronaca" : t === "progetto" ? "cerca nel progetto \u00b7 Invio cerca a fondo" : "";
+    if (cerca) cerca.placeholder = MODO === "archivio" ? "azioni: appunti, ESPN, telecronaca \u00b7 Invio"
+      : t === "sorgenti" ? "filtra le partite \u00b7 Invio cerca in appunti e telecronaca" : t === "progetto" ? "cerca nel progetto \u00b7 Invio cerca a fondo" : "";
     if (t === "info") disegnaInfo();
     filtraProgetto();
   }
@@ -3303,9 +3329,13 @@
       });
       if (el("projN")) el("projN").textContent = n + (n === 1 ? " elemento" : " elementi");
     } else if (TAB === "sorgenti") {
-      var f = el("eventoCerca"); if (f && f.value !== q) { f.value = q; f.dispatchEvent(new Event("input")); }
-      var sel = el("evento"); var vis = sel ? Array.prototype.filter.call(sel.options, function (o) { return o.value && !o.hidden; }).length : 0;
-      if (el("projN")) el("projN").textContent = vis + " partite";
+      if (MODO === "archivio") {
+        if (el("projN")) el("projN").textContent = RIS && RIS.quante ? RIS.quante + " risultati" : "";
+      } else {
+        var f = el("eventoCerca"); if (f && f.value !== q) { f.value = q; f.dispatchEvent(new Event("input")); }
+        var sel = el("evento"); var vis = sel ? Array.prototype.filter.call(sel.options, function (o) { return o.value && !o.hidden; }).length : 0;
+        if (el("projN")) el("projN").textContent = vis + " partite";
+      }
     } else if (el("projN")) el("projN").textContent = "";
   }
   function disegnaInfo() {
