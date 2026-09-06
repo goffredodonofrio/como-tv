@@ -1214,7 +1214,7 @@
 
     telaioForma();
     el("capoTorna").addEventListener("click", function (e) { e.preventDefault(); tornaAlContenuto(); });
-    el("seqTutti").addEventListener("click", function () { apriExport("sequenza"); });
+    el("seqTutti").addEventListener("click", function () { apriExport("sequenza"); });   // Esporta accanto al Programma
     el("seqMp4").addEventListener("click", function () { apriExport("sequenza"); });
     el("seqXml").addEventListener("click", function () {
       if (!SEQ) return;
@@ -2113,11 +2113,7 @@
           .catch(function (e) { dice(e.message); });
       }, ""],
       "-",
-      ["Esporta fotogramma", function () { K2("E", { shiftKey: true }); }, "\u21e7E"],
-      ["Esporta clip (entrata\u2192uscita)", function () { clicca("btnTaglia"); }, "T"],
-      ["Esporta sequenza \u00b7 tutti i formati", function () { clicca("seqTutti"); }, "\u2318M"],
-      ["Esporta sequenza \u00b7 solo questo formato", function () { clicca("seqMp4"); }, ""],
-      ["Esporta XML per Premiere", function () { clicca("seqXml"); }, ""],
+      ["Esporta media\u2026", function () { apriExport(); }, "\u2318M"],
       "-",
       ["Torna a Como TV", function () { location.href = "../index.html"; }, ""]
     ]],
@@ -2170,14 +2166,12 @@
       ["Trascrivi la voce qui intorno", function () { clicca("btnVoce"); }, ""]
     ]],
     ["Esporta", [
-      ["Fotogramma", function () { K2("E", { shiftKey: true }); }, "\u21e7E"],
-      ["Clip (entrata\u2192uscita)", function () { clicca("btnTaglia"); }, "T"],
+      // corto, come in Premiere: il "cosa" e il "come" stanno nella finestra
+      ["Media\u2026", function () { apriExport(); }, "\u2318M"],
+      ["Fotogramma\u2026", function () { K2("E", { shiftKey: true }); }, "\u21e7E"],
+      ["XML per Premiere\u2026", function () { clicca("seqXml"); }, ""],
       "-",
-      ["Sequenza \u00b7 tutti i formati", function () { clicca("seqTutti"); }, "\u2318M"],
-      ["Sequenza \u00b7 solo questo formato", function () { clicca("seqMp4"); }, ""],
-      ["XML per Premiere", function () { clicca("seqXml"); }, ""],
-      "-",
-      ["Esportazioni\u2026", function () { apriUscite(); }, ""]
+      ["Coda esportazioni\u2026", function () { apriUscite(); }, ""]
     ]],
     ["Finestra", [
       ["MAM Live", function () { location.href = "mam.html"; }, ""],
@@ -2223,22 +2217,29 @@
   // nome; poi "aggiungi alla coda" e si continua a lavorare. Serve per la
   // clip singola (entrata\u2192uscita) e per la sequenza intera.
   function apriExport(tipo) {
-    if (tipo === "clip" && (!REG || dentro === null || fuori === null)) return dice("Segna entrata e uscita, poi esporta.");
-    if (tipo === "sequenza" && !SEQ) return dice("Nessuna sequenza da esportare.");
+    var haClip = !!(REG && dentro !== null && fuori !== null), haSeq = !!(SEQ && (SEQ.pezzi || []).length);
+    if (!tipo) tipo = haClip ? "clip" : "sequenza";        // Media…: quello che c'e' sotto mano
+    if (tipo === "clip" && !haClip) { if (haSeq) tipo = "sequenza"; else return dice("Segna entrata e uscita nella Sorgente, o monta una sequenza."); }
+    if (tipo === "sequenza" && !haSeq) { if (haClip) tipo = "clip"; else return dice("Nessuna sequenza da esportare."); }
     var vecchio = el("finExport"); if (vecchio) vecchio.remove();
     var box = document.createElement("div"); box.className = "foglio"; box.id = "finExport";
     var nome = tipo === "clip" ? (REG.titolo + " " + orologio(dentro)) : SEQ.titolo;
     var intervallo = tipo === "clip" ? tc(dentro) + " \u2192 " + tc(fuori) + "  (" + (fuori - dentro).toFixed(1) + "s)"
                    : (SEQ.pezzi || []).length + " pezzi \u00b7 " + tc((SEQ.pezzi || []).reduce(function (a2, x) { return a2 + (x.fuori - x.dentro); }, 0));
-    box.innerHTML = '<div class="exp"><header><b>Esporta ' + (tipo === "clip" ? "clip" : "sequenza") + '</b><span>' + pulito(intervallo) + '</span><a href="#" id="expChiudi">annulla</a></header>' +
+    var seqDur = haSeq ? tc((SEQ.pezzi || []).reduce(function (a2, x) { return a2 + (x.fuori - x.dentro); }, 0)) : "";
+    box.innerHTML = '<div class="exp"><header><b>Esporta media</b><span>' + pulito(intervallo) + '</span><a href="#" id="expChiudi">annulla</a></header>' +
       '<div class="righe"><table class="expT">' +
+      // la riga di Premiere: "Intervallo" — la sequenza intera, o l'entrata-uscita
+      '<tr><td>Intervallo</td><td>' +
+        '<label><input type="radio" name="expR" value="sequenza"' + (tipo === "sequenza" ? " checked" : "") + (haSeq ? "" : " disabled") + '> sequenza intera' + (haSeq ? " \u2014 " + (SEQ.pezzi || []).length + " pezzi \u00b7 " + seqDur : " (vuota)") + '</label><br>' +
+        '<label><input type="radio" name="expR" value="clip"' + (tipo === "clip" ? " checked" : "") + (haClip ? "" : " disabled") + '> entrata \u2192 uscita nella Sorgente' + (haClip ? " \u2014 " + tc(dentro) + " \u2192 " + tc(fuori) : " (non segnate)") + '</label></td></tr>' +
       '<tr><td>Nome</td><td><input type="text" id="expNome" value="' + pulito(nome).replace(/"/g, "&quot;") + '"></td></tr>' +
       '<tr><td>Preset</td><td><select id="expPreset">' +
         '<option value="16:9">Social 16:9 (YouTube, sito)</option><option value="9:16">Story 9:16 (Instagram, TikTok)</option>' +
         '<option value="3:4">Feed 3:4 (Instagram)</option><option value="tutti">Tutti i formati</option></select></td></tr>' +
       '<tr><td>Formati</td><td class="expF"><label><input type="checkbox" value="16:9" checked> 16:9</label><label><input type="checkbox" value="3:4"> 3:4</label><label><input type="checkbox" value="9:16"> 9:16</label></td></tr>' +
-      (tipo === "clip" ? '<tr><td>Qualit\u00e0</td><td><label><input type="radio" name="expQ" value="copia" checked> ai secondi \u2014 copia, un secondo</label><br><label><input type="radio" name="expQ" value="preciso"> al fotogramma \u2014 ricodifica, esatta</label></td></tr>'
-                       : '<tr><td>Anche</td><td><label><input type="checkbox" id="expXml"> XML per Premiere</label></td></tr>') +
+      '<tr class="soloClip"><td>Qualit\u00e0</td><td><label><input type="radio" name="expQ" value="copia" checked> ai secondi \u2014 copia, un secondo</label><br><label><input type="radio" name="expQ" value="preciso"> al fotogramma \u2014 ricodifica, esatta</label></td></tr>' +
+      '<tr class="soloSeq"><td>Anche</td><td><label><input type="checkbox" id="expXml"> XML per Premiere</label></td></tr>' +
       '<tr><td>Audio</td><td>stereo AAC 160k (si apre ovunque)</td></tr>' +
       '<tr><td>Destinazione</td><td>coda esportazioni \u2192 scarica o manda alla grafica</td></tr>' +
       '</table></div>' +
@@ -2251,6 +2252,15 @@
     el("expPreset").addEventListener("change", function () {
       var v = this.value; caselle.forEach(function (c) { c.checked = (v === "tutti") || c.value === v; });
     });
+    // l'intervallo scelto decide quali righe si vedono e che nome proporre
+    function adatta() {
+      tipo = box.querySelector('input[name="expR"]:checked').value;
+      box.querySelectorAll(".soloClip").forEach(function (r) { r.hidden = tipo !== "clip"; });
+      box.querySelectorAll(".soloSeq").forEach(function (r) { r.hidden = tipo !== "sequenza"; });
+      el("expNome").value = tipo === "clip" ? (REG.titolo + " " + orologio(dentro)) : SEQ.titolo;
+    }
+    box.querySelectorAll('input[name="expR"]').forEach(function (r) { r.addEventListener("change", adatta); });
+    adatta();
     el("expNome").focus(); el("expNome").select();
     el("expVai").addEventListener("click", function () {
       var formati = Array.prototype.filter.call(caselle, function (c) { return c.checked; }).map(function (c) { return c.value; });
@@ -2437,7 +2447,7 @@
     if (k === "m" && !mod && !e.shiftKey) { var bm = el("btnSegnaApri"); if (bm) { e.preventDefault(); bm.click(); } return; }
     if (k === "m" && e.shiftKey && !mod) { e.preventDefault(); vicinoSegno(el("player"), true); return; }
     if (k === "m" && e.shiftKey && mod) { e.preventDefault(); vicinoSegno(el("player"), false); return; }
-    if (k === "m" && mod) { e.preventDefault(); var st = el("seqTutti"); if (st && SEQ) st.click(); return; }
+    if (k === "m" && mod) { e.preventDefault(); apriExport(); return; }
 
     // ── montaggio ──
     if (k === ",") { var bi = el("btnInserisci"); if (bi && !bi.disabled) { e.preventDefault(); bi.click(); } return; }
