@@ -26,7 +26,8 @@
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
-const { spawn, execFile } = require("child_process");
+const { spawn, execFile, execFileSync } = require("child_process");
+const os = require("os");
 const dgram = require("dgram");
 const crypto = require("crypto");
 
@@ -2670,16 +2671,168 @@ function secondoNelFile(rec, r) {
   if (!a) return null;
   // secondi dal calcio d'inizio: il secondo tempo comincia un'ora dopo,
   // quarantacinque di gioco piu' un intervallo che nessuno cronometra
-  const t = (r.s === 2 ? 60 * 60 : 0) + (r.d || 0);
+  // ...a meno che il cronometro non sia stato letto dal video: allora i due
+  // tempi cominciano dove cominciano davvero (vedi calibraOrologio)
+  const o = a.orologio || {};
+  const inizio = r.s === 2 ? (o.inizio2 !== undefined && o.inizio2 !== null ? o.inizio2 : 60 * 60)
+                           : (o.inizio1 !== undefined && o.inizio1 !== null ? o.inizio1 : 0);
+  return doveCade(a, inizio + (r.d || 0));
+}
+// dove cade, fra i pezzi del materiale, un tempo t contato dal calcio
+// d'inizio stimato: e' l'asse su cui stanno anche i "da" dei pezzi
+function doveCade(a, t) {
   const pezzi = (a.pezzi || []).filter((x) => x.da !== null && x.da !== undefined);
   if (!pezzi.length) {
     if (a.kickoff === null || a.kickoff === undefined) return null;
-    return { pezzo: 0, secondi: Math.round(a.kickoff + t) };
+    return { pezzo: 0, secondi: Math.round(a.kickoff + t), chiave: a.chiave };
   }
   let i = -1;
   pezzi.forEach((x, k) => { if (x.da <= t) i = k; });
   if (i < 0) return null;                    // l'azione cade prima del materiale
-  return { pezzo: i, secondi: Math.round(t - pezzi[i].da) };
+  return { pezzo: i, secondi: Math.round(t - pezzi[i].da), chiave: pezzi[i].chiave || a.chiave };
+}
+
+// ── IL CRONOMETRO LETTO DAL VIDEO ─────────────────────────────────
+//  L'orario ufficiale dice quando la partita DOVREBBE cominciare; il
+//  fischio arriva un minuto o due dopo, e la ripresa non e' a sessanta
+//  minuti esatti ma dove capita: recupero, intervallo, ritardi. Al 70'
+//  l'errore fa sei minuti, e sei minuti sono un'altra azione. L'unico che
+//  sa l'ora giusta e' il cronometro in sovrimpressione: si prende un
+//  fotogramma per tempo, si legge "63:50", e da li' si sa dove cade ogni
+//  minuto degli appunti. Tre fotogrammi per partita, qualche decina di
+//  mega dal bucket, un minuto di lavoro.
+const TESSERACT = process.env.COMOTV_TESSERACT || "tesseract";
+let tesseractVisto = null;
+function tesseractCe() {
+  if (tesseractVisto !== null) return tesseractVisto;
+  try { execFileSync(TESSERACT, ["--version"], { stdio: "ignore", timeout: 5000 }); tesseractVisto = true; }
+  catch (e) { tesseractVisto = false; }
+  return tesseractVisto;
+}
+
+// la fascia alta di un fotogramma, a grandezza naturale: e' li' che sta
+// la grafica. Il file resta su S3: ffmpeg salta al secondo e prende uno
+const OROLOGIO_PY = path.join(__dirname, "orologio.py");
+function fasciaAlta(via, sec) {
+  return new Promise((ok) => {
+    const png = path.join(os.tmpdir(), "orologio-" + nuovoId("") + ".png");
+    execFile(FFMPEG, ["-hide_banner", "-loglevel", "error", "-ss", String(Math.max(0, sec)), "-i", via,
+                      "-frames:v", "1", "-vf", "crop=iw:ih*0.25:0:0", "-y", png],
+      { timeout: 90000 }, (e, so, se) => {
+        if (e) { console.log("[clip] cronometro: ffmpeg al secondo " + sec + ": " + String(se || e.message).trim().slice(0, 160)); return ok(null); }
+        ok(png);
+      });
+  });
+}
+// Due fotogrammi a venti secondi di distanza: orologio.py trova la grafica
+// (quello che fra i due sta fermo), la targa del cronometro, e la legge in
+// tutti e due. Se le due letture non distano venti secondi, una delle due
+// e' sbagliata e si buttano via entrambe: meglio niente che un minuto falso.
+async function leggiOrologioSicuro(fascia, t) {
+  const f1 = await fascia(t), f2 = f1 ? await fascia(t + 20) : null;
+  const via = [f1, f2].filter(Boolean);
+  const butta = () => { if (!process.env.COMOTV_OROLOGIO_DEBUG) via.forEach((f) => { try { fs.unlinkSync(f); } catch (x) {} }); };
+  if (!f1 || !f2) { butta(); return null; }
+  const esito = await new Promise((ok) => {
+    execFile("python3", [OROLOGIO_PY, f1, f2], { timeout: 120000 }, (e, so, se) => {
+      if (e) { console.log("[clip] cronometro: orologio.py: " + String(se || e.message).trim().slice(0, 200)); return ok(null); }
+      try { ok(JSON.parse(String(so))); } catch (x) { ok(null); }
+    });
+  });
+  butta();
+  if (!esito || !esito.letture) return null;
+  const c1 = esito.letture[0], c2 = esito.letture[1];
+  console.log("[clip] cronometro: a " + t + "s dalla stima legge " + c1 + " e " + c2 +
+              (esito.cifre ? " (targa " + esito.cifre.join(",") + ")" : "") + (esito.perche ? " — " + esito.perche : ""));
+  if (c1 === null || c2 === null) return null;
+  if (Math.abs((c2 - c1) - 20) > 3) return null;
+  return c1;
+}
+
+// Due ancore: un fotogramma nel primo tempo dice a che secondo del file
+// e' cominciata la partita, uno nel secondo dice dove e' cominciata la
+// ripresa. Un terzo fotogramma, al 70', controlla che il conto torni.
+let orologioAlLavoro = null;
+async function calibraOrologio(rec, rifai) {
+  const a = ARCHIVIO[rec];
+  if (!a) throw new Error("questa partita non e' nell'indice dell'archivio");
+  if (a.orologio && !rifai) return a.orologio;
+  if (!tesseractCe()) throw new Error("sulla macchina manca tesseract: il cronometro non si puo' leggere");
+  if (orologioAlLavoro) throw new Error("sto gia' leggendo il cronometro di " + orologioAlLavoro);
+  orologioAlLavoro = a.partita || rec;
+  try {
+    const regione = await s3Regione(a.bucket);
+    const vie = {};
+    const leggiA = async (t) => {
+      const d = doveCade(a, t);
+      if (!d) return null;
+      if (!vie[d.chiave]) vie[d.chiave] = firmaConRegione(regione, d.chiave, {}, 3600, a.bucket);
+      return fasciaAlta(vie[d.chiave], d.secondi);
+    };
+    const esito = { letti: 0, quando: new Date().toISOString() };
+    // primo tempo: dal 10' stimato in poi, finche' il lettore non legge
+    // un'ora da primo tempo (prima del 45') che stia a meno di un quarto
+    // d'ora dalla stima
+    for (const t of [600, 780, 960, 1200, 1500, 1800, 2100]) {
+      const c = await leggiOrologioSicuro(leggiA, t); esito.letti += 2;
+      if (c === null || c <= 0 || c >= 2700) continue;
+      const inizio1 = t - c;
+      if (Math.abs(inizio1) > 1500) continue;
+      esito.inizio1 = inizio1; break;
+    }
+    if (esito.inizio1 === undefined) throw new Error("nel primo tempo non ho letto nessun cronometro");
+    // secondo tempo: dal 60' stimato in poi (dopo la ripresa vera in ogni
+    // caso), un'ora da secondo tempo (dopo il 45') che stia entro i quaranta
+    // minuti dopo il primo
+    const base = esito.inizio1 + 2700;
+    for (const t of [base + 1200, base + 1440, base + 1680, base + 1920, base + 2160, base + 2400, base + 2700]) {
+      const c = await leggiOrologioSicuro(leggiA, t); esito.letti += 2;
+      if (c === null || c <= 2700) continue;
+      const inizio2 = t - (c - 2700);
+      if (inizio2 < base + 480 || inizio2 > base + 2400) continue;
+      esito.inizio2 = inizio2; break;
+    }
+    if (esito.inizio2 === undefined) throw new Error("nel secondo tempo non ho letto nessun cronometro");
+    // la prova del nove: al 70' il cronometro deve dire 70:00, piu' o meno
+    let c70 = null, atteso = 4200;
+    for (const piu of [0, 60, 120]) {
+      c70 = await leggiOrologioSicuro(leggiA, esito.inizio2 + 1500 + piu); esito.letti += 2;
+      if (c70 !== null) { atteso = 4200 + piu; break; }
+    }
+    esito.scarto = c70 === null ? null : c70 - atteso;
+    esito.verificato = esito.scarto !== null && Math.abs(esito.scarto) <= 15;
+    a.orologio = esito;
+    scriviArchivio();
+    console.log("[clip] cronometro letto: " + (a.partita || rec) + " → fischio a " + esito.inizio1 +
+                "s dalla stima, ripresa a " + esito.inizio2 + "s" + (esito.verificato ? " ✓" : " (scarto " + esito.scarto + ")"));
+    return esito;
+  } finally { orologioAlLavoro = null; }
+}
+
+// Tutte le partite con appunti e materiale, una alla volta, mai mentre si
+// registra: mille partite sono una notte di lavoro e qualche decina di giga
+// dal bucket. Si accende a mano (clip-archivio-orologi).
+const CODA_OROLOGI = [];
+let orologiFatti = 0, orologiFalliti = 0;
+function giraOrologi() {
+  if (orologioAlLavoro || !CODA_OROLOGI.length) return;
+  const registrando = Object.keys(R.reg).some((k) => R.reg[k].stato === "registra");
+  if (registrando) { setTimeout(giraOrologi, 60000); return; }
+  const rec = CODA_OROLOGI.shift();
+  calibraOrologio(rec).then(() => { orologiFatti++; })
+    .catch((e) => { orologiFalliti++; console.log("[clip] cronometro non letto (" + rec + "): " + e.message); })
+    .then(() => setTimeout(giraOrologi, 500));
+}
+function orologiInCoda() {
+  const gia = new Set(CODA_OROLOGI);
+  Object.keys(APPUNTI).forEach((rec) => {
+    const a = ARCHIVIO[rec];
+    if (!a || a.orologio || gia.has(rec)) return;
+    if (!(APPUNTI[rec].righe || []).length) return;
+    CODA_OROLOGI.push(rec);
+  });
+  giraOrologi();
+  return CODA_OROLOGI.length;
 }
 
 // Le partite dell'archivio per nome, competizione e data: e' l'unico modo
@@ -2713,7 +2866,8 @@ function cercaNegliAppunti(q, limite) {
         rec: rec, partita: a.partita, competizione: a.competizione, quando: a.quando,
         minuto: r.m, tempo: r.s, tipo: r.t, testo: r.x, hl: !!r.hl,
         archivio: !!ARCHIVIO[rec], dove: (dove || {}).secondi || null,
-        pezzo: (dove || {}).pezzo || 0
+        pezzo: (dove || {}).pezzo || 0, d: r.d || 0,
+        orologio: !!(ARCHIVIO[rec] && ARCHIVIO[rec].orologio)
       });
     });
   });
@@ -3378,6 +3532,24 @@ const AZIONI = {
              motore: whisperCe() };
   },
   "clip-archivio-scandaglia": archivioScandaglia,
+  // legge il cronometro di una partita (o restituisce quello gia' letto) e
+  // dice dove cade un minuto degli appunti, se glielo si chiede
+  "clip-archivio-orologio": async (p) => {
+    const rec = String(p.rec || "");
+    const o = await calibraOrologio(rec, !!p.rifai);
+    const fuori = { ok: true, orologio: o };
+    if (p.tempo) {
+      const d = secondoNelFile(rec, { s: +p.tempo, d: +p.d || 0 });
+      fuori.dove = d ? d.secondi : null; fuori.pezzo = d ? d.pezzo : 0;
+    }
+    return fuori;
+  },
+  "clip-archivio-orologi": (p) => {
+    if (p.avvia) orologiInCoda();
+    return { ok: true, inCoda: CODA_OROLOGI.length, fatti: orologiFatti, falliti: orologiFalliti,
+             alLavoro: orologioAlLavoro || "", lettore: tesseractCe(),
+             letti: Object.keys(ARCHIVIO).filter((k) => ARCHIVIO[k].orologio).length };
+  },
   "clip-archivio-apri": archivioApri,
   // L'elenco di quello che l'archivio sa gia' offrire: serve alla tendina
   // delle partite, che altrimenti conosce solo quelle di oggi.

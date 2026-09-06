@@ -60,7 +60,7 @@
     background:var(--scuro);color:var(--carta);border-bottom:2px solid var(--gold);}
   .marchio{font-family:'Mazzard',sans-serif;font-weight:800;font-size:15px;letter-spacing:.2em;
     text-transform:uppercase;white-space:nowrap;}
-  .marchio small{display:block;font-size:9px;letter-spacing:.26em;color:var(--gold-bright);font-weight:700;}
+  .marchio small{display:inline-block;margin-left:10px;font-size:9px;letter-spacing:.26em;color:var(--gold-bright);font-weight:700;vertical-align:1px;}
   .cerca{flex:1 1 320px;display:flex;gap:8px;align-items:center;
     background:rgba(245,241,230,.10);border:1px solid rgba(245,241,230,.16);border-radius:10px;padding:9px 13px;}
   .cerca input{flex:1;background:none;border:none;color:var(--carta);font-family:inherit;font-size:14px;}
@@ -389,11 +389,11 @@
   .pista .capo::before{content:'';position:absolute;top:0;left:-4px;border-left:4.5px solid transparent;
     border-right:4.5px solid transparent;border-top:6px solid var(--red);}
 
-  .tlnav{position:absolute;left:0;right:0;bottom:0;height:14px;background:#2A2A2A;border-top:1px solid var(--tl-riga);cursor:pointer;}
-  .tlnav .corsa{position:absolute;top:2px;height:10px;background:#5A5A5A;border-radius:5px;cursor:grab;min-width:24px;}
-  .tlnav .corsa .m{position:absolute;top:-1px;width:12px;height:12px;border-radius:50%;background:#9A9A9A;cursor:ew-resize;}
-  .tlnav .corsa .m.sx{left:-2px;} .tlnav .corsa .m.dx{right:-2px;}
-  .tlnav .corsa:hover,.tlnav .corsa .m:hover{background:#7A7A7A;}
+  .tlnav{position:absolute;left:0;right:0;bottom:0;height:16px;background:#171717;border-top:1px solid #3A3A3A;cursor:pointer;}
+  .tlnav .corsa{position:absolute;top:3px;height:10px;background:#8C8C8C;border:1px solid #B0B0B0;box-sizing:border-box;border-radius:5px;cursor:grab;min-width:24px;}
+  .tlnav .corsa .m{position:absolute;top:-2px;width:12px;height:12px;border-radius:50%;background:#C8C8C8;cursor:ew-resize;}
+  .tlnav .corsa .m.sx{left:-3px;} .tlnav .corsa .m.dx{right:-3px;}
+  .tlnav .corsa:hover,.tlnav .corsa .m:hover{background:#B4B4B4;}
   /* i comandi veri delle testine: lucchetto, occhio, M */
   .tltraccia .lock,.tltraccia .eye,.tltraccia .ms{cursor:pointer;}
   .tltraccia .lock.on,.tltraccia .lock.on::before{border-color:var(--tl-blu);}
@@ -3431,6 +3431,27 @@
     }).catch(function (e) { dice(e.message); });
   }
 
+  // Il secondo di un appunto e' una stima finche' il cronometro non e' stato
+  // letto dal video: l'orario ufficiale sbaglia il fischio di un minuto e la
+  // ripresa di cinque. La prima volta che si apre un'azione di quella
+  // partita il server legge tre fotogrammi (un minuto circa); da li' in poi
+  // ogni minuto degli appunti cade al secondo, e i risultati lo dicono.
+  function conCronometro(a, poi) {
+    if (!a.archivio || a.orologio) return poi(a.dove);
+    dice("Leggo il cronometro della partita\u2026 (circa un minuto)");
+    manda({ tipo: "clip-archivio-orologio", rec: a.rec, tempo: a.tempo, d: a.d })
+      .then(function (r) {
+        a.orologio = true;
+        if (r.dove || r.dove === 0) { a.dove = r.dove; a.pezzo = r.pezzo || 0; }
+        dice("Cronometro letto" + (r.orologio && r.orologio.verificato ? " e verificato" : "") + ".", true);
+        poi(a.dove);
+        // le altre azioni della stessa partita si ricalcolano: la ricerca si rifa' da sola
+        var q = el("projCerca") ? el("projCerca").value.trim() : "";
+        if (q) cerca(q);
+      })
+      .catch(function (e) { dice("Cronometro non letto (" + e.message + "): vado a stima."); poi(a.dove); });
+  }
+
   function disegnaRisultati() {
     var c = el("risultati"); if (!c) return; c.innerHTML = "";
     var box = document.createElement("div"); box.className = "risultati"; c.appendChild(box);
@@ -3511,7 +3532,8 @@
         var inArchivio = a.archivio && a.dove;
         var v = riga((a.hl ? "\u2605 " : "") + (a.testo || a.tipo),
              a.partita + " \u00b7 " + a.minuto + (a.tempo === 2 ? " (2\u00b0T)" : "") +
-             (a.competizione ? " \u00b7 " + a.competizione : ""),
+             (a.competizione ? " \u00b7 " + a.competizione : "") +
+             (inArchivio ? (a.orologio ? " \u00b7 \u23f1 al secondo" : " \u00b7 \u2248 a stima") : ""),
              qui ? "guarda" : (inArchivio ? "archivio" : ""), data(Date.parse(a.quando)));
         // l'azione, non la partita: un tasto la mette dritta in sequenza
         if (inArchivio || qui) {
@@ -3519,6 +3541,7 @@
           tl.title = "mette questa azione nella sequenza (8 secondi prima, 8 dopo)";
           tl.addEventListener("click", function (e) {
             e.preventDefault(); e.stopPropagation();
+            conCronometro(a, function () {
             var finisci = function () {
               if (!REG) return;
               var d0 = Math.max(0, (a.dove || 0) - 8), f0 = (a.dove || 0) + 8;
@@ -3530,13 +3553,14 @@
             if (qui && REG && REG.id === qui.id) finisci();
             else if (qui) { vaiA(qui.id, null, "tutto"); setTimeout(finisci, 600); }
             else { manda({ tipo: "clip-archivio-apri", rec: a.rec, pezzo: a.pezzo || 0 }).then(function (d) { return aggiorna().then(function () { vaiA(d.reg.id, null, "tutto"); setTimeout(finisci, 600); }); }).catch(function (er) { dice(er.message); }); }
+            });
           });
           v.appendChild(tl);
         }
         if (qui) v.addEventListener("click", function () { vaiA(qui.id, null, "tutto"); });
         else if (inArchivio) {
           v.addEventListener("click", function () {
-            apriDaArchivio(a.rec, a.dove, a.partita, a.pezzo);
+            conCronometro(a, function (dove) { apriDaArchivio(a.rec, dove, a.partita, a.pezzo); });
           });
         } else {
           v.style.opacity = ".78";
