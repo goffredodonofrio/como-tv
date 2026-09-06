@@ -2775,13 +2775,15 @@ function trascriviDavvero(lavoro) {
          "-c:a", "pcm_s16le", "-y", wav]
       : null;
     if (!args) return no(new Error("di questa registrazione non c'e' audio raggiungibile"));
-    execFile("ffmpeg", args, { timeout: 3600000 }, (e) => e ? no(e) : ok());
+    // a bassa priorita': la trascrizione e' lavoro di notte, non deve
+    // rallentare ne' una diretta ne' le altre code
+    execFile("nice", ["-n", "15", "ffmpeg"].concat(args), { timeout: 3600000 }, (e) => e ? no(e) : ok());
   }).then(() => new Promise((ok, no) => {
     const suggeriti = nomiDaSuggerire(r);
     const args = ["-m", MODELLO, "-l", LINGUA_MAM, "-f", wav, "-oj", "-of",
                   path.join(dir, "voce"), "-t", "2", "-np", "-nt"];
     if (suggeriti) args.push("--prompt", suggeriti);
-    execFile(WHISPER, args,
+    execFile("nice", ["-n", "15", WHISPER].concat(args),
              { timeout: 6 * 3600000, maxBuffer: 64 * 1024 * 1024 }, (e) => e ? no(e) : ok());
   })).then(() => {
     const j = JSON.parse(fs.readFileSync(path.join(dir, "voce.json"), "utf8"));
