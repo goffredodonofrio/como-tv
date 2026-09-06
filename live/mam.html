@@ -76,7 +76,18 @@
   .lavoro{flex:1 1 auto;min-height:0;display:grid;grid-template-rows:minmax(0,1fr);}
   .colCentro{display:flex;flex-direction:column;min-height:0;}
   .colCentro #centro{flex:0 0 auto;}
-  .tre{display:grid;grid-template-columns:272px minmax(0,1fr);min-height:0;}
+  /* LE FINESTRE SI RIDIMENSIONANO, come in Premiere: si prende il divisore e
+     si trascina. Le misure stanno in tre variabili e si ricordano. */
+  :root{--projW:272px;--split:50;--tlH:254px;}
+  .tre{display:grid;grid-template-columns:var(--projW) 6px minmax(0,1fr);grid-template-rows:minmax(0,1fr);min-height:0;}
+  .sepV{cursor:col-resize;background:transparent;position:relative;z-index:40;}
+  .sepV::after{content:'';position:absolute;top:0;bottom:0;left:2px;width:2px;background:transparent;transition:background .15s;}
+  .sepV:hover::after,.sepV.presa::after{background:#2D8CEB;}
+  .sepH{position:absolute;left:0;right:0;top:-3px;height:7px;cursor:row-resize;z-index:60;}
+  .sepH::after{content:'';position:absolute;left:0;right:0;top:2px;height:2px;background:transparent;transition:background .15s;}
+  .sepH:hover::after,.sepH.presa::after{background:#2D8CEB;}
+  body.ridimensiono{user-select:none;}
+  body.ridimensiono *{pointer-events:none;}
 
   /* LA TIMELINE DI PREMIERE. Non "ispirata": uguale. Fondo scuro, timecode
      blu, righello in timecode con la barra gialla dell'area di lavoro,
@@ -164,8 +175,8 @@
     color:#7A7A7A;font-size:11px;pointer-events:none;}
   /* La timeline attraversa tutto lo schermo, come in Premiere: sta fissa in
      basso sopra la barra di stato, e le colonne le lasciano il posto. */
-  .timeline{position:fixed;left:0;right:0;bottom:var(--barra);height:254px;z-index:55;}
-  .lavoro{padding-bottom:254px;}
+  .timeline{position:fixed;left:0;right:0;bottom:var(--barra);height:var(--tlH);z-index:55;}
+  .lavoro{padding-bottom:var(--tlH);}
 
     justify-content:center;color:var(--fumo);font-size:11px;}
   .tltraccia-nome.a1{color:#2E8B57;height:36px;}
@@ -183,7 +194,7 @@
   .segnaBox button.b{height:30px;padding:0 10px;font-size:10px;}
   .binSugg{margin-top:var(--s3);}
     justify-content:center;color:var(--fumo);font-size:11px;}
-  @media (max-width:1240px){.tre{grid-template-columns:220px minmax(0,1fr);}}
+
   .col{padding:14px clamp(10px,1.2vw,18px);overflow:auto;min-height:0;}
   .col + .col{border-left:1px solid var(--linea);}
   .col h2{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.24em;
@@ -424,7 +435,7 @@
      Premiere: sotto il video il timecode di dove sei e di quanto dura, la
      barretta con le parentesi di entrata e uscita, la fila dei comandi a
      icone. Le icone sono quelle: chi monta le riconosce senza leggere. */
-  .monitori{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start;}
+  .monitori{display:grid;grid-template-columns:calc(var(--split) * 1%) 6px minmax(0,1fr);gap:0 11px;align-items:start;}
   .monitor{min-width:0;position:relative;display:grid;grid-template-columns:62px minmax(0,1fr);column-gap:8px;align-content:start;}
   .monitor > .lato{grid-column:1;grid-row:1 / span 6;display:flex;flex-direction:column;gap:5px;padding-top:24px;}
   .monitor > :not(.lato){grid-column:2;}
@@ -433,7 +444,7 @@
   .lato.oro button.b{background:#3A3A3A;border-color:#4A4A4A;color:#E2E2E2;}
   .lato.oro button.b.oro{background:#C9A24B;border-color:#A67C2E;color:#0A0F24;}
   .lato .aiuto{text-align:center;}
-  .monitor + .monitor{border-left:1px solid var(--linea);padding-left:22px;}
+
   .monitor.attivo .mbarra{color:var(--gold-deep);}
   .monitor .capo{margin-bottom:5px;}
   .monitor .capo span{font-size:10px;}
@@ -826,6 +837,7 @@
     </div>
   </div>
 
+  <div class="sepV" id="sepProj" title="trascina per allargare il progetto"></div>
   <div class="col colCentro">
     <div id="centro"></div>
 
@@ -836,6 +848,7 @@
      si sta montando, sulla stessa scala: si vede in un colpo d'occhio
      quanto del materiale e' gia' finito nel pezzo. -->
 <div class="timeline" id="timeline">
+  <div class="sepH" id="sepTl" title="trascina per alzare la timeline"></div>
   <div class="tltab"><span class="x">×</span><span id="tlNome">—</span><span class="menu">≡</span>
     <span class="esp">
       <span class="esportati" id="seqEsportati"></span>
@@ -1169,6 +1182,7 @@
             '<button class="b" id="segnaChiudi" title="chiudi (esc)">×</button>' +
           '</div>' +
         '</div>' +
+        '<div class="sepV" id="sepMon" title="trascina per dividere i monitor"></div>' +
         // ── PROGRAMMA ──
         '<div class="monitor" id="monP">' +
           '<div class="lato oro">' +
@@ -1391,12 +1405,15 @@
       var e = el("monS").querySelector("." + k); if (e) sotto += e.offsetHeight + 5;
     });
     // la timeline e' fuori dalla colonna: la colonna e' gia' alta il giusto
-    var largo = (c.clientWidth - 28 - 23) / 2 - 2 - 70;
+    // ognuno prende la larghezza della propria cella, meno la colonnina dei tasti
+    var largoS = (el("monS") ? el("monS").clientWidth : c.clientWidth / 2) - 72;
+    var largoP = (el("monP") ? el("monP").clientWidth : c.clientWidth / 2) - 72;
+    var largo = largoS;
     var alto = Math.max(120, col.clientHeight - sotto - 44);
     var r = { "16:9": 16/9, "3:4": 3/4, "9:16": 9/16 }[formato] || 16/9;
     var w = Math.min(largo, alto * r), h = w / r;
     t.style.width = Math.round(w) + "px"; t.style.height = Math.round(h) + "px";
-    if (tp) { var wp = Math.min(largo, alto * 16/9); tp.style.width = Math.round(wp) + "px"; tp.style.height = Math.round(wp * 9/16) + "px"; }
+    if (tp) { var wp = Math.min(largoP, alto * 16/9); tp.style.width = Math.round(wp) + "px"; tp.style.height = Math.round(wp * 9/16) + "px"; }
     if (el("forma")) el("forma").textContent = formato;
   }
   window.addEventListener("resize", telaioForma);
@@ -3484,6 +3501,57 @@
   }
 
   (function () { var l = el("sLav"); if (l) l.addEventListener("click", apriUscite); })();
+
+  // ── i divisori ──
+  (function () {
+    var radice = document.documentElement;
+    function leggi() {
+      try {
+        var m = JSON.parse(localStorage.getItem("mam.misure") || "{}");
+        if (m.projW) radice.style.setProperty("--projW", m.projW + "px");
+        if (m.split) radice.style.setProperty("--split", m.split);
+        if (m.tlH) radice.style.setProperty("--tlH", m.tlH + "px");
+      } catch (e) {}
+    }
+    function salva(k, v) {
+      try { var m = JSON.parse(localStorage.getItem("mam.misure") || "{}"); m[k] = v; localStorage.setItem("mam.misure", JSON.stringify(m)); } catch (e) {}
+    }
+    leggi();
+    var presa = null;
+    function attacca(id, modo) {
+      var h = el(id); if (!h) return;
+      h.addEventListener("mousedown", function (e) {
+        e.preventDefault(); presa = { modo: modo, h: h, x0: e.clientX, y0: e.clientY,
+          projW: el("sepProj") ? el("sepProj").previousElementSibling.getBoundingClientRect().width : 272,
+          split: parseFloat(getComputedStyle(radice).getPropertyValue("--split")) || 50,
+          tlH: el("timeline").getBoundingClientRect().height,
+          monW: el("monS") ? el("monS").parentElement.getBoundingClientRect().width : 1 };
+        h.classList.add("presa"); document.body.classList.add("ridimensiono");
+      });
+    }
+    document.addEventListener("mousemove", function (e) {
+      if (!presa) return;
+      if (presa.modo === "proj") {
+        var w = Math.max(200, Math.min(640, presa.projW + (e.clientX - presa.x0)));
+        radice.style.setProperty("--projW", w + "px"); presa.val = w;
+      } else if (presa.modo === "mon") {
+        var sp = Math.max(25, Math.min(75, presa.split + (e.clientX - presa.x0) / presa.monW * 100));
+        radice.style.setProperty("--split", sp); presa.val = Math.round(sp * 10) / 10;
+      } else {
+        var hh = Math.max(150, Math.min(520, presa.tlH - (e.clientY - presa.y0)));
+        radice.style.setProperty("--tlH", hh + "px"); presa.val = hh;
+      }
+      telaioForma(); disegnaTutto();
+    });
+    document.addEventListener("mouseup", function () {
+      if (!presa) return;
+      if (presa.val !== undefined) salva(presa.modo === "proj" ? "projW" : presa.modo === "mon" ? "split" : "tlH", presa.val);
+      presa.h.classList.remove("presa"); document.body.classList.remove("ridimensiono"); presa = null;
+      telaioForma(); disegnaTutto();
+    });
+    attacca("sepProj", "proj"); attacca("sepTl", "tl");
+    var giri = 0, att = setInterval(function () { if (el("sepMon") || ++giri > 40) { clearInterval(att); attacca("sepMon", "mon"); } }, 250);
+  })();
   function barra() {
     var aperte = REGISTRAZIONI.filter(function (r) { return r.stato === "registra"; });
     var lav = CLIP.filter(function (c) { return c.stato === "lavora"; }).length;
