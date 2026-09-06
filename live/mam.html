@@ -462,6 +462,11 @@
   .tr.oro{color:var(--gold-deep);} .tr.play{width:36px;}
   .tr:disabled{opacity:.3;cursor:default;}
   .binCapo{margin-top:var(--s3);}
+  .foglio .az.uscita{align-items:center;gap:12px;}
+  .foglio .az.uscita img,.foglio .az.uscita .telo2{width:72px;height:40px;object-fit:cover;border-radius:3px;background:#0F0F0F;flex:none;}
+  .foglio .az.uscita p{flex:1;} .foglio .az.uscita small{color:var(--fumo);}
+  .foglio .az.uscita a{font-size:11px;font-weight:700;color:var(--gold-deep);text-decoration:none;margin-left:6px;}
+  .stato #sLav{cursor:pointer;text-decoration:underline dotted;}
   #bin h2.sez{margin-top:var(--s3);} #bin h2.sez .apri{margin-left:6px;font-style:normal;color:var(--gold-deep);}
   /* Il bin di Premiere: la clip e' il suo fotogramma. Passandoci sopra con
      il cursore la si scorre (hover scrub); i comandi compaiono solo allora. */
@@ -2093,7 +2098,9 @@
       "-",
       ["Sequenza \u00b7 tutti i formati", function () { clicca("seqTutti"); }, "\u2318M"],
       ["Sequenza \u00b7 solo questo formato", function () { clicca("seqMp4"); }, ""],
-      ["XML per Premiere", function () { clicca("seqXml"); }, ""]
+      ["XML per Premiere", function () { clicca("seqXml"); }, ""],
+      "-",
+      ["Esportazioni\u2026", function () { apriUscite(); }, ""]
     ]],
     ["Finestra", [
       ["MAM Live", function () { location.href = "mam.html"; }, ""],
@@ -2133,6 +2140,51 @@
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") chiudi(); });
   }
   costruisciMenu();
+
+  // ── IL VASSOIO DELLE USCITE ──
+  // Come la coda di Media Encoder: quello che e' stato esportato, in
+  // lavorazione o pronto, con scarica, grafica e togli. Non e' progetto.
+  function apriUscite() {
+    var vecchio = el("uscite"); if (vecchio) { vecchio.remove(); return; }
+    var box = document.createElement("div"); box.className = "foglio"; box.id = "uscite";
+    var nomeReg = function (id) { var r = REGISTRAZIONI.filter(function (x) { return x.id === id; })[0]; return r ? r.titolo : ""; };
+    var righe = "";
+    CLIP.slice().sort(function (a, b) { return b.creata - a.creata; }).forEach(function (c) {
+      var url = BASE + "/clip/_clip/" + c.id + ".mp4";
+      righe += '<div class="az uscita" data-clip="' + c.id + '">' +
+        (c.mini ? '<img src="' + BASE + c.mini + '" alt="">' : '<span class="telo2"></span>') +
+        '<p><b>' + pulito(c.titolo) + '</b><br><small>' + pulito(nomeReg(c.reg)) + ' \u00b7 ' + c.formato + ' \u00b7 ' +
+        (c.durataVera || c.durata) + 's \u00b7 ' + (c.stato === "pronta" ? "pronta" : c.stato === "errore" ? "errore: " + pulito(c.errore || "") : "in lavorazione") + '</small></p>' +
+        (c.stato === "pronta" ? '<a href="' + url + '?scarica=1">scarica</a>' +
+          '<a href="' + GEN + '&clip=' + encodeURIComponent(url) + '&titolo=' + encodeURIComponent(c.titolo) +
+          (c.evento ? "&evento=" + encodeURIComponent(c.evento) : "") + '" target="_blank" rel="noopener">grafica</a>' : '') +
+        '<a href="#" class="togli" data-clip="' + c.id + '">togli</a></div>';
+    });
+    (SEQS.length ? SEQS : (SEQ ? [SEQ] : [])).forEach(function (q) {
+      var f = q.esportati || {};
+      Object.keys(f).forEach(function (k) {
+        righe += '<div class="az uscita"><span class="telo2"></span><p><b>' + pulito(q.titolo) + '</b><br><small>sequenza \u00b7 ' + k +
+                 ' \u00b7 ' + orologio(f[k].durata) + '</small></p><a href="' + BASE + f[k].file + '?scarica=1">scarica</a></div>';
+      });
+      if (q.premiere) righe += '<div class="az uscita"><span class="telo2"></span><p><b>' + pulito(q.titolo) + '</b><br><small>XML per Premiere</small></p><a href="' + BASE + q.premiere.file + '?scarica=1">scarica</a></div>';
+      if (q.export && q.export.stato === "lavora") righe += '<div class="az uscita"><span class="telo2"></span><p><b>' + pulito(q.titolo) + '</b><br><small>esporto ' + (q.export.formato || "") + '\u2026</small></p></div>';
+    });
+    box.innerHTML = '<div><header><b>Esportazioni</b><span>' + CLIP.length + ' clip \u00b7 uscite, non progetto</span>' +
+      '<a href="#" id="usciteChiudi">chiudi</a></header><div class="righe">' +
+      (righe || '<div class="az"><p>Niente ancora: esporta una clip (T) o una sequenza.</p></div>') + '</div>' +
+      '<footer>Quello che esce di qui non torna nel progetto: \u00e8 un file, da scaricare o da mandare alla grafica.</footer></div>';
+    document.body.appendChild(box);
+    var via = function (e) { if (e) e.preventDefault(); box.remove(); };
+    box.addEventListener("click", function (e) { if (e.target === box) via(); });
+    el("usciteChiudi").addEventListener("click", via);
+    box.querySelectorAll("a.togli").forEach(function (a) {
+      a.addEventListener("click", function (e) {
+        e.preventDefault();
+        manda({ tipo: "clip-elimina", clip: a.dataset.clip }).then(function () { aggiorna(); box.remove(); apriUscite(); })
+          .catch(function (er) { dice(er.message); });
+      });
+    });
+  }
 
   function fogliettoTasti() {
     var vecchio = el("tasti"); if (vecchio) { vecchio.remove(); return; }
@@ -2303,7 +2355,7 @@
             inSequenza: inSequenza === true })
       .then(function () {
         dice(inSequenza === true ? "Pezzo in lavorazione: entra nella sequenza appena pronto."
-                                 : "Clip in lavorazione: la trovi nel progetto, a sinistra.", true);
+                                 : "Clip in lavorazione: la trovi in Esporta \u203a Esportazioni.", true);
         dentro = null; fuori = null; mostraInOut(); aggiorna();
       })
       .catch(function (e) { dice(e.message); mostraInOut(); });
@@ -2682,7 +2734,7 @@
     var lista = [];
     if (REG) lista.push({ t:"partita", o:REG });
     (SEQS.length ? SEQS : (SEQ ? [SEQ] : [])).forEach(function (q) { lista.push({ t:"hl", o:q }); });
-    CLIP.forEach(function (c) { lista.push({ t:"clip", o:c }); });
+    // le esportazioni sono uscite, non progetto: stanno nel vassoio (Esporta › Esportazioni)
     return lista;
   }
   // Il tipo e la forma si sommano: "clip" e "9:16" insieme vogliono dire le
@@ -3210,7 +3262,7 @@
       if (!REG && REGISTRAZIONI.length && MODO !== "archivio") REG = REGISTRAZIONI[0];
       // in archivio il bin e' della partita scelta: senza partita, vuoto —
       // entrare e trovarsi davanti le clip di tutte le altre confonde
-      CLIP = (d.clip || []).filter(function (c) { return REG ? c.reg === REG.id : MODO !== "archivio"; });
+      CLIP = d.clip || [];
       barra();
       if (REG && el("player") && !guardando) apri(REG);
       disegnaConsole(); capo(); disegnaSequenza();
@@ -3234,6 +3286,7 @@
     }).catch(function (e) { el("sPonte").textContent = "non risponde"; el("sPonteP").className = "pallino"; });
   }
 
+  (function () { var l = el("sLav"); if (l) l.addEventListener("click", apriUscite); })();
   function barra() {
     var aperte = REGISTRAZIONI.filter(function (r) { return r.stato === "registra"; });
     var lav = CLIP.filter(function (c) { return c.stato === "lavora"; }).length;
