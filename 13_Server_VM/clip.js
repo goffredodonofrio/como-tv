@@ -2285,6 +2285,9 @@ async function archivioApri(p) {
   };
   assicura(cartellaReg(r.id));
   R.reg[r.id] = r; scrivi(); annuncia(0, "clip");
+  // una partita che si apre passa in testa alla coda delle durate: in pochi
+  // secondi si sa se il file e' l'intera o un tempo, e il nome si aggiusta
+  if (!a.misurato && CODA_DURATE.indexOf(p.rec) < 0) { CODA_DURATE.unshift(String(p.rec)); giraDurate(); }
   return { ok: true, reg: pubblica(r) };
 }
 
@@ -2314,7 +2317,7 @@ function rinominaMaterialeArchivio() {
     const t = titoloMateriale(a, r.arch.pezzo || 0);
     if (t !== r.titolo) { r.titolo = t; n++; }
   });
-  if (n) scrivi();
+  if (n) { scrivi(); annuncia(0, "clip"); }
   return n;
 }
 function fileArchivio() { return path.join(DIR, "archivio.json"); }
