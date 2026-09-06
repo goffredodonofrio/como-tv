@@ -1376,6 +1376,34 @@ function hlPezzo(p) {
   return { ok: true, seq: q };
 }
 
+// L'INSERISCI DI PREMIERE, ISTANTANEO. Il pezzo entra nella sequenza come
+// entrata e uscita SULLA PARTITA, subito: niente file da aspettare. Il
+// Programma lo riproduce dal materiale, e il video si rende solo quando
+// si esporta — che e' esattamente il modello di Premiere, dove la timeline
+// e' fatta di riferimenti e non di file.
+function hlInserisci(p) {
+  const r = R.reg[String(p.reg || "")];
+  if (!r) throw new Error("registrazione sconosciuta");
+  const durataMax = r.durata || durataRegistrata(r.id) || MAX_SECONDI;
+  const dentro = num(p.dentro, 0, durataMax, 0), fuori = num(p.fuori, 0, durataMax, 0);
+  if (fuori - dentro < 0.5) throw new Error("il punto di uscita deve venire dopo quello di entrata");
+  let q = p.seq ? R.seq[p.seq] : null;
+  if (!q) q = Object.keys(R.seq).map((k) => R.seq[k]).filter((x) => x.reg === r.id).sort((a, b) => b.creata - a.creata)[0];
+  if (!q) {
+    q = { id: nuovoId("s"), reg: r.id, titolo: "HL " + r.titolo, pezzi: [], pre: HL_PRE, post: HL_POST,
+          scarto: 0, avvisi: [], creata: Date.now(), chi: String(p.__chi || p.chi || "").slice(0, 40), export: null };
+    R.seq[q.id] = q;
+  }
+  const pezzo = { id: nuovoId("p"), dentro: dentro, fuori: fuori, base: dentro,
+    titolo: String(p.titolo || "").slice(0, 160) || (r.titolo + " " + orologio(dentro)),
+    tipo: "", minuto: "", fonte: "mano", mano: true };
+  const dove = (p.dove === undefined || p.dove === null) ? q.pezzi.length
+             : Math.max(0, Math.min(q.pezzi.length, Math.round(num(p.dove, 0, 999, 0))));
+  q.pezzi.splice(dove, 0, pezzo);
+  scrivi(); annuncia(0, "clip");
+  return { ok: true, seq: q, pezzo: pezzo.id };
+}
+
 // Il Ctrl+K di Premiere: il pezzo si divide dove sta il cursore, e le due
 // meta' restano al loro posto. Serve per togliere il centro di un'azione
 // lunga senza rifare entrata e uscita da capo.
@@ -1534,8 +1562,10 @@ async function hlEsportaVideo(q, formato, dentroUnGiro) {
   const r = R.reg[q.reg];
   const segs = segmenti(q.reg);
   const usaIntegrale = !segs.length;
-  const integrale = path.join(cartellaReg(q.reg), "integrale.mp4");
-  if (usaIntegrale && !fs.existsSync(integrale)) throw new Error("non c'e' piu' materiale per questa registrazione");
+  // una partita d'archivio non ha byte qui: si legge dal suo indirizzo
+  // firmato, con -ss che scarica solo il pezzo che serve
+  const integrale = (r && r.arch) ? viaArchivio(r) : path.join(cartellaReg(q.reg), "integrale.mp4");
+  if (usaIntegrale && !(r && r.arch) && !fs.existsSync(integrale)) throw new Error("non c'e' piu' materiale per questa registrazione");
 
   const ritaglio = (FORMATI[formato] || FORMATI["16:9"]).vf;
   q.export = { stato: "lavora", formato: formato, fatti: 0, quanti: q.pezzi.length, file: "",
@@ -1628,12 +1658,14 @@ async function hlEsportaPremiere(q, percorso) {
   const integrale = path.join(cartellaReg(q.reg), "integrale.mp4");
   const c1 = fs.existsSync(integrale);
   const nome = (r ? r.titolo.replace(/[^A-Za-z0-9 _-]/g, "") : "integrale") + ".mp4";
-  const via = String(percorso || "").trim() || (c1 ? integrale : nome);
+  // per una partita d'archivio il file che Premiere deve cercare e' quello
+  // del secchio: il montatore ce l'ha gia' su Cyberduck con quel nome
+  const nomeArch = (r && r.arch) ? path.basename(r.arch.chiave) : "";
+  const via = String(percorso || "").trim() || (c1 ? integrale : (nomeArch || nome));
   const info = c1 ? await probe(integrale) : {};
-  // il ritmo si misura sul materiale, non si suppone: integrale se c'e',
-  // altrimenti un segmento qualsiasi della registrazione
   const segs = segmenti(q.reg);
-  const daMisurare = c1 ? integrale : (segs.length ? segs[Math.floor(segs.length / 2)].file : "");
+  const daMisurare = c1 ? integrale : (r && r.arch) ? viaArchivio(r)
+                   : (segs.length ? segs[Math.floor(segs.length / 2)].file : "");
   let fps = daMisurare ? await probeFps(daMisurare) : 0;
   if (!fps || fps < 5 || fps > 240) fps = 25;
   const ntsc = (Math.abs(fps - 29.97) < 0.05 || Math.abs(fps - 23.976) < 0.05 ||
@@ -3311,6 +3343,7 @@ const AZIONI = {
   "clip-hl-elenco": hlElenco,
   "clip-hl-pezzo": hlPezzo,
   "clip-hl-dividi": hlDividi,
+  "clip-hl-inserisci": hlInserisci,
   "clip-hl-aggiungi": hlAggiungi,
   "clip-hl-suggerimento": hlSuggerimento,
   "clip-hl-ordina": hlOrdina,
