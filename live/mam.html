@@ -1286,7 +1286,7 @@
       if (TL.lock.V1) return dice("La traccia V1 e' bloccata.");
       var corpo = { tipo: "clip-hl-inserisci", reg: REG.id, dentro: dentro, fuori: fuori,
                     titolo: REG.titolo + " " + orologio(dentro) };
-      if (SEQ && SEQ.reg === REG.id) corpo.seq = SEQ.id;
+      if (SEQ && SEQ.reg === REG.id) { corpo.seq = SEQ.id; ricorda(); }
       manda(corpo).then(function (r) {
         SEQ = r.seq; dentro = null; fuori = null; mostraInOut(); disegnaSequenza();
         // come Premiere: la testina si mette sulla fine del pezzo inserito, e
@@ -1993,6 +1993,22 @@
       e.preventDefault();
       var dati = ""; try { dati = e.dataTransfer.getData("text/plain") || ""; } catch (er) {}
       var dove = indiceInserimento(e); TL.ins = null;
+      if (dati.indexOf("partita:") === 0) {
+        var idr = dati.slice(8);
+        var reg = REGISTRAZIONI.filter(function (x) { return x.id === idr; })[0] || REG;
+        if (!reg) return;
+        var vs = el("player"), a0, b0;
+        if (REG && reg.id === REG.id && dentro !== null && fuori !== null) { a0 = dentro; b0 = fuori; }
+        else { var tq = vs ? vs.currentTime : 0; a0 = Math.max(0, tq - 10); b0 = tq + 10; }
+        var corpoP = { tipo: "clip-hl-inserisci", reg: reg.id, dentro: a0, fuori: b0, dove: dove, titolo: reg.titolo + " " + orologio(a0) };
+        if (SEQ && SEQ.reg === reg.id) { corpoP.seq = SEQ.id; ricorda(); }
+        manda(corpoP).then(function (r) {
+          SEQ = r.seq; disegnaSequenza(); destraMateriale();
+          dice((dentro !== null && fuori !== null ? "Inserito entrata\u2192uscita." : "Inseriti venti secondi attorno alla testina: segna entrata e uscita per scegliere tu."), true);
+          dentro = null; fuori = null; mostraInOut();
+        }).catch(function (er) { dice(er.message); });
+        return;
+      }
       if (dati.indexOf("clip:") === 0) {
         var corpo = { tipo: "clip-hl-aggiungi", clip: dati.slice(5), dove: dove };
         if (SEQ) corpo.seq = SEQ.id;
@@ -2120,6 +2136,7 @@
     [".", "sovrascrivi → esporta come clip singola"],
     ["Q · W", "taglia il pezzo fino al cursore: la testa (Q) o la coda (W)"],
     ["ctrl+K", "dividi il pezzo al cursore"],
+    ["\u2318Z \u00b7 \u2318\u21e7Z", "annulla \u00b7 ripeti (trenta passi)"],
     ["canc", "togli il pezzo scelto"],
     ["V \u00b7 C", "selezione \u00b7 lametta: clicca sul pezzo dove vuoi tagliare"],
     ["S", "calamita (snap)"],
@@ -2149,7 +2166,8 @@
       ["Torna a Como TV", function () { location.href = "../index.html"; }, ""]
     ]],
     ["Modifica", [
-      ["Annulla", null, "\u2318Z"],
+      ["Annulla", function () { annulla(); }, "\u2318Z"],
+      ["Ripeti", function () { rifai(); }, "\u2318\u21e7Z"],
       "-",
       ["Dividi al cursore", function () { K2("k", { ctrlKey: true }); }, "\u2318K"],
       ["Togli il pezzo scelto", function () { K2("Delete"); }, "\u232b"],
@@ -2419,8 +2437,36 @@
   // OTTIMISTA: la modifica si applica subito alla sequenza in mano e si
   // ridisegna; il server risponde dopo e, se dice di no, si torna a quello
   // che ha lui. Un taglio che si vede dopo un secondo sembra non aver preso.
+  // L'ANNULLA. Prima di ogni modifica si fotografa la lista dei pezzi;
+  // ⌘Z la rimette e la manda al server com'era, ⌘⇧Z rifa'. Trenta passi.
+  var STORIA = [], RIFAI = [];
+  function ricorda() {
+    if (!SEQ) return;
+    STORIA.push({ seq: SEQ.id, pezzi: JSON.parse(JSON.stringify(SEQ.pezzi || [])) });
+    if (STORIA.length > 30) STORIA.shift();
+    RIFAI = [];
+  }
+  function rimetti(foto) {
+    SEQ.pezzi = foto.pezzi; TL.sel = null; PROG.i = -1; disegnaSequenza();
+    manda({ tipo: "clip-hl-imposta", seq: SEQ.id, pezzi: foto.pezzi })
+      .then(function (r) { SEQ = r.seq; disegnaSequenza(); destraMateriale(); })
+      .catch(function (er) { dice(er.message); aggiorna(); });
+  }
+  function annulla() {
+    var foto = STORIA.pop();
+    if (!foto || !SEQ || foto.seq !== SEQ.id) { if (foto) STORIA.push(foto); return dice("Niente da annullare."); }
+    RIFAI.push({ seq: SEQ.id, pezzi: JSON.parse(JSON.stringify(SEQ.pezzi || [])) });
+    rimetti(foto); dice("Annullato.", true);
+  }
+  function rifai() {
+    var foto = RIFAI.pop();
+    if (!foto || !SEQ || foto.seq !== SEQ.id) { if (foto) RIFAI.push(foto); return dice("Niente da ripetere."); }
+    STORIA.push({ seq: SEQ.id, pezzi: JSON.parse(JSON.stringify(SEQ.pezzi || [])) });
+    rimetti(foto); dice("Ripetuto.", true);
+  }
   function applicaEPoi(cambia, corpo, dopo) {
     if (!SEQ) return;
+    ricorda();
     cambia(SEQ); disegnaSequenza();
     manda(corpo).then(function (r) { SEQ = r.seq; disegnaSequenza(); if (dopo) dopo(r); })
       .catch(function (er) { dice(er.message); aggiorna(); });
@@ -2460,6 +2506,10 @@
     if (foglio) { foglio.remove(); if (k === "escape" || k === "?") { e.preventDefault(); return; } }
     if (k === "escape") { var sb = el("segnaBox"); if (sb) sb.hidden = true; var fg = el("foglio"); if (fg) fg.remove(); return; }
     if (k === "?" || (k === "/" && e.shiftKey)) { e.preventDefault(); fogliettoTasti(); return; }
+
+    // ── annulla e ripeti ──
+    if (k === "z" && mod && !e.shiftKey) { e.preventDefault(); annulla(); return; }
+    if ((k === "z" && mod && e.shiftKey) || (k === "y" && mod)) { e.preventDefault(); rifai(); return; }
 
     // ── trasporto ──
     if (k === " ") {
@@ -3060,6 +3110,18 @@
           if (vid.duration) { try { vid.currentTime = q * vid.duration; } catch (er) {} }
         });
         box.addEventListener("mouseleave", function () { box.classList.remove("scorro"); });
+      }
+      // la partita si prende dal Materiale e si lascia cadere in timeline:
+      // entra l'intervallo entrata→uscita se e' segnato, altrimenti venti
+      // secondi attorno alla testina della Sorgente
+      if (a.t === "partita") {
+        d.draggable = true;
+        d.addEventListener("dragstart", function (e) {
+          document.body.classList.add("trascinando");
+          e.dataTransfer.effectAllowed = "copy";
+          try { e.dataTransfer.setData("text/plain", "partita:" + a.o.id); } catch (er) {}
+        });
+        d.addEventListener("dragend", function () { document.body.classList.remove("trascinando"); });
       }
       if (a.t === "clip" && a.o.stato === "pronta") {
         d.draggable = true;

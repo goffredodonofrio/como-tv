@@ -1439,6 +1439,27 @@ function hlNuova(p) {
   return { ok: true, seq: q };
 }
 
+// L'ANNULLA. La pagina tiene lo storico della sequenza e, quando si torna
+// indietro, manda qui l'intera lista dei pezzi com'era. Il server non
+// ragiona: controlla che ogni pezzo abbia senso e la rimette cosi'.
+function hlImposta(p) {
+  const q = seqDi(p);
+  const durata = R.reg[q.reg] ? (R.reg[q.reg].durata || durataRegistrata(q.reg) || MAX_SECONDI) : MAX_SECONDI;
+  const dati = Array.isArray(p.pezzi) ? p.pezzi : [];
+  if (dati.length > 400) throw new Error("troppi pezzi");
+  const vecchi = {}; q.pezzi.forEach((x) => { vecchi[x.id] = x; });
+  q.pezzi = dati.map((d) => {
+    const dentro = num(d.dentro, 0, durata, 0), fuori = num(d.fuori, 0, durata, 0);
+    if (fuori - dentro < 0.5) return null;
+    const base = vecchi[d.id] ? Object.assign({}, vecchi[d.id]) : { id: nuovoId("p"), fonte: "mano", mano: true, tipo: "", minuto: "" };
+    return Object.assign(base, { dentro: dentro, fuori: fuori, base: dentro,
+      titolo: String(d.titolo || base.titolo || "").slice(0, 160),
+      clip: (d.clip && R.clip[d.clip]) ? d.clip : base.clip, mano: true });
+  }).filter(Boolean);
+  scrivi(); annuncia(0, "clip");
+  return { ok: true, seq: q };
+}
+
 // Il Ctrl+K di Premiere: il pezzo si divide dove sta il cursore, e le due
 // meta' restano al loro posto. Serve per togliere il centro di un'azione
 // lunga senza rifare entrata e uscita da capo.
@@ -3389,6 +3410,7 @@ const AZIONI = {
   "clip-hl-dividi": hlDividi,
   "clip-hl-inserisci": hlInserisci,
   "clip-hl-nuova": hlNuova,
+  "clip-hl-imposta": hlImposta,
   "clip-hl-aggiungi": hlAggiungi,
   "clip-hl-suggerimento": hlSuggerimento,
   "clip-hl-ordina": hlOrdina,
