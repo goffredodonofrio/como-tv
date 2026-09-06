@@ -2801,6 +2801,11 @@ async function calibraOrologio(rec, rifai) {
     }
     esito.scarto = c70 === null ? null : c70 - atteso;
     esito.verificato = esito.scarto !== null && Math.abs(esito.scarto) <= 15;
+    // un cronometro che al 70' dice un'altra ora non e' un cronometro: e'
+    // una grafica letta male, e salvarlo sarebbe peggio della stima
+    if (esito.scarto !== null && Math.abs(esito.scarto) > 60) {
+      throw new Error("la prova del nove non torna (al 70' legge " + Math.round(c70 / 60) + "')");
+    }
     a.orologio = esito;
     scriviArchivio();
     console.log("[clip] cronometro letto: " + (a.partita || rec) + " → fischio a " + esito.inizio1 +
