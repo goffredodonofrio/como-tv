@@ -348,6 +348,23 @@
   body.mam .segnaBox{background:#2A2A2A;border-color:#2D8CEB;}
   body.mam .foglio>div,body.mam .tasti>div{background:#232323;}
   body.mam .risultati h3 b{color:#5AA7F2;}
+  /* I CHIP dei risultati: la fonte (da dove viene la riga) e la precisione
+     (quanto ci si puo' fidare del secondo). Colori fissi, sempre gli stessi:
+     appunti grigio, ESPN blu, telecronaca azzurro, segni viola;
+     al secondo verde, a stima ambra. La riga ha il bordo del colore della fonte. */
+  body.mam .voce .chip{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+    padding:2px 6px;border-radius:3px;margin-right:6px;vertical-align:1px;line-height:1.2;}
+  body.mam .voce .chip.appunti{background:#3A3A3A;color:#D8D8D8;}
+  body.mam .voce .chip.storico{background:#3A3A3A;color:#B8B8B8;border:1px dashed #5A5A5A;}
+  body.mam .voce .chip.espn{background:#1F3A5A;color:#7CC0FF;}
+  body.mam .voce .chip.voce{background:#24405A;color:#9AD0FF;}
+  body.mam .voce .chip.segno{background:#3C2F5A;color:#C9A8FF;}
+  body.mam .voce .chip.sec{background:#1F4D2E;color:#6FE0A0;}
+  body.mam .voce .chip.stima{background:#4D3A1F;color:#F0C060;}
+  body.mam .voce.fonte-espn{border-left:3px solid #2D8CEB;}
+  body.mam .voce.fonte-appunti,body.mam .voce.fonte-storico{border-left:3px solid #6A6A6A;}
+  body.mam .voce.a-stima .nome{color:#D8D8D8;}
+  body.mam .voce a{color:#5AA7F2;font-weight:800;letter-spacing:.1em;font-size:10px;}
   /* una frase detta non e' un'azione scritta: corsivo, minuscole, virgolette, riga blu a sinistra */
   body.mam .voce.detta{border-left:3px solid #5AA7F2;}
   body.mam .voce.detta .nome{text-transform:none;font-style:italic;font-weight:500;letter-spacing:0;color:#E6E6E6;font-family:inherit;font-size:12.5px;}
@@ -3872,12 +3889,18 @@
         // prova con lo stesso evento non sono la partita
         var qui = REGISTRAZIONI.filter(function (x) { return x.evento === a.rec && (!a.dove || (x.durata || 0) >= a.dove + 5); })[0];
         var inArchivio = a.archivio && a.dove;
+        // a colpo d'occhio: DA DOVE viene la riga (chip della fonte) e QUANTO
+        // e' precisa (verde al secondo, ambra a stima)
+        var chipFonte = a.fonte === "espn" ? "<span class='chip fonte espn'>ESPN</span>"
+                      : a.fonte === "storico" ? "<span class='chip fonte storico' title='appunti 2021-2025" + (a.telecronista ? " \u00b7 " + a.telecronista : "") + "'>APPUNTI</span>"
+                      : "<span class='chip fonte appunti'>APPUNTI</span>";
+        var chipPrec = inArchivio ? (a.orologio ? "<span class='chip prec sec' title='minuto convertito con il cronometro letto dal video'>\u23f1 al secondo</span>"
+                                                : "<span class='chip prec stima' title='minuto convertito dall\u2019orario ufficiale: pu\u00f2 sbagliare di qualche minuto'>\u2248 a stima</span>") : "";
         var v = riga((a.hl ? "\u2605 " : "") + (a.testo || a.tipo),
-             a.partita + " \u00b7 " + a.minuto + (a.tempo === 2 ? " (2\u00b0T)" : "") +
-             (a.competizione ? " \u00b7 " + a.competizione : "") +
-             (a.fonte === "espn" ? " \u00b7 ESPN" : a.fonte === "storico" ? " \u00b7 appunti" + (a.telecronista ? " di " + a.telecronista : "") : "") +
-             (inArchivio ? (a.orologio ? " \u00b7 \u23f1 al secondo" : " \u00b7 \u2248 a stima") : ""),
-             qui ? "guarda" : (inArchivio ? "archivio" : ""), data(Date.parse(a.quando)));
+             chipFonte + chipPrec + a.partita + " \u00b7 " + a.minuto + (a.tempo === 2 ? " (2\u00b0T)" : "") +
+             (a.competizione ? " \u00b7 " + a.competizione : ""),
+             qui ? "VAI" : (inArchivio ? "VAI" : ""), data(Date.parse(a.quando)));
+        v.classList.add("fonte-" + (a.fonte || "appunti"), inArchivio ? (a.orologio ? "al-secondo" : "a-stima") : "senza-video");
         // l'azione, non la partita: un tasto la mette dritta in sequenza
         if (inArchivio || qui) {
           var tl = document.createElement("a"); tl.href = "#"; tl.className = "inTimeline"; tl.textContent = "\u2192 timeline";
@@ -3918,8 +3941,8 @@
       titolo("Detto in telecronaca", RIS.dette.length);
       RIS.dette.forEach(function (m) {
         var v = riga("\u201c" + m.testo + "\u201d",
-                     m.partita + " \u00b7 " + orologio(m.secondi) + " \u00b7 \ud83c\udf99 telecronaca",
-                     "guarda", data(m.quando));
+                     "<span class='chip fonte voce'>\ud83c\udf99 TELECRONACA</span><span class='chip prec sec'>\u23f1 al secondo</span>" + m.partita + " \u00b7 " + orologio(m.secondi),
+                     "VAI", data(m.quando));
         v.classList.add("detta");
         var tl = document.createElement("a"); tl.href = "#"; tl.className = "inTimeline"; tl.textContent = "\u2192 timeline";
         tl.title = "mette questo passaggio nella sequenza (8 secondi prima, 8 dopo)";
@@ -3942,8 +3965,8 @@
       titolo("Segni nelle partite", RIS.segni.length);
       RIS.segni.forEach(function (m) {
         riga(m.testo || m.tipo || "segno",
-             m.partita + " · " + orologio(m.secondi) + (m.fonte ? " · " + m.fonte : ""),
-             "guarda", data(m.quando))
+             "<span class='chip fonte segno'>SEGNO</span>" + m.partita + " · " + orologio(m.secondi) + (m.fonte ? " · " + m.fonte : ""),
+             "VAI", data(m.quando))
           .addEventListener("click", function () { vaiA(m.reg, m.secondi, "live"); });
       });
     }
