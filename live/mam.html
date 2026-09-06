@@ -2878,13 +2878,31 @@
           if (visti[p.rec]) return;
           voci.push({ quando: p.quando, titolo: p.titolo, rec: p.rec, arch: p, futura: false });
         });
-        voci.sort(function (x, y) { return (Date.parse(y.quando) || 0) - (Date.parse(x.quando) || 0); });
+        // una cartella S3 con una data nel futuro e' un errore di battitura nel
+        // nome (20270729 per 20250729): va in fondo, segnata, non in cima
+        voci.forEach(function (v) { if (v.arch && Date.parse(v.quando) > Date.now()) v.sospetta = true; });
+        voci.sort(function (x, y) {
+          if (!!x.sospetta !== !!y.sospetta) return x.sospetta ? 1 : -1;
+          return (Date.parse(y.quando) || 0) - (Date.parse(x.quando) || 0);
+        });
+        // Airtable a volte ha la stessa partita due volte (due righe per lo
+        // stesso giorno e lo stesso nome): in tendina una basta, quella con il video
+        var chiaveVoce = function (v) {
+          return dataOpz(v.quando) + "|" + String(v.titolo).toUpperCase().replace(/\[[^\]]*\]|\(.*?\)|\b\d+\s*-\s*\d+\b/g, "").replace(/[^A-Z0-9]+/g, " ").trim();
+        };
+        var tenute = {}, uniche = [];
+        voci.forEach(function (v) {
+          var k = chiaveVoce(v), g = tenute[k];
+          if (!g) { tenute[k] = v; uniche.push(v); return; }
+          if (v.arch && (!g.arch || (g.arch.soloS3 && !v.arch.soloS3))) { uniche[uniche.indexOf(g)] = v; tenute[k] = v; }
+        });
+        voci = uniche;
         var conVideo = 0;
         voci.forEach(function (v) {
           var o = document.createElement("option");
           o.value = v.arch ? "arc:" + v.rec : "ev:" + v.rec;
           var stato = "";
-          if (v.arch) { conVideo++; stato = (v.arch.pezzi > 1 ? "  (" + v.arch.pezzi + " parti)" : "") + (v.arch.soloS3 ? "  \u00b7 solo archivio" : ""); }
+          if (v.arch) { conVideo++; stato = (v.arch.pezzi > 1 ? "  (" + v.arch.pezzi + " parti)" : "") + (v.arch.soloS3 ? "  \u00b7 solo archivio" : "") + (v.sospetta ? "  \u00b7 data da verificare" : ""); }
           else if (v.futura) stato = "  \u00b7 da giocare";
           else stato = "  \u00b7 video non ancora su S3";
           o.textContent = dataOpz(v.quando) + "  " + v.titolo + stato;

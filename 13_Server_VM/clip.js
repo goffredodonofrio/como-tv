@@ -2383,7 +2383,13 @@ async function archivioScandaglia(p) {
   //    appunti ne' calcio d'inizio, ma esistono, e un archivio che le
   //    nasconde perche' manca una riga in un database non e' un archivio.
   //    Prendono un'identita' loro, fatta dal percorso, e stanno in elenco.
-  let soleS3 = 0;
+  let soleS3 = 0, assorbite = 0, promosse = 0;
+  // la stessa partita sta spesso in due posti: TEMP/<giorno>/ con la
+  // registrazione intera e BACKUP/... con i pezzi esportati. Non sono due
+  // partite. Si riconoscono da giorno e nome (senza risultato ne' parentesi)
+  const chiaveDoppia = (g, t) => g + "|" + String(t || "").toUpperCase().replace(/\[[^\]]*\]|\(.*?\)|\b\d+\s*-\s*\d+\b/g, "").replace(/[^A-Z0-9]+/g, " ").trim();
+  const linkate = {};
+  Object.keys(ARCHIVIO).forEach((k) => { if (k.indexOf("s3:") !== 0) linkate[chiaveDoppia(ARCHIVIO[k].giorno, ARCHIVIO[k].partita)] = k; });
   const orologiSoleS3 = {};
   Object.keys(ARCHIVIO).forEach((k) => {
     if (k.indexOf("s3:") !== 0 || ARCHIVIO[k].bucket !== bucket) return;
@@ -2404,6 +2410,18 @@ async function archivioScandaglia(p) {
     // la competizione e' il pezzo di percorso subito sopra la stagione o la partita
     const via = gr.dove.split("/");
     const comp = via.slice(1, -1).filter((x) => !/^(stagione|partite|\d{4}|\d{2}-\d{2}|turno|round|giornata|andata|ritorno|fase)/i.test(x)).pop() || "";
+    const gemella = linkate[chiaveDoppia(g, gr.partita.replace(/[_]+/g, " "))];
+    if (gemella) {
+      const L = ARCHIVIO[gemella];
+      // se qui c'e' la partita intera e la gemella aveva solo i pezzi, il
+      // materiale migliore passa alla gemella (il cronometro va riletto)
+      if (scelta.fonte === "intero" && L.fonte !== "intero") {
+        Object.assign(L, { chiave: pezzi[0].chiave, peso: pezzi[0].peso, dove: gr.dove, fonte: scelta.fonte, pezzi: pezzi,
+                           kickoff: kickoffNelFile(pezzi[0].file, Date.parse(L.quando)), orologio: undefined });
+        promosse++;
+      } else assorbite++;
+      return;
+    }
     const id = "s3:" + crypto.createHash("sha1").update(gr.dove).digest("hex").slice(0, 14);
     ARCHIVIO[id] = { orologio: orologiSoleS3[id], bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
       partita: gr.partita.replace(/[_]+/g, " ").trim(), competizione: comp.replace(/[_]+/g, " "),
@@ -2415,7 +2433,7 @@ async function archivioScandaglia(p) {
   scriviArchivio();
   return { ok: true, oggettiVisti: visti, fileTenuti: tenuti,
            cartellePartita: Object.keys(gruppi).length,
-           partiteViste: tornate, agganciate: agganciate, intere: intere,
+           partiteViste: tornate, agganciate: agganciate, intere: intere, doppieAssorbite: assorbite, promosseAIntere: promosse,
            conKickoff: conKickoff, soloS3: soleS3, senzaAggancio: orfane.slice(0, 15) };
 }
 
@@ -2875,7 +2893,7 @@ async function controllaArchivioNuovo() {
     if (!nuove && !(ora === 5 && !ultimoScandaglioOggi())) return;
     scandaglioInCorso = true;
     console.log("[clip] archivio: " + (nuove ? "cartelle nuove su S3" : "giro delle cinque") + ", rifaccio l'indice");
-    const r = await archivioScandaglia({});
+    const r = await archivioScandaglia({ giorni: 3650 });   // tutto l'archivio, non gli ultimi 400 giorni
     console.log("[clip] archivio: indice rifatto, " + (r.partiteViste || 0) + " partite viste, " + (r.intere || 0) + " intere");
     ultimoScandaglio = Date.now();
   } catch (e) { console.log("[clip] archivio: controllo non riuscito: " + e.message); }
