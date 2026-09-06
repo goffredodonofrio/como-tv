@@ -61,10 +61,10 @@ def componenti(maschera):
     return fuori
 
 
-def trova_grafica(a, b):
-    """Il riquadro (x, y, w, h) della grafica ferma fra i due fotogrammi, o None."""
+def isole_ferme(a, b, soglia):
+    """Le isole di pixel fermi e disegnati, come riquadri (x, y, w, h, area)."""
     h, w = a.shape
-    fermo = np.abs(a - b) < 12
+    fermo = np.abs(a - b) < soglia
     # i bordi: dove l'immagine cambia da un pixel al vicino
     gy, gx = np.gradient(a)
     bordi = (np.abs(gx) + np.abs(gy)) > 18
@@ -77,56 +77,69 @@ def trova_grafica(a, b):
     img = Image.fromarray((piccolo * 255).astype(np.uint8))
     img = img.filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.MinFilter(3))
     piccolo = np.asarray(img) > 0
-    migliore = None
+    fuori = []
     for x0, y0, x1, y1, area in componenti(piccolo):
         bw, bh = (x1 - x0) * r, (y1 - y0) * r
         if bw < w * 0.05 or bw > w * 0.55:
             continue            # troppo stretto per essere una grafica, o e' tutto lo stadio
         if bh < h * 0.08 or bh > h * 0.95:
             continue
-        pieno = area / float((x1 - x0) * (y1 - y0))
-        if pieno < 0.35:
+        if area / float((x1 - x0) * (y1 - y0)) < 0.25:
             continue            # un riquadro deve essere pieno, non una ragnatela
-        punteggio = area
-        if migliore is None or punteggio > migliore[0]:
-            migliore = (punteggio, x0 * r, y0 * r, bw, bh)
-    if migliore is None:
-        return None
-    _, x, y, bw, bh = [int(v) for v in migliore]
-    # un po' d'aria attorno, che le cifre non tocchino il bordo
-    aria = 6
-    x0, y0 = max(0, x - aria), max(0, y - aria)
-    return (x0, y0, min(w, x + bw + aria) - x0, min(h, y + bh + aria) - y0)
+        fuori.append((int(x0 * r), int(y0 * r), int(bw), int(bh), int(area * r * r)))
+    return fuori
 
 
-def trova_cifre(a, b, box):
-    """Dentro la grafica, il riquadro stretto attorno al cronometro.
+def righe_chiare(a, b):
+    """Le righe di scritte chiare che non si muovono: una grafica e' anche
+    questo, quando il fondo e' trasparente e la folla ci passa attraverso."""
+    h, w = a.shape
+    m = (a > 200) & (np.abs(a - b) < 40)
+    img = Image.fromarray((m * 255).astype(np.uint8))
+    img = img.filter(ImageFilter.MaxFilter(21)).filter(ImageFilter.MinFilter(7))
+    m = np.asarray(img) > 0
+    r = 2
+    hh, ww = h // r, w // r
+    piccolo = m[:hh * r, :ww * r].reshape(hh, r, ww, r).max(axis=(1, 3)) > 0
+    fuori = []
+    for x0, y0, x1, y1, area in componenti(piccolo):
+        bw, bh = (x1 - x0) * r, (y1 - y0) * r
+        if bw < w * 0.05 or bw > w * 0.55 or bh < 14 or bh > h * 0.6:
+            continue
+        if bw / float(bh) < 1.6 or bw / float(bh) > 14:
+            continue
+        fuori.append((int(x0 * r), int(y0 * r), int(bw), int(bh), int(area * r * r)))
+    return fuori
 
-    In venti secondi, dentro una grafica ferma, cambiano solo le cifre dei
-    secondi. Trovate quelle, il cronometro intero sta alla loro sinistra:
-    "70:" prima di "41". Si allarga di conseguenza, con un po' d'aria."""
-    x, y, bw, bh = box
-    d = np.abs(a[y:y + bh, x:x + bw] - b[y:y + bh, x:x + bw]) > 40
-    if d.sum() < 12:
-        return None
-    ys, xs = np.nonzero(d)
-    # si scartano i puntini isolati: contano le righe e colonne con piu' pixel cambiati
-    righe = np.bincount(ys, minlength=bh) >= 2
-    colonne = np.bincount(xs, minlength=bw) >= 2
-    if not righe.any() or not colonne.any():
-        return None
-    y0, y1 = int(np.argmax(righe)), int(bh - np.argmax(righe[::-1]))
-    x0, x1 = int(np.argmax(colonne)), int(bw - np.argmax(colonne[::-1]))
-    cw, ch = x1 - x0, y1 - y0
-    if ch < 6 or cw < 4:
-        return None
-    # a sinistra ci sono i minuti e i due punti: due volte e mezzo la larghezza
-    # dei secondi; sopra e sotto mezza altezza d'aria
-    sx = max(0, x0 - int(cw * 2.6) - 4)
-    dx = min(bw, x1 + int(cw * 0.4) + 4)
-    su = max(0, y0 - int(ch * 0.5))
-    giu = min(bh, y1 + int(ch * 0.5))
-    return (x + sx, y + su, dx - sx, giu - su)
+
+def trova_grafica(a, b):
+    """I riquadri (x, y, w, h) che potrebbero essere la grafica, dal piu' probabile.
+
+    Non si sceglie qui: si prova a leggere in ciascuno, e vince quello in
+    cui si legge un orario. Un cartellone fermo non ha un cronometro. Tre
+    fonti: le isole ferme con soglia stretta, quelle con soglia larga (la
+    grafica semitrasparente), le righe di scritte chiare."""
+    h, w = a.shape
+    candidati = []
+    for fonte in (isole_ferme(a, b, 12), isole_ferme(a, b, 20), righe_chiare(a, b)):
+        fonte.sort(key=lambda c: -c[4])
+        for x, y, bw, bh, area in fonte[:4]:
+            doppione = False
+            for x2, y2, bw2, bh2 in candidati:
+                ix = max(0, min(x + bw, x2 + bw2) - max(x, x2))
+                iy = max(0, min(y + bh, y2 + bh2) - max(y, y2))
+                if ix * iy > 0.6 * min(bw * bh, bw2 * bh2):
+                    doppione = True
+                    break
+            if not doppione:
+                candidati.append((x, y, bw, bh))
+    fuori = []
+    for x, y, bw, bh in candidati[:8]:
+        # un po' d'aria attorno, che le cifre non tocchino il bordo
+        aria = 6
+        x0, y0 = max(0, x - aria), max(0, y - aria)
+        fuori.append((x0, y0, min(w, x + bw + aria) - x0, min(h, y + bh + aria) - y0))
+    return fuori
 
 
 def trova_targhe(a, b, box):
@@ -138,12 +151,15 @@ def trova_targhe(a, b, box):
     x, y, bw, bh = box
     r = a[y:y + bh, x:x + bw]
     # la targa e' ferma: la folla chiara dietro no, e cosi' non si attacca
-    fermo = np.abs(r - b[y:y + bh, x:x + bw]) < 12
+    fermo = np.abs(r - b[y:y + bh, x:x + bw]) < 20
     fuori = []
-    for maschera in ((r > 205) & fermo, (r < 55) & fermo):
+    # tre modi di essere una targa: chiara e piena, scura e piena, oppure
+    # solo una riga di scritte chiare su un fondo che lascia passare la folla
+    prove = (((r > 205) & fermo, 7, 5), ((r < 55) & fermo, 7, 5), ((r > 200) & (np.abs(r - b[y:y + bh, x:x + bw]) < 40), 21, 7))
+    for maschera, chiudi, apri in prove:
         img = Image.fromarray((maschera * 255).astype(np.uint8))
         # le cifre bucano la targa: si chiudono i buchi prima di contare
-        img = img.filter(ImageFilter.MaxFilter(7)).filter(ImageFilter.MinFilter(5))
+        img = img.filter(ImageFilter.MaxFilter(chiudi)).filter(ImageFilter.MinFilter(apri))
         m = np.asarray(img) > 0
         for x0, y0, x1, y1, area in componenti(m):
             tw, th = x1 - x0, y1 - y0
@@ -151,12 +167,12 @@ def trova_targhe(a, b, box):
                 continue
             if tw / float(th) < 1.6 or tw / float(th) > 7:
                 continue
-            if area / float(tw * th) < 0.6:
+            if area / float(tw * th) < 0.5:
                 continue
             fuori.append((int(x + x0), int(y + y0), int(tw), int(th), int(area)))
     # prima le targhe piu' grandi: il cronometro e' la scritta piu' larga
     fuori.sort(key=lambda t: -t[4])
-    return [t[:4] for t in fuori[:6]]
+    return [t[:4] for t in fuori[:8]]
 
 
 def leggi(percorso, box):
@@ -202,27 +218,35 @@ def main():
     if a.shape != b.shape:
         print(json.dumps({"errore": "i due fotogrammi non hanno la stessa misura"}))
         return 2
-    box = trova_grafica(a, b)
-    if box is None:
+    scatole = trova_grafica(a, b)
+    if not scatole:
         print(json.dumps({"letture": [None, None], "box": None, "perche": "nessuna grafica ferma"}))
         return 0
     c1 = c2 = None
     t1 = t2 = []
     cifre = None
-    for targa in trova_targhe(a, b, box):
-        c1, t1 = leggi(fa, targa)
-        if c1 is None:
-            continue
-        c2, t2 = leggi(fb, targa)
-        if c2 is not None:
-            cifre = targa
+    box = scatole[0]
+    for box in scatole:
+        for targa in trova_targhe(a, b, box):
+            c1, t1 = leggi(fa, targa)
+            if c1 is None:
+                continue
+            c2, t2 = leggi(fb, targa)
+            if c2 is not None and abs((c2 - c1) - 20) <= 3:
+                cifre = targa
+                break
+            c1 = c2 = None
+        if cifre:
             break
-    if c1 is None or c2 is None:
-        # senza le cifre strette si legge tutta la grafica
-        d1, u1 = leggi(fa, box)
-        d2, u2 = leggi(fb, box)
-        c1, c2 = (c1 if c1 is not None else d1), (c2 if c2 is not None else d2)
-        t1, t2 = t1 + u1, t2 + u2
+    if cifre is None:
+        # senza targhe si legge tutta la grafica, candidato per candidato
+        for box in scatole:
+            d1, u1 = leggi(fa, box)
+            d2, u2 = leggi(fb, box)
+            t1, t2 = t1 + u1, t2 + u2
+            if d1 is not None and d2 is not None:
+                c1, c2 = d1, d2
+                break
     print(json.dumps({"letture": [c1, c2], "box": list(box), "cifre": list(cifre) if cifre else None,
                       "testo": [t1, t2]}))
     return 0
