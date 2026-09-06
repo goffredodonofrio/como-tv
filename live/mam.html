@@ -134,7 +134,7 @@
   .tltraccia .mic::after{content:'';position:absolute;left:-2.5px;bottom:-4px;width:8px;height:4px;border:1.5px solid #9A9A9A;border-top:0;border-radius:0 0 5px 5px;}
 
   .tlpista{position:relative;flex:1 1 auto;overflow:hidden;cursor:default;user-select:none;background:var(--tl-fondo);}
-  .tlrighello{position:relative;height:44px;border-bottom:1px solid var(--tl-riga);background:#232323;}
+  .tlrighello{position:relative;height:44px;border-bottom:1px solid var(--tl-riga);background:#232323;cursor:ew-resize;}
   .tlrighello .ora{position:absolute;top:5px;font-size:10.5px;color:#BDBDBD;transform:translateX(3px);
     font-variant-numeric:tabular-nums;pointer-events:none;white-space:nowrap;}
   .tlrighello .tacca{position:absolute;bottom:14px;width:1px;height:6px;background:#6A6A6A;}
@@ -149,6 +149,8 @@
   /* la clip video: corpo blu, barra del titolo piu' chiara con nome e fx, miniatura */
   .tlpista .clipV{position:absolute;top:1px;height:54px;background:var(--tl-clip);border:1px solid #1B3D52;
     border-radius:2px;overflow:hidden;cursor:grab;color:#F2F2F2;}
+  .tlpista.lametta .clipV,.tlpista.lametta .clipA{cursor:crosshair;}
+  .tlpista .clipV.sotto{box-shadow:inset 0 0 0 1px rgba(255,255,255,.35);}
   .tlpista .clipV .barra2{position:absolute;left:0;right:0;top:0;height:16px;background:var(--tl-clip2);
     display:flex;align-items:center;padding:0 6px;font-size:10px;font-weight:500;white-space:nowrap;}
   .tlpista .clipV .barra2 .tt{flex:1;overflow:hidden;text-overflow:ellipsis;}
@@ -519,6 +521,9 @@
   .projInfo td:first-child{color:#8A8A8A;width:38%;}
   .projInfo h3{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#2D8CEB;margin:12px 0 6px;}
   .foglio .az.uscita{align-items:center;gap:12px;}
+  .barraAv{display:block;height:6px;background:rgba(127,127,127,.25);border-radius:3px;margin-top:5px;overflow:hidden;}
+  .barraAv i{display:block;height:100%;background:#2D8CEB;transition:width .4s;}
+  .stato .barraAv{display:inline-block;width:70px;height:5px;margin:0 0 0 8px;vertical-align:middle;}
   .foglio .exp{max-width:560px;}
   .exp .expT{width:100%;border-collapse:collapse;font-size:12.5px;}
   .exp .expT td{padding:8px 0;vertical-align:top;border-bottom:1px solid var(--linea);}
@@ -858,7 +863,8 @@
     <div class="tlnomi">
       <div class="tltc" id="tlTc">00:00:00:00</div>
       <div class="tlstrumenti">
-        <i title="allinea"><svg viewBox="0 0 16 16"><path d="M3 4h10M3 8h6M3 12h10M9 8l3-2v4z"/></svg></i>
+        <i class="on" id="tlFreccia" title="selezione (V)"><svg viewBox="0 0 16 16"><path class="p" d="M4 2l9 7-4 .8 2.5 4.2-1.8 1L7.2 10.8 4 13.5z"/></svg></i>
+        <i id="tlLametta" title="lametta (C): clicca sul pezzo dove vuoi tagliare"><svg viewBox="0 0 16 16"><path d="M3 13L13 3M9 3l4 4M5 9l2 2"/></svg></i>
         <i class="on" title="calamita (snap)"><svg viewBox="0 0 16 16"><path d="M4 3v6a4 4 0 0 0 8 0V3M4 3h3M9 3h3"/></svg></i>
         <i title="modifiche collegate"><svg viewBox="0 0 16 16"><rect x="2" y="3" width="5" height="10"/><rect x="9" y="3" width="5" height="10"/></svg></i>
         <i title="marcatore" id="tlSegno"><svg viewBox="0 0 16 16"><path class="p" d="M4 2h8v12l-4-3-4 3z"/></svg></i>
@@ -1283,6 +1289,10 @@
       if (SEQ && SEQ.reg === REG.id) corpo.seq = SEQ.id;
       manda(corpo).then(function (r) {
         SEQ = r.seq; dentro = null; fuori = null; mostraInOut(); disegnaSequenza();
+        // come Premiere: la testina si mette sulla fine del pezzo inserito, e
+        // da quel momento la sequenza si taglia senza altri gesti
+        var i = (SEQ.pezzi || []).findIndex(function (z) { return z.id === r.pezzo; });
+        if (i >= 0) { var z = SEQ.pezzi[i]; MON = "p"; el("monS").classList.remove("attivo"); el("monP").classList.add("attivo"); progVai(i, false, Math.max(0, z.fuori - z.dentro - 1 / FPS)); }
         dice("Inserito nella sequenza.", true);
       }).catch(function (e) { dice(e.message); });
     });
@@ -1755,7 +1765,9 @@
   //  prende un bordo per accorciarlo o allungarlo, si clicca sul righello
   //  per andare li'. Una clip dal progetto si lascia cadere dove si vuole.
   //  Canc toglie il pezzo scelto.
-  var TL = { sel: null, ghost: null, ins: null, trim: null, drag: null, vista: null, nav: null, lock: { V1: false, A1: false } };
+  var TL = { sel: null, ghost: null, ins: null, trim: null, drag: null, vista: null, nav: null, scrub: null, lock: { V1: false, A1: false } };
+  var MOD = /Mac|iPhone|iPad/.test(navigator.platform || "") ? "\u2318" : "ctrl+";
+  var STRUMENTO = "v";        // v = selezione, c = lametta
 
   function progPos() {
     var pz = pezziProg(); if (PROG.i < 0 || !pz[PROG.i]) return 0;
@@ -1828,7 +1840,7 @@
       var xa = Math.max(0, X(a)), xb = Math.min(largo, X(bb)), w = Math.max(6, xb - xa);
       var cl = x.clip ? CLIP.filter(function (k) { return k.id === x.clip; })[0] : null;
       var img = (cl && cl.mini) ? '<img src="' + BASE + cl.mini + '" alt="">' : "";
-      ov.push('<div class="clipV' + (TL.sel === x.id ? " sel" : "") + '" data-pezzo="' + x.id + '" data-i="' + i +
+      ov.push('<div class="clipV' + (TL.sel === x.id ? " sel" : "") + (i === PROG.i ? " sotto" : "") + '" data-pezzo="' + x.id + '" data-i="' + i +
               '" style="left:' + xa + 'px;width:' + w + 'px">' +
               '<div class="barra2"><span class="tt">' + pulito(x.titolo) + '</span><span class="fx">fx</span></div>' + img +
               '<span class="bordo sx" data-lato="sx"></span><span class="bordo dx" data-lato="dx"></span></div>');
@@ -1901,6 +1913,13 @@
         TL.trim = { id: x.id, lato: bordo.dataset.lato, x0: e.clientX, dentro: x.dentro, fuori: x.fuori };
         TL.sel = x.id; e.preventDefault(); disegnaTimeline(); return;
       }
+      if (blocco && STRUMENTO === "c") {
+        // la lametta: si taglia dove si clicca, senza spostare la testina
+        var xc = pz.filter(function (z) { return z.id === blocco.dataset.pezzo; })[0]; if (!xc) return;
+        var tc0 = tempoSeq(e), dc = tc0 === null ? null : pezzoAlTempo(tc0);
+        if (dc) dividiA(xc, xc.dentro + dc.dentro);
+        e.preventDefault(); return;
+      }
       if (blocco) {
         var i = pz.findIndex(function (z) { return z.id === blocco.dataset.pezzo; }); if (i < 0) return;
         TL.sel = pz[i].id; TL.drag = { id: pz[i].id, i: i, x0: e.clientX, mosso: false };
@@ -1911,10 +1930,22 @@
       var dove = pezzoAlTempo(t); if (!dove) return;
       TL.sel = null;
       progVai(dove.i, vp && !vp.paused, dove.dentro);
+      // e da qui si trascina: la testina segue il mouse finche' lo si tiene
+      TL.scrub = { ultimo: 0 }; e.preventDefault();
     });
     document.addEventListener("mousemove", function (e) {
       var f = finestraSeq(); if (!f) return;
       var p2 = el("tlPista"), largo = p2 ? p2.clientWidth || 900 : 900;
+      if (TL.scrub) {
+        var ts = tempoSeq(e); if (ts === null) return;
+        var ds = pezzoAlTempo(ts); if (!ds) return;
+        var ora = Date.now();
+        // il video cerca al massimo sei volte al secondo: sette giga su S3
+        // non si scorrono a ogni pixel; la testina invece segue subito
+        if (ora - TL.scrub.ultimo > 160) { TL.scrub.ultimo = ora; progVai(ds.i, false, ds.dentro); }
+        else { var x = pezziProg()[ds.i]; PROG.i = ds.i; PROG.pos = (PROG.a === null ? 0 : x.dentro) + ds.dentro; disegnaTimeline(); if (el("pPos")) el("pPos").textContent = tc(progPos()); }
+        return;
+      }
       if (TL.trim) {
         var dt = (e.clientX - TL.trim.x0) / largo * (f.b - f.a);
         var d0 = TL.trim.dentro, f0 = TL.trim.fuori, tot = durataAperta() || 99999;
@@ -1930,11 +1961,11 @@
       }
     });
     document.addEventListener("mouseup", function () {
+      if (TL.scrub) { TL.scrub = null; var dsx = pezzoAlTempo(progPos()); if (dsx) progVai(dsx.i, false, dsx.dentro); }
       if (TL.trim && TL.ghost && SEQ) {
-        var g = TL.ghost;
-        manda({ tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: g.id, dentro: g.dentro, fuori: g.fuori })
-          .then(function (r) { SEQ = r.seq; disegnaSequenza(); })
-          .catch(function (er) { dice(er.message); disegnaTimeline(); });
+        var g = TL.ghost; TL.ghost = null;
+        applicaEPoi(function (q) { var z = q.pezzi.filter(function (p) { return p.id === g.id; })[0]; if (z) { z.dentro = g.dentro; z.fuori = g.fuori; } },
+                    { tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: g.id, dentro: g.dentro, fuori: g.fuori });
       }
       if (TL.drag && TL.drag.mosso && TL.ins !== null && SEQ) {
         var ordine = pezziProg().map(function (z) { return z.id; });
@@ -1943,9 +1974,8 @@
           ordine.splice(da, 1);
           if (a > da) a--;
           ordine.splice(a, 0, TL.drag.id);
-          manda({ tipo: "clip-hl-ordina", seq: SEQ.id, ordine: ordine })
-            .then(function (r) { SEQ = r.seq; disegnaSequenza(); })
-            .catch(function (er) { dice(er.message); });
+          applicaEPoi(function (q) { var m = {}; q.pezzi.forEach(function (p) { m[p.id] = p; }); q.pezzi = ordine.map(function (id) { return m[id]; }).filter(Boolean); },
+                      { tipo: "clip-hl-ordina", seq: SEQ.id, ordine: ordine });
         }
       }
       TL.trim = null; TL.ghost = null; TL.drag = null; TL.ins = null;
@@ -2091,6 +2121,7 @@
     ["Q · W", "taglia il pezzo fino al cursore: la testa (Q) o la coda (W)"],
     ["ctrl+K", "dividi il pezzo al cursore"],
     ["canc", "togli il pezzo scelto"],
+    ["V \u00b7 C", "selezione \u00b7 lametta: clicca sul pezzo dove vuoi tagliare"],
     ["S", "calamita (snap)"],
     ["shift+E", "esporta fotogramma"],
     ["ctrl+M", "esporta la sequenza in tutti i formati"],
@@ -2287,8 +2318,9 @@
   // ── IL VASSOIO DELLE USCITE ──
   // Come la coda di Media Encoder: quello che e' stato esportato, in
   // lavorazione o pronto, con scarica, grafica e togli. Non e' progetto.
-  function apriUscite() {
-    var vecchio = el("uscite"); if (vecchio) { vecchio.remove(); return; }
+  function apriUscite(rinfresca) {
+    var vecchio = el("uscite"), scroll = 0;
+    if (vecchio) { if (!rinfresca) { vecchio.remove(); return; } var r0 = vecchio.querySelector(".righe"); scroll = r0 ? r0.scrollTop : 0; vecchio.remove(); }
     var box = document.createElement("div"); box.className = "foglio"; box.id = "uscite";
     var nomeReg = function (id) { var r = REGISTRAZIONI.filter(function (x) { return x.id === id; })[0]; return r ? r.titolo : ""; };
     var righe = "";
@@ -2297,7 +2329,8 @@
       righe += '<div class="az uscita" data-clip="' + c.id + '">' +
         (c.mini ? '<img src="' + BASE + c.mini + '" alt="">' : '<span class="telo2"></span>') +
         '<p><b>' + pulito(c.titolo) + '</b><br><small>' + pulito(nomeReg(c.reg)) + ' \u00b7 ' + c.formato + ' \u00b7 ' +
-        (c.durataVera || c.durata) + 's \u00b7 ' + (c.stato === "pronta" ? "pronta" : c.stato === "errore" ? "errore: " + pulito(c.errore || "") : "in lavorazione") + '</small></p>' +
+        (c.durataVera || c.durata) + 's \u00b7 ' + (c.stato === "pronta" ? "pronta" : c.stato === "errore" ? "errore: " + pulito(c.errore || "") : "in lavorazione \u00b7 " + Math.round((c.avanza || 0) * 100) + "%") + '</small>' +
+        (c.stato === "pronta" || c.stato === "errore" ? "" : '<span class="barraAv"><i style="width:' + Math.round((c.avanza || 0) * 100) + '%"></i></span>') + '</p>' +
         (c.stato === "pronta" ? '<a href="' + url + '?scarica=1">scarica</a>' +
           '<a href="' + GEN + '&clip=' + encodeURIComponent(url) + '&titolo=' + encodeURIComponent(c.titolo) +
           (c.evento ? "&evento=" + encodeURIComponent(c.evento) : "") + '" target="_blank" rel="noopener">grafica</a>' : '') +
@@ -2310,7 +2343,11 @@
                  ' \u00b7 ' + orologio(f[k].durata) + '</small></p><a href="' + BASE + f[k].file + '?scarica=1">scarica</a></div>';
       });
       if (q.premiere) righe += '<div class="az uscita"><span class="telo2"></span><p><b>' + pulito(q.titolo) + '</b><br><small>XML per Premiere</small></p><a href="' + BASE + q.premiere.file + '?scarica=1">scarica</a></div>';
-      if (q.export && q.export.stato === "lavora") righe += '<div class="az uscita"><span class="telo2"></span><p><b>' + pulito(q.titolo) + '</b><br><small>esporto ' + (q.export.formato || "") + '\u2026</small></p></div>';
+      if (q.export && q.export.stato === "lavora") {
+        var av = q.export.avanza || ((q.export.fatti || 0) / Math.max(1, q.export.quanti || 1));
+        righe += '<div class="az uscita"><span class="telo2"></span><p><b>' + pulito(q.titolo) + '</b><br><small>esporto ' + (q.export.formato || "") +
+                 (q.export.tutti ? " (poi gli altri formati)" : "") + ' \u00b7 ' + Math.round(av * 100) + '%</small><span class="barraAv"><i style="width:' + Math.round(av * 100) + '%"></i></span></p></div>';
+      }
     });
     box.innerHTML = '<div><header><b>Esportazioni</b><span>' + CLIP.length + ' clip \u00b7 uscite, non progetto</span>' +
       '<a href="#" id="usciteChiudi">chiudi</a></header><div class="righe">' +
@@ -2320,6 +2357,7 @@
     var via = function (e) { if (e) e.preventDefault(); box.remove(); };
     box.addEventListener("click", function (e) { if (e.target === box) via(); });
     el("usciteChiudi").addEventListener("click", via);
+    if (scroll) { var r1 = box.querySelector(".righe"); if (r1) r1.scrollTop = scroll; }
     box.querySelectorAll("a.togli").forEach(function (a) {
       a.addEventListener("click", function (e) {
         e.preventDefault();
@@ -2367,18 +2405,41 @@
     var x = pezziProg()[PROG.i]; if (!x) return null;
     return PROG.a === null ? x.dentro + PROG.pos : PROG.pos;
   }
+  function strumentoVisto() {
+    var p = el("tlPista"); if (p) p.classList.toggle("lametta", STRUMENTO === "c");
+    var i1 = el("tlLametta"), i2 = el("tlFreccia");
+    if (i1) i1.classList.toggle("on", STRUMENTO === "c"); if (i2) i2.classList.toggle("on", STRUMENTO === "v");
+  }
   function pezzoScelto() {
     var pz = pezziProg();
     return pz.filter(function (z) { return z.id === TL.sel; })[0] || pz[PROG.i] || null;
   }
   // Q e W lavorano sul pezzo SOTTO LA TESTINA, come in Premiere, e solo se
   // la testina sta dentro il pezzo: altrimenti il taglio non ha senso
+  // OTTIMISTA: la modifica si applica subito alla sequenza in mano e si
+  // ridisegna; il server risponde dopo e, se dice di no, si torna a quello
+  // che ha lui. Un taglio che si vede dopo un secondo sembra non aver preso.
+  function applicaEPoi(cambia, corpo, dopo) {
+    if (!SEQ) return;
+    cambia(SEQ); disegnaSequenza();
+    manda(corpo).then(function (r) { SEQ = r.seq; disegnaSequenza(); if (dopo) dopo(r); })
+      .catch(function (er) { dice(er.message); aggiorna(); });
+  }
   function ritocca(campi) {
     var x = pezziProg()[PROG.i]; if (!x || !SEQ) return;
     var a = campi.dentro !== undefined ? campi.dentro : campi.fuori;
-    if (!(a > x.dentro + 0.2 && a < x.fuori - 0.2)) return dice("Porta la testina dentro il pezzo, poi Q o W.");
-    manda(Object.assign({ tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: x.id }, campi))
-      .then(function (r) { SEQ = r.seq; disegnaSequenza(); }).catch(function (er) { dice(er.message); });
+    if (!(a > x.dentro + 0.2 && a < x.fuori - 0.2)) return dice("La testina e' sul bordo del pezzo: clicca sul righello dentro il pezzo (o trascinala), poi Q o W.");
+    applicaEPoi(function (q) { var z = q.pezzi.filter(function (p) { return p.id === x.id; })[0]; if (z) Object.assign(z, campi); if (campi.dentro !== undefined) PROG.da = campi.dentro; },
+                Object.assign({ tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: x.id }, campi));
+  }
+  function dividiA(x, a) {
+    if (!x || !SEQ) return;
+    if (!(a > x.dentro + 0.2 && a < x.fuori - 0.2)) return dice("Il taglio cadrebbe sul bordo del pezzo.");
+    applicaEPoi(function (q) {
+      var i = q.pezzi.findIndex(function (p) { return p.id === x.id; }); if (i < 0) return;
+      var nuovo = Object.assign({}, q.pezzi[i], { id: "tmp" + Date.now(), dentro: a, base: a });
+      q.pezzi[i].fuori = a; q.pezzi.splice(i + 1, 0, nuovo);
+    }, { tipo: "clip-hl-dividi", seq: SEQ.id, pezzo: x.id, a: a });
   }
   function vicinoSegno(v, avanti) {
     var segni = ((REG && REG.marker) || []).map(function (m) { return m.secondi; }).sort(function (a, b) { return a - b; });
@@ -2457,22 +2518,22 @@
     if (k === "k" && mod) {
       e.preventDefault();
       var x = pezziProg()[PROG.i], a3 = tempoNelMateriale();
-      if (x && a3 !== null && !(a3 > x.dentro + 0.2 && a3 < x.fuori - 0.2)) return dice("Porta la testina dentro il pezzo, poi ctrl+K.");
-      if (x && a3 !== null && SEQ) {
-        manda({ tipo: "clip-hl-dividi", seq: SEQ.id, pezzo: x.id, a: a3 })
-          .then(function (r) { SEQ = r.seq; disegnaSequenza(); }).catch(function (er) { dice(er.message); });
-      }
+      if (!x && pezziProg().length) { var d0 = pezzoAlTempo(progPos()); if (d0) { progVai(d0.i, false, d0.dentro); x = pezziProg()[PROG.i]; a3 = tempoNelMateriale(); } }
+      if (!x) return dice("Nessun pezzo in sequenza: entrata, uscita, virgola.");
+      if (a3 !== null && !(a3 > x.dentro + 0.2 && a3 < x.fuori - 0.2)) return dice("La testina e' sul bordo fra due pezzi: clicca sul righello dentro il pezzo (o trascina la testina), poi " + MOD + "K.");
+      if (x && a3 !== null && SEQ) dividiA(x, a3);
       return;
     }
     if ((k === "delete" || k === "backspace") && SEQ) {
       if (TL.lock.V1) { e.preventDefault(); return dice("La traccia V1 e' bloccata."); }
       var xs = pezzoScelto(); if (!xs) return;
       e.preventDefault();
-      manda({ tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: xs.id, togli: 1 })
-        .then(function (r) { SEQ = r.seq; TL.sel = null; PROG.i = -1; disegnaSequenza(); destraMateriale(); })
-        .catch(function (er) { dice(er.message); });
+      applicaEPoi(function (q) { q.pezzi = q.pezzi.filter(function (p) { return p.id !== xs.id; }); TL.sel = null; PROG.i = -1; },
+                  { tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: xs.id, togli: 1 }, function () { destraMateriale(); });
       return;
     }
+    if (k === "c" && !mod) { e.preventDefault(); STRUMENTO = "c"; strumentoVisto(); return; }
+    if (k === "v" && !mod) { e.preventDefault(); STRUMENTO = "v"; strumentoVisto(); return; }
     if (k === "s" && !mod) { e.preventDefault(); var cal = document.querySelector(".tlstrumenti i[title^='calamita']"); if (cal) cal.classList.toggle("on"); return; }
 
     // ── esportazioni e viste ──
@@ -3487,7 +3548,7 @@
       // in archivio il bin e' della partita scelta: senza partita, vuoto —
       // entrare e trovarsi davanti le clip di tutte le altre confonde
       CLIP = d.clip || [];
-      barra();
+      barra(); lavorazioneInCorso();
       if (REG && el("player") && !guardando) apri(REG);
       disegnaConsole(); capo(); disegnaSequenza();
       if (VISTA === "cerca") { albero(); return; }      // sta cercando: non si tocca la lista
@@ -3510,7 +3571,17 @@
     }).catch(function (e) { el("sPonte").textContent = "non risponde"; el("sPonteP").className = "pallino"; });
   }
 
-  (function () { var l = el("sLav"); if (l) l.addEventListener("click", apriUscite); })();
+  (function () { var l = el("sLav"); if (l) l.addEventListener("click", function () { apriUscite(false); }); })();
+  function lavorazioneInCorso() {
+    var inCoda = CLIP.filter(function (c) { return c.stato !== "pronta" && c.stato !== "errore"; });
+    var seqs = (SEQS.length ? SEQS : (SEQ ? [SEQ] : [])).filter(function (q) { return q.export && q.export.stato === "lavora"; });
+    var n = inCoda.length + seqs.length, l = el("sLav"); if (!l) return;
+    if (!n) { l.innerHTML = "niente in coda"; return; }
+    var av = 0; inCoda.forEach(function (c) { av += c.avanza || 0; }); seqs.forEach(function (q) { av += q.export.avanza || 0; });
+    av = av / n;
+    l.innerHTML = n + " in lavorazione \u00b7 " + Math.round(av * 100) + '%<span class="barraAv"><i style="width:' + Math.round(av * 100) + '%"></i></span>';
+    if (el("uscite")) apriUscite(true);
+  }
 
   // ── i divisori ──
   (function () {

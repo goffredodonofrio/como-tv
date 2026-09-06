@@ -751,11 +751,31 @@ function codifica(args, preciso, ritaglio, sting) {
   return fuori.concat(["-movflags", "+faststart"]);
 }
 
+// Da un pezzo di stderr di ffmpeg, i secondi gia' scritti: e' quello che
+// -progress stampa come out_time_us (microsecondi, nonostante il nome del
+// cugino out_time_ms). Serve alla barra di avanzamento, che senza un numero
+// vero sarebbe un'animazione e basta.
+function secondiScritti(testo) {
+  const m = /out_time_us=(\d+)/g; let u = null, x;
+  while ((x = m.exec(testo))) u = +x[1];
+  if (u === null) { const m2 = /out_time_ms=(\d+)/g; while ((x = m2.exec(testo))) u = +x[1]; }
+  return u === null ? null : u / 1e6;
+}
+const CON_PROGRESSO = ["-progress", "pipe:2", "-nostats"];
+
 function esegui(c, args, lista, riserva) {
   const fuoriFile = fileClip(c.id);
-  const pr = spawn(FFMPEG, args.concat(["-y", fuoriFile]), { stdio: ["ignore", "ignore", "pipe"] });
-  let coda = "";
-  pr.stderr.on("data", (d) => { coda = (coda + d).slice(-2000); });
+  const pr = spawn(FFMPEG, CON_PROGRESSO.concat(args, ["-y", fuoriFile]), { stdio: ["ignore", "ignore", "pipe"] });
+  let coda = "", ultimoAnnuncio = 0;
+  c.avanza = 0;
+  pr.stderr.on("data", (d) => {
+    coda = (coda + d).slice(-2000);
+    const sec = secondiScritti(String(d));
+    if (sec !== null && c.durata) {
+      c.avanza = Math.max(c.avanza || 0, Math.min(0.99, sec / c.durata));
+      if (Date.now() - ultimoAnnuncio > 500) { ultimoAnnuncio = Date.now(); annuncia(0, "clip"); }
+    }
+  });
   pr.on("error", (e) => { c.stato = "errore"; c.errore = e.message; scrivi(); annuncia(0, "clip"); });
   pr.on("close", async (code) => {
     // IL TAGLIO IN COPIA NON SEMPRE PUO'.
@@ -778,7 +798,7 @@ function esegui(c, args, lista, riserva) {
     });
     if (code === 0) {
       const d = await probe(fuoriFile);
-      c.stato = "pronta"; c.peso = d.peso || 0;
+      c.stato = "pronta"; c.peso = d.peso || 0; c.avanza = 1;
       if (d.durata) c.durataVera = Math.round(d.durata * 100) / 100;
       const dur = d.durata || (c.fuori - c.dentro) || 3;
       c.mini = await miniatura(fuoriFile, path.join(DIR, CARTELLA_CLIP, c.id + ".jpg"), dur / 3)
@@ -1603,13 +1623,22 @@ async function hlEsportaVideo(q, formato, dentroUnGiro) {
       ingresso = ["-f", "concat", "-safe", "0", "-ss", String(Math.max(0, x.dentro - scelti[0].t0)),
                   "-i", lista, "-t", String(x.fuori - x.dentro)];
     }
-    let args = ["-hide_banner", "-loglevel", "error", "-nostdin"].concat(ingresso);
+    let args = CON_PROGRESSO.concat(["-hide_banner", "-loglevel", "error", "-nostdin"], ingresso);
     if (ritaglio) args = args.concat(["-vf", ritaglio]);
     args = args.concat(["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
                         "-r", "25", "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
                         "-movflags", "+faststart", "-y", fuoriFile]);
     await new Promise((si, no) => {
       const pr = spawn(FFMPEG, args, { stdio: ["ignore", "ignore", "pipe"] });
+      (function (pezzoI, durPezzo) {
+        let ultimo = 0;
+        pr.stderr.on("data", (d) => {
+          const sec = secondiScritti(String(d));
+          if (sec === null || !durPezzo) return;
+          q.export.avanza = Math.min(0.99, (pezzoI + Math.min(1, sec / durPezzo)) / q.pezzi.length);
+          if (Date.now() - ultimo > 500) { ultimo = Date.now(); annuncia(0, "clip"); }
+        });
+      })(i, x.fuori - x.dentro);
       let coda = "";
       pr.stderr.on("data", (d) => { coda = (coda + d).slice(-1500); });
       pr.on("error", no);
