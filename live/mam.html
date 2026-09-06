@@ -348,6 +348,9 @@
   body.mam .segnaBox{background:#2A2A2A;border-color:#2D8CEB;}
   body.mam .foglio>div,body.mam .tasti>div{background:#232323;}
   body.mam .risultati h3 b{color:#5AA7F2;}
+  /* una frase detta non e' un'azione scritta: corsivo, minuscole, virgolette, riga blu a sinistra */
+  body.mam .voce.detta{border-left:3px solid #5AA7F2;}
+  body.mam .voce.detta .nome{text-transform:none;font-style:italic;font-weight:500;letter-spacing:0;color:#E6E6E6;font-family:inherit;font-size:12.5px;}
   /* dove il design scrive "carta" su "scuro" (testa, barra di stato, targa,
      console) il rimappaggio farebbe scuro su scuro: qui il testo resta chiaro */
   body.mam .testa,body.mam .marchio,body.mam .marchio small,
@@ -3906,6 +3909,33 @@
           v.style.opacity = ".78";
           v.addEventListener("click", function () { apriAppunti(a.rec); });
         }
+      });
+    }
+    // Le frasi dette in telecronaca: si vedono come FRASI — virgolette,
+    // corsivo, il microfono — perche' non sono azioni scritte da qualcuno,
+    // sono parole sentite: si apre il video nel punto in cui sono state dette.
+    if (RIS.dette && RIS.dette.length) {
+      titolo("Detto in telecronaca", RIS.dette.length);
+      RIS.dette.forEach(function (m) {
+        var v = riga("\u201c" + m.testo + "\u201d",
+                     m.partita + " \u00b7 " + orologio(m.secondi) + " \u00b7 \ud83c\udf99 telecronaca",
+                     "guarda", data(m.quando));
+        v.classList.add("detta");
+        var tl = document.createElement("a"); tl.href = "#"; tl.className = "inTimeline"; tl.textContent = "\u2192 timeline";
+        tl.title = "mette questo passaggio nella sequenza (8 secondi prima, 8 dopo)";
+        tl.addEventListener("click", function (e) {
+          e.preventDefault(); e.stopPropagation();
+          var finisci = function () {
+            if (!REG) return;
+            var corpo = { tipo: "clip-hl-inserisci", reg: REG.id, dentro: Math.max(0, m.secondi - 8), fuori: m.secondi + 8, titolo: "\u201c" + m.testo.slice(0, 40) + "\u201d" };
+            if (SEQ && SEQ.reg === REG.id) { corpo.seq = SEQ.id; ricorda(); }
+            manda(corpo).then(function (r) { SEQ = r.seq; disegnaSequenza(); destraMateriale(); dice("In sequenza: \u201c" + m.testo.slice(0, 40) + "\u201d", true); })
+              .catch(function (er) { dice(er.message); });
+          };
+          if (REG && REG.id === m.reg) finisci(); else { vaiA(m.reg, null, "tutto"); setTimeout(finisci, 600); }
+        });
+        v.appendChild(tl);
+        v.addEventListener("click", function () { vaiA(m.reg, m.secondi, "tutto"); });
       });
     }
     if (RIS.segni.length) {
