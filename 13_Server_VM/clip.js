@@ -2360,12 +2360,18 @@ async function archivioScandaglia(p) {
       const rec = { id: recId };
       const quando = Date.parse(quandoIso || "");
       if (!quando) return;
+      // uno show settimanale ha lo stesso nome ogni settimana: si aggancia
+      // solo a una cartella dello stesso giorno che sia uno show anche lei
+      const eShow = /SHOW|STUDIO|INTERVALLO|PRE PARTITA|POST PARTITA|PRE-PARTITA|POST-PARTITA|\u{1F3A5}/iu.test(nomePartita) || /Studio/i.test(nomeComp);
       const candidati = [];
-      [0, -1, 1].forEach((salto) => {
+      (eShow ? [0] : [0, -1, 1]).forEach((salto) => {
         const g = new Date(quando + salto * 86400000);
         const chiave = g.getUTCFullYear() + String(g.getUTCMonth() + 1).padStart(2, "0") +
                        String(g.getUTCDate()).padStart(2, "0");
-        (perGiorno[chiave] || []).forEach((x) => candidati.push(x));
+        (perGiorno[chiave] || []).forEach((x) => {
+          if (eShow && !/SHOW|STUDIO|LIVE|PRE|POST|INTERVALLO/i.test(x.partita)) return;
+          candidati.push(x);
+        });
       });
       const livello = livelloDi(String(f["Partita"] || "") + " " + String(f["Competizione"] || ""));
       let meglio = null, punteggio = 0;
@@ -3941,9 +3947,13 @@ function anello() {
   // e chi cerca la partita di ieri non la trova piu'. Dopo dieci minuti se
   // ne vanno da sole, con la loro cartella vuota.
   const vecchie = Date.now() - 600000;
+  const archivioVecchio = Date.now() - 30 * 86400000;
   Object.keys(R.reg).forEach((k) => {
     const r = R.reg[k];
     if (r.stato === "registra" || r.stato === "carica" || PROC.get(r.id)) return;
+    // una partita aperta dall'archivio non ha byte qui per scelta: resta un
+    // mese da quando e' stata aperta (finita = apertura), e per sempre se ha clip
+    if (r.arch && (r.finita || 0) > archivioVecchio) return;
     if (durataRegistrata(r.id) > 0) return;
     if (r.origine === "file" && r.integrale === "pronto") return;
     if ((r.finita || r.avviata) > vecchie) return;
