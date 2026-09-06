@@ -2733,7 +2733,10 @@
     // si conosce — e poi decide chi guarda se far partire. Il live invece
     // parte: e' live.
     var fermoSu = function () {
-      var k = (r.kickoff && r.kickoff["1"]) || 0;
+      // se qualcuno ha chiesto un secondo preciso (un'azione trovata), si
+      // apre li'; altrimenti sul calcio d'inizio
+      var k = (POSIZIONE_APERTURA !== null && POSIZIONE_APERTURA !== undefined) ? POSIZIONE_APERTURA : ((r.kickoff && r.kickoff["1"]) || 0);
+      POSIZIONE_APERTURA = null;
       var vai = function () { v.removeEventListener("loadedmetadata", vai); try { if (k) v.currentTime = k; } catch (e) {} };
       v.addEventListener("loadedmetadata", vai);
       v.preload = "auto"; v.load();
@@ -3628,11 +3631,14 @@
 
   // dal risultato al materiale: si sceglie la partita, si va alla vista
   // giusta e — se e' un segno — il player ci salta dentro.
+  var POSIZIONE_APERTURA = null;   // il secondo su cui aprire il prossimo video, se qualcuno l'ha chiesto
   function vaiA(idReg, secondi, vista) {
     var r = REGISTRAZIONI.filter(function (x) { return x.id === idReg; })[0];
     if (r) REG = r;
     if (r) vaiTab("progetto");
-    el("q").value = ""; RIS = null; var rr0 = el("risultati"); if (rr0) rr0.innerHTML = "";
+    // i risultati restano nella linguetta Sorgenti: si apre un'azione, se
+    // ne prende un'altra, senza cercare di nuovo
+    if (secondi !== null && secondi !== undefined) POSIZIONE_APERTURA = secondi;
     VISTA = vista || "tutto";
     document.querySelectorAll("#linguette button").forEach(function (x) {
       x.className = (x.dataset.v === "live" ? "live" : "") + (x.dataset.v === VISTA ? " acceso" : "");
