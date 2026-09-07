@@ -5286,6 +5286,27 @@ function hlGrafica(p) {
     return { ok: true, seq: q, tolte: prima - q.grafiche.length };
   }
 
+  if (p.grafica && p.dividi !== undefined) {        // la lametta
+    const g = q.grafiche.filter((x) => x.id === p.grafica)[0];
+    if (!g) throw new Error("grafica sconosciuta");
+    const dove = num(p.dividi, 0, durataSeq, 0);
+    if (!(dove > g.dentro + 0.3 && dove < g.fuori - 0.3)) throw new Error("il taglio cadrebbe sul bordo");
+    // il PNG si COPIA: due grafiche che puntano allo stesso file si
+    // porterebbero via l'immagine a vicenda quando una viene cancellata
+    const id2 = nuovoId("g");
+    try {
+      fs.copyFileSync(path.join(cartellaGrafiche(), g.id + ".png"),
+                      path.join(cartellaGrafiche(), id2 + ".png"));
+    } catch (e) { throw new Error("non sono riuscito a copiare la grafica"); }
+    const g2 = Object.assign({}, g, { id: id2, dentro: dove,
+      file: "/clip/" + CARTELLA_HL + "/_grafiche/" + id2 + ".png", quando: Date.now() });
+    g.fuori = dove;
+    q.grafiche.push(g2);
+    q.grafiche.sort((a, b) => a.dentro - b.dentro);
+    toccataAMano(q); scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: q, grafica: g2 };
+  }
+
   if (p.grafica) {                                  // spostare o allungare
     const g = q.grafiche.filter((x) => x.id === p.grafica)[0];
     if (!g) throw new Error("grafica sconosciuta");

@@ -248,8 +248,6 @@
   /* la cassa del generatore: sempre fissa, cambia solo dove sta */
   .grafCassa{position:fixed;z-index:210;display:none;background:#141414;
     border:1px solid #2A2A2A;overflow:hidden;flex-direction:column;}
-  .grafCassa.agganciata{display:flex;border-radius:0;border-left:0;border-right:0;box-shadow:none;}
-  .grafCassa.agganciata header{display:none;}
   .grafCassa.libera{display:flex;right:12px;top:52px;bottom:12px;width:min(880px,72vw);left:auto;
     border-radius:10px;box-shadow:-18px 0 46px rgba(0,0,0,.55);}
   /* l'intestazione ha lo stesso vestito dei monitor: etichetta azzurra in
@@ -268,7 +266,6 @@
   .grafCassa iframe{flex:1;border:0;width:100%;height:100%;background:#0F0F0F;}
   .grafBarra{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--linea,#2A2A2A);}
   .grafBarra span{font-size:10.5px;color:var(--fumo,#8A8A8A);flex:1;line-height:1.35;}
-  .grafDove{flex:1;min-height:0;}
   #paneGrafiche{display:flex;flex-direction:column;min-height:0;height:100%;}
   /* l'anteprima della grafica sopra il Programma */
   .telaio .graficaSopra{position:absolute;inset:0;pointer-events:none;z-index:6;
@@ -1212,11 +1209,9 @@
           <p>Compila la maschera e premi <i>Manda in timeline</i>: la grafica va sulla
              traccia V2 del montato aperto, e la vedi sul video prima di esportare.</p>
           <div class="gruppo">
-            <button class="b oro" id="grafDavanti">Portalo davanti</button>
-            <button class="b" id="grafInColonna">Mettilo qui</button>
+            <button class="b oro" id="grafDavanti">Apri il pannello</button>
           </div>
         </div>
-        <div class="grafDove" id="grafDove" hidden></div>
       </div>
       <div class="projPane" id="paneProgetto">
         <div id="bin"></div>
@@ -2333,52 +2328,28 @@
     c.className = "grafCassa"; c.id = "grafCassa";
     c.innerHTML = '<header id="grafTesta">' +
       '<span class="rif">GRAFICHE</span><b id="grafSeq">nessuna sequenza</b>' +
-      '<button class="b" id="grafAggancia" title="rimettilo nella colonna del progetto">In colonna</button>' +
       '<button class="b" id="grafChiudi" title="chiudi il pannello">Chiudi</button></header>' +
       '<iframe id="grafTelaio" src="' + GEN + '&dentro=mam"></iframe>';
     document.body.appendChild(c);
     el("grafChiudi").addEventListener("click", function (e) { e.preventDefault(); grafiche("chiuso"); });
-    el("grafAggancia").addEventListener("click", function (e) {
-      e.preventDefault();
-      if (el("grafDove")) el("grafDove").hidden = false;
-      var cart = document.querySelector(".grafCartello"); if (cart) cart.hidden = true;
-      vaiTab("grafiche"); grafiche("colonna");
-    });
+
     return c;
   }
-  function posaCassa() {
-    var c = el("grafCassa"); if (!c || GRAF.modo === "chiuso") return;
-    if (GRAF.modo === "libera") {
-      c.style.cssText = ""; c.className = "grafCassa libera";
-      return;
-    }
-    var dove = el("grafDove");
-    if (!dove || el("paneGrafiche").hidden) { c.className = "grafCassa"; c.style.display = "none"; return; }
-    var r = dove.getBoundingClientRect();
-    if (r.width < 40 || r.height < 40) { c.style.display = "none"; return; }
-    c.className = "grafCassa agganciata";
-    c.style.cssText = "display:block;left:" + Math.round(r.left) + "px;top:" + Math.round(r.top) +
-                      "px;width:" + Math.round(r.width) + "px;height:" + Math.round(r.height) + "px";
-  }
+  // UN PANNELLO SOLO. Agganciarlo nella colonna da 272 pixel non serviva a
+  // niente — il generatore li' dentro non ci sta — e due pulsanti per la
+  // stessa cosa sono un pulsante di troppo. Si apre e si chiude, e si apre
+  // dagli stessi tre posti: la linguetta, il tasto accanto al monitor, il
+  // doppio clic su V2.
   function grafiche(modo) {
-    GRAF.modo = modo;
-    var c = modo === "chiuso" ? el("grafCassa") : cassaGrafiche();
+    GRAF.modo = (modo === "chiuso") ? "chiuso" : "aperto";
+    var c = (GRAF.modo === "chiuso") ? el("grafCassa") : cassaGrafiche();
     if (!c) return;
-    if (modo === "chiuso") { c.style.display = "none"; c.className = "grafCassa"; return; }
+    if (GRAF.modo === "chiuso") { c.className = "grafCassa"; c.style.display = "none"; return; }
     var t = el("grafSeq"); if (t) t.textContent = SEQ ? (SEQ.titolo || "sequenza") : "apri prima una sequenza";
-    c.style.display = "block";
-    posaCassa();
+    c.className = "grafCassa libera"; c.style.display = "flex";
   }
-  // La linguetta apre il pannello GIA' STACCATO: nella colonna da 272 pixel
-  // il generatore non ci sta, e la prima cosa che facevi era staccarlo.
-  // Nella colonna resta il cartello che dice dov'e' finito.
-  function graficheNellaColonna() { grafiche("libera"); }
-  function apriPannelloGrafiche() {
-    if (GRAF.modo === "libera") { grafiche("libera"); return; }
-    vaiTab("grafiche");
-  }
-  window.addEventListener("resize", posaCassa);
-  setInterval(function () { if (GRAF.modo === "colonna") posaCassa(); }, 400);
+  function graficheNellaColonna() { grafiche("aperto"); }
+  function apriPannelloGrafiche() { grafiche("aperto"); }
 
   // La grafica torna dal pannello: entra in timeline alla testina, cinque
   // secondi, e da li' si sposta e si allunga come un pezzo qualsiasi.
@@ -2561,7 +2532,7 @@
                 '" style="left:' + ga + 'px;width:' + Math.max(8, gb - ga) + 'px" title="' +
                 pulito(g.nome || "grafica") + '">' +
                 '<img src="' + BASE + g.file + '" alt=""><span class="tt">' + pulito(g.nome || "grafica") + '</span>' +
-                '<span class="bordo sx" data-latoG="sx"></span><span class="bordo dx" data-latoG="dx"></span></div>');
+                '<span class="bordo sx" data-lato="sx"></span><span class="bordo dx" data-lato="dx"></span></div>');
       });
       v2.innerHTML = og.join("");
       v2.classList.toggle("vuota", !og.length);
@@ -2695,11 +2666,26 @@
       if (bloccoG && STRUMENTO !== "h") {
         var gid = bloccoG.dataset.grafica;
         var gg = (SEQ && SEQ.grafiche ? SEQ.grafiche : []).filter(function (x) { return x.id === gid; })[0];
+        // LA LAMETTA vale anche qui: una grafica si taglia in due, e le due
+        // meta' si allungano e si spostano da sole. Serve quando la stessa
+        // maschera deve tornare piu' avanti senza rifarla.
+        if (gg && STRUMENTO === "c") {
+          var tg = tempoSeq(e);
+          e.preventDefault();
+          if (tg === null) return;
+          manda({ tipo: "clip-hl-grafica", seq: SEQ.id, grafica: gid, dividi: tg })
+            .then(function (r) { SEQ = r.seq; disegnaSequenza(); dice("Grafica divisa.", true); })
+            .catch(function (er) { dice(er.message); });
+          return;
+        }
         if (gg) {
           TL.selG = gid; TL.sel = null; TL.multi = [];
           var bg = e.target.closest(".bordo");
           TL.grafica = { id: gid, x0: e.clientX, dentro: gg.dentro, fuori: gg.fuori,
-                         lato: bg ? bg.dataset.latoG : "" };
+                         // in HTML gli attributi perdono le maiuscole: si chiamava
+                         // data-latoG e arrivava sempre vuoto, quindi trascinando
+                         // il bordo la grafica si spostava invece di allungarsi
+                         lato: bg ? (bg.dataset.lato || "") : "" };
           e.preventDefault(); disegnaTimeline(); return;
         }
       }
@@ -2822,9 +2808,16 @@
         var gq = (SEQ && SEQ.grafiche ? SEQ.grafiche : []).filter(function (x) { return x.id === TL.grafica.id; })[0];
         if (gq) {
           var durG = TL.grafica.fuori - TL.grafica.dentro;
+          // niente tetto se non quello vero: una grafica puo' durare quanto
+          // dura la sequenza, e mentre trascini non deve incollarsi a un
+          // limite invisibile
+          var tetto = durataSeq() || 999999;
           if (TL.grafica.lato === "sx") gq.dentro = Math.max(0, Math.min(TL.grafica.fuori - 0.4, TL.grafica.dentro + dgg));
-          else if (TL.grafica.lato === "dx") gq.fuori = Math.max(TL.grafica.dentro + 0.4, TL.grafica.fuori + dgg);
-          else { gq.dentro = Math.max(0, TL.grafica.dentro + dgg); gq.fuori = gq.dentro + durG; }
+          else if (TL.grafica.lato === "dx") gq.fuori = Math.max(TL.grafica.dentro + 0.4, Math.min(tetto, TL.grafica.fuori + dgg));
+          else {
+            gq.dentro = Math.max(0, Math.min(tetto - durG, TL.grafica.dentro + dgg));
+            gq.fuori = gq.dentro + durG;
+          }
           disegnaTimeline(); graficaSopraProgramma();
         }
         return;
@@ -3069,12 +3062,7 @@
     q("tlScivolo", function () { STRUMENTO = "y"; strumentoVisto(); });
     q("tlGiunzione", function () { STRUMENTO = "n"; strumentoVisto(); });
     q("tlMano", function () { STRUMENTO = "h"; strumentoVisto(); });
-    q("grafDavanti", function () { grafiche("libera"); });
-    q("grafInColonna", function () {
-      el("grafDove").hidden = false;
-      document.querySelector(".grafCartello").hidden = true;
-      grafiche("colonna");
-    });
+    q("grafDavanti", function () { grafiche("aperto"); });
     q("tlPiu", function () { LENTE = Math.min(32, LENTE * 2); disegnaTutto(); });
     q("tlMeno", function () { LENTE = Math.max(1, LENTE / 2); disegnaTutto(); });
     q("tlTutto", function () { LENTE = 1; TL.vista = null; disegnaTutto(); });
@@ -3208,6 +3196,8 @@
       ["Vai all\u2019inizio", function () { clicca("pInizio"); }, "home"],
       ["Vai alla fine", function () { clicca("pFine"); }, "fine"],
       ["Pezzo precedente / successivo", null, "\u2191 \u2193"],
+      "-",
+      ["Grafiche: apri il pannello", function () { apriPannelloGrafiche(); }, ""],
       "-",
       ["Rifai le sequenze apparecchiate", function () {
         if (!REG) return dice("Scegli prima una partita.");
