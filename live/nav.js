@@ -4,11 +4,18 @@
  * ═══════════════════════════════════════════════════════════════════
  *
  *  Un solo file, incluso da ogni pagina: così il menù è IDENTICO ovunque
- *  e sta sempre su UNA riga (se non ci sta, scorre in orizzontale invece
- *  di andare a capo). È lo specchio del Catalogo: per aggiungere un
+ *  e sta sempre su UNA riga. È lo specchio del Catalogo: per aggiungere un
  *  formato al menù di tutte le pagine si tocca solo l'elenco qui sotto.
  *
- *  La pagina corrente si accende da sola (confronto sul nome del file).
+ *  I formati stanno dentro quattro tendine, con gli stessi gruppi del
+ *  Catalogo. Prima erano ventuno voci in fila: la barra scorreva, e le
+ *  ultime — Magazzino e Regia, cioè quelle che si usano di più — finivano
+ *  fuori schermo. Restano fuori dalle tendine solo Home, Catalogo,
+ *  Magazzino e Regia: si aprono cento volte al giorno e un clic in più
+ *  ogni volta è un clic sprecato.
+ *
+ *  La pagina corrente si accende da sola, e con lei la tendina che la
+ *  contiene (confronto sul nome del file).
  */
 (function () {
   "use strict";
@@ -18,27 +25,36 @@
   var SOLO_ORA = !!(document.currentScript && document.currentScript.dataset &&
                     document.currentScript.dataset.senzaMenu != null);
 
-  // ordine e formati del menù — specchio del catalogo (classifiche.html)
+  // ordine e gruppi del menù — specchio del catalogo (classifiche.html).
+  // Una coppia [indirizzo, nome] è una voce sola; un oggetto è una tendina.
   var VOCI = [
     ["../index.html",              "Home"],
     ["classifiche.html",           "Catalogo"],
-    ["formazioni.html",            "Formazioni"],
-    ["formazioni-premium.html",    "Premium"],
-    ["cambi.html",                 "Cambi"],
-    ["risultati.html",             "Risultati"],
-    ["classifiche-campionati.html","Classifiche"],
-    ["marcatori.html",             "Marcatori"],
-    ["statistiche.html",           "Statistiche"],
-    ["tiri.html",                  "Mappa tiri"],
-    ["tabelloni.html",             "Tabelloni"],
-    ["focus.html",                 "Focus"],
-    ["dichiarazioni.html",         "Dichiarazioni"],
-    ["scheda.html",                "Scheda"],
-    ["appuntamenti.html",          "Appuntamenti"],
-    ["volti.html",                 "Volti"],
-    ["sottopancia.html",           "Sottopancia"],
-    ["ticker.html",                "Ticker"],
-    ["contributi.html",            "Contributi"],
+    { nome: "Partita", voci: [
+      ["formazioni-premium.html",    "Formazioni Premium"],
+      ["formazioni.html",            "Formazioni"],
+      ["cambi.html",                 "Cambi"],
+      ["risultati.html",             "Risultati"],
+      ["classifiche-campionati.html","Classifiche"],
+      ["marcatori.html",             "Marcatori"],
+      ["tiri.html",                  "Mappa dei tiri"]
+    ]},
+    { nome: "Editoriali", voci: [
+      ["statistiche.html",           "Statistiche"],
+      ["scheda.html",                "Scheda"],
+      ["focus.html",                 "Focus"],
+      ["dichiarazioni.html",         "Dichiarazioni"],
+      ["volti.html",                 "Volti"]
+    ]},
+    { nome: "Tabelloni", voci: [
+      ["tabelloni.html",             "Tabelloni e gironi"],
+      ["appuntamenti.html",          "Prossimi appuntamenti"]
+    ]},
+    { nome: "Crawl", voci: [
+      ["ticker.html",                "Ticker"],
+      ["sottopancia.html",           "Sottopancia"],
+      ["contributi.html",            "Contributi video"]
+    ]},
     ["magazzino.html",             "Magazzino"],
     ["regia.html",                 "Regia"]
   ];
@@ -65,7 +81,33 @@
     "  padding:8px 13px;border:1px solid rgba(245,241,230,.14);border-radius:5px;" +
     "  transition:color .12s,border-color .12s,background .12s;}" +
     ".cnav a:hover{color:#E3C271;border-color:rgba(201,162,75,.5);}" +
-    ".cnav a.qui{color:#E3C271;border-color:rgba(201,162,75,.5);background:rgba(201,162,75,.1);}";
+    ".cnav a.qui{color:#E3C271;border-color:rgba(201,162,75,.5);background:rgba(201,162,75,.1);}" +
+    // il tasto di una tendina e' fatto come una voce, cosi' la barra resta una
+    ".cnav button{flex:1 0 auto;white-space:nowrap;cursor:pointer;" +
+    "  font-family:'Mazzard',system-ui,sans-serif;font-size:10px;font-weight:700;letter-spacing:.2em;" +
+    "  text-transform:uppercase;color:#D8D2C2;background:transparent;" +
+    "  padding:8px 13px;border:1px solid rgba(245,241,230,.14);border-radius:5px;" +
+    "  transition:color .12s,border-color .12s,background .12s;}" +
+    ".cnav button:hover{color:#E3C271;border-color:rgba(201,162,75,.5);}" +
+    ".cnav button.qui{color:#E3C271;border-color:rgba(201,162,75,.5);background:rgba(201,162,75,.1);}" +
+    ".cnav button i{font-style:normal;margin-left:8px;opacity:.6;font-size:8px;" +
+    "  display:inline-block;transition:transform .14s;}" +
+    ".cnav button.aperto i{transform:rotate(180deg);}" +
+    // La tendina e' FISSA e non figlia della barra: la barra ha overflow-x
+    // per non andare mai a capo, e un overflow ritaglia anche in verticale —
+    // una tendina figlia verrebbe tagliata a filo della barra e non si
+    // vedrebbe niente. Cosi' invece la posizione la calcola il codice.
+    ".cnav-giu{position:fixed;z-index:400;display:none;flex-direction:column;gap:4px;" +
+    "  min-width:210px;padding:6px;border-radius:8px;background:rgba(10,15,36,.98);" +
+    "  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);" +
+    "  border:1px solid rgba(245,241,230,.16);box-shadow:0 16px 38px rgba(0,0,0,.55);}" +
+    ".cnav-giu.aperto{display:flex;}" +
+    ".cnav-giu a{display:block;text-align:left;white-space:nowrap;" +
+    "  font-family:'Mazzard',system-ui,sans-serif;font-size:10px;font-weight:700;letter-spacing:.2em;" +
+    "  text-transform:uppercase;color:#D8D2C2;text-decoration:none;" +
+    "  padding:9px 12px;border:1px solid transparent;border-radius:5px;}" +
+    ".cnav-giu a:hover{color:#E3C271;background:rgba(201,162,75,.12);}" +
+    ".cnav-giu a.qui{color:#E3C271;border-color:rgba(201,162,75,.5);background:rgba(201,162,75,.1);}";
 
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) {
@@ -83,13 +125,66 @@
     }
     var nav = document.createElement("nav");
     nav.className = "cnav";
-    nav.innerHTML = VOCI.map(function (v) {
-      var file = v[0].split("/").pop().toLowerCase();
-      var attivo = (file && file === qui) ? ' class="qui"' : "";
+
+    function nomeFile(indirizzo) { return indirizzo.split("/").pop().toLowerCase(); }
+    function collegamento(v) {
+      var attivo = (nomeFile(v[0]) === qui) ? ' class="qui"' : "";
       return '<a href="' + esc(v[0]) + '"' + attivo + '>' + esc(v[1]) + '</a>';
+    }
+
+    var tendine = [];                       // le tendine da appendere al body
+    nav.innerHTML = VOCI.map(function (v, i) {
+      if (!v.voci) return collegamento(v);
+      // il tasto si accende se la pagina aperta sta qui dentro: cosi' si vede
+      // dove ci si trova senza doverla aprire
+      var dentro = v.voci.some(function (u) { return nomeFile(u[0]) === qui; });
+      tendine.push({ i: i, voci: v.voci });
+      return '<button type="button" data-giu="' + i + '"' + (dentro ? ' class="qui"' : '') + '>' +
+             esc(v.nome) + '<i>&#9660;</i></button>';
     }).join("");
+
     if (document.body.firstChild) document.body.insertBefore(nav, document.body.firstChild);
     else document.body.appendChild(nav);
+
+    tendine.forEach(function (t) {
+      var d = document.createElement("div");
+      d.className = "cnav-giu";
+      d.dataset.giu = t.i;
+      d.innerHTML = t.voci.map(collegamento).join("");
+      document.body.appendChild(d);
+    });
+
+    // Si apre col clic, non col passaggio del mouse: qui si lavora in fretta e
+    // una tendina che si apre da sola mentre si punta a un altro tasto e' un
+    // modo di aprire la pagina sbagliata in diretta.
+    function chiudi() {
+      nav.querySelectorAll("button.aperto").forEach(function (b) { b.classList.remove("aperto"); });
+      document.querySelectorAll(".cnav-giu.aperto").forEach(function (d) { d.classList.remove("aperto"); });
+    }
+    nav.addEventListener("click", function (ev) {
+      var b = ev.target.closest ? ev.target.closest("button[data-giu]") : null;
+      if (!b) return;
+      var gia = b.classList.contains("aperto");
+      chiudi();
+      if (gia) return;
+      var d = document.querySelector('.cnav-giu[data-giu="' + b.dataset.giu + '"]');
+      if (!d) return;
+      var r = b.getBoundingClientRect();
+      d.style.top = Math.round(r.bottom + 6) + "px";
+      d.classList.add("aperto");
+      b.classList.add("aperto");
+      // se la tendina sborda a destra la si tira dentro: sulle pagine strette
+      // finirebbe mezza fuori schermo
+      var largo = d.offsetWidth;
+      var x = Math.min(Math.round(r.left), window.innerWidth - largo - 12);
+      d.style.left = Math.max(12, x) + "px";
+    });
+    document.addEventListener("click", function (ev) {
+      if (!ev.target.closest || !ev.target.closest(".cnav, .cnav-giu")) chiudi();
+    });
+    document.addEventListener("keydown", function (ev) { if (ev.key === "Escape") chiudi(); });
+    window.addEventListener("resize", chiudi);
+
     montaOrologio();
   }
 
