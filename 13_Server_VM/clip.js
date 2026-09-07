@@ -4135,7 +4135,13 @@ function cercaNegliAppunti(q, limite) {
     });
   });
   cercaNeiFatti(q, limite).forEach((x) => fuori.push(x));
-  fuori.sort((a, b) => ((b.peso || 0) - (a.peso || 0)) ||
+  // una sostituzione non pesa come un gol: quando la domanda non distingue
+  // (si cerca una squadra, un giocatore) l'ordine lo fa quello che e' successo
+  const conta = (x) => /sostituzione|cambio/i.test(x.tipo || "") ? 0
+                     : /gol|rete|rigore|autogol/i.test(x.tipo || "") ? 3
+                     : /palo|traversa|parata|espuls/i.test(x.tipo || "") ? 2 : 1;
+  fuori.forEach((x) => { x.conta = conta(x) + (x.rating ? 1 : 0) + (x.hl ? 1 : 0); });
+  fuori.sort((a, b) => ((b.peso || 0) - (a.peso || 0)) || ((b.conta || 0) - (a.conta || 0)) ||
                        ((Date.parse(b.quando) || 0) - (Date.parse(a.quando) || 0)) ||
                        ((a.tempo || 0) - (b.tempo || 0)) || ((a.d || 0) - (b.d || 0)));
   // non piu' di otto righe per partita: chi cerca un giocatore vuole vedere

@@ -381,6 +381,34 @@
   body.mam .voce .chip.chi{background:#2A2A2A;color:#B8B8B8;border:1px solid #3A3A3A;text-transform:none;letter-spacing:.04em;}
   /* il voto della redazione al gol: piu' e' alto, piu' scalda */
   body.mam .voce .chip.vicino{background:#2F3A2A;color:#A8D08A;}
+  /* IL TIPO DI AZIONE, in testa alla riga: un colore per ogni cosa che puo'
+     succedere in campo. Si legge prima del testo, ed e' quello che si cerca
+     con gli occhi quando si scorrono cento righe. */
+  body.mam .voce .tipo{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    padding:2px 7px;border-radius:2px;margin-right:8px;vertical-align:2px;line-height:1.5;white-space:nowrap;}
+  body.mam .voce .tipo.t-gol{background:#C9A24B;color:#141414;}
+  body.mam .voce .tipo.t-rigore{background:#D9B45F;color:#141414;}
+  body.mam .voce .tipo.t-autogol{background:#8A6A2E;color:#F0DCA8;}
+  body.mam .voce .tipo.t-rigsb{background:#6B4A1A;color:#F0C060;}
+  body.mam .voce .tipo.t-palo{background:#E0762F;color:#141414;}
+  body.mam .voce .tipo.t-parata{background:#2D6FB8;color:#EAF3FF;}
+  body.mam .voce .tipo.t-rosso{background:#B3261E;color:#fff;}
+  body.mam .voce .tipo.t-giallo{background:#C9B02E;color:#141414;}
+  body.mam .voce .tipo.t-var{background:#5A3E8A;color:#E2D6FF;}
+  body.mam .voce .tipo.t-cambio{background:#3A3A3A;color:#C8C8C8;}
+  body.mam .voce .tipo.t-skill{background:#7B4FA8;color:#F0E4FF;}
+  body.mam .voce .tipo.t-occasione{background:#33506B;color:#BBD6F0;}
+  body.mam .voce .tipo.t-altro{background:#3A3A3A;color:#C8C8C8;}
+  body.mam .voce .stella{color:#F0C060;}
+  /* la riga in due piani: sopra cosa e' successo, sotto dove e quando */
+  body.mam .voce.azione .nome{text-transform:none;font-size:12.5px;letter-spacing:.01em;line-height:1.45;
+    white-space:normal;overflow:visible;text-overflow:clip;}
+  body.mam .voce.azione .dett{margin-top:5px;color:#9A9A9A;}
+  body.mam .voce.azione .dett .dove{color:#D0D0D0;font-weight:700;}
+  body.mam .voce.azione .dett .sep2{color:#5A5A5A;}
+  body.mam .voce.azione .dett .tc{font-variant-numeric:tabular-nums;color:#B8B8B8;}
+  body.mam .voce.azione{padding:10px 12px;align-items:flex-start;}
+  body.mam .voce.azione .quando2{margin-top:2px;}
   /* LE FAMIGLIE DEI RISULTATI. Un colore per ciascuna, sempre lo stesso:
      nell'intestazione, nel conto, nel filetto a sinistra della riga. */
   body.mam .risultati h3.fam{color:#8A8A8A;margin:18px 0 8px;padding-top:14px;border-top:1px solid #262626;}
@@ -734,6 +762,8 @@
   #evento option.futura{background:#FDECEC;color:#8E1216;}
   #evento option.senzaVideo{color:#8A8A8A;}
   #evento option.passata{color:#8A8A8A;}
+  #sorgente optgroup{font-style:normal;color:var(--gold-deep);}
+  body.mam #sorgente optgroup{color:#8A8A8A;}
   /* MAM LIVE, la colonna Sorgenti: l'elenco delle registrazioni come la
      vista elenco di Premiere — righe basse, fotogramma, nome, da dove e
      quanto, data; la scelta ha la barra blu a sinistra */
@@ -3258,11 +3288,48 @@
       });
     }
 
+    // I FLUSSI, IN ORDINE. Cinquantadue righe in ordine di arrivo non sono un
+    // menu: sono un elenco. Si raggruppano per famiglia (gli encoder, i tuner,
+    // i canali) e dentro ogni famiglia si ordinano per numero — 2 prima di 11,
+    // che l'ordine alfabetico sbaglia. Due flussi con lo stesso nome si
+    // distinguono con la coda del loro indirizzo, se no si sceglie a caso.
     manda({ tipo:"clip-sorgenti" }).then(function (dd) {
+      var sel = el("sorgente"); if (!sel) return;
+      var FAM = [
+        [/^SRT-CP9K[- ]?(\d+)/i, "Encoder CP9K"],
+        [/^IP[- ]?TUNER[- ]?PRINCE[- ]?(\d+)/i, "IP Tuner"],
+        [/^DIBSYS[- ]?(\d+)/i, "DIBSYS"],
+        [/^SRT[- ]?(\d+)\b/i, "Canali"],
+        [/^HNL[- ]?(\d*)/i, "HNL"]
+      ];
+      var gruppi = {}, ordine = [];
       (dd.sorgenti || []).forEach(function (x) {
-        var o = document.createElement("option");
-        o.value = x.url; o.textContent = x.nome + " · " + x.campo + " · " + x.tipo.toUpperCase();
-        if (el("sorgente")) el("sorgente").appendChild(o);
+        var fam = "Altri", n = 9999;
+        for (var i = 0; i < FAM.length; i++) {
+          var m = FAM[i][0].exec(x.nome || "");
+          if (m) { fam = FAM[i][1]; n = parseInt(m[1] || "0", 10) || 0; break; }
+        }
+        if (!gruppi[fam]) { gruppi[fam] = []; ordine.push(fam); }
+        gruppi[fam].push({ x: x, n: n });
+      });
+      // conta quante volte compare ogni nome: solo i doppioni portano la coda
+      var quanti = {};
+      (dd.sorgenti || []).forEach(function (x) { var k = (x.nome || "") + "|" + x.campo; quanti[k] = (quanti[k] || 0) + 1; });
+      ["Encoder CP9K", "IP Tuner", "DIBSYS", "Canali", "HNL", "Altri"].forEach(function (fam) {
+        if (!gruppi[fam]) return;
+        var g = document.createElement("optgroup");
+        g.label = fam + " \u00b7 " + gruppi[fam].length;
+        gruppi[fam].sort(function (a, b) { return (a.n - b.n) || String(a.x.nome).localeCompare(String(b.x.nome)); });
+        gruppi[fam].forEach(function (v) {
+          var x = v.x, o = document.createElement("option");
+          var campo = String(x.campo || "").toLowerCase().replace(/preview new/, "preview");
+          var coda = quanti[(x.nome || "") + "|" + x.campo] > 1
+            ? " \u00b7 \u2026" + String(x.url).replace(/[^A-Za-z0-9]/g, "").slice(-5) : "";
+          o.value = x.url;
+          o.textContent = x.nome + "  \u00b7  " + campo + coda + "  \u00b7  " + String(x.tipo || "").toUpperCase();
+          g.appendChild(o);
+        });
+        sel.appendChild(g);
       });
     }).catch(function () {});
     // L'indirizzo a mano serve una volta su venti: sta nascosto finche' non
@@ -3939,6 +4006,30 @@
   // ripresa di cinque. La prima volta che si apre un'azione di quella
   // partita il server legge tre fotogrammi (un minuto circa); da li' in poi
   // ogni minuto degli appunti cade al secondo, e i risultati lo dicono.
+  // OGNI COSA CHE SUCCEDE IN CAMPO HA IL SUO COLORE. Un gol non e' un
+  // cartellino, e chi scorre cento righe deve vederlo prima di leggerlo.
+  var TIPI_COLORE = [
+    [/autogol|own goal/i, "autogol", "Autogol"],
+    [/rigore sbagliato|penalty.*(missed|saved)/i, "rigsb", "Rigore sbagliato"],
+    [/rigore|penalty/i, "rigore", "Rigore"],
+    [/annullato|var\b/i, "var", "VAR"],
+    [/gol|goal|rete/i, "gol", "Gol"],
+    [/palo|traversa|legno/i, "palo", "Palo"],
+    [/parata|paraton|miracolo/i, "parata", "Parata"],
+    [/espuls|rosso/i, "rosso", "Espulsione"],
+    [/ammoni|giallo|cartellino/i, "giallo", "Ammonizione"],
+    [/sostituzione|cambio/i, "cambio", "Cambio"],
+    [/skill|giocata|dribbling|tunnel|tacco/i, "skill", "Giocata"],
+    [/occasione|chance|tiro|conclusion|punizione|contropiede|assist/i, "occasione", "Occasione"]
+  ];
+  function tipoChip(tipo, testo) {
+    var t = String(tipo || "") + " " + String(testo || "").slice(0, 90);
+    for (var i = 0; i < TIPI_COLORE.length; i++) {
+      if (TIPI_COLORE[i][0].test(t)) return "<span class='tipo t-" + TIPI_COLORE[i][1] + "'>" + TIPI_COLORE[i][2] + "</span>";
+    }
+    return tipo ? "<span class='tipo t-altro'>" + pulito(tipo) + "</span>" : "";
+  }
+
   function conCronometro(a, poi) {
     if (!a.archivio || a.orologio) return poi(a.dove);
     dice("Leggo il cronometro della partita\u2026 (circa un minuto)");
@@ -4043,14 +4134,19 @@
         // e' precisa (verde al secondo, ambra a stima)
         var chipFonte = a.fonte === "espn" ? "<span class='chip fonte espn'>ESPN</span>"
                       : "<span class='chip fonte " + (a.fonte === "storico" ? "storico" : "appunti") + "'>APPUNTI</span>";
+        var chipTipo = tipoChip(a.tipo, a.testo);
         var chipVoce = a.telecronista ? "<span class='chip chi' title='telecronaca di " + a.telecronista + "'>\ud83c\udf99 " + a.telecronista + "</span>" : "";
         var chipRating = a.rating ? "<span class='chip voto v" + a.rating + "' title='voto della redazione a questo gol'>\u2605 " + a.rating + "</span>" : "";
         var chipPrec = inArchivio ? (a.orologio ? "<span class='chip prec sec' title='minuto convertito con il cronometro letto dal video'>\u23f1 al secondo</span>"
                                                 : "<span class='chip prec stima' title='minuto convertito dall\u2019orario ufficiale: pu\u00f2 sbagliare di qualche minuto'>\u2248 a stima</span>") : "";
-        var v = riga((a.hl ? "\u2605 " : "") + (a.testo || a.tipo),
-             chipFonte + chipRating + chipVoce + chipPrec + a.partita + " \u00b7 " + a.minuto + (a.tempo === 2 ? " (2\u00b0T)" : "") +
-             (a.competizione ? " \u00b7 " + a.competizione : ""),
+        var v = riga(chipTipo + (a.hl ? "<span class='stella'>\u2605</span> " : "") + pulito(a.testo || a.tipo || ""),
+             chipFonte + chipRating + chipVoce + chipPrec +
+             "<span class='dove'>" + a.partita + "</span>" +
+             "<span class='sep2'>\u00b7</span>" + (a.tempo === 2 ? "2\u00ba T " : a.tempo === 1 ? "1\u00ba T " : "") + a.minuto +
+             (a.dove ? "<span class='sep2'>\u00b7</span><span class='tc'>" + orologio(a.dove) + "</span>" : "") +
+             (a.competizione ? "<span class='sep2'>\u00b7</span>" + a.competizione : ""),
              qui ? "VAI" : (inArchivio ? "VAI" : ""), data(Date.parse(a.quando)));
+        v.classList.add("azione");
         v.classList.add("fonte-" + (a.fonte || "appunti"), inArchivio ? (a.orologio ? "al-secondo" : "a-stima") : "senza-video");
         // l'azione, non la partita: un tasto la mette dritta in sequenza
         if (inArchivio || qui) {
@@ -4133,11 +4229,13 @@
         var chipV = a.telecronista ? "<span class='chip chi'>\ud83c\udf99 " + a.telecronista + "</span>" : "";
         var chipR = a.rating ? "<span class='chip voto v" + a.rating + "'>\u2605 " + a.rating + "</span>" : "";
         var chipP = a.dove ? (a.orologio ? "<span class='chip prec sec'>\u23f1 al secondo</span>" : "<span class='chip prec stima'>\u2248 a stima</span>") : "";
-        var v = riga(a.testo || a.tipo,
+        var v = riga(tipoChip(a.tipo, a.testo) + pulito(a.testo || a.tipo || ""),
           chipF + chipR + chipV + "<span class='chip vicino'>" + Math.round(a.vicinanza * 100) + "%</span>" + chipP +
-          a.partita + " \u00b7 " + a.minuto + (a.tempo === 2 ? " (2\u00b0T)" : ""),
+          "<span class='dove'>" + a.partita + "</span><span class='sep2'>\u00b7</span>" +
+          (a.tempo === 2 ? "2\u00ba T " : a.tempo === 1 ? "1\u00ba T " : "") + a.minuto +
+          (a.dove ? "<span class='sep2'>\u00b7</span><span class='tc'>" + orologio(a.dove) + "</span>" : ""),
           a.dove ? "VAI" : "", data(Date.parse(a.quando)));
-        v.classList.add("fonte-" + (a.fonte || "appunti"));
+        v.classList.add("fonte-" + (a.fonte || "appunti"), "azione");
         if (a.dove) v.addEventListener("click", function () {
           conCronometro(a, function (dove) { apriDaArchivio(a.rec, dove, a.partita, a.pezzo); });
         });
