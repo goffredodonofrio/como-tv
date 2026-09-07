@@ -380,6 +380,7 @@
   body.mam .voce .chip.segno{background:#3C2F5A;color:#C9A8FF;}
   body.mam .voce .chip.chi{background:#2A2A2A;color:#B8B8B8;border:1px solid #3A3A3A;text-transform:none;letter-spacing:.04em;}
   /* il voto della redazione al gol: piu' e' alto, piu' scalda */
+  body.mam .voce .chip.vicino{background:#2F3A2A;color:#A8D08A;}
   body.mam .voce .chip.voto{background:#3A3A3A;color:#D8D8D8;}
   body.mam .voce .chip.voto.v3{background:#4A3A1F;color:#F0C060;}
   body.mam .voce .chip.voto.v4{background:#5A3A1A;color:#FFB84D;}
@@ -4085,6 +4086,35 @@
         });
         v.appendChild(tl);
         v.addEventListener("click", function () { vaiA(m.reg, m.secondi, "tutto"); });
+      });
+    }
+    // VICINI PER SIGNIFICATO. Non contengono le parole cercate: vogliono dire
+    // la stessa cosa. Si mostrano dopo, con quanto sono vicini, perche' chi
+    // cerca deve sapere che qui il MAM sta interpretando, non trovando.
+    if (RIS.vicini && RIS.vicini.length) {
+      titolo("Vicini per significato", RIS.vicini.length);
+      RIS.vicini.forEach(function (a) {
+        if (a.fonte === "voce") {
+          var vv = riga("\u201c" + a.testo + "\u201d",
+            "<span class='chip fonte voce'>\ud83c\udf99 " + (a.telecronista || "TELECRONACA") + "</span>" +
+            "<span class='chip vicino'>" + Math.round(a.vicinanza * 100) + "%</span>" + a.partita + " \u00b7 " + orologio(a.secondi),
+            "VAI", data(a.quando));
+          vv.classList.add("detta");
+          vv.addEventListener("click", function () { vaiA(a.reg, a.secondi, "tutto"); });
+          return;
+        }
+        var chipF = "<span class='chip fonte " + (a.fonte === "storico" ? "storico" : "appunti") + "'>APPUNTI</span>";
+        var chipV = a.telecronista ? "<span class='chip chi'>\ud83c\udf99 " + a.telecronista + "</span>" : "";
+        var chipR = a.rating ? "<span class='chip voto v" + a.rating + "'>\u2605 " + a.rating + "</span>" : "";
+        var chipP = a.dove ? (a.orologio ? "<span class='chip prec sec'>\u23f1 al secondo</span>" : "<span class='chip prec stima'>\u2248 a stima</span>") : "";
+        var v = riga(a.testo || a.tipo,
+          chipF + chipR + chipV + "<span class='chip vicino'>" + Math.round(a.vicinanza * 100) + "%</span>" + chipP +
+          a.partita + " \u00b7 " + a.minuto + (a.tempo === 2 ? " (2\u00b0T)" : ""),
+          a.dove ? "VAI" : "", data(Date.parse(a.quando)));
+        v.classList.add("fonte-" + (a.fonte || "appunti"));
+        if (a.dove) v.addEventListener("click", function () {
+          conCronometro(a, function (dove) { apriDaArchivio(a.rec, dove, a.partita, a.pezzo); });
+        });
       });
     }
     if (RIS.segni.length) {

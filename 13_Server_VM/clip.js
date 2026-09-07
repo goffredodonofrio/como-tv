@@ -3954,7 +3954,7 @@ async function cercaPerSignificato(domanda, limite) {
   const fuori = [];
   for (const i of ordine) {
     const m = SIGN.meta[i];
-    if (punti[i] < 0.80) break;                       // sotto questo non e' vicinanza, e' rumore
+    if (punti[i] < 0.835) break;                      // sotto questo non e' vicinanza, e' rumore
     if (m.tipo === "appunto") {
       const a = APPUNTI[m.rec], r = a && a.righe[m.i];
       if (!r) continue;
@@ -4267,7 +4267,8 @@ async function clipCerca(p) {
     try {
       const gia = new Set(azioni.map((x) => x.rec + "|" + x.tempo + "|" + Math.round(x.d || 0))
                     .concat(dette.map((x) => x.reg + "|v|" + Math.round(x.secondi || 0))));
-      vicini = (await cercaPerSignificato(String(p.q || ""), limite))
+      // pochi e buoni: e' un "forse cercavi", non una seconda ricerca
+      vicini = (await cercaPerSignificato(String(p.q || ""), 12))
         .filter((x) => !gia.has(x.fonte === "voce" ? (x.reg + "|v|" + Math.round(x.secondi || 0))
                                                    : (x.rec + "|" + x.tempo + "|" + Math.round(x.d || 0))));
     } catch (e) { console.log("[clip] significato in ricerca: " + e.message); }
