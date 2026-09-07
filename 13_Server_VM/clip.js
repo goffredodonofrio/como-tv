@@ -3235,9 +3235,11 @@ function prioritaPartita(rec) {
   return como * 1e13 + (1e13 - (Date.parse(a.quando) || 0));
 }
 function giraOrologi() {
-  // mentre si trascrive, i cronometri scendono a uno: whisper e' a bassa
-  // priorita' e con due letture in corso non gli resta niente
-  const insieme = voceAlLavoro ? 1 : OROLOGI_INSIEME;
+  // mentre si trascrive i cronometri stanno fermi: due core non si dividono
+  // in tre, e una trascrizione lasciata a meta' costa piu' di un'attesa.
+  // Quando la voce ha finito, riprendono da soli.
+  if (voceAlLavoro && !orologiInMoto) { setTimeout(giraOrologi, 60000); return; }
+  const insieme = OROLOGI_INSIEME;
   if (orologiInMoto >= insieme) return;
   // a coda finita, le partite non lette si ritentano una volta: un sondaggio
   // caduto su un replay o su una grafica spenta la seconda volta cade altrove
@@ -3261,7 +3263,7 @@ function giraOrologi() {
       if (ARCHIVIO[rec]) { ARCHIVIO[rec].orologioFallito = { quando: new Date().toISOString(), motivo: String(e.message).slice(0, 80) }; scriviArchivio(); }
     })
     .then(() => { orologiInMoto--; setTimeout(giraOrologi, 500); });
-  if (insieme > 1) setTimeout(giraOrologi, 3000);   // e intanto parte la seconda
+  setTimeout(giraOrologi, 3000);       // e intanto parte la seconda
 }
 // Ogni cronometro costa ~50 MB letti da S3: AWS ne regala 100 GB al mese,
 // oltre si paga. Il filtro tiene la coda dentro il gratuito: il Como e la
