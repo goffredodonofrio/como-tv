@@ -78,8 +78,26 @@
   .colCentro #centro{flex:0 0 auto;}
   /* LE FINESTRE SI RIDIMENSIONANO, come in Premiere: si prende il divisore e
      si trascina. Le misure stanno in tre variabili e si ricordano. */
-  :root{--projW:272px;--split:50;--tlH:254px;}
+  :root{--projW:272px;--split:50;--tlH:254px;--liveW:210px;}
   .tre{display:grid;grid-template-columns:var(--projW) 6px minmax(0,1fr);grid-template-rows:minmax(0,1fr);min-height:0;}
+  /* MAM LIVE: tre colonne — i flussi che arrivano, i monitor, il progetto.
+     L'ordine sullo schermo non e' quello del documento: si mette a posto qui. */
+  body.modo-live .tre{grid-template-columns:var(--liveW) 6px minmax(0,1fr) 6px var(--projW);}
+  /* le colonne vanno messe una per una, e tutte sulla PRIMA RIGA: senza
+     dirlo, la griglia che incontra una colonna gia' passata apre una riga
+     nuova e i pannelli finiscono uno sotto l'altro */
+  body.modo-live .tre > *{grid-row:1;}
+  body.modo-live #colLive{grid-column:1;} body.modo-live #sepLive{grid-column:2;}
+  body.modo-live .colCentro{grid-column:3;} body.modo-live #sepProj{grid-column:4;} body.modo-live .proj{grid-column:5;}
+  body.mam #colLive{background:#141414;border-right:1px solid #0F0F0F;display:flex;flex-direction:column;min-height:0;overflow:hidden;}
+  body.mam .liveTesta{display:flex;align-items:center;gap:8px;padding:9px 12px 7px;border-bottom:1px solid #0F0F0F;}
+  body.mam .liveTesta .et{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#9A9A9A;font-weight:700;}
+  body.mam .liveTesta .n{font-size:11px;color:#5AA7F2;font-weight:700;margin-left:auto;}
+  body.mam .liveCorpo{flex:1;min-height:0;overflow:auto;}
+  /* la colonna si chiama gia' "In onda": la prima intestazione dentro la
+     lista direbbe due volte la stessa cosa */
+  body.modo-live #liveCorpo #albero > .sez:first-child{display:none;}
+  body.modo-live #colLive > .console{flex:0 0 auto;border-top:1px solid #0F0F0F;background:#171717;}
   .sepV{cursor:col-resize;background:transparent;position:relative;z-index:40;}
   .sepV::after{content:'';position:absolute;top:0;bottom:0;left:2px;width:2px;background:transparent;transition:background .15s;}
   .sepV:hover::after,.sepV.presa::after{background:#2D8CEB;}
@@ -564,6 +582,13 @@
      barretta con le parentesi di entrata e uscita, la fila dei comandi a
      icone. Le icone sono quelle: chi monta le riconosce senza leggere. */
   .monitori{display:grid;grid-template-columns:calc(var(--split) * 1%) 6px minmax(0,1fr);gap:0 11px;align-items:start;}
+  /* "Sorgente grande": il Programma non e' un gemello, e' un controllo. Sta
+     sotto, alto un terzo, e la Sorgente si prende tutta la larghezza. */
+  body.monitor-impilati .monitori{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto;gap:10px 0;}
+  body.monitor-impilati .monitori #sepMon{display:none;}
+  body.monitor-impilati .monitori #monP{grid-template-columns:62px minmax(0,1fr);}
+  body.monitor-impilati #monP .telaio{max-width:38%;}
+  body.monitor-impilati #monP > .lato{padding-top:30px;}
   .monitor{min-width:0;position:relative;display:grid;grid-template-columns:62px minmax(0,1fr);column-gap:8px;align-content:start;}
   .monitor > .lato{grid-column:1;grid-row:1 / span 6;display:flex;flex-direction:column;gap:5px;padding-top:24px;}
   .monitor > :not(.lato){grid-column:2;}
@@ -948,6 +973,14 @@
 
 <div class="lavoro">
 <div class="tre">
+  <!-- MAM LIVE: la colonna di sinistra e' quello che STA ARRIVANDO — i flussi
+       della serata, e sotto i comandi per farli entrare. In archivio non
+       esiste: li' la colonna sola basta. -->
+  <div class="col live soloLive" id="colLive">
+    <div class="liveTesta"><span class="et">In onda</span><span class="n" id="liveN"></span></div>
+    <div class="liveCorpo" id="liveCorpo"></div>
+  </div>
+  <div class="sepV soloLive" id="sepLive" title="trascina per allargare i flussi"></div>
   <!-- IL PANNELLO PROGETTO, fatto come quello di Premiere: le linguette in
        alto, la riga del percorso, il campo di ricerca con il conto degli
        elementi, la griglia con miniatura e badge del tipo, la barra in basso.
@@ -1072,6 +1105,8 @@
   // chi entra per registrare non deve inciampare nell'archivio e chi entra
   // per cercare non deve avere sotto le mani il tasto Registra.
   var MODO = /modo=archivio/.test(location.search) ? "archivio" : "live";
+  var MONITOR_IMPILATI = false;
+  try { MONITOR_IMPILATI = JSON.parse(localStorage.getItem("mam.misure") || "{}").impilati === true; } catch (e) {}
   document.body.classList.add("modo-" + MODO, "mam");
   if (el("qualeMam")) el("qualeMam").textContent = (MODO === "archivio" ? "Archivio" : "Live");
   document.title = "MAM " + (MODO === "archivio" ? "ARCHIVIO" : "LIVE") + " — Como TV";
@@ -1172,6 +1207,7 @@
       else vecchie.push(r);
     });
     if (el("nPartite")) el("nPartite").textContent = inCorso.length ? inCorso.length + " in corso" : recenti.length + " recenti";
+    if (el("liveN")) el("liveN").textContent = inCorso.length ? inCorso.length + (inCorso.length === 1 ? " flusso" : " flussi") : "";
     c.querySelector(".sez .et").textContent = "In corso";
     var ramo = document.createElement("div"); ramo.className = "ramo";
     var disegnaVoce = function (r) {
@@ -2456,6 +2492,9 @@
       ["Coda esportazioni\u2026", function () { apriUscite(); }, ""]
     ]],
     ["Finestra", [
+      [function () { return MONITOR_IMPILATI ? "\u2713 Sorgente grande" : "Sorgente grande (impila i monitor)"; },
+       function () { impilaMonitor(!MONITOR_IMPILATI); }, ""],
+      "-",
       ["MAM Live", function () { location.href = "mam.html"; }, ""],
       ["MAM Archivio", function () { location.href = "mam.html?modo=archivio"; }, ""],
       ["Generatore grafiche", function () { window.open(GEN, "_blank"); }, ""],
@@ -2479,7 +2518,8 @@
         m[1].forEach(function (v) {
           if (v === "-") { t.appendChild(document.createElement("hr")); return; }
           var d = document.createElement("div");
-          d.innerHTML = "<span>" + v[0] + "</span>" + (v[2] ? "<kbd>" + v[2] + "</kbd>" : "");
+          var etichetta = typeof v[0] === "function" ? v[0]() : v[0];   // le voci che dicono anche come stanno
+          d.innerHTML = "<span>" + etichetta + "</span>" + (v[2] ? "<kbd>" + v[2] + "</kbd>" : "");
           if (!v[1]) d.className = "spenta";
           else d.addEventListener("click", function (e) { e.stopPropagation(); chiudi(); v[1](); });
           t.appendChild(d);
@@ -3011,10 +3051,18 @@
         '<div class="riga-stato"><span class="dot" id="cDot"></span><span id="cTesto">Nessuna registrazione</span>' +
           '<span class="coda" id="cCoda"></span></div>' +
       '</div>';
-    // prima si sceglie la partita (e in LIVE la sorgente), poi si cerca: la
-    // console sale sopra la ricerca, in tutti e due i MAM
+    // ARCHIVIO: prima si sceglie la partita, poi si cerca — la console sale
+    // sopra la ricerca. LIVE: i flussi e i comandi per farli entrare stanno
+    // nella colonna di sinistra, e il progetto resta libero per il montaggio.
     var pc = document.querySelector(".projCerca");
-    if (pc && pc.parentNode) pc.parentNode.insertBefore(d, pc);
+    var corpoLive = el("liveCorpo");
+    if (MODO !== "archivio" && corpoLive) {
+      var alb = el("albero");
+      if (alb && alb.parentNode !== corpoLive) corpoLive.appendChild(alb);
+      // i comandi d'ingresso stanno FUORI dalla parte che scorre: sotto
+      // trentadue registrazioni non li troverebbe piu' nessuno
+      if (d.parentNode !== corpoLive.parentNode) corpoLive.parentNode.appendChild(d);
+    } else if (pc && pc.parentNode) pc.parentNode.insertBefore(d, pc);
     var lente = pc && pc.querySelector(".lente2"); if (lente) { lente.textContent = "Cerca"; lente.className = "chip"; }
     if (MODO === "archivio" && el("projCerca")) el("projCerca").placeholder = "azioni: appunti, ESPN, telecronaca \u00b7 Invio";
     var copia = el("btnCopia");
@@ -4228,6 +4276,19 @@
     if (!giroSvelto) giroSvelto = setTimeout(function () { giroSvelto = null; aggiorna(); }, 1000);
   }
 
+  // ── COME STANNO I MONITOR ──
+  //  Affiancati e' l'eredita' di Premiere; ma in diretta la Sorgente e' dove
+  //  si lavora e il Programma e' un controllo. "Sorgente grande" li impila e
+  //  fa il Programma piccolo. La scelta si ricorda.
+  function impilaMonitor(si) {
+    MONITOR_IMPILATI = !!si;
+    document.body.classList.toggle("monitor-impilati", MONITOR_IMPILATI);
+    try { var m = JSON.parse(localStorage.getItem("mam.misure") || "{}"); m.impilati = MONITOR_IMPILATI; localStorage.setItem("mam.misure", JSON.stringify(m)); } catch (e) {}
+    costruisciMenu();
+    telaioForma(); disegnaTutto();
+  }
+  document.body.classList.toggle("monitor-impilati", MONITOR_IMPILATI);
+
   // ── i divisori ──
   (function () {
     var radice = document.documentElement;
@@ -4235,6 +4296,7 @@
       try {
         var m = JSON.parse(localStorage.getItem("mam.misure") || "{}");
         if (m.projW) radice.style.setProperty("--projW", m.projW + "px");
+        if (m.liveW) radice.style.setProperty("--liveW", m.liveW + "px");
         if (m.split) radice.style.setProperty("--split", m.split);
         if (m.tlH) radice.style.setProperty("--tlH", m.tlH + "px");
       } catch (e) {}
@@ -4249,6 +4311,7 @@
       h.addEventListener("mousedown", function (e) {
         e.preventDefault(); presa = { modo: modo, h: h, x0: e.clientX, y0: e.clientY,
           projW: el("sepProj") ? el("sepProj").previousElementSibling.getBoundingClientRect().width : 272,
+          liveW: el("colLive") ? el("colLive").getBoundingClientRect().width : 210,
           split: parseFloat(getComputedStyle(radice).getPropertyValue("--split")) || 50,
           tlH: el("timeline").getBoundingClientRect().height,
           monW: el("monS") ? el("monS").parentElement.getBoundingClientRect().width : 1 };
@@ -4258,8 +4321,13 @@
     document.addEventListener("mousemove", function (e) {
       if (!presa) return;
       if (presa.modo === "proj") {
-        var w = Math.max(200, Math.min(640, presa.projW + (e.clientX - presa.x0)));
+        // in live il progetto sta a destra: allargarlo vuol dire tirare a sinistra
+        var verso = document.body.classList.contains("modo-live") ? -1 : 1;
+        var w = Math.max(200, Math.min(640, presa.projW + verso * (e.clientX - presa.x0)));
         radice.style.setProperty("--projW", w + "px"); presa.val = w;
+      } else if (presa.modo === "live") {
+        var lw = Math.max(150, Math.min(420, presa.liveW + (e.clientX - presa.x0)));
+        radice.style.setProperty("--liveW", lw + "px"); presa.val = lw;
       } else if (presa.modo === "mon") {
         var sp = Math.max(25, Math.min(75, presa.split + (e.clientX - presa.x0) / presa.monW * 100));
         radice.style.setProperty("--split", sp); presa.val = Math.round(sp * 10) / 10;
@@ -4271,11 +4339,11 @@
     });
     document.addEventListener("mouseup", function () {
       if (!presa) return;
-      if (presa.val !== undefined) salva(presa.modo === "proj" ? "projW" : presa.modo === "mon" ? "split" : "tlH", presa.val);
+      if (presa.val !== undefined) salva(presa.modo === "proj" ? "projW" : presa.modo === "live" ? "liveW" : presa.modo === "mon" ? "split" : "tlH", presa.val);
       presa.h.classList.remove("presa"); document.body.classList.remove("ridimensiono"); presa = null;
       telaioForma(); disegnaTutto();
     });
-    attacca("sepProj", "proj"); attacca("sepTl", "tl");
+    attacca("sepProj", "proj"); attacca("sepTl", "tl"); attacca("sepLive", "live");
     var giri = 0, att = setInterval(function () { if (el("sepMon") || ++giri > 40) { clearInterval(att); attacca("sepMon", "mon"); } }, 250);
   })();
   function barra() {
