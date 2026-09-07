@@ -781,11 +781,17 @@ function uniscoIGol(pezzi) {
 // Un gol non e' un'azione qualsiasi: la regia lo rivede, e a volte due
 // volte. Il pezzo si allunga in coda, non in testa, perche' davanti basta
 // l'azione e dietro ci deve stare tutto il replay.
-function allargaPerIlReplay(p) {
+function allargaPerIlReplay(p, rec) {
   const q = Object.assign({}, p);
   const t = p.t !== undefined ? p.t : p.dentro + APP_PRE;
   q.dentro = Math.max(0, t - GOL_PRE);
   q.fuori = t + GOL_POST;
+  // Se di questo gol la fine del replay e' gia' stata letta una volta, vale
+  // ancora: si tiene sulla partita e non sulla sequenza, se no ogni volta
+  // che si riapre si tornava alle maniglie a occhio e si ricomprava tutto.
+  const a = rec && ARCHIVIO[rec];
+  const noto = a && a.replay && a.replay[String(Math.round(t))];
+  if (noto) { q.fuori = Math.min(t + 150, noto + 3); q.replay = true; }
   return q;
 }
 
@@ -814,7 +820,7 @@ function quelloCheSappiamo(r) {
       const p = pezzoDa(t - APP_PRE, t + APP_POST, x.x, x.t, x.m, "appunti", pesoAzione(x.t, x.hl, x.g));
       p.rating = x.g || 0; p.t = t;
       azioni.push(p);
-      if (/gol|rete/i.test(x.t || "") || x.g) gol.push(allargaPerIlReplay(p));
+      if (/gol|rete/i.test(x.t || "") || x.g) gol.push(allargaPerIlReplay(p, rec));
     });
   }
   if (e && e.eventi) {
@@ -827,7 +833,7 @@ function quelloCheSappiamo(r) {
       const p = pezzoDa(t - APP_PRE, t + APP_POST, [ita, x.giocatore].filter(Boolean).join(" · "), ita, x.min + "'", "espn", pesoAzione(ita, false, 0));
       p.t = t;
       azioni.push(p);
-      if (/gol|rigore|autogol/i.test(ita) && !/annullato/i.test(ita)) gol.push(allargaPerIlReplay(p));
+      if (/gol|rigore|autogol/i.test(ita) && !/annullato/i.test(ita)) gol.push(allargaPerIlReplay(p, rec));
     });
   }
   (PARLATO[r.id] ? PARLATO[r.id].pezzi : []).forEach((t) => {
@@ -854,6 +860,16 @@ function quelloCheSappiamo(r) {
 function pezzoApertura(r) {
   const via = (r.kickoff && r.kickoff["1"]) || 0;
   if (!via) return null;
+  // se il cambio cartello e' gia' stato trovato una volta, l'intro comincia
+  // esattamente li' e non si va piu' a stima
+  const rec0 = r.evento || (r.arch && r.arch.rec) || "";
+  const noto = ARCHIVIO[rec0] && ARCHIVIO[rec0].cartello;
+  if (noto && via - noto > 20) {
+    const p0 = pezzoDa(noto + 1, Math.min(noto + 61, via - 2), "Apertura del telecronista",
+                       "Apertura", "", "apertura", 9);
+    p0.vero = true;
+    return p0;
+  }
   const detto = PARLATO[r.id] && PARLATO[r.id].pezzi;
   if (detto && detto.length) {
     // la prima frase che dura piu' di due secondi e sta prima del fischio
@@ -892,6 +908,9 @@ async function preparaSequenze(p) {
     q.titolo = nome + " · " + (r.titolo || "");
     q.nota = nota || "";
     q.pezzi = pezzi;
+    // i pezzi sono nuovi: se la rifinitura non e' gia' dentro (arriva dalla
+    // memoria della partita), si rifa'
+    if (nome === "GOL" && !pezzi.every((x) => x.replay)) delete q.rifinito;
     // il pannello mette per prime le sequenze piu' recenti: per farle uscire
     // nell'ordine in cui servono si va all'indietro
     q.creata = Date.now() - (posto++);
@@ -3880,10 +3899,13 @@ async function rifinisciGol(idSeq) {
     if (fine === null) { pz.replay = false; continue; }
     pz.fuori = Math.min(t + 150, fine + 3);
     pz.replay = true;
+    a.replay = a.replay || {};
+    a.replay[String(Math.round(t))] = fine;     // letto una volta, buono per sempre
     cambiati++;
     console.log("[clip] gol al " + (pz.minuto || "?") + ": il replay finisce a " + fine + "s (pezzo " + Math.round(pz.fuori - pz.dentro) + "s)");
   }
   butta(rif);
+  scriviArchivio();
   // e gia' che il file e' aperto: dove finisce il cartello e comincia
   // l'intro del telecronista
   try { await trovaLIntro(r, via); } catch (e) { console.log("[clip] intro: " + e.message); }
@@ -3903,8 +3925,14 @@ async function trovaLIntro(r, via) {
   const q = Object.keys(R.seq).map((k) => R.seq[k])
     .find((x) => x.reg === r.id && String(x.auto).indexOf("HIGHLIGHTS") === 0);
   if (!q || !q.pezzi.length) return;
-  const via2 = await inizioCleanFeed(via, fischio);
-  if (via2 === null) { console.log("[clip] intro: cartello non trovato prima del fischio"); return; }
+  const rec = r.evento || (r.arch && r.arch.rec) || "";
+  const a = ARCHIVIO[rec];
+  let via2 = a && a.cartello;
+  if (!via2) {
+    via2 = await inizioCleanFeed(via, fischio);
+    if (via2 === null) { console.log("[clip] intro: cartello non trovato prima del fischio"); return; }
+    if (a) { a.cartello = via2; scriviArchivio(); }
+  }
   const dentro = via2 + 1;
   const fuori = Math.min(dentro + 60, fischio - 2);
   if (fuori - dentro < 12) return;

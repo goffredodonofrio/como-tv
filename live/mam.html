@@ -176,6 +176,8 @@
   .tlpista .clipV img{position:absolute;left:2px;top:18px;height:34px;width:auto;border-radius:1px;}
   .tlpista .clipV .dd{display:none;}
   .scheda.accesa{outline:2px solid #7FC4EE;outline-offset:-2px;box-shadow:0 0 0 4px rgba(127,196,238,.18);}
+  .formatiSeq{display:flex;flex-wrap:wrap;gap:3px;justify-content:center;width:100%;}
+  .formatiSeq .b{padding:3px 6px;font-size:10px;min-width:0;}
   .tlriquadro{position:absolute;z-index:40;pointer-events:none;border:1px solid #7FC4EE;
     background:rgba(127,196,238,.14);border-radius:2px;}
   .tlpista .clipV.sel{background:var(--tl-clipsel);}
@@ -1504,6 +1506,18 @@
             '<button class="b oro" id="seqTutti" title="apre la finestra di esportazione">Esporta</button>' +
             '<button class="b" id="seqMp4" hidden>Solo 16:9</button>' +
             '<button class="b" id="seqXml" title="l’XML per Premiere: la sequenza con i tagli, da aprire e rifinire">XML Premiere</button>' +
+            // I formati stanno qui, non solo dentro la finestra: si vede a
+            // colpo d'occhio con che inquadratura uscira' la sequenza, e si
+            // cambia senza aprire niente. Accesi piu' d'uno, escono tutti.
+            '<span class="sep"></span>' +
+            '<span class="etichetta" style="width:100%;text-align:center;margin:0 0 2px">FORMATI</span>' +
+            '<div class="formatiSeq" id="formatiSeq">' +
+              ["16:9", "1:1", "3:4", "9:16"].map(function (f) {
+                return '<button class="b" data-fs="' + f + '" title="' +
+                       (f === "16:9" ? "YouTube, sito" : f === "1:1" ? "quadrato" : f === "3:4" ? "feed Instagram" : "story, TikTok") +
+                       '">' + f + '</button>';
+              }).join("") +
+            '</div>' +
             '<span class="sep"></span>' +
             '<span class="aiuto" style="margin:0"><kbd id="aiutoTasti">?</kbd></span>' +
           '</div>' +
@@ -1530,6 +1544,15 @@
     telaioForma();
     el("capoTorna").addEventListener("click", function (e) { e.preventDefault(); tornaAlContenuto(); });
     el("seqTutti").addEventListener("click", function () { apriExport("sequenza"); });   // Esporta accanto al Programma
+    c.querySelectorAll("#formatiSeq button").forEach(function (b2) {
+      b2.addEventListener("click", function () {
+        var f = b2.dataset.fs, k = FORMATI_SEQ.indexOf(f);
+        if (k >= 0) { if (FORMATI_SEQ.length > 1) FORMATI_SEQ.splice(k, 1); }
+        else FORMATI_SEQ.push(f);
+        formatiSeqVisti();
+      });
+    });
+    formatiSeqVisti();
     el("seqMp4").addEventListener("click", function () { apriExport("sequenza"); });
     el("seqXml").addEventListener("click", function () {
       if (!SEQ) return;
@@ -2103,6 +2126,11 @@
   //  per andare li'. Una clip dal progetto si lascia cadere dove si vuole.
   //  Canc toglie il pezzo scelto.
   var FORMATI_SEQ = ["16:9"];   // i formati con cui esce la sequenza
+  function formatiSeqVisti() {
+    document.querySelectorAll("#formatiSeq button").forEach(function (b) {
+      b.className = FORMATI_SEQ.indexOf(b.dataset.fs) >= 0 ? "b scuro" : "b";
+    });
+  }
   var SEQSCELTE = [];        // le sequenze accese con Shift, da togliere insieme
   var TL = { sel: null, multi: [], riquadro: null, ghost: null, ins: null, trim: null, drag: null, vista: null, nav: null, scrub: null, lock: { V1: false, A1: false } };
   // La selezione: uno o piu' pezzi. TL.sel resta il principale (quello che
@@ -2706,8 +2734,12 @@
       '<tr><td>Nome</td><td><input type="text" id="expNome" value="' + pulito(nome).replace(/"/g, "&quot;") + '"></td></tr>' +
       '<tr><td>Preset</td><td><select id="expPreset">' +
         '<option value="16:9">Social 16:9 (YouTube, sito)</option><option value="9:16">Story 9:16 (Instagram, TikTok)</option>' +
+        '<option value="1:1">Quadrato 1:1</option>' +
         '<option value="3:4">Feed 3:4 (Instagram)</option><option value="tutti">Tutti i formati</option></select></td></tr>' +
-      '<tr><td>Formati</td><td class="expF"><label><input type="checkbox" value="16:9" checked> 16:9</label><label><input type="checkbox" value="3:4"> 3:4</label><label><input type="checkbox" value="9:16"> 9:16</label></td></tr>' +
+      '<tr><td>Formati</td><td class="expF">' +
+        ["16:9", "1:1", "3:4", "9:16"].map(function (f) {
+          return '<label><input type="checkbox" value="' + f + '"' + (FORMATI_SEQ.indexOf(f) >= 0 ? " checked" : "") + '> ' + f + '</label>';
+        }).join("") + '</td></tr>' +
       '<tr class="soloClip"><td>Qualit\u00e0</td><td><label><input type="radio" name="expQ" value="copia" checked> ai secondi \u2014 copia, un secondo</label><br><label><input type="radio" name="expQ" value="preciso"> al fotogramma \u2014 ricodifica, esatta</label></td></tr>' +
       '<tr class="soloSeq"><td>Anche</td><td><label><input type="checkbox" id="expXml"> XML per Premiere</label></td></tr>' +
       '<tr><td>Audio</td><td>stereo AAC 160k (si apre ovunque)</td></tr>' +
@@ -2735,6 +2767,8 @@
     el("expVai").addEventListener("click", function () {
       var formati = Array.prototype.filter.call(caselle, function (c) { return c.checked; }).map(function (c) { return c.value; });
       if (!formati.length) return dice("Scegli almeno un formato.");
+      // quello che si sceglie qui resta acceso anche in colonna
+      FORMATI_SEQ = formati.slice(); formatiSeqVisti();
       var titolo = el("expNome").value.trim();
       if (tipo === "clip") {
         var preciso = box.querySelector('input[name="expQ"]:checked').value === "preciso";
