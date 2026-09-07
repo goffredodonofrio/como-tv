@@ -158,8 +158,16 @@
   .tlstrumenti .lente b{width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;
     color:#BBB;font-size:12px;cursor:pointer;border-radius:3px;} .tlstrumenti .lente b:hover{background:#3A3A3A;}
   .tltraccia{display:flex;align-items:center;gap:6px;padding:0 6px 0 10px;border-bottom:1px solid var(--tl-riga);font-size:11px;color:#BDBDBD;}
-  .tltraccia.v{height:34px;} .tltraccia.v[data-t="V1"]{height:56px;}
-  .tltraccia.a{height:34px;} .tltraccia.a[data-t="A1"]{height:46px;}
+  /* LE TRACCE SI ALZANO E SI ABBASSANO, come in Premiere: si prende il
+     bordo di sotto nell'intestazione e si tira. V2 nasceva alta 34 pixel
+     buoni per una riga di testo e basta, e una grafica li' dentro non si
+     vedeva. */
+  .tltraccia.v{height:var(--hV2,34px);} .tltraccia.v[data-t="V1"]{height:var(--hV1,56px);}
+  .tltraccia.a{height:34px;} .tltraccia.a[data-t="A1"]{height:var(--hA1,46px);}
+  .tltraccia{position:relative;}
+  .tltraccia .tira{position:absolute;left:0;right:0;bottom:-3px;height:7px;cursor:row-resize;z-index:8;}
+  .tltraccia .tira::after{content:'';position:absolute;left:8px;right:8px;top:3px;height:1px;background:transparent;}
+  .tltraccia .tira:hover::after,.tltraccia .tira.presa::after{background:#2D8CEB;}
   .tltraccia .lock{width:9px;height:11px;border:1.5px solid #9A9A9A;border-radius:2px;position:relative;}
   .tltraccia .lock::before{content:'';position:absolute;left:1.5px;top:-6px;width:4px;height:5px;border:1.5px solid #9A9A9A;border-bottom:0;border-radius:3px 3px 0 0;}
   .tltraccia .tag{width:30px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;color:#BDBDBD;}
@@ -181,7 +189,9 @@
   .tlrighello .testa{position:absolute;bottom:2px;width:10px;height:14px;background:var(--tl-blu);
     clip-path:polygon(0 0,100% 0,100% 60%,50% 100%,0 60%);transform:translateX(-5px);z-index:7;}
   .tlcorsia{position:relative;border-bottom:1px solid var(--tl-riga);}
-  .tlcorsia.v{height:34px;} #tlV1{height:56px;} .tlcorsia.a{height:34px;} #tlA1{height:46px;}
+  #tlV2{height:var(--hV2,34px);} #tlV1{height:var(--hV1,56px);} #tlA1{height:var(--hA1,46px);}
+  .tlpista .clipG{height:calc(var(--hV2,34px) - 4px);}
+  .tlcorsia.v{height:var(--hV2,34px);} .tlcorsia.a{height:34px;}
   .tlcorsia.vuota{background:var(--tl-fondo2);}
 
   /* la clip video: corpo blu, barra del titolo piu' chiara con nome e fx, miniatura */
@@ -1607,7 +1617,6 @@
             // mosse — esporta, aspetta, cerca il link "grafica" nella coda —
             // e in mezzo si perdeva il filo.
             '<button class="b" id="seqLivello" title="apre il generatore qui dentro: la grafica va sulla traccia V2 e la vedi sul video">+ GRAFICA</button>' +
-            '<button class="b" id="seqGrafica" title="esporta e apre il generatore con questo montato dentro">GRAFICA SU VIDEO</button>' +
             // I formati stanno qui, non solo dentro la finestra: si vede a
             // colpo d'occhio con che inquadratura uscira' la sequenza, e si
             // cambia senza aprire niente. Accesi piu' d'uno, escono tutti.
@@ -1646,7 +1655,6 @@
     telaioForma();
     el("capoTorna").addEventListener("click", function (e) { e.preventDefault(); tornaAlContenuto(); });
     el("seqTutti").addEventListener("click", function () { apriExport("sequenza"); });   // Esporta accanto al Programma
-    el("seqGrafica").addEventListener("click", function () { versoLaGrafica(SEQ); });
     el("seqLivello").addEventListener("click", function () { apriPannelloGrafiche(); });
     c.querySelectorAll("#formatiSeq button").forEach(function (b2) {
       b2.addEventListener("click", function () {
@@ -2308,56 +2316,6 @@
   // non e' piu' figlia di un gesto tuo. Aprendola subito si guadagnano due
   // cose in una — il blocco non scatta, e chi ha premuto vede che sta
   // succedendo qualcosa invece di restare davanti a uno schermo fermo.
-  var FINESTRE = {};            // sequenza -> la finestra aperta ad aspettare
-  function paginaAttesa(w, titolo, fatti, quanti, finito) {
-    if (!w || w.closed) return;
-    var q = quanti || 1, f = Math.min(fatti || 0, q);
-    var perc = finito ? 100 : Math.round(f / q * 100);
-    try {
-      w.document.open();
-      w.document.write('<!doctype html><html lang="it"><head><meta charset="utf-8">' +
-        '<title>' + (finito ? "Pronto" : "Sto preparando il video") + ' \u00b7 Como TV</title>' +
-        '<style>body{margin:0;background:#141414;color:#E6E6E6;font:14px/1.5 system-ui,sans-serif;' +
-        'display:flex;align-items:center;justify-content:center;height:100vh}' +
-        '.c{max-width:420px;padding:28px;text-align:center}' +
-        'h1{font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:#C8A24A;margin:0 0 6px}' +
-        'p{color:#9A9A9A;margin:8px 0 0;font-size:13px}' +
-        '.b{height:6px;background:#2A2A2A;border-radius:3px;margin:18px 0 6px;overflow:hidden}' +
-        '.b i{display:block;height:100%;background:#C8A24A;width:' + perc + '%;transition:width .4s}' +
-        '.n{font-size:12px;color:#7A7A7A}</style></head><body><div class="c">' +
-        '<h1>' + (finito ? "Video pronto" : "Sto preparando il video") + '</h1>' +
-        '<div>' + String(titolo || "").replace(/[<>]/g, "") + '</div>' +
-        '<div class="b"><i></i></div>' +
-        '<div class="n">' + (finito ? "apro il generatore\u2026" : f + " di " + q + " pezzi \u00b7 " + perc + "%") + '</div>' +
-        '<p>' + (finito ? "Da qui scegli la grafica e la metti sul video."
-                        : "Puoi lasciare questa finestra aperta e continuare a lavorare di la\u2019. Appena il video e\u2019 pronto si apre il generatore da solo.") +
-        '</p></div></body></html>');
-      w.document.close();
-    } catch (e) {}
-  }
-  // Dal montaggio alla grafica, senza passaggi in mezzo.
-  function versoLaGrafica(q) {
-    if (!q || !(q.pezzi || []).length) return dice("Monta prima qualcosa in timeline.");
-    if (q.export && q.export.stato === "lavora") return dice("Sto gia\u2019 esportando questa sequenza.");
-    var w = null;
-    try { w = window.open("", "_blank", "width=560,height=420"); } catch (e) {}
-    if (w) { FINESTRE[q.id] = w; paginaAttesa(w, q.titolo, 0, (q.pezzi || []).length, false); }
-    else dice("Il browser ha bloccato la finestra: quando il video e\u2019 pronto trovi qui il collegamento al generatore.");
-    ASPETTO[q.id] = "grafica";
-    manda({ tipo: "clip-hl-esporta", seq: q.id, formato: FORMATO_VISTO, formati: [FORMATO_VISTO] })
-      .then(function () {
-        // le tre maschere video del generatore sono tutte verticali: se stai
-        // esportando orizzontale conviene saperlo prima, non dopo
-        dice("Esporto in " + FORMATO_VISTO + " \u00b7 appena pronto si apre il generatore" +
-             (FORMATO_VISTO === "9:16" ? "" : " \u00b7 attenzione: le grafiche video sono verticali, per le storie scegli 9:16"), true);
-      })
-      .catch(function (e) {
-        delete ASPETTO[q.id];
-        if (w && !w.closed) w.close();
-        delete FINESTRE[q.id];
-        dice(e.message);
-      });
-  }
   var ASPETTO = {};             // sequenza -> cosa fare quando l'export e' pronto
   var VISTI_PRONTI = {};        // per non rifarlo due volte
   var FORMATI_SEQ = ["16:9"];   // i formati con cui esce la sequenza
@@ -2633,6 +2591,18 @@
       var vp = el("programma");
       var bordo = e.target.closest ? e.target.closest(".bordo") : null;
       var blocco = e.target.closest ? e.target.closest(".clipV, .clipA") : null;
+      // Doppio clic sulla traccia delle grafiche: apre il pannello, come si
+      // apre un pannello in Premiere. Anche sul vuoto, che e' il gesto
+      // naturale per dire "qui ci voglio mettere qualcosa".
+      var suV2 = e.target.closest ? e.target.closest("#tlV2, .clipG") : null;
+      if (suV2) {
+        var oraV = Date.now();
+        if (DOPPIO.id === "V2" && oraV - DOPPIO.quando < 400) {
+          DOPPIO = { id: "", quando: 0 };
+          e.preventDefault(); apriPannelloGrafiche(); return;
+        }
+        DOPPIO = { id: "V2", quando: oraV };
+      }
       // LE GRAFICHE su V2: si scelgono, si spostano, si allungano. Vivono
       // nel tempo della sequenza, quindi bastano i pixel del righello.
       var bloccoG = e.target.closest ? e.target.closest(".clipG") : null;
@@ -2956,6 +2926,47 @@
       });
     });
 
+    // LE TRACCE SI TIRANO. Una maniglia sotto ogni intestazione: si prende
+    // e si alza la traccia, come in Premiere. Serve soprattutto a V2, dove
+    // una grafica alta trentaquattro pixel non si distingue da una riga.
+    (function () {
+      var quali = { V2: "--hV2", V1: "--hV1", A1: "--hA1" };
+      var radice = document.documentElement, tira = null;
+      try {
+        var m = JSON.parse(localStorage.getItem("mam.tracce") || "{}");
+        Object.keys(quali).forEach(function (t) { if (m[t]) radice.style.setProperty(quali[t], m[t] + "px"); });
+      } catch (e) {}
+      document.querySelectorAll(".tltraccia").forEach(function (h) {
+        var t = h.dataset.t; if (!quali[t] || h.querySelector(".tira")) return;
+        var man = document.createElement("i"); man.className = "tira";
+        man.title = "trascina per alzare o abbassare la traccia";
+        h.appendChild(man);
+        man.addEventListener("mousedown", function (e) {
+          e.preventDefault(); e.stopPropagation();
+          tira = { t: t, y0: e.clientY, h0: h.getBoundingClientRect().height, man: man };
+          man.classList.add("presa"); document.body.classList.add("ridimensiono");
+        });
+      });
+      document.addEventListener("mousemove", function (e) {
+        if (!tira) return;
+        var alto = Math.max(22, Math.min(200, Math.round(tira.h0 + (e.clientY - tira.y0))));
+        radice.style.setProperty(quali[tira.t], alto + "px");
+        tira.val = alto;
+        disegnaTimeline();
+      });
+      document.addEventListener("mouseup", function () {
+        if (!tira) return;
+        if (tira.val) {
+          try {
+            var m2 = JSON.parse(localStorage.getItem("mam.tracce") || "{}");
+            m2[tira.t] = tira.val; localStorage.setItem("mam.tracce", JSON.stringify(m2));
+          } catch (e) {}
+        }
+        tira.man.classList.remove("presa"); document.body.classList.remove("ridimensiono");
+        tira = null; disegnaTimeline();
+      });
+    })();
+
     var q = function (id, f) { var b = el(id); if (b) b.addEventListener("click", f); };
     q("tlSegno", function () { var b = el("btnSegnaApri"); if (b) b.click(); });
     timecodeScrivibile("tlTc", progPos, function (t) {
@@ -3222,7 +3233,6 @@
       '<tr><td>Destinazione</td><td><select id="expDove">' +
         '<option value="qui">resta qui \u2014 nella coda, si cancella da sola dopo sette giorni</option>' +
         '<option value="scarica">scarica sul computer appena pronto</option>' +
-        '<option value="grafica">apri nel generatore grafiche appena pronto</option>' +
       '</select></td></tr>' +
       '</table></div>' +
       '<footer><button class="b" id="expAnnulla">Annulla</button><button class="b oro" id="expVai">Aggiungi alla coda</button></footer></div>';
@@ -4888,10 +4898,8 @@
 
       var az2 = document.createElement("div"); az2.className = "gruppo"; az2.style.marginTop = "8px";
       az2.innerHTML = '<button class="b oro" id="hlMp4">Esporta MP4</button>' +
-                      '<button class="b" id="hlGrafica">Grafica</button>' +
                       '<button class="b" id="hlXml">Per Premiere</button>';
       corpo.appendChild(az2);
-      el("hlGrafica").addEventListener("click", function () { versoLaGrafica(q); });
       if (q.export && q.export.stato === "pronto") {
         var g1 = document.createElement("div"); g1.className = "aiuto";
         var pronti = q.esportati || {};
@@ -5443,44 +5451,10 @@
           a2.href = fatti[k].url; a2.download = ""; document.body.appendChild(a2);
           a2.click(); a2.remove();
           dice("Scarico " + pulito(fatti[k].nome), true);
-        } else if (dove === "grafica") {
-          var senzaScarica = fatti[k].url.replace(/\?scarica=1$/, "");
-          var via = GEN + "&clip=" + encodeURIComponent(senzaScarica) +
-                    "&seq=" + encodeURIComponent(pezzi[1]) +
-                    "&titolo=" + encodeURIComponent(fatti[k].nome || "");
-          var w = FINESTRE[pezzi[1]];
-          if (w && !w.closed) {
-            // la finestra e' gia' aperta dal clic: si porta li', senza che
-            // il browser possa bloccare niente
-            paginaAttesa(w, fatti[k].nome, 1, 1, true);
-            setTimeout(function () { try { w.location.href = via; } catch (e) {} }, 700);
-          } else {
-            // finestra bloccata: non si insiste ad aprirne un'altra (verrebbe
-            // bloccata uguale), si mette un collegamento su cui cliccare —
-            // un clic e' un gesto, e i gesti il browser li lascia passare
-            var w2 = null;
-            try { w2 = window.open(via, "_blank"); } catch (e) {}
-            if (!w2) diceHtml('\u2713 Video pronto: <b>' + pulito(fatti[k].nome) + '</b>' +
-                              '<a href="' + via + '" target="_blank">apri il generatore</a>', true);
-          }
-          delete FINESTRE[pezzi[1]];
-          delete ASPETTO[pezzi[1]];
         }
       });
     }
     PRONTI_VISTI = fatti;
-    // le finestre che stanno aspettando seguono l'avanzamento vero
-    Object.keys(FINESTRE).forEach(function (id) {
-      var w = FINESTRE[id];
-      if (!w || w.closed) { delete FINESTRE[id]; return; }
-      var q = (SEQS.filter(function (x) { return x.id === id; })[0]) || (SEQ && SEQ.id === id ? SEQ : null);
-      if (!q || !q.export) return;
-      if (q.export.stato === "lavora") paginaAttesa(w, q.titolo, q.export.fatti || 0, q.export.quanti || 1, false);
-      else if (q.export.stato === "errore") {
-        paginaAttesa(w, "Non e\u2019 andata: " + (q.export.errore || ""), 0, 1, false);
-        delete FINESTRE[id]; delete ASPETTO[id];
-      }
-    });
     var inCoda = CLIP.filter(function (c) { return c.stato !== "pronta" && c.stato !== "errore"; });
     var seqs = (SEQS.length ? SEQS : (SEQ ? [SEQ] : [])).filter(function (q) { return q.export && q.export.stato === "lavora"; });
     var n = inCoda.length + seqs.length, l = el("sLav"); if (!l) return;

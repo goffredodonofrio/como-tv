@@ -4875,7 +4875,10 @@ function cercaNegliAppunti(q, limite) {
 // ── i file: playlist, segmenti, clip ──────────────────────────────────
 
 const TIPI = { ".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t", ".mp4": "video/mp4",
-               ".xml": "application/xml", ".jpg": "image/jpeg" };
+               ".xml": "application/xml", ".jpg": "image/jpeg",
+               // il PNG serve alle grafiche del livello V2: senza, l'anteprima
+               // sopra il Programma era un riquadro vuoto con dentro un 404
+               ".png": "image/png" };
 
 function serviHttp(req, res, u) {
   if (!ATTIVO || !u.pathname.startsWith("/clip/")) return false;
