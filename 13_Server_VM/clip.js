@@ -704,7 +704,13 @@ async function cercaBoati(p) {
 //  bianco vuol dire rifare a mano un lavoro gia' fatto. Quando si apre, il
 //  MAM mette da parte quello che ha — una sequenza per fonte, gia' in ordine
 //  e gia' tagliata — e chi monta parte da li' invece che da zero.
-const APP_PRE = 8, APP_POST = 10;
+// QUANTO PRENDERE ATTORNO A UN'AZIONE.
+//  Il minuto scritto negli appunti — e spesso anche quello di ESPN — cade
+//  sul REPLAY, non sull'azione dal vivo: chi guarda annota mentre rivede.
+//  Trenta secondi prima e trenta dopo prendono tutte e due, e quello che
+//  esce e' un grezzo da rifinire invece di un pezzo che comincia dopo.
+const APP_PRE = 30, APP_POST = 30;      // il grezzo: azione + replay
+const HL_STRETTO_PRE = 8, HL_STRETTO_POST = 12;   // quando bisogna stare nei minuti
 
 function pezzoDa(dentro, fuori, titolo, tipo, minuto, fonte, peso) {
   return { id: nuovoId("p"), dentro: Math.max(0, Math.round(dentro * 10) / 10),
@@ -726,6 +732,31 @@ function togliDoppioni(pezzi, vicino) {
   });
   return fuori;
 }
+// I GOL SI CONTANO UNA VOLTA SOLA. ESPN dice il minuto esatto, la redazione
+// scrive un minuto dopo perche' guarda e poi annota: due righe a sessanta
+// secondi di distanza sembrano due gol e sono uno. Il nome del giocatore lo
+// dice: se il cognome di ESPN sta dentro la riga della redazione, e' quello.
+function uniscoIGol(pezzi) {
+  const cognomi = (t) => String(t || "").split(/[^A-Za-zÀ-ÿ']+/)
+    .filter((w) => w.length > 3 && w[0] === w[0].toUpperCase()).map((w) => w.toLowerCase());
+  const fuori = [];
+  pezzi.slice().sort((a, b) => a.dentro - b.dentro).forEach((x) => {
+    const stessi = fuori.filter((y) => Math.abs(y.dentro - x.dentro) < 190);
+    const gia = stessi.find((y) => {
+      if (Math.abs(y.dentro - x.dentro) < 25) return true;              // stesso istante
+      const a = cognomi(y.titolo), b = cognomi(x.titolo);
+      return a.some((n) => b.indexOf(n) >= 0);                          // stesso giocatore
+    });
+    if (!gia) { fuori.push(x); return; }
+    // vince la riga che racconta di piu', ma il minuto buono e' quello di ESPN
+    if ((x.titolo || "").length > (gia.titolo || "").length) {
+      const quando = gia.fonte === "espn" ? gia.dentro : x.dentro;
+      Object.assign(gia, x, { dentro: quando, fuori: quando + (x.fuori - x.dentro), base: quando });
+    }
+  });
+  return fuori;
+}
+
 // Tutto quello che sappiamo di questa partita, con il secondo nel file.
 function quelloCheSappiamo(r) {
   const rec = r.evento || (r.arch && r.arch.rec) || "";
@@ -742,7 +773,7 @@ function quelloCheSappiamo(r) {
       const t = dove(x.s, Math.max(0, (x.d || 0) - rit));
       if (t === null) return;
       const p = pezzoDa(t - APP_PRE, t + APP_POST, x.x, x.t, x.m, "appunti", pesoAzione(x.t, x.hl, x.g));
-      p.rating = x.g || 0;
+      p.rating = x.g || 0; p.t = t;
       azioni.push(p);
       if (/gol|rete/i.test(x.t || "") || x.g) gol.push(p);
     });
@@ -755,21 +786,24 @@ function quelloCheSappiamo(r) {
       const ita = tipoItaliano(x.tipo);
       if (/sostituzione/i.test(ita)) return;                  // un cambio non e' un pezzo
       const p = pezzoDa(t - APP_PRE, t + APP_POST, [ita, x.giocatore].filter(Boolean).join(" · "), ita, x.min + "'", "espn", pesoAzione(ita, false, 0));
+      p.t = t;
       azioni.push(p);
       if (/gol|rigore|autogol/i.test(ita) && !/annullato/i.test(ita)) gol.push(p);
     });
   }
   (PARLATO[r.id] ? PARLATO[r.id].pezzi : []).forEach((t) => {
     if (!/\bgol\b|\brete\b|che gol|goool/i.test(t.x || "")) return;   // solo i momenti che la voce chiama
-    voce.push(pezzoDa(t.a - 4, (t.b || t.a + 10) + 4, "“" + String(t.x).slice(0, 90) + "”", "Telecronaca", "", "voce", 2));
+    voce.push(pezzoDa(t.a - 12, (t.b || t.a + 10) + 18, "“" + String(t.x).slice(0, 90) + "”", "Telecronaca", "", "voce", 2));
   });
   (r.marker || []).filter((m) => m.fonte === "boato").forEach((m) => {
-    boati.push(pezzoDa(m.secondi - 10, m.secondi + 10, m.testo || "Boato", "Boato", "", "boato", 2));
+    boati.push(pezzoDa(m.secondi - 20, m.secondi + 25, m.testo || "Boato", "Boato", "", "boato", 2));
   });
   // la voce dice "gol" spesso, anche per un gol di ieri o annullato: si
   // tengono i momenti distanti fra loro, al massimo quindici
   const voceScelta = togliDoppioni(voce, 60).slice(0, 15);
-  return { azioni: togliDoppioni(azioni, 18), gol: togliDoppioni(gol, 25), voce: voceScelta, boati: boati };
+  // con maniglie larghe due azioni vicine si sovrappongono: si sta piu' larghi
+  // anche nel togliere i doppioni
+  return { azioni: togliDoppioni(azioni, 45), gol: uniscoIGol(gol), voce: voceScelta, boati: boati };
 }
 
 async function preparaSequenze(p) {
@@ -800,13 +834,19 @@ async function preparaSequenze(p) {
     fatte.push({ nome: nome, pezzi: pezzi.length, id: q.id });
   };
 
-  crea("GOL", sap.gol, "gol da ESPN e dagli appunti, otto secondi prima e dieci dopo");
+  crea("GOL", sap.gol, "i gol con trenta secondi prima e trenta dopo: dentro c'e' l'azione e c'e' il replay");
   // gli highlights: i pezzi che pesano di piu', dentro tre minuti
   if (sap.azioni.length) {
-    const scelti = stringiAllaDurata(sap.azioni.map((x) => Object.assign({}, x)), 180, APP_PRE, APP_POST);
-    crea("HIGHLIGHTS 3′", (scelti.pezzi || []).sort((a, b) => a.dentro - b.dentro), scelti.nota || "le azioni che pesano di piu', dentro tre minuti");
+    // qui le maniglie si stringono: dentro tre minuti ci devono stare piu'
+    // cose, e questa e' la sequenza che assomiglia gia' a un montato
+    const strette = sap.azioni.map((x) => Object.assign({}, x, {
+      dentro: Math.max(0, (x.t !== undefined ? x.t : x.dentro + APP_PRE) - HL_STRETTO_PRE),
+      fuori: (x.t !== undefined ? x.t : x.dentro + APP_PRE) + HL_STRETTO_POST
+    }));
+    const scelti = stringiAllaDurata(strette, 180, HL_STRETTO_PRE, HL_STRETTO_POST);
+    crea("HIGHLIGHTS 3′", (scelti.pezzi || []).sort((a, b) => a.dentro - b.dentro), (scelti.nota ? scelti.nota + " " : "") + "Maniglie strette: qui si sta nei tre minuti.");
   }
-  crea("AZIONI", sap.azioni, "tutto quello che la redazione ha segnato, in ordine");
+  crea("AZIONI", sap.azioni, "tutto quello che la redazione ha segnato, in ordine, con azione e replay");
   crea("TELECRONACA", sap.voce, "i momenti in cui il telecronista dice gol");
   crea("BOATI", sap.boati, "i momenti in cui lo stadio alza la voce");
   scrivi(); annuncia(0, "clip");
@@ -1098,6 +1138,7 @@ function pubblica(r) {
 }
 
 function clipStato(p) {
+  ultimaPagina = Date.now();          // c'e' qualcuno davanti al MAM
   // occasione buona per dare una faccia alle registrazioni in corso
   Object.keys(R.reg).forEach((k) => {
     const r = R.reg[k];
@@ -2714,8 +2755,8 @@ async function archivioApri(p) {
     // l'evento e' la chiave stessa dell'indice: senza, la partita aperta
     // dall'archivio non ritrovava i suoi appunti ne' le rose di ESPN, e
     // whisper si trascriveva la telecronaca senza sapere un nome
-    id: nuovoId("r"), evento: String(p.rec || ""),
-    titolo: titoloMateriale(a, i),
+    id: nuovoId("r"), evento: String(p.rec || ""), __durata: durata,
+    titolo: titoloMateriale(a, i, durata),
     competizione: "", sorgente: "archivio", origine: "archivio", url: "",
     stato: "finita", avviata: Date.parse(a.quando) || Date.now(), finita: Date.now(),
     durata: durata, kickoff: (i === 0 && a.kickoff !== null && a.kickoff !== undefined)
@@ -2736,7 +2777,7 @@ async function archivioApri(p) {
 // Il nome del materiale e' il nome della partita — MAIUSCOLO, SQUADRA-SQUADRA,
 // con il risultato se c'e' o la data se no — e un suffisso solo quando il file
 // e' davvero un tempo. "1ª parte" era il nome del file, non della partita.
-function titoloMateriale(a, i) {
+function titoloMateriale(a, i, durataVera) {
   let nome = String(a.partita || "partita").toUpperCase().replace(/\s+VS\.?\s+/g, "-").replace(/\s*-\s*/g, "-").replace(/\s+/g, " ").trim();
   if (!/\b\d+-\d+\b/.test(nome)) {
     const d = new Date(a.quando || 0);
@@ -2744,6 +2785,9 @@ function titoloMateriale(a, i) {
   }
   const pezzi = (a.pezzi && a.pezzi.length) ? a.pezzi : [{}];
   const x = pezzi[i] || {};
+  // se il file dura piu' di un'ora e venticinque non e' un tempo, e' la
+  // partita: la durata vera del materiale aperto batte qualsiasi indizio
+  if (durataVera && durataVera >= 85 * 60) return nome;
   if (pezzi.length <= 1 || (x.minuti && x.minuti >= 85)) return nome;
   // due file sono i due tempi; di piu' (una serata di boxe, un evento a
   // blocchi) sono parti numerate
@@ -2763,7 +2807,7 @@ function rinominaMaterialeArchivio() {
       delete R.reg[k]; n++; return;
     }
     if (!r.evento && r.arch.rec) { r.evento = r.arch.rec; n++; }
-    const t = titoloMateriale(a, r.arch.pezzo || 0);
+    const t = titoloMateriale(a, r.arch.pezzo || 0, r.durata || 0);
     if (t !== r.titolo) { r.titolo = t; n++; }
   });
   if (n) { scrivi(); annuncia(0, "clip"); }
@@ -3648,12 +3692,16 @@ function prioritaPartita(rec) {
   const como = /\bCOMO\b/i.test(a.partita || "") ? 0 : 1;
   return como * 1e13 + (1e13 - (Date.parse(a.quando) || 0));
 }
+// Se una pagina sta chiedendo lo stato, qualcuno sta lavorando: le code di
+// sottofondo scendono a una alla volta e la macchina risponde a lui.
+let ultimaPagina = 0;
+function qualcunoLavora() { return Date.now() - ultimaPagina < 90000; }
 function giraOrologi() {
   // mentre si trascrive i cronometri stanno fermi: due core non si dividono
   // in tre, e una trascrizione lasciata a meta' costa piu' di un'attesa.
   // Quando la voce ha finito, riprendono da soli.
   if (!orologiInMoto && (voceAlLavoro || whisperGira())) { setTimeout(giraOrologi, 60000); return; }
-  const insieme = OROLOGI_INSIEME;
+  const insieme = qualcunoLavora() ? 1 : OROLOGI_INSIEME;
   if (orologiInMoto >= insieme) return;
   // a coda finita, le partite non lette si ritentano una volta: un sondaggio
   // caduto su un replay o su una grafica spenta la seconda volta cade altrove
@@ -3760,7 +3808,8 @@ async function misuraPartita(rec) {
   if (++durateDaScrivere >= 20) { durateDaScrivere = 0; scriviArchivio(); }
 }
 function giraDurate() {
-  if (durateInMoto >= DURATE_INSIEME || !CODA_DURATE.length) { if (!CODA_DURATE.length && !durateInMoto) scriviArchivio(); return; }
+  const insiemeD = qualcunoLavora() ? 1 : DURATE_INSIEME;
+  if (durateInMoto >= insiemeD || !CODA_DURATE.length) { if (!CODA_DURATE.length && !durateInMoto) scriviArchivio(); return; }
   const registrando = registrandoDavvero();
   if (registrando) { setTimeout(giraDurate, 60000); return; }
   const rec = CODA_DURATE.shift();

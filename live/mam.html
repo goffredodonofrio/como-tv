@@ -385,6 +385,22 @@
      distinguerle da quelle montate a mano */
   body.mam #bin .scheda.apparecchiata .mini{box-shadow:inset 0 0 0 1px #6B5A2E;}
   body.mam #bin .scheda.apparecchiata .nome::before{content:"\2726 ";color:#C9A24B;}
+  /* IL NOME IN DUE PEZZI: che cos'e' | di quale partita */
+  body.mam #bin .scheda .capoSeq{font-weight:800;letter-spacing:.1em;}
+  body.mam #bin .scheda .barra{color:#5A5A5A;margin:0 5px;font-weight:400;}
+  /* UNO SFONDO PER TIPO: si riconosce la sequenza prima di leggerla */
+  body.mam #bin .scheda.seq-gol{background:linear-gradient(180deg,#3A2E14,#2A2A2A 62%);}
+  body.mam #bin .scheda.seq-gol .capoSeq{color:#E8C063;}
+  body.mam #bin .scheda.seq-highlights{background:linear-gradient(180deg,#3A2418,#2A2A2A 62%);}
+  body.mam #bin .scheda.seq-highlights .capoSeq{color:#F0A868;}
+  body.mam #bin .scheda.seq-azioni{background:linear-gradient(180deg,#1E3348,#2A2A2A 62%);}
+  body.mam #bin .scheda.seq-azioni .capoSeq{color:#7CC0FF;}
+  body.mam #bin .scheda.seq-telecronaca{background:linear-gradient(180deg,#20374A,#2A2A2A 62%);}
+  body.mam #bin .scheda.seq-telecronaca .capoSeq{color:#9AD0FF;}
+  body.mam #bin .scheda.seq-boati{background:linear-gradient(180deg,#3A2436,#2A2A2A 62%);}
+  body.mam #bin .scheda.seq-boati .capoSeq{color:#E0A8D0;}
+  body.mam #bin .scheda.seq-mano{background:linear-gradient(180deg,#33333A,#2A2A2A 62%);}
+  body.mam #bin .scheda.seq-mano .capoSeq{color:#B8B8B8;}
   /* IL TIPO DI AZIONE, in testa alla riga: un colore per ogni cosa che puo'
      succedere in campo. Si legge prima del testo, ed e' quello che si cerca
      con gli occhi quando si scorrono cento righe. */
@@ -3666,15 +3682,29 @@
       var dur = a.t === "clip" ? (a.o.durataVera || a.o.durata) + "s"
               : a.t === "partita" ? orologio(a.o.durata)
               : orologio((a.o.pezzi || []).reduce(function (s2, x) { return s2 + (x.fuori - x.dentro); }, 0));
-      var nome = a.o.titolo;
+      // nome uniforme: TIPO | PARTITA. Le sequenze apparecchiate hanno gia'
+      // questa forma dentro il titolo ("GOL · PARTITA"): la si mostra come
+      // due pezzi, cosi' in colonna si legge sempre la stessa cosa nello
+      // stesso posto.
+      var nome = a.o.titolo, capo = "", coda = "";
+      if (a.t === "hl") {
+        var taglio = /^(.+?)\s+\u00b7\s+(.+)$/.exec(a.o.titolo || "");
+        if (a.o.auto && taglio) { capo = taglio[1]; coda = taglio[2]; }
+        else { capo = "SEQUENZA"; coda = (a.o.titolo || "").replace(/^HL\s+/, ""); }
+        nome = "<span class='capoSeq'>" + capo + "</span><span class='barra'>|</span>" + coda;
+      }
       var d = document.createElement("div");
-      d.className = "scheda" + ((a.t === "hl" && SEQ && a.o.id === SEQ.id) ? " scelta" : "") + (a.o.auto ? " apparecchiata" : "");
+      var famSeq = a.t !== "hl" ? "" : " seq-" + (a.o.auto ? String(a.o.auto).toLowerCase().replace(/[^a-z]/g, "").slice(0, 12) : "mano");
+      d.className = "scheda" + ((a.t === "hl" && SEQ && a.o.id === SEQ.id) ? " scelta" : "") + (a.o.auto ? " apparecchiata" : "") + famSeq;
       if (a.o.nota) d.title = a.o.nota;                 // la sequenza dice da sola che cos'e'
       d.dataset.nome = String(nome || "").toLowerCase(); d.dataset.tipo = a.t;
 
       // IL FOTOGRAMMA. Una griglia di rettangoli vuoti non e' un archivio:
       // si dovrebbe leggere ogni titolo per capire che cosa si ha davanti.
       var mini = a.o.mini ? BASE + a.o.mini : "";
+      // una sequenza non ha una faccia sua: prende quella del materiale, che
+      // e' la partita da cui viene. Meglio del rettangolo vuoto.
+      if (!mini && a.t === "hl" && REG && REG.mini) mini = BASE + REG.mini;
       var urlAnte = (a.t === "clip" && a.o.stato === "pronta") ? BASE + "/clip/_clip/" + a.o.id + ".mp4"
                   : (a.t === "partita" && a.o.materiale === "archivio" && a.o.via) ? a.o.via
                   : (a.t === "partita" && a.o.materiale === "integrale") ? BASE + "/clip/" + a.o.id + "/integrale.mp4" : "";
