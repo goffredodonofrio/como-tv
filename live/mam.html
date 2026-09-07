@@ -1478,7 +1478,8 @@
       if (TL.lock.V1) return dice("La traccia V1 e' bloccata.");
       var corpo = { tipo: "clip-hl-inserisci", reg: REG.id, dentro: dentro, fuori: fuori,
                     titolo: REG.titolo + " " + orologio(dentro) };
-      if (SEQ && SEQ.reg === REG.id) { corpo.seq = SEQ.id; ricorda(); }
+      ricorda();
+      if (SEQ && SEQ.reg === REG.id) corpo.seq = SEQ.id;
       manda(corpo).then(function (r) {
         SEQ = r.seq; dentro = null; fuori = null; mostraInOut(); disegnaSequenza();
         // come Premiere: la testina si mette sulla fine del pezzo inserito, e
@@ -2231,7 +2232,8 @@
         var durataTutta = reg.durata || durataAperta() || 0;
         if (!durataTutta) return dice("Di questa partita non conosco ancora la durata: riprova fra un attimo.");
         var corpoP = { tipo: "clip-hl-inserisci", reg: reg.id, dentro: 0, fuori: durataTutta, dove: dove, titolo: reg.titolo };
-        if (SEQ && SEQ.reg === reg.id) { corpoP.seq = SEQ.id; ricorda(); }
+        ricorda();
+        if (SEQ && SEQ.reg === reg.id) corpoP.seq = SEQ.id;
         manda(corpoP).then(function (r) {
           SEQ = r.seq; disegnaSequenza(); destraMateriale();
           dice("Inserita tutta la partita (" + tc(durataTutta) + "): ora si taglia in timeline.", true);
@@ -2675,8 +2677,9 @@
   // ⌘Z la rimette e la manda al server com'era, ⌘⇧Z rifa'. Trenta passi.
   var STORIA = [], RIFAI = [];
   function ricorda() {
-    if (!SEQ) return;
-    STORIA.push({ seq: SEQ.id, pezzi: JSON.parse(JSON.stringify(SEQ.pezzi || [])) });
+    // anche quando la sequenza non esiste ancora: il primo inserimento la
+    // crea, e chi preme annulla si aspetta di tornare al foglio bianco
+    STORIA.push({ seq: SEQ ? SEQ.id : null, pezzi: SEQ ? JSON.parse(JSON.stringify(SEQ.pezzi || [])) : [] });
     if (STORIA.length > 30) STORIA.shift();
     RIFAI = [];
   }
@@ -2688,6 +2691,7 @@
   }
   function annulla() {
     var foto = STORIA.pop();
+    if (foto && SEQ && foto.seq === null) foto.seq = SEQ.id;      // la sequenza e' nata dopo lo scatto
     if (!foto || !SEQ || foto.seq !== SEQ.id) { if (foto) STORIA.push(foto); return dice("Niente da annullare."); }
     RIFAI.push({ seq: SEQ.id, pezzi: JSON.parse(JSON.stringify(SEQ.pezzi || [])) });
     rimetti(foto); dice("Annullato.", true);
@@ -3974,7 +3978,8 @@
               if (!REG) return;
               var d0 = Math.max(0, (a.dove || 0) - 8), f0 = (a.dove || 0) + 8;
               var corpo = { tipo: "clip-hl-inserisci", reg: REG.id, dentro: d0, fuori: f0, titolo: (a.testo || a.tipo || "azione") + " \u00b7 " + a.minuto };
-              if (SEQ && SEQ.reg === REG.id) { corpo.seq = SEQ.id; ricorda(); }
+              ricorda();
+      if (SEQ && SEQ.reg === REG.id) corpo.seq = SEQ.id;
               manda(corpo).then(function (r) { SEQ = r.seq; disegnaSequenza(); destraMateriale(); dice("In sequenza: " + (a.testo || a.tipo) + ".", true); })
                 .catch(function (er) { dice(er.message); });
             };
@@ -4013,7 +4018,8 @@
           var finisci = function () {
             if (!REG) return;
             var corpo = { tipo: "clip-hl-inserisci", reg: REG.id, dentro: Math.max(0, m.secondi - 8), fuori: m.secondi + 8, titolo: "\u201c" + m.testo.slice(0, 40) + "\u201d" };
-            if (SEQ && SEQ.reg === REG.id) { corpo.seq = SEQ.id; ricorda(); }
+            ricorda();
+      if (SEQ && SEQ.reg === REG.id) corpo.seq = SEQ.id;
             manda(corpo).then(function (r) { SEQ = r.seq; disegnaSequenza(); destraMateriale(); dice("In sequenza: \u201c" + m.testo.slice(0, 40) + "\u201d", true); })
               .catch(function (er) { dice(er.message); });
           };
