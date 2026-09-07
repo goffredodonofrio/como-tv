@@ -793,7 +793,9 @@ async function preparaSequenze(p) {
     q.titolo = nome + " · " + (r.titolo || "");
     q.nota = nota || "";
     q.pezzi = pezzi;
-    q.creata = Date.now() + (posto++);      // cosi' restano nell'ordine giusto
+    // il pannello mette per prime le sequenze piu' recenti: per farle uscire
+    // nell'ordine in cui servono si va all'indietro
+    q.creata = Date.now() - (posto++);
     R.seq[q.id] = q;
     fatte.push({ nome: nome, pezzi: pezzi.length, id: q.id });
   };
