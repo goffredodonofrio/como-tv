@@ -5686,12 +5686,32 @@ function pesoDiUnPezzo(via) {
 // Tutto quello che sta nelle cartelle delle uscite, con l'eta' e il padrone.
 function uscite() {
   const fuori = [];
+  // le grafiche del livello V2 non sono uscite: sono PARTE della sequenza.
+  // Si guardano una per una, e il padrone e' la sequenza che le usa —
+  // trattare la cartella come un avanzo vorrebbe dire cancellarle tutte
+  // insieme al primo giro di pulizia.
+  const graficheVive = {};
+  Object.keys(R.seq).forEach((k) => {
+    (R.seq[k].grafiche || []).forEach((g) => { graficheVive[g.id] = k; });
+  });
   const guarda = (cartella, chi) => {
     const dove = path.join(DIR, cartella);
     let nomi = [];
     try { nomi = fs.readdirSync(dove); } catch (e) { return; }
     nomi.forEach((n) => {
       const via = path.join(dove, n);
+      if (chi === "seq" && n === "_grafiche") {
+        let png = [];
+        try { png = fs.readdirSync(via); } catch (e) { return; }
+        png.forEach((f) => {
+          const id = f.replace(/\.[a-z0-9]+$/i, "");
+          const q2 = pesoDiUnPezzo(path.join(via, f));
+          fuori.push({ via: path.join(via, f), nome: f, id: id, tipo: "grafica",
+                       peso: q2.peso, quando: q2.quando,
+                       orfano: !graficheVive[id], alLavoro: !!graficheVive[id] });
+        });
+        return;
+      }
       const id = n.replace(/\.[a-z0-9]+$/i, "").split("_")[0];
       const q = pesoDiUnPezzo(via);
       const padrone = chi === "seq" ? R.seq[id] : R.clip[id];
