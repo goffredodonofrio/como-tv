@@ -2809,10 +2809,21 @@ function giraLaCoda() {
 // Kane, "o Lise" per Olise — ed e' un peccato, perche' sono esattamente le
 // parole che poi si cercano. La cura e' dirglieli prima: i cognomi stanno
 // gia' negli appunti di quella partita, scritti da chi guardava.
+// Negli appunti la maiuscola non fa il cognome: a inizio riga ci finiscono
+// "Palo", "Occasione", "Contropiede". Dirle al modello come se fossero nomi
+// propri lo porta fuori strada proprio sulle parole che poi si cercano.
+const NON_E_UN_NOME = new Set(("gol,goal,palo,traversa,parata,parato,occasione,contropiede,rigore,angolo,corner,fallo,giallo," +
+  "rosso,cartellino,tiro,cross,colpo,gran,grande,bella,bello,primo,secondo,terzo,tempo,minuto,squadra,partita,super,doppia," +
+  "doppio,ottima,ottimo,buona,buono,altra,altro,ancora,dopo,prima,sinistro,destro,testa,area,porta,rete,punizione,calcio," +
+  "replay,sostituzione,cambio,espulsione,ammonizione,assist,passaggio,errore,salvataggio,miracolo,uscita,respinta,deviazione," +
+  "chiusura,anticipo,scivolata,inserimento,verticalizzazione,azione,giocata,fischio,arbitro,portiere,difesa,attacco,centrocampo," +
+  "sviluppi,mischia,volo,volee,piede,mano,braccio,fuorigioco,annullato,convalidato,intervento,recupero,supplementari,rigori," +
+  "clip,social,skills,rating,note,appunti,formazione,formazioni,live,show,studio,pre,post,intervallo,poi,quindi,adesso,ecco," +
+  "molto,tutto,tutti,niente,nessuno,sempre,mai,anche,solo,ecco,bene,male,meglio,peggio").split(","));
 function nomiDaSuggerire(r) {
   const a = ARCHIVIO[r.evento] ? APPUNTI[r.evento] : APPUNTI[r.evento];
   const parole = new Set();
-  (r.titolo || "").split(/[^A-Za-zÀ-ÿ]+/).forEach((w) => { if (w.length > 3) parole.add(w); });
+  (r.titolo || "").split(/[^A-Za-zÀ-ÿ]+/).forEach((w) => { if (w.length > 3 && !NON_E_UN_NOME.has(w.toLowerCase())) parole.add(w); });
   if (a) {
     a.righe.forEach((x) => {
       String(x.x || "").split(/[^A-Za-zÀ-ÿ']+/).forEach((w) => {
@@ -2820,18 +2831,22 @@ function nomiDaSuggerire(r) {
         // gli appunti sono scritti in maiuscolo, e passando "KANE" al
         // modello si ottiene un modello che urla: si rimette la forma
         // normale di un cognome, che e' quella che poi si cerca
-        if (w.length > 3 && w[0] === w[0].toUpperCase()) {
+        if (w.length > 3 && w[0] === w[0].toUpperCase() && !NON_E_UN_NOME.has(w.toLowerCase())) {
           parole.add(w[0].toUpperCase() + w.slice(1).toLowerCase());
         }
       });
     });
   }
   // le rose di ESPN hanno la grafia ufficiale: sono i nomi migliori
+  // le rose di ESPN hanno la grafia ufficiale: vanno in testa, prima delle
+  // parole raccolte a mano, perche' il modello guarda soprattutto le prime
+  const dalleRose = [];
   const e = ESPN[r.evento];
   if (e && e.rose) Object.keys(e.rose).forEach((sq) => e.rose[sq].forEach((n) => {
-    const cognome = String(n).split(/\s+/).pop(); if (cognome && cognome.length > 2) parole.add(cognome);
+    const cognome = String(n).split(/\s+/).pop();
+    if (cognome && cognome.length > 2) { dalleRose.push(cognome); parole.delete(cognome); }
   }));
-  const lista = [...parole].slice(0, 80).join(", ");
+  const lista = dalleRose.concat([...parole]).slice(0, 80).join(", ");
   return lista ? ("Telecronaca di calcio. Nomi: " + lista + ".") : "";
 }
 
