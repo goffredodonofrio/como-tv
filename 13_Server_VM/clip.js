@@ -1899,6 +1899,45 @@ function seqDi(p) {
   return q;
 }
 
+// ══════════════════════════════════════════════════════════════════════
+//  IL BANCO — di chi e' il montaggio
+// ══════════════════════════════════════════════════════════════════════
+//
+//  Le sequenze apparecchiate sono la proposta della macchina: le vedono
+//  tutti, su tutti i computer, e si rifanno da sole. Ma appena qualcuno le
+//  tocca smettono di essere di tutti.
+//
+//  Prima non era cosi': il montaggio stava sul ponte e basta, quindi un
+//  taglio cominciato sul Mac ricompariva sull'altro computer a meta'. Da
+//  qui in poi la prima modifica fa una COPIA legata al banco che l'ha
+//  fatta, e la proposta resta intatta per chiunque altro.
+//
+//  La chiave e' il computer, non la persona: e' quello che serve a chi
+//  lavora su due macchine e vuole ricominciare pulito sulla seconda.
+function seqMia(p) {
+  const q = seqDi(p);
+  const banco = String(p.banco || "").slice(0, 60);
+  if (!banco) return q;                       // chi non si presenta lavora come prima
+  if (q.banco === banco) return q;            // gia' tua
+  if (!q.auto) {
+    if (!q.banco) { q.banco = banco; return q; }   // sequenza a mano senza padrone: diventa tua
+    throw new Error("questa sequenza la sta montando un altro computer");
+  }
+  // e' una proposta della macchina: se ne fa una copia tua, e la proposta
+  // resta com'e' per tutti gli altri
+  const c = JSON.parse(JSON.stringify(q));
+  c.id = nuovoId("s");
+  c.banco = banco;
+  c.daAuto = q.auto;
+  delete c.auto;                              // non e' piu' apparecchiata: e' tua
+  c.titolo = q.titolo;
+  c.creata = Date.now();
+  delete c.export; delete c.esportati; delete c.premiere; delete c.grafica; delete c.casa;
+  R.seq[c.id] = c;
+  console.log("[clip] \"" + (c.titolo || c.id) + "\" e' diventata del banco " + banco.slice(0, 8));
+  return c;
+}
+
 // UNA SEQUENZA TOCCATA A MANO NON SI RIFA' PIU'. Le sequenze apparecchiate
 // si rigenerano ogni volta che si apre la partita, ed e' giusto finche' sono
 // come le ha lasciate la macchina. Ma se qualcuno ha spostato un taglio,
@@ -1916,13 +1955,16 @@ function hlElenco(p) {
     .sort((a, b) => b.creata - a.creata);
   // quali pezzi sono gia' in casa: la pagina li riproduce da qui invece che
   // da Parigi, e il salto fra una clip e l'altra sparisce
-  seq.forEach((q) => { try { segnaPezziLocali(q); } catch (e) {} });
-  return { ok: true, seq: seq };
+  const banco = String((p && p.banco) || "").slice(0, 60);
+  // le proposte della macchina le vedono tutti; i montaggi solo chi li ha fatti
+  const mie = seq.filter((q) => (q.auto && !q.banco) || !q.banco || q.banco === banco);
+  mie.forEach((q) => { try { segnaPezziLocali(q); } catch (e) {} });
+  return { ok: true, seq: mie };
 }
 
 // ritocco di un pezzo: sposta l'entrata, l'uscita, il nome — o lo butta
 function hlPezzo(p) {
-  const q = seqDi(p);
+  const q = seqMia(p);
   toccataAMano(q);
   // Piu' pezzi in una volta: e' quello che succede quando si selezionano a
   // riquadro e si preme Canc. Uno alla volta, con una richiesta ciascuno,
@@ -2025,7 +2067,7 @@ function hlImposta(p) {
 // meta' restano al loro posto. Serve per togliere il centro di un'azione
 // lunga senza rifare entrata e uscita da capo.
 function hlDividi(p) {
-  const q = seqDi(p);
+  const q = seqMia(p);
   toccataAMano(q);
   const i = q.pezzi.findIndex((x) => x.id === p.pezzo);
   if (i < 0) throw new Error("pezzo sconosciuto");
@@ -2103,7 +2145,7 @@ function hlSuggerimento(p) {
 }
 
 function hlOrdina(p) {
-  const q = seqDi(p);
+  const q = seqMia(p);
   toccataAMano(q);
   const ordine = Array.isArray(p.ordine) ? p.ordine : [];
   const mappa = {};
@@ -2375,14 +2417,15 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
 
   const ritaglio = (FORMATI[formato] || FORMATI["16:9"]).vf;
   q.export = { stato: "lavora", formato: formato, fatti: 0, quanti: q.pezzi.length, file: "",
-               tutti: !!dentroUnGiro };
+               fase: "porto in casa i pezzi", tutti: !!dentroUnGiro };
   scrivi(); annuncia(0, "clip");
 
   // PRIMO: i pezzi in casa. Se ci sono gia' non si scarica niente; se
   // mancano si scaricano una volta e restano.
   const esito = await costruisciPezzi(q, (f, n) => {
     q.export.fatti = f; q.export.quanti = n || q.pezzi.length;
-    q.export.avanza = n ? f / n * 0.8 : 0.8;
+    q.export.fase = "porto in casa i pezzi";
+    q.export.avanza = n ? f / n * 0.5 : 0.5;
     scrivi(); annuncia(0, "clip");
   });
   segnaPezziLocali(q);
@@ -2406,7 +2449,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     const casa = filePezzo(k);
     if (!fs.existsSync(casa)) continue;
     const off = scartoPezzo(k), dur = x.fuori - x.dentro;
-    if (veloce) { parti.push(casa); q.export.fatti = i + 1; continue; }
+    if (veloce) { parti.push(casa); q.export.fatti = i + 1; q.export.fase = "preparo"; continue; }
     const esatto = path.join(dir2, "p" + String(i + 1).padStart(3, "0") + ".mp4");
     const args = ["-hide_banner", "-loglevel", "error", "-nostdin",
       "-ss", String(off), "-i", casa, "-t", String(dur)];
@@ -2429,7 +2472,8 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     });
     parti.push(esatto);
     q.export.fatti = i + 1;
-    q.export.avanza = 0.8 + 0.15 * ((i + 1) / q.pezzi.length);
+    q.export.fase = "taglio al fotogramma";
+    q.export.avanza = 0.5 + 0.4 * ((i + 1) / q.pezzi.length);
     scrivi(); annuncia(0, "clip");
   }
   if (!parti.length) throw new Error("nessun pezzo da esportare");
@@ -2443,7 +2487,9 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   // attaccano e basta: secondi invece di minuti, e zero perdita.
   const listaFin = path.join(dir, "tutti.txt");
   fs.writeFileSync(listaFin, parti.map((x) => "file '" + x + "'").join("\n") + "\n");
-  q.export.avanza = 0.85; annuncia(0, "clip");
+  q.export.avanza = 0.92;
+  q.export.fase = grafiche.length ? "incollo le grafiche" : (veloce ? "monto" : "monto");
+  scrivi(); annuncia(0, "clip");
 
   const soloIncollare = !grafiche.length;
   if (soloIncollare) {
@@ -2511,7 +2557,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   };
   q.esportati[formato].nome = nomeScaricoSeq(q, R.reg[q.reg], formato, ".mp4");
   q.export = { stato: "pronto", formato: formato, fatti: q.pezzi.length, quanti: q.pezzi.length,
-               file: q.esportati[formato].file,
+               fase: "pronto", file: q.esportati[formato].file,
                durata: q.esportati[formato].durata, peso: q.esportati[formato].peso };
   scrivi(); annuncia(0, "clip");
   return q.esportati[formato];
@@ -5513,7 +5559,7 @@ function cartellaGrafiche() {
 }
 
 function hlGrafica(p) {
-  const q = seqDi(p);
+  const q = seqMia(p);
   q.grafiche = q.grafiche || [];
   const durataSeq = q.pezzi.reduce((n, x) => n + (x.fuori - x.dentro), 0);
 

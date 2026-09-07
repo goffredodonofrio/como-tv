@@ -1367,8 +1367,20 @@
     a.textContent = t; a.className = "avviso vedi" + (buona ? " ok" : "");
     if (buona) setTimeout(function () { a.className = "avviso"; }, 4000);
   }
+  // IL BANCO. Ogni computer ha il suo, scritto una volta e tenuto nel
+  // browser. Serve perche' un montaggio a meta' non deve seguirti da una
+  // macchina all'altra: se apri la stessa partita altrove devi trovare
+  // quello che ha preparato il MAM, non i tagli che stavi facendo di la'.
+  var BANCO = (function () {
+    try {
+      var b = localStorage.getItem("mam.banco");
+      if (!b) { b = "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); localStorage.setItem("mam.banco", b); }
+      return b;
+    } catch (e) { return "b-senza-memoria"; }
+  })();
   function manda(c) {
     c.token = TOKEN;
+    if (c.banco === undefined) c.banco = BANCO;
     return fetch(PONTE, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
       body: JSON.stringify(c) }).then(function (r) { return r.json(); })
       .then(function (d) { if (!d.ok) throw new Error(d.errore || "il ponte ha detto no"); return d; });
@@ -3384,8 +3396,8 @@
       '<tr class="soloSeq"><td>Anche</td><td><label><input type="checkbox" id="expXml"> XML per Premiere</label></td></tr>' +
       '<tr><td>Audio</td><td>stereo AAC 160k (si apre ovunque)</td></tr>' +
       '<tr><td>Destinazione</td><td><select id="expDove">' +
-        '<option value="qui">resta qui \u2014 nella coda, si cancella da sola dopo sette giorni</option>' +
         '<option value="scarica">scarica sul computer appena pronto</option>' +
+        '<option value="qui">resta qui \u2014 nella coda, si cancella da sola dopo sette giorni</option>' +
       '</select></td></tr>' +
       '</table></div>' +
       '<footer><button class="b" id="expAnnulla">Annulla</button><button class="b oro" id="expVai">Aggiungi alla coda</button></footer></div>';
@@ -3472,7 +3484,13 @@
       if (q.premiere) righe += '<div class="az uscita fatta"><span class="telo2"></span><p><b><i class="spunta">\u2713</i> ' + pulito(q.premiere.nome || q.titolo + ".xml") + '</b><br><small>XML per Premiere \u00b7 completato</small></p><a class="b oro scarica" href="' + BASE + q.premiere.file + '?scarica=1">Scarica</a></div>';
       if (q.export && q.export.stato === "lavora") {
         var av = q.export.avanza || ((q.export.fatti || 0) / Math.max(1, q.export.quanti || 1));
-        righe += '<div class="az uscita"><span class="telo2"></span><p><b>' + pulito(q.titolo) + '</b><br><small>esporto ' + (q.export.formato || "") +
+        // le fasi hanno un nome: portare in casa i pezzi, tagliare, montare.
+        // "45%" da solo non dice se sta scaricando o codificando, e chi
+        // aspetta vuole sapere se sono trenta secondi o dieci minuti
+        var fase = q.export.fase || "esporto";
+        var conto = (q.export.quanti ? " \u00b7 " + (q.export.fatti || 0) + "/" + q.export.quanti : "");
+        righe += '<div class="az uscita"><span class="telo2"></span><p><b>' + pulito(q.titolo) + '</b><br><small>' +
+                 pulito(fase) + conto + ' \u00b7 ' + (q.export.formato || "") +
                  (q.export.tutti ? " (poi gli altri formati)" : "") + ' \u00b7 ' + Math.round(av * 100) + '%</small><span class="barraAv"><i style="width:' + Math.round(av * 100) + '%"></i></span></p></div>';
       }
     });
@@ -3916,6 +3934,16 @@
       if (x && a3 !== null && SEQ) dividiA(x, a3);
       return;
     }
+    // Una GRAFICA scelta viene prima di tutto: sta in timeline come un
+    // pezzo qualsiasi e Canc deve toglierla, non portarsi via la sequenza.
+    if ((k === "delete" || k === "backspace") && TL.selG && SEQ) {
+      e.preventDefault();
+      var vg = TL.selG; TL.selG = null;
+      manda({ tipo: "clip-hl-grafica", seq: SEQ.id, grafica: vg, togli: 1 })
+        .then(function (r) { SEQ = r.seq; disegnaSequenza(); destraMateriale(); dice("Grafica tolta.", true); })
+        .catch(function (er) { dice(er.message); });
+      return;
+    }
     // Canc con l'attenzione sul progetto toglie la SEQUENZA scelta
     if ((k === "delete" || k === "backspace") && AREA === "progetto" && SEQ) {
       e.preventDefault();
@@ -3942,14 +3970,6 @@
       return;
     }
     if (k === "escape" && SEQSCELTE.length) { SEQSCELTE = []; destraMateriale(); return; }
-    if ((k === "delete" || k === "backspace") && TL.selG && SEQ) {
-      e.preventDefault();
-      var vg = TL.selG; TL.selG = null;
-      manda({ tipo: "clip-hl-grafica", seq: SEQ.id, grafica: vg, togli: 1 })
-        .then(function (r) { SEQ = r.seq; disegnaSequenza(); destraMateriale(); dice("Grafica tolta.", true); })
-        .catch(function (er) { dice(er.message); });
-      return;
-    }
     if ((k === "delete" || k === "backspace") && SEQ) {
       if (TL.lock.V1) { e.preventDefault(); return dice("La traccia V1 e' bloccata."); }
       var scelti = pezziScelti(); if (!scelti.length) return;
@@ -5106,7 +5126,7 @@
       }
       if (q.export && q.export.stato === "lavora") {
         var g2 = document.createElement("div"); g2.className = "aiuto";
-        g2.textContent = "esporto… " + q.export.fatti + "/" + q.export.quanti;
+        g2.textContent = (q.export.fase || "esporto") + "\u2026 " + (q.export.fatti || 0) + "/" + (q.export.quanti || "?");
         corpo.appendChild(g2);
       }
       if (q.premiere) {
@@ -5115,6 +5135,7 @@
         corpo.appendChild(g3);
       }
       el("hlMp4").addEventListener("click", function () {
+        ASPETTO[q.id] = "scarica";        // appena pronto parte da solo
         manda({ tipo:"clip-hl-esporta", seq:q.id, formato:FORMATI_SEQ[0], formati:FORMATI_SEQ.slice() })
           .then(function () { dice("Esporto il video in " + FORMATI_SEQ.join(", ") + "…", true); })
           .catch(function (e) { dice(e.message); });
