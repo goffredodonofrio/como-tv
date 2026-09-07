@@ -252,11 +252,19 @@
   .grafCassa.agganciata header{display:none;}
   .grafCassa.libera{display:flex;right:12px;top:52px;bottom:12px;width:min(880px,72vw);left:auto;
     border-radius:10px;box-shadow:-18px 0 46px rgba(0,0,0,.55);}
-  .grafCassa header{display:flex;align-items:baseline;gap:12px;padding:9px 14px;
-    border-bottom:1px solid #2A2A2A;background:#181818;flex:0 0 auto;}
-  .grafCassa header b{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--oro,#C8A24A);}
-  .grafCassa header span{font-size:11px;color:#8A8A8A;flex:1;}
-  .grafCassa header a{font-size:11px;color:#5AA7F2;}
+  /* l'intestazione ha lo stesso vestito dei monitor: etichetta azzurra in
+     maiuscoletto, nome in chiaro, e i pulsanti del MAM — non link di testo */
+  .grafCassa header{display:flex;align-items:center;gap:10px;padding:7px 12px;
+    border-bottom:2px solid var(--oro,#C8A24A);background:#181818;flex:0 0 auto;}
+  .grafCassa header .rif{color:#5AA7F2;font-size:10px;letter-spacing:.22em;font-weight:700;}
+  .grafCassa header b{font-size:12px;letter-spacing:.05em;color:#E6E6E6;font-weight:700;flex:1;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .grafCassa header .b{height:26px;padding:0 10px;font-size:10px;}
+  .grafCartello{padding:16px 14px;}
+  .grafCartello b{display:block;font-size:12px;color:var(--oro,#C8A24A);letter-spacing:.06em;margin-bottom:6px;}
+  .grafCartello p{font-size:11px;color:var(--fumo,#8A8A8A);line-height:1.5;margin:0 0 12px;}
+  .grafCartello i{font-style:normal;color:#D8D8D8;}
+  .grafCartello .gruppo{display:flex;gap:6px;flex-wrap:wrap;}
   .grafCassa iframe{flex:1;border:0;width:100%;height:100%;background:#0F0F0F;}
   .grafBarra{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--linea,#2A2A2A);}
   .grafBarra span{font-size:10.5px;color:var(--fumo,#8A8A8A);flex:1;line-height:1.35;}
@@ -1199,11 +1207,16 @@
     <div class="projCerca"><span class="lente2">⌕</span><input type="text" id="projCerca" placeholder="" autocomplete="off"><span class="n" id="projN">0 elementi</span></div>
     <div class="projCorpo">
       <div class="projPane" id="paneGrafiche" hidden>
-        <div class="grafBarra">
-          <span>le grafiche vanno sulla traccia V2 del montato aperto</span>
-          <button class="b" id="grafStacca" title="staccalo: diventa un pannello a sé, che puoi allargare">stacca \u21f1</button>
+        <div class="grafCartello">
+          <b>Il generatore è aperto qui accanto</b>
+          <p>Compila la maschera e premi <i>Manda in timeline</i>: la grafica va sulla
+             traccia V2 del montato aperto, e la vedi sul video prima di esportare.</p>
+          <div class="gruppo">
+            <button class="b oro" id="grafDavanti">Portalo davanti</button>
+            <button class="b" id="grafInColonna">Mettilo qui</button>
+          </div>
         </div>
-        <div class="grafDove" id="grafDove"></div>
+        <div class="grafDove" id="grafDove" hidden></div>
       </div>
       <div class="projPane" id="paneProgetto">
         <div id="bin"></div>
@@ -2318,13 +2331,19 @@
     if (c) return c;
     c = document.createElement("div");
     c.className = "grafCassa"; c.id = "grafCassa";
-    c.innerHTML = '<header id="grafTesta"><b>Grafiche</b>' +
-      '<span id="grafSeq">nessuna sequenza</span>' +
-      '<a href="#" id="grafAggancia">riaggancia</a><a href="#" id="grafChiudi">chiudi</a></header>' +
+    c.innerHTML = '<header id="grafTesta">' +
+      '<span class="rif">GRAFICHE</span><b id="grafSeq">nessuna sequenza</b>' +
+      '<button class="b" id="grafAggancia" title="rimettilo nella colonna del progetto">In colonna</button>' +
+      '<button class="b" id="grafChiudi" title="chiudi il pannello">Chiudi</button></header>' +
       '<iframe id="grafTelaio" src="' + GEN + '&dentro=mam"></iframe>';
     document.body.appendChild(c);
     el("grafChiudi").addEventListener("click", function (e) { e.preventDefault(); grafiche("chiuso"); });
-    el("grafAggancia").addEventListener("click", function (e) { e.preventDefault(); vaiTab("grafiche"); });
+    el("grafAggancia").addEventListener("click", function (e) {
+      e.preventDefault();
+      if (el("grafDove")) el("grafDove").hidden = false;
+      var cart = document.querySelector(".grafCartello"); if (cart) cart.hidden = true;
+      vaiTab("grafiche"); grafiche("colonna");
+    });
     return c;
   }
   function posaCassa() {
@@ -2350,7 +2369,10 @@
     c.style.display = "block";
     posaCassa();
   }
-  function graficheNellaColonna() { grafiche("colonna"); }
+  // La linguetta apre il pannello GIA' STACCATO: nella colonna da 272 pixel
+  // il generatore non ci sta, e la prima cosa che facevi era staccarlo.
+  // Nella colonna resta il cartello che dice dov'e' finito.
+  function graficheNellaColonna() { grafiche("libera"); }
   function apriPannelloGrafiche() {
     if (GRAF.modo === "libera") { grafiche("libera"); return; }
     vaiTab("grafiche");
@@ -3047,7 +3069,12 @@
     q("tlScivolo", function () { STRUMENTO = "y"; strumentoVisto(); });
     q("tlGiunzione", function () { STRUMENTO = "n"; strumentoVisto(); });
     q("tlMano", function () { STRUMENTO = "h"; strumentoVisto(); });
-    q("grafStacca", function () { grafiche("libera"); });
+    q("grafDavanti", function () { grafiche("libera"); });
+    q("grafInColonna", function () {
+      el("grafDove").hidden = false;
+      document.querySelector(".grafCartello").hidden = true;
+      grafiche("colonna");
+    });
     q("tlPiu", function () { LENTE = Math.min(32, LENTE * 2); disegnaTutto(); });
     q("tlMeno", function () { LENTE = Math.max(1, LENTE / 2); disegnaTutto(); });
     q("tlTutto", function () { LENTE = 1; TL.vista = null; disegnaTutto(); });
