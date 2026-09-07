@@ -217,7 +217,12 @@
   .tlpista.slip .clipV{cursor:grab;}
   .tlpista.mano,.tlpista.mano .clipV,.tlpista.mano .clipA{cursor:grab;}
   .tlpista.mano:active{cursor:grabbing;}
-  .monitor.attivo{outline:2px solid var(--oro,#C8A24A);outline-offset:-2px;}
+  /* QUALE MONITOR COMANDA. Il contorno oro attorno a tutto il pannello
+     prendeva dentro anche la colonna dei pulsanti e finiva sul bordo
+     esterno della pagina: sembrava una cornice, non un fuoco. Il segno sta
+     sull'intestazione, come una linguetta accesa: si vede subito e non
+     disegna scatole attorno a niente. */
+
   .formatiSeq{display:flex;flex-wrap:wrap;gap:3px;justify-content:center;width:100%;}
   .formatiSeq .b{padding:3px 6px;font-size:10px;min-width:0;}
   .formatiSeq .b.guardato{outline:1px solid var(--oro,#C8A24A);outline-offset:1px;}
@@ -531,7 +536,10 @@
      etichetta piccola, spaziata, blu; nome grande e bianco; le barre con
      un po' di respiro; i tasti laterali allineati al video, non al titolo. */
   body.mam .monitori{padding-top:10px;}
-  body.mam .monitor .capo{margin:0 0 8px;padding:4px 0 7px;border-bottom:1px solid #2A2A2A;align-items:center;gap:10px;}
+  body.mam .monitor .capo{margin:0 0 8px;padding:4px 0 7px;border-bottom:2px solid #2A2A2A;align-items:center;gap:10px;}
+  body.mam .monitor.attivo .capo{border-bottom-color:var(--oro,#C8A24A);}
+  body.mam .monitor.attivo .capo .rif{color:var(--oro,#C8A24A);}
+  body.mam .monitor:not(.attivo) .capo .rif{opacity:.45;}
   body.mam .monitor .capo .rif{color:#5AA7F2;font-size:10px;letter-spacing:.22em;font-weight:700;margin:0;}
   body.mam .monitor .capo #capoNome,body.mam .monitor .capo #capoSeq{font-size:12px;letter-spacing:.05em;color:#E6E6E6;font-weight:700;}
   body.mam .monitor .capo a{font-size:10px;letter-spacing:.12em;color:#5AA7F2;}
@@ -1186,7 +1194,7 @@
         <i id="tlLametta" title="lametta (C): clicca sul pezzo dove vuoi tagliare"><svg viewBox="0 0 16 16"><path d="M3 13L13 3M9 3l4 4M5 9l2 2"/></svg></i>
         <i id="tlScivolo" title="scivolo (Y): trascina il pezzo dentro il materiale, dura uguale"><svg viewBox="0 0 16 16"><path d="M2 5h12M2 11h12M6 3L3 5l3 2M10 9l3 2-3 2"/></svg></i>
         <i id="tlGiunzione" title="giunzione (N): trascina il punto di taglio, la sequenza dura uguale"><svg viewBox="0 0 16 16"><path d="M8 2v12M4 6L2 8l2 2M12 6l2 2-2 2"/></svg></i>
-        <i id="tlMano" title="mano (H): trascina per scorrere la timeline"><svg viewBox="0 0 16 16"><path d="M6 8V3.6a1.1 1.1 0 0 1 2.2 0V8M8.2 8V4.2a1.1 1.1 0 0 1 2.2 0V8M10.4 8.4V5.6a1.1 1.1 0 0 1 2.2 0V10c0 2.5-1.8 4.4-4.3 4.4S4 12.5 4 10V8.2a1.1 1.1 0 0 1 2.1-.3"/></svg></i>
+        <i id="tlMano" title="mano (H): trascina per scorrere la timeline"><svg viewBox="0 0 16 16"><path d="M6.5 8.5V4a1.2 1.2 0 0 1 2.4 0v5M8.9 9V5.2a1.2 1.2 0 0 1 2.4 0V10c0 2.3-1.7 4-4 4s-4-1.7-4-4V8a1.2 1.2 0 0 1 2.4 0"/></svg></i>
         <i title="marcatore" id="tlSegno"><svg viewBox="0 0 16 16"><path class="p" d="M4 2h8v12l-4-3-4 3z"/></svg></i>
         <span class="lente"><b id="tlMeno" title="allontana (−)">−</b><b id="tlTutto" title="tutta la sequenza (\\)">\</b><b id="tlPiu" title="avvicina (+)">+</b></span>
       </div>
@@ -2521,18 +2529,12 @@
         if (somma) { e.preventDefault(); disegnaTimeline(); return; }
         TL.drag = { id: pz[i].id, i: i, x0: e.clientX, mosso: false };
         fuocoMonitor("p");
-        // LA TESTINA VA DOVE HAI CLICCATO, anche sopra una clip. Cosi' il
-        // Programma mostra QUEL fotogramma, con la sua posizione dentro il
-        // montato intero: si clicca dove si ha un dubbio e si vede subito
-        // com'e' venuto. Senza, il clic sceglieva il pezzo e basta, e per
-        // guardarlo bisognava andare a cercare il righello.
-        var tb = tempoSeq(e);
-        if (tb !== null) {
-          var db = pezzoAlTempo(tb);
-          if (db) { var vpb = el("programma"); progVai(db.i, !!(vpb && !vpb.paused), db.dentro); }
-        }
-        // niente scrub trascinando: da qui il trascinamento riordina i
-        // pezzi, che serve di piu'. Per scorrere c'e' il righello.
+        // IL CLIC SCEGLIE E BASTA, come in Premiere: la clip si accende e da
+        // li' la si sposta, si allunga, si butta. La testina NON si muove —
+        // per spostarla c'e' il righello sopra, e il doppio clic porta il
+        // pezzo nella Sorgente. Muoverla a ogni clic voleva dire perdere il
+        // punto in cui si stava guardando ogni volta che si sceglieva
+        // qualcosa.
         e.preventDefault(); disegnaTimeline(); return;
       }
       // Sul vuoto, con lo strumento selezione, comincia il riquadro: si

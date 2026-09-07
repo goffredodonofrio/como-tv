@@ -737,7 +737,10 @@ const HL_STRETTO_PRE = 8, HL_STRETTO_POST = 12;   // quando bisogna stare nei mi
 const HL_DURATA = 300;                  // il tempo delle azioni, la testa e' in piu'
 const INTRO_DURATA = 90;                // dal cambio cartello: un minuto e mezzo, che la frase
                                         //   di apertura finisce dopo il minuto
-const INIZIO_PRE = 20, INIZIO_POST = 20; // il calcio d'inizio, venti prima e venti dopo
+// Il calcio d'inizio: dieci secondi prima e dieci dopo. Il primo fotogramma
+// dev'essere la squadra schierata e pronta, non il campo vuoto: venti
+// secondi prima si e' ancora nei saluti.
+const INIZIO_PRE = 10, INIZIO_POST = 10;
 
 function pezzoDa(dentro, fuori, titolo, tipo, minuto, fonte, peso) {
   return { id: nuovoId("p"), dentro: Math.max(0, Math.round(dentro * 10) / 10),
@@ -881,7 +884,11 @@ function quelloCheSappiamo(r) {
 // telecronaca e' gia' trascritta si prende la prima frase vera; se no si
 // prende la finestra prima del fischio, che e' li' che parla.
 function pezzoApertura(r) {
-  const via = (r.kickoff && r.kickoff["1"]) || 0;
+  // Il fischio VERO, quello letto dal cronometro: r.kickoff e' l'orario di
+  // palinsesto meno l'inizio della registrazione, e sbaglia di minuti. Su
+  // Genoa-Como diceva 327 quando il fischio e' a 461: il "calcio d'inizio"
+  // cadeva sul minuto di raccoglimento.
+  const via = fischioNelFile(r) || 0;
   if (!via) return null;
   // se il cambio cartello e' gia' stato trovato una volta, l'intro comincia
   // esattamente li' e non si va piu' a stima
@@ -908,16 +915,21 @@ function pezzoApertura(r) {
                      "Apertura", "", "apertura", 9);
     }
   }
+  // Ripiego, quando il cartello non si e' trovato: i secondi prima del
+  // fischio, ma senza mai arrivare addosso al pezzo del calcio d'inizio —
+  // se no i due si sovrappongono e lo stesso fotogramma esce due volte.
   if (via < 25) return null;
-  return pezzoDa(Math.max(0, via - 45), Math.max(0, via - 5), "Apertura del telecronista",
-                 "Apertura", "", "apertura", 9);
+  const finePi = via - INIZIO_PRE - 1;
+  const daPi = Math.max(0, finePi - 45);
+  if (finePi - daPi < 12) return null;
+  return pezzoDa(daPi, finePi, "Apertura del telecronista", "Apertura", "", "apertura", 9);
 }
 
 // IL CALCIO D'INIZIO. Venti secondi prima e venti dopo il fischio: e' il
 // secondo pezzo di ogni montato, quello che dice "si comincia". Il fischio
 // non e' stimato, lo ha letto il cronometro.
 function pezzoCalcioInizio(r) {
-  const via = (r.kickoff && r.kickoff["1"]) || 0;
+  const via = fischioNelFile(r) || 0;
   if (via < INIZIO_PRE + 2) return null;
   return pezzoDa(via - INIZIO_PRE, via + INIZIO_POST, "Calcio d'inizio", "Inizio", "", "inizio", 9);
 }
@@ -4006,7 +4018,7 @@ async function rifinisciGol(idSeq) {
 // fischio se il fischio arriva prima. Va a sostituire il primo pezzo degli
 // highlights, quello messo li' a occhio.
 async function trovaLIntro(r, via) {
-  const fischio = (r.kickoff && r.kickoff["1"]) || 0;
+  const fischio = fischioNelFile(r) || 0;
   if (!fischio) return;
   const q = Object.keys(R.seq).map((k) => R.seq[k])
     .find((x) => x.reg === r.id && String(x.auto).indexOf("HIGHLIGHTS") === 0);
