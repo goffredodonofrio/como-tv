@@ -742,22 +742,35 @@ function togliDoppioni(pezzi, vicino) {
 // secondi di distanza sembrano due gol e sono uno. Il nome del giocatore lo
 // dice: se il cognome di ESPN sta dentro la riga della redazione, e' quello.
 function uniscoIGol(pezzi) {
-  const cognomi = (t) => String(t || "").split(/[^A-Za-zÀ-ÿ']+/)
-    .filter((w) => w.length > 3 && w[0] === w[0].toUpperCase()).map((w) => w.toLowerCase());
+  // Le parole che non sono un cognome: il verbo, il punteggio, le squadre.
+  // Senza questa lista due gol della stessa squadra a due minuti di distanza
+  // si univano perche' condividevano la parola "BOCA".
+  const NIENTE = " gol rete goal reti autogol rigore rigori doppietta tris poker "
+               + " primo secondo terzo quarto quinto minuto tempo palo ";
+  const cognomi = (t) => senzaAccenti(String(t || ""))
+    .split(/[^a-z0-9']+/i)
+    .map((w) => w.toLowerCase())
+    .filter((w) => w.length > 3 && NIENTE.indexOf(" " + w + " ") < 0);
+  const quando = (x) => (x.t !== undefined ? x.t : x.dentro + GOL_PRE);
   const fuori = [];
-  pezzi.slice().sort((a, b) => a.dentro - b.dentro).forEach((x) => {
-    const stessi = fuori.filter((y) => Math.abs(y.dentro - x.dentro) < 190);
-    const gia = stessi.find((y) => {
-      if (Math.abs(y.dentro - x.dentro) < 25) return true;              // stesso istante
+  pezzi.slice().sort((a, b) => quando(a) - quando(b)).forEach((x) => {
+    const gia = fuori.find((y) => {
+      const d = Math.abs(quando(y) - quando(x));
+      if (d > 190) return false;
+      if (d < 25) return true;                                           // stesso istante
       const a = cognomi(y.titolo), b = cognomi(x.titolo);
-      return a.some((n) => b.indexOf(n) >= 0);                          // stesso giocatore
+      return a.some((n) => b.indexOf(n) >= 0);                           // stesso giocatore
     });
     if (!gia) { fuori.push(x); return; }
-    // vince la riga che racconta di piu', ma il minuto buono e' quello di ESPN
-    if ((x.titolo || "").length > (gia.titolo || "").length) {
-      const quando = gia.fonte === "espn" ? gia.dentro : x.dentro;
-      Object.assign(gia, x, { dentro: quando, fuori: quando + (x.fuori - x.dentro), base: quando });
-    }
+    // Vince la riga che racconta di piu', ma il momento buono e' quello di
+    // ESPN, che il minuto non lo sbaglia. E la finestra si RIFA' sempre dal
+    // momento scelto: se no un pezzo unito si allungava a ogni passaggio.
+    const t = gia.fonte === "espn" ? quando(gia) : quando(x);
+    if ((x.titolo || "").length > (gia.titolo || "").length) Object.assign(gia, x);
+    gia.t = t;
+    gia.dentro = Math.max(0, t - GOL_PRE);
+    gia.fuori = t + GOL_POST;
+    gia.base = gia.dentro;
   });
   return fuori;
 }
@@ -777,9 +790,17 @@ function allargaPerIlReplay(p) {
 function quelloCheSappiamo(r) {
   const rec = r.evento || (r.arch && r.arch.rec) || "";
   const pezzo = (r.arch && r.arch.pezzo) || 0;
+  // Quando una partita e' spezzata in piu' file, gli appunti possono cadere
+  // tutti in un file diverso da quello aperto: succede sulle partite vecchie
+  // di Copa America, tredici pezzi fra FEED, TAGLI e MATERIALE. Prima
+  // restava tutto vuoto senza dire perche'; adesso si segna dove sono
+  // finiti, e chi apre lo legge.
+  const altrove = {};
   const dove = (s, d) => {
     const x = secondoNelFile(rec, { s: s, d: d });
-    return (x && x.pezzo === pezzo) ? x.secondi : null;
+    if (!x) return null;
+    if (x.pezzo !== pezzo) { altrove[x.pezzo] = (altrove[x.pezzo] || 0) + 1; return null; }
+    return x.secondi;
   };
   const a = APPUNTI[rec], e = ESPN[rec];
   const azioni = [], gol = [], voce = [], boati = [];
@@ -819,7 +840,8 @@ function quelloCheSappiamo(r) {
   const voceScelta = togliDoppioni(voce, 60).slice(0, 15);
   // con maniglie larghe due azioni vicine si sovrappongono: si sta piu' larghi
   // anche nel togliere i doppioni
-  return { azioni: togliDoppioni(azioni, 45), gol: uniscoIGol(gol), voce: voceScelta, boati: boati };
+  return { azioni: togliDoppioni(azioni, 45), gol: uniscoIGol(gol), voce: voceScelta,
+           boati: boati, altrove: altrove };
 }
 
 async function preparaSequenze(p) {
@@ -866,7 +888,22 @@ async function preparaSequenze(p) {
   crea("TELECRONACA", sap.voce, "i momenti in cui il telecronista dice gol");
   crea("BOATI", sap.boati, "i momenti in cui lo stadio alza la voce");
   scrivi(); annuncia(0, "clip");
-  return { ok: true, fatte: fatte.length, sequenze: fatte };
+  // Se non c'e' venuto fuori niente, si dice perche': non c'e' materiale, o
+  // il materiale c'e' ma sta in un altro file della stessa partita.
+  let perche = "";
+  if (!fatte.length) {
+    const p2 = Object.keys(sap.altrove || {}).map(Number).sort((x, y) => x - y);
+    if (p2.length) {
+      const quanti = p2.reduce((n, k) => n + sap.altrove[k], 0);
+      perche = "di questa partita sappiamo " + quanti + " azioni, ma cadono in un altro file: "
+             + (p2.length === 1 ? "il pezzo " + (p2[0] + 1) : "i pezzi " + p2.map((k) => k + 1).join(", "))
+             + ". Apri quel pezzo e le sequenze si apparecchiano li'.";
+    } else {
+      perche = "di questa partita non abbiamo ancora ne' appunti ne' fatti da ESPN";
+    }
+  }
+  return { ok: true, fatte: fatte.length, sequenze: fatte, perche: perche,
+           altrove: sap.altrove || {} };
 }
 
 // ── GLI STACCHI DI REGIA ──────────────────────────────────────────
@@ -2753,7 +2790,14 @@ async function archivioApri(p) {
 
   const gia = Object.keys(R.reg).map((k) => R.reg[k])
     .find((r) => r.arch && r.arch.chiave === scelto.chiave);
-  if (gia) return { ok: true, reg: pubblica(gia), giaAperta: true };
+  if (gia) {
+    // Una partita gia' aperta tornava indietro cosi' com'era, e chi l'aveva
+    // vista prima che esistessero le sequenze non le vedeva piu': erano 30
+    // registrazioni su 36. Adesso si apparecchia anche al ritorno; se le
+    // sequenze ci sono gia', preparaSequenze se ne accorge e non le rifa'.
+    if (p.prepara !== false) setTimeout(() => { preparaSequenze({ reg: gia.id }).catch((e) => console.log("[clip] apparecchiare: " + e.message)); }, 300);
+    return { ok: true, reg: pubblica(gia), giaAperta: true };
+  }
 
   const regione = await s3Regione(a.bucket);
   const arch = { rec: p.rec, bucket: a.bucket, chiave: scelto.chiave, regione: regione, pezzo: i };
@@ -5132,6 +5176,21 @@ const AZIONI = {
              letti: Object.keys(ARCHIVIO).filter((k) => ARCHIVIO[k].orologio).length };
   },
   "clip-archivio-apri": archivioApri,
+  // Apparecchia tutte le partite d'archivio gia' aperte che non hanno
+  // ancora le loro sequenze: serve una volta sola, dopo un cambiamento.
+  "clip-apparecchia-tutte": async () => {
+    const conSeq = {};
+    for (const k in R.seq) if (R.seq[k].auto) conSeq[R.seq[k].reg] = true;
+    const da = Object.keys(R.reg).map((k) => R.reg[k]).filter((r) => r.arch && !conSeq[r.id]);
+    let fatte = 0, vuote = 0;
+    for (const r of da) {
+      try {
+        const e = await preparaSequenze({ reg: r.id });
+        if (e && e.fatte) fatte++; else vuote++;
+      } catch (err) { vuote++; }
+    }
+    return { ok: true, guardate: da.length, apparecchiate: fatte, senzaNiente: vuote };
+  },
   // L'elenco di quello che l'archivio sa gia' offrire: serve alla tendina
   // delle partite, che altrimenti conosce solo quelle di oggi.
   "clip-archivio-partite": (p) => {
