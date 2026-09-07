@@ -1150,19 +1150,25 @@ function nomePezzo(x) {
 //  da saltare, se no si spegne il parser per tutta la cella).
 
 const TIPI_APPUNTI = [
-  ["Gol", ["gol", "goal", "rete", "segna", "raddoppi", "pareggi"]],
-  ["Rigore", ["rigore", "penalty", "dal dischetto"]],
-  ["Parata", ["parata", "para ", "miracolo", "respinge", "salva", "rifless", "vola", "paraton"]],
-  ["Palo", ["traversa", "legno", "palo"]],
-  ["Cartellino", ["giallo", "rosso", "cartellino", "ammoni", "espuls"]],
-  ["Occasione", ["occasione", "chance", "tiro", "conclusion", "punizione",
-                 "colpo di testa", "assist", "contropiede", "brivido"]],
-  ["Skill", ["skill", "dribbling", "numero", "tunnel", "giocata", "tacco"]]
+  ["Gol", ["gol", "goal", "rete", "segna", "segnato", "raddoppi-", "pareggi-", "tris", "poker"]],
+  ["Rigore", ["rigore", "rigori", "penalty", "dischetto"]],
+  ["Parata", ["parata", "parato", "parata", "para", "paraton-", "miracolo", "respinge", "respinta", "salva", "rifless-", "vola"]],
+  ["Palo", ["traversa", "legno", "palo", "montante", "pali"]],
+  ["Cartellino", ["giallo", "rosso", "cartellino", "ammoni-", "espuls-", "espulso"]],
+  ["Occasione", ["occasione", "chance", "tiro", "conclusion-", "punizione",
+                 "assist", "contropiede", "brivido", "sfiora", "sfiorato"]],
+  ["Skill", ["skill", "dribbling", "tunnel", "giocata", "tacco", "numero"]]
 ];
 
+// A parole intere, non a pezzi di parola: "angolino" contiene "gol" e per
+// anni avrebbe fatto passare per gol ogni palla messa nell'angolino. Le
+// chiavi che finiscono per "-" valgono come inizio di parola (ammoni-, espuls-).
 function tipoDellaRiga(t) {
-  const b = senzaAccenti(t);
-  for (const [nome, chiavi] of TIPI_APPUNTI) if (chiavi.some((k) => b.indexOf(k) >= 0)) return nome;
+  const b = " " + senzaAccenti(t).replace(/[^a-z0-9]+/g, " ").trim() + " ";
+  const dentro = (k) => k.slice(-1) === "-"
+    ? b.indexOf(" " + k.slice(0, -1)) >= 0
+    : b.indexOf(" " + k + " ") >= 0;
+  for (const [nome, chiavi] of TIPI_APPUNTI) if (chiavi.some(dentro)) return nome;
   return "";
 }
 
@@ -4164,7 +4170,18 @@ function cercaNegliAppunti(q, limite) {
   const conta = (x) => /sostituzione|cambio/i.test(x.tipo || "") ? 0
                      : /gol|rete|rigore|autogol/i.test(x.tipo || "") ? 3
                      : /palo|traversa|parata|espuls/i.test(x.tipo || "") ? 2 : 1;
-  fuori.forEach((x) => { x.conta = conta(x) + (x.rating ? 1 : 0) + (x.hl ? 1 : 0); });
+  // se la domanda nomina una cosa precisa — "palo", "parata", "rosso" —
+  // quella cosa viene prima di tutto: chi cerca un palo non vuole un gol
+  // che ha la parola "palo" dentro la descrizione
+  const chiesto = [["gol", /gol|rete|rigore|autogol/i], ["palo", /palo|traversa/i], ["traversa", /palo|traversa/i],
+                   ["parata", /parata/i], ["rigore", /rigore/i], ["rosso", /cartellino|espuls/i],
+                   ["espulsione", /cartellino|espuls/i], ["giallo", /cartellino|ammoni/i],
+                   ["occasione", /occasione/i], ["giocata", /skill/i]]
+    .filter(([parola]) => q.parole.indexOf(parola) >= 0).map(([, re]) => re);
+  fuori.forEach((x) => {
+    x.conta = conta(x) + (x.rating ? 1 : 0) + (x.hl ? 1 : 0)
+            + (chiesto.length && chiesto.some((re) => re.test(x.tipo || "")) ? 6 : 0);
+  });
   fuori.sort((a, b) => ((b.peso || 0) - (a.peso || 0)) || ((b.conta || 0) - (a.conta || 0)) ||
                        ((Date.parse(b.quando) || 0) - (Date.parse(a.quando) || 0)) ||
                        ((a.tempo || 0) - (b.tempo || 0)) || ((a.d || 0) - (b.d || 0)));
