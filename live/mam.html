@@ -181,6 +181,11 @@
   .tlpista .clipV img{position:absolute;left:2px;top:18px;height:34px;width:auto;border-radius:1px;}
   .tlpista .clipV .dd{display:none;}
   .scheda.accesa{outline:2px solid #7FC4EE;outline-offset:-2px;box-shadow:0 0 0 4px rgba(127,196,238,.18);}
+  /* una sequenza che hai montato tu non viene piu' rifatta: si vede */
+  .scheda.tua::after{content:'TUA';position:absolute;right:6px;top:6px;z-index:5;
+    background:var(--oro,#C8A24A);color:#111;font-size:8px;font-weight:800;letter-spacing:.1em;
+    border-radius:3px;padding:1px 4px;}
+  .scheda.tua{position:relative;}
   .tlpista .clipV .manico{position:absolute;top:2px;width:0;height:0;border-style:solid;pointer-events:none;z-index:6;}
   .tlpista .clipV .manico.sx{left:2px;border-width:5px 0 5px 6px;border-color:transparent transparent transparent #9AA4AC;}
   .tlpista .clipV .manico.dx{right:2px;border-width:5px 6px 5px 0;border-color:transparent #9AA4AC transparent transparent;}
@@ -190,6 +195,8 @@
   .tlpista.ripple .clipV .bordo{cursor:ew-resize;background:rgba(226,178,74,.55);}
   .tlpista.rolling .clipV .bordo{cursor:col-resize;background:rgba(224,91,91,.55);}
   .tlpista.slip .clipV{cursor:grab;}
+  .tlpista.mano,.tlpista.mano .clipV,.tlpista.mano .clipA{cursor:grab;}
+  .tlpista.mano:active{cursor:grabbing;}
   .monitor.attivo{outline:2px solid var(--oro,#C8A24A);outline-offset:-2px;}
   .formatiSeq{display:flex;flex-wrap:wrap;gap:3px;justify-content:center;width:100%;}
   .formatiSeq .b{padding:3px 6px;font-size:10px;min-width:0;}
@@ -1152,6 +1159,7 @@
         <i id="tlLametta" title="lametta (C): clicca sul pezzo dove vuoi tagliare"><svg viewBox="0 0 16 16"><path d="M3 13L13 3M9 3l4 4M5 9l2 2"/></svg></i>
         <i id="tlScivolo" title="scivolo (Y): trascina il pezzo dentro il materiale, dura uguale"><svg viewBox="0 0 16 16"><path d="M2 5h12M2 11h12M6 3L3 5l3 2M10 9l3 2-3 2"/></svg></i>
         <i id="tlGiunzione" title="giunzione (N): trascina il punto di taglio, la sequenza dura uguale"><svg viewBox="0 0 16 16"><path d="M8 2v12M4 6L2 8l2 2M12 6l2 2-2 2"/></svg></i>
+        <i id="tlMano" title="mano (H): trascina per scorrere la timeline"><svg viewBox="0 0 16 16"><path d="M6 8V3.6a1.1 1.1 0 0 1 2.2 0V8M8.2 8V4.2a1.1 1.1 0 0 1 2.2 0V8M10.4 8.4V5.6a1.1 1.1 0 0 1 2.2 0V10c0 2.5-1.8 4.4-4.3 4.4S4 12.5 4 10V8.2a1.1 1.1 0 0 1 2.1-.3"/></svg></i>
         <i title="marcatore" id="tlSegno"><svg viewBox="0 0 16 16"><path class="p" d="M4 2h8v12l-4-3-4 3z"/></svg></i>
         <span class="lente"><b id="tlMeno" title="allontana (−)">−</b><b id="tlTutto" title="tutta la sequenza (\\)">\</b><b id="tlPiu" title="avvicina (+)">+</b></span>
       </div>
@@ -1464,6 +1472,7 @@
       inizio: '<svg viewBox="0 0 16 16"><path d="M3 3v10"/><path class="p" d="M13 3 6 8l7 5z"/></svg>',
       fineS: '<svg viewBox="0 0 16 16"><path d="M13 3v10"/><path class="p" d="M3 3l7 5-7 5z"/></svg>',
       inserisci: '<svg viewBox="0 0 16 16"><path d="M8 2v7M5 6l3 3 3-3M2 13h12"/></svg>',
+      sostituisci: '<svg viewBox="0 0 16 16"><path d="M3 6h8M9 4l2 2-2 2M13 10H5M7 8l-2 2 2 2"/></svg>',
       esporta: '<svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M8 6v5M6 9l2 2 2-2"/></svg>',
       foto: '<svg viewBox="0 0 16 16"><path d="M2 5h3l1.5-2h3L11 5h3v8H2z"/><circle cx="8" cy="9" r="2.3"/></svg>',
       togli: '<svg viewBox="0 0 16 16"><path d="M8 13V6M5 9l3-3 3 3M2 3h12"/></svg>',
@@ -1505,6 +1514,7 @@
             tr("btnVaiOut", "vaiFuori", "Vai all’uscita (shift+O)") +
             '<span class="stacco"></span>' +
             tr("btnInserisci", "inserisci", "Inserisci nella sequenza (,)", "oro") +
+            tr("btnSostituisci", "sostituisci", "Sostituisci il pezzo scelto in timeline con questa entrata\u2192uscita (\u2325,)") +
             tr("btnTaglia", "esporta", "Esporta la clip (T)") +
             tr("btnFoto", "foto", "Esporta fotogramma") +
             '<span class="stacco"></span>' +
@@ -1635,6 +1645,7 @@
     el("btnPlay").addEventListener("click", function () { vs.paused ? vs.play().catch(function(){}) : vs.pause(); });
     el("btnVaiIn").addEventListener("click", function () { if (dentro !== null) { seguiLive = false; vs.currentTime = dentro; } });
     el("btnVaiOut").addEventListener("click", function () { if (fuori !== null) { seguiLive = false; vs.currentTime = fuori; } });
+    el("btnSostituisci").addEventListener("click", function () { sostituisciPezzo(); });
     el("btnInserisci").addEventListener("click", function () {
       if (dentro === null || fuori === null) return dice("Segna entrata e uscita, poi inserisci.");
       if (!REG) return;
@@ -2397,6 +2408,7 @@
       cl.remove("ripple"); cl.remove("rolling"); cl.remove("slip");
       if (STRUMENTO === "c") return;
       var suBordo = !!(e2 && e2.target && e2.target.closest && e2.target.closest(".bordo"));
+      if (STRUMENTO === "h") { cl.add("mano"); return; }
       if (STRUMENTO === "y" || (e2 && e2.altKey && !suBordo)) cl.add("slip");
       else if (STRUMENTO === "n" || (e2 && e2.altKey)) cl.add("rolling");
       else cl.add("ripple");
@@ -2430,6 +2442,13 @@
       var bordo = e.target.closest ? e.target.closest(".bordo") : null;
       var blocco = e.target.closest ? e.target.closest(".clipV, .clipA") : null;
       var pz = pezziProg();
+      // LA MANO: si trascina la vista, non il montaggio — e vale anche
+      // sopra i pezzi, se no bisognerebbe cercare un buco per scorrere.
+      if (STRUMENTO === "h") {
+        var fh = finestraSeq();
+        TL.mano = { x0: e.clientX, vista: fh ? fh.a : 0 };
+        e.preventDefault(); return;
+      }
       if (blocco && TL.lock.V1) { dice("La traccia V1 e' bloccata."); return; }
       if (bordo && blocco) {
         var x = pz.filter(function (z) { return z.id === blocco.dataset.pezzo; })[0]; if (!x) return;
@@ -2493,6 +2512,12 @@
     });
     document.addEventListener("mousemove", function (e) {
       if (TL.riquadro) { TL.riquadro.x = e.clientX; TL.riquadro.y = e.clientY; disegnaRiquadro(); return; }
+      if (TL.mano) {
+        var fm = finestraSeq(); if (!fm) return;
+        var pm = el("tlPista"), lm = pm ? pm.clientWidth || 900 : 900;
+        TL.vista = Math.max(0, TL.mano.vista - (e.clientX - TL.mano.x0) / lm * (fm.b - fm.a));
+        disegnaTimeline(); return;
+      }
       var f = finestraSeq(); if (!f) return;
       var p2 = el("tlPista"), largo = p2 ? p2.clientWidth || 900 : 900;
       if (TL.scrub) {
@@ -2574,7 +2599,7 @@
         }
       }
       TL.trim = null; TL.ghost = null; TL.ghost2 = null; TL.slip = null; TL.roll = null;
-      TL.drag = null; TL.ins = null;
+      TL.mano = null; TL.drag = null; TL.ins = null;
       disegnaTimeline();
     });
 
@@ -2693,6 +2718,7 @@
     q("tlLametta", function () { STRUMENTO = "c"; strumentoVisto(); });
     q("tlScivolo", function () { STRUMENTO = "y"; strumentoVisto(); });
     q("tlGiunzione", function () { STRUMENTO = "n"; strumentoVisto(); });
+    q("tlMano", function () { STRUMENTO = "h"; strumentoVisto(); });
     q("tlPiu", function () { LENTE = Math.min(32, LENTE * 2); disegnaTutto(); });
     q("tlMeno", function () { LENTE = Math.max(1, LENTE / 2); disegnaTutto(); });
     q("tlTutto", function () { LENTE = 1; TL.vista = null; disegnaTutto(); });
@@ -2750,7 +2776,7 @@
     ["ctrl+K", "dividi il pezzo al cursore"],
     ["\u2318Z \u00b7 \u2318\u21e7Z", "annulla \u00b7 ripeti (trenta passi)"],
     ["canc", "togli il pezzo scelto in timeline \u00b7 la sequenza scelta nel progetto"],
-    ["V \u00b7 C \u00b7 Y \u00b7 N", "selezione \u00b7 lametta \u00b7 scivolo (dentro il materiale) \u00b7 giunzione (sposta il taglio)"],
+    ["V \u00b7 C \u00b7 Y \u00b7 N \u00b7 H", "selezione \u00b7 lametta \u00b7 scivolo (dentro il materiale) \u00b7 giunzione (sposta il taglio) \u00b7 mano (scorre la vista)"],
     ["clic \u00b7 shift+clic \u00b7 trascina", "scegli un pezzo \u00b7 aggiungine \u00b7 riquadro sulle corsie vuote"],
     ["\u2318A \u00b7 \u2318\u21e7A \u00b7 A \u00b7 shift+A", "tutti \u00b7 nessuno \u00b7 da qui in avanti \u00b7 da qui indietro"],
     ["alt+trascina", "sul corpo: scivolo \u00b7 sul bordo: giunzione"],
@@ -2821,6 +2847,14 @@
       ["Vai all\u2019inizio", function () { clicca("pInizio"); }, "home"],
       ["Vai alla fine", function () { clicca("pFine"); }, "fine"],
       ["Pezzo precedente / successivo", null, "\u2191 \u2193"],
+      "-",
+      ["Rifai le sequenze apparecchiate", function () {
+        if (!REG) return dice("Scegli prima una partita.");
+        if (!confirm("Rifare AZIONI, HIGHLIGHTS e GOL da quello che sappiamo?\nQuello che hai montato a mano in quelle sequenze si perde.")) return;
+        manda({ tipo: "clip-prepara", reg: REG.id, rifai: true })
+          .then(function (d) { dice("Rifatte " + (d.fatte || 0) + " sequenze.", true); aggiorna(); })
+          .catch(function (e) { dice(e.message); });
+      }, ""],
       "-",
       ["Genera HL da appunti ed ESPN", function () {
         if (!REG) return dice("Scegli prima una partita.");
@@ -3225,13 +3259,18 @@
     var p = el("tlPista"); if (p) p.classList.toggle("lametta", STRUMENTO === "c");
     var i1 = el("tlLametta"), i2 = el("tlFreccia");
     if (i1) i1.classList.toggle("on", STRUMENTO === "c"); if (i2) i2.classList.toggle("on", STRUMENTO === "v");
-    var i3 = el("tlScivolo"), i4 = el("tlGiunzione");
+    var i3 = el("tlScivolo"), i4 = el("tlGiunzione"), i5 = el("tlMano");
     if (i3) i3.classList.toggle("on", STRUMENTO === "y");
     if (i4) i4.classList.toggle("on", STRUMENTO === "n");
-    if (p) { p.classList.toggle("slip", STRUMENTO === "y"); p.classList.toggle("rolling", STRUMENTO === "n"); }
+    if (i5) i5.classList.toggle("on", STRUMENTO === "h");
+    if (p) {
+      p.classList.toggle("slip", STRUMENTO === "y");
+      p.classList.toggle("rolling", STRUMENTO === "n");
+      p.classList.toggle("mano", STRUMENTO === "h");
+    }
     var sp = el("tlStrumentoDetto");
     if (sp) sp.textContent = STRUMENTO === "c" ? "lametta" : STRUMENTO === "y" ? "scivolo"
-                           : STRUMENTO === "n" ? "giunzione" : "selezione";
+                           : STRUMENTO === "n" ? "giunzione" : STRUMENTO === "h" ? "mano" : "selezione";
   }
   function pezzoScelto() {
     var pz = pezziProg();
@@ -3478,6 +3517,7 @@
     if (k === "v" && !mod) { e.preventDefault(); STRUMENTO = "v"; strumentoVisto(); return; }
     if (k === "y" && !mod) { e.preventDefault(); STRUMENTO = "y"; strumentoVisto(); dice("Strumento scivolo: trascina dentro il materiale", true); return; }
     if (k === "n" && !mod) { e.preventDefault(); STRUMENTO = "n"; strumentoVisto(); dice("Strumento giunzione: trascina il punto di taglio", true); return; }
+    if (k === "h" && !mod) { e.preventDefault(); STRUMENTO = "h"; strumentoVisto(); dice("Mano: trascina per scorrere la timeline", true); return; }
     if (k === "a" && mod && e.shiftKey) { e.preventDefault(); TL.multi = []; TL.sel = null; TL.punto = null; disegnaTimeline(); return; }
     // A: questo pezzo e tutti quelli dopo (shift+A: quelli prima)
     if (k === "a" && !mod && SEQ) {
@@ -4233,6 +4273,7 @@
       var d = document.createElement("div");
       var famSeq = a.t !== "hl" ? "" : " seq-" + (a.o.auto ? String(a.o.auto).toLowerCase().replace(/[^a-z]/g, "").slice(0, 12) : "mano");
       d.className = "scheda" + ((a.t === "hl" && SEQ && a.o.id === SEQ.id) ? " scelta" : "")
+                  + ((a.t === "hl" && a.o.mano) ? " tua" : "")
                   + ((a.t === "hl" && SEQSCELTE.indexOf(a.o.id) >= 0) ? " accesa" : "")
                   + (a.o.auto ? " apparecchiata" : "") + famSeq;
       if (a.o.nota) d.title = a.o.nota;                 // la sequenza dice da sola che cos'e'

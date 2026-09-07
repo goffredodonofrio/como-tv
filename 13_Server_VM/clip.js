@@ -187,6 +187,20 @@ function leggi() {
     const t = fs.readFileSync(path.join(DIR, "registro.json"), "utf8");
     const d = JSON.parse(t);
     if (d && d.reg) R = { reg: d.reg || {}, clip: d.clip || {}, seq: d.seq || {} };
+    // Un export "in lavorazione" non sopravvive a un riavvio: ffmpeg se ne
+    // va con il servizio. Se resta scritto "lavora" la pagina mostra per
+    // sempre un avanzamento fermo al 28%, e chi guarda aspetta un file che
+    // non arrivera' mai. Alla riaccensione si dice com'e' andata davvero.
+    let fermi = 0;
+    Object.keys(R.seq).forEach((k) => {
+      const q = R.seq[k];
+      if (q.export && q.export.stato === "lavora") {
+        q.export = { stato: "errore", formato: q.export.formato || "",
+                     errore: "l'esportazione si e' fermata a un riavvio del ponte: rilanciala" };
+        fermi++;
+      }
+    });
+    if (fermi) console.log("[clip] " + fermi + " esportazione/i interrotta/e da un riavvio: segnate come da rifare");
   } catch (e) { /* prima accensione */ }
 }
 
@@ -898,13 +912,19 @@ async function preparaSequenze(p) {
   if (!ESPN[rec] && p.espn !== false) { try { await espnTrova(rec); scriviEspn(); } catch (e) {} }
   const sap = quelloCheSappiamo(r);
   const gia = Object.keys(R.seq).map((k) => R.seq[k]).filter((q) => q.reg === r.id && q.auto);
+  // "rifai" e' il permesso esplicito di buttare via il montaggio a mano e
+  // ricominciare da quello che sappiamo. Senza, non si tocca niente.
+  if (p.rifai) gia.forEach((q) => { delete q.mano; delete q.rifinito; });
   const fatte = [];
   // l'ordine in cui compaiono e' l'ordine in cui servono: prima i gol
   let posto = 0;
+  const tenute = [];
   const crea = (nome, pezzi, nota) => {
     if (!pezzi.length) return;
     const vecchia = gia.find((q) => q.auto === nome
       || (nome.indexOf("HIGHLIGHTS") === 0 && String(q.auto).indexOf("HIGHLIGHTS") === 0));
+    // se qualcuno l'ha gia' montata, e' sua: si lascia stare
+    if (vecchia && vecchia.mano) { tenute.push(nome); return; }
     const q = vecchia || { id: nuovoId("s"), reg: r.id, pezzi: [], pre: APP_PRE, post: APP_POST,
                            scarto: 0, avvisi: [], creata: Date.now(), chi: "", export: null };
     q.auto = nome;
@@ -966,7 +986,8 @@ async function preparaSequenze(p) {
       perche = "di questa partita non abbiamo ancora ne' appunti ne' fatti da ESPN";
     }
   }
-  return { ok: true, fatte: fatte.length, sequenze: fatte, perche: perche,
+  if (tenute.length) console.log("[clip] apparecchiare: lasciate com'erano " + tenute.join(", ") + " (montate a mano)");
+  return { ok: true, fatte: fatte.length, sequenze: fatte, perche: perche, tenute: tenute,
            altrove: sap.altrove || {} };
 }
 
@@ -1830,6 +1851,17 @@ function seqDi(p) {
   return q;
 }
 
+// UNA SEQUENZA TOCCATA A MANO NON SI RIFA' PIU'. Le sequenze apparecchiate
+// si rigenerano ogni volta che si apre la partita, ed e' giusto finche' sono
+// come le ha lasciate la macchina. Ma se qualcuno ha spostato un taglio,
+// buttato un pezzo, cambiato l'ordine, allora quella sequenza e' sua:
+// riscriverla vuol dire cancellargli il lavoro. Da qui in poi si tiene com'e'.
+function toccataAMano(q) {
+  if (!q) return;
+  if (!q.mano) console.log("[clip] sequenza \"" + (q.titolo || q.id) + "\": da adesso e' tua, non la rifaccio piu'");
+  q.mano = Date.now();
+}
+
 function hlElenco(p) {
   const seq = Object.keys(R.seq).map((k) => R.seq[k])
     .filter((q) => !p || !p.reg || q.reg === p.reg)
@@ -1840,6 +1872,7 @@ function hlElenco(p) {
 // ritocco di un pezzo: sposta l'entrata, l'uscita, il nome — o lo butta
 function hlPezzo(p) {
   const q = seqDi(p);
+  toccataAMano(q);
   // Piu' pezzi in una volta: e' quello che succede quando si selezionano a
   // riquadro e si preme Canc. Uno alla volta, con una richiesta ciascuno,
   // la sequenza si vedeva sfarinare pezzo per pezzo.
@@ -1896,6 +1929,7 @@ async function hlInserisci(p) {
   const dove = (p.dove === undefined || p.dove === null) ? q.pezzi.length
              : Math.max(0, Math.min(q.pezzi.length, Math.round(num(p.dove, 0, 999, 0))));
   q.pezzi.splice(dove, 0, pezzo);
+  toccataAMano(q);
   scrivi(); annuncia(0, "clip");
   return { ok: true, seq: q, pezzo: pezzo.id, agganciato: agganciato };
 }
@@ -1941,6 +1975,7 @@ function hlImposta(p) {
 // lunga senza rifare entrata e uscita da capo.
 function hlDividi(p) {
   const q = seqDi(p);
+  toccataAMano(q);
   const i = q.pezzi.findIndex((x) => x.id === p.pezzo);
   if (i < 0) throw new Error("pezzo sconosciuto");
   const x = q.pezzi[i];
@@ -1974,6 +2009,7 @@ function hlAggiungi(p) {
     };
     R.seq[q.id] = q;
   }
+  toccataAMano(q);
   if (q.pezzi.some((x) => x.clip === c.id)) {
     return { ok: true, seq: q, gia: true };     // gia' dentro: non si duplica
   }
@@ -2017,6 +2053,7 @@ function hlSuggerimento(p) {
 
 function hlOrdina(p) {
   const q = seqDi(p);
+  toccataAMano(q);
   const ordine = Array.isArray(p.ordine) ? p.ordine : [];
   const mappa = {};
   q.pezzi.forEach((x) => { mappa[x.id] = x; });
