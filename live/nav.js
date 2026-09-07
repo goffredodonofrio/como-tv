@@ -37,7 +37,8 @@
       ["risultati.html",             "Risultati"],
       ["classifiche-campionati.html","Classifiche"],
       ["marcatori.html",             "Marcatori"],
-      ["tiri.html",                  "Mappa dei tiri"]
+      ["tiri.html",                  "Mappa dei tiri"],
+      ["passaggi.html",              "Mappa dei passaggi"]
     ]},
     { nome: "Editoriali", voci: [
       ["statistiche.html",           "Statistiche"],
