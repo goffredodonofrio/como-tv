@@ -879,10 +879,29 @@ function quelloCheSappiamo(r) {
   // la voce dice "gol" spesso, anche per un gol di ieri o annullato: si
   // tengono i momenti distanti fra loro, al massimo quindici
   const voceScelta = togliDoppioni(voce, 60).slice(0, 15);
+  // ── GAMECAST: l'aiuto, non la guida ────────────────────────────────
+  //  Gli appunti del giornalista comandano: sono l'unica fonte che sa
+  //  perche' un'azione conta. ESPN e Gamecast servono a due cose — coprire
+  //  le partite dove nessuno ha scritto niente, e dare un secondo aggancio
+  //  dove gli appunti ci sono ma il minuto balla. Quindi una riga Gamecast
+  //  entra SOLO se in quel minuto non c'e' gia' qualcosa di piu' autorevole.
+  if (e && e.gamecast && e.gamecast.length) {
+    e.gamecast.forEach((x) => {
+      const d = (x.min - (x.periodo === 2 ? 45 : 0)) * 60 + x.stopp * 60;
+      const t = dove(x.periodo, Math.max(0, d));
+      if (t === null) return;
+      if (azioni.some((a2) => Math.abs((a2.t !== undefined ? a2.t : a2.dentro) - t) < 50)) return;
+      const p = pezzoDa(t - APP_PRE, t + APP_POST,
+                        [x.tipo, x.giocatore].filter(Boolean).join(" · ") + (x.giocatore ? "" : " · " + x.testo.slice(0, 60)),
+                        x.tipo, x.min + "'", "gamecast", x.peso);
+      p.t = t; p.dettaglio = x.testo;
+      azioni.push(p);
+    });
+  }
   // con maniglie larghe due azioni vicine si sovrappongono: si sta piu' larghi
   // anche nel togliere i doppioni
   return { azioni: togliDoppioni(azioni, 45), gol: uniscoIGol(gol, rec), voce: voceScelta,
-           boati: boati, altrove: altrove };
+           boati: boati, altrove: altrove, stelle: (a && a.stelle) || 0 };
 }
 
 // L'APERTURA. Un montato non comincia con un tiro: comincia con la voce che
@@ -1003,13 +1022,89 @@ async function preparaSequenze(p) {
     const scelti = stringiAllaDurata(libere, HL_DURATA, HL_STRETTO_PRE, HL_STRETTO_POST);
     const dentro = (scelti.pezzi || []).sort((a, b) => a.dentro - b.dentro);
     const tuttoQuanto = quantoTesta + dentro.reduce((n, x) => n + (x.fuori - x.dentro), 0);
-    crea("HIGHLIGHTS", testa.concat(dentro),
+    // ══════════════════════════════════════════════════════════════
+    //  LE DUE REGOLE DELLA REDAZIONE
+    // ══════════════════════════════════════════════════════════════
+    //
+    //  VOD — sui falli da rigore va SOLO il replay del fallo con
+    //  l'ambientale: niente piu' dinamica, gesto del VAR, monitor. Ma sulle
+    //  partite da cinque stelle (Rating Evento su Airtable) si tiene la
+    //  sequenza completa, come si e' sempre fatto.
+    //
+    //  Per i social le regole sono piu' strette (un replay solo, niente gol
+    //  annullati se non lo dice il giornalista, niente falli da rigore, tre
+    //  secondi di ambientale in coda per la sfumata). Non nasce una
+    //  sequenza a parte: il montato e' uno, e le regole si vedono sui pezzi
+    //  — un gol annullato e' segnato, un fallo da rigore e' gia' il solo
+    //  replay — cosi' chi monta decide con l'informazione davanti.
+    const cinqueStelle = (sap.stelle || 0) >= 5;
+    const eRigore = (x) => /rigor|penalty/i.test(String(x.titolo || "") + " " + String(x.dettaglio || "") + " " + String(x.tipo || ""));
+    const eFalloDaRigore = (x) => eRigore(x) && /fallo|foul|atterrat|trattenut|hand ball|var/i.test(String(x.titolo || "") + " " + String(x.dettaglio || ""));
+    const eAnnullato = (x) => /annullat|disallow|ruled out|offside goal/i.test(String(x.titolo || "") + " " + String(x.dettaglio || ""));
+    // I gol annullati restano nel montato — buttarli via a monte sarebbe
+    // decidere al posto di chi monta — ma si vedono, perche' sui social non
+    // vanno a meno che non lo dica il giornalista.
+    dentro.forEach((x) => { if (eAnnullato(x)) x.annullato = true; });
+
+    // VOD: il fallo da rigore diventa il solo replay, stretto, con l'audio
+    // di campo. Il replay lo sappiamo dove sta: e' il buco del cronometro.
+    const perVod = dentro.map(function (x) {
+      if (!eFalloDaRigore(x) || cinqueStelle) return x;
+      const t = x.t !== undefined ? x.t : x.dentro + HL_STRETTO_PRE;
+      const noto = (ARCHIVIO[rec] && ARCHIVIO[rec].replay) ? ARCHIVIO[rec].replay[String(Math.round(t))] : 0;
+      const y = Object.assign({}, x, { soloReplay: true });
+      if (noto) { y.dentro = Math.max(0, noto - 14); y.fuori = noto + 2; }
+      else { y.dentro = t + 8; y.fuori = t + 26; }     // il replay arriva dopo l'azione
+      y.titolo = "Replay del fallo · " + String(x.titolo || "").slice(0, 60);
+      y.rigore = true;
+      return y;
+    });
+    const quantiRigori = perVod.filter((x) => x.rigore).length;
+    const quantiAnnullati = dentro.filter((x) => x.annullato).length;
+    crea("HIGHLIGHTS", testa.concat(perVod),
          (testa.length ? "Apertura del telecronista, calcio d'inizio, poi le azioni che pesano di piu'. " : "")
+         + (quantiRigori ? "Sui falli da rigore c'e' solo il replay con l'ambientale" +
+             (cinqueStelle ? " — ma questa e' da cinque stelle, quindi resta la sequenza completa. " : ". ") : "")
+         + (quantiAnnullati ? quantiAnnullati + " gol annullati sono segnati: sui social non vanno, se non lo dice il giornalista. " : "")
          + "Cinque minuti di gioco, piu' " + Math.round(quantoTesta) + " secondi di testa: "
          + Math.floor(tuttoQuanto / 60) + "′" + String(Math.round(tuttoQuanto % 60)).padStart(2, "0") + "″ in tutto. "
          + (scelti.nota ? scelti.nota : ""));
   }
   crea("GOL", sap.gol, "dai " + GOL_PRE + " secondi prima ai " + GOL_POST + " dopo: dentro c'e' l'azione, l'esultanza e il replay");
+
+  // ── SHORTS ────────────────────────────────────────────────────────
+  //  Le regole dei social sono piu' strette di quelle del VOD, e sono
+  //  scritte: un replay solo per gol, niente gol annullati se non lo dice
+  //  il giornalista, niente falli da rigore, niente outro. E in coda due o
+  //  tre secondi di ambientale, perche' il video finisce su un'azione e la
+  //  regia deve poterci sfumare sopra.
+  if (sap.gol.length) {
+    const dettoDalGiornalista = (x) => x.fonte === "appunti";
+    const eAnnullatoS = (x) => /annullat|disallow|ruled out/i.test(String(x.titolo || "") + " " + String(x.dettaglio || ""));
+    const eRigoreS = (x) => /rigor|penalty/i.test(String(x.titolo || "") + " " + String(x.tipo || "") + " " + String(x.dettaglio || ""));
+    const golShorts = sap.gol
+      .filter((x) => !eAnnullatoS(x) || dettoDalGiornalista(x))
+      .filter((x) => !(eRigoreS(x) && /fallo|foul|atterrat|trattenut|hand ball/i.test(String(x.titolo || "") + " " + String(x.dettaglio || ""))))
+      .map((x) => {
+        const t = x.t !== undefined ? x.t : x.dentro + GOL_PRE;
+        const y = Object.assign({}, x);
+        // UN REPLAY SOLO: il pezzo finisce dove finisce il primo, non
+        // l'ultimo. La differenza la sa il cronometro, che l'ha letta.
+        const noto = (ARCHIVIO[rec] && ARCHIVIO[rec].primoReplay) ? ARCHIVIO[rec].primoReplay[String(Math.round(t))] : 0;
+        y.fuori = noto ? Math.min(x.fuori, noto + 3) : Math.min(x.fuori, t + 55);
+        y.unReplay = true;
+        return y;
+      });
+    if (golShorts.length) {
+      const ult = golShorts[golShorts.length - 1];
+      // l'ambientale di coda: senza, il video taglia di netto su un'azione
+      golShorts[golShorts.length - 1] = Object.assign({}, ult, { fuori: ult.fuori + 3, coda: true });
+      crea("SHORTS", golShorts,
+           "Regole social: un replay per gol, niente gol annullati (se non lo dice il giornalista), " +
+           "niente falli da rigore, niente outro. Tre secondi di ambientale in coda per la sfumata.");
+    }
+  }
+
   crea("TELECRONACA", sap.voce, "i momenti in cui il telecronista dice gol");
   crea("BOATI", sap.boati, "i momenti in cui lo stadio alza la voce");
   scrivi(); annuncia(0, "clip");
@@ -4020,6 +4115,9 @@ async function appuntiImporta(p) {
         partita: f["Partita"] || "", competizione: f["Competizione"] || "",
         telecronista: chiRacconta(f),
         quando: f["Data | Orario"] || "",
+        // "Rating Evento" da 1 a 5: le partite da cinque stelle tengono la
+        // sequenza completa del rigore, le altre solo il replay del fallo
+        stelle: Number(f["Rating Evento"] || 0) || 0,
         righe: note.map((n) => ({
           m: n.minuto, t: n.tipo, x: n.testo.slice(0, 180), s: n.sezione,
           d: n.dentroTempo, hl: n.hl ? 1 : 0, g: n.rating || 0
@@ -4244,12 +4342,24 @@ async function fineDelReplay(via, targa, rif, t) {
   if (!lunghe.length) return null;
   const fila = lunghe[lunghe.length - 1];
   const ultimo = fila[fila.length - 1];
+  // e dove finisce il PRIMO replay: per i social ne va uno solo, quindi il
+  // pezzo deve poter finire li' invece che dopo l'ultimo
+  const primaFila = lunghe[0];
+  let primoFine = primaFila[primaFila.length - 1] + 10;
+  if (lunghe.length > 1) {
+    let b1 = primaFila[primaFila.length - 1], a1 = b1 + 20;
+    for (let g = 0; g < 3 && a1 - b1 > 4; g++) {
+      const m1 = Math.round((b1 + a1) / 2);
+      if ((await cE(m1)) === false) b1 = m1; else a1 = m1;
+    }
+    primoFine = a1;
+  }
   let basso = ultimo, alto = ultimo + 20;
   for (let giro = 0; giro < 3 && alto - basso > 4; giro++) {
     const mezzo = Math.round((basso + alto) / 2);
     if ((await cE(mezzo)) === false) basso = mezzo; else alto = mezzo;
   }
-  return alto;
+  return { fine: alto, primo: Math.min(primoFine, alto) };
 }
 
 // ── L'INTRO DEL TELECRONISTA ──────────────────────────────────────────
@@ -4387,15 +4497,19 @@ async function rifinisciGol(idSeq) {
   let cambiati = 0;
   for (const pz of q.pezzi) {
     const t = pz.t !== undefined ? pz.t : pz.dentro + GOL_PRE;
-    let fine = null;
-    try { fine = await fineDelReplay(via, targa, rif, t); } catch (e) { fine = null; }
-    if (fine === null) { pz.replay = false; continue; }
+    let esito2 = null;
+    try { esito2 = await fineDelReplay(via, targa, rif, t); } catch (e) { esito2 = null; }
+    if (!esito2) { pz.replay = false; continue; }
+    const fine = esito2.fine;
     pz.fuori = Math.min(t + 150, fine + 3);
     pz.replay = true;
     a.replay = a.replay || {};
     a.replay[String(Math.round(t))] = fine;     // letto una volta, buono per sempre
+    a.primoReplay = a.primoReplay || {};
+    a.primoReplay[String(Math.round(t))] = esito2.primo;
     cambiati++;
-    console.log("[clip] gol al " + (pz.minuto || "?") + ": il replay finisce a " + fine + "s (pezzo " + Math.round(pz.fuori - pz.dentro) + "s)");
+    console.log("[clip] gol al " + (pz.minuto || "?") + ": primo replay a " + esito2.primo +
+                "s, ultimo a " + fine + "s (pezzo " + Math.round(pz.fuori - pz.dentro) + "s)");
   }
   butta(rif);
   scriviArchivio();
@@ -4915,6 +5029,11 @@ async function espnTrova(rec) {
   }
   if (!trovato) { ESPN[rec] = { mancante: "non trovata su ESPN", quando: info.quando }; return ESPN[rec]; }
   const sm = await espnPrendi("https://site.api.espn.com/apis/site/v2/sports/soccer/" + legaTrovata + "/summary?event=" + trovato.id);
+  // GAMECAST: nella stessa risposta c'e' la telecronaca scritta, che finora
+  // buttavamo via. Sono cinque volte gli eventi chiave — tiri, parate,
+  // occasioni, falli — e soprattutto ci sono anche dove nessun giornalista
+  // ha scritto appunti, che sono migliaia di partite.
+  const gamecast = leggiGamecast(sm);
   const eventi = (sm.keyEvents || []).map((k) => {
     const tipo = ((k.type || {}).text) || "";
     const mm = minutoEspn((k.clock || {}).displayValue);
@@ -4933,10 +5052,78 @@ async function espnTrova(rec) {
   const comp = (trovato.competitions || [])[0] || {};
   const casaOsp = (comp.competitors || []).map((c) => ((c.team || {}).displayName) || "");
   ESPN[rec] = { id: trovato.id, lega: legaTrovata, quando: trovato.date || info.quando, nome: trovato.name || "",
-                squadre: casaOsp, eventi: eventi, rose: rose, letto: new Date().toISOString() };
+                squadre: casaOsp, eventi: eventi, gamecast: gamecast, rose: rose,
+                letto: new Date().toISOString() };
   misuraRitardo(rec);
   return ESPN[rec];
 }
+// ══════════════════════════════════════════════════════════════════════
+//  GAMECAST — la telecronaca scritta di ESPN
+// ══════════════════════════════════════════════════════════════════════
+//
+//  Arriva dentro la stessa risposta che chiediamo gia' per i gol: una
+//  novantina di righe per partita, in inglese, con il minuto e una frase.
+//  Non serve alla PRECISIONE — quella la da' il cronometro letto
+//  dall'immagine — ma alla COMPLETEZZA: e' l'unica fonte sulle migliaia di
+//  partite dove nessuno ha scritto appunti.
+//
+//  Le righe non valgono tutte uguale. Un tiro in porta e una parata sono
+//  highlights; un fallo a centrocampo e una rimessa laterale no, e messi
+//  tutti in fila renderebbero la lista illeggibile. Quindi ognuna porta il
+//  suo peso, e il montato prende dall'alto.
+const TIPI_GAMECAST = [
+  // [come lo scrive ESPN, come si chiama da noi, quanto pesa]
+  [/^goal|goal!/i,                       "Gol",          10],
+  [/penalty (saved|missed)/i,            "Rigore",        9],
+  [/^attempt saved/i,                    "Parata",        7],
+  [/^attempt blocked/i,                  "Occasione",     5],
+  [/hits the (bar|post)|woodwork/i,      "Palo",          8],
+  [/^attempt missed/i,                   "Occasione",     5],
+  [/second yellow|red card/i,            "Espulsione",    8],
+  [/yellow card|booked/i,                "Ammonizione",   4],
+  [/substitution/i,                      "Cambio",        2],
+  [/offside/i,                           "Fuorigioco",    2],
+  [/corner/i,                            "Angolo",        3],
+  [/wins a free kick/i,                  "Punizione",     2],
+  [/^foul by|hand ball/i,                "Fallo",         1],
+  [/delay|var|review/i,                  "VAR",           4],
+  [/first half (begins|ends)|second half (begins|ends)|match ends/i, "Tempo", 1]
+];
+function tipoGamecast(testo, tipoEspn) {
+  // Il testo e il tipo si guardano SEPARATI: incollati insieme le regole
+  // ancorate all'inizio ("^attempt saved") non trovavano piu' niente, e
+  // uscivano solo angoli e punizioni — cioe' l'esatto contrario di quello
+  // che serve a un montato.
+  const a = String(testo || "").trim(), b = String(tipoEspn || "").trim();
+  for (const [r, nome, peso] of TIPI_GAMECAST) if (r.test(a) || r.test(b)) return { tipo: nome, peso: peso };
+  return { tipo: "", peso: 0 };
+}
+// Il nome di chi fa la cosa: ESPN lo scrive per esteso, seguito dalla
+// squadra fra parentesi. "Attempt saved. Brynjolfur Willumsson (Groningen)
+// header..." -> Willumsson.
+function chiFaGamecast(testo) {
+  const m = /([A-ZÀ-Þ][\wÀ-ÿ'’.-]+(?: [A-ZÀ-Þ][\wÀ-ÿ'’.-]+){0,3})\s*\(/.exec(String(testo || ""));
+  return m ? m[1].trim() : "";
+}
+function leggiGamecast(sm) {
+  const fuori = [];
+  (sm.commentary || []).forEach((c) => {
+    const testo = String(c.text || "").trim();
+    if (!testo) return;
+    const mm = minutoEspn((c.time || {}).displayValue || "");
+    if (!mm) return;
+    const pl = c.play || {};
+    const q = tipoGamecast(testo, ((pl.type || {}).text) || "");
+    // sotto il quattro sono angoli, falli, rimesse e cambi: in un montato
+    // non ci vanno, e in elenco coprirebbero le cose che contano
+    if (!q.tipo || q.peso < 4) return;
+    const periodo = ((pl.period || {}).number) || (mm.min > 45 ? 2 : 1);
+    fuori.push({ tipo: q.tipo, peso: q.peso, min: mm.min, stopp: mm.stopp, periodo: periodo,
+                 giocatore: chiFaGamecast(testo), testo: testo.slice(0, 200) });
+  });
+  return fuori;
+}
+
 // Un telecronista scrive il minuto DOPO aver visto l'azione. Sui gol, dove
 // ESPN dice il minuto vero, si misura di quanto: la mediana per persona e'
 // il suo ritardo, e si sottrae a tutte le sue righe.
