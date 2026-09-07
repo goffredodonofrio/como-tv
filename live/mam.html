@@ -2395,6 +2395,26 @@
       else if (STRUMENTO === "n" || (e2 && e2.altKey)) cl.add("rolling");
       else cl.add("ripple");
     };
+    // DOPPIO CLIC SU UN PEZZO. Come in Premiere: il pezzo si apre nella
+    // Sorgente con le sue entrata e uscita, e la testina va esattamente nel
+    // punto in cui hai cliccato. Serve quando il taglio automatico ha
+    // sbagliato di qualche secondo: si va li' e si rifa' a mano, sul
+    // materiale intero, senza cercare il minuto.
+    p.addEventListener("dblclick", function (e) {
+      var blocco = e.target.closest ? e.target.closest(".clipV, .clipA") : null;
+      if (!blocco) return;
+      var pz = pezziProg();
+      var x = pz.filter(function (z) { return z.id === blocco.dataset.pezzo; })[0]; if (!x) return;
+      e.preventDefault();
+      // dove si e' cliccato, dentro il pezzo
+      var t = tempoSeq(e), acc = 0, offset = 0;
+      for (var i = 0; i < pz.length; i++) {
+        var d = pz[i].fuori - pz[i].dentro;
+        if (pz[i].id === x.id) { offset = Math.max(0, Math.min(d, (t === null ? 0 : t) - acc)); break; }
+        acc += d;
+      }
+      apriNellaSorgente(x, x.dentro + offset);
+    });
     p.addEventListener("mousemove", segnaModo);
     document.addEventListener("keydown", function (e2) { if (e2.key === "Alt") segnaModo(e2); });
     document.addEventListener("keyup", function (e2) { if (e2.key === "Alt") segnaModo(null); });
@@ -2734,6 +2754,8 @@
     ["shift+J \u00b7 shift+L", "indietro e avanti a met\u00e0 velocit\u00e0"],
     ["\u2318\u21e7spazio", "riproduci entrata \u2192 uscita"],
     ["F", "da dove viene questo pezzo: apre la Sorgente allo stesso secondo"],
+    ["doppio clic sul pezzo", "lo apre nella Sorgente con le sue entrata e uscita, nel punto in cui hai cliccato"],
+    ["\u2325,", "sostituisci il pezzo scelto con l\u2019entrata\u2192uscita della Sorgente"],
     ["/", "porta entrata e uscita sui bordi del pezzo scelto"],
     ["shift+2 \u00b7 shift+4", "fuoco sulla Sorgente \u00b7 sul Programma"],
     ["S", "calamita (snap)"],
@@ -2782,6 +2804,8 @@
       "-",
       ["Inserisci nella sequenza", function () { clicca("btnInserisci"); }, ","],
       ["Sovrascrivi \u2192 esporta come clip", function () { clicca("btnTaglia"); }, "."],
+      ["Sostituisci il pezzo scelto", function () { K2(",", { altKey: true }); }, "\u2325,"],
+      ["Apri il pezzo scelto nella Sorgente", function () { var x = pezzoScelto(); if (x) apriNellaSorgente(x); else dice("Scegli un pezzo in timeline."); }, "doppio clic"],
       "-",
       ["Taglia la testa al cursore", function () { K2("q"); }, "Q"],
       ["Taglia la coda al cursore", function () { K2("w"); }, "W"]
@@ -3164,6 +3188,33 @@
       i.addEventListener("blur", function () { if (d.contains(i)) chiudi(false); });
     });
   }
+  // Il pezzo torna materiale: entrata e uscita sue, testina dove serve, e
+  // da li' si taglia daccapo. Poi "sostituisci" (⌥,) rimette il risultato
+  // al posto suo nella sequenza, senza spostare il resto.
+  function apriNellaSorgente(x, secondo) {
+    var vs = el("player"); if (!vs) return dice("Nessun materiale aperto nella Sorgente.");
+    fuocoMonitor("s");
+    dentro = x.dentro; fuori = x.fuori; mostraInOut();
+    TL.sel = x.id; TL.multi = [x.id]; disegnaTimeline();
+    var dove = Math.max(0, secondo === undefined ? x.dentro : secondo);
+    var vai = function () { try { vs.currentTime = dove; } catch (er) {} };
+    if (vs.readyState >= 1) vai(); else vs.addEventListener("loadedmetadata", vai, { once: true });
+    dice("Nella Sorgente al " + tc(dove) + " \u00b7 entrata " + tc(x.dentro) + " \u2192 uscita " + tc(x.fuori)
+       + " \u00b7 ritaglia e premi \u2325, per sostituire", true);
+  }
+  // SOSTITUISCI (⌥,). Il pezzo scelto in timeline prende l'entrata e
+  // l'uscita che ci sono adesso nella Sorgente: sta al suo posto, cambia
+  // solo che cosa mostra.
+  function sostituisciPezzo() {
+    if (!SEQ) return;
+    var x = pezzoScelto(); if (!x) return dice("Scegli il pezzo da sostituire.");
+    if (dentro === null || fuori === null) return dice("Segna entrata e uscita nella Sorgente (I e O).");
+    if (fuori - dentro < 0.5) return dice("L'intervallo e' troppo corto.");
+    var d1 = dentro, f1 = fuori;
+    applicaEPoi(function (q) { var z = q.pezzi.filter(function (p) { return p.id === x.id; })[0]; if (z) { z.dentro = d1; z.fuori = f1; } },
+                { tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: x.id, dentro: d1, fuori: f1 },
+                function () { dice("Pezzo sostituito \u00b7 " + tc(d1) + " \u2192 " + tc(f1) + " (" + Math.round(f1 - d1) + "s)", true); });
+  }
   function strumentoVisto() {
     var p = el("tlPista"); if (p) p.classList.toggle("lametta", STRUMENTO === "c");
     var i1 = el("tlLametta"), i2 = el("tlFreccia");
@@ -3311,6 +3362,7 @@
       dice(MON === "s" ? "Fuoco: Sorgente" : "Fuoco: Programma", true); return;
     }
     if (k === "f" && !mod && !e.shiftKey) { e.preventDefault(); matchFrame(); return; }
+    if (k === "," && e.altKey) { e.preventDefault(); sostituisciPezzo(); return; }
     if (k === "/" && !e.shiftKey && !mod) { e.preventDefault(); segnaIlPezzo(); return; }
     // rifinitura al fotogramma: ctrl+frecce sul punto di montaggio,
     // alt+frecce scivola dentro il materiale
