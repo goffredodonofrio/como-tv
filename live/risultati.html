@@ -130,6 +130,28 @@
     padding:9px 12px;cursor:pointer;user-select:none;}
   .match:hover{border-color:var(--line-gold);}
   .match input{accent-color:var(--gold);flex:none;}
+  /* la riga scritta a mano: si distingue da quelle arrivate da ESPN, perche'
+     quella la compili tu e vale la pena vedere subito quali sono */
+  .amano{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    padding:10px 12px;margin-bottom:8px;border-radius:9px;
+    background:rgba(110,231,212,.05);border:1px solid rgba(110,231,212,.28);
+    box-shadow:inset 3px 0 0 rgba(110,231,212,.6);}
+  .amano input[type=checkbox]{accent-color:var(--gold);flex:none;}
+  .amano .cmp{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
+    letter-spacing:.18em;text-transform:uppercase;color:#6EE7D4;
+    flex:0 0 auto;min-width:104px;}
+  .amano select,.amano input[type=text]{
+    padding:8px 10px;border-radius:6px;background:rgba(245,241,230,.06);
+    border:1px solid rgba(245,241,230,.16);color:var(--ivory);
+    font-family:'DM Sans',sans-serif;font-size:13px;min-width:0;}
+  .amano select:focus,.amano input:focus{outline:none;border-color:var(--line-gold);}
+  .amano .sq{flex:1 1 190px;}
+  .amano .pt{flex:0 0 62px;text-align:center;font-variant-numeric:tabular-nums;}
+  .amano .qn{flex:0 0 150px;}
+  .amano .ex{flex:0 0 130px;}
+  .amano .via{flex:0 0 auto;padding:7px 12px;font-size:10px;letter-spacing:.08em;
+    color:#FF6B6E;border-color:rgba(229,27,32,.4);background:transparent;}
+  .amano .via:hover{background:rgba(229,27,32,.12);border-color:var(--red);}
   .match .score{font-family:'Mazzard',system-ui,sans-serif;font-weight:800;color:var(--gold-bright);
     white-space:nowrap;font-size:13px;}
   .match .who{flex:1;min-width:0;font-size:13px;color:var(--ivory);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -195,6 +217,8 @@
       <input type="date" id="al">
     </div>
     <button class="carica" id="btnLoad">Carica</button>
+    <button id="btnMano">+ Partita a mano</button>
+    <button id="btnSvuota">Svuota</button>
     <button id="btnPrevG">Anteprima</button>
     <div class="field" style="flex:0 0 auto;margin-left:auto">
       <label for="canaleSel">Seleziona vMix o progetto</label>
@@ -240,6 +264,7 @@
 
 </div>
 
+<script src="giovanili.js"></script>
 <script src="scavalco.js"></script>
 <script src="chiave.js"></script>
 <script src="destinazione.js"></script>
@@ -281,6 +306,8 @@
 
 
 
+  // le squadre delle giovanili stanno in giovanili.js, lo stesso elenco che
+  // usano le formazioni: nomi e stemmi non possono divergere
   var COMPS = [
     { slug: "serie-a",       band: "🇮🇹", nome: "Serie A",               code: "ita.1" },
     { slug: "serie-b",       band: "🇮🇹", nome: "Serie B",               code: "ita.2" },
@@ -308,7 +335,15 @@
     { slug: "europa",        band: "🇪🇺", nome: "Europa League",         code: "uefa.europa" },
     { slug: "conference",    band: "🇪🇺", nome: "Conference League",     code: "uefa.europa.conf" },
     { slug: "libertadores",  band: "🌎", nome: "CONMEBOL Libertadores", code: "conmebol.libertadores" },
-    { slug: "sudamericana",  band: "🌎", nome: "CONMEBOL Sudamericana", code: "conmebol.sudamericana" }
+    { slug: "sudamericana",  band: "🌎", nome: "CONMEBOL Sudamericana", code: "conmebol.sudamericana" },
+    // Le giovanili italiane ESPN non le ha: provati tutti i codici plausibili,
+    // rispondono 400, e nel suo elenco di leghe non compaiono. Quindi qui non
+    // si carica niente da fuori — le partite si scrivono a mano, e le squadre
+    // arrivano dall'elenco che gia' usano le formazioni (giovanili.js), cosi'
+    // i nomi sono sempre gli stessi e lo stemma si trova da solo.
+    { slug: "primavera1",    band: "🇮🇹", nome: "Primavera 1",            code: "giovanili.primavera1", mano: true },
+    { slug: "u18",           band: "🇮🇹", nome: "Under 18",               code: "giovanili.u18",        mano: true },
+    { slug: "u17",           band: "🇮🇹", nome: "Under 17",               code: "giovanili.u17",        mano: true }
   ];
 
   var API = "https://site.api.espn.com/apis/site/v2/sports/soccer";
@@ -423,6 +458,8 @@
     dal:    document.getElementById("dal"),
     al:     document.getElementById("al"),
     load:   document.getElementById("btnLoad"),
+    mano:   document.getElementById("btnMano"),
+    svuota: document.getElementById("btnSvuota"),
     csv:    document.getElementById("btnCsv"),
     sheet:  document.getElementById("btnSheet"),
     regia:  document.getElementById("btnRegia"),
@@ -459,9 +496,27 @@
     return s;
   }
 
+  // Quello che era gia' spuntato non si butta via quando si carica un'altra
+  // competizione: e' cosi' che si fa il recap di tutte le squadre del Como,
+  // Serie A e giovanili nella stessa grafica. Chi vuole ripartire da zero ha
+  // il tasto Svuota.
+  function tenute() {
+    return state.matches.filter(function (m) { return m.checked || m.mano; });
+  }
+
   function load() {
     var comp = COMPS[el.comp.selectedIndex];
     state.comp = comp;
+
+    // Le giovanili italiane ESPN non le ha: si scrivono a mano.
+    if (comp.mano) {
+      state.matches = tenute();
+      aggiungiAMano();
+      status("ok", '<span class="msg"><b>' + esc(comp.nome) + '</b>: ESPN non pubblica le giovanili italiane, ' +
+             'la partita si scrive qui. Le squadre vengono dall\'elenco delle formazioni.</span>');
+      return;
+    }
+
     var d1 = (el.dal.value || "").replace(/-/g, "");
     var d2 = (el.al.value || "").replace(/-/g, "");
     if (!d1 || !d2) { status("warn", '<span class="msg">Scegli le due date.</span>'); return; }
@@ -473,7 +528,9 @@
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then(function (d) {
         var evs = d.events || [];
-        state.matches = evs.map(function (ev, i) {
+        var prima = tenute();
+        var quante = prima.filter(function (m) { return m.checked; }).length;
+        state.matches = prima.concat(evs.map(function (ev, i) {
           var c = ev.competitions[0];
           var home = null, away = null;
           (c.competitors || []).forEach(function (x) {
@@ -497,7 +554,7 @@
             id: ev.id || String(i),
             tid1: home && home.team ? String(home.team.id || "") : "",
             tid2: away && away.team ? String(away.team.id || "") : "",
-            checked: i < MAXEV,
+            checked: quante + i < MAXEV,
             finita: st.state === "post",
             haPunteggio: haPunteggio,
             statoBreve: st.shortDetail || st.detail || "",
@@ -514,13 +571,15 @@
               away && away.shootoutScore != null ? String(away.shootoutScore) : ""
             ]
           };
-        });
+        }));
 
         render();
         var ok = state.matches.length > 0;
         el.csv.disabled = el.sheet.disabled = !ok;
         if (ok) {
-          status("ok", '<span class="msg"><b>' + state.matches.length + ' partite trovate.</b> Spunta quelle da mandare in grafica (max ' + MAXEV + ') e correggi le celle se serve.</span>');
+          status("ok", '<span class="msg"><b>' + evs.length + ' partite trovate</b>' +
+                 (prima.length ? ' (e ' + prima.length + ' tenute da prima)' : '') +
+                 '. Spunta quelle da mandare in grafica, al massimo ' + MAXEV + '.</span>');
         } else {
           status("warn", '<span class="msg"><b>Nessuna partita</b> in questo intervallo per ' + esc(comp.nome) + '.</span>');
         }
@@ -542,14 +601,89 @@
     return state.matches.filter(function (m) { return m.checked; }).slice(0, MAXEV);
   }
 
+  // ---------------- partite scritte a mano ----------------
+  // Servono per le giovanili, che ESPN non ha, ma valgono per qualsiasi
+  // competizione: una partita che ESPN si e' persa la si aggiunge lo stesso.
+  var contaMano = 0;
+  function aggiungiAMano() {
+    var comp = state.comp || COMPS[el.comp.selectedIndex];
+    state.matches.push({
+      id: "mano-" + (++contaMano) + "-" + Date.now(),
+      mano: true, code: comp ? comp.code : "",
+      tid1: "", tid2: "", checked: selected().length < MAXEV,
+      finita: true, haPunteggio: true, statoBreve: "a mano",
+      campi: [comp ? comp.nome : "", "", "", "-", "", "", "", "", "", ""]
+    });
+    render();
+  }
+
+  // Le squadre delle giovanili arrivano da giovanili.js: sono le stesse che
+  // usano le formazioni, e portano con se' lo stemma del club (tid). Per le
+  // altre competizioni il nome si scrive libero.
+  function tendinaSquadre(m, quale) {
+    var code = m.code || "";
+    if (!(window.GIOVANILI && GIOVANILI.mia(code))) {
+      return '<input type="text" class="sq" data-mano="' + esc(m.id) + '" data-k="' + quale + '" ' +
+             'value="' + esc(m.campi[quale === "casa" ? 4 : 7]) + '" placeholder="' +
+             (quale === "casa" ? "Squadra di casa" : "Squadra ospite") + '">';
+    }
+    var scelto = m.campi[quale === "casa" ? 4 : 7];
+    var h = '<select class="sq" data-mano="' + esc(m.id) + '" data-k="' + quale + '">' +
+            '<option value="">&mdash; ' + (quale === "casa" ? "casa" : "ospite") + ' &mdash;</option>';
+    GIOVANILI.squadre(code).forEach(function (q) {
+      h += '<option value="' + esc(q.id) + '"' + (scelto === q.name ? " selected" : "") + '>' +
+           esc(q.name) + '</option>';
+    });
+    return h + '</select>';
+  }
+
+  function rigaMano(m) {
+    return '<div class="amano">' +
+      '<input type="checkbox" data-id="' + esc(m.id) + '"' + (m.checked ? ' checked' : '') + '>' +
+      '<span class="cmp">' + esc(m.campi[0]) + '</span>' +
+      tendinaSquadre(m, "casa") +
+      '<input type="text" class="pt" data-mano="' + esc(m.id) + '" data-k="s1" value="' + esc(m.campi[5]) + '" placeholder="0">' +
+      '<input type="text" class="pt" data-mano="' + esc(m.id) + '" data-k="s2" value="' + esc(m.campi[8]) + '" placeholder="0">' +
+      tendinaSquadre(m, "ospite") +
+      '<input type="text" class="qn" data-mano="' + esc(m.id) + '" data-k="quando" value="' + esc(m.campi[2]) + '" placeholder="es. 7 set &middot; 15:00">' +
+      '<input type="text" class="ex" data-mano="' + esc(m.id) + '" data-k="extra" value="' + esc(m.campi[3] === "-" ? "" : m.campi[3]) + '" placeholder="d.t.s. / d.c.r.">' +
+      '<button type="button" class="via" data-viamano="' + esc(m.id) + '">Togli</button>' +
+      '</div>';
+  }
+
+  function scriviMano(id, k, v) {
+    var m = state.matches.filter(function (x) { return x.id === id; })[0];
+    if (!m) return;
+    if (k === "casa" || k === "ospite") {
+      var dove = k === "casa" ? 4 : 7;
+      if (window.GIOVANILI && GIOVANILI.mia(m.code)) {
+        // dalla tendina arriva l'id della squadra: si scrive il nome e si
+        // tiene lo stemma del club, che e' quello che finisce in grafica
+        var q = GIOVANILI.squadre(m.code).filter(function (z) { return z.id === v; })[0];
+        m.campi[dove] = q ? q.name : "";
+        m[k === "casa" ? "tid1" : "tid2"] = q ? GIOVANILI.tid(m.code, q.id) : "";
+      } else {
+        m.campi[dove] = v;
+      }
+      return;
+    }
+    if (k === "s1") { m.campi[5] = v; return; }
+    if (k === "s2") { m.campi[8] = v; return; }
+    if (k === "quando") { m.campi[2] = v; return; }
+    if (k === "extra") { m.campi[3] = v.trim() || "-"; return; }
+  }
+
   function render() {
     if (!state.matches.length) {
-      el.out.innerHTML = '<div class="empty"><h2>Nessuna partita</h2><p>Prova un altro intervallo di date.</p></div>';
+      el.out.innerHTML = '<div class="empty"><h2>Nessuna partita</h2>' +
+        '<p>Prova un altro intervallo di date, oppure aggiungine una a mano.</p></div>';
       return;
     }
 
-    var h = '<div class="matches">';
-    state.matches.forEach(function (m) {
+    // prima quelle scritte a mano: sono quelle su cui si sta lavorando
+    var h = state.matches.filter(function (m) { return m.mano; }).map(rigaMano).join("");
+    h += '<div class="matches">';
+    state.matches.filter(function (m) { return !m.mano; }).forEach(function (m) {
       h += '<label class="match' + (m.checked ? '' : ' off') + '">' +
         '<input type="checkbox" data-id="' + esc(m.id) + '"' + (m.checked ? ' checked' : '') + '>' +
         '<span class="who">' + esc(m.campi[4]) + ' – ' + esc(m.campi[7]) + '</span>' +
@@ -739,6 +873,28 @@
   }
 
   el.load.addEventListener("click", load);
+  el.mano.addEventListener("click", aggiungiAMano);
+  el.svuota.addEventListener("click", function () {
+    state.matches = [];
+    render();
+    status("", '<span class="msg">Elenco svuotato.</span>');
+  });
+
+  // I campi scritti a mano si ascoltano UNA volta sola sul contenitore, non a
+  // ogni ridisegno: attaccandoli dentro render() si accumulavano a ogni giro.
+  // E si scrive senza ridisegnare, se no il fuoco salta via a ogni lettera.
+  ["input", "change"].forEach(function (quale) {
+    el.out.addEventListener(quale, function (ev) {
+      var t = ev.target;
+      if (t.dataset && t.dataset.mano) scriviMano(t.dataset.mano, t.dataset.k, t.value);
+    });
+  });
+  el.out.addEventListener("click", function (ev) {
+    var b = ev.target.closest ? ev.target.closest("button[data-viamano]") : null;
+    if (!b) return;
+    state.matches = state.matches.filter(function (x) { return x.id !== b.dataset.viamano; });
+    render();
+  });
   el.csv.addEventListener("click", download);
   el.sheet.addEventListener("click", inviaAlFoglio);
   el.regia.addEventListener("click", inviaRegia);
