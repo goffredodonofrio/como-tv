@@ -245,15 +245,23 @@
      accesi tutti */
   .formatiSeq .b.spento{background:transparent;border:1px solid var(--linea,#3A3A3A);color:var(--fumo,#8A8A8A);}
   .formatiSeq .b.spento:hover{border-color:var(--oro,#C8A24A);color:#D8D8D8;}
-  .pannelloGrafiche{position:fixed;right:0;top:0;bottom:0;width:min(760px,68vw);z-index:220;
-    background:#141414;border-left:1px solid #2A2A2A;box-shadow:-18px 0 40px rgba(0,0,0,.5);
-    display:flex;flex-direction:column;}
-  .pannelloGrafiche header{display:flex;align-items:baseline;gap:12px;padding:10px 14px;
-    border-bottom:1px solid #2A2A2A;background:#181818;}
-  .pannelloGrafiche header b{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--oro,#C8A24A);}
-  .pannelloGrafiche header span{font-size:11px;color:#8A8A8A;flex:1;}
-  .pannelloGrafiche header a{font-size:11px;color:#5AA7F2;}
-  .pannelloGrafiche iframe{flex:1;border:0;width:100%;background:#0F0F0F;}
+  /* la cassa del generatore: sempre fissa, cambia solo dove sta */
+  .grafCassa{position:fixed;z-index:210;display:none;background:#141414;
+    border:1px solid #2A2A2A;overflow:hidden;flex-direction:column;}
+  .grafCassa.agganciata{display:flex;border-radius:0;border-left:0;border-right:0;box-shadow:none;}
+  .grafCassa.agganciata header{display:none;}
+  .grafCassa.libera{display:flex;right:12px;top:52px;bottom:12px;width:min(880px,72vw);left:auto;
+    border-radius:10px;box-shadow:-18px 0 46px rgba(0,0,0,.55);}
+  .grafCassa header{display:flex;align-items:baseline;gap:12px;padding:9px 14px;
+    border-bottom:1px solid #2A2A2A;background:#181818;flex:0 0 auto;}
+  .grafCassa header b{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--oro,#C8A24A);}
+  .grafCassa header span{font-size:11px;color:#8A8A8A;flex:1;}
+  .grafCassa header a{font-size:11px;color:#5AA7F2;}
+  .grafCassa iframe{flex:1;border:0;width:100%;height:100%;background:#0F0F0F;}
+  .grafBarra{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--linea,#2A2A2A);}
+  .grafBarra span{font-size:10.5px;color:var(--fumo,#8A8A8A);flex:1;line-height:1.35;}
+  .grafDove{flex:1;min-height:0;}
+  #paneGrafiche{display:flex;flex-direction:column;min-height:0;height:100%;}
   /* l'anteprima della grafica sopra il Programma */
   .telaio .graficaSopra{position:absolute;inset:0;pointer-events:none;z-index:6;
     background-position:center;background-repeat:no-repeat;background-size:contain;}
@@ -275,10 +283,21 @@
     border-radius:2px;overflow:hidden;cursor:pointer;z-index:3;display:flex;align-items:center;gap:5px;padding-left:3px;}
   .tlpista .clipG.sel{background:#6A5594;}
   .tlpista .clipG img{height:26px;width:auto;max-width:34px;object-fit:contain;background:#1A1A1A;border-radius:2px;}
-  .tlpista .clipG .tt{font-size:10px;color:#E2DAF5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .tlpista .clipG .bordo{position:absolute;top:0;bottom:0;width:7px;cursor:ew-resize;z-index:4;}
+  .tlpista .clipG .tt{font-size:10px;color:#E2DAF5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    padding-right:10px;}
+  .tlpista .clipG img{margin-left:6px;}
+  /* LE MANIGLIE SI VEDONO. Su una clip video il bordo si indovina, perche'
+     l'immagine finisce; una grafica e' un rettangolo viola uniforme e il
+     punto dove prenderla non si capisce. Due prese chiare ai lati, sempre
+     accese, che si illuminano quando ci passi sopra. */
+  .tlpista .clipG .bordo{position:absolute;top:0;bottom:0;width:9px;cursor:ew-resize;z-index:4;
+    display:flex;align-items:center;justify-content:center;}
   .tlpista .clipG .bordo.sx{left:0;} .tlpista .clipG .bordo.dx{right:0;}
-  .tlpista .clipG .bordo:hover{background:rgba(255,255,255,.22);}
+  .tlpista .clipG .bordo::after{content:'';width:3px;height:60%;max-height:22px;border-radius:2px;
+    background:rgba(226,218,245,.5);transition:background .12s,width .12s;}
+  .tlpista .clipG .bordo:hover::after{background:#F0EBFF;width:4px;}
+  .tlpista .clipG .bordo:hover{background:rgba(255,255,255,.14);}
+  .tlpista .clipG.sel .bordo::after{background:#F0EBFF;}
   .tlpista .clipA::before{content:'';position:absolute;left:0;right:0;top:16px;bottom:0;
     background:repeating-linear-gradient(90deg,rgba(255,255,255,.35) 0 1px,transparent 1px 3px),
                linear-gradient(180deg,transparent 0 35%,rgba(255,255,255,.22) 35% 65%,transparent 65%);}
@@ -1173,11 +1192,19 @@
       <button class="on" data-t="progetto">Progetto: <span id="projNome">—</span></button>
       <button data-t="sorgenti">Sorgenti</button>
       <button data-t="info">Info</button>
+      <button data-t="grafiche">Grafiche</button>
       <span class="piu">»</span>
     </div>
     <div class="projPath" id="projPath"><i class="cart"></i><span>nessuna partita aperta</span></div>
     <div class="projCerca"><span class="lente2">⌕</span><input type="text" id="projCerca" placeholder="" autocomplete="off"><span class="n" id="projN">0 elementi</span></div>
     <div class="projCorpo">
+      <div class="projPane" id="paneGrafiche" hidden>
+        <div class="grafBarra">
+          <span>le grafiche vanno sulla traccia V2 del montato aperto</span>
+          <button class="b" id="grafStacca" title="staccalo: diventa un pannello a sé, che puoi allargare">stacca \u21f1</button>
+        </div>
+        <div class="grafDove" id="grafDove"></div>
+      </div>
       <div class="projPane" id="paneProgetto">
         <div id="bin"></div>
         <div class="suggeriti binSugg" id="seqSugg" hidden>
@@ -2280,19 +2307,56 @@
   //  grafica torna in TIMELINE come livello sopra il video, e la guardi nel
   //  Programma prima di esportare. Il rendering resta l'ultimo passo, non
   //  il modo per vedere com'e' venuta.
-  function apriPannelloGrafiche() {
-    if (!SEQ) return dice("Apri prima una sequenza: la grafica va sopra un montato.");
-    var vecchio = el("finGrafiche"); if (vecchio) { vecchio.remove(); return; }
-    var box = document.createElement("div");
-    box.className = "pannelloGrafiche"; box.id = "finGrafiche";
-    box.innerHTML = '<header><b>Grafiche</b>' +
-      '<span>vanno sulla traccia V2 di “' + pulito(SEQ.titolo || "sequenza") + '”</span>' +
-      '<a href="#" id="grafChiudi">chiudi</a></header>' +
-      '<iframe id="grafTelaio" src="' + GEN + '&dentro=mam&evento=' +
-        encodeURIComponent((REG && REG.evento) || "") + '"></iframe>';
-    document.body.appendChild(box);
-    el("grafChiudi").addEventListener("click", function (e) { e.preventDefault(); box.remove(); });
+  //  IL PANNELLO STA IN UNA CASSA CHE NON SI SPOSTA MAI. Un iframe che
+  //  cambia genitore nel DOM viene RICARICATO dal browser: staccando il
+  //  pannello perderesti la maschera che stavi compilando. Quindi il
+  //  generatore vive in una cassa fissa, e a cambiare sono solo le sue
+  //  coordinate — agganciata sopra la colonna, o libera piu' grande.
+  var GRAF = { modo: "chiuso" };     // chiuso · colonna · libera
+  function cassaGrafiche() {
+    var c = el("grafCassa");
+    if (c) return c;
+    c = document.createElement("div");
+    c.className = "grafCassa"; c.id = "grafCassa";
+    c.innerHTML = '<header id="grafTesta"><b>Grafiche</b>' +
+      '<span id="grafSeq">nessuna sequenza</span>' +
+      '<a href="#" id="grafAggancia">riaggancia</a><a href="#" id="grafChiudi">chiudi</a></header>' +
+      '<iframe id="grafTelaio" src="' + GEN + '&dentro=mam"></iframe>';
+    document.body.appendChild(c);
+    el("grafChiudi").addEventListener("click", function (e) { e.preventDefault(); grafiche("chiuso"); });
+    el("grafAggancia").addEventListener("click", function (e) { e.preventDefault(); vaiTab("grafiche"); });
+    return c;
   }
+  function posaCassa() {
+    var c = el("grafCassa"); if (!c || GRAF.modo === "chiuso") return;
+    if (GRAF.modo === "libera") {
+      c.style.cssText = ""; c.className = "grafCassa libera";
+      return;
+    }
+    var dove = el("grafDove");
+    if (!dove || el("paneGrafiche").hidden) { c.className = "grafCassa"; c.style.display = "none"; return; }
+    var r = dove.getBoundingClientRect();
+    if (r.width < 40 || r.height < 40) { c.style.display = "none"; return; }
+    c.className = "grafCassa agganciata";
+    c.style.cssText = "display:block;left:" + Math.round(r.left) + "px;top:" + Math.round(r.top) +
+                      "px;width:" + Math.round(r.width) + "px;height:" + Math.round(r.height) + "px";
+  }
+  function grafiche(modo) {
+    GRAF.modo = modo;
+    var c = modo === "chiuso" ? el("grafCassa") : cassaGrafiche();
+    if (!c) return;
+    if (modo === "chiuso") { c.style.display = "none"; c.className = "grafCassa"; return; }
+    var t = el("grafSeq"); if (t) t.textContent = SEQ ? (SEQ.titolo || "sequenza") : "apri prima una sequenza";
+    c.style.display = "block";
+    posaCassa();
+  }
+  function graficheNellaColonna() { grafiche("colonna"); }
+  function apriPannelloGrafiche() {
+    if (GRAF.modo === "libera") { grafiche("libera"); return; }
+    vaiTab("grafiche");
+  }
+  window.addEventListener("resize", posaCassa);
+  setInterval(function () { if (GRAF.modo === "colonna") posaCassa(); }, 400);
 
   // La grafica torna dal pannello: entra in timeline alla testina, cinque
   // secondi, e da li' si sposta e si allunga come un pezzo qualsiasi.
@@ -2983,6 +3047,7 @@
     q("tlScivolo", function () { STRUMENTO = "y"; strumentoVisto(); });
     q("tlGiunzione", function () { STRUMENTO = "n"; strumentoVisto(); });
     q("tlMano", function () { STRUMENTO = "h"; strumentoVisto(); });
+    q("grafStacca", function () { grafiche("libera"); });
     q("tlPiu", function () { LENTE = Math.min(32, LENTE * 2); disegnaTutto(); });
     q("tlMeno", function () { LENTE = Math.max(1, LENTE / 2); disegnaTutto(); });
     q("tlTutto", function () { LENTE = 1; TL.vista = null; disegnaTutto(); });
@@ -4722,7 +4787,8 @@
   function vaiTab(t) {
     TAB = t;
     document.querySelectorAll(".projTabs button").forEach(function (b) { b.classList.toggle("on", b.dataset.t === t); });
-    ["progetto", "sorgenti", "info"].forEach(function (k) { var p = el("pane" + k.charAt(0).toUpperCase() + k.slice(1)); if (p) p.hidden = (k !== t); });
+    ["progetto", "sorgenti", "info", "grafiche"].forEach(function (k) { var p = el("pane" + k.charAt(0).toUpperCase() + k.slice(1)); if (p) p.hidden = (k !== t); });
+    if (t === "grafiche") graficheNellaColonna();
     var cerca = el("projCerca");
     if (cerca) cerca.placeholder = MODO === "archivio" ? "azioni: appunti, ESPN, telecronaca \u00b7 Invio"
       : t === "sorgenti" ? "filtra le registrazioni" : t === "progetto" ? "filtra il progetto" : "";
