@@ -737,6 +737,7 @@ async function cercaBoati(p) {
 //  fra 60 e 85 secondi dopo. Da li' le due misure.
 const APP_PRE = 30, APP_POST = 45;      // un'azione qualsiasi: c'e' aria per il replay corto
 const GOL_PRE = 35, GOL_POST = 80;      // un gol il replay ce l'ha sempre, e lungo
+const AZIONE_PRE = 12;          // quanta rincorsa prima della palla in rete
 const HL_STRETTO_PRE = 8, HL_STRETTO_POST = 12;   // quando bisogna stare nei minuti
 // Cinque minuti di GIOCO. Apertura e calcio d'inizio si aggiungono, non si
 // tolgono: prima si mangiavano due minuti di azioni, e il montato perdeva
@@ -801,6 +802,7 @@ function uniscoIGol(pezzi, rec) {
     if ((x.titolo || "").length > (gia.titolo || "").length) Object.assign(gia, x);
     const w = finestraGol(t, rec);
     gia.t = t; gia.dentro = w.dentro; gia.fuori = w.fuori; gia.replay = w.replay;
+    if (w.rete) gia.gol = w.rete;
     gia.base = gia.dentro;
   });
   return fuori;
@@ -813,18 +815,41 @@ function uniscoIGol(pezzi, rec) {
 // La finestra di un gol, da un'unica parte: cosi' vale uguale quando il
 // pezzo nasce e quando due pezzi si uniscono. Se la fine del replay e' gia'
 // stata letta una volta, quella comanda; se no, le maniglie generose.
+// La finestra di un gol. Le due estremita' le sa l'inquadratura, quando
+// e' stata letta: dove la palla e' entrata (a.gol) e dove il gioco e'
+// ripartito (a.replay). Se non e' stata letta, restano le maniglie a
+// occhio — che sul minuto scritto tardi aprono a gol gia' fatto.
+// Quello che si e' letto una volta e' segnato al secondo dell'appunto. Ma
+// l'appunto si puo' spostare — basta che cambi il ritardo misurato sulla
+// partita — e allora la chiave esatta non si trova piu' e il pezzo torna
+// alle maniglie a occhio. Quindi si cerca la chiave PIU' VICINA: entro
+// venticinque secondi e' sempre lo stesso gol.
+function vicinoNella(mappa, t) {
+  if (!mappa) return 0;
+  const k = String(Math.round(t));
+  if (mappa[k] !== undefined) return mappa[k];
+  let meglio = 0, quanto = 26;
+  Object.keys(mappa).forEach((x) => {
+    const d = Math.abs(+x - t);
+    if (d < quanto) { quanto = d; meglio = mappa[x]; }
+  });
+  return meglio;
+}
 function finestraGol(t, rec) {
   const a = rec && ARCHIVIO[rec];
-  const noto = a && a.replay && a.replay[String(Math.round(t))];
-  return { dentro: Math.max(0, t - GOL_PRE),
-           fuori: noto ? Math.min(t + 150, noto + 3) : t + GOL_POST,
-           replay: !!noto };
+  const noto = a && vicinoNella(a.replay, t);
+  const rete = a && vicinoNella(a.gol, t);
+  const dentro = rete ? Math.max(0, Math.min(t - GOL_PRE, rete - AZIONE_PRE)) : Math.max(0, t - GOL_PRE);
+  return { dentro: dentro,
+           fuori: noto ? Math.min(dentro + 200, noto + 3) : t + GOL_POST,
+           replay: !!noto, rete: rete || 0 };
 }
 function allargaPerIlReplay(p, rec) {
   const q = Object.assign({}, p);
   const t = p.t !== undefined ? p.t : p.dentro + APP_PRE;
   const w = finestraGol(t, rec);
   q.dentro = w.dentro; q.fuori = w.fuori; if (w.replay) q.replay = true;
+  if (w.rete) q.gol = w.rete;
   return q;
 }
 
@@ -846,7 +871,7 @@ function quelloCheSappiamo(r) {
   const a = APPUNTI[rec], e = ESPN[rec];
   const azioni = [], gol = [], voce = [], boati = [];
   if (a) {
-    const rit = ritardoDi(a.telecronista);
+    const rit = ritardoPartita(rec);
     (a.righe || []).forEach((x) => {
       const t = dove(x.s, Math.max(0, (x.d || 0) - rit));
       if (t === null) return;
@@ -1008,10 +1033,17 @@ async function preparaSequenze(p) {
   if (sap.azioni.length) {
     // qui le maniglie si stringono: dentro cinque minuti ci devono stare piu'
     // cose, e questa e' la sequenza che assomiglia gia' a un montato
-    const strette = sap.azioni.map((x) => Object.assign({}, x, {
-      dentro: Math.max(0, (x.t !== undefined ? x.t : x.dentro + APP_PRE) - HL_STRETTO_PRE),
-      fuori: (x.t !== undefined ? x.t : x.dentro + APP_PRE) + HL_STRETTO_POST
-    }));
+    // e si stringono intorno alla PALLA IN RETE quando l'inquadratura l'ha
+    // detta: intorno al minuto scritto, che ogni tanto arriva quasi un
+    // minuto dopo, si finiva in mezzo all'esultanza.
+    const strette = sap.azioni.map((x) => {
+      const t = x.t !== undefined ? x.t : x.dentro + APP_PRE;
+      const perno = x.gol || t;
+      return Object.assign({}, x, {
+        dentro: Math.max(0, perno - HL_STRETTO_PRE),
+        fuori: perno + HL_STRETTO_POST
+      });
+    });
     // La testa del montato non entra in gara con le azioni: prima la voce
     // che presenta, poi il fischio d'inizio, poi il gioco. Il tempo che
     // resta se lo dividono le azioni.
@@ -1090,7 +1122,7 @@ async function preparaSequenze(p) {
         const y = Object.assign({}, x);
         // UN REPLAY SOLO: il pezzo finisce dove finisce il primo, non
         // l'ultimo. La differenza la sa il cronometro, che l'ha letta.
-        const noto = (ARCHIVIO[rec] && ARCHIVIO[rec].primoReplay) ? ARCHIVIO[rec].primoReplay[String(Math.round(t))] : 0;
+        const noto = ARCHIVIO[rec] ? vicinoNella(ARCHIVIO[rec].primoReplay, t) : 0;
         y.fuori = noto ? Math.min(x.fuori, noto + 3) : Math.min(x.fuori, t + 55);
         y.unReplay = true;
         return y;
@@ -1101,7 +1133,7 @@ async function preparaSequenze(p) {
       golShorts[golShorts.length - 1] = Object.assign({}, ult, { fuori: ult.fuori + 3, coda: true });
       const sannoIlReplay = golShorts.filter((x) => {
         const t = x.t !== undefined ? x.t : x.dentro + GOL_PRE;
-        return ARCHIVIO[rec] && ARCHIVIO[rec].primoReplay && ARCHIVIO[rec].primoReplay[String(Math.round(t))];
+        return ARCHIVIO[rec] && vicinoNella(ARCHIVIO[rec].primoReplay, t);
       }).length;
       crea("SHORTS", golShorts,
            "Regole social: un replay per gol, niente gol annullati (se non lo dice il giornalista), " +
@@ -4248,6 +4280,7 @@ function tesseractCe() {
 // la fascia alta di un fotogramma, a grandezza naturale: e' li' che sta
 // la grafica. Il file resta su S3: ffmpeg salta al secondo e prende uno
 const OROLOGIO_PY = path.join(__dirname, "orologio.py");
+const CAMPO_PY = path.join(__dirname, "campo.py");
 function fasciaAlta(via, sec) {
   return new Promise((ok) => {
     const png = path.join(os.tmpdir(), "orologio-" + nuovoId("") + ".png");
@@ -4318,6 +4351,135 @@ async function quantoSiAssomigliano(box, rif, file) {
 //  non legge anche quando la targa c'e', e un "non letto" scambiato per
 //  "non c'e'" allungava il pezzo dentro il gioco. Adesso si guarda il
 //  DISEGNO della targa: o c'e' o non c'e', e le cifre non contano.
+// LE CIFRE DENTRO LA GRAFICA. Il cercatore di targhe a volte restituisce
+// tutta la barra — "GRO 0 1 TWE 06:15" — e li' dentro il lettore di testo
+// si perde fra il punteggio e le sigle. Ma il cronometro sta sempre a un
+// capo della barra: si provano i due capi, e si tiene quello che legge un
+// orario che avanza come deve.
+async function targaDelleCifre(via, targa, t) {
+  if (!targa) return null;
+  const [x, y, w, h] = targa;
+  if (w <= 140) return targa;                      // gia' stretta: sono le cifre
+  const prova = [];
+  [0.30, 0.26, 0.34].forEach((q) => {
+    const lw = Math.round(w * q);
+    prova.push([Math.round(x + w - lw), y, lw, h]);   // capo destro
+    prova.push([x, y, lw, h]);                        // capo sinistro
+  });
+  for (const c of prova) {
+    const a1 = await oraDelCronometro(via, c, t);
+    if (a1 === null || a1 <= 0 || a1 > 8000) continue;
+    const a2 = await oraDelCronometro(via, c, t + 20);
+    if (a2 === null) continue;
+    if (Math.abs((a2 - a1) - 20) <= 3) {
+      console.log("[clip] cifre del cronometro: " + c.join(",") + " (legge " + a1 + " e " + a2 + ")");
+      return c;
+    }
+  }
+  return null;
+}
+
+// Legge il NUMERO del cronometro a un certo secondo. Serve per il secondo
+// modo di riconoscere un replay, quello che vale sui feed che la grafica
+// non la tolgono mai.
+async function oraDelCronometro(via, targa, secondi) {
+  const f = await fascia(via, secondi);
+  if (!f) return null;
+  const letto = await new Promise((ok) => {
+    execFile("python3", [OROLOGIO_PY, "--targa", targa.join(","), f], { timeout: 60000 },
+      (e, so) => { if (e) return ok(null); try { ok(JSON.parse(String(so)).letture[0]); } catch (x) { ok(null); } });
+  });
+  butta(f);
+  return (letto === null || letto === undefined) ? null : letto;
+}
+
+// QUANDO RICOMINCIA IL GIOCO
+//  Ci sono due modi in cui una regia dice "questo e' un replay". C'e' chi
+//  TOGLIE il cronometro (Genoa): quello lo trova `fineDelReplay`. E c'e'
+//  chi lo LASCIA acceso e lo fa correre uguale (Groningen): li' il
+//  cronometro non dice niente, e per anni non si trovava niente.
+//
+//  Su quei feed si guarda l'INQUADRATURA. Il replay e' sempre stretto —
+//  una camera dietro la porta, un carrello a bordo campo — e stacca in
+//  continuazione; il gioco vero e' la camera larga in tribuna, che sta
+//  ferma e riprende ventidue giocatori piccoli. Fra le due cose ci sono
+//  cinque volte di differenza. Quindi non si cerca il replay: si cerca
+//  DOVE RICOMINCIA IL GIOCO, che e' poi il punto in cui il pezzo deve
+//  chiudere.
+//
+//  Tre numeri per ogni secondo (li fa campo.py) e una regola:
+//    prato > 0,45   c'e' il campo
+//    alto  < 0,15   in cima ci sono gli spalti, non altro prato — e' qui
+//                   che casca un primo piano su un giocatore in mezzo al
+//                   campo, che di verde ne ha 0,86 anche in alto
+//    moto  < 25     la camera larga sta ferma
+//
+//  Misurato su quattro gol di GRONINGEN-TWENTE: la ripartenza trovata
+//  cade entro un secondo da quella vera in tutti e quattro.
+async function guardaIlCampo(via, da, durata, passo) {
+  return await new Promise((ok) => {
+    execFile("python3", [CAMPO_PY, via, String(da), String(durata), String(passo || 1)],
+      { timeout: 900000, maxBuffer: 4 * 1024 * 1024 },
+      (e, so) => { if (e) return ok([]); try { ok(JSON.parse(String(so)).campo || []); } catch (x) { ok([]); } });
+  });
+}
+
+// Chi e' largo e chi no, secondo per secondo.
+function larghi(campo) {
+  return campo.map((x) => x.prato > 0.45 && x.alto < 0.15 && x.moto < 30);
+}
+
+// IL SECONDO IN CUI RIPARTE IL GIOCO, dopo il gol.
+//  Si cerca il primo pezzo di camera larga che arriva dopo almeno otto
+//  secondi di roba stretta (esultanza e replay non stanno mai sotto). E
+//  poi si controlla che il gioco CONTINUI: ogni tanto anche un replay lo
+//  fanno con la camera larga, ma dura quattro secondi e poi si torna in
+//  stretto, mentre la ripartenza vera resta larga.
+function ripartenza(campo, da) {
+  const largo = larghi(campo);
+  const MINIMO = 3, PRIMA = 8, DOPO = 15;
+  for (let i = Math.max(da, PRIMA); i + MINIMO <= largo.length; i++) {
+    if (!largo[i] || largo[i - 1]) continue;
+    let bene = true;
+    for (let j = i; j < i + MINIMO; j++) if (!largo[j]) { bene = false; break; }
+    if (!bene) continue;
+    let stretti = 0;
+    for (let j = i - 1; j >= 0 && !largo[j]; j--) stretti++;
+    if (stretti < PRIMA) continue;
+    let dopo = 0, quanti = 0;
+    for (let j = i; j < Math.min(largo.length, i + DOPO); j++) { quanti++; if (largo[j]) dopo++; }
+    if (quanti >= 8 && dopo * 2 < quanti) continue;      // era un replay in campo largo
+    return i;
+  }
+  return -1;
+}
+
+// IL SECONDO IN CUI E' STATO FATTO IL GOL.
+//  Lo stesso disegno, letto al contrario: finche' si gioca c'e' la camera
+//  larga, e nell'istante in cui la palla entra la regia va sui visi e non
+//  torna piu' per un pezzo. Quindi il gol e' dove FINISCE l'ultima lunga
+//  camera larga prima dell'appunto. Serve perche' il minuto scritto dal
+//  giornalista puo' arrivare tardissimo: su GRONINGEN-TWENTE, cinquantun
+//  secondi dopo la palla in rete.
+function momentoDelGol(campo, fino) {
+  const largo = larghi(campo);
+  const LUNGA = 6, DOPO = 8;
+  const fine = Math.min(fino, largo.length);
+  for (let i = fine - 1; i >= LUNGA; i--) {
+    if (!largo[i] || largo[i + 1]) continue;             // deve essere la FINE di una fila
+    let lunga = 0;
+    for (let j = i; j >= 0 && largo[j]; j--) lunga++;
+    if (lunga < LUNGA) continue;                          // una fila corta e' un replay largo
+    // dopo il gol si sta stretti un pezzo. Non per forza di fila: dentro
+    // l'esultanza ci scappa un secondo di campo largo, e non deve contare.
+    let stretti = 0, quanti = 0;
+    for (let j = i + 1; j < Math.min(fine, i + 1 + DOPO); j++) { quanti++; if (!largo[j]) stretti++; }
+    if (quanti < DOPO || stretti < DOPO - 2) continue;
+    return i;
+  }
+  return -1;
+}
+
 async function fineDelReplay(via, targa, rif, t) {
   const visto = {};
   const cE = async (s) => {
@@ -4458,86 +4620,177 @@ async function rifinisciGol(idSeq) {
   if (!q || q.rifinito) return { ok: true, gia: true };
   const r = q && R.reg[q.reg];
   if (!r || !r.arch) return { ok: false, errore: "questa sequenza non viene dall'archivio" };
-  if (!tesseractCe()) return { ok: false, errore: "senza tesseract il cronometro non si legge" };
   if (!q.pezzi.length || q.pezzi.length > 8) return { ok: false, errore: "troppi pezzi, o nessuno" };
   const a = ARCHIVIO[r.arch.rec];
-  if (!a || !a.orologio || !a.orologio.verificato) return { ok: false, errore: "di questa partita il cronometro non e' stato letto" };
-  const regione = await s3Regione(a.bucket);
-  const via = firmaConRegione(regione, r.arch.chiave, {}, 21600, a.bucket);
-  // la targa del cronometro: si trova una volta, su due fotogrammi di gioco
-  // due minuti prima del primo gol, e poi si tiene
-  let targa = a.orologio.cifre;
-  if (!targa) {
-    // La targa si cerca dove si e' sicuri che ci sia gioco: due minuti prima
-    // di un gol, o due dopo. Un tentativo solo non basta — un fotogramma puo'
-    // capitare su un primo piano, su una grafica, su un cambio.
-    const quando = [];
-    q.pezzi.forEach((pz) => {
-      const t = pz.t !== undefined ? pz.t : pz.dentro + GOL_PRE;
-      quando.push(t - 150, t + 200, t - 400);
-    });
-    for (const t0 of quando.filter((x) => x > 60).slice(0, 8)) {
-      const e = await leggiOrologioSicuro((t) => fasciaAlta(via, t), Math.round(t0), true);
-      if (e && e.cifre) { targa = e.cifre; break; }
-    }
-    if (!targa) return { ok: false, errore: "non ho ritrovato la targa del cronometro in questo file" };
-    a.orologio.cifre = targa; scriviArchivio();
-    console.log("[clip] rifinitura: targa del cronometro " + targa.join(",") + " per " + (a.partita || ""));
-  }
-  // il fotogramma di riferimento: la targa com'e' quando c'e' di sicuro,
-  // cioe' poco prima del primo gol, con il gioco in corso
-  const t1 = (q.pezzi[0].t !== undefined ? q.pezzi[0].t : q.pezzi[0].dentro + GOL_PRE);
-  let rif = null;
-  for (const d of [-150, -400, 200, -80]) {
-    const f = await fascia(via, Math.max(30, t1 + d));
-    if (!f) continue;
-    const letto = await new Promise((ok) => {
-      execFile("python3", [OROLOGIO_PY, "--targa", targa.join(","), f], { timeout: 60000 },
-        (e, so) => { if (e) return ok(null); try { ok(JSON.parse(String(so)).letture[0]); } catch (x) { ok(null); } });
-    });
-    if (letto !== null && letto !== undefined) { rif = f; break; }
-    butta(f);
-  }
-  if (!rif) return { ok: false, errore: "non ho trovato un fotogramma con il cronometro in chiaro" };
+  if (!a) return { ok: false, errore: "partita sconosciuta" };
 
-  let cambiati = 0;
+  // Il file intero si firma solo se serve: il primo modo, quello che
+  // guarda l'inquadratura, lavora sul pezzo gia' in casa e non tocca
+  // Parigi.
+  let via = null;
+  const fileIntero = async () => {
+    if (!via) {
+      const regione = await s3Regione(a.bucket);
+      via = firmaConRegione(regione, r.arch.chiave, {}, 21600, a.bucket);
+    }
+    return via;
+  };
+
+  // Il cronometro: targa e fotogramma di riferimento. Si preparano una
+  // volta sola, e solo per i gol su cui l'inquadratura non ha detto
+  // niente.
+  let orologio;
+  const preparaOrologio = async () => {
+    if (orologio !== undefined) return orologio;
+    orologio = null;
+    if (!tesseractCe()) return orologio;
+    if (!a.orologio || !a.orologio.verificato) return orologio;
+    const v = await fileIntero();
+    let targa = a.orologio.cifre;
+    if (!targa) {
+      // La targa si cerca dove si e' sicuri che ci sia gioco: due minuti
+      // prima di un gol, o due dopo. Un tentativo solo non basta — un
+      // fotogramma puo' capitare su un primo piano, su una grafica.
+      const quando = [];
+      q.pezzi.forEach((pz) => {
+        const t = pz.t !== undefined ? pz.t : pz.dentro + GOL_PRE;
+        quando.push(t - 150, t + 200, t - 400);
+      });
+      for (const t0 of quando.filter((x) => x > 60).slice(0, 8)) {
+        const e = await leggiOrologioSicuro((t) => fasciaAlta(v, t), Math.round(t0), true);
+        if (e && e.cifre) { targa = e.cifre; break; }
+      }
+      if (!targa) return orologio;
+      const t0 = Math.max(60, Math.round(q.pezzi[0].dentro) - 150);
+      const strette = await targaDelleCifre(v, targa, t0);
+      if (strette) targa = strette;
+      a.orologio.cifre = targa; scriviArchivio();
+      console.log("[clip] rifinitura: targa del cronometro " + targa.join(",") + " per " + (a.partita || ""));
+    }
+    // il fotogramma di riferimento: la targa com'e' quando c'e' di sicuro,
+    // cioe' poco prima del primo gol, con il gioco in corso
+    const t1 = (q.pezzi[0].t !== undefined ? q.pezzi[0].t : q.pezzi[0].dentro + GOL_PRE);
+    for (const d of [-150, -400, 200, -80]) {
+      const f = await fascia(v, Math.max(30, t1 + d));
+      if (!f) continue;
+      const letto = await new Promise((ok) => {
+        execFile("python3", [OROLOGIO_PY, "--targa", targa.join(","), f], { timeout: 60000 },
+          (e, so) => { if (e) return ok(null); try { ok(JSON.parse(String(so)).letture[0]); } catch (x) { ok(null); } });
+      });
+      if (letto !== null && letto !== undefined) { orologio = { targa: targa, rif: f }; break; }
+      butta(f);
+    }
+    return orologio;
+  };
+
+  let cambiati = 0, daCampo = 0, daCronometro = 0, provatoIlCronometro = false;
   for (const pz of q.pezzi) {
     const t = pz.t !== undefined ? pz.t : pz.dentro + GOL_PRE;
-    let esito2 = null;
-    try { esito2 = await fineDelReplay(via, targa, rif, t); } catch (e) { esito2 = null; }
-    if (!esito2) { pz.replay = false; continue; }
-    const fine = esito2.fine;
-    pz.fuori = Math.min(t + 150, fine + 3);
+    let fine = null;
+    let primo = null;
+
+    // PRIMO MODO: l'inquadratura. Sul pezzo in casa costa solo CPU, e
+    // vale su qualunque feed perche' non legge niente.
+    // Una lettura sola dell'inquadratura, e dentro ci sono tutte e due le
+    // cose: dove e' stato fatto il gol e dove il gioco riparte. Sul pezzo
+    // gia' in casa costa solo CPU.
+    let campo = [], base = 0;
+    const k2 = chiavePezzo(q.reg, pz.dentro, pz.fuori);
+    const casa = filePezzo(k2);
+    if (fs.existsSync(casa)) {
+      campo = await guardaIlCampo(casa, 0, 200, 1);
+      base = pz.dentro - scartoPezzo(k2);               // dal tempo del pezzo a quello del file
+    } else {
+      campo = await guardaIlCampo(await fileIntero(), Math.max(0, t - 75), 200, 1);
+    }
+    if (campo.length >= 20) {
+      const quando = (i) => Math.round(campo[i].s + base);
+      let iT = campo.findIndex((x) => x.s + base >= t);
+      if (iT < 0) iT = campo.length;
+      // il gol: l'ultima camera larga lunga prima dell'appunto
+      const i1 = momentoDelGol(campo, iT);
+      let gol = i1 >= 0 ? quando(i1) : null;
+      if (gol === null || gol <= quando(0) + 2) {
+        // la tavola comincia a gol gia' fatto: si guarda piu' indietro nel
+        // file. Succede quando il giornalista scrive tardi.
+        const pr = await guardaIlCampo(await fileIntero(), Math.max(0, t - 95), 95, 1);
+        const j = pr.length >= 20 ? momentoDelGol(pr, pr.length) : -1;
+        if (j >= 0) gol = Math.round(pr[j].s);
+      }
+      if (gol !== null && gol < t) {
+        pz.gol = gol;
+        a.gol = a.gol || {}; a.gol[String(Math.round(t))] = gol;
+      }
+      // la ripartenza: si cerca da dopo il gol, non da dopo l'appunto
+      let daQui = Math.max(0, iT - 5);
+      if (gol !== null) {
+        const g = campo.findIndex((x) => x.s + base >= gol);
+        if (g >= 0) daQui = g;
+      }
+      const i2 = ripartenza(campo, daQui);
+      if (i2 >= 0) { fine = quando(i2); pz.replayVisto = "campo"; daCampo++; }
+    }
+
+    // SECONDO MODO: il cronometro che sparisce. Serve ancora, perche' dice
+    // anche dove finisce il PRIMO replay — che per gli shorts e' l'unico
+    // che va tenuto.
+    const sannoGia = a.primoReplay && a.primoReplay[String(Math.round(t))] !== undefined;
+    if (fine === null || (!a.cronometroCieco && !sannoGia)) {
+      const o = await preparaOrologio();
+      if (o) {
+        provatoIlCronometro = true;
+        let esito = null;
+        try { esito = await fineDelReplay(await fileIntero(), o.targa, o.rif, t); } catch (e) { esito = null; }
+        if (esito) {
+          primo = esito.primo;
+          if (fine === null) { fine = esito.fine; pz.replayVisto = "cronometro"; daCronometro++; }
+        }
+      }
+    }
+
+    if (fine === null) { pz.replay = false; continue; }
+    // il pezzo comincia dall'azione, non dal minuto scritto: dodici
+    // secondi di rincorsa prima che la palla entri
+    if (pz.gol && pz.gol - AZIONE_PRE < pz.dentro) pz.dentro = Math.max(0, pz.gol - AZIONE_PRE);
+    pz.fuori = Math.min(pz.dentro + 200, fine + 3);
     pz.replay = true;
     a.replay = a.replay || {};
     a.replay[String(Math.round(t))] = fine;     // letto una volta, buono per sempre
-    a.primoReplay = a.primoReplay || {};
-    a.primoReplay[String(Math.round(t))] = esito2.primo;
+    // il PRIMO replay lo sa dire solo il cronometro: l'inquadratura dice
+    // dove riprende il gioco, cioe' dove finisce l'ULTIMO. Se non si sa,
+    // non si scrive: gli shorts se ne accorgono e tagliano a occhio.
+    if (primo !== null) {
+      a.primoReplay = a.primoReplay || {};
+      a.primoReplay[String(Math.round(t))] = primo;
+    }
     cambiati++;
-    console.log("[clip] gol al " + (pz.minuto || "?") + ": primo replay a " + esito2.primo +
-                "s, ultimo a " + fine + "s (pezzo " + Math.round(pz.fuori - pz.dentro) + "s)");
+    console.log("[clip] gol al " + (pz.minuto || "?") + ": palla in rete a " + (pz.gol || "?") +
+                "s, il gioco riparte a " + Math.round(fine) +
+                "s (" + (pz.replayVisto === "campo" ? "inquadratura" : "cronometro") +
+                ", pezzo " + Math.round(pz.fuori - pz.dentro) + "s)");
   }
-  butta(rif);
+  if (orologio && orologio.rif) butta(orologio.rif);
+  // Se il cronometro e' stato interrogato e non ha detto niente su nessun
+  // gol, e' un feed che la grafica non la toglie mai: si scrive, e la
+  // prossima volta non si spendono fotogrammi per riprovarci.
+  if (provatoIlCronometro && !daCronometro && !(a.primoReplay && Object.keys(a.primoReplay).length)) a.cronometroCieco = true;
   scriviArchivio();
   // e gia' che il file e' aperto: dove finisce il cartello e comincia
   // l'intro del telecronista
-  try { await trovaLIntro(r, via); } catch (e) { console.log("[clip] intro: " + e.message); }
+  try { await trovaLIntro(r, await fileIntero()); } catch (e) { console.log("[clip] intro: " + e.message); }
   q.rifinito = Date.now();
-  // Se il cronometro non ha detto niente su NESSUN gol, non e' un caso: e'
-  // un feed che tiene la grafica accesa anche durante i replay. Va scritto,
-  // se no si crede che la rifinitura sia passata e invece sono maniglie a
-  // occhio. Misurato: Genoa la toglie, Groningen no.
   if (!cambiati) {
     a.replayNo = true; scriviArchivio();
-    q.nota = "Il cronometro di questo feed resta acceso anche sui replay, quindi non dice dove finiscono: "
-           + "i gol tengono le maniglie larghe (" + GOL_PRE + "s prima, " + GOL_POST + "s dopo).";
+    q.nota = "Su questi gol non si e' capito dove finisce il replay: ne' il cronometro ne' l'inquadratura "
+           + "lo dicono, quindi restano le maniglie larghe (" + GOL_PRE + "s prima, " + GOL_POST + "s dopo).";
   } else {
     delete a.replayNo;
-    q.nota = "Rifinito sul cronometro: " + cambiati + " gol su " + q.pezzi.length
-           + " finiscono dove finisce il replay.";
+    q.nota = "Rifinito: " + cambiati + " gol su " + q.pezzi.length + " finiscono dove riprende il gioco"
+           + (daCampo && daCronometro ? " (" + daCampo + " dall'inquadratura, " + daCronometro + " dal cronometro)"
+              : daCampo ? " (visto dall'inquadratura)" : " (visto dal cronometro)") + ".";
   }
   scrivi(); annuncia(0, "clip");
-  return { ok: true, cambiati: cambiati, pezzi: q.pezzi.length };
+  return { ok: true, cambiati: cambiati, pezzi: q.pezzi.length, campo: daCampo, cronometro: daCronometro };
 }
 
 // L'intro trovata sul serio: dal cambio cartello, un minuto, o fino al
@@ -4913,16 +5166,21 @@ function cercaNellArchivio(q, limite) {
 //  come le azioni degli appunti, con il secondo dal cronometro. E sui gol,
 //  dove ci sono tutte e due le fonti, si misura di quanto ogni telecronista
 //  scrive in ritardo.
-let ESPN = {}, RITARDI = {};
+let ESPN = {}, RITARDI = {}, RIT_PARTITA = {};
 function fileEspn() { return path.join(DIR, "espn.json"); }
 function fileRitardi() { return path.join(DIR, "ritardi.json"); }
 function leggiEspn() {
   try { ESPN = JSON.parse(fs.readFileSync(fileEspn(), "utf8")) || {}; } catch (e) { ESPN = {}; }
-  try { RITARDI = JSON.parse(fs.readFileSync(fileRitardi(), "utf8")) || {}; } catch (e) { RITARDI = {}; }
+  try {
+    const r = JSON.parse(fs.readFileSync(fileRitardi(), "utf8")) || {};
+    // il file vecchio era solo la tabella per persona
+    if (r.persone || r.partite) { RITARDI = r.persone || {}; RIT_PARTITA = r.partite || {}; }
+    else { RITARDI = r; RIT_PARTITA = {}; }
+  } catch (e) { RITARDI = {}; RIT_PARTITA = {}; }
 }
 function scriviEspn() {
   try { fs.writeFileSync(fileEspn() + ".tmp", JSON.stringify(ESPN)); fs.renameSync(fileEspn() + ".tmp", fileEspn()); } catch (e) {}
-  try { fs.writeFileSync(fileRitardi(), JSON.stringify(RITARDI)); } catch (e) {}
+  try { fs.writeFileSync(fileRitardi(), JSON.stringify({ persone: RITARDI, partite: RIT_PARTITA })); } catch (e) {}
 }
 // il bordo di ESPN respinge i client che non conosce: questa forma passa
 function espnPrendi(url) {
@@ -5163,13 +5421,44 @@ function misuraRitardo(rec) {
     RITARDI[t] = RITARDI[t] || { valori: [] };
     RITARDI[t].valori.push(meglio);
     if (RITARDI[t].valori.length > 400) RITARDI[t].valori.shift();
+    // e sulla PARTITA, che e' quella che conta
+    RIT_PARTITA[rec] = RIT_PARTITA[rec] || { valori: [] };
+    RIT_PARTITA[rec].valori.push(meglio);
   });
 }
+function mediana(v) {
+  const x = v.slice().sort((a, b) => a - b);
+  return x[Math.floor(x.length / 2)];
+}
+// Quanto tardi ha scritto CHI HA RACCONTATO QUESTA PARTITA, quella sera.
+//  Prima si prendeva l'abitudine della persona, misurata su tutte le sue
+//  partite. Ma non e' detto che un telecronista si comporti allo stesso
+//  modo tutte le volte: dipende dalla serata, da quanto ha da dire, da
+//  chi gli sta parlando in cuffia. Quindi si misura la singola partita, e
+//  se la partita non ha abbastanza gol per dirlo non si corregge niente:
+//  meglio nessuno spostamento che uno spostamento preso da un'altra sera.
+// Rifa' il conto su tutto quello che e' gia' in casa: ESPN e appunti ci
+// sono, non serve ricomprare niente. Serve dopo un cambiamento del modo di
+// misurare — o la prima volta, che la tabella per partita nasce vuota.
+function rimisuraRitardi() {
+  RITARDI = {}; RIT_PARTITA = {};
+  Object.keys(ESPN).forEach((rec) => { try { misuraRitardo(rec); } catch (e) {} });
+  scriviEspn();
+  const con = Object.keys(RIT_PARTITA).filter((k) => RIT_PARTITA[k].valori.length >= 2);
+  console.log("[clip] ritardi rimisurati: " + con.length + " partite lo sanno dire da sole");
+  return con.length;
+}
+function ritardoPartita(rec) {
+  const r = RIT_PARTITA[rec || ""];
+  if (!r || r.valori.length < 2) return 0;
+  const med = mediana(r.valori);
+  return Math.abs(med) <= 3 ? med * 60 : 0;
+}
+// l'abitudine della persona resta, ma solo da guardare: non sposta niente
 function ritardoDi(telecronista) {
   const r = RITARDI[telecronista || ""];
   if (!r || r.valori.length < 6) return 0;
-  const v = r.valori.slice().sort((x, y) => x - y);
-  const med = v[Math.floor(v.length / 2)];
+  const med = mediana(r.valori);
   return Math.abs(med) <= 3 ? med * 60 : 0;
 }
 const CODA_ESPN = [];
@@ -5388,7 +5677,7 @@ async function cercaPerSignificato(domanda, limite) {
     if (m.tipo === "appunto") {
       const a = APPUNTI[m.rec], r = a && a.righe[m.i];
       if (!r) continue;
-      const rit = ritardoDi(a.telecronista);
+      const rit = ritardoPartita(m.rec);
       const dove = secondoNelFile(m.rec, { s: r.s, d: Math.max(0, (r.d || 0) - rit) });
       fuori.push({ rec: m.rec, partita: a.partita, competizione: a.competizione, quando: a.quando,
                    minuto: r.m, tempo: r.s, tipo: r.t, testo: r.x, hl: !!r.hl, rating: r.g || 0,
@@ -5419,7 +5708,7 @@ function cercaNegliAppunti(q, limite) {
     a.righe.forEach((r) => {
       const testo = comeSiCerca([r.x, r.t, r.m, r.g ? "rating " + r.g : "", capo]);
       if (!tutteDentro(testo, q.parole)) return;
-      const rit = ritardoDi(a.telecronista);
+      const rit = ritardoPartita(rec);
       const dove = secondoNelFile(rec, { s: r.s, d: Math.max(0, (r.d || 0) - rit) });
       // le parole nell'azione valgono piu' delle parole nel nome della partita:
       // "como" sta in mille titoli, "Paz palo" in una riga sola
@@ -6477,10 +6766,14 @@ const AZIONI = {
   },
   "clip-archivio-espn": (p) => {
     if (p.avvia) espnInCoda(!!p.rifai);
+    if (p.rimisura) rimisuraRitardi();
     const rit = {}; Object.keys(RITARDI).forEach((t) => { rit[t] = { n: RITARDI[t].valori.length, secondi: ritardoDi(t) }; });
+    const ritP = Object.keys(RIT_PARTITA).filter((k) => RIT_PARTITA[k].valori.length >= 2).length;
     return { ok: true, inCoda: CODA_ESPN.length, fatti: espnFatti, trovati: espnTrovati, falliti: espnFalliti,
              inMoto: espnInMoto, partiteConFatti: Object.keys(ESPN).filter((k) => ESPN[k] && ESPN[k].eventi).length,
-             mancanti: Object.keys(ESPN).filter((k) => ESPN[k] && ESPN[k].mancante).length, ritardi: rit };
+             mancanti: Object.keys(ESPN).filter((k) => ESPN[k] && ESPN[k].mancante).length,
+             ritardi: rit, partiteConRitardo: ritP,
+             nota: "il ritardo che sposta gli appunti e' quello della singola partita; la tabella per persona e' solo da guardare" };
   },
   "clip-archivio-espn-partita": async (p) => {
     const e = await espnTrova(String(p.rec || "")); scriviEspn(); return { ok: true, espn: e };
