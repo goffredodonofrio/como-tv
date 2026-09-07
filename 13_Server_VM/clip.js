@@ -1168,7 +1168,18 @@ function tipoDellaRiga(t) {
   const dentro = (k) => k.slice(-1) === "-"
     ? b.indexOf(" " + k.slice(0, -1)) >= 0
     : b.indexOf(" " + k + " ") >= 0;
-  for (const [nome, chiavi] of TIPI_APPUNTI) if (chiavi.some(dentro)) return nome;
+  for (const [nome, chiavi] of TIPI_APPUNTI) {
+    if (!chiavi.some(dentro)) continue;
+    // "primo palo", "secondo palo", "sul palo lontano" sono POSTI del campo,
+    // non legni colpiti: se il palo compare solo cosi', non e' un palo
+    if (nome === "Palo" && !/ (traversa|legno|montante|pali) /.test(b)) {
+      const posto = / (primo|secondo) palo | sul palo /.test(b);
+      const colpito = / (colpisce|colpito|prende|preso|centra|centrato|stampa|stampato|sbatte) /.test(b) ||
+                      /^ palo /.test(b);                   // la riga comincia con "Palo!": e' un palo
+      if (posto && !colpito) continue;
+    }
+    return nome;
+  }
   return "";
 }
 
