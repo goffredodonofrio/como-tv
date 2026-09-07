@@ -731,7 +731,10 @@ async function cercaBoati(p) {
 const APP_PRE = 30, APP_POST = 45;      // un'azione qualsiasi: c'e' aria per il replay corto
 const GOL_PRE = 35, GOL_POST = 80;      // un gol il replay ce l'ha sempre, e lungo
 const HL_STRETTO_PRE = 8, HL_STRETTO_POST = 12;   // quando bisogna stare nei minuti
-const HL_DURATA = 300;                  // cinque minuti: apertura del telecronista compresa
+// Cinque minuti di GIOCO. Apertura e calcio d'inizio si aggiungono, non si
+// tolgono: prima si mangiavano due minuti di azioni, e il montato perdeva
+// meta' delle cose per far spazio alla presentazione.
+const HL_DURATA = 300;                  // il tempo delle azioni, la testa e' in piu'
 const INTRO_DURATA = 90;                // dal cambio cartello: un minuto e mezzo, che la frase
                                         //   di apertura finisce dopo il minuto
 const INIZIO_PRE = 20, INIZIO_POST = 20; // il calcio d'inizio, venti prima e venti dopo
@@ -978,11 +981,14 @@ async function preparaSequenze(p) {
     const quantoTesta = testa.reduce((n, x) => n + (x.fuori - x.dentro), 0);
     // e le azioni che cadono dentro la testa non si ripetono
     const libere = strette.filter((x) => !testa.some((t) => x.dentro < t.fuori && t.dentro < x.fuori));
-    const scelti = stringiAllaDurata(libere, Math.max(60, HL_DURATA - quantoTesta), HL_STRETTO_PRE, HL_STRETTO_POST);
+    const scelti = stringiAllaDurata(libere, HL_DURATA, HL_STRETTO_PRE, HL_STRETTO_POST);
     const dentro = (scelti.pezzi || []).sort((a, b) => a.dentro - b.dentro);
-    crea("HIGHLIGHTS 5′", testa.concat(dentro),
-         (testa.length ? "Si apre con il telecronista, poi il calcio d'inizio, poi le azioni che pesano di piu'. " : "")
-         + (scelti.nota ? scelti.nota + " " : "") + "Maniglie strette: qui si sta nei cinque minuti.");
+    const tuttoQuanto = quantoTesta + dentro.reduce((n, x) => n + (x.fuori - x.dentro), 0);
+    crea("HIGHLIGHTS", testa.concat(dentro),
+         (testa.length ? "Apertura del telecronista, calcio d'inizio, poi le azioni che pesano di piu'. " : "")
+         + "Cinque minuti di gioco, piu' " + Math.round(quantoTesta) + " secondi di testa: "
+         + Math.floor(tuttoQuanto / 60) + "′" + String(Math.round(tuttoQuanto % 60)).padStart(2, "0") + "″ in tutto. "
+         + (scelti.nota ? scelti.nota : ""));
   }
   crea("GOL", sap.gol, "dai " + GOL_PRE + " secondi prima ai " + GOL_POST + " dopo: dentro c'e' l'azione, l'esultanza e il replay");
   crea("TELECRONACA", sap.voce, "i momenti in cui il telecronista dice gol");
