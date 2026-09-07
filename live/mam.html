@@ -263,6 +263,7 @@
   .grafCartello p{font-size:11px;color:var(--fumo,#8A8A8A);line-height:1.5;margin:0 0 12px;}
   .grafCartello i{font-style:normal;color:#D8D8D8;}
   .grafCartello .gruppo{display:flex;gap:6px;flex-wrap:wrap;}
+  .expT .nota,.expT+.nota,td .nota{font-size:10.5px;color:var(--fumo,#8A8A8A);margin-top:5px;}
   .grafCassa iframe{flex:1;border:0;width:100%;height:100%;background:#0F0F0F;}
   .grafBarra{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--linea,#2A2A2A);}
   .grafBarra span{font-size:10.5px;color:var(--fumo,#8A8A8A);flex:1;line-height:1.35;}
@@ -1652,6 +1653,8 @@
             // mosse — esporta, aspetta, cerca il link "grafica" nella coda —
             // e in mezzo si perdeva il filo.
             '<button class="b" id="seqLivello" title="apre il generatore qui dentro: la grafica va sulla traccia V2 e la vedi sul video">+ GRAFICA</button>' +
+            '<span class="sep"></span>' +
+            '<button class="b" id="seqCasa" title="scarica i pezzi di questa sequenza sulla macchina: da li\u2019 la riproduzione e\u2019 immediata e l\u2019esportazione non scarica piu\u2019 niente">IN CASA</button>' +
             // I formati stanno qui, non solo dentro la finestra: si vede a
             // colpo d'occhio con che inquadratura uscira' la sequenza, e si
             // cambia senza aprire niente. Accesi piu' d'uno, escono tutti.
@@ -1691,6 +1694,20 @@
     el("capoTorna").addEventListener("click", function (e) { e.preventDefault(); tornaAlContenuto(); });
     el("seqTutti").addEventListener("click", function () { apriExport("sequenza"); });   // Esporta accanto al Programma
     el("seqLivello").addEventListener("click", function () { apriPannelloGrafiche(); });
+    el("seqCasa").addEventListener("click", function () {
+      if (!SEQ || !(SEQ.pezzi || []).length) return dice("Apri prima una sequenza.");
+      var mancano = (SEQ.pezzi || []).filter(function (x) { return !x.locale; }).length;
+      if (!mancano) return dice("Sono gia\u2019 tutti in casa.", true);
+      var secondi = (SEQ.pezzi || []).filter(function (x) { return !x.locale; })
+        .reduce(function (n, x) { return n + (x.fuori - x.dentro); }, 0);
+      // il materiale sta a otto megabit: un secondo di video e' un megabyte
+      if (!confirm("Portare in casa " + mancano + (mancano === 1 ? " pezzo" : " pezzi") + "?\n" +
+                   "Sono circa " + Math.round(secondi) + " MB da scaricare, una volta sola.\n" +
+                   "Dopo la riproduzione e\u2019 immediata e l\u2019esportazione non scarica piu\u2019 niente.")) return;
+      manda({ tipo: "clip-hl-in-casa", seq: SEQ.id })
+        .then(function () { dice("Sto portando in casa " + mancano + " pezzi\u2026", true); })
+        .catch(function (e) { dice(e.message); });
+    });
     c.querySelectorAll("#formatiSeq button").forEach(function (b2) {
       b2.addEventListener("click", function () {
         // UNO ALLA VOLTA. Prima si accumulavano e restavano accesi tutti:
@@ -1975,6 +1992,11 @@
   // da dove si prendono i byte di un pezzo: la clip gia' tagliata se c'e',
   // altrimenti il materiale della partita, dall'entrata all'uscita
   function sorgentePezzo(x) {
+    // IL PEZZO IN CASA vince su tutto: e' gia' tagliato esatto, sta sul
+    // disco della macchina e parte subito. E' quello che toglie il salto
+    // fra una clip e l'altra, che veniva dall'andare a riprendere ogni
+    // volta gli stessi secondi da Parigi.
+    if (x.locale) return { url: BASE + x.locale, da: 0, a: null };
     if (x.clip) {
       var cl = CLIP.filter(function (k) { return k.id === x.clip; })[0];
       // il file della clip vale finche' il pezzo e' quello: se lo si e'
@@ -3310,6 +3332,12 @@
           return '<label><input type="checkbox" value="' + f + '"' + (FORMATI_SEQ.indexOf(f) >= 0 ? " checked" : "") + '> ' + f + '</label>';
         }).join("") + '</td></tr>' +
       '<tr class="soloClip"><td>Qualit\u00e0</td><td><label><input type="radio" name="expQ" value="copia" checked> ai secondi \u2014 copia, un secondo</label><br><label><input type="radio" name="expQ" value="preciso"> al fotogramma \u2014 ricodifica, esatta</label></td></tr>' +
+      '<tr class="soloSeq"><td>Taglio</td><td>' +
+        '<label><input type="radio" name="expT" value="veloce" checked> veloce \u2014 si incolla senza ricodificare, ' +
+          'qualit\u00e0 della sorgente intatta, taglio entro un secondo</label><br>' +
+        '<label><input type="radio" name="expT" value="esatto"> esatto \u2014 ricodifica: al fotogramma, ma sui due core ci mette ' +
+          'un paio di minuti per minuto di video</label>' +
+        '<div class="nota">Il verticale e le grafiche ricodificano comunque.</div></td></tr>' +
       '<tr class="soloSeq"><td>Anche</td><td><label><input type="checkbox" id="expXml"> XML per Premiere</label></td></tr>' +
       '<tr><td>Audio</td><td>stereo AAC 160k (si apre ovunque)</td></tr>' +
       '<tr><td>Destinazione</td><td><select id="expDove">' +
@@ -3339,6 +3367,8 @@
     el("expVai").addEventListener("click", function () {
       var formati = Array.prototype.filter.call(caselle, function (c) { return c.checked; }).map(function (c) { return c.value; });
       if (!formati.length) return dice("Scegli almeno un formato.");
+      var esatto = box.querySelector('input[name="expT"]:checked');
+      esatto = !!(esatto && esatto.value === "esatto");
       // quello che si sceglie qui resta acceso anche in colonna
       FORMATI_SEQ = formati.slice();
       if (FORMATI_SEQ.indexOf(FORMATO_VISTO) < 0) FORMATO_VISTO = FORMATI_SEQ[0];
@@ -3356,7 +3386,7 @@
         Promise.all(giri).then(function () { dentro = null; fuori = null; mostraInOut(); aggiorna().then(function () { apriUscite(true); }); })
           .catch(function (e) { dice(e.message); });
       } else {
-        var corpo = formati.length > 1 ? { tipo: "clip-hl-esporta", seq: SEQ.id, formati: formati } : { tipo: "clip-hl-esporta", seq: SEQ.id, formato: formati[0] };
+        var corpo = formati.length > 1 ? { tipo: "clip-hl-esporta", seq: SEQ.id, formati: formati, esatto: esatto } : { tipo: "clip-hl-esporta", seq: SEQ.id, formato: formati[0], esatto: esatto };
         var p = manda(corpo);
         if (el("expXml") && el("expXml").checked) p = p.then(function () { return manda({ tipo: "clip-hl-esporta", seq: SEQ.id, come: "premiere" }); });
         p.then(function () { aggiorna().then(function () { apriUscite(true); }); })
@@ -4992,7 +5022,8 @@
             var via = BASE + pronti[f].file;
             // "grafica" apre il generatore con QUESTO montato dentro: si
             // sceglie la maschera, e torna qui incollata sul video
-            return '<a href="' + via + '?scarica=1">scarica ' + f + "</a> " +
+            return '<a href="' + via + '?scarica=1">scarica ' + f +
+                   (pronti[f].veloce ? " (veloce)" : "") + "</a> " +
                    '<a href="' + GEN + "&clip=" + encodeURIComponent(via) +
                    "&seq=" + encodeURIComponent(q.id) +
                    "&titolo=" + encodeURIComponent(q.titolo || "") + '" target="_blank">grafica</a>';
@@ -5002,6 +5033,18 @@
                          q.export.formato + ", " + orologio(q.export.durata) + ")</a>";
         }
         corpo.appendChild(g1);
+      }
+      if (q.casa && q.casa.stato === "lavora") {
+        var gc = document.createElement("div"); gc.className = "aiuto";
+        gc.textContent = "porto in casa i pezzi\u2026 " + (q.casa.fatti || 0) + "/" + (q.casa.quanti || "?");
+        corpo.appendChild(gc);
+      }
+      var inCasa = (q.pezzi || []).filter(function (x) { return x.locale; }).length;
+      if (inCasa) {
+        var gc2 = document.createElement("div"); gc2.className = "aiuto";
+        gc2.textContent = inCasa + " pezzi su " + (q.pezzi || []).length +
+          " sono in casa: si riproducono subito e l\u2019esportazione non li riscarica.";
+        corpo.appendChild(gc2);
       }
       if (q.grafica && q.grafica.stato === "lavora") {
         var g4 = document.createElement("div"); g4.className = "aiuto";

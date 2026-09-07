@@ -199,6 +199,13 @@ function leggi() {
                      errore: "l'esportazione si e' fermata a un riavvio del ponte: rilanciala" };
         fermi++;
       }
+      // stesso discorso per i pezzi in casa: uno stato "lavora" rimasto
+      // appeso bloccava per sempre — ogni richiesta successiva usciva
+      // subito dicendo "sto gia' lavorando", e non lavorava piu' nessuno
+      if (q.casa && q.casa.stato === "lavora") {
+        q.casa = { stato: "interrotto", fatti: q.casa.fatti || 0, quanti: q.casa.quanti || 0 };
+        fermi++;
+      }
     });
     if (fermi) console.log("[clip] " + fermi + " esportazione/i interrotta/e da un riavvio: segnate come da rifare");
   } catch (e) { /* prima accensione */ }
@@ -1907,6 +1914,9 @@ function hlElenco(p) {
   const seq = Object.keys(R.seq).map((k) => R.seq[k])
     .filter((q) => !p || !p.reg || q.reg === p.reg)
     .sort((a, b) => b.creata - a.creata);
+  // quali pezzi sono gia' in casa: la pagina li riproduce da qui invece che
+  // da Parigi, e il salto fra una clip e l'altra sparisce
+  seq.forEach((q) => { try { segnaPezziLocali(q); } catch (e) {} });
   return { ok: true, seq: seq };
 }
 
@@ -2156,91 +2166,335 @@ function hlElimina(p) {
 // Il montaggio e' lo stesso: cambia solo il ritaglio. Farlo premere tre
 // volte vuol dire tre attese e tre occasioni di dimenticarne uno — e chi
 // pubblica li vuole tutti, non uno.
-async function hlEsportaTutti(q, formati) {
+async function hlEsportaTutti(q, formati, p2) {
   q.esportati = q.esportati || {};
   for (const f of formati) {
-    await hlEsportaVideo(q, f, true);
+    await hlEsportaVideo(q, f, true, p2);
   }
   q.export = { stato: "pronto", tutti: true, formati: formati,
                fatti: formati.length, quanti: formati.length };
   scrivi(); annuncia(0, "clip");
 }
 
-async function hlEsportaVideo(q, formato, dentroUnGiro) {
-  const dir = path.join(DIR, CARTELLA_HL, q.id);
-  assicura(dir);
+// ══════════════════════════════════════════════════════════════════════
+//  I PEZZI IN CASA — la cache del montaggio
+// ══════════════════════════════════════════════════════════════════════
+//
+//  Il materiale sta a Parigi. Oggi ogni scorrimento del Programma, ogni
+//  anteprima e ogni esportazione lo vanno a riprendere da li': di qui il
+//  salto fra una clip e l'altra, e il traffico che si ripaga ogni volta.
+//
+//  Un pezzo pero' non cambia finche' non lo tocchi. Quindi si scarica una
+//  volta sola, si taglia esatto e si tiene: da quel momento il Programma
+//  parte subito, l'esportazione non scarica piu' niente, e un 16:9 senza
+//  grafiche esce SENZA RICODIFICARE — si incollano i pezzi e basta.
+//
+//  Il taglio si fa in ricodifica (non in copia) perche' la copia parte dal
+//  fotogramma chiave precedente, e un gol che comincia un secondo prima non
+//  e' il gol che hai montato. Meglio pagare una codifica sola, buona, e
+//  averlo esatto per sempre.
+//  Sulla qualita' bisogna dire la verita': su due core, "medium" costa tre
+//  volte il tempo reale — un montato da sette minuti sarebbero venticinque
+//  minuti di macchina. Quindi il preset resta veloce, e la qualita' si
+//  guadagna dove non costa niente:
+//    · i 50 fotogrammi al secondo della sorgente, invece dei 25 forzati
+//      (era la perdita piu' visibile, e non serviva a nulla);
+//    · una codifica sola invece di due (prima il montato veniva ricodificato
+//      per incollarci la grafica, e la seconda mangiava la prima);
+//    · lanczos sull'ingrandimento verticale.
+//  Chi vuole spendere tempo per una qualita' piu' alta alza le due variabili
+//  qui sotto senza toccare il codice.
+const CACHE_CRF = process.env.COMOTV_CACHE_CRF || "19";
+const CACHE_PRESET = process.env.COMOTV_CACHE_PRESET || "veryfast";
+
+function cartellaPezzi() {
+  const d = path.join(DIR, CARTELLA_HL, "_pezzi");
+  assicura(d);
+  return d;
+}
+function chiavePezzo(reg, dentro, fuori) {
+  return crypto.createHash("sha1")
+    .update(String(reg) + "|" + Number(dentro).toFixed(2) + "|" + Number(fuori).toFixed(2))
+    .digest("hex").slice(0, 16);
+}
+function filePezzo(k) { return path.join(cartellaPezzi(), k + ".mp4"); }
+function viaPezzo(k) { return "/clip/" + CARTELLA_HL + "/_pezzi/" + k + ".mp4"; }
+
+// Quanti fotogrammi al secondo ha davvero il materiale. La sorgente di
+// questo archivio ne ha 50: forzare 25 come si faceva prima buttava via
+// meta' dei fotogrammi, ed e' la perdita che sul calcio si vede di piu'.
+async function fpsDi(via) {
+  return await new Promise((ok) => {
+    execFile(FFPROBE, ["-v", "error", "-select_streams", "v:0",
+                       "-show_entries", "stream=r_frame_rate", "-of", "csv=p=0", via],
+      { timeout: 60000 }, (e, out) => {
+        if (e) return ok(0);
+        const p = String(out).trim().split("/");
+        const n = parseFloat(p[0]) / (parseFloat(p[1]) || 1);
+        ok(isFinite(n) && n > 0 && n <= 120 ? Math.round(n) : 0);
+      });
+  });
+}
+
+// Il fotogramma chiave a cui si puo' tagliare senza ricodificare: quello
+// subito PRIMA del punto voluto. Su questo archivio ce n'e' uno al secondo,
+// quindi non si torna mai indietro di piu' di un secondo.
+async function chiaveVicina(via, quando) {
+  const da = Math.max(0, quando - 2.5);
+  const out = await new Promise((ok) => {
+    execFile(FFPROBE, ["-v", "error", "-read_intervals", da + "%+3",
+                       "-select_streams", "v:0", "-skip_frame", "nokey",
+                       "-show_entries", "frame=pts_time", "-of", "csv=p=0", via],
+      { timeout: 120000 }, (e, o) => ok(e ? "" : String(o)));
+  });
+  let k = null;
+  out.split(/\s+/).forEach((r) => {
+    const t = parseFloat(r);
+    if (isFinite(t) && t <= quando + 0.01 && (k === null || t > k)) k = t;
+  });
+  return k === null ? Math.max(0, quando) : k;
+}
+
+function pezziDaScaricare(q) {
+  return (q.pezzi || []).filter((x) => !fs.existsSync(filePezzo(chiavePezzo(q.reg, x.dentro, x.fuori))));
+}
+
+// Porta in casa i pezzi che mancano. NON si ricodifica: si copia il flusso
+// cosi' com'e', partendo dal fotogramma chiave prima del punto voluto e
+// segnando di quanto si e' partiti prima. Ricodificare a 50 fotogrammi
+// costava due volte e mezzo il tempo reale su due core — un montato da
+// sette minuti sarebbero stati venti minuti di macchina, per riottenere
+// un'immagine peggiore di quella che c'era gia'.
+async function costruisciPezzi(q, avanti) {
   const r = R.reg[q.reg];
+  if (!r) throw new Error("registrazione sconosciuta");
   const segs = segmenti(q.reg);
   const usaIntegrale = !segs.length;
-  // una partita d'archivio non ha byte qui: si legge dal suo indirizzo
-  // firmato, con -ss che scarica solo il pezzo che serve
   const integrale = (r && r.arch) ? viaArchivio(r) : path.join(cartellaReg(q.reg), "integrale.mp4");
   if (usaIntegrale && !(r && r.arch) && !fs.existsSync(integrale)) throw new Error("non c'e' piu' materiale per questa registrazione");
 
-  const ritaglio = (FORMATI[formato] || FORMATI["16:9"]).vf;
-  q.export = { stato: "lavora", formato: formato, fatti: 0, quanti: q.pezzi.length, file: "",
-               tutti: !!dentroUnGiro };
-  scrivi(); annuncia(0, "clip");
-
-  const parti = [];
-  for (let i = 0; i < q.pezzi.length; i++) {
-    const x = q.pezzi[i];
-    const fuoriFile = path.join(dir, "p" + String(i + 1).padStart(3, "0") + ".mp4");
-    let ingresso;
-    let lista = null;
+  const daFare = (q.pezzi || []).filter((x) => !fs.existsSync(filePezzo(chiavePezzo(q.reg, x.dentro, x.fuori))));
+  let fatti = 0;
+  const uno = async (x) => {
+    const k = chiavePezzo(q.reg, x.dentro, x.fuori);
+    const fuoriFile = filePezzo(k);
+    const parziale = fuoriFile.replace(/\.mp4$/, "-parte.mp4");
+    let ingresso, lista = null, scarto = 0;
     if (usaIntegrale) {
-      ingresso = ["-ss", String(x.dentro), "-i", integrale, "-t", String(x.fuori - x.dentro)];
+      const kf = await chiaveVicina(integrale, x.dentro);
+      scarto = Math.max(0, x.dentro - kf);
+      ingresso = ["-ss", String(kf), "-i", integrale, "-t", String(x.fuori - kf + 0.2)];
     } else {
       const scelti = segs.filter((sg) => sg.t0 + sg.dur > x.dentro && sg.t0 < x.fuori);
-      if (!scelti.length) continue;
-      lista = path.join(dir, "l" + i + ".txt");
+      if (!scelti.length) return;
+      lista = parziale.replace(/\.mp4$/, "") + ".txt";
       fs.writeFileSync(lista, scelti.map((sg) => "file '" + sg.file + "'").join("\n") + "\n");
-      ingresso = ["-f", "concat", "-safe", "0", "-ss", String(Math.max(0, x.dentro - scelti[0].t0)),
-                  "-i", lista, "-t", String(x.fuori - x.dentro)];
+      const da = Math.max(0, x.dentro - scelti[0].t0);
+      const kf = await chiaveVicina(lista, da);      // sui segmenti la lista basta a ffprobe
+      scarto = Math.max(0, da - kf);
+      ingresso = ["-f", "concat", "-safe", "0", "-ss", String(kf), "-i", lista,
+                  "-t", String(x.fuori - scelti[0].t0 - kf + 0.2)];
     }
-    let args = CON_PROGRESSO.concat(["-hide_banner", "-loglevel", "error", "-nostdin"], ingresso);
-    if (ritaglio) args = args.concat(["-vf", ritaglio]);
-    args = args.concat(["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-                        "-r", "25", "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
-                        "-movflags", "+faststart", "-y", fuoriFile]);
+    const args = ["-hide_banner", "-loglevel", "error", "-nostdin"].concat(ingresso).concat([
+      "-c", "copy", "-movflags", "+faststart", "-y", parziale]);
     await new Promise((si, no) => {
       const pr = spawn(FFMPEG, args, { stdio: ["ignore", "ignore", "pipe"] });
-      (function (pezzoI, durPezzo) {
-        let ultimo = 0;
-        pr.stderr.on("data", (d) => {
-          const sec = secondiScritti(String(d));
-          if (sec === null || !durPezzo) return;
-          q.export.avanza = Math.min(0.99, (pezzoI + Math.min(1, sec / durPezzo)) / q.pezzi.length);
-          if (Date.now() - ultimo > 500) { ultimo = Date.now(); annuncia(0, "clip"); }
-        });
-      })(i, x.fuori - x.dentro);
       let coda = "";
-      pr.stderr.on("data", (d) => { coda = (coda + d).slice(-1500); });
+      pr.stderr.on("data", (d) => { coda = (coda + d).slice(-1200); });
       pr.on("error", no);
       pr.on("close", (code) => {
         if (lista) { try { fs.unlinkSync(lista); } catch (e) {} }
         code === 0 ? si() : no(new Error(ultimaRiga(coda) || ("ffmpeg " + code)));
       });
     });
-    parti.push(fuoriFile);
-    q.export.fatti = i + 1; scrivi(); annuncia(0, "clip");
+    try { fs.renameSync(parziale, fuoriFile); }
+    catch (e) { console.log("[clip] in casa: non riesco a rinominare " + parziale + ": " + e.message); throw e; }
+    // lo scarto si tiene accanto al file: dice di quanto il pezzo comincia
+    // prima, e serve sia a riprodurlo esatto sia a esportarlo esatto
+    try { fs.writeFileSync(fuoriFile + ".json", JSON.stringify({ off: Math.round(scarto * 1000) / 1000 })); } catch (e) {}
+    const st = (function () { try { return fs.statSync(fuoriFile).size; } catch (e) { return 0; } })();
+    console.log("[clip] in casa: " + path.basename(fuoriFile) + " " + Math.round(st / 1e6) + " MB, comincia " +
+                scarto.toFixed(2) + "s prima");
+    fatti++;
+    if (avanti) avanti(fatti, daFare.length);
+  };
+
+  for (let i = 0; i < daFare.length; i += 2) {
+    await Promise.all(daFare.slice(i, i + 2).map(uno));
+  }
+  return { fatti: fatti, quanti: daFare.length };
+}
+
+function scartoPezzo(k) {
+  try { return JSON.parse(fs.readFileSync(filePezzo(k) + ".json", "utf8")).off || 0; }
+  catch (e) { return 0; }
+}
+
+// Il segno che la pagina legge: quali pezzi sono gia' in casa.
+function segnaPezziLocali(q) {
+  let quanti = 0;
+  (q.pezzi || []).forEach((x) => {
+    const k = chiavePezzo(q.reg, x.dentro, x.fuori);
+    if (fs.existsSync(filePezzo(k))) {
+      x.locale = viaPezzo(k);
+      x.scarto = scartoPezzo(k);        // di quanto il file comincia prima
+      quanti++;
+    } else { delete x.locale; delete x.scarto; }
+  });
+  return quanti;
+}
+
+async function hlInCasa(p) {
+  const q = seqDi(p);
+  if (!q.pezzi.length) throw new Error("la sequenza e' vuota");
+  if (q.casa && q.casa.stato === "lavora") return { ok: true, casa: q.casa };
+  if (p.solo === "stato") {
+    segnaPezziLocali(q);
+    return { ok: true, seq: q, mancano: pezziDaScaricare(q).length };
+  }
+  q.casa = { stato: "lavora", fatti: 0, quanti: pezziDaScaricare(q).length };
+  scrivi(); annuncia(0, "clip");
+  costruisciPezzi(q, (f, n) => { q.casa = { stato: "lavora", fatti: f, quanti: n }; scrivi(); annuncia(0, "clip"); })
+    .then((e) => {
+      segnaPezziLocali(q);
+      q.casa = { stato: "pronto", fatti: e.fatti, quanti: e.quanti, quando: Date.now() };
+      console.log("[clip] in casa: " + e.fatti + " pezzi di \"" + (q.titolo || q.id) + "\"");
+      scrivi(); annuncia(0, "clip");
+    })
+    .catch((err) => { q.casa = { stato: "errore", errore: err.message }; scrivi(); annuncia(0, "clip"); });
+  return { ok: true, casa: q.casa };
+}
+
+async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
+  const dir = path.join(DIR, CARTELLA_HL, q.id);
+  assicura(dir);
+  if (!q.pezzi.length) throw new Error("nessun pezzo da esportare");
+  const grafiche0 = (q.grafiche || []).filter((g) => {
+    try { return fs.existsSync(path.join(cartellaGrafiche(), g.id + ".png")); } catch (e) { return false; }
+  });
+
+  const ritaglio = (FORMATI[formato] || FORMATI["16:9"]).vf;
+  q.export = { stato: "lavora", formato: formato, fatti: 0, quanti: q.pezzi.length, file: "",
+               tutti: !!dentroUnGiro };
+  scrivi(); annuncia(0, "clip");
+
+  // PRIMO: i pezzi in casa. Se ci sono gia' non si scarica niente; se
+  // mancano si scaricano una volta e restano.
+  const esito = await costruisciPezzi(q, (f, n) => {
+    q.export.fatti = f; q.export.quanti = n || q.pezzi.length;
+    q.export.avanza = n ? f / n * 0.8 : 0.8;
+    scrivi(); annuncia(0, "clip");
+  });
+  segnaPezziLocali(q);
+  // I pezzi in casa cominciano un po' prima del punto voluto (si e' copiato
+  // dal fotogramma chiave). Qui si taglia esatto: e' l'unica codifica del
+  // giro, e non scarica niente perche' il materiale e' gia' sul disco.
+  // VELOCE O ESATTO. Su due core ricodificare a 50 fotogrammi costa due
+  // volte e mezzo il tempo reale: un montato da sette minuti sono venti
+  // minuti di macchina. Ma i pezzi in casa cominciano al massimo un secondo
+  // prima del punto voluto, e su una clip con trenta secondi di maniglia un
+  // secondo non si vede. Quindi: veloce di norma (si incolla e basta,
+  // qualita' della sorgente intatta), esatto quando lo si chiede.
+  //  Il ritaglio verticale e le grafiche impongono comunque la codifica.
+  const veloce = (p2 && p2.esatto) ? false : (!ritaglio && !grafiche0.length);
+  const dir2 = path.join(dir, "tagli");
+  assicura(dir2);
+  const parti = [];
+  for (let i = 0; i < q.pezzi.length; i++) {
+    const x = q.pezzi[i];
+    const k = chiavePezzo(q.reg, x.dentro, x.fuori);
+    const casa = filePezzo(k);
+    if (!fs.existsSync(casa)) continue;
+    const off = scartoPezzo(k), dur = x.fuori - x.dentro;
+    if (veloce) { parti.push(casa); q.export.fatti = i + 1; continue; }
+    const esatto = path.join(dir2, "p" + String(i + 1).padStart(3, "0") + ".mp4");
+    const args = ["-hide_banner", "-loglevel", "error", "-nostdin",
+      "-ss", String(off), "-i", casa, "-t", String(dur)];
+    // se il pezzo comincia gia' dove deve, si copia e basta: niente da fare
+    const copiabile = off < 0.08 && !ritaglio;
+    await new Promise((si, no) => {
+      const pr = spawn(FFMPEG, args.concat(copiabile
+        ? ["-c", "copy", "-movflags", "+faststart", "-y", esatto]
+        // lanczos va IN CODA alla scala, non in testa: scritto davanti
+        // ffmpeg lo prendeva come unico argomento e l'ingrandimento saltava,
+        // e il verticale usciva 608x1080 invece di 1080x1920
+        : (ritaglio ? ["-vf", ritaglio.replace(/(scale=\d+:\d+)/, "$1:flags=lanczos")] : [])
+          .concat(["-c:v", "libx264", "-preset", CACHE_PRESET, "-crf", CACHE_CRF, "-pix_fmt", "yuv420p",
+           "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
+           "-movflags", "+faststart", "-y", esatto])), { stdio: ["ignore", "ignore", "pipe"] });
+      let coda = "";
+      pr.stderr.on("data", (d) => { coda = (coda + d).slice(-1200); });
+      pr.on("error", no);
+      pr.on("close", (code) => code === 0 ? si() : no(new Error(ultimaRiga(coda) || ("ffmpeg " + code))));
+    });
+    parti.push(esatto);
+    q.export.fatti = i + 1;
+    q.export.avanza = 0.8 + 0.15 * ((i + 1) / q.pezzi.length);
+    scrivi(); annuncia(0, "clip");
   }
   if (!parti.length) throw new Error("nessun pezzo da esportare");
 
-  const listaFin = path.join(dir, "tutti.txt");
-  fs.writeFileSync(listaFin, parti.map((x) => "file '" + x + "'").join("\n") + "\n");
   const suffisso = "_" + String(formato).replace(":", "x");
   const finale = path.join(DIR, CARTELLA_HL, q.id + suffisso + ".mp4");
-  await new Promise((si, no) => {
-    const pr = spawn(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin",
-      "-f", "concat", "-safe", "0", "-i", listaFin, "-c", "copy",
-      "-movflags", "+faststart", "-y", finale], { stdio: "ignore" });
-    pr.on("error", no);
-    pr.on("close", (code) => code === 0 ? si() : no(new Error("incollatura fallita")));
-  });
-  try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}   // i pezzi non servono piu'
-  // e sopra ci vanno le grafiche del livello V2, ognuna nel suo tratto
-  await incollaGrafiche(q, finale);
+  const grafiche = grafiche0;
+
+  // SECONDO: si incolla. Un 16:9 senza grafiche non ha niente da
+  // ricodificare — i pezzi sono gia' come devono essere — quindi si
+  // attaccano e basta: secondi invece di minuti, e zero perdita.
+  const listaFin = path.join(dir, "tutti.txt");
+  fs.writeFileSync(listaFin, parti.map((x) => "file '" + x + "'").join("\n") + "\n");
+  q.export.avanza = 0.85; annuncia(0, "clip");
+
+  const soloIncollare = !grafiche.length;
+  if (soloIncollare) {
+    await new Promise((si, no) => {
+      const pr = spawn(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin",
+        "-f", "concat", "-safe", "0", "-i", listaFin, "-c", "copy",
+        "-movflags", "+faststart", "-y", finale], { stdio: "ignore" });
+      pr.on("error", no);
+      pr.on("close", (code) => code === 0 ? si() : no(new Error("incollatura fallita")));
+    });
+  } else {
+    // TERZO: un solo passaggio per tutto — ritaglio, ingrandimento e
+    // grafiche insieme. Prima erano due codifiche in fila, e la seconda
+    // mangiava quello che aveva fatto la prima.
+    const mis = await probeMisure(parti[0]);
+    const VW = mis.w || 1920, VH = mis.h || 1080;
+    let catena = "";
+    const ingressi = [];
+    let ultimo = "0:v";
+    {
+      const dopoW = VW, dopoH = VH;
+      grafiche.forEach((g, i) => {
+        ingressi.push("-i", path.join(cartellaGrafiche(), g.id + ".png"));
+        const kk = Math.min(dopoW / (g.w || dopoW), dopoH / (g.h || dopoH));
+        const w2 = Math.max(2, Math.round((g.w || dopoW) * kk / 2) * 2);
+        const h2 = Math.max(2, Math.round((g.h || dopoH) * kk / 2) * 2);
+        const x = Math.round((dopoW - w2) / 2), y = Math.round((dopoH - h2) / 2);
+        const usc = (i === grafiche.length - 1) ? "v" : ("g" + i + "o");
+        catena += "[" + (i + 1) + ":v]scale=" + w2 + ":" + h2 + "[g" + i + "];" +
+                  "[" + ultimo + "][g" + i + "]overlay=" + x + ":" + y +
+                  ":enable='between(t," + g.dentro.toFixed(2) + "," + g.fuori.toFixed(2) + ")'" +
+                  ":format=auto[" + usc + "];";
+        ultimo = usc;
+      });
+    }
+    catena = catena.replace(/;$/, "");
+    const args = ["-hide_banner", "-loglevel", "error", "-nostdin",
+      "-f", "concat", "-safe", "0", "-i", listaFin].concat(ingressi).concat([
+      "-filter_complex", catena, "-map", "[" + ultimo + "]", "-map", "0:a?",
+      "-c:v", "libx264", "-preset", CACHE_PRESET, "-crf", CACHE_CRF, "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-y", finale]);
+    await new Promise((si, no) => {
+      const pr = spawn(FFMPEG, args, { stdio: ["ignore", "ignore", "pipe"] });
+      let coda = "";
+      pr.stderr.on("data", (d) => { coda = (coda + d).slice(-1500); });
+      pr.on("error", no);
+      pr.on("close", (code) => code === 0 ? si() : no(new Error(ultimaRiga(coda) || ("ffmpeg " + code))));
+    });
+  }
+
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
   const d = await probe(finale);
   if (!q.mini) {
     const mini = await miniatura(finale, path.join(DIR, CARTELLA_HL, q.id + ".jpg"), (d.durata || 6) / 3);
@@ -2253,26 +2507,14 @@ async function hlEsportaVideo(q, formato, dentroUnGiro) {
     // l'istante serve alla pagina per accorgersi che questa e' un'uscita
     // NUOVA: rifacendo lo stesso formato il nome del file non cambia, e
     // senza un istante l'avviso "pronto" non scattava piu'
-    quando: Date.now()
+    quando: Date.now(), copiato: soloIncollare, veloce: veloce
   };
   q.esportati[formato].nome = nomeScaricoSeq(q, R.reg[q.reg], formato, ".mp4");
   q.export = { stato: "pronto", formato: formato, fatti: q.pezzi.length, quanti: q.pezzi.length,
                file: q.esportati[formato].file,
                durata: q.esportati[formato].durata, peso: q.esportati[formato].peso };
   scrivi(); annuncia(0, "clip");
-  return q.export;
-}
-
-// ── l'uscita 2: la sequenza per Premiere ──────────────────────────────
-//
-//  Formato xmeml, lo stesso che HL Auto-Cut gia' produce e che i montatori
-//  aprono da mesi: il MAM non cambia loro lo strumento, gli toglie la parte
-//  noiosa. Il media e' l'integrale della partita; se in Premiere non e' allo
-//  stesso percorso, chiede di ricollegarlo una volta sola.
-
-function xmlEsc(t) {
-  return String(t == null ? "" : t).replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]));
+  return q.esportati[formato];
 }
 
 async function hlEsportaPremiere(q, percorso) {
@@ -2361,7 +2603,7 @@ async function hlEsporta(p) {
   const formati = elenco.length ? elenco
                 : [FORMATI[p.formato] ? String(p.formato) : "16:9"];
   // non si aspetta l'export per rispondere: la pagina guarda lo stato
-  hlEsportaTutti(q, formati).catch((e) => {
+  hlEsportaTutti(q, formati, p).catch((e) => {
     q.export = { stato: "errore", errore: e.message };
     scrivi(); annuncia(0, "clip");
   });
@@ -5338,49 +5580,6 @@ function hlGrafica(p) {
   return { ok: true, seq: q, grafica: g };
 }
 
-// Il passaggio finale: le grafiche si incollano sul montato gia' incollato,
-// ognuna nel suo tratto. Si fa qui e non pezzo per pezzo perche' una
-// grafica puo' stare a cavallo di due tagli, e li' dentro non ci sarebbe.
-async function incollaGrafiche(q, finale) {
-  const gg = (q.grafiche || []).filter((g) => {
-    try { return fs.existsSync(path.join(cartellaGrafiche(), g.id + ".png")); } catch (e) { return false; }
-  });
-  if (!gg.length) return;
-  const mis = await probeMisure(finale);
-  const VW = mis.w || 1080, VH = mis.h || 1920;
-  const ingressi = [];
-  let filtro = "", ultimo = "0:v";
-  gg.forEach((g, i) => {
-    ingressi.push("-i", path.join(cartellaGrafiche(), g.id + ".png"));
-    const k = Math.min(VW / (g.w || VW), VH / (g.h || VH));
-    const w2 = Math.max(2, Math.round((g.w || VW) * k / 2) * 2);
-    const h2 = Math.max(2, Math.round((g.h || VH) * k / 2) * 2);
-    const x = Math.round((VW - w2) / 2), y = Math.round((VH - h2) / 2);
-    const uscita = (i === gg.length - 1) ? "v" : ("v" + i);
-    filtro += "[" + (i + 1) + ":v]scale=" + w2 + ":" + h2 + "[g" + i + "];" +
-              "[" + ultimo + "][g" + i + "]overlay=" + x + ":" + y +
-              ":enable='between(t," + g.dentro.toFixed(2) + "," + g.fuori.toFixed(2) + ")'" +
-              ":format=auto[" + uscita + "];";
-    ultimo = uscita;
-  });
-  filtro = filtro.replace(/;$/, "");
-  const conGrafica = finale.replace(/\.mp4$/, "-g.mp4");
-  await new Promise((si, no) => {
-    const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-i", finale]
-      .concat(ingressi)
-      .concat(["-filter_complex", filtro, "-map", "[v]", "-map", "0:a?",
-               "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-               "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-y", conGrafica]);
-    const pr = spawn(FFMPEG, args, { stdio: ["ignore", "ignore", "pipe"] });
-    let coda = "";
-    pr.stderr.on("data", (d) => { coda = (coda + d).slice(-1500); });
-    pr.on("error", no);
-    pr.on("close", (code) => code === 0 ? si() : no(new Error(ultimaRiga(coda) || ("grafiche: ffmpeg " + code))));
-  });
-  try { fs.renameSync(conGrafica, finale); } catch (e) {}
-  console.log("[clip] incollate " + gg.length + " grafiche su " + path.basename(finale));
-}
-
 function graficaSuUscita(p) {
   const q = R.seq[String(p.seq || "")];
   if (!q) throw new Error("sequenza sconosciuta");
@@ -5700,6 +5899,24 @@ function uscite() {
     try { nomi = fs.readdirSync(dove); } catch (e) { return; }
     nomi.forEach((n) => {
       const via = path.join(dove, n);
+      if (chi === "seq" && n === "_pezzi") {
+        // i pezzi in casa: il padrone e' la sequenza che li usa. Cancellarli
+        // non perde niente (si riscaricano), ma non si butta la cartella
+        // intera mentre qualcuno sta montando.
+        const vivi = {};
+        Object.keys(R.seq).forEach((k2) => {
+          (R.seq[k2].pezzi || []).forEach((x) => { vivi[chiavePezzo(R.seq[k2].reg, x.dentro, x.fuori)] = true; });
+        });
+        let dentro2 = [];
+        try { dentro2 = fs.readdirSync(via); } catch (e) { return; }
+        dentro2.forEach((f) => {
+          const id2 = f.replace(/\.[a-z0-9]+$/i, "");
+          const q3 = pesoDiUnPezzo(path.join(via, f));
+          fuori.push({ via: path.join(via, f), nome: f, id: id2, tipo: "pezzo",
+                       peso: q3.peso, quando: q3.quando, orfano: !vivi[id2], alLavoro: false });
+        });
+        return;
+      }
       if (chi === "seq" && n === "_grafiche") {
         let png = [];
         try { png = fs.readdirSync(via); } catch (e) { return; }
@@ -6020,6 +6237,7 @@ const AZIONI = {
   "clip-anello": () => ({ ok: true, tolti: anello() }),
   "clip-grafica-uscita": graficaSuUscita,
   "clip-hl-grafica": hlGrafica,
+  "clip-hl-in-casa": hlInCasa,
   "clip-uscite": (p) => (p && p.pulisci) ? pulisciUscite(p)
     : { ok: true, elenco: uscite().map((u) => ({ nome: u.nome, tipo: u.tipo, giga: Math.round(u.peso / 1e8) / 10,
         giorni: Math.round((Date.now() - u.quando) / 86400000 * 10) / 10, orfano: u.orfano, alLavoro: u.alLavoro })),
