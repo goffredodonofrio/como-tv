@@ -2852,8 +2852,18 @@ function trascriviDavvero(lavoro) {
     const args = ["-m", MODELLO, "-l", LINGUA_MAM, "-f", wav, "-oj", "-of",
                   path.join(dir, "voce"), "-t", "2", "-np", "-nt"];
     if (suggeriti) args.push("--prompt", suggeriti);
-    execFile("nice", ["-n", "15", WHISPER].concat(args),
-             { timeout: 6 * 3600000, maxBuffer: 64 * 1024 * 1024 }, (e) => e ? no(e) : ok());
+    // STACCATO DAVVERO. Con execFile whisper scrive su una pipe che appartiene
+    // al nodo: se il servizio si riavvia la pipe si rompe e due ore di lavoro
+    // muoiono con un SIGPIPE. Sessione sua, niente pipe, il log su file: cosi'
+    // sopravvive al riavvio, finisce, e raccogliParlato lo va a prendere.
+    let log;
+    try { log = fs.openSync(path.join(dir, "voce.log"), "w"); } catch (e) { log = "ignore"; }
+    const bimbo = spawn("nice", ["-n", "15", WHISPER].concat(args),
+                        { detached: true, stdio: ["ignore", log, log] });
+    if (typeof log === "number") { try { fs.closeSync(log); } catch (e) {} }
+    bimbo.on("error", no);
+    bimbo.on("exit", (codice, segnale) => codice === 0 ? ok()
+      : no(new Error("whisper e' uscito con " + (segnale || codice))));
   })).then(() => {
     try { fs.unlinkSync(path.join(dir, "voce.corso.json")); } catch (e) {}
     const j = JSON.parse(fs.readFileSync(path.join(dir, "voce.json"), "utf8"));
