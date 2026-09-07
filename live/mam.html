@@ -2202,6 +2202,7 @@
       b.title = (FORMATI_SEQ.indexOf(b.dataset.fs) >= 0 ? "esce anche in " : "clicca per vedere ") + b.dataset.fs;
     });
   }
+  var DOPPIO = { id: "", quando: 0 };   // per riconoscere il doppio clic a mano
   var SEQSCELTE = [];        // le sequenze accese con Shift, da togliere insieme
   var TL = { sel: null, multi: [], riquadro: null, ghost: null, ghost2: null, punto: null,
              slip: null, roll: null, ins: null, trim: null, drag: null, vista: null, nav: null,
@@ -2437,26 +2438,6 @@
       else if (STRUMENTO === "n" || (e2 && e2.altKey)) cl.add("rolling");
       else cl.add("ripple");
     };
-    // DOPPIO CLIC SU UN PEZZO. Come in Premiere: il pezzo si apre nella
-    // Sorgente con le sue entrata e uscita, e la testina va esattamente nel
-    // punto in cui hai cliccato. Serve quando il taglio automatico ha
-    // sbagliato di qualche secondo: si va li' e si rifa' a mano, sul
-    // materiale intero, senza cercare il minuto.
-    p.addEventListener("dblclick", function (e) {
-      var blocco = e.target.closest ? e.target.closest(".clipV, .clipA") : null;
-      if (!blocco) return;
-      var pz = pezziProg();
-      var x = pz.filter(function (z) { return z.id === blocco.dataset.pezzo; })[0]; if (!x) return;
-      e.preventDefault();
-      // dove si e' cliccato, dentro il pezzo
-      var t = tempoSeq(e), acc = 0, offset = 0;
-      for (var i = 0; i < pz.length; i++) {
-        var d = pz[i].fuori - pz[i].dentro;
-        if (pz[i].id === x.id) { offset = Math.max(0, Math.min(d, (t === null ? 0 : t) - acc)); break; }
-        acc += d;
-      }
-      apriNellaSorgente(x, x.dentro + offset);
-    });
     p.addEventListener("mousemove", segnaModo);
     document.addEventListener("keydown", function (e2) { if (e2.key === "Alt") segnaModo(e2); });
     document.addEventListener("keyup", function (e2) { if (e2.key === "Alt") segnaModo(null); });
@@ -2510,6 +2491,25 @@
       }
       if (blocco) {
         var i = pz.findIndex(function (z) { return z.id === blocco.dataset.pezzo; }); if (i < 0) return;
+        // IL DOPPIO CLIC SE LO CONTA DA SE'. L'evento "dblclick" del browser
+        // qui non arriva mai: al primo clic la timeline si ridisegna, la
+        // clip viene ricreata, e il secondo clic cade su un elemento nuovo —
+        // per il browser sono due clic separati su due cose diverse. Quindi
+        // il doppio clic si riconosce a mano, sull'ID del pezzo e sul tempo.
+        var ora = Date.now();
+        if (DOPPIO.id === pz[i].id && ora - DOPPIO.quando < 400) {
+          DOPPIO.quando = 0;
+          var td = tempoSeq(e), accd = 0, offd = 0;
+          for (var kd = 0; kd < pz.length; kd++) {
+            var dd = pz[kd].fuori - pz[kd].dentro;
+            if (pz[kd].id === pz[i].id) { offd = Math.max(0, Math.min(dd, (td === null ? 0 : td) - accd)); break; }
+            accd += dd;
+          }
+          e.preventDefault();
+          apriNellaSorgente(pz[i], pz[i].dentro + offd);
+          return;
+        }
+        DOPPIO = { id: pz[i].id, quando: ora };
         var somma = e.shiftKey || e.metaKey || e.ctrlKey;
         if (somma || TL.multi.indexOf(pz[i].id) < 0) scegliPezzi([pz[i].id], somma);
         if (somma) { e.preventDefault(); disegnaTimeline(); return; }
