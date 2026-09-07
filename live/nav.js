@@ -38,7 +38,8 @@
       ["classifiche-campionati.html","Classifiche"],
       ["marcatori.html",             "Marcatori"],
       ["tiri.html",                  "Mappa dei tiri"],
-      ["passaggi.html",              "Mappa dei passaggi"]
+      ["passaggi.html",              "Mappa dei passaggi"],
+      ["heatmap.html",               "Heatmap"]
     ]},
     { nome: "Editoriali", voci: [
       ["statistiche.html",           "Statistiche"],

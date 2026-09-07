@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Heatmap · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-SemiBold.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+    transform-origin:center center;
+    font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);
+  }
+
+  #eyebrow{position:absolute;left:128px;top:74px;
+    font-family:'DM Sans',sans-serif;font-weight:600;font-size:22px;letter-spacing:.24em;
+    color:#C9A24B;text-transform:uppercase;white-space:nowrap;opacity:0;}
+  #title{position:absolute;left:125px;top:96px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:76px;letter-spacing:.01em;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;
+    clip-path:inset(0 100% 0 0);}
+  #rule{position:absolute;left:128px;top:204px;width:300px;height:3px;
+    background:linear-gradient(90deg,#C9A24B 0%,rgba(201,162,75,.15) 100%);
+    transform:scaleX(0);transform-origin:left center;}
+
+  /* ── il campo ──
+     La macchia sta SOTTO le righe del campo: se ci stesse sopra coprirebbe
+     l'area di rigore proprio dove il calore e' piu' forte, e non si
+     capirebbe piu' dove sono le cose. */
+  #campo{position:absolute;opacity:0;}
+  #campo .erba{position:absolute;inset:0;border-radius:4px;
+    background:rgba(245,241,230,.028);
+    box-shadow:inset 0 0 0 2px rgba(245,241,230,.22);}
+  #calore{position:absolute;left:0;top:0;border-radius:4px;}
+  #righe{position:absolute;inset:0;}
+  #righe .l{position:absolute;background:rgba(245,241,230,.28);}
+  #righe .box{position:absolute;box-shadow:inset 0 0 0 2px rgba(245,241,230,.28);}
+  #righe .cerchio{position:absolute;border:2px solid rgba(245,241,230,.28);border-radius:50%;}
+  #righe .rete{position:absolute;box-shadow:inset 0 0 0 2px rgba(201,162,75,.75);
+    background:rgba(201,162,75,.10);}
+
+  #verso{position:absolute;display:flex;align-items:center;gap:12px;opacity:0;
+    font-family:'DM Sans',sans-serif;font-weight:600;font-size:15px;letter-spacing:.24em;
+    color:rgba(245,241,230,.42);text-transform:uppercase;white-space:nowrap;}
+  #verso .asta{width:74px;height:2px;position:relative;
+    background:linear-gradient(90deg,rgba(201,162,75,.15),rgba(201,162,75,.85));}
+  #verso .asta::after{content:"";position:absolute;right:-1px;top:-4px;
+    border:5px solid transparent;border-left-color:rgba(201,162,75,.85);}
+
+  /* ── la colonna di sinistra: chi e' e quanto ha giocato ── */
+  .lato{position:absolute;width:300px;opacity:0;}
+  .lato .capo{display:flex;align-items:center;gap:16px;}
+  .lato .capo img{width:72px;height:72px;object-fit:contain;flex:none;
+    filter:drop-shadow(0 8px 22px rgba(0,0,0,.5));}
+  /* la faccia del giocatore: stessa cornice della formazione premium */
+  .lato .capo .faccia{width:74px;height:92px;border-radius:11px;flex:none;overflow:hidden;
+    position:relative;background:linear-gradient(180deg,#1a2550 0%,#0c1230 100%);
+    box-shadow:0 8px 20px rgba(0,0,0,.5);}
+  .lato .capo .faccia img{position:absolute;left:50%;top:0;transform:translateX(-50%);
+    width:190%;height:190%;object-fit:cover;object-position:center top;
+    filter:none;display:block;}
+  .lato .nome{font-family:'Mazzard',sans-serif;font-weight:800;font-size:34px;
+    letter-spacing:.01em;text-transform:uppercase;line-height:1.02;min-width:0;}
+  .lato .nome em{font-style:normal;color:#C9A24B;}
+  .lato .sotto{font-family:'DM Sans',sans-serif;font-weight:500;font-size:17px;
+    letter-spacing:.16em;color:rgba(245,241,230,.55);text-transform:uppercase;margin-top:7px;}
+  .lato .filo{height:2px;margin:20px 0 4px;
+    background:linear-gradient(90deg,rgba(201,162,75,.75),rgba(201,162,75,.06));}
+  .lato .num{display:flex;align-items:baseline;justify-content:space-between;
+    gap:14px;padding:8px 0;border-bottom:1px solid rgba(245,241,230,.07);}
+  .lato .num .eti{font-family:'DM Sans',sans-serif;font-weight:500;font-size:17px;
+    letter-spacing:.16em;color:rgba(245,241,230,.55);text-transform:uppercase;white-space:nowrap;}
+  .lato .num .cif{font-family:'Mazzard',sans-serif;font-weight:800;font-size:30px;
+    font-variant-numeric:tabular-nums;color:#F5F1E6;line-height:1;}
+  .lato .num.forte .cif{color:#C9A24B;font-size:36px;}
+
+  /* ── la scala del calore ── */
+  #scala{position:absolute;display:flex;align-items:center;gap:14px;opacity:0;}
+  #scala .barra{width:210px;height:12px;border-radius:6px;}
+  #scala span{font-family:'DM Sans',sans-serif;font-weight:500;font-size:15px;
+    letter-spacing:.2em;color:rgba(245,241,230,.5);text-transform:uppercase;white-space:nowrap;}
+
+  #chiosa{position:absolute;left:0;right:0;text-align:center;opacity:0;
+    font-family:'DM Sans',sans-serif;font-weight:500;font-size:16px;letter-spacing:.16em;
+    color:rgba(245,241,230,.42);text-transform:uppercase;}
+
+  @keyframes wipeIn { to { clip-path:inset(0 0 0 0); } }
+  @keyframes fadeIn { to { opacity:1; } }
+  @keyframes ruleIn { to { transform:scaleX(1); } }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="eyebrow"></div>
+  <div id="title">LA HEATMAP</div>
+  <div id="rule"></div>
+  <div id="lati"></div>
+  <div id="campo"><i class="erba"></i><canvas id="calore"></canvas><div id="righe"></div></div>
+  <div id="verso"></div>
+  <div id="scala"></div>
+  <div id="chiosa"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { e:"SERIE A · 3ª GIORNATA", t:"LA HEATMAP",
+  //     sq:{ n:"Como", l:"…stemma…", g:4 },
+  //     chi:{ p:"Perrone", num:"5", f:"…foto…" },   // manca: e' la squadra
+  //     st:{ tocchi:846, area:"62%", meta:"71%" },
+  //     pt:"52,44;61,38;…" }                        // i punti, x,y interi 0-100
+  //
+  //   Le coordinate sono quelle ESPN: x=100 e' la porta ATTACCATA, y bassa e'
+  //   la DESTRA di chi attacca. Si attacca sempre verso destra.
+  var DEMO = {
+    e: "SERIE A · 3ª GIORNATA", t: "LA HEATMAP",
+    sq: { n: "Como", g: 4 },
+    st: { tocchi: 120, area: "58%", meta: "70%" },
+    pt: (function () {
+      // una nuvola finta con la forma di una squadra che attacca a destra
+      var s = [], i, cx, cy;
+      for (i = 0; i < 120; i++) {
+        cx = 30 + Math.random() * 55 + (Math.random() < .3 ? 12 : 0);
+        cy = 50 + (Math.random() - .5) * 60;
+        s.push(Math.round(Math.max(2, Math.min(98, cx))) + "," +
+               Math.round(Math.max(2, Math.min(98, cy))));
+      }
+      return s.join(";");
+    })()
+  };
+
+  function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return DEMO;
+    try {
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return (d && d.sq && d.pt) ? d : null;
+    } catch (err) { return null; }
+  }
+  var STILL = new URLSearchParams(location.search).get("still") === "1";
+  var D = decodeData();
+  if (!D) {
+    document.title = "HEATMAP — dati non validi";
+    document.getElementById("stage").style.display = "none";
+    return;
+  }
+  document.title = "HEATMAP " + ((D.chi && D.chi.p) || D.sq.n || "");
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    el("stage").style.transform = "translate(-50%,-50%) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+
+  var eb = el("eyebrow"); eb.textContent = D.e || "";
+  var tt = el("title"); tt.textContent = D.t || "LA HEATMAP";
+  var rl = el("rule");
+  if (STILL) { eb.style.opacity = 1; tt.style.clipPath = "inset(0 0 0 0)"; rl.style.transform = "scaleX(1)"; }
+  else {
+    eb.style.animation = "fadeIn .5s ease .15s forwards";
+    tt.style.animation = "wipeIn .7s cubic-bezier(.2,.7,.3,1) .3s forwards";
+    rl.style.animation = "ruleIn .55s cubic-bezier(.2,.7,.3,1) .85s forwards";
+  }
+
+  // ── il campo, con le misure vere ────────────────────────────────────
+  var PH = 620, PY = 288;
+  var MPX = PH / 68;
+  var PW = Math.round(105 * MPX);
+  var PX = Math.round((1920 - PW) / 2);
+  function m(v) { return Math.round(v * MPX); }
+
+  var campo = el("campo");
+  campo.style.cssText = "left:" + PX + "px;top:" + PY + "px;width:" + PW + "px;height:" + PH + "px;" +
+    (STILL ? "opacity:1" : "animation:fadeIn .6s ease .9s forwards");
+
+  function metaCampo(x0, verso) {
+    var h = "";
+    var HW = PW / 2;
+    var fondo = verso < 0 ? x0 : x0 + HW;
+    [[16.5, 40.32], [5.5, 18.32]].forEach(function (a) {
+      var w = m(a[0]), hh = m(a[1]);
+      h += '<i class="box" style="left:' + Math.round(verso < 0 ? fondo : fondo - w) + 'px;top:' +
+           Math.round((PH - hh) / 2) + 'px;width:' + w + 'px;height:' + hh + 'px"></i>';
+    });
+    var dx = verso < 0 ? fondo + m(11) : fondo - m(11);
+    var r = m(9.15), taglio = m(16.5 - 11) + r;
+    h += '<i class="l" style="left:' + (dx - 3) + 'px;top:' + (PH / 2 - 3) +
+         'px;width:6px;height:6px;border-radius:50%"></i>';
+    h += '<i class="cerchio" style="left:' + (dx - r) + 'px;top:' + (PH / 2 - r) + 'px;' +
+         'width:' + (2 * r) + 'px;height:' + (2 * r) + 'px;' +
+         'clip-path:inset(0 ' + (verso < 0 ? "0 0 " + taglio + "px" : taglio + "px 0 0") + ')"></i>';
+    var gh = m(7.32), gd = m(2);
+    h += '<i class="rete" style="left:' + Math.round(verso < 0 ? fondo - gd : fondo) + 'px;top:' +
+         Math.round((PH - gh) / 2) + 'px;width:' + gd + 'px;height:' + gh + 'px"></i>';
+    var cr = m(1) + 5;
+    [0, PH].forEach(function (yy) {
+      h += '<i class="cerchio" style="left:' + Math.round(fondo - cr) + 'px;top:' + (yy - cr) + 'px;' +
+           'width:' + (2 * cr) + 'px;height:' + (2 * cr) + 'px"></i>';
+    });
+    return h;
+  }
+  var rc = m(9.15);
+  el("righe").innerHTML =
+    '<i style="position:absolute;inset:0;overflow:hidden;border-radius:4px">' +
+      metaCampo(0, -1) + metaCampo(PW / 2, +1) +
+      '<i class="l" style="left:' + Math.round(PW / 2 - 1) + 'px;top:0;width:2px;height:' + PH + 'px"></i>' +
+      '<i class="cerchio" style="left:' + Math.round(PW / 2 - rc) + 'px;top:' + Math.round(PH / 2 - rc) +
+        'px;width:' + (2 * rc) + 'px;height:' + (2 * rc) + 'px"></i>' +
+      '<i class="l" style="left:' + Math.round(PW / 2 - 3) + 'px;top:' + (PH / 2 - 3) +
+        'px;width:6px;height:6px;border-radius:50%"></i>' +
+    '</i>';
+
+  // ── la macchia ──────────────────────────────────────────────────────
+  // Si disegna in due tempi, com'e' d'uso per le mappe di calore: prima una
+  // bolla sfumata per ogni punto, tutte in grigio e semitrasparenti, cosi'
+  // dove i punti si accalcano il grigio si somma; poi ogni pixel prende il
+  // colore che gli spetta secondo quanto e' scuro. Farlo in un colpo solo
+  // non funziona: due colori caldi sovrapposti danno una terza tinta a caso,
+  // mentre due grigi sommati danno un grigio piu' scuro, che e' quello che
+  // serve.
+  var PUNTI = String(D.pt || "").split(";").map(function (p) {
+    var v = p.split(",");
+    return { x: +v[0], y: +v[1] };
+  }).filter(function (p) { return isFinite(p.x) && isFinite(p.y); });
+
+  // La tavolozza e' quella di casa e non il solito blu-verde-rosso: dal navy
+  // trasparente al verde acqua, poi oro, e bianco caldo dove si e' giocato di
+  // piu'. Sul fondo navy della grafica il verde acqua e' gia' visibile piano,
+  // e l'oro dice "qui" senza urlare.
+  var TAPPE = [
+    [0.00, [26, 40, 96, 0]],
+    [0.18, [36, 78, 150, 130]],
+    [0.42, [78, 190, 190, 190]],
+    [0.68, [201, 162, 75, 225]],
+    [0.88, [232, 205, 140, 245]],
+    [1.00, [255, 246, 226, 255]]
+  ];
+  function tavolozza() {
+    var lut = new Uint8ClampedArray(256 * 4);
+    for (var i = 0; i < 256; i++) {
+      var t = i / 255, a = TAPPE[0], b = TAPPE[TAPPE.length - 1], k;
+      for (k = 0; k < TAPPE.length - 1; k++) {
+        if (t >= TAPPE[k][0] && t <= TAPPE[k + 1][0]) { a = TAPPE[k]; b = TAPPE[k + 1]; break; }
+      }
+      var q = (b[0] - a[0]) ? (t - a[0]) / (b[0] - a[0]) : 0;
+      for (var c = 0; c < 4; c++) lut[i * 4 + c] = a[1][c] + (b[1][c] - a[1][c]) * q;
+    }
+    return lut;
+  }
+
+  (function disegnaCalore() {
+    var cv = el("calore");
+    cv.width = PW; cv.height = PH;
+    var ctx = cv.getContext("2d");
+    if (!ctx || !PUNTI.length) return;
+
+    // Il raggio della bolla. Piu' stretto fa i puntini, piu' largo impasta
+    // tutto il campo in una nuvola sola — e quanto sia giusto dipende da
+    // quanti punti ci sono: una squadra ne ha ottocento e si impastano da
+    // soli, un giocatore cinquanta e con lo stesso raggio si vedrebbero le
+    // bolle una per una invece di una macchia.
+    var R = Math.round((PUNTI.length > 400 ? 6.5 : PUNTI.length > 150 ? 8 : 10.5) * MPX);
+    var bolla = document.createElement("canvas");
+    bolla.width = bolla.height = R * 2;
+    var bc = bolla.getContext("2d");
+    var g = bc.createRadialGradient(R, R, 0, R, R, R);
+    g.addColorStop(0, "rgba(0,0,0,1)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    bc.fillStyle = g;
+    bc.fillRect(0, 0, R * 2, R * 2);
+
+    // pochi punti: bolle piu' marcate, se no la macchia di un solo giocatore
+    // resterebbe un velo che non si vede
+    ctx.globalAlpha = PUNTI.length > 400 ? 0.09 : (PUNTI.length > 150 ? 0.16 : 0.26);
+    PUNTI.forEach(function (p) {
+      var x = PW * (Math.max(0, Math.min(100, p.x)) / 100);
+      var y = PH * (1 - Math.max(0, Math.min(100, p.y)) / 100);   // y bassa = destra = in basso
+      ctx.drawImage(bolla, Math.round(x - R), Math.round(y - R));
+    });
+    ctx.globalAlpha = 1;
+
+    var img = ctx.getImageData(0, 0, PW, PH);
+    var d = img.data;
+    // si normalizza sul punto piu' caldo: cosi' la mappa di un giocatore con
+    // cinquanta palloni si legge come quella di una squadra con ottocento,
+    // ciascuna rispetto a se stessa
+    var max = 0, i;
+    for (i = 3; i < d.length; i += 4) if (d[i] > max) max = d[i];
+    if (!max) return;
+    var lut = tavolozza();
+    for (i = 0; i < d.length; i += 4) {
+      var k = Math.min(255, Math.round(d[i + 3] / max * 255)) * 4;
+      d[i] = lut[k]; d[i + 1] = lut[k + 1]; d[i + 2] = lut[k + 2]; d[i + 3] = lut[k + 3];
+    }
+    ctx.putImageData(img, 0, 0);
+  })();
+
+  // ── il verso d'attacco ──────────────────────────────────────────────
+  var vs = el("verso");
+  vs.style.cssText = "left:" + PX + "px;top:" + (PY - 34) + "px;" +
+    (STILL ? "opacity:1" : "animation:fadeIn .5s ease 1.0s forwards");
+  vs.innerHTML = '<span>Attacca</span><span class="asta"></span>';
+
+  // ── la colonna ──────────────────────────────────────────────────────
+  var q = D.sq || {}, chi = D.chi, st = D.st || {};
+  var capo;
+  if (chi) {
+    capo = '<div class="capo">' +
+      (chi.f ? '<span class="faccia"><img src="' + esc(chi.f) + '" onerror="this.parentNode.style.display=\'none\'"></span>' : "") +
+      '<div><div class="nome">' + esc(String(chi.p || "").toUpperCase()) +
+        (chi.num ? ' <em>' + esc(chi.num) + '</em>' : "") + '</div>' +
+      '<div class="sotto">' + esc(q.n || "") + '</div></div></div>';
+  } else {
+    capo = '<div class="capo">' +
+      (q.l ? '<img src="' + esc(q.l) + '" onerror="this.style.display=\'none\'">' : "") +
+      '<div class="nome">' + esc(q.n || "") +
+        (q.g != null && String(q.g) !== "" ? " <em>" + esc(q.g) + "</em>" : "") + '</div></div>';
+  }
+  var dentro = capo + '<div class="filo"></div>';
+  [["Palloni giocati", st.tocchi, true],
+   ["Nella meta' avversaria", st.meta, false],
+   ["Nell'area", st.area, false]].forEach(function (r) {
+    if (r[1] == null || r[1] === "") return;
+    dentro += '<div class="num' + (r[2] ? " forte" : "") + '">' +
+              '<span class="eti">' + esc(r[0]) + '</span>' +
+              '<span class="cif">' + esc(r[1]) + '</span></div>';
+  });
+  el("lati").innerHTML = '<div class="lato" style="left:128px;top:' + PY + 'px;' +
+    (STILL ? "opacity:1" : "animation:fadeIn .55s ease 1.0s forwards") + '">' + dentro + '</div>';
+
+  // ── la scala, perche' il colore voglia dire qualcosa ────────────────
+  var sc = el("scala");
+  sc.style.cssText = "left:" + PX + "px;top:" + (PY + PH + 34) + "px;" +
+    (STILL ? "opacity:1" : "animation:fadeIn .5s ease 1.5s forwards");
+  var fasce = TAPPE.map(function (t) {
+    return "rgba(" + t[1][0] + "," + t[1][1] + "," + t[1][2] + "," + (t[1][3] / 255).toFixed(2) + ") " +
+           Math.round(t[0] * 100) + "%";
+  }).join(",");
+  sc.innerHTML = '<span>Meno</span>' +
+    '<i class="barra" style="background:linear-gradient(90deg,' + fasce + ');' +
+    'box-shadow:inset 0 0 0 1px rgba(245,241,230,.14)"></i><span>Pi&ugrave;</span>';
+
+  // ── la chiosa: dire che cosa NON e' ─────────────────────────────────
+  // Non e' dove ha corso: quello lo sa solo il tracciamento ottico, che noi
+  // non abbiamo. E' dove ha giocato il pallone, ed e' giusto dirlo.
+  var ch = el("chiosa");
+  ch.style.cssText = "top:" + (PY + PH + 96) + "px;" +
+    (STILL ? "opacity:1" : "animation:fadeIn .5s ease 1.65s forwards");
+  ch.innerHTML = "Dove " + (chi ? "ha" : "la squadra ha") + " giocato il pallone &middot; " +
+                 PUNTI.length + " palloni";
+
+  function replay() { location.reload(); }
+  document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
+  document.addEventListener("dblclick", replay);
+})();
+</script>
+<script src="sfondo.js"></script>
+</body>
+</html>
