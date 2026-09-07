@@ -3784,13 +3784,20 @@ loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
 //  un altro sito non viene accettato — non per diffidenza verso chi clicca,
 //  ma perche' li' il fotogramma non si potrebbe leggere comunque, e si
 //  aprirebbe una porta per far entrare roba di fuori in una pagina di lavoro.
+var DENTRO_MAM = (function () {
+  try { return new URLSearchParams(location.search).get('dentro') === 'mam'; } catch (e) { return false; }
+})();
 (function () {
   var q; try { q = new URLSearchParams(location.search); } catch (e) { return; }
-  var clip = q.get('clip'); if (!clip) return;
+  var clip = q.get('clip'); if (!clip && !DENTRO_MAM) return;
 
-  var suo = (clip.charAt(0) === '/' && clip.charAt(1) !== '/') ||
-            clip.indexOf(location.origin + '/') === 0;
-  if (!suo) { console.log('[mam] indirizzo non di casa, ignorato'); return; }
+  // dentro il MAM il video non serve: la grafica la si disegna e basta,
+  // e' la timeline che sa su quale immagine finira'
+  if (clip) {
+    var suo = (clip.charAt(0) === '/' && clip.charAt(1) !== '/') ||
+              clip.indexOf(location.origin + '/') === 0;
+    if (!suo) { console.log('[mam] indirizzo non di casa, ignorato'); return; }
+  }
 
   // la partita, se il MAM sa quale e': la tendina si riempie da Airtable e
   // puo' metterci un attimo, quindi si aspetta senza insistere all'infinito
@@ -3851,19 +3858,31 @@ loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
     });
   }
   function mandaAlMam() {
-    // Due provenienze: una CLIP (un taglio solo) o un'USCITA (un montato
-    // gia' esportato). La seconda e' quella che si pubblica davvero, e
-    // prima non aveva strada per arrivare qui.
-    var idc = /\/_clip\/([A-Za-z0-9_-]+)\.mp4/.exec(clip);
-    var idu = /\/_hl\/([A-Za-z0-9_.-]+\.mp4)/.exec(clip);
-    if (!idc && !idu) { alert('Questo video non arriva dal MAM.'); return; }
+    // Tre destinazioni. Una CLIP (un taglio solo), un'USCITA (un montato
+    // gia' esportato), oppure — la piu' utile — la TIMELINE: qui il
+    // generatore sta dentro un pannello del MAM e la grafica torna indietro
+    // come livello, da mettere sopra il video e guardare prima di
+    // esportare. In quel caso non si passa dal ponte: si parla con la
+    // pagina che ci contiene, che sa dove metterla.
+    var idc = clip ? /\/_clip\/([A-Za-z0-9_-]+)\.mp4/.exec(clip) : null;
+    var idu = clip ? /\/_hl\/([A-Za-z0-9_.-]+\.mp4)/.exec(clip) : null;
+    if (!DENTRO_MAM && !idc && !idu) { alert('Questo video non arriva dal MAM.'); return; }
     var it = BYKEY[current];
     if (!it) return;
     var adj = (STATE[current] && STATE[current].adj && STATE[current].adj.photo) || {};
-    busy(true, 'Mando la grafica al MAM…');
+    busy(true, DENTRO_MAM ? 'Mando la grafica in timeline\u2026' : 'Mando la grafica al MAM\u2026');
     document.fonts.ready
       .then(function () { return pngTrasparente(overlaySvg(current), it.w, it.h); })
       .then(function (png) {
+        // Dentro il MAM non si passa dal ponte: la grafica torna alla
+        // pagina che ci contiene, che la mette sulla traccia V2 sopra il
+        // video. Cosi' la si guarda PRIMA di esportare, che e' l'unico
+        // modo per accorgersi che copre la faccia di qualcuno.
+        if (DENTRO_MAM) {
+          window.parent.postMessage({ tipo: 'grafica-per-timeline', png: png,
+            w: it.w, h: it.h, nome: fname(current) }, location.origin);
+          return { ok: true, inTimeline: true };
+        }
         return fetch(indirizzoPonte(), {
           method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify(idc ? {
@@ -3880,6 +3899,11 @@ loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
       .then(function (d) {
         busy(false);
         if (!d.ok) throw new Error(d.errore || 'il ponte ha detto no');
+        if (d.inTimeline) {
+          avviso('<b>Mandata in timeline.</b> La trovi sulla traccia V2, sopra il video: ' +
+                 'trascinala dove serve e guardala nel Programma prima di esportare.');
+          return;
+        }
         avviso('<b>Grafica mandata al MAM.</b> Il video con la grafica si sta preparando li\': ' +
                (idu ? 'lo trovi sotto la sequenza, nel MAM.' : 'lo trovi fra le clip della partita.'));
       })
@@ -3900,6 +3924,7 @@ loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
     }
     enterVideoPick(clip);
     var barra = document.getElementById('vidBar');
+
     if (barra && !document.getElementById('vidMam')) {
       var b = document.createElement('button');
       b.id = 'vidMam'; b.className = 'act';
@@ -3914,8 +3939,25 @@ loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
       if (a) { a.textContent = 'Clip dal MAM: ' + t + ' — scegli il fotogramma e premi \u00abUsa solo il fotogramma\u00bb.'; a.hidden = false; }
     }
   }
-  if (document.readyState === 'complete') setTimeout(apri, 300);
-  else window.addEventListener('load', function () { setTimeout(apri, 300); });
+  // DENTRO IL MAM, SENZA VIDEO. Il pulsante "manda al MAM" nasceva solo
+  // nella modalita' prendi-fotogramma, che qui non serve: la grafica va su
+  // un montato che sta di la', nella timeline. Quindi ne serve uno sempre
+  // presente, in cima, che dice dove finira'.
+  function pulsanteTimeline() {
+    if (!DENTRO_MAM || document.getElementById('vidTimeline')) return;
+    var barra = document.getElementById('barra') || document.getElementById('bars');
+    if (!barra) return setTimeout(pulsanteTimeline, 300);
+    var b = document.createElement('button');
+    b.id = 'vidTimeline'; b.className = 'act';
+    b.textContent = '\u2b06 Manda in timeline';
+    b.title = 'La grafica va sulla traccia V2 del montato aperto nel MAM, e la vedi sul video prima di esportare';
+    b.style.cssText = 'margin-left:8px;background:#C8A24A;color:#141414;border:0;border-radius:5px;' +
+                      'padding:5px 10px;font-weight:800;letter-spacing:.06em;cursor:pointer';
+    barra.appendChild(b);
+    b.addEventListener('click', mandaAlMam);
+  }
+  if (document.readyState === 'complete') { setTimeout(apri, 300); setTimeout(pulsanteTimeline, 400); }
+  else window.addEventListener('load', function () { setTimeout(apri, 300); setTimeout(pulsanteTimeline, 400); });
 })();
 </script>
 </body>

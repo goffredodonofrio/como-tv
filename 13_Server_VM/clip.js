@@ -2239,6 +2239,8 @@ async function hlEsportaVideo(q, formato, dentroUnGiro) {
     pr.on("close", (code) => code === 0 ? si() : no(new Error("incollatura fallita")));
   });
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}   // i pezzi non servono piu'
+  // e sopra ci vanno le grafiche del livello V2, ognuna nel suo tratto
+  await incollaGrafiche(q, finale);
   const d = await probe(finale);
   if (!q.mini) {
     const mini = await miniatura(finale, path.join(DIR, CARTELLA_HL, q.id + ".jpg"), (d.durata || 6) / 3);
@@ -5247,6 +5249,114 @@ function clipGrafica(p) {
 //  highlights — e su quello non c'era strada. Qui e' anche piu' semplice:
 //  l'uscita ha gia' la forma giusta (se e' 9:16 e' 9:16), quindi la
 //  maschera si posa sopra e basta, senza reinquadrare niente.
+// ══════════════════════════════════════════════════════════════════════
+//  IL LIVELLO DELLE GRAFICHE (V2)
+// ══════════════════════════════════════════════════════════════════════
+//
+//  Una grafica non e' un'altra esportazione: e' un pezzo della sequenza,
+//  come una clip, solo che sta sopra. Vive nel TEMPO DELLA SEQUENZA (non
+//  del materiale), quindi puo' stare a cavallo di due tagli, e si vede
+//  nel Programma prima di esportare — che e' l'unico modo per accorgersi
+//  che copre la faccia di qualcuno.
+//
+//  Il PNG arriva dal generatore e resta un file: in memoria un montato con
+//  dieci grafiche sarebbe venti mega di base64 dentro il registro.
+function cartellaGrafiche() {
+  const d = path.join(DIR, CARTELLA_HL, "_grafiche");
+  assicura(d);
+  return d;
+}
+
+function hlGrafica(p) {
+  const q = seqDi(p);
+  q.grafiche = q.grafiche || [];
+  const durataSeq = q.pezzi.reduce((n, x) => n + (x.fuori - x.dentro), 0);
+
+  if (p.togli) {
+    const prima = q.grafiche.length;
+    q.grafiche = q.grafiche.filter((g) => {
+      if (g.id !== p.grafica) return true;
+      try { fs.unlinkSync(path.join(cartellaGrafiche(), g.id + ".png")); } catch (e) {}
+      return false;
+    });
+    toccataAMano(q); scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: q, tolte: prima - q.grafiche.length };
+  }
+
+  if (p.grafica) {                                  // spostare o allungare
+    const g = q.grafiche.filter((x) => x.id === p.grafica)[0];
+    if (!g) throw new Error("grafica sconosciuta");
+    if (p.dentro !== undefined) g.dentro = num(p.dentro, 0, durataSeq, g.dentro);
+    if (p.fuori !== undefined) g.fuori = num(p.fuori, 0, durataSeq, g.fuori);
+    if (p.nome !== undefined) g.nome = String(p.nome).slice(0, 120);
+    if (g.fuori - g.dentro < 0.4) throw new Error("la grafica diventerebbe un lampo");
+    toccataAMano(q); scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: q };
+  }
+
+  // nuova: arriva il PNG dal generatore
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(p.png || "").replace(/\s/g, ""));
+  if (!m) throw new Error("la grafica non e' arrivata come PNG");
+  const dati = Buffer.from(m[1], "base64");
+  if (dati.length > 12 * 1024 * 1024) throw new Error("grafica troppo pesante");
+  const id = nuovoId("g");
+  fs.writeFileSync(path.join(cartellaGrafiche(), id + ".png"), dati);
+  const dentro = num(p.dentro, 0, Math.max(0, durataSeq), 0);
+  const dur = num(p.durata, 0.5, 600, 5);
+  const g = { id: id, dentro: dentro, fuori: Math.min(durataSeq || dentro + dur, dentro + dur),
+              nome: String(p.nome || "grafica").slice(0, 120),
+              w: Math.round(num(p.w, 16, 4096, 1080)), h: Math.round(num(p.h, 16, 4096, 1920)),
+              file: "/clip/" + CARTELLA_HL + "/_grafiche/" + id + ".png", quando: Date.now() };
+  if (g.fuori - g.dentro < 0.5) g.fuori = g.dentro + dur;
+  q.grafiche.push(g);
+  q.grafiche.sort((a, b) => a.dentro - b.dentro);
+  toccataAMano(q); scrivi(); annuncia(0, "clip");
+  return { ok: true, seq: q, grafica: g };
+}
+
+// Il passaggio finale: le grafiche si incollano sul montato gia' incollato,
+// ognuna nel suo tratto. Si fa qui e non pezzo per pezzo perche' una
+// grafica puo' stare a cavallo di due tagli, e li' dentro non ci sarebbe.
+async function incollaGrafiche(q, finale) {
+  const gg = (q.grafiche || []).filter((g) => {
+    try { return fs.existsSync(path.join(cartellaGrafiche(), g.id + ".png")); } catch (e) { return false; }
+  });
+  if (!gg.length) return;
+  const mis = await probeMisure(finale);
+  const VW = mis.w || 1080, VH = mis.h || 1920;
+  const ingressi = [];
+  let filtro = "", ultimo = "0:v";
+  gg.forEach((g, i) => {
+    ingressi.push("-i", path.join(cartellaGrafiche(), g.id + ".png"));
+    const k = Math.min(VW / (g.w || VW), VH / (g.h || VH));
+    const w2 = Math.max(2, Math.round((g.w || VW) * k / 2) * 2);
+    const h2 = Math.max(2, Math.round((g.h || VH) * k / 2) * 2);
+    const x = Math.round((VW - w2) / 2), y = Math.round((VH - h2) / 2);
+    const uscita = (i === gg.length - 1) ? "v" : ("v" + i);
+    filtro += "[" + (i + 1) + ":v]scale=" + w2 + ":" + h2 + "[g" + i + "];" +
+              "[" + ultimo + "][g" + i + "]overlay=" + x + ":" + y +
+              ":enable='between(t," + g.dentro.toFixed(2) + "," + g.fuori.toFixed(2) + ")'" +
+              ":format=auto[" + uscita + "];";
+    ultimo = uscita;
+  });
+  filtro = filtro.replace(/;$/, "");
+  const conGrafica = finale.replace(/\.mp4$/, "-g.mp4");
+  await new Promise((si, no) => {
+    const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-i", finale]
+      .concat(ingressi)
+      .concat(["-filter_complex", filtro, "-map", "[v]", "-map", "0:a?",
+               "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+               "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-y", conGrafica]);
+    const pr = spawn(FFMPEG, args, { stdio: ["ignore", "ignore", "pipe"] });
+    let coda = "";
+    pr.stderr.on("data", (d) => { coda = (coda + d).slice(-1500); });
+    pr.on("error", no);
+    pr.on("close", (code) => code === 0 ? si() : no(new Error(ultimaRiga(coda) || ("grafiche: ffmpeg " + code))));
+  });
+  try { fs.renameSync(conGrafica, finale); } catch (e) {}
+  console.log("[clip] incollate " + gg.length + " grafiche su " + path.basename(finale));
+}
+
 function graficaSuUscita(p) {
   const q = R.seq[String(p.seq || "")];
   if (!q) throw new Error("sequenza sconosciuta");
@@ -5865,6 +5975,7 @@ const AZIONI = {
   "clip-integrale": clipIntegrale,
   "clip-anello": () => ({ ok: true, tolti: anello() }),
   "clip-grafica-uscita": graficaSuUscita,
+  "clip-hl-grafica": hlGrafica,
   "clip-uscite": (p) => (p && p.pulisci) ? pulisciUscite(p)
     : { ok: true, elenco: uscite().map((u) => ({ nome: u.nome, tipo: u.tipo, giga: Math.round(u.peso / 1e8) / 10,
         giorni: Math.round((Date.now() - u.quando) / 86400000 * 10) / 10, orfano: u.orfano, alLavoro: u.alLavoro })),

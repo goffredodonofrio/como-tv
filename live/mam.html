@@ -235,6 +235,18 @@
      accesi tutti */
   .formatiSeq .b.spento{background:transparent;border:1px solid var(--linea,#3A3A3A);color:var(--fumo,#8A8A8A);}
   .formatiSeq .b.spento:hover{border-color:var(--oro,#C8A24A);color:#D8D8D8;}
+  .pannelloGrafiche{position:fixed;right:0;top:0;bottom:0;width:min(760px,68vw);z-index:220;
+    background:#141414;border-left:1px solid #2A2A2A;box-shadow:-18px 0 40px rgba(0,0,0,.5);
+    display:flex;flex-direction:column;}
+  .pannelloGrafiche header{display:flex;align-items:baseline;gap:12px;padding:10px 14px;
+    border-bottom:1px solid #2A2A2A;background:#181818;}
+  .pannelloGrafiche header b{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--oro,#C8A24A);}
+  .pannelloGrafiche header span{font-size:11px;color:#8A8A8A;flex:1;}
+  .pannelloGrafiche header a{font-size:11px;color:#5AA7F2;}
+  .pannelloGrafiche iframe{flex:1;border:0;width:100%;background:#0F0F0F;}
+  /* l'anteprima della grafica sopra il Programma */
+  .telaio .graficaSopra{position:absolute;inset:0;pointer-events:none;z-index:6;
+    background-position:center;background-repeat:no-repeat;background-size:contain;}
   .mbarra .tot.tratto{color:var(--oro,#C8A24A);}
   .mbarra .tot .dituttoQ{font-style:normal;font-size:9px;letter-spacing:.04em;margin-left:6px;
     color:var(--inchiostro-3,#8A8A8A);}
@@ -248,6 +260,15 @@
   /* la clip audio: stesso blu, riga centrale e forma d'onda */
   .tlpista .clipA{position:absolute;top:1px;height:44px;background:var(--tl-audio);border:1px solid var(--tl-audiobordo);border-radius:2px;overflow:hidden;}
   .tlpista .clipA.sel{background:var(--tl-audiosel);}
+  /* V2: le grafiche. Viola, che in Premiere e' il colore della grafica */
+  .tlpista .clipG{position:absolute;top:1px;height:32px;background:#4A3A6B;border:1px solid #2E2447;
+    border-radius:2px;overflow:hidden;cursor:pointer;z-index:3;display:flex;align-items:center;gap:5px;padding-left:3px;}
+  .tlpista .clipG.sel{background:#6A5594;}
+  .tlpista .clipG img{height:26px;width:auto;max-width:34px;object-fit:contain;background:#1A1A1A;border-radius:2px;}
+  .tlpista .clipG .tt{font-size:10px;color:#E2DAF5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tlpista .clipG .bordo{position:absolute;top:0;bottom:0;width:7px;cursor:ew-resize;z-index:4;}
+  .tlpista .clipG .bordo.sx{left:0;} .tlpista .clipG .bordo.dx{right:0;}
+  .tlpista .clipG .bordo:hover{background:rgba(255,255,255,.22);}
   .tlpista .clipA::before{content:'';position:absolute;left:0;right:0;top:16px;bottom:0;
     background:repeating-linear-gradient(90deg,rgba(255,255,255,.35) 0 1px,transparent 1px 3px),
                linear-gradient(180deg,transparent 0 35%,rgba(255,255,255,.22) 35% 65%,transparent 65%);}
@@ -1585,7 +1606,8 @@
             // solo il generatore con dentro QUESTO montato. Prima erano tre
             // mosse — esporta, aspetta, cerca il link "grafica" nella coda —
             // e in mezzo si perdeva il filo.
-            '<button class="b" id="seqGrafica" title="esporta e apre il generatore con questo montato dentro">GRAFICA</button>' +
+            '<button class="b" id="seqLivello" title="apre il generatore qui dentro: la grafica va sulla traccia V2 e la vedi sul video">+ GRAFICA</button>' +
+            '<button class="b" id="seqGrafica" title="esporta e apre il generatore con questo montato dentro">GRAFICA SU VIDEO</button>' +
             // I formati stanno qui, non solo dentro la finestra: si vede a
             // colpo d'occhio con che inquadratura uscira' la sequenza, e si
             // cambia senza aprire niente. Accesi piu' d'uno, escono tutti.
@@ -1625,6 +1647,7 @@
     el("capoTorna").addEventListener("click", function (e) { e.preventDefault(); tornaAlContenuto(); });
     el("seqTutti").addEventListener("click", function () { apriExport("sequenza"); });   // Esporta accanto al Programma
     el("seqGrafica").addEventListener("click", function () { versoLaGrafica(SEQ); });
+    el("seqLivello").addEventListener("click", function () { apriPannelloGrafiche(); });
     c.querySelectorAll("#formatiSeq button").forEach(function (b2) {
       b2.addEventListener("click", function () {
         // UNO ALLA VOLTA. Prima si accumulavano e restavano accesi tutti:
@@ -1947,8 +1970,23 @@
       v.src = src.url; v.load();
     }
   }
+  // La grafica che si vede ADESSO nel Programma: la prima che copre la
+  // testina. E' un'immagine sopra il video, non un rendering: cambia
+  // istantaneamente mentre trascini.
+  function graficaSopraProgramma() {
+    var t = el("telaioP"); if (!t) return;
+    var g = (SEQ && SEQ.grafiche ? SEQ.grafiche : []).filter(function (x) {
+      var pos = progPos(); return pos >= x.dentro && pos <= x.fuori;
+    })[0];
+    var d = t.querySelector(".graficaSopra");
+    if (!g) { if (d) d.remove(); return; }
+    if (!d) { d = document.createElement("div"); d.className = "graficaSopra"; t.appendChild(d); }
+    var via = BASE + g.file;
+    if (d.dataset.via !== via) { d.style.backgroundImage = "url('" + via + "')"; d.dataset.via = via; }
+  }
   function disegnaProgramma() {
     var sc = el("scrubP"), v = el("programma"); if (!sc) return;
+    graficaSopraProgramma();
     var pz = pezziProg(), tot = durataSeq();
     if (el("capoSeq")) el("capoSeq").textContent = SEQ ? (SEQ.titolo || "sequenza") + " · " + pz.length + " pezzi" : "nessuna sequenza";
     // nel Programma il "tratto" e' il pezzo su cui sta la testina: e' quello
@@ -2224,6 +2262,47 @@
   //  prende un bordo per accorciarlo o allungarlo, si clicca sul righello
   //  per andare li'. Una clip dal progetto si lascia cadere dove si vuole.
   //  Canc toglie il pezzo scelto.
+  // ══════════════════════════════════════════════════════════════════
+  //  IL PANNELLO GRAFICHE — il generatore dentro il MAM
+  // ══════════════════════════════════════════════════════════════════
+  //
+  //  Prima la grafica arrivava dopo: esporta, apri il generatore, rimanda
+  //  indietro, riesporta. Se copriva la faccia di qualcuno lo scoprivi al
+  //  terzo giro. Qui invece il generatore vive dentro un pannello, la
+  //  grafica torna in TIMELINE come livello sopra il video, e la guardi nel
+  //  Programma prima di esportare. Il rendering resta l'ultimo passo, non
+  //  il modo per vedere com'e' venuta.
+  function apriPannelloGrafiche() {
+    if (!SEQ) return dice("Apri prima una sequenza: la grafica va sopra un montato.");
+    var vecchio = el("finGrafiche"); if (vecchio) { vecchio.remove(); return; }
+    var box = document.createElement("div");
+    box.className = "pannelloGrafiche"; box.id = "finGrafiche";
+    box.innerHTML = '<header><b>Grafiche</b>' +
+      '<span>vanno sulla traccia V2 di “' + pulito(SEQ.titolo || "sequenza") + '”</span>' +
+      '<a href="#" id="grafChiudi">chiudi</a></header>' +
+      '<iframe id="grafTelaio" src="' + GEN + '&dentro=mam&evento=' +
+        encodeURIComponent((REG && REG.evento) || "") + '"></iframe>';
+    document.body.appendChild(box);
+    el("grafChiudi").addEventListener("click", function (e) { e.preventDefault(); box.remove(); });
+  }
+
+  // La grafica torna dal pannello: entra in timeline alla testina, cinque
+  // secondi, e da li' si sposta e si allunga come un pezzo qualsiasi.
+  window.addEventListener("message", function (ev) {
+    if (ev.origin !== location.origin) return;
+    var d = ev.data || {};
+    if (d.tipo !== "grafica-per-timeline") return;
+    if (!SEQ) return dice("Serve una sequenza aperta.");
+    var dove = Math.max(0, progPos());
+    manda({ tipo: "clip-hl-grafica", seq: SEQ.id, png: d.png, w: d.w, h: d.h,
+            nome: d.nome || "grafica", dentro: dove, durata: 5 })
+      .then(function (r) {
+        SEQ = r.seq; disegnaSequenza(); destraMateriale();
+        dice("Grafica in timeline al " + tc(dove) + " \u00b7 cinque secondi, trascinala dove serve", true);
+      })
+      .catch(function (e) { dice(e.message); });
+  });
+
   // LA FINESTRA DELL'ATTESA. Si apre SUBITO, al clic, e non dopo: una
   // finestra aperta al termine di un'attesa il browser la blocca, perche'
   // non e' piu' figlia di un gesto tuo. Aprendola subito si guadagnano due
@@ -2295,7 +2374,7 @@
   var DOPPIA_CARTA = { id: "", quando: 0 };
   var CARTA = null;                     // la scheda scelta, che non e' quella aperta
   var SEQSCELTE = [];        // le sequenze accese con Shift, da togliere insieme
-  var TL = { sel: null, multi: [], riquadro: null, ghost: null, ghost2: null, punto: null,
+  var TL = { selG: null, sel: null, multi: [], riquadro: null, ghost: null, ghost2: null, punto: null,
              slip: null, roll: null, ins: null, trim: null, drag: null, vista: null, nav: null,
              scrub: null, lock: { V1: false, A1: false } };
   // La selezione: uno o piu' pezzi. TL.sel resta il principale (quello che
@@ -2345,7 +2424,7 @@
   function pulito(x) { return String(x || "").replace(/[<>&"]/g, function (c) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]; }); }
 
   function disegnaTimeline() {
-    var p = el("tlPista"), rig = el("tlRighello"), v1 = el("tlV1"), a1 = el("tlA1"); if (!p || !rig) return;
+    var p = el("tlPista"), rig = el("tlRighello"), v1 = el("tlV1"), a1 = el("tlA1"), v2 = el("tlV2"); if (!p || !rig) return;
     var pz = pezziProg(), tot = durataSeq(), largo = p.clientWidth || 900;
     var nome = el("tlNome");
     if (nome) nome.textContent = SEQ ? (SEQ.titolo || "sequenza") : "nessuna sequenza";
@@ -2427,6 +2506,22 @@
       oa.push('<div class="clipA' + ((TL.sel === x.id || TL.multi.indexOf(x.id) >= 0) ? " sel" : "") + '" data-pezzo="' + x.id + '" style="left:' + xa + 'px;width:' + w + 'px"><span class="onda"></span></div>');
     });
     v1.innerHTML = ov.join(""); a1.innerHTML = oa.join("");
+    // V2: le grafiche, che vivono nel tempo della SEQUENZA e non del
+    // materiale — per questo si disegnano da sole, senza accumulare durate
+    if (v2) {
+      var og = [];
+      (SEQ && SEQ.grafiche ? SEQ.grafiche : []).forEach(function (g) {
+        if (g.fuori < f.a || g.dentro > f.b) return;
+        var ga = Math.max(0, X(g.dentro)), gb = Math.min(largo, X(g.fuori));
+        og.push('<div class="clipG' + (TL.selG === g.id ? " sel" : "") + '" data-grafica="' + g.id +
+                '" style="left:' + ga + 'px;width:' + Math.max(8, gb - ga) + 'px" title="' +
+                pulito(g.nome || "grafica") + '">' +
+                '<img src="' + BASE + g.file + '" alt=""><span class="tt">' + pulito(g.nome || "grafica") + '</span>' +
+                '<span class="bordo sx" data-latoG="sx"></span><span class="bordo dx" data-latoG="dx"></span></div>');
+      });
+      v2.innerHTML = og.join("");
+      v2.classList.toggle("vuota", !og.length);
+    }
 
     var ins = el("tlIns");
     if (TL.ins !== null) {
@@ -2448,6 +2543,7 @@
       if (te) te.style.left = x + "px"; if (th) th.style.left = x + "px";
       if (el("tlTc")) el("tlTc").textContent = tc(progPos());
       if (el("pPos")) el("pPos").textContent = tc(progPos());
+      graficaSopraProgramma();
     }
     requestAnimationFrame(animaTestina);
   }
@@ -2537,6 +2633,20 @@
       var vp = el("programma");
       var bordo = e.target.closest ? e.target.closest(".bordo") : null;
       var blocco = e.target.closest ? e.target.closest(".clipV, .clipA") : null;
+      // LE GRAFICHE su V2: si scelgono, si spostano, si allungano. Vivono
+      // nel tempo della sequenza, quindi bastano i pixel del righello.
+      var bloccoG = e.target.closest ? e.target.closest(".clipG") : null;
+      if (bloccoG && STRUMENTO !== "h") {
+        var gid = bloccoG.dataset.grafica;
+        var gg = (SEQ && SEQ.grafiche ? SEQ.grafiche : []).filter(function (x) { return x.id === gid; })[0];
+        if (gg) {
+          TL.selG = gid; TL.sel = null; TL.multi = [];
+          var bg = e.target.closest(".bordo");
+          TL.grafica = { id: gid, x0: e.clientX, dentro: gg.dentro, fuori: gg.fuori,
+                         lato: bg ? bg.dataset.latoG : "" };
+          e.preventDefault(); disegnaTimeline(); return;
+        }
+      }
       var pz = pezziProg();
       // LA MANO: si trascina la vista, non il montaggio — e vale anche
       // sopra i pezzi, se no bisognerebbe cercare un buco per scorrere.
@@ -2651,6 +2761,18 @@
         else { var x = pezziProg()[ds.i]; PROG.i = ds.i; PROG.pos = (PROG.a === null ? 0 : x.dentro) + ds.dentro; disegnaTimeline(); if (el("pPos")) el("pPos").textContent = tc(progPos()); }
         return;
       }
+      if (TL.grafica) {
+        var dgg = (e.clientX - TL.grafica.x0) / largo * (f.b - f.a);
+        var gq = (SEQ && SEQ.grafiche ? SEQ.grafiche : []).filter(function (x) { return x.id === TL.grafica.id; })[0];
+        if (gq) {
+          var durG = TL.grafica.fuori - TL.grafica.dentro;
+          if (TL.grafica.lato === "sx") gq.dentro = Math.max(0, Math.min(TL.grafica.fuori - 0.4, TL.grafica.dentro + dgg));
+          else if (TL.grafica.lato === "dx") gq.fuori = Math.max(TL.grafica.dentro + 0.4, TL.grafica.fuori + dgg);
+          else { gq.dentro = Math.max(0, TL.grafica.dentro + dgg); gq.fuori = gq.dentro + durG; }
+          disegnaTimeline(); graficaSopraProgramma();
+        }
+        return;
+      }
       if (TL.roll) {
         var dr = (e.clientX - TL.roll.x0) / largo * (f.b - f.a);
         var totR = durataAperta() || 99999;
@@ -2684,6 +2806,16 @@
     document.addEventListener("mouseup", function () {
       if (TL.riquadro) { chiudiRiquadro(); return; }
       if (TL.scrub) { TL.scrub = null; var dsx = pezzoAlTempo(progPos()); if (dsx) progVai(dsx.i, false, dsx.dentro); }
+      if (TL.grafica && SEQ) {
+        var gid2 = TL.grafica.id; TL.grafica = null;
+        var gq2 = (SEQ.grafiche || []).filter(function (x) { return x.id === gid2; })[0];
+        if (gq2) {
+          manda({ tipo: "clip-hl-grafica", seq: SEQ.id, grafica: gid2, dentro: gq2.dentro, fuori: gq2.fuori })
+            .then(function (r) { SEQ = r.seq; disegnaSequenza(); })
+            .catch(function (er) { dice(er.message); aggiorna(); });
+        }
+        TL.trim = null; TL.drag = null; TL.ins = null; return;
+      }
       if (TL.roll && TL.ghost && TL.ghost2 && SEQ) {
         var ga = TL.ghost, gb = TL.ghost2; TL.ghost = null; TL.ghost2 = null; TL.roll = null;
         applicaEPoi(function (q) {
@@ -2720,7 +2852,7 @@
         }
       }
       TL.trim = null; TL.ghost = null; TL.ghost2 = null; TL.slip = null; TL.roll = null;
-      TL.mano = null; TL.drag = null; TL.ins = null;
+      TL.mano = null; TL.drag = null; TL.ins = null; TL.grafica = null;
       disegnaTimeline();
     });
 
@@ -3645,6 +3777,14 @@
       return;
     }
     if (k === "escape" && SEQSCELTE.length) { SEQSCELTE = []; destraMateriale(); return; }
+    if ((k === "delete" || k === "backspace") && TL.selG && SEQ) {
+      e.preventDefault();
+      var vg = TL.selG; TL.selG = null;
+      manda({ tipo: "clip-hl-grafica", seq: SEQ.id, grafica: vg, togli: 1 })
+        .then(function (r) { SEQ = r.seq; disegnaSequenza(); destraMateriale(); dice("Grafica tolta.", true); })
+        .catch(function (er) { dice(er.message); });
+      return;
+    }
     if ((k === "delete" || k === "backspace") && SEQ) {
       if (TL.lock.V1) { e.preventDefault(); return dice("La traccia V1 e' bloccata."); }
       var scelti = pezziScelti(); if (!scelti.length) return;
