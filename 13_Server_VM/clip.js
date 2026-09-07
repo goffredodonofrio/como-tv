@@ -2417,7 +2417,10 @@ async function archivioApri(p) {
   } catch (e) { durata = 0; }
 
   const r = {
-    id: nuovoId("r"), evento: a.rec || "",
+    // l'evento e' la chiave stessa dell'indice: senza, la partita aperta
+    // dall'archivio non ritrovava i suoi appunti ne' le rose di ESPN, e
+    // whisper si trascriveva la telecronaca senza sapere un nome
+    id: nuovoId("r"), evento: String(p.rec || ""),
     titolo: titoloMateriale(a, i),
     competizione: "", sorgente: "archivio", origine: "archivio", url: "",
     stato: "finita", avviata: Date.parse(a.quando) || Date.now(), finita: Date.now(),
@@ -2462,6 +2465,7 @@ function rinominaMaterialeArchivio() {
     if (pz.length && !pz.some((x) => x.chiave === r.arch.chiave) && !Object.keys(R.clip).some((c) => R.clip[c].reg === r.id)) {
       delete R.reg[k]; n++; return;
     }
+    if (!r.evento && r.arch.rec) { r.evento = r.arch.rec; n++; }
     const t = titoloMateriale(a, r.arch.pezzo || 0);
     if (t !== r.titolo) { r.titolo = t; n++; }
   });
