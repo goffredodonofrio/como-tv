@@ -2784,7 +2784,7 @@ function giraLaCoda() {
   voceAlLavoro = CODA_VOCE.shift();
   trascriviDavvero(voceAlLavoro)
     .catch((e) => console.log("[clip] trascrizione fallita: " + e.message))
-    .then(() => { voceAlLavoro = null; annuncia(0, "clip"); setTimeout(giraLaCoda, 1000); });
+    .then(() => { voceAlLavoro = null; annuncia(0, "clip"); setTimeout(giraLaCoda, 1000); setTimeout(giraOrologi, 1500); });
 }
 
 // I nomi propri sono quelli che il modello sbaglia — "Henry Kane" per Harry
@@ -3225,7 +3225,10 @@ function prioritaPartita(rec) {
   return como * 1e13 + (1e13 - (Date.parse(a.quando) || 0));
 }
 function giraOrologi() {
-  if (orologiInMoto >= OROLOGI_INSIEME) return;
+  // mentre si trascrive, i cronometri scendono a uno: whisper e' a bassa
+  // priorita' e con due letture in corso non gli resta niente
+  const insieme = voceAlLavoro ? 1 : OROLOGI_INSIEME;
+  if (orologiInMoto >= insieme) return;
   // a coda finita, le partite non lette si ritentano una volta: un sondaggio
   // caduto su un replay o su una grafica spenta la seconda volta cade altrove
   if (!CODA_OROLOGI.length) {
@@ -3248,7 +3251,7 @@ function giraOrologi() {
       if (ARCHIVIO[rec]) { ARCHIVIO[rec].orologioFallito = { quando: new Date().toISOString(), motivo: String(e.message).slice(0, 80) }; scriviArchivio(); }
     })
     .then(() => { orologiInMoto--; setTimeout(giraOrologi, 500); });
-  setTimeout(giraOrologi, 3000);       // e intanto parte la seconda
+  if (insieme > 1) setTimeout(giraOrologi, 3000);   // e intanto parte la seconda
 }
 // Ogni cronometro costa ~50 MB letti da S3: AWS ne regala 100 GB al mese,
 // oltre si paga. Il filtro tiene la coda dentro il gratuito: il Como e la
