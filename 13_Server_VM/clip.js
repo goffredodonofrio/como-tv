@@ -5237,6 +5237,68 @@ function clipGrafica(p) {
   return { ok: true, clip: nuova };
 }
 
+// ── LA GRAFICA SU UN MONTATO ──────────────────────────────────────────
+//  Finora il generatore sapeva vestire solo una CLIP: una cosa sola, un
+//  taglio solo. Ma quello che si pubblica e' il montato — i gol, gli
+//  highlights — e su quello non c'era strada. Qui e' anche piu' semplice:
+//  l'uscita ha gia' la forma giusta (se e' 9:16 e' 9:16), quindi la
+//  maschera si posa sopra e basta, senza reinquadrare niente.
+function graficaSuUscita(p) {
+  const q = R.seq[String(p.seq || "")];
+  if (!q) throw new Error("sequenza sconosciuta");
+  const nome = String(p.file || "").replace(/[^A-Za-z0-9_.-]/g, "");
+  const dentroFile = path.join(DIR, CARTELLA_HL, nome);
+  if (!nome || !fs.existsSync(dentroFile)) throw new Error("questo video esportato non c'e' piu': rifai l'esportazione");
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(p.png || "").replace(/\s/g, ""));
+  if (!m) throw new Error("la grafica non e' arrivata come PNG");
+  const png = Buffer.from(m[1], "base64");
+  if (png.length > 12 * 1024 * 1024) throw new Error("grafica troppo pesante");
+
+  const fuoriNome = nome.replace(/\.mp4$/i, "") + "-grafica.mp4";
+  const fuoriFile = path.join(DIR, CARTELLA_HL, fuoriNome);
+  const strato = path.join(os.tmpdir(), "grafica-" + nuovoId("") + ".png");
+  fs.writeFileSync(strato, png);
+
+  q.grafica = { stato: "lavora", da: nome, file: "" };
+  scrivi(); annuncia(0, "clip");
+
+  // Le misure si CONTANO qui, non dentro ffmpeg: main_w e main_h esistono
+  // solo dentro overlay, e provare a usarle in scale faceva uscire ffmpeg
+  // con "Invalid argument" prima ancora di leggere il file.
+  (async () => {
+    const v = await probeMisure(dentroFile);
+    const m2 = await probeMisure(strato);
+    const VW = v.w || 1080, VH = v.h || 1920;
+    const MW = m2.w || VW, MH = m2.h || VH;
+    const k = Math.min(VW / MW, VH / MH);            // la maschera entra intera, senza deformarsi
+    const w2 = Math.max(2, Math.round(MW * k / 2) * 2), h2 = Math.max(2, Math.round(MH * k / 2) * 2);
+    const x = Math.round((VW - w2) / 2), y = Math.round((VH - h2) / 2);
+    const filtro = "[1:v]scale=" + w2 + ":" + h2 + "[g];[0:v][g]overlay=" + x + ":" + y + ":format=auto[v]";
+    const args = ["-hide_banner", "-loglevel", "error", "-nostdin",
+      "-i", dentroFile, "-i", strato,
+      "-filter_complex", filtro, "-map", "[v]", "-map", "0:a?",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-y", fuoriFile];
+    const pr = spawn(FFMPEG, args, { stdio: ["ignore", "ignore", "pipe"] });
+    let coda = "";
+    pr.stderr.on("data", (d) => { coda = (coda + d).slice(-2000); });
+    pr.on("error", (e) => { q.grafica = { stato: "errore", errore: e.message }; scrivi(); annuncia(0, "clip"); });
+    pr.on("close", async (code) => {
+      try { fs.unlinkSync(strato); } catch (e) {}
+      if (code === 0) {
+        const d = await probe(fuoriFile);
+        q.grafica = { stato: "pronto", da: nome, file: "/clip/" + CARTELLA_HL + "/" + fuoriNome,
+                      peso: d.peso || 0, durata: d.durata || 0, quando: Date.now() };
+        console.log("[clip] grafica su " + nome + " (" + VW + "x" + VH + ") → " + fuoriNome);
+      } else {
+        q.grafica = { stato: "errore", errore: ultimaRiga(coda) || ("ffmpeg e' uscito con " + code) };
+      }
+      scrivi(); annuncia(0, "clip");
+    });
+  })().catch((e) => { q.grafica = { stato: "errore", errore: e.message }; scrivi(); annuncia(0, "clip"); });
+  return { ok: true, grafica: q.grafica };
+}
+
 function probeMisure(file) {
   return new Promise((si) => {
     execFile(FFPROBE, ["-v", "error", "-select_streams", "v:0",
@@ -5798,6 +5860,7 @@ const AZIONI = {
   "clip-hl-elimina": hlElimina,
   "clip-integrale": clipIntegrale,
   "clip-anello": () => ({ ok: true, tolti: anello() }),
+  "clip-grafica-uscita": graficaSuUscita,
   "clip-uscite": (p) => (p && p.pulisci) ? pulisciUscite(p)
     : { ok: true, elenco: uscite().map((u) => ({ nome: u.nome, tipo: u.tipo, giga: Math.round(u.peso / 1e8) / 10,
         giorni: Math.round((Date.now() - u.quando) / 86400000 * 10) / 10, orfano: u.orfano, alLavoro: u.alLavoro })),

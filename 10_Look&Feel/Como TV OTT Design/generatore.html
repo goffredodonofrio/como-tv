@@ -3851,8 +3851,12 @@ loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
     });
   }
   function mandaAlMam() {
+    // Due provenienze: una CLIP (un taglio solo) o un'USCITA (un montato
+    // gia' esportato). La seconda e' quella che si pubblica davvero, e
+    // prima non aveva strada per arrivare qui.
     var idc = /\/_clip\/([A-Za-z0-9_-]+)\.mp4/.exec(clip);
-    if (!idc) { alert('Questa clip non arriva dal MAM.'); return; }
+    var idu = /\/_hl\/([A-Za-z0-9_.-]+\.mp4)/.exec(clip);
+    if (!idc && !idu) { alert('Questo video non arriva dal MAM.'); return; }
     var it = BYKEY[current];
     if (!it) return;
     var adj = (STATE[current] && STATE[current].adj && STATE[current].adj.photo) || {};
@@ -3862,19 +3866,22 @@ loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
       .then(function (png) {
         return fetch(indirizzoPonte(), {
           method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
+          body: JSON.stringify(idc ? {
             tipo: 'clip-grafica', clip: idc[1], png: png, w: it.w, h: it.h,
             titolo: (q.get('titolo') || 'clip') + ' · ' + fname(current),
             inquadratura: { dx: adj.dx || 0, dy: adj.dy || 0, s: adj.s || 1,
                             cx: adj.cx || 0, cy: adj.cy || 0 }
+          } : {
+            tipo: 'clip-grafica-uscita', seq: q.get('seq') || '', file: idu[1], png: png,
+            titolo: (q.get('titolo') || 'montato')
           })
         }).then(function (r) { return r.json(); });
       })
       .then(function (d) {
         busy(false);
         if (!d.ok) throw new Error(d.errore || 'il ponte ha detto no');
-        avviso('<b>Grafica mandata al MAM.</b> La clip con la grafica si sta preparando li\': ' +
-               'la trovi fra le clip della partita, senza aspettare qui.');
+        avviso('<b>Grafica mandata al MAM.</b> Il video con la grafica si sta preparando li\': ' +
+               (idu ? 'lo trovi sotto la sequenza, nel MAM.' : 'lo trovi fra le clip della partita.'));
       })
       .catch(function (e) { busy(false); alert('Non sono riuscito a mandarla: ' + (e.message || e)); });
   }

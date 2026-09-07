@@ -196,6 +196,11 @@
   .tlpista .clipV img{position:absolute;left:2px;top:18px;height:34px;width:auto;border-radius:1px;}
   .tlpista .clipV .dd{display:none;}
   .scheda.accesa{outline:2px solid #7FC4EE;outline-offset:-2px;box-shadow:0 0 0 4px rgba(127,196,238,.18);}
+  /* scelta = ci hai cliccato sopra · aperta = e' quella in timeline */
+  .scheda.aperta::before{content:'IN TIMELINE';position:absolute;left:6px;top:6px;z-index:5;
+    background:#2D8CEB;color:#fff;font-size:8px;font-weight:800;letter-spacing:.1em;
+    border-radius:3px;padding:1px 4px;}
+  .scheda.aperta{position:relative;}
   /* una sequenza che hai montato tu non viene piu' rifatta: si vede */
   .scheda.tua::after{content:'TUA';position:absolute;right:6px;top:6px;z-index:5;
     background:var(--oro,#C8A24A);color:#111;font-size:8px;font-weight:800;letter-spacing:.1em;
@@ -2207,6 +2212,8 @@
   //  prende un bordo per accorciarlo o allungarlo, si clicca sul righello
   //  per andare li'. Una clip dal progetto si lascia cadere dove si vuole.
   //  Canc toglie il pezzo scelto.
+  var ASPETTO = {};             // sequenza -> cosa fare quando l'export e' pronto
+  var VISTI_PRONTI = {};        // per non rifarlo due volte
   var FORMATI_SEQ = ["16:9"];   // i formati con cui esce la sequenza
   var FORMATO_VISTO = "16:9";   // e quello che si sta guardando nel Programma
   function formatiSeqVisti() {
@@ -2217,6 +2224,8 @@
     });
   }
   var DOPPIO = { id: "", quando: 0 };   // per riconoscere il doppio clic a mano
+  var DOPPIA_CARTA = { id: "", quando: 0 };
+  var CARTA = null;                     // la scheda scelta, che non e' quella aperta
   var SEQSCELTE = [];        // le sequenze accese con Shift, da togliere insieme
   var TL = { sel: null, multi: [], riquadro: null, ghost: null, ghost2: null, punto: null,
              slip: null, roll: null, ins: null, trim: null, drag: null, vista: null, nav: null,
@@ -3010,7 +3019,11 @@
       '<tr class="soloClip"><td>Qualit\u00e0</td><td><label><input type="radio" name="expQ" value="copia" checked> ai secondi \u2014 copia, un secondo</label><br><label><input type="radio" name="expQ" value="preciso"> al fotogramma \u2014 ricodifica, esatta</label></td></tr>' +
       '<tr class="soloSeq"><td>Anche</td><td><label><input type="checkbox" id="expXml"> XML per Premiere</label></td></tr>' +
       '<tr><td>Audio</td><td>stereo AAC 160k (si apre ovunque)</td></tr>' +
-      '<tr><td>Destinazione</td><td>coda esportazioni \u2192 scarica o manda alla grafica</td></tr>' +
+      '<tr><td>Destinazione</td><td><select id="expDove">' +
+        '<option value="qui">resta qui \u2014 nella coda, si cancella da sola dopo sette giorni</option>' +
+        '<option value="scarica">scarica sul computer appena pronto</option>' +
+        '<option value="grafica">apri nel generatore grafiche appena pronto</option>' +
+      '</select></td></tr>' +
       '</table></div>' +
       '<footer><button class="b" id="expAnnulla">Annulla</button><button class="b oro" id="expVai">Aggiungi alla coda</button></footer></div>';
     document.body.appendChild(box);
@@ -3038,6 +3051,10 @@
       FORMATI_SEQ = formati.slice();
       if (FORMATI_SEQ.indexOf(FORMATO_VISTO) < 0) FORMATO_VISTO = FORMATI_SEQ[0];
       formatiSeqVisti(); telaioForma();
+      // dove va a finire: la pagina se lo ricorda e agisce quando il file
+      // e' pronto, senza che nessuno debba stare a guardare la coda
+      var dove = el("expDove") ? el("expDove").value : "qui";
+      if (tipo === "sequenza" && SEQ && dove !== "qui") ASPETTO[SEQ.id] = dove;
       var titolo = el("expNome").value.trim();
       if (tipo === "clip") {
         var preciso = box.querySelector('input[name="expQ"]:checked').value === "preciso";
@@ -4304,7 +4321,10 @@
     c.innerHTML = "";
     if (ORD === "nome") lista.sort(function (x, y) { return String(x.o.titolo || "").localeCompare(String(y.o.titolo || "")); });
     else if (ORD === "data") lista.sort(function (x, y) { return (y.o.creata || y.o.avviata || 0) - (x.o.creata || x.o.avviata || 0); });
-    var sezioni = { partita: "Materiale", hl: "Sequenze", clip: "Esportazioni" }, griglie = {};
+    // "Materiale" era una parola da manuale: quella scheda e' la partita
+    // intera, e chiamarla col suo nome risparmia la domanda "cosa c'e'
+    // dentro?"
+    var sezioni = { partita: "Partita intera", hl: "Sequenze", clip: "Esportazioni" }, griglie = {};
     function grigliaDi(t) {
       if (griglie[t]) return griglie[t];
       var h = document.createElement("h2"); h.className = "sez";
@@ -4336,7 +4356,8 @@
       }
       var d = document.createElement("div");
       var famSeq = a.t !== "hl" ? "" : " seq-" + (a.o.auto ? String(a.o.auto).toLowerCase().replace(/[^a-z]/g, "").slice(0, 12) : "mano");
-      d.className = "scheda" + ((a.t === "hl" && SEQ && a.o.id === SEQ.id) ? " scelta" : "")
+      d.className = "scheda" + ((a.t === "hl" && CARTA === a.o.id) ? " scelta" : "")
+                  + ((a.t === "hl" && SEQ && a.o.id === SEQ.id) ? " aperta" : "")
                   + ((a.t === "hl" && a.o.mano) ? " tua" : "")
                   + ((a.t === "hl" && SEQSCELTE.indexOf(a.o.id) >= 0) ? " accesa" : "")
                   + (a.o.auto ? " apparecchiata" : "") + famSeq;
@@ -4425,6 +4446,15 @@
         }
         if (a.t === "partita") { tornaAlContenuto(); return; }          // la Sorgente torna alla partita
         if (a.t === "hl") {
+          // un clic sceglie la scheda, due la aprono in timeline: come nel
+          // pannello Progetto di Premiere. Il doppio clic se lo conta da
+          // solo, perche' il clic ridisegna la colonna e l'evento del
+          // browser non arriverebbe mai.
+          var ora2 = Date.now();
+          var doppio = (DOPPIA_CARTA.id === a.o.id && ora2 - DOPPIA_CARTA.quando < 400);
+          DOPPIA_CARTA = doppio ? { id: "", quando: 0 } : { id: a.o.id, quando: ora2 };
+          if (!doppio) { SEQSCELTE = []; CARTA = a.o.id; destraMateriale(); return; }
+          CARTA = a.o.id;
           SEQSCELTE = []; SEQ = a.o; PROG.i = -1; TL.sel = null; TL.multi = []; AREA = "progetto";
           // scegliere una sequenza porta il comando sul Programma: da li' la
           // sbarra la fa partire, senza dover cliccare prima il monitor
@@ -4658,13 +4688,34 @@
         var chiavi = Object.keys(pronti);
         if (chiavi.length) {
           g1.innerHTML = chiavi.map(function (f) {
-            return '<a href="' + BASE + pronti[f].file + '?scarica=1">scarica ' + f + "</a>";
+            var via = BASE + pronti[f].file;
+            // "grafica" apre il generatore con QUESTO montato dentro: si
+            // sceglie la maschera, e torna qui incollata sul video
+            return '<a href="' + via + '?scarica=1">scarica ' + f + "</a> " +
+                   '<a href="' + GEN + "&clip=" + encodeURIComponent(via) +
+                   "&seq=" + encodeURIComponent(q.id) +
+                   "&titolo=" + encodeURIComponent(q.titolo || "") + '" target="_blank">grafica</a>';
           }).join(" · ");
         } else if (q.export.file) {
           g1.innerHTML = '<a href="' + BASE + q.export.file + '?scarica=1">scarica il video (' +
                          q.export.formato + ", " + orologio(q.export.durata) + ")</a>";
         }
         corpo.appendChild(g1);
+      }
+      if (q.grafica && q.grafica.stato === "lavora") {
+        var g4 = document.createElement("div"); g4.className = "aiuto";
+        g4.textContent = "sto incollando la grafica sul montato…";
+        corpo.appendChild(g4);
+      }
+      if (q.grafica && q.grafica.stato === "pronto") {
+        var g5 = document.createElement("div"); g5.className = "aiuto";
+        g5.innerHTML = '<a href="' + BASE + q.grafica.file + '?scarica=1">scarica il montato con la grafica</a>';
+        corpo.appendChild(g5);
+      }
+      if (q.grafica && q.grafica.stato === "errore") {
+        var g6 = document.createElement("div"); g6.className = "aiuto";
+        g6.textContent = "la grafica non e' andata: " + (q.grafica.errore || "");
+        corpo.appendChild(g6);
       }
       if (q.export && q.export.stato === "lavora") {
         var g2 = document.createElement("div"); g2.className = "aiuto";
@@ -5099,7 +5150,12 @@
   function cambiato() {
     var f = [VISTA, FORMA, ASSET, REG ? REG.id + REG.stato + REG.integrale : "-",
       CLIP.map(function (c) { return c.id + c.stato + (c.mini ? "1" : "0"); }).join(","),
-      SEQ ? SEQ.id + SEQ.pezzi.length + (SEQ.export ? SEQ.export.stato : "") : "-"].join("|");
+      SEQ ? SEQ.id + SEQ.pezzi.length + (SEQ.export ? SEQ.export.stato : "") : "-",
+      // anche l'ELENCO delle sequenze fa parte di quello che si vede: senza,
+      // aprendo una partita la colonna restava con la sola scheda della
+      // partita e le sequenze comparivano solo se toccavi qualcosa
+      CARTA || "-",
+      SEQS.map(function (q) { return q.id + q.pezzi.length + (q.mano ? "m" : "") + (q.grafica ? q.grafica.stato : ""); }).join(",")].join("|");
     if (f === firmaVecchia) return false;
     firmaVecchia = f; return true;
   }
@@ -5129,8 +5185,12 @@
           // la sequenza scelta resta scelta: il giro non la cambia sotto le mani
           var mia = SEQ && SEQS.filter(function (x) { return x.id === SEQ.id; })[0];
           // una sequenza appena nata puo' non essere ancora nell'elenco: si tiene
-          SEQ = mia || ((SEQ && SEQ.reg === REG.id) ? SEQ : (SEQS[0] || null));
-          if (VISTA === "hl") destraMateriale();
+          // Aprire una partita NON apre una sequenza: la timeline resta
+          // vuota e si sceglie dalla colonna, con un doppio clic. Prima
+          // arrivava dentro la piu' recente senza che nessuno l'avesse
+          // chiesta, e sembrava che il MAM avesse gia' deciso per te.
+          SEQ = mia || ((SEQ && SEQ.reg === REG.id) ? SEQ : null);
+          if (cambiato()) destraMateriale();
         }).catch(function () {});
       }
     }).catch(function (e) { el("sPonte").textContent = "non risponde"; el("sPonteP").className = "pallino"; });
@@ -5153,7 +5213,27 @@
     });
     if (PRONTI_VISTI) {
       Object.keys(fatti).forEach(function (k) {
-        if (!PRONTI_VISTI[k]) diceHtml('\u2713 Esportazione completata: <b>' + pulito(fatti[k].nome) + '</b><a href="' + fatti[k].url + '">Scarica</a>', true);
+        if (PRONTI_VISTI[k]) return;
+        diceHtml('\u2713 Esportazione completata: <b>' + pulito(fatti[k].nome) + '</b><a href="' + fatti[k].url + '">Scarica</a>', true);
+        // e se al momento di esportare avevi detto dove doveva andare, ci
+        // va da solo: scaricato, o aperto nel generatore. Nessuno deve
+        // restare a guardare la coda per accorgersi che e' pronto.
+        var pezzi = k.split(":");
+        if (pezzi[0] !== "s" || VISTI_PRONTI[k]) return;
+        var dove = ASPETTO[pezzi[1]];
+        if (!dove) return;
+        VISTI_PRONTI[k] = 1;
+        if (dove === "scarica") {
+          var a2 = document.createElement("a");
+          a2.href = fatti[k].url; a2.download = ""; document.body.appendChild(a2);
+          a2.click(); a2.remove();
+          dice("Scarico " + pulito(fatti[k].nome), true);
+        } else if (dove === "grafica") {
+          var senzaScarica = fatti[k].url.replace(/\?scarica=1$/, "");
+          window.open(GEN + "&clip=" + encodeURIComponent(senzaScarica) +
+                      "&seq=" + encodeURIComponent(pezzi[1]) +
+                      "&titolo=" + encodeURIComponent(fatti[k].nome || ""), "_blank");
+        }
       });
     }
     PRONTI_VISTI = fatti;
