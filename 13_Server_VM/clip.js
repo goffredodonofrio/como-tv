@@ -693,6 +693,124 @@ async function cercaBoati(p) {
   return { ok: true, secondiAscoltati: v.length, boati: picchi.length, picchi: picchi.slice(0, 40) };
 }
 
+
+// ══════════════════════════════════════════════════════════════════════
+//  IL LAVORO APPARECCHIATO
+// ══════════════════════════════════════════════════════════════════════
+//
+//  Di una partita d'archivio sappiamo gia' molto: i gol di ESPN, le azioni
+//  scritte dalla redazione con il loro voto, quello che ha detto il
+//  telecronista, i boati dello stadio. Aprirla e trovarsi davanti un foglio
+//  bianco vuol dire rifare a mano un lavoro gia' fatto. Quando si apre, il
+//  MAM mette da parte quello che ha — una sequenza per fonte, gia' in ordine
+//  e gia' tagliata — e chi monta parte da li' invece che da zero.
+const APP_PRE = 8, APP_POST = 10;
+
+function pezzoDa(dentro, fuori, titolo, tipo, minuto, fonte, peso) {
+  return { id: nuovoId("p"), dentro: Math.max(0, Math.round(dentro * 10) / 10),
+           fuori: Math.round(fuori * 10) / 10, base: Math.max(0, Math.round(dentro * 10) / 10),
+           titolo: String(titolo || "").slice(0, 160), tipo: tipo || "", minuto: minuto || "",
+           fonte: fonte || "auto", peso: peso || 1 };
+}
+// due cose allo stesso momento sono la stessa cosa
+function togliDoppioni(pezzi, vicino) {
+  const fuori = [];
+  pezzi.sort((a, b) => a.dentro - b.dentro).forEach((x) => {
+    const prima = fuori[fuori.length - 1];
+    if (prima && Math.abs(x.dentro - prima.dentro) < (vicino || 20)) {
+      // si tiene quello che dice di piu': la riga della redazione batte la formula
+      if ((x.titolo || "").length > (prima.titolo || "").length) fuori[fuori.length - 1] = x;
+      return;
+    }
+    fuori.push(x);
+  });
+  return fuori;
+}
+// Tutto quello che sappiamo di questa partita, con il secondo nel file.
+function quelloCheSappiamo(r) {
+  const rec = r.evento || (r.arch && r.arch.rec) || "";
+  const pezzo = (r.arch && r.arch.pezzo) || 0;
+  const dove = (s, d) => {
+    const x = secondoNelFile(rec, { s: s, d: d });
+    return (x && x.pezzo === pezzo) ? x.secondi : null;
+  };
+  const a = APPUNTI[rec], e = ESPN[rec];
+  const azioni = [], gol = [], voce = [], boati = [];
+  if (a) {
+    const rit = ritardoDi(a.telecronista);
+    (a.righe || []).forEach((x) => {
+      const t = dove(x.s, Math.max(0, (x.d || 0) - rit));
+      if (t === null) return;
+      const p = pezzoDa(t - APP_PRE, t + APP_POST, x.x, x.t, x.m, "appunti", pesoAzione(x.t, x.hl, x.g));
+      p.rating = x.g || 0;
+      azioni.push(p);
+      if (/gol|rete/i.test(x.t || "") || x.g) gol.push(p);
+    });
+  }
+  if (e && e.eventi) {
+    e.eventi.forEach((x) => {
+      const d = (x.min - (x.periodo === 2 ? 45 : 0)) * 60 + x.stopp * 60;
+      const t = dove(x.periodo, Math.max(0, d));
+      if (t === null) return;
+      const ita = tipoItaliano(x.tipo);
+      if (/sostituzione/i.test(ita)) return;                  // un cambio non e' un pezzo
+      const p = pezzoDa(t - APP_PRE, t + APP_POST, [ita, x.giocatore].filter(Boolean).join(" · "), ita, x.min + "'", "espn", pesoAzione(ita, false, 0));
+      azioni.push(p);
+      if (/gol|rigore|autogol/i.test(ita) && !/annullato/i.test(ita)) gol.push(p);
+    });
+  }
+  (PARLATO[r.id] ? PARLATO[r.id].pezzi : []).forEach((t) => {
+    if (!/\bgol\b|\brete\b|che gol|goool/i.test(t.x || "")) return;   // solo i momenti che la voce chiama
+    voce.push(pezzoDa(t.a - 4, (t.b || t.a + 10) + 4, "“" + String(t.x).slice(0, 90) + "”", "Telecronaca", "", "voce", 2));
+  });
+  (r.marker || []).filter((m) => m.fonte === "boato").forEach((m) => {
+    boati.push(pezzoDa(m.secondi - 10, m.secondi + 10, m.testo || "Boato", "Boato", "", "boato", 2));
+  });
+  // la voce dice "gol" spesso, anche per un gol di ieri o annullato: si
+  // tengono i momenti distanti fra loro, al massimo quindici
+  const voceScelta = togliDoppioni(voce, 60).slice(0, 15);
+  return { azioni: togliDoppioni(azioni, 18), gol: togliDoppioni(gol, 25), voce: voceScelta, boati: boati };
+}
+
+async function preparaSequenze(p) {
+  const r = R.reg[String(p.reg || "")];
+  if (!r) throw new Error("registrazione sconosciuta");
+  const rec = r.evento || (r.arch && r.arch.rec) || "";
+  if (!rec) return { ok: true, fatte: 0, perche: "questa registrazione non e' agganciata a un evento" };
+  // se ESPN non l'ha ancora vista, si guarda adesso: costa una richiesta
+  if (!ESPN[rec] && p.espn !== false) { try { await espnTrova(rec); scriviEspn(); } catch (e) {} }
+  const sap = quelloCheSappiamo(r);
+  const gia = Object.keys(R.seq).map((k) => R.seq[k]).filter((q) => q.reg === r.id && q.auto);
+  const fatte = [];
+  // l'ordine in cui compaiono e' l'ordine in cui servono: prima i gol
+  let posto = 0;
+  const crea = (nome, pezzi, nota) => {
+    if (!pezzi.length) return;
+    const vecchia = gia.find((q) => q.auto === nome);
+    const q = vecchia || { id: nuovoId("s"), reg: r.id, pezzi: [], pre: APP_PRE, post: APP_POST,
+                           scarto: 0, avvisi: [], creata: Date.now(), chi: "", export: null };
+    q.auto = nome;
+    q.titolo = nome + " · " + (r.titolo || "");
+    q.nota = nota || "";
+    q.pezzi = pezzi;
+    q.creata = Date.now() + (posto++);      // cosi' restano nell'ordine giusto
+    R.seq[q.id] = q;
+    fatte.push({ nome: nome, pezzi: pezzi.length, id: q.id });
+  };
+
+  crea("GOL", sap.gol, "gol da ESPN e dagli appunti, otto secondi prima e dieci dopo");
+  // gli highlights: i pezzi che pesano di piu', dentro tre minuti
+  if (sap.azioni.length) {
+    const scelti = stringiAllaDurata(sap.azioni.map((x) => Object.assign({}, x)), 180, APP_PRE, APP_POST);
+    crea("HIGHLIGHTS 3′", (scelti.pezzi || []).sort((a, b) => a.dentro - b.dentro), scelti.nota || "le azioni che pesano di piu', dentro tre minuti");
+  }
+  crea("AZIONI", sap.azioni, "tutto quello che la redazione ha segnato, in ordine");
+  crea("TELECRONACA", sap.voce, "i momenti in cui il telecronista dice gol");
+  crea("BOATI", sap.boati, "i momenti in cui lo stadio alza la voce");
+  scrivi(); annuncia(0, "clip");
+  return { ok: true, fatte: fatte.length, sequenze: fatte };
+}
+
 // ── GLI STACCHI DI REGIA ──────────────────────────────────────────
 //  Una clip che comincia in mezzo a un'inquadratura sembra strappata; una
 //  che comincia sullo stacco sembra montata. La regia gli stacchi li ha gia'
@@ -2607,6 +2725,9 @@ async function archivioApri(p) {
   // una partita che si apre passa in testa alla coda delle durate: in pochi
   // secondi si sa se il file e' l'intera o un tempo, e il nome si aggiusta
   if (!a.misurato && CODA_DURATE.indexOf(p.rec) < 0) { CODA_DURATE.unshift(String(p.rec)); giraDurate(); }
+  // e intanto si apparecchia quello che sappiamo di lei: gol, azioni,
+  // telecronaca, boati, ognuno nella sua sequenza. Chi apre non aspetta.
+  if (p.prepara !== false) setTimeout(() => { preparaSequenze({ reg: r.id }).catch((e) => console.log("[clip] apparecchiare: " + e.message)); }, 300);
   return { ok: true, reg: pubblica(r) };
 }
 
@@ -4992,6 +5113,7 @@ const AZIONI = {
   "clip-carica-inizia": caricaInizia,
   "clip-carica-pezzo": caricaPezzo,
   "clip-carica-fine": caricaFine,
+  "clip-prepara": preparaSequenze,
   "clip-hl-genera": hlGenera,
   "clip-hl-elenco": hlElenco,
   "clip-hl-pezzo": hlPezzo,
