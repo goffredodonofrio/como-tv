@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<script>
+/* Le Grafiche Live vivono sulla macchina della regia. Su GitHub resta una
+   copia di questa pagina, ma li' parla a un altro ponte: chi la aprisse per
+   sbaglio comanderebbe un sistema che nessuno ascolta. Da GitHub si viene
+   quindi portati sulla macchina giusta. Sulla VM questo non fa nulla. */
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  location.replace("https://projects-cloud.it" + location.pathname + location.search + location.hash);
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mappa dei tiri · Como TV</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    color-scheme:dark;
+    --gold:#C9A24B;--gold-bright:#E3C271;--red:#E51B20;
+    --ivory:#F5F1E6;--ivory-dim:#D8D2C2;--fg-3:#8A8B96;
+    --surface-panel:rgba(16,22,48,.66);
+    --line-2:rgba(245,241,230,.08);--line-gold:rgba(201,162,75,.28);
+    --ok:#4FCB8B;
+  }
+  body{
+    font-family:'DM Sans',system-ui,sans-serif;font-weight:500;font-size:14px;line-height:1.5;
+    color:var(--ivory);min-height:100vh;
+    background-color:#0A0F24;
+    background-image:
+      radial-gradient(90% 70% at 20% 8%, rgba(36,64,138,.5), transparent 55%),
+      radial-gradient(80% 80% at 92% 108%, rgba(201,162,75,.16), transparent 55%),
+      linear-gradient(165deg,#141B3C 0%,#0E1430 48%,#0A0F24 100%);
+    background-attachment:fixed;padding-bottom:90px;
+  }
+  .wrap{max-width:1500px;margin:0 auto;padding:0 clamp(18px,3vw,32px);}
+  header.page{padding:38px 0 18px;}
+  .eyebrow{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.3em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:10px;}
+  h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(28px,4vw,42px);
+    line-height:.94;letter-spacing:-.02em;text-transform:uppercase;color:var(--ivory);}
+  .sub{color:var(--fg-3);font-size:13.5px;margin-top:10px;max-width:900px;}
+
+  .panel{background:var(--surface-panel);border:1px solid var(--line-2);border-radius:10px;
+    padding:16px;margin-bottom:16px;}
+  .panel h2{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:12px;}
+  label{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
+    letter-spacing:.18em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:5px;
+    white-space:nowrap;}
+  input[type=text],select{
+    width:100%;padding:10px 12px;border-radius:7px;background:rgba(245,241,230,.06);
+    border:1px solid rgba(245,241,230,.16);color:var(--ivory);font-family:'DM Sans',sans-serif;font-size:14px;}
+  input:focus,select:focus{outline:none;border-color:var(--line-gold);}
+  select option{background-color:#141B3C;color:#F5F1E6;}
+  .riga{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;align-items:end;}
+  .riga > div{flex:1;min-width:0;}
+
+  button{font-family:'Mazzard',sans-serif;font-weight:700;font-size:12px;letter-spacing:.12em;
+    text-transform:uppercase;padding:11px 18px;border-radius:7px;cursor:pointer;
+    background:rgba(245,241,230,.06);color:var(--ivory-dim);border:1px solid var(--line-2);}
+  button:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  #btnPrev{background:rgba(79,203,139,.14);border-color:rgba(79,203,139,.55);color:#7BDCAA;}
+  #btnPrev:hover{background:rgba(79,203,139,.24);border-color:#4FCB8B;color:#8FE8BB;}
+  #btnRegia{background:#4FA3E8;border-color:#4FA3E8;color:#0A0F24;}
+  #btnRegia:hover:not(:disabled){background:#74B9F0;border-color:#74B9F0;color:#0A0F24;}
+  #btnRegia:disabled{opacity:.4;cursor:default;}
+  #btnPrevChiudi{color:#FF6B6E;border-color:rgba(229,27,32,.5);}
+  #btnPrevChiudi:hover{background:rgba(229,27,32,.12);border-color:var(--red);color:#FF6B6E;}
+
+  .barra{display:flex;align-items:end;gap:8px;flex-wrap:wrap;
+    padding:12px 14px;border-radius:10px;margin-bottom:16px;
+    background:var(--surface-panel);border:1px solid var(--line-2);}
+  .barra button{padding:10px 13px;font-size:11px;letter-spacing:.09em;}
+  .barra .campo{display:flex;flex-direction:column;gap:5px;}
+  .barra .campo label{margin-bottom:0;}
+  .barra .campo select{padding:8px 9px;font-size:13px;}
+
+  #stato{margin-top:10px;font-size:13px;color:var(--fg-3);min-height:20px;
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  #stato .ok{color:var(--ok);} #stato .err{color:#FF6B6E;}
+  .pbar{height:6px;background:rgba(245,241,230,.08);border-radius:3px;overflow:hidden;
+    flex:1 1 240px;min-width:200px;align-self:center;}
+  .pfill{display:block;height:100%;width:0;background:var(--gold);border-radius:3px;
+    animation:pfill 2.6s cubic-bezier(.2,.7,.3,1) forwards;}
+  @keyframes pfill{0%{width:0}60%{width:72%}100%{width:92%}}
+  .pfill.done{animation:none;width:100%;background:var(--ok);transition:width .25s ease;}
+
+  #prevbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:9px;
+    border:1px solid var(--line-gold);background:#070B1D;}
+  #prev{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
+    transform-origin:top left;}
+
+  /* ── i filtri: quali tiri entrano in grafica ── */
+  .scelte{display:flex;gap:8px;flex-wrap:wrap;}
+  .scelta{display:flex;align-items:center;gap:8px;cursor:pointer;
+    padding:9px 13px;border-radius:7px;border:1px solid var(--line-2);
+    background:rgba(245,241,230,.04);font-size:13px;color:var(--ivory-dim);
+    white-space:nowrap;user-select:none;}
+  .scelta:hover{border-color:var(--line-gold);}
+  .scelta.on{border-color:var(--line-gold);background:rgba(201,162,75,.10);color:var(--ivory);}
+  .scelta i{display:block;width:14px;height:14px;border-radius:50%;flex:none;box-sizing:border-box;}
+  .scelta b{font-family:'Mazzard',sans-serif;font-weight:800;color:var(--gold);
+    font-variant-numeric:tabular-nums;}
+
+  /* ── l'elenco dei tiri trovati ── */
+  .tabella{width:100%;border-collapse:collapse;font-size:13px;}
+  .tabella th{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--gold);text-align:left;padding:0 10px 9px;
+    border-bottom:1px solid var(--line-2);white-space:nowrap;}
+  .tabella td{padding:8px 10px;border-bottom:1px solid rgba(245,241,230,.05);vertical-align:middle;}
+  .tabella tr.spento td{opacity:.35;}
+  .tabella .min{font-variant-numeric:tabular-nums;color:var(--fg-3);width:56px;white-space:nowrap;}
+  .tabella .chi{font-family:'Mazzard',sans-serif;font-weight:700;text-transform:uppercase;
+    letter-spacing:.04em;}
+  .tabella .sq{color:var(--fg-3);width:150px;white-space:nowrap;}
+  .tabella .es{width:130px;white-space:nowrap;}
+  .tabella .es i{display:inline-block;width:11px;height:11px;border-radius:50%;
+    margin-right:8px;vertical-align:-1px;box-sizing:border-box;}
+  .tabella .via{width:1%;}
+  .tabella .via button{padding:6px 11px;font-size:10px;letter-spacing:.08em;}
+  .vuoto{color:var(--fg-3);font-size:13px;padding:6px 2px;}
+</style>
+</head>
+<body>
+
+<script src="nav.js"></script>
+<script src="formazioni-espn.js"></script>
+
+<div class="wrap">
+  <header class="page">
+    <div class="eyebrow">Como TV · Grafiche Live</div>
+    <h1>Mappa dei tiri</h1>
+    <div class="sub">Dove ha tirato ciascuna squadra. I tiri arrivano dal play-by-play di ESPN
+      con le coordinate vere: si sceglie la partita, si toglie quello che non serve e si manda.
+      Le due metà campo sono quelle d'attacco &mdash; a sinistra la squadra di casa, a destra l'ospite.</div>
+  </header>
+
+  <div class="barra" id="labarra">
+    <button id="btnPrev">Anteprima</button>
+    <div class="campo" style="margin-left:auto"><label for="canaleSel">Seleziona vMix o progetto</label><select id="canaleSel" style="min-width:0;width:290px;max-width:100%"></select></div>
+    <button id="btnRegia">&#128225; Invia alla regia</button>
+  </div>
+
+  <!-- il pannello verde-acqua lo costruisce formazioni-espn.js -->
+  <div id="ufbar"></div>
+
+  <div id="stato">Scegli la partita qui sopra e premi <b>Prendi i tiri</b>.</div>
+  <div id="prevwrap" style="display:none;margin:14px 0 20px">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+      <button id="btnPrevChiudi">Chiudi anteprima</button>
+    </div>
+    <div id="prevbox"><iframe id="prev" src="about:blank" scrolling="no"></iframe></div>
+  </div>
+
+  <div class="panel">
+    <h2>Testata</h2>
+    <div class="riga">
+      <div><label for="e">Occhiello</label>
+        <input type="text" id="e" placeholder="es. SERIE A · 3ª GIORNATA"></div>
+      <div><label for="t">Titolo</label>
+        <input type="text" id="t" placeholder="LA MAPPA DEI TIRI"></div>
+    </div>
+    <div class="riga">
+      <div><label for="na">Squadra di casa &mdash; metà sinistra</label>
+        <input type="text" id="na" placeholder="si riempie da sola"></div>
+      <div style="flex:0 0 110px"><label for="ga">Gol</label>
+        <input type="text" id="ga" placeholder="1"></div>
+      <div><label for="nb">Squadra ospite &mdash; metà destra</label>
+        <input type="text" id="nb" placeholder="si riempie da sola"></div>
+      <div style="flex:0 0 110px"><label for="gb">Gol</label>
+        <input type="text" id="gb" placeholder="4"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Che cosa mettere in grafica</h2>
+    <div class="scelte" id="filtri"></div>
+    <div class="riga" style="margin-top:12px;margin-bottom:0">
+      <div style="flex:0 0 260px"><label for="tempo">Tempo</label>
+        <select id="tempo">
+          <option value="0">Tutta la partita</option>
+          <option value="1">Solo il primo tempo</option>
+          <option value="2">Solo il secondo tempo</option>
+        </select></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>I tiri <small style="font-family:'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--fg-3);font-weight:500;font-size:11px">in ordine di minuto &mdash; togli quelli che non vuoi</small></h2>
+    <div id="elenco"><div class="vuoto">Ancora niente: prendi prima una partita.</div></div>
+  </div>
+</div>
+
+<script src="chiave.js"></script>
+<script src="destinazione.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
+  var TOKEN = (window.ChiaveComoTV ? ChiaveComoTV.valore() : "");
+  var BASEIMG = PONTE.replace(/\/(api|exec)$/, "");
+  if (window.Destinazione) Destinazione.adotta(document.getElementById("canaleSel"), PONTE, TOKEN);
+
+  // Il play-by-play NON sta sull'API che usiamo per le altre grafiche: quello
+  // e' il "site" API, con il riassunto della partita. Le giocate una per una,
+  // con le coordinate, stanno sul "core" API. Sono due domini diversi e due
+  // forme diverse; tutte e due lasciano leggere dal browser.
+  var CORE = "https://sports.core.api.espn.com/v2/sports/soccer/leagues";
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function b64url(obj) {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(obj))))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function stato(cls, txt) { el("stato").innerHTML = '<span class="' + cls + '">' + txt + '</span>'; }
+
+  // ── i cinque esiti ──────────────────────────────────────────────────
+  // La chiave a sinistra e' quella di ESPN, quella a destra e' la nostra: la
+  // grafica non deve sapere niente di come si chiamano le cose la' dentro.
+  var ESITI = [
+    ["goal",              "gol", "Gol",      "background:#C9A24B"],
+    ["shot-on-target",    "on",  "In porta", "background:#F5F1E6"],
+    ["shot-hit-woodwork", "leg", "Legno",    "border:3px solid #C9A24B"],
+    ["shot-off-target",   "off", "Fuori",    "border:2px solid rgba(245,241,230,.55)"],
+    ["shot-blocked",      "blk", "Murato",   "background:rgba(245,241,230,.42)"]
+  ];
+  var DA_ESPN = {}, PALLINO = {}, NOME_ESITO = {};
+  ESITI.forEach(function (r) { DA_ESPN[r[0]] = r[1]; PALLINO[r[1]] = r[3]; NOME_ESITO[r[1]] = r[2]; });
+
+  var TIRI = [];              // tutti quelli trovati, in ordine di minuto
+  var ACCESI = { gol: true, on: true, leg: true, off: true, blk: true };
+  var SQ = { a: { n: "", l: "", g: "" }, b: { n: "", l: "", g: "" } };
+
+  // ── stemmi caricati a mano che scavalcano quelli ESPN ────────────────
+  // Serve per gli stemmi neri, illeggibili sul fondo navy: e' la stessa
+  // convenzione delle formazioni, e la chiave e' il nome della squadra.
+  var SCAVALCO = {};
+  function slugM(nome) {
+    return String(nome || "").toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+  }
+  fetch(PONTE + "?loghi=1", { cache: "no-store" })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      (j.loghi || []).forEach(function (x) {
+        if (!/^(maglia|foto)-/.test(x.chiave)) SCAVALCO[x.chiave] = BASEIMG + x.url;
+      });
+    })
+    .catch(function () {});
+  function stemma(id, nome) {
+    var mio = SCAVALCO[slugM(nome)];
+    if (mio) return mio;
+    return id ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + id + ".png" : "";
+  }
+
+  // ── il pannello ESPN ────────────────────────────────────────────────
+  function pannelloEspn() {
+    var box = el("ufbar");
+    if (!box || !window.PartitaEspn) return;
+    PartitaEspn.pannello(box, {
+      titolo: "Tiri della partita dal play-by-play ESPN",
+      tasto: "Prendi i tiri",
+      prendi: function (d, part, comp, nota) {
+        // Le due squadre e il risultato stanno nel riassunto; le giocate no.
+        var comp0 = ((d.header || {}).competitions || [{}])[0] || {};
+        var chi = comp0.competitors || [];
+        var casa = chi.filter(function (x) { return x.homeAway === "home"; })[0];
+        var osp = chi.filter(function (x) { return x.homeAway === "away"; })[0];
+        if (!casa || !osp) { nota("<b>Partita senza squadre</b>: ESPN non l'ha ancora aperta.", "err"); return; }
+
+        // le rose servono a dare un nome ai giocatori: nelle giocate c'e' solo
+        // il numero dell'atleta, e il cognome si prende da qui
+        var ROSA = {};
+        (d.rosters || []).forEach(function (t) {
+          (t.roster || []).forEach(function (p) {
+            var a = p.athlete || {};
+            if (a.id) ROSA[String(a.id)] = a.lastName ||
+              (a.displayName || "").split(" ").slice(-1)[0] || a.displayName || "";
+          });
+        });
+
+        var idCasa = String((casa.team || {}).id || "");
+        SQ.a = { n: (casa.team || {}).displayName || "", l: stemma(idCasa, (casa.team || {}).displayName), g: casa.score == null ? "" : String(casa.score) };
+        SQ.b = { n: (osp.team || {}).displayName || "", l: stemma(String((osp.team || {}).id || ""), (osp.team || {}).displayName), g: osp.score == null ? "" : String(osp.score) };
+
+        if (!el("e").value.trim()) el("e").value = (comp.nome || "").toUpperCase();
+        el("na").value = SQ.a.n; el("nb").value = SQ.b.n;
+        el("ga").value = SQ.a.g; el("gb").value = SQ.b.g;
+
+        nota("Scarico le giocate&hellip;");
+        giocate(comp.code, part.id)
+          .then(function (items) {
+            TIRI = daGiocate(items, idCasa, ROSA);
+            if (!TIRI.length) {
+              nota("<b>Nessun tiro con le coordinate</b> per questa partita. " +
+                   "ESPN le pubblica a partita cominciata, e su qualche campionato minore non le pubblica affatto.", "err");
+              disegna();
+              return;
+            }
+            nota("<b>" + TIRI.length + " tiri</b> trovati. Togli quelli che non ti servono e premi Anteprima.", "ok");
+            disegna();
+          })
+          .catch(function (err) {
+            nota("<b>Giocate non lette:</b> " + esc(err.message), "err");
+          });
+      }
+    });
+  }
+
+  // Le giocate arrivano a pagine da 1000: una partita ne fa circa 1500, quindi
+  // due chiamate. Si chiedono tutte e due sempre, anche quando la prima basta:
+  // costa una richiesta e toglie di mezzo la partita lunga che perde i tiri
+  // del finale, che sono quelli che contano.
+  function giocate(code, idPartita) {
+    var base = CORE + "/" + code + "/events/" + idPartita +
+               "/competitions/" + idPartita + "/plays?limit=1000";
+    return fetch(base)
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (p1) {
+        var tutte = p1.items || [];
+        if ((p1.pageCount || 1) < 2) return tutte;
+        return fetch(base + "&page=2")
+          .then(function (r) { return r.ok ? r.json() : { items: [] }; })
+          .then(function (p2) { return tutte.concat(p2.items || []); })
+          .catch(function () { return tutte; });
+      });
+  }
+
+  // ── da giocate ESPN a tiri nostri ───────────────────────────────────
+  function daGiocate(items, idCasa, ROSA) {
+    var out = [];
+    items.forEach(function (p) {
+      var tipo = (p.type || {}).type || "";
+      if (!DA_ESPN[tipo]) return;                 // non e' un tiro
+      // "Assists Shot" e "Save" raccontano lo stesso tiro visto da un'altra
+      // parte: sono gia' fuori perche' non stanno nella tabella degli esiti.
+      if (p.fieldPositionX == null || p.fieldPositionY == null) return;
+      var sqId = ((p.team || {}).$ref || "").match(/\/teams\/(\d+)/);
+      var pa = (p.participants || [])[0] || {};
+      var atl = ((pa.athlete || {}).$ref || "").match(/\/athletes\/(\d+)/);
+      out.push({
+        q: (sqId && sqId[1] === idCasa) ? "a" : "b",
+        x: +p.fieldPositionX, y: +p.fieldPositionY,
+        e: DA_ESPN[tipo],
+        m: ((p.clock || {}).displayValue || "").trim(),
+        p: atl ? (ROSA[atl[1]] || "") : "",
+        tempo: ((p.period || {}).number) || 1,
+        via: false
+      });
+    });
+    // in ordine di minuto: il secondo dell'orologio, non il testo
+    out.sort(function (u, v) { return (u.tempo - v.tempo) || 0; });
+    return out;
+  }
+
+  // ── i filtri ────────────────────────────────────────────────────────
+  function disegnaFiltri() {
+    el("filtri").innerHTML = ESITI.map(function (r) {
+      var k = r[1];
+      var n = TIRI.filter(function (t) { return t.e === k; }).length;
+      return '<span class="scelta' + (ACCESI[k] ? " on" : "") + '" data-e="' + k + '">' +
+             '<i style="' + r[3] + '"></i>' + esc(r[2]) + ' <b>' + n + '</b></span>';
+    }).join("");
+  }
+  el("filtri").addEventListener("click", function (ev) {
+    var s = ev.target.closest ? ev.target.closest(".scelta") : null;
+    if (!s) return;
+    ACCESI[s.dataset.e] = !ACCESI[s.dataset.e];
+    disegna();
+  });
+  el("tempo").addEventListener("change", disegna);
+
+  // ── l'elenco ────────────────────────────────────────────────────────
+  function disegna() {
+    disegnaFiltri();
+    if (!TIRI.length) {
+      el("elenco").innerHTML = '<div class="vuoto">Ancora niente: prendi prima una partita.</div>';
+      return;
+    }
+    var righe = TIRI.map(function (t, i) {
+      var fuoriFiltro = !dentro(t);
+      return '<tr class="' + (t.via || fuoriFiltro ? "spento" : "") + '">' +
+        '<td class="min">' + esc(t.m || "") + '</td>' +
+        '<td class="es"><i style="' + PALLINO[t.e] + '"></i>' + esc(NOME_ESITO[t.e]) + '</td>' +
+        '<td class="chi">' + esc(t.p || "&mdash;") + '</td>' +
+        '<td class="sq">' + esc(t.q === "a" ? SQ.a.n : SQ.b.n) + '</td>' +
+        '<td class="via"><button type="button" data-via="' + i + '">' +
+          (t.via ? "Rimetti" : "Togli") + '</button></td>' +
+      '</tr>';
+    }).join("");
+    el("elenco").innerHTML = '<table class="tabella">' +
+      '<thead><tr><th>Min</th><th>Esito</th><th>Giocatore</th><th>Squadra</th><th></th></tr></thead>' +
+      '<tbody>' + righe + '</tbody></table>';
+  }
+  el("elenco").addEventListener("click", function (ev) {
+    var b = ev.target.closest ? ev.target.closest("button[data-via]") : null;
+    if (!b) return;
+    var t = TIRI[+b.dataset.via];
+    if (t) { t.via = !t.via; disegna(); }
+  });
+
+  // ── dai campi ai dati del motore ────────────────────────────────────
+  function dentro(t) {
+    if (t.via) return false;
+    if (!ACCESI[t.e]) return false;
+    var tp = +el("tempo").value;
+    if (tp && t.tempo !== tp) return false;
+    return true;
+  }
+  function dati() {
+    return {
+      e: el("e").value.trim(),
+      t: el("t").value.trim() || "LA MAPPA DEI TIRI",
+      a: { n: el("na").value.trim(), l: SQ.a.l, g: el("ga").value.trim() },
+      b: { n: el("nb").value.trim(), l: SQ.b.l, g: el("gb").value.trim() },
+      s: TIRI.filter(dentro).map(function (t) {
+        return { q: t.q, x: t.x, y: t.y, e: t.e, m: t.m, p: t.p };
+      })
+    };
+  }
+  function valido(d) {
+    if (!d.a.n || !d.b.n) { stato("err", "Servono i nomi delle due squadre."); return false; }
+    if (!d.s.length) { stato("err", "Non resta nessun tiro da mettere in grafica."); return false; }
+    return true;
+  }
+
+  // ── anteprima e invio ───────────────────────────────────────────────
+  function adattaPrev() {
+    el("prev").style.transform = "scale(" + (el("prevbox").clientWidth / 1920) + ")";
+  }
+  window.addEventListener("resize", adattaPrev);
+  el("btnPrevChiudi").addEventListener("click", function () {
+    el("prevwrap").style.display = "none";
+    el("prev").src = "about:blank";
+  });
+  el("btnPrev").addEventListener("click", function () {
+    var d = dati();
+    if (!valido(d)) return;
+    el("prevwrap").style.display = "block";
+    el("prev").src = "tiri-vmix.html?d=" + b64url(d) + "&n=" + Date.now();
+    adattaPrev();
+    el("prevwrap").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    stato("", "Anteprima aggiornata: " + d.s.length + (d.s.length === 1 ? " tiro." : " tiri."));
+  });
+
+  el("btnRegia").addEventListener("click", function () {
+    var d = dati();
+    if (!valido(d)) return;
+    var proposta = ("TIRI " + d.a.n + " - " + d.b.n).toUpperCase();
+    var titolo = window.prompt("Nome in scaletta di regia:", proposta);
+    if (titolo === null) return;
+    el("stato").innerHTML = '<span>Invio a ' + Destinazione.dove() + '&hellip;</span>' +
+      '<span class="pbar"><span class="pfill" id="pfill"></span></span>';
+    fetch(PONTE, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(Object.assign({ token: TOKEN }, Destinazione.corpo({
+                             grafica: "tiri", titolo: titolo.trim() || proposta, dati: d })))
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.ok) {
+          var pf = document.getElementById("pfill");
+          if (pf) pf.className = "pfill done";
+          setTimeout(function () {
+            stato("ok", "Aggiunta a " + Destinazione.dove() + ". Dalla regia la mandi in onda.");
+          }, 350);
+        } else stato("err", "Errore: " + (res.errore || "sconosciuto"));
+      })
+      .catch(function () { stato("err", "Ponte non raggiungibile."); });
+  });
+
+  disegnaFiltri();
+  pannelloEspn();
+})();
+</script>
+</body>
+</html>

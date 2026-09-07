@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mappa dei tiri · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-SemiBold.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+    transform-origin:center center;
+    font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);
+  }
+
+  /* ── testata: identica a Confronto, perche' e' la stessa famiglia ── */
+  #eyebrow{position:absolute;left:128px;top:82px;
+    font-family:'DM Sans',sans-serif;font-weight:600;font-size:22px;letter-spacing:.24em;
+    color:#C9A24B;text-transform:uppercase;white-space:nowrap;opacity:0;}
+  #title{position:absolute;left:125px;top:104px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:76px;letter-spacing:.01em;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;
+    clip-path:inset(0 100% 0 0);}
+  #rule{position:absolute;left:128px;top:212px;width:300px;height:3px;
+    background:linear-gradient(90deg,#C9A24B 0%,rgba(201,162,75,.15) 100%);
+    transform:scaleX(0);transform-origin:left center;}
+
+  /* ── le due teste, una per meta' campo ── */
+  .testa{position:absolute;top:246px;display:flex;align-items:center;gap:18px;opacity:0;}
+  .testa.dx{flex-direction:row-reverse;}
+  .testa img{width:76px;height:76px;object-fit:contain;flex:none;
+    filter:drop-shadow(0 8px 22px rgba(0,0,0,.5));}
+  .testa .nome{font-family:'Mazzard',sans-serif;font-weight:800;font-size:38px;
+    letter-spacing:.01em;text-transform:uppercase;line-height:1;white-space:nowrap;}
+  .testa .conta{font-family:'DM Sans',sans-serif;font-weight:500;font-size:18px;
+    letter-spacing:.16em;color:rgba(245,241,230,.55);text-transform:uppercase;
+    margin-top:8px;white-space:nowrap;}
+  .testa.dx .chi{text-align:right;}
+
+  /* ── il campo: due meta' d'attacco affiancate ──
+     Non e' un campo intero: e' la meta' d'attacco del Genoa a sinistra e
+     quella del Como a destra, appaiate. ESPN da' le coordinate gia' girate
+     verso la porta attaccata, quindi la stessa formula serve tutte e due —
+     a sinistra specchiata. */
+  #campo{position:absolute;opacity:0;}
+  #campo .erba{position:absolute;inset:0;border-radius:6px;
+    background:rgba(245,241,230,.028);
+    box-shadow:inset 0 0 0 2px rgba(245,241,230,.16);}
+  #campo .linea{position:absolute;background:rgba(245,241,230,.16);}
+  #campo .arco{position:absolute;border:2px solid rgba(245,241,230,.16);border-radius:50%;}
+  #campo .porta{position:absolute;background:rgba(201,162,75,.75);border-radius:2px;}
+  /* la riga di mezzo separa le due meta': e' un confine, non una linea di
+     campo, e si vede che e' diversa */
+  #campo .divisorio{position:absolute;top:-14px;bottom:-14px;width:2px;
+    background:linear-gradient(180deg,transparent,rgba(201,162,75,.5) 18%,rgba(201,162,75,.5) 82%,transparent);}
+
+  /* ── i tiri ── */
+  .tiro{position:absolute;transform:translate(-50%,-50%);opacity:0;}
+  .tiro .segno{display:block;border-radius:50%;box-sizing:border-box;}
+  /* gol: pieno oro e piu' grande, si vede da lontano ed e' il punto della grafica */
+  .tiro.gol .segno{width:34px;height:34px;background:#C9A24B;
+    box-shadow:0 0 0 5px rgba(201,162,75,.22), 0 6px 16px rgba(0,0,0,.45);}
+  /* in porta: pieno avorio */
+  .tiro.on .segno{width:24px;height:24px;background:#F5F1E6;
+    box-shadow:0 4px 12px rgba(0,0,0,.4);}
+  /* legno: anello oro con la sbarra */
+  .tiro.leg .segno{width:26px;height:26px;background:transparent;
+    border:3px solid #C9A24B;}
+  /* fuori: anello vuoto */
+  .tiro.off .segno{width:22px;height:22px;background:transparent;
+    border:2px solid rgba(245,241,230,.55);}
+  /* murato: piccolo e spento, non deve rubare l'occhio ai gol */
+  .tiro.blk .segno{width:14px;height:14px;background:rgba(245,241,230,.3);}
+
+  /* L'etichetta del gol non sta dentro il segno ma per conto suo: e' il
+     codice che le trova un posto libero, e per farlo deve poterla spostare.
+     Niente larghezza: si stringe addosso al nome, ed e' cosi' che si misura. */
+  .etigol{position:absolute;height:30px;line-height:30px;opacity:0;
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:21px;letter-spacing:.06em;
+    text-transform:uppercase;color:#F5F1E6;white-space:nowrap;
+    text-shadow:0 2px 10px rgba(7,11,29,.95), 0 0 22px rgba(7,11,29,.8);}
+  .etigol b{color:#C9A24B;font-weight:800;margin-left:9px;}
+
+  /* ── legenda ── */
+  #legenda{position:absolute;left:0;right:0;display:flex;justify-content:center;
+    gap:42px;opacity:0;}
+  #legenda .voce{display:flex;align-items:center;gap:11px;
+    font-family:'DM Sans',sans-serif;font-weight:500;font-size:17px;letter-spacing:.16em;
+    color:rgba(245,241,230,.55);text-transform:uppercase;white-space:nowrap;}
+  #legenda i{display:block;border-radius:50%;box-sizing:border-box;}
+
+  @keyframes wipeIn { to { clip-path:inset(0 0 0 0); } }
+  @keyframes fadeIn { to { opacity:1; } }
+  @keyframes ruleIn { to { transform:scaleX(1); } }
+  @keyframes tiroIn {
+    0%   { opacity:0; transform:translate(-50%,-50%) scale(2.1); }
+    60%  { opacity:1; transform:translate(-50%,-50%) scale(.88); }
+    100% { opacity:1; transform:translate(-50%,-50%) scale(1); }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="eyebrow"></div>
+  <div id="title">LA MAPPA DEI TIRI</div>
+  <div id="rule"></div>
+  <div id="teste"></div>
+  <div id="campo"></div>
+  <div id="legenda"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { e:"SERIE A · 3ª GIORNATA", t:"LA MAPPA DEI TIRI",
+  //     a:{ n:"Genoa", l:"…stemma…", g:1 },     // meta' campo di sinistra
+  //     b:{ n:"Como",  l:"…stemma…", g:4 },     // meta' campo di destra
+  //     s:[ { q:"a"|"b", x:91.5, y:56.9, e:"gol"|"on"|"off"|"blk"|"leg",
+  //           m:"19'", p:"Osmajic" }, … ] }
+  //
+  //   x,y sono le coordinate ESPN: 0-100, con x=100 sulla linea di porta
+  //   ATTACCATA (ESPN le gira gia' lui, per tutte e due le squadre) e y da
+  //   una fascia laterale all'altra.
+  var DEMO = {
+    e: "SERIE A · 3ª GIORNATA", t: "LA MAPPA DEI TIRI",
+    a: { n: "Genoa", g: 1 }, b: { n: "Como", g: 4 },
+    s: [
+      { q: "a", x: 91.5, y: 56.9, e: "gol", m: "19'", p: "Osmajic" },
+      { q: "a", x: 72.0, y: 53.0, e: "off", m: "8'" },
+      { q: "a", x: 87.8, y: 55.8, e: "blk", m: "22'" },
+      { q: "a", x: 89.6, y: 73.9, e: "off", m: "55'" },
+      { q: "b", x: 76.2, y: 57.7, e: "gol", m: "25'", p: "Baturina" },
+      { q: "b", x: 91.7, y: 36.4, e: "gol", m: "30'", p: "Diao" },
+      { q: "b", x: 93.3, y: 39.7, e: "gol", m: "40'", p: "Paz" },
+      { q: "b", x: 80.4, y: 24.8, e: "on",  m: "12'" },
+      { q: "b", x: 73.5, y: 55.1, e: "on",  m: "18'" },
+      { q: "b", x: 86.1, y: 59.1, e: "leg", m: "34'", p: "Paz" },
+      { q: "b", x: 81.3, y: 44.8, e: "off", m: "14'" },
+      { q: "b", x: 80.6, y: 48.3, e: "blk", m: "44'" }
+    ]
+  };
+
+  function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return DEMO;
+    try {
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return (d && d.a && d.b && d.s) ? d : null;
+    } catch (err) { return null; }
+  }
+  var STILL = new URLSearchParams(location.search).get("still") === "1";
+  var D = decodeData();
+  if (!D) {
+    document.title = "TIRI — dati non validi";
+    document.getElementById("stage").style.display = "none";
+    return;
+  }
+  document.title = "TIRI " + ((D.a.n || "") + " " + (D.b.n || "")).trim();
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    el("stage").style.transform = "translate(-50%,-50%) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+
+  // ── testata ─────────────────────────────────────────────────────────
+  var eb = el("eyebrow"); eb.textContent = D.e || "";
+  var tt = el("title"); tt.textContent = D.t || "LA MAPPA DEI TIRI";
+  var rl = el("rule");
+  if (STILL) { eb.style.opacity = 1; tt.style.clipPath = "inset(0 0 0 0)"; rl.style.transform = "scaleX(1)"; }
+  else {
+    eb.style.animation = "fadeIn .5s ease .15s forwards";
+    tt.style.animation = "wipeIn .7s cubic-bezier(.2,.7,.3,1) .3s forwards";
+    rl.style.animation = "ruleIn .55s cubic-bezier(.2,.7,.3,1) .85s forwards";
+  }
+
+  // ── la geometria del campo ──────────────────────────────────────────
+  // Mezzo campo vero: 52,5 m per 68 m. Le due meta' si toccano al centro,
+  // e le porte finiscono sui due bordi esterni.
+  var PH = 640, PY = 352;                       // altezza e cima del campo
+  var MPX = PH / 68;                            // pixel per metro
+  var HW = Math.round(52.5 * MPX);              // larghezza di mezza meta'
+  var PW = HW * 2, PX = Math.round((1920 - PW) / 2);
+  var CX = PX + HW;                             // dove le due meta' si toccano
+
+  var campo = el("campo");
+  campo.style.cssText = "left:" + PX + "px;top:" + PY + "px;width:" + PW + "px;height:" + PH + "px;" +
+    (STILL ? "opacity:1" : "animation:fadeIn .6s ease 1.0s forwards");
+
+  // Le righe del campo, disegnate una meta' alla volta. "verso" dice da che
+  // parte guarda la porta: -1 la meta' di sinistra, +1 quella di destra.
+  function metaCampo(x0, verso) {
+    var h = "";
+    var m = function (v) { return Math.round(v * MPX); };
+    var bordo = verso < 0 ? x0 : x0 + HW;         // il lato con la porta
+    // area grande 16,5 x 40,3 — area piccola 5,5 x 18,3
+    [[16.5, 40.3], [5.5, 18.3]].forEach(function (a) {
+      var w = m(a[0]), hh = m(a[1]);
+      var left = verso < 0 ? bordo : bordo - w;
+      h += '<i class="linea" style="left:' + left + 'px;top:' + Math.round((PH - hh) / 2) +
+           'px;width:' + w + 'px;height:' + hh + 'px;background:transparent;' +
+           'box-shadow:inset 0 0 0 2px rgba(245,241,230,.14)"></i>';
+    });
+    // il dischetto e l'arco
+    var dx = verso < 0 ? bordo + m(11) : bordo - m(11);
+    h += '<i class="linea" style="left:' + (dx - 3) + 'px;top:' + (PH / 2 - 3) + 'px;width:6px;height:6px;border-radius:50%"></i>';
+    // Dell'arco si vede solo la parte FUORI dall'area. Il taglio si misura
+    // dal bordo dell'elemento, che sta un raggio prima del dischetto: senza
+    // sommare il raggio si tagliava troppo poco e l'arco entrava nell'area.
+    var r = m(9.15), taglio = m(16.5 - 11) + r;
+    h += '<i class="arco" style="left:' + (dx - r) + 'px;top:' + (PH / 2 - r) + 'px;width:' + (2 * r) + 'px;height:' + (2 * r) + 'px;' +
+         'clip-path:inset(0 ' + (verso < 0 ? "0 0 " + taglio + "px" : taglio + "px 0 0") + ')"></i>';
+    // la porta, sul bordo esterno
+    var gh = m(7.32), gx = verso < 0 ? x0 - 6 : x0 + HW;
+    h += '<i class="porta" style="left:' + gx + 'px;top:' + Math.round((PH - gh) / 2) + 'px;width:6px;height:' + gh + 'px"></i>';
+    return h;
+  }
+  campo.innerHTML = '<i class="erba"></i>' + metaCampo(0, -1) + metaCampo(HW, +1) +
+    '<i class="divisorio" style="left:' + (HW - 1) + 'px"></i>';
+
+  // ── dove finisce un tiro sullo schermo ──────────────────────────────
+  // La meta' di sinistra e' la stessa cosa girata di mezzo giro: si specchia
+  // la x (la porta e' a sinistra) e con lei anche la y, se no la destra e la
+  // sinistra del campo si scambiano e i tiri finiscono dalla parte sbagliata.
+  function punto(t) {
+    var x = Math.max(50, Math.min(100, +t.x || 0));
+    var y = Math.max(0, Math.min(100, +t.y || 50));
+    var dentro = (x - 50) / 50;                  // 0 meta' campo, 1 linea di porta
+    if (t.q === "a") return { px: PX + HW * (1 - dentro), py: PY + PH * (1 - y / 100) };
+    return { px: CX + HW * dentro, py: PY + PH * (y / 100) };
+  }
+
+  // ── le teste, sopra la loro meta' ───────────────────────────────────
+  function stemma(q) {
+    return q.l ? '<img src="' + esc(q.l) + '" onerror="this.style.display=\'none\'">' : "";
+  }
+  function quanti(lettera) {
+    var n = D.s.filter(function (t) { return t.q === lettera; }).length;
+    return n + (n === 1 ? " tiro" : " tiri");
+  }
+  function testa(q, lato, lettera) {
+    var anim = STILL ? "opacity:1" : "animation:fadeIn .55s ease " + (lato === "dx" ? "1.15s" : "1.0s") + " forwards";
+    var pos = lato === "sx" ? "left:" + PX + "px" : "right:" + PX + "px";
+    return '<div class="testa ' + lato + '" style="' + pos + ';' + anim + '">' +
+      stemma(q) +
+      '<div class="chi"><div class="nome">' + esc(q.n || "") +
+        (q.g != null && q.g !== "" ? ' <span style="color:#C9A24B">' + esc(q.g) + '</span>' : "") +
+      '</div><div class="conta">' + quanti(lettera) + '</div></div></div>';
+  }
+  el("teste").innerHTML = testa(D.a, "sx", "a") + testa(D.b, "dx", "b");
+
+  // ── i tiri, in ordine di minuto ─────────────────────────────────────
+  // I gol portano il nome. Se il gol sta in alto l'etichetta andrebbe fuori
+  // dal campo: in quel caso passa sotto il segno.
+  var CLASSI = { gol: "gol", on: "on", off: "off", blk: "blk", leg: "leg" };
+  var h = "", daEtichettare = [];
+  D.s.forEach(function (t, i) {
+    var p = punto(t);
+    var cls = CLASSI[t.e] || "off";
+    var anim = STILL ? "opacity:1"
+      : "animation:tiroIn .42s cubic-bezier(.2,.7,.3,1) " + (1.35 + i * 0.07).toFixed(2) + "s forwards";
+    h += '<div class="tiro ' + cls + '" style="left:' + Math.round(p.px) + 'px;top:' + Math.round(p.py) + 'px;' + anim + '">' +
+         '<i class="segno"></i></div>';
+    if ((t.e === "gol" || t.e === "leg") && String(t.p || "").trim()) {
+      daEtichettare.push({ t: t, p: p, i: i });
+    }
+  });
+  el("stage").insertAdjacentHTML("beforeend", h);
+
+  // ── le etichette dei gol ────────────────────────────────────────────
+  // Quattro gol nella stessa mezza area e i nomi si accavallano: succede
+  // sempre, non e' il caso raro. Quindi prima si disegnano per misurarle —
+  // un elemento assoluto senza larghezza si stringe addosso al testo — e poi
+  // si cerca a ciascuna un posto libero, sopra il segno o sotto.
+  var POSATE = [];                                     // le etichette gia' messe
+  var AH = 30, ARIA = 8, STACCO = 16;                  // altezza etichetta, aria fra due, distanza dal segno
+
+  // I segni dei tiri sono ostacoli quanto le altre etichette: la prima
+  // versione guardava solo le etichette, e i nomi finivano seduti sopra i
+  // pallini. Un tiro largo 34px si tiene un rettangolo di quella misura.
+  var SEGNI = D.s.map(function (t) {
+    var p = punto(t);
+    var d = t.e === "gol" ? 44 : (t.e === "blk" ? 18 : 28);
+    return { x: p.px - d / 2, y: p.py - d / 2, w: d, h: d };
+  });
+  function pesta(r, lista, aria) {
+    for (var k = 0; k < lista.length; k++) {
+      var o = lista[k];
+      if (r.x < o.x + o.w + aria && o.x < r.x + r.w + aria &&
+          r.y < o.y + o.h + aria && o.y < r.y + r.h + aria) return true;
+    }
+    return false;
+  }
+  function nelloSchermo(r) {
+    return r.x >= 24 && r.x + r.w <= 1896 && r.y >= 236 && r.y + r.h <= PY + PH + 30;
+  }
+  function libero(r, ancheSegni) {
+    if (!nelloSchermo(r)) return false;
+    if (pesta(r, POSATE, ARIA)) return false;
+    return !(ancheSegni && pesta(r, SEGNI, 4));
+  }
+  daEtichettare.sort(function (u, v) { return u.p.py - v.p.py; });
+  daEtichettare.forEach(function (g) {
+    var d = document.createElement("div");
+    d.className = "etigol";
+    d.innerHTML = esc(String(g.t.p).trim().toUpperCase()) +
+                  (g.t.m ? "<b>" + esc(g.t.m) + "</b>" : "");
+    el("stage").appendChild(d);
+    g.el = d;
+  });
+
+  // Tutto il conto sta in piedi sulla larghezza dei nomi, e la larghezza
+  // cambia col carattere: al primo giro il Mazzard non e' ancora arrivato e
+  // si misura quello di ripiego, che e' piu' largo. Quindi si posa una volta
+  // subito — se il font tardasse, meglio qualcosa che niente — e si riposa
+  // da capo quando il carattere vero e' pronto.
+  function posa() {
+    POSATE = [];
+    daEtichettare.forEach(function (g) {
+    var d = g.el;
+    var w = d.offsetWidth || d.clientWidth || 160;
+
+    // Si cerca un posto: sopra o sotto, allontanandosi a scatti, e se serve
+    // spostandosi di lato. Vince il primo libero. Al primo giro contano anche
+    // i segni dei tiri; se in mezzo a quella selva non c'e' proprio posto, al
+    // secondo giro si accetta di stare sopra un pallino ma mai sopra un altro
+    // nome — un nome coperto da un nome non si legge, uno sopra un pallino si'.
+    var scelto = null;
+    function cerca(ancheSegni) {
+      for (var passo = 0; passo < 6; passo++) {
+        for (var v = 0; v < 2; v++) {
+          var cy = (v === 0) ? g.p.py - STACCO - passo * (AH + ARIA) - AH
+                             : g.p.py + STACCO + passo * (AH + ARIA);
+          for (var o = 0; o < 3; o++) {
+            var dx = o === 0 ? 0 : (o === 1 ? w / 2 + 26 : -(w / 2 + 26));
+            var r = { x: Math.round(g.p.px - w / 2 + dx), y: Math.round(cy), w: w, h: AH };
+            if (libero(r, ancheSegni)) return r;
+          }
+        }
+      }
+      return null;
+    }
+    scelto = cerca(true) || cerca(false) ||
+             { x: Math.round(g.p.px - w / 2), y: Math.round(g.p.py - STACCO - AH), w: w, h: AH };
+    POSATE.push(scelto);
+    d.style.left = scelto.x + "px";
+    d.style.top = scelto.y + "px";
+    d.style.animation = STILL ? "" : "fadeIn .4s ease " + (1.35 + g.i * 0.07 + 0.25).toFixed(2) + "s forwards";
+    if (STILL) d.style.opacity = 1;
+    });
+  }
+  posa();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(posa);
+
+  // ── legenda ─────────────────────────────────────────────────────────
+  var VOCI = [
+    ["Gol",    "width:20px;height:20px;background:#C9A24B"],
+    ["In porta", "width:16px;height:16px;background:#F5F1E6"],
+    ["Legno",  "width:16px;height:16px;border:3px solid #C9A24B"],
+    ["Fuori",  "width:15px;height:15px;border:2px solid rgba(245,241,230,.55)"],
+    ["Murato", "width:11px;height:11px;background:rgba(245,241,230,.3)"]
+  ];
+  var lg = el("legenda");
+  lg.style.cssText = "top:" + (PY + PH + 46) + "px;" +
+    (STILL ? "opacity:1" : "animation:fadeIn .5s ease " + (1.35 + D.s.length * 0.07 + 0.2).toFixed(2) + "s forwards");
+  lg.innerHTML = VOCI.map(function (v) {
+    return '<span class="voce"><i style="' + v[1] + '"></i>' + esc(v[0]) + '</span>';
+  }).join("");
+
+  function replay() { location.reload(); }
+  document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
+  document.addEventListener("dblclick", replay);
+})();
+</script>
+<script src="sfondo.js"></script>
+</body>
+</html>

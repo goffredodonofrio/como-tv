@@ -29,6 +29,7 @@
     ["classifiche-campionati.html","Classifiche"],
     ["marcatori.html",             "Marcatori"],
     ["statistiche.html",           "Statistiche"],
+    ["tiri.html",                  "Mappa tiri"],
     ["tabelloni.html",             "Tabelloni"],
     ["focus.html",                 "Focus"],
     ["dichiarazioni.html",         "Dichiarazioni"],
