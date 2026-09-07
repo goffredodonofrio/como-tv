@@ -188,6 +188,7 @@
   .monitor.attivo{outline:2px solid var(--oro,#C8A24A);outline-offset:-2px;}
   .formatiSeq{display:flex;flex-wrap:wrap;gap:3px;justify-content:center;width:100%;}
   .formatiSeq .b{padding:3px 6px;font-size:10px;min-width:0;}
+  .formatiSeq .b.guardato{outline:1px solid var(--oro,#C8A24A);outline-offset:1px;}
   .tlriquadro{position:absolute;z-index:40;pointer-events:none;border:1px solid #7FC4EE;
     background:rgba(127,196,238,.14);border-radius:2px;}
   .tlpista .clipV.sel{background:var(--tl-clipsel);}
@@ -1471,6 +1472,7 @@
         '<div class="monitor attivo" id="monS">' +
           '<div class="lato" id="formati">' +
             '<button class="b scuro" data-f="16:9">16:9</button>' +
+            '<button class="b" data-f="1:1">1:1</button>' +
             '<button class="b" data-f="3:4">3:4</button>' +
             '<button class="b" data-f="9:16">9:16</button>' +
             '<span class="sep"></span>' +
@@ -1534,7 +1536,7 @@
             '<span class="aiuto" style="margin:0"><kbd id="aiutoTasti">?</kbd></span>' +
           '</div>' +
           '<div class="capo"><span class="rif">PROGRAMMA</span><span id="capoSeq">—</span></div>' +
-          '<div class="telaio" id="telaioP"><video id="programma" playsinline></video>' +
+          '<div class="telaio" id="telaioP"><span class="forma" id="formaP">16:9</span><video id="programma" playsinline></video>' +
             '<span class="targa" id="targaP" hidden><b></b><i></i></span></div>' +
           '<div class="mbarra"><span id="pPos">00:00:00:00</span>' +
             '<span class="fit">sequenza</span><span class="tot" id="pTot">00:00:00:00</span></div>' +
@@ -1559,9 +1561,12 @@
     c.querySelectorAll("#formatiSeq button").forEach(function (b2) {
       b2.addEventListener("click", function () {
         var f = b2.dataset.fs, k = FORMATI_SEQ.indexOf(f);
-        if (k >= 0) { if (FORMATI_SEQ.length > 1) FORMATI_SEQ.splice(k, 1); }
-        else FORMATI_SEQ.push(f);
-        formatiSeqVisti();
+        if (k >= 0 && FORMATI_SEQ.length > 1 && FORMATO_VISTO === f) FORMATI_SEQ.splice(k, 1);
+        else if (k < 0) FORMATI_SEQ.push(f);
+        // cliccare un formato vuol dire "fammelo vedere": la finestra del
+        // Programma prende quella forma, acceso o spento che sia
+        FORMATO_VISTO = FORMATI_SEQ.indexOf(f) >= 0 ? f : FORMATI_SEQ[0];
+        formatiSeqVisti(); telaioForma();
       });
     });
     formatiSeqVisti();
@@ -1792,11 +1797,21 @@
     var largoP = (el("monP") ? el("monP").clientWidth : c.clientWidth / 2) - 72;
     var largo = largoS;
     var alto = Math.max(120, col.clientHeight - sotto - 44);
-    var r = { "16:9": 16/9, "3:4": 3/4, "9:16": 9/16 }[formato] || 16/9;
+    var RAPPORTI = { "16:9": 16/9, "1:1": 1, "3:4": 3/4, "9:16": 9/16 };
+    var r = RAPPORTI[formato] || 16/9;
     var w = Math.min(largo, alto * r), h = w / r;
     t.style.width = Math.round(w) + "px"; t.style.height = Math.round(h) + "px";
-    if (tp) { var wp = Math.min(largoP, alto * 16/9); tp.style.width = Math.round(wp) + "px"; tp.style.height = Math.round(wp * 9/16) + "px"; }
+    // Il Programma prende la forma del formato scelto per la sequenza: se
+    // esporti in 9:16 devi VEDERE il 9:16, con il taglio che fara' davvero
+    // l'export (centrato, come il crop di ffmpeg). Prima restava sempre
+    // 16:9 e ci si accorgeva del taglio solo scaricando il file.
+    if (tp) {
+      var rp = RAPPORTI[FORMATO_VISTO] || 16/9;
+      var wp = Math.min(largoP, alto * rp);
+      tp.style.width = Math.round(wp) + "px"; tp.style.height = Math.round(wp / rp) + "px";
+    }
     if (el("forma")) el("forma").textContent = formato;
+    if (el("formaP")) el("formaP").textContent = FORMATO_VISTO;
   }
   window.addEventListener("resize", telaioForma);
 
@@ -2138,9 +2153,12 @@
   //  per andare li'. Una clip dal progetto si lascia cadere dove si vuole.
   //  Canc toglie il pezzo scelto.
   var FORMATI_SEQ = ["16:9"];   // i formati con cui esce la sequenza
+  var FORMATO_VISTO = "16:9";   // e quello che si sta guardando nel Programma
   function formatiSeqVisti() {
     document.querySelectorAll("#formatiSeq button").forEach(function (b) {
-      b.className = FORMATI_SEQ.indexOf(b.dataset.fs) >= 0 ? "b scuro" : "b";
+      b.className = (FORMATI_SEQ.indexOf(b.dataset.fs) >= 0 ? "b scuro" : "b")
+                  + (b.dataset.fs === FORMATO_VISTO ? " guardato" : "");
+      b.title = (FORMATI_SEQ.indexOf(b.dataset.fs) >= 0 ? "esce anche in " : "clicca per vedere ") + b.dataset.fs;
     });
   }
   var SEQSCELTE = [];        // le sequenze accese con Shift, da togliere insieme
@@ -2722,7 +2740,8 @@
     ["shift+E", "esporta fotogramma"],
     ["ctrl+M", "esporta la sequenza in tutti i formati"],
     ["= · − · \\\\", "avvicina · allontana · tutta la sequenza"],
-    ["1 · 2 · 3", "16:9 · 3:4 · 9:16"],
+    ["1 · 2 · 3 · 4", "la forma della Sorgente: 16:9 · 1:1 · 3:4 · 9:16"],
+    ["formati sotto Esporta", "clicca e il Programma prende quella forma, con il taglio che farà l’export"],
     ["T", "esporta la clip (entrata→uscita)"],
     ["Invio nella ricerca", "cerca a fondo: appunti, telecronaca, archivio, clip"],
     ["esc", "chiude riquadri e foglietti"],
@@ -2903,7 +2922,9 @@
       var formati = Array.prototype.filter.call(caselle, function (c) { return c.checked; }).map(function (c) { return c.value; });
       if (!formati.length) return dice("Scegli almeno un formato.");
       // quello che si sceglie qui resta acceso anche in colonna
-      FORMATI_SEQ = formati.slice(); formatiSeqVisti();
+      FORMATI_SEQ = formati.slice();
+      if (FORMATI_SEQ.indexOf(FORMATO_VISTO) < 0) FORMATO_VISTO = FORMATI_SEQ[0];
+      formatiSeqVisti(); telaioForma();
       var titolo = el("expNome").value.trim();
       if (tipo === "clip") {
         var preciso = box.querySelector('input[name="expQ"]:checked').value === "preciso";
@@ -3418,8 +3439,8 @@
     if (k === "+" || k === "=") { e.preventDefault(); LENTE = Math.min(32, LENTE * 2); disegnaTutto(); return; }
     if (k === "-") { e.preventDefault(); LENTE = Math.max(1, LENTE / 2); disegnaTutto(); return; }
     if (k === "\\") { e.preventDefault(); LENTE = 1; TL.vista = null; disegnaTutto(); return; }
-    if ((k === "1" || k === "2" || k === "3") && !e.shiftKey && !mod) {
-      var f = ["16:9", "3:4", "9:16"][+k - 1];
+    if ((k === "1" || k === "2" || k === "3" || k === "4") && !e.shiftKey && !mod) {
+      var f = ["16:9", "1:1", "3:4", "9:16"][+k - 1];
       var bf = document.querySelector('#formati button[data-f="' + f + '"]');
       if (bf) { e.preventDefault(); bf.click(); }
     }
