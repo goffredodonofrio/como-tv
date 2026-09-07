@@ -1624,16 +1624,7 @@
     telaioForma();
     el("capoTorna").addEventListener("click", function (e) { e.preventDefault(); tornaAlContenuto(); });
     el("seqTutti").addEventListener("click", function () { apriExport("sequenza"); });   // Esporta accanto al Programma
-    el("seqGrafica").addEventListener("click", function () {
-      if (!SEQ || !(SEQ.pezzi || []).length) return dice("Monta prima qualcosa in timeline.");
-      if (SEQ.export && SEQ.export.stato === "lavora") return dice("Sto gia' esportando questa sequenza.");
-      ASPETTO[SEQ.id] = "grafica";
-      manda({ tipo: "clip-hl-esporta", seq: SEQ.id, formato: FORMATO_VISTO, formati: [FORMATO_VISTO] })
-        .then(function () {
-          dice("Esporto in " + FORMATO_VISTO + " \u00b7 appena pronto si apre il generatore", true);
-        })
-        .catch(function (e) { delete ASPETTO[SEQ.id]; dice(e.message); });
-    });
+    el("seqGrafica").addEventListener("click", function () { versoLaGrafica(SEQ); });
     c.querySelectorAll("#formatiSeq button").forEach(function (b2) {
       b2.addEventListener("click", function () {
         // UNO ALLA VOLTA. Prima si accumulavano e restavano accesi tutti:
@@ -2233,6 +2224,61 @@
   //  prende un bordo per accorciarlo o allungarlo, si clicca sul righello
   //  per andare li'. Una clip dal progetto si lascia cadere dove si vuole.
   //  Canc toglie il pezzo scelto.
+  // LA FINESTRA DELL'ATTESA. Si apre SUBITO, al clic, e non dopo: una
+  // finestra aperta al termine di un'attesa il browser la blocca, perche'
+  // non e' piu' figlia di un gesto tuo. Aprendola subito si guadagnano due
+  // cose in una — il blocco non scatta, e chi ha premuto vede che sta
+  // succedendo qualcosa invece di restare davanti a uno schermo fermo.
+  var FINESTRE = {};            // sequenza -> la finestra aperta ad aspettare
+  function paginaAttesa(w, titolo, fatti, quanti, finito) {
+    if (!w || w.closed) return;
+    var q = quanti || 1, f = Math.min(fatti || 0, q);
+    var perc = finito ? 100 : Math.round(f / q * 100);
+    try {
+      w.document.open();
+      w.document.write('<!doctype html><html lang="it"><head><meta charset="utf-8">' +
+        '<title>' + (finito ? "Pronto" : "Sto preparando il video") + ' \u00b7 Como TV</title>' +
+        '<style>body{margin:0;background:#141414;color:#E6E6E6;font:14px/1.5 system-ui,sans-serif;' +
+        'display:flex;align-items:center;justify-content:center;height:100vh}' +
+        '.c{max-width:420px;padding:28px;text-align:center}' +
+        'h1{font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:#C8A24A;margin:0 0 6px}' +
+        'p{color:#9A9A9A;margin:8px 0 0;font-size:13px}' +
+        '.b{height:6px;background:#2A2A2A;border-radius:3px;margin:18px 0 6px;overflow:hidden}' +
+        '.b i{display:block;height:100%;background:#C8A24A;width:' + perc + '%;transition:width .4s}' +
+        '.n{font-size:12px;color:#7A7A7A}</style></head><body><div class="c">' +
+        '<h1>' + (finito ? "Video pronto" : "Sto preparando il video") + '</h1>' +
+        '<div>' + String(titolo || "").replace(/[<>]/g, "") + '</div>' +
+        '<div class="b"><i></i></div>' +
+        '<div class="n">' + (finito ? "apro il generatore\u2026" : f + " di " + q + " pezzi \u00b7 " + perc + "%") + '</div>' +
+        '<p>' + (finito ? "Da qui scegli la grafica e la metti sul video."
+                        : "Puoi lasciare questa finestra aperta e continuare a lavorare di la\u2019. Appena il video e\u2019 pronto si apre il generatore da solo.") +
+        '</p></div></body></html>');
+      w.document.close();
+    } catch (e) {}
+  }
+  // Dal montaggio alla grafica, senza passaggi in mezzo.
+  function versoLaGrafica(q) {
+    if (!q || !(q.pezzi || []).length) return dice("Monta prima qualcosa in timeline.");
+    if (q.export && q.export.stato === "lavora") return dice("Sto gia\u2019 esportando questa sequenza.");
+    var w = null;
+    try { w = window.open("", "_blank", "width=560,height=420"); } catch (e) {}
+    if (w) { FINESTRE[q.id] = w; paginaAttesa(w, q.titolo, 0, (q.pezzi || []).length, false); }
+    else dice("Il browser ha bloccato la finestra: quando il video e\u2019 pronto trovi qui il collegamento al generatore.");
+    ASPETTO[q.id] = "grafica";
+    manda({ tipo: "clip-hl-esporta", seq: q.id, formato: FORMATO_VISTO, formati: [FORMATO_VISTO] })
+      .then(function () {
+        // le tre maschere video del generatore sono tutte verticali: se stai
+        // esportando orizzontale conviene saperlo prima, non dopo
+        dice("Esporto in " + FORMATO_VISTO + " \u00b7 appena pronto si apre il generatore" +
+             (FORMATO_VISTO === "9:16" ? "" : " \u00b7 attenzione: le grafiche video sono verticali, per le storie scegli 9:16"), true);
+      })
+      .catch(function (e) {
+        delete ASPETTO[q.id];
+        if (w && !w.closed) w.close();
+        delete FINESTRE[q.id];
+        dice(e.message);
+      });
+  }
   var ASPETTO = {};             // sequenza -> cosa fare quando l'export e' pronto
   var VISTI_PRONTI = {};        // per non rifarlo due volte
   var FORMATI_SEQ = ["16:9"];   // i formati con cui esce la sequenza
@@ -4705,13 +4751,7 @@
                       '<button class="b" id="hlGrafica">Grafica</button>' +
                       '<button class="b" id="hlXml">Per Premiere</button>';
       corpo.appendChild(az2);
-      el("hlGrafica").addEventListener("click", function () {
-        if (!(q.pezzi || []).length) return dice("Questa sequenza e' vuota.");
-        ASPETTO[q.id] = "grafica";
-        manda({ tipo: "clip-hl-esporta", seq: q.id, formato: FORMATO_VISTO, formati: [FORMATO_VISTO] })
-          .then(function () { dice("Esporto in " + FORMATO_VISTO + " \u00b7 appena pronto si apre il generatore", true); })
-          .catch(function (e) { delete ASPETTO[q.id]; dice(e.message); });
-      });
+      el("hlGrafica").addEventListener("click", function () { versoLaGrafica(q); });
       if (q.export && q.export.stato === "pronto") {
         var g1 = document.createElement("div"); g1.className = "aiuto";
         var pronti = q.esportati || {};
@@ -5238,7 +5278,12 @@
     var fatti = {};
     CLIP.forEach(function (c) { if (c.stato === "pronta") fatti["c:" + c.id] = { nome: c.nome || c.titolo, url: BASE + "/clip/_clip/" + c.id + ".mp4?scarica=1" }; });
     (SEQS.length ? SEQS : (SEQ ? [SEQ] : [])).forEach(function (q) {
-      Object.keys(q.esportati || {}).forEach(function (k) { fatti["s:" + q.id + ":" + k] = { nome: q.esportati[k].nome || q.titolo, url: BASE + q.esportati[k].file + "?scarica=1" }; });
+      Object.keys(q.esportati || {}).forEach(function (k) {
+        // nella chiave c'e' anche l'istante: se rifai lo stesso formato e'
+        // un'uscita nuova, e va annunciata di nuovo
+        fatti["s:" + q.id + ":" + k + ":" + (q.esportati[k].quando || 0)] =
+          { nome: q.esportati[k].nome || q.titolo, url: BASE + q.esportati[k].file + "?scarica=1" };
+      });
       if (q.premiere) fatti["x:" + q.id] = { nome: q.premiere.nome || "XML", url: BASE + q.premiere.file + "?scarica=1" };
     });
     if (PRONTI_VISTI) {
@@ -5260,13 +5305,42 @@
           dice("Scarico " + pulito(fatti[k].nome), true);
         } else if (dove === "grafica") {
           var senzaScarica = fatti[k].url.replace(/\?scarica=1$/, "");
-          window.open(GEN + "&clip=" + encodeURIComponent(senzaScarica) +
-                      "&seq=" + encodeURIComponent(pezzi[1]) +
-                      "&titolo=" + encodeURIComponent(fatti[k].nome || ""), "_blank");
+          var via = GEN + "&clip=" + encodeURIComponent(senzaScarica) +
+                    "&seq=" + encodeURIComponent(pezzi[1]) +
+                    "&titolo=" + encodeURIComponent(fatti[k].nome || "");
+          var w = FINESTRE[pezzi[1]];
+          if (w && !w.closed) {
+            // la finestra e' gia' aperta dal clic: si porta li', senza che
+            // il browser possa bloccare niente
+            paginaAttesa(w, fatti[k].nome, 1, 1, true);
+            setTimeout(function () { try { w.location.href = via; } catch (e) {} }, 700);
+          } else {
+            // finestra bloccata: non si insiste ad aprirne un'altra (verrebbe
+            // bloccata uguale), si mette un collegamento su cui cliccare —
+            // un clic e' un gesto, e i gesti il browser li lascia passare
+            var w2 = null;
+            try { w2 = window.open(via, "_blank"); } catch (e) {}
+            if (!w2) diceHtml('\u2713 Video pronto: <b>' + pulito(fatti[k].nome) + '</b>' +
+                              '<a href="' + via + '" target="_blank">apri il generatore</a>', true);
+          }
+          delete FINESTRE[pezzi[1]];
+          delete ASPETTO[pezzi[1]];
         }
       });
     }
     PRONTI_VISTI = fatti;
+    // le finestre che stanno aspettando seguono l'avanzamento vero
+    Object.keys(FINESTRE).forEach(function (id) {
+      var w = FINESTRE[id];
+      if (!w || w.closed) { delete FINESTRE[id]; return; }
+      var q = (SEQS.filter(function (x) { return x.id === id; })[0]) || (SEQ && SEQ.id === id ? SEQ : null);
+      if (!q || !q.export) return;
+      if (q.export.stato === "lavora") paginaAttesa(w, q.titolo, q.export.fatti || 0, q.export.quanti || 1, false);
+      else if (q.export.stato === "errore") {
+        paginaAttesa(w, "Non e\u2019 andata: " + (q.export.errore || ""), 0, 1, false);
+        delete FINESTRE[id]; delete ASPETTO[id];
+      }
+    });
     var inCoda = CLIP.filter(function (c) { return c.stato !== "pronta" && c.stato !== "errore"; });
     var seqs = (SEQS.length ? SEQS : (SEQ ? [SEQ] : [])).filter(function (q) { return q.export && q.export.stato === "lavora"; });
     var n = inCoda.length + seqs.length, l = el("sLav"); if (!l) return;

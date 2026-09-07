@@ -2247,7 +2247,11 @@ async function hlEsportaVideo(q, formato, dentroUnGiro) {
   q.esportati = q.esportati || {};
   q.esportati[formato] = {
     file: "/clip/" + CARTELLA_HL + "/" + q.id + suffisso + ".mp4",
-    durata: d.durata ? Math.round(d.durata * 10) / 10 : 0, peso: d.peso || 0
+    durata: d.durata ? Math.round(d.durata * 10) / 10 : 0, peso: d.peso || 0,
+    // l'istante serve alla pagina per accorgersi che questa e' un'uscita
+    // NUOVA: rifacendo lo stesso formato il nome del file non cambia, e
+    // senza un istante l'avviso "pronto" non scattava piu'
+    quando: Date.now()
   };
   q.esportati[formato].nome = nomeScaricoSeq(q, R.reg[q.reg], formato, ".mp4");
   q.export = { stato: "pronto", formato: formato, fatti: q.pezzi.length, quanti: q.pezzi.length,
