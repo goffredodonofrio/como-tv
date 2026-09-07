@@ -617,6 +617,118 @@ function clipMarker(p) {
 
 // Attenzione: il tipo di AZIONE arriva come "tipoAzione". "tipo" e' gia'
 // occupato: e' il campo con cui il ponte smista le richieste.
+// ── IL BOATO ──────────────────────────────────────────────────────
+//  Dove non ci sono appunti, il pubblico sa lo stesso quando succede
+//  qualcosa. Un gol, un rigore, un'espulsione: lo stadio alza la voce e la
+//  alza in un secondo. Si misura il volume secondo per secondo e si tengono
+//  i picchi: non dicono CHE COSA e' successo, dicono DOVE guardare — che per
+//  quattromila partite senza una riga scritta e' gia' tutto.
+function volumeAlSecondo(via) {
+  return new Promise((ok) => {
+    execFile(FFMPEG, ["-hide_banner", "-nostdin", "-i", via, "-vn",
+                      "-af", "aresample=8000,asetnsamples=8000,astats=metadata=1:reset=1," +
+                             "ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-",
+                      "-f", "null", "-"],
+      { timeout: 1800000, maxBuffer: 64 * 1024 * 1024 }, (e, so, se) => {
+        if (e) return ok([]);
+        const v = [];
+        String(so || "").replace(/RMS_level=(-?[0-9.]+|-inf)/g, (m, x) => { v.push(x === "-inf" ? -90 : parseFloat(x)); return m; });
+        ok(v);
+      });
+  });
+}
+// I picchi: quanto sopra il solito, e non due nello stesso momento. Poi si
+// tengono solo i piu' forti: in una partita i momenti in cui si alza la voce
+// sono decine, e una lista di decine non aiuta nessuno. Quindici sono una
+// lista che si guarda.
+//
+// Nota onesta: nel CLEANFEED la telecronaca c'e', quindi il picco e' il
+// momento in cui alzano la voce — pubblico e telecronista insieme. Va bene
+// lo stesso: e' comunque il segnale "guarda qui".
+function picchiDiVolume(v, da, quantiDb, distanza, quanti) {
+  if (v.length < 60) return [];
+  const ordinati = v.slice().sort((a, b) => a - b);
+  const solito = ordinati[Math.floor(ordinati.length / 2)];
+  const soglia = solito + (quantiDb || 8);
+  const lontano = distanza || 60;
+  const fuori = [];
+  for (let i = 2; i < v.length - 2; i++) {
+    if (v[i] < soglia) continue;
+    if (v[i] < v[i - 1] || v[i] < v[i + 1]) continue;          // il colmo, non la salita
+    if (fuori.length && i - fuori[fuori.length - 1].i < lontano) {
+      if (v[i] > v[fuori[fuori.length - 1].i]) fuori[fuori.length - 1] = { i: i, db: v[i] };
+      continue;
+    }
+    fuori.push({ i: i, db: v[i] });
+  }
+  return fuori
+    .sort((a, b) => b.db - a.db).slice(0, quanti || 15)
+    .sort((a, b) => a.i - b.i)
+    .map((x) => ({ secondi: Math.round((da || 0) + x.i), forza: Math.round((x.db - solito) * 10) / 10 }));
+}
+// Il boato diventa un segno sulla partita, come quelli fatti a mano.
+async function cercaBoati(p) {
+  const r = R.reg[String(p.reg || "")];
+  if (!r) throw new Error("registrazione sconosciuta");
+  const dir = cartellaReg(r.id);
+  const wav = path.join(dir, "voce.wav");
+  let via = null, da = 0;
+  // se l'audio e' gia' in casa (trascrizione) si usa quello: costa zero
+  try { const w = JSON.parse(fs.readFileSync(wav + ".json", "utf8")); fs.statSync(wav); via = wav; da = w.da || 0; }
+  catch (e) { via = sorgenteAudio(r); }
+  if (!via) throw new Error("di questa registrazione non c'e' audio raggiungibile");
+  if (/^https?:/i.test(via) && !p.anchePagando) {
+    throw new Error("l'audio di questa partita e' su S3: ascoltarlo tutto vuol dire scaricarla (7 GB)");
+  }
+  const v = await volumeAlSecondo(via);
+  if (!v.length) throw new Error("non sono riuscito a misurare il volume");
+  const picchi = picchiDiVolume(v, da, num(p.db, 1, 30, 8), num(p.distanza, 5, 600, 60), num(p.quanti, 1, 60, 15));
+  r.marker = (r.marker || []).filter((m) => m.tipo !== "boato");
+  picchi.forEach((x) => r.marker.push({
+    id: nuovoId("m"), secondi: x.secondi, tipo: "boato",
+    testo: "Boato dello stadio (+" + x.forza + " dB)", fonte: "boato", quando: Date.now()
+  }));
+  r.marker.sort((a, b) => a.secondi - b.secondi);
+  scrivi(); annuncia(0, "clip");
+  return { ok: true, secondiAscoltati: v.length, boati: picchi.length, picchi: picchi.slice(0, 40) };
+}
+
+// ── GLI STACCHI DI REGIA ──────────────────────────────────────────
+//  Una clip che comincia in mezzo a un'inquadratura sembra strappata; una
+//  che comincia sullo stacco sembra montata. La regia gli stacchi li ha gia'
+//  fatti: basta trovarli. ffmpeg confronta un fotogramma con il precedente e
+//  dice dove cambia tutto. Si guarda solo qualche secondo attorno al punto —
+//  quei byte li stiamo gia' scaricando per fare la clip.
+function stacchiVicini(via, quando, raggio) {
+  return new Promise((ok) => {
+    const da = Math.max(0, quando - raggio);
+    execFile(FFMPEG, ["-hide_banner", "-nostdin", "-ss", String(da), "-t", String(raggio * 2),
+                      "-i", via, "-vf", "select=gt(scene\\,0.20),showinfo", "-an", "-f", "null", "-"],
+      { timeout: 60000, maxBuffer: 8 * 1024 * 1024 }, (e, so, se) => {
+        if (e) return ok([]);
+        const fuori = [];
+        String(se || "").replace(/pts_time:([0-9.]+)/g, (m, t) => { fuori.push(da + parseFloat(t)); return m; });
+        ok(fuori);
+      });
+  });
+}
+// Il punto agganciato allo stacco piu' vicino, se ce n'e' uno abbastanza
+// vicino da non cambiare quello che si voleva prendere.
+async function agganciaStacco(r, quando, raggio) {
+  try {
+    const via = sorgenteAudio(r);        // stessa strada del video: file locale o indirizzo firmato
+    if (!via) return { t: quando, spostato: 0 };
+    // un secondo e mezzo: uno stacco piu' lontano non e' il bordo di questa
+    // azione, e spostarsi fin li' vorrebbe dire prendere un'altra cosa
+    const dentroRaggio = raggio || 1.5;
+    const st = (await stacchiVicini(via, quando, dentroRaggio))
+      .filter((x) => Math.abs(x - quando) <= dentroRaggio)
+      .sort((a, b) => Math.abs(a - quando) - Math.abs(b - quando));
+    if (!st.length) return { t: quando, spostato: 0 };
+    return { t: Math.round(st[0] * 100) / 100, spostato: Math.round((st[0] - quando) * 100) / 100 };
+  } catch (e) { return { t: quando, spostato: 0 }; }
+}
+
 function clipTaglia(p) {
   const r = R.reg[p.reg];
   if (!r) throw new Error("registrazione sconosciuta");
@@ -1453,12 +1565,18 @@ function hlPezzo(p) {
 // Programma lo riproduce dal materiale, e il video si rende solo quando
 // si esporta — che e' esattamente il modello di Premiere, dove la timeline
 // e' fatta di riferimenti e non di file.
-function hlInserisci(p) {
+async function hlInserisci(p) {
   const r = R.reg[String(p.reg || "")];
   if (!r) throw new Error("registrazione sconosciuta");
   const durataMax = r.durata || durataRegistrata(r.id) || MAX_SECONDI;
-  const dentro = num(p.dentro, 0, durataMax, 0), fuori = num(p.fuori, 0, durataMax, 0);
+  let dentro = num(p.dentro, 0, durataMax, 0), fuori = num(p.fuori, 0, durataMax, 0);
   if (fuori - dentro < 0.5) throw new Error("il punto di uscita deve venire dopo quello di entrata");
+  // il pezzo comincia sullo stacco di regia, non in mezzo a un'inquadratura
+  let agganciato = 0;
+  if (p.aggancia !== false) {
+    const a1 = await agganciaStacco(r, dentro, 1.5);
+    if (a1.spostato && a1.t < fuori - 0.5) { dentro = a1.t; agganciato = a1.spostato; }
+  }
   let q = p.seq ? R.seq[p.seq] : null;
   if (!q) q = Object.keys(R.seq).map((k) => R.seq[k]).filter((x) => x.reg === r.id).sort((a, b) => b.creata - a.creata)[0];
   if (!q) {
@@ -1466,14 +1584,14 @@ function hlInserisci(p) {
           scarto: 0, avvisi: [], creata: Date.now(), chi: String(p.__chi || p.chi || "").slice(0, 40), export: null };
     R.seq[q.id] = q;
   }
-  const pezzo = { id: nuovoId("p"), dentro: dentro, fuori: fuori, base: dentro,
+  const pezzo = { id: nuovoId("p"), dentro: dentro, fuori: fuori, base: dentro, stacco: agganciato || 0,
     titolo: String(p.titolo || "").slice(0, 160) || (r.titolo + " " + orologio(dentro)),
     tipo: "", minuto: "", fonte: "mano", mano: true };
   const dove = (p.dove === undefined || p.dove === null) ? q.pezzi.length
              : Math.max(0, Math.min(q.pezzi.length, Math.round(num(p.dove, 0, 999, 0))));
   q.pezzi.splice(dove, 0, pezzo);
   scrivi(); annuncia(0, "clip");
-  return { ok: true, seq: q, pezzo: pezzo.id };
+  return { ok: true, seq: q, pezzo: pezzo.id, agganciato: agganciato };
 }
 
 // File > Nuova sequenza: una sequenza vuota, con un nome, sulla partita
@@ -2977,6 +3095,18 @@ function trascriviDavvero(lavoro) {
 
     const dentro = PARLATO[r.id] || (PARLATO[r.id] = { lingua: LINGUA_MAM, pezzi: [] });
     if (lavoro.intera) dentro.intera = new Date().toISOString();
+    // finche' l'audio e' in mano si prende anche il resto: i boati costano
+    // un minuto di CPU e non un byte in piu'
+    volumeAlSecondo(wav).then((v) => {
+      if (!v.length) return;
+      const picchi = picchiDiVolume(v, lavoro.da, 8, 60, 15);
+      r.marker = (r.marker || []).filter((m) => m.fonte !== "boato");
+      picchi.forEach((x) => r.marker.push({ id: nuovoId("m"), secondi: x.secondi, tipo: "boato",
+        testo: "Boato dello stadio (+" + x.forza + " dB)", fonte: "boato", quando: Date.now() }));
+      r.marker.sort((a, b) => a.secondi - b.secondi);
+      scrivi(); annuncia(0, "clip");
+      console.log("[clip] boati trovati in " + (r.titolo || r.id) + ": " + picchi.length);
+    }).catch(() => {});
     // si rifa' la finestra invece di accodare: chiedere due volte lo stesso
     // pezzo non deve raddoppiare quello che ci si trova dentro
     dentro.pezzi = dentro.pezzi.filter((t) => t.b <= lavoro.da || t.a >= lavoro.a)
@@ -4657,6 +4787,7 @@ const AZIONI = {
   "clip-elimina": clipElimina,
   "clip-sorgenti": clipSorgenti,
   "clip-flussi-vivi": flussiVivi,
+  "clip-boati": cercaBoati,
   "clip-significato": (p) => {
     // capire trentamila righe sono dieci minuti: si comincia e si risponde
     // subito, lo stato si chiede quando si vuole
