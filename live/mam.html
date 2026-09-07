@@ -231,6 +231,10 @@
   .formatiSeq{display:flex;flex-wrap:wrap;gap:3px;justify-content:center;width:100%;}
   .formatiSeq .b{padding:3px 6px;font-size:10px;min-width:0;}
   .formatiSeq .b.guardato{outline:1px solid var(--oro,#C8A24A);outline-offset:1px;}
+  /* spento vuol dire spento: prima erano tutti dello stesso blu e sembravano
+     accesi tutti */
+  .formatiSeq .b.spento{background:transparent;border:1px solid var(--linea,#3A3A3A);color:var(--fumo,#8A8A8A);}
+  .formatiSeq .b.spento:hover{border-color:var(--oro,#C8A24A);color:#D8D8D8;}
   .mbarra .tot.tratto{color:var(--oro,#C8A24A);}
   .mbarra .tot .dituttoQ{font-style:normal;font-size:9px;letter-spacing:.04em;margin-left:6px;
     color:var(--inchiostro-3,#8A8A8A);}
@@ -1576,6 +1580,12 @@
             '<button class="b oro" id="seqTutti" title="apre la finestra di esportazione">Esporta</button>' +
             '<button class="b" id="seqMp4" hidden>Solo 16:9</button>' +
             '<button class="b" id="seqXml" title="l’XML per Premiere: la sequenza con i tagli, da aprire e rifinire">XML Premiere</button>' +
+            // La strada dei social, in un pulsante solo: hai finito di
+            // montare, premi qui, e quando il video e' pronto si apre da
+            // solo il generatore con dentro QUESTO montato. Prima erano tre
+            // mosse — esporta, aspetta, cerca il link "grafica" nella coda —
+            // e in mezzo si perdeva il filo.
+            '<button class="b" id="seqGrafica" title="esporta e apre il generatore con questo montato dentro">GRAFICA</button>' +
             // I formati stanno qui, non solo dentro la finestra: si vede a
             // colpo d'occhio con che inquadratura uscira' la sequenza, e si
             // cambia senza aprire niente. Accesi piu' d'uno, escono tutti.
@@ -1614,14 +1624,25 @@
     telaioForma();
     el("capoTorna").addEventListener("click", function (e) { e.preventDefault(); tornaAlContenuto(); });
     el("seqTutti").addEventListener("click", function () { apriExport("sequenza"); });   // Esporta accanto al Programma
+    el("seqGrafica").addEventListener("click", function () {
+      if (!SEQ || !(SEQ.pezzi || []).length) return dice("Monta prima qualcosa in timeline.");
+      if (SEQ.export && SEQ.export.stato === "lavora") return dice("Sto gia' esportando questa sequenza.");
+      ASPETTO[SEQ.id] = "grafica";
+      manda({ tipo: "clip-hl-esporta", seq: SEQ.id, formato: FORMATO_VISTO, formati: [FORMATO_VISTO] })
+        .then(function () {
+          dice("Esporto in " + FORMATO_VISTO + " \u00b7 appena pronto si apre il generatore", true);
+        })
+        .catch(function (e) { delete ASPETTO[SEQ.id]; dice(e.message); });
+    });
     c.querySelectorAll("#formatiSeq button").forEach(function (b2) {
       b2.addEventListener("click", function () {
-        var f = b2.dataset.fs, k = FORMATI_SEQ.indexOf(f);
-        if (k >= 0 && FORMATI_SEQ.length > 1 && FORMATO_VISTO === f) FORMATI_SEQ.splice(k, 1);
-        else if (k < 0) FORMATI_SEQ.push(f);
-        // cliccare un formato vuol dire "fammelo vedere": la finestra del
-        // Programma prende quella forma, acceso o spento che sia
-        FORMATO_VISTO = FORMATI_SEQ.indexOf(f) >= 0 ? f : FORMATI_SEQ[0];
+        // UNO ALLA VOLTA. Prima si accumulavano e restavano accesi tutti:
+        // guardavi il 9:16 con quattro pulsanti blu e non capivi piu' che
+        // cosa stessi guardando. Acceso e' quello che vedi, punto. Per
+        // uscire in piu' formati in un colpo ci sono le caselle nella
+        // finestra di esportazione, che e' il posto giusto per dirlo.
+        FORMATO_VISTO = b2.dataset.fs;
+        FORMATI_SEQ = [FORMATO_VISTO];
         formatiSeqVisti(); telaioForma();
       });
     });
@@ -2218,9 +2239,10 @@
   var FORMATO_VISTO = "16:9";   // e quello che si sta guardando nel Programma
   function formatiSeqVisti() {
     document.querySelectorAll("#formatiSeq button").forEach(function (b) {
-      b.className = (FORMATI_SEQ.indexOf(b.dataset.fs) >= 0 ? "b scuro" : "b")
-                  + (b.dataset.fs === FORMATO_VISTO ? " guardato" : "");
-      b.title = (FORMATI_SEQ.indexOf(b.dataset.fs) >= 0 ? "esce anche in " : "clicca per vedere ") + b.dataset.fs;
+      var acceso = b.dataset.fs === FORMATO_VISTO;
+      b.className = acceso ? "b scuro guardato" : "b spento";
+      b.title = acceso ? "stai guardando " + b.dataset.fs
+                       : "clicca per vedere e esportare in " + b.dataset.fs;
     });
   }
   var DOPPIO = { id: "", quando: 0 };   // per riconoscere il doppio clic a mano
@@ -4680,8 +4702,16 @@
 
       var az2 = document.createElement("div"); az2.className = "gruppo"; az2.style.marginTop = "8px";
       az2.innerHTML = '<button class="b oro" id="hlMp4">Esporta MP4</button>' +
+                      '<button class="b" id="hlGrafica">Grafica</button>' +
                       '<button class="b" id="hlXml">Per Premiere</button>';
       corpo.appendChild(az2);
+      el("hlGrafica").addEventListener("click", function () {
+        if (!(q.pezzi || []).length) return dice("Questa sequenza e' vuota.");
+        ASPETTO[q.id] = "grafica";
+        manda({ tipo: "clip-hl-esporta", seq: q.id, formato: FORMATO_VISTO, formati: [FORMATO_VISTO] })
+          .then(function () { dice("Esporto in " + FORMATO_VISTO + " \u00b7 appena pronto si apre il generatore", true); })
+          .catch(function (e) { delete ASPETTO[q.id]; dice(e.message); });
+      });
       if (q.export && q.export.stato === "pronto") {
         var g1 = document.createElement("div"); g1.className = "aiuto";
         var pronti = q.esportati || {};
