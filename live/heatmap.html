@@ -113,6 +113,11 @@
     box-shadow:inset 3px 0 0 rgba(227,194,113,.75);color:var(--ivory-dim);}
   .magro b{color:var(--gold-bright);}
   .vuoto{color:var(--fg-3);font-size:13px;padding:6px 2px;}
+  /* la foto scelta: si vede subito quale e', se no non si sa cosa andra' in
+     onda finche' non si preme Anteprima */
+  .notafoto{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--fg-3);}
+  .notafoto img{width:38px;height:47px;object-fit:cover;object-position:center top;
+    border-radius:6px;background:#131C40;flex:none;}
 </style>
 </head>
 <body>
@@ -150,9 +155,17 @@
   <div class="panel">
     <h2>Di chi</h2>
     <div class="scelte" id="squadre"><div class="vuoto">Prendi prima una partita.</div></div>
-    <div class="riga" style="margin-top:12px;margin-bottom:0">
+    <div class="riga" style="margin-top:12px;margin-bottom:0;align-items:flex-end">
       <div style="flex:0 0 360px"><label for="chi">Giocatore</label>
         <select id="chi"><option value="">Tutta la squadra</option></select></div>
+      <div style="flex:0 0 auto">
+        <label>Foto grande</label>
+        <button type="button" id="btnFoto">&#128444;&#65039; Dall&rsquo;archivio</button>
+        <button type="button" id="btnCarica">Carica</button>
+        <button type="button" id="btnFotoNo">Togli</button>
+        <input type="file" id="ffile" accept="image/*" hidden>
+      </div>
+      <div style="flex:1 1 220px;min-width:0"><div id="chifoto" class="notafoto"></div></div>
     </div>
     <div id="avviso"></div>
   </div>
@@ -170,6 +183,7 @@
 
 <script src="chiave.js"></script>
 <script src="destinazione.js"></script>
+<script src="sceglifoto.js"></script>
 <script>
 (function () {
   "use strict";
@@ -221,6 +235,12 @@
   function faccia(cognome) {
     return cognome ? (FACCE["foto-premium-" + slugCog(cognome)] || "") : "";
   }
+  // L'allenatore: le formazioni premium lo tengono in magazzino col nome
+  // della squadra, "foto-premium-coach-como". E' la stessa convenzione, non
+  // una nuova: la foto che finisce qui e' quella che si vede in formazione.
+  function allenatore(squadra) {
+    return squadra ? (FACCE["foto-premium-coach-" + slugCog(squadra)] || "") : "";
+  }
   function stemma(id, nome) {
     return SCAVALCO[slugM(nome)] ||
            (id ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + id + ".png" : "");
@@ -228,6 +248,27 @@
 
   var SQUADRE = [];       // [{ id, n, l, g, punti:[], per:{atleta:{…}} }, …]
   var SCELTA = 0;
+  var FOTO_MIA = "";      // scelta o caricata a mano: vince su tutte le altre
+
+  if (window.SceltaFoto) SceltaFoto.adotta(PONTE, TOKEN);
+
+  // Qual e' la foto grande: quella scelta a mano, se no quella che spetta —
+  // il giocatore la sua, la squadra l'allenatore.
+  function fotoGrande() {
+    if (FOTO_MIA) return FOTO_MIA;
+    var s = scelti();
+    if (s.chi) return s.chi.f || "";
+    var sq = SQUADRE[SCELTA];
+    return sq ? allenatore(sq.n) : "";
+  }
+  function notaFoto() {
+    var u = fotoGrande();
+    var da = FOTO_MIA ? "scelta a mano"
+           : (scelti().chi ? "dalle formazioni premium" : "allenatore, dalle formazioni");
+    el("chifoto").innerHTML = u
+      ? '<img src="' + esc(u) + '"><span>Foto: ' + da + '</span>'
+      : '<span>Nessuna foto: in grafica va lo stemma.</span>';
+  }
 
   function pannelloEspn() {
     var box = el("ufbar");
@@ -339,9 +380,45 @@
     if (!s) return;
     SCELTA = +s.dataset.i;
     el("chi").value = "";
+    FOTO_MIA = "";
     disegna();
   });
-  el("chi").addEventListener("change", disegna);
+  el("chi").addEventListener("change", function () { FOTO_MIA = ""; disegna(); });
+
+  el("btnFoto").addEventListener("click", function () {
+    if (!window.SceltaFoto) return;
+    SceltaFoto.apri(function (url) { FOTO_MIA = url; notaFoto(); });
+  });
+  el("btnFotoNo").addEventListener("click", function () { FOTO_MIA = ""; notaFoto(); });
+  el("btnCarica").addEventListener("click", function () { el("ffile").click(); });
+  el("ffile").addEventListener("change", function () {
+    var file = this.files && this.files[0];
+    if (!file) return;
+    var nome = (prompt("Nome con cui salvarla in magazzino:",
+                       file.name.replace(/\.[^.]+$/, "")) || "").trim();
+    if (!nome) { this.value = ""; return; }
+    stato("", "Carico la foto&hellip;");
+    var lettore = new FileReader();
+    lettore.onload = function () {
+      fetch(PONTE, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ token: TOKEN, tipo: "logo-carica",
+                               chiave: nome, dati: lettore.result })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (!res.ok || !res.url) throw new Error(res.errore || "salvataggio fallito");
+          FOTO_MIA = BASEIMG + res.url + "?t=" + Date.now();
+          if (window.SceltaFoto) SceltaFoto.scorda();   // l'elenco va riletto
+          notaFoto();
+          stato("ok", "Foto caricata.");
+        })
+        .catch(function (e) { stato("err", "Foto non salvata: " + e.message); });
+    };
+    lettore.readAsDataURL(file);
+    this.value = "";
+  });
 
   function scelti() {
     var sq = SQUADRE[SCELTA];
@@ -356,7 +433,7 @@
     if (!SQUADRE.length) {
       el("squadre").innerHTML = '<div class="vuoto">Prendi prima una partita.</div>';
       el("chi").innerHTML = '<option value="">Tutta la squadra</option>';
-      el("avviso").innerHTML = "";
+      el("avviso").innerHTML = ""; el("chifoto").innerHTML = "";
       return;
     }
     el("squadre").innerHTML = SQUADRE.map(function (s, i) {
@@ -377,6 +454,7 @@
                (g.num ? g.num + "  " : "") + esc(g.p) + " &mdash; " + g.q + " palloni</option>";
       }).join("");
 
+    notaFoto();
     var s = scelti();
     el("avviso").innerHTML = (s.punti.length && s.punti.length < POCHI)
       ? '<div class="magro"><b>Solo ' + s.punti.length + ' palloni.</b> La macchia si disegna lo stesso, ' +
@@ -392,14 +470,16 @@
     var d = {
       e: el("e").value.trim(),
       t: el("t").value.trim() || "LA HEATMAP",
-      sq: { n: sq.n, l: sq.l, g: sq.g },
+      sq: { n: sq.n, l: sq.l, g: sq.g, f: (s.chi ? "" : fotoGrande()) },
       st: conti(s.punti),
       // interi separati da virgola e punto e virgola: cosi' ottocento palloni
       // stanno in tre chili di indirizzo invece di dieci. Un'unita' e' circa
       // un metro, e la bolla e' larga sette: l'arrotondamento non si vede.
       pt: s.punti.map(function (p) { return p.x + "," + p.y; }).join(";")
     };
-    if (s.chi) d.chi = s.chi;
+    // per un giocatore la foto grande e' la sua, ma se ne e' stata scelta
+    // un'altra a mano comanda quella
+    if (s.chi) d.chi = Object.assign({}, s.chi, { f: fotoGrande() });
     return d;
   }
   function valido(d) {
