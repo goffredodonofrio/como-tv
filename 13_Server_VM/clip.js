@@ -2697,13 +2697,28 @@ function sorgenteAudio(r) {
   return null;
 }
 
+// Dove comincia davvero la partita dentro il file: il calcio d'inizio letto
+// dal cronometro se c'e', altrimenti quello stimato dall'ora nel nome.
+function fischioNelFile(r) {
+  if (!r.arch) return (r.kickoff && r.kickoff["1"] !== undefined) ? r.kickoff["1"] : null;
+  const a = ARCHIVIO[r.arch.rec];
+  if (!a || a.kickoff === null || a.kickoff === undefined) return null;
+  if ((r.arch.pezzo || 0) !== 0) return null;           // le altre parti cominciano gia' in mezzo
+  const o = a.orologio || {};
+  return Math.round(a.kickoff + (o.inizio1 !== undefined && o.inizio1 !== null ? o.inizio1 : 0));
+}
 function trascriviChiedi(p) {
   if (!whisperCe()) {
     return { ok: false, errore: "il motore di trascrizione non e' installato su questa macchina" };
   }
   const r = R.reg[String(p.reg || "")];
   if (!r) return { ok: false, errore: "registrazione sconosciuta" };
-  const da = num(p.da, 0, MAX_SECONDI, 0);
+  // Il pre-partita non ha niente da dire, e per whisper e' una trappola: sulla
+  // musica dello stadio entra in circolo e ripete "[Musica]" all'infinito
+  // senza avanzare. Se si sa dove comincia la partita, si comincia da li'.
+  const dalFischio = fischioNelFile(r);
+  const da = (p.da === undefined || p.da === null) && dalFischio !== null
+    ? Math.max(0, dalFischio - 60) : num(p.da, 0, MAX_SECONDI, 0);
   const durataTotale = r.durata || 0;
   const a = num(p.a, 0, MAX_SECONDI, durataTotale || (da + 600));
   if (a - da < 5) return { ok: false, errore: "un pezzo cosi' corto non ha niente da dire" };
@@ -2839,10 +2854,26 @@ function trascriviDavvero(lavoro) {
       const atteso = (lavoro.a - lavoro.da) * 32000;      // mono, 16 kHz, 16 bit
       const c = fs.statSync(wav);
       if (c.size > atteso * 0.97) { console.log("[clip] audio gia' pronto: " + Math.round(c.size / 1e6) + " MB"); return ok(); }
-    } catch (e) { /* non c'e': si estrae */ }
+      // l'audio in casa copre una finestra piu' larga di quella che serve:
+      // si taglia qui, invece di ricomprare gli stessi minuti da S3
+      const w = JSON.parse(fs.readFileSync(wav + ".json", "utf8"));
+      if (lavoro.da >= w.da && lavoro.a <= w.a + 1) {
+        const dentroWav = lavoro.da - w.da;
+        const stretto = path.join(dir, "voce.finestra.wav");
+        return execFile("nice", ["-n", "15", "ffmpeg", "-hide_banner", "-loglevel", "error",
+                                 "-ss", String(dentroWav), "-t", String(lavoro.a - lavoro.da),
+                                 "-i", wav, "-c", "copy", "-y", stretto], { timeout: 600000 },
+          (e) => { if (e) return no(e); try { fs.renameSync(stretto, wav); fs.writeFileSync(wav + ".json", JSON.stringify({ da: lavoro.da, a: lavoro.a })); } catch (x) {}
+                   console.log("[clip] audio ritagliato in casa: da " + lavoro.da + "s"); ok(); });
+      }
+    } catch (e) { /* non c'e', o non copre: si estrae */ }
     // a bassa priorita': la trascrizione e' lavoro di notte, non deve
     // rallentare ne' una diretta ne' le altre code
-    execFile("nice", ["-n", "15", "ffmpeg"].concat(args), { timeout: 3600000 }, (e) => e ? no(e) : ok());
+    execFile("nice", ["-n", "15", "ffmpeg"].concat(args), { timeout: 3600000 }, (e) => {
+      if (e) return no(e);
+      try { fs.writeFileSync(wav + ".json", JSON.stringify({ da: lavoro.da, a: lavoro.a })); } catch (x) {}
+      ok();
+    });
   }).then(() => new Promise((ok, no) => {
     // il biglietto accanto al lavoro: se il servizio muore mentre whisper
     // macina, chi riparte sa che finestra stava trascrivendo e la raccoglie
