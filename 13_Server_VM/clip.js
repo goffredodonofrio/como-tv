@@ -109,7 +109,7 @@ let DIR = "";                       // cartella di lavoro, decisa da server.js
 let annuncia = function () {};
 
 // registro: sopravvive ai riavvii del ponte, come lo stato della regia
-let R = { reg: {}, clip: {}, seq: {} };
+let R = { reg: {}, clip: {}, seq: {}, prog: {} };
 const PROC = new Map();             // idRegistrazione -> processo ffmpeg
 
 // ── utilita' minime ───────────────────────────────────────────────────
@@ -186,7 +186,7 @@ function leggi() {
   try {
     const t = fs.readFileSync(path.join(DIR, "registro.json"), "utf8");
     const d = JSON.parse(t);
-    if (d && d.reg) R = { reg: d.reg || {}, clip: d.clip || {}, seq: d.seq || {} };
+    if (d && d.reg) R = { reg: d.reg || {}, clip: d.clip || {}, seq: d.seq || {}, prog: d.prog || {} };
     // Un export "in lavorazione" non sopravvive a un riavvio: ffmpeg se ne
     // va con il servizio. Se resta scritto "lavora" la pagina mostra per
     // sempre un avanzamento fermo al 28%, e chi guarda aspetta un file che
@@ -1900,6 +1900,103 @@ function seqDi(p) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+//  I PROGETTI — dove il lavoro sta fermo e si ritrova
+// ══════════════════════════════════════════════════════════════════════
+//
+//  Il banco risolve meta' del problema: impedisce che un montaggio a meta'
+//  ti segua di nascosto da una macchina all'altra. Ma poi da quell'altra
+//  macchina il lavoro lo vuoi ritrovare — quando lo decidi tu, aprendolo
+//  per nome. Questo e' il progetto.
+//
+//  Un progetto e' PERSONALE ma non chiuso a chiave: lo apri tu, e se domani
+//  deve finirlo un altro basta che lo apra. Chi ce l'ha aperto adesso resta
+//  scritto, cosi' non ci si pesta i piedi senza saperlo — un avviso, non
+//  una serratura, perche' qui il problema e' non sovrapporsi, non difendersi.
+//
+//  Quello che NON e' un progetto: la partita che apri per tagliare due gol.
+//  Quella continua a funzionare com'e', senza chiedere niente a nessuno.
+//  Il progetto si crea quando il lavoro deve durare piu' di una sessione o
+//  mescolare piu' partite.
+function pubblicaProg(g) {
+  return Object.assign({}, g, {
+    quante: Object.keys(R.seq).filter((k) => R.seq[k].prog === g.id).length,
+    partite: (g.reg || []).length
+  });
+}
+
+function progElenco(p) {
+  const banco = String((p && p.banco) || "");
+  const tutti = Object.keys(R.prog).map((k) => R.prog[k])
+    .sort((a, b) => (b.tocco || b.creata || 0) - (a.tocco || a.creata || 0));
+  return { ok: true, prog: tutti.map(pubblicaProg), mio: banco };
+}
+
+function progNuovo(p) {
+  const nome = String(p.nome || "").trim().slice(0, 120);
+  if (!nome) throw new Error("il progetto ha bisogno di un nome");
+  const g = {
+    id: nuovoId("g"), nome: nome,
+    banco: String(p.banco || "").slice(0, 60),
+    chi: String(p.__chi || p.chi || "").slice(0, 40),
+    reg: p.reg ? [String(p.reg)] : [],
+    creata: Date.now(), tocco: Date.now(),
+    aperto: { banco: String(p.banco || "").slice(0, 60), quando: Date.now() }
+  };
+  R.prog[g.id] = g;
+  scrivi(); annuncia(0, "clip");
+  console.log("[clip] progetto nuovo: \"" + nome + "\"");
+  return { ok: true, prog: pubblicaProg(g) };
+}
+
+function progApri(p) {
+  const g = R.prog[String(p.prog || "")];
+  if (!g) throw new Error("progetto sconosciuto");
+  const banco = String(p.banco || "").slice(0, 60);
+  const prima = g.aperto || null;
+  // chi ce l'ha aperto adesso: un avviso, non un divieto
+  let avviso = "";
+  if (prima && prima.banco && prima.banco !== banco && Date.now() - (prima.quando || 0) < 3600000) {
+    avviso = "questo progetto era aperto su un altro computer meno di un'ora fa: mettetevi d'accordo prima di lavorarci sopra in due";
+  }
+  g.aperto = { banco: banco, quando: Date.now() };
+  g.tocco = Date.now();
+  scrivi(); annuncia(0, "clip");
+  const seq = Object.keys(R.seq).map((k) => R.seq[k]).filter((q) => q.prog === g.id)
+    .sort((a, b) => b.creata - a.creata);
+  seq.forEach((q) => { try { segnaPezziLocali(q); } catch (e) {} });
+  return { ok: true, prog: pubblicaProg(g), seq: seq, avviso: avviso };
+}
+
+function progTocca(p) {
+  const g = R.prog[String(p.prog || "")];
+  if (!g) throw new Error("progetto sconosciuto");
+  if (p.nome !== undefined) {
+    const n = String(p.nome).trim().slice(0, 120);
+    if (!n) throw new Error("il progetto ha bisogno di un nome");
+    g.nome = n;
+  }
+  if (p.aggiungi) {
+    g.reg = g.reg || [];
+    if (g.reg.indexOf(String(p.aggiungi)) < 0) g.reg.push(String(p.aggiungi));
+  }
+  if (p.togli) g.reg = (g.reg || []).filter((x) => x !== String(p.togli));
+  g.tocco = Date.now();
+  scrivi(); annuncia(0, "clip");
+  return { ok: true, prog: pubblicaProg(g) };
+}
+
+function progElimina(p) {
+  const g = R.prog[String(p.prog || "")];
+  if (!g) throw new Error("progetto sconosciuto");
+  // le sequenze del progetto non si buttano con lui: restano, senza padrone,
+  // che e' il male minore fra perdere lavoro e lasciare in giro roba
+  Object.keys(R.seq).forEach((k) => { if (R.seq[k].prog === g.id) delete R.seq[k].prog; });
+  delete R.prog[g.id];
+  scrivi(); annuncia(0, "clip");
+  return { ok: true };
+}
+
+// ══════════════════════════════════════════════════════════════════════
 //  IL BANCO — di chi e' il montaggio
 // ══════════════════════════════════════════════════════════════════════
 //
@@ -1928,6 +2025,7 @@ function seqMia(p) {
   const c = JSON.parse(JSON.stringify(q));
   c.id = nuovoId("s");
   c.banco = banco;
+  if (p.prog) c.prog = String(p.prog);      // se c'e' un progetto aperto, e' suo
   c.daAuto = q.auto;
   delete c.auto;                              // non e' piu' apparecchiata: e' tua
   c.titolo = q.titolo;
@@ -1956,8 +2054,11 @@ function hlElenco(p) {
   // quali pezzi sono gia' in casa: la pagina li riproduce da qui invece che
   // da Parigi, e il salto fra una clip e l'altra sparisce
   const banco = String((p && p.banco) || "").slice(0, 60);
-  // le proposte della macchina le vedono tutti; i montaggi solo chi li ha fatti
-  const mie = seq.filter((q) => (q.auto && !q.banco) || !q.banco || q.banco === banco);
+  const prog = String((p && p.prog) || "");
+  // Le proposte della macchina le vedono tutti. I montaggi: quelli del
+  // progetto aperto, se ce n'e' uno; se no quelli di questo banco.
+  const mie = seq.filter((q) => (q.auto && !q.banco) ||
+                                (prog ? q.prog === prog : (!q.banco || q.banco === banco)));
   mie.forEach((q) => { try { segnaPezziLocali(q); } catch (e) {} });
   return { ok: true, seq: mie };
 }
@@ -6284,6 +6385,11 @@ const AZIONI = {
   "clip-grafica-uscita": graficaSuUscita,
   "clip-hl-grafica": hlGrafica,
   "clip-hl-in-casa": hlInCasa,
+  "clip-prog-elenco": progElenco,
+  "clip-prog-nuovo": progNuovo,
+  "clip-prog-apri": progApri,
+  "clip-prog-tocca": progTocca,
+  "clip-prog-elimina": progElimina,
   "clip-uscite": (p) => (p && p.pulisci) ? pulisciUscite(p)
     : { ok: true, elenco: uscite().map((u) => ({ nome: u.nome, tipo: u.tipo, giga: Math.round(u.peso / 1e8) / 10,
         giorni: Math.round((Date.now() - u.quando) / 86400000 * 10) / 10, orfano: u.orfano, alLavoro: u.alLavoro })),

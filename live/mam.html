@@ -1381,6 +1381,7 @@
   function manda(c) {
     c.token = TOKEN;
     if (c.banco === undefined) c.banco = BANCO;
+    if (c.prog === undefined && PROGETTO) c.prog = PROGETTO.id;
     return fetch(PONTE, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
       body: JSON.stringify(c) }).then(function (r) { return r.json(); })
       .then(function (d) { if (!d.ok) throw new Error(d.errore || "il ponte ha detto no"); return d; });
@@ -2462,6 +2463,82 @@
                        : "clicca per vedere e esportare in " + b.dataset.fs;
     });
   }
+  // IL PROGETTO APERTO. Nessuno se non quando lo apri: la partita di ieri
+  // si taglia senza creare niente, come sempre. Il progetto serve quando il
+  // lavoro deve durare piu' di una sessione o mescolare piu' partite.
+  var PROGETTO = null;
+  function ricordaProgetto() {
+    try { localStorage.setItem("mam.progetto", PROGETTO ? PROGETTO.id : ""); } catch (e) {}
+  }
+  function nuovoProgetto() {
+    var n = prompt("Nome del progetto:", REG ? (REG.titolo || "") : "");
+    if (n === null) return;
+    n = String(n).trim(); if (!n) return dice("Serve un nome.");
+    manda({ tipo: "clip-prog-nuovo", nome: n, reg: REG ? REG.id : "" })
+      .then(function (r) {
+        PROGETTO = r.prog; ricordaProgetto(); capo(); aggiorna();
+        dice("Progetto \u201c" + r.prog.nome + "\u201d creato \u00b7 da qui il lavoro resta suo", true);
+      })
+      .catch(function (e) { dice(e.message); });
+  }
+  function chiudiProgetto() {
+    if (!PROGETTO) return dice("Nessun progetto aperto.");
+    var n = PROGETTO.nome;
+    PROGETTO = null; ricordaProgetto(); capo(); aggiorna();
+    dice("Progetto \u201c" + n + "\u201d chiuso.", true);
+  }
+  function apriProgetto(id) {
+    manda({ tipo: "clip-prog-apri", prog: id })
+      .then(function (r) {
+        PROGETTO = r.prog; ricordaProgetto(); capo();
+        if (r.avviso) dice(r.avviso);
+        else dice("Progetto \u201c" + r.prog.nome + "\u201d aperto \u00b7 " + r.prog.quante + " sequenze", true);
+        // la prima partita del progetto si apre da sola: e' quella su cui
+        // stavi lavorando, e ritrovarla e' meta' del senso di un progetto
+        var prima = (r.prog.reg || [])[0];
+        if (prima && (!REG || REG.id !== prima)) vaiA(prima, null, "tutto");
+        aggiorna();
+      })
+      .catch(function (e) { dice(e.message); });
+  }
+  function apriElencoProgetti() {
+    manda({ tipo: "clip-prog-elenco" }).then(function (r) {
+      var vecchio = el("finProg"); if (vecchio) vecchio.remove();
+      var box = document.createElement("div"); box.className = "foglio"; box.id = "finProg";
+      var righe = (r.prog || []).map(function (g) {
+        var d = new Date(g.tocco || g.creata);
+        var quando = isFinite(d) ? ("0" + d.getDate()).slice(-2) + "/" + ("0" + (d.getMonth() + 1)).slice(-2) +
+                     " " + ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2) : "";
+        var suo = g.banco && r.mio && g.banco === r.mio;
+        return '<div class="az uscita" data-prog="' + g.id + '"><span class="telo2"></span>' +
+               '<p><b>' + pulito(g.nome) + '</b><br><small>' + g.quante +
+               (g.quante === 1 ? " sequenza" : " sequenze") + ' \u00b7 ' + g.partite +
+               (g.partite === 1 ? " partita" : " partite") + ' \u00b7 ' + quando +
+               (suo ? " \u00b7 tuo" : " \u00b7 di un altro computer") + '</small></p>' +
+               '<a class="b oro" href="#" data-apri="' + g.id + '">Apri</a>' +
+               '<a href="#" class="togli" data-togli="' + g.id + '">togli</a></div>';
+      }).join("");
+      box.innerHTML = '<div><header><b>Progetti</b><span>il lavoro che resta, da riaprire dove vuoi</span>' +
+        '<a href="#" id="progChiudi">chiudi</a></header><div class="righe">' +
+        (righe || '<div class="az"><p>Nessun progetto. File &rsaquo; Nuovo progetto per farne uno.</p></div>') +
+        '</div><footer>Un progetto e\u2019 personale, ma se domani lo finisce un altro basta che lo apra.</footer></div>';
+      document.body.appendChild(box);
+      var via = function (e) { if (e) e.preventDefault(); box.remove(); };
+      box.addEventListener("click", function (e) { if (e.target === box) via(); });
+      el("progChiudi").addEventListener("click", via);
+      box.querySelectorAll("[data-apri]").forEach(function (a) {
+        a.addEventListener("click", function (e) { e.preventDefault(); via(); apriProgetto(a.dataset.apri); });
+      });
+      box.querySelectorAll("[data-togli]").forEach(function (a) {
+        a.addEventListener("click", function (e) {
+          e.preventDefault();
+          if (!confirm("Togliere questo progetto? Le sue sequenze restano, senza progetto.")) return;
+          manda({ tipo: "clip-prog-elimina", prog: a.dataset.togli })
+            .then(function () { via(); apriElencoProgetti(); }).catch(function (er) { dice(er.message); });
+        });
+      });
+    }).catch(function (e) { dice(e.message); });
+  }
   var DOPPIO = { id: "", quando: 0 };   // per riconoscere il doppio clic a mano
   var DOPPIA_CARTA = { id: "", quando: 0 };
   var CARTA = null;                     // la scheda scelta, che non e' quella aperta
@@ -3232,6 +3309,11 @@
   var clicca = function (id) { var b = el(id); if (b && !b.disabled) b.click(); };
   var MENU = [
     ["File", [
+      ["Nuovo progetto\u2026", function () { nuovoProgetto(); }, ""],
+      ["Apri progetto\u2026", function () { apriElencoProgetti(); }, ""],
+      [function () { return PROGETTO ? "Chiudi \u201c" + PROGETTO.nome + "\u201d" : "Chiudi progetto"; },
+       function () { chiudiProgetto(); }, ""],
+      "-",
       ["Apri partita\u2026", function () { var f = el("eventoCerca"); if (f) { f.focus(); f.select(); } }, ""],
       ["Importa file\u2026", function () { clicca("fileIn"); }, ""],
       ["Nuova sequenza", function () {
@@ -4052,6 +4134,10 @@
   function apriDaArchivio(rec, dove, nome, pezzo) {
     dice("Apro dall'archivio\u2026");
     manda({ tipo: "clip-archivio-apri", rec: rec, pezzo: pezzo || 0 }).then(function (d) {
+      // se c'e' un progetto aperto, la partita che apri entra nel suo
+      // materiale: e' quello che ti aspetti ritrovare riaprendolo domani
+      if (PROGETTO && d.reg) manda({ tipo: "clip-prog-tocca", prog: PROGETTO.id, aggiungi: d.reg.id })
+        .then(function (r2) { PROGETTO = r2.prog; }).catch(function () {});
       var sc = el("foglio"); if (sc) sc.remove();
       guardando = null;
       return aggiorna().then(function () {
@@ -4907,10 +4993,12 @@
   }
   function intestaProgetto() {
     var n = el("projNome"), p = el("projPath"); if (!n || !p) return;
-    n.textContent = REG ? REG.titolo : "\u2014";
+    // se c'e' un progetto aperto e' lui a dare il nome alla linguetta: la
+    // partita e' materiale dentro il progetto, non il contrario
+    n.textContent = PROGETTO ? PROGETTO.nome : (REG ? REG.titolo : "\u2014");
     var d = REG ? new Date(REG.avviata) : null;
     p.querySelector("span").textContent = REG
-      ? [REG.competizione, d && isFinite(d) ? ("0"+d.getDate()).slice(-2) + "/" + ("0"+(d.getMonth()+1)).slice(-2) + "/" + d.getFullYear() : "", orologio(REG.durata)].filter(Boolean).join(" \u00b7 ")
+      ? (PROGETTO ? REG.titolo + " \u00b7 " : "") + [REG.competizione, d && isFinite(d) ? ("0"+d.getDate()).slice(-2) + "/" + ("0"+(d.getMonth()+1)).slice(-2) + "/" + d.getFullYear() : "", orologio(REG.durata)].filter(Boolean).join(" \u00b7 ")
       : "nessuna partita aperta";
   }
   function filtraProgetto() {
@@ -5604,6 +5692,16 @@
     }).catch(function (e) { el("sPonte").textContent = "non risponde"; el("sPonteP").className = "pallino"; });
   }
 
+  // il progetto aperto si ritrova riaprendo la pagina, come in Premiere
+  (function () {
+    var id = ""; try { id = localStorage.getItem("mam.progetto") || ""; } catch (e) {}
+    if (!id) return;
+    setTimeout(function () {
+      manda({ tipo: "clip-prog-apri", prog: id })
+        .then(function (r) { PROGETTO = r.prog; capo(); intestaProgetto(); aggiorna(); })
+        .catch(function () { try { localStorage.removeItem("mam.progetto"); } catch (e) {} });
+    }, 1200);
+  })();
   (function () { var l = el("sLav"); if (l) l.addEventListener("click", function () { apriUscite(false); }); })();
   var PRONTI_VISTI = null, giroSvelto = null;
   function diceHtml(html, buona) {
