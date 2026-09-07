@@ -1081,6 +1081,24 @@ function tempoInTesta(s) {
   return { min: +m[1], sec: m[4] ? +m[4] : 0, stopp: m[2] ? +m[2] : (m[3] ? +m[3] : 0), resto: resto };
 }
 
+// IL GOL RATING. In fondo agli appunti la redazione da' un voto a ogni gol:
+//   _Velasco (17): Rating - 4_
+// e' il giudizio di chi guardava su quanto vale quel gol. Non e' una riga in
+// piu': e' un voto da attaccare al gol che sta gia' negli appunti, e serve a
+// scegliere cosa entra negli highlights quando i minuti non bastano.
+function leggiRating(testo) {
+  const fuori = [];
+  String(testo || "").split("\n").forEach((riga) => {
+    const m = /^[\s_*]*(.+?)\s*\((\d{1,3})(?:\+\d+)?\)\s*:?\s*ra[it]+ing\s*[-:]?\s*(\d)/i.exec(riga.trim());
+    if (!m) return;
+    const nome = m[1].replace(/[_*]/g, "").trim();
+    if (!nome || nome.length > 40) return;
+    // il modello vuoto degli appunti porta un finto cognome: non e' un gol
+    if (/^(congome|cognome|nome|giocatore|player)$/i.test(nome)) return;
+    fuori.push({ nome: nome, minuto: +m[2], voto: +m[3] });
+  });
+  return fuori;
+}
 function leggiAppunti(testo, durataTempo) {
   const dur = durataTempo || 45;
   const fuori = [];
@@ -1119,6 +1137,24 @@ function leggiAppunti(testo, durataTempo) {
       r.sezione = 2; r.dentroTempo = (r.minutoVero - dur) * 60 + r.secVero + r.stoppVero * 60;
     }
   });
+  // il voto si attacca al gol piu' vicino: lo stesso minuto, o quasi. Se
+  // quel gol negli appunti non c'e', la riga del voto diventa la riga del gol.
+  leggiRating(testo).forEach((v) => {
+    let meglio = null, distanza = 3;
+    fuori.forEach((r) => {
+      if (!/gol|goal|rete/i.test((r.tipo || "") + " " + (r.testo || ""))) return;
+      const d = Math.abs(r.minutoVero - v.minuto);
+      if (d <= distanza) { distanza = d; meglio = r; }
+    });
+    if (meglio) { meglio.rating = v.voto; if (meglio.testo.toLowerCase().indexOf(v.nome.toLowerCase()) < 0) meglio.testo += " \u00b7 " + v.nome; }
+    else {
+      const s2 = v.minuto > dur ? 2 : 1;
+      fuori.push({ sezione: s2, dentroTempo: (s2 === 2 ? v.minuto - dur : v.minuto) * 60,
+                   minuto: v.minuto + "'", testo: "Gol di " + v.nome, tipo: "Gol",
+                   hl: false, forte: false, rating: v.voto, minutoVero: v.minuto, secVero: 0, stoppVero: 0 });
+    }
+  });
+  fuori.sort((a, b) => (a.sezione - b.sezione) || (a.dentroTempo - b.dentroTempo));
   fuori.forEach((r) => { delete r.minutoVero; delete r.secVero; delete r.stoppVero; });
   return fuori;
 }
@@ -1133,10 +1169,13 @@ async function appuntiDi(recId) {
 
 // Quanto conta un'azione, quando i tre minuti non bastano per tutte.
 // Non e' una classifica di bellezza: e' l'ordine in cui si rinuncia.
-function pesoAzione(tipo, hl) {
+function pesoAzione(tipo, hl, rating) {
   const t = senzaAccenti(tipo || "");
   if (hl) return 5;                                  // marcata dalla redazione: non si tocca
-  if (/goal|gol|own|penalty|rigore/.test(t)) return 4;
+  // il voto della redazione, quando c'e', vale piu' del tipo: un gol da 4
+  // non e' un gol da 1, e quando i minuti non bastano si vede
+  if (rating >= 4) return 5;
+  if (/goal|gol|own|penalty|rigore/.test(t)) return rating === 1 ? 3 : 4;
   if (/red|rosso|espuls/.test(t)) return 4;
   if (/parata|palo|traversa/.test(t)) return 3;
   if (/card|cartellino|giallo|ammoni/.test(t)) return 2;
@@ -1330,7 +1369,7 @@ async function hlGenera(p) {
         titolo: (n.minuto + " " + (n.tipo ? n.tipo + " · " : "") + n.testo).slice(0, 140),
         tipo: n.tipo, hl: n.hl, testo: n.testo,
         secondi: quando, collocabile: quando !== null && quando >= 0 && quando <= durata,
-        peso: pesoAzione(n.tipo, n.hl)
+        peso: pesoAzione(n.tipo, n.hl, n.rating || n.g || 0)
       });
     });
     if (note.length && (k1 === undefined && k2 === undefined)) {
@@ -1339,7 +1378,7 @@ async function hlGenera(p) {
     }
   }
 
-  pezzi.forEach((x) => { x.peso = pesoAzione(x.tipo, x.hl); });
+  pezzi.forEach((x) => { x.peso = pesoAzione(x.tipo, x.hl, x.rating || x.g || 0); });
   pezzi.sort((a, b) => a.dentro - b.dentro);
 
   // Due pezzi sovrapposti fanno un highlight che si ripete. Quando succede
@@ -2958,12 +2997,13 @@ function cercaNelParlato(q, limite) {
   Object.keys(PARLATO).forEach((regId) => {
     const r = R.reg[regId];
     if (!r) return;
-    const capo = comeSiCerca([r.titolo, r.competizione]);
+    const tele = (APPUNTI[r.evento] || {}).telecronista || "";
+    const capo = comeSiCerca([r.titolo, r.competizione, tele]);
     if (!quandoTorna(r.avviata, q)) return;
     PARLATO[regId].pezzi.forEach((t) => {
       if (!tutteDentro(comeSiCerca([t.x, capo]), q.parole)) return;
       fuori.push({ reg: regId, partita: r.titolo, secondi: t.a, testo: t.x,
-                   quando: r.avviata });
+                   telecronista: tele, quando: r.avviata });
     });
   });
   return fuori.slice(0, limite);
@@ -3003,6 +3043,19 @@ function scriviArchivioAppunti() {
   } catch (e) { console.log("[clip] archivio appunti non salvato: " + e.message); }
 }
 
+// Chi ha raccontato la partita. Su Airtable il campo cambia forma — un
+// nome, una lista, una scheda con dentro il nome — e cambia anche il titolo
+// della colonna: si prende quello che c'e'.
+function chiRacconta(f) {
+  const dentro = (v) => Array.isArray(v) ? v.map(dentro).filter(Boolean).join(", ")
+    : (v && typeof v === "object") ? String(v.name || v.displayName || v.email || "").trim()
+    : String(v || "").trim();
+  for (const k of ["Commento 1", "Commento", "Telecronista", "Telecronaca", "Commento 2"]) {
+    const v = dentro(f[k]);
+    if (v) return v.replace(/[\[\]']/g, "").trim();
+  }
+  return "";
+}
 async function appuntiImporta(p) {
   const giorni = num(p.giorni, 1, 3650, 400);
   const tetto = num(p.quante, 1, 5000, 1200);
@@ -3028,10 +3081,11 @@ async function appuntiImporta(p) {
       conRighe++; righe += note.length;
       APPUNTI[rec.id] = {
         partita: f["Partita"] || "", competizione: f["Competizione"] || "",
+        telecronista: chiRacconta(f),
         quando: f["Data | Orario"] || "",
         righe: note.map((n) => ({
           m: n.minuto, t: n.tipo, x: n.testo.slice(0, 180), s: n.sezione,
-          d: n.dentroTempo, hl: n.hl ? 1 : 0
+          d: n.dentroTempo, hl: n.hl ? 1 : 0, g: n.rating || 0
         }))
       };
     });
@@ -3082,7 +3136,7 @@ async function appuntiStoriciImporta(p) {
       if (!partita || !quando) return;
       viste++;
       const comp = (f[ST.competizione] && f[ST.competizione].name) || f[ST.competizione] || "";
-      const tele = (f[ST.telecronista] && f[ST.telecronista].name) || f[ST.telecronista] || "";
+      const tele = String((f[ST.telecronista] && f[ST.telecronista].name) || f[ST.telecronista] || "").replace(/[\[\]']/g, "").trim();
       eventi.push({ id: rec.id, partita: partita, competizione: String(comp).trim(), quando: quando });
       const note = leggiAppunti(f[ST.appunti] || "", 45);
       if (!note.length) { if (APPUNTI[rec.id] && APPUNTI[rec.id].fonte === "storico") delete APPUNTI[rec.id]; return; }
@@ -3090,7 +3144,7 @@ async function appuntiStoriciImporta(p) {
       APPUNTI[rec.id] = {
         partita: partita, competizione: String(comp).trim(), quando: quando, fonte: "storico",
         telecronista: String(tele).trim(),
-        righe: note.map((n) => ({ m: n.minuto, t: n.tipo, x: n.testo.slice(0, 180), s: n.sezione, d: n.dentroTempo, hl: n.hl ? 1 : 0 }))
+        righe: note.map((n) => ({ m: n.minuto, t: n.tipo, x: n.testo.slice(0, 180), s: n.sezione, d: n.dentroTempo, hl: n.hl ? 1 : 0, g: n.rating || 0 }))
       };
     });
     offset = j.offset || "";
@@ -3736,7 +3790,7 @@ function cercaNeiFatti(q, limite) {
     const info = espnDatiDi(rec) || {};
     const quando = info.quando || e.quando;
     if (!quandoTorna(Date.parse(quando), q)) return;
-    const capo = comeSiCerca([info.partita, info.competizione, dataScritta(Date.parse(quando))]);
+    const capo = comeSiCerca([info.partita, info.competizione, (APPUNTI[rec] || {}).telecronista, dataScritta(Date.parse(quando))]);
     e.eventi.forEach((x) => {
       const ita = tipoItaliano(x.tipo);
       const testo = comeSiCerca([ita, x.tipo, x.giocatore, x.squadra, x.testo, capo,
@@ -3750,7 +3804,8 @@ function cercaNeiFatti(q, limite) {
         rec: rec, partita: info.partita || e.nome, competizione: info.competizione || "", quando: quando,
         minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), tempo: x.periodo, tipo: ita,
         testo: [ita, x.giocatore, x.squadra ? "(" + x.squadra + ")" : ""].filter(Boolean).join(" "),
-        hl: false, fonte: "espn", archivio: !!ARCHIVIO[rec], dove: (dove || {}).secondi || null,
+        hl: false, fonte: "espn", telecronista: (APPUNTI[rec] || {}).telecronista || "",
+        archivio: !!ARCHIVIO[rec], dove: (dove || {}).secondi || null,
         pezzo: (dove || {}).pezzo || 0, d: Math.max(0, d),
         orologio: !!(ARCHIVIO[rec] && ARCHIVIO[rec].orologio)
       });
@@ -3759,14 +3814,180 @@ function cercaNeiFatti(q, limite) {
   return fuori;
 }
 
+
+// ══════════════════════════════════════════════════════════════════════
+//  CERCARE PER SIGNIFICATO
+// ══════════════════════════════════════════════════════════════════════
+//
+//  La ricerca per lettere trova "palo" solo dove c'e' scritto "palo". Ma
+//  chi cerca ha in testa una cosa, non una parola: "legno da fuori area"
+//  vuole dire anche "traversa clamorosa dalla distanza". Un modello piccolo
+//  trasforma ogni riga in trecentottantaquattro numeri, e frasi che vogliono
+//  dire la stessa cosa finiscono vicine. Gira sulla CPU della VM, venti
+//  millisecondi a frase, e non tocca un byte di video.
+const VETT_DIM = 384;
+const VETT_MODELLO = "Xenova/multilingual-e5-small";
+let SIGN = { pronto: false, ids: [], meta: [], vett: null, quanti: 0, inCorso: false, fatti: 0, errore: "" };
+let modelloVett = null, modelloInCorso = null;
+
+function fileVettori() { return path.join(DIR, "vettori.bin"); }
+function fileVettoriMeta() { return path.join(DIR, "vettori.json"); }
+
+async function apriModello() {
+  if (modelloVett) return modelloVett;
+  if (modelloInCorso) return modelloInCorso;
+  modelloInCorso = (async () => {
+    const { pipeline, env } = await import("@xenova/transformers");
+    env.cacheDir = path.join(__dirname, "modelli");
+    env.allowLocalModels = false;
+    modelloVett = await pipeline("feature-extraction", VETT_MODELLO, { quantized: true });
+    console.log("[clip] modello del significato pronto");
+    return modelloVett;
+  })();
+  return modelloInCorso;
+}
+
+// Le righe da capire: gli appunti della redazione e quello che e' stato
+// detto. I fatti di ESPN no: sono formule ("Gol Nico Paz"), e per quelle
+// la ricerca per lettere basta e avanza.
+function statoSignificato() {
+  const tutte = righeDaCapire().length;
+  return { capite: SIGN.quanti, daCapire: Math.max(0, tutte - SIGN.quanti), inCorso: SIGN.inCorso,
+           pronto: SIGN.pronto, modello: VETT_MODELLO, errore: SIGN.errore };
+}
+function righeDaCapire() {
+  const fuori = [];
+  Object.keys(APPUNTI).forEach((rec) => {
+    const a = APPUNTI[rec];
+    (a.righe || []).forEach((r, i) => {
+      const testo = String(r.x || "").trim();
+      if (testo.length < 12) return;
+      fuori.push({ id: "a:" + rec + ":" + i, testo: testo,
+                   meta: { tipo: "appunto", rec: rec, i: i } });
+    });
+  });
+  Object.keys(PARLATO).forEach((reg) => {
+    (PARLATO[reg].pezzi || []).forEach((t, i) => {
+      const testo = String(t.x || "").trim();
+      if (testo.length < 25) return;
+      fuori.push({ id: "v:" + reg + ":" + i, testo: testo,
+                   meta: { tipo: "detta", reg: reg, i: i, secondi: t.a } });
+    });
+  });
+  return fuori;
+}
+
+function leggiVettori() {
+  try {
+    const m = JSON.parse(fs.readFileSync(fileVettoriMeta(), "utf8"));
+    const b = fs.readFileSync(fileVettori());
+    const n = m.ids.length;
+    if (b.length !== n * VETT_DIM * 4) throw new Error("misura che non torna");
+    SIGN.ids = m.ids; SIGN.meta = m.meta; SIGN.quanti = n;
+    SIGN.vett = new Float32Array(b.buffer, b.byteOffset, n * VETT_DIM);
+    SIGN.pronto = n > 0;
+    console.log("[clip] significato: " + n + " righe gia' capite");
+  } catch (e) { SIGN.ids = []; SIGN.meta = []; SIGN.vett = null; SIGN.quanti = 0; SIGN.pronto = false; }
+}
+function scriviVettori() {
+  try {
+    fs.writeFileSync(fileVettoriMeta() + ".tmp", JSON.stringify({ ids: SIGN.ids, meta: SIGN.meta, modello: VETT_MODELLO }));
+    fs.writeFileSync(fileVettori() + ".tmp", Buffer.from(SIGN.vett.buffer, SIGN.vett.byteOffset, SIGN.quanti * VETT_DIM * 4));
+    fs.renameSync(fileVettoriMeta() + ".tmp", fileVettoriMeta());
+    fs.renameSync(fileVettori() + ".tmp", fileVettori());
+  } catch (e) { console.log("[clip] significato non salvato: " + e.message); }
+}
+
+// Si capiscono le righe nuove, trentadue alla volta, e ci si ferma appena
+// arriva una diretta: e' lavoro che puo' aspettare.
+async function capisciRighe(tetto) {
+  if (SIGN.inCorso) return { gia: true };
+  SIGN.inCorso = true; SIGN.errore = "";
+  try {
+    const tutte = righeDaCapire();
+    const gia = new Set(SIGN.ids);
+    const nuove = tutte.filter((x) => !gia.has(x.id));
+    if (!nuove.length) { SIGN.pronto = SIGN.quanti > 0; return { ok: true, nuove: 0, totale: SIGN.quanti }; }
+    const estrai = await apriModello();
+    const massimo = tetto || nuove.length;
+    const daFare = nuove.slice(0, massimo);
+    // si cresce l'archivio dei numeri: un blocco nuovo grande quanto serve
+    const vecchi = SIGN.vett;
+    const grande = new Float32Array((SIGN.quanti + daFare.length) * VETT_DIM);
+    if (vecchi) grande.set(vecchi.subarray(0, SIGN.quanti * VETT_DIM));
+    let scritti = SIGN.quanti;
+    for (let i = 0; i < daFare.length; i += 32) {
+      if (registrandoDavvero()) { console.log("[clip] significato: c'e' una diretta, mi fermo"); break; }
+      const lotto = daFare.slice(i, i + 32);
+      const v = await estrai(lotto.map((x) => "passage: " + x.testo.slice(0, 400)), { pooling: "mean", normalize: true });
+      lotto.forEach((x, k) => {
+        grande.set(v.data.subarray(k * VETT_DIM, (k + 1) * VETT_DIM), scritti * VETT_DIM);
+        SIGN.ids.push(x.id); SIGN.meta.push(x.meta); scritti++;
+      });
+      SIGN.fatti += lotto.length;
+      if (scritti % 2048 < 32) console.log("[clip] significato: " + scritti + " righe su " + tutte.length);
+    }
+    SIGN.vett = grande; SIGN.quanti = scritti; SIGN.pronto = scritti > 0;
+    scriviVettori();
+    console.log("[clip] significato: " + scritti + " righe capite in tutto");
+    return { ok: true, nuove: scritti - (vecchi ? vecchi.length / VETT_DIM : 0), totale: scritti };
+  } catch (e) {
+    SIGN.errore = e.message; console.log("[clip] significato: " + e.message);
+    return { ok: false, errore: e.message };
+  } finally { SIGN.inCorso = false; }
+}
+
+// La domanda diventa numeri, e si cercano i vicini. Venticinquemila righe
+// si confrontano in una ventina di millisecondi: non serve un database.
+async function cercaPerSignificato(domanda, limite) {
+  if (!SIGN.pronto || !SIGN.quanti) return [];
+  const estrai = await apriModello();
+  const q = await estrai(["query: " + String(domanda).slice(0, 300)], { pooling: "mean", normalize: true });
+  const qd = q.data, v = SIGN.vett, n = SIGN.quanti;
+  const punti = new Array(n);
+  for (let i = 0; i < n; i++) {
+    let s = 0, b = i * VETT_DIM;
+    for (let k = 0; k < VETT_DIM; k++) s += qd[k] * v[b + k];
+    punti[i] = s;
+  }
+  const ordine = Array.from(punti.keys()).sort((a, b) => punti[b] - punti[a]).slice(0, (limite || 20) * 3);
+  const fuori = [];
+  for (const i of ordine) {
+    const m = SIGN.meta[i];
+    if (punti[i] < 0.80) break;                       // sotto questo non e' vicinanza, e' rumore
+    if (m.tipo === "appunto") {
+      const a = APPUNTI[m.rec], r = a && a.righe[m.i];
+      if (!r) continue;
+      const rit = ritardoDi(a.telecronista);
+      const dove = secondoNelFile(m.rec, { s: r.s, d: Math.max(0, (r.d || 0) - rit) });
+      fuori.push({ rec: m.rec, partita: a.partita, competizione: a.competizione, quando: a.quando,
+                   minuto: r.m, tempo: r.s, tipo: r.t, testo: r.x, hl: !!r.hl, rating: r.g || 0,
+                   fonte: a.fonte === "storico" ? "storico" : "appunti", telecronista: a.telecronista || "",
+                   vicinanza: Math.round(punti[i] * 100) / 100,
+                   archivio: !!ARCHIVIO[m.rec], dove: (dove || {}).secondi || null,
+                   pezzo: (dove || {}).pezzo || 0, d: Math.max(0, (r.d || 0) - rit),
+                   orologio: !!(ARCHIVIO[m.rec] && ARCHIVIO[m.rec].orologio) });
+    } else {
+      const reg = R.reg[m.reg], p = PARLATO[m.reg] && PARLATO[m.reg].pezzi[m.i];
+      if (!reg || !p) continue;
+      fuori.push({ reg: m.reg, partita: reg.titolo, secondi: p.a, testo: p.x,
+                   quando: reg.avviata, vicinanza: Math.round(punti[i] * 100) / 100, fonte: "voce" });
+    }
+    if (fuori.length >= (limite || 20)) break;
+  }
+  return fuori;
+}
+
 function cercaNegliAppunti(q, limite) {
   const fuori = [];
   Object.keys(APPUNTI).forEach((rec) => {
     const a = APPUNTI[rec];
-    const capo = comeSiCerca([a.partita, a.competizione, dataScritta(Date.parse(a.quando))]);
+    // il telecronista fa parte di quello che si cerca: "i gol di Douvikas
+    // raccontati da Taglieri" e' una domanda legittima
+    const capo = comeSiCerca([a.partita, a.competizione, a.telecronista, dataScritta(Date.parse(a.quando))]);
     if (!quandoTorna(Date.parse(a.quando), q)) return;
     a.righe.forEach((r) => {
-      const testo = comeSiCerca([r.x, r.t, r.m, capo]);
+      const testo = comeSiCerca([r.x, r.t, r.m, r.g ? "rating " + r.g : "", capo]);
       if (!tutteDentro(testo, q.parole)) return;
       const rit = ritardoDi(a.telecronista);
       const dove = secondoNelFile(rec, { s: r.s, d: Math.max(0, (r.d || 0) - rit) });
@@ -3775,7 +3996,7 @@ function cercaNegliAppunti(q, limite) {
       const nellAzione = q.parole.length ? tutteDentro(comeSiCerca([r.x, r.t, r.m]), q.parole) : false;
       fuori.push({ peso: nellAzione ? 1 : 0,
         rec: rec, partita: a.partita, competizione: a.competizione, quando: a.quando,
-        minuto: r.m, tempo: r.s, tipo: r.t, testo: r.x, hl: !!r.hl,
+        minuto: r.m, tempo: r.s, tipo: r.t, testo: r.x, hl: !!r.hl, rating: r.g || 0,
         fonte: a.fonte === "storico" ? "storico" : "appunti", telecronista: a.telecronista || "",
         archivio: !!ARCHIVIO[rec], dove: (dove || {}).secondi || null,
         pezzo: (dove || {}).pezzo || 0, d: Math.max(0, (r.d || 0) - rit),
@@ -3957,7 +4178,7 @@ function tutteDentro(testo, parole) {
   return parole.every((p) => testo.indexOf(p) >= 0);
 }
 
-function clipCerca(p) {
+async function clipCerca(p) {
   const q = leggiDomanda(String(p.q || ""));
   const limite = num(p.limite, 1, 200, 40);
   if (!q.parole.length && !q.quando && !q.formato && !q.genere) {
@@ -4038,11 +4259,25 @@ function clipCerca(p) {
   // il sesto: le partite dell'archivio, per nome
   const archivio = (q.genere && q.genere !== "partita") ? [] : cercaNellArchivio(q, limite);
 
+  // il settimo fronte: quello che VUOL DIRE la stessa cosa, anche se le
+  // parole sono altre. Si tolgono le righe che la ricerca per lettere ha
+  // gia' trovato: dire due volte la stessa riga non e' un risultato in piu'.
+  let vicini = [];
+  if (q.parole.length && SIGN.pronto && p.vicini !== false) {
+    try {
+      const gia = new Set(azioni.map((x) => x.rec + "|" + x.tempo + "|" + Math.round(x.d || 0))
+                    .concat(dette.map((x) => x.reg + "|v|" + Math.round(x.secondi || 0))));
+      vicini = (await cercaPerSignificato(String(p.q || ""), limite))
+        .filter((x) => !gia.has(x.fonte === "voce" ? (x.reg + "|v|" + Math.round(x.secondi || 0))
+                                                   : (x.rec + "|" + x.tempo + "|" + Math.round(x.d || 0))));
+    } catch (e) { console.log("[clip] significato in ricerca: " + e.message); }
+  }
+
   return {
     ok: true,
     domanda: { parole: q.parole, formato: q.formato, genere: q.genere, quando: q.quando },
-    quante: partite.length + clip.length + segni.length + azioni.length + dette.length + archivio.length,
-    azioni: azioni, dette: dette, archivio: archivio,
+    quante: partite.length + clip.length + segni.length + azioni.length + dette.length + archivio.length + vicini.length,
+    azioni: azioni, dette: dette, archivio: archivio, vicini: vicini,
     partite: partite.slice(0, limite),
     clip: clip.slice(0, limite),
     segni: segni.slice(0, limite)
@@ -4421,6 +4656,12 @@ const AZIONI = {
   "clip-elimina": clipElimina,
   "clip-sorgenti": clipSorgenti,
   "clip-flussi-vivi": flussiVivi,
+  "clip-significato": (p) => {
+    // capire trentamila righe sono dieci minuti: si comincia e si risponde
+    // subito, lo stato si chiede quando si vuole
+    if (p.avvia && !SIGN.inCorso) capisciRighe(num(p.quante, 1, 40000, 0) || 0).catch(() => {});
+    return { ok: true, avviato: !!p.avvia, stato: statoSignificato() };
+  },
   "clip-feed-partita": async (p) => {
     if (p.rinfresca || !FEED.righe.length) await leggiFoglioFeed();
     const f = feedPerPartita(String(p.partita || ""), String(p.quando || ""));
@@ -4611,6 +4852,7 @@ function avvio(opz) {
   leggiStorici();
   leggiEspn();
   leggiFeedSalvato();
+  leggiVettori();
   setTimeout(raccogliParlato, 5000);
   rinominaMaterialeArchivio();
   leggiParlato();
