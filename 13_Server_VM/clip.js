@@ -2779,8 +2779,7 @@ function giraLaCoda() {
   if (registrando) { setTimeout(giraLaCoda, 60000); return; }
   // una alla volta DAVVERO: dopo un riavvio puo' restare in giro un whisper
   // orfano che sta ancora macinando, e due su due core vanno la meta'
-  try { execFileSync("pgrep", ["-f", "whisper-cli"], { stdio: "ignore" }); setTimeout(giraLaCoda, 60000); return; }
-  catch (e) { /* nessuno sta macinando: si parte */ }
+  if (whisperGira()) { setTimeout(giraLaCoda, 60000); return; }
   voceAlLavoro = CODA_VOCE.shift();
   trascriviDavvero(voceAlLavoro)
     .catch((e) => console.log("[clip] trascrizione fallita: " + e.message))
@@ -3225,6 +3224,16 @@ function registrandoDavvero() {
     return true;
   });
 }
+// C'e' un whisper che macina? Anche uno orfano, rimasto da prima di un
+// riavvio. Si chiede al sistema, non piu' di una volta ogni venti secondi.
+let whisperVistoQuando = 0, whisperVisto = false;
+function whisperGira() {
+  if (Date.now() - whisperVistoQuando < 20000) return whisperVisto;
+  whisperVistoQuando = Date.now();
+  try { execFileSync("pgrep", ["-f", "whisper-cli"], { stdio: "ignore" }); whisperVisto = true; }
+  catch (e) { whisperVisto = false; }
+  return whisperVisto;
+}
 const CODA_OROLOGI = [];
 let orologiFatti = 0, orologiFalliti = 0, orologiRipassati = false, orologiInMoto = 0, orologiRimandati = 0;
 const OROLOGI_INSIEME = 2;          // due partite alla volta: ffmpeg e tesseract pesano poco, S3 aspetta
@@ -3238,7 +3247,7 @@ function giraOrologi() {
   // mentre si trascrive i cronometri stanno fermi: due core non si dividono
   // in tre, e una trascrizione lasciata a meta' costa piu' di un'attesa.
   // Quando la voce ha finito, riprendono da soli.
-  if (voceAlLavoro && !orologiInMoto) { setTimeout(giraOrologi, 60000); return; }
+  if (!orologiInMoto && (voceAlLavoro || whisperGira())) { setTimeout(giraOrologi, 60000); return; }
   const insieme = OROLOGI_INSIEME;
   if (orologiInMoto >= insieme) return;
   // a coda finita, le partite non lette si ritentano una volta: un sondaggio
