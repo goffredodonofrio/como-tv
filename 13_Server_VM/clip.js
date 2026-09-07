@@ -2775,8 +2775,11 @@ setInterval(raccogliParlato, 120000);
 // Quello che sta sul disco della VM (le dirette registrate) si trascrive
 // senza spendere niente: a fine registrazione entra in coda tutta, e le
 // registrazioni gia' sul disco si mettono in coda una volta al giorno di notte
-function parlatoLocaleInCoda() {
+// Al massimo tre a notte: una trascrizione tiene ferma la macchina per
+// un'ora, e i cronometri hanno anche loro il diritto di andare avanti.
+function parlatoLocaleInCoda(quante) {
   if (!whisperCe()) return 0;
+  const tetto = quante || 3;
   let n = 0;
   Object.keys(R.reg).forEach((k) => {
     const r = R.reg[k];
@@ -2784,8 +2787,11 @@ function parlatoLocaleInCoda() {
     if ((r.durata || 0) < 600) return;
     if (PARLATO[r.id] && PARLATO[r.id].intera) return;
     if (CODA_VOCE.some((x) => x.reg === r.id) || (voceAlLavoro && voceAlLavoro.reg === r.id)) return;
+    if (CODA_VOCE.length >= tetto) return;
     const via = sorgenteAudio(r); if (!via || /^https?:/i.test(via)) return;   // solo il disco locale: niente traffico
-    CODA_VOCE.push({ reg: r.id, da: 0, a: r.durata, chiesta: Date.now(), intera: true }); n++;
+    // dal fischio d'inizio, se si sa dov'e': il pre-partita e' una trappola
+    const f = fischioNelFile(r);
+    CODA_VOCE.push({ reg: r.id, da: f !== null ? Math.max(0, f - 60) : 0, a: r.durata, chiesta: Date.now(), intera: true }); n++;
   });
   CODA_VOCE.sort((x, y) => ((R.reg[y.reg] || {}).avviata || 0) - ((R.reg[x.reg] || {}).avviata || 0));
   giraLaCoda();
@@ -4462,7 +4468,7 @@ const AZIONI = {
     return { ok: true, reg: pubblica(r) };
   },
   "clip-trascrivi": trascriviChiedi,
-  "clip-parlato-locale": () => ({ ok: true, inCoda: parlatoLocaleInCoda(), coda: CODA_VOCE.length, alLavoro: voceAlLavoro ? voceAlLavoro.reg : "" }),
+  "clip-parlato-locale": (p) => ({ ok: true, inCoda: parlatoLocaleInCoda(num(p.quante, 1, 20, 3)), coda: CODA_VOCE.length, alLavoro: voceAlLavoro ? voceAlLavoro.reg : "" }),
   "clip-parlato": (p) => {
     const d = PARLATO[String(p.reg || "")];
     return { ok: true, pezzi: (d && d.pezzi) || [],
