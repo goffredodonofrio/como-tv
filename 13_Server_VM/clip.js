@@ -709,7 +709,12 @@ async function cercaBoati(p) {
 //  sul REPLAY, non sull'azione dal vivo: chi guarda annota mentre rivede.
 //  Trenta secondi prima e trenta dopo prendono tutte e due, e quello che
 //  esce e' un grezzo da rifinire invece di un pezzo che comincia dopo.
-const APP_PRE = 30, APP_POST = 30;      // il grezzo: azione + replay
+//  Quanto larghe, l'ha detto la partita e non il pollice: su Genoa-Como i
+//  tre gol guardati stanno fra 23 secondi PRIMA e 9 secondi DOPO il minuto
+//  scritto, e il replay finisce (torna il cronometro in sovrimpressione)
+//  fra 60 e 85 secondi dopo. Da li' le due misure.
+const APP_PRE = 30, APP_POST = 45;      // un'azione qualsiasi: c'e' aria per il replay corto
+const GOL_PRE = 35, GOL_POST = 80;      // un gol il replay ce l'ha sempre, e lungo
 const HL_STRETTO_PRE = 8, HL_STRETTO_POST = 12;   // quando bisogna stare nei minuti
 
 function pezzoDa(dentro, fuori, titolo, tipo, minuto, fonte, peso) {
@@ -758,6 +763,17 @@ function uniscoIGol(pezzi) {
 }
 
 // Tutto quello che sappiamo di questa partita, con il secondo nel file.
+// Un gol non e' un'azione qualsiasi: la regia lo rivede, e a volte due
+// volte. Il pezzo si allunga in coda, non in testa, perche' davanti basta
+// l'azione e dietro ci deve stare tutto il replay.
+function allargaPerIlReplay(p) {
+  const q = Object.assign({}, p);
+  const t = p.t !== undefined ? p.t : p.dentro + APP_PRE;
+  q.dentro = Math.max(0, t - GOL_PRE);
+  q.fuori = t + GOL_POST;
+  return q;
+}
+
 function quelloCheSappiamo(r) {
   const rec = r.evento || (r.arch && r.arch.rec) || "";
   const pezzo = (r.arch && r.arch.pezzo) || 0;
@@ -775,7 +791,7 @@ function quelloCheSappiamo(r) {
       const p = pezzoDa(t - APP_PRE, t + APP_POST, x.x, x.t, x.m, "appunti", pesoAzione(x.t, x.hl, x.g));
       p.rating = x.g || 0; p.t = t;
       azioni.push(p);
-      if (/gol|rete/i.test(x.t || "") || x.g) gol.push(p);
+      if (/gol|rete/i.test(x.t || "") || x.g) gol.push(allargaPerIlReplay(p));
     });
   }
   if (e && e.eventi) {
@@ -788,7 +804,7 @@ function quelloCheSappiamo(r) {
       const p = pezzoDa(t - APP_PRE, t + APP_POST, [ita, x.giocatore].filter(Boolean).join(" · "), ita, x.min + "'", "espn", pesoAzione(ita, false, 0));
       p.t = t;
       azioni.push(p);
-      if (/gol|rigore|autogol/i.test(ita) && !/annullato/i.test(ita)) gol.push(p);
+      if (/gol|rigore|autogol/i.test(ita) && !/annullato/i.test(ita)) gol.push(allargaPerIlReplay(p));
     });
   }
   (PARLATO[r.id] ? PARLATO[r.id].pezzi : []).forEach((t) => {
@@ -834,7 +850,7 @@ async function preparaSequenze(p) {
     fatte.push({ nome: nome, pezzi: pezzi.length, id: q.id });
   };
 
-  crea("GOL", sap.gol, "i gol con trenta secondi prima e trenta dopo: dentro c'e' l'azione e c'e' il replay");
+  crea("GOL", sap.gol, "dai " + GOL_PRE + " secondi prima ai " + GOL_POST + " dopo: dentro c'e' l'azione, l'esultanza e il replay");
   // gli highlights: i pezzi che pesano di piu', dentro tre minuti
   if (sap.azioni.length) {
     // qui le maniglie si stringono: dentro tre minuti ci devono stare piu'
@@ -846,7 +862,7 @@ async function preparaSequenze(p) {
     const scelti = stringiAllaDurata(strette, 180, HL_STRETTO_PRE, HL_STRETTO_POST);
     crea("HIGHLIGHTS 3′", (scelti.pezzi || []).sort((a, b) => a.dentro - b.dentro), (scelti.nota ? scelti.nota + " " : "") + "Maniglie strette: qui si sta nei tre minuti.");
   }
-  crea("AZIONI", sap.azioni, "tutto quello che la redazione ha segnato, in ordine, con azione e replay");
+  crea("AZIONI", sap.azioni, "tutto quello che la redazione ha segnato, in ordine, con l'aria per il replay");
   crea("TELECRONACA", sap.voce, "i momenti in cui il telecronista dice gol");
   crea("BOATI", sap.boati, "i momenti in cui lo stadio alza la voce");
   scrivi(); annuncia(0, "clip");
