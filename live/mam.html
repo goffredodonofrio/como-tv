@@ -176,6 +176,16 @@
   .tlpista .clipV img{position:absolute;left:2px;top:18px;height:34px;width:auto;border-radius:1px;}
   .tlpista .clipV .dd{display:none;}
   .scheda.accesa{outline:2px solid #7FC4EE;outline-offset:-2px;box-shadow:0 0 0 4px rgba(127,196,238,.18);}
+  .tlpista .clipV .manico{position:absolute;top:2px;width:0;height:0;border-style:solid;pointer-events:none;z-index:6;}
+  .tlpista .clipV .manico.sx{left:2px;border-width:5px 0 5px 6px;border-color:transparent transparent transparent #9AA4AC;}
+  .tlpista .clipV .manico.dx{right:2px;border-width:5px 6px 5px 0;border-color:transparent #9AA4AC transparent transparent;}
+  .tlpista .clipV .doppione{position:absolute;left:0;right:0;bottom:0;height:3px;background:repeating-linear-gradient(90deg,#C8863C 0 6px,transparent 6px 12px);pointer-events:none;z-index:6;}
+  .tlpista .clipV.puntoSx{box-shadow:inset 3px 0 0 #E05B5B;}
+  .tlpista .clipV.puntoDx{box-shadow:inset -3px 0 0 #E05B5B;}
+  .tlpista.ripple .clipV .bordo{cursor:ew-resize;background:rgba(226,178,74,.55);}
+  .tlpista.rolling .clipV .bordo{cursor:col-resize;background:rgba(224,91,91,.55);}
+  .tlpista.slip .clipV{cursor:grab;}
+  .monitor.attivo{outline:2px solid var(--oro,#C8A24A);outline-offset:-2px;}
   .formatiSeq{display:flex;flex-wrap:wrap;gap:3px;justify-content:center;width:100%;}
   .formatiSeq .b{padding:3px 6px;font-size:10px;min-width:0;}
   .tlriquadro{position:absolute;z-index:40;pointer-events:none;border:1px solid #7FC4EE;
@@ -1133,6 +1143,8 @@
       <div class="tlstrumenti"><!-- solo strumenti che fanno qualcosa: selezione, lametta, marcatore, zoom -->
         <i class="on" id="tlFreccia" title="selezione (V)"><svg viewBox="0 0 16 16"><path class="p" d="M4 2l9 7-4 .8 2.5 4.2-1.8 1L7.2 10.8 4 13.5z"/></svg></i>
         <i id="tlLametta" title="lametta (C): clicca sul pezzo dove vuoi tagliare"><svg viewBox="0 0 16 16"><path d="M3 13L13 3M9 3l4 4M5 9l2 2"/></svg></i>
+        <i id="tlScivolo" title="scivolo (Y): trascina il pezzo dentro il materiale, dura uguale"><svg viewBox="0 0 16 16"><path d="M2 5h12M2 11h12M6 3L3 5l3 2M10 9l3 2-3 2"/></svg></i>
+        <i id="tlGiunzione" title="giunzione (N): trascina il punto di taglio, la sequenza dura uguale"><svg viewBox="0 0 16 16"><path d="M8 2v12M4 6L2 8l2 2M12 6l2 2-2 2"/></svg></i>
         <i title="marcatore" id="tlSegno"><svg viewBox="0 0 16 16"><path class="p" d="M4 2h8v12l-4-3-4 3z"/></svg></i>
         <span class="lente"><b id="tlMeno" title="allontana (−)">−</b><b id="tlTutto" title="tutta la sequenza (\\)">\</b><b id="tlPiu" title="avvicina (+)">+</b></span>
       </div>
@@ -2132,7 +2144,9 @@
     });
   }
   var SEQSCELTE = [];        // le sequenze accese con Shift, da togliere insieme
-  var TL = { sel: null, multi: [], riquadro: null, ghost: null, ins: null, trim: null, drag: null, vista: null, nav: null, scrub: null, lock: { V1: false, A1: false } };
+  var TL = { sel: null, multi: [], riquadro: null, ghost: null, ghost2: null, punto: null,
+             slip: null, roll: null, ins: null, trim: null, drag: null, vista: null, nav: null,
+             scrub: null, lock: { V1: false, A1: false } };
   // La selezione: uno o piu' pezzi. TL.sel resta il principale (quello che
   // comandi e menu chiamano "il pezzo scelto"), TL.multi tiene tutti quelli
   // accesi. Cliccare sceglie, Shift o Cmd aggiungono, trascinare sul vuoto
@@ -2223,18 +2237,41 @@
     r.push('<span class="testa" style="left:' + xTestina + 'px"></span>');
     rig.innerHTML = r.join("");
 
+    // I FOTOGRAMMI RIPETUTI. Se due pezzi pescano lo stesso pezzo di
+    // partita, in un montato quel fotogramma si vede due volte: in Premiere
+    // c'e' una riga colorata sotto la clip che lo dice, e negli highlights
+    // succede spesso — il gol e il replay dello stesso gol, per esempio.
+    var doppioni = {};
+    pz.forEach(function (x, i) {
+      pz.forEach(function (y, j) {
+        if (j <= i) return;
+        if (x.dentro < y.fuori && y.dentro < x.fuori) { doppioni[x.id] = true; doppioni[y.id] = true; }
+      });
+    });
+    var totMat = durataAperta() || 0;
+
     var ov = [], oa = [], acc = 0;
     pz.forEach(function (x, i) {
       var dentroX = x.dentro, fuoriX = x.fuori;
       if (TL.ghost && TL.ghost.id === x.id) { dentroX = TL.ghost.dentro; fuoriX = TL.ghost.fuori; }
+      if (TL.ghost2 && TL.ghost2.id === x.id) { dentroX = TL.ghost2.dentro; fuoriX = TL.ghost2.fuori; }
       var d = fuoriX - dentroX, a = acc, bb = acc + d; acc += d;
       if (bb < f.a || a > f.b) return;
       var xa = Math.max(0, X(a)), xb = Math.min(largo, X(bb)), w = Math.max(6, xb - xa);
       var cl = x.clip ? CLIP.filter(function (k) { return k.id === x.clip; })[0] : null;
       var img = (cl && cl.mini) ? '<img src="' + BASE + cl.mini + '" alt="">' : "";
-      ov.push('<div class="clipV' + ((TL.sel === x.id || TL.multi.indexOf(x.id) >= 0) ? " sel" : "") + (i === PROG.i ? " sotto" : "") + '" data-pezzo="' + x.id + '" data-i="' + i +
+      // i MANICI: se il pezzo e' gia' al limite del materiale, da quella
+      // parte non si puo' allungare, e il triangolino lo dice prima di
+      // provarci
+      var manicoSx = dentroX <= 0.05 ? '<span class="manico sx"></span>' : "";
+      var manicoDx = (totMat && fuoriX >= totMat - 0.05) ? '<span class="manico dx"></span>' : "";
+      var puntoSx = (TL.punto && TL.punto.id === x.id && TL.punto.lato === "sx") ? " puntoSx" : "";
+      var puntoDx = (TL.punto && TL.punto.id === x.id && TL.punto.lato === "dx") ? " puntoDx" : "";
+      ov.push('<div class="clipV' + ((TL.sel === x.id || TL.multi.indexOf(x.id) >= 0) ? " sel" : "") + (i === PROG.i ? " sotto" : "") + puntoSx + puntoDx + '" data-pezzo="' + x.id + '" data-i="' + i +
               '" style="left:' + xa + 'px;width:' + w + 'px">' +
               '<div class="barra2"><span class="tt">' + pulito(x.titolo) + '</span><span class="fx">fx</span></div>' + img +
+              (doppioni[x.id] ? '<span class="doppione" title="questo pezzo di partita e\u2019 usato anche in un altro pezzo"></span>' : "") +
+              manicoSx + manicoDx +
               '<span class="bordo sx" data-lato="sx"></span><span class="bordo dx" data-lato="dx"></span></div>');
       oa.push('<div class="clipA" data-pezzo="' + x.id + '" style="left:' + xa + 'px;width:' + w + 'px"><span class="onda"></span></div>');
     });
@@ -2327,6 +2364,22 @@
   function attaccaTimeline() {
     var p = el("tlPista"); if (!p || p.dataset.viva) return;
     p.dataset.viva = "1";
+    // Il cursore dice cosa succedera' PRIMA che si clicchi: e' la regola
+    // che rende sicuro il montaggio col mouse. Giallo = ripple (quello che
+    // segue si sposta), rosso = rolling (la giunzione si muove, la durata
+    // no), mano = slip (si scivola dentro il materiale).
+    var segnaModo = function (e2) {
+      var cl = p.classList;
+      cl.remove("ripple"); cl.remove("rolling"); cl.remove("slip");
+      if (STRUMENTO === "c") return;
+      var suBordo = !!(e2 && e2.target && e2.target.closest && e2.target.closest(".bordo"));
+      if (STRUMENTO === "y" || (e2 && e2.altKey && !suBordo)) cl.add("slip");
+      else if (STRUMENTO === "n" || (e2 && e2.altKey)) cl.add("rolling");
+      else cl.add("ripple");
+    };
+    p.addEventListener("mousemove", segnaModo);
+    document.addEventListener("keydown", function (e2) { if (e2.key === "Alt") segnaModo(e2); });
+    document.addEventListener("keyup", function (e2) { if (e2.key === "Alt") segnaModo(null); });
     p.addEventListener("mousedown", function (e) {
       AREA = "timeline";
       var vp = el("programma");
@@ -2336,8 +2389,30 @@
       if (blocco && TL.lock.V1) { dice("La traccia V1 e' bloccata."); return; }
       if (bordo && blocco) {
         var x = pz.filter(function (z) { return z.id === blocco.dataset.pezzo; })[0]; if (!x) return;
-        TL.trim = { id: x.id, lato: bordo.dataset.lato, x0: e.clientX, dentro: x.dentro, fuori: x.fuori };
+        var iX = pz.indexOf(x), lato = bordo.dataset.lato;
+        // il punto di montaggio resta scelto anche dopo: da li' valgono
+        // ctrl+freccia e la rifinitura da tastiera
+        TL.punto = { id: x.id, lato: lato };
+        // ROLLING: con alt, o con lo strumento N, si sposta la GIUNZIONE.
+        // Uno si allunga di quanto l'altro si accorcia, e la sequenza dura
+        // esattamente come prima: e' il gesto che fa respirare un montato.
+        var vicino = lato === "sx" ? pz[iX - 1] : pz[iX + 1];
+        if ((e.altKey || STRUMENTO === "n") && vicino) {
+          TL.roll = { a: (lato === "sx" ? vicino : x), b: (lato === "sx" ? x : vicino), x0: e.clientX,
+                      aFuori: (lato === "sx" ? vicino : x).fuori, bDentro: (lato === "sx" ? x : vicino).dentro };
+          TL.sel = x.id; e.preventDefault(); disegnaTimeline(); return;
+        }
+        TL.trim = { id: x.id, lato: lato, x0: e.clientX, dentro: x.dentro, fuori: x.fuori };
         TL.sel = x.id; e.preventDefault(); disegnaTimeline(); return;
+      }
+      // SLIP: con lo strumento Y (o alt sul corpo del pezzo) si scivola
+      // DENTRO il materiale — entrata e uscita si spostano insieme, il
+      // pezzo dura uguale e sta dove sta. E' il gesto per quando la clip e'
+      // lunga giusta ma parte un secondo tardi.
+      if (blocco && (STRUMENTO === "y" || (e.altKey && !bordo))) {
+        var xs2 = pz.filter(function (z) { return z.id === blocco.dataset.pezzo; })[0]; if (!xs2) return;
+        TL.slip = { id: xs2.id, x0: e.clientX, dentro: xs2.dentro, fuori: xs2.fuori };
+        TL.sel = xs2.id; e.preventDefault(); disegnaTimeline(); return;
       }
       if (blocco && STRUMENTO === "c") {
         // la lametta: si taglia dove si clicca, senza spostare la testina
@@ -2386,6 +2461,22 @@
         else { var x = pezziProg()[ds.i]; PROG.i = ds.i; PROG.pos = (PROG.a === null ? 0 : x.dentro) + ds.dentro; disegnaTimeline(); if (el("pPos")) el("pPos").textContent = tc(progPos()); }
         return;
       }
+      if (TL.roll) {
+        var dr = (e.clientX - TL.roll.x0) / largo * (f.b - f.a);
+        var totR = durataAperta() || 99999;
+        var nuovoA = Math.max(TL.roll.a.dentro + 0.5, Math.min(totR, TL.roll.aFuori + dr));
+        var nuovoB = Math.max(0, Math.min(TL.roll.b.fuori - 0.5, TL.roll.bDentro + dr));
+        TL.ghost = { id: TL.roll.a.id, dentro: TL.roll.a.dentro, fuori: nuovoA };
+        TL.ghost2 = { id: TL.roll.b.id, dentro: nuovoB, fuori: TL.roll.b.fuori };
+        disegnaTimeline(); return;
+      }
+      if (TL.slip) {
+        var dsl = (e.clientX - TL.slip.x0) / largo * (f.b - f.a);
+        var totS = durataAperta() || 99999, durS = TL.slip.fuori - TL.slip.dentro;
+        var d1 = Math.max(0, Math.min(Math.max(0, totS - durS), TL.slip.dentro + dsl));
+        TL.ghost = { id: TL.slip.id, dentro: d1, fuori: d1 + durS };
+        disegnaTimeline(); return;
+      }
       if (TL.trim) {
         var dt = (e.clientX - TL.trim.x0) / largo * (f.b - f.a);
         var d0 = TL.trim.dentro, f0 = TL.trim.fuori, tot = durataAperta() || 99999;
@@ -2403,6 +2494,25 @@
     document.addEventListener("mouseup", function () {
       if (TL.riquadro) { chiudiRiquadro(); return; }
       if (TL.scrub) { TL.scrub = null; var dsx = pezzoAlTempo(progPos()); if (dsx) progVai(dsx.i, false, dsx.dentro); }
+      if (TL.roll && TL.ghost && TL.ghost2 && SEQ) {
+        var ga = TL.ghost, gb = TL.ghost2; TL.ghost = null; TL.ghost2 = null; TL.roll = null;
+        applicaEPoi(function (q) {
+          var za = q.pezzi.filter(function (p) { return p.id === ga.id; })[0];
+          var zb = q.pezzi.filter(function (p) { return p.id === gb.id; })[0];
+          if (za) za.fuori = ga.fuori;
+          if (zb) zb.dentro = gb.dentro;
+        }, { tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: ga.id, fuori: ga.fuori }, function () {
+          manda({ tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: gb.id, dentro: gb.dentro })
+            .then(function (r) { SEQ = r.seq; disegnaSequenza(); }).catch(function (er) { dice(er.message); });
+        });
+        TL.trim = null; TL.drag = null; TL.ins = null; return;
+      }
+      if (TL.slip && TL.ghost && SEQ) {
+        var gs = TL.ghost; TL.ghost = null; TL.slip = null;
+        applicaEPoi(function (q) { var z = q.pezzi.filter(function (p) { return p.id === gs.id; })[0]; if (z) { z.dentro = gs.dentro; z.fuori = gs.fuori; } },
+                    { tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: gs.id, dentro: gs.dentro, fuori: gs.fuori });
+        TL.trim = null; TL.drag = null; TL.ins = null; return;
+      }
       if (TL.trim && TL.ghost && SEQ) {
         var g = TL.ghost; TL.ghost = null;
         applicaEPoi(function (q) { var z = q.pezzi.filter(function (p) { return p.id === g.id; })[0]; if (z) { z.dentro = g.dentro; z.fuori = g.fuori; } },
@@ -2419,7 +2529,8 @@
                       { tipo: "clip-hl-ordina", seq: SEQ.id, ordine: ordine });
         }
       }
-      TL.trim = null; TL.ghost = null; TL.drag = null; TL.ins = null;
+      TL.trim = null; TL.ghost = null; TL.ghost2 = null; TL.slip = null; TL.roll = null;
+      TL.drag = null; TL.ins = null;
       disegnaTimeline();
     });
 
@@ -2525,6 +2636,19 @@
 
     var q = function (id, f) { var b = el(id); if (b) b.addEventListener("click", f); };
     q("tlSegno", function () { var b = el("btnSegnaApri"); if (b) b.click(); });
+    timecodeScrivibile("tlTc", progPos, function (t) {
+      var d2 = pezzoAlTempo(t); if (d2) progVai(d2.i, false, d2.dentro);
+    });
+    timecodeScrivibile("pPos", progPos, function (t) {
+      var d3 = pezzoAlTempo(t); if (d3) progVai(d3.i, false, d3.dentro);
+    });
+    timecodeScrivibile("tPos", function () { var v2 = el("player"); return v2 ? v2.currentTime : 0; }, function (t) {
+      var v2 = el("player"); if (v2) { try { v2.currentTime = t; } catch (er) {} }
+    });
+    q("tlFreccia", function () { STRUMENTO = "v"; strumentoVisto(); });
+    q("tlLametta", function () { STRUMENTO = "c"; strumentoVisto(); });
+    q("tlScivolo", function () { STRUMENTO = "y"; strumentoVisto(); });
+    q("tlGiunzione", function () { STRUMENTO = "n"; strumentoVisto(); });
     q("tlPiu", function () { LENTE = Math.min(32, LENTE * 2); disegnaTutto(); });
     q("tlMeno", function () { LENTE = Math.max(1, LENTE / 2); disegnaTutto(); });
     q("tlTutto", function () { LENTE = 1; TL.vista = null; disegnaTutto(); });
@@ -2582,7 +2706,18 @@
     ["ctrl+K", "dividi il pezzo al cursore"],
     ["\u2318Z \u00b7 \u2318\u21e7Z", "annulla \u00b7 ripeti (trenta passi)"],
     ["canc", "togli il pezzo scelto in timeline \u00b7 la sequenza scelta nel progetto"],
-    ["V \u00b7 C", "selezione \u00b7 lametta: clicca sul pezzo dove vuoi tagliare"],
+    ["V \u00b7 C \u00b7 Y \u00b7 N", "selezione \u00b7 lametta \u00b7 scivolo (dentro il materiale) \u00b7 giunzione (sposta il taglio)"],
+    ["clic \u00b7 shift+clic \u00b7 trascina", "scegli un pezzo \u00b7 aggiungine \u00b7 riquadro sulle corsie vuote"],
+    ["\u2318A \u00b7 \u2318\u21e7A \u00b7 A \u00b7 shift+A", "tutti \u00b7 nessuno \u00b7 da qui in avanti \u00b7 da qui indietro"],
+    ["alt+trascina", "sul corpo: scivolo \u00b7 sul bordo: giunzione"],
+    ["ctrl+\u2190 \u2192", "sposta di un fotogramma il punto di montaggio scelto (shift: cinque)"],
+    ["alt+\u2190 \u2192", "fa scivolare il pezzo dentro il materiale (shift: cinque fotogrammi)"],
+    ["shift+K", "giro di controllo: due secondi prima e due dopo, poi torna"],
+    ["shift+J \u00b7 shift+L", "indietro e avanti a met\u00e0 velocit\u00e0"],
+    ["\u2318\u21e7spazio", "riproduci entrata \u2192 uscita"],
+    ["F", "da dove viene questo pezzo: apre la Sorgente allo stesso secondo"],
+    ["/", "porta entrata e uscita sui bordi del pezzo scelto"],
+    ["shift+2 \u00b7 shift+4", "fuoco sulla Sorgente \u00b7 sul Programma"],
     ["S", "calamita (snap)"],
     ["shift+E", "esporta fotogramma"],
     ["ctrl+M", "esporta la sequenza in tutti i formati"],
@@ -2881,10 +3016,144 @@
     var x = pezziProg()[PROG.i]; if (!x) return null;
     return PROG.a === null ? x.dentro + PROG.pos : PROG.pos;
   }
+  // IL FUOCO. Ogni tasto agisce sul monitor attivo, e si deve VEDERE quale
+  // e': in Premiere ha il bordo colorato, e shift+2 / shift+4 lo spostano
+  // senza staccare le mani dalla tastiera.
+  function fuocoMonitor(quale) {
+    MON = quale;
+    if (el("monS")) el("monS").classList.toggle("attivo", quale === "s");
+    if (el("monP")) el("monP").classList.toggle("attivo", quale === "p");
+  }
+  // PLAY AROUND (shift+K). Riproduce due secondi prima e due dopo la
+  // testina, poi torna dov'era: serve a controllare uno stacco senza
+  // doverlo cercare a mano ogni volta.
+  var GIRO = null;
+  function giraAttorno(v, pre, post) {
+    if (!v || !v.duration) return;
+    if (GIRO) { clearInterval(GIRO.t); GIRO = null; }
+    var era = v.currentTime;
+    var da = Math.max(0, era - (pre || 2)), a = Math.min(v.duration, era + (post || 2));
+    try { v.currentTime = da; } catch (e) {}
+    v.play().catch(function () {});
+    GIRO = { t: setInterval(function () {
+      if (v.currentTime < a && !v.paused) return;
+      clearInterval(GIRO.t); GIRO = null; v.pause();
+      try { v.currentTime = era; } catch (e) {}
+    }, 100) };
+    dice("Giro di controllo \u00b7 " + Math.round(pre || 2) + "s prima, " + Math.round(post || 2) + "s dopo", true);
+  }
+  // MATCH FRAME (F). Dal pezzo montato si torna alla partita, allo stesso
+  // secondo: e' come dire "fammi vedere da dove viene questo".
+  function matchFrame() {
+    var s2 = tempoNelMateriale();
+    if (s2 === null || s2 === undefined) return dice("Metti la testina dentro un pezzo del Programma.");
+    var vs = el("player"); if (!vs) return;
+    fuocoMonitor("s");
+    var vai = function () { try { vs.currentTime = s2; } catch (e) {} };
+    if (vs.readyState >= 1) vai(); else vs.addEventListener("loadedmetadata", vai, { once: true });
+    dice("Sorgente al " + tc(s2) + " \u00b7 da qui viene il pezzo", true);
+  }
+  // RIFINITURA DA TASTIERA. ctrl+frecce muove il punto di montaggio scelto
+  // (uno o cinque fotogrammi), alt+frecce fa scivolare il pezzo dentro il
+  // materiale. Sono i due gesti che in Premiere si fanno senza guardare.
+  function rifinisciDaTasti(passo, come) {
+    if (!SEQ) return;
+    var pz = pezziProg();
+    if (come === "slip") {
+      var x = pezzoScelto(); if (!x) return dice("Scegli un pezzo.");
+      var dur = x.fuori - x.dentro, tot = durataAperta() || 99999;
+      var d1 = Math.max(0, Math.min(Math.max(0, tot - dur), x.dentro + passo));
+      applicaEPoi(function (q) { var z = q.pezzi.filter(function (p) { return p.id === x.id; })[0]; if (z) { z.dentro = d1; z.fuori = d1 + dur; } },
+                  { tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: x.id, dentro: d1, fuori: d1 + dur });
+      dice("Scivolato di " + passo.toFixed(2) + "s dentro il materiale", true);
+      return;
+    }
+    var pu = TL.punto;
+    if (!pu) { var xs = pezzoScelto(); if (!xs) return dice("Clicca sul bordo di un pezzo per scegliere il punto di montaggio."); pu = { id: xs.id, lato: "dx" }; TL.punto = pu; }
+    var x2 = pz.filter(function (z) { return z.id === pu.id; })[0]; if (!x2) return;
+    var campi = {};
+    if (pu.lato === "sx") campi.dentro = Math.max(0, Math.min(x2.fuori - 0.5, x2.dentro + passo));
+    else campi.fuori = Math.max(x2.dentro + 0.5, Math.min(durataAperta() || 99999, x2.fuori + passo));
+    applicaEPoi(function (q) { var z = q.pezzi.filter(function (p) { return p.id === x2.id; })[0]; if (z) Object.assign(z, campi); },
+                Object.assign({ tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: x2.id }, campi));
+  }
+  // SEGNA IL PEZZO (/). Porta entrata e uscita della Sorgente sui bordi del
+  // pezzo che sta sotto la testina: da li' lo si puo' ritagliare daccapo.
+  function segnaIlPezzo() {
+    var x = pezzoScelto() || pezziProg()[PROG.i];
+    if (!x) return dice("Nessun pezzo sotto la testina.");
+    var scelti = pezziScelti();
+    dentro = Math.min.apply(null, scelti.map(function (z) { return z.dentro; }));
+    fuori = Math.max.apply(null, scelti.map(function (z) { return z.fuori; }));
+    mostraInOut();
+    dice("Entrata e uscita sui bordi " + (scelti.length > 1 ? "dei " + scelti.length + " pezzi" : "del pezzo") + " \u00b7 " + tc(dentro) + " \u2192 " + tc(fuori), true);
+  }
+  // IL TIMECODE SI DIGITA. In Premiere si clicca sul numero e si scrive:
+  // "+300" avanza tre secondi, "-15" torna indietro quindici fotogrammi,
+  // "1230" va a 12:30, "01:02:03:04" va li'. E' il modo piu' veloce per
+  // arrivare a un punto di cui si sa il minuto — e negli appunti il minuto
+  // c'e' sempre.
+  function leggiTimecode(testo, adesso) {
+    var t = String(testo || "").trim().replace(/\s+/g, "");
+    if (!t) return null;
+    var segno = t[0] === "+" ? 1 : t[0] === "-" ? -1 : 0;
+    if (segno) t = t.slice(1);
+    if (!/^[0-9:]+$/.test(t)) return null;
+    var s2;
+    if (t.indexOf(":") >= 0) {
+      var q = t.split(":").map(function (n) { return parseInt(n, 10) || 0; });
+      while (q.length < 4) q.unshift(0);
+      s2 = q[0] * 3600 + q[1] * 60 + q[2] + q[3] / FPS;
+    } else {
+      // senza due punti si legge da destra: fotogrammi, secondi, minuti, ore
+      var n = t.replace(/[^0-9]/g, ""); while (n.length < 2) n = "0" + n;
+      var ff = parseInt(n.slice(-2), 10) || 0;
+      var ss = n.length > 2 ? parseInt(n.slice(-4, -2), 10) || 0 : 0;
+      var mm = n.length > 4 ? parseInt(n.slice(-6, -4), 10) || 0 : 0;
+      var hh = n.length > 6 ? parseInt(n.slice(0, -6), 10) || 0 : 0;
+      s2 = hh * 3600 + mm * 60 + ss + ff / FPS;
+    }
+    return segno ? (adesso || 0) + segno * s2 : s2;
+  }
+  function timecodeScrivibile(id, dove, vai) {
+    var d = el(id); if (!d || d.dataset.scrivibile) return;
+    d.dataset.scrivibile = "1";
+    d.title = "clicca e scrivi: +300 avanti 3s, -15 indietro 15 fotogrammi, 1230 va a 12:30";
+    d.style.cursor = "text";
+    d.addEventListener("click", function () {
+      if (d.querySelector("input")) return;
+      var era = d.textContent;
+      var i = document.createElement("input");
+      i.type = "text"; i.value = ""; i.placeholder = era;
+      i.style.cssText = "width:100%;background:#111;color:inherit;border:1px solid #C8A24A;font:inherit;text-align:inherit;padding:0 2px;";
+      d.textContent = ""; d.appendChild(i); i.focus();
+      var chiudi = function (applica) {
+        var testo = i.value;
+        d.textContent = era;
+        if (!applica) return;
+        var t2 = leggiTimecode(testo, dove());
+        if (t2 === null) return dice("Non ho capito il timecode.");
+        vai(Math.max(0, t2));
+      };
+      i.addEventListener("keydown", function (ev) {
+        ev.stopPropagation();
+        if (ev.key === "Enter") { ev.preventDefault(); chiudi(true); }
+        if (ev.key === "Escape") { ev.preventDefault(); chiudi(false); }
+      });
+      i.addEventListener("blur", function () { if (d.contains(i)) chiudi(false); });
+    });
+  }
   function strumentoVisto() {
     var p = el("tlPista"); if (p) p.classList.toggle("lametta", STRUMENTO === "c");
     var i1 = el("tlLametta"), i2 = el("tlFreccia");
     if (i1) i1.classList.toggle("on", STRUMENTO === "c"); if (i2) i2.classList.toggle("on", STRUMENTO === "v");
+    var i3 = el("tlScivolo"), i4 = el("tlGiunzione");
+    if (i3) i3.classList.toggle("on", STRUMENTO === "y");
+    if (i4) i4.classList.toggle("on", STRUMENTO === "n");
+    if (p) { p.classList.toggle("slip", STRUMENTO === "y"); p.classList.toggle("rolling", STRUMENTO === "n"); }
+    var sp = el("tlStrumentoDetto");
+    if (sp) sp.textContent = STRUMENTO === "c" ? "lametta" : STRUMENTO === "y" ? "scivolo"
+                           : STRUMENTO === "n" ? "giunzione" : "selezione";
   }
   function pezzoScelto() {
     var pz = pezziProg();
@@ -2986,9 +3255,50 @@
       if (SHUTTLE.rate) fermaShuttle(v); else v.paused ? v.play().catch(function(){}) : v.pause();
       return;
     }
+    if (k === "k" && e.shiftKey) { e.preventDefault(); giraAttorno(v, 2, 2); return; }
     if (k === "k" && !mod) { e.preventDefault(); fermaShuttle(v); return; }
+    // shuttle lento: mezza velocita', per guardare uno stacco
+    if ((k === "l" || k === "j") && e.shiftKey && !mod) {
+      e.preventDefault(); seguiLive = false;
+      SHUTTLE.rate = 0; shuttle(v, k === "l" ? 1 : -1);
+      SHUTTLE.rate = 0.5;
+      if (k === "l") v.playbackRate = 0.5;
+      else { clearInterval(SHUTTLE.timer); SHUTTLE.timer = setInterval(function () { v.currentTime = Math.max(0, v.currentTime - 0.1); }, 200); }
+      return;
+    }
     if (k === "l" && !mod) { e.preventDefault(); seguiLive = false; shuttle(v, 1); return; }
     if (k === "j" && !mod) { e.preventDefault(); seguiLive = false; shuttle(v, -1); return; }
+    // riproduce entrata → uscita e si ferma dove finisce
+    if (k === " " && mod && e.shiftKey) {
+      e.preventDefault();
+      if (MON === "s" && dentro !== null && fuori !== null && v) {
+        try { v.currentTime = dentro; } catch (er) {}
+        v.play().catch(function () {});
+        var fine = fuori, guarda = setInterval(function () {
+          if (!v.paused && v.currentTime < fine) return;
+          clearInterval(guarda); v.pause();
+        }, 100);
+        dice("Riproduco entrata \u2192 uscita", true);
+        return;
+      }
+      if (pezziProg().length) { progVai(0, true); return; }
+      return dice("Segna entrata e uscita nella Sorgente.");
+    }
+    // il fuoco fra i monitor, come shift+2 / shift+4 di Premiere
+    if (e.shiftKey && (e.code === "Digit2" || e.code === "Digit4")) {
+      e.preventDefault(); fuocoMonitor(e.code === "Digit2" ? "s" : "p");
+      dice(MON === "s" ? "Fuoco: Sorgente" : "Fuoco: Programma", true); return;
+    }
+    if (k === "f" && !mod && !e.shiftKey) { e.preventDefault(); matchFrame(); return; }
+    if (k === "/" && !e.shiftKey && !mod) { e.preventDefault(); segnaIlPezzo(); return; }
+    // rifinitura al fotogramma: ctrl+frecce sul punto di montaggio,
+    // alt+frecce scivola dentro il materiale
+    if ((k === "arrowleft" || k === "arrowright") && (mod || e.altKey) && SEQ) {
+      e.preventDefault();
+      var seg = (k === "arrowright" ? 1 : -1) * (e.shiftKey ? 5 : 1) / FPS;
+      rifinisciDaTasti(seg, e.altKey ? "slip" : "punto");
+      return;
+    }
     if (k === "arrowleft" || k === "arrowright") {
       e.preventDefault(); seguiLive = false;
       var passo = (e.shiftKey ? 5 : 1) / FPS * (k === "arrowright" ? 1 : -1);
@@ -3079,7 +3389,7 @@
       return;
     }
     // Cmd/Ctrl+A: tutti. Esc: nessuno.
-    if (k === "a" && mod && SEQ && AREA === "timeline") {
+    if (k === "a" && mod && !e.shiftKey && SEQ && AREA === "timeline") {
       e.preventDefault(); TL.multi = pezziProg().map(function (z) { return z.id; });
       TL.sel = TL.multi[TL.multi.length - 1] || null; disegnaTimeline();
       dice(TL.multi.length + " pezzi scelti", true); return;
@@ -3087,6 +3397,19 @@
     if (k === "escape" && TL.multi.length) { TL.multi = []; TL.sel = null; disegnaTimeline(); return; }
     if (k === "c" && !mod) { e.preventDefault(); STRUMENTO = "c"; strumentoVisto(); return; }
     if (k === "v" && !mod) { e.preventDefault(); STRUMENTO = "v"; strumentoVisto(); return; }
+    if (k === "y" && !mod) { e.preventDefault(); STRUMENTO = "y"; strumentoVisto(); dice("Strumento scivolo: trascina dentro il materiale", true); return; }
+    if (k === "n" && !mod) { e.preventDefault(); STRUMENTO = "n"; strumentoVisto(); dice("Strumento giunzione: trascina il punto di taglio", true); return; }
+    if (k === "a" && mod && e.shiftKey) { e.preventDefault(); TL.multi = []; TL.sel = null; TL.punto = null; disegnaTimeline(); return; }
+    // A: questo pezzo e tutti quelli dopo (shift+A: quelli prima)
+    if (k === "a" && !mod && SEQ) {
+      e.preventDefault();
+      var pzA = pezziProg(), xa2 = pezzoScelto(); if (!xa2) return;
+      var ia = pzA.indexOf(xa2);
+      TL.multi = (e.shiftKey ? pzA.slice(0, ia + 1) : pzA.slice(ia)).map(function (z) { return z.id; });
+      TL.sel = xa2.id; disegnaTimeline();
+      dice(TL.multi.length + (e.shiftKey ? " pezzi da qui indietro" : " pezzi da qui in avanti"), true);
+      return;
+    }
     if (k === "s" && !mod) { e.preventDefault(); var cal = document.querySelector(".tlstrumenti i[title^='calamita']"); if (cal) cal.classList.toggle("on"); return; }
 
     // ── esportazioni e viste ──
@@ -3095,7 +3418,7 @@
     if (k === "+" || k === "=") { e.preventDefault(); LENTE = Math.min(32, LENTE * 2); disegnaTutto(); return; }
     if (k === "-") { e.preventDefault(); LENTE = Math.max(1, LENTE / 2); disegnaTutto(); return; }
     if (k === "\\") { e.preventDefault(); LENTE = 1; TL.vista = null; disegnaTutto(); return; }
-    if (k === "1" || k === "2" || k === "3") {
+    if ((k === "1" || k === "2" || k === "3") && !e.shiftKey && !mod) {
       var f = ["16:9", "3:4", "9:16"][+k - 1];
       var bf = document.querySelector('#formati button[data-f="' + f + '"]');
       if (bf) { e.preventDefault(); bf.click(); }

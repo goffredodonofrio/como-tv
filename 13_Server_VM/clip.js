@@ -743,7 +743,7 @@ function togliDoppioni(pezzi, vicino) {
 // scrive un minuto dopo perche' guarda e poi annota: due righe a sessanta
 // secondi di distanza sembrano due gol e sono uno. Il nome del giocatore lo
 // dice: se il cognome di ESPN sta dentro la riga della redazione, e' quello.
-function uniscoIGol(pezzi) {
+function uniscoIGol(pezzi, rec) {
   // Le parole che non sono un cognome: il verbo, il punteggio, le squadre.
   // Senza questa lista due gol della stessa squadra a due minuti di distanza
   // si univano perche' condividevano la parola "BOCA".
@@ -769,9 +769,8 @@ function uniscoIGol(pezzi) {
     // momento scelto: se no un pezzo unito si allungava a ogni passaggio.
     const t = gia.fonte === "espn" ? quando(gia) : quando(x);
     if ((x.titolo || "").length > (gia.titolo || "").length) Object.assign(gia, x);
-    gia.t = t;
-    gia.dentro = Math.max(0, t - GOL_PRE);
-    gia.fuori = t + GOL_POST;
+    const w = finestraGol(t, rec);
+    gia.t = t; gia.dentro = w.dentro; gia.fuori = w.fuori; gia.replay = w.replay;
     gia.base = gia.dentro;
   });
   return fuori;
@@ -781,17 +780,21 @@ function uniscoIGol(pezzi) {
 // Un gol non e' un'azione qualsiasi: la regia lo rivede, e a volte due
 // volte. Il pezzo si allunga in coda, non in testa, perche' davanti basta
 // l'azione e dietro ci deve stare tutto il replay.
+// La finestra di un gol, da un'unica parte: cosi' vale uguale quando il
+// pezzo nasce e quando due pezzi si uniscono. Se la fine del replay e' gia'
+// stata letta una volta, quella comanda; se no, le maniglie generose.
+function finestraGol(t, rec) {
+  const a = rec && ARCHIVIO[rec];
+  const noto = a && a.replay && a.replay[String(Math.round(t))];
+  return { dentro: Math.max(0, t - GOL_PRE),
+           fuori: noto ? Math.min(t + 150, noto + 3) : t + GOL_POST,
+           replay: !!noto };
+}
 function allargaPerIlReplay(p, rec) {
   const q = Object.assign({}, p);
   const t = p.t !== undefined ? p.t : p.dentro + APP_PRE;
-  q.dentro = Math.max(0, t - GOL_PRE);
-  q.fuori = t + GOL_POST;
-  // Se di questo gol la fine del replay e' gia' stata letta una volta, vale
-  // ancora: si tiene sulla partita e non sulla sequenza, se no ogni volta
-  // che si riapre si tornava alle maniglie a occhio e si ricomprava tutto.
-  const a = rec && ARCHIVIO[rec];
-  const noto = a && a.replay && a.replay[String(Math.round(t))];
-  if (noto) { q.fuori = Math.min(t + 150, noto + 3); q.replay = true; }
+  const w = finestraGol(t, rec);
+  q.dentro = w.dentro; q.fuori = w.fuori; if (w.replay) q.replay = true;
   return q;
 }
 
@@ -848,7 +851,7 @@ function quelloCheSappiamo(r) {
   const voceScelta = togliDoppioni(voce, 60).slice(0, 15);
   // con maniglie larghe due azioni vicine si sovrappongono: si sta piu' larghi
   // anche nel togliere i doppioni
-  return { azioni: togliDoppioni(azioni, 45), gol: uniscoIGol(gol), voce: voceScelta,
+  return { azioni: togliDoppioni(azioni, 45), gol: uniscoIGol(gol, rec), voce: voceScelta,
            boati: boati, altrove: altrove };
 }
 
