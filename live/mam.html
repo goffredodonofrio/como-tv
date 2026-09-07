@@ -249,7 +249,7 @@
   .grafCassa{position:fixed;z-index:210;display:none;background:#141414;
     border:1px solid #2A2A2A;overflow:hidden;flex-direction:column;}
   .grafCassa.libera{display:flex;right:12px;top:52px;bottom:12px;width:min(880px,72vw);left:auto;
-    border-radius:10px;box-shadow:-18px 0 46px rgba(0,0,0,.55);}
+    border-radius:10px;box-shadow:-18px 0 46px rgba(0,0,0,.55);resize:both;min-width:360px;min-height:280px;}
   /* l'intestazione ha lo stesso vestito dei monitor: etichetta azzurra in
      maiuscoletto, nome in chiaro, e i pulsanti del MAM — non link di testo */
   .grafCassa header{display:flex;align-items:center;gap:10px;padding:7px 12px;
@@ -2350,10 +2350,14 @@
     c.className = "grafCassa"; c.id = "grafCassa";
     c.innerHTML = '<header id="grafTesta">' +
       '<span class="rif">GRAFICHE</span><b id="grafSeq">nessuna sequenza</b>' +
+      '<button class="b" id="grafFuori" title="apri il generatore in una finestra a parte: puoi portarla su un altro schermo">Finestra a parte \u2197</button>' +
       '<button class="b" id="grafChiudi" title="chiudi il pannello">Chiudi</button></header>' +
       '<iframe id="grafTelaio" src="' + GEN + '&dentro=mam"></iframe>';
     document.body.appendChild(c);
     el("grafChiudi").addEventListener("click", function (e) { e.preventDefault(); grafiche("chiuso"); });
+    el("grafFuori").addEventListener("click", function (e) { e.preventDefault(); graficheFuori(); });
+    // il pannello si prende per l'intestazione e si porta dove serve
+    trascinaPannello(c, el("grafTesta"));
 
     return c;
   }
@@ -2369,6 +2373,45 @@
     if (GRAF.modo === "chiuso") { c.className = "grafCassa"; c.style.display = "none"; return; }
     var t = el("grafSeq"); if (t) t.textContent = SEQ ? (SEQ.titolo || "sequenza") : "apri prima una sequenza";
     c.className = "grafCassa libera"; c.style.display = "flex";
+  }
+  // FUORI DAL BROWSER. Un pannello disegnato nella pagina non puo' uscire
+  // dalla finestra: per portarlo sul secondo schermo serve una finestra
+  // vera. Si apre col clic (se no il browser la blocca) e da li' la
+  // trascini dove vuoi; la grafica torna indietro lo stesso, perche' la
+  // finestra sa chi l'ha aperta.
+  function graficheFuori() {
+    if (GRAF.finestra && !GRAF.finestra.closed) { try { GRAF.finestra.focus(); } catch (e) {} return; }
+    var w = null;
+    try {
+      w = window.open(GEN + "&dentro=mam", "comotv-grafiche",
+                      "width=980,height=1040,menubar=no,toolbar=no,location=no");
+    } catch (e) {}
+    if (!w) return dice("Il browser ha bloccato la finestra: permettila per questo sito e riprova.");
+    GRAF.finestra = w;
+    grafiche("chiuso");
+    dice("Generatore in una finestra a parte \u00b7 portala pure sull\u2019altro schermo", true);
+  }
+  // Trascinare e ridimensionare il pannello dentro la pagina.
+  function trascinaPannello(cassa, presa) {
+    if (!cassa || !presa || presa.dataset.trascinabile) return;
+    presa.dataset.trascinabile = "1";
+    presa.style.cursor = "move";
+    var giu = null;
+    presa.addEventListener("mousedown", function (e) {
+      if (e.target.closest && e.target.closest("button,a")) return;
+      var r = cassa.getBoundingClientRect();
+      giu = { x: e.clientX, y: e.clientY, l: r.left, t: r.top, w: r.width, h: r.height };
+      e.preventDefault();
+    });
+    document.addEventListener("mousemove", function (e) {
+      if (!giu) return;
+      var l = Math.max(-giu.w + 120, Math.min(window.innerWidth - 120, giu.l + e.clientX - giu.x));
+      var t = Math.max(0, Math.min(window.innerHeight - 40, giu.t + e.clientY - giu.y));
+      cassa.style.left = Math.round(l) + "px"; cassa.style.top = Math.round(t) + "px";
+      cassa.style.right = "auto"; cassa.style.bottom = "auto";
+      cassa.style.width = Math.round(giu.w) + "px"; cassa.style.height = Math.round(giu.h) + "px";
+    });
+    document.addEventListener("mouseup", function () { giu = null; });
   }
   function graficheNellaColonna() { grafiche("aperto"); }
   function apriPannelloGrafiche() { grafiche("aperto"); }
