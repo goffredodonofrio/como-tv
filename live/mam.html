@@ -175,6 +175,9 @@
   .tlpista .clipV .barra2 .fx{font-style:italic;color:#CFE6F5;font-size:9.5px;margin-left:6px;}
   .tlpista .clipV img{position:absolute;left:2px;top:18px;height:34px;width:auto;border-radius:1px;}
   .tlpista .clipV .dd{display:none;}
+  .scheda.accesa{outline:2px solid #7FC4EE;outline-offset:-2px;box-shadow:0 0 0 4px rgba(127,196,238,.18);}
+  .tlriquadro{position:absolute;z-index:40;pointer-events:none;border:1px solid #7FC4EE;
+    background:rgba(127,196,238,.14);border-radius:2px;}
   .tlpista .clipV.sel{background:var(--tl-clipsel);}
   .tlpista .clipV.sel .barra2{background:#63A9D6;}
   .tlpista .clipV .bordo{position:absolute;top:0;bottom:0;width:7px;cursor:ew-resize;z-index:2;}
@@ -2099,7 +2102,25 @@
   //  prende un bordo per accorciarlo o allungarlo, si clicca sul righello
   //  per andare li'. Una clip dal progetto si lascia cadere dove si vuole.
   //  Canc toglie il pezzo scelto.
-  var TL = { sel: null, ghost: null, ins: null, trim: null, drag: null, vista: null, nav: null, scrub: null, lock: { V1: false, A1: false } };
+  var FORMATI_SEQ = ["16:9"];   // i formati con cui esce la sequenza
+  var SEQSCELTE = [];        // le sequenze accese con Shift, da togliere insieme
+  var TL = { sel: null, multi: [], riquadro: null, ghost: null, ins: null, trim: null, drag: null, vista: null, nav: null, scrub: null, lock: { V1: false, A1: false } };
+  // La selezione: uno o piu' pezzi. TL.sel resta il principale (quello che
+  // comandi e menu chiamano "il pezzo scelto"), TL.multi tiene tutti quelli
+  // accesi. Cliccare sceglie, Shift o Cmd aggiungono, trascinare sul vuoto
+  // fa il riquadro.
+  function scegliPezzi(ids, aggiungi) {
+    if (!aggiungi) TL.multi = ids.slice();
+    else ids.forEach(function (i) { var k = TL.multi.indexOf(i); if (k >= 0) TL.multi.splice(k, 1); else TL.multi.push(i); });
+    TL.sel = TL.multi.length ? TL.multi[TL.multi.length - 1] : null;
+  }
+  function pezziScelti() {
+    var pz = pezziProg();
+    var fuori = pz.filter(function (z) { return TL.multi.indexOf(z.id) >= 0; });
+    if (fuori.length) return fuori;
+    var uno = pz.filter(function (z) { return z.id === TL.sel; })[0] || pz[PROG.i];
+    return uno ? [uno] : [];
+  }
   var MOD = /Mac|iPhone|iPad/.test(navigator.platform || "") ? "\u2318" : "ctrl+";
   var STRUMENTO = "v";        // v = selezione, c = lametta
 
@@ -2183,7 +2204,7 @@
       var xa = Math.max(0, X(a)), xb = Math.min(largo, X(bb)), w = Math.max(6, xb - xa);
       var cl = x.clip ? CLIP.filter(function (k) { return k.id === x.clip; })[0] : null;
       var img = (cl && cl.mini) ? '<img src="' + BASE + cl.mini + '" alt="">' : "";
-      ov.push('<div class="clipV' + (TL.sel === x.id ? " sel" : "") + (i === PROG.i ? " sotto" : "") + '" data-pezzo="' + x.id + '" data-i="' + i +
+      ov.push('<div class="clipV' + ((TL.sel === x.id || TL.multi.indexOf(x.id) >= 0) ? " sel" : "") + (i === PROG.i ? " sotto" : "") + '" data-pezzo="' + x.id + '" data-i="' + i +
               '" style="left:' + xa + 'px;width:' + w + 'px">' +
               '<div class="barra2"><span class="tt">' + pulito(x.titolo) + '</span><span class="fx">fx</span></div>' + img +
               '<span class="bordo sx" data-lato="sx"></span><span class="bordo dx" data-lato="dx"></span></div>');
@@ -2242,6 +2263,39 @@
     return pz.length;
   }
 
+  // IL RIQUADRO. Si trascina sulle corsie vuote e si accende tutto quello
+  // che tocca: e' lo strumento selezione di Premiere, quello che serve per
+  // fare piazza pulita dei pezzi che non servono e premere Canc una volta
+  // sola.
+  function disegnaRiquadro() {
+    var r = TL.riquadro; if (!r) return;
+    var d = el("tlRiquadro");
+    if (!d) { d = document.createElement("div"); d.id = "tlRiquadro"; d.className = "tlriquadro"; el("tlPista").appendChild(d); }
+    var b = r.base;
+    var x1 = Math.min(r.x0, r.x) - b.left, x2 = Math.max(r.x0, r.x) - b.left;
+    var y1 = Math.min(r.y0, r.y) - b.top, y2 = Math.max(r.y0, r.y) - b.top;
+    d.style.left = x1 + "px"; d.style.top = y1 + "px";
+    d.style.width = (x2 - x1) + "px"; d.style.height = (y2 - y1) + "px";
+    d.hidden = false;
+    // e intanto si accende quello che tocca, cosi' si vede mentre si tira
+    var presi = [];
+    Array.prototype.forEach.call(el("tlPista").querySelectorAll(".clipV"), function (c) {
+      var q = c.getBoundingClientRect();
+      if (q.right >= Math.min(r.x0, r.x) && q.left <= Math.max(r.x0, r.x)) presi.push(c.dataset.pezzo);
+    });
+    TL.multi = r.somma ? TL.multi.filter(function (i) { return presi.indexOf(i) < 0; }).concat(presi) : presi;
+    TL.sel = TL.multi.length ? TL.multi[TL.multi.length - 1] : null;
+    Array.prototype.forEach.call(el("tlPista").querySelectorAll(".clipV"), function (c) {
+      c.classList.toggle("sel", TL.multi.indexOf(c.dataset.pezzo) >= 0);
+    });
+  }
+  function chiudiRiquadro() {
+    TL.riquadro = null;
+    var d = el("tlRiquadro"); if (d) d.remove();
+    disegnaTimeline();
+    if (TL.multi.length > 1) dice(TL.multi.length + " pezzi scelti \u00b7 Canc per toglierli", true);
+  }
+
   function attaccaTimeline() {
     var p = el("tlPista"); if (!p || p.dataset.viva) return;
     p.dataset.viva = "1";
@@ -2266,18 +2320,32 @@
       }
       if (blocco) {
         var i = pz.findIndex(function (z) { return z.id === blocco.dataset.pezzo; }); if (i < 0) return;
-        TL.sel = pz[i].id; TL.drag = { id: pz[i].id, i: i, x0: e.clientX, mosso: false };
+        var somma = e.shiftKey || e.metaKey || e.ctrlKey;
+        if (somma || TL.multi.indexOf(pz[i].id) < 0) scegliPezzi([pz[i].id], somma);
+        if (somma) { e.preventDefault(); disegnaTimeline(); return; }
+        TL.drag = { id: pz[i].id, i: i, x0: e.clientX, mosso: false };
         MON = "p"; el("monS").classList.remove("attivo"); el("monP").classList.add("attivo");
+        e.preventDefault(); disegnaTimeline(); return;
+      }
+      // Sul vuoto, con lo strumento selezione, comincia il riquadro: si
+      // trascina sopra i pezzi e si accendono tutti quelli toccati. E' il
+      // gesto per fare piazza pulita di quello che non serve.
+      var sulRighello = e.target.closest ? !!e.target.closest(".tlrighello, .tltestina, .tlnav") : false;
+      if (STRUMENTO === "v" && !sulRighello) {
+        var rq = el("tlPista").getBoundingClientRect();
+        TL.riquadro = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, base: rq, somma: e.shiftKey };
+        if (!e.shiftKey) { TL.multi = []; TL.sel = null; }
         e.preventDefault(); disegnaTimeline(); return;
       }
       var t = tempoSeq(e); if (t === null) return;
       var dove = pezzoAlTempo(t); if (!dove) return;
-      TL.sel = null;
+      TL.sel = null; TL.multi = [];
       progVai(dove.i, vp && !vp.paused, dove.dentro);
       // e da qui si trascina: la testina segue il mouse finche' lo si tiene
       TL.scrub = { ultimo: 0 }; e.preventDefault();
     });
     document.addEventListener("mousemove", function (e) {
+      if (TL.riquadro) { TL.riquadro.x = e.clientX; TL.riquadro.y = e.clientY; disegnaRiquadro(); return; }
       var f = finestraSeq(); if (!f) return;
       var p2 = el("tlPista"), largo = p2 ? p2.clientWidth || 900 : 900;
       if (TL.scrub) {
@@ -2305,6 +2373,7 @@
       }
     });
     document.addEventListener("mouseup", function () {
+      if (TL.riquadro) { chiudiRiquadro(); return; }
       if (TL.scrub) { TL.scrub = null; var dsx = pezzoAlTempo(progPos()); if (dsx) progVai(dsx.i, false, dsx.dentro); }
       if (TL.trim && TL.ghost && SEQ) {
         var g = TL.ghost; TL.ghost = null;
@@ -2871,6 +2940,14 @@
     // ── trasporto ──
     if (k === " ") {
       e.preventDefault();
+      // la sbarra su una sequenza appena scelta la fa partire dal principio,
+      // qualunque sia il pannello che ha il fuoco
+      if (SEQ && PROG.i < 0 && pezziProg().length) {
+        MON = "p";
+        if (el("monS")) el("monS").classList.remove("attivo");
+        if (el("monP")) el("monP").classList.add("attivo");
+        progVai(0, true); return;
+      }
       if (MON === "p" && PROG.i < 0) { if (pezziProg().length) progVai(0, true); return; }
       if (SHUTTLE.rate) fermaShuttle(v); else v.paused ? v.play().catch(function(){}) : v.pause();
       return;
@@ -2942,14 +3019,38 @@
       }).catch(function (er) { dice(er.message); });
       return;
     }
-    if ((k === "delete" || k === "backspace") && SEQ) {
-      if (TL.lock.V1) { e.preventDefault(); return dice("La traccia V1 e' bloccata."); }
-      var xs = pezzoScelto(); if (!xs) return;
+    if ((k === "delete" || k === "backspace") && SEQSCELTE.length) {
       e.preventDefault();
-      applicaEPoi(function (q) { q.pezzi = q.pezzi.filter(function (p) { return p.id !== xs.id; }); TL.sel = null; PROG.i = -1; },
-                  { tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: xs.id, togli: 1 }, function () { destraMateriale(); });
+      var quante = SEQSCELTE.length;
+      if (!confirm("Togliere " + quante + (quante === 1 ? " sequenza?" : " sequenze?") + " Non si annulla.")) return;
+      var via = SEQSCELTE.slice(); SEQSCELTE = [];
+      Promise.all(via.map(function (id) { return manda({ tipo: "clip-hl-elimina", seq: id }).catch(function () {}); }))
+        .then(function () {
+          SEQS = SEQS.filter(function (x) { return via.indexOf(x.id) < 0; });
+          if (SEQ && via.indexOf(SEQ.id) >= 0) { SEQ = SEQS[0] || null; PROG.i = -1; TL.sel = null; TL.multi = []; }
+          disegnaSequenza(); destraMateriale();
+          dice(quante === 1 ? "Sequenza tolta." : quante + " sequenze tolte.", true);
+        });
       return;
     }
+    if (k === "escape" && SEQSCELTE.length) { SEQSCELTE = []; destraMateriale(); return; }
+    if ((k === "delete" || k === "backspace") && SEQ) {
+      if (TL.lock.V1) { e.preventDefault(); return dice("La traccia V1 e' bloccata."); }
+      var scelti = pezziScelti(); if (!scelti.length) return;
+      e.preventDefault();
+      var vie = scelti.map(function (z) { return z.id; });
+      applicaEPoi(function (q) { q.pezzi = q.pezzi.filter(function (p) { return vie.indexOf(p.id) < 0; }); TL.sel = null; TL.multi = []; PROG.i = -1; },
+                  { tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: vie[0], pezzi: vie, togli: 1 },
+                  function () { destraMateriale(); dice(vie.length === 1 ? "Pezzo tolto." : vie.length + " pezzi tolti.", true); });
+      return;
+    }
+    // Cmd/Ctrl+A: tutti. Esc: nessuno.
+    if (k === "a" && mod && SEQ && AREA === "timeline") {
+      e.preventDefault(); TL.multi = pezziProg().map(function (z) { return z.id; });
+      TL.sel = TL.multi[TL.multi.length - 1] || null; disegnaTimeline();
+      dice(TL.multi.length + " pezzi scelti", true); return;
+    }
+    if (k === "escape" && TL.multi.length) { TL.multi = []; TL.sel = null; disegnaTimeline(); return; }
     if (k === "c" && !mod) { e.preventDefault(); STRUMENTO = "c"; strumentoVisto(); return; }
     if (k === "v" && !mod) { e.preventDefault(); STRUMENTO = "v"; strumentoVisto(); return; }
     if (k === "s" && !mod) { e.preventDefault(); var cal = document.querySelector(".tlstrumenti i[title^='calamita']"); if (cal) cal.classList.toggle("on"); return; }
@@ -3695,7 +3796,9 @@
       }
       var d = document.createElement("div");
       var famSeq = a.t !== "hl" ? "" : " seq-" + (a.o.auto ? String(a.o.auto).toLowerCase().replace(/[^a-z]/g, "").slice(0, 12) : "mano");
-      d.className = "scheda" + ((a.t === "hl" && SEQ && a.o.id === SEQ.id) ? " scelta" : "") + (a.o.auto ? " apparecchiata" : "") + famSeq;
+      d.className = "scheda" + ((a.t === "hl" && SEQ && a.o.id === SEQ.id) ? " scelta" : "")
+                  + ((a.t === "hl" && SEQSCELTE.indexOf(a.o.id) >= 0) ? " accesa" : "")
+                  + (a.o.auto ? " apparecchiata" : "") + famSeq;
       if (a.o.nota) d.title = a.o.nota;                 // la sequenza dice da sola che cos'e'
       d.dataset.nome = String(nome || "").toLowerCase(); d.dataset.tipo = a.t;
 
@@ -3768,10 +3871,27 @@
         });
         d.addEventListener("dragend", function () { document.body.classList.remove("trascinando"); });
       }
-      d.addEventListener("click", function () {
+      d.addEventListener("click", function (ev) {
         ASSET = i;
+        // Shift o Cmd sulle sequenze: si accendono invece di aprirsi, e
+        // Canc le toglie tutte insieme. Il clic normale apre, come sempre.
+        if (a.t === "hl" && (ev.shiftKey || ev.metaKey || ev.ctrlKey)) {
+          var k = SEQSCELTE.indexOf(a.o.id);
+          if (k >= 0) SEQSCELTE.splice(k, 1); else SEQSCELTE.push(a.o.id);
+          AREA = "materiale"; destraMateriale();
+          dice(SEQSCELTE.length ? SEQSCELTE.length + " sequenze scelte \u00b7 Canc per toglierle" : "Nessuna sequenza scelta", true);
+          return;
+        }
         if (a.t === "partita") { tornaAlContenuto(); return; }          // la Sorgente torna alla partita
-        if (a.t === "hl") { SEQ = a.o; PROG.i = -1; TL.sel = null; AREA = "progetto"; disegnaSequenza(); destraMateriale(); return; }
+        if (a.t === "hl") {
+          SEQSCELTE = []; SEQ = a.o; PROG.i = -1; TL.sel = null; TL.multi = []; AREA = "progetto";
+          // scegliere una sequenza porta il comando sul Programma: da li' la
+          // sbarra la fa partire, senza dover cliccare prima il monitor
+          MON = "p";
+          if (el("monS")) el("monS").classList.remove("attivo");
+          if (el("monP")) el("monP").classList.add("attivo");
+          disegnaSequenza(); destraMateriale(); return;
+        }
         var suo = BASE + "/clip/_clip/" + a.o.id + ".mp4";
         mostraNelCentro(suo, fmt, nome);
         destraMateriale();
@@ -3967,14 +4087,42 @@
         corpo.appendChild(v);
       });
 
-      var az2 = document.createElement("div"); az2.className = "gruppo"; az2.style.marginTop = "12px";
+      // I FORMATI, QUI. Prima l'esportazione prendeva di nascosto l'ultimo
+      // formato scelto nel pannello della Sorgente: si esportava 9:16 senza
+      // sapere perche'. Adesso si scelgono qui, e se ne possono accendere
+      // piu' d'uno: escono tutti in un giro solo.
+      var fm = document.createElement("div"); fm.className = "gruppo"; fm.style.marginTop = "12px";
+      fm.innerHTML = '<span class="etichetta" style="width:100%;margin-bottom:4px">Formati</span>' +
+        ["16:9", "1:1", "3:4", "9:16"].map(function (f) {
+          return '<button class="b' + (FORMATI_SEQ.indexOf(f) >= 0 ? " scuro" : "") +
+                 '" data-fs="' + f + '">' + f + '</button>';
+        }).join("");
+      corpo.appendChild(fm);
+      fm.querySelectorAll("button[data-fs]").forEach(function (b2) {
+        b2.addEventListener("click", function () {
+          var f = b2.dataset.fs, k = FORMATI_SEQ.indexOf(f);
+          if (k >= 0) { if (FORMATI_SEQ.length > 1) FORMATI_SEQ.splice(k, 1); }
+          else FORMATI_SEQ.push(f);
+          destraMateriale();
+        });
+      });
+
+      var az2 = document.createElement("div"); az2.className = "gruppo"; az2.style.marginTop = "8px";
       az2.innerHTML = '<button class="b oro" id="hlMp4">Esporta MP4</button>' +
                       '<button class="b" id="hlXml">Per Premiere</button>';
       corpo.appendChild(az2);
       if (q.export && q.export.stato === "pronto") {
         var g1 = document.createElement("div"); g1.className = "aiuto";
-        g1.innerHTML = '<a href="' + BASE + q.export.file + '?scarica=1">scarica il video (' +
-                       q.export.formato + ", " + orologio(q.export.durata) + ")</a>";
+        var pronti = q.esportati || {};
+        var chiavi = Object.keys(pronti);
+        if (chiavi.length) {
+          g1.innerHTML = chiavi.map(function (f) {
+            return '<a href="' + BASE + pronti[f].file + '?scarica=1">scarica ' + f + "</a>";
+          }).join(" · ");
+        } else if (q.export.file) {
+          g1.innerHTML = '<a href="' + BASE + q.export.file + '?scarica=1">scarica il video (' +
+                         q.export.formato + ", " + orologio(q.export.durata) + ")</a>";
+        }
         corpo.appendChild(g1);
       }
       if (q.export && q.export.stato === "lavora") {
@@ -3988,8 +4136,8 @@
         corpo.appendChild(g3);
       }
       el("hlMp4").addEventListener("click", function () {
-        manda({ tipo:"clip-hl-esporta", seq:q.id, formato:formato })
-          .then(function () { dice("Esporto il video in " + formato + "…", true); })
+        manda({ tipo:"clip-hl-esporta", seq:q.id, formato:FORMATI_SEQ[0], formati:FORMATI_SEQ.slice() })
+          .then(function () { dice("Esporto il video in " + FORMATI_SEQ.join(", ") + "…", true); })
           .catch(function (e) { dice(e.message); });
       });
       el("hlXml").addEventListener("click", function () {

@@ -50,6 +50,7 @@ const MAX_CLIP = 900;
 // non e' una scelta, e' che si sta cambiando l'inquadratura.
 const FORMATI = {
   "16:9": { vf: "" },
+  "1:1":  { vf: "crop=ih:ih,scale=1080:1080" },
   "3:4":  { vf: "crop=ih*3/4:ih,scale=1080:1440" },
   "9:16": { vf: "crop=ih*9/16:ih,scale=1080:1920" }
 };
@@ -716,6 +717,7 @@ async function cercaBoati(p) {
 const APP_PRE = 30, APP_POST = 45;      // un'azione qualsiasi: c'e' aria per il replay corto
 const GOL_PRE = 35, GOL_POST = 80;      // un gol il replay ce l'ha sempre, e lungo
 const HL_STRETTO_PRE = 8, HL_STRETTO_POST = 12;   // quando bisogna stare nei minuti
+const HL_DURATA = 300;                  // cinque minuti: apertura del telecronista compresa
 
 function pezzoDa(dentro, fuori, titolo, tipo, minuto, fonte, peso) {
   return { id: nuovoId("p"), dentro: Math.max(0, Math.round(dentro * 10) / 10),
@@ -844,6 +846,30 @@ function quelloCheSappiamo(r) {
            boati: boati, altrove: altrove };
 }
 
+// L'APERTURA. Un montato non comincia con un tiro: comincia con la voce che
+// dice dove siamo e chi gioca. Quella frase sta sempre nello stesso posto,
+// poco prima del fischio, mentre le squadre sono schierate. Se la
+// telecronaca e' gia' trascritta si prende la prima frase vera; se no si
+// prende la finestra prima del fischio, che e' li' che parla.
+function pezzoApertura(r) {
+  const via = (r.kickoff && r.kickoff["1"]) || 0;
+  if (!via) return null;
+  const detto = PARLATO[r.id] && PARLATO[r.id].pezzi;
+  if (detto && detto.length) {
+    // la prima frase che dura piu' di due secondi e sta prima del fischio
+    const prima = detto.filter((x) => x.a < via && (x.b - x.a) > 2 && String(x.x || "").length > 25);
+    if (prima.length) {
+      const q = prima[Math.max(0, prima.length - 3)];
+      const dentro = Math.max(0, q.a - 2);
+      return pezzoDa(dentro, Math.min(via - 2, dentro + 40), "Apertura · “" + String(q.x).slice(0, 70) + "”",
+                     "Apertura", "", "apertura", 9);
+    }
+  }
+  if (via < 25) return null;
+  return pezzoDa(Math.max(0, via - 45), Math.max(0, via - 5), "Apertura del telecronista",
+                 "Apertura", "", "apertura", 9);
+}
+
 async function preparaSequenze(p) {
   const r = R.reg[String(p.reg || "")];
   if (!r) throw new Error("registrazione sconosciuta");
@@ -858,7 +884,8 @@ async function preparaSequenze(p) {
   let posto = 0;
   const crea = (nome, pezzi, nota) => {
     if (!pezzi.length) return;
-    const vecchia = gia.find((q) => q.auto === nome);
+    const vecchia = gia.find((q) => q.auto === nome
+      || (nome.indexOf("HIGHLIGHTS") === 0 && String(q.auto).indexOf("HIGHLIGHTS") === 0));
     const q = vecchia || { id: nuovoId("s"), reg: r.id, pezzi: [], pre: APP_PRE, post: APP_POST,
                            scarto: 0, avvisi: [], creata: Date.now(), chi: "", export: null };
     q.auto = nome;
@@ -872,22 +899,37 @@ async function preparaSequenze(p) {
     fatte.push({ nome: nome, pezzi: pezzi.length, id: q.id });
   };
 
-  crea("GOL", sap.gol, "dai " + GOL_PRE + " secondi prima ai " + GOL_POST + " dopo: dentro c'e' l'azione, l'esultanza e il replay");
-  // gli highlights: i pezzi che pesano di piu', dentro tre minuti
+  // L'ordine e' quello in cui si lavora: prima si guarda tutto (AZIONI),
+  // poi il montato (HIGHLIGHTS), poi i gol da rifinire uno per uno.
+  crea("AZIONI", sap.azioni, "tutto quello che la redazione ha segnato, in ordine, con l'aria per il replay");
   if (sap.azioni.length) {
-    // qui le maniglie si stringono: dentro tre minuti ci devono stare piu'
+    // qui le maniglie si stringono: dentro cinque minuti ci devono stare piu'
     // cose, e questa e' la sequenza che assomiglia gia' a un montato
     const strette = sap.azioni.map((x) => Object.assign({}, x, {
       dentro: Math.max(0, (x.t !== undefined ? x.t : x.dentro + APP_PRE) - HL_STRETTO_PRE),
       fuori: (x.t !== undefined ? x.t : x.dentro + APP_PRE) + HL_STRETTO_POST
     }));
-    const scelti = stringiAllaDurata(strette, 180, HL_STRETTO_PRE, HL_STRETTO_POST);
-    crea("HIGHLIGHTS 3′", (scelti.pezzi || []).sort((a, b) => a.dentro - b.dentro), (scelti.nota ? scelti.nota + " " : "") + "Maniglie strette: qui si sta nei tre minuti.");
+    // l'apertura non entra in gara con le azioni: si mette in testa e il
+    // resto del tempo se lo dividono loro
+    const apre = pezzoApertura(r);
+    const spazio = HL_DURATA - (apre ? (apre.fuori - apre.dentro) : 0);
+    const scelti = stringiAllaDurata(strette, spazio, HL_STRETTO_PRE, HL_STRETTO_POST);
+    const dentro = (scelti.pezzi || []).sort((a, b) => a.dentro - b.dentro);
+    crea("HIGHLIGHTS 5′", (apre ? [apre] : []).concat(dentro),
+         (apre ? "Si apre con il telecronista, poi le azioni che pesano di piu'. " : "")
+         + (scelti.nota ? scelti.nota + " " : "") + "Maniglie strette: qui si sta nei cinque minuti.");
   }
-  crea("AZIONI", sap.azioni, "tutto quello che la redazione ha segnato, in ordine, con l'aria per il replay");
+  crea("GOL", sap.gol, "dai " + GOL_PRE + " secondi prima ai " + GOL_POST + " dopo: dentro c'e' l'azione, l'esultanza e il replay");
   crea("TELECRONACA", sap.voce, "i momenti in cui il telecronista dice gol");
   crea("BOATI", sap.boati, "i momenti in cui lo stadio alza la voce");
   scrivi(); annuncia(0, "clip");
+  // i gol si rifiniscono da soli, in coda: il cronometro dira' dove finisce
+  // ogni replay. Chi ha aperto la partita intanto ha gia' tutto.
+  const seqGol = fatte.find((f) => f.nome === "GOL");
+  if (seqGol && r.arch && p.rifinisci !== false && CODA_RIFINITURE.indexOf(seqGol.id) < 0) {
+    const q = R.seq[seqGol.id];
+    if (q && !q.rifinito) { CODA_RIFINITURE.push(seqGol.id); setTimeout(rifinitureInCoda, 500); }
+  }
   // Se non c'e' venuto fuori niente, si dice perche': non c'e' materiale, o
   // il materiale c'e' ma sta in un altro file della stessa partita.
   let perche = "";
@@ -1776,6 +1818,17 @@ function hlElenco(p) {
 // ritocco di un pezzo: sposta l'entrata, l'uscita, il nome — o lo butta
 function hlPezzo(p) {
   const q = seqDi(p);
+  // Piu' pezzi in una volta: e' quello che succede quando si selezionano a
+  // riquadro e si preme Canc. Uno alla volta, con una richiesta ciascuno,
+  // la sequenza si vedeva sfarinare pezzo per pezzo.
+  if (p.togli && Array.isArray(p.pezzi) && p.pezzi.length) {
+    const via = {};
+    p.pezzi.forEach((x) => { via[String(x)] = true; });
+    const prima = q.pezzi.length;
+    q.pezzi = q.pezzi.filter((x) => !via[String(x.id)]);
+    scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: q, tolti: prima - q.pezzi.length };
+  }
   const i = q.pezzi.findIndex((x) => x.id === p.pezzo);
   if (i < 0) throw new Error("pezzo sconosciuto");
   if (p.togli) { q.pezzi.splice(i, 1); scrivi(); return { ok: true, seq: q }; }
@@ -3611,7 +3664,7 @@ function fasciaAlta(via, sec) {
 // (quello che fra i due sta fermo), la targa del cronometro, e la legge in
 // tutti e due. Se le due letture non distano venti secondi, una delle due
 // e' sbagliata e si buttano via entrambe: meglio niente che un minuto falso.
-async function leggiOrologioSicuro(fascia, t) {
+async function leggiOrologioSicuro(fascia, t, tutto) {
   const f1 = await fascia(t), f2 = f1 ? await fascia(t + 20) : null;
   const via = [f1, f2].filter(Boolean);
   const butta = () => { if (!process.env.COMOTV_OROLOGIO_DEBUG) via.forEach((f) => { try { fs.unlinkSync(f); } catch (x) {} }); };
@@ -3629,7 +3682,249 @@ async function leggiOrologioSicuro(fascia, t) {
               (esito.cifre ? " (targa " + esito.cifre.join(",") + ")" : "") + (esito.perche ? " — " + esito.perche : ""));
   if (c1 === null || c2 === null) return null;
   if (Math.abs((c2 - c1) - 20) > 3) return null;
-  return c1;
+  return tutto ? { c: c1, cifre: esito.cifre || esito.box || null } : c1;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  LA RIFINITURA DEI GOL — dove finisce il replay
+// ══════════════════════════════════════════════════════════════════════
+//
+//  Il pezzo del gol nasce con maniglie generose, ottanta secondi in coda,
+//  perche' il replay dura quanto vuole. Ottanta secondi a volte sono troppi
+//  e a volte pochi. Il secondo giusto pero' e' scritto sullo schermo: la
+//  regia TOGLIE il cronometro quando manda il replay e lo RIMETTE quando si
+//  ricomincia. Non serve capire le immagini, basta guardare se quel numero
+//  c'e' o non c'e'.
+//
+//  Costa: una decina di fotogrammi per gol, presi con una richiesta di
+//  intervallo (pochi mega l'uno). Si fa in coda, una partita alla volta, e
+//  solo per le partite che qualcuno apre davvero.
+
+// Un fotogramma alla volta, tenuto sul disco finche' serve.
+async function fascia(via, secondi) { return await fasciaAlta(via, Math.max(0, Math.round(secondi))); }
+function butta(f) { try { if (f) fs.unlinkSync(f); } catch (e) {} }
+
+// Quanto due fotogrammi si assomigliano dentro una finestra. 1 = identici.
+async function quantoSiAssomigliano(box, rif, file) {
+  return await new Promise((ok) => {
+    execFile("python3", [OROLOGIO_PY, "--presente", box.join(","), rif].concat(file), { timeout: 60000 },
+      (e, so) => { if (e) return ok([]); try { ok(JSON.parse(String(so)).somiglianze || []); } catch (x) { ok([]); } });
+  });
+}
+
+// Il secondo in cui il cronometro torna dopo essere sparito. null se il
+// replay non si trova (e allora si tiene la maniglia larga).
+//
+//  Il criterio non e' piu' "il lettore legge l'ora": il lettore ogni tanto
+//  non legge anche quando la targa c'e', e un "non letto" scambiato per
+//  "non c'e'" allungava il pezzo dentro il gioco. Adesso si guarda il
+//  DISEGNO della targa: o c'e' o non c'e', e le cifre non contano.
+async function fineDelReplay(via, targa, rif, t) {
+  const visto = {};
+  const cE = async (s) => {
+    if (visto[s] !== undefined) return visto[s];
+    const f = await fascia(via, s);
+    if (!f) return (visto[s] = undefined);
+    const q = (await quantoSiAssomigliano(targa, rif, [f]))[0];
+    butta(f);
+    // Misurato su Genoa-Como: con la targa in chiaro la somiglianza sta fra
+    // 0,31 e 0,86 (cambia lo sfondo dietro la grafica, che e' trasparente);
+    // senza targa sta a zero o sotto. Venti centesimi separano le due cose
+    // con largo margine.
+    return (visto[s] = (q === null || q === undefined ? undefined : q > 0.20));
+  };
+  const senza = [];
+  for (let s = t + 15; s <= t + 115; s += 20) { if ((await cE(s)) === false) senza.push(s); }
+  if (senza.length < 2) return null;             // un buco solo e' un caso, non un replay
+  // Dopo un gol il cronometro sparisce DUE volte: una per l'esultanza, in
+  // stretto sul giocatore, e una per il replay. Il pezzo deve finire dopo
+  // la seconda, quindi si guarda l'ULTIMA fila di buchi — e dev'essere una
+  // fila: un buco solo, isolato, e' un fotogramma sfortunato, non un replay.
+  const file = [];
+  senza.forEach((s2) => {
+    const f = file[file.length - 1];
+    if (f && s2 - f[f.length - 1] <= 20) f.push(s2); else file.push([s2]);
+  });
+  const lunghe = file.filter((f) => f.length >= 2);
+  if (!lunghe.length) return null;
+  const fila = lunghe[lunghe.length - 1];
+  const ultimo = fila[fila.length - 1];
+  let basso = ultimo, alto = ultimo + 20;
+  for (let giro = 0; giro < 3 && alto - basso > 4; giro++) {
+    const mezzo = Math.round((basso + alto) / 2);
+    if ((await cE(mezzo)) === false) basso = mezzo; else alto = mezzo;
+  }
+  return alto;
+}
+
+// ── L'INTRO DEL TELECRONISTA ──────────────────────────────────────────
+//  Prima della partita il feed manda il cartello — su questo archivio un
+//  "COMING SOON" animato, non un fermo immagine. Poi il cartello lascia il
+//  posto al clean feed, e li' comincia l'intro: "buonasera e benvenuti…",
+//  fino a "si parte". Quel momento non si indovina, si trova: il cartello
+//  e' sempre uguale a se stesso, e quando finisce il quadro cambia del
+//  tutto.
+//
+//  Misurato su Genoa-Como, quadro intero contro il primo fotogramma del
+//  file: cartello 0,42-0,87 — clean feed 0,09-0,24. Non si cerca a meta'
+//  perche' piu' avanti arrivano le grafiche delle formazioni, che al
+//  cartello assomigliano: si scorre dall'inizio e ci si ferma al primo
+//  cambio vero.
+function fotogrammino(via, sec) {
+  return new Promise((ok) => {
+    const png = path.join(os.tmpdir(), "quadro-" + nuovoId("") + ".png");
+    execFile(FFMPEG, ["-hide_banner", "-loglevel", "error", "-ss", String(Math.max(0, Math.round(sec))),
+                      "-i", via, "-frames:v", "1", "-vf", "scale=320:-1", "-y", png],
+      { timeout: 90000 }, (e) => ok(e ? null : png));
+  });
+}
+
+async function inizioCleanFeed(via, fischio) {
+  if (fischio < 90) return null;
+  // Il riferimento non e' il primo fotogramma del file — li' il cartello e'
+  // ancora in dissolvenza e non somiglia a niente — ma uno a venti secondi,
+  // controllato contro un altro a cinquanta: se quei due si assomigliano,
+  // quello e' il cartello e si puo' cercare dove finisce.
+  //
+  // Si guarda la FASCIA ALTA e non il quadro intero: misurato su
+  // Genoa-Como, cartello contro cartello 0,93 — cartello contro campo
+  // -0,12. Piu' avanti arrivano le grafiche delle formazioni, che al
+  // cartello assomigliano un po', ma la ricerca va dall'inizio in avanti e
+  // si ferma al primo cambio: quelle non le incontra mai.
+  const rif = await fasciaAlta(via, 20);
+  if (!rif) return null;
+  const somiglia = async (s) => {
+    const f = await fasciaAlta(via, s);
+    if (!f) return undefined;
+    const q = (await quantoSiAssomigliano([0, 0, 0, 0], rif, [f]))[0];
+    butta(f);
+    return (q === null || q === undefined) ? undefined : q;
+  };
+  try {
+    const prova = await somiglia(50);
+    if (prova === undefined || prova < 0.45) return null;   // niente cartello: si comincia gia' in campo
+    const fine = fischio - 15;
+    let ultimoCartello = 50, primoFeed = null;
+    for (let s = 80; s <= fine; s += 30) {
+      const q = await somiglia(s);
+      if (q === undefined) continue;
+      if (q >= 0.45) { ultimoCartello = s; continue; }
+      primoFeed = s; break;
+    }
+    console.log("[clip] cartello: ultimo a " + ultimoCartello + "s, primo clean feed a " + primoFeed + "s (fischio " + fischio + "s)");
+    if (primoFeed === null) return null;
+    let basso = ultimoCartello, alto = primoFeed;
+    for (let giro = 0; giro < 4 && alto - basso > 4; giro++) {
+      const mezzo = Math.round((basso + alto) / 2);
+      const q = await somiglia(mezzo);
+      if (q !== undefined && q >= 0.45) basso = mezzo; else alto = mezzo;
+    }
+    return alto;
+  } finally { butta(rif); }
+}
+
+const CODA_RIFINITURE = [];
+let rifinituraInCorso = false;
+async function rifinisciGol(idSeq) {
+  const q = R.seq[String(idSeq || "")];
+  if (!q || q.rifinito) return { ok: true, gia: true };
+  const r = q && R.reg[q.reg];
+  if (!r || !r.arch) return { ok: false, errore: "questa sequenza non viene dall'archivio" };
+  if (!tesseractCe()) return { ok: false, errore: "senza tesseract il cronometro non si legge" };
+  if (!q.pezzi.length || q.pezzi.length > 8) return { ok: false, errore: "troppi pezzi, o nessuno" };
+  const a = ARCHIVIO[r.arch.rec];
+  if (!a || !a.orologio || !a.orologio.verificato) return { ok: false, errore: "di questa partita il cronometro non e' stato letto" };
+  const regione = await s3Regione(a.bucket);
+  const via = firmaConRegione(regione, r.arch.chiave, {}, 21600, a.bucket);
+  // la targa del cronometro: si trova una volta, su due fotogrammi di gioco
+  // due minuti prima del primo gol, e poi si tiene
+  let targa = a.orologio.cifre;
+  if (!targa) {
+    // La targa si cerca dove si e' sicuri che ci sia gioco: due minuti prima
+    // di un gol, o due dopo. Un tentativo solo non basta — un fotogramma puo'
+    // capitare su un primo piano, su una grafica, su un cambio.
+    const quando = [];
+    q.pezzi.forEach((pz) => {
+      const t = pz.t !== undefined ? pz.t : pz.dentro + GOL_PRE;
+      quando.push(t - 150, t + 200, t - 400);
+    });
+    for (const t0 of quando.filter((x) => x > 60).slice(0, 8)) {
+      const e = await leggiOrologioSicuro((t) => fasciaAlta(via, t), Math.round(t0), true);
+      if (e && e.cifre) { targa = e.cifre; break; }
+    }
+    if (!targa) return { ok: false, errore: "non ho ritrovato la targa del cronometro in questo file" };
+    a.orologio.cifre = targa; scriviArchivio();
+    console.log("[clip] rifinitura: targa del cronometro " + targa.join(",") + " per " + (a.partita || ""));
+  }
+  // il fotogramma di riferimento: la targa com'e' quando c'e' di sicuro,
+  // cioe' poco prima del primo gol, con il gioco in corso
+  const t1 = (q.pezzi[0].t !== undefined ? q.pezzi[0].t : q.pezzi[0].dentro + GOL_PRE);
+  let rif = null;
+  for (const d of [-150, -400, 200, -80]) {
+    const f = await fascia(via, Math.max(30, t1 + d));
+    if (!f) continue;
+    const letto = await new Promise((ok) => {
+      execFile("python3", [OROLOGIO_PY, "--targa", targa.join(","), f], { timeout: 60000 },
+        (e, so) => { if (e) return ok(null); try { ok(JSON.parse(String(so)).letture[0]); } catch (x) { ok(null); } });
+    });
+    if (letto !== null && letto !== undefined) { rif = f; break; }
+    butta(f);
+  }
+  if (!rif) return { ok: false, errore: "non ho trovato un fotogramma con il cronometro in chiaro" };
+
+  let cambiati = 0;
+  for (const pz of q.pezzi) {
+    const t = pz.t !== undefined ? pz.t : pz.dentro + GOL_PRE;
+    let fine = null;
+    try { fine = await fineDelReplay(via, targa, rif, t); } catch (e) { fine = null; }
+    if (fine === null) { pz.replay = false; continue; }
+    pz.fuori = Math.min(t + 150, fine + 3);
+    pz.replay = true;
+    cambiati++;
+    console.log("[clip] gol al " + (pz.minuto || "?") + ": il replay finisce a " + fine + "s (pezzo " + Math.round(pz.fuori - pz.dentro) + "s)");
+  }
+  butta(rif);
+  // e gia' che il file e' aperto: dove finisce il cartello e comincia
+  // l'intro del telecronista
+  try { await trovaLIntro(r, via); } catch (e) { console.log("[clip] intro: " + e.message); }
+  q.rifinito = Date.now();
+  q.nota = "Rifinito sul cronometro: " + cambiati + " gol su " + q.pezzi.length
+         + " finiscono dove finisce il replay.";
+  scrivi(); annuncia(0, "clip");
+  return { ok: true, cambiati: cambiati, pezzi: q.pezzi.length };
+}
+
+// L'intro trovata sul serio: dal cambio cartello, un minuto, o fino al
+// fischio se il fischio arriva prima. Va a sostituire il primo pezzo degli
+// highlights, quello messo li' a occhio.
+async function trovaLIntro(r, via) {
+  const fischio = (r.kickoff && r.kickoff["1"]) || 0;
+  if (!fischio) return;
+  const q = Object.keys(R.seq).map((k) => R.seq[k])
+    .find((x) => x.reg === r.id && String(x.auto).indexOf("HIGHLIGHTS") === 0);
+  if (!q || !q.pezzi.length) return;
+  const via2 = await inizioCleanFeed(via, fischio);
+  if (via2 === null) { console.log("[clip] intro: cartello non trovato prima del fischio"); return; }
+  const dentro = via2 + 1;
+  const fuori = Math.min(dentro + 60, fischio - 2);
+  if (fuori - dentro < 12) return;
+  const apre = pezzoDa(dentro, fuori, "Apertura del telecronista", "Apertura", "", "apertura", 9);
+  apre.vero = true;
+  if (q.pezzi[0] && q.pezzi[0].tipo === "Apertura") q.pezzi[0] = apre;
+  else q.pezzi.unshift(apre);
+  q.nota = "Si apre dove il cartello lascia il clean feed (" + Math.round(dentro) + "s), "
+         + Math.round(fuori - dentro) + " secondi di intro, poi le azioni.";
+  scrivi(); annuncia(0, "clip");
+  console.log("[clip] intro: cartello fino a " + via2 + "s, fischio a " + fischio + "s");
+}
+
+function rifinitureInCoda() {
+  if (rifinituraInCorso || !CODA_RIFINITURE.length) return;
+  rifinituraInCorso = true;
+  const id = CODA_RIFINITURE.shift();
+  rifinisciGol(id).then((e) => { if (e && !e.ok) console.log("[clip] rifinitura saltata: " + e.errore); })
+    .catch((e) => console.log("[clip] rifinitura: " + e.message))
+    .then(() => { rifinituraInCorso = false; setTimeout(rifinitureInCoda, 1500); });
 }
 
 // Due ancore: un fotogramma nel primo tempo dice a che secondo del file
@@ -3663,8 +3958,10 @@ async function calibraOrologio(rec, rifai) {
     // un'ora da primo tempo (prima del 45') che stia a meno di un quarto
     // d'ora dalla stima
     for (const t of [600, 780, 960, 1200, 1500, 1800, 2100]) {
-      const c = await leggiOrologioSicuro(leggiA, t); esito.letti += 2;
-      if (c === null || c <= 0 || c >= 2700) continue;
+      const e = await leggiOrologioSicuro(leggiA, t, true); esito.letti += 2;
+      const c = e && e.c;
+      if (e && e.cifre && !esito.cifre) esito.cifre = e.cifre;
+      if (c === null || c === undefined || c <= 0 || c >= 2700) continue;
       const inizio1 = t - c;
       if (Math.abs(inizio1) > 1500) continue;
       esito.inizio1 = inizio1; break;
@@ -4552,7 +4849,7 @@ function dataScritta(ms) {
           ("0" + gg).slice(-2) + "/" + ("0" + mm).slice(-2), d.getFullYear()].join(" ");
 }
 
-const FORMATI_DETTI = { "verticale": "9:16", "verticali": "9:16", "story": "9:16",
+const FORMATI_DETTI = { "verticale": "9:16", "verticali": "9:16", "story": "9:16", "quadrato": "1:1", "quadrati": "1:1",
   "orizzontale": "16:9", "orizzontali": "16:9", "feed": "3:4", "quadrotto": "3:4", "quadrata": "3:4" };
 const GENERI_DETTI = { "clip": "clip", "clips": "clip", "integrale": "integrale",
   "integrali": "integrale", "hl": "hl", "highlight": "hl", "highlights": "hl",
@@ -4566,7 +4863,7 @@ function leggiDomanda(q) {
                   "i": 1, "gli": 1, "un": 1, "una": 1, "con": 1, "in": 1, "a": 1, "da": 1 };
   let giorno = 0, mese = -1, anno = 0;
   parole.forEach((p) => {
-    if (/^(9:16|16:9|3:4)$/.test(p)) { fuori.formato = p; return; }
+    if (/^(9:16|16:9|3:4|1:1)$/.test(p)) { fuori.formato = p; return; }
     if (FORMATI_DETTI[p]) { fuori.formato = FORMATI_DETTI[p]; return; }
     if (GENERI_DETTI[p]) { fuori.genere = GENERI_DETTI[p]; return; }
     if (p === "oggi" || p === "ieri") {
@@ -5176,6 +5473,15 @@ const AZIONI = {
              letti: Object.keys(ARCHIVIO).filter((k) => ARCHIVIO[k].orologio).length };
   },
   "clip-archivio-apri": archivioApri,
+  "clip-rifinisci-gol": async (p) => {
+    if (p.seq) return await rifinisciGol(String(p.seq));
+    const r = R.reg[String(p.reg || "")];
+    if (!r) return { ok: false, errore: "registrazione sconosciuta" };
+    const q = Object.keys(R.seq).map((k) => R.seq[k]).find((x) => x.reg === r.id && x.auto === "GOL");
+    if (!q) return { ok: false, errore: "questa partita non ha una sequenza GOL" };
+    if (p.rifai) delete q.rifinito;
+    return await rifinisciGol(q.id);
+  },
   // Apparecchia tutte le partite d'archivio gia' aperte che non hanno
   // ancora le loro sequenze: serve una volta sola, dopo un cambiamento.
   "clip-apparecchia-tutte": async () => {

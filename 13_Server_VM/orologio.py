@@ -209,7 +209,61 @@ def leggi(percorso, box):
     return None, testi
 
 
+def somiglianza(a, b):
+    """Quanto due ritagli si assomigliano, da -1 a 1 (correlazione normalizzata).
+
+    Serve a sapere se la targa del cronometro c'e' o non c'e' senza doverla
+    leggere: le cifre cambiano, ma la targa e' sempre lo stesso disegno. Il
+    lettore di testo ogni tanto non legge anche quando la targa c'e' — e un
+    "non letto" scambiato per "non c'e'" allungava il pezzo del gol dentro
+    il gioco. Il disegno invece o c'e' o non c'e'.
+    """
+    if a.shape != b.shape:
+        return -1.0
+    x, y = a.astype(np.float64).ravel(), b.astype(np.float64).ravel()
+    x -= x.mean(); y -= y.mean()
+    dx, dy = np.sqrt((x * x).sum()), np.sqrt((y * y).sum())
+    if dx < 1e-6 or dy < 1e-6:
+        return -1.0
+    return float((x * y).sum() / (dx * dy))
+
+
+def ritaglio(percorso, box):
+    im = Image.open(percorso).convert("L")
+    x, y, bw, bh = box
+    if bw <= 0 or bh <= 0:                 # zero = tutto il fotogramma
+        return np.asarray(im, dtype=np.float32)
+    return np.asarray(im.crop((x, y, x + bw, y + bh)), dtype=np.float32)
+
+
 def main():
+    # Modo "presente": c'e' la targa in questi fotogrammi? Si confronta il
+    # disegno con quello di un fotogramma in cui la targa c'era di sicuro.
+    if len(sys.argv) >= 5 and sys.argv[1] == "--presente":
+        box = [int(v) for v in sys.argv[2].split(",")]
+        rif = ritaglio(sys.argv[3], box)
+        fuori = []
+        for percorso in sys.argv[4:]:
+            try:
+                fuori.append(round(somiglianza(rif, ritaglio(percorso, box)), 3))
+            except Exception:
+                fuori.append(None)
+        print(json.dumps({"somiglianze": fuori}))
+        return 0
+    # Modo "targa": un fotogramma solo e la scatola gia' nota. Serve a
+    # sapere se in quel momento il cronometro c'e' o non c'e': durante un
+    # replay la regia lo toglie, e quando torna vuol dire che si ricomincia.
+    if len(sys.argv) >= 4 and sys.argv[1] == "--targa":
+        box = [int(v) for v in sys.argv[2].split(",")]
+        letture = []
+        for percorso in sys.argv[3:]:
+            try:
+                n, _ = leggi(percorso, box)
+            except Exception:
+                n = None
+            letture.append(n)
+        print(json.dumps({"letture": letture}))
+        return 0
     if len(sys.argv) < 3:
         print(json.dumps({"errore": "servono due fotogrammi"}))
         return 2
