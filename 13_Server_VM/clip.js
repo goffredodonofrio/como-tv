@@ -2888,8 +2888,11 @@ function trascriviDavvero(lavoro) {
     // macina, chi riparte sa che finestra stava trascrivendo e la raccoglie
     try { fs.writeFileSync(path.join(dir, "voce.corso.json"), JSON.stringify({ da: lavoro.da, a: lavoro.a, intera: !!lavoro.intera, quando: Date.now() })); } catch (e) {}
     const suggeriti = nomiDaSuggerire(r);
+    // -mc 0: ogni finestra si decide da sola, senza portarsi dietro il testo
+    // di quella prima. E' la cura della ripetizione: sulle parole poco chiare
+    // il modello si aggrappava all'ultima e la ripeteva venti volte.
     const args = ["-m", MODELLO, "-l", LINGUA_MAM, "-f", wav, "-oj", "-of",
-                  path.join(dir, "voce"), "-t", "2", "-np", "-nt"];
+                  path.join(dir, "voce"), "-t", "2", "-np", "-nt", "-mc", "0", "-et", "2.8"];
     if (suggeriti) args.push("--prompt", suggeriti);
     // STACCATO DAVVERO. Con execFile whisper scrive su una pipe che appartiene
     // al nodo: se il servizio si riavvia la pipe si rompe e due ore di lavoro
