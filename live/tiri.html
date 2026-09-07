@@ -246,20 +246,37 @@
   // ── stemmi caricati a mano che scavalcano quelli ESPN ────────────────
   // Serve per gli stemmi neri, illeggibili sul fondo navy: e' la stessa
   // convenzione delle formazioni, e la chiave e' il nome della squadra.
-  var SCAVALCO = {};
+  var SCAVALCO = {}, FACCE = {};
   function slugM(nome) {
     return String(nome || "").toLowerCase()
       .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
       .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
   }
-  fetch(PONTE + "?loghi=1", { cache: "no-store" })
+  // Il cognome si accorcia con la stessa regola delle formazioni premium —
+  // se cambia una, va cambiata l'altra, se no le foto smettono di trovarsi.
+  // Nessun taglio di lunghezza, qui: e' la regola di la'.
+  function slugCog(c) {
+    return String(c || "").toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  }
+  var LOGHI_PRONTI = fetch(PONTE + "?loghi=1", { cache: "no-store" })
     .then(function (r) { return r.json(); })
     .then(function (j) {
       (j.loghi || []).forEach(function (x) {
-        if (!/^(maglia|foto)-/.test(x.chiave)) SCAVALCO[x.chiave] = BASEIMG + x.url;
+        // le facce dei giocatori sono quelle delle formazioni premium: stesso
+        // magazzino, stesso nome, nessuna copia da tenere allineata
+        if (/^foto-premium-/.test(x.chiave)) FACCE[x.chiave] = BASEIMG + x.url;
+        else if (!/^(maglia|foto)-/.test(x.chiave)) SCAVALCO[x.chiave] = BASEIMG + x.url;
       });
     })
     .catch(function () {});
+  function faccia(cognome) {
+    if (!cognome) return "";
+    // Solo se c'e' davvero. Passare un indirizzo a caso e sperare che carichi
+    // vuol dire mandare in onda un buco: meglio saperlo qui.
+    return FACCE["foto-premium-" + slugCog(cognome)] || "";
+  }
   function stemma(id, nome) {
     var mio = SCAVALCO[slugM(nome)];
     if (mio) return mio;
@@ -301,7 +318,9 @@
         el("ga").value = SQ.a.g; el("gb").value = SQ.b.g;
 
         nota("Scarico le giocate&hellip;");
-        giocate(comp.code, part.id)
+        // Si aspetta l'elenco del magazzino: se le giocate arrivassero prima,
+        // le facce risulterebbero tutte mancanti e nessuno capirebbe perche'.
+        LOGHI_PRONTI.then(function () { return giocate(comp.code, part.id); })
           .then(function (items) {
             TIRI = daGiocate(items, idCasa, ROSA);
             if (!TIRI.length) {
@@ -351,12 +370,14 @@
       var sqId = ((p.team || {}).$ref || "").match(/\/teams\/(\d+)/);
       var pa = (p.participants || [])[0] || {};
       var atl = ((pa.athlete || {}).$ref || "").match(/\/athletes\/(\d+)/);
+      var cognome = atl ? (ROSA[atl[1]] || "") : "";
       out.push({
         q: (sqId && sqId[1] === idCasa) ? "a" : "b",
         x: +p.fieldPositionX, y: +p.fieldPositionY,
         e: DA_ESPN[tipo],
         m: ((p.clock || {}).displayValue || "").trim(),
-        p: atl ? (ROSA[atl[1]] || "") : "",
+        p: cognome,
+        f: faccia(cognome),
         tempo: ((p.period || {}).number) || 1,
         via: false
       });
@@ -395,7 +416,10 @@
       return '<tr class="' + (t.via || fuoriFiltro ? "spento" : "") + '">' +
         '<td class="min">' + esc(t.m || "") + '</td>' +
         '<td class="es"><i style="' + PALLINO[t.e] + '"></i>' + esc(NOME_ESITO[t.e]) + '</td>' +
-        '<td class="chi">' + esc(t.p || "&mdash;") + '</td>' +
+        '<td class="chi">' + esc(t.p || "\u2014") +
+          (t.e === "gol" && !t.f ? ' <span style="font-family:\'DM Sans\',sans-serif;font-weight:500;' +
+            'text-transform:none;letter-spacing:0;font-size:11px;color:#8A8B96">senza foto</span>' : "") +
+        '</td>' +
         '<td class="sq">' + esc(t.q === "a" ? SQ.a.n : SQ.b.n) + '</td>' +
         '<td class="via"><button type="button" data-via="' + i + '">' +
           (t.via ? "Rimetti" : "Togli") + '</button></td>' +
@@ -427,7 +451,11 @@
       a: { n: el("na").value.trim(), l: SQ.a.l, g: el("ga").value.trim() },
       b: { n: el("nb").value.trim(), l: SQ.b.l, g: el("gb").value.trim() },
       s: TIRI.filter(dentro).map(function (t) {
-        return { q: t.q, x: t.x, y: t.y, e: t.e, m: t.m, p: t.p };
+        var o = { q: t.q, x: t.x, y: t.y, e: t.e, m: t.m, p: t.p };
+        // la faccia serve solo nell'elenco dei gol della colonna: mandarla per
+        // tutti i tiri gonfierebbe l'indirizzo senza che si veda niente
+        if (t.e === "gol" && t.f) o.f = t.f;
+        return o;
       })
     };
   }
