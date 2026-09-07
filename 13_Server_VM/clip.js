@@ -1099,9 +1099,15 @@ async function preparaSequenze(p) {
       const ult = golShorts[golShorts.length - 1];
       // l'ambientale di coda: senza, il video taglia di netto su un'azione
       golShorts[golShorts.length - 1] = Object.assign({}, ult, { fuori: ult.fuori + 3, coda: true });
+      const sannoIlReplay = golShorts.filter((x) => {
+        const t = x.t !== undefined ? x.t : x.dentro + GOL_PRE;
+        return ARCHIVIO[rec] && ARCHIVIO[rec].primoReplay && ARCHIVIO[rec].primoReplay[String(Math.round(t))];
+      }).length;
       crea("SHORTS", golShorts,
            "Regole social: un replay per gol, niente gol annullati (se non lo dice il giornalista), " +
-           "niente falli da rigore, niente outro. Tre secondi di ambientale in coda per la sfumata.");
+           "niente falli da rigore, niente outro. Tre secondi di ambientale in coda per la sfumata. " +
+           (sannoIlReplay ? sannoIlReplay + " gol su " + golShorts.length + " tagliati sul primo replay letto dal cronometro."
+                          : "Su questo feed il cronometro non dice dove finisce il replay: il taglio e' a 55 secondi dal gol, da rifinire a mano."));
     }
   }
 
@@ -4517,8 +4523,19 @@ async function rifinisciGol(idSeq) {
   // l'intro del telecronista
   try { await trovaLIntro(r, via); } catch (e) { console.log("[clip] intro: " + e.message); }
   q.rifinito = Date.now();
-  q.nota = "Rifinito sul cronometro: " + cambiati + " gol su " + q.pezzi.length
-         + " finiscono dove finisce il replay.";
+  // Se il cronometro non ha detto niente su NESSUN gol, non e' un caso: e'
+  // un feed che tiene la grafica accesa anche durante i replay. Va scritto,
+  // se no si crede che la rifinitura sia passata e invece sono maniglie a
+  // occhio. Misurato: Genoa la toglie, Groningen no.
+  if (!cambiati) {
+    a.replayNo = true; scriviArchivio();
+    q.nota = "Il cronometro di questo feed resta acceso anche sui replay, quindi non dice dove finiscono: "
+           + "i gol tengono le maniglie larghe (" + GOL_PRE + "s prima, " + GOL_POST + "s dopo).";
+  } else {
+    delete a.replayNo;
+    q.nota = "Rifinito sul cronometro: " + cambiati + " gol su " + q.pezzi.length
+           + " finiscono dove finisce il replay.";
+  }
   scrivi(); annuncia(0, "clip");
   return { ok: true, cambiati: cambiati, pezzi: q.pezzi.length };
 }
