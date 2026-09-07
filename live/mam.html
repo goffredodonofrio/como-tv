@@ -98,12 +98,27 @@
      lista direbbe due volte la stessa cosa */
   body.modo-live #liveCorpo #albero > .sez:first-child{display:none;}
   body.modo-live #colLive > .console{flex:0 0 auto;border-bottom:1px solid #0F0F0F;background:#171717;}
+  /* I BORDI SI PRENDONO. Erano sei pixel trasparenti che si accendevano
+     solo passandoci sopra per caso: c'erano, ma non si vedevano, quindi
+     tanto valeva che non ci fossero. Adesso ogni bordo ha una linea sempre
+     visibile, una zona di presa larga il doppio (che sborda sui pannelli
+     senza rubare spazio) e tre puntini al centro, che sono il modo in cui
+     tutti i programmi dicono "questo si trascina". */
   .sepV{cursor:col-resize;background:transparent;position:relative;z-index:40;}
-  .sepV::after{content:'';position:absolute;top:0;bottom:0;left:2px;width:2px;background:transparent;transition:background .15s;}
-  .sepV:hover::after,.sepV.presa::after{background:#2D8CEB;}
-  .sepH{position:absolute;left:0;right:0;top:-3px;height:7px;cursor:row-resize;z-index:60;}
-  .sepH::after{content:'';position:absolute;left:0;right:0;top:2px;height:2px;background:transparent;transition:background .15s;}
-  .sepH:hover::after,.sepH.presa::after{background:#2D8CEB;}
+  .sepV::before{content:'';position:absolute;top:0;bottom:0;left:-4px;right:-4px;}
+  .sepV::after{content:'';position:absolute;top:0;bottom:0;left:2px;width:2px;
+    background:var(--linea,#2A2A2A);transition:background .15s,box-shadow .15s;}
+  .sepV:hover::after,.sepV.presa::after{background:#2D8CEB;box-shadow:0 0 0 1px rgba(45,140,235,.35);}
+  .sepV .grip{position:absolute;top:50%;left:0;width:6px;height:26px;margin-top:-13px;pointer-events:none;
+    background:radial-gradient(circle,#6E7379 1px,transparent 1.2px) 0 0/3px 5px repeat-y;opacity:.75;}
+  .sepV:hover .grip,.sepV.presa .grip{background-image:radial-gradient(circle,#8FC5F5 1px,transparent 1.2px);opacity:1;}
+  .sepH{position:absolute;left:0;right:0;top:-5px;height:11px;cursor:row-resize;z-index:60;}
+  .sepH::after{content:'';position:absolute;left:0;right:0;top:4px;height:2px;
+    background:var(--linea,#2A2A2A);transition:background .15s,box-shadow .15s;}
+  .sepH:hover::after,.sepH.presa::after{background:#2D8CEB;box-shadow:0 0 0 1px rgba(45,140,235,.35);}
+  .sepH .grip{position:absolute;left:50%;top:3px;width:34px;height:5px;margin-left:-17px;pointer-events:none;
+    background:radial-gradient(circle,#6E7379 1px,transparent 1.2px) 0 0/5px 3px repeat-x;opacity:.75;}
+  .sepH:hover .grip,.sepH.presa .grip{background-image:radial-gradient(circle,#8FC5F5 1px,transparent 1.2px);opacity:1;}
   body.ridimensiono{user-select:none;}
   body.ridimensiono *{pointer-events:none;}
 
@@ -692,6 +707,10 @@
      barretta con le parentesi di entrata e uscita, la fila dei comandi a
      icone. Le icone sono quelle: chi monta le riconosce senza leggere. */
   .monitori{display:grid;grid-template-columns:calc(var(--split) * 1%) 6px minmax(0,1fr);gap:0 11px;align-items:start;}
+  /* align-items:start faceva collassare la maniglia fra i due monitor a
+     zero pixel d'altezza: c'era, ma non la si poteva prendere. Lei sola si
+     tira per tutta l'altezza. */
+  .monitori > #sepMon{align-self:stretch;min-height:120px;}
   /* "Sorgente grande": il Programma non e' un gemello, e' un controllo. Sta
      sotto, alto un terzo, e la Sorgente si prende tutta la larghezza. */
   body.monitor-impilati .monitori{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto;gap:10px 0;}
@@ -2495,7 +2514,19 @@
         if (somma || TL.multi.indexOf(pz[i].id) < 0) scegliPezzi([pz[i].id], somma);
         if (somma) { e.preventDefault(); disegnaTimeline(); return; }
         TL.drag = { id: pz[i].id, i: i, x0: e.clientX, mosso: false };
-        MON = "p"; el("monS").classList.remove("attivo"); el("monP").classList.add("attivo");
+        fuocoMonitor("p");
+        // LA TESTINA VA DOVE HAI CLICCATO, anche sopra una clip. Cosi' il
+        // Programma mostra QUEL fotogramma, con la sua posizione dentro il
+        // montato intero: si clicca dove si ha un dubbio e si vede subito
+        // com'e' venuto. Senza, il clic sceglieva il pezzo e basta, e per
+        // guardarlo bisognava andare a cercare il righello.
+        var tb = tempoSeq(e);
+        if (tb !== null) {
+          var db = pezzoAlTempo(tb);
+          if (db) { var vpb = el("programma"); progVai(db.i, !!(vpb && !vpb.paused), db.dentro); }
+        }
+        // niente scrub trascinando: da qui il trascinamento riordina i
+        // pezzi, che serve di piu'. Per scorrere c'e' il righello.
         e.preventDefault(); disegnaTimeline(); return;
       }
       // Sul vuoto, con lo strumento selezione, comincia il riquadro: si
@@ -5179,8 +5210,14 @@
       presa.h.classList.remove("presa"); document.body.classList.remove("ridimensiono"); presa = null;
       telaioForma(); disegnaTutto();
     });
+    // i tre puntini in mezzo a ogni maniglia, messi qui una volta sola
+    function grip(id) {
+      var h = el(id); if (!h || h.querySelector(".grip")) return;
+      var g = document.createElement("span"); g.className = "grip"; h.appendChild(g);
+    }
     attacca("sepProj", "proj"); attacca("sepTl", "tl"); attacca("sepLive", "live");
-    var giri = 0, att = setInterval(function () { if (el("sepMon") || ++giri > 40) { clearInterval(att); attacca("sepMon", "mon"); } }, 250);
+    ["sepProj", "sepTl", "sepLive"].forEach(grip);
+    var giri = 0, att = setInterval(function () { if (el("sepMon") || ++giri > 40) { clearInterval(att); attacca("sepMon", "mon"); grip("sepMon"); } }, 250);
   })();
   function barra() {
     var aperte = REGISTRAZIONI.filter(function (r) { return r.stato === "registra"; });
