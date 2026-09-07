@@ -732,6 +732,9 @@ const APP_PRE = 30, APP_POST = 45;      // un'azione qualsiasi: c'e' aria per il
 const GOL_PRE = 35, GOL_POST = 80;      // un gol il replay ce l'ha sempre, e lungo
 const HL_STRETTO_PRE = 8, HL_STRETTO_POST = 12;   // quando bisogna stare nei minuti
 const HL_DURATA = 300;                  // cinque minuti: apertura del telecronista compresa
+const INTRO_DURATA = 90;                // dal cambio cartello: un minuto e mezzo, che la frase
+                                        //   di apertura finisce dopo il minuto
+const INIZIO_PRE = 20, INIZIO_POST = 20; // il calcio d'inizio, venti prima e venti dopo
 
 function pezzoDa(dentro, fuori, titolo, tipo, minuto, fonte, peso) {
   return { id: nuovoId("p"), dentro: Math.max(0, Math.round(dentro * 10) / 10),
@@ -882,8 +885,12 @@ function pezzoApertura(r) {
   const rec0 = r.evento || (r.arch && r.arch.rec) || "";
   const noto = ARCHIVIO[rec0] && ARCHIVIO[rec0].cartello;
   if (noto && via - noto > 20) {
-    const p0 = pezzoDa(noto + 1, Math.min(noto + 61, via - 2), "Apertura del telecronista",
-                       "Apertura", "", "apertura", 9);
+    // Novanta secondi dal cambio cartello: a sessanta la frase di apertura
+    // resta a meta'. Se il fischio arriva prima, si taglia li' — quello che
+    // viene dopo lo prende il pezzo del calcio d'inizio.
+    const da0 = Math.max(0, noto - 3);
+    const p0 = pezzoDa(da0, Math.min(da0 + INTRO_DURATA, via - INIZIO_PRE - 1),
+                       "Apertura del telecronista", "Apertura", "", "apertura", 9);
     p0.vero = true;
     return p0;
   }
@@ -903,6 +910,15 @@ function pezzoApertura(r) {
                  "Apertura", "", "apertura", 9);
 }
 
+// IL CALCIO D'INIZIO. Venti secondi prima e venti dopo il fischio: e' il
+// secondo pezzo di ogni montato, quello che dice "si comincia". Il fischio
+// non e' stimato, lo ha letto il cronometro.
+function pezzoCalcioInizio(r) {
+  const via = (r.kickoff && r.kickoff["1"]) || 0;
+  if (via < INIZIO_PRE + 2) return null;
+  return pezzoDa(via - INIZIO_PRE, via + INIZIO_POST, "Calcio d'inizio", "Inizio", "", "inizio", 9);
+}
+
 async function preparaSequenze(p) {
   const r = R.reg[String(p.reg || "")];
   if (!r) throw new Error("registrazione sconosciuta");
@@ -914,7 +930,11 @@ async function preparaSequenze(p) {
   const gia = Object.keys(R.seq).map((k) => R.seq[k]).filter((q) => q.reg === r.id && q.auto);
   // "rifai" e' il permesso esplicito di buttare via il montaggio a mano e
   // ricominciare da quello che sappiamo. Senza, non si tocca niente.
-  if (p.rifai) gia.forEach((q) => { delete q.mano; delete q.rifinito; });
+  if (p.rifai) {
+    gia.forEach((q) => { delete q.mano; delete q.rifinito; });
+    const a0 = ARCHIVIO[rec];
+    if (a0 && a0.cartello) { delete a0.cartello; scriviArchivio(); }   // si riguarda anche dove finisce il cartello
+  }
   const fatte = [];
   // l'ordine in cui compaiono e' l'ordine in cui servono: prima i gol
   let posto = 0;
@@ -951,14 +971,17 @@ async function preparaSequenze(p) {
       dentro: Math.max(0, (x.t !== undefined ? x.t : x.dentro + APP_PRE) - HL_STRETTO_PRE),
       fuori: (x.t !== undefined ? x.t : x.dentro + APP_PRE) + HL_STRETTO_POST
     }));
-    // l'apertura non entra in gara con le azioni: si mette in testa e il
-    // resto del tempo se lo dividono loro
-    const apre = pezzoApertura(r);
-    const spazio = HL_DURATA - (apre ? (apre.fuori - apre.dentro) : 0);
-    const scelti = stringiAllaDurata(strette, spazio, HL_STRETTO_PRE, HL_STRETTO_POST);
+    // La testa del montato non entra in gara con le azioni: prima la voce
+    // che presenta, poi il fischio d'inizio, poi il gioco. Il tempo che
+    // resta se lo dividono le azioni.
+    const testa = [pezzoApertura(r), pezzoCalcioInizio(r)].filter(Boolean);
+    const quantoTesta = testa.reduce((n, x) => n + (x.fuori - x.dentro), 0);
+    // e le azioni che cadono dentro la testa non si ripetono
+    const libere = strette.filter((x) => !testa.some((t) => x.dentro < t.fuori && t.dentro < x.fuori));
+    const scelti = stringiAllaDurata(libere, Math.max(60, HL_DURATA - quantoTesta), HL_STRETTO_PRE, HL_STRETTO_POST);
     const dentro = (scelti.pezzi || []).sort((a, b) => a.dentro - b.dentro);
-    crea("HIGHLIGHTS 5′", (apre ? [apre] : []).concat(dentro),
-         (apre ? "Si apre con il telecronista, poi le azioni che pesano di piu'. " : "")
+    crea("HIGHLIGHTS 5′", testa.concat(dentro),
+         (testa.length ? "Si apre con il telecronista, poi il calcio d'inizio, poi le azioni che pesano di piu'. " : "")
          + (scelti.nota ? scelti.nota + " " : "") + "Maniglie strette: qui si sta nei cinque minuti.");
   }
   crea("GOL", sap.gol, "dai " + GOL_PRE + " secondi prima ai " + GOL_POST + " dopo: dentro c'e' l'azione, l'esultanza e il replay");
@@ -3862,21 +3885,38 @@ async function inizioCleanFeed(via, fischio) {
   try {
     const prova = await somiglia(50);
     if (prova === undefined || prova < 0.45) return null;   // niente cartello: si comincia gia' in campo
+    // NON CI SI FERMA AL PRIMO FOTOGRAMMA DIVERSO. Il "COMING SOON" e'
+    // un'animazione che ogni tanto passa dal nero: un fotogramma preso li'
+    // non somiglia al cartello, e la ricerca si fermava mezzo minuto dopo
+    // l'inizio dicendo che il cartello era finito. Su Groningen-Twente il
+    // cartello arrivava fino oltre il secondo 255 e l'intro cominciava a
+    // 171, cioe' su un altro pezzo di cartello.
+    //
+    // Il clean feed invece, una volta cominciato, non torna indietro:
+    // servono DUE sguardi di fila diversi dal cartello per crederci.
     const fine = fischio - 15;
-    let ultimoCartello = 50, primoFeed = null;
+    let ultimoCartello = 50, primoFeed = null, sospetto = null;
     for (let s = 80; s <= fine; s += 30) {
       const q = await somiglia(s);
       if (q === undefined) continue;
-      if (q >= 0.45) { ultimoCartello = s; continue; }
-      primoFeed = s; break;
+      if (q >= 0.45) { ultimoCartello = s; sospetto = null; continue; }
+      if (sospetto === null) { sospetto = s; continue; }   // il primo puo' essere il nero
+      primoFeed = sospetto; break;                          // due di fila: e' cominciata la partita
     }
     console.log("[clip] cartello: ultimo a " + ultimoCartello + "s, primo clean feed a " + primoFeed + "s (fischio " + fischio + "s)");
     if (primoFeed === null) return null;
+    // e nel restringere, un solo fotogramma scuro non basta a spostare il
+    // confine: si controlla anche cinque secondi dopo
     let basso = ultimoCartello, alto = primoFeed;
     for (let giro = 0; giro < 4 && alto - basso > 4; giro++) {
       const mezzo = Math.round((basso + alto) / 2);
       const q = await somiglia(mezzo);
-      if (q !== undefined && q >= 0.45) basso = mezzo; else alto = mezzo;
+      let cartello = q !== undefined && q >= 0.45;
+      if (!cartello) {
+        const q2 = await somiglia(mezzo + 5);
+        if (q2 !== undefined && q2 >= 0.45) cartello = true;   // era solo il nero fra due giri
+      }
+      if (cartello) basso = mezzo; else alto = mezzo;
     }
     return alto;
   } finally { butta(rif); }
@@ -3973,15 +4013,20 @@ async function trovaLIntro(r, via) {
     if (via2 === null) { console.log("[clip] intro: cartello non trovato prima del fischio"); return; }
     if (a) { a.cartello = via2; scriviArchivio(); }
   }
-  const dentro = via2 + 1;
-  const fuori = Math.min(dentro + 60, fischio - 2);
+  // Tre secondi di margine all'indietro: la ricerca stringe a quattro
+  // secondi, e sbagliare in avanti vuol dire cominciare a frase iniziata.
+  // Sbagliare indietro vuol dire aprire sugli ultimi istanti del cartello,
+  // che in un montato sembra un titolo. Fra i due errori si sceglie quello
+  // che non costa niente.
+  const dentro = Math.max(0, via2 - 3);
+  const fuori = Math.min(dentro + INTRO_DURATA, fischio - INIZIO_PRE - 1);
   if (fuori - dentro < 12) return;
   const apre = pezzoDa(dentro, fuori, "Apertura del telecronista", "Apertura", "", "apertura", 9);
   apre.vero = true;
-  if (q.pezzi[0] && q.pezzi[0].tipo === "Apertura") q.pezzi[0] = apre;
-  else q.pezzi.unshift(apre);
+  const dove = q.pezzi.findIndex((x) => x.tipo === "Apertura");
+  if (dove >= 0) q.pezzi[dove] = apre; else q.pezzi.unshift(apre);
   q.nota = "Si apre dove il cartello lascia il clean feed (" + Math.round(dentro) + "s), "
-         + Math.round(fuori - dentro) + " secondi di intro, poi le azioni.";
+         + Math.round(fuori - dentro) + " secondi di intro, poi il calcio d'inizio, poi le azioni.";
   scrivi(); annuncia(0, "clip");
   console.log("[clip] intro: cartello fino a " + via2 + "s, fischio a " + fischio + "s");
 }
