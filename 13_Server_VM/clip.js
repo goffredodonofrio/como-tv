@@ -2759,6 +2759,13 @@ async function archivioScandaglia(p) {
   const chiaveDoppia = (g, t) => g + "|" + String(t || "").toUpperCase().replace(/\[[^\]]*\]|\(.*?\)|\b\d+\s*-\s*\d+\b/g, "").replace(/[^A-Z0-9]+/g, " ").trim();
   const linkate = {};
   Object.keys(ARCHIVIO).forEach((k) => { if (k.indexOf("s3:") !== 0) linkate[chiaveDoppia(ARCHIVIO[k].giorno, ARCHIVIO[k].partita)] = k; });
+  // I minuti misurati appartengono al FILE, non alla partita: si tengono da
+  // parte e si rimettono, se no ogni giro dell'indice li butta e bisogna
+  // rimisurare ventiduemila file (e rifare la scelta del materiale).
+  const durateNote = {};
+  Object.keys(ARCHIVIO).forEach((k) => (ARCHIVIO[k].pezzi || []).forEach((x) => {
+    if (x.chiave && x.minuti) durateNote[x.chiave] = x.minuti;
+  }));
   const orologiSoleS3 = {};
   Object.keys(ARCHIVIO).forEach((k) => {
     if (k.indexOf("s3:") !== 0 || ARCHIVIO[k].bucket !== bucket) return;
@@ -2799,8 +2806,16 @@ async function archivioScandaglia(p) {
     soleS3++;
   });
 
+  // si rimettono i minuti conosciuti, e chi li ha tutti non va rimisurato
+  let riavuti = 0;
+  Object.keys(ARCHIVIO).forEach((k) => {
+    const a = ARCHIVIO[k], pz = a.pezzi || [];
+    pz.forEach((x) => { if (!x.minuti && durateNote[x.chiave]) { x.minuti = durateNote[x.chiave]; riavuti++; } });
+    if (pz.length && pz.every((x) => x.minuti)) a.misurato = a.misurato || new Date().toISOString();
+  });
+  if (riavuti) console.log("[clip] archivio: " + riavuti + " durate gia' note rimesse a posto");
   scriviArchivio();
-  return { ok: true, oggettiVisti: visti, fileTenuti: tenuti,
+  return { ok: true, oggettiVisti: visti, fileTenuti: tenuti, durateRimesse: riavuti,
            cartellePartita: Object.keys(gruppi).length,
            partiteViste: tornate, agganciate: agganciate, intere: intere, doppieAssorbite: assorbite, promosseAIntere: promosse,
            conKickoff: conKickoff, soloS3: soleS3, senzaAggancio: orfane.slice(0, 15) };
@@ -3615,11 +3630,16 @@ function giraDurate() {
     .then(() => { durateInMoto--; setTimeout(giraDurate, 200); });
   setTimeout(giraDurate, 1500);
 }
-function durateInCoda() {
+// Anche misurare costa: ffprobe legge l'indice di ogni file, e ventiduemila
+// file sono qualche decina di giga. Lo stesso filtro dei cronometri tiene il
+// lavoro dentro il traffico che AWS regala; le altre si misurano quando
+// qualcuno le apre.
+function durateInCoda(tutte) {
   const gia = new Set(CODA_DURATE);
   Object.keys(ARCHIVIO).forEach((rec) => {
     const a = ARCHIVIO[rec];
     if (a.misurato || gia.has(rec)) return;
+    if (!tutte && !passaFiltro(a)) return;
     CODA_DURATE.push(rec);
   });
   // prima le partite che qualcuno ha gia' aperto nel progetto (il nome e il
@@ -4046,16 +4066,20 @@ async function capisciRighe(tetto) {
     const grande = new Float32Array((SIGN.quanti + daFare.length) * VETT_DIM);
     if (vecchi) grande.set(vecchi.subarray(0, SIGN.quanti * VETT_DIM));
     let scritti = SIGN.quanti;
-    for (let i = 0; i < daFare.length; i += 32) {
+    // Lotti piccoli e un respiro fra l'uno e l'altro: il modello lavora sul
+    // filo principale, e a lotti da trentadue il ponte smetteva di rispondere
+    // per mezzo secondo alla volta (nel log erano 504).
+    for (let i = 0; i < daFare.length; i += 8) {
       if (registrandoDavvero()) { console.log("[clip] significato: c'e' una diretta, mi fermo"); break; }
-      const lotto = daFare.slice(i, i + 32);
+      await new Promise((r) => setTimeout(r, 15));
+      const lotto = daFare.slice(i, i + 8);
       const v = await estrai(lotto.map((x) => "passage: " + x.testo.slice(0, 400)), { pooling: "mean", normalize: true });
       lotto.forEach((x, k) => {
         grande.set(v.data.subarray(k * VETT_DIM, (k + 1) * VETT_DIM), scritti * VETT_DIM);
         SIGN.ids.push(x.id); SIGN.meta.push(x.meta); scritti++;
       });
       SIGN.fatti += lotto.length;
-      if (scritti % 2048 < 32) console.log("[clip] significato: " + scritti + " righe su " + tutte.length);
+      if (scritti % 2048 < 8) console.log("[clip] significato: " + scritti + " righe su " + tutte.length);
     }
     SIGN.vett = grande; SIGN.quanti = scritti; SIGN.pronto = scritti > 0;
     scriviVettori();
@@ -4880,8 +4904,8 @@ const AZIONI = {
     const e = await espnTrova(String(p.rec || "")); scriviEspn(); return { ok: true, espn: e };
   },
   "clip-archivio-durate": (p) => {
-    if (p.avvia) durateInCoda();
-    return { ok: true, inCoda: CODA_DURATE.length, fatte: durateFatte, fallite: durateFallite, cambiate: durateCambiate,
+    if (p.avvia) durateInCoda(!!p.tutte);
+    return { ok: true, inCoda: CODA_DURATE.length, fatte: durateFatte, fallite: durateFallite, cambiate: durateCambiate, filtro: FILTRO_OROLOGI,
              inMoto: durateInMoto, misurate: Object.keys(ARCHIVIO).filter((k) => ARCHIVIO[k].misurato).length };
   },
   "clip-archivio-orologi": (p) => {
