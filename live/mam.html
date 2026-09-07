@@ -221,6 +221,9 @@
   .formatiSeq{display:flex;flex-wrap:wrap;gap:3px;justify-content:center;width:100%;}
   .formatiSeq .b{padding:3px 6px;font-size:10px;min-width:0;}
   .formatiSeq .b.guardato{outline:1px solid var(--oro,#C8A24A);outline-offset:1px;}
+  .mbarra .tot.tratto{color:var(--oro,#C8A24A);}
+  .mbarra .tot .dituttoQ{font-style:normal;font-size:9px;letter-spacing:.04em;margin-left:6px;
+    color:var(--inchiostro-3,#8A8A8A);}
   .tlriquadro{position:absolute;z-index:40;pointer-events:none;border:1px solid #7FC4EE;
     background:rgba(127,196,238,.14);border-radius:2px;}
   .tlpista .clipV.sel{background:var(--tl-clipsel);}
@@ -1642,7 +1645,7 @@
       if (!el("tPos")) return;                     // la vista e' cambiata: non c'e' piu' dove scrivere
       var tot = REG ? (REG.durata || v.duration || 0) : (v.duration || 0);
       el("tPos").textContent = tc(v.currentTime);
-      el("tTot").textContent = tc(tot);
+      scriviDurata("tTot", (dentro !== null && fuori !== null && fuori > dentro) ? (fuori - dentro) : null, tot);
       if (tot) { el("slider").max = tot; el("slider").value = v.currentTime; }
       disegnaPista(); disegnaTimeline(); disegnaScrub();
     });
@@ -1923,7 +1926,10 @@
     var sc = el("scrubP"), v = el("programma"); if (!sc) return;
     var pz = pezziProg(), tot = durataSeq();
     if (el("capoSeq")) el("capoSeq").textContent = SEQ ? (SEQ.titolo || "sequenza") + " · " + pz.length + " pezzi" : "nessuna sequenza";
-    if (el("pTot")) el("pTot").textContent = tc(tot);
+    // nel Programma il "tratto" e' il pezzo su cui sta la testina: e' quello
+    // che stai guardando, ed e' il numero che si cerca mentre si monta
+    var sotto = pz[PROG.i];
+    scriviDurata("pTot", sotto ? (sotto.fuori - sotto.dentro) : null, tot);
     if (!pz.length) { sc.innerHTML = ""; if (el("pPos")) el("pPos").textContent = tc(0); targaP(null); return; }
     var acc = 0, out = [], oraT = 0;
     pz.forEach(function (x, i) {
@@ -2784,10 +2790,15 @@
   function mostraInOut() {
     disegnaPista(); disegnaTimeline(); disegnaScrub();
     var d = (dentro !== null && fuori !== null) ? fuori - dentro : null;
-    // in mezzo alla barra del monitor: la durata di quello che si sta per
-    // tagliare, come fa Premiere; "adatta" quando non c'e' niente di scelto
+    // La durata sta a DESTRA, dove la mette Premiere, e cambia da sola:
+    // tutto il materiale finche' non segni niente, il tratto entrata→uscita
+    // appena segni. In mezzo resta l'etichetta, che prima veniva sostituita
+    // dal numero e faceva due volte lo stesso lavoro.
     var f = el("fitS");
-    if (f) f.textContent = d !== null && d > 0 ? tc(d) + "  \u00b7  " + d.toFixed(1) + "s" : "adatta";
+    if (f) f.textContent = "adatta";     // il numero sta a destra, non due volte
+    var vs2 = el("player");
+    scriviDurata("tTot", (d !== null && d > 0) ? d : null,
+                 REG ? (REG.durata || (vs2 && vs2.duration) || 0) : ((vs2 && vs2.duration) || 0));
     var bt = el("btnTaglia"), bi = el("btnInserisci");
     var puo = !!(REG && !REG.guarda && d !== null && d > 0.5);
     if (bt) bt.disabled = !puo;
@@ -3290,6 +3301,21 @@
     applicaEPoi(function (q) { var z = q.pezzi.filter(function (p) { return p.id === x.id; })[0]; if (z) { z.dentro = d1; z.fuori = f1; } },
                 { tipo: "clip-hl-pezzo", seq: SEQ.id, pezzo: x.id, dentro: d1, fuori: f1 },
                 function () { dice("Pezzo sostituito \u00b7 " + tc(d1) + " \u2192 " + tc(f1) + " (" + Math.round(f1 - d1) + "s)", true); });
+  }
+  // LA DURATA A DESTRA. Come in Premiere: finche' non segni niente e' la
+  // durata di tutto; appena segni entrata e uscita diventa la durata del
+  // tratto segnato, che e' il numero che serve quando stai tagliando. Il
+  // totale non sparisce, si fa piccolo di fianco: se no per sapere quanto
+  // dura la partita bisognava togliere i segni.
+  function scriviDurata(idTot, durataTratto, durataTutto) {
+    var e = el(idTot); if (!e) return;
+    if (durataTratto === null || durataTratto === undefined) {
+      e.innerHTML = tc(durataTutto); e.classList.remove("tratto"); e.title = "durata";
+      return;
+    }
+    e.innerHTML = tc(durataTratto) + '<i class="dituttoQ">' + tc(durataTutto) + '</i>';
+    e.classList.add("tratto");
+    e.title = "durata di entrata\u2192uscita \u00b7 in piccolo, tutto";
   }
   function strumentoVisto() {
     var p = el("tlPista"); if (p) p.classList.toggle("lametta", STRUMENTO === "c");
