@@ -5452,6 +5452,111 @@ async function giroEspn() {
 //  ne va da solo dopo qualche giorno; restano il record, i marker e le clip
 //  gia' tagliate, che pesano niente e servono ancora.
 
+// ══════════════════════════════════════════════════════════════════════
+//  LE USCITE SI CANCELLANO DA SOLE
+// ══════════════════════════════════════════════════════════════════════
+//
+//  Un video esportato e' una COPIA: la sequenza resta, il materiale resta,
+//  e rifarlo costa un minuto di macchina. Tenerlo per sempre invece costa
+//  disco per sempre — e infatti sette file avevano preso dieci giga, uno
+//  solo da 8,2, su un disco che ne ha cinquanta liberi. Nessuno li
+//  cancellava perche' nessuno sapeva che c'erano.
+//
+//  Quindi scadono: dopo una settimana l'uscita se ne va e resta la
+//  sequenza, che e' quello che serve per rifarla. Gli avanzi senza piu'
+//  padrone (la sequenza cancellata, l'export interrotto) se ne vanno dopo
+//  un giorno. E se il disco scende sotto la soglia si comincia dalle piu'
+//  vecchie, senza aspettare la scadenza.
+const GIORNI_USCITE = parseFloat(process.env.COMOTV_USCITE_GIORNI || "7");
+const DISCO_MINIMO = parseFloat(process.env.COMOTV_DISCO_MINIMO || "12");   // giga liberi sotto i quali si fa spazio
+
+function pesoDiUnPezzo(via) {
+  try {
+    const st = fs.statSync(via);
+    if (!st.isDirectory()) return { peso: st.size, quando: st.mtimeMs };
+    let tot = 0, ultimo = st.mtimeMs;
+    for (const n of fs.readdirSync(via)) {
+      const q = pesoDiUnPezzo(path.join(via, n));
+      tot += q.peso; ultimo = Math.max(ultimo, q.quando);
+    }
+    return { peso: tot, quando: ultimo };
+  } catch (e) { return { peso: 0, quando: 0 }; }
+}
+
+// Tutto quello che sta nelle cartelle delle uscite, con l'eta' e il padrone.
+function uscite() {
+  const fuori = [];
+  const guarda = (cartella, chi) => {
+    const dove = path.join(DIR, cartella);
+    let nomi = [];
+    try { nomi = fs.readdirSync(dove); } catch (e) { return; }
+    nomi.forEach((n) => {
+      const via = path.join(dove, n);
+      const id = n.replace(/\.[a-z0-9]+$/i, "").split("_")[0];
+      const q = pesoDiUnPezzo(via);
+      const padrone = chi === "seq" ? R.seq[id] : R.clip[id];
+      fuori.push({ via: via, nome: n, id: id, tipo: chi, peso: q.peso, quando: q.quando,
+                   orfano: !padrone,
+                   alLavoro: !!(padrone && ((padrone.export && padrone.export.stato === "lavora") || padrone.stato === "lavora")) });
+    });
+  };
+  guarda(CARTELLA_HL, "seq");
+  guarda(CARTELLA_CLIP, "clip");
+  return fuori.sort((a, b) => a.quando - b.quando);
+}
+
+function pulisciUscite(p) {
+  p = p || {};
+  const prova = !!p.prova;
+  const giorni = num(p.giorni, 0, 365, GIORNI_USCITE);
+  const scadenza = Date.now() - giorni * 86400000;
+  const scadenzaOrfani = Date.now() - Math.min(1, giorni) * 86400000;
+  const tutte = uscite();
+  const via = [];
+  tutte.forEach((u) => {
+    if (u.alLavoro) return;                                  // si sta ancora scrivendo
+    const limite = u.orfano ? scadenzaOrfani : scadenza;
+    if (u.quando > limite) return;
+    via.push(u);
+  });
+  // e se il disco e' comunque stretto, si continua dalle piu' vecchie
+  let liberi = liberiGB();
+  const gia = {};
+  via.forEach((u) => { gia[u.via] = true; });
+  if (liberi < DISCO_MINIMO) {
+    const stimati = via.reduce((n, u) => n + u.peso, 0) / 1e9;
+    let dopo = liberi + stimati;
+    for (const u of tutte) {
+      if (dopo >= DISCO_MINIMO) break;
+      if (gia[u.via] || u.alLavoro) continue;
+      via.push(u); gia[u.via] = true; dopo += u.peso / 1e9;
+    }
+  }
+  let tolti = 0, giga = 0;
+  if (!prova) {
+    via.forEach((u) => {
+      try { fs.rmSync(u.via, { recursive: true, force: true }); tolti++; giga += u.peso; } catch (e) {}
+      // e si toglie anche il ricordo, se no la pagina offre un link morto
+      const q = u.tipo === "seq" ? R.seq[u.id] : null;
+      if (q) {
+        if (q.esportati) Object.keys(q.esportati).forEach((f) => {
+          if (String(q.esportati[f].file || "").indexOf(u.nome) >= 0) delete q.esportati[f];
+        });
+        if (q.export && String(q.export.file || "").indexOf(u.nome) >= 0) q.export = null;
+        if (q.premiere && String(q.premiere.file || "").indexOf(u.nome) >= 0) q.premiere = null;
+      }
+    });
+    if (tolti) { scrivi(); annuncia(0, "clip"); console.log("[clip] uscite: tolti " + tolti + " file per " + (giga / 1e9).toFixed(1) + " GB"); }
+  }
+  return { ok: true, prova: prova, giorni: giorni,
+           quante: tutte.length, tolte: prova ? via.length : tolti,
+           giga: Math.round((prova ? via.reduce((n, u) => n + u.peso, 0) : giga) / 1e8) / 10,
+           liberiPrima: Math.round(liberi * 10) / 10,
+           liberiDopo: prova ? undefined : Math.round(liberiGB() * 10) / 10,
+           elenco: via.slice(0, 30).map((u) => ({ nome: u.nome, giga: Math.round(u.peso / 1e8) / 10,
+             giorni: Math.round((Date.now() - u.quando) / 86400000 * 10) / 10, orfano: u.orfano })) };
+}
+
 function anello() {
   const limite = Date.now() - GIORNI * 86400000;
   let tolti = 0;
@@ -5489,6 +5594,7 @@ function anello() {
     } catch (e) {}
   });
   if (tolti) { scrivi(); console.log("[clip] anello: tolto il materiale di " + tolti + " registrazioni"); }
+  try { pulisciUscite({}); } catch (e) { console.log("[clip] uscite: " + e.message); }
   return tolti;
 }
 
@@ -5692,6 +5798,11 @@ const AZIONI = {
   "clip-hl-elimina": hlElimina,
   "clip-integrale": clipIntegrale,
   "clip-anello": () => ({ ok: true, tolti: anello() }),
+  "clip-uscite": (p) => (p && p.pulisci) ? pulisciUscite(p)
+    : { ok: true, elenco: uscite().map((u) => ({ nome: u.nome, tipo: u.tipo, giga: Math.round(u.peso / 1e8) / 10,
+        giorni: Math.round((Date.now() - u.quando) / 86400000 * 10) / 10, orfano: u.orfano, alLavoro: u.alLavoro })),
+        giga: Math.round(uscite().reduce((n, u) => n + u.peso, 0) / 1e8) / 10,
+        liberi: Math.round(liberiGB() * 10) / 10, scadenza: GIORNI_USCITE },
   "clip-spazio": () => ({ ok: true, peso: peso(DIR), liberi: Math.round(liberiGB() * 10) / 10 })
 };
 
