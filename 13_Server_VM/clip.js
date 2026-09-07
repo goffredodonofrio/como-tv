@@ -2851,12 +2851,17 @@ function trascriviDavvero(lavoro) {
     // l'audio gia' tirato fuori si tiene: un riavvio non deve far riscaricare
     // sette giga da S3 per riavere gli stessi centosessanta minuti di parlato
     try {
-      const atteso = (lavoro.a - lavoro.da) * 32000;      // mono, 16 kHz, 16 bit
-      const c = fs.statSync(wav);
-      if (c.size > atteso * 0.97) { console.log("[clip] audio gia' pronto: " + Math.round(c.size / 1e6) + " MB"); return ok(); }
-      // l'audio in casa copre una finestra piu' larga di quella che serve:
-      // si taglia qui, invece di ricomprare gli stessi minuti da S3
+      // l'audio in casa: prima si guarda CHE FINESTRA copre, poi si decide.
+      // (Guardare solo la misura del file diceva "e' gia' quello" anche
+      //  quando la finestra chiesta era un'altra.)
       const w = JSON.parse(fs.readFileSync(wav + ".json", "utf8"));
+      const c = fs.statSync(wav);
+      if (Math.abs(w.da - lavoro.da) < 1 && Math.abs(w.a - lavoro.a) < 2) {
+        console.log("[clip] audio gia' pronto: " + Math.round(c.size / 1e6) + " MB");
+        return ok();
+      }
+      // copre piu' di quello che serve: si taglia qui, invece di ricomprare
+      // gli stessi minuti da S3
       if (lavoro.da >= w.da && lavoro.a <= w.a + 1) {
         const dentroWav = lavoro.da - w.da;
         const stretto = path.join(dir, "voce.finestra.wav");
@@ -3261,7 +3266,9 @@ let whisperVistoQuando = 0, whisperVisto = false;
 function whisperGira() {
   if (Date.now() - whisperVistoQuando < 20000) return whisperVisto;
   whisperVistoQuando = Date.now();
-  try { execFileSync("pgrep", ["-f", "whisper-cli"], { stdio: "ignore" }); whisperVisto = true; }
+  // -x, non -f: cercando la riga di comando si trovano anche i comandi che
+  // stanno solo GUARDANDO se whisper gira, e si aspetta per sempre
+  try { execFileSync("pgrep", ["-x", "whisper-cli"], { stdio: "ignore" }); whisperVisto = true; }
   catch (e) { whisperVisto = false; }
   return whisperVisto;
 }
