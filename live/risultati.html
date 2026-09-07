@@ -145,7 +145,8 @@
     border:1px solid rgba(245,241,230,.16);color:var(--ivory);
     font-family:'DM Sans',sans-serif;font-size:13px;min-width:0;}
   .amano select:focus,.amano input:focus{outline:none;border-color:var(--line-gold);}
-  .amano .sq{flex:1 1 190px;}
+  .amano .sq{flex:1 1 170px;}
+  .amano .pick{flex:0 0 140px;color:var(--ivory-dim);}
   .amano .pt{flex:0 0 62px;text-align:center;font-variant-numeric:tabular-nums;}
   .amano .qn{flex:0 0 150px;}
   .amano .ex{flex:0 0 130px;}
@@ -617,24 +618,26 @@
     render();
   }
 
-  // Le squadre delle giovanili arrivano da giovanili.js: sono le stesse che
-  // usano le formazioni, e portano con se' lo stemma del club (tid). Per le
-  // altre competizioni il nome si scrive libero.
+  // Il nome della squadra si scrive SEMPRE in un campo libero: e' quello che
+  // finisce in grafica, ed e' quello su cui si cerca lo stemma. Per le
+  // giovanili accanto c'e' anche una tendina con le squadre di giovanili.js —
+  // le stesse che usano le formazioni — ma e' solo una scorciatoia che
+  // riempie il campo: una squadra che nell'elenco non c'e' si scrive e basta.
   function tendinaSquadre(m, quale) {
     var code = m.code || "";
-    if (!(window.GIOVANILI && GIOVANILI.mia(code))) {
-      return '<input type="text" class="sq" data-mano="' + esc(m.id) + '" data-k="' + quale + '" ' +
-             'value="' + esc(m.campi[quale === "casa" ? 4 : 7]) + '" placeholder="' +
-             (quale === "casa" ? "Squadra di casa" : "Squadra ospite") + '">';
-    }
-    var scelto = m.campi[quale === "casa" ? 4 : 7];
-    var h = '<select class="sq" data-mano="' + esc(m.id) + '" data-k="' + quale + '">' +
-            '<option value="">&mdash; ' + (quale === "casa" ? "casa" : "ospite") + ' &mdash;</option>';
+    var dove = quale === "casa" ? 4 : 7;
+    var libero = '<input type="text" class="sq" data-mano="' + esc(m.id) + '" data-k="' + quale + '" ' +
+                 'value="' + esc(m.campi[dove]) + '" placeholder="' +
+                 (quale === "casa" ? "Squadra di casa" : "Squadra ospite") + '">';
+    if (!(window.GIOVANILI && GIOVANILI.mia(code))) return libero;
+
+    var h = '<select class="pick" data-mano="' + esc(m.id) + '" data-k="pick-' + quale + '">' +
+            '<option value="">&mdash; scegli &mdash;</option>';
     GIOVANILI.squadre(code).forEach(function (q) {
-      h += '<option value="' + esc(q.id) + '"' + (scelto === q.name ? " selected" : "") + '>' +
+      h += '<option value="' + esc(q.id) + '"' + (m.campi[dove] === q.name ? " selected" : "") + '>' +
            esc(q.name) + '</option>';
     });
-    return h + '</select>';
+    return h + '</select>' + libero;
   }
 
   function rigaMano(m) {
@@ -651,20 +654,39 @@
       '</div>';
   }
 
+  // Lo stemma: prima il magazzino, per NOME. Nella grafica l'ordine e' gia'
+  // questo (Scavalco vince su ESPN), quindi basta caricare in magazzino un
+  // logo chiamato come la squadra — "como-primavera", "atalanta-under-17" —
+  // e quello scavalca lo stemma del club senior. Il tid resta come rete:
+  // senza logo proprio, la giovanile prende lo stemma del suo club.
+  function tidDiNome(m, dove, nome) {
+    if (!(window.GIOVANILI && GIOVANILI.mia(m.code))) return "";
+    var q = GIOVANILI.squadre(m.code).filter(function (z) {
+      return z.name.toLowerCase() === String(nome || "").trim().toLowerCase();
+    })[0];
+    return q ? GIOVANILI.tid(m.code, q.id) : "";
+  }
+
   function scriviMano(id, k, v) {
     var m = state.matches.filter(function (x) { return x.id === id; })[0];
     if (!m) return;
+
+    // la tendina non e' il dato: riempie il campo libero, e da li' si riparte
+    if (k === "pick-casa" || k === "pick-ospite") {
+      var qualeP = k === "pick-casa" ? "casa" : "ospite";
+      var q = GIOVANILI.squadre(m.code).filter(function (z) { return z.id === v; })[0];
+      if (!q) return;
+      m.campi[qualeP === "casa" ? 4 : 7] = q.name;
+      m[qualeP === "casa" ? "tid1" : "tid2"] = GIOVANILI.tid(m.code, q.id);
+      render();
+      return;
+    }
     if (k === "casa" || k === "ospite") {
       var dove = k === "casa" ? 4 : 7;
-      if (window.GIOVANILI && GIOVANILI.mia(m.code)) {
-        // dalla tendina arriva l'id della squadra: si scrive il nome e si
-        // tiene lo stemma del club, che e' quello che finisce in grafica
-        var q = GIOVANILI.squadre(m.code).filter(function (z) { return z.id === v; })[0];
-        m.campi[dove] = q ? q.name : "";
-        m[k === "casa" ? "tid1" : "tid2"] = q ? GIOVANILI.tid(m.code, q.id) : "";
-      } else {
-        m.campi[dove] = v;
-      }
+      m.campi[dove] = v;
+      // scritto a mano: lo stemma del club si tiene solo se il nome e' ancora
+      // uno di quelli dell'elenco. Se no resta il magazzino, per nome.
+      m[k === "casa" ? "tid1" : "tid2"] = tidDiNome(m, dove, v);
       return;
     }
     if (k === "s1") { m.campi[5] = v; return; }
