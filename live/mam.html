@@ -381,6 +381,25 @@
   body.mam .voce .chip.chi{background:#2A2A2A;color:#B8B8B8;border:1px solid #3A3A3A;text-transform:none;letter-spacing:.04em;}
   /* il voto della redazione al gol: piu' e' alto, piu' scalda */
   body.mam .voce .chip.vicino{background:#2F3A2A;color:#A8D08A;}
+  /* LE FAMIGLIE DEI RISULTATI. Un colore per ciascuna, sempre lo stesso:
+     nell'intestazione, nel conto, nel filetto a sinistra della riga. */
+  body.mam .risultati h3.fam{color:#8A8A8A;margin:18px 0 8px;padding-top:14px;border-top:1px solid #262626;}
+  body.mam .risultati h3.fam:first-child{border-top:0;padding-top:0;margin-top:2px;}
+  body.mam .risultati h3.fam .bollo{width:8px;height:8px;border-radius:2px;background:#6A6A6A;flex:none;}
+  body.mam .risultati h3.fam b{color:inherit;opacity:.85;}
+  body.mam .risultati h3.fam-partite,body.mam .risultati h3.fam-archivio{color:#D9B45F;}
+  body.mam .risultati h3.fam-partite .bollo,body.mam .risultati h3.fam-archivio .bollo{background:#C9A24B;}
+  body.mam .risultati h3.fam-clip .bollo{background:#8A8A8A;}
+  body.mam .risultati h3.fam-azioni{color:#9AB6D8;} body.mam .risultati h3.fam-azioni .bollo{background:#5AA7F2;}
+  body.mam .risultati h3.fam-voce{color:#9AD0FF;} body.mam .risultati h3.fam-voce .bollo{background:#7CC0FF;}
+  body.mam .risultati h3.fam-vicini{color:#A8D08A;} body.mam .risultati h3.fam-vicini .bollo{background:#7FBF5F;}
+  body.mam .risultati h3.fam-segni{color:#C9A8FF;} body.mam .risultati h3.fam-segni .bollo{background:#A87FE0;}
+  /* il filetto della riga: la famiglia si vede anche quando si scorre */
+  body.mam .voce.fam-partite,body.mam .voce.fam-archivio{border-left:3px solid #C9A24B;}
+  body.mam .voce.fam-clip{border-left:3px solid #6A6A6A;}
+  body.mam .voce.fam-vicini{border-left:3px solid #7FBF5F;}
+  body.mam .voce.fam-segni{border-left:3px solid #A87FE0;}
+  body.mam .voce.fam-voce,body.mam .voce.detta{border-left:3px solid #7CC0FF;}
   body.mam .voce .chip.voto{background:#3A3A3A;color:#D8D8D8;}
   body.mam .voce .chip.voto.v3{background:#4A3A1F;color:#F0C060;}
   body.mam .voce .chip.voto.v4{background:#5A3A1A;color:#FFB84D;}
@@ -3957,13 +3976,19 @@
 
     if (!RIS.quante) { box.innerHTML += '<div class="vuoto">Niente. Prova con meno parole.</div>'; return; }
 
-    function titolo(t, n) {
+    // Ogni famiglia di risultati ha un colore suo, e ce l'ha dappertutto:
+    // il quadratino nell'intestazione, il conto, il filetto a sinistra delle
+    // righe. Cosi' si capisce da dove viene una riga senza leggerla.
+    var famiglia = "";
+    function titolo(t, n, fam) {
+      famiglia = fam || "";
       var h = document.createElement("h3");
-      h.innerHTML = t + " <b>" + n + "</b> <i></i>";
+      h.className = "fam " + (fam ? "fam-" + fam : "");
+      h.innerHTML = "<i class='bollo'></i>" + t + " <b>" + n + "</b>";
       box.appendChild(h);
     }
     function riga(nome, dett, coda, quando) {
-      var v = document.createElement("div"); v.className = "voce cliccabile";
+      var v = document.createElement("div"); v.className = "voce cliccabile" + (famiglia ? " fam-" + famiglia : "");
       v.innerHTML = "<div class='testo'><div class='nome'>" + nome + "</div>" +
                     "<div class='dett'>" + dett + "</div></div>" +
                     (quando ? "<span class='quando2'>" + quando + "</span>" : "") +
@@ -3977,7 +4002,7 @@
     }
 
     if (RIS.partite.length) {
-      titolo("Partite", RIS.partite.length);
+      titolo("Partite registrate", RIS.partite.length, "partite");
       RIS.partite.forEach(function (r) {
         riga(r.titolo, (r.competizione || "senza competizione") + " · " + orologio(r.durata) +
              " · " + (r.quanteClip || 0) + " clip", "apri", data(r.avviata))
@@ -3985,7 +4010,7 @@
       });
     }
     if (RIS.clip.length) {
-      titolo("Clip e sequenze", RIS.clip.length);
+      titolo("Clip e sequenze", RIS.clip.length, "clip");
       RIS.clip.forEach(function (c) {
         riga(c.titolo, (c.seq ? c.pezzi + " pezzi · sequenza" : c.formato + " · " +
              (c.durataVera || c.durata) + "s") + (c.partita ? " · " + c.partita : ""),
@@ -3995,7 +4020,7 @@
     }
     // Le partite dell'archivio trovate per nome: si aprono nella Sorgente.
     if (RIS.archivio && RIS.archivio.length && MODO === "archivio") {
-      titolo("Nell\u2019archivio", RIS.archivio.length);
+      titolo("Partite in archivio", RIS.archivio.length, "archivio");
       RIS.archivio.forEach(function (a) {
         riga(a.partita, (a.competizione || "") + (a.pezzi > 1 ? " \u00b7 " + a.pezzi + " parti" : "") +
              (a.soloS3 ? " \u00b7 senza appunti" : ""), "apri", data(Date.parse(a.quando)))
@@ -4007,7 +4032,7 @@
     // quale partita, quale minuto. Quando invece la registrazione c'e',
     // la riga si apre come tutte le altre.
     if (RIS.azioni && RIS.azioni.length) {
-      titolo("Azioni: appunti della redazione e fatti ESPN", RIS.azioni.length);
+      titolo("Azioni \u00b7 appunti e fatti ESPN", RIS.azioni.length, "azioni");
       RIS.azioni.forEach(function (a) {
         // una registrazione locale vale solo se COPRE l'azione: tre minuti di
         // prova con lo stesso evento non sono la partita
@@ -4064,7 +4089,7 @@
     // corsivo, il microfono — perche' non sono azioni scritte da qualcuno,
     // sono parole sentite: si apre il video nel punto in cui sono state dette.
     if (RIS.dette && RIS.dette.length) {
-      titolo("Detto in telecronaca", RIS.dette.length);
+      titolo("Detto in telecronaca", RIS.dette.length, "voce");
       RIS.dette.forEach(function (m) {
         var v = riga("\u201c" + m.testo + "\u201d",
                      "<span class='chip fonte voce'>\ud83c\udf99 " + (m.telecronista || "TELECRONACA") + "</span><span class='chip prec sec'>\u23f1 al secondo</span>" + m.partita + " \u00b7 " + orologio(m.secondi),
@@ -4092,7 +4117,7 @@
     // la stessa cosa. Si mostrano dopo, con quanto sono vicini, perche' chi
     // cerca deve sapere che qui il MAM sta interpretando, non trovando.
     if (RIS.vicini && RIS.vicini.length) {
-      titolo("Vicini per significato", RIS.vicini.length);
+      titolo("Vicini per significato", RIS.vicini.length, "vicini");
       RIS.vicini.forEach(function (a) {
         if (a.fonte === "voce") {
           var vv = riga("\u201c" + a.testo + "\u201d",
@@ -4118,7 +4143,7 @@
       });
     }
     if (RIS.segni.length) {
-      titolo("Segni nelle partite", RIS.segni.length);
+      titolo("Segni nelle partite", RIS.segni.length, "segni");
       RIS.segni.forEach(function (m) {
         riga(m.testo || m.tipo || "segno",
              "<span class='chip fonte segno'>SEGNO</span>" + m.partita + " · " + orologio(m.secondi) + (m.fonte ? " · " + m.fonte : ""),
