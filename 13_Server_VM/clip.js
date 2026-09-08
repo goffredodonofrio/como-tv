@@ -2401,6 +2401,7 @@ function crescoLaDiretta(q) {
 function laDiretta(idReg, banco, prog) {
   const r = R.reg[String(idReg || "")];
   if (!r) throw new Error("registrazione sconosciuta");
+  if (durataRegistrata(r.id) < 2) throw new Error("questa porta non ha ancora ricevuto niente");
   const b = String(banco || "").slice(0, 60);
   let q = Object.keys(R.seq).map((k) => R.seq[k])
     .find((x) => x.diretta && x.reg === r.id && (!b || !x.banco || x.banco === b));

@@ -632,6 +632,39 @@ function brandMark(A,x,y,h,center){var d=brandLogo();if(!d)return '';var w=Math.
 function brandW(h){return Math.round(h*0.5906);}
 function splitMark(name){var w=String(name||'').trim().split(/\s+/);if(w.length<=1)return [name];return [w.slice(0,-1).join(' '),w.slice(-1)[0]];}
 function R(n){return Math.round(n);}
+// Il tracking dei nomi squadra era un numero fisso, -3. Nato sul titolone:
+// a 130px stringe come deve. Ma lo stesso -3 su un banner-mid, dove lo stesso
+// nome sta a 50px, vale il 6% del corpo e strozza le lettere — ed e' proprio
+// li' che si legge peggio, perche' in piattaforma quell'immagine si vede
+// piccola. Legandolo al corpo il grande resta identico a com'era disegnato e
+// il piccolo si apre da solo, senza dover ritoccare formato per formato.
+function trk(s){return -Math.round(s*0.024);}
+// BACKGROUND: la stessa grafica senza niente sopra, solo foto e sfumatura.
+// Non si ridisegna un fondo per ogni famiglia — sarebbero sette disegni da
+// tenere allineati a mano, e alla prima modifica di una famiglia il suo fondo
+// resterebbe indietro senza che nessuno se ne accorga. Si prende il disegno
+// VERO e gli si tolgono i gruppi: sono gli stessi che il generatore usa per
+// rendere spostabile ogni pezzo, quindi testi, loghi e pastiglie stanno tutti
+// li' dentro. Resta fuori solo 'photo', che e' la foto. Cosi' il fondo di una
+// famiglia non puo' divergere dalla famiglia: e' lei, spogliata.
+function soloFondo(svg){
+ var out='',i=0;
+ while(i<svg.length){
+  var a=svg.indexOf('<g data-obj="',i);
+  if(a<0){out+=svg.slice(i);break;}
+  var q=svg.indexOf('"',a+13),nome=svg.slice(a+13,q);
+  if(nome==='photo'){out+=svg.slice(i,a+1);i=a+1;continue;}
+  out+=svg.slice(i,a);
+  var d=0,j=a;
+  while(j<svg.length){
+   if(svg.substr(j,2)==='<g'){d++;j=svg.indexOf('>',j)+1;continue;}
+   if(svg.substr(j,4)==='</g>'){d--;j+=4;if(d===0)break;continue;}
+   j++;
+  }
+  i=j;
+ }
+ return out;
+}
 // Scala globale dei nomi squadra (1 = dimensione di progetto originale).
 // Comprende il 'vs' e l'interlinea, per non alterare il lockup.
 var TEAM_SCALE=0.90;
@@ -648,8 +681,8 @@ function mPortrait(W,H,p,I,A,hl){
  return GPHOTO(W,H,A,I)+scrim+'<rect width="'+W+'" height="'+H+'" fill="url(#spP)" pointer-events="none"/>'
   +(!hl&&p.live?G('live',A,livePill(W-M-176,R(H*0.04))):'')
   +(p.english?G('eng',A,engPill(M,R(H*0.04),p.englishLabel)):'')
-  +G('t-home',A,runsT(M,homeY,{ls:-3},[{t:p.home,w:800,fill:C.ivory,s:homeS}].concat(vsRun(p,{w:600,fill:C.gold,s:vsS}))))
-  +G('t-away',A,T(M,awayY,p.away,{s:homeS,w:800,ls:-3,fill:C.goldB}))
+  +G('t-home',A,runsT(M,homeY,{ls:trk(homeS)},[{t:p.home,w:800,fill:C.ivory,s:homeS}].concat(vsRun(p,{w:600,fill:C.gold,s:vsS}))))
+  +G('t-away',A,T(M,awayY,p.away,{s:homeS,w:800,ls:trk(homeS),fill:C.goldB}))
   +(hl?G('t-hl',A,T(M,dtY,kind,{s:R(dtS*0.92),w:700,fill:C.gold,ls:R(dtS*0.16)})):(G('t-dt',A,runsT(M,dtY,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,w:800,fill:C.gold,upper:false,s:dtS}]))+pv))
   +'<rect x="'+M+'" y="'+lineY+'" width="'+(W-2*M)+'" height="1" fill="#F5F1E6" fill-opacity=".14"/>'
   +G('logo',A,LOGOR(M+badgeR,badgeCy,badgeR,I,'logoComp','lcP'+W+'x'+H)+T(M+badgeR*2+R(W*0.02),footY,p.comp,{s:footS,w:700,fill:C.fg2,ls:4}))
@@ -778,6 +811,20 @@ function AT(x,y,t,o){o=o||{};var w=o.w||400,fill=o.fill||C.ivory,ls=o.ls||0,fs=o
 // Titolo partita: riga 1 = home (Abril dritto^H^H^H corsivo, leggero), riga
 // 2 = "vs." piccolo + away grande in oro (stessa idea di t-away in
 // mLandscape: la seconda squadra prende il risalto/il colore).
+// Non tutte le interviste stanno dentro una partita: una presentazione, un
+// evento, una giornata di media day non hanno casa e ospite. In quel caso le
+// due righe portano il NOME DELL'EVENTO, spezzato dove decide chi scrive —
+// due campi separati e non un a-capo automatico, perche' su un nome lungo
+// l'automatismo va a capo dove gli pare e la seconda riga esce sbilenca.
+// Se il campo evento e' vuoto vale la partita, come e' sempre stato.
+function intEvento(p){
+ var a=String((p&&p.intEv1)||'').trim(),b=String((p&&p.intEv2)||'').trim();
+ return (a||b)?{a:a,b:b}:null;
+}
+function intEventTitle(x,y1,y2,ss,e,gid){
+ return AT(x,y1,e.a,{s:ss,w:400,fill:C.ivory,ls:1})
+  +(e.b?AT(x,y2,e.b,{s:ss,w:800,fill:'url(#'+gid+')'}):'');
+}
 function intMatchTitle(x,y1,y2,ss,vsS,home,away,gid,etichetta){
  var t=(etichetta===undefined?'vs':String(etichetta)).trim();
  var vsTxt=t?(t+(/[.:]$/.test(t)?'':'.')+' '):'',vsW=t?R(estW(vsTxt,vsS,1)):0;
@@ -801,30 +848,37 @@ function intBottomScrimStrong(gid){return '<linearGradient id="'+gid+'" x1="0" y
 function iLandscape(W,H,p,I,A){
  var M=R(W*0.032),bm=R(H*0.065);
  var home=p.home||'',away=p.away||'',nm=p.intName||'';
- var nameS=R(H*0.03),cursorY=H-bm,nameY=null;
- if(nm){nameY=cursorY;cursorY-=R(nameS*2.4);}
- var ss=R(H*0.088),vsS=R(H*0.036),titleY2=cursorY,titleY1=titleY2-R(ss*0.85);
+ // Il protagonista di un'intervista e' CHI parla, non dove: la firma cresce
+ // della meta' e il blocco partita/evento scende di poco meno di un terzo.
+ // Prima erano quasi uguali e si contendevano l'occhio.
+ var nameS=R(H*0.045),cursorY=H-bm,nameY=null;
+ if(nm){nameY=cursorY;cursorY-=R(nameS*2.0);}
+ var ss=R(H*0.062),vsS=R(H*0.026),titleY2=cursorY,titleY1=titleY2-R(ss*0.85);
+ var ev=intEvento(p);
  // Velo leggero: il velo forte serviva a reggere il blocco di citazione, che
  // occupava mezza grafica. Con due sole righe la foto puo' tornare a vedersi.
  return '<defs>'+intBottomScrim('ilS')+goldGrad('ilG')+'</defs>'+GPHOTO(W,H,A,I)
   +'<rect width="'+W+'" height="'+H+'" fill="url(#ilS)" pointer-events="none"/>'
   +(p.showLogo===false?'':brandMark(A,M,R(H*0.047),R(H*0.10)))
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
-  +G('t-title',A,intMatchTitle(M,titleY1,titleY2,ss,vsS,home,away,'ilG',p.vsLabel))
+  +G('t-title',A,ev?intEventTitle(M,titleY1,titleY2,ss,ev,'ilG')
+                  :intMatchTitle(M,titleY1,titleY2,ss,vsS,home,away,'ilG',p.vsLabel))
   +(nm?G('t-tag',A,AT(M,nameY,'— '+nm,{s:nameS,w:400,fill:C.gold,ls:1})):'');
 }
 // Portrait 2:3 — stessa impaginazione, proporzioni sulla larghezza.
 function iPortrait(W,H,p,I,A){
  var M=R(W*0.072),bm=R(H*0.045);
  var home=p.home||'',away=p.away||'',nm=p.intName||'';
- var nameS=R(W*0.03),cursorY=H-bm,nameY=null;
- if(nm){nameY=cursorY;cursorY-=R(nameS*2.4);}
- var ss=R(W*0.075),vsS=R(W*0.032),titleY2=cursorY,titleY1=titleY2-R(ss*0.85);
+ var nameS=R(W*0.045),cursorY=H-bm,nameY=null;
+ if(nm){nameY=cursorY;cursorY-=R(nameS*2.0);}
+ var ss=R(W*0.053),vsS=R(W*0.023),titleY2=cursorY,titleY1=titleY2-R(ss*0.85);
+ var ev=intEvento(p);
  return '<defs>'+intBottomScrim('ipS')+goldGrad('ipG')+'</defs>'+GPHOTO(W,H,A,I)
   +'<rect width="'+W+'" height="'+H+'" fill="url(#ipS)" pointer-events="none"/>'
   +(p.showLogo===false?'':brandMark(A,M,R(H*0.03),R(H*0.055)))
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.03))):'')
-  +G('t-title',A,intMatchTitle(M,titleY1,titleY2,ss,vsS,home,away,'ipG',p.vsLabel))
+  +G('t-title',A,ev?intEventTitle(M,titleY1,titleY2,ss,ev,'ipG')
+                  :intMatchTitle(M,titleY1,titleY2,ss,vsS,home,away,'ipG',p.vsLabel))
   +(nm?G('t-tag',A,AT(M,nameY,'— '+nm,{s:nameS,w:400,fill:C.gold,ls:1})):'')
   +hair(W,H,H-5);
 }
@@ -877,7 +931,7 @@ function fsEyebrowTitle(A,M,eybY,gapEybTtl,p,eybS,ttlS){
  return (hasEyb?G('t-eyb',A,T(M,eybY,p.fsEyebrow,{s:eybS,w:600,fill:C.ivory,ls:6})):'')
   +G('t-ttl',A,T(M,ttlY,p.fsTitle,{s:ttlS,w:800,fill:C.ivory,ls:1}));
 }
-function fsLandscape(W,H,p,I,A){
+function fsLandscape(W,H,p,I,A,noOra){
  var M=R(W*0.032);
  // stessa catena di calcolo di mLandscape: arriva alla stessa dtY/dtS delle
  // grafiche partita, anche se qui non mostriamo home/away/kick.
@@ -899,9 +953,9 @@ function fsLandscape(W,H,p,I,A){
   +G('t-word',A,fsWordmark(M,wY1,'Football',wS,'fsG')+fsWordmark(M,wY2,'Show',wS,'fsG'))
   +fsEyebrowTitle(A,M,eybY,R(H*0.052),p,eybS,ttlS)
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
-  +G('t-dt',A,runsT(M,dtY,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,upper:false,w:800,fill:C.gold,s:dtS}]));
+  +(noOra?'':G('t-dt',A,runsT(M,dtY,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,upper:false,w:800,fill:C.gold,s:dtS}])));
 }
-function fsPortrait(W,H,p,I,A){
+function fsPortrait(W,H,p,I,A,noOra){
  // stessa catena di calcolo di mPortrait per la data/ora.
  var M=R(W*0.056),footS=R(W*0.019),bm=R(H*0.05),footY=H-bm,lineY=footY-R(footS*1.7),dtY=lineY-R(W*0.028),dtS=R(W*0.054);
  var wS=R(W*0.125),wY1=dtY-R(H*0.22),wY2=wY1+R(wS*1.0);
@@ -912,13 +966,13 @@ function fsPortrait(W,H,p,I,A){
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.03))):'')
   +G('t-word',A,fsWordmark(M,wY1,'Football',wS,'fsG')+fsWordmark(M,wY2,'Show',wS,'fsG'))
   +fsEyebrowTitle(A,M,eybY,R(H*0.028),p,eybS,ttlS)
-  +G('t-dt',A,runsT(M,dtY,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,upper:false,w:800,fill:C.gold,s:dtS}]))
+  +(noOra?'':G('t-dt',A,runsT(M,dtY,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,upper:false,w:800,fill:C.gold,s:dtS}])))
   +hair(W,H,H-5);
 }
 // Banner (top/mid) — striscia bassa, non c'era un modello di Ale: stessa
 // identita' (wordmark + eyebrow/titolo + data/ora), metriche compatte come
 // gli altri banner della piattaforma.
-function fsBanner(W,H,p,I,A,mid){
+function fsBanner(W,H,p,I,A,mid,noOra){
  var M=R(W*0.024),dtS=R(H*(mid?0.13:0.115));
  var wS=R(H*(mid?0.24:0.2)),eybS=R(H*(mid?0.12:0.105)),ttlS=R(H*(mid?0.12:0.105));
  var wY=R(H*(mid?0.4:0.38)),eybY=R(H*(mid?0.62:0.6)),ttlYbase=R(H*(mid?0.8:0.78)),dtY=R(H*(mid?0.95:0.93));
@@ -934,7 +988,7 @@ function fsBanner(W,H,p,I,A,mid){
   +G('t-word',A,fsWordmark(M,wY,'Football Show',wS,'fsG'))
   +fsEyebrowTitle(A,M,eybY,R(H*0.16),p,eybS,ttlS)
   +(p.live?G('live',A,livePill(W-M-150,R(H*0.1))):'')
-  +G('t-dt',A,runsT(M,dtY,{ls:1},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,upper:false,w:800,fill:C.gold,s:dtS}]));
+  +(noOra?'':G('t-dt',A,runsT(M,dtY,{ls:1},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,upper:false,w:800,fill:C.gold,s:dtS}])));
 }
 // STORY 9:16. k attenua il velo blu: 1 = pieno, valori piu' bassi lasciano
 // passare piu' immagine. Serve sui video, dove un velo pesante spegne la clip.
@@ -960,8 +1014,8 @@ function mStory(p,I,A,k,gid,video){
   +(p.live?G('live',A,livePill(W-64-176,89)):'')
   +(p.english?G('eng',A,engPill(64,1316+dy,p.englishLabel)):'')
   +G('t-comp',A,'<rect x="64" y="'+(1390+dy)+'" width="6" height="32" rx="2" fill="'+C.gold+'"/>'+T(88,1420+dy,p.comp,{s:36,w:700,fill:C.gold,ls:5}))
-  +G('t-home',A,runsT(60,1534+dy,{ls:-3},[{t:p.home,w:800,fill:C.ivory,s:R(118*TEAM_SCALE)}].concat(vsRun(p,{w:600,fill:C.gold,s:R(42*TEAM_SCALE)}))))
-  +G('t-away',A,T(60,1534+dy+R(100*TEAM_SCALE),p.away,{s:R(118*TEAM_SCALE),w:800,ls:-3,fill:C.goldB}))
+  +G('t-home',A,runsT(60,1534+dy,{ls:trk(R(118*TEAM_SCALE))},[{t:p.home,w:800,fill:C.ivory,s:R(118*TEAM_SCALE)}].concat(vsRun(p,{w:600,fill:C.gold,s:R(42*TEAM_SCALE)}))))
+  +G('t-away',A,T(60,1534+dy+R(100*TEAM_SCALE),p.away,{s:R(118*TEAM_SCALE),w:800,ls:trk(R(118*TEAM_SCALE)),fill:C.goldB}))
   +(video?'':G('t-dt',A,runsT(64,1698+dy,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:50},{t:p.time,w:800,fill:C.gold,upper:false,s:50}])))
   +(p.showCta===false?'':(function(){
     // Il pulsante sta SOPRA la prima scritta del blocco (l'eventuale
@@ -996,8 +1050,8 @@ function mLandscape(W,H,p,I,A,hl,mid){
   +(!hl&&p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
   +(p.english?G('eng',A,engPill(M,R(H*0.06),p.englishLabel)):'')
   +G('t-comp',A,'<rect x="'+M+'" y="'+(kickY-tickH+R(kickS*0.05))+'" width="'+R(H*0.006)+'" height="'+tickH+'" rx="2" fill="'+C.gold+'"/>'+T(M+R(H*0.02),kickY,p.comp,{s:kickS,w:700,fill:C.gold,ls:5}))
-  +G('t-home',A,runsT(M,homeY,{ls:-3},[{t:p.home,w:800,fill:C.ivory,s:homeS}].concat(vsRun(p,{w:600,fill:C.gold,s:vsS}))))
-  +G('t-away',A,T(M,awayY,p.away,{s:homeS,w:800,ls:-3,fill:C.goldB})+'<rect x="'+M+'" y="'+ulY+'" width="'+R(W*0.17)+'" height="'+ulH+'" rx="2" fill="url(#gL)"/>')
+  +G('t-home',A,runsT(M,homeY,{ls:trk(homeS)},[{t:p.home,w:800,fill:C.ivory,s:homeS}].concat(vsRun(p,{w:600,fill:C.gold,s:vsS}))))
+  +G('t-away',A,T(M,awayY,p.away,{s:homeS,w:800,ls:trk(homeS),fill:C.goldB})+'<rect x="'+M+'" y="'+ulY+'" width="'+R(W*0.17)+'" height="'+ulH+'" rx="2" fill="url(#gL)"/>')
   +(hl?G('t-hl',A,T(M,dtY,kind,{s:R(dtS*0.95),w:700,fill:C.gold,ls:R(dtS*0.16)})):(G('t-dt',A,runsT(M,dtY,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,w:800,fill:C.gold,upper:false,s:dtS}]))+pv));
 }
 // GOL COLLECTION — la raccolta dei gol di una giornata.
@@ -1093,7 +1147,7 @@ function gcPortrait(W,H,p,I,A){
   +gcRete(q,W,H,R(H*0.44))
   +(p.english?G('eng',A,engPill(M,R(H*0.04),p.englishLabel)):'')
   +G('t-tag',A,T(M,tagY,p.gcTag,{s:tagS,w:700,fill:C.gold,ls:R(tagS*0.18)}))
-  +G('t-gcname',A,T(M,l1Y,p.compBase||p.comp,{s:l1S,w:800,ls:-3,fill:C.ivory}))
+  +G('t-gcname',A,T(M,l1Y,p.compBase||p.comp,{s:l1S,w:800,ls:trk(l1S),fill:C.ivory}))
   +G('t-round',A,gcTarga(q,M,targaT,p.round,rndS))
   +'<rect x="'+M+'" y="'+lineY+'" width="'+(W-2*M)+'" height="1" fill="#F5F1E6" fill-opacity=".14"/>'
   // Nelle altre famiglie il piede dice la competizione perche' sopra ci sono
@@ -1121,7 +1175,7 @@ function gcLandscape(W,H,p,I,A,mid){
   +gcRete(q,W,H,R(H*0.72))
   +(p.english?G('eng',A,engPill(M,R(H*0.06),p.englishLabel)):'')
   +G('t-tag',A,T(M,tagY,p.gcTag,{s:tagS,w:700,fill:C.gold,ls:5}))
-  +G('t-gcname',A,T(M,l1Y,p.compBase||p.comp,{s:l1S,w:800,ls:-3,fill:C.ivory}))
+  +G('t-gcname',A,T(M,l1Y,p.compBase||p.comp,{s:l1S,w:800,ls:trk(l1S),fill:C.ivory}))
   +G('t-round',A,gcTarga(q,M,targaT,p.round,rndS))
   +hair(W,H,H-5);
 }
@@ -1147,8 +1201,8 @@ function mFanVoice(W,H,p,I,A){
  out+=G('t-sub',A,T(cx,1330,'I nostri telecronisti ti leggeranno',{s:42,w:700,fill:C.ivory,anchor:'middle',upper:false})+T(cx,1382,'durante la diretta del match',{s:42,w:700,fill:C.ivory,anchor:'middle',upper:false}));
  var mW=W-120,ms=R(Math.min(118,R(mW/(estW(up(p.home),1,0)||1)),R(mW/(estW(up(p.away),1,0)||1)))*TEAM_SCALE);
  var dy=1740-70-R(ms); // ancoraggio dal basso: la data chiude sopra la barra IG
- out+=G('t-home',A,runsT(cx,dy,{ls:-3,anchor:'middle'},[{t:p.home,w:800,fill:C.ivory,s:ms}].concat(vsRun(p,{w:600,fill:C.gold,s:R(ms*0.42)}))))
-  +G('t-away',A,T(cx,dy+R(ms),p.away,{s:ms,w:800,ls:-3,anchor:'middle',fill:C.goldB}))
+ out+=G('t-home',A,runsT(cx,dy,{ls:trk(ms),anchor:'middle'},[{t:p.home,w:800,fill:C.ivory,s:ms}].concat(vsRun(p,{w:600,fill:C.gold,s:R(ms*0.42)}))))
+  +G('t-away',A,T(cx,dy+R(ms),p.away,{s:ms,w:800,ls:trk(ms),anchor:'middle',fill:C.goldB}))
   +G('t-dt',A,runsT(cx,1740,{ls:2,anchor:'middle'},[{t:p.date+' ',w:700,fill:C.ivory,s:40},{t:p.time,w:800,fill:C.gold,upper:false,s:40}]));
  return out;
 }
@@ -1169,8 +1223,8 @@ var FMT={
    +(p.showLogo===false?'':brandMark(A,R(W*MARK_FEED.x),R(H*MARK_FEED.y),R(H*MARK_FEED.h)))
    +(p.live?G('live',A,livePill(W-64-176,72)):'')
    +(p.english?G('eng',A,engPill(64,981,p.englishLabel)):'')
-   +G('t-home',A,runsT(60,1126,{ls:-3},[{t:p.home,w:800,fill:C.ivory,s:R(112*TEAM_SCALE)}].concat(vsRun(p,{w:600,fill:C.gold,s:R(40*TEAM_SCALE)}))))
-   +G('t-away',A,T(60,1126+R(100*TEAM_SCALE),p.away,{s:R(112*TEAM_SCALE),w:800,ls:-3,fill:C.goldB}))
+   +G('t-home',A,runsT(60,1126,{ls:trk(R(112*TEAM_SCALE))},[{t:p.home,w:800,fill:C.ivory,s:R(112*TEAM_SCALE)}].concat(vsRun(p,{w:600,fill:C.gold,s:R(40*TEAM_SCALE)}))))
+   +G('t-away',A,T(60,1126+R(100*TEAM_SCALE),p.away,{s:R(112*TEAM_SCALE),w:800,ls:trk(R(112*TEAM_SCALE)),fill:C.goldB}))
    +G('t-dt',A,runsT(64,1314,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:46},{t:p.time,w:800,fill:C.gold,upper:false,s:46}]))
    +((p.preshow&&p.showPreshow!==false)?(function(){var pw=Math.round(estW(up(p.preshow),28,3))+48;return G('cta',A,'<rect x="470" y="1270" width="'+pw+'" height="56" rx="10" fill="url(#gdF)"/>'+T(470+pw/2,1308,p.preshow,{s:28,w:800,fill:C.n900,ls:3,anchor:'middle'}));})():'')
    +'<rect x="64" y="1349" width="'+(W-128)+'" height="1" fill="#F5F1E6" fill-opacity=".16"/>'
@@ -1312,16 +1366,16 @@ var FMT={
  // Interviste — cover col volto dell'intervistato (vedi iLandscape), sui
  // formati di Piattaforma live (landscape, portrait, banner-top, banner-mid).
  int_landscape_1920x1080:{label:'Interviste · Landscape (1920×1080)',group:'Interviste',w:1920,h:1080,useComp:false,
-  fields:[{k:'home',l:'Squadra casa (titolo)'},{k:'away',l:'Squadra ospite (titolo, in risalto)'},{k:'intName',l:'Firma (facoltativa, es. Nome Cognome)'}],images:Imatch,
+  fields:[{k:'home',l:'Squadra casa (titolo)'},{k:'away',l:'Squadra ospite (titolo, in risalto)'},{k:'intEv1',l:'Evento riga 1 (se pieno sostituisce la partita)'},{k:'intEv2',l:'Evento riga 2'},{k:'intName',l:'Firma (facoltativa, es. Nome Cognome)'}],images:Imatch,
   gen:function(p,I,A){return iLandscape(1920,1080,p,I,A);}},
  int_portrait_1200x1800:{label:'Interviste · Portrait (1200×1800)',group:'Interviste',w:1200,h:1800,useComp:false,
-  fields:[{k:'home',l:'Squadra casa (titolo)'},{k:'away',l:'Squadra ospite (titolo, in risalto)'},{k:'intName',l:'Firma (facoltativa, es. Nome Cognome)'}],images:Imatch,
+  fields:[{k:'home',l:'Squadra casa (titolo)'},{k:'away',l:'Squadra ospite (titolo, in risalto)'},{k:'intEv1',l:'Evento riga 1 (se pieno sostituisce la partita)'},{k:'intEv2',l:'Evento riga 2'},{k:'intName',l:'Firma (facoltativa, es. Nome Cognome)'}],images:Imatch,
   gen:function(p,I,A){return iPortrait(1200,1800,p,I,A);}},
  int_banner_top_1920x1080:{label:'Interviste · Banner top (1920×1080)',group:'Interviste',w:1920,h:1080,useComp:false,
-  fields:[{k:'home',l:'Squadra casa (titolo)'},{k:'away',l:'Squadra ospite (titolo, in risalto)'},{k:'intName',l:'Firma (facoltativa, es. Nome Cognome)'}],images:Imatch,
+  fields:[{k:'home',l:'Squadra casa (titolo)'},{k:'away',l:'Squadra ospite (titolo, in risalto)'},{k:'intEv1',l:'Evento riga 1 (se pieno sostituisce la partita)'},{k:'intEv2',l:'Evento riga 2'},{k:'intName',l:'Firma (facoltativa, es. Nome Cognome)'}],images:Imatch,
   gen:function(p,I,A){return iLandscape(1920,1080,p,I,A);}},
  int_banner_mid_1506x412:{label:'Interviste · Banner mid (1506×412)',group:'Interviste',w:1506,h:412,useComp:false,
-  fields:[{k:'home',l:'Squadra casa (titolo)'},{k:'away',l:'Squadra ospite (titolo, in risalto)'},{k:'intName',l:'Firma (facoltativa, es. Nome Cognome)'}],images:Imatch,
+  fields:[{k:'home',l:'Squadra casa (titolo)'},{k:'away',l:'Squadra ospite (titolo, in risalto)'},{k:'intEv1',l:'Evento riga 1 (se pieno sostituisce la partita)'},{k:'intEv2',l:'Evento riga 2'},{k:'intName',l:'Firma (facoltativa, es. Nome Cognome)'}],images:Imatch,
   gen:function(p,I,A){return iBanner(1506,412,p,I,A);}},
 
  // Football Show — su modello di Ale (landscape/portrait), banner estrapolati
@@ -1339,6 +1393,21 @@ var FMT={
   fields:[{k:'fsEyebrow',l:'Speciale (riga 1 — vuoto per nasconderla)'},{k:'fsTitle',l:'Titolo (riga 2)'},{k:'date',l:'Data'},{k:'time',l:'Ora'}],images:Imatch,
   gen:function(p,I,A){return fsBanner(1506,412,p,I,A,true);}},
 
+ // Le versioni replay: identiche, senza la riga data/ora. Un programma gia'
+ // andato in onda non ha un orario a cui presentarsi, e lasciarcelo scritto
+ // e' l'informazione sbagliata al momento sbagliato.
+ fsrp_landscape_1920x1080:{label:'Football Show RP · Landscape (1920×1080)',group:'Football Show',w:1920,h:1080,useComp:false,
+  fields:[{k:'fsEyebrow',l:'Speciale (riga 1 — vuoto per nasconderla)'},{k:'fsTitle',l:'Titolo (riga 2)'}],images:Imatch,
+  gen:function(p,I,A){return fsLandscape(1920,1080,p,I,A,true);}},
+ fsrp_portrait_1080x1620:{label:'Football Show RP · Portrait (1080×1620)',group:'Football Show',w:1080,h:1620,useComp:false,
+  fields:[{k:'fsEyebrow',l:'Speciale (riga 1 — vuoto per nasconderla)'},{k:'fsTitle',l:'Titolo (riga 2)'}],images:Imatch,
+  gen:function(p,I,A){return fsPortrait(1080,1620,p,I,A,true);}},
+ fsrp_banner_top_1920x1080:{label:'Football Show RP · Banner top (1920×1080)',group:'Football Show',w:1920,h:1080,useComp:false,
+  fields:[{k:'fsEyebrow',l:'Speciale (riga 1 — vuoto per nasconderla)'},{k:'fsTitle',l:'Titolo (riga 2)'}],images:Imatch,
+  gen:function(p,I,A){return fsLandscape(1920,1080,p,I,A,true);}},
+ fsrp_banner_mid_1506x412:{label:'Football Show RP · Banner mid (1506×412)',group:'Football Show',w:1506,h:412,useComp:false,
+  fields:[{k:'fsEyebrow',l:'Speciale (riga 1 — vuoto per nasconderla)'},{k:'fsTitle',l:'Titolo (riga 2)'}],images:Imatch,
+  gen:function(p,I,A){return fsBanner(1506,412,p,I,A,true,true);}},
  yt_citazione_prot:{label:'YT · Citazione protagonista',group:'YouTube',w:1280,h:720,useComp:false,
   fields:[{k:'ytChip',l:'Pastiglia rossa'},{k:'ytTitle',l:'Citazione'},{k:'ytName',l:'Nome'}],images:Imatch,
   gen:function(p,I,A){var q='yq';var L=ytWrap(p.ytTitle,100,-1,820);
@@ -1422,6 +1491,17 @@ var FMT={
  rp_portrait_1080x1620:{label:'Replay portrait (1200×1800)',group:'Replay',w:1200,h:1800,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mPortrait(1200,1800,p,I,A,'Replay');}},
  rp_banner_top_1506x560:{label:'Replay banner-top (1920×1080)',group:'Replay',w:1920,h:1080,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mLandscape(1920,1080,p,I,A,'Replay');}},
  rp_banner_mid_1506x412:{label:'Replay banner-mid (1506×412)',group:'Replay',w:1506,h:412,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mLandscape(1506,412,p,I,A,'Replay',true);}},
+ // Il fondo di ogni pacchetto: nessun campo da riempire, e' solo la foto con
+ // la sfumatura della sua famiglia. Live, highlights e replay condividono il
+ // disegno, quindi il loro fondo e' lo stesso: sta in tutti e tre perche' lo
+ // si cerca dentro il pacchetto su cui si sta lavorando, non altrove.
+ bg_live_1920x1080:{label:'Background (1920×1080)',group:'Piattaforma live',w:1920,h:1080,useComp:false,fields:[],images:Imatch,gen:function(p,I,A){return soloFondo(mLandscape(1920,1080,p,I,A));}},
+ bg_hl_1920x1080:{label:'Background (1920×1080)',group:'Piattaforma highlights',w:1920,h:1080,useComp:false,fields:[],images:Imatch,gen:function(p,I,A){return soloFondo(mLandscape(1920,1080,p,I,A,'Highlights'));}},
+ bg_rp_1920x1080:{label:'Background (1920×1080)',group:'Piattaforma replay',w:1920,h:1080,useComp:false,fields:[],images:Imatch,gen:function(p,I,A){return soloFondo(mLandscape(1920,1080,p,I,A,'Replay'));}},
+ bg_gc_1920x1080:{label:'Background (1920×1080)',group:'Gol Collection',w:1920,h:1080,useComp:false,fields:[],images:Imatch,gen:function(p,I,A){return soloFondo(gcLandscape(1920,1080,p,I,A));}},
+ bg_fs_1920x1080:{label:'Background (1920×1080)',group:'Football Show',w:1920,h:1080,useComp:false,fields:[],images:Imatch,gen:function(p,I,A){return soloFondo(fsLandscape(1920,1080,p,I,A));}},
+ bg_fmt_1920x1080:{label:'Background (1920×1080)',group:'Format',w:1920,h:1080,useComp:false,fields:[],images:Imatch,gen:function(p,I,A){return soloFondo(mFormat(1920,1080,p,I,A));}},
+ bg_int_1920x1080:{label:'Background (1920×1080)',group:'Interviste',w:1920,h:1080,useComp:false,fields:[],images:Imatch,gen:function(p,I,A){return soloFondo(iLandscape(1920,1080,p,I,A));}},
  // GOL COLLECTION: stessi quattro formati di piattaforma delle altre sezioni.
  // I campi non sono quelli della partita — niente ospite, niente ora: le due
  // righe della parola, la giornata e la competizione. L'etichetta "Giornata"
@@ -1583,27 +1663,31 @@ if(typeof TEAMS_EXTRA!=='undefined')Object.keys(TEAMS_EXTRA).forEach(function(k)
 var MENU=[
  {g:'Piattaforma live',k:[
    'match_16x9_1920x1080','match_2x3_1080x1620','banner_top_1506x560','banner_mid_1506x412',
-   'match_16x9_1920x1080-live','match_2x3_1080x1620-live','banner_mid_1506x412-live']},
+   'match_16x9_1920x1080-live','match_2x3_1080x1620-live','banner_mid_1506x412-live',
+   'bg_live_1920x1080']},
  {g:'Piattaforma highlights',k:[
    'hl_feed_1080x1350','hl_story_1080x1920','hl_landscape_1920x1080','hl_portrait_1080x1620',
-   'hl_banner_top_1506x560','hl_banner_mid_1506x412']},
+   'hl_banner_top_1506x560','hl_banner_mid_1506x412','bg_hl_1920x1080']},
  {g:'Piattaforma replay',k:[
    'rp_landscape_1920x1080','rp_portrait_1080x1620',
-   'rp_banner_top_1506x560','rp_banner_mid_1506x412']},
+   'rp_banner_top_1506x560','rp_banner_mid_1506x412','bg_rp_1920x1080']},
  {g:'Gol Collection',k:[
    'gc_landscape_1920x1080','gc_portrait_1080x1620',
-   'gc_banner_top_1920x1080','gc_banner_mid_1506x412']},
+   'gc_banner_top_1920x1080','gc_banner_mid_1506x412','bg_gc_1920x1080']},
  // Sezioni in costruzione: design e formati propri, ancora da definire.
  {g:'Football Show',k:[
    'fs_landscape_1920x1080','fs_portrait_1080x1620',
    'fs_banner_top_1920x1080','fs_banner_mid_1506x412',
-   'fs_landscape_1920x1080-live','fs_portrait_1080x1620-live','fs_banner_mid_1506x412-live']},
+   'fs_landscape_1920x1080-live','fs_portrait_1080x1620-live','fs_banner_mid_1506x412-live',
+   'fsrp_landscape_1920x1080','fsrp_portrait_1080x1620','fsrp_banner_top_1920x1080','fsrp_banner_mid_1506x412',
+   'bg_fs_1920x1080']},
  {g:'Piattaforma format',k:[
    'fmt_landscape_1920x1080','fmt_portrait_1200x1800','fmt_banner_top_1920x1080','fmt_banner_mid_1506x412',
-   'fmt_landscape_1920x1080-live','fmt_portrait_1200x1800-live','fmt_banner_mid_1506x412-live']},
+   'fmt_landscape_1920x1080-live','fmt_portrait_1200x1800-live','fmt_banner_mid_1506x412-live',
+   'bg_fmt_1920x1080']},
  {g:'Interviste',k:[
    'int_landscape_1920x1080','int_portrait_1200x1800',
-   'int_banner_top_1920x1080','int_banner_mid_1506x412']},
+   'int_banner_top_1920x1080','int_banner_mid_1506x412','bg_int_1920x1080']},
  {g:'Social media',k:[
    'feed_1080x1440','story_1080x1920','fanvoice_1080x1920']},
  {g:'Social media video',k:['story_video_1080x1920','story_video_1080x1920-live','feed_maschera_1080x1920']},
@@ -1654,7 +1738,12 @@ var ITEMS=(function(){var src={};OTTGEN.items().forEach(function(i){src[i.key]=i
  return out;})();
 var BYKEY={};ITEMS.forEach(function(i){BYKEY[i.key]=i;});
 // naming convention export (come richiesto)
-var FNAME={feed_1080x1440:'feed',feed_maschera_1080x1920:'story-maschera',story_1080x1920:'story',story_video_1080x1920:'story-video',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'YT-Highlights',yt_gol_collection:'YT-gol-collection',yt_inglese_testata:'YT-testata',yt_inglese_editoriale:'YT-editoriale',yt_parole_classico:'YT-parole-classico',yt_parole_split:'YT-parole-split',yt_parole_volto:'YT-parole-volto',yt_citazione_prot:'YT-citazione',yt_vlog_foto:'YT-vlog',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',rp_landscape_1920x1080:'RP-landscape',rp_portrait_1080x1620:'RP-portrait',rp_banner_top_1506x560:'RP-banner-top',rp_banner_mid_1506x412:'RP-banner-mid',gc_landscape_1920x1080:'GC-landscape',gc_portrait_1080x1620:'GC-portrait',gc_banner_top_1920x1080:'GC-banner-top',gc_banner_mid_1506x412:'GC-banner-mid',int_landscape_1920x1080:'INT-landscape',int_portrait_1200x1800:'INT-portrait',int_banner_top_1920x1080:'INT-banner-top',int_banner_mid_1506x412:'INT-banner-mid',fs_landscape_1920x1080:'FS-landscape',fs_portrait_1080x1620:'FS-portrait',fs_banner_top_1920x1080:'FS-banner-top',fs_banner_mid_1506x412:'FS-banner-mid',competizioni_1200x1800:'competizioni',
+var FNAME={feed_1080x1440:'feed',feed_maschera_1080x1920:'story-maschera',story_1080x1920:'story',story_video_1080x1920:'story-video',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'YT-Highlights',yt_gol_collection:'YT-gol-collection',yt_inglese_testata:'YT-testata',yt_inglese_editoriale:'YT-editoriale',yt_parole_classico:'YT-parole-classico',yt_parole_split:'YT-parole-split',yt_parole_volto:'YT-parole-volto',yt_citazione_prot:'YT-citazione',yt_vlog_foto:'YT-vlog',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',rp_landscape_1920x1080:'RP-landscape',rp_portrait_1080x1620:'RP-portrait',rp_banner_top_1506x560:'RP-banner-top',rp_banner_mid_1506x412:'RP-banner-mid',gc_landscape_1920x1080:'GC-landscape',gc_portrait_1080x1620:'GC-portrait',gc_banner_top_1920x1080:'GC-banner-top',gc_banner_mid_1506x412:'GC-banner-mid',int_landscape_1920x1080:'INT-landscape',int_portrait_1200x1800:'INT-portrait',int_banner_top_1920x1080:'INT-banner-top',int_banner_mid_1506x412:'INT-banner-mid',fs_landscape_1920x1080:'FS-landscape',fs_portrait_1080x1620:'FS-portrait',fs_banner_top_1920x1080:'FS-banner-top',fs_banner_mid_1506x412:'FS-banner-mid',
+ fsrp_landscape_1920x1080:'FSRP-landscape',fsrp_portrait_1080x1620:'FSRP-portrait',
+ fsrp_banner_top_1920x1080:'FSRP-banner-top',fsrp_banner_mid_1506x412:'FSRP-banner-mid',
+ bg_live_1920x1080:'background',bg_hl_1920x1080:'HL-background',bg_rp_1920x1080:'RP-background',
+ bg_gc_1920x1080:'GC-background',bg_fs_1920x1080:'FS-background',
+ bg_fmt_1920x1080:'FMT-background',bg_int_1920x1080:'INT-background',competizioni_1200x1800:'competizioni',
  fmt_landscape_1920x1080:'FMT-landscape',fmt_portrait_1200x1800:'FMT-portrait',
  fmt_banner_top_1920x1080:'FMT-banner-top',fmt_banner_mid_1506x412:'FMT-banner-mid',format_card_talent:'format-talent',format_card_goleada:'format-goleada',format_card_clasicos:'format-clasicos',format_card_golden:'format-golden'};
 function fname(k){if(/-live$/.test(k)){var b=k.replace(/-live$/,'');return (FNAME[b]||b)+'-live';}return FNAME[k]||k;}
@@ -1680,7 +1769,7 @@ var FMTNUM={talent:'01',goleada:'02',clasicos:'03',golden:'04'};
 //  - gli interruttori showLogo/showLive/showCta/showPreshow, che vanno accesi
 //    formato per formato (e' come li hai voluti);
 //  - le immagini, che hanno gia' una loro memoria comune (SHIMG).
-var SHAREDKEYS={home:1,away:1,comp:1,compBase:1,round:1,date:1,time:1,preshow:1,english:1,englishLabel:1,hlKind:1,compKey:1,intName:1,vsLabel:1,fmtKicker:1,fmtL1:1,fmtL2:1,fmtSub:1,
+var SHAREDKEYS={home:1,away:1,comp:1,compBase:1,round:1,date:1,time:1,preshow:1,english:1,englishLabel:1,hlKind:1,compKey:1,intName:1,intEv1:1,intEv2:1,vsLabel:1,fmtKicker:1,fmtL1:1,fmtL2:1,fmtSub:1,
  fsEyebrow:1,fsTitle:1,
  ytKicker:1,ytTitle:1,ytName:1,ytChip:1,ytgTitle:1,
  ytsL1:1,ytsL2:1,ytsName:1,ytsKicker:1,
@@ -1690,7 +1779,7 @@ var SHAREDKEYS={home:1,away:1,comp:1,compBase:1,round:1,date:1,time:1,preshow:1,
  ytvChip:1,ytvKicker:1,ytvTitle:1,
  heroKicker:1,heroLine1:1,heroLine2:1,title:1,
  novKicker:1,novTitle:1,badgeName:1,replName:1};
-var SHARED={home:'West Ham',away:'Portsmouth',compBase:'Carabao Cup',round:'64esimi',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'Football Show 15:10',english:false,englishLabel:'English Commentary',hlKind:'Highlights',compKey:'',showLogo:true,showCta:true,showPreshow:true,intName:'Nome Cognome'};   // showLive non c'e': finche' nessuno preme, decide il formato
+var SHARED={home:'West Ham',away:'Portsmouth',compBase:'Carabao Cup',round:'64esimi',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'',english:false,englishLabel:'English Commentary',hlKind:'Highlights',compKey:'',showLogo:true,showCta:true,showPreshow:true,intName:'Nome Cognome'};   // showLive non c'e': finche' nessuno preme, decide il formato
 // I campi appena diventati comuni devono partire dal loro valore di fabbrica:
 // prima lo prendeva ogni formato per conto suo da DEF, ora c'e' un valore solo.
 Object.keys(SHAREDKEYS).forEach(function(k){
@@ -1951,7 +2040,7 @@ function renderMedia(show){
 // ---------- stage + interaction ----------
 var selObj=null;var photoEdit=false;
 // Mappatura degli oggetti testo ai campi editabili (SHARED o specifici del formato)
-var TEXT_EDIT_MAP={'t-home':'home','t-away':'away','t-comp':'comp','t-dt':'','t-hl':'hlKind','t-fan':'','t-q':'','t-sub':'','t-kicker':'heroKicker','t-line1':'heroLine1','t-line2':'heroLine2','t-title':'title','t-name':'name','t-kind':'hlKind','t-tag':'','t-num':'num','t-mark':'','t-tag':'gcTag','t-round':'round','t-gcname':'compBase'};
+var TEXT_EDIT_MAP={'t-home':'home','t-away':'away','t-comp':'comp','t-dt':'','t-hl':'hlKind','t-fan':'','t-q':'','t-sub':'','t-kicker':'heroKicker','t-line1':'heroLine1','t-line2':'heroLine2','t-ev1':'intEv1','t-ev2':'intEv2','t-title':'title','t-name':'name','t-kind':'hlKind','t-tag':'','t-num':'num','t-mark':'','t-tag':'gcTag','t-round':'round','t-gcname':'compBase'};
 // Crocini d'angolo + misura del formato: aiutano a vedere dove finisce l'area
 // esportata quando il contenuto ha lo stesso blu del fondo.
 // Rettangolo realmente occupato dal disegno. L'elemento <svg> puo' essere piu'

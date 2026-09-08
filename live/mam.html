@@ -694,12 +694,29 @@
   body.mam .console .notaFeed{flex:1;min-width:0;font-size:11px;line-height:1.4;color:#9A9A9A;}
   body.mam .console .notaFeed b{color:#D0D0D0;} body.mam .console .notaFeed a{color:#5AA7F2;text-decoration:none;font-weight:700;}
   /* il cassetto INGRESSI: chiuso di solito, si apre per le porte e i feed */
-  body.mam .console details.ingressi summary{list-style:none;display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-bottom:1px solid #0F0F0F;color:#9A9A9A;}
-  body.mam .console details.ingressi summary::-webkit-details-marker{display:none;}
-  body.mam .console details.ingressi summary::before{content:'\25B8';font-size:10px;color:#7A7A7A;width:8px;}
-  body.mam .console details.ingressi[open] summary::before{content:'\25BE';}
-  body.mam .console details.ingressi summary .riassunto{font-size:11px;color:#B8B8B8;margin-left:auto;}
-  body.mam .console details.ingressi[open]{background:#1E1E1E;}
+  /* l'indirizzo sulla scheda in attesa: per intero, leggibile, copiabile */
+  body.mam.modo-live .riga-stato.soloArchivio{display:none;}
+  /* LA SCHEDA IN ATTESA. Non ha un fotogramma — non e' ancora arrivato
+     niente — e ha una cosa sola da dire: l'indirizzo, per intero, con il
+     tasto per copiarlo. Quindi il testo va a capo invece di troncarsi. */
+  body.mam #albero .scheda.flusso.attesa{padding:9px 10px 10px;}
+  body.mam #albero .scheda.flusso.attesa .nome{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.4;}
+  body.mam #albero .scheda.flusso.attesa .nome .segna{display:inline-block;margin-right:6px;padding:1px 5px;border-radius:2px;
+    background:var(--oro,#C8A24A);color:#111;font-size:8.5px;font-weight:800;letter-spacing:.1em;vertical-align:1px;}
+  body.mam #albero .scheda.flusso .sotto.attesa{display:block;line-height:1.5;color:#B8B8B8;
+    white-space:normal;overflow:visible;text-overflow:clip;margin-top:4px;}
+  body.mam #albero .scheda.flusso .sotto.attesa b{color:#E6E6E6;}
+  body.mam #albero .scheda.flusso .sotto.attesa code.ind{display:block;margin:6px 0;padding:6px;background:#0E0E0E;
+    border:1px solid #2A2A2A;border-radius:3px;font-size:10px;line-height:1.45;color:var(--oro,#C8A24A);
+    word-break:break-all;white-space:normal;user-select:all;}
+  body.mam #albero .scheda.flusso .sotto.attesa .b.copiaInd{font-size:10px;padding:4px 9px;width:100%;}
+  /* la testa dell'ingresso: due strade, quella normale in oro */
+  body.mam .console .ingressoTesta{display:flex;flex-wrap:wrap;gap:6px;padding:9px 12px;border-bottom:1px solid #0F0F0F;}
+  body.mam .console .ingressoTesta .b.oro{flex:1 1 100%;padding:7px 10px;}
+  /* la seconda strada va a capo: in una colonna stretta i due pulsanti
+     affiancati si tagliavano a vicenda */
+  body.mam .console .ingressoTesta .b{flex:1 1 100%;font-size:11px;}
+  body.mam .console .ingressi{background:#1E1E1E;border-bottom:1px solid #0F0F0F;}
   /* le schede dei flussi in arrivo: il fotogramma, il REC che conta, il nome */
   body.mam #albero .griglia.live{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;padding:6px 12px 12px;}
   body.mam #albero .scheda.flusso{background:#2A2A2A;border-radius:3px;cursor:pointer;overflow:hidden;border:1px solid transparent;}
@@ -1202,7 +1219,7 @@
        della serata, e sotto i comandi per farli entrare. In archivio non
        esiste: li' la colonna sola basta. -->
   <div class="col live soloLive" id="colLive">
-    <div class="liveTesta"><span class="et">In onda</span><span class="n" id="liveN"></span></div>
+    <div class="liveTesta"><span class="et">In arrivo</span><span class="n" id="liveN"></span></div>
     <div class="liveCorpo" id="liveCorpo"></div>
   </div>
   <div class="sepV soloLive" id="sepLive" title="trascina per allargare i flussi"></div>
@@ -1469,7 +1486,9 @@
       else if ((r.finita || r.avviata || 0) > ora - 48 * 3600000) recenti.push(r);
       else vecchie.push(r);
     });
-    if (el("nPartite")) el("nPartite").textContent = inCorso.length ? inCorso.length + " in corso" : recenti.length + " recenti";
+    // il conto e' di quello che si VEDE: in live l'archivio non e' in colonna
+    var contate = (MODO === "archivio") ? recenti : recenti.filter(function (r) { return !r.arch; });
+    if (el("nPartite")) el("nPartite").textContent = inCorso.length ? inCorso.length + " in corso" : contate.length + " recenti";
     if (el("liveN")) el("liveN").textContent = inCorso.length ? inCorso.length + (inCorso.length === 1 ? " flusso" : " flussi") : "";
     c.querySelector(".sez .et").textContent = "In corso";
     var ramo = document.createElement("div"); ramo.className = "ramo";
@@ -1496,35 +1515,68 @@
     // una SCHEDA per flusso, grande, con il fotogramma e il REC che conta:
     // e' la serata vista dal montatore, che sceglie su quale lavorare
     var griglia = document.createElement("div"); griglia.className = "griglia live";
-    if (!inCorso.length) { var v0 = document.createElement("div"); v0.className = "vuoto"; v0.innerHTML = "Nessun flusso in arrivo. Quando MCR spinge una partita, compare qui.<br>Per aprire una porta o andare a prendere un feed: <b>Ingressi</b>."; griglia.appendChild(v0); }
+    if (!inCorso.length) { var v0 = document.createElement("div"); v0.className = "vuoto"; v0.innerHTML = "Nessun flusso in arrivo. Quando MCR spinge una partita, compare qui.<br>Per farla arrivare: <b>Apri una porta</b>, qui sopra."; griglia.appendChild(v0); }
     inCorso.forEach(function (r) {
       var d = document.createElement("div");
       d.className = "scheda flusso" + (REG && r.id === REG.id ? " scelta" : "") + (r.attesa ? " attesa" : "");
       d.dataset.nome = String(r.titolo || "").toLowerCase();
       var vivo = r.stato === "registra" && !r.attesa && !r.guarda;
-      var nome = r.attesa ? "Ingresso \u00b7 porta " + (r.ascolto ? r.ascolto.porta : "") : r.titolo;
-      d.innerHTML = "<div class='mini'>" +
+      var nome = r.attesa
+        ? "<span class='segna'>IN ATTESA</span>Porta " + (r.ascolto ? r.ascolto.porta : "") + " aperta"
+        : r.titolo;
+      // IN ATTESA non c'e' niente da vedere: il riquadro nero del
+      // fotogramma e' spazio tolto all'unica cosa che serve, l'indirizzo.
+      d.innerHTML = (r.attesa ? "" : "<div class='mini'>" +
           (r.mini ? "<img class='telo' src='" + BASE + r.mini + "' alt='' draggable='false'>" : "<span class='telo'></span>") +
-          (vivo ? "<span class='recBox'><i></i>REC " + orologio(r.durata) + "</span>" : r.attesa ? "<span class='recBox attesa'>IN ATTESA</span>" : r.guarda ? "<span class='recBox guarda'>ANTEPRIMA</span>" : "") +
-        "</div>" +
+          (vivo ? "<span class='recBox'><i></i>REC " + orologio(r.durata) + "</span>" : r.guarda ? "<span class='recBox guarda'>ANTEPRIMA</span>" : "") +
+        "</div>") +
         "<div class='testo'><div class='nome'>" + nome + "</div>" +
-        "<div class='sotto'>" + (r.attesa ? (r.ascolto ? "<code>" + r.ascolto.indirizzo + "</code>" : "") : ((r.ascolto ? "spinto da MCR" : r.origine === "file" ? "file" : "preso dalla sorgente") + (r.competizione ? " \u00b7 " + r.competizione : ""))) + "</div></div>";
+        // IN ATTESA l'unica cosa che serve e' l'indirizzo, per intero e
+        // copiabile: e' quello che si consegna a chi trasmette. Prima era
+        // troncato con i puntini e il tasto Copia stava dentro un cassetto
+        // chiuso, dall'altra parte della colonna.
+        (r.attesa && r.ascolto
+          ? "<div class='sotto attesa'><b>Dallo a chi trasmette</b>: lo incolla nell\u2019uscita SRT." +
+            "<code class='ind'>" + r.ascolto.indirizzo + "</code>" +
+            "<button class='b copiaInd'>copia l\u2019indirizzo</button></div>"
+          : "<div class='sotto'>" + ((r.ascolto ? "spinto da MCR" : r.origine === "file" ? "file" : "preso dalla sorgente") +
+             (r.competizione ? " \u00b7 " + r.competizione : "")) + "</div>") +
+        "</div>";
+      var cop = d.querySelector(".copiaInd");
+      if (cop) cop.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        var ind = r.ascolto && r.ascolto.indirizzo; if (!ind) return;
+        (navigator.clipboard ? navigator.clipboard.writeText(ind) : Promise.reject())
+          .then(function () { dice("Indirizzo copiato: dallo a chi trasmette.", true); })
+          .catch(function () { window.prompt("Copia l\u2019indirizzo:", ind); });
+      });
       d.addEventListener("click", function () { REG = r; ASSET = 0; disegna(); });
       griglia.appendChild(d);
     });
     ramo.appendChild(griglia);
     c.appendChild(ramo);
-    if (el("ingressiRiassunto")) {
-      var inAttesa = inCorso.filter(function (r) { return r.attesa; }).length, vivi = inCorso.filter(function (r) { return r.stato === "registra" && !r.attesa && !r.guarda; }).length;
-      el("ingressiRiassunto").textContent = ((vivi ? vivi + " in registrazione" : "") + (vivi && inAttesa ? " \u00b7 " : "") +
-        (inAttesa ? (inAttesa === 1 ? "una porta aperta, in attesa" : inAttesa + " porte aperte, in attesa") : "")) || "nessuna porta aperta";
-    }
-    if (recenti.length) {
-      var s2 = document.createElement("div"); s2.className = "sez"; s2.innerHTML = "<span class='et'>Oggi e ieri</span><b>" + recenti.length + "</b>"; c.appendChild(s2);
+    // la riga della partita ha senso solo se c'e' un flusso a cui assegnarla
+    if (el("rigaEvento")) el("rigaEvento").hidden = (MODO !== "archivio") && !inCorso.length;
+    // REGISTRATE E ARCHIVIO SONO DUE COSE. Stavano nello stesso mucchio
+    // "Oggi e ieri", e una partita d'archivio aperta per cercarci dentro
+    // sembrava una registrazione della serata.
+    var sezione = function (titolo, elenco) {
+      if (!elenco.length) return;
+      var s2 = document.createElement("div"); s2.className = "sez";
+      s2.innerHTML = "<span class='et'>" + titolo + "</span><b>" + elenco.length + "</b>";
+      c.appendChild(s2);
       var ramo2 = document.createElement("div"); ramo2.className = "ramo"; c.appendChild(ramo2);
-      var ramoPrima = ramo; ramo = ramo2; recenti.forEach(disegnaVoce); ramo = ramoPrima;
-    }
-    if (vecchie.length) {
+      var ramoPrima = ramo; ramo = ramo2; elenco.forEach(disegnaVoce); ramo = ramoPrima;
+    };
+    // IN LIVE L'ARCHIVIO NON C'ENTRA. Questa colonna e' la serata: i flussi
+    // che arrivano e quello che si e' registrato oggi. Le partite vecchie e
+    // quelle d'archivio aperte per cercarci dentro stanno nell'altro
+    // prodotto, il MAM ARCHIVIO, e qui facevano solo lunghezza.
+    var archivio = MODO === "archivio";
+    sezione(archivio ? "Oggi e ieri" : "Registrate oggi e ieri",
+            recenti.filter(function (r) { return archivio || !r.arch; }));
+    if (archivio) sezione("Archivio aperto", recenti.filter(function (r) { return !!r.arch; }));
+    if (vecchie.length && archivio) {
       var s3 = document.createElement("div"); s3.className = "sez altre";
       s3.innerHTML = "<a href='#' class='et'>Mostra le altre " + vecchie.length + " \u2193</a>";
       var ramo3 = document.createElement("div"); ramo3.className = "ramo"; ramo3.hidden = true;
@@ -2257,6 +2309,10 @@
   // apre la DIRETTA di questa registrazione, e la tiene aperta
   function apriLaDiretta(r) {
     if (!r || r.stato !== "registra" || MODO === "archivio") return;
+    // una porta aperta non e' una diretta: finche' non arriva un byte non
+    // c'e' niente da mettere in timeline, e un pezzo di zero secondi faceva
+    // dire al monitor "questo pezzo non e' ancora riproducibile"
+    if (r.attesa || !(r.durata > 2)) return;
     if (VIVO.chiesta === r.id) return;
     VIVO.chiesta = r.id;
     manda({ tipo: "clip-diretta", reg: r.id })
@@ -4480,13 +4536,19 @@
     d.dataset.fatta = "1";
     d.innerHTML =
       '<div class="console">' +
-        '<div class="colonnina"><span class="et" id="etEvento">Partita</span>' +
+        // APRIRE LA PORTA E' IL PRIMO GESTO DELLA SERATA, quindi sta in
+        // cima e fuori da qualsiasi cassetto. Prima era dentro "Ingressi",
+        // chiuso: un cassetto che nasconde la prima cosa da fare non e' un
+        // cassetto, e' un ostacolo. L'altra strada — andare a prendere il
+        // feed dal foglio di MediaOps — resta, ma di lato.
+        '<div class="ingressoTesta soloLive">' +
+          '<button class="b oro" id="btnRicevi" title="il MAM apre una porta SRT e aspetta il flusso della regia">Apri una porta</button>' +
+          '<button class="b" id="btnAltro" title="scegli un feed dal foglio di MediaOps e vai a prenderlo">Vai a prendere\u2026</button>' +
+        '</div>' +
+        '<div class="colonnina" id="rigaEvento"><span class="et" id="etEvento">Partita</span>' +
           '<input type="text" id="eventoCerca" placeholder="filtra\u2026" autocomplete="off">' +
           '<select id="evento"><option value="">\u2014 scegli la partita \u2014</option></select></div>' +
-        // MAM LIVE: l'ingest sta in un cassetto. Il montatore apre il LIVE e
-        // trova i flussi che arrivano; chi deve aprire una porta o andare a
-        // prendere un feed apre INGRESSI.
-        '<details class="ingressi soloLive" id="ingressi"><summary><span class="et">Ingressi</span><span class="riassunto" id="ingressiRiassunto"></span></summary>' +
+        '<div class="ingressi soloLive" id="ingressi" hidden>' +
         '<div class="colonnina soloLive"><span class="et">Sorgente</span>'  +
           '<select id="sorgente"><option value="">\u2014 il flusso da cui registrare \u2014</option><option value="__mano">indirizzo a mano\u2026</option></select></div>' +
         '<div class="colonnina soloLive" id="rigaFeed" hidden><span class="et">\u00a0</span><div class="notaFeed" id="notaFeed"></div></div>' +
@@ -4501,15 +4563,18 @@
           '<div class="riga"><span class="et">Live</span>' +
             '<button class="b oro" id="btnRec" title="il MAM si collega alla Sorgente scelta e registra">Registra</button>' +
             '<button class="b" id="btnGuarda" title="come Registra, ma senza tenere niente: solo per vedere">Guarda</button>' +
-            '<button class="b" id="btnRicevi" title="il MAM apre una porta SRT e aspetta il flusso della regia">Ricevi</button>' +
             '<button class="b" id="btnCopia" title="copia l\u2019indirizzo da dare alla regia" hidden>Copia</button>' +
           '</div>' +
-          '<div class="spiega" id="spiegaLive"><b>Ricevi</b> apre una porta: MCR spinge il flusso a quell\u2019indirizzo e il MAM registra da solo appena arriva. ' +
-            '<b>Registra</b> va invece a prendere la Sorgente scelta (dal foglio dei feed). <b>Guarda</b>: come Registra, senza tenere niente.</div>' +
+          '<div class="spiega" id="spiegaLive"><b>Registra</b> va a prendere la Sorgente scelta (dal foglio dei feed): il MAM si collega lui. ' +
+            '<b>Guarda</b>: come Registra, ma senza tenere niente.</div>' +
           '<div id="ascolto"></div>' +
         '</div>' +
-        '</details>' +
-        '<div class="riga-stato"><span class="dot" id="cDot"></span><span id="cTesto">Nessuna registrazione</span>' +
+        '</div>' +
+        // In LIVE questa riga ripeteva la scheda del flusso — "in ascolto,
+        // senza evento" mentre la scheda diceva gia' porta e indirizzo — e
+        // il conto globale sta comunque nella barra in basso. Resta in
+        // archivio, dove la scheda non c'e'.
+        '<div class="riga-stato' + (MODO === "archivio" ? "" : " soloArchivio") + '"><span class="dot" id="cDot"></span><span id="cTesto">Nessuna registrazione</span>' +
           '<span class="coda" id="cCoda"></span></div>' +
       '</div>';
     // ARCHIVIO: prima si sceglie la partita, poi si cerca — la console sale
@@ -4527,6 +4592,13 @@
     } else if (pc && pc.parentNode) pc.parentNode.insertBefore(d, pc);
     var lente = pc && pc.querySelector(".lente2"); if (lente) { lente.textContent = "Cerca"; lente.className = "chip"; }
     if (MODO === "archivio" && el("projCerca")) el("projCerca").placeholder = "azioni: appunti, ESPN, telecronaca \u00b7 Invio";
+    // l'altra strada resta a portata, ma chiusa: si apre quando serve
+    if (el("btnAltro")) el("btnAltro").addEventListener("click", function () {
+      var g = el("ingressi"); if (!g) return;
+      g.hidden = !g.hidden;
+      this.className = g.hidden ? "b" : "b acceso";
+      if (!g.hidden) { var so = el("sorgente"); if (so) so.focus(); }
+    });
     var copia = el("btnCopia");
     if (copia) copia.addEventListener("click", function () {
       var ind = REG && REG.ascolto && REG.ascolto.indirizzo; if (!ind) return;
@@ -4862,8 +4934,12 @@
     else {
       var vivo = REG.stato === "registra";
       dot.className = "dot" + (vivo && !REG.attesa && !REG.guarda ? " rec" : vivo ? " ok" : "");
-      t.textContent = (vivo ? (REG.attesa ? "In ascolto · " : REG.guarda ? "Guarda · non registra · " : "Registra · ")
-                            : REG.stato + " · ") + REG.titolo;
+      // In attesa il titolo e' un segnaposto ("senza evento"): dirlo non
+      // aiuta nessuno. Quello che serve sapere e' quale porta e' aperta.
+      t.textContent = (vivo && REG.attesa && REG.ascolto)
+        ? "Porta " + REG.ascolto.porta + " aperta · nessuno trasmette ancora"
+        : (vivo ? (REG.guarda ? "Guarda · non registra · " : "Registra · ")
+                : REG.stato + " · ") + REG.titolo;
       coda.textContent = orologio(REG.durata) +
         (REG.kickoff && REG.kickoff["1"] !== undefined ? " · 1ºT " + orologio(REG.kickoff["1"]) : "");
       if (el("btnRec")) {
@@ -5906,7 +5982,9 @@
       REGISTRAZIONI = d.reg || [];
       DISCO = d.disco || null;
       if (REG) { var mio = REGISTRAZIONI.filter(function (r) { return r.id === REG.id; })[0]; if (mio) REG = mio; else REG = null; }
-      if (!REG && REGISTRAZIONI.length && MODO !== "archivio") REG = REGISTRAZIONI[0];
+      if (!REG && REGISTRAZIONI.length && MODO !== "archivio") {
+        REG = REGISTRAZIONI.filter(function (r) { return !r.arch; })[0] || null;
+      }
       // in archivio il bin e' della partita scelta: senza partita, vuoto —
       // entrare e trovarsi davanti le clip di tutte le altre confonde
       CLIP = d.clip || [];
