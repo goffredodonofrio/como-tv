@@ -313,7 +313,7 @@ function renderEventPanel() {
 // del campionato. Su questi formati la tendina cambia mestiere e offre le
 // COMPETIZIONI, che e' l'unica cosa che serve.
 function soloCompetizioni() {
-  try { return typeof current === 'string' && /^gc_/.test(current); } catch (e) { return false; }
+  try { return typeof current === 'string' && /^(gc|gl)_/.test(current); } catch (e) { return false; }
 }
 // Le competizioni presenti fra gli eventi, una volta sola e in ordine.
 function competizioniDisponibili() {
