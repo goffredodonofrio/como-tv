@@ -2192,6 +2192,7 @@ function hlElenco(p) {
   // progetto aperto, se ce n'e' uno; se no quelli di questo banco.
   const mie = seq.filter((q) => (q.auto && !q.banco) ||
                                 (prog ? q.prog === prog : (!q.banco || q.banco === banco)));
+  mie.forEach((q) => { try { crescoLaDiretta(q); } catch (e) {} });
   mie.forEach((q) => { try { segnaPezziLocali(q); } catch (e) {} });
   return { ok: true, seq: mie };
 }
@@ -2222,6 +2223,9 @@ function hlPezzo(p) {
   if (x.fuori - x.dentro < 0.5) throw new Error("il pezzo diventerebbe vuoto");
   // toccato a mano: la taratura dell'orologio non deve piu' spostarlo
   if (p.dentro !== undefined || p.fuori !== undefined) x.mano = true;
+  // e se era il pezzo del vivo, adesso e' tuo: smette di allungarsi da solo.
+  // Il vivo si riprende con LIVE, che rimette la coda da qui a adesso.
+  if (p.dentro !== undefined || p.fuori !== undefined) delete x.vivo;
   scrivi(); annuncia(0, "clip");
   return { ok: true, seq: q };
 }
@@ -2264,6 +2268,109 @@ async function hlInserisci(p) {
 // File > Nuova sequenza: una sequenza vuota, con un nome, sulla partita
 // aperta. Prima nasceva solo al primo pezzo; a volte si vuole cominciare
 // dal titolo, come in Premiere.
+// ── LA DIRETTA IN TIMELINE ────────────────────────────────────────────
+//
+//  Il modo vecchio: si guarda il flusso nel monitor SORGENTE, si segna
+//  entrata e uscita, si spedisce il pezzo in timeline. La timeline e' il
+//  risultato, e mentre monti il vivo non ce l'hai piu' davanti.
+//
+//  Il modo nuovo: la diretta STA in timeline. Appena si apre una partita in
+//  corso c'e' una sequenza sola — DIRETTA — con dentro un pezzo che va da
+//  zero a adesso e che si allunga da solo. Ci si lavora sopra mentre corre:
+//  lametta, Canc, sposta. Tagliare non toglie niente alla partita, perche'
+//  un pezzo e' solo un'entrata e un'uscita dentro la registrazione, che sul
+//  disco resta intera. Quando il montaggio e' finito si salva col suo nome
+//  e la DIRETTA torna intera.
+//
+//  L'allungamento non si scrive: si ricalcola ogni volta che qualcuno
+//  guarda. La durata vera e' quella della playlist, e scriverla ogni due
+//  secondi sarebbe stato scrivere lo stato duecento volte per tempo.
+function crescoLaDiretta(q) {
+  if (!q || !q.diretta) return q;
+  const r = R.reg[q.reg];
+  if (!r) return q;
+  const dur = durataRegistrata(r.id);
+  if (r.stato !== "registra") {                 // finita: il pezzo si ferma dov'e' finita
+    q.pezzi.forEach((p) => { if (p.vivo) { p.fuori = Math.min(p.fuori, dur) || dur; delete p.vivo; } });
+    return q;
+  }
+  const vivi = q.pezzi.filter((p) => p.vivo);
+  // di vivo ce n'e' uno solo: se la lametta ha diviso il pezzo in due, il
+  // vivo e' quello in coda e l'altro e' gia' roba del montatore
+  vivi.slice(0, -1).forEach((p) => { delete p.vivo; });
+  const ultimo = vivi[vivi.length - 1];
+  if (!ultimo) return q;
+  if (dur > ultimo.fuori) ultimo.fuori = dur;
+  return q;
+}
+
+// La DIRETTA di questa registrazione: se non c'e' nasce, e comunque cresce.
+function laDiretta(idReg, banco, prog) {
+  const r = R.reg[String(idReg || "")];
+  if (!r) throw new Error("registrazione sconosciuta");
+  const b = String(banco || "").slice(0, 60);
+  let q = Object.keys(R.seq).map((k) => R.seq[k])
+    .find((x) => x.diretta && x.reg === r.id && (!b || !x.banco || x.banco === b));
+  if (!q) {
+    const dur = durataRegistrata(r.id);
+    q = { id: nuovoId("s"), reg: r.id, diretta: true, banco: b,
+          titolo: "DIRETTA \u00b7 " + (r.titolo || ""),
+          pezzi: [{ id: nuovoId("p"), dentro: 0, fuori: Math.max(dur, 1), titolo: "diretta", vivo: true }],
+          pre: HL_PRE, post: HL_POST, scarto: 0, avvisi: [],
+          creata: Date.now(), chi: "", export: null };
+    if (prog) q.prog = String(prog);
+    R.seq[q.id] = q;
+    console.log("[clip] diretta in timeline: \"" + (r.titolo || r.id) + "\"");
+    scrivi(); annuncia(0, "clip");
+  }
+  return crescoLaDiretta(q);
+}
+
+// TORNA AL VIVO. Il cursore lo riporta al bordo la pagina; qui si rimette
+// il pezzo, se nel frattempo la coda e' stata tagliata via. Riparte
+// dall'ultimo secondo che il montatore ha tenuto: cosi' "torno al punto di
+// partenza" e' vero anche dopo aver fatto macelli in mezzo.
+function riattaccaLaDiretta(idSeq) {
+  const q = R.seq[String(idSeq || "")];
+  if (!q || !q.diretta) throw new Error("questa non e' una diretta");
+  const r = R.reg[q.reg];
+  if (!r) throw new Error("registrazione sconosciuta");
+  const dur = durataRegistrata(r.id);
+  if (r.stato !== "registra") return { ok: true, seq: crescoLaDiretta(q), finita: true };
+  if (!q.pezzi.some((p) => p.vivo)) {
+    const fine = q.pezzi.reduce((n, p) => Math.max(n, p.fuori), 0);
+    q.pezzi.push({ id: nuovoId("p"), dentro: Math.min(fine, Math.max(0, dur - 1)), fuori: dur, titolo: "diretta", vivo: true });
+    scrivi(); annuncia(0, "clip");
+  }
+  return { ok: true, seq: crescoLaDiretta(q) };
+}
+
+// SALVA IL MONTATO. Quello che c'e' in timeline diventa una sequenza sua,
+// con il nome; la DIRETTA torna intera e riattaccata al vivo.
+function salvaIlMontato(p) {
+  const q = R.seq[String(p.seq || "")];
+  if (!q || !q.diretta) throw new Error("questa non e' una diretta");
+  const r = R.reg[q.reg];
+  const tenuti = q.pezzi.filter((x) => !x.vivo);
+  if (!tenuti.length) throw new Error("in timeline non c'e' ancora niente di tuo: la diretta e' tutta intera");
+  const c = JSON.parse(JSON.stringify(q));
+  c.id = nuovoId("s");
+  c.pezzi = tenuti.map((x) => { const y = Object.assign({}, x); delete y.vivo; return y; });
+  c.titolo = String(p.titolo || "").slice(0, 160) || ("MONTATO \u00b7 " + (r && r.titolo || ""));
+  c.creata = Date.now();
+  c.mano = Date.now();
+  delete c.diretta;
+  delete c.export; delete c.esportati; delete c.premiere; delete c.grafica; delete c.casa;
+  R.seq[c.id] = c;
+  // e la diretta torna intera
+  const dur = durataRegistrata(q.reg);
+  q.pezzi = [{ id: nuovoId("p"), dentro: 0, fuori: Math.max(dur, 1), titolo: "diretta", vivo: r && r.stato === "registra" }];
+  if (!(r && r.stato === "registra")) delete q.pezzi[0].vivo;
+  scrivi(); annuncia(0, "clip");
+  console.log("[clip] montato salvato: \"" + c.titolo + "\" (" + c.pezzi.length + " pezzi)");
+  return { ok: true, seq: c, diretta: crescoLaDiretta(q) };
+}
+
 function hlNuova(p) {
   const r = R.reg[String(p.reg || "")];
   if (!r) throw new Error("registrazione sconosciuta");
@@ -2310,6 +2417,7 @@ function hlDividi(p) {
   if (!(a > x.dentro + 0.2 && a < x.fuori - 0.2)) throw new Error("il taglio cadrebbe sul bordo del pezzo");
   const nuovo = Object.assign({}, x, { id: nuovoId("p"), dentro: a, base: a, mano: true });
   x.fuori = a; x.mano = true;
+  delete x.vivo;                      // la testa e' tua, la coda resta il vivo
   q.pezzi.splice(i + 1, 0, nuovo);
   scrivi(); annuncia(0, "clip");
   return { ok: true, seq: q, nuovo: nuovo.id };
@@ -6870,6 +6978,9 @@ const AZIONI = {
   "clip-hl-dividi": hlDividi,
   "clip-hl-inserisci": hlInserisci,
   "clip-hl-nuova": hlNuova,
+  "clip-diretta": (p) => ({ ok: true, seq: laDiretta(p.reg, p.banco, p.prog) }),
+  "clip-diretta-riattacca": (p) => riattaccaLaDiretta(p.seq),
+  "clip-diretta-salva": salvaIlMontato,
   "clip-hl-imposta": hlImposta,
   "clip-hl-aggiungi": hlAggiungi,
   "clip-hl-suggerimento": hlSuggerimento,

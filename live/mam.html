@@ -1704,6 +1704,13 @@
             '<span class="stacco"></span>' +
             tr("pTogli", "togli", "Togli questo pezzo dalla sequenza", "") +
             tr("pFoto", "foto", "Esporta fotogramma") +
+            // LA DIRETTA STA QUI. Il vivo non e' in un monitor a parte: e'
+            // il pezzo in fondo alla timeline, e questo pulsante ti ci
+            // riporta — rimettendolo, se nel frattempo l'hai tagliato via.
+            '<span class="stacco" id="staccoVivo" hidden></span>' +
+            tr("pLive", "live", "Torna al vivo (fine della diretta)", "oro") +
+            '<button class="tr" id="pSalva" hidden title="Salva quello che hai montato con un nome suo: la diretta torna intera">' +
+              IC.esporta + '</button>' +
           '</div>' +
         '</div>' +
       '</div>' +
@@ -1868,12 +1875,12 @@
       // il pezzo finisce alla sua uscita, non alla fine del file: si passa
       // al successivo senza che nessuno debba premere niente
       if (PROG.a !== null && vp.currentTime >= PROG.a - 0.05) {
-        if (PROG.i + 1 < pezziProg().length) progVai(PROG.i + 1, !vp.paused); else vp.pause();
+        if (PROG.i + 1 < pezziProg().length) progVai(PROG.i + 1, !vp.paused, 0, true); else vp.pause();
       }
       disegnaProgramma();
     });
     vp.addEventListener("ended", function () {
-      if (PROG.i + 1 < pezziProg().length) progVai(PROG.i + 1, true);
+      if (PROG.i + 1 < pezziProg().length) progVai(PROG.i + 1, true, 0, true);
     });
     el("pPlay").addEventListener("click", function () {
       if (PROG.i < 0) return progVai(0, true);
@@ -1895,6 +1902,35 @@
     el("pFoto").addEventListener("click", function () {
       var x = pezziProg()[PROG.i]; if (!x || !SEQ) return;
       fotogramma(SEQ.reg, x.clip ? x.dentro + vp.currentTime : vp.currentTime);
+    });
+    // TORNA AL VIVO. Se la coda e' ancora li' basta saltarci sopra; se e'
+    // stata tagliata via, il ponte la rimette dall'ultimo secondo tenuto a
+    // adesso — cosi' si torna sempre al presente, comunque si sia montato.
+    el("pLive").addEventListener("click", function () {
+      if (!SEQ || !SEQ.diretta) return;
+      if (alBordoDelVivo(true)) return;
+      manda({ tipo: "clip-diretta-riattacca", seq: SEQ.id })
+        .then(function (d) {
+          SEQ = d.seq; disegnaSequenza();
+          if (!alBordoDelVivo(true)) dice("La registrazione e\u2019 finita: non c\u2019e\u2019 piu\u2019 un vivo dove tornare.");
+        })
+        .catch(function (er) { dice(er.message); });
+    });
+    // SALVA IL MONTATO: quello che hai tagliato diventa una sequenza sua e
+    // la diretta torna intera, attaccata al vivo.
+    el("pSalva").addEventListener("click", function () {
+      if (!SEQ || !SEQ.diretta) return;
+      var tuoi = pezziProg().filter(function (x) { return !x.vivo; });
+      if (!tuoi.length) return dice("In timeline non c\u2019e\u2019 ancora niente di tuo: la diretta e\u2019 tutta intera.");
+      var nome = prompt("Come si chiama questo montato?", "MONTATO \u00b7 " + (REG && REG.titolo || ""));
+      if (nome === null) return;
+      manda({ tipo: "clip-diretta-salva", seq: SEQ.id, titolo: nome })
+        .then(function (d) {
+          SEQ = d.diretta; disegnaSequenza(); destraMateriale();
+          alBordoDelVivo(true);
+          dice("Salvato: \u201c" + (d.seq.titolo || "montato") + "\u201d \u00b7 " + d.seq.pezzi.length + " pezzi. La diretta e\u2019 tornata intera.", true);
+        })
+        .catch(function (er) { dice(er.message); });
     });
     el("scrubP").addEventListener("mousedown", function (e) {
       var pz = pezziProg(), tot = durataSeq(); if (!tot) return;
@@ -2002,6 +2038,12 @@
   //  niente accorciarlo.
   var MON = "s";
   var PROG = { i: -1, da: 0, a: null, hls: null, pos: 0 };   // pos: dove siamo nel materiale, anche mentre il video cerca
+  // LA DIRETTA IN TIMELINE. In LIVE il vivo non sta in un monitor a parte:
+  // e' l'ultimo pezzo della timeline, e cresce da solo. Il cursore ci resta
+  // attaccato finche' non lo tocchi; appena tocchi qualcosa ti stacchi, il
+  // pezzo continua a crescere lo stesso, e il pulsante LIVE ti riporta al
+  // presente. VIVO.attaccato e' tutto quello che serve per saperlo.
+  var VIVO = { attaccato: true, chiesta: "" };
   function pezziProg() { return (SEQ && SEQ.pezzi) || []; }
   function durataSeq() { return pezziProg().reduce(function (a, x) { return a + (x.fuori - x.dentro); }, 0); }
   function regDiSeq() {
@@ -2029,8 +2071,9 @@
     if (r.materiale === "segmenti") return { url: BASE + "/clip/" + r.id + "/live.m3u8", da: x.dentro, a: x.fuori, hls: true };
     return null;
   }
-  function progVai(i, riproduci, dentroIlPezzo) {
+  function progVai(i, riproduci, dentroIlPezzo, nonStaccare) {
     var v = el("programma"), pz = pezziProg(); if (!v || !pz.length) return;
+    if (!nonStaccare) VIVO.attaccato = false;
     i = Math.max(0, Math.min(pz.length - 1, i));
     var src = sorgentePezzo(pz[i]);
     if (!src) return dice("Questo pezzo non e' ancora riproducibile qui.");
@@ -2054,6 +2097,64 @@
       v.src = src.url; v.load();
     }
   }
+  // ── IL VIVO IN FONDO ALLA TIMELINE ──────────────────────────────
+  function pezzoVivo() {
+    var pz = pezziProg(), i = -1;
+    pz.forEach(function (x, k) { if (x.vivo) i = k; });
+    return i;
+  }
+  // il bordo del vivo: l'ultimo secondo che e' arrivato
+  function alBordoDelVivo(riproduci) {
+    var i = pezzoVivo(); if (i < 0) return false;
+    var x = pezziProg()[i];
+    // dentro il pezzo si sta il piu' avanti possibile; l'HLS ha la sua idea
+    // di dov'e' il bordo e vince, perche' tiene conto di quanto e' bufferato
+    var quanto = Math.max(0, (x.fuori - x.dentro) - 1.5);
+    progVai(i, riproduci !== false, quanto, true);
+    var v = el("programma");
+    if (PROG.hls && PROG.hls.liveSyncPosition) { try { v.currentTime = PROG.hls.liveSyncPosition; } catch (e) {} }
+    VIVO.attaccato = true;
+    segnaIlVivo();
+    return true;
+  }
+  // Attaccati al vivo si sta senza fare niente: il video corre da solo e
+  // basta spostare in avanti il confine del pezzo, che intanto e' cresciuto.
+  // Si salta al bordo solo se non ci siamo dentro, o se si e' rimasti troppo
+  // indietro — se no ogni tre secondi ci sarebbe uno strappo.
+  function seguiIlVivo() {
+    var i = pezzoVivo(); if (i < 0) return;
+    var v = el("programma");
+    if (PROG.i !== i) return void alBordoDelVivo(!v.paused);
+    var x = pezziProg()[i];
+    if (PROG.a !== null) PROG.a = x.fuori;
+    if (x.fuori - (PROG.pos || 0) > 12) alBordoDelVivo(!v.paused);
+  }
+  // il pulsante si accende solo quando ha senso, e dice se sei attaccato
+  function segnaIlVivo() {
+    var b = el("pLive"), sv = el("staccoVivo"), sa = el("pSalva");
+    if (!b) return;
+    var e = !!(SEQ && SEQ.diretta);
+    b.hidden = !e; if (sv) sv.hidden = !e;
+    if (sa) sa.hidden = !e || !pezziProg().filter(function (x) { return !x.vivo; }).length;
+    if (!e) return;
+    b.classList.toggle("acceso", !!VIVO.attaccato);
+    b.title = VIVO.attaccato ? "Sei attaccato al vivo" : "Torna al vivo (fine della diretta)";
+  }
+  // apre la DIRETTA di questa registrazione, e la tiene aperta
+  function apriLaDiretta(r) {
+    if (!r || r.stato !== "registra" || MODO === "archivio") return;
+    if (VIVO.chiesta === r.id) return;
+    VIVO.chiesta = r.id;
+    manda({ tipo: "clip-diretta", reg: r.id })
+      .then(function (d) {
+        if (!d.seq) return;
+        // se il montatore sta gia' lavorando su un'altra sequenza non gliela
+        // si porta via: la diretta si prende solo se la timeline e' libera
+        if (!SEQ || SEQ.reg !== r.id) { SEQ = d.seq; VIVO.attaccato = true; disegnaSequenza(); alBordoDelVivo(true); }
+      })
+      .catch(function () { VIVO.chiesta = ""; });
+  }
+
   // La grafica che si vede ADESSO nel Programma: la prima che copre la
   // testina. E' un'immagine sopra il video, non un rendering: cambia
   // istantaneamente mentre trascini.
@@ -2071,6 +2172,7 @@
   function disegnaProgramma() {
     var sc = el("scrubP"), v = el("programma"); if (!sc) return;
     graficaSopraProgramma();
+    segnaIlVivo();
     var pz = pezziProg(), tot = durataSeq();
     if (el("capoSeq")) el("capoSeq").textContent = SEQ ? (SEQ.titolo || "sequenza") + " · " + pz.length + " pezzi" : "nessuna sequenza";
     // nel Programma il "tratto" e' il pezzo su cui sta la testina: e' quello
@@ -5676,6 +5778,7 @@
       CLIP = d.clip || [];
       barra(); lavorazioneInCorso();
       if (REG && el("player") && !guardando) apri(REG);
+      if (REG) apriLaDiretta(REG);
       disegnaConsole(); capo(); disegnaSequenza();
       if (VISTA === "cerca") { albero(); return; }      // sta cercando: non si tocca la lista
       if (cambiato()) destraMateriale();
@@ -5695,6 +5798,17 @@
           // arrivava dentro la piu' recente senza che nessuno l'avesse
           // chiesta, e sembrava che il MAM avesse gia' deciso per te.
           SEQ = mia || ((SEQ && SEQ.reg === REG.id) ? SEQ : null);
+          // LA DIRETTA CRESCE. Il pezzo in fondo si allunga da solo: qui si
+          // rimette a posto il confine del pezzo che si sta guardando (se no
+          // il monitor si fermerebbe dove finiva un momento fa) e, se sei
+          // attaccato, il cursore segue il bordo del vivo.
+          if (SEQ && SEQ.diretta) {
+            var pzv = pezziProg(), iv = -1;
+            pzv.forEach(function (x, k) { if (x.vivo) iv = k; });
+            if (iv >= 0 && PROG.i === iv && PROG.a !== null) PROG.a = pzv[iv].fuori;
+            if (iv >= 0 && VIVO.attaccato) seguiIlVivo();
+            segnaIlVivo();
+          }
           if (cambiato()) destraMateriale();
         }).catch(function () {});
       }
