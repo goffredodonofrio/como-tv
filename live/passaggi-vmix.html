@@ -57,20 +57,48 @@
   /* ── i giocatori ── */
   .nodo{position:absolute;transform:translate(-50%,-50%);opacity:0;}
   /* il tondo: grande quanto ha giocato il pallone */
+  /* L'ALONE dice quanti palloni ha giocato, ed e' luce, non un oggetto:
+     puo' sovrapporsi a quello del vicino senza che nessuno debba spostarsi.
+     E' questo che permette di tenere le posizioni ESATTE e insieme far
+     vedere la quantita' — un cerchio pieno grande avrebbe dovuto spingere
+     via i vicini, un alone no, si somma e basta. Dove due giocatori hanno
+     lavorato vicini la luce si addensa, ed e' un'informazione vera. */
+  .nodo .alone{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    border-radius:50%;pointer-events:none;mix-blend-mode:screen;
+    background:radial-gradient(circle,
+      rgba(201,162,75,.52) 0%, rgba(201,162,75,.24) 40%,
+      rgba(201,162,75,.07) 68%, rgba(201,162,75,0) 100%);}
+  /* il punto: piccolo e pieno, e' la posizione vera */
   .nodo .bolla{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-    border-radius:50%;background:rgba(201,162,75,.14);
-    box-shadow:inset 0 0 0 2px rgba(201,162,75,.75);}
-  .nodo .num{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-    font-family:'Mazzard',sans-serif;font-weight:800;color:#F5F1E6;line-height:1;
-    font-variant-numeric:tabular-nums;text-shadow:0 2px 8px rgba(7,11,29,.9);}
+    border-radius:50%;background:#F0DEB4;
+    box-shadow:0 0 0 3px rgba(10,15,38,.75), 0 3px 12px rgba(7,11,29,.9);}
+  /* Dentro il cerchio c'e' il COGNOME e basta. Il numero di maglia era li'
+     quando il cerchio non diceva chi fosse; adesso che il nome c'e' e' un
+     doppione, e toglierlo libera tutta la larghezza per il nome — che e'
+     esattamente cio' che serviva per renderlo leggibile.
+     Chi non ci sta dentro nemmeno alla misura minima lo porta fuori. */
+  .nodo .quanti{display:none;}
   /* Il cognome non sta dentro il nodo ma per conto suo: al centro del campo
      i giocatori si accalcano, e i nomi finivano uno sull'altro. Cosi' il
      codice puo' cercargli un posto. Niente larghezza: si stringe addosso al
      testo, ed e' cosi' che lo misura. */
-  .cogn{position:absolute;height:26px;line-height:26px;opacity:0;
-    font-family:'Mazzard',sans-serif;font-weight:700;font-size:19px;letter-spacing:.05em;
-    text-transform:uppercase;color:#F5F1E6;white-space:nowrap;
+  /* Il nome sta SEMPRE sotto il suo cerchio, mai altrove: e' l'ingombro dei
+     cerchi che si allarga per fargli posto, non il nome che si sposta a
+     cercarselo. Cosi' non c'e' mai da chiedersi di chi sia. */
+  /* Sotto il pallino: il nome, e sotto ancora la barra con quanti palloni ha
+     giocato. Tre righe sole, sempre incolonnate sotto il loro pallino — non
+     c'e' mai da chiedersi di chi siano. */
+  .cogn{position:absolute;opacity:0;text-align:center;white-space:nowrap;}
+  .cogn .nm{display:block;height:26px;line-height:26px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:20px;letter-spacing:.04em;
+    text-transform:uppercase;color:#F5F1E6;
     text-shadow:0 2px 10px rgba(7,11,29,.95), 0 0 20px rgba(7,11,29,.85);}
+  /* sotto il nome il conteggio esatto: l'alone dice a colpo d'occhio, il
+     numero dice preciso */
+  .cogn .q{display:block;margin-top:4px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:17px;
+    color:#C9A24B;font-variant-numeric:tabular-nums;line-height:1;
+    text-shadow:0 2px 8px rgba(7,11,29,.95);}
   /* la freccia del passaggio medio: dove e quanto lontano gioca il pallone */
   .nodo .dir{position:absolute;left:50%;top:50%;height:3px;transform-origin:left center;
     background:linear-gradient(90deg,rgba(110,231,212,.15),rgba(110,231,212,.9));border-radius:2px;}
@@ -288,104 +316,134 @@
   // sembrerebbe averne quattro volte tanti.
   var quante = D.n.map(function (g) { return +g.q || 0; });
   var maxQ = Math.max.apply(null, quante.concat([1]));
-  function raggio(q) { return 17 + 25 * Math.sqrt((+q || 0) / maxQ); }
+  // Cerchi piu' grandi, perche' adesso sono otto e devono contenere un nome
+  // che si legga. La radice resta: l'occhio legge l'area, e col raggio
+  // proporzionale chi ha il doppio dei passaggi sembrerebbe averne quattro
+  // volte tanti.
+  // Il pallino e' piccolo e UGUALE per tutti: cosi' la posizione media e'
+  // quella vera, non spinta di lato da un cerchio grande che aveva bisogno di
+  // spazio. La quantita' se la prende la barra sotto il nome, dove si legge
+  // per lunghezza — e la lunghezza l'occhio la confronta meglio di un'area.
+  function raggio() { return 10; }
+  // L'alone cresce come la RADICE dei palloni: l'occhio legge l'area, e col
+  // raggio proporzionale chi ne ha il doppio sembrerebbe averne quattro volte
+  // tanti. Senza costanti aggiunte: sommavo trenta pixel a tutti e le
+  // differenze si schiacciavano — chi aveva il triplo dei palloni faceva un
+  // alone appena una volta e mezza, cioe' la quantita' non si vedeva piu'.
+  // Resta solo un minimo, perche' chi ha giocato poco non sparisca del tutto.
+  function alone(q) { return Math.round(Math.max(36, 100 * Math.sqrt((+q || 0) / maxQ))); }
 
   var ordine = D.n.slice().sort(function (a, b) { return (b.q || 0) - (a.q || 0); });
-  var h = "";
-  D.n.forEach(function (g) {
-    var r = raggio(g.q), d = 2 * r;
-    var i = ordine.indexOf(g);
-    var anim = STILL ? "opacity:1"
-      : "animation:nodoIn .5s cubic-bezier(.2,.7,.3,1) " + (1.2 + i * 0.09).toFixed(2) + "s forwards";
-    // la freccia del passaggio medio, in metri veri sul campo
-    var fr = "";
-    if (g.dx != null && g.dy != null) {
-      var ax = (+g.dx) / 100 * 105 * MPX, ay = -(+g.dy) / 100 * 68 * MPX;
-      var lung = Math.sqrt(ax * ax + ay * ay);
-      if (lung > 6) {
-        var ang = Math.atan2(ay, ax) * 180 / Math.PI;
-        fr = '<i class="dir" style="width:' + Math.round(r + lung) + 'px;' +
-             'transform:rotate(' + ang.toFixed(1) + 'deg)"></i>';
-      }
-    }
-    h += '<div class="nodo" style="left:' + Math.round(px(g.x)) + 'px;top:' + Math.round(py(g.y)) + 'px;' +
-           'width:' + d + 'px;height:' + d + 'px;' + anim + '">' +
-         fr +
-         '<i class="bolla" style="width:' + d + 'px;height:' + d + 'px"></i>' +
-         '<span class="num" style="font-size:' + Math.round(r * 0.78) + 'px">' + esc(g.num || "") + '</span>' +
-         '</div>';
-  });
-  el("stage").insertAdjacentHTML("beforeend", h);
 
-  // ── i cognomi, ciascuno con un posto suo ────────────────────────────
-  // Stessa cura della mappa dei tiri: si disegnano per misurarli, poi si
-  // cerca a ognuno un posto libero — sotto il cerchio, sopra, o di lato —
-  // evitando gli altri nomi E i cerchi, che sono ostacoli quanto loro.
-  var CERCHI = D.n.map(function (g) {
-    var r = raggio(g.q);
-    return { x: px(g.x) - r, y: py(g.y) - r, w: 2 * r, h: 2 * r };
-  });
-  var POSATI = [];
-  var CH = 26, ARIA = 6;
-  function pesta(r, lista, aria) {
-    for (var k = 0; k < lista.length; k++) {
-      var o = lista[k];
-      if (r.x < o.x + o.w + aria && o.x < r.x + r.w + aria &&
-          r.y < o.y + o.h + aria && o.y < r.y + r.h + aria) return true;
-    }
-    return false;
-  }
-  function nelCampo(r) {
-    return r.x >= PX + 4 && r.x + r.w <= PX + PW - 4 &&
-           r.y >= PY - 30 && r.y + r.h <= PY + PH + 26;
-  }
-  var etichette = D.n.map(function (g) {
+  // ── dove va ciascun cerchio, col suo nome sotto ─────────────────────
+  // Il cerchio diceva tre cose insieme: dove, quanto e chi. Troppe. Adesso
+  // ne dice due — dove sta e quanti palloni ha giocato, col numero dentro —
+  // e il CHI sta sotto, fuori, grande abbastanza da leggersi.
+  //
+  // Perche' il nome stia sempre attaccato al SUO cerchio e non ballino, i
+  // cerchi si scansano tenendo conto anche dell'etichetta: l'ingombro di un
+  // giocatore non e' il tondo, e' il tondo PIU' il nome che ci sta sotto. Due
+  // rettangoli che non si toccano garantiscono che nessun nome finisca
+  // addosso a un altro, e che nessuno debba andarselo a cercare un posto
+  // altrove. Prima cercavo un posto ai nomi dopo aver messo i cerchi, ed era
+  // il momento sbagliato: a quel punto il posto non c'era piu'.
+  var GIU = 8, ALT = 48;            // stacco dal punto, e altezza di nome + conteggio
+
+  var NODI = D.n.map(function (g, k) {
     var d = document.createElement("div");
     d.className = "cogn";
-    d.textContent = String(g.p || "").toUpperCase();
+    // la barra e' lunga IN PROPORZIONE ai palloni, non alla radice: qui si
+    // confrontano lunghezze, e la lunghezza l'occhio la legge dritta
+    d.innerHTML = '<span class="nm">' + esc(String(g.p || "").toUpperCase()) + '</span>' +
+                  '<span class="q">' + (+g.q || 0) + '</span>';
     el("stage").appendChild(d);
-    return { g: g, el: d, r: raggio(g.q), i: ordine.indexOf(g) };
+    return { g: g, el: d, r: raggio(g.q), x: px(g.x), y: py(g.y),
+             peso: 1 / (1 + (+g.q || 0) / 20), i: 0, w: 0 };
   });
-  function posa() {
-    POSATI = [];
-    etichette.forEach(function (e) { e.el.style.display = ""; });
-    // prima i piu' grandi: chi ha giocato di piu' merita il posto migliore
-    etichette.slice().sort(function (u, v) { return (v.g.q || 0) - (u.g.q || 0); })
-      .forEach(function (e) {
-        var w = e.el.offsetWidth || e.el.clientWidth || 100;
-        var cx = px(e.g.x), cy = py(e.g.y), r = e.r;
-        var scelto = null;
-        // Il nome deve restare ATTACCATO al suo cerchio: sotto, sopra, o di
-        // fianco, e basta. La versione prima lo allontanava finche' trovava
-        // posto, e in mezzo al campo i nomi finivano a mezzo metro dal
-        // giocatore: uno vedeva "DOUVIKAS" e non sapeva quale pallina fosse.
-        // Meglio nessun nome che un nome che non si sa di chi e': il numero
-        // dentro il cerchio resta, e la colonna a destra dice chi sono i
-        // cinque che hanno giocato di piu'.
-        var candidati = [[0, r + 7], [0, -(r + 7 + CH)],
-                         [w / 2 + r + 9, -CH / 2], [-(w / 2 + r + 9), -CH / 2],
-                         [0, r + 7 + CH + ARIA], [0, -(r + 7 + 2 * CH + ARIA)]];
-        for (var k = 0; k < candidati.length && !scelto; k++) {
-          var rt = { x: Math.round(cx - w / 2 + candidati[k][0]),
-                     y: Math.round(cy + candidati[k][1]), w: w, h: CH };
-          if (!nelCampo(rt)) continue;
-          if (pesta(rt, POSATI, ARIA)) continue;
-          if (pesta(rt, CERCHI, 2)) continue;
-          scelto = rt;
-        }
-        if (!scelto) { e.el.style.display = "none"; return; }
-        POSATI.push(scelto);
-        e.el.style.display = "";
-        e.el.style.left = scelto.x + "px";
-        e.el.style.top = scelto.y + "px";
-        e.el.style.animation = STILL ? "" : "fadeIn .4s ease " + (1.2 + e.i * 0.09 + 0.2).toFixed(2) + "s forwards";
-        if (STILL) e.el.style.opacity = 1;
-      });
+  var ordine = D.n.slice().sort(function (a, b) { return (b.q || 0) - (a.q || 0); });
+  NODI.forEach(function (n) { n.i = ordine.indexOf(n.g); });
+
+  function ingombro(n) {
+    var w = Math.max(2 * n.r, n.w) + 10;
+    return { x: n.x - w / 2, y: n.y - n.r - 4, w: w, h: 2 * n.r + GIU + ALT + 8 };
   }
-  // la larghezza dipende dal carattere: al primo giro il Mazzard non c'e'
-  // ancora e si misurerebbe quello di ripiego, piu' largo
-  posa();
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(posa);
+  function scansa() {
+    for (var giro = 0; giro < 140; giro++) {
+      var mosso = false;
+      for (var i = 0; i < NODI.length; i++) {
+        for (var j = i + 1; j < NODI.length; j++) {
+          var a = NODI[i], b = NODI[j], A = ingombro(a), B = ingombro(b);
+          var ox = Math.min(A.x + A.w, B.x + B.w) - Math.max(A.x, B.x);
+          var oy = Math.min(A.y + A.h, B.y + B.h) - Math.max(A.y, B.y);
+          if (ox <= 0 || oy <= 0) continue;
+          // si spinge lungo il lato dove si pestano di meno: e' lo spostamento
+          // piu' corto che li separa, quindi la bugia piu' piccola
+          var qa = a.peso / (a.peso + b.peso), qb = 1 - qa;
+          if (ox < oy) {
+            var sx = (a.x < b.x ? -1 : 1) * ox / 2;
+            a.x += sx * 2 * qa; b.x -= sx * 2 * qb;
+          } else {
+            var sy = (a.y < b.y ? -1 : 1) * oy / 2;
+            a.y += sy * 2 * qa; b.y -= sy * 2 * qb;
+          }
+          mosso = true;
+        }
+      }
+      NODI.forEach(function (n) {
+        var w = Math.max(2 * n.r, n.w) / 2 + 6;
+        n.x = Math.max(PX + w, Math.min(PX + PW - w, n.x));
+        n.y = Math.max(PY + n.r + 6, Math.min(PY + PH - n.r - GIU - ALT - 4, n.y));
+      });
+      if (!mosso) break;
+    }
+  }
+
+  function disegna() {
+    // le larghezze dei nomi cambiano col carattere: si misurano prima di
+    // decidere gli ingombri, e si rifa' tutto a Mazzard caricato
+    NODI.forEach(function (n) {
+      n.el.style.display = "";
+      n.w = n.el.offsetWidth || 90;
+      n.x = px(n.g.x); n.y = py(n.g.y);      // si riparte sempre dal punto vero
+    });
+    scansa();
+
+    var h = "";
+    NODI.forEach(function (n) {
+      var g = n.g, r = n.r, d = 2 * r;
+      var anim = STILL ? "opacity:1"
+        : "animation:nodoIn .5s cubic-bezier(.2,.7,.3,1) " + (1.2 + n.i * 0.09).toFixed(2) + "s forwards";
+      // la freccia del passaggio medio, in metri veri sul campo
+      var fr = "";
+      if (g.dx != null && g.dy != null) {
+        var ax = (+g.dx) / 100 * 105 * MPX, ay = -(+g.dy) / 100 * 68 * MPX;
+        // Accorciate: la freccia deve dire il VERSO del passaggio medio, e
+        // per quello basta poco. Alla lunghezza vera attraversavano mezza
+        // mappa e andavano a finire addosso ai nomi degli altri.
+        var lung = Math.sqrt(ax * ax + ay * ay) * 0.58;
+        if (lung > 5) {
+          var ang = Math.atan2(ay, ax) * 180 / Math.PI;
+          fr = '<i class="dir" style="width:' + Math.round(r + lung) + 'px;' +
+               'transform:rotate(' + ang.toFixed(1) + 'deg)"></i>';
+        }
+      }
+      h += '<div class="nodo" style="left:' + Math.round(n.x) + 'px;top:' + Math.round(n.y) + 'px;' +
+             'width:' + d + 'px;height:' + d + 'px;' + anim + '">' +
+           '<i class="alone" style="width:' + (2 * alone(g.q)) + 'px;height:' + (2 * alone(g.q)) + 'px"></i>' +
+           fr + '<i class="bolla" style="width:' + d + 'px;height:' + d + 'px"></i></div>';
+
+      n.el.style.left = Math.round(n.x - n.w / 2) + "px";
+      n.el.style.top = Math.round(n.y + r + GIU) + "px";
+      n.el.style.animation = STILL ? "" : "fadeIn .4s ease " + (1.2 + n.i * 0.09 + 0.2).toFixed(2) + "s forwards";
+      if (STILL) n.el.style.opacity = 1;
+    });
+    var vecchi = el("stage").querySelectorAll(".nodo");
+    Array.prototype.forEach.call(vecchi, function (x) { x.remove(); });
+    el("stage").insertAdjacentHTML("beforeend", h);
+  }
+  disegna();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(disegna);
+
 
   // ── le due colonne ──────────────────────────────────────────────────
   function colonna(lato, dentro, ritardo) {
@@ -396,9 +454,9 @@
   var q = D.sq, st = D.st || {};
   var sinistra = '<div class="capo">' +
     (q.l ? '<img src="' + esc(q.l) + '" onerror="this.style.display=\'none\'">' : "") +
-    '<div class="nome">' + esc(q.n || "") +
-      (q.g != null && String(q.g) !== "" ? " <em>" + esc(q.g) + "</em>" : "") +
-    '</div></div><div class="filo"></div>';
+    // Niente punteggio: questa grafica racconta come si e' giocato, non
+    // com'e' finita.
+    '<div class="nome">' + esc(q.n || "") + '</div></div><div class="filo"></div>';
   [["Passaggi", st.tot, true], ["Precisione", st.prec, false],
    ["In avanti", st.avanti, false], ["Lunghezza media", st.lung, false]].forEach(function (r) {
     if (r[1] == null || r[1] === "") return;
@@ -407,7 +465,7 @@
                 '<span class="cif">' + esc(r[1]) + '</span></div>';
   });
 
-  var destra = '<div class="titel">Chi ha giocato di pi&ugrave;</div>';
+  var destra = '<div class="titel">Palloni giocati</div>';
   ordine.slice(0, 5).forEach(function (g) {
     destra += '<div class="rigag">' +
       (g.f ? '<span class="faccia"><img src="' + esc(g.f) + '" onerror="this.parentNode.style.display=\'none\'"></span>' : "") +
@@ -420,8 +478,10 @@
   var ch = el("chiosa");
   ch.style.cssText = "top:" + (PY + PH + 40) + "px;" +
     (STILL ? "opacity:1" : "animation:fadeIn .5s ease " + (1.2 + D.n.length * 0.09 + 0.3).toFixed(2) + "s forwards");
-  ch.innerHTML = "Ogni cerchio &egrave; il punto medio da cui il giocatore ha giocato il pallone &middot; " +
-                 "la grandezza sono i passaggi &middot; la freccia il passaggio medio";
+  // La chiosa deve dire quello che la grafica fa DAVVERO: con i pallini tutti
+  // uguali, "la grandezza sono i passaggi" era diventata una bugia.
+  ch.innerHTML = "Ogni punto &egrave; il posto medio da cui il giocatore ha giocato il pallone &middot; " +
+                 "l&rsquo;alone quanti ne ha giocati &middot; la freccia il passaggio medio";
 
   function replay() { location.reload(); }
   document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
