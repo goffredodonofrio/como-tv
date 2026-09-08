@@ -219,6 +219,8 @@
   #pvw{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
     transform-origin:top left;pointer-events:none;background:#070B1D;color-scheme:dark;}
   #pvwcap{font-size:11.5px;color:var(--fg-3);margin-top:6px;min-height:16px;}
+  #btnRivedi{margin-top:8px;font-size:9.5px;padding:7px 11px;}
+  #btnRivedi:disabled{opacity:.38;cursor:default;color:var(--fg-3);border-color:var(--line-2);}
   .deck{display:grid;grid-template-columns:1fr 170px 1fr;gap:16px;align-items:stretch;margin-bottom:16px;}
   .deck .mon{margin-bottom:0;}
   .takecol{display:flex;flex-direction:column;gap:12px;justify-content:center;}
@@ -318,7 +320,13 @@
               <h2>Anteprima</h2>
               <div id="pvwbox"><iframe id="pvw" scrolling="no"></iframe></div>
               <div id="pvwcap">Clicca una schermata del player o una grafica: la vedi qui senza toccare l'onda.</div>
-              
+              <!-- Scegliendo una grafica l'anteprima si ferma sul risultato: si
+                   sfoglia la scaletta, non si sta a guardare quattordici secondi
+                   di animazione a ogni clic. Ma prima di mandarla in onda si
+                   vuole vedere COME entra, un passaggio alla volta: e' questo
+                   pulsante, e vale anche sul secondo monitor. -->
+              <button id="btnRivedi" disabled>Rivedi l'animazione</button>
+
     </div>
     <div class="takecol">
       <!-- I livelli attivi, dove si comanda l'onda: si clicca un livello e i
@@ -1258,6 +1266,22 @@
   }
 
   var pvw = el("pvw"), pvwcap = el("pvwcap");
+
+  // ── rivedere l'animazione ───────────────────────────────────────────
+  // L'anteprima di una grafica si ferma sul risultato, perche' sfogliando la
+  // scaletta non si vogliono quattordici secondi di ouverture a ogni clic.
+  // Prima del take pero' serve il contrario: vedere come ENTRA, passaggio per
+  // passaggio. Il pulsante rigioca la stessa identica grafica senza "still",
+  // qui e sul secondo monitor. Non tocca l'onda: e' sempre e solo anteprima.
+  var btnRivedi = el("btnRivedi"), daRivedere = null;
+  btnRivedi.addEventListener("click", function () {
+    if (!daRivedere) return;
+    var url = daRivedere.motore + "?d=" + daRivedere.pacco + "&muto=1&n=" + Date.now();
+    pvw.src = url;
+    pvwcap.textContent = "Anteprima in movimento: " + daRivedere.titolo + ".";
+    mandaAnteprimaSu(url, "Anteprima in movimento: " + daRivedere.titolo + ".");
+    fitMonitor();
+  });
   // Livello su cui agiscono i due tasti d'onda: di norma segue la grafica
   // scelta, cliccando un livello nel pannello si punta quello.
   var LIVMIRA = null;
@@ -1328,6 +1352,9 @@
 
   function selezionaFase(f, titolo) {
     sel = { tipo: "fase", fase: f, titolo: titolo };
+    // le schermate del player non sono una grafica con un'ouverture: non c'e'
+    // niente da rivedere, e il pulsante si spegne invece di mentire
+    daRivedere = null; btnRivedi.disabled = true;
     // fotografia dello stato locale con la fase scelta: SOLO anteprima
     // (bug e card espliciti: "radio" non esiste nel vecchio campo unico)
     var stato = { fase: f, camp: S.camp, giornata: S.giornata, stadio: S.stadio,
@@ -1377,10 +1404,14 @@
       .then(function (r) { return r.json(); })
       .then(function (dati) {
         if (!sel || sel.id !== id) return;
-        pvw.src = (ENGINES[tipo] || ENGINES.formazione) + "?d=" + b64url(dati) + "&still=1&muto=1";
+        var motore = ENGINES[tipo] || ENGINES.formazione, pacco = b64url(dati);
+        pvw.src = motore + "?d=" + pacco + "&still=1&muto=1";
         pvwcap.textContent = "Anteprima: " + it.titolo + " — andrà in onda sul playout.";
-        mandaAnteprimaSu((ENGINES[tipo] || ENGINES.formazione) + "?d=" + b64url(dati) + "&still=1&muto=1",
+        mandaAnteprimaSu(motore + "?d=" + pacco + "&still=1&muto=1",
                          "Anteprima: " + it.titolo + " — andrà in onda sul playout.");
+        // si tiene da parte per "Rivedi l'animazione": stessi dati, senza still
+        daRivedere = { motore: motore, pacco: pacco, titolo: it.titolo };
+        btnRivedi.disabled = false;
         fitMonitor();
       })
       .catch(function () { pvwcap.textContent = "Anteprima non disponibile."; });
@@ -1685,5 +1716,6 @@
   elencoLoghi();
 })();
 </script>
+<script src="dev.js"></script>
 </body>
 </html>

@@ -143,7 +143,7 @@
     <div class="eyebrow">Como TV · Grafiche Live</div>
     <h1>Catalogo</h1>
     <div class="sub">Ogni anteprima è la grafica vera con dati d'esempio: com'è qui, esce in onda.
-      <b>Passaci sopra</b> e parte l'animazione, <b>clicca</b> e sei nell'editor.
+      <b>Passaci sopra</b> e parte l'animazione, che si ripete finché resti lì; <b>clicca</b> e sei nell'editor.
       Fermando il mouse sulla scheda compare che cosa fa.</div>
   </header>
 
@@ -213,8 +213,8 @@
               ["9","Anastasios","Douvikas"]],
           c: [ { m: "58'", o: ["20","Martin","Baturina"], i: ["8","Maxence","Caqueret"] },
                { m: "63'", o: ["7","Lucas","Da Cunha"],   i: ["5","Máximo","Perrone"] },
-               { m: "72'", o: ["11","Assane","Diao"],     i: ["2","Ignace","Van der Brempt"] },
-               { m: "80'", o: ["10","Nico","Paz"],        i: ["16","Alberto","Moreno"] } ]
+               { m: "72'", o: ["11","Assane","Diao"],     i: ["42","Jayden","Addai"] },
+               { m: "80'", o: ["10","Nico","Paz"],        i: ["30","Mattia","Liberali"] } ]
         } },
       { n: "Risultati", m: "risultati-vmix.html", e: "risultati.html",
         d: "Gli esiti di giornata, con stemmi e punteggi. Partite da ESPN, selezionabili.",
@@ -255,12 +255,12 @@
       { n: "Focus", m: "focus-vmix.html", e: "focus.html",
         d: "Il racconto di un protagonista: nome in corsivo oro, numeri, storia e foto grande.",
         demo: {
-          k: "CESC", n: "Fàbregas", s: "TORNA A BARCELLONA",
-          st: [["151", "PRESENZE"], ["42", "GOL"], ["50", "ASSIST"]],
-          tx: "3 stagioni al Barcellona, dal 2011 al 2014:",
-          li: ["2011-12", "2012-13", "2013-14"],
-          fr: "Vince 6 trofei: tra cui 1 Liga (2012-13)",
-          img: FOTO.fabregas
+          k: "JEAN", n: "Butez", s: "DAL BELGIO AL LARIO",
+          st: [["38", "PRESENZE"], ["16", "PORTA INVIOLATA"], ["4", "RIGORI PARATI"]],
+          tx: "3 stagioni al Royal Antwerp, fino al 2024:",
+          li: ["2021-22", "2022-23", "2023-24"],
+          fr: "Con l'Antwerp vince campionato e coppa nel 2022-23",
+          img: FOTO.butez
         } },
       { n: "Scheda", m: "scheda-vmix.html", e: "scheda.html",
         d: "La carta d'identità di una squadra o un avversario: campi liberi e foto grande.",
@@ -298,6 +298,7 @@
                l: "https://a.espncdn.com/i/teamlogos/soccer/500/2572.png" },
           b: { n: "Inter", s: "in trasferta", c: "#0B1B4D",
                l: "https://a.espncdn.com/i/teamlogos/soccer/500/110.png" },
+          r: { a: "2", b: "1", f: "FINALE" },
           st: [["Possesso %", 54, 46], ["Tiri", 15, 11], ["Tiri in porta", 6, 4],
                ["Calci d'angolo", 7, 3], ["Falli", 9, 14], ["Passaggi riusciti %", 88, 84]]
         } },
@@ -479,20 +480,80 @@
   // stesso istante. Con un quinto di secondo, chi passa e va non fa partire
   // niente; chi si ferma su una scheda la vede animarsi.
   var ATTESA = 190;
+
+  // Finita l'animazione, la scheda restava li' immobile: chi si era perso
+  // l'ingresso doveva uscire col mouse e rientrare. E su una grafica lunga —
+  // i Cambi durano quattordici secondi, un cambio ogni due e mezzo — bastava
+  // guardare un attimo dopo la fine per giurare che non fosse animata.
+  // Ora riparte da sola, finche' il mouse resta sopra.
+  //
+  // Quando finisce non lo sa nessuno: ogni motore ha i suoi tempi, e una
+  // tabella di durate invecchierebbe al primo ritocco. Si guarda invece la
+  // grafica stessa — opacita', trasformazioni, ritagli di tutti i suoi pezzi:
+  // finche' cambia qualcosa sta ancora recitando. La quiete deve durare piu'
+  // della pausa piu' lunga DENTRO un'animazione (i reparti delle Formazioni
+  // Premium si danno il cambio ogni 3,8s), altrimenti ripartirebbe a meta'.
+  // Il crawl e il ticker non si fermano mai: infatti non ripartono mai, ed e'
+  // giusto cosi'.
+  var POLSO = 500, QUIETE = 5000;
+  function firma(d) {
+    if (!d || !d.body) return null;
+    var v = d.defaultView, s = "", i, e, st, els = d.body.querySelectorAll("*");
+    for (i = 0; i < els.length; i++) {
+      e = els[i]; st = v.getComputedStyle(e);
+      s += st.opacity + "|" + st.transform + "|" + st.clipPath + ";";
+    }
+    return els.length + ":" + s.length + ":" + hash(s);
+  }
+  function hash(s) {
+    var h = 7, i;
+    for (i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return h;
+  }
+  function inVista(el) {
+    var r = el.getBoundingClientRect();
+    return r.bottom > 0 && r.top < (window.innerHeight || 0);
+  }
+
   document.querySelectorAll(".fam").forEach(function (card) {
     var fr = card.querySelector("iframe");
     if (!fr) return;                 // gli attrezzi hanno un cartello, non un motore
-    var quando = null, inCorso = false;
+    var quando = null, inCorso = false, battito = null;
     function fermo() { return fr.dataset.m + "?still=1" + fr.dataset.q; }
+    function gira() { fr.src = fr.dataset.m + "?n=" + Date.now() + fr.dataset.q; }
+
+    function sorveglia() {
+      var ultima = null, ferma = 0;
+      clearInterval(battito);
+      battito = setInterval(function () {
+        if (!inCorso) { clearInterval(battito); return; }
+        // Un iframe fuori schermo, o una scheda in secondo piano, il browser
+        // la congela: le animazioni si fermano, la firma non cambia piu' e
+        // sembrerebbe finita. Senza questo controllo ripartirebbe ogni cinque
+        // secondi per sempre, ricaricando un motore che nessuno sta guardando.
+        if (document.hidden || !inVista(card)) return;
+        var f;
+        try { f = firma(fr.contentDocument); } catch (e) { return; }
+        if (f === null) return;                       // sta ancora caricando
+        if (f !== ultima) { ultima = f; ferma = 0; return; }
+        ferma += POLSO;
+        if (ferma < QUIETE) return;
+        ferma = 0; ultima = null;
+        gira();                                        // da capo, si rivede tutto
+      }, POLSO);
+    }
+
     card.addEventListener("mouseenter", function () {
       clearTimeout(quando);
       quando = setTimeout(function () {
         inCorso = true;
-        fr.src = fr.dataset.m + "?n=" + Date.now() + fr.dataset.q;
+        gira();
+        sorveglia();
       }, ATTESA);
     });
     card.addEventListener("mouseleave", function () {
       clearTimeout(quando);
+      clearInterval(battito);
       if (!inCorso) return;          // non era mai partita: niente da rimettere
       inCorso = false;
       fr.src = fermo();
@@ -519,5 +580,6 @@
   });
 })();
 </script>
+<script src="dev.js"></script>
 </body>
 </html>
