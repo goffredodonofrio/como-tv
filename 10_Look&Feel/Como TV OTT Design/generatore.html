@@ -1000,6 +1000,131 @@ function mLandscape(W,H,p,I,A,hl,mid){
   +G('t-away',A,T(M,awayY,p.away,{s:homeS,w:800,ls:-3,fill:C.goldB})+'<rect x="'+M+'" y="'+ulY+'" width="'+R(W*0.17)+'" height="'+ulH+'" rx="2" fill="url(#gL)"/>')
   +(hl?G('t-hl',A,T(M,dtY,kind,{s:R(dtS*0.95),w:700,fill:C.gold,ls:R(dtS*0.16)})):(G('t-dt',A,runsT(M,dtY,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,w:800,fill:C.gold,upper:false,s:dtS}]))+pv));
 }
+// GOL COLLECTION — la raccolta dei gol di una giornata.
+// Parte dalla stessa impalcatura delle altre famiglie di piattaforma — foto
+// full-bleed, scrim, testo a sinistra, filo oro in fondo — ma non e' una
+// partita e non deve sembrarlo. Tre segni la distinguono a colpo d'occhio,
+// tutti dentro navy/oro/Mazzard:
+//
+//   LA RETE   una trama a rombi in oro dietro il testo, sfumata verso l'alto.
+//             E' la rete della porta: nessun'altra famiglia ha una trama, e
+//             basta la coda dell'occhio per sapere che grafica si sta guardando.
+//   LA TARGA  la giornata su una placca oro piena, testo navy. Le altre
+//             famiglie scrivono sempre testo chiaro sullo scrim: un blocco
+//             pieno qui e' un'eccezione voluta, ed e' l'elemento che regge
+//             la lettura da lontano.
+// Un contatore dei gol scritto a mano era la terza idea, ed e' stata scartata:
+// un numero che si digita a ogni giornata si sbaglia, e sbagliato in una
+// grafica pubblicata e' peggio che assente. Tornera' solo se lo si potra'
+// contare da soli.
+//
+// La gerarchia del testo resta quella decisa: occhiello piccolo col prodotto,
+// riga grande col NOME DELLA COMPETIZIONE, giornata subordinata.
+//
+// La misura della riga grande non la decide il nome che c'e' adesso: la
+// decide il piu' lungo che possa capitare. Se ogni card si adattasse al
+// proprio nome, "Serie A" verrebbe enorme e "Scottish Premiership" minuscola,
+// e messe in fila sembrerebbero grafiche di due prodotti diversi. Si sceglie
+// una volta sola, sul caso peggiore, e vale per tutte.
+var GC_PIU_LUNGO='Scottish Premiership';
+function gcCorpo(largh,tetto,ls){
+ var s=tetto;
+ while(s>14&&estW(up(GC_PIU_LUNGO),s,ls)>largh)s-=1;
+ return R(s);
+}
+// La rete: rombi in oro, sottili, che si spengono salendo. Il passo e'
+// proporzionale alla larghezza, cosi' il banner-mid non si ritrova una
+// rete a maglie da pallavolo.
+function gcRete(q,W,H,alt){
+ var passo=Math.max(14,R(W*0.032)),sp=Math.max(1.4,W*0.0019);
+ return '<defs>'
+  +'<pattern id="net'+q+'" width="'+passo+'" height="'+passo+'" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
+  +'<path d="M0 0 H'+passo+' M0 0 V'+passo+'" stroke="'+C.gold+'" stroke-width="'+sp+'" fill="none"/></pattern>'
+  +'<linearGradient id="nm'+q+'" x1="0" y1="1" x2="0" y2="0">'
+  +'<stop offset="0" stop-color="#fff" stop-opacity="1"/><stop offset=".5" stop-color="#fff" stop-opacity=".34"/>'
+  +'<stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>'
+  +'<mask id="nk'+q+'"><rect x="0" y="'+(H-alt)+'" width="'+W+'" height="'+alt+'" fill="url(#nm'+q+')"/></mask>'
+  +'</defs>'
+  +'<rect x="0" y="'+(H-alt)+'" width="'+W+'" height="'+alt+'" fill="url(#net'+q+')" mask="url(#nk'+q+')" opacity=".32" pointer-events="none"/>';
+}
+// La targa della giornata: placca oro piena, testo navy.
+//
+// Due cose che sembrano dettagli e non lo sono. La prima: il testo dentro va
+// centrato sull'OCCHIO del carattere, non sulla base. Le maiuscole Mazzard
+// stanno a circa 0.72 del corpo sopra la linea di base e sotto non scendono:
+// contando l'altezza dalla base restava piu' aria sopra che sotto, e la
+// placca sembrava scivolata in giu'.
+//
+// La seconda: di una forma piena l'occhio legge il BORDO, non le lettere
+// dentro. Quindi e' il bordo che va sul filo insieme all'occhiello e al
+// titolo, e il testo dentro sta rientrato del suo margine — come in una
+// pastiglia qualsiasi. Il contrario (testo sul filo, placca che sborda a
+// sinistra) darebbe un margine sinistro seghettato.
+function gcTarga(q,x,cima,txt,s){
+ var cap=0.72,h=R(s*1.86),padX=R(s*0.72),pad=(h-s*cap)/2;
+ var w=R(estW(up(txt),s,R(s*0.12)))+padX*2;
+ return '<rect x="'+x+'" y="'+cima+'" width="'+w+'" height="'+h+'" rx="'+R(s*0.16)+'" fill="url(#g'+q+')"/>'
+  +T(x+padX,R(cima+pad+s*cap),txt,{s:s,w:800,fill:C.n900,ls:R(s*0.12)});
+}
+function gcTargaAlt(s){return R(s*1.86);}
+function gcPortrait(W,H,p,I,A){
+ var q='gcP'+W+'x'+H;
+ var M=R(W*0.056),tagS=R(W*0.030),footS=R(W*0.019);
+ // UN FILO SOLO. Prima ce n'erano quattro: il trattino oro e la placca sul
+ // margine, i tre testi rientrati, lo stemma del piede da un'altra parte
+ // ancora. Quattro bordi sinistri a distanza di pochi pixel non si leggono
+ // come una scelta, si leggono come un errore. Ora occhiello, titolo, bordo
+ // della placca e stemma cadono tutti su M, e le uniche cose rientrate sono
+ // quelle DENTRO una forma: il testo nella placca e l'etichetta accanto allo
+ // stemma. Il trattino oro se n'e' andato con loro: faceva un secondo filo
+ // per guadagnare un accento che la placca, gia' oro, dava meglio.
+ var l1S=gcCorpo(W-2*M,R(W*0.092),-3),rndS=R(l1S*0.40),cap=0.72;
+ var bm=R(H*0.05),footY=H-bm,lineY=footY-R(footS*1.7),badgeR=R(footS*1.05),badgeCy=footY-R(footS*0.33);
+ // Il blocco si costruisce DAL BASSO, appoggiato al filo del piede: e' l'unico
+ // modo perche' l'aria fra le righe resti quella decisa anche quando il corpo
+ // del titolo cambia. Prima si partiva dall'alto e la placca finiva addosso al
+ // titolo — si sovrapponevano di dodici pixel.
+ var targaH=gcTargaAlt(rndS);
+ var targaB=lineY-R(W*0.030),targaT=targaB-targaH;
+ var l1Y=targaT-R(W*0.028);
+ var tagY=R(l1Y-l1S*cap-W*0.026);
+ var scrim='<defs><linearGradient id="sp'+q+'" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".12" stop-color="'+SCRIM+'" stop-opacity=".96"/><stop offset=".5" stop-color="#0A0F24" stop-opacity=".5"/><stop offset=".82" stop-color="#0A0F24" stop-opacity=".05"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>'+goldGrad('g'+q)+'</defs>';
+ return GPHOTO(W,H,A,I)+scrim+'<rect width="'+W+'" height="'+H+'" fill="url(#sp'+q+')" pointer-events="none"/>'
+  +gcRete(q,W,H,R(H*0.44))
+  +(p.english?G('eng',A,engPill(M,R(H*0.04),p.englishLabel)):'')
+  +G('t-tag',A,T(M,tagY,p.gcTag,{s:tagS,w:700,fill:C.gold,ls:R(tagS*0.18)}))
+  +G('t-gcname',A,T(M,l1Y,p.compBase||p.comp,{s:l1S,w:800,ls:-3,fill:C.ivory}))
+  +G('t-round',A,gcTarga(q,M,targaT,p.round,rndS))
+  +'<rect x="'+M+'" y="'+lineY+'" width="'+(W-2*M)+'" height="1" fill="#F5F1E6" fill-opacity=".14"/>'
+  // Nelle altre famiglie il piede dice la competizione perche' sopra ci sono
+  // due squadre. Qui sopra c'e' GIA' la competizione, e sotto la giornata:
+  // ripeterle nel piede voleva dire scrivere la stessa cosa tre volte nella
+  // stessa card. Resta lo stemma, che informazione non ne ripete nessuna.
+  +G('logo',A,LOGOR(M+badgeR,badgeCy,badgeR,I,'logoComp','lc'+q))
+  +hair(W,H,H-5);
+}
+// Orizzontale. Il banner-mid (1506x412) e' molto piu' basso: come nei match
+// prende una metrica sua, altrimenti le righe si toccano e sotto avanza il vuoto.
+function gcLandscape(W,H,p,I,A,mid){
+ var q='gcL'+W+'x'+H;
+ var M=R(W*0.032),tagS=R(H*0.028),cap=0.72;
+ var l1S=gcCorpo(R(W*0.62),R(H*0.128),-3),rndS=R(l1S*0.40);
+ var defs='<defs><linearGradient id="l'+q+'" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".4" stop-color="'+SCRIM+'" stop-opacity=".82"/><stop offset=".72" stop-color="#0A0F24" stop-opacity=".15"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient><linearGradient id="b'+q+'" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="'+SCRIM+'" stop-opacity="1"/><stop offset=".45" stop-color="'+SCRIM+'" stop-opacity="0"/></linearGradient>'+goldGrad('g'+q)+'</defs>';
+ // Anche qui il blocco e' uno solo, incolonnato su M: occhiello, titolo,
+ // placca. L'aria fra le righe e' la stessa del verticale, in proporzione.
+ var l1Y=R(H*0.56);
+ if(mid)l1Y=R(H*0.58);
+ var tagY=R(l1Y-l1S*cap-H*0.045);
+ var targaT=R(l1Y+H*0.045);
+ return GPHOTO(W,H,A,I)+defs
+  +'<rect width="'+W+'" height="'+H+'" fill="url(#l'+q+')" pointer-events="none"/><rect width="'+W+'" height="'+H+'" fill="url(#b'+q+')" pointer-events="none"/>'
+  +gcRete(q,W,H,R(H*0.72))
+  +(p.english?G('eng',A,engPill(M,R(H*0.06),p.englishLabel)):'')
+  +G('t-tag',A,T(M,tagY,p.gcTag,{s:tagS,w:700,fill:C.gold,ls:5}))
+  +G('t-gcname',A,T(M,l1Y,p.compBase||p.comp,{s:l1S,w:800,ls:-3,fill:C.ivory}))
+  +G('t-round',A,gcTarga(q,M,targaT,p.round,rndS))
+  +hair(W,H,H-5);
+}
 // FAN VOICE — story 9:16 (design dedicato)
 function mFanVoice(W,H,p,I,A){
  var cx=W/2;
@@ -1030,6 +1155,10 @@ function mFanVoice(W,H,p,I,A){
 // standard field sets
 var Fmatch=[{k:'home',l:'Squadra casa'},{k:'vsLabel',l:'Parola fra le squadre (vuoto = niente)'},{k:'away',l:'Squadra ospite'},{k:'comp',l:'Competizione (testo)'},{k:'date',l:'Data'},{k:'time',l:'Ora'},{k:'preshow',l:'Preshow (vuoto=off)'}];
 var Imatch=[{k:'photo',l:'Foto'},{k:'logoComp',l:'Logo competizione'}];
+// Competizione e giornata sono campi CONDIVISI: li disegna il blocco comune
+// del pannello, e metterli anche qui non aggiungerebbe una casella — verrebbero
+// scartati come doppioni. Alla famiglia resta da dichiarare solo l'occhiello.
+var Fgol=[{k:'gcTag',l:'Prodotto (occhiello)'}];
 
 var FMT={
  feed_1080x1440:{label:'Social feed 3:4',group:'Match',w:1080,h:1440,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){var W=1080,H=1440,PHh=891;
@@ -1293,6 +1422,15 @@ var FMT={
  rp_portrait_1080x1620:{label:'Replay portrait (1200×1800)',group:'Replay',w:1200,h:1800,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mPortrait(1200,1800,p,I,A,'Replay');}},
  rp_banner_top_1506x560:{label:'Replay banner-top (1920×1080)',group:'Replay',w:1920,h:1080,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mLandscape(1920,1080,p,I,A,'Replay');}},
  rp_banner_mid_1506x412:{label:'Replay banner-mid (1506×412)',group:'Replay',w:1506,h:412,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){return mLandscape(1506,412,p,I,A,'Replay',true);}},
+ // GOL COLLECTION: stessi quattro formati di piattaforma delle altre sezioni.
+ // I campi non sono quelli della partita — niente ospite, niente ora: le due
+ // righe della parola, la giornata e la competizione. L'etichetta "Giornata"
+ // non e' un vezzo: la sincronia con Airtable riempie da sola ogni campo il
+ // cui nome contiene "giornata" o "turno", quindi scritto cosi' si compila da solo.
+ gc_landscape_1920x1080:{label:'Gol Collection landscape (1920×1080)',group:'Gol Collection',w:1920,h:1080,useComp:true,fields:Fgol,images:Imatch,gen:function(p,I,A){return gcLandscape(1920,1080,p,I,A);}},
+ gc_portrait_1080x1620:{label:'Gol Collection portrait (1200×1800)',group:'Gol Collection',w:1200,h:1800,useComp:true,fields:Fgol,images:Imatch,gen:function(p,I,A){return gcPortrait(1200,1800,p,I,A);}},
+ gc_banner_top_1920x1080:{label:'Gol Collection banner-top (1920×1080)',group:'Gol Collection',w:1920,h:1080,useComp:true,fields:Fgol,images:Imatch,gen:function(p,I,A){return gcLandscape(1920,1080,p,I,A);}},
+ gc_banner_mid_1506x412:{label:'Gol Collection banner-mid (1506×412)',group:'Gol Collection',w:1506,h:412,useComp:true,fields:Fgol,images:Imatch,gen:function(p,I,A){return gcLandscape(1506,412,p,I,A,true);}},
 
  ott_hero_1920x1080:{label:'Hero banner 16:9',group:'Editoriale',w:1920,h:1080,fields:[{k:'heroKicker',l:'Kicker'},{k:'heroLine1',l:'Titolo riga 1'},{k:'heroLine2',l:'Titolo riga 2'}],images:[{k:'photo',l:'Foto'},{k:'logoComp',l:'Logo'}],gen:function(p,I,A){var W=1920,H=1080;
   return bg(W,H)
@@ -1452,6 +1590,9 @@ var MENU=[
  {g:'Piattaforma replay',k:[
    'rp_landscape_1920x1080','rp_portrait_1080x1620',
    'rp_banner_top_1506x560','rp_banner_mid_1506x412']},
+ {g:'Gol Collection',k:[
+   'gc_landscape_1920x1080','gc_portrait_1080x1620',
+   'gc_banner_top_1920x1080','gc_banner_mid_1506x412']},
  // Sezioni in costruzione: design e formati propri, ancora da definire.
  {g:'Football Show',k:[
    'fs_landscape_1920x1080','fs_portrait_1080x1620',
@@ -1513,7 +1654,7 @@ var ITEMS=(function(){var src={};OTTGEN.items().forEach(function(i){src[i.key]=i
  return out;})();
 var BYKEY={};ITEMS.forEach(function(i){BYKEY[i.key]=i;});
 // naming convention export (come richiesto)
-var FNAME={feed_1080x1440:'feed',feed_maschera_1080x1920:'story-maschera',story_1080x1920:'story',story_video_1080x1920:'story-video',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'YT-Highlights',yt_gol_collection:'YT-gol-collection',yt_inglese_testata:'YT-testata',yt_inglese_editoriale:'YT-editoriale',yt_parole_classico:'YT-parole-classico',yt_parole_split:'YT-parole-split',yt_parole_volto:'YT-parole-volto',yt_citazione_prot:'YT-citazione',yt_vlog_foto:'YT-vlog',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',rp_landscape_1920x1080:'RP-landscape',rp_portrait_1080x1620:'RP-portrait',rp_banner_top_1506x560:'RP-banner-top',rp_banner_mid_1506x412:'RP-banner-mid',int_landscape_1920x1080:'INT-landscape',int_portrait_1200x1800:'INT-portrait',int_banner_top_1920x1080:'INT-banner-top',int_banner_mid_1506x412:'INT-banner-mid',fs_landscape_1920x1080:'FS-landscape',fs_portrait_1080x1620:'FS-portrait',fs_banner_top_1920x1080:'FS-banner-top',fs_banner_mid_1506x412:'FS-banner-mid',competizioni_1200x1800:'competizioni',
+var FNAME={feed_1080x1440:'feed',feed_maschera_1080x1920:'story-maschera',story_1080x1920:'story',story_video_1080x1920:'story-video',fanvoice_1080x1920:'FanVoice',youtube_1280x720:'YT-Highlights',yt_gol_collection:'YT-gol-collection',yt_inglese_testata:'YT-testata',yt_inglese_editoriale:'YT-editoriale',yt_parole_classico:'YT-parole-classico',yt_parole_split:'YT-parole-split',yt_parole_volto:'YT-parole-volto',yt_citazione_prot:'YT-citazione',yt_vlog_foto:'YT-vlog',ott_hero_1920x1080:'hero-16x9',hero_ott_1920x760:'hero-platform',card_match_924x1356:'card-portrait',card_highlights_900x1280:'HL-portrait',card_novita_1044x1308:'news',banner_mid_1506x412:'banner-mid',badge_competizione_1080:'badge',card_repliche_1160x656:'replay',match_16x9_1920x1080:'landscape',banner_top_1506x560:'banner-top',match_1x1_1080:'square',match_2x3_1080x1620:'portrait',hl_feed_1080x1350:'HL-feed',hl_story_1080x1920:'HL-story',hl_square_1080x1080:'HL-square',hl_portrait_1080x1620:'HL-portrait',hl_landscape_1920x1080:'HL-landscape',hl_banner_top_1506x560:'HL-banner-top',hl_banner_mid_1506x412:'HL-banner-mid',rp_landscape_1920x1080:'RP-landscape',rp_portrait_1080x1620:'RP-portrait',rp_banner_top_1506x560:'RP-banner-top',rp_banner_mid_1506x412:'RP-banner-mid',gc_landscape_1920x1080:'GC-landscape',gc_portrait_1080x1620:'GC-portrait',gc_banner_top_1920x1080:'GC-banner-top',gc_banner_mid_1506x412:'GC-banner-mid',int_landscape_1920x1080:'INT-landscape',int_portrait_1200x1800:'INT-portrait',int_banner_top_1920x1080:'INT-banner-top',int_banner_mid_1506x412:'INT-banner-mid',fs_landscape_1920x1080:'FS-landscape',fs_portrait_1080x1620:'FS-portrait',fs_banner_top_1920x1080:'FS-banner-top',fs_banner_mid_1506x412:'FS-banner-mid',competizioni_1200x1800:'competizioni',
  fmt_landscape_1920x1080:'FMT-landscape',fmt_portrait_1200x1800:'FMT-portrait',
  fmt_banner_top_1920x1080:'FMT-banner-top',fmt_banner_mid_1506x412:'FMT-banner-mid',format_card_talent:'format-talent',format_card_goleada:'format-goleada',format_card_clasicos:'format-clasicos',format_card_golden:'format-golden'};
 function fname(k){if(/-live$/.test(k)){var b=k.replace(/-live$/,'');return (FNAME[b]||b)+'-live';}return FNAME[k]||k;}
@@ -1521,7 +1662,7 @@ function fname(k){if(/-live$/.test(k)){var b=k.replace(/-live$/,'');return (FNAM
 var DEF={mkTitle:'Che debutto di Welbeck',mkSub:'Segna alla prima presenza con la maglia dei Blues',home:'West Ham',away:'Portsmouth',vsLabel:'vs',fmtKicker:'Il format',fmtL1:'Prima riga',fmtL2:'Seconda riga',fmtSub:'Ogni settimana su Como TV',comp:'Carabao Cup · 64esimi',date:'08 Ago',time:'16:00',preshow:'Preshow 15:10',live:true,hlKind:'Highlights',
  heroKicker:'Como TV · Live Events',heroLine1:'Il grande calcio,',heroLine2:'in diretta.',title:'Como Cup 2026',
  novKicker:'FPF Supertaça · Porto campione',novTitle:'Alzata del trofeo',midKicker:'Como TV · Originals',midLine1:'La tua casa',midLine2:'del calcio',
- badgeName:'Carabao Cup',replName:'LPF Torneo Apertura',name:'Talent Hunters',num:'01',preshow:'Football Show 15:10',ytKicker:'Le parole di',ytTitle:'Abbiamo scritto la storia',ytTitle2:'la storia',ytName:'Mikel Arteta',ytChip:'Le parole di',ytiKicker:'Videopodcast',ytiTitle:'Calcio Inglese',ytiSub:'La corsa al titolo',yteKicker:'Calcio Inglese',yteTitle:'Il crollo dello',yteGold:'United',yteSub:'Videopodcast · Ep. 21',ytvChip:'Vlog',ytvKicker:'Dietro le quinte · Wembley',ytvTitle:'Il giorno della finale',ytgTitle:'Gol Collection',ytsL1:'Abbiamo scritto',ytsL2:'la storia',ytsName:'Mikel Arteta',ytsKicker:'Le parole di',ytoL1:'«Scritta',ytoL2:'la storia»',ytoName:'Arteta',fsEyebrow:'Speciale',fsTitle:'Champions League'};
+ badgeName:'Carabao Cup',replName:'LPF Torneo Apertura',name:'Talent Hunters',num:'01',preshow:'Football Show 15:10',ytKicker:'Le parole di',ytTitle:'Abbiamo scritto la storia',ytTitle2:'la storia',ytName:'Mikel Arteta',ytChip:'Le parole di',ytiKicker:'Videopodcast',ytiTitle:'Calcio Inglese',ytiSub:'La corsa al titolo',yteKicker:'Calcio Inglese',yteTitle:'Il crollo dello',yteGold:'United',yteSub:'Videopodcast · Ep. 21',ytvChip:'Vlog',ytvKicker:'Dietro le quinte · Wembley',ytvTitle:'Il giorno della finale',ytgTitle:'Gol Collection',gcTag:'Gol Collection',compBase:'Scottish Premiership',round:'Giornata 05',ytsL1:'Abbiamo scritto',ytsL2:'la storia',ytsName:'Mikel Arteta',ytsKicker:'Le parole di',ytoL1:'«Scritta',ytoL2:'la storia»',ytoName:'Arteta',fsEyebrow:'Speciale',fsTitle:'Champions League'};
 var FMTNAMES={talent:'Talent Hunters',goleada:'Goleada',clasicos:'Los Clásicos',golden:'Golden 90'};
 var FMTNUM={talent:'01',goleada:'02',clasicos:'03',golden:'04'};
 
@@ -1635,7 +1776,10 @@ function svgExport(key){var it=BYKEY[key];return withTextStyles(OTTGEN.svgFor(it
 // ---------- format selector ----------
 (function(){var sel=document.getElementById('fmtSel');var groups={};ITEMS.forEach(function(it){var g=CAT[it.key]||it.group;(groups[g]=groups[g]||[]).push(it);});
  Object.keys(groups).forEach(function(g){var og=document.createElement('optgroup');og.label=g;groups[g].forEach(function(it){var o=document.createElement('option');o.value=it.key;o.textContent=fname(it.key)+' · '+it.w+'×'+it.h;og.appendChild(o);});sel.appendChild(og);});
- sel.value=current;sel.onchange=function(){current=sel.value;selObj=null;renderControls();renderStage();markThumb();};})();
+ sel.value=current;sel.onchange=function(){current=sel.value;selObj=null;renderControls();renderStage();markThumb();
+  // la tendina Airtable in barra dipende dalla famiglia: sulla Gol Collection
+  // non deve offrire partite
+  if(typeof window.rifaiTendinaAirtable==='function')window.rifaiTendinaAirtable();};})();
 
 // ---------- Google Drive Photo Loading ----------
 var DRIVE_FOLDER_ID='1dqMuFDAKG8izB8N3N4Xabsr_j9r4oH6F';
@@ -1679,7 +1823,15 @@ function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);va
  // l'input col la label giusta) non trovava mai un campo da aggiornare.
  if(!meta.useComp){(meta.fields||[]).forEach(function(f){fc.appendChild(el('label',f.l));fc.appendChild(simpleInput(getV(current,f.k),(function(k){return function(v){setV(current,k,v);};})(f.k)));});renderMedia(usesPhoto(current));renderCompetizioni(true);renderSocial();return;}
  SHARED.mode='libero';
+ // Una gol collection non ha due squadre, non ha un'ora e non ha un preshow:
+ // sono campi della PARTITA. Lasciarli li' vuol dire farli compilare a chi non
+ // sa che non servono, e poi cercare per mezz'ora perche' in onda non si
+ // vedono. Su questi formati il pannello mostra solo cio' che finisce davvero
+ // nella grafica: competizione, giornata, occhiello.
+ var GC=/^gc_/.test(current);
+ if(GC)fc.appendChild(sceltaCompetizione());
  fc.appendChild(pairRow('Competizione',SHARED.compBase,function(v){SHARED.compBase=v;composeComp();},'Giornata / Turno',SHARED.round,function(v){SHARED.round=v;composeComp();}));
+ if(!GC){
  fc.appendChild(pairRow('Squadra casa',SHARED.home,function(v){SHARED.home=v;},'Squadra ospite',SHARED.away,function(v){SHARED.away=v;}));
  // La parola fra le due squadre: si riscrive o si cancella. Vuota, sparisce
  // insieme allo spazio che occupava.
@@ -1690,9 +1842,13 @@ function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);va
   r.appendChild(c);r.appendChild(document.createElement('div'));
   fc.appendChild(r);})();
  fc.appendChild(pairRow('Data',SHARED.date,function(v){SHARED.date=v;},'Ora',SHARED.time,function(v){SHARED.time=v;}));
+ }
  // Football Show + English Commentary affiancati, per non sprecare una riga.
  // Il testo del pill era nella barra in alto: spostato qui, e' un campo di
  // contenuto come gli altri, non uno strumento da barra.
+ // Sulla gol collection salta tutta la riga: ne' il pill del Football Show ne'
+ // quello dell'inglese fanno parte di questa grafica.
+ if(!GC){
  var lastRow=document.createElement('div');lastRow.className='rowf';
  var c1=document.createElement('div');c1.appendChild(el('label','Football Show'));
  var psIn=simpleInput(SHARED.preshow,function(v){SHARED.preshow=v;});psIn.placeholder='vuoto = nascosto';c1.appendChild(psIn);
@@ -1701,6 +1857,7 @@ function renderControls(){var it=BYKEY[current];var meta=OTTGEN.meta(it.base);va
  var elIn=simpleInput(SHARED.englishLabel,function(v){SHARED.englishLabel=v;});elIn.placeholder='English Commentary';c2.appendChild(elIn);
  lastRow.appendChild(c2);
  fc.appendChild(lastRow);
+ }
  // ---- Campi specifici del formato (non shared) ----
  (meta.fields||[]).forEach(function(f){if(!SHAREDKEYS[f.k]&&f.k!=='live'){fc.appendChild(el('label',f.l));fc.appendChild(simpleInput(S.vals[f.k],(function(k){return function(v){S.vals[k]=v;};})(f.k)));}});
  renderMedia(usesPhoto(current));renderCompetizioni(true);renderSocial();
@@ -1727,6 +1884,31 @@ function filePicker(txt,onFile){
 var CUSTOM_LOGO_KEY='comotv_loghi_competizioni';
 function customLogos(){try{return JSON.parse(localStorage.getItem(CUSTOM_LOGO_KEY)||'{}');}catch(e){return {};}}
 function saveCustomLogos(o){try{localStorage.setItem(CUSTOM_LOGO_KEY,JSON.stringify(o));return true;}catch(e){return false;}}
+// La scorciatoia: le competizioni di cui abbiamo il logo, in ordine. Scegliere
+// scrive il nome nel campo qui sotto e porta con se' lo stemma — che e' il paio
+// che serve sempre insieme. Il campo di testo resta libero: la tendina e' un
+// aiuto, non un recinto. Un nome scritto a mano vince, e non viene sovrascritto
+// da nessuno.
+function sceltaCompetizione(){
+ var r=document.createElement('div');r.className='rowf';
+ var c=document.createElement('div');
+ c.appendChild(el('label','Competizione dall\'archivio'));
+ var sel=document.createElement('select');
+ var lib=(typeof LOGO_LIB!=='undefined')?LOGO_LIB:{};
+ sel.appendChild(opt('','\u2014 scegli, oppure scrivi sotto \u2014'));
+ Object.keys(lib).sort(function(a,b){return lib[a].l.localeCompare(lib[b].l);})
+  .forEach(function(k){sel.appendChild(opt(k,lib[k].l));});
+ sel.onchange=function(){
+  var k=this.value;if(!k||!lib[k])return;
+  if(typeof pushUndo==='function')pushUndo();
+  SHARED.compBase=lib[k].l;composeComp();
+  SHARED.compLogoKey='lib:'+k;SHIMG.logoComp=lib[k].d;
+  renderControls();renderStage();refreshThumbs();
+ };
+ c.appendChild(sel);r.appendChild(c);
+ r.appendChild(document.createElement('div'));
+ return r;
+}
 function renderCompetizioni(show){
  var th=document.getElementById('cbCompTh'),sel=document.getElementById('cbCompSel');
  if(!th||!sel)return;
@@ -1769,7 +1951,7 @@ function renderMedia(show){
 // ---------- stage + interaction ----------
 var selObj=null;var photoEdit=false;
 // Mappatura degli oggetti testo ai campi editabili (SHARED o specifici del formato)
-var TEXT_EDIT_MAP={'t-home':'home','t-away':'away','t-comp':'comp','t-dt':'','t-hl':'hlKind','t-fan':'','t-q':'','t-sub':'','t-kicker':'heroKicker','t-line1':'heroLine1','t-line2':'heroLine2','t-title':'title','t-name':'name','t-kind':'hlKind','t-tag':'','t-num':'num','t-mark':''};
+var TEXT_EDIT_MAP={'t-home':'home','t-away':'away','t-comp':'comp','t-dt':'','t-hl':'hlKind','t-fan':'','t-q':'','t-sub':'','t-kicker':'heroKicker','t-line1':'heroLine1','t-line2':'heroLine2','t-title':'title','t-name':'name','t-kind':'hlKind','t-tag':'','t-num':'num','t-mark':'','t-tag':'gcTag','t-round':'round','t-gcname':'compBase'};
 // Crocini d'angolo + misura del formato: aiutano a vedere dove finisce l'area
 // esportata quando il contenuto ha lo stesso blu del fondo.
 // Rettangolo realmente occupato dal disegno. L'elemento <svg> puo' essere piu'
@@ -3044,9 +3226,13 @@ document.getElementById('scaleR').addEventListener('pointerdown',function(){push
 // Selezione per l'export. Di default sono accesi solo i formati che escono per
 // ogni partita: piattaforma (live, highlights, replay), FanVoice e Story. Gli
 // altri si esportano solo se spuntati, per non riempire Drive di file inutili.
-var EXPDEF={};['Piattaforma live','Piattaforma highlights','Piattaforma replay'].forEach(function(g){EXPDEF[g]=1;});
+// Si arriva con NIENTE spuntato. Prima erano spuntate di default tre famiglie
+// piu' due social sciolti: chi esportava senza guardare si portava a casa
+// ventitre grafiche, quasi tutte inutili per quello che stava facendo. Meglio
+// zero e una scelta consapevole: l'export dice sempre quante ne sta facendo.
+var EXPDEF={};
 var EXPSEL={};ITEMS.forEach(function(it){
- EXPSEL[it.key]=!!EXPDEF[CAT[it.key]]||it.key==='fanvoice_1080x1920'||it.key==='story_1080x1920';});
+ EXPSEL[it.key]=!!EXPDEF[CAT[it.key]];});
 function expCount(){return ITEMS.filter(function(it){return EXPSEL[it.key];}).length;}
 function syncExpBtn(){if(window.syncZip)syncZip();}
 // Un colore per categoria: si riconosce il blocco tematico senza leggere
@@ -3064,7 +3250,11 @@ var CATCOL={
 // Da li' in poi comanda chi clicca: se il ridisegno rimettesse ogni volta la
 // famiglia del formato corrente, aprirne un'altra non servirebbe a niente —
 // e infatti al primo tentativo si richiudeva da sola.
-var THOPEN=null;
+// Si arriva con tutte le famiglie CHIUSE. Prima si apriva da sola quella del
+// formato corrente: comoda per chi entra e continua, ma all'arrivo nessuno sta
+// continuando niente, e una famiglia aperta a caso e' solo rumore sopra
+// l'elenco. Da qui in poi comanda chi clicca, e apre una alla volta come prima.
+var THOPEN={};
 function gruppoDi(k){ var g=CAT[k]; if(!g){var it=BYKEY[k]; g=it&&it.group;} return g||null; }
 function apriSolo(g){ THOPEN={}; if(g) THOPEN[g]=true; }
 function apriGruppoCorrente(){ apriSolo(gruppoDi(current)); }
@@ -3081,6 +3271,7 @@ function creaThumb(it){
  d.onclick=function(){
    var cambioFamiglia = gruppoDi(it.key)!==gruppoDi(current);
    current=it.key;selObj=null;document.getElementById('fmtSel').value=it.key;
+   if(typeof window.rifaiTendinaAirtable==='function')window.rifaiTendinaAirtable();
    apriGruppoCorrente();            // la famiglia del formato scelto resta l'unica aperta
    renderControls();renderStage();renderThumbs();
    if(cambioFamiglia) portaInCima();

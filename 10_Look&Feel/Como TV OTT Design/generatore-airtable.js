@@ -288,6 +288,7 @@ function renderEventPanel() {
 
     select.onchange = function() {
       if (this.value === '') return;
+      if (this.value.indexOf('c:') === 0) { applyCompToGenerator(this.value.slice(2)); return; }
       applyEventToGenerator(EVENTS_DATA[parseInt(this.value)]);
     };
 
@@ -306,15 +307,50 @@ function renderEventPanel() {
 }
 
 // Riempie il menu a tendina: placeholder + un'opzione per evento.
+// La Gol Collection non e' una partita: e' la raccolta dei gol di una
+// giornata intera. Offrire "Genoa vs Como" per compilarla e' un invito a
+// sbagliare — si sceglierebbe una partita a caso solo per prendere il nome
+// del campionato. Su questi formati la tendina cambia mestiere e offre le
+// COMPETIZIONI, che e' l'unica cosa che serve.
+function soloCompetizioni() {
+  try { return typeof current === 'string' && /^gc_/.test(current); } catch (e) { return false; }
+}
+// Le competizioni presenti fra gli eventi, una volta sola e in ordine.
+function competizioniDisponibili() {
+  var viste = {}, fuori = [];
+  EVENTS_DATA.forEach(function (e) {
+    var n = (e.compBase || '').trim();
+    if (!n || viste[n]) return;
+    viste[n] = 1; fuori.push(n);
+  });
+  return fuori.sort(function (a, b) { return a.localeCompare(b); });
+}
 function fillEventSelect(select) {
   var scelta = select.value;   // l'elenco si ricostruisce, la scelta no
   select.innerHTML = '';
+  if (soloCompetizioni()) {
+    // La scelta della competizione vive nel pannello Contenuto, dove c'e'
+    // anche il campo libero per scriverla a mano. Qui resta solo il perche':
+    // una tendina di partite su una raccolta di gol serve solo a sbagliare.
+    select.appendChild(createOption('', '\u2014 la competizione si sceglie nel Contenuto \u2014'));
+    select.value = '';
+    select.disabled = true;
+    return;
+  }
+  select.disabled = false;
   select.appendChild(createOption('', EVENTS_DATA.length ? '— Scegli partita —' : '— nessuna partita da Airtable —'));
   EVENTS_DATA.forEach((evt, idx) => {
     select.appendChild(createOption(idx, eventLabel(evt)));
   });
-  if (scelta !== '' && select.querySelector('option[value="' + scelta + '"]')) select.value = scelta;
+  if (scelta !== '' && select.querySelector('option[value="' + CSS.escape(scelta) + '"]')) select.value = scelta;
 }
+// Il generatore chiama questa quando si cambia formato: passando da una
+// famiglia all'altra la tendina deve cambiare mestiere, non restare con
+// l'elenco di prima.
+window.rifaiTendinaAirtable = function () {
+  var sel = document.getElementById('airtableEventSelect');
+  if (sel) { sel.value = ''; fillEventSelect(sel); }
+};
 
 // "CASA vs OSPITE · 16 Ago · 16:00 · Serie A"
 // L'anno compare solo se l'evento non è dell'anno corrente.
@@ -333,6 +369,28 @@ function createOption(val, text) {
   opt.value = val;
   opt.textContent = text;
   return opt;
+}
+
+// Scegliere una competizione tocca SOLO la competizione: niente squadre,
+// niente data, niente ora — su una gol collection non vogliono dire nulla, e
+// riscriverle vorrebbe dire sporcare campi che magari erano stati messi a mano.
+// La giornata resta quella che c'e': la si scrive a mano, cambia ogni settimana
+// e Airtable la conosce per partita, non per raccolta.
+function applyCompToGenerator(nome) {
+  if (typeof SHARED === 'undefined') return;
+  if (typeof pushUndo === 'function') pushUndo();
+  SHARED.compBase = nome;
+  SHARED.comp = nome + (SHARED.round ? ' · ' + SHARED.round : '');
+  var chiave = COMP_MAPPING[nome] || '';
+  SHARED.compKey = chiave;
+  if (chiave && typeof LOGO_LIB !== 'undefined' && LOGO_LIB[chiave] && typeof SHIMG !== 'undefined') {
+    SHIMG.logoComp = LOGO_LIB[chiave].d;
+  }
+  setTimeout(updateFieldsInDOM, 60);
+  setTimeout(function () {
+    if (typeof renderStage === 'function') renderStage();
+    if (typeof refreshThumbs === 'function') refreshThumbs();
+  }, 110);
 }
 
 function applyEventToGenerator(evt) {

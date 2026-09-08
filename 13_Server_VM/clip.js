@@ -41,6 +41,16 @@ const FFPROBE = process.env.COMOTV_FFPROBE || "ffprobe";
 // A 2 secondi lo scarto in testa e' al massimo di 2 secondi, e una partita di
 // due ore fa 3.600 segmenti: tanti file, ma nessun problema.
 const SEGMENTO = parseInt(process.env.COMOTV_CLIP_SEG || "2", 10);
+// IL PROXY. Una copia leggera che si scrive mentre la partita entra, e che
+// serve a LAVORARE: si scorre, si cerca, si taglia sopra quella. Misurato su
+// un 1080p50 vero: 480x270 a 25 fotogrammi pesa 71 KB ogni due secondi
+// contro 2,24 MB dell'originale — un trentunesimo — e a guardarlo alla
+// misura del monitor non si distingue (il cronometro si legge). Costa due
+// terzi di un core, e la macchina ne ha due: quindi non piu' di due dirette
+// alla volta, e mai per la semplice anteprima.
+const PROXY_ACCESO = process.env.COMOTV_CLIP_PROXY !== "0";
+const MAX_PROXY = parseInt(process.env.COMOTV_CLIP_MAX_PROXY || "2", 10);
+const PROXY_LARGO = parseInt(process.env.COMOTV_CLIP_PROXY_W || "480", 10);
 // Rete di sicurezza: una registrazione dimenticata accesa mangia il disco.
 const MAX_SECONDI = parseInt(process.env.COMOTV_CLIP_MAX || "18000", 10);   // 5 ore
 // Una clip piu' lunga di cosi' non e' una clip: e' l'integrale.
@@ -110,7 +120,8 @@ let annuncia = function () {};
 
 // registro: sopravvive ai riavvii del ponte, come lo stato della regia
 let R = { reg: {}, clip: {}, seq: {}, prog: {} };
-const PROC = new Map();             // idRegistrazione -> processo ffmpeg
+const PROC = new Map();      // idRegistrazione -> processo ffmpeg
+const PROXYS = new Map();     // i processi che scrivono la copia leggera
 
 // ── utilita' minime ───────────────────────────────────────────────────
 
@@ -339,6 +350,82 @@ function argomentiIngresso(url) {
   return ["-i", url];
 }
 
+function fileProxy(id) { return path.join(cartellaReg(id), "proxy.m3u8"); }
+function quantiSegmenti(via) {
+  try { return (fs.readFileSync(via, "utf8").match(/#EXTINF:/g) || []).length; } catch (e) { return 0; }
+}
+// Il proxy si annuncia solo quando ha RAGGIUNTO la registrazione. Se e'
+// appena partito su una partita gia' lunga sta ancora rincorrendo, e una
+// pagina che ci si appoggiasse vedrebbe una timeline piu' corta del vero.
+function durataDi(via) {
+  try {
+    let t = 0;
+    (fs.readFileSync(via, "utf8").match(/#EXTINF:([0-9.]+)/g) || [])
+      .forEach((x) => { t += parseFloat(x.slice(8)) || 0; });
+    return Math.round(t * 10) / 10;
+  } catch (e) { return 0; }
+}
+function proxyCe(id) {
+  const p = durataDi(fileProxy(id));
+  if (!p) return false;
+  return p >= durataRegistrata(id) - 15;
+}
+
+// IL PROXY, SCRITTO DA UN PROCESSO SUO.
+//  Non si appende all'ffmpeg che registra: quello scrive in copia diretta e
+//  non deve dipendere da niente: se la codifica del proxy rallenta o muore,
+//  la partita non se ne accorge. Questo invece LEGGE la playlist mentre
+//  cresce — ffmpeg la rilegge da solo finche' non trova la fine — e resta
+//  indietro un paio di segmenti. Se muore si riparte da dove il proxy era
+//  arrivato, non da capo.
+function avviaProxy(r) {
+  if (!PROXY_ACCESO || r.guarda || r.stato !== "registra") return;
+  if (PROXYS.get(r.id)) return;
+  if (PROXYS.size >= MAX_PROXY) { console.log("[clip] proxy: gia' " + PROXYS.size + " in lavorazione, questa diretta ne resta senza"); return; }
+  const dir = cartellaReg(r.id);
+  if (!fs.existsSync(playlistDi(r.id))) { setTimeout(() => avviaProxy(r), 3000); return; }
+  const fatti = quantiSegmenti(fileProxy(r.id));
+  const args = ["-hide_banner", "-loglevel", "warning", "-nostdin",
+    "-live_start_index", String(fatti), "-i", playlistDi(r.id),
+    "-vf", "scale=" + PROXY_LARGO + ":-2,fps=25",
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "30",
+    "-g", "25", "-keyint_min", "25", "-sc_threshold", "0",
+    "-c:a", "aac", "-b:a", "64k",
+    "-f", "hls", "-hls_time", String(SEGMENTO), "-hls_list_size", "0",
+    "-hls_flags", "append_list+program_date_time+independent_segments+temp_file",
+    "-hls_playlist_type", "event", "-hls_segment_type", "mpegts",
+    "-start_number", String(fatti),
+    "-hls_segment_filename", path.join(dir, "p%05d.ts"), fileProxy(r.id)];
+  // ATTACCATO al ponte, al contrario del registratore. La registrazione non
+  // deve morire con un riavvio; il proxy si': e' una copia usa e getta, e
+  // uno staccato che sopravvive diventa un orfano che scrive sulla stessa
+  // playlist di quello nuovo. Al riavvio si riaccende da dove era arrivato.
+  const pr = spawn(FFMPEG, args, { stdio: ["ignore", "ignore", "pipe"] });
+  PROXYS.set(r.id, pr);
+  r.proxyPid = pr.pid;
+  let coda = "";
+  pr.stderr.on("data", (d) => { coda = (coda + d).slice(-2000); });
+  pr.on("error", () => { PROXYS.delete(r.id); });
+  pr.on("close", () => {
+    PROXYS.delete(r.id);
+    delete r.proxyPid;
+    // finche' la partita entra, il proxy la insegue: se e' caduto, riparte
+    if (r.stato === "registra") {
+      r.proxyCadute = (r.proxyCadute || 0) + 1;
+      if (r.proxyCadute <= 20) return void setTimeout(() => avviaProxy(r), 3000);
+      console.log("[clip] proxy: caduto troppe volte su \"" + (r.titolo || r.id) + "\", lascio perdere");
+    }
+    scrivi();
+  });
+  console.log("[clip] proxy acceso su \"" + (r.titolo || r.id) + "\" (" + PROXY_LARGO + " di larghezza, da " + fatti + " segmenti)");
+}
+function fermaProxy(id) {
+  const p = PROXYS.get(id);
+  if (!p) return;
+  PROXYS.delete(id);
+  try { process.kill(p.pid, "SIGTERM"); } catch (e) {}
+}
+
 function avviaProcesso(r) {
   const dir = cartellaReg(r.id);
   assicura(dir);
@@ -387,6 +474,7 @@ function avviaProcesso(r) {
   pr.on("close", (code) => {
     PROC.delete(r.id);
     r.durata = durataRegistrata(r.id);
+    if (r.stato !== "registra") fermaProxy(r.id);
 
     // NESSUNO L'HA FERMATA: allora non e' finita, e' caduta.
     // Sull'SRT non esiste il "riprova da solo" che l'http ha: quando chi
@@ -425,6 +513,8 @@ function avviaProcesso(r) {
     if (r.durata > 0 && INTEGRALE_DA_SOLO && !r.guarda) integrale(r);
   });
   PROC.set(r.id, pr);
+  // e la copia leggera parte accanto, appena la playlist esiste
+  setTimeout(() => avviaProxy(r), 4000);
 }
 
 function ultimaRiga(t) {
@@ -1452,6 +1542,9 @@ function pubblica(r) {
     // tre secondi non e' un'anteprima
     mini: (r.mini && fs.existsSync(path.join(DIR, String(r.mini).replace(/^\/clip\//, "")))) ? r.mini : "",
     durata: r.stato === "registra" ? durataRegistrata(r.id) : (r.durata || durataRegistrata(r.id)),
+    // la copia leggera, se c'e': la pagina guarda quella e scarica trenta
+    // volte meno. Il taglio e l'esportazione restano sull'originale.
+    proxy: proxyCe(r.id) ? "/clip/" + r.id + "/proxy.m3u8" : "",
     viva: vive
   });
 }
@@ -2343,6 +2436,43 @@ function riattaccaLaDiretta(idSeq) {
     scrivi(); annuncia(0, "clip");
   }
   return { ok: true, seq: crescoLaDiretta(q) };
+}
+
+// PRENDI: GLI ULTIMI SECONDI, SENZA MUOVERE IL VIDEO.
+//  In diretta il gesto vero non e' "scorro indietro, cerco il gol, segno
+//  entrata e uscita": e' "il gol e' appena successo, premo un tasto". Qui
+//  il pezzo si costruisce sulla coda di quello che e' gia' entrato — dalla
+//  durata registrata all'indietro — e finisce in timeline davanti al pezzo
+//  del vivo. Chi guarda non ha spostato niente: nessun salto dentro il
+//  flusso, quindi niente da ricaricare, quindi nessuna attesa.
+//
+//  Non si ritaglia nessun file: sono un'entrata e un'uscita, e a
+//  riprodurle ci pensa la copia leggera. Il file vero lo fara' semmai
+//  l'esportazione, che pesca dai segmenti originali.
+function oraCorta(s) {
+  const t = Math.max(0, Math.round(s));
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), q = t % 60;
+  return (h ? h + ":" + String(m).padStart(2, "0") : String(m)) + ":" + String(q).padStart(2, "0");
+}
+function prendiDalVivo(p) {
+  const q = R.seq[String(p.seq || "")];
+  if (!q || !q.diretta) throw new Error("questa non e' una diretta");
+  const r = R.reg[q.reg];
+  if (!r) throw new Error("registrazione sconosciuta");
+  const dur = durataRegistrata(r.id);
+  if (dur < 3) throw new Error("non e' ancora entrato niente da prendere");
+  const quanti = num(p.quanti, 5, 300, 40);
+  const fuori = Math.round(dur * 10) / 10;
+  const dentro = Math.max(0, Math.round((fuori - quanti) * 10) / 10);
+  const x = { id: nuovoId("p"), dentro: dentro, fuori: fuori, base: dentro, mano: true,
+              titolo: "PRESO " + oraCorta(dentro) };
+  // davanti al vivo: i pezzi tuoi stanno prima, la diretta resta in coda
+  const iv = q.pezzi.findIndex((y) => y.vivo);
+  if (iv < 0) q.pezzi.push(x); else q.pezzi.splice(iv, 0, x);
+  toccataAMano(q);
+  scrivi(); annuncia(0, "clip");
+  console.log("[clip] preso dal vivo: " + quanti + "s (" + oraCorta(dentro) + " \u2192 " + oraCorta(fuori) + ")");
+  return { ok: true, seq: crescoLaDiretta(q), pezzo: x.id, quanti: Math.round(fuori - dentro) };
 }
 
 // SALVA IL MONTATO. Quello che c'e' in timeline diventa una sequenza sua,
@@ -6981,6 +7111,7 @@ const AZIONI = {
   "clip-diretta": (p) => ({ ok: true, seq: laDiretta(p.reg, p.banco, p.prog) }),
   "clip-diretta-riattacca": (p) => riattaccaLaDiretta(p.seq),
   "clip-diretta-salva": salvaIlMontato,
+  "clip-diretta-prendi": prendiDalVivo,
   "clip-hl-imposta": hlImposta,
   "clip-hl-aggiungi": hlAggiungi,
   "clip-hl-suggerimento": hlSuggerimento,
@@ -7053,6 +7184,9 @@ function avvio(opz) {
       // sta ancora scrivendo: si riprende a seguirla, non e' successo niente
       adottate++;
       r.adottata = Date.now();
+      // il proxy invece muore col ponte (non e' staccato: se cade non fa
+      // danni). Si riaccende da dove era arrivato.
+      setTimeout(() => avviaProxy(r), 5000);
       return;
     }
     r.stato = "interrotta";

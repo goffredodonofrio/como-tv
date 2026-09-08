@@ -188,6 +188,18 @@
   .tlrighello .areaLavoro{position:absolute;bottom:8px;height:3px;background:var(--tl-giallo);left:0;}
   .tlrighello .testa{position:absolute;bottom:2px;width:10px;height:14px;background:var(--tl-blu);
     clip-path:polygon(0 0,100% 0,100% 60%,50% 100%,0 60%);transform:translateX(-5px);z-index:7;}
+  /* la fascia della diretta: una striscia sola, tutta la partita da un capo
+     all'altro, con l'oro dove hai gia' preso e il bianco dove stai */
+  .fascialive{display:flex;align-items:center;gap:8px;padding:3px 8px 4px;border-bottom:1px solid var(--tl-riga);
+    background:#131313;flex:0 0 auto;}
+  .fascialive .et{font-size:8px;font-weight:800;letter-spacing:.12em;color:var(--oro,#C8A24A);width:52px;flex:0 0 auto;}
+  .fascialive .qt{font-size:10px;color:#8A8A8A;width:64px;text-align:right;flex:0 0 auto;font-variant-numeric:tabular-nums;}
+  .fascialive .fl{position:relative;height:14px;flex:1 1 auto;background:#1E1E1E;border:1px solid #2A2A2A;
+    border-radius:2px;cursor:pointer;overflow:hidden;}
+  .fascialive .fl .scritto{position:absolute;top:0;bottom:0;left:0;background:#2F3A46;}
+  .fascialive .fl .preso{position:absolute;top:0;bottom:0;background:var(--oro,#C8A24A);opacity:.85;}
+  .fascialive .fl .testa{position:absolute;top:-2px;bottom:-2px;width:2px;background:#FFF;}
+  .fascialive .fl .bordo{position:absolute;top:0;bottom:0;right:0;width:2px;background:#E03B3B;}
   .tlcorsia{position:relative;border-bottom:1px solid var(--tl-riga);}
   #tlV2{height:var(--hV2,34px);} #tlV1{height:var(--hV1,56px);} #tlA1{height:var(--hA1,46px);}
   .tlpista .clipG{height:calc(var(--hV2,34px) - 4px);}
@@ -1268,6 +1280,17 @@
       <span class="esportati" id="seqEsportati"></span>
     </span>
   </div>
+  <!-- LA DIRETTA STA IN UNA FASCIA SUA.
+       In timeline i pezzi presi e la partita che corre si sovrapponevano
+       come secondi — il pezzo del vivo e' tutta la partita, i presi sono
+       le tue scelte sopra — e messi in fila sembravano ripetersi. Qui la
+       diretta ha una striscia a parte, con la sua scala (0 → adesso): si
+       vede dove sei, cosa hai gia' preso, e ci si sposta cliccando. -->
+  <div class="fascialive" id="fasciaLive" hidden>
+    <span class="et">DIRETTA</span>
+    <div class="fl" id="flPista" title="clicca per andare a quel punto della diretta"></div>
+    <span class="qt" id="flQuando">—</span>
+  </div>
   <div class="tlcorpo">
     <div class="tlnomi">
       <div class="tltc" id="tlTc">00:00:00:00</div>
@@ -1708,6 +1731,10 @@
             // il pezzo in fondo alla timeline, e questo pulsante ti ci
             // riporta — rimettendolo, se nel frattempo l'hai tagliato via.
             '<span class="stacco" id="staccoVivo" hidden></span>' +
+            // PRENDI: gli ultimi secondi finiscono in timeline senza che il
+            // video si muova di un fotogramma. E' il gesto della diretta.
+            tr("pPrendi", "inserisci", "PRENDI gli ultimi secondi e mettili in timeline (P)", "oro") +
+            '<button class="tr" id="pQuanti" title="Quanti secondi prende: clicca per cambiare">40s</button>' +
             tr("pLive", "live", "Torna al vivo (fine della diretta)", "oro") +
             '<button class="tr" id="pSalva" hidden title="Salva quello che hai montato con un nome suo: la diretta torna intera">' +
               IC.esporta + '</button>' +
@@ -1903,6 +1930,48 @@
       var x = pezziProg()[PROG.i]; if (!x || !SEQ) return;
       fotogramma(SEQ.reg, x.clip ? x.dentro + vp.currentTime : vp.currentTime);
     });
+    // PRENDI. Il pezzo si costruisce sulla coda di quello che e' gia'
+    // entrato: nessun salto nel video, quindi niente da ricaricare. Il
+    // cursore resta dov'e' — se stavi guardando il vivo, continui a
+    // guardarlo, e il pezzo compare in timeline dietro di te.
+    var QUANTI = 40;
+    try { QUANTI = parseInt(localStorage.getItem("mam.prendi") || "40", 10) || 40; } catch (e) {}
+    function segnaQuanti() { var b = el("pQuanti"); if (b) b.textContent = QUANTI + "s"; }
+    el("pQuanti").addEventListener("click", function () {
+      var scala = [20, 40, 60, 90];
+      QUANTI = scala[(scala.indexOf(QUANTI) + 1) % scala.length];
+      try { localStorage.setItem("mam.prendi", String(QUANTI)); } catch (e) {}
+      segnaQuanti();
+      dice("PRENDI prender\u00e0 gli ultimi " + QUANTI + " secondi", true);
+    });
+    segnaQuanti();
+    el("pPrendi").addEventListener("click", function () {
+      if (!SEQ || !SEQ.diretta) return dice("PRENDI serve sulla diretta.");
+      var eroAlVivo = VIVO.attaccato;
+      manda({ tipo: "clip-diretta-prendi", seq: SEQ.id, quanti: QUANTI })
+        .then(function (d) {
+          SEQ = d.seq;
+          // il pezzo si e' infilato DAVANTI al vivo: senza rimettere a posto
+          // l'indice, il monitor si troverebbe a guardare il pezzo appena
+          // preso invece della partita
+          if (eroAlVivo) riallineaAlVivo();
+          disegnaSequenza(); destraMateriale();
+          dice("Preso: " + d.quanti + " secondi \u00b7 \u00e8 in timeline", true);
+        })
+        .catch(function (er) { dice(er.message); });
+    });
+
+    // Cliccare sulla fascia porta a quel punto della partita: e' il DVR,
+    // e ci si stacca dal vivo (il pezzo intanto continua a crescere).
+    if (el("flPista")) el("flPista").addEventListener("click", function (ev) {
+      var iv = pezzoVivo(); if (iv < 0) return;
+      var x = pezziProg()[iv];
+      var q = this.getBoundingClientRect();
+      var t = Math.max(0, Math.min(x.fuori - 0.5, (ev.clientX - q.left) / (q.width || 1) * x.fuori));
+      progVai(iv, false, Math.max(0, t - x.dentro));
+      dice("Diretta a " + tc(t) + " \u00b7 con LIVE torni al presente", true);
+    });
+
     // TORNA AL VIVO. Se la coda e' ancora li' basta saltarci sopra; se e'
     // stata tagliata via, il ponte la rimette dall'ultimo secondo tenuto a
     // adesso — cosi' si torna sempre al presente, comunque si sia montato.
@@ -1933,7 +2002,7 @@
         .catch(function (er) { dice(er.message); });
     });
     el("scrubP").addEventListener("mousedown", function (e) {
-      var pz = pezziProg(), tot = durataSeq(); if (!tot) return;
+      var pz = montaggio(), tot = durataMontaggio(); if (!tot) return;
       var r = this.getBoundingClientRect(), t = (e.clientX - r.left) / r.width * tot, acc = 0;
       for (var i = 0; i < pz.length; i++) {
         var d = pz[i].fuori - pz[i].dentro;
@@ -2046,6 +2115,14 @@
   var VIVO = { attaccato: true, chiesta: "" };
   function pezziProg() { return (SEQ && SEQ.pezzi) || []; }
   function durataSeq() { return pezziProg().reduce(function (a, x) { return a + (x.fuori - x.dentro); }, 0); }
+  // IL MONTAGGIO E' LA SEQUENZA SENZA LA DIRETTA. Il pezzo del vivo e' tutta
+  // la partita: messo in fila con i pezzi presi sembrava che i secondi si
+  // ripetessero. Sta in una fascia sua, e la timeline mostra solo il tuo
+  // lavoro. Il pezzo vivo e' sempre l'ULTIMO, quindi gli indici dei pezzi
+  // montati sono gli stessi qui e nella lista intera.
+  function montaggio() { return pezziProg().filter(function (x) { return !x.vivo; }); }
+  function durataMontaggio() { return montaggio().reduce(function (a, x) { return a + (x.fuori - x.dentro); }, 0); }
+  function suLVivo() { var x = pezziProg()[PROG.i]; return !!(x && x.vivo); }
   function regDiSeq() {
     if (!SEQ) return null;
     return REGISTRAZIONI.filter(function (r) { return r.id === SEQ.reg; })[0] || null;
@@ -2068,7 +2145,7 @@
     var r = regDiSeq(); if (!r) return null;
     if (r.materiale === "archivio" && r.via) return { url: r.via, da: x.dentro, a: x.fuori };
     if (r.materiale === "integrale") return { url: BASE + "/clip/" + r.id + "/integrale.mp4", da: x.dentro, a: x.fuori };
-    if (r.materiale === "segmenti") return { url: BASE + "/clip/" + r.id + "/live.m3u8", da: x.dentro, a: x.fuori, hls: true };
+    if (r.materiale === "segmenti") return { url: BASE + (r.proxy || ("/clip/" + r.id + "/live.m3u8")), da: x.dentro, a: x.fuori, hls: true };
     return null;
   }
   function progVai(i, riproduci, dentroIlPezzo, nonStaccare) {
@@ -2117,6 +2194,39 @@
     segnaIlVivo();
     return true;
   }
+  // LA FASCIA DELLA DIRETTA. Scala sua: da zero a adesso, tutta la partita
+  // in una striscia. Ci si legge tre cose — dove sei, cosa hai gia' preso,
+  // e quanto materiale c'e' — e ci si sposta cliccando.
+  function disegnaFasciaLive() {
+    var f = el("fasciaLive"), pi = el("flPista"), qt = el("flQuando");
+    if (!f || !pi) return;
+    var iv = pezzoVivo();
+    var mostra = !!(SEQ && SEQ.diretta && iv >= 0);
+    f.hidden = !mostra;
+    if (!mostra) return;
+    var viva = pezziProg()[iv], tot = Math.max(1, viva.fuori);
+    var pc = function (t) { return Math.max(0, Math.min(100, t / tot * 100)); };
+    var out = ['<span class="scritto" style="width:100%"></span>'];
+    // dove hai gia' preso
+    montaggio().forEach(function (x) {
+      out.push('<span class="preso" style="left:' + pc(x.dentro) + '%;width:' +
+               Math.max(0.4, pc(x.fuori) - pc(x.dentro)) + '%"></span>');
+    });
+    // dove sei, se sei dentro la diretta
+    if (suLVivo()) out.push('<span class="testa" style="left:' + pc(PROG.pos || 0) + '%"></span>');
+    out.push('<span class="bordo"></span>');
+    pi.innerHTML = out.join("");
+    if (qt) qt.textContent = suLVivo() ? tc(PROG.pos || 0) : ("−" + Math.round(tot - (PROG.pos || 0)) + "s");
+    if (qt) qt.title = "quanto e' entrato: " + tc(tot);
+  }
+
+  // Rimette a posto l'indice del pezzo che si sta guardando dopo che ne e'
+  // stato infilato uno davanti. Non tocca il video: e' solo contabilita'.
+  function riallineaAlVivo() {
+    var i = pezzoVivo(); if (i < 0) return;
+    var x = pezziProg()[i];
+    PROG.i = i; PROG.da = x.dentro; PROG.a = x.fuori;
+  }
   // Attaccati al vivo si sta senza fare niente: il video corre da solo e
   // basta spostare in avanti il confine del pezzo, che intanto e' cresciuto.
   // Si salta al bordo solo se non ci siamo dentro, o se si e' rimasti troppo
@@ -2135,6 +2245,10 @@
     if (!b) return;
     var e = !!(SEQ && SEQ.diretta);
     b.hidden = !e; if (sv) sv.hidden = !e;
+    // PRENDI vive solo sulla diretta, e solo finche' la partita entra
+    var viva = e && pezzoVivo() >= 0;
+    if (el("pPrendi")) el("pPrendi").hidden = !viva;
+    if (el("pQuanti")) el("pQuanti").hidden = !viva;
     if (sa) sa.hidden = !e || !pezziProg().filter(function (x) { return !x.vivo; }).length;
     if (!e) return;
     b.classList.toggle("acceso", !!VIVO.attaccato);
@@ -2173,7 +2287,8 @@
     var sc = el("scrubP"), v = el("programma"); if (!sc) return;
     graficaSopraProgramma();
     segnaIlVivo();
-    var pz = pezziProg(), tot = durataSeq();
+    disegnaFasciaLive();
+    var pz = montaggio(), tot = durataMontaggio();
     if (el("capoSeq")) el("capoSeq").textContent = SEQ ? (SEQ.titolo || "sequenza") + " · " + pz.length + " pezzi" : "nessuna sequenza";
     // nel Programma il "tratto" e' il pezzo su cui sta la testina: e' quello
     // che stai guardando, ed e' il numero che si cerca mentre si monta
@@ -2681,7 +2796,7 @@
     return acc + Math.max(0, Math.min(d, PROG.pos - PROG.da));
   }
   function finestraSeq() {
-    var tot = durataSeq(); if (!tot) return null;
+    var tot = durataMontaggio(); if (!tot) return null;
     // a "tutto" la sequenza non tocca il bordo: resta un quarto di aria a
     // destra, dove si lascia cadere la clip successiva
     if (LENTE <= 1) return { a: 0, b: tot * 1.25 + 2, tot: tot };
@@ -2702,7 +2817,7 @@
 
   function disegnaTimeline() {
     var p = el("tlPista"), rig = el("tlRighello"), v1 = el("tlV1"), a1 = el("tlA1"), v2 = el("tlV2"); if (!p || !rig) return;
-    var pz = pezziProg(), tot = durataSeq(), largo = p.clientWidth || 900;
+    var pz = montaggio(), tot = durataMontaggio(), largo = p.clientWidth || 900;
     var nome = el("tlNome");
     if (nome) nome.textContent = SEQ ? (SEQ.titolo || "sequenza") : "nessuna sequenza";
     if (el("seqMp4")) el("seqMp4").textContent = "Solo " + formato;
@@ -2741,7 +2856,9 @@
     var la = Math.max(0, X(0)), lb = Math.min(largo, X(tot));
     if (lb > la) r.push('<span class="areaLavoro" style="left:' + la + 'px;width:' + (lb - la) + 'px"></span>');
     var xTestina = X(progPos());
-    r.push('<span class="testa" style="left:' + xTestina + 'px"></span>');
+    // mentre si guarda la diretta la testina non sta nel montaggio: sta
+    // sulla fascia. Disegnarla qui la metterebbe fuori dalla sequenza.
+    if (!suLVivo()) r.push('<span class="testa" style="left:' + xTestina + 'px"></span>');
     rig.innerHTML = r.join("");
 
     // I FOTOGRAMMI RIPETUTI. Se due pezzi pescano lo stesso pezzo di
@@ -2809,7 +2926,7 @@
       for (var k = 0; k < TL.ins && k < pz.length; k++) acc2 += pz[k].fuori - pz[k].dentro;
       ins.style.left = (X(acc2) - 1) + "px"; ins.hidden = false;
     } else ins.hidden = true;
-    var te = el("tlTestina"); te.style.left = xTestina + "px"; te.hidden = false;
+    var te = el("tlTestina"); te.style.left = xTestina + "px"; te.hidden = suLVivo();
     disegnaNav();
   }
   // La testina si muove al fotogramma mentre il Programma va: un giro di
@@ -3076,7 +3193,7 @@
           // niente tetto se non quello vero: una grafica puo' durare quanto
           // dura la sequenza, e mentre trascini non deve incollarsi a un
           // limite invisibile
-          var tetto = durataSeq() || 999999;
+          var tetto = durataMontaggio() || 999999;
           if (TL.grafica.lato === "sx") gq.dentro = Math.max(0, Math.min(TL.grafica.fuori - 0.4, TL.grafica.dentro + dgg));
           else if (TL.grafica.lato === "dx") gq.fuori = Math.max(TL.grafica.dentro + 0.4, Math.min(tetto, TL.grafica.fuori + dgg));
           else {
@@ -4114,6 +4231,10 @@
     if (k === "m" && mod) { e.preventDefault(); apriExport(); return; }
 
     // ── montaggio ──
+    if (k === "p" && !mod && !e.shiftKey) {
+      var bp = el("pPrendi");
+      if (bp && !bp.hidden) { e.preventDefault(); bp.click(); return; }
+    }
     if (k === ",") { var bi = el("btnInserisci"); if (bi && !bi.disabled) { e.preventDefault(); bi.click(); } return; }
     if (k === ".") { var bt = el("btnTaglia"); if (bt && !bt.disabled) { e.preventDefault(); bt.click(); } return; }
     if (k === "q" && !mod) { e.preventDefault(); var a1 = tempoNelMateriale(); if (a1 !== null) ritocca({ dentro: a1 }); return; }
@@ -4292,6 +4413,15 @@
     var n = el("capoNome"), t = el("capoTorna");
     if (!n) return;
     n.textContent = guardando ? guardando : (REG ? REG.titolo : "niente di scelto");
+    // Se si sta guardando la copia leggera va detto, se no il primo che apre
+    // pensa che la qualita' sia peggiorata. Il taglio e l'esportazione
+    // restano sull'originale, e questo lo dice il titolo del pulsante.
+    if (!guardando && REG && REG.proxy) {
+      n.textContent += " \u00b7 copia leggera";
+      n.title = "Stai guardando la copia leggera (480 di larghezza): pesa trenta volte meno, " +
+                "cosi\u2019 scorrere e tornare al vivo non ricarica niente. Il taglio e l\u2019esportazione " +
+                "si fanno sull\u2019originale.";
+    } else { n.title = ""; }
     t.hidden = !guardando;
   }
   function accendiFormati() {
@@ -4326,7 +4456,11 @@
     }
     if (r.materiale === "integrale") { v.src = BASE + "/clip/" + r.id + "/integrale.mp4"; fermoSu(); return; }
     if (r.materiale === "scaduto") { v.removeAttribute("src"); v.load(); return; }
-    var indirizzo = BASE + "/clip/" + r.id + "/live.m3u8";
+    // LA COPIA LEGGERA. Se il ponte l'ha scritta si guarda quella: pesa un
+    // trentunesimo, quindi scorrere indietro e tornare al vivo non fa
+    // ricaricare mezza partita. Il taglio e l'esportazione restano
+    // sull'originale, che non lo sfiora nessuno.
+    var indirizzo = BASE + (r.proxy || ("/clip/" + r.id + "/live.m3u8"));
     if (window.Hls && Hls.isSupported()) {
       hls = new Hls({ liveSyncDuration: 8, backBufferLength: 3600 });
       hls.on(Hls.Events.ERROR, function (ev, d) {
