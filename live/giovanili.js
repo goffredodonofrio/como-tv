@@ -193,7 +193,96 @@ window.GIOVANILI = (function () {
       { id: "roma-under-18", n: "Roma Under 18", tid: "104", rosa: [] },
       { id: "sassuolo-under-18", n: "Sassuolo Under 18", tid: "3997", rosa: [] },
       { id: "torino-under-18", n: "Torino Under 18", tid: "239", rosa: [] }
-    ] }
+    ] },
+    // UEFA Youth League: stesse 36 squadre della Champions dei grandi,
+    // quindi loghi e maglie ci sono gia' (gli id ESPN sono gli stessi).
+    // Rose dai convocati ufficiali per Como-Lipsia del 10/09/2026.
+    { nome: "UEFA Youth League", code: "giovanili.youthleague", squadre: [
+      // Numeri di maglia NON nella distinta: la lista del club era in
+      // ordine alfabetico numerata 1-20. Si scrivono in pagina.
+      { id: "como-yl", n: "Como 1907", tid: "2572", rosa: [
+        { num: "",   nome: "Matteo",              cognome: "Albini",                ruolo: "D" },
+        { num: "",   nome: "Francesco",           cognome: "Andrealli",             ruolo: "M" },
+        { num: "",   nome: "Mattia",              cognome: "Arioli",                ruolo: "D" },
+        { num: "",   nome: "Stefano",             cognome: "Arui",                  ruolo: "M" },
+        { num: "",   nome: "Alessio",             cognome: "Baralla",               ruolo: "M" },
+        { num: "",   nome: "Ettore",              cognome: "Broggian",              ruolo: "F" },
+        { num: "",   nome: "Jo\u00e3o Maklouf",   cognome: "Cardozo",               ruolo: "" },
+        { num: "",   nome: "Riccardo",            cognome: "Cassano",               ruolo: "M" },
+        { num: "",   nome: "Achille",             cognome: "Cauli",                 ruolo: "" },
+        { num: "",   nome: "Mattia",              cognome: "Damioli",               ruolo: "G" },
+        { num: "",   nome: "Cristiano",           cognome: "De Paoli",              ruolo: "D" },
+        { num: "",   nome: "Lorenzo",             cognome: "Epifani",               ruolo: "D" },
+        { num: "",   nome: "Josh",                cognome: "Harpur",                ruolo: "" },
+        { num: "",   nome: "Francesco",           cognome: "Lembo",                 ruolo: "F" },
+        { num: "",   nome: "Cristian",            cognome: "Mazzara",               ruolo: "M" },
+        { num: "",   nome: "Fabio",               cognome: "Ronchetti",             ruolo: "D" },
+        { num: "",   nome: "Dylan",               cognome: "Sgarbi",                ruolo: "G" },
+        { num: "",   nome: "Mattia",              cognome: "Terranova",             ruolo: "F" },
+        { num: "",   nome: "Achille",             cognome: "Tigano",                ruolo: "F" },
+        { num: "",   nome: "Matteo",              cognome: "Zanaria",               ruolo: "D" }
+      ] },
+      // Lipsia: qui i numeri sono veri (distinta non sequenziale).
+      // Ruoli non forniti dalla fonte; il 1 e' il portiere.
+      { id: "rblipsia-yl", n: "RB Lipsia", tid: "11420", rosa: [
+        { num: "1",  nome: "Franz",               cognome: "Hantschmann",           ruolo: "G" },
+        { num: "3",  nome: "Nwabueze Tyrese",     cognome: "Ehiwario",              ruolo: "" },
+        { num: "5",  nome: "Benno",               cognome: "Kaltefleiter",          ruolo: "" },
+        { num: "6",  nome: "Warren Jerry",        cognome: "Ngana",                 ruolo: "" },
+        { num: "7",  nome: "Taito",               cognome: "Kanda",                 ruolo: "" },
+        { num: "8",  nome: "Toni",                cognome: "Langsteiner",           ruolo: "" },
+        { num: "9",  nome: "Israel",              cognome: "Ogette",                ruolo: "" },
+        { num: "10", nome: "Manuel",              cognome: "Abbey",                 ruolo: "" },
+        { num: "11", nome: "Dilane",              cognome: "Yarsekou",              ruolo: "" },
+        { num: "12", nome: "Julian-Maxime",       cognome: "Wenta",                 ruolo: "" },
+        { num: "14", nome: "Hannes",              cognome: "M\u00fcller",           ruolo: "" },
+        { num: "15", nome: "Patrik",              cognome: "Johnsen",               ruolo: "" },
+        { num: "16", nome: "Jordy",               cognome: "Sebastian",             ruolo: "" },
+        { num: "18", nome: "Vincent",             cognome: "Clair",                 ruolo: "" },
+        { num: "21", nome: "Din",                 cognome: "Klapija",               ruolo: "" },
+        { num: "22", nome: "Elian",               cognome: "H\u00e4hner",           ruolo: "" },
+        { num: "23", nome: "Matthes",             cognome: "Kutscher",              ruolo: "" },
+        { num: "24", nome: "Samba",               cognome: "Konate",                ruolo: "" },
+        { num: "26", nome: "Karl",                cognome: "Hamella",               ruolo: "" },
+        { num: "33", nome: "Janos",               cognome: "Kanyai",                ruolo: "" }
+      ] },
+      // le altre 34 della Champions: solo nome e id (loghi e maglie),
+      // rose da scrivere a mano quando servono
+      { id: "aekathens-yl", n: "AEK Athens", tid: "887", rosa: [] },
+      { id: "asroma-yl", n: "AS Roma", tid: "104", rosa: [] },
+      { id: "arsenal-yl", n: "Arsenal", tid: "359", rosa: [] },
+      { id: "astonvilla-yl", n: "Aston Villa", tid: "362", rosa: [] },
+      { id: "atleticomadrid-yl", n: "Atl\u00e9tico Madrid", tid: "1068", rosa: [] },
+      { id: "barcelona-yl", n: "Barcelona", tid: "83", rosa: [] },
+      { id: "bayernmunich-yl", n: "Bayern Munich", tid: "132", rosa: [] },
+      { id: "bodoglimt-yl", n: "Bodo/Glimt", tid: "2980", rosa: [] },
+      { id: "borussiadortmund-yl", n: "Borussia Dortmund", tid: "124", rosa: [] },
+      { id: "clubbrugge-yl", n: "Club Brugge", tid: "570", rosa: [] },
+      { id: "fcporto-yl", n: "FC Porto", tid: "437", rosa: [] },
+      { id: "fenerbahce-yl", n: "Fenerbahce", tid: "436", rosa: [] },
+      { id: "feyenoordrotterdam-yl", n: "Feyenoord Rotterdam", tid: "142", rosa: [] },
+      { id: "galatasaray-yl", n: "Galatasaray", tid: "432", rosa: [] },
+      { id: "internazionale-yl", n: "Internazionale", tid: "110", rosa: [] },
+      { id: "lasklinz-yl", n: "LASK Linz", tid: "4411", rosa: [] },
+      { id: "lens-yl", n: "Lens", tid: "175", rosa: [] },
+      { id: "lille-yl", n: "Lille", tid: "166", rosa: [] },
+      { id: "liverpool-yl", n: "Liverpool", tid: "364", rosa: [] },
+      { id: "manchestercity-yl", n: "Manchester City", tid: "382", rosa: [] },
+      { id: "manchesterunited-yl", n: "Manchester United", tid: "360", rosa: [] },
+      { id: "napoli-yl", n: "Napoli", tid: "114", rosa: [] },
+      { id: "psveindhoven-yl", n: "PSV Eindhoven", tid: "148", rosa: [] },
+      { id: "parissaintgermain-yl", n: "Paris Saint-Germain", tid: "160", rosa: [] },
+      { id: "realbetis-yl", n: "Real Betis", tid: "244", rosa: [] },
+      { id: "realmadrid-yl", n: "Real Madrid", tid: "86", rosa: [] },
+      { id: "sabahfk-yl", n: "Sabah FK", tid: "21922", rosa: [] },
+      { id: "shakhtardonetsk-yl", n: "Shakhtar Donetsk", tid: "493", rosa: [] },
+      { id: "slaviaprague-yl", n: "Slavia Prague", tid: "494", rosa: [] },
+      { id: "slovanbratislava-yl", n: "Slovan Bratislava", tid: "521", rosa: [] },
+      { id: "sportingcp-yl", n: "Sporting CP", tid: "2250", rosa: [] },
+      { id: "vfbstuttgart-yl", n: "VfB Stuttgart", tid: "134", rosa: [] },
+      { id: "vikingfk-yl", n: "Viking FK", tid: "510", rosa: [] },
+      { id: "villarreal-yl", n: "Villarreal", tid: "102", rosa: [] }
+    ] },
   ];
 
   function mia(code) { return String(code || "").indexOf("giovanili.") === 0; }
