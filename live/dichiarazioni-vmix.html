@@ -24,8 +24,14 @@
   }
 
   /* ── la foto: mezza scena a DESTRA, sfumata nel navy ── */
+  /* Lo stato di RIPOSO e' quello finale: foto visibile e a posto. Prima era
+     il contrario — opacity 0 e spostata di 70px — e la foto esisteva solo se
+     l'animazione arrivava in fondo. Basta che non parta (un iframe che il
+     browser non disegna, una scheda in secondo piano, il risparmio energetico)
+     e al posto della foto resta un buco. E' quello che succedeva nell'anteprima
+     delle Dichiarazioni. Ora l'animazione la porta dentro partendo da fuori:
+     se gira si vede entrare, se non gira si vede e basta. */
   #fotobox{position:absolute;right:0;top:0;width:980px;height:1080px;overflow:hidden;
-    opacity:0;transform:translateX(70px);
     -webkit-mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.25) 16%,rgba(0,0,0,.7) 34%,#000 52%);
             mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.25) 16%,rgba(0,0,0,.7) 34%,#000 52%);}
   #fotobox img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;object-position:center top;
@@ -66,7 +72,7 @@
   @keyframes fadeIn { to { opacity:1; } }
   @keyframes ruleIn { to { transform:scaleX(1); } }
   @keyframes salita { to { opacity:1; transform:translateY(0); } }
-  @keyframes daDestra { to { opacity:1; transform:translateX(0); } }
+  @keyframes daDestra { from { opacity:0; transform:translateX(70px); } to { opacity:1; transform:translateX(0); } }
   .su{transform:translateY(26px);}
 </style>
 </head>
@@ -131,8 +137,26 @@
     el("fotobox").style.display = "";
     el("foto").src = D.f;
     el("foto").onerror = function () { el("fotobox").style.display = "none"; };
-    if (STILL) { el("fotobox").style.opacity = 1; el("fotobox").style.transform = "none"; }
-    else el("fotobox").style.animation = "daDestra .9s cubic-bezier(.2,.7,.3,1) .35s forwards";
+    // Il riposo e' gia' lo stato giusto, quindi al fermo immagine non c'e'
+    // niente da accendere. In movimento serve "both", o durante il ritardo la
+    // foto sarebbe gia' visibile e poi sparirebbe per rientrare: un lampo.
+    //
+    // Ma "both" la tiene invisibile finche' l'animazione non finisce, e se
+    // l'animazione non gira — un iframe che il browser non disegna, una
+    // scheda in secondo piano — resta invisibile per sempre. Percio' passato
+    // il tempo dell'animazione si impone comunque lo stato finale: se e'
+    // andata, non cambia niente; se non e' partita, la foto compare. I timer
+    // continuano a scattare anche dove le animazioni vengono sospese, ed e'
+    // esattamente il caso in cui questa rete serve.
+    if (!STILL) {
+      var fb = el("fotobox");
+      fb.style.animation = "daDestra .9s cubic-bezier(.2,.7,.3,1) .35s both";
+      setTimeout(function () {
+        fb.style.animation = "none";
+        fb.style.opacity = 1;
+        fb.style.transform = "none";
+      }, 1600);
+    }
   }
 
   // ── occhiello ──
