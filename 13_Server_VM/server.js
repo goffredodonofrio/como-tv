@@ -2187,16 +2187,14 @@ const server = http.createServer((req, res) => {
     // Le grafiche non devono piu' indovinare il nome del file da sole: era
     // proprio quel tirare a indovinare a far uscire la faccia di un Valle
     // sulla formazione dell'altro.
-    // Se non si sa di chi sia, ma in magazzino una foto con quel cognome
-    // c'e' e non risulta di nessuno, si manda comunque quella: e' l'unica
-    // persona che puo' averla, e lasciare il buco e' peggio che rischiare —
-    // e' quello che ha fatto sparire 47 facce dalle formazioni premium.
-    // Resta segnata come orfana, cosi' il magazzino continua a chiedere
-    // "e' lui?" finche' qualcuno non la intesta davvero.
+    // Provato a mandare comunque la foto orfana per non lasciare il buco:
+    // rimessa indietro il 9 settembre 2026. Una foto che non risulta di
+    // nessuno finiva addosso a chiunque avesse quel cognome, e in onda
+    // usciva la faccia sbagliata — che e' peggio di nessuna faccia. Le
+    // orfane si sistemano intestandole dal magazzino, non indovinandole.
     if (q.get("foto")) {
       const chi = q.get("foto"), url = fotoDiChi(chi, q.get("squadra") || q.get("sq"), q.get("id"));
-      const orf = url ? "" : fotoOrfana(chi);
-      return json(res, { url: url || orf, orfana: orf });
+      return json(res, { url: url, orfana: url ? "" : fotoOrfana(chi) });
     }
     if (q.get("intestazioni")) return json(res, intestaLeggi());
     if (q.get("video")) return json(res, videoElenco());
