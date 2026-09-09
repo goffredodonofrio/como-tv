@@ -900,72 +900,90 @@ function potaStorico(chiave) {
 }
 
 // ── di chi e' questa foto ─────────────────────────────────────────────
-// Il nome di una foto premium e' solo il COGNOME, e i cognomi si ripetono:
-// oggi 54 foto su 213 stanno su un cognome che due o piu' squadre hanno.
-// "rodriguez" sono trenta persone diverse; "paz" sono Nico del Como e altri
-// tre. Una foto sola non puo' essere giusta per tutti, e mostrare la faccia
-// sbagliata e' peggio che non mostrarne nessuna.
+// Il nome di una foto premium e' solo il COGNOME, e un cognome non e' una
+// persona. Non solo perche' si ripete fra squadre — "rodriguez" sono trenta
+// persone diverse — ma anche DENTRO la stessa squadra: Inaki e Nico Williams
+// all'Athletic, Filippo e Pietro Terracciano al Milan, tre Rodriguez
+// all'Alaves. Sono 82 casi su 66 squadre, un quarto di quelle che copriamo.
+// Percio' intestare una foto a una SQUADRA non basta: bisogna intestarla a
+// una PERSONA.
 //
-// L'indice tiene due cose:
-//   ambigui  i cognomi che nelle nostre competizioni appartengono a piu' di
-//            una squadra. Si calcola dalle rose e si aggiorna quando cambia
-//            il mercato: e' un dato, non una regola scritta nel codice.
-//   intesta  per ogni cognome ambiguo, quale file spetta a quale squadra
-//            (id ESPN, non il nome: "Hellas Verona" e "Verona" sono la
-//            stessa squadra e ci hanno gia' fregato con le maglie).
+// L'identita' e' l'id ESPN del giocatore. Non e' un dato da andare a
+// prendere: sta gia' nella risposta delle rose che leggiamo tutti i giorni,
+// e finora lo buttavamo via. Vale anche nel play-by-play, da cui heatmap,
+// passaggi e tiri prendono i giocatori. Una chiave sola per tutti.
 //
-// La regola di lettura e' prudente di proposito: un cognome che NON e' fra
-// gli ambigui continua a funzionare come sempre, perche' non c'e' niente da
-// sbagliare. Solo gli ambigui pretendono l'intestazione, e senza quella
-// rispondono vuoto. Cosi' nessuna grafica che oggi funziona smette di
-// funzionare, e quelle che oggi mentono smettono di mentire.
+// Vantaggio che viene gratis: la foto segue la persona, non la maglia. Un
+// trasferimento non rompe niente.
+//
+// L'indice tiene:
+//   ambigui  i cognomi che appartengono a piu' di una persona nelle nostre
+//            competizioni. Sono un dato calcolato dalle rose, non una regola
+//            scritta nel codice: si aggiorna quando si muove il mercato.
+//   perId    id ESPN -> file. E' l'intestazione vera.
+//   perSq    cognome -> { idSquadra: file }. Il ripiego per chi un id non ce
+//            l'ha: giovanili, rose scritte a mano, e i casi come Yeray
+//            dell'Athletic, che in ESPN il cognome non ce l'ha proprio.
+//
+// La lettura e' prudente di proposito: un cognome che NON e' fra gli ambigui
+// continua a funzionare come sempre. Cosi' nessuna grafica che oggi va
+// smette di andare, e solo quelle che oggi mentono smettono di mentire.
 const INTESTA_FILE = path.join(path.dirname(CONFIG.LOGHI), "foto-intestazioni.json");
 function intestaLeggi() {
   try {
     const d = JSON.parse(fs.readFileSync(INTESTA_FILE, "utf8"));
-    return { ambigui: d.ambigui || [], intesta: d.intesta || {} };
-  } catch (err) { return { ambigui: [], intesta: {} }; }
+    return { ambigui: d.ambigui || [], perId: d.perId || {}, perSq: d.perSq || {} };
+  } catch (err) { return { ambigui: [], perId: {}, perSq: {} }; }
 }
 function intestaScrivi(d) {
   fs.mkdirSync(path.dirname(INTESTA_FILE), { recursive: true });
   fs.writeFileSync(INTESTA_FILE, JSON.stringify(d, null, 1));
 }
-// Il file che spetta a (cognome, squadra). Vuoto = non lo sappiamo, e allora
-// meglio niente.
-function fotoDiChi(cognome, squadra) {
+function ceLho(f) {
+  return f && fs.existsSync(path.join(CONFIG.LOGHI, f)) ? "/loghi/" + f : "";
+}
+// L'indirizzo della foto di questa persona. Vuoto = non lo sappiamo, e
+// allora meglio niente che la faccia di un altro.
+function fotoDiChi(cognome, squadra, id) {
+  const d = intestaLeggi();
+  const pid = String(id || "").trim();
+  if (pid && d.perId[pid]) return ceLho(d.perId[pid]);   // l'identita' vera vince sempre
   const cog = slug(cognome);
   if (!cog) return "";
-  const d = intestaLeggi();
-  const ambiguo = d.ambigui.indexOf(cog) >= 0;
-  if (!ambiguo) {
-    const f = "foto-premium-" + cog + ".png";
-    return fs.existsSync(path.join(CONFIG.LOGHI, f)) ? "/loghi/" + f : "";
-  }
+  if (d.ambigui.indexOf(cog) < 0) return ceLho("foto-premium-" + cog + ".png");
   const sq = String(squadra || "").trim();
-  const mio = (d.intesta[cog] || {})[sq];
-  if (!mio) return "";
-  return fs.existsSync(path.join(CONFIG.LOGHI, mio)) ? "/loghi/" + mio : "";
+  return ceLho((d.perSq[cog] || {})[sq]);
+}
+// La foto "orfana": quel cognome un file ce l'ha, ma non risulta di nessuno.
+// Sono le 54 rimaste indietro. Serve a poterle intestare senza ricaricarle:
+// la pagina la mostra spenta e chiede "e' lui?". Se qualcuno l'ha gia'
+// reclamata non e' piu' orfana e non si propone a nessun altro.
+function fotoOrfana(cognome) {
+  const d = intestaLeggi(), cog = slug(cognome);
+  if (!cog) return "";
+  const base = "foto-premium-" + cog + ".png";
+  const presa = Object.keys(d.perId).some((k) => d.perId[k] === base) ||
+                Object.keys(d.perSq[cog] || {}).some((k) => d.perSq[cog][k] === base);
+  return presa ? "" : ceLho(base);
 }
 // Dove si archivia una foto nuova. Il nome lo decide il PONTE, mai la
 // pagina: se il cognome e' libero resta quello di sempre — cosi' le 213 foto
 // gia' in magazzino restano valide e nessuno deve ricaricare niente — e se
-// e' gia' preso da un'altra squadra si aggiunge l'id. Chi carica non digita
-// mai un nome di file e non sa che questa distinzione esiste.
-function fotoNomePer(cognome, squadra) {
-  const cog = slug(cognome), sq = String(squadra || "").trim();
+// e' gia' occupato si aggiunge l'id della persona. Chi carica non digita mai
+// un nome di file e non sa che questa distinzione esiste.
+function fotoNomePer(cognome, id) {
+  const cog = slug(cognome), pid = String(id || "").trim();
   const d = intestaLeggi();
-  const gia = d.intesta[cog] || {};
-  if (gia[sq]) return gia[sq];
+  if (pid && d.perId[pid]) return d.perId[pid];          // gia' sua: si sovrascrive la sua
   const base = "foto-premium-" + cog + ".png";
-  const presoDaAltri = Object.keys(gia).some((k) => k !== sq && gia[k] === base);
-  const esisteSenzaPadrone = !Object.keys(gia).length &&
-        fs.existsSync(path.join(CONFIG.LOGHI, base));
-  if (!presoDaAltri && !esisteSenzaPadrone) return base;
-  if (!sq) return base;                      // senza squadra non si puo' distinguere
-  // un trattino solo, non due: logoSalva passa il nome per slug(), che
-  // collassa i trattini di fila. Con "--" il file finiva su disco con un
-  // trattino e nell'indice con due, e l'indice puntava a un file inesistente.
-  return "foto-premium-" + cog + "-" + slug(sq) + ".png";
+  const presa = Object.keys(d.perId).some((k) => k !== pid && d.perId[k] === base) ||
+                Object.keys(d.perSq[cog] || {}).some((k) => d.perSq[cog][k] === base);
+  const orfana = !presa && fs.existsSync(path.join(CONFIG.LOGHI, base));
+  // un file che c'e' ma non e' intestato a nessuno non si sovrascrive alla
+  // cieca: e' proprio cosi' che si perdevano le foto
+  if (!presa && !orfana) return base;
+  if (!pid) return base;
+  return "foto-premium-" + cog + "-" + pid + ".png";
 }
 
 function logoSalva(p) {
@@ -999,38 +1017,61 @@ function logoSalva(p) {
 // squadra e immagine; il nome del file lo sceglie il ponte e se lo segna.
 // E' l'unica differenza con logo-carica, ed e' quella che serve: da qui in
 // avanti nessuna foto entra in magazzino senza un padrone.
+// Segna nell'indice che quel file e' di quella persona. Se l'id c'e' vale
+// lui; la squadra si registra comunque come ripiego, perche' domani la
+// stessa foto potrebbe servire a una grafica che l'id non ce l'ha.
+function intestaSegna(cognome, id, squadra, file) {
+  const d = intestaLeggi();
+  const cog = slug(cognome), pid = String(id || "").trim(), sq = String(squadra || "").trim();
+  if (pid) d.perId[pid] = file;
+  if (cog && sq) {
+    d.perSq[cog] = d.perSq[cog] || {};
+    const prima = d.perSq[cog][sq];
+    // Se in questa squadra quel cognome e' gia' di un'altra persona, il
+    // ripiego per cognome smette di poter rispondere: Inaki e Nico Williams
+    // sono tutti e due "williams" dell'Athletic, e senza l'id non c'e' modo
+    // di sapere quale. Si segna la resa (stringa vuota) invece di tirare a
+    // indovinare — chi chiede senza id ricevera' vuoto, che e' la verita'.
+    d.perSq[cog][sq] = (prima && prima !== file) ? "" : file;
+  }
+  intestaScrivi(d);
+  return d;
+}
+function chiSei(p) {
+  return {
+    cognome: String(p.cognome || "").trim(),
+    id: String((p.giocatore && p.giocatore.id) || p.id || "").trim(),
+    squadra: String((p.squadra && p.squadra.id) || p.squadra || "").trim()
+  };
+}
+// Carica una foto premium SAPENDO di chi e'. La pagina manda cognome, id del
+// giocatore, squadra e immagine; il nome del file lo sceglie il ponte e se lo
+// segna. E' l'unica differenza con logo-carica, ed e' quella che serve: da
+// qui in avanti nessuna foto entra in magazzino senza un padrone.
 function fotoSalva(p) {
-  const cognome = String(p.cognome || "").trim();
-  if (!cognome) throw new Error("manca il cognome");
-  const sq = String((p.squadra && p.squadra.id) || p.squadra || "").trim();
-  if (!sq) throw new Error("manca la squadra");
-  const nomeFile = fotoNomePer(cognome, sq);
-  const chiave = nomeFile.replace(/\.png$/, "");
-  const esito = logoSalva({ nome: chiave, dati: p.dati, __chi: p.__chi });
+  const q = chiSei(p);
+  if (!q.cognome) throw new Error("manca il cognome");
+  if (!q.id && !q.squadra) throw new Error("serve almeno l'id del giocatore o la squadra");
+  const nomeFile = fotoNomePer(q.cognome, q.id);
+  const esito = logoSalva({ nome: nomeFile.replace(/\.png$/, ""), dati: p.dati, __chi: p.__chi });
   // nell'indice va il nome VERO con cui il file e' finito su disco, non
   // quello che avevamo in mente: logoSalva puo' cambiarlo (slug, estensione)
   // e un indice che punta a un file inesistente e' peggio di nessun indice
-  const fileVero = String(esito.url || "").split("/").pop();
-  const d = intestaLeggi();
-  const cog = slug(cognome);
-  d.intesta[cog] = d.intesta[cog] || {};
-  d.intesta[cog][sq] = fileVero || nomeFile;
-  intestaScrivi(d);
-  return { ok: true, url: esito.url, file: fileVero, cognome: cog, squadra: sq };
+  const fileVero = String(esito.url || "").split("/").pop() || nomeFile;
+  intestaSegna(q.cognome, q.id, q.squadra, fileVero);
+  return { ok: true, url: esito.url, file: fileVero, cognome: slug(q.cognome), id: q.id, squadra: q.squadra };
 }
 // Intesta una foto GIA' in magazzino, senza ricaricarla: e' il clic che
 // sistema le 54 rimaste indietro.
 function fotoIntesta(p) {
-  const cog = slug(p.cognome || "");
-  const sq = String((p.squadra && p.squadra.id) || p.squadra || "").trim();
-  if (!cog || !sq) throw new Error("servono cognome e squadra");
+  const q = chiSei(p);
+  const cog = slug(q.cognome);
+  if (!cog) throw new Error("manca il cognome");
+  if (!q.id && !q.squadra) throw new Error("serve almeno l'id del giocatore o la squadra");
   const file = String(p.file || ("foto-premium-" + cog + ".png"));
   if (!fs.existsSync(path.join(CONFIG.LOGHI, file))) throw new Error("quella foto non c'e': " + file);
-  const d = intestaLeggi();
-  d.intesta[cog] = d.intesta[cog] || {};
-  d.intesta[cog][sq] = file;
-  intestaScrivi(d);
-  return { ok: true, cognome: cog, squadra: sq, file: file };
+  intestaSegna(q.cognome, q.id, q.squadra, file);
+  return { ok: true, cognome: cog, id: q.id, squadra: q.squadra, file: file };
 }
 
 function logoElenco() {
@@ -2147,7 +2188,8 @@ const server = http.createServer((req, res) => {
     // proprio quel tirare a indovinare a far uscire la faccia di un Valle
     // sulla formazione dell'altro.
     if (q.get("foto")) {
-      return json(res, { url: fotoDiChi(q.get("foto"), q.get("squadra") || q.get("sq")) });
+      const chi = q.get("foto"), url = fotoDiChi(chi, q.get("squadra") || q.get("sq"), q.get("id"));
+      return json(res, { url: url, orfana: url ? "" : fotoOrfana(chi) });
     }
     if (q.get("intestazioni")) return json(res, intestaLeggi());
     if (q.get("video")) return json(res, videoElenco());

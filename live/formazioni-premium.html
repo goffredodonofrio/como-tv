@@ -577,7 +577,7 @@
     if (!v) return null;
     if (v.m) return { num: v.num, nome: v.nome, cognome: v.cognome };
     var p = side.roster[v.p];
-    return p ? { num: p.num, nome: p.nome, cognome: p.cognome } : null;
+    return p ? { num: p.num, nome: p.nome, cognome: p.cognome, pid: p.pid || "" } : null;
   }
 
   function findPlayer(side, idx, skipZone, skipK) {
@@ -664,6 +664,9 @@
         side.roster = (d.athletes || []).map(function (a, i) {
           return {
             idx: i,
+            // l'id ESPN e' la sola cosa che distingue due omonimi: senza,
+            // Inaki e Nico Williams sono lo stesso "williams"
+            pid: String(a.id || ""),
             num: a.jersey || "",
             nome: a.firstName || "",
             cognome: a.lastName || (a.displayName || ""),
@@ -1470,6 +1473,9 @@
       status("err", '<span class="msg"><b>Nessuna formazione completa:</b> controlla le maglie non assegnate.</span>');
       return;
     }
+    // le foto si risolvono PRIMA: costruire il pacchetto e' sincrono, e una
+    // foto che arriva un istante dopo sarebbe una foto che non parte
+    Promise.all(list.map(assicuraFoto)).then(function () {
     var pagine = list.map(function (si) {
       var p = vmixPayload(si);
       p.lato = sides[si].label;
@@ -1482,6 +1488,7 @@
       (list.length === 2 ? "tutte e due le formazioni" : "la sola formazione di " +
         esc(sides[list[0]].teamName || sides[list[0]].label) + " (l\'altra non è completa)") +
       '</b>: nella finestra di stampa scegli <b>Salva come PDF</b>.</span>');
+    });
   });
 
   // ---------------- ponte verso il foglio Google ----------------
@@ -1579,6 +1586,43 @@
   // della squadra dentro: quell'URL si incolla in vMix come input
   // "Web Browser" 1920x1080. Doppio click o tasto R = replay.
 
+  // ── di chi e' la foto ────────────────────────────────────────────────
+  // Prima l'indirizzo si componeva dal cognome: "/loghi/foto-premium-" +
+  // cognome. Con i cognomi ripetuti quello e' tirare a indovinare, e usciva
+  // la faccia di un altro — un Rodriguez qualsiasi al posto del nostro. Ora
+  // lo chiede al ponte, che sa di chi e' ciascuna foto, e quando non lo sa
+  // risponde vuoto: meglio niente che sbagliato.
+  //
+  // Le risposte si tengono in cache e si risolvono PRIMA di costruire il
+  // pacchetto, non durante: costruirlo e' sincrono, e una foto che arriva
+  // un istante dopo sarebbe una foto che non parte.
+  var FOTO_RIS = {};
+  function chiaveFoto(d, side) {
+    return (d.pid ? "id:" + d.pid : "cog:" + slugCog(d.cognome) + "@" + (side.teamId || ""));
+  }
+  function assicuraFoto(si) {
+    var side = sides[si], mancanti = [];
+    ["tit", "pan"].forEach(function (zona) {
+      (side[zona] || []).forEach(function (v) {
+        var d = resolve(side, v);
+        if (!d || !d.cognome) return;
+        var k = chiaveFoto(d, side);
+        if (FOTO_RIS[k] === undefined && mancanti.indexOf(k) < 0) mancanti.push({ k: k, d: d });
+      });
+    });
+    var cfg = ponteConfig(true);
+    if (!cfg || !mancanti.length) return Promise.resolve();
+    return Promise.all(mancanti.map(function (m) {
+      var q = "?foto=" + encodeURIComponent(m.d.cognome) +
+              (m.d.pid ? "&id=" + encodeURIComponent(m.d.pid) : "") +
+              (side.teamId ? "&squadra=" + encodeURIComponent(side.teamId) : "");
+      return fetch(cfg.url + q, { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { FOTO_RIS[m.k] = (j && j.url) || ""; })
+        .catch(function () { FOTO_RIS[m.k] = ""; });
+    }));
+  }
+
   function vmixPayload(si) {
     var side = sides[si];
     if (!side.tit.length) {
@@ -1597,7 +1641,7 @@
     function slugCog(c){return String(c||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"");}
     function tri(v) {
       var d = resolve(side, v);
-      var foto = d && d.cognome ? "/loghi/foto-premium-" + slugCog(d.cognome) + ".png" : "";
+      var foto = d && d.cognome ? (FOTO_RIS[chiaveFoto(d, side)] || "") : "";
       return [d.num || "", d.nome || "", d.cognome || "", foto];
     }
 
@@ -1748,6 +1792,7 @@
 
   function grafVmix(si) {
     var side = sides[si];
+    assicuraFoto(si).then(function () {
     var payload = vmixPayload(si);
     if (!payload) return;
 
@@ -1763,6 +1808,7 @@
       "<b>" + esc(side.teamName || side.label) + "</b> — trascina le maglie per sistemare i nomi; " +
       "doppio click su una maglia per rimetterla al suo posto.";
     box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
   }
 
   function fitPrevF() {
@@ -1822,6 +1868,7 @@
   // quando mandarla in onda.
 
   function inviaRegia(si) {
+    assicuraFoto(si).then(function () {
     var payload = vmixPayload(si);
     if (!payload) return;
     var cfg = ponteConfig(false);
@@ -1858,6 +1905,7 @@
       .catch(function () {
         status("err", '<span class="msg"><b>Ponte non raggiungibile.</b> Se lo script è stato appena aggiornato, serve la nuova versione del deployment.</span>');
       });
+    });
   }
 
   document.getElementById("btnRegia2").addEventListener("click", function () {

@@ -114,6 +114,21 @@
       repeating-conic-gradient(#12193a 0% 25%, #0d1330 0% 50%) 50%/22px 22px;
     display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s;}
   .pcard .foto.drag{outline:2px dashed var(--gold);outline-offset:-6px;}
+  /* La foto orfana: quel cognome un file ce l'ha, ma non si sa di chi sia.
+     Si mostra SPENTA — mezza trasparenza e niente colore — perche' non e'
+     ancora una risposta, e' una domanda. Chi guarda deve vedere subito la
+     differenza fra "questa e' la sua foto" e "questa forse e' la sua foto". */
+  .pcard .orfana{position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:flex-end;gap:6px;padding:8px;}
+  .pcard .orfana img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+    opacity:.34;filter:grayscale(1);}
+  .pcard .orfana .dom{position:relative;font-size:10.5px;line-height:1.3;text-align:center;
+    color:var(--ivory);text-shadow:0 1px 6px rgba(0,0,0,.9);}
+  .pcard .orfana .si{position:relative;font-family:'Mazzard',sans-serif;font-size:10px;
+    font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:6px 12px;
+    border-radius:6px;cursor:pointer;background:var(--gold);border:1px solid var(--gold);
+    color:#0A0F24;}
+  .pcard .orfana .si:hover{background:var(--gold-bright,#E3C271);}
   /* Il numero di maglia sopra la casella. Il dato c'era gia' — la rosa ESPN
      lo porta — ma non si vedeva, e chi carica le foto lavora guardando una
      lista di numeri: senza, doveva indovinare quale mancasse dal cognome.
@@ -339,6 +354,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
   var squadre = [];       // {id, name} della competizione scelta
   var teamName = "";      // nome squadra scelta
+  var teamId = "";        // id ESPN della squadra: e' il ripiego quando un
+                          // giocatore l'id suo non ce l'ha (rose a mano)
   var rosa = [];          // {cognome, nome, num}
   var manuali = [];       // cognomi aggiunti a mano
 
@@ -370,14 +387,17 @@ document.addEventListener("DOMContentLoaded", function () {
   el("selTeam").addEventListener("change", function(){
     var id = this.value; if(!id){ svuotaGriglia(); return; }
     var t = squadre.filter(function(x){return x.id===id;})[0];
-    teamName = t ? t.name : ""; manuali = [];
+    teamName = t ? t.name : ""; teamId = id; manuali = [];
     var comp = COMPS[+el("selComp").value];
     stato("", "Carico la rosa di <b>"+esc(teamName)+"</b>…");
     fetch(API+"/"+comp.code+"/teams/"+id+"/roster")
       .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
       .then(function(d){
+        // L'id ESPN e' la sola cosa che distingue Inaki da Nico Williams:
+        // finora lo scartavamo e restava il cognome, che non e' una persona.
         rosa = (d.athletes||[]).map(function(a){
-          return { cognome:(a.lastName || a.displayName || "").trim(), nome:(a.firstName||"").trim(), num:a.jersey||"" };
+          return { id:String(a.id||""), cognome:(a.lastName || a.displayName || "").trim(),
+                   nome:(a.firstName||"").trim(), num:a.jersey||"" };
         }).filter(function(p){ return p.cognome; });
         if(!rosa.length){ stato("", "Rosa non in database ESPN: aggiungi i giocatori a mano qui sotto."); }
         else stato("ok", "<b>"+esc(teamName)+"</b>: "+rosa.length+" giocatori.");
@@ -393,9 +413,15 @@ document.addEventListener("DOMContentLoaded", function () {
   function svuotaGriglia(){ rosa=[]; manuali=[]; teamName=""; render(); }
 
   function tuttiGiocatori(){
+    // Prima si fondevano i giocatori con lo stesso cognome: Inaki e Nico
+    // Williams diventavano UNA scheda, e la foto del secondo non si poteva
+    // proprio caricare. Ora si distingue per id, e due omonimi hanno due
+    // schede — che e' il punto di tutto questo lavoro. Chi un id non ce l'ha
+    // (i nomi aggiunti a mano) resta distinto per cognome, come prima.
     var m = {}; var out = [];
-    rosa.forEach(function(p){ var k=slug(p.cognome); if(!m[k]){m[k]=1; out.push(p);} });
-    manuali.forEach(function(c){ var k=slug(c); if(!m[k]){m[k]=1; out.push({cognome:c,nome:"",num:""}); } });
+    rosa.forEach(function(p){ var k = p.id ? ("id:"+p.id) : ("cog:"+slug(p.cognome));
+      if(!m[k]){ m[k]=1; out.push(p); } });
+    manuali.forEach(function(c){ var k="cog:"+slug(c); if(!m[k]){m[k]=1; out.push({id:"",cognome:c,nome:"",num:""}); } });
     return out;
   }
 
@@ -419,12 +445,14 @@ document.addEventListener("DOMContentLoaded", function () {
         '<span class="dot"></span></div>' +
       '</div>';
     g.innerHTML = coachCard + players.map(function(p){
-      var id = slug(p.cognome);
-      return '<div class="pcard" data-cog="'+esc(p.cognome)+'" id="pc-'+esc(id)+'">' +
-        '<div class="foto" data-cog="'+esc(p.cognome)+'">' +
+      // la chiave della scheda e' la persona quando c'e', il cognome quando no
+      var id = p.id ? ("id-"+p.id) : slug(p.cognome);
+      return '<div class="pcard" data-cog="'+esc(p.cognome)+'" data-pid="'+esc(p.id||"")+'" id="pc-'+esc(id)+'">' +
+        '<div class="foto" data-cog="'+esc(p.cognome)+'" data-pid="'+esc(p.id||"")+'">' +
           (p.num ? '<span class="nummag">'+esc(p.num)+'</span>' : '') +
           '<img alt="">' +
           '<div class="vuoto"><span class="plus">+</span><span>Trascina qui il PNG<br>o clicca</span></div>' +
+          '<div class="orfana" hidden></div>' +
           '<button class="rmv" type="button" title="Togli la foto">&times;</button>' +
           '<div class="caric">Carico…</div>' +
         '</div>' +
@@ -435,18 +463,47 @@ document.addEventListener("DOMContentLoaded", function () {
     }).join("");
     el("copertura").style.display = "flex";
     controlla(coachKey);                       // foto allenatore della squadra
-    players.forEach(function(p){ controlla(p.cognome); });
+    players.forEach(function(p){ controlla(p.cognome, p.id); });
     aggiornaCopertura();
   }
 
   // c'è già la foto in magazzino?
-  function controlla(cognome){
-    var card = el("pc-"+slug(cognome)); if(!card) return;
+  // "questa foto c'e'?" non si risponde piu' tirando a indovinare il nome del
+  // file: lo chiede al ponte, che sa di chi e' ciascuna. Con due omonimi il
+  // nome del file non basta — e' proprio la domanda sbagliata.
+  function controlla(cognome, pid){
+    var card = el("pc-" + (pid ? ("id-"+pid) : slug(cognome))); if(!card) return;
     var img = card.querySelector("img");
-    var url = urlFoto(cognome), im = new Image();
-    im.onload = function(){ card.classList.add("has"); img.src = url; aggiornaCopertura(); };
-    im.onerror = function(){ card.classList.remove("has"); };
-    im.src = url + "?t=" + Date.now();
+    var q = "?foto=" + encodeURIComponent(cognome) +
+            (pid ? "&id=" + encodeURIComponent(pid) : "") +
+            (teamId ? "&squadra=" + encodeURIComponent(teamId) : "");
+    fetch(PONTE + q, { cache: "no-store" })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var orf = card.querySelector(".orfana");
+        orf.hidden = true; orf.innerHTML = "";
+        if (d && d.url) { card.classList.add("has"); img.src = d.url + "?t=" + Date.now(); }
+        else {
+          card.classList.remove("has");
+          // C'e' una foto con quel cognome ma non e' di nessuno: invece di
+          // dire "manca" — che sarebbe falso e farebbe ricaricare roba gia'
+          // in magazzino — si chiede di chi e'. Un clic e smette di essere
+          // una domanda.
+          if (d && d.orfana) {
+            orf.hidden = false;
+            orf.innerHTML = '<img alt="">' +
+              '<div class="dom">C\'&egrave; una foto di un<br><b>' + esc(cognome) + '</b>: &egrave; lui?</div>' +
+              '<button type="button" class="si">S&igrave;, &egrave; lui</button>';
+            orf.querySelector("img").src = d.orfana + "?t=" + Date.now();
+            orf.querySelector(".si").onclick = function(e){
+              e.stopPropagation();
+              intesta(cognome, pid, d.orfana.split("/").pop());
+            };
+          }
+        }
+        aggiornaCopertura();
+      })
+      .catch(function(){ card.classList.remove("has"); });
   }
 
   function aggiornaCopertura(){
@@ -464,15 +521,30 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   // ── caricamento ──
-  function carica(cognome, file){
+  // Intesta una foto gia' in magazzino a questa persona: non si ricarica
+  // niente, si dice soltanto di chi e'.
+  function intesta(cognome, pid, file){
+    stato("", "Intesto la foto di <b>"+esc(cognome)+"</b>&hellip;");
+    alPonte({ tipo:"foto-intesta", cognome:cognome, id:pid||"", squadra:teamId||"", file:file })
+      .then(function(res){
+        if(res && res.ok){ stato("ok", "<b>"+esc(cognome)+"</b>: adesso la foto &egrave; sua."); controlla(cognome, pid); }
+        else stato("err", "<b>"+esc(cognome)+":</b> "+esc((res&&res.errore)||"errore"));
+      })
+      .catch(function(e){ stato("err", esc(e.message)); });
+  }
+
+  function carica(cognome, pid, file){
     if(!cognome){ stato("err","Scrivi prima il <b>cognome dell'allenatore</b>, poi trascina la foto."); return; }
-    var card = el("pc-"+slug(cognome)); if(!card) return;
+    var card = el("pc-" + (pid ? ("id-"+pid) : slug(cognome))); if(!card) return;
     if(!/^image\/(png|webp)$/.test(file.type)){ stato("err","<b>"+esc(cognome)+":</b> serve un PNG (o WEBP) scontornato."); return; }
     if(file.size > 2*1024*1024){ stato("err","<b>"+esc(cognome)+":</b> foto troppo grande (max 2 MB)."); return; }
     card.classList.add("busy");
     var rd = new FileReader();
     rd.onload = function(){
-      alPonte({ tipo:"logo-carica", nome:nomeFoto(cognome), dati: rd.result })
+      // foto-carica invece di logo-carica: stessa cosa, ma il ponte sa di chi
+      // e' la foto e sceglie lui il nome del file. Cosi' caricare un Williams
+      // non cancella piu' l'altro.
+      alPonte({ tipo:"foto-carica", cognome:cognome, id:pid||"", squadra:teamId||"", dati: rd.result })
       .then(function(res){
         card.classList.remove("busy");
         if(res && res.ok){ card.classList.add("has"); card.querySelector("img").src = (res.url||urlFoto(cognome))+"?t="+Date.now();
@@ -506,12 +578,12 @@ document.addEventListener("DOMContentLoaded", function () {
     if(rm){ e.stopPropagation(); var c=rm.closest(".pcard").dataset.cog; rimuovi(c); return; }
     var foto = e.target.closest(".foto");
     if(foto){ var cog=foto.dataset.cog; var inp=document.createElement("input"); inp.type="file";
-      inp.accept="image/png,image/webp"; inp.onchange=function(){ if(inp.files[0]) carica(cog, inp.files[0]); }; inp.click(); }
+      inp.accept="image/png,image/webp"; inp.onchange=function(){ if(inp.files[0]) carica(cog, foto.dataset.pid||"", inp.files[0]); }; inp.click(); }
   });
   el("griglia").addEventListener("dragover", function(e){ var f=e.target.closest(".foto"); if(f){ e.preventDefault(); f.classList.add("drag"); } });
   el("griglia").addEventListener("dragleave", function(e){ var f=e.target.closest(".foto"); if(f) f.classList.remove("drag"); });
   el("griglia").addEventListener("drop", function(e){ var f=e.target.closest(".foto"); if(!f) return; e.preventDefault(); f.classList.remove("drag");
-    if(e.dataTransfer.files && e.dataTransfer.files[0]) carica(f.dataset.cog, e.dataTransfer.files[0]); });
+    if(e.dataTransfer.files && e.dataTransfer.files[0]) carica(f.dataset.cog, f.dataset.pid||"", e.dataTransfer.files[0]); });
 
   // ── aggiungi a mano ──
   el("manBtn").addEventListener("click", function(){
