@@ -1210,9 +1210,20 @@ function quelloCheSappiamo(r) {
   // restava tutto vuoto senza dire perche'; adesso si segna dove sono
   // finiti, e chi apre lo legge.
   const altrove = {};
+  // ...e quando la partita e' aperta intera non c'e' nessun altrove: il
+  // pezzo dove cade l'azione sta dentro questa stessa registrazione, e il
+  // suo secondo si sposta in avanti di quanto quel pezzo entra nella
+  // linea del tempo. Il minuto 78 finiva "in un altro pezzo del
+  // materiale"; adesso finisce al minuto 78.
+  const dentroLaPartita = pezziArch(r);
+  const intera = dentroLaPartita.length > 1;
   const dove = (s, d) => {
     const x = secondoNelFile(rec, { s: s, d: d });
     if (!x) return null;
+    if (intera) {
+      const q = dentroLaPartita[x.pezzo] || dentroLaPartita[dentroLaPartita.length - 1];
+      return (q.da || 0) + x.secondi;
+    }
     if (x.pezzo !== pezzo) { altrove[x.pezzo] = (altrove[x.pezzo] || 0) + 1; return null; }
     return x.secondi;
   };
@@ -1683,12 +1694,16 @@ function stacchiVicini(via, quando, raggio) {
 // vicino da non cambiare quello che si voleva prendere.
 async function agganciaStacco(r, quando, raggio) {
   try {
-    const via = sorgenteAudio(r);        // stessa strada del video: file locale o indirizzo firmato
+    // lo stacco si cerca nel pezzo dove cade il punto, al secondo suo
+    const f = r.arch ? fonteAl(r, quando) : null;
+    const via = f ? f.via : sorgenteAudio(r);
+    const scarto = f ? quando - f.dentro : 0;
     if (!via) return { t: quando, spostato: 0 };
     // un secondo e mezzo: uno stacco piu' lontano non e' il bordo di questa
     // azione, e spostarsi fin li' vorrebbe dire prendere un'altra cosa
     const dentroRaggio = raggio || 1.5;
-    const st = (await stacchiVicini(via, quando, dentroRaggio))
+    const st = (await stacchiVicini(via, quando - scarto, dentroRaggio))
+      .map((x) => x + scarto)
       .filter((x) => Math.abs(x - quando) <= dentroRaggio)
       .sort((a, b) => Math.abs(a - quando) - Math.abs(b - quando));
     if (!st.length) return { t: quando, spostato: 0 };
@@ -1696,9 +1711,12 @@ async function agganciaStacco(r, quando, raggio) {
   } catch (e) { return { t: quando, spostato: 0 }; }
 }
 
-function clipTaglia(p) {
+async function clipTaglia(p) {
   const r = R.reg[p.reg];
   if (!r) throw new Error("registrazione sconosciuta");
+  // quanti canali ha questo materiale: si scopre alla prima clip e resta
+  // scritto. Serve a non ripiegare sei canali dentro due sommando i bus.
+  await assicuraCanali(r);
   const dentro = num(p.dentro, 0, MAX_SECONDI, 0);
   const fuori = num(p.fuori, 0, MAX_SECONDI, 0);
   const durata = Math.round((fuori - dentro) * 100) / 100;
@@ -1771,20 +1789,28 @@ function clipTaglia(p) {
   }
   const stingFiltro = sting ? filtroSting(r, c, path.join(DIR, CARTELLA_CLIP), c.id) : "";
   // la riserva: gli stessi secondi, ma ricodificati
+  const panQui = piuDiUnaCoppia(r) ? panDi(quantiCanali(r), p.coppia, null) : "";
   const riserva = preciso ? null : codifica(
     ["-f", "concat", "-safe", "0", "-ss", String(Math.max(0, scarto)), "-i", lista,
-     "-t", String(quanto)], true, ritaglio, stingFiltro);
-  esegui(c, codifica(args, preciso, ritaglio, stingFiltro), lista, riserva);
+     "-t", String(quanto)], true, ritaglio, stingFiltro, panQui);
+  esegui(c, codifica(args, preciso, ritaglio, stingFiltro, panQui), lista, riserva);
   return { ok: true, clip: c };
 }
 
 // Stessa clip, presa dall'integrale invece che dai segmenti: cambia solo da
 // dove si leggono i byte.
 function taglioDaIntegrale(r, p, dentro, fuori, durata) {
-  const file = r.arch ? viaArchivio(r) : path.join(cartellaReg(r.id), "integrale.mp4");
+  // il secondo della linea del tempo diventa il secondo dentro il file che
+  // in quel momento sta suonando: con la partita intera non sono piu' la
+  // stessa cosa
+  const f = r.arch ? fonteAl(r, dentro) : { via: path.join(cartellaReg(r.id), "integrale.mp4"), dentro: dentro, fine: Infinity };
+  const file = f.via, daQui = f.dentro;
   if (!r.arch && !fs.existsSync(file)) {
     throw new Error("di questa registrazione non c'e' piu' materiale sul disco");
   }
+  // una clip non scavalca l'intervallo fra un pezzo e l'altro: quello che
+  // c'e' dopo il buco e' un altro file, e li' dentro non c'e'
+  if (r.arch && dentro + durata > f.fine) durata = Math.max(1, f.fine - dentro);
   const formato = FORMATI[p.formato] ? String(p.formato) : "16:9";
   const ritaglio = FORMATI[formato].vf;
   const sting = p.sting === true && fontCe();
@@ -1802,15 +1828,63 @@ function taglioDaIntegrale(r, p, dentro, fuori, durata) {
   };
   R.clip[c.id] = c;
   scrivi();
-  esegui(c, codifica(["-ss", String(dentro), "-i", file, "-t", String(durata)],
+  esegui(c, codifica(["-ss", String(daQui), "-i", file, "-t", String(durata)],
                      preciso, ritaglio,
-                     sting ? filtroSting(r, c, path.join(DIR, CARTELLA_CLIP), c.id) : ""), null);
+                     sting ? filtroSting(r, c, path.join(DIR, CARTELLA_CLIP), c.id) : "",
+                     piuDiUnaCoppia(r) ? panDi(quantiCanali(r), p.coppia, null) : ""), null);
   return { ok: true, clip: c };
 }
 
 // Come si scrive la clip: ricopiando i byte, o ricodificando quando il taglio
+// ── I CANALI DELLO STUDIO ─────────────────────────────────────────────
+//
+//  vMix registra lo studio con piu' bus sulla stessa pista: Football Show
+//  esce a sei canali dichiarati 5.1, ma non e' un 5.1 — e' il programma
+//  sui primi due, un secondo bus sul terzo e quarto, e il quinto e sesto
+//  vuoti. Chiunque legga quel file "in stereo" — il browser, ffmpeg, un
+//  lettore qualsiasi — piega il centro e i surround dentro le due uscite,
+//  e i due bus si sommano: le stesse voci due volte, per due strade
+//  diverse. Non e' un riverbero dello studio, e' un'eco che nasce qui.
+//
+//  La cura non e' un filtro: e' non sommarli. Si prende UNA coppia — la
+//  prima, che e' il programma — e si lascia stare il resto; chi vuole
+//  l'altra la sceglie. Vale per la clip, per il mix, per l'onda e per
+//  l'esportazione, se no una delle quattro riporta l'eco.
+function panDi(canali, coppia, canale) {
+  const n = Math.max(1, +canali || 2);
+  if (n <= 1) return "pan=stereo|c0=c0|c1=c0";
+  const k = Math.max(0, Math.min(Math.floor((n - 1) / 2), parseInt(coppia || 0, 10) || 0));
+  const L = Math.min(n - 1, 2 * k), R = Math.min(n - 1, 2 * k + 1);
+  if (canale === "L") return "pan=stereo|c0=c" + L + "|c1=c" + L;
+  if (canale === "R") return "pan=stereo|c0=c" + R + "|c1=c" + R;
+  return "pan=stereo|c0=c" + L + "|c1=c" + R;
+}
+function panMono(canali, coppia) {
+  const n = Math.max(1, +canali || 2);
+  const k = Math.max(0, Math.min(Math.floor((n - 1) / 2), parseInt(coppia || 0, 10) || 0));
+  return "pan=mono|c0=c" + Math.min(n - 1, 2 * k);
+}
+function quantiCanali(r) { return Math.max(1, +((r && r.canali) || 2)); }
+// si chiede una volta sola, e resta scritto sulla registrazione
+async function assicuraCanali(r) {
+  if (!r || r.canali) return quantiCanali(r);
+  let via = null;
+  try { via = r.arch ? viaArchivio(r, 0) : sorgenteAudio(r, 0); } catch (e) { via = null; }
+  if (!via) return 2;
+  try {
+    const n = await new Promise((ok, no) => {
+      execFile("ffprobe", ["-v", "error", "-select_streams", "a:0",
+                           "-show_entries", "stream=channels", "-of", "default=nw=1:nk=1", via],
+               { timeout: 60000 }, (e, out) => e ? no(e) : ok(parseInt(String(out).trim(), 10)));
+    });
+    if (n > 0) { r.canali = n; scrivi(); }
+  } catch (e) {}
+  return quantiCanali(r);
+}
+function piuDiUnaCoppia(r) { return quantiCanali(r) > 2; }
+
 // deve essere preciso o l'immagine va ritagliata in verticale.
-function codifica(args, preciso, ritaglio, sting) {
+function codifica(args, preciso, ritaglio, sting, af) {
   let fuori = ["-hide_banner", "-loglevel", "error", "-nostdin"].concat(args);
   if (!preciso) {
     // Il video si ricopia, l'audio no: certe partite hanno la telecronaca
@@ -1818,13 +1892,15 @@ function codifica(args, preciso, ritaglio, sting) {
     // rifiuta di aprirlo — dice "file danneggiato", che sembra un guasto
     // e invece e' una scelta. Ricodificare l'audio costa niente e la clip
     // esce leggibile ovunque.
-    fuori = fuori.concat(["-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-ac", "2",
+    fuori = fuori.concat(af ? ["-af", af] : [])
+                 .concat(["-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-ac", "2",
                           "-avoid_negative_ts", "make_zero"]);
   } else {
     // il ritaglio PRIMA, lo sting DOPO: l'etichetta va misurata sul formato
     // che esce davvero, non su quello che entra
     const vf = [ritaglio, sting].filter(Boolean).join(",");
     if (vf) fuori = fuori.concat(["-vf", vf]);
+    if (af) fuori = fuori.concat(["-af", af]);
     fuori = fuori.concat(["-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
                           "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-ac", "2"]);
   }
@@ -1938,6 +2014,14 @@ function pubblica(r) {
     // l'indirizzo per la PAGINA: quello firmato del magazzino se il browser
     // ci arriva, il ponte sulla VM se il magazzino sta dietro il tunnel
     via: r.arch ? (magazzinoDaFuori(r) ? viaArchivio(r) : viaPonte(r.id)) : undefined,
+    // I PEZZI DELLA PARTITA, PER LA PAGINA. Ognuno con il secondo in cui
+    // entra nella linea del tempo, quanto dura e da dove si prende: il
+    // monitor cambia file da solo quando la testina passa da un tempo
+    // all'altro, e chi monta vede due ore, non cinquantasei minuti.
+    pezziArch: r.arch ? pezziArch(r).map((x, i) => ({
+      da: x.da || 0, durata: x.durata || 0,
+      via: magazzinoDaFuori(r) ? viaPezzo(r, x) : viaPonte(r.id, 21600, i)
+    })) : undefined,
     // la miniatura si promette solo se il file c'e': una sfilza di 404 ogni
     // tre secondi non e' un'anteprima
     mini: (r.mini && fs.existsSync(path.join(DIR, String(r.mini).replace(/^\/clip\//, "")))) ? r.mini : "",
@@ -1954,6 +2038,9 @@ function pubblica(r) {
     daSecondo: r.daSecondo || 0,
     // la copia leggera, se c'e': la pagina guarda quella e scarica trenta
     // volte meno. Il taglio e l'esportazione restano sull'originale.
+    // quanti canali porta la pista: sopra i due la pagina non puo' lasciar
+    // fare al browser, che li piegherebbe tutti dentro due uscite
+    canali: quantiCanali(r),
     proxy: proxyCe(r.id) ? "/clip/" + r.id + "/proxy.m3u8" : "",
     viva: vive
   });
@@ -2775,7 +2862,7 @@ function tracceDi(q) {
 function audioDaPezzo(x, traccia) {
   return { id: nuovoId("a"), traccia: traccia || "A1", legato: x.id,
            t0: x.t0 || 0, dentro: x.dentro, fuori: x.fuori,
-           canale: "", gain: 0, entra: 0, esce: 0, muto: false,
+           canale: "", coppia: 0, gain: 0, entra: 0, esce: 0, muto: false,
            titolo: x.titolo || "" };
 }
 
@@ -2917,6 +3004,9 @@ function fineSequenza(q) {
 // qualcosa si passa alla strada lunga, che mescola davvero.
 function audioSemplice(q) {
   normalizzaSeq(q);
+  // con piu' di due canali la strada corta non c'e': ricopiare l'audio
+  // com'e' vuol dire riportare fuori tutti i bus, e l'eco con loro
+  if (piuDiUnaCoppia(R.reg[q.reg])) return false;
   const t = q.tracce || {};
   if ((t.A1 && (t.A1.muto || t.A1.gain)) ) return false;
   if (TRACCE_A.slice(1).some((n) => t[n] && t[n].solo)) return false;
@@ -2961,10 +3051,11 @@ function ingressoSolaudio(reg, dentro, fuori, lista) {
             "-i", lista, "-t", String(fuori - dentro)];
   }
   const r = R.reg[reg];
-  const via = (r && r.arch) ? viaArchivio(r) : path.join(cartellaReg(reg), "integrale.mp4");
-  if (!via) return null;
-  if (!(r && r.arch) && !fs.existsSync(via)) return null;
-  return ["-ss", String(dentro), "-i", via, "-t", String(fuori - dentro)];
+  const f = (r && r.arch) ? fonteAl(r, dentro)
+          : { via: path.join(cartellaReg(reg), "integrale.mp4"), dentro: dentro, fine: Infinity };
+  if (!f.via) return null;
+  if (!(r && r.arch) && !fs.existsSync(f.via)) return null;
+  return ["-ss", String(f.dentro), "-i", f.via, "-t", String(Math.min(fuori, f.fine) - dentro)];
 }
 
 async function calcolaOnda(reg, dentro, fuori) {
@@ -2982,7 +3073,8 @@ async function calcolaOnda(reg, dentro, fuori) {
     const crudo = await new Promise((ok, no) => {
       const pr = spawn(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin"]
         .concat(ingresso)
-        .concat(["-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "-"]),
+        .concat(["-vn", "-af", panMono(quantiCanali(R.reg[reg]), 0),
+                 "-ac", "1", "-ar", "8000", "-f", "s16le", "-"]),
         { stdio: ["ignore", "pipe", "pipe"] });
       const parti = [];
       let peso = 0;
@@ -3119,6 +3211,14 @@ function hlAudio(p) {
     a.canale = "L";
     a.titolo = (a.titolo || "audio") + " · L";
     q.audio.push(destra);
+  } else if (azione === "coppia") {
+    // QUALE COPPIA DI CANALI. Lo studio arriva con piu' bus sulla stessa
+    // pista — programma sui primi due, un altro sul terzo e quarto — e chi
+    // monta sceglie quale sentire, come in Premiere si sceglie il canale
+    // sorgente. Di suo prende il programma, che e' la prima.
+    a.coppia = Math.max(0, parseInt(p.coppia || 0, 10) || 0);
+    if (a.titolo) a.titolo = a.titolo.replace(/\s·\scanali\s\d-\d$/, "");
+    if (a.coppia) a.titolo = (a.titolo || "audio") + " · canali " + (a.coppia * 2 + 1) + "-" + (a.coppia * 2 + 2);
   } else if (azione === "sotto") {
     // "mettilo sotto quel video": prende il video indicato e ci appoggia
     // sopra questo audio, dall'inizio. E' il gesto che si fa a mano dieci
@@ -3387,8 +3487,8 @@ async function proponiInquadratura(q, x, largo) {
     const r = R.reg[q.reg];
     if (!r) throw new Error("registrazione sconosciuta");
     if (r.arch) {
-      const regione = await s3Regione(ARCHIVIO[r.arch.rec] ? ARCHIVIO[r.arch.rec].bucket : undefined);
-      via = firmaConRegione(regione, r.arch.chiave, {}, 7200, ARCHIVIO[r.arch.rec].bucket);
+      const f = fonteAl(r, x.dentro);
+      via = f.via; da = f.dentro;
     // LA COPIA LEGGERA E' PROPRIO QUELLO CHE SERVE QUI: l'analisi guarda a
     // 320 di larghezza, e il proxy e' 480. Leggere dalla playlist grande
     // per poi rimpicciolire vuol dire decodificare trenta volte i byte che
@@ -3396,7 +3496,7 @@ async function proponiInquadratura(q, x, largo) {
     } else if (fs.existsSync(fileProxy(r.id))) via = fileProxy(r.id);
     else if (fs.existsSync(playlistDi(r.id))) via = playlistDi(r.id);
     else throw new Error("di questo pezzo non ho il materiale sottomano");
-    da = x.dentro - (via === fileProxy(r.id) ? 0 : 0);
+    if (da === undefined) da = x.dentro;
   }
   const dur = Math.min(300, Math.max(1, x.fuori - x.dentro));
   return await new Promise((ok) => {
@@ -3708,6 +3808,7 @@ function pezziDaScaricare(q) {
 async function costruisciPezzi(q, avanti) {
   const r = R.reg[q.reg];
   if (!r) throw new Error("registrazione sconosciuta");
+  await assicuraCanali(r);
   const segs = segmenti(q.reg);
   const usaIntegrale = !segs.length;
   const integrale = (r && r.arch) ? viaArchivio(r) : path.join(cartellaReg(q.reg), "integrale.mp4");
@@ -3721,9 +3822,12 @@ async function costruisciPezzi(q, avanti) {
     const parziale = fuoriFile.replace(/\.mp4$/, "-parte.mp4");
     let ingresso, lista = null, scarto = 0;
     if (usaIntegrale) {
-      const kf = await chiaveVicina(integrale, x.dentro);
-      scarto = Math.max(0, x.dentro - kf);
-      ingresso = ["-ss", String(kf), "-i", integrale, "-t", String(x.fuori - kf + 0.2)];
+      const f = (r && r.arch) ? fonteAl(r, x.dentro)
+              : { via: integrale, dentro: x.dentro, fine: Infinity };
+      const quanto = Math.min(x.fuori, f.fine) - x.dentro;
+      const kf = await chiaveVicina(f.via, f.dentro);
+      scarto = Math.max(0, f.dentro - kf);
+      ingresso = ["-ss", String(kf), "-i", f.via, "-t", String(scarto + Math.max(0.2, quanto) + 0.2)];
     } else {
       const scelti = segs.filter((sg) => sg.t0 + sg.dur > x.dentro && sg.t0 < x.fuori);
       if (!scelti.length) return;
@@ -3825,6 +3929,7 @@ async function hlInCasa(p) {
 //  effetto, e' quello che fa un mixer.
 function costruisciMix(q, iBase) {
   normalizzaSeq(q);
+  const canaliQui = quantiCanali(R.reg[q.reg]);
   const suona = tracceCheSuonano(q);
   const ingressi = [];
   const uscite = [];
@@ -3844,9 +3949,9 @@ function costruisciMix(q, iBase) {
     let f = "[" + idx + ":a:" + pista + "]aresample=48000";
     // il canale da solo: si prende una meta' della coppia e la si rimette
     // su tutte e due, se no il suono esce da un orecchio
-    if (a.canale === "L") f += ",pan=stereo|c0=c0|c1=c0";
-    else if (a.canale === "R") f += ",pan=stereo|c0=c1|c1=c1";
-    else f += ",aformat=channel_layouts=stereo";
+    // la coppia di canali, e dentro la coppia l'eventuale mezzo canale:
+    // "aformat=stereo" qui pieghegava un sei canali su due sommando i bus
+    f += "," + panDi(canaliQui, a.coppia, a.canale);
     const g = (a.gain || 0) + (t.gain || 0);
     if (g) f += ",volume=" + g.toFixed(2) + "dB";
     if (a.entra > 0.01) f += ",afade=t=in:st=0:d=" + a.entra.toFixed(2);
@@ -3876,6 +3981,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     try { return fs.existsSync(path.join(cartellaGrafiche(), g.id + ".png")); } catch (e) { return false; }
   });
 
+  await assicuraCanali(R.reg[q.reg]);
   const ritaglio = (FORMATI[formato] || FORMATI["16:9"]).vf;
   q.export = { stato: "lavora", formato: formato, fatti: 0, quanti: q.pezzi.length, file: "",
                fase: "porto in casa i pezzi", tutti: !!dentroUnGiro };
@@ -4160,6 +4266,18 @@ async function hlEsportaPremiere(q, percorso) {
   // del secchio: il montatore ce l'ha gia' su Cyberduck con quel nome
   const nomeArch = (r && r.arch) ? path.basename(r.arch.chiave) : "";
   const via = String(percorso || "").trim() || (c1 ? integrale : (nomeArch || nome));
+  // UN FILE PER PEZZO. La partita intera sta in piu' file e ognuno ha il
+  // suo tempo interno: dichiararne uno solo mandava tutti i tagli del
+  // secondo tempo nel primo, spostati di un'ora. Qui ogni pezzo diventa un
+  // <file> suo, e il taglio si conta dall'inizio del file a cui appartiene.
+  const arch = (r && r.arch && !c1 && !percorso) ? pezziArch(r) : null;
+  const cartellaVia = via.indexOf("/") >= 0 ? via.slice(0, via.lastIndexOf("/") + 1) : "";
+  const dovE = (t) => {
+    if (!arch) return { id: "file-1", nome: nome, via: via, da: 0 };
+    const x = pezzoAl(r, t) || { i: 0, pezzo: arch[0], da: 0 };
+    return { id: "file-" + (x.i + 1), nome: path.basename(x.pezzo.chiave),
+             via: cartellaVia + path.basename(x.pezzo.chiave), da: x.da || 0 };
+  };
   const info = c1 ? await probe(integrale) : {};
   const segs = segmenti(q.reg);
   const daMisurare = c1 ? integrale : (r && r.arch) ? viaArchivio(r)
@@ -4174,7 +4292,8 @@ async function hlEsportaPremiere(q, percorso) {
   const rate = "<rate><timebase>" + fpsInt + "</timebase><ntsc>" + ntsc + "</ntsc></rate>";
   const tc = "<timecode>" + rate + "<string>00:00:00:00</string><frame>0</frame>" +
              "<displayformat>NDF</displayformat></timecode>";
-  const url = "file://localhost" + (via.charAt(0) === "/" ? "" : "/") + encodeURI(via).replace(/#/g, "%23");
+  const indirizzo = (v) => "file://localhost" + (v.charAt(0) === "/" ? "" : "/") + encodeURI(v).replace(/#/g, "%23");
+  const url = indirizzo(via);
 
   // LE TRACCE ESCONO COME SONO. Prima l'XML raccontava sempre la stessa
   // storia — un video su V1 e due canali su A1/A2, incollati sotto — anche
@@ -4208,18 +4327,22 @@ async function hlEsportaPremiere(q, percorso) {
            '</parameter></effect></filter>';
   };
 
-  let video = "", marker = "", pos = 0, primo = true;
-  const schedaFile = () => {
-    if (!primo) return '<file id="file-1"/>';
-    primo = false;
-    return '<file id="file-1"><name>' + xmlEsc(nome) + '</name><pathurl>' + xmlEsc(url) + '</pathurl>' + rate +
+  let video = "", marker = "", pos = 0;
+  const gia = {};
+  const schedaFile = (t) => {
+    const d = dovE(t || 0);
+    if (gia[d.id]) return '<file id="' + d.id + '"/>';
+    gia[d.id] = true;
+    return '<file id="' + d.id + '"><name>' + xmlEsc(d.nome) + '</name><pathurl>' + xmlEsc(indirizzo(d.via)) + '</pathurl>' + rate +
       '<duration>' + durataFile + '</duration>' + tc +
       '<media><video><samplecharacteristics><width>1920</width><height>1080</height>' +
       '</samplecharacteristics></video><audio><channelcount>2</channelcount></audio></media></file>';
   };
 
   q.pezzi.forEach((x, i) => {
-    const inF = frame(x.dentro), outF = frame(x.fuori);
+    // il taglio si conta dall'inizio del SUO file, non della partita
+    const dv = dovE(x.dentro);
+    const inF = frame(x.dentro - dv.da), outF = frame(x.fuori - dv.da);
     const durF = Math.max(1, outF - inF);
     const start = frame(x.t0 || 0), end = start + durF;
     pos = Math.max(pos, end);
@@ -4235,14 +4358,15 @@ async function hlEsportaPremiere(q, percorso) {
     });
     video += '<clipitem id="v' + i + '"><name>' + n2 + '</name><duration>' + durF + '</duration>' + rate +
              '<start>' + start + '</start><end>' + end + '</end><in>' + inF + '</in><out>' + outF + '</out>' +
-             schedaFile() + '<sourcetrack><mediatype>video</mediatype><trackindex>1</trackindex></sourcetrack>' +
+             schedaFile(x.dentro) + '<sourcetrack><mediatype>video</mediatype><trackindex>1</trackindex></sourcetrack>' +
              (suoi.length ? link : "") + '</clipitem>';
     marker += '<marker><name>' + n2 + '</name><comment>' + xmlEsc(x.fonte || "") +
               '</comment><in>' + start + '</in><out>-1</out></marker>';
   });
 
   (q.audio || []).forEach((a) => {
-    const inF = frame(a.dentro), outF = frame(a.fuori);
+    const da = dovE(a.dentro).da;
+    const inF = frame(a.dentro - da), outF = frame(a.fuori - da);
     const durF = Math.max(1, outF - inF);
     const start = frame(a.t0 || 0), end = start + durF;
     pos = Math.max(pos, end);
@@ -4260,7 +4384,7 @@ async function hlEsportaPremiere(q, percorso) {
     audioTr[k] += '<clipitem id="' + a.id + '"><name>' + xmlEsc(a.titolo || "audio") + '</name>' +
       '<duration>' + durF + '</duration>' + rate +
       '<start>' + start + '</start><end>' + end + '</end><in>' + inF + '</in><out>' + outF + '</out>' +
-      (a.muto ? '<enabled>FALSE</enabled>' : '') + schedaFile() +
+      (a.muto ? '<enabled>FALSE</enabled>' : '') + schedaFile(a.dentro) +
       '<sourcetrack><mediatype>audio</mediatype><trackindex>' + sorg + '</trackindex></sourcetrack>' +
       link + livello(a.gain || 0) + '</clipitem>';
   });
@@ -4650,6 +4774,23 @@ const S3 = {
 //      che i server compatibili si aspettano nella firma).
 const MAGAZZINI = [];
 (function leggiMagazzini() {
+  // IL MAGAZZINO DI CARTELLA. La NAS non parla S3: e' montata sulla VM come
+  // una cartella, in sola lettura, dentro il tunnel. Per il resto del
+  // programma e' un secchio come gli altri — ha un nome, una radice, delle
+  // chiavi — con una differenza sola: alla domanda "dammi l'indirizzo di
+  // questa chiave" risponde con un percorso invece che con un URL, e
+  // ffmpeg un percorso lo legge senza chiedere altro. Niente credenziali:
+  // il permesso l'ha dato la NAS al montaggio.
+  const c = process.env.COMOTV_NAS_CARTELLA || "";
+  if (c) {
+    MAGAZZINI.push({
+      nome: process.env.COMOTV_NAS_NOME || "nas",
+      cartella: c.replace(/\/+$/, ""),
+      bucket: process.env.COMOTV_NAS_BUCKET || "nas-magazzino",
+      radice: (process.env.COMOTV_NAS_RADICE || "").replace(/^\/+/, ""),
+      regione: "locale", id: "", segreto: "", endpoint: "", fuori: false
+    });
+  }
   // il Synology, o qualunque altro S3 di casa
   const e = process.env.COMOTV_NAS_ENDPOINT || "";
   if (!e) return;
@@ -4666,14 +4807,30 @@ const MAGAZZINI = [];
     fuori: process.env.COMOTV_NAS_FUORI === "1"
   });
 })();
-const AMAZZONE = { nome: "amazon", endpoint: "", bucket: S3.bucket, id: S3.id,
-                   segreto: S3.segreto, regione: S3.regione };
-function magazzinoDi(bucket) {
-  const b = bucket || S3.bucket;
-  const m = MAGAZZINI.filter((x) => x.bucket && x.bucket === b)[0];
-  return m || AMAZZONE;
+// SGANCIARE AMAZON. Non e' un guasto da gestire: e' una decisione. Quando
+// il magazzino di casa c'e' e funziona, il secchio a Francoforte esce dal
+// giro — non si legge, non si elenca, non si firma — e le partite che
+// stavano solo li' escono dall'indice. Le chiavi restano dove sono, il
+// secchio pure: qui dentro semplicemente non esiste piu'. Si riaccende
+// togliendo una riga dall'ambiente, e un giro di scandaglio lo rimette.
+const S3_SPENTO = process.env.COMOTV_S3_SPENTO === "1";
+const AMAZZONE = S3_SPENTO
+  ? { nome: "amazon", endpoint: "", bucket: "", id: "", segreto: "", regione: "", spento: true }
+  : { nome: "amazon", endpoint: "", bucket: S3.bucket, id: S3.id,
+      segreto: S3.segreto, regione: S3.regione };
+function magazzinoPredefinito() {
+  return MAGAZZINI.filter(magazzinoAcceso)[0] || MAGAZZINI[0] || AMAZZONE;
 }
-function magazzinoAcceso(m) { return !!(m && m.bucket && m.id && m.segreto); }
+function magazzinoDi(bucket) {
+  const b = bucket || (S3_SPENTO ? magazzinoPredefinito().bucket : S3.bucket);
+  const m = MAGAZZINI.filter((x) => x.bucket && x.bucket === b)[0];
+  if (m) return m;
+  // un secchio che non e' di nessun magazzino acceso non ha un indirizzo:
+  // meglio dirlo subito che tirare fuori una firma che nessuno onorera'
+  if (S3_SPENTO) throw new Error("il magazzino \"" + b + "\" non c'e' piu': Amazon e' sganciato");
+  return AMAZZONE;
+}
+function magazzinoAcceso(m) { return !!(m && m.bucket && ((m.id && m.segreto) || (m.cartella && fs.existsSync(m.cartella)))); }
 function s3Acceso() { return magazzinoAcceso(AMAZZONE) || MAGAZZINI.some(magazzinoAcceso); }
 
 // L'unica codifica che AWS accetta nella firma: encodeURIComponent lascia
@@ -4690,11 +4847,12 @@ function hmac(k, x) { return crypto.createHmac("sha256", k).update(x).digest(); 
 // dice lui in un'intestazione, anche quando risponde di no.
 const regioneVista = {};
 async function s3Regione(bucket) {
-  const b = bucket || S3.bucket;
+  const b = bucket || (S3_SPENTO ? magazzinoPredefinito().bucket : S3.bucket);
   // a un magazzino di casa non si chiede niente: la regione e' quella
   // scritta nella configurazione, e bussare a un indirizzo di Amazon col
   // nome del nostro secchio non avrebbe senso
   const m = magazzinoDi(b);
+  if (m.cartella) return "locale";
   if (m.endpoint) return m.regione || "us-east-1";
   if (!bucket && S3.regione) return S3.regione;
   if (regioneVista[b]) return regioneVista[b];
@@ -4716,6 +4874,9 @@ async function s3Firma(chiave, cerca, quanto, bucket) {
 function firmaConRegione(regione, chiave, cerca, quanto, bucket) {
   const secchio = bucket || S3.bucket;
   const m = magazzinoDi(secchio);
+  // una cartella non si firma: si indica. Chi chiede l'indirizzo per
+  // elencare (chiave vuota) riceve la cartella stessa.
+  if (m.cartella) return path.join(m.cartella, String(chiave || ""));
   // Amazon mette il secchio nel nome dell'host; tutti gli altri nel
   // percorso. E' l'unica differenza che conta, ed e' qui.
   let protocollo = "https:", host, via, base = "";
@@ -4763,6 +4924,8 @@ function fraTag(xml, tag) {
 // Con il delimitatore S3 smette di srotolare tutto e risponde per cartelle:
 // e' il modo di guardare dentro un archivio grande senza tirarselo dietro.
 async function s3Pagina(prefisso, ripresa, bucket, delimitatore) {
+  const mg = magazzinoDi(bucket || "");
+  if (mg.cartella) return elencaCartella(mg.cartella, prefisso || "", delimitatore);
   const cerca = { "list-type": "2", "max-keys": "1000" };
   if (prefisso) cerca.prefix = prefisso;
   if (ripresa) cerca["continuation-token"] = ripresa;
@@ -4784,6 +4947,45 @@ async function s3Pagina(prefisso, ripresa, bucket, delimitatore) {
            ancora: (fraTag(xml, "IsTruncated")[0] === "true") ? fraTag(xml, "NextContinuationToken")[0] : "" };
 }
 
+// Una pagina dell'elenco, ma da una cartella: stessa forma della risposta di
+// S3 — oggetti con chiave, peso e data — cosi' lo scandaglio non se ne
+// accorge. Il delimitatore, se c'e', ferma la discesa a un livello, come
+// farebbe S3. Le chiavi sono percorsi relativi alla cartella, con la barra.
+function elencaCartella(radice, prefisso, delimitatore) {
+  const oggetti = [], cartelle = new Set();
+  const dentro = (dir, rel) => {
+    let voci = [];
+    try { voci = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+    voci.forEach((v) => {
+      if (v.name.startsWith(".") || v.name === "#recycle" || v.name === "@eaDir") return;
+      const k = rel ? rel + "/" + v.name : v.name;
+      if (v.isDirectory()) {
+        if (delimitatore && k.startsWith(prefisso)) { cartelle.add(k + "/"); return; }
+        dentro(path.join(dir, v.name), k);
+        return;
+      }
+      if (!k.startsWith(prefisso)) return;
+      let st; try { st = fs.statSync(path.join(dir, v.name)); } catch (e) { return; }
+      if (st.size > 0) oggetti.push({ chiave: k, peso: st.size, quando: st.mtime.toISOString() });
+    });
+  };
+  // SI PARTE DALLA CARTELLA GIUSTA. La radice e' tutta la NAS — tre tera e
+  // mezzo, e domani di piu'. Camminarla per intero a ogni giro per poi
+  // buttare via tutto quello che non sta sotto il prefisso e' lavoro
+  // sprecato: se il prefisso e' una cartella vera si comincia da li'.
+  let base = radice, rel = "";
+  const pre = String(prefisso || "");
+  if (pre.indexOf("..") < 0) {
+    const dir = pre.endsWith("/") ? pre.slice(0, -1) : pre.replace(/\/[^\/]*$/, "");
+    if (dir) {
+      try { if (fs.statSync(path.join(radice, dir)).isDirectory()) { base = path.join(radice, dir); rel = dir; } }
+      catch (e) {}
+    }
+  }
+  dentro(base, rel);
+  return Promise.resolve({ oggetti: oggetti, cartelle: Array.from(cartelle), ancora: "" });
+}
+
 async function s3Tutto(prefisso, tetto) {
   const fuori = []; let ripresa = "", giri = 0;
   do {
@@ -4803,11 +5005,23 @@ async function s3Tutto(prefisso, tetto) {
 //  CLEANFEED e' la registrazione intera e pulita: e' quella che ci serve.
 //  TAGLI sono i pezzi gia' fatti in regia, che non c'entrano con il DVR.
 
-const ARCH_BUCKET = process.env.COMOTV_S3_ARCHIVIO || "mola-italy-como-archive";
+const ARCH_BUCKET = process.env.COMOTV_S3_ARCHIVIO ||
+                    (S3_SPENTO ? magazzinoPredefinito().bucket : "mola-italy-como-archive");
 const ARCH_RADICE = process.env.COMOTV_S3_RADICE || "TEMP/";
 // la radice di ogni magazzino: quella di Amazon e' TEMP/, quella di casa la
 // dice chi la configura (e se non la dice, si guarda tutto il secchio)
-function radiceDi(bucket) { const m = magazzinoDi(bucket); return m.endpoint ? (m.radice || "") : ARCH_RADICE; }
+// PIU' DI UNA CARTELLA. Il materiale non sta tutto in un posto: i tagli di
+// vMix in una condivisione, i cleanfeed delle partite intere in un'altra.
+// La radice si scrive separata da virgole e diventano piu' rami, guardati
+// uno dopo l'altro nello stesso giro. Domani se ne aggiunge un'altra e
+// basta una riga.
+function radiciDi(bucket) {
+  const m = magazzinoDi(bucket);
+  const r = (m.endpoint || m.cartella) ? (m.radice || "") : ARCH_RADICE;
+  const v = String(r).split(",").map((x) => x.trim()).filter((x, i, a) => x !== "" || a.length === 1);
+  return v.length ? v : [""];
+}
+function radiceDi(bucket) { return radiciDi(bucket)[0]; }
 
 // Le parole che contano di un nome di partita: via i punteggi, via "vs",
 // via le sigle corte. Restano i nomi delle squadre, che e' quello su cui
@@ -4885,8 +5099,89 @@ function kickoffNelFile(file, quandoMs) {
 //  quello, il resto viene dietro. Cercare la forma invece della cartella
 //  fa la differenza fra indicizzare seimila oggetti e indicizzarne
 //  trecentomila.
+// Il nome che scrive vMix, che e' la terza forma dell'archivio:
+//
+//   VOD/TAGLI/20260520 - PALERMO-CATANZARO - 20 maggio 2026 - 07-54-25  - Output 1.mp4
+//
+//  Qui la data non sta in una cartella: sta nel NOME, due volte. Le otto
+//  cifre in testa sono il nome della sessione di vMix, impostato una volta
+//  e spesso mai piu' toccato — sul materiale vero sbaglia il giorno in un
+//  file su nove. La data buona e' quella scritta in italiano in mezzo, e
+//  l'ora accanto e' l'ora a cui e' partita la registrazione: e' la stessa
+//  informazione che l'archivio S3 mette nei CLEANFEED, e serve a mettere
+//  in fila i pezzi di una stessa partita (vMix ne apre uno nuovo a ogni
+//  stop). Tredici file su millequattrocento si chiamano solo "vmix 6":
+//  quelli restano senza nome e si agganciano per ora, non per titolo.
+const MESI_IT = { gennaio: 1, febbraio: 2, marzo: 3, aprile: 4, maggio: 5, giugno: 6, luglio: 7,
+                  agosto: 8, settembre: 9, ottobre: 10, novembre: 11, dicembre: 12 };
+function nomeVmix(file) {
+  const m = /^(?:(\d{8})[\s\-_]+)?(.*?)\s*-\s*(\d{1,2})\s+([a-z\u00e0-\u00f9]+)\s+(\d{4})\s*-\s*(\d{2})-(\d{2})-(\d{2})\s*-?\s*(Output\s*(\d+))?\s*\.\w+$/i.exec(file);
+  if (!m) return null;
+  const mese = MESI_IT[m[4].toLowerCase()];
+  if (!mese) return null;
+  // LA MEZZANOTTE. Le partite sudamericane finiscono dopo le due, ora
+  // italiana: vMix chiude il file del primo tempo il 30 e apre quello del
+  // secondo il 1°, e i due pezzi finivano in due partite diverse — la
+  // seconda senza aggancio ad Airtable, perche' l'evento sta il 30.
+  // Le otto cifre davanti al nome le scrive chi registra, ed e' il giorno
+  // della partita: quando cade a ridosso della registrazione e' la risposta
+  // giusta per tutti i pezzi, compreso quello ripreso alle cinque e mezza
+  // — la regola secca "prima delle sei" spaccava in due Como-Napoli.
+  // Quando invece il prefisso e' un preset riciclato e sta mesi lontano,
+  // non vale niente e si torna alla mezzanotte.
+  const reg = Date.UTC(+m[5], mese - 1, +m[3]);
+  let d = new Date(reg);
+  const pf = /^(20\d{2})(0\d|1[0-2])([0-2]\d|3[01])$/.exec(m[1] || "");
+  const pd = pf ? Date.UTC(+pf[1], +pf[2] - 1, +pf[3]) : NaN;
+  if (pd === pd && Math.abs(pd - reg) <= 86400000) d = new Date(pd);
+  else if (+m[6] < 6) d = new Date(reg - 86400000);
+  const giorno = d.getUTCFullYear() + String(d.getUTCMonth() + 1).padStart(2, "0") + String(d.getUTCDate()).padStart(2, "0");
+  const titolo = m[2].replace(/\s+/g, " ").trim();
+  return { giorno: giorno, partita: titolo, uscita: m[10] ? +m[10] : 1,
+           senzaNome: /^vmix\b/i.test(titolo) };
+}
+
+// QUELLO CHE VIENE DOPO IL TITOLO NON E' IL TITOLO. Nei nomi dei file la
+// partita ha sempre la stessa forma — X-Y — e poi comincia la coda: la
+// lingua fra parentesi quadre, il tempo, l'intervista, gli scarichi. Se la
+// coda resta attaccata al titolo ogni file diventa una partita diversa, e
+// i due tempi del Torino-Como finiscono in due posti che nessuno riunisce.
+const CODA_FILE = /\s*[\-_]?\s*(?:\[[^\]]*\]|\b(?:CLEANFEED|AUDIO ?FX|SOCIAL|INTERVIST\w*|SCARICH\w*|PREMIAZION\w*|CONFERENZ\w*|TIFOS\w*|RESPEAK\w*|ULTIMO TAKE|ARABIAN NIGHT|PARTITA INTERA|FULL MATCH|FULL INTERNATIONAL SOUND|INTERNATIONAL SOUND|PRIMO TEMPO|SECONDO TEMPO|[12][°º]? TEMPO|INTRO|LANCIO)\b).*$/i;
+
+function spezzaTitolo(titolo) {
+  const pulito = String(titolo || "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
+  const m = CODA_FILE.exec(pulito);
+  const base = m && m.index > 0 ? pulito.slice(0, m.index).replace(/[\s\-_]+$/, "") : pulito;
+  return { base: base || pulito, coda: pulito.slice((base || pulito).length).replace(/^[\s\-_]+/, "").trim() };
+}
+
+// Primo tempo, secondo tempo. Non c'e' l'ora nel nome: l'unico ordine
+// possibile e' quello che c'e' scritto.
+function tempoDi(nome) {
+  const t = String(nome || "");
+  if (/\b(primo|1[°ºo]?)\s*tempo\b|\b1T\b/i.test(t)) return 1;
+  if (/\b(secondo|2[°ºo]?)\s*tempo\b|\b2T\b/i.test(t)) return 2;
+  return 0;
+}
+
 function pezziChiave(k) {
   const p = k.split("/");
+  // prima la forma di vMix: la data e' nel nome del file, e il gruppo e'
+  // "giorno + titolo", perche' non c'e' una cartella per partita
+  const vm = nomeVmix(p[p.length - 1]);
+  if (vm) {
+    // LE VARIANTI STANNO NELLO STESSO GRUPPO. "COMO-NAPOLI [ITA]" e
+    // "COMO-NAPOLI [ENG]" sono la stessa partita in due lingue, e "COMO-NAPOLI
+    // - CLEANFEED AUDIO FX" e' lo stesso incontro con un altro audio: un
+    // evento Airtable ne aggancia uno solo, e gli altri restavano orfani —
+    // 108 su 141. Il tag e la coda si tolgono dal nome del gruppo e restano
+    // in "dentro", che e' dove scegliMateriale va a cercare la lingua.
+    const t = spezzaTitolo(vm.partita);
+    return { giorno: vm.giorno, partita: t.base,
+             gruppo: gruppoDi(p, vm.giorno, t.base),
+             dentro: [t.coda, vm.uscita > 1 ? "Output " + vm.uscita : ""].filter(Boolean).join(" "),
+             file: p[p.length - 1], uscita: vm.uscita };
+  }
   for (let i = 0; i < p.length - 1; i++) {
     let giorno = "", partita = "", primo = i;
     if (/^\d{8}$/.test(p[i])) { giorno = p[i]; partita = p[i + 1] || ""; primo = i + 1; }
@@ -4899,14 +5194,31 @@ function pezziChiave(k) {
     return { giorno: giorno, partita: partita, gruppo: p.slice(0, primo + 1).join("/"),
              dentro: p.slice(primo + 1, p.length - 1).join("/"), file: p[p.length - 1] };
   }
+  // NON TUTTO PASSA DA VMIX. Una parte dei file e' salvata a mano —
+  // "20260905_TORINO-COMO U20_PRIMO TEMPO.mp4" — senza data italiana ne'
+  // orario: il riconoscitore di vMix li scartava tutti e restavano fuori
+  // dall'indice, 163 file, fra cui partite intere e tempi separati.
+  const fl = /^(\d{8})[\s\-_]+(.+)\.\w+$/.exec(p[p.length - 1]);
+  if (fl && /^20\d{2}(0\d|1[0-2])([0-2]\d|3[01])$/.test(fl[1])) {
+    const t = spezzaTitolo(fl[2]);
+    return { giorno: fl[1], partita: t.base, gruppo: gruppoDi(p, fl[1], t.base),
+             dentro: t.coda, file: p[p.length - 1], uscita: 1 };
+  }
   return null;
+}
+
+// Il nome del gruppo: cartella + giorno + titolo, con i trattini stretti
+// perche' "COMO - NAPOLI" e "COMO-NAPOLI" sono la stessa partita.
+function gruppoDi(p, giorno, base) {
+  return p.slice(0, -1).join("/") + "/" + giorno + "_" +
+         base.toUpperCase().replace(/\s*-\s*/g, "-");
 }
 
 // Dentro una cartella partita c'e' di tutto: le clip social, gli scarichi
 // delle camere, le interviste, le iso. Niente di tutto questo e' la
 // partita, e prenderne uno per sbaglio significa aprire un file di tre
 // giga che non c'entra niente.
-const NON_E_LA_PARTITA = /clip[ _]?social|tifos|scarich|camere|iso[_ ]|intervist|conferenz|social|highlight|magazine|promo|sigla|grafic/i;
+const NON_E_LA_PARTITA = /clip[ _]?social|tifos|scarich|camere|iso[_ ]|intervist|conferenz|social|highlight|magazine|promo|sigla|grafic|lancio|premiazion|\bintro\b|\bOutput [2-9]\b|audio fx|respeak|\brespk\b|ultimo take|arabian night|\bgoal\b|\bgol\b/i;
 const E_LA_PARTITA = /partita[ _]intera|full[ _]match|cleanfeed/i;
 const VIDEO = /\.(mp4|mxf|mov|ts|m4v)$/i;
 
@@ -4926,8 +5238,14 @@ function scegliMateriale(gruppo, tag) {
   // 3) i pezzi con l'orologio nel nome: un file per tempo
   const conOra = campo.filter((f) => oraNelNome(f.file));
 
+  // 4) i due tempi salvati a mano: nessun orario nel nome, ma l'ordine
+  //    c'e' scritto sopra. Due file, una partita.
+  const tempi = campo.filter((f) => tempoDi(f.dentro + " " + f.file))
+    .sort((a, b) => tempoDi(a.dentro + " " + a.file) - tempoDi(b.dentro + " " + b.file));
+
   if (puliti.length) return { fonte: "intero", pezzi: [piuGrosso(puliti)] };
   if (conOra.length > 1) return { fonte: "pezzi", pezzi: conOra };
+  if (tempi.length > 1) return { fonte: "pezzi", pezzi: tempi };
   if (intere.length) return { fonte: "intera", pezzi: [piuGrosso(intere)] };
   if (conOra.length) return { fonte: "pezzi", pezzi: conOra };
   return { fonte: "unico", pezzi: [piuGrosso(campo)] };
@@ -4939,8 +5257,52 @@ let ARCHIVIO = {};       // recId -> { chiave, peso, variante, kickoff, ... }
 // L'indirizzo firmato di una partita d'archivio. Vale sei ore: piu' che
 // abbastanza per una sessione di montaggio, e se scade si rifa' da solo
 // alla prossima richiesta di stato.
-function viaArchivio(r) {
-  return firmaConRegione(r.arch.regione, r.arch.chiave, {}, 21600, r.arch.bucket);
+// ── LA PARTITA INTERA ─────────────────────────────────────────────────
+//
+//  vMix chiude e riapre il file a ogni stop: una partita sta in due, tre,
+//  sette file. Aprirne uno voleva dire aprire un tempo — cinquantasei
+//  minuti al posto di due ore — e gli appunti del secondo tempo cadevano
+//  in un materiale che finiva prima.
+//
+//  Adesso una registrazione d'archivio li tiene tutti, e la sua linea del
+//  tempo e' l'OROLOGIO DEL MURO: ogni pezzo entra al secondo in cui e'
+//  partito davvero, e l'intervallo fra un file e l'altro resta un buco
+//  invece di sparire. Non e' un dettaglio: fra il primo e il secondo tempo
+//  ci sono quattordici minuti in cui non si registra, e incollare i due
+//  file avrebbe spostato tutto il secondo tempo di quattordici minuti.
+//  Cosi' il minuto 78 e' il minuto 78 anche se sta in un altro file.
+function pezziArch(r) {
+  const a = r && r.arch; if (!a) return [];
+  if (a.pezzi && a.pezzi.length) return a.pezzi;
+  return [{ chiave: a.chiave, da: 0, durata: r.durata || 0 }];
+}
+// Quale file, e a che secondo dentro quel file. Un tempo che cade in un
+// buco prende il pezzo che comincia dopo: meglio un fotogramma vicino che
+// un errore.
+function pezzoAl(r, t) {
+  const pz = pezziArch(r); if (!pz.length) return null;
+  const s = Math.max(0, +t || 0);
+  for (let i = 0; i < pz.length; i++) {
+    const fine = (pz[i].da || 0) + (pz[i].durata || 0);
+    if (s < fine || i === pz.length - 1) {
+      return { i: i, pezzo: pz[i], dentro: Math.max(0, s - (pz[i].da || 0)), da: pz[i].da || 0, fine: fine };
+    }
+  }
+  return null;
+}
+function viaPezzo(r, x) {
+  return firmaConRegione(r.arch.regione, x.chiave, {}, 21600, r.arch.bucket);
+}
+function viaArchivio(r, t) {
+  const x = pezzoAl(r, t || 0);
+  return viaPezzo(r, x ? x.pezzo : { chiave: r.arch.chiave });
+}
+// Il file giusto e il secondo giusto dentro quel file, per chi poi ci
+// mette un -ss davanti.
+function fonteAl(r, dentro) {
+  const x = pezzoAl(r, dentro);
+  if (!x) return { via: viaArchivio(r), dentro: Math.max(0, +dentro || 0), fine: Infinity };
+  return { via: viaPezzo(r, x.pezzo), dentro: x.dentro, fine: x.fine, i: x.i };
 }
 
 // Una partita che sta su S3 diventa una registrazione come le altre. Non
@@ -4950,12 +5312,16 @@ function viaArchivio(r) {
 async function archivioApri(p) {
   const a = ARCHIVIO[String(p.rec || "")];
   if (!a) return { ok: false, errore: "questa partita non e' nell'indice dell'archivio" };
-  const pezzi = a.pezzi && a.pezzi.length ? a.pezzi : [{ chiave: a.chiave, peso: a.peso }];
-  const i = Math.min(Math.max(0, num(p.pezzo, 0, pezzi.length - 1, 0)), pezzi.length - 1);
-  const scelto = pezzi[i];
+  const tutti = a.pezzi && a.pezzi.length ? a.pezzi : [{ chiave: a.chiave, peso: a.peso }];
+  // chi vuole un tempo solo lo chiede: p.pezzo con p.intera a false
+  const unoSolo = p.intera === false;
+  const i = Math.min(Math.max(0, num(p.pezzo, 0, tutti.length - 1, 0)), tutti.length - 1);
+  const pezzi = unoSolo ? [tutti[i]] : tutti;
+  const scelto = pezzi[0];
 
   const gia = Object.keys(R.reg).map((k) => R.reg[k])
-    .find((r) => r.arch && r.arch.chiave === scelto.chiave);
+    .find((r) => r.arch && r.arch.rec === String(p.rec || "") &&
+                 (pezziArch(r).length > 1) !== unoSolo && r.arch.chiave === scelto.chiave);
   if (gia) {
     // Una partita gia' aperta tornava indietro cosi' com'era, e chi l'aveva
     // vista prima che esistessero le sequenze non le vedeva piu': erano 30
@@ -4971,28 +5337,71 @@ async function archivioApri(p) {
   }
 
   const regione = await s3Regione(a.bucket);
-  const arch = { rec: p.rec, bucket: a.bucket, chiave: scelto.chiave, regione: regione, pezzo: i };
-  const url = firmaConRegione(regione, scelto.chiave, {}, 3600, a.bucket);
-  let durata = 0;
+  // ogni pezzo va misurato: la durata vera dice dove finisce, e l'ora nel
+  // nome dice dove comincia. Le due cose insieme fanno la linea del tempo.
+  const misura = async (chiave) => {
+    try {
+      return Math.round(+(await new Promise((ok, no) => {
+        execFile("ffprobe", ["-v", "error", "-show_entries", "format=duration",
+                             "-of", "default=nw=1:nk=1",
+                             firmaConRegione(regione, chiave, {}, 3600, a.bucket)],
+                 { timeout: 60000 }, (e, out) => e ? no(e) : ok(String(out).trim()));
+      })) || 0);
+    } catch (e) { return 0; }
+  };
+  const durate = [];
+  for (const x of pezzi) durate.push((x.minuti && x.minuti > 5) ? Math.round(x.minuti * 60) : await misura(x.chiave));
+  // quanti canali audio porta dietro: lo studio ne ha sei, la partita due
+  let canali = 2;
   try {
-    durata = Math.round(+(await new Promise((ok, no) => {
-      execFile("ffprobe", ["-v", "error", "-show_entries", "format=duration",
-                           "-of", "default=nw=1:nk=1", url],
-               { timeout: 60000 }, (e, out) => e ? no(e) : ok(String(out).trim()));
-    })) || 0);
-  } catch (e) { durata = 0; }
+    canali = await new Promise((ok, no) => {
+      execFile("ffprobe", ["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=channels",
+                           "-of", "default=nw=1:nk=1", firmaConRegione(regione, scelto.chiave, {}, 3600, a.bucket)],
+               { timeout: 60000 }, (e, out) => e ? no(e) : ok(parseInt(String(out).trim(), 10) || 2));
+    });
+  } catch (e) { canali = 2; }
+  // l'inizio di ognuno, contato dal primo. Se l'ora nel nome c'e' si usa
+  // quella — e i buchi restano buchi; se no si incollano uno dopo l'altro.
+  const ore = pezzi.map((x) => oraNelNome(path.basename(x.chiave)));
+  const conOra = ore.every(Boolean);
+  const dentroDi = [];
+  let corre = 0;
+  pezzi.forEach((x, n) => {
+    if (!conOra) { dentroDi.push(corre); corre += durate[n] || 0; return; }
+    if (n === 0) { dentroDi.push(0); return; }
+    const gi = (o) => (o.h % 12) * 3600 + o.m * 60 + o.s;
+    let d = gi(ore[n]) - gi(ore[0]);
+    while (d < dentroDi[n - 1]) d += 12 * 3600;        // l'orologio e' a dodici ore
+    dentroDi.push(d);
+  });
+  const dettaglio = pezzi.map((x, n) => ({ chiave: x.chiave, da: dentroDi[n], durata: durate[n] || 0 }));
+  // le durate misurate ora valgono anche per l'indice: e' con quelle che si
+  // vede il buco dell'intervallo, e quindi dove comincia il secondo tempo
+  if (!unoSolo) {
+    let scritte = 0;
+    (a.pezzi || []).forEach((x, n) => {
+      if (!x.minuti && durate[n]) { x.minuti = Math.round(durate[n] / 60); scritte++; }
+    });
+    if (scritte) scriviArchivio();
+  }
+  const durata = Math.round(dettaglio.reduce((t, x) => Math.max(t, x.da + x.durata), 0));
+  const arch = { rec: p.rec, bucket: a.bucket, chiave: scelto.chiave, regione: regione,
+                 pezzo: unoSolo ? i : 0, pezzi: dettaglio, intera: !unoSolo && pezzi.length > 1 };
 
   const r = {
     // l'evento e' la chiave stessa dell'indice: senza, la partita aperta
     // dall'archivio non ritrovava i suoi appunti ne' le rose di ESPN, e
     // whisper si trascriveva la telecronaca senza sapere un nome
     id: nuovoId("r"), evento: String(p.rec || ""), __durata: durata,
-    titolo: titoloMateriale(a, i, durata),
+    titolo: titoloMateriale(a, unoSolo ? i : -1, durata),
     competizione: "", sorgente: "archivio", origine: "archivio", url: "",
     stato: "finita", avviata: Date.parse(a.quando) || Date.now(), finita: Date.now(),
-    durata: durata, kickoff: (i === 0 && a.kickoff !== null && a.kickoff !== undefined)
+    // il calcio d'inizio e' sempre dentro il primo pezzo, e la linea del
+    // tempo comincia li': vale per la partita intera come per il 1º tempo
+    durata: durata, kickoff: ((unoSolo ? i === 0 : true) && a.kickoff !== null && a.kickoff !== undefined)
       ? { "1": a.kickoff } : {},
-    marker: [], chi: String(p.__chi || "").slice(0, 40), errore: "", arch: arch
+    marker: [], chi: String(p.__chi || "").slice(0, 40), errore: "", arch: arch,
+    canali: canali
   };
   assicura(cartellaReg(r.id));
   R.reg[r.id] = r; scrivi(); annuncia(0, "clip");
@@ -5014,6 +5423,7 @@ function titoloMateriale(a, i, durataVera) {
     const d = new Date(a.quando || 0);
     if (isFinite(d) && d.getTime()) nome += " \u00b7 " + String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + String(d.getFullYear()).slice(2);
   }
+  if (i < 0) return nome;                       // la partita intera: solo il nome
   const pezzi = (a.pezzi && a.pezzi.length) ? a.pezzi : [{}];
   const x = pezzi[i] || {};
   // se il file dura piu' di un'ora e venticinque non e' un tempo, e' la
@@ -5037,8 +5447,18 @@ function rinominaMaterialeArchivio() {
     if (pz.length && !pz.some((x) => x.chiave === r.arch.chiave) && !Object.keys(R.clip).some((c) => R.clip[c].reg === r.id)) {
       delete R.reg[k]; n++; return;
     }
+    // I TEMPI SCIOLTI SE NE VANNO. Prima aprire una partita voleva dire
+    // aprire un file per tempo: due voci in elenco, ognuna mezza partita.
+    // Adesso la partita e' una sola, e i vecchi mezzi tempi — se nessuno
+    // ci ha tagliato niente — non servono piu' a nessuno.
+    if (pz.length > 1 && pezziArch(r).length === 1 &&
+        !Object.keys(R.clip).some((c) => R.clip[c].reg === r.id) &&
+        Object.keys(R.reg).some((k2) => R.reg[k2].arch && R.reg[k2].arch.rec === r.arch.rec &&
+                                        pezziArch(R.reg[k2]).length > 1)) {
+      delete R.reg[k]; n++; return;
+    }
     if (!r.evento && r.arch.rec) { r.evento = r.arch.rec; n++; }
-    const t = titoloMateriale(a, r.arch.pezzo || 0, r.durata || 0);
+    const t = titoloMateriale(a, pezziArch(r).length > 1 ? -1 : (r.arch.pezzo || 0), r.durata || 0);
     if (t !== r.titolo) { r.titolo = t; n++; }
   });
   if (n) { scrivi(); annuncia(0, "clip"); }
@@ -5048,6 +5468,15 @@ function fileArchivio() { return path.join(DIR, "archivio.json"); }
 function leggiArchivio() {
   try { ARCHIVIO = JSON.parse(fs.readFileSync(fileArchivio(), "utf8")) || {}; }
   catch (e) { ARCHIVIO = {}; }
+  if (!S3_SPENTO) return;
+  // il file dell'indice se le ricorda anche dopo: si tolgono qui, una
+  // volta, e chi vuole rivederle riaccende Amazon e riscandaglia
+  const vivi = {}; MAGAZZINI.filter(magazzinoAcceso).forEach((m) => { vivi[m.bucket] = true; });
+  let via = 0;
+  Object.keys(ARCHIVIO).forEach((k) => {
+    if (!vivi[ARCHIVIO[k].bucket]) { delete ARCHIVIO[k]; via++; }
+  });
+  if (via) { console.log("[clip] archivio: " + via + " partite di magazzini sganciati tolte dall'indice"); scriviArchivio(); }
 }
 function scriviArchivio() {
   try {
@@ -5060,7 +5489,7 @@ function scriviArchivio() {
 async function archivioScandaglia(p) {
   if (!s3Acceso()) return { ok: false, errore: "nessun magazzino configurato" };
   const bucket = p.bucket || ARCH_BUCKET;
-  const radice = p.radice !== undefined ? String(p.radice) : radiceDi(bucket);
+  const radici = p.radice !== undefined ? [String(p.radice)] : radiciDi(bucket);
   const giorni = num(p.giorni, 1, 3650, 400);
   const limite = Date.now() - giorni * 86400000;
   const minimo = num(p.minimoMB, 1, 100000, 700) * 1000000;
@@ -5070,8 +5499,10 @@ async function archivioScandaglia(p) {
   //    grossi da poter essere una partita, raggruppati per cartella-partita.
   const gruppi = {}, perGiorno = {};
   let visti = 0, tenuti = 0, ripresa = "", giri = 0;
+  for (const radice of (p.prefisso ? [String(p.prefisso)] : radici)) {
+  ripresa = ""; giri = 0;
   do {
-    const pg = await s3Pagina(p.prefisso || radice, ripresa, bucket, "");
+    const pg = await s3Pagina(radice, ripresa, bucket, "");
     pg.oggetti.forEach((o) => {
       visti++;
       if (o.peso < minimo || !VIDEO.test(o.chiave)) return;
@@ -5090,12 +5521,13 @@ async function archivioScandaglia(p) {
     });
     ripresa = pg.ancora;
   } while (ripresa && ++giri < 2000);
+  }
 
   // 2) le partite di Airtable, appaiate per giorno e per nome
   const base = "https://api.airtable.com/v0/" + AT_BASE + "/" + AT_PARTITE;
   const formula = "AND(IS_AFTER({Data | Orario}, DATEADD(TODAY(), -" + Math.round(giorni) +
     ", 'days')), NOT({Partita} = BLANK()))";
-  let offset = "", tornate = 0, agganciate = 0, conKickoff = 0, intere = 0;
+  let offset = "", tornate = 0, agganciate = 0, conKickoff = 0, intere = 0, scartati = 0;
   const orfane = [];
   do {
     const q = new URLSearchParams({ filterByFormula: formula, pageSize: "100" });
@@ -5109,6 +5541,18 @@ async function archivioScandaglia(p) {
   } while (offset);
   // ...e gli eventi della base storica, letti dall'ultimo import
   STORICI.forEach((e) => aggancia(e.id, e.partita, e.competizione, e.quando));
+  // LE PARTITE APPENA AGGANCIATE VANNO CERCATE SU ESPN DA SOLE. Su una
+  // partita della notte prima nessuno ha ancora scritto appunti: se ESPN
+  // non la cerca, il tabellino esce vuoto e sembra che il magazzino non
+  // abbia dati. Bastava chiederglielo — adesso lo si chiede qui, in coda,
+  // per tutte quelle agganciate che non hanno ancora niente.
+  let daCercare = 0;
+  Object.keys(ARCHIVIO).forEach((rec) => {
+    if (ARCHIVIO[rec].bucket !== bucket || rec.startsWith("s3:")) return;
+    if (ESPN[rec] || CODA_ESPN.indexOf(rec) >= 0) return;
+    CODA_ESPN.push(rec); daCercare++;
+  });
+  if (daCercare) { console.log("[clip] scandaglio: " + daCercare + " partite da cercare su ESPN"); giraEspn(); }
 
   function aggancia(recId, nomePartita, nomeComp, quandoIso) {
     {
@@ -5146,9 +5590,22 @@ async function archivioScandaglia(p) {
       if (!scelta) return;
       meglio.presa = rec.id;
 
-      const pezzi = scelta.pezzi.map((x) => Object.assign({}, x, {
+      let pezzi = scelta.pezzi.map((x) => Object.assign({}, x, {
         da: daKickoffPezzo(x.file, quando)
       })).sort((x, y) => (x.da === null ? 0 : x.da) - (y.da === null ? 0 : y.da));
+      // SOLO QUELLO CHE STA DENTRO LA PARTITA. vMix apre un file nuovo a
+      // ogni stop, e nella stessa giornata con lo stesso titolo finiscono
+      // anche le prove, il preshow, il collegamento di quattro ore prima:
+      // Gremio-Bolivar aveva quattro pezzi, e due erano di un'altra cosa.
+      // L'ora di inizio ce l'ha ogni file e il calcio d'inizio lo dice
+      // Airtable: si tiene la finestra della partita — da un'ora prima a
+      // due ore e mezza dopo — e il resto si scarta. Se cosi' non resta
+      // niente si tiene tutto: meglio un pezzo di troppo che nessuno.
+      const dentroLaPartita = pezzi.filter((x) => x.da === null || (x.da >= -3600 && x.da <= 9000));
+      if (dentroLaPartita.length) {
+        scartati += pezzi.length - dentroLaPartita.length;
+        pezzi = dentroLaPartita;
+      }
       const kick = kickoffNelFile(pezzi[0].file, quando);
       if (kick !== null) conKickoff++;
       if (scelta.fonte === "intera" || scelta.fonte === "intero") intere++;
@@ -5231,10 +5688,18 @@ async function archivioScandaglia(p) {
   });
   if (riavuti) console.log("[clip] archivio: " + riavuti + " durate gia' note rimesse a posto");
   scriviArchivio();
-  return { ok: true, oggettiVisti: visti, fileTenuti: tenuti, durateRimesse: riavuti,
+  if (scartati) console.log("[clip] archivio: " + scartati + " pezzi fuori dalla partita scartati");
+  return { ok: true, oggettiVisti: visti, fileTenuti: tenuti, durateRimesse: riavuti, pezziScartati: scartati,
            cartellePartita: Object.keys(gruppi).length,
            partiteViste: tornate, agganciate: agganciate, intere: intere, doppieAssorbite: assorbite, promosseAIntere: promosse,
-           conKickoff: conKickoff, soloS3: soleS3, senzaAggancio: orfane.slice(0, 15) };
+           conKickoff: conKickoff, soloS3: soleS3, senzaAggancio: orfane.slice(0, 15),
+           // l'elenco intero, per chi vuole capire PERCHE' non si agganciano:
+           // le partite di Airtable rimaste senza file, e i file rimasti senza
+           // partita — messi uno accanto all'altro si vede se e' una regola
+           orfaneTutte: p.tutte ? orfane : undefined,
+           soleNas: p.tutte ? Object.keys(gruppi).filter((k) => !gruppi[k].presa).map((k) => ({
+             giorno: gruppi[k].giorno, partita: gruppi[k].partita,
+             file: gruppi[k].file.length, gb: Math.round(gruppi[k].file.reduce((a, f) => a + f.peso, 0) / 1e8) / 10 })) : undefined };
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -5280,8 +5745,8 @@ function whisperCe() { return fs.existsSync(WHISPER) && fs.existsSync(MODELLO); 
 // Da dove si prendono i byte dell'audio: il disco se ci sono, l'indirizzo
 // firmato se la partita sta in archivio. Con -ss e -t si scarica solo il
 // pezzo che serve, non tutto il file.
-function sorgenteAudio(r) {
-  if (r.arch) return viaArchivio(r);
+function sorgenteAudio(r, t) {
+  if (r.arch) return viaArchivio(r, t || 0);
   const integrale = path.join(cartellaReg(r.id), "integrale.mp4");
   if (fs.existsSync(integrale)) return integrale;
   const segs = segmenti(r.id);
@@ -5447,7 +5912,10 @@ function nomiDaSuggerire(r) {
 function trascriviDavvero(lavoro) {
   const r = R.reg[lavoro.reg];
   if (!r) return Promise.reject(new Error("registrazione sparita"));
-  const via = sorgenteAudio(r);
+  const fonte = r.arch ? fonteAl(r, lavoro.da) : null;
+  const via = fonte ? fonte.via : sorgenteAudio(r);
+  const daQui = fonte ? fonte.dentro : lavoro.da;
+  const finoA = fonte ? Math.min(lavoro.a, fonte.fine) : lavoro.a;
   const dir = cartellaReg(r.id);
   const wav = path.join(dir, "voce.wav");
   const partenza = Date.now();
@@ -5456,8 +5924,8 @@ function trascriviDavvero(lavoro) {
     // audio solo, mono, sedicimila: e' quello che vuole il modello, e pesa
     // un centesimo del video
     const args = via
-      ? ["-hide_banner", "-loglevel", "error", "-ss", String(lavoro.da), "-i", via,
-         "-t", String(lavoro.a - lavoro.da), "-vn", "-ac", "1", "-ar", "16000",
+      ? ["-hide_banner", "-loglevel", "error", "-ss", String(daQui), "-i", via,
+         "-t", String(Math.max(1, finoA - lavoro.da)), "-vn", "-ac", "1", "-ar", "16000",
          "-c:a", "pcm_s16le", "-y", wav]
       : null;
     if (!args) return no(new Error("di questa registrazione non c'e' audio raggiungibile"));
@@ -5724,6 +6192,46 @@ async function appuntiStoriciImporta(p) {
 // somma semplice; il secondo passa per l'intervallo, che dura quindici
 // minuti quando va bene e non lo sa nessuno con precisione. Si dice che
 // e' una stima invece di far finta di no.
+// ── DOVE COMINCIA IL SECONDO TEMPO ────────────────────────────────────
+//
+//  Senza cronometro letto, il secondo tempo si stimava "un'ora dopo il
+//  calcio d'inizio". Non e' mai vero: l'intervallo dura quindici minuti,
+//  piu' il recupero del primo tempo, piu' il rientro in campo — sulle
+//  partite vere la ripresa cade fra i 62 e i 68 minuti. Sei minuti di
+//  errore sono un'altra azione, e spesso cadevano PRIMA che il file del
+//  secondo tempo cominciasse: l'appunto finiva nella coda di un file gia'
+//  finito, ed e' per questo che degli appunti si leggeva solo il primo
+//  tempo.
+//
+//  Ma i due tempi stanno in due file, e il registratore si ferma
+//  all'intervallo: il buco fra un file e l'altro E' l'intervallo. Allora
+//  lo zero del secondo tempo non si stima, si guarda — e' l'inizio del
+//  secondo file, piu' i pochi minuti in cui si registra prima del fischio.
+//  Resta una stima, ma di un ordine di grandezza piu' vicina; il
+//  cronometro, quando c'e', vince sempre.
+const BUCO_INTERVALLO = 180;      // sotto i tre minuti e' uno stop, non l'intervallo
+// Misurato leggendo il cronometro su undici partite: fra l'inizio del file
+// del secondo tempo e il fischio di ripresa passano da 10 a 372 secondi,
+// mediana 162. Con questo numero l'errore tipico resta sotto il minuto,
+// contro i cinque-dieci minuti — sempre in anticipo — della vecchia regola.
+const ANTICIPO_RIPRESA = 160;
+function ripresaStimata(a) {
+  const pezzi = (a.pezzi || []).filter((x) => x.da !== null && x.da !== undefined);
+  if (pezzi.length < 2) return null;
+  let buco = 0, dopo = null, durateNote = true;
+  for (let i = 1; i < pezzi.length; i++) {
+    const d0 = pezzi[i - 1].minuti ? pezzi[i - 1].minuti * 60 : null;
+    if (d0 === null) { durateNote = false; continue; }
+    const g = pezzi[i].da - (pezzi[i - 1].da + d0);
+    if (g > buco) { buco = g; dopo = pezzi[i]; }
+  }
+  if (durateNote) return (dopo && buco >= BUCO_INTERVALLO) ? dopo.da + ANTICIPO_RIPRESA : null;
+  // senza durate non si vede il buco: vale il pezzo che comincia dove puo'
+  // cominciare solo una ripresa, fra i quaranta e gli ottanta minuti
+  const c = pezzi.slice(1).filter((x) => x.da >= 2400 && x.da <= 4800);
+  return c.length === 1 ? c[0].da + ANTICIPO_RIPRESA : null;
+}
+
 function secondoNelFile(rec, r) {
   const a = ARCHIVIO[rec];
   if (!a) return null;
@@ -5732,8 +6240,10 @@ function secondoNelFile(rec, r) {
   // ...a meno che il cronometro non sia stato letto dal video: allora i due
   // tempi cominciano dove cominciano davvero (vedi calibraOrologio)
   const o = a.orologio || {};
-  const inizio = r.s === 2 ? (o.inizio2 !== undefined && o.inizio2 !== null ? o.inizio2 : 60 * 60)
-                           : (o.inizio1 !== undefined && o.inizio1 !== null ? o.inizio1 : 0);
+  const inizio = r.s === 2
+    ? (o.inizio2 !== undefined && o.inizio2 !== null ? o.inizio2
+       : (ripresaStimata(a) === null ? 60 * 60 : ripresaStimata(a)))
+    : (o.inizio1 !== undefined && o.inizio1 !== null ? o.inizio1 : 0);
   return doveCade(a, inizio + (r.d || 0));
 }
 // dove cade, fra i pezzi del materiale, un tempo t contato dal calcio
@@ -5747,7 +6257,10 @@ function doveCade(a, t) {
   let i = -1;
   pezzi.forEach((x, k) => { if (x.da <= t) i = k; });
   if (i < 0) return null;                    // l'azione cade prima del materiale
-  return { pezzo: i, secondi: Math.round(t - pezzi[i].da), chiave: pezzi[i].chiave || a.chiave };
+  // e se cade DOPO la fine di quel pezzo — nel buco fra un file e l'altro —
+  // non e' nella coda di un file finito: e' all'inizio di quello dopo
+  if (pezzi[i].minuti && (t - pezzi[i].da) > pezzi[i].minuti * 60 && pezzi[i + 1]) i++;
+  return { pezzo: i, secondi: Math.max(0, Math.round(t - pezzi[i].da)), chiave: pezzi[i].chiave || a.chiave };
 }
 
 // ── IL CRONOMETRO LETTO DAL VIDEO ─────────────────────────────────
@@ -6118,14 +6631,13 @@ async function rifinisciGol(idSeq) {
   // Il file intero si firma solo se serve: il primo modo, quello che
   // guarda l'inquadratura, lavora sul pezzo gia' in casa e non tocca
   // Parigi.
-  let via = null;
-  const fileIntero = async () => {
-    if (!via) {
-      const regione = await s3Regione(a.bucket);
-      via = firmaConRegione(regione, r.arch.chiave, {}, 21600, a.bucket);
-    }
-    return via;
-  };
+  // LA PARTITA STA IN PIU' FILE, E OGNI SECONDO SA IN QUALE. "fetta" da'
+  // il file e il secondo dentro quel file; "base" e' quanto va rimesso al
+  // ritorno per tornare al tempo della registrazione. Senza, ogni lettura
+  // del secondo tempo finiva nel primo.
+  const fetta = (t) => fonteAl(r, Math.max(0, t));
+  const baseDi = (t) => { const x = pezzoAl(r, Math.max(0, t)); return x ? x.da : 0; };
+  const fileIntero = async () => fetta(0).via;
 
   // Il cronometro: targa e fotogramma di riferimento. Si preparano una
   // volta sola, e solo per i gol su cui l'inquadratura non ha detto
@@ -6136,7 +6648,6 @@ async function rifinisciGol(idSeq) {
     orologio = null;
     if (!tesseractCe()) return orologio;
     if (!a.orologio || !a.orologio.verificato) return orologio;
-    const v = await fileIntero();
     let targa = a.orologio.cifre;
     if (!targa) {
       // La targa si cerca dove si e' sicuri che ci sia gioco: due minuti
@@ -6148,12 +6659,12 @@ async function rifinisciGol(idSeq) {
         quando.push(t - 150, t + 200, t - 400);
       });
       for (const t0 of quando.filter((x) => x > 60).slice(0, 8)) {
-        const e = await leggiOrologioSicuro((t) => fasciaAlta(v, t), Math.round(t0), true);
+        const e = await leggiOrologioSicuro((t) => { const f = fetta(t); return fasciaAlta(f.via, f.dentro); }, Math.round(t0), true);
         if (e && e.cifre) { targa = e.cifre; break; }
       }
       if (!targa) return orologio;
       const t0 = Math.max(60, Math.round(q.pezzi[0].dentro) - 150);
-      const strette = await targaDelleCifre(v, targa, t0);
+      const strette = await targaDelleCifre(fetta(t0).via, targa, fetta(t0).dentro);
       if (strette) targa = strette;
       a.orologio.cifre = targa; scriviArchivio();
       console.log("[clip] rifinitura: targa del cronometro " + targa.join(",") + " per " + (a.partita || ""));
@@ -6162,7 +6673,8 @@ async function rifinisciGol(idSeq) {
     // cioe' poco prima del primo gol, con il gioco in corso
     const t1 = (q.pezzi[0].t !== undefined ? q.pezzi[0].t : q.pezzi[0].dentro + GOL_PRE);
     for (const d of [-150, -400, 200, -80]) {
-      const f = await fascia(v, Math.max(30, t1 + d));
+      const ft = fetta(Math.max(30, t1 + d));
+      const f = await fascia(ft.via, ft.dentro);
       if (!f) continue;
       const letto = await new Promise((ok) => {
         execFile("python3", [OROLOGIO_PY, "--targa", targa.join(","), f], { timeout: 60000 },
@@ -6192,7 +6704,9 @@ async function rifinisciGol(idSeq) {
       campo = await guardaIlCampo(casa, 0, 200, 1);
       base = pz.dentro - scartoPezzo(k2);               // dal tempo del pezzo a quello del file
     } else {
-      campo = await guardaIlCampo(await fileIntero(), Math.max(0, t - 75), 200, 1);
+      const f = fetta(t - 75);
+      campo = await guardaIlCampo(f.via, f.dentro, 200, 1);
+      base = baseDi(t - 75);
     }
     if (campo.length >= 20) {
       const quando = (i) => Math.round(campo[i].s + base);
@@ -6204,9 +6718,10 @@ async function rifinisciGol(idSeq) {
       if (gol === null || gol <= quando(0) + 2) {
         // la tavola comincia a gol gia' fatto: si guarda piu' indietro nel
         // file. Succede quando il giornalista scrive tardi.
-        const pr = await guardaIlCampo(await fileIntero(), Math.max(0, t - 95), 95, 1);
+        const f2 = fetta(t - 95);
+        const pr = await guardaIlCampo(f2.via, f2.dentro, 95, 1);
         const j = pr.length >= 20 ? momentoDelGol(pr, pr.length) : -1;
-        if (j >= 0) gol = Math.round(pr[j].s);
+        if (j >= 0) gol = Math.round(pr[j].s + baseDi(t - 95));
       }
       if (gol !== null && gol < t) {
         pz.gol = gol;
@@ -6231,10 +6746,11 @@ async function rifinisciGol(idSeq) {
       if (o) {
         provatoIlCronometro = true;
         let esito = null;
-        try { esito = await fineDelReplay(await fileIntero(), o.targa, o.rif, t); } catch (e) { esito = null; }
+        const f3 = fetta(t), b3 = baseDi(t);
+        try { esito = await fineDelReplay(f3.via, o.targa, o.rif, f3.dentro); } catch (e) { esito = null; }
         if (esito) {
-          primo = esito.primo;
-          if (fine === null) { fine = esito.fine; pz.replayVisto = "cronometro"; daCronometro++; }
+          primo = esito.primo === null || esito.primo === undefined ? esito.primo : esito.primo + b3;
+          if (fine === null) { fine = esito.fine + b3; pz.replayVisto = "cronometro"; daCronometro++; }
         }
       }
     }
@@ -6457,6 +6973,40 @@ function prioritaPartita(rec) {
 // sottofondo scendono a una alla volta e la macchina risponde a lui.
 let ultimaPagina = 0;
 function qualcunoLavora() { return Date.now() - ultimaPagina < 90000; }
+// ── IL MAGAZZINO E' DELLA REGIA, PRIMA CHE NOSTRO ─────────────────────
+//
+//  La NAS non e' un archivio morto: e' il disco su cui la regia STA
+//  registrando mentre noi leggiamo. Andarci a prendere sei giga di
+//  fotogrammi mentre entra una conferenza stampa o una partita non e' un
+//  errore di programma, e' un rischio preso sul lavoro di qualcun altro.
+//  Allora prima si guarda: se in cartella qualcosa e' stato scritto negli
+//  ultimi quindici minuti, la regia sta lavorando e si aspetta. Di notte
+//  la coda riparte da sola.
+const NAS_FERMO_MIN = 15;
+let nasVistoQuando = 0, nasOccupato = false;
+function magazzinoOccupato() {
+  const m = magazzinoDi(ARCH_BUCKET);
+  if (!m || !m.cartella) return false;
+  if (Date.now() - nasVistoQuando < 60000) return nasOccupato;   // si chiede al massimo una volta al minuto
+  nasVistoQuando = Date.now();
+  nasOccupato = false;
+  const limite = Date.now() - NAS_FERMO_MIN * 60000;
+  try {
+    radiciDi(ARCH_BUCKET).forEach((rd) => {
+      if (nasOccupato) return;
+      const dir = path.join(m.cartella, rd);
+      let voci = [];
+      try { voci = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+      voci.forEach((v) => {
+        if (nasOccupato || !v.isFile()) return;
+        try { if (fs.statSync(path.join(dir, v.name)).mtimeMs > limite) nasOccupato = true; } catch (e) {}
+      });
+    });
+  } catch (e) {}
+  if (nasOccupato) console.log("[clip] il magazzino sta ricevendo roba nuova: aspetto");
+  return nasOccupato;
+}
+
 function giraOrologi() {
   // mentre si trascrive i cronometri stanno fermi: due core non si dividono
   // in tre, e una trascrizione lasciata a meta' costa piu' di un'attesa.
@@ -6472,6 +7022,7 @@ function giraOrologi() {
   }
   const registrando = registrandoDavvero();
   if (registrando) { setTimeout(giraOrologi, 60000); return; }
+  if (magazzinoOccupato()) { setTimeout(giraOrologi, 300000); return; }
   // le durate cambiano il materiale: leggere il cronometro nel frattempo
   // vuol dire prendere i due fotogrammi da file diversi. Si aspetta che
   // finiscano (un'ora), e intanto la macchina respira
@@ -6578,6 +7129,8 @@ function giraDurate() {
   if (durateInMoto >= insiemeD || !CODA_DURATE.length) { if (!CODA_DURATE.length && !durateInMoto) scriviArchivio(); return; }
   const registrando = registrandoDavvero();
   if (registrando) { setTimeout(giraDurate, 60000); return; }
+  // una misura in coda puo' aspettare: la regia che scrive no
+  if (CODA_DURATE.length > 2 && magazzinoOccupato()) { setTimeout(giraDurate, 300000); return; }
   const rec = CODA_DURATE.shift();
   durateInMoto++;
   misuraPartita(rec).then(() => { durateFatte++; })
@@ -6613,20 +7166,34 @@ let cartelleRecenti = null, scandaglioInCorso = false;
 async function controllaArchivioNuovo() {
   if (!s3Acceso() || scandaglioInCorso) return;
   try {
+    // L'ARCHIVIO NON HA UNA FORMA SOLA, E NEANCHE IL CONTROLLO. Su S3 le
+    // partite nuove sono cartelle nuove sotto il giorno; sulla NAS sono
+    // file nuovi dentro la stessa cartella, e cercare le cartelle-giorno
+    // li' non trovava mai niente: l'indice si sarebbe rifatto solo alle
+    // cinque. Si guarda quello che c'e' — cartelle e file — e si tiene il
+    // conto: se cambia, e' arrivato qualcosa.
     const oggi = new Date(), viste = [];
-    for (let i = 0; i < 10; i++) {
-      const d = new Date(oggi.getTime() - i * 86400000);
-      const g = d.getUTCFullYear() + ("0" + (d.getUTCMonth() + 1)).slice(-2) + ("0" + d.getUTCDate()).slice(-2);
-      const pg = await s3Pagina(radiceDi(ARCH_BUCKET) + g + "/", "", ARCH_BUCKET, "/");
-      (pg.cartelle || []).forEach((c) => viste.push(c));
+    if (magazzinoDi(ARCH_BUCKET).cartella) {
+      for (const rd of radiciDi(ARCH_BUCKET)) {
+        const pg = await s3Pagina(rd, "", ARCH_BUCKET, "/");
+        (pg.cartelle || []).forEach((c) => viste.push(c));
+        (pg.oggetti || []).forEach((o) => viste.push(o.chiave + "|" + o.peso));
+      }
+    } else {
+      for (let i = 0; i < 10; i++) {
+        const d = new Date(oggi.getTime() - i * 86400000);
+        const g = d.getUTCFullYear() + ("0" + (d.getUTCMonth() + 1)).slice(-2) + ("0" + d.getUTCDate()).slice(-2);
+        const pg = await s3Pagina(radiceDi(ARCH_BUCKET) + g + "/", "", ARCH_BUCKET, "/");
+        (pg.cartelle || []).forEach((c) => viste.push(c));
+      }
     }
-    const firma = viste.sort().join("|");
+    const firma = viste.length + ":" + viste.sort().join("|");
     const ora = new Date().getHours();
     const nuove = cartelleRecenti !== null && firma !== cartelleRecenti;
     cartelleRecenti = firma;
     if (!nuove && !(ora === 5 && !ultimoScandaglioOggi())) return;
     scandaglioInCorso = true;
-    console.log("[clip] archivio: " + (nuove ? "cartelle nuove su S3" : "giro delle cinque") + ", rifaccio l'indice");
+    console.log("[clip] archivio: " + (nuove ? "roba nuova nel magazzino" : "giro delle cinque") + ", rifaccio l'indice");
     const r = await archivioScandaglia({ giorni: 3650 });   // tutto l'archivio, non gli ultimi 400 giorni
     console.log("[clip] archivio: indice rifatto, " + (r.partiteViste || 0) + " partite viste, " + (r.intere || 0) + " intere");
     ultimoScandaglio = Date.now();
@@ -7277,31 +7844,65 @@ const TIPI = { ".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t", ".
 //  chiave. Se no il magazzino privato di Como diventerebbe leggibile da
 //  chiunque sappia indovinare un identificativo.
 const CHIAVE_PONTE = process.env.COMOTV_CHIAVE_COMANDO || process.env.COMOTV_TOKEN || "ponte";
-function firmaPonte(id, fino) {
-  return crypto.createHmac("sha256", CHIAVE_PONTE).update(id + "|" + fino).digest("hex").slice(0, 32);
+function firmaPonte(id, fino, pezzo) {
+  return crypto.createHmac("sha256", CHIAVE_PONTE)
+    .update(id + "|" + fino + "|" + (pezzo || 0)).digest("hex").slice(0, 32);
 }
-function viaPonte(id, quanto) {
+// il pezzo sta nell'indirizzo: la partita intera e' piu' file, e il
+// browser deve poter chiedere quello che gli serve
+function viaPonte(id, quanto, pezzo) {
   const fino = Math.floor(Date.now() / 1000) + (quanto || 21600);
-  return "/magazzino/" + encodeURIComponent(id) + "?fino=" + fino + "&f=" + firmaPonte(id, fino);
+  const i = pezzo || 0;
+  return "/magazzino/" + encodeURIComponent(id) + "?fino=" + fino +
+         (i ? "&p=" + i : "") + "&f=" + firmaPonte(id, fino, i);
 }
 // il magazzino di questa partita e' raggiungibile dal browser?
 function magazzinoDaFuori(r) {
   if (!r || !r.arch) return true;
   const m = magazzinoDi(r.arch.bucket);
+  if (m.cartella) return false;                    // un percorso sul disco: il browser non lo apre mai
   if (!m.endpoint) return true;                    // Amazon: sempre
   return m.fuori === true;                         // di casa: solo se lo dici tu
+}
+function serviFileLocale(req, res, file) {
+  fs.stat(file, (err, st) => {
+    if (err || !st.isFile()) { res.writeHead(404).end("non trovato"); return; }
+    const base = { "Content-Type": "video/mp4", "Accept-Ranges": "bytes",
+                   "Cache-Control": "private, max-age=3600", "Access-Control-Allow-Origin": "*" };
+    const range = req.headers.range;
+    if (range) {
+      const m = /bytes=(\d*)-(\d*)/.exec(range);
+      let a = m && m[1] ? parseInt(m[1], 10) : 0;
+      let b = m && m[2] ? parseInt(m[2], 10) : st.size - 1;
+      if (m && !m[1] && m[2]) { a = Math.max(0, st.size - parseInt(m[2], 10)); b = st.size - 1; }
+      b = Math.min(b, st.size - 1);
+      if (a > b) { res.writeHead(416, { "Content-Range": "bytes */" + st.size }); return res.end(); }
+      res.writeHead(206, Object.assign({}, base, { "Content-Length": b - a + 1,
+        "Content-Range": "bytes " + a + "-" + b + "/" + st.size }));
+      fs.createReadStream(file, { start: a, end: b }).pipe(res);
+      return;
+    }
+    res.writeHead(200, Object.assign({}, base, { "Content-Length": st.size }));
+    fs.createReadStream(file).pipe(res);
+  });
 }
 async function serviMagazzino(req, res, u) {
   const id = decodeURIComponent(u.pathname.slice("/magazzino/".length));
   const fino = parseInt(u.searchParams.get("fino") || "0", 10);
   const f = u.searchParams.get("f") || "";
-  if (!fino || fino < Math.floor(Date.now() / 1000) || f !== firmaPonte(id, fino)) {
+  const i = Math.max(0, parseInt(u.searchParams.get("p") || "0", 10) || 0);
+  if (!fino || fino < Math.floor(Date.now() / 1000) || f !== firmaPonte(id, fino, i)) {
     res.writeHead(403).end("indirizzo scaduto"); return;
   }
   const r = R.reg[id];
   if (!r || !r.arch) { res.writeHead(404).end("non trovato"); return; }
+  const pz = pezziArch(r);
+  if (i >= pz.length) { res.writeHead(404).end("questo pezzo non c'e'"); return; }
   let sorgente;
-  try { sorgente = viaArchivio(r); } catch (e) { res.writeHead(502).end("magazzino non raggiungibile"); return; }
+  try { sorgente = viaPezzo(r, pz[i]); } catch (e) { res.writeHead(502).end("magazzino non raggiungibile"); return; }
+  // un magazzino di cartella da' un percorso: si serve il file, con gli
+  // intervalli, senza passare da nessuna rete
+  if (!/^https?:\/\//.test(sorgente)) return serviFileLocale(req, res, sorgente);
   const testa = {};
   if (req.headers.range) testa.Range = req.headers.range;
   try {
@@ -7965,10 +8566,11 @@ async function miniaturaViva(r) {
     // una partita d'archivio la faccia ce l'ha, sta solo a Parigi: si va a
     // prendere un fotogramma dieci minuti dopo il fischio, che e' gioco
     // sicuro e non il cartello del prepartita
-    da = viaArchivio(r);
+    da = viaArchivio(r, ((r.kickoff && r.kickoff["1"]) || 300) + 600);
     // dieci minuti dopo il fischio VERO, se il cronometro e' stato letto:
     // l'inizio della registrazione e' il "coming soon", non la partita
-    quando = ((r.kickoff && r.kickoff["1"]) || 300) + 600;
+    const f0 = fonteAl(r, ((r.kickoff && r.kickoff["1"]) || 300) + 600);
+    quando = f0.dentro;
   }
   if (!da) { r.miniInCorso = false; return; }
   const ok = await miniatura(da, path.join(cartellaReg(r.id), "mini.jpg"), quando);
@@ -8281,9 +8883,12 @@ const AZIONI = {
     // Synology e' spento prima di scoprirlo aprendo una partita
     const elenco = [];
     if (magazzinoAcceso(AMAZZONE)) elenco.push({ nome: "amazon", bucket: AMAZZONE.bucket, dove: "amazonaws.com" });
-    MAGAZZINI.filter(magazzinoAcceso).forEach((m) => elenco.push({ nome: m.nome, bucket: m.bucket, dove: m.endpoint }));
-    return { ok: true, acceso: true, bucket: S3.bucket, regione: await s3Regione(),
-             magazzini: elenco, archivio: ARCH_BUCKET };
+    MAGAZZINI.filter(magazzinoAcceso).forEach((m) => elenco.push({ nome: m.nome, bucket: m.bucket,
+      dove: m.endpoint || m.cartella, radice: m.radice || "" }));
+    return { ok: true, acceso: true, regione: await s3Regione(),
+             bucket: S3_SPENTO ? magazzinoPredefinito().bucket : S3.bucket,
+             magazzini: elenco, archivio: ARCH_BUCKET, s3Spento: S3_SPENTO,
+             radice: radiciDi(ARCH_BUCKET).join(", ") };
   },
   "clip-archivio-elenca": async (p) => {
     if (!s3Acceso()) return { ok: false, errore: "l'archivio S3 non e' configurato" };
@@ -8301,12 +8906,14 @@ const AZIONI = {
     const r = R.reg[String(p.reg || "")];
     if (!r) return no(new Error("registrazione sconosciuta"));
     const sec = Math.max(0, +p.secondi || 0);
-    const via = r.arch ? viaArchivio(r)
+    const fz = r.arch ? fonteAl(r, sec) : null;
+    const via = fz ? fz.via
       : fs.existsSync(path.join(cartellaReg(r.id), "integrale.mp4")) ? path.join(cartellaReg(r.id), "integrale.mp4")
       : (segmenti(r.id).length ? playlistDi(r.id) : null);
     if (!via) return no(new Error("di questa registrazione non c'e' materiale da cui prendere un fotogramma"));
+    const dentroFile = fz ? fz.dentro : sec;
     const nome = "f" + nuovoId("") + ".jpg", fuori = path.join(DIR, CARTELLA_CLIP, nome);
-    execFile(FFMPEG, ["-hide_banner", "-loglevel", "error", "-ss", String(sec), "-i", via,
+    execFile(FFMPEG, ["-hide_banner", "-loglevel", "error", "-ss", String(dentroFile), "-i", via,
                       "-frames:v", "1", "-q:v", "2", "-y", fuori], { timeout: 60000 },
       (e) => e ? no(new Error("fotogramma non riuscito: " + e.message))
                : ok({ ok: true, file: "/clip/" + CARTELLA_CLIP + "/" + nome, secondi: sec }));

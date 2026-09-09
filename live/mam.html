@@ -2626,9 +2626,43 @@
   // da un magazzino di casa arriva come percorso sulla VM (/magazzino/…),
   // perche' il browser la NAS non la vede e il video passa dal ponte.
   // Qui si mette davanti la base, e il resto della pagina non lo sa.
-  function viaArchivioPagina(r) {
+  // ── LA PARTITA INTERA, DI QUA ─────────────────────────────────────
+  //  Una partita sta in piu' file — vMix chiude e riapre a ogni stop — e
+  //  fra il primo e il secondo tempo ci sono quattordici minuti in cui non
+  //  si registra. La registrazione li tiene tutti, ognuno con il secondo
+  //  in cui entra: qui si sceglie il file giusto per un dato secondo della
+  //  partita. Chi chiede il minuto 78 riceve il file del secondo tempo.
+  function pezziArchDi(r) {
+    return (r && r.pezziArch && r.pezziArch.length) ? r.pezziArch : null;
+  }
+  function pezzoArchAl(r, t) {
+    var pz = pezziArchDi(r); if (!pz) return null;
+    var s2 = Math.max(0, +t || 0);
+    for (var i = 0; i < pz.length; i++) {
+      if (s2 < pz[i].da + pz[i].durata) return { i: i, p: pz[i], dentro: Math.max(0, s2 - pz[i].da), da: pz[i].da };
+      // il buco fra un pezzo e l'altro non e' materiale: si va all'inizio
+      // di quello dopo, invece di restare fermi sul nulla
+      if (i + 1 < pz.length && s2 < pz[i + 1].da) return { i: i + 1, p: pz[i + 1], dentro: 0, da: pz[i + 1].da };
+    }
+    var u = pz[pz.length - 1];
+    return { i: pz.length - 1, p: u, dentro: Math.max(0, s2 - u.da), da: u.da };
+  }
+  function conBase(u) { return u && u.charAt(0) === "/" ? BASE + u : (u || ""); }
+  function viaArchivioPagina(r, t) {
+    var x = pezzoArchAl(r, t || 0);
+    if (x) return conBase(x.p.via);
     if (!r || !r.via) return "";
-    return r.via.charAt(0) === "/" ? BASE + r.via : r.via;
+    return conBase(r.via);
+  }
+  // quanto va tolto a un secondo della partita per avere il secondo dentro
+  // il file che lo contiene
+  function scartoArchivio(r, t) {
+    var x = pezzoArchAl(r, t || 0);
+    return x ? x.da : 0;
+  }
+  function canaliDelMateriale() {
+    var r = regDiSeq();
+    return Math.max(1, (r && r.canali) || (REG && REG.canali) || 2);
   }
   function regDiSeq() {
     if (!SEQ) return null;
@@ -2650,7 +2684,10 @@
         return { url: BASE + "/clip/_clip/" + x.clip + ".mp4", da: 0, a: null };
     }
     var r = regDiSeq(); if (!r) return null;
-    if (r.materiale === "archivio" && r.via) return { url: viaArchivioPagina(r), da: x.dentro, a: x.fuori };
+    if (r.materiale === "archivio" && r.via) {
+      var sc = scartoArchivio(r, x.dentro);
+      return { url: viaArchivioPagina(r, x.dentro), da: x.dentro - sc, a: x.fuori - sc };
+    }
     if (r.materiale === "integrale") return { url: BASE + "/clip/" + r.id + "/integrale.mp4", da: x.dentro, a: x.fuori };
     if (r.materiale === "segmenti") return { url: BASE + (r.proxy || ("/clip/" + r.id + "/live.m3u8")), da: x.dentro, a: x.fuori, hls: true };
     return null;
@@ -3883,6 +3920,16 @@
        function () { comandoAudio({ azione: "dissolvenza", audio: a.id, entra: 0.5, esce: 0.5 }, "Mezzo secondo in entrata e in uscita."); }],
       ["Niente dissolvenza", function () { comandoAudio({ azione: "dissolvenza", audio: a.id, entra: 0, esce: 0 }); }]
     ];
+    var nCan = canaliDelMateriale();
+    if (nCan > 2) {
+      for (var kc = 0; kc * 2 < nCan; kc++) (function (k) {
+        var eti = "Prendi i canali " + (k * 2 + 1) + "-" + (k * 2 + 2) + ((a.coppia || 0) === k ? "   \u2713" : "");
+        voci.push([eti, function () {
+          comandoAudio({ azione: "coppia", audio: a.id, coppia: k },
+                       "Ora suona la coppia " + (k * 2 + 1) + "-" + (k * 2 + 2) + ".");
+        }]);
+      })(kc);
+    }
     if (!a.canale) voci.push(["Dividi i canali (L e R)", function () {
       comandoAudio({ azione: "canali", audio: a.id },
                    "Diviso: la meta\u2019 sinistra resta qui, la destra e\u2019 su A2. Spegni quella che non serve.");
@@ -3971,7 +4018,11 @@
       if (c) {
         try {
           s.sorg = c.createMediaElementSource(s.el);
-          s.sp = c.createChannelSplitter(2);
+          // sei uscite, non due: su un file a sei canali lo splitter a due
+          // riceveva gia' il ripiegamento fatto dal browser, con i bus
+          // sommati — cioe' l'eco — e non c'era piu' modo di separarli
+          s.sp = c.createChannelSplitter(6);
+          s.sorg.channelCountMode = "max";
           s.me = c.createChannelMerger(2);
           s.gain = c.createGain();
           s.sorg.connect(s.sp);
@@ -3985,16 +4036,18 @@
   }
   // il canale: stereo intero, oppure una meta' sola messa su tutte e due
   // le uscite — se no il suono arriva da un orecchio solo
-  function canaleSuono(s, canale) {
-    if (!s.sp || s.canale === canale) return;
+  function canaleSuono(s, canale, coppia) {
+    var k = Math.max(0, parseInt(coppia || 0, 10) || 0);
+    if (!s.sp || (s.canale === canale && s.coppia === k)) return;
     try { s.sp.disconnect(); } catch (e) {}
-    var da = canale === "R" ? 1 : 0;
+    var L = Math.min(5, k * 2), R = Math.min(5, k * 2 + 1);
+    var da = canale === "R" ? R : L;
     if (canale === "L" || canale === "R") {
       s.sp.connect(s.me, da, 0); s.sp.connect(s.me, da, 1);
     } else {
-      s.sp.connect(s.me, 0, 0); s.sp.connect(s.me, 1, 1);
+      s.sp.connect(s.me, L, 0); s.sp.connect(s.me, R, 1);
     }
-    s.canale = canale;
+    s.canale = canale; s.coppia = k;
   }
   // il montaggio sonoro c'e' o no: la stessa domanda che si fa il ponte
   // prima di decidere come esportare
@@ -4011,9 +4064,41 @@
     // il pezzo in casa e' gia' tagliato: parte subito e non tocca Parigi
     if (a.locale) return { url: BASE + a.locale, da: a.scarto || 0 };
     var r = regDiSeq(); if (!r) return null;
-    if (r.materiale === "archivio" && r.via) return { url: viaArchivioPagina(r), da: a.dentro };
+    if (r.materiale === "archivio" && r.via) return { url: viaArchivioPagina(r, a.dentro), da: a.dentro - scartoArchivio(r, a.dentro) };
     if (r.materiale === "integrale") return { url: BASE + "/clip/" + r.id + "/integrale.mp4", da: a.dentro };
     return null;                 // sui segmenti non si insegue: si porta in casa
+  }
+  // ── IL MONITOR SORGENTE E I SEI CANALI ──────────────────────────────
+  //  Il video di uno studio esce a sei canali e il browser, per farli
+  //  stare in due casse, li somma: programma piu' secondo bus, cioe' le
+  //  stesse voci due volte. E' quella l'eco. Qui il suono del monitor
+  //  passa da Web Audio e si prende UNA coppia — la prima, il programma —
+  //  lasciando gli altri bus dove sono.
+  var MON_COPPIA = { el: null, coppia: -1 };
+  function coppiaSulMonitor(v, canali, coppia) {
+    if (!v || (canali || 2) <= 2) return;
+    var c = contesto(); if (!c) return;
+    if (MON_COPPIA.el !== v) {
+      try {
+        MON_COPPIA.sorg = c.createMediaElementSource(v);
+        MON_COPPIA.sorg.channelCountMode = "max";
+        MON_COPPIA.sp = c.createChannelSplitter(6);
+        MON_COPPIA.me = c.createChannelMerger(2);
+        MON_COPPIA.gain = c.createGain();
+        MON_COPPIA.sorg.connect(MON_COPPIA.sp);
+        MON_COPPIA.me.connect(MON_COPPIA.gain);
+        MON_COPPIA.gain.connect(c.destination);
+        MON_COPPIA.el = v; MON_COPPIA.coppia = -1;
+      } catch (e) { MON_COPPIA.el = null; return; }
+    }
+    var k = Math.max(0, parseInt(coppia || 0, 10) || 0);
+    if (MON_COPPIA.coppia !== k) {
+      try { MON_COPPIA.sp.disconnect(); } catch (e) {}
+      MON_COPPIA.sp.connect(MON_COPPIA.me, Math.min(5, k * 2), 0);
+      MON_COPPIA.sp.connect(MON_COPPIA.me, Math.min(5, k * 2 + 1), 1);
+      MON_COPPIA.coppia = k;
+    }
+    if (c.state === "suspended") { try { c.resume(); } catch (e) {} }
   }
   var SENZA_SUONO = {};          // per non ripetere l'avviso a ogni fotogramma
   // Il contesto va riacceso da un gesto vero: nasce sospeso e, se lo si
@@ -4049,6 +4134,12 @@
     (audioSeq() || []).forEach(function (a) {
       if (!sottoIlVideo || a.legato !== sottoIlVideo.id) return;
       if (a.muto || !suona[a.traccia] || a.canale) return;
+      // PIU' DI DUE CANALI: NON LO FA IL VIDEO. Lo studio esce a sei canali
+      // — programma sui primi due, un altro bus sul terzo e quarto — e
+      // l'elemento video li piega tutti dentro due uscite sommandoli: sono
+      // le stesse voci due volte, ed e' l'eco che si sente. Con piu' di due
+      // canali si passa sempre dalla catena, che ne prende una coppia sola.
+      if (canaliDelMateriale() > 2) return;
       if (a.gain || a.entra || a.esce || (statoTraccia(a.traccia).gain || 0)) return;
       if (PROG.vuoto) return;                    // sul nero il video e' fermo
       dalVideo = a;
@@ -4081,7 +4172,7 @@
       // Web Audio serve solo per quello che l'elemento non sa fare: alzare
       // sopra il suo massimo, o tenere un canale solo. Per tutto il resto
       // basta il volume, che non ha bisogno di svegliare niente.
-      s = suonoDi(n, db > 0 || !!att.canale);
+      s = suonoDi(n, db > 0 || !!att.canale || canaliDelMateriale() > 2);
       // NON SI CHIEDE DI PARTIRE MENTRE STA CARICANDO. Assegnare una
       // sorgente e chiamare play() nello stesso istante fa fallire play()
       // con "interrotta da una nuova richiesta di caricamento" — che non
@@ -4098,7 +4189,7 @@
         try { s.el.currentTime = dove; } catch (e) {}
         s.id = att.id;
       }
-      if (s.sp) canaleSuono(s, att.canale || "");
+      if (s.sp) canaleSuono(s, att.canale || "", att.coppia || 0);
       var dentroDa = T - (att.t0 || 0), dur = Math.max(0.05, att.fuori - att.dentro);
       var f = 1;
       if (att.entra > 0.01) f *= Math.max(0, Math.min(1, dentroDa / att.entra));
@@ -6268,6 +6359,7 @@
   function mostraNelCentro(url, fmt, nome) {
     var v = el("player"); if (!v) return;
     if (hls) { hls.destroy(); hls = null; }
+    ARCH = null;
     apertaId = ""; guardando = nome || "clip";
     formato = fmt || formato;
     accendiFormati(); telaioForma();
@@ -6349,6 +6441,55 @@
     });
   }
 
+  // ── L'OROLOGIO DELLA PARTITA INTERA ───────────────────────────────
+  //
+  //  Il monitor ha un <video> solo e la partita sta in piu' file. Invece
+  //  di insegnare a cinquantasette punti della pagina che il tempo del
+  //  video non e' il tempo della partita, si sposta l'orologio: su questo
+  //  elemento currentTime e duration parlano il tempo della PARTITA. Chi
+  //  legge legge la partita; chi scrive fa cambiare file da solo. Il resto
+  //  della pagina — il taglio, le marche, la lente, il timecode — continua
+  //  a fare esattamente quello che faceva.
+  var ARCH = null, NATIVO = null;
+  function montaOrologio(v) {
+    if (NATIVO) return;
+    var pr = HTMLMediaElement.prototype;
+    var dt = Object.getOwnPropertyDescriptor(pr, "currentTime");
+    var dd = Object.getOwnPropertyDescriptor(pr, "duration");
+    NATIVO = { leggi: dt.get, scrivi: dt.set, durata: dd.get };
+    Object.defineProperty(v, "currentTime", {
+      configurable: true,
+      get: function () { return ARCH ? ARCH.pezzi[ARCH.i].da + NATIVO.leggi.call(v) : NATIVO.leggi.call(v); },
+      set: function (t) {
+        if (!ARCH) return NATIVO.scrivi.call(v, t);
+        var x = pezzoArchAl({ pezziArch: ARCH.pezzi }, t);
+        if (x.i === ARCH.i) { try { NATIVO.scrivi.call(v, x.dentro); } catch (e) {} return; }
+        caricaPezzoArch(v, t, !v.paused);
+      }
+    });
+    Object.defineProperty(v, "duration", {
+      configurable: true,
+      get: function () { return ARCH ? ARCH.durata : NATIVO.durata.call(v); }
+    });
+    // finito un pezzo comincia il prossimo: l'intervallo fra i due si
+    // scavalca, che e' quello che fa chiunque monti
+    v.addEventListener("ended", function () {
+      if (!ARCH || ARCH.i + 1 >= ARCH.pezzi.length) return;
+      caricaPezzoArch(v, ARCH.pezzi[ARCH.i + 1].da, true);
+    });
+  }
+  function caricaPezzoArch(v, t, suona) {
+    var x = pezzoArchAl({ pezziArch: ARCH.pezzi }, t);
+    ARCH.i = x.i;
+    var vai = function () {
+      v.removeEventListener("loadedmetadata", vai);
+      try { NATIVO.scrivi.call(v, x.dentro); } catch (e) {}
+      if (suona) v.play().catch(function () {});
+    };
+    v.addEventListener("loadedmetadata", vai);
+    v.src = conBase(x.p.via); v.preload = "auto"; v.load();
+  }
+
   function apri(r) {
     var v = el("player"); if (!v) return;
     // L'indirizzo di una partita d'archivio e' firmato e cambia a ogni giro
@@ -6369,10 +6510,24 @@
       v.addEventListener("loadedmetadata", vai);
       v.preload = "auto"; v.load();
     };
-    if (r.materiale === "archivio") {                 // i byte sono su S3, non qui
+    if (r.materiale === "archivio") {                 // i byte stanno nel magazzino, non qui
+      montaOrologio(v);
+      coppiaSulMonitor(v, r.canali || 2, 0);
+      var pz = pezziArchDi(r);
+      if (pz && pz.length > 1) {
+        ARCH = { pezzi: pz.map(function (x) { return { da: x.da, durata: x.durata, via: x.via }; }),
+                 i: 0, durata: r.durata || 0 };
+        var k0 = (POSIZIONE_APERTURA !== null && POSIZIONE_APERTURA !== undefined)
+               ? POSIZIONE_APERTURA : ((r.kickoff && r.kickoff["1"]) || 0);
+        POSIZIONE_APERTURA = null;
+        caricaPezzoArch(v, k0, false);
+        return;
+      }
+      ARCH = null;
       if (r.via) { v.src = viaArchivioPagina(r); fermoSu(); }
       return;
     }
+    ARCH = null;
     if (r.materiale === "integrale") { v.src = BASE + "/clip/" + r.id + "/integrale.mp4"; fermoSu(); return; }
     if (r.materiale === "scaduto") { v.removeAttribute("src"); v.load(); return; }
     // LA COPIA LEGGERA. Se il ponte l'ha scritta si guarda quella: pesa un
@@ -6639,14 +6794,13 @@
           // una partita in due file (primo e secondo tempo) entra tutta: prima
           // il secondo tempo in silenzio, poi il primo, che e' quello che si apre
           var parti = +o.dataset.parti || 1, rec = o.dataset.arch, titolo = o.dataset.titolo;
-          // fino a tre parti entrano tutte; una serata a otto blocchi apre la prima
-          var altre = []; if (parti <= 3) for (var i = parti - 1; i >= 1; i--) altre.push(i);
-          if (parti > 3) dice("Evento in " + parti + " parti: apro la prima.");
-          var giro = function () {
-            if (!altre.length) return apriDaArchivio(rec, null, titolo, 0);
-            manda({ tipo: "clip-archivio-apri", rec: rec, pezzo: altre.shift() }).then(giro).catch(function () { giro(); });
-          };
-          giro();
+          // UNA PARTITA, UNA VOCE. Prima ogni file diventava una
+          // registrazione a se': "1º tempo" e "2º tempo" in elenco, e chi
+          // montava ne apriva una e vedeva mezza partita. Adesso la
+          // registrazione e' una sola e dentro ha tutti i pezzi, ognuno al
+          // secondo in cui comincia davvero.
+          if (parti > 1) dice("Partita in " + parti + " pezzi: la apro intera\u2026", true);
+          apriDaArchivio(rec, null, titolo, 0);
         });
         if (el("nPartite")) el("nPartite").textContent = conVideo;
         if (sel.options[0]) sel.options[0].textContent = "\u2014 " + voci.length + " partite: scegli \u2014";
