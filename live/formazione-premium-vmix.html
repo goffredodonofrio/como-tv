@@ -209,6 +209,9 @@
   #panca .coach .cf img{width:100%;height:100%;object-fit:cover;}
   #panca .coach .cf .cfsig{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     font-family:'Mazzard',sans-serif;font-weight:800;font-size:34px;color:#C9A24B;}
+  /* la sagoma respira: se riempie il riquadro fino ai bordi sembra un ritaglio
+     sbagliato, non un segno */
+  #panca .coach .cf .cfsig svg{width:76%;height:76%;display:block;}
   #panca .coach .ct span{display:block;font-family:'Mazzard',sans-serif;font-weight:700;font-size:12px;
     letter-spacing:.24em;color:#C9A24B;text-transform:uppercase;margin-bottom:3px;}
   #panca .coach .ct b{font-family:'Mazzard',sans-serif;font-weight:800;font-size:26px;color:#F5F1E6;
@@ -459,7 +462,10 @@
     titolari.forEach(function (r) {
       urls.push((r && r[3]) || "");
     });
-    urls.push("/loghi/foto-cesc.png");
+    // si scalda la foto dell'allenatore VERA, se c'e'. Prima si scaldava
+    // quella di Fabregas, che serviva al ripiego: il ripiego non esiste piu'
+    // e scaldare la faccia di uno che non c'entra era lavoro per niente.
+    if (D.af) urls.push(D.af);
     urls.forEach(function (u) {
       if (!u) return;
       var im = new Image();
@@ -474,9 +480,12 @@
     var all = [D.a && D.a[0], D.a && D.a[1]].filter(Boolean).join(" ") || "Allenatore";
     var iniz = (D.a && D.a[1] ? D.a[1] : (D.a && D.a[0] ? D.a[0] : "C")).slice(0,1).toUpperCase()
              + (D.a && D.a[0] ? D.a[0].slice(0,1).toUpperCase() : "");
-    // foto allenatore: dal magazzino per cognome (D.af), con Cesc come ripiego, poi le iniziali
-    var afoto = D.af || "/loghi/foto-cesc.png";
-    var cf = '<div class="cf"><img src="' + esc(afoto) + '" onerror="if(this.dataset.b){this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'}else{this.dataset.b=1;this.src=\'/loghi/foto-cesc.png\'}"><span class="cfsig" style="display:none">' + esc(iniz) + '</span></div>';
+    // foto allenatore dal magazzino; se non c'e', la sagoma. Niente piu'
+    // ripiego su Fabregas: era la faccia di una persona vera messa addosso a
+    // chiunque non avesse una foto sua.
+    var cf = '<div class="cf">' +
+      (D.af ? '<img src="' + esc(D.af) + '" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">' : '') +
+      '<span class="cfsig"' + (D.af ? ' style="display:none"' : '') + '>' + sagomaAllenatore() + '</span></div>';
     el("panca").querySelector(".coach").innerHTML = cf +
       '<div class="ct"><span>Allenatore</span><b>' + esc(all) + '</b></div>';
     var pr = "";
@@ -486,6 +495,33 @@
     el("pancarighe").innerHTML = pr;
     if (D.l) { var ps = el("pancastemma"); ps.src = D.l; ps.onerror=function(){ps.style.display="none";}; }
   } else el("panca").style.display = "none";
+
+// La sagoma dell'allenatore: quella che si vede quando la foto non c'e'.
+//
+// Prima il ripiego era /loghi/foto-cesc.png — cioe' la faccia di Fabregas
+// addosso a qualunque allenatore avversario senza foto. Stesso errore dei
+// cognomi, ma su una persona sola e riconoscibile: peggio. Poi venivano le
+// iniziali, che dicono qualcosa ma non sembrano una grafica.
+//
+// Una sagoma non e' nessuno, e questo e' il punto: dice "l'allenatore" senza
+// dire "questo allenatore". E' disegnata qui dentro invece che essere un
+// file in magazzino perche' un ripiego che puo' a sua volta mancare non e'
+// un ripiego — un 404 e si torna al buco.
+function sagomaAllenatore() {
+  var oro = "#C9A24B", fondo = "#0C122C";
+  return '<svg viewBox="0 0 100 100" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">' +
+    '<circle cx="46" cy="27" r="17" fill="' + oro + '"/>' +
+    '<path d="M46 48c-17 0-29 11-29 25v14h58V73c0-14-12-25-29-25z" fill="' + oro + '"/>' +
+    // lo spacco della giacca e la cravatta, in negativo sul fondo
+    '<path d="M37 50l9 15 9-15 5 3-14 22-14-22z" fill="' + fondo + '"/>' +
+    '<path d="M46 65l-4 5 4 17 4-17z" fill="' + oro + '"/>' +
+    // il pallone, in basso a destra come nel segno di riferimento
+    '<circle cx="78" cy="74" r="17" fill="' + fondo + '"/>' +
+    '<circle cx="78" cy="74" r="15" fill="' + oro + '"/>' +
+    '<path d="M78 66l7 5-3 8h-8l-3-8z" fill="' + fondo + '"/>' +
+    '<path d="M78 59v4M65 70l4 2M91 70l-4 2M71 87l3-4M85 87l-3-4" stroke="' + fondo + '" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
+    '</svg>';
+}
 
   // ── wipe: UNA sola lama che spazza ──
   el("wipe").innerHTML = '<div class="lama"></div>';
