@@ -24,8 +24,12 @@
   }
 
   /* ── la foto: mezza scena a destra, sfumata nel navy ── */
+  /* Lo stato di RIPOSO e' quello finale: foto visibile e a posto. Prima era
+     il contrario — opacity 0 e spostata di 70px — e la foto esisteva solo se
+     l'animazione arrivava in fondo. Basta che non parta (un iframe che il
+     browser non disegna, una scheda in secondo piano, il risparmio energetico)
+     e al posto della foto resta un buco: e' successo nelle Dichiarazioni. */
   #fotobox{position:absolute;right:0;top:0;width:1060px;height:1080px;overflow:hidden;
-    opacity:0;transform:translateX(70px);
     -webkit-mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.25) 16%,rgba(0,0,0,.7) 34%,#000 52%);
             mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.25) 16%,rgba(0,0,0,.7) 34%,#000 52%);}
   #fotobox img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;
@@ -77,7 +81,7 @@
   @keyframes fadeIn { to { opacity:1; } }
   @keyframes ruleIn { to { transform:scaleX(1); } }
   @keyframes salita { to { opacity:1; transform:translateY(0); } }
-  @keyframes daDestra { to { opacity:1; transform:translateX(0); } }
+  @keyframes daDestra { from { opacity:0; transform:translateX(70px); } to { opacity:1; transform:translateX(0); } }
 </style>
 </head>
 <body>
@@ -208,8 +212,20 @@
   if (D.img) {
     el("fotobox").style.display = "";
     el("foto").src = D.img;
-    if (STILL) { el("fotobox").style.opacity = 1; el("fotobox").style.transform = "none"; }
-    else el("fotobox").style.animation = "daDestra .9s cubic-bezier(.2,.7,.3,1) .55s forwards";
+    // Il riposo e' gia' lo stato giusto: al fermo immagine non c'e' niente
+    // da accendere. In movimento serve "both", o durante il ritardo la foto
+    // sarebbe visibile e poi sparirebbe per rientrare — un lampo. Ma "both"
+    // la tiene nascosta finche' l'animazione non finisce, e se non gira
+    // resta nascosta per sempre: percio' passato il tempo si impone comunque
+    // lo stato finale. I timer scattano anche dove le animazioni vengono
+    // sospese, ed e' esattamente il caso in cui questa rete serve.
+    if (!STILL) {
+      var fb = el("fotobox");
+      fb.style.animation = "daDestra .9s cubic-bezier(.2,.7,.3,1) .55s both";
+      setTimeout(function () {
+        fb.style.animation = "none"; fb.style.opacity = 1; fb.style.transform = "none";
+      }, 1850);
+    }
   }
 
   function replay() { location.reload(); }
