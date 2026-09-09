@@ -1717,12 +1717,28 @@
   // il club. Prima si prova col nome intero, cosi' se una giovanile ha una
   // maglia sua in archivio quella vince.
   var MARCATORE_GIOVANILE = /-(primavera|women|femminile|(under|u)-?(1[4-9]|2[0-3]))$/;
+  // Quando il nome che usiamo in onda e' l'italiano e l'archivio tiene
+  // l'originale, nessun aggancio elastico puo' salvarci: "rb-lipsia" e
+  // "rb-leipzig" non si contengono. Qui la corrispondenza si dichiara, una
+  // riga per squadra: e' esatta, quindi non allarga la soglia del
+  // contenimento (che resta com'e', per non far vestire all'Estudiantes la
+  // maglia dell'Estudiantes de Rio Cuarto).
+  var ALIAS_MAGLIA = {
+    "rb-lipsia": "rb-leipzig"
+  };
   function magliaUrl(side, dove) {
     var mio = slugM(side.teamName || side.label);
     var sua = magliaDi(mio, dove);
     if (sua) return sua;
+    if (ALIAS_MAGLIA[mio]) {
+      sua = magliaDi(ALIAS_MAGLIA[mio], dove);
+      if (sua) return sua;
+    }
     var club = mio.replace(MARCATORE_GIOVANILE, "");
-    return club !== mio ? magliaDi(club, dove) : "";
+    if (club === mio) return "";
+    sua = magliaDi(club, dove);
+    if (sua) return sua;
+    return ALIAS_MAGLIA[club] ? magliaDi(ALIAS_MAGLIA[club], dove) : "";
   }
   function magliaDi(mio, dove) {
     var k = "maglia-" + mio + "-" + dove;
