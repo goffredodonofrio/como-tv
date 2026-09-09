@@ -1295,6 +1295,68 @@ function fcCard(W,H,p,I,A,stretta){
   +G('t-fname',A,AT(M,nomeY,nome,{s:corpo,w:400,fill:V.ink,upper:false}))
   +'<rect x="'+M+'" y="'+filoY+'" width="'+R(W*0.12)+'" height="'+filoH+'" rx="'+R(filoH/3)+'" fill="'+V.ink+'"/>';
 }
+// COMPETIZIONI — lo stemma della competizione, grande.
+//
+// Era un disegno a misura fissa, 1200x1800: cerchio col logo, filetto oro,
+// nome sotto. Ora la stessa cosa in tutte le misure di piattaforma, con due
+// impaginazioni perche' una sola non regge: in verticale il blocco sta
+// incolonnato e centrato, ma su una striscia 1506x412 un cerchio centrato
+// non ci sta e il nome non avrebbe dove andare — li' il logo passa a
+// sinistra e il nome gli si mette accanto.
+//
+// La versione REPLICHE e' la stessa grafica con una targa oro sotto il nome:
+// stesso disegno, una parola in piu'. Tenerle separate come due formati
+// invece che come un interruttore serve a poterle esportare tutte e due in
+// un colpo solo, che e' esattamente quello che serve.
+function compCard(W,H,p,I,A,repliche){
+ var q='cc'+W+'x'+H, cx=W/2, nome=p.compBase||p.comp||'';
+ var stretta = (W/H) > 2;
+ var defs='<defs><radialGradient id="'+q+'c" cx="50%" cy="32%" r="74%">'
+  +'<stop offset="0" stop-color="#1A2A57"/><stop offset="1" stop-color="#0A0F24"/></radialGradient>'
+  +'<radialGradient id="'+q+'g" cx="50%" cy="22%" r="72%">'
+  +'<stop offset="0" stop-color="#24408A" stop-opacity=".38"/><stop offset="1" stop-color="#0A0F24" stop-opacity=".9"/></radialGradient>'
+  +goldGrad('g'+q)+'</defs>';
+ function cerchio(ccx,ccy,r){
+  var cR=R(r*0.72), lb=R(cR*2/Math.SQRT2*0.94), lh=R(lb/2);
+  return '<circle cx="'+ccx+'" cy="'+ccy+'" r="'+r+'" fill="url(#'+q+'c)" stroke="'+C.gold+'" stroke-opacity=".5" stroke-width="'+Math.max(3,R(r*0.009))+'"/>'
+   +'<circle cx="'+ccx+'" cy="'+ccy+'" r="'+(r-Math.max(3,R(r*0.012)))+'" fill="url(#'+q+'g)"/>'
+   +G('logo',A,(ph(I,'logoComp')
+      ? '<image href="'+ph(I,'logoComp')+'" x="'+(ccx-lh)+'" y="'+(ccy-lh)+'" width="'+lb+'" height="'+lb+'" preserveAspectRatio="xMidYMid meet"/>'
+      : T(ccx,ccy+R(r*0.06),'LOGO',{s:R(r*0.19),w:700,fill:C.fg3,ls:8,anchor:'middle'})));
+ }
+ // La targa REPLICHE: placca oro piena, testo navy, centrata sotto il nome.
+ // Stessa regola della Gol Collection — il testo si centra sull'occhio del
+ // carattere, non sulla base, o la parola sembra scivolata in giu'.
+ function targa(x,cima,s,ancora){
+  var cap=0.72, h=R(s*1.86), padX=R(s*0.8), pad=(h-s*cap)/2;
+  var w=R(estW('REPLICHE',s,R(s*0.16)))+padX*2;
+  var xr = ancora==='middle' ? R(x-w/2) : x;
+  return '<rect x="'+xr+'" y="'+cima+'" width="'+w+'" height="'+h+'" rx="'+R(s*0.16)+'" fill="url(#g'+q+')"/>'
+   +T(xr+padX,R(cima+pad+s*cap),'Repliche',{s:s,w:800,fill:C.n900,ls:R(s*0.16)});
+ }
+ if(stretta){
+  // striscia: logo a sinistra, nome accanto
+  var r2=R(H*0.34), ccx=R(W*0.10)+r2, ccy=R(H/2);
+  var tx=ccx+r2+R(W*0.035);
+  var ns=R(Math.min(H*0.20, (W-tx-R(W*0.05))/Math.max(6,estW(up(nome),1,0))));
+  var rs=R(ns*0.44), filoY=R(ccy-ns*0.95), nomeY=R(ccy+ns*0.34);
+  return bg(W,H)+defs+cerchio(ccx,ccy,r2)
+   +'<rect x="'+tx+'" y="'+filoY+'" width="'+R(W*0.06)+'" height="'+Math.max(4,R(H*0.018))+'" rx="3" fill="url(#g'+q+')"/>'
+   +G('t-name',A,T(tx,nomeY,nome,{s:ns,w:800,fill:C.ivory,ls:2}))
+   +(repliche?G('t-rep',A,targa(tx,R(nomeY+ns*0.30),rs)):'');
+ }
+ // incolonnata: cerchio, filetto, nome, e sotto la targa se serve
+ var r1=R(Math.min(W*0.36, H*0.245));
+ var ns1=R(Math.min(W*0.077, H*0.052));
+ var rs1=R(ns1*0.46);
+ var alt = r1*2 + R(H*0.075) + R(ns1*1.5) + (repliche?R(ns1*1.9):0);
+ var cy=R((H-alt)/2)+r1;
+ var filoY=R(cy+r1+H*0.048), nomeY=R(filoY+ns1*1.45);
+ return bg(W,H)+defs+cerchio(cx,cy,r1)
+  +'<rect x="'+R(cx-W*0.058)+'" y="'+filoY+'" width="'+R(W*0.117)+'" height="'+Math.max(5,R(H*0.005))+'" rx="4" fill="url(#g'+q+')"/>'
+  +G('t-name',A,T(cx,nomeY,nome,{s:ns1,w:800,fill:C.ivory,ls:2,anchor:'middle'}))
+  +(repliche?G('t-rep',A,targa(cx,R(nomeY+ns1*0.42),rs1,'middle')):'');
+}
 // FAN VOICE — story 9:16 (design dedicato)
 function mFanVoice(W,H,p,I,A){
  var cx=W/2;
@@ -1330,6 +1392,7 @@ var Imatch=[{k:'photo',l:'Foto'},{k:'logoComp',l:'Logo competizione'}];
 // scartati come doppioni. Alla famiglia resta da dichiarare solo l'occhiello.
 var Fgol=[{k:'gcTag',l:'Prodotto (occhiello)'}];
 var Ffc=[{k:'fcName',l:'Nome del format'},{k:'fcNum',l:'Numero di puntata'}];
+var Icomp=[{k:'logoComp',l:'Logo competizione'}];
 
 var FMT={
  feed_1080x1440:{label:'Social feed 3:4',group:'Match',w:1080,h:1440,useComp:true,fields:Fmatch,images:Imatch,gen:function(p,I,A){var W=1080,H=1440,PHh=891;
@@ -1725,16 +1788,20 @@ var FMT={
    +G('t-num',A,T(904,120,num,{s:40,w:800,fill:V.ink,ls:2,anchor:'end',upper:false}))
    +G('t-mark',A,mark);}},
 
- competizioni_1200x1800:{label:'Competizioni',group:'Competizioni',w:1200,h:1800,useComp:true,fields:Fmatch,images:[{k:'logoComp',l:'Logo competizione'}],gen:function(p,I,A){var W=1200,H=1800,cx=W/2,cy=760,r=430,cR=Math.round(r*0.72);
-  // box logo INSCRITTO nel cerchio (diagonale ≤ diametro cerchio): qualunque logo, anche rettangolare/alto, resta contenuto con margine.
-  var lb=Math.round(cR*2/Math.SQRT2*0.94),lh=lb/2;
-  return bg(W,H)
-   +'<defs><radialGradient id="ccF" cx="50%" cy="32%" r="74%"><stop offset="0" stop-color="#1A2A57"/><stop offset="1" stop-color="#0A0F24"/></radialGradient>'
-   +'<radialGradient id="cgF" cx="50%" cy="22%" r="72%"><stop offset="0" stop-color="#24408A" stop-opacity=".38"/><stop offset="1" stop-color="#0A0F24" stop-opacity=".9"/></radialGradient>'+goldGrad('gCF')+'</defs>'
-   +'<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="url(#ccF)" stroke="'+C.gold+'" stroke-opacity=".5" stroke-width="4"/><circle cx="'+cx+'" cy="'+cy+'" r="'+(r-5)+'" fill="url(#cgF)"/>'
-   +G('logo',A,(ph(I,'logoComp')?('<image href="'+ph(I,'logoComp')+'" x="'+(cx-lh)+'" y="'+(cy-lh)+'" width="'+lb+'" height="'+lb+'" preserveAspectRatio="xMidYMid meet"/>'):T(cx,cy+24,'LOGO',{s:80,w:700,fill:C.fg3,ls:8,anchor:'middle'})))
-   +'<rect x="'+(cx-70)+'" y="'+(cy+r+120)+'" width="140" height="9" rx="4" fill="url(#gCF)"/>'
-   +G('t-name',A,T(cx,cy+r+280,p.compBase||p.comp,{s:92,w:800,fill:C.ivory,ls:2,anchor:'middle'}));}},
+ // Le stesse misure di Piattaforma live, in due versioni: normale e
+ // REPLICHE. Sono formati separati e non un interruttore, perche' cosi' si
+ // esportano tutte e otto in un colpo solo — che e' il motivo per cui
+ // servono. La vecchia chiave 1200x1800 resta viva: ci sono sessioni salvate
+ // che la nominano, e rinominarla le manderebbe in bianco.
+ competizioni_1200x1800:{label:'Competizioni · Portrait (1200×1800)',group:'Competizioni',w:1200,h:1800,useComp:true,fields:Fmatch,images:Icomp,gen:function(p,I,A){return compCard(1200,1800,p,I,A,false);}},
+ comp_landscape_1920x1080:{label:'Competizioni · Landscape (1920×1080)',group:'Competizioni',w:1920,h:1080,useComp:true,fields:Fmatch,images:Icomp,gen:function(p,I,A){return compCard(1920,1080,p,I,A,false);}},
+ comp_banner_top_1920x1080:{label:'Competizioni · Banner top (1920×1080)',group:'Competizioni',w:1920,h:1080,useComp:true,fields:Fmatch,images:Icomp,gen:function(p,I,A){return compCard(1920,1080,p,I,A,false);}},
+ comp_banner_mid_1506x412:{label:'Competizioni · Banner mid (1506×412)',group:'Competizioni',w:1506,h:412,useComp:true,fields:Fmatch,images:Icomp,gen:function(p,I,A){return compCard(1506,412,p,I,A,false);}},
+ compr_portrait_1200x1800:{label:'Competizioni REPLICHE · Portrait (1200×1800)',group:'Competizioni',w:1200,h:1800,useComp:true,fields:Fmatch,images:Icomp,gen:function(p,I,A){return compCard(1200,1800,p,I,A,true);}},
+ compr_landscape_1920x1080:{label:'Competizioni REPLICHE · Landscape (1920×1080)',group:'Competizioni',w:1920,h:1080,useComp:true,fields:Fmatch,images:Icomp,gen:function(p,I,A){return compCard(1920,1080,p,I,A,true);}},
+ compr_banner_top_1920x1080:{label:'Competizioni REPLICHE · Banner top (1920×1080)',group:'Competizioni',w:1920,h:1080,useComp:true,fields:Fmatch,images:Icomp,gen:function(p,I,A){return compCard(1920,1080,p,I,A,true);}},
+ compr_banner_mid_1506x412:{label:'Competizioni REPLICHE · Banner mid (1506×412)',group:'Competizioni',w:1506,h:412,useComp:true,fields:Fmatch,images:Icomp,gen:function(p,I,A){return compCard(1506,412,p,I,A,true);}},
+
 };
 
 function items(){var out=[];Object.keys(FMT).forEach(function(k){var f=FMT[k];
@@ -1824,7 +1891,11 @@ var MENU=[
    'yt_parole_classico','yt_parole_split','yt_parole_volto',
    'yt_citazione_prot',
    'yt_vlog_foto']},
- {g:'Competizioni',k:['competizioni_1200x1800']}
+ {g:'Competizioni',k:[
+   'competizioni_1200x1800','comp_landscape_1920x1080',
+   'comp_banner_top_1920x1080','comp_banner_mid_1506x412',
+   'compr_portrait_1200x1800','compr_landscape_1920x1080',
+   'compr_banner_top_1920x1080','compr_banner_mid_1506x412']}
 ];
 
 // ── UNA SOLA PAGINA, DUE PORTE D'INGRESSO ─────────────────────────────────
@@ -1874,7 +1945,14 @@ var FNAME={feed_1080x1440:'feed',feed_maschera_1080x1920:'story-maschera',story_
  fc_landscape_1920x1080:'FC-landscape',fc_portrait_1200x1800:'FC-portrait',
  fc_card_984x1392:'FC-card',fc_banner_top_1920x1080:'FC-banner-top',
  fc_banner_mid_1506x412:'FC-banner-mid',bg_fc_1920x1080:'FC-background',bg_fs_1920x1080:'FS-background',
- bg_fmt_1920x1080:'FMT-background',bg_int_1920x1080:'INT-background',competizioni_1200x1800:'competizioni',
+ bg_fmt_1920x1080:'FMT-background',bg_int_1920x1080:'INT-background',competizioni_1200x1800:'competizioni-portrait',
+ comp_landscape_1920x1080:'competizioni-landscape',
+ comp_banner_top_1920x1080:'competizioni-banner-top',
+ comp_banner_mid_1506x412:'competizioni-banner-mid',
+ compr_portrait_1200x1800:'repliche-portrait',
+ compr_landscape_1920x1080:'repliche-landscape',
+ compr_banner_top_1920x1080:'repliche-banner-top',
+ compr_banner_mid_1506x412:'repliche-banner-mid',
  fmt_landscape_1920x1080:'FMT-landscape',fmt_portrait_1200x1800:'FMT-portrait',
  fmt_banner_top_1920x1080:'FMT-banner-top',fmt_banner_mid_1506x412:'FMT-banner-mid',format_card_talent:'format-talent',format_card_goleada:'format-goleada',format_card_clasicos:'format-clasicos',format_card_golden:'format-golden'};
 function fname(k){if(/-live$/.test(k)){var b=k.replace(/-live$/,'');return (FNAME[b]||b)+'-live';}return FNAME[k]||k;}

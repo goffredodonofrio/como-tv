@@ -1610,8 +1610,11 @@
         if (FOTO_RIS[k] === undefined && mancanti.indexOf(k) < 0) mancanti.push({ k: k, d: d });
       });
     });
-    var cfg = ponteConfig(true);
-    if (!cfg || !mancanti.length) return Promise.resolve();
+    // ponteConfig(false): prendi la configurazione com'e'. Con true apre i
+    // due prompt di riconfigurazione — che qui non c'entrano niente, e
+    // saltavano fuori a ogni Anteprima.
+    var cfg = ponteConfig(false);
+    if (!cfg || !cfg.url || !mancanti.length) return Promise.resolve();
     return Promise.all(mancanti.map(function (m) {
       var q = "?foto=" + encodeURIComponent(m.d.cognome) +
               (m.d.pid ? "&id=" + encodeURIComponent(m.d.pid) : "") +
@@ -1619,7 +1622,13 @@
       return fetch(cfg.url + q, { cache: "no-store" })
         .then(function (r) { return r.json(); })
         .then(function (j) { FOTO_RIS[m.k] = (j && j.url) || ""; })
-        .catch(function () { FOTO_RIS[m.k] = ""; });
+        // Se il ponte NON risponde non si sa niente, e non sapere niente non
+        // e' come sapere che non c'e' foto: si lascia la casella indecisa e
+        // il pacchetto ripiega sul vecchio modo. Vuoto va bene quando il
+        // ponte dice "non so di chi e'"; se invece non abbiamo potuto
+        // chiedere, spegnere tutte le facce e' un danno peggiore del rischio
+        // che volevamo evitare.
+        .catch(function () { delete FOTO_RIS[m.k]; });
     }));
   }
 
@@ -1641,7 +1650,12 @@
     function slugCog(c){return String(c||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"");}
     function tri(v) {
       var d = resolve(side, v);
-      var foto = d && d.cognome ? (FOTO_RIS[chiaveFoto(d, side)] || "") : "";
+      var ris = d && d.cognome ? FOTO_RIS[chiaveFoto(d, side)] : "";
+      // indecisa (il ponte non ha risposto) -> come si e' sempre fatto;
+      // decisa a vuoto -> vuoto, ed e' una risposta
+      var foto = (ris === undefined && d && d.cognome)
+        ? "/loghi/foto-premium-" + slugCog(d.cognome) + ".png"
+        : (ris || "");
       return [d.num || "", d.nome || "", d.cognome || "", foto];
     }
 
