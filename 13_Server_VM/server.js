@@ -848,6 +848,126 @@ function slug(nome) {
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
 }
 
+// ── la copia prima di cancellare ──────────────────────────────────────
+// logoSalva CANCELLA il file vecchio prima di scrivere il nuovo. La regola
+// nasce per gli STEMMI, dove "uno per squadra, il nuovo sostituisce il
+// vecchio" e' giusta. Le foto dei giocatori sono arrivate dopo sullo stesso
+// endpoint e si sono portate dietro quella regola — ma la loro chiave non e'
+// la squadra, e' il COGNOME, e i cognomi si ripetono: caricare la foto di
+// Caio Valle (Botafogo) cancellava quella di Alex Valle (Como). Senza
+// avviso, senza backup, senza modo di tornare indietro. Oggi 54 foto su 213
+// stanno su un cognome che due o piu' squadre hanno.
+//
+// Questo non risolve il problema — quello si risolve intestando le foto a
+// una squadra — ma smette di distruggere roba mentre lo si sistema. Si tiene
+// una copia datata, e per ogni chiave si conservano le ultime OTTO: basta a
+// rimediare a uno sbaglio, non abbastanza da riempire il disco.
+const STORICO = path.join(path.dirname(CONFIG.LOGHI),
+                          path.basename(CONFIG.LOGHI) + "-storico");
+const STORICO_QUANTE = 8;
+function quandoOra() {
+  const d = new Date(), due = (n) => String(n).padStart(2, "0");
+  return String(d.getFullYear()) + due(d.getMonth() + 1) + due(d.getDate()) +
+         "-" + due(d.getHours()) + due(d.getMinutes()) + due(d.getSeconds());
+}
+function logoArchivia(chiave) {
+  let salvate = 0;
+  for (const e of Object.values(TIPI_LOGO)) {
+    const vecchio = path.join(CONFIG.LOGHI, chiave + e);
+    if (!fs.existsSync(vecchio)) continue;
+    try {
+      fs.mkdirSync(STORICO, { recursive: true });
+      fs.copyFileSync(vecchio, path.join(STORICO, chiave + "--" + quandoOra() + e));
+      salvate++;
+    } catch (err) {
+      // se lo storico non riesce si va avanti lo stesso: meglio un
+      // caricamento senza rete che un caricamento che fallisce
+      console.log("[foto] storico non riuscito per " + chiave + e + ": " + err.message);
+    }
+  }
+  if (salvate) potaStorico(chiave);
+  return salvate;
+}
+function potaStorico(chiave) {
+  try {
+    // "chiave--" e non "chiave": lo slug non produce mai due trattini di
+    // fila, quindi "paz--" non pesca mai le copie di "pazzini"
+    const miei = fs.readdirSync(STORICO).filter((f) => f.indexOf(chiave + "--") === 0).sort();
+    for (const f of miei.slice(0, Math.max(0, miei.length - STORICO_QUANTE))) {
+      fs.unlinkSync(path.join(STORICO, f));
+    }
+  } catch (err) { /* lo storico e' una comodita', non un obbligo */ }
+}
+
+// ── di chi e' questa foto ─────────────────────────────────────────────
+// Il nome di una foto premium e' solo il COGNOME, e i cognomi si ripetono:
+// oggi 54 foto su 213 stanno su un cognome che due o piu' squadre hanno.
+// "rodriguez" sono trenta persone diverse; "paz" sono Nico del Como e altri
+// tre. Una foto sola non puo' essere giusta per tutti, e mostrare la faccia
+// sbagliata e' peggio che non mostrarne nessuna.
+//
+// L'indice tiene due cose:
+//   ambigui  i cognomi che nelle nostre competizioni appartengono a piu' di
+//            una squadra. Si calcola dalle rose e si aggiorna quando cambia
+//            il mercato: e' un dato, non una regola scritta nel codice.
+//   intesta  per ogni cognome ambiguo, quale file spetta a quale squadra
+//            (id ESPN, non il nome: "Hellas Verona" e "Verona" sono la
+//            stessa squadra e ci hanno gia' fregato con le maglie).
+//
+// La regola di lettura e' prudente di proposito: un cognome che NON e' fra
+// gli ambigui continua a funzionare come sempre, perche' non c'e' niente da
+// sbagliare. Solo gli ambigui pretendono l'intestazione, e senza quella
+// rispondono vuoto. Cosi' nessuna grafica che oggi funziona smette di
+// funzionare, e quelle che oggi mentono smettono di mentire.
+const INTESTA_FILE = path.join(path.dirname(CONFIG.LOGHI), "foto-intestazioni.json");
+function intestaLeggi() {
+  try {
+    const d = JSON.parse(fs.readFileSync(INTESTA_FILE, "utf8"));
+    return { ambigui: d.ambigui || [], intesta: d.intesta || {} };
+  } catch (err) { return { ambigui: [], intesta: {} }; }
+}
+function intestaScrivi(d) {
+  fs.mkdirSync(path.dirname(INTESTA_FILE), { recursive: true });
+  fs.writeFileSync(INTESTA_FILE, JSON.stringify(d, null, 1));
+}
+// Il file che spetta a (cognome, squadra). Vuoto = non lo sappiamo, e allora
+// meglio niente.
+function fotoDiChi(cognome, squadra) {
+  const cog = slug(cognome);
+  if (!cog) return "";
+  const d = intestaLeggi();
+  const ambiguo = d.ambigui.indexOf(cog) >= 0;
+  if (!ambiguo) {
+    const f = "foto-premium-" + cog + ".png";
+    return fs.existsSync(path.join(CONFIG.LOGHI, f)) ? "/loghi/" + f : "";
+  }
+  const sq = String(squadra || "").trim();
+  const mio = (d.intesta[cog] || {})[sq];
+  if (!mio) return "";
+  return fs.existsSync(path.join(CONFIG.LOGHI, mio)) ? "/loghi/" + mio : "";
+}
+// Dove si archivia una foto nuova. Il nome lo decide il PONTE, mai la
+// pagina: se il cognome e' libero resta quello di sempre — cosi' le 213 foto
+// gia' in magazzino restano valide e nessuno deve ricaricare niente — e se
+// e' gia' preso da un'altra squadra si aggiunge l'id. Chi carica non digita
+// mai un nome di file e non sa che questa distinzione esiste.
+function fotoNomePer(cognome, squadra) {
+  const cog = slug(cognome), sq = String(squadra || "").trim();
+  const d = intestaLeggi();
+  const gia = d.intesta[cog] || {};
+  if (gia[sq]) return gia[sq];
+  const base = "foto-premium-" + cog + ".png";
+  const presoDaAltri = Object.keys(gia).some((k) => k !== sq && gia[k] === base);
+  const esisteSenzaPadrone = !Object.keys(gia).length &&
+        fs.existsSync(path.join(CONFIG.LOGHI, base));
+  if (!presoDaAltri && !esisteSenzaPadrone) return base;
+  if (!sq) return base;                      // senza squadra non si puo' distinguere
+  // un trattino solo, non due: logoSalva passa il nome per slug(), che
+  // collassa i trattini di fila. Con "--" il file finiva su disco con un
+  // trattino e nell'indice con due, e l'indice puntava a un file inesistente.
+  return "foto-premium-" + cog + "-" + slug(sq) + ".png";
+}
+
 function logoSalva(p) {
   const nome = String(p.nome || "").trim();
   if (!nome) throw new Error("manca il nome della squadra");
@@ -861,7 +981,9 @@ function logoSalva(p) {
   const chiave = slug(nome);
   if (!chiave) throw new Error("nome squadra non valido");
   fs.mkdirSync(CONFIG.LOGHI, { recursive: true });
-  // un logo per squadra: caricarne uno nuovo sostituisce il vecchio
+  // un logo per squadra: caricarne uno nuovo sostituisce il vecchio.
+  // Prima pero' se ne tiene una copia: vedi logoArchivia qui sopra.
+  logoArchivia(chiave);
   for (const e of Object.values(TIPI_LOGO)) {
     const vecchio = path.join(CONFIG.LOGHI, chiave + e);
     if (fs.existsSync(vecchio)) fs.unlinkSync(vecchio);
@@ -871,6 +993,44 @@ function logoSalva(p) {
   // cambia e nessuno sa perche', questa riga risponde
   if (p.__chi) console.log("[foto] " + chiave + est + " caricata da " + p.__chi);
   return { ok: true, nome: nome, url: "/loghi/" + chiave + est, chi: p.__chi || undefined };
+}
+
+// Carica una foto premium SAPENDO di chi e'. La pagina manda cognome,
+// squadra e immagine; il nome del file lo sceglie il ponte e se lo segna.
+// E' l'unica differenza con logo-carica, ed e' quella che serve: da qui in
+// avanti nessuna foto entra in magazzino senza un padrone.
+function fotoSalva(p) {
+  const cognome = String(p.cognome || "").trim();
+  if (!cognome) throw new Error("manca il cognome");
+  const sq = String((p.squadra && p.squadra.id) || p.squadra || "").trim();
+  if (!sq) throw new Error("manca la squadra");
+  const nomeFile = fotoNomePer(cognome, sq);
+  const chiave = nomeFile.replace(/\.png$/, "");
+  const esito = logoSalva({ nome: chiave, dati: p.dati, __chi: p.__chi });
+  // nell'indice va il nome VERO con cui il file e' finito su disco, non
+  // quello che avevamo in mente: logoSalva puo' cambiarlo (slug, estensione)
+  // e un indice che punta a un file inesistente e' peggio di nessun indice
+  const fileVero = String(esito.url || "").split("/").pop();
+  const d = intestaLeggi();
+  const cog = slug(cognome);
+  d.intesta[cog] = d.intesta[cog] || {};
+  d.intesta[cog][sq] = fileVero || nomeFile;
+  intestaScrivi(d);
+  return { ok: true, url: esito.url, file: fileVero, cognome: cog, squadra: sq };
+}
+// Intesta una foto GIA' in magazzino, senza ricaricarla: e' il clic che
+// sistema le 54 rimaste indietro.
+function fotoIntesta(p) {
+  const cog = slug(p.cognome || "");
+  const sq = String((p.squadra && p.squadra.id) || p.squadra || "").trim();
+  if (!cog || !sq) throw new Error("servono cognome e squadra");
+  const file = String(p.file || ("foto-premium-" + cog + ".png"));
+  if (!fs.existsSync(path.join(CONFIG.LOGHI, file))) throw new Error("quella foto non c'e': " + file);
+  const d = intestaLeggi();
+  d.intesta[cog] = d.intesta[cog] || {};
+  d.intesta[cog][sq] = file;
+  intestaScrivi(d);
+  return { ok: true, cognome: cog, squadra: sq, file: file };
 }
 
 function logoElenco() {
@@ -891,6 +1051,9 @@ function logoElenco() {
 
 function logoCancella(p) {
   const chiave = slug(p.nome);
+  // anche il "togli" passa dallo storico: cancellare a mano la foto
+  // sbagliata e' un errore facile quanto sovrascriverla
+  logoArchivia(chiave);
   let tolti = 0;
   for (const e of Object.values(TIPI_LOGO)) {
     const f = path.join(CONFIG.LOGHI, chiave + e);
@@ -1979,6 +2142,14 @@ const server = http.createServer((req, res) => {
     if (q.get("regia")) return json(res, statoRegia(canaleDi(q.get("canale") || q.get("c"))));
     if (q.get("partita")) return json(res, statoPartita(canaleDi(q.get("canale") || q.get("c"))));
     if (q.get("loghi")) return json(res, logoElenco());
+    // "la foto di <cognome> per la squadra <id>": l'indirizzo, o vuoto.
+    // Le grafiche non devono piu' indovinare il nome del file da sole: era
+    // proprio quel tirare a indovinare a far uscire la faccia di un Valle
+    // sulla formazione dell'altro.
+    if (q.get("foto")) {
+      return json(res, { url: fotoDiChi(q.get("foto"), q.get("squadra") || q.get("sq")) });
+    }
+    if (q.get("intestazioni")) return json(res, intestaLeggi());
     if (q.get("video")) return json(res, videoElenco());
     if (q.get("magazzino")) return json(res, magazzinoStato());
     if (q.get("budget") === "drive") {
@@ -2021,13 +2192,15 @@ const LAVORO_APERTO = process.env.COMOTV_LAVORO_APERTO !== "0";
 // caricamento non chiede niente, e da fuori la chiave serve come prima.
 const RETE_CASA = String(process.env.COMOTV_RETE || "")
   .split(",").map(x => x.trim()).filter(Boolean);
-const SENZA_CHIAVE_DA_CASA = new Set(["logo-carica"]);
+const SENZA_CHIAVE_DA_CASA = new Set(["logo-carica", "foto-carica", "foto-intesta"]);
 
 // Le password personali aprono SOLO il magazzino delle foto. Non sono chiavi
 // di contributo ridotte: chi ne ha una carica le foto e basta, non manda
 // grafiche in scaletta e non tocca la regia. Cosi' darne una a chi lavora da
 // casa non allarga niente di quello che puo' fare.
-const OP_MAGAZZINO = new Set(["logo-carica"]);
+// foto-carica e foto-intesta sono lo stesso mestiere di logo-carica — mettere
+// una foto in magazzino — solo fatto sapendo di chi e'. Stessi permessi.
+const OP_MAGAZZINO = new Set(["logo-carica", "foto-carica", "foto-intesta"]);
 
 function daCasa(ip) {
   if (!RETE_CASA.length || !ip) return false;
@@ -2134,6 +2307,8 @@ function permesso(p, ip) {
           case "budget-invia": out = budgetInvia(p); break;
           case "budget-esito": out = budgetEsito(p); break;
           case "logo-carica":  out = logoSalva(p); break;
+          case "foto-carica":  out = fotoSalva(p); break;
+          case "foto-intesta": out = fotoIntesta(p); break;
           case "logo-togli":   out = logoCancella(p); break;
           case "video-inizia": out = videoInizia(p); break;
           case "video-pezzo":  out = videoPezzo(p); break;

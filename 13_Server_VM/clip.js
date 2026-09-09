@@ -58,6 +58,77 @@ const MAX_CLIP = 900;
 // I formati in cui esce una clip. Il 16:9 e' il flusso com'e': si ricopiano i
 // byte e basta. Gli altri due ritagliano l'immagine, quindi si ricodificano —
 // non e' una scelta, e' che si sta cambiando l'inquadratura.
+// ── L'INQUADRATURA CHE SI MUOVE ───────────────────────────────────────
+//
+//  Da un 16:9 un verticale prende il 31% della larghezza: quello che resta
+//  fuori, resta fuori. Finora il ritaglio era fermo al centro, e su
+//  un'azione che attraversa il campo si vedeva erba vuota. Adesso il
+//  ritaglio puo' SEGUIRE, guidato da qualche punto — dei keyframe: {t, x}
+//  con t in secondi dal principio del pezzo e x il centro dell'inquadratura
+//  da 0 (tutto a sinistra) a 1 (tutto a destra).
+//
+//  I punti li propone la macchina (inquadra.py) e li corregge chi monta:
+//  l'automatico non ha mai l'ultima parola, perche' segue i giocatori e i
+//  giocatori non sono la palla.
+const INQUADRA_PY = path.join(__dirname, "inquadra.py");
+const LARGHEZZA_FORMATO = { "9:16": (9 / 16) / (16 / 9), "3:4": (3 / 4) / (16 / 9), "1:1": 1 / (16 / 9) };
+
+// SENZA SCATTI. Fra un punto e l'altro non si va in retta ma con una curva
+// che parte e arriva ferma (3u^2-2u^3): con la retta, a ogni keyframe
+// l'inquadratura cambiava direzione di colpo e si vedeva uno strappo.
+// Le virgole vanno protette: dentro un filtro separano i filtri.
+function fraDuePunti(a, b, t0, t1, quale) {
+  const dt = Math.max(0.04, t1 - t0);
+  const u = "((t-" + t0.toFixed(2) + ")/" + dt.toFixed(2) + ")";
+  const morbido = "(" + u + "*" + u + "*(3-2*" + u + "))";
+  return "(" + a + "+(" + b + "-" + a + ")*" + morbido + ")";
+}
+// una qualsiasi delle tre curve (x, y, zoom) come espressione di t
+function espressioneDi(punti, campo, difetto, avvolgi) {
+  const p = (punti || []).slice().filter((k) => isFinite(k.t)).sort((a, b) => a.t - b.t);
+  if (!p.length) return null;
+  const v = (k) => avvolgi((k[campo] === undefined ? difetto : k[campo]));
+  let e = v(p[p.length - 1]);
+  for (let i = p.length - 2; i >= 0; i--) {
+    e = "if(lt(t\\," + p[i + 1].t.toFixed(2) + ")\\," +
+        fraDuePunti(v(p[i]), v(p[i + 1]), p[i].t, p[i + 1].t, campo) + "\\," + e + ")";
+  }
+  if (p[0].t > 0.01) e = "if(lt(t\\," + p[0].t.toFixed(2) + ")\\," + v(p[0]) + "\\," + e + ")";
+  return e;
+}
+
+// Il filtro completo per un pezzo. Il ritaglio puo' muoversi in tutte e due
+// le direzioni e stringersi: la larghezza e l'altezza vengono dallo zoom,
+// e sopra o sotto ci si sposta solo se si e' stretto qualcosa (a zoom 1 un
+// 9:16 prende gia' tutta l'altezza e non c'e' margine).
+//  LO ZOOM E' PER CLIP, I MOVIMENTI NO. Nel filtro crop di ffmpeg la
+//  larghezza e l'altezza si calcolano UNA VOLTA all'inizio: solo x e y si
+//  rivalutano a ogni fotogramma (eval=frame). Quindi quanto si stringe e'
+//  una scelta per il pezzo, e dentro quella finestra ci si muove liberi in
+//  tutte e due le direzioni — che e' anche il motivo per cui lo zoom
+//  serve: a piena altezza, sopra e sotto non c'e' margine dove andare.
+function ritaglioDelPezzo(formato, inq) {
+  const base = (FORMATI[formato] || FORMATI["16:9"]).vf;
+  const largo = LARGHEZZA_FORMATO[formato];
+  if (!base || !largo || !inq) return base;
+  const punti = Array.isArray(inq) ? inq : (inq.punti || []);
+  const z = Math.max(0.35, Math.min(1, Array.isArray(inq) ? 1 : (inq.z || 1)));
+  if (!punti.length && z >= 0.999) return base;
+  const h = "ih*" + z.toFixed(4);
+  const w = "ih*" + (z * largo * 16 / 9).toFixed(6);
+  const cx = espressioneDi(punti.length ? punti : [{ t: 0, x: 0.5, y: 0.5 }], "x", 0.5,
+                           (v) => "(" + Number(v).toFixed(4) + "*iw)");
+  const cy = espressioneDi(punti.length ? punti : [{ t: 0, x: 0.5, y: 0.5 }], "y", 0.5,
+                           (v) => "(" + Number(v).toFixed(4) + "*ih)");
+  const X = "max(0\\,min(iw-" + w + "\\," + cx + "-(" + w + ")/2))";
+  const Y = "max(0\\,min(ih-" + h + "\\," + cy + "-(" + h + ")/2))";
+  const scala = /scale=\d+:\d+/.exec(base);
+  // niente eval=frame: in ffmpeg 6 x e y sono gia' rivalutate a ogni
+  // fotogramma (il flag T nelle opzioni), e l'opzione non esiste piu'
+  return "crop=w=" + w + ":h=" + h + ":x='" + X + "':y='" + Y + "'" +
+         (scala ? "," + scala[0] : "");
+}
+
 const FORMATI = {
   "16:9": { vf: "" },
   "1:1":  { vf: "crop=ih:ih,scale=1080:1080" },
@@ -174,6 +245,29 @@ function portaLibera(porta) {
     try { s.close(); } catch (e) {}
     return libera;
   } catch (e) { return false; }
+}
+
+// LE PORTE, UNA PER UNA. In regia si sa su quale porta sta trasmettendo
+// chi trasmette: e allora la porta si sceglie, non la si subisce. Qui si
+// dice, per ognuna, se e' libera, se e' nostra e in attesa, se ci sta
+// entrando qualcosa, o se se l'e' presa qualcun altro (l'altro ambiente
+// sulla stessa macchina, o un processo rimasto da un riavvio).
+function statoPorte() {
+  const mie = {};
+  Object.keys(R.reg).forEach((k) => {
+    const r = R.reg[k];
+    if (r.stato !== "registra" || !r.ascolto) return;
+    mie[r.ascolto.porta] = r;
+  });
+  return PORTE.map((porta) => {
+    const r = mie[porta];
+    if (r) {
+      const scritto = durataRegistrata(r.id);
+      return { porta: porta, stato: scritto > 0 ? (r.guarda ? "guarda" : "rec") : "attesa",
+               reg: r.id, titolo: r.titolo || "", durata: scritto };
+    }
+    return { porta: porta, stato: portaLibera(porta) ? "libera" : "occupata" };
+  });
 }
 
 function assicura(d) { try { fs.mkdirSync(d, { recursive: true }); } catch (e) {} }
@@ -381,6 +475,14 @@ function proxyCe(id) {
 function avviaProxy(r) {
   if (!PROXY_ACCESO || r.guarda || r.stato !== "registra") return;
   if (PROXYS.get(r.id)) return;
+  // UN PROXY SOLO PER REGISTRAZIONE. Un riavvio del ponte puo' lasciare in
+  // giro quello di prima: due encoder che scrivono gli stessi p00042.ts si
+  // sovrascrivono a vicenda, i segmenti escono monchi e non ci si estrae
+  // nemmeno un fotogramma. Prima di accenderne uno, si chiude quello vecchio.
+  if (r.proxyPid) {
+    try { process.kill(r.proxyPid, "SIGKILL"); console.log("[clip] proxy: chiuso l'orfano " + r.proxyPid); } catch (e) {}
+    delete r.proxyPid;
+  }
   if (PROXYS.size >= MAX_PROXY) { console.log("[clip] proxy: gia' " + PROXYS.size + " in lavorazione, questa diretta ne resta senza"); return; }
   const dir = cartellaReg(r.id);
   if (!fs.existsSync(playlistDi(r.id))) { setTimeout(() => avviaProxy(r), 3000); return; }
@@ -426,6 +528,133 @@ function fermaProxy(id) {
   try { process.kill(p.pid, "SIGTERM"); } catch (e) {}
 }
 
+// ── L'ANTEPRIMA DI OGNI PORTA ─────────────────────────────────────────
+//
+//  Chi apre il MAM in diretta vuole vedere, in un colpo d'occhio, cosa sta
+//  entrando su ogni porta: e' il multiview della regia. Un video per porta
+//  sarebbe dodici lettori aperti; qui invece si scrive un fotogramma ogni
+//  pochi secondi — preso dall'ULTIMO segmento della copia leggera, che e'
+//  480 di larghezza e costa quasi niente — e la pagina lo rinfresca.
+const ANTEPRIMA_OGNI = parseInt(process.env.COMOTV_CLIP_ANTEPRIMA || "5", 10);
+const anteprimeInCorso = new Set();
+
+function ultimoSegmento(id) {
+  const dir = cartellaReg(id);
+  const lista = [];
+  try {
+    fs.readdirSync(dir).forEach((f) => {
+      const m = /^([sp])(\d{5})\.ts$/.exec(f);
+      if (!m) return;
+      lista.push({ n: parseInt(m[2], 10) + (m[1] === "p" ? 1000000 : 0), f: path.join(dir, f) });
+    });
+  } catch (e) {}
+  if (!lista.length) return "";
+  lista.sort((a, b) => a.n - b.n);
+  // il PENULTIMO: l'ultimo puo' essere ancora in scrittura, e un segmento a
+  // meta' non da' nessun fotogramma
+  return lista[Math.max(0, lista.length - 2)].f;
+}
+
+async function anteprimaViva(r) {
+  if (!r || r.stato !== "registra" || r.arch) return;
+  if (anteprimeInCorso.has(r.id)) return;
+  const da = ultimoSegmento(r.id);
+  if (!da) return;
+  anteprimeInCorso.add(r.id);
+  const fuori = path.join(cartellaReg(r.id), "vivo.jpg");
+  // il file di passaggio tiene l'estensione .jpg: ffmpeg sceglie il formato
+  // dal nome, e su un "vivo.jpg.tmp" non scrive niente senza dire perche'
+  const mezzo = path.join(cartellaReg(r.id), "vivo-nuovo.jpg");
+  try {
+    const fatto = await new Promise((si) => {
+      const pr = spawn(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin",
+        "-i", da, "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "6", "-y", mezzo], { stdio: "ignore" });
+      pr.on("error", () => si(false));
+      pr.on("close", (code) => si(code === 0));
+    });
+    if (fatto) { try { fs.renameSync(mezzo, fuori); r.vivoQuando = Date.now(); } catch (e) {} }
+  } finally { anteprimeInCorso.delete(r.id); }
+}
+
+function giraAnteprime() {
+  Object.keys(R.reg).forEach((k) => {
+    const r = R.reg[k];
+    if (r.stato !== "registra" || r.arch || r.attesa) return;
+    anteprimaViva(r).catch(() => {});
+  });
+}
+
+// ── VEDERE SENZA TENERE, E TENERE SENZA RIATTACCARE ───────────────────
+//
+//  In regia si guarda il feed prima di registrarlo: si controlla che sia
+//  quello giusto, che l'audio ci sia, che l'inquadratura sia a fuoco. Poi
+//  si preme REC. E quando si smette di registrare si continua a guardare.
+//
+//  Prima erano due registrazioni diverse — "guarda" e "registra" — e
+//  passare dall'una all'altra voleva dire ammazzare un ffmpeg e aprirne un
+//  altro: chi trasmette si riaggancia, si perdono due secondi, e il file
+//  ricomincia da capo. In diretta e' inaccettabile: il momento in cui
+//  premi REC e' esattamente quello in cui sta succedendo qualcosa.
+//
+//  Adesso la connessione SRT e' UNA SOLA, dall'apertura della porta alla
+//  chiusura. Cambia solo cosa si TIENE: mentre guardi, il custode butta la
+//  testa vecchia; quando premi REC smette di buttare e segna da dove; a
+//  STOP segna fino a dove, e ricomincia a buttare solo la coda nuova. REC
+//  e STOP non toccano ffmpeg: non c'e' niente da riattaccare.
+const FINESTRA_VEDI = parseInt(process.env.COMOTV_CLIP_FINESTRA || "900", 10);
+
+function tenutiDi(r) { return (r.tenuti || []).concat(r.tieniDa !== undefined ? [{ da: r.tieniDa, a: 1e9 }] : []); }
+
+function recAccendi(r) {
+  if (r.tieniDa !== undefined) return r;         // gia' in registrazione
+  r.tieniDa = durataRegistrata(r.id);
+  r.vedi = false;
+  scrivi(); annuncia(0, "clip");
+  console.log("[clip] REC da " + Math.round(r.tieniDa) + "s su \"" + (r.titolo || r.id) + "\"");
+  return r;
+}
+function recSpegni(r) {
+  if (r.tieniDa === undefined) return r;
+  const a = durataRegistrata(r.id);
+  r.tenuti = (r.tenuti || []).concat([{ da: r.tieniDa, a: a }]);
+  console.log("[clip] REC fermata: tenuti " + Math.round(a - r.tieniDa) + "s (" +
+              Math.round(r.tieniDa) + "\u2192" + Math.round(a) + ")");
+  delete r.tieniDa;
+  r.vedi = true;
+  scrivi(); annuncia(0, "clip");
+  return r;
+}
+
+// IL CUSTODE. Mentre si guarda e basta, la testa vecchia non serve a
+// nessuno e riempie il disco: se ne tiene un quarto d'ora, il resto va via.
+// Quello che e' stato REGISTRATO non si tocca mai — nemmeno la parte in
+// mezzo, se hai acceso e spento due volte.
+function spazzaAnteprime() {
+  Object.keys(R.reg).forEach((k) => {
+    const r = R.reg[k];
+    if (r.stato !== "registra" || !r.vedi || r.arch) return;
+    const dur = durataRegistrata(r.id);
+    const taglio = dur - FINESTRA_VEDI;
+    if (taglio <= (r.daSecondo || 0)) return;
+    const tenuti = tenutiDi(r);
+    let via = 0, nuovoDa = r.daSecondo || 0;
+    segmenti(r.id).forEach((sg) => {
+      const fine = sg.t0 + sg.dur;
+      if (fine > taglio) return;                       // e' ancora nella finestra
+      if (tenuti.some((t) => fine > t.da && sg.t0 < t.a)) return;   // e' roba registrata
+      try { fs.unlinkSync(sg.file); via++; nuovoDa = Math.max(nuovoDa, fine); } catch (e) {}
+    });
+    if (!via) return;
+    // La playlist la riscrive ffmpeg, quindi le righe restano: si dice da
+    // che secondo il materiale c'e' davvero, e la pagina non offre un
+    // pezzo che non esiste piu'.
+    r.daSecondo = Math.round(nuovoDa);
+    scrivi();
+    console.log("[clip] anteprima \"" + (r.titolo || r.id) + "\": buttati " + via +
+                " segmenti, il materiale comincia a " + r.daSecondo + "s");
+  });
+}
+
 function avviaProcesso(r) {
   const dir = cartellaReg(r.id);
   assicura(dir);
@@ -447,6 +676,12 @@ function avviaProcesso(r) {
     .concat(argomentiIngresso(r.urlLetto || r.url))
     .concat([
       "-t", String(r.guarda ? Math.min(MAX_SECONDI, 10800) : MAX_SECONDI),
+      // TUTTO QUELLO CHE ARRIVA. Senza -map ffmpeg sceglie da solo, e
+      // sceglie UNA pista audio: se la regia ne manda tre — internazionale,
+      // commento, ambiente — le altre due si perdono qui, prima ancora di
+      // toccare il disco, e non si recuperano piu'. Costano zero: e' sempre
+      // una copia, non si ricodifica niente.
+      "-map", "0:v:0?", "-map", "0:a?",
       "-c", "copy",                       // rimultiplexing: la CPU resta libera
       "-f", "hls",
       "-hls_time", String(SEGMENTO)
@@ -593,9 +828,13 @@ async function clipAvvia(p) {
     // Premere due volte apriva due ascolti su due porte diverse: chi
     // trasmette ne trova uno solo, e la pagina ti mostra l'altro — che resta
     // vuoto per sempre. Se ce n'e' gia' uno in attesa, si torna quello.
+    // ...ma se la porta l'hai CHIESTA TU, quella vale: riusare un ascolto
+    // aperto su un'altra porta vorrebbe dire ignorare la scelta, e chi
+    // trasmette sta gia' bussando li'.
     const gia = Object.keys(R.reg).map((k) => R.reg[k]).find((x) =>
       x.stato === "registra" && x.ascolto && vivo(x.pid, x.id) &&
-      (!!x.guarda === !!p.guarda) && durataRegistrata(x.id) === 0);
+      (!!x.guarda === !!p.guarda) && durataRegistrata(x.id) === 0 &&
+      (!p.porta || x.ascolto.porta === parseInt(p.porta, 10)));
     if (gia) return { ok: true, id: gia.id, gia: true, reg: pubblica(gia) };
 
     const usate = Object.keys(R.reg)
@@ -603,7 +842,17 @@ async function clipAvvia(p) {
       .map((k) => R.reg[k].ascolto.porta);
     // e non basta il nostro registro: sulla macchina c'e' anche l'altro
     // ambiente, e possono restare processi orfani di un riavvio
-    const porta = PORTE.find((x) => usate.indexOf(x) < 0 && portaLibera(x));
+    let porta;
+    if (p.porta) {
+      // l'ha scelta chi sta in regia: si apre quella o si dice perche' no
+      const q = parseInt(p.porta, 10);
+      if (PORTE.indexOf(q) < 0) throw new Error("la porta " + q + " non e' fra quelle del MAM");
+      if (usate.indexOf(q) >= 0) throw new Error("la porta " + q + " ce l'hai gia' aperta");
+      if (!portaLibera(q)) throw new Error("la porta " + q + " e' occupata da qualcun altro");
+      porta = q;
+    } else {
+      porta = PORTE.find((x) => usate.indexOf(x) < 0 && portaLibera(x));
+    }
     if (!porta) throw new Error("tutte le porte di ascolto sono occupate");
     const coda = "?mode=listener&latency=300" + (PASSPHRASE ? "&passphrase=" + PASSPHRASE : "") +
                  "&listen_timeout=7200000000";
@@ -617,6 +866,7 @@ async function clipAvvia(p) {
     };
   }
   if (!/^(https?|srt):\/\//i.test(url)) throw new Error("sorgente non valida: serve un indirizzo http(s) o srt");
+  const soloVedere = !!p.vedi;      // la porta si apre per guardare: REC viene dopo
   const quante = Object.keys(R.reg).filter((k) => R.reg[k].stato === "registra").length;
   if (quante >= MAX_REG) throw new Error("ci sono gia' " + MAX_REG + " registrazioni aperte");
   const gb = liberiGB();
@@ -633,6 +883,11 @@ async function clipAvvia(p) {
     sorgente: String(p.sorgente || "").slice(0, 80),
     url: url,
     guarda: !!p.guarda,
+    // si apre per GUARDARE: la porta e' aperta, il flusso entra, ma di
+    // quello che entra si tiene solo l'ultimo quarto d'ora finche' non
+    // premi REC. La connessione e' la stessa: REC non riattacca niente.
+    vedi: soloVedere && !p.guarda,
+    tenuti: [],
     ascolto: ascolto,
     urlLetto: risolta.url !== url ? risolta.url : "",
     rendition: risolta.scelta ? (risolta.scelta.ris || "?") + " · " +
@@ -656,6 +911,9 @@ async function clipAvvia(p) {
 function clipFerma(p) {
   const r = R.reg[p.id];
   if (!r) throw new Error("registrazione sconosciuta");
+  // se si stava registrando, il tratto si chiude qui: chiudere la porta
+  // non deve far perdere il pezzo che stavi tenendo
+  if (r.tieniDa !== undefined) { try { recSpegni(r); } catch (e) {} }
   const pr = PROC.get(r.id);
   r.stato = "ferma";            // messo PRIMA di uccidere: cosi' il riaggancio non riparte
   if (pr) { try { pr.kill("SIGINT"); } catch (e) {} }   // SIGINT: chiude la playlist per bene
@@ -1019,6 +1277,104 @@ function quelloCheSappiamo(r) {
            boati: boati, altrove: altrove, stelle: (a && a.stelle) || 0 };
 }
 
+// ── IL TABELLINO ──────────────────────────────────────────────────────
+//
+//  Finora quello che sappiamo di una partita — appunti, ESPN, Gamecast —
+//  veniva fuso, ripulito dai doppioni e poi COLLASSATO subito in sequenze,
+//  senza che nessuno lo vedesse. E chi decideva cosa entrava negli
+//  highlights era una tabella di parole chiave: "gol" vale 4, "parata" 3.
+//  Il criterio buono — il voto della redazione — esiste sul 5,9% delle
+//  righe, e la marcatura * sullo 0,5%: su tutto il resto la macchina
+//  indovinava.
+//
+//  Qui la lista si ferma un passo prima e si fa vedere. Si spunta quello
+//  che serve e diventa una sequenza. Nessuno deve indovinare piu' niente,
+//  e qualunque fonte aggiungeremo domani sara' altre righe nella stessa
+//  lista invece che un altro pezzo di logica.
+function tabellino(r) {
+  const rec = r.evento || (r.arch && r.arch.rec) || "";
+  const sap = quelloCheSappiamo(r);
+  const a = rec && ARCHIVIO[rec];
+  // dove sappiamo che cade il taglio, e quanto ci crediamo:
+  //   cronometro -> il numero in sovrimpressione l'abbiamo letto: e' esatto
+  //   minuto     -> sappiamo solo il minuto scritto: e' una stima
+  const comeLoSappiamo = (t) => {
+    if (a && vicinoNella(a.gol, t)) return "cronometro";
+    if (a && vicinoNella(a.replay, t)) return "cronometro";
+    return "minuto";
+  };
+  const golVicino = (t) => sap.gol.find((g) => {
+    const tg = g.t !== undefined ? g.t : g.dentro + GOL_PRE;
+    return Math.abs(tg - t) < 25;
+  });
+  const righe = sap.azioni.map((x) => {
+    const t = x.t !== undefined ? x.t : x.dentro + APP_PRE;
+    // se quell'azione e' un gol, la finestra buona e' quella larga del gol,
+    // non le maniglie corte dell'azione: dentro c'e' anche l'esultanza
+    const g = golVicino(t);
+    const dentro = g ? g.dentro : x.dentro;
+    const fuori = g ? g.fuori : x.fuori;
+    return {
+      t: Math.round(t * 10) / 10,
+      dentro: Math.round(dentro * 10) / 10,
+      fuori: Math.round(fuori * 10) / 10,
+      titolo: x.titolo || "", tipo: x.tipo || "", minuto: x.minuto || "",
+      fonte: x.fonte || "", peso: x.peso || 1, rating: x.rating || 0,
+      squadra: x.squadra || "", giocatore: x.giocatore || "",
+      dettaglio: String(x.dettaglio || "").slice(0, 200),
+      gol: !!g, certezza: comeLoSappiamo(t)
+    };
+  }).sort((m, n) => m.t - n.t);
+  const conta = {};
+  righe.forEach((x) => { conta[x.fonte] = (conta[x.fonte] || 0) + 1; });
+  return { ok: true, righe: righe, quante: righe.length, fonti: conta,
+           appunti: !!(rec && APPUNTI[rec]), espn: !!(rec && ESPN[rec]),
+           altrove: sap.altrove || {} };
+}
+
+// Le righe spuntate diventano UNA SEQUENZA NUOVA. Non si aggiungono a
+// quella aperta: chi sceglie dal tabellino sta cominciando un montaggio,
+// non correggendone uno.
+function tabellinoMonta(p) {
+  const r = R.reg[String(p.reg || "")];
+  if (!r) throw new Error("registrazione sconosciuta");
+  const scelti = Array.isArray(p.righe) ? p.righe.map(Number).filter((x) => isFinite(x)) : [];
+  if (!scelti.length) throw new Error("non hai scelto nessuna riga");
+  // si rifa' il tabellino e si prendono le righe per il loro secondo: gli
+  // identificativi cambiano a ogni giro, il secondo no
+  const t = tabellino(r);
+  const prese = [];
+  scelti.forEach((s) => {
+    const x = t.righe.find((y) => Math.abs(y.t - s) < 1.2);
+    if (x && !prese.some((z) => z.t === x.t)) prese.push(x);
+  });
+  if (!prese.length) throw new Error("quelle righe non si trovano piu': riapri il tabellino");
+  prese.sort((m, n) => m.dentro - n.dentro);
+  const q = {
+    id: nuovoId("s"), reg: r.id,
+    titolo: String(p.titolo || "").slice(0, 160) || ("SCELTA · " + (r.titolo || "")),
+    pezzi: prese.map((x) => ({
+      id: nuovoId("p"), dentro: x.dentro, fuori: x.fuori, base: x.dentro,
+      titolo: x.titolo, tipo: x.tipo, minuto: x.minuto, fonte: x.fonte,
+      peso: x.peso, rating: x.rating, t: x.t
+    })),
+    // il formato lo si sceglie mandando in timeline: la sequenza nasce gia'
+    // verticale o quadrata, e si apre cosi'
+    formato: FORMATI[String(p.formato || "")] ? String(p.formato) : "16:9",
+    pre: APP_PRE, post: APP_POST, scarto: 0, avvisi: [], creata: Date.now(),
+    chi: String(p.__chi || p.chi || "").slice(0, 40),
+    banco: String(p.banco || "").slice(0, 60),
+    mano: Date.now(),                       // e' una scelta di una persona
+    export: null
+  };
+  if (p.prog) q.prog = String(p.prog);
+  R.seq[q.id] = q;
+  riallinea(q);
+  scrivi(); annuncia(0, "clip");
+  console.log("[clip] tabellino: nuova sequenza \"" + q.titolo + "\" con " + q.pezzi.length + " pezzi");
+  return { ok: true, seq: q, presi: q.pezzi.length };
+}
+
 // L'APERTURA. Un montato non comincia con un tiro: comincia con la voce che
 // dice dove siamo e chi gioca. Quella frase sta sempre nello stesso posto,
 // poco prima del fischio, mentre le squadre sono schierate. Se la
@@ -1235,6 +1591,7 @@ async function preparaSequenze(p) {
 
   crea("TELECRONACA", sap.voce, "i momenti in cui il telecronista dice gol");
   crea("BOATI", sap.boati, "i momenti in cui lo stadio alza la voce");
+  copieDiFormato(r).forEach((f) => fatte.push(f));
   scrivi(); annuncia(0, "clip");
   // i gol si rifiniscono da soli, in coda: il cronometro dira' dove finisce
   // ogni replay. Chi ha aperto la partita intanto ha gia' tutto.
@@ -1260,6 +1617,47 @@ async function preparaSequenze(p) {
   if (tenute.length) console.log("[clip] apparecchiare: lasciate com'erano " + tenute.join(", ") + " (montate a mano)");
   return { ok: true, fatte: fatte.length, sequenze: fatte, perche: perche, tenute: tenute,
            altrove: sap.altrove || {} };
+}
+
+// ── LO STESSO MONTAGGIO, IN VERTICALE ────────────────────
+//  Il 9:16 non e' un'altra edizione: sono gli stessi tagli visti da una
+//  finestra piu' stretta. Per questo non si ricalcolano — si copiano dalla
+//  madre e si mettono in un'altra sequenza, che nasce gia' col suo formato
+//  addosso. Il riquadro poi lo propone la macchina, pezzo per pezzo, e chi
+//  monta lo corregge trascinando. Se qualcuno ha messo le mani su una copia,
+//  quella non si tocca piu': e' sua.
+const FORMATI_COPIA = ["9:16", "3:4"];
+const MADRI_COPIA = ["GOL", "SHORTS", "AZIONI"];
+function copieDiFormato(r, quali) {
+  const fatte = [];
+  const tutte = Object.keys(R.seq).map((k) => R.seq[k]).filter((q) => q.reg === r.id);
+  (quali || MADRI_COPIA).forEach((nome) => {
+    const madre = tutte.find((q) => q.auto === nome);
+    if (!madre || !(madre.pezzi || []).length) return;
+    FORMATI_COPIA.forEach((f) => {
+      const eti = nome + " " + f;
+      const vecchia = tutte.find((q) => q.auto === eti);
+      if (vecchia && vecchia.mano) return;
+      const q = vecchia || { id: nuovoId("s"), reg: r.id, pre: APP_PRE, post: APP_POST,
+                             scarto: 0, avvisi: [], creata: Date.now(), chi: "", export: null };
+      q.auto = eti;
+      q.formato = f;
+      q.titolo = eti + " \u00b7 " + (r.titolo || "");
+      q.nota = "Gli stessi tagli di " + nome + ", gia' aperti in " + f + ". L'inquadratura "
+             + "la propone la macchina in esportazione: si corregge trascinando il riquadro.";
+      // pezzi nuovi, non gli stessi oggetti: cosi' stringere il riquadro qui
+      // non tocca la madre, e viceversa. L'inquadratura non si eredita.
+      q.pezzi = (madre.pezzi || []).map((x) => {
+        const y = Object.assign({}, x, { id: nuovoId("p") });
+        delete y.inquadra;
+        return y;
+      });
+      q.daMadre = madre.id;
+      R.seq[q.id] = q;
+      if (!vecchia) fatte.push({ nome: eti, pezzi: q.pezzi.length, id: q.id });
+    });
+  });
+  return fatte;
 }
 
 // ── GLI STACCHI DI REGIA ──────────────────────────────────────────
@@ -1537,11 +1935,23 @@ function pubblica(r) {
     materiale: r.arch ? "archivio"
              : fs.existsSync(playlistDi(r.id)) ? "segmenti"
              : (fs.existsSync(path.join(cartellaReg(r.id), "integrale.mp4")) ? "integrale" : "scaduto"),
-    via: r.arch ? viaArchivio(r) : undefined,
+    // l'indirizzo per la PAGINA: quello firmato del magazzino se il browser
+    // ci arriva, il ponte sulla VM se il magazzino sta dietro il tunnel
+    via: r.arch ? (magazzinoDaFuori(r) ? viaArchivio(r) : viaPonte(r.id)) : undefined,
     // la miniatura si promette solo se il file c'e': una sfilza di 404 ogni
     // tre secondi non e' un'anteprima
     mini: (r.mini && fs.existsSync(path.join(DIR, String(r.mini).replace(/^\/clip\//, "")))) ? r.mini : "",
     durata: r.stato === "registra" ? durataRegistrata(r.id) : (r.durata || durataRegistrata(r.id)),
+    // vedere o tenere: la porta e' aperta in tutti e due i casi, cambia
+    // solo cosa resta sul disco
+    // il fotogramma vivo della porta: la pagina lo rinfresca da sola
+    vivo: (r.vivoQuando ? "/clip/" + r.id + "/vivo.jpg" : ""),
+    vivoQuando: r.vivoQuando || 0,
+    vedi: !!r.vedi,
+    rec: r.tieniDa !== undefined,
+    recDa: r.tieniDa !== undefined ? r.tieniDa : null,
+    tenuti: r.tenuti || [],
+    daSecondo: r.daSecondo || 0,
     // la copia leggera, se c'e': la pagina guarda quella e scarica trenta
     // volte meno. Il taglio e l'esportazione restano sull'originale.
     proxy: proxyCe(r.id) ? "/clip/" + r.id + "/proxy.m3u8" : "",
@@ -1577,6 +1987,7 @@ function clipStato(p) {
   const gb = liberiGB();
   return {
     ok: true, reg: reg, clip: clip, srv: Date.now(),
+    porte: statoPorte(),
     disco: {
       liberi: Math.round(gb * 10) / 10,
       // a 4 Mbps una partita di due ore pesa circa 3,6 GB
@@ -2267,10 +2678,461 @@ function seqMia(p) {
 // come le ha lasciate la macchina. Ma se qualcuno ha spostato un taglio,
 // buttato un pezzo, cambiato l'ordine, allora quella sequenza e' sua:
 // riscriverla vuol dire cancellargli il lavoro. Da qui in poi si tiene com'e'.
+// ── ANNULLA ───────────────────────────────────────────────────────────
+//
+//  Senza annulla non si monta: si sta attenti. E stare attenti e' l'esatto
+//  contrario di provare, che e' quello che il montaggio e'. Quindi ⌘Z, e
+//  non su qualche comando — su TUTTI, presi in un punto solo.
+//
+//  Il modo e' quello grosso e stupido: prima di ogni modifica si mette da
+//  parte una copia della sequenza intera. Costa qualche kilobyte a colpo, e
+//  in cambio non c'e' un solo comando che possa dimenticarsi di essere
+//  annullabile — nemmeno quelli che scriveremo il mese prossimo. Le copie
+//  stanno in memoria e non nel registro: l'annulla e' una cosa della
+//  sessione, non della storia della partita.
+const PASSI = new Map();          // sequenza -> { indietro: [], avanti: [] }
+const QUANTI_PASSI = 60;
+
+function ricorda(q) {
+  if (!q || !q.id) return;
+  let p = PASSI.get(q.id);
+  if (!p) { p = { indietro: [], avanti: [] }; PASSI.set(q.id, p); }
+  const t = JSON.stringify(q);
+  // se e' identica all'ultima messa da parte, non e' un passo: e' lo stesso
+  // punto. Senza questo controllo un comando che chiama due volte il gancio
+  // costerebbe due ⌘Z per tornare indietro di una mossa sola.
+  if (p.indietro.length && p.indietro[p.indietro.length - 1] === t) { p.avanti.length = 0; return; }
+  p.indietro.push(t);
+  if (p.indietro.length > QUANTI_PASSI) p.indietro.shift();
+  p.avanti.length = 0;            // si riscrive la storia: il "rifai" decade
+}
+
+// rimette dentro il vecchio senza cambiare l'oggetto: la pagina, i timer e
+// tutto quello che tiene un riferimento a questa sequenza continuano a
+// parlare della stessa cosa
+function rimetti(q, testo) {
+  const v = JSON.parse(testo);
+  Object.keys(q).forEach((k) => { if (!(k in v)) delete q[k]; });
+  Object.keys(v).forEach((k) => { q[k] = v[k]; });
+  return q;
+}
+
+function annullaSeq(p, avanti) {
+  const q = seqDi(p);
+  const st = PASSI.get(q.id);
+  const pila = avanti ? (st && st.avanti) : (st && st.indietro);
+  if (!pila || !pila.length) {
+    return { ok: false, errore: avanti ? "non c'e' niente da rifare" : "non c'e' altro da annullare" };
+  }
+  const altra = avanti ? st.indietro : st.avanti;
+  altra.push(JSON.stringify(q));
+  rimetti(q, pila.pop());
+  normalizzaSeq(q);
+  segnaPezziLocali(q);
+  scrivi(); annuncia(0, "clip");
+  return { ok: true, seq: q, restano: st.indietro.length, rifare: st.avanti.length };
+}
+
 function toccataAMano(q) {
   if (!q) return;
+  ricorda(q);                     // prima di toccarla, com'era
   if (!q.mano) console.log("[clip] sequenza \"" + (q.titolo || q.id) + "\": da adesso e' tua, non la rifaccio piu'");
   q.mano = Date.now();
+}
+
+
+// ── LE TRACCE. L'AUDIO SMETTE DI ESSERE UN DISEGNO ─────────────────────
+//
+//  Fino a ieri la riga A1 sotto il video era un disegno: la stessa clip,
+//  ridipinta in verde. Non si poteva selezionare, ne' spostare, ne'
+//  staccare — perche' non esisteva. C'era una lista di pezzi e basta, e
+//  l'audio era quello che stava dentro il pezzo.
+//
+//  In Premiere non e' cosi'. Una clip A/V sono DUE oggetti sulla timeline,
+//  uno su V1 e uno su A1, tenuti insieme da un legame. Finche' il legame
+//  c'e' si muovono insieme e si tagliano insieme; quando lo togli, l'audio
+//  e' un oggetto suo — lo sposti su A2, lo metti sotto un altro video, gli
+//  cambi il volume, lo sfumi. E' esattamente quello che serve qui: la voce
+//  del telecronista di un'azione sopra le immagini di un'altra.
+//
+//  Il modello e' quindi: q.pezzi resta il video (in ordine, come oggi), e
+//  q.audio sono i pezzi audio. Un pezzo audio LEGATO non ha una geometria
+//  sua: e' il video, sempre, cosi' che tutto quello che gia' funziona —
+//  taglia, sposta, butta, lametta, PRENDI, il vivo che cresce — continui a
+//  funzionare senza sapere che l'audio esiste. Uno SCOLLEGATO ce l'ha, e da
+//  quel momento va dove vuole.
+const TRACCE_V = ["V1", "V2"];
+const TRACCE_A = ["A1", "A2", "A3", "A4"];
+
+function tracceDi(q) {
+  q.tracce = q.tracce || {};
+  TRACCE_V.concat(TRACCE_A).forEach((n) => {
+    q.tracce[n] = Object.assign({ muto: false, solo: false, bloccata: false, gain: 0 }, q.tracce[n] || {});
+  });
+  return q.tracce;
+}
+
+function audioDaPezzo(x, traccia) {
+  return { id: nuovoId("a"), traccia: traccia || "A1", legato: x.id,
+           t0: x.t0 || 0, dentro: x.dentro, fuori: x.fuori,
+           canale: "", gain: 0, entra: 0, esce: 0, muto: false,
+           titolo: x.titolo || "" };
+}
+
+// Una sequenza vecchia non ha ne' posizioni ne' audio: gliele si da' qui,
+// la prima volta che la si guarda. Nessuna migrazione, nessun file da
+// convertire — le sequenze di ieri si aprono e basta.
+function normalizzaSeq(q) {
+  if (!q || !Array.isArray(q.pezzi)) return q;
+  tracceDi(q);
+  if (!Array.isArray(q.audio)) q.audio = [];
+  let t = 0;
+  q.pezzi.forEach((x) => {
+    if (!x.traccia) x.traccia = "V1";
+    if (x.t0 === undefined || !isFinite(x.t0)) x.t0 = Math.round(t * 1000) / 1000;
+    t = x.t0 + Math.max(0, x.fuori - x.dentro);
+  });
+  const vivi = {};
+  q.pezzi.forEach((x) => { vivi[x.id] = x; });
+  const haAudio = {};
+  q.audio.forEach((a) => { if (a.legato) haAudio[a.legato] = true; });
+  // L'AUDIO SI CREA UNA VOLTA SOLA. Un pezzo nuovo arriva con il suo suono
+  // sotto, come una clip trascinata in Premiere. Ma se poi qualcuno lo
+  // scollega, o lo butta per metterci un'altra voce, quel video deve
+  // restare muto: rifarglielo qui vorrebbe dire annullare la decisione un
+  // istante dopo averla presa. Il segno sul pezzo dice "il suo l'ha gia'
+  // avuto", e non se ne parla piu'.
+  q.pezzi.forEach((x) => {
+    if (haAudio[x.id]) { x.audioFatto = 1; return; }
+    if (x.audioFatto) return;
+    q.audio.push(audioDaPezzo(x));
+    x.audioFatto = 1;
+  });
+  // l'audio di un video che non c'e' piu' se ne va con lui. Quello
+  // scollegato no: quello e' diventato una scelta di chi monta.
+  q.audio = q.audio.filter((a) => !a.legato || vivi[a.legato]);
+  q.audio.forEach((a) => {
+    const x = a.legato && vivi[a.legato];
+    if (!x) return;
+    a.t0 = x.t0; a.dentro = x.dentro; a.fuori = x.fuori;
+    if (!a.titolo) a.titolo = x.titolo || "";
+  });
+  q.audio.forEach((a) => { if (TRACCE_A.indexOf(a.traccia) < 0) a.traccia = "A1"; });
+  return q;
+}
+
+// I pezzi video attaccati uno dietro l'altro. E' il montaggio come lo fanno
+// gia' tutti i comandi che ci sono — l'ordine nell'elenco E' l'ordine sulla
+// timeline — e va richiamato dopo ogni ritocco. L'audio legato ci va dietro
+// da solo; quello scollegato resta dov'e', che e' il punto di scollegarlo.
+function riallinea(q) {
+  if (!q || !Array.isArray(q.pezzi)) return q;
+  // una sequenza "libera" ha i video posati dove vuole chi monta, coi
+  // buchi: li' non si impacchetta niente. Oggi nessuna lo e' — il video
+  // sta attaccato come e' sempre stato — ma il modello e' pronto.
+  if (q.libera) {
+    // l'ordine nell'elenco deve continuare a essere l'ordine sulla
+    // timeline, se no il pezzo "successivo" non e' quello che si vede a
+    // destra e tutto quello che c'e' gia' — giunzione, rolling, Programma —
+    // comincia a mentire
+    q.pezzi.sort((a, b) => (a.t0 || 0) - (b.t0 || 0));
+    return normalizzaSeq(q);
+  }
+  let t = 0;
+  q.pezzi.forEach((x) => {
+    x.t0 = Math.round(t * 1000) / 1000;
+    t += Math.max(0, x.fuori - x.dentro);
+  });
+  return normalizzaSeq(q);
+}
+
+// QUANDO LO SPAZIO E' OCCUPATO. Su una traccia sola due pezzi non possono
+// stare nello stesso secondo, quindi trascinandone uno addosso a un altro
+// qualcosa deve succedere. Premiere, di suo, SOVRASCRIVE: taglia via quello
+// sotto. Qui no — un montaggio si fa provando, e provare non deve costare
+// del materiale. Quello che succede e' che il pezzo SI INFILA: si posa sul
+// bordo piu' vicino e tutto quello che viene dopo scala in avanti. E' il
+// gesto che c'era prima (spostare una clip nella fila) e insieme quello
+// nuovo (staccarla e portarla nel vuoto): se dove la lasci c'e' posto, si
+// ferma li'; se non ce n'e', si fa largo. In nessuno dei due casi si perde
+// un fotogramma, e ⌘Z rimette tutto com'era.
+function facciaPosto(q, x) {
+  const dur = Math.max(0, x.fuori - x.dentro);
+  const altri = () => q.pezzi.filter((y) => y !== x && y.traccia === x.traccia)
+    .map((y) => ({ p: y, a: y.t0 || 0, b: (y.t0 || 0) + Math.max(0, y.fuori - y.dentro) }))
+    .sort((m, n) => m.a - n.a);
+  const t = Math.max(0, x.t0 || 0);
+  const addosso = altri().filter((o) => t < o.b - 0.02 && t + dur > o.a + 0.02);
+  if (!addosso.length) return { infilato: 0 };
+
+  // il bordo piu' vicino a dove l'hai lasciato: l'inizio del primo pezzo
+  // che tocchi, o la sua fine, quello dei due che ti costa meno movimento
+  const primo = addosso[0];
+  const dove = (Math.abs(t - primo.a) <= Math.abs(t - primo.b)) ? primo.a : primo.b;
+
+  // si fa largo: da quel bordo in poi, tutti avanti di quanto dura il pezzo
+  const muovi = (p2, d) => {
+    p2.t0 = Math.max(0, (p2.t0 || 0) + d);
+    (q.audio || []).forEach((a) => { if (a.legato === p2.id) a.t0 = Math.max(0, (a.t0 || 0) + d); });
+  };
+  altri().forEach((o) => { if (o.a >= dove - 0.02) muovi(o.p, dur); });
+  const prima = x.t0 || 0;
+  x.t0 = Math.round(dove * 1000) / 1000;
+  (q.audio || []).forEach((a) => { if (a.legato === x.id) a.t0 = Math.max(0, (a.t0 || 0) + (x.t0 - prima)); });
+  return { infilato: 1, dove: x.t0 };
+}
+
+// I BUCHI. Una sequenza libera puo' avere spazio vuoto fra un pezzo e
+// l'altro: in Premiere e' nero e silenzio, e qui deve esserlo anche nel
+// file che esce — se no il montaggio che si vede e quello che si esporta
+// raccontano due cose diverse.
+function buchiDi(q) {
+  normalizzaSeq(q);
+  const fuori = [];
+  let t = 0;
+  q.pezzi.forEach((x) => {
+    const a = x.t0 || 0;
+    if (a > t + 0.04) fuori.push({ da: t, a: a });
+    t = Math.max(t, a + Math.max(0, x.fuori - x.dentro));
+  });
+  return fuori;
+}
+
+// Dove finisce il montaggio: l'ultimo fotogramma di qualunque traccia. Un
+// audio che sborda oltre l'ultimo video allunga la sequenza, come in
+// Premiere.
+function fineSequenza(q) {
+  normalizzaSeq(q);
+  let f = 0;
+  q.pezzi.forEach((x) => { f = Math.max(f, (x.t0 || 0) + Math.max(0, x.fuori - x.dentro)); });
+  (q.audio || []).forEach((a) => { f = Math.max(f, (a.t0 || 0) + Math.max(0, a.fuori - a.dentro)); });
+  (q.grafiche || []).forEach((g) => { f = Math.max(f, g.fuori || 0); });
+  return Math.round(f * 1000) / 1000;
+}
+
+// Il montaggio e' "semplice" quando l'audio e' ancora quello del video:
+// tutto legato, tutto su A1, nessun volume toccato, niente sfumate, niente
+// muto. Serve saperlo perche' in quel caso l'esportazione resta quella di
+// oggi — si incolla e basta, in pochi secondi. Appena qualcuno tocca
+// qualcosa si passa alla strada lunga, che mescola davvero.
+function audioSemplice(q) {
+  normalizzaSeq(q);
+  const t = q.tracce || {};
+  if ((t.A1 && (t.A1.muto || t.A1.gain)) ) return false;
+  if (TRACCE_A.slice(1).some((n) => t[n] && t[n].solo)) return false;
+  if (t.A1 && !t.A1.solo && TRACCE_A.some((n) => t[n] && t[n].solo)) return false;
+  return (q.audio || []).every((a) => a.legato && a.traccia === "A1" && !a.gain
+                                   && !a.entra && !a.esce && !a.muto && !a.canale);
+}
+
+// Quali tracce si sentono: il solo di Premiere spegne tutte le altre.
+function tracceCheSuonano(q) {
+  const t = tracceDi(q);
+  const soli = TRACCE_A.filter((n) => t[n].solo);
+  const dentro = {};
+  TRACCE_A.forEach((n) => { dentro[n] = soli.length ? t[n].solo : !t[n].muto; });
+  return dentro;
+}
+
+// ── L'ONDA ────────────────────────────────────────────────────────────
+//  Un audio che non si vede non si taglia: si va a tentativi. L'onda la
+//  calcola la VM una volta e la tiene, cosi' la pagina la disegna senza
+//  scaricare un byte di suono. Costa un decimo di secondo per pezzo e non
+//  si rifa' mai — la chiave e' la stessa dei pezzi in casa, cioe' il
+//  contenuto: stesso taglio, stessa onda.
+const CARTELLA_ONDE = "_onde";
+function cartellaOnde() {
+  const d = path.join(DIR, CARTELLA_HL, CARTELLA_ONDE);
+  assicura(d);
+  return d;
+}
+const ONDE_IN_CORSO = new Set();
+
+function ingressoSolaudio(reg, dentro, fuori, lista) {
+  const k = chiavePezzo(reg, dentro, fuori);
+  const casa = filePezzo(k);
+  if (fs.existsSync(casa)) return ["-ss", String(scartoPezzo(k)), "-i", casa, "-t", String(fuori - dentro)];
+  const segs = segmenti(reg);
+  if (segs.length) {
+    const scelti = segs.filter((sg) => sg.t0 + sg.dur > dentro && sg.t0 < fuori);
+    if (!scelti.length) return null;
+    fs.writeFileSync(lista, scelti.map((sg) => "file '" + sg.file + "'").join("\n") + "\n");
+    return ["-f", "concat", "-safe", "0", "-ss", String(Math.max(0, dentro - scelti[0].t0)),
+            "-i", lista, "-t", String(fuori - dentro)];
+  }
+  const r = R.reg[reg];
+  const via = (r && r.arch) ? viaArchivio(r) : path.join(cartellaReg(reg), "integrale.mp4");
+  if (!via) return null;
+  if (!(r && r.arch) && !fs.existsSync(via)) return null;
+  return ["-ss", String(dentro), "-i", via, "-t", String(fuori - dentro)];
+}
+
+async function calcolaOnda(reg, dentro, fuori) {
+  const k = chiavePezzo(reg, dentro, fuori);
+  const via = path.join(cartellaOnde(), k + ".json");
+  try { return JSON.parse(fs.readFileSync(via, "utf8")); } catch (e) {}
+  if (ONDE_IN_CORSO.has(k)) return null;
+  ONDE_IN_CORSO.add(k);
+  const lista = path.join(cartellaOnde(), k + ".txt");
+  try {
+    const ingresso = ingressoSolaudio(reg, dentro, fuori, lista);
+    if (!ingresso) return null;
+    // mono a 8 kHz, grezzo: non serve la qualita', serve la forma. Un pezzo
+    // da trenta secondi sono 480 KB che non toccano mai il disco.
+    const crudo = await new Promise((ok, no) => {
+      const pr = spawn(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin"]
+        .concat(ingresso)
+        .concat(["-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "-"]),
+        { stdio: ["ignore", "pipe", "pipe"] });
+      const parti = [];
+      let peso = 0;
+      pr.stdout.on("data", (d) => { parti.push(d); peso += d.length; if (peso > 40e6) pr.kill("SIGKILL"); });
+      pr.on("error", no);
+      pr.on("close", () => ok(Buffer.concat(parti)));
+      setTimeout(() => { try { pr.kill("SIGKILL"); } catch (e) {} }, 120000);
+    });
+    const campioni = Math.floor(crudo.length / 2);
+    if (!campioni) return null;
+    // il PICCO per secchiello, non la media: la media appiattisce tutto e
+    // un'onda piatta non dice dove parla il telecronista
+    const N = Math.max(60, Math.min(900, Math.round((fuori - dentro) * 12)));
+    const onda = new Array(N).fill(0);
+    for (let i = 0; i < campioni; i++) {
+      const b = Math.min(N - 1, Math.floor(i / campioni * N));
+      const v = Math.abs(crudo.readInt16LE(i * 2));
+      if (v > onda[b]) onda[b] = v;
+    }
+    const fuoriOnda = onda.map((v) => Math.round(v / 32768 * 100));
+    try { fs.writeFileSync(via, JSON.stringify(fuoriOnda)); } catch (e) {}
+    return fuoriOnda;
+  } catch (e) {
+    console.log("[clip] onda: " + e.message);
+    return null;
+  } finally {
+    ONDE_IN_CORSO.delete(k);
+    try { fs.unlinkSync(lista); } catch (e) {}
+  }
+}
+
+// ── I COMANDI DELL'AUDIO ──────────────────────────────────────────────
+function hlAudio(p) {
+  const q = seqMia(p);
+  normalizzaSeq(q);
+  const azione = String(p.azione || "");
+
+  // la traccia intera: muto, solo, lucchetto, volume
+  if (azione === "traccia") {
+    const n = String(p.traccia || "");
+    if (TRACCE_V.concat(TRACCE_A).indexOf(n) < 0) throw new Error("traccia sconosciuta");
+    const t = tracceDi(q)[n];
+    if (p.muto !== undefined) t.muto = !!p.muto;
+    if (p.solo !== undefined) t.solo = !!p.solo;
+    if (p.bloccata !== undefined) t.bloccata = !!p.bloccata;
+    if (p.gain !== undefined) t.gain = num(p.gain, -60, 12, 0);
+    scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: q };
+  }
+
+  // piu' pezzi in una volta: e' il Canc dopo una selezione a riquadro
+  if (azione === "togli" && Array.isArray(p.audio)) {
+    const via = {};
+    p.audio.forEach((x) => { via[String(x)] = true; });
+    const prima = q.audio.length;
+    // buttare l'audio di una clip legata vuol dire scollegarlo e basta:
+    // il video resta, e resta muto. E' quello che fa Premiere.
+    q.audio = q.audio.filter((a) => !via[a.id]);
+    toccataAMano(q);
+    normalizzaSeq(q);
+    scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: q, tolti: prima - q.audio.length };
+  }
+
+  const a = q.audio.filter((y) => y.id === String(p.audio || ""))[0];
+  if (!a) throw new Error("pezzo audio sconosciuto");
+  const x = a.legato ? q.pezzi.filter((y) => y.id === a.legato)[0] : null;
+  toccataAMano(q);
+
+  if (azione === "scollega") {
+    delete a.legato;
+    a.titolo = (a.titolo || "audio") + " · scollegato";
+  } else if (azione === "lega") {
+    // si riattacca al video che sta sotto: quello che comincia prima di
+    // qui e finisce dopo
+    const sotto = q.pezzi.filter((y) => y.t0 <= a.t0 + 0.05 && y.t0 + (y.fuori - y.dentro) >= a.t0 + 0.05)[0];
+    if (!sotto) throw new Error("qui sotto non c'e' nessun video a cui legarlo");
+    if (q.audio.some((y) => y.id !== a.id && y.legato === sotto.id)) throw new Error("quel video ha gia' il suo audio");
+    a.legato = sotto.id;
+  } else if (azione === "sposta") {
+    if (p.traccia !== undefined) {
+      const n = String(p.traccia);
+      if (TRACCE_A.indexOf(n) < 0) throw new Error("traccia sconosciuta");
+      if (tracceDi(q)[n].bloccata) throw new Error("la traccia " + n + " e' bloccata");
+      a.traccia = n;
+    }
+    if (p.t0 !== undefined) {
+      // spostarlo nel tempo lo scollega: un audio legato sta sul suo video
+      if (a.legato) delete a.legato;
+      a.t0 = Math.round(Math.max(0, num(p.t0, 0, 86400, a.t0)) * 1000) / 1000;
+    }
+  } else if (azione === "taglia") {
+    if (a.legato) delete a.legato;
+    const dur = R.reg[q.reg] ? (R.reg[q.reg].durata || durataRegistrata(q.reg)) : 99999;
+    // trascinando il bordo sinistro il pezzo si accorcia in testa E si
+    // sposta avanti, se no il suono scivolerebbe sotto le immagini
+    if (p.dentro !== undefined) {
+      const d = num(p.dentro, 0, dur, a.dentro);
+      a.t0 = Math.max(0, a.t0 + (d - a.dentro));
+      a.dentro = d;
+    }
+    if (p.fuori !== undefined) a.fuori = num(p.fuori, 0, dur, a.fuori);
+    if (a.fuori - a.dentro < 0.2) throw new Error("il pezzo audio diventerebbe vuoto");
+  } else if (azione === "togli") {
+    q.audio = q.audio.filter((y) => y.id !== a.id);
+  } else if (azione === "gain") {
+    a.gain = num(p.gain, -60, 12, 0);
+  } else if (azione === "muto") {
+    a.muto = p.muto === undefined ? !a.muto : !!p.muto;
+  } else if (azione === "dissolvenza") {
+    const d = Math.max(0.05, a.fuori - a.dentro);
+    if (p.entra !== undefined) a.entra = num(p.entra, 0, d, a.entra);
+    if (p.esce !== undefined) a.esce = num(p.esce, 0, d, a.esce);
+  } else if (azione === "dividi") {
+    // la lametta sull'audio da solo
+    const t = num(p.a, 0, 86400, 0);
+    const fin = a.t0 + (a.fuori - a.dentro);
+    if (!(t > a.t0 + 0.15 && t < fin - 0.15)) throw new Error("il taglio cadrebbe sul bordo del pezzo");
+    const dopo = Object.assign({}, a, { id: nuovoId("a"), t0: t, dentro: a.dentro + (t - a.t0), entra: 0 });
+    delete dopo.legato;
+    a.fuori = a.dentro + (t - a.t0);
+    a.esce = 0;
+    delete a.legato;
+    q.audio.push(dopo);
+  } else if (azione === "canali") {
+    // I CANALI DIVISI. Su questo materiale l'audio e' UNA coppia stereo, e
+    // spesso le due meta' non dicono la stessa cosa: da una parte
+    // l'ambiente, dall'altra il commento. Divisi diventano due pezzi mono
+    // su due tracce, e da li' si spegne quello che non serve.
+    if (a.canale) throw new Error("questo pezzo e' gia' un canale solo");
+    const destra = Object.assign({}, a, { id: nuovoId("a"), canale: "R", traccia: "A2",
+                                          titolo: (a.titolo || "audio") + " · R" });
+    delete destra.legato;
+    a.canale = "L";
+    a.titolo = (a.titolo || "audio") + " · L";
+    q.audio.push(destra);
+  } else if (azione === "sotto") {
+    // "mettilo sotto quel video": prende il video indicato e ci appoggia
+    // sopra questo audio, dall'inizio. E' il gesto che si fa a mano dieci
+    // volte al giorno, in un comando solo.
+    const v = q.pezzi.filter((y) => y.id === String(p.pezzo || ""))[0];
+    if (!v) throw new Error("pezzo video sconosciuto");
+    delete a.legato;
+    a.t0 = v.t0;
+  } else {
+    throw new Error("comando audio sconosciuto: " + azione);
+  }
+  normalizzaSeq(q);
+  scrivi(); annuncia(0, "clip");
+  return { ok: true, seq: q, audio: a.id };
 }
 
 function hlElenco(p) {
@@ -2286,6 +3148,10 @@ function hlElenco(p) {
   const mie = seq.filter((q) => (q.auto && !q.banco) ||
                                 (prog ? q.prog === prog : (!q.banco || q.banco === banco)));
   mie.forEach((q) => { try { crescoLaDiretta(q); } catch (e) {} });
+  // prima si mettono in riga — cosi' l'audio c'e' — poi si guarda cosa e'
+  // gia' in casa: al contrario si segnavano i pezzi di una sequenza che
+  // l'audio non ce l'aveva ancora, e le onde risultavano sempre mancanti
+  mie.forEach((q) => { try { riallinea(q); } catch (e) {} });
   mie.forEach((q) => { try { segnaPezziLocali(q); } catch (e) {} });
   return { ok: true, seq: mie };
 }
@@ -2352,6 +3218,7 @@ async function hlInserisci(p) {
     tipo: "", minuto: "", fonte: "mano", mano: true };
   const dove = (p.dove === undefined || p.dove === null) ? q.pezzi.length
              : Math.max(0, Math.min(q.pezzi.length, Math.round(num(p.dove, 0, 999, 0))));
+  ricorda(q);                     // com'era prima che entrasse
   q.pezzi.splice(dove, 0, pezzo);
   toccataAMano(q);
   scrivi(); annuncia(0, "clip");
@@ -2380,6 +3247,8 @@ async function hlInserisci(p) {
 //  secondi sarebbe stato scrivere lo stato duecento volte per tempo.
 function crescoLaDiretta(q) {
   if (!q || !q.diretta) return q;
+  // il pezzo che cresceva non c'e' piu': la diretta si guarda nel LIVE
+  // FEED. Resta la funzione per le sequenze nate prima del cambio.
   const r = R.reg[q.reg];
   if (!r) return q;
   const dur = durataRegistrata(r.id);
@@ -2387,13 +3256,15 @@ function crescoLaDiretta(q) {
     q.pezzi.forEach((p) => { if (p.vivo) { p.fuori = Math.min(p.fuori, dur) || dur; delete p.vivo; } });
     return q;
   }
-  const vivi = q.pezzi.filter((p) => p.vivo);
-  // di vivo ce n'e' uno solo: se la lametta ha diviso il pezzo in due, il
-  // vivo e' quello in coda e l'altro e' gia' roba del montatore
-  vivi.slice(0, -1).forEach((p) => { delete p.vivo; });
-  const ultimo = vivi[vivi.length - 1];
-  if (!ultimo) return q;
-  if (dur > ultimo.fuori) ultimo.fuori = dur;
+  // Il pezzo che cresceva non esiste piu': la diretta si guarda nel LIVE
+  // FEED e la timeline e' solo il montaggio. Le sequenze nate prima del
+  // cambio se lo portano dietro: si toglie qui, una volta.
+  const prima = q.pezzi.length;
+  q.pezzi = q.pezzi.filter((p) => !p.vivo);
+  if (q.pezzi.length !== prima) {
+    console.log("[clip] tolto il pezzo della diretta da \"" + (q.titolo || q.id) + "\": adesso in timeline c'e' solo il montaggio");
+    scrivi();
+  }
   return q;
 }
 
@@ -2406,10 +3277,13 @@ function laDiretta(idReg, banco, prog) {
   let q = Object.keys(R.seq).map((k) => R.seq[k])
     .find((x) => x.diretta && x.reg === r.id && (!b || !x.banco || x.banco === b));
   if (!q) {
-    const dur = durataRegistrata(r.id);
+    // LA DIRETTA NON STA IN TIMELINE. Ci stava, ed era giusto finche' il
+    // vivo non aveva un monitor suo: adesso ce l'ha (LIVE FEED), e il
+    // monitor del montaggio deve mostrare solo le clip. Quindi la sequenza
+    // nasce VUOTA e si riempie con quello che si registra fra I e O.
     q = { id: nuovoId("s"), reg: r.id, diretta: true, banco: b,
-          titolo: "DIRETTA \u00b7 " + (r.titolo || ""),
-          pezzi: [{ id: nuovoId("p"), dentro: 0, fuori: Math.max(dur, 1), titolo: "diretta", vivo: true }],
+          titolo: "CLIP \u00b7 " + (r.titolo || ""),
+          pezzi: [],
           pre: HL_PRE, post: HL_POST, scarto: 0, avvisi: [],
           creata: Date.now(), chi: "", export: null };
     if (prog) q.prog = String(prog);
@@ -2502,6 +3376,39 @@ function salvaIlMontato(p) {
   return { ok: true, seq: c, diretta: crescoLaDiretta(q) };
 }
 
+// Chiede a inquadra.py dove guarderebbe lui. Legge dal pezzo gia' in casa
+// se c'e' (costa solo CPU), se no dal materiale della registrazione.
+async function proponiInquadratura(q, x, largo) {
+  const k = chiavePezzo(q.reg, x.dentro, x.fuori);
+  const casa = filePezzo(k);
+  let via, da;
+  if (fs.existsSync(casa)) { via = casa; da = scartoPezzo(k); }
+  else {
+    const r = R.reg[q.reg];
+    if (!r) throw new Error("registrazione sconosciuta");
+    if (r.arch) {
+      const regione = await s3Regione(ARCHIVIO[r.arch.rec] ? ARCHIVIO[r.arch.rec].bucket : undefined);
+      via = firmaConRegione(regione, r.arch.chiave, {}, 7200, ARCHIVIO[r.arch.rec].bucket);
+    // LA COPIA LEGGERA E' PROPRIO QUELLO CHE SERVE QUI: l'analisi guarda a
+    // 320 di larghezza, e il proxy e' 480. Leggere dalla playlist grande
+    // per poi rimpicciolire vuol dire decodificare trenta volte i byte che
+    // servono — su un pezzo in mezzo a una partita lunga si aspetta.
+    } else if (fs.existsSync(fileProxy(r.id))) via = fileProxy(r.id);
+    else if (fs.existsSync(playlistDi(r.id))) via = playlistDi(r.id);
+    else throw new Error("di questo pezzo non ho il materiale sottomano");
+    da = x.dentro - (via === fileProxy(r.id) ? 0 : 0);
+  }
+  const dur = Math.min(300, Math.max(1, x.fuori - x.dentro));
+  return await new Promise((ok) => {
+    execFile("python3", [INQUADRA_PY, via, String(da), String(dur), String(largo)],
+      { timeout: 900000, maxBuffer: 2 * 1024 * 1024 },
+      (e, so) => {
+        if (e) return ok({ errore: "non sono riuscito a guardare il pezzo" });
+        try { ok(JSON.parse(String(so))); } catch (x2) { ok({ errore: "risposta illeggibile" }); }
+      });
+  });
+}
+
 function hlNuova(p) {
   const r = R.reg[String(p.reg || "")];
   if (!r) throw new Error("registrazione sconosciuta");
@@ -2550,6 +3457,14 @@ function hlDividi(p) {
   x.fuori = a; x.mano = true;
   delete x.vivo;                      // la testa e' tua, la coda resta il vivo
   q.pezzi.splice(i + 1, 0, nuovo);
+  // la lametta taglia anche l'audio, e la meta' nuova si porta dietro
+  // volume, traccia e sfumate: in Premiere si comporta cosi'
+  normalizzaSeq(q);
+  const suo = (q.audio || []).filter((y) => y.legato === x.id)[0];
+  if (suo) {
+    q.audio.push(Object.assign({}, suo, { id: nuovoId("a"), legato: nuovo.id, entra: 0 }));
+    suo.esce = 0;
+  }
   scrivi(); annuncia(0, "clip");
   return { ok: true, seq: q, nuovo: nuovo.id };
 }
@@ -2587,6 +3502,7 @@ function hlAggiungi(p) {
   // dove lo si e' lasciato cadere, non per forza in fondo
   const dove = (p.dove === undefined || p.dove === null) ? q.pezzi.length
              : Math.max(0, Math.min(q.pezzi.length, Math.round(num(p.dove, 0, 999, 0))));
+  ricorda(q);                     // com'era prima che entrasse
   q.pezzi.splice(dove, 0, pezzo);
   scrivi(); annuncia(0, "clip");
   return { ok: true, seq: q };
@@ -2771,7 +3687,16 @@ async function chiaveVicina(via, quando) {
 }
 
 function pezziDaScaricare(q) {
-  return (q.pezzi || []).filter((x) => !fs.existsSync(filePezzo(chiavePezzo(q.reg, x.dentro, x.fuori))));
+  // l'audio scollegato pesca da un altro punto della partita: quel pezzo
+  // va portato in casa come gli altri, o all'esportazione non c'e'
+  const tutti = (q.pezzi || []).concat((q.audio || []).filter((a) => !a.legato));
+  const visti = {};
+  return tutti.filter((x) => {
+    const k = chiavePezzo(q.reg, x.dentro, x.fuori);
+    if (visti[k]) return false;
+    visti[k] = true;
+    return !fs.existsSync(filePezzo(k));
+  });
 }
 
 // Porta in casa i pezzi che mancano. NON si ricodifica: si copia il flusso
@@ -2788,7 +3713,7 @@ async function costruisciPezzi(q, avanti) {
   const integrale = (r && r.arch) ? viaArchivio(r) : path.join(cartellaReg(q.reg), "integrale.mp4");
   if (usaIntegrale && !(r && r.arch) && !fs.existsSync(integrale)) throw new Error("non c'e' piu' materiale per questa registrazione");
 
-  const daFare = (q.pezzi || []).filter((x) => !fs.existsSync(filePezzo(chiavePezzo(q.reg, x.dentro, x.fuori))));
+  const daFare = pezziDaScaricare(q);
   let fatti = 0;
   const uno = async (x) => {
     const k = chiavePezzo(q.reg, x.dentro, x.fuori);
@@ -2811,6 +3736,8 @@ async function costruisciPezzi(q, avanti) {
                   "-t", String(x.fuori - scelti[0].t0 - kf + 0.2)];
     }
     const args = ["-hide_banner", "-loglevel", "error", "-nostdin"].concat(ingresso).concat([
+      // le piste audio se le porta dietro tutte: il montaggio le vuole
+      "-map", "0:v:0?", "-map", "0:a?",
       "-c", "copy", "-movflags", "+faststart", "-y", parziale]);
     await new Promise((si, no) => {
       const pr = spawn(FFMPEG, args, { stdio: ["ignore", "ignore", "pipe"] });
@@ -2856,6 +3783,14 @@ function segnaPezziLocali(q) {
       quanti++;
     } else { delete x.locale; delete x.scarto; }
   });
+  // e i pezzi audio: uno scollegato pesca da un altro punto della partita,
+  // e per farlo sentire alla pagina serve il suo file, non quello del video
+  (q.audio || []).forEach((a) => {
+    const k = chiavePezzo(q.reg, a.dentro, a.fuori);
+    if (fs.existsSync(filePezzo(k))) { a.locale = viaPezzo(k); a.scarto = scartoPezzo(k); }
+    else { delete a.locale; delete a.scarto; }
+    a.onda = fs.existsSync(path.join(cartellaOnde(), k + ".json"));
+  });
   return quanti;
 }
 
@@ -2880,6 +3815,59 @@ async function hlInCasa(p) {
   return { ok: true, casa: q.casa };
 }
 
+
+// ── IL MIX ────────────────────────────────────────────────────────────
+//  Finche' l'audio e' quello del video non c'e' niente da mescolare: si
+//  incolla, come si e' sempre fatto, e l'esportazione dura dieci secondi.
+//  Quando invece c'e' un audio sotto un altro video, o un volume, o una
+//  sfumata, o un canale da solo, allora l'audio va costruito: ogni pezzo al
+//  suo secondo (adelay), col suo volume, e tutti sommati (amix). Non e' un
+//  effetto, e' quello che fa un mixer.
+function costruisciMix(q, iBase) {
+  normalizzaSeq(q);
+  const suona = tracceCheSuonano(q);
+  const ingressi = [];
+  const uscite = [];
+  let catena = "", n = 0;
+  (q.audio || []).forEach((a) => {
+    if (a.muto || !suona[a.traccia]) return;
+    const t = (q.tracce && q.tracce[a.traccia]) || {};
+    const k = chiavePezzo(q.reg, a.dentro, a.fuori);
+    const casa = filePezzo(k);
+    if (!fs.existsSync(casa)) return;          // non e' in casa: non si inventa
+    const off = scartoPezzo(k), dur = Math.max(0.05, a.fuori - a.dentro);
+    const idx = iBase + n;
+    ingressi.push("-ss", String(off), "-t", String(dur), "-i", casa);
+    // da quale pista: 0 se ce n'e' una sola, come e' oggi su questo
+    // materiale. Il giorno che la regia ne manda tre, qui si sceglie.
+    const pista = Math.max(0, parseInt(a.sorg || 0, 10) || 0);
+    let f = "[" + idx + ":a:" + pista + "]aresample=48000";
+    // il canale da solo: si prende una meta' della coppia e la si rimette
+    // su tutte e due, se no il suono esce da un orecchio
+    if (a.canale === "L") f += ",pan=stereo|c0=c0|c1=c0";
+    else if (a.canale === "R") f += ",pan=stereo|c0=c1|c1=c1";
+    else f += ",aformat=channel_layouts=stereo";
+    const g = (a.gain || 0) + (t.gain || 0);
+    if (g) f += ",volume=" + g.toFixed(2) + "dB";
+    if (a.entra > 0.01) f += ",afade=t=in:st=0:d=" + a.entra.toFixed(2);
+    if (a.esce > 0.01) f += ",afade=t=out:st=" + Math.max(0, dur - a.esce).toFixed(2) + ":d=" + a.esce.toFixed(2);
+    const ms = Math.round(Math.max(0, a.t0 || 0) * 1000);
+    if (ms) f += ",adelay=" + ms + ":all=1";
+    n++;
+    f += "[am" + n + "]";
+    catena += f + ";";
+    uscite.push("[am" + n + "]");
+  });
+  if (!uscite.length) return { muta: true };
+  catena += uscite.length === 1
+    ? uscite[0] + "anull[amix];"
+    // normalize=0: sommare, non dividere. Con la normalizzazione accesa due
+    // tracce a volume pieno escono a meta' ciascuna, e chi ha alzato il
+    // commento se lo ritrova piu' basso di prima.
+    : uscite.join("") + "amix=inputs=" + uscite.length + ":duration=longest:normalize=0[amix];";
+  return { ingressi: ingressi, catena: catena, quanti: n };
+}
+
 async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   const dir = path.join(DIR, CARTELLA_HL, q.id);
   assicura(dir);
@@ -2902,6 +3890,35 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     scrivi(); annuncia(0, "clip");
   });
   segnaPezziLocali(q);
+
+  // ── INQUADRA DA SOLO QUELLO CHE NON E' STATO INQUADRATO ─────────────
+  //  Su un verticale il ritaglio fermo al centro lascia fuori il gioco: e'
+  //  il difetto che si vede in ogni shorts fatto finora. Chi esporta non
+  //  deve ricordarsi di premere "Proponi" pezzo per pezzo: lo si fa qui,
+  //  una volta, sui pezzi che non hanno ancora un'inquadratura loro. Chi
+  //  ha scelto "fermo al centro" non viene toccato, perche' quella e' una
+  //  decisione scritta. E dove seguire non serve, la proposta e' comunque
+  //  "fermo": la macchina lo misura prima di muovere qualcosa.
+  const largoF = LARGHEZZA_FORMATO[formato];
+  if (largoF && !(p2 && p2.senzaInquadratura)) {
+    const daFare = q.pezzi.filter((x) => !(x.inquadra && x.inquadra[formato]));
+    for (let i = 0; i < daFare.length; i++) {
+      q.export.fase = "guardo dove inquadrare (" + (i + 1) + " di " + daFare.length + ")";
+      q.export.avanza = 0.5;
+      scrivi(); annuncia(0, "clip");
+      try {
+        const pr = await proponiInquadratura(q, daFare[i], largoF);
+        if (pr && !pr.errore) {
+          daFare[i].inquadra = daFare[i].inquadra || {};
+          daFare[i].inquadra[formato] = (pr.punti && pr.punti.length)
+            ? { z: 1, punti: pr.punti.map((k) => ({ t: k.t, x: k.x, y: 0.5 })) }
+            : { z: 1, punti: [], fisso: true };
+        }
+      } catch (e) { console.log("[clip] inquadratura: " + e.message); }
+    }
+    if (daFare.length) { scrivi(); annuncia(0, "clip"); }
+  }
+
   // I pezzi in casa cominciano un po' prima del punto voluto (si e' copiato
   // dal fotogramma chiave). Qui si taglia esatto: e' l'unica codifica del
   // giro, e non scarica niente perche' il materiale e' gia' sul disco.
@@ -2912,29 +3929,51 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   // secondo non si vede. Quindi: veloce di norma (si incolla e basta,
   // qualita' della sorgente intatta), esatto quando lo si chiede.
   //  Il ritaglio verticale e le grafiche impongono comunque la codifica.
-  const veloce = (p2 && p2.esatto) ? false : (!ritaglio && !grafiche0.length);
+  // l'audio montato a parte non impedisce di andare veloci sul VIDEO: i
+  // pezzi restano quelli, si incollano come sempre, e il suono si costruisce
+  // a fianco. Quello che cambia e' solo l'ultimo passaggio.
+  const mixato = !audioSemplice(q);
+  // ...con un'eccezione che il primo montaggio sonoro ha fatto venire fuori
+  // subito. Incollare in fretta vuol dire attaccare i pezzi cosi' come sono
+  // in casa, e quelli cominciano fino a un secondo prima del punto voluto:
+  // sul video non si vede, ma il suono e' posato al SECONDO della timeline,
+  // e quel secondo in piu' per pezzo lo sposta. Su quattro pezzi erano
+  // cinque secondi di scarto alla fine. Quando c'e' un audio da mescolare
+  // il video si taglia esatto: si paga una codifica, ma il suono sta dove
+  // e' stato messo.
+  // I buchi si riempiono di nero, e il nero va incollato ai pezzi: incollare
+  // in fretta vorrebbe dire pretendere che il nero abbia esattamente lo
+  // stesso codificatore del materiale. Con i buchi si taglia esatto.
+  const buchi = buchiDi(q);
+  const veloce = (p2 && p2.esatto) ? false : (!ritaglio && !grafiche0.length && !mixato && !buchi.length);
   const dir2 = path.join(dir, "tagli");
   assicura(dir2);
   const parti = [];
+  let orologio = 0;                     // dove siamo arrivati sulla timeline
   for (let i = 0; i < q.pezzi.length; i++) {
     const x = q.pezzi[i];
     const k = chiavePezzo(q.reg, x.dentro, x.fuori);
     const casa = filePezzo(k);
     if (!fs.existsSync(casa)) continue;
+    // il buco davanti a questo pezzo: nero, per la durata giusta
+    if ((x.t0 || 0) > orologio + 0.04) { parti.push({ vuoto: (x.t0 || 0) - orologio }); }
+    orologio = Math.max(orologio, (x.t0 || 0) + (x.fuori - x.dentro));
     const off = scartoPezzo(k), dur = x.fuori - x.dentro;
-    if (veloce) { parti.push(casa); q.export.fatti = i + 1; q.export.fase = "preparo"; continue; }
+    // l'inquadratura di QUESTO pezzo: se ha i suoi punti, il ritaglio segue
+    const ritaglioQui = ritaglioDelPezzo(formato, x.inquadra && x.inquadra[formato]);
+    if (veloce) { parti.push({ file: casa }); q.export.fatti = i + 1; q.export.fase = "preparo"; continue; }
     const esatto = path.join(dir2, "p" + String(i + 1).padStart(3, "0") + ".mp4");
     const args = ["-hide_banner", "-loglevel", "error", "-nostdin",
       "-ss", String(off), "-i", casa, "-t", String(dur)];
     // se il pezzo comincia gia' dove deve, si copia e basta: niente da fare
-    const copiabile = off < 0.08 && !ritaglio;
+    const copiabile = off < 0.08 && !ritaglioQui;
     await new Promise((si, no) => {
       const pr = spawn(FFMPEG, args.concat(copiabile
         ? ["-c", "copy", "-movflags", "+faststart", "-y", esatto]
         // lanczos va IN CODA alla scala, non in testa: scritto davanti
         // ffmpeg lo prendeva come unico argomento e l'ingrandimento saltava,
         // e il verticale usciva 608x1080 invece di 1080x1920
-        : (ritaglio ? ["-vf", ritaglio.replace(/(scale=\d+:\d+)/, "$1:flags=lanczos")] : [])
+        : (ritaglioQui ? ["-vf", ritaglioQui.replace(/(scale=\d+:\d+)/, "$1:flags=lanczos")] : [])
           .concat(["-c:v", "libx264", "-preset", CACHE_PRESET, "-crf", CACHE_CRF, "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
            "-movflags", "+faststart", "-y", esatto])), { stdio: ["ignore", "ignore", "pipe"] });
@@ -2943,13 +3982,43 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
       pr.on("error", no);
       pr.on("close", (code) => code === 0 ? si() : no(new Error(ultimaRiga(coda) || ("ffmpeg " + code))));
     });
-    parti.push(esatto);
+    parti.push({ file: esatto });
     q.export.fatti = i + 1;
     q.export.fase = "taglio al fotogramma";
     q.export.avanza = 0.5 + 0.4 * ((i + 1) / q.pezzi.length);
     scrivi(); annuncia(0, "clip");
   }
-  if (!parti.length) throw new Error("nessun pezzo da esportare");
+  if (!parti.filter((z) => z.file).length) throw new Error("nessun pezzo da esportare");
+
+  // IL NERO DEI BUCHI. Si fabbrica sulla misura del primo pezzo vero —
+  // stessa larghezza, stessa altezza, stessi fotogrammi al secondo, stesso
+  // suono muto — se no l'incollatura rifiuta di attaccarlo.
+  if (parti.some((z) => z.vuoto)) {
+    const primo = parti.filter((z) => z.file)[0].file;
+    const mis = await probeMisure(primo);
+    const fps = (await fpsDi(primo)) || 25;
+    const LV = mis.w || 1920, LH = mis.h || 1080;
+    for (let i = 0; i < parti.length; i++) {
+      if (!parti[i].vuoto) continue;
+      const dur = Math.max(0.04, parti[i].vuoto);
+      const nero = path.join(dir2, "vuoto" + String(i).padStart(3, "0") + ".mp4");
+      await new Promise((si, no) => {
+        const pr = spawn(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin",
+          "-f", "lavfi", "-i", "color=c=black:s=" + LV + "x" + LH + ":r=" + fps + ":d=" + dur.toFixed(3),
+          "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+          "-t", dur.toFixed(3),
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", CACHE_CRF, "-pix_fmt", "yuv420p",
+          "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
+          "-movflags", "+faststart", "-y", nero], { stdio: ["ignore", "ignore", "pipe"] });
+        let coda = "";
+        pr.stderr.on("data", (d) => { coda = (coda + d).slice(-800); });
+        pr.on("error", no);
+        pr.on("close", (code) => code === 0 ? si() : no(new Error(ultimaRiga(coda) || "nero " + code)));
+      });
+      parti[i] = { file: nero, era: "vuoto" };
+    }
+    console.log("[clip] esporto \"" + (q.titolo || q.id) + "\": " + buchi.length + " buco/hi riempiti di nero");
+  }
 
   const suffisso = "_" + String(formato).replace(":", "x");
   const finale = path.join(DIR, CARTELLA_HL, q.id + suffisso + ".mp4");
@@ -2959,12 +4028,12 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   // ricodificare — i pezzi sono gia' come devono essere — quindi si
   // attaccano e basta: secondi invece di minuti, e zero perdita.
   const listaFin = path.join(dir, "tutti.txt");
-  fs.writeFileSync(listaFin, parti.map((x) => "file '" + x + "'").join("\n") + "\n");
+  fs.writeFileSync(listaFin, parti.map((x) => "file '" + x.file + "'").join("\n") + "\n");
   q.export.avanza = 0.92;
   q.export.fase = grafiche.length ? "incollo le grafiche" : (veloce ? "monto" : "monto");
   scrivi(); annuncia(0, "clip");
 
-  const soloIncollare = !grafiche.length;
+  const soloIncollare = !grafiche.length && !mixato;
   if (soloIncollare) {
     await new Promise((si, no) => {
       const pr = spawn(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin",
@@ -2973,11 +4042,32 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
       pr.on("error", no);
       pr.on("close", (code) => code === 0 ? si() : no(new Error("incollatura fallita")));
     });
+  } else if (mixato && !grafiche.length) {
+    // SOLO L'AUDIO E' CAMBIATO. Il video si copia com'e' — nessuna
+    // ricodifica, nessuna perdita — e il suono si costruisce accanto.
+    q.export.fase = "monto l'audio";
+    scrivi(); annuncia(0, "clip");
+    const mix = costruisciMix(q, 1);
+    const args = ["-hide_banner", "-loglevel", "error", "-nostdin",
+      "-f", "concat", "-safe", "0", "-i", listaFin]
+      .concat(mix.muta ? [] : mix.ingressi)
+      .concat(mix.muta
+        ? ["-map", "0:v", "-an"]
+        : ["-filter_complex", mix.catena.replace(/;$/, ""), "-map", "0:v", "-map", "[amix]",
+           "-c:a", "aac", "-b:a", "192k", "-ar", "48000"])
+      .concat(["-c:v", "copy", "-movflags", "+faststart", "-y", finale]);
+    await new Promise((si, no) => {
+      const pr = spawn(FFMPEG, args, { stdio: ["ignore", "ignore", "pipe"] });
+      let coda = "";
+      pr.stderr.on("data", (d) => { coda = (coda + d).slice(-1500); });
+      pr.on("error", no);
+      pr.on("close", (code) => code === 0 ? si() : no(new Error(ultimaRiga(coda) || ("ffmpeg " + code))));
+    });
   } else {
     // TERZO: un solo passaggio per tutto — ritaglio, ingrandimento e
     // grafiche insieme. Prima erano due codifiche in fila, e la seconda
     // mangiava quello che aveva fatto la prima.
-    const mis = await probeMisure(parti[0]);
+    const mis = await probeMisure(parti[0].file);
     const VW = mis.w || 1920, VH = mis.h || 1080;
     let catena = "";
     const ingressi = [];
@@ -2999,9 +4089,15 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
       });
     }
     catena = catena.replace(/;$/, "");
+    // l'audio: quello del video se nessuno l'ha toccato, il mix se invece
+    // c'e' un montaggio sonoro sotto
+    const mix = mixato ? costruisciMix(q, 1 + grafiche.length) : null;
+    const catenaTutta = catena + (mix && !mix.muta ? ";" + mix.catena.replace(/;$/, "") : "");
     const args = ["-hide_banner", "-loglevel", "error", "-nostdin",
-      "-f", "concat", "-safe", "0", "-i", listaFin].concat(ingressi).concat([
-      "-filter_complex", catena, "-map", "[" + ultimo + "]", "-map", "0:a?",
+      "-f", "concat", "-safe", "0", "-i", listaFin].concat(ingressi)
+      .concat(mix && !mix.muta ? mix.ingressi : []).concat([
+      "-filter_complex", catenaTutta, "-map", "[" + ultimo + "]"])
+      .concat(mix ? (mix.muta ? ["-an"] : ["-map", "[amix]"]) : ["-map", "0:a?"]).concat([
       "-c:v", "libx264", "-preset", CACHE_PRESET, "-crf", CACHE_CRF, "-pix_fmt", "yuv420p",
       "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-y", finale]);
     await new Promise((si, no) => {
@@ -3036,6 +4132,21 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   return q.esportati[formato];
 }
 
+// Il testo che finisce dentro l'XML. Un titolo come "GOL di Galvan 3-1
+// <replay>" o un nome di partita con la & spaccano il file, e Premiere si
+// rifiuta di aprirlo senza dire perche'. Si sostituiscono i cinque
+// caratteri che in XML vogliono dire qualcos'altro, e si buttano i
+// caratteri di controllo, che in un titolo non ci devono stare.
+function xmlEsc(t) {
+  return String(t === undefined || t === null ? "" : t)
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 async function hlEsportaPremiere(q, percorso) {
   const r = R.reg[q.reg];
   if (r && r.integrale === "sospetto" && !percorso) {
@@ -3065,40 +4176,106 @@ async function hlEsportaPremiere(q, percorso) {
              "<displayformat>NDF</displayformat></timecode>";
   const url = "file://localhost" + (via.charAt(0) === "/" ? "" : "/") + encodeURI(via).replace(/#/g, "%23");
 
-  let video = "", a1 = "", a2 = "", marker = "", pos = 0;
+  // LE TRACCE ESCONO COME SONO. Prima l'XML raccontava sempre la stessa
+  // storia — un video su V1 e due canali su A1/A2, incollati sotto — anche
+  // quando sulla timeline l'audio era da un'altra parte. Adesso ogni pezzo
+  // audio esce sulla sua traccia, al suo secondo, col suo volume, e il
+  // legame c'e' solo dove c'e' davvero: aprendo il progetto in Premiere si
+  // ritrova il montaggio, non la sua ombra.
+  normalizzaSeq(q);
+  const iTraccia = (n2) => Math.max(1, TRACCE_A.indexOf(n2) + 1);
+  const quanteA = Math.max(2, (q.audio || []).reduce((m, a) => Math.max(m, iTraccia(a.traccia)), 1));
+  const audioTr = [];
+  for (let k = 0; k < quanteA; k++) audioTr.push("");
+  // il numero della clip dentro la sua traccia: serve ai <link>
+  const posti = {};
+  const contati = {};
+  q.pezzi.forEach((x, i) => { contati.v = (contati.v || 0) + 1; posti["v:" + x.id] = contati.v; });
+  (q.audio || []).slice().sort((a, b) => (a.t0 || 0) - (b.t0 || 0)).forEach((a) => {
+    const t = "a" + iTraccia(a.traccia);
+    contati[t] = (contati[t] || 0) + 1;
+    posti["a:" + a.id] = contati[t];
+  });
+  // il volume come lo scrive Premiere: un moltiplicatore, non i decibel
+  const livello = (db) => {
+    if (!db) return "";
+    const v = Math.min(3.98107, Math.max(0, Math.pow(10, db / 20)));
+    return '<filter><effect><name>Audio Levels</name><effectid>audiolevels</effectid>' +
+           '<effectcategory>audiolevels</effectcategory><effecttype>audiolevels</effecttype>' +
+           '<mediatype>audio</mediatype><pproBypass>false</pproBypass>' +
+           '<parameter authoringApp="PremierePro"><parameterid>level</parameterid><name>Level</name>' +
+           '<valuemin>0</valuemin><valuemax>3.98107</valuemax><value>' + v.toFixed(5) + '</value>' +
+           '</parameter></effect></filter>';
+  };
+
+  let video = "", marker = "", pos = 0, primo = true;
+  const schedaFile = () => {
+    if (!primo) return '<file id="file-1"/>';
+    primo = false;
+    return '<file id="file-1"><name>' + xmlEsc(nome) + '</name><pathurl>' + xmlEsc(url) + '</pathurl>' + rate +
+      '<duration>' + durataFile + '</duration>' + tc +
+      '<media><video><samplecharacteristics><width>1920</width><height>1080</height>' +
+      '</samplecharacteristics></video><audio><channelcount>2</channelcount></audio></media></file>';
+  };
+
   q.pezzi.forEach((x, i) => {
     const inF = frame(x.dentro), outF = frame(x.fuori);
     const durF = Math.max(1, outF - inF);
-    const start = pos, end = pos + durF; pos = end;
-    const n = xmlEsc(x.titolo);
-    const file = i === 0
-      ? '<file id="file-1"><name>' + xmlEsc(nome) + '</name><pathurl>' + xmlEsc(url) + '</pathurl>' + rate +
-        '<duration>' + durataFile + '</duration>' + tc +
-        '<media><video><samplecharacteristics><width>1920</width><height>1080</height>' +
-        '</samplecharacteristics></video><audio><channelcount>2</channelcount></audio></media></file>'
-      : '<file id="file-1"/>';
-    const link = '<link><linkclipref>v' + i + '</linkclipref><mediatype>video</mediatype><trackindex>1</trackindex><clipindex>' + (i + 1) + '</clipindex></link>' +
-                 '<link><linkclipref>a1' + i + '</linkclipref><mediatype>audio</mediatype><trackindex>1</trackindex><clipindex>' + (i + 1) + '</clipindex></link>' +
-                 '<link><linkclipref>a2' + i + '</linkclipref><mediatype>audio</mediatype><trackindex>2</trackindex><clipindex>' + (i + 1) + '</clipindex></link>';
-    video += '<clipitem id="v' + i + '"><name>' + n + '</name><duration>' + durF + '</duration>' + rate +
-             '<start>' + start + '</start><end>' + end + '</end><in>' + inF + '</in><out>' + outF + '</out>' +
-             file + '<sourcetrack><mediatype>video</mediatype><trackindex>1</trackindex></sourcetrack>' + link + '</clipitem>';
-    [["a1", 1], ["a2", 2]].forEach((ch) => {
-      const pezzo = '<clipitem id="' + ch[0] + i + '"><name>' + n + '</name><duration>' + durF + '</duration>' + rate +
-        '<start>' + start + '</start><end>' + end + '</end><in>' + inF + '</in><out>' + outF + '</out>' +
-        '<file id="file-1"/><sourcetrack><mediatype>audio</mediatype><trackindex>' + ch[1] +
-        '</trackindex></sourcetrack>' + link + '</clipitem>';
-      if (ch[1] === 1) a1 += pezzo; else a2 += pezzo;
+    const start = frame(x.t0 || 0), end = start + durF;
+    pos = Math.max(pos, end);
+    const n2 = xmlEsc(x.titolo);
+    // il legame lo dichiarano tutti e due i lati, video e audio: senza, in
+    // Premiere si sposta uno solo dei due
+    const suoi = (q.audio || []).filter((a) => a.legato === x.id);
+    let link = '<link><linkclipref>v' + i + '</linkclipref><mediatype>video</mediatype>' +
+               '<trackindex>1</trackindex><clipindex>' + posti["v:" + x.id] + '</clipindex></link>';
+    suoi.forEach((a) => {
+      link += '<link><linkclipref>' + a.id + '</linkclipref><mediatype>audio</mediatype>' +
+              '<trackindex>' + iTraccia(a.traccia) + '</trackindex><clipindex>' + posti["a:" + a.id] + '</clipindex></link>';
     });
-    marker += '<marker><name>' + n + '</name><comment>' + xmlEsc(x.fonte || "") +
+    video += '<clipitem id="v' + i + '"><name>' + n2 + '</name><duration>' + durF + '</duration>' + rate +
+             '<start>' + start + '</start><end>' + end + '</end><in>' + inF + '</in><out>' + outF + '</out>' +
+             schedaFile() + '<sourcetrack><mediatype>video</mediatype><trackindex>1</trackindex></sourcetrack>' +
+             (suoi.length ? link : "") + '</clipitem>';
+    marker += '<marker><name>' + n2 + '</name><comment>' + xmlEsc(x.fonte || "") +
               '</comment><in>' + start + '</in><out>-1</out></marker>';
   });
+
+  (q.audio || []).forEach((a) => {
+    const inF = frame(a.dentro), outF = frame(a.fuori);
+    const durF = Math.max(1, outF - inF);
+    const start = frame(a.t0 || 0), end = start + durF;
+    pos = Math.max(pos, end);
+    const k = iTraccia(a.traccia) - 1;
+    const iv = q.pezzi.findIndex((x) => x.id === a.legato);
+    let link = "";
+    if (iv >= 0) {
+      link = '<link><linkclipref>v' + iv + '</linkclipref><mediatype>video</mediatype>' +
+             '<trackindex>1</trackindex><clipindex>' + posti["v:" + q.pezzi[iv].id] + '</clipindex></link>' +
+             '<link><linkclipref>' + a.id + '</linkclipref><mediatype>audio</mediatype>' +
+             '<trackindex>' + (k + 1) + '</trackindex><clipindex>' + posti["a:" + a.id] + '</clipindex></link>';
+    }
+    // il canale diviso: L e' il primo, R il secondo
+    const sorg = a.canale === "R" ? 2 : 1;
+    audioTr[k] += '<clipitem id="' + a.id + '"><name>' + xmlEsc(a.titolo || "audio") + '</name>' +
+      '<duration>' + durF + '</duration>' + rate +
+      '<start>' + start + '</start><end>' + end + '</end><in>' + inF + '</in><out>' + outF + '</out>' +
+      (a.muto ? '<enabled>FALSE</enabled>' : '') + schedaFile() +
+      '<sourcetrack><mediatype>audio</mediatype><trackindex>' + sorg + '</trackindex></sourcetrack>' +
+      link + livello(a.gain || 0) + '</clipitem>';
+  });
+
+  const tracceXml = audioTr.map((t, k) => {
+    const st = (q.tracce && q.tracce[TRACCE_A[k]]) || {};
+    return '<track>' + t + '<enabled>' + (st.muto ? "FALSE" : "TRUE") + '</enabled>' +
+           '<locked>' + (st.bloccata ? "TRUE" : "FALSE") + '</locked></track>';
+  }).join("");
 
   const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>\n<xmeml version="4">\n' +
     '<sequence id="sequence-1"><name>' + xmlEsc(q.titolo) + '</name><duration>' + pos + '</duration>' + rate + tc + '\n' +
     '<media><video><format><samplecharacteristics>' + rate + '<width>1920</width><height>1080</height>' +
     '</samplecharacteristics></format><track>' + video + '</track></video>' +
-    '<audio><track>' + a1 + '</track><track>' + a2 + '</track></audio></media>\n' + marker + '\n</sequence>\n</xmeml>\n';
+    '<audio>' + tracceXml + '</audio></media>\n' + marker + '\n</sequence>\n</xmeml>\n';
 
   const file = path.join(DIR, CARTELLA_HL, q.id + ".xml");
   fs.writeFileSync(file, xml);
@@ -3449,7 +4626,55 @@ const S3 = {
   segreto: process.env.COMOTV_S3_SEGRETO || "",
   regione: process.env.COMOTV_S3_REGIONE || ""     // se manca, si chiede al bucket
 };
-function s3Acceso() { return !!(S3.bucket && S3.id && S3.segreto); }
+
+// ── I MAGAZZINI ───────────────────────────────────────────────────────
+//
+//  S3 non e' Amazon: e' un protocollo. Un Synology con Object Storage
+//  Server, o un MinIO, rispondono alle stesse richieste firmate nello
+//  stesso modo. Quindi qui dentro non c'e' "il" magazzino: c'e' un elenco,
+//  e ogni partita porta gia' scritto in quale sta — il campo bucket ce
+//  l'ha da sempre.
+//
+//  Amazon resta com'era e non si tocca. Gli altri si accendono mettendo le
+//  loro chiavi nell'ambiente, esattamente come si e' sempre fatto: qui
+//  dentro non ne entra nessuna, e se non ci sono quel magazzino
+//  semplicemente non esiste.
+//
+//  Due differenze pratiche, e sono le uniche:
+//    — l'indirizzo. Amazon lo costruisce dal nome del secchio
+//      (secchio.s3.regione.amazonaws.com); gli altri hanno un indirizzo
+//      loro e il secchio sta nel percorso (nas.tuo/secchio/chiave). E' lo
+//      "stile path", ed e' quello che parlano tutti tranne Amazon.
+//    — la regione. Ad Amazon si chiede; agli altri no, e vale quella
+//      scritta nella configurazione (di solito us-east-1, che e' quella
+//      che i server compatibili si aspettano nella firma).
+const MAGAZZINI = [];
+(function leggiMagazzini() {
+  // il Synology, o qualunque altro S3 di casa
+  const e = process.env.COMOTV_NAS_ENDPOINT || "";
+  if (!e) return;
+  MAGAZZINI.push({
+    nome: process.env.COMOTV_NAS_NOME || "synology",
+    endpoint: e.replace(/\/+$/, ""),
+    bucket: process.env.COMOTV_NAS_BUCKET || "",
+    id: process.env.COMOTV_NAS_ID || "",
+    segreto: process.env.COMOTV_NAS_SEGRETO || "",
+    regione: process.env.COMOTV_NAS_REGIONE || "us-east-1",
+    radice: process.env.COMOTV_NAS_RADICE || "",
+    // il browser dei montatori ci arriva? Di norma no: sta dietro il
+    // tunnel, che arriva alla VM e basta. Allora il video passa dalla VM.
+    fuori: process.env.COMOTV_NAS_FUORI === "1"
+  });
+})();
+const AMAZZONE = { nome: "amazon", endpoint: "", bucket: S3.bucket, id: S3.id,
+                   segreto: S3.segreto, regione: S3.regione };
+function magazzinoDi(bucket) {
+  const b = bucket || S3.bucket;
+  const m = MAGAZZINI.filter((x) => x.bucket && x.bucket === b)[0];
+  return m || AMAZZONE;
+}
+function magazzinoAcceso(m) { return !!(m && m.bucket && m.id && m.segreto); }
+function s3Acceso() { return magazzinoAcceso(AMAZZONE) || MAGAZZINI.some(magazzinoAcceso); }
 
 // L'unica codifica che AWS accetta nella firma: encodeURIComponent lascia
 // stare cinque caratteri che invece vanno codificati.
@@ -3466,6 +4691,11 @@ function hmac(k, x) { return crypto.createHmac("sha256", k).update(x).digest(); 
 const regioneVista = {};
 async function s3Regione(bucket) {
   const b = bucket || S3.bucket;
+  // a un magazzino di casa non si chiede niente: la regione e' quella
+  // scritta nella configurazione, e bussare a un indirizzo di Amazon col
+  // nome del nostro secchio non avrebbe senso
+  const m = magazzinoDi(b);
+  if (m.endpoint) return m.regione || "us-east-1";
   if (!bucket && S3.regione) return S3.regione;
   if (regioneVista[b]) return regioneVista[b];
   const r = await fetch("https://" + b + ".s3.amazonaws.com/",
@@ -3485,29 +4715,42 @@ async function s3Firma(chiave, cerca, quanto, bucket) {
 // che e' scritto per lavorare su un file e non deve sapere di internet.
 function firmaConRegione(regione, chiave, cerca, quanto, bucket) {
   const secchio = bucket || S3.bucket;
-  const host = secchio + ".s3." + regione + ".amazonaws.com";
+  const m = magazzinoDi(secchio);
+  // Amazon mette il secchio nel nome dell'host; tutti gli altri nel
+  // percorso. E' l'unica differenza che conta, ed e' qui.
+  let protocollo = "https:", host, via, base = "";
+  if (m.endpoint) {
+    const u = new URL(m.endpoint);
+    protocollo = u.protocol;
+    host = u.host;                                   // porta compresa
+    base = u.pathname.replace(/\/+$/, "");           // se sta sotto un percorso
+    via = base + "/" + uriAws(secchio) + "/" + (chiave ? uriChiave(chiave) : "");
+  } else {
+    host = secchio + ".s3." + regione + ".amazonaws.com";
+    via = "/" + (chiave ? uriChiave(chiave) : "");
+  }
+  const reg = m.endpoint ? (m.regione || "us-east-1") : regione;
   const ora = new Date().toISOString().replace(/[-:]|\.\d{3}/g, "");
   const giorno = ora.slice(0, 8);
-  const ambito = giorno + "/" + regione + "/s3/aws4_request";
+  const ambito = giorno + "/" + reg + "/s3/aws4_request";
 
   const q = Object.assign({}, cerca || {}, {
     "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
-    "X-Amz-Credential": S3.id + "/" + ambito,
+    "X-Amz-Credential": m.id + "/" + ambito,
     "X-Amz-Date": ora,
     "X-Amz-Expires": String(quanto || 3600),
     "X-Amz-SignedHeaders": "host"
   });
   const query = Object.keys(q).sort()
     .map((k) => uriAws(k) + "=" + uriAws(q[k])).join("&");
-  const via = "/" + (chiave ? uriChiave(chiave) : "");
 
   const richiesta = ["GET", via, query, "host:" + host, "", "host", "UNSIGNED-PAYLOAD"].join("\n");
   const daFirmare = ["AWS4-HMAC-SHA256", ora, ambito, sha256(richiesta)].join("\n");
-  let k = hmac("AWS4" + S3.segreto, giorno);
-  k = hmac(k, regione); k = hmac(k, "s3"); k = hmac(k, "aws4_request");
+  let k = hmac("AWS4" + m.segreto, giorno);
+  k = hmac(k, reg); k = hmac(k, "s3"); k = hmac(k, "aws4_request");
   const firma = crypto.createHmac("sha256", k).update(daFirmare).digest("hex");
 
-  return "https://" + host + via + "?" + query + "&X-Amz-Signature=" + firma;
+  return protocollo + "//" + host + via + "?" + query + "&X-Amz-Signature=" + firma;
 }
 
 function fraTag(xml, tag) {
@@ -3562,6 +4805,9 @@ async function s3Tutto(prefisso, tetto) {
 
 const ARCH_BUCKET = process.env.COMOTV_S3_ARCHIVIO || "mola-italy-como-archive";
 const ARCH_RADICE = process.env.COMOTV_S3_RADICE || "TEMP/";
+// la radice di ogni magazzino: quella di Amazon e' TEMP/, quella di casa la
+// dice chi la configura (e se non la dice, si guarda tutto il secchio)
+function radiceDi(bucket) { const m = magazzinoDi(bucket); return m.endpoint ? (m.radice || "") : ARCH_RADICE; }
 
 // Le parole che contano di un nome di partita: via i punteggi, via "vs",
 // via le sigle corte. Restano i nomi delle squadre, che e' quello su cui
@@ -3715,7 +4961,12 @@ async function archivioApri(p) {
     // vista prima che esistessero le sequenze non le vedeva piu': erano 30
     // registrazioni su 36. Adesso si apparecchia anche al ritorno; se le
     // sequenze ci sono gia', preparaSequenze se ne accorge e non le rifa'.
-    if (p.prepara !== false) setTimeout(() => { preparaSequenze({ reg: gia.id }).catch((e) => console.log("[clip] apparecchiare: " + e.message)); }, 300);
+    // NON SI APPARECCHIA PIU' NIENTE DA SOLE. Aprendo una partita nascevano
+    // nove sequenze — GOL, SHORTS, AZIONI per tre formati — decise da una
+    // tabella di parole chiave. Adesso si apre il tabellino, si spunta, e la
+    // sequenza la fa chi monta: una, con dentro quello che ha scelto.
+    // Chi le vuole comunque: clip-prepara a mano.
+    if (p.prepara === true) setTimeout(() => { preparaSequenze({ reg: gia.id }).catch((e) => console.log("[clip] apparecchiare: " + e.message)); }, 300);
     return { ok: true, reg: pubblica(gia), giaAperta: true };
   }
 
@@ -3750,7 +5001,7 @@ async function archivioApri(p) {
   if (!a.misurato && CODA_DURATE.indexOf(p.rec) < 0) { CODA_DURATE.unshift(String(p.rec)); giraDurate(); }
   // e intanto si apparecchia quello che sappiamo di lei: gol, azioni,
   // telecronaca, boati, ognuno nella sua sequenza. Chi apre non aspetta.
-  if (p.prepara !== false) setTimeout(() => { preparaSequenze({ reg: r.id }).catch((e) => console.log("[clip] apparecchiare: " + e.message)); }, 300);
+  if (p.prepara === true) setTimeout(() => { preparaSequenze({ reg: r.id }).catch((e) => console.log("[clip] apparecchiare: " + e.message)); }, 300);
   return { ok: true, reg: pubblica(r) };
 }
 
@@ -3807,8 +5058,9 @@ function scriviArchivio() {
 }
 
 async function archivioScandaglia(p) {
-  if (!s3Acceso()) return { ok: false, errore: "l'archivio S3 non e' configurato" };
+  if (!s3Acceso()) return { ok: false, errore: "nessun magazzino configurato" };
   const bucket = p.bucket || ARCH_BUCKET;
+  const radice = p.radice !== undefined ? String(p.radice) : radiceDi(bucket);
   const giorni = num(p.giorni, 1, 3650, 400);
   const limite = Date.now() - giorni * 86400000;
   const minimo = num(p.minimoMB, 1, 100000, 700) * 1000000;
@@ -3819,7 +5071,7 @@ async function archivioScandaglia(p) {
   const gruppi = {}, perGiorno = {};
   let visti = 0, tenuti = 0, ripresa = "", giri = 0;
   do {
-    const pg = await s3Pagina(p.prefisso || "", ripresa, bucket, "");
+    const pg = await s3Pagina(p.prefisso || radice, ripresa, bucket, "");
     pg.oggetti.forEach((o) => {
       visti++;
       if (o.peso < minimo || !VIDEO.test(o.chiave)) return;
@@ -5028,6 +6280,9 @@ async function rifinisciGol(idSeq) {
            + (daCampo && daCronometro ? " (" + daCampo + " dall'inquadratura, " + daCronometro + " dal cronometro)"
               : daCampo ? " (visto dall'inquadratura)" : " (visto dal cronometro)") + ".";
   }
+  // i tagli sono cambiati: le copie verticali seguono la madre, se non le
+  // ha ancora prese in mano nessuno
+  if (cambiati && q.auto === "GOL") copieDiFormato(r, ["GOL"]);
   scrivi(); annuncia(0, "clip");
   return { ok: true, cambiati: cambiati, pezzi: q.pezzi.length, campo: daCampo, cronometro: daCronometro };
 }
@@ -5236,7 +6491,7 @@ function giraOrologi() {
 // Ogni cronometro costa ~50 MB letti da S3: AWS ne regala 100 GB al mese,
 // oltre si paga. Il filtro tiene la coda dentro il gratuito: il Como e la
 // stagione in corso; il resto quando (e se) si decide di spendere.
-let FILTRO_OROLOGI = process.env.COMOTV_OROLOGI_FILTRO || "como|2026";
+let FILTRO_OROLOGI = process.env.COMOTV_OROLOGI_FILTRO || "";   // nessun filtro: si pesca ovunque
 function passaFiltro(a) {
   if (!FILTRO_OROLOGI) return true;
   const testo = ((a.partita || "") + " " + (a.quando || "")).toLowerCase();
@@ -5245,12 +6500,17 @@ function passaFiltro(a) {
 function orologiInCoda(ripasso) {
   if (!CODA_OROLOGI.length) orologiRipassati = false;
   const gia = new Set(CODA_OROLOGI);
-  Object.keys(APPUNTI).forEach((rec) => {
+  // SI PESCA OVUNQUE. Prima la coda guardava solo le partite con gli
+  // appunti: ma le partite dove il cronometro serve DI PIU' sono proprio
+  // quelle senza — li' il tabellino esce vuoto perche' il minuto di ESPN
+  // non sa diventare un secondo. Adesso entra qualunque partita di cui
+  // sappiamo qualcosa, appunti o ESPN che sia, e senza filtro sul nome.
+  const candidate = new Set(Object.keys(APPUNTI).filter((k) => (APPUNTI[k].righe || []).length)
+                      .concat(Object.keys(ESPN).filter((k) => ((ESPN[k] || {}).eventi || []).length)));
+  candidate.forEach((rec) => {
     const a = ARCHIVIO[rec];
     if (!a || a.orologio || gia.has(rec)) return;
-    if (!(APPUNTI[rec].righe || []).length) return;
     if (a.orologioFallito && !ripasso) return;        // gia' provata: al giro finale
-    if (!passaFiltro(a)) return;
     CODA_OROLOGI.push(rec);
   });
   CODA_OROLOGI.sort((x, y) => prioritaPartita(x) - prioritaPartita(y));
@@ -5357,7 +6617,7 @@ async function controllaArchivioNuovo() {
     for (let i = 0; i < 10; i++) {
       const d = new Date(oggi.getTime() - i * 86400000);
       const g = d.getUTCFullYear() + ("0" + (d.getUTCMonth() + 1)).slice(-2) + ("0" + d.getUTCDate()).slice(-2);
-      const pg = await s3Pagina("TEMP/" + g + "/", "", ARCH_BUCKET, "/");
+      const pg = await s3Pagina(radiceDi(ARCH_BUCKET) + g + "/", "", ARCH_BUCKET, "/");
       (pg.cartelle || []).forEach((c) => viste.push(c));
     }
     const firma = viste.sort().join("|");
@@ -6001,7 +7261,81 @@ const TIPI = { ".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t", ".
                // sopra il Programma era un riquadro vuoto con dentro un 404
                ".png": "image/png" };
 
+// ── IL PONTE SUL MAGAZZINO DI CASA ────────────────────────────────────
+//
+//  Un magazzino in casa sta dietro un tunnel, e il tunnel arriva alla VM —
+//  non ai portatili dei montatori. Ma nel MAM il video va dal browser
+//  DIRETTAMENTE al magazzino: e' cosi' che funziona con S3, ed e' il motivo
+//  per cui guardare una partita non costa niente alla VM.
+//
+//  Per il materiale di casa quel salto non si puo' fare, e allora la VM fa
+//  da ponte: chiede i byte alla NAS e li ripassa al browser come sono,
+//  intervalli compresi. Gli intervalli sono la parte che conta: senza,
+//  spostarsi dentro due ore di partita vorrebbe dire scaricarle tutte.
+//
+//  L'indirizzo scade, come quelli firmati di S3 — stessa idea, altra
+//  chiave. Se no il magazzino privato di Como diventerebbe leggibile da
+//  chiunque sappia indovinare un identificativo.
+const CHIAVE_PONTE = process.env.COMOTV_CHIAVE_COMANDO || process.env.COMOTV_TOKEN || "ponte";
+function firmaPonte(id, fino) {
+  return crypto.createHmac("sha256", CHIAVE_PONTE).update(id + "|" + fino).digest("hex").slice(0, 32);
+}
+function viaPonte(id, quanto) {
+  const fino = Math.floor(Date.now() / 1000) + (quanto || 21600);
+  return "/magazzino/" + encodeURIComponent(id) + "?fino=" + fino + "&f=" + firmaPonte(id, fino);
+}
+// il magazzino di questa partita e' raggiungibile dal browser?
+function magazzinoDaFuori(r) {
+  if (!r || !r.arch) return true;
+  const m = magazzinoDi(r.arch.bucket);
+  if (!m.endpoint) return true;                    // Amazon: sempre
+  return m.fuori === true;                         // di casa: solo se lo dici tu
+}
+async function serviMagazzino(req, res, u) {
+  const id = decodeURIComponent(u.pathname.slice("/magazzino/".length));
+  const fino = parseInt(u.searchParams.get("fino") || "0", 10);
+  const f = u.searchParams.get("f") || "";
+  if (!fino || fino < Math.floor(Date.now() / 1000) || f !== firmaPonte(id, fino)) {
+    res.writeHead(403).end("indirizzo scaduto"); return;
+  }
+  const r = R.reg[id];
+  if (!r || !r.arch) { res.writeHead(404).end("non trovato"); return; }
+  let sorgente;
+  try { sorgente = viaArchivio(r); } catch (e) { res.writeHead(502).end("magazzino non raggiungibile"); return; }
+  const testa = {};
+  if (req.headers.range) testa.Range = req.headers.range;
+  try {
+    const risp = await fetch(sorgente, { headers: testa, signal: AbortSignal.timeout(30000) });
+    const fuori = {
+      "Content-Type": risp.headers.get("content-type") || "video/mp4",
+      "Accept-Ranges": "bytes",
+      "Cache-Control": "private, max-age=3600",
+      "Access-Control-Allow-Origin": "*"
+    };
+    ["content-length", "content-range"].forEach((k) => {
+      const v = risp.headers.get(k); if (v) fuori[k === "content-length" ? "Content-Length" : "Content-Range"] = v;
+    });
+    res.writeHead(risp.status, fuori);
+    if (!risp.body) { res.end(); return; }
+    // si ripassa a pezzi, senza tenere niente in memoria: una partita da
+    // sette giga non entra in un buffer e non deve entrarci
+    const lettore = risp.body.getReader();
+    const passa = () => lettore.read().then(({ done, value }) => {
+      if (done) { res.end(); return; }
+      if (!res.write(Buffer.from(value))) {
+        res.once("drain", passa);
+      } else passa();
+    }).catch(() => { try { res.end(); } catch (e) {} });
+    req.on("close", () => { try { lettore.cancel(); } catch (e) {} });
+    passa();
+  } catch (e) {
+    if (!res.headersSent) res.writeHead(502);
+    res.end("magazzino non raggiungibile: " + e.message);
+  }
+}
+
 function serviHttp(req, res, u) {
+  if (ATTIVO && u.pathname.startsWith("/magazzino/")) { serviMagazzino(req, res, u); return true; }
   if (!ATTIVO || !u.pathname.startsWith("/clip/")) return false;
   const pezzi = decodeURIComponent(u.pathname.slice(6)).split("/").filter(Boolean);
   if (!pezzi.length || pezzi.length > 3 || pezzi.some((x) => !/^[A-Za-z0-9._-]+$/.test(x) || x.startsWith("."))) {
@@ -6018,7 +7352,8 @@ function serviHttp(req, res, u) {
       "Content-Type": TIPI[est],
       "Accept-Ranges": "bytes",
       // la playlist cresce: metterla in cache vorrebbe dire un DVR fermo
-      "Cache-Control": est === ".m3u8" ? "no-store" : "public, max-age=86400",
+      // il fotogramma vivo cambia ogni pochi secondi: in cache sarebbe fermo
+      "Cache-Control": (est === ".m3u8" || /vivo\.jpg$/.test(file)) ? "no-store" : "public, max-age=86400",
       "Access-Control-Allow-Origin": "*"
     };
     if (u.searchParams.get("scarica")) {
@@ -6942,7 +8277,13 @@ const AZIONI = {
   "clip-cerca": clipCerca,
   "clip-archivio-stato": async () => {
     if (!s3Acceso()) return { ok: true, acceso: false };
-    return { ok: true, acceso: true, bucket: S3.bucket, regione: await s3Regione() };
+    // che magazzini ci sono, e quale risponde: serve per accorgersi che il
+    // Synology e' spento prima di scoprirlo aprendo una partita
+    const elenco = [];
+    if (magazzinoAcceso(AMAZZONE)) elenco.push({ nome: "amazon", bucket: AMAZZONE.bucket, dove: "amazonaws.com" });
+    MAGAZZINI.filter(magazzinoAcceso).forEach((m) => elenco.push({ nome: m.nome, bucket: m.bucket, dove: m.endpoint }));
+    return { ok: true, acceso: true, bucket: S3.bucket, regione: await s3Regione(),
+             magazzini: elenco, archivio: ARCH_BUCKET };
   },
   "clip-archivio-elenca": async (p) => {
     if (!s3Acceso()) return { ok: false, errore: "l'archivio S3 non e' configurato" };
@@ -7108,7 +8449,140 @@ const AZIONI = {
   "clip-hl-pezzo": hlPezzo,
   "clip-hl-dividi": hlDividi,
   "clip-hl-inserisci": hlInserisci,
+  // L'INQUADRATURA DI UN PEZZO, formato per formato. Punti vuoti = fermo
+  // al centro, come prima.
+  "clip-hl-inquadra": (p) => {
+    const q = seqMia(p);
+    const x = q.pezzi.filter((y) => y.id === p.pezzo)[0];
+    if (!x) throw new Error("pezzo sconosciuto");
+    const f = FORMATI[p.formato] ? String(p.formato) : "9:16";
+    const punti = Array.isArray(p.punti) ? p.punti
+      .map((k) => ({ t: num(k.t, 0, 3600, 0), x: num(k.x, 0, 1, 0.5), y: num(k.y, 0, 1, 0.5) }))
+      .sort((a, b) => a.t - b.t).slice(0, 60) : [];
+    const z = num(p.z, 0.35, 1, 1);
+    x.inquadra = x.inquadra || {};
+    // "Fermo al centro" e' una DECISIONE, non un vuoto: si scrive, se no
+    // l'inquadratura automatica dell'export la rifarebbe da capo ogni volta
+    // contro quello che hai appena deciso.
+    x.inquadra[f] = { z: z, punti: punti, fisso: !punti.length };
+    if (!Object.keys(x.inquadra).length) delete x.inquadra;
+    toccataAMano(q); scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: q, punti: punti };
+  },
+  "clip-hl-inquadra-proponi": async (p) => {
+    const q = seqMia(p);
+    const x = q.pezzi.filter((y) => y.id === p.pezzo)[0];
+    if (!x) throw new Error("pezzo sconosciuto");
+    const f = FORMATI[p.formato] ? String(p.formato) : "9:16";
+    const largo = LARGHEZZA_FORMATO[f];
+    if (!largo) throw new Error("il 16:9 non si ritaglia: non c'e' niente da inquadrare");
+    const proposta = await proponiInquadratura(q, x, largo);
+    if (proposta.errore) throw new Error(proposta.errore);
+    x.inquadra = x.inquadra || {};
+    if (proposta.punti && proposta.punti.length) {
+      const z0 = (x.inquadra[f] && !Array.isArray(x.inquadra[f]) && x.inquadra[f].z) || 1;
+      x.inquadra[f] = { z: z0, punti: proposta.punti.map((k) => ({ t: k.t, x: k.x, y: 0.5 })) };
+    } else delete x.inquadra[f];
+    if (!Object.keys(x.inquadra).length) delete x.inquadra;
+    toccataAMano(q); scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: q, proposta: proposta };
+  },
+  // SPOSTARE UN PEZZO VIDEO NEL TEMPO. Finche' nessuno lo fa, la sequenza
+  // resta attaccata come e' sempre stata: il primo spostamento la dichiara
+  // "libera", e da li' in poi i pezzi stanno dove li metti, buchi compresi.
+  // E' il gesto a dirlo, non un interruttore da trovare.
+  "clip-hl-sposta": (p) => {
+    const q = seqMia(p);
+    normalizzaSeq(q);
+    const x = q.pezzi.filter((y) => y.id === String(p.pezzo || ""))[0];
+    if (!x) throw new Error("pezzo sconosciuto");
+    if ((tracceDi(q).V1 || {}).bloccata) throw new Error("la traccia V1 e' bloccata");
+    toccataAMano(q);
+    const prima = x.t0 || 0;
+    const dopo = Math.max(0, Math.round(num(p.t0, 0, 86400, prima) * 1000) / 1000);
+    const eraLibera = !!q.libera;
+    q.libera = true;
+    x.t0 = dopo;
+    const fatto = facciaPosto(q, x);
+    // L'ELENCO SEGUE IL TEMPO. Riattaccando, i pezzi si impacchettano
+    // nell'ordine in cui stanno NELL'ELENCO: se l'elenco e' ancora quello di
+    // prima, il riordino appena fatto viene annullato un istante dopo. Prima
+    // si mette l'elenco in fila per t0, poi si impacchetta.
+    q.pezzi.sort((a, b) => (a.t0 || 0) - (b.t0 || 0));
+    // se era attaccata e si e' solo infilato in mezzo, resta attaccata: si
+    // e' riordinata, non staccata. Il buco lo fa solo chi va nel vuoto.
+    if (fatto.infilato && !eraLibera) { delete q.libera; }
+    // l'audio legato va dietro al suo video, sempre: e' cio' che vuol dire
+    // essere legati. Quello scollegato resta dov'e'.
+    const d = dopo - prima;
+    if (d) (q.audio || []).forEach((a) => { if (a.legato === x.id) a.t0 = Math.max(0, (a.t0 || 0) + d); });
+    riallinea(q);
+    scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: q, buchi: buchiDi(q).length, infilato: fatto.infilato || 0 };
+  },
+  // e la via del ritorno: si richiudono i buchi e si torna attaccati
+  "clip-hl-attacca": (p) => {
+    const q = seqMia(p);
+    toccataAMano(q);
+    delete q.libera;
+    riallinea(q);
+    scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: q };
+  },
+  "clip-tabellino": (p) => {
+    const r = R.reg[String(p.reg || "")];
+    if (!r) throw new Error("registrazione sconosciuta");
+    return tabellino(r);
+  },
+  "clip-tabellino-monta": tabellinoMonta,
+  "clip-hl-annulla": (p) => annullaSeq(p, false),
+  "clip-hl-rifai": (p) => annullaSeq(p, true),
+  "clip-hl-audio": hlAudio,
+  // le onde: la pagina chiede quelle che le mancano, poche alla volta, e
+  // intanto disegna quelle che ci sono. Nessuna attesa davanti a un
+  // montaggio che si apre.
+  "clip-hl-onde": async (p) => {
+    const q = seqDi(p);
+    normalizzaSeq(q);
+    const fuori = {};
+    let mancano = 0, fatte = 0;
+    for (const a of (q.audio || [])) {
+      const k = chiavePezzo(q.reg, a.dentro, a.fuori);
+      const via = path.join(cartellaOnde(), k + ".json");
+      if (fs.existsSync(via)) { try { fuori[a.id] = JSON.parse(fs.readFileSync(via, "utf8")); } catch (e) {} continue; }
+      if (fatte >= 4) { mancano++; continue; }      // le altre al giro dopo
+      const o = await calcolaOnda(q.reg, a.dentro, a.fuori);
+      if (o) { fuori[a.id] = o; fatte++; } else mancano++;
+    }
+    return { ok: true, onde: fuori, mancano: mancano };
+  },
   "clip-hl-nuova": hlNuova,
+  // I E O SONO LA REGISTRAZIONE. Il montatore non pensa "adesso accendo il
+  // registratore": pensa "da qui" e "fin qui". Quindi I apre il tratto da
+  // tenere e O lo chiude — e il pezzo appena registrato va in timeline da
+  // solo, che e' l'unica ragione per cui l'hai registrato. Dopo la O il
+  // flusso continua a entrare, ma non si tiene piu' niente.
+  "clip-rec": (p) => {
+    const r = R.reg[String(p.id || p.reg || "")];
+    if (!r) throw new Error("registrazione sconosciuta");
+    if (r.stato !== "registra") throw new Error("questo flusso non e' aperto");
+    const spegne = (p.on === false || p.on === "0" || p.on === 0);
+    if (!spegne) return { ok: true, reg: pubblica(recAccendi(r)) };
+    recSpegni(r);
+    const t = (r.tenuti || [])[(r.tenuti || []).length - 1];
+    let q = null;
+    if (t && t.a - t.da > 0.5) {
+      q = laDiretta(r.id, p.banco, p.prog);
+      const x = { id: nuovoId("p"), dentro: t.da, fuori: t.a, base: t.da, mano: true,
+                  titolo: "REC " + oraCorta(t.da) };
+      const iv = q.pezzi.findIndex((y) => y.vivo);
+      if (iv < 0) q.pezzi.push(x); else q.pezzi.splice(iv, 0, x);
+      toccataAMano(q);
+      scrivi(); annuncia(0, "clip");
+      console.log("[clip] in timeline il tratto registrato: " + Math.round(t.a - t.da) + "s");
+    }
+    return { ok: true, reg: pubblica(r), seq: q, tratto: t || null };
+  },
   "clip-diretta": (p) => ({ ok: true, seq: laDiretta(p.reg, p.banco, p.prog) }),
   "clip-diretta-riattacca": (p) => riattaccaLaDiretta(p.seq),
   "clip-diretta-salva": salvaIlMontato,
@@ -7151,10 +8625,28 @@ function clipIntegrale(p) {
   return { ok: true, integrale: r.integrale };
 }
 
+// UN GANCIO SOLO. I comandi che c'erano gia' — taglia, sposta, butta,
+// lametta, PRENDI, il vivo che cresce — muovono i pezzi video e non sanno
+// che esiste un audio. Rimetterli in riga a mano in quindici punti diversi
+// sarebbe stato quindici occasioni di dimenticarsene. Si fa qui, una volta:
+// qualunque comando restituisca una sequenza, la sequenza esce allineata.
+function rimettiInRiga(d) {
+  if (!d || typeof d !== "object") return d;
+  let toccato = false;
+  ["seq", "diretta"].forEach((k) => {
+    if (d[k] && Array.isArray(d[k].pezzi)) { riallinea(d[k]); toccato = true; }
+  });
+  if (Array.isArray(d.seq)) { d.seq.forEach((q) => { if (q && Array.isArray(q.pezzi)) riallinea(q); }); toccato = true; }
+  if (toccato) scrivi();
+  return d;
+}
+
 function azione(p) {
   const f = AZIONI[p.tipo];
   if (!f) throw new Error("tipo di invio sconosciuto: " + p.tipo);
-  return f(p);
+  if (String(p.tipo || "").indexOf("clip-") !== 0) return f(p);
+  const d = f(p);
+  return (d && typeof d.then === "function") ? d.then(rimettiInRiga) : rimettiInRiga(d);
 }
 
 function avvio(opz) {
@@ -7202,6 +8694,11 @@ function avvio(opz) {
   scrivi();
   anello();
   setInterval(anello, 3600000).unref();
+  // il custode delle anteprime: ogni mezzo minuto, perche' un flusso a nove
+  // megabit riempie in fretta e non si vuole aspettare l'ora dell'anello
+  setInterval(() => { try { spazzaAnteprime(); } catch (e) {} }, 30000).unref();
+  // il multiview: un fotogramma per porta, ogni pochi secondi
+  setInterval(() => { try { giraAnteprime(); } catch (e) {} }, ANTEPRIMA_OGNI * 1000).unref();
   setInterval(() => { giroEspn().catch(() => {}); }, GIRO_ESPN).unref();
   // Gli appunti delle partite appena giocate: la redazione li scrive nei
   // giorni dopo, quindi si ripassa una finestra corta e si lascia stare
