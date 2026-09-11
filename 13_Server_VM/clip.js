@@ -1105,14 +1105,85 @@ function pezzoDa(dentro, fuori, titolo, tipo, minuto, fonte, peso) {
            fonte: fonte || "auto", peso: peso || 1 };
 }
 // due cose allo stesso momento sono la stessa cosa
+// ── CHE COSA E' SUCCESSO, IN UNA PAROLA ───────────────────────────────
+//  Le fonti scrivono in tre lingue diverse: la redazione "gran parata di
+//  Butez", ESPN "Ammonizione", il Gamecast "Yellow Card". Per poter dire
+//  "dammi solo le ammonizioni" serve una parola sola, uguale per tutti, e
+//  la si ricava dal testo — non da chi l'ha scritto.
+const ETICHETTE = [
+  ["annullato", /annullat|disallow/i],
+  ["gol", /\bgol\b|\bgoal\b|\brete\b|autogol|segna/i],
+  ["rigore", /rigore|penalty|penal/i],
+  ["espulsione", /espuls|cartellino rosso|red card/i],
+  ["ammonizione", /ammoni|cartellino giallo|yellow card|giallo a /i],
+  ["var", /\bvar\b|on.field review|check del/i],
+  ["palo", /\bpalo\b|traversa|montante/i],
+  ["parata", /parat|respinge|salva|save\b/i],
+  ["punizione", /punizion|free.?kick/i],
+  ["angolo", /angolo|corner/i],
+  ["occasione", /occasion|tiro|conclusion|chance|colpo di testa/i],
+  ["fallo", /\bfallo\b|foul/i],
+  ["cambio", /sostituzion|cambio|substitution/i],
+  ["inizio", /fischio|inizio|fine (primo|secondo) tempo|kick.?off|half.?time/i]
+];
+function etichettaAzione(tipo, titolo) {
+  const t = String(tipo || "") + " " + String(titolo || "");
+  for (const [nome, forma] of ETICHETTE) if (forma.test(t)) return nome;
+  return "azione";
+}
+
+// ── QUANTO CI SI PUO' FIDARE DEL SECONDO ──────────────────────────────
+//  Non tutte le fonti portano allo stesso fotogramma. Il tabellone che
+//  cambia e' il secondo esatto. ESPN da' il minuto di gioco, e con il
+//  cronometro letto quel minuto diventa mezzo minuto di finestra. La
+//  redazione scrive DOPO aver visto, e il suo minuto cade sul replay, non
+//  sull'azione. Quindi quando due righe raccontano la stessa cosa: l'ora
+//  la mette chi ce l'ha piu' precisa, il testo lo mette chi dice di piu'.
+function precisioneDi(x) {
+  if (x.tabellone) return 4;
+  if (x.certezza === "cronometro") return 3;
+  if (x.fonte === "espn") return 2;
+  if (x.fonte === "appunti") return 1;
+  return 0;
+}
+function quantoDice(x) {
+  return (String(x.titolo || "").length) + (x.fonte === "appunti" ? 40 : 0) +
+         (x.dettaglio ? 20 : 0) + (x.rating ? 10 : 0);
+}
+// due righe sulla stessa cosa diventano una: l'ora della piu' precisa, il
+// testo della piu' ricca, e tutte e due le firme
+function fondiDue(a, b) {
+  const ora = precisioneDi(a) >= precisioneDi(b) ? a : b;
+  const dice = quantoDice(a) >= quantoDice(b) ? a : b;
+  const fuso = Object.assign({}, dice);
+  fuso.t = ora.t !== undefined ? ora.t : ora.dentro;
+  fuso.dentro = ora.dentro; fuso.fuori = ora.fuori; fuso.base = ora.dentro;
+  fuso.tabellone = a.tabellone || b.tabellone || "";
+  fuso.minuto = a.minuto || b.minuto || "";
+  fuso.rating = Math.max(a.rating || 0, b.rating || 0);
+  fuso.peso = Math.max(a.peso || 1, b.peso || 1);
+  const firme = []; [a, b].forEach((x) => (x.fonti || [x.fonte]).forEach((f) => { if (f && firme.indexOf(f) < 0) firme.push(f); }));
+  fuso.fonti = firme;
+  fuso.fonte = dice.fonte;
+  return fuso;
+}
+
 function togliDoppioni(pezzi, vicino) {
   const fuori = [];
   pezzi.sort((a, b) => a.dentro - b.dentro).forEach((x) => {
     const prima = fuori[fuori.length - 1];
     if (prima && Math.abs(x.dentro - prima.dentro) < (vicino || 20)) {
-      // si tiene quello che dice di piu': la riga della redazione batte la formula
-      if ((x.titolo || "").length > (prima.titolo || "").length) fuori[fuori.length - 1] = x;
-      return;
+      // LA STESSA COSA RACCONTATA DA DUE. Prima se ne buttava una — e con
+      // lei il minuto piu' preciso, oppure il nome del giocatore. Adesso si
+      // fondono: l'ora di chi ce l'ha esatta, il testo di chi dice di piu'.
+      // Ma solo se parlano davvero della stessa cosa: un gol e un'
+      // ammonizione a venti secondi restano due righe.
+      const ea = etichettaAzione(prima.tipo, prima.titolo);
+      const eb = etichettaAzione(x.tipo, x.titolo);
+      if (ea === eb || ea === "azione" || eb === "azione") {
+        fuori[fuori.length - 1] = fondiDue(prima, x);
+        return;
+      }
     }
     fuori.push(x);
   });
@@ -1229,6 +1300,26 @@ function quelloCheSappiamo(r) {
   };
   const a = APPUNTI[rec], e = ESPN[rec];
   const azioni = [], gol = [], voce = [], boati = [];
+  // IL TABELLONE PRIMA DI TUTTI. Il minuto scritto e' una stima, il minuto
+  // di ESPN e' un minuto intero; il risultato che cambia e' un fatto, ed e'
+  // al secondo. Quando c'e', le altre fonti gli si appoggiano.
+  const tab = (ARCHIVIO[rec] || {}).tabellone;
+  const golTab = [];
+  if (tab && tab.punti && tab.punti.length) {
+    tab.punti.forEach((x) => {
+      const d = doveCade(ARCHIVIO[rec], Math.round(x.t - RITARDO_TABELLONE));
+      if (!d) return;
+      const q = dentroLaPartita.length > 1
+        ? (dentroLaPartita[d.pezzo] || dentroLaPartita[dentroLaPartita.length - 1] || { da: 0 })
+        : { da: 0 };
+      const t = (q.da || 0) + d.secondi;
+      if (dentroLaPartita.length <= 1 && d.pezzo !== pezzo) return;
+      const p = pezzoDa(t - GOL_PRE, t + GOL_POST, "Gol " + x.dopo, "gol",
+                        "", "tabellone", 3);
+      p.t = t; p.tabellone = x.dopo;
+      golTab.push(p);
+    });
+  }
   if (a) {
     const rit = ritardoPartita(rec);
     (a.righe || []).forEach((x) => {
@@ -1282,6 +1373,32 @@ function quelloCheSappiamo(r) {
       azioni.push(p);
     });
   }
+  // ── IL TABELLONE METTE D'ACCORDO TUTTI ─────────────────────────────
+  //  Il risultato che cambia dice il secondo; ESPN e gli appunti dicono il
+  //  nome di chi ha segnato. Non sono due gol, e' lo stesso gol visto da
+  //  due parti: si tiene il secondo del tabellone e il nome dell'altro.
+  //  Un gol che il tabellone vede e nessuno racconta entra lo stesso — e'
+  //  la meta' dell'archivio, le partite di cui non sappiamo niente.
+  golTab.forEach((g) => {
+    // tutte le righe che raccontano QUEL gol, non solo la piu' vicina:
+    // appunti ed ESPN lo dicono tutti e due, e se se ne sposta una sola
+    // restano due gol a quaranta secondi l'uno dall'altro
+    const vicine = azioni.filter((x) => /gol|rete|rigore/i.test(x.tipo || "") || /gol|rete/i.test(x.titolo || ""))
+      .filter((x) => Math.abs((x.t !== undefined ? x.t : x.dentro) - g.t) < 150);
+    if (vicine.length) {
+      vicine.forEach((v2) => {
+        v2.spostato = Math.round((v2.t !== undefined ? v2.t : v2.dentro) - g.t);
+        v2.t = g.t;
+        v2.dentro = Math.max(0, g.t - GOL_PRE);
+        v2.fuori = g.t + GOL_POST;
+        v2.base = v2.dentro;
+        v2.tabellone = g.tabellone;
+      });
+      return;
+    }
+    azioni.push(g);
+    gol.push(allargaPerIlReplay(g, rec));
+  });
   // con maniglie larghe due azioni vicine si sovrappongono: si sta piu' larghi
   // anche nel togliere i doppioni
   return { azioni: togliDoppioni(azioni, 45), gol: uniscoIGol(gol, rec), voce: voceScelta,
@@ -1309,7 +1426,8 @@ function tabellino(r) {
   // dove sappiamo che cade il taglio, e quanto ci crediamo:
   //   cronometro -> il numero in sovrimpressione l'abbiamo letto: e' esatto
   //   minuto     -> sappiamo solo il minuto scritto: e' una stima
-  const comeLoSappiamo = (t) => {
+  const comeLoSappiamo = (t, x) => {
+    if (x && x.tabellone) return "tabellone";
     if (a && vicinoNella(a.gol, t)) return "cronometro";
     if (a && vicinoNella(a.replay, t)) return "cronometro";
     return "minuto";
@@ -1333,7 +1451,10 @@ function tabellino(r) {
       fonte: x.fonte || "", peso: x.peso || 1, rating: x.rating || 0,
       squadra: x.squadra || "", giocatore: x.giocatore || "",
       dettaglio: String(x.dettaglio || "").slice(0, 200),
-      gol: !!g, certezza: comeLoSappiamo(t)
+      gol: !!g || !!x.tabellone, certezza: comeLoSappiamo(t, x),
+      tabellone: x.tabellone || "",
+      tag: etichettaAzione(x.tipo, x.titolo),
+      fonti: x.fonti && x.fonti.length ? x.fonti : [x.fonte || ""]
     };
   }).sort((m, n) => m.t - n.t);
   const conta = {};
@@ -1356,7 +1477,16 @@ function tabellinoMonta(p) {
   const t = tabellino(r);
   const prese = [];
   scelti.forEach((s) => {
-    const x = t.righe.find((y) => Math.abs(y.t - s) < 1.2);
+    let x = t.righe.find((y) => Math.abs(y.t - s) < 1.2);
+    // UN MOMENTO QUALSIASI, NON SOLO UNA RIGA DEL TABELLINO. Da quando si
+    // cerca dentro la telecronaca si spunta anche una frase — "eccolo
+    // Merentiel" — che non e' un'azione di nessun elenco. E' comunque un
+    // secondo della partita, e in timeline ci va uguale, con le maniglie
+    // di un'azione normale.
+    if (!x) {
+      x = { t: s, dentro: Math.max(0, s - APP_PRE), fuori: s + APP_POST,
+            titolo: "", tipo: "", minuto: "", fonte: "telecronaca", gol: false };
+    }
     if (x && !prese.some((z) => z.t === x.t)) prese.push(x);
   });
   if (!prese.length) throw new Error("quelle righe non si trovano piu': riapri il tabellino");
@@ -3933,16 +4063,31 @@ function costruisciMix(q, iBase) {
   const suona = tracceCheSuonano(q);
   const ingressi = [];
   const uscite = [];
-  let catena = "", n = 0;
+  let catena = "", n = 0, saltati = 0;
   (q.audio || []).forEach((a) => {
     if (a.muto || !suona[a.traccia]) return;
     const t = (q.tracce && q.tracce[a.traccia]) || {};
     const k = chiavePezzo(q.reg, a.dentro, a.fuori);
     const casa = filePezzo(k);
-    if (!fs.existsSync(casa)) return;          // non e' in casa: non si inventa
-    const off = scartoPezzo(k), dur = Math.max(0.05, a.fuori - a.dentro);
+    const dur = Math.max(0.05, a.fuori - a.dentro);
     const idx = iBase + n;
-    ingressi.push("-ss", String(off), "-t", String(dur), "-i", casa);
+    // SE IN CASA NON C'E', SI VA A PRENDERLO DOVE STA. Prima un pezzo audio
+    // che non fosse gia' sul disco veniva semplicemente saltato: il mix
+    // usciva senza quella voce, e senza dirlo. Oggi l'esportazione porta in
+    // casa da sola prima di montare, quindi non capitava — ma era una
+    // dipendenza implicita fra due passaggi lontani, e un montato muto te ne
+    // accorgi quando e' gia' online.
+    let off = 0;
+    if (fs.existsSync(casa)) {
+      off = scartoPezzo(k);
+      ingressi.push("-ss", String(off), "-t", String(dur), "-i", casa);
+    } else {
+      const rq = R.reg[q.reg];
+      const f = rq && rq.arch ? fonteAl(rq, a.dentro)
+              : { via: path.join(cartellaReg(q.reg), "integrale.mp4"), dentro: a.dentro };
+      if (!f || !f.via || (!rq.arch && !fs.existsSync(f.via))) { saltati++; return; }
+      ingressi.push("-ss", String(f.dentro), "-t", String(dur), "-i", f.via);
+    }
     // da quale pista: 0 se ce n'e' una sola, come e' oggi su questo
     // materiale. Il giorno che la regia ne manda tre, qui si sceglie.
     const pista = Math.max(0, parseInt(a.sorg || 0, 10) || 0);
@@ -3963,7 +4108,8 @@ function costruisciMix(q, iBase) {
     catena += f + ";";
     uscite.push("[am" + n + "]");
   });
-  if (!uscite.length) return { muta: true };
+  if (saltati) console.log("[clip] mix: " + saltati + " pezzi audio senza materiale, lasciati fuori");
+  if (!uscite.length) return { muta: true, saltati: saltati };
   catena += uscite.length === 1
     ? uscite[0] + "anull[amix];"
     // normalize=0: sommare, non dividere. Con la normalizzazione accesa due
@@ -5671,6 +5817,26 @@ async function archivioScandaglia(p) {
       } else assorbite++;
       return;
     }
+    // ANCHE LE ORFANE HANNO UNA LINEA DEL TEMPO. Senza riga Airtable non
+    // c'e' un calcio d'inizio da cui contare, e i pezzi restavano senza
+    // "da": il cronometro e il tabellone non sapevano dove andare a
+    // guardare, e proprio queste — quelle di cui non sappiamo niente —
+    // sono le partite che avrebbero piu' bisogno di essere lette. L'asse
+    // ce l'hanno lo stesso: e' l'ora scritta nel nome dei file, contata dal
+    // primo. Il fischio vero lo trovera' il cronometro.
+    const primaOra = oraNelNome(pezzi[0].file);
+    if (primaOra) {
+      const inSecondi = (o2) => (o2.h % 12) * 3600 + o2.m * 60 + o2.s;
+      let scorso = 0;
+      pezzi.forEach((x, n2) => {
+        if (n2 === 0) { x.da = 0; return; }
+        const o2 = oraNelNome(x.file);
+        if (!o2) { x.da = null; return; }
+        let d = inSecondi(o2) - inSecondi(primaOra);
+        while (d < scorso) d += 12 * 3600;
+        x.da = d; scorso = d;
+      });
+    }
     const id = "s3:" + crypto.createHash("sha1").update(gr.dove).digest("hex").slice(0, 14);
     ARCHIVIO[id] = { orologio: orologiSoleS3[id], bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
       partita: gr.partita.replace(/[_]+/g, " ").trim(), competizione: comp.replace(/[_]+/g, " "),
@@ -5784,7 +5950,10 @@ function trascriviChiedi(p) {
   if (gia || (voceAlLavoro && voceAlLavoro.reg === r.id && voceAlLavoro.da === da)) {
     return { ok: true, giaInCoda: true, quantiInCoda: CODA_VOCE.length + (voceAlLavoro ? 1 : 0) };
   }
-  CODA_VOCE.push({ reg: r.id, da: da, a: a, chiesta: Date.now() });
+  // chiesta a mano: la lingua scritta nel nome vale subito, se no la annusa
+  // la coda quando ci arriva
+  CODA_VOCE.push({ reg: r.id, da: da, a: a, chiesta: Date.now(),
+                   lingua: String(p.lingua || "") || linguaScritta(r) || r.lingua || "" });
   giraLaCoda();
   return { ok: true, inCoda: true, quantiInCoda: CODA_VOCE.length + (voceAlLavoro ? 1 : 0),
            minuti: Math.round((a - da) / 60) };
@@ -5830,36 +5999,140 @@ setInterval(raccogliParlato, 120000);
 // registrazioni gia' sul disco si mettono in coda una volta al giorno di notte
 // Al massimo tre a notte: una trascrizione tiene ferma la macchina per
 // un'ora, e i cronometri hanno anche loro il diritto di andare avanti.
+// ── IN CHE LINGUA PARLA QUESTA PARTITA ────────────────────────────────
+//
+//  Trascrivere una partita costa un'ora e venti di macchina. Farlo su un
+//  international sound — dove c'e' solo l'ambiente dello stadio — o su una
+//  telecronaca in spagnolo con il modello puntato sull'italiano, e' un'ora
+//  e venti buttata, e il risultato non lo scarta nessuno perche' sembra
+//  testo.
+//
+//  Il nome del file spesso lo dice gia': [ITA], [ENG]. Quando non lo dice,
+//  si chiede a whisper stesso — in dodici secondi risponde "it (p=0.97)" e
+//  poi si esce. Dodici secondi contro un'ora e venti: la domanda si fa
+//  sempre. La risposta resta scritta sulla registrazione, e non si richiede
+//  piu'.
+const LINGUE_BUONE = ["it", "en"];
+function tagMateriale(r) {
+  const pezzi = r.arch ? pezziArch(r).map((x) => x.chiave).join(" ") : "";
+  return (pezzi + " " + (r.titolo || "") + " " + ((ARCHIVIO[(r.arch || {}).rec] || {}).partita || "")).toUpperCase();
+}
+function linguaScritta(r) {
+  const t = tagMateriale(r);
+  if (/\[ENG\]|FULL MATCH ENG/.test(t)) return "en";
+  if (/\[ITA\]/.test(t)) return "it";
+  return "";
+}
+// l'inglese si tiene solo dove ha senso: le partite del Como in versione
+// internazionale. Una telecronaca inglese di un'altra partita non serve a
+// nessuno, e costa uguale.
+function linguaCiSta(r, lingua) {
+  if (lingua === "it") return true;
+  if (lingua !== "en") return false;
+  return /COMO/.test(tagMateriale(r));
+}
+async function annusaLaLingua(r) {
+  if (r.lingua) return r.lingua;
+  const f = fischioNelFile(r);
+  const da = f !== null ? f + 600 : Math.min(900, Math.max(0, (r.durata || 600) / 3));
+  const fonte = r.arch ? fonteAl(r, da) : { via: sorgenteAudio(r, da), dentro: da };
+  if (!fonte || !fonte.via) return "";
+  const wav = path.join(os.tmpdir(), "lingua-" + r.id + ".wav");
+  try {
+    await new Promise((ok, no) => {
+      execFile("nice", ["-n", "15", FFMPEG, "-hide_banner", "-loglevel", "error",
+                        "-ss", String(fonte.dentro), "-t", "60", "-i", fonte.via,
+                        "-vn", "-af", panMono(quantiCanali(r), 0), "-ac", "1", "-ar", "16000",
+                        "-c:a", "pcm_s16le", "-y", wav], { timeout: 600000 }, (e) => e ? no(e) : ok());
+    });
+    const fuori = await new Promise((ok) => {
+      execFile("nice", ["-n", "15", WHISPER, "-m", MODELLO, "-l", "auto", "-dl", "-f", wav, "-t", "2"],
+        { timeout: 600000 }, (e, so, se) => ok(String(so || "") + String(se || "")));
+    });
+    const m = /auto-detected language:\s*([a-z]{2})\s*\(p\s*=\s*([0-9.]+)\)/i.exec(fuori);
+    if (!m) return "";
+    // se non e' sicura, e' rumore di stadio: meglio non trascrivere niente
+    r.lingua = (+m[2] >= 0.5) ? m[1].toLowerCase() : "muta";
+    r.linguaSicura = Math.round(+m[2] * 100) / 100;
+    scrivi();
+    console.log("[clip] lingua di \"" + (r.titolo || r.id) + "\": " + r.lingua + " (p=" + r.linguaSicura + ")");
+    return r.lingua;
+  } catch (e) { return ""; }
+  finally { try { fs.unlinkSync(wav); } catch (e) {} }
+}
+
 function parlatoLocaleInCoda(quante) {
   if (!whisperCe()) return 0;
   const tetto = quante || 3;
   let n = 0;
   Object.keys(R.reg).forEach((k) => {
     const r = R.reg[k];
-    if (r.arch || r.guarda || r.stato === "registra" || r.stato === "carica") return;
+    if (r.guarda || r.stato === "registra" || r.stato === "carica") return;
     if ((r.durata || 0) < 600) return;
     if (PARLATO[r.id] && PARLATO[r.id].intera) return;
     if (CODA_VOCE.some((x) => x.reg === r.id) || (voceAlLavoro && voceAlLavoro.reg === r.id)) return;
     if (CODA_VOCE.length >= tetto) return;
-    const via = sorgenteAudio(r); if (!via || /^https?:/i.test(via)) return;   // solo il disco locale: niente traffico
+    // ANCHE L'ARCHIVIO. Erano escluse perche' l'audio veniva da S3 e due ore
+    // di partita erano due ore di traffico da pagare. Dal magazzino di casa
+    // non costa niente, e sono le partite che nessuno ha mai trascritto.
+    const via = r.arch ? viaArchivio(r, 0) : sorgenteAudio(r);
+    if (!via || /^https?:/i.test(via)) return;      // niente che si paghi a consumo
+    // la lingua scritta nel nome basta; quella da annusare la decide la coda
+    // quando ci arriva, perche' costa dodici secondi di macchina
+    const scritta = linguaScritta(r);
+    if (scritta && !linguaCiSta(r, scritta)) return;
+    if (r.lingua && !linguaCiSta(r, r.lingua)) return;
     // dal fischio d'inizio, se si sa dov'e': il pre-partita e' una trappola
     const f = fischioNelFile(r);
-    CODA_VOCE.push({ reg: r.id, da: f !== null ? Math.max(0, f - 60) : 0, a: r.durata, chiesta: Date.now(), intera: true }); n++;
+    CODA_VOCE.push({ reg: r.id, da: f !== null ? Math.max(0, f - 60) : 0, a: r.durata,
+                     chiesta: Date.now(), intera: true, lingua: scritta || r.lingua || "" }); n++;
   });
   CODA_VOCE.sort((x, y) => ((R.reg[y.reg] || {}).avviata || 0) - ((R.reg[x.reg] || {}).avviata || 0));
   giraLaCoda();
   return n;
 }
 setInterval(() => { const h = new Date().getHours(); if (h >= 1 && h < 6) parlatoLocaleInCoda(); }, 1800000);
+let vocePid = 0, voceSpenta = false;
+// SI DEVE POTER DIRE BASTA. Whisper gira staccato dal servizio apposta —
+// cosi' due ore di lavoro sopravvivono a un riavvio — ma questo vuol dire
+// che riavviare non lo ferma. Qui si ferma davvero: si svuota la coda e si
+// chiude il gruppo di processi che sta macinando.
+function fermaParlato(riaccendi) {
+  if (riaccendi) { voceSpenta = false; setTimeout(giraLaCoda, 500); return { ok: true, acceso: true }; }
+  voceSpenta = true;
+  const quanti = CODA_VOCE.length;
+  CODA_VOCE.length = 0;
+  let ucciso = false;
+  if (vocePid) { try { process.kill(-vocePid, "SIGTERM"); ucciso = true; } catch (e) {} }
+  console.log("[clip] trascrizione fermata a mano: " + quanti + " in coda buttate" + (ucciso ? ", whisper chiuso" : ""));
+  return { ok: true, acceso: false, tolteDallaCoda: quanti, fermato: ucciso };
+}
+
 function giraLaCoda() {
-  if (voceAlLavoro || !CODA_VOCE.length) return;
-  const registrando = registrandoDavvero();
+  if (voceSpenta || voceAlLavoro || !CODA_VOCE.length) return;
+  const registrando = registrandoDavvero() || laDirettaGira();
   if (registrando) { setTimeout(giraLaCoda, 60000); return; }
   // una alla volta DAVVERO: dopo un riavvio puo' restare in giro un whisper
   // orfano che sta ancora macinando, e due su due core vanno la meta'
   if (whisperGira()) { setTimeout(giraLaCoda, 60000); return; }
+  // il magazzino e' della regia prima che nostro: se ci stanno scrivendo,
+  // due ore di lettura aspettano
+  if (magazzinoOccupato()) { setTimeout(giraLaCoda, 300000); return; }
   voceAlLavoro = CODA_VOCE.shift();
-  trascriviDavvero(voceAlLavoro)
+  const lavoro = voceAlLavoro;
+  const r0 = R.reg[lavoro.reg];
+  // LA LINGUA SI DECIDE QUI, NON PRIMA. Dodici secondi di macchina per non
+  // sprecarne quattromilaottocento su un ambiente di stadio o su una
+  // telecronaca in spagnolo.
+  Promise.resolve(lavoro.lingua || (r0 ? annusaLaLingua(r0) : ""))
+    .then((lingua) => {
+      lavoro.lingua = lingua || LINGUA_MAM;
+      if (r0 && lingua && !linguaCiSta(r0, lingua)) {
+        console.log("[clip] salto \"" + (r0.titolo || lavoro.reg) + "\": parla " + lingua);
+        return null;
+      }
+      return trascriviDavvero(lavoro);
+    })
     .catch((e) => console.log("[clip] trascrizione fallita: " + e.message))
     .then(() => { voceAlLavoro = null; annuncia(0, "clip"); setTimeout(giraLaCoda, 1000); setTimeout(giraOrologi, 1500); });
 }
@@ -5925,7 +6198,8 @@ function trascriviDavvero(lavoro) {
     // un centesimo del video
     const args = via
       ? ["-hide_banner", "-loglevel", "error", "-ss", String(daQui), "-i", via,
-         "-t", String(Math.max(1, finoA - lavoro.da)), "-vn", "-ac", "1", "-ar", "16000",
+         "-t", String(Math.max(1, finoA - lavoro.da)), "-vn",
+         "-af", panMono(quantiCanali(r), 0), "-ac", "1", "-ar", "16000",
          "-c:a", "pcm_s16le", "-y", wav]
       : null;
     if (!args) return no(new Error("di questa registrazione non c'e' audio raggiungibile"));
@@ -5968,7 +6242,7 @@ function trascriviDavvero(lavoro) {
     // -mc 0: ogni finestra si decide da sola, senza portarsi dietro il testo
     // di quella prima. E' la cura della ripetizione: sulle parole poco chiare
     // il modello si aggrappava all'ultima e la ripeteva venti volte.
-    const args = ["-m", MODELLO, "-l", LINGUA_MAM, "-f", wav, "-oj", "-of",
+    const args = ["-m", MODELLO, "-l", lavoro.lingua || LINGUA_MAM, "-f", wav, "-oj", "-of",
                   path.join(dir, "voce"), "-t", "2", "-np", "-nt", "-mc", "0", "-et", "2.8"];
     if (suggeriti) args.push("--prompt", suggeriti);
     // STACCATO DAVVERO. Con execFile whisper scrive su una pipe che appartiene
@@ -5979,10 +6253,11 @@ function trascriviDavvero(lavoro) {
     try { log = fs.openSync(path.join(dir, "voce.log"), "w"); } catch (e) { log = "ignore"; }
     const bimbo = spawn("nice", ["-n", "15", WHISPER].concat(args),
                         { detached: true, stdio: ["ignore", log, log] });
+    vocePid = bimbo.pid || 0;
     if (typeof log === "number") { try { fs.closeSync(log); } catch (e) {} }
     bimbo.on("error", no);
-    bimbo.on("exit", (codice, segnale) => codice === 0 ? ok()
-      : no(new Error("whisper e' uscito con " + (segnale || codice))));
+    bimbo.on("exit", (codice, segnale) => { vocePid = 0; return codice === 0 ? ok()
+      : no(new Error("whisper e' uscito con " + (segnale || codice))); });
   })).then(() => {
     try { fs.unlinkSync(path.join(dir, "voce.corso.json")); } catch (e) {}
     const j = JSON.parse(fs.readFileSync(path.join(dir, "voce.json"), "utf8"));
@@ -6940,6 +7215,31 @@ async function calibraOrologio(rec, rifai) {
 // dal bucket. Si accende a mano (clip-archivio-orologi).
 // "Registrando davvero": un flusso che arriva. Un ascolto aperto in attesa
 // (zero byte) o un'anteprima non fermano le code di notte.
+// ── LA DIRETTA NON LA REGISTRA DEV ────────────────────────────────────
+//
+//  "Si ferma se si sta registrando" guardava solo il registro di casa
+//  propria. Ma la diretta la registra l'altro servizio, sulla stessa
+//  macchina e sugli stessi due core: dev non ne sapeva niente e avrebbe
+//  continuato a macinare whisper sotto una partita in onda. Si chiede a
+//  lui, una volta al minuto, con una chiamata che non esce dalla macchina.
+const ALTRO_PONTE = process.env.COMOTV_ALTRO_PONTE || "http://127.0.0.1:8080/api";
+let altroVistoQuando = 0, altroRegistra = false;
+function laDirettaGira() {
+  if (Date.now() - altroVistoQuando < 60000) return altroRegistra;
+  altroVistoQuando = Date.now();
+  // la risposta serve per la prossima volta: non si aspetta nessuno
+  fetch(ALTRO_PONTE, { method: "POST", headers: { "Content-Type": "text/plain" },
+                       body: JSON.stringify({ tipo: "clip-stato" }), signal: AbortSignal.timeout(8000) })
+    .then((r) => r.json())
+    .then((d) => {
+      const prima = altroRegistra;
+      altroRegistra = (d.reg || []).some((x) => x.stato === "registra" && !x.guarda);
+      if (altroRegistra && !prima) console.log("[clip] l'altro servizio sta registrando: le code si fermano");
+    })
+    .catch(() => {});
+  return altroRegistra;
+}
+
 function registrandoDavvero() {
   return Object.keys(R.reg).some((k) => {
     const r = R.reg[k];
@@ -6962,6 +7262,159 @@ function whisperGira() {
 }
 const CODA_OROLOGI = [];
 let orologiFatti = 0, orologiFalliti = 0, orologiRipassati = false, orologiInMoto = 0, orologiRimandati = 0;
+// ── IL TABELLONE DICE DOVE SONO I GOL ─────────────────────────────────
+//
+//  Il cronometro dice CHE ORA E'. Il tabellone, due centimetri piu' in la',
+//  dice QUANTO STA. E il risultato ha una proprieta' che nessun'altra
+//  fonte ha: cambia solo quando c'e' un gol, e non torna mai indietro.
+//
+//  Quindi non serve guardare la partita per trovare i gol: basta chiedere
+//  il risultato all'inizio e alla fine, e se e' cambiato dimezzare. Ogni
+//  domanda taglia a meta' il tempo in cui il gol puo' stare: da due ore si
+//  arriva a venti secondi in otto letture. Sei gol costano centoquaranta
+//  fotogrammi e due minuti — e valgono per le partite di cui non sappiamo
+//  niente, quelle senza appunti e senza ESPN, che sono la meta' del NAS.
+//
+//  Il ritardo: il tabellone lo cambia una persona, e lo cambia dopo. Otto
+//  secondi e' la cifra che si toglie; il punto esatto lo trova poi la
+//  rifinitura, guardando l'inquadratura.
+const RITARDO_TABELLONE = 8;
+const TABELLONE_INCERTEZZA = 20;    // sotto i venti secondi si smette di dimezzare
+let tabelloniAttivi = new Set();
+
+function numeriDi(p) { const v = String(p || "").split("-"); return [parseInt(v[0], 10), parseInt(v[1], 10)]; }
+function nonCala(p0, p1) {
+  const a = numeriDi(p0), b = numeriDi(p1);
+  return b[0] >= a[0] && b[1] >= a[1];
+}
+
+async function leggiTabellone(rec, rifai) {
+  const a = ARCHIVIO[rec];
+  if (!a) throw new Error("questa partita non e' nell'indice dell'archivio");
+  if (a.tabellone && !rifai) return a.tabellone;
+  if (!tesseractCe()) throw new Error("sulla macchina manca tesseract: il tabellone non si puo' leggere");
+  if (tabelloniAttivi.has(rec)) throw new Error("sto gia' leggendo il tabellone di " + (a.partita || rec));
+  if (tabelloniAttivi.size >= 2) throw new Error("troppe letture insieme: riprova fra un minuto");
+  // senza cronometro non si sa dove guardare ne' dove comincia il secondo
+  // tempo: si legge prima quello
+  const o = a.orologio || await calibraOrologio(rec);
+  if (!o || !o.cifre) throw new Error("la targa del cronometro non e' stata trovata: senza non so dove sta il risultato");
+  tabelloniAttivi.add(rec);
+  try {
+    const regione = await s3Regione(a.bucket);
+    const vie = {};
+    const fotogramma = async (t) => {
+      const d = doveCade(a, Math.round(t));
+      if (!d) return null;
+      if (!vie[d.chiave]) vie[d.chiave] = firmaConRegione(regione, d.chiave, {}, 3600, a.bucket);
+      return fasciaAlta(vie[d.chiave], d.secondi);
+    };
+    let letti = 0;
+    const python = (args) => new Promise((ok) => {
+      execFile("python3", [OROLOGIO_PY].concat(args), { timeout: 300000 }, (e, so) => {
+        if (e) return ok(null);
+        try { ok(JSON.parse(String(so))); } catch (x) { ok(null); }
+      });
+    });
+    const butta = (f) => { if (f) try { fs.unlinkSync(f); } catch (e) {} };
+
+    // 1) dove sta scritto il risultato: si prova su tre fotogrammi del primo
+    //    tempo e vince il riquadro che legge sempre la stessa cosa
+    const i1 = o.inizio1 || 0;
+    const tre = [];
+    // tre fotogrammi vicini fra loro: se fossero lontani, in mezzo ci
+    // starebbe un gol e il riquadro giusto leggerebbe due numeri diversi
+    for (const t of [i1 + 300, i1 + 390, i1 + 480]) { const f = await fotogramma(t); if (f) { tre.push(f); letti++; } }
+    if (tre.length < 2) throw new Error("non sono riuscito a tirare fuori i fotogrammi");
+    const cal = await python(["--tabellone", o.cifre.join(",")].concat(tre));
+    tre.forEach(butta);
+    if (!cal || !cal.box) throw new Error("sul tabellone non trovo il riquadro del risultato");
+    const box = cal.box.join(",");
+
+    // 2) il risultato a un dato secondo, confermato da un secondo fotogramma
+    const uno = async (t) => {
+      const f = await fotogramma(t);
+      if (!f) return null;
+      letti++;
+      const v = await python(["--punteggio", "--box", box, f]);
+      butta(f);
+      return v && v.punteggi ? v.punteggi[0] : null;
+    };
+    const leggi = async (t) => {
+      for (const scarto of [0, 20, -20, 45, -45]) {
+        const p = await uno(t + scarto);
+        if (p && (await uno(t + scarto + 7)) === p) return p;
+      }
+      return null;
+    };
+
+    // 3) si dimezza
+    const punti = [], incerti = [];
+    const cerca = async (t0, s0, t1, s1, liv) => {
+      if (s0 === s1) return;
+      if (t1 - t0 <= TABELLONE_INCERTEZZA || liv > 13) {
+        punti.push({ t: Math.round((t0 + t1) / 2), prima: s0, dopo: s1, incerto: Math.round((t1 - t0) / 2) });
+        return;
+      }
+      // il punto di mezzo puo' capitare dove il tabellone non c'e': un
+      // replay lungo, un primo piano, l'intervallo. Prima di arrendersi si
+      // prova a un quarto e a tre quarti — un passo piu' corto, ma un passo
+      let tm = 0, sm = null;
+      for (const parte of [0.5, 0.25, 0.75, 0.37, 0.63]) {
+        tm = Math.round(t0 + (t1 - t0) * parte);
+        if (tm <= t0 + 5 || tm >= t1 - 5) continue;
+        sm = await leggi(tm);
+        if (sm && nonCala(s0, sm) && nonCala(sm, s1)) break;
+        sm = null;
+      }
+      if (!sm) { incerti.push({ da: Math.round(t0), a: Math.round(t1), prima: s0, dopo: s1 }); return; }
+      await cerca(t0, s0, tm, sm, liv + 1);
+      await cerca(tm, sm, t1, s1, liv + 1);
+    };
+    const primoBuono = async (t, passo, quanti) => {
+      for (let i = 0; i < (quanti || 6); i++) { const p = await leggi(t + i * passo); if (p) return { t: t + i * passo, p: p }; }
+      return null;
+    };
+    const pezzi = (a.pezzi || []).filter((x) => x.da !== null && x.da !== undefined);
+    const fineTutto = pezzi.length
+      ? pezzi[pezzi.length - 1].da + (pezzi[pezzi.length - 1].minuti || 55) * 60 - 120
+      : (o.inizio2 || 3600) + 3300;
+    // AL FISCHIO D'INIZIO E' ZERO A ZERO. Non c'e' bisogno di leggerlo, e
+    // leggerlo costava i gol dei primi minuti: se la prima lettura buona
+    // cadeva al 5' e li' era gia' 0-2, quei due gol non li cercava nessuno.
+    //
+    // Poi due tratti, non uno: in mezzo c'e' l'intervallo, e dimezzare
+    // dentro l'intervallo vuol dire chiedere il risultato a un fotogramma
+    // che il tabellone non ce l'ha. Il punto di giunzione e' l'inizio del
+    // secondo tempo: quello che c'e' scritto li' e' anche quello con cui
+    // era finito il primo, e cosi' i due tratti si toccano senza buchi.
+    const fine = await primoBuono(fineTutto, -45, 10);
+    const dopoIntervallo = o.inizio2 ? await primoBuono(o.inizio2 + 60, 45, 10) : null;
+    let finale = fine ? fine.p : null;
+    if (dopoIntervallo) {
+      const primaDellIntervallo = (await primoBuono(o.inizio2 - 60, -45, 12)) || { t: o.inizio2 - 60, p: dopoIntervallo.p };
+      if (nonCala("0-0", primaDellIntervallo.p)) await cerca(i1, "0-0", primaDellIntervallo.t, primaDellIntervallo.p, 0);
+      if (fine && nonCala(dopoIntervallo.p, fine.p)) await cerca(dopoIntervallo.t, dopoIntervallo.p, fine.t, fine.p, 0);
+    } else if (fine) {
+      await cerca(i1, "0-0", fine.t, fine.p, 0);
+    }
+
+    // 4) la prova del nove: il risultato finale letto sul tabellone deve
+    //    essere quello scritto nel nome della partita. Se non torna, la
+    //    lettura c'e' ma non ci si mette la firma.
+    const nel = /\b(\d{1,2})\s*-\s*(\d{1,2})\b/.exec(String(a.partita || ""));
+    const atteso = nel ? nel[1] + "-" + nel[2] : null;
+    const esito = { quando: new Date().toISOString(), box: cal.box, letti: letti,
+                    punti: punti.sort((x, y) => x.t - y.t), incerti: incerti,
+                    finale: finale, atteso: atteso,
+                    verificato: !!(atteso && finale && atteso === finale) };
+    a.tabellone = esito; scriviArchivio();
+    console.log("[clip] tabellone: " + (a.partita || rec) + " → " + punti.length + " gol, finale " +
+                finale + (atteso ? " (nel nome " + atteso + ")" : "") + ", " + letti + " fotogrammi");
+    return esito;
+  } finally { tabelloniAttivi.delete(rec); }
+}
+
 const OROLOGI_INSIEME = 2;          // due partite alla volta: ffmpeg e tesseract pesano poco, S3 aspetta
 // prima il Como, poi le partite piu' recenti: e' l'ordine in cui servono
 function prioritaPartita(rec) {
@@ -7020,7 +7473,7 @@ function giraOrologi() {
     if (!orologiInMoto && !orologiRipassati) { orologiRipassati = true; Object.keys(ARCHIVIO).forEach((k) => { if (ARCHIVIO[k].orologioFallito && !ARCHIVIO[k].orologio) delete ARCHIVIO[k].orologioFallito; }); orologiInCoda(true); }
     return;
   }
-  const registrando = registrandoDavvero();
+  const registrando = registrandoDavvero() || laDirettaGira();
   if (registrando) { setTimeout(giraOrologi, 60000); return; }
   if (magazzinoOccupato()) { setTimeout(giraOrologi, 300000); return; }
   // le durate cambiano il materiale: leggere il cronometro nel frattempo
@@ -7127,7 +7580,7 @@ async function misuraPartita(rec) {
 function giraDurate() {
   const insiemeD = qualcunoLavora() ? 1 : DURATE_INSIEME;
   if (durateInMoto >= insiemeD || !CODA_DURATE.length) { if (!CODA_DURATE.length && !durateInMoto) scriviArchivio(); return; }
-  const registrando = registrandoDavvero();
+  const registrando = registrandoDavvero() || laDirettaGira();
   if (registrando) { setTimeout(giraDurate, 60000); return; }
   // una misura in coda puo' aspettare: la regia che scrive no
   if (CODA_DURATE.length > 2 && magazzinoOccupato()) { setTimeout(giraDurate, 300000); return; }
@@ -8930,9 +9383,10 @@ const AZIONI = {
   },
   "clip-trascrivi": trascriviChiedi,
   "clip-parlato-locale": (p) => ({ ok: true, inCoda: parlatoLocaleInCoda(num(p.quante, 1, 20, 3)), coda: CODA_VOCE.length, alLavoro: voceAlLavoro ? voceAlLavoro.reg : "" }),
+  "clip-parlato-basta": (p) => fermaParlato(!!p.riaccendi),
   "clip-parlato": (p) => {
     const d = PARLATO[String(p.reg || "")];
-    return { ok: true, pezzi: (d && d.pezzi) || [],
+    return { ok: true, pezzi: (d && d.pezzi) || [], spenta: voceSpenta,
              inCorso: !!(voceAlLavoro && voceAlLavoro.reg === p.reg),
              inCoda: CODA_VOCE.filter((x) => x.reg === p.reg).length,
              motore: whisperCe() };
@@ -8941,6 +9395,10 @@ const AZIONI = {
   "clip-appunti-storici": appuntiStoriciImporta,
   // legge il cronometro di una partita (o restituisce quello gia' letto) e
   // dice dove cade un minuto degli appunti, se glielo si chiede
+  "clip-archivio-tabellone": async (p) => {
+    const t = await leggiTabellone(String(p.rec || ""), !!p.rifai);
+    return { ok: true, tabellone: t };
+  },
   "clip-archivio-orologio": async (p) => {
     const rec = String(p.rec || "");
     const o = await calibraOrologio(rec, !!p.rifai);

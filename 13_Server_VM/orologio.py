@@ -26,6 +26,8 @@ from PIL import Image, ImageFilter
 
 TESSERACT = os.environ.get("COMOTV_TESSERACT", "tesseract")
 ORA = re.compile(r"(\d{1,3}):(\d{2})")
+PUNTI = re.compile(r"(?<!\d)(\d{1,2})\s*[-\u2013]\s*(\d{1,2})(?!\d)")
+SOLO_PUNTI = re.compile(r"^(\d{1,2})[-\u2013](\d{1,2})$")
 
 
 def grigio(percorso):
@@ -209,6 +211,123 @@ def leggi(percorso, box):
     return None, testi
 
 
+def leggi_testo(percorso, box, whitelist, psm):
+    """Il testo grezzo di un ritaglio, ingrandito come piace al lettore."""
+    x, y, bw, bh = box
+    im = Image.open(percorso).convert("L")
+    W, H = im.size
+    x, y = max(0, x), max(0, y)
+    bw, bh = min(bw, W - x), min(bh, H - y)
+    if bw < 8 or bh < 8:
+        return []
+    base = im.crop((x, y, x + bw, y + bh))
+    k = max(3, int(round(110.0 / max(1, bh))))
+    base = base.resize((bw * k, bh * k), Image.LANCZOS)
+    varianti = [base]
+    if np.asarray(base).mean() < 128:
+        varianti.insert(0, Image.eval(base, lambda v: 255 - v))
+    fuori = []
+    for img in varianti:
+        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        img.save(tmp.name)
+        try:
+            cmd = [TESSERACT, tmp.name, "stdout", "--psm", psm]
+            if whitelist:
+                cmd += ["-c", "tessedit_char_whitelist=" + whitelist]
+            try:
+                fuori.append(subprocess.run(cmd, capture_output=True, text=True, timeout=30).stdout.strip())
+            except Exception:
+                pass
+        finally:
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                pass
+    return fuori
+
+
+def scatole_punteggio(targa):
+    """I riquadri dove puo' stare il punteggio, dal piu' stretto al piu' largo.
+
+    Il tabellone e' una barra: cronometro, squadra, punteggio, squadra. Il
+    punteggio sta subito dopo il cronometro, sulla stessa riga, e occupa
+    poco piu' di un'altezza. Troppo stretto taglia una cifra, troppo largo
+    si porta dentro la prima lettera della squadra — e una S lunga diventa
+    un 5. Non si indovina: si provano, e vince quella che su tre fotogrammi
+    diversi legge sempre la stessa cosa pulita.
+    """
+    x, y, bw, bh = targa
+    # Il riquadro trovato per il cronometro a volte e' solo l'orologio, a
+    # volte tutta la barra — dipende da com'e' disegnata la grafica. Nel
+    # primo caso il risultato sta a destra, nel secondo sta DENTRO. Non si
+    # sceglie: si scorre una finestra da sinistra del cronometro fino a
+    # qualche altezza piu' in la', e si prova a leggere in ognuna.
+    fuori = []
+    passo = max(12, int(bh * 0.5))
+    fine = x + bw + int(bh * 6)
+    for larga in (1.0, 1.4, 2.0, 2.8):
+        w = max(20, int(bh * larga))
+        px = x
+        while px + w <= fine:
+            fuori.append((px, y, w, bh))
+            px += passo
+    return fuori
+
+
+def punteggio_in(percorso, box):
+    """Il punteggio dentro un riquadro preciso, o niente."""
+    visti = set()
+    for testo in leggi_testo(percorso, box, "0123456789-", "7"):
+        m = SOLO_PUNTI.match(testo.replace(" ", "").strip())
+        if m:
+            visti.add("%d-%d" % (int(m.group(1)), int(m.group(2))))
+    return visti.pop() if len(visti) == 1 else None
+
+
+def punteggio(percorso, targa):
+    """Il risultato scritto sul tabellone, come coppia di numeri.
+
+    Il tabellone e' una barra sola: a sinistra il cronometro (la targa che
+    conosciamo gia'), poi le squadre col punteggio in mezzo. Si guarda
+    prima nel punto dove il punteggio sta quasi sempre — subito dopo il
+    cronometro, sulla stessa riga — e li' si legge una cosa sola, "1-0",
+    senza che nomi e loghi disturbino. Se li' non si legge niente si allarga
+    a tutta la barra e si cerca la forma "cifra trattino cifra", buttando
+    via il cronometro che ha la stessa forma ma i secondi a due cifre.
+    """
+    x, y, bw, bh = targa
+    strette = [(x + bw, y, int(bh * 1.6), bh),
+               (x + bw, y, int(bh * 2.6), bh),
+               (x + bw - int(bh * 0.3), y, int(bh * 2.0), bh)]
+    # Nel riquadro stretto ci deve stare SOLO il punteggio: se esce
+    # dell'altro, quel riquadro e' storto. Le barrette che dividono le
+    # squadre il lettore le scambia per degli "1" — "0-0|" diventa "0-01",
+    # cioe' zero a uno — e un gol inventato al primo minuto manda tutta la
+    # ricerca dietro a niente. Quindi qui si accetta solo la riga intera.
+    # ...e se due letture dello stesso riquadro non dicono la stessa cosa,
+    # non si sceglie la piu' simpatica: non si legge niente. Meglio un buco
+    # che un gol inventato.
+    for box in strette:
+        visti = set()
+        for testo in leggi_testo(percorso, box, "0123456789-", "7"):
+            m = SOLO_PUNTI.match(testo.replace(" ", "").strip())
+            if m:
+                visti.add("%d-%d" % (int(m.group(1)), int(m.group(2))))
+        if len(visti) == 1:
+            return visti.pop(), list(box)
+        if visti:
+            return None, None
+    # tutta la barra, lettere comprese: il trattino fra due cifre e' il
+    # risultato, e i due punti con due secondi sono il cronometro
+    largo = (max(0, x - int(bh * 0.4)), y, int(bh * 9), bh)
+    for testo in leggi_testo(percorso, largo, "", "7"):
+        pulito = ORA.sub(" ", testo)
+        m = PUNTI.search(pulito)
+        if m:
+            return "%d-%d" % (int(m.group(1)), int(m.group(2))), list(largo)
+    return None, None
+
+
 def somiglianza(a, b):
     """Quanto due ritagli si assomigliano, da -1 a 1 (correlazione normalizzata).
 
@@ -253,6 +372,92 @@ def main():
     # Modo "targa": un fotogramma solo e la scatola gia' nota. Serve a
     # sapere se in quel momento il cronometro c'e' o non c'e': durante un
     # replay la regia lo toglie, e quando torna vuol dire che si ricomincia.
+    # Modo "punteggio": la targa del cronometro e uno o piu' fotogrammi.
+    # Torna il risultato scritto sul tabellone in ognuno.
+    if len(sys.argv) >= 4 and sys.argv[1] == "--punteggio":
+        # con la scatola gia' scelta si legge solo li': e' la strada di tutti
+        # i giorni, una lettura per fotogramma
+        if sys.argv[2] == "--box":
+            box = [int(v) for v in sys.argv[3].split(",")]
+            letti = []
+            for percorso in sys.argv[4:]:
+                try:
+                    letti.append(punteggio_in(percorso, box))
+                except Exception:
+                    letti.append(None)
+            print(json.dumps({"punteggi": letti, "box": box}))
+            return 0
+        targa = [int(v) for v in sys.argv[2].split(",")]
+        letti, dove = [], None
+        for percorso in sys.argv[3:]:
+            try:
+                p, box = punteggio(percorso, targa)
+            except Exception:
+                p, box = None, None
+            letti.append(p)
+            if box and not dove:
+                dove = box
+        print(json.dumps({"punteggi": letti, "box": dove}))
+        return 0
+    # Modo "tabellone": la targa del cronometro e qualche fotogramma
+    # dell'inizio partita. Si cerca il riquadro del punteggio e si tiene
+    # quello che su tutti legge la stessa cosa.
+    if len(sys.argv) >= 4 and sys.argv[1] == "--tabellone":
+        targa = [int(v) for v in sys.argv[2].split(",")]
+        frame = sys.argv[3:]
+        # PRIMA SI SCREMA, POI SI CONFERMA. I riquadri da provare sono
+        # quaranta: provarli tutti su tutti i fotogrammi vorrebbe dire
+        # centocinquanta letture. Sul primo fotogramma sopravvivono in tre
+        # o quattro, e solo quelli si controllano sugli altri.
+        vivi = []
+        for box in scatole_punteggio(targa):
+            try:
+                p = punteggio_in(frame[0], box)
+            except Exception:
+                p = None
+            # una squadra non ha fatto venti gol al quarto d'ora: un numero
+            # grosso e' una lettera letta male — la R di VER diventa un 2
+            if p and all(int(v) <= 9 for v in p.split("-")):
+                vivi.append((list(box), p))
+        # il valore giusto e' quello che leggono in piu' riquadri: uno solo
+        # puo' sbagliare, tre che dicono la stessa cosa no
+        if vivi:
+            conta = {}
+            for _, p in vivi:
+                conta[p] = conta.get(p, 0) + 1
+            comune = sorted(conta.items(), key=lambda kv: -kv[1])[0][0]
+            vivi = [(b, p) for b, p in vivi if p == comune]
+        migliore = None
+        for box, p0 in vivi:
+            letti = [p0]
+            for percorso in frame[1:]:
+                try:
+                    letti.append(punteggio_in(percorso, box))
+                except Exception:
+                    letti.append(None)
+            buoni = [x for x in letti if x]
+            if len(buoni) < max(2, len(frame) - 1):
+                continue
+            # non per forza lo stesso numero: fra un fotogramma e l'altro
+            # puo' esserci un gol. Quello che non puo' succedere e' che il
+            # risultato TORNI INDIETRO — quella e' una lettura sbagliata.
+            def sale(v):
+                for i in range(1, len(v)):
+                    a0 = [int(z) for z in v[i - 1].split("-")]
+                    a1 = [int(z) for z in v[i].split("-")]
+                    if a1[0] < a0[0] or a1[1] < a0[1]:
+                        return False
+                return True
+            if not sale(buoni):
+                continue
+            # a parita', il riquadro piu' stretto: meno roba dentro, meno errori
+            if migliore is None or box[2] < migliore[0][2]:
+                migliore = (list(box), buoni[0], len(buoni))
+        if not migliore:
+            print(json.dumps({"box": None, "perche": "nessun riquadro legge un punteggio stabile"}))
+            return 0
+        print(json.dumps({"box": migliore[0], "punteggio": migliore[1], "letti": migliore[2]}))
+        return 0
     if len(sys.argv) >= 4 and sys.argv[1] == "--targa":
         box = [int(v) for v in sys.argv[2].split(",")]
         letture = []
