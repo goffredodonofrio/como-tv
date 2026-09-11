@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<script>
+/* Le Grafiche Live vivono sulla macchina della regia: da GitHub si viene
+   portati sulla macchina giusta (vedi le altre pagine). */
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  location.replace("https://projects-cloud.it" + location.pathname + location.search + location.hash);
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Redazione · Como TV</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    color-scheme:dark;
+    --gold:#C9A24B;--gold-bright:#E3C271;--red:#E51B20;
+    --ivory:#F5F1E6;--ivory-dim:#D8D2C2;--fg-3:#8A8B96;
+    --surface-panel:rgba(16,22,48,.66);
+    --line-2:rgba(245,241,230,.08);--line-gold:rgba(201,162,75,.28);
+    --ok:#4FCB8B;
+  }
+  body{
+    font-family:'DM Sans',system-ui,sans-serif;font-weight:500;font-size:14px;line-height:1.5;
+    color:var(--ivory);min-height:100vh;
+    background-color:#0A0F24;
+    background-image:
+      radial-gradient(90% 70% at 20% 8%, rgba(36,64,138,.5), transparent 55%),
+      radial-gradient(80% 80% at 92% 108%, rgba(201,162,75,.16), transparent 55%),
+      linear-gradient(165deg,#141B3C 0%,#0E1430 48%,#0A0F24 100%);
+    background-attachment:fixed;
+    padding-bottom:60px;
+  }
+  .wrap{max-width:1600px;margin:0 auto;padding:0 clamp(18px,3vw,32px);}
+  header.page{padding:34px 0 16px;}
+  .eyebrow{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.3em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:10px;}
+  h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(28px,4vw,42px);
+    line-height:.94;letter-spacing:-.02em;text-transform:uppercase;color:var(--ivory);}
+  .sotto{font-size:13px;color:var(--fg-3);margin-top:10px;max-width:760px;}
+
+  .panel{background:var(--surface-panel);border:1px solid var(--line-2);border-radius:10px;padding:16px;margin-bottom:16px;}
+  .panel h2{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:12px;}
+  label{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--gold);display:block;margin-bottom:5px;}
+  select,input[type=text],input[type=number],textarea{
+    font-family:'DM Sans',system-ui,sans-serif;font-weight:500;font-size:14px;width:100%;
+    padding:9px 11px;color:var(--ivory);background:rgba(245,241,230,.06);
+    border:1px solid rgba(245,241,230,.16);border-radius:5px;}
+  select:hover,input:hover,textarea:hover{border-color:var(--line-gold);}
+  select option{background-color:#141B3C;color:#F5F1E6;}
+  textarea{resize:vertical;min-height:70px;}
+  input[type=color]{width:64px;height:38px;padding:2px;background:rgba(10,15,36,.6);
+    border:1px solid var(--line-2);border-radius:5px;cursor:pointer;}
+  input[type=checkbox]{width:18px;height:18px;accent-color:var(--gold);}
+  ::placeholder{color:var(--ivory);opacity:.5;}
+  button{
+    font-family:'Mazzard',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.09em;
+    text-transform:uppercase;padding:10px 13px;border-radius:5px;cursor:pointer;
+    background:transparent;color:var(--ivory-dim);border:1px solid var(--line-2);
+  }
+  button:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  button.primary{background:var(--gold);border-color:var(--gold);color:#0A0F24;}
+  button.primary:hover{background:var(--gold-bright);border-color:var(--gold-bright);}
+  button:disabled{opacity:.4;cursor:default;}
+
+  /* la barra: da dove si legge, chi sei */
+  .barra{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:end;}
+  @media (max-width:900px){ .barra{grid-template-columns:1fr;} }
+
+  .cols{display:grid;grid-template-columns:minmax(320px,.8fr) 1.4fr;gap:16px;align-items:start;}
+  @media (max-width:1100px){ .cols{grid-template-columns:1fr;} }
+
+  /* la scaletta, senza tasti d'onda */
+  .voce{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:7px;
+    border:1px solid var(--line-2);margin-bottom:7px;background:rgba(245,241,230,.02);cursor:pointer;}
+  .voce:hover{border-color:var(--line-gold);}
+  .voce.sel{border-color:var(--gold);background:rgba(201,162,75,.08);}
+  .voce.onair{border-color:rgba(229,27,32,.65);background:rgba(229,27,32,.08);}
+  .voce .n{font-family:'Mazzard',sans-serif;font-weight:800;font-size:12px;color:var(--fg-3);width:26px;text-align:right;}
+  .voce .t{flex:1;min-width:0;font-size:13.5px;color:var(--ivory);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .voce .t small{display:block;font-size:10.5px;color:var(--fg-3);text-transform:uppercase;letter-spacing:.06em;}
+  .voce .t small b{color:var(--gold-bright);font-weight:700;text-transform:none;letter-spacing:0;}
+  .voce .onairtag{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:800;letter-spacing:.14em;
+    color:#FF6B6E;border:1px solid rgba(229,27,32,.6);border-radius:3px;padding:2px 7px;white-space:nowrap;}
+  #vuota{color:var(--fg-3);font-size:12.5px;padding:6px 2px;}
+
+  /* l'anteprima e i campi */
+  #prevbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px;
+    border:1px solid var(--line-gold);background:#070B1D;}
+  #prev{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
+    transform-origin:top left;pointer-events:none;background:#070B1D;color-scheme:dark;}
+  #prevcap{font-size:11.5px;color:var(--fg-3);margin-top:6px;min-height:16px;}
+  .tasti{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px;}
+  .tasti .spazio{flex:1;}
+  #campi .gruppo{margin-bottom:14px;padding-top:10px;border-top:1px solid var(--line-2);}
+  #campi .gruppo:first-child{border-top:0;padding-top:0;}
+  #campi .gruppo > label{margin-bottom:8px;}
+  .riga{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;}
+  .riga.una{grid-template-columns:1fr;}
+  .riga > div{min-width:0;}
+  .tab{width:100%;border-collapse:collapse;}
+  .tab th{font-family:'Mazzard',sans-serif;font-size:9px;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--fg-3);text-align:left;padding:0 4px 4px;}
+  .tab td{padding:2px 4px;}
+  .tab td.num{width:60px;}
+  .tab input{padding:6px 8px;font-size:13px;}
+  .tab td.idx{width:26px;color:var(--fg-3);font-size:11px;text-align:right;padding-right:6px;}
+  .fisso{font-size:12px;color:var(--fg-3);padding:8px 10px;border:1px dashed var(--line-2);border-radius:5px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .oggetto{padding:8px 10px;border:1px solid var(--line-2);border-radius:6px;margin-bottom:8px;}
+  .oggetto > .cap{font-family:'Mazzard',sans-serif;font-size:9.5px;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--fg-3);margin-bottom:6px;}
+  .ck{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ivory-dim);padding:8px 0;}
+  #msg{margin-top:10px;font-size:12.5px;color:var(--fg-3);min-height:18px;}
+  #msg.ok{color:var(--ok);} #msg.err{color:#FF6B6E;}
+  #dettaglio.vuoto #prevbox,#dettaglio.vuoto .tasti,#dettaglio.vuoto #campi{display:none;}
+  #nessuna{color:var(--fg-3);font-size:13px;}
+  #dettaglio:not(.vuoto) #nessuna{display:none;}
+  .avviso{font-size:12px;color:#FF8A8C;margin-bottom:8px;}
+  .avviso:empty{display:none;}
+</style>
+</head>
+<body>
+
+<script src="nav.js"></script>
+<script src="chiave.js"></script>
+<script src="redazione.js"></script>
+
+<div class="wrap">
+  <header class="page">
+    <div class="eyebrow">Como TV · Grafiche Live</div>
+    <h1>Redazione</h1>
+    <div class="sotto">Il posto dove si controlla quello che sta in scaletta e lo si corregge prima che
+      vada in onda. Niente tasti d'onda: quelli stanno in regia. Clicca una grafica, correggi i campi,
+      guarda l'anteprima e premi <b>Aggiorna</b>: la grafica viene sostituita al suo posto, con
+      scritto chi l'ha corretta.</div>
+  </header>
+
+  <div class="panel">
+    <div class="barra">
+      <div>
+        <label for="fonte">Da dove</label>
+        <select id="fonte"></select>
+      </div>
+      <div>
+        <label for="chi">Chi corregge</label>
+        <select id="chi"></select>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button type="button" id="btnRicarica">&#8635; Ricarica la scaletta</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="panel">
+      <h2>In scaletta <small id="conta" style="font-family:'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--fg-3);font-weight:500;font-size:11px"></small></h2>
+      <div id="voci"></div>
+      <div id="vuota" style="display:none">Niente in scaletta qui.</div>
+    </div>
+    <div class="panel" id="dettaglio">
+      <h2 id="dtit">Grafica</h2>
+      <div id="nessuna">Scegli una grafica dalla scaletta.</div>
+      <div class="avviso" id="avviso"></div>
+      <div id="prevbox"><iframe id="prev" scrolling="no"></iframe></div>
+      <div id="prevcap"></div>
+      <div class="tasti">
+        <button type="button" id="btnAnteprima">Anteprima delle modifiche</button>
+        <button type="button" id="btnRivedi">Rivedi l'animazione</button>
+        <span class="spazio"></span>
+        <button type="button" id="btnAnnulla">Annulla le modifiche</button>
+        <button type="button" class="primary" id="btnAggiorna">&#10003; Aggiorna in scaletta</button>
+      </div>
+      <div id="campi"></div>
+      <div id="msg"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
+  var TOKEN = (window.ChiaveComoTV ? ChiaveComoTV.valore() : "");
+  var N_CANALI = 8;
+  function nomeCanale(c) { return c == 8 ? "VMIX REGIA" : "vMix " + c; }
+  var el = function (id) { return document.getElementById(id); };
+  var msg = el("msg");
+  function dimmi(t, tipo) { msg.textContent = t || ""; msg.className = tipo || ""; }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function b64url(obj) {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(obj))))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function post(corpo) {
+    return fetch(PONTE, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+                          body: JSON.stringify(Object.assign({ token: TOKEN }, corpo)) })
+      .then(function (r) { return r.json(); });
+  }
+
+  // gli stessi motori della regia: ogni tipo di grafica ha la sua pagina
+  var ENGINES = {
+    formazione: "formazione-vmix.html", "formazione-premium": "formazione-premium-vmix.html",
+    ticker: "ticker-vmix.html", classifica: "classifica-vmix.html", risultati: "risultati-vmix.html",
+    sottopancia: "sottopancia-vmix.html", sottopancia2: "sottopancia2-vmix.html",
+    marcatori: "marcatori-vmix.html", tabellone: "tabellone-vmix.html", gruppi: "gruppi-vmix.html",
+    confronto: "confronto-vmix.html", duello: "duello-vmix.html", giocatore: "giocatore-vmix.html",
+    focus: "focus-vmix.html", scheda: "scheda-vmix.html", volti: "volti-vmix.html",
+    dichiarazioni: "dichiarazioni-vmix.html", barra: "barra-vmix.html", cambi: "cambi-vmix.html",
+    heatmap: "heatmap-vmix.html", passaggi: "passaggi-vmix.html", tiri: "tiri-vmix.html",
+    appuntamenti: "appuntamenti-vmix.html", media: "media-vmix.html",
+    video: "media-vmix.html", immagine: "media-vmix.html", web: "media-vmix.html"
+  };
+
+  // ── i nomi dei campi, in chiaro ─────────────────────────────────────
+  // Le grafiche viaggiano con chiavi corte (n, m, t…): qui si traducono.
+  // Quello che manca resta con la sua chiave, che comunque si capisce.
+  var ETI = {
+    n: "Nome / squadra", m: "Modulo", k: "Colore", a: "Allenatore", t: "Titolari", p: "Panchina",
+    e: "Occhiello", q: "Testo", r: "Righe", j: "Ruolo / sottotitolo", t1: "Titolo", sub: "Sottotitolo",
+    ev: "Partite", v: "Voce", co: "Contenuti", et: "Etichetta", ti: "Titoli", cr: "Testo che scorre",
+    c: "Cambi", dur: "Durata (s)", src: "File", loop: "In loop", mute: "Muto", fit: "Adattamento",
+    bg: "Sfondo", o: "Esce", i: "Entra", x: "Testo", f: "Foto", l: "Logo", mg: "Maglia",
+    af: "Foto allenatore", pv: "Stile", g: "Schieramento", s: "Sigla", col: "Colore", tid: "Id squadra",
+    titolo: "Titolo", sotto: "Sottotitolo", nome: "Nome", cognome: "Cognome", num: "Numero", min: "Minuto"
+  };
+  // colonne delle tabelle, dove le sappiamo
+  var COLONNE = { t: ["N°", "Nome", "Cognome", "Foto"], p: ["N°", "Nome", "Cognome"], a: ["Nome", "Cognome"] };
+  // cose che non si correggono qui: immagini, file, posizioni in campo
+  function fisso(chiave, val) {
+    if (chiave === "g" || chiave === "pv") return true;
+    if (typeof val !== "string") return false;
+    return /^(data:|https?:\/\/|\/loghi\/|\/clip\/|\/contributi\/)/.test(val) && val.length > 12;
+  }
+  function etichetta(k) { return ETI[k] || k; }
+
+  // ── da dove si legge: un canale o un progetto ──────────────────────
+  var fonte = { tipo: "canale", c: 7, id: null, nome: "" };
+  var progetti = [];
+  function riempiFonti() {
+    var s = el("fonte"), h = "";
+    for (var c = 1; c <= N_CANALI; c++) h += '<option value="c:' + c + '">Canale ' + c + ' · ' + nomeCanale(c) + '</option>';
+    progetti.forEach(function (p) {
+      h += '<option value="p:' + esc(p.id) + '">Progetto · ' + esc(p.nome) + ' (' + p.quante + ')</option>';
+    });
+    s.innerHTML = h;
+    s.value = fonte.tipo === "canale" ? "c:" + fonte.c : "p:" + fonte.id;
+    if (!s.value) { s.selectedIndex = 0; leggiFonte(); }
+  }
+  function leggiFonte() {
+    var v = el("fonte").value || "c:1";
+    if (v.charAt(0) === "c") { fonte = { tipo: "canale", c: parseInt(v.slice(2), 10) || 1 }; }
+    else {
+      var id = v.slice(2), pr = null;
+      progetti.forEach(function (p) { if (String(p.id) === id) pr = p; });
+      fonte = { tipo: "progetto", id: id, nome: pr ? pr.nome : "" };
+    }
+    try { localStorage.setItem("comotv.redazione.fonte", v); } catch (e) {}
+    sel = null; disegnaDettaglio();
+    caricaScaletta();
+  }
+  el("fonte").addEventListener("change", leggiFonte);
+  (function () {
+    var v = null;
+    try { v = localStorage.getItem("comotv.redazione.fonte"); } catch (e) {}
+    var q = new URLSearchParams(location.search).get("c");
+    if (q) v = "c:" + q;
+    if (v && v.charAt(0) === "c") fonte = { tipo: "canale", c: parseInt(v.slice(2), 10) || 7 };
+    else if (v) fonte = { tipo: "progetto", id: v.slice(2), nome: "" };
+  })();
+  function caricaProgetti() {
+    return post({ tipo: "progetto-elenco" })
+      .then(function (j) { progetti = (j && j.progetti) || []; })
+      .catch(function () { progetti = []; })
+      .then(riempiFonti);
+  }
+
+  // ── chi corregge ────────────────────────────────────────────────────
+  (function () {
+    var s = el("chi"), nomi = (window.REDAZIONE && REDAZIONE.NOMI) ? REDAZIONE.NOMI.slice() : [];
+    nomi.sort(function (a, b) { return a.localeCompare(b, "it"); });
+    var h = '<option value="">— scegli il tuo nome —</option>';
+    nomi.forEach(function (n) { h += '<option>' + esc(n) + '</option>'; });
+    s.innerHTML = h;
+    try { s.value = localStorage.getItem("comotv.redazione.chi") || ""; } catch (e) {}
+    s.addEventListener("change", function () {
+      try { localStorage.setItem("comotv.redazione.chi", s.value); } catch (e) {}
+    });
+  })();
+  function chiSono() { return el("chi").value || ""; }
+
+  // ── la scaletta ─────────────────────────────────────────────────────
+  var voci = [], onair = {}, sel = null, ultimoNonce = null;
+  function caricaScaletta() {
+    if (fonte.tipo === "canale") {
+      fetch(PONTE + "?regia=1&canale=" + fonte.c, { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (!j || !j.items) return;
+          onair = {};
+          if (j.liv) Object.keys(j.liv).forEach(function (L) {
+            var lv = j.liv[L]; if (lv && lv.state === "play" && lv.onair) onair[lv.onair] = L;
+          });
+          voci = j.items.map(function (it) {
+            return { id: it.id, tipo: it.tipo, titolo: it.titolo, dest: it.dest, ts: it.ts, mod: it.mod || null, liv: it.liv };
+          });
+          if (j.nonce !== ultimoNonce) { ultimoNonce = j.nonce; disegnaVoci(); }
+        })
+        .catch(function () { dimmi("Ponte non raggiungibile.", "err"); });
+    } else {
+      post({ tipo: "progetto-leggi", id: fonte.id })
+        .then(function (j) {
+          if (!j || !j.ok) { dimmi(j && j.errore ? j.errore : "Progetto non leggibile.", "err"); return; }
+          onair = {};
+          voci = j.items.map(function (it) {
+            return { id: it.pid, tipo: it.tipo, titolo: it.titolo, dest: "", ts: it.ts, mod: it.mod || null, liv: it.liv };
+          });
+          disegnaVoci();
+        })
+        .catch(function () { dimmi("Ponte non raggiungibile.", "err"); });
+    }
+  }
+  function quando(ts) {
+    if (!ts) return "";
+    var d = new Date(ts);
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    return p(d.getHours()) + ":" + p(d.getMinutes());
+  }
+  function disegnaVoci() {
+    el("conta").textContent = voci.length ? voci.length + " grafiche" : "";
+    el("vuota").style.display = voci.length ? "none" : "block";
+    var h = "";
+    voci.forEach(function (v, i) {
+      var sotto = v.tipo + (v.dest ? " · " + (v.dest === "partita" ? "LIVE MATCH" : "LIVE STUDIO") : "") +
+                  (v.ts ? " · " + quando(v.ts) : "");
+      if (v.mod && v.mod.chi) sotto += ' · <b>corretta da ' + esc(v.mod.chi) + ' alle ' + quando(v.mod.ts) + '</b>';
+      h += '<div class="voce' + (sel && sel.id === v.id ? " sel" : "") + (onair[v.id] ? " onair" : "") +
+           '" data-id="' + esc(v.id) + '">' +
+           '<span class="n">' + (i + 1) + '</span>' +
+           '<span class="t">' + esc(v.titolo || v.tipo) + '<small>' + sotto + '</small></span>' +
+           (onair[v.id] ? '<span class="onairtag">IN ONDA · L' + onair[v.id] + '</span>' : "") +
+           '</div>';
+    });
+    el("voci").innerHTML = h;
+  }
+  el("voci").addEventListener("click", function (e) {
+    var r = e.target.closest ? e.target.closest(".voce[data-id]") : null;
+    if (!r) return;
+    apri(r.dataset.id);
+  });
+  el("btnRicarica").addEventListener("click", function () { ultimoNonce = null; caricaProgetti().then(caricaScaletta); });
+  setInterval(caricaScaletta, 5000);
+
+  // ── una grafica: i suoi dati, l'anteprima, i campi ─────────────────
+  function leggiDati(id) {
+    if (fonte.tipo === "canale") {
+      return fetch(PONTE + "?regia=item&id=" + encodeURIComponent(id) + "&canale=" + fonte.c, { cache: "no-store" })
+        .then(function (r) { return r.json(); });
+    }
+    return post({ tipo: "progetto-item", id: fonte.id, pid: id }).then(function (j) { return j && j.dati ? j.dati : {}; });
+  }
+  function apri(id) {
+    var v = null;
+    voci.forEach(function (x) { if (x.id === id) v = x; });
+    if (!v) return;
+    dimmi("");
+    sel = { id: id, tipo: v.tipo, titolo: v.titolo, orig: null, dati: null };
+    disegnaVoci();
+    el("dtit").textContent = v.titolo || v.tipo;
+    el("prevcap").textContent = "Carico…";
+    leggiDati(id).then(function (d) {
+      if (!sel || sel.id !== id) return;
+      sel.orig = JSON.parse(JSON.stringify(d || {}));
+      sel.dati = JSON.parse(JSON.stringify(d || {}));
+      disegnaDettaglio();
+      anteprima(true);
+    }).catch(function () { dimmi("Non riesco a leggere questa grafica.", "err"); });
+  }
+  function motoreDi(tipo) { return ENGINES[tipo] || ENGINES.formazione; }
+  function anteprima(ferma) {
+    if (!sel || !sel.dati) return;
+    var url = motoreDi(sel.tipo) + "?d=" + b64url(sel.dati) + "&muto=1" + (ferma ? "&still=1" : "&n=" + Date.now());
+    el("prev").src = url;
+    el("prevcap").textContent = ferma ? "Anteprima ferma sul risultato, com'e' adesso coi tuoi campi."
+                                      : "Anteprima in movimento: come entra in onda.";
+    fitPrev();
+  }
+  function fitPrev() {
+    var box = el("prevbox");
+    el("prev").style.transform = "scale(" + (box.clientWidth / 1920) + ")";
+  }
+  window.addEventListener("resize", fitPrev);
+
+  el("btnAnteprima").addEventListener("click", function () { anteprima(true); });
+  el("btnRivedi").addEventListener("click", function () { anteprima(false); });
+  el("btnAnnulla").addEventListener("click", function () {
+    if (!sel || !sel.orig) return;
+    sel.dati = JSON.parse(JSON.stringify(sel.orig));
+    disegnaDettaglio(); anteprima(true);
+    dimmi("Modifiche annullate: la grafica e' tornata com'era.");
+  });
+  el("btnAggiorna").addEventListener("click", function () {
+    if (!sel || !sel.dati) return;
+    var chi = chiSono();
+    if (!chi) { dimmi("Scegli prima il tuo nome: resta scritto chi ha corretto.", "err"); el("chi").focus(); return; }
+    if (JSON.stringify(sel.dati) === JSON.stringify(sel.orig)) { dimmi("Non hai cambiato niente."); return; }
+    var corpo = fonte.tipo === "canale"
+      ? { tipo: "regia-dati", c: fonte.c, id: sel.id, dati: sel.dati, chi: chi }
+      : { tipo: "progetto-dati", id: fonte.id, pid: sel.id, dati: sel.dati, chi: chi };
+    el("btnAggiorna").disabled = true;
+    post(corpo).then(function (j) {
+      el("btnAggiorna").disabled = false;
+      if (!j || !j.ok) { dimmi("Non aggiornata: " + ((j && j.errore) || "errore del ponte"), "err"); return; }
+      sel.orig = JSON.parse(JSON.stringify(sel.dati));
+      var era = onair[sel.id];
+      dimmi("Aggiornata in scaletta" + (era ? " — e' in onda adesso: la correzione si vede alla prossima messa in onda." : "."), "ok");
+      ultimoNonce = null; caricaScaletta();
+    }).catch(function () { el("btnAggiorna").disabled = false; dimmi("Ponte non raggiungibile.", "err"); });
+  });
+
+  // ── i campi: dal pacchetto a un modulo, e ritorno ───────────────────
+  // Si percorre il pacchetto: le stringhe diventano caselle, le tabelle
+  // tabelle, gli oggetti riquadri. Ogni casella ricorda il suo percorso
+  // nel pacchetto, e scrivendo si aggiorna il pacchetto in quel punto.
+  function percorso(p) { return esc(JSON.stringify(p)); }
+  function casella(p, val) {
+    var t = typeof val;
+    if (t === "boolean") return '<input type="checkbox" data-p="' + percorso(p) + '"' + (val ? " checked" : "") + '>';
+    if (t === "number") return '<input type="number" step="any" data-p="' + percorso(p) + '" value="' + esc(val) + '">';
+    var s = String(val == null ? "" : val);
+    if (/^#[0-9a-fA-F]{6}$/.test(s)) return '<input type="color" data-p="' + percorso(p) + '" value="' + esc(s) + '">';
+    if (s.length > 80 || s.indexOf("\n") >= 0) return '<textarea data-p="' + percorso(p) + '">' + esc(s) + '</textarea>';
+    return '<input type="text" data-p="' + percorso(p) + '" value="' + esc(s) + '">';
+  }
+  function tabella(p, righe, colonne) {
+    var nCol = 0;
+    righe.forEach(function (r) { if (Array.isArray(r)) nCol = Math.max(nCol, r.length); });
+    var h = '<table class="tab"><tr><th></th>';
+    for (var c = 0; c < nCol; c++) h += '<th>' + esc((colonne && colonne[c]) || (c + 1)) + '</th>';
+    h += '</tr>';
+    righe.forEach(function (r, i) {
+      h += '<tr><td class="idx">' + (i + 1) + '</td>';
+      for (var c2 = 0; c2 < nCol; c2++) {
+        var v = Array.isArray(r) ? r[c2] : undefined;
+        h += '<td' + (c2 === 0 && nCol > 2 ? ' class="num"' : "") + '>' +
+             (fisso("", v) ? '<div class="fisso" title="' + esc(v) + '">immagine</div>' : (v === undefined ? "" : casella(p.concat([i, c2]), v))) +
+             '</td>';
+      }
+      h += '</tr>';
+    });
+    return h + '</table>';
+  }
+  function campoHTML(chiave, val, p) {
+    if (fisso(chiave, val)) {
+      return '<div class="riga una"><div><label>' + esc(etichetta(chiave)) + '</label>' +
+             '<div class="fisso" title="' + esc(typeof val === "string" ? val : "") + '">' +
+             (typeof val === "string" ? "immagine o file (si cambia dall'editor)" : "posizioni in campo (si cambiano dall'editor)") +
+             '</div></div></div>';
+    }
+    if (Array.isArray(val)) {
+      if (!val.length) return "";
+      if (val.every(function (x) { return Array.isArray(x); })) {
+        return '<div class="gruppo"><label>' + esc(etichetta(chiave)) + '</label>' + tabella(p, val, COLONNE[chiave]) + '</div>';
+      }
+      if (val.every(function (x) { return x && typeof x === "object"; })) {
+        var h = '<div class="gruppo"><label>' + esc(etichetta(chiave)) + '</label>';
+        val.forEach(function (o, i) {
+          h += '<div class="oggetto"><div class="cap">' + esc(etichetta(chiave)) + ' ' + (i + 1) + '</div>';
+          Object.keys(o).forEach(function (k) { h += campoHTML(k, o[k], p.concat([i, k])); });
+          h += '</div>';
+        });
+        return h + '</div>';
+      }
+      // elenco di valori semplici (nome e cognome dell'allenatore, i titoli)
+      var h2 = '<div class="gruppo"><label>' + esc(etichetta(chiave)) + '</label>';
+      var col = COLONNE[chiave];
+      val.forEach(function (x, i) {
+        h2 += '<div class="riga una"><div>' + (col && col[i] ? '<label>' + esc(col[i]) + '</label>' : "") +
+              (fisso("", x) ? '<div class="fisso">immagine</div>' : casella(p.concat([i]), x)) + '</div></div>';
+      });
+      return h2 + '</div>';
+    }
+    if (val && typeof val === "object") {
+      var h3 = '<div class="gruppo"><label>' + esc(etichetta(chiave)) + '</label>';
+      Object.keys(val).forEach(function (k) { h3 += campoHTML(k, val[k], p.concat([k])); });
+      return h3 + '</div>';
+    }
+    var ck = typeof val === "boolean";
+    return '<div class="riga una"><div>' +
+           (ck ? '<label class="ck">' + casella(p, val) + ' ' + esc(etichetta(chiave)) + '</label>'
+               : '<label>' + esc(etichetta(chiave)) + '</label>' + casella(p, val)) +
+           '</div></div>';
+  }
+  function disegnaDettaglio() {
+    var box = el("dettaglio");
+    if (!sel || !sel.dati) { box.classList.add("vuoto"); el("dtit").textContent = "Grafica"; el("campi").innerHTML = ""; return; }
+    box.classList.remove("vuoto");
+    var d = sel.dati, h = "";
+    var chiavi = Object.keys(d);
+    if (!chiavi.length) h = '<div class="fisso">Questa grafica non ha campi da correggere qui: si rifa\' dal suo editor.</div>';
+    chiavi.forEach(function (k) { h += campoHTML(k, d[k], [k]); });
+    el("campi").innerHTML = h;
+    el("avviso").textContent = onair[sel.id] ? "Questa grafica e' IN ONDA adesso: puoi correggerla, la correzione entra alla prossima messa in onda." : "";
+  }
+  // scrivere in una casella aggiorna il pacchetto nel punto giusto
+  el("campi").addEventListener("input", function (e) {
+    var i = e.target;
+    if (!i.dataset || !i.dataset.p || !sel || !sel.dati) return;
+    var p = JSON.parse(i.dataset.p), o = sel.dati;
+    for (var k = 0; k < p.length - 1; k++) o = o[p[k]];
+    var ultima = p[p.length - 1];
+    if (i.type === "checkbox") o[ultima] = !!i.checked;
+    else if (i.type === "number") o[ultima] = i.value === "" ? "" : Number(i.value);
+    else o[ultima] = i.value;
+  });
+
+  // ── avvio ───────────────────────────────────────────────────────────
+  disegnaDettaglio();
+  caricaProgetti().then(caricaScaletta);
+  fitPrev();
+})();
+</script>
+<script src="dev.js"></script>
+</body>
+</html>

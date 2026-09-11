@@ -484,6 +484,42 @@ function regiaRename(p) {
   return { ok: true, canale: c, nonce: ix.nonce };
 }
 
+// La redazione corregge una grafica GIA' in scaletta: stessi posto, titolo
+// e livello, cambiano solo i dati. Se e' in onda la correzione si vede alla
+// prossima messa in onda — il playout non si tocca sotto i piedi della
+// regia. Resta scritto chi l'ha corretta e quando.
+function regiaDati(p) {
+  const c = canaleDi(p.c);
+  const ix = regiaDi(c);
+  const it = ix.items.find(i => i.id === p.id);
+  if (!it) throw new Error("grafica non trovata in scaletta (forse tolta)");
+  if (!p.dati || typeof p.dati !== "object") throw new Error("dati mancanti");
+  S.voci[c][p.id] = p.dati;
+  it.mod = { chi: String(p.chi || "").slice(0, 60), ts: Date.now() };
+  ix.nonce = Date.now();
+  salva(); annuncia(c, "regia");
+  return { ok: true, canale: c, nonce: ix.nonce, mod: it.mod };
+}
+// lo stesso per una grafica dentro un progetto (prima della partita)
+function progettoDati(p) {
+  const pr = progettoDi(p);
+  const it = pr.items.find(i => String(i.pid) === String(p.pid));
+  if (!it) throw new Error("grafica non trovata nel progetto");
+  if (!p.dati || typeof p.dati !== "object") throw new Error("dati mancanti");
+  it.dati = p.dati;
+  it.mod = { chi: String(p.chi || "").slice(0, 60), ts: Date.now() };
+  salva();
+  return { ok: true, nome: pr.nome, mod: it.mod };
+}
+// i dati di UNA grafica di un progetto, per leggerla e correggerla
+function progettoItem(p) {
+  const pr = progettoDi(p);
+  const it = pr.items.find(i => String(i.pid) === String(p.pid));
+  if (!it) throw new Error("grafica non trovata nel progetto");
+  return { ok: true, nome: pr.nome, tipo: it.tipo, titolo: it.titolo, liv: it.liv,
+           dati: it.dati || {}, mod: it.mod || null, ts: it.ts || 0 };
+}
+
 // Sposta il punto d'inizio (e di fine) di un contributo GIA' in scaletta.
 // Serve in diretta: la clip del gol e' li' dentro, la si riprende dal punto
 // giusto e si manda in onda quel pezzo. Il file non si tocca, e nemmeno il
@@ -692,7 +728,8 @@ function progettoLeggi(p) {
   for (const i of pr.items) { if (!i.pid) { i.pid = nuovoId(); daSalvare = true; } }
   if (daSalvare) salva();
   return { ok: true, nome: pr.nome,
-           items: pr.items.map(i => ({ pid: i.pid, tipo: i.tipo, titolo: i.titolo, liv: i.liv })) };
+           items: pr.items.map(i => ({ pid: i.pid, tipo: i.tipo, titolo: i.titolo, liv: i.liv,
+                                       ts: i.ts || 0, mod: i.mod || null })) };
 }
 
 // Copia UNA grafica da un progetto a un altro. Serve a non rifare due volte
@@ -2333,6 +2370,9 @@ function permesso(p, ip) {
           case "regia-move":   out = regiaMove(p); break;
           case "regia-order":  out = regiaOrder(p); break;
           case "regia-rename": out = regiaRename(p); break;
+          case "regia-dati":   out = regiaDati(p); break;
+          case "progetto-dati": out = progettoDati(p); break;
+          case "progetto-item": out = progettoItem(p); break;
           case "regia-taglio": out = regiaTaglio(p); break;
           case "regia-liv":    out = regiaLiv(p); break;
           case "regia-arma":   out = regiaArma(p); break;

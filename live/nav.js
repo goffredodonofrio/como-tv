@@ -58,6 +58,7 @@
       ["contributi.html",            "Contributi video"]
     ]},
     ["magazzino.html",             "Magazzino"],
+    ["redazione.html",             "Redazione"],
     ["regia.html",                 "Regia"]
   ];
 
