@@ -115,6 +115,18 @@
   .tab td.idx{width:26px;color:var(--fg-3);font-size:11px;text-align:right;padding-right:6px;}
   .fisso{font-size:12px;color:var(--fg-3);padding:8px 10px;border:1px dashed var(--line-2);border-radius:5px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  /* una foto: l'anteprima e i tasti per cambiarla */
+  .foto{display:flex;align-items:center;gap:10px;padding:6px 8px;border:1px solid var(--line-2);border-radius:6px;}
+  .foto .anteprima{width:54px;height:54px;flex:none;border-radius:5px;background:rgba(10,15,36,.6) center/contain no-repeat;
+    border:1px solid var(--line-2);}
+  .foto .anteprima.vuota::after{content:"—";display:block;text-align:center;line-height:52px;color:var(--fg-3);}
+  .foto .nome{flex:1;min-width:0;font-size:11px;color:var(--fg-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .foto button{font-size:9px;padding:6px 8px;}
+  .tab .foto{padding:3px 5px;gap:6px;}
+  .tab .foto .anteprima{width:34px;height:34px;}
+  .tab .foto .nome{display:none;}
+  .tab .foto button{font-size:8.5px;padding:5px 6px;}
+  .tab td.fotocella{min-width:230px;}
   .oggetto{padding:8px 10px;border:1px solid var(--line-2);border-radius:6px;margin-bottom:8px;}
   .oggetto > .cap{font-family:'Mazzard',sans-serif;font-size:9.5px;font-weight:700;letter-spacing:.14em;
     text-transform:uppercase;color:var(--fg-3);margin-bottom:6px;}
@@ -133,6 +145,8 @@
 <script src="nav.js"></script>
 <script src="chiave.js"></script>
 <script src="redazione.js"></script>
+<script src="sceglifoto.js"></script>
+<input type="file" id="fileFoto" accept="image/png,image/jpeg,image/webp" hidden>
 
 <div class="wrap">
   <header class="page">
@@ -248,13 +262,33 @@
   };
   // colonne delle tabelle, dove le sappiamo
   var COLONNE = { t: ["N°", "Nome", "Cognome", "Foto"], p: ["N°", "Nome", "Cognome"], a: ["Nome", "Cognome"] };
-  // cose che non si correggono qui: immagini, file, posizioni in campo
+  // cose che non si correggono qui: file video, posizioni in campo, stili
   function fisso(chiave, val) {
     if (chiave === "g" || chiave === "pv") return true;
     if (typeof val !== "string") return false;
     return /^(data:|https?:\/\/|\/loghi\/|\/clip\/|\/contributi\/)/.test(val) && val.length > 12;
   }
+  // una foto o uno stemma: si cambia da qui, dal magazzino o caricandola
+  function eFoto(chiave, val) {
+    if (typeof val !== "string" || !val) return false;
+    if (/^\/(clip|contributi)\//.test(val)) return false;          // video, non foto
+    return /^(data:image|https?:\/\/.*\.(png|jpe?g|webp|svg)(\?.*)?$|\/loghi\/)/i.test(val);
+  }
   function etichetta(k) { return ETI[k] || k; }
+  // il tasto "Sostituisci in magazzino" ha senso solo per i giocatori delle
+  // formazioni premium, dove la foto e' della persona e non della grafica
+  function fotoHTML(p, val, riga) {
+    var nome = String(val || "").split("/").pop().split("?")[0];
+    return '<div class="foto" data-p="' + percorso(p) + '">' +
+      '<span class="anteprima' + (val ? "" : " vuota") + '"' + (val ? ' style="background-image:url(' + esc(JSON.stringify(String(val))) + ')"' : "") + '></span>' +
+      '<span class="nome" title="' + esc(val) + '">' + esc(nome || "nessuna foto") + '</span>' +
+      '<button type="button" data-az="scegli" title="Scegli dal magazzino">Magazzino</button>' +
+      '<button type="button" data-az="carica" title="Carica una foto nuova, solo per questa grafica">Carica</button>' +
+      (riga ? '<button type="button" data-az="magazzino" data-cognome="' + esc(riga.cognome) + '" data-pid="' + esc(riga.pid) +
+              '" title="Carica la foto nuova di questo giocatore in magazzino: vale per tutte le grafiche">In magazzino</button>' : "") +
+      (val ? '<button type="button" data-az="togli" title="Senza foto">&times;</button>' : "") +
+    '</div>';
+  }
 
   // ── da dove si legge: un canale o un progetto ──────────────────────
   var fonte = { tipo: "canale", c: 7, id: null, nome: "" };
@@ -462,19 +496,31 @@
     var h = '<table class="tab"><tr><th></th>';
     for (var c = 0; c < nCol; c++) h += '<th>' + esc((colonne && colonne[c]) || (c + 1)) + '</th>';
     h += '</tr>';
+    // la colonna "Foto" delle formazioni premium (la quarta) porta la foto del
+    // giocatore anche quando e' vuota: si puo' mettere da qui
+    var conFoto = colonne && colonne[3] === "Foto";
     righe.forEach(function (r, i) {
       h += '<tr><td class="idx">' + (i + 1) + '</td>';
       for (var c2 = 0; c2 < nCol; c2++) {
         var v = Array.isArray(r) ? r[c2] : undefined;
-        h += '<td' + (c2 === 0 && nCol > 2 ? ' class="num"' : "") + '>' +
-             (fisso("", v) ? '<div class="fisso" title="' + esc(v) + '">immagine</div>' : (v === undefined ? "" : casella(p.concat([i, c2]), v))) +
-             '</td>';
+        var cella;
+        if ((conFoto && c2 === 3) || eFoto("", v)) {
+          cella = fotoHTML(p.concat([i, c2]), v || "", conFoto ? { cognome: r[2] || "", pid: r[4] || "" } : null);
+          h += '<td class="fotocella">' + cella + '</td>';
+          continue;
+        }
+        if (fisso("", v)) cella = '<div class="fisso" title="' + esc(v) + '">file</div>';
+        else cella = (v === undefined ? "" : casella(p.concat([i, c2]), v));
+        h += '<td' + (c2 === 0 && nCol > 2 ? ' class="num"' : "") + '>' + cella + '</td>';
       }
       h += '</tr>';
     });
     return h + '</table>';
   }
   function campoHTML(chiave, val, p) {
+    if (chiave !== "g" && chiave !== "pv" && eFoto(chiave, val)) {
+      return '<div class="riga una"><div><label>' + esc(etichetta(chiave)) + '</label>' + fotoHTML(p, val, null) + '</div></div>';
+    }
     if (fisso(chiave, val)) {
       return '<div class="riga una"><div><label>' + esc(etichetta(chiave)) + '</label>' +
              '<div class="fisso" title="' + esc(typeof val === "string" ? val : "") + '">' +
@@ -526,6 +572,78 @@
     el("campi").innerHTML = h;
     el("avviso").textContent = onair[sel.id] ? "Questa grafica e' IN ONDA adesso: puoi correggerla, la correzione entra alla prossima messa in onda." : "";
   }
+  // ── le foto: dal magazzino, caricate, o intestate al giocatore ──────
+  if (window.SceltaFoto) SceltaFoto.adotta(PONTE, TOKEN);
+  function scriviPath(p, val) {
+    var o = sel.dati;
+    for (var k = 0; k < p.length - 1; k++) {
+      if (o[p[k]] == null) o[p[k]] = (typeof p[k + 1] === "number") ? [] : {};
+      o = o[p[k]];
+    }
+    o[p[p.length - 1]] = val;
+  }
+  function leggiFile(file) {
+    return new Promise(function (ok, no) {
+      if (!file) return no(new Error("nessun file"));
+      if (file.size > 2 * 1024 * 1024) return no(new Error("immagine troppo grande: massimo 2 MB"));
+      var r = new FileReader();
+      r.onload = function () { ok(r.result); };
+      r.onerror = function () { no(new Error("file non leggibile")); };
+      r.readAsDataURL(file);
+    });
+  }
+  function slugNome(s) {
+    return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+  }
+  function fotoMessa(p, url, testo) {
+    scriviPath(p, url);
+    disegnaDettaglio(); anteprima(true);
+    dimmi(testo || "Foto cambiata: guarda l'anteprima e poi Aggiorna in scaletta.", "ok");
+  }
+  el("campi").addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest(".foto button[data-az]") : null;
+    if (!b || !sel || !sel.dati) return;
+    var box = b.closest(".foto"), p = JSON.parse(box.dataset.p), az = b.dataset.az;
+    if (az === "togli") { fotoMessa(p, "", "Foto tolta da questa grafica."); return; }
+    if (az === "scegli") {
+      if (!window.SceltaFoto) { dimmi("Il magazzino non e' disponibile su questa pagina.", "err"); return; }
+      SceltaFoto.apri(function (url) { fotoMessa(p, url); });
+      return;
+    }
+    // carica / in magazzino: si sceglie un file dal computer
+    var fi = el("fileFoto");
+    fi.value = "";
+    fi.onchange = function () {
+      var f = fi.files && fi.files[0];
+      leggiFile(f).then(function (dati) {
+        dimmi("Carico la foto…");
+        if (az === "magazzino") {
+          // la foto della persona: il ponte la intesta a lui e la usa per
+          // tutte le grafiche a venire
+          if (!b.dataset.pid) throw new Error("questa formazione e' stata mandata prima che portasse l'identita' dei giocatori: " +
+            "rimandala dal suo editor e poi la foto si intesta, oppure caricala dal Magazzino foto");
+          return post({ tipo: "foto-carica", cognome: b.dataset.cognome, id: b.dataset.pid || "", squadra: "", dati: dati })
+            .then(function (j) {
+              if (!j || !j.ok) throw new Error((j && j.errore) || "il ponte ha rifiutato la foto");
+              if (window.SceltaFoto) SceltaFoto.scorda();
+              fotoMessa(p, j.url + "?t=" + Date.now(),
+                        "Foto di " + b.dataset.cognome + " sostituita in magazzino: vale da ora per tutte le grafiche. Aggiorna in scaletta per vederla in questa.");
+            });
+        }
+        // solo per questa grafica: un file suo, col nome della grafica
+        var nome = "redazione " + slugNome(sel.titolo || sel.tipo) + " " + Date.now().toString(36);
+        return post({ tipo: "logo-carica", nome: nome, dati: dati })
+          .then(function (j) {
+            if (!j || !j.ok) throw new Error((j && j.errore) || "il ponte ha rifiutato la foto");
+            if (window.SceltaFoto) SceltaFoto.scorda();
+            fotoMessa(p, j.url);
+          });
+      }).catch(function (err) { dimmi("Foto non caricata: " + err.message, "err"); });
+    };
+    fi.click();
+  });
+
   // scrivere in una casella aggiorna il pacchetto nel punto giusto
   el("campi").addEventListener("input", function (e) {
     var i = e.target;

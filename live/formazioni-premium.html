@@ -578,7 +578,7 @@
   function resolve(side, v) {
     if (!v) return null;
     // "foto": solo per le righe riprese dalla scaletta, che la portano gia'
-    if (v.m) return { num: v.num, nome: v.nome, cognome: v.cognome, foto: v.foto || "" };
+    if (v.m) return { num: v.num, nome: v.nome, cognome: v.cognome, foto: v.foto || "", pid: v.pid || "" };
     var p = side.roster[v.p];
     return p ? { num: p.num, nome: p.nome, cognome: p.cognome, pid: p.pid || "" } : null;
   }
@@ -1665,7 +1665,9 @@
         ? "/loghi/foto-premium-" + slugCog(d.cognome) + ".png"
         : (ris || "");
       if (d.foto) foto = d.foto;      // ripresa dalla scaletta: la foto era gia' quella
-      return [d.num || "", d.nome || "", d.cognome || "", foto];
+      // il quinto posto e' l'identita' del giocatore: serve al Controllo
+      // redazione per cambiare la foto in magazzino alla persona giusta
+      return [d.num || "", d.nome || "", d.cognome || "", foto, d.pid || ""];
     }
 
     return {
@@ -1695,7 +1697,7 @@
       t: side.tit.map(tri),
       p: side.pan.map(function (v) { return resolve(side, v); })
         .filter(function (d) { return d && (d.cognome || d.nome); })
-        .map(function (d) { return [d.num || "", d.nome || "", d.cognome || ""]; })
+        .map(function (d) { return [d.num || "", d.nome || "", d.cognome || "", "", d.pid || ""]; })
     };
   }
 
@@ -1920,7 +1922,8 @@
     side.coachN = (d.a && d.a[0]) || ""; side.coachC = (d.a && d.a[1]) || "";
     function riga(r) {
       r = r || [];
-      return { m: 1, num: String(r[0] || ""), nome: String(r[1] || ""), cognome: String(r[2] || ""), foto: r[3] || "" };
+      return { m: 1, num: String(r[0] || ""), nome: String(r[1] || ""), cognome: String(r[2] || ""),
+               foto: r[3] || "", pid: r[4] || "" };
     }
     side.tit = (d.t || []).slice(0, 11).map(riga);
     while (side.tit.length < 11) side.tit.push(mkManualRow());
