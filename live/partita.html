@@ -301,16 +301,24 @@
   #banco{display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:14px;align-items:start;}
   #banco > .panel{margin-bottom:0;}
   #bTop,#bFondo{grid-column:1 / -1;}
-  /* il titoletto del gruppo e' gia' il titolo del riquadro */
-  #bTopIn .grp-squadre > .sotto-titolo:first-child{display:none;}
+  /* il tasto sta a destra, appeso sotto l'orologio della testata; il
+     banco parte piu' in basso per lasciargli il posto */
+  .bancosetup{display:none;}
+  body.banco header.page{position:relative;}
+  body.banco .eyebrow{display:none;}
+  body.banco .bancosetup{display:flex;position:absolute;right:0;top:calc(100% + 12px);margin:0;}
+  body.banco #banco{margin-top:50px;}
+  .bancosetup button{font-size:10px;padding:8px 12px;}
+  .bancosetup button.on{color:var(--gold-bright);border-color:var(--line-gold);background:rgba(201,162,75,.08);}
+  #bTop{display:none;}
+  #bTop.aperto{display:block;}
+  #bTopIn .grp-squadre > .sotto-titolo:first-child{margin-top:0;padding-top:0;border-top:0;}
   #bFondo #msg{margin:0;flex-basis:100%;}
   .bcol{display:flex;flex-direction:column;gap:10px;min-width:0;}
   .bcol > .panel{margin-bottom:0;}
-  .bteam{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:8px;
-    border:1px solid var(--line-2);background:var(--surface-panel);
-    font-family:'Mazzard',sans-serif;font-weight:800;font-size:22px;letter-spacing:.02em;
-    text-transform:uppercase;color:var(--ivory);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .bteam .sw{width:8px;height:28px;border-radius:4px;flex:none;background:var(--fg-3);}
+  /* la squadra sta nel titolo del blocco, col suo colore accanto */
+  .bcol .evb h3 .sq{color:var(--ivory);margin-left:6px;}
+  .bcol .evb h3 .sw{display:inline-block;width:4px;height:12px;border-radius:2px;margin-left:8px;vertical-align:-1px;}
   body.banco .evblocchi{display:none;}
   .bcol .blocchi{display:flex;flex-direction:column;gap:10px;}
   /* un blocco del banco: titolo e minuto sulla stessa riga, la tendina
@@ -438,6 +446,8 @@
   <header class="page">
     <div class="eyebrow">Como TV · Grafiche Live</div>
     <h1>Live Match <a id="canaleBadge" href="partita.html" title="Cambia canale">CANALE&nbsp;&mdash;</a></h1>
+    <!-- solo sul banco: il tasto sotto l'orologio che apre campionato e squadre -->
+    <div class="bancosetup"><button type="button" id="btnSetup">&#9881; Campionato e squadre</button></div>
   </header>
 
   <!-- IL BANCO (?banco=1): la pagina della sola partita, come il controller
@@ -447,16 +457,12 @@
        player. I pezzi sono gli stessi della console: qui vengono solo
        spostati nei loro posti. -->
   <div id="banco" hidden>
-    <div class="panel" id="bTop"><h2>Campionato e squadre</h2><div id="bTopIn"></div></div>
-    <div class="bcol" id="bCasa">
-      <div class="bteam" data-lato="casa"><span class="sw"></span><span class="nm">CASA</span></div>
-      <div class="blocchi"></div>
-    </div>
+    <!-- il tasto sotto l'orologio apre questo pannello: si imposta la
+         partita e lo si richiude -->
+    <div class="panel" id="bTop"><div id="bTopIn"></div></div>
+    <div class="bcol" id="bCasa"><div class="blocchi"></div></div>
     <div class="bcol" id="bCentro"></div>
-    <div class="bcol" id="bOsp">
-      <div class="bteam" data-lato="osp"><span class="sw"></span><span class="nm">OSPITE</span></div>
-      <div class="blocchi"></div>
-    </div>
+    <div class="bcol" id="bOsp"><div class="blocchi"></div></div>
     <div class="panel" id="bFondo"></div>
   </div>
 
@@ -1816,7 +1822,7 @@
   // Si chiudono e si riaprono cliccando il titolo. Restano come li lasci,
   // anche dopo aver ricaricato la pagina.
   (function () {
-    var APRIBILI = ["PLAYER LIVE MATCH", "PUNTEGGIO E CRONOMETRO", "CAMPIONATO E SQUADRE"];
+    var APRIBILI = ["PLAYER LIVE MATCH", "PUNTEGGIO E CRONOMETRO"];
     var LS = "comotv.partita.tendine";
     var chiusi = {};
     try { chiusi = JSON.parse(localStorage.getItem(LS) || "{}") || {}; } catch (e) {}
@@ -2060,7 +2066,7 @@
   // side: sul banco ogni squadra ha i suoi blocchi, col lato gia' deciso
   function bloccoHTML(tipo, titolo, corpo, side) {
     return '<div class="evb" data-b="' + tipo + '"' + (side ? ' data-side="' + side + '"' : "") +
-      '><h3 class="sotto-titolo">' + titolo + '</h3>' +
+      ' data-titolo="' + titolo + '"><h3 class="sotto-titolo">' + titolo + '</h3>' +
       '<div class="evlati"><button type="button" data-lato="casa"></button>' +
       '<button type="button" data-lato="osp"></button></div>' +
       corpo +
@@ -2235,14 +2241,15 @@
         if (n && per && S[l].n && !stessaSquadra(per, S[l].n)) info = "rosa di " + per + ": ricarica";
         r.querySelector(".evinfo").textContent = info;
       });
-      // sul banco le due colonne portano il nome e il colore della squadra
-      document.querySelectorAll(".bteam[data-lato]").forEach(function (t) {
-        var sq = S[t.dataset.lato] || {};
-        t.querySelector(".nm").textContent = sq.n || (t.dataset.lato === "casa" ? "CASA" : "OSPITE");
-        t.querySelector(".sw").style.background = sq.col || "";
-      });
       document.querySelectorAll(".evb").forEach(function (b) {
         var tipo = b.dataset.b, lato = b.dataset.side || evLato[tipo];
+        // sul banco il titolo del blocco dice di quale squadra e'
+        if (b.dataset.side) {
+          var sq = S[lato] || {};
+          b.querySelector("h3").innerHTML = gEsc(b.dataset.titolo) +
+            '<span class="sq">' + gEsc(sq.s || sq.n || (lato === "casa" ? "CASA" : "OSPITE")) + '</span>' +
+            '<span class="sw" style="background:' + gEsc(sq.col || "#8A8B96") + '"></span>';
+        }
         b.querySelectorAll("button[data-lato]").forEach(function (x) {
           x.textContent = S[x.dataset.lato].s || (x.dataset.lato === "casa" ? "CASA" : "OSPITE");
           x.classList.toggle("on", x.dataset.lato === lato);
@@ -2298,10 +2305,11 @@
     // in alto campionato, squadre e rose (si chiude a partita impostata)
     var sq = document.querySelector(".grp-squadre");
     if (sq) top.appendChild(sq);
-    // parte chiuso: si apre per impostare la partita, poi via
-    var chiusi = {};
-    try { chiusi = JSON.parse(localStorage.getItem("comotv.partita.tendine") || "{}") || {}; } catch (e) {}
-    if (chiusi["CAMPIONATO E SQUADRE"] === undefined) el("bTop").classList.add("chiuso");
+    // il pannello si apre col tasto sotto l'orologio, e si richiude
+    el("btnSetup").addEventListener("click", function () {
+      var aperto = el("bTop").classList.toggle("aperto");
+      el("btnSetup").classList.toggle("on", aperto);
+    });
     // in mezzo cronometro e punteggio, poi le schermate del player
     var punt = document.querySelector(".panel.punteggio"), fasi = document.querySelector(".grp-fasi");
     if (punt) centro.appendChild(punt);
