@@ -384,6 +384,7 @@
 <script src="destinazione.js"></script>
 <script src="formazioni-espn.js"></script>
 <script src="giovanili.js"></script>
+<script src="riapri.js"></script>
 <script>
 (function () {
   "use strict";
@@ -1576,6 +1577,7 @@
       k: side.kit,
       mg: side.maglia ? magliaUrl(side, side.maglia) || undefined : undefined,
       l: (function () {
+        if (side.logoFisso) return side.logoFisso;   // ripresa dalla scaletta: lo stemma era quello
         // magazzino prima (anche col nome senza la coda "Primavera"/"Under"),
         // poi lo stemma del club senior per le giovanili, poi ESPN
         var mio = slugM(side.teamName || "");
@@ -1803,6 +1805,40 @@
   // Carica la formazione sul "centralino": la pagina grafica-live.html
   // (URL fisso dentro vMix) la riceve e la console regia.html decide
   // quando mandarla in onda.
+
+  // ── riapertura dalla Redazione: la formazione in scaletta torna qui, a mano ──
+  // Undici, panchina, allenatore, modulo, colore, maglia, stemma e
+  // posizioni tornano com'erano.
+  if (window.Riapri && Riapri.attivo) Riapri.quando(function (d) {
+    if (!d) return;
+    var side = sides[0];
+    side.manualMode = true; side.teamId = ""; side.roster = []; side.custom = {};
+    side.teamName = d.n || "";
+    if (d.m && MODULI.indexOf(d.m) >= 0) side.mod = d.m;
+    if (d.k) side.kit = d.k;
+    side.coachN = (d.a && d.a[0]) || ""; side.coachC = (d.a && d.a[1]) || "";
+    function riga(r) {
+      r = r || [];
+      return { m: 1, num: String(r[0] || ""), nome: String(r[1] || ""), cognome: String(r[2] || "") };
+    }
+    side.tit = (d.t || []).slice(0, 11).map(riga);
+    while (side.tit.length < 11) side.tit.push(mkManualRow());
+    side.pan = (d.p || []).slice(0, NBENCH).map(riga);
+    while (side.pan.length < NBENCH) side.pan.push(mkManualRow());
+    side.posGraf = d.g || null;
+    side.logoFisso = d.l || "";
+    // la maglia si ritrova per indirizzo, appena il magazzino ha risposto
+    function trovaMaglia() {
+      if (!d.mg) return;
+      ["casa", "trasferta", "terza", "quarta"].forEach(function (dove) {
+        if (magliaUrl(side, dove) === d.mg) side.maglia = dove;
+      });
+      renderAll();
+    }
+    trovaMaglia(); setTimeout(trovaMaglia, 1500); setTimeout(trovaMaglia, 4000);
+    renderAll();
+    status("", '<span class="msg"><b>' + esc(side.teamName) + '</b> ripresa dalla scaletta: correggi e premi Invia alla regia (Casa), torna al suo posto.</span>');
+  });
 
   function inviaRegia(si) {
     var payload = vmixPayload(si);
