@@ -76,7 +76,7 @@
   .barra > div{flex:1 1 0;min-width:0;}
   .barra > div.stretta{flex:0 0 auto;}
   .barra select{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  @media (max-width:1000px){ .barra{flex-wrap:wrap;} .barra > div{flex:1 1 45%;} }
+  @media (max-width:1280px){ .barra{flex-wrap:wrap;} .barra > div{flex:1 1 45%;} }
 
   .cols{display:grid;grid-template-columns:minmax(320px,.8fr) 1.4fr;gap:16px;align-items:start;}
   @media (max-width:1100px){ .cols{grid-template-columns:1fr;} }
@@ -103,6 +103,13 @@
   #prevcap{font-size:11.5px;color:var(--fg-3);margin-top:6px;min-height:16px;}
   .tasti{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 10px;}
   .tasti .spazio{flex:1;}
+  /* i due tasti che si usano a ogni correzione stanno nella barra in alto,
+     in riga con gli altri: si vedono subito, senza rubare la scena a quello
+     d'oro che apre l'editor */
+  #btnAnteprima,#btnRivedi{color:var(--gold-bright);border-color:var(--gold);
+    background:rgba(201,162,75,.14);font-size:10px;padding:11px 13px;white-space:nowrap;}
+  #btnAnteprima:hover:not(:disabled),#btnRivedi:hover:not(:disabled){
+    background:rgba(201,162,75,.26);border-color:var(--gold-bright);}
   /* il tasto d'invio, uguale a quello delle pagine delle grafiche */
   #btnRegia{font-size:11px;padding:11px 16px;white-space:nowrap;background:#4FA3E8;border-color:#4FA3E8;color:#0A0F24;}
   #btnRegia:hover:not(:disabled){background:#74B9F0;border-color:#74B9F0;color:#0A0F24;}
@@ -124,7 +131,8 @@
   .fisso{font-size:12px;color:var(--fg-3);padding:8px 10px;border:1px dashed var(--line-2);border-radius:5px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   /* una foto: l'anteprima e i tasti per cambiarla */
-  .foto{display:flex;align-items:center;gap:10px;padding:6px 8px;border:1px solid var(--line-2);border-radius:6px;}
+  .foto{display:flex;align-items:center;gap:10px;padding:6px 8px;border:1px solid var(--line-2);border-radius:6px;
+    flex-wrap:wrap;}
   .foto .anteprima{width:54px;height:54px;flex:none;border-radius:5px;background:rgba(10,15,36,.6) center/contain no-repeat;
     border:1px solid var(--line-2);}
   .foto .anteprima.vuota::after{content:"—";display:block;text-align:center;line-height:52px;color:var(--fg-3);}
@@ -134,7 +142,13 @@
   .tab .foto .anteprima{width:34px;height:34px;}
   .tab .foto .nome{display:none;}
   .tab .foto button{font-size:8.5px;padding:5px 6px;}
-  .tab td.fotocella{min-width:230px;}
+  .tab td.fotocella{min-width:300px;}
+  /* il tasto che vale per sempre: cambia il file in magazzino, non solo
+     questa grafica. Si distingue dagli altri due, che sono senza conseguenze. */
+  .foto button[data-az="magazzino"],.foto button[data-az="deposito"]{
+    color:var(--gold-bright);border-color:var(--line-gold);}
+  .foto button[data-az="magazzino"]:hover,.foto button[data-az="deposito"]:hover{
+    background:rgba(201,162,75,.16);border-color:var(--gold);}
   .oggetto{padding:8px 10px;border:1px solid var(--line-2);border-radius:6px;margin-bottom:8px;}
   .oggetto > .cap{font-family:'Mazzard',sans-serif;font-size:9.5px;font-weight:700;letter-spacing:.14em;
     text-transform:uppercase;color:var(--fg-3);margin-bottom:6px;}
@@ -185,6 +199,14 @@
       </div>
       <div class="stretta">
         <label>&nbsp;</label>
+        <button type="button" id="btnAnteprima" disabled title="Rifa' l'anteprima coi campi corretti, ferma sul risultato">Anteprima</button>
+      </div>
+      <div class="stretta">
+        <label>&nbsp;</label>
+        <button type="button" id="btnRivedi" disabled title="Rivedi l'animazione dall'inizio">Rivedi animazione</button>
+      </div>
+      <div class="stretta">
+        <label>&nbsp;</label>
         <button type="button" id="btnRegia" disabled>&#128225; Invia alla regia</button>
       </div>
       <div class="stretta">
@@ -207,8 +229,6 @@
       <div id="prevbox"><iframe id="prev" scrolling="no"></iframe></div>
       <div id="prevcap"></div>
       <div class="tasti">
-        <button type="button" id="btnAnteprima">Anteprima delle modifiche</button>
-        <button type="button" id="btnRivedi">Rivedi l'animazione</button>
         <button type="button" id="btnEditor" class="primary">&#9998; Apri l'editor completo</button>
         <span class="spazio"></span>
         <button type="button" id="btnAnnulla">Annulla le modifiche</button>
@@ -310,17 +330,94 @@
     var mie = sel && ETI_TIPO[sel.tipo];
     return (mie && mie[k]) || ETI[k] || k;
   }
-  // il tasto "Sostituisci in magazzino" ha senso solo per i giocatori delle
-  // formazioni premium, dove la foto e' della persona e non della grafica
+  // Le tre strade per cambiare un'immagine sono sempre le stesse:
+  //   PRENDI DAL MAGAZZINO  una gia' in archivio
+  //   CARICA                un file nuovo, solo per questa grafica
+  //   SOSTITUISCI NELLA SQUADRA  un file nuovo che entra in magazzino e
+  //                         vale da qui in avanti per tutte le grafiche
+  // La terza per i giocatori intesta la foto alla persona; per maglie e
+  // stemmi sostituisce il file della squadra nel deposito dei loghi.
+  function slugSquadra(s) {
+    return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+  }
+  function leggiPath(p) {
+    var o = sel && sel.dati;
+    for (var i = 0; i < p.length && o != null; i++) o = o[p[i]];
+    return o;
+  }
+  function ultimaChiave(p) {
+    for (var i = p.length - 1; i >= 0; i--) if (typeof p[i] === "string") return p[i];
+    return "";
+  }
+  // il nome della squadra scritto qui accanto: nelle formazioni e' "n"
+  function squadraVicina(p) {
+    var padre = leggiPath(p.slice(0, -1));
+    if (!padre || typeof padre !== "object" || Array.isArray(padre)) return "";
+    var chiavi = ["n", "nome", "squadra", "sq", "team"];
+    for (var i = 0; i < chiavi.length; i++) {
+      var v = padre[chiavi[i]];
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+    return "";
+  }
+  // Nelle righe (marcatori, risultati) lo stemma non ha un nome di campo:
+  // sta in una colonna e basta. Che sia lo stemma di quella squadra lo dice
+  // la riga stessa, dove il nome e' scritto accanto: "JUVENTUS" con
+  // /loghi/juventus.png. Senza quella prova il tasto non compare.
+  function squadraNellaRiga(p, chiaveFile) {
+    var padre = leggiPath(p.slice(0, -1)), trovato = "";
+    if (!padre || typeof padre !== "object") return "";
+    Object.keys(padre).forEach(function (k) {
+      var v = padre[k];
+      if (trovato || typeof v !== "string") return;
+      var s = slugSquadra(v);
+      if (s.length >= 4 && (s === chiaveFile || s.indexOf(chiaveFile) === 0 || chiaveFile.indexOf(s) === 0)) trovato = v.trim();
+    });
+    return trovato;
+  }
+  // Che cosa si sostituirebbe in magazzino, e con che nome di file. Se non
+  // si riesce a dire di chi e' l'immagine, il tasto non compare: meglio
+  // niente che sovrascrivere il file di un'altra squadra.
+  function perSempre(p, val) {
+    var chiave = ultimaChiave(p);
+    // roba di squadra: lo stemma, la maglia, la foto dell'allenatore. Una
+    // foto qualunque messa in una dichiarazione non lo e', e infatti li' il
+    // tasto non deve comparire: sarebbe un file condiviso sovrascritto
+    // senza volerlo.
+    var diSquadra = /^(l|lg|logo|stemma|mg|af)$/i.test(chiave);
+    var f = String(val || "").match(/^\/loghi\/([^/?#]+)\.(?:png|jpe?g|webp|svg)(?:[?#]|$)/i);
+    if (f) {
+      var k = f[1];
+      if (/^foto-premium-coach-/.test(k)) return { file: k, che: "la foto dell'allenatore", fatta: "sostituita" };
+      if (/^maglia-/.test(k)) return { file: k, che: "la maglia", fatta: "sostituita" };
+      if (/^foto-premium-/.test(k)) return null;     // i giocatori hanno il tasto loro
+      if (/^redazione-/.test(k)) return null;        // file usa e getta di questa grafica
+      if (diSquadra) return { file: k, che: "lo stemma", fatta: "sostituito", squadra: squadraVicina(p) };
+      var dentro = squadraNellaRiga(p, k);
+      return dentro ? { file: k, che: "lo stemma", fatta: "sostituito", squadra: dentro } : null;
+    }
+    var sq = squadraVicina(p);
+    if (!sq) return null;
+    // la maglia senza file: casa o trasferta si chiede al clic
+    if (chiave === "mg") return { squadra: sq, che: "la maglia", fatta: "sostituita" };
+    if (/^(l|lg|logo|stemma)$/i.test(chiave)) return { file: slugSquadra(sq), squadra: sq, che: "lo stemma", fatta: "sostituito" };
+    return null;
+  }
   function fotoHTML(p, val, riga) {
     var nome = String(val || "").split("/").pop().split("?")[0];
+    var perm = riga ? null : perSempre(p, val);
     return '<div class="foto" data-p="' + percorso(p) + '">' +
       '<span class="anteprima' + (val ? "" : " vuota") + '"' + (val ? ' style="background-image:url(' + esc(JSON.stringify(String(val))) + ')"' : "") + '></span>' +
       '<span class="nome" title="' + esc(val) + '">' + esc(nome || "nessuna foto") + '</span>' +
-      '<button type="button" data-az="scegli" title="Scegli dal magazzino">Magazzino</button>' +
-      '<button type="button" data-az="carica" title="Carica una foto nuova, solo per questa grafica">Carica</button>' +
+      '<button type="button" data-az="scegli" title="Scegli un\'immagine gia\' in magazzino">Prendi dal magazzino</button>' +
+      '<button type="button" data-az="carica" title="Carica un file nuovo, solo per questa grafica">Carica</button>' +
       (riga ? '<button type="button" data-az="magazzino" data-cognome="' + esc(riga.cognome) + '" data-pid="' + esc(riga.pid) +
-              '" title="Carica la foto nuova di questo giocatore in magazzino: vale per tutte le grafiche">In magazzino</button>' : "") +
+              '" title="Carica la foto nuova di questo giocatore in magazzino: vale per tutte le grafiche">Sostituisci nella squadra</button>' : "") +
+      (perm ? '<button type="button" data-az="deposito" data-file="' + esc(perm.file || "") +
+              '" data-squadra="' + esc(perm.squadra || "") + '" data-fatta="' + esc(perm.fatta) + '" data-che="' + esc(perm.che) +
+              '" title="Sostituisce ' + esc(perm.che) + ' in magazzino' +
+              (perm.squadra ? " (" + esc(perm.squadra) + ")" : "") + ': vale per tutte le grafiche">Sostituisci nella squadra</button>' : "") +
       (val ? '<button type="button" data-az="togli" title="Senza foto">&times;</button>' : "") +
     '</div>';
   }
@@ -632,7 +729,10 @@
   }
   function disegnaDettaglio() {
     var box = el("dettaglio");
-    el("btnRegia").disabled = !(sel && sel.dati);
+    var niente = !(sel && sel.dati);
+    el("btnRegia").disabled = niente;
+    el("btnAnteprima").disabled = niente;
+    el("btnRivedi").disabled = niente;
     if (!sel || !sel.dati) { box.classList.add("vuoto"); el("dtit").textContent = "Grafica"; el("campi").innerHTML = ""; return; }
     box.classList.remove("vuoto");
     var d = sel.dati, h = "";
@@ -699,6 +799,26 @@
               if (window.SceltaFoto) SceltaFoto.scorda();
               fotoMessa(p, j.url + "?t=" + Date.now(),
                         "Foto di " + b.dataset.cognome + " sostituita in magazzino: vale da ora per tutte le grafiche. Aggiorna in scaletta per vederla in questa.");
+            });
+        }
+        if (az === "deposito") {
+          // maglie e stemmi: il file sta in magazzino col nome della squadra,
+          // sostituirlo vuol dire cambiarlo per tutte le grafiche a venire
+          var file = b.dataset.file;
+          if (!file && b.dataset.che.indexOf("maglia") >= 0) {
+            var casa = window.confirm("Quale maglia stai sostituendo?\n\nOK = maglia di CASA\nAnnulla = maglia da TRASFERTA");
+            file = "maglia-" + slugSquadra(b.dataset.squadra) + "-" + (casa ? "casa" : "trasferta");
+          }
+          if (!file) throw new Error("non so a quale squadra intestarla: cambiala dall'editor completo");
+          return post({ tipo: "logo-carica", nome: file, dati: dati })
+            .then(function (j) {
+              if (!j || !j.ok) throw new Error((j && j.errore) || "il ponte ha rifiutato l'immagine");
+              if (window.SceltaFoto) SceltaFoto.scorda();
+              fotoMessa(p, j.url + "?t=" + Date.now(),
+                        b.dataset.che.charAt(0).toUpperCase() + b.dataset.che.slice(1) +
+                        (b.dataset.squadra ? " (" + b.dataset.squadra + ")" : "") + ": " +
+                        (b.dataset.fatta || "sostituita") +
+                        " in magazzino, vale da ora per tutte le grafiche. Aggiorna in scaletta per vederla in questa.");
             });
         }
         // solo per questa grafica: un file suo, col nome della grafica
