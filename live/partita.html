@@ -277,6 +277,19 @@
   .glink{font-size:11.5px;margin-top:8px;color:var(--fg-3);}
   .glink a{color:var(--gold-bright);text-decoration:none;}
 
+  /* ── il tasto che apre il banco ── */
+  .bancobar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:0 0 16px;padding:12px 16px;
+    border:1px solid var(--line-gold);border-radius:10px;background:rgba(201,162,75,.07);}
+  .bancobtn{display:inline-block;font-family:'Mazzard',sans-serif;font-size:13px;font-weight:800;
+    letter-spacing:.14em;text-transform:uppercase;color:#0A0F24;background:var(--gold);
+    padding:14px 22px;border-radius:8px;text-decoration:none;white-space:nowrap;}
+  .bancobtn:hover{background:var(--gold-bright);}
+  .bancocap{font-size:12.5px;color:var(--ivory-dim);}
+  body.banco .bancobar{display:none;}
+  /* la console senza la partita: monitor e scaletta, il resto sta nel banco */
+  body.console-sola #evpanel,body.console-sola .colcomandi{display:none;}
+  body.console-sola .sotto{grid-template-columns:1fr;}
+
   /* ── il banco della partita (?banco=1) ── */
   body.banco .deck,body.banco .sotto{display:none;}
   body.banco{padding-bottom:16px;}       /* niente coda: deve stare in 1080 righe */
@@ -475,6 +488,14 @@
               <div id="pgmcap"></div>
               <div id="msg"></div>
     </div>
+  </div>
+
+  <!-- La partita si comanda dal banco, in una finestra sua: qui restano
+       monitor e scaletta. Il tasto apre (o riporta davanti) il banco del
+       canale. -->
+  <div class="bancobar">
+    <a id="apriBanco" class="bancobtn" href="partita.html?banco=1" target="_blank">&#9917; Apri il banco della partita</a>
+    <span class="bancocap">Cronometro, punteggio, gol, cartellini e sostituzioni: tutto in una finestra a parte, da tenere sull'altro schermo.</span>
   </div>
 
   <div class="sotto">
@@ -868,6 +889,15 @@
   // il banco: la pagina della sola partita, senza monitor e senza scaletta
   var BANCO = new URLSearchParams(location.search).get("banco") === "1";
   if (BANCO) document.body.classList.add("banco");
+  // la console da sola (non nella regia, non il banco) non porta la
+  // partita: quella sta nel banco, che si apre col tasto
+  if (!BANCO && !document.body.classList.contains("incorporato")) document.body.classList.add("console-sola");
+  (function () {
+    var a = document.getElementById("apriBanco");   // el() qui non esiste ancora
+    if (!a) return;
+    a.href = "partita.html?c=" + CANALE + "&banco=1";
+    a.target = "comotv-banco-" + CANALE;      // una finestra sola per canale: ricliccando torna davanti
+  })();
   document.title = (BANCO ? "Banco partita C" : "Live Match C") + CANALE + " · Como TV";
 
   // ── stato del match (specchio locale di quello sul ponte) ──
