@@ -176,9 +176,17 @@
       <div class="tasti">
         <button type="button" id="btnAnteprima">Anteprima delle modifiche</button>
         <button type="button" id="btnRivedi">Rivedi l'animazione</button>
+        <button type="button" id="btnEditor" class="primary">&#9998; Apri l'editor completo</button>
         <span class="spazio"></span>
         <button type="button" id="btnAnnulla">Annulla le modifiche</button>
         <button type="button" class="primary" id="btnAggiorna">&#10003; Aggiorna in scaletta</button>
+      </div>
+      <!-- l'editor vero della grafica, con la grafica dentro: qui si cambia
+           tutto, maglia e foto comprese. L'altezza segue la sua, cosi' lo
+           scroll e' uno solo. -->
+      <div id="editorbox" hidden>
+        <div class="tasti"><span class="spazio"></span><button type="button" id="btnChiudiEditor">&#8592; Torna alla scheda dei campi</button></div>
+        <iframe id="editor" scrolling="no" style="width:100%;height:900px;border:0;border-radius:8px;background:transparent;color-scheme:dark"></iframe>
       </div>
       <div id="campi"></div>
       <div id="msg"></div>
@@ -379,6 +387,8 @@
     if (!v) return;
     dimmi("");
     sel = { id: id, tipo: v.tipo, titolo: v.titolo, orig: null, dati: null };
+    if (editorAperto) mostraEditor(false);
+    el("btnEditor").style.display = EDITORI[v.tipo] ? "" : "none";
     disegnaVoci();
     el("dtit").textContent = v.titolo || v.tipo;
     el("prevcap").textContent = "Carico…";
@@ -526,6 +536,50 @@
     if (i.type === "checkbox") o[ultima] = !!i.checked;
     else if (i.type === "number") o[ultima] = i.value === "" ? "" : Number(i.value);
     else o[ultima] = i.value;
+  });
+
+  // ── l'editor completo, dentro la pagina ─────────────────────────────
+  // Ogni grafica ha il suo editor; quelli che sanno riprendersi una grafica
+  // dalla scaletta (col modulo riapri.js) si aprono qui, con la grafica
+  // dentro. Gli altri arrivano un po' alla volta: intanto restano i campi.
+  var EDITORI = {
+    sottopancia: "sottopancia.html", sottopancia2: "sottopancia.html",
+    dichiarazioni: "dichiarazioni.html", "formazione-premium": "formazioni-premium.html"
+  };
+  var editorAperto = false;
+  function mostraEditor(si) {
+    editorAperto = si;
+    el("editorbox").hidden = !si;
+    ["prevbox", "prevcap", "campi"].forEach(function (id) { el(id).style.display = si ? "none" : ""; });
+    el("dettaglio").querySelector(".tasti").style.display = si ? "none" : "";
+    if (!si) el("editor").src = "about:blank";
+  }
+  function apriEditor() {
+    if (!sel) return;
+    var pagina = EDITORI[sel.tipo];
+    if (!pagina) { dimmi("Per questa grafica l'editor completo non c'e' ancora: usa i campi qui sotto.", "err"); return; }
+    var chi = chiSono();
+    if (!chi) { dimmi("Scegli prima il tuo nome: resta scritto chi ha corretto.", "err"); el("chi").focus(); return; }
+    var url = pagina + "?riapri=" + encodeURIComponent(sel.id) +
+      (fonte.tipo === "canale" ? "&canale=" + fonte.c : "&progetto=" + encodeURIComponent(fonte.id)) +
+      "&chi=" + encodeURIComponent(chi) + "&incorporato=1";
+    el("editor").src = url;
+    mostraEditor(true);
+    dimmi("");
+  }
+  el("btnEditor").addEventListener("click", apriEditor);
+  el("btnChiudiEditor").addEventListener("click", function () { mostraEditor(false); if (sel) apri(sel.id); });
+  window.addEventListener("message", function (e) {
+    var d = e.data;
+    if (!d || !d.comotv) return;
+    if (d.comotv === "riapri-altezza" && editorAperto) {
+      var h = Math.max(400, Math.min(6000, parseInt(d.h, 10) || 0));
+      if (Math.abs(parseInt(el("editor").style.height, 10) - h) > 8) el("editor").style.height = h + "px";
+    }
+    if (d.comotv === "riapri-aggiornata") {
+      dimmi("Aggiornata in scaletta al suo posto.", "ok");
+      ultimoNonce = null; caricaScaletta();
+    }
   });
 
   // ── avvio ───────────────────────────────────────────────────────────

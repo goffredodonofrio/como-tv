@@ -391,6 +391,7 @@
 <script src="destinazione.js"></script>
 <script src="formazioni-espn.js"></script>
 <script src="giovanili.js"></script>
+<script src="riapri.js"></script>
 <script>
 (function () {
   "use strict";
@@ -576,7 +577,8 @@
 
   function resolve(side, v) {
     if (!v) return null;
-    if (v.m) return { num: v.num, nome: v.nome, cognome: v.cognome };
+    // "foto": solo per le righe riprese dalla scaletta, che la portano gia'
+    if (v.m) return { num: v.num, nome: v.nome, cognome: v.cognome, foto: v.foto || "" };
     var p = side.roster[v.p];
     return p ? { num: p.num, nome: p.nome, cognome: p.cognome, pid: p.pid || "" } : null;
   }
@@ -1662,6 +1664,7 @@
       var foto = (ris === undefined && d && d.cognome)
         ? "/loghi/foto-premium-" + slugCog(d.cognome) + ".png"
         : (ris || "");
+      if (d.foto) foto = d.foto;      // ripresa dalla scaletta: la foto era gia' quella
       return [d.num || "", d.nome || "", d.cognome || "", foto];
     }
 
@@ -1672,6 +1675,7 @@
       pv: STILE_PV,
       mg: side.maglia ? magliaUrl(side, side.maglia) || undefined : undefined,
       l: (function () {
+        if (side.logoFisso) return side.logoFisso;   // ripresa dalla scaletta: lo stemma era quello
         // magazzino prima (anche col nome senza la coda "Primavera"/"Under"),
         // poi lo stemma del club senior per le giovanili, poi ESPN
         var mio = slugM(side.teamName || "");
@@ -1902,6 +1906,41 @@
   // Carica la formazione sul "centralino": la pagina grafica-live.html
   // (URL fisso dentro vMix) la riceve e la console regia.html decide
   // quando mandarla in onda.
+
+  // ── riapertura dalla Redazione: la formazione in scaletta torna qui, a mano ──
+  // Undici, panchina, allenatore, modulo, colore, maglia, stemma e
+  // posizioni tornano com'erano; le foto restano quelle del pacchetto.
+  if (window.Riapri && Riapri.attivo) Riapri.quando(function (d) {
+    if (!d) return;
+    var side = sides[0];
+    side.manualMode = true; side.teamId = ""; side.roster = []; side.custom = {};
+    side.teamName = d.n || "";
+    if (d.m && MODULI.indexOf(d.m) >= 0) side.mod = d.m;
+    if (d.k) side.kit = d.k;
+    side.coachN = (d.a && d.a[0]) || ""; side.coachC = (d.a && d.a[1]) || "";
+    function riga(r) {
+      r = r || [];
+      return { m: 1, num: String(r[0] || ""), nome: String(r[1] || ""), cognome: String(r[2] || ""), foto: r[3] || "" };
+    }
+    side.tit = (d.t || []).slice(0, 11).map(riga);
+    while (side.tit.length < 11) side.tit.push(mkManualRow());
+    side.pan = (d.p || []).slice(0, NBENCH).map(riga);
+    while (side.pan.length < NBENCH) side.pan.push(mkManualRow());
+    side.posGraf = d.g || null;
+    side.logoFisso = d.l || "";
+    if (d.pv) { var bpv = document.querySelector('button[data-pv="' + d.pv + '"]'); if (bpv) bpv.click(); }
+    // la maglia si ritrova per indirizzo, appena il magazzino ha risposto
+    function trovaMaglia() {
+      if (!d.mg) return;
+      ["casa", "trasferta", "terza", "quarta"].forEach(function (dove) {
+        if (magliaUrl(side, dove) === d.mg) side.maglia = dove;
+      });
+      renderAll();
+    }
+    trovaMaglia(); setTimeout(trovaMaglia, 1500); setTimeout(trovaMaglia, 4000);
+    renderAll();
+    status("", '<span class="msg"><b>' + esc(side.teamName) + '</b> ripresa dalla scaletta: correggi e premi Invia alla regia (Casa), torna al suo posto.</span>');
+  });
 
   function inviaRegia(si) {
     assicuraFoto(si).then(function () {
