@@ -98,8 +98,17 @@
   #prev{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
     transform-origin:top left;pointer-events:none;background:#070B1D;color-scheme:dark;}
   #prevcap{font-size:11.5px;color:var(--fg-3);margin-top:6px;min-height:16px;}
-  .tasti{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px;}
+  .tasti{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 10px;}
   .tasti .spazio{flex:1;}
+  /* la riga dell'invio, uguale a quella delle pagine delle grafiche */
+  .invio{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin:0 0 16px;padding:12px 14px;
+    border:1px solid var(--line-gold);border-radius:8px;background:rgba(201,162,75,.06);}
+  .invio > div{flex:1;min-width:240px;}
+  .invio select{font-size:15px;padding:11px 13px;}
+  #btnRegia{font-size:12px;padding:13px 18px;background:#4FA3E8;border-color:#4FA3E8;color:#0A0F24;}
+  #btnRegia:hover:not(:disabled){background:#74B9F0;border-color:#74B9F0;color:#0A0F24;}
+  #btnRegia:disabled{opacity:.4;cursor:default;}
+  #dettaglio.vuoto .invio{display:none;}
   #campi .gruppo{margin-bottom:14px;padding-top:10px;border-top:1px solid var(--line-2);}
   #campi .gruppo:first-child{border-top:0;padding-top:0;}
   #campi .gruppo > label{margin-bottom:8px;}
@@ -193,7 +202,16 @@
         <button type="button" id="btnEditor" class="primary">&#9998; Apri l'editor completo</button>
         <span class="spazio"></span>
         <button type="button" id="btnAnnulla">Annulla le modifiche</button>
-        <button type="button" class="primary" id="btnAggiorna">&#10003; Aggiorna in scaletta</button>
+      </div>
+      <!-- l'invio, come nelle pagine delle grafiche: si sceglie dove.
+           "Al suo posto" sostituisce la grafica dov'e'; un vMix o un
+           progetto ne manda una copia li', com'e' adesso coi tuoi campi. -->
+      <div class="invio">
+        <div>
+          <label for="canaleSel">Dove va</label>
+          <select id="canaleSel"></select>
+        </div>
+        <button type="button" id="btnRegia">&#128225; Invia alla regia</button>
       </div>
       <!-- l'editor vero della grafica, con la grafica dentro: qui si cambia
            tutto, maglia e foto comprese. L'altezza segue la sua, cosi' lo
@@ -345,7 +363,21 @@
     return post({ tipo: "progetto-elenco" })
       .then(function (j) { progetti = (j && j.progetti) || []; })
       .catch(function () { progetti = []; })
-      .then(riempiFonti);
+      .then(function () { riempiFonti(); riempiDestinazioni(); });
+  }
+  // dove mandare: al suo posto, oppure una copia in un vMix o in un progetto
+  function riempiDestinazioni() {
+    var s = el("canaleSel"), prima = s.value || "qui";
+    var h = '<option value="qui">↩ Al suo posto (sostituisce la grafica dov’e’)</option>';
+    for (var c = 1; c <= N_CANALI; c++) h += '<option value="c:' + c + '">' + nomeCanale(c) + '</option>';
+    if (progetti.length) {
+      h += '<optgroup label="Progetti">';
+      progetti.forEach(function (p) { h += '<option value="p:' + esc(p.id) + '">📁 ' + esc(p.nome) + ' (' + p.quante + ')</option>'; });
+      h += '</optgroup>';
+    }
+    s.innerHTML = h;
+    s.value = prima;
+    if (!s.value) s.value = "qui";
   }
 
   // ── chi corregge ────────────────────────────────────────────────────
@@ -474,23 +506,43 @@
     disegnaDettaglio(); anteprima(true);
     dimmi("Modifiche annullate: la grafica e' tornata com'era.");
   });
-  el("btnAggiorna").addEventListener("click", function () {
+  el("btnRegia").addEventListener("click", function () {
     if (!sel || !sel.dati) return;
     var chi = chiSono();
     if (!chi) { dimmi("Scegli prima il tuo nome: resta scritto chi ha corretto.", "err"); el("chi").focus(); return; }
-    if (JSON.stringify(sel.dati) === JSON.stringify(sel.orig)) { dimmi("Non hai cambiato niente."); return; }
-    var corpo = fonte.tipo === "canale"
-      ? { tipo: "regia-dati", c: fonte.c, id: sel.id, dati: sel.dati, chi: chi }
-      : { tipo: "progetto-dati", id: fonte.id, pid: sel.id, dati: sel.dati, chi: chi };
-    el("btnAggiorna").disabled = true;
+    var dove = el("canaleSel").value || "qui";
+    var cambiata = JSON.stringify(sel.dati) !== JSON.stringify(sel.orig);
+    var corpo, doveTxt;
+    if (dove === "qui") {
+      if (!cambiata) { dimmi("Non hai cambiato niente: la grafica e' gia' cosi'."); return; }
+      corpo = fonte.tipo === "canale"
+        ? { tipo: "regia-dati", c: fonte.c, id: sel.id, dati: sel.dati, chi: chi }
+        : { tipo: "progetto-dati", id: fonte.id, pid: sel.id, dati: sel.dati, chi: chi };
+    } else if (dove.charAt(0) === "c") {
+      // una copia in un vMix: come "Invia alla regia" dalla pagina della grafica
+      corpo = { tipo: "regia-load", c: parseInt(dove.slice(2), 10), grafica: sel.tipo, titolo: sel.titolo, dati: sel.dati };
+      doveTxt = nomeCanale(corpo.c);
+    } else {
+      var pid = dove.slice(2), pr = null;
+      progetti.forEach(function (p) { if (String(p.id) === pid) pr = p; });
+      corpo = { tipo: "progetto-aggiungi", id: pid, grafica: sel.tipo, titolo: sel.titolo, dati: sel.dati };
+      doveTxt = 'progetto “' + (pr ? pr.nome : pid) + '”';
+    }
+    el("btnRegia").disabled = true;
     post(corpo).then(function (j) {
-      el("btnAggiorna").disabled = false;
-      if (!j || !j.ok) { dimmi("Non aggiornata: " + ((j && j.errore) || "errore del ponte"), "err"); return; }
-      sel.orig = JSON.parse(JSON.stringify(sel.dati));
-      var era = onair[sel.id];
-      dimmi("Aggiornata in scaletta" + (era ? " — e' in onda adesso: la correzione si vede alla prossima messa in onda." : "."), "ok");
-      ultimoNonce = null; caricaScaletta();
-    }).catch(function () { el("btnAggiorna").disabled = false; dimmi("Ponte non raggiungibile.", "err"); });
+      el("btnRegia").disabled = false;
+      if (!j || !j.ok) { dimmi("Non inviata: " + ((j && j.errore) || "errore del ponte"), "err"); return; }
+      if (dove === "qui") {
+        sel.orig = JSON.parse(JSON.stringify(sel.dati));
+        var era = onair[sel.id];
+        dimmi("Aggiornata al suo posto in scaletta" + (era ? " — e' in onda adesso: la correzione si vede alla prossima messa in onda." : "."), "ok");
+        ultimoNonce = null; caricaScaletta();
+      } else {
+        dimmi("Copia di “" + sel.titolo + "” mandata a " + doveTxt +
+              (cambiata ? " coi tuoi campi. Qui l’originale resta com’era: per cambiare anche quello scegli “Al suo posto”." : "."), "ok");
+        caricaProgetti();
+      }
+    }).catch(function () { el("btnRegia").disabled = false; dimmi("Ponte non raggiungibile.", "err"); });
   });
 
   // ── i campi: dal pacchetto a un modulo, e ritorno ───────────────────

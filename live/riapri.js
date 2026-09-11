@@ -121,22 +121,46 @@ window.Riapri = (function () {
     else inAttesa.push(fn);
   }
 
-  // il corpo dell'invio: da "aggiungi" a "sostituisci"
+  // Il corpo dell'invio. Nella tendina della destinazione compare in cima
+  // "Al suo posto": con quella scelta l'invio SOSTITUISCE la grafica in
+  // scaletta; scegliendo un vMix o un progetto se ne manda una copia li',
+  // come fa la pagina di suo.
+  var VOCE = "__riapri";
   function rubaDestinazione() {
     if (!window.Destinazione) return;
-    var D = window.Destinazione;
+    var D = window.Destinazione, sel = document.getElementById("canaleSel");
+    var corpo0 = D.corpo, dove0 = D.dove;
+    function alSuoPosto() { return !sel || sel.value === VOCE; }
     D.corpo = function (base) {
+      if (!alSuoPosto()) return corpo0(base);
       var b = Object.assign({}, base);
       delete b.dest;
       if (canale) return Object.assign({ tipo: "regia-dati", c: canale, id: id, chi: chi }, b);
       return Object.assign({ tipo: "progetto-dati", id: progetto, pid: id, chi: chi }, b);
     };
     // gli editor scrivono "aggiunta a " + dove(): deve leggersi di seguito
-    D.dove = function () { return "scaletta, al posto di “" + (titolo || "questa grafica") + "”"; };
-    // la tendina della destinazione non conta piu': si spegne per non
-    // far credere che si possa scegliere dove mandare
-    var sel = document.getElementById("canaleSel");
-    if (sel) { sel.disabled = true; sel.title = "Correzione: la grafica torna al suo posto in scaletta"; }
+    D.dove = function () {
+      if (!alSuoPosto()) return dove0();
+      return "scaletta, al posto di “" + (titolo || "questa grafica") + "”";
+    };
+    if (!sel) return;
+    // la voce in cima alla tendina; Destinazione la ricostruisce ogni tanto
+    // (progetti nuovi), quindi la si rimette ogni volta che sparisce
+    // si parte da "Al suo posto"; se poi si sceglie altro, la scelta resta
+    // anche quando la tendina viene ricostruita
+    var scelta = VOCE;
+    sel.addEventListener("change", function () { scelta = sel.value; });
+    function mettiVoce() {
+      if (!sel.querySelector('option[value="' + VOCE + '"]')) {
+        var o = document.createElement("option");
+        o.value = VOCE; o.textContent = "↩ Al suo posto in scaletta";
+        sel.insertBefore(o, sel.firstChild);
+      }
+      sel.value = [].some.call(sel.options, function (x) { return x.value === scelta; }) ? scelta : VOCE;
+    }
+    mettiVoce();
+    try { new MutationObserver(mettiVoce).observe(sel, { childList: true }); } catch (e) {}
+    sel.title = "Al suo posto: sostituisce la grafica in scaletta. Un vMix o un progetto: ne manda una copia li'.";
   }
 
   if (attivo) {
