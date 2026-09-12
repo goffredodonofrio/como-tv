@@ -252,6 +252,10 @@
 
   var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
   var TOKEN = (window.ChiaveComoTV ? ChiaveComoTV.valore() : "");
+  // il ponte risponde "/loghi/foto.png", ma l'ambiente sta davanti: in dev
+  // le immagini vivono sotto /como-tv-dev. Senza il prefisso la foto
+  // caricata da qui punterebbe al magazzino della produzione.
+  var BASEIMG = PONTE.replace(/\/(api|exec)$/, "");
   var N_CANALI = 8;
   function nomeCanale(c) { return c == 8 ? "VMIX REGIA" : "vMix " + c; }
   var el = function (id) { return document.getElementById(id); };
@@ -314,17 +318,27 @@
   };
   // colonne delle tabelle, dove le sappiamo
   var COLONNE = { t: ["N°", "Nome", "Cognome", "Foto"], p: ["N°", "Nome", "Cognome"], a: ["Nome", "Cognome"] };
+  // Il magazzino non risponde sempre con lo stesso indirizzo: in produzione
+  // "/loghi/foto.jpg", in dev "/como-tv-dev/loghi/foto.jpg", da fuori un
+  // "https://…". Guardare solo l'inizio dell'indirizzo lasciava le foto di
+  // dev senza i tasti per cambiarle: qui conta la cartella dei loghi
+  // ovunque sia, oppure un'estensione da immagine.
+  var CARTELLA_LOGHI = /(^|\/)loghi\//i;
+  var CARTELLA_VIDEO = /(^|\/)(clip|contributi)\//i;
+  var FINISCE_IMMAGINE = /^(?:https?:\/\/|\/)[^?#]*\.(?:png|jpe?g|webp|svg)(?:[?#]|$)/i;
   // cose che non si correggono qui: file video, posizioni in campo, stili
   function fisso(chiave, val) {
     if (chiave === "g" || chiave === "pv") return true;
     if (typeof val !== "string") return false;
-    return /^(data:|https?:\/\/|\/loghi\/|\/clip\/|\/contributi\/)/.test(val) && val.length > 12;
+    return (/^(data:|https?:\/\/)/.test(val) || CARTELLA_LOGHI.test(val) || CARTELLA_VIDEO.test(val))
+           && val.length > 12;
   }
   // una foto o uno stemma: si cambia da qui, dal magazzino o caricandola
   function eFoto(chiave, val) {
     if (typeof val !== "string" || !val) return false;
-    if (/^\/(clip|contributi)\//.test(val)) return false;          // video, non foto
-    return /^(data:image|https?:\/\/.*\.(png|jpe?g|webp|svg)(\?.*)?$|\/loghi\/)/i.test(val);
+    if (CARTELLA_VIDEO.test(val)) return false;                    // video, non foto
+    if (/^data:image/i.test(val)) return true;
+    return CARTELLA_LOGHI.test(val) || FINISCE_IMMAGINE.test(val);
   }
   function etichetta(k) {
     var mie = sel && ETI_TIPO[sel.tipo];
@@ -386,7 +400,7 @@
     // tasto non deve comparire: sarebbe un file condiviso sovrascritto
     // senza volerlo.
     var diSquadra = /^(l|lg|logo|stemma|mg|af)$/i.test(chiave);
-    var f = String(val || "").match(/^\/loghi\/([^/?#]+)\.(?:png|jpe?g|webp|svg)(?:[?#]|$)/i);
+    var f = String(val || "").match(/(?:^|\/)loghi\/([^/?#]+)\.(?:png|jpe?g|webp|svg)(?:[?#]|$)/i);
     if (f) {
       var k = f[1];
       if (/^foto-premium-coach-/.test(k)) return { file: k, che: "la foto dell'allenatore", fatta: "sostituita" };
@@ -797,7 +811,7 @@
             .then(function (j) {
               if (!j || !j.ok) throw new Error((j && j.errore) || "il ponte ha rifiutato la foto");
               if (window.SceltaFoto) SceltaFoto.scorda();
-              fotoMessa(p, j.url + "?t=" + Date.now(),
+              fotoMessa(p, BASEIMG + j.url + "?t=" + Date.now(),
                         "Foto di " + b.dataset.cognome + " sostituita in magazzino: vale da ora per tutte le grafiche. Aggiorna in scaletta per vederla in questa.");
             });
         }
@@ -814,7 +828,7 @@
             .then(function (j) {
               if (!j || !j.ok) throw new Error((j && j.errore) || "il ponte ha rifiutato l'immagine");
               if (window.SceltaFoto) SceltaFoto.scorda();
-              fotoMessa(p, j.url + "?t=" + Date.now(),
+              fotoMessa(p, BASEIMG + j.url + "?t=" + Date.now(),
                         b.dataset.che.charAt(0).toUpperCase() + b.dataset.che.slice(1) +
                         (b.dataset.squadra ? " (" + b.dataset.squadra + ")" : "") + ": " +
                         (b.dataset.fatta || "sostituita") +
@@ -827,7 +841,7 @@
           .then(function (j) {
             if (!j || !j.ok) throw new Error((j && j.errore) || "il ponte ha rifiutato la foto");
             if (window.SceltaFoto) SceltaFoto.scorda();
-            fotoMessa(p, j.url);
+            fotoMessa(p, BASEIMG + j.url);
           });
       }).catch(function (err) { dimmi("Foto non caricata: " + err.message, "err"); });
     };
