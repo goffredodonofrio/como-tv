@@ -1641,6 +1641,32 @@
     }));
   }
 
+  // Chi resta senza faccia. Il ponte risponde vuoto quando quella foto non
+  // c'e', oppure quando ce n'e' una con quel cognome ma non risulta di
+  // nessuno: in tutti e due i casi in onda esce il buco, e chi manda la
+  // grafica deve saperlo prima, non scoprirlo dal monitor. (Indeciso e'
+  // un'altra cosa: se il ponte non ha risposto non si dice niente.)
+  function senzaFoto(si) {
+    var side = sides[si], fuori = [];
+    (side.tit || []).forEach(function (v) {
+      var d = resolve(side, v);
+      if (!d || !d.cognome) return;
+      if (FOTO_RIS[chiaveFoto(d, side)] === "" && fuori.indexOf(d.cognome) < 0) fuori.push(d.cognome);
+    });
+    return fuori;
+  }
+  function codaSenzaFoto(si) {
+    var f = senzaFoto(si);
+    if (!f.length) return "";
+    // su una squadra ancora scoperta l'elenco intero sarebbe un muro: si
+    // dicono i primi e si conta il resto
+    var quanti = f.length;
+    if (quanti > 6) f = f.slice(0, 6).concat(["e altri " + (quanti - 6)]);
+    return ' <b style="color:var(--gold-bright)">Senza foto in magazzino:</b> ' + esc(f.join(", ")) +
+           '. Caricala dal <a href="magazzino-foto.html" target="_blank" style="color:var(--gold-bright)">Magazzino foto</a>' +
+           ' scegliendo questa squadra.';
+  }
+
   function vmixPayload(si) {
     var side = sides[si];
     if (!side.tit.length) {
@@ -1848,7 +1874,7 @@
     fitPrevF();
     document.getElementById("prevFcap").innerHTML =
       "<b>" + esc(side.teamName || side.label) + "</b> — trascina le maglie per sistemare i nomi; " +
-      "doppio click su una maglia per rimetterla al suo posto.";
+      "doppio click su una maglia per rimetterla al suo posto." + codaSenzaFoto(si);
     box.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
   }
@@ -1974,7 +2000,8 @@
           if (pf) pf.className = "pfill done";
           setTimeout(function () {
             status("ok", '<span class="msg"><b>' + esc(payload.n) + '</b> aggiunta a ' + Destinazione.dove() + '. ' +
-              'Dalla <a href="regia.html" target="_blank" style="color:var(--gold-bright)">console</a> la mandi in onda quando vuoi.</span>');
+              'Dalla <a href="regia.html" target="_blank" style="color:var(--gold-bright)">console</a> la mandi in onda quando vuoi.' +
+              codaSenzaFoto(si) + '</span>');
           }, 350);
         } else {
           status("err", '<span class="msg"><b>La regia ha rifiutato il carico:</b> ' + esc(res.errore || "errore sconosciuto") + '</span>');

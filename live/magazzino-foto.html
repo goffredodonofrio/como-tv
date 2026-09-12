@@ -341,7 +341,12 @@ document.addEventListener("DOMContentLoaded", function () {
   // chiave file in magazzino: foto-premium-<cognome>  (com'è vista dal premium).
   // La squadra serve solo a sfogliare la rosa, non entra nel nome del file.
   function nomeFoto(cognome){ return "foto-premium-" + slug(cognome); }
-  function urlFoto(cognome){ return "/loghi/" + nomeFoto(cognome) + ".png"; }
+  // Il ponte risponde "/loghi/foto.png", ma in dev le immagini vivono sotto
+  // /como-tv-dev: senza il prefisso dell'ambiente la pagina di prova
+  // mostrerebbe le facce della produzione, e chi prova non saprebbe cosa sta
+  // guardando.
+  var BASEIMG = PONTE.replace(/\/(api|exec)$/, "");
+  function urlFoto(cognome){ return BASEIMG + "/loghi/" + nomeFoto(cognome) + ".png"; }
 
   function stato(cls, html){ var s=el("stato"); s.className=cls||""; s.innerHTML=html||""; }
 
@@ -480,21 +485,27 @@ document.addEventListener("DOMContentLoaded", function () {
     fetch(PONTE + q, { cache: "no-store" })
       .then(function(r){ return r.json(); })
       .then(function(d){
+        // La card dell'allenatore non ha il riquadro delle foto orfane: la
+        // sua foto e' della squadra, non di una persona, e non c'e' niente
+        // da intestare a nessuno. Finche' qui non si guardava, la riga
+        // sotto andava in errore proprio su quella card, l'errore finiva
+        // nel catch in fondo e la foto dell'allenatore risultava assente
+        // anche quando c'era: e' il caso segnalato sull'Al-Nassr.
         var orf = card.querySelector(".orfana");
-        orf.hidden = true; orf.innerHTML = "";
-        if (d && d.url) { card.classList.add("has"); img.src = d.url + "?t=" + Date.now(); }
+        if (orf) { orf.hidden = true; orf.innerHTML = ""; }
+        if (d && d.url) { card.classList.add("has"); img.src = BASEIMG + d.url + "?t=" + Date.now(); }
         else {
           card.classList.remove("has");
           // C'e' una foto con quel cognome ma non e' di nessuno: invece di
           // dire "manca" — che sarebbe falso e farebbe ricaricare roba gia'
           // in magazzino — si chiede di chi e'. Un clic e smette di essere
           // una domanda.
-          if (d && d.orfana) {
+          if (orf && d && d.orfana) {
             orf.hidden = false;
             orf.innerHTML = '<img alt="">' +
               '<div class="dom">C\'&egrave; una foto di un<br><b>' + esc(cognome) + '</b>: &egrave; lui?</div>' +
               '<button type="button" class="si">S&igrave;, &egrave; lui</button>';
-            orf.querySelector("img").src = d.orfana + "?t=" + Date.now();
+            orf.querySelector("img").src = BASEIMG + d.orfana + "?t=" + Date.now();
             orf.querySelector(".si").onclick = function(e){
               e.stopPropagation();
               intesta(cognome, pid, d.orfana.split("/").pop());
@@ -547,7 +558,7 @@ document.addEventListener("DOMContentLoaded", function () {
       alPonte({ tipo:"foto-carica", cognome:cognome, id:pid||"", squadra:teamId||"", dati: rd.result })
       .then(function(res){
         card.classList.remove("busy");
-        if(res && res.ok){ card.classList.add("has"); card.querySelector("img").src = (res.url||urlFoto(cognome))+"?t="+Date.now();
+        if(res && res.ok){ card.classList.add("has"); card.querySelector("img").src = (res.url ? BASEIMG + res.url : urlFoto(cognome))+"?t="+Date.now();
           aggiornaCopertura(); stato("ok","<b>"+esc(cognome)+"</b>: foto salvata in magazzino."); }
         else stato("err","<b>"+esc(cognome)+":</b> "+esc((res&&res.errore)||"errore")); })
       .catch(function(e){ card.classList.remove("busy"); stato("err","<b>"+esc(cognome)+":</b> "+esc(e.message)); });

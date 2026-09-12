@@ -103,10 +103,20 @@
     return "C";
   }
 
+  // Il cognome secondo ESPN. Quando il cognome c'e', e' quello. Quando non
+  // c'e' — capita coi brasiliani e con chi ha un nome solo, per esempio
+  // "Ângelo Gabriel" dell'Al-Nassr — vale il nome intero, come gia' fa la
+  // rosa caricata scegliendo la squadra. Prendere l'ultima parola faceva
+  // due cognomi diversi per la stessa persona a seconda di come si era
+  // caricata la formazione, e il magazzino non riconosceva piu' la sua foto.
+  function cognomeDi(a) {
+    return a.lastName || a.displayName || a.fullName || "";
+  }
+
   // da un giocatore ESPN alla nostra terna [numero, nome, cognome]
   function terna(x) {
     var a = x.athlete || {};
-    var cognome = a.lastName || (a.displayName || "").split(" ").slice(-1)[0] || "";
+    var cognome = cognomeDi(a);
     var intero = a.fullName || a.displayName || cognome;
     var nome = intero.length > cognome.length ? intero.slice(0, intero.length - cognome.length).trim() : "";
     // la foto segue la regola del Premium: un archivio solo per tutte le grafiche
@@ -332,10 +342,14 @@
 
       side.roster = lista.map(function (x, i) {
         var a = x.athlete || {};
-        var cognome = a.lastName || (a.displayName || "").split(" ").slice(-1)[0] || "";
+        var cognome = cognomeDi(a);
         var intero = a.fullName || a.displayName || cognome;
         var nome = intero.length > cognome.length ? intero.slice(0, intero.length - cognome.length).trim() : "";
-        return { idx: i, num: x.jersey || "", nome: nome, cognome: cognome,
+        // l'id ESPN della persona viaggia con lei: e' la sola cosa che il
+        // magazzino riconosce sempre, anche quando due giocatori hanno lo
+        // stesso cognome. Senza, la formazione presa dalla partita chiedeva
+        // la foto per cognome e sui cognomi diffusi non la otteneva.
+        return { idx: i, pid: String(a.id || ""), num: x.jersey || "", nome: nome, cognome: cognome,
                  ruolo: lettera((x.position || {}).abbreviation) };
       });
 
