@@ -155,7 +155,17 @@
   .amano .via:hover{background:rgba(229,27,32,.12);border-color:var(--red);}
   .match .score{font-family:'Mazzard',system-ui,sans-serif;font-weight:800;color:var(--gold-bright);
     white-space:nowrap;font-size:13px;}
-  .match .who{flex:1;min-width:0;font-size:13px;color:var(--ivory);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .match .who{flex:1;min-width:0;font-size:13px;color:var(--ivory);display:flex;align-items:center;gap:6px;}
+  /* i nomi si correggono qui dentro: in grafica "Independiente del Valle" e'
+     troppo lungo e arriva sotto il punteggio, e chi manda la grafica deve
+     poterlo accorciare senza uscire dalla pagina */
+  .match .nm{flex:1 1 0;min-width:0;font-family:'DM Sans',sans-serif;font-size:13px;
+    color:var(--ivory);background:transparent;border:1px solid transparent;border-radius:4px;
+    padding:3px 5px;text-overflow:ellipsis;}
+  .match .nm:hover{border-color:var(--line-2);background:rgba(245,241,230,.04);}
+  .match .nm:focus{outline:none;border-color:var(--gold);background:rgba(245,241,230,.06);}
+  .match .nm.corto{color:var(--gold-bright);}
+  .match .who i{flex:none;color:var(--fg-3);font-style:normal;}
   .match .st{font-size:11px;color:var(--fg-3);white-space:nowrap;}
   .match.off{opacity:.45;}
 
@@ -453,6 +463,22 @@
     try { m = JSON.parse(localStorage.getItem(MAPLS) || "{}"); } catch (e) {}
     return m[s] || DEFAULT_MAP[s] || defaultName(s);
   }
+  // Il nome accorciato a mano si ricorda: la stessa squadra tornera' in
+  // elenco domani, e riscriverlo ogni volta e' lavoro inutile. E' la stessa
+  // rubrica delle classifiche, quindi il nome corto vale anche li'. Resta su
+  // questo computer, come tutte le preferenze di postazione.
+  function ricordaNome(esteso, corto) {
+    if (!esteso) return false;
+    var m = {};
+    try { m = JSON.parse(localStorage.getItem(MAPLS) || "{}"); } catch (e) {}
+    var suo = defaultName(corto);
+    // tornato al nome di sempre: si toglie la riga, invece di scrivere due
+    // volte la stessa cosa
+    if (suo === (DEFAULT_MAP[esteso] || defaultName(esteso))) delete m[esteso];
+    else m[esteso] = suo;
+    try { localStorage.setItem(MAPLS, JSON.stringify(m)); } catch (e) { return false; }
+    return true;
+  }
 
   var el = {
     comp:   document.getElementById("comp"),
@@ -471,6 +497,9 @@
   };
 
   var state = { matches: [], comp: null };
+  // l'anteprima vive in fondo al file, dentro il suo blocco: qui si tiene il
+  // filo per aggiornarla quando si corregge un nome
+  var aggiornaAnteprima = function () {};
 
   function esc(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
@@ -559,6 +588,11 @@
             finita: st.state === "post",
             haPunteggio: haPunteggio,
             statoBreve: st.shortDetail || st.detail || "",
+            // il nome per esteso di ESPN: serve per ricordarsi l'accorciatura
+            // ("Independiente del Valle" -> "IND. DEL VALLE") e riusarla la
+            // prossima volta che quella squadra torna in elenco
+            espn1: home && home.team ? (home.team.displayName || home.team.name || "") : "",
+            espn2: away && away.team ? (away.team.displayName || away.team.name || "") : "",
             campi: [
               comp.nome,
               "",
@@ -640,6 +674,16 @@
     return h + '</select>' + libero;
   }
 
+  // la casella del nome nelle righe arrivate da ESPN
+  function nomeCasella(m, quale) {
+    var dove = quale === "casa" ? 4 : 7;
+    var esteso = quale === "casa" ? (m.espn1 || "") : (m.espn2 || "");
+    var corto = m.campi[dove] !== defaultName(esteso);
+    return '<input type="text" class="nm' + (corto ? " corto" : "") + '" data-espn="' + esc(m.id) + '" ' +
+           'data-k="' + quale + '" value="' + esc(m.campi[dove]) + '" spellcheck="false" ' +
+           'title="' + esc(esteso || m.campi[dove]) + (esteso ? " — accorcialo come deve uscire in grafica" : "") + '">';
+  }
+
   function rigaMano(m) {
     return '<div class="amano">' +
       '<input type="checkbox" data-id="' + esc(m.id) + '"' + (m.checked ? ' checked' : '') + '>' +
@@ -706,12 +750,16 @@
     var h = state.matches.filter(function (m) { return m.mano; }).map(rigaMano).join("");
     h += '<div class="matches">';
     state.matches.filter(function (m) { return !m.mano; }).forEach(function (m) {
-      h += '<label class="match' + (m.checked ? '' : ' off') + '">' +
+      // i due nomi sono caselle: si accorciano qui, e restano accorciate
+      // anche per le prossime grafiche (vedi ricordaNome)
+      h += '<div class="match' + (m.checked ? '' : ' off') + '">' +
         '<input type="checkbox" data-id="' + esc(m.id) + '"' + (m.checked ? ' checked' : '') + '>' +
-        '<span class="who">' + esc(m.campi[4]) + ' – ' + esc(m.campi[7]) + '</span>' +
+        '<span class="who">' +
+          nomeCasella(m, "casa") + '<i>&ndash;</i>' + nomeCasella(m, "ospite") +
+        '</span>' +
         '<span class="score">' + esc(m.campi[5] || "·") + '-' + esc(m.campi[8] || "·") + '</span>' +
         '<span class="st">' + esc(m.statoBreve) + '</span>' +
-        '</label>';
+        '</div>';
     });
     h += '</div>';
 
@@ -909,7 +957,38 @@
     el.out.addEventListener(quale, function (ev) {
       var t = ev.target;
       if (t.dataset && t.dataset.mano) scriviMano(t.dataset.mano, t.dataset.k, t.value);
+      if (t.dataset && t.dataset.espn) scriviNome(t, quale === "change");
     });
+  });
+  // Il nome di una partita presa da ESPN, corretto a mano. Cambia subito la
+  // grafica; quando si esce dalla casella si ricorda anche per le prossime.
+  function scriviNome(inp, finito) {
+    var m = state.matches.filter(function (x) { return x.id === inp.dataset.espn; })[0];
+    if (!m) return;
+    var casa = inp.dataset.k === "casa", dove = casa ? 4 : 7;
+    m.campi[dove] = inp.value;
+    // lo stemma non si tocca: e' quello della squadra ESPN, e accorciare il
+    // nome non la cambia
+    var esteso = casa ? m.espn1 : m.espn2;
+    inp.classList.toggle("corto", inp.value !== defaultName(esteso));
+    aggiornaAnteprima();
+    if (!finito || !esteso) return;
+    if (ricordaNome(esteso, inp.value)) {
+      var suo = defaultName(inp.value);
+      status("ok", '<span class="msg">' + (suo === defaultName(esteso)
+        ? '<b>' + esc(esteso) + '</b> torna a chiamarsi come lo scrive ESPN.'
+        : '<b>' + esc(esteso) + '</b> da ora si chiama <b>' + esc(suo) + '</b> anche nelle prossime grafiche, ' +
+          'risultati e classifiche, su questo computer.') + '</span>');
+    }
+  }
+  // clic sulla riga: spunta la partita. Sui nomi no, li' si scrive.
+  el.out.addEventListener("click", function (ev) {
+    var riga = ev.target.closest ? ev.target.closest(".match") : null;
+    if (!riga || ev.target.closest("input")) return;
+    var cb = riga.querySelector('input[type=checkbox]');
+    if (!cb) return;
+    cb.checked = !cb.checked;
+    cb.dispatchEvent(new Event("change", { bubbles: true }));
   });
   el.out.addEventListener("click", function (ev) {
     var b = ev.target.closest ? ev.target.closest("button[data-viamano]") : null;
@@ -962,6 +1041,7 @@
     bp.addEventListener("click", function () { render(true); });
     // scrivendo il titolo/sottotitolo l'anteprima già aperta si aggiorna dal vivo
     function liveIfOpen() { if (document.getElementById("prevGbox").style.display !== "none") render(false); }
+    aggiornaAnteprima = liveIfOpen;
     el.titoloG.addEventListener("input", liveIfOpen);
     el.sottoT.addEventListener("input", liveIfOpen);
   })();

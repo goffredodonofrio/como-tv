@@ -209,6 +209,43 @@
   });
   document.getElementById("evs").innerHTML = h;
 
+  // Un nome lungo non deve finire sotto il punteggio. "Independiente del
+  // Valle" ci passava sopra: il nome non aveva un limite, e il punteggio sta
+  // fermo in mezzo alla pastiglia. Qui si misura lo spazio davvero libero
+  // fino al punteggio e, se il nome non ci sta, si stringe QUEL nome
+  // soltanto. Gli altri restano grandi come sempre.
+  var PILL_W = 1010, ARIA = 18;
+  function adattaNomi() {
+    Array.prototype.forEach.call(document.querySelectorAll(".pillR"), function (pill) {
+      // Quanto occupa davvero il punteggio: il suo riquadro e' largo 280 ma
+      // le cifre ne prendono la meta'. Misurando l'inchiostro invece della
+      // scatola, i nomi che ci stavano restano grandi come prima.
+      var sc = pill.querySelector(".score"), ink = 0;
+      if (sc) {
+        Array.prototype.forEach.call(sc.children, function (c) { ink += c.offsetWidth; });
+        ink = Math.max(ink + 12, 120);          // i margini del trattino, e un minimo di prudenza
+      }
+      // senza punteggio i due nomi possono arrivare fino a meta' pastiglia,
+      // ma non oltre: altrimenti si toccherebbero fra loro
+      var muro = sc ? (PILL_W - ink) / 2 : PILL_W / 2;
+      [["home", "left"], ["away", "right"]].forEach(function (par) {
+        var n = pill.querySelector("." + par[0]);
+        if (!n) return;
+        n.style.transform = "";
+        var bordo = parseFloat(n.style[par[1]]) || 36;
+        var spazio = muro - bordo - ARIA;
+        var largo = n.offsetWidth;          // larghezza vera, non scalata
+        if (spazio > 40 && largo > spazio) {
+          n.style.transformOrigin = par[1] + " center";
+          n.style.transform = "scale(" + (spazio / largo) + ")";
+        }
+      });
+    });
+  }
+  adattaNomi();
+  // i caratteri arrivano dopo: con quelli di ripiego le misure sono un'altra cosa
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(adattaNomi);
+
   function replay() { location.reload(); }
   document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
   document.addEventListener("dblclick", replay);
