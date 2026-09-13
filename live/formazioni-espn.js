@@ -36,15 +36,26 @@
     { band: "🇩🇪", nome: "Coppa di Germania",     code: "ger.dfb_pokal",         rose: "ger.1" },
     { band: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", nome: "Premier League",        code: "eng.1",                 rose: "eng.1" },
     { band: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", nome: "EFL Championship",      code: "eng.2",                 rose: "eng.2" },
+    { band: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", nome: "League One",            code: "eng.3",                 rose: "eng.3" },
+    { band: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", nome: "League Two",            code: "eng.4",                 rose: "eng.4" },
     { band: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", nome: "FA Cup",                code: "eng.fa",                rose: "eng.1" },
     { band: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", nome: "Carabao Cup",           code: "eng.league_cup",        rose: "eng.1" },
     { band: "🇫🇷", nome: "Ligue 1",               code: "fra.1",                 rose: "fra.1" },
+    { band: "🇫🇷", nome: "Ligue 2",               code: "fra.2",                 rose: "fra.2" },
     { band: "🇫🇷", nome: "Coupe de France",       code: "fra.coupe_de_france",   rose: "fra.1" },
     { band: "🇳🇱", nome: "Eredivisie",            code: "ned.1",                 rose: "ned.1" },
+    { band: "🇳🇱", nome: "Eerste Divisie",        code: "ned.2",                 rose: "ned.2" },
     { band: "🇵🇹", nome: "Primeira Liga",         code: "por.1",                 rose: "por.1" },
     { band: "🏴󠁧󠁢󠁳󠁣󠁴󠁿", nome: "Scottish Premiership",  code: "sco.1",                 rose: "sco.1" },
+    { band: "🏴󠁧󠁢󠁳󠁣󠁴󠁿", nome: "Scottish Championship", code: "sco.2",                 rose: "sco.2" },
+    // La Premier Sports Cup e' la coppa di lega scozzese: ESPN la chiama
+    // "Scottish League Cup" e le da' il codice sco.cis. Ha un elenco squadre
+    // suo (45 club, anche di terza e quarta serie), quindi le rose si
+    // prendono da li' e non dalla Premiership.
+    { band: "🏴󠁧󠁢󠁳󠁣󠁴󠁿", nome: "Premier Sports Cup",    code: "sco.cis",               rose: "sco.cis" },
     { band: "🇸🇦", nome: "Saudi Pro League",      code: "ksa.1",                 rose: "ksa.1" },
     { band: "🇦🇷", nome: "LPF Argentina",         code: "arg.1",                 rose: "arg.1" },
+    { band: "🇦🇷", nome: "Nacional B Argentina",  code: "arg.2",                 rose: "arg.2" },
     { band: "🇧🇷", nome: "Brasileirão",           code: "bra.1",                 rose: "bra.1" },
     { band: "🇦🇹", nome: "Bundesliga Austria",    code: "aut.1",                 rose: "aut.1" },
     { band: "🇺🇸", nome: "MLS",                   code: "usa.1",                 rose: "usa.1" },
