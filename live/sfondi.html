@@ -80,6 +80,8 @@
   .tasti{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center;}
   .ind{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--fg-3);
     word-break:break-all;margin-top:8px;}
+  .scritte{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;}
+  .scritte > div{flex:1 1 260px;min-width:0;}
   .invio{display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin-top:14px;
     padding-top:14px;border-top:1px solid var(--line-2);}
   .invio > div{flex:1 1 220px;min-width:0;}
@@ -114,12 +116,20 @@
       </div>
       <div class="ck"><input type="checkbox" id="filo"><label for="filo">Filo d'oro</label></div>
     </div>
+    <!-- Le scritte sotto i riquadri: dove sta chi si vede nel box. Stessa
+         lingua del sottopancia, in piccolo. Vuote non si disegnano. -->
+    <div class="scritte">
+      <div><label for="t1">Scritta sotto il primo box</label>
+        <input type="text" id="t1" maxlength="40" placeholder="es. STUDIO"></div>
+      <div><label for="t2">Scritta sotto il secondo box</label>
+        <input type="text" id="t2" maxlength="40" placeholder="es. COMO"></div>
+    </div>
     <!-- L'invio e' come in tutte le altre pagine: si sceglie il vMix (o un
          progetto) e la grafica finisce in scaletta, dove la regia la manda
          in onda sul livello che vuole. -->
     <div class="invio">
-      <div><label for="canaleSel">Dove va</label><select id="canaleSel"></select></div>
       <div><label for="qualeSel">Quale sfondo</label><select id="qualeSel"></select></div>
+      <div><label for="canaleSel">Dove va</label><select id="canaleSel"></select></div>
       <div class="stretta"><label>&nbsp;</label>
         <button type="button" class="primary" id="btnRegia">&#128225; Invia alla regia</button></div>
     </div>
@@ -153,6 +163,10 @@
     if (r !== "" && +r !== 0) q.push("r=" + r);
     if (el("filo").checked) q.push("filo=1");
     if (p) q.push("polvere=" + p);
+    ["t1", "t2"].forEach(function (k) {
+      var v = el(k).value.trim();
+      if (v) q.push(k + "=" + encodeURIComponent(v));
+    });
     return q.join("&");
   }
   function indirizzo(l, assoluto) {
@@ -169,10 +183,9 @@
         '<div class="mis">' + x.mis + '</div>' +
         '<div class="prev"><iframe title="' + x.n + '"></iframe></div>' +
         '<div class="tasti">' +
-          '<button type="button" class="primary" data-az="copia">Copia l\'indirizzo per vMix</button>' +
           '<button type="button" data-az="apri">Aprilo a schermo intero</button>' +
         '</div>' +
-        '<div class="ind"></div>' +
+
       '</div>';
     }).join("");
     aggiorna();
@@ -181,7 +194,6 @@
     [].forEach.call(document.querySelectorAll(".scheda"), function (s) {
       var l = s.dataset.l, fr = s.querySelector("iframe");
       fr.src = indirizzo(l, false) + "&prova=1&n=" + Date.now();
-      s.querySelector(".ind").textContent = indirizzo(l, true);
     });
     misura();
   }
@@ -197,14 +209,10 @@
   document.addEventListener("click", function (e) {
     var b = e.target.closest ? e.target.closest("button[data-az]") : null;
     if (!b) return;
-    var l = b.closest(".scheda").dataset.l, ind = indirizzo(l, true);
-    if (b.dataset.az === "apri") { window.open(indirizzo(l, false), "_blank"); return; }
-    function fatto() { el("msg").textContent = "Indirizzo copiato: incollalo in vMix, Web Browser, 1920x1080, con la trasparenza accesa."; }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(ind).then(fatto, function () { window.prompt("Copia l'indirizzo:", ind); });
-    } else window.prompt("Copia l'indirizzo:", ind);
+    var l = b.closest(".scheda").dataset.l;
+    if (b.dataset.az === "apri") window.open(indirizzo(l, false) + "&prova=1", "_blank");
   });
-  ["gap", "marg", "alza", "ang", "pol", "filo"].forEach(function (k) {
+  ["gap", "marg", "alza", "ang", "pol", "filo", "t1", "t2"].forEach(function (k) {
     el(k).addEventListener("change", aggiorna);
   });
 
@@ -245,6 +253,7 @@
     if (r !== "" && +r !== 0) d.r = +r;
     if (el("filo").checked) d.filo = 1;
     if (p) d.polvere = p;
+    ["t1", "t2"].forEach(function (k) { var v = el(k).value.trim(); if (v) d[k] = v; });
     return d;
   }
   function dimmi(t, cls) { el("msg").textContent = t || ""; el("msg").className = cls || ""; }

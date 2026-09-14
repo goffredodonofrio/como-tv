@@ -29,6 +29,7 @@
        &m=0    il margine ai lati (se c'e', lo spazio in mezzo si stringe)
        &y=-20  alza o abbassa i riquadri
        &r=18   angoli arrotondati dei buchi
+       &t1=STUDIO &t2=COMO   le scritte sotto i due box (vuote = niente)
        &filo=1 un filo d'oro attorno ai buchi
        &polvere=quieta|media|forte   quanta polvere (come nelle altre)
 
@@ -51,6 +52,24 @@
     -webkit-mask-size:100% 100%; mask-size:100% 100%;
     -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
   }
+  /* ── le scritte sotto i box ──────────────────────────────────────
+     Stessa lingua del sottopancia, in piccolo: la barretta d'oro a
+     sinistra, il pannello semitrasparente, il nome in Mazzard maiuscolo
+     spaziato. Servono a dire dov'e' chi si vede nel riquadro — STUDIO,
+     COMO, il posto dov'e' l'inviato — e stanno sotto al loro box,
+     allineate al suo bordo sinistro come la barra del sottopancia sta al
+     bordo del pannello. */
+  .scritta{position:absolute;display:flex;align-items:stretch;opacity:0;
+    animation:scrittaIn .55s cubic-bezier(.2,.7,.3,1) .35s forwards;}
+  .scritta i{width:6px;flex:none;background:linear-gradient(180deg,#C9A24B 0%,#AC8C47 100%);}
+  .scritta b{display:flex;align-items:center;padding:0 20px;font-family:'Mazzard',sans-serif;
+    font-weight:800;font-size:26px;letter-spacing:4.4px;color:#F3EFE5;text-transform:uppercase;
+    white-space:nowrap;
+    background:linear-gradient(180deg,
+      rgba(87,90,107,.85) 0%, rgba(62,66,84,.84) 17%,
+      rgba(36,41,60,.82) 33%, rgba(40,44,63,.82) 70%, rgba(44,48,67,.82) 100%);}
+  @keyframes scrittaIn{0%{opacity:0;transform:translateY(10px)}100%{opacity:1;transform:translateY(0)}}
+
   /* il filo d'oro attorno al buco, quando lo si chiede */
   .filo{position:absolute;pointer-events:none;border:2px solid rgba(201,162,75,.55);
     box-shadow:0 0 22px rgba(201,162,75,.16);}
@@ -130,6 +149,23 @@
   var st = document.getElementById("stage");
   st.style.webkitMaskImage = url;
   st.style.maskImage = url;
+
+  // le scritte: stanno DENTRO lo stage, sotto il buco, dove la maschera
+  // tiene tutto. Vuote non si disegnano — una pastiglia senza parole e'
+  // solo un rettangolo grigio in onda.
+  var alte = 54;
+  buchi.forEach(function (b, i) {
+    var t = String(Q.get("t" + (i + 1)) || "").trim();
+    if (!t) return;
+    var d = document.createElement("div");
+    d.className = "scritta";
+    d.style.left = b.x + "px";
+    d.style.top = (b.y + b.h + 22) + "px";
+    d.style.height = alte + "px";
+    d.innerHTML = '<i></i><b></b>';
+    d.querySelector("b").textContent = t;
+    st.appendChild(d);
+  });
 
   // il filo d'oro, se lo si chiede: sta FUORI dalla maschera, altrimenti
   // il buco se lo mangerebbe insieme al resto
