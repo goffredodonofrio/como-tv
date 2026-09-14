@@ -1479,6 +1479,11 @@
   .tabRighe .riga .du{font-style:normal;font-size:10px;color:#7E7E7E;text-align:right;
     font-variant-numeric:tabular-nums;}
   #tabellino .vuoto2{padding:26px 18px;color:#8A8A8A;font-size:12px;text-align:center;line-height:1.5;}
+  /* la ricezione tolta: al posto dei comandi, il perche' */
+  body.mam .spenta{margin:10px 12px;padding:12px 14px;border:1px solid #5A3A1E;border-left:3px solid #E0762F;
+    border-radius:6px;background:#241C16;color:#C9C9C9;font-size:11.5px;line-height:1.5;}
+  body.mam .spenta b{display:block;color:#F0A060;font-size:10px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;}
+  body.mam .spenta a{color:#9FC6E8;}
   /* LA TELECRONACA SI LEGGE. Finora whisper macinava un'ora e il testo
      restava dentro un file: si vedevano solo i momenti in cui la voce dice
      "gol". Qui si legge tutto, si cerca una parola e si va li'. */
@@ -1727,11 +1732,17 @@
   // chi entra per registrare non deve inciampare nell'archivio e chi entra
   // per cercare non deve avere sotto le mani il tasto Registra.
   var MODO = /modo=archivio/.test(location.search) ? "archivio" : "live";
+  // LA RICEZIONE E' STATA TOLTA (14 settembre 2026). Il ponte non apre piu'
+  // porte SRT, non va a prendere flussi, non legge il foglio dei feed: il
+  // MAM LIVE entrava in conflitto con i vMix della regia. L'interfaccia
+  // resta — e' da qui che si immagina il prossimo giro — ma tutto quello
+  // che faceva entrare un flusso e' nascosto e non chiama piu' niente.
+  var RICEZIONE_SPENTA = true;
   var MONITOR_IMPILATI = false;
   try { MONITOR_IMPILATI = JSON.parse(localStorage.getItem("mam.misure") || "{}").impilati === true; } catch (e) {}
   document.body.classList.add("modo-" + MODO, "mam");
-  if (el("qualeMam")) el("qualeMam").textContent = (MODO === "archivio" ? "Archivio" : "Live");
-  document.title = "MAM " + (MODO === "archivio" ? "ARCHIVIO" : "LIVE") + " — Como TV";
+  if (el("qualeMam")) el("qualeMam").textContent = (MODO === "archivio" ? "Archivio" : "Live \u00b7 ricezione spenta");
+  document.title = "MAM " + (MODO === "archivio" ? "ARCHIVIO" : "LIVE (ricezione spenta)") + " — Como TV";
 
   var VISTA = "tutto";         // che materiale guardo a destra (o "cerca")
   var FORMA = "";              // e con che forma, che e' un'altra domanda
@@ -2494,6 +2505,7 @@
     });
     segnaQuanti();
     el("pPrendi").addEventListener("click", function () {
+      if (RICEZIONE_SPENTA) return dice("La ricezione \u00e8 stata tolta: la diretta in timeline non c\u2019\u00e8 pi\u00f9.");
       if (!SEQ || !SEQ.diretta) return dice("PRENDI serve sulla diretta.");
       var eroAlVivo = VIVO.attaccato;
       manda({ tipo: "clip-diretta-prendi", seq: SEQ.id, quanti: QUANTI })
@@ -2524,6 +2536,7 @@
     // stata tagliata via, il ponte la rimette dall'ultimo secondo tenuto a
     // adesso — cosi' si torna sempre al presente, comunque si sia montato.
     el("pLive").addEventListener("click", function () {
+      if (RICEZIONE_SPENTA) return dice("La ricezione \u00e8 stata tolta: non c\u2019\u00e8 un vivo dove tornare.");
       if (!SEQ || !SEQ.diretta) return;
       if (alBordoDelVivo(true)) return;
       manda({ tipo: "clip-diretta-riattacca", seq: SEQ.id })
@@ -2536,6 +2549,7 @@
     // SALVA IL MONTATO: quello che hai tagliato diventa una sequenza sua e
     // la diretta torna intera, attaccata al vivo.
     el("pSalva").addEventListener("click", function () {
+      if (RICEZIONE_SPENTA) return dice("La ricezione \u00e8 stata tolta: non ci sono pi\u00f9 dirette da salvare.");
       if (!SEQ || !SEQ.diretta) return;
       var tuoi = pezziProg().filter(function (x) { return !x.vivo; });
       if (!tuoi.length) return dice("In timeline non c\u2019e\u2019 ancora niente di tuo: la diretta e\u2019 tutta intera.");
@@ -3219,6 +3233,7 @@
     // c'e' niente da mettere in timeline, e un pezzo di zero secondi faceva
     // dire al monitor "questo pezzo non e' ancora riproducibile"
     if (r.attesa || !(r.durata > 2)) return;
+    if (RICEZIONE_SPENTA) return;              // niente diretta: niente da mettere in timeline
     if (VIVO.chiesta === r.id) return;
     VIVO.chiesta = r.id;
     manda({ tipo: "clip-diretta", reg: r.id })
@@ -6895,6 +6910,25 @@
     // nella colonna di sinistra, e il progetto resta libero per il montaggio.
     var pc = document.querySelector(".projCerca");
     var corpoLive = el("liveCorpo");
+    // SPENTA, E SI VEDE. I comandi che facevano entrare un flusso restano nel
+    // documento (il codice che li cerca e' sparso) ma fuori dalla vista, e al
+    // loro posto c'e' scritto perche'.
+    if (RICEZIONE_SPENTA) {
+      ["azioniIngresso", "btnAltro", "portePanel", "attese", "statoIngresso", "ingressi", "btnRicevi", "spiegaLive", "btnRec", "btnGuarda", "btnFerma"]
+        .forEach(function (id) { var x = el(id); if (x) x.hidden = true; });
+      document.querySelectorAll(".ricezione, #ingressi, #rigaFeed, #rigaVivi, #rigaUrl").forEach(function (x) { x.hidden = true; });
+      var avviso = document.createElement("div");
+      avviso.className = "spenta";
+      avviso.innerHTML = "<b>Ricezione spenta</b>" +
+        "Il MAM non riceve pi\u00f9 flussi: niente porte SRT, niente encoder, niente foglio dei feed. " +
+        "Tolto il 14 settembre per i conflitti con i vMix. L\u2019interfaccia resta per il prossimo giro: " +
+        "le partite si aprono dall\u2019<a href=\"?modo=archivio\">archivio</a>.";
+      var testaLive = document.querySelector(".ingressoTesta");
+      // i comandi restano nel documento (nascosti): il codice piu' sotto li
+      // aggancia per id e, senza, si fermerebbe a meta'
+      if (testaLive) { testaLive.hidden = false; testaLive.insertBefore(avviso, testaLive.firstChild); }
+      else if (corpoLive) corpoLive.insertBefore(avviso, corpoLive.firstChild);
+    }
     if (MODO !== "archivio" && corpoLive) {
       var alb = el("albero");
       if (alb && alb.parentNode !== corpoLive) corpoLive.appendChild(alb);
@@ -6988,7 +7022,7 @@
         // l'evento scelto si ASSEGNA al flusso su cui si sta lavorando: cosi'
         // il flusso "Ingresso 2" diventa "AL HILAL-NEOM" e prende appunti ed ESPN
         if (sel0) sel0.addEventListener("change", function () {
-          var o = sel0.selectedOptions[0]; if (!o || !o.value || !REG || REG.arch) return;
+          var o = sel0.selectedOptions[0]; if (!o || !o.value || !REG || REG.arch || RICEZIONE_SPENTA) return;
           manda({ tipo: "clip-reg-evento", id: REG.id, evento: o.value, titolo: o.dataset.titolo || o.textContent.replace(/^OGGI /, "").replace(/^\S+\s+/, ""), competizione: o.dataset.comp || "" })
             .then(function () { aggiorna(); dice("Evento assegnato al flusso: " + (o.dataset.titolo || ""), true); })
             .catch(function (e) { dice(e.message); });
@@ -7080,7 +7114,7 @@
     // i canali) e dentro ogni famiglia si ordinano per numero — 2 prima di 11,
     // che l'ordine alfabetico sbaglia. Due flussi con lo stesso nome si
     // distinguono con la coda del loro indirizzo, se no si sceglie a caso.
-    manda({ tipo:"clip-sorgenti" }).then(function (dd) {
+    (RICEZIONE_SPENTA ? Promise.resolve({ sorgenti: [] }) : manda({ tipo:"clip-sorgenti" })).then(function (dd) {
       var sel = el("sorgente"); if (!sel) return;
       var FAM = [
         [/^SRT-CP9K[- ]?(\d+)/i, "Encoder CP9K"],
@@ -7157,6 +7191,7 @@
     // poter ricevere e basta.
     var PORTA_SCELTA = 0;               // quale porta ha chiesto chi guarda
     function apriLaPorta(ev) {
+      if (RICEZIONE_SPENTA) return dice("La ricezione \u00e8 stata tolta dal MAM: non si aprono pi\u00f9 porte.");
       var sel = el("evento");
       if (sel) sel.value = ev ? ev.id : "";
       var t = el("btnRicevi"), a = el("btnAltro");
@@ -7210,7 +7245,7 @@
       avvia({ guarda:true }).catch(function (e) { dice(e.message); });
     });
     disegnaConsole();
-    if (MODO !== "archivio") { aggiornaVivi(true); setInterval(aggiornaVivi, 8000); }
+    if (MODO !== "archivio" && !RICEZIONE_SPENTA) { aggiornaVivi(true); setInterval(aggiornaVivi, 8000); }
   }
 
   // Il foglio dei feed di MediaOps dice su quale encoder passa la partita:
@@ -7224,6 +7259,7 @@
     o.textContent = nome; return o;
   }
   function agganciaFeed() {
+    if (RICEZIONE_SPENTA) { if (el("rigaFeed")) el("rigaFeed").hidden = true; return; }
     var sel = el("evento"), riga = el("rigaFeed"), nota = el("notaFeed");
     var o = sel && sel.selectedOptions[0];
     if (!o || !o.value || !riga) { if (riga) riga.hidden = true; FEED_SCELTO = null; return; }
@@ -7257,6 +7293,7 @@
   // "Scelgo la partita e tac, appare": il MAM prova tutte le sorgenti e
   // mostra quelle che trasmettono adesso; un clic e la vedi nel monitor
   function aggiornaVivi(subito) {
+    if (RICEZIONE_SPENTA) return;
     var box = el("vivi"); if (!box) return;
     manda({ tipo: "clip-flussi-vivi", subito: !!subito }).then(function (d) {
       var vivi = d.vivi || [];

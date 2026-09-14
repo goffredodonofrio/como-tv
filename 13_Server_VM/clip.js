@@ -163,24 +163,6 @@ const INTEGRALE_DA_SOLO = process.env.COMOTV_CLIP_INTEGRALE === "1";
 //
 //  Le porte rispecchiano quelle di Mola (10001 in su): dodici, quante sono
 //  le partite del picco.
-// Le porte sono della MACCHINA, non del ponte: dev e produzione girano sulla
-// stessa e non possono ascoltare sullo stesso numero. Quindi l'intervallo si
-// configura, e i due ambienti ne hanno uno per uno — altrimenti il secondo
-// che prova a mettersi in ascolto fallisce con un "indirizzo occupato" nel
-// momento peggiore, cioe' quando qualcuno sta per registrare una partita.
-const PORTE = (function () {
-  const t = String(process.env.COMOTV_CLIP_PORTE || "10001-10012");
-  const m = /^(\d+)\s*-\s*(\d+)$/.exec(t.trim());
-  const a = m ? parseInt(m[1], 10) : 10001;
-  const b = m ? parseInt(m[2], 10) : 10012;
-  const fuori = [];
-  for (let i = a; i <= b && fuori.length < 32; i++) fuori.push(i);
-  return fuori.length ? fuori : [10001];
-})();
-const IP_PUBBLICO = process.env.COMOTV_IP_PUBBLICO || "209.227.239.211";
-// Una porta aperta sul mondo senza parola d'ordine e' un invito a spingerci
-// dentro qualsiasi cosa. Con la passphrase, chi non ce l'ha non entra.
-const PASSPHRASE = process.env.COMOTV_CLIP_PASS || "";
 
 let DIR = "";                       // cartella di lavoro, decisa da server.js
 // L'SSE del ponte manda lo stato della REGIA a un canale: una registrazione
@@ -192,7 +174,6 @@ let annuncia = function () {};
 // registro: sopravvive ai riavvii del ponte, come lo stato della regia
 let R = { reg: {}, clip: {}, seq: {}, prog: {} };
 const PROC = new Map();      // idRegistrazione -> processo ffmpeg
-const PROXYS = new Map();     // i processi che scrivono la copia leggera
 
 // ── utilita' minime ───────────────────────────────────────────────────
 
@@ -233,42 +214,6 @@ function vivo(pid, id) {
   } catch (e) { return false; }        // niente /proc: meglio dirlo morto
 }
 
-// Chiedere al sistema, non al proprio registro: sulla stessa macchina girano
-// due ponti, e un riavvio puo' lasciare in giro un ffmpeg che tiene la porta.
-function portaLibera(porta) {
-  try {
-    const s = dgram.createSocket("udp4");
-    let libera = true;
-    s.on("error", () => { libera = false; });
-    try { s.bind({ port: porta, exclusive: true }); } catch (e) { libera = false; }
-    const stato = s.address ? true : true;
-    try { s.close(); } catch (e) {}
-    return libera;
-  } catch (e) { return false; }
-}
-
-// LE PORTE, UNA PER UNA. In regia si sa su quale porta sta trasmettendo
-// chi trasmette: e allora la porta si sceglie, non la si subisce. Qui si
-// dice, per ognuna, se e' libera, se e' nostra e in attesa, se ci sta
-// entrando qualcosa, o se se l'e' presa qualcun altro (l'altro ambiente
-// sulla stessa macchina, o un processo rimasto da un riavvio).
-function statoPorte() {
-  const mie = {};
-  Object.keys(R.reg).forEach((k) => {
-    const r = R.reg[k];
-    if (r.stato !== "registra" || !r.ascolto) return;
-    mie[r.ascolto.porta] = r;
-  });
-  return PORTE.map((porta) => {
-    const r = mie[porta];
-    if (r) {
-      const scritto = durataRegistrata(r.id);
-      return { porta: porta, stato: scritto > 0 ? (r.guarda ? "guarda" : "rec") : "attesa",
-               reg: r.id, titolo: r.titolo || "", durata: scritto };
-    }
-    return { porta: porta, stato: portaLibera(porta) ? "libera" : "occupata" };
-  });
-}
 
 function assicura(d) { try { fs.mkdirSync(d, { recursive: true }); } catch (e) {} }
 
@@ -465,481 +410,14 @@ function proxyCe(id) {
   return p >= durataRegistrata(id) - 15;
 }
 
-// IL PROXY, SCRITTO DA UN PROCESSO SUO.
-//  Non si appende all'ffmpeg che registra: quello scrive in copia diretta e
-//  non deve dipendere da niente: se la codifica del proxy rallenta o muore,
-//  la partita non se ne accorge. Questo invece LEGGE la playlist mentre
-//  cresce — ffmpeg la rilegge da solo finche' non trova la fine — e resta
-//  indietro un paio di segmenti. Se muore si riparte da dove il proxy era
-//  arrivato, non da capo.
-function avviaProxy(r) {
-  if (!PROXY_ACCESO || r.guarda || r.stato !== "registra") return;
-  if (PROXYS.get(r.id)) return;
-  // UN PROXY SOLO PER REGISTRAZIONE. Un riavvio del ponte puo' lasciare in
-  // giro quello di prima: due encoder che scrivono gli stessi p00042.ts si
-  // sovrascrivono a vicenda, i segmenti escono monchi e non ci si estrae
-  // nemmeno un fotogramma. Prima di accenderne uno, si chiude quello vecchio.
-  if (r.proxyPid) {
-    try { process.kill(r.proxyPid, "SIGKILL"); console.log("[clip] proxy: chiuso l'orfano " + r.proxyPid); } catch (e) {}
-    delete r.proxyPid;
-  }
-  if (PROXYS.size >= MAX_PROXY) { console.log("[clip] proxy: gia' " + PROXYS.size + " in lavorazione, questa diretta ne resta senza"); return; }
-  const dir = cartellaReg(r.id);
-  if (!fs.existsSync(playlistDi(r.id))) { setTimeout(() => avviaProxy(r), 3000); return; }
-  const fatti = quantiSegmenti(fileProxy(r.id));
-  const args = ["-hide_banner", "-loglevel", "warning", "-nostdin",
-    "-live_start_index", String(fatti), "-i", playlistDi(r.id),
-    "-vf", "scale=" + PROXY_LARGO + ":-2,fps=25",
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "30",
-    "-g", "25", "-keyint_min", "25", "-sc_threshold", "0",
-    "-c:a", "aac", "-b:a", "64k",
-    "-f", "hls", "-hls_time", String(SEGMENTO), "-hls_list_size", "0",
-    "-hls_flags", "append_list+program_date_time+independent_segments+temp_file",
-    "-hls_playlist_type", "event", "-hls_segment_type", "mpegts",
-    "-start_number", String(fatti),
-    "-hls_segment_filename", path.join(dir, "p%05d.ts"), fileProxy(r.id)];
-  // ATTACCATO al ponte, al contrario del registratore. La registrazione non
-  // deve morire con un riavvio; il proxy si': e' una copia usa e getta, e
-  // uno staccato che sopravvive diventa un orfano che scrive sulla stessa
-  // playlist di quello nuovo. Al riavvio si riaccende da dove era arrivato.
-  const pr = spawn(FFMPEG, args, { stdio: ["ignore", "ignore", "pipe"] });
-  PROXYS.set(r.id, pr);
-  r.proxyPid = pr.pid;
-  let coda = "";
-  pr.stderr.on("data", (d) => { coda = (coda + d).slice(-2000); });
-  pr.on("error", () => { PROXYS.delete(r.id); });
-  pr.on("close", () => {
-    PROXYS.delete(r.id);
-    delete r.proxyPid;
-    // finche' la partita entra, il proxy la insegue: se e' caduto, riparte
-    if (r.stato === "registra") {
-      r.proxyCadute = (r.proxyCadute || 0) + 1;
-      if (r.proxyCadute <= 20) return void setTimeout(() => avviaProxy(r), 3000);
-      console.log("[clip] proxy: caduto troppe volte su \"" + (r.titolo || r.id) + "\", lascio perdere");
-    }
-    scrivi();
-  });
-  console.log("[clip] proxy acceso su \"" + (r.titolo || r.id) + "\" (" + PROXY_LARGO + " di larghezza, da " + fatti + " segmenti)");
-}
-function fermaProxy(id) {
-  const p = PROXYS.get(id);
-  if (!p) return;
-  PROXYS.delete(id);
-  try { process.kill(p.pid, "SIGTERM"); } catch (e) {}
-}
 
-// ── L'ANTEPRIMA DI OGNI PORTA ─────────────────────────────────────────
-//
-//  Chi apre il MAM in diretta vuole vedere, in un colpo d'occhio, cosa sta
-//  entrando su ogni porta: e' il multiview della regia. Un video per porta
-//  sarebbe dodici lettori aperti; qui invece si scrive un fotogramma ogni
-//  pochi secondi — preso dall'ULTIMO segmento della copia leggera, che e'
-//  480 di larghezza e costa quasi niente — e la pagina lo rinfresca.
-const ANTEPRIMA_OGNI = parseInt(process.env.COMOTV_CLIP_ANTEPRIMA || "5", 10);
-const anteprimeInCorso = new Set();
-
-function ultimoSegmento(id) {
-  const dir = cartellaReg(id);
-  const lista = [];
-  try {
-    fs.readdirSync(dir).forEach((f) => {
-      const m = /^([sp])(\d{5})\.ts$/.exec(f);
-      if (!m) return;
-      lista.push({ n: parseInt(m[2], 10) + (m[1] === "p" ? 1000000 : 0), f: path.join(dir, f) });
-    });
-  } catch (e) {}
-  if (!lista.length) return "";
-  lista.sort((a, b) => a.n - b.n);
-  // il PENULTIMO: l'ultimo puo' essere ancora in scrittura, e un segmento a
-  // meta' non da' nessun fotogramma
-  return lista[Math.max(0, lista.length - 2)].f;
-}
-
-async function anteprimaViva(r) {
-  if (!r || r.stato !== "registra" || r.arch) return;
-  if (anteprimeInCorso.has(r.id)) return;
-  const da = ultimoSegmento(r.id);
-  if (!da) return;
-  anteprimeInCorso.add(r.id);
-  const fuori = path.join(cartellaReg(r.id), "vivo.jpg");
-  // il file di passaggio tiene l'estensione .jpg: ffmpeg sceglie il formato
-  // dal nome, e su un "vivo.jpg.tmp" non scrive niente senza dire perche'
-  const mezzo = path.join(cartellaReg(r.id), "vivo-nuovo.jpg");
-  try {
-    const fatto = await new Promise((si) => {
-      const pr = spawn(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin",
-        "-i", da, "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "6", "-y", mezzo], { stdio: "ignore" });
-      pr.on("error", () => si(false));
-      pr.on("close", (code) => si(code === 0));
-    });
-    if (fatto) { try { fs.renameSync(mezzo, fuori); r.vivoQuando = Date.now(); } catch (e) {} }
-  } finally { anteprimeInCorso.delete(r.id); }
-}
-
-function giraAnteprime() {
-  Object.keys(R.reg).forEach((k) => {
-    const r = R.reg[k];
-    if (r.stato !== "registra" || r.arch || r.attesa) return;
-    anteprimaViva(r).catch(() => {});
-  });
-}
-
-// ── VEDERE SENZA TENERE, E TENERE SENZA RIATTACCARE ───────────────────
-//
-//  In regia si guarda il feed prima di registrarlo: si controlla che sia
-//  quello giusto, che l'audio ci sia, che l'inquadratura sia a fuoco. Poi
-//  si preme REC. E quando si smette di registrare si continua a guardare.
-//
-//  Prima erano due registrazioni diverse — "guarda" e "registra" — e
-//  passare dall'una all'altra voleva dire ammazzare un ffmpeg e aprirne un
-//  altro: chi trasmette si riaggancia, si perdono due secondi, e il file
-//  ricomincia da capo. In diretta e' inaccettabile: il momento in cui
-//  premi REC e' esattamente quello in cui sta succedendo qualcosa.
-//
-//  Adesso la connessione SRT e' UNA SOLA, dall'apertura della porta alla
-//  chiusura. Cambia solo cosa si TIENE: mentre guardi, il custode butta la
-//  testa vecchia; quando premi REC smette di buttare e segna da dove; a
-//  STOP segna fino a dove, e ricomincia a buttare solo la coda nuova. REC
-//  e STOP non toccano ffmpeg: non c'e' niente da riattaccare.
-const FINESTRA_VEDI = parseInt(process.env.COMOTV_CLIP_FINESTRA || "900", 10);
-
-function tenutiDi(r) { return (r.tenuti || []).concat(r.tieniDa !== undefined ? [{ da: r.tieniDa, a: 1e9 }] : []); }
-
-function recAccendi(r) {
-  if (r.tieniDa !== undefined) return r;         // gia' in registrazione
-  r.tieniDa = durataRegistrata(r.id);
-  r.vedi = false;
-  scrivi(); annuncia(0, "clip");
-  console.log("[clip] REC da " + Math.round(r.tieniDa) + "s su \"" + (r.titolo || r.id) + "\"");
-  return r;
-}
-function recSpegni(r) {
-  if (r.tieniDa === undefined) return r;
-  const a = durataRegistrata(r.id);
-  r.tenuti = (r.tenuti || []).concat([{ da: r.tieniDa, a: a }]);
-  console.log("[clip] REC fermata: tenuti " + Math.round(a - r.tieniDa) + "s (" +
-              Math.round(r.tieniDa) + "\u2192" + Math.round(a) + ")");
-  delete r.tieniDa;
-  r.vedi = true;
-  scrivi(); annuncia(0, "clip");
-  return r;
-}
-
-// IL CUSTODE. Mentre si guarda e basta, la testa vecchia non serve a
-// nessuno e riempie il disco: se ne tiene un quarto d'ora, il resto va via.
-// Quello che e' stato REGISTRATO non si tocca mai — nemmeno la parte in
-// mezzo, se hai acceso e spento due volte.
-function spazzaAnteprime() {
-  Object.keys(R.reg).forEach((k) => {
-    const r = R.reg[k];
-    if (r.stato !== "registra" || !r.vedi || r.arch) return;
-    const dur = durataRegistrata(r.id);
-    const taglio = dur - FINESTRA_VEDI;
-    if (taglio <= (r.daSecondo || 0)) return;
-    const tenuti = tenutiDi(r);
-    let via = 0, nuovoDa = r.daSecondo || 0;
-    segmenti(r.id).forEach((sg) => {
-      const fine = sg.t0 + sg.dur;
-      if (fine > taglio) return;                       // e' ancora nella finestra
-      if (tenuti.some((t) => fine > t.da && sg.t0 < t.a)) return;   // e' roba registrata
-      try { fs.unlinkSync(sg.file); via++; nuovoDa = Math.max(nuovoDa, fine); } catch (e) {}
-    });
-    if (!via) return;
-    // La playlist la riscrive ffmpeg, quindi le righe restano: si dice da
-    // che secondo il materiale c'e' davvero, e la pagina non offre un
-    // pezzo che non esiste piu'.
-    r.daSecondo = Math.round(nuovoDa);
-    scrivi();
-    console.log("[clip] anteprima \"" + (r.titolo || r.id) + "\": buttati " + via +
-                " segmenti, il materiale comincia a " + r.daSecondo + "s");
-  });
-}
-
-function avviaProcesso(r) {
-  const dir = cartellaReg(r.id);
-  assicura(dir);
-  // DUE MODI, stesso motore.
-  //   registra: la playlist cresce e non dimentica niente — e' il DVR, e
-  //             alla fine c'e' tutta la partita.
-  //   guarda:   tiene solo gli ultimi venti secondi e butta il resto mentre
-  //             va. Serve a VEDERE il flusso — c'e'? e' quello giusto? il
-  //             suono c'e'? — senza scrivere un file che poi qualcuno deve
-  //             ricordarsi di cancellare. Costa un pugno di megabyte.
-  const finestra = r.guarda
-    ? ["-hls_list_size", "10",
-       "-hls_flags", "delete_segments+program_date_time+independent_segments+temp_file"]
-    : ["-hls_list_size", "0",
-       "-hls_flags", "append_list+program_date_time+independent_segments+temp_file",
-       "-hls_playlist_type", "event"];
-
-  const args = ["-hide_banner", "-loglevel", "warning", "-nostdin"]
-    .concat(argomentiIngresso(r.urlLetto || r.url))
-    .concat([
-      "-t", String(r.guarda ? Math.min(MAX_SECONDI, 10800) : MAX_SECONDI),
-      // TUTTO QUELLO CHE ARRIVA. Senza -map ffmpeg sceglie da solo, e
-      // sceglie UNA pista audio: se la regia ne manda tre — internazionale,
-      // commento, ambiente — le altre due si perdono qui, prima ancora di
-      // toccare il disco, e non si recuperano piu'. Costano zero: e' sempre
-      // una copia, non si ricodifica niente.
-      "-map", "0:v:0?", "-map", "0:a?",
-      "-c", "copy",                       // rimultiplexing: la CPU resta libera
-      "-f", "hls",
-      "-hls_time", String(SEGMENTO)
-    ])
-    .concat(finestra)
-    .concat([
-      "-hls_segment_type", "mpegts",
-      "-hls_segment_filename", path.join(dir, "s%05d.ts"),
-      playlistDi(r.id)
-    ]);
-
-  // STACCATO dal ponte: se il ponte si riavvia — un aggiornamento, un
-  // errore, systemd — l'ffmpeg che sta registrando la partita non deve
-  // morire con lui. Continua a scrivere; al riavvio il ponte lo ritrova dal
-  // suo numero di processo e riprende a seguirlo.
-  const pr = spawn(FFMPEG, args, { stdio: ["ignore", "ignore", "pipe"], detached: true });
-  pr.unref();
-  r.pid = pr.pid;
-  let coda = "";
-  pr.stderr.on("data", (d) => { coda = (coda + d).slice(-4000); });
-  pr.on("error", (e) => {
-    r.stato = "errore"; r.errore = e.message; r.finita = Date.now();
-    PROC.delete(r.id); scrivi(); annuncia(0, "clip");
-  });
-  pr.on("close", (code) => {
-    PROC.delete(r.id);
-    r.durata = durataRegistrata(r.id);
-    if (r.stato !== "registra") fermaProxy(r.id);
-
-    // NESSUNO L'HA FERMATA: allora non e' finita, e' caduta.
-    // Sull'SRT non esiste il "riprova da solo" che l'http ha: quando chi
-    // trasmette stacca — un attimo di rete, il vMix che si riavvia, la
-    // pubblicita' — ffmpeg esce e senza questo la partita finirebbe li'.
-    // Si riparte scrivendo in coda alla STESSA playlist: il buco resta
-    // visibile nel DVR, ma il seguito c'e'.
-    if (r.stato === "registra" && (Date.now() - r.avviata) / 1000 < MAX_SECONDI) {
-      r.riagganci = (r.riagganci || 0) + 1;
-      // Riagganciarsi ha senso se il flusso c'era e se n'e' andato. Se invece
-      // non e' mai partito — porta occupata, indirizzo sbagliato — riprovare
-      // ogni due secondi per duecento volte non aggiusta niente: nasconde
-      // l'errore e basta.
-      const maiPartita = durataRegistrata(r.id) === 0;
-      if (maiPartita && (r.riagganci > 4)) {
-        r.errore = ultimaRiga(coda) || "non riesco ad aprire questa sorgente";
-        r.stato = "errore"; r.finita = Date.now();
-        scrivi(); annuncia(0, "clip");
-        return;
-      }
-      if (r.riagganci <= MAX_RIAGGANCI) {
-        r.ultimoRiaggancio = Date.now();
-        scrivi(); annuncia(0, "clip");
-        setTimeout(() => { if (r.stato === "registra") avviaProcesso(r); }, 2000);
-        return;
-      }
-      r.errore = "il flusso e' caduto " + r.riagganci + " volte: mi fermo";
-    }
-
-    r.finita = Date.now();
-    if (r.stato === "registra") {
-      r.stato = code === 0 ? "ferma" : "errore";
-      if (code !== 0 && !r.errore) r.errore = ultimaRiga(coda) || ("ffmpeg e' uscito con " + code);
-    }
-    scrivi(); annuncia(0, "clip");
-    if (r.durata > 0 && INTEGRALE_DA_SOLO && !r.guarda) integrale(r);
-  });
-  PROC.set(r.id, pr);
-  // e la copia leggera parte accanto, appena la playlist esiste
-  setTimeout(() => avviaProxy(r), 4000);
-}
 
 function ultimaRiga(t) {
   const righe = String(t || "").trim().split("\n").filter(Boolean);
   return righe.length ? righe[righe.length - 1].slice(0, 300) : "";
 }
 
-// A fine registrazione i segmenti diventano un MP4 unico. E' una ricucitura,
-// non una ricodifica: dura secondi e da' il file da mandare in archivio.
-function integrale(r) {
-  const fuori = path.join(cartellaReg(r.id), "integrale.mp4");
-  // Solo i segmenti che ci sono DAVVERO: se lo si chiede mentre il
-  // registratore sta ancora chiudendo, la playlist puo' gia' nominare un
-  // pezzo non ancora finito di scrivere, e ffmpeg si ferma alla prima riga
-  // che non trova.
-  const segs = segmenti(r.id).filter((x) => fs.existsSync(x.file));
-  if (!segs.length) { r.integrale = "vuoto"; scrivi(); return; }
-  // Anche qui i segmenti, non la playlist: se la registrazione e' caduta la
-  // playlist non ha la riga di chiusura, e ffmpeg si metterebbe ad aspettare
-  // un seguito che non arrivera' mai.
-  const lista = path.join(cartellaReg(r.id), "integrale.txt");
-  try { fs.writeFileSync(lista, segs.map((x) => "file '" + x.file + "'").join("\n") + "\n"); }
-  catch (e) { r.integrale = "errore"; scrivi(); return; }
-  r.integrale = "lavora"; scrivi();
-  const pr = spawn(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin",
-    "-f", "concat", "-safe", "0", "-i", lista,
-    "-c", "copy", "-movflags", "+faststart", "-y", fuori], { stdio: ["ignore", "ignore", "pipe"] });
-  let coda = "";
-  pr.stderr.on("data", (d) => { coda = (coda + d).slice(-1500); });
-  pr.on("close", async (code) => {
-    try { fs.unlinkSync(lista); } catch (e) {}
-    if (code === 0) {
-      const d = await probe(fuori);
-      r.integralePeso = d.peso || 0;
-      // L'integrale deve durare quanto la registrazione. Se non e' cosi' —
-      // succede quando il flusso e' caduto e ripartito, e i tempi dentro i
-      // segmenti si accavallano — i secondi del DVR non corrispondono piu' a
-      // quelli del file, e la sequenza per Premiere cadrebbe nel punto
-      // sbagliato senza che nessuno se ne accorga. Meglio dirlo.
-      const atteso = durataRegistrata(r.id);
-      const vera = d.durata || 0;
-      const scarto = atteso ? Math.abs(vera - atteso) / atteso : 0;
-      r.integraleDurata = Math.round(vera * 10) / 10;
-      if (vera > 6) {
-        r.mini = await miniatura(fuori, path.join(cartellaReg(r.id), "mini.jpg"), vera / 2)
-          ? "/clip/" + r.id + "/mini.jpg" : "";
-      }
-      if (atteso && scarto > 0.03) {
-        r.integrale = "sospetto";
-        r.integraleErrore = "l'integrale dura " + Math.round(vera) + "s ma la registrazione " +
-          Math.round(atteso) + "s: il flusso e' caduto e ripartito, i tempi non corrispondono";
-      } else {
-        r.integrale = "pronto";
-        r.integraleErrore = "";
-        if (vera) r.durata = Math.round(vera * 10) / 10;
-      }
-    } else {
-      // senza il motivo scritto, un integrale fallito e' un vicolo cieco
-      r.integrale = "errore";
-      r.integraleErrore = ultimaRiga(coda) || ("ffmpeg e' uscito con " + code);
-    }
-    scrivi(); annuncia(0, "clip");
-  });
-  pr.on("error", () => { r.integrale = "errore"; scrivi(); });
-}
 
-// ── le azioni che arrivano dal ponte ──────────────────────────────────
-
-async function clipAvvia(p) {
-  let url = String(p.url || "").trim();
-  let ascolto = null;
-  // "ricevi": non andiamo a prendere niente, ci mettiamo in ascolto e
-  // consegniamo l'indirizzo a cui trasmettere.
-  if (p.ricevi) {
-    // UN ASCOLTO ALLA VOLTA.
-    // Premere due volte apriva due ascolti su due porte diverse: chi
-    // trasmette ne trova uno solo, e la pagina ti mostra l'altro — che resta
-    // vuoto per sempre. Se ce n'e' gia' uno in attesa, si torna quello.
-    // ...ma se la porta l'hai CHIESTA TU, quella vale: riusare un ascolto
-    // aperto su un'altra porta vorrebbe dire ignorare la scelta, e chi
-    // trasmette sta gia' bussando li'.
-    const gia = Object.keys(R.reg).map((k) => R.reg[k]).find((x) =>
-      x.stato === "registra" && x.ascolto && vivo(x.pid, x.id) &&
-      (!!x.guarda === !!p.guarda) && durataRegistrata(x.id) === 0 &&
-      (!p.porta || x.ascolto.porta === parseInt(p.porta, 10)));
-    if (gia) return { ok: true, id: gia.id, gia: true, reg: pubblica(gia) };
-
-    const usate = Object.keys(R.reg)
-      .filter((k) => R.reg[k].stato === "registra" && R.reg[k].ascolto)
-      .map((k) => R.reg[k].ascolto.porta);
-    // e non basta il nostro registro: sulla macchina c'e' anche l'altro
-    // ambiente, e possono restare processi orfani di un riavvio
-    let porta;
-    if (p.porta) {
-      // l'ha scelta chi sta in regia: si apre quella o si dice perche' no
-      const q = parseInt(p.porta, 10);
-      if (PORTE.indexOf(q) < 0) throw new Error("la porta " + q + " non e' fra quelle del MAM");
-      if (usate.indexOf(q) >= 0) throw new Error("la porta " + q + " ce l'hai gia' aperta");
-      if (!portaLibera(q)) throw new Error("la porta " + q + " e' occupata da qualcun altro");
-      porta = q;
-    } else {
-      porta = PORTE.find((x) => usate.indexOf(x) < 0 && portaLibera(x));
-    }
-    if (!porta) throw new Error("tutte le porte di ascolto sono occupate");
-    const coda = "?mode=listener&latency=300" + (PASSPHRASE ? "&passphrase=" + PASSPHRASE : "") +
-                 "&listen_timeout=7200000000";
-    url = "srt://0.0.0.0:" + porta + coda;
-    ascolto = {
-      porta: porta,
-      // quello che si consegna a chi trasmette: loro sono il caller
-      indirizzo: "srt://" + IP_PUBBLICO + ":" + porta + "?mode=caller&latency=300" +
-                 (PASSPHRASE ? "&passphrase=" + PASSPHRASE : ""),
-      passphrase: PASSPHRASE || ""
-    };
-  }
-  if (!/^(https?|srt):\/\//i.test(url)) throw new Error("sorgente non valida: serve un indirizzo http(s) o srt");
-  const soloVedere = !!p.vedi;      // la porta si apre per guardare: REC viene dopo
-  const quante = Object.keys(R.reg).filter((k) => R.reg[k].stato === "registra").length;
-  if (quante >= MAX_REG) throw new Error("ci sono gia' " + MAX_REG + " registrazioni aperte");
-  const gb = liberiGB();
-  if (gb < MIN_GB) throw new Error("sul disco restano " + gb.toFixed(1) +
-    " GB: troppo pochi per cominciare (ne servono almeno " + MIN_GB + ")");
-
-  const risolta = await risolviHls(url, p.qualita);
-
-  const r = {
-    id: nuovoId("r"),
-    evento: String(p.evento || "").slice(0, 64),      // recordId Airtable, se c'e'
-    titolo: String(p.titolo || "").slice(0, 160) || "senza titolo",
-    competizione: String(p.competizione || "").slice(0, 80),
-    sorgente: String(p.sorgente || "").slice(0, 80),
-    url: url,
-    guarda: !!p.guarda,
-    // si apre per GUARDARE: la porta e' aperta, il flusso entra, ma di
-    // quello che entra si tiene solo l'ultimo quarto d'ora finche' non
-    // premi REC. La connessione e' la stessa: REC non riattacca niente.
-    vedi: soloVedere && !p.guarda,
-    tenuti: [],
-    ascolto: ascolto,
-    urlLetto: risolta.url !== url ? risolta.url : "",
-    rendition: risolta.scelta ? (risolta.scelta.ris || "?") + " · " +
-               Math.round(risolta.scelta.banda / 1000) + " kbps" : "",
-    varianti: risolta.varianti || [],
-    stato: "registra",
-    avviata: Date.now(),
-    finita: 0,
-    durata: 0,
-    kickoff: {},                                       // 1 e 2: secondi sulla registrazione
-    marker: [],
-    chi: String(p.__chi || p.chi || "").slice(0, 40),
-    errore: ""
-  };
-  R.reg[r.id] = r;
-  avviaProcesso(r);
-  scrivi(); annuncia(0, "clip");
-  return { ok: true, id: r.id, reg: pubblica(r) };
-}
-
-function clipFerma(p) {
-  const r = R.reg[p.id];
-  if (!r) throw new Error("registrazione sconosciuta");
-  // se si stava registrando, il tratto si chiude qui: chiudere la porta
-  // non deve far perdere il pezzo che stavi tenendo
-  if (r.tieniDa !== undefined) { try { recSpegni(r); } catch (e) {} }
-  const pr = PROC.get(r.id);
-  r.stato = "ferma";            // messo PRIMA di uccidere: cosi' il riaggancio non riparte
-  if (pr) { try { pr.kill("SIGINT"); } catch (e) {} }   // SIGINT: chiude la playlist per bene
-  else if (vivo(r.pid, r.id)) {
-    // adottato dopo un riavvio del ponte: non e' piu' un figlio, ma il
-    // numero di processo basta per chiudergli la playlist come si deve
-    try { process.kill(r.pid, "SIGINT"); } catch (e) {}
-    setTimeout(() => {
-      r.finita = Date.now(); r.durata = durataRegistrata(r.id); scrivi(); annuncia(0, "clip");
-    }, 1500);
-  } else { r.finita = r.finita || Date.now(); r.durata = durataRegistrata(r.id); }
-  // Un'anteprima non e' un documento: quando si chiude, sparisce. Lasciarla
-  // in elenco vorrebbe dire riempire la lista di righe da zero secondi che
-  // qualcuno dovra' cancellare a mano.
-  if (r.guarda) {
-    const via = r.id;
-    setTimeout(() => {
-      try { fs.rmSync(cartellaReg(via), { recursive: true, force: true }); } catch (e) {}
-      delete R.reg[via];
-      scrivi(); annuncia(0, "clip");
-    }, 2500);
-    return { ok: true, chiusa: true };
-  }
-  scrivi(); annuncia(0, "clip");
-  return { ok: true, reg: pubblica(r) };
-}
 
 function clipRinomina(p) {
   const r = R.reg[p.id || p.reg];
@@ -2204,7 +1682,7 @@ function clipStato(p) {
   const gb = liberiGB();
   return {
     ok: true, reg: reg, clip: clip, srv: Date.now(),
-    porte: statoPorte(),
+    porte: [],                          // niente piu' porte: la ricezione e' stata tolta
     disco: {
       liberi: Math.round(gb * 10) / 10,
       // a 4 Mbps una partita di due ore pesa circa 3,6 GB
@@ -3377,7 +2855,6 @@ function hlElenco(p) {
   // progetto aperto, se ce n'e' uno; se no quelli di questo banco.
   const mie = seq.filter((q) => (q.auto && !q.banco) ||
                                 (prog ? q.prog === prog : (!q.banco || q.banco === banco)));
-  mie.forEach((q) => { try { crescoLaDiretta(q); } catch (e) {} });
   // prima si mettono in riga — cosi' l'audio c'e' — poi si guarda cosa e'
   // gia' in casa: al contrario si segnavano i pezzi di una sequenza che
   // l'audio non ce l'aveva ancora, e le onde risultavano sempre mancanti
@@ -3458,153 +2935,6 @@ async function hlInserisci(p) {
 // File > Nuova sequenza: una sequenza vuota, con un nome, sulla partita
 // aperta. Prima nasceva solo al primo pezzo; a volte si vuole cominciare
 // dal titolo, come in Premiere.
-// ── LA DIRETTA IN TIMELINE ────────────────────────────────────────────
-//
-//  Il modo vecchio: si guarda il flusso nel monitor SORGENTE, si segna
-//  entrata e uscita, si spedisce il pezzo in timeline. La timeline e' il
-//  risultato, e mentre monti il vivo non ce l'hai piu' davanti.
-//
-//  Il modo nuovo: la diretta STA in timeline. Appena si apre una partita in
-//  corso c'e' una sequenza sola — DIRETTA — con dentro un pezzo che va da
-//  zero a adesso e che si allunga da solo. Ci si lavora sopra mentre corre:
-//  lametta, Canc, sposta. Tagliare non toglie niente alla partita, perche'
-//  un pezzo e' solo un'entrata e un'uscita dentro la registrazione, che sul
-//  disco resta intera. Quando il montaggio e' finito si salva col suo nome
-//  e la DIRETTA torna intera.
-//
-//  L'allungamento non si scrive: si ricalcola ogni volta che qualcuno
-//  guarda. La durata vera e' quella della playlist, e scriverla ogni due
-//  secondi sarebbe stato scrivere lo stato duecento volte per tempo.
-function crescoLaDiretta(q) {
-  if (!q || !q.diretta) return q;
-  // il pezzo che cresceva non c'e' piu': la diretta si guarda nel LIVE
-  // FEED. Resta la funzione per le sequenze nate prima del cambio.
-  const r = R.reg[q.reg];
-  if (!r) return q;
-  const dur = durataRegistrata(r.id);
-  if (r.stato !== "registra") {                 // finita: il pezzo si ferma dov'e' finita
-    q.pezzi.forEach((p) => { if (p.vivo) { p.fuori = Math.min(p.fuori, dur) || dur; delete p.vivo; } });
-    return q;
-  }
-  // Il pezzo che cresceva non esiste piu': la diretta si guarda nel LIVE
-  // FEED e la timeline e' solo il montaggio. Le sequenze nate prima del
-  // cambio se lo portano dietro: si toglie qui, una volta.
-  const prima = q.pezzi.length;
-  q.pezzi = q.pezzi.filter((p) => !p.vivo);
-  if (q.pezzi.length !== prima) {
-    console.log("[clip] tolto il pezzo della diretta da \"" + (q.titolo || q.id) + "\": adesso in timeline c'e' solo il montaggio");
-    scrivi();
-  }
-  return q;
-}
-
-// La DIRETTA di questa registrazione: se non c'e' nasce, e comunque cresce.
-function laDiretta(idReg, banco, prog) {
-  const r = R.reg[String(idReg || "")];
-  if (!r) throw new Error("registrazione sconosciuta");
-  if (durataRegistrata(r.id) < 2) throw new Error("questa porta non ha ancora ricevuto niente");
-  const b = String(banco || "").slice(0, 60);
-  let q = Object.keys(R.seq).map((k) => R.seq[k])
-    .find((x) => x.diretta && x.reg === r.id && (!b || !x.banco || x.banco === b));
-  if (!q) {
-    // LA DIRETTA NON STA IN TIMELINE. Ci stava, ed era giusto finche' il
-    // vivo non aveva un monitor suo: adesso ce l'ha (LIVE FEED), e il
-    // monitor del montaggio deve mostrare solo le clip. Quindi la sequenza
-    // nasce VUOTA e si riempie con quello che si registra fra I e O.
-    q = { id: nuovoId("s"), reg: r.id, diretta: true, banco: b,
-          titolo: "CLIP \u00b7 " + (r.titolo || ""),
-          pezzi: [],
-          pre: HL_PRE, post: HL_POST, scarto: 0, avvisi: [],
-          creata: Date.now(), chi: "", export: null };
-    if (prog) q.prog = String(prog);
-    R.seq[q.id] = q;
-    console.log("[clip] diretta in timeline: \"" + (r.titolo || r.id) + "\"");
-    scrivi(); annuncia(0, "clip");
-  }
-  return crescoLaDiretta(q);
-}
-
-// TORNA AL VIVO. Il cursore lo riporta al bordo la pagina; qui si rimette
-// il pezzo, se nel frattempo la coda e' stata tagliata via. Riparte
-// dall'ultimo secondo che il montatore ha tenuto: cosi' "torno al punto di
-// partenza" e' vero anche dopo aver fatto macelli in mezzo.
-function riattaccaLaDiretta(idSeq) {
-  const q = R.seq[String(idSeq || "")];
-  if (!q || !q.diretta) throw new Error("questa non e' una diretta");
-  const r = R.reg[q.reg];
-  if (!r) throw new Error("registrazione sconosciuta");
-  const dur = durataRegistrata(r.id);
-  if (r.stato !== "registra") return { ok: true, seq: crescoLaDiretta(q), finita: true };
-  if (!q.pezzi.some((p) => p.vivo)) {
-    const fine = q.pezzi.reduce((n, p) => Math.max(n, p.fuori), 0);
-    q.pezzi.push({ id: nuovoId("p"), dentro: Math.min(fine, Math.max(0, dur - 1)), fuori: dur, titolo: "diretta", vivo: true });
-    scrivi(); annuncia(0, "clip");
-  }
-  return { ok: true, seq: crescoLaDiretta(q) };
-}
-
-// PRENDI: GLI ULTIMI SECONDI, SENZA MUOVERE IL VIDEO.
-//  In diretta il gesto vero non e' "scorro indietro, cerco il gol, segno
-//  entrata e uscita": e' "il gol e' appena successo, premo un tasto". Qui
-//  il pezzo si costruisce sulla coda di quello che e' gia' entrato — dalla
-//  durata registrata all'indietro — e finisce in timeline davanti al pezzo
-//  del vivo. Chi guarda non ha spostato niente: nessun salto dentro il
-//  flusso, quindi niente da ricaricare, quindi nessuna attesa.
-//
-//  Non si ritaglia nessun file: sono un'entrata e un'uscita, e a
-//  riprodurle ci pensa la copia leggera. Il file vero lo fara' semmai
-//  l'esportazione, che pesca dai segmenti originali.
-function oraCorta(s) {
-  const t = Math.max(0, Math.round(s));
-  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), q = t % 60;
-  return (h ? h + ":" + String(m).padStart(2, "0") : String(m)) + ":" + String(q).padStart(2, "0");
-}
-function prendiDalVivo(p) {
-  const q = R.seq[String(p.seq || "")];
-  if (!q || !q.diretta) throw new Error("questa non e' una diretta");
-  const r = R.reg[q.reg];
-  if (!r) throw new Error("registrazione sconosciuta");
-  const dur = durataRegistrata(r.id);
-  if (dur < 3) throw new Error("non e' ancora entrato niente da prendere");
-  const quanti = num(p.quanti, 5, 300, 40);
-  const fuori = Math.round(dur * 10) / 10;
-  const dentro = Math.max(0, Math.round((fuori - quanti) * 10) / 10);
-  const x = { id: nuovoId("p"), dentro: dentro, fuori: fuori, base: dentro, mano: true,
-              titolo: "PRESO " + oraCorta(dentro) };
-  // davanti al vivo: i pezzi tuoi stanno prima, la diretta resta in coda
-  const iv = q.pezzi.findIndex((y) => y.vivo);
-  if (iv < 0) q.pezzi.push(x); else q.pezzi.splice(iv, 0, x);
-  toccataAMano(q);
-  scrivi(); annuncia(0, "clip");
-  console.log("[clip] preso dal vivo: " + quanti + "s (" + oraCorta(dentro) + " \u2192 " + oraCorta(fuori) + ")");
-  return { ok: true, seq: crescoLaDiretta(q), pezzo: x.id, quanti: Math.round(fuori - dentro) };
-}
-
-// SALVA IL MONTATO. Quello che c'e' in timeline diventa una sequenza sua,
-// con il nome; la DIRETTA torna intera e riattaccata al vivo.
-function salvaIlMontato(p) {
-  const q = R.seq[String(p.seq || "")];
-  if (!q || !q.diretta) throw new Error("questa non e' una diretta");
-  const r = R.reg[q.reg];
-  const tenuti = q.pezzi.filter((x) => !x.vivo);
-  if (!tenuti.length) throw new Error("in timeline non c'e' ancora niente di tuo: la diretta e' tutta intera");
-  const c = JSON.parse(JSON.stringify(q));
-  c.id = nuovoId("s");
-  c.pezzi = tenuti.map((x) => { const y = Object.assign({}, x); delete y.vivo; return y; });
-  c.titolo = String(p.titolo || "").slice(0, 160) || ("MONTATO \u00b7 " + (r && r.titolo || ""));
-  c.creata = Date.now();
-  c.mano = Date.now();
-  delete c.diretta;
-  delete c.export; delete c.esportati; delete c.premiere; delete c.grafica; delete c.casa;
-  R.seq[c.id] = c;
-  // e la diretta torna intera
-  const dur = durataRegistrata(q.reg);
-  q.pezzi = [{ id: nuovoId("p"), dentro: 0, fuori: Math.max(dur, 1), titolo: "diretta", vivo: r && r.stato === "registra" }];
-  if (!(r && r.stato === "registra")) delete q.pezzi[0].vivo;
-  scrivi(); annuncia(0, "clip");
-  console.log("[clip] montato salvato: \"" + c.titolo + "\" (" + c.pezzi.length + " pezzi)");
-  return { ok: true, seq: c, diretta: crescoLaDiretta(q) };
-}
 
 // Chiede a inquadra.py dove guarderebbe lui. Legge dal pezzo gia' in casa
 // se c'e' (costa solo CPU), se no dal materiale della registrazione.
@@ -4715,166 +4045,6 @@ function atLeggi(url) {
 }
 
 
-// ── IL FOGLIO DEI FEED: quale partita passa su quale encoder ──────────
-//  MediaOps tiene un foglio Google con, per ogni partita, la SOURCE (TATA 03,
-//  SRT-CP9K-12…), il MAIN FEED e il BACKUP FEED (srt://…), l'ingresso vMix.
-//  Il MAM lo legge ogni dieci minuti (e' un CSV pubblico) e cosi', scelta
-//  la partita, sa da solo da dove prenderla: e' il "tac, appare".
-const FOGLIO_FEED = process.env.COMOTV_FOGLIO_FEED ||
-  "https://docs.google.com/spreadsheets/d/1QMqP8J376LDInU8aI9VUEzoNAAvvMpDxohEHjjoNF_U/export?format=csv&gid=80696019";
-let FEED = { quando: 0, righe: [], errore: "" };
-function fileFeed() { return path.join(DIR, "feed.json"); }
-function prendiTesto(url, salti) {
-  return new Promise((ok, no) => {
-    const req = https.get(url, { headers: { "User-Agent": "curl/8.5.0 comotv" } }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && (salti || 0) < 4) {
-        res.resume(); return prendiTesto(res.headers.location, (salti || 0) + 1).then(ok, no);
-      }
-      if (res.statusCode !== 200) { res.resume(); return no(new Error("il foglio risponde " + res.statusCode)); }
-      let b = ""; res.setEncoding("utf8"); res.on("data", (d) => { b += d; }); res.on("end", () => ok(b));
-    });
-    req.on("error", no); req.setTimeout(20000, () => req.destroy(new Error("foglio: tempo scaduto")));
-  });
-}
-// un CSV con le virgolette fatte bene: celle con virgole e a capo dentro
-function leggiCsv(testo) {
-  const righe = [], riga = []; let cella = "", dentro = false;
-  for (let i = 0; i < testo.length; i++) {
-    const c = testo[i];
-    if (dentro) {
-      if (c === '"') { if (testo[i + 1] === '"') { cella += '"'; i++; } else dentro = false; }
-      else cella += c;
-    } else if (c === '"') dentro = true;
-    else if (c === ",") { riga.push(cella); cella = ""; }
-    else if (c === "\n" || c === "\r") { if (c === "\r" && testo[i + 1] === "\n") i++; riga.push(cella); righe.push(riga.slice()); riga.length = 0; cella = ""; }
-    else cella += c;
-  }
-  if (cella.length || riga.length) { riga.push(cella); righe.push(riga.slice()); }
-  return righe;
-}
-const MESI_EN = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
-function quandoGmt(data, ora) {
-  // "Mon, 01-Dec-25" + "17:00"  →  2025-12-01T17:00Z
-  const m = /(\d{1,2})-([A-Za-z]{3})-(\d{2,4})/.exec(String(data || ""));
-  const h = /(\d{1,2}):(\d{2})/.exec(String(ora || ""));
-  if (!m || MESI_EN[m[2].toLowerCase()] === undefined) return "";
-  const anno = m[3].length === 2 ? 2000 + +m[3] : +m[3];
-  return new Date(Date.UTC(anno, MESI_EN[m[2].toLowerCase()], +m[1], h ? +h[1] : 12, h ? +h[2] : 0)).toISOString();
-}
-async function leggiFoglioFeed() {
-  try {
-    const righe = leggiCsv(await prendiTesto(FOGLIO_FEED));
-    const testa = (righe[0] || []).map((x) => String(x).trim().toUpperCase());
-    const col = (nome) => testa.findIndex((x) => x.indexOf(nome) === 0);
-    const iComp = col("COMPETIZIONE"), iPart = col("PARTITA"), iData = col("DATE"), iOra = col("TIME"),
-          iSrc = col("SOURCE"), iMain = col("MAIN FEED"), iBack = col("BACKUP FEED"), iVmix = col("VMIX SRT"), iVmixIt = col("VMIX ITALY");
-    const fuori = [];
-    righe.slice(1).forEach((r) => {
-      const partita = String(r[iPart] || "").replace(/\s+/g, " ").trim();
-      const quando = quandoGmt(r[iData], r[iOra]);
-      if (!partita || !quando) return;
-      const celle = [r[iMain], r[iBack]].map((x) => String(x || "").trim());
-      const pass = celle.map((x) => (/passphrase\s*:\s*(\S+)/i.exec(x) || [])[1]).filter(Boolean)[0] || "";
-      const urls = celle.filter((x) => /^srt:\/\/|^https?:\/\//i.test(x));
-      fuori.push({ competizione: String(r[iComp] || "").trim(), partita: partita, quando: quando,
-                   source: String(r[iSrc] || "").trim(), main: urls[0] || "", backup: urls[1] || "", passphrase: pass,
-                   vmix: String(r[iVmix] || "").trim(), vmixItaly: String(r[iVmixIt] || "").trim(),
-                   senzaCleanfeed: /NO NEED/i.test(String(r[iSrc] || "")) });
-    });
-    FEED = { quando: Date.now(), righe: fuori, errore: "" };
-    try { fs.writeFileSync(fileFeed(), JSON.stringify(FEED)); } catch (e) {}
-    console.log("[clip] foglio feed: " + fuori.length + " righe");
-  } catch (e) { FEED.errore = e.message; console.log("[clip] foglio feed: " + e.message); }
-}
-function leggiFeedSalvato() { try { FEED = JSON.parse(fs.readFileSync(fileFeed(), "utf8")) || FEED; } catch (e) {} }
-// la riga del foglio per una partita: stesso giorno (piu' o meno dodici ore)
-// e stesse squadre — il nome uguale prima, poi le parole
-function feedPerPartita(nomePartita, quandoIso) {
-  const t0 = Date.parse(quandoIso || "");
-  const norm = (x) => String(x || "").toUpperCase().replace(/\[[^\]]*\]|\(.*?\)/g, " ").replace(/\s\d+\s*-\s*\d+.*$/, "").replace(/\s+VS\.?\s+/g, "-").replace(/\s*-\s*/g, "-").replace(/[^A-Z0-9\-]+/g, " ").trim();
-  const mio = norm(nomePartita);
-  const vicine = FEED.righe.filter((r) => !t0 || Math.abs(Date.parse(r.quando) - t0) <= 12 * 3600000);
-  let meglio = vicine.find((r) => norm(r.partita) === mio);
-  if (!meglio) {
-    const mie = squadreDi(nomePartita);
-    let punteggio = 0;
-    vicine.forEach((r) => {
-      const loro = squadreDi(r.partita);
-      const n = mie.filter((a) => loro.some((b) => b.tutto === a.tutto || a.parole.some((w) => b.tutto.indexOf(w) >= 0) || b.parole.some((w) => a.tutto.indexOf(w) >= 0))).length;
-      if (n > punteggio) { punteggio = n; meglio = r; }
-    });
-    if (punteggio < Math.min(2, mie.length)) meglio = null;
-  }
-  if (!meglio) return null;
-  // l'indirizzo pronto da dare a ffmpeg: caller, con la passphrase se c'e'
-  const pronto = (u) => !u ? "" : u + (u.indexOf("?") >= 0 ? "&" : "?") + "mode=caller&latency=300" + (meglio.passphrase ? "&passphrase=" + encodeURIComponent(meglio.passphrase) : "");
-  return Object.assign({}, meglio, { mainPronto: pronto(meglio.main), backupPronto: pronto(meglio.backup) });
-}
-setTimeout(leggiFoglioFeed, 15000);
-setInterval(leggiFoglioFeed, 600000);
-
-// ── I FLUSSI IN ONDA ADESSO ────────────────────────────────────────
-//  Cinquanta encoder e canali in tendina, e nessuno sa a memoria su quale
-//  passa la partita. Il MAM lo scopre: prova ogni sorgente per qualche
-//  secondo, tiene quelle che rispondono con un fotogramma e le mostra. La
-//  sonda gira solo se qualcuno la guarda (la pagina LIVE aperta) e non piu'
-//  di una volta ogni due minuti.
-let FLUSSI = { quando: 0, voci: [], inCorso: false, chiesto: 0 };
-function sondaFlusso(sorg) {
-  return new Promise((ok) => {
-    let url = sorg.url;
-    if (/^srt:/i.test(url) && !/mode=/i.test(url)) url += (url.indexOf("?") >= 0 ? "&" : "?") + "mode=caller&latency=300&timeout=4000000";
-    const nome = "v" + nuovoId("") + ".jpg", fuori = path.join(DIR, CARTELLA_CLIP, nome);
-    execFile(FFMPEG, ["-hide_banner", "-loglevel", "error", "-rw_timeout", "6000000", "-i", url,
-                      "-frames:v", "1", "-q:v", "5", "-vf", "scale=320:-1", "-y", fuori], { timeout: 12000 },
-      (e) => ok(Object.assign({}, sorg, { viva: !e, mini: e ? "" : "/clip/" + CARTELLA_CLIP + "/" + nome, visto: Date.now() })));
-  });
-}
-async function sondaFlussi() {
-  if (FLUSSI.inCorso) return;
-  FLUSSI.inCorso = true;
-  try {
-    const lista = ((await clipSorgenti()).sorgenti || []);
-    const esiti = [];
-    let i = 0;
-    const lavora = async () => { while (i < lista.length) { const s = lista[i++]; esiti.push(await sondaFlusso(s)); } };
-    await Promise.all([lavora(), lavora(), lavora(), lavora(), lavora(), lavora(), lavora(), lavora()]);
-    // le miniature vecchie si buttano
-    FLUSSI.voci.forEach((v) => { if (v.mini) { try { fs.unlinkSync(path.join(DIR, v.mini.replace(/^\/clip\//, ""))); } catch (e) {} } });
-    FLUSSI.voci = esiti; FLUSSI.quando = Date.now();
-    console.log("[clip] sonda flussi: " + esiti.filter((x) => x.viva).length + " in onda su " + esiti.length);
-  } catch (e) { console.log("[clip] sonda flussi: " + e.message); }
-  finally { FLUSSI.inCorso = false; }
-}
-function flussiVivi(p) {
-  FLUSSI.chiesto = Date.now();
-  if (p && p.subito && !FLUSSI.inCorso) FLUSSI.quando = 0;
-  if (Date.now() - FLUSSI.quando > 120000 && !FLUSSI.inCorso) sondaFlussi();
-  return { ok: true, inCorso: FLUSSI.inCorso, quando: FLUSSI.quando, quante: FLUSSI.voci.length,
-           vivi: FLUSSI.voci.filter((v) => v.viva).map((v) => ({ nome: v.nome, campo: v.campo, tipo: v.tipo, url: v.url, mini: v.mini })) };
-}
-async function clipSorgenti() {
-  if (SORG_CACHE.dati && Date.now() - SORG_CACHE.quando < 300000) return SORG_CACHE.dati;
-  const j = await atLeggi("https://api.airtable.com/v0/" + AT_BASE + "/" + AT_AWS + "?pageSize=100");
-  const fuori = [];
-  (j.records || []).forEach((rec) => {
-    const f = rec.fields || {};
-    // il nome e' il primo campo di testo che non e' un indirizzo
-    let nome = "";
-    Object.keys(f).forEach((k) => {
-      const v = String(f[k] || "");
-      if (!nome && v && !/^(srt|https?):\/\//i.test(v) && v.length < 40) nome = v;
-    });
-    Object.keys(f).forEach((k) => {
-      const v = String(f[k] || "").trim();
-      if (/^srt:\/\//i.test(v)) fuori.push({ nome: nome || k, campo: k, tipo: "srt", url: v });
-      else if (/^https?:\/\/.*\.m3u8/i.test(v)) fuori.push({ nome: nome || k, campo: k, tipo: "hls", url: v });
-    });
-  });
-  const d = { ok: true, quante: fuori.length, sorgenti: fuori };
-  SORG_CACHE = { quando: Date.now(), dati: d };
-  return d;
-}
 
 
 // ══════════════════════════════════════════════════════════════════════
@@ -7240,14 +6410,13 @@ function laDirettaGira() {
   return altroRegistra;
 }
 
-function registrandoDavvero() {
-  return Object.keys(R.reg).some((k) => {
-    const r = R.reg[k];
-    if (r.stato !== "registra" || r.guarda) return false;
-    if (r.ascolto && durataRegistrata(r.id) === 0) return false;
-    return true;
-  });
-}
+// LA RICEZIONE E' STATA TOLTA (14 settembre 2026). Questo ponte non apre
+// piu' porte e non va piu' a prendere flussi: il MAM LIVE — SRT in
+// ascolto, encoder, foglio dei feed, la diretta in timeline — e' uscito
+// dal codice perche' entrava in conflitto con i vMix della regia. Resta
+// l'interfaccia, per immaginare un altro giro. Le code che si fermavano
+// "se si registra" guardano solo l'altro servizio (laDirettaGira).
+function registrandoDavvero() { return false; }
 // C'e' un whisper che macina? Anche uno orfano, rimasto da prima di un
 // riavvio. Si chiede al sistema, non piu' di una volta ogni venti secondi.
 let whisperVistoQuando = 0, whisperVisto = false;
@@ -9307,27 +8476,18 @@ function anello() {
 // ── innesto nel ponte ─────────────────────────────────────────────────
 
 const AZIONI = {
-  "clip-avvia": clipAvvia,
-  "clip-ferma": clipFerma,
   "clip-rinomina": clipRinomina,
   "clip-stato": clipStato,
   "clip-taglia": clipTaglia,
   "clip-marker": clipMarker,
   "clip-kickoff": clipKickoff,
   "clip-elimina": clipElimina,
-  "clip-sorgenti": clipSorgenti,
-  "clip-flussi-vivi": flussiVivi,
   "clip-boati": cercaBoati,
   "clip-significato": (p) => {
     // capire trentamila righe sono dieci minuti: si comincia e si risponde
     // subito, lo stato si chiede quando si vuole
     if (p.avvia && !SIGN.inCorso) capisciRighe(num(p.quante, 1, 40000, 0) || 0).catch(() => {});
     return { ok: true, avviato: !!p.avvia, stato: statoSignificato() };
-  },
-  "clip-feed-partita": async (p) => {
-    if (p.rinfresca || !FEED.righe.length) await leggiFoglioFeed();
-    const f = feedPerPartita(String(p.partita || ""), String(p.quando || ""));
-    return { ok: true, feed: f, righe: FEED.righe.length, letto: FEED.quando, errore: FEED.errore };
   },
   "clip-cerca": clipCerca,
   "clip-archivio-stato": async () => {
@@ -9371,16 +8531,6 @@ const AZIONI = {
       (e) => e ? no(new Error("fotogramma non riuscito: " + e.message))
                : ok({ ok: true, file: "/clip/" + CARTELLA_CLIP + "/" + nome, secondi: sec }));
   }),
-  "clip-reg-evento": (p) => {
-    const r = R.reg[String(p.id || "")];
-    if (!r) throw new Error("registrazione sconosciuta");
-    if (r.arch) throw new Error("una partita d'archivio ha gia' il suo evento");
-    r.evento = String(p.evento || "").slice(0, 64);
-    if (p.titolo) r.titolo = String(p.titolo).slice(0, 160);
-    if (p.competizione !== undefined) r.competizione = String(p.competizione || "").slice(0, 80);
-    scrivi(); annuncia(0, "clip");
-    return { ok: true, reg: pubblica(r) };
-  },
   "clip-trascrivi": trascriviChiedi,
   "clip-parlato-locale": (p) => ({ ok: true, inCoda: parlatoLocaleInCoda(num(p.quante, 1, 20, 3)), coda: CODA_VOCE.length, alLavoro: voceAlLavoro ? voceAlLavoro.reg : "" }),
   "clip-parlato-basta": (p) => fermaParlato(!!p.riaccendi),
@@ -9622,36 +8772,6 @@ const AZIONI = {
     return { ok: true, onde: fuori, mancano: mancano };
   },
   "clip-hl-nuova": hlNuova,
-  // I E O SONO LA REGISTRAZIONE. Il montatore non pensa "adesso accendo il
-  // registratore": pensa "da qui" e "fin qui". Quindi I apre il tratto da
-  // tenere e O lo chiude — e il pezzo appena registrato va in timeline da
-  // solo, che e' l'unica ragione per cui l'hai registrato. Dopo la O il
-  // flusso continua a entrare, ma non si tiene piu' niente.
-  "clip-rec": (p) => {
-    const r = R.reg[String(p.id || p.reg || "")];
-    if (!r) throw new Error("registrazione sconosciuta");
-    if (r.stato !== "registra") throw new Error("questo flusso non e' aperto");
-    const spegne = (p.on === false || p.on === "0" || p.on === 0);
-    if (!spegne) return { ok: true, reg: pubblica(recAccendi(r)) };
-    recSpegni(r);
-    const t = (r.tenuti || [])[(r.tenuti || []).length - 1];
-    let q = null;
-    if (t && t.a - t.da > 0.5) {
-      q = laDiretta(r.id, p.banco, p.prog);
-      const x = { id: nuovoId("p"), dentro: t.da, fuori: t.a, base: t.da, mano: true,
-                  titolo: "REC " + oraCorta(t.da) };
-      const iv = q.pezzi.findIndex((y) => y.vivo);
-      if (iv < 0) q.pezzi.push(x); else q.pezzi.splice(iv, 0, x);
-      toccataAMano(q);
-      scrivi(); annuncia(0, "clip");
-      console.log("[clip] in timeline il tratto registrato: " + Math.round(t.a - t.da) + "s");
-    }
-    return { ok: true, reg: pubblica(r), seq: q, tratto: t || null };
-  },
-  "clip-diretta": (p) => ({ ok: true, seq: laDiretta(p.reg, p.banco, p.prog) }),
-  "clip-diretta-riattacca": (p) => riattaccaLaDiretta(p.seq),
-  "clip-diretta-salva": salvaIlMontato,
-  "clip-diretta-prendi": prendiDalVivo,
   "clip-hl-imposta": hlImposta,
   "clip-hl-aggiungi": hlAggiungi,
   "clip-hl-suggerimento": hlSuggerimento,
@@ -9659,7 +8779,6 @@ const AZIONI = {
   "clip-hl-taratura": hlTaratura,
   "clip-hl-esporta": hlEsporta,
   "clip-hl-elimina": hlElimina,
-  "clip-integrale": clipIntegrale,
   "clip-anello": () => ({ ok: true, tolti: anello() }),
   "clip-grafica-uscita": graficaSuUscita,
   "clip-hl-grafica": hlGrafica,
@@ -9677,18 +8796,6 @@ const AZIONI = {
   "clip-spazio": () => ({ ok: true, peso: peso(DIR), liberi: Math.round(liberiGB() * 10) / 10 })
 };
 
-// L'integrale si chiede: e' la copia da mandare in archivio, e finche' non
-// serve i segmenti bastano (e occupano la meta').
-function clipIntegrale(p) {
-  const r = R.reg[p.reg || p.id];
-  if (!r) throw new Error("registrazione sconosciuta");
-  if (r.stato === "registra" || PROC.get(r.id)) {
-    throw new Error("il registratore sta ancora scrivendo: riprova fra qualche secondo");
-  }
-  if (r.integrale === "lavora") return { ok: true, integrale: "lavora" };
-  integrale(r);
-  return { ok: true, integrale: r.integrale };
-}
 
 // UN GANCIO SOLO. I comandi che c'erano gia' — taglia, sposta, butta,
 // lametta, PRENDI, il vivo che cresce — muovono i pezzi video e non sanno
@@ -9726,44 +8833,24 @@ function avvio(opz) {
   leggiArchivio();
   leggiStorici();
   leggiEspn();
-  leggiFeedSalvato();
   leggiVettori();
   setTimeout(raccogliParlato, 5000);
   rinominaMaterialeArchivio();
   leggiParlato();
-  // Il ponte si e' riavviato: gli ffmpeg che stava seguendo sono morti con
-  // lui. Meglio dirlo che lasciare in pagina una registrazione che sembra
-  // viva e non scrive piu' niente.
-  let adottate = 0;
+  // una registrazione rimasta "registra" nel registro e' di prima del
+  // taglio: non c'e' piu' nessun registratore, quindi e' finita
   Object.keys(R.reg).forEach((k) => {
     const r = R.reg[k];
     if (r.stato !== "registra") return;
-    if (vivo(r.pid, r.id)) {
-      // sta ancora scrivendo: si riprende a seguirla, non e' successo niente
-      adottate++;
-      r.adottata = Date.now();
-      // il proxy invece muore col ponte (non e' staccato: se cade non fa
-      // danni). Si riaccende da dove era arrivato.
-      setTimeout(() => avviaProxy(r), 5000);
-      return;
-    }
-    r.stato = "interrotta";
-    r.finita = Date.now();
-    r.durata = durataRegistrata(r.id);
-    r.errore = "il ponte si e' riavviato e il registratore non c'era piu'";
+    r.stato = "interrotta"; r.finita = Date.now(); r.durata = durataRegistrata(r.id);
+    r.errore = "la ricezione e' stata tolta dal MAM";
   });
-  if (adottate) console.log("[clip] riprese " + adottate + " registrazioni che stavano gia' andando");
   Object.keys(R.clip).forEach((k) => {
     if (R.clip[k].stato === "lavora") { R.clip[k].stato = "errore"; R.clip[k].errore = "ponte riavviato"; }
   });
   scrivi();
   anello();
   setInterval(anello, 3600000).unref();
-  // il custode delle anteprime: ogni mezzo minuto, perche' un flusso a nove
-  // megabit riempie in fretta e non si vuole aspettare l'ora dell'anello
-  setInterval(() => { try { spazzaAnteprime(); } catch (e) {} }, 30000).unref();
-  // il multiview: un fotogramma per porta, ogni pochi secondi
-  setInterval(() => { try { giraAnteprime(); } catch (e) {} }, ANTEPRIMA_OGNI * 1000).unref();
   setInterval(() => { giroEspn().catch(() => {}); }, GIRO_ESPN).unref();
   // Gli appunti delle partite appena giocate: la redazione li scrive nei
   // giorni dopo, quindi si ripassa una finestra corta e si lascia stare
@@ -9774,9 +8861,8 @@ function avvio(opz) {
     else rinfresca();
   }, 30000).unref();
   setInterval(rinfresca, 6 * 3600000).unref();
-  console.log("[clip] Clip Live acceso, cartella " + DIR +
-              " — fino a " + MAX_REG + " registrazioni, materiale per " + GIORNI + " giorni, " +
-              Math.round(liberiGB()) + " GB liberi");
+  console.log("[clip] MAM acceso (solo archivio: la ricezione e' stata tolta), cartella " + DIR +
+              " — materiale per " + GIORNI + " giorni, " + Math.round(liberiGB()) + " GB liberi");
   return true;
 }
 
