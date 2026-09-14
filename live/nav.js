@@ -56,6 +56,7 @@
     { nome: "Crawl", voci: [
       ["ticker.html",                "Ticker"],
       ["sottopancia.html",           "Sottopancia"],
+      ["sfondi.html",                "Sfondi per i box"],
       ["contributi.html",            "Contributi video"]
     ]},
     ["magazzino.html",             "Magazzino"],

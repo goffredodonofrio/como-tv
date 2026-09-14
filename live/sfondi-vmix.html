@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sfondo bucato · Grafica vMix</title>
+<style>
+  /* ═════════════════════════════════════════════════════════════════
+     SFONDO BUCATO — il fondo di casa dietro i box di vMix
+     ═════════════════════════════════════════════════════════════════
+
+     In regia i collegamenti stanno dentro due riquadri. Il fondo che
+     ci sta dietro finora era una tinta: qui invece c'e' il fondo vero
+     delle grafiche — il navy che respira e la polvere d'oro — e i
+     riquadri sono BUCHI veri, trasparenti, non rettangoli neri. Cosi'
+     vMix ci mette sotto le sorgenti e non serve incastrare niente:
+     la pagina si mette sopra come overlay e i buchi sono gia' al
+     posto giusto, al pixel.
+
+     Le misure sono quelle dei layout della regia. Nei due 2BOX i
+     riquadri prendono tutta la larghezza e quello che avanza — sedici
+     pixel scarsi — e' lo spazio fra loro; in verticale stanno in mezzo.
+     Si puo' cambiare tutto per indirizzo senza toccare il file:
+
+       ?l=1    primo 2box   16:9 grande a sinistra, 3:4 a destra
+       ?l=2    secondo 2box 3:4 a sinistra, 16:9 grande a destra
+       ?l=3    terzo box    due 16:9 uguali
+       &g=24   lo spazio fra i due riquadri
+       &m=0    il margine ai lati (se c'e', lo spazio in mezzo si stringe)
+       &y=-20  alza o abbassa i riquadri
+       &r=18   angoli arrotondati dei buchi
+       &filo=1 un filo d'oro attorno ai buchi
+       &polvere=quieta|media|forte   quanta polvere (come nelle altre)
+
+     Il fondo pagina e' trasparente: in vMix va aggiunta come Web
+     Browser input con la trasparenza accesa. */
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:transparent;}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+    transform-origin:center center;
+    font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);
+    /* i buchi: la maschera la scrive lo script, e vale per tutto quello
+       che sta dentro — fondo, aloni e polvere insieme */
+    -webkit-mask-size:100% 100%; mask-size:100% 100%;
+    -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+  }
+  /* il filo d'oro attorno al buco, quando lo si chiede */
+  .filo{position:absolute;pointer-events:none;border:2px solid rgba(201,162,75,.55);
+    box-shadow:0 0 22px rgba(201,162,75,.16);}
+</style>
+</head>
+<body>
+
+<div id="stage"><div id="fili"></div></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var Q = new URLSearchParams(location.search);
+  // La regia manda le grafiche cosi': motore + "?d=" col pacchetto dentro.
+  // Qui il pacchetto porta le stesse cose che si possono scrivere per
+  // indirizzo, quindi si travasa nei parametri e il resto del file non
+  // deve sapere da dove sono arrivate.
+  (function () {
+    var d = Q.get("d");
+    if (!d) return;
+    try {
+      var j = JSON.parse(decodeURIComponent(escape(atob(d.replace(/-/g, "+").replace(/_/g, "/")))));
+      Object.keys(j || {}).forEach(function (k) {
+        if (j[k] !== "" && j[k] != null) Q.set(k, String(j[k]));
+      });
+    } catch (e) {}
+  })();
+  function num(k, d) { var v = parseFloat(Q.get(k)); return isFinite(v) ? v : d; }
+
+  var W = 1920, H = 1080;
+
+  // I riquadri della regia, misurati da lei. Restano scritti qui in
+  // chiaro: sono la cosa che deve combaciare, e vanno lette senza
+  // aprire un foglio di calcolo.
+  var LAYOUT = {
+    "1": { nome: "Primo 2box",  box: [[1339.21, 753.31], [564.98, 753.31]] },
+    "2": { nome: "Secondo 2box", box: [[564.98, 753.31], [1339.21, 753.31]] },
+    "3": { nome: "Terzo box",   box: [[951.95, 535.47], [951.95, 535.47]] }
+  };
+  var L = LAYOUT[String(Q.get("l") || "1")] || LAYOUT["1"];
+  document.title = "Sfondo bucato · " + L.nome;
+
+  var m = num("m", 0);                       // margine ai lati
+  var largTot = L.box.reduce(function (a, b) { return a + b[0]; }, 0);
+  var g = num("g", W - 2 * m - largTot);     // quel che avanza sta in mezzo
+  var r = num("r", 0);                       // angoli
+  var dy = num("y", 0);                      // su e giu'
+
+  // dove finisce ogni riquadro
+  var x = m, buchi = [];
+  L.box.forEach(function (b, i) {
+    var alt = b[1], y = (H - alt) / 2 + dy;
+    buchi.push({ x: x, y: y, w: b[0], h: alt });
+    x += b[0] + g;
+  });
+
+  // ── la maschera: dove e' trasparente, si buca ──────────────────────
+  // Una maschera SVG e non dei rettangoli neri sopra: il buco deve
+  // tagliare TUTTO lo strato — fondo, aloni e polvere insieme — se no in
+  // vMix sotto non si vedrebbe niente. E la maschera CSS guarda la
+  // TRASPARENZA, non il bianco e nero: un rettangolo nero sopra il
+  // bianco non buca un bel niente (prima non bucava). Quindi il disegno
+  // si costruisce gia' bucato: una tinta piena mascherata dentro l'SVG,
+  // che dove ci sono i riquadri non viene proprio dipinta.
+  function rett(b) {
+    return '<rect x="' + b.x.toFixed(2) + '" y="' + b.y.toFixed(2) +
+           '" width="' + b.w.toFixed(2) + '" height="' + b.h.toFixed(2) + '"' +
+           (r ? ' rx="' + r + '" ry="' + r + '"' : '') + ' fill="black"/>';
+  }
+  var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '">' +
+            '<defs><mask id="b" maskUnits="userSpaceOnUse" x="0" y="0" width="' + W + '" height="' + H + '">' +
+            '<rect width="' + W + '" height="' + H + '" fill="white"/>' + buchi.map(rett).join("") +
+            '</mask></defs>' +
+            '<rect width="' + W + '" height="' + H + '" fill="black" mask="url(#b)"/></svg>';
+  var url = 'url("data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg) + '")';
+  var st = document.getElementById("stage");
+  st.style.webkitMaskImage = url;
+  st.style.maskImage = url;
+
+  // il filo d'oro, se lo si chiede: sta FUORI dalla maschera, altrimenti
+  // il buco se lo mangerebbe insieme al resto
+  if (Q.get("filo") === "1") {
+    var f = document.createElement("div");
+    f.style.cssText = "position:absolute;left:0;top:0;width:" + W + "px;height:" + H + "px;pointer-events:none;";
+    f.innerHTML = buchi.map(function (b) {
+      return '<i class="filo" style="left:' + (b.x - 1) + 'px;top:' + (b.y - 1) + 'px;width:' +
+             (b.w + 2) + 'px;height:' + (b.h + 2) + 'px;' + (r ? 'border-radius:' + (r + 1) + 'px;' : '') + '"></i>';
+    }).join("");
+    document.body.appendChild(f);
+  }
+
+  // ── modo prova (&prova=1) ───────────────────────────────────────────
+  // Serve solo all'anteprima nella pagina di scelta, e non si passa mai in
+  // onda. Fa due cose: mette una scacchiera sotto tutto, cosi' si vede che
+  // i buchi sono buchi, e dentro ogni buco un riquadro finto con la sua
+  // misura scritta. Senza, l'anteprima e' un rettangolo vuoto e non si
+  // capisce ne' dove finisce il buco ne' che forma ha.
+  if (Q.get("prova") === "1" || Q.get("scacchi") === "1") {
+    document.body.style.background =
+      "repeating-conic-gradient(#33343c 0% 25%, #2b2c33 0% 50%) 50%/26px 26px";
+    var sotto = document.createElement("div");
+    sotto.id = "prova";
+    sotto.style.cssText = "position:absolute;left:50%;top:50%;width:" + W + "px;height:" + H +
+      "px;transform-origin:center center;z-index:-1;";
+    sotto.innerHTML = buchi.map(function (b, i) {
+      var rap = (b.w / b.h > 1.5) ? "16:9" : "3:4";
+      return '<div style="position:absolute;left:' + b.x + 'px;top:' + b.y + 'px;width:' + b.w +
+        'px;height:' + b.h + 'px;' + (r ? 'border-radius:' + r + 'px;' : '') +
+        'overflow:hidden;background:' +
+        'repeating-linear-gradient(135deg, rgba(255,255,255,.045) 0 22px, rgba(255,255,255,0) 22px 44px),' +
+        'linear-gradient(160deg,#4a5570,#2b3145 60%,#1d2233);' +
+        'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;' +
+        'font-family:Mazzard,system-ui,sans-serif;color:rgba(245,241,230,.62)">' +
+        '<svg width="86" height="86" viewBox="0 0 86 86" fill="none">' +
+          '<circle cx="43" cy="43" r="41" stroke="rgba(245,241,230,.45)" stroke-width="3"/>' +
+          '<path d="M35 28l26 15-26 15z" fill="rgba(245,241,230,.5)"/></svg>' +
+        '<div style="font-size:30px;font-weight:800;letter-spacing:.14em">BOX ' + (i + 1) + ' \u00b7 ' + rap + '</div>' +
+        '<div style="font-size:22px;letter-spacing:.06em;color:rgba(245,241,230,.42)">' +
+          b.w.toFixed(2).replace(".", ",") + " \u00d7 " + b.h.toFixed(2).replace(".", ",") + '</div>' +
+      '</div>';
+    }).join("");
+    document.body.appendChild(sotto);
+  }
+
+  // la pagina sta in un 1920x1080 e si adatta alla finestra, come le altre
+  function fit() {
+    var s = Math.min(window.innerWidth / W, window.innerHeight / H);
+    st.style.transform = "translate(-50%,-50%) scale(" + s + ")";
+    // il filo d'oro e i riquadri di prova stanno fuori dallo stage: si
+    // scalano insieme a lui, o si scollerebbero dai buchi
+    [].forEach.call(document.querySelectorAll("body > div:not(#stage)"), function (f2) {
+      f2.style.position = "absolute"; f2.style.left = "50%"; f2.style.top = "50%";
+      f2.style.transformOrigin = "center center";
+      f2.style.transform = "translate(-50%,-50%) scale(" + s + ")";
+    });
+  }
+  window.addEventListener("resize", fit);
+  fit();
+})();
+</script>
+<script src="sfondo.js"></script>
+</body>
+</html>
