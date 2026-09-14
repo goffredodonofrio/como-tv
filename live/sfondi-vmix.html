@@ -66,14 +66,16 @@
      gradiente e aloni — spostata all'indietro di quanto la fascia e'
      lontana dall'angolo: cosi' le fasce sono finestre su uno stesso
      disegno e le giunture non si vedono. */
-  .pezzo{position:absolute;background-repeat:no-repeat;background-size:1920px 1080px;
+  .pezzo{position:absolute;overflow:hidden;background-repeat:no-repeat;background-size:1920px 1080px;
     background-image:
-      radial-gradient(750px 550px at 470px 290px, rgba(42,74,158,.42), transparent 72%),
-      radial-gradient(650px 500px at 1510px 820px, rgba(24,36,86,.55), transparent 72%),
-      radial-gradient(450px 350px at 1180px 588px, rgba(201,162,75,.07), transparent 70%),
       radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
       radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
       linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);}
+  /* Dentro la fascia ci sta il formato intero, spostato all'indietro: e' la
+     finestra da cui si vedono gli aloni che derivano. Ogni fascia ha la sua
+     copia, tutte inserite nello stesso istante, quindi respirano insieme e
+     le giunture non si notano. Fuori dalla fascia non esce niente. */
+  .dentro{position:absolute;width:1920px;height:1080px;pointer-events:none;}
   /* ── le scritte sotto i box ──────────────────────────────────────
      Stessa lingua del sottopancia, in piccolo: la barretta d'oro a
      sinistra, il pannello semitrasparente, il nome in Mazzard maiuscolo
@@ -183,7 +185,13 @@
     d.style.left = f.x + "px"; d.style.top = f.y + "px";
     d.style.width = f.w + "px"; d.style.height = f.h + "px";
     d.style.backgroundPosition = (-f.x) + "px " + (-f.y) + "px";
+    var dentro = document.createElement("div");
+    dentro.className = "dentro";
+    dentro.style.left = (-f.x) + "px";
+    dentro.style.top = (-f.y) + "px";
+    d.appendChild(dentro);
     st.appendChild(d);
+    f.dentro = dentro;
   });
 
   // La polvere d'oro resta una tela sola su tutto il formato — e' gia'
@@ -206,11 +214,22 @@
     g2.clip("evenodd");
   })();
 
-  // gli aloni che derivano sono gia' dipinti dentro le fasce: quello a
-  // schermo pieno di sfondo.js coprirebbe anche i buchi
+  // Gli aloni che respirano. Quello a schermo pieno di sfondo.js si
+  // spegne — coprirebbe anche i buchi — e al suo posto ogni fascia riceve
+  // una copia dello stesso gruppo, messa al posto giusto dentro la sua
+  // finestra. Le copie entrano tutte nello stesso istante, quindi le
+  // animazioni partono insieme e restano in fase: da fascia a fascia il
+  // disegno continua senza salti.
   (function () {
     var al = document.getElementById("aloni");
-    if (al) al.style.display = "none";
+    if (!al) return;
+    al.style.display = "none";
+    fasce.forEach(function (f) {
+      if (!f.dentro) return;
+      var copia = al.cloneNode(true);
+      copia.style.display = "";
+      f.dentro.appendChild(copia);
+    });
   })();
 
   // le scritte: stanno DENTRO lo stage, sotto il buco, dove il ritaglio
