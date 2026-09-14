@@ -303,6 +303,15 @@
   #bTop,#bFondo{grid-column:1 / -1;}
   /* il tasto sta a destra, appeso sotto l'orologio della testata; il
      banco parte piu' in basso per lasciargli il posto */
+  /* Svuota partita: e' l'unico tasto che CANCELLA, e si deve vedere che
+     lo e' — rosso, staccato dal resto, in fondo al pannello dove non lo
+     si sfiora per sbaglio mentre si segna un gol. */
+  .svuotabox{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    margin-top:16px;padding-top:13px;border-top:1px solid var(--line-2);}
+  .svuotabox button{color:#FF8D90;border-color:rgba(229,27,32,.45);background:rgba(229,27,32,.08);
+    white-space:nowrap;}
+  .svuotabox button:hover{color:#FFB0B2;border-color:rgba(229,27,32,.85);background:rgba(229,27,32,.18);}
+  .svuotabox span{font-size:11px;color:var(--fg-3);flex:1;min-width:150px;line-height:1.35;}
   .bancosetup{display:none;}
   body.banco header.page{position:relative;}
   body.banco .eyebrow{display:none;}
@@ -670,6 +679,12 @@
         <div style="display:flex;gap:8px;align-items:center">
           <input type="text" id="radioNome" placeholder="Nome del radiocronista" style="flex:1">
           <select id="radioNomeSel" style="flex:1"></select>
+        </div>
+
+        <!-- Fine partita: il pannello resta pieno di quella prima. -->
+        <div class="svuotabox">
+          <button type="button" id="btnSvuota">&#10005; Svuota partita</button>
+          <span>Punteggio, cronometro, cartellini, marcatori, rose e squadre tornano a zero.</span>
         </div>
 
       </div>
@@ -1423,6 +1438,53 @@
     FASI.forEach(function (x) { if (x.f === r.dataset.fase) def = x; });
     selezionaFase(r.dataset.fase, def ? def.t : r.dataset.fase);
   });
+  // ── SVUOTA PARTITA ──────────────────────────────────────────────────
+  // A fine partita il pannello resta pieno: punteggio, cartellini,
+  // marcatori, rose, nomi delle squadre. Chi apre il giorno dopo se li
+  // ritrova addosso, e i primi minuti di una diretta non sono il momento
+  // di accorgersi che il 2-1 era di ieri. Questo tasto riporta il pannello
+  // a come si apre la prima volta.
+  //
+  // Chiede conferma, e se qualcosa e' in onda lo dice: svuotare significa
+  // anche spegnere, e chi preme deve saperlo prima, non dopo.
+  //
+  // Restano fuori dal giro due cose che non sono la partita: il canale su
+  // cui si lavora e i livelli scelti per le righe, che sono impostazioni
+  // della postazione.
+  function svuotaPartita() {
+    var acceso = [];
+    FASI.forEach(function (x) { if (x.f === "live" ? S.bug : S.card === x.f) acceso.push(x.t); });
+    var q = "Svuoto la partita?\n\nTornano a zero punteggio, cronometro, recupero, cartellini rossi, "
+          + "marcatori, l'evento in onda, le rose e le squadre.";
+    if (acceso.length) q += "\n\nAttenzione: in onda c'e' " + acceso.join(" + ") + ", e si spegne.";
+    if (!window.confirm(q)) return;
+    S = { livFase: S.livFase,
+          bug: false, card: null, fase: "off",
+          camp: CAMPIONATI[0].nome, giornata: "", stadio: "",
+          casa: { n: "", s: "", col: "#1735C8", tid: "", stemma: "" },
+          osp:  { n: "", s: "", col: "#C50E1F", tid: "", stemma: "" },
+          p1: 0, p2: 0, rec: 0, rc1: 0, rc2: 0,
+          radioNome: "",
+          clock: { run: false, base: 0, ts: null, t2: false },
+          rose: null, ev: null, marcatori: [] };
+    specchioFase();
+    if (elCamp) elCamp.value = 0;
+    mettiCampTxt(S.camp); allineaDaCamp(); riempiSquadre();
+    mettiGiornata(""); el("stadio").value = "";
+    el("nc").value = ""; el("sc").value = ""; el("cc").value = S.casa.col;
+    el("no").value = ""; el("so").value = ""; el("co").value = S.osp.col;
+    el("radioNome").value = "";
+    var rs = el("radioNomeSel"); if (rs) rs.value = "";
+    sel = null;
+    disegnaFasi(); dipingi(); dipingiEventi(true);
+    invia(true);
+    msg.textContent = "Partita svuotata: il pannello e' come appena aperto.";
+  }
+  (function () {
+    var b = el("btnSvuota");
+    if (b) b.addEventListener("click", svuotaPartita);
+  })();
+
   // ── resa dello stato sui controlli ──
   function dipingi() {
     el("vs1").textContent = S.casa.s || "CASA";
