@@ -223,6 +223,40 @@
   #radiochi b{font-family:'Mazzard',sans-serif;font-weight:800;color:#F5F1E6;}
   #radiochi.vuoto{display:none;}
 
+  /* ── dentro la radiocronaca: chi ha segnato e cosa sta succedendo ──
+     Il cartello copre tutto lo schermo, quindi le grafiche degli eventi
+     ci finiscono dietro: qui la partita se la racconta da sola. I
+     marcatori stanno ai lati, sotto ai due punteggi, e l'evento del
+     momento — gol, sostituzione, cartellino — passa in una striscia in
+     basso, con le stesse parole che si leggono in onda sul video. */
+  #radiomarc{position:absolute;left:50%;top:812px;transform:translateX(-50%);
+    width:1520px;display:flex;justify-content:space-between;gap:70px;z-index:2;}
+  #radiomarc .col{flex:1 1 0;display:flex;flex-direction:column;gap:10px;min-width:0;}
+  #radiomarc .col.b{align-items:flex-end;text-align:right;}
+  #radiomarc .m{font-family:'DM Sans',sans-serif;font-weight:500;font-size:27px;line-height:1.1;
+    color:rgba(245,241,230,.82);white-space:nowrap;}
+  #radiomarc .m i{font-style:normal;font-family:'Mazzard',sans-serif;font-weight:700;
+    color:#C9A24B;margin-right:12px;font-variant-numeric:tabular-nums;}
+  #radiomarc .col.b .m i{margin:0 0 0 12px;}
+  #radiomarc .m b{font-family:'Mazzard',sans-serif;font-weight:800;color:#F5F1E6;}
+  #radiomarc .m small{font-size:20px;color:#8A8B96;margin-left:9px;}
+  #radiomarc .col.b .m{direction:rtl;}      /* il minuto va dall'altra parte */
+
+  #radioev{position:absolute;left:50%;top:958px;transform:translateX(-50%) translateY(14px);
+    z-index:3;display:flex;align-items:center;gap:26px;padding:18px 34px;border-radius:14px;
+    background:rgba(10,15,36,.72);border:1px solid rgba(201,162,75,.35);
+    opacity:0;transition:opacity .32s ease, transform .32s cubic-bezier(.2,.7,.3,1);}
+  #radioev.on{opacity:1;transform:translateX(-50%) translateY(0);}
+  #radioev .sw{width:8px;align-self:stretch;border-radius:4px;background:#8A8B96;}
+  #radioev .min{font-family:'Mazzard',sans-serif;font-weight:800;font-size:38px;color:#C9A24B;
+    font-variant-numeric:tabular-nums;}
+  #radioev .lab{font-family:'Mazzard',sans-serif;font-weight:700;font-size:22px;letter-spacing:.22em;
+    text-transform:uppercase;color:rgba(245,241,230,.7);}
+  #radioev .chi{font-family:'Mazzard',sans-serif;font-weight:800;font-size:38px;color:#F5F1E6;
+    white-space:nowrap;}
+  #radioev .chi em{font-style:normal;font-weight:500;font-family:'DM Sans',sans-serif;
+    font-size:26px;color:rgba(245,241,230,.6);margin:0 10px;}
+
   /* ── RECAP RISULTATO: la barra bassa dopo un gol ──
      Due metà coi colori delle squadre, il punteggio in mezzo su navy e
      oro, un filo dorato che le divide. Entra da sotto. */
@@ -394,11 +428,14 @@
       <div class="rball" id="rb2"></div>
     </div>
     <div id="radioclock" class="vuoto">00:00</div>
+    <div id="radiomarc"><div class="col a"></div><div class="col b"></div></div>
     <div id="radiosotto">
       <div id="radiocomp"></div>
       <div id="radiofilo"></div>
       <div id="radiochi" class="vuoto"></div>
     </div>
+    <div id="radioev"><span class="sw"></span><span class="min"></span>
+      <span class="lab"></span><span class="chi"></span></div>
   </div>
 
   <div id="recap">
@@ -563,6 +600,64 @@
     elEv.classList.toggle("on", !!altro);
   }
 
+  // ── la partita dentro il cartello radiocronaca ──────────────────────
+  // Gli stessi dati che in onda sul video diventano striscia e sottopancia,
+  // qui stanno dentro la schermata: chi ha segnato ai lati dei punteggi,
+  // e quello che sta succedendo adesso in una striscia in basso. Le parole
+  // sono le stesse — Gol, Autogol, Sostituzione, Ammonito, Espulso —
+  // perche' chi guarda non deve imparare due lingue.
+  var radioFirmaM = null, radioFirmaE = null;
+  function radioMarcatori(j) {
+    var lista = j.marcatori || [];
+    var firma = JSON.stringify(lista);
+    if (firma === radioFirmaM) return;
+    radioFirmaM = firma;
+    ["a", "b"].forEach(function (c, i) {
+      var lato = i === 0 ? "casa" : "osp";
+      var suoi = lista.filter(function (m) { return (m.lato || "casa") === lato; });
+      var troppi = suoi.length > 4 ? suoi.length - 4 : 0;
+      var h = suoi.slice(0, 4).map(function (m) {
+        var g = m.chi || {};
+        return '<div class="m"><i>' + escRadio(m.min || "") + "</i><b>" +
+               escRadio(g.cognome || g.nome || "") + "</b>" +
+               (m.autogol ? '<small>aut.</small>' : "") + "</div>";
+      }).join("");
+      if (troppi) h += '<div class="m"><small>e altri ' + troppi + "</small></div>";
+      document.querySelector("#radiomarc .col." + c).innerHTML = h;
+    });
+  }
+  function radioEvento(j, ev) {
+    var box = document.getElementById("radioev");
+    var firma = ev ? (ev.tipo + "|" + ev.ts) : "";
+    if (firma !== radioFirmaE) {
+      radioFirmaE = firma;
+      if (ev) {
+        var sq = (ev.lato === "osp" ? (j.osp || {}) : (j.casa || {}));
+        var lab, chi;
+        if (ev.tipo === "cambio") {
+          lab = "Sostituzione";
+          chi = nomeDi(ev.dentro) + '<em>entra per</em>' + nomeDi(ev.fuori);
+        } else if (ev.tipo === "gol") {
+          lab = ev.autogol ? "Autogol" : "Gol";
+          chi = nomeDi(ev.chi);
+        } else {
+          lab = ev.tipo === "giallo" ? "Ammonito" : "Espulso";
+          chi = nomeDi(ev.chi);
+        }
+        box.querySelector(".sw").style.background = sq.col || "#8A8B96";
+        box.querySelector(".min").textContent = ev.min || "";
+        box.querySelector(".lab").textContent = lab;
+        box.querySelector(".chi").innerHTML = chi;
+      }
+    }
+    box.classList.toggle("on", !!ev);
+  }
+  function nomeDi(g) {
+    g = g || {};
+    var c = g.cognome || g.nome || "";
+    return escRadio(c);
+  }
+
   function testo(id, v) { document.getElementById(id).textContent = v; }
   function colore(id, v) { document.getElementById(id).style.background = v || "#8A8B96"; }
   // un cartellino, e il numero solo se le espulsioni sono piu' di una
@@ -591,7 +686,16 @@
     // ciascuno un telaio suo ("solo=gol", "solo=cambio", "solo=cart"),
     // cosi' la regia mette ognuno sul livello che vuole.
     var ev = evAttivo(j);
+    // il cartello radiocronaca se lo disegna dentro: nel telaio delle
+    // schermate l'evento verrebbe azzerato due righe piu' giu', e la
+    // radiocronaca resterebbe muta proprio mentre succede qualcosa
+    var evRadio = ev;
     if (SOLO === "card" || SOLO === "bug") ev = null;
+    // ...e proprio perche' se lo disegna dentro, le grafiche degli eventi
+    // stanno zitte: la striscia del marcatore in alto a sinistra e il
+    // sottopancia di cartellini e cambi sono fatti per stare sopra il
+    // video, sul cartello a schermo pieno sarebbero un doppione.
+    if (j.card === "radio") ev = null;
     if (EV_FAM[SOLO]) { bug = false; card = null; if (famiglia(ev) !== SOLO) ev = null; }
     cardAttiva = card;
 
@@ -642,6 +746,8 @@
         rchi.innerHTML = "RADIOCRONACA DI <b>" + escRadio(j.radioNome) + "</b>";
         rchi.className = "";
       } else rchi.className = "vuoto";
+      radioMarcatori(j);
+      radioEvento(j, evRadio);
       aggiornaRadioClock();
       elRadio.classList.remove("out");
       elRadio.classList.add("on");
