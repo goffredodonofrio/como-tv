@@ -369,7 +369,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   el("selComp").addEventListener("change", function(){
     el("selTeam").innerHTML = '<option value="">— scegli —</option>';
-    squadre = []; svuotaGriglia();
+    squadre = []; svuotaGriglia(); contaIn++;   // ferma il conteggio in corso
     var i = this.value; if (i==="") return;
     var code = COMPS[+i].code;
     stato("", "Carico le squadre…");
@@ -385,12 +385,88 @@ document.addEventListener("DOMContentLoaded", function () {
         });
         var visti={}; squadre = out.filter(function(t){ if(visti[t.id])return false; visti[t.id]=1; return true; })
           .sort(function(a,b){ return a.name.localeCompare(b.name); });
-        el("selTeam").innerHTML = '<option value="">— scegli —</option>' +
-          squadre.map(function(t){ return '<option value="'+esc(t.id)+'">'+esc(t.name)+'</option>'; }).join("");
+        pintaTendinaSquadre();
         stato("", squadre.length ? "Scegli la squadra." : "Nessuna squadra trovata per questa competizione.");
+        if (squadre.length) contaCopertura(code);   // in sottofondo: quante figurine per squadra
       })
       .catch(function(e){ stato("err", "<b>Squadre non caricate.</b> "+esc(e.message)); });
   });
+
+  // ── quante figurine ci sono, squadra per squadra ────────────────────
+  // Nella tendina, accanto al nome: "Atalanta Primavera · 29/31". Serve a
+  // sapere dove mancano le foto senza aprire una squadra per volta. Chi e'
+  // al completo non porta niente: il numero e' un promemoria, e un
+  // promemoria che c'e' sempre non lo legge piu' nessuno.
+  //
+  // Il conto si fa con la stessa regola del ponte: l'id della persona se
+  // c'e', il cognome quando quel cognome in archivio e' di uno solo, e la
+  // squadra come ripiego sui cognomi ambigui. Due chiamate sole per tutto
+  // (l'indice delle intestazioni e l'elenco dei file), poi una rosa per
+  // squadra, una alla volta e senza fretta: e' un lavoro di sfondo, non
+  // deve rallentare chi sta gia' caricando una foto.
+  var ARCHIVIO = null;              // {perId, perSq, ambigui, file:{nome:1}}
+  var contaIn = 0;                  // quale giro di conteggio e' valido
+  function leggiArchivio(){
+    if (ARCHIVIO) return Promise.resolve(ARCHIVIO);
+    return Promise.all([
+      fetch(PONTE+"?intestazioni=1",{cache:"no-store"}).then(function(r){return r.json();}),
+      fetch(PONTE+"?loghi=1",{cache:"no-store"}).then(function(r){return r.json();})
+    ]).then(function(due){
+      var idx=due[0]||{}, lo=(due[1]&&due[1].loghi)||[], file={};
+      lo.forEach(function(x){ file[x.chiave]=1; });
+      ARCHIVIO = { perId: idx.perId||{}, perSq: idx.perSq||{}, ambigui: idx.ambigui||[], file: file };
+      return ARCHIVIO;
+    }).catch(function(){ ARCHIVIO = { perId:{}, perSq:{}, ambigui:[], file:{} }; return ARCHIVIO; });
+  }
+  function haFoto(A, p, idSquadra){
+    var pid = String(p.id||"").trim();
+    if (pid && A.perId[pid]) return true;
+    var cog = slug(p.cognome);
+    if (!cog) return false;
+    if (A.ambigui.indexOf(cog) < 0) return !!A.file["foto-premium-"+cog];
+    var f = (A.perSq[cog]||{})[idSquadra];
+    return !!f;
+  }
+  function etichettaSquadra(t){
+    var c = t.copertura;
+    if (!c || !c.tot || c.con >= c.tot) return t.name;      // completa: niente numero
+    return t.name + " \u00b7 " + c.con + "/" + c.tot;
+  }
+  function pintaTendinaSquadre(){
+    var sel = el("selTeam"), scelta = sel.value;
+    sel.innerHTML = '<option value="">— scegli —</option>' +
+      squadre.map(function(t){
+        var manca = t.copertura && t.copertura.tot && t.copertura.con < t.copertura.tot;
+        return '<option value="'+esc(t.id)+'"'+(manca?' style="color:#E3C271"':'')+'>'+
+               esc(etichettaSquadra(t))+'</option>';
+      }).join("");
+    sel.value = scelta;
+  }
+  function contaCopertura(code){
+    var mio = ++contaIn;
+    leggiArchivio().then(function(A){
+      var i = 0;
+      (function passo(){
+        if (mio !== contaIn || i >= squadre.length) return;   // cambiata competizione: si lascia perdere
+        var t = squadre[i++];
+        fetch(API+"/"+code+"/teams/"+t.id+"/roster")
+          .then(function(r){ return r.ok ? r.json() : null; })
+          .then(function(d){
+            var rosa = ((d&&d.athletes)||[]).map(function(a){
+              return { id:String(a.id||""), cognome:(a.lastName||a.displayName||"").trim() };
+            }).filter(function(x){ return x.cognome; });
+            if (rosa.length) {
+              var con = 0;
+              rosa.forEach(function(x){ if (haFoto(A,x,t.id)) con++; });
+              t.copertura = { con: con, tot: rosa.length };
+              if (mio === contaIn) pintaTendinaSquadre();
+            }
+          })
+          .catch(function(){})
+          .then(function(){ setTimeout(passo, 120); });
+      })();
+    });
+  }
 
   el("selTeam").addEventListener("change", function(){
     var id = this.value; if(!id){ svuotaGriglia(); return; }

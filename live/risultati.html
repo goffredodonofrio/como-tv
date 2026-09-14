@@ -668,8 +668,8 @@
     var h = '<select class="pick" data-mano="' + esc(m.id) + '" data-k="pick-' + quale + '">' +
             '<option value="">&mdash; scegli &mdash;</option>';
     GIOVANILI.squadre(code).forEach(function (q) {
-      h += '<option value="' + esc(q.id) + '"' + (m.campi[dove] === q.name ? " selected" : "") + '>' +
-           esc(q.name) + '</option>';
+      h += '<option value="' + esc(q.id) + '"' + (stessaSquadra(m.campi[dove], q.name) ? " selected" : "") + '>' +
+           esc(nomeCorto(q.name)) + '</option>';
     });
     return h + '</select>' + libero;
   }
@@ -703,10 +703,45 @@
   // logo chiamato come la squadra — "como-primavera", "atalanta-under-17" —
   // e quello scavalca lo stemma del club senior. Il tid resta come rete:
   // senza logo proprio, la giovanile prende lo stemma del suo club.
+  // ── le giovanili in grafica: la particella si abbrevia ──────────────
+  // "Fiorentina Primavera" contro "Hellas Verona Primavera" non ci sta in
+  // una pastiglia: il punteggio finisce schiacciato in mezzo. In onda si
+  // dice U20, U18, U17, e cosi' le scriviamo. Il nome resta scrivibile a
+  // mano come prima.
+  //
+  // Lo stemma non si perde. Da una parte l'identita' della squadra viaggia
+  // con la riga (il numero ESPN del club), non col testo; dall'altra il
+  // magazzino, quando cerca uno stemma, toglie gia' da solo la coda della
+  // giovanile — e "u20" e' una coda che conosce, esattamente come
+  // "primavera". Anzi: "Juventus U17" la trova, mentre "Juventus Under 17"
+  // le restava lunga di una parola e lo stemma non arrivava.
+  var PARTICELLE = [
+    [/\s*primavera\s*$/i,          " U20"],
+    [/\s*under\s*[- ]?(\d{2})\s*$/i, " U$1"],
+    [/\s*u\s*[- ]?(\d{2})\s*$/i,     " U$1"]
+  ];
+  function nomeCorto(n) {
+    var t = String(n || "").trim();
+    for (var i = 0; i < PARTICELLE.length; i++) {
+      if (PARTICELLE[i][0].test(t)) return t.replace(PARTICELLE[i][0], PARTICELLE[i][1]);
+    }
+    return t;
+  }
+  // due nomi della stessa squadra devono somigliarsi anche se uno e' per
+  // esteso e l'altro abbreviato: serve a non perdere lo stemma quando il
+  // nome viene riscritto a mano
+  function stessaSquadra(a, b) {
+    function k(n) {
+      return nomeCorto(n).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    }
+    return !!a && !!b && k(a) === k(b);
+  }
+
   function tidDiNome(m, dove, nome) {
     if (!(window.GIOVANILI && GIOVANILI.mia(m.code))) return "";
     var q = GIOVANILI.squadre(m.code).filter(function (z) {
-      return z.name.toLowerCase() === String(nome || "").trim().toLowerCase();
+      return stessaSquadra(z.name, nome);
     })[0];
     return q ? GIOVANILI.tid(m.code, q.id) : "";
   }
@@ -720,7 +755,7 @@
       var qualeP = k === "pick-casa" ? "casa" : "ospite";
       var q = GIOVANILI.squadre(m.code).filter(function (z) { return z.id === v; })[0];
       if (!q) return;
-      m.campi[qualeP === "casa" ? 4 : 7] = q.name;
+      m.campi[qualeP === "casa" ? 4 : 7] = nomeCorto(q.name);
       m[qualeP === "casa" ? "tid1" : "tid2"] = GIOVANILI.tid(m.code, q.id);
       render();
       return;
