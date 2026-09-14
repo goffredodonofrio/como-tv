@@ -44,7 +44,13 @@
   var TARATURE = {
     quieta: { n: 90,  v: 1,   op: 1   },   // quasi ferma, quella di partenza
     media:  { n: 130, v: 2.5, op: 1.3 },   // in onda
-    forte:  { n: 180, v: 4,   op: 1.6 }
+    forte:  { n: 180, v: 4,   op: 1.6 },
+    // per gli sfondi bucati dei 2box: li' si vede solo un terzo del
+    // formato (il resto e' buco) e la polvere di casa, che a schermo
+    // pieno si legge nell'insieme, in due fasce strette sparisce.
+    // Stessa polvere, piu' fitta e piu' accesa, per ritrovare nelle
+    // fasce l'aria che altrove si ha su tutto lo schermo.
+    buchi:  { n: 340, v: 3,   op: 2.6, gr: 1.5 }
   };
   var scelta = (new URLSearchParams(location.search).get("polvere") || "").toLowerCase();
   var T = TARATURE[scelta] || TARATURE.media;
@@ -111,7 +117,9 @@
     return {
       x: sparso ? Math.random() * L : L + Math.random() * 60,
       y: Math.random() * A,
-      r: 1.1 + Math.random() * 3.4,          // raggio sulla tela dimezzata
+      // raggio sulla tela dimezzata; "gr" allarga il granello dove serve
+      // che si legga da lontano (vedi la taratura "buchi")
+      r: (1.1 + Math.random() * 3.4) * (T.gr || 1),
       vx: -(0.04 + Math.random() * 0.20) * T.v,   // deriva verso sinistra
       vy: (Math.random() - 0.5) * 0.05 * T.v,     // un filo di oscillazione
       a: (0.05 + Math.random() * 0.20) * T.op,    // opacita' massima
