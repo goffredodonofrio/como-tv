@@ -32,6 +32,7 @@
     ["classifiche.html",           "Catalogo"],
     { nome: "Partita", voci: [
       ["formazioni-premium.html",    "Formazioni Premium"],
+      ["formazioni-premium.html?maglie=1", "Formazioni Premium solo maglie"],
       ["formazioni.html",            "Formazioni"],
       ["cambi.html",                 "Cambi"],
       ["risultati.html",             "Risultati"],

@@ -297,7 +297,7 @@
 
   <header class="page">
     <div class="eyebrow">Como TV · Grafiche Live</div>
-    <h1>Formazioni <span style="color:var(--gold)">Premium</span></h1>
+    <h1>Formazioni <span style="color:var(--gold)">Premium</span><span id="titSoloMaglie" hidden> · solo maglie</span></h1>
   </header>
 
   <div class="exportbar">
@@ -395,8 +395,19 @@
 <script>
 (function () {
   "use strict";
+  // SOLO MAGLIE — la stessa pagina, aperta con ?maglie=1. E' la stessa
+  // grafica delle Formazioni Premium senza i volti: per le giovanili e per
+  // gli avversari di cui le foto non ce le ha nessuno, dove il premium con
+  // le caselle vuote fa peggio che bene. Una pagina sola e non due: il
+  // giorno che si tocca la compilazione, si tocca una volta.
+  var SOLO_MAGLIE = new URLSearchParams(location.search).get("maglie") === "1";
   var STILE_PV = (function(){try{return localStorage.getItem("comotv.premium.pv")||"foto";}catch(e){return "foto";}})();
   document.addEventListener("DOMContentLoaded", function(){
+    if (SOLO_MAGLIE) {
+      document.title = "Formazioni Premium solo maglie \u00b7 Como TV";
+      var t = document.getElementById("titSoloMaglie"); if (t) t.hidden = false;
+      var sg = document.getElementById("segStile"); if (sg) sg.style.display = "none";
+    }
     var seg = document.getElementById("segStile");
     if (!seg) return;
     function pinta(){ seg.querySelectorAll("button").forEach(function(b){ b.classList.toggle("act", b.dataset.pv === STILE_PV); }); }
@@ -1610,6 +1621,7 @@
     return (d.pid ? "id:" + d.pid : "cog:" + slugCog(d.cognome) + "@" + (side.teamId || ""));
   }
   function assicuraFoto(si) {
+    if (SOLO_MAGLIE) return Promise.resolve();   // nessun volto: niente da risolvere
     var side = sides[si], mancanti = [];
     ["tit", "pan"].forEach(function (zona) {
       (side[zona] || []).forEach(function (v) {
@@ -1647,6 +1659,7 @@
   // grafica deve saperlo prima, non scoprirlo dal monitor. (Indeciso e'
   // un'altra cosa: se il ponte non ha risposto non si dice niente.)
   function senzaFoto(si) {
+    if (SOLO_MAGLIE) return [];
     var side = sides[si], fuori = [];
     (side.tit || []).forEach(function (v) {
       var d = resolve(side, v);
@@ -1701,6 +1714,7 @@
       m: side.mod,
       k: side.kit,
       pv: STILE_PV,
+      sm: SOLO_MAGLIE ? 1 : undefined,
       mg: side.maglia ? magliaUrl(side, side.maglia) || undefined : undefined,
       l: (function () {
         if (side.logoFisso) return side.logoFisso;   // ripresa dalla scaletta: lo stemma era quello
@@ -1990,7 +2004,8 @@
     return fetch(cfg.url, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(Object.assign({ token: cfg.token }, Destinazione.corpo({ grafica: "formazione-premium",
+      body: JSON.stringify(Object.assign({ token: cfg.token }, Destinazione.corpo({
+                             grafica: SOLO_MAGLIE ? "formazione-premium-maglie" : "formazione-premium",
                              titolo: titolo, dati: payload })))
     })
       .then(function (r) { return r.json(); })

@@ -412,6 +412,12 @@
   }
 
   // ── i giocatori in campo: tessera numero + card foto (stile reference) ──
+  // SOLO MAGLIE. Stessa grafica delle Formazioni Premium, stessa ouverture
+  // a reparti, ma senza volti: al posto della foto c'e' la maglia, col
+  // numero e il nome sopra. Serve per le partite in cui le foto non ci
+  // sono — le giovanili, gli avversari di coppa — dove il premium con le
+  // caselle vuote farebbe piu' danno che bello.
+  var SOLOM = !!D.sm;
   var pitch = el("pitch");
   var titolari = D.t.slice(0, slots.length);
   window.ARTE_MAGLIA_G = ARTE_MAGLIA;      // serve al ripiego dentro onerror
@@ -441,9 +447,14 @@
         '<div class="pnome"><span class="pnum">' + esc(num) + '</span>' + esc(cognome) + (nome ? '<small>' + esc(nome) + '</small>' : '') + '</div>' +
       '</div>' +
       '<div class="pflip">' +
-        '<div class="pface pfoto"><img src="' + esc(foto) + '" ' +
+        // senza foto la faccia davanti e' gia' quella che il ripiego
+        // costruirebbe da solo: maglia disegnata, numero e nome. Cosi' non
+        // c'e' una seconda strada da tenere allineata alla prima.
+        (SOLOM
+          ? '<div class="pface pfoto senzafoto"><div class="mgart">' + ARTE_MAGLIA + '</div>'
+          : '<div class="pface pfoto"><img src="' + esc(foto) + '" ' +
           'onerror="var f=this.parentNode;f.classList.add(\'senzafoto\');' +
-                   'this.outerHTML=\'<div class=\\\'mgart\\\'>\'+ARTE_MAGLIA_G+\'</div>\'">' +
+                   'this.outerHTML=\'<div class=\\\'mgart\\\'>\'+ARTE_MAGLIA_G+\'</div>\'">') +
           '<div class="pvelo"></div><div class="pfnum">' + esc(num) + '</div>' +
           '<div class="pchi"><div class="pnomef">' + esc(nome) + '</div><div class="pcogf">' + esc(cognome) + '</div><div class="pfilo"></div></div></div>' +
         '<div class="pface pmag">' + ARTE_MAGLIA + '</div>' +
@@ -459,13 +470,13 @@
   // non blocca — così l'iniezione poi e' istantanea.
   (function () {
     var urls = [MAGLIA];
-    titolari.forEach(function (r) {
+    if (!SOLOM) titolari.forEach(function (r) {
       urls.push((r && r[3]) || "");
     });
     // si scalda la foto dell'allenatore VERA, se c'e'. Prima si scaldava
     // quella di Fabregas, che serviva al ripiego: il ripiego non esiste piu'
     // e scaldare la faccia di uno che non c'entra era lavoro per niente.
-    if (D.af) urls.push(D.af);
+    if (D.af && !SOLOM) urls.push(D.af);
     urls.forEach(function (u) {
       if (!u) return;
       var im = new Image();
@@ -484,8 +495,8 @@
     // ripiego su Fabregas: era la faccia di una persona vera messa addosso a
     // chiunque non avesse una foto sua.
     var cf = '<div class="cf">' +
-      (D.af ? '<img src="' + esc(D.af) + '" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">' : '') +
-      '<span class="cfsig"' + (D.af ? ' style="display:none"' : '') + '>' + sagomaAllenatore() + '</span></div>';
+      (D.af && !SOLOM ? '<img src="' + esc(D.af) + '" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">' : '') +
+      '<span class="cfsig"' + (D.af && !SOLOM ? ' style="display:none"' : '') + '>' + sagomaAllenatore() + '</span></div>';
     el("panca").querySelector(".coach").innerHTML = cf +
       '<div class="ct"><span>Allenatore</span><b>' + esc(all) + '</b></div>';
     var pr = "";
