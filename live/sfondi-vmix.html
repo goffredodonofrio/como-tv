@@ -48,10 +48,8 @@
       radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
       radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
       linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);
-    /* i buchi: la maschera la scrive lo script, e vale per tutto quello
-       che sta dentro — fondo, aloni e polvere insieme */
-    -webkit-mask-size:100% 100%; mask-size:100% 100%;
-    -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+    /* i buchi li ritaglia lo script, e il ritaglio vale per tutto quello
+       che sta dentro: fondo, aloni e polvere insieme */
   }
   /* ── le scritte sotto i box ──────────────────────────────────────
      Stessa lingua del sottopancia, in piccolo: la barretta d'oro a
@@ -120,6 +118,8 @@
   var r = num("r", 0);                       // angoli
   var dy = num("y", 0);                      // su e giu'
 
+  var st = document.getElementById("stage");
+
   // dove finisce ogni riquadro
   var x = m, buchi = [];
   L.box.forEach(function (b, i) {
@@ -128,33 +128,31 @@
     x += b[0] + g;
   });
 
-  // ── la maschera: dove e' trasparente, si buca ──────────────────────
-  // Una maschera SVG e non dei rettangoli neri sopra: il buco deve
-  // tagliare TUTTO lo strato — fondo, aloni e polvere insieme — se no in
-  // vMix sotto non si vedrebbe niente. E la maschera CSS guarda la
-  // TRASPARENZA, non il bianco e nero: un rettangolo nero sopra il
-  // bianco non buca un bel niente (prima non bucava). Quindi il disegno
-  // si costruisce gia' bucato: una tinta piena mascherata dentro l'SVG,
-  // che dove ci sono i riquadri non viene proprio dipinta.
-  function rett(b) {
-    return '<rect x="' + b.x.toFixed(2) + '" y="' + b.y.toFixed(2) +
-           '" width="' + b.w.toFixed(2) + '" height="' + b.h.toFixed(2) + '"' +
-           (r ? ' rx="' + r + '" ry="' + r + '"' : '') + ' fill="black"/>';
+  // ── il buco: si RITAGLIA, non si maschera ──────────────────────────
+  // Una maschera CSS e' un'immagine che decide dove si vede: passa da
+  // un'altra strada nel compositore, e su certi browser incorporati —
+  // quello di vMix fra questi — il pezzo tolto non resta vuoto, resta
+  // bianco. Il ritaglio invece e' geometria: fuori dal contorno non
+  // viene dipinto NIENTE, che e' esattamente come si comporta un
+  // sottopancia, dove il trasparente non e' tolto ma non e' mai stato
+  // messo. Il contorno gira attorno alla pagina e poi attorno a ogni
+  // riquadro; con la regola "evenodd" i riquadri diventano vuoti.
+  function rettPath(b) {
+    var x = b.x, y = b.y, w = b.w, h = b.h, rr = Math.min(r, w / 2, h / 2);
+    if (!rr) return "M" + x + "," + y + " h" + w + " v" + h + " h" + (-w) + " Z";
+    return "M" + (x + rr) + "," + y +
+           " h" + (w - 2 * rr) + " a" + rr + "," + rr + " 0 0 1 " + rr + "," + rr +
+           " v" + (h - 2 * rr) + " a" + rr + "," + rr + " 0 0 1 " + (-rr) + "," + rr +
+           " h" + (-(w - 2 * rr)) + " a" + rr + "," + rr + " 0 0 1 " + (-rr) + "," + (-rr) +
+           " v" + (-(h - 2 * rr)) + " a" + rr + "," + rr + " 0 0 1 " + rr + "," + (-rr) + " Z";
   }
-  var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '">' +
-            '<defs><mask id="b" maskUnits="userSpaceOnUse" x="0" y="0" width="' + W + '" height="' + H + '">' +
-            '<rect width="' + W + '" height="' + H + '" fill="white"/>' + buchi.map(rett).join("") +
-            '</mask></defs>' +
-            '<rect width="' + W + '" height="' + H + '" fill="black" mask="url(#b)"/></svg>';
-  var url = 'url("data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg) + '")';
-  var st = document.getElementById("stage");
-  st.style.webkitMaskImage = url;
-  st.style.maskImage = url;
+  var contorno = "M0,0 H" + W + " V" + H + " H0 Z " + buchi.map(rettPath).join(" ");
+  st.style.clipPath = "path(evenodd, '" + contorno + "')";
+  st.style.webkitClipPath = "path(evenodd, '" + contorno + "')";
 
-  // le scritte: stanno DENTRO lo stage, sotto il buco, dove la maschera
-  // tiene tutto. Vuote non si disegnano — una pastiglia senza parole e'
-  // solo un rettangolo grigio in onda.
-  var alte = 54;
+  // le scritte: stanno DENTRO lo stage, sotto il buco, dove il ritaglio
+  // tiene tutto. Vuote non si disegnano — una pastiglia senza parole in
+  // onda e' solo un rettangolo grigio.
   buchi.forEach(function (b, i) {
     var t = String(Q.get("t" + (i + 1)) || "").trim();
     if (!t) return;
@@ -162,14 +160,15 @@
     d.className = "scritta";
     d.style.left = b.x + "px";
     d.style.top = (b.y + b.h + 22) + "px";
-    d.style.height = alte + "px";
+    d.style.height = "54px";
     d.innerHTML = '<i></i><b></b>';
     d.querySelector("b").textContent = t;
     st.appendChild(d);
   });
 
-  // il filo d'oro, se lo si chiede: sta FUORI dalla maschera, altrimenti
-  // il buco se lo mangerebbe insieme al resto
+  // il filo d'oro, se lo si chiede: sta FUORI dallo stage, altrimenti il
+  // ritaglio se lo mangerebbe insieme al resto — e il filo deve stare
+  // proprio sul bordo del buco
   if (Q.get("filo") === "1") {
     var f = document.createElement("div");
     f.style.cssText = "position:absolute;left:0;top:0;width:" + W + "px;height:" + H + "px;pointer-events:none;";
