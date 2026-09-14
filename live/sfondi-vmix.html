@@ -40,17 +40,32 @@
   *{margin:0;padding:0;box-sizing:border-box;}
   html,body{width:100%;height:100%;overflow:hidden;background:transparent;}
 
+  /* Lo stage non dipinge NIENTE: e' solo il telaio 1920x1080. Il fondo lo
+     fanno le fasce attorno ai riquadri (.pezzo), una per una. Sembra un
+     giro lungo e invece e' il punto di tutto: un buco fatto togliendo —
+     una maschera, un ritaglio — passa dal compositore, e nel browser
+     dentro vMix quel pezzo tolto torna bianco. Un buco fatto non
+     dipingendo non puo' tornare niente, perche' li' non c'e' nessun
+     elemento. E' come si comporta un sottopancia, che in vMix funziona da
+     sempre: dipinge la pastiglia e basta. */
   #stage{
     position:absolute;left:50%;top:50%;width:1920px;height:1080px;
     transform-origin:center center;
     font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;
-    background:
+    background:transparent;
+  }
+  /* Una fascia di fondo. L'immagine e' quella dell'intero 1920x1080 —
+     gradiente e aloni — spostata all'indietro di quanto la fascia e'
+     lontana dall'angolo: cosi' le fasce sono finestre su uno stesso
+     disegno e le giunture non si vedono. */
+  .pezzo{position:absolute;background-repeat:no-repeat;background-size:1920px 1080px;
+    background-image:
+      radial-gradient(750px 550px at 470px 290px, rgba(42,74,158,.42), transparent 72%),
+      radial-gradient(650px 500px at 1510px 820px, rgba(24,36,86,.55), transparent 72%),
+      radial-gradient(450px 350px at 1180px 588px, rgba(201,162,75,.07), transparent 70%),
       radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
       radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
-      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);
-    /* i buchi li ritaglia lo script, e il ritaglio vale per tutto quello
-       che sta dentro: fondo, aloni e polvere insieme */
-  }
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);}
   /* ── le scritte sotto i box ──────────────────────────────────────
      Stessa lingua del sottopancia, in piccolo: la barretta d'oro a
      sinistra, il pannello semitrasparente, il nome in Mazzard maiuscolo
@@ -78,6 +93,8 @@
 
 <div id="stage"><div id="fili"></div></div>
 
+<!-- prima la polvere, poi il disegno: serve la tela gia' in pagina -->
+<script src="sfondo.js"></script>
 <script>
 (function () {
   "use strict";
@@ -128,27 +145,65 @@
     x += b[0] + g;
   });
 
-  // ── il buco: si RITAGLIA, non si maschera ──────────────────────────
-  // Una maschera CSS e' un'immagine che decide dove si vede: passa da
-  // un'altra strada nel compositore, e su certi browser incorporati —
-  // quello di vMix fra questi — il pezzo tolto non resta vuoto, resta
-  // bianco. Il ritaglio invece e' geometria: fuori dal contorno non
-  // viene dipinto NIENTE, che e' esattamente come si comporta un
-  // sottopancia, dove il trasparente non e' tolto ma non e' mai stato
-  // messo. Il contorno gira attorno alla pagina e poi attorno a ogni
-  // riquadro; con la regola "evenodd" i riquadri diventano vuoti.
-  function rettPath(b) {
-    var x = b.x, y = b.y, w = b.w, h = b.h, rr = Math.min(r, w / 2, h / 2);
-    if (!rr) return "M" + x + "," + y + " h" + w + " v" + h + " h" + (-w) + " Z";
-    return "M" + (x + rr) + "," + y +
-           " h" + (w - 2 * rr) + " a" + rr + "," + rr + " 0 0 1 " + rr + "," + rr +
-           " v" + (h - 2 * rr) + " a" + rr + "," + rr + " 0 0 1 " + (-rr) + "," + rr +
-           " h" + (-(w - 2 * rr)) + " a" + rr + "," + rr + " 0 0 1 " + (-rr) + "," + (-rr) +
-           " v" + (-(h - 2 * rr)) + " a" + rr + "," + rr + " 0 0 1 " + rr + "," + (-rr) + " Z";
-  }
-  var contorno = "M0,0 H" + W + " V" + H + " H0 Z " + buchi.map(rettPath).join(" ");
-  st.style.clipPath = "path(evenodd, '" + contorno + "')";
-  st.style.webkitClipPath = "path(evenodd, '" + contorno + "')";
+  // ── il fondo: le fasce attorno ai buchi ────────────────────────────
+  // Si calcola il complemento dei riquadri: la fascia sopra, quella
+  // sotto, e le strisce verticali fra e ai lati. Ogni fascia dipinge la
+  // sua porzione dello stesso disegno. Dove ci sono i riquadri non viene
+  // creato proprio niente: e' quello che rende il buco un buco anche nel
+  // browser di vMix.
+  var cima = Math.min.apply(null, buchi.map(function (b) { return b.y; }));
+  var fondo = Math.max.apply(null, buchi.map(function (b) { return b.y + b.h; }));
+  var fasce = [];
+  if (cima > 0) fasce.push({ x: 0, y: 0, w: W, h: cima });
+  if (fondo < H) fasce.push({ x: 0, y: fondo, w: W, h: H - fondo });
+  // la banda dei riquadri, divisa dalle strisce verticali
+  var ordinati = buchi.slice().sort(function (a2, b2) { return a2.x - b2.x; });
+  var cur = 0;
+  ordinati.forEach(function (b) {
+    if (b.x > cur) fasce.push({ x: cur, y: cima, w: b.x - cur, h: fondo - cima });
+    // un riquadro piu' basso della banda: sopra e sotto si dipinge
+    if (b.y > cima) fasce.push({ x: b.x, y: cima, w: b.w, h: b.y - cima });
+    if (b.y + b.h < fondo) fasce.push({ x: b.x, y: b.y + b.h, w: b.w, h: fondo - (b.y + b.h) });
+    cur = b.x + b.w;
+  });
+  if (cur < W) fasce.push({ x: cur, y: cima, w: W - cur, h: fondo - cima });
+
+  fasce.forEach(function (f) {
+    if (f.w <= 0 || f.h <= 0) return;
+    var d = document.createElement("div");
+    d.className = "pezzo";
+    d.style.left = f.x + "px"; d.style.top = f.y + "px";
+    d.style.width = f.w + "px"; d.style.height = f.h + "px";
+    d.style.backgroundPosition = (-f.x) + "px " + (-f.y) + "px";
+    st.appendChild(d);
+  });
+
+  // La polvere d'oro resta una tela sola su tutto il formato — e' gia'
+  // trasparente dove non si disegna — ma dentro i riquadri non deve
+  // cadere: si ritaglia il CONTESTO del canvas, che e' rasterizzazione
+  // pura e non passa dal compositore. La tela di sfondo.js e' a meta'
+  // risoluzione, quindi le misure si dimezzano.
+  (function () {
+    var tela = document.getElementById("polvere");
+    if (!tela || !tela.getContext) return;
+    var g2 = tela.getContext("2d");
+    // prima si spazza: sfondo.js ha gia' disegnato un fotogramma appena
+    // caricato, e quella polvere e' caduta anche dentro i riquadri. Dopo
+    // il ritaglio non si potrebbe piu' togliere — la pulizia stessa
+    // resterebbe fuori dal ritaglio — e resterebbe li' ferma per sempre.
+    g2.clearRect(0, 0, tela.width, tela.height);
+    g2.beginPath();
+    g2.rect(0, 0, tela.width, tela.height);
+    buchi.forEach(function (b) { g2.rect(b.x / 2, b.y / 2, b.w / 2, b.h / 2); });
+    g2.clip("evenodd");
+  })();
+
+  // gli aloni che derivano sono gia' dipinti dentro le fasce: quello a
+  // schermo pieno di sfondo.js coprirebbe anche i buchi
+  (function () {
+    var al = document.getElementById("aloni");
+    if (al) al.style.display = "none";
+  })();
 
   // le scritte: stanno DENTRO lo stage, sotto il buco, dove il ritaglio
   // tiene tutto. Vuote non si disegnano — una pastiglia senza parole in
@@ -246,6 +301,5 @@
   fit();
 })();
 </script>
-<script src="sfondo.js"></script>
 </body>
 </html>
