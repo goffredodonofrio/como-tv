@@ -4439,6 +4439,9 @@ function daKickoffPezzo(file, quandoMs) {
   if (meglio === null || Math.abs(meglio) > 300) return null;
   return Math.round(meglio * 60 + o.s);
 }
+// come si riconosce uno show dal nome: non e' una partita, e' una
+// trasmissione — studio, pre, post, il recap del lunedi'
+const DA_STUDIO = /SHOW|STUDIO|INTERVALLO|SPECIALE|RECAP|PRE[ -]?PARTITA|POST[ -]?PARTITA|\u{1F3A5}/iu;
 function kickoffNelFile(file, quandoMs) {
   const da = daKickoffPezzo(file, quandoMs);
   return da === null ? null : Math.max(0, -da);
@@ -4983,7 +4986,7 @@ async function archivioScandaglia(p) {
       if (!quando) return;
       // uno show settimanale ha lo stesso nome ogni settimana: si aggancia
       // solo a una cartella dello stesso giorno che sia uno show anche lei
-      const eShow = /SHOW|STUDIO|INTERVALLO|PRE PARTITA|POST PARTITA|PRE-PARTITA|POST-PARTITA|\u{1F3A5}/iu.test(nomePartita) || /Studio/i.test(nomeComp);
+      const eShow = DA_STUDIO.test(nomePartita) || /Studio/i.test(nomeComp);
       const candidati = [];
       (eShow ? [0] : [0, -1, 1]).forEach((salto) => {
         const g = new Date(quando + salto * 86400000);
@@ -6775,11 +6778,42 @@ async function riconosciPartita(rec) {
         (e, so) => { if (e) return ok(null); try { ok(JSON.parse(String(so))); } catch (x) { ok(null); } });
     });
     if (!fuori) throw new Error("la lettura del tabellone non e' riuscita");
+    // SE LA PARTITA COMINCIA A META' FILE, IL FILE NON E' LA PARTITA. Il
+    // MultiCorder non registra il segnale dello stadio: registra quello che
+    // Como TV manda in onda. Prima del fischio ci puo' stare il cartello, e
+    // certe sere un'ora di studio — il 9 settembre il file dura tre ore e
+    // dodici, e St. Johnstone-Celtic entra al minuto sessanta. Quel file e'
+    // lo show, con dentro la partita, e va chiamato con il suo nome.
+    // Dove cade il calcio d'inizio lo dice l'ora scritta nel nome del file,
+    // senza leggere niente: tre-sei minuti in tutte le partite vere, un'ora
+    // quando prima c'era altro.
+    if (fuori.scelto) {
+      const suo = cand.find((c) => c.rec === fuori.scelto.rec);
+      const dentro = suo ? kickoffNelFile(pz.file, Date.parse(suo.quando)) : null;
+      if (dentro !== null && dentro > 1500) {
+        const show = cand.find((c) => c.rec !== fuori.scelto.rec && DA_STUDIO.test(c.nome) &&
+          (kickoffNelFile(pz.file, Date.parse(c.quando)) || 0) <= 900);
+        if (show) {
+          fuori.dentro = { rec: fuori.scelto.rec, nome: fuori.scelto.nome, da: dentro };
+          fuori.scelto = { rec: show.rec, nome: show.nome, voto: fuori.scelto.voto,
+            perche: (fuori.scelto.perche || []).concat([
+              fuori.scelto.nome + " comincia al minuto " + Math.round(dentro / 60) + ": prima c'e' lo studio"]) };
+        }
+      }
+    }
     if (fuori.scelto) {
       RICONOSCIUTE[a.dove] = { rec: fuori.scelto.rec, nome: fuori.scelto.nome,
                                voto: fuori.scelto.voto, perche: fuori.scelto.perche,
-                               quando: new Date().toISOString() };
+                               dentro: fuori.dentro, quando: new Date().toISOString() };
       scriviRiconosciute();
+      // UNA CARTELLA, UNA PARTITA. Se quel materiale era gia' finito sotto
+      // un altro nome — una lettura di prima, o un aggancio per somiglianza
+      // — quella riga adesso non ha piu' niente: va via, se no la stessa
+      // registrazione si vede due volte in elenco con due nomi diversi.
+      Object.keys(ARCHIVIO).forEach((k) => {
+        if (k === fuori.scelto.rec || k.indexOf("s3:") === 0) return;
+        if (ARCHIVIO[k].dove === a.dove && ARCHIVIO[k].bucket === a.bucket) delete ARCHIVIO[k];
+      });
       a.riconosciuta = RICONOSCIUTE[a.dove]; scriviArchivio();
       console.log("[clip] tabellone: " + a.dove.split("/").pop() + " e' " + fuori.scelto.nome +
                   " (" + (fuori.scelto.perche || []).join(", ") + ")");
