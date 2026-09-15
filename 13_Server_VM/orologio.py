@@ -27,7 +27,11 @@ from PIL import Image, ImageFilter
 TESSERACT = os.environ.get("COMOTV_TESSERACT", "tesseract")
 ORA = re.compile(r"(\d{1,3}):(\d{2})")
 PUNTI = re.compile(r"(?<!\d)(\d{1,2})\s*[-\u2013]\s*(\d{1,2})(?!\d)")
-SOLO_PUNTI = re.compile(r"^(\d{1,2})[-\u2013](\d{1,2})$")
+# "2-1", e anche "2\u00b71": fra le due cifre qualche grafica mette un punto o
+# un pallone al posto del trattino. Un separatore ci vuole comunque: senza,
+# il "21" dei minuti del cronometro diventerebbe un due a uno, e i due punti
+# di "30:41" un trenta a quarantuno.
+SOLO_PUNTI = re.compile(r"^(\d{1,2})[-\u2013\u00b7\u2022*](\d{1,2})$")
 
 
 def grigio(percorso):
@@ -262,15 +266,25 @@ def scatole_punteggio(targa):
     # primo caso il risultato sta a destra, nel secondo sta DENTRO. Non si
     # sceglie: si scorre una finestra da sinistra del cronometro fino a
     # qualche altezza piu' in la', e si prova a leggere in ognuna.
+    # ...e non tutte le grafiche stanno su una riga sola. Certe — le saudite,
+    # per dirne una — mettono il cronometro in un riquadrino SOPRA e la barra
+    # delle squadre sotto: il punteggio non e' a destra dell'orologio, e'
+    # sotto. Allora si guardano tre fasce (la riga del cronometro, quella
+    # sotto e quella sopra) e in quelle nuove si spazza anche a sinistra,
+    # perche' li' il punteggio sta in mezzo alla barra, non in coda.
     fuori = []
     passo = max(12, int(bh * 0.5))
-    fine = x + bw + int(bh * 6)
-    for larga in (1.0, 1.4, 2.0, 2.8):
-        w = max(20, int(bh * larga))
-        px = x
-        while px + w <= fine:
-            fuori.append((px, y, w, bh))
-            px += passo
+    for riga, da_sinistra in ((y, False), (y + bh, True), (y - bh, True)):
+        if riga < 0:
+            continue
+        inizio = x - int(bh * 6) if da_sinistra else x
+        fine = x + bw + int(bh * 6)
+        for larga in (1.0, 1.4, 2.0, 2.8):
+            w = max(20, int(bh * larga))
+            px = max(0, inizio)
+            while px + w <= fine:
+                fuori.append((px, riga, w, bh))
+                px += passo
     return fuori
 
 

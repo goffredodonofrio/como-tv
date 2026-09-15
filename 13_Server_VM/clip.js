@@ -471,12 +471,18 @@ function clipMarker(p) {
 //  alza in un secondo. Si misura il volume secondo per secondo e si tengono
 //  i picchi: non dicono CHE COSA e' successo, dicono DOVE guardare — che per
 //  quattromila partite senza una riga scritta e' gia' tutto.
-function volumeAlSecondo(via) {
+// Con "da" e "quanto" si ascolta una finestra invece di tutta la partita:
+// per puntare un gol bastano due minuti d'audio, non due ore — e il
+// magazzino e' della regia, non nostro.
+function volumeAlSecondo(via, da, quanto) {
+  const prima = ["-hide_banner", "-nostdin"];
+  if (da) prima.push("-ss", String(Math.max(0, Math.round(da))));
+  if (quanto) prima.push("-t", String(Math.round(quanto)));
   return new Promise((ok) => {
-    execFile(FFMPEG, ["-hide_banner", "-nostdin", "-i", via, "-vn",
+    execFile(FFMPEG, prima.concat(["-i", via, "-vn",
                       "-af", "aresample=8000,asetnsamples=8000,astats=metadata=1:reset=1," +
                              "ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-",
-                      "-f", "null", "-"],
+                      "-f", "null", "-"]),
       { timeout: 1800000, maxBuffer: 64 * 1024 * 1024 }, (e, so, se) => {
         if (e) return ok([]);
         const v = [];
@@ -877,6 +883,21 @@ function quelloCheSappiamo(r) {
     azioni.push(g);
     gol.push(allargaPerIlReplay(g, rec));
   });
+  // POI IL BOATO, per quello che il tabellone non ha messo al secondo.
+  // Vale per i gol delle partite senza lettura, e per le azioni che un
+  // tabellone non registra: un palo, un rosso, una parata.
+  const boa = (ARCHIVIO[rec] || {}).boati || [];
+  azioni.forEach((x) => {
+    if (x.tabellone) return;
+    if (!DA_BOATO.test(String(x.tipo || "") + " " + String(x.titolo || ""))) return;
+    const t = x.t !== undefined ? x.t : x.dentro + APP_PRE;
+    const b = boa.find((y) => y.t !== null && y.t !== undefined && Math.abs(y.stimato - t) <= 12);
+    if (!b) return;
+    x.spostato = Math.round(t - b.t);
+    x.t = b.t; x.boato = b.db;
+    const w = finestraGol(b.t, rec);
+    x.dentro = w.dentro; x.fuori = w.fuori; x.base = x.dentro;
+  });
   // con maniglie larghe due azioni vicine si sovrappongono: si sta piu' larghi
   // anche nel togliere i doppioni
   return { azioni: togliDoppioni(azioni, 45), gol: uniscoIGol(gol, rec), voce: voceScelta,
@@ -906,6 +927,7 @@ function tabellino(r) {
   //   minuto     -> sappiamo solo il minuto scritto: e' una stima
   const comeLoSappiamo = (t, x) => {
     if (x && x.tabellone) return "tabellone";
+    if (x && x.boato) return "boato";
     if (a && vicinoNella(a.gol, t)) return "cronometro";
     if (a && vicinoNella(a.replay, t)) return "cronometro";
     return "minuto";
@@ -930,7 +952,8 @@ function tabellino(r) {
       squadra: x.squadra || "", giocatore: x.giocatore || "",
       dettaglio: String(x.dettaglio || "").slice(0, 200),
       gol: !!g || !!x.tabellone, certezza: comeLoSappiamo(t, x),
-      tabellone: x.tabellone || "",
+      tabellone: x.tabellone || "", boato: x.boato || 0,
+      spostato: x.spostato === undefined ? 0 : x.spostato,
       tag: etichettaAzione(x.tipo, x.titolo),
       fonti: x.fonti && x.fonti.length ? x.fonti : [x.fonte || ""]
     };
@@ -4580,6 +4603,19 @@ const NON_E_LA_PARTITA = /clip[ _]?social|tifos|scarich|camere|iso[_ ]|intervist
 const E_LA_PARTITA = /partita[ _]intera|full[ _]match|cleanfeed/i;
 const VIDEO = /\.(mp4|mxf|mov|ts|m4v)$/i;
 
+// LA LINGUA STA SCRITTA NEL NOME, E VA CREDUTA. Gli export si chiamano
+// "FULL MATCH ENG", "FULL MATCH ITA", "[AUDIO ONLY]": quando la riga di
+// Airtable chiede una lingua e il file ne dichiara un'altra, quel file non
+// e' suo. Prima, non trovando niente col tag giusto, si ripiegava su
+// qualunque file del giorno: cosi' GENOA-COMO [ITA] apriva l'unico export
+// che c'era, che era in inglese — e chi montava se ne accorgeva ascoltando.
+// Meglio una riga senza materiale che una riga con il materiale di un'altra.
+const LINGUA_NEL_NOME = { "ITA": /\bITA\b/i, "ENG": /\bENG\b/i, "AUDIO ONLY": /\bAUDIO ?ONLY\b/i };
+function diceUnAltraLingua(testo, tag) {
+  if (!tag || !LINGUA_NEL_NOME[tag]) return false;
+  if (LINGUA_NEL_NOME[tag].test(testo)) return false;
+  return Object.keys(LINGUA_NEL_NOME).some((k) => k !== tag && LINGUA_NEL_NOME[k].test(testo));
+}
 function scegliMateriale(gruppo, tag) {
   const buoni = gruppo.file.filter((f) =>
     VIDEO.test(f.file) && (E_LA_PARTITA.test(f.dentro + " " + f.file) ||
@@ -4587,7 +4623,10 @@ function scegliMateriale(gruppo, tag) {
   if (!buoni.length) return null;
   const vuole = (f) => !tag || (f.dentro + " " + f.file).toUpperCase().indexOf(tag) >= 0;
   const conTag = buoni.filter(vuole);
-  const campo = conTag.length ? conTag : buoni;
+  const campo = conTag.length
+    ? conTag
+    : buoni.filter((f) => !diceUnAltraLingua(f.dentro + " " + f.file, tag));
+  if (!campo.length) return null;
 
   // 1) l'export "partita intera": un file solo, gia' pronto
   const intere = campo.filter((f) => E_LA_PARTITA.test(f.file) && !/cleanfeed/i.test(f.dentro));
@@ -5059,14 +5098,24 @@ async function archivioScandaglia(p) {
       if (kick !== null) conKickoff++;
       if (scelta.fonte === "intera" || scelta.fonte === "intero") intere++;
       agganciate++;
-      const orologioPrima = (ARCHIVIO[rec.id] || {}).orologio;
-      ARCHIVIO[rec.id] = { orologio: orologioPrima, bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
+      // QUELLO CHE E' COSTATO LETTURE NON SI RIFA' OGNI ORA. Il cronometro,
+      // il tabellone, i boati, i replay: sono ore di ffmpeg e di tesseract,
+      // e appartengono al MATERIALE. Finche' la riga apre la stessa cartella
+      // di prima se li tiene; se il materiale cambia vanno buttati, perche'
+      // parlano di un altro file.
+      const prima = ARCHIVIO[rec.id] || {};
+      const stessaRoba = prima.dove === meglio.dove && prima.bucket === bucket;
+      const letture = stessaRoba
+        ? { orologio: prima.orologio, tabellone: prima.tabellone, boati: prima.boati,
+            gol: prima.gol, replay: prima.replay, misurato: prima.misurato, stelle: prima.stelle }
+        : { orologio: prima.orologio };
+      ARCHIVIO[rec.id] = Object.assign(letture, { bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
         partita: f["Partita"] || "", competizione: f["Competizione"] || "",
         variante: "", giorno: meglio.giorno, dove: meglio.dove,
         // senza ora nel nome il calcio d'inizio non si sa: si parte da zero,
         // cioe' dall'inizio del file, e il cronometro lo corregge
         fonte: scelta.fonte, pezzi: pezzi, kickoff: kick === null && pezzi[0].da === 0 ? 0 : kick,
-        sicuro: punteggio >= 0.8 && scelta.fonte !== "unico", quando: f["Data | Orario"] };
+        sicuro: punteggio >= 0.8 && scelta.fonte !== "unico", quando: f["Data | Orario"] });
     }
   }
 
@@ -5083,10 +5132,14 @@ async function archivioScandaglia(p) {
   const chiaveDoppia = (g, t) => g + "|" + String(t || "").toUpperCase().replace(/\[[^\]]*\]|\(.*?\)|\b\d+\s*-\s*\d+\b/g, "").replace(/[^A-Z0-9]+/g, " ").trim();
   const linkate = {};
   Object.keys(ARCHIVIO).forEach((k) => { if (k.indexOf("s3:") !== 0) linkate[chiaveDoppia(ARCHIVIO[k].giorno, ARCHIVIO[k].partita)] = k; });
-  const orologiSoleS3 = {};
+  // anche le orfane si tengono le loro letture: l'id e' fatto dal percorso
+  // ed e' stabile, quindi si ritrovano a fine giro
+  const lettureSoleS3 = {};
   Object.keys(ARCHIVIO).forEach((k) => {
     if (k.indexOf("s3:") !== 0 || ARCHIVIO[k].bucket !== bucket) return;
-    if (ARCHIVIO[k].orologio) orologiSoleS3[k] = ARCHIVIO[k].orologio;   // l'id e' stabile: si ritrova
+    const v = ARCHIVIO[k];
+    lettureSoleS3[k] = { orologio: v.orologio, tabellone: v.tabellone, boati: v.boati,
+                         gol: v.gol, replay: v.replay, misurato: v.misurato, stelle: v.stelle };
     delete ARCHIVIO[k];
   });
   Object.keys(gruppi).forEach((k) => {
@@ -5161,11 +5214,11 @@ async function archivioScandaglia(p) {
       });
     }
     const id = "s3:" + crypto.createHash("sha1").update(gr.dove).digest("hex").slice(0, 14);
-    ARCHIVIO[id] = { orologio: orologiSoleS3[id], bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
+    ARCHIVIO[id] = Object.assign({}, lettureSoleS3[id], { bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
       partita: gr.partita.replace(/[_]+/g, " ").trim(), competizione: comp.replace(/[_]+/g, " "),
       variante: "", giorno: g, dove: gr.dove, fonte: scelta.fonte, pezzi: pezzi,
       kickoff: null, sicuro: false, quando: quando, soloS3: true,
-      candidati: candidatiSuoi, riconosciuta: RICONOSCIUTE[gr.dove] || undefined };
+      candidati: candidatiSuoi, riconosciuta: RICONOSCIUTE[gr.dove] || undefined });
     soleS3++;
   });
 
@@ -6838,6 +6891,97 @@ async function riconosciPartita(rec) {
     }
     return fuori;
   } finally { riconoscimentiAlLavoro.delete(rec); }
+}
+
+// ── IL BOATO COME PUNTATORE ───────────────────────────────────────────
+//
+//  Il minuto scritto negli appunti e quello di ESPN dicono il minuto, non
+//  il secondo: dentro ci stanno sessanta secondi di gioco, e il taglio
+//  puo' cadere prima che la palla parta o dopo che e' finita in rete.
+//  Lo stadio invece sa il secondo. Al gol il livello dell'audio sale di
+//  dieci-quindici decibel in un attimo, e quella salita e' l'unica cosa
+//  che succede esattamente quando succede il gol — prima del tabellone,
+//  che lo scrive otto secondi dopo, e prima del replay.
+//
+//  Non si ascolta tutta la partita: due minuti e mezzo attorno al minuto
+//  scritto, e dentro si cerca prima il colmo, poi la SALITA — il momento
+//  in cui il rumore ha cominciato a crescere, che e' il gol, mentre il
+//  colmo arriva qualche secondo dopo, quando il boato e' pieno.
+// La finestra non e' simmetrica: l'appunto si scrive DOPO, mai prima, e il
+// minuto di ESPN sta in fondo al suo minuto. Guardare novanta secondi
+// indietro e venti avanti copre il ritardo di chi scrive senza andare a
+// prendere il boato dell'azione successiva.
+const BOATO_PRIMA = 75, BOATO_DOPO = 25;
+const BOATO_MINIMO = 6;           // decibel sopra il solito: meno di cosi' non e' un boato
+async function boatoVicino(rec, tAsse) {
+  const a = ARCHIVIO[rec];
+  if (!a) return null;
+  a.boati = a.boati || [];
+  const gia = a.boati.find((x) => Math.abs(x.stimato - tAsse) <= 12);
+  if (gia) return gia;
+  const d = doveCade(a, Math.round(tAsse));
+  if (!d) return null;
+  const daFile = Math.max(0, d.secondi - BOATO_PRIMA);
+  const daAsse = tAsse - (d.secondi - daFile);
+  const regione = await s3Regione(a.bucket);
+  const via = firmaConRegione(regione, d.chiave, {}, 3600, a.bucket);
+  const v = await volumeAlSecondo(via, daFile, (d.secondi - daFile) + BOATO_DOPO);
+  const esito = { stimato: Math.round(tAsse), t: null, db: 0 };
+  if (v.length >= 40) {
+    const ordinati = v.slice().sort((x, y) => x - y);
+    const solito = ordinati[Math.floor(ordinati.length / 2)];
+    // IL PIU' VICINO, NON IL PIU' FORTE. In novanta secondi di partita i
+    // boati possono essere due — il gol e l'occasione di prima — e prendere
+    // il piu' alto porta l'appunto sull'azione sbagliata, a volte su quella
+    // di un altro appunto. Il minuto scritto sbaglia di poco: il boato
+    // giusto e' quello che gli sta piu' vicino, purche' sia un boato.
+    const picchi = picchiDiVolume(v, 0, BOATO_MINIMO, 25, 12);
+    const qui = d.secondi - daFile;
+    let colmo = -1, vicino = 1e9;
+    picchi.forEach((x) => {
+      const q = Math.abs(x.secondi - qui);
+      if (q < vicino) { vicino = q; colmo = x.secondi; }
+    });
+    const forza = colmo >= 0 ? v[colmo] - solito : 0;
+    if (colmo >= 0 && forza >= BOATO_MINIMO) {
+      // LA SALITA, NON IL COLMO. Il boato pieno arriva quando la palla e'
+      // gia' dentro da un pezzo — l'esultanza, il replay, la grafica. Il
+      // gol e' dove il rumore ha cominciato a salire: si torna indietro dal
+      // colmo finche' il livello sta sopra un terzo della salita, fino a
+      // quaranta secondi. Meglio qualche secondo prima che uno dopo: il
+      // taglio comincia comunque un po' avanti.
+      const soglia = solito + forza * 0.45;
+      let su = colmo;
+      for (let i = colmo; i >= Math.max(0, colmo - 30); i--) { if (v[i] < soglia) break; su = i; }
+      esito.t = Math.round(daAsse + su);
+      esito.db = Math.round(forza * 10) / 10;
+      esito.colmo = Math.round(daAsse + colmo);
+    }
+  }
+  a.boati.push(esito);
+  return esito;
+}
+// le righe che possono fare rumore: un cambio non lo fa, un gol si'
+const DA_BOATO = /gol|rete|rigore|espuls|rosso|traversa|palo|parat/i;
+// Punta col boato tutte le azioni rumorose di una partita. Quelle che il
+// tabellone ha gia' messo al secondo non si toccano: il tabellone e' una
+// prova, il boato e' un indizio forte.
+async function puntaBoati(rec) {
+  const a = ARCHIVIO[rec];
+  if (!a) throw new Error("questa partita non e' nell'indice dell'archivio");
+  const finto = { arch: { rec: rec, pezzo: 0, pezzi: a.pezzi, chiave: a.chiave }, durata: 0 };
+  const sap = quelloCheSappiamo(finto);
+  let cercati = 0, trovati = 0;
+  for (const x of sap.azioni) {
+    if (x.tabellone) continue;
+    if (!DA_BOATO.test(String(x.tipo || "") + " " + String(x.titolo || ""))) continue;
+    const t = x.t !== undefined ? x.t : x.dentro + APP_PRE;
+    cercati++;
+    const b = await boatoVicino(rec, t);
+    if (b && b.t !== null) trovati++;
+  }
+  if (cercati) { scriviArchivio(); console.log("[clip] boati: " + (a.partita || rec) + " → " + trovati + " su " + cercati + " azioni puntate"); }
+  return { cercati: cercati, trovati: trovati };
 }
 
 const OROLOGI_INSIEME = 2;          // due partite alla volta: ffmpeg e tesseract pesano poco, S3 aspetta
@@ -8838,6 +8982,33 @@ const AZIONI = {
     const nome = r.nome;
     if (!p.no) { archivioScandaglia({}).catch((e) => console.log("[clip] tabellone: " + e.message)); }
     return { ok: true, nome: p.no ? "" : nome };
+  },
+  // PUNTARE: prima il tabellone (che e' una prova), poi il boato (che e'
+  // un indizio al secondo). Le stesse cautele delle altre code: se la regia
+  // sta registrando o scrivendo sul magazzino, si aspetta.
+  "clip-archivio-punta": async (p) => {
+    const uno = async (rec) => {
+      const a = ARCHIVIO[rec];
+      if (!a) return null;
+      if (!a.tabellone) {
+        try { await leggiTabellone(rec); }
+        catch (e) { console.log("[clip] punta (" + (a.partita || rec) + "): tabellone no — " + e.message); }
+      }
+      try { return await puntaBoati(rec); }
+      catch (e) { console.log("[clip] punta (" + (a.partita || rec) + "): boati no — " + e.message); return null; }
+    };
+    if (p.tutte) {
+      const quali = Object.keys(ARCHIVIO).filter((k) => (ARCHIVIO[k].pezzi || []).length &&
+        (APPUNTI[k] || ESPN[k]) && !(ARCHIVIO[k].boati || []).length);
+      let fatte = 0, punti = 0;
+      for (const k of quali.slice(0, num(p.quante, 1, 200, 40))) {
+        if (registrandoDavvero() || laDirettaGira() || magazzinoOccupato()) break;
+        const r = await uno(k);
+        fatte++; punti += (r && r.trovati) || 0;
+      }
+      return { ok: true, partite: fatte, azioniPuntate: punti, restano: quali.length - fatte };
+    }
+    return { ok: true, esito: await uno(String(p.rec || "")) };
   },
   "clip-archivio-tabellone": async (p) => {
     const t = await leggiTabellone(String(p.rec || ""), !!p.rifai);
