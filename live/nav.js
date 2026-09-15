@@ -41,7 +41,8 @@
       ["tiri.html",                  "Mappa dei tiri"],
       ["passaggi.html",              "Mappa dei passaggi"],
       ["heatmap.html",               "Heatmap"],
-      ["precedenti.html",            "Precedenti e forma"]
+      ["precedenti.html",            "I precedenti"],
+      ["forma.html",                 "Come arrivano"]
     ]},
     { nome: "Editoriali", voci: [
       ["statistiche.html",           "Statistiche"],

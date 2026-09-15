@@ -13,7 +13,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Precedenti · Como TV</title>
+<title>Come arrivano · Como TV</title>
 <style>
   @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
   @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
@@ -138,10 +138,11 @@
 <div class="wrap">
   <header class="page">
     <div class="eyebrow">Como TV · Grafiche Live</div>
-    <h1>I precedenti</h1>
-    <div class="sub">Gli ultimi scontri diretti fra le due squadre, col bilancio contato
-      sulle partite. Vengono dal riassunto ESPN, lo stesso che serve le altre grafiche, e da lì
-      restano modificabili a mano, riga per riga. La sorella è <b>Come arrivano</b>.</div>
+    <h1>Come arrivano</h1>
+    <div class="sub">Le ultime cinque partite di ciascuna squadra, una colonna per parte:
+      esito, avversario, dove si è giocato e in quale competizione. Vengono dal riassunto ESPN, lo
+      stesso che serve le altre grafiche, e restano modificabili a mano. La sorella è <b>I
+      precedenti</b>.</div>
   </header>
 
   <div class="barra" id="labarra">
@@ -153,7 +154,7 @@
   <!-- il pannello verde-acqua lo costruisce formazioni-espn.js -->
   <div id="ufbar"></div>
 
-  <div id="stato">Scegli la partita qui sopra e premi <b>Prendi i precedenti</b>.</div>
+  <div id="stato">Scegli la partita qui sopra e premi <b>Prendi la forma</b>.</div>
   <div id="prevwrap" style="display:none;margin:14px 0 20px">
     <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
       <button id="btnPrevChiudi">Chiudi anteprima</button>
@@ -177,11 +178,13 @@
     </div>
   </div>
 
-  <div class="panel" id="panPrec">
-    <h2>I precedenti <small>dal più recente &mdash; il bilancio si conta da qui, non si copia</small></h2>
-    <div id="elencoPrec"><div class="vuoto">Ancora niente: prendi prima una partita.</div></div>
+  <div class="panel" id="panForma">
+    <h2>Le ultime cinque <small>l'ultima partita in alto</small></h2>
+    <div class="colonne">
+      <div><h3 id="titForA">Squadra di casa</h3><div id="elencoFa"><div class="vuoto">Ancora niente.</div></div></div>
+      <div><h3 id="titForB">Squadra ospite</h3><div id="elencoFb"><div class="vuoto">Ancora niente.</div></div></div>
+    </div>
   </div>
-
 </div>
 
 <script src="chiave.js"></script>
@@ -261,15 +264,15 @@
 
   // ── lo stato della pagina ────────────────────────────────────────────
   var SQ = { a: { n: "", l: "" }, b: { n: "", l: "" } };
-  var PREC = [];              // [{d, c, ca, ga, gb, os, via}]
+  var FOR = { a: [], b: [] }; // [{r, o, s, nota, via}]
 
   // ── il pannello ESPN ────────────────────────────────────────────────
   function pannelloEspn() {
     var box = el("ufbar");
     if (!box || !window.PartitaEspn) return;
     PartitaEspn.pannello(box, {
-      titolo: "Scontri diretti dal riassunto ESPN",
-      tasto: "Prendi i precedenti",
+      titolo: "Ultime cinque dal riassunto ESPN",
+      tasto: "Prendi la forma",
       prendi: function (d, part, comp, nota) {
         var comp0 = ((d.header || {}).competitions || [{}])[0] || {};
         var chi = comp0.competitors || [];
@@ -284,103 +287,109 @@
         el("nb").value = SQ.b.n;
         if (!el("e").value.trim()) el("e").value = (comp.nome || "").toUpperCase();
 
-        PREC = precedentiDa(d);
-        disegnaPrec();
+        FOR.a = formaDa(d, idA);
+        FOR.b = formaDa(d, idB);
+        disegnaForma();
 
-        nota(PREC.length ? "Presi " + PREC.length +
-                           (PREC.length === 1 ? " precedente." : " precedenti.")
-                         : "<b>Nessun precedente</b> per questa partita.");
+        nota("Prese le ultime " + FOR.a.length + " di " + SQ.a.n +
+             " e le ultime " + FOR.b.length + " di " + SQ.b.n + ".");
         stato("ok", "Dati presi da ESPN. Le righe restano modificabili qui sotto.");
       }
     });
   }
 
-  // I precedenti: ESPN li da' dal piu' recente. Il risultato si legge dai
-  // gol e non dal campo "winner", che per i pareggi e' falso da tutte e due
-  // le parti e non distingue un 1-1 da una partita mai giocata.
-  function precedentiDa(d) {
-    var ss = (d.seasonseries || []).filter(function (s) { return s.type === "head-to-head"; })[0]
-          || (d.seasonseries || [])[0];
-    return (((ss || {}).events) || []).filter(function (e) {
-      return e.status === "post";        // le prossime non sono precedenti
-    }).map(function (e) {
-      var c = e.competitors || [];
-      var h = c.filter(function (x) { return x.homeAway === "home"; })[0] || {};
-      var a = c.filter(function (x) { return x.homeAway === "away"; })[0] || {};
+  // Le ultime cinque, dalla piu' recente. Il campo "score" di ESPN qui e'
+  // inservibile — e' scritto col vincitore davanti, non con la squadra di
+  // casa — quindi il punteggio si ricostruisce dai due gol, girato dalla
+  // parte della squadra di cui stiamo raccontando la forma.
+  function formaDa(d, idSq) {
+    var blocco = (d.lastFiveGames || []).filter(function (x) {
+      return String((x.team || {}).id || "") === String(idSq);
+    })[0];
+    return (((blocco || {}).events) || []).map(function (g) {
+      var inCasa = String(g.homeTeamId || "") === String(idSq);
+      var miei = inCasa ? g.homeTeamScore : g.awayTeamScore;
+      var suoi = inCasa ? g.awayTeamScore : g.homeTeamScore;
+      var r = g.gameResult === "W" ? "V" : (g.gameResult === "L" ? "P" : "N");
+      var comp = competizione(g.leagueName || g.competitionName || g.leagueAbbreviation);
       return {
-        d: quando(e.date),
-        c: competizione(e.competitionName),
-        ca: (h.team || {}).displayName || "",
-        ga: h.score == null ? "" : String(h.score),
-        gb: a.score == null ? "" : String(a.score),
-        os: (a.team || {}).displayName || "",
+        r: r,
+        o: (g.opponent || {}).displayName || "",
+        s: [miei, suoi].join("-"),
+        nota: [inCasa ? "in casa" : "in trasferta", comp, giorno(g.gameDate)]
+                .filter(Boolean).join(" · "),
         via: false
       };
-    }).slice(0, 5);
+    }).reverse().slice(0, 5);
   }
 
   // ── le tabelle ──────────────────────────────────────────────────────
   function campo(valore, w) {
     return '<input type="text" value="' + esc(valore) + '"' + (w ? ' style="width:' + w + '"' : "") + '>';
   }
-  function disegnaPrec() {
-    var box = el("elencoPrec");
-    if (!PREC.length) {
-      box.innerHTML = '<div class="vuoto">Nessun precedente: o non si sono mai incontrate, ' +
-        'o ESPN non li tiene per questa competizione.</div>';
-      return;
-    }
-    var h = '<table class="tabella"><tr><th>Quando</th><th>Competizione</th><th>In casa</th>' +
-            '<th style="text-align:center">Gol</th><th>Ospite</th><th></th></tr>';
-    PREC.forEach(function (r, i) {
-      h += '<tr data-i="' + i + '"' + (r.via ? ' class="spento"' : "") + '>' +
-        '<td style="width:150px">' + campo(r.d) + '</td>' +
-        '<td style="width:190px">' + campo(r.c) + '</td>' +
-        '<td>' + campo(r.ca) + '</td>' +
-        '<td class="gol" style="width:120px;white-space:nowrap">' +
-          '<span style="display:inline-flex;gap:6px">' + campo(r.ga, "48px") + campo(r.gb, "48px") + '</span></td>' +
-        '<td>' + campo(r.os) + '</td>' +
-        '<td class="via"><button type="button">' + (r.via ? "rimetti" : "togli") + '</button></td>' +
-        '</tr>';
-    });
-    box.innerHTML = h + "</table>";
-    box.querySelectorAll("tr[data-i]").forEach(function (tr) {
-      var i = +tr.dataset.i;
-      var ing = tr.querySelectorAll("input");
-      var campi = ["d", "c", "ca", "ga", "gb", "os"];
-      ing.forEach(function (inp, k) {
-        inp.addEventListener("input", function () { PREC[i][campi[k]] = inp.value; });
+  function disegnaForma() {
+    el("titForA").textContent = SQ.a.n || "Squadra di casa";
+    el("titForB").textContent = SQ.b.n || "Squadra ospite";
+    [["a", "elencoFa"], ["b", "elencoFb"]].forEach(function (par) {
+      var lato = par[0], box = el(par[1]), righe = FOR[lato];
+      if (!righe.length) {
+        box.innerHTML = '<div class="vuoto">ESPN non da\' le ultime partite di questa squadra.</div>';
+        return;
+      }
+      var h = '<table class="tabella"><tr><th style="width:70px">Esito</th><th>Avversario</th>' +
+              '<th style="width:86px">Gol</th><th></th></tr>';
+      righe.forEach(function (g, i) {
+        h += '<tr data-i="' + i + '"' + (g.via ? ' class="spento"' : "") + '>' +
+          '<td><select>' +
+            ['V', 'N', 'P'].map(function (x) {
+              return '<option value="' + x + '"' + (g.r === x ? " selected" : "") + '>' + x + '</option>';
+            }).join("") + '</select></td>' +
+          '<td>' + campo(g.o) + '<div style="margin-top:5px">' + campo(g.nota) + '</div></td>' +
+          '<td class="gol">' + campo(g.s) + '</td>' +
+          '<td class="via"><button type="button">' + (g.via ? "rimetti" : "togli") + '</button></td>' +
+          '</tr>';
       });
-      tr.querySelector("button").addEventListener("click", function () {
-        PREC[i].via = !PREC[i].via;
-        disegnaPrec();
+      box.innerHTML = h + "</table>";
+      box.querySelectorAll("tr[data-i]").forEach(function (tr) {
+        var i = +tr.dataset.i;
+        var sel = tr.querySelector("select");
+        sel.addEventListener("change", function () { FOR[lato][i].r = sel.value; });
+        var ing = tr.querySelectorAll("input");
+        var campi = ["o", "nota", "s"];
+        ing.forEach(function (inp, k) {
+          inp.addEventListener("input", function () { FOR[lato][i][campi[k]] = inp.value; });
+        });
+        tr.querySelector("button").addEventListener("click", function () {
+          FOR[lato][i].via = !FOR[lato][i].via;
+          disegnaForma();
+        });
       });
     });
   }
 
-  el("t").value = "I PRECEDENTI";
+  el("t").value = "COME ARRIVANO";
 
   // ── il pacchetto ────────────────────────────────────────────────────
   function vive(r) { return !r.via; }
+  function lato(righe) {
+    return righe.filter(vive).map(function (g) {
+      return { r: g.r, o: g.o, s: g.s, dv: g.nota };
+    });
+  }
   function dati() {
     return {
       e: el("e").value.trim(),
-      t: el("t").value.trim() || "I PRECEDENTI",
+      t: el("t").value.trim() || "COME ARRIVANO",
       a: { n: el("na").value.trim(), l: SQ.a.l },
       b: { n: el("nb").value.trim(), l: SQ.b.l },
-      p: PREC.filter(vive).map(function (r) {
-        // chi ha vinto si decide qui, sui gol scritti nella riga: cosi' vale
-        // anche il risultato corretto a mano
-        var na = parseInt(r.ga, 10), nb = parseInt(r.gb, 10);
-        var w = 0;
-        if (isFinite(na) && isFinite(nb) && na !== nb) w = na > nb ? 1 : 2;
-        return { d: r.d, c: r.c, ca: r.ca, ga: r.ga, gb: r.gb, os: r.os, w: w };
-      })
+      fa: lato(FOR.a), fb: lato(FOR.b)
     };
   }
   function valido(d) {
     if (!d.a.n || !d.b.n) { stato("err", "Servono i nomi di tutte e due le squadre."); return false; }
-    if (!d.p.length) { stato("err", "Non resta nessun precedente da mettere in grafica."); return false; }
+    if (!(d.fa.length + d.fb.length)) {
+      stato("err", "Non resta nessuna partita da mettere in grafica."); return false;
+    }
     return true;
   }
 
@@ -397,7 +406,7 @@
     var d = dati();
     if (!valido(d)) return;
     el("prevwrap").style.display = "block";
-    el("prev").src = "precedenti-vmix.html?d=" + b64url(d) + "&n=" + Date.now();
+    el("prev").src = "forma-vmix.html?d=" + b64url(d) + "&n=" + Date.now();
     adattaPrev();
     el("prevwrap").scrollIntoView({ behavior: "smooth", block: "nearest" });
     stato("", "Anteprima aggiornata.");
@@ -406,7 +415,7 @@
   el("btnRegia").addEventListener("click", function () {
     var d = dati();
     if (!valido(d)) return;
-    var proposta = ("PRECEDENTI " + d.a.n + " - " + d.b.n).toUpperCase();
+    var proposta = ("COME ARRIVANO " + d.a.n + " - " + d.b.n).toUpperCase();
     var titolo = window.prompt("Nome in scaletta di regia:", proposta);
     if (titolo === null) return;
     el("stato").innerHTML = '<span>Invio a ' + Destinazione.dove() + '&hellip;</span>' +
@@ -415,7 +424,7 @@
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(Object.assign({ token: TOKEN }, Destinazione.corpo({
-                             grafica: "precedenti",
+                             grafica: "comearrivano",
                              titolo: titolo.trim() || proposta, dati: d })))
     })
       .then(function (r) { return r.json(); })
