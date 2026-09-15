@@ -32,6 +32,7 @@
   var VOCI = [
     ["../index.html",              "Home"],
     ["classifiche.html",           "Catalogo"],
+    ["vademecum.html",             "Vademecum"],
     { nome: "Partita", voci: [
       ["formazioni-premium.html",    "Formazioni Premium con foto"],
       ["formazioni-premium.html?maglie=1", "Formazioni Premium solo maglie"],
