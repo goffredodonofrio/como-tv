@@ -4898,7 +4898,7 @@ async function archivioScandaglia(p) {
       });
       if (!meglio || punteggio < 0.5) {
         if (candidati.length) orfane.push(f["Partita"] + " (" +
-          new Date(quando).toISOString().slice(0, 10) + ")");
+          new Date(quando).toISOString().slice(0, 16).replace("T", " ") + ")");
         return;
       }
       const tag = (/\[([A-Z]{2,4})\]/.exec(String(f["Partita"] || "")) || [])[1] || "";
