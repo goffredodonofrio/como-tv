@@ -40,7 +40,8 @@
       ["marcatori.html",             "Marcatori"],
       ["tiri.html",                  "Mappa dei tiri"],
       ["passaggi.html",              "Mappa dei passaggi"],
-      ["heatmap.html",               "Heatmap"]
+      ["heatmap.html",               "Heatmap"],
+      ["precedenti.html",            "Precedenti e forma"]
     ]},
     { nome: "Editoriali", voci: [
       ["statistiche.html",           "Statistiche"],
