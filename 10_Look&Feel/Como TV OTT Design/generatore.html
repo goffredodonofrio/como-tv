@@ -849,6 +849,18 @@ function intEventTitle(x,y1,y2,ss,e,gid){
  return AT(x,y1,e.a,{s:ss,w:400,fill:C.ivory,ls:1})
   +(e.b?AT(x,y2,e.b,{s:ss,w:800,fill:'url(#'+gid+')'}):'');
 }
+// Titolo partita su UNA riga: serve quando sotto c'e' la firma grande, che
+// si prende l'altezza. Stessi tre pezzi del titolo su due righe — casa in
+// avorio, la parola in mezzo piccola in oro, ospite in oro sfumato — messi
+// in fila invece che incolonnati.
+function intMatchLine(x,y,s,vsS,home,away,gid,etichetta){
+ var t=(etichetta===undefined?'vs':String(etichetta)).trim();
+ var vsTxt=t?(t+(/[.:]$/.test(t)?'':'.')+' '):'';
+ var sp=R(s*0.26),hW=R(estW(up(home),s,1)),vW=t?R(estW(vsTxt,vsS,1)):0;
+ return AT(x,y,home,{s:s,w:400,fill:C.ivory,ls:1})
+  +(t?AT(x+hW+sp,y,vsTxt,{s:vsS,w:400,fill:C.gold,ls:1}):'')
+  +AT(x+hW+sp+vW,y,away,{s:s,w:800,fill:'url(#'+gid+')'});
+}
 function intMatchTitle(x,y1,y2,ss,vsS,home,away,gid,etichetta){
  var t=(etichetta===undefined?'vs':String(etichetta)).trim();
  var vsTxt=t?(t+(/[.:]$/.test(t)?'':'.')+' '):'',vsW=t?R(estW(vsTxt,vsS,1)):0;
@@ -869,41 +881,64 @@ function intBottomScrimStrong(gid){return '<linearGradient id="'+gid+'" x1="0" y
 
 // Landscape 16:9 — testo grande, la foto e' un elemento secondario (velo
 // piu' coprente e piu' esteso di iPortrait).
+// Queste grafiche si disegnano a 1920 e si guardano a 180: nella fila di
+// anteprime della piattaforma la card e' larga un decimo dell'immagine vera, e
+// li' sotto i 9-10 pixel reali non si legge piu' niente. La firma in Abril
+// corsivo oro al 4,5% dell'altezza ci arrivava a 4 pixel e spariva — proprio
+// lei, che nell'intervista e' l'informazione che fa cliccare.
+// Quindi, quando c'e' una firma, comanda la firma: Mazzard ExtraBold
+// maiuscolo in avorio, grande quanto serve. La partita sale sopra, su UNA
+// riga in Abril: resta la firma della famiglia, non e' piu' il titolo. Velo
+// pieno, perche' il blocco e' cresciuto.
+// Senza firma non c'e' niente da mettere in risalto e resta il titolo grande
+// di prima, su due righe, col velo leggero.
 function iLandscape(W,H,p,I,A){
  var M=R(W*0.032),bm=R(H*0.065);
  var home=p.home||'',away=p.away||'',nm=p.intName||'';
- // Il protagonista di un'intervista e' CHI parla, non dove: la firma cresce
- // della meta' e il blocco partita/evento scende di poco meno di un terzo.
- // Prima erano quasi uguali e si contendevano l'occhio.
- var nameS=R(H*0.045),cursorY=H-bm,nameY=null;
- if(nm){nameY=cursorY;cursorY-=R(nameS*2.0);}
- var ss=R(H*0.062),vsS=R(H*0.026),titleY2=cursorY,titleY1=titleY2-R(ss*0.85);
  var ev=intEvento(p);
- // Velo leggero: il velo forte serviva a reggere il blocco di citazione, che
- // occupava mezza grafica. Con due sole righe la foto puo' tornare a vedersi.
+ if(nm){
+  var nameS=ytFit(up(nm),R(H*0.089),-1,W-2*M),nameY=H-bm;
+  var mS=R(H*0.0445),mvS=R(H*0.024),mY=nameY-R(nameS*1.28);
+  return '<defs>'+intBottomScrimStrong('ilS')+goldGrad('ilG')+'</defs>'+GPHOTO(W,H,A,I)
+   +'<rect width="'+W+'" height="'+H+'" fill="url(#ilS)" pointer-events="none"/>'
+   +(p.showLogo===false?'':brandMark(A,M,R(H*0.047),R(H*0.10)))
+   +(p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
+   +G('t-title',A,ev?AT(M,mY,[ev.a,ev.b].filter(Boolean).join(' '),{s:mS,w:400,fill:C.ivory,ls:1})
+                   :intMatchLine(M,mY,mS,mvS,home,away,'ilG',p.vsLabel))
+   +G('t-tag',A,T(M,nameY,nm,{s:nameS,w:800,fill:C.ivory,ls:-1}));
+ }
+ var ss=R(H*0.062),vsS=R(H*0.026),titleY2=H-bm,titleY1=titleY2-R(ss*0.85);
  return '<defs>'+intBottomScrim('ilS')+goldGrad('ilG')+'</defs>'+GPHOTO(W,H,A,I)
   +'<rect width="'+W+'" height="'+H+'" fill="url(#ilS)" pointer-events="none"/>'
   +(p.showLogo===false?'':brandMark(A,M,R(H*0.047),R(H*0.10)))
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
   +G('t-title',A,ev?intEventTitle(M,titleY1,titleY2,ss,ev,'ilG')
-                  :intMatchTitle(M,titleY1,titleY2,ss,vsS,home,away,'ilG',p.vsLabel))
-  +(nm?G('t-tag',A,AT(M,nameY,'— '+nm,{s:nameS,w:400,fill:C.gold,ls:1})):'');
+                  :intMatchTitle(M,titleY1,titleY2,ss,vsS,home,away,'ilG',p.vsLabel));
 }
 // Portrait 2:3 — stessa impaginazione, proporzioni sulla larghezza.
 function iPortrait(W,H,p,I,A){
  var M=R(W*0.072),bm=R(H*0.045);
  var home=p.home||'',away=p.away||'',nm=p.intName||'';
- var nameS=R(W*0.045),cursorY=H-bm,nameY=null;
- if(nm){nameY=cursorY;cursorY-=R(nameS*2.0);}
- var ss=R(W*0.053),vsS=R(W*0.023),titleY2=cursorY,titleY1=titleY2-R(ss*0.85);
  var ev=intEvento(p);
+ if(nm){
+  var nameS=ytFit(up(nm),R(W*0.085),-1,W-2*M),nameY=H-bm;
+  var mS=R(W*0.042),mvS=R(W*0.023),mY=nameY-R(nameS*1.28);
+  return '<defs>'+intBottomScrimStrong('ipS')+goldGrad('ipG')+'</defs>'+GPHOTO(W,H,A,I)
+   +'<rect width="'+W+'" height="'+H+'" fill="url(#ipS)" pointer-events="none"/>'
+   +(p.showLogo===false?'':brandMark(A,M,R(H*0.03),R(H*0.055)))
+   +(p.live?G('live',A,livePill(W-M-176,R(H*0.03))):'')
+   +G('t-title',A,ev?AT(M,mY,[ev.a,ev.b].filter(Boolean).join(' '),{s:mS,w:400,fill:C.ivory,ls:1})
+                   :intMatchLine(M,mY,mS,mvS,home,away,'ipG',p.vsLabel))
+   +G('t-tag',A,T(M,nameY,nm,{s:nameS,w:800,fill:C.ivory,ls:-1}))
+   +hair(W,H,H-5);
+ }
+ var ss=R(W*0.053),vsS=R(W*0.023),titleY2=H-bm,titleY1=titleY2-R(ss*0.85);
  return '<defs>'+intBottomScrim('ipS')+goldGrad('ipG')+'</defs>'+GPHOTO(W,H,A,I)
   +'<rect width="'+W+'" height="'+H+'" fill="url(#ipS)" pointer-events="none"/>'
   +(p.showLogo===false?'':brandMark(A,M,R(H*0.03),R(H*0.055)))
   +(p.live?G('live',A,livePill(W-M-176,R(H*0.03))):'')
   +G('t-title',A,ev?intEventTitle(M,titleY1,titleY2,ss,ev,'ipG')
                   :intMatchTitle(M,titleY1,titleY2,ss,vsS,home,away,'ipG',p.vsLabel))
-  +(nm?G('t-tag',A,AT(M,nameY,'— '+nm,{s:nameS,w:400,fill:C.gold,ls:1})):'')
   +hair(W,H,H-5);
 }
 // Banner mid (1506×412) — troppo bassa per il blocco citazione. Se c'e' una
@@ -4195,7 +4230,7 @@ function prefRaccogli(){
   Object.keys(a).forEach(function(k){if(k!=='photo')o[k]=a[k];});
   if(Object.keys(o).length)adj[it.key]=o;
  });
- return {versione:3,mirinoAcceso:MIRON,mirino:MIRUSER,elementi:adj};
+ return {versione:4,mirinoAcceso:MIRON,mirino:MIRUSER,elementi:adj};
 }
 // Gli spostamenti salvati sono scarti rispetto alla posizione di fabbrica: se
 // quella posizione cambia perche' cambia il disegno, lo scarto vecchio sposta
@@ -4204,9 +4239,13 @@ function prefRaccogli(){
 // firma sopra la citazione, mentre un formato con lo STESSO disegno ma senza
 // spostamenti salvati (banner-top) restava corretto. Le regolazioni salvate
 // prima di quel cambio vengono quindi ignorate per i soli formati Interviste.
+// E' successo una seconda volta col passaggio alla firma grande in Mazzard:
+// titolo e firma si sono scambiati peso e posizione, quindi la soglia sale a
+// 4. Chi aveva spostato a mano qualcosa nelle Interviste lo ritrova di
+// fabbrica, che e' meglio che ritrovarlo fuori posto.
 function prefApplica(d){
  if(!d)return false;
- var vecchie=(d.versione||1)<2;
+ var vecchie=(d.versione||1)<4;
  if(typeof d.mirinoAcceso==='boolean')MIRON=d.mirinoAcceso;
  if(d.mirino&&typeof d.mirino==='object')MIRUSER=d.mirino;
  if(d.elementi)Object.keys(d.elementi).forEach(function(k){
