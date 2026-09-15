@@ -1227,6 +1227,12 @@
   .arch .q{color:var(--fumo);font-size:10px;font-variant-numeric:tabular-nums;flex:none;width:44px;}
   .arch .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;}
   .arch .k{color:var(--fumo);font-size:9px;letter-spacing:.1em;flex:none;}
+  #barraForse{position:fixed;left:50%;transform:translateX(-50%);bottom:74px;z-index:60;display:flex;align-items:center;gap:10px;
+    padding:9px 12px;border-radius:9px;background:#151515;border:1px solid rgba(201,162,75,.55);box-shadow:0 8px 26px rgba(0,0,0,.55);}
+  #barraForse .t{font-size:12px;color:#E6E6E6;}
+  #barraForse .t b{color:var(--oro);}
+  #barraForse .t i{display:block;font-style:normal;font-size:10px;color:var(--fumo);margin-top:2px;}
+  #barraForse button{flex:none;}
   .archPiu{font-size:11px;color:var(--gold-deep);cursor:pointer;padding:6px;font-weight:700;}
 
   button.b{font-family:'Mazzard',sans-serif;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
@@ -6597,6 +6603,36 @@
   // Il video non e' qui: sta in un secchio S3 da sette giga. Non lo si
   // scarica — si chiede un indirizzo firmato e lo si apre al secondo
   // giusto, che e' l'unica cosa che interessa.
+  // CHI DECIDE E' UNA PERSONA. Il tabellone propone un nome per le
+  // registrazioni senza titolo: il ponte non lo usa finche' qualcuno non
+  // dice di si'. La domanda si fa qui, con la partita aperta davanti —
+  // cosi' la risposta si da' guardando il video, non fidandosi.
+  function chiediForse(rec) {
+    var vecchia = el("barraForse"); if (vecchia) vecchia.remove();
+    var p = ARCH_LISTA.filter(function (x) { return x.rec === rec; })[0];
+    if (!p || !p.forse) return;
+    var b = document.createElement("div"); b.id = "barraForse";
+    b.innerHTML = '<span class="t">Il tabellone dice: <b>' + String(p.forse.nome).replace(/</g, "") + '</b>' +
+      '<i>' + ((p.forse.perche || []).join(", ") || "poco") + '</i></span>';
+    var si = document.createElement("button"); si.className = "b oro"; si.textContent = "\u00c8 questa";
+    var no = document.createElement("button"); no.className = "b"; no.textContent = "No";
+    var poi = document.createElement("button"); poi.className = "b"; poi.textContent = "Dopo";
+    si.addEventListener("click", function () {
+      manda({ tipo:"clip-archivio-conferma", rec: rec }).then(function (d) {
+        p.forse = null; p.titolo = d.nome || p.titolo; b.remove();
+        dice("Segnata come " + (d.nome || "") + " \u00b7 l'indice si rifa\u0300 da solo", true);
+      }).catch(function (e) { dice(e.message); });
+    });
+    no.addEventListener("click", function () {
+      manda({ tipo:"clip-archivio-conferma", rec: rec, no: 1 }).then(function () {
+        p.forse = null; b.remove(); dice("Va bene: resta senza nome", true);
+      }).catch(function (e) { dice(e.message); });
+    });
+    poi.addEventListener("click", function () { b.remove(); });
+    b.appendChild(si); b.appendChild(no); b.appendChild(poi);
+    document.body.appendChild(b);
+  }
+
   function apriDaArchivio(rec, dove, nome, pezzo) {
     dice("Apro dall'archivio\u2026");
     manda({ tipo: "clip-archivio-apri", rec: rec, pezzo: pezzo || 0 }).then(function (d) {
@@ -6627,6 +6663,7 @@
         // arrivato niente. Si dice che e' aperta, e da dove.
         dice(d.giaAperta ? "Gi\u00e0 fra i contenuti"
              : "Aperta dal magazzino \u00b7 si legge di l\u00e0, senza copiarla", true);
+        chiediForse(rec);
         // SCELTA LA PARTITA, SI SCEGLIE COSA MONTARE. Prima si aprivano da
         // sole nove sequenze decise da una tabella di parole chiave; adesso
         // si apre la lista di quello che sappiamo e si spunta. Il montaggio
@@ -7067,7 +7104,13 @@
           if (visti[p.rec]) return;
           voci.push({ quando: p.quando, titolo: p.titolo, rec: p.rec, arch: p, futura: false });
         });
-        voci = voci.filter(function (v) { return v.arch && v.arch.intera !== false && Date.parse(v.quando) <= Date.now(); });
+        // LE SENZA NOME CI SONO LO STESSO. La regola "solo le partite intere"
+        // le teneva fuori: nessuno le ha ancora misurate, quindi per la
+        // tendina non erano intere — e cosi' le uniche che hanno bisogno di
+        // un occhio erano le uniche che non si vedevano.
+        voci = voci.filter(function (v) {
+          return v.arch && (v.arch.intera !== false || v.arch.soloS3) && Date.parse(v.quando) <= Date.now();
+        });
         // una cartella S3 con una data nel futuro e' un errore di battitura nel
         // nome (20270729 per 20250729): va in fondo, segnata, non in cima
         voci.forEach(function (v) { if (v.arch && Date.parse(v.quando) > Date.now()) v.sospetta = true; });
@@ -7094,7 +7137,11 @@
           conVideo++;
           // una partita si scrive in un modo solo: MAIUSCOLO, SQUADRA-SQUADRA
           var nome = String(v.titolo).toUpperCase().replace(/\s+VS\.?\s+/g, "-").replace(/\s*-\s*/g, "-").replace(/\s+/g, " ").trim();
-          o.textContent = dataOpz(v.quando) + "  " + nome;
+          // IL TABELLONE HA UN SOSPETTO. La registrazione non ha nome, ma
+          // leggendo punteggio e sigle una partita di quel giorno torna
+          // meglio delle altre: si scrive qui di fianco, come un forse.
+          o.textContent = dataOpz(v.quando) + "  " + nome +
+            (v.arch && v.arch.forse ? "   \u00b7 forse " + v.arch.forse.nome : "");
           o.dataset.arch = v.rec; o.dataset.parti = v.arch.pezzi || 1;
           o.dataset.titolo = nome;
           sel.appendChild(o);

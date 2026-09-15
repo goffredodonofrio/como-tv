@@ -4287,7 +4287,11 @@ function elencaCartella(radice, prefisso, delimitatore) {
     let voci = [];
     try { voci = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
     voci.forEach((v) => {
-      if (v.name.startsWith(".") || v.name === "#recycle" || v.name === "@eaDir") return;
+      // il cestino non e' archivio: la Synology lo chiama "#recycle", la
+      // QNAP "@Recycle". Una partita buttata via tornava in elenco come le
+      // altre, e per giunta illeggibile
+      if (v.name.startsWith(".") || v.name === "#recycle" || v.name === "@eaDir" ||
+          v.name.toLowerCase() === "@recycle") return;
       const k = rel ? rel + "/" + v.name : v.name;
       if (v.isDirectory()) {
         if (delimitatore && k.startsWith(prefisso)) { cartelle.add(k + "/"); return; }
@@ -4390,6 +4394,27 @@ function oraNelNome(file) {
   if (!tutte || !tutte.length) return null;
   const p = tutte[tutte.length - 1].split("-");
   return { h: +p[0], m: +p[1], s: +p[2] };
+}
+// il giorno com'e' in Italia, AAAAMMGG: l'ISO di Airtable e' in UTC, e a
+// mezzanotte e mezza di Roma e' ancora il giorno prima
+function giornoRoma(ms) {
+  const s = new Date(ms).toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
+  return s.replace(/-/g, "");
+}
+// il numero del giorno, per sottrarre due date senza pensare ai mesi
+function giornoNumero(g) {
+  return Math.round(Date.UTC(+g.slice(0, 4), +g.slice(4, 6) - 1, +g.slice(6, 8)) / 86400000);
+}
+// LA DATA SCRITTA NEL NOME, non il giorno della partita: nomeVmix arretra
+// di un giorno i file aperti prima delle sei, perche' quella e' la notte
+// della partita di ieri. Qui serve il giorno vero del calendario, se no la
+// registrazione delle cinque del mattino cerca i candidati ventiquattr'ore
+// piu' indietro e non ne trova nessuno.
+function dataNelNome(file) {
+  const m = /-\s*(\d{1,2})\s+([a-z\u00e0-\u00f9]+)\s+(\d{4})\s*-\s*\d{2}-\d{2}-\d{2}/i.exec(String(file));
+  const mese = m ? MESI_IT[m[2].toLowerCase()] : 0;
+  if (!mese) return null;
+  return m[3] + String(mese).padStart(2, "0") + String(+m[1]).padStart(2, "0");
 }
 function minutiRoma(ms) {
   const s = new Date(ms).toLocaleString("en-GB", { timeZone: "Europe/Rome", hour12: false });
@@ -4821,6 +4846,29 @@ function rinominaMaterialeArchivio() {
   if (n) { scrivi(); annuncia(0, "clip"); }
   return n;
 }
+// ── CHI GIOCA, QUANDO IL NOME NON LO DICE ─────────────────────────────
+//
+//  Meta' dei file dell'archivio non dice che partita e': si chiamano
+//  "MultiCorder3 - Output 1 - 01 settembre 2026 - 07-26-43.mp4". Il giorno e
+//  l'ora restringono il campo a due o tre partite — Como TV ne registra
+//  parecchie in parallelo — ma non lo chiudono. Il tabellone in
+//  sovrimpressione invece dice chi gioca e come sta finendo.
+//
+//  Quello che si decide resta scritto qui, per gruppo di file: lo scandaglio
+//  lo rilegge e aggancia quella partita a quel materiale, senza rifare la
+//  lettura ogni volta.
+const RICONOSCI_PY = path.join(__dirname, "riconosci.py");
+let RICONOSCIUTE = {};
+function fileRiconosciute() { return path.join(DIR, "riconosciute.json"); }
+function leggiRiconosciute() {
+  try { RICONOSCIUTE = JSON.parse(fs.readFileSync(fileRiconosciute(), "utf8")) || {}; }
+  catch (e) { RICONOSCIUTE = {}; }
+}
+function scriviRiconosciute() {
+  try { fs.writeFileSync(fileRiconosciute(), JSON.stringify(RICONOSCIUTE)); }
+  catch (e) { console.log("[clip] riconoscimenti non salvati: " + e.message); }
+}
+
 function fileArchivio() { return path.join(DIR, "archivio.json"); }
 function leggiArchivio() {
   try { ARCHIVIO = JSON.parse(fs.readFileSync(fileArchivio(), "utf8")) || {}; }
@@ -4850,6 +4898,18 @@ async function archivioScandaglia(p) {
   const giorni = num(p.giorni, 1, 3650, 400);
   const limite = Date.now() - giorni * 86400000;
   const minimo = num(p.minimoMB, 1, 100000, 700) * 1000000;
+
+  // I minuti misurati appartengono al FILE, non alla partita: si tengono da
+  // parte e si rimettono, se no ogni giro dell'indice li butta e bisogna
+  // rimisurare ventiduemila file (e rifare la scelta del materiale).
+  // SI SEGNANO ADESSO, PRIMA DI TOCCARE QUALSIASI COSA. Stavano scritti a
+  // meta' strada, dopo che le partite di Airtable erano gia' state rifatte:
+  // di quelle il minutaggio era gia' stato buttato, e ogni giro d'indice
+  // rimandava a misurare gli stessi file — venti su ventotto.
+  const durateNote = {};
+  Object.keys(ARCHIVIO).forEach((k) => (ARCHIVIO[k].pezzi || []).forEach((x) => {
+    if (x.chiave && x.minuti) durateNote[x.chiave] = x.minuti;
+  }));
 
   // 1) tutto l'archivio, non un ramo solo. Trecentomila oggetti si elencano
   //    in un minuto; quello che si tiene sono i file video abbastanza
@@ -4886,6 +4946,9 @@ async function archivioScandaglia(p) {
     ", 'days')), NOT({Partita} = BLANK()))";
   let offset = "", tornate = 0, agganciate = 0, conKickoff = 0, intere = 0, scartati = 0;
   const orfane = [];
+  // le partite che non hanno trovato materiale, per giorno: sono i candidati
+  // per i file che non dicono come si chiamano
+  const senzaMateriale = [];
   do {
     const q = new URLSearchParams({ filterByFormula: formula, pageSize: "100" });
     if (offset) q.set("offset", offset);
@@ -4937,9 +5000,20 @@ async function archivioScandaglia(p) {
         const s = quantoSiSomigliano(f["Partita"], gr.partita, livello);
         if (s > punteggio) { punteggio = s; meglio = gr; }
       });
+      // SE QUALCUNO L'HA GIA' RICONOSCIUTA, VALE PIU' DI QUALSIASI SOMIGLIANZA.
+      // Il tabellone ha detto che quel materiale e' questa partita: il nome
+      // del file non c'entra piu' niente.
+      const detto = Object.keys(RICONOSCIUTE).find((dove) => RICONOSCIUTE[dove].rec === rec.id &&
+                                                             RICONOSCIUTE[dove].sicura !== false);
+      if (detto) {
+        const suo = candidati.find((gr) => gr.dove === detto) ||
+                    Object.keys(gruppi).map((kk) => gruppi[kk]).find((gr) => gr.dove === detto);
+        if (suo && !suo.presa) { meglio = suo; punteggio = 1; }
+      }
       if (!meglio || punteggio < 0.5) {
         if (candidati.length) orfane.push(f["Partita"] + " (" +
           new Date(quando).toISOString().slice(0, 16).replace("T", " ") + ")");
+        senzaMateriale.push({ rec: rec.id, nome: f["Partita"] || "", quando: quandoIso });
         return;
       }
       const tag = (/\[([A-Z]{2,4})\]/.exec(String(f["Partita"] || "")) || [])[1] || "";
@@ -5006,13 +5080,6 @@ async function archivioScandaglia(p) {
   const chiaveDoppia = (g, t) => g + "|" + String(t || "").toUpperCase().replace(/\[[^\]]*\]|\(.*?\)|\b\d+\s*-\s*\d+\b/g, "").replace(/[^A-Z0-9]+/g, " ").trim();
   const linkate = {};
   Object.keys(ARCHIVIO).forEach((k) => { if (k.indexOf("s3:") !== 0) linkate[chiaveDoppia(ARCHIVIO[k].giorno, ARCHIVIO[k].partita)] = k; });
-  // I minuti misurati appartengono al FILE, non alla partita: si tengono da
-  // parte e si rimettono, se no ogni giro dell'indice li butta e bisogna
-  // rimisurare ventiduemila file (e rifare la scelta del materiale).
-  const durateNote = {};
-  Object.keys(ARCHIVIO).forEach((k) => (ARCHIVIO[k].pezzi || []).forEach((x) => {
-    if (x.chiave && x.minuti) durateNote[x.chiave] = x.minuti;
-  }));
   const orologiSoleS3 = {};
   Object.keys(ARCHIVIO).forEach((k) => {
     if (k.indexOf("s3:") !== 0 || ARCHIVIO[k].bucket !== bucket) return;
@@ -5065,11 +5132,37 @@ async function archivioScandaglia(p) {
         x.da = d; scorso = d;
       });
     }
+    // CHI POTREBBE ESSERE. Le partite rimaste senza materiale il cui calcio
+    // d'inizio cade dentro questa registrazione. Si confrontano due orologi
+    // da parete — giorno e minuto scritti nel nome del file, giorno e minuto
+    // di Airtable — senza passare per i fusi. L'ora del nome e' a dodici: si
+    // provano tutt'e due le letture. Senza il confronto sul giorno passava
+    // qualunque partita di qualunque data: mille candidati invece di tre.
+    const oraFile = oraNelNome(pezzi[0].file);
+    const dataFile = dataNelNome(pezzi[0].file);
+    const candidatiSuoi = [];
+    if (oraFile) {
+      const durataMin = pezzi.reduce((t, x) => t + (x.minuti || 0), 0) || 120;
+      const base = giornoNumero(dataFile || g) * 1440;
+      [(oraFile.h % 12), (oraFile.h % 12) + 12].forEach((hh) => {
+        const parte = base + hh * 60 + oraFile.m;
+        senzaMateriale.forEach((sm) => {
+          const q = Date.parse(sm.quando || "");
+          if (!q) return;
+          const m2 = minutiRoma(q);
+          if (m2 === null) return;
+          const d2 = giornoNumero(giornoRoma(q)) * 1440 + m2 - parte;
+          if (d2 < -25 || d2 > durataMin) return;
+          if (!candidatiSuoi.some((c) => c.rec === sm.rec)) candidatiSuoi.push({ rec: sm.rec, nome: sm.nome, quando: sm.quando });
+        });
+      });
+    }
     const id = "s3:" + crypto.createHash("sha1").update(gr.dove).digest("hex").slice(0, 14);
     ARCHIVIO[id] = { orologio: orologiSoleS3[id], bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
       partita: gr.partita.replace(/[_]+/g, " ").trim(), competizione: comp.replace(/[_]+/g, " "),
       variante: "", giorno: g, dove: gr.dove, fonte: scelta.fonte, pezzi: pezzi,
-      kickoff: null, sicuro: false, quando: quando, soloS3: true };
+      kickoff: null, sicuro: false, quando: quando, soloS3: true,
+      candidati: candidatiSuoi, riconosciuta: RICONOSCIUTE[gr.dove] || undefined };
     soleS3++;
   });
 
@@ -6640,6 +6733,77 @@ async function leggiTabellone(rec, rifai) {
                 finale + (atteso ? " (nel nome " + atteso + ")" : "") + ", " + letti + " fotogrammi");
     return esito;
   } finally { tabelloniAttivi.delete(rec); }
+}
+
+// ── LA LETTURA DEL TABELLONE, PARTITA PER PARTITA ─────────────────────
+//  Prima il cronometro: da' la targa verificata — quel rettangolo e' il
+//  cronometro perche' ci si sono lette due ore a venti secondi di distanza —
+//  e dice dove comincia la partita. Poi si guarda la barra attorno alla
+//  targa, al novantesimo per il risultato e a meta' tempo per le squadre.
+//  Guardare la PARTITA e non il file e' quello che fa la differenza: un file
+//  con tredici minuti di cartello e diciassette di intervallo, letto a
+//  percentuali, si guarda sempre nel posto sbagliato.
+let riconoscimentiAlLavoro = new Set();
+async function riconosciPartita(rec) {
+  const a = ARCHIVIO[String(rec || "")];
+  if (!a) throw new Error("questa partita non e' nell'indice");
+  if (!a.soloS3) throw new Error("questa partita ha gia' il suo nome");
+  const cand = a.candidati || [];
+  if (!cand.length) throw new Error("nessuna partita di quel giorno puo' essere questa");
+  if (!tesseractCe()) throw new Error("sulla macchina manca tesseract");
+  if (riconoscimentiAlLavoro.has(rec)) throw new Error("ci sto gia' lavorando");
+  riconoscimentiAlLavoro.add(rec);
+  try {
+    let o = a.orologio;
+    if (!o || !o.cifre) { try { o = await calibraOrologio(rec); } catch (e) { o = a.orologio || {}; } }
+    // PRIMA SI MISURA, POI SI LEGGE. Senza la durata vera si tirava a
+    // indovinare due ore, e i momenti da guardare cadevano fuori posto: la
+    // registrazione di tre ore del 9 settembre veniva letta come se fosse di
+    // due, e diceva la partita sbagliata. Con la durata giusta l'ha presa.
+    if (!a.misurato) { try { await misuraPartita(rec); } catch (e) {} }
+    const pz = (a.pezzi || [])[0];
+    if (!pz) throw new Error("questa partita non ha materiale");
+    const regione = await s3Regione(a.bucket);
+    const via = firmaConRegione(regione, pz.chiave, {}, 3600, a.bucket);
+    const durata = Math.round((pz.minuti || 0) * 60) || 7200;
+    const fuori = await new Promise((ok) => {
+      execFile("python3", [RICONOSCI_PY, via, String(durata), JSON.stringify(cand),
+                           o && o.cifre ? JSON.stringify(o.cifre) : "null",
+                           o && o.inizio1 !== undefined && o.inizio1 !== null ? String(o.inizio1) : "null",
+                           o && o.inizio2 !== undefined && o.inizio2 !== null ? String(o.inizio2) : "null"],
+        { timeout: 900000, maxBuffer: 4 * 1024 * 1024 },
+        (e, so) => { if (e) return ok(null); try { ok(JSON.parse(String(so))); } catch (x) { ok(null); } });
+    });
+    if (!fuori) throw new Error("la lettura del tabellone non e' riuscita");
+    if (fuori.scelto) {
+      RICONOSCIUTE[a.dove] = { rec: fuori.scelto.rec, nome: fuori.scelto.nome,
+                               voto: fuori.scelto.voto, perche: fuori.scelto.perche,
+                               quando: new Date().toISOString() };
+      scriviRiconosciute();
+      a.riconosciuta = RICONOSCIUTE[a.dove]; scriviArchivio();
+      console.log("[clip] tabellone: " + a.dove.split("/").pop() + " e' " + fuori.scelto.nome +
+                  " (" + (fuori.scelto.perche || []).join(", ") + ")");
+    } else {
+      // QUANDO NON BASTA PER DECIDERE, RESTA UN SOSPETTO. Una sigla sola
+      // letta bene non e' una prova, ma e' molto piu' di niente: si tiene da
+      // parte come proposta — non aggancia il materiale, si vede in pagina e
+      // la conferma la da' una persona.
+      const primo = (fuori.voti || [])[0], secondo = (fuori.voti || [])[1];
+      if (primo && primo.voto >= 2 && (!secondo || primo.voto >= secondo.voto + 3)) {
+        RICONOSCIUTE[a.dove] = { rec: primo.rec, nome: primo.nome, voto: primo.voto,
+                                 perche: primo.perche, sigle: fuori.sigle || [],
+                                 risultati: fuori.risultati || [], sicura: false,
+                                 quando: new Date().toISOString() };
+        scriviRiconosciute();
+        a.riconosciuta = RICONOSCIUTE[a.dove]; scriviArchivio();
+      }
+      console.log("[clip] tabellone: " + a.dove.split("/").pop() + " non deciso — " +
+                  (fuori.voti || []).slice(0, 2).map((v) => v.voto + " " + v.nome).join(" | ") +
+                  " · sigle " + JSON.stringify((fuori.sigle || []).slice(0, 8)) +
+                  " · ris " + JSON.stringify((fuori.risultati || []).slice(0, 8)));
+    }
+    return fuori;
+  } finally { riconoscimentiAlLavoro.delete(rec); }
 }
 
 const OROLOGI_INSIEME = 2;          // due partite alla volta: ffmpeg e tesseract pesano poco, S3 aspetta
@@ -8611,6 +8775,36 @@ const AZIONI = {
   "clip-appunti-storici": appuntiStoriciImporta,
   // legge il cronometro di una partita (o restituisce quello gia' letto) e
   // dice dove cade un minuto degli appunti, se glielo si chiede
+  "clip-archivio-riconosci": async (p) => {
+    if (p.tutte) {
+      const quali = Object.keys(ARCHIVIO).filter((k) => ARCHIVIO[k].soloS3 &&
+        (ARCHIVIO[k].candidati || []).length && !ARCHIVIO[k].riconosciuta);
+      let fatte = 0, decise = 0;
+      for (const k of quali.slice(0, num(p.quante, 1, 60, 40))) {
+        if (registrandoDavvero() || laDirettaGira() || magazzinoOccupato()) break;
+        try { const r = await riconosciPartita(k); fatte++; if (r && r.scelto) decise++; }
+        catch (e) { console.log("[clip] tabellone (" + k + "): " + e.message); }
+      }
+      return { ok: true, guardate: fatte, decise: decise, restano: quali.length - fatte };
+    }
+    return { ok: true, esito: await riconosciPartita(String(p.rec || "")) };
+  },
+  // SI', E' QUESTA. Il tabellone propone, una persona conferma: da qui in
+  // avanti la proposta vale come una lettura sicura e al prossimo giro
+  // l'indice attacca il materiale alla riga Airtable giusta. Con "no" la
+  // proposta sparisce e la partita torna senza nome.
+  "clip-archivio-conferma": async (p) => {
+    const rec = String(p.rec || ""), a = ARCHIVIO[rec];
+    if (!a) return { ok: false, errore: "questa partita non e' nell'indice dell'archivio" };
+    const r = RICONOSCIUTE[a.dove];
+    if (!r) return { ok: false, errore: "per questa registrazione non c'e' nessuna proposta" };
+    if (p.no) { delete RICONOSCIUTE[a.dove]; a.riconosciuta = undefined; }
+    else { r.sicura = true; r.confermata = new Date().toISOString(); a.riconosciuta = r; }
+    scriviRiconosciute(); scriviArchivio();
+    const nome = r.nome;
+    if (!p.no) { archivioScandaglia({}).catch((e) => console.log("[clip] tabellone: " + e.message)); }
+    return { ok: true, nome: p.no ? "" : nome };
+  },
   "clip-archivio-tabellone": async (p) => {
     const t = await leggiTabellone(String(p.rec || ""), !!p.rifai);
     return { ok: true, tabellone: t };
@@ -8691,7 +8885,11 @@ const AZIONI = {
       const pz = a.pezzi || [];
       const minuti = pz.reduce((t, x) => t + (x.minuti || 0), 0);
       const intera = a.misurato ? (minuti >= 85) : (a.fonte === "intero" || a.fonte === "intera" || pz.length >= 2);
+      // la proposta del tabellone viaggia con la riga: la pagina la mostra
+      // come un forse, e la conferma la da' una persona
+      const f = a.riconosciuta && a.riconosciuta.sicura === false ? a.riconosciuta : null;
       return { rec: rec, titolo: a.partita, quando: a.quando, variante: a.variante,
+               forse: f ? { nome: f.nome, voto: f.voto, perche: f.perche || [] } : undefined,
                competizione: a.competizione || "", soloS3: !!a.soloS3,
                dataSospetta: !!a.soloS3 && ms > domani,
                pezzi: pz.length || 1, sicuro: !!a.sicuro, intera: intera, minuti: Math.round(minuti),
@@ -8897,6 +9095,7 @@ function avvio(opz) {
   leggi();
   leggiArchivioAppunti();
   leggiArchivio();
+  leggiRiconosciute();
   leggiStorici();
   leggiEspn();
   leggiVettori();
