@@ -641,8 +641,17 @@ function livePill(x,y){var tw=estW('LIVE',24,4),total=16+12+tw,sx=x+(176-total)/
 // sopra la foto, e la spaziatura in piccolo sfalda la parola invece di
 // darle aria. Ora il fondo e' quasi pieno, il testo piu' grande e piu'
 // stretto.
-function engPill(x,y,label){var t=label||'English Commentary',s=30,pad=28,w=Math.round(estW(t,s,1.5))+pad*2,h=68;
- return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="34" fill="#0A0F24" fill-opacity=".88" stroke="'+C.ivory+'" stroke-opacity=".9" stroke-width="2.5"/>'+T(x+w/2,y+R(h*0.66),t,{s:s,w:800,fill:C.ivory,ls:1.5,anchor:'middle'});}
+// La misura non puo' essere un numero fisso: 30px su una card da 924 sono
+// una targhetta giusta, sugli stessi 30px di un 1920 diventano un francobollo
+// — e' lo stesso disegno mostrato a meta' scala. Si misura sulla larghezza del
+// formato, con un fondo: sotto i 30px non scende, cosi' le card piccole
+// restano come sono adesso e i formati larghi crescono.
+function engPill(x,y,label,wFmt,hFmt){var t=label||'English Commentary';
+ // larghezza per crescere, altezza per non sfondare: su un banner mid, alto
+ // 412, una misura presa solo dalla larghezza diventerebbe una fascia.
+ var s=Math.max(30,Math.min(R((wFmt||1080)*0.022),R((hFmt||1080)*0.075)));
+ var pad=R(s*0.93),w=Math.round(estW(t,s,1.5))+pad*2,h=R(s*2.27);
+ return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+R(h/2)+'" fill="#0A0F24" fill-opacity=".88" stroke="'+C.ivory+'" stroke-opacity=".9" stroke-width="'+Math.max(2,R(s*0.083))+'"/>'+T(x+w/2,y+R(h*0.66),t,{s:s,w:800,fill:C.ivory,ls:1.5,anchor:'middle'});}
 // Marchio Como TV, preso dalla libreria loghi. Proporzioni 378x640.
 // Avvolto in G('brand') come gli altri oggetti: resta trascinabile e ridimensionabile.
 function brandLogo(){return (typeof LOGO_LIB!=='undefined'&&LOGO_LIB.como_tv)?LOGO_LIB.como_tv.d:'';}
@@ -713,7 +722,7 @@ function mPortrait(W,H,p,I,A,hl){
  var pv='';if(p.preshow&&p.showPreshow!==false){var px=M+R(W*0.36),pw=R(estW(up(p.preshow),preS,3))+R(preS*1.6),ph2=R(preS*2);pv=G('cta',A,'<rect x="'+px+'" y="'+(dtY-R(preS*1.35))+'" width="'+pw+'" height="'+ph2+'" rx="'+R(preS*0.35)+'" fill="url(#gpP)"/>'+T(px+R(preS*0.8),dtY-R(preS*0.1),p.preshow,{s:preS,w:800,fill:C.n900,ls:3}));}
  return GPHOTO(W,H,A,I)+scrim+'<rect width="'+W+'" height="'+H+'" fill="url(#spP)" pointer-events="none"/>'
   +(!hl&&p.live?G('live',A,livePill(W-M-176,R(H*0.04))):'')
-  +(p.english?G('eng',A,engPill(M,R(H*0.04),p.englishLabel)):'')
+  +(p.english?G('eng',A,engPill(M,R(H*0.04),p.englishLabel,W,H)):'')
   +G('t-home',A,runsT(M,homeY,{ls:trk(homeS)},[{t:p.home,w:800,fill:C.ivory,s:homeS}].concat(vsRun(p,{w:600,fill:C.gold,s:vsS}))))
   +G('t-away',A,T(M,awayY,p.away,{s:homeS,w:800,ls:trk(homeS),fill:C.goldB}))
   +(hl?G('t-hl',A,T(M,dtY,kind,{s:R(dtS*0.92),w:700,fill:C.gold,ls:R(dtS*0.16)})):(G('t-dt',A,runsT(M,dtY,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:dtS},{t:p.time,w:800,fill:C.gold,upper:false,s:dtS}]))+pv))
@@ -1080,7 +1089,7 @@ function mStory(p,I,A,k,gid,video){
   +'<rect width="'+W+'" height="'+H+'" fill="url(#'+gid+')" pointer-events="none"/>'
   +(p.showLogo===false?'':brandMark(A,R(W*MARK_STORY.x),R(H*MARK_STORY.y),R(H*MARK_STORY.h)))
   +(p.live?G('live',A,livePill(W-64-176,89)):'')
-  +(p.english?G('eng',A,engPill(64,1316+dy,p.englishLabel)):'')
+  +(p.english?G('eng',A,engPill(64,1316+dy,p.englishLabel,1080,1920)):'')
   +G('t-comp',A,'<rect x="64" y="'+(1390+dy)+'" width="6" height="32" rx="2" fill="'+C.gold+'"/>'+T(88,1420+dy,p.comp,{s:36,w:700,fill:C.gold,ls:5}))
   +G('t-home',A,runsT(60,1534+dy,{ls:trk(R(118*TEAM_SCALE))},[{t:p.home,w:800,fill:C.ivory,s:R(118*TEAM_SCALE)}].concat(vsRun(p,{w:600,fill:C.gold,s:R(42*TEAM_SCALE)}))))
   +G('t-away',A,T(60,1534+dy+R(100*TEAM_SCALE),p.away,{s:R(118*TEAM_SCALE),w:800,ls:trk(R(118*TEAM_SCALE)),fill:C.goldB}))
@@ -1097,7 +1106,11 @@ function mStory(p,I,A,k,gid,video){
 // MATCH — layout ORIZZONTALE generico (foto a destra, testo a sinistra). Stesso design.
 function mLandscape(W,H,p,I,A,hl,mid){
  var kind=(hl===true?'Highlights':hl);
- var M=R(W*0.032),homeS=R(H*0.135*TEAM_SCALE),vsS=R(H*0.05*TEAM_SCALE),kickS=R(H*0.028),dtS=R(H*0.04);
+ // kickS era il 2,8% dell'altezza: su un 16:9 fa l'1,6% della larghezza, e
+ // nella fila di anteprime la riga che dice CHE partita e' spariva. Sale al
+ // 4% dell'altezza, cioe' il 2,3% della larghezza: la stessa proporzione a
+ // cui stanno le righe competizione dei formati verticali.
+ var M=R(W*0.032),homeS=R(H*0.135*TEAM_SCALE),vsS=R(H*0.05*TEAM_SCALE),kickS=R(H*0.040),dtS=R(H*0.04);
  var defs='<defs><linearGradient id="lL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".4" stop-color="'+SCRIM+'" stop-opacity=".82"/><stop offset=".72" stop-color="#0A0F24" stop-opacity=".15"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient><linearGradient id="bL" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="'+SCRIM+'" stop-opacity="1"/><stop offset=".45" stop-color="'+SCRIM+'" stop-opacity="0"/></linearGradient>'+goldGrad('gL')+'</defs>';
  var kickY=R(H*0.28),homeY=R(H*0.47),awayY=homeY+R(homeS*0.76),ulY=awayY+R(H*0.05),dtY=ulY+R(dtS*1.7),tickH=R(kickS*0.95),ulH=Math.max(3,R(H*0.007));
  // Il banner-mid (1506x412) e' molto piu' basso e largo degli altri landscape:
@@ -1116,7 +1129,7 @@ function mLandscape(W,H,p,I,A,hl,mid){
  return GPHOTO(W,H,A,I)+defs
   +'<rect width="'+W+'" height="'+H+'" fill="url(#lL)" pointer-events="none"/><rect width="'+W+'" height="'+H+'" fill="url(#bL)" pointer-events="none"/>'
   +(!hl&&p.live?G('live',A,livePill(W-M-176,R(H*0.06))):'')
-  +(p.english?G('eng',A,engPill(M,R(H*0.06),p.englishLabel)):'')
+  +(p.english?G('eng',A,engPill(M,R(H*0.06),p.englishLabel,W,H)):'')
   +G('t-comp',A,'<rect x="'+M+'" y="'+(kickY-tickH+R(kickS*0.05))+'" width="'+R(H*0.006)+'" height="'+tickH+'" rx="2" fill="'+C.gold+'"/>'+T(M+R(H*0.02),kickY,p.comp,{s:kickS,w:700,fill:C.gold,ls:5}))
   +G('t-home',A,runsT(M,homeY,{ls:trk(homeS)},[{t:p.home,w:800,fill:C.ivory,s:homeS}].concat(vsRun(p,{w:600,fill:C.gold,s:vsS}))))
   +G('t-away',A,T(M,awayY,p.away,{s:homeS,w:800,ls:trk(homeS),fill:C.goldB})+'<rect x="'+M+'" y="'+ulY+'" width="'+R(W*0.17)+'" height="'+ulH+'" rx="2" fill="url(#gL)"/>')
@@ -1213,7 +1226,7 @@ function gcPortrait(W,H,p,I,A){
  var scrim='<defs><linearGradient id="sp'+q+'" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".12" stop-color="'+SCRIM+'" stop-opacity=".96"/><stop offset=".5" stop-color="#0A0F24" stop-opacity=".5"/><stop offset=".82" stop-color="#0A0F24" stop-opacity=".05"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>'+goldGrad('g'+q)+'</defs>';
  return GPHOTO(W,H,A,I)+scrim+'<rect width="'+W+'" height="'+H+'" fill="url(#sp'+q+')" pointer-events="none"/>'
   +gcRete(q,W,H,R(H*0.44))
-  +(p.english?G('eng',A,engPill(M,R(H*0.04),p.englishLabel)):'')
+  +(p.english?G('eng',A,engPill(M,R(H*0.04),p.englishLabel,W,H)):'')
   +G('t-tag',A,T(M,tagY,p.gcTag,{s:tagS,w:700,fill:C.gold,ls:R(tagS*0.18)}))
   +G('t-gcname',A,T(M,l1Y,p.compBase||p.comp,{s:l1S,w:800,ls:trk(l1S),fill:C.ivory}))
   +G('t-round',A,gcTarga(q,M,targaT,p.round,rndS))
@@ -1241,7 +1254,7 @@ function gcLandscape(W,H,p,I,A,mid){
  return GPHOTO(W,H,A,I)+defs
   +'<rect width="'+W+'" height="'+H+'" fill="url(#l'+q+')" pointer-events="none"/><rect width="'+W+'" height="'+H+'" fill="url(#b'+q+')" pointer-events="none"/>'
   +gcRete(q,W,H,R(H*0.72))
-  +(p.english?G('eng',A,engPill(M,R(H*0.06),p.englishLabel)):'')
+  +(p.english?G('eng',A,engPill(M,R(H*0.06),p.englishLabel,W,H)):'')
   +G('t-tag',A,T(M,tagY,p.gcTag,{s:tagS,w:700,fill:C.gold,ls:5}))
   +G('t-gcname',A,T(M,l1Y,p.compBase||p.comp,{s:l1S,w:800,ls:trk(l1S),fill:C.ivory}))
   +G('t-round',A,gcTarga(q,M,targaT,p.round,rndS))
@@ -1728,7 +1741,7 @@ var FMT={
    +'<rect width="'+W+'" height="'+H+'" fill="url(#sF)" pointer-events="none"/>'
    +(p.showLogo===false?'':brandMark(A,R(W*MARK_FEED.x),R(H*MARK_FEED.y),R(H*MARK_FEED.h)))
    +(p.live?G('live',A,livePill(W-64-176,72)):'')
-   +(p.english?G('eng',A,engPill(64,981,p.englishLabel)):'')
+   +(p.english?G('eng',A,engPill(64,981,p.englishLabel,1080,1440)):'')
    +G('t-home',A,runsT(60,1126,{ls:trk(R(112*TEAM_SCALE))},[{t:p.home,w:800,fill:C.ivory,s:R(112*TEAM_SCALE)}].concat(vsRun(p,{w:600,fill:C.gold,s:R(40*TEAM_SCALE)}))))
    +G('t-away',A,T(60,1126+R(100*TEAM_SCALE),p.away,{s:R(112*TEAM_SCALE),w:800,ls:trk(R(112*TEAM_SCALE)),fill:C.goldB}))
    +G('t-dt',A,runsT(64,1314,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:46},{t:p.time,w:800,fill:C.gold,upper:false,s:46}]))
@@ -2055,7 +2068,7 @@ var FMT={
   return G('photo',A,PH(I,'photo',0,0,W,H),null)
    +'<defs><linearGradient id="sM" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="'+SCRIM+'"/><stop offset=".10" stop-color="'+SCRIM+'" stop-opacity=".95"/><stop offset=".42" stop-color="#0A0F24" stop-opacity=".55"/><stop offset=".72" stop-color="#0A0F24" stop-opacity=".08"/><stop offset="1" stop-color="#0A0F24" stop-opacity="0"/></linearGradient>'+goldGrad('gdM')+'</defs>'
    +'<rect width="'+W+'" height="'+H+'" fill="url(#sM)" pointer-events="none"/>'+border(W,H,42)
-   +(p.english?G('eng',A,engPill(60,60,p.englishLabel)):'')
+   +(p.english?G('eng',A,engPill(60,60,p.englishLabel,924,1356)):'')
    +G('t-home',A,runsT(60,930,{ls:-1},[{t:p.home,w:800,fill:C.ivory,s:R(81*TEAM_SCALE)},{t:'  vs',w:600,fill:C.gold,s:R(44*TEAM_SCALE)}]))
    +G('t-away',A,T(60,930+R(82*TEAM_SCALE),p.away,{s:R(81*TEAM_SCALE),w:800,ls:-1,fill:C.goldB}))
    +G('t-dt',A,runsT(60,1066,{ls:2},[{t:p.date+' · ',w:700,fill:C.ivory,s:52},{t:p.time,w:800,fill:C.gold,s:52,upper:false}]))
