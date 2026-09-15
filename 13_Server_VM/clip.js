@@ -937,7 +937,12 @@ function tabellino(r) {
   }).sort((m, n) => m.t - n.t);
   const conta = {};
   righe.forEach((x) => { conta[x.fonte] = (conta[x.fonte] || 0) + 1; });
-  return { ok: true, righe: righe, quante: righe.length, fonti: conta,
+  // quanto ci si puo' fidare dei minuti: senza cronometro letto e senza ora
+  // nel nome del file, l'inizio della partita e' solo un'ipotesi
+  const oro = (a && a.orologio) || {};
+  const ancora = oro.inizio1 !== undefined && oro.inizio1 !== null ? "cronometro"
+               : ((a && (a.pezzi || []).some((x) => oraNelNome(path.basename(x.chiave || "")))) ? "ora del file" : "niente");
+  return { ok: true, righe: righe, quante: righe.length, fonti: conta, ancora: ancora,
            appunti: !!(rec && APPUNTI[rec]), espn: !!(rec && ESPN[rec]),
            altrove: sap.altrove || {} };
 }
@@ -4737,6 +4742,23 @@ async function archivioApri(p) {
   // una partita che si apre passa in testa alla coda delle durate: in pochi
   // secondi si sa se il file e' l'intera o un tempo, e il nome si aggiusta
   if (!a.misurato && CODA_DURATE.indexOf(p.rec) < 0) { CODA_DURATE.unshift(String(p.rec)); giraDurate(); }
+  // SENZA CRONOMETRO QUESTA PARTITA NON SA CHE ORA E'. Una registrazione
+  // intera comincia con il cartello — tredici minuti di "COMING SOON" su
+  // Como-Lipsia — e in mezzo ha l'intervallo, altri diciassette. Se il file
+  // non ha l'orario nel nome non c'e' niente da cui contare: il minuto 54
+  // degli appunti finirebbe al secondo 3240, che in quel file e' ancora
+  // primo tempo. Mezz'ora di errore. L'unico che sa l'ora vera e' il
+  // cronometro in sovrimpressione, e costa venticinque secondi: si legge
+  // appena la partita si apre, senza far aspettare chi l'ha aperta.
+  const senzaOra = (a.pezzi || []).every((x) => !oraNelNome(path.basename(x.chiave || "")));
+  if (!a.orologio && !a.orologioFallito && senzaOra && tesseractCe()) {
+    setTimeout(() => {
+      calibraOrologio(String(p.rec))
+        .then((o) => console.log("[clip] cronometro all'apertura di " + (a.partita || "") +
+                                 ": fischio " + o.inizio1 + "s, ripresa " + o.inizio2 + "s"))
+        .catch((e) => console.log("[clip] cronometro all'apertura: " + e.message));
+    }, 1500);
+  }
   // e intanto si apparecchia quello che sappiamo di lei: gol, azioni,
   // telecronaca, boati, ognuno nella sua sequenza. Chi apre non aspetta.
   if (p.prepara === true) setTimeout(() => { preparaSequenze({ reg: r.id }).catch((e) => console.log("[clip] apparecchiare: " + e.message)); }, 300);
