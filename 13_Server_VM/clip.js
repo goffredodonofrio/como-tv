@@ -1616,17 +1616,26 @@ function pubblica(r) {
     attesa: !!(r.ascolto && r.stato === "registra" && vive && scritto === 0),
     // una partita d'archivio non ha byte qui: ha un indirizzo, che scade e
     // quindi si rifa' ogni volta che qualcuno chiede lo stato
-    materiale: r.arch ? "archivio"
+    materiale: r.arch ? (magazzinoCe(r) ? "archivio" : "scaduto")
              : fs.existsSync(playlistDi(r.id)) ? "segmenti"
              : (fs.existsSync(path.join(cartellaReg(r.id), "integrale.mp4")) ? "integrale" : "scaduto"),
     // l'indirizzo per la PAGINA: quello firmato del magazzino se il browser
     // ci arriva, il ponte sulla VM se il magazzino sta dietro il tunnel
-    via: r.arch ? (magazzinoDaFuori(r) ? viaArchivio(r) : viaPonte(r.id)) : undefined,
+    // UNA REGISTRAZIONE ORFANA NON SPEGNE LA PAGINA. Se il suo magazzino non
+    // c'e' piu' — la Synology staccata, un secchio sganciato — il suo
+    // indirizzo non si puo' fare: si lascia vuoto e si va avanti. Prima
+    // l'eccezione saliva fino a clip-stato, che rispondeva con un errore
+    // solo: niente registrazioni, niente monitor, e sembrava rotto tutto.
+    via: (function () {
+      if (!r.arch) return undefined;
+      try { return magazzinoDaFuori(r) ? viaArchivio(r) : viaPonte(r.id); }
+      catch (e) { return undefined; }
+    })(),
     // I PEZZI DELLA PARTITA, PER LA PAGINA. Ognuno con il secondo in cui
     // entra nella linea del tempo, quanto dura e da dove si prende: il
     // monitor cambia file da solo quando la testina passa da un tempo
     // all'altro, e chi monta vede due ore, non cinquantasei minuti.
-    pezziArch: r.arch ? pezziArch(r).map((x, i) => ({
+    pezziArch: (r.arch && magazzinoCe(r)) ? pezziArch(r).map((x, i) => ({
       da: x.da || 0, durata: x.durata || 0,
       via: magazzinoDaFuori(r) ? viaPezzo(r, x) : viaPonte(r.id, 21600, i)
     })) : undefined,
@@ -4636,8 +4645,12 @@ async function archivioApri(p) {
   const scelto = pezzi[0];
 
   const gia = Object.keys(R.reg).map((k) => R.reg[k])
+    // stessa partita, stesso primo file, e stessa forma — intera o un tempo
+    // solo. Col "!==" una partita in UN pezzo non si ritrovava mai, e ogni
+    // volta che la si apriva ne nasceva una copia.
     .find((r) => r.arch && r.arch.rec === String(p.rec || "") &&
-                 (pezziArch(r).length > 1) !== unoSolo && r.arch.chiave === scelto.chiave);
+                 (pezziArch(r).length > 1) === (pezzi.length > 1) &&
+                 r.arch.chiave === scelto.chiave);
   if (gia) {
     // Una partita gia' aperta tornava indietro cosi' com'era, e chi l'aveva
     // vista prima che esistessero le sequenze non le vedeva piu': erano 30
@@ -4756,6 +4769,12 @@ function rinominaMaterialeArchivio() {
   let n = 0;
   Object.keys(R.reg).forEach((k) => {
     const r = R.reg[k]; if (!r.arch) return;
+    // il magazzino da cui veniva non c'e' piu': la registrazione non ha piu'
+    // materiale dietro. Se nessuno ci ha tagliato niente, se ne va.
+    if (!magazzinoCe(r)) {
+      if (!Object.keys(R.clip).some((c) => R.clip[c].reg === r.id)) { delete R.reg[k]; n++; }
+      return;
+    }
     const a = ARCHIVIO[r.arch.rec]; if (!a) return;
     // se le durate hanno tolto il file di questa voce (un doppione, un taglio)
     // la voce non ha piu' materiale dietro: se non ha clip, se ne va
@@ -4922,6 +4941,21 @@ async function archivioScandaglia(p) {
         scartati += pezzi.length - dentroLaPartita.length;
         pezzi = dentroLaPartita;
       }
+      // UN FILE SENZA ORA NEL NOME HA COMUNQUE UNA LINEA DEL TEMPO. I file
+      // esportati a mano — "20260904_GENOA-COMO - FULL MATCH ENG.mp4" —
+      // hanno il giorno e il nome ma non l'orario, quindi nessun "da" e
+      // nessun calcio d'inizio: e senza quello il tabellino resta vuoto,
+      // perche' non si sa a che secondo del file corrisponde il minuto 12.
+      // L'asse ce l'hanno lo stesso: comincia dove comincia il file. Il
+      // fischio vero lo trovera' il cronometro, che senza asse non poteva
+      // nemmeno partire.
+      if (pezzi.every((x) => x.da === null || x.da === undefined)) {
+        let corre = 0;
+        pezzi.forEach((x, n2) => {
+          x.da = corre;
+          corre += Math.round((x.minuti || 0) * 60) || 0;
+        });
+      }
       const kick = kickoffNelFile(pezzi[0].file, quando);
       if (kick !== null) conKickoff++;
       if (scelta.fonte === "intera" || scelta.fonte === "intero") intere++;
@@ -4930,7 +4964,9 @@ async function archivioScandaglia(p) {
       ARCHIVIO[rec.id] = { orologio: orologioPrima, bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
         partita: f["Partita"] || "", competizione: f["Competizione"] || "",
         variante: "", giorno: meglio.giorno, dove: meglio.dove,
-        fonte: scelta.fonte, pezzi: pezzi, kickoff: kick,
+        // senza ora nel nome il calcio d'inizio non si sa: si parte da zero,
+        // cioe' dall'inizio del file, e il cronometro lo corregge
+        fonte: scelta.fonte, pezzi: pezzi, kickoff: kick === null && pezzi[0].da === 0 ? 0 : kick,
         sicuro: punteggio >= 0.8 && scelta.fonte !== "unico", quando: f["Data | Orario"] };
     }
   }
@@ -7479,9 +7515,17 @@ function viaPonte(id, quanto, pezzo) {
          (i ? "&p=" + i : "") + "&f=" + firmaPonte(id, fino, i);
 }
 // il magazzino di questa partita e' raggiungibile dal browser?
+// il magazzino di questa partita esiste ancora?
+function magazzinoCe(r) {
+  if (!r || !r.arch) return false;
+  try { magazzinoDi(r.arch.bucket); return true; } catch (e) { return false; }
+}
 function magazzinoDaFuori(r) {
   if (!r || !r.arch) return true;
-  const m = magazzinoDi(r.arch.bucket);
+  let m;
+  // un magazzino che non c'e' piu' non e' raggiungibile da nessuno: si
+  // risponde "no", non si alza un'eccezione. Chiederlo e' una domanda.
+  try { m = magazzinoDi(r.arch.bucket); } catch (e) { return false; }
   if (m.cartella) return false;                    // un percorso sul disco: il browser non lo apre mai
   if (!m.endpoint) return true;                    // Amazon: sempre
   return m.fuori === true;                         // di casa: solo se lo dici tu
