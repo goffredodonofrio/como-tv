@@ -20,8 +20,10 @@
 (function () {
   "use strict";
 
-  // <script src="nav.js" data-senza-menu></script> monta SOLO l'orologio:
-  // per le pagine di lavoro della regia, dove il menu' non serve.
+  // <script src="nav.js" data-senza-menu></script> monta SOLO l'orologio.
+  // Lo usava la regia, che ora il menu' ce l'ha come tutte le altre: resta
+  // qui perche' e' un interruttore di nav.js, non una scelta di quella
+  // pagina — ma al momento non lo adopera nessuno.
   var SOLO_ORA = !!(document.currentScript && document.currentScript.dataset &&
                     document.currentScript.dataset.senzaMenu != null);
 
