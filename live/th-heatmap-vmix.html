@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talent Hunters · Heatmap · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:block;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:block;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:block;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+  #stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;overflow:hidden;transform-origin:center center;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);}
+  #scena{position:absolute;inset:0;transform-origin:50% 40%;}
+  .th-feltro{position:absolute;left:0;top:0;width:1920px;height:1080px;opacity:.2;mix-blend-mode:soft-light;filter:grayscale(1) contrast(1.6);}
+  .th-fondo,.sopra,.sotto{position:absolute;left:0;top:0;}
+  #lampo{display:none;}
+  /* il campo si disegna piatto, 1050x680 (dieci unita' al metro), e una
+     trasformazione proiettiva lo porta in prospettiva */
+  #campo{position:absolute;left:0;top:0;width:1050px;height:680px;transform-origin:0 0;}
+  #campo svg{display:block;}
+  .zona.pulsa{animation:pulsa 2.4s ease-in-out infinite;}
+  @keyframes pulsa{0%,100%{filter:brightness(1)}50%{filter:brightness(.78) saturate(1.15)}}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="scena">
+    <svg class="sotto" id="sotto" width="1920" height="1080" viewBox="0 0 1920 1080"></svg>
+    <div id="campo"></div>
+    <svg class="sopra" id="sopra" width="1920" height="1080" viewBox="0 0 1920 1080"></svg>
+  </div>
+  <div id="lampo"></div>
+</div>
+
+<script src="talent-hunters/th-comune.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { z:[12 livelli 0..4, per righe dall'alto: fascia alta, centro, fascia bassa;
+  //        in ogni riga da sinistra a destra, quattro quarti di campo],
+  //     t:"HEATMAP", st:"STAGIONALE", dir:"dx"|"sx", fo:"fonte DataMB", ev:0|1 }
+  //   Livelli: 0 navy (quasi mai), 1 blu, 2 azzurro, 3 oro, 4 avorio caldo —
+  //   la stessa scala della heatmap di casa, dal freddo al caldo.
+  //   ev:1 = "evidenza": le zone piu' calde pulsano, per restare in onda a lungo.
+  var DEMO = { z: [0, 1, 1, 0, 1, 3, 4, 4, 0, 2, 3, 1], t: "HEATMAP", st: "STAGIONALE", dir: "dx", fo: "fonte DataMB" };
+  var D = TH.dati(DEMO, function (d) { return d && d.z && d.z.length === 12; });
+  if (!D) { document.title = "HEATMAP — dati non validi"; document.getElementById("stage").style.display = "none"; return; }
+  document.title = "TALENT HUNTERS · " + (D.t || "HEATMAP") + " " + (D.st || "");
+
+  var S = TH.STILL, el = TH.el, C = TH.C;
+  var LIV = ["#1B2452", "#2B568A", "#4F8FA8", "#C9A24B", "#F1DE9E"];
+  var scena = document.getElementById("scena");
+  var W = 1050, H = 680;
+  // gli angoli del campo a fine animazione, misurati sul video
+  var PIATTO = [[435, 172], [1485, 172], [1485, 852], [435, 852]];
+  var PROSP = [[392, 205], [1548, 205], [1708, 838], [215, 838]];
+
+  // ── la proiezione: dal rettangolo del campo a quattro punti qualsiasi ──
+  function adj(m) {
+    return [m[4]*m[8]-m[5]*m[7], m[2]*m[7]-m[1]*m[8], m[1]*m[5]-m[2]*m[4],
+            m[5]*m[6]-m[3]*m[8], m[0]*m[8]-m[2]*m[6], m[2]*m[3]-m[0]*m[5],
+            m[3]*m[7]-m[4]*m[6], m[1]*m[6]-m[0]*m[7], m[0]*m[4]-m[1]*m[3]];
+  }
+  function mm(a, b) {
+    var c = [];
+    for (var i = 0; i < 3; i++) for (var j = 0; j < 3; j++) {
+      var s = 0; for (var k = 0; k < 3; k++) s += a[3*i+k] * b[3*k+j]; c[3*i+j] = s;
+    }
+    return c;
+  }
+  function mv(m, v) { return [m[0]*v[0]+m[1]*v[1]+m[2]*v[2], m[3]*v[0]+m[4]*v[1]+m[5]*v[2], m[6]*v[0]+m[7]*v[1]+m[8]*v[2]]; }
+  function base(p) {
+    var m = [p[0][0], p[1][0], p[2][0], p[0][1], p[1][1], p[2][1], 1, 1, 1];
+    var v = mv(adj(m), [p[3][0], p[3][1], 1]);
+    return mm(m, [v[0], 0, 0, 0, v[1], 0, 0, 0, v[2]]);
+  }
+  var SRC = base([[0, 0], [W, 0], [W, H], [0, H]]);
+  function omografia(q) { return mm(base(q), adj(SRC)); }
+  function proietta(m, x, y) { var r = mv(m, [x, y, 1]); return [r[0] / r[2], r[1] / r[2]]; }
+  function applica(q) {
+    var t = omografia(q);
+    for (var i = 0; i < 9; i++) t[i] /= t[8];
+    document.getElementById("campo").style.transform =
+      "matrix3d(" + [t[0], t[3], 0, t[6], t[1], t[4], 0, t[7], 0, 0, 1, 0, t[2], t[5], 0, t[8]].join(",") + ")";
+    return t;
+  }
+
+  TH.pronto(function () {
+    var f = TH.fondo(scena, { tFascia: 1.5, tCornice: 1.0 });
+    scena.insertBefore(f.svg, document.getElementById("sotto"));
+    scena.insertBefore(scena.querySelector(".th-feltro"), f.svg);
+
+    // ── il campo piatto ──
+    var c = el("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H });
+    document.getElementById("campo").appendChild(c);
+    var defs = el("defs", {}, c);
+    var rig = el("pattern", { id: "righe", width: 105, height: H, patternUnits: "userSpaceOnUse", x: 0, y: 0 }, defs);
+    el("rect", { x: 0, y: 0, width: 52.5, height: H, fill: "#fff", opacity: 0.04 }, rig);
+    var clipCampo = el("clipPath", { id: "rivela" }, defs);
+    var rivela = el("rect", { x: 0, y: 0, width: W, height: H }, clipCampo);
+    var g = el("g", { "clip-path": "url(#rivela)" }, c);
+    el("rect", { x: 0, y: 0, width: W, height: H, fill: "#141B3C" }, g);
+    // le dodici zone: fascia alta e bassa fuori dall'area, il centro largo quanto l'area
+    var RIGHE = [[0, 138.5], [138.5, 541.5], [541.5, H]];
+    var zone = [];
+    for (var r = 0; r < 3; r++) for (var q = 0; q < 4; q++) {
+      var liv = Math.max(0, Math.min(4, +D.z[r * 4 + q] || 0));
+      var z = el("rect", { "class": "zona", x: q * W / 4, y: RIGHE[r][0], width: W / 4 + 0.5,
+                           height: RIGHE[r][1] - RIGHE[r][0] + 0.5, fill: LIV[liv], "fill-opacity": 0.92 }, g);
+      z.dataset.liv = liv;
+      zone.push(z);
+    }
+    el("rect", { x: 0, y: 0, width: W, height: H, fill: "url(#righe)" }, g);
+    // le linee: dieci unita' al metro
+    var L = el("g", { fill: "none", stroke: C.avorio, "stroke-opacity": 0.7, "stroke-width": 5 }, g);
+    el("rect", { x: 9, y: 9, width: W - 18, height: H - 18 }, L);
+    el("path", { d: "M525 9V671" }, L);
+    el("circle", { cx: 525, cy: 340, r: 91.5 }, L);
+    el("path", { d: "M9 138.5H174V541.5H9M1041 138.5H876V541.5H1041M9 248.5H64V431.5H9M1041 248.5H986V431.5H1041" }, L);
+    el("path", { d: "M174 285A91.5 91.5 0 0 1 174 395M876 285A91.5 91.5 0 0 0 876 395" }, L);
+    el("path", { d: "M9 19A10 10 0 0 0 19 9M1031 9A10 10 0 0 0 1041 19M1041 661A10 10 0 0 0 1031 671M19 671A10 10 0 0 0 9 661" }, L);
+    var P = el("g", { fill: C.avorio, "fill-opacity": 0.8 }, g);
+    [[525, 340], [119, 340], [931, 340]].forEach(function (p) { el("circle", { cx: p[0], cy: p[1], r: 6 }, P); });
+    el("rect", { x: 0, y: 0, width: W, height: H, fill: "none", stroke: C.avorio, "stroke-opacity": 0.85, "stroke-width": 8 }, g);
+
+    // ── cio' che sta fuori dal campo, in prospettiva: spessore, ombra, porte ──
+    var sotto = document.getElementById("sotto"), sopra = document.getElementById("sopra");
+    var M = omografia(PROSP);
+    function pt(x, y) { var p = proietta(M, x, y); return p[0].toFixed(1) + " " + p[1].toFixed(1); }
+    var ombra = el("path", { d: "M" + pt(0, H) + "L" + pt(W, H) + "L1716 878L207 878Z", fill: "#000", opacity: 0.4 }, sotto);
+    var spessore = el("path", { d: "M" + pt(0, H) + "L" + pt(W, H) + "L1708 852L215 852Z", fill: C.oro, "fill-opacity": 0.9 }, sopra);
+    var porte = el("g", { fill: "none", stroke: C.avorio, "stroke-width": 3, "stroke-linejoin": "round" }, sopra);
+    var retePat = el("pattern", { id: "rete", width: 7, height: 7, patternUnits: "userSpaceOnUse", patternTransform: "rotate(35)" }, el("defs", {}, sopra));
+    el("path", { d: "M0 0V7M0 0H7", stroke: C.avorio, "stroke-opacity": 0.35, "stroke-width": 1 }, retePat);
+    function porta(lato) {
+      var gx = lato < 0 ? 0 : W, pali = [300, 380], alto = 92, fondo = 52 * lato;
+      var a = proietta(M, gx, pali[0]), b = proietta(M, gx, pali[1]);
+      var a2 = [a[0] + fondo, a[1] - alto * 0.18], b2 = [b[0] + fondo, b[1] - alto * 0.18];
+      var at = [a[0], a[1] - alto], bt = [b[0], b[1] - alto];
+      var at2 = [a2[0], a2[1] - alto * 0.8], bt2 = [b2[0], b2[1] - alto * 0.8];
+      function P2(p) { return p[0].toFixed(1) + " " + p[1].toFixed(1); }
+      var gr = el("g", {}, porte);
+      // rete: fondo, fianco, tetto
+      el("path", { d: "M" + P2(a) + "L" + P2(a2) + "L" + P2(at2) + "L" + P2(at) + "Z", fill: "url(#rete)", stroke: C.avorio, "stroke-opacity": 0.6, "stroke-width": 1.5 }, gr);
+      el("path", { d: "M" + P2(b) + "L" + P2(b2) + "L" + P2(bt2) + "L" + P2(bt) + "Z", fill: "url(#rete)", stroke: C.avorio, "stroke-opacity": 0.6, "stroke-width": 1.5 }, gr);
+      el("path", { d: "M" + P2(a2) + "L" + P2(b2) + "L" + P2(bt2) + "L" + P2(at2) + "Z", fill: "url(#rete)", stroke: C.avorio, "stroke-opacity": 0.6, "stroke-width": 1.5 }, gr);
+      el("path", { d: "M" + P2(at) + "L" + P2(bt) + "L" + P2(bt2) + "L" + P2(at2) + "Z", fill: "url(#rete)", stroke: C.avorio, "stroke-opacity": 0.6, "stroke-width": 1.5 }, gr);
+      // i pali bianchi bordati di nero
+      el("path", { d: "M" + P2(a) + "L" + P2(at) + "L" + P2(bt) + "L" + P2(b), stroke: C.navy, "stroke-width": 8 }, gr);
+      el("path", { d: "M" + P2(a) + "L" + P2(at) + "L" + P2(bt) + "L" + P2(b), stroke: C.avorio, "stroke-width": 4 }, gr);
+      return gr;
+    }
+    var portaSx = porta(-1), portaDx = porta(1);
+
+    // la freccia del verso d'attacco, sopra il campo
+    var frecciaDx = D.dir !== "sx";
+    var freccia = el("path", { d: frecciaDx ? "M900 146H1015V133L1045 152L1015 171V158H900Z" : "M1045 146H930V133L900 152L930 171V158H1045Z",
+                               fill: C.oro }, sopra);
+
+    // il titolo nel nero e la fonte
+    var titolo = el("g", {}, sopra);
+    var box = el("g", {}, titolo);
+    el("rect", { x: 585, y: 915, width: 743, height: 153, fill: C.navy, "fill-opacity": 0.94 }, box);
+    el("rect", { x: 585, y: 915, width: 743, height: 4, fill: C.oro }, box);
+    var t1s = TH.maiuscolo(D.t || "HEATMAP"), t2s = TH.maiuscolo(D.st || "");
+    var t1 = TH.testo(titolo, 956.5, t2s ? 1002 : 1024, t1s, { anchor: "middle", size: t2s ? 80 : 92, maxW: 680, minSize: 48, ls: 1 });
+    var t2 = t2s ? TH.testo(titolo, 956.5, 1046, t2s, { anchor: "middle", peso: 700, size: 26, fill: C.oro, ls: 8, maxW: 680, minSize: 18 }) : null;
+    var fonte = D.fo === "" ? null : TH.testo(sopra, 1712, 896, TH.maiuscolo(D.fo || "fonte DataMB"),
+      { anchor: "end", font: "DM Sans", peso: 500, size: 17, fill: C.avorioSpento, ls: 3 });
+
+    if (S) {
+      applica(PROSP);
+      if (D.ev) zone.forEach(function (z) { if (+z.dataset.liv >= 3) z.classList.add("pulsa"); });
+      return;
+    }
+
+    // ── i tempi del video ──
+    TH.ingresso(scena, document.getElementById("lampo"));
+    applica(PIATTO);
+    rivela.setAttribute("x", W / 2); rivela.setAttribute("width", 0);
+    zone.forEach(function (z) { z.style.opacity = 0; });
+    [spessore, ombra, portaSx, portaDx, freccia, fonte].forEach(function (x) { if (x) x.style.opacity = 0; });
+    var t0 = performance.now();
+    function liscio(u) { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); }
+    function giro(ora) {
+      var t = (ora - t0) / 1000;
+      // 1,0 - 2,5 s: il campo si apre dal centro
+      var ap = liscio((t - 1.0) / 1.5);
+      rivela.setAttribute("x", (W / 2) * (1 - ap)); rivela.setAttribute("width", W * ap);
+      // 2,5 - 3,25 s: si inclina in prospettiva
+      var inc = liscio((t - 2.5) / 0.75);
+      var qd = PIATTO.map(function (p, i) { return [p[0] + (PROSP[i][0] - p[0]) * inc, p[1] + (PROSP[i][1] - p[1]) * inc]; });
+      applica(qd);
+      if (t < 3.4) requestAnimationFrame(giro);
+      else applica(PROSP);
+    }
+    requestAnimationFrame(giro);
+    // se le animazioni del documento sono sospese, il campo resta comunque giusto
+    setTimeout(function () { applica(PROSP); rivela.setAttribute("x", 0); rivela.setAttribute("width", W); }, 3600);
+
+    [spessore, ombra, portaSx, portaDx].forEach(function (x) { TH.anima(x, [{ opacity: 0 }, { opacity: 1 }], 0.35, 3.05, "ease-out"); });
+    box.style.transformBox = "fill-box"; box.style.transformOrigin = "50% 50%";
+    TH.anima(box, [{ transform: "scaleX(0)" }, { transform: "scaleX(1)" }], 0.3, 1.05);
+    TH.macchina(t1, t1s, 1.3, 0.07);
+    if (t2) TH.macchina(t2, t2s, 1.85, 0.06);
+    // le zone si accendono in ordine sparso, come nel video
+    var ordine = [1, 7, 2, 5, 10, 6, 0, 9, 3, 11, 4, 8];
+    ordine.forEach(function (i, k) {
+      TH.anima(zone[i], [{ opacity: 0 }, { opacity: 1 }], 0.3, 3.45 + k * 0.13, "ease-out");
+    });
+    TH.anima(freccia, [{ opacity: 0, transform: "translateX(" + (frecciaDx ? -40 : 40) + "px)" }, { opacity: 1, transform: "none" }], 0.45, 5.1);
+    if (fonte) TH.anima(fonte, [{ opacity: 0 }, { opacity: 1 }], 0.4, 5.2);
+    if (D.ev) setTimeout(function () {
+      zone.forEach(function (z) { if (+z.dataset.liv >= 3) z.classList.add("pulsa"); });
+    }, 5600);
+  });
+})();
+</script>
+<script src="sfondo.js"></script>
+</body>
+</html>

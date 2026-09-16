@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talent Hunters · Radar · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:block;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:block;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:block;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  /* fondo trasparente: in vMix va sopra le immagini, come il ProRes con l'alfa.
+     color-scheme come l'embedder, altrimenti Chrome dipinge l'iframe di bianco
+     (catalogo, anteprime, regia) — come in sottopancia-vmix. */
+  :root{color-scheme:dark;}
+  html,body{width:100%;height:100%;overflow:hidden;background:transparent;}
+  #stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;overflow:hidden;transform-origin:center center;}
+  #tela{position:absolute;left:0;top:0;}
+</style>
+</head>
+<body>
+<div id="stage"><svg id="tela" width="1920" height="1080" viewBox="0 0 1920 1080"></svg></div>
+
+<script src="talent-hunters/th-comune.js"></script>
+<script src="talent-hunters/th-grafico.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { v:[["NPG",53],["npxG",75],...], b:[valori del secondo giocatore] (facoltativo),
+  //     fo:"fonte DataMB" }
+  //   Da 3 a 10 assi, valori da 0 a 100. Col secondo giocatore e' il radar a
+  //   confronto: l'oro si disegna punto per punto, poi l'avorio del secondo
+  //   cresce sopra (nei video erano giallo e rosso).
+  var DEMO = { v: [["NPG", 53], ["npxG", 75], ["GOAL CONVERSION %", 46], ["AERIAL", 72],
+                   ["TOUCHES IN BOX", 68], ["XA", 33], ["OFF DUELS WON", 92]], fo: "fonte DataMB" };
+  var D = TH.dati(DEMO, function (d) { return d && d.v && d.v.length >= 3; });
+  if (!D) { document.title = "RADAR — dati non validi"; document.getElementById("stage").style.display = "none"; return; }
+  var CONFRONTO = D.b && D.b.length;
+  document.title = "TALENT HUNTERS · RADAR" + (CONFRONTO ? " A CONFRONTO" : "");
+
+  var G = THGrafico, el = TH.el, tela = document.getElementById("tela");
+  var voci = D.v.slice(0, 10), n = voci.length, passo = 360 / n;
+  var angoli = voci.map(function (x, k) { return -90 + k * passo; });
+
+  function serie(colore, riempi, opac, spess, raggioPunto) {
+    var g = el("g", {}, tela);
+    var poli = el("polygon", { fill: riempi, "fill-opacity": opac, stroke: colore, "stroke-width": spess, "stroke-linejoin": "round" }, g);
+    var punti = voci.map(function () { return el("circle", { r: raggioPunto, fill: colore, cx: G.CX, cy: G.CY }, g); });
+    var val = voci.map(function () { return 0; });
+    function disegna() {
+      poli.setAttribute("points", val.map(function (v, k) {
+        var p = G.punto(angoli[k], G.r(v)); return p[0].toFixed(1) + "," + p[1].toFixed(1);
+      }).join(" "));
+      val.forEach(function (v, k) {
+        var p = G.punto(angoli[k], G.r(v)); punti[k].setAttribute("cx", p[0].toFixed(1)); punti[k].setAttribute("cy", p[1].toFixed(1));
+      });
+    }
+    disegna();
+    return { g: g, val: val, punti: punti, disegna: disegna };
+  }
+
+  TH.pronto(function () {
+    // gli assi sottili sotto a tutto
+    var assi = el("g", { stroke: TH.C.avorio, "stroke-opacity": 0.25, "stroke-width": 1.5 }, tela);
+    angoli.forEach(function (a) { var q = G.punto(a, G.r(100) + 24); el("line", { x1: G.CX, y1: G.CY, x2: q[0].toFixed(1), y2: q[1].toFixed(1) }, assi); });
+    var sc = G.scala(tela);
+    var eti = G.etichette(tela, voci.map(function (x) { return x[0]; }), angoli, 362, 15, 24);
+    var fo = G.fonte(tela, D.fo, 150, 935);
+
+    var A = serie(TH.C.oroChiaro, TH.C.oro, 0.45, 6, 10);
+    var B = CONFRONTO ? serie(TH.C.avorio, TH.C.avorio, 0.22, 5, 9) : null;
+
+    G.entraScala(sc, eti);
+    if (!TH.STILL) {
+      TH.anima(assi, [{ opacity: 0 }, { opacity: 1 }], 0.5, 0.35, "ease-out");
+      if (fo) TH.anima(fo, [{ opacity: 0 }, { opacity: 1 }], 0.4, 1.6, "ease-out");
+    }
+    // il giallo punto per punto, in senso orario dall'alto
+    voci.forEach(function (x, k) {
+      if (!TH.STILL) {
+        A.punti[k].style.opacity = 0;
+        TH.anima(A.punti[k], [{ opacity: 0 }, { opacity: 1 }], 0.15, 1.1 + k * 0.95, "linear");
+      }
+      G.cresci(0, +x[1] || 0, 1.1 + k * 0.95, 0.6, function (v) { A.val[k] = v; A.disegna(); });
+    });
+    // il secondo giocatore cresce tutto insieme dal centro, dopo il primo
+    if (B) {
+      var parte = 1.1 + n * 0.95 + 0.3;
+      if (!TH.STILL) B.g.style.opacity = 0;
+      TH.anima(B.g, [{ opacity: 0 }, { opacity: 1 }], 0.2, parte, "linear");
+      voci.forEach(function (x, k) {
+        G.cresci(0, +D.b[k] || 0, parte, 1.3, function (v) { B.val[k] = v; B.disegna(); });
+      });
+    }
+  });
+})();
+</script>
+</body>
+</html>

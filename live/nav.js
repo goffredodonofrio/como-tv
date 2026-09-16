@@ -52,7 +52,8 @@
       ["scheda.html",                "Scheda"],
       ["focus.html",                 "Focus"],
       ["dichiarazioni.html",         "Dichiarazioni"],
-      ["volti.html",                 "Volti"]
+      ["volti.html",                 "Volti"],
+      ["talent-hunters.html",        "Talent Hunters"]
     ]},
     { nome: "Tabelloni", voci: [
       ["tabelloni.html",             "Tabelloni e gironi"],
@@ -72,6 +73,10 @@
   var qui = (location.pathname.split("/").pop() || "").toLowerCase();
   // le pagine "figlie" accendono comunque la voce del loro capofila
   var FIGLIE = { "magazzino-foto.html": "magazzino.html", "video.html": "magazzino.html",
+                 "th-carta.html": "talent-hunters.html", "th-approved.html": "talent-hunters.html",
+                 "th-not-approved.html": "talent-hunters.html", "th-heatmap.html": "talent-hunters.html",
+                 "th-heatmap-evidenza.html": "talent-hunters.html", "th-torta.html": "talent-hunters.html",
+                 "th-radar.html": "talent-hunters.html", "th-radar-confronto.html": "talent-hunters.html",
                  "barra.html": "ticker.html",
                  "classifiche-campionati.html": "classifiche-campionati.html" };
   if (FIGLIE[qui]) qui = FIGLIE[qui];

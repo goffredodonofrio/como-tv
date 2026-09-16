@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talent Hunters · Approved · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:block;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:block;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:block;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+  #stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;overflow:hidden;transform-origin:center center;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);}
+  #scena{position:absolute;inset:0;transform-origin:40% 45%;}
+  .th-feltro{position:absolute;left:0;top:0;width:1920px;height:1080px;opacity:.2;mix-blend-mode:soft-light;filter:grayscale(1) contrast(1.6);}
+  .th-fondo,.sopra{position:absolute;left:0;top:0;}
+  #lampo{display:none;}
+  #card{position:absolute;left:225px;top:55px;width:927px;height:967px;border-radius:18px;overflow:hidden;
+    background:#0E1430;border:1px solid rgba(245,241,230,.14);box-shadow:0 30px 70px rgba(0,0,0,.5);}
+  #card img,#card video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 20%;}
+  #card .velo{position:absolute;inset:0;background:linear-gradient(0deg,rgba(7,11,29,.7) 0%,transparent 30%);}
+  #card img.vive{animation:respira 30s linear both;}
+  @keyframes respira{from{transform:scale(1)}to{transform:scale(1.07)}}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="scena">
+    <div id="card"><div class="velo"></div></div>
+    <svg class="sopra" id="sopra" width="1920" height="1080" viewBox="0 0 1920 1080"></svg>
+  </div>
+  <div id="lampo"></div>
+</div>
+
+<script src="talent-hunters/th-comune.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { s:"Flaco", val:"12", u:"M", ok:true, f:"/loghi/...jpg" (o v:"...mp4") }
+  //   val e u escono dal valore di mercato: "12 milioni" -> 12 · M,
+  //   "200mila euro" -> 200 · K. Se val non e' un numero ("Parametro zero")
+  //   il riquadro scrive la frase.  ok:false -> NOT APPROVED, in rosso.
+  var DEMO = { s: "Flaco", val: "12", u: "M", ok: true, f: "talent-hunters/demo-lopez.jpg" };
+  // ?no=1 senza dati: la demo del NOT APPROVED, per il catalogo
+  if (new URLSearchParams(location.search).get("no") === "1") DEMO.ok = false;
+  var D = TH.dati(DEMO, function (d) { return d && (d.s || d.val); });
+  if (!D) { document.title = "APPROVED — dati non validi"; document.getElementById("stage").style.display = "none"; return; }
+  var OK = D.ok !== false;
+  document.title = "TALENT HUNTERS · " + (OK ? "APPROVED" : "NOT APPROVED") + " · " + (D.s || "");
+
+  var S = TH.STILL, el = TH.el, C = TH.C;
+  var scena = document.getElementById("scena"), sopra = document.getElementById("sopra");
+
+  TH.pronto(function () {
+    var f = TH.fondo(scena, { tFascia: 0.75, tCornice: 1.3 });
+    scena.insertBefore(f.svg, document.getElementById("card"));
+    scena.insertBefore(scena.querySelector(".th-feltro"), f.svg);
+
+    var card = document.getElementById("card"), velo = card.querySelector(".velo");
+    if (D.v) {
+      var vid = document.createElement("video");
+      vid.src = D.v; vid.muted = true; vid.loop = true; vid.autoplay = true; vid.playsInline = true;
+      card.insertBefore(vid, velo);
+    } else if (D.f) {
+      var im = document.createElement("img");
+      im.src = D.f; im.alt = "";
+      if (!S) im.className = "vive";
+      card.insertBefore(im, velo);
+    }
+
+    var defs = el("defs", {}, sopra);
+    // Il timbro e' consumato: l'inchiostro manca a macchie. Un rumore fisso
+    // (seme costante) fa da maschera, cosi' il timbro e' sempre lo stesso.
+    var filtro = el("filter", { id: "consumo", x: "-10%", y: "-10%", width: "120%", height: "120%" }, defs);
+    el("feTurbulence", { type: "fractalNoise", baseFrequency: "0.11", numOctaves: 2, seed: 11, result: "r" }, filtro);
+    el("feColorMatrix", { "in": "r", type: "matrix",
+      values: "0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -14 9.6", result: "m" }, filtro);
+    el("feComposite", { "in": "SourceGraphic", in2: "m", operator: "in" }, filtro);
+
+    // ── l'impronta e il riquadro del valore ──
+    var impronta = el("image", { href: "talent-hunters/impronta.png", x: 1487, y: 66, width: 296, height: 455, opacity: 0.42 }, sopra);
+    var box = el("path", { d: "M1283 660H1745V1015H1283Z", fill: C.navy85, "fill-opacity": 0.6, stroke: C.oro, "stroke-width": 2 }, sopra);
+    var valore = el("g", {}, sopra);
+    TH.testo(valore, 1307, 702, "VALORE DI MERCATO", { font: "DM Sans", peso: 500, size: 18, fill: C.oro, ls: 4 });
+    var numerico = /^\d+([.,]\d+)?$/.test(String(D.val || "").trim());
+    if (numerico) {
+      TH.testo(valore, 1462, 958, String(D.val).trim(), { anchor: "middle", size: 250, fill: C.oroChiaro, maxW: 280, comprimi: true });
+      TH.testo(valore, 1672, 842, "€", { anchor: "middle", size: 96, fill: C.avorio });
+      TH.testo(valore, 1672, 958, TH.maiuscolo(D.u || "M"), { anchor: "middle", size: 110, fill: C.avorio, maxW: 100, comprimi: true });
+    } else {
+      // "Parametro zero": la frase su due righe, grande quanto ci sta
+      var parole = TH.maiuscolo(D.val || "").trim().split(/\s+/);
+      var meta = Math.ceil(parole.length / 2);
+      var righe = parole.length > 1 ? [parole.slice(0, meta).join(" "), parole.slice(meta).join(" ")] : parole;
+      righe.forEach(function (r, k) {
+        TH.testo(valore, 1514, (righe.length > 1 ? 835 : 890) + k * 96, r, { anchor: "middle", size: 84, fill: C.oroChiaro, maxW: 410, minSize: 44 });
+      });
+    }
+
+    // ── la barra del soprannome ──
+    var barra = el("g", {}, sopra);
+    var barraR = el("g", {}, barra);
+    el("rect", { x: 320, y: 915, width: 742, height: 153, fill: C.navy, "fill-opacity": 0.94 }, barraR);
+    el("rect", { x: 320, y: 915, width: 742, height: 4, fill: C.oro }, barraR);
+    var sopr = TH.maiuscolo(D.s || "");
+    var soprT = TH.testo(barra, 691, 1024, sopr, { anchor: "middle", size: 96, maxW: 660, minSize: 56, ls: 2 });
+
+    // ── il timbro: oro se approvato, rosso se no ──
+    var colore = OK ? C.oroChiaro : C.rosso;
+    var timbro = el("g", { transform: "translate(1387 485) rotate(" + (OK ? 15 : -12) + ")" }, sopra);
+    var inchiostro = el("g", { filter: "url(#consumo)" }, timbro);
+    el("rect", { x: -392, y: -142, width: 784, height: 284, rx: 8, fill: "none", stroke: colore, "stroke-width": 16 }, inchiostro);
+    el("rect", { x: -366, y: -116, width: 732, height: 232, rx: 4, fill: "none", stroke: colore, "stroke-width": 4 }, inchiostro);
+    if (OK) {
+      TH.testo(inchiostro, 0, 62, "APPROVED", { anchor: "middle", size: 172, fill: colore, maxW: 660, comprimi: true });
+    } else {
+      TH.testo(inchiostro, 0, -8, "NOT", { anchor: "middle", size: 104, fill: colore, ls: 20 });
+      TH.testo(inchiostro, 0, 92, "APPROVED", { anchor: "middle", size: 118, fill: colore, maxW: 660, comprimi: true });
+    }
+
+    if (S) return;
+    TH.ingresso(scena, document.getElementById("lampo"));
+    TH.anima(impronta, [{ opacity: 0 }, { opacity: 0.42 }], 0.6, 0.55, "ease-out");
+    barraR.style.transformBox = "fill-box"; barraR.style.transformOrigin = "50% 50%";
+    TH.anima(barraR, [{ transform: "scaleX(0)" }, { transform: "scaleX(1)" }], 0.35, 1.2);
+    TH.macchina(soprT, sopr, 1.6, 0.2);
+    TH.traccia(box, 0.55, 1.35);
+    valore.style.transformBox = "fill-box"; valore.style.transformOrigin = "50% 50%";
+    TH.anima(valore, [{ transform: "scale(.5)", opacity: 0 }, { transform: "scale(1.06)", opacity: 1, offset: 0.7 }, { transform: "scale(1)", opacity: 1 }], 0.45, 1.5);
+    // il timbro cade dall'alto, enorme, e si schiaccia sul foglio
+    var interno = inchiostro;
+    interno.style.transformBox = "view-box"; interno.style.transformOrigin = "0 0";
+    TH.anima(interno, [{ transform: "scale(3.2) rotate(-6deg)", opacity: 0 },
+                       { transform: "scale(3.2) rotate(-6deg)", opacity: 1, offset: 0.05 },
+                       { transform: "scale(.94) rotate(0deg)", opacity: 1, offset: 0.78 },
+                       { transform: "scale(1) rotate(0deg)", opacity: 1 }], 0.32, 2.75, "cubic-bezier(.55,0,.8,.3)");
+    // il colpo fa tremare foto e grafica (non la scena intera: il suo
+    // ingresso usa la stessa proprieta' e verrebbe coperto)
+    [card, sopra].forEach(function (x) {
+      TH.anima(x, [{ transform: "translate(0,0)" }, { transform: "translate(-7px,5px)" }, { transform: "translate(5px,-4px)" },
+                   { transform: "translate(-3px,2px)" }, { transform: "translate(0,0)" }], 0.28, 3.05, "linear");
+    });
+  });
+})();
+</script>
+<script src="sfondo.js"></script>
+</body>
+</html>

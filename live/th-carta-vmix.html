@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talent Hunters · Carta d'identità · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:block;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:block;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:block;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+  #stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;overflow:hidden;transform-origin:center center;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);}
+  #scena{position:absolute;inset:0;transform-origin:50% 45%;}
+  /* il feltro dei video, ridotto a trama sotto il navy */
+  .th-feltro{position:absolute;left:0;top:0;width:1920px;height:1080px;opacity:.2;mix-blend-mode:soft-light;filter:grayscale(1) contrast(1.6);}
+  .th-fondo,.sopra{position:absolute;left:0;top:0;}
+  #lampo{display:none;}
+
+  #card{position:absolute;left:585px;top:55px;width:927px;height:967px;border-radius:18px;overflow:hidden;
+    background:#0E1430;border:1px solid rgba(245,241,230,.14);box-shadow:0 30px 70px rgba(0,0,0,.5);}
+  #card img,#card video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 20%;}
+  #card .velo{position:absolute;inset:0;background:linear-gradient(0deg,rgba(7,11,29,.7) 0%,transparent 30%);}
+  #card img.vive{animation:respira 30s linear both;}
+  @keyframes respira{from{transform:scale(1)}to{transform:scale(1.07)}}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="scena">
+    <div id="card"><div class="velo"></div></div>
+    <svg class="sopra" id="sopra" width="1920" height="1080" viewBox="0 0 1920 1080"></svg>
+  </div>
+  <div id="lampo"></div>
+</div>
+
+<script src="talent-hunters/th-comune.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { n:"José Manuel Lopez", s:"Flaco", num:"42",
+  //     c:[["Data di nascita","6 dicembre 2000"],["Nazionalità","Argentina"],
+  //        ["Ruolo","Attaccante"],["Piede","Sinistro"],["Altezza","190 cm"]],
+  //     f:"/loghi/foto-....jpg",  (oppure v:"...mp4" per una ripresa che si muove)
+  //     l:"https://a.espncdn.com/i/teamlogos/soccer/500/2029.png" }
+  var DEMO = {
+    n: "José Manuel Lopez", s: "Flaco", num: "42",
+    c: [["Data di nascita", "6 dicembre 2000"], ["Nazionalità", "Argentina"],
+        ["Ruolo", "Attaccante"], ["Piede", "Sinistro"], ["Altezza", "190 cm"]],
+    f: "talent-hunters/demo-lopez.jpg",
+    l: "https://a.espncdn.com/i/teamlogos/soccer/500/2029.png"
+  };
+  var D = TH.dati(DEMO, function (d) { return d && d.n; });
+  if (!D) { document.title = "CARTA D'IDENTITÀ — dati non validi"; document.getElementById("stage").style.display = "none"; return; }
+  document.title = "TALENT HUNTERS · " + (D.n || "");
+
+  var S = TH.STILL, el = TH.el, C = TH.C;
+  var scena = document.getElementById("scena"), sopra = document.getElementById("sopra");
+
+  TH.pronto(function () {
+    var f = TH.fondo(scena, { tFascia: 0.75, tCornice: 1.35 });
+    scena.insertBefore(f.svg, document.getElementById("card"));
+    scena.insertBefore(scena.querySelector(".th-feltro"), f.svg);
+
+    // ── la foto (o la ripresa) ──
+    var card = document.getElementById("card"), velo = card.querySelector(".velo");
+    if (D.v) {
+      var vid = document.createElement("video");
+      vid.src = D.v; vid.muted = true; vid.loop = true; vid.autoplay = true; vid.playsInline = true;
+      card.insertBefore(vid, velo);
+    } else if (D.f) {
+      var im = document.createElement("img");
+      im.src = D.f; im.alt = "";
+      if (!S) im.className = "vive";
+      card.insertBefore(im, velo);
+    }
+
+    var defs = el("defs", {}, sopra);
+    var obl = el("pattern", { id: "obliquo", width: 30, height: 30, patternUnits: "userSpaceOnUse", patternTransform: "rotate(-45)" }, defs);
+    el("rect", { x: 0, y: 0, width: 2, height: 30, fill: C.avorio, opacity: 0.07 }, obl);
+    var str = el("pattern", { id: "strisce", width: 10, height: 10, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" }, defs);
+    el("rect", { x: 0, y: 0, width: 10, height: 10, fill: C.oro }, str);
+    el("rect", { x: 0, y: 0, width: 4, height: 10, fill: C.navy }, str);
+
+    // ── a destra: righe oblique, stemma nell'anello, riquadro della maglia ──
+    var destra = el("g", {}, sopra);
+    el("rect", { x: 1515, y: 65, width: 365, height: 535, fill: "url(#obliquo)" }, destra);
+    var aggancioLogo = el("rect", { x: 1512, y: 320, width: 40, height: 16, fill: "url(#strisce)" }, destra);
+    var anello = el("g", {}, destra);
+    el("circle", { cx: 1698, cy: 328, r: 148, fill: C.navy85, "fill-opacity": 0.9, stroke: C.oro, "stroke-opacity": 0.6, "stroke-width": 2 }, anello);
+    if (D.l) el("image", { href: D.l, x: 1593, y: 223, width: 210, height: 210, preserveAspectRatio: "xMidYMid meet" }, anello);
+    var boxNum = el("path", { d: "M1548 692H1850V925H1548Z", fill: C.navy85, "fill-opacity": 0.55, stroke: C.oro, "stroke-width": 2 }, destra);
+    var aggancioNum = el("rect", { x: 1512, y: 800, width: 36, height: 14, fill: "url(#strisce)" }, destra);
+    var etiNum = TH.testo(destra, 1572, 732, "MAGLIA", { font: "DM Sans", peso: 500, size: 18, fill: C.oro, ls: 4 });
+    var num = TH.testo(destra, 1699, 895, D.num || "", { anchor: "middle", size: 170, fill: C.oroChiaro, maxW: 250, comprimi: true });
+
+    // ── a sinistra: il pannello col nome e i dati ──
+    var sinistra = el("g", {}, sopra);
+    el("rect", { x: 120, y: 62, width: 520, height: 953, rx: 14, fill: C.navy85, "fill-opacity": 0.88, stroke: C.avorio, "stroke-opacity": 0.08 }, sinistra);
+    el("rect", { x: 120, y: 62, width: 6, height: 953, fill: C.oro }, sinistra);
+    TH.testo(sinistra, 160, 120, "TALENT HUNTERS", { peso: 700, size: 20, fill: C.oro, ls: 5.5 });
+
+    // il nome va a capo parola per parola (al massimo tre righe)
+    var parole = TH.maiuscolo(D.n).trim().split(/\s+/).filter(Boolean);
+    while (parole.length > 3) { parole[parole.length - 2] += " " + parole.pop(); }
+    var y0 = { 1: 245, 2: 215, 3: 185 }[parole.length] || 185;
+    parole.forEach(function (p, k) { TH.testo(sinistra, 158, y0 + k * 62, p, { size: 58, maxW: 380, minSize: 34, ls: -0.5 }); });
+    el("rect", { x: 160, y: 334, width: 110, height: 2, fill: C.oro }, sinistra);
+
+    var campi = (D.c || []).slice(0, 5);
+    var righeDati = [];
+    campi.forEach(function (c, k) {
+      var y = 408 + k * 124;
+      var g = el("g", {}, sinistra);
+      TH.testo(g, 160, y, TH.maiuscolo(c[0]), { font: "DM Sans", peso: 500, size: 20, fill: C.avorioSpento, ls: 3.2, maxW: 380 });
+      TH.testo(g, 160, y + 44, TH.maiuscolo(c[1]), { size: 36, maxW: 380, minSize: 22 });
+      if (k < campi.length - 1) el("rect", { x: 160, y: y + 70, width: 440, height: 1, fill: C.avorio, "fill-opacity": 0.1 }, g);
+      righeDati.push(g);
+    });
+
+    // ── la barra del soprannome, sopra la foto ──
+    var barra = el("g", {}, sopra);
+    var barraR = el("g", {}, barra);
+    el("rect", { x: 662, y: 915, width: 743, height: 153, fill: C.navy, "fill-opacity": 0.94 }, barraR);
+    el("rect", { x: 662, y: 915, width: 743, height: 4, fill: C.oro }, barraR);
+    var sopr = TH.maiuscolo(D.s || parole[parole.length - 1] || "");
+    var soprT = TH.testo(barra, 1033.5, 1024, sopr, { anchor: "middle", size: 96, maxW: 660, minSize: 56, ls: 2 });
+
+    // ── i tempi dei video ──
+    if (S) return;
+    TH.ingresso(scena, document.getElementById("lampo"));
+    [aggancioLogo, aggancioNum].forEach(function (a) { a.style.transformBox = "fill-box"; a.style.transformOrigin = "0 50%"; });
+    TH.anima(aggancioLogo, [{ transform: "translateX(420px) scaleX(8)" }, { transform: "none" }], 0.55, 0.7);
+    TH.anima(aggancioNum, [{ transform: "translateX(420px) scaleX(6)" }, { transform: "none" }], 0.55, 0.78);
+    // lo stemma entra rotolando da destra, come nel video
+    anello.style.transformBox = "fill-box"; anello.style.transformOrigin = "50% 50%";
+    TH.anima(anello, [{ transform: "translateX(460px) rotate(200deg)", opacity: 0 },
+                      { transform: "translateX(0) rotate(0deg)", opacity: 1 }], 0.7, 1.15, "cubic-bezier(.2,.8,.3,1)");
+    TH.traccia(boxNum, 0.6, 1.45);
+    TH.anima(etiNum, [{ opacity: 0 }, { opacity: 1 }], 0.3, 1.8);
+    num.style.transformBox = "fill-box"; num.style.transformOrigin = "50% 50%";
+    TH.anima(num, [{ transform: "scale(.4)", opacity: 0 }, { transform: "scale(1.08)", opacity: 1, offset: 0.7 }, { transform: "scale(1)", opacity: 1 }], 0.45, 1.6);
+    TH.anima(sinistra, [{ clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0 0 0)" }], 0.6, 1.5, "cubic-bezier(.3,.7,.3,1)");
+    righeDati.forEach(function (g, k) {
+      TH.anima(g, [{ opacity: 0, transform: "translateX(-40px)" }, { opacity: 1, transform: "none" }], 0.4, 1.7 + k * 0.08);
+    });
+    barraR.style.transformBox = "fill-box"; barraR.style.transformOrigin = "50% 50%";
+    TH.anima(barraR, [{ transform: "scaleX(0)" }, { transform: "scaleX(1)" }], 0.35, 1.25);
+    TH.macchina(soprT, sopr, 1.75, 0.2);
+  });
+})();
+</script>
+<script src="sfondo.js"></script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talent Hunters · Torta · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:block;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:block;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:block;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  /* fondo trasparente: in vMix va sopra le immagini, come il ProRes con l'alfa.
+     color-scheme come l'embedder, altrimenti Chrome dipinge l'iframe di bianco
+     (catalogo, anteprime, regia) — come in sottopancia-vmix. */
+  :root{color-scheme:dark;}
+  html,body{width:100%;height:100%;overflow:hidden;background:transparent;}
+  #stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;overflow:hidden;transform-origin:center center;}
+  #tela{position:absolute;left:0;top:0;}
+</style>
+</head>
+<body>
+<div id="stage"><svg id="tela" width="1920" height="1080" viewBox="0 0 1920 1080"></svg></div>
+
+<script src="talent-hunters/th-comune.js"></script>
+<script src="talent-hunters/th-grafico.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { v:[["AERIAL DUEL %",77],["DUEL WON",100],...], fo:"fonte DataMB" }
+  //   Da 3 a 8 spicchi, valori da 0 a 100. Il colore dello spicchio dice
+  //   il valore, come nel video, ma con la scala di casa: blu profondo
+  //   vicino a zero, azzurro a meta', oro pieno a cento.
+  var DEMO = { v: [["AERIAL DUEL %", 77], ["DUEL WON", 100], ["GOAL CONVERSION", 59],
+                   ["NXPG/SHOT", 44], ["EXPECTED ASSISTS", 36], ["KEY PASSES", 36]], fo: "fonte DataMB" };
+  var D = TH.dati(DEMO, function (d) { return d && d.v && d.v.length >= 3; });
+  if (!D) { document.title = "TORTA — dati non validi"; document.getElementById("stage").style.display = "none"; return; }
+  document.title = "TALENT HUNTERS · TORTA";
+
+  var G = THGrafico, el = TH.el, tela = document.getElementById("tela");
+  var voci = D.v.slice(0, 8), n = voci.length, passo = 360 / n;
+
+  var SCALA = [[0, [36, 64, 127]], [50, [79, 143, 168]], [100, [227, 194, 113]]];
+  function colore(v) {
+    v = Math.max(0, Math.min(100, v));
+    var a = v <= 50 ? SCALA[0] : SCALA[1], b = v <= 50 ? SCALA[1] : SCALA[2], t = (v - a[0]) / (b[0] - a[0]);
+    return "rgb(" + [0, 1, 2].map(function (k) { return Math.round(a[1][k] + (b[1][k] - a[1][k]) * t); }).join(",") + ")";
+  }
+  function spicchio(p, i, v) {
+    var a0 = -90 - passo / 2 + i * passo, a1 = a0 + passo, rad = G.r(v);
+    var A = G.punto(a0, rad), B = G.punto(a1, rad);
+    p.setAttribute("d", rad < 0.5 ? "" : "M" + G.CX + " " + G.CY + "L" + A[0].toFixed(1) + " " + A[1].toFixed(1) +
+      "A" + rad.toFixed(1) + " " + rad.toFixed(1) + " 0 0 1 " + B[0].toFixed(1) + " " + B[1].toFixed(1) + "Z");
+    p.setAttribute("fill", colore(v));
+    p.setAttribute("fill-opacity", 0.92);
+  }
+
+  TH.pronto(function () {
+    var spicchi = voci.map(function () { return el("path", { d: "" }, tela); });
+    var sc = G.scala(tela);
+    // i raggi di confine fra gli spicchi, sopra i colori
+    var raggi = el("g", { stroke: TH.C.avorio, "stroke-opacity": 0.4, "stroke-width": 1.5 }, tela);
+    for (var i = 0; i < n; i++) {
+      var q = G.punto(-90 - passo / 2 + i * passo, G.r(100));
+      el("line", { x1: G.CX, y1: G.CY, x2: q[0].toFixed(1), y2: q[1].toFixed(1) }, raggi);
+    }
+    var angoli = voci.map(function (x, k) { return -90 + k * passo; });
+    var eti = G.etichette(tela, voci.map(function (x) { return x[0]; }), angoli, 372, 11, 30);
+    var fo = G.fonte(tela, D.fo, 150, 925);
+
+    G.entraScala(sc, eti);
+    if (!TH.STILL) {
+      TH.anima(raggi, [{ opacity: 0 }, { opacity: 1 }], 0.5, 0.35, "ease-out");
+      if (fo) TH.anima(fo, [{ opacity: 0 }, { opacity: 1 }], 0.4, 1.9, "ease-out");
+    }
+    // uno spicchio alla volta, in senso orario dall'alto: mentre cresce cambia colore
+    voci.forEach(function (x, k) {
+      G.cresci(0, +x[1] || 0, 1.1 + k * 1.0, 0.85, function (v) { spicchio(spicchi[k], k, v); });
+    });
+  });
+})();
+</script>
+</body>
+</html>
