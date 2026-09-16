@@ -41,7 +41,8 @@
  *  intera o piu' alte che larghe si ritagliano a mezzo busto, come Sky.
  *  Siti dei club (ex Premier fuori dalla piattaforma EFL): Southampton e
  *  Leicester, ognuno letto a modo suo (CLUB_SITI).
- *  Con --fonte sky|pl|efl|club se ne usa una sola.
+ *  Foto gia' scontornate a mano o sul Mac: --pacchetto <elenco.json> (vedi sotto).
+ *  Con --fonte sky|pl|efl|club|pacchetto se ne usa una sola.
  *
  *  Uso, sulla VM (la chiave si legge dall'ambiente del servizio):
  *    node sky-scontornati.js --ponte http://127.0.0.1:8081/api [--squadra como] [--prova] [--sostituisci]
@@ -267,6 +268,18 @@ for (const [k, lega, nome] of [["efl-championship", "eng.2", "Championship"], ["
   };
 }
 
+// ── pacchetto: foto gia' scontornate altrove ─────────────────────────
+// Per i club che pubblicano foto col fondo: si scaricano e si scontornano sul
+// Mac (Vision, lo strumento "Scontorna foto"), si guardano a occhio, e arrivano
+// qui come cartella di PNG con un elenco JSON:
+//   { prefisso, cartella, squadre: [{ squadra, lega, righe: [{ num, nome,
+//     cognome, id, slug, file, sempre, lato }] }] }
+// --pacchetto <elenco.json>. "Ha gia' la foto" vale solo se e' intestata al suo
+// id (--stato): le poche foto che quei giocatori "avevano" erano omonimi.
+const PACCHETTO = arg("pacchetto", "");
+let PAC = null;
+if (PACCHETTO) PAC = JSON.parse(fs.readFileSync(PACCHETTO, "utf8"));
+
 // ── club con un sito tutto loro ─────────────────────────────────────
 // Le ex Premier scese in EFL. West Ham e Wolves non servono: in magazzino
 // hanno gia' le foto da 1200 pixel. Burnley pubblica solo card grafiche
@@ -340,6 +353,27 @@ for (const [k, lega] of [["club-eng2", "eng.2"], ["club-eng3", "eng.3"], ["club-
   };
 }
 
+if (PAC) {
+  for (const lega of [...new Set(PAC.squadre.map((q) => q.lega))]) {
+    FONTI["pacchetto-" + lega] = {
+      nome: "pacchetto " + PAC.prefisso + " (" + lega + ")", lega, gruppo: "pacchetto", soloId: true, prepara: mezzoBusto,
+      chiave: (id) => PAC.prefisso + ":" + id,
+      async squadre(espn) {
+        const out = [];
+        for (const q of PAC.squadre.filter((x) => x.lega === lega)) {
+          const s = slug(q.squadra);
+          const sq = espn.find((e) => slug(e.nome) === s) ||
+                     espn.find((e) => { const a = slug(e.nome).split("-"), b = s.split("-"); return b.every((x) => a.includes(x)) || a.every((x) => b.includes(x)); });
+          if (!sq) continue;
+          const dir = path.resolve(path.dirname(PACCHETTO), PAC.cartella);
+          out.push({ slug: s, sq, righe: async () => q.righe.map((r) => Object.assign({}, r, { img: path.join(dir, r.file) })) });
+        }
+        return out;
+      }
+    };
+  }
+}
+
 // Chi e', nella rosa ESPN, il giocatore di questa riga Sky. Il cognome deve
 // comparire nel nome Sky; il numero di maglia e il nome decidono fra pari.
 // Due candidati ugualmente buoni = nessuno.
@@ -384,7 +418,13 @@ function abbina(s, espn) {
 // un altro — quindi la foto Sky, che e' sicuramente lui, si carica. L'orfana
 // resta in magazzino e si elenca: se e' lui, intestarla a mano nel Magazzino
 // foto riporta la foto da 1200 pixel.
-async function cheFoto(e, teamId) {
+let INDICE = null;
+async function cheFoto(e, teamId, F) {
+  if (F && F.soloId) {
+    if (!STATO) throw new Error("--pacchetto vuole --stato /var/lib/comotv (o comotv-dev)");
+    if (!INDICE) INDICE = JSON.parse(fs.readFileSync(path.join(STATO, "foto-intestazioni.json"), "utf8"));
+    return { sua: !!(INDICE.perId || {})[e.id], orfana: "" };
+  }
   const q = "?foto=" + encodeURIComponent(e.cognome || e.completo) + "&id=" + encodeURIComponent(e.id) + "&squadra=" + encodeURIComponent(teamId);
   const d = await json(PONTE + q);
   return { sua: !!(d && d.url), orfana: (d && d.orfana) || "" };
@@ -455,7 +495,7 @@ async function carica(e, teamId, png) {
           if (via) c.tolte.push(s.nome);
         }
         try {
-          const f = SOSTITUISCI ? { sua: false, orfana: "" } : await cheFoto(e, sq.id);
+          const f = SOSTITUISCI ? { sua: false, orfana: "" } : await cheFoto(e, sq.id, F);
           if (f.sua) c.gia++;
           else {
             if (f.orfana) c.orfane.push(s.nome);
@@ -473,9 +513,13 @@ async function carica(e, teamId, png) {
         // la prima immagine buona fra quelle che la fonte propone
         let png = null, scartata = false;
         for (const u of (x.s.imgs || [x.s.img]).filter(Boolean)) {
-          const r = await fetch(u, { headers: UA });
-          if (!r.ok) continue;
-          let dati = Buffer.from(await r.arrayBuffer());
+          let dati;
+          if (u.startsWith("/")) { if (!fs.existsSync(u)) continue; dati = fs.readFileSync(u); }
+          else {
+            const r = await fetch(u, { headers: UA });
+            if (!r.ok) continue;
+            dati = Buffer.from(await r.arrayBuffer());
+          }
           // Quando la foto non c'e' Sky risponde spesso 200 con una pagina di
           // errore HTML: il codice non basta, si guarda che sia davvero un PNG.
           if (dati.toString("hex", 0, 8) !== "89504e470d0a1a0a") continue;
