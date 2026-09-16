@@ -22,6 +22,13 @@
  *  Chi non si riesce ad abbinare con certezza si salta e si elenca: meglio
  *  una foto in meno che la faccia di un altro.
  *
+ *  Maglie vecchie: Sky non sempre rifa' la foto a chi ha cambiato squadra, e a
+ *  volte e' ancora quella della stagione scorsa. Le foto controllate e scartate
+ *  stanno in sky-maglie-scartate.json col loro sha1: si saltano finche' Sky non
+ *  le sostituisce (il contenuto cambia e tornano buone da guardare). Con
+ *  --pulisci --stato <cartella> si tolgono dal magazzino quelle gia' entrate,
+ *  ma solo se sono foto Sky (512x512) caricate dall'import, mai le altre.
+ *
  *  Uso, sulla VM (la chiave si legge dall'ambiente del servizio):
  *    node sky-scontornati.js --ponte http://127.0.0.1:8081/api [--squadra como] [--prova] [--sostituisci]
  *    (in produzione: --ponte http://127.0.0.1:8080/api)
@@ -34,6 +41,13 @@ const PONTE = arg("ponte", "http://127.0.0.1:8081/api");
 const SOLO = arg("squadra", "");
 const PROVA = !!arg("prova", false);
 const SOSTITUISCI = !!arg("sostituisci", false);
+const PULISCI = !!arg("pulisci", false);
+const STATO = arg("stato", "");
+const fs = require("fs"), path = require("path"), crypto = require("crypto");
+let SCARTATE = {};
+try {
+  for (const x of JSON.parse(fs.readFileSync(path.join(__dirname, "sky-maglie-scartate.json"), "utf8")).scartate) SCARTATE[x.sky] = x;
+} catch (err) { console.log("(nessun elenco di foto scartate: " + err.message + ")"); }
 const CHIAVE = process.env.COMOTV_CHIAVE_CONTRIBUTO || process.env.COMOTV_CHIAVE_COMANDO || process.env.COMOTV_TOKEN || "";
 const UA = { "User-Agent": "Mozilla/5.0 (ComoTV magazzino foto)" };
 const SKY_FOTO = "https://static.sky.it/editorialstaticimages/bc29c89d1a3e47e0afbb38aed61e35b7/sport/headshots/calcio/club/";
@@ -122,6 +136,26 @@ async function cheFoto(e, teamId) {
   const d = await json(PONTE + q);
   return { sua: !!(d && d.url), orfana: (d && d.orfana) || "" };
 }
+// Toglie la foto di questo giocatore SOLO se e' una Sky dell'import: intestata
+// al suo id, PNG 512x512. Una foto caricata a mano (1200 pixel) non si tocca.
+function togliSeSky(e) {
+  if (!STATO) throw new Error("--pulisci vuole --stato /var/lib/comotv (o comotv-dev)");
+  const indice = path.join(STATO, "foto-intestazioni.json");
+  const d = JSON.parse(fs.readFileSync(indice, "utf8"));
+  const file = (d.perId || {})[e.id];
+  if (!file) return false;
+  const p = path.join(STATO, "loghi", file);
+  if (!fs.existsSync(p)) return false;
+  const h = fs.readFileSync(p).subarray(0, 24);
+  if (h.toString("hex", 0, 8) !== "89504e470d0a1a0a" || h.readUInt32BE(16) !== 512 || h.readUInt32BE(20) !== 512) return false;
+  // e solo se e' entrata con l'import Sky, cominciato il 16/09/2026
+  if (fs.statSync(p).mtime < new Date("2026-09-16T00:00:00+02:00")) return false;
+  fs.unlinkSync(p);
+  delete d.perId[e.id];
+  for (const cog of Object.keys(d.perSq || {})) for (const k of Object.keys(d.perSq[cog])) if (d.perSq[cog][k] === file) delete d.perSq[cog][k];
+  fs.writeFileSync(indice, JSON.stringify(d, null, 1));
+  return true;
+}
 async function carica(e, teamId, png) {
   const corpo = { token: CHIAVE, tipo: "foto-carica", cognome: e.cognome || e.completo, id: e.id, squadra: teamId,
                   dati: "data:image/png;base64," + Buffer.from(png).toString("base64") };
@@ -134,7 +168,7 @@ async function carica(e, teamId, png) {
 (async function () {
   if (!CHIAVE && !PROVA) { console.error("manca la chiave nell'ambiente (COMOTV_CHIAVE_CONTRIBUTO)"); process.exit(1); }
   const espn = await squadreEspn();
-  const totale = { squadre: 0, sky: 0, gia: 0, caricate: 0, senzaFotoSky: 0, nonAbbinati: 0, orfane: 0, errori: 0 };
+  const totale = { squadre: 0, sky: 0, gia: 0, caricate: 0, senzaFotoSky: 0, nonAbbinati: 0, orfane: 0, scartate: 0, tolte: 0, errori: 0 };
   const note = [];
   // ── prima fase: abbinare e guardare cosa c'e', senza caricare niente ──
   const lavoro = [];
@@ -147,11 +181,15 @@ async function carica(e, teamId, png) {
     try { righe = rosaSky(await testo("https://sport.sky.it/calcio/squadre/" + skySlug + "/rosa")); }
     catch (err) { note.push(skySlug + ": rosa Sky non letta (" + err.message + ")"); continue; }
     const rosa = await rosaEspn(sq.id);
-    const c = { sq: sq, sky: righe.length, gia: 0, caricate: 0, senzaFotoSky: 0, nonAbbinati: [], orfane: [], errori: 0, daFare: [] };
+    const c = { sq: sq, sky: righe.length, gia: 0, caricate: 0, senzaFotoSky: 0, nonAbbinati: [], orfane: [], scartate: [], tolte: [], errori: 0, daFare: [] };
     for (const s of righe) {
       const e = abbina(s, rosa);
       if (!e) { c.nonAbbinati.push(s.nome + " (" + (s.num || "-") + ")"); continue; }
       if (arg("coppie", false) && slug(e.completo) !== s.slug) console.log("   " + sq.nome + ": Sky " + s.nome + " #" + s.num + "  ->  ESPN " + e.completo + " #" + e.num + " (id " + e.id + ")");
+      if (PULISCI && SCARTATE[s.id]) {
+        const via = togliSeSky(e);
+        if (via) c.tolte.push(s.nome);
+      }
       try {
         const f = SOSTITUISCI ? { sua: false, orfana: "" } : await cheFoto(e, sq.id);
         if (f.sua) c.gia++;
@@ -170,14 +208,22 @@ async function carica(e, teamId, png) {
         const r = await fetch(SKY_FOTO + x.s.id + ".png", { headers: UA });
         if (!r.ok) { c.senzaFotoSky++; continue; }
         const png = await r.arrayBuffer();
+        // Quando la foto non c'e' Sky risponde spesso 200 con una pagina di
+        // errore HTML: il codice non basta, si guarda che sia davvero un PNG.
+        const firma = Buffer.from(png.slice(0, 8)).toString("hex");
+        if (firma !== "89504e470d0a1a0a") { c.senzaFotoSky++; continue; }
+        const sc = SCARTATE[x.s.id];
+        if (sc && sc.sha1 === crypto.createHash("sha1").update(Buffer.from(png)).digest("hex")) { c.scartate.push(x.s.nome); continue; }
         if (!PROVA) await carica(x.e, c.sq.id, png);
         c.caricate++;
       } catch (err) { c.errori++; note.push(c.sq.nome + " · " + x.s.nome + ": " + err.message); }
     }
     totale.sky += c.sky; totale.gia += c.gia; totale.caricate += c.caricate;
-    totale.senzaFotoSky += c.senzaFotoSky; totale.nonAbbinati += c.nonAbbinati.length; totale.orfane += c.orfane.length; totale.errori += c.errori;
+    totale.senzaFotoSky += c.senzaFotoSky; totale.nonAbbinati += c.nonAbbinati.length; totale.orfane += c.orfane.length; totale.scartate += c.scartate.length; totale.tolte += c.tolte.length; totale.errori += c.errori;
     console.log(`${c.sq.nome.padEnd(16)} Sky ${String(c.sky).padStart(2)} · gia' in magazzino ${String(c.gia).padStart(2)} · ${PROVA ? "da caricare" : "caricate"} ${String(c.caricate).padStart(2)} · senza foto Sky ${c.senzaFotoSky}` +
                 (c.nonAbbinati.length ? ` · non abbinati: ${c.nonAbbinati.join(", ")}` : "") +
+                (c.scartate.length ? ` · scartate per la maglia: ${c.scartate.join(", ")}` : "") +
+                (c.tolte.length ? ` · TOLTE dal magazzino: ${c.tolte.join(", ")}` : "") +
                 (c.orfane.length ? ` · c'e' anche una foto orfana col cognome di: ${c.orfane.join(", ")}` : "") + (c.errori ? ` · errori ${c.errori}` : ""));
   }
   console.log("\nTOTALE " + JSON.stringify(totale) + (PROVA ? "  (prova: nessuna foto caricata)" : ""));
