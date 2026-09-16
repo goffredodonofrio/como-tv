@@ -53,7 +53,7 @@
   var G = GIOCHI[PAGINA.g] || GIOCHI.tabellone;
   var VUOTI = {
     tabellone: function () { return { p: "", a: "", b: "", ea: 0, eb: 0, u: "" }; },
-    "10challenge": function () { return { r: lista(10, function () { return ["", ""]; }), bonus: { n: "", num: "", f: null } }; },
+    "10challenge": function () { return { t: "", r: lista(10, function () { return ["", ""]; }), bonus: { n: "", num: "", f: null } }; },
     eleven: function () { return { sel: 0, q: lista(11, function () { return { q: "", a: ["", "", ""], w: -1 }; }) }; },
     misterx: function () {
       return { sel: 0, x: lista(7, function () {
@@ -112,7 +112,9 @@
         '<div class="nota">La X appena aggiunta entra col colpo; le altre sono ferme.</div></div>';
     },
     "10challenge": function () {
-      return '<div class="panel"><h2>Le dieci risposte <small>dall\'alto in basso, nell\'ordine in cui escono</small></h2>' +
+      return '<div class="panel"><h2>Il tema <small>sotto il titolo: la domanda a cui rispondono le dieci caselle</small></h2>' +
+        '<input type="text" data-campo="t" value="' + esc(A.t || "") + '" placeholder="Chi ha segnato di più col Flamengo dal 2019"></div>' +
+        '<div class="panel"><h2>Le dieci risposte <small>dall\'alto in basso, nell\'ordine in cui escono</small></h2>' +
         A.r.map(function (r, i) {
           return '<div class="rispo"><span class="n">' + (i + 1) + '</span><input type="text" data-riga="' + i + '" data-col="0" value="' + esc(r[0]) + '" placeholder="Nome">' +
             '<input type="text" data-riga="' + i + '" data-col="1" value="' + esc(r[1]) + '" placeholder="N." style="width:90px"></div>';
@@ -162,7 +164,11 @@
   };
 
   function disegna() {
-    $("corpo").innerHTML = MODULI[PAGINA.g]();
+    $("corpo").innerHTML = MODULI[PAGINA.g]() +
+      '<div class="panel"><label class="spunta"><input type="checkbox" id="gTrasp"' + (A.trasp ? " checked" : "") + '> Senza sfondo: ' +
+      'la grafica esce trasparente, da mettere sopra lo studio</label>' +
+      '<div class="nota">Vale per tutto il gioco. Senza spunta c\'è lo studio del quiz dietro.</div></div>';
+    $("prevbox").className = A.trasp ? "trasparente" : "";
     if (G.foto) montaFoto();
     riempiPassi();
   }
@@ -183,6 +189,12 @@
   });
   $("corpo").addEventListener("change", function (e) {
     if (e.target.id === "tSubito") { SUBITO = e.target.checked; return; }
+    if (e.target.id === "gTrasp") {
+      A.trasp = e.target.checked; salva(); riempiPassi();
+      $("prevbox").className = A.trasp ? "trasparente" : "";
+      if ($("prevwrap").style.display !== "none") anteprima();
+      return;
+    }
     if (e.target.name === "giusta") { A.q[A.sel].w = +e.target.value; salva(); riempiPassi(); }
   });
   $("corpo").addEventListener("click", function (e) {
@@ -224,24 +236,29 @@
       var ultima = -1;
       A.r.forEach(function (r, i) { if (pieno(r[0])) ultima = i; });
       var r = A.r.slice(0, ultima + 1).map(function (x) { return [x[0].trim(), x[1].trim()]; });
-      r.forEach(function (x, i) { out.push({ nome: (i + 1) + "/" + r.length + " · " + (x[0] || "—"), d: { r: r, k: i + 1 } }); });
+      var tema = (A.t || "").trim();
+      if (r.length) out.push({ nome: "tabellone coperto", d: { r: r, k: 0, t: tema } });
+      r.forEach(function (x, i) { out.push({ nome: (i + 1) + "/" + r.length + " · " + (x[0] || "—"), d: { r: r, k: i + 1, t: tema } }); });
     } else if (g === "bonus") {
       if (pieno(A.bonus.n) || A.bonus.f) out.push({ nome: A.bonus.n || "Bonus", d: { n: A.bonus.n.trim(), num: A.bonus.num.trim(), f: A.bonus.f || undefined } });
     } else if (g === "eleven") {
       var q = A.q[A.sel], risp = q.a.map(function (t) { return t.trim(); });
       if (pieno(q.q)) {
-        var base = { q: q.q.trim(), a: risp }, tit = "D" + (A.sel + 1);
+        var quante = A.q.filter(function (x) { return pieno(x.q); }).length;
+        var base = { q: q.q.trim(), a: risp, n: (A.sel + 1) + "/" + Math.max(quante, A.sel + 1) }, tit = "D" + (A.sel + 1);
         out.push({ nome: tit + " · domanda", d: Object.assign({ k: 0 }, base) });
         [1, 2, 3].forEach(function (k) { if (pieno(risp[k - 1])) out.push({ nome: tit + " · risposta " + k, d: Object.assign({ k: k }, base) }); });
         if (q.w >= 0 && risp.every(pieno)) out.push({ nome: tit + " · giusta: " + risp[q.w], d: Object.assign({ k: 3, w: q.w }, base) });
       }
     } else if (g === "misterx") {
       var x = A.x[A.sel], ind = x.i.map(function (t) { return t.trim(); }).filter(Boolean);
+      if (ind.length) out.push({ nome: (x.n || "X" + (A.sel + 1)) + " · indizi chiusi", d: { i: ind, k: 0 } });
       ind.forEach(function (t, i) { out.push({ nome: (x.n || "X" + (A.sel + 1)) + " · indizio " + (i + 1), d: { i: ind, k: i + 1 } }); });
     } else if (g === "rivela") {
       var y = A.x[A.sel];
       if (pieno(y.n)) out.push({ nome: y.n.trim(), d: { n: y.n.trim(), c: y.c.filter(function (r) { return pieno(r[0]) && pieno(r[1]); }).map(function (r) { return [r[0].trim(), r[1].trim()]; }), f: y.f || undefined } });
     }
+    if (A.trasp) out.forEach(function (p) { p.d.trasp = 1; });
     return out;
   }
   function riempiPassi() {
@@ -394,7 +411,6 @@
 
   // ── partenza ──
   if (window.SceltaFoto) SceltaFoto.adotta(PONTE, TOKEN);
-  $("prevbox").className = G.alpha ? "trasparente" : "";
   disegna();
   adattaPrev();
 })();
