@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Goleada · 10 Challenge · Grafica vMix</title>
+</head>
+<body>
+<div id="stage"><svg id="tela" width="1920" height="1080" viewBox="0 0 1920 1080"></svg></div>
+
+<script src="goleada/gol-comune.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { r:[["Gabriel Barbosa","31"],["Pedro","28"],…], k:3, t:"I bomber del Flamengo", trasp:0 }
+  //   Il tabellone delle dieci risposte: le caselle ci sono tutte dal primo
+  //   passo, numerate e coperte; k = quante sono scoperte (le prime k, 1-5 a
+  //   sinistra e 6-10 a destra). La k-esima si gira col lampo. t = il tema,
+  //   sotto il titolo. Senza k: tutte scoperte.
+  var DEMO = { t: "Chi ha segnato di più col Flamengo dal 2019", r: [["Gabriel Barbosa", "31"], ["Pedro", "28"], ["Bruno Henrique", "27"], ["Fred", "25"], ["Rony", "23"],
+               ["Raphael Veiga", "22"], ["Luizão", "21"], ["Ricardo Oliveira", "19"], ["Paulinho", "17"], ["Robinho", "17"]] };
+  var D = GOL.dati(DEMO, function (d) { return d && d.r && d.r.length; });
+  if (!D) { document.title = "10 CHALLENGE — dati non validi"; document.getElementById("stage").style.display = "none"; return; }
+  var righe = D.r.slice(0, 10), N = righe.length, k = GOL.passo(D, N), tutte = D.k == null;
+  document.title = "GOLEADA · 10 CHALLENGE · " + k + "/" + N;
+
+  var C = GOL.C, el = GOL.el, tela = document.getElementById("tela");
+  // due colonne da cinque; con cinque risposte o meno, una sola al centro
+  var perColonna = N > 5 ? Math.ceil(N / 2) : N, W = 800, H = 116, PASSO = 146, Y0 = 262;
+  var COLONNE = N > 5 ? [120, 1000] : [560];
+
+  GOL.pronto(D, function () {
+    GOL.materiali(tela);
+    var testa = GOL.intestazione(tela, "10 Challenge", D.t || "");
+
+    var caselle = righe.map(function (r, i) {
+      var col = Math.floor(i / perColonna), x = COLONNE[col], y = Y0 + (i - col * perColonna) * PASSO;
+      var g = el("g", {}, tela), scoperta = i < k;
+      GOL.casella(g, x, y, W, H, { stato: scoperta ? "piena" : "vuota", punta: 46 });
+      GOL.bollino(g, x + 72, y + H / 2, 38, i + 1, { spento: !scoperta });
+      if (scoperta) {
+        GOL.testo(g, x + 132, y + H / 2 + 17, GOL.maiuscolo(r[0]), { size: 46, fill: C.avorio, maxW: W - 132 - 190, minSize: 26 });
+        // il numero in una piccola targa d'oro in fondo alla casella
+        el("path", { d: GOL.esagono(x + W - 168, y + 22, 118, H - 44, 22), fill: "url(#golOro)" }, g);
+        GOL.testo(g, x + W - 109, y + H / 2 + 17, String(r[1] == null ? "" : r[1]), { anchor: "middle", size: 48, fill: C.navy, maxW: 92 });
+      } else {
+        var q = GOL.testo(g, x + W / 2 + 30, y + H / 2 + 20, "?", { anchor: "middle", size: 58, fill: C.oro });
+        q.setAttribute("fill-opacity", 0.4);
+      }
+      return { g: g, cx: x + W / 2, cy: y + H / 2 };
+    });
+
+    if (GOL.STILL) return;
+    GOL.entra(testa, 0.05, "translateY(-30px)");
+    if (tutte) {
+      caselle.forEach(function (c, i) { GOL.entra(c.g, 0.2 + i * 0.05); });
+      caselle.forEach(function (c, i) { GOL.gira(c.g, 1.0 + i * 0.28); GOL.lampo(tela, c.cx, c.cy, 360, 1.05 + i * 0.28); });
+    } else if (k > 0) {
+      var c = caselle[k - 1];
+      GOL.gira(c.g, 0.12); GOL.lampo(tela, c.cx, c.cy, 460, 0.16);
+    } else {
+      caselle.forEach(function (c, i) { GOL.entra(c.g, 0.2 + i * 0.06); });
+    }
+  });
+})();
+</script>
+</body>
+</html>

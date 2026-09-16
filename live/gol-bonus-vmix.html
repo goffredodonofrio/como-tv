@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Goleada · 10 Challenge · Bonus · Grafica vMix</title>
+</head>
+<body>
+<div id="stage"><svg id="tela" width="1920" height="1080" viewBox="0 0 1920 1080"></svg></div>
+
+<script src="goleada/gol-comune.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { n:"Hulk", num:"16", f:"/loghi/…jpg", trasp:0 }
+  //   Il BONUS del 10 Challenge: la card che esce con la raggiera, la foto
+  //   (inquadrata dall'editor, 788x745), il nome e il numero.
+  var DEMO = { n: "Marcus Thuram", num: "16", f: "/loghi/foto-demo-volto-thuram.jpg" };
+  var D = GOL.dati(DEMO, function (d) { return d && (d.n || d.f); });
+  if (!D) { document.title = "BONUS — dati non validi"; document.getElementById("stage").style.display = "none"; return; }
+  document.title = "GOLEADA · 10 CHALLENGE · BONUS · " + (D.n || "");
+
+  var C = GOL.C, el = GOL.el, tela = document.getElementById("tela");
+  var X = 666, Y = 214, W = 588, H = 720;
+
+  GOL.pronto(D, function () {
+    var defs = GOL.materiali(tela);
+    var clip = el("clipPath", { id: "golFoto" }, defs);
+    el("rect", { x: X + 20, y: Y + 20, width: W - 40, height: 520, rx: 14 }, clip);
+    var velo = el("linearGradient", { id: "golVelo", x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+    [["0", 0], [".7", 0], ["1", 0.8]].forEach(function (x) { el("stop", { offset: x[0], "stop-color": C.navy, "stop-opacity": x[1] }, velo); });
+
+    var testa = GOL.intestazione(tela, "10 Challenge", "Il bonus");
+    var rag = GOL.raggiera(tela, 960, 560, 820, { opacita: 0.75, n: 26 });
+
+    // la card
+    var card = el("g", {}, tela);
+    el("rect", { x: X, y: Y, width: W, height: H, rx: 26, fill: C.oroChiaro, filter: "url(#golAlone)", "class": "gol-pulsa", opacity: 0.6 }, card);
+    el("rect", { x: X, y: Y, width: W, height: H, rx: 26, fill: "url(#golPannello)", stroke: "url(#golBordo)", "stroke-width": 6 }, card);
+    el("rect", { x: X + 20, y: Y + 20, width: W - 40, height: 520, rx: 14, fill: C.navy85 }, card);
+    if (D.f) el("image", { href: D.f, x: X + 20, y: Y + 20, width: W - 40, height: 520, preserveAspectRatio: "xMidYMid slice", "clip-path": "url(#golFoto)" }, card);
+    else GOL.asterisco(card, 960, Y + 280, 140, C.oro, 0.25);
+    el("rect", { x: X + 20, y: Y + 20, width: W - 40, height: 520, rx: 14, fill: "url(#golVelo)" }, card);
+    GOL.righe(card, 960, Y + 626, GOL.maiuscolo(D.n || ""), { size: 60, size2: 48, maxW: W - 80, minSize: 30, fill: C.avorio });
+
+    // il numero nel bollino, a cavallo dell'angolo
+    var num = D.num ? GOL.bollino(tela, X + W - 16, Y + 36, 66, D.num) : null;
+
+    // il nastro BONUS sopra la card
+    var nastro = el("g", {}, tela);
+    GOL.casella(nastro, 740, Y - 58, 440, 96, { stato: "giusta", punta: 38 });
+    GOL.asterisco(nastro, 830, Y - 10, 18, C.navy, 1, 7);
+    GOL.testo(nastro, 990, Y + 7, "BONUS", { anchor: "middle", size: 56, fill: C.navy, ls: 6 });
+
+    if (GOL.STILL) return;
+    GOL.entra(testa, 0.05, "translateY(-30px)");
+    GOL.anima(rag, [{ opacity: 0 }, { opacity: 0.75 }], 0.9, 0.2, "ease-out");
+    GOL.colpo(card, 0.25);
+    GOL.lampo(tela, 960, 560, 900, 0.3);
+    GOL.gira(nastro, 0.7);
+    if (num) GOL.colpo(num, 0.95);
+  });
+})();
+</script>
+</body>
+</html>

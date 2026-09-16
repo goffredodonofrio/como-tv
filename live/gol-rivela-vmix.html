@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Goleada · Mister X · Rivelazione · Grafica vMix</title>
+</head>
+<body>
+<div id="stage"><svg id="tela" width="1920" height="1080" viewBox="0 0 1920 1080"></svg></div>
+
+<script src="goleada/gol-comune.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { n:"Daniel Muñoz", c:[["Età","30 anni"],["Nato a","Amalfi (COL)"],…], f:"/loghi/…jpg", trasp:0 }
+  //   La soluzione di Mister X: al posto della sagoma esplode la foto
+  //   (inquadrata dall'editor, 738x648), a sinistra il nome e la carta
+  //   d'identita' (fino a cinque righe).
+  var DEMO = { n: "Marcus Thuram", f: "/loghi/foto-demo-volto-thuram.jpg",
+               c: [["Età", "29 anni"], ["Nato a", "Parma (ITA)"], ["Nazionalità", "Francese"], ["Ruolo", "Attaccante"], ["Squadra", "Inter"]] };
+  var D = GOL.dati(DEMO, function (d) { return d && d.n; });
+  if (!D) { document.title = "MISTER X — dati non validi"; document.getElementById("stage").style.display = "none"; return; }
+  document.title = "GOLEADA · MISTER X · " + D.n;
+
+  var C = GOL.C, el = GOL.el, tela = document.getElementById("tela");
+
+  GOL.pronto(D, function () {
+    var defs = GOL.materiali(tela);
+    var testa = GOL.intestazione(tela, "Mister X", "Ecco chi sono");
+
+    // ── la foto, dove prima c'era la sagoma ──
+    var CX = 1130, CY = 210, CW = 690, CH = 680;
+    var clip = el("clipPath", { id: "golFotoX" }, defs);
+    el("rect", { x: CX + 18, y: CY + 18, width: CW - 36, height: CH - 36, rx: 16 }, clip);
+    var rag = GOL.raggiera(tela, CX + CW / 2, CY + CH / 2, 760, { opacita: 0.7, n: 26 });
+    var carta = el("g", {}, tela);
+    el("rect", { x: CX, y: CY, width: CW, height: CH, rx: 26, fill: C.oroChiaro, filter: "url(#golAlone)", "class": "gol-pulsa", opacity: 0.55 }, carta);
+    el("rect", { x: CX, y: CY, width: CW, height: CH, rx: 26, fill: "url(#golPannello)", stroke: "url(#golBordo)", "stroke-width": 6 }, carta);
+    var foto = D.f ? el("image", { href: D.f, x: CX + 18, y: CY + 18, width: CW - 36, height: CH - 36, preserveAspectRatio: "xMidYMid slice", "clip-path": "url(#golFotoX)" }, carta)
+                   : GOL.asterisco(carta, CX + CW / 2, CY + CH / 2, 150, C.oro, 0.25);
+
+    // ── il nome ──
+    var nome = el("g", {}, tela);
+    var parole = String(D.n).trim().split(/\s+/);
+    if (parole.length > 1) {
+      GOL.testo(nome, 110, 318, GOL.maiuscolo(parole[0]), { size: 84, fill: C.avorio, maxW: 940, minSize: 44 });
+      GOL.testo(nome, 110, 420, GOL.maiuscolo(parole.slice(1).join(" ")), { size: 108, fill: C.oroChiaro, maxW: 940, minSize: 52 });
+    } else {
+      GOL.testo(nome, 110, 400, GOL.maiuscolo(D.n), { size: 120, fill: C.oroChiaro, maxW: 940, minSize: 56 });
+    }
+
+    // ── la carta d'identita': una casella per riga ──
+    var righe = (D.c || []).filter(function (r) { return r && (r[0] || r[1]); }).slice(0, 5);
+    var voci = righe.map(function (r, i) {
+      var y = 480 + i * 102, g = el("g", {}, tela);
+      GOL.casella(g, 110, y, 950, 84, { punta: 30 });
+      GOL.testo(g, 160, y + 51, GOL.maiuscolo(r[0]), { font: "DM Sans", peso: 500, size: 26, fill: C.oroChiaro, ls: 4, maxW: 300 });
+      GOL.testo(g, 1010, y + 57, GOL.maiuscolo(r[1]), { anchor: "end", size: 44, fill: C.avorio, maxW: 560, minSize: 24 });
+      return g;
+    });
+
+    if (GOL.STILL) return;
+    GOL.entra(testa, 0.05, "translateY(-30px)");
+    GOL.anima(rag, [{ opacity: 0 }, { opacity: 0.7 }], 0.9, 0.25, "ease-out");
+    GOL.colpo(carta, 0.2);
+    GOL.lampo(tela, CX + CW / 2, CY + CH / 2, 1000, 0.25);
+    GOL.entra(nome, 0.6, "translateX(-60px)");
+    voci.forEach(function (g, i) { GOL.gira(g, 0.9 + i * 0.14); });
+  });
+})();
+</script>
+</body>
+</html>

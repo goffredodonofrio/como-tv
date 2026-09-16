@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Goleada · Mister X · Grafica vMix</title>
+</head>
+<body>
+<div id="stage"><svg id="tela" width="1920" height="1080" viewBox="0 0 1920 1080"></svg></div>
+
+<script src="goleada/gol-comune.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { i:["Sono colombiano","Gioco nel Crystal Palace",…], k:2, trasp:0 }
+  //   Fino a cinque indizi. Le caselle ci sono tutte, chiuse col lucchetto;
+  //   k = quanti indizi sono usciti (il k-esimo si sblocca col lampo). A
+  //   destra la sagoma misteriosa col punto di domanda. Senza k: tutti.
+  var DEMO = { i: ["Sono colombiano", "Gioco nel Crystal Palace", "Sono un terzino destro", "Il 2 è il mio numero di maglia", "Sono nato il 26 maggio 1996"] };
+  var D = GOL.dati(DEMO, function (d) { return d && d.i && d.i.length; });
+  if (!D) { document.title = "MISTER X — dati non validi"; document.getElementById("stage").style.display = "none"; return; }
+  var indizi = D.i.slice(0, 5), N = indizi.length, k = GOL.passo(D, N), tutti = D.k == null;
+  document.title = "GOLEADA · MISTER X · INDIZIO " + k;
+
+  var C = GOL.C, el = GOL.el, tela = document.getElementById("tela");
+  var X = 110, W = 1080, H = 118, PASSO = 150, Y0 = 250 + (5 - N) * PASSO / 2;
+
+  GOL.pronto(D, function () {
+    var defs = GOL.materiali(tela);
+    var testa = GOL.intestazione(tela, "Mister X", "Chi sono?");
+
+    // ── la sagoma misteriosa ──
+    var CX = 1300, CY = 230, CW = 500, CH = 640;
+    var clip = el("clipPath", { id: "golCarta" }, defs);
+    el("rect", { x: CX + 16, y: CY + 16, width: CW - 32, height: CH - 32, rx: 16 }, clip);
+    var luce = el("radialGradient", { id: "golLuceCarta", cx: "50%", cy: "30%", r: "70%" }, defs);
+    el("stop", { offset: "0", "stop-color": "#3A55B8", "stop-opacity": 0.55 }, luce);
+    el("stop", { offset: "1", "stop-color": C.navy, "stop-opacity": 0 }, luce);
+    var carta = el("g", {}, tela);
+    el("rect", { x: CX, y: CY, width: CW, height: CH, rx: 24, fill: "url(#golPannello)", stroke: "url(#golBordo)", "stroke-width": 5, filter: "url(#golOmbra)" }, carta);
+    var dentro = el("g", { "clip-path": "url(#golCarta)" }, carta);
+    el("rect", { x: CX, y: CY, width: CW, height: CH, fill: "url(#golLuceCarta)" }, dentro);
+    var mx = CX + CW / 2;
+    el("circle", { cx: mx, cy: CY + 250, r: 104, fill: "#060918", stroke: C.oro, "stroke-opacity": 0.3, "stroke-width": 3 }, dentro);
+    el("path", { d: "M" + (mx - 250) + " " + (CY + CH) + "C" + (mx - 236) + " " + (CY + 460) + " " + (mx - 130) + " " + (CY + 392) + " " + mx + " " + (CY + 392) +
+                    "C" + (mx + 130) + " " + (CY + 392) + " " + (mx + 236) + " " + (CY + 460) + " " + (mx + 250) + " " + (CY + CH) + "Z",
+                 fill: "#060918", stroke: C.oro, "stroke-opacity": 0.3, "stroke-width": 3 }, dentro);
+    var domanda = GOL.testo(carta, mx, CY + 318, "?", { anchor: "middle", size: 190, fill: C.oroChiaro });
+    domanda.setAttribute("class", "gol-pulsa");
+
+    // ── gli indizi ──
+    var caselle = indizi.map(function (t, i) {
+      var y = Y0 + i * PASSO, g = el("g", {}, tela), aperto = i < k;
+      GOL.casella(g, X, y, W, H, { stato: aperto ? "piena" : "vuota", punta: 46, linee: [0, X] });
+      GOL.bollino(g, X + 74, y + H / 2, 38, i + 1, { spento: !aperto });
+      if (aperto) {
+        GOL.righe(g, X + W / 2 + 40, y + H / 2, GOL.maiuscolo(t), { size: 42, size2: 34, maxW: W - 210, minSize: 22, fill: C.avorio, interlinea: 1.06 });
+      } else {
+        GOL.lucchetto(g, X + W / 2 - 40, y + H / 2 - 4, 1.3, C.oro, 0.5);
+        GOL.testo(g, X + W / 2 - 10, y + H / 2 + 12, "INDIZIO " + (i + 1), { font: "DM Sans", peso: 500, size: 30, fill: C.oro, ls: 6 }).setAttribute("fill-opacity", 0.5);
+      }
+      return { g: g, cx: X + W / 2, cy: y + H / 2 };
+    });
+
+    if (GOL.STILL) return;
+    GOL.entra(testa, 0.05, "translateY(-30px)");
+    if (tutti || k === 0) {
+      GOL.colpo(carta, 0.2);
+      caselle.forEach(function (c, i) { GOL.entra(c.g, 0.3 + i * 0.08, "translateX(-60px)"); });
+      if (tutti) caselle.forEach(function (c, i) { GOL.gira(c.g, 1.1 + i * 0.4); GOL.lampo(tela, c.cx, c.cy, 420, 1.15 + i * 0.4); });
+    } else {
+      var c = caselle[k - 1];
+      GOL.gira(c.g, 0.12); GOL.lampo(tela, c.cx, c.cy, 520, 0.16);
+    }
+  });
+})();
+</script>
+</body>
+</html>

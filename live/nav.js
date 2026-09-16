@@ -53,7 +53,8 @@
       ["focus.html",                 "Focus"],
       ["dichiarazioni.html",         "Dichiarazioni"],
       ["volti.html",                 "Volti"],
-      ["talent-hunters.html",        "Talent Hunters"]
+      ["talent-hunters.html",        "Talent Hunters"],
+      ["goleada.html",               "Goleada"]
     ]},
     { nome: "Tabelloni", voci: [
       ["tabelloni.html",             "Tabelloni e gironi"],
@@ -77,6 +78,9 @@
                  "th-not-approved.html": "talent-hunters.html", "th-heatmap.html": "talent-hunters.html",
                  "th-heatmap-evidenza.html": "talent-hunters.html", "th-torta.html": "talent-hunters.html",
                  "th-radar.html": "talent-hunters.html", "th-radar-confronto.html": "talent-hunters.html",
+                 "goleada-tabellone.html": "goleada.html", "goleada-10challenge.html": "goleada.html",
+                 "goleada-bonus.html": "goleada.html", "goleada-eleven.html": "goleada.html",
+                 "goleada-misterx.html": "goleada.html", "goleada-rivela.html": "goleada.html",
                  "barra.html": "ticker.html",
                  "classifiche-campionati.html": "classifiche-campionati.html" };
   if (FIGLIE[qui]) qui = FIGLIE[qui];

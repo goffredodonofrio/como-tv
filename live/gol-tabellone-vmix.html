@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Goleada · Tabellone · Grafica vMix</title>
+</head>
+<body>
+<div id="stage"><svg id="tela" width="1920" height="1080" viewBox="0 0 1920 1080"></svg></div>
+
+<script src="goleada/gol-comune.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { p:"29", a:"Simo", b:"Andrea", ea:1, eb:0, u:"a", trasp:0 }
+  //   Il tabellone del quiz: il marchio con la puntata, i due concorrenti sui
+  //   loro podi e sotto ciascuno tre lampade, che si accendono rosse a ogni
+  //   errore (da 0 a 3). u = chi ha appena sbagliato: la sua ultima lampada
+  //   si accende col colpo, le altre sono ferme.
+  var DEMO = { p: "29", a: "Simo", b: "Andrea", ea: 1, eb: 2 };
+  var D = GOL.dati(DEMO, function (d) { return d && (d.a || d.b); });
+  if (!D) { document.title = "TABELLONE — dati non validi"; document.getElementById("stage").style.display = "none"; return; }
+  function errori(v) { v = parseInt(v, 10); return isNaN(v) ? 0 : Math.max(0, Math.min(3, v)); }
+  var EA = errori(D.ea), EB = errori(D.eb), nuovo = D.u === "a" || D.u === "b" ? D.u : null;
+  document.title = "GOLEADA · TABELLONE · " + (D.a || "") + " " + EA + " – " + EB + " " + (D.b || "");
+
+  var C = GOL.C, el = GOL.el, tela = document.getElementById("tela");
+
+  GOL.pronto(D, function () {
+    GOL.materiali(tela);
+
+    // ── il marchio: GOLEADA ✱ 29 ──
+    var marchio = el("g", {}, tela);
+    var num = String(D.p || "").trim();
+    var tGol = GOL.testo(marchio, 0, 300, "GOLEADA", { size: 176, fill: C.avorio, ls: 2 });
+    var wGol = 0, wNum = 0, tNum = null;
+    try { wGol = tGol.getComputedTextLength(); } catch (e) {}
+    if (num) { tNum = GOL.testo(marchio, 0, 300, num, { size: 176, fill: C.oroChiaro }); try { wNum = tNum.getComputedTextLength(); } catch (e) {} }
+    var spazio = num ? 170 : 0, x0 = 960 - (wGol + spazio + wNum) / 2;
+    tGol.setAttribute("x", x0);
+    var stella = null;
+    if (num) {
+      tNum.setAttribute("x", x0 + wGol + spazio);
+      stella = el("g", {}, marchio);
+      GOL.asterisco(stella, x0 + wGol + spazio / 2, 236, 48, C.oroChiaro, 1, 20);
+    }
+    var nastro = el("g", {}, tela);
+    GOL.casella(nastro, 760, 338, 400, 62, { stato: "giusta", punta: 26 });
+    GOL.testo(nastro, 960, 380, num ? "PUNTATA " + num : "IL GIOCO", { anchor: "middle", font: "DM Sans", peso: 500, size: 30, fill: C.navy, ls: 8 });
+
+    // ── i podi ──
+    function podio(x, nome, n, chi) {
+      var g = el("g", {}, tela);
+      GOL.casella(g, x, 520, 700, 170, { punta: 66 });
+      GOL.testo(g, x + 350, 632, GOL.maiuscolo(nome || ""), { anchor: "middle", size: 88, fill: C.avorio, maxW: 500, minSize: 44, ls: 1 });
+      // la base del podio che scende sul pavimento
+      el("path", { d: "M" + (x + 110) + " 690L" + (x + 590) + " 690L" + (x + 540) + " 760L" + (x + 160) + " 760Z", fill: "url(#golSpento)", stroke: C.oro, "stroke-opacity": 0.4, "stroke-width": 2 }, g);
+      var lampade = el("g", {}, tela), nuove = [];
+      for (var i = 0; i < 3; i++) {
+        var cx = x + 350 + (i - 1) * 150, cy = 870, acceso = i < n;
+        var L = el("g", {}, lampade);
+        el("circle", { cx: cx, cy: cy, r: 60, fill: C.navy, "fill-opacity": 0.8, stroke: "url(#golBordo)", "stroke-width": 5 }, L);
+        var d = "M-22 -26L0 -6L22 -26L28 -20L7 0L28 20L22 26L0 6L-22 26L-28 20L-7 0L-28 -20Z";
+        if (acceso) {
+          var bagliore = el("circle", { cx: cx, cy: cy, r: 64, fill: C.rosso, filter: "url(#golAlone)", "class": "gol-pulsa" }, L);
+          el("circle", { cx: cx, cy: cy, r: 50, fill: "url(#golRosso)" }, L);
+          el("path", { d: d, fill: C.avorio, transform: "translate(" + cx + " " + cy + ") scale(1.05)" }, L);
+          if (nuovo === chi && i === n - 1) nuove.push({ g: L, cx: cx, cy: cy });
+        } else {
+          el("circle", { cx: cx, cy: cy, r: 50, fill: "url(#golSpento)" }, L);
+          el("path", { d: d, fill: C.oro, "fill-opacity": 0.22, transform: "translate(" + cx + " " + cy + ")" }, L);
+        }
+      }
+      return { g: g, lampade: lampade, nuove: nuove };
+    }
+    var pA = podio(140, D.a, EA, "a"), pB = podio(1080, D.b, EB, "b");
+    var vs = GOL.bollino(tela, 960, 605, 62, "VS");
+
+    if (GOL.STILL) return;
+    GOL.colpo(marchio, 0.1);
+    GOL.lampo(tela, 960, 240, 900, 0.15);
+    if (stella) { GOL.centro(stella); GOL.anima(stella, [{ transform: "rotate(-240deg) scale(0)" }, { transform: "rotate(0) scale(1)" }], 0.7, 0.4); }
+    GOL.gira(nastro, 0.55);
+    GOL.entra(pA.g, 0.7, "translateX(-160px)");
+    GOL.entra(pB.g, 0.7, "translateX(160px)");
+    GOL.colpo(vs, 1.0);
+    [pA, pB].forEach(function (p, j) { GOL.entra(p.lampade, 1.05 + j * 0.08); });
+    pA.nuove.concat(pB.nuove).forEach(function (L) {
+      GOL.colpo(L.g, 1.5);
+      GOL.lampo(tela, L.cx, L.cy, 320, 1.55);
+    });
+  });
+})();
+</script>
+</body>
+</html>

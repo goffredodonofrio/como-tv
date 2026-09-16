@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Goleada · Eleven · Grafica vMix</title>
+</head>
+<body>
+<div id="stage"><svg id="tela" width="1920" height="1080" viewBox="0 0 1920 1080"></svg></div>
+
+<script src="goleada/gol-comune.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { q:"Chi ha raggiunto la finale…?", a:["Perù","Uruguay","Cile"], k:3, w:0, n:"1/11", trasp:0 }
+  //   k = quante risposte sono scoperte (0 = la domanda con le caselle
+  //   vuote). w = la giusta (0, 1, 2): si accende d'oro e le altre si
+  //   spengono. n = il numero della domanda, nell'intestazione.
+  //   Senza k: tutto scoperto (le anteprime del catalogo).
+  var DEMO = { q: "Chi ha raggiunto la finale della Copa América 2019, perdendo poi contro il Brasile?",
+               a: ["Perù", "Uruguay", "Cile"], w: 0, n: "1/11" };
+  var D = GOL.dati(DEMO, function (d) { return d && d.q; });
+  if (!D) { document.title = "ELEVEN — dati non validi"; document.getElementById("stage").style.display = "none"; return; }
+  var risp = (D.a || []).slice(0, 3);
+  while (risp.length < 3) risp.push("");
+  var k = GOL.passo(D, 3), w = D.w == null || D.w === "" ? -1 : +D.w, tutto = D.k == null;
+  document.title = "GOLEADA · ELEVEN · " + (w >= 0 ? "RISPOSTA GIUSTA" : k ? "RISPOSTA " + k : "DOMANDA");
+  // quello che e' appena successo: e' l'unica cosa che entra
+  var nuova = tutto ? "tutto" : w >= 0 ? "giusta" : k > 0 ? "r" + (k - 1) : "domanda";
+
+  var C = GOL.C, el = GOL.el, tela = document.getElementById("tela");
+  var LETTERE = ["A", "B", "C"], XR = [160, 710, 1260], YR = 740, WR = 500, HR = 136;
+
+  GOL.pronto(D, function () {
+    GOL.materiali(tela);
+    var testa = GOL.intestazione(tela, "Eleven", D.n ? "Domanda " + D.n : "");
+    var sotto = el("g", {}, tela);
+
+    // ── la domanda ──
+    var dom = el("g", {}, tela);
+    GOL.casella(dom, 160, 460, 1600, 196, { punta: 72, linee: [0, 1920] });
+    GOL.righe(dom, 960, 558, D.q, { size: 58, size2: 52, maxW: 1360, minSize: 32, fill: C.avorio, interlinea: 1.1 });
+
+    // ── le risposte ──
+    el("path", { d: "M0 " + (YR + HR / 2) + "H1920", stroke: C.oro, "stroke-opacity": 0.45, "stroke-width": 3 }, sotto);
+    var caselle = risp.map(function (t, i) {
+      var x = XR[i], g = el("g", {}, tela), scoperta = i < k;
+      var stato = !scoperta ? "vuota" : w < 0 ? "piena" : i === w ? "giusta" : "spenta";
+      if (stato === "giusta") var rag = GOL.raggiera(sotto, x + WR / 2, YR + HR / 2, 520, { opacita: 0.7 });
+      GOL.casella(g, x, YR, WR, HR, { stato: stato, punta: 52 });
+      GOL.bollino(g, x + 70, YR + HR / 2, 36, LETTERE[i], { spento: !scoperta });
+      if (scoperta) {
+        GOL.righe(g, x + WR / 2 + 34, YR + HR / 2, GOL.maiuscolo(t), { size: 44, size2: 36, maxW: WR - 180, minSize: 24,
+                                                                      fill: stato === "giusta" ? C.navy : C.avorio, interlinea: 1.02 });
+      } else {
+        GOL.testo(g, x + WR / 2 + 34, YR + HR / 2 + 20, "?", { anchor: "middle", size: 58, fill: C.oro, peso: 800 }).setAttribute("fill-opacity", 0.45);
+      }
+      return { g: g, stato: stato, rag: rag, x: x };
+    });
+
+    if (GOL.STILL) return;
+    GOL.entra(testa, 0.05, "translateY(-30px)");
+    if (tutto || nuova === "domanda") {
+      GOL.gira(dom, 0.2); GOL.lampo(tela, 960, 558, 700, 0.25);
+      caselle.forEach(function (c, i) { GOL.entra(c.g, 0.5 + i * 0.12); });
+    }
+    caselle.forEach(function (c, i) {
+      var cx = c.x + WR / 2, cy = YR + HR / 2;
+      if (tutto && c.stato !== "vuota") { GOL.gira(c.g, 1.1 + i * 0.45); GOL.lampo(tela, cx, cy, 380, 1.15 + i * 0.45); }
+      if (nuova === "r" + i) { GOL.gira(c.g, 0.12); GOL.lampo(tela, cx, cy, 420, 0.16); }
+      if ((nuova === "giusta" || tutto) && c.stato === "giusta") {
+        var t = tutto ? 2.6 : 0.15;
+        GOL.colpo(c.g, t); GOL.lampo(tela, cx, cy, 900, t + 0.05);
+        if (c.rag) GOL.anima(c.rag, [{ opacity: 0 }, { opacity: 0.7 }], 0.8, t + 0.1, "ease-out");
+      }
+      if ((nuova === "giusta" || tutto) && c.stato === "spenta") {
+        GOL.anima(c.g, [{ opacity: 1 }, { opacity: 0.4 }], 0.5, tutto ? 2.7 : 0.3, "ease-out");
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>
