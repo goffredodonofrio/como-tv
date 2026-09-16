@@ -1055,8 +1055,22 @@ function fotoDiChi(cognome, squadra, id) {
   if (pid && d.perId[pid]) return ceLho(d.perId[pid]);   // l'identita' vera vince sempre
   const cog = slug(cognome);
   if (!cog) return "";
-  if (d.ambigui.indexOf(cog) < 0) return ceLho("foto-premium-" + cog + ".png");
   const sq = String(squadra || "").trim();
+  if (d.ambigui.indexOf(cog) < 0) {
+    // Il cognome "non ambiguo" lo e' solo fra le rose che conoscevamo: con
+    // Bundesliga, LaLiga, EFL e Saudi in magazzino (16/09/2026) la foto di
+    // Kian Spence del Rotherham finiva a Djed Spence dell'Inter, quella di
+    // Alexis Mac Allister al fratello Kevin dell'Union. Se il file e' gia'
+    // intestato a un'altra persona (per id) o a un'altra squadra, non e' suo.
+    // Le foto che non sono di nessuno — le vecchie da 1200 pixel — restano
+    // come sono.
+    const base = "foto-premium-" + cog + ".png";
+    const padroni = Object.keys(d.perId).filter((k) => d.perId[k] === base);
+    if (pid && padroni.length && padroni.indexOf(pid) < 0) return "";
+    const squadre = Object.keys(d.perSq[cog] || {}).filter((k) => d.perSq[cog][k] === base);
+    if (sq && squadre.length && squadre.indexOf(sq) < 0) return "";
+    return ceLho(base);
+  }
   return ceLho((d.perSq[cog] || {})[sq]);
 }
 // La foto "orfana": quel cognome un file ce l'ha, ma non risulta di nessuno.
