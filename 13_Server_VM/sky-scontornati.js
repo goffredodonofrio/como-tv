@@ -128,7 +128,8 @@ async function mezzoBusto(png, riga) {
     if (a < 10) vuoti++;
     if (a > 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   }
-  if (vuoti < W * H * 0.2 || x1 < 0) return null;
+  // (le foto di primo piano scontornate sul Mac hanno poco fondo: il pacchetto abbassa la soglia)
+  if (vuoti < W * H * (riga && riga.vuoti != null ? riga.vuoti : 0.2) || x1 < 0) return null;
   const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
   let img = sharp(png);
   if (bh / bw > 1.45 || (riga && riga.sempre)) {
@@ -356,7 +357,7 @@ for (const [k, lega] of [["club-eng2", "eng.2"], ["club-eng3", "eng.3"], ["club-
 if (PAC) {
   for (const lega of [...new Set(PAC.squadre.map((q) => q.lega))]) {
     FONTI["pacchetto-" + lega] = {
-      nome: "pacchetto " + PAC.prefisso + " (" + lega + ")", lega, gruppo: "pacchetto", soloId: true, prepara: mezzoBusto,
+      nome: "pacchetto " + PAC.prefisso + " (" + lega + ")", lega, gruppo: "pacchetto", soloId: true, prepara: (png, r) => mezzoBusto(png, Object.assign({ vuoti: 0.05 }, r)),
       chiave: (id) => PAC.prefisso + ":" + id,
       async squadre(espn) {
         const out = [];
