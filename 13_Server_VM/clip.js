@@ -4988,6 +4988,13 @@ async function archivioScandaglia(p) {
     ", 'days')), NOT({Partita} = BLANK()))";
   let offset = "", tornate = 0, agganciate = 0, conKickoff = 0, intere = 0, scartati = 0;
   const orfane = [];
+  // chi ha trovato materiale in QUESTO giro: a fine scandaglio, le righe di
+  // questo magazzino che non ci sono dentro non hanno piu' niente da
+  // mostrare e vanno tolte. Senza, una riga che il materiale l'ha perso —
+  // perche' era di un'altra lingua, o perche' il tabellone ha detto che
+  // quella cartella e' di un'altra partita — restava in elenco a puntare un
+  // file che non e' suo.
+  const viste = new Set();
   // le partite che non hanno trovato materiale, per giorno: sono i candidati
   // per i file che non dicono come si chiamano
   const senzaMateriale = [];
@@ -5058,7 +5065,10 @@ async function archivioScandaglia(p) {
         senzaMateriale.push({ rec: rec.id, nome: f["Partita"] || "", quando: quandoIso });
         return;
       }
-      const tag = (/\[([A-Z]{2,4})\]/.exec(String(f["Partita"] || "")) || [])[1] || "";
+      // anche le etichette di due parole: "[AUDIO ONLY]" e' una consegna a
+      // se', non un modo di dire la stessa partita, e prendersi l'export
+      // completo di qualcun altro non le serve
+      const tag = (/\[([A-Z][A-Z ]{1,12})\]/.exec(String(f["Partita"] || "")) || [])[1] || "";
       const scelta = scegliMateriale(meglio, tag);
       if (!scelta) return;
       meglio.presa = rec.id;
@@ -5098,6 +5108,7 @@ async function archivioScandaglia(p) {
       if (kick !== null) conKickoff++;
       if (scelta.fonte === "intera" || scelta.fonte === "intero") intere++;
       agganciate++;
+      viste.add(rec.id);
       // QUELLO CHE E' COSTATO LETTURE NON SI RIFA' OGNI ORA. Il cronometro,
       // il tabellone, i boati, i replay: sono ore di ffmpeg e di tesseract,
       // e appartengono al MATERIALE. Finche' la riga apre la stessa cartella
@@ -5222,6 +5233,16 @@ async function archivioScandaglia(p) {
     soleS3++;
   });
 
+  // le righe rimaste senza materiale escono dall'indice
+  let tolte = 0;
+  Object.keys(ARCHIVIO).forEach((k) => {
+    const v = ARCHIVIO[k];
+    if (k.indexOf("s3:") === 0 || v.bucket !== bucket || viste.has(k)) return;
+    if (!(Date.parse(v.quando) >= limite)) return;      // fuori dalla finestra guardata: non si tocca
+    delete ARCHIVIO[k]; tolte++;
+  });
+  if (tolte) console.log("[clip] archivio: " + tolte + " righe senza piu' materiale tolte dall'indice");
+
   // si rimettono i minuti conosciuti, e chi li ha tutti non va rimisurato
   let riavuti = 0;
   Object.keys(ARCHIVIO).forEach((k) => {
@@ -5235,7 +5256,7 @@ async function archivioScandaglia(p) {
   return { ok: true, oggettiVisti: visti, fileTenuti: tenuti, durateRimesse: riavuti, pezziScartati: scartati,
            cartellePartita: Object.keys(gruppi).length,
            partiteViste: tornate, agganciate: agganciate, intere: intere, doppieAssorbite: assorbite, promosseAIntere: promosse,
-           conKickoff: conKickoff, soloS3: soleS3, senzaAggancio: orfane.slice(0, 15),
+           conKickoff: conKickoff, soloS3: soleS3, tolte: tolte, senzaAggancio: orfane.slice(0, 15),
            // l'elenco intero, per chi vuole capire PERCHE' non si agganciano:
            // le partite di Airtable rimaste senza file, e i file rimasti senza
            // partita — messi uno accanto all'altro si vede se e' una regola
@@ -6704,15 +6725,23 @@ async function leggiTabellone(rec, rifai) {
     if (tre.length < 2) throw new Error("non sono riuscito a tirare fuori i fotogrammi");
     const cal = await python(["--tabellone", o.cifre.join(",")].concat(tre));
     tre.forEach(butta);
-    if (!cal || !cal.box) throw new Error("sul tabellone non trovo il riquadro del risultato");
-    const box = cal.box.join(",");
+    // SENZA RIQUADRO SI LEGGE LA BARRA. Un riquadro fisso che vada bene per
+    // tutta la partita ce l'hanno le grafiche regolari; le altre spostano il
+    // punteggio, lo allargano col nome del marcatore, lo mettono sotto il
+    // cronometro invece che di fianco. Prima, li', la lettura del tabellone
+    // si fermava e la partita restava senza un solo gol al secondo: adesso
+    // si legge tutta la striscia attorno al cronometro e dentro si cerca la
+    // forma "cifra trattino cifra".
+    const box = cal && cal.box ? cal.box.join(",") : null;
+    if (!box) console.log("[clip] tabellone: " + (a.partita || rec) + " senza riquadro fisso, si legge la barra");
 
     // 2) il risultato a un dato secondo, confermato da un secondo fotogramma
     const uno = async (t) => {
       const f = await fotogramma(t);
       if (!f) return null;
       letti++;
-      const v = await python(["--punteggio", "--box", box, f]);
+      const v = await python(box ? ["--punteggio", "--box", box, f]
+                                 : ["--barra", o.cifre.join(","), f]);
       butta(f);
       return v && v.punteggi ? v.punteggi[0] : null;
     };
@@ -6736,7 +6765,9 @@ async function leggiTabellone(rec, rifai) {
       // replay lungo, un primo piano, l'intervallo. Prima di arrendersi si
       // prova a un quarto e a tre quarti — un passo piu' corto, ma un passo
       let tm = 0, sm = null;
-      for (const parte of [0.5, 0.25, 0.75, 0.37, 0.63]) {
+      // a barra una lettura su due salta (il nome del marcatore, una grafica
+      // sopra): prima di arrendersi si prova in piu' punti
+      for (const parte of (box ? [0.5, 0.25, 0.75, 0.37, 0.63] : [0.5, 0.25, 0.75, 0.37, 0.63, 0.12, 0.88, 0.44, 0.56])) {
         tm = Math.round(t0 + (t1 - t0) * parte);
         if (tm <= t0 + 5 || tm >= t1 - 5) continue;
         sm = await leggi(tm);
@@ -6778,9 +6809,25 @@ async function leggiTabellone(rec, rifai) {
     // 4) la prova del nove: il risultato finale letto sul tabellone deve
     //    essere quello scritto nel nome della partita. Se non torna, la
     //    lettura c'e' ma non ci si mette la firma.
+    // "GENOA-COMO [ENG]" non dice il risultato: lo sa ESPN, che lo abbiamo
+    // gia' in casa. Senza atteso la lettura non si poteva verificare.
     const nel = /\b(\d{1,2})\s*-\s*(\d{1,2})\b/.exec(String(a.partita || ""));
-    const atteso = nel ? nel[1] + "-" + nel[2] : null;
-    const esito = { quando: new Date().toISOString(), box: cal.box, letti: letti,
+    let atteso = nel ? nel[1] + "-" + nel[2] : null;
+    if (!atteso && ESPN[rec] && Array.isArray(ESPN[rec].squadre) && ESPN[rec].squadre.length === 2) {
+      // ESPN non scrive il risultato: si contano i gol, e l'autogol va
+      // all'altra squadra
+      const [casa, ospite] = ESPN[rec].squadre;
+      let gc = 0, go = 0;
+      (ESPN[rec].eventi || []).forEach((ev) => {
+        if (!/goal/i.test(ev.tipo || "") || /missed|saved/i.test(ev.tipo || "")) return;
+        const propria = ev.squadra === casa;
+        const aCasa = /own/i.test(ev.tipo) ? !propria : propria;
+        if (aCasa) gc++; else go++;
+      });
+      if (gc + go > 0) atteso = gc + "-" + go;
+    }
+    const esito = { quando: new Date().toISOString(), box: cal && cal.box ? cal.box : null, letti: letti,
+                    comeLetto: box ? "riquadro" : "barra",
                     punti: punti.sort((x, y) => x.t - y.t), incerti: incerti,
                     finale: finale, atteso: atteso,
                     verificato: !!(atteso && finale && atteso === finale) };
@@ -6913,53 +6960,86 @@ async function riconosciPartita(rec) {
 // prendere il boato dell'azione successiva.
 const BOATO_PRIMA = 75, BOATO_DOPO = 25;
 const BOATO_MINIMO = 6;           // decibel sopra il solito: meno di cosi' non e' un boato
-async function boatoVicino(rec, tAsse) {
+async function boatoVicino(rec, tRiga, chiave, secFile) {
   const a = ARCHIVIO[rec];
   if (!a) return null;
   a.boati = a.boati || [];
-  const gia = a.boati.find((x) => Math.abs(x.stimato - tAsse) <= 12);
+  const gia = a.boati.find((x) => Math.abs(x.stimato - tRiga) <= 12);
   if (gia) return gia;
-  const d = doveCade(a, Math.round(tAsse));
-  if (!d) return null;
-  const daFile = Math.max(0, d.secondi - BOATO_PRIMA);
-  const daAsse = tAsse - (d.secondi - daFile);
+  // LE COORDINATE NON SI MESCOLANO. La riga del tabellino sta nei secondi
+  // del file (o della partita intera); l'asse di doveCade parte dal calcio
+  // d'inizio scritto in Airtable. Passare l'uno per l'altro voleva dire
+  // ascoltare quattro-sei minuti dopo il punto giusto e credere di aver
+  // trovato il boato. Qui si ascolta il file e il secondo che ci dice chi
+  // chiama, e si torna con uno spostamento: quello vale in qualunque
+  // coordinata.
+  const daFile = Math.max(0, secFile - BOATO_PRIMA);
+  const qui = secFile - daFile;
   const regione = await s3Regione(a.bucket);
-  const via = firmaConRegione(regione, d.chiave, {}, 3600, a.bucket);
-  const v = await volumeAlSecondo(via, daFile, (d.secondi - daFile) + BOATO_DOPO);
-  const esito = { stimato: Math.round(tAsse), t: null, db: 0 };
+  const via = firmaConRegione(regione, chiave, {}, 3600, a.bucket);
+  const v = await volumeAlSecondo(via, daFile, qui + BOATO_DOPO);
+  const esito = { stimato: Math.round(tRiga), t: null, db: 0 };
   if (v.length >= 40) {
     const ordinati = v.slice().sort((x, y) => x - y);
     const solito = ordinati[Math.floor(ordinati.length / 2)];
-    // IL PIU' VICINO, NON IL PIU' FORTE. In novanta secondi di partita i
-    // boati possono essere due — il gol e l'occasione di prima — e prendere
-    // il piu' alto porta l'appunto sull'azione sbagliata, a volte su quella
-    // di un altro appunto. Il minuto scritto sbaglia di poco: il boato
-    // giusto e' quello che gli sta piu' vicino, purche' sia un boato.
-    const picchi = picchiDiVolume(v, 0, BOATO_MINIMO, 25, 12);
-    const qui = d.secondi - daFile;
-    let colmo = -1, vicino = 1e9;
-    picchi.forEach((x) => {
-      const q = Math.abs(x.secondi - qui);
-      if (q < vicino) { vicino = q; colmo = x.secondi; }
-    });
-    const forza = colmo >= 0 ? v[colmo] - solito : 0;
-    if (colmo >= 0 && forza >= BOATO_MINIMO) {
-      // LA SALITA, NON IL COLMO. Il boato pieno arriva quando la palla e'
-      // gia' dentro da un pezzo — l'esultanza, il replay, la grafica. Il
-      // gol e' dove il rumore ha cominciato a salire: si torna indietro dal
-      // colmo finche' il livello sta sopra un terzo della salita, fino a
-      // quaranta secondi. Meglio qualche secondo prima che uno dopo: il
-      // taglio comincia comunque un po' avanti.
-      const soglia = solito + forza * 0.45;
-      let su = colmo;
-      for (let i = colmo; i >= Math.max(0, colmo - 30); i--) { if (v[i] < soglia) break; su = i; }
-      esito.t = Math.round(daAsse + su);
+    // IL SEGNO DEL GOL E' IL SILENZIO CHE SPARISCE. Nel CLEANFEED c'e' la
+    // telecronaca: il livello e' la voce, e ogni pochi secondi cade di venti
+    // decibel quando il telecronista prende fiato. Al gol non prende piu'
+    // fiato — lui grida, lo stadio sotto — e per venti, trenta secondi il
+    // livello non scende mai. Il picco invece inganna: un urlo isolato, un
+    // annuncio, un coro. Si cerca il tratto piu' lungo senza pause vicino
+    // al minuto scritto, e il gol e' dove quel tratto comincia.
+    const forte = solito - 3;                       // sotto qui e' una pausa
+    const tratti = [];
+    let inizio = -1, buchi = 0;
+    for (let i = 0; i <= v.length; i++) {
+      const alto = i < v.length && v[i] >= forte;
+      if (alto) { if (inizio < 0) { inizio = i; buchi = 0; } continue; }
+      // una pausa sola dentro il tratto si perdona: il fiato fra due urla
+      if (inizio >= 0 && buchi === 0 && i + 1 < v.length && v[i + 1] >= forte) { buchi = 1; continue; }
+      if (inizio >= 0) { tratti.push({ da: inizio, a: i - 1 }); inizio = -1; }
+    }
+    // IL PIU' FORTE, NON IL PIU' VICINO. Dopo il gol la telecronaca resta
+    // fitta per minuti — i replay, il nome del marcatore — e di tratti
+    // senza pause ce ne sono tre o quattro in fila: quello vicino al minuto
+    // scritto e' spesso il replay. Il gol e' il tratto in cui si grida di
+    // piu'; a parita', il primo.
+    const lunghi = tratti.filter((x) => x.a - x.da + 1 >= 15)
+      .map((x) => Object.assign(x, { forza: v.slice(x.da, x.a + 1).reduce((m, y) => Math.max(m, y), -90) - solito }));
+    let scelto = null;
+    lunghi.forEach((x) => { if (!scelto || x.forza > scelto.forza + 0.5) scelto = x; });
+    if (scelto) {
+      const forza = scelto.forza;
+      esito.t = Math.round(tRiga + (scelto.da - qui));
       esito.db = Math.round(forza * 10) / 10;
-      esito.colmo = Math.round(daAsse + colmo);
+      esito.lungo = scelto.a - scelto.da + 1;
+      esito.colmo = esito.t;
+    } else {
+      // niente tratto senza pause: si prova col picco piu' vicino, ma solo se
+      // e' un boato vero
+      const picchi = picchiDiVolume(v, 0, BOATO_MINIMO + 2, 25, 12);
+      let colmo = -1; vicino = 1e9;
+      picchi.forEach((x) => { const q = Math.abs(x.secondi - qui); if (q < vicino) { vicino = q; colmo = x.secondi; } });
+      if (colmo >= 0) {
+        const forza = v[colmo] - solito, soglia = solito + forza * 0.45;
+        let su = colmo;
+        for (let i = colmo; i >= Math.max(0, colmo - 30); i--) { if (v[i] < soglia) break; su = i; }
+        esito.t = Math.round(tRiga + (su - qui)); esito.db = Math.round(forza * 10) / 10;
+        esito.colmo = Math.round(tRiga + (colmo - qui)); esito.lungo = 0;
+      }
     }
   }
   a.boati.push(esito);
   return esito;
+}
+// la riga sta nei secondi della registrazione: con un file solo sono i
+// secondi del file; con la partita intera in piu' pezzi, ogni pezzo entra
+// al suo "da" e il secondo nel file e' quello che resta togliendolo
+function pezzoDellaRiga(a, t) {
+  const pz = (a.pezzi || []).filter((x) => x.da !== null && x.da !== undefined);
+  if (pz.length <= 1) return { chiave: (pz[0] || a).chiave || a.chiave, sec: t };
+  let i = 0; pz.forEach((x, k) => { if (x.da <= t) i = k; });
+  return { chiave: pz[i].chiave, sec: Math.max(0, t - pz[i].da) };
 }
 // le righe che possono fare rumore: un cambio non lo fa, un gol si'
 const DA_BOATO = /gol|rete|rigore|espuls|rosso|traversa|palo|parat/i;
@@ -6972,12 +7052,17 @@ async function puntaBoati(rec) {
   const finto = { arch: { rec: rec, pezzo: 0, pezzi: a.pezzi, chiave: a.chiave }, durata: 0 };
   const sap = quelloCheSappiamo(finto);
   let cercati = 0, trovati = 0;
+  // la riga sta nei secondi della registrazione: con un file solo sono i
+  // secondi del file; con la partita intera in piu' pezzi, ogni pezzo entra
+  // al suo "da" e il secondo nel file e' quello che resta togliendolo
+  const dentroIlFile = (t) => pezzoDellaRiga(a, t);
   for (const x of sap.azioni) {
     if (x.tabellone) continue;
     if (!DA_BOATO.test(String(x.tipo || "") + " " + String(x.titolo || ""))) continue;
     const t = x.t !== undefined ? x.t : x.dentro + APP_PRE;
+    const f = dentroIlFile(t);
     cercati++;
-    const b = await boatoVicino(rec, t);
+    const b = await boatoVicino(rec, t, f.chiave, f.sec);
     if (b && b.t !== null) trovati++;
   }
   if (cercati) { scriviArchivio(); console.log("[clip] boati: " + (a.partita || rec) + " → " + trovati + " su " + cercati + " azioni puntate"); }
@@ -9009,6 +9094,17 @@ const AZIONI = {
       return { ok: true, partite: fatte, azioniPuntate: punti, restano: quali.length - fatte };
     }
     return { ok: true, esito: await uno(String(p.rec || "")) };
+  },
+  // il boato attorno a un secondo qualsiasi della registrazione: serve a
+  // chi vuole controllare una riga, e a chi vuole puntare a mano
+  "clip-archivio-boato": async (p) => {
+    const rec = String(p.rec || ""), a = ARCHIVIO[rec];
+    if (!a) return { ok: false, errore: "questa partita non e' nell'indice dell'archivio" };
+    const t = Math.round(+p.t || 0), f = pezzoDellaRiga(a, t);
+    if (p.rifai && a.boati) a.boati = a.boati.filter((x) => Math.abs(x.stimato - t) > 12);
+    const b = await boatoVicino(rec, t, f.chiave, f.sec);
+    scriviArchivio();
+    return { ok: true, boato: b };
   },
   "clip-archivio-tabellone": async (p) => {
     const t = await leggiTabellone(String(p.rec || ""), !!p.rifai);

@@ -288,6 +288,44 @@ def scatole_punteggio(targa):
     return fuori
 
 
+# Il risultato dentro la BARRA, quando un riquadro fisso non c'e'.
+#
+# Certe grafiche il riquadro buono non ce l'hanno: il punteggio si sposta,
+# cambia larghezza quando entra il nome del marcatore, sta sotto invece che
+# di fianco. Cercare una scatola che vada bene per tutta la partita li' non
+# funziona. Allora si legge tutta la striscia attorno al cronometro — tre
+# larghezze, perche' quanto sia larga la barra dipende dalla grafica — e
+# dentro il testo si cerca la forma "cifra trattino cifra". Il trattino ci
+# vuole: i due punti sono del cronometro. E se le tre letture non dicono
+# tutte la stessa cosa, non si legge niente: meglio un buco che un gol
+# inventato.
+PUNTI_NEL_TESTO = re.compile(r"(?<![\d:])(\d{1,2})\s*[-\u2013]\s*(\d{1,2})(?![\d:])")
+
+
+def scatola_barra(percorso, targa, quanto):
+    x, y, w, h = targa
+    im = Image.open(percorso)
+    W, H = im.size
+    x0, x1 = max(0, int(x - h * quanto)), min(W, int(x + w + h * quanto))
+    y0, y1 = max(0, y - 5), min(H, y + h + 5)
+    return (x0, y0, x1 - x0, y1 - y0)
+
+
+def punteggio_barra(percorso, targa):
+    visti = set()
+    for quanto in (7, 4, 11):
+        try:
+            box = scatola_barra(percorso, targa, quanto)
+        except Exception:
+            continue
+        for testo in leggi_testo(percorso, box, None, "7"):
+            for m in PUNTI_NEL_TESTO.finditer(testo):
+                a, b = int(m.group(1)), int(m.group(2))
+                if a <= 9 and b <= 9:
+                    visti.add("%d-%d" % (a, b))
+    return visti.pop() if len(visti) == 1 else None
+
+
 def punteggio_in(percorso, box):
     """Il punteggio dentro un riquadro preciso, o niente."""
     visti = set()
@@ -388,6 +426,19 @@ def main():
     # replay la regia lo toglie, e quando torna vuol dire che si ricomincia.
     # Modo "punteggio": la targa del cronometro e uno o piu' fotogrammi.
     # Torna il risultato scritto sul tabellone in ognuno.
+    # Modo "barra": la targa del cronometro e uno o piu' fotogrammi, senza
+    # riquadro fisso. Per le grafiche in cui il punteggio non sta mai nello
+    # stesso posto.
+    if len(sys.argv) >= 4 and sys.argv[1] == "--barra":
+        targa = [int(v) for v in sys.argv[2].split(",")]
+        letti = []
+        for percorso in sys.argv[3:]:
+            try:
+                letti.append(punteggio_barra(percorso, targa))
+            except Exception:
+                letti.append(None)
+        print(json.dumps({"punteggi": letti}))
+        return 0
     if len(sys.argv) >= 4 and sys.argv[1] == "--punteggio":
         # con la scatola gia' scelta si legge solo li': e' la strada di tutti
         # i giorni, una lettura per fotogramma
