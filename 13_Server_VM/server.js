@@ -115,7 +115,75 @@ function regiaDi(c) {
   if (!S.regia[c].liv) S.regia[c].liv = {};
   if (!S.regia[c].items) S.regia[c].items = [];
   if (!S.voci[c]) S.voci[c] = {};
+  numeraVoci(S.regia[c]);
+  marcaBox(c, S.regia[c]);
   return S.regia[c];
+}
+
+// I 2BOX HANNO UN TASTO FISSO. Un 2box si riconosce dal suo LAYOUT, "l" nei
+// dati: 1 Primo 2box, 2 Secondo 2box, 3 Terzo box, fissi in sfondi.html.
+// Il titolo invece lo scrive a mano chi lo manda, e la voce cambia numero a
+// ogni invio: nessuno dei due regge un tasto dello Stream Deck.
+//
+// Il layout si ricava OGNI VOLTA dai dati, non si fissa all'arrivo: i dati di
+// una voce si possono cambiare dopo (regiaDati), e il tasto deve seguire
+// quello che la voce e' adesso, non quello che era quando e' entrata.
+const NOMI_BOX = { "1": "Primo 2box", "2": "Secondo 2box", "3": "Terzo box" };
+function marcaBox(c, ix) {
+  const voci = S.voci[c] || {};
+  for (const i of ix.items) {
+    if (i.tipo !== "sfondo-box") continue;
+    const d = voci[i.id];
+    if (d && d.l != null && String(d.l) !== "") i.box = String(d.l);
+    else delete i.box;
+  }
+}
+function boxDa(ix, box) {
+  const b = String(box == null ? "" : box).trim();
+  return /^[1-9]$/.test(b) ? ix.items.filter(i => i.box === b) : [];
+}
+// Su quale livello e' in onda una di queste voci, se lo e'. Si guardano tutti
+// i livelli e non quello scritto sulla voce: con &liv= una grafica puo' essere
+// mandata in onda su un livello diverso dal suo, e la voce non se lo ricorda.
+function livelloInOnda(ix, voci) {
+  for (const L of Object.keys(ix.liv)) {
+    const lv = ix.liv[L];
+    if (lv && lv.state === "play" && voci.some(i => i.id === lv.onair)) return L;
+  }
+  return null;
+}
+
+// Il NUMERO di una voce di scaletta: quello corto, che si scrive in un tasto
+// dello Stream Deck o in una chiamata GET (?take=1&canale=1&id=7). L'id vero
+// resta com'e' — sedici cifre nate dall'ora, giuste per il codice, impossibili
+// da battere a mano per una persona.
+//
+// Il contatore e' per canale e NON si azzera mai: ne' svuotando la scaletta
+// ne' versando un altro progetto. E' voluto. Un tasto legato al #3 deve
+// mandare in onda quel #3 o rispondere che non c'e' piu'; se il numero si
+// riciclasse, dopo uno svuota lo stesso tasto manderebbe in onda un'altra
+// grafica senza che nessuno se ne accorga.
+function numeraVoci(ix) {
+  let max = ix.seq || 0;
+  for (const i of ix.items) if (i.num > max) max = i.num;
+  // le voci che c'erano gia' prima dei numeri: in ordine di arrivo, cosi' se
+  // il ponte riparte prima di salvare riceve di nuovo gli stessi numeri
+  const senza = ix.items.filter(i => !i.num).sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  for (const i of senza) i.num = ++max;
+  ix.seq = max;
+}
+function numeroNuovo(ix) {
+  ix.seq = (ix.seq || 0) + 1;
+  return ix.seq;
+}
+// Una voce dal suo numero (7, o #7) o dal suo id lungo. Gli id sono di sedici
+// cifre e i numeri no, quindi non si confondono.
+function voceDa(ix, chiave) {
+  const k = String(chiave == null ? "" : chiave).trim().replace(/^#/, "");
+  if (!k) return null;
+  const perId = ix.items.find(i => i.id === k);
+  if (perId) return perId;
+  return /^\d{1,9}$/.test(k) ? (ix.items.find(i => String(i.num) === k) || null) : null;
 }
 
 // Le grafiche vivono su livelli sovrapposti (1..5): un sottopancia può
@@ -353,7 +421,7 @@ function regiaLoad(p) {
   const raff = RAFFICHE.get(c);
   const posto = (raff && ora - raff.fino < 60000) ? Math.min(raff.quanti, ix.items.length) : 0;
   ix.items.splice(posto, 0, {
-    id, tipo: p.grafica || "formazione", titolo,
+    id, num: numeroNuovo(ix), tipo: p.grafica || "formazione", titolo,
     dest: p.dest === "partita" ? "partita" : (p.dest === "studio" ? "studio" : ""),
     ts: ora, liv: livelloDi(p.liv)
   });
@@ -858,7 +926,7 @@ function progettoCarica(p) {
     if (restano.length + nuovi.length >= CONFIG.MAX_SCALETTA) break;
     const id = nuovoId();
     S.voci[c][id] = it.dati || {};
-    nuovi.push({ id: id, tipo: it.tipo, titolo: it.titolo, dest: "",
+    nuovi.push({ id: id, num: numeroNuovo(ix), tipo: it.tipo, titolo: it.titolo, dest: "",
                  ts: Date.now(), liv: it.liv || 1, prog: idProg, pid: it.pid });
   }
 
@@ -2138,8 +2206,14 @@ const server = http.createServer((req, res) => {
     // TAKE da pulsante fisico (Stream Deck): manda in onda la grafica ARMATA
     // del canale con UNA sola GET (token in coda, così qualsiasi tasto HTTP la
     // può chiamare). Riusa regiaState → l'SSE spinge il play al playout subito.
-    //   ?take=1&canale=N&token=…     → in onda l'armata
-    //   ?take=out&canale=N&token=…   → fuori onda il livello dell'armata (o &liv=L)
+    //   ?take=1&canale=N&token=…          → in onda l'armata
+    //   ?take=out&canale=N&token=…        → fuori onda il livello dell'armata (o &liv=L)
+    //   ?take=1&canale=N&id=7&token=…     → in onda la voce #7, qualunque sia l'armata
+    //   ?take=out&canale=N&id=7&token=…   → fuori onda la #7, ma solo se e' lei in onda
+    //   ?take=1&canale=N&box=1&token=…    → in onda il Primo 2box (tasto fisso)
+    //   ?take=out&canale=N&box=1&token=…  → fuori onda il Primo 2box, se e' in onda
+    // id accetta il numero corto (7 o #7) o l'id lungo della voce. box vale
+    // 1 Primo 2box, 2 Secondo 2box, 3 Terzo box, e non cambia ricaricandolo.
     if (q.get("take") != null) {
       const tok = q.get("token") || q.get("t") || "";
       // Il tasto fisico manda in onda: vuole la chiave di COMANDO. Durante
@@ -2156,7 +2230,53 @@ const server = http.createServer((req, res) => {
       }
       const c = canaleDi(q.get("canale") || q.get("c"));
       const ix = regiaDi(c);
+      const chiesta = q.get("id") != null ? q.get("id") : q.get("n");
       try {
+        // Una voce precisa della scaletta, senza doverla prima armare in regia.
+        if (chiesta != null && chiesta !== "") {
+          const v = voceDa(ix, chiesta);
+          if (!v) {
+            return json(res, { ok: false, errore: "la voce " + chiesta +
+                               " non e' nella scaletta del canale " + c }, 404);
+          }
+          const L = q.get("liv") != null ? q.get("liv") : (v.liv || 1);
+          const voce = { num: v.num, id: v.id, titolo: v.titolo, liv: livelloDi(L) };
+          if (String(q.get("take")) === "out") {
+            // Fuori onda SOLO se in onda c'e' proprio lei. regiaState spegne il
+            // livello intero, e un tasto "togli la formazione" non deve spegnere
+            // la classifica che nel frattempo e' andata sullo stesso livello.
+            const dove = livelloInOnda(ix, [v]);
+            if (!dove) return json(res, { ok: false, errore: "la voce #" + v.num + " non e' in onda", voce: voce });
+            voce.liv = livelloDi(dove);
+            return json(res, Object.assign(regiaState({ c: c, state: "out", liv: dove }), { voce: voce }));
+          }
+          return json(res, Object.assign(regiaState({ c: c, state: "play", id: v.id, liv: L }), { voce: voce }));
+        }
+        // Un 2box per layout: ?take=1&canale=N&box=1 → il Primo 2box.
+        const chiestoBox = q.get("box");
+        if (chiestoBox != null && chiestoBox !== "") {
+          const tutti = boxDa(ix, chiestoBox);
+          const nome = NOMI_BOX[String(chiestoBox).trim()] || ("box " + chiestoBox);
+          if (!tutti.length) {
+            return json(res, { ok: false, errore: "nessun " + nome + " nella scaletta del canale " + c }, 404);
+          }
+          if (String(q.get("take")) === "out") {
+            const dove = livelloInOnda(ix, tutti);
+            if (!dove) return json(res, { ok: false, errore: nome + " non e' in onda" });
+            const on = tutti.find(i => i.id === ix.liv[dove].onair);
+            return json(res, Object.assign(regiaState({ c: c, state: "out", liv: dove }),
+              { voce: { num: on.num, id: on.id, titolo: on.titolo, box: on.box, liv: livelloDi(dove) } }));
+          }
+          // Se ce n'e' piu' d'uno dello stesso layout va in onda l'ULTIMO
+          // arrivato: di solito si rimanda un box per correggerlo, e il tasto
+          // deve prendere la versione corretta. Il numero cresce con gli arrivi
+          // e non si ricicla, quindi il piu' alto e' il piu' recente.
+          const v = tutti.reduce((a, b) => ((b.num || 0) > (a.num || 0) ? b : a));
+          const L = q.get("liv") != null ? q.get("liv") : (v.liv || 1);
+          return json(res, Object.assign(regiaState({ c: c, state: "play", id: v.id, liv: L }),
+            { voce: { num: v.num, id: v.id, titolo: v.titolo, box: v.box, liv: livelloDi(L) },
+              stessoLayout: tutti.length }));
+        }
         if (String(q.get("take")) === "out") {
           const L = q.get("liv") != null ? q.get("liv") : (ix.armato ? ix.armato.liv : 1);
           return json(res, regiaState({ c: c, state: "out", liv: L }));
