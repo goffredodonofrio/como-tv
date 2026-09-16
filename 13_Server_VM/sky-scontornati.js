@@ -39,7 +39,9 @@
  *  immagini dei giocatori su images.gc.<dominio>; solo alcuni caricano lo
  *  scontornato trasparente, e solo quelli stanno in EFL_CLUB. Le foto a figura
  *  intera o piu' alte che larghe si ritagliano a mezzo busto, come Sky.
- *  Con --fonte sky|pl|efl se ne usa una sola.
+ *  Siti dei club (ex Premier fuori dalla piattaforma EFL): Southampton e
+ *  Leicester, ognuno letto a modo suo (CLUB_SITI).
+ *  Con --fonte sky|pl|efl|club se ne usa una sola.
  *
  *  Uso, sulla VM (la chiave si legge dall'ambiente del servizio):
  *    node sky-scontornati.js --ponte http://127.0.0.1:8081/api [--squadra como] [--prova] [--sostituisci]
@@ -129,7 +131,7 @@ async function mezzoBusto(png, riga) {
   const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
   let img = sharp(png);
   if (bh / bw > 1.45 || (riga && riga.sempre)) {
-    const lato = Math.min(W, H, Math.round(bh * 0.68));
+    const lato = Math.min(W, H, Math.round(bh * ((riga && riga.lato) || 0.68)));
     // il centro e' quello della testa (il primo 12% del soggetto), non delle braccia
     let t0 = W, t1 = -1;
     for (let y = y0; y < y0 + Math.max(1, Math.round(bh * 0.12)); y++) for (let x = 0; x < W; x++) {
@@ -259,6 +261,79 @@ for (const [k, lega, nome] of [["efl-championship", "eng.2", "Championship"], ["
                      slug: slug((p.firstName || "") + " " + (p.surname || "") + " " + (p.knownName || "")), img: imgs[0] || "", imgs, sempre: !!c.sempre };
           });
         } });
+      }
+      return out;
+    }
+  };
+}
+
+// ── club con un sito tutto loro ─────────────────────────────────────
+// Le ex Premier scese in EFL. West Ham e Wolves non servono: in magazzino
+// hanno gia' le foto da 1200 pixel. Burnley pubblica solo card grafiche
+// (fondo, bandiera, scritte), niente scontornati.
+function deHtml(s) {
+  return s.replace(/&quot;/g, "\"").replace(/&#x27;|&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n)).replace(/&amp;/g, "&");
+}
+// l'oggetto JSON che comincia in quel punto del testo (parentesi contate, stringhe saltate)
+function oggettoJson(t, da) {
+  let prof = 0, str = false;
+  for (let i = da; i < t.length; i++) {
+    const ch = t[i];
+    if (str) { if (ch === "\\") i++; else if (ch === "\"") str = false; continue; }
+    if (ch === "\"") str = true;
+    else if (ch === "{") prof++;
+    else if (ch === "}" && --prof === 0) { try { return JSON.parse(t.slice(da, i + 1)); } catch (err) { return null; } }
+  }
+  return null;
+}
+const CLUB_SITI = [
+  { nome: "southampton", re: /southampton/, sigla: "sou", async righe() {
+      // la rosa sta nei dati della pagina, un oggetto per giocatore con "teams":["mensteam"]
+      const t = deHtml(await testo("https://www.southamptonfc.com/en/first-team"));
+      const out = [], visti = new Set(), re = /\{"index":\d+,/g;
+      let m;
+      while ((m = re.exec(t))) {
+        const o = oggettoJson(t, m.index);
+        if (!o || !(o.teams || []).includes("mensteam") || !o.image || !o.image.file || visti.has(o.id)) continue;
+        visti.add(o.id);
+        const u = String(o.image.file.url || "").replace(/^http:/, "https:").replace("/image/upload/", "/image/upload/c_limit,w_1200,h_1200/");
+        out.push({ num: String(o.number || ""), nome: (o.firstName + " " + o.lastName).trim(), id: o.id, cognome: slug(o.lastName),
+                   slug: slug(o.firstName + " " + o.lastName), img: u, sempre: true });
+      }
+      return out;
+    } },
+  { nome: "leicester", re: /leicester/, sigla: "lei", lato: 0.56, async righe() {
+      // Scontornati con numero e nome stampati sotto il petto: il ritaglio piu'
+      // stretto (lato) li lascia fuori. Il nome e' nel testo alternativo, ma si
+      // prende solo se e' anche nel nome del file: una volta non lo era
+      // (Choudhury sulla foto di Howell).
+      const h = await testo("https://www.lcfc.com/teams-men");
+      const out = [], visti = new Set(), re = /<img[^>]*?alt="([^"]+)"[^>]*?src="(https:\/\/cmscdnus\.yinzcam\.com\/Toolbox\/jsoneditor\/FA_LEI\/([^"?]+))/g;
+      let m;
+      while ((m = re.exec(h))) {
+        const nome = deHtml(m[1]).trim(), file = slug(decodeURIComponent(m[3]).replace(/\.png$/i, ""));
+        const toks = slug(nome).split("-").filter((x) => x.length > 2);
+        if (!/\.png$/i.test(m[3]) || !toks.length || visti.has(slug(nome))) continue;
+        const cog = toks[toks.length - 1];
+        if (!file.split("-").includes(cog)) continue;
+        visti.add(slug(nome));
+        const parti = nome.split(/\s+/);
+        out.push({ num: "", nome, id: slug(nome), cognome: slug(parti.slice(1).join(" ") || nome), slug: slug(nome), img: m[2], sempre: true });
+      }
+      return out;
+    } }
+];
+for (const [k, lega] of [["club-eng2", "eng.2"], ["club-eng3", "eng.3"], ["club-eng4", "eng.4"]]) {
+  FONTI[k] = {
+    nome: "siti dei club (" + lega + ")", lega, gruppo: "club", prepara: mezzoBusto,
+    chiave: (id) => "club:" + id,
+    async squadre(espn) {
+      const out = [];
+      for (const c of CLUB_SITI) {
+        const sq = espn.find((e) => c.re.test(e.nome.toLowerCase()));
+        if (!sq) continue;
+        out.push({ slug: slug(sq.nome), sq, righe: async () => (await c.righe()).map((r) => Object.assign(r, { lato: c.lato })) });
       }
       return out;
     }
