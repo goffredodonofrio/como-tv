@@ -322,6 +322,29 @@ body.editing .stagewrap{padding:16px 16px 30px}
 .thumb .lb{font-size:9px;color:var(--fg2);margin-top:4px;text-align:center;line-height:1.25}
 .busy{position:fixed;inset:0;background:rgba(5,7,15,.72);display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;z-index:50}
 .busy.on{display:flex}
+/* Composizione: sta SOTTO l'attesa (z 50), che le serve mentre scontorna */
+.comp{position:fixed;inset:0;z-index:40;background:rgba(5,7,15,.92);display:none;align-items:stretch;justify-content:center;padding:18px;gap:18px}
+.comp.on{display:flex}
+.comp-tela{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:center}
+.comp-tela canvas{width:auto;height:auto;max-width:100%;max-height:calc(100vh - 36px);border-radius:10px;border:1px solid var(--line);touch-action:none;cursor:grab;
+ background-color:#1a1f36;background-image:linear-gradient(45deg,#232948 25%,transparent 25%),linear-gradient(-45deg,#232948 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#232948 75%),linear-gradient(-45deg,transparent 75%,#232948 75%);
+ background-size:32px 32px;background-position:0 0,0 16px,16px -16px,-16px 0}
+.comp-lato{flex:0 0 300px;display:flex;flex-direction:column;gap:12px;color:var(--fg2);font-size:13px;line-height:1.45}
+.comp-lato h3{margin:0;font-size:15px;color:var(--ivory)}
+#compStrati{display:flex;flex-direction:column;gap:8px}
+.comp-strato{display:flex;align-items:center;gap:8px;background:#11162C;border:1px solid var(--line);border-radius:9px;padding:7px;cursor:pointer}
+.comp-strato.sel{border-color:var(--gold)}
+.comp-strato img{width:46px;height:46px;object-fit:contain;border-radius:5px;background:#1a1f36;flex:0 0 46px}
+.comp-strato .nome{flex:1;min-width:0;color:var(--ivory)}
+.comp-strato small{color:var(--fg3)}
+.comp-strato button{padding:4px 8px;font-size:12px}
+.comp-azioni,.comp-fondo{display:flex;gap:8px;flex-wrap:wrap}
+.comp-fondo{margin-top:auto}
+.comp-stato{min-height:18px;font-size:12px;color:var(--fg3)}
+.comp-formato{font-size:12px;color:var(--fg3)}
+.comp-spunta{display:flex;align-items:center;gap:7px;color:var(--ivory);cursor:pointer}
+.comp-stato.male{color:#ff9a9a}
+.comp-azioni .act:disabled,.comp-fondo .act:disabled{opacity:.38;cursor:default;pointer-events:none}
 .spin{width:44px;height:44px;border-radius:50%;border:4px solid rgba(201,162,75,.25);border-top-color:var(--gold);animation:sp 1s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 small.flag{color:#E3C271}
@@ -471,6 +494,10 @@ small.flag{color:#E3C271}
    <svg viewBox="0 0 20 20"><path d="M2.5 15.5v-11h5l1.5-2h4l1.5 2h3v11z"/><circle cx="10" cy="10.5" r="3.2"/></svg></button>
   <button class="act ghost ico" id="cbFotoVideo" title="Prendi un fotogramma da un video">
    <svg viewBox="0 0 20 20"><rect x="2.5" y="5" width="11" height="10" rx="1.5"/><path d="m13.5 10 4-2.6v5.2z"/></svg></button>
+  <button class="act ghost ico" id="cbFotoScontorna" title="Scontorna — toglie lo sfondo alla foto, qui nel browser (Cmd+Z per tornare indietro)">
+   <svg viewBox="0 0 20 20"><circle cx="5.6" cy="14.6" r="2.4"/><circle cx="14.4" cy="14.6" r="2.4"/><path d="M7.4 12.9 14.2 3M12.6 12.9 5.8 3"/></svg></button>
+  <button class="act ghost ico" id="cbFotoComponi" title="Composizione — mette insieme fino a tre foto scontornate in una">
+   <svg viewBox="0 0 20 20"><circle cx="6" cy="6.4" r="2.2"/><path d="M2.4 15.6c0-2.4 1.6-4.3 3.6-4.3s3.6 1.9 3.6 4.3"/><circle cx="14" cy="6.4" r="2.2"/><path d="M10.4 15.6c0-2.4 1.6-4.3 3.6-4.3s3.6 1.9 3.6 4.3"/></svg></button>
   <button class="act ghost ico" id="tMano" title="Sposta — trascina la foto, rotella per lo zoom">
     <svg viewBox="0 0 20 20"><path d="M10 2v16M2 10h16M10 2 7.6 4.4M10 2l2.4 2.4M10 18l-2.4-2.4M10 18l2.4-2.4M2 10l2.4-2.4M2 10l2.4 2.4M18 10l-2.4-2.4M18 10l-2.4 2.4"/></svg></button>
   <button class="act ghost ico" id="tMirino" title="Mirino — mostra il cerchio del volto in sovraimpressione, resta acceso finché non lo rispegni">
@@ -575,6 +602,25 @@ small.flag{color:#E3C271}
        si sentono. I canvas restano nel documento, spenti, perche' drawRulers()
        li cerca ancora: il giorno che servisse basta togliere hidden. -->
   <div class="stagewrap"><canvas id="rulerTop" class="ruler" hidden></canvas><canvas id="rulerLeft" class="ruler" hidden></canvas><div id="rulerCorner" hidden></div><div id="stage"></div></div>
+ </div>
+</div>
+<div class="comp" id="comp">
+ <div class="comp-tela"><canvas id="compTela" width="1200" height="1200"></canvas></div>
+ <div class="comp-lato">
+  <h3>Composizione</h3>
+  <div class="comp-formato" id="compFormato"></div>
+  <div>Fino a tre foto, ognuna scontornata. Trascina una foto per spostarla; per ingrandirla o stringerla tira un angolo o un lato, oppure rotella, pizzico sul trackpad, tasti + e −.</div>
+  <label class="comp-spunta" id="compScritteRiga"><input type="checkbox" id="compScritte" checked> Mostra le scritte del formato</label>
+  <div id="compStrati"></div>
+  <div class="comp-azioni">
+   <button class="act ghost" id="compAggiungi">+ Aggiungi foto</button>
+   <button class="act ghost" id="compAttuale">+ Usa la foto attuale</button>
+  </div>
+  <div class="comp-stato" id="compStato"></div>
+  <div class="comp-fondo">
+   <button class="act ghost" id="compAnnulla">Annulla</button>
+   <button class="act" id="compUsa">Usa composizione</button>
+  </div>
  </div>
 </div>
 <div class="busy" id="busy"><div class="spin"></div><div id="busyTxt">Esporto…</div></div>
@@ -2404,7 +2450,17 @@ var ROUNDS=(function(){var a=[];for(var i=1;i<=48;i++)a.push('Giornata '+(i<10?'
 var SHIMG={};
 var PHOTONAT={};
 function curPhotoSrc(){return SHIMG.photo||DEFAULT_PHOTO;}
-function loadNat(src,cb){if(!src){cb&&cb(null);return;}if(PHOTONAT[src]){cb&&cb(PHOTONAT[src]);return;}var im=new Image();im.onload=function(){PHOTONAT[src]={w:im.naturalWidth||1,h:im.naturalHeight||1};cb&&cb(PHOTONAT[src]);};im.onerror=function(){cb&&cb(null);};im.src=src;}
+// Una foto trasparente — scontornata, composizione, PNG caricato a mano — si
+// riconosce dai pixel e non da un'etichetta: cosi' vale anche per le sessioni
+// riaperte, che l'etichetta non la conservano. Basta una copia minuscola.
+function eTrasparente(im){
+ try{var c=document.createElement('canvas');c.width=48;c.height=48;
+  var x=c.getContext('2d');x.drawImage(im,0,0,48,48);
+  var d=x.getImageData(0,0,48,48).data;
+  for(var i=3;i<d.length;i+=4)if(d[i]<250)return true;
+ }catch(e){}   // immagine di un altro sito che non si lascia leggere: la si tratta come normale
+ return false;}
+function loadNat(src,cb){if(!src){cb&&cb(null);return;}if(PHOTONAT[src]){cb&&cb(PHOTONAT[src]);return;}var im=new Image();im.onload=function(){PHOTONAT[src]={w:im.naturalWidth||1,h:im.naturalHeight||1,trasparente:src!==DEFAULT_PHOTO&&/^data:image\/(png|webp)|\.(png|webp)(\?|$)/i.test(src)&&eTrasparente(im)};cb&&cb(PHOTONAT[src]);};im.onerror=function(){cb&&cb(null);};im.src=src;}
 // Memoria logo per competizione (carichi il logo una volta, si ri-applica quando riscegli la competizione)
 var COMP_LOGO={};
 // per-format state (solo campi specifici del formato + posizioni + immagini)
@@ -2742,11 +2798,24 @@ function photoPanMax(s){var it=photoItem();var n=PHOTONAT[curPhotoSrc()];
 // Trascinamento libero: nessun limite, la foto si sposta ovunque (reset con "Centra foto").
 // Limita spostamento e scala perche' la foto continui a coprire il formato:
 // sotto scala 1 il cover non copre piu', e oltre il bordo si scoprirebbe il fondo.
+function fotoTrasp(){var n=PHOTONAT[curPhotoSrc()];return !!(n&&n.trasparente);}
 function photoClamp(a,key){
  var nat=PHOTONAT[curPhotoSrc()];if(!a||!nat||nat.w<2)return a;
  var g=coverOf(key||current,nat);
- a.s=Math.max(1,Math.min(3.5,a.s||1));
  if(a.cx===undefined){a.cx=g.W/2;a.cy=g.H/2;}
+ if(nat.trasparente){
+  // Una foto trasparente non ha bisogno di coprire il riquadro: dove manca si
+  // vede la grafica, non un buco. Puo' rimpicciolirsi — tre giocatori
+  // affiancati in una story perderebbero quelli ai lati — e stare dove si
+  // vuole, purche' un pezzo resti dentro, se no finisce fuori e non la si
+  // ritrova. E' la stessa scelta gia' fatta per le clip video (clampVideoAdj).
+  a.s=Math.max(0.2,Math.min(3.5,a.s||1));
+  var tw=g.Dw*a.s,th=g.Dh*a.s;
+  var lx=(g.W+tw)/2-0.12*Math.min(g.W,tw),ly=(g.H+th)/2-0.12*Math.min(g.H,th);
+  a.dx=Math.max(-lx,Math.min(lx,a.dx||0));
+  a.dy=Math.max(-ly,Math.min(ly,a.dy||0));
+  return a;}
+ a.s=Math.max(1,Math.min(3.5,a.s||1));
  var dw=g.Dw*a.s,dh=g.Dh*a.s;
  a.dx=Math.max(g.W-(g.W+dw)/2,Math.min((dw-g.W)/2,a.dx||0));
  a.dy=Math.max(g.H-(g.H+dh)/2,Math.min((dh-g.H)/2,a.dy||0));
@@ -2980,7 +3049,7 @@ function mostraDifferenze(d,evt){
 // stai guardando: i ritagli erano calcolati su un'altra immagine e il volto sta
 // in un altro punto. Prima azzeravo il ritaglio del solo formato corrente e i
 // pannelli YouTube restavano con l'inquadratura della foto precedente.
-var PHOTO_FONTE=null;     // {tipo:'locale'|'video'|'airtable', url:...}
+var PHOTO_FONTE=null;     // {tipo:'locale'|'video'|'airtable'|'scontornata', url:..., da:...}
 // Il record Airtable da cui arrivano i dati correnti. La sessione salva questo
 // legame, non solo la copia dei valori: e' cio' che permette, giorni dopo, di
 // accorgersi che l'orario e' cambiato invece di esportare quello vecchio.
@@ -3048,6 +3117,415 @@ document.getElementById('cbFotoVideo').onclick=function(){
  i.click();};
 document.getElementById('cbFotoVia').onclick=function(){
  pushUndo();delete SHIMG.photo;renderControls();renderStage();refreshThumbs();};
+
+// ---- SCONTORNO, dentro il generatore ----
+// Lo script "Scontorna foto" usa Vision di macOS, che in una pagina web non
+// esiste. Qui lavora MODNet (Apache 2.0, 25 MB), scelto mettendolo accanto a
+// Vision su tredici giocatori del Como: stesso risultato al 99%, anche sui
+// pantaloncini bianchi su fondo bianco, dove ISNet li bucava. BiRefNet
+// scontornava altrettanto bene ma ci metteva settanta secondi a foto.
+//
+// Gira nel browser di chi usa il generatore: la foto non esce dal computer e
+// non tocca il ponte, che durante le dirette ha altro da fare.
+var SCONT={
+ ORT:'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/',
+ // Prima la copia sulla nostra macchina. Se non c'e' — comotv-dev-sync cancella
+ // da dev tutto quello che in produzione non esiste — quella pubblica del modello.
+ MODELLI:['../../modelli/modnet.onnx','https://huggingface.co/Xenova/modnet/resolve/main/onnx/model.onnx'],
+ // Lo scontornato e' un PNG con la trasparenza: a 19 megapixel peserebbe decine
+ // di MB. 2800 di lato lungo basta e avanza per il formato piu' grande.
+ LATO_MAX:2800,
+ sessione:null
+};
+function scontMotore(){
+ if(window.ort)return Promise.resolve(window.ort);
+ return new Promise(function(ok,ko){
+  var t=document.createElement('script');t.src=SCONT.ORT+'ort.wasm.min.js';
+  t.onload=function(){ok(window.ort);};
+  t.onerror=function(){ko(new Error('il motore dello scontorno non si scarica'));};
+  document.head.appendChild(t);});
+}
+function scontSessione(){
+ if(SCONT.sessione)return Promise.resolve(SCONT.sessione);
+ return scontMotore().then(function(ort){
+  ort.env.wasm.wasmPaths=SCONT.ORT;
+  // piu' fili vogliono l'isolamento cross-origin, che su questa pagina non c'e'
+  if(!self.crossOriginIsolated)ort.env.wasm.numThreads=1;
+  var i=0;
+  function prova(){
+   if(i>=SCONT.MODELLI.length)return Promise.reject(new Error('il modello dello scontorno non si scarica'));
+   var u=SCONT.MODELLI[i++];
+   return fetch(u).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.arrayBuffer();})
+    .then(function(b){return ort.InferenceSession.create(b,{executionProviders:['wasm']});})
+    .catch(function(){return prova();});
+  }
+  return prova().then(function(ses){SCONT.sessione=ses;return ses;});
+ });
+}
+// Scontorna un'immagine e restituisce il PNG. La usano il tasto della barra e
+// la composizione. Risolve {nessuno:true} quando un soggetto non c'e'.
+function scontornaDati(sorgente,latoMax){
+ return new Promise(function(ok,ko){
+  var img=new Image();
+  if(/^https?:/i.test(sorgente))img.crossOrigin='anonymous';
+  img.onload=function(){
+   var W0=img.naturalWidth,H0=img.naturalHeight;
+   // MODNet vuole il lato corto a 512, e tutti e due i lati multipli di 32
+   var k=512/Math.min(W0,H0);
+   var nw=Math.max(32,Math.round(W0*k/32)*32),nh=Math.max(32,Math.round(H0*k/32)*32);
+   scontSessione().then(function(ses){
+    var c=document.createElement('canvas');c.width=nw;c.height=nh;
+    var cx=c.getContext('2d');cx.drawImage(img,0,0,nw,nh);
+    var px=cx.getImageData(0,0,nw,nh).data,n=nw*nh,t=new Float32Array(3*n);
+    for(var i=0;i<n;i++){t[i]=px[i*4]/127.5-1;t[n+i]=px[i*4+1]/127.5-1;t[2*n+i]=px[i*4+2]/127.5-1;}
+    var dentro={};dentro[ses.inputNames[0]]=new window.ort.Tensor('float32',t,[1,3,nh,nw]);
+    return ses.run(dentro).then(function(fuori){
+     var m=fuori[ses.outputNames[0]].data,pieni=0;
+     var mc=document.createElement('canvas');mc.width=nw;mc.height=nh;
+     var mx=mc.getContext('2d'),md=mx.createImageData(nw,nh);
+     for(var j=0;j<n;j++){var a=m[j];a=a<0?0:(a>1?1:a);if(a>.5)pieni++;md.data[j*4+3]=Math.round(a*255);}
+     var quota=pieni/n;
+     // Il modello restituisce SEMPRE qualcosa, anche dove un soggetto non c'e':
+     // su una ripresa aerea dello stadio si e' inventato un pezzo di tribuna.
+     // Nella prova i giocatori occupavano fra il 19 e il 24% della foto, gli
+     // stadi il 7% e lo 0,4%. Sotto il 2% non si tocca niente; fra il 2 e il 10%
+     // si scontorna lo stesso — un giocatore lontano puo' stare li' — ma si avvisa.
+     if(quota<.02){ok({nessuno:true,quota:quota});return;}
+     mx.putImageData(md,0,0);
+     var sc=Math.min(1,(latoMax||SCONT.LATO_MAX)/Math.max(W0,H0)),W=Math.round(W0*sc),H=Math.round(H0*sc);
+     var f=document.createElement('canvas');f.width=W;f.height=H;
+     var fx=f.getContext('2d');fx.imageSmoothingEnabled=true;fx.imageSmoothingQuality='high';
+     fx.drawImage(img,0,0,W,H);
+     // la maschera, ingrandita alla misura della foto, tiene solo il soggetto
+     fx.globalCompositeOperation='destination-in';fx.drawImage(mc,0,0,W,H);
+     ok({url:f.toDataURL('image/png'),quota:quota,w:W,h:H});
+    });
+   }).catch(ko);
+  };
+  img.onerror=function(){ko(new Error('non riesco a leggere la foto'));};
+  img.src=sorgente;
+ });
+}
+function scontorna(){
+ if(!SHIMG.photo){avviso('Prima carica una foto.',{male:true});return;}
+ var fonte=PHOTO_FONTE;
+ busy(true,SCONT.sessione?'Scontorno…':'Preparo lo scontorno — la prima volta scarica 25 MB…');
+ scontornaDati(SHIMG.photo).then(function(r){
+  if(r.nessuno){busy(false);avviso('Non trovo un soggetto da scontornare: la foto resta com’era.',{male:true});return;}
+  fotoNuova(r.url,{tipo:'scontornata',da:fonte},function(){
+   busy(false);
+   if(r.quota<.10)avviso('Scontornata, ma il soggetto è piccolo o incerto: controlla i bordi. <b>Cmd+Z</b> per tornare alla foto intera.');
+   else avviso('Scontornata. <b>Cmd+Z</b> per tornare alla foto intera.');
+  });
+ }).catch(function(e){busy(false);avviso('Scontorno non riuscito: '+escHTML((e&&e.message)||String(e)),{male:true});});
+}
+
+// ---- COMPOSIZIONE: fino a tre foto scontornate in una ----
+// Il generatore disegna UNA foto per formato, e tutto gli gira attorno:
+// inquadratura, famiglie, annulla, sessioni, esportazione, e la maschera del
+// ponte, che usa lo stesso motore. Invece di insegnare al motore a disegnarne
+// tre — e toccare 82 formati — le foto si mettono insieme QUI, in un'immagine
+// trasparente sola, e arrivano al generatore come una foto. Da li' in avanti e'
+// una foto come le altre, e si adatta agli altri formati come si adatta sempre.
+var COMP={strati:[],sel:-1,W:1080,H:1920,chiave:'',sotto:null,sopra:null,scritte:true};
+var COMP_MAX=3,COMP_LATO=1800,COMP_VISTA=1200,COMP_USCITA=4096;
+function compStato(t,male){var e=document.getElementById('compStato');e.textContent=t||'';e.className='comp-stato'+(male?' male':'');}
+function compImmagine(src){return new Promise(function(ok,ko){var im=new Image();im.onload=function(){ok(im);};im.onerror=function(){ko(new Error('foto illeggibile'));};im.src=src;});}
+// una foto che resta intera (niente soggetto) si riduce comunque: 19 megapixel
+// dentro una composizione pesano senza servire
+function compRiduci(im,lato){
+ var sc=Math.min(1,lato/Math.max(im.naturalWidth,im.naturalHeight));if(sc>=1)return im.src;
+ var c=document.createElement('canvas');c.width=Math.round(im.naturalWidth*sc);c.height=Math.round(im.naturalHeight*sc);
+ c.getContext('2d').drawImage(im,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.92);}
+// Il riquadro e' il formato aperto: la foto si compone dove andra' davvero.
+// Vale per i formati in cui la foto riempie il quadro; dove sta in una fascia
+// o in un riquadro si compone su una tela quadrata, come prima.
+function compFormatoPieno(key){var it=BYKEY[key];
+ return OTTGEN.svgFor(it,P(key),imgsFor(key),{},'',true).indexOf('<clipPath id="pcp'+it.w+'x'+it.h+'"')>=0;}
+function compRettangolo(L){var w=L.w*L.s,h=L.h*L.s;return {x0:L.x-w/2,y0:L.y-h/2,x1:L.x+w/2,y1:L.y+h/2,w:w,h:h};}
+// Le scritte. La grafica ha cose SOTTO la foto (il fondo, la scenografia) e
+// cose SOPRA (velature, titoli, marchio), e i giocatori vanno in mezzo. Il
+// motore non le separa, e insegnarglielo vorrebbe dire toccare 82 formati.
+// Allora si disegna il formato tre volte con una foto finta — nera, bianca,
+// trasparente — e dalla differenza si ricava cosa sta sopra e con che
+// trasparenza, e cosa resta sotto. E' il metodo classico dello scontorno su
+// due fondi: esce esatto, velature comprese.
+function compSolido(col){var c=document.createElement('canvas');c.width=c.height=8;
+ if(col){var x=c.getContext('2d');x.fillStyle=col;x.fillRect(0,0,8,8);}return c.toDataURL('image/png');}
+function compStrati(key){
+ var it=BYKEY[key],p=P(key),A=adjMap(key);A.photo='translate(0 0)';
+ function svg(col){var I=Object.assign({},imgsFor(key));I.photo=compSolido(col);I.photoNat={w:8,h:8};
+  return withTextStyles(OTTGEN.svgFor(it,p,I,A,FONTCSS,false),key);}
+ return Promise.all([svgToImage(svg('#000')),svgToImage(svg('#fff')),svgToImage(svg(''))]).then(function(r){
+  var k=COMP_VISTA/Math.max(it.w,it.h),cw=Math.round(it.w*k),ch=Math.round(it.h*k);
+  function leggi(im){var c=document.createElement('canvas');c.width=cw;c.height=ch;
+   var x=c.getContext('2d');x.drawImage(im,0,0,cw,ch);return x.getImageData(0,0,cw,ch);}
+  var N=leggi(r[0]).data,B=leggi(r[1]).data,T=leggi(r[2]).data;
+  var so=new ImageData(cw,ch),su=new ImageData(cw,ch),o=so.data,u=su.data;
+  for(var i=0;i<N.length;i+=4){
+   var a=1-((B[i]-N[i])+(B[i+1]-N[i+1])+(B[i+2]-N[i+2]))/765;a=a<0?0:a>1?1:a;
+   if(a>0.004){o[i]=N[i]/a;o[i+1]=N[i+1]/a;o[i+2]=N[i+2]/a;o[i+3]=a*255;}
+   // sotto: quel che resta togliendo lo strato sopra dal formato senza foto
+   var r1=1-a;if(r1>0.02){var ta=T[i+3]/255,ua=(ta-a)/r1;
+    if(ua>0.004){ua=ua>1?1:ua;
+     for(var ch2=0;ch2<3;ch2++){var v=(T[i+ch2]*ta-N[i+ch2])/r1/ua;u[i+ch2]=v<0?0:v>255?255:v;}
+     u[i+3]=ua*255;}}
+  }
+  function tela(d){var c=document.createElement('canvas');c.width=cw;c.height=ch;c.getContext('2d').putImageData(d,0,0);return c;}
+  return {sotto:tela(su),sopra:tela(so)};
+ });}
+// Riaperta su un formato di forma diversa, la composizione non si perde: si
+// porta nel nuovo riquadro alla stessa altezza relativa, e se non ci sta si
+// stringe finche' ci sta.
+function compRiporta(W,H){
+ var W0=COMP.W,H0=COMP.H;if(W0===W&&H0===H)return;
+ if(COMP.strati.length){
+  var b={x0:1e9,y0:1e9,x1:-1e9,y1:-1e9};
+  COMP.strati.forEach(function(L){var r=compRettangolo(L);b.x0=Math.min(b.x0,r.x0);b.y0=Math.min(b.y0,r.y0);b.x1=Math.max(b.x1,r.x1);b.y1=Math.max(b.y1,r.y1);});
+  var t=Math.min(H/H0,W*0.94/(b.x1-b.x0),H*0.94/(b.y1-b.y0));
+  var cx=(b.x0+b.x1)/2,cy=(b.y0+b.y1)/2,nx=cx/W0*W,ny=cy/H0*H;
+  var bw=(b.x1-b.x0)*t/2,bh=(b.y1-b.y0)*t/2;
+  nx=Math.max(bw,Math.min(W-bw,nx));ny=Math.max(bh,Math.min(H-bh,ny));
+  COMP.strati.forEach(function(L){L.s*=t;L.x=nx+(L.x-cx)*t;L.y=ny+(L.y-cy)*t;});
+ }
+ COMP.W=W;COMP.H=H;}
+function compTela(){
+ var c=document.getElementById('compTela'),x=c.getContext('2d'),k=c.width/COMP.W;
+ x.clearRect(0,0,c.width,c.height);
+ if(COMP.sotto)x.drawImage(COMP.sotto,0,0,c.width,c.height);
+ x.imageSmoothingQuality='high';
+ COMP.strati.forEach(function(L){var r=compRettangolo(L);x.drawImage(L.img,r.x0*k,r.y0*k,r.w*k,r.h*k);});
+ if(COMP.sopra&&COMP.scritte)x.drawImage(COMP.sopra,0,0,c.width,c.height);
+ var L=COMP.strati[COMP.sel];if(!L)return;
+ // la selezione sta sopra tutto, scritte comprese: le maniglie si devono prendere
+ var r=compRettangolo(L),px=c.width/Math.max(1,c.getBoundingClientRect().width),m=5*px;
+ x.save();x.strokeStyle='#E3C271';x.lineWidth=2*px;x.setLineDash([8*px,6*px]);
+ x.strokeRect(r.x0*k,r.y0*k,r.w*k,r.h*k);x.setLineDash([]);
+ compManiglie(r).forEach(function(h){x.fillStyle='#0A0F24';x.fillRect(h.x*k-m,h.y*k-m,2*m,2*m);
+  x.fillStyle='#E3C271';x.fillRect(h.x*k-m+1.5*px,h.y*k-m+1.5*px,2*m-3*px,2*m-3*px);});
+ x.restore();}
+// otto maniglie: gli angoli e i lati. Ognuna ha il suo punto fermo, quello opposto.
+function compManiglie(r){var mx=(r.x0+r.x1)/2,my=(r.y0+r.y1)/2;
+ return [{t:'c',x:r.x0,y:r.y0,ax:r.x1,ay:r.y1,cur:'nwse-resize'},{t:'c',x:r.x1,y:r.y1,ax:r.x0,ay:r.y0,cur:'nwse-resize'},
+         {t:'c',x:r.x1,y:r.y0,ax:r.x0,ay:r.y1,cur:'nesw-resize'},{t:'c',x:r.x0,y:r.y1,ax:r.x1,ay:r.y0,cur:'nesw-resize'},
+         {t:'x',x:r.x0,y:my,ax:r.x1,ay:my,cur:'ew-resize'},{t:'x',x:r.x1,y:my,ax:r.x0,ay:my,cur:'ew-resize'},
+         {t:'y',x:mx,y:r.y0,ax:mx,ay:r.y1,cur:'ns-resize'},{t:'y',x:mx,y:r.y1,ax:mx,ay:r.y0,cur:'ns-resize'}];}
+function compDisegna(){
+ compTela();
+ var box=document.getElementById('compStrati');box.innerHTML='';
+ // in cima alla lista chi sta davanti
+ for(var i=COMP.strati.length-1;i>=0;i--)(function(i){
+  var L=COMP.strati[i],r=document.createElement('div');
+  r.className='comp-strato'+(i===COMP.sel?' sel':'');
+  r.innerHTML='<img alt=""><span class="nome">Foto '+(i+1)+(L.nota?'<br><small>'+escHTML(L.nota)+'</small>':'')+'</span>'
+   +'<button class="act ghost" data-f="su" title="Porta davanti">↑</button>'
+   +'<button class="act ghost" data-f="giu" title="Porta dietro">↓</button>'
+   +'<button class="act ghost" data-f="via" title="Togli dalla composizione">✕</button>';
+  r.querySelector('img').src=L.src;
+  r.onclick=function(ev){
+   var f=ev.target&&ev.target.getAttribute&&ev.target.getAttribute('data-f'),t;
+   if(f==='via'){COMP.strati.splice(i,1);COMP.sel=Math.min(COMP.sel,COMP.strati.length-1);}
+   else if(f==='su'){if(i<COMP.strati.length-1){t=COMP.strati[i];COMP.strati[i]=COMP.strati[i+1];COMP.strati[i+1]=t;COMP.sel=i+1;}}
+   else if(f==='giu'){if(i>0){t=COMP.strati[i];COMP.strati[i]=COMP.strati[i-1];COMP.strati[i-1]=t;COMP.sel=i-1;}}
+   else COMP.sel=i;
+   compDisegna();};
+  box.appendChild(r);
+ })(i);
+ var pieno=COMP.strati.length>=COMP_MAX;
+ document.getElementById('compAggiungi').disabled=pieno;
+ document.getElementById('compAttuale').disabled=pieno||!SHIMG.photo;
+ document.getElementById('compUsa').disabled=!COMP.strati.length;
+}
+function compAggiungi(src){
+ if(COMP.strati.length>=COMP_MAX)return Promise.resolve();
+ busy(true,SCONT.sessione?'Scontorno…':'Preparo lo scontorno — la prima volta scarica 25 MB…');
+ return compImmagine(src).then(function(im){
+  // gia' trasparente (uno scontornato, un PNG): si usa com'e'
+  if(/^data:image\/(png|webp)/i.test(src)&&eTrasparente(im))return {url:src,nota:''};
+  return scontornaDati(src,COMP_LATO).then(function(r){
+   if(r.nessuno)return {url:compRiduci(im,COMP_LATO),nota:'non scontornata: non ho trovato un soggetto'};
+   return {url:r.url,nota:r.quota<.10?'soggetto incerto, controlla i bordi':''};
+  });
+ }).then(function(r){
+  return compImmagine(r.url).then(function(im){
+   var n=COMP.strati.length,posti=[0.5,0.74,0.26],W=COMP.W,H=COMP.H;
+   // entra alta sette decimi del riquadro, non piu' larga di meta', e poggiata
+   // sul bordo basso: i giocatori sono quasi sempre tagliati in vita o alle ginocchia
+   var sc=Math.min(H*0.7/im.naturalHeight,W*0.5/im.naturalWidth);
+   COMP.strati.push({src:r.url,img:im,w:im.naturalWidth,h:im.naturalHeight,s:sc,
+                     x:W*posti[n],y:H-im.naturalHeight*sc/2,nota:r.nota});
+   COMP.sel=COMP.strati.length-1;
+   busy(false);compStato(r.nota?('Foto '+COMP.strati.length+': '+r.nota):'',!!r.nota);compDisegna();
+  });
+ }).catch(function(e){busy(false);compStato('Non riesco ad aggiungerla: '+((e&&e.message)||e),true);});
+}
+function compApri(){
+ var it=BYKEY[current],pieno=compFormatoPieno(current),W=pieno?it.w:2400,H=pieno?it.h:2400;
+ compRiporta(W,H);
+ COMP.chiave=pieno?current:'';COMP.sotto=COMP.sopra=null;
+ var c=document.getElementById('compTela'),k=COMP_VISTA/Math.max(W,H);
+ c.width=Math.round(W*k);c.height=Math.round(H*k);
+ document.getElementById('compFormato').textContent=pieno
+  ?('Riquadro: '+it.label+' · '+it.w+'×'+it.h)
+  :('In '+it.label+' la foto sta in una fascia: si compone su una tela quadrata. Apri un formato a pieno quadro per vedere le scritte.');
+ document.getElementById('compScritteRiga').style.display=pieno?'':'none';
+ document.getElementById('comp').classList.add('on');
+ compStato(COMP.strati.length?'':'Aggiungi la prima foto, oppure parti da quella attuale.');
+ compDisegna();
+ if(!pieno)return;
+ busy(true,'Preparo il formato…');
+ var chiave=current;
+ compStrati(chiave).then(function(s){busy(false);if(COMP.chiave!==chiave||!compAperta())return;
+  COMP.sotto=s.sotto;COMP.sopra=s.sopra;compTela();})
+ .catch(function(e){busy(false);compStato('Le scritte non si lasciano disegnare: compongo senza. ('+((e&&e.message)||e)+')',true);});
+}
+function compChiudi(){document.getElementById('comp').classList.remove('on');}
+function compAperta(){var e=document.getElementById('comp');return !!(e&&e.classList.contains('on'));}
+function compUsa(){
+ if(!COMP.strati.length)return;
+ busy(true,'Compongo…');
+ setTimeout(function(){try{
+  // Si disegna tutto quello che c'e', anche la parte che esce dal riquadro:
+  // qui non si vede, ma nei formati piu' larghi o piu' alti torna utile.
+  var b={x0:1e9,y0:1e9,x1:-1e9,y1:-1e9},fin=1;
+  COMP.strati.forEach(function(L){var r=compRettangolo(L);b.x0=Math.min(b.x0,r.x0);b.y0=Math.min(b.y0,r.y0);b.x1=Math.max(b.x1,r.x1);b.y1=Math.max(b.y1,r.y1);
+   fin=Math.max(fin,1/L.s);});
+  var bw=b.x1-b.x0,bh=b.y1-b.y0;
+  // risoluzione: quella della foto piu' definita, entro 4096 px e 12 megapixel
+  var f=Math.min(fin,COMP_USCITA/Math.max(bw,bh),Math.sqrt(12e6/(bw*bh)));
+  var TW=Math.max(1,Math.round(bw*f)),TH=Math.max(1,Math.round(bh*f));
+  var t=document.createElement('canvas');t.width=TW;t.height=TH;
+  var x=t.getContext('2d');x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';
+  COMP.strati.forEach(function(L){var r=compRettangolo(L);x.drawImage(L.img,(r.x0-b.x0)*f,(r.y0-b.y0)*f,r.w*f,r.h*f);});
+  // si ritaglia attorno a quello che c'e': ogni formato la inquadra sui
+  // giocatori e non sui bordi trasparenti delle foto
+  var d=x.getImageData(0,0,TW,TH).data,x0=TW,y0=TH,x1=-1,y1=-1;
+  for(var yy=0;yy<TH;yy+=2)for(var xx=0;xx<TW;xx+=2){
+   if(d[(yy*TW+xx)*4+3]>8){if(xx<x0)x0=xx;if(xx>x1)x1=xx;if(yy<y0)y0=yy;if(yy>y1)y1=yy;}}
+  if(x1<0){busy(false);compStato('La composizione è vuota.',true);return;}
+  x0=Math.max(0,x0-2);y0=Math.max(0,y0-2);x1=Math.min(TW-1,x1+2);y1=Math.min(TH-1,y1+2);
+  var o=document.createElement('canvas');o.width=x1-x0+1;o.height=y1-y0+1;
+  o.getContext('2d').drawImage(t,x0,y0,o.width,o.height,0,0,o.width,o.height);
+  // dove sta il ritaglio, nelle misure del riquadro
+  var pos={x0:b.x0+x0/f,y0:b.y0+y0/f,w:o.width/f,h:o.height/f};
+  var url=o.toDataURL('image/png'),quante=COMP.strati.length,chiave=COMP.chiave,W=COMP.W,H=COMP.H;
+  fotoNuova(url,{tipo:'composizione',n:quante},function(){
+   var nat=PHOTONAT[url];
+   // I Format VOD disegnano la foto solo con un programma che la prevede: il
+   // controllo si fa con quello, cosi' la composizione entra giusta anche se il
+   // programma si sceglie DOPO. photoFullBleed qui non basta, perche' si ricorda
+   // la risposta data col programma selezionato la prima volta.
+   var progFoto=Object.keys(window.FMT_V||{}).filter(function(k){return (FMT_V[k].materiali||[]).some(function(m){return m.k==='photo';});})[0];
+   if(nat)ITEMS.forEach(function(it){
+    var p=P(it.key);
+    if(progFoto&&it.group==='Format VOD')p=Object.assign({},p,{fcKey:progFoto});
+    // Solo i formati a pieno quadro. Dove la foto sta in una fascia o in un
+    // riquadro — Talent Hunters orizzontale, alcune miniature YouTube — un
+    // inquadratura calcolata sul formato intero la farebbe scivolare fuori:
+    // li' resta com'e', e si inquadra a mano come una foto normale.
+    if(OTTGEN.svgFor(it,p,imgsFor(it.key),{},'',true).indexOf('<clipPath id="pcp'+it.w+'x'+it.h+'"')<0)return;
+    var g=coverOf(it.key,nat);
+    // Il formato su cui si e' composto, e quelli della stessa forma, la
+    // ricevono esattamente dove la si e' messa. Gli altri intera, con un margine.
+    if(chiave&&Math.abs(it.w/it.h-W/H)<0.01*(W/H)){
+     var q=it.w/W;
+     STATE[it.key].adj.photo={s:pos.w*q/g.Dw,dx:(pos.x0+pos.w/2)*q-it.w/2,dy:(pos.y0+pos.h/2)*q-it.h/2,cx:it.w/2,cy:it.h/2};
+    }else STATE[it.key].adj.photo={s:Math.min(g.W/g.Dw,g.H/g.Dh)*0.94,dx:0,dy:0,cx:g.W/2,cy:g.H/2};
+   });
+   renderStage();refreshThumbs();busy(false);compChiudi();
+   avviso('Composizione di '+quante+' foto: '+(chiave?'qui e nei formati della stessa forma sta dove l\'hai messa, negli altri entra intera.':'entra intera in tutti i formati.')+' <b>Cmd+Z</b> per tornare indietro.');
+  });
+ }catch(e){busy(false);compStato('Non riesco a comporre: '+((e&&e.message)||e),true);}},30);
+}
+document.getElementById('cbFotoComponi').onclick=compApri;
+document.getElementById('compAnnulla').onclick=compChiudi;
+document.getElementById('compUsa').onclick=compUsa;
+document.getElementById('compScritte').onchange=function(){COMP.scritte=this.checked;compTela();};
+document.getElementById('compAttuale').onclick=function(){if(SHIMG.photo)compAggiungi(SHIMG.photo);};
+document.getElementById('compAggiungi').onclick=function(){
+ var i=document.createElement('input');i.type='file';i.accept='image/*';
+ i.onchange=function(){var f=i.files&&i.files[0];if(!f)return;
+  var r=new FileReader();r.onload=function(){compAggiungi(r.result);};r.readAsDataURL(f);};
+ i.click();};
+(function(){
+ var c=document.getElementById('compTela'),presa=null;
+ function punto(ev){var r=c.getBoundingClientRect();return {x:(ev.clientX-r.left)/r.width*COMP.W,y:(ev.clientY-r.top)/r.height*COMP.H};}
+ // quanto e' largo un pixel dello schermo, nelle misure del riquadro
+ function pixel(){return COMP.W/Math.max(1,c.getBoundingClientRect().width);}
+ // la foto sotto il puntatore, cominciando da quella davanti
+ function chi(p){for(var i=COMP.strati.length-1;i>=0;i--){var r=compRettangolo(COMP.strati[i]);
+  if(p.x>=r.x0&&p.x<=r.x1&&p.y>=r.y0&&p.y<=r.y1)return i;}return -1;}
+ // Cosa c'e' sotto il puntatore sulla foto selezionata: una maniglia, un bordo
+ // (si prende tutto il lato, non solo il quadratino), o il corpo.
+ function bordo(p){var L=COMP.strati[COMP.sel];if(!L)return null;
+  var r=compRettangolo(L),tol=10*pixel(),mh=compManiglie(r);
+  for(var j=0;j<mh.length;j++)if(Math.abs(p.x-mh[j].x)<=tol&&Math.abs(p.y-mh[j].y)<=tol)return mh[j];
+  var dentroY=p.y>=r.y0-tol&&p.y<=r.y1+tol,dentroX=p.x>=r.x0-tol&&p.x<=r.x1+tol;
+  if(dentroY&&Math.abs(p.x-r.x0)<=tol)return mh[4];
+  if(dentroY&&Math.abs(p.x-r.x1)<=tol)return mh[5];
+  if(dentroX&&Math.abs(p.y-r.y0)<=tol)return mh[6];
+  if(dentroX&&Math.abs(p.y-r.y1)<=tol)return mh[7];
+  return null;}
+ // la scala resta proporzionata: uno scontornato stirato si vede subito
+ function scala(L,t,ax,ay){
+  var hMin=COMP.H*0.04,hMax=COMP.H*4;t=Math.max(hMin/(L.h*L.s),Math.min(hMax/(L.h*L.s),t));
+  L.x=ax+(L.x-ax)*t;L.y=ay+(L.y-ay)*t;L.s*=t;}
+ c.addEventListener('pointerdown',function(ev){
+  var p=punto(ev),h=bordo(p);
+  if(h){var L=COMP.strati[COMP.sel];
+   presa={tipo:'bordo',i:COMP.sel,h:h,s0:L.s,x0:L.x,y0:L.y};}
+  else{var i=chi(p);COMP.sel=i;
+   if(i>=0)presa={tipo:'sposta',i:i,dx:COMP.strati[i].x-p.x,dy:COMP.strati[i].y-p.y};}
+  if(presa){c.setPointerCapture(ev.pointerId);c.style.cursor=presa.tipo==='bordo'?presa.h.cur:'grabbing';}
+  compDisegna();});
+ c.addEventListener('pointermove',function(ev){var p=punto(ev);
+  if(!presa){var h=bordo(p);c.style.cursor=h?h.cur:(chi(p)>=0?'grab':'default');return;}
+  var L=COMP.strati[presa.i];if(!L)return;
+  if(presa.tipo==='sposta'){L.x=p.x+presa.dx;L.y=p.y+presa.dy;compTela();return;}
+  var h=presa.h,t;
+  if(h.t==='c'){var vx=h.x-h.ax,vy=h.y-h.ay;t=((p.x-h.ax)*vx+(p.y-h.ay)*vy)/Math.max(1e-6,vx*vx+vy*vy);}
+  else if(h.t==='x')t=(p.x-h.ax)/((h.x-h.ax)||1e-6);
+  else t=(p.y-h.ay)/((h.y-h.ay)||1e-6);
+  // si riparte ogni volta dalla misura presa al clic: niente errori che si sommano
+  L.s=presa.s0;L.x=presa.x0;L.y=presa.y0;
+  scala(L,Math.max(0.01,t),h.ax,h.ay);compTela();});
+ function molla(){if(!presa)return;presa=null;c.style.cursor='grab';}
+ c.addEventListener('pointerup',molla);c.addEventListener('pointercancel',molla);
+ // Rotella del mouse, pizzico e due dita sul trackpad. Il pizzico arriva come
+ // rotella col Ctrl premuto, a passi piccoli; la rotella a scatti grandi, che
+ // si limitano perche' uno scatto non raddoppi la foto. Si ingrandisce
+ // attorno al puntatore, come in Keynote.
+ c.addEventListener('wheel',function(ev){ev.preventDefault();
+  var p=punto(ev),i=chi(p);if(i<0)i=COMP.sel;var L=COMP.strati[i];if(!L)return;
+  var dy=ev.deltaMode===1?ev.deltaY*33:ev.deltaY;
+  var t=ev.ctrlKey?Math.exp(-dy*0.01):Math.exp(-Math.max(-50,Math.min(50,dy))*0.0015);
+  if(chi(p)!==i){p={x:L.x,y:L.y};}
+  scala(L,t,p.x,p.y);COMP.sel=i;compTela();},{passive:false});
+ // Safari sul Mac il pizzico lo manda come gesto a parte
+ var gesto=null;
+ c.addEventListener('gesturestart',function(ev){ev.preventDefault();var L=COMP.strati[COMP.sel];
+  gesto=L?{s0:L.s,x0:L.x,y0:L.y}:null;});
+ c.addEventListener('gesturechange',function(ev){ev.preventDefault();var L=COMP.strati[COMP.sel];if(!L||!gesto)return;
+  L.s=gesto.s0;L.x=gesto.x0;L.y=gesto.y0;scala(L,ev.scale,L.x,L.y);compTela();});
+ c.addEventListener('gestureend',function(ev){ev.preventDefault();gesto=null;});
+ // Mentre la composizione e' aperta, Cmd+Z annullerebbe il generatore che sta
+ // sotto, di nascosto. Esc la chiude. Le frecce spostano la foto selezionata
+ // (con Maiuscole di piu'), + e - la ingrandiscono e la stringono.
+ window.addEventListener('keydown',function(e){
+  if(!compAperta())return;
+  if(e.key==='Escape'){e.preventDefault();compChiudi();return;}
+  if((e.ctrlKey||e.metaKey)&&/^[zy]$/i.test(e.key)){e.preventDefault();e.stopImmediatePropagation();return;}
+  var L=COMP.strati[COMP.sel];if(!L||/^(INPUT|TEXTAREA|SELECT)$/.test((e.target&&e.target.tagName)||''))return;
+  var passo=(e.shiftKey?0.05:0.01)*Math.min(COMP.W,COMP.H),mosso=true;
+  if(e.key==='ArrowLeft')L.x-=passo;else if(e.key==='ArrowRight')L.x+=passo;
+  else if(e.key==='ArrowUp')L.y-=passo;else if(e.key==='ArrowDown')L.y+=passo;
+  else if(e.key==='+'||e.key==='=')scala(L,e.shiftKey?1.1:1.03,L.x,L.y);
+  else if(e.key==='-'||e.key==='_')scala(L,e.shiftKey?1/1.1:1/1.03,L.x,L.y);
+  else mosso=false;
+  if(mosso){e.preventDefault();e.stopImmediatePropagation();compTela();}
+ },true);
+})();
+document.getElementById('cbFotoScontorna').onclick=scontorna;
 document.getElementById('tMano').onclick=function(){toolVai('mano');};
 document.getElementById('tMirino').onclick=mirinoAccendi;
 // il conteggio dei formati da esportare sta sull'icona ZIP
@@ -3777,7 +4255,7 @@ function attachInteract(svg){
    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);
  });
  el.addEventListener('wheel',function(ev){if(LOCKED)return;ev.preventDefault();pushUndoC();var o=el.getAttribute('data-obj');selObj=o;var a=ensureAdj(o,svg);
-   var lo=(o==='photo')?1:0.3,hi=(o==='photo')?3.5:2.6;
+   var lo=(o==='photo')?(fotoTrasp()?0.2:1):0.3,hi=(o==='photo')?3.5:2.6;
    a.s=Math.min(hi,Math.max(lo,(a.s||1)*(ev.deltaY<0?1.06:0.94)));if(o==='photo')photoClamp(a);el.setAttribute('transform',objTF(a));syncScaleSlider();if(o==='photo')syncPhotoBar();highlightSel(svg);},{passive:false});
  el.addEventListener('dblclick',function(){var o=el.getAttribute('data-obj');if(o!=='photo'&&TEXT_EDIT_MAP[o])startTextEdit(o,el,svg);});
  });
@@ -4254,6 +4732,7 @@ function sessRaccogli(){
  return {shared:SHARED,vals:vals,crop:crop,
          img:{photo:SHIMG.photo||null,logoComp:SHIMG.logoComp||null},
          fonte:PHOTO_FONTE,airtable:AIRTABLE_REC,
+         comp:COMP.strati.length?{W:COMP.W,H:COMP.H,strati:COMP.strati.map(function(L){return {src:L.src,w:L.w,h:L.h,s:L.s,x:L.x,y:L.y,nota:L.nota||''};})}:null,
          export:EXPSEL};
 }
 function sessApplica(d,cb){
@@ -4266,6 +4745,10 @@ function sessApplica(d,cb){
  if(d.shared&&d.shared.noVs)SHARED.vsLabel='';
  if(d.img){if(d.img.photo)SHIMG.photo=d.img.photo;else delete SHIMG.photo;
            if(d.img.logoComp)SHIMG.logoComp=d.img.logoComp;else delete SHIMG.logoComp;}
+  // la composizione torna com'era, per poterla ritoccare
+  COMP={strati:[],sel:-1,W:(d.comp&&d.comp.W)||2400,H:(d.comp&&d.comp.H)||2400,chiave:'',sotto:null,sopra:null,scritte:true};
+  if(d.comp&&d.comp.strati)d.comp.strati.forEach(function(L){var im=new Image();im.src=L.src;
+   COMP.strati.push({src:L.src,img:im,w:L.w,h:L.h,s:L.s,x:L.x,y:L.y,nota:L.nota||''});});
  if(d.export)Object.keys(d.export).forEach(function(k){if(BYKEY[k])EXPSEL[k]=d.export[k];});
  ITEMS.forEach(function(it){
   if(d.vals&&d.vals[it.key]){var v={};
