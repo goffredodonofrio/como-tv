@@ -29,6 +29,11 @@
  *  --pulisci --stato <cartella> si tolgono dal magazzino quelle gia' entrate,
  *  ma solo se sono foto Sky (512x512) caricate dall'import, mai le altre.
  *
+ *  FONTI. Serie A: Sky Sport (sopra). Premier League: il sito ufficiale della
+ *  lega, che pubblica per ogni giocatore della stagione lo scontornato 500x500
+ *  (resources.premierleague.com/premierleague25/photos/players/500x500/<opta>.png)
+ *  con rosa e numeri dalle sue API. Con --fonte sky|pl se ne usa una sola.
+ *
  *  Uso, sulla VM (la chiave si legge dall'ambiente del servizio):
  *    node sky-scontornati.js --ponte http://127.0.0.1:8081/api [--squadra como] [--prova] [--sostituisci]
  *    (in produzione: --ponte http://127.0.0.1:8080/api)
@@ -39,6 +44,7 @@ const A = process.argv.slice(2);
 function arg(n, def) { const i = A.indexOf("--" + n); return i < 0 ? def : (A[i + 1] && !A[i + 1].startsWith("--") ? A[i + 1] : true); }
 const PONTE = arg("ponte", "http://127.0.0.1:8081/api");
 const SOLO = arg("squadra", "");
+const FONTE = arg("fonte", "");
 const PROVA = !!arg("prova", false);
 const SOSTITUISCI = !!arg("sostituisci", false);
 const PULISCI = !!arg("pulisci", false);
@@ -75,8 +81,8 @@ function slug(s) {
 async function testo(u) { const r = await fetch(u, { headers: UA }); if (!r.ok) throw new Error(r.status + " " + u); return r.text(); }
 async function json(u) { const r = await fetch(u, { headers: UA }); if (!r.ok) throw new Error(r.status + " " + u); return r.json(); }
 
-async function squadreEspn() {
-  const d = await json("https://site.api.espn.com/apis/v2/sports/soccer/ita.1/standings");
+async function squadreEspn(lega) {
+  const d = await json("https://site.api.espn.com/apis/v2/sports/soccer/" + lega + "/standings");
   return d.children[0].standings.entries.map((e) => ({ id: String(e.team.id), nome: e.team.displayName }));
 }
 function rosaSky(html) {
@@ -86,13 +92,62 @@ function rosaSky(html) {
   while ((m = re.exec(html))) righe.push({ num: m[1].trim(), slug: m[2], id: m[3], nome: m[4].trim() });
   return righe;
 }
-async function rosaEspn(teamId) {
-  const d = await json("https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/teams/" + teamId + "/roster");
+async function rosaEspn(lega, teamId) {
+  const d = await json("https://site.api.espn.com/apis/site/v2/sports/soccer/" + lega + "/teams/" + teamId + "/roster");
   return (d.athletes || []).map((a) => ({
     id: String(a.id), nome: a.firstName || "", cognome: a.lastName || "", completo: a.displayName || a.fullName || "",
     num: String(a.jersey || "").trim()
   }));
 }
+
+// ── le fonti ────────────────────────────────────────────────────────
+// Ognuna restituisce le squadre del suo campionato, gia' abbinate a ESPN,
+// con le righe { num, nome, slug, id, img }. "chiave" distingue gli id delle
+// fonti nell'elenco delle foto scartate (Sky: il numero da solo, per
+// compatibilita'; le altre: "pl:<numero>").
+const FONTI = {
+  sky: {
+    nome: "Sky Sport (Serie A)", lega: "ita.1", chiave: (id) => id,
+    async squadre(espn) {
+      const out = [];
+      for (const [skySlug, re] of Object.entries(SKY_SLUG)) {
+        const sq = espn.find((t) => re.test(t.nome.toLowerCase()));
+        if (!sq) continue;                               // non e' in Serie A quest'anno
+        out.push({ slug: skySlug, sq, righe: async () =>
+          rosaSky(await testo("https://sport.sky.it/calcio/squadre/" + skySlug + "/rosa"))
+            .map((r) => Object.assign(r, { img: SKY_FOTO + r.id + ".png" })) });
+      }
+      return out;
+    }
+  },
+  pl: {
+    nome: "Premier League", lega: "eng.1", chiave: (id) => "pl:" + id,
+    async squadre(espn) {
+      const PL = "https://footballapi.pulselive.com/football";
+      const h = { headers: Object.assign({ Origin: "https://www.premierleague.com" }, UA) };
+      const cs = (await (await fetch(PL + "/competitions/1/compseasons?page=0&pageSize=1", h)).json()).content[0].id;
+      const squadre = (await (await fetch(PL + "/teams?pageSize=40&compSeasons=" + cs + "&comps=1&altIds=true&page=0", h)).json()).content;
+      const out = [];
+      for (const t of squadre) {
+        const s = slug(t.name);
+        const sq = espn.find((e) => slug(e.nome) === s) ||
+                   espn.find((e) => { const a = slug(e.nome).split("-"), b = s.split("-"); return b.every((x) => a.includes(x)) || a.every((x) => b.includes(x)); });
+        if (!sq) continue;
+        out.push({ slug: s, sq, righe: async () => {
+          const d = await (await fetch(PL + "/teams/" + t.id + "/compseasons/" + cs + "/staff?pageSize=80&compSeasons=" + cs + "&altIds=true&page=0&type=player", h)).json();
+          return (d.players || []).filter((p) => p.altIds && p.altIds.opta).map((p) => {
+            const id = String(p.altIds.opta).replace(/^p/, "");
+            const nome = (p.name && p.name.display) || "";
+            return { num: p.info && p.info.shirtNum != null ? String(p.info.shirtNum) : "", nome,
+                     slug: slug(((p.name && p.name.first) || "") + " " + ((p.name && p.name.last) || "") + " " + nome), id,
+                     img: "https://resources.premierleague.com/premierleague25/photos/players/500x500/" + id + ".png" };
+          });
+        } });
+      }
+      return out;
+    }
+  }
+};
 
 // Chi e', nella rosa ESPN, il giocatore di questa riga Sky. Il cognome deve
 // comparire nel nome Sky; il numero di maglia e il nome decidono fra pari.
@@ -136,8 +191,9 @@ async function cheFoto(e, teamId) {
   const d = await json(PONTE + q);
   return { sua: !!(d && d.url), orfana: (d && d.orfana) || "" };
 }
-// Toglie la foto di questo giocatore SOLO se e' una Sky dell'import: intestata
-// al suo id, PNG 512x512. Una foto caricata a mano (1200 pixel) non si tocca.
+// Toglie la foto di questo giocatore SOLO se e' una dell'import: intestata al
+// suo id, PNG 512x512 (Sky) o 500x500 (Premier League). Una foto caricata a
+// mano (1200 pixel) non si tocca.
 function togliSeSky(e) {
   if (!STATO) throw new Error("--pulisci vuole --stato /var/lib/comotv (o comotv-dev)");
   const indice = path.join(STATO, "foto-intestazioni.json");
@@ -147,7 +203,8 @@ function togliSeSky(e) {
   const p = path.join(STATO, "loghi", file);
   if (!fs.existsSync(p)) return false;
   const h = fs.readFileSync(p).subarray(0, 24);
-  if (h.toString("hex", 0, 8) !== "89504e470d0a1a0a" || h.readUInt32BE(16) !== 512 || h.readUInt32BE(20) !== 512) return false;
+  const lato = h.readUInt32BE(16);
+  if (h.toString("hex", 0, 8) !== "89504e470d0a1a0a" || (lato !== 512 && lato !== 500) || h.readUInt32BE(20) !== lato) return false;
   // e solo se e' entrata con l'import Sky, cominciato il 16/09/2026
   if (fs.statSync(p).mtime < new Date("2026-09-16T00:00:00+02:00")) return false;
   fs.unlinkSync(p);
@@ -167,52 +224,56 @@ async function carica(e, teamId, png) {
 
 (async function () {
   if (!CHIAVE && !PROVA) { console.error("manca la chiave nell'ambiente (COMOTV_CHIAVE_CONTRIBUTO)"); process.exit(1); }
-  const espn = await squadreEspn();
   const totale = { squadre: 0, sky: 0, gia: 0, caricate: 0, senzaFotoSky: 0, nonAbbinati: 0, orfane: 0, scartate: 0, tolte: 0, errori: 0 };
   const note = [];
   // ── prima fase: abbinare e guardare cosa c'e', senza caricare niente ──
   const lavoro = [];
-  for (const [skySlug, re] of Object.entries(SKY_SLUG)) {
-    if (SOLO && SOLO !== skySlug) continue;
-    const sq = espn.find((t) => re.test(t.nome.toLowerCase()));
-    if (!sq) continue;                                   // non e' in Serie A quest'anno
-    totale.squadre++;
-    let righe;
-    try { righe = rosaSky(await testo("https://sport.sky.it/calcio/squadre/" + skySlug + "/rosa")); }
-    catch (err) { note.push(skySlug + ": rosa Sky non letta (" + err.message + ")"); continue; }
-    const rosa = await rosaEspn(sq.id);
-    const c = { sq: sq, sky: righe.length, gia: 0, caricate: 0, senzaFotoSky: 0, nonAbbinati: [], orfane: [], scartate: [], tolte: [], errori: 0, daFare: [] };
-    for (const s of righe) {
-      const e = abbina(s, rosa);
-      if (!e) { c.nonAbbinati.push(s.nome + " (" + (s.num || "-") + ")"); continue; }
-      if (arg("coppie", false) && slug(e.completo) !== s.slug) console.log("   " + sq.nome + ": Sky " + s.nome + " #" + s.num + "  ->  ESPN " + e.completo + " #" + e.num + " (id " + e.id + ")");
-      if (PULISCI && SCARTATE[s.id]) {
-        const via = togliSeSky(e);
-        if (via) c.tolte.push(s.nome);
-      }
-      try {
-        const f = SOSTITUISCI ? { sua: false, orfana: "" } : await cheFoto(e, sq.id);
-        if (f.sua) c.gia++;
-        else {
-          if (f.orfana) c.orfane.push(s.nome);
-          c.daFare.push({ s: s, e: e });
+  for (const [nomeFonte, F] of Object.entries(FONTI)) {
+    if (FONTE && FONTE !== nomeFonte) continue;
+    let elenco;
+    try { elenco = await F.squadre(await squadreEspn(F.lega)); }
+    catch (err) { note.push(F.nome + ": squadre non lette (" + err.message + ")"); continue; }
+    for (const q of elenco) {
+      if (SOLO && SOLO !== q.slug) continue;
+      const sq = q.sq;
+      totale.squadre++;
+      let righe;
+      try { righe = await q.righe(); }
+      catch (err) { note.push(q.slug + ": rosa non letta (" + err.message + ")"); continue; }
+      const rosa = await rosaEspn(F.lega, sq.id);
+      const c = { F, sq: sq, sky: righe.length, gia: 0, caricate: 0, senzaFotoSky: 0, nonAbbinati: [], orfane: [], scartate: [], tolte: [], errori: 0, daFare: [] };
+      for (const s of righe) {
+        const e = abbina(s, rosa);
+        if (!e) { c.nonAbbinati.push(s.nome + " (" + (s.num || "-") + ")"); continue; }
+        if (arg("coppie", false) && slug(e.completo) !== s.slug) console.log("   " + sq.nome + ": " + s.nome + " #" + s.num + "  ->  ESPN " + e.completo + " #" + e.num + " (id " + e.id + ")");
+        if (PULISCI && SCARTATE[F.chiave(s.id)]) {
+          const via = togliSeSky(e);
+          if (via) c.tolte.push(s.nome);
         }
-      } catch (err) { c.errori++; note.push(skySlug + " · " + s.nome + ": " + err.message); }
+        try {
+          const f = SOSTITUISCI ? { sua: false, orfana: "" } : await cheFoto(e, sq.id);
+          if (f.sua) c.gia++;
+          else {
+            if (f.orfana) c.orfane.push(s.nome);
+            c.daFare.push({ s: s, e: e });
+          }
+        } catch (err) { c.errori++; note.push(q.slug + " · " + s.nome + ": " + err.message); }
+      }
+      lavoro.push(c);
     }
-    lavoro.push(c);
   }
   // ── seconda fase: caricare ──
   for (const c of lavoro) {
     for (const x of c.daFare) {
       try {
-        const r = await fetch(SKY_FOTO + x.s.id + ".png", { headers: UA });
+        const r = await fetch(x.s.img, { headers: UA });
         if (!r.ok) { c.senzaFotoSky++; continue; }
         const png = await r.arrayBuffer();
         // Quando la foto non c'e' Sky risponde spesso 200 con una pagina di
         // errore HTML: il codice non basta, si guarda che sia davvero un PNG.
         const firma = Buffer.from(png.slice(0, 8)).toString("hex");
         if (firma !== "89504e470d0a1a0a") { c.senzaFotoSky++; continue; }
-        const sc = SCARTATE[x.s.id];
+        const sc = SCARTATE[c.F.chiave(x.s.id)];
         if (sc && sc.sha1 === crypto.createHash("sha1").update(Buffer.from(png)).digest("hex")) { c.scartate.push(x.s.nome); continue; }
         if (!PROVA) await carica(x.e, c.sq.id, png);
         c.caricate++;
@@ -220,7 +281,7 @@ async function carica(e, teamId, png) {
     }
     totale.sky += c.sky; totale.gia += c.gia; totale.caricate += c.caricate;
     totale.senzaFotoSky += c.senzaFotoSky; totale.nonAbbinati += c.nonAbbinati.length; totale.orfane += c.orfane.length; totale.scartate += c.scartate.length; totale.tolte += c.tolte.length; totale.errori += c.errori;
-    console.log(`${c.sq.nome.padEnd(16)} Sky ${String(c.sky).padStart(2)} · gia' in magazzino ${String(c.gia).padStart(2)} · ${PROVA ? "da caricare" : "caricate"} ${String(c.caricate).padStart(2)} · senza foto Sky ${c.senzaFotoSky}` +
+    console.log(`${c.sq.nome.padEnd(22)} rosa ${String(c.sky).padStart(2)} · gia' in magazzino ${String(c.gia).padStart(2)} · ${PROVA ? "da caricare" : "caricate"} ${String(c.caricate).padStart(2)} · senza foto ${c.senzaFotoSky}` +
                 (c.nonAbbinati.length ? ` · non abbinati: ${c.nonAbbinati.join(", ")}` : "") +
                 (c.scartate.length ? ` · scartate per la maglia: ${c.scartate.join(", ")}` : "") +
                 (c.tolte.length ? ` · TOLTE dal magazzino: ${c.tolte.join(", ")}` : "") +
