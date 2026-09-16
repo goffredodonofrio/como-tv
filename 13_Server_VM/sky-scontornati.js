@@ -32,7 +32,14 @@
  *  FONTI. Serie A: Sky Sport (sopra). Premier League: il sito ufficiale della
  *  lega, che pubblica per ogni giocatore della stagione lo scontornato 500x500
  *  (resources.premierleague.com/premierleague25/photos/players/500x500/<opta>.png)
- *  con rosa e numeri dalle sue API. Con --fonte sky|pl se ne usa una sola.
+ *  con rosa e numeri dalle sue API.
+ *  EFL (Championship, League One, League Two — quindi anche la Carabao Cup):
+ *  la lega non pubblica foto, i club si'. Quelli sulla piattaforma digitale
+ *  della EFL hanno la rosa aperta (teams.football.web.gc.<dominio>) con le
+ *  immagini dei giocatori su images.gc.<dominio>; solo alcuni caricano lo
+ *  scontornato trasparente, e solo quelli stanno in EFL_CLUB. Le foto a figura
+ *  intera o piu' alte che larghe si ritagliano a mezzo busto, come Sky.
+ *  Con --fonte sky|pl|efl se ne usa una sola.
  *
  *  Uso, sulla VM (la chiave si legge dall'ambiente del servizio):
  *    node sky-scontornati.js --ponte http://127.0.0.1:8081/api [--squadra como] [--prova] [--sostituisci]
@@ -69,6 +76,86 @@ const SKY_SLUG = {
   "cremonese": /cremonese/, "pisa": /pisa/, "empoli": /empoli/, "verona": /verona/, "salernitana": /salernitana/,
   "spezia": /spezia/, "sampdoria": /sampdoria/, "palermo": /palermo/, "bari": /bari/, "cesena": /cesena/
 };
+
+// I club EFL con lo scontornato trasparente per (quasi) tutta la rosa,
+// controllati a occhio il 16/09/2026: dominio della piattaforma, squadra Opta
+// della prima squadra, nome ESPN. Il campionato non si scrive: il club si
+// cerca nelle classifiche ESPN di Championship, League One e League Two, cosi'
+// promozioni e retrocessioni non cambiano niente.
+// Fuori, per ora: Luton (pose a figura intera tutte diverse), Northampton
+// (2 foto), e tutti i club che mettono foto col fondo o non stanno sulla
+// piattaforma (West Ham, Wolves, Southampton, Leicester, Burnley...).
+const EFL_CLUB = [
+  { d: "qprfcservices.co.uk", t: "t52", re: /queens park|\bqpr\b/ },
+  { d: "stokecityfcservices.co.uk", t: "t110", re: /stoke/ },
+  { d: "portsmouthfcservices.co.uk", t: "t47", re: /portsmouth/ },
+  { d: "prestonnorthendfcservices.co.uk", t: "t107", re: /preston/ },
+  { d: "huddersfieldtownafcservices.co.uk", t: "t38", re: /huddersfield/, sempre: true },  // pose con le braccia: si ritaglia sempre
+  { d: "afcwimbledonservices.co.uk", t: "t2623", re: /wimbledon/ },
+  { d: "stockportcountyfcservices.co.uk", t: "t48", re: /stockport/ },
+  { d: "blackpoolfcservices.co.uk", t: "t92", re: /blackpool/ },
+  { d: "bromleyfcservices.co.uk", t: "t2050", re: /bromley/ },
+  { d: "yorkcityfcservices.co.uk", t: "t78", re: /york city/ },
+  { d: "cheltenhamfcservices.co.uk", t: "t87", re: /cheltenham/ },
+  { d: "accringtonstanleyfcservices.co.uk", t: "t888", re: /accrington/ }
+];
+// dove il club mette lo scontornato: il primo campo PNG che c'e', nell'ordine
+const EFL_CAMPI = ["squadImageKey", "playerHeadshotKey", "playerProfileForegroundKey", "appProfileImageKey"];
+
+// sharp sta nel ponte, non accanto a questo script
+function prendiSharp() {
+  for (const p of [__dirname, "/opt/comotv", "/opt/comotv-dev", path.join(__dirname, "..")]) {
+    try { return require(require.resolve("sharp", { paths: [p] })); } catch (err) { /* il prossimo */ }
+  }
+  return null;
+}
+// Lo scontornato EFL come quelli Sky: quadrato, testa in alto, fino al petto.
+// Se il soggetto e' piu' alto che largo (figura intera, o foto 2:3) si taglia
+// (o se il club lo chiede: "sempre") un quadrato di lato 0,68 volte la sua
+// altezza, centrato sulla testa; poi niente oltre i 1200 pixel.
+// Una foto senza trasparenza non e' uno scontornato.
+async function mezzoBusto(png, riga) {
+  const sharp = prendiSharp();
+  if (!sharp) throw new Error("sharp non trovato: serve per ritagliare le foto EFL");
+  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const W = info.width, H = info.height, ch = info.channels;
+  let x0 = W, y0 = H, x1 = -1, y1 = -1, vuoti = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const a = data[(y * W + x) * ch + ch - 1];
+    if (a < 10) vuoti++;
+    if (a > 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  }
+  if (vuoti < W * H * 0.2 || x1 < 0) return null;
+  const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+  let img = sharp(png);
+  if (bh / bw > 1.45 || (riga && riga.sempre)) {
+    const lato = Math.min(W, H, Math.round(bh * 0.68));
+    // il centro e' quello della testa (il primo 12% del soggetto), non delle braccia
+    let t0 = W, t1 = -1;
+    for (let y = y0; y < y0 + Math.max(1, Math.round(bh * 0.12)); y++) for (let x = 0; x < W; x++) {
+      if (data[(y * W + x) * ch + ch - 1] > 40) { if (x < t0) t0 = x; if (x > t1) t1 = x; }
+    }
+    const cx = t1 >= 0 ? (t0 + t1) / 2 : (x0 + x1) / 2;
+    const sx = Math.round(cx - lato / 2), sy = Math.round(y0 - lato * 0.04);
+    // la parte che esce dall'immagine resta trasparente
+    const ex = Math.max(0, sx), ey = Math.max(0, sy);
+    const ew = Math.min(W, sx + lato) - ex, eh = Math.min(H, sy + lato) - ey;
+    const pezzo = await sharp(png).extract({ left: ex, top: ey, width: ew, height: eh }).png().toBuffer();
+    img = sharp({ create: { width: lato, height: lato, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .composite([{ input: pezzo, left: ex - sx, top: ey - sy }]);
+    img = sharp(await img.png().toBuffer());
+  } else if (Math.max(W, H) <= 1200 && png.length < 1900000) {
+    return Buffer.from(png);
+  }
+  // il ponte non accetta piu' di 2 MB: si comprime, e se non basta si rimpicciolisce
+  const base = await img.png().toBuffer();
+  for (const lato of [1200, 1000, 800]) {
+    const out = await sharp(base).resize({ width: lato, height: lato, fit: "inside", withoutEnlargement: true })
+      .png({ compressionLevel: 9, effort: 10 }).toBuffer();
+    if (out.length < 1900000) return out;
+  }
+  return null;
+}
 
 function slug(s) {
   // æ, ø, ß e compagnia non si scompongono in lettera + accento: vanno tradotte,
@@ -148,23 +235,59 @@ const FONTI = {
     }
   }
 };
+// Le tre leghe EFL sono la stessa fonte: cambia solo la classifica ESPN
+for (const [k, lega, nome] of [["efl-championship", "eng.2", "Championship"], ["efl-league-one", "eng.3", "League One"], ["efl-league-two", "eng.4", "League Two"]]) {
+  FONTI[k] = {
+    nome: "EFL " + nome, lega, gruppo: "efl", chiave: (id) => "efl:" + id, prepara: mezzoBusto,
+    async squadre(espn) {
+      const out = [];
+      for (const c of EFL_CLUB) {
+        const sq = espn.find((e) => c.re.test(e.nome.toLowerCase()));
+        if (!sq) continue;                               // gioca in un'altra lega
+        out.push({ slug: slug(sq.nome), sq, righe: async () => {
+          const b = (await json("https://teams.football.web.gc." + c.d + "/v2/squads/opta?teamID=" + c.t)).body || {};
+          const gioc = ["goalkeepers", "defenders", "midfielders", "forwards"].flatMap((r) => b[r] || []);
+          // un'immagine usata da piu' giocatori e' un segnaposto, non una foto
+          const quanti = {};
+          for (const p of gioc) for (const v of new Set(Object.values(p.playerProfileData || {}))) if (typeof v === "string" && v) quanti[v] = (quanti[v] || 0) + 1;
+          return gioc.filter((p) => p.playerID).map((p) => {
+            const d = p.playerProfileData || {};
+            const imgs = [...new Set(EFL_CAMPI.map((k) => d[k] || "").filter((v) => /\.png$/i.test(v) && quanti[v] === 1))]
+              .map((v) => "https://images.gc." + c.d + "/" + v);
+            const nome = p.knownName || ((p.firstName || "") + " " + (p.surname || "")).trim();
+            return { num: p.shirtNumber != null ? String(p.shirtNumber) : "", nome, id: String(p.playerID).replace(/^p/, ""), cognome: slug(p.surname),
+                     slug: slug((p.firstName || "") + " " + (p.surname || "") + " " + (p.knownName || "")), img: imgs[0] || "", imgs, sempre: !!c.sempre };
+          });
+        } });
+      }
+      return out;
+    }
+  };
+}
 
 // Chi e', nella rosa ESPN, il giocatore di questa riga Sky. Il cognome deve
 // comparire nel nome Sky; il numero di maglia e il nome decidono fra pari.
 // Due candidati ugualmente buoni = nessuno.
 function abbina(s, espn) {
   const ts = s.slug.split("-").concat(slug(s.nome).split("-"));
+  // Quando la fonte da' il cognome a parte (EFL) il cognome ESPN si cerca solo
+  // li': "George Evans" non e' Shamal George.
+  const tc = s.cognome ? s.cognome.split("-").concat(slug(s.nome).split("-")) : ts;
   const punti = espn.map((e) => {
     const cog = slug(e.cognome || e.completo).split("-").filter(Boolean);
     const tutti = slug(e.completo).split("-").filter(Boolean);
     let p = 0, cognomeVisto = false;
-    if (cog.length && cog.every((t) => ts.includes(t))) { p += 4; cognomeVisto = true; }
-    else if (cog.length && cog.some((t) => t.length > 3 && ts.includes(t))) { p += 2; cognomeVisto = true; }
+    if (cog.length && cog.every((t) => tc.includes(t))) { p += 4; cognomeVisto = true; }
+    else if (cog.length && cog.some((t) => t.length > 3 && tc.includes(t))) { p += 2; cognomeVisto = true; }
     // Senza il cognome non si abbina, nemmeno con numero e nome giusti:
     // "Lamine" col 8 puo' essere un altro Lamine. Quei casi vanno a mano.
     if (!cognomeVisto) return { e, p: 0 };
+    const nomeVisto = tutti.some((t) => t.length > 2 && ts.includes(t) && !cog.includes(t));
+    // Con nome intero nella fonte, numero diverso e nome diverso e' un altro
+    // giocatore con lo stesso cognome (Freddie Taylor non e' Richard Taylor)
+    if (s.cognome && s.num && e.num && s.num !== e.num && !nomeVisto) return { e, p: 0 };
     if (s.num && e.num && s.num === e.num) p += 3;
-    if (tutti.some((t) => t.length > 2 && ts.includes(t) && !cog.includes(t))) p += 1;
+    if (nomeVisto) p += 1;
     return { e, p };
   }).sort((a, b) => b.p - a.p);
   const primo = punti[0], secondo = punti[1];
@@ -229,7 +352,7 @@ async function carica(e, teamId, png) {
   // ── prima fase: abbinare e guardare cosa c'e', senza caricare niente ──
   const lavoro = [];
   for (const [nomeFonte, F] of Object.entries(FONTI)) {
-    if (FONTE && FONTE !== nomeFonte) continue;
+    if (FONTE && FONTE !== nomeFonte && FONTE !== F.gruppo) continue;
     let elenco;
     try { elenco = await F.squadre(await squadreEspn(F.lega)); }
     catch (err) { note.push(F.nome + ": squadre non lette (" + err.message + ")"); continue; }
@@ -242,8 +365,14 @@ async function carica(e, teamId, png) {
       catch (err) { note.push(q.slug + ": rosa non letta (" + err.message + ")"); continue; }
       const rosa = await rosaEspn(F.lega, sq.id);
       const c = { F, sq: sq, sky: righe.length, gia: 0, caricate: 0, senzaFotoSky: 0, nonAbbinati: [], orfane: [], scartate: [], tolte: [], errori: 0, daFare: [] };
-      for (const s of righe) {
-        const e = abbina(s, rosa);
+      // due righe della fonte sullo stesso giocatore ESPN: almeno una e' sbagliata,
+      // e non si sa quale — fuori entrambe
+      const visti = new Set();
+      const coppie = righe.filter((s) => !visti.has(s.id) && visti.add(s.id)).map((s) => ({ s, e: abbina(s, rosa) }));
+      const volte = {};
+      for (const x of coppie) if (x.e) volte[x.e.id] = (volte[x.e.id] || 0) + 1;
+      for (const { s, e: e0 } of coppie) {
+        const e = e0 && volte[e0.id] === 1 ? e0 : null;
         if (!e) { c.nonAbbinati.push(s.nome + " (" + (s.num || "-") + ")"); continue; }
         if (arg("coppie", false) && slug(e.completo) !== s.slug) console.log("   " + sq.nome + ": " + s.nome + " #" + s.num + "  ->  ESPN " + e.completo + " #" + e.num + " (id " + e.id + ")");
         if (PULISCI && SCARTATE[F.chiave(s.id)]) {
@@ -266,15 +395,22 @@ async function carica(e, teamId, png) {
   for (const c of lavoro) {
     for (const x of c.daFare) {
       try {
-        const r = await fetch(x.s.img, { headers: UA });
-        if (!r.ok) { c.senzaFotoSky++; continue; }
-        const png = await r.arrayBuffer();
-        // Quando la foto non c'e' Sky risponde spesso 200 con una pagina di
-        // errore HTML: il codice non basta, si guarda che sia davvero un PNG.
-        const firma = Buffer.from(png.slice(0, 8)).toString("hex");
-        if (firma !== "89504e470d0a1a0a") { c.senzaFotoSky++; continue; }
-        const sc = SCARTATE[c.F.chiave(x.s.id)];
-        if (sc && sc.sha1 === crypto.createHash("sha1").update(Buffer.from(png)).digest("hex")) { c.scartate.push(x.s.nome); continue; }
+        // la prima immagine buona fra quelle che la fonte propone
+        let png = null, scartata = false;
+        for (const u of (x.s.imgs || [x.s.img]).filter(Boolean)) {
+          const r = await fetch(u, { headers: UA });
+          if (!r.ok) continue;
+          let dati = Buffer.from(await r.arrayBuffer());
+          // Quando la foto non c'e' Sky risponde spesso 200 con una pagina di
+          // errore HTML: il codice non basta, si guarda che sia davvero un PNG.
+          if (dati.toString("hex", 0, 8) !== "89504e470d0a1a0a") continue;
+          const sc = SCARTATE[c.F.chiave(x.s.id)];
+          if (sc && sc.sha1 === crypto.createHash("sha1").update(dati).digest("hex")) { scartata = true; continue; }
+          if (c.F.prepara) { dati = await c.F.prepara(dati, x.s); if (!dati) continue; }
+          png = dati; break;
+        }
+        if (!png) { if (scartata) c.scartate.push(x.s.nome); else c.senzaFotoSky++; continue; }
+        if (arg("salva", false)) fs.writeFileSync(path.join(arg("salva"), slug(c.sq.nome) + "_" + slug(x.s.nome) + ".png"), png);
         if (!PROVA) await carica(x.e, c.sq.id, png);
         c.caricate++;
       } catch (err) { c.errori++; note.push(c.sq.nome + " · " + x.s.nome + ": " + err.message); }
