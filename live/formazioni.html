@@ -1637,21 +1637,51 @@
     "1-fc-heidenheim-1846": "heidenheim",
     "1-fc-magdeburg": "magdeburg",
     "1-fc-nurnberg": "nurnberg",
-    "sv-darmstadt-98": "darmstadt"
+    "sv-darmstadt-98": "darmstadt",
+    // Controllo del 16/09/2026 su tutte le squadre ESPN delle competizioni in
+    // pagina: queste avevano la maglia in archivio ma non la trovavano, o la
+    // trovavano solo per l'inizio del nome (Internazionale -> inter, che e'
+    // anche l'inizio di Lillestrom -> lille).
+    "internazionale": "inter",
+    "brighton-hove-albion": "brighton",
+    "1-fc-union-berlin": "union-berlin",
+    "sc-paderborn-07": "paderborn",
+    "fc-cologne": "koln",
+    "independiente-medellin": "independiente-med",
+    "athletico-pr": "athletico-paranaense",
+    "athletic-club": "athletic-bilbao",
+    "america-de-cali": "america-cali",
+    "2-de-mayo": "2-mayo",
+    "remo": "clube-do-remo",
+    "estudiantes-de-la-plata": "estudiantes",
+    // Vuoto = nessuna maglia: l'aggancio elastico le vestiva con quella di un
+    // club dal nome simile (Nacional Asuncion con Atletico Nacional, Libertad
+    // dell'Ecuador col Libertad paraguaiano...). Meglio la maglia disegnata.
+    "nacional-asuncion": "",
+    "nacional-potosi": "",
+    "libertad-ecuador": "",
+    "independiente-petrolero": "",
+    "alianza-atletico": "",
+    "universitario": "",
+    // ESPN chiama cosi' il Deportivo La Coruna (LaLiga)
+    "deportivo": "deportivo-coruna"
   };
   function magliaUrl(side, dove) {
     var mio = slugM(side.teamName || side.label);
+    // la corrispondenza dichiarata vince: anche quando dice "nessuna"
+    if (ALIAS_MAGLIA.hasOwnProperty(mio)) return ALIAS_MAGLIA[mio] ? magliaDi(ALIAS_MAGLIA[mio], dove) : "";
     var sua = magliaDi(mio, dove);
     if (sua) return sua;
-    if (ALIAS_MAGLIA[mio]) {
-      sua = magliaDi(ALIAS_MAGLIA[mio], dove);
-      if (sua) return sua;
-    }
     var club = mio.replace(MARCATORE_GIOVANILE, "");
     if (club === mio) return "";
     sua = magliaDi(club, dove);
     if (sua) return sua;
     return ALIAS_MAGLIA[club] ? magliaDi(ALIAS_MAGLIA[club], dove) : "";
+  }
+  // L'inizio del nome vale solo quando uno dei due e' stato tagliato a 48
+  // caratteri: altrimenti "lille" veste il Lillestrom e "inter" l'Internazionale.
+  function troncato(a, b) {
+    return Math.max(a.length, b.length) >= 48 && (a.indexOf(b) === 0 || b.indexOf(a) === 0);
   }
   function magliaDi(mio, dove) {
     var k = "maglia-" + mio + "-" + dove;
@@ -1664,7 +1694,7 @@
       if (squadra.length < 4) continue;
       var mioC = "-" + mio + "-", sqC = "-" + squadra + "-";
       if (mioC.indexOf(sqC) < 0 && sqC.indexOf(mioC) < 0
-          && mio.indexOf(squadra) !== 0 && squadra.indexOf(mio) !== 0) continue;
+          && !troncato(mio, squadra)) continue;
       // omonimi lontani: "estudiantes" NON deve vestire l'Estudiantes de
       // Rio Cuarto. Se le due chiavi differiscono per piu' di una parola,
       // meglio nessuna maglia che quella di un altro club.

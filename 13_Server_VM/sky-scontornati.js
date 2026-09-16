@@ -396,6 +396,9 @@ function abbina(s, espn) {
     // Con nome intero nella fonte, numero diverso e nome diverso e' un altro
     // giocatore con lo stesso cognome (Freddie Taylor non e' Richard Taylor)
     if (s.cognome && s.num && e.num && s.num !== e.num && !nomeVisto) return { e, p: 0 };
+    // Senza numero di maglia nella fonte, il cognome da solo non basta: nella
+    // Saudi Pro League "Al Ghamdi" o "Al Shanqiti" sono tre per squadra
+    if (s.cognome && !s.num && !nomeVisto) return { e, p: 0 };
     if (s.num && e.num && s.num === e.num) p += 3;
     if (nomeVisto) p += 1;
     return { e, p };
