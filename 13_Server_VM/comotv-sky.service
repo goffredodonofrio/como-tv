@@ -1,0 +1,19 @@
+# Lavoro eseguito dal timer comotv-sky: aggiunge chi non ha ancora la foto,
+# salta le foto scartate per la maglia (sky-maglie-scartate.json) e toglie
+# quelle scartate eventualmente gia' entrate. Non tocca mai le foto caricate
+# a mano.
+#
+# Lo script e' quello del repo, che la VM aggiorna a ogni push; se non c'e'
+# ancora si usa la copia in /opt/comotv. La chiave si prende dall'ambiente
+# del ponte, cosi' non sta scritta da nessuna parte.
+
+[Unit]
+Description=Scontornati Serie A da Sky nel magazzino foto
+After=network-online.target comotv.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'S=/var/www/comotv/13_Server_VM/sky-scontornati.js; [ -f "$S" ] || S=/opt/comotv/sky-scontornati.js; for v in $(systemctl show comotv -p Environment --value); do case "$v" in COMOTV_CHIAVE_CONTRIBUTO=*|COMOTV_CHIAVE_COMANDO=*|COMOTV_TOKEN=*) export "$v";; esac; done; cp /var/lib/comotv/foto-intestazioni.json /var/lib/comotv/foto-intestazioni.prima-di-sky.json; /usr/bin/node "$S" --ponte http://127.0.0.1:8080/api --pulisci --stato /var/lib/comotv; chown comotv:comotv /var/lib/comotv/foto-intestazioni.json'
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=comotv-sky
