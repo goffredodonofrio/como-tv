@@ -400,6 +400,36 @@
     var o = t.toLocaleTimeString("it-IT", Object.assign({ hour: "2-digit", minute: "2-digit", hour12: false }, opt));
     return { g: g.replace(".", "").toUpperCase(), d: d, m: m.replace(".", "").toUpperCase(), o: o };
   }
+  // Il 16/09/2026 ESPN ha cominciato a rispondere 400 alle finestre di date
+  // ("dates=20260916-20260930"), mentre il giorno singolo va. Si prova la
+  // finestra; se non passa si chiede un giorno alla volta e si rimette insieme.
+  function scoreboardFinestra(code, dal, al) {
+    var url = API + "/" + code + "/scoreboard?dates=";
+    return fetch(url + dal + "-" + al, { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .catch(function () {
+        var giorni = [], d = new Date(Date.UTC(+dal.slice(0, 4), +dal.slice(4, 6) - 1, +dal.slice(6, 8)));
+        var fine = Date.UTC(+al.slice(0, 4), +al.slice(4, 6) - 1, +al.slice(6, 8));
+        while (d.getTime() <= fine && giorni.length < 62) {
+          giorni.push(d.toISOString().slice(0, 10).replace(/-/g, ""));
+          d.setUTCDate(d.getUTCDate() + 1);
+        }
+        return Promise.all(giorni.map(function (g) {
+          return fetch(url + g, { cache: "no-store" })
+            .then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+        })).then(function (tutti) {
+          var buoni = tutti.filter(Boolean);
+          if (!buoni.length) throw new Error("calendario non raggiungibile");
+          var visti = {}, events = [];
+          buoni.forEach(function (j) {
+            (j.events || []).forEach(function (e) { if (!visti[e.id]) { visti[e.id] = 1; events.push(e); } });
+          });
+          events.sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+          return { leagues: buoni[0].leagues || [], events: events };
+        });
+      });
+  }
+
   function stemma(t) {
     var nome = t.displayName || t.name || "";
     return (window.Scavalco && Scavalco.url(nome)) ||
@@ -422,8 +452,7 @@
     if (!dal || !al) { el("espnStato").innerHTML = '<span style="color:#FF6B6E">Servono le due date.</span>'; return; }
     el("espnStato").textContent = "Cerco le partite di " + c.nome + "…";
     el("trovate").innerHTML = ""; el("aggiungibox").style.display = "none";
-    fetch(API + "/" + c.code + "/scoreboard?dates=" + dal + "-" + al, { cache: "no-store" })
-      .then(function (r) { return r.json(); })
+    scoreboardFinestra(c.code, dal, al)
       .then(function (j) {
         var comp = ((j.leagues || [])[0] || {}).name || c.nome;
         TROVATE = (j.events || []).map(function (e) {

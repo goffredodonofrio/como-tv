@@ -534,6 +534,36 @@
     return state.matches.filter(function (m) { return m.checked || m.mano; });
   }
 
+  // Il 16/09/2026 ESPN ha cominciato a rispondere 400 alle finestre di date
+  // ("dates=20260912-20260914"), mentre il giorno singolo va. Si prova la
+  // finestra; se non passa si chiede un giorno alla volta e si rimette insieme.
+  function scoreboardFinestra(code, d1, d2) {
+    var url = API + "/" + code + "/scoreboard?dates=";
+    return fetch(url + d1 + (d2 !== d1 ? "-" + d2 : ""))
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .catch(function (err) {
+        if (d2 === d1) throw err;
+        var giorni = [], d = new Date(Date.UTC(+d1.slice(0, 4), +d1.slice(4, 6) - 1, +d1.slice(6, 8)));
+        var fine = Date.UTC(+d2.slice(0, 4), +d2.slice(4, 6) - 1, +d2.slice(6, 8));
+        while (d.getTime() <= fine && giorni.length < 62) {
+          giorni.push(d.toISOString().slice(0, 10).replace(/-/g, ""));
+          d.setUTCDate(d.getUTCDate() + 1);
+        }
+        return Promise.all(giorni.map(function (g) {
+          return fetch(url + g).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+        })).then(function (tutti) {
+          var buoni = tutti.filter(Boolean);
+          if (!buoni.length) throw err;
+          var visti = {}, events = [];
+          buoni.forEach(function (j) {
+            (j.events || []).forEach(function (e) { if (!visti[e.id]) { visti[e.id] = 1; events.push(e); } });
+          });
+          events.sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+          return { leagues: buoni[0].leagues || [], events: events };
+        });
+      });
+  }
+
   function load() {
     var comp = COMPS[el.comp.selectedIndex];
     state.comp = comp;
@@ -554,8 +584,7 @@
     el.load.disabled = true;
     status("", '<span class="msg">Cerco le partite di <b>' + esc(comp.nome) + '</b>&hellip;</span>');
 
-    fetch(API + "/" + comp.code + "/scoreboard?dates=" + d1 + (d2 !== d1 ? "-" + d2 : ""))
-      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    scoreboardFinestra(comp.code, d1, d2)
       .then(function (d) {
         var evs = d.events || [];
         var prima = tenute();

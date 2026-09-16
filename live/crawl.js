@@ -165,7 +165,21 @@ window.Crawl = (function () {
     function ymd(d){ return ""+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0"); }
     var oggi=new Date(), da=new Date(oggi), a=new Date(oggi);
     if(v.tipo==="pro"){ a.setDate(a.getDate()+16); } else { da.setDate(da.getDate()-6); }
-    return J(base+"/scoreboard?dates="+ymd(da)+"-"+ymd(a)).then(function(sb){
+    // dal 16/09/2026 ESPN rifiuta le finestre di date (400): se succede si
+    // chiede un giorno alla volta e si rimette insieme
+    function finestra(){
+      return J(base+"/scoreboard?dates="+ymd(da)+"-"+ymd(a)).then(function(sb){
+        if(sb)return sb;
+        var giorni=[]; for(var d=new Date(da); d<=a; d.setDate(d.getDate()+1)) giorni.push(ymd(d));
+        return Promise.all(giorni.map(function(g){ return J(base+"/scoreboard?dates="+g); })).then(function(tutti){
+          var visti={}, ev=[];
+          tutti.forEach(function(x){ ((x&&x.events)||[]).forEach(function(e){ if(!visti[e.id]){visti[e.id]=1; ev.push(e);} }); });
+          ev.sort(function(p,q){ return String(p.date).localeCompare(String(q.date)); });
+          return {events:ev};
+        });
+      });
+    }
+    return finestra().then(function(sb){
       var out=[];
       ((sb&&sb.events)||[]).forEach(function(e){
         var cc=e.competitions&&e.competitions[0]; if(!cc||!cc.status||!cc.status.type)return;
