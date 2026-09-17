@@ -596,7 +596,9 @@
     });
 
     // ── la heatmap dalle giocate ESPN (solo nella pagina Heatmap) ────────
-    // Le partite di campionato giocate dalla squadra, e di ognuna le giocate
+    // Le partite giocate dalla squadra in TUTTE le competizioni (campionato,
+    // coppe nazionali, coppe europee, supercoppe: il calendario ESPN "all"
+    // della squadra, con il campionato di ogni partita), e di ognuna le giocate
     // con le coordinate: ogni pallone toccato dal giocatore (passaggi,
     // contrasti, dribbling, tiri) cade in una delle 12 zone. Il conteggio
     // diventa il livello 0-4, relativo alla zona piu' toccata.
@@ -610,6 +612,7 @@
     //    partite si saltano, perche' una heatmap fatta di falli e tiri non
     //    dice dove gioca uno.
     // Sono tocchi di palla, non posizioni GPS: chi corre senza palla non c'e'.
+    // Le amichevoli restano fuori (anche i tornei estivi tipo Emirates Cup).
     // Solo la squadra ATTUALE: se il giocatore e' arrivato da poco, le partite
     // con la maglia di prima mancano.
     var hmCampo = document.getElementById("hmCampo");
@@ -673,19 +676,28 @@
         // la heatmap di uno col nome di un altro non deve poter uscire
         if (el("cNome").value.trim() !== (a.fullName || a.displayName || "")) ePrendi.click();
         hmNota("Cerco le partite di " + esc(SQUADRA.nome) + "&hellip;");
-        fetch(ESPN_API + code + "/teams/" + encodeURIComponent(SQUADRA.id) + "/schedule")
-          .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        // tutte le competizioni; se il calendario "all" non risponde, almeno
+        // quello del campionato scelto
+        var calendario = function (lega) {
+          return fetch(ESPN_API + lega + "/teams/" + encodeURIComponent(SQUADRA.id) + "/schedule")
+            .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
+        };
+        calendario("all")
+          .then(function (j) { if (!(j.events || []).length) throw new Error("vuoto"); return j; })
+          .catch(function () { return calendario(code); })
           .then(function (j) {
             var partite = (j.events || []).filter(function (e) {
               var c = (e.competitions || [])[0] || {};
-              return ((c.status || {}).type || {}).completed;
+              e.lega = (e.league || {}).slug || code;
+              e.nomeLega = (e.league || {}).abbreviation || (e.league || {}).name || e.lega;
+              return ((c.status || {}).type || {}).completed && !/friendly/i.test(e.lega);
             }).sort(function (x, y) { return String(y.date).localeCompare(String(x.date)); });
             if (!partite.length) throw new Error("nessuna partita giocata in questa stagione");
             // Si va a ritroso finche' non si hanno le partite complete chieste in
             // cui il giocatore ha toccato palla, tre alla volta. "Tutta la
             // stagione" le guarda tutte.
             var conti = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-            var giocate = 0, tocchi = 0, soloEventi = 0, senza = 0, lette = 0, prima = null, ultima = null;
+            var giocate = 0, tocchi = 0, soloEventi = 0, senza = 0, lette = 0, prima = null, ultima = null, perLega = {}, ordineLeghe = [];
             var bastano = function () { return quante && giocate >= quante; };
             function blocco(i) {
               if (i >= partite.length || bastano()) return Promise.resolve();
@@ -693,7 +705,7 @@
               hmNota("Leggo le giocate&hellip; " + lette + " partite su " + (quante ? "le ultime " + quante + " giocate" : partite.length) +
                      (giocate ? " · " + giocate + " con " + esc(a.lastName || a.displayName) + " in campo" : ""));
               return Promise.all(gruppo.map(function (e) {
-                return giocatePartita(code, e.id).then(function (items) { return { e: e, items: items }; },
+                return giocatePartita(e.lega, e.id).then(function (items) { return { e: e, items: items }; },
                                                        function () { return { e: e, items: null }; });
               })).then(function (res) {
                 res.forEach(function (x) {
@@ -710,6 +722,8 @@
                   });
                   if (!suoi.length) { senza++; return; }
                   giocate++; tocchi += suoi.length;
+                  if (!perLega[x.e.nomeLega]) { perLega[x.e.nomeLega] = 0; ordineLeghe.push(x.e.nomeLega); }
+                  perLega[x.e.nomeLega]++;
                   var d = String(x.e.date).slice(0, 10);
                   if (!ultima || d > ultima) ultima = d;
                   if (!prima || d < prima) prima = d;
@@ -731,16 +745,18 @@
               ZONE = z; disegnaZone();
               hmCampo.dataset.espn = "1";
               var st = el("hmSt").value.trim().toUpperCase();
-              if (!st || st === "STAGIONALE" || /^ULTIME \d+ PARTITE$/.test(st)) {
+              if (!st || st === "STAGIONALE" || /^ULTIME \d+ PARTITE$|^ULTIMA PARTITA$/.test(st)) {
                 // "stagionale" solo se ESPN ha davvero tutte le partite: se ne ha
                 // saltate, si dice quante sono
-                el("hmSt").value = !quante && !soloEventi ? "STAGIONALE" : "ULTIME " + giocate + " PARTITE";
+                el("hmSt").value = !quante && !soloEventi ? "STAGIONALE" : giocate === 1 ? "ULTIMA PARTITA" : "ULTIME " + giocate + " PARTITE";
               }
               if (/^fonte (DataMB|ESPN)?$/i.test(el("hmFo").value.trim()) || !el("hmFo").value.trim()) el("hmFo").value = "fonte ESPN";
               ricorda();
               var dt = function (s) { var p = s.split("-"); return (+p[2]) + " " + MESI[+p[1] - 1].slice(0, 3); };
-              hmNota("<b>" + tocchi + " palloni toccati</b> in " + giocate + " partite di campionato (" + dt(prima) + " – " + dt(ultima) + ")" +
-                     (soloEventi ? " · " + soloEventi + " partite escluse: ESPN ha solo gli eventi principali" : "") +
+              hmNota("<b>" + tocchi + " palloni toccati</b> in " + giocate + (giocate === 1 ? " partita" : " partite") +
+                     " (" + dt(prima) + (prima === ultima ? "" : " – " + dt(ultima)) + "): " +
+                     ordineLeghe.map(function (l) { return esc(l) + " " + perLega[l]; }).join(", ") +
+                     (soloEventi ? " · " + soloEventi + (soloEventi === 1 ? " partita esclusa" : " partite escluse") + ": ESPN ha solo gli eventi principali" : "") +
                      ". Sono tocchi di palla, non corse. Le zone restano cliccabili.", "ok");
             });
           })
