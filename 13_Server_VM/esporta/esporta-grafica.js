@@ -131,6 +131,10 @@ function orologioFinto() {
            "--no-sandbox", "--disable-dev-shm-usage", "--autoplay-policy=no-user-gesture-required"]
   });
   const page = await browser.newPage();
+  // Il CDN di ESPN rifiuta le chiamate API di un browser che si presenta come
+  // "HeadlessChrome" (le immagini no). I motori di oggi non le fanno, ma uno
+  // che domani leggesse ESPN in pagina uscirebbe vuoto senza dire perche'.
+  await page.setUserAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36");
   await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
   await page.evaluateOnNewDocument(orologioFinto);
   page.on("console", (m) => { if (m.type() === "error") console.error("  [pagina]", m.text()); });

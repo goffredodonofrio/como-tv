@@ -492,11 +492,11 @@
       eGioc.innerHTML = '<option value="">—</option>'; eGioc.disabled = true; ePrendi.disabled = true;
       if (!this.value) return;
       nota("Cerco le squadre su ESPN&hellip;");
-      // Le squadre si prendono dalla CLASSIFICA, non dall'elenco /teams: a
-      // settembre 2026 quell'elenco ESPN non manda piu' l'intestazione CORS e
-      // il browser non lo lascia leggere, mentre classifica e rosa si'. Stesse
-      // squadre, stessi id. I campionati a gironi hanno piu' classifiche: si
-      // uniscono senza doppioni.
+      // Le squadre si prendono dalla CLASSIFICA, non dall'elenco /teams: quello
+      // ESPN non manda l'intestazione CORS e il browser non lo lascia leggere
+      // (stesso giro delle formazioni e del magazzino foto). Stesse squadre,
+      // stessi id. I campionati a gironi hanno piu' classifiche: si uniscono
+      // senza doppioni.
       fetch("https://site.api.espn.com/apis/v2/sports/soccer/" + this.value + "/standings")
         .then(function (r) { return r.json(); })
         .then(function (j) {
@@ -555,7 +555,16 @@
       var a = ROSA[+eGioc.value];
       if (!a) return;
       var presi = [];
-      el("cNome").value = a.fullName || a.displayName || "";
+      var nuovoNome = a.fullName || a.displayName || "";
+      // Se cambia giocatore, il piede di quello di prima non puo' restare: ESPN
+      // non lo da', quindi la riga si svuota e va riscritta. Se e' lo stesso
+      // giocatore (si ripremono i dati) il piede scritto a mano resta.
+      if (el("cNome").value.trim() !== nuovoNome) {
+        document.querySelectorAll("#cRighe .coppia").forEach(function (r) {
+          if (/piede/i.test(r.querySelector(".eti").value)) r.querySelector(".val").value = "";
+        });
+      }
+      el("cNome").value = nuovoNome;
       var cognome = a.lastName || String(a.displayName || "").trim().split(/\s+/).pop() || "";
       el("cSopr").value = cognome; el("aSopr").value = cognome;
       if (a.jersey) { el("cNum").value = a.jersey; presi.push("numero"); }
