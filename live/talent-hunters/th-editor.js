@@ -148,7 +148,7 @@
   }
   function rigaRadar(eti, a, b) {
     return '<div class="coppia"><input type="text" class="eti" value="' + esc(eti) + '"><input type="number" class="num a" min="0" max="100" value="' + esc(a) + '" placeholder="oro">' +
-           '<input type="number" class="num b" min="0" max="100" value="' + esc(b) + '" placeholder="avorio"' + (el("rConf").checked ? "" : " hidden") + '>' +
+           '<input type="number" class="num b" min="0" max="100" value="' + esc(b) + '" placeholder="rosso"' + (el("rConf").checked ? "" : " hidden") + '>' +
            '<button type="button" class="via" data-via="1">&times;</button></div>';
   }
   function disegnaZone() {
