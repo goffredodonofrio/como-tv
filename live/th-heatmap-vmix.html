@@ -112,10 +112,36 @@
     // le dodici zone: fascia alta e bassa fuori dall'area, il centro largo quanto l'area
     var RIGHE = [[0, 138.5], [138.5, 541.5], [541.5, H]];
     var zone = [];
+    // UNA MAPPA DI CALORE, NON DODICI RETTANGOLI. Ogni zona e' una macchia
+    // bianca, tanto piu' opaca quanto e' calda (livello/4); le macchie si
+    // sfumano e si sommano, e un filtro legge l'intensita' che ne esce e la
+    // colora con la stessa scala di prima: LIV[0] al freddo, LIV[4] al
+    // piu' caldo, in mezzo i passaggi. I colori restano quelli, ma fra due
+    // zone il calore sfuma invece di cambiare di netto sul bordo.
+    // L'intensita' sta nel canale alfa delle macchie: la matrice la copia nei
+    // tre canali di colore, e le tabelle la trasformano nella scala.
+    function canale(hex, k) { return (parseInt(hex.slice(1 + 2 * k, 3 + 2 * k), 16) / 255).toFixed(3); }
+    var calore = el("filter", { id: "thCalore", x: 0, y: 0, width: W, height: H, filterUnits: "userSpaceOnUse",
+                                "color-interpolation-filters": "sRGB" }, defs);
+    el("feGaussianBlur", { "in": "SourceGraphic", stdDeviation: 46, result: "sfumato" }, calore);
+    el("feColorMatrix", { "in": "sfumato", type: "matrix", result: "intensita",
+                          values: "0 0 0 1 0  0 0 0 1 0  0 0 0 1 0  0 0 0 1 0" }, calore);
+    var scala = el("feComponentTransfer", { "in": "intensita" }, calore);
+    ["feFuncR", "feFuncG", "feFuncB"].forEach(function (fn, k) {
+      el(fn, { type: "table", tableValues: LIV.map(function (c) { return canale(c, k); }).join(" ") }, scala);
+    });
+    el("feFuncA", { type: "table", tableValues: "0.92 0.92" }, scala);
+    var mappa = el("g", { filter: "url(#thCalore)" }, g);
+    // il fondo trasparente copre tutto il campo: il filtro deve colorare anche
+    // dove non c'e' calore, col colore piu' freddo
+    el("rect", { x: 0, y: 0, width: W, height: H, fill: "#fff", "fill-opacity": 0 }, mappa);
     for (var r = 0; r < 3; r++) for (var q = 0; q < 4; q++) {
       var liv = Math.max(0, Math.min(4, +D.z[r * 4 + q] || 0));
-      var z = el("rect", { "class": "zona", x: q * W / 4, y: RIGHE[r][0], width: W / 4 + 0.5,
-                           height: RIGHE[r][1] - RIGHE[r][0] + 0.5, fill: LIV[liv], "fill-opacity": 0.92 }, g);
+      var alta = RIGHE[r][1] - RIGHE[r][0];
+      // la macchia sborda dalla sua zona: e' quello che fa sfumare le vicine
+      var z = el("ellipse", { "class": "zona", cx: q * W / 4 + W / 8, cy: RIGHE[r][0] + alta / 2,
+                              rx: W / 8 * 1.12, ry: alta / 2 * (r === 1 ? 1.08 : 1.4),
+                              fill: "#fff", "fill-opacity": liv / 4 }, mappa);
       z.dataset.liv = liv;
       zone.push(z);
     }
