@@ -18,7 +18,9 @@ window.GIOVANILI = (function () {
   "use strict";
 
   var COMPS = [
-    // Rosa Como Primavera 26/27 copiata da Transfermarkt il 29/08/2026.
+    // Rosa Como Primavera 26/27 copiata da Transfermarkt il 29/08/2026; il 17/09/2026 tolti
+    // Oldenstam, Licata, Mastriani, La Monaca, el Fezani (non piu' tesserati) e Miguel Silva,
+    // Diego Martinez (restano solo in Under 18), su indicazione di Goffredo.
     { nome: "Primavera 1", code: "giovanili.primavera1", squadre: [
       // Allenatore 26/27: Gianluca Falsini (ex Roma Primavera, ufficiale estate 2026).
       { id: "como-primavera", n: "Como Primavera", tid: "2572",
@@ -40,12 +42,9 @@ window.GIOVANILI = (function () {
         { num: "66", nome: "Lorenzo",      cognome: "de Paula",         ruolo: "D" },
         { num: "73", nome: "Matteo",       cognome: "Albini",           ruolo: "D" },
         { num: "74", nome: "Mattia",       cognome: "Arioli",           ruolo: "D" },
-        { num: "",   nome: "Lyfe",         cognome: "Oldenstam",        ruolo: "D" },
         { num: "46", nome: "Matteo",       cognome: "Zanaria",          ruolo: "D" },
         { num: "13", nome: "Levente",      cognome: "B\u0151sze",       ruolo: "M" },
         { num: "8",  nome: "Francesco",    cognome: "Andrealli",        ruolo: "M" },
-        { num: "",   nome: "Alessandro",   cognome: "Licata",           ruolo: "M" },
-        { num: "",   nome: "Salvatore",    cognome: "Mastriani",        ruolo: "M" },
         { num: "5",  nome: "Alessio",      cognome: "Baralla",          ruolo: "M" },
         { num: "22", nome: "Sebastian",    cognome: "Burlacu",          ruolo: "M" },
         { num: "29", nome: "Stefano",      cognome: "Arui",             ruolo: "M" },
@@ -53,10 +52,7 @@ window.GIOVANILI = (function () {
         { num: "21", nome: "Matteo",       cognome: "Papaccioli",       ruolo: "M" },
         { num: "49", nome: "Riccardo",     cognome: "Cassano",          ruolo: "M" },
         { num: "10", nome: "Cristian",     cognome: "Mazzara",          ruolo: "M" },
-        { num: "",   nome: "Michael",      cognome: "La Monaca",        ruolo: "M" },
         { num: "77", nome: "Thomas",       cognome: "Boccia",           ruolo: "M" },
-        { num: "",   nome: "Miguel",       cognome: "Silva",            ruolo: "F" },
-        { num: "",   nome: "Mohamed",      cognome: "el Fezani",        ruolo: "F" },
         { num: "14", nome: "Achille",      cognome: "Tigano",           ruolo: "F" },
         { num: "17", nome: "Italo",        cognome: "Bulgheroni",       ruolo: "F" },
         { num: "11", nome: "Lorenzo",      cognome: "Bonsignori",       ruolo: "F" },
@@ -68,8 +64,7 @@ window.GIOVANILI = (function () {
         { num: "19", nome: "Kevin",        cognome: "Fustini",          ruolo: "F" },
         { num: "41", nome: "Leonardo",     cognome: "Casati",           ruolo: "F" },
         { num: "51", nome: "Mattia",       cognome: "Terranova",        ruolo: "F" },
-        { num: "78", nome: "Francesco",    cognome: "Lembo",            ruolo: "F" },
-        { num: "79", nome: "Diego",        cognome: "Martinez",         ruolo: "F" }
+        { num: "78", nome: "Francesco",    cognome: "Lembo",            ruolo: "F" }
       ] },
       // le avversarie del girone: solo nome (rose scritte a mano),
       // servono per menu' e magliette dal magazzino
