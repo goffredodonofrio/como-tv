@@ -420,7 +420,7 @@
   // Tutto resta correggibile: e' un punto di partenza, non un vincolo.
   // Le competizioni sono quelle delle formazioni (formazioni-espn.js, un'unica
   // lista: campionati, coppe, coppe europee) piu' quelle che servono allo
-  // scouting e li' non stanno. Tutte con la bandierina, divise in tre gruppi.
+  // scouting e li' non stanno. Tutte con la bandierina, raggruppate per paese.
   var ESPN_API = "https://site.api.espn.com/apis/site/v2/sports/soccer/";
   var ESPN_IN_PIU = [
     { band: "🇪🇸", nome: "LaLiga 2", code: "esp.2" },
@@ -491,26 +491,47 @@
         eGioc = box.querySelector("#eGioc"), ePrendi = box.querySelector("#ePrendi");
     var ROSA = [], SQUADRA = null;
 
+    // In ordine di PAESE: un gruppo per paese (Italia per prima, poi in ordine
+    // alfabetico), le competizioni internazionali in fondo. Dentro il paese:
+    // i campionati per serie, poi le coppe, poi le supercoppe.
+    var PAESE = { ita: "Italia", esp: "Spagna", ger: "Germania", eng: "Inghilterra", fra: "Francia",
+      ned: "Paesi Bassi", por: "Portogallo", sco: "Scozia", ksa: "Arabia Saudita", arg: "Argentina",
+      bra: "Brasile", aut: "Austria", usa: "Stati Uniti", gre: "Grecia", bel: "Belgio", tur: "Turchia",
+      den: "Danimarca", sui: "Svizzera", swe: "Svezia", nor: "Norvegia", rus: "Russia", col: "Colombia",
+      uru: "Uruguay", chi: "Cile", ecu: "Ecuador", par: "Paraguay", per: "Perù", mex: "Messico",
+      jpn: "Giappone", chn: "Cina", aus: "Australia" };
+    var INTERNAZIONALI = [["uefa", "🇪🇺 Europa · UEFA"], ["conmebol", "🌎 Sudamerica · CONMEBOL"], ["fifa", "🌍 Mondo · FIFA"]];
     function riempiCampionati() {
-      var visti = {}, gruppi = { campionati: [], coppe: [], int: [] };
+      var visti = {}, perPaese = {};
       var base = ((window.FormazioniEspn && FormazioniEspn.competizioni) || []).concat(ESPN_IN_PIU);
-      base.forEach(function (c) {
+      base.forEach(function (c, n) {
         if (!c.code || visti[c.code]) return;
         visti[c.code] = 1;
-        // ita.1, eng.2… sono campionati; uefa/conmebol/fifa internazionali;
-        // tutto il resto coppe e supercoppe nazionali
-        var g = /^(uefa|conmebol|fifa)\./.test(c.code) ? "int" : /\.\d$/.test(c.code) ? "campionati" : "coppe";
-        gruppi[g].push(c);
+        var k = c.code.split(".")[0];
+        (perPaese[k] = perPaese[k] || []).push({ c: c, n: n });
       });
-      function voci(lista) {
-        return lista.map(function (c) {
-          return '<option value="' + esc(c.code) + '">' + esc((c.band ? c.band + " " : "") + c.nome) + "</option>";
-        }).join("");
+      function peso(x) {
+        var m = x.c.code.match(/\.(\d)$/);
+        return m ? +m[1] : /super|charity/.test(x.c.code) ? 30 : 20;
       }
+      function gruppo(k, etichetta) {
+        var lista = (perPaese[k] || []).sort(function (a, b) { return peso(a) - peso(b) || a.n - b.n; });
+        if (!lista.length) return "";
+        return '<optgroup label="' + esc(etichetta) + '">' + lista.map(function (x) {
+          return '<option value="' + esc(x.c.code) + '">' + esc((x.c.band ? x.c.band + " " : "") + x.c.nome) + "</option>";
+        }).join("") + "</optgroup>";
+      }
+      var paesi = Object.keys(perPaese).filter(function (k) { return PAESE[k]; }).sort(function (a, b) {
+        return (a === "ita" ? -1 : b === "ita" ? 1 : PAESE[a].localeCompare(PAESE[b], "it"));
+      });
+      // un codice di un paese che non e' nella tabella non deve sparire: va in fondo col suo prefisso
+      var ignoti = Object.keys(perPaese).filter(function (k) {
+        return !PAESE[k] && !INTERNAZIONALI.some(function (x) { return x[0] === k; });
+      });
       eComp.innerHTML = '<option value="">—</option>' +
-        '<optgroup label="Campionati">' + voci(gruppi.campionati) + "</optgroup>" +
-        '<optgroup label="Coppe e supercoppe nazionali">' + voci(gruppi.coppe) + "</optgroup>" +
-        '<optgroup label="Coppe internazionali">' + voci(gruppi.int) + "</optgroup>";
+        paesi.map(function (k) { return gruppo(k, perPaese[k][0].c.band + " " + PAESE[k]); }).join("") +
+        ignoti.map(function (k) { return gruppo(k, k.toUpperCase()); }).join("") +
+        INTERNAZIONALI.map(function (x) { return gruppo(x[0], x[1]); }).join("");
     }
     if (window.FormazioniEspn) riempiCampionati();
     else {
