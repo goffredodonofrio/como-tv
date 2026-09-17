@@ -409,6 +409,77 @@
     }).catch(function (e) { stato("err", "Foto non salvata: " + esc(e.message)); });
   });
 
+  // ── esporta in video, per la post-produzione ───────────────────────
+  // Il file lo prepara la VM, con un servizio accanto al ponte: la stessa
+  // grafica, fotogramma per fotogramma. MP4 per le grafiche col fondo, MOV
+  // ProRes 4444 con la trasparenza per torta e radar, da mettere sopra le
+  // immagini in Premiere. Il tasto compare solo se il servizio risponde:
+  // dove non c'e' (su GitHub, o in prod prima di installarlo) non si vede.
+  var ESPORTA = BASEIMG + "/esporta/";
+  (function () {
+    var barra = document.querySelector(".barra"), G = GRAFICHE[QUALE];
+    if (!barra || !G || !window.fetch) return;
+    var b = document.createElement("button");
+    b.id = "btnEsporta"; b.type = "button"; b.hidden = true;
+    b.innerHTML = "&#11015; Esporta " + (G.alpha ? "MOV" : "MP4");
+    b.title = (G.alpha ? "Video ProRes 4444 con la trasparenza, da mettere sopra le immagini in Premiere."
+                       : "Video MP4 a tutto schermo, per la post-produzione.") +
+              " Non durante una diretta: pesa sulla macchina delle grafiche.";
+    var prev = document.getElementById("btnPrev");
+    barra.insertBefore(b, prev ? prev.nextSibling : barra.firstChild);
+    fetch(ESPORTA + "salute", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (j && j.ok) b.hidden = false; })
+      .catch(function () {});
+
+    function scarica(id) {
+      var a = document.createElement("a");
+      a.href = ESPORTA + "file?id=" + encodeURIComponent(id);
+      a.download = ""; document.body.appendChild(a); a.click(); a.remove();
+    }
+    function segui(id, nome) {
+      fetch(ESPORTA + "stato?id=" + encodeURIComponent(id), { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (s) {
+          if (!s.ok) throw new Error(s.errore || "esportazione persa");
+          if (s.stato === "coda") {
+            stato("", "In fila per l'esportazione" + (s.posto > 1 ? ": " + s.posto + "ª" : "") + "…");
+          } else if (s.stato === "lavoro") {
+            stato("", "Preparo il video&hellip; " + String(s.secondi).replace(".", ",") +
+                      " s pronti <span style=\"opacity:.6\">· non durante una diretta</span>");
+          } else if (s.stato === "pronto") {
+            b.disabled = false;
+            scarica(id);
+            stato("ok", "Video pronto: <b>" + esc(s.nome) + "</b> &middot; <a href=\"" + ESPORTA + "file?id=" +
+                        encodeURIComponent(id) + "\" download>scaricalo di nuovo</a> (resta disponibile due ore)");
+            return;
+          } else {
+            throw new Error(s.errore || "esportazione non riuscita");
+          }
+          setTimeout(function () { segui(id, nome); }, 1000);
+        })
+        .catch(function (e) { b.disabled = false; stato("err", "Video non esportato: " + esc(e.message)); });
+    }
+    b.addEventListener("click", function () {
+      b.disabled = true;
+      assicuraFoto().then(function () {
+        var x = dati();
+        ricorda();
+        if (x.err) { b.disabled = false; stato("err", x.err); return; }
+        stato("", "Mando la grafica all'esportazione&hellip;");
+        return fetch(ESPORTA + "avvia", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ motore: G.motore, d: x.d, nome: x.nome || PAGINA.nome })
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            if (!res.ok) throw new Error(res.errore || "non partita");
+            segui(res.id, res.nome);
+          });
+      }).catch(function (e) { b.disabled = false; stato("err", "Video non esportato: " + esc(e.message)); });
+    });
+  })();
+
   // ── partenza ──
   riempiElenco();
   scegli("nuovo");
