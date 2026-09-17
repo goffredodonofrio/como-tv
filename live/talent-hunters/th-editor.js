@@ -409,6 +409,179 @@
     }).catch(function (e) { stato("err", "Foto non salvata: " + esc(e.message)); });
   });
 
+  // ── i dati da ESPN, dentro i campi: si scrive a mano come prima ──────
+  // Una riga in piu' nel pannello Giocatore: campionato, squadra, giocatore.
+  // "Prendi i dati" scrive nei campi della carta quello che ESPN sa davvero
+  // — numero, data di nascita, nazionalita', ruolo, altezza, stemma — e non
+  // tocca il resto. Il PIEDE ESPN non lo da', e nemmeno le statistiche
+  // DataMB di torta e radar o la heatmap di stagione: quelle restano a mano.
+  // Tutto resta correggibile: e' un punto di partenza, non un vincolo.
+  // I campionati sono quelli delle formazioni (formazioni-espn.js, un'unica
+  // lista) piu' quelli che servono allo scouting e li' non stanno.
+  var ESPN_API = "https://site.api.espn.com/apis/site/v2/sports/soccer/";
+  var ESPN_IN_PIU = [
+    ["gre.1", "Grecia · Super League"], ["bel.1", "Belgio · Pro League"], ["tur.1", "Turchia · Süper Lig"],
+    ["den.1", "Danimarca · Superliga"], ["sui.1", "Svizzera · Super League"], ["col.1", "Colombia · Primera A"],
+    ["uru.1", "Uruguay · Primera División"], ["chi.1", "Cile · Primera División"], ["mex.1", "Messico · Liga MX"],
+    ["ecu.1", "Ecuador · LigaPro"], ["par.1", "Paraguay · Primera División"], ["per.1", "Perù · Liga 1"],
+    ["jpn.1", "Giappone · J.League"], ["swe.1", "Svezia · Allsvenskan"], ["nor.1", "Norvegia · Eliteserien"],
+    ["rus.1", "Russia · Premier League"]
+  ];
+  var PAESI = { "Argentina": "Argentina", "Brazil": "Brasile", "Uruguay": "Uruguay", "Colombia": "Colombia",
+    "Chile": "Cile", "Paraguay": "Paraguay", "Peru": "Perù", "Ecuador": "Ecuador", "Venezuela": "Venezuela",
+    "Bolivia": "Bolivia", "Mexico": "Messico", "United States": "Stati Uniti", "USA": "Stati Uniti", "Canada": "Canada",
+    "Spain": "Spagna", "Portugal": "Portogallo", "France": "Francia", "Germany": "Germania", "Italy": "Italia",
+    "England": "Inghilterra", "Scotland": "Scozia", "Wales": "Galles", "Northern Ireland": "Irlanda del Nord",
+    "Republic of Ireland": "Irlanda", "Ireland": "Irlanda", "Netherlands": "Paesi Bassi", "Belgium": "Belgio",
+    "Switzerland": "Svizzera", "Austria": "Austria", "Denmark": "Danimarca", "Sweden": "Svezia", "Norway": "Norvegia",
+    "Finland": "Finlandia", "Iceland": "Islanda", "Poland": "Polonia", "Czechia": "Repubblica Ceca",
+    "Czech Republic": "Repubblica Ceca", "Slovakia": "Slovacchia", "Slovenia": "Slovenia", "Croatia": "Croazia",
+    "Serbia": "Serbia", "Bosnia-Herzegovina": "Bosnia", "Bosnia and Herzegovina": "Bosnia", "Montenegro": "Montenegro",
+    "North Macedonia": "Macedonia del Nord", "Albania": "Albania", "Kosovo": "Kosovo", "Greece": "Grecia",
+    "Turkey": "Turchia", "Türkiye": "Turchia", "Hungary": "Ungheria", "Romania": "Romania", "Bulgaria": "Bulgaria",
+    "Ukraine": "Ucraina", "Russia": "Russia", "Georgia": "Georgia", "Morocco": "Marocco", "Algeria": "Algeria",
+    "Tunisia": "Tunisia", "Egypt": "Egitto", "Senegal": "Senegal", "Ivory Coast": "Costa d'Avorio",
+    "Côte d'Ivoire": "Costa d'Avorio", "Ghana": "Ghana", "Nigeria": "Nigeria", "Cameroon": "Camerun", "Mali": "Mali",
+    "Guinea": "Guinea", "Gabon": "Gabon", "DR Congo": "RD Congo", "Congo DR": "RD Congo", "Angola": "Angola",
+    "Cape Verde": "Capo Verde", "Cape Verde Islands": "Capo Verde", "Gambia": "Gambia", "Burkina Faso": "Burkina Faso",
+    "South Africa": "Sudafrica", "Saudi Arabia": "Arabia Saudita", "Japan": "Giappone", "South Korea": "Corea del Sud",
+    "Korea Republic": "Corea del Sud", "Australia": "Australia", "Iran": "Iran", "Jamaica": "Giamaica",
+    "Costa Rica": "Costa Rica", "Panama": "Panama", "Honduras": "Honduras", "Haiti": "Haiti", "Suriname": "Suriname",
+    "Curacao": "Curaçao", "Israel": "Israele", "Armenia": "Armenia", "Luxembourg": "Lussemburgo" };
+  var RUOLI = { "goalkeeper": "Portiere", "defender": "Difensore", "midfielder": "Centrocampista", "forward": "Attaccante",
+                "g": "Portiere", "d": "Difensore", "m": "Centrocampista", "f": "Attaccante" };
+  (function () {
+    var sel = document.getElementById("gSel");
+    var riga = sel && sel.closest ? sel.closest(".riga") : null;
+    if (!riga || !window.fetch) return;
+    var box = document.createElement("div");
+    box.className = "riga";
+    box.innerHTML =
+      '<div style="flex:1 1 200px"><label for="eComp">Oppure da ESPN · campionato</label><select id="eComp"><option value="">—</option></select></div>' +
+      '<div style="flex:1 1 200px"><label for="eSq">Squadra</label><select id="eSq" disabled><option value="">—</option></select></div>' +
+      '<div style="flex:1.4 1 240px"><label for="eGioc">Giocatore</label><select id="eGioc" disabled><option value="">—</option></select></div>' +
+      '<div style="flex:0 0 auto"><button type="button" id="ePrendi" disabled>&#11015; Prendi i dati</button></div>';
+    riga.parentNode.insertBefore(box, riga.nextSibling);
+    var eComp = box.querySelector("#eComp"), eSq = box.querySelector("#eSq"),
+        eGioc = box.querySelector("#eGioc"), ePrendi = box.querySelector("#ePrendi");
+    var ROSA = [], SQUADRA = null;
+
+    function riempiCampionati() {
+      var visti = {}, voci = [];
+      var base = (window.FormazioniEspn && FormazioniEspn.competizioni) || [];
+      base.forEach(function (c) {
+        if (!c.rose || visti[c.rose] || /^conmebol|\.cis$/.test(c.rose)) return;
+        visti[c.rose] = 1; voci.push([c.rose, (c.band ? c.band + " " : "") + c.nome]);
+      });
+      ESPN_IN_PIU.forEach(function (x) { if (!visti[x[0]]) { visti[x[0]] = 1; voci.push(x); } });
+      eComp.innerHTML = '<option value="">—</option>' + voci.map(function (x) {
+        return '<option value="' + esc(x[0]) + '">' + esc(x[1]) + "</option>";
+      }).join("");
+    }
+    if (window.FormazioniEspn) riempiCampionati();
+    else {
+      var s = document.createElement("script");
+      s.src = "formazioni-espn.js";
+      s.onload = riempiCampionati; s.onerror = riempiCampionati;
+      document.head.appendChild(s);
+    }
+
+    function nota(t, cls) { var n = el("gNota"); n.className = "nota" + (cls ? " " + cls : ""); n.innerHTML = t; }
+    eComp.addEventListener("change", function () {
+      eSq.innerHTML = '<option value="">—</option>'; eSq.disabled = true;
+      eGioc.innerHTML = '<option value="">—</option>'; eGioc.disabled = true; ePrendi.disabled = true;
+      if (!this.value) return;
+      nota("Cerco le squadre su ESPN&hellip;");
+      // Le squadre si prendono dalla CLASSIFICA, non dall'elenco /teams: a
+      // settembre 2026 quell'elenco ESPN non manda piu' l'intestazione CORS e
+      // il browser non lo lascia leggere, mentre classifica e rosa si'. Stesse
+      // squadre, stessi id. I campionati a gironi hanno piu' classifiche: si
+      // uniscono senza doppioni.
+      fetch("https://site.api.espn.com/apis/v2/sports/soccer/" + this.value + "/standings")
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          var visti = {}, sq = [];
+          function raccogli(nodo) {
+            if (!nodo) return;
+            ((nodo.standings || {}).entries || []).forEach(function (e) {
+              var tm = e.team || {};
+              if (tm.id && !visti[tm.id]) { visti[tm.id] = 1; sq.push({ id: tm.id, displayName: tm.displayName || tm.name || "" }); }
+            });
+            (nodo.children || []).forEach(raccogli);
+          }
+          raccogli(j);
+          sq.sort(function (a, b) { return a.displayName.localeCompare(b.displayName); });
+          eSq.innerHTML = '<option value="">— ' + sq.length + " squadre —</option>" + sq.map(function (x) {
+            return '<option value="' + esc(x.id) + '">' + esc(x.displayName) + "</option>";
+          }).join("");
+          eSq.disabled = !sq.length;
+          nota(sq.length ? "Scegli la squadra." : "ESPN non ha squadre per questo campionato.", sq.length ? "" : "err");
+        })
+        .catch(function () { nota("ESPN non risponde.", "err"); });
+    });
+    eSq.addEventListener("change", function () {
+      eGioc.innerHTML = '<option value="">—</option>'; eGioc.disabled = true; ePrendi.disabled = true;
+      if (!this.value) return;
+      SQUADRA = { id: this.value, nome: this.options[this.selectedIndex].text };
+      nota("Scarico la rosa&hellip;");
+      fetch(ESPN_API + eComp.value + "/teams/" + encodeURIComponent(this.value) + "/roster")
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          ROSA = (j.athletes || []).slice().sort(function (a, b) {
+            return String(a.lastName || a.displayName).localeCompare(String(b.lastName || b.displayName));
+          });
+          eGioc.innerHTML = '<option value="">— ' + ROSA.length + " giocatori —</option>" + ROSA.map(function (a, i) {
+            return '<option value="' + i + '">' + esc((a.jersey ? a.jersey + " · " : "") + a.displayName) + "</option>";
+          }).join("");
+          eGioc.disabled = !ROSA.length;
+          nota(ROSA.length ? "Scegli il giocatore e premi <b>Prendi i dati</b>." : "ESPN non ha la rosa di questa squadra.", ROSA.length ? "" : "err");
+        })
+        .catch(function () { nota("ESPN non risponde.", "err"); });
+    });
+    eGioc.addEventListener("change", function () { ePrendi.disabled = this.value === ""; });
+
+    // scrive una riga della carta cercandola per etichetta: se la redazione ha
+    // rinominato o spostato le righe, i dati vanno comunque al posto giusto
+    function rigaCartaPer(re, valore) {
+      if (!valore) return false;
+      var fatta = false;
+      document.querySelectorAll("#cRighe .coppia").forEach(function (r) {
+        if (fatta || !re.test(r.querySelector(".eti").value)) return;
+        r.querySelector(".val").value = valore; fatta = true;
+      });
+      return fatta;
+    }
+    ePrendi.addEventListener("click", function () {
+      var a = ROSA[+eGioc.value];
+      if (!a) return;
+      var presi = [];
+      el("cNome").value = a.fullName || a.displayName || "";
+      var cognome = a.lastName || String(a.displayName || "").trim().split(/\s+/).pop() || "";
+      el("cSopr").value = cognome; el("aSopr").value = cognome;
+      if (a.jersey) { el("cNum").value = a.jersey; presi.push("numero"); }
+      if (a.dateOfBirth) {
+        var d = new Date(a.dateOfBirth);
+        if (!isNaN(d) && rigaCartaPer(/nasc/i, d.getUTCDate() + " " + MESI[d.getUTCMonth()] + " " + d.getUTCFullYear())) presi.push("data di nascita");
+      }
+      var naz = a.citizenship || (a.flag && a.flag.alt) || "";
+      if (naz && rigaCartaPer(/naz/i, PAESI[naz] || naz)) presi.push("nazionalità");
+      var pos = a.position || {};
+      var ruolo = RUOLI[String(pos.name || "").toLowerCase()] || RUOLI[String(pos.abbreviation || "").toLowerCase()] || "";
+      if (ruolo && rigaCartaPer(/ruolo/i, ruolo)) presi.push("ruolo");
+      var cm = a.height ? Math.round(a.height * 2.54) : 0;
+      if (!cm && a.displayHeight) {
+        var m = String(a.displayHeight).match(/(\d+)'\s*(\d+)/);
+        if (m) cm = Math.round((+m[1] * 12 + +m[2]) * 2.54);
+      }
+      if (cm && rigaCartaPer(/altez/i, cm + " cm")) presi.push("altezza");
+      if (SQUADRA) { el("lUrl").value = "https://a.espncdn.com/i/teamlogos/soccer/500/" + SQUADRA.id + ".png"; disegnaStemma(); presi.push("stemma"); }
+      el("gSel").value = "";
+      ricorda();
+      nota("Da ESPN: <b>" + esc(a.displayName) + "</b> · " + presi.join(", ") +
+           ". Il <b>piede</b> ESPN non lo dà: scrivilo a mano. Tutti i campi restano correggibili.", "ok");
+    });
+  })();
+
   // ── esporta in video, per la post-produzione ───────────────────────
   // Il file lo prepara la VM, con un servizio accanto al ponte: la stessa
   // grafica, fotogramma per fotogramma. MP4 per le grafiche col fondo, MOV
