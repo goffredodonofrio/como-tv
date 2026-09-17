@@ -418,40 +418,9 @@
   // DataMB di torta e radar: quelle restano a mano. La heatmap si compone
   // dalle giocate ESPN con un tasto a parte, nella sua pagina (piu' sotto).
   // Tutto resta correggibile: e' un punto di partenza, non un vincolo.
-  // Le competizioni sono quelle delle formazioni (formazioni-espn.js, un'unica
-  // lista: campionati, coppe, coppe europee) piu' quelle che servono allo
-  // scouting e li' non stanno. Tutte con la bandierina, raggruppate per paese.
+  // Le competizioni e la loro tendina per paese stanno in competizioni-espn.js,
+  // la stessa lista dei Marcatori piu' giovani.
   var ESPN_API = "https://site.api.espn.com/apis/site/v2/sports/soccer/";
-  var ESPN_IN_PIU = [
-    { band: "🇪🇸", nome: "LaLiga 2", code: "esp.2" },
-    { band: "🇪🇸", nome: "Supercopa de España", code: "esp.super_cup" },
-    { band: "🇩🇪", nome: "Supercoppa di Germania", code: "ger.super_cup" },
-    { band: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", nome: "Community Shield", code: "eng.charity" },
-    { band: "🇫🇷", nome: "Trophée des Champions", code: "fra.super_cup" },
-    { band: "🇳🇱", nome: "KNVB Beker", code: "ned.cup" },
-    { band: "🏴󠁧󠁢󠁳󠁣󠁴󠁿", nome: "Scottish Cup", code: "sco.tennents" },
-    { band: "🇬🇷", nome: "Super League Grecia", code: "gre.1" },
-    { band: "🇧🇪", nome: "Pro League Belgio", code: "bel.1" },
-    { band: "🇹🇷", nome: "Süper Lig", code: "tur.1" },
-    { band: "🇩🇰", nome: "Superliga Danimarca", code: "den.1" },
-    { band: "🇨🇭", nome: "Super League Svizzera", code: "sui.1" },
-    { band: "🇸🇪", nome: "Allsvenskan", code: "swe.1" },
-    { band: "🇳🇴", nome: "Eliteserien", code: "nor.1" },
-    { band: "🇷🇺", nome: "Premier League Russia", code: "rus.1" },
-    { band: "🇧🇷", nome: "Copa do Brasil", code: "bra.copa_do_brazil" },
-    { band: "🇨🇴", nome: "Primera A Colombia", code: "col.1" },
-    { band: "🇺🇾", nome: "Primera División Uruguay", code: "uru.1" },
-    { band: "🇨🇱", nome: "Primera División Cile", code: "chi.1" },
-    { band: "🇪🇨", nome: "LigaPro Ecuador", code: "ecu.1" },
-    { band: "🇵🇾", nome: "Primera División Paraguay", code: "par.1" },
-    { band: "🇵🇪", nome: "Liga 1 Perù", code: "per.1" },
-    { band: "🇲🇽", nome: "Liga MX", code: "mex.1" },
-    { band: "🇺🇸", nome: "US Open Cup", code: "usa.open" },
-    { band: "🇯🇵", nome: "J.League", code: "jpn.1" },
-    { band: "🇨🇳", nome: "Super League Cina", code: "chn.1" },
-    { band: "🇦🇺", nome: "A-League", code: "aus.1" },
-    { band: "🌍", nome: "Mondiale per club", code: "fifa.cwc" }
-  ];
   var PAESI = { "Argentina": "Argentina", "Brazil": "Brasile", "Uruguay": "Uruguay", "Colombia": "Colombia",
     "Chile": "Cile", "Paraguay": "Paraguay", "Peru": "Perù", "Ecuador": "Ecuador", "Venezuela": "Venezuela",
     "Bolivia": "Bolivia", "Mexico": "Messico", "United States": "Stati Uniti", "USA": "Stati Uniti", "Canada": "Canada",
@@ -491,53 +460,14 @@
         eGioc = box.querySelector("#eGioc"), ePrendi = box.querySelector("#ePrendi");
     var ROSA = [], SQUADRA = null;
 
-    // In ordine di PAESE: un gruppo per paese (Italia per prima, poi in ordine
-    // alfabetico), le competizioni internazionali in fondo. Dentro il paese:
-    // i campionati per serie, poi le coppe, poi le supercoppe.
-    var PAESE = { ita: "Italia", esp: "Spagna", ger: "Germania", eng: "Inghilterra", fra: "Francia",
-      ned: "Paesi Bassi", por: "Portogallo", sco: "Scozia", ksa: "Arabia Saudita", arg: "Argentina",
-      bra: "Brasile", aut: "Austria", usa: "Stati Uniti", gre: "Grecia", bel: "Belgio", tur: "Turchia",
-      den: "Danimarca", sui: "Svizzera", swe: "Svezia", nor: "Norvegia", rus: "Russia", col: "Colombia",
-      uru: "Uruguay", chi: "Cile", ecu: "Ecuador", par: "Paraguay", per: "Perù", mex: "Messico",
-      jpn: "Giappone", chn: "Cina", aus: "Australia" };
-    var INTERNAZIONALI = [["uefa", "🇪🇺 Europa · UEFA"], ["conmebol", "🌎 Sudamerica · CONMEBOL"], ["fifa", "🌍 Mondo · FIFA"]];
-    function riempiCampionati() {
-      var visti = {}, perPaese = {};
-      var base = ((window.FormazioniEspn && FormazioniEspn.competizioni) || []).concat(ESPN_IN_PIU);
-      base.forEach(function (c, n) {
-        if (!c.code || visti[c.code]) return;
-        visti[c.code] = 1;
-        var k = c.code.split(".")[0];
-        (perPaese[k] = perPaese[k] || []).push({ c: c, n: n });
-      });
-      function peso(x) {
-        var m = x.c.code.match(/\.(\d)$/);
-        return m ? +m[1] : /super|charity/.test(x.c.code) ? 30 : 20;
-      }
-      function gruppo(k, etichetta) {
-        var lista = (perPaese[k] || []).sort(function (a, b) { return peso(a) - peso(b) || a.n - b.n; });
-        if (!lista.length) return "";
-        return '<optgroup label="' + esc(etichetta) + '">' + lista.map(function (x) {
-          return '<option value="' + esc(x.c.code) + '">' + esc((x.c.band ? x.c.band + " " : "") + x.c.nome) + "</option>";
-        }).join("") + "</optgroup>";
-      }
-      var paesi = Object.keys(perPaese).filter(function (k) { return PAESE[k]; }).sort(function (a, b) {
-        return (a === "ita" ? -1 : b === "ita" ? 1 : PAESE[a].localeCompare(PAESE[b], "it"));
-      });
-      // un codice di un paese che non e' nella tabella non deve sparire: va in fondo col suo prefisso
-      var ignoti = Object.keys(perPaese).filter(function (k) {
-        return !PAESE[k] && !INTERNAZIONALI.some(function (x) { return x[0] === k; });
-      });
-      eComp.innerHTML = '<option value="">—</option>' +
-        paesi.map(function (k) { return gruppo(k, perPaese[k][0].c.band + " " + PAESE[k]); }).join("") +
-        ignoti.map(function (k) { return gruppo(k, k.toUpperCase()); }).join("") +
-        INTERNAZIONALI.map(function (x) { return gruppo(x[0], x[1]); }).join("");
-    }
-    if (window.FormazioniEspn) riempiCampionati();
+    // la tendina per paese la costruisce competizioni-espn.js (che si
+    // carica da solo, se la pagina non l'ha gia')
+    function riempiCampionati() { CompetizioniEspn.riempi(eComp); }
+    if (window.CompetizioniEspn) riempiCampionati();
     else {
       var s = document.createElement("script");
-      s.src = "formazioni-espn.js";
-      s.onload = riempiCampionati; s.onerror = riempiCampionati;
+      s.src = "competizioni-espn.js";
+      s.onload = riempiCampionati;
       document.head.appendChild(s);
     }
 

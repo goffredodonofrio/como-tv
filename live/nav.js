@@ -41,6 +41,7 @@
       ["risultati.html",             "Risultati"],
       ["classifiche-campionati.html","Classifiche"],
       ["marcatori.html",             "Marcatori"],
+      ["marcatori-giovani.html",     "Marcatori più giovani"],
       ["tiri.html",                  "Mappa dei tiri"],
       ["passaggi.html",              "Mappa dei passaggi"],
       ["heatmap.html",               "Heatmap"],

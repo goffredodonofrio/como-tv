@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marcatori più giovani · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-SemiBold.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;overflow:hidden;
+    transform-origin:center center;
+    font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);
+  }
+
+  /* la testata di casa, come Marcatori e Precedenti */
+  #eyebrow{position:absolute;left:128px;top:82px;
+    font-family:'DM Sans',sans-serif;font-weight:600;font-size:22px;letter-spacing:.24em;
+    color:#C9A24B;text-transform:uppercase;white-space:nowrap;opacity:0;}
+  #title{position:absolute;left:125px;top:104px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:76px;letter-spacing:.01em;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;
+    clip-path:inset(0 100% 0 0);}
+  #rule{position:absolute;left:128px;top:212px;width:300px;height:3px;
+    background:linear-gradient(90deg,#C9A24B 0%,rgba(201,162,75,.15) 100%);
+    transform:scaleX(0);transform-origin:left center;}
+  /* il logo della competizione, in alto a destra */
+  #logoComp{position:absolute;right:128px;top:78px;width:128px;height:128px;object-fit:contain;
+    opacity:0;filter:drop-shadow(0 8px 22px rgba(0,0,0,.45));}
+
+  /* ── a sinistra: la foto grande che cambia ──────────────────────────
+     Le foto premium sono busti scontornati, quadrati, con lo sfondo
+     trasparente: si appoggiano sul fondo della grafica. Dietro, lo stemma
+     del club in grande e sbiadito, e il numero della posizione. */
+  #palco{position:absolute;left:60px;top:250px;width:800px;height:830px;opacity:0;}
+  #palco .quinta{position:absolute;inset:0;}
+  #palco .stemmaFondo{position:absolute;left:170px;top:40px;width:520px;height:520px;object-fit:contain;
+    opacity:.10;filter:grayscale(.2);}
+  #palco .numero{position:absolute;left:36px;top:6px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:250px;line-height:1;
+    color:transparent;-webkit-text-stroke:3px rgba(201,162,75,.55);font-variant-numeric:tabular-nums;}
+  #palco .foto{position:absolute;left:50px;bottom:0;width:760px;height:760px;object-fit:contain;
+    object-position:center bottom;transform-origin:50% 100%;
+    filter:drop-shadow(0 30px 40px rgba(0,0,0,.45));}
+  /* senza foto: lo stemma pieno al posto del busto, mai un buco */
+  #palco .senza{position:absolute;left:220px;top:210px;width:420px;height:420px;object-fit:contain;
+    filter:drop-shadow(0 20px 40px rgba(0,0,0,.5));}
+  /* sotto la foto, a terra, un'ombra morbida che la tiene appoggiata */
+  #palco .terra{position:absolute;left:120px;right:40px;bottom:-40px;height:120px;
+    background:radial-gradient(50% 50% at 50% 50%, rgba(0,0,0,.55), transparent 70%);}
+
+  /* ── a destra: la lista dei cinque ── */
+  .riga{position:absolute;left:900px;width:892px;height:132px;border-radius:10px;opacity:0;
+    transition:background-color .45s ease, box-shadow .45s ease;}
+  .riga .dentro{position:absolute;inset:0;transition:opacity .45s ease;}
+  .riga.spenta .dentro{opacity:.5;}
+  .riga.accesa{background:rgba(201,162,75,.11);box-shadow:inset 6px 0 0 #C9A24B;}
+  .riga .pos{position:absolute;left:26px;top:34px;width:56px;text-align:center;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:54px;line-height:1;color:#C9A24B;
+    font-variant-numeric:tabular-nums;}
+  .riga .stemma{position:absolute;left:104px;top:31px;width:70px;height:70px;object-fit:contain;
+    filter:drop-shadow(0 6px 14px rgba(0,0,0,.45));}
+  .riga .tondo{position:absolute;left:106px;top:33px;width:66px;height:66px;border-radius:50%;background:#243F8A;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:24px;color:#FFF;
+    box-shadow:inset 0 0 0 3px rgba(245,241,230,.7);}
+  .riga .nome{position:absolute;left:200px;top:24px;width:370px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:40px;letter-spacing:.01em;line-height:1.1;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;}
+  .riga .sq{position:absolute;left:201px;top:78px;max-width:370px;overflow:hidden;text-overflow:ellipsis;
+    font-family:'DM Sans',sans-serif;font-weight:600;font-size:19px;letter-spacing:.14em;
+    color:rgba(245,241,230,.55);text-transform:uppercase;white-space:nowrap;}
+  /* l'eta' e' il criterio della classifica: sta in grande, in oro */
+  .riga .eta{position:absolute;right:170px;top:20px;width:130px;text-align:center;}
+  .riga .eta b{display:block;font-family:'Mazzard',sans-serif;font-weight:800;font-size:58px;line-height:1;
+    color:#F5F1E6;font-variant-numeric:tabular-nums;}
+  .riga .eta span{display:block;margin-top:6px;font-family:'DM Sans',sans-serif;font-weight:600;font-size:14px;
+    letter-spacing:.2em;color:rgba(245,241,230,.5);text-transform:uppercase;white-space:nowrap;}
+  .riga .gol{position:absolute;right:28px;top:36px;width:118px;height:60px;border-radius:30px;
+    border:2px solid rgba(201,162,75,.6);display:flex;align-items:center;justify-content:center;gap:8px;}
+  .riga .gol b{font-family:'Mazzard',sans-serif;font-weight:800;font-size:32px;color:#C9A24B;font-variant-numeric:tabular-nums;}
+  .riga .gol span{font-family:'DM Sans',sans-serif;font-weight:600;font-size:14px;letter-spacing:.16em;color:rgba(245,241,230,.7);}
+
+  #fonte{position:absolute;right:128px;bottom:34px;font-size:15px;letter-spacing:.2em;
+    color:rgba(245,241,230,.38);text-transform:uppercase;opacity:0;}
+
+  @keyframes wipeIn { to { clip-path:inset(0 0 0 0); } }
+  @keyframes fadeIn { to { opacity:1; } }
+  @keyframes ruleIn { to { transform:scaleX(1); } }
+  @keyframes rigaIn {
+    0%   { opacity:0; transform:translateX(40px); }
+    100% { opacity:1; transform:translateX(0); }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="eyebrow"></div>
+  <div id="title"></div>
+  <div id="rule"></div>
+  <img id="logoComp" alt="" style="display:none">
+  <div id="palco"></div>
+  <div id="lista"></div>
+  <div id="fonte"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // Dati: ?d=<base64url>
+  //   { e:"SERIE A 2026-27", t:"I MARCATORI PIÙ GIOVANI", c:"…logo competizione…" (facoltativo),
+  //     fo:"fonte …" (facoltativa),
+  //     g:[ {n:"Simone Lontani", sq:"Parma", l:"…stemma…", f:"…foto premium…",
+  //          a:"18", nd:"18 gen 2008", gol:"1"} ] }      da 1 a 5 giocatori
+  //   Il piu' giovane in cima. La foto grande a sinistra passa da un giocatore
+  //   all'altro, e la riga di chi e' in foto si accende; finito il giro
+  //   ricomincia dal primo, finche' la grafica e' in onda.
+
+  var DEMO = {
+    e: "SERIE A · 2026-27", t: "I marcatori più giovani",
+    g: [
+      { n: "Simone Lontani",      sq: "Parma",      l: "https://a.espncdn.com/i/teamlogos/soccer/500/115.png", a: "18", nd: "18 gen 2008", gol: "1" },
+      { n: "Franco Mastantuono",  sq: "Fiorentina", l: "https://a.espncdn.com/i/teamlogos/soccer/500/109.png", a: "19", nd: "14 ago 2007", gol: "3" },
+      { n: "Rodrigo Mora",        sq: "Roma",       l: "https://a.espncdn.com/i/teamlogos/soccer/500/104.png", a: "19", nd: "5 mag 2007", gol: "1" },
+      { n: "Jay Robinson",        sq: "Monza",      l: "https://a.espncdn.com/i/teamlogos/soccer/500/4007.png", a: "19", nd: "15 mar 2007", gol: "1" },
+      { n: "Paul Mendy",          sq: "Cagliari",   l: "https://a.espncdn.com/i/teamlogos/soccer/500/2925.png", a: "19", nd: "1 gen 2007", gol: "1" }
+    ]
+  };
+
+  function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return DEMO;
+    try {
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return d && d.g && d.g.length ? d : null;
+    } catch (err) { return null; }
+  }
+  var STILL = new URLSearchParams(location.search).get("still") === "1";
+  var D = decodeData();
+  if (!D) {
+    document.title = "MARCATORI PIÙ GIOVANI — dati non validi";
+    document.getElementById("stage").style.display = "none";
+    return;
+  }
+  var G = D.g.slice(0, 5);
+  document.title = "MARCATORI PIÙ GIOVANI " + (D.e || "");
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    document.getElementById("stage").style.transform = "translate(-50%,-50%) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+
+  // ── testata ──
+  var eb = document.getElementById("eyebrow"), tt = document.getElementById("title"),
+      rl = document.getElementById("rule"), lc = document.getElementById("logoComp"),
+      fo = document.getElementById("fonte");
+  eb.textContent = D.e || "";
+  tt.textContent = D.t || "I marcatori più giovani";
+  fo.textContent = D.fo || "";
+  if (D.c) { lc.src = D.c; lc.style.display = ""; lc.onerror = function () { lc.style.display = "none"; }; }
+  // un titolo lungo non deve entrare sotto il logo della competizione
+  (function () {
+    var max = (D.c ? 1920 - 128 - 128 - 40 : 1920 - 128) - 125, fs = 76;
+    while (tt.scrollWidth > max && fs > 44) { fs -= 2; tt.style.fontSize = fs + "px"; }
+  })();
+  if (STILL) {
+    eb.style.opacity = 1; tt.style.clipPath = "inset(0 0 0 0)"; rl.style.transform = "scaleX(1)";
+    lc.style.opacity = 1; fo.style.opacity = 1;
+  } else {
+    eb.style.animation = "fadeIn .5s ease .15s forwards";
+    tt.style.animation = "wipeIn .7s cubic-bezier(.2,.7,.3,1) .3s forwards";
+    rl.style.animation = "ruleIn .55s cubic-bezier(.2,.7,.3,1) .85s forwards";
+    lc.style.animation = "fadeIn .6s ease .5s forwards";
+    fo.style.animation = "fadeIn .5s ease 1.6s forwards";
+  }
+
+  // ── la lista ──
+  var Y0 = 282, PASSO = 148;
+  var righe = G.map(function (x, i) {
+    var r = document.createElement("div");
+    r.className = "riga";
+    r.style.top = (Y0 + i * PASSO) + "px";
+    var stemma = x.l
+      ? '<img class="stemma" src="' + esc(x.l) + '" onerror="this.style.display=\'none\'">'
+      : '<div class="tondo">' + esc(String(x.sq || "").slice(0, 2).toUpperCase()) + "</div>";
+    r.innerHTML = '<div class="dentro">' +
+      '<div class="pos">' + (i + 1) + "</div>" + stemma +
+      '<div class="nome">' + esc(x.n || "") + "</div>" +
+      '<div class="sq">' + esc(x.sq || "") + (x.nd ? " · " + esc(x.nd) : "") + "</div>" +
+      (x.a !== undefined && x.a !== "" ? '<div class="eta"><b>' + esc(x.a) + "</b><span>anni</span></div>" : "") +
+      (x.gol !== undefined && x.gol !== "" ? '<div class="gol"><b>' + esc(x.gol) + "</b><span>" + "GOL" + "</span></div>" : "") +
+      "</div>";
+    document.getElementById("lista").appendChild(r);
+    // il nome si stringe invece di uscire dalla riga
+    var nm = r.querySelector(".nome"), fs = 40;
+    while (nm.scrollWidth > 370 && fs > 24) { fs -= 1; nm.style.fontSize = fs + "px"; nm.style.top = (24 + (40 - fs) * 0.5) + "px"; }
+    var sq = r.querySelector(".sq"), fq = 19, ls = 0.14;
+    while (sq.scrollWidth > 370 && fq > 14) { fq -= 1; ls = Math.max(0.04, ls - 0.02); sq.style.fontSize = fq + "px"; sq.style.letterSpacing = ls + "em"; }
+    if (STILL) r.style.opacity = 1;
+    else r.style.animation = "rigaIn .5s cubic-bezier(.2,.7,.3,1) " + (1.0 + i * 0.12).toFixed(2) + "s forwards";
+    return r;
+  });
+
+  // ── il palco: una scena per giocatore, una sola visibile alla volta ──
+  var palco = document.getElementById("palco");
+  var scene = G.map(function (x, i) {
+    var s = document.createElement("div");
+    s.className = "quinta";
+    s.style.opacity = 0;
+    s.innerHTML =
+      '<div class="numero">' + (i + 1) + "</div>" +
+      // lo stemma sbiadito dietro solo se davanti c'e' la foto: senza foto
+      // lo stemma e' gia' in grande, e due volte e' troppo
+      (x.l && x.f ? '<img class="stemmaFondo" src="' + esc(x.l) + '" onerror="this.style.display=\'none\'">' : "") +
+      '<div class="terra"></div>' +
+      (x.f ? '<img class="foto" src="' + esc(x.f) + '">'
+           : (x.l ? '<img class="senza" src="' + esc(x.l) + '">' : ""));
+    // se la foto non carica, al suo posto lo stemma pieno
+    var im = s.querySelector(".foto");
+    if (im) im.onerror = function () {
+      im.remove();
+      var sf = s.querySelector(".stemmaFondo"); if (sf) sf.remove();
+      if (x.l) { var z = document.createElement("img"); z.className = "senza"; z.src = x.l; s.appendChild(z); }
+    };
+    palco.appendChild(s);
+    return s;
+  });
+
+  function accendi(k) {
+    righe.forEach(function (r, i) {
+      r.classList.toggle("accesa", i === k);
+      r.classList.toggle("spenta", i !== k);
+    });
+  }
+
+  if (STILL) {
+    palco.style.opacity = 1;
+    scene[0].style.opacity = 1;
+    accendi(0);
+    return;
+  }
+
+  // Il giro: ogni giocatore resta in foto TENUTA secondi. Entra da destra
+  // scivolando e salendo appena, mentre sta in foto si avvicina piano (lo
+  // zoom lento delle foto in tv), poi sfuma e lascia il posto al prossimo.
+  var INIZIO = 1.7, ENTRA = 0.7, TENUTA = 3.2, ESCE = 0.45;
+  palco.style.animation = "fadeIn .4s ease " + (INIZIO - 0.2) + "s forwards";
+  function mostra(k) {
+    var s = scene[k];
+    accendi(k);
+    s.style.opacity = 1;
+    var foto = s.querySelector(".foto, .senza"), num = s.querySelector(".numero"), fondo = s.querySelector(".stemmaFondo");
+    if (foto) {
+      foto.animate([{ opacity: 0, transform: "translate(70px,24px) scale(1.02)" },
+                    { opacity: 1, transform: "translate(0,0) scale(1)" }],
+                   { duration: ENTRA * 1000, easing: "cubic-bezier(.2,.7,.3,1)", fill: "both" });
+      foto.animate([{ transform: "scale(1)" }, { transform: "scale(1.045)" }],
+                   { duration: TENUTA * 1000, delay: ENTRA * 1000, easing: "linear", fill: "forwards", composite: "add" });
+    }
+    if (num) num.animate([{ opacity: 0, transform: "translateX(-40px)" }, { opacity: 1, transform: "translateX(0)" }],
+                         { duration: 600, delay: 120, easing: "cubic-bezier(.2,.7,.3,1)", fill: "both" });
+    if (fondo) fondo.animate([{ opacity: 0, transform: "scale(.92)" }, { opacity: .1, transform: "scale(1)" }],
+                             { duration: 900, easing: "ease-out", fill: "both" });
+    if (G.length === 1) return;          // uno solo: resta li'
+    setTimeout(function () {
+      s.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ESCE * 1000, easing: "ease-in", fill: "forwards" })
+        .onfinish = function () {
+          s.getAnimations().forEach(function (a) { a.cancel(); });
+          s.querySelectorAll("*").forEach(function (e) { e.getAnimations().forEach(function (a) { a.cancel(); }); });
+          s.style.opacity = 0;
+        };
+      setTimeout(function () { mostra((k + 1) % G.length); }, ESCE * 1000 * 0.6);
+    }, (ENTRA + TENUTA) * 1000);
+  }
+  setTimeout(function () { mostra(0); }, INIZIO * 1000);
+
+  function replay() { location.reload(); }
+  document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
+  document.addEventListener("dblclick", replay);
+})();
+</script>
+<script src="sfondo.js"></script>
+</body>
+</html>
