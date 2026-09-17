@@ -11,9 +11,13 @@
  *  Sono pensati come un quiz televisivo vero: lo studio con i raggi di
  *  luce, i fari e il pavimento a griglia; le caselle a esagono allungato
  *  col bollino della lettera; le risposte che si girano con un lampo, la
- *  giusta che si accende d'oro, le lampade degli errori. I colori restano
- *  quelli Como TV — navy, oro, avorio, il rosso per gli errori — e del
- *  format resta l'asterisco di GOLEADA.
+ *  giusta che si accende d'oro, le lampade degli errori. Il FONDO e' il
+ *  verde del format — il tavolo feltrato del ledwall di GOLEADA — mentre
+ *  caratteri e colori restano quelli Como TV: Mazzard, oro, avorio, il rosso
+ *  per gli errori e il navy per le scritte sulle placche d'oro. Del format
+ *  resta anche l'asterisco.
+ *  Regola per chi tocca questo file: il verde fa da fondo (studio, pannelli,
+ *  veli), mai da testo o da accento; gli accenti restano oro.
  *
  *  Tutte le grafiche hanno lo studio dietro; con {trasp:1} nei dati escono
  *  senza, da mettere sopra lo studio vero.
@@ -33,7 +37,11 @@ window.GOL = (function () {
   // i token del design system Como TV Live
   var C = { navy: "#0A0F24", navy85: "#0E1430", navy8: "#141B3C", navy7: "#20284E",
             oro: "#C9A24B", oroChiaro: "#E3C271", oroScuro: "#A67C2E", oroLuce: "#F1DE9E",
-            rosso: "#E51B20", avorio: "#F5F1E6", avorioSpento: "#D8D2C2", grigio: "#8A8B96", blu: "#2B568A" };
+            rosso: "#E51B20", avorio: "#F5F1E6", avorioSpento: "#D8D2C2", grigio: "#8A8B96", blu: "#2B568A",
+            // il verde del format, preso a campione dal ledwall di GOLEADA:
+            // centro chiaro #077949, fascia #055432, bande scure #042F1B
+            verdeLuce: "#0E9A5C", verde: "#077949", verdeMedio: "#055432",
+            verdeScuro: "#042F1B", verdeNotte: "#021A0F" };
 
   function dati(demo, valido) {
     var q = Q.get("d");
@@ -70,7 +78,11 @@ window.GOL = (function () {
       ":root{color-scheme:dark;}" +
       "html,body{width:100%;height:100%;overflow:hidden;background:transparent;}" +
       "#stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;overflow:hidden;transform-origin:center center;}" +
-      "#stage.studio{background:radial-gradient(70% 60% at 50% 38%,#1C2A66 0%,#111A45 38%,#090E27 72%,#05081A 100%);}" +
+      "#stage.studio{background:radial-gradient(70% 60% at 50% 38%,#0E9A5C 0%,#077949 30%,#055432 62%,#042416 100%);}" +
+      // la grana del feltro sopra il verde, come nei video: la trama si prende
+      // dal feltro dei Talent Hunters, in bianco e nero e fusa col fondo
+      ".gol-feltro{position:absolute;left:0;top:0;width:1920px;height:1080px;pointer-events:none;" +
+      "opacity:.22;mix-blend-mode:soft-light;filter:grayscale(1) contrast(1.6);}" +
       "#tela,.gol-studio{position:absolute;left:0;top:0;overflow:visible;}" +
       ".gol-raggi{transform-box:view-box;transform-origin:960px 430px;animation:golGira 120s linear infinite;}" +
       ".gol-faro{transform-box:view-box;animation:golFaro 9s ease-in-out infinite alternate;}" +
@@ -91,9 +103,9 @@ window.GOL = (function () {
       stops.forEach(function (x) { el("stop", { offset: x[0], "stop-color": x[1], "stop-opacity": x[2] == null ? 1 : x[2] }, g); });
       return g;
     }
-    grad("golPannello", [["0", "#25306A"], [".48", "#141C48"], [".52", "#0F1638"], ["1", "#0A0F2A"]]);
+    grad("golPannello", [["0", "#0E8A52"], [".48", "#07683D"], [".52", "#055A34"], ["1", "#043F25"]]);
     grad("golOro", [["0", "#FFF1C2"], [".35", "#F1D48A"], [".5", "#E3C271"], [".52", "#D2AE58"], ["1", "#A67C2E"]]);
-    grad("golSpento", [["0", "#161C3C"], ["1", "#0B1029"]]);
+    grad("golSpento", [["0", "#06462A"], ["1", "#032615"]]);
     grad("golFilo", [["0", C.oro, 0], [".5", C.oroChiaro, 1], ["1", C.oro, 0]], { x2: 1, y2: 0 });
     grad("golBordo", [["0", "#FFF1C2"], [".5", "#C9A24B"], ["1", "#7A5A1E"]]);
     var rg = el("radialGradient", { id: "golLampo" }, defs);
@@ -115,6 +127,10 @@ window.GOL = (function () {
     stage.className = "studio";
     var s = el("svg", { "class": "gol-studio", width: 1920, height: 1080, viewBox: "0 0 1920 1080" });
     stage.insertBefore(s, stage.firstChild);
+    var feltro = document.createElement("img");
+    feltro.className = "gol-feltro"; feltro.alt = "";
+    feltro.src = "goleada/feltro.jpg";
+    stage.insertBefore(feltro, s);
     var defs = el("defs", {}, s);
     var sf = el("radialGradient", { id: "golSfumaRaggi", cx: 960, cy: 430, r: 1100, gradientUnits: "userSpaceOnUse" }, defs);
     el("stop", { offset: "0", "stop-color": "#fff", "stop-opacity": 1 }, sf);
@@ -122,8 +138,8 @@ window.GOL = (function () {
     var m = el("mask", { id: "golMascheraRaggi" }, defs);
     el("rect", { x: 0, y: 0, width: 1920, height: 1080, fill: "url(#golSfumaRaggi)" }, m);
     var cono = el("linearGradient", { id: "golCono", x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
-    el("stop", { offset: "0", "stop-color": "#BFD4FF", "stop-opacity": 0.2 }, cono);
-    el("stop", { offset: "1", "stop-color": "#BFD4FF", "stop-opacity": 0 }, cono);
+    el("stop", { offset: "0", "stop-color": "#DDF7E6", "stop-opacity": 0.2 }, cono);
+    el("stop", { offset: "1", "stop-color": "#DDF7E6", "stop-opacity": 0 }, cono);
     var pav = el("linearGradient", { id: "golPavimento", x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
     el("stop", { offset: "0", "stop-color": C.oro, "stop-opacity": 0.32 }, pav);
     el("stop", { offset: "1", "stop-color": C.oro, "stop-opacity": 0.03 }, pav);
@@ -133,7 +149,7 @@ window.GOL = (function () {
     var filo = el("linearGradient", { id: "golFiloStudio", x1: 0, y1: 0, x2: 1, y2: 0 }, defs);
     [["0", 0], [".5", 0.9], ["1", 0]].forEach(function (x) { el("stop", { offset: x[0], "stop-color": C.oroChiaro, "stop-opacity": x[1] }, filo); });
 
-    // i raggi: 28 spicchi, uno d'oro e uno di blu
+    // i raggi: 28 spicchi, uno d'oro e uno di verde chiaro
     var raggiM = el("g", { mask: "url(#golMascheraRaggi)" }, s);
     var raggi = el("g", { "class": "gol-raggi" }, raggiM);
     var n = 28, R = 1500;
@@ -141,7 +157,7 @@ window.GOL = (function () {
       var a0 = (i / n) * Math.PI * 2, a1 = ((i + 0.5) / n) * Math.PI * 2;
       el("path", { d: "M960 430L" + (960 + Math.cos(a0) * R).toFixed(0) + " " + (430 + Math.sin(a0) * R).toFixed(0) +
                       "L" + (960 + Math.cos(a1) * R).toFixed(0) + " " + (430 + Math.sin(a1) * R).toFixed(0) + "Z",
-                   fill: i % 2 ? "#3D6BD1" : C.oroChiaro, "fill-opacity": i % 2 ? 0.08 : 0.065 }, raggi);
+                   fill: i % 2 ? "#9BE3B5" : C.oroChiaro, "fill-opacity": i % 2 ? 0.06 : 0.065 }, raggi);
     }
     asterisco(s, 960, 430, 330, C.oro, 0.045, 60);
 
@@ -153,7 +169,7 @@ window.GOL = (function () {
 
     // il pavimento: righe verso il centro e linee orizzontali che si stringono
     var pavimento = el("g", {}, s);
-    el("rect", { x: 0, y: 760, width: 1920, height: 320, fill: "#03050F", "fill-opacity": 0.45 }, pavimento);
+    el("rect", { x: 0, y: 760, width: 1920, height: 320, fill: C.verdeNotte, "fill-opacity": 0.45 }, pavimento);
     var d = "";
     for (var k = -14; k <= 14; k++) d += "M" + (960 + k * 40) + " 760L" + (960 + k * 260) + " 1080";
     var y = 760, passo = 10;
@@ -255,7 +271,7 @@ window.GOL = (function () {
   function bollino(padre, cx, cy, r, str, o) {
     o = o || {};
     var g = el("g", {}, padre);
-    el("circle", { cx: cx, cy: cy, r: r + 5, fill: C.navy, "fill-opacity": 0.7 }, g);
+    el("circle", { cx: cx, cy: cy, r: r + 5, fill: C.verdeNotte, "fill-opacity": 0.7 }, g);
     el("circle", { cx: cx, cy: cy, r: r, fill: o.spento ? "url(#golSpento)" : "url(#golOro)", stroke: o.spento ? C.oro : "#FFF6D8",
                    "stroke-width": 2.5, "stroke-opacity": o.spento ? 0.55 : 1 }, g);
     testo(g, cx, cy + r * 0.36, str, { anchor: "middle", size: r * (String(str).length > 1 ? 0.88 : 1.05), fill: o.spento ? C.oroChiaro : C.navy });
