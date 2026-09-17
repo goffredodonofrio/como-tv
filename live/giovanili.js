@@ -20,7 +20,9 @@ window.GIOVANILI = (function () {
   var COMPS = [
     // Rosa Como Primavera 26/27 copiata da Transfermarkt il 29/08/2026.
     { nome: "Primavera 1", code: "giovanili.primavera1", squadre: [
-      { id: "como-primavera", n: "Como Primavera", tid: "2572", rosa: [
+      // Allenatore 26/27: Gianluca Falsini (ex Roma Primavera, ufficiale estate 2026).
+      { id: "como-primavera", n: "Como Primavera", tid: "2572",
+        allenatore: { nome: "Gianluca", cognome: "Falsini" }, rosa: [
         { num: "33", nome: "Nicol\u00f2",  cognome: "Bensi",            ruolo: "G" },
         { num: "1",  nome: "Mattia",       cognome: "Damioli",          ruolo: "G" },
         { num: "24", nome: "Lorenzo Luigi", cognome: "Ginelli",          ruolo: "G" },
@@ -146,7 +148,8 @@ window.GIOVANILI = (function () {
       // Rosa dal \"Gruppo squadra U18 ss 26-27\" ufficiale (30/08/2026):
       // 26 giocatori, numeri definitivi. Esterni (ED/ES) come centrocampisti.
       // Allenatore: Giovanni Fietta (staff: vice Le Noci).
-      { id: "como-u18", n: "Como Under 18", tid: "2572", rosa: [
+      { id: "como-u18", n: "Como Under 18", tid: "2572",
+        allenatore: { nome: "Giovanni", cognome: "Fietta" }, rosa: [
         { num: "1",  nome: "Lorenzo Luigi",  cognome: "Ginelli",            ruolo: "G" },
         { num: "23", nome: "Lorenzo",        cognome: "Femia",              ruolo: "G" },
         { num: "33", nome: "Nicol\u00f2",    cognome: "Bensi",              ruolo: "G" },
