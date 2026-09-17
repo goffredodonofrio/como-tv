@@ -418,16 +418,39 @@
   // DataMB di torta e radar: quelle restano a mano. La heatmap si compone
   // dalle giocate ESPN con un tasto a parte, nella sua pagina (piu' sotto).
   // Tutto resta correggibile: e' un punto di partenza, non un vincolo.
-  // I campionati sono quelli delle formazioni (formazioni-espn.js, un'unica
-  // lista) piu' quelli che servono allo scouting e li' non stanno.
+  // Le competizioni sono quelle delle formazioni (formazioni-espn.js, un'unica
+  // lista: campionati, coppe, coppe europee) piu' quelle che servono allo
+  // scouting e li' non stanno. Tutte con la bandierina, divise in tre gruppi.
   var ESPN_API = "https://site.api.espn.com/apis/site/v2/sports/soccer/";
   var ESPN_IN_PIU = [
-    ["gre.1", "Grecia · Super League"], ["bel.1", "Belgio · Pro League"], ["tur.1", "Turchia · Süper Lig"],
-    ["den.1", "Danimarca · Superliga"], ["sui.1", "Svizzera · Super League"], ["col.1", "Colombia · Primera A"],
-    ["uru.1", "Uruguay · Primera División"], ["chi.1", "Cile · Primera División"], ["mex.1", "Messico · Liga MX"],
-    ["ecu.1", "Ecuador · LigaPro"], ["par.1", "Paraguay · Primera División"], ["per.1", "Perù · Liga 1"],
-    ["jpn.1", "Giappone · J.League"], ["swe.1", "Svezia · Allsvenskan"], ["nor.1", "Norvegia · Eliteserien"],
-    ["rus.1", "Russia · Premier League"]
+    { band: "🇪🇸", nome: "LaLiga 2", code: "esp.2" },
+    { band: "🇪🇸", nome: "Supercopa de España", code: "esp.super_cup" },
+    { band: "🇩🇪", nome: "Supercoppa di Germania", code: "ger.super_cup" },
+    { band: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", nome: "Community Shield", code: "eng.charity" },
+    { band: "🇫🇷", nome: "Trophée des Champions", code: "fra.super_cup" },
+    { band: "🇳🇱", nome: "KNVB Beker", code: "ned.cup" },
+    { band: "🏴󠁧󠁢󠁳󠁣󠁴󠁿", nome: "Scottish Cup", code: "sco.tennents" },
+    { band: "🇬🇷", nome: "Super League Grecia", code: "gre.1" },
+    { band: "🇧🇪", nome: "Pro League Belgio", code: "bel.1" },
+    { band: "🇹🇷", nome: "Süper Lig", code: "tur.1" },
+    { band: "🇩🇰", nome: "Superliga Danimarca", code: "den.1" },
+    { band: "🇨🇭", nome: "Super League Svizzera", code: "sui.1" },
+    { band: "🇸🇪", nome: "Allsvenskan", code: "swe.1" },
+    { band: "🇳🇴", nome: "Eliteserien", code: "nor.1" },
+    { band: "🇷🇺", nome: "Premier League Russia", code: "rus.1" },
+    { band: "🇧🇷", nome: "Copa do Brasil", code: "bra.copa_do_brazil" },
+    { band: "🇨🇴", nome: "Primera A Colombia", code: "col.1" },
+    { band: "🇺🇾", nome: "Primera División Uruguay", code: "uru.1" },
+    { band: "🇨🇱", nome: "Primera División Cile", code: "chi.1" },
+    { band: "🇪🇨", nome: "LigaPro Ecuador", code: "ecu.1" },
+    { band: "🇵🇾", nome: "Primera División Paraguay", code: "par.1" },
+    { band: "🇵🇪", nome: "Liga 1 Perù", code: "per.1" },
+    { band: "🇲🇽", nome: "Liga MX", code: "mex.1" },
+    { band: "🇺🇸", nome: "US Open Cup", code: "usa.open" },
+    { band: "🇯🇵", nome: "J.League", code: "jpn.1" },
+    { band: "🇨🇳", nome: "Super League Cina", code: "chn.1" },
+    { band: "🇦🇺", nome: "A-League", code: "aus.1" },
+    { band: "🌍", nome: "Mondiale per club", code: "fifa.cwc" }
   ];
   var PAESI = { "Argentina": "Argentina", "Brazil": "Brasile", "Uruguay": "Uruguay", "Colombia": "Colombia",
     "Chile": "Cile", "Paraguay": "Paraguay", "Peru": "Perù", "Ecuador": "Ecuador", "Venezuela": "Venezuela",
@@ -459,7 +482,7 @@
     var box = document.createElement("div");
     box.className = "riga";
     box.innerHTML =
-      '<div style="flex:1 1 200px"><label for="eComp">Oppure da ESPN · campionato</label><select id="eComp"><option value="">—</option></select></div>' +
+      '<div style="flex:1 1 200px"><label for="eComp">Oppure da ESPN · competizione</label><select id="eComp"><option value="">—</option></select></div>' +
       '<div style="flex:1 1 200px"><label for="eSq">Squadra</label><select id="eSq" disabled><option value="">—</option></select></div>' +
       '<div style="flex:1.4 1 240px"><label for="eGioc">Giocatore</label><select id="eGioc" disabled><option value="">—</option></select></div>' +
       '<div style="flex:0 0 auto"><button type="button" id="ePrendi" disabled>&#11015; Prendi i dati</button></div>';
@@ -469,16 +492,25 @@
     var ROSA = [], SQUADRA = null;
 
     function riempiCampionati() {
-      var visti = {}, voci = [];
-      var base = (window.FormazioniEspn && FormazioniEspn.competizioni) || [];
+      var visti = {}, gruppi = { campionati: [], coppe: [], int: [] };
+      var base = ((window.FormazioniEspn && FormazioniEspn.competizioni) || []).concat(ESPN_IN_PIU);
       base.forEach(function (c) {
-        if (!c.rose || visti[c.rose] || /^conmebol|\.cis$/.test(c.rose)) return;
-        visti[c.rose] = 1; voci.push([c.rose, (c.band ? c.band + " " : "") + c.nome]);
+        if (!c.code || visti[c.code]) return;
+        visti[c.code] = 1;
+        // ita.1, eng.2… sono campionati; uefa/conmebol/fifa internazionali;
+        // tutto il resto coppe e supercoppe nazionali
+        var g = /^(uefa|conmebol|fifa)\./.test(c.code) ? "int" : /\.\d$/.test(c.code) ? "campionati" : "coppe";
+        gruppi[g].push(c);
       });
-      ESPN_IN_PIU.forEach(function (x) { if (!visti[x[0]]) { visti[x[0]] = 1; voci.push(x); } });
-      eComp.innerHTML = '<option value="">—</option>' + voci.map(function (x) {
-        return '<option value="' + esc(x[0]) + '">' + esc(x[1]) + "</option>";
-      }).join("");
+      function voci(lista) {
+        return lista.map(function (c) {
+          return '<option value="' + esc(c.code) + '">' + esc((c.band ? c.band + " " : "") + c.nome) + "</option>";
+        }).join("");
+      }
+      eComp.innerHTML = '<option value="">—</option>' +
+        '<optgroup label="Campionati">' + voci(gruppi.campionati) + "</optgroup>" +
+        '<optgroup label="Coppe e supercoppe nazionali">' + voci(gruppi.coppe) + "</optgroup>" +
+        '<optgroup label="Coppe internazionali">' + voci(gruppi.int) + "</optgroup>";
     }
     if (window.FormazioniEspn) riempiCampionati();
     else {
@@ -499,25 +531,68 @@
       // (stesso giro delle formazioni e del magazzino foto). Stesse squadre,
       // stessi id. I campionati a gironi hanno piu' classifiche: si uniscono
       // senza doppioni.
-      fetch("https://site.api.espn.com/apis/v2/sports/soccer/" + this.value + "/standings")
-        .then(function (r) { return r.json(); })
-        .then(function (j) {
-          var visti = {}, sq = [];
-          function raccogli(nodo) {
-            if (!nodo) return;
-            ((nodo.standings || {}).entries || []).forEach(function (e) {
-              var tm = e.team || {};
-              if (tm.id && !visti[tm.id]) { visti[tm.id] = 1; sq.push({ id: tm.id, displayName: tm.displayName || tm.name || "" }); }
+      // Le COPPE (e qualche campionato, Svizzera ed Ecuador) la classifica non
+      // ce l'hanno: allora l'elenco viene dall'API "core", che il CORS lo manda
+      // ma da' solo gli id. I nomi si cercano nelle classifiche dei campionati
+      // dello stesso paese (eng.fa -> eng.1..4), e i pochi che mancano (le
+      // squadre dilettanti della FA Cup) si chiedono uno per uno.
+      var code = this.value, questa = code;
+      var paese = code.split(".")[0];
+      function daClassifica(c) {
+        return fetch("https://site.api.espn.com/apis/v2/sports/soccer/" + c + "/standings")
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            var sq = {};
+            (function raccogli(nodo) {
+              if (!nodo) return;
+              ((nodo.standings || {}).entries || []).forEach(function (e) {
+                var tm = e.team || {};
+                if (tm.id) sq[tm.id] = tm.displayName || tm.name || "";
+              });
+              (nodo.children || []).forEach(raccogli);
+            })(j);
+            return sq;
+          })
+          .catch(function () { return {}; });
+      }
+      function daCore() {
+        return fetch("https://sports.core.api.espn.com/v2/sports/soccer/leagues/" + code + "/teams?limit=400")
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            var ids = (j.items || []).map(function (x) { return ((x.$ref || "").match(/\/teams\/(\d+)/) || [])[1]; }).filter(Boolean);
+            if (!ids.length) return {};
+            var cugini = [];
+            eComp.querySelectorAll("option").forEach(function (o) {
+              if (o.value !== code && o.value.split(".")[0] === paese && /\.\d$/.test(o.value)) cugini.push(o.value);
             });
-            (nodo.children || []).forEach(raccogli);
-          }
-          raccogli(j);
+            return Promise.all(cugini.map(daClassifica)).then(function (tutte) {
+              var nomi = Object.assign.apply(null, [{}].concat(tutte)), sq = {}, mancano = [];
+              ids.forEach(function (id) { if (nomi[id]) sq[id] = nomi[id]; else mancano.push(id); });
+              if (mancano.length) nota("Cerco i nomi di " + mancano.length + " squadre&hellip;");
+              function blocco(i) {
+                if (i >= mancano.length) return Promise.resolve(sq);
+                return Promise.all(mancano.slice(i, i + 12).map(function (id) {
+                  return fetch("https://sports.core.api.espn.com/v2/sports/soccer/leagues/" + code + "/teams/" + id)
+                    .then(function (r) { return r.json(); })
+                    .then(function (t) { sq[id] = t.displayName || t.name || ("Squadra " + id); })
+                    .catch(function () {});
+                })).then(function () { return blocco(i + 12); });
+              }
+              return blocco(0);
+            });
+          });
+      }
+      daClassifica(code)
+        .then(function (sq) { return Object.keys(sq).length ? sq : daCore(); })
+        .then(function (mappa) {
+          if (eComp.value !== questa) return;   // intanto se n'e' scelta un'altra
+          var sq = Object.keys(mappa).map(function (id) { return { id: id, displayName: mappa[id] }; });
           sq.sort(function (a, b) { return a.displayName.localeCompare(b.displayName); });
           eSq.innerHTML = '<option value="">— ' + sq.length + " squadre —</option>" + sq.map(function (x) {
             return '<option value="' + esc(x.id) + '">' + esc(x.displayName) + "</option>";
           }).join("");
           eSq.disabled = !sq.length;
-          nota(sq.length ? "Scegli la squadra." : "ESPN non ha squadre per questo campionato.", sq.length ? "" : "err");
+          nota(sq.length ? "Scegli la squadra." : "ESPN non ha squadre per questa competizione.", sq.length ? "" : "err");
         })
         .catch(function () { nota("ESPN non risponde.", "err"); });
     });
