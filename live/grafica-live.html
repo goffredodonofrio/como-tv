@@ -71,6 +71,8 @@
 <iframe class="mt" id="mcambio" src="about:blank" allowtransparency="true"></iframe>
 <iframe class="mt" id="mcart" src="about:blank" allowtransparency="true"></iframe>
 
+<!-- da che punto dell'animazione parte una grafica: lo stesso file della regia -->
+<script src="avvio.js"></script>
 <script>
 (function () {
   "use strict";
@@ -196,6 +198,14 @@
       return;
     }
     var mio = ++st.gen;
+    // Da che punto dell'animazione parte: lo sceglie la regia col cursore
+    // sotto l'Anteprima e sta nei dati della voce come "_da". Al motore non
+    // arriva — non e' un suo dato — lo applica questa pagina dopo il primo
+    // disegno, prima di mostrarla (vedi avvio.js). I video hanno il loro "da"
+    // senza trattino, che invece resta nei dati: e' media-vmix a leggerlo.
+    var dati = Object.assign({}, j.dati || {});
+    var daAvvio = parseFloat(dati._da) || 0;
+    delete dati._da;
     back.classList.add("muto");
     back.classList.remove("on");
     back.style.zIndex = 2;      // il nuovo entra sopra il vecchio
@@ -205,6 +215,9 @@
       if (back.src.indexOf("about:blank") >= 0) return;
       alPrimoDisegno(back, function () {
         if (mio !== st.gen) return;
+        if (daAvvio && window.AvvioGrafica) {
+          try { AvvioGrafica.parti(back.contentDocument, daAvvio, back.contentWindow); } catch (e) {}
+        }
         back.classList.remove("muto");
         void back.offsetWidth;   // senza il ricalcolo la dissolvenza non parte
         back.classList.add("on");
@@ -216,7 +229,7 @@
         }, DISS + 150);
       });
     };
-    back.src = eng + "?d=" + b64url(j.dati || {}) + "&n=" + j.playNonce;
+    back.src = eng + "?d=" + b64url(dati) + "&n=" + j.playNonce;
   }
 
   function fadeOut(n) {

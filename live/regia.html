@@ -434,6 +434,8 @@
 </style>
 <script src="videolink.js"></script>
 <script src="chiave.js"></script>
+<!-- da che punto dell'animazione parte una grafica: lo stesso file del playout -->
+<script src="avvio.js"></script>
 </head>
 <body>
 
@@ -972,6 +974,8 @@
   function cueChiudi() {
     document.getElementById("cue").style.display = "none";
     CUE = { id: null, da: 0, dur: 0 };
+    pvw.style.opacity = "";
+    if (cueGiro) { cancelAnimationFrame(cueGiro); cueGiro = 0; }
     var v = document.getElementById("pvwvid");
     v.style.display = "none";
     pvw.style.display = "";                       // torna il telaio delle grafiche
@@ -1002,8 +1006,100 @@
     }, { once: true });
     v.addEventListener("error", cueChiudi, { once: true });
   }
+  // ── lo stesso cursore, sulle grafiche ──────────────────────────────
+  // Una grafica non e' una clip: dura un paio di secondi e il suo "tempo" e'
+  // l'ingresso. Si scorre per vederla comporsi fotogramma per fotogramma, si
+  // lascia il segno, e in onda parte da li' — dall'inizio, a meta', o gia'
+  // composta. Il punto sta nei dati della voce come "_da" e lo applica il
+  // playout (avvio.js). I motori non si toccano: le animazioni CSS il browser
+  // le lascia fermare e spostare da fuori.
+  // Quello che si GUARDA (il cursore) e il punto da cui PARTE (il segno d'oro)
+  // restano due cose diverse, come per le clip.
+  var cueGiro = 0;
+  function cueSec(t) { return (Math.round((t || 0) * 10) / 10).toFixed(1).replace(".", ",") + " s"; }
+  function cueTempo(t) {
+    return CUE.grafica ? cueSec(t) + " / " + cueSec(CUE.dur) : cueMmss(t) + " / " + cueMmss(CUE.dur);
+  }
+  function pvwDoc() { try { return pvw.contentDocument; } catch (e) { return null; } }
+  function cueGraficaApri(id, tipo, dati) {
+    cueChiudi();
+    if (!window.AvvioGrafica) return false;
+    CUE = { id: id, da: parseFloat(dati && dati._da) || 0, dur: 0, grafica: true };
+    var pulito = Object.assign({}, dati || {}); delete pulito._da;
+    var ferma = engineOf(tipo) + "?d=" + b64url(pulito) + "&still=1&muto=1";
+    // Si carica la grafica VIVA, nascosta: serve l'animazione da scorrere.
+    // Appena caricata si misura e la si ferma sull'ultimo fotogramma, che e'
+    // quello che l'anteprima ha sempre mostrato. Se non c'e' niente da
+    // scorrere — un motore mosso solo da timer — si torna alla versione ferma
+    // di sempre e il cursore non compare.
+    pvw.style.opacity = "0";
+    pvw.onload = function () {
+      pvw.onload = null;
+      setTimeout(function () {
+        if (CUE.id !== id || !CUE.grafica) return;
+        var doc = pvwDoc(), dur = AvvioGrafica.durata(doc);
+        if (!dur) { CUE = { id: null, da: 0, dur: 0 }; pvw.src = ferma; pvw.style.opacity = ""; return; }
+        CUE.dur = dur;
+        CUE.da = Math.min(CUE.da, dur);
+        AvvioGrafica.ferma(doc, dur);
+        pvw.style.opacity = "";
+        var r = document.getElementById("cueA");
+        r.step = "0.01"; r.max = String(dur); r.value = String(dur);
+        document.getElementById("cuePlay").innerHTML = "&#9654;";
+        document.getElementById("cue").style.display = "flex";
+        document.getElementById("cueTC").textContent = cueTempo(dur);
+        cueSegnoDisegna();
+      }, 450);
+    };
+    pvw.src = engineOf(tipo) + "?d=" + b64url(pulito) + "&muto=1&n=" + Date.now();
+    return true;
+  }
+  function cueGraficaGuarda(t) {
+    if (cueGiro) { cancelAnimationFrame(cueGiro); cueGiro = 0; }
+    AvvioGrafica.ferma(pvwDoc(), t);
+    document.getElementById("cueTC").textContent = cueTempo(t);
+    document.getElementById("cuePlay").innerHTML = "&#9654;";
+  }
+  // Il play fa vedere esattamente quello che andra' in onda: dal segno alla
+  // fine, col cursore che corre dietro.
+  function cueGraficaPlay() {
+    var doc = pvwDoc(), r = document.getElementById("cueA"), b = document.getElementById("cuePlay");
+    if (cueGiro) { cancelAnimationFrame(cueGiro); cueGiro = 0; AvvioGrafica.ferma(doc, parseFloat(r.value) || 0);
+                   b.innerHTML = "&#9654;"; return; }
+    AvvioGrafica.riparti(doc, CUE.da);
+    var t0 = performance.now(), da = CUE.da;
+    b.innerHTML = "&#10073;&#10073;";
+    (function giro() {
+      var t = Math.min(CUE.dur, da + (performance.now() - t0) / 1000);
+      r.value = String(t);
+      document.getElementById("cueTC").textContent = cueTempo(t);
+      if (t >= CUE.dur) { cueGiro = 0; b.innerHTML = "&#9654;"; return; }
+      cueGiro = requestAnimationFrame(giro);
+    })();
+  }
+  // Si salva dentro i dati della voce, con la stessa operazione che usa il
+  // Controllo redazione. I dati si rileggono dal ponte UN ATTIMO PRIMA: se
+  // nel frattempo qualcuno ha corretto un nome, mandare la copia vecchia col
+  // segno nuovo gli cancellerebbe la correzione.
+  var cueGraficaUltimo = {};
+  function cueGraficaSalva() {
+    var id = CUE.id, da = Math.round(CUE.da * 100) / 100;
+    if (!id) return;
+    if (cueGraficaUltimo[id] !== undefined && Math.abs(cueGraficaUltimo[id] - da) < 0.02) return;
+    if (!COMANDO) { document.getElementById("cueIn").textContent = "sola lettura"; return; }
+    fetch(PONTE + "?regia=item&id=" + encodeURIComponent(id) + "&canale=" + CANALE, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (dati) {
+        if (!dati || typeof dati !== "object") return;
+        if (da > 0.01) dati._da = da; else delete dati._da;
+        cueGraficaUltimo[id] = da;
+        post({ tipo: "regia-dati", id: id, dati: dati, chi: IONOME || "regia" }, null);
+      })
+      .catch(function () { document.getElementById("cueIn").textContent = "segno non salvato"; });
+  }
+
   function cueDisegna() {
-    document.getElementById("cueTC").textContent = cueMmss(CUE.da) + " / " + cueMmss(CUE.dur);
+    document.getElementById("cueTC").textContent = cueTempo(CUE.da);
     cueSegnoDisegna();
   }
   function cueSegnoDisegna() {
@@ -1011,7 +1107,9 @@
     if (!pista || !CUE.dur) return;
     var w = pista.clientWidth, pom = 18;                  // il pomello ha una sua larghezza
     sg.style.left = Math.round(pom / 2 + (w - pom) * (CUE.da / CUE.dur) - 1) + "px";
-    document.getElementById("cueIn").textContent = "parte da " + cueMmss(CUE.da);
+    document.getElementById("cueIn").textContent = CUE.grafica
+      ? (CUE.da > 0.01 ? "parte da " + cueSec(CUE.da) : "parte dall'inizio")
+      : "parte da " + cueMmss(CUE.da);
   }
   // IL CURSORE E' LA VERITA'. Non c'e' niente da confermare: dove sta il
   // cursore, da li' parte la clip quando va in onda. Di suo sta all'inizio;
@@ -1024,6 +1122,7 @@
   // modo piu' naturale di cercarlo.
   var cueUltimo = -1;
   function cueSalva() {
+    if (CUE.grafica) { cueGraficaSalva(); return; }
     if (!CUE.id || !CUE.dur) return;
     if (Math.abs(CUE.da - cueUltimo) < 0.15) return;      // niente di nuovo da dire
     if (!COMANDO) { document.getElementById("cueIn").textContent = "sola lettura"; return; }
@@ -1036,6 +1135,7 @@
   // rimette. Cosi' guardare l'anteprima non puo' rovinare la scelta, e cambiare
   // idea e' un clic.
   document.getElementById("cueA").addEventListener("input", function () {
+    if (CUE.grafica) { cueGraficaGuarda(parseFloat(this.value) || 0); return; }
     var t = Math.min(parseFloat(this.value) || 0, CUE.dur - 0.2);
     var v = document.getElementById("pvwvid");
     v.pause();
@@ -1044,7 +1144,8 @@
   });
   document.getElementById("cueSegna").addEventListener("click", function () {
     var v = document.getElementById("pvwvid");
-    CUE.da = Math.min(v.currentTime || 0, CUE.dur - 0.2);
+    if (CUE.grafica) CUE.da = Math.min(parseFloat(document.getElementById("cueA").value) || 0, CUE.dur);
+    else CUE.da = Math.min(v.currentTime || 0, CUE.dur - 0.2);
     cueSegnoDisegna();
     cueSalva();
     // un lampo: si vede che il segno e' stato messo
@@ -1063,6 +1164,9 @@
   });
   document.getElementById("cueVia").addEventListener("click", function () {
     CUE.da = 0;
+    // su una grafica il segno torna all'inizio ma lo sguardo resta dov'e':
+    // al secondo zero l'anteprima sarebbe vuota
+    if (CUE.grafica) { cueSegnoDisegna(); cueSalva(); return; }
     document.getElementById("cueA").value = "0";
     var v = document.getElementById("pvwvid");
     v.pause();
@@ -1181,6 +1285,7 @@
     }, 300);
   });
   document.getElementById("cuePlay").addEventListener("click", function () {
+    if (CUE.grafica) { cueGraficaPlay(); return; }
     var v = document.getElementById("pvwvid");
     if (v.paused) {
       // sempre dal segno: quello che senti e' esattamente quello che andra' in onda
@@ -1217,9 +1322,19 @@
         if (thumbShownId !== id) return;
         var it = null;
         cur.items.forEach(function (x) { if (x.id === id) it = x; });
-        pvw.src = engineOf(it ? it.tipo : "formazione") + "?d=" + b64url(dati) + "&still=1&muto=1";
-        // un contributo video si puo' riprendere da un punto qualsiasi
-        if (dati && dati.k === "video" && dati.src) cueApri(id, dati); else cueChiudi();
+        // un contributo video si puo' riprendere da un punto qualsiasi, e una
+        // grafica si puo' far partire da un punto della sua animazione
+        if (dati && dati.k === "video" && dati.src) {
+          pvw.src = engineOf(it ? it.tipo : "formazione") + "?d=" + b64url(dati) + "&still=1&muto=1";
+          cueApri(id, dati);
+        } else if (!(it && /^(video|immagine|web)$/.test(it.tipo)) &&
+                   cueGraficaApri(id, it ? it.tipo : "formazione", dati)) {
+          // cueGraficaApri carica da se' l'anteprima
+        } else {
+          var pul = Object.assign({}, dati || {}); delete pul._da;
+          pvw.src = engineOf(it ? it.tipo : "formazione") + "?d=" + b64url(pul) + "&still=1&muto=1";
+          cueChiudi();
+        }
         fitThumb();
         thumbcap.textContent = it ? ("Anteprima: " + it.titolo) : "";
         // clip video: la DURATA in anteprima, con gli stessi numeroni dell'onda
