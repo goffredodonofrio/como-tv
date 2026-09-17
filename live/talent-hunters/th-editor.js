@@ -614,16 +614,21 @@
     // con la maglia di prima mancano.
     var hmCampo = document.getElementById("hmCampo");
     if (hmCampo) {
+      // di fianco al campo, non sotto: campo e legenda a sinistra, ESPN a destra
+      // (sotto i 640 px di pannello torna sotto da solo)
       var hmBox = document.createElement("div");
-      hmBox.className = "riga";
-      hmBox.style.marginTop = "10px";
+      hmBox.className = "hmespn";
       hmBox.innerHTML =
-        '<div style="flex:0 1 200px"><label for="eHmQuante">Da ESPN · partite</label><select id="eHmQuante">' +
+        '<div><label for="eHmQuante">Da ESPN · partite</label><select id="eHmQuante">' +
         '<option value="5">ultime 5</option><option value="10" selected>ultime 10</option><option value="0">tutta la stagione</option></select></div>' +
-        '<div style="flex:0 0 auto"><button type="button" id="eHm" disabled>&#11015; Componi da ESPN</button></div>' +
-        '<div style="flex:1 1 100%"><div class="nota" id="hmNota">Scegli il giocatore da ESPN nel pannello Giocatore: la heatmap si compone dai suoi palloni toccati. Le zone restano cliccabili.</div></div>';
+        '<button type="button" id="eHm" disabled>&#11015; Componi da ESPN</button>' +
+        '<div class="nota" id="hmNota">Scegli il giocatore da ESPN nel pannello Giocatore: la heatmap si compone dai suoi palloni toccati. Le zone restano cliccabili.</div>';
       var legenda = document.getElementById("hmLegenda");
-      legenda.parentNode.insertBefore(hmBox, legenda.nextSibling);
+      var fianco = document.createElement("div"), sinistra = document.createElement("div");
+      fianco.className = "hmfianco"; sinistra.className = "hmsinistra";
+      hmCampo.parentNode.insertBefore(fianco, hmCampo);
+      sinistra.appendChild(hmCampo); sinistra.appendChild(legenda);
+      fianco.appendChild(sinistra); fianco.appendChild(hmBox);
       var eHm = hmBox.querySelector("#eHm"), eHmQuante = hmBox.querySelector("#eHmQuante");
       var hmNota = function (t, cls) { var n = hmBox.querySelector("#hmNota"); n.className = "nota" + (cls ? " " + cls : ""); n.innerHTML = t; };
       var hmPronto = function () { eHm.disabled = eGioc.value === "" || eHm.dataset.lavora === "1"; };
