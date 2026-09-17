@@ -174,7 +174,11 @@ async function json(u) { const r = await fetch(u, { headers: UA }); if (!r.ok) t
 
 async function squadreEspn(lega) {
   const d = await json("https://site.api.espn.com/apis/v2/sports/soccer/" + lega + "/standings");
-  return d.children[0].standings.entries.map((e) => ({ id: String(e.team.id), nome: e.team.displayName }));
+  // tutti i gironi, non solo il primo: in Libertadores Boca non sta nel girone A
+  const visti = new Set();
+  return (d.children || []).flatMap((c) => c.standings.entries)
+    .filter((e) => !visti.has(e.team.id) && visti.add(e.team.id))
+    .map((e) => ({ id: String(e.team.id), nome: e.team.displayName }));
 }
 function rosaSky(html) {
   const righe = [];

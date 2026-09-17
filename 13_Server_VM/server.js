@@ -1034,6 +1034,17 @@ function potaStorico(chiave) {
 // continua a funzionare come sempre. Cosi' nessuna grafica che oggi va
 // smette di andare, e solo quelle che oggi mentono smettono di mentire.
 const INTESTA_FILE = path.join(path.dirname(CONFIG.LOGHI), "foto-intestazioni.json");
+// Gli allenatori: ESPN non li da', quindi il ponte tiene un elenco suo per id
+// squadra ESPN ({ perId: { "<id>": { nome, cognome, squadra, lega, aggiornato } } }),
+// riempito dall'import degli allenatori. L'editor delle formazioni lo chiede
+// solo se il campo e' vuoto: quello scritto a mano vince sempre.
+const ALLENATORI_FILE = path.join(path.dirname(CONFIG.LOGHI), "allenatori.json");
+function allenatoreDi(id) {
+  try {
+    const a = (JSON.parse(fs.readFileSync(ALLENATORI_FILE, "utf8")).perId || {})[String(id || "").trim()];
+    return a ? { nome: a.nome || "", cognome: a.cognome || "", aggiornato: a.aggiornato || "" } : {};
+  } catch (err) { return {}; }
+}
 function intestaLeggi() {
   try {
     const d = JSON.parse(fs.readFileSync(INTESTA_FILE, "utf8"));
@@ -2367,6 +2378,7 @@ const server = http.createServer((req, res) => {
       const chi = q.get("foto"), url = fotoDiChi(chi, q.get("squadra") || q.get("sq"), q.get("id"));
       return json(res, { url: url, orfana: url ? "" : fotoOrfana(chi) });
     }
+    if (q.get("allenatore")) return json(res, allenatoreDi(q.get("allenatore")));
     if (q.get("intestazioni")) return json(res, intestaLeggi());
     if (q.get("video")) return json(res, videoElenco());
     if (q.get("magazzino")) return json(res, magazzinoStato());

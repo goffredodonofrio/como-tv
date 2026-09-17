@@ -648,6 +648,7 @@
         loadMemo(side);
         autoFill(side);
         renderAll();
+        allenatoreDalPonte(side);
         status("ok", '<span class="msg"><b>' + esc(side.teamName) + '</b>: rosa di ' + side.roster.length + ' giocatori caricata.</span>');
       })
       .catch(function (err) {
@@ -655,6 +656,24 @@
         renderAll();
         status("err", '<span class="msg"><b>Rosa non caricata.</b> ' + esc(err.message) + '</span>');
       });
+  }
+
+  // ESPN non da' gli allenatori: li sa il ponte, per id squadra. Si scrive
+  // da solo come per le giovanili, ma solo se il campo e' vuoto — quello che
+  // ha scritto chi monta (o che la pagina ricorda per questa squadra) non si
+  // tocca. Non si memorizza: il giorno che il ponte cambia allenatore, cambia
+  // anche qui.
+  function allenatoreDalPonte(side) {
+    var sq = side.teamId, cfg = ponteConfig(false);
+    if (!sq || (side.coachC || "").trim() || !cfg || !cfg.url) return;
+    fetch(cfg.url + "?allenatore=" + encodeURIComponent(sq), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (a) {
+        if (!a || !a.cognome || side.teamId !== sq || (side.coachC || "").trim()) return;
+        side.coachN = a.nome || ""; side.coachC = a.cognome;
+        renderAll();
+      })
+      .catch(function () {});
   }
 
   // ---------------- schieramento automatico ----------------
