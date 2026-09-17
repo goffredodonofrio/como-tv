@@ -25,23 +25,27 @@ un minuto (misurato: torta 9,4 s → 53 s di lavoro).
 
 | | Dev | Prod |
 |---|---|---|
-| cartella | `/opt/comotv-dev-esporta` | da installare in `/opt/comotv-esporta` |
-| servizio | `comotv-dev-esporta` su 127.0.0.1:8091 | porta 8090 |
-| nginx | `location /como-tv-dev/esporta/` → 8091 | `location /esporta/` → 8090 |
+| cartella | `/opt/comotv-dev-esporta` | `/opt/comotv-esporta` (installato il 17/09/2026) |
+| servizio | `comotv-dev-esporta` su 127.0.0.1:8091 | `comotv-esporta` su 127.0.0.1:8090 |
+| base motori | `https://projects-cloud.it/como-tv-dev/live/` | `https://projects-cloud.it/como-tv/live/` |
+| nginx | `location /como-tv-dev/esporta/` → 8091 | `location /esporta/` → 8090 (le pagine prod hanno il ponte su `/api`, quindi cercano `/esporta/` alla radice) |
 
-Il tasto compare solo se `…/esporta/salute` risponde: in prod, finché non si installa, resta nascosto.
-**Non lo installa `aggiorna.sh`**: la prima volta va fatto a mano.
+Il tasto compare solo se `…/esporta/salute` risponde JSON.
+**Non lo aggiorna `aggiorna.sh`**: se cambiano `esporta-grafica.js` o `esporta-servizio.js`, vanno ricopiati
+a mano in `/opt/comotv-esporta` e poi `systemctl restart comotv-esporta` (fuori dalle dirette; il ponte non si ferma).
+Le unità systemd sono in questa cartella (`comotv-esporta.service`, `comotv-dev-esporta.service`).
 
-## Installare in prod (a mano, fuori dalle dirette)
+## Come è stato installato in prod (17/09/2026)
 
 ```bash
-mkdir -p /opt/comotv-esporta/lavori && cd /opt/comotv-esporta
-cp /var/www/comotv/13_Server_VM/esporta/{esporta-grafica.js,esporta-servizio.js,package.json} .
-PUPPETEER_SKIP_DOWNLOAD=1 npm install
-npx @puppeteer/browsers install chrome-headless-shell@stable --path /opt/comotv-esporta/chrome
-# unità systemd: copia di comotv-dev-esporta.service con porta 8090,
-# ESPORTA_BASE=https://projects-cloud.it/live/ e i percorsi /opt/comotv-esporta
-chown -R comotv:comotv /opt/comotv-esporta && systemctl enable --now comotv-esporta
-# nginx: location /esporta/ { proxy_pass http://127.0.0.1:8090/; proxy_read_timeout 120s; }
+mkdir -p /opt/comotv-esporta/lavori
+cp /var/www/comotv/13_Server_VM/esporta/{esporta-grafica.js,esporta-servizio.js,package.json} /opt/comotv-esporta/
+# node_modules e chrome-headless-shell 153 copiati da dev (stesse versioni gia' provate)
+cp -a /opt/comotv-dev-esporta/{node_modules,package-lock.json,chrome} /opt/comotv-esporta/
+cp comotv-esporta.service /etc/systemd/system/
+chown -R comotv:comotv /opt/comotv-esporta && systemctl daemon-reload && systemctl enable --now comotv-esporta
+# nginx (backup in /root/nginx-comotv.backup-*): prima di "flusso in tempo reale"
+#   location /esporta/ { proxy_pass http://127.0.0.1:8090/; proxy_http_version 1.1;
+#                        proxy_set_header Host $host; proxy_read_timeout 120s; }
 nginx -t && systemctl reload nginx
 ```
