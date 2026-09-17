@@ -10,6 +10,12 @@
  *  Uso, dentro la pagina:
  *      SceltaFoto.adotta(PONTE, TOKEN);
  *      SceltaFoto.apri(function (url) { ...la foto scelta... });
+ *      SceltaFoto.apri(fn, { filtro: "loghi", espn: true });
+ *        filtro: "tutto" | "foto" | "loghi" | "maglie" — da dove si parte
+ *        espn:   cercando uno stemma o un logo, sotto il magazzino compaiono
+ *                anche gli stemmi delle squadre e i loghi delle competizioni
+ *                di ESPN (il magazzino di stemmi veri ne ha pochi: le grafiche
+ *                li prendono da li')
  *
  *  NON tocca le Formazioni Premium, che hanno il loro magazzino
  *  dedicato (foto per cognome, pagina magazzino-foto.html).
@@ -18,7 +24,8 @@ window.SceltaFoto = (function () {
   "use strict";
   var ponte = "", token = "", base = "";
   var elenco = [], caricato = false;
-  var quandoScelta = null, filtro = "tutto", cerca = "";
+  var quandoScelta = null, filtro = "tutto", cerca = "", conEspn = false;
+  var espnRisultati = [], espnPer = "", espnGiro = 0, espnTimer = null;
   var finestra = null;
 
   function adotta(po, tk) {
@@ -68,6 +75,8 @@ window.SceltaFoto = (function () {
       "  border:1px solid rgba(245,241,230,.06);}" +
       ".sf-card .n{margin-top:6px;font-size:11px;line-height:1.25;word-break:break-all;color:#F5F1E6;}" +
       ".sf-card .k{font-size:10px;color:#8A8B96;}" +
+      ".sf-titolo{grid-column:1/-1;font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;" +
+      "  letter-spacing:.18em;text-transform:uppercase;color:#C9A24B;padding:10px 2px 0;}" +
       "#sf-piede{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:14px;}" +
       "#sf-conta{font-size:12px;color:#8A8B96;}" +
       "#sf-box button.chiudi{font-family:'Mazzard',sans-serif;font-size:10.5px;font-weight:700;" +
@@ -88,6 +97,7 @@ window.SceltaFoto = (function () {
           '<button class="sf-chip on" data-f="tutto" type="button">Tutte</button>' +
           '<button class="sf-chip" data-f="foto" type="button">Foto</button>' +
           '<button class="sf-chip" data-f="loghi" type="button">Stemmi e loghi</button>' +
+          '<button class="sf-chip" data-f="maglie" type="button">Maglie</button>' +
           '<input id="sf-cerca" type="search" placeholder="Cerca per nome…" autocomplete="off" spellcheck="false">' +
         '</div>' +
         '<div id="sf-griglia"></div>' +
@@ -101,7 +111,7 @@ window.SceltaFoto = (function () {
       var chip = e.target.closest ? e.target.closest(".sf-chip") : null;
       if (chip) {
         finestra.querySelectorAll(".sf-chip").forEach(function (c) { c.classList.toggle("on", c === chip); });
-        filtro = chip.dataset.f; dipingi(); return;
+        filtro = chip.dataset.f; dipingi(); cercaEspn(); return;
       }
       var card = e.target.closest ? e.target.closest(".sf-card") : null;
       if (card) {
@@ -112,41 +122,97 @@ window.SceltaFoto = (function () {
     });
     document.getElementById("sf-chiudi").addEventListener("click", chiudi);
     document.getElementById("sf-cerca").addEventListener("input", function () {
-      cerca = this.value.trim().toLowerCase(); dipingi();
+      cerca = norm(this.value); dipingi(); cercaEspn();
     });
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape" && finestra && finestra.style.display === "flex") chiudi();
     });
   }
 
+  // la ricerca non guarda maiuscole, accenti, spazi e trattini: "serie a"
+  // trova "serie-a", "atletico" trova "Atlético"
+  function norm(x) {
+    return String(x || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "");
+  }
+  function genere(chiave) {
+    return chiave.indexOf("foto-") === 0 ? "foto" : chiave.indexOf("maglia-") === 0 ? "maglie" : "loghi";
+  }
+  function carta(url, nome, sotto) {
+    return '<div class="sf-card" data-url="' + esc(url) + '">' +
+      '<div class="p" style="background-image:url(\'' + esc(url) + '\')"></div>' +
+      '<div class="n">' + esc(nome) + '</div>' +
+      '<div class="k">' + esc(sotto || "") + '</div></div>';
+  }
+
+  // ESPN: squadre e competizioni col nome cercato, con lo stemma. Solo se la
+  // pagina lo chiede, solo per stemmi e loghi, da tre lettere in su.
+  function cercaEspn() {
+    clearTimeout(espnTimer);
+    var q = document.getElementById("sf-cerca") ? document.getElementById("sf-cerca").value.trim() : "";
+    if (!conEspn || (filtro !== "loghi" && filtro !== "tutto") || q.length < 3) {
+      if (espnRisultati.length || espnPer) { espnRisultati = []; espnPer = ""; dipingi(); }
+      return;
+    }
+    if (q === espnPer) return;
+    espnTimer = setTimeout(function () {
+      var giro = ++espnGiro;
+      var base = "https://site.web.api.espn.com/apis/common/v3/search?sport=soccer&limit=12&query=" + encodeURIComponent(q);
+      Promise.all(["league", "team"].map(function (t) {
+        return fetch(base + "&type=" + t).then(function (r) { return r.json(); })
+          .then(function (j) { return j.items || []; }).catch(function () { return []; });
+      })).then(function (tutti) {
+        if (giro !== espnGiro) return;          // nel frattempo si e' scritto altro
+        espnPer = q;
+        espnRisultati = [];
+        var visti = {};
+        tutti[0].concat(tutti[1]).forEach(function (x) {
+          var logo = ((x.logos || [])[0] || {}).href;
+          if (!logo || visti[logo]) return;
+          visti[logo] = 1;
+          espnRisultati.push({ url: logo, nome: x.displayName || x.name || "",
+                               sotto: x.type === "league" ? "competizione · ESPN" : "stemma · " + (x.league || "ESPN") });
+        });
+        dipingi();
+      });
+    }, 350);
+  }
+
   function dipingi() {
     var g = document.getElementById("sf-griglia");
     var v = elenco.filter(function (f) {
-      var premium = f.chiave.indexOf("foto-") === 0;
-      if (filtro === "foto" && !premium) return false;
-      if (filtro === "loghi" && premium) return false;
-      if (cerca && f.chiave.toLowerCase().indexOf(cerca) < 0) return false;
+      if (filtro !== "tutto" && genere(f.chiave) !== filtro) return false;
+      if (cerca && norm(f.chiave).indexOf(cerca) < 0) return false;
       return true;
     });
-    g.innerHTML = v.length
-      ? v.map(function (f) {
-          // l'indirizzo restituito porta il prefisso dell'ambiente, cosi'
-          // la foto scelta si vede sia qui sia nella grafica in onda
-          return '<div class="sf-card" data-url="' + esc(base + f.url) + '">' +
-            '<div class="p" style="background-image:url(\'' + esc(base + f.url) + '\')"></div>' +
-            '<div class="n">' + esc(f.chiave) + '</div>' +
-            '<div class="k">' + peso(f.size) + '</div></div>';
-        }).join("")
-      : '<div style="color:#8A8B96;padding:16px 4px">Nessuna immagine trovata.</div>';
+    // l'indirizzo restituito porta il prefisso dell'ambiente, cosi' la foto
+    // scelta si vede sia qui sia nella grafica in onda
+    var h = v.map(function (f) { return carta(base + f.url, f.chiave, peso(f.size)); }).join("");
+    if (espnRisultati.length) {
+      h += '<div class="sf-titolo">Da ESPN</div>' +
+        espnRisultati.map(function (x) { return carta(x.url, x.nome, x.sotto); }).join("");
+    }
+    g.innerHTML = h || '<div style="color:#8A8B96;padding:16px 4px">Nessuna immagine trovata.</div>';
     document.getElementById("sf-conta").textContent =
-      v.length + " di " + elenco.length + " immagini in magazzino";
+      v.length + " di " + elenco.length + " immagini in magazzino" +
+      (espnRisultati.length ? " · " + espnRisultati.length + " da ESPN" : "");
   }
 
   function chiudi() { if (finestra) finestra.style.display = "none"; }
 
-  function apri(callback) {
+  function apri(callback, opzioni) {
+    opzioni = opzioni || {};
     quandoScelta = callback;
+    conEspn = !!opzioni.espn;
     costruisci();
+    if (opzioni.filtro) {
+      filtro = opzioni.filtro;
+      finestra.querySelectorAll(".sf-chip").forEach(function (c) { c.classList.toggle("on", c.dataset.f === filtro); });
+    }
+    // ogni apertura riparte senza ricerca: quella di prima (lo stemma di una
+    // squadra) nascondeva tutto quando si cercava una foto
+    espnRisultati = []; espnPer = ""; cerca = "";
+    document.getElementById("sf-cerca").value = "";
+    cercaEspn();
     finestra.style.display = "flex";
     if (caricato) { dipingi(); return; }
     document.getElementById("sf-griglia").innerHTML =

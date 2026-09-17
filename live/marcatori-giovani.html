@@ -282,7 +282,7 @@
   // <giocatore>", "stemma <squadra>", "logo competizione <occhiello>". I nomi
   // non coincidono mai con quello di una squadra: uno stemma caricato qui non
   // scavalca quello delle altre grafiche.
-  function riquadro(url, vuotoTesto, contenitore, quando, nomeFile) {
+  function riquadro(url, vuotoTesto, contenitore, quando, nomeFile, opzioni) {
     contenitore.innerHTML =
       '<div class="mini">' + (url ? '<img src="' + esc(url) + '">' : '<div class="no">' + vuotoTesto + "</div>") + "</div>" +
       '<div class="tasti"><button type="button" data-sc="1">scegli</button>' +
@@ -291,7 +291,7 @@
       '<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>';
     contenitore.querySelector("[data-sc]").addEventListener("click", function () {
       if (!window.SceltaFoto) return;
-      SceltaFoto.apri(function (u) { quando(u); });
+      SceltaFoto.apri(function (u) { quando(u); }, opzioni);
     });
     var file = contenitore.querySelector("input[type=file]");
     contenitore.querySelector("[data-ca]").addEventListener("click", function () {
@@ -328,7 +328,8 @@
   }
   function disegnaLogo() {
     riquadro(S.logo, "nessun<br>logo", el("logoBox"), function (u) { S.logo = u; disegnaLogo(); ricorda(); },
-             function () { var e = el("e").value.trim(); return e ? "logo competizione " + e : ""; });
+             function () { var e = el("e").value.trim(); return e ? "logo competizione " + e : ""; },
+             { filtro: "loghi", espn: true });
   }
 
   // ── la tabella ──────────────────────────────────────────────────────
@@ -357,9 +358,11 @@
     el("elenco").querySelectorAll("tr[data-i]").forEach(function (tr) {
       var r = S.righe[+tr.dataset.i];
       riquadro(r.f, "senza<br>foto", tr.querySelector("[data-foto]"), function (u) { r.f = u; disegna(); ricorda(); },
-               function () { return r.n.trim() ? "foto giovani " + r.n.trim() : ""; });
+               function () { return r.n.trim() ? "foto giovani " + r.n.trim() : ""; },
+               { filtro: "foto" });
       riquadro(r.l, "senza<br>stemma", tr.querySelector("[data-stemma]"), function (u) { r.l = u; disegna(); ricorda(); },
-               function () { return r.sq.trim() ? "stemma " + r.sq.trim() : ""; });
+               function () { return r.sq.trim() ? "stemma " + r.sq.trim() : ""; },
+               { filtro: "loghi", espn: true });
       var campoAnni = tr.querySelector('input[data-k="a"]');
       tr.querySelectorAll("input[data-k]").forEach(function (inp) {
         inp.addEventListener("input", function () {
