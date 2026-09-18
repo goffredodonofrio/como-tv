@@ -6491,7 +6491,10 @@ function correggiConIlVocabolario(testo, r) {
   const parole = String(testo).split(/(\s+)/);
   for (let i = 0; i < parole.length; i++) {
     const w = parole[i];
-    if (!/^[A-ZÀ-Ý][A-Za-zÀ-ÿ']{3,}[.,;:!?]?$/.test(w)) continue;
+    // una particella corta ("Da", "De", "Van") entra solo in coppia con la
+    // parola dopo: "Da Cugna" e' Da Cunha, e da sola non vale niente
+    const particella = /^[A-ZÀ-Ý][a-zà-ÿ]{1,3}$/.test(w) && PARTICELLE.has(w.toLowerCase());
+    if (!particella && !/^[A-ZÀ-Ý][A-Za-zÀ-ÿ']{3,}[.,;:!?]?$/.test(w)) continue;
     const coda = (/[.,;:!?]$/.exec(w) || [""])[0];
     const nuda = coda ? w.slice(0, -1) : w;
     // prima la coppia con la parola dopo ("Da Cugna", "Nico Passe")
@@ -6501,6 +6504,7 @@ function correggiConIlVocabolario(testo, r) {
       const giusto2 = vicino(nuda + (coda2 ? dopo.slice(0, -1) : dopo));
       if (giusto2 && giusto2.indexOf(" ") > 0) { cambi.push(nuda + " " + dopo + " → " + giusto2); parole[i] = giusto2 + coda2; parole[i + 1] = ""; parole[i + 2] = ""; continue; }
     }
+    if (particella) continue;
     const giusto = vicino(nuda);
     if (giusto && giusto !== nuda) { cambi.push(nuda + " → " + giusto); parole[i] = giusto + coda; }
   }
