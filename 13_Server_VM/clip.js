@@ -6610,23 +6610,29 @@ function applicaAlias(testo) {
   const chiavi = Object.keys(ALIAS.voci);
   if (!chiavi.length) return { testo: testo, cambi: [] };
   const cambi = [];
-  // le pronunce lunghe prima (due parole battono una), sul testo piatto
-  chiavi.sort((a, b) => b.length - a.length);
-  let t = String(testo);
-  chiavi.forEach((k) => {
-    // si cerca la sequenza di parole la cui forma piatta e' l'alias
-    const re = new RegExp("(^|[^A-Za-zÀ-ÿ])([A-Za-zÀ-ÿ']+(?:\\s+[A-Za-zÀ-ÿ']+){0,2})(?=$|[^A-Za-zÀ-ÿ])", "g");
-    t = t.replace(re, (m, pre, parole) => {
-      // solo se e' quel gruppo di parole: si prova la forma piatta
-      const ps = parole.split(/\s+/);
-      for (let n = ps.length; n >= 1; n--) {
-        const pezzo = ps.slice(0, n).join(" ");
-        if (piattaMinuscola(pezzo) === k) { cambi.push(pezzo + " → " + ALIAS.voci[k]); return pre + ALIAS.voci[k] + parole.slice(pezzo.length); }
-      }
-      return m;
-    });
-  });
-  return { testo: t, cambi: cambi };
+  // si scorre parola per parola e da ogni parola si provano finestre di
+  // tre, due, una parola: la forma piatta della finestra e' l'alias?
+  const pezzi = String(testo).split(/(\s+)/);          // parole e spazi, alternati
+  const parole = pezzi.map((x, i) => ({ i: i, x: x, w: i % 2 === 0 ? x.replace(/^[^A-Za-zÀ-ÿ']+|[^A-Za-zÀ-ÿ']+$/g, "") : "" }));
+  for (let i = 0; i < pezzi.length; i += 2) {
+    for (let n = 3; n >= 1; n--) {
+      const fine = i + 2 * (n - 1);
+      if (fine >= pezzi.length) continue;
+      const finestra = [];
+      for (let k = i; k <= fine; k += 2) finestra.push(parole[k].w);
+      if (finestra.some((w) => !w)) continue;
+      const piatta = piattaMinuscola(finestra.join(" "));
+      if (!ALIAS.voci[piatta]) continue;
+      const nuovo = ALIAS.voci[piatta];
+      // si tengono la testa e la coda di punteggiatura della prima e dell'ultima parola
+      const testa = (/^[^A-Za-zÀ-ÿ']*/.exec(pezzi[i]) || [""])[0], coda = (/[^A-Za-zÀ-ÿ']*$/.exec(pezzi[fine]) || [""])[0];
+      cambi.push(finestra.join(" ") + " → " + nuovo);
+      pezzi[i] = testa + nuovo + coda;
+      for (let k = i + 1; k <= fine; k++) pezzi[k] = "";
+      i = fine; break;
+    }
+  }
+  return { testo: pezzi.join(""), cambi: cambi };
 }
 function correggiConIlVocabolario(testo, r) {
   const conAlias = applicaAlias(testo);
