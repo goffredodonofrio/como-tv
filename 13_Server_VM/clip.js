@@ -6619,8 +6619,10 @@ function correggiConIlVocabolario(testo, r) {
     const coda = (/[.,;:!?]$/.exec(w) || [""])[0];
     const nuda = coda ? w.slice(0, -1) : w;
     // prima la coppia con la parola dopo ("Da Cugna", "Nico Passe")
+    // la parola dopo entra in coppia solo se e' maiuscola: "Nico Passe" e'
+    // Nico Paz scritto male, "Nico passa" e' Nico che passa
     const dopo = parole[i + 2];
-    if (dopo && /^[A-Za-zÀ-ÿ']{2,}[.,;:!?]?$/.test(dopo)) {
+    if (dopo && /^[A-ZÀ-Ý][A-Za-zÀ-ÿ']{1,}[.,;:!?]?$/.test(dopo)) {
       const coda2 = (/[.,;:!?]$/.exec(dopo) || [""])[0];
       const coppia = vicinoCon(nuda + (coda2 ? dopo.slice(0, -1) : dopo));
       const sola = particella ? null : vicinoCon(nuda);
