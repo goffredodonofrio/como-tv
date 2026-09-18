@@ -6587,9 +6587,52 @@ function formeDeiNomi(r) {
   v.squadre.forEach((sq) => metti(sq));
   return forme;
 }
+// LE PRONUNCE CONFERMATE. alias.json (in DIR) dice, per come lo scrive
+// whisper, qual e' il nome vero: "acco boramon" -> Jacobo Ramón. Le
+// propone alias-nomi.py dall'archivio, le conferma una persona, e da li'
+// valgono prima di qualsiasi somiglianza — anche quando la distanza e'
+// troppa per la regola automatica.
+let ALIAS = { quando: 0, voci: {} };
+function fileAlias() { return path.join(DIR, "alias.json"); }
+function leggiAlias() {
+  try {
+    const st = fs.statSync(fileAlias());
+    if (st.mtimeMs === ALIAS.quando) return;
+    const j = JSON.parse(fs.readFileSync(fileAlias(), "utf8")) || {};
+    const voci = {};
+    Object.keys(j).forEach((k) => { if (j[k]) voci[piattaMinuscola(k)] = String(j[k]); });
+    ALIAS = { quando: st.mtimeMs, voci: voci };
+    console.log("[clip] alias: " + Object.keys(voci).length + " pronunce confermate");
+  } catch (e) { ALIAS = { quando: 0, voci: {} }; }
+}
+function applicaAlias(testo) {
+  leggiAlias();
+  const chiavi = Object.keys(ALIAS.voci);
+  if (!chiavi.length) return { testo: testo, cambi: [] };
+  const cambi = [];
+  // le pronunce lunghe prima (due parole battono una), sul testo piatto
+  chiavi.sort((a, b) => b.length - a.length);
+  let t = String(testo);
+  chiavi.forEach((k) => {
+    // si cerca la sequenza di parole la cui forma piatta e' l'alias
+    const re = new RegExp("(^|[^A-Za-zÀ-ÿ])([A-Za-zÀ-ÿ']+(?:\\s+[A-Za-zÀ-ÿ']+){0,2})(?=$|[^A-Za-zÀ-ÿ])", "g");
+    t = t.replace(re, (m, pre, parole) => {
+      // solo se e' quel gruppo di parole: si prova la forma piatta
+      const ps = parole.split(/\s+/);
+      for (let n = ps.length; n >= 1; n--) {
+        const pezzo = ps.slice(0, n).join(" ");
+        if (piattaMinuscola(pezzo) === k) { cambi.push(pezzo + " → " + ALIAS.voci[k]); return pre + ALIAS.voci[k] + parole.slice(pezzo.length); }
+      }
+      return m;
+    });
+  });
+  return { testo: t, cambi: cambi };
+}
 function correggiConIlVocabolario(testo, r) {
+  const conAlias = applicaAlias(testo);
+  testo = conAlias.testo;
   const forme = formeDeiNomi(r);
-  if (!forme.size) return { testo: testo, cambi: [] };
+  if (!forme.size) return { testo: testo, cambi: conAlias.cambi };
   const chiavi = [...forme.keys()];
   const noti = new Set(chiavi);
   // i NOMI DI BATTESIMO della rosa non si toccano: "Diego" e' Diego Carlos,
@@ -6640,7 +6683,7 @@ function correggiConIlVocabolario(testo, r) {
     const giusto = vicino(nuda);
     if (giusto && giusto !== nuda) { cambi.push(nuda + " → " + giusto); parole[i] = giusto + coda; }
   }
-  return { testo: parole.join(""), cambi: cambi };
+  return { testo: parole.join(""), cambi: conAlias.cambi.concat(cambi) };
 }
 // I NOMI NON SI TRADUCONO. Prima di dare la frase ad Argos i nomi noti —
 // giocatori, allenatori, squadre della partita — si coprono con un
