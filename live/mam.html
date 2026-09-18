@@ -891,9 +891,15 @@
   body.mam .console .ricezione .b.oro{background:#C9A24B;border-color:#A67C2E;color:#0A0F24;}
   body.mam .console .ricezione .b.rosso{background:#B3261E;border-color:#8E1216;color:#fff;}
   body.mam .console .ricezione .b.acceso{background:#2D8CEB;border-color:#2D8CEB;color:#fff;}
-  body.mam .console .sotto{display:inline-flex;align-items:center;gap:6px;margin-left:auto;}
-  body.mam .console .sotto select{height:26px;font-size:10.5px;background:#1B1B1B;color:#D0D0D0;border:1px solid #3A3A3A;border-radius:3px;}
+  /* i sottotitoli: una riga tutta loro sotto REC e STOP, con la lingua a due tasti */
+  body.mam .console .azioni{flex-wrap:wrap;}
+  body.mam .console .sotto{display:flex;align-items:center;gap:6px;flex:1 1 100%;margin-top:4px;}
+  body.mam .console .sotto .b{flex:1 1 auto;}
   body.mam .console .sotto .b.acceso{background:#2D8CEB;border-color:#2D8CEB;color:#fff;}
+  body.mam .console .sotto .lingue{display:inline-flex;flex:none;border:1px solid #3A3A3A;border-radius:3px;overflow:hidden;}
+  body.mam .console .sotto .lingue b{padding:0 9px;height:24px;line-height:24px;font-size:10px;letter-spacing:.08em;color:#9A9A9A;cursor:pointer;background:#1B1B1B;}
+  body.mam .console .sotto .lingue b+b{border-left:1px solid #3A3A3A;}
+  body.mam .console .sotto .lingue b.acceso{background:#C9A24B;color:#0A0F24;font-weight:800;}
   .telaio .sottotitoli{position:absolute;left:0;right:0;bottom:0;padding:8px 14px 10px;background:linear-gradient(transparent,rgba(0,0,0,.82));
     pointer-events:none;text-align:center;line-height:1.3;}
   .telaio .sottotitoli b{display:block;font-size:15px;font-weight:600;color:#fff;text-shadow:0 1px 3px #000;}
@@ -4166,6 +4172,31 @@
     }
     if (c.state === "suspended") { try { c.resume(); } catch (e) {} }
   }
+  // UN MONITOR SOLO SI SENTE. In diretta il LIVE FEED non si ferma mai —
+  // e' una diretta — e il programma, quando ha il vivo in timeline, suona
+  // la stessa cosa qualche secondo dopo: due riproduzioni della stessa
+  // voce, sfasate, e' l'eco che si sentiva. Regola: se il programma va, il
+  // feed tace; quando il programma si ferma il feed torna a farsi sentire.
+  // Vale anche in archivio, dove sorgente e programma sono lo stesso file.
+  var FEED_ZITTITO = false;
+  function unoSolo() {
+    var a = el("player"), p = el("programma"); if (!a || !p) return;
+    var programmaVa = !p.paused && !p.ended && !!p.currentSrc;
+    if (programmaVa) { if (!a.muted) { a.muted = true; FEED_ZITTITO = true; } }
+    else if (FEED_ZITTITO) { a.muted = false; FEED_ZITTITO = false; }
+  }
+  // i monitor nascono dopo questo punto dello script: si aggancia quando
+  // ci sono, e comunque si ricontrolla ogni mezzo secondo
+  var UNO_SOLO_AGGANCIATO = false;
+  setInterval(function () {
+    var p = el("programma"), a = el("player");
+    if (p && a && !UNO_SOLO_AGGANCIATO) {
+      ["play", "playing", "pause", "ended", "emptied"].forEach(function (ev) { p.addEventListener(ev, unoSolo); });
+      a.addEventListener("play", unoSolo);
+      UNO_SOLO_AGGANCIATO = true;
+    }
+    unoSolo();
+  }, 500);
   var SENZA_SUONO = {};          // per non ripetere l'avviso a ogni fotogramma
   // Il contesto va riacceso da un gesto vero: nasce sospeso e, se lo si
   // sveglia dentro un'animazione, il browser lo lascia dormire. Un solo
@@ -6903,9 +6934,11 @@
             // UNA LINGUA SOLA: quella in cui leggere. Se e' quella in cui parlano
             // si legge il parlato, se e' l'altra la traduzione. La lingua
             // parlata la riconosce whisper da solo.
-            '<span class="sotto" id="rigaSotto" hidden><select id="sottoLingua" title="in che lingua leggere i sottotitoli">' +
-              '<option value="it">in italiano</option><option value="en">in inglese</option></select>' +
-            '<button class="b" id="btnSotto" title="trascrive e traduce quello che si dice, con quindici secondi di ritardo">Sottotitoli</button></span>' +
+            '<span class="sotto" id="rigaSotto" hidden>' +
+              '<button class="b" id="btnSotto" title="trascrive quello che si dice, con una quindicina di secondi di ritardo">Sottotitoli</button>' +
+              '<span class="lingue" title="in che lingua leggere"><b data-l="it" class="acceso">ITA</b><b data-l="en">ENG</b></span>' +
+              '<select id="sottoLingua" hidden><option value="it">ITA</option><option value="en">ENG</option></select>' +
+            '</span>' +
           '</div>' +
           // due vecchi comandi restano nel documento ma fuori dalla vista:
           // il codice che li cerca e' sparso, e toglierli lo romperebbe.
@@ -7189,6 +7222,13 @@
           dice(acceso ? "Sottotitoli spenti." : "Sottotitoli accesi: la prima riga arriva fra una quindicina di secondi.", true); })
         .catch(function (e) { dice(e.message); });
     });
+    document.querySelectorAll("#rigaSotto .lingue b").forEach(function (b) {
+      b.addEventListener("click", function () {
+        document.querySelectorAll("#rigaSotto .lingue b").forEach(function (x) { x.className = x === b ? "acceso" : ""; });
+        var sel = el("sottoLingua"); if (!sel) return;
+        sel.value = b.dataset.l; sel.dispatchEvent(new Event("change"));
+      });
+    });
     // cambiare lingua mentre sono accesi: si dice al ponte, e si rilegge
     if (el("sottoLingua")) el("sottoLingua").addEventListener("change", function () {
       if (!REG || !(REG.sottotitoli && REG.sottotitoli.acceso)) return;
@@ -7320,6 +7360,8 @@
       el("btnSotto").textContent = sottoAcceso ? "Sottotitoli \u00b7 " + ((REG.sottotitoli.mostra || "it").toUpperCase()) +
         (REG.sottotitoliLingua ? " (parlano " + REG.sottotitoliLingua.toUpperCase() + ")" : "") : "Sottotitoli";
       if (sottoAcceso && el("sottoLingua").value !== (REG.sottotitoli.mostra || "it")) el("sottoLingua").value = REG.sottotitoli.mostra || "it";
+      var mostraOra = el("sottoLingua").value || "it";
+      document.querySelectorAll("#rigaSotto .lingue b").forEach(function (x) { x.className = x.dataset.l === mostraOra ? "acceso" : ""; });
     }
     // il tasto grande cambia mestiere quando la porta e' aperta
     if (el("btnRicevi") && MODO !== "archivio") {
