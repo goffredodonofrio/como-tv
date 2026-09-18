@@ -6493,7 +6493,9 @@ function correggiConIlVocabolario(testo, r) {
     const w = parole[i];
     // una particella corta ("Da", "De", "Van") entra solo in coppia con la
     // parola dopo: "Da Cugna" e' Da Cunha, e da sola non vale niente
-    const particella = /^[A-ZÀ-Ý][a-zà-ÿ]{1,3}$/.test(w) && PARTICELLE.has(w.toLowerCase());
+    // ...anche minuscola: "scarica da Cugna" e' Da Cunha, e il "da" e' suo
+    const particella = /^[A-Za-zÀ-ÿ]{2,4}$/.test(w) && PARTICELLE.has(w.toLowerCase()) &&
+                       /^[A-ZÀ-Ý]/.test(parole[i + 2] || "");
     if (!particella && !/^[A-ZÀ-Ý][A-Za-zÀ-ÿ']{3,}[.,;:!?]?$/.test(w)) continue;
     const coda = (/[.,;:!?]$/.exec(w) || [""])[0];
     const nuda = coda ? w.slice(0, -1) : w;
