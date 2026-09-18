@@ -40,7 +40,11 @@ questo questa quello quella molto bene male subito forse anche adesso oggi ieri 
 river under tutto niente nulla dentro fuori avanti indietro destra sinistra centro campo palla pallone porta gol rete
 primo secondo terzo tempo minuto minuti partita squadra squadre arbitro cross tiro parata angolo rigore fallo
 comunque perche perché quando quanto quanti come dove chi che cosa vero falso giusto sempre mai ora qui li lì
-attenzione occasione azione ripartenza pressione possesso lancio verticale diagonale corsa duello""".split())
+attenzione occasione azione ripartenza pressione possesso lancio verticale diagonale corsa duello
+quattro cinque sei sette otto nove dieci altro altra altri pronto pronta vediamo grazie ottima ottimo inghilterra italia spagna francia germania
+dalla della delle degli nella nello beffa crosso cross bravo brava bene benissimo sinistro destro fuori dentro ecco""".split())
+# parole di servizio che non si attaccano a un nome: "Manu Si", "Codua Che"
+SERVIZIO = set("si sì no non che di a e il la lo le i gli un una per con su da in ma se poi qui là ora".split())
 def main():
     vocab = {}
     proposti = collections.defaultdict(lambda: {"n": 0, "partite": set(), "come": collections.Counter()})
@@ -70,7 +74,7 @@ def main():
             if not (w[0].isupper() and len(w) >= 4) or piatto(w) in esatte or piatto(w) in COMUNI: i += 1; continue
             # prima in coppia con la parola dopo (Acco Borramonna), poi da sola
             candidati = []
-            if i + 1 < len(parole) and parole[i + 1][0].isupper():
+            if i + 1 < len(parole) and parole[i + 1][0].isupper() and parole[i + 1].lower() not in SERVIZIO:
                 candidati.append((w + " " + parole[i + 1], 2))
             candidati.append((w, 1))
             preso = False
