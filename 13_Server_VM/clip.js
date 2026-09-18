@@ -10525,6 +10525,19 @@ function avvio(opz) {
   rinominaMaterialeArchivio();
   leggiParlato();
   leggiVocabolario();
+  // I PROXY ORFANI SI CHIUDONO. Il servizio non uccide i figli al riavvio
+  // (cosi' il registratore sopravvive), ma la copia leggera NON deve
+  // sopravvivere: due encoder che scrivono la stessa playlist si pestano i
+  // piedi, e quattro riavvii in un pomeriggio avevano lasciato quattro
+  // ffmpeg a scrivere gli stessi p00042.ts. Si guarda in /proc e si chiude
+  // ogni ffmpeg che scrive un proxy.m3u8 di questa cartella e non e' nostro.
+  try {
+    fs.readdirSync("/proc").filter((d) => /^\d+$/.test(d)).forEach((pid) => {
+      let riga = ""; try { riga = fs.readFileSync("/proc/" + pid + "/cmdline", "utf8"); } catch (e) { return; }
+      if (riga.indexOf("ffmpeg") < 0 || riga.indexOf(path.join(DIR, "")) < 0 || riga.indexOf("proxy.m3u8") < 0) return;
+      try { process.kill(+pid, "SIGTERM"); console.log("[clip] proxy orfano chiuso (pid " + pid + ")"); } catch (e) {}
+    });
+  } catch (e) {}
   // i sottotitoli accesi prima del riavvio ripartono da dove siamo adesso
   Object.keys(R.reg).forEach((k) => {
     const r = R.reg[k];
