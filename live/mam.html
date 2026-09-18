@@ -891,6 +891,13 @@
   body.mam .console .ricezione .b.oro{background:#C9A24B;border-color:#A67C2E;color:#0A0F24;}
   body.mam .console .ricezione .b.rosso{background:#B3261E;border-color:#8E1216;color:#fff;}
   body.mam .console .ricezione .b.acceso{background:#2D8CEB;border-color:#2D8CEB;color:#fff;}
+  body.mam .console .sotto{display:inline-flex;align-items:center;gap:6px;margin-left:auto;}
+  body.mam .console .sotto select{height:26px;font-size:10.5px;background:#1B1B1B;color:#D0D0D0;border:1px solid #3A3A3A;border-radius:3px;}
+  body.mam .console .sotto .b.acceso{background:#2D8CEB;border-color:#2D8CEB;color:#fff;}
+  .telaio .sottotitoli{position:absolute;left:0;right:0;bottom:0;padding:8px 14px 10px;background:linear-gradient(transparent,rgba(0,0,0,.82));
+    pointer-events:none;text-align:center;line-height:1.3;}
+  .telaio .sottotitoli b{display:block;font-size:15px;font-weight:600;color:#fff;text-shadow:0 1px 3px #000;}
+  .telaio .sottotitoli i{display:block;font-style:normal;font-size:13.5px;color:var(--oro,#C9A24B);text-shadow:0 1px 3px #000;margin-top:2px;}
   body.mam .console #rigaFeed{padding-top:0;border-top:0;margin-top:-4px;}
   body.mam .console .notaFeed{flex:1;min-width:0;font-size:11px;line-height:1.4;color:#9A9A9A;}
   body.mam .console .notaFeed b{color:#D0D0D0;} body.mam .console .notaFeed a{color:#5AA7F2;text-decoration:none;font-weight:700;}
@@ -2161,6 +2168,9 @@
             '<i class="pallinoLive" id="pallinoLive" hidden></i><span id="capoNome">—</span>' +
             '<a href="#" id="capoTorna" hidden>← torna al contenuto</a></div>' +
           '<div class="telaio" id="telaio"><video id="player" playsinline></video>' +
+            // quello che si dice, mentre entra: la frase com'e' detta e sotto
+            // la traduzione. Si accende col tasto Sottotitoli.
+            '<div class="sottotitoli" id="sottotitoli" hidden><b id="sottoX"></b><i id="sottoY"></i></div>' +
             '<span class="forma" id="forma">16:9</span>' +
             '<span class="targa" id="targa" hidden><b></b><i></i></span></div>' +
           '<div class="mbarra"><span id="tPos">00:00:00:00</span>' +
@@ -6890,6 +6900,9 @@
           '<div class="azioni" id="azioniIngresso">' +
             '<button class="b" id="btnRecLive" hidden title="da qui in poi si tiene tutto (come il tasto I)">REC</button>' +
             '<button class="b" id="btnStopRec" hidden title="fin qui: chiude il pezzo e lo mette in timeline (come il tasto O)">Stop</button>' +
+            '<span class="sotto" id="rigaSotto" hidden><select id="sottoLingua" title="la lingua parlata: whisper la riconosce da solo, ma si puo\u0300 dire">' +
+              '<option value="auto">lingua: auto</option><option value="it">italiano</option><option value="en">inglese</option></select>' +
+            '<button class="b" id="btnSotto" title="trascrive e traduce quello che si dice, con quindici secondi di ritardo">Sottotitoli</button></span>' +
           '</div>' +
           // due vecchi comandi restano nel documento ma fuori dalla vista:
           // il codice che li cerca e' sparso, e toglierli lo romperebbe.
@@ -6897,14 +6910,13 @@
           // piu' come modo a parte, perche' adesso si guarda sempre.
           '<span hidden><button class="b" id="btnFerma"></button>' +
           '<button class="b" id="btnGuarda"></button></span>' +
-          '<a href="#" class="altraStrada" id="btnAltro" title="vai tu a prendere un feed dal foglio di MediaOps, invece di aspettarlo">oppure vai a prendere un feed\u2026</a>' +
           // LE PORTE COME UN PANNELLO PATCH. In regia si sa su quale porta
           // sta trasmettendo chi trasmette: e allora la porta si sceglie.
           // Dodici numeri interi prendono quattro righe in una colonna
           // stretta, quindi il prefisso e' scritto una volta sola e sui
           // tasti restano le ultime due cifre.
           '<div class="porte" id="portePanel">' +
-            '<span class="et">Porte <b>100\u00b7\u00b7</b></span><div class="griglia" id="porteGriglia"></div>' +
+            '<span class="et">Porte in ascolto</span><div class="griglia" id="porteGriglia"></div>' +
           '</div>' +
           '<div class="attese" id="attese"></div>' +
           '<div class="statoIngresso" id="statoIngresso"><i></i><span>Nessuna porta aperta</span></div>' +
@@ -6912,27 +6924,7 @@
         '<div class="colonnina" id="rigaEvento"><span class="et" id="etEvento">Partita</span>' +
           '<input type="text" id="eventoCerca" placeholder="filtra\u2026" autocomplete="off">' +
           '<select id="evento"><option value="">\u2014 scegli la partita \u2014</option></select></div>' +
-        '<div class="ingressi soloLive" id="ingressi" hidden>' +
-        '<div class="colonnina soloLive"><span class="et">Sorgente</span>'  +
-          '<select id="sorgente"><option value="">\u2014 il flusso da cui registrare \u2014</option><option value="__mano">indirizzo a mano\u2026</option></select></div>' +
-        '<div class="colonnina soloLive" id="rigaFeed" hidden><span class="et">\u00a0</span><div class="notaFeed" id="notaFeed"></div></div>' +
-        '<div class="colonnina soloLive" id="rigaVivi"><span class="et">In onda</span><div class="vivi" id="vivi"><span class="nota">cerco i flussi che trasmettono\u2026</span></div></div>' +
-        '<div class="colonnina soloLive" id="rigaUrl" hidden><span class="et">\u00a0</span>' +
-          '<input type="text" id="url" placeholder="srt://\u2026  \u00b7  https://\u2026m3u8"></div>' +
-        // LA RICEZIONE, spiegata. Due modi: REGISTRA va a prendere il flusso
-        // scelto nella Sorgente (il MAM e' il caller); RICEVI apre una porta e
-        // aspetta che la regia trasmetta (il MAM e' il listener) — e allora
-        // l'indirizzo da dare alla regia sta qui sotto, grande, con lo stato.
-        '<div class="ricezione soloLive">' +
-          '<div class="riga"><span class="et">Live</span>' +
-            '<button class="b oro" id="btnRec" title="il MAM si collega alla Sorgente scelta e registra">Registra</button>' +
-          '</div>' +
-          '<div class="spiega" id="spiegaLive"><b>Registra</b> va a prendere la Sorgente scelta (dal foglio dei feed): il MAM si collega lui.</div>' +
-          // l'indirizzo non si ripete: sta sulla scheda del flusso, grande,
-          // con il suo tasto. Qui c'era due volte la stessa cosa.
-          '<div id="ascolto" class="soloArchivio"></div>' +
-        '</div>' +
-        '</div>' +
+        '<div id="ascolto" class="soloArchivio"></div>' +
         // In LIVE questa riga ripeteva la scheda del flusso — "in ascolto,
         // senza evento" mentre la scheda diceva gia' porta e indirizzo — e
         // il conto globale sta comunque nella barra in basso. Resta in
@@ -6956,13 +6948,6 @@
     var lente = pc && pc.querySelector(".lente2"); if (lente) { lente.textContent = "Cerca"; lente.className = "chip"; }
     if (MODO === "archivio" && el("projCerca")) el("projCerca").placeholder = "azioni: appunti, ESPN, telecronaca \u00b7 Invio";
     // l'altra strada resta a portata, ma chiusa: si apre quando serve
-    if (el("btnAltro")) el("btnAltro").addEventListener("click", function (ev) {
-      ev.preventDefault();
-      var g = el("ingressi"); if (!g) return;
-      g.hidden = !g.hidden;
-      this.className = "altraStrada" + (g.hidden ? "" : " aperta");
-      if (!g.hidden) { var so = el("sorgente"); if (so) so.focus(); }
-    });
     var copia = el("btnCopia");
     if (copia) copia.addEventListener("click", function () {
       var ind = REG && REG.ascolto && REG.ascolto.indirizzo; if (!ind) return;
@@ -7034,8 +7019,7 @@
           if (el("evento")) el("evento").appendChild(o);
         });
         var sel0 = el("evento"); if (sel0 && sel0.options[0]) sel0.options[0].textContent = "\u2014 " + eventi.length + " eventi: scegli \u2014";
-        if (sel0) sel0.addEventListener("change", agganciaFeed);
-        // l'evento scelto si ASSEGNA al flusso su cui si sta lavorando: cosi'
+                // l'evento scelto si ASSEGNA al flusso su cui si sta lavorando: cosi'
         // il flusso "Ingresso 2" diventa "AL HILAL-NEOM" e prende appunti ed ESPN
         if (sel0) sel0.addEventListener("change", function () {
           var o = sel0.selectedOptions[0]; if (!o || !o.value || !REG || REG.arch) return;
@@ -7140,77 +7124,15 @@
     // i canali) e dentro ogni famiglia si ordinano per numero — 2 prima di 11,
     // che l'ordine alfabetico sbaglia. Due flussi con lo stesso nome si
     // distinguono con la coda del loro indirizzo, se no si sceglie a caso.
-    manda({ tipo:"clip-sorgenti" }).then(function (dd) {
-      var sel = el("sorgente"); if (!sel) return;
-      var FAM = [
-        [/^SRT-CP9K[- ]?(\d+)/i, "Encoder CP9K"],
-        [/^IP[- ]?TUNER[- ]?PRINCE[- ]?(\d+)/i, "IP Tuner"],
-        [/^DIBSYS[- ]?(\d+)/i, "DIBSYS"],
-        [/^SRT[- ]?(\d+)\b/i, "Canali"],
-        [/^HNL[- ]?(\d*)/i, "HNL"]
-      ];
-      var gruppi = {}, ordine = [];
-      (dd.sorgenti || []).forEach(function (x) {
-        var fam = "Altri", n = 9999;
-        for (var i = 0; i < FAM.length; i++) {
-          var m = FAM[i][0].exec(x.nome || "");
-          if (m) { fam = FAM[i][1]; n = parseInt(m[1] || "0", 10) || 0; break; }
-        }
-        if (!gruppi[fam]) { gruppi[fam] = []; ordine.push(fam); }
-        gruppi[fam].push({ x: x, n: n });
-      });
-      // conta quante volte compare ogni nome: solo i doppioni portano la coda
-      var quanti = {};
-      (dd.sorgenti || []).forEach(function (x) { var k = (x.nome || "") + "|" + x.campo; quanti[k] = (quanti[k] || 0) + 1; });
-      ["Encoder CP9K", "IP Tuner", "DIBSYS", "Canali", "HNL", "Altri"].forEach(function (fam) {
-        if (!gruppi[fam]) return;
-        var g = document.createElement("optgroup");
-        g.label = fam + " \u00b7 " + gruppi[fam].length;
-        gruppi[fam].sort(function (a, b) { return (a.n - b.n) || String(a.x.nome).localeCompare(String(b.x.nome)); });
-        gruppi[fam].forEach(function (v) {
-          var x = v.x, o = document.createElement("option");
-          var campo = String(x.campo || "").toLowerCase().replace(/preview new/, "preview");
-          // la parte dell'indirizzo che DISTINGUE: per un HLS e' la cartella
-          // prima del file (index.m3u8 e' uguale per tutti), per un SRT l'host
-          var pezzi = String(x.url).replace(/^\w+:\/\//, "").split(/[\/?]/).filter(Boolean);
-          var distintivo = pezzi.length > 1 ? pezzi[pezzi.length - 2] : pezzi[0] || "";
-          var coda = quanti[(x.nome || "") + "|" + x.campo] > 1
-            ? " \u00b7 \u2026" + distintivo.slice(-6) : "";
-          o.value = x.url;
-          o.textContent = x.nome + "  \u00b7  " + campo + coda + "  \u00b7  " + String(x.tipo || "").toUpperCase();
-          g.appendChild(o);
-        });
-        sel.appendChild(g);
-      });
-    }).catch(function () {});
-    // L'indirizzo a mano serve una volta su venti: sta nascosto finche' non
-    // lo si chiede, invece di occupare una riga per sempre.
-    el("sorgente").addEventListener("change", function () {
-      var mano = this.value === "__mano";
-      el("rigaUrl").hidden = !mano;
-      el("url").value = mano ? "" : this.value;
-      if (mano) el("url").focus();
-    });
-
     function avvia(extra) {
       var ev = el("evento").selectedOptions[0];
       var corpo = { tipo:"clip-avvia", evento: el("evento").value.replace(/^arc:/, ""),
         titolo: (ev && ev.dataset.titolo) || (extra.guarda ? "anteprima" : "senza evento"),
         competizione: (ev && ev.dataset.comp) || "",
-        url: el("url").value.trim(),
-        sorgente: el("sorgente").value ? el("sorgente").selectedOptions[0].textContent : "a mano" };
+        sorgente: "in ascolto", ricevi: true };
       Object.keys(extra).forEach(function (k) { corpo[k] = extra[k]; });
-      if (!corpo.url) { corpo.ricevi = true; corpo.sorgente = "in ascolto"; }
       return manda(corpo).then(function (dd) { REG = dd.reg; apertaId = ""; aggiorna(); return dd; });
     }
-    el("btnRec").addEventListener("click", function () {
-      if (REG && REG.stato === "registra" && !REG.guarda) {
-        manda({ tipo:"clip-ferma", id:REG.id }).then(function () { aggiorna(); dice("Registrazione fermata.", true); })
-          .catch(function (e) { dice(e.message); });
-        return;
-      }
-      avvia({}).then(function () { dice("Registrazione avviata.", true); }).catch(function (e) { dice(e.message); });
-    });
     // APRI UNA PORTA chiede prima che partita e', perche' e' il momento in
     // cui lo sai. Poi apre. Se non scegli niente apre lo stesso: senza
     // questa uscita la domanda diventa un cancello, e per le prove serve
@@ -7252,6 +7174,33 @@
     });
     // REC e STOP sono gli stessi gesti di I e O: un solo giro di codice
     if (el("btnRecLive")) el("btnRecLive").addEventListener("click", function () { segnaIn(); });
+    // SOTTOTITOLI DAL VIVO: si accendono sulla porta aperta. Da li' la
+    // pagina chiede ogni due secondi le righe nuove e mostra l'ultima sotto
+    // il video, con la traduzione.
+    var SOTTO_DA = 0, SOTTO_REG = "";
+    if (el("btnSotto")) el("btnSotto").addEventListener("click", function () {
+      if (!REG || REG.stato !== "registra") return dice("Prima apri una porta: i sottotitoli leggono quello che entra.");
+      var acceso = !!(REG.sottotitoli && REG.sottotitoli.acceso);
+      manda({ tipo: "clip-sottotitoli", id: REG.id, on: !acceso, lingua: (el("sottoLingua") || {}).value || "auto" })
+        .then(function (d) { REG = d.reg; SOTTO_DA = 0; SOTTO_REG = REG.id; aggiorna();
+          dice(acceso ? "Sottotitoli spenti." : "Sottotitoli accesi: la prima riga arriva fra una quindicina di secondi.", true); })
+        .catch(function (e) { dice(e.message); });
+    });
+    function giraSotto() {
+      var box = el("sottotitoli"); if (!box) return;
+      var acceso = !!(REG && REG.stato === "registra" && REG.sottotitoli && REG.sottotitoli.acceso);
+      box.hidden = !acceso;
+      if (!acceso) return;
+      if (SOTTO_REG !== REG.id) { SOTTO_REG = REG.id; SOTTO_DA = 0; }
+      manda({ tipo: "clip-parlato-vivo", reg: REG.id, da: SOTTO_DA }).then(function (d) {
+        var p = d.pezzi || []; if (!p.length) return;
+        var u = p[p.length - 1]; SOTTO_DA = u.a;
+        el("sottoX").textContent = u.x || ""; el("sottoY").textContent = u.y || "";
+        // la telecronaca aperta cresce con le righe nuove
+        if (el("telecronaca") && typeof aggiungiAllaTelecronaca === "function") aggiungiAllaTelecronaca(p);
+      }).catch(function () {});
+    }
+    setInterval(giraSotto, 2000);
     if (el("btnStopRec")) el("btnStopRec").addEventListener("click", function () { segnaOut(); });
     if (el("btnFerma")) el("btnFerma").addEventListener("click", function () {
       if (!REG || REG.stato !== "registra") return;
@@ -7270,7 +7219,6 @@
       avvia({ guarda:true }).catch(function (e) { dice(e.message); });
     });
     disegnaConsole();
-    if (MODO !== "archivio") { aggiornaVivi(true); setInterval(aggiornaVivi, 8000); }
   }
 
   // Il foglio dei feed di MediaOps dice su quale encoder passa la partita:
@@ -7283,67 +7231,9 @@
     if (!o) { o = document.createElement("option"); o.value = url; sel.insertBefore(o, sel.options[1] || null); }
     o.textContent = nome; return o;
   }
-  function agganciaFeed() {
-    var sel = el("evento"), riga = el("rigaFeed"), nota = el("notaFeed");
-    var o = sel && sel.selectedOptions[0];
-    if (!o || !o.value || !riga) { if (riga) riga.hidden = true; FEED_SCELTO = null; return; }
-    riga.hidden = false; nota.textContent = "cerco la partita nel foglio dei feed\u2026";
-    manda({ tipo: "clip-feed-partita", partita: o.dataset.titolo || o.textContent, quando: o.dataset.quando || "" }).then(function (d) {
-      var f = d.feed; FEED_SCELTO = f;
-      if (!f) { nota.innerHTML = "non \u00e8 nel foglio dei feed: scegli la sorgente a mano, oppure <b>Ricevi</b>."; return; }
-      if (f.senzaCleanfeed || !f.mainPronto) {
-        nota.innerHTML = "dal foglio: <b>" + (f.source || "nessun cleanfeed") + "</b> \u00b7 nessun feed da prendere: usa <b>Ricevi</b>" + (f.vmix ? " \u00b7 vMix " + f.vmix : "") + ".";
-        return;
-      }
-      var ss = el("sorgente");
-      if (f.backupPronto) opzioneSorgente(ss, f.backupPronto, f.source + " \u00b7 backup");
-      opzioneSorgente(ss, f.mainPronto, f.source + " \u00b7 main");
-      ss.value = f.mainPronto; ss.dispatchEvent(new Event("change"));
-      nota.innerHTML = "dal foglio: <b>" + f.source + "</b> \u00b7 main" +
-        (f.backupPronto ? " \u00b7 <a href='#' id='usaBackup'>passa al backup</a>" : "") +
-        (f.vmix ? " \u00b7 vMix " + f.vmix : "") + (f.vmixItaly ? " \u00b7 " + f.vmixItaly : "") + (f.passphrase ? " \u00b7 con passphrase" : "");
-      var ub = el("usaBackup");
-      if (ub) ub.addEventListener("click", function (e) {
-        e.preventDefault(); ss.value = f.backupPronto; ss.dispatchEvent(new Event("change"));
-        nota.innerHTML = "dal foglio: <b>" + f.source + "</b> \u00b7 <b>backup</b>" + (f.vmix ? " \u00b7 vMix " + f.vmix : "");
-        if (REG && REG.guarda && REG.stato === "registra") { el("btnGuarda").click(); setTimeout(function () { el("btnGuarda").click(); }, 800); }
-        else dice("Sorgente: backup di " + f.source + ".", true);
-      });
-      // niente anteprima automatica: il montatore sceglie lui quando guardare
-      // (il flusso, di norma, lo spinge MCR e sta gia' fra quelli in arrivo)
-    }).catch(function (e) { nota.textContent = "foglio dei feed non raggiungibile: " + e.message; });
-  }
 
   // "Scelgo la partita e tac, appare": il MAM prova tutte le sorgenti e
   // mostra quelle che trasmettono adesso; un clic e la vedi nel monitor
-  function aggiornaVivi(subito) {
-    var box = el("vivi"); if (!box) return;
-    manda({ tipo: "clip-flussi-vivi", subito: !!subito }).then(function (d) {
-      var vivi = d.vivi || [];
-      if (!vivi.length) {
-        box.innerHTML = "<span class='nota'>" + (d.inCorso ? "cerco i flussi che trasmettono\u2026" : "nessun flusso in onda adesso") + "</span>";
-        return;
-      }
-      var scelto = el("sorgente") ? el("sorgente").value : "";
-      box.innerHTML = "";
-      vivi.forEach(function (v) {
-        var f = document.createElement("div"); f.className = "flusso" + (v.url === scelto ? " scelto" : "");
-        f.title = v.nome + " \u00b7 " + v.tipo.toUpperCase() + " \u00b7 clicca: lo vedi nel monitor";
-        f.innerHTML = (v.mini ? "<img src='" + BASE + v.mini + "?t=" + (d.quando || 0) + "' alt=''>" : "") + "<span>" + v.nome + "</span>";
-        f.addEventListener("click", function () {
-          var sel = el("sorgente"); if (!sel) return;
-          var o = Array.prototype.find.call(sel.options, function (x) { return x.value === v.url; });
-          if (!o) { o = document.createElement("option"); o.value = v.url; o.textContent = v.nome + " \u00b7 " + v.tipo.toUpperCase(); sel.appendChild(o); }
-          sel.value = v.url; sel.dispatchEvent(new Event("change"));
-          document.querySelectorAll("#vivi .flusso").forEach(function (x) { x.classList.toggle("scelto", x === f); });
-          // si guarda subito, senza registrare: e' il "tac"
-          if (el("btnGuarda") && !(REG && REG.guarda && REG.stato === "registra")) el("btnGuarda").click();
-          else dice("Sorgente scelta: " + v.nome + ".", true);
-        });
-        box.appendChild(f);
-      });
-    }).catch(function () {});
-  }
 
   // IL PANNELLO DI CONTROLLO: una riga che dice cosa sta succedendo, e i
   // tasti che si accendono solo quando servono. Prima questa roba stava in
@@ -7408,6 +7298,13 @@
     if (el("btnStopRec")) {
       el("btnStopRec").hidden = !(apertoQui && reg);
       el("btnStopRec").className = "b rosso";
+    }
+    if (el("rigaSotto")) {
+      var sottoAcceso = !!(REG && REG.sottotitoli && REG.sottotitoli.acceso);
+      el("rigaSotto").hidden = !apertoQui;
+      el("btnSotto").className = "b" + (sottoAcceso ? " acceso" : "");
+      el("btnSotto").textContent = sottoAcceso ? "Sottotitoli \u00b7 " + ((REG.sottotitoliLingua || REG.sottotitoli.lingua || "auto").toUpperCase()) : "Sottotitoli";
+      el("sottoLingua").hidden = sottoAcceso;
     }
     // il tasto grande cambia mestiere quando la porta e' aperta
     if (el("btnRicevi") && MODO !== "archivio") {

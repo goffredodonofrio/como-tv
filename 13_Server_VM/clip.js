@@ -26,6 +26,7 @@
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
+const http = require("http");
 const { spawn, execFile, execFileSync } = require("child_process");
 const os = require("os");
 const dgram = require("dgram");
@@ -168,14 +169,17 @@ const INTEGRALE_DA_SOLO = process.env.COMOTV_CLIP_INTEGRALE === "1";
 // configura, e i due ambienti ne hanno uno per uno — altrimenti il secondo
 // che prova a mettersi in ascolto fallisce con un "indirizzo occupato" nel
 // momento peggiore, cioe' quando qualcuno sta per registrare una partita.
+// DUE PORTE, DATE DALLA REGIA. Non un intervallo da cui scegliere: i numeri
+// precisi su cui i vMix spingono, scritti nell'ambiente (COMOTV_CLIP_PORTE,
+// separati da virgola). Il MAM non chiama nessuno e non cerca nessuno: sta
+// in ascolto li', e su nient'altro.
 const PORTE = (function () {
-  const t = String(process.env.COMOTV_CLIP_PORTE || "10001-10012");
+  const t = String(process.env.COMOTV_CLIP_PORTE || "10021,10022");
   const m = /^(\d+)\s*-\s*(\d+)$/.exec(t.trim());
-  const a = m ? parseInt(m[1], 10) : 10001;
-  const b = m ? parseInt(m[2], 10) : 10012;
-  const fuori = [];
-  for (let i = a; i <= b && fuori.length < 32; i++) fuori.push(i);
-  return fuori.length ? fuori : [10001];
+  let fuori = [];
+  if (m) { for (let i = parseInt(m[1], 10); i <= parseInt(m[2], 10) && fuori.length < 2; i++) fuori.push(i); }
+  else fuori = t.split(/[,\s]+/).map((x) => parseInt(x, 10)).filter((x) => x > 0 && x < 65536).slice(0, 2);
+  return fuori.length ? fuori : [10021, 10022];
 })();
 const IP_PUBBLICO = process.env.COMOTV_IP_PUBBLICO || "209.227.239.211";
 // Una porta aperta sul mondo senza parola d'ordine e' un invito a spingerci
@@ -388,61 +392,10 @@ function probe(file) {
 
 // ── il registratore ───────────────────────────────────────────────────
 
-// Una master playlist elenca piu' qualita'. Lasciato libero, ffmpeg prende
-// la PRIMA, che nei CDN e' quasi sempre la piu' bassa: si registrerebbe la
-// partita a 320x180 senza che nessuno se ne accorga finche' non si guarda
-// la clip. Quindi la scelta si fa qui, e si scrive nel registro.
-async function risolviHls(url, qualita) {
-  if (!/^https?:/i.test(url)) return { url: url };
-  let testo;
-  try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    testo = await r.text();
-  } catch (e) { throw new Error("la sorgente non risponde: " + e.message); }
-  if (testo.indexOf("#EXT-X-STREAM-INF") < 0) return { url: url };   // gia' una lista di segmenti
-  const righe = testo.split("\n");
-  const varianti = [];
-  for (let i = 0; i < righe.length; i++) {
-    const m = /#EXT-X-STREAM-INF:.*BANDWIDTH=(\d+)/.exec(righe[i]);
-    if (!m) continue;
-    const ris = /RESOLUTION=(\d+x\d+)/.exec(righe[i]);
-    let u = "";
-    for (let j = i + 1; j < righe.length; j++) {
-      const r2 = righe[j].trim();
-      if (r2 && r2[0] !== "#") { u = r2; break; }
-    }
-    if (u) {
-      try { varianti.push({ banda: parseInt(m[1], 10), ris: ris ? ris[1] : "", url: new URL(u, url).toString() }); }
-      catch (e) {}
-    }
-  }
-  if (!varianti.length) return { url: url };
-  varianti.sort((a, b) => b.banda - a.banda);
-  const scelta = qualita === "bassa" ? varianti[varianti.length - 1] : varianti[0];
-  return {
-    url: scelta.url, scelta: scelta,
-    varianti: varianti.map((x) => (x.ris || "?") + " " + Math.round(x.banda / 1000) + "k")
-  };
-}
-
-function argomentiIngresso(url) {
-  // Un flusso non e' un file: se cade, ffmpeg deve riprovare da solo invece
-  // di chiudere la registrazione a meta' partita.
-  if (/^https?:/i.test(url)) {
-    return ["-reconnect", "1", "-reconnect_streamed", "1",
-            "-reconnect_delay_max", "10", "-rw_timeout", "15000000", "-i", url];
-  }
-  if (/^srt:/i.test(url)) {
-    // Di suo ci presentiamo noi al listener (caller). Ma se l'indirizzo dice
-    // gia' come deve andare — per esempio "mode=listener", quando e' un vMix
-    // a spingere verso di noi — si rispetta quello che c'e' scritto.
-    if (/[?&]mode=/i.test(url)) return ["-i", url];
-    const sep = url.indexOf("?") < 0 ? "?" : "&";
-    return ["-i", url + sep + "mode=caller&latency=300"];
-  }
-  return ["-i", url];
-}
+// L'ingresso e' uno solo: la porta SRT in ascolto. Niente caller verso
+// indirizzi altrui, niente HLS: era quello che faceva litigare il MAM con i
+// vMix della regia, e non si rifa'.
+function argomentiIngresso(url) { return ["-i", url]; }
 
 function fileProxy(id) { return path.join(cartellaReg(id), "proxy.m3u8"); }
 function quantiSegmenti(via) {
@@ -819,11 +772,13 @@ function integrale(r) {
 // ── le azioni che arrivano dal ponte ──────────────────────────────────
 
 async function clipAvvia(p) {
-  let url = String(p.url || "").trim();
+  let url = "";
   let ascolto = null;
-  // "ricevi": non andiamo a prendere niente, ci mettiamo in ascolto e
-  // consegniamo l'indirizzo a cui trasmettere.
-  if (p.ricevi) {
+  // SI RICEVE E BASTA. Non andiamo a prendere niente: ci si mette in ascolto
+  // su una delle due porte e si consegna l'indirizzo a cui trasmettere.
+  if (p.url) throw new Error("il MAM non va a prendere flussi: si mette in ascolto sulle sue porte");
+  p.ricevi = true;
+  {
     // UN ASCOLTO ALLA VOLTA.
     // Premere due volte apriva due ascolti su due porte diverse: chi
     // trasmette ne trova uno solo, e la pagina ti mostra l'altro — che resta
@@ -873,8 +828,6 @@ async function clipAvvia(p) {
   if (gb < MIN_GB) throw new Error("sul disco restano " + gb.toFixed(1) +
     " GB: troppo pochi per cominciare (ne servono almeno " + MIN_GB + ")");
 
-  const risolta = await risolviHls(url, p.qualita);
-
   const r = {
     id: nuovoId("r"),
     evento: String(p.evento || "").slice(0, 64),      // recordId Airtable, se c'e'
@@ -889,10 +842,6 @@ async function clipAvvia(p) {
     vedi: soloVedere && !p.guarda,
     tenuti: [],
     ascolto: ascolto,
-    urlLetto: risolta.url !== url ? risolta.url : "",
-    rendition: risolta.scelta ? (risolta.scelta.ris || "?") + " · " +
-               Math.round(risolta.scelta.banda / 1000) + " kbps" : "",
-    varianti: risolta.varianti || [],
     stato: "registra",
     avviata: Date.now(),
     finita: 0,
@@ -2209,6 +2158,8 @@ function pubblica(r) {
     // fare al browser, che li piegherebbe tutti dentro due uscite
     canali: quantiCanali(r),
     proxy: proxyCe(r.id) ? "/clip/" + r.id + "/proxy.m3u8" : "",
+    sottotitoli: r.sottotitoli || null,
+    sottotitoliLingua: (VIVI.get(r.id) || {}).lingua || "",
     viva: vive
   });
 }
@@ -4752,171 +4703,7 @@ function atLeggi(url) {
 }
 
 
-// ── IL FOGLIO DEI FEED: quale partita passa su quale encoder ──────────
-//  MediaOps tiene un foglio Google con, per ogni partita, la SOURCE (TATA 03,
-//  SRT-CP9K-12…), il MAIN FEED e il BACKUP FEED (srt://…), l'ingresso vMix.
-//  Il MAM lo legge ogni dieci minuti (e' un CSV pubblico) e cosi', scelta
-//  la partita, sa da solo da dove prenderla: e' il "tac, appare".
-const FOGLIO_FEED = process.env.COMOTV_FOGLIO_FEED ||
-  "https://docs.google.com/spreadsheets/d/1QMqP8J376LDInU8aI9VUEzoNAAvvMpDxohEHjjoNF_U/export?format=csv&gid=80696019";
-let FEED = { quando: 0, righe: [], errore: "" };
-function fileFeed() { return path.join(DIR, "feed.json"); }
-function prendiTesto(url, salti) {
-  return new Promise((ok, no) => {
-    const req = https.get(url, { headers: { "User-Agent": "curl/8.5.0 comotv" } }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && (salti || 0) < 4) {
-        res.resume(); return prendiTesto(res.headers.location, (salti || 0) + 1).then(ok, no);
-      }
-      if (res.statusCode !== 200) { res.resume(); return no(new Error("il foglio risponde " + res.statusCode)); }
-      let b = ""; res.setEncoding("utf8"); res.on("data", (d) => { b += d; }); res.on("end", () => ok(b));
-    });
-    req.on("error", no); req.setTimeout(20000, () => req.destroy(new Error("foglio: tempo scaduto")));
-  });
-}
-// un CSV con le virgolette fatte bene: celle con virgole e a capo dentro
-function leggiCsv(testo) {
-  const righe = [], riga = []; let cella = "", dentro = false;
-  for (let i = 0; i < testo.length; i++) {
-    const c = testo[i];
-    if (dentro) {
-      if (c === '"') { if (testo[i + 1] === '"') { cella += '"'; i++; } else dentro = false; }
-      else cella += c;
-    } else if (c === '"') dentro = true;
-    else if (c === ",") { riga.push(cella); cella = ""; }
-    else if (c === "\n" || c === "\r") { if (c === "\r" && testo[i + 1] === "\n") i++; riga.push(cella); righe.push(riga.slice()); riga.length = 0; cella = ""; }
-    else cella += c;
-  }
-  if (cella.length || riga.length) { riga.push(cella); righe.push(riga.slice()); }
-  return righe;
-}
-const MESI_EN = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
-function quandoGmt(data, ora) {
-  // "Mon, 01-Dec-25" + "17:00"  →  2025-12-01T17:00Z
-  const m = /(\d{1,2})-([A-Za-z]{3})-(\d{2,4})/.exec(String(data || ""));
-  const h = /(\d{1,2}):(\d{2})/.exec(String(ora || ""));
-  if (!m || MESI_EN[m[2].toLowerCase()] === undefined) return "";
-  const anno = m[3].length === 2 ? 2000 + +m[3] : +m[3];
-  return new Date(Date.UTC(anno, MESI_EN[m[2].toLowerCase()], +m[1], h ? +h[1] : 12, h ? +h[2] : 0)).toISOString();
-}
-async function leggiFoglioFeed() {
-  try {
-    const righe = leggiCsv(await prendiTesto(FOGLIO_FEED));
-    const testa = (righe[0] || []).map((x) => String(x).trim().toUpperCase());
-    const col = (nome) => testa.findIndex((x) => x.indexOf(nome) === 0);
-    const iComp = col("COMPETIZIONE"), iPart = col("PARTITA"), iData = col("DATE"), iOra = col("TIME"),
-          iSrc = col("SOURCE"), iMain = col("MAIN FEED"), iBack = col("BACKUP FEED"), iVmix = col("VMIX SRT"), iVmixIt = col("VMIX ITALY");
-    const fuori = [];
-    righe.slice(1).forEach((r) => {
-      const partita = String(r[iPart] || "").replace(/\s+/g, " ").trim();
-      const quando = quandoGmt(r[iData], r[iOra]);
-      if (!partita || !quando) return;
-      const celle = [r[iMain], r[iBack]].map((x) => String(x || "").trim());
-      const pass = celle.map((x) => (/passphrase\s*:\s*(\S+)/i.exec(x) || [])[1]).filter(Boolean)[0] || "";
-      const urls = celle.filter((x) => /^srt:\/\/|^https?:\/\//i.test(x));
-      fuori.push({ competizione: String(r[iComp] || "").trim(), partita: partita, quando: quando,
-                   source: String(r[iSrc] || "").trim(), main: urls[0] || "", backup: urls[1] || "", passphrase: pass,
-                   vmix: String(r[iVmix] || "").trim(), vmixItaly: String(r[iVmixIt] || "").trim(),
-                   senzaCleanfeed: /NO NEED/i.test(String(r[iSrc] || "")) });
-    });
-    FEED = { quando: Date.now(), righe: fuori, errore: "" };
-    try { fs.writeFileSync(fileFeed(), JSON.stringify(FEED)); } catch (e) {}
-    console.log("[clip] foglio feed: " + fuori.length + " righe");
-  } catch (e) { FEED.errore = e.message; console.log("[clip] foglio feed: " + e.message); }
-}
-function leggiFeedSalvato() { try { FEED = JSON.parse(fs.readFileSync(fileFeed(), "utf8")) || FEED; } catch (e) {} }
-// la riga del foglio per una partita: stesso giorno (piu' o meno dodici ore)
-// e stesse squadre — il nome uguale prima, poi le parole
-function feedPerPartita(nomePartita, quandoIso) {
-  const t0 = Date.parse(quandoIso || "");
-  const norm = (x) => String(x || "").toUpperCase().replace(/\[[^\]]*\]|\(.*?\)/g, " ").replace(/\s\d+\s*-\s*\d+.*$/, "").replace(/\s+VS\.?\s+/g, "-").replace(/\s*-\s*/g, "-").replace(/[^A-Z0-9\-]+/g, " ").trim();
-  const mio = norm(nomePartita);
-  const vicine = FEED.righe.filter((r) => !t0 || Math.abs(Date.parse(r.quando) - t0) <= 12 * 3600000);
-  let meglio = vicine.find((r) => norm(r.partita) === mio);
-  if (!meglio) {
-    const mie = squadreDi(nomePartita);
-    let punteggio = 0;
-    vicine.forEach((r) => {
-      const loro = squadreDi(r.partita);
-      const n = mie.filter((a) => loro.some((b) => b.tutto === a.tutto || a.parole.some((w) => b.tutto.indexOf(w) >= 0) || b.parole.some((w) => a.tutto.indexOf(w) >= 0))).length;
-      if (n > punteggio) { punteggio = n; meglio = r; }
-    });
-    if (punteggio < Math.min(2, mie.length)) meglio = null;
-  }
-  if (!meglio) return null;
-  // l'indirizzo pronto da dare a ffmpeg: caller, con la passphrase se c'e'
-  const pronto = (u) => !u ? "" : u + (u.indexOf("?") >= 0 ? "&" : "?") + "mode=caller&latency=300" + (meglio.passphrase ? "&passphrase=" + encodeURIComponent(meglio.passphrase) : "");
-  return Object.assign({}, meglio, { mainPronto: pronto(meglio.main), backupPronto: pronto(meglio.backup) });
-}
-setTimeout(leggiFoglioFeed, 15000);
-setInterval(leggiFoglioFeed, 600000);
-
-// ── I FLUSSI IN ONDA ADESSO ────────────────────────────────────────
-//  Cinquanta encoder e canali in tendina, e nessuno sa a memoria su quale
-//  passa la partita. Il MAM lo scopre: prova ogni sorgente per qualche
-//  secondo, tiene quelle che rispondono con un fotogramma e le mostra. La
-//  sonda gira solo se qualcuno la guarda (la pagina LIVE aperta) e non piu'
-//  di una volta ogni due minuti.
-let FLUSSI = { quando: 0, voci: [], inCorso: false, chiesto: 0 };
-function sondaFlusso(sorg) {
-  return new Promise((ok) => {
-    let url = sorg.url;
-    if (/^srt:/i.test(url) && !/mode=/i.test(url)) url += (url.indexOf("?") >= 0 ? "&" : "?") + "mode=caller&latency=300&timeout=4000000";
-    const nome = "v" + nuovoId("") + ".jpg", fuori = path.join(DIR, CARTELLA_CLIP, nome);
-    execFile(FFMPEG, ["-hide_banner", "-loglevel", "error", "-rw_timeout", "6000000", "-i", url,
-                      "-frames:v", "1", "-q:v", "5", "-vf", "scale=320:-1", "-y", fuori], { timeout: 12000 },
-      (e) => ok(Object.assign({}, sorg, { viva: !e, mini: e ? "" : "/clip/" + CARTELLA_CLIP + "/" + nome, visto: Date.now() })));
-  });
-}
-async function sondaFlussi() {
-  if (FLUSSI.inCorso) return;
-  FLUSSI.inCorso = true;
-  try {
-    const lista = ((await clipSorgenti()).sorgenti || []);
-    const esiti = [];
-    let i = 0;
-    const lavora = async () => { while (i < lista.length) { const s = lista[i++]; esiti.push(await sondaFlusso(s)); } };
-    await Promise.all([lavora(), lavora(), lavora(), lavora(), lavora(), lavora(), lavora(), lavora()]);
-    // le miniature vecchie si buttano
-    FLUSSI.voci.forEach((v) => { if (v.mini) { try { fs.unlinkSync(path.join(DIR, v.mini.replace(/^\/clip\//, ""))); } catch (e) {} } });
-    FLUSSI.voci = esiti; FLUSSI.quando = Date.now();
-    console.log("[clip] sonda flussi: " + esiti.filter((x) => x.viva).length + " in onda su " + esiti.length);
-  } catch (e) { console.log("[clip] sonda flussi: " + e.message); }
-  finally { FLUSSI.inCorso = false; }
-}
-function flussiVivi(p) {
-  FLUSSI.chiesto = Date.now();
-  if (p && p.subito && !FLUSSI.inCorso) FLUSSI.quando = 0;
-  if (Date.now() - FLUSSI.quando > 120000 && !FLUSSI.inCorso) sondaFlussi();
-  return { ok: true, inCorso: FLUSSI.inCorso, quando: FLUSSI.quando, quante: FLUSSI.voci.length,
-           vivi: FLUSSI.voci.filter((v) => v.viva).map((v) => ({ nome: v.nome, campo: v.campo, tipo: v.tipo, url: v.url, mini: v.mini })) };
-}
-async function clipSorgenti() {
-  if (SORG_CACHE.dati && Date.now() - SORG_CACHE.quando < 300000) return SORG_CACHE.dati;
-  const j = await atLeggi("https://api.airtable.com/v0/" + AT_BASE + "/" + AT_AWS + "?pageSize=100");
-  const fuori = [];
-  (j.records || []).forEach((rec) => {
-    const f = rec.fields || {};
-    // il nome e' il primo campo di testo che non e' un indirizzo
-    let nome = "";
-    Object.keys(f).forEach((k) => {
-      const v = String(f[k] || "");
-      if (!nome && v && !/^(srt|https?):\/\//i.test(v) && v.length < 40) nome = v;
-    });
-    Object.keys(f).forEach((k) => {
-      const v = String(f[k] || "").trim();
-      if (/^srt:\/\//i.test(v)) fuori.push({ nome: nome || k, campo: k, tipo: "srt", url: v });
-      else if (/^https?:\/\/.*\.m3u8/i.test(v)) fuori.push({ nome: nome || k, campo: k, tipo: "hls", url: v });
-    });
-  });
-  const d = { ok: true, quante: fuori.length, sorgenti: fuori };
-  SORG_CACHE = { quando: Date.now(), dati: d };
-  return d;
-}
-
-
-// ══════════════════════════════════════════════════════════════════════
-//  L'ARCHIVIO DELLE PARTITE INTERE (S3)
-// ══════════════════════════════════════════════════════════════════════
+// ── L'ARCHIVIO ──
 //
 //  Le partite intere stanno in un bucket S3, caricate a mano con Cyberduck.
 //  Il MAM non le copia: S3 parla HTTP e capisce le richieste per intervallo
@@ -6135,6 +5922,112 @@ function scriviParlato() {
   } catch (e) { console.log("[clip] parlato non salvato: " + e.message); }
 }
 function whisperCe() { return fs.existsSync(WHISPER) && fs.existsSync(MODELLO); }
+
+// ── I SOTTOTITOLI DAL VIVO ────────────────────────────────────────────
+//
+//  Mentre il flusso entra dalla porta, quello che si dice si legge in
+//  pagina — nella lingua in cui lo dicono e tradotto. Non si aspetta la
+//  fine della partita: ogni otto secondi di audio nuovo si prendono i
+//  segmenti appena scritti dal registratore, si tirano fuori sedici kHz
+//  mono, whisper li legge (il modello piccolo: in diretta conta la
+//  velocita', la versione buona la fa dopo la trascrizione dell'archivio)
+//  e il traduttore in casa — Argos su 127.0.0.1, niente esce dalla
+//  macchina — li volta nell'altra lingua. Italiano verso inglese, inglese
+//  verso italiano; la lingua la riconosce whisper al primo giro e poi
+//  resta quella. Ritardo: una quindicina di secondi dal parlato.
+//
+//  Costa CPU: si accende a mano, dalla pagina, e un giro alla volta su
+//  tutta la macchina anche se le porte aperte sono due.
+const MODELLO_VIVO = process.env.COMOTV_WHISPER_VIVO || path.join(path.dirname(MODELLO), "ggml-base.bin");
+const TRADUCI = process.env.COMOTV_TRADUCI || "http://127.0.0.1:5077";
+const VIVO_PEZZO = parseInt(process.env.COMOTV_VIVO_PEZZO || "8", 10);   // secondi d'audio per giro
+const VIVI = new Map();          // regId -> { fatto, lingua, prompt }
+let vivoInCorso = false;
+
+function eseguiVivo(cmd, args, quanto) {
+  return new Promise((ok, no) => {
+    execFile(cmd, args, { timeout: quanto || 60000, maxBuffer: 8 * 1024 * 1024 },
+      (e, so, se) => e ? no(new Error(String(se || e.message).split("\n").slice(-2).join(" "))) : ok(String(so || "")));
+  });
+}
+function traduci(testi, da, a) {
+  return new Promise((ok) => {
+    try {
+      const u = new URL(TRADUCI);
+      const corpo = JSON.stringify({ da: da, a: a, testi: testi });
+      const req = http.request({ host: u.hostname, port: u.port || 80, path: "/", method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(corpo) } }, (res) => {
+        let d = ""; res.on("data", (x) => { d += x; });
+        res.on("end", () => { try { const j = JSON.parse(d); ok(j.ok ? j.tradotti : null); } catch (e) { ok(null); } });
+      });
+      req.on("error", () => ok(null));
+      req.setTimeout(20000, () => { req.destroy(); ok(null); });
+      req.end(corpo);
+    } catch (e) { ok(null); }
+  });
+}
+function sottotitoliAccendi(r, lingua) {
+  const l = ["it", "en", "auto"].indexOf(String(lingua || "auto")) >= 0 ? String(lingua || "auto") : "auto";
+  r.sottotitoli = { acceso: true, lingua: l, da: Date.now() };
+  // si comincia da ADESSO, non dall'inizio: i sottotitoli servono al vivo,
+  // il pregresso lo fara' la trascrizione intera a fine partita
+  VIVI.set(r.id, { fatto: Math.max(0, durataRegistrata(r.id) - VIVO_PEZZO), lingua: l === "auto" ? "" : l, prompt: "" });
+  scrivi(); annuncia(0, "clip");
+  console.log("[clip] sottotitoli accesi su \"" + (r.titolo || r.id) + "\" (" + l + ")");
+}
+function sottotitoliSpegni(r) {
+  r.sottotitoli = { acceso: false };
+  VIVI.delete(r.id);
+  scrivi(); annuncia(0, "clip");
+}
+async function trascriviVivo(r, v, presi) {
+  const dir = cartellaReg(r.id);
+  const wav = path.join(dir, "vivo.wav"), base = path.join(dir, "vivo");
+  const t0 = presi[0].t0, u = presi[presi.length - 1], t1 = u.t0 + u.dur;
+  await eseguiVivo(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+    "-i", "concat:" + presi.map((x) => x.file).join("|"),
+    "-vn", "-map", "0:a:0", "-ac", "1", "-ar", "16000", "-f", "wav", wav], 30000);
+  const args = ["-m", MODELLO_VIVO, "-f", wav, "-oj", "-of", base, "-t", "2", "-np",
+                "-l", v.lingua || "auto"];
+  // il pezzo di prima come contesto: whisper su otto secondi non sa di che
+  // si parla, con la frase precedente sbaglia meno i nomi
+  if (v.prompt) args.push("--prompt", v.prompt);
+  await eseguiVivo(WHISPER, args, 60000);
+  let j = {};
+  try { j = JSON.parse(fs.readFileSync(base + ".json", "utf8")); } catch (e) {}
+  const lettaLingua = j.result && j.result.language;
+  if (!v.lingua && lettaLingua && ["it", "en"].indexOf(lettaLingua) >= 0) v.lingua = lettaLingua;
+  const testo = (j.transcription || []).map((t) => String(t.text || "").trim()).filter(Boolean).join(" ")
+    .replace(/\s+/g, " ").trim();
+  v.fatto = t1;
+  // le allucinazioni del silenzio: whisper sul nulla scrive "Sottotitoli a
+  // cura di..." o ripete l'ultima frase. Non si tiene.
+  if (!testo || /sottotitoli|subtitles|thanks for watching|amara\.org/i.test(testo) || testo === v.ultimo) return;
+  const lingua = v.lingua || "it", altra = lingua === "it" ? "en" : "it";
+  const tr = await traduci([testo], lingua, altra);
+  const dentro = PARLATO[r.id] || (PARLATO[r.id] = { lingua: lingua, pezzi: [] });
+  dentro.pezzi.push({ a: Math.round(t0 * 10) / 10, b: Math.round(t1 * 10) / 10, x: testo,
+                      y: tr ? tr[0] : "", l: lingua, vivo: true });
+  v.prompt = testo.slice(-200); v.ultimo = testo;
+  scriviParlato(); annuncia(0, "clip");
+}
+async function giraSottotitoli() {
+  if (vivoInCorso || !VIVI.size) return;
+  for (const [id, v] of VIVI) {
+    const r = R.reg[id];
+    if (!r || r.stato !== "registra" || !(r.sottotitoli || {}).acceso) { VIVI.delete(id); continue; }
+    const segs = segmenti(id).filter((x) => x.t0 >= v.fatto - 0.05);
+    const presi = []; let quanto = 0;
+    for (const x of segs) { presi.push(x); quanto += x.dur; if (quanto >= VIVO_PEZZO) break; }
+    if (quanto < VIVO_PEZZO * 0.75) continue;                 // ancora poco audio: si aspetta
+    vivoInCorso = true;
+    try { await trascriviVivo(r, v, presi); }
+    catch (e) { console.log("[clip] sottotitoli (" + (r.titolo || id) + "): " + e.message); v.fatto = presi[presi.length - 1].t0 + presi[presi.length - 1].dur; }
+    vivoInCorso = false;
+    return;                                                   // un giro, una registrazione
+  }
+}
+setInterval(() => { giraSottotitoli().catch(() => { vivoInCorso = false; }); }, 1500);
 
 // Da dove si prendono i byte dell'audio: il disco se ci sono, l'indirizzo
 // firmato se la partita sta in archivio. Con -ss e -t si scarica solo il
@@ -9808,19 +9701,12 @@ const AZIONI = {
   "clip-marker": clipMarker,
   "clip-kickoff": clipKickoff,
   "clip-elimina": clipElimina,
-  "clip-sorgenti": clipSorgenti,
-  "clip-flussi-vivi": flussiVivi,
   "clip-boati": cercaBoati,
   "clip-significato": (p) => {
     // capire trentamila righe sono dieci minuti: si comincia e si risponde
     // subito, lo stato si chiede quando si vuole
     if (p.avvia && !SIGN.inCorso) capisciRighe(num(p.quante, 1, 40000, 0) || 0).catch(() => {});
     return { ok: true, avviato: !!p.avvia, stato: statoSignificato() };
-  },
-  "clip-feed-partita": async (p) => {
-    if (p.rinfresca || !FEED.righe.length) await leggiFoglioFeed();
-    const f = feedPerPartita(String(p.partita || ""), String(p.quando || ""));
-    return { ok: true, feed: f, righe: FEED.righe.length, letto: FEED.quando, errore: FEED.errore };
   },
   "clip-cerca": clipCerca,
   "clip-archivio-stato": async () => {
@@ -9877,6 +9763,22 @@ const AZIONI = {
   "clip-trascrivi": trascriviChiedi,
   "clip-parlato-locale": (p) => ({ ok: true, inCoda: parlatoLocaleInCoda(num(p.quante, 1, 20, 3)), coda: CODA_VOCE.length, alLavoro: voceAlLavoro ? voceAlLavoro.reg : "" }),
   "clip-parlato-basta": (p) => fermaParlato(!!p.riaccendi),
+  "clip-sottotitoli": (p) => {
+    const r = R.reg[String(p.id || p.reg || "")];
+    if (!r) return { ok: false, errore: "registrazione sconosciuta" };
+    if (r.stato !== "registra") return { ok: false, errore: "i sottotitoli si accendono su una porta aperta" };
+    if (!fs.existsSync(MODELLO_VIVO)) return { ok: false, errore: "manca il modello whisper per il vivo (" + MODELLO_VIVO + ")" };
+    if (p.on) sottotitoliAccendi(r, p.lingua); else sottotitoliSpegni(r);
+    return { ok: true, reg: pubblica(r) };
+  },
+  // le righe dette dal vivo dopo un certo secondo: la pagina le chiede ogni
+  // due secondi e mostra l'ultima
+  "clip-parlato-vivo": (p) => {
+    const d = PARLATO[String(p.reg || "")];
+    const da = +p.da || 0;
+    const pezzi = ((d && d.pezzi) || []).filter((x) => x.vivo && x.a > da);
+    return { ok: true, pezzi: pezzi.slice(-30), lingua: (VIVI.get(String(p.reg || "")) || {}).lingua || "" };
+  },
   "clip-parlato": (p) => {
     const d = PARLATO[String(p.reg || "")];
     return { ok: true, pezzi: (d && d.pezzi) || [], spenta: voceSpenta,
@@ -10292,7 +10194,6 @@ function avvio(opz) {
   leggiRiconosciute();
   leggiStorici();
   leggiEspn();
-  leggiFeedSalvato();
   leggiVettori();
   setTimeout(raccogliParlato, 5000);
   rinominaMaterialeArchivio();
