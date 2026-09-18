@@ -6622,7 +6622,10 @@ function correggiConIlVocabolario(testo, r) {
     if (dopo && /^[A-Za-zÀ-ÿ']{2,}[.,;:!?]?$/.test(dopo)) {
       const coda2 = (/[.,;:!?]$/.exec(dopo) || [""])[0];
       const giusto2 = vicino(nuda + (coda2 ? dopo.slice(0, -1) : dopo));
-      if (giusto2 && giusto2.indexOf(" ") > 0) { cambi.push(nuda + " " + dopo + " → " + giusto2); parole[i] = giusto2 + coda2; parole[i + 1] = ""; parole[i + 2] = ""; continue; }
+      // la coppia vale solo se il nome vero HA quella particella: "da Cugna"
+      // e' Da Cunha, ma "di Nicopas" e' "di" + Nico Paz, e il "di" resta
+      const particellaSua = !particella || giusto2 && giusto2.toLowerCase().startsWith(nuda.toLowerCase() + " ");
+      if (giusto2 && giusto2.indexOf(" ") > 0 && particellaSua) { cambi.push(nuda + " " + dopo + " → " + giusto2); parole[i] = giusto2 + coda2; parole[i + 1] = ""; parole[i + 2] = ""; continue; }
     }
     if (particella) continue;
     const giusto = vicino(nuda);
