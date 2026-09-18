@@ -6375,13 +6375,22 @@ function promptPer(r, lingua, ultimaFrase) {
   const v = vocabolarioDi(r);
   const it = (lingua || LINGUA_MAM) !== "en";
   const cognomi = v.giocatori.map((g) => String(g).split(/\s+/).pop()).filter((c) => c && c.length > 2);
-  const testa = (it ? "Telecronaca di calcio. " : "Football commentary. ") +
+  // whisper tiene circa duecento token di prompt e, se e' piu' lungo, tiene
+  // gli ULTIMI: la testa — squadre e allenatori — e' la parte che conta e
+  // non deve cadere. Quindi si sta sotto i cinquecento caratteri, e a
+  // stringere sono i cognomi, non le squadre.
+  const fisso = (it ? "Telecronaca di calcio. " : "Football commentary. ") +
     (v.squadre.length ? (it ? "Squadre: " : "Teams: ") + v.squadre.join(", ") + ". " : "") +
-    (v.allenatori.length ? (it ? "Allenatori: " : "Coaches: ") + v.allenatori.join(", ") + ". " : "") +
-    (cognomi.length ? (it ? "Giocatori: " : "Players: ") + cognomi.slice(0, 50).join(", ") + ". " : "");
-  const termini = (it ? TERMINI_IT : TERMINI_EN).slice(0, 14).join(", ") + ".";
-  const coda = ultimaFrase ? " " + String(ultimaFrase).slice(-160) : "";
-  return (testa + termini + coda).replace(/\s+/g, " ").trim();
+    (v.allenatori.length ? (it ? "Allenatori: " : "Coaches: ") + v.allenatori.join(", ") + ". " : "");
+  const termini = " " + (it ? TERMINI_IT : TERMINI_EN).slice(0, 8).join(", ") + ".";
+  const coda = ultimaFrase ? " " + String(ultimaFrase).slice(-110) : "";
+  let quanti = Math.min(40, cognomi.length);
+  let testa = "";
+  do {
+    testa = quanti ? (it ? "Giocatori: " : "Players: ") + cognomi.slice(0, quanti).join(", ") + "." : "";
+    quanti -= 4;
+  } while (quanti > 8 && (fisso + testa + termini + coda).length > 520);
+  return (fisso + testa + termini + coda).replace(/\s+/g, " ").trim();
 }
 // I NOMI NON SI TRADUCONO. Prima di dare la frase ad Argos i nomi noti —
 // giocatori, allenatori, squadre della partita — si coprono con un
@@ -6396,8 +6405,11 @@ function coprendoINomi(testo, r) {
   const lista = [...nomi].filter((x) => x && x.length > 2).sort((a, b) => b.length - a.length);
   const messi = [];
   let coperto = testo;
+  const piatto = (x) => String(x).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const scappa = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   lista.forEach((nome) => {
-    const re = new RegExp("(^|[^A-Za-zÀ-ÿ])" + nome.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?=$|[^A-Za-zÀ-ÿ])", "g");
+    const forme = [...new Set([nome, piatto(nome)])].map(scappa).join("|");
+    const re = new RegExp("(^|[^A-Za-zÀ-ÿ])(?:" + forme + ")(?=$|[^A-Za-zÀ-ÿ])", "g");
     if (!re.test(coperto)) return;
     const k = messi.length; messi.push(nome);
     coperto = coperto.replace(re, (m, pre) => pre + "NOME" + k + "X");
@@ -9944,7 +9956,7 @@ const AZIONI = {
       const [conNomi, nuda] = await Promise.all([traduciConINomi([String(p.prova)], da, a, r), traduci([String(p.prova)], da, a)]);
       return { ok: true, coperta: coperta.coperto, nomi: coperta.messi, conNomi: conNomi && conNomi[0], nuda: nuda && nuda[0] };
     }
-    if (p.reg || p.rec) {
+    if (p.reg || p.rec || p.titolo) {
       const r = R.reg[String(p.reg || "")] || { evento: String(p.rec || ""), titolo: String(p.titolo || "") };
       return { ok: true, partita: vocabolarioDi(r), prompt: promptPer(r, p.lingua), quando: VOCABOLARIO.quando };
     }
