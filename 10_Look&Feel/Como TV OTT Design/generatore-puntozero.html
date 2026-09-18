@@ -380,6 +380,15 @@ small.flag{color:#E2CCFF}
 .filebtn{position:relative;overflow:hidden;flex:none;display:inline-flex;align-items:center;background:transparent;border:1px solid var(--line);color:var(--fg2);border-radius:6px;font:inherit;font-size:11px;padding:5px 10px;cursor:pointer;transition:all .12s}
 .filebtn:hover{border-color:var(--gold);color:var(--ivory)}
 .filebtn input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;font-size:0;cursor:pointer}
+.pzvel{position:fixed;inset:0;z-index:80;background:rgba(8,8,8,.72);display:flex;align-items:center;justify-content:center;padding:16px}
+.pzbox{width:min(460px,100%);max-height:90vh;overflow:auto;background:#1A1A1A;border:1px solid var(--line);border-radius:14px;padding:18px 18px 16px;box-shadow:0 30px 80px -20px #000}
+.pzbox h3{font-size:15px;color:var(--ivory);margin-bottom:4px}
+.pzbox p{font-size:12px;color:var(--fg3);margin-bottom:10px;line-height:1.45}
+.pzbox label{font-size:11px;color:var(--fg3);margin:10px 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pzbox input[type=text]{font-size:15px}
+.pzdove{display:flex;gap:16px;margin-top:14px}
+.pzdove label{display:flex;align-items:center;gap:6px;margin:0;font-size:12px;color:var(--fg2);cursor:pointer}
+.pzazioni{display:flex;gap:8px;margin-top:16px;align-items:center}
 </style>
 </head>
 <body>
@@ -448,8 +457,8 @@ small.flag{color:#E2CCFF}
     <button type="button" class="sitobtn" id="sitoBtn" title="Le pagine Puntozero">PUNTOZERO <span class="frec">&#9662;</span></button>
     <div class="sitopanel" id="sitoPanel"><a href="../../puntozero/index.html">Puntozero</a><a href="generatore-puntozero.html" id="pzGen">Generatore Grafiche</a><a href="generatore-puntozero.html?solo=social" id="pzSoc">Social Media</a><a href="../../area-personale.html">Area personale</a></div><script>(function(){var s=/[?&]solo=social/.test(location.search);document.getElementById(s?'pzSoc':'pzGen').className='qui';})();</script>
   </div>
-  <span class="tbsep"></span>
-   <select id="airtableEventSelect" title="Importa una partita da Airtable"><option value="">— partite da Airtable —</option></select>
+  <span class="tbsep" hidden style="display:none"></span>
+   <select id="airtableEventSelect" hidden disabled style="display:none"><option value="">— partite da Airtable —</option></select>
   <!-- Il formato si sceglie cliccando nella colonna ANTEPRIME, che li raggruppa
        gia' per famiglia. Questa tendina da 51 voci diceva la stessa cosa in un
        secondo posto e occupava mezza barra: resta qui, nascosta, perche' mezzo
@@ -2503,8 +2512,62 @@ function mainTextNodes(g){
  g.querySelectorAll('text,tspan').forEach(function(n){var f=parseFloat(n.getAttribute('font-size'));if(f){all.push([n,f]);if(f>mx)mx=f;}});
  return all.filter(function(p){return p[1]===mx;}).map(function(p){return p[0];});
 }
-function hasFontOverrides(key){var a=(STATE[key]||{}).adj||{};return Object.keys(a).some(function(o){return !!a[o].font;});}
-function applyTextStyles(svgEl,key){
+
+var PZ_TXT_KEY='puntozero_testi_v1';
+var PZ_TXT=(function(){try{return JSON.parse(localStorage.getItem(PZ_TXT_KEY)||'null')||{tutti:{},fmt:{}};}catch(e){return {tutti:{},fmt:{}};}})();
+function pzEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+PZ_TXT.tutti=PZ_TXT.tutti||{};PZ_TXT.fmt=PZ_TXT.fmt||{};
+function pzSalvaTesti(){try{localStorage.setItem(PZ_TXT_KEY,JSON.stringify(PZ_TXT));}catch(e){}}
+function pzMappa(key,obj){var m={},a=(PZ_TXT.tutti||{})[obj]||{},b=((PZ_TXT.fmt||{})[key]||{})[obj]||{},k;
+ for(k in a)m[k]=a[k];for(k in b)m[k]=b[k];return m;}
+function pzHaTesti(key){var a=PZ_TXT.tutti||{},b=(PZ_TXT.fmt||{})[key]||{},o;
+ for(o in a)if(Object.keys(a[o]).length)return true;for(o in b)if(Object.keys(b[o]).length)return true;return false;}
+// I pezzi di testo di un oggetto: ogni <tspan>, o il <text> se non ne ha.
+function pzPezzi(g){var out=[];[].forEach.call(g.querySelectorAll('text'),function(t){
+ var ts=t.querySelectorAll('tspan');if(ts.length)[].forEach.call(ts,function(s){out.push(s);});else out.push(t);});return out;}
+function pzApplica(root,key){if(!pzHaTesti(key))return;
+ [].forEach.call(root.querySelectorAll('g[data-obj]'),function(g){var obj=g.getAttribute('data-obj');if(obj==='photo')return;
+  var m=pzMappa(key,obj);if(!Object.keys(m).length)return;
+  pzPezzi(g).forEach(function(p){var o=p.textContent,k=o.trim();
+   if(k&&Object.prototype.hasOwnProperty.call(m,k))p.textContent=o.replace(k,m[k]);});});}
+function pzModifica(obj,el,svg){
+ var tutti=[].slice.call(svg.querySelectorAll('g[data-obj="'+obj+'"]')),idx=Math.max(0,tutti.indexOf(el));
+ var doc=new DOMParser().parseFromString(svgScreen(current),'image/svg+xml');
+ var g=doc.querySelectorAll('g[data-obj="'+obj+'"]')[idx];if(!g)return;
+ var orig=pzPezzi(g).map(function(p){return p.textContent.trim();}).filter(function(s,i,a){return s&&a.indexOf(s)===i;});
+ if(!orig.length)return;
+ var solo=((PZ_TXT.fmt||{})[current]||{})[obj]||{},glob=(PZ_TXT.tutti||{})[obj]||{};
+ var inFmt=orig.some(function(s){return Object.prototype.hasOwnProperty.call(solo,s);});
+ var vel=document.createElement('div');vel.className='pzvel';
+ var box='<div class="pzbox"><h3>Scrivi a mano</h3><p>Ogni riga &egrave; un pezzo di questa scritta. Lascia vuoto per nasconderlo.</p>';
+ orig.forEach(function(s,i){var v=Object.prototype.hasOwnProperty.call(solo,s)?solo[s]:(Object.prototype.hasOwnProperty.call(glob,s)?glob[s]:s);
+  box+='<label>'+pzEsc(s)+'</label><input type="text" data-i="'+i+'" value="'+pzEsc(v)+'">';});
+ box+='<div class="pzdove"><label><input type="radio" name="pzdove" value="fmt"'+(inFmt?' checked':'')+'> Solo questo formato</label>'
+  +'<label><input type="radio" name="pzdove" value="tutti"'+(inFmt?'':' checked')+'> Tutti i formati</label></div>'
+  +'<div class="pzazioni"><button class="act ghost" data-a="rip">Ripristina</button><span style="flex:1"></span>'
+  +'<button class="act ghost" data-a="no">Annulla</button><button class="act" data-a="ok">Applica</button></div></div>';
+ vel.innerHTML=box;document.body.appendChild(vel);
+ var primo=vel.querySelector('input[type=text]');primo.focus();primo.select();
+ function tasti(e){if(!document.body.contains(vel))return;
+  if(e.key==='Escape'){e.stopPropagation();e.preventDefault();chiudi();}
+  else if((e.key==='Enter'||e.keyCode===13)&&e.target.type==='text'){e.stopPropagation();e.preventDefault();vel.querySelector('[data-a=ok]').click();}}
+ // In cattura sul documento: la pagina ha le sue scorciatoie da tastiera e
+ // l'Invio dentro la finestra non arrivava fin qui.
+ document.addEventListener('keydown',tasti,true);
+ function chiudi(){document.removeEventListener('keydown',tasti,true);vel.remove();}
+ function togli(){[PZ_TXT.tutti[obj],(PZ_TXT.fmt[current]||{})[obj]].forEach(function(m){if(m)orig.forEach(function(s){delete m[s];});});}
+ function fatto(){pzSalvaTesti();chiudi();renderStage();refreshThumbs();}
+ vel.addEventListener('click',function(e){var a=e.target.getAttribute&&e.target.getAttribute('data-a');
+  if(e.target===vel||a==='no')return chiudi();
+  if(a==='rip'){togli();return fatto();}
+  if(a==='ok'){var dove=vel.querySelector('input[name=pzdove]:checked').value;togli();
+   var m;if(dove==='tutti'){m=PZ_TXT.tutti[obj]=PZ_TXT.tutti[obj]||{};}
+   else{PZ_TXT.fmt[current]=PZ_TXT.fmt[current]||{};m=PZ_TXT.fmt[current][obj]=PZ_TXT.fmt[current][obj]||{};}
+   [].forEach.call(vel.querySelectorAll('input[type=text]'),function(inp){var s=orig[+inp.getAttribute('data-i')];if(inp.value!==s)m[s]=inp.value;});
+   fatto();}});
+}
+function hasFontOverrides(key){if(pzHaTesti(key))return true;var a=(STATE[key]||{}).adj||{};return Object.keys(a).some(function(o){return !!a[o].font;});}
+function applyTextStyles(svgEl,key){pzApplica(svgEl,key);
  var a=(STATE[key]||{}).adj||{};
  Object.keys(a).forEach(function(o){
   var f=a[o].font;if(!f)return;
@@ -4258,7 +4321,7 @@ function attachInteract(svg){
  el.addEventListener('wheel',function(ev){if(LOCKED)return;ev.preventDefault();pushUndoC();var o=el.getAttribute('data-obj');selObj=o;var a=ensureAdj(o,svg);
    var lo=(o==='photo')?(fotoTrasp()?0.2:1):0.3,hi=(o==='photo')?3.5:2.6;
    a.s=Math.min(hi,Math.max(lo,(a.s||1)*(ev.deltaY<0?1.06:0.94)));if(o==='photo')photoClamp(a);el.setAttribute('transform',objTF(a));syncScaleSlider();if(o==='photo')syncPhotoBar();highlightSel(svg);},{passive:false});
- el.addEventListener('dblclick',function(){var o=el.getAttribute('data-obj');if(o!=='photo'&&TEXT_EDIT_MAP[o])startTextEdit(o,el,svg);});
+ el.addEventListener('dblclick',function(){var o=el.getAttribute('data-obj');});
  });
 }
 function drawAlignmentGuides(svg,bb,ct){var vb=svg.viewBox.baseVal;var guides=[
@@ -5057,8 +5120,6 @@ renderControls();renderStage();renderThumbs();
 prefCarica();prefStato();sessAggiornaElenco();sessProponiNome();passoUI();syncZip();renderSocial();
 loadNat(DEFAULT_PHOTO,function(){renderStage();refreshThumbs();});
 </script>
-<script src="airtable-pat.js"></script>
-<script src="generatore-airtable.js?v=10"></script>
 <script>
 // il menu' del sito: apre, chiude col clic fuori e con Esc
 (function(){
@@ -5369,6 +5430,19 @@ var DENTRO_MAM = (function () {
   }
   if (document.readyState === 'complete') { setTimeout(apri, 300); setTimeout(pulsanteTimeline, 400); }
   else window.addEventListener('load', function () { setTimeout(apri, 300); setTimeout(pulsanteTimeline, 400); });
+})();
+</script>
+<script>
+(function(){var ult=[];
+ function dentro(e){var st=document.getElementById('stage');return st&&st.contains(e.target)?st:null;}
+ document.addEventListener('pointerdown',function(e){if(!dentro(e))return;
+  var g=e.target.closest&&e.target.closest('[data-obj]');ult.push({o:g?g.getAttribute('data-obj'):'',t:Date.now()});
+  if(ult.length>3)ult.shift();},true);
+ document.addEventListener('dblclick',function(e){var st=dentro(e);if(!st)return;var ora=Date.now();
+  var c=ult.filter(function(u){return ora-u.t<800&&u.o&&u.o!=='photo';});if(!c.length)return;
+  var svg=st.querySelector('svg'),o=c[0].o,el=svg&&svg.querySelector('g[data-obj="'+o+'"]');
+  if(!el||!pzPezzi(el).some(function(p){return p.textContent.trim();}))return;
+  e.stopPropagation();e.preventDefault();pzModifica(o,el,svg);},true);
 })();
 </script>
 </body>
