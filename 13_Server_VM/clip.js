@@ -6675,11 +6675,50 @@ function scoprendoINomi(tradotto, messi) {
   }
   return t;
 }
+// IL GLOSSARIO DEL CALCIO. "Direttore di gara" per Argos e' un "race
+// director": le locuzioni del mestiere si coprono prima e si scoprono dopo
+// gia' tradotte, nelle due direzioni. La stessa strada dei nomi.
+const GLOSSARIO = [["direttore di gara", "referee"], ["calcio d'angolo", "corner"], ["fuorigioco", "offside"],
+  ["calcio di rigore", "penalty"], ["rigore", "penalty"], ["traversa", "crossbar"], ["calcio di punizione", "free kick"],
+  ["punizione", "free kick"], ["rimessa laterale", "throw-in"], ["rimessa dal fondo", "goal kick"], ["recupero", "stoppage time"],
+  ["ammonizione", "booking"], ["espulsione", "sending-off"], ["cartellino giallo", "yellow card"], ["cartellino rosso", "red card"],
+  ["portiere", "goalkeeper"], ["contropiede", "counter-attack"], ["colpo di testa", "header"], ["autogol", "own goal"],
+  ["area di rigore", "penalty area"], ["dischetto", "penalty spot"], ["guardalinee", "linesman"], ["assistente", "assistant referee"],
+  ["intervallo", "half-time"], ["primo tempo", "first half"], ["secondo tempo", "second half"], ["pareggio", "equaliser"],
+  ["raddoppio", "second goal"], ["tiro", "shot"], ["parata", "save"], ["cross", "cross"], ["fallo", "foul"],
+  ["esultanza", "celebration"], ["panchina", "bench"], ["capitano", "captain"], ["difensore", "defender"],
+  ["centrocampista", "midfielder"], ["attaccante", "striker"], ["allenatore", "manager"], ["tecnico", "manager"],
+  ["fischio finale", "final whistle"], ["fischio d'inizio", "kick-off"], ["calcio d'inizio", "kick-off"]];
+function coprendoIlGlossario(testo, da, a) {
+  const messi = [];
+  let coperto = testo;
+  const coppie = GLOSSARIO.slice().sort((x, y) => y[0].length - x[0].length);
+  coppie.forEach(([it, en]) => {
+    const [suo, altro] = da === "it" ? [it, en] : [en, it];
+    if (!suo || suo === altro) return;
+    const re = new RegExp("(^|[^A-Za-zÀ-ÿ])" + suo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?=$|[^A-Za-zÀ-ÿ])", "gi");
+    if (!re.test(coperto)) return;
+    const k = messi.length; messi.push(altro);
+    coperto = coperto.replace(re, (m, pre) => pre + "TERM" + k + "X");
+  });
+  return { coperto: coperto, messi: messi };
+}
+function scoprendoIlGlossario(tradotto, messi) {
+  let t = String(tradotto || "");
+  for (let k = 0; k < messi.length; k++) {
+    const re = new RegExp("TERM\\s?" + k + "\\s?X", "gi");
+    if (!re.test(t)) return null;
+    t = t.replace(re, messi[k]);
+  }
+  return t;
+}
 async function traduciConINomi(testi, da, a, r) {
-  const coperti = testi.map((x) => coprendoINomi(x, r));
+  // prima il glossario, poi i nomi: due strati di segnaposto diversi
+  const glos = testi.map((x) => coprendoIlGlossario(x, da, a));
+  const coperti = glos.map((g) => coprendoINomi(g.coperto, r));
   const tr = await traduci(coperti.map((c) => c.coperto), da, a);
   if (!tr) return null;
-  const fuori = tr.map((t, i) => scoprendoINomi(t, coperti[i].messi));
+  const fuori = tr.map((t, i) => { const n1 = scoprendoINomi(t, coperti[i].messi); return n1 === null ? null : scoprendoIlGlossario(n1, glos[i].messi); });
   if (fuori.some((x) => x === null)) {
     const nudi = await traduci(testi, da, a);
     return fuori.map((x, i) => x !== null ? x : (nudi ? nudi[i] : ""));
@@ -6796,8 +6835,11 @@ function trascriviDavvero(lavoro) {
     // -mc 0: ogni finestra si decide da sola, senza portarsi dietro il testo
     // di quella prima. E' la cura della ripetizione: sulle parole poco chiare
     // il modello si aggrappava all'ultima e la ripeteva venti volte.
+    // -ml 90 -sow: righe da sottotitolo, non da muro di testo. Un segmento di
+    // trenta secondi in una striscia sotto il video non si legge; novanta
+    // caratteri spezzati sulle parole si'.
     const args = ["-m", modelloPer(lavoro.lingua || LINGUA_MAM, false), "-l", lavoro.lingua || LINGUA_MAM, "-f", wav, "-oj", "-of",
-                  path.join(dir, "voce"), "-t", "2", "-np", "-nt", "-mc", "0", "-et", "2.8"];
+                  path.join(dir, "voce"), "-t", "2", "-np", "-nt", "-mc", "0", "-et", "2.8", "-ml", "90", "-sow"];
     if (suggeriti) args.push("--prompt", suggeriti);
     // STACCATO DAVVERO. Con execFile whisper scrive su una pipe che appartiene
     // al nodo: se il servizio si riavvia la pipe si rompe e due ore di lavoro
