@@ -5989,9 +5989,10 @@ async function trascriviVivo(r, v, presi) {
     "-vn", "-map", "0:a:0", "-ac", "1", "-ar", "16000", "-f", "wav", wav], 30000);
   const args = ["-m", MODELLO_VIVO, "-f", wav, "-oj", "-of", base, "-t", "2", "-np",
                 "-l", v.lingua || "auto"];
-  // il pezzo di prima come contesto: whisper su otto secondi non sa di che
-  // si parla, con la frase precedente sbaglia meno i nomi
-  if (v.prompt) args.push("--prompt", v.prompt);
+  // il vocabolario davanti — squadre, allenatori, cognomi come li scrive
+  // ESPN — e in coda la frase di prima: whisper su otto secondi non sa di
+  // che si parla, e con i nomi davanti li scrive giusti
+  args.push("--prompt", promptPer(r, v.lingua, v.prompt));
   await eseguiVivo(WHISPER, args, 60000);
   let j = {};
   try { j = JSON.parse(fs.readFileSync(base + ".json", "utf8")); } catch (e) {}
@@ -6004,7 +6005,7 @@ async function trascriviVivo(r, v, presi) {
   // cura di..." o ripete l'ultima frase. Non si tiene.
   if (!testo || /sottotitoli|subtitles|thanks for watching|amara\.org/i.test(testo) || testo === v.ultimo) return;
   const lingua = v.lingua || "it", altra = lingua === "it" ? "en" : "it";
-  const tr = await traduci([testo], lingua, altra);
+  const tr = await traduciConINomi([testo], lingua, altra, r);
   const dentro = PARLATO[r.id] || (PARLATO[r.id] = { lingua: lingua, pezzi: [] });
   dentro.pezzi.push({ a: Math.round(t0 * 10) / 10, b: Math.round(t1 * 10) / 10, x: testo,
                       y: tr ? tr[0] : "", l: lingua, vivo: true });
@@ -6258,6 +6259,172 @@ function giraLaCoda() {
     .then(() => { voceAlLavoro = null; annuncia(0, "clip"); setTimeout(giraLaCoda, 1000); setTimeout(giraOrologi, 1500); });
 }
 
+// ── IL VOCABOLARIO: I NOMI CHE ESPN SCRIVE GIUSTI ─────────────────────
+//
+//  whisper non conosce i calciatori: "Perotti" diventa "piuttro schie", e
+//  Argos, dopo, traduce "Banco" con "bank". La cura non e' un modello piu'
+//  grosso: e' dirgli i nomi prima. ESPN ce li ha con la grafia ufficiale —
+//  le rose di quattromila partite, gli allenatori con i loro club — e qui
+//  diventano un vocabolario solo: per squadra, i giocatori e chi la allena;
+//  per tutti, i termini del calcio nelle due lingue. Si rifa' da solo
+//  quando ESPN cresce, e si legge con "clip-vocabolario" per controllarlo.
+//
+//  Serve in due posti. A whisper, come prompt: la partita che sta entrando
+//  ha due rose, due allenatori e una competizione, e con quelli davanti i
+//  cognomi escono scritti come li scrive ESPN. Ad Argos, come lista di
+//  parole da NON tradurre: i nomi si coprono prima e si scoprono dopo.
+const TERMINI_IT = ["calcio d'angolo", "rigore", "fuorigioco", "ammonizione", "espulsione", "cartellino giallo",
+  "cartellino rosso", "traversa", "palo", "parata", "punizione", "rimessa laterale", "recupero", "VAR",
+  "fallo", "contropiede", "cross", "colpo di testa", "tiro", "gol", "portiere", "difensore", "centrocampista",
+  "attaccante", "sostituzione", "intervallo", "primo tempo", "secondo tempo", "autogol", "assist", "dribbling",
+  "pressing", "ripartenza", "raddoppio", "pareggio", "vantaggio", "area di rigore", "dischetto", "arbitro",
+  "guardalinee", "capitano", "panchina", "tribuna", "curva", "Sinigaglia", "Como", "Lariani"];
+const TERMINI_EN = ["corner", "penalty", "offside", "booking", "yellow card", "red card", "sending off", "crossbar",
+  "post", "save", "free kick", "throw-in", "stoppage time", "VAR", "foul", "counter-attack", "cross", "header",
+  "shot", "goal", "goalkeeper", "defender", "midfielder", "striker", "substitution", "half-time", "first half",
+  "second half", "own goal", "assist", "dribble", "pressing", "equaliser", "lead", "penalty area", "referee",
+  "linesman", "captain", "bench", "clean sheet", "Sinigaglia", "Como"];
+let VOCABOLARIO = { quando: 0, squadre: {}, cognomi: {}, leghe: {} };
+function fileVocabolario() { return path.join(DIR, "vocabolario.json"); }
+function fileAllenatori() { return path.join(DIR, "..", "allenatori.json"); }
+function costruisciVocabolario() {
+  const squadre = {}, cognomi = {}, leghe = {};
+  Object.keys(ESPN).forEach((k) => {
+    const e = ESPN[k]; if (!e) return;
+    if (e.lega) leghe[e.lega] = (leghe[e.lega] || 0) + 1;
+    Object.keys(e.rose || {}).forEach((sq) => {
+      const v = squadre[sq] || (squadre[sq] = { giocatori: {}, lega: e.lega || "", ultima: "" });
+      if (String(e.quando || "") > v.ultima) { v.ultima = String(e.quando || ""); v.lega = e.lega || v.lega; }
+      (e.rose[sq] || []).forEach((n) => {
+        const nome = String(n).trim(); if (!nome) return;
+        v.giocatori[nome] = (v.giocatori[nome] || 0) + 1;
+        const c = nome.split(/\s+/).pop();
+        if (c && c.length > 2) cognomi[c] = (cognomi[c] || 0) + 1;
+      });
+    });
+  });
+  // gli allenatori, dal file che il ponte delle grafiche tiene aggiornato
+  let quantiAll = 0;
+  try {
+    const a = JSON.parse(fs.readFileSync(fileAllenatori(), "utf8")) || {};
+    Object.keys(a.perId || {}).forEach((id) => {
+      const x = a.perId[id]; if (!x || !x.squadra) return;
+      const v = squadre[x.squadra] || (squadre[x.squadra] = { giocatori: {}, lega: x.lega || "", ultima: "" });
+      v.allenatore = [x.nome, x.cognome].filter(Boolean).join(" "); quantiAll++;
+      if (x.cognome) cognomi[x.cognome] = (cognomi[x.cognome] || 0) + 1;
+    });
+  } catch (e) {}
+  // per ogni squadra la rosa RECENTE conta piu' di quella di due stagioni
+  // fa: si tengono i giocatori visti piu' volte, fino a trentacinque
+  Object.keys(squadre).forEach((sq) => {
+    const v = squadre[sq];
+    v.giocatori = Object.keys(v.giocatori).sort((x, y) => v.giocatori[y] - v.giocatori[x]).slice(0, 35);
+  });
+  VOCABOLARIO = { quando: Date.now(), squadre: squadre, cognomi: cognomi, leghe: leghe,
+                  conteggio: { squadre: Object.keys(squadre).length, cognomi: Object.keys(cognomi).length, allenatori: quantiAll } };
+  try { fs.writeFileSync(fileVocabolario(), JSON.stringify(VOCABOLARIO)); } catch (e) {}
+  console.log("[clip] vocabolario: " + VOCABOLARIO.conteggio.squadre + " squadre, " + VOCABOLARIO.conteggio.cognomi +
+              " cognomi, " + quantiAll + " allenatori");
+  return VOCABOLARIO;
+}
+function leggiVocabolario() {
+  try { VOCABOLARIO = JSON.parse(fs.readFileSync(fileVocabolario(), "utf8")) || VOCABOLARIO; } catch (e) {}
+  if (!VOCABOLARIO.quando || Date.now() - VOCABOLARIO.quando > 86400000) costruisciVocabolario();
+}
+// la squadra come la chiama ESPN, partendo da come la chiamiamo noi
+function squadraNelVocabolario(nome) {
+  const n = String(nome || "").toUpperCase().replace(/[^A-Z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  if (!n) return null;
+  const tutte = Object.keys(VOCABOLARIO.squadre || {});
+  let meglio = null, voto = 0;
+  tutte.forEach((sq) => {
+    const q = sq.toUpperCase().replace(/[^A-Z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+    let v = 0;
+    if (q === n) v = 3;
+    else if (q.indexOf(n) >= 0 || n.indexOf(q) >= 0) v = 2;
+    else { const a = new Set(n.split(" ")), b = q.split(" "); const c = b.filter((w) => w.length > 3 && a.has(w)).length; if (c) v = 1 + c * 0.1; }
+    if (v > voto) { voto = v; meglio = sq; }
+  });
+  return voto >= 1.1 ? meglio : null;
+}
+// Il vocabolario di UNA registrazione: le due squadre, i loro allenatori,
+// le rose, la competizione. Senza evento ne' titolo si torna al Como, che
+// e' la squadra di casa di chi guarda.
+function vocabolarioDi(r) {
+  const e = r && r.evento ? ESPN[r.evento] : null;
+  let nomi = e && e.squadre && e.squadre.length ? e.squadre.slice() : [];
+  if (!nomi.length && r && r.titolo) {
+    String(r.titolo).split(/\s*-\s*|\s+vs\.?\s+/i).slice(0, 2).forEach((t) => { const q = squadraNelVocabolario(t); if (q) nomi.push(q); });
+  }
+  if (!nomi.length) nomi = ["Como"];
+  const squadre = [], allenatori = [], giocatori = [];
+  nomi.forEach((n) => {
+    const sq = VOCABOLARIO.squadre[n] || VOCABOLARIO.squadre[squadraNelVocabolario(n) || ""];
+    if (!sq) { squadre.push(n); return; }
+    squadre.push(n);
+    if (sq.allenatore) allenatori.push(sq.allenatore);
+    (e && e.rose && e.rose[n] ? e.rose[n] : sq.giocatori).forEach((g) => giocatori.push(g));
+  });
+  return { squadre: squadre, allenatori: allenatori, giocatori: giocatori, lega: e ? e.lega : "" };
+}
+// Quello che si dice a whisper prima di ogni pezzo. Il modello legge
+// soprattutto le prime parole e ne tiene poche (circa duecento token):
+// squadre, allenatori e cognomi in testa, i termini in coda, e l'ultima
+// frase detta dal vivo per chiudere, quando c'e'.
+function promptPer(r, lingua, ultimaFrase) {
+  const v = vocabolarioDi(r);
+  const it = (lingua || LINGUA_MAM) !== "en";
+  const cognomi = v.giocatori.map((g) => String(g).split(/\s+/).pop()).filter((c) => c && c.length > 2);
+  const testa = (it ? "Telecronaca di calcio. " : "Football commentary. ") +
+    (v.squadre.length ? (it ? "Squadre: " : "Teams: ") + v.squadre.join(", ") + ". " : "") +
+    (v.allenatori.length ? (it ? "Allenatori: " : "Coaches: ") + v.allenatori.join(", ") + ". " : "") +
+    (cognomi.length ? (it ? "Giocatori: " : "Players: ") + cognomi.slice(0, 50).join(", ") + ". " : "");
+  const termini = (it ? TERMINI_IT : TERMINI_EN).slice(0, 14).join(", ") + ".";
+  const coda = ultimaFrase ? " " + String(ultimaFrase).slice(-160) : "";
+  return (testa + termini + coda).replace(/\s+/g, " ").trim();
+}
+// I NOMI NON SI TRADUCONO. Prima di dare la frase ad Argos i nomi noti —
+// giocatori, allenatori, squadre della partita — si coprono con un
+// segnaposto, e dopo si rimettono. Se il traduttore perde un segnaposto si
+// tiene la traduzione nuda: meglio "bank" che una frase con un buco.
+function coprendoINomi(testo, r) {
+  const v = vocabolarioDi(r);
+  const nomi = new Set();
+  v.squadre.forEach((x) => nomi.add(x));
+  v.allenatori.forEach((x) => { nomi.add(x); nomi.add(x.split(/\s+/).pop()); });
+  v.giocatori.forEach((x) => { nomi.add(x); const c = x.split(/\s+/).pop(); if (c.length > 2) nomi.add(c); });
+  const lista = [...nomi].filter((x) => x && x.length > 2).sort((a, b) => b.length - a.length);
+  const messi = [];
+  let coperto = testo;
+  lista.forEach((nome) => {
+    const re = new RegExp("(^|[^A-Za-zÀ-ÿ])" + nome.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?=$|[^A-Za-zÀ-ÿ])", "g");
+    if (!re.test(coperto)) return;
+    const k = messi.length; messi.push(nome);
+    coperto = coperto.replace(re, (m, pre) => pre + "NOME" + k + "X");
+  });
+  return { coperto: coperto, messi: messi };
+}
+function scoprendoINomi(tradotto, messi) {
+  let t = String(tradotto || "");
+  for (let k = 0; k < messi.length; k++) {
+    const re = new RegExp("NOME\\s?" + k + "\\s?X", "gi");
+    if (!re.test(t)) return null;                       // perso: non ci si fida
+    t = t.replace(re, messi[k]);
+  }
+  return t;
+}
+async function traduciConINomi(testi, da, a, r) {
+  const coperti = testi.map((x) => coprendoINomi(x, r));
+  const tr = await traduci(coperti.map((c) => c.coperto), da, a);
+  if (!tr) return null;
+  const fuori = tr.map((t, i) => scoprendoINomi(t, coperti[i].messi));
+  if (fuori.some((x) => x === null)) {
+    const nudi = await traduci(testi, da, a);
+    return fuori.map((x, i) => x !== null ? x : (nudi ? nudi[i] : ""));
+  }
+  return fuori;
+}
+
 // I nomi propri sono quelli che il modello sbaglia — "Henry Kane" per Harry
 // Kane, "o Lise" per Olise — ed e' un peccato, perche' sono esattamente le
 // parole che poi si cercano. La cura e' dirglieli prima: i cognomi stanno
@@ -6299,8 +6466,12 @@ function nomiDaSuggerire(r) {
     const cognome = String(n).split(/\s+/).pop();
     if (cognome && cognome.length > 2) { dalleRose.push(cognome); parole.delete(cognome); }
   }));
-  const lista = dalleRose.concat([...parole]).slice(0, 80).join(", ");
-  return lista ? ("Telecronaca di calcio. Nomi: " + lista + ".") : "";
+  const voc = vocabolarioDi(r);
+  const daVoc = voc.giocatori.map((g) => String(g).split(/\s+/).pop()).filter((c) => c && c.length > 2);
+  const lista = [...new Set(dalleRose.concat(daVoc).concat([...parole]))].slice(0, 70).join(", ");
+  const testa = (voc.squadre.length ? "Squadre: " + voc.squadre.join(", ") + ". " : "") +
+                (voc.allenatori.length ? "Allenatori: " + voc.allenatori.join(", ") + ". " : "");
+  return lista ? ("Telecronaca di calcio. " + testa + "Nomi: " + lista + ". " + TERMINI_IT.slice(0, 10).join(", ") + ".") : "";
 }
 
 function trascriviDavvero(lavoro) {
@@ -9763,6 +9934,25 @@ const AZIONI = {
   "clip-trascrivi": trascriviChiedi,
   "clip-parlato-locale": (p) => ({ ok: true, inCoda: parlatoLocaleInCoda(num(p.quante, 1, 20, 3)), coda: CODA_VOCE.length, alLavoro: voceAlLavoro ? voceAlLavoro.reg : "" }),
   "clip-parlato-basta": (p) => fermaParlato(!!p.riaccendi),
+  "clip-vocabolario": async (p) => {
+    if (p.rifai) costruisciVocabolario();
+    // una frase di prova: com'e' tradotta coi nomi coperti, e senza
+    if (p.prova) {
+      const r = R.reg[String(p.reg || "")] || { evento: String(p.rec || ""), titolo: String(p.titolo || "") };
+      const da = String(p.da || "it"), a = String(p.a || (da === "it" ? "en" : "it"));
+      const coperta = coprendoINomi(String(p.prova), r);
+      const [conNomi, nuda] = await Promise.all([traduciConINomi([String(p.prova)], da, a, r), traduci([String(p.prova)], da, a)]);
+      return { ok: true, coperta: coperta.coperto, nomi: coperta.messi, conNomi: conNomi && conNomi[0], nuda: nuda && nuda[0] };
+    }
+    if (p.reg || p.rec) {
+      const r = R.reg[String(p.reg || "")] || { evento: String(p.rec || ""), titolo: String(p.titolo || "") };
+      return { ok: true, partita: vocabolarioDi(r), prompt: promptPer(r, p.lingua), quando: VOCABOLARIO.quando };
+    }
+    if (p.squadra) return { ok: true, squadra: p.squadra, voce: VOCABOLARIO.squadre[squadraNelVocabolario(p.squadra) || p.squadra] || null };
+    return { ok: true, quando: VOCABOLARIO.quando, conteggio: VOCABOLARIO.conteggio || {},
+             leghe: VOCABOLARIO.leghe, squadre: Object.keys(VOCABOLARIO.squadre).length,
+             termini: { it: TERMINI_IT.length, en: TERMINI_EN.length } };
+  },
   "clip-sottotitoli": (p) => {
     const r = R.reg[String(p.id || p.reg || "")];
     if (!r) return { ok: false, errore: "registrazione sconosciuta" };
@@ -10198,6 +10388,7 @@ function avvio(opz) {
   setTimeout(raccogliParlato, 5000);
   rinominaMaterialeArchivio();
   leggiParlato();
+  leggiVocabolario();
   // Il ponte si e' riavviato: gli ffmpeg che stava seguendo sono morti con
   // lui. Meglio dirlo che lasciare in pagina una registrazione che sembra
   // viva e non scrive piu' niente.
