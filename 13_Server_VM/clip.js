@@ -5958,6 +5958,7 @@ function modelloPer(lingua, vivo) {
 const TRADUCI = process.env.COMOTV_TRADUCI || "http://127.0.0.1:5077";
 const VIVO_PEZZO = parseInt(process.env.COMOTV_VIVO_PEZZO || "6", 10);   // secondi d'audio per giro
 const VIVI = new Map();          // regId -> { fatto, lingua, prompt }
+const TRADUZIONI = new Map();    // regId -> avanzamento della traduzione in sottofondo
 let vivoInCorso = false;
 
 function eseguiVivo(cmd, args, quanto) {
@@ -10236,6 +10237,39 @@ const AZIONI = {
   },
   // le righe dette dal vivo dopo un certo secondo: la pagina le chiede ogni
   // due secondi e mostra l'ultima
+  // LA TELECRONACA TRADOTTA, ANCHE IN ARCHIVIO. Le righe di una partita gia'
+  // trascritta si traducono tutte nella lingua chiesta — in sottofondo, a
+  // pacchetti, coi nomi coperti — e restano scritte accanto all'originale.
+  // La pagina chiede, poi guarda l'avanzamento ogni due secondi.
+  "clip-parlato-traduci": (p) => {
+    const reg = String(p.reg || ""), a = ["it", "en"].indexOf(String(p.a || "")) >= 0 ? String(p.a) : "en";
+    const d = PARLATO[reg];
+    if (!d || !(d.pezzi || []).length) return { ok: false, errore: "questa registrazione non ha ancora una telecronaca trascritta" };
+    const r = R.reg[reg] || { evento: (R.reg[reg] || {}).evento || "" };
+    const da = d.lingua || LINGUA_MAM;
+    const mancano = d.pezzi.filter((x) => (x.l || da) !== a && (!x.y || x.ya !== a));
+    const stato = TRADUZIONI.get(reg) || { fatte: 0, totale: 0, inCorso: false, verso: a };
+    if (da === a) return { ok: true, giaNellaLingua: true, fatte: d.pezzi.length, totale: d.pezzi.length, verso: a };
+    if (!stato.inCorso && mancano.length) {
+      stato.inCorso = true; stato.fatte = 0; stato.totale = mancano.length; stato.verso = a; TRADUZIONI.set(reg, stato);
+      (async () => {
+        try {
+          for (let i = 0; i < mancano.length; i += 12) {
+            const lotto = mancano.slice(i, i + 12);
+            // per strada si sistemano anche numeri e nomi, come dal vivo
+            lotto.forEach((x) => { x.x = correggiConIlVocabolario(numeriNelTesto(x.x, da), r).testo; });
+            const tr = await traduciConINomi(lotto.map((x) => x.x), da, a, r);
+            lotto.forEach((x, k) => { x.y = tr ? tr[k] : ""; x.ya = a; x.l = x.l || da; });
+            stato.fatte = Math.min(mancano.length, i + lotto.length);
+            if (i % 60 === 0) scriviParlato();
+          }
+        } catch (e) { console.log("[clip] traduzione (" + reg + "): " + e.message); }
+        scriviParlato(); stato.inCorso = false;
+      })();
+    }
+    return { ok: true, fatte: stato.inCorso ? stato.fatte : d.pezzi.length - mancano.length + stato.fatte, totale: d.pezzi.length,
+             inCorso: stato.inCorso, verso: a, lingua: da };
+  },
   "clip-parlato-vivo": (p) => {
     const d = PARLATO[String(p.reg || "")];
     const da = +p.da || 0;

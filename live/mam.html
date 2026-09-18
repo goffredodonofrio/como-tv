@@ -4146,6 +4146,8 @@
   //  stesse voci due volte. E' quella l'eco. Qui il suono del monitor
   //  passa da Web Audio e si prende UNA coppia — la prima, il programma —
   //  lasciando gli altri bus dove sono.
+  // i sottotitoli in archivio: stato condiviso fra il tasto, la striscia e aggiorna()
+  var SOTTO_ARCH = { acceso: false, mostra: "it", pezzi: [], reg: "", lingua: "it", stato: "" };
   var MON_COPPIA = { el: null, coppia: -1 };
   function coppiaSulMonitor(v, canali, coppia) {
     if (!v || (canali || 2) <= 2) return;
@@ -6803,7 +6805,10 @@
         var cerca = (q || "").trim().toLowerCase();
         var dentro = cerca ? pezzi.filter(function (x) { return (x.x || "").toLowerCase().indexOf(cerca) >= 0; }) : pezzi;
         var corpo = dentro.slice(0, 3000).map(function (x) {
-          var t = pulito(x.x || "");
+          // nella lingua scelta dai sottotitoli, se c'e' la traduzione
+          var voluta = (typeof SOTTO_ARCH === "object" && SOTTO_ARCH.acceso) ? SOTTO_ARCH.mostra : "";
+          var testoRiga = (voluta && (x.l || "it") !== voluta && x.y && x.ya === voluta) ? x.y : (x.x || "");
+          var t = pulito(testoRiga);
           if (cerca) {
             var i = (x.x || "").toLowerCase().indexOf(cerca);
             if (i >= 0) t = pulito(x.x.slice(0, i)) + "<em>" + pulito(x.x.slice(i, i + cerca.length)) + "</em>" + pulito(x.x.slice(i + cerca.length));
@@ -7222,7 +7227,51 @@
     // pagina chiede ogni due secondi le righe nuove e mostra l'ultima sotto
     // il video, con la traduzione.
     var SOTTO_DA = 0, SOTTO_REG = "";
+    // IN ARCHIVIO I SOTTOTITOLI SONO LA TELECRONACA GIA' TRASCRITTA, letta
+    // mentre il video scorre: la riga che copre il secondo in cui sei. Nella
+    // lingua scelta; se e' l'altra, si chiede al ponte di tradurre tutta la
+    // partita in sottofondo e si mostra man mano.
+    function caricaSottoArch(poi) {
+      if (!REG) return;
+      manda({ tipo: "clip-parlato", reg: REG.id }).then(function (d) {
+        SOTTO_ARCH.pezzi = d.pezzi || []; SOTTO_ARCH.reg = REG.id;
+        SOTTO_ARCH.lingua = (SOTTO_ARCH.pezzi[0] && SOTTO_ARCH.pezzi[0].l) || d.lingua || "it";
+        if (poi) poi(d);
+      }).catch(function () {});
+    }
+    function traduciSottoArch() {
+      if (!REG || SOTTO_ARCH.mostra === SOTTO_ARCH.lingua) { SOTTO_ARCH.stato = ""; return; }
+      manda({ tipo: "clip-parlato-traduci", reg: REG.id, a: SOTTO_ARCH.mostra }).then(function (d) {
+        if (d.giaNellaLingua) { SOTTO_ARCH.stato = ""; return; }
+        SOTTO_ARCH.stato = d.inCorso ? "traduco " + d.fatte + "/" + d.totale : "";
+        caricaSottoArch();
+        if (d.inCorso) setTimeout(traduciSottoArch, 2500);
+        aggiorna();
+      }).catch(function (e) { SOTTO_ARCH.stato = ""; dice(e.message); });
+    }
+    function disegnaSottoArch() {
+      var box = el("sottotitoli"), v = el("player"); if (!box || !v) return;
+      if (MODO !== "archivio") return;
+      if (!SOTTO_ARCH.acceso || !REG) { if (!box.hidden && !(REG && REG.sottotitoli && REG.sottotitoli.acceso)) box.hidden = true; return; }
+      if (SOTTO_ARCH.reg !== REG.id) { caricaSottoArch(); return; }
+      box.hidden = false;
+      var t = v.currentTime || 0, p = null;
+      for (var i = 0; i < SOTTO_ARCH.pezzi.length; i++) { var x = SOTTO_ARCH.pezzi[i]; if (t >= x.a - 0.3 && t < x.b + 0.8) { p = x; break; } }
+      if (!p) { el("sottoX").textContent = SOTTO_ARCH.pezzi.length ? "" : "(telecronaca non ancora trascritta: Telecronaca \u2192 trascrivi)"; return; }
+      var suo = (p.l || SOTTO_ARCH.lingua) === SOTTO_ARCH.mostra;
+      el("sottoX").textContent = suo ? (p.x || "") : (p.y && p.ya === SOTTO_ARCH.mostra ? p.y : "\u2026 " + (p.x || ""));
+      el("sottoY").textContent = ""; el("sottoY").hidden = true;
+    }
+    setInterval(disegnaSottoArch, 400);
     if (el("btnSotto")) el("btnSotto").addEventListener("click", function () {
+      if (MODO === "archivio") {
+        if (!REG) return dice("Apri prima una partita.");
+        SOTTO_ARCH.acceso = !SOTTO_ARCH.acceso;
+        SOTTO_ARCH.mostra = (el("sottoLingua") || {}).value || "it";
+        if (SOTTO_ARCH.acceso) caricaSottoArch(function () { traduciSottoArch(); });
+        else { var b0 = el("sottotitoli"); if (b0) b0.hidden = true; }
+        aggiorna(); return;
+      }
       if (!REG || REG.stato !== "registra") return dice("Prima apri una porta: i sottotitoli leggono quello che entra.");
       var acceso = !!(REG.sottotitoli && REG.sottotitoli.acceso);
       manda({ tipo: "clip-sottotitoli", id: REG.id, on: !acceso, lingua: "auto", mostra: (el("sottoLingua") || {}).value || "it" })
@@ -7239,6 +7288,11 @@
     });
     // cambiare lingua mentre sono accesi: si dice al ponte, e si rilegge
     if (el("sottoLingua")) el("sottoLingua").addEventListener("change", function () {
+      if (MODO === "archivio") {
+        SOTTO_ARCH.mostra = this.value;
+        if (SOTTO_ARCH.acceso) traduciSottoArch();
+        aggiorna(); return;
+      }
       if (!REG || !(REG.sottotitoli && REG.sottotitoli.acceso)) return;
       var m = this.value;
       manda({ tipo: "clip-sottotitoli", id: REG.id, mostra: m }).then(function (d) { REG = d.reg; SOTTO_DA = 0; aggiorna(); }).catch(function (e) { dice(e.message); });
@@ -7362,13 +7416,15 @@
       el("btnStopRec").className = "b rosso";
     }
     if (el("rigaSotto")) {
-      var sottoAcceso = !!(REG && REG.sottotitoli && REG.sottotitoli.acceso);
-      el("rigaSotto").hidden = !apertoQui;
+      var sottoAcceso = !!(REG && REG.sottotitoli && REG.sottotitoli.acceso) || (MODO === "archivio" && SOTTO_ARCH.acceso);
+      el("rigaSotto").hidden = MODO === "archivio" ? !REG : !apertoQui;
       el("btnSotto").className = "b" + (sottoAcceso ? " acceso" : "");
-      el("btnSotto").textContent = sottoAcceso ? "Sottotitoli \u00b7 " + ((REG.sottotitoli.mostra || "it").toUpperCase()) +
-        (REG.sottotitoliLingua ? " (parlano " + REG.sottotitoliLingua.toUpperCase() + ")" : "") : "Sottotitoli";
+      el("btnSotto").textContent = !sottoAcceso ? "Sottotitoli"
+        : MODO === "archivio" ? "Sottotitoli \u00b7 " + SOTTO_ARCH.mostra.toUpperCase() + (SOTTO_ARCH.stato ? " \u00b7 " + SOTTO_ARCH.stato : "")
+        : "Sottotitoli \u00b7 " + ((REG.sottotitoli.mostra || "it").toUpperCase()) +
+          (REG.sottotitoliLingua ? " (parlano " + REG.sottotitoliLingua.toUpperCase() + ")" : "");
       if (sottoAcceso && el("sottoLingua").value !== (REG.sottotitoli.mostra || "it")) el("sottoLingua").value = REG.sottotitoli.mostra || "it";
-      var mostraOra = el("sottoLingua").value || "it";
+      var mostraOra = MODO === "archivio" ? SOTTO_ARCH.mostra : (el("sottoLingua").value || "it");
       document.querySelectorAll("#rigaSotto .lingue b").forEach(function (x) { x.className = x.dataset.l === mostraOra ? "acceso" : ""; });
     }
     // il tasto grande cambia mestiere quando la porta e' aperta
