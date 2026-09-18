@@ -6595,7 +6595,7 @@ function correggiConIlVocabolario(testo, r) {
   // non una storpiatura di Diao
   vocabolarioDi(r).giocatori.forEach((g) => { const pn = piattaMinuscola(String(g).split(/\s+/)[0]); if (pn.length >= 3) noti.add(pn); });
   const comuni = new Set((TERMINI_IT.concat(TERMINI_EN)).join(" ").toLowerCase().split(/[^a-z]+/));
-  const vicino = (parola) => {
+  const vicinoCon = (parola) => {
     const k = piattaMinuscola(parola);
     if (k.length < 5 || noti.has(k) || comuni.has(k)) return null;
     // quanto si perdona: una lettera sulle parole corte, tre sulle lunghe.
@@ -6603,8 +6603,9 @@ function correggiConIlVocabolario(testo, r) {
     const tolleranza = k.length >= 9 ? 3 : (k.length >= 7 ? 2 : 1);
     let meglio = null, d0 = 99;
     chiavi.forEach((c) => { const d = distanza(k, c); if (d < d0) { d0 = d; meglio = c; } });
-    return meglio && d0 <= tolleranza ? forme.get(meglio) : null;
+    return meglio && d0 <= tolleranza ? { nome: forme.get(meglio), d: d0 } : null;
   };
+  const vicino = (parola) => { const v = vicinoCon(parola); return v ? v.nome : null; };
   const cambi = [];
   const parole = String(testo).split(/(\s+)/);
   for (let i = 0; i < parole.length; i++) {
@@ -6621,11 +6622,16 @@ function correggiConIlVocabolario(testo, r) {
     const dopo = parole[i + 2];
     if (dopo && /^[A-Za-zÀ-ÿ']{2,}[.,;:!?]?$/.test(dopo)) {
       const coda2 = (/[.,;:!?]$/.exec(dopo) || [""])[0];
-      const giusto2 = vicino(nuda + (coda2 ? dopo.slice(0, -1) : dopo));
+      const coppia = vicinoCon(nuda + (coda2 ? dopo.slice(0, -1) : dopo));
+      const sola = particella ? null : vicinoCon(nuda);
+      const giusto2 = coppia ? coppia.nome : null;
       // la coppia vale solo se il nome vero HA quella particella: "da Cugna"
-      // e' Da Cunha, ma "di Nicopas" e' "di" + Nico Paz, e il "di" resta
+      // e' Da Cunha, ma "di Nicopas" e' "di" + Nico Paz, e il "di" resta.
+      // E vale solo se e' piu' vicina della parola da sola: "Nicopas al" e'
+      // Nico Paz seguito da "al", non un nome di due parole.
       const particellaSua = !particella || giusto2 && giusto2.toLowerCase().startsWith(nuda.toLowerCase() + " ");
-      if (giusto2 && giusto2.indexOf(" ") > 0 && particellaSua) { cambi.push(nuda + " " + dopo + " → " + giusto2); parole[i] = giusto2 + coda2; parole[i + 1] = ""; parole[i + 2] = ""; continue; }
+      const meglioInCoppia = coppia && (!sola || coppia.d < sola.d);
+      if (giusto2 && giusto2.indexOf(" ") > 0 && particellaSua && meglioInCoppia) { cambi.push(nuda + " " + dopo + " → " + giusto2); parole[i] = giusto2 + coda2; parole[i + 1] = ""; parole[i + 2] = ""; continue; }
     }
     if (particella) continue;
     const giusto = vicino(nuda);
