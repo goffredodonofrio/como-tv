@@ -442,8 +442,11 @@ function avviaProxy(r) {
   const fatti = quantiSegmenti(fileProxy(r.id));
   const args = ["-hide_banner", "-loglevel", "warning", "-nostdin",
     "-live_start_index", String(fatti), "-i", playlistDi(r.id),
-    "-vf", "scale=" + PROXY_LARGO + ":-2,fps=25",
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "30",
+    // LA COPIA LEGGERA E' PER GUARDARE, NON PER MONTARE: a dodici fotogrammi
+    // e col preset piu' veloce costa un terzo, e su due core quel terzo e'
+    // quello che manca ai sottotitoli dal vivo. Il taglio resta sull'originale.
+    "-vf", "scale=" + PROXY_LARGO + ":-2,fps=12.5",
+    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-threads", "1",
     "-g", "25", "-keyint_min", "25", "-sc_threshold", "0",
     "-c:a", "aac", "-b:a", "64k",
     "-f", "hls", "-hls_time", String(SEGMENTO), "-hls_list_size", "0",
@@ -455,7 +458,8 @@ function avviaProxy(r) {
   // deve morire con un riavvio; il proxy si': e' una copia usa e getta, e
   // uno staccato che sopravvive diventa un orfano che scrive sulla stessa
   // playlist di quello nuovo. Al riavvio si riaccende da dove era arrivato.
-  const pr = spawn(FFMPEG, args, { stdio: ["ignore", "ignore", "pipe"] });
+  // e a bassa priorita': se la CPU manca, manca alla copia, non al vivo
+  const pr = spawn("nice", ["-n", "10", FFMPEG].concat(args), { stdio: ["ignore", "ignore", "pipe"] });
   PROXYS.set(r.id, pr);
   r.proxyPid = pr.pid;
   let coda = "";
@@ -5940,7 +5944,7 @@ function whisperCe() { return fs.existsSync(WHISPER) && fs.existsSync(MODELLO); 
 //  tutta la macchina anche se le porte aperte sono due.
 const MODELLO_VIVO = process.env.COMOTV_WHISPER_VIVO || path.join(path.dirname(MODELLO), "ggml-base.bin");
 const TRADUCI = process.env.COMOTV_TRADUCI || "http://127.0.0.1:5077";
-const VIVO_PEZZO = parseInt(process.env.COMOTV_VIVO_PEZZO || "8", 10);   // secondi d'audio per giro
+const VIVO_PEZZO = parseInt(process.env.COMOTV_VIVO_PEZZO || "6", 10);   // secondi d'audio per giro
 const VIVI = new Map();          // regId -> { fatto, lingua, prompt }
 let vivoInCorso = false;
 
@@ -6017,6 +6021,15 @@ async function giraSottotitoli() {
   for (const [id, v] of VIVI) {
     const r = R.reg[id];
     if (!r || r.stato !== "registra" || !(r.sottotitoli || {}).acceso) { VIVI.delete(id); continue; }
+    // SE SI RESTA INDIETRO SI SALTA AVANTI. Un sottotitolo di tre minuti fa
+    // non serve a nessuno: quando la macchina non tiene il passo si perde
+    // un pezzo e si torna sul vivo, invece di accumulare ritardo per tutta
+    // la partita.
+    const scritto = durataRegistrata(id);
+    if (scritto - v.fatto > VIVO_PEZZO * 2.5) {
+      console.log("[clip] sottotitoli (" + (r.titolo || id) + "): indietro di " + Math.round(scritto - v.fatto) + "s, salto avanti");
+      v.fatto = scritto - VIVO_PEZZO;
+    }
     const segs = segmenti(id).filter((x) => x.t0 >= v.fatto - 0.05);
     const presi = []; let quanto = 0;
     for (const x of segs) { presi.push(x); quanto += x.dur; if (quanto >= VIVO_PEZZO) break; }
@@ -6028,7 +6041,7 @@ async function giraSottotitoli() {
     return;                                                   // un giro, una registrazione
   }
 }
-setInterval(() => { giraSottotitoli().catch(() => { vivoInCorso = false; }); }, 1500);
+setInterval(() => { giraSottotitoli().catch(() => { vivoInCorso = false; }); }, 800);
 
 // Da dove si prendono i byte dell'audio: il disco se ci sono, l'indirizzo
 // firmato se la partita sta in archivio. Con -ss e -t si scarica solo il
@@ -6355,6 +6368,17 @@ function vocabolarioDi(r) {
   let nomi = e && e.squadre && e.squadre.length ? e.squadre.slice() : [];
   if (!nomi.length && r && r.titolo) {
     String(r.titolo).split(/\s*-\s*|\s+vs\.?\s+/i).slice(0, 2).forEach((t) => { const q = squadraNelVocabolario(t); if (q) nomi.push(q); });
+  }
+  // senza evento ne' titolo si guarda l'ora: se c'e' una partita che ESPN
+  // mette in onda adesso — cominciata da meno di due ore e mezza, o che
+  // comincia fra poco — e' quasi certamente quella che sta entrando. Il
+  // Como ha la precedenza; se no la prima che si trova.
+  if (!nomi.length) {
+    const ora = Date.now();
+    const inOnda = Object.keys(ESPN).map((k) => ESPN[k]).filter((e) => {
+      const q = Date.parse(e && e.quando || ""); return q && ora - q < 2.5 * 3600000 && q - ora < 1800000 && e.squadre && e.squadre.length === 2;
+    }).sort((x, y) => (/\bComo\b/.test(y.squadre.join(" ")) ? 1 : 0) - (/\bComo\b/.test(x.squadre.join(" ")) ? 1 : 0));
+    if (inOnda.length) nomi = inOnda[0].squadre.slice();
   }
   if (!nomi.length) nomi = ["Como"];
   const squadre = [], allenatori = [], giocatori = [];
@@ -10401,6 +10425,13 @@ function avvio(opz) {
   rinominaMaterialeArchivio();
   leggiParlato();
   leggiVocabolario();
+  // i sottotitoli accesi prima del riavvio ripartono da dove siamo adesso
+  Object.keys(R.reg).forEach((k) => {
+    const r = R.reg[k];
+    if (r.stato === "registra" && r.sottotitoli && r.sottotitoli.acceso && !VIVI.has(k)) {
+      VIVI.set(k, { fatto: Math.max(0, durataRegistrata(k) - VIVO_PEZZO), lingua: r.sottotitoli.lingua === "auto" ? "" : r.sottotitoli.lingua, prompt: "" });
+    }
+  });
   // Il ponte si e' riavviato: gli ffmpeg che stava seguendo sono morti con
   // lui. Meglio dirlo che lasciare in pagina una registrazione che sembra
   // viva e non scrive piu' niente.
