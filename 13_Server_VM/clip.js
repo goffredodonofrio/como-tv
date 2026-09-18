@@ -6002,13 +6002,16 @@ async function trascriviVivo(r, v, presi) {
   try { j = JSON.parse(fs.readFileSync(base + ".json", "utf8")); } catch (e) {}
   const lettaLingua = j.result && j.result.language;
   if (!v.lingua && lettaLingua && ["it", "en"].indexOf(lettaLingua) >= 0) v.lingua = lettaLingua;
-  const testo = (j.transcription || []).map((t) => String(t.text || "").trim()).filter(Boolean).join(" ")
+  let testo = (j.transcription || []).map((t) => String(t.text || "").trim()).filter(Boolean).join(" ")
     .replace(/\s+/g, " ").trim();
   v.fatto = t1;
   // le allucinazioni del silenzio: whisper sul nulla scrive "Sottotitoli a
   // cura di..." o ripete l'ultima frase. Non si tiene.
   if (!testo || /sottotitoli|subtitles|thanks for watching|amara\.org/i.test(testo) || testo === v.ultimo) return;
   const lingua = v.lingua || "it", altra = lingua === "it" ? "en" : "it";
+  const corretto = correggiConIlVocabolario(testo, r);
+  if (corretto.cambi.length) console.log("[clip] sottotitoli: " + corretto.cambi.join(", "));
+  testo = corretto.testo;
   const tr = await traduciConINomi([testo], lingua, altra, r);
   const dentro = PARLATO[r.id] || (PARLATO[r.id] = { lingua: lingua, pezzi: [] });
   dentro.pezzi.push({ a: Math.round(t0 * 10) / 10, b: Math.round(t1 * 10) / 10, x: testo,
@@ -6391,6 +6394,21 @@ function vocabolarioDi(r) {
   });
   return { squadre: squadre, allenatori: allenatori, giocatori: giocatori, lega: e ? e.lega : "" };
 }
+// COME SI DICE UN NOME IN TELECRONACA. Il cognome, quasi sempre — ma non
+// l'ultima parola e basta: "Da Cunha" si dice con la particella, e whisper
+// lo scriveva "Dacugna" perche' nel prompt c'era solo "Cunha". E quando il
+// nome e' corto e famoso si dice intero: "Nico Paz", non "Paz". Regola:
+// tutto tranne il primo nome; se il primo nome e' corto (fino a quattro
+// lettere) si tiene tutto.
+const PARTICELLE = new Set(["da", "de", "di", "del", "della", "van", "von", "der", "den", "le", "la", "el", "al", "dos", "das", "mac", "mc", "ben", "abu"]);
+function comeSiDice(nome) {
+  const t = String(nome || "").trim().split(/\s+/).filter(Boolean);
+  if (t.length <= 1) return t[0] || "";
+  if (t[0].length <= 4) return t.join(" ");
+  let i = 1;
+  while (i < t.length - 1 && !PARTICELLE.has(t[i].toLowerCase())) i++;
+  return t.slice(PARTICELLE.has(t[i].toLowerCase()) ? i : t.length - 1).join(" ");
+}
 // Quello che si dice a whisper prima di ogni pezzo. Il modello legge
 // soprattutto le prime parole e ne tiene poche (circa duecento token):
 // squadre, allenatori e cognomi in testa, i termini in coda, e l'ultima
@@ -6398,7 +6416,7 @@ function vocabolarioDi(r) {
 function promptPer(r, lingua, ultimaFrase) {
   const v = vocabolarioDi(r);
   const it = (lingua || LINGUA_MAM) !== "en";
-  const cognomi = v.giocatori.map((g) => String(g).split(/\s+/).pop()).filter((c) => c && c.length > 2);
+  const cognomi = [...new Set(v.giocatori.map(comeSiDice).filter((c) => c && c.length > 2))];
   // whisper tiene circa duecento token di prompt e, se e' piu' lungo, tiene
   // gli ULTIMI: la testa — squadre e allenatori — e' la parte che conta e
   // non deve cadere. Quindi si sta sotto i cinquecento caratteri, e a
@@ -6415,6 +6433,78 @@ function promptPer(r, lingua, ultimaFrase) {
     quanti -= 4;
   } while (quanti > 8 && (fisso + testa + termini + coda).length > 520);
   return (fisso + testa + termini + coda).replace(/\s+/g, " ").trim();
+}
+// I NOMI QUASI GIUSTI SI RADDRIZZANO. whisper scrive "Paturina",
+// "Dacugna", "Nicopass": a una o due lettere dal nome vero, e il nome vero
+// ce l'abbiamo. Ogni parola maiuscola del testo che non e' gia' un nome
+// noto si confronta con i nomi della partita — anche attaccati, "nicopaz",
+// perche' whisper fonde nome e cognome — e se la distanza e' piccola si
+// mette la forma ufficiale. Solo maiuscole e solo parole lunghe: "Sono",
+// "Ecco", "Mentre" non si toccano. Si prova anche la coppia con la parola
+// dopo, per "Da Cugna" scritto in due.
+function piattaMinuscola(x) { return String(x).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z]/g, ""); }
+function distanza(a, b) {
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (!m || !n || Math.abs(m - n) > 3) return 99;
+  let prev = new Array(n + 1), cur = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    cur[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const c = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + c);
+    }
+    [prev, cur] = [cur, prev];
+  }
+  return prev[n];
+}
+function formeDeiNomi(r) {
+  const v = vocabolarioDi(r);
+  const forme = new Map();      // forma piatta -> come si scrive
+  const metti = (scritto) => { const k = piattaMinuscola(scritto); if (k.length >= 4) forme.set(k, scritto); };
+  v.giocatori.forEach((g) => { metti(comeSiDice(g)); metti(g); const c = String(g).split(/\s+/).pop(); if (c.length > 3) metti(c); });
+  v.allenatori.forEach((a) => { metti(a); metti(String(a).split(/\s+/).pop()); });
+  v.squadre.forEach((sq) => metti(sq));
+  return forme;
+}
+function correggiConIlVocabolario(testo, r) {
+  const forme = formeDeiNomi(r);
+  if (!forme.size) return { testo: testo, cambi: [] };
+  const chiavi = [...forme.keys()];
+  const noti = new Set(chiavi);
+  // i NOMI DI BATTESIMO della rosa non si toccano: "Diego" e' Diego Carlos,
+  // non una storpiatura di Diao
+  vocabolarioDi(r).giocatori.forEach((g) => { const pn = piattaMinuscola(String(g).split(/\s+/)[0]); if (pn.length >= 3) noti.add(pn); });
+  const comuni = new Set((TERMINI_IT.concat(TERMINI_EN)).join(" ").toLowerCase().split(/[^a-z]+/));
+  const vicino = (parola) => {
+    const k = piattaMinuscola(parola);
+    if (k.length < 5 || noti.has(k) || comuni.has(k)) return null;
+    // quanto si perdona: una lettera sulle parole corte, tre sulle lunghe.
+    // "Corso" a due lettere da "Couto" e' una parola, non un errore.
+    const tolleranza = k.length >= 9 ? 3 : (k.length >= 7 ? 2 : 1);
+    let meglio = null, d0 = 99;
+    chiavi.forEach((c) => { const d = distanza(k, c); if (d < d0) { d0 = d; meglio = c; } });
+    return meglio && d0 <= tolleranza ? forme.get(meglio) : null;
+  };
+  const cambi = [];
+  const parole = String(testo).split(/(\s+)/);
+  for (let i = 0; i < parole.length; i++) {
+    const w = parole[i];
+    if (!/^[A-ZÀ-Ý][A-Za-zÀ-ÿ']{3,}[.,;:!?]?$/.test(w)) continue;
+    const coda = (/[.,;:!?]$/.exec(w) || [""])[0];
+    const nuda = coda ? w.slice(0, -1) : w;
+    // prima la coppia con la parola dopo ("Da Cugna", "Nico Passe")
+    const dopo = parole[i + 2];
+    if (dopo && /^[A-Za-zÀ-ÿ']{2,}[.,;:!?]?$/.test(dopo)) {
+      const coda2 = (/[.,;:!?]$/.exec(dopo) || [""])[0];
+      const giusto2 = vicino(nuda + (coda2 ? dopo.slice(0, -1) : dopo));
+      if (giusto2 && giusto2.indexOf(" ") > 0) { cambi.push(nuda + " " + dopo + " → " + giusto2); parole[i] = giusto2 + coda2; parole[i + 1] = ""; parole[i + 2] = ""; continue; }
+    }
+    const giusto = vicino(nuda);
+    if (giusto && giusto !== nuda) { cambi.push(nuda + " → " + giusto); parole[i] = giusto + coda; }
+  }
+  return { testo: parole.join(""), cambi: cambi };
 }
 // I NOMI NON SI TRADUCONO. Prima di dare la frase ad Argos i nomi noti —
 // giocatori, allenatori, squadre della partita — si coprono con un
@@ -9972,6 +10062,10 @@ const AZIONI = {
   "clip-parlato-basta": (p) => fermaParlato(!!p.riaccendi),
   "clip-vocabolario": async (p) => {
     if (p.rifai) costruisciVocabolario();
+    if (p.correggi) {
+      const r = R.reg[String(p.reg || "")] || { evento: String(p.rec || ""), titolo: String(p.titolo || "") };
+      return Object.assign({ ok: true }, correggiConIlVocabolario(String(p.correggi), r));
+    }
     // una frase di prova: com'e' tradotta coi nomi coperti, e senza
     if (p.prova) {
       const r = R.reg[String(p.reg || "")] || { evento: String(p.rec || ""), titolo: String(p.titolo || "") };
