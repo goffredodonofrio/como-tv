@@ -201,9 +201,9 @@
     var mio = ++st.gen;
     // Da che punto dell'animazione parte: lo sceglie la regia col cursore
     // sotto l'Anteprima e sta nei dati della voce come "_da". Al motore non
-    // arriva — non e' un suo dato — lo applica questa pagina dopo il primo
-    // disegno, prima di mostrarla (vedi avvio.js). I video hanno il loro "da"
-    // senza trattino, che invece resta nei dati: e' media-vmix a leggerlo.
+    // arriva — non e' un suo dato — lo applica tempo.html (vedi sotto).
+    // I video hanno il loro "da" senza trattino, che invece resta nei dati:
+    // e' media-vmix a leggerlo.
     var dati = Object.assign({}, j.dati || {});
     var daAvvio = parseFloat(dati._da) || 0;
     delete dati._da;
@@ -211,24 +211,42 @@
     back.classList.remove("on");
     back.style.zIndex = 2;      // il nuovo entra sopra il vecchio
     front.style.zIndex = 1;
+    function mostra() {
+      if (mio !== st.gen) return;
+      back.classList.remove("muto");
+      void back.offsetWidth;   // senza il ricalcolo la dissolvenza non parte
+      back.classList.add("on");
+      front.classList.remove("on");          // dissolvenza incrociata
+      setTimeout(function () {
+        if (mio !== st.gen) return;
+        spegni(front);
+        st.fronte = (st.fronte === "a") ? "b" : "a";
+      }, DISS + 150);
+    }
+    // Con un punto di partenza la grafica passa da tempo.html: le mette sotto
+    // l'orologio (orologio.js), la porta al secondo giusto — timer compresi,
+    // non solo le animazioni CSS — e da li' la lascia andare a tempo vero. Si
+    // mostra solo quando e' gia' al punto: in onda non si vede mai l'inizio.
+    // Se tempo.html non risponde in 5 secondi la si mostra com'e': meglio una
+    // grafica che parte da capo che nessuna grafica.
+    if (daAvvio > 0) {
+      back.onload = null;
+      var t0 = Date.now();
+      (function aspetta() {
+        if (mio !== st.gen) return;
+        var w = null;
+        try { w = back.contentWindow; } catch (e) {}
+        if ((w && w.__partito) || Date.now() - t0 > 5000) { alPrimoDisegno(back, mostra); return; }
+        setTimeout(aspetta, 30);
+      })();
+      back.src = "tempo.html?m=" + encodeURIComponent(eng) + "&d=" + b64url(dati) +
+                 "&da=" + daAvvio + "&n=" + j.playNonce;
+      return;
+    }
     back.onload = function () {
       if (mio !== st.gen) return;
       if (back.src.indexOf("about:blank") >= 0) return;
-      alPrimoDisegno(back, function () {
-        if (mio !== st.gen) return;
-        if (daAvvio && window.AvvioGrafica) {
-          try { AvvioGrafica.parti(back.contentDocument, daAvvio, back.contentWindow); } catch (e) {}
-        }
-        back.classList.remove("muto");
-        void back.offsetWidth;   // senza il ricalcolo la dissolvenza non parte
-        back.classList.add("on");
-        front.classList.remove("on");          // dissolvenza incrociata
-        setTimeout(function () {
-          if (mio !== st.gen) return;
-          spegni(front);
-          st.fronte = (st.fronte === "a") ? "b" : "a";
-        }, DISS + 150);
-      });
+      alPrimoDisegno(back, mostra);
     };
     back.src = eng + "?d=" + b64url(dati) + "&n=" + j.playNonce;
   }

@@ -197,6 +197,10 @@
     border:1px solid var(--line-gold);background:#070B1D;}
   #pvw{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
     transform-origin:top left;pointer-events:none;background:#070B1D;color-scheme:dark;}
+  /* i due telai del cursore delle grafiche: uno si vede, nell'altro si
+     prepara il punto nuovo, e poi si scambiano (niente lampi tornando indietro) */
+  .pvwCue{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
+    transform-origin:top left;pointer-events:none;background:#070B1D;color-scheme:dark;visibility:hidden;}
   #btnTake{background:transparent;color:#4FCB8B;border:2px solid rgba(79,203,139,.5);}
   #btnTake:hover:not(:disabled){background:rgba(79,203,139,.12);border-color:#4FCB8B;}
   #btnTake:disabled{opacity:.35;cursor:default;}
@@ -926,6 +930,7 @@
     var tm = document.getElementById("thumbMatch");
     if (tm) tm.style.transform = "scale(" + (w / 1920) + ")";
     pvw.style.transform = "scale(" + (document.getElementById("pvwbox").clientWidth / 1920) + ")";
+    [].forEach.call(document.querySelectorAll(".pvwCue"), function (f) { f.style.transform = pvw.style.transform; });
     misuraComandi();
   }
   // l'altezza dell'anteprima dipende dalla larghezza della colonna (16:9), quindi
@@ -977,6 +982,7 @@
     CUE = { id: null, da: 0, dur: 0 };
     pvw.style.opacity = "";
     if (cueGiro) { cancelAnimationFrame(cueGiro); cueGiro = 0; }
+    cueTelaiSpegni();
     var v = document.getElementById("pvwvid");
     v.style.display = "none";
     pvw.style.display = "";                       // torna il telaio delle grafiche
@@ -1008,75 +1014,143 @@
     v.addEventListener("error", cueChiudi, { once: true });
   }
   // ── lo stesso cursore, sulle grafiche ──────────────────────────────
-  // Una grafica non e' una clip: dura un paio di secondi e il suo "tempo" e'
-  // l'ingresso. Si scorre per vederla comporsi fotogramma per fotogramma, si
-  // lascia il segno, e in onda parte da li' — dall'inizio, a meta', o gia'
-  // composta. Il punto sta nei dati della voce come "_da" e lo applica il
-  // playout (avvio.js). I motori non si toccano: le animazioni CSS il browser
-  // le lascia fermare e spostare da fuori.
+  // Una grafica non e' una clip: il suo "tempo" e' l'ingresso. Si scorre per
+  // vederla comporsi, si lascia il segno, e in onda parte da li' — dall'inizio,
+  // a meta', o gia' composta. Il punto sta nei dati della voce come "_da".
+  //
+  // La grafica si apre dentro tempo.html, che le mette sotto un orologio finto
+  // (orologio.js): timer, requestAnimationFrame e animazioni avanzano solo
+  // quando lo dice il cursore. Prima si spostavano solo le animazioni CSS, e
+  // tutto quello che i motori fanno coi timer — righe una dopo l'altra, foto
+  // che cambiano, numeri che crescono — restava fuori: il cursore misurava
+  // durate da un secondo e in onda la grafica ripartiva da capo lo stesso.
+  //
+  // In avanti la grafica si porta avanti e basta. Indietro non si puo' (il
+  // tempo non torna): si ricarica nel secondo telaio, la si porta al punto,
+  // e si scambiano i telai — cosi' non lampeggia niente.
   // Quello che si GUARDA (il cursore) e il punto da cui PARTE (il segno d'oro)
   // restano due cose diverse, come per le clip.
-  var cueGiro = 0;
+  var cueGiro = 0, cueTelai = [], cueVisto = 0, cueGiroCarica = 0, cueRitardo = 0;
   function cueSec(t) { return (Math.round((t || 0) * 10) / 10).toFixed(1).replace(".", ",") + " s"; }
   function cueTempo(t) {
     return CUE.grafica ? cueSec(t) + " / " + cueSec(CUE.dur) : cueMmss(t) + " / " + cueMmss(CUE.dur);
   }
   function pvwDoc() { try { return pvw.contentDocument; } catch (e) { return null; } }
+  function cueTelaio(k) {
+    if (!cueTelai[k]) {
+      var f = document.createElement("iframe");
+      f.className = "pvwCue"; f.setAttribute("scrolling", "no"); f.src = "about:blank";
+      f.style.transform = pvw.style.transform;
+      document.getElementById("pvwbox").appendChild(f);
+      cueTelai[k] = f;
+    }
+    return cueTelai[k];
+  }
+  function cueTelaiSpegni() {
+    cueGiroCarica++;
+    clearTimeout(cueRitardo);
+    cueTelai.forEach(function (f) { f.style.visibility = "hidden"; f.src = "about:blank"; });
+  }
+  function cueOrologio(f) {
+    f = f || cueTelai[cueVisto];
+    try { return f && f.contentWindow && f.contentWindow.Orologio; } catch (e) { return null; }
+  }
+  // Carica la grafica nel telaio nascosto e la porta al secondo t. Risponde
+  // col telaio pronto (o con null se nel frattempo si e' chiesto altro).
+  function cueCarica(t) {
+    var mio = ++cueGiroCarica, k = cueTelai[cueVisto] && cueTelai[cueVisto].style.visibility === "visible" ? 1 - cueVisto : cueVisto;
+    var f = cueTelaio(k);
+    f.style.visibility = "hidden";
+    f.src = CUE.url + "&n=" + Date.now();
+    return new Promise(function (ok, no) {
+      var t0 = Date.now();
+      (function aspetta() {
+        if (mio !== cueGiroCarica) return ok(null);
+        var w = null;
+        try { w = f.contentWindow; } catch (e) {}
+        if (w && w.__tempoPronto && w.Orologio) {
+          try { w.Orologio.avanza(t); } catch (e) {}
+          return ok({ f: f, k: k });
+        }
+        if (Date.now() - t0 > 8000) return no(new Error("la grafica non si carica"));
+        setTimeout(aspetta, 40);
+      })();
+    });
+  }
+  function cueMostra(x) {
+    if (!x) return;
+    x.f.style.visibility = "visible";
+    var altro = cueTelai[1 - x.k];
+    if (altro) { altro.style.visibility = "hidden"; altro.src = "about:blank"; }
+    cueVisto = x.k;
+  }
   function cueGraficaApri(id, tipo, dati) {
     cueChiudi();
-    if (!window.AvvioGrafica) return false;
     CUE = { id: id, da: parseFloat(dati && dati._da) || 0, dur: 0, grafica: true };
     var pulito = Object.assign({}, dati || {}); delete pulito._da;
     var ferma = engineOf(tipo) + "?d=" + b64url(pulito) + "&still=1&muto=1";
-    // Si carica la grafica VIVA, nascosta: serve l'animazione da scorrere.
-    // Appena caricata si misura e la si ferma sull'ultimo fotogramma, che e'
-    // quello che l'anteprima ha sempre mostrato. Se non c'e' niente da
-    // scorrere — un motore mosso solo da timer — si torna alla versione ferma
-    // di sempre e il cursore non compare.
-    pvw.style.opacity = "0";
-    pvw.onload = function () {
-      pvw.onload = null;
-      setTimeout(function () {
-        if (CUE.id !== id || !CUE.grafica) return;
-        var doc = pvwDoc(), dur = AvvioGrafica.durata(doc);
-        if (!dur) { CUE = { id: null, da: 0, dur: 0 }; pvw.src = ferma; pvw.style.opacity = ""; return; }
-        CUE.dur = dur;
-        CUE.da = Math.min(CUE.da, dur);
-        AvvioGrafica.ferma(doc, dur);
-        pvw.style.opacity = "";
-        var r = document.getElementById("cueA");
-        r.step = "0.01"; r.max = String(dur); r.value = String(dur);
-        document.getElementById("cuePlay").innerHTML = "&#9654;";
-        document.getElementById("cue").style.display = "flex";
-        document.getElementById("cueTC").textContent = cueTempo(dur);
-        cueSegnoDisegna();
-      }, 450);
-    };
-    pvw.src = engineOf(tipo) + "?d=" + b64url(pulito) + "&muto=1&n=" + Date.now();
+    CUE.url = "tempo.html?m=" + encodeURIComponent(engineOf(tipo)) + "&d=" + b64url(pulito) + "&muto=1";
+    // mentre si prepara, nel monitor resta il fermo-immagine di sempre
+    pvw.style.display = "";
+    pvw.src = ferma;
+    cueCarica(0).then(function (x) {
+      if (!x || CUE.id !== id || !CUE.grafica) return;
+      var O = cueOrologio(x.f), dur = 0;
+      try { dur = O.finoAllaFine(20, 1); } catch (e) {}
+      if (!(dur > 0.2)) { cueTelaiSpegni(); CUE = { id: null, da: 0, dur: 0 }; return; }
+      dur = Math.round(dur * 100) / 100;
+      CUE.dur = dur;
+      CUE.da = Math.min(CUE.da, dur);
+      cueMostra(x);
+      pvw.style.display = "none";
+      var r = document.getElementById("cueA");
+      r.step = "0.04"; r.max = String(dur); r.value = String(dur);
+      document.getElementById("cuePlay").innerHTML = "&#9654;";
+      document.getElementById("cue").style.display = "flex";
+      document.getElementById("cueTC").textContent = cueTempo(dur);
+      cueSegnoDisegna();
+    }).catch(function () {
+      // niente orologio: resta il fermo-immagine e il cursore non compare
+      cueTelaiSpegni(); CUE = { id: null, da: 0, dur: 0 };
+    });
     return true;
   }
-  function cueGraficaGuarda(t) {
+  function cueFermaPlay() {
     if (cueGiro) { cancelAnimationFrame(cueGiro); cueGiro = 0; }
-    AvvioGrafica.ferma(pvwDoc(), t);
-    document.getElementById("cueTC").textContent = cueTempo(t);
     document.getElementById("cuePlay").innerHTML = "&#9654;";
   }
+  function cueGraficaGuarda(t) {
+    cueFermaPlay();
+    document.getElementById("cueTC").textContent = cueTempo(t);
+    var O = cueOrologio();
+    if (O && t >= O.ora() - 0.001) { clearTimeout(cueRitardo); cueGiroCarica++; O.avanza(t); return; }
+    // indietro: si ricarica, ma non a ogni pixel del trascinamento
+    clearTimeout(cueRitardo);
+    cueRitardo = setTimeout(function () {
+      cueCarica(t).then(cueMostra).catch(function () {});
+    }, 120);
+  }
   // Il play fa vedere esattamente quello che andra' in onda: dal segno alla
-  // fine, col cursore che corre dietro.
+  // fine, a tempo vero, col cursore che corre dietro.
   function cueGraficaPlay() {
-    var doc = pvwDoc(), r = document.getElementById("cueA"), b = document.getElementById("cuePlay");
-    if (cueGiro) { cancelAnimationFrame(cueGiro); cueGiro = 0; AvvioGrafica.ferma(doc, parseFloat(r.value) || 0);
-                   b.innerHTML = "&#9654;"; return; }
-    AvvioGrafica.riparti(doc, CUE.da);
-    var t0 = performance.now(), da = CUE.da;
+    var r = document.getElementById("cueA"), b = document.getElementById("cuePlay");
+    if (cueGiro) { cueFermaPlay(); return; }
+    var da = CUE.da;
     b.innerHTML = "&#10073;&#10073;";
-    (function giro() {
-      var t = Math.min(CUE.dur, da + (performance.now() - t0) / 1000);
-      r.value = String(t);
-      document.getElementById("cueTC").textContent = cueTempo(t);
-      if (t >= CUE.dur) { cueGiro = 0; b.innerHTML = "&#9654;"; return; }
-      cueGiro = requestAnimationFrame(giro);
-    })();
+    cueGiro = -1;                               // in partenza: il tasto e' gia' "pausa"
+    cueCarica(da).then(function (x) {
+      if (!x || cueGiro !== -1) return;
+      cueMostra(x);
+      var O = cueOrologio(x.f), t0 = performance.now();
+      (function giro() {
+        var t = Math.min(CUE.dur, da + (performance.now() - t0) / 1000);
+        try { O.avanza(t); } catch (e) {}
+        r.value = String(t);
+        document.getElementById("cueTC").textContent = cueTempo(t);
+        if (t >= CUE.dur) { cueGiro = 0; b.innerHTML = "&#9654;"; return; }
+        cueGiro = requestAnimationFrame(giro);
+      })();
+    }).catch(function () { cueGiro = 0; b.innerHTML = "&#9654;"; });
   }
   // Si salva dentro i dati della voce, con la stessa operazione che usa il
   // Controllo redazione. I dati si rileggono dal ponte UN ATTIMO PRIMA: se

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Grafica · tempo</title>
+<!--
+  TEMPO — una grafica col suo tempo in mano alla regia.
+
+  Installa l'orologio finto (orologio.js) e POI scrive nella stessa finestra
+  il motore della grafica: cosi' l'orologio c'e' gia' quando partono i suoi
+  script, e timer e animazioni gli obbediscono. Il motore non sa niente.
+
+    tempo.html?m=precedenti-vmix.html&d=…            fermo al secondo 0: la
+                                                      regia lo porta dove vuole
+    tempo.html?m=precedenti-vmix.html&d=…&da=2.4     il playout: appena la
+                                                      pagina e' pronta la grafica
+                                                      va al secondo 2,4 e da li'
+                                                      prosegue a tempo vero
+
+  Gli altri parametri (d, still, muto…) restano nell'indirizzo e il motore li
+  legge come sempre. Il motore deve stare in questa stessa cartella: i suoi
+  indirizzi relativi (font, sfondo.js) valgono da qui.
+
+  Quando e' pronta, la pagina lo dice in window.__tempoPronto (true) — e con
+  "da", window.__partito. Se qualcosa va storto si apre il motore da solo,
+  dall'inizio: meglio una grafica che parte da zero che nessuna grafica.
+-->
+<script src="orologio.js"></script>
+</head>
+<body style="background:transparent">
+<script>
+(function () {
+  "use strict";
+  var q = new URLSearchParams(location.search);
+  var m = q.get("m") || "";
+  var da = parseFloat(q.get("da")) || 0;
+  function ripiego() {
+    var r = new URLSearchParams(location.search);
+    r.delete("m"); r.delete("da");
+    location.replace(m + "?" + r.toString());
+  }
+  if (!/^[a-z0-9][a-z0-9\-]*\.html$/i.test(m)) { document.title = "tempo: motore non valido"; return; }
+  fetch(m, { cache: "no-cache" })
+    .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+    .then(function (html) {
+      // la finestra resta la stessa (e con lei l'orologio): cambia solo il documento
+      document.open();
+      document.write(html);
+      document.close();
+      var fatto = false;
+      function via() {
+        if (fatto) return; fatto = true;
+        Promise.resolve(document.fonts && document.fonts.ready).catch(function () {}).then(function () {
+          window.__tempoPronto = true;
+          if (window.__orologioPronto) window.__orologioPronto();
+          if (da > 0 && window.Orologio) {
+            Orologio.avanza(da);
+            Orologio.libera();
+            window.__partito = true;
+          } else if (q.get("libero") === "1" && window.Orologio) {
+            Orologio.libera();
+            window.__partito = true;
+          }
+        });
+      }
+      if (document.readyState === "complete") via();
+      else window.addEventListener("load", via);
+      // un'immagine che non risponde non deve tenere ferma la grafica
+      (window.__veroTimeout || window.setTimeout)(via, 3000);
+    })
+    .catch(ripiego);
+})();
+</script>
+</body>
+</html>
