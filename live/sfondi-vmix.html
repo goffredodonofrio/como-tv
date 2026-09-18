@@ -25,6 +25,7 @@
        ?l=1    primo 2box   16:9 grande a sinistra, 3:4 a destra
        ?l=2    secondo 2box 3:4 a sinistra, 16:9 grande a destra
        ?l=3    terzo box    due 16:9 uguali
+       ?l=0    solo sfondo  nessun box: il fondo in loop su tutto lo schermo
        &g=24   lo spazio fra i due riquadri
        &m=0    il margine ai lati (se c'e', lo spazio in mezzo si stringe)
        &y=-20  alza o abbassa i riquadri
@@ -113,7 +114,15 @@
 <script>
 (function () {
   var q = new URLSearchParams(location.search);
-  if (!q.get("polvere")) {
+  // Solo sfondo (l=0): niente buchi, la polvere cade su tutto lo schermo
+  // come nelle altre grafiche, quindi resta quella normale. Il layout puo'
+  // arrivare per indirizzo o dentro il pacchetto della regia.
+  var l = q.get("l");
+  if (!l && q.get("d")) {
+    // attenzione: 0 e' un layout, non "niente" (e 0 || "" darebbe "")
+    try { var o = JSON.parse(decodeURIComponent(escape(atob(q.get("d").replace(/-/g, "+").replace(/_/g, "/"))))); l = o && o.l != null ? String(o.l) : ""; } catch (e) {}
+  }
+  if (!q.get("polvere") && l !== "0") {
     q.set("polvere", "buchi");
     try { history.replaceState(null, "", location.pathname + "?" + q.toString()); } catch (e) {}
   }
@@ -150,7 +159,9 @@
   var LAYOUT = {
     "1": { nome: "Primo 2box",  box: [[1339.21, 753.31], [564.98, 753.31]] },
     "2": { nome: "Secondo 2box", box: [[564.98, 753.31], [1339.21, 753.31]] },
-    "3": { nome: "Terzo box",   box: [[951.95, 535.47], [951.95, 535.47]] }
+    "3": { nome: "Terzo box",   box: [[951.95, 535.47], [951.95, 535.47]] },
+    // nessun riquadro: una fascia sola grande quanto lo schermo
+    "0": { nome: "Solo sfondo", box: [] }
   };
   var L = LAYOUT[String(Q.get("l") || "1")] || LAYOUT["1"];
   document.title = "Sfondo bucato · " + L.nome;
@@ -177,8 +188,8 @@
   // sua porzione dello stesso disegno. Dove ci sono i riquadri non viene
   // creato proprio niente: e' quello che rende il buco un buco anche nel
   // browser di vMix.
-  var cima = Math.min.apply(null, buchi.map(function (b) { return b.y; }));
-  var fondo = Math.max.apply(null, buchi.map(function (b) { return b.y + b.h; }));
+  var cima = buchi.length ? Math.min.apply(null, buchi.map(function (b) { return b.y; })) : 0;
+  var fondo = buchi.length ? Math.max.apply(null, buchi.map(function (b) { return b.y + b.h; })) : H;
   var fasce = [];
   if (cima > 0) fasce.push({ x: 0, y: 0, w: W, h: cima });
   if (fondo < H) fasce.push({ x: 0, y: fondo, w: W, h: H - fondo });
