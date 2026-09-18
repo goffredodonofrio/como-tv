@@ -6008,8 +6008,11 @@ async function trascriviVivo(r, v, presi) {
   await eseguiVivo(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin", "-y",
     "-i", "concat:" + presi.map((x) => x.file).join("|"),
     "-vn", "-map", "0:a:0", "-ac", "1", "-ar", "16000", "-f", "wav", wav], 30000);
+  // -mc 0 e -et: la cura della ripetizione. Su pezzi corti il modello si
+  // aggrappa all'ultima frase e la ripete ("poi di Vicas, poi di Vicas");
+  // senza contesto trascinato e con la soglia di entropia si ferma prima.
   const args = ["-m", modelloPer(v.lingua, true), "-f", wav, "-oj", "-of", base, "-t", "2", "-np",
-                "-l", v.lingua || "auto"];
+                "-mc", "0", "-et", "2.4", "-l", v.lingua || "auto"];
   // il vocabolario davanti — squadre, allenatori, cognomi come li scrive
   // ESPN — e in coda la frase di prima: whisper su otto secondi non sa di
   // che si parla, e con i nomi davanti li scrive giusti
@@ -6025,6 +6028,12 @@ async function trascriviVivo(r, v, presi) {
   // le allucinazioni del silenzio: whisper sul nulla scrive "Sottotitoli a
   // cura di..." o ripete l'ultima frase. Non si tiene.
   if (!testo || /sottotitoli|subtitles|thanks for watching|amara\.org/i.test(testo) || testo === v.ultimo) return;
+  // una frase che ripete in gran parte quella prima e' un'allucinazione,
+  // non una frase nuova: si butta. E dentro la frase, una coda ripetuta
+  // ("poi di Vicas, poi di Vicas, poi di Vicas") si taglia alla prima.
+  testo = testo.replace(/(\b[^,.;]{4,40}[,;]?\s+)(\1\s*){1,}/gi, "$1").trim();
+  const paroleNuove = testo.toLowerCase().split(/\s+/), paroleVecchie = new Set(String(v.ultimo || "").toLowerCase().split(/\s+/));
+  if (paroleNuove.length >= 4 && paroleNuove.filter((w) => paroleVecchie.has(w)).length / paroleNuove.length > 0.6) return;
   const lingua = v.lingua || "it";
   const corretto = correggiConIlVocabolario(testo, r);
   if (corretto.cambi.length) console.log("[clip] sottotitoli: " + corretto.cambi.join(", "));
