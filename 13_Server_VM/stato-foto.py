@@ -56,12 +56,35 @@ except Exception:
 def coach_foto(nome):
     return ("foto-premium-coach-%s.png" % slug(nome)) in loghi
 
+def presenze(a):
+    st = (a.get("statistics") or {}).get("splits", {}).get("categories", [])
+    for c in st:
+        for x in c.get("stats", []):
+            if x.get("name") == "appearances":
+                return int(x.get("value") or 0)
+    return 0
+
+def giovane(a):
+    # Le rose ESPN si portano dietro Primavera, U23 e riserve: senza numero,
+    # oppure numero alto, 21 anni al massimo e nessuna presenza. Sono da
+    # verificare, non da cercare per forza.
+    num = a.get("jersey")
+    if not num:
+        return True
+    try:
+        return int(num) >= 40 and (a.get("age") or 99) <= 21 and presenze(a) == 0
+    except ValueError:
+        return False
+
 def squadra_espn(lega, tid, nome):
     rosa = leggi("https://site.api.espn.com/apis/site/v2/sports/soccer/%s/teams/%s/roster" % (lega, tid)).get("athletes", [])
-    mancano = [a["displayName"] for a in rosa
-               if not foto("foto=%s&id=%s&squadra=%s" % (urllib.parse.quote(a.get("lastName") or a["displayName"]), a["id"], tid))]
+    senza = [a for a in rosa
+             if not foto("foto=%s&id=%s&squadra=%s" % (urllib.parse.quote(a.get("lastName") or a["displayName"]), a["id"], tid))]
     al = allenatori.get(str(tid)) or {}
-    return {"squadra": nome, "totale": len(rosa), "con_foto": len(rosa) - len(mancano), "mancano": mancano,
+    return {"squadra": nome, "totale": len(rosa), "con_foto": len(rosa) - len(senza),
+            "mancano": [a["displayName"] for a in senza],
+            "mancanti": [{"nome": a["displayName"], "num": a.get("jersey") or "", "ruolo": (a.get("position") or {}).get("abbreviation", ""),
+                          "eta": a.get("age") or "", "giovane": giovane(a)} for a in senza],
             "allenatore": (al.get("nome", "") + " " + al.get("cognome", "")).strip(), "allenatore_foto": coach_foto(nome)}
 
 lavori = []
@@ -94,7 +117,7 @@ try:
                    if not foto("foto=%s&squadra=%s" % (urllib.parse.quote(p["cognome"]), t["id"]))]
         al = t.get("all") or {}
         comp.setdefault("Como giovanili", []).append({"squadra": t["n"], "totale": len(t["rosa"]), "con_foto": len(t["rosa"]) - len(mancano),
-                                                      "mancano": mancano, "allenatore": (al.get("nome", "") + " " + al.get("cognome", "")).strip(),
+                                                      "mancano": mancano, "mancanti": [{"nome": n, "giovane": False} for n in mancano], "allenatore": (al.get("nome", "") + " " + al.get("cognome", "")).strip(),
                                                       "allenatore_foto": coach_foto(t["n"])})
 except Exception as e:
     comp.setdefault("Como giovanili", []).append({"squadra": "giovanili.js", "errore": str(e)})
