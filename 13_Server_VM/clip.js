@@ -5943,6 +5943,18 @@ function whisperCe() { return fs.existsSync(WHISPER) && fs.existsSync(MODELLO); 
 //  Costa CPU: si accende a mano, dalla pagina, e un giro alla volta su
 //  tutta la macchina anche se le porte aperte sono due.
 const MODELLO_VIVO = process.env.COMOTV_WHISPER_VIVO || path.join(path.dirname(MODELLO), "ggml-base.bin");
+// IL MODELLO ITALIANO PER L'ITALIANO. Quello rifinito sul parlato italiano
+// (LocalAI, ricetta YODAS) vale il vanilla sui nomi e un filo di piu' sulle
+// parole; ma e' stato addestrato SOLO sull'italiano, e su una telecronaca
+// inglese e' peggio. Quindi si sceglie per lingua: italiano → italiano,
+// tutto il resto → il modello di sempre.
+const MODELLO_IT = process.env.COMOTV_WHISPER_IT || "";
+const MODELLO_VIVO_IT = process.env.COMOTV_WHISPER_VIVO_IT || "";
+function modelloPer(lingua, vivo) {
+  const it = !lingua || lingua === "it" || lingua === "auto";
+  if (vivo) return (it && MODELLO_VIVO_IT && fs.existsSync(MODELLO_VIVO_IT)) ? MODELLO_VIVO_IT : MODELLO_VIVO;
+  return (it && MODELLO_IT && fs.existsSync(MODELLO_IT)) ? MODELLO_IT : MODELLO;
+}
 const TRADUCI = process.env.COMOTV_TRADUCI || "http://127.0.0.1:5077";
 const VIVO_PEZZO = parseInt(process.env.COMOTV_VIVO_PEZZO || "6", 10);   // secondi d'audio per giro
 const VIVI = new Map();          // regId -> { fatto, lingua, prompt }
@@ -5991,7 +6003,7 @@ async function trascriviVivo(r, v, presi) {
   await eseguiVivo(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin", "-y",
     "-i", "concat:" + presi.map((x) => x.file).join("|"),
     "-vn", "-map", "0:a:0", "-ac", "1", "-ar", "16000", "-f", "wav", wav], 30000);
-  const args = ["-m", MODELLO_VIVO, "-f", wav, "-oj", "-of", base, "-t", "2", "-np",
+  const args = ["-m", modelloPer(v.lingua, true), "-f", wav, "-oj", "-of", base, "-t", "2", "-np",
                 "-l", v.lingua || "auto"];
   // il vocabolario davanti — squadre, allenatori, cognomi come li scrive
   // ESPN — e in coda la frase di prima: whisper su otto secondi non sa di
@@ -6666,7 +6678,7 @@ function trascriviDavvero(lavoro) {
     // -mc 0: ogni finestra si decide da sola, senza portarsi dietro il testo
     // di quella prima. E' la cura della ripetizione: sulle parole poco chiare
     // il modello si aggrappava all'ultima e la ripeteva venti volte.
-    const args = ["-m", MODELLO, "-l", lavoro.lingua || LINGUA_MAM, "-f", wav, "-oj", "-of",
+    const args = ["-m", modelloPer(lavoro.lingua || LINGUA_MAM, false), "-l", lavoro.lingua || LINGUA_MAM, "-f", wav, "-oj", "-of",
                   path.join(dir, "voce"), "-t", "2", "-np", "-nt", "-mc", "0", "-et", "2.8"];
     if (suggeriti) args.push("--prompt", suggeriti);
     // STACCATO DAVVERO. Con execFile whisper scrive su una pipe che appartiene
