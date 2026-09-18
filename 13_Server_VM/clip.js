@@ -6605,9 +6605,25 @@ function leggiAlias() {
     console.log("[clip] alias: " + Object.keys(voci).length + " pronunce confermate");
   } catch (e) { ALIAS = { quando: 0, voci: {} }; }
 }
-function applicaAlias(testo) {
+function applicaAlias(testo, r) {
   leggiAlias();
-  const chiavi = Object.keys(ALIAS.voci);
+  // UNA PRONUNCIA VALE SOLO SE QUEL GIOCATORE E' IN CAMPO. "Cugna" e' Marcos
+  // Acuña a River Plate e Da Cunha a Como: l'alias e' globale, la partita
+  // no. Si tengono solo gli alias il cui nome vero sta nel vocabolario di
+  // questa registrazione (rose, allenatori, squadre); per gli altri decide
+  // la somiglianza, come prima.
+  const inCampo = new Set();
+  if (r) {
+    const v = vocabolarioDi(r);
+    (v.giocatori || []).concat(v.allenatori || [], v.squadre || []).forEach((n) => {
+      inCampo.add(piattaMinuscola(n)); const c = String(n).split(/\s+/).pop(); if (c) inCampo.add(piattaMinuscola(c));
+    });
+  }
+  const chiavi = Object.keys(ALIAS.voci).filter((k) => {
+    if (!r) return true;
+    const nome = ALIAS.voci[k];
+    return inCampo.has(piattaMinuscola(nome)) || inCampo.has(piattaMinuscola(String(nome).split(/\s+/).pop()));
+  });
   if (!chiavi.length) return { testo: testo, cambi: [] };
   const cambi = [];
   // si scorre parola per parola e da ogni parola si provano finestre di
@@ -6635,7 +6651,7 @@ function applicaAlias(testo) {
   return { testo: pezzi.join(""), cambi: cambi };
 }
 function correggiConIlVocabolario(testo, r) {
-  const conAlias = applicaAlias(testo);
+  const conAlias = applicaAlias(testo, r);
   testo = conAlias.testo;
   const forme = formeDeiNomi(r);
   if (!forme.size) return { testo: testo, cambi: conAlias.cambi };
