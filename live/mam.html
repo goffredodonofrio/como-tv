@@ -6900,8 +6900,11 @@
           '<div class="azioni" id="azioniIngresso">' +
             '<button class="b" id="btnRecLive" hidden title="da qui in poi si tiene tutto (come il tasto I)">REC</button>' +
             '<button class="b" id="btnStopRec" hidden title="fin qui: chiude il pezzo e lo mette in timeline (come il tasto O)">Stop</button>' +
-            '<span class="sotto" id="rigaSotto" hidden><select id="sottoLingua" title="la lingua parlata: whisper la riconosce da solo, ma si puo\u0300 dire">' +
-              '<option value="auto">lingua: auto</option><option value="it">italiano</option><option value="en">inglese</option></select>' +
+            // UNA LINGUA SOLA: quella in cui leggere. Se e' quella in cui parlano
+            // si legge il parlato, se e' l'altra la traduzione. La lingua
+            // parlata la riconosce whisper da solo.
+            '<span class="sotto" id="rigaSotto" hidden><select id="sottoLingua" title="in che lingua leggere i sottotitoli">' +
+              '<option value="it">in italiano</option><option value="en">in inglese</option></select>' +
             '<button class="b" id="btnSotto" title="trascrive e traduce quello che si dice, con quindici secondi di ritardo">Sottotitoli</button></span>' +
           '</div>' +
           // due vecchi comandi restano nel documento ma fuori dalla vista:
@@ -7181,10 +7184,16 @@
     if (el("btnSotto")) el("btnSotto").addEventListener("click", function () {
       if (!REG || REG.stato !== "registra") return dice("Prima apri una porta: i sottotitoli leggono quello che entra.");
       var acceso = !!(REG.sottotitoli && REG.sottotitoli.acceso);
-      manda({ tipo: "clip-sottotitoli", id: REG.id, on: !acceso, lingua: (el("sottoLingua") || {}).value || "auto" })
+      manda({ tipo: "clip-sottotitoli", id: REG.id, on: !acceso, lingua: "auto", mostra: (el("sottoLingua") || {}).value || "it" })
         .then(function (d) { REG = d.reg; SOTTO_DA = 0; SOTTO_REG = REG.id; aggiorna();
           dice(acceso ? "Sottotitoli spenti." : "Sottotitoli accesi: la prima riga arriva fra una quindicina di secondi.", true); })
         .catch(function (e) { dice(e.message); });
+    });
+    // cambiare lingua mentre sono accesi: si dice al ponte, e si rilegge
+    if (el("sottoLingua")) el("sottoLingua").addEventListener("change", function () {
+      if (!REG || !(REG.sottotitoli && REG.sottotitoli.acceso)) return;
+      var m = this.value;
+      manda({ tipo: "clip-sottotitoli", id: REG.id, mostra: m }).then(function (d) { REG = d.reg; SOTTO_DA = 0; aggiorna(); }).catch(function (e) { dice(e.message); });
     });
     function giraSotto() {
       var box = el("sottotitoli"); if (!box) return;
@@ -7195,7 +7204,12 @@
       manda({ tipo: "clip-parlato-vivo", reg: REG.id, da: SOTTO_DA }).then(function (d) {
         var p = d.pezzi || []; if (!p.length) return;
         var u = p[p.length - 1]; SOTTO_DA = u.a;
-        el("sottoX").textContent = u.x || ""; el("sottoY").textContent = u.y || "";
+        // una riga sola: il parlato se e' nella lingua scelta, se no la
+        // traduzione (e se la traduzione manca, il parlato con un segno)
+        var mostra = (REG.sottotitoli && REG.sottotitoli.mostra) || "it";
+        var suo = (u.l || "it") === mostra;
+        el("sottoX").textContent = suo ? (u.x || "") : (u.y || ("\u2026 " + (u.x || "")));
+        el("sottoY").textContent = ""; el("sottoY").hidden = true;
         // la telecronaca aperta cresce con le righe nuove
         if (el("telecronaca") && typeof aggiungiAllaTelecronaca === "function") aggiungiAllaTelecronaca(p);
       }).catch(function () {});
@@ -7303,8 +7317,9 @@
       var sottoAcceso = !!(REG && REG.sottotitoli && REG.sottotitoli.acceso);
       el("rigaSotto").hidden = !apertoQui;
       el("btnSotto").className = "b" + (sottoAcceso ? " acceso" : "");
-      el("btnSotto").textContent = sottoAcceso ? "Sottotitoli \u00b7 " + ((REG.sottotitoliLingua || REG.sottotitoli.lingua || "auto").toUpperCase()) : "Sottotitoli";
-      el("sottoLingua").hidden = sottoAcceso;
+      el("btnSotto").textContent = sottoAcceso ? "Sottotitoli \u00b7 " + ((REG.sottotitoli.mostra || "it").toUpperCase()) +
+        (REG.sottotitoliLingua ? " (parlano " + REG.sottotitoliLingua.toUpperCase() + ")" : "") : "Sottotitoli";
+      if (sottoAcceso && el("sottoLingua").value !== (REG.sottotitoli.mostra || "it")) el("sottoLingua").value = REG.sottotitoli.mostra || "it";
     }
     // il tasto grande cambia mestiere quando la porta e' aperta
     if (el("btnRicevi") && MODO !== "archivio") {

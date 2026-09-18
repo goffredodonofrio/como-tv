@@ -5982,9 +5982,14 @@ function traduci(testi, da, a) {
     } catch (e) { ok(null); }
   });
 }
-function sottotitoliAccendi(r, lingua) {
+// UNA LINGUA SOLA IN PAGINA. Chi guarda sceglie in che lingua leggere —
+// italiano o inglese — non le due insieme. Se e' la lingua in cui parlano,
+// si mostra il parlato com'e'; se e' l'altra, la traduzione. Il traduttore
+// lavora solo quando serve.
+function sottotitoliAccendi(r, lingua, mostra) {
   const l = ["it", "en", "auto"].indexOf(String(lingua || "auto")) >= 0 ? String(lingua || "auto") : "auto";
-  r.sottotitoli = { acceso: true, lingua: l, da: Date.now() };
+  const m = ["it", "en"].indexOf(String(mostra || "")) >= 0 ? String(mostra) : "it";
+  r.sottotitoli = { acceso: true, lingua: l, mostra: m, da: Date.now() };
   // si comincia da ADESSO, non dall'inizio: i sottotitoli servono al vivo,
   // il pregresso lo fara' la trascrizione intera a fine partita
   VIVI.set(r.id, { fatto: Math.max(0, durataRegistrata(r.id) - VIVO_PEZZO), lingua: l === "auto" ? "" : l, prompt: "" });
@@ -6020,11 +6025,14 @@ async function trascriviVivo(r, v, presi) {
   // le allucinazioni del silenzio: whisper sul nulla scrive "Sottotitoli a
   // cura di..." o ripete l'ultima frase. Non si tiene.
   if (!testo || /sottotitoli|subtitles|thanks for watching|amara\.org/i.test(testo) || testo === v.ultimo) return;
-  const lingua = v.lingua || "it", altra = lingua === "it" ? "en" : "it";
+  const lingua = v.lingua || "it";
   const corretto = correggiConIlVocabolario(testo, r);
   if (corretto.cambi.length) console.log("[clip] sottotitoli: " + corretto.cambi.join(", "));
   testo = corretto.testo;
-  const tr = await traduciConINomi([testo], lingua, altra, r);
+  // si traduce solo verso la lingua che chi guarda ha scelto, e solo se e'
+  // diversa da quella in cui parlano
+  const vuole = (r.sottotitoli || {}).mostra || (lingua === "it" ? "en" : "it");
+  const tr = vuole !== lingua && ["it", "en"].indexOf(vuole) >= 0 ? await traduciConINomi([testo], lingua, vuole, r) : null;
   const dentro = PARLATO[r.id] || (PARLATO[r.id] = { lingua: lingua, pezzi: [] });
   dentro.pezzi.push({ a: Math.round(t0 * 10) / 10, b: Math.round(t1 * 10) / 10, x: testo,
                       y: tr ? tr[0] : "", l: lingua, vivo: true });
@@ -10106,7 +10114,12 @@ const AZIONI = {
     if (!r) return { ok: false, errore: "registrazione sconosciuta" };
     if (r.stato !== "registra") return { ok: false, errore: "i sottotitoli si accendono su una porta aperta" };
     if (!fs.existsSync(MODELLO_VIVO)) return { ok: false, errore: "manca il modello whisper per il vivo (" + MODELLO_VIVO + ")" };
-    if (p.on) sottotitoliAccendi(r, p.lingua); else sottotitoliSpegni(r);
+    // cambiare lingua mentre sono accesi: senza spegnere e riaccendere
+    if (p.on === undefined && p.mostra && r.sottotitoli && r.sottotitoli.acceso) {
+      r.sottotitoli.mostra = ["it", "en"].indexOf(String(p.mostra)) >= 0 ? String(p.mostra) : r.sottotitoli.mostra;
+      scrivi(); annuncia(0, "clip"); return { ok: true, reg: pubblica(r) };
+    }
+    if (p.on) sottotitoliAccendi(r, p.lingua, p.mostra); else sottotitoliSpegni(r);
     return { ok: true, reg: pubblica(r) };
   },
   // le righe dette dal vivo dopo un certo secondo: la pagina le chiede ogni
