@@ -6624,7 +6624,10 @@ function applicaAlias(testo, r) {
     const nome = ALIAS.voci[k];
     return inCampo.has(piattaMinuscola(nome)) || inCampo.has(piattaMinuscola(String(nome).split(/\s+/).pop()));
   });
-  if (!chiavi.length) return { testo: testo, cambi: [] };
+  if (!chiavi.length) return { testo: testo, cambi: [], considerati: 0, inCampo: inCampo.size };
+  // e da qui in poi si guarda SOLO fra quelle passate dal filtro: guardare
+  // in tutto l'elenco vanificava il filtro, e "Cugna" a Como tornava Acuña
+  const voci = {}; chiavi.forEach((k) => { voci[k] = ALIAS.voci[k]; });
   const cambi = [];
   // si scorre parola per parola e da ogni parola si provano finestre di
   // tre, due, una parola: la forma piatta della finestra e' l'alias?
@@ -6638,8 +6641,8 @@ function applicaAlias(testo, r) {
       for (let k = i; k <= fine; k += 2) finestra.push(parole[k].w);
       if (finestra.some((w) => !w)) continue;
       const piatta = piattaMinuscola(finestra.join(" "));
-      if (!ALIAS.voci[piatta]) continue;
-      const nuovo = ALIAS.voci[piatta];
+      if (!voci[piatta]) continue;
+      const nuovo = voci[piatta];
       // si tengono la testa e la coda di punteggiatura della prima e dell'ultima parola
       const testa = (/^[^A-Za-zÀ-ÿ']*/.exec(pezzi[i]) || [""])[0], coda = (/[^A-Za-zÀ-ÿ']*$/.exec(pezzi[fine]) || [""])[0];
       cambi.push(finestra.join(" ") + " → " + nuovo);
@@ -6648,7 +6651,8 @@ function applicaAlias(testo, r) {
       i = fine; break;
     }
   }
-  return { testo: pezzi.join(""), cambi: cambi };
+  return { testo: pezzi.join(""), cambi: cambi, considerati: chiavi.length, inCampo: inCampo.size,
+           quali: chiavi.slice(0, 20).map((k) => k + "→" + ALIAS.voci[k]) };
 }
 function correggiConIlVocabolario(testo, r) {
   const conAlias = applicaAlias(testo, r);
@@ -6705,7 +6709,7 @@ function correggiConIlVocabolario(testo, r) {
     const giusto = vicino(nuda);
     if (giusto && giusto !== nuda) { cambi.push(nuda + " → " + giusto); parole[i] = giusto + coda; }
   }
-  return { testo: parole.join(""), cambi: conAlias.cambi.concat(cambi) };
+  return { testo: parole.join(""), cambi: conAlias.cambi.concat(cambi), daAlias: conAlias.cambi, daSomiglianza: cambi };
 }
 // I NOMI NON SI TRADUCONO. Prima di dare la frase ad Argos i nomi noti —
 // giocatori, allenatori, squadre della partita — si coprono con un
@@ -10314,7 +10318,8 @@ const AZIONI = {
     if (p.rifai) costruisciVocabolario();
     if (p.correggi) {
       const r = R.reg[String(p.reg || "")] || { evento: String(p.rec || ""), titolo: String(p.titolo || "") };
-      return Object.assign({ ok: true }, correggiConIlVocabolario(String(p.correggi), r));
+      const a0 = applicaAlias(String(p.correggi), r);
+      return Object.assign({ ok: true, alias: { considerati: a0.considerati, inCampo: a0.inCampo, totali: Object.keys(ALIAS.voci).length } }, correggiConIlVocabolario(String(p.correggi), r));
     }
     // una frase di prova: com'e' tradotta coi nomi coperti, e senza
     if (p.prova) {
