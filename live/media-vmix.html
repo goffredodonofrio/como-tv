@@ -49,6 +49,13 @@
   var Q = new URLSearchParams(location.search);
   var STILL = Q.get("still") === "1";
   var MUTO = Q.get("muto") === "1";   // monitor e anteprime della console: mai audio
+  // A TAGLIO (il playout manda taglio=1): niente dissolvenze qui dentro, e la
+  // pagina dice quando il primo fotogramma e' davvero pronto (window.__pronto).
+  // Il playout aspetta quello per fare il taglio: cosi' fra un contributo e
+  // l'altro non c'e' ne' accavallamento ne' un attimo di vuoto.
+  var TAGLIO = Q.get("taglio") === "1";
+  function pronto() { window.__pronto = true; }
+  setTimeout(pronto, 3000);          // rete di sicurezza: il playout non resta mai ad aspettare
   var stage = document.getElementById("stage");
   var D = decodeData();
 
@@ -67,6 +74,7 @@
   window.addEventListener("resize", fit);
   fit();
 
+  if (TAGLIO) stage.style.transition = "none";
   if (D.bg !== "trasparente") stage.classList.add("nero");
   if (D.fit === "cover") stage.classList.add("cover");
 
@@ -117,10 +125,16 @@
       // niente "flashino" all'avvio: la scena resta invisibile finche' il
       // primo fotogramma non e' pronto da disegnare (poi appare in un soffio)
       stage.style.opacity = "0";
-      stage.style.transition = "opacity .18s ease";
-      var pronta = function () { stage.style.opacity = "1"; };
+      stage.style.transition = TAGLIO ? "none" : "opacity .18s ease";
+      // pronto = il fotogramma giusto: con un punto di partenza, dopo il salto
+      var pronta = function () {
+        if (DA && !(el.currentTime >= DA - 0.3)) return;
+        stage.style.opacity = "1"; pronto();
+      };
       el.addEventListener("canplay", pronta, { once: true });
-      setTimeout(pronta, 1500);   // rete di sicurezza: mai restare invisibili
+      if (DA) el.addEventListener("seeked", pronta, { once: true });
+      // rete di sicurezza: mai restare invisibili, salto o non salto
+      setTimeout(function () { stage.style.opacity = "1"; pronto(); }, 1500);
       // se l'autoplay con audio è bloccato (anteprime in Chrome), riparto muto
       var p = el.play ? el.play() : null;
       if (p && p.catch) p.catch(function () {
@@ -147,10 +161,13 @@
     }
   } else if (D.k === "img") {
     el = document.createElement("img");
+    el.addEventListener("load", pronto);
+    el.addEventListener("error", pronto);
     el.src = D.src;
     el.alt = "";
   } else {
     el = document.createElement("iframe");
+    el.addEventListener("load", pronto);
     el.src = D.src;
     el.setAttribute("allow", "autoplay; encrypted-media");
     el.setAttribute("allowtransparency", "true");

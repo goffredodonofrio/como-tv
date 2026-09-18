@@ -44,6 +44,9 @@
   }
   .fr.on{opacity:1;}
   .fr.muto{opacity:0!important;transition:none!important;}
+  /* i contributi entrano a taglio: niente dissolvenza, ne' per chi entra ne'
+     per chi esce */
+  .fr.taglio{transition:none!important;}
 
   /* Le due parti del Live Match (scoreboard e schermata al centro) vivono
      qui dentro, ciascuna sul livello scelto in regia: cosi' una sola sorgente
@@ -211,8 +214,24 @@
     back.classList.remove("on");
     back.style.zIndex = 2;      // il nuovo entra sopra il vecchio
     front.style.zIndex = 1;
+    // Un contributo (video, immagine) va in onda A TAGLIO: da un contributo
+    // all'altro la dissolvenza incrociata si vedeva come un piccolo
+    // accavallamento, anche con l'audio dei due insieme. Le grafiche
+    // restano in dissolvenza.
+    var taglio = /^(video|immagine|web)$/.test(j.tipo || "");
     function mostra() {
       if (mio !== st.gen) return;
+      if (taglio) {
+        back.classList.add("taglio"); front.classList.add("taglio");
+        back.classList.remove("muto");
+        back.classList.add("on");
+        front.classList.remove("on");
+        void back.offsetWidth;
+        spegni(front);
+        back.classList.remove("taglio"); front.classList.remove("taglio");
+        st.fronte = (st.fronte === "a") ? "b" : "a";
+        return;
+      }
       back.classList.remove("muto");
       void back.offsetWidth;   // senza il ricalcolo la dissolvenza non parte
       back.classList.add("on");
@@ -246,9 +265,20 @@
     back.onload = function () {
       if (mio !== st.gen) return;
       if (back.src.indexOf("about:blank") >= 0) return;
-      alPrimoDisegno(back, mostra);
+      if (!taglio) { alPrimoDisegno(back, mostra); return; }
+      // a taglio si aspetta che il contributo abbia il primo fotogramma pronto
+      // (lo dice media-vmix): prima il vecchio resta in onda, poi il cambio e'
+      // secco. Al massimo 3 secondi, poi si taglia comunque.
+      var t0 = Date.now();
+      (function aspetta() {
+        if (mio !== st.gen) return;
+        var w = null;
+        try { w = back.contentWindow; } catch (e) {}
+        if ((w && w.__pronto) || Date.now() - t0 > 3000) { alPrimoDisegno(back, mostra); return; }
+        setTimeout(aspetta, 20);
+      })();
     };
-    back.src = eng + "?d=" + b64url(dati) + "&n=" + j.playNonce;
+    back.src = eng + "?d=" + b64url(dati) + (taglio ? "&taglio=1" : "") + "&n=" + j.playNonce;
   }
 
   function fadeOut(n) {
