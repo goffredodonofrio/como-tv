@@ -90,6 +90,22 @@
   /* riga titolo + sottotitolo della grafica: campi grandi, comodi da scrivere */
   .grafit{display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;padding:2px 0 20px;}
   .grafit .field{flex:1;min-width:260px;}
+  /* la linguetta a sinistra: cosa ci va, per tutte le righe insieme */
+  .grafit .lingua{display:flex;gap:8px;align-items:flex-end;}
+  .grafit .lingua input[type=text]{flex:1;}
+  .grafit .lingua button{white-space:nowrap;}
+  .grafit .spunta{display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:0;padding-bottom:10px;
+    font-size:13px;color:var(--ivory-dim);cursor:pointer;}
+  .grafit .spunta input{accent-color:var(--gold);width:17px;height:17px;}
+  /* la competizione di ogni riga: si scrive a mano, vuota non esce */
+  .cmpIn{padding:6px 9px;border-radius:5px;background:rgba(245,241,230,.05);
+    border:1px solid rgba(245,241,230,.12);color:#E3C271;font-family:'Mazzard',sans-serif;
+    font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;min-width:0;}
+  .cmpIn::placeholder{color:rgba(245,241,230,.28);letter-spacing:.06em;}
+  .cmpIn:focus{outline:none;border-color:var(--line-gold);}
+  .match{flex-wrap:wrap;}
+  .match .cmpIn{flex:1 1 100%;margin-left:26px;}
+  .amano .cmpIn{flex:0 0 150px;}
   .grafit input[type=text]{
     font-family:'DM Sans',system-ui,sans-serif;font-weight:600;font-size:18px;letter-spacing:.01em;
     padding:13px 15px;color:var(--ivory);background:rgba(245,241,230,.06);
@@ -255,6 +271,20 @@
       <input type="text" id="sottoT" placeholder="SERIE A · GIORNATA" maxlength="60">
     </div>
   </div>
+  <!-- La linguetta a sinistra di ogni partita: competizione sopra, data e ora
+       sotto. La competizione si scrive riga per riga (vuota non esce); qui la
+       si scrive una volta per tutte. Se in una riga non resta niente, la
+       linguetta di quella riga non c'e'. -->
+  <div class="grafit">
+    <div class="field">
+      <label for="cmpTutte">Competizione nella linguetta &mdash; per tutte le righe</label>
+      <div class="lingua">
+        <input type="text" id="cmpTutte" placeholder="es. CARABAO CUP · vuota = senza competizione" maxlength="40">
+        <button type="button" id="btnCmpTutte">Scrivi in tutte</button>
+      </div>
+    </div>
+    <label class="spunta"><input type="checkbox" id="conQuando" checked> Data e ora nella linguetta</label>
+  </div>
 
   <div class="status" id="status">
     <span class="msg">Scegli competizione e intervallo di date, poi premi <b>Carica partite</b>.</span>
@@ -342,6 +372,14 @@
     { slug: "scozia2",       band: "🏴󠁧󠁢󠁳󠁣󠁴󠁿", nome: "Scottish Championship", code: "sco.2" },
     { slug: "pscup",         band: "🏴󠁧󠁢󠁳󠁣󠁴󠁿", nome: "Premier Sports Cup",    code: "sco.cis" },
     { slug: "laliga",        band: "🇪🇸", nome: "LaLiga",                code: "esp.1" },
+    // le coppe nazionali: ESPN ha il loro tabellone come per i campionati
+    { slug: "coppaitalia",   band: "🇮🇹", nome: "Coppa Italia",          code: "ita.coppa_italia" },
+    { slug: "carabao",       band: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", nome: "Carabao Cup",           code: "eng.league_cup" },
+    { slug: "facup",         band: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", nome: "FA Cup",                code: "eng.fa" },
+    { slug: "copadelrey",    band: "🇪🇸", nome: "Copa del Rey",          code: "esp.copa_del_rey" },
+    { slug: "pokal",         band: "🇩🇪", nome: "Coppa di Germania",     code: "ger.dfb_pokal" },
+    { slug: "coupe",         band: "🇫🇷", nome: "Coupe de France",       code: "fra.coupe_de_france" },
+    { slug: "taca",          band: "🇵🇹", nome: "Taça de Portugal",      code: "por.taca.portugal" },
     { slug: "champions",     band: "🇪🇺", nome: "Champions League",      code: "uefa.champions" },
     { slug: "europa",        band: "🇪🇺", nome: "Europa League",         code: "uefa.europa" },
     { slug: "conference",    band: "🇪🇺", nome: "Conference League",     code: "uefa.europa.conf" },
@@ -492,6 +530,8 @@
     regia:  document.getElementById("btnRegia"),
     titoloG:document.getElementById("titoloG"),
     sottoT: document.getElementById("sottoT"),
+    cmpTutte: document.getElementById("cmpTutte"),
+    conQuando: document.getElementById("conQuando"),
     status: document.getElementById("status"),
     out:    document.getElementById("out")
   };
@@ -716,7 +756,7 @@
   function rigaMano(m) {
     return '<div class="amano">' +
       '<input type="checkbox" data-id="' + esc(m.id) + '"' + (m.checked ? ' checked' : '') + '>' +
-      '<span class="cmp">' + esc(m.campi[0]) + '</span>' +
+      '<input type="text" class="cmpIn" data-mano="' + esc(m.id) + '" data-k="comp" value="' + esc(m.campi[0]) + '" placeholder="competizione">' +
       tendinaSquadre(m, "casa") +
       '<input type="text" class="pt" data-mano="' + esc(m.id) + '" data-k="s1" value="' + esc(m.campi[5]) + '" placeholder="0">' +
       '<input type="text" class="pt" data-mano="' + esc(m.id) + '" data-k="s2" value="' + esc(m.campi[8]) + '" placeholder="0">' +
@@ -800,6 +840,7 @@
     if (k === "s1") { m.campi[5] = v; return; }
     if (k === "s2") { m.campi[8] = v; return; }
     if (k === "quando") { m.campi[2] = v; return; }
+    if (k === "comp") { m.campi[0] = v; aggiornaAnteprima(); return; }
     if (k === "extra") { m.campi[3] = v.trim() || "-"; return; }
   }
 
@@ -823,6 +864,8 @@
         '</span>' +
         '<span class="score">' + esc(m.campi[5] || "·") + '-' + esc(m.campi[8] || "·") + '</span>' +
         '<span class="st">' + esc(m.statoBreve) + '</span>' +
+        '<input type="text" class="cmpIn" data-cmp="' + esc(m.id) + '" value="' + esc(m.campi[0]) + '" ' +
+          'placeholder="competizione (vuota: non esce)" spellcheck="false">' +
         '</div>';
     });
     h += '</div>';
@@ -957,6 +1000,21 @@
     el.al.value = iso(oggi);
   })();
 
+  // Una partita come la vuole la grafica. La linguetta a sinistra porta
+  // competizione e data: la competizione e' quella scritta nella riga, la data
+  // solo se c'e' la spunta. Vuote tutte e due, la linguetta non esce.
+  function evento(m) {
+    var extra = "";
+    if (m.campi[3] && m.campi[3] !== "-") {
+      extra = m.campi[3];
+      if (m.campi[6] || m.campi[9]) extra += " " + (m.campi[6] || "0") + "-" + (m.campi[9] || "0");
+    }
+    return [String(m.campi[0] || "").trim(), el.conQuando.checked ? m.campi[2] : "",
+            m.campi[4], m.campi[7], m.campi[5], m.campi[8], extra,
+            (window.Scavalco && Scavalco.url(m.campi[4])) || m.tid1 || "",
+            (window.Scavalco && Scavalco.url(m.campi[7])) || m.tid2 || ""];
+  }
+
   // ── invio alla regia (grafica animata vMix) ──
   function inviaRegia() {
     var sel = selected();
@@ -974,14 +1032,7 @@
       t1: t1,
       sub: sub,
       ev: sel.map(function (m) {
-        var extra = "";
-        if (m.campi[3] && m.campi[3] !== "-") {
-          extra = m.campi[3];
-          if (m.campi[6] || m.campi[9]) extra += " " + (m.campi[6] || "0") + "-" + (m.campi[9] || "0");
-        }
-        return [m.campi[0], m.campi[2], m.campi[4], m.campi[7], m.campi[5], m.campi[8], extra,
-                  (window.Scavalco && Scavalco.url(m.campi[4])) || m.tid1 || "",
-                  (window.Scavalco && Scavalco.url(m.campi[7])) || m.tid2 || ""];
+        return evento(m);
       })
     };
 
@@ -1022,8 +1073,24 @@
       var t = ev.target;
       if (t.dataset && t.dataset.mano) scriviMano(t.dataset.mano, t.dataset.k, t.value);
       if (t.dataset && t.dataset.espn) scriviNome(t, quale === "change");
+      if (t.dataset && t.dataset.cmp) {
+        var mc = state.matches.filter(function (x) { return x.id === t.dataset.cmp; })[0];
+        if (mc) { mc.campi[0] = t.value; aggiornaAnteprima(); }
+      }
     });
   });
+  // "Scrivi in tutte": la stessa competizione in ogni riga, anche vuota (e
+  // allora la competizione non esce da nessuna parte). Si fa col tasto, non
+  // scrivendo: le righe di competizioni diverse non si toccano per sbaglio.
+  document.getElementById("btnCmpTutte").addEventListener("click", function () {
+    var v = el.cmpTutte.value.trim();
+    state.matches.forEach(function (m) { m.campi[0] = v; });
+    render();
+    aggiornaAnteprima();
+    status("ok", '<span class="msg">' + (v ? 'In tutte le righe: <b>' + esc(v) + '</b>.'
+      : 'Competizione tolta da tutte le righe.') + '</span>');
+  });
+  el.conQuando.addEventListener("change", function () { aggiornaAnteprima(); });
   // Il nome di una partita presa da ESPN, corretto a mano. Cambia subito la
   // grafica; quando si esce dalla casella si ricorda anche per le prossime.
   function scriviNome(inp, finito) {
@@ -1081,14 +1148,7 @@
         t1: el.titoloG.value.trim() || "I RISULTATI",
         sub: el.sottoT.value.trim() || (state.comp ? state.comp.nome.toUpperCase() : ""),
         ev: sel.map(function (m) {
-          var extra = "";
-          if (m.campi[3] && m.campi[3] !== "-") {
-            extra = m.campi[3];
-            if (m.campi[6] || m.campi[9]) extra += " " + (m.campi[6] || "0") + "-" + (m.campi[9] || "0");
-          }
-          return [m.campi[0], m.campi[2], m.campi[4], m.campi[7], m.campi[5], m.campi[8], extra,
-                  (window.Scavalco && Scavalco.url(m.campi[4])) || m.tid1 || "",
-                  (window.Scavalco && Scavalco.url(m.campi[7])) || m.tid2 || ""];
+          return evento(m);
         })
       };
     }

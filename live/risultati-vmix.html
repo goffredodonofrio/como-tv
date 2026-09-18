@@ -43,6 +43,13 @@
   .pillL .quando{position:absolute;left:30px;bottom:15px;
     font-family:'Mazzard',sans-serif;font-weight:700;font-size:20px;letter-spacing:.06em;
     color:#C9A24B;text-transform:uppercase;white-space:nowrap;}
+  /* un testo solo nella linguetta (solo la competizione, o solo la data): sta
+     in mezzo, nei due sensi, nella parte che si vede (la pastiglia di destra
+     ne copre gli ultimi 30 pixel) */
+  .pillL .solo{position:absolute;left:0;width:345px;top:50%;transform:translateY(-50%);
+    text-align:center;white-space:nowrap;overflow:hidden;
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:22px;letter-spacing:.1em;
+    color:#C9A24B;text-transform:uppercase;}
   .pillR{position:absolute;left:630px;top:0;width:1010px;height:88px;
     background:#141B3E;border:1.5px solid rgba(201,162,75,.65);border-radius:18px;
     opacity:0;}
@@ -71,6 +78,7 @@
   .compatta .pillL,.compatta .pillR{height:58px;border-radius:13px;}
   .compatta .pillL .comp{top:9px;font-size:15px;}
   .compatta .pillL .quando{bottom:8px;font-size:15px;}
+  .compatta .pillL .solo{font-size:17px;}
   .compatta .pillR .home,.compatta .pillR .away{top:15px;font-size:25px;}
   .compatta .pillR .crest{width:40px;height:40px;}
   .compatta .score{top:7px;}
@@ -106,7 +114,9 @@
   "use strict";
 
   // dati: ?d=<b64 {t1: titolo, sub: sottotitolo,
-  //   ev: [[competizione, dataOrario, casa, ospite, s1, s2, extra],...] (max 8)}>
+  //   ev: [[competizione, dataOrario, casa, ospite, s1, s2, extra, stemma1, stemma2],...] (max 12)}>
+  //   competizione e dataOrario sono la linguetta a sinistra e si possono
+  //   lasciare vuote: una sola sta in mezzo, nessuna e la linguetta non c'e'.
   var DEMO = {
     t1: "Dalla Como Cup ad Anfield: che estate",
     sub: "I risultati dei test match",
@@ -178,6 +188,13 @@
   var T_ROWS = 1.0, STAG = 0.26;
   var T_SCORE = T_ROWS + N * STAG + 0.5;
 
+  // La linguetta a sinistra (competizione e data) e' facoltativa: vuota non
+  // esce. Se non ce l'ha nessuna riga, le partite si mettono al centro dello
+  // schermo invece di restare spostate a destra verso un vuoto.
+  function pieno(x) { return String(x == null ? "" : x).trim() !== ""; }
+  var senzaLinguette = EV.every(function (e) { return !pieno(e[0]) && !pieno(e[1]); });
+  var SPOSTA = senzaLinguette ? (1920 - 1010) / 2 - 630 : 0;
+
   var h = "";
   EV.forEach(function (e, i) {
     var y = TOP0 + i * PITCH;
@@ -185,12 +202,15 @@
     var aL = STILL ? "opacity:1" : "animation: pillIn .5s cubic-bezier(.2,.7,.3,1) " + (T_ROWS + 0.12 + i * STAG) + "s forwards";
     var aS = STILL ? "opacity:1" : "animation: scoreIn .5s cubic-bezier(.34,1.4,.5,1) " + (T_SCORE + i * 0.14) + "s forwards";
 
+    var linguetta = "";
+    if (pieno(e[0]) && pieno(e[1])) {
+      linguetta = '<span class="comp">' + esc(e[0]) + '</span><span class="quando">' + esc(e[1]) + '</span>';
+    } else if (pieno(e[0]) || pieno(e[1])) {
+      linguetta = '<span class="solo">' + esc(pieno(e[0]) ? e[0] : e[1]) + '</span>';
+    }
     h += '<div class="ev" style="top:' + y + 'px">' +
-      '<div class="pillL" style="' + aL + '">' +
-        '<span class="comp">' + esc(e[0]) + '</span>' +
-        '<span class="quando">' + esc(e[1]) + '</span>' +
-      '</div>' +
-      '<div class="pillR" style="' + aR + '">' +
+      (linguetta ? '<div class="pillL" style="' + aL + '">' + linguetta + '</div>' : "") +
+      '<div class="pillR" style="' + aR + (SPOSTA ? ";left:" + (630 + SPOSTA) + "px" : "") + '">' +
         (e[7] ? '<img class="crest c1" src="' + esc(crestSrc(e[7])) + '" onerror="this.style.display=\'none\'">' : "") +
         (e[8] ? '<img class="crest c2" src="' + esc(crestSrc(e[8])) + '" onerror="this.style.display=\'none\'">' : "") +
         '<span class="home"' + (e[7] ? ' style="left:92px"' : "") + '>' + esc(e[2]) + '</span>' +
