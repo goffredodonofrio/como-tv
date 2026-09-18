@@ -6688,11 +6688,15 @@ const GLOSSARIO = [["direttore di gara", "referee"], ["calcio d'angolo", "corner
   ["raddoppio", "second goal"], ["tiro", "shot"], ["parata", "save"], ["cross", "cross"], ["fallo", "foul"],
   ["esultanza", "celebration"], ["panchina", "bench"], ["capitano", "captain"], ["difensore", "defender"],
   ["centrocampista", "midfielder"], ["attaccante", "striker"], ["allenatore", "manager"], ["tecnico", "manager"],
-  ["fischio finale", "final whistle"], ["fischio d'inizio", "kick-off"], ["calcio d'inizio", "kick-off"]];
+  ["fischio finale", "final whistle"], ["fischio d'inizio", "kick-off"], ["calcio d'inizio", "kick-off"],
+  ["ammonisce", "books"], ["ammonito", "booked"], ["espulso", "sent off"], ["segna", "scores"], ["ha segnato", "has scored"],
+  ["fuori", "wide"], ["alto", "over the bar"], ["in rete", "into the net"], ["porta", "goal"], ["arbitro", "referee"]];
 function coprendoIlGlossario(testo, da, a) {
   const messi = [];
   let coperto = testo;
-  const coppie = GLOSSARIO.slice().sort((x, y) => y[0].length - x[0].length);
+  // le locuzioni lunghe prima, misurate nella lingua di PARTENZA: "penalty
+  // spot" deve vincere su "penalty", "calcio di rigore" su "rigore"
+  const coppie = GLOSSARIO.slice().sort((x, y) => (da === "it" ? y[0].length - x[0].length : y[1].length - x[1].length));
   coppie.forEach(([it, en]) => {
     const [suo, altro] = da === "it" ? [it, en] : [en, it];
     if (!suo || suo === altro) return;
