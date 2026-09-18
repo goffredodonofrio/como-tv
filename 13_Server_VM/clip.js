@@ -6035,6 +6035,7 @@ async function trascriviVivo(r, v, presi) {
   const paroleNuove = testo.toLowerCase().split(/\s+/), paroleVecchie = new Set(String(v.ultimo || "").toLowerCase().split(/\s+/));
   if (paroleNuove.length >= 4 && paroleNuove.filter((w) => paroleVecchie.has(w)).length / paroleNuove.length > 0.6) return;
   const lingua = v.lingua || "it";
+  testo = numeriNelTesto(testo, lingua);
   const corretto = correggiConIlVocabolario(testo, r);
   if (corretto.cambi.length) console.log("[clip] sottotitoli: " + corretto.cambi.join(", "));
   testo = corretto.testo;
@@ -6463,6 +6464,94 @@ function promptPer(r, lingua, ultimaFrase) {
   } while (quanti > 8 && (fisso + testa + termini + coda).length > 520);
   return (fisso + testa + termini + coda).replace(/\s+/g, " ").trim();
 }
+// ── NUMERI E MINUTI COME SI SCRIVONO ───────────────────────────────────
+//  "al quarantacinquesimo" diventa "al 45'", "due a uno" diventa "2-1":
+//  e' la forma con cui si cerca ("al 45'") e con cui la redazione scrive.
+//  Vale per l'italiano e per l'inglese; tutto il resto resta com'e'.
+const UNITA_IT = { zero: 0, uno: 1, un: 1, una: 1, due: 2, tre: 3, quattro: 4, cinque: 5, sei: 6, sette: 7, otto: 8, nove: 9,
+  dieci: 10, undici: 11, dodici: 12, tredici: 13, quattordici: 14, quindici: 15, sedici: 16, diciassette: 17, diciotto: 18,
+  diciannove: 19, venti: 20, trenta: 30, quaranta: 40, cinquanta: 50, sessanta: 60, settanta: 70, ottanta: 80, novanta: 90, cento: 100 };
+const DECINE_IT = { vent: 20, trent: 30, quarant: 40, cinquant: 50, sessant: 60, settant: 70, ottant: 80, novant: 90, cent: 100 };
+function cardinaleIt(w) {
+  w = String(w || "").toLowerCase().replace(/[àáâ]/g, "a").replace(/[èéê]/g, "e").replace(/[ìíî]/g, "i").replace(/[òóô]/g, "o").replace(/[ùúû]/g, "u");
+  if (UNITA_IT[w] !== undefined) return UNITA_IT[w];
+  for (const base of Object.keys(DECINE_IT)) {
+    if (!w.startsWith(base)) continue;
+    const resto = w.slice(base.length);                 // "i" / "a" / "o" + unita', o l'unita' senza vocale
+    const tetto = base === "cent" ? 100 : 10;
+    for (const coda of [resto.slice(1), resto]) {
+      if (coda === "" && resto.length <= 1) return DECINE_IT[base];
+      if (UNITA_IT[coda] !== undefined && UNITA_IT[coda] > 0 && UNITA_IT[coda] < tetto) return DECINE_IT[base] + UNITA_IT[coda];
+      if (base === "cent" && coda) { const n = cardinaleIt(coda); if (n !== null && n > 0 && n < 100) return 100 + n; }
+    }
+  }
+  return null;
+}
+// "quarantacinquesimo" -> 45: si toglie -esimo/-esima e si prova il cardinale
+// con e senza la vocale finale (ventitre-esimo, quarant-esimo, sett-imo)
+const ORDINALI_IT = { primo: 1, prima: 1, secondo: 2, seconda: 2, terzo: 3, terza: 3, quarto: 4, quarta: 4, quinto: 5, quinta: 5,
+  sesto: 6, sesta: 6, settimo: 7, settima: 7, ottavo: 8, ottava: 8, nono: 9, nona: 9, decimo: 10, decima: 10 };
+function ordinaleIt(w) {
+  const l = String(w || "").toLowerCase();
+  if (ORDINALI_IT[l] !== undefined) return ORDINALI_IT[l];
+  const m = /^(.+?)esim[oa]$/.exec(l); if (!m) return null;
+  const stem = m[1];
+  for (const cand of [stem, stem + "o", stem + "a", stem + "e", stem + "i", stem.replace(/tre$/, "tré")]) {
+    const n = cardinaleIt(cand); if (n !== null && n > 0) return n;
+  }
+  return null;
+}
+const UNITA_EN = { zero: 0, nil: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+  twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+const ORD_EN = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10,
+  eleventh: 11, twelfth: 12, thirteenth: 13, fourteenth: 14, fifteenth: 15, sixteenth: 16, seventeenth: 17, eighteenth: 18,
+  nineteenth: 19, twentieth: 20, thirtieth: 30, fortieth: 40, fiftieth: 50, sixtieth: 60, seventieth: 70, eightieth: 80, ninetieth: 90 };
+function cardinaleEn(w) {
+  const l = String(w || "").toLowerCase();
+  if (UNITA_EN[l] !== undefined) return UNITA_EN[l];
+  const m = /^(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[- ](one|two|three|four|five|six|seven|eight|nine)$/.exec(l);
+  return m ? UNITA_EN[m[1]] + UNITA_EN[m[2]] : null;
+}
+function ordinaleEn(w) {
+  const l = String(w || "").toLowerCase();
+  if (ORD_EN[l] !== undefined) return ORD_EN[l];
+  const m = /^(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[- ](first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)$/.exec(l);
+  return m ? UNITA_EN[m[1]] + ORD_EN[m[2]] : null;
+}
+function numeriNelTesto(testo, lingua) {
+  let t = String(testo || "");
+  if ((lingua || "it") !== "en") {
+    // minuti: "al quarantacinquesimo", "al 45esimo", "nel novantesimo" -> 45'
+    t = t.replace(/\b(al|nel|del|il|dal|sul)\s+([a-zàèéìòù]+esim[oa]|\d{1,3}\s?esim[oa])\b(?!\s+(tempo|posto|anno|minuto\s+di))/gi, (m, pre, w) => {
+      const n = /^\d/.test(w) ? parseInt(w, 10) : ordinaleIt(w);
+      return n !== null && n >= 1 && n <= 125 ? pre + " " + n + "'" : m;
+    });
+    t = t.replace(/(\d{1,3}')\s+minuto\b/g, "$1");
+    // "minuto quarantacinque" -> "minuto 45"
+    t = t.replace(/\b(minuto)\s+([a-zàèéìòù]+)\b/gi, (m, pre, w) => { const n = cardinaleIt(w); return n !== null ? pre + " " + n : m; });
+    // risultati: "due a uno", "uno a zero", "tre a tre" -> 2-1 (solo numeri piccoli, come i gol)
+    t = t.replace(/\b([a-zàèéìòù]+)\s+a\s+([a-zàèéìòù]+)\b/gi, (m, a, b) => {
+      const x = cardinaleIt(a), y = cardinaleIt(b);
+      return x !== null && y !== null && x <= 15 && y <= 15 && a.toLowerCase() !== "una" ? x + "-" + y : m;
+    });
+  } else {
+    // "in the forty-fifth minute", "the 45th minute" -> 45'
+    t = t.replace(/\b(the|in the|on|at)\s+([a-z]+(?:[- ][a-z]+)?|\d{1,3}(?:st|nd|rd|th))\s+minute\b/gi, (m, pre, w) => {
+      const n = /^\d/.test(w) ? parseInt(w, 10) : ordinaleEn(w);
+      return n !== null && n >= 1 && n <= 125 ? pre + " " + n + "'" : m;
+    });
+    // "two-nil", "two nil", "three all", "one one" -> 2-0, 3-3, 1-1
+    const NUM = "(?:" + Object.keys(UNITA_EN).join("|") + ")(?:[- ](?:one|two|three|four|five|six|seven|eight|nine))?";
+    t = t.replace(new RegExp("\\b(" + NUM + ")[- ](nil|all|" + NUM + ")\\b", "gi"), (m, a, b) => {
+      const x = cardinaleEn(a); if (x === null || x > 15) return m;
+      const y = b.toLowerCase() === "all" ? x : cardinaleEn(b);
+      return y !== null && y <= 15 ? x + "-" + y : m;
+    });
+  }
+  return t;
+}
+
 // I NOMI QUASI GIUSTI SI RADDRIZZANO. whisper scrive "Paturina",
 // "Dacugna", "Nicopass": a una o due lettere dal nome vero, e il nome vero
 // ce l'abbiamo. Ogni parola maiuscola del testo che non e' gia' un nome
@@ -6714,10 +6803,13 @@ function trascriviDavvero(lavoro) {
   })).then(() => {
     try { fs.unlinkSync(path.join(dir, "voce.corso.json")); } catch (e) {}
     const j = JSON.parse(fs.readFileSync(path.join(dir, "voce.json"), "utf8"));
+    // anche in archivio i numeri si scrivono come si cercano (45', 2-1) e
+    // i nomi quasi giusti si raddrizzano col vocabolario della partita
+    const linguaPezzi = lavoro.lingua || LINGUA_MAM;
     const pezzi = (j.transcription || []).map((t) => ({
       a: Math.round((t.offsets.from / 1000 + lavoro.da) * 10) / 10,
       b: Math.round((t.offsets.to / 1000 + lavoro.da) * 10) / 10,
-      x: String(t.text || "").trim()
+      x: correggiConIlVocabolario(numeriNelTesto(String(t.text || "").trim(), linguaPezzi), r).testo
     })).filter((t) => t.x);
 
     const dentro = PARLATO[r.id] || (PARLATO[r.id] = { lingua: LINGUA_MAM, pezzi: [] });
