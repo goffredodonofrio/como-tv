@@ -33,6 +33,14 @@ def suona(s):
 def somiglianza(a, b):
     return difflib.SequenceMatcher(None, suona(a), suona(b)).ratio()
 
+# parole comuni che whisper scrive maiuscole a inizio frase: non sono nomi
+# storpiati, e "Allora" non e' Ati Allah
+COMUNI = set("""allora cioe cioè tutto tutti certo santa santo ecco sono mentre ancora poi dopo prima sotto sopra quindi pero però
+questo questa quello quella molto bene male subito forse anche adesso oggi ieri domani grande grandi buona buono bella bello
+river under tutto niente nulla dentro fuori avanti indietro destra sinistra centro campo palla pallone porta gol rete
+primo secondo terzo tempo minuto minuti partita squadra squadre arbitro cross tiro parata angolo rigore fallo
+comunque perche perché quando quanto quanti come dove chi che cosa vero falso giusto sempre mai ora qui li lì
+attenzione occasione azione ripartenza pressione possesso lancio verticale diagonale corsa duello""".split())
 def main():
     vocab = {}
     proposti = collections.defaultdict(lambda: {"n": 0, "partite": set(), "come": collections.Counter()})
@@ -59,7 +67,7 @@ def main():
         i = 0
         while i < len(parole):
             w = parole[i]
-            if not (w[0].isupper() and len(w) >= 4) or piatto(w) in esatte: i += 1; continue
+            if not (w[0].isupper() and len(w) >= 4) or piatto(w) in esatte or piatto(w) in COMUNI: i += 1; continue
             # prima in coppia con la parola dopo (Acco Borramonna), poi da sola
             candidati = []
             if i + 1 < len(parole) and parole[i + 1][0].isupper():
@@ -74,18 +82,24 @@ def main():
                     if r > voto: voto, meglio = r, nome
                 if meglio and voto >= 0.66 and abs(len(suona(cand)) - len(suona(meglio.split()[-1] if " " not in cand else meglio))) <= 4:
                     p = proposti[(cand.lower(), meglio)]
-                    p["n"] += 1; p["partite"].add(info["partita"][:28]); p["come"][cand] += 1
+                    p["n"] += 1; p["partite"].add(info["partita"][:28]); p["come"][cand] += 1; p["voto"] = max(p.get("voto", 0), voto)
                     i += salto; preso = True; break
             if not preso:
                 sconosciuti[w] += 1; i += 1
     righe = []
     for (alias, nome), p in proposti.items():
-        righe.append({"alias": p["come"].most_common(1)[0][0], "nome": nome, "n": p["n"], "partite": sorted(p["partite"])})
-    righe.sort(key=lambda x: -x["n"])
+        righe.append({"alias": p["come"].most_common(1)[0][0], "nome": nome, "n": p["n"], "voto": round(p.get("voto", 0), 2), "partite": sorted(p["partite"])})
+    # prima quelle sicure: viste piu' volte, o molto simili
+    righe.sort(key=lambda x: (-(x["n"] >= 2 or x["voto"] >= 0.8), -x["n"], -x["voto"]))
     json.dump({"alias": righe, "sconosciuti": sconosciuti.most_common(80)}, open(os.path.join(CORPUS, "alias-proposti.json"), "w"), ensure_ascii=False, indent=1)
     print("pezzi letti:", len(glob.glob(os.path.join(CORPUS, "*.info.json"))), "| alias proposti:", len(righe))
+    with open(os.path.join(CORPUS, "alias-proposti.txt"), "w") as f:
+        f.write("# PRONUNCE PROPOSTE — come whisper scrive il nome quando lo sente dai nostri telecronisti -> nome ESPN\n")
+        f.write("# Conferma: lascia la riga. Sbagliata: cancellala o metti # davanti. (n = quante volte, voto = quanto somiglia)\n\n")
+        for r in righe:
+            f.write("%-24s -> %-30s   n=%d voto=%.2f  %s\n" % (r["alias"], r["nome"], r["n"], r["voto"], "; ".join(r["partite"][:2])))
     for r in righe[:60]:
-        print("  %2d×  %-22s → %-28s %s" % (r["n"], r["alias"], r["nome"], ", ".join(r["partite"][:2])))
+        print("  %2d× %.2f  %-22s → %-28s %s" % (r["n"], r["voto"], r["alias"], r["nome"], ", ".join(r["partite"][:2])))
     print("-- parole maiuscole senza un nome vicino (soprannomi, modi di dire, errori):")
     print("   " + ", ".join("%s(%d)" % (w, n) for w, n in sconosciuti.most_common(40)))
 
