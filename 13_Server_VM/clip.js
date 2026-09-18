@@ -182,6 +182,12 @@ const PORTE = (function () {
   return fuori.length ? fuori : [10021, 10022];
 })();
 const IP_PUBBLICO = process.env.COMOTV_IP_PUBBLICO || "209.227.239.211";
+// LA RICEZIONE SI SPEGNE PER AMBIENTE. In produzione le porte SRT restano
+// chiuse (deciso il 14 settembre, per i conflitti con i vMix): stesso
+// codice di dev, ma con COMOTV_RICEZIONE_SPENTA=1 nessuno apre una porta
+// e la pagina lo dice. Tutto il resto — archivio, sottotitoli, traduzione,
+// vocabolario — lavora uguale.
+const RICEZIONE_SPENTA = process.env.COMOTV_RICEZIONE_SPENTA === "1";
 // Una porta aperta sul mondo senza parola d'ordine e' un invito a spingerci
 // dentro qualsiasi cosa. Con la passphrase, chi non ce l'ha non entra.
 const PASSPHRASE = process.env.COMOTV_CLIP_PASS || "";
@@ -776,6 +782,7 @@ function integrale(r) {
 // ── le azioni che arrivano dal ponte ──────────────────────────────────
 
 async function clipAvvia(p) {
+  if (RICEZIONE_SPENTA) throw new Error("in questo ambiente la ricezione e' spenta: le porte si aprono solo in dev");
   let url = "";
   let ascolto = null;
   // SI RICEVE E BASTA. Non andiamo a prendere niente: ci si mette in ascolto
@@ -2196,6 +2203,7 @@ function clipStato(p) {
   const gb = liberiGB();
   return {
     ok: true, reg: reg, clip: clip, srv: Date.now(),
+    ricezione: !RICEZIONE_SPENTA,
     porte: statoPorte(),
     disco: {
       liberi: Math.round(gb * 10) / 10,
