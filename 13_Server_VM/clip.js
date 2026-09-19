@@ -6941,13 +6941,19 @@ function trascriviDavvero(lavoro) {
     // anche in archivio i numeri si scrivono come si cercano (45', 2-1) e
     // i nomi quasi giusti si raddrizzano col vocabolario della partita
     const linguaPezzi = lavoro.lingua || LINGUA_MAM;
+    // ogni riga porta la SUA lingua: i sottotitoli e la traduzione decidono
+    // da li' che cosa mostrare e in che verso tradurre. Senza, una
+    // telecronaca inglese passava per italiana e finiva tradotta "da
+    // italiano a inglese".
     const pezzi = (j.transcription || []).map((t) => ({
       a: Math.round((t.offsets.from / 1000 + lavoro.da) * 10) / 10,
       b: Math.round((t.offsets.to / 1000 + lavoro.da) * 10) / 10,
-      x: correggiConIlVocabolario(numeriNelTesto(String(t.text || "").trim(), linguaPezzi), r).testo
+      x: correggiConIlVocabolario(numeriNelTesto(String(t.text || "").trim(), linguaPezzi), r).testo,
+      l: linguaPezzi
     })).filter((t) => t.x);
 
-    const dentro = PARLATO[r.id] || (PARLATO[r.id] = { lingua: LINGUA_MAM, pezzi: [] });
+    const dentro = PARLATO[r.id] || (PARLATO[r.id] = { lingua: linguaPezzi, pezzi: [] });
+    dentro.lingua = linguaPezzi;
     if (lavoro.intera) dentro.intera = new Date().toISOString();
     // finche' l'audio e' in mano si prende anche il resto: i boati costano
     // un minuto di CPU e non un byte in piu'
