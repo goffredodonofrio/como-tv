@@ -1861,7 +1861,7 @@ function righeParlato(reg, lingua, da, a, sposta) {
     if (b0 - a0 < 0.4) b0 = Math.min(a, a0 + 0.8);
     if (b0 <= a0) return;
     fuori.push({ a: Math.round((a0 - da + (sposta || 0)) * 1000) / 1000,
-                 b: Math.round((b0 - da + (sposta || 0)) * 1000) / 1000, testo, lingua: voglio, sua, p: x,
+                 b: Math.round((b0 - da + (sposta || 0)) * 1000) / 1000, testo, lingua: voglio, sua, p: x, n: x.n,
                  tradotta: sua !== voglio && x.ya === voglio && !!x.y,
                  manca: sua !== voglio && !(x.ya === voglio && x.y) });
   });
@@ -1883,6 +1883,25 @@ async function righeTradotte(reg, lingua, da, a, sposta, r) {
   if (mancano.some((x) => !x.manca)) scriviParlato();
   return righe;
 }
+// legge un SRT (o un VTT senza stili): numero, "hh:mm:ss,mmm --> hh:mm:ss,mmm", testo su una o piu' righe
+function leggiSrt(testo) {
+  const t = String(testo || "").replace(/^\uFEFF/, "").replace(/\r/g, "");
+  const blocchi = t.split(/\n{2,}/), fuori = [];
+  const tempo = (x) => { const m = /(\d+):(\d+):(\d+)[,.](\d+)/.exec(x); return m ? (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) + (+m[4].padEnd(3, "0").slice(0, 3)) / 1000 : null; };
+  blocchi.forEach((b) => {
+    const righe = b.split("\n").map((x) => x.trim()).filter(Boolean);
+    if (!righe.length) return;
+    let i = 0, n = 0;
+    if (/^\d+$/.test(righe[0])) { n = +righe[0]; i = 1; }
+    const m = righe[i] && /(\S+)\s*-->\s*(\S+)/.exec(righe[i]);
+    if (!m) return;
+    const a = tempo(m[1]), bb = tempo(m[2]);
+    if (a === null || bb === null || bb <= a) return;
+    const x = righe.slice(i + 1).join(" ").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    if (x) fuori.push({ n: n || fuori.length + 1, a, b: bb, x });
+  });
+  return fuori;
+}
 function tempoSrt(s) {
   const ms = Math.max(0, Math.round(s * 1000)), h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60, ss = Math.floor(ms / 1000) % 60;
   return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") + ":" + String(ss).padStart(2, "0") + "," + String(ms % 1000).padStart(3, "0");
@@ -1899,8 +1918,11 @@ function spezzaSotto(t, aCapo) {
   for (let i = 18; i < t.length - 8; i++) if (t[i] === " " && Math.abs(i - t.length / 2) < meglio) { meglio = Math.abs(i - t.length / 2); k = i; }
   return k < 0 ? t : t.slice(0, k) + (aCapo || "\n") + t.slice(k + 1);
 }
-function testoSrt(righe) {
-  return righe.map((x, i) => (i + 1) + "\n" + tempoSrt(x.a) + " --> " + tempoSrt(x.b) + "\n" + spezzaSotto(x.testo) + "\n").join("\n");
+function testoSrt(righe, numeriPropri) {
+  // un SRT importato riesce con i SUOI numeri (regola di Manolo: la
+  // numerazione non si tocca); se e' spezzato o mescolato, si rinumera
+  const propri = numeriPropri && righe.length && righe.every((x) => x.n) && new Set(righe.map((x) => x.n)).size === righe.length;
+  return righe.map((x, i) => (propri ? x.n : i + 1) + "\n" + tempoSrt(x.a) + " --> " + tempoSrt(x.b) + "\n" + spezzaSotto(x.testo) + "\n").join("\n");
 }
 // LA FONT DEI SOTTOTITOLI: la Nexa Bold, se e' installata sulla macchina
 // (fontconfig la trova per nome); se no la Mazzard, che c'e' sempre. Si
@@ -6540,12 +6562,14 @@ const TERMINI_IT = ["calcio d'angolo", "rigore", "fuorigioco", "ammonizione", "e
   "fallo", "contropiede", "cross", "colpo di testa", "tiro", "gol", "portiere", "difensore", "centrocampista",
   "attaccante", "sostituzione", "intervallo", "primo tempo", "secondo tempo", "autogol", "assist", "dribbling",
   "pressing", "ripartenza", "raddoppio", "pareggio", "vantaggio", "area di rigore", "dischetto", "arbitro",
-  "guardalinee", "capitano", "panchina", "tribuna", "curva", "Sinigaglia", "Como", "Lariani"];
+  "guardalinee", "capitano", "panchina", "tribuna", "curva", "Sinigaglia", "Como", "Lariani",
+  "blocco basso", "linea difensiva", "classifica", "allenamento", "Serie A", "Champions League", "Como Cup", "Primavera", "Fàbregas"];
 const TERMINI_EN = ["corner", "penalty", "offside", "booking", "yellow card", "red card", "sending off", "crossbar",
   "post", "save", "free kick", "throw-in", "stoppage time", "VAR", "foul", "counter-attack", "cross", "header",
   "shot", "goal", "goalkeeper", "defender", "midfielder", "striker", "substitution", "half-time", "first half",
   "second half", "own goal", "assist", "dribble", "pressing", "equaliser", "lead", "penalty area", "referee",
-  "linesman", "captain", "bench", "clean sheet", "Sinigaglia", "Como"];
+  "linesman", "captain", "bench", "clean sheet", "Sinigaglia", "Como",
+  "low block", "defensive line", "the table", "training", "Serie A", "Champions League", "Como Cup", "FA Cup", "Fàbregas"];
 let VOCABOLARIO = { quando: 0, squadre: {}, cognomi: {}, leghe: {} };
 function fileVocabolario() { return path.join(DIR, "vocabolario.json"); }
 function fileAllenatori() { return path.join(DIR, "..", "allenatori.json"); }
@@ -6820,6 +6844,11 @@ function leggiAlias() {
     console.log("[clip] alias: " + Object.keys(voci).length + " pronunce confermate");
   } catch (e) { ALIAS = { quando: 0, voci: {} }; }
 }
+// nomi che non stanno in nessuna rosa ma che l'ASR storpia sempre allo
+// stesso modo: lo stadio, le competizioni, le citta' delle avversarie.
+// Gli alias verso questi nomi valgono in ogni partita.
+const NOMI_FISSI = ["Sinigaglia", "Como Cup", "Champions League", "Serie A", "Serie B", "Serie C", "Primavera",
+  "FA Cup", "Lipsia", "Leipzig", "Europa League", "Conference League", "Coppa Italia"];
 function applicaAlias(testo, r) {
   leggiAlias();
   // UNA PRONUNCIA VALE SOLO SE QUEL GIOCATORE E' IN CAMPO. "Cugna" e' Marcos
@@ -6827,7 +6856,7 @@ function applicaAlias(testo, r) {
   // no. Si tengono solo gli alias il cui nome vero sta nel vocabolario di
   // questa registrazione (rose, allenatori, squadre); per gli altri decide
   // la somiglianza, come prima.
-  const inCampo = new Set();
+  const inCampo = new Set(NOMI_FISSI.map(piattaMinuscola));
   if (r) {
     const v = vocabolarioDi(r);
     (v.giocatori || []).concat(v.allenatori || [], v.squadre || []).forEach((n) => {
@@ -6974,7 +7003,13 @@ const GLOSSARIO = [["direttore di gara", "referee"], ["calcio d'angolo", "corner
   ["centrocampista", "midfielder"], ["attaccante", "striker"], ["allenatore", "manager"], ["tecnico", "manager"],
   ["fischio finale", "final whistle"], ["fischio d'inizio", "kick-off"], ["calcio d'inizio", "kick-off"],
   ["ammonisce", "books"], ["ammonito", "booked"], ["espulso", "sent off"], ["segna", "scores"], ["ha segnato", "has scored"],
-  ["fuori", "wide"], ["alto", "over the bar"], ["in rete", "into the net"], ["porta", "goal"], ["arbitro", "referee"]];
+  ["fuori", "wide"], ["alto", "over the bar"], ["in rete", "into the net"], ["porta", "goal"], ["arbitro", "referee"],
+  // dalla guida SRT di Manolo (17_AI Motori/Como_1907_SRT_Context_for_Claude.docx): inglese da broadcast, non letterale
+  ["blocco basso", "low block"], ["linea difensiva", "defensive line"], ["contropiedi", "counterattacks"],
+  ["classifica", "the table"], ["allenamenti", "training"], ["allenamento", "training"], ["tre punti", "three points"],
+  ["il campo", "the pitch"], ["dal primo giorno", "since day one"], ["fare un primo bilancio", "take stock"],
+  ["entrato in campo", "came onto the pitch"], ["Serie A", "Serie A"], ["Champions League", "Champions League"],
+  ["Como Cup", "Como Cup"], ["Sinigaglia", "Sinigaglia"]];
 function coprendoIlGlossario(testo, da, a) {
   const messi = [];
   let coperto = testo;
@@ -10675,6 +10710,27 @@ const AZIONI = {
     scriviParlato();
     return { ok: true, pezzo: x };
   },
+  // UN SRT CHE ARRIVA DA FUORI (Premiere, un traduttore, Manolo) diventa
+  // la telecronaca della registrazione: numeri e timecode come sono, il
+  // testo come e', righe segnate "a mano" cosi' nessun automatismo le
+  // tocca. Con "sostituisci" si butta quello che c'era; se no si tiene il
+  // resto e si rimpiazzano solo le righe che cadono nello stesso tratto.
+  "clip-parlato-importa": (p) => {
+    const reg = String(p.reg || ""), r = R.reg[reg];
+    if (!r) throw new Error("registrazione sconosciuta");
+    const lingua = ["it", "en"].indexOf(String(p.lingua || "")) >= 0 ? String(p.lingua) : LINGUA_MAM;
+    const righe = leggiSrt(String(p.srt || ""));
+    if (!righe.length) throw new Error("in questo file non ho trovato righe SRT (numero, tempi, testo)");
+    const sposta = +p.sposta || 0;                     // se il file era tagliato: quanto e' avanti nel video
+    const nuove = righe.map((x) => ({ k: nuovoId("s"), n: x.n, a: Math.round((x.a + sposta) * 100) / 100, b: Math.round((x.b + sposta) * 100) / 100, x: x.x, l: lingua, m: true }));
+    const d = PARLATO[reg] || (PARLATO[reg] = { lingua: lingua, pezzi: [] });
+    const da = nuove[0].a, a = nuove[nuove.length - 1].b;
+    d.pezzi = (p.sostituisci ? [] : (d.pezzi || []).filter((t) => t.b <= da || t.a >= a)).concat(nuove).sort((u, v) => u.a - v.a);
+    if (p.sostituisci || !d.pezzi.some((t) => !t.m)) d.lingua = lingua;
+    d.importato = { quando: new Date().toISOString(), righe: nuove.length, lingua: lingua, nome: String(p.nome || "").slice(0, 120) };
+    scriviParlato();
+    return { ok: true, righe: nuove.length, da: da, a: a, lingua: lingua };
+  },
   "clip-parlato-srt": (p) => {
     const reg = String(p.reg || ""), d = PARLATO[reg], r = R.reg[reg];
     if (!d || !(d.pezzi || []).length) throw new Error("questa registrazione non ha ancora una telecronaca trascritta");
@@ -10683,7 +10739,7 @@ const AZIONI = {
     const righe = righeParlato(reg, voglio, da, a, 0);
     if (!righe.length) throw new Error("niente da scrivere in " + voglio + (a < Infinity ? " in questo tratto" : ""));
     const nome = String((r && r.titolo) || reg).replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 80) + "." + voglio + ".srt";
-    return { ok: true, srt: testoSrt(righe), nome, righe: righe.length, lingua: voglio, manca: righe.filter((x) => x.manca).length };
+    return { ok: true, srt: testoSrt(righe, da === 0 && a === Infinity), nome, righe: righe.length, lingua: voglio, manca: righe.filter((x) => x.manca).length };
   },
   "clip-archivio-scandaglia": archivioScandaglia,
   "clip-appunti-storici": appuntiStoriciImporta,

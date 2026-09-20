@@ -7275,6 +7275,8 @@
               '<span class="lingue" title="in che lingua leggere"><b data-l="it" class="acceso">ITA</b><b data-l="en">ENG</b><b data-l="entrambe" id="lingueDue" title="tutte e due insieme, come escono impresse nel video" hidden>ITA+ENG</b></span>' +
               '<select id="sottoLingua" hidden><option value="it">ITA</option><option value="en">ENG</option><option value="entrambe">ITA+ENG</option></select>' +
               '<button class="b" id="btnSrt" title="scarica la telecronaca intera come file SRT, nella lingua scelta, coi tempi del file: si apre in Premiere" hidden>SRT</button>' +
+              '<button class="b" id="btnSrtIn" title="carica un SRT fatto fuori (Premiere, Manolo, un traduttore): diventa la telecronaca di questa partita, numeri e tempi come sono" hidden>\u2191 SRT</button>' +
+              '<input type="file" id="fileSrt" accept=".srt,.vtt,text/plain" hidden>' +
             '</span>' +
           '</div>' +
           // due vecchi comandi restano nel documento ma fuori dalla vista:
@@ -7662,6 +7664,26 @@
         e.preventDefault(); e.stopPropagation(); scriviSulMonitor(i, x);
       });
     });
+    // L'SRT CHE ARRIVA DA FUORI: si sceglie il file, si dice in che lingua
+    // e' scritto, e diventa la telecronaca. Se ce n'era gia' una si chiede
+    // se buttarla o tenerla fuori dal tratto coperto.
+    if (el("btnSrtIn")) el("btnSrtIn").addEventListener("click", function () {
+      if (MODO !== "archivio" || !REG) return dice("Apri prima una partita in archivio.");
+      el("fileSrt").value = ""; el("fileSrt").click();
+    });
+    if (el("fileSrt")) el("fileSrt").addEventListener("change", function () {
+      var f = this.files && this.files[0]; if (!f || !REG) return;
+      var lingua = /\b(en|eng|english|inglese)\b/i.test(f.name) ? "en" : /\b(it|ita|italiano)\b/i.test(f.name) ? "it" : ((el("sottoLingua") || {}).value === "en" ? "en" : "it");
+      if (!confirm("Importo \u201c" + f.name + "\u201d come telecronaca in " + (lingua === "en" ? "INGLESE" : "ITALIANO") + "?\n(Se e\u2019 l\u2019altra lingua, annulla e cambia ITA/ENG.)")) return;
+      var sostituisci = SOTTO_ARCH.reg === REG.id && SOTTO_ARCH.pezzi.length ? confirm("C\u2019e\u2019 gia\u2019 una telecronaca: la sostituisco tutta?\nOK = sostituisci \u00b7 Annulla = tieni il resto, rimpiazza solo il tratto coperto") : true;
+      var rd = new FileReader();
+      rd.onload = function () {
+        manda({ tipo: "clip-parlato-importa", reg: REG.id, srt: String(rd.result || ""), lingua: lingua, sostituisci: sostituisci, nome: f.name })
+          .then(function (d) { dice(d.righe + " righe importate (" + tc(d.da) + " \u2192 " + tc(d.a) + ").", true); caricaSottoDi(REG.id, function () { if (TAB === "testo") disegnaTesto(); }); })
+          .catch(function (e) { dice(e.message); });
+      };
+      rd.readAsText(f, "utf-8");
+    });
     document.querySelectorAll("#rigaSotto .lingue b").forEach(function (b) {
       b.addEventListener("click", function () {
         document.querySelectorAll("#rigaSotto .lingue b").forEach(function (x) { x.className = x === b ? "acceso" : ""; });
@@ -7808,6 +7830,7 @@
       var sottoAcceso = !!(REG && REG.sottotitoli && REG.sottotitoli.acceso) || (MODO === "archivio" && SOTTO_ARCH.acceso);
       el("rigaSotto").hidden = MODO === "archivio" ? !REG : !apertoQui;
       if (el("btnSrt")) el("btnSrt").hidden = MODO !== "archivio";
+      if (el("btnSrtIn")) el("btnSrtIn").hidden = MODO !== "archivio";
       if (el("lingueDue")) el("lingueDue").hidden = MODO !== "archivio";
       el("btnSotto").className = "b" + (sottoAcceso ? " acceso" : "");
       el("btnSotto").textContent = !sottoAcceso ? "Sottotitoli"
