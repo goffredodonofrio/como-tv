@@ -250,20 +250,11 @@
      giocate ESPN, non un tracciamento (quello non lo pubblica nessuno).
      Col campetto acceso il cartello si stringe: le due sfere salgono e
      rimpiccioliscono, i marcatori lasciano il posto al campo. */
-  #radiocampo{position:absolute;left:50%;top:436px;transform:translateX(-50%);
-    width:1100px;height:484px;z-index:2;display:none;}
+  #radiocampo{position:absolute;left:50%;top:424px;transform:translateX(-50%);
+    width:1200px;height:529px;z-index:2;display:none;}
   #radio.conCampo #radiocampo{display:block;}
   #radiocampo svg{width:100%;height:100%;display:block;
     filter:drop-shadow(0 26px 60px rgba(0,0,0,.45));}
-  #rcazione{position:absolute;left:0;right:0;bottom:-74px;display:flex;align-items:center;gap:18px;
-    padding:0 26px;height:62px;border-radius:12px;background:rgba(10,15,36,.82);
-    border:1px solid rgba(201,162,75,.35);}
-  #rcazione .chi{font-family:'Mazzard',sans-serif;font-weight:800;font-size:26px;letter-spacing:.02em;
-    text-transform:uppercase;color:#F5F1E6;white-space:nowrap;}
-  #rcazione .cosa{font-family:'DM Sans',sans-serif;font-weight:500;font-size:22px;
-    color:rgba(245,241,230,.72);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;}
-  #rcazione .quando{font-family:'Mazzard',sans-serif;font-weight:800;font-size:24px;color:#C9A24B;
-    font-variant-numeric:tabular-nums;}
   #radio.conCampo #radiorow{top:176px;transform:translate(-50%,-50%) scale(.48);}
   #radio.conCampo #radioclock{top:276px;font-size:26px;}
   #radio.conCampo #radiosotto{top:314px;}
@@ -271,7 +262,7 @@
   /* i marcatori non spariscono col campetto: si mettono ai lati, uno
      per squadra, all'altezza del campo - chi ha segnato si legge sempre */
   #radio.conCampo #radiomarc{top:470px;width:1840px;gap:0;align-items:flex-start;}
-  #radio.conCampo #radiomarc .col{max-width:330px;gap:9px;}
+  #radio.conCampo #radiomarc .col{max-width:300px;gap:9px;}
   #radio.conCampo #radiomarc .m{font-size:23px;overflow:hidden;text-overflow:ellipsis;}
   #radio.conCampo #radiomarc .m i{margin-right:9px;}
   #radio.conCampo #radiomarc .col.b .m i{margin:0 0 0 9px;}
@@ -472,7 +463,6 @@
     </div>
     <!-- il campetto: c'e' solo quando la partita e' agganciata a ESPN -->
     <div id="radiocampo"><svg id="rcampo" viewBox="0 0 1180 520" xmlns="http://www.w3.org/2000/svg"></svg>
-      <div id="rcazione"><span class="chi"></span><span class="cosa"></span><span class="quando"></span></div>
     </div>
     <div id="radioev"><span class="sw"></span><span class="min"></span>
       <span class="lab"></span><span class="chi"></span></div>
@@ -877,7 +867,7 @@
   // Si accende solo se il banco ha agganciato la partita (j.espn).
   var RC = { lega: "", ev: "", casaId: "", coda: [], visti: {}, partito: false,
              timer: null, passo: null, scia: [], palla: null, alone: null,
-             squadre: null, schierato: false, viaPalla: false,
+             squadre: null, schierato: false, viaPalla: false, pedine: {}, acceso0: null, nomi: {}, pedine: {}, acceso0: null, nomi: {},
              colCasa: "#C9A24B", colOsp: "#C9A24B", acceso: false };
   var RCW = 1180, RCH = 520;
   function rcNs(nome, attr, dentro) {
@@ -1015,53 +1005,97 @@
     fuori.unshift({ g: port, u: casa ? u0 : 1 - u0, v: .5 });
     return fuori;
   }
-  function rcRigaFormazioni(nc, mc, no, mo) {
-    var a = document.getElementById("rcazione");
-    if (!a || RC.viaPalla) return;
-    a.querySelector(".chi").textContent = "FORMAZIONI";
-    a.querySelector(".cosa").textContent =
-      (nc || "") + " " + (mc || "") + "  \u00B7  " + (no || "") + " " + (mo || "");
-    a.querySelector(".quando").textContent = "";
+  // una pedina: cerchio col numero, cognome sotto, ombra per terra.
+  // Sta in un gruppo suo, cosi' si sposta con una transizione sola.
+  function rcPedina(g, x, casa) {
+    var ped = rcNs("g", { "data-pid": x.g.pid || "" }, g);
+    ped.style.transition = "transform .7s cubic-bezier(.33,.85,.4,1)";
+    rcNs("ellipse", { cx: 0, cy: 19, rx: 18, ry: 6, fill: "#000000", opacity: .32 }, ped);
+    var c = rcNs("circle", { cx: 0, cy: 0, r: 20, fill: casa ? RC.colCasa : RC.colOsp,
+                             stroke: "#F5F1E6", "stroke-opacity": .85, "stroke-width": 2.2 }, ped);
+    c.style.transition = "stroke .5s ease, stroke-width .5s ease";
+    var t = rcNs("text", { x: 0, y: 7, "text-anchor": "middle",
+                           "font-family": "'Mazzard', sans-serif", "font-weight": 800,
+                           "font-size": 20, fill: "#FFFFFF" }, ped);
+    t.textContent = x.g.num || "";
+    var n = rcNs("text", { x: 0, y: 40, "text-anchor": "middle",
+                           "font-family": "'DM Sans', sans-serif", "font-weight": 700,
+                           "font-size": 16, fill: "#F5F1E6", "fill-opacity": .9 }, ped);
+    n.textContent = x.g.cognome || "";
+    var q = rcP(x.u, x.v);
+    ped.style.transform = "translate(" + q.x.toFixed(1) + "px," + q.y.toFixed(1) + "px) scale(" + q.s.toFixed(3) + ")";
+    if (x.g.pid) RC.pedine[x.g.pid] = { el: ped, cerchio: c, casa: casa, q: q };
+    return ped;
   }
   function rcSchiera(rosaCasa, modCasa, rosaOsp, modOsp) {
     var svg = document.getElementById("rcampo");
-    if (!svg || RC.schierato || RC.viaPalla) return;
+    if (!svg || RC.schierato) return;
     var A = rcSchieraUno(rosaCasa, modCasa, true), B = rcSchieraUno(rosaOsp, modOsp, false);
     if (!A.length || !B.length) return;
     RC.schierato = true;
+    RC.pedine = {};
     var g = rcNs("g", {}, svg);
-    g.style.transition = "opacity .7s ease";
     // le pedine stanno sotto al pallone, non davanti
     svg.insertBefore(g, rcScia);
-    [[A, RC.colCasa], [B, RC.colOsp]].forEach(function (par) {
-      par[0].forEach(function (x) {
-        var q = rcP(x.u, x.v), r = 14 * q.s;
-        rcNs("ellipse", { cx: q.x, cy: q.y + r * .95, rx: r * .95, ry: r * .34,
-                          fill: "#000000", opacity: .3 }, g);
-        rcNs("circle", { cx: q.x, cy: q.y, r: r, fill: par[1],
-                         stroke: "#F5F1E6", "stroke-opacity": .85, "stroke-width": 1.6 * q.s }, g);
-        var t = rcNs("text", { x: q.x, y: q.y + 5 * q.s, "text-anchor": "middle",
-                               "font-family": "'Mazzard', sans-serif", "font-weight": 800,
-                               "font-size": (14 * q.s).toFixed(1), fill: "#FFFFFF" }, g);
-        t.textContent = x.g.num || "";
-        var n = rcNs("text", { x: q.x, y: q.y + r + 15 * q.s, "text-anchor": "middle",
-                               "font-family": "'DM Sans', sans-serif", "font-weight": 600,
-                               "font-size": (12.5 * q.s).toFixed(1), fill: "#F5F1E6",
-                               "fill-opacity": .88 }, g);
-        n.textContent = x.g.cognome || "";
-      });
-    });
+    A.forEach(function (x) { rcPedina(g, x, true); });
+    B.forEach(function (x) { rcPedina(g, x, false); });
     RC.squadre = g;
   }
-  // il fischio d'inizio: le squadre lasciano il posto al pallone
+  // Durante la partita i giocatori non restano piantati dove li mette il
+  // modulo: ogni volta che uno tocca la palla, ESPN dice chi e' e in che
+  // punto del campo - e quella e' la sua posizione vera, non una stima.
+  // Cosi' la pedina lo segue e il campo, giocata dopo giocata, si dispone
+  // come sta giocando davvero. Chi non tocca palla resta dov'era.
+  function rcMuoviGiocatore(pid, q) {
+    var ped = RC.pedine[pid];
+    if (!ped) return null;
+    // due pedine non possono stare nello stesso punto: quella che era li'
+    // si fa da parte di un passo, cosi' i numeri restano leggibili
+    var largo = 30 * q.s;
+    for (var k in RC.pedine) {
+      var altra = RC.pedine[k];
+      if (k === pid || !altra.q) continue;
+      var dx = altra.q.x - q.x, dy = altra.q.y - q.y;
+      var d = Math.sqrt(dx * dx + dy * dy);
+      if (d >= largo) continue;
+      var ang = d > 1 ? Math.atan2(dy, dx) : Math.random() * 6.28;
+      var n = { x: q.x + Math.cos(ang) * largo, y: q.y + Math.sin(ang) * largo, s: altra.q.s };
+      altra.q = n;
+      altra.el.style.transform = "translate(" + n.x.toFixed(1) + "px," + n.y.toFixed(1) + "px) scale(" + n.s.toFixed(3) + ")";
+    }
+    ped.q = q;
+    ped.el.style.transform = "translate(" + q.x.toFixed(1) + "px," + q.y.toFixed(1) + "px) scale(" + q.s.toFixed(3) + ")";
+    if (ped.el.parentNode) ped.el.parentNode.appendChild(ped.el);   // chi ha la palla sta sopra
+    if (RC.acceso0 && RC.acceso0 !== ped) rcSpegniPedina(RC.acceso0);
+    ped.cerchio.setAttribute("stroke", "#E3C271");
+    ped.cerchio.setAttribute("stroke-width", "4");
+    RC.acceso0 = ped;
+    return ped;
+  }
+  function rcSpegniPedina(ped) {
+    ped.cerchio.setAttribute("stroke", "#F5F1E6");
+    ped.cerchio.setAttribute("stroke-width", "2.2");
+  }
+  // un cambio: chi entra prende il posto di chi esce
+  function rcCambio(entra, esce, q) {
+    if (!esce || !RC.pedine[esce]) return;
+    var ped = RC.pedine[esce];
+    delete RC.pedine[esce];
+    if (!entra) { if (ped.el.parentNode) ped.el.parentNode.removeChild(ped.el); return; }
+    RC.pedine[entra.pid] = ped;
+    ped.el.setAttribute("data-pid", entra.pid);
+    var testi = ped.el.querySelectorAll("text");
+    if (testi[0]) testi[0].textContent = entra.num || "";
+    if (testi[1]) testi[1].textContent = entra.cognome || "";
+    if (q) rcMuoviGiocatore(entra.pid, q);
+  }
+  // il fischio d'inizio: resta il campo con le squadre, va via la riga
+  // delle formazioni e comincia a girare il pallone
   function rcViaPalla() {
     RC.viaPalla = true;
-    if (!RC.squadre) return;
-    var g = RC.squadre; RC.squadre = null;
-    g.style.opacity = "0";
-    setTimeout(function () { if (g.parentNode) g.parentNode.removeChild(g); }, 800);
   }
 
+  // il pallone si posa sul punto proiettato e prende la misura di li':
   // il pallone si posa sul punto proiettato e prende la misura di li':
   // in fondo al campo e' piu' piccolo, davanti piu' grande
   function rcMuovi(q, casa) {
@@ -1069,7 +1103,8 @@
     // l'alone attorno al pallone prende il colore di chi ha la palla:
     // si capisce chi attacca senza leggere niente
     if (RC.alone && casa != null) RC.alone.setAttribute("fill", casa ? RC.colCasa : RC.colOsp);
-    RC.palla.style.transform = "translate(" + q.x.toFixed(1) + "px," + q.y.toFixed(1) + "px) scale(" + q.s.toFixed(3) + ")";
+    RC.palla.style.transform = "translate(" + q.x.toFixed(1) + "px," +
+      (q.y - (RC.schierato ? 28 * q.s : 0)).toFixed(1) + "px) scale(" + q.s.toFixed(3) + ")";
     RC.scia.push(q);
     if (RC.scia.length > 8) RC.scia.shift();
     if (!rcScia) return;
@@ -1143,15 +1178,21 @@
   }
   // il nome del giocatore: ESPN lo mette nei partecipanti, e quando manca
   // sta dentro la frase — "Foul by Rodri", "Corner, Arsenal. Conceded by X"
+  function rcPid(q) {
+    return (((q || {}).athlete || {}).$ref || "").match(/athletes\/(\d+)/);
+  }
+  // Chi ha fatto la giocata. La fonte buona e' la rosa: l'id del
+  // partecipante da' il nome esatto. Se manca si legge la frase, ma solo
+  // nella forma "Nome (Squadra)" - il "from" del racconto ESPN porta
+  // fuori strada ("shot from the centre of the box").
   function rcChi(g) {
-    var p = (g.participants || [])[0] || {};
-    var nome = (p.athlete || {}).displayName || "";
+    var m = rcPid((g.participants || [])[0]);
+    if (m && RC.nomi[m[1]]) return RC.nomi[m[1]];
+    var nome = (((g.participants || [])[0] || {}).athlete || {}).displayName || "";
     if (nome) return nome;
     var t = String(g.text || "");
-    var m = t.match(/(?:by|from)\s+([A-Za-zÀ-ÿ'\.\-]+(?:\s+[A-Za-zÀ-ÿ'\.\-]+){0,2})/);
-    if (m) return m[1].trim();
-    m = t.match(/^([A-Za-zÀ-ÿ'\.\-]+(?:\s+[A-Za-zÀ-ÿ'\.\-]+){0,2})\s*\(/);
-    return m ? m[1].trim() : "";
+    var n = t.match(/([A-ZÀ-Þ][A-Za-zÀ-ÿ'\.\-]*(?:\s+[A-Za-zÀ-ÿ'\.\-]+){0,2})\s*\(/);
+    return n ? n[1].trim() : "";
   }
   function rcLeggi() {
     if (!RC.lega || !RC.ev) return;
@@ -1163,7 +1204,9 @@
         var chi = (((j.header || {}).competitions || [])[0] || {}).competitors || [];
         var casa = chi.filter(function (x) { return x.homeAway === "home"; })[0] || {};
         RC.casaId = String((casa.team || {}).id || "");
-        if (RC.schierato || RC.viaPalla) return;
+        // le squadre si mettono in campo anche a partita cominciata: da
+        // li' in poi ogni giocatore che tocca palla va al suo posto vero
+        if (RC.schierato) return;
         // le formazioni ESPN le pubblica circa un'ora prima
         var rose = {};
         (j.rosters || []).forEach(function (r) {
@@ -1171,7 +1214,8 @@
             mod: r.formation || "",
             gioc: (r.roster || []).map(function (x) {
               var a = x.athlete || {};
-              return { starter: !!x.starter, num: x.jersey || a.jersey || "",
+              RC.nomi[String(a.id || "")] = a.displayName || "";
+              return { starter: !!x.starter, num: x.jersey || a.jersey || "", pid: String(a.id || ""),
                        ab: ((x.position || {}).abbreviation || "").toUpperCase(),
                        cognome: (a.shortName || a.displayName || "").split(" ").pop() };
             })
@@ -1182,11 +1226,7 @@
         if (rc && ro) {
           rcDisegnaCampo();
           rcSchiera(rc.gioc, rc.mod, ro.gioc, ro.mod);
-          if (RC.schierato) {
-            rcCampoVisibile(true);
-            rcRigaFormazioni((casa.team || {}).displayName, rc.mod,
-                             (osp.team || {}).displayName, ro.mod);
-          }
+          if (RC.schierato) rcCampoVisibile(true);
         }
       })
       .catch(function () {});
@@ -1212,9 +1252,14 @@
         if (nuove.length) { rcCampoVisibile(true); rcViaPalla(); }
         nuove.forEach(function (g) {
           var sq = ((g.team || {}).$ref || "").match(/teams\/(\d+)/);
+          var parte = (g.participants || []).map(function (q) {
+            var m = rcPid(q);
+            return { pid: m ? m[1] : "", num: q.jersey || "" };
+          }).filter(function (q) { return q.pid; });
           RC.coda.push({ x: g.fieldPositionX, y: g.fieldPositionY,
                          casa: sq ? sq[1] === RC.casaId : true,
-                         chi: rcChi(g), cosa: rcCosa(g), quando: (g.clock || {}).displayValue || "" });
+                         chi: rcChi(g), cosa: rcCosa(g), quando: (g.clock || {}).displayValue || "",
+                         parte: parte, cambio: /^sub/i.test(String((g.type || {}).text || "")) });
         });
         if (RC.coda.length > 60) RC.coda = RC.coda.slice(-60);
       })
@@ -1226,11 +1271,14 @@
     if (!RC.acceso) return;
     if (RC.coda.length) {
       var g = RC.coda.shift();
-      rcMuovi(rcPosto(g.x, g.y, g.casa), g.casa);
-      var a = document.getElementById("rcazione");
-      a.querySelector(".chi").textContent = g.chi || "";
-      a.querySelector(".cosa").textContent = g.cosa || "";
-      a.querySelector(".quando").textContent = g.quando || "";
+      var q = rcPosto(g.x, g.y, g.casa), parte = g.parte || [];
+      if (g.cambio && parte.length > 1) {
+        rcCambio({ pid: parte[0].pid, num: parte[0].num,
+                   cognome: (RC.nomi[parte[0].pid] || g.chi || "").split(" ").pop() }, parte[1].pid, q);
+      } else if (parte.length) {
+        rcMuoviGiocatore(parte[0].pid, q);
+      }
+      rcMuovi(q, g.casa);
     }
     RC.passo = setTimeout(rcPasso, RC.coda.length > 14 ? 380 : RC.coda.length > 6 ? 620 : 1000);
   }
@@ -1248,7 +1296,7 @@
     rcSpegni(true);
     RC.lega = lega; RC.ev = ev; RC.acceso = true;
     RC.coda = []; RC.visti = {}; RC.partito = false; RC.scia = [];
-    RC.schierato = false; RC.viaPalla = false;
+    RC.schierato = false; RC.viaPalla = false; RC.pedine = {}; RC.acceso0 = null; RC.nomi = {};
     rcLeggi();
     RC.timer = setInterval(rcLeggi, 15000);
     rcPasso();
@@ -1258,7 +1306,7 @@
     if (RC.timer) { clearInterval(RC.timer); RC.timer = null; }
     if (RC.passo) { clearTimeout(RC.passo); RC.passo = null; }
     RC.lega = ""; RC.ev = "";
-    RC.schierato = false; RC.viaPalla = false;
+    RC.schierato = false; RC.viaPalla = false; RC.pedine = {}; RC.acceso0 = null; RC.nomi = {};
     if (RC.squadre && RC.squadre.parentNode) RC.squadre.parentNode.removeChild(RC.squadre);
     RC.squadre = null;
     if (!tieniCampo) rcCampoVisibile(false);
