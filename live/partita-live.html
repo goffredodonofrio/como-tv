@@ -240,7 +240,10 @@
   #radiomarc .col.b .m i{margin:0 0 0 12px;}
   #radiomarc .m b{font-family:'Mazzard',sans-serif;font-weight:800;color:#F5F1E6;}
   #radiomarc .m small{font-size:20px;color:#8A8B96;margin-left:9px;}
-  #radiomarc .col.b .m{direction:rtl;}      /* il minuto va dall'altra parte */
+  /* a destra il minuto va dopo il nome: si sposta l'elemento, non il verso
+     del testo (con direction:rtl l'apostrofo finiva prima del numero) */
+  #radiomarc .col.b .m{display:flex;align-items:baseline;justify-content:flex-end;}
+  #radiomarc .col.b .m i{order:2;}
 
   /* ── il campetto della radiocronaca ─────────────────────────────────
      Il pallone si muove dove sta l'azione: le coordinate sono quelle delle
@@ -265,7 +268,14 @@
   #radio.conCampo #radioclock{top:276px;font-size:26px;}
   #radio.conCampo #radiosotto{top:314px;}
   #radio.conCampo #radiofilo{margin-top:10px;}
-  #radio.conCampo #radiomarc{display:none;}
+  /* i marcatori non spariscono col campetto: si mettono ai lati, uno
+     per squadra, all'altezza del campo - chi ha segnato si legge sempre */
+  #radio.conCampo #radiomarc{top:470px;width:1840px;gap:0;align-items:flex-start;}
+  #radio.conCampo #radiomarc .col{max-width:330px;gap:9px;}
+  #radio.conCampo #radiomarc .m{font-size:23px;overflow:hidden;text-overflow:ellipsis;}
+  #radio.conCampo #radiomarc .m i{margin-right:9px;}
+  #radio.conCampo #radiomarc .col.b .m i{margin:0 0 0 9px;}
+  #radio.conCampo #radiomarc .m small{font-size:17px;}
   #radio.conCampo #radioev{top:1004px;}
 
   #radioev{position:absolute;left:50%;top:958px;transform:translateX(-50%) translateY(14px);
@@ -990,17 +1000,28 @@
     var undici = rosa.filter(function (x) { return x.starter; }).slice(0, 11);
     if (undici.length < 11) return [];
     undici.sort(function (a, b) { return rcRuolo(a.ab) - rcRuolo(b.ab); });
-    var port = undici.shift(), fuori = [], u0 = .045, passo = .72 / (righe.length + .4);
+    // ognuno sta nella sua meta' campo, dal portiere (5%) agli attaccanti
+    // (45%), e le linee si aprono fino alle fasce invece di stringersi
+    var port = undici.shift(), fuori = [], u0 = .05, passo = .40 / righe.length;
     righe.forEach(function (quanti, r) {
       var linea = undici.splice(0, quanti);
       linea.sort(function (a, b) { return rcLato(a.ab) - rcLato(b.ab); });
       var u = u0 + passo * (r + 1);
       linea.forEach(function (g, i) {
-        fuori.push({ g: g, u: casa ? u : 1 - u, v: (i + 1) / (linea.length + 1) });
+        var v = linea.length > 1 ? .12 + .76 * (i / (linea.length - 1)) : .5;
+        fuori.push({ g: g, u: casa ? u : 1 - u, v: casa ? v : 1 - v });
       });
     });
     fuori.unshift({ g: port, u: casa ? u0 : 1 - u0, v: .5 });
     return fuori;
+  }
+  function rcRigaFormazioni(nc, mc, no, mo) {
+    var a = document.getElementById("rcazione");
+    if (!a || RC.viaPalla) return;
+    a.querySelector(".chi").textContent = "FORMAZIONI";
+    a.querySelector(".cosa").textContent =
+      (nc || "") + " " + (mc || "") + "  \u00B7  " + (no || "") + " " + (mo || "");
+    a.querySelector(".quando").textContent = "";
   }
   function rcSchiera(rosaCasa, modCasa, rosaOsp, modOsp) {
     var svg = document.getElementById("rcampo");
@@ -1014,18 +1035,18 @@
     svg.insertBefore(g, rcScia);
     [[A, RC.colCasa], [B, RC.colOsp]].forEach(function (par) {
       par[0].forEach(function (x) {
-        var q = rcP(x.u, x.v), r = 15 * q.s;
+        var q = rcP(x.u, x.v), r = 14 * q.s;
         rcNs("ellipse", { cx: q.x, cy: q.y + r * .95, rx: r * .95, ry: r * .34,
                           fill: "#000000", opacity: .3 }, g);
         rcNs("circle", { cx: q.x, cy: q.y, r: r, fill: par[1],
                          stroke: "#F5F1E6", "stroke-opacity": .85, "stroke-width": 1.6 * q.s }, g);
         var t = rcNs("text", { x: q.x, y: q.y + 5 * q.s, "text-anchor": "middle",
                                "font-family": "'Mazzard', sans-serif", "font-weight": 800,
-                               "font-size": (15 * q.s).toFixed(1), fill: "#FFFFFF" }, g);
+                               "font-size": (14 * q.s).toFixed(1), fill: "#FFFFFF" }, g);
         t.textContent = x.g.num || "";
         var n = rcNs("text", { x: q.x, y: q.y + r + 15 * q.s, "text-anchor": "middle",
                                "font-family": "'DM Sans', sans-serif", "font-weight": 600,
-                               "font-size": (13 * q.s).toFixed(1), fill: "#F5F1E6",
+                               "font-size": (12.5 * q.s).toFixed(1), fill: "#F5F1E6",
                                "fill-opacity": .88 }, g);
         n.textContent = x.g.cognome || "";
       });
@@ -1067,26 +1088,58 @@
     var v = casa ? 1 - y / 100 : y / 100;
     return rcP(Math.max(.012, Math.min(.988, u)), Math.max(.02, Math.min(.98, v)));
   }
-  // ESPN scrive i tipi in inglese: qui diventano italiano da telecronaca.
-  var RC_DIZ = [[/goal/i, "GOL"], [/^Own Goal$/i, "Autogol"],
-    [/^Penalty.*Scored$/i, "Rigore segnato"], [/^Penalty.*(Missed|Saved)$/i, "Rigore sbagliato"],
-    [/^Shot On Target$/i, "Tiro in porta"], [/^Shot Off Target$/i, "Tiro fuori"],
-    [/^(Shot Blocked|Attempt Blocked)$/i, "Tiro murato"], [/^Post$/i, "Palo"],
-    [/^Save$/i, "Parata"], [/^Keeper.*(Pick|Claim|Punch|Sweep)/i, "Uscita del portiere"],
-    [/^Pass$/i, "Passaggio"], [/^Blocked Pass$/i, "Passaggio murato"], [/^Cross/i, "Cross"],
-    [/^Ball (touch|recovery)/i, "Tocco"], [/^Clear(ance)?$/i, "Spazzata"], [/^Dispossessed$/i, "Palla persa"],
-    [/^Tackle$/i, "Contrasto"], [/^Challenge$/i, "Duello"], [/^Interception/i, "Intercetto"],
-    [/^Aerial/i, "Duello aereo"], [/^Take On$/i, "Dribbling"], [/^Error/i, "Errore"],
-    [/hand ?ball/i, "Fallo di mano"], [/^Foul/i, "Fallo"], [/^Corner/i, "Calcio d'angolo"],
-    [/^Out$/i, "Palla fuori"], [/offside/i, "Fuorigioco"], [/^Yellow Card$/i, "Ammonizione"],
-    [/^(Second Yellow|Red Card)/i, "Espulsione"], [/^Sub/i, "Sostituzione"],
-    [/^Free ?[Kk]ick/i, "Punizione"], [/^Throw ?[Ii]n$/i, "Rimessa laterale"],
-    [/^Goal ?[Kk]ick$/i, "Rinvio dal fondo"], [/^(Start|End) Delay/i, "Gioco fermo"],
-    [/^(Kick ?Off|Start)/i, "Si gioca"], [/^(End|Half|Full)/i, "Fine tempo"]];
+  // ESPN scrive i tipi in inglese. Qui diventano italiano da telecronaca:
+  // prima la tabella esatta (sono i 49 tipi che ESPN manda davvero, contati
+  // su otto partite vere), poi le regole di ripiego per quelli nuovi. In
+  // onda non deve finire una parola inglese: se non si riconosce niente,
+  // la riga mostra solo chi e quando.
+  var RC_ESATTI = {
+    "pass": "Passaggio", "cross": "Cross", "blocked pass": "Passaggio murato",
+    "assists shot": "Passaggio per il tiro", "assist": "Assist",
+    "ball touch": "Tocco", "ball recovery": "Palla recuperata",
+    "take on": "Dribbling", "dispossessed": "Palla persa", "shield ball opp": "Palla protetta",
+    "clear": "Spazzata", "clearance": "Spazzata", "tackle": "Contrasto",
+    "attempted tackle": "Contrasto tentato", "challenge": "Duello",
+    "interception": "Intercetto", "aerial": "Duello aereo", "error": "Errore",
+    "out": "Palla fuori", "throw in": "Rimessa laterale", "goal kick": "Rinvio dal fondo",
+    "corner awarded": "Calcio d'angolo", "corner": "Calcio d'angolo",
+    "free kick": "Punizione", "foul": "Fallo", "handball": "Fallo di mano",
+    "offside": "Fuorigioco", "offside provoked": "Fuorigioco provocato",
+    "drop of ball": "Rimessa dell'arbitro",
+    "shot on target": "Tiro in porta", "shot off target": "Tiro fuori",
+    "shot blocked": "Tiro murato", "shot hit woodwork": "Palo", "temp attempt": "Tiro",
+    "save": "Parata", "claim": "Presa del portiere", "punch": "Respinta di pugno",
+    "keeper sweeper": "Uscita del portiere", "smother": "Uscita bassa del portiere",
+    "goal": "GOL", "goal - header": "GOL di testa", "goal - free-kick": "GOL su punizione",
+    "own goal": "Autogol", "penalty - scored": "Rigore trasformato",
+    "penalty - missed": "Rigore sbagliato", "penalty - saved": "Rigore parato",
+    "yellow card": "Ammonizione", "second yellow card": "Espulsione",
+    "red card": "Espulsione", "substitution": "Sostituzione",
+    "start delay": "Gioco fermo", "end delay": "Si riprende",
+    "deleted after review": "Annullato dopo revisione",
+    "var - referee decision cancelled": "VAR: decisione annullata",
+    "kickoff": "Calcio d'inizio", "start 1st half": "Si comincia",
+    "start 2nd half": "Inizio ripresa", "halftime": "Intervallo",
+    "end 1st half": "Fine primo tempo", "end 2nd half": "Fine secondo tempo",
+    "end regular time": "Fine dei tempi regolamentari", "full time": "Finale"
+  };
+  var RC_RIPIEGO = [[/own goal/, "Autogol"], [/goal/, "GOL"], [/penalt/, "Rigore"],
+    [/woodwork|post|crossbar/, "Palo"], [/shot|attempt/, "Tiro"],
+    [/save|claim|punch|smother|keeper/, "Parata"], [/card/, "Cartellino"],
+    [/sub/, "Sostituzione"], [/offside/, "Fuorigioco"], [/hand ?ball/, "Fallo di mano"],
+    [/foul/, "Fallo"], [/corner/, "Calcio d'angolo"], [/throw/, "Rimessa laterale"],
+    [/goal ?kick/, "Rinvio dal fondo"], [/free ?kick/, "Punizione"],
+    [/cross/, "Cross"], [/pass/, "Passaggio"], [/tackle|challenge/, "Contrasto"],
+    [/intercept/, "Intercetto"], [/aerial/, "Duello aereo"], [/clear/, "Spazzata"],
+    [/touch|recovery/, "Tocco"], [/take on|dribbl/, "Dribbling"],
+    [/delay|review|var/, "Gioco fermo"], [/half|regular time|full time/, "Fine tempo"],
+    [/kick ?off|start/, "Si gioca"]];
   function rcCosa(g) {
-    var tipo = String((g.type || {}).text || "").trim();
-    for (var i = 0; i < RC_DIZ.length; i++) if (RC_DIZ[i][0].test(tipo)) return RC_DIZ[i][1];
-    return tipo;
+    var tipo = String((g.type || {}).text || "").trim().toLowerCase();
+    if (!tipo) return "";
+    if (RC_ESATTI[tipo]) return RC_ESATTI[tipo];
+    for (var i = 0; i < RC_RIPIEGO.length; i++) if (RC_RIPIEGO[i][0].test(tipo)) return RC_RIPIEGO[i][1];
+    return "";                                   // mai inglese in onda
   }
   // il nome del giocatore: ESPN lo mette nei partecipanti, e quando manca
   // sta dentro la frase — "Foul by Rodri", "Corner, Arsenal. Conceded by X"
@@ -1129,7 +1182,11 @@
         if (rc && ro) {
           rcDisegnaCampo();
           rcSchiera(rc.gioc, rc.mod, ro.gioc, ro.mod);
-          if (RC.schierato) rcCampoVisibile(true);
+          if (RC.schierato) {
+            rcCampoVisibile(true);
+            rcRigaFormazioni((casa.team || {}).displayName, rc.mod,
+                             (osp.team || {}).displayName, ro.mod);
+          }
         }
       })
       .catch(function () {});
