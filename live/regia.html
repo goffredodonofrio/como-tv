@@ -197,6 +197,14 @@
     border:1px solid var(--line-gold);background:#070B1D;}
   #pvw{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
     transform-origin:top left;pointer-events:none;background:#070B1D;color-scheme:dark;}
+  /* il nome della grafica in anteprima, in alto a sinistra sul monitor:
+     in regia si vede a colpo d'occhio cosa sta per andare in onda */
+  #pvwtag{position:absolute;top:8px;left:8px;z-index:3;display:none;
+    max-width:calc(100% - 16px);padding:5px 11px;border-radius:5px;
+    background:rgba(10,15,36,.86);border:1px solid var(--line-gold);
+    font-family:'Mazzard',sans-serif;font-size:11.5px;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--gold-bright);white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;}
   /* i due telai del cursore delle grafiche: uno si vede, nell'altro si
      prepara il punto nuovo, e poi si scambiano (niente lampi tornando indietro) */
   .pvwCue{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
@@ -466,7 +474,7 @@
   <div class="deck">
     <div class="panel mon">
       <h2>Anteprima</h2>
-      <div id="pvwbox"><iframe id="pvw" src="about:blank" scrolling="no"></iframe>
+      <div id="pvwbox"><span id="pvwtag"></span><iframe id="pvw" src="about:blank" scrolling="no"></iframe>
         <video id="pvwvid" preload="auto" muted playsinline style="display:none"></video>
         <div class="vu sx" id="vuPvw" title="Livelli audio"><i><b></b></i><i><b></b></i></div></div>
       <div id="thumbcap">Clicca una grafica in scaletta: la vedi qui senza toccare l'onda.</div>
@@ -922,6 +930,13 @@
   function engineOf(tipo) { return ENGINES[tipo] || ENGINES.formazione; }
 
   var pvw = document.getElementById("pvw");
+  // la targhetta del monitor Anteprima: il nome della voce che si sta
+  // guardando. Vuota, sparisce.
+  function pvwTag(t) {
+    var e = document.getElementById("pvwtag");
+    e.textContent = String(t || "");
+    e.style.display = t ? "block" : "none";
+  }
   var pgmcap = document.getElementById("pgmcap");
 
   function fitThumb() {
@@ -961,6 +976,7 @@
     pvw.src = String(d.src);
     fitThumb();
     thumbcap.textContent = String(d.cap || "Anteprima dal Live Match.");
+    pvwTag("Live Match" + (anteprimaFase ? " · " + anteprimaFase : ""));
     document.getElementById("pvwtempo").style.display = "none";
     // i tasti In onda / Fuori onda devono accendersi subito per la fase
     try { paint(); } catch (err) {}
@@ -1391,6 +1407,7 @@
     thumbShownId = id;
     pvw.style.visibility = "visible";
     thumbcap.textContent = "Carico l'anteprima…";
+    pvwTag("Carico…");
     fetch(PONTE + "?regia=item&id=" + encodeURIComponent(id) + "&canale=" + CANALE, { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (dati) {
@@ -1412,6 +1429,7 @@
         }
         fitThumb();
         thumbcap.textContent = it ? ("Anteprima: " + it.titolo) : "";
+        pvwTag(it ? (it.titolo || etichettaTipo(it.tipo)) : "");
         // clip video: la DURATA in anteprima, con gli stessi numeroni dell'onda
         var pvt = document.getElementById("pvwtempo");
         if (it && it.tipo === "video" && dati && dati.dur) {
@@ -1422,7 +1440,7 @@
           pvt.style.display = "block";
         } else pvt.style.display = "none";
       })
-      .catch(function () { thumbcap.textContent = "Anteprima non disponibile."; });
+      .catch(function () { thumbcap.textContent = "Anteprima non disponibile."; pvwTag(""); });
   }
 
   // Le grafiche vivono su cinque livelli sovrapposti. I campi in cima alla
@@ -1723,7 +1741,7 @@
     }
     if (anteprimaMatch) { /* il monitor sta mostrando il Live Match: si lascia stare */ }
     else if (selId) showPvw(selId);
-    else { cueChiudi(); pvw.src = "about:blank"; pvw.style.visibility = "hidden"; thumbShownId = null; thumbcap.textContent = "Clicca una grafica in scaletta: la vedi qui senza toccare l'onda."; document.getElementById("pvwtempo").style.display = "none"; }
+    else { cueChiudi(); pvwTag(""); pvw.src = "about:blank"; pvw.style.visibility = "hidden"; thumbShownId = null; thumbcap.textContent = "Clicca una grafica in scaletta: la vedi qui senza toccare l'onda."; document.getElementById("pvwtempo").style.display = "none"; }
     btnTake.disabled = !selId && !(anteprimaMatch && anteprimaFase);
 
     sincronizzaArmato();   // tiene il ponte al corrente di cosa è pronto a partire
