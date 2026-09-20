@@ -681,15 +681,36 @@
   // sono le stesse — Gol, Autogol, Sostituzione, Ammonito, Espulso —
   // perche' chi guarda non deve imparare due lingue.
   var radioFirmaM = null, radioFirmaE = null;
-  // il pallone accanto a chi ha segnato: lo stesso segno che sta sulle
-  // pedine del campetto, cerchiato di rosso quando e' un autogol
+  // ── il pallone ──────────────────────────────────────────────────────
+  // Un pallone da calcio vero: la sfera, il pentagono al centro, le
+  // cuciture che vanno verso il bordo e gli spicchi scuri intorno. La
+  // stessa geometria serve due volte - sulla pedina in campo e accanto
+  // al marcatore in grafica - quindi si calcola qui una volta sola.
+  function pallaPezzi(r, dentro) {
+    var pent = [], raggi = [], i, a;
+    for (i = 0; i < 5; i++) {
+      a = -Math.PI / 2 + i * Math.PI * 2 / 5;
+      pent.push((Math.cos(a) * r * .38).toFixed(2) + " " + (Math.sin(a) * r * .38).toFixed(2));
+      raggi.push("M" + (Math.cos(a) * r * .38).toFixed(2) + " " + (Math.sin(a) * r * .38).toFixed(2) +
+                 "L" + (Math.cos(a) * r * .86).toFixed(2) + " " + (Math.sin(a) * r * .86).toFixed(2));
+    }
+    // gli spicchi sul bordo: un cerchio tratteggiato, cinque tratti
+    var rr = r * .82, giro = 2 * Math.PI * rr;
+    return { pent: "M" + pent.join("L") + "Z", raggi: raggi.join(""),
+             orlo: { r: rr, w: r * .3, dash: (giro / 5 * .46).toFixed(2) + " " + (giro / 5 * .54).toFixed(2),
+                     off: (giro / 10 * .46 + giro / 20).toFixed(2) }, dentro: dentro };
+  }
   function pallaMarcatore(autogol) {
-    var bordo = autogol ? "#E5342B" : "rgba(10,15,36,.85)";
-    var dentro = autogol ? "#E5342B" : "#0A0F24";
+    var tinta = autogol ? "#E5342B" : "#0A0F24";
+    var q = pallaPezzi(13, tinta);
     return '<svg class="pallone" viewBox="-16 -16 32 32" aria-hidden="true">' +
-           '<circle cx="0" cy="0" r="12" fill="#F5F1E6" stroke="' + bordo + '" stroke-width="' +
-           (autogol ? 3.2 : 2) + '"></circle>' +
-           '<path d="M0 -5.6 L5.3 -1.8 L3.3 4.6 L-3.3 4.6 L-5.3 -1.8 Z" fill="' + dentro + '"></path>' +
+           '<circle cx="0" cy="0" r="13" fill="#F5F1E6" stroke="' + tinta + '" stroke-width="' +
+           (autogol ? 2.6 : 1.4) + '"></circle>' +
+           '<circle cx="0" cy="0" r="' + q.orlo.r + '" fill="none" stroke="' + tinta +
+           '" stroke-width="' + q.orlo.w + '" stroke-dasharray="' + q.orlo.dash +
+           '" stroke-dashoffset="' + q.orlo.off + '"></circle>' +
+           '<path d="' + q.raggi + '" stroke="' + tinta + '" stroke-width="1.5" fill="none"></path>' +
+           '<path d="' + q.pent + '" fill="' + tinta + '"></path>' +
            "</svg>";
   }
   function radioMarcatori(j) {
@@ -1100,11 +1121,15 @@
       }
       if (seg.gol || seg.autogol) {
         var b = rcNs("g", { transform: "translate(30 20)" }, g);
-        rcNs("circle", { cx: 0, cy: 0, r: 13, fill: "#F5F1E6",
-                         stroke: seg.autogol ? "#E5342B" : "#0A0F24",
-                         "stroke-width": seg.autogol ? 3.4 : 2.2 }, b);
-        rcNs("path", { d: "M0 -6 L5.7 -1.9 L3.5 4.9 L-3.5 4.9 L-5.7 -1.9 Z",
-                       fill: seg.autogol ? "#E5342B" : "#0A0F24" }, b);
+        var tinta = seg.autogol ? "#E5342B" : "#12183A";
+        var q = pallaPezzi(14, tinta);
+        rcNs("circle", { cx: 0, cy: 0, r: 14, fill: "#F5F1E6", stroke: tinta,
+                         "stroke-width": seg.autogol ? 2.8 : 1.6 }, b);
+        rcNs("circle", { cx: 0, cy: 0, r: q.orlo.r, fill: "none", stroke: tinta,
+                         "stroke-width": q.orlo.w, "stroke-dasharray": q.orlo.dash,
+                         "stroke-dashoffset": q.orlo.off }, b);
+        rcNs("path", { d: q.raggi, stroke: tinta, "stroke-width": 1.6, fill: "none" }, b);
+        rcNs("path", { d: q.pent, fill: tinta }, b);
         var quanti = (seg.gol || 0) + (seg.autogol || 0);
         if (quanti > 1) {
           var n = rcNs("text", { x: 20, y: 6, "text-anchor": "middle",
