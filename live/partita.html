@@ -726,6 +726,7 @@
 <script src="giovanili.js"></script>
 <!-- il campetto in diretta: lo stesso della Lavagna, qui con la partita vera -->
 <script src="competizioni-espn.js"></script>
+<script src="squadre-espn.js"></script>
 <script src="lavagna.js"></script>
 <script>
 (function () {
@@ -742,7 +743,7 @@
   // ── squadre a mano (i settori giovanili non stanno su ESPN):
   //    quando ci sarà una fonte dati, questo elenco diventa un fallback ──
   var CAMPIONATI = [
-    { nome: "Serie A", squadre: [
+    { nome: "Serie A", lega: "ita.1", squadre: [
       { n: "Atalanta", s: "ATA", col: "#1157BF" , tid: "105" },
       { n: "Bologna", s: "BOL", col: "#04043D" , tid: "107" },
       { n: "Cagliari", s: "CAG", col: "#282846" , tid: "2925" },
@@ -764,7 +765,7 @@
       { n: "Udinese", s: "UDI", col: "#19161D" , tid: "118" },
       { n: "Venezia", s: "VEN", col: "#000000" , tid: "17530" }
     ]},
-    { nome: "Coppa Italia", squadre: [
+    { nome: "Coppa Italia", lega: "ita.coppa_italia", squadre: [
       { n: "Arezzo", s: "ARE", col: "#000000" , tid: "3345" },
       { n: "Ascoli", s: "ASC", col: "#AA0001" , tid: "3346" },
       { n: "Atalanta", s: "ATA", col: "#1157BF" , tid: "105" },
@@ -806,7 +807,7 @@
       { n: "Venezia", s: "VEN", col: "#000000" , tid: "17530" },
       { n: "Vicenza", s: "VIC", col: "#1A1A1A" , tid: "120" }
     ]},
-    { nome: "Champions League", squadre: [
+    { nome: "Champions League", lega: "uefa.champions", squadre: [
       { n: "AEK Atene", s: "AEK", col: "#FFFF00" , tid: "887" },
       { n: "Arsenal", s: "ARS", col: "#E20520" , tid: "359" },
       { n: "Aston Villa", s: "AVL", col: "#660E36" , tid: "362" },
@@ -906,8 +907,12 @@
     { nome: "Como Cup", squadre: [
       { n: "Como", s: "COM", col: "#1735C8" }
     ]},
-    { nome: "Personalizzato (scrivi a mano)", squadre: [] }
+    { nome: "Personalizzato (scrivi a mano)", squadre: [] },
+    // l'ultima voce non e' una competizione: e' il posto dove finisce
+    // quella scelta dal menu' ESPN, con le sue squadre prese al volo
+    { nome: "\u2014", lega: "", squadre: [], espn: true }
   ];
+  var IDX_ESPN = CAMPIONATI.length - 1;
 
   var CANALE = (function () {
     var c = parseInt(new URLSearchParams(location.search).get("c"), 10);
@@ -975,6 +980,8 @@
     osp:  { n: "", s: "", col: "#C50E1F", tid: "", stemma: "" },
     p1: 0, p2: 0, rec: 0, rc1: 0, rc2: 0,
     radioNome: "",
+    // codice ESPN della competizione scelta ("ger.1"): lo usa il campetto
+    lega: "ita.1",
     // partita ESPN agganciata al cartello radiocronaca: { lega, ev, nome }
     espn: null,
     // t2: il cronometro e' nel secondo tempo (lo dice il tasto 45:00).
@@ -1055,12 +1062,34 @@
     });
     return v;
   }
+  // Il menu' tiene due mondi: le competizioni di casa (Serie A, Coppa
+  // Italia, Champions, le giovanili, la Como Cup) con squadre, sigle e
+  // colori curati da noi; e tutte le altre di ESPN, raggruppate per
+  // paese con la bandierina. Le voci ESPN valgono il codice lega
+  // ("ger.1"), le nostre il nome: da li' si capisce quale e' quale.
   function riempiCompetizioni() {
     elComp.innerHTML = "";
+    var nostre = document.createElement("optgroup");
+    nostre.label = "Como TV";
     competizioni().forEach(function (n) {
+      if (n === "\u2014") return;                       // la voce di servizio non si mostra
       var o = document.createElement("option");
       o.value = n; o.textContent = n;
-      elComp.appendChild(o);
+      nostre.appendChild(o);
+    });
+    elComp.appendChild(nostre);
+    if (!window.CompetizioniEspn) return;
+    var tmp = document.createElement("select");
+    CompetizioniEspn.riempi(tmp, function () {
+      var gia = { "ita.1": 1, "ita.coppa_italia": 1, "uefa.champions": 1 };  // gia' di casa
+      Array.prototype.slice.call(tmp.children).forEach(function (g) {
+        Array.prototype.slice.call(g.querySelectorAll("option")).forEach(function (o) {
+          if (gia[o.value]) o.remove();
+        });
+        if (g.querySelector("option")) elComp.appendChild(g);
+      });
+      if (S.lega) mettiCampTxt(S.camp);                 // il menu' e' arrivato dopo lo stato
+      allineaDaCamp();
     });
   }
   function riempiGironi(comp, indiceVoluto) {
@@ -1087,12 +1116,75 @@
   // e al contrario: se il campionato cambia da altrove, i due menu' lo seguono
   function allineaDaCamp() {
     var i = parseInt(elCamp.value, 10) || 0;
-    var p = spezza((CAMPIONATI[i] || {}).nome || "");
+    var c = CAMPIONATI[i] || {};
+    if (c.espn) {                                       // competizione ESPN: nessun girone
+      elComp.value = c.lega || "";
+      elGir.innerHTML = '<option value="' + IDX_ESPN + '">\u2014</option>';
+      elGir.disabled = true;
+      return;
+    }
+    var p = spezza(c.nome || "");
     elComp.value = p.comp;
     riempiGironi(p.comp, i);
   }
+  // Lo stato puo' arrivare da un'altra postazione con una competizione
+  // ESPN: qui la si rimonta (nome, lega e squadre) senza rimandare
+  // niente indietro, se no due banchi si rincorrerebbero.
+  function allineaEspnDaStato() {
+    if (!S.lega) return false;
+    var fissa = CAMPIONATI.some(function (c) { return !c.espn && c.lega === S.lega; });
+    if (fissa) return false;
+    var voce = CAMPIONATI[IDX_ESPN];
+    if (voce.lega === S.lega && +elCamp.value === IDX_ESPN) return true;
+    voce.nome = S.camp || S.lega; voce.lega = S.lega; voce.squadre = [];
+    elCamp.value = IDX_ESPN;
+    allineaDaCamp();
+    if (window.SquadreEspn) {
+      SquadreEspn.elenco(S.lega).then(function (sq) {
+        if (voce.lega !== S.lega) return;
+        voce.squadre = sq.map(function (x) {
+          return { n: x.nome, s: (x.sigla || x.nome.slice(0, 3)).toUpperCase(), col: "#1735C8", tid: x.id };
+        });
+        riempiSquadre();
+      }).catch(function () {});
+    }
+    return true;
+  }
   riempiCompetizioni();
-  elComp.addEventListener("change", function () { riempiGironi(elComp.value); sincronizzaCamp(); });
+  elComp.addEventListener("change", function () {
+    if (elComp.value.indexOf(".") > 0) { apriEspn(elComp.value); return; }
+    riempiGironi(elComp.value); sincronizzaCamp();
+  });
+  // una competizione ESPN entra nella voce di servizio: nome, lega e
+  // squadre chieste a ESPN. Le sigle e i colori arrivano da li'; il
+  // colore preciso della singola squadra si chiede quando la si sceglie.
+  function apriEspn(code) {
+    var info = (window.CompetizioniEspn && CompetizioniEspn.info(code)) || { nome: code };
+    var voce = CAMPIONATI[IDX_ESPN];
+    voce.nome = info.nome; voce.lega = code; voce.squadre = [];
+    elCamp.value = IDX_ESPN;
+    elGir.innerHTML = '<option value="' + IDX_ESPN + '">\u2014</option>';
+    elGir.disabled = true;
+    S.camp = info.nome; S.lega = code;
+    mettiCampTxt(S.camp);
+    [elSqc, elSqo].forEach(function (sel) {
+      sel.innerHTML = '<option value="-1">scrivi a mano\u2026</option><option disabled>cerco le squadre\u2026</option>';
+    });
+    msg.textContent = "Cerco le squadre di " + info.nome + " su ESPN\u2026";
+    agganciaEspn(); invia(true);
+    SquadreEspn.elenco(code, function (t) { msg.textContent = t.replace(/&hellip;/g, "\u2026"); })
+      .then(function (sq) {
+        if (voce.lega !== code) return;                 // intanto se n'e' scelta un'altra
+        voce.squadre = sq.map(function (x) {
+          return { n: x.nome, s: (x.sigla || x.nome.slice(0, 3)).toUpperCase(), col: "#1735C8", tid: x.id };
+        });
+        riempiSquadre();
+        msg.textContent = sq.length
+          ? info.nome + ": " + sq.length + " squadre pronte."
+          : "ESPN non da' le squadre di " + info.nome + ": scrivile a mano.";
+      })
+      .catch(function () { msg.textContent = "ESPN non risponde: scrivi le squadre a mano."; });
+  }
   elGir.addEventListener("change", sincronizzaCamp);
   allineaDaCamp();
 
@@ -1178,12 +1270,25 @@
     cercaLoghi();
     agganciaEspn();
     dipingi(); invia(true);
+    // il colore sociale non sta nell'elenco: si chiede a ESPN e arriva
+    // dopo, senza far aspettare chi sta impostando la partita
+    if (c.espn && c.lega && sq.tid) {
+      SquadreEspn.colore(c.lega, sq.tid).then(function (col) {
+        if (!col) return;
+        var q = lato === "casa" ? S.casa : S.osp;
+        if (q.tid !== sq.tid) return;
+        q.col = col;
+        el(lato === "casa" ? "cc" : "co").value = col;
+        dipingi(); invia(true);
+      });
+    }
     // squadra nuova, rosa nuova
     caricaRose(true, [lato]);
   }
 
   elCamp.addEventListener("change", function () {
-    S.camp = (CAMPIONATI[parseInt(elCamp.value, 10)] || {}).nome || "";
+    var c = CAMPIONATI[parseInt(elCamp.value, 10)] || {};
+    S.camp = c.nome || ""; S.lega = c.lega || "";
     mettiCampTxt(S.camp);
     riempiSquadre(); agganciaEspn(); invia(true);
   });
@@ -1362,14 +1467,16 @@
   //    di sempre. Il campo e le giocate li disegna partita-live.html
   //    leggendo ESPN per conto suo, cosi' ogni postazione in onda si
   //    aggiorna da sola.
-  var LEGA_DI = { "Serie A": "ita.1", "Coppa Italia": "ita.coppa_italia",
-                  "Champions League": "uefa.champions" };
+  function legaOra() {
+    var c = CAMPIONATI[parseInt(elCamp.value, 10)];
+    return (c && c.lega) || S.lega || "";
+  }
   function radioEspnNota(t) { var n = el("radioEspnNota"); if (n) n.innerHTML = t || "&nbsp;"; }
   function radioEspnDipingi() {
     if (S.espn && S.espn.ev) {
       radioEspnNota("Nel cartello c'e' il campetto di <b>" + (S.espn.nome || "questa partita") +
         "</b>: il pallone segue le giocate ESPN (circa un minuto di ritardo).");
-    } else if (!LEGA_DI[S.camp]) {
+    } else if (!legaOra()) {
       radioEspnNota("Di questa competizione ESPN non ha le giocate: il cartello resta senza campetto.");
     } else if (!S.casa.tid || !S.osp.tid) {
       radioEspnNota("Scegli le due squadre dall'elenco e, se ESPN ha la partita, nel cartello compare il campetto.");
@@ -1379,7 +1486,7 @@
   }
   var espnFirma = "";
   function agganciaEspn(rifai) {
-    var lega = LEGA_DI[S.camp] || "";
+    var lega = legaOra();
     var firma = lega + "|" + (S.casa.tid || "") + "|" + (S.osp.tid || "");
     if (!rifai && firma === espnFirma) return;
     espnFirma = firma;
@@ -1568,7 +1675,7 @@
           casa: { n: "", s: "", col: "#1735C8", tid: "", stemma: "" },
           osp:  { n: "", s: "", col: "#C50E1F", tid: "", stemma: "" },
           p1: 0, p2: 0, rec: 0, rc1: 0, rc2: 0,
-          radioNome: "", espn: null,
+          radioNome: "", lega: "ita.1", espn: null,
           clock: { run: false, base: 0, ts: null, t2: false },
           rose: null, ev: null, marcatori: [] };
     specchioFase();
@@ -1795,7 +1902,7 @@
                   bug: f === "live", card: (f === "live" || f === "off") ? null : f,
                   casa: S.casa, osp: S.osp,
                   p1: S.p1, p2: S.p2, rec: S.rec, radioNome: S.radioNome || "",
-                  espn: S.espn || null,
+                  lega: S.lega || "", espn: S.espn || null,
                   clock: { run: false, base: elapsed(), ts: null } };
     pvw.src = "partita-live.html?prev=" + b64url(stato);
     pvwcap.textContent = "Anteprima: " + titolo + " — andrà sul layer LIVE MATCH.";
@@ -2554,7 +2661,7 @@
     mettiGiornata(S.giornata); metti("stadio", S.stadio); mettiCampTxt(S.camp);
     metti("nc", S.casa.n); metti("sc", S.casa.s); metti("cc", S.casa.col);
     metti("no", S.osp.n);  metti("so", S.osp.s);  metti("co", S.osp.col);
-    if (!campoInUso(elCamp)) {
+    if (!campoInUso(elCamp) && !allineaEspnDaStato()) {
       for (var i = 0; i < CAMPIONATI.length; i++) {
         if (CAMPIONATI[i].nome === S.camp && elCamp.value !== String(i)) {
           elCamp.value = i; riempiSquadre();
@@ -2609,7 +2716,7 @@
               casa: j.casa || S.casa, osp: j.osp || S.osp,
               p1: j.p1 || 0, p2: j.p2 || 0, rec: j.rec || 0,
               rc1: j.rc1 || 0, rc2: j.rc2 || 0,
-              radioNome: j.radioNome || "", espn: j.espn || null,
+              radioNome: j.radioNome || "", lega: j.lega || "", espn: j.espn || null,
               clock: j.clock || S.clock, livFase: j.livFase || S.livFase,
               rose: j.rose || null, ev: j.ev || null, marcatori: j.marcatori || [] };
         specchioFase();
@@ -2629,7 +2736,9 @@
         el("no").value = S.osp.n || ""; el("so").value = S.osp.s || ""; el("co").value = S.osp.col || "#C50E1F";
         el("radioNome").value = S.radioNome || "";
         agganciaEspn();
-        for (var i = 0; i < CAMPIONATI.length; i++) if (CAMPIONATI[i].nome === S.camp) elCamp.value = i;
+        if (!allineaEspnDaStato()) {
+          for (var i = 0; i < CAMPIONATI.length; i++) if (CAMPIONATI[i].nome === S.camp) elCamp.value = i;
+        }
         riempiSquadre();
         // le righe devono mostrare subito cosa sta trasmettendo
         disegnaFasi();
