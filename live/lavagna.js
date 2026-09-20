@@ -182,7 +182,9 @@ window.Lavagna = (function () {
       '<div class="nota" data-nota="1">Trascina i giocatori. <b>Doppio clic</b> su un giocatore: ci scrivi le tue curiosità. ' +
         'Per un cambio: clicca chi esce sul campo, poi chi entra dalla panchina.</div>' +
       '<div class="sotto">' +
-        '<div class="col"><h4>Cambi</h4><div class="cambi" data-cambi="1"><span>Nessun cambio.</span></div></div>' +
+        // in diretta i cambi si vedono gia' sul campo, la lista e' rumore
+        (opz.diretta ? "" :
+          '<div class="col"><h4>Cambi</h4><div class="cambi" data-cambi="1"><span>Nessun cambio.</span></div></div>') +
         '<div class="col"><h4>Curiosità</h4><div class="curio" data-curio="1"><span style="color:var(--lav-fg3)">Doppio clic su un giocatore per scriverci sopra.</span></div></div>' +
       '</div>';
 
@@ -531,7 +533,7 @@ window.Lavagna = (function () {
         }).join("") || '<span style="color:var(--lav-fg3);font-size:12.5px">Nessuna rosa.</span>';
       });
       var ca = box.querySelector("[data-cambi]");
-      ca.innerHTML = CAMBI.length ? CAMBI.map(function (c) {
+      if (ca) ca.innerHTML = CAMBI.length ? CAMBI.map(function (c) {
         return '<div><span>' + esc(SQ[c.lato].nome) + '</span> &nbsp; &#8593; ' + esc(c.dentro) +
                ' &nbsp; &#8595; ' + esc(c.fuori) + '</div>';
       }).join("") : '<span>Nessun cambio.</span>';
