@@ -1049,21 +1049,8 @@
   function rcMuoviGiocatore(pid, q) {
     var ped = RC.pedine[pid];
     if (!ped) return null;
-    // due pedine non possono stare nello stesso punto: quella che era li'
-    // si fa da parte di un passo, cosi' i numeri restano leggibili
-    var largo = 40 * q.s;
-    for (var k in RC.pedine) {
-      var altra = RC.pedine[k];
-      if (k === pid || !altra.q) continue;
-      var dx = altra.q.x - q.x, dy = altra.q.y - q.y;
-      var d = Math.sqrt(dx * dx + dy * dy);
-      if (d >= largo) continue;
-      var ang = d > 1 ? Math.atan2(dy, dx) : Math.random() * 6.28;
-      var n = { x: q.x + Math.cos(ang) * largo, y: q.y + Math.sin(ang) * largo, s: altra.q.s };
-      altra.q = n;
-      altra.el.style.transform = "translate(" + n.x.toFixed(1) + "px," + n.y.toFixed(1) + "px) scale(" + n.s.toFixed(3) + ")";
-    }
     ped.q = q;
+    rcSpazia(pid);
     ped.el.style.transform = "translate(" + q.x.toFixed(1) + "px," + q.y.toFixed(1) + "px) scale(" + q.s.toFixed(3) + ")";
     if (ped.el.parentNode) ped.el.parentNode.appendChild(ped.el);   // chi ha la palla sta sopra
     if (RC.acceso0 && RC.acceso0 !== ped) rcSpegniPedina(RC.acceso0);
@@ -1071,6 +1058,41 @@
     ped.cerchio.setAttribute("stroke-width", "5");
     RC.acceso0 = ped;
     return ped;
+  }
+  // Quando l'azione si concentra in una zona, le pedine finiscono una
+  // sull'altra e non si legge piu' niente. Qui si allontanano fra loro a
+  // piccoli passi, come tante calamite: chi ha appena toccato la palla
+  // non si muove - quella e' la posizione vera - e gli altri gli fanno
+  // spazio intorno.
+  function rcSpazia(fermo) {
+    var lista = [];
+    for (var k in RC.pedine) if (RC.pedine[k].q) lista.push(RC.pedine[k].el ? RC.pedine[k] : null);
+    lista = lista.filter(Boolean);
+    for (var giro = 0; giro < 4; giro++) {
+      var mosso = false;
+      for (var i = 0; i < lista.length; i++) {
+        for (var j = i + 1; j < lista.length; j++) {
+          var a = lista[i], b = lista[j];
+          var largo = 42 * Math.max(a.q.s, b.q.s);
+          var dx = b.q.x - a.q.x, dy = b.q.y - a.q.y;
+          var d = Math.sqrt(dx * dx + dy * dy);
+          if (d >= largo) continue;
+          mosso = true;
+          var ang = d > .5 ? Math.atan2(dy, dx) : Math.random() * 6.28;
+          var spinta = (largo - d) / 2 + .5;
+          var aFermo = RC.pedine[fermo] === a, bFermo = RC.pedine[fermo] === b;
+          var qa = aFermo ? 0 : (bFermo ? spinta * 2 : spinta);
+          var qb = bFermo ? 0 : (aFermo ? spinta * 2 : spinta);
+          a.q = { x: a.q.x - Math.cos(ang) * qa, y: a.q.y - Math.sin(ang) * qa, s: a.q.s };
+          b.q = { x: b.q.x + Math.cos(ang) * qb, y: b.q.y + Math.sin(ang) * qb, s: b.q.s };
+        }
+      }
+      if (!mosso) break;
+    }
+    lista.forEach(function (p) {
+      p.el.style.transform = "translate(" + p.q.x.toFixed(1) + "px," + p.q.y.toFixed(1) +
+        "px) scale(" + p.q.s.toFixed(3) + ")";
+    });
   }
   function rcSpegniPedina(ped) {
     ped.cerchio.setAttribute("stroke", "#F5F1E6");
