@@ -6358,7 +6358,7 @@ function metteDentroParlato(regId, finestra, j) {
   if (!pezzi.length) return 0;
   const dentro = PARLATO[regId] || (PARLATO[regId] = { lingua: LINGUA_MAM, pezzi: [] });
   if (finestra.intera) dentro.intera = new Date().toISOString();
-  dentro.pezzi = dentro.pezzi.filter((t) => t.b <= finestra.da || t.a >= finestra.a).concat(pezzi).sort((x, y) => x.a - y.a);
+  dentro.pezzi = dentro.pezzi.filter((t) => t.m || t.b <= finestra.da || t.a >= finestra.a).concat(pezzi).sort((x, y) => x.a - y.a);
   scriviParlato();
   return pezzi.length;
 }
@@ -7176,7 +7176,8 @@ function trascriviDavvero(lavoro) {
     }).catch(() => {});
     // si rifa' la finestra invece di accodare: chiedere due volte lo stesso
     // pezzo non deve raddoppiare quello che ci si trova dentro
-    dentro.pezzi = dentro.pezzi.filter((t) => t.b <= lavoro.da || t.a >= lavoro.a)
+    // ...ma le righe corrette a mano restano: sono verita', non stima
+    dentro.pezzi = dentro.pezzi.filter((t) => t.m || t.b <= lavoro.da || t.a >= lavoro.a)
                                .concat(pezzi)
                                .sort((x, y) => x.a - y.a);
     scriviParlato();
@@ -10595,7 +10596,7 @@ const AZIONI = {
           for (let i = 0; i < mancano.length; i += 12) {
             const lotto = mancano.slice(i, i + 12);
             // per strada si sistemano anche numeri e nomi, come dal vivo
-            lotto.forEach((x) => { x.x = correggiConIlVocabolario(numeriNelTesto(x.x, da), r).testo; });
+            lotto.forEach((x) => { if (!x.m) x.x = correggiConIlVocabolario(numeriNelTesto(x.x, da), r).testo; });
             const tr = await traduciConINomi(lotto.map((x) => x.x), da, a, r);
             lotto.forEach((x, k) => { x.y = tr ? tr[k] : ""; x.ya = a; x.l = x.l || da; });
             stato.fatte = Math.min(mancano.length, i + lotto.length);
@@ -10616,6 +10617,9 @@ const AZIONI = {
   },
   "clip-parlato": (p) => {
     const d = PARLATO[String(p.reg || "")];
+    // ogni riga porta una chiave sua: e' con quella che la pagina la
+    // corregge, e resta la stessa anche se le righe intorno cambiano
+    if (d && (d.pezzi || []).some((x) => !x.k)) { d.pezzi.forEach((x) => { if (!x.k) x.k = nuovoId("s"); }); scriviParlato(); }
     return { ok: true, pezzi: (d && d.pezzi) || [], spenta: voceSpenta,
              inCorso: !!(voceAlLavoro && voceAlLavoro.reg === p.reg),
              inCoda: CODA_VOCE.filter((x) => x.reg === p.reg).length,
@@ -10625,6 +10629,45 @@ const AZIONI = {
   // primo fotogramma del file (come li vede Premiere quando importa lo
   // stesso file dalla QNAP), testo nella lingua chiesta se c'e' la
   // traduzione, altrimenti quello detto. Righe lunghe spezzate in due.
+  // LA TRACCIA SI CORREGGE A MANO, come in Premiere: si entra nella riga,
+  // si cambia il testo (nella lingua parlata o nella traduzione), i tempi,
+  // se ne aggiunge una o se ne toglie una. La riga corretta porta il segno
+  // m: una ritrascrizione non la sovrascrive, la traduzione automatica
+  // non la ritocca, e ogni export — srt, impressi, telecronaca intera —
+  // esce gia' corretto.
+  "clip-parlato-modifica": (p) => {
+    const reg = String(p.reg || ""), d = PARLATO[reg];
+    if (!d) throw new Error("questa registrazione non ha una telecronaca");
+    d.pezzi = d.pezzi || [];
+    const propria = d.lingua || LINGUA_MAM;
+    let x = null;
+    if (p.nuova) {
+      const a = Math.max(0, +p.a || 0), b = +p.b > a ? +p.b : a + 3;
+      x = { k: nuovoId("s"), a: Math.round(a * 10) / 10, b: Math.round(b * 10) / 10, x: "", l: ["it", "en"].indexOf(String(p.l || "")) >= 0 ? String(p.l) : propria, m: true };
+      d.pezzi.push(x);
+    } else {
+      x = d.pezzi.find((z) => z.k && z.k === String(p.k || ""));
+      if (!x) throw new Error("riga non trovata: ricarica la telecronaca");
+    }
+    if (p.cancella) {
+      d.pezzi = d.pezzi.filter((z) => z !== x);
+      scriviParlato(); return { ok: true, tolta: x.k };
+    }
+    const sua = x.l || propria, altra = sua === "it" ? "en" : "it";
+    if (p.x !== undefined) x.x = String(p.x || "").replace(/\s+/g, " ").trim();
+    if (p.y !== undefined) { x.y = String(p.y || "").replace(/\s+/g, " ").trim(); x.ya = x.y ? altra : undefined; if (!x.y) delete x.ya; }
+    if (p.a !== undefined || p.b !== undefined) {
+      const a = p.a !== undefined ? Math.max(0, +p.a || 0) : x.a;
+      const b = p.b !== undefined ? +p.b : x.b;
+      if (!(b > a)) throw new Error("l'uscita deve venire dopo l'entrata");
+      x.a = Math.round(a * 100) / 100; x.b = Math.round(b * 100) / 100;
+    }
+    x.l = sua; x.m = true;
+    if (!x.x && !x.y) { d.pezzi = d.pezzi.filter((z) => z !== x); scriviParlato(); return { ok: true, tolta: x.k }; }
+    d.pezzi.sort((u, v) => u.a - v.a);
+    scriviParlato();
+    return { ok: true, pezzo: x };
+  },
   "clip-parlato-srt": (p) => {
     const reg = String(p.reg || ""), d = PARLATO[reg], r = R.reg[reg];
     if (!d || !(d.pezzi || []).length) throw new Error("questa registrazione non ha ancora una telecronaca trascritta");

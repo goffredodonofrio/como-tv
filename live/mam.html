@@ -324,6 +324,22 @@
   #tlV2{height:var(--hV2,34px);} #tlV1{height:var(--hV1,56px);} #tlA1{height:var(--hA1,46px);}
   .tlpista .clipG{height:calc(var(--hV2,34px) - 4px);}
   .tlcorsia.v{height:var(--hV2,34px);} .tlcorsia.a{height:34px;}
+  /* ST: la traccia dei sottotitoli, come la traccia didascalie di Premiere.
+     Un blocco per riga, nel punto dove cade nel montato; si clicca e si
+     corregge, e la correzione resta per ogni export. */
+  .tltraccia.st,.tlcorsia.st{height:26px;}
+  .tltraccia.st .tag.on{background:#8A6F1C;color:#fff;border-radius:2px;}
+  .tlpista .clipS{position:absolute;top:2px;height:21px;background:#5A4A12;border:1px solid #8A6F1C;border-radius:2px;overflow:hidden;cursor:text;padding:0 4px;box-sizing:border-box;}
+  .tlpista .clipS .tt{display:block;font-size:10px;line-height:19px;color:#FFE97A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tlpista .clipS.mod{border-color:#E3C271;}
+  .tlpista .clipS:hover{background:#6E5B18;}
+  .telaio .sottotitoli i{pointer-events:auto;cursor:text;}
+  .foglio .editSotto{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;padding:12px 16px;}
+  .foglio .editSotto label{display:flex;flex-direction:column;gap:4px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--inchiostro-3,#8A8A8A);}
+  .foglio .editSotto label.largo{grid-column:1/-1;}
+  .foglio .editSotto input,.foglio .editSotto textarea{font:inherit;font-size:13px;padding:6px 8px;border:1px solid #444;border-radius:3px;background:#161616;color:#EEE;}
+  .foglio .editSotto textarea{min-height:56px;resize:vertical;}
+  .foglio .editSotto textarea.it{color:#FFE97A;} .foglio .editSotto textarea.en{color:#fff;}
   .tlcorsia.vuota{background:var(--tl-fondo2);}
 
   /* la clip video: corpo blu, barra del titolo piu' chiara con nome e fx, miniatura */
@@ -1704,6 +1720,7 @@
         <i title="marcatore" id="tlSegno"><svg viewBox="0 0 16 16"><path class="p" d="M4 2h8v12l-4-3-4 3z"/></svg></i>
         <span class="lente"><b id="tlMeno" title="allontana (−)">−</b><b id="tlTutto" title="tutta la sequenza (\\)">\</b><b id="tlPiu" title="avvicina (+)">+</b></span>
       </div>
+      <div class="tltraccia st vuota" data-t="ST" title="sottotitoli: la telecronaca trascritta, riga per riga; clicca un blocco per correggerlo"><i class="lock"></i><span class="tag on">ST</span><i class="eye"></i></div>
       <div class="tltraccia v vuota" data-t="V2"><i class="lock"></i><span class="tag">V2</span><i class="eye"></i></div>
       <div class="tltraccia v" data-t="V1"><i class="lock"></i><span class="tag on">V1</span><i class="eye"></i></div>
       <div class="tltraccia a" data-t="A1"><i class="lock"></i><span class="tag on">A1</span><i class="ms m" title="muto (M)">M</i><i class="ms s" title="solo (S)">S</i></div>
@@ -1713,6 +1730,7 @@
     </div>
     <div class="tlpista" id="tlPista">
       <div class="tlrighello" id="tlRighello"></div>
+      <div class="tlcorsia st vuota" id="tlST"></div>
       <div class="tlcorsia v vuota" id="tlV2"></div>
       <div class="tlcorsia v" id="tlV1"></div>
       <div class="tlcorsia a" id="tlA1"></div>
@@ -4205,6 +4223,11 @@
   // i monitor nascono dopo questo punto dello script: si aggancia quando
   // ci sono, e comunque si ricontrolla ogni mezzo secondo
   // per guardare da fuori chi sta suonando (console del browser: MAM_AUDIO())
+  window.MAM_SOTTO = function () {
+    try { var r = (typeof regDiSeq === "function") ? regDiSeq() : null;
+      return { reg: SOTTO_ARCH.reg, n: SOTTO_ARCH.pezzi.length, caricando: SOTTO_ARCH.caricando, acceso: SOTTO_ARCH.acceso, seqReg: r ? r.id : null, REG: REG ? REG.id : null,
+               pezzi: (typeof montaggio === "function") ? montaggio().length : null, st: el("tlST") ? el("tlST").children.length : -1 }; } catch (e) { return "ERR " + e.message; }
+  };
   window.MAM_AUDIO = function () {
     var a = el("player"), p = el("programma");
     var suoni = Object.keys(SUONI || {}).map(function (n) { var s = SUONI[n]; return { traccia: n, paused: !s.el || s.el.paused, muted: s.el && s.el.muted, vol: s.el && s.el.volume, src: s.el && String(s.el.currentSrc || s.el.src || "").slice(-50), id: s.id }; });
@@ -4787,6 +4810,111 @@
     conta();
   }
 
+  // ── LA TRACCIA DEI SOTTOTITOLI ──
+  // Le righe della telecronaca che cadono dentro i pezzi, messe nel punto
+  // della timeline dove usciranno: stessa aritmetica dei pezzi. Si
+  // disegnano appena la telecronaca e' caricata, accesi o no i sottotitoli
+  // sul monitor: la traccia e' materiale, non anteprima.
+  function caricaSottoDi(regId, poi) {
+    if (!regId) return;
+    manda({ tipo: "clip-parlato", reg: regId }).then(function (d) {
+      SOTTO_ARCH.pezzi = d.pezzi || []; SOTTO_ARCH.reg = regId;
+      SOTTO_ARCH.lingua = (SOTTO_ARCH.pezzi[0] && SOTTO_ARCH.pezzi[0].l) || d.lingua || "it";
+      disegnaTimeline();
+      if (poi) poi(d);
+    }).catch(function () { if (poi) poi(null); });
+  }
+  function testoSottoDi(s) {
+    var sua = s.l || SOTTO_ARCH.lingua || "it", m = SOTTO_ARCH.mostra || "it";
+    if (m === sua || m === "entrambe") return s.x || "";
+    return (s.y && s.ya === m) ? s.y : (s.x || "");
+  }
+  function disegnaTracciaSotto(X, f, largo, pz) {
+    var st = el("tlST"); if (!st) return;
+    var r = regDiSeq();
+    // si carica anche senza una partita aperta nella Sorgente: la traccia
+    // e' della sequenza. Se nella Sorgente c'e' un'altra partita, vince lei.
+    if (r && (!REG || r.id === REG.id) && SOTTO_ARCH.reg !== r.id && !SOTTO_ARCH.caricando && pz.length) {
+      SOTTO_ARCH.caricando = true;
+      caricaSottoDi(r.id, function () { SOTTO_ARCH.caricando = false; });
+    }
+    var os = [];
+    if (r && SOTTO_ARCH.reg === r.id && SOTTO_ARCH.pezzi.length) {
+      var acc = 0;
+      pz.forEach(function (x) {
+        var d = x.fuori - x.dentro, a;
+        if (SEQ && SEQ.libera) a = x.t0 || 0; else { a = acc; acc += d; }
+        if (x.vivo) return;
+        SOTTO_ARCH.pezzi.forEach(function (s) {
+          if (s.b <= x.dentro || s.a >= x.fuori) return;
+          var sa = a + Math.max(0, s.a - x.dentro), sb = a + Math.min(d, s.b - x.dentro);
+          if (sb < f.a || sa > f.b) return;
+          var xa = Math.max(0, X(sa)), xb = Math.min(largo, X(sb));
+          var t = testoSottoDi(s);
+          os.push('<div class="clipS' + (s.m ? " mod" : "") + '" data-k="' + s.k + '" style="left:' + xa + 'px;width:' + Math.max(4, xb - xa) +
+                  'px" title="' + pulito(t).replace(/"/g, "&quot;") + (s.m ? " (corretta a mano)" : "") + '"><span class="tt">' + pulito(t) + '</span></div>');
+        });
+      });
+    }
+    st.innerHTML = os.join("");
+    st.classList.toggle("vuota", !os.length);
+  }
+  // L'EDITOR DI UNA RIGA: entrata, uscita, testo nella lingua parlata e
+  // nella traduzione. Salva scrive nella telecronaca (segno "corretta a
+  // mano"): da li' escono srt, impressi e telecronaca intera.
+  function daTcSotto(t, fallback) {
+    var p = String(t || "").trim().split(":").map(function (x) { return parseFloat(x) || 0; });
+    if (!p.length || !String(t || "").trim()) return fallback;
+    if (p.length === 4) return p[0] * 3600 + p[1] * 60 + p[2] + p[3] / FPS;
+    if (p.length === 3) return p[0] * 3600 + p[1] * 60 + p[2];
+    if (p.length === 2) return p[0] * 60 + p[1];
+    return p[0];
+  }
+  function apriEditorSotto(k, altrove) {
+    var x = SOTTO_ARCH.pezzi.filter(function (z) { return z.k === k; })[0] || (altrove || []).filter(function (z) { return z.k === k; })[0];
+    if (!x) return dice("Riga non trovata: ricarica la telecronaca.");
+    var reg = SOTTO_ARCH.reg || (REG && REG.id); if (!reg) return;
+    var vecchio = el("editSotto"); if (vecchio) vecchio.remove();
+    var sua = x.l || SOTTO_ARCH.lingua || "it", altra = sua === "it" ? "en" : "it";
+    var box = document.createElement("div"); box.className = "foglio"; box.id = "editSotto";
+    var campo = function (l) {
+      var mio = l === sua, val = mio ? (x.x || "") : (x.y && x.ya === l ? x.y : "");
+      return '<label class="largo">' + (l === "it" ? "Italiano" : "Inglese") + (mio ? " \u00b7 parlato" : " \u00b7 traduzione") +
+             '<textarea id="es_' + l + '" class="' + l + '" placeholder="' + (mio ? "quello che si dice" : "vuoto = si traduce da sola") + '">' + pulito(val) + '</textarea></label>';
+    };
+    box.innerHTML = '<div><header><b>Sottotitolo</b><span>' + tc(x.a) + ' \u2192 ' + tc(x.b) + (x.m ? " \u00b7 corretta a mano" : "") + '</span><a href="#" id="esChiudi">chiudi</a></header>' +
+      '<div class="editSotto">' +
+      '<label>Entrata (partita)<input id="esA" value="' + tc(x.a) + '"></label>' +
+      '<label>Uscita<input id="esB" value="' + tc(x.b) + '"></label>' +
+      campo("it") + campo("en") +
+      '</div><footer><button class="b" id="esElimina">Elimina</button><button class="b" id="esDopo" title="una riga nuova subito dopo questa">+ Nuova dopo</button>' +
+      '<span style="flex:1"></span><button class="b" id="esAnnulla">Annulla</button><button class="b oro" id="esSalva">Salva</button></footer></div>';
+    document.body.appendChild(box);
+    var via = function (e) { if (e) e.preventDefault(); box.remove(); };
+    var poi = function (f2) { caricaSottoDi(reg, function () { if (f2) f2(); }); };
+    box.addEventListener("click", function (e) { if (e.target === box) via(); });
+    el("esChiudi").addEventListener("click", via); el("esAnnulla").addEventListener("click", via);
+    el("esSalva").addEventListener("click", function () {
+      var c = { tipo: "clip-parlato-modifica", reg: reg, k: x.k,
+                a: daTcSotto(el("esA").value, x.a), b: daTcSotto(el("esB").value, x.b),
+                x: el("es_" + sua).value, y: el("es_" + altra).value };
+      manda(c).then(function () { via(); poi(); dice("Sottotitolo salvato.", true); }).catch(function (e) { dice(e.message); });
+    });
+    el("esElimina").addEventListener("click", function () {
+      if (!confirm("Togliere questa riga dalla telecronaca?")) return;
+      manda({ tipo: "clip-parlato-modifica", reg: reg, k: x.k, cancella: true }).then(function () { via(); poi(); }).catch(function (e) { dice(e.message); });
+    });
+    el("esDopo").addEventListener("click", function () {
+      manda({ tipo: "clip-parlato-modifica", reg: reg, nuova: true, a: x.b + 0.1, b: x.b + 3.1, l: sua })
+        .then(function (d) { via(); poi(function () { apriEditorSotto(d.pezzo.k); }); }).catch(function (e) { dice(e.message); });
+    });
+    el("es_" + sua).focus();
+  }
+  function nuovaRigaSotto(t) {
+    var reg = SOTTO_ARCH.reg || (REG && REG.id); if (!reg) return dice("Apri prima una partita.");
+    manda({ tipo: "clip-parlato-modifica", reg: reg, nuova: true, a: t, b: t + 3, l: SOTTO_ARCH.lingua || "it" })
+      .then(function (d) { caricaSottoDi(reg, function () { apriEditorSotto(d.pezzo.k); }); }).catch(function (e) { dice(e.message); });
+  }
   function disegnaTimeline() {
     var p = el("tlPista"), rig = el("tlRighello"), v1 = el("tlV1"), a1 = el("tlA1"), v2 = el("tlV2"); if (!p || !rig) return;
     var pz = montaggio(), tot = durataMontaggio(), largo = p.clientWidth || 900;
@@ -4897,6 +5025,7 @@
       v2.innerHTML = og.join("");
       v2.classList.toggle("vuota", !og.length);
     }
+    disegnaTracciaSotto(X, f, largo, pz);
 
     var ins = el("tlIns");
     if (TL.ins !== null) {
@@ -6847,8 +6976,9 @@
             var i = (x.x || "").toLowerCase().indexOf(cerca);
             if (i >= 0) t = pulito(x.x.slice(0, i)) + "<em>" + pulito(x.x.slice(i, i + cerca.length)) + "</em>" + pulito(x.x.slice(i + cerca.length));
           }
-          return '<div class="riga' + (/\bgol\b|\brete\b|goool/i.test(x.x || "") ? " gol" : "") +
-                 '" data-t="' + x.a + '"><b>' + tc(x.a).slice(0, 8) + '</b><span>' + t + '</span></div>';
+          return '<div class="riga' + (/\bgol\b|\brete\b|goool/i.test(x.x || "") ? " gol" : "") + (x.m ? " mod" : "") +
+                 '" data-t="' + x.a + '" data-k="' + (x.k || "") + '"><b>' + tc(x.a).slice(0, 8) + '</b><span>' + t + '</span>' +
+                 '<i class="modifica" title="correggi questa riga" style="cursor:pointer;margin-left:8px;color:#C9A24B;font-style:normal">\u270e</i></div>';
         }).join("");
         el("telTesto").innerHTML = corpo || '<div class="vuoto2">Nessuna riga con quella parola.</div>';
         el("telConto").textContent = dentro.length + " righe" + (cerca ? " di " + pezzi.length : "");
@@ -6856,7 +6986,7 @@
       box.innerHTML = '<div><header><b>Telecronaca</b><span>' +
         (pezzi.length ? pezzi.length + " righe · " + tc(pezzi[pezzi.length - 1].b).slice(0, 8) + " di parlato"
                       : "non ancora trascritta") +
-        '</span><a href="#" id="telCinque">trascrivi 5 minuti da qui</a>' +
+        '</span><a href="#" id="telRiga" title="una riga nuova al secondo in cui sei nella Sorgente">+ riga qui</a><a href="#" id="telCinque">trascrivi 5 minuti da qui</a>' +
         '<a href="#" id="telTutta">tutta la partita</a><a href="#" id="telChiudi">chiudi</a></header>' +
         '<div class="cerca"><input id="telCerca" placeholder="cerca una parola: un cognome, \u201cgol\u201d, \u201crigore\u201d\u2026">' +
         '<span id="telConto"></span></div>' +
@@ -6864,9 +6994,14 @@
       document.body.appendChild(box);
       disegna("");
       el("telCerca").addEventListener("input", function () { disegna(this.value); });
+      el("telRiga").addEventListener("click", function (e) {
+        e.preventDefault(); var v0 = el("player");
+        nuovaRigaSotto(Math.max(0, v0 ? v0.currentTime : 0));
+      });
       el("telTesto").addEventListener("click", function (e) {
         var r2 = e.target.closest ? e.target.closest(".riga") : null;
         if (!r2) return;
+        if (e.target.closest && e.target.closest(".modifica")) { apriEditorSotto(r2.dataset.k, pezzi); return; }
         var v = el("player"); if (!v) return;
         seguiLive = false;
         try { v.currentTime = Math.max(0, parseFloat(r2.dataset.t) - 2); } catch (x) {}
@@ -7273,13 +7408,8 @@
     // mentre il video scorre: la riga che copre il secondo in cui sei. Nella
     // lingua scelta; se e' l'altra, si chiede al ponte di tradurre tutta la
     // partita in sottofondo e si mostra man mano.
-    function caricaSottoArch(poi) {
-      if (!REG) return;
-      manda({ tipo: "clip-parlato", reg: REG.id }).then(function (d) {
-        SOTTO_ARCH.pezzi = d.pezzi || []; SOTTO_ARCH.reg = REG.id;
-        SOTTO_ARCH.lingua = (SOTTO_ARCH.pezzi[0] && SOTTO_ARCH.pezzi[0].l) || d.lingua || "it";
-        if (poi) poi(d);
-      }).catch(function () {});
+    function caricaSottoArch(poi, regId) {
+      caricaSottoDi(regId || (REG && REG.id), function (d) { if (d && poi) poi(d); });
     }
     function traduciSottoArch() {
       var verso = SOTTO_ARCH.mostra === "entrambe" ? (SOTTO_ARCH.lingua === "it" ? "en" : "it") : SOTTO_ARCH.mostra;
@@ -7298,7 +7428,7 @@
     function sottoAlSecondo(t) {
       var p = null;
       for (var i = 0; i < SOTTO_ARCH.pezzi.length; i++) { var x = SOTTO_ARCH.pezzi[i]; if (t >= x.a - 0.3 && t < x.b + 0.8) { p = x; break; } }
-      var out = { it: "", en: "" };
+      var out = { it: "", en: "", p: p };
       if (!p) return out;
       var sua = p.l || SOTTO_ARCH.lingua || "it", altra = sua === "it" ? "en" : "it";
       var tradotta = (p.y && p.ya === altra) ? p.y : "";
@@ -7330,6 +7460,7 @@
         if (bp) bp.hidden = true; return;
       }
       var s = sottoAlSecondo(v.currentTime || 0);
+      SOTTO_ARCH.ultimaS = s.p;
       vestiSotto(box, el("sottoX"), el("sottoY"), s.it, s.en);
       // IL PROGRAMMA: la testina sta su un pezzo, e il pezzo su un secondo
       // della partita. Le stesse righe, nel punto dove cadranno nel montato:
@@ -7340,10 +7471,26 @@
       var tReg = x.dentro + Math.max(0, (vp.currentTime || 0) - (PROG.da || 0));
       if (tReg > x.fuori + 0.5) { bp.hidden = true; return; }
       var sp = sottoAlSecondo(tReg);
+      SOTTO_ARCH.ultimaP = sp.p;
       bp.hidden = false;
       vestiSotto(bp, el("sottoPit"), el("sottoPen"), sp.it, sp.en);
     }
     setInterval(disegnaSottoArch, 400);
+    if (el("tlST")) {
+      el("tlST").addEventListener("mousedown", function (e) { if (e.target.closest && e.target.closest(".clipS")) e.stopPropagation(); });
+      el("tlST").addEventListener("click", function (e) {
+        var b = e.target.closest ? e.target.closest(".clipS") : null;
+        if (b) { e.stopPropagation(); apriEditorSotto(b.dataset.k); }
+      });
+    }
+    // la riga sotto il video si clicca e si corregge, in Sorgente e in Programma
+    [["sottotitoli", "ultimaS"], ["sottoP", "ultimaP"]].forEach(function (c) {
+      var box = el(c[0]); if (!box) return;
+      box.addEventListener("click", function (e) {
+        var x = SOTTO_ARCH[c[1]]; if (!x || !x.k) return;
+        e.stopPropagation(); apriEditorSotto(x.k);
+      });
+    });
     if (el("btnSotto")) el("btnSotto").addEventListener("click", function () {
       if (MODO === "archivio") {
         if (!REG) return dice("Apri prima una partita.");
