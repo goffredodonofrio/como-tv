@@ -688,6 +688,12 @@
           <select id="radioNomeSel" style="flex:1"></select>
         </div>
 
+        <!-- il campetto che segue la partita: attrezzo del banco, non va in onda -->
+        <div class="svuotabox" style="align-items:center">
+          <button type="button" id="btnCampetto">&#9917; Campetto in diretta</button>
+          <span>Le due squadre sul campo, il pallone che segue le giocate di ESPN e le curiosità sui
+            giocatori. È per chi racconta la partita: <b>non va in onda</b>.</span>
+        </div>
         <!-- Fine partita: il pannello resta pieno di quella prima. -->
         <div class="svuotabox">
           <button type="button" id="btnSvuota">&#10005; Svuota partita</button>
@@ -701,10 +707,19 @@
 
 </div>
 
+<!-- il campetto in diretta sta FUORI dai pannelli del banco: quelli si
+     chiudono quando la partita non e' impostata, e il campo restava alto zero -->
+<div id="campettoBox" style="display:none;max-width:1500px;margin:0 auto 30px;padding:0 clamp(14px,2.4vw,26px)">
+  <div id="campettoCampo"></div>
+</div>
+
 <script src="scavalco.js"></script>
 <script src="redazione.js"></script>
 <!-- le rose delle giovanili del Como, per gol, cambi e cartellini -->
 <script src="giovanili.js"></script>
+<!-- il campetto in diretta: lo stesso della Lavagna, qui con la partita vera -->
+<script src="competizioni-espn.js"></script>
+<script src="lavagna.js"></script>
 <script>
 (function () {
   "use strict";
@@ -2548,6 +2563,33 @@
     .catch(function () {});
   dipingi();
   elencoLoghi();
+
+  // ── IL CAMPETTO IN DIRETTA ───────────────────────────────────────────
+  // Lo stesso campetto della Lavagna (lavagna.js), qui col tasto Diretta:
+  // si sceglie la partita di ESPN e il pallone comincia a muoversi dove sta
+  // l'azione, accendendo chi tocca. Le squadre e le rose sono quelle del
+  // banco, quindi funziona anche prima di agganciare ESPN. Non manda niente
+  // in onda: e' un attrezzo per chi racconta.
+  var CAMPETTO = null;
+  function datiCampetto(lato) {
+    var sq = S[lato === "A" ? "casa" : "osp"] || {};
+    var rosa = rosaDi(lato === "A" ? "casa" : "osp").map(function (p, i) {
+      return { pid: (p.cognome || "") + "-" + (p.num || i), num: p.num || "",
+               nome: p.nome || "", cognome: p.cognome || "" };
+    });
+    return { nome: sq.n || (lato === "A" ? "Casa" : "Ospite"), col: sq.col || (lato === "A" ? "#2E6BE6" : "#E0312B"),
+             rosa: rosa, titolari: rosa.slice(0, 11) };
+  }
+  el("btnCampetto").addEventListener("click", function () {
+    var box = el("campettoBox");
+    if (!window.Lavagna) { msg.textContent = "Campetto non caricato."; return; }
+    if (box.style.display === "block") { box.style.display = "none"; return; }
+    if (!CAMPETTO) CAMPETTO = Lavagna.monta(el("campettoCampo"), { diretta: true });
+    CAMPETTO.carica({ A: datiCampetto("A"), B: datiCampetto("B") });
+    box.style.display = "block";
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
 })();
 </script>
 <script src="dev.js"></script>

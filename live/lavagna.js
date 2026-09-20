@@ -70,6 +70,19 @@ window.Lavagna = (function () {
       ".lav .lato{flex:0 0 300px;display:flex;flex-direction:column;gap:10px;min-width:0;}" +
       ".lav .lato .col{flex:1 1 0;overflow:auto;}" +
       "@media (max-width:1100px){.lav .fianco{flex-wrap:wrap}.lav .lato{flex:1 1 100%;flex-direction:row}}" +
+      ".lav .segui{align-items:center;}" +
+      ".lav .segui select{padding:7px 9px;border-radius:7px;background:rgba(245,241,230,.06);" +
+      "  border:1px solid rgba(245,241,230,.16);color:var(--lav-avorio);font-family:'DM Sans',sans-serif;" +
+      "  font-size:12.5px;max-width:260px;}" +
+      ".lav .segui select option{background:#141B3C;color:var(--lav-avorio);}" +
+      ".lav .segui b{font-family:'Mazzard',sans-serif;font-size:10.5px;letter-spacing:.16em;" +
+      "  text-transform:uppercase;color:#FF8A8C;}" +
+      ".lav .segui .nota{flex:1 1 220px;font-size:11.5px;}" +
+      ".lav .diretta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;padding:8px 12px;" +
+      "  border-radius:9px;background:rgba(229,27,32,.10);border:1px solid rgba(229,27,32,.45);font-size:13px;}" +
+      ".lav .diretta b{font-family:'Mazzard',sans-serif;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#FF8A8C;}" +
+      ".lav .diretta .punteggio{font-family:'Mazzard',sans-serif;font-weight:800;font-size:17px;color:var(--lav-avorio);}" +
+      ".lav .diretta .azione{color:#D8D2C2;flex:1 1 220px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}" +
       ".lav .campoBox{position:relative;width:100%;aspect-ratio:16/9;border-radius:12px;overflow:hidden;" +
       "  border:1px solid rgba(201,162,75,.28);background:#0B5A2E;touch-action:none;}" +
       ".lav .campoBox svg{position:absolute;inset:0;width:100%;height:100%;display:block;}" +
@@ -136,8 +149,22 @@ window.Lavagna = (function () {
         '<button type="button" data-az="stampa">&#128424; Stampa</button>' +
         (opz.salva ? '<span class="sep"></span><span data-salva="1"></span>' : "") +
       '</div>' +
+      // seguire una partita vera: la scelta sta qui dentro, cosi' vale in
+      // tutte le case della lavagna (pagina, Formazioni, banco partita)
+      // la riga della diretta esce solo dove serve (il banco partita): la
+      // lavagna della telecronaca resta un attrezzo a mano
+      (!opz.diretta ? "" :
+      '<div class="barra segui">' +
+        '<b>Diretta</b>' +
+        '<select data-d="comp"><option value="">— competizione —</option></select>' +
+        '<select data-d="part" disabled><option value="">— partita —</option></select>' +
+        '<button type="button" data-az="segui" disabled>&#128308; Segui</button>' +
+        '<button type="button" data-az="fermaDiretta">Stacca</button>' +
+        '<span class="nota" data-dnota="1" style="margin:0">Il pallone segue le giocate di ESPN, col suo ritardo (circa un minuto). Le giovanili ESPN non le ha.</span>' +
+      '</div>') +
       // il campo e, DI FIANCO, le due rose: si pesca da li' mentre si guarda
       // il campo, senza scorrere la pagina
+      '<div class="diretta" data-diretta="1" style="display:none"></div>' +
       '<div class="fianco">' +
         '<div class="campoBox"><svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg"></svg></div>' +
         '<div class="lato">' +
@@ -643,6 +670,216 @@ window.Lavagna = (function () {
       disegnaRose(); disegnaCurio();
     }
 
+    // ── LA DIRETTA ──────────────────────────────────────────────────────
+    // ESPN non pubblica il tracciamento dei giocatori: nessuno lo fa
+    // gratis. Pubblica pero' ogni GIOCATA con le sue coordinate — passaggi,
+    // contrasti, tiri — e da li' si ricava dove sta il pallone e chi lo sta
+    // toccando. Il campetto quindi si muove davvero, col ritardo di ESPN
+    // (circa un minuto) e a scatti di giocata, non a 25 fotogrammi.
+    //
+    // Le coordinate sono girate per chi attacca (x 100 = porta avversaria,
+    // y 100 = la sua sinistra): qui si rimettono sul campo vero, dove la
+    // squadra di casa attacca verso destra.
+    var DIR = null, gPalla = null;
+    function pallaEl() {
+      if (gPalla && gPalla.parentNode) return gPalla;
+      gPalla = ns("g", { "class": "palla", style: "transition:transform .45s cubic-bezier(.3,.8,.4,1)" }, gPedine);
+      ns("circle", { cx: 0, cy: 0, r: 15, fill: "#F5F1E6", stroke: "#06301A", "stroke-width": 3 }, gPalla);
+      ns("circle", { cx: 0, cy: 0, r: 5.5, fill: "#0A0F24" }, gPalla);
+      return gPalla;
+    }
+    function postoDi(x, y, casa) {
+      // casa attacca verso destra; l'ospite ha tutto specchiato
+      var X = casa ? x / 100 * W : (1 - x / 100) * W;
+      var Y = casa ? (1 - y / 100) * H : y / 100 * H;
+      return { x: Math.max(12, Math.min(W - 12, X)), y: Math.max(12, Math.min(H - 12, Y)) };
+    }
+    function accendi(idAtleta) {
+      PEDINE.forEach(function (p) {
+        var c = p.g.querySelector(".disco");
+        if (!c) return;
+        var mio = idAtleta && String(p.pid) === String(idAtleta);
+        c.setAttribute("stroke", mio ? "#F5B91E" : (p === SCELTO ? "#E3C271" : (p.mister ? "#E3C271" : "#F5F1E6")));
+        c.setAttribute("stroke-width", mio ? 7 : (p === SCELTO ? 6 : 3));
+      });
+    }
+    function striscia(t) {
+      var d = box.querySelector("[data-diretta]");
+      if (!t) { d.style.display = "none"; d.innerHTML = ""; return; }
+      d.style.display = "flex";
+      d.innerHTML = t;
+    }
+    function giocateDi(lega, ev) {
+      var base = "https://sports.core.api.espn.com/v2/sports/soccer/leagues/" + lega +
+                 "/events/" + ev + "/competitions/" + ev + "/plays?limit=1000";
+      return fetch(base).then(function (r) { return r.json(); }).then(function (j) {
+        if ((j.pageCount || 1) < 2) return j.items || [];
+        return fetch(base + "&page=" + j.pageCount).then(function (r) { return r.json(); })
+          .then(function (k) { return k.items || []; });
+      });
+    }
+    function seguiPartita(opz) {
+      fermaPartita();
+      DIR = { lega: opz.lega, ev: opz.event, casa: opz.casa || "", visti: {}, coda: [], vistiEventi: {} };
+      striscia('<b>Diretta</b> <span class="azione">mi collego…</span>');
+      giro();
+      DIR.timer = setInterval(giro, 15000);
+      // le giocate in coda si consumano piano, cosi' il pallone si muove
+      DIR.passo = setInterval(function () {
+        if (!DIR || !DIR.coda.length) return;
+        var g = DIR.coda.shift();
+        var q = postoDi(g.x, g.y, g.casa);
+        pallaEl().style.transform = "translate(" + Math.round(q.x) + "px," + Math.round(q.y) + "px)";
+        accendi(g.atleta);
+        striscia('<b>Diretta</b> <span class="punteggio">' + esc(DIR.punteggio || "") + '</span>' +
+                 '<span>' + esc(DIR.minuto || "") + "</span>" +
+                 '<span class="azione">' + esc(g.testo || "") + "</span>" +
+                 '<button type="button" data-az="fermaDiretta">Stacca</button>');
+      }, 900);
+    }
+    function fermaPartita() {
+      if (!DIR) return;
+      clearInterval(DIR.timer); clearInterval(DIR.passo);
+      DIR = null; striscia("");
+      accendi(null);
+      if (gPalla && gPalla.parentNode) { gPalla.parentNode.removeChild(gPalla); gPalla = null; }
+    }
+    function giro() {
+      if (!DIR) return;
+      var D = DIR;
+      fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + D.lega + "/summary?event=" + D.ev)
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (DIR !== D) return;
+          var c = ((j.header || {}).competitions || [])[0] || {};
+          var chi = c.competitors || [];
+          var casa = chi.filter(function (x) { return x.homeAway === "home"; })[0] || {};
+          var osp = chi.filter(function (x) { return x.homeAway === "away"; })[0] || {};
+          D.casaId = String((casa.team || {}).id || "");
+          D.punteggio = ((casa.team || {}).shortDisplayName || "") + " " + (casa.score || 0) + " - " +
+                        (osp.score || 0) + " " + ((osp.team || {}).shortDisplayName || "");
+          D.minuto = ((c.status || {}).type || {}).detail || "";
+          // i cambi di ESPN diventano i nostri, una volta sola ciascuno
+          (j.keyEvents || []).forEach(function (e) {
+            var k = e.id || ((e.clock || {}).displayValue + (e.type || {}).text + ((e.athletesInvolved || [])[0] || {}).id);
+            if (D.vistiEventi[k]) return;
+            D.vistiEventi[k] = 1;
+            if (!/substitution/i.test((e.type || {}).text || "")) return;
+            var lato = String(((e.team || {}).id || "")) === D.casaId ? "A" : "B";
+            var dentro = (e.athletesInvolved || [])[0], fuori = (e.athletesInvolved || [])[1];
+            if (!dentro || !fuori) return;
+            var p = inCampo(lato, String(fuori.id));
+            var g = { pid: String(dentro.id), num: dentro.jersey || "", nome: "",
+                      cognome: (dentro.displayName || "").split(" ").pop() };
+            CAMBI.push({ lato: lato, dentro: (g.num ? g.num + " " : "") + g.cognome,
+                         fuori: (fuori.jersey ? fuori.jersey + " " : "") + (fuori.displayName || "").split(" ").pop() });
+            if (p) { var x = p.x, y = p.y; togli(p); metti(lato, g, x, y); }
+            disegnaRose(); disegnaCurio();
+          });
+        })
+        .catch(function () {});
+      giocateDi(D.lega, D.ev).then(function (tutte) {
+        if (DIR !== D) return;
+        var nuove = tutte.filter(function (g) {
+          return g.id && !D.visti[g.id] && g.fieldPositionX != null && g.fieldPositionY != null;
+        });
+        nuove.forEach(function (g) { D.visti[g.id] = 1; });
+        // al primo giro si parte dall'ultima, non da tutta la partita
+        if (!D.partito) { D.partito = 1; nuove = nuove.slice(-1); }
+        nuove.forEach(function (g) {
+          var idSq = ((g.team || {}).$ref || "").match(/teams\/(\d+)/);
+          var atl = ((((g.participants || [])[0] || {}).athlete || {}).$ref || "").match(/athletes\/(\d+)/);
+          D.coda.push({ x: g.fieldPositionX, y: g.fieldPositionY,
+                        casa: idSq ? idSq[1] === D.casaId : true,
+                        atleta: atl ? atl[1] : "",
+                        testo: ((g.clock || {}).displayValue || "") + " · " + (g.text || (g.type || {}).text || "") });
+        });
+        if (D.coda.length > 40) D.coda = D.coda.slice(-40);
+      }).catch(function () {});
+    }
+    box.addEventListener("click", function (ev) {
+      var b = ev.target.closest ? ev.target.closest('[data-az="fermaDiretta"]') : null;
+      if (b) fermaPartita();
+    });
+
+    // ── scegliere la partita da seguire ─────────────────────────────────
+    var selC = box.querySelector('[data-d="comp"]'), selP = box.querySelector('[data-d="part"]');
+    function dnota(t) { var n = box.querySelector("[data-dnota]"); if (n) n.innerHTML = t; }
+    if (selC) {
+      if (window.CompetizioniEspn) CompetizioniEspn.riempi(selC);
+      selC.addEventListener("change", function () {
+        selP.innerHTML = '<option value="">—</option>'; selP.disabled = true;
+        box.querySelector('[data-az="segui"]').disabled = true;
+        if (!this.value) return;
+        var d = new Date();
+        var g = d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
+        dnota("Cerco le partite di oggi&hellip;");
+        fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + this.value + "/scoreboard?dates=" + g)
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            var ev = (j.events || []).map(function (e) {
+              var st = ((e.competitions[0] || {}).status || {}).type || {};
+              return { id: e.id, nome: e.name, stato: st.detail || "", viva: st.state === "in" };
+            });
+            selP.innerHTML = ev.length
+              ? '<option value="">— ' + ev.length + " oggi —</option>" + ev.map(function (x) {
+                  return '<option value="' + esc(x.id) + '">' + (x.viva ? "\u25CF " : "") + esc(x.nome) + " · " + esc(x.stato) + "</option>";
+                }).join("")
+              : '<option value="">— oggi niente —</option>';
+            selP.disabled = !ev.length;
+            dnota(ev.length ? "Scegli la partita e premi <b>Segui</b>." : "Oggi in questa competizione non si gioca.");
+          })
+          .catch(function () { dnota("ESPN non risponde."); });
+      });
+      selP.addEventListener("change", function () {
+        box.querySelector('[data-az="segui"]').disabled = !this.value;
+      });
+      box.addEventListener("click", function (ev) {
+        var b = ev.target.closest ? ev.target.closest('[data-az="segui"]') : null;
+        if (!b) return;
+        var lega = selC.value, id = selP.value;
+        if (!lega || !id) return;
+        dnota("Prendo le formazioni&hellip;");
+        fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + lega + "/summary?event=" + id)
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            var c = ((j.header || {}).competitions || [])[0] || {}, chi = c.competitors || [];
+            var casa = chi.filter(function (x) { return x.homeAway === "home"; })[0] || {};
+            var osp = chi.filter(function (x) { return x.homeAway === "away"; })[0] || {};
+            function undici(idSq) {
+              var r = (j.rosters || []).filter(function (x) { return String((x.team || {}).id) === String(idSq); })[0];
+              return ((r || {}).roster || []).map(function (x) {
+                var a = x.athlete || {};
+                return { pid: String(a.id), num: x.jersey || a.jersey || "", nome: "",
+                         cognome: (a.displayName || "").split(" ").pop(), titolare: !!x.starter };
+              });
+            }
+            var rA = undici((casa.team || {}).id), rB = undici((osp.team || {}).id);
+            // i colori delle due squadre li dice ESPN: se sono troppo simili
+            // (due squadre in blu) al secondo si da' il suo colore di riserva
+            function tinta(t, dif) {
+              var c = "#" + String((t || {}).color || "").replace("#", "");
+              if (c.length !== 7) c = dif;
+              return c;
+            }
+            var cA = tinta(casa.team, "#2E6BE6"), cB = tinta(osp.team, "#E0312B");
+            if (cA.toLowerCase() === cB.toLowerCase()) cB = "#" + (String((osp.team || {}).alternateColor || "").replace("#", "") || "E0312B");
+            if (rA.length || rB.length) {
+              ricorda();
+              carica({
+                A: { nome: (casa.team || {}).displayName || "Casa", col: cA, rosa: rA,
+                     titolari: rA.filter(function (x) { return x.titolare; }), mod: SQ.A.mod, all: SQ.A.all },
+                B: { nome: (osp.team || {}).displayName || "Ospite", col: cB, rosa: rB,
+                     titolari: rB.filter(function (x) { return x.titolare; }), mod: SQ.B.mod, all: SQ.B.all }
+              });
+            }
+            seguiPartita({ lega: lega, event: id });
+            dnota("In diretta. <b>Stacca</b> per fermare.");
+          })
+          .catch(function () { dnota("Partita non caricata."); });
+      });
+    }
+
     // Cmd/Ctrl+Z ovunque nella pagina, ma non mentre si scrive una
     // curiosita': li' l'annullamento e' quello del testo.
     document.addEventListener("keydown", function (ev) {
@@ -656,7 +893,7 @@ window.Lavagna = (function () {
 
     disegnaRose(); disegnaCurio();
     return { carica: carica, stato: stato, riapri: riapri, schiera: schiera, nota: nota,
-             annulla: annulla, rifai: rifai,
+             annulla: annulla, rifai: rifai, segui: seguiPartita, stacca: fermaPartita,
              barraSalva: box.querySelector("[data-salva]"), moduli: Object.keys(MODULI) };
   }
 
