@@ -5881,6 +5881,13 @@
           'un paio di minuti per minuto di video</label>' +
         '<div class="nota">Il verticale e le grafiche ricodificano comunque.</div></td></tr>' +
       '<tr class="soloSeq"><td>Anche</td><td><label><input type="checkbox" id="expXml"> XML per Premiere</label></td></tr>' +
+      '<tr><td>Sottotitoli</td><td><select id="expSotto">' +
+        '<option value="">nessuno</option>' +
+        '<option value="srt">file SRT a parte, in sync col taglio (si importa in Premiere)</option>' +
+        '<option value="video">impressi nel video (burn-in)</option>' +
+        '<option value="entrambi">impressi nel video + file SRT</option></select> ' +
+        '<select id="expSottoL"><option value="it"' + (SOTTO_ARCH.mostra !== "en" ? " selected" : "") + '>ITA</option><option value="en"' + (SOTTO_ARCH.mostra === "en" ? " selected" : "") + '>ENG</option></select>' +
+        '<div class="nota">Dalla telecronaca trascritta (Telecronaca \u2192 trascrivi). Con i sottotitoli si taglia esatto, se no non stanno a tempo.</div></td></tr>' +
       '<tr><td>Audio</td><td>stereo AAC 160k (si apre ovunque)</td></tr>' +
       '<tr><td>Destinazione</td><td><select id="expDove">' +
         '<option value="scarica">scarica sul computer appena pronto</option>' +
@@ -5920,17 +5927,22 @@
       var dove = el("expDove") ? el("expDove").value : "qui";
       if (tipo === "sequenza" && SEQ && dove !== "qui") ASPETTO[SEQ.id] = dove;
       var titolo = el("expNome").value.trim();
+      var sotto = el("expSotto") ? el("expSotto").value : "", sottoL = el("expSottoL") ? el("expSottoL").value : "it";
       if (tipo === "clip") {
         var preciso = box.querySelector('input[name="expQ"]:checked').value === "preciso";
         var giri = formati.map(function (f) {
-          return manda({ tipo: "clip-taglia", reg: REG.id, dentro: dentro, fuori: fuori, formato: f, preciso: preciso || f !== "16:9", titolo: titolo });
+          return manda({ tipo: "clip-taglia", reg: REG.id, dentro: dentro, fuori: fuori, formato: f, preciso: preciso || f !== "16:9", titolo: titolo,
+                         sotto: sotto, sottoLingua: sottoL });
         });
         Promise.all(giri).then(function () { dentro = null; fuori = null; mostraInOut(); aggiorna().then(function () { apriUscite(true); }); })
           .catch(function (e) { dice(e.message); });
       } else {
         var corpo = formati.length > 1 ? { tipo: "clip-hl-esporta", seq: SEQ.id, formati: formati, esatto: esatto } : { tipo: "clip-hl-esporta", seq: SEQ.id, formato: formati[0], esatto: esatto };
+        corpo.sotto = sotto; corpo.sottoLingua = sottoL;
         var p = manda(corpo);
         if (el("expXml") && el("expXml").checked) p = p.then(function () { return manda({ tipo: "clip-hl-esporta", seq: SEQ.id, come: "premiere" }); });
+        // l'XML porta i pezzi in Premiere: l'srt della sequenza gli va a fianco
+        if (el("expXml") && el("expXml").checked && (sotto === "srt" || sotto === "entrambi")) p = p.then(function () { return manda({ tipo: "clip-hl-srt", seq: SEQ.id, lingua: sottoL }); });
         p.then(function () { aggiorna().then(function () { apriUscite(true); }); })
          .catch(function (e) { dice(e.message); });
       }
@@ -5957,6 +5969,7 @@
         (pronta ? "completato" : errore ? "errore: " + pulito(c.errore || "") : "in lavorazione \u00b7 " + Math.round((c.avanza || 0) * 100) + "%") + '</small>' +
         (pronta || errore ? "" : '<span class="barraAv"><i style="width:' + Math.round((c.avanza || 0) * 100) + '%"></i></span>') + '</p>' +
         (pronta ? '<a class="b oro scarica" href="' + url + '?scarica=1">Scarica</a>' +
+          (c.srt ? '<a class="b scarica" href="' + BASE + c.srt + '?scarica=1" title="' + (c.sottoRighe || 0) + ' righe in ' + (c.sottoLingua === "en" ? "inglese" : "italiano") + ', tempi dal primo fotogramma della clip' + (c.sottoMancano ? ' \u00b7 ' + c.sottoMancano + ' non tradotte' : '') + '">SRT</a>' : '') +
           '<a href="' + GEN + '&clip=' + encodeURIComponent(url) + '&titolo=' + encodeURIComponent(c.titolo) +
           (c.evento ? "&evento=" + encodeURIComponent(c.evento) : "") + '" target="_blank" rel="noopener">grafica</a>' : '') +
         '<a href="#" class="togli" data-clip="' + c.id + '">togli</a></div>';
@@ -5968,6 +5981,7 @@
                  '<p><b><i class="spunta">\u2713</i> ' + pulito(f[k].nome || q.titolo) + '</b><br><small>sequenza \u00b7 ' + k +
                  ' \u00b7 ' + orologio(f[k].durata) + ' \u00b7 completato</small></p><a class="b oro scarica" href="' + BASE + f[k].file + '?scarica=1">Scarica</a></div>';
       });
+      if (q.sottotitoli) righe += '<div class="az uscita fatta"><span class="telo2"></span><p><b><i class="spunta">\u2713</i> ' + pulito(q.sottotitoli.nome || q.titolo + ".srt") + '</b><br><small>sottotitoli della sequenza \u00b7 ' + (q.sottotitoli.lingua === "en" ? "inglese" : "italiano") + ' \u00b7 ' + q.sottotitoli.righe + ' righe' + (q.sottotitoli.mancano ? ' \u00b7 ' + q.sottotitoli.mancano + ' non tradotte' : '') + ' \u00b7 in sync con il montato</small></p><a class="b oro scarica" href="' + BASE + q.sottotitoli.file + '?scarica=1">Scarica</a></div>';
       if (q.premiere) righe += '<div class="az uscita fatta"><span class="telo2"></span><p><b><i class="spunta">\u2713</i> ' + pulito(q.premiere.nome || q.titolo + ".xml") + '</b><br><small>XML per Premiere \u00b7 completato</small></p><a class="b oro scarica" href="' + BASE + q.premiere.file + '?scarica=1">Scarica</a></div>';
       if (q.export && q.export.stato === "lavora") {
         var av = q.export.avanza || ((q.export.fatti || 0) / Math.max(1, q.export.quanti || 1));
@@ -6959,6 +6973,7 @@
               '<button class="b" id="btnSotto" title="trascrive quello che si dice, con una quindicina di secondi di ritardo">Sottotitoli</button>' +
               '<span class="lingue" title="in che lingua leggere"><b data-l="it" class="acceso">ITA</b><b data-l="en">ENG</b></span>' +
               '<select id="sottoLingua" hidden><option value="it">ITA</option><option value="en">ENG</option></select>' +
+              '<button class="b" id="btnSrt" title="scarica la telecronaca intera come file SRT, nella lingua scelta, coi tempi del file: si apre in Premiere" hidden>SRT</button>' +
             '</span>' +
           '</div>' +
           // due vecchi comandi restano nel documento ma fuori dalla vista:
@@ -7294,6 +7309,23 @@
           dice(acceso ? "Sottotitoli spenti." : "Sottotitoli accesi: la prima riga arriva fra una quindicina di secondi.", true); })
         .catch(function (e) { dice(e.message); });
     });
+    // L'SRT DELLA TELECRONACA INTERA: tempi dal primo fotogramma del file,
+    // come lo vede Premiere importando lo stesso file. Per un pezzo solo
+    // c'e' l'esportazione, che lo rifasa sul taglio.
+    function scaricaTesto(nome, testo) {
+      var a = document.createElement("a"), url = URL.createObjectURL(new Blob([testo], { type: "text/plain;charset=utf-8" }));
+      a.href = url; a.download = nome; document.body.appendChild(a); a.click();
+      setTimeout(function () { a.remove(); URL.revokeObjectURL(url); }, 1500);
+    }
+    if (el("btnSrt")) el("btnSrt").addEventListener("click", function () {
+      if (MODO !== "archivio" || !REG) return dice("Apri prima una partita in archivio.");
+      var lingua = (el("sottoLingua") || {}).value || SOTTO_ARCH.mostra || "it";
+      manda({ tipo: "clip-parlato-srt", reg: REG.id, lingua: lingua }).then(function (d) {
+        scaricaTesto(d.nome, d.srt);
+        dice(d.righe + " righe in " + (d.lingua === "en" ? "inglese" : "italiano") +
+             (d.manca ? " \u00b7 " + d.manca + " non ancora tradotte (escono come dette: accendi i sottotitoli in quella lingua e aspetta la traduzione)" : ""), true);
+      }).catch(function (e) { dice(e.message); });
+    });
     document.querySelectorAll("#rigaSotto .lingue b").forEach(function (b) {
       b.addEventListener("click", function () {
         document.querySelectorAll("#rigaSotto .lingue b").forEach(function (x) { x.className = x === b ? "acceso" : ""; });
@@ -7439,6 +7471,7 @@
       }
       var sottoAcceso = !!(REG && REG.sottotitoli && REG.sottotitoli.acceso) || (MODO === "archivio" && SOTTO_ARCH.acceso);
       el("rigaSotto").hidden = MODO === "archivio" ? !REG : !apertoQui;
+      if (el("btnSrt")) el("btnSrt").hidden = MODO !== "archivio";
       el("btnSotto").className = "b" + (sottoAcceso ? " acceso" : "");
       el("btnSotto").textContent = !sottoAcceso ? "Sottotitoli"
         : MODO === "archivio" ? "Sottotitoli \u00b7 " + SOTTO_ARCH.mostra.toUpperCase() + (SOTTO_ARCH.stato ? " \u00b7 " + SOTTO_ARCH.stato : "")
