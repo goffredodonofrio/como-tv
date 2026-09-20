@@ -129,7 +129,7 @@ window.Lavagna = (function () {
         }).join("") +
         '<span class="sep"></span>' +
         '<button type="button" data-az="schiera">&#9917; Schiera</button>' +
-        '<button type="button" data-az="indietro">&#8630; Annulla</button>' +
+        '<button type="button" data-az="indietro" title="Annulla l\'ultima mossa (Cmd/Ctrl+Z)">&#8630; Annulla</button>' +
         '<button type="button" class="via" data-az="pulisci">Cancella i disegni</button>' +
         '<span class="sep"></span>' +
         '<button type="button" data-az="png">&#11015; Immagine</button>' +
@@ -157,8 +157,29 @@ window.Lavagna = (function () {
     var SQ = { A: { nome: "Casa", col: "#2E6BE6", rosa: [], mod: "4-3-3" },
                B: { nome: "Ospite", col: "#E0312B", rosa: [], mod: "4-4-2" } };
     var PEDINE = [], CAMBI = [], NOTE = {}, SCELTO = null;
+    // La pila dei passi: prima di ogni mossa si mette da parte com'era.
+    // Cmd/Ctrl+Z torna indietro, Cmd/Ctrl+Maiusc+Z rifa'. Trenta passi
+    // bastano: e' una lavagna, non un programma di montaggio.
+    var PASSI = [], RIFAI = [], PASSI_MAX = 30;
     var ARNESE = "muovi", COLORE = "#F5F1E6";
 
+    function ricorda() {
+      try { PASSI.push(JSON.stringify(stato())); } catch (e) { return; }
+      if (PASSI.length > PASSI_MAX) PASSI.shift();
+      RIFAI.length = 0;
+    }
+    function annulla() {
+      if (!PASSI.length) { nota("Non c'è più niente da annullare.", ""); return; }
+      try { RIFAI.push(JSON.stringify(stato())); } catch (e) {}
+      riapri(JSON.parse(PASSI.pop()));
+      nota("Annullato. <b>Cmd/Ctrl+Maiusc+Z</b> per rifare.", "");
+    }
+    function rifai() {
+      if (!RIFAI.length) return;
+      try { PASSI.push(JSON.stringify(stato())); } catch (e) {}
+      riapri(JSON.parse(RIFAI.pop()));
+      nota("Rifatto.", "");
+    }
     function nota(t, cls) {
       var n = box.querySelector("[data-nota]");
       n.className = "nota" + (cls ? " " + cls : "");
@@ -287,11 +308,13 @@ window.Lavagna = (function () {
       if (ARNESE === "muovi") {
         var p = pedinaDi(ev);
         if (!p) return;
+        ricorda();
         trascino = { p: p, dx: p.x - pt.x, dy: p.y - pt.y };
         mosso = false;
         svg.setPointerCapture(ev.pointerId);
         return;
       }
+      ricorda();
       var d = { tipo: ARNESE, punti: [pt], el: null };
       if (ARNESE === "penna") d.el = ns("path", { fill: "none", stroke: COLORE, "stroke-width": 5,
                                                   "stroke-linecap": "round", "stroke-linejoin": "round" }, gDis);
@@ -384,11 +407,12 @@ window.Lavagna = (function () {
         var b = ev.target.closest ? ev.target.closest("button[data-f]") : null;
         if (!b) return;
         if (b.dataset.f === "salva") {
+          ricorda();
           var t = ta.value.trim();
           if (t) NOTE[k] = t; else delete NOTE[k];
           segnaNota(p); disegnaCurio(); disegnaRose();
         }
-        if (b.dataset.f === "togli") { togli(p); disegnaRose(); disegnaCurio(); }
+        if (b.dataset.f === "togli") { ricorda(); togli(p); disegnaRose(); disegnaCurio(); }
         chiudiNota();
       });
       f.addEventListener("keydown", function (ev) {
@@ -459,6 +483,7 @@ window.Lavagna = (function () {
       // IL CAMBIO: c'e' un giocatore scelto sul campo, della stessa squadra, e
       // si clicca uno che in campo non c'e'. Entra al posto suo, e resta scritto.
       if (SCELTO && SCELTO.lato === lato && !gia) {
+        ricorda();
         var fuori = SCELTO, x = fuori.x, y = fuori.y;
         CAMBI.push({ lato: lato, dentro: (g.num ? g.num + " " : "") + (g.cognome || g.nome),
                      fuori: (fuori.num ? fuori.num + " " : "") + fuori.cognome });
@@ -468,7 +493,8 @@ window.Lavagna = (function () {
         nota("Cambio segnato: <b>" + esc(g.cognome || g.nome) + "</b> per <b>" + esc(fuori.cognome) + "</b>.", "ok");
         return;
       }
-      if (gia) { togli(gia); disegnaRose(); disegnaCurio(); return; }
+      if (gia) { ricorda(); togli(gia); disegnaRose(); disegnaCurio(); return; }
+      ricorda();
       var n = PEDINE.filter(function (p) { return p.lato === lato; }).length;
       var x2 = lato === "A" ? 180 + (n % 4) * 60 : W - 180 - (n % 4) * 60;
       metti(lato, g, x2, 120 + Math.floor(n / 4) * 80);
@@ -487,6 +513,7 @@ window.Lavagna = (function () {
       });
     }
     function schiera() {
+      ricorda();
       ["A", "B"].forEach(function (lato) {
         var s = SQ[lato];
         var lista = (s.titolari && s.titolari.length) ? s.titolari : ordinaPerRuolo(s.rosa || []).slice(0, 11);
@@ -550,8 +577,8 @@ window.Lavagna = (function () {
       var b = ev.target.closest ? ev.target.closest("button[data-az]") : null;
       if (!b) return;
       if (b.dataset.az === "schiera") schiera();
-      if (b.dataset.az === "indietro") { var u = gDis.lastElementChild; if (u) u.remove(); }
-      if (b.dataset.az === "pulisci") gDis.innerHTML = "";
+      if (b.dataset.az === "indietro") annulla();
+      if (b.dataset.az === "pulisci") { ricorda(); gDis.innerHTML = ""; }
       if (b.dataset.az === "stampa") stampa();
       if (b.dataset.az === "png") immagine(function (dati) {
         var a = document.createElement("a");
@@ -587,8 +614,20 @@ window.Lavagna = (function () {
       disegnaRose(); disegnaCurio();
     }
 
+    // Cmd/Ctrl+Z ovunque nella pagina, ma non mentre si scrive una
+    // curiosita': li' l'annullamento e' quello del testo.
+    document.addEventListener("keydown", function (ev) {
+      if (!(ev.metaKey || ev.ctrlKey) || String(ev.key).toLowerCase() !== "z") return;
+      if (!box.isConnected || !box.offsetParent) return;
+      var t = ev.target, tag = t && t.tagName;
+      if (tag === "TEXTAREA" || tag === "INPUT" || (t && t.isContentEditable)) return;
+      ev.preventDefault();
+      if (ev.shiftKey) rifai(); else annulla();
+    });
+
     disegnaRose(); disegnaCurio();
     return { carica: carica, stato: stato, riapri: riapri, schiera: schiera, nota: nota,
+             annulla: annulla, rifai: rifai,
              barraSalva: box.querySelector("[data-salva]"), moduli: Object.keys(MODULI) };
   }
 
