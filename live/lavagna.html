@@ -98,6 +98,8 @@
 (function () {
   "use strict";
   var ESPN = "https://site.api.espn.com/apis/site/v2/sports/soccer/";
+  // il ponte sa come si chiamano gli allenatori: li aggiorna ogni mattina
+  var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
   function el(id) { return document.getElementById(id); }
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -115,7 +117,14 @@
   el("modB").value = "4-4-2";
 
   // ── le squadre: giovanili nostre, se no la classifica ESPN ────────────
-  var ROSE = { A: [], B: [] }, NOMI = { A: "Casa", B: "Ospite" };
+  var ROSE = { A: [], B: [] }, NOMI = { A: "Casa", B: "Ospite" }, ALL = { A: null, B: null };
+  function allenatore(id) {
+    if (!id || /\D/.test(String(id))) return Promise.resolve(null);   // le giovanili non hanno id ESPN
+    return fetch(PONTE + "?allenatore=" + encodeURIComponent(id), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (a) { return a && (a.cognome || a.nome) ? a : null; })
+      .catch(function () { return null; });
+  }
   function squadre(code) {
     if (window.GIOVANILI && GIOVANILI.mia(code)) {
       return Promise.resolve(GIOVANILI.squadre(code).map(function (q) { return { id: q.id, nome: q.name }; }));
@@ -174,15 +183,17 @@
       if (!id) { ROSE[lato] = []; return; }
       NOMI[lato] = this.options[this.selectedIndex].text;
       dico("Scarico la rosa di <b>" + esc(NOMI[lato]) + "</b>&hellip;");
-      rosa(el("comp").value, id).then(function (r) {
-        ROSE[lato] = r;
-        dico("<b>" + esc(NOMI[lato]) + "</b>: " + r.length + " giocatori.", r.length ? "ok" : "err");
+      Promise.all([rosa(el("comp").value, id), allenatore(id)]).then(function (d) {
+        ROSE[lato] = d[0]; ALL[lato] = d[1];
+        dico("<b>" + esc(NOMI[lato]) + "</b>: " + d[0].length + " giocatori" +
+             (d[1] ? ", allenatore " + esc((d[1].nome ? d[1].nome + " " : "") + d[1].cognome) : "") + ".",
+             d[0].length ? "ok" : "err");
       }).catch(function () { dico("Rosa non caricata.", "err"); });
     });
   });
   el("btnCarica").addEventListener("click", function () {
-    L.carica({ A: { nome: NOMI.A, rosa: ROSE.A, mod: el("modA").value },
-               B: { nome: NOMI.B, rosa: ROSE.B, mod: el("modB").value } });
+    L.carica({ A: { nome: NOMI.A, rosa: ROSE.A, mod: el("modA").value, all: ALL.A },
+               B: { nome: NOMI.B, rosa: ROSE.B, mod: el("modB").value, all: ALL.B } });
     dico("In lavagna. Da qui si trascina, si cambia e si scrive.", "ok");
   });
 

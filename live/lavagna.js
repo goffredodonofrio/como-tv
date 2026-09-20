@@ -94,14 +94,14 @@ window.Lavagna = (function () {
       ".lav .curio div{padding:4px 0;border-bottom:1px solid rgba(245,241,230,.05);}" +
       ".lav .curio b{font-family:'Mazzard',sans-serif;color:var(--lav-oroB);}" +
       /* il foglietto delle curiosita': sta attaccato al giocatore, sul campo */
-      ".lav .campoBox .foglietto{position:absolute;z-index:8;width:300px;max-width:92%;" +
+      ".lav .campoBox .foglietto{position:absolute;z-index:8;width:420px;max-width:94%;" +
       "  background:linear-gradient(180deg,#141B3C,#0E1430);box-shadow:0 12px 30px rgba(0,0,0,.55);" +
       "  border:1px solid rgba(201,162,75,.5);border-radius:10px;padding:12px;}" +
       ".lav .foglietto h3{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.16em;" +
       "  text-transform:uppercase;color:var(--lav-oro);margin-bottom:8px;}" +
-      ".lav .foglietto textarea{width:100%;height:110px;padding:9px 10px;border-radius:7px;resize:vertical;" +
+      ".lav .foglietto textarea{width:100%;height:190px;padding:11px 12px;border-radius:7px;resize:vertical;" +
       "  background:rgba(245,241,230,.06);border:1px solid rgba(245,241,230,.16);color:var(--lav-avorio);" +
-      "  font-family:'DM Sans',sans-serif;font-size:13.5px;line-height:1.45;}" +
+      "  font-family:'DM Sans',sans-serif;font-size:15px;line-height:1.5;}" +
       ".lav .foglietto textarea:focus{outline:none;border-color:rgba(201,162,75,.4);}" +
       ".lav .foglietto .piede{display:flex;gap:6px;justify-content:flex-end;margin-top:9px;}" +
       ".lav .foglietto .piede button{padding:6px 9px;font-size:10px;}" +
@@ -217,10 +217,20 @@ window.Lavagna = (function () {
     function chiave(p) { return p.lato + ":" + p.pid; }
     function pedina(p) {
       var g = ns("g", { "data-pid": chiave(p), style: "cursor:grab" }, gPedine);
-      ns("circle", { cx: 0, cy: 0, r: 26, fill: SQ[p.lato].col, stroke: "#F5F1E6", "stroke-width": 3, "class": "disco" }, g);
-      var t = ns("text", { x: 0, y: 9, "text-anchor": "middle", "font-family": "Mazzard", "font-weight": 800,
-                           "font-size": 24, fill: "#F5F1E6" }, g);
-      t.textContent = p.num || "";
+      if (p.mister) {
+        // l'allenatore non e' un giocatore: gettone quadrato, bordo d'oro, e
+        // sta a bordo campo. Si sposta e si clicca come gli altri.
+        ns("rect", { x: -27, y: -27, width: 54, height: 54, rx: 10, fill: SQ[p.lato].col,
+                     stroke: "#E3C271", "stroke-width": 3, "class": "disco" }, g);
+        var m = ns("text", { x: 0, y: 7, "text-anchor": "middle", "font-family": "Mazzard", "font-weight": 800,
+                             "font-size": 17, fill: "#F5F1E6", "letter-spacing": 1 }, g);
+        m.textContent = "ALL";
+      } else {
+        ns("circle", { cx: 0, cy: 0, r: 26, fill: SQ[p.lato].col, stroke: "#F5F1E6", "stroke-width": 3, "class": "disco" }, g);
+        var t = ns("text", { x: 0, y: 9, "text-anchor": "middle", "font-family": "Mazzard", "font-weight": 800,
+                             "font-size": 24, fill: "#F5F1E6" }, g);
+        t.textContent = p.num || "";
+      }
       var n = ns("text", { x: 0, y: 48, "text-anchor": "middle", "font-family": "Mazzard", "font-weight": 700,
                            "font-size": 19, fill: "#F5F1E6", stroke: "#06301A", "stroke-width": 4,
                            "paint-order": "stroke", "stroke-linejoin": "round" }, g);
@@ -244,7 +254,8 @@ window.Lavagna = (function () {
     function metti(lato, g, x, y) {
       var gia = inCampo(lato, g.pid);
       if (gia) { gia.x = x; gia.y = y; posa(gia); return gia; }
-      var p = pedina({ lato: lato, pid: g.pid, num: g.num, cognome: g.cognome || g.nome || "", x: x, y: y });
+      var p = pedina({ lato: lato, pid: g.pid, num: g.num, cognome: g.cognome || g.nome || "",
+                       mister: !!g.mister, x: x, y: y });
       PEDINE.push(p);
       return p;
     }
@@ -256,7 +267,7 @@ window.Lavagna = (function () {
     function evidenzia() {
       PEDINE.forEach(function (p) {
         var c = p.g.querySelector(".disco");
-        c.setAttribute("stroke", p === SCELTO ? "#E3C271" : "#F5F1E6");
+        c.setAttribute("stroke", p === SCELTO ? "#E3C271" : (p.mister ? "#E3C271" : "#F5F1E6"));
         c.setAttribute("stroke-width", p === SCELTO ? 6 : 3);
       });
     }
@@ -391,11 +402,11 @@ window.Lavagna = (function () {
         '</div>';
       cassa.appendChild(f);
       // dove: accanto alla pedina, in percentuale del campo, e sempre dentro
-      var largo = f.offsetWidth || 300, alto = f.offsetHeight || 210;
+      var largo = f.offsetWidth || 420, alto = f.offsetHeight || 300;
       var r = cassa.getBoundingClientRect();
       var px = p.x / W * r.width, py = p.y / H * r.height;
-      var x = px + 40, y = py - alto / 2;
-      if (x + largo > r.width - 8) x = px - 40 - largo;
+      var x = px + 44, y = py - alto / 2;
+      if (x + largo > r.width - 8) x = px - 44 - largo;
       f.style.left = Math.max(8, Math.min(r.width - largo - 8, x)) + "px";
       f.style.top = Math.max(8, Math.min(r.height - alto - 8, y)) + "px";
       var ta = f.querySelector("textarea");
@@ -450,7 +461,11 @@ window.Lavagna = (function () {
         col.querySelector("h4 i").style.background = SQ[lato].col;
         col.querySelector('[data-nome="' + lato + '"]').textContent = SQ[lato].nome;
         var box2 = box.querySelector('[data-rosa="' + lato + '"]');
-        box2.innerHTML = (SQ[lato].rosa || []).map(function (g, i) {
+        var mis = misterDi(lato);
+        var testaAll = mis ? '<button type="button" data-lato="' + lato + '" data-mister="1"' +
+            (inCampo(lato, "mister") ? ' class="dentro"' : "") + '><b>ALL</b>' + esc(mis.cognome) +
+            (NOTE[lato + ":mister"] ? "<em>&#9733;</em>" : "") + "</button>" : "";
+        box2.innerHTML = testaAll + (SQ[lato].rosa || []).map(function (g, i) {
           var dentro = !!inCampo(lato, g.pid);
           return '<button type="button" data-lato="' + lato + '" data-i="' + i + '"' +
                  (dentro ? ' class="dentro"' : "") + '>' +
@@ -477,7 +492,8 @@ window.Lavagna = (function () {
     box.addEventListener("click", function (ev) {
       var b = ev.target.closest ? ev.target.closest("button[data-lato]") : null;
       if (!b) return;
-      var lato = b.dataset.lato, g = SQ[lato].rosa[+b.dataset.i];
+      var lato = b.dataset.lato;
+      var g = b.dataset.mister ? misterDi(lato) : SQ[lato].rosa[+b.dataset.i];
       if (!g) return;
       var gia = inCampo(lato, g.pid);
       // IL CAMBIO: c'e' un giocatore scelto sul campo, della stessa squadra, e
@@ -502,6 +518,13 @@ window.Lavagna = (function () {
     });
 
     // ── schiera ─────────────────────────────────────────────────────────
+    // l'allenatore, se la squadra ce l'ha: una pedina come le altre, con un
+    // suo nome finto (serve solo a riconoscerla fra le note)
+    function misterDi(lato) {
+      var a = SQ[lato].all;
+      if (!a || !(a.cognome || a.nome)) return null;
+      return { pid: "mister", num: "", nome: a.nome || "", cognome: a.cognome || a.nome, mister: true };
+    }
     function ordinaPerRuolo(r) {
       var peso = { G: 0, GK: 0, P: 0, D: 1, CB: 1, LB: 1, RB: 1, M: 2, C: 2, CM: 2, DM: 2, AM: 2, LM: 2, RM: 2,
                    F: 3, A: 3, CF: 3, LW: 3, RW: 3, ST: 3 };
@@ -525,6 +548,10 @@ window.Lavagna = (function () {
           var x = lato === "A" ? q[0] * (W / 2) : W - q[0] * (W / 2);
           metti(lato, g, x, 60 + q[1] * (H - 120));
         });
+        // l'allenatore in panchina: fuori dal campo, sulla sua meta'
+        var mis = misterDi(lato);
+        // non attaccato al bordo: sotto la pedina ci va il cognome
+        if (mis) metti(lato, mis, lato === "A" ? 150 : W - 150, H - 78);
       });
       disegnaRose(); disegnaCurio();
       nota("Schierate. Clicca un giocatore per sceglierlo (poi uno dalla panchina per il cambio), " +
@@ -593,7 +620,8 @@ window.Lavagna = (function () {
         var s = d && d[lato];
         if (!s) return;
         SQ[lato] = { nome: s.nome || SQ[lato].nome, col: s.col || SQ[lato].col,
-                     rosa: s.rosa || [], titolari: s.titolari || [], mod: s.mod || SQ[lato].mod };
+                     rosa: s.rosa || [], titolari: s.titolari || [], mod: s.mod || SQ[lato].mod,
+                     all: s.all || null };
       });
       PEDINE.slice().forEach(togli);
       CAMBI = [];
@@ -602,7 +630,8 @@ window.Lavagna = (function () {
     }
     function stato() {
       return { sq: { A: SQ.A, B: SQ.B }, note: NOTE, cambi: CAMBI, disegni: gDis.innerHTML,
-               pedine: PEDINE.map(function (p) { return { lato: p.lato, pid: p.pid, num: p.num, cognome: p.cognome, x: p.x, y: p.y }; }) };
+               pedine: PEDINE.map(function (p) { return { lato: p.lato, pid: p.pid, num: p.num, cognome: p.cognome,
+                                                          mister: !!p.mister, x: p.x, y: p.y }; }) };
     }
     function riapri(s) {
       if (!s) return;
