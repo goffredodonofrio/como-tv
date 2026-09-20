@@ -687,16 +687,12 @@
           <input type="text" id="radioNome" placeholder="Nome del radiocronista" style="flex:1">
           <select id="radioNomeSel" style="flex:1"></select>
         </div>
-        <!-- il campetto DENTRO il cartello: agganciando la partita ESPN, il
-             cartello RADIOCRONACA mostra il campo e il pallone che segue le
-             giocate. Senza aggancio il cartello resta quello di sempre. -->
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
-          <select id="radioComp" style="flex:1 1 170px"></select>
-          <select id="radioPart" style="flex:1 1 230px" disabled><option value="">&mdash;</option></select>
-          <button type="button" id="btnRadioEspn" disabled>&#9917; Campetto nel cartello</button>
-          <button type="button" id="btnRadioStacca" style="display:none">Togli il campetto</button>
-          <span id="radioEspnNota" style="flex:1 1 100%;color:var(--gr);font-size:13px">Aggancia la
-            partita ESPN e nel cartello compare il campo col pallone sulle giocate.</span>
+        <!-- il campetto DENTRO il cartello: niente da scegliere, e' la
+             partita gia' impostata qui sopra. Se ESPN ha le giocate di
+             questa partita il cartello mostra il campo col pallone,
+             altrimenti resta il cartello di sempre. -->
+        <div style="margin-top:6px">
+          <span id="radioEspnNota" style="color:var(--gr);font-size:13px">&nbsp;</span>
         </div>
 
         <!-- il campetto che segue la partita: attrezzo del banco, non va in onda -->
@@ -1180,6 +1176,7 @@
       el("no").value = sq.n; el("so").value = sq.s; el("co").value = sq.col;
     }
     cercaLoghi();
+    agganciaEspn();
     dipingi(); invia(true);
     // squadra nuova, rosa nuova
     caricaRose(true, [lato]);
@@ -1188,7 +1185,7 @@
   elCamp.addEventListener("change", function () {
     S.camp = (CAMPIONATI[parseInt(elCamp.value, 10)] || {}).nome || "";
     mettiCampTxt(S.camp);
-    riempiSquadre(); invia(true);
+    riempiSquadre(); agganciaEspn(); invia(true);
   });
   elSqc.addEventListener("change", function () { applicaSquadra("casa", parseInt(elSqc.value, 10)); });
   elSqo.addEventListener("change", function () { applicaSquadra("osp", parseInt(elSqo.value, 10)); });
@@ -1358,58 +1355,76 @@
   })();
 
   // ── il campetto del cartello RADIOCRONACA ──────────────────────────
-  //    Qui si sceglie solo QUALE partita: il campo, il pallone e le
-  //    giocate li disegna partita-live.html leggendo ESPN per conto suo.
-  //    Cosi' ogni postazione in onda resta sincronizzata da sola.
-  function radioEspnNota(t) { var n = el("radioEspnNota"); if (n) n.innerHTML = t; }
+  //    Non c'e' niente da scegliere: e' la partita gia' impostata qui,
+  //    cercata fra quelle di ESPN di oggi con gli id delle due squadre.
+  //    Se ESPN ce l'ha, il cartello mostra il campo col pallone; se non
+  //    ce l'ha (giovanili, amichevoli, tornei) il cartello resta quello
+  //    di sempre. Il campo e le giocate li disegna partita-live.html
+  //    leggendo ESPN per conto suo, cosi' ogni postazione in onda si
+  //    aggiorna da sola.
+  var LEGA_DI = { "Serie A": "ita.1", "Coppa Italia": "ita.coppa_italia",
+                  "Champions League": "uefa.champions" };
+  function radioEspnNota(t) { var n = el("radioEspnNota"); if (n) n.innerHTML = t || "&nbsp;"; }
   function radioEspnDipingi() {
-    var on = !!(S.espn && S.espn.ev);
-    var b = el("btnRadioStacca"); if (b) b.style.display = on ? "" : "none";
-    if (on) radioEspnNota("Nel cartello c'e' il campetto di <b>" +
-      (S.espn.nome || "questa partita") + "</b>. Il pallone segue le giocate ESPN (circa un minuto di ritardo).");
-    else radioEspnNota("Aggancia la partita ESPN e nel cartello compare il campo col pallone sulle giocate.");
+    if (S.espn && S.espn.ev) {
+      radioEspnNota("Nel cartello c'e' il campetto di <b>" + (S.espn.nome || "questa partita") +
+        "</b>: il pallone segue le giocate ESPN (circa un minuto di ritardo).");
+    } else if (!LEGA_DI[S.camp]) {
+      radioEspnNota("Di questa competizione ESPN non ha le giocate: il cartello resta senza campetto.");
+    } else if (!S.casa.tid || !S.osp.tid) {
+      radioEspnNota("Scegli le due squadre dall'elenco e, se ESPN ha la partita, nel cartello compare il campetto.");
+    } else {
+      radioEspnNota("ESPN non ha questa partita fra quelle di oggi: il cartello resta senza campetto.");
+    }
   }
-  (function () {
-    var selC = el("radioComp"), selP = el("radioPart"), btn = el("btnRadioEspn");
-    if (!selC || !selP || !btn) return;
-    if (window.CompetizioniEspn) CompetizioniEspn.riempi(selC);
-    selC.addEventListener("change", function () {
-      selP.innerHTML = '<option value="">&mdash;</option>'; selP.disabled = true; btn.disabled = true;
-      if (!this.value) return;
-      var d = new Date();
-      var g = d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
-      radioEspnNota("Cerco le partite di oggi&hellip;");
-      fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + this.value + "/scoreboard?dates=" + g)
-        .then(function (r) { return r.json(); })
-        .then(function (j) {
-          var ev = (j.events || []).map(function (e) {
-            var st = (((e.competitions || [])[0] || {}).status || {}).type || {};
-            return { id: e.id, nome: e.name || e.shortName || "", stato: st.detail || "", viva: st.state === "in" };
-          });
-          selP.innerHTML = ev.length
-            ? '<option value="">&mdash; ' + ev.length + ' oggi &mdash;</option>' + ev.map(function (x) {
-                return '<option value="' + x.id + '">' + (x.viva ? "\u25CF " : "") + x.nome + " \u00B7 " + x.stato + "</option>";
-              }).join("")
-            : '<option value="">&mdash; oggi niente &mdash;</option>';
-          selP.disabled = !ev.length;
-          radioEspnNota(ev.length ? "Scegli la partita e premi <b>Campetto nel cartello</b>."
-                                  : "Oggi in questa competizione non si gioca.");
-        })
-        .catch(function () { radioEspnNota("ESPN non risponde."); });
+  var espnFirma = "";
+  function agganciaEspn(rifai) {
+    var lega = LEGA_DI[S.camp] || "";
+    var firma = lega + "|" + (S.casa.tid || "") + "|" + (S.osp.tid || "");
+    if (!rifai && firma === espnFirma) return;
+    espnFirma = firma;
+    if (!lega || !S.casa.tid || !S.osp.tid) {
+      if (S.espn) { S.espn = null; invia(true); }
+      radioEspnDipingi(); return;
+    }
+    // oggi e ieri: una partita cominciata di sera, dopo mezzanotte, per
+    // ESPN e' ancora del giorno prima
+    var giorni = [0, -1].map(function (k) {
+      var d = new Date(Date.now() + k * 86400000);
+      return d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
     });
-    selP.addEventListener("change", function () { btn.disabled = !this.value; });
-    btn.addEventListener("click", function () {
-      if (!selC.value || !selP.value) return;
-      var nome = (selP.options[selP.selectedIndex].textContent || "").split(" \u00B7 ")[0].replace(/^\u25CF\s*/, "");
-      S.espn = { lega: selC.value, ev: selP.value, nome: nome };
-      radioEspnDipingi(); invia(true);
-      msg.textContent = "Campetto agganciato a " + nome + ": si vede nel cartello RADIOCRONACA.";
+    var trovata = null;
+    giorni.reduce(function (cat, g) {
+      return cat.then(function () {
+        if (trovata) return;
+        return fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + lega + "/scoreboard?dates=" + g)
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            (j.events || []).forEach(function (e) {
+              if (trovata) return;
+              var ids = (((e.competitions || [])[0] || {}).competitors || []).map(function (x) {
+                return String((x.team || {}).id || "");
+              });
+              if (ids.indexOf(String(S.casa.tid)) >= 0 && ids.indexOf(String(S.osp.tid)) >= 0) {
+                trovata = { lega: lega, ev: String(e.id),
+                            nome: (S.casa.n || "") + " - " + (S.osp.n || "") };
+              }
+            });
+          })
+          .catch(function () {});
+      });
+    }, Promise.resolve()).then(function () {
+      // nel frattempo l'operatore puo' aver cambiato squadra: la risposta
+      // vecchia non deve sovrascrivere quella nuova
+      if (firma !== espnFirma) return;
+      var prima = S.espn ? S.espn.ev : "";
+      var dopo = trovata ? trovata.ev : "";
+      if (prima !== dopo) { S.espn = trovata; invia(true); }
+      radioEspnDipingi();
     });
-    el("btnRadioStacca").addEventListener("click", function () {
-      S.espn = null; radioEspnDipingi(); invia(true);
-      msg.textContent = "Campetto tolto: il cartello RADIOCRONACA torna semplice.";
-    });
-  })();
+  }
+  // la partita del giorno puo' comparire su ESPN anche dopo: si ricontrolla
+  setInterval(function () { agganciaEspn(true); }, 5 * 60 * 1000);
 
   // ── player partita: le schermate del match come una scaletta,
   //    dentro col ▶ e fuori con un tasto solo (stessa logica delle grafiche) ──
@@ -1564,7 +1579,7 @@
     el("no").value = ""; el("so").value = ""; el("co").value = S.osp.col;
     el("radioNome").value = "";
     var rs = el("radioNomeSel"); if (rs) rs.value = "";
-    radioEspnDipingi();
+    S.espn = null; espnFirma = ""; radioEspnDipingi();
     sel = null;
     disegnaFasi(); dipingi(); dipingiEventi(true);
     invia(true);
@@ -2613,7 +2628,7 @@
         el("nc").value = S.casa.n || ""; el("sc").value = S.casa.s || ""; el("cc").value = S.casa.col || "#1735C8";
         el("no").value = S.osp.n || ""; el("so").value = S.osp.s || ""; el("co").value = S.osp.col || "#C50E1F";
         el("radioNome").value = S.radioNome || "";
-        radioEspnDipingi();
+        agganciaEspn();
         for (var i = 0; i < CAMPIONATI.length; i++) if (CAMPIONATI[i].nome === S.camp) elCamp.value = i;
         riempiSquadre();
         // le righe devono mostrare subito cosa sta trasmettendo

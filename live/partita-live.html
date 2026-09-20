@@ -992,6 +992,10 @@
         });
         nuove.forEach(function (g) { RC.visti[g.id] = 1; });
         if (!RC.partito) { RC.partito = true; nuove = nuove.slice(-3); }
+        // il campo si accende solo se ESPN ha davvero le giocate: prima
+        // della partita, o dove il play-by-play non c'e', il cartello
+        // resta quello di sempre invece di mostrare un campo vuoto
+        if (nuove.length) rcCampoVisibile(true);
         nuove.forEach(function (g) {
           var sq = ((g.team || {}).$ref || "").match(/teams\/(\d+)/);
           RC.coda.push({ x: g.fieldPositionX, y: g.fieldPositionY,
@@ -1017,12 +1021,15 @@
     }
     RC.passo = setTimeout(rcPasso, RC.coda.length > 14 ? 380 : RC.coda.length > 6 ? 620 : 1000);
   }
+  function rcCampoVisibile(si) {
+    var e = document.getElementById("radio");
+    if (e) e.classList[si ? "add" : "remove"]("conCampo");
+  }
   function rcAccendi(espn, j) {
     var lega = (espn && espn.lega) || "", ev = (espn && String(espn.ev || "")) || "";
     if (!lega || !ev) { rcSpegni(); return; }
     RC.colCasa = ((j || {}).casa || {}).col || "#C9A24B";
     RC.colOsp = ((j || {}).osp || {}).col || "#C9A24B";
-    document.getElementById("radio").classList.add("conCampo");
     rcDisegnaCampo();
     if (RC.acceso && RC.lega === lega && RC.ev === ev) return;
     rcSpegni(true);
@@ -1037,7 +1044,7 @@
     if (RC.timer) { clearInterval(RC.timer); RC.timer = null; }
     if (RC.passo) { clearTimeout(RC.passo); RC.passo = null; }
     RC.lega = ""; RC.ev = "";
-    if (!tieniCampo) document.getElementById("radio").classList.remove("conCampo");
+    if (!tieniCampo) rcCampoVisibile(false);
   }
 
   // ── polvere di stelle dietro il cartello radiocronaca ──────────────
