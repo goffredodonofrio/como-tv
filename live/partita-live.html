@@ -875,61 +875,122 @@
     if (dentro) dentro.appendChild(e);
     return e;
   }
+  // ── il campo in prospettiva ─────────────────────────────────────────
+  // Non e' un campo piatto storto: e' una proiezione vera. Il campo si
+  // prende come un quadrato di lato 1 (u = da porta a porta, v = dalla
+  // fascia vicina a quella lontana) e ogni punto passa di qui. La riga
+  // lontana e' piu' stretta di quella vicina e le distanze si comprimono
+  // verso il fondo, come le vede l'occhio; "s" e' quanto rimpicciolisce
+  // li' una cosa, e serve al pallone e ai pali.
+  var RC_YN = 500, RC_YF = 58, RC_WN = 1156, RC_WF = 800, RC_CX = 590;
+  var RC_R = RC_WN / RC_WF;
+  function rcP(u, v) {
+    var w = 1 + v * (RC_R - 1);
+    return { x: RC_CX + (u - .5) * RC_WN / w,
+             y: RC_YN + (RC_YF - RC_YN) * (v * RC_R / w), s: 1 / w };
+  }
+  function rcPoli(pts) {
+    return pts.map(function (q, i) { return (i ? "L" : "M") + q.x.toFixed(1) + " " + q.y.toFixed(1); }).join("");
+  }
+  // un rettangolo del campo (in u,v) diventa un quadrilatero
+  function rcQuad(u1, v1, u2, v2) {
+    return rcPoli([rcP(u1, v1), rcP(u2, v1), rcP(u2, v2), rcP(u1, v2)]) + "Z";
+  }
+  // cerchi e archi: si seguono punto per punto, cosi' vengono ellissi giuste
+  function rcArco(cu, cv, ru, rv, da, a, passi) {
+    var pts = [];
+    for (var i = 0; i <= passi; i++) {
+      var t = da + (a - da) * (i / passi);
+      pts.push(rcP(cu + ru * Math.cos(t), cv + rv * Math.sin(t)));
+    }
+    return rcPoli(pts);
+  }
   var rcScia = null;
   function rcDisegnaCampo() {
     var svg = document.getElementById("rcampo");
     if (!svg || svg.childNodes.length) return;
+    // misure vere del campo (105 x 68) ridotte a frazioni
+    var AREA = 16.5 / 105, PICC = 5.5 / 105, RIG = 11 / 105;
+    var AREA_V = (68 - 40.32) / 2 / 68, PICC_V = (68 - 18.32) / 2 / 68, PORTA_V = (68 - 7.32) / 2 / 68;
+    var CERCHIO_U = 9.15 / 105, CERCHIO_V = 9.15 / 68;
+
+    var difs = rcNs("defs", {}, svg);
+    var gr = rcNs("linearGradient", { id: "rc-prof", x1: 0, y1: 1, x2: 0, y2: 0 }, difs);
+    rcNs("stop", { offset: "0%", "stop-color": "#1A2757" }, gr);
+    rcNs("stop", { offset: "100%", "stop-color": "#0C1435" }, gr);
+
     var fondo = rcNs("g", {}, svg);
-    rcNs("rect", { x: 0, y: 0, width: RCW, height: RCH, rx: 16, fill: "#101A3E" }, fondo);
+    rcNs("path", { d: rcQuad(0, 0, 1, 1), fill: "url(#rc-prof)" }, fondo);
+    // le fasce del taglio d'erba, che in prospettiva si stringono
     for (var i = 0; i < 10; i += 2) {
-      rcNs("rect", { x: i * (RCW / 10), y: 0, width: RCW / 10, height: RCH, fill: "#FFFFFF", opacity: .022 }, fondo);
+      rcNs("path", { d: rcQuad(i / 10, 0, (i + 1) / 10, 1), fill: "#FFFFFF", opacity: .028 }, fondo);
     }
-    var L = rcNs("g", { fill: "none", stroke: "#F5F1E6", "stroke-opacity": .36, "stroke-width": 2.4 }, fondo);
-    var m = 22;
-    rcNs("rect", { x: m, y: m, width: RCW - 2 * m, height: RCH - 2 * m, rx: 3 }, L);
-    rcNs("path", { d: "M" + (RCW / 2) + " " + m + "V" + (RCH - m) }, L);
-    rcNs("circle", { cx: RCW / 2, cy: RCH / 2, r: 66 }, L);
-    rcNs("circle", { cx: RCW / 2, cy: RCH / 2, r: 4.5, fill: "#F5F1E6", "fill-opacity": .5, stroke: "none" }, L);
+    var L = rcNs("g", { fill: "none", stroke: "#F5F1E6", "stroke-opacity": .44,
+                        "stroke-width": 2.4, "stroke-linejoin": "round" }, svg);
+    rcNs("path", { d: rcQuad(0, 0, 1, 1) }, L);
+    rcNs("path", { d: rcPoli([rcP(.5, 0), rcP(.5, 1)]) }, L);
+    rcNs("path", { d: rcArco(.5, .5, CERCHIO_U, CERCHIO_V, 0, Math.PI * 2, 56) + "Z" }, L);
+    var c = rcP(.5, .5);
+    rcNs("circle", { cx: c.x, cy: c.y, r: 3.4 * c.s, fill: "#F5F1E6", "fill-opacity": .55, stroke: "none" }, L);
     [0, 1].forEach(function (lato) {
-      var x0 = lato ? RCW - m : m, k = lato ? -1 : 1;
-      rcNs("rect", { x: Math.min(x0, x0 + k * 118), y: RCH / 2 - 118, width: 118, height: 236 }, L);
-      rcNs("rect", { x: Math.min(x0, x0 + k * 44), y: RCH / 2 - 58, width: 44, height: 116 }, L);
-      rcNs("circle", { cx: x0 + k * 78, cy: RCH / 2, r: 3.5, fill: "#F5F1E6", "fill-opacity": .5, stroke: "none" }, L);
-      rcNs("path", { d: "M" + (x0 + k * 118) + " " + (RCH / 2 - 33) + "A 44 44 0 0 " + (lato ? 0 : 1) +
-                        " " + (x0 + k * 118) + " " + (RCH / 2 + 33) }, L);
-      rcNs("rect", { x: lato ? RCW - m - 4 : m - 4, y: RCH / 2 - 36, width: 8, height: 72, rx: 3,
-                     fill: "#C9A24B", "fill-opacity": .8, stroke: "none" }, L);
+      var k = lato ? -1 : 1, u0 = lato ? 1 : 0;
+      rcNs("path", { d: rcQuad(u0, AREA_V, u0 + k * AREA, 1 - AREA_V) }, L);
+      rcNs("path", { d: rcQuad(u0, PICC_V, u0 + k * PICC, 1 - PICC_V) }, L);
+      var d = rcP(u0 + k * RIG, .5);
+      rcNs("circle", { cx: d.x, cy: d.y, r: 3 * d.s, fill: "#F5F1E6", "fill-opacity": .55, stroke: "none" }, L);
+      // l'arco davanti all'area: solo il pezzo di cerchio che sta fuori.
+      // Il raggio va col verso del lato (k), cosi' l'arco guarda il centro.
+      var ang = Math.acos((AREA - RIG) / CERCHIO_U);
+      rcNs("path", { d: rcArco(u0 + k * RIG, .5, k * CERCHIO_U, CERCHIO_V, -ang, ang, 24) }, L);
+      // la porta: due pali e la traversa, alti davvero
+      var p1 = rcP(u0, PORTA_V), p2 = rcP(u0, 1 - PORTA_V);
+      var h1 = 24 * p1.s, h2 = 24 * p2.s;
+      rcNs("path", { d: "M" + p1.x.toFixed(1) + " " + p1.y.toFixed(1) + "V" + (p1.y - h1).toFixed(1) +
+                        "L" + p2.x.toFixed(1) + " " + (p2.y - h2).toFixed(1) + "V" + p2.y.toFixed(1),
+                     stroke: "#C9A24B", "stroke-opacity": .95, "stroke-width": 2.8 }, L);
+      // la rete, appena accennata
+      rcNs("path", { d: "M" + p1.x.toFixed(1) + " " + (p1.y - h1).toFixed(1) +
+                        "L" + p2.x.toFixed(1) + " " + (p2.y - h2).toFixed(1) +
+                        "L" + p2.x.toFixed(1) + " " + p2.y.toFixed(1) +
+                        "L" + p1.x.toFixed(1) + " " + p1.y.toFixed(1) + "Z",
+                     fill: "#C9A24B", "fill-opacity": .05, stroke: "none" }, L);
     });
     rcScia = rcNs("g", {}, svg);
     var g = rcNs("g", {}, svg);
-    RC.alone = rcNs("circle", { cx: 0, cy: 0, r: 24, fill: "#C9A24B", opacity: .42 }, g);
+    // l'ombra per terra: e' quella che fa stare il pallone sul campo
+    rcNs("ellipse", { cx: 0, cy: 13, rx: 15, ry: 5, fill: "#000000", opacity: .38 }, g);
+    RC.alone = rcNs("circle", { cx: 0, cy: 0, r: 23, fill: "#C9A24B", opacity: .42 }, g);
     rcNs("circle", { cx: 0, cy: 0, r: 11, fill: "#E3C271", stroke: "#0A0F24", "stroke-width": 3 }, g);
     g.style.transition = "transform .6s cubic-bezier(.33,.85,.4,1)";
-    g.style.transform = "translate(" + (RCW / 2) + "px," + (RCH / 2) + "px)";
+    var mezzo = rcP(.5, .5);
+    g.style.transform = "translate(" + mezzo.x + "px," + mezzo.y + "px) scale(" + mezzo.s.toFixed(3) + ")";
     RC.palla = g;
   }
-  function rcMuovi(x, y, casa) {
+  // il pallone si posa sul punto proiettato e prende la misura di li':
+  // in fondo al campo e' piu' piccolo, davanti piu' grande
+  function rcMuovi(q, casa) {
     if (!RC.palla) return;
     // l'alone attorno al pallone prende il colore di chi ha la palla:
     // si capisce chi attacca senza leggere niente
     if (RC.alone && casa != null) RC.alone.setAttribute("fill", casa ? RC.colCasa : RC.colOsp);
-    RC.palla.style.transform = "translate(" + Math.round(x) + "px," + Math.round(y) + "px)";
-    RC.scia.push({ x: x, y: y });
+    RC.palla.style.transform = "translate(" + q.x.toFixed(1) + "px," + q.y.toFixed(1) + "px) scale(" + q.s.toFixed(3) + ")";
+    RC.scia.push(q);
     if (RC.scia.length > 8) RC.scia.shift();
     if (!rcScia) return;
     rcScia.innerHTML = "";
     for (var i = 1; i < RC.scia.length; i++) {
-      rcNs("line", { x1: RC.scia[i - 1].x, y1: RC.scia[i - 1].y, x2: RC.scia[i].x, y2: RC.scia[i].y,
+      var a = RC.scia[i - 1], b = RC.scia[i];
+      rcNs("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y,
                      stroke: "#C9A24B", "stroke-opacity": (i / RC.scia.length) * .45,
-                     "stroke-width": 2.5 + i * .4, "stroke-linecap": "round" }, rcScia);
+                     "stroke-width": (2 + i * .35) * b.s, "stroke-linecap": "round" }, rcScia);
     }
   }
   // le coordinate ESPN sono girate per chi attacca (x 100 = porta
   // avversaria, y 100 = la sua sinistra): qui la casa attacca a destra
   function rcPosto(x, y, casa) {
-    var X = casa ? x / 100 * RCW : (1 - x / 100) * RCW;
-    var Y = casa ? (1 - y / 100) * RCH : y / 100 * RCH;
-    return { x: Math.max(14, Math.min(RCW - 14, X)), y: Math.max(14, Math.min(RCH - 14, Y)) };
+    var u = casa ? x / 100 : 1 - x / 100;
+    var v = casa ? 1 - y / 100 : y / 100;
+    return rcP(Math.max(.012, Math.min(.988, u)), Math.max(.02, Math.min(.98, v)));
   }
   // ESPN scrive i tipi in inglese: qui diventano italiano da telecronaca.
   var RC_DIZ = [[/goal/i, "GOL"], [/^Own Goal$/i, "Autogol"],
@@ -1012,8 +1073,7 @@
     if (!RC.acceso) return;
     if (RC.coda.length) {
       var g = RC.coda.shift();
-      var q = rcPosto(g.x, g.y, g.casa);
-      rcMuovi(q.x, q.y, g.casa);
+      rcMuovi(rcPosto(g.x, g.y, g.casa), g.casa);
       var a = document.getElementById("rcazione");
       a.querySelector(".chi").textContent = g.chi || "";
       a.querySelector(".cosa").textContent = g.cosa || "";
