@@ -9,6 +9,7 @@
   @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-display:swap;}
   @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-display:swap;}
   @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-display:swap;}
+  @font-face{font-family:'Nexa';src:url('../assets/fonts/Nexa-Bold.ttf') format('truetype');font-weight:700;font-display:swap;}
   *{margin:0;padding:0;box-sizing:border-box;}
   /* "hidden" deve vincere: un display: scritto da noi batte quello del
      browser, e una riga nascosta restava in mezzo alla console. */
@@ -907,10 +908,16 @@
   body.mam .console .sotto .lingue b{padding:0 9px;height:24px;line-height:24px;font-size:10px;letter-spacing:.08em;color:#9A9A9A;cursor:pointer;background:#1B1B1B;}
   body.mam .console .sotto .lingue b+b{border-left:1px solid #3A3A3A;}
   body.mam .console .sotto .lingue b.acceso{background:#C9A24B;color:#0A0F24;font-weight:800;}
-  .telaio .sottotitoli{position:absolute;left:0;right:0;bottom:0;padding:8px 14px 10px;background:linear-gradient(transparent,rgba(0,0,0,.82));
-    pointer-events:none;text-align:center;line-height:1.3;}
-  .telaio .sottotitoli b{display:block;font-size:12.5px;font-weight:500;color:#fff;text-shadow:0 1px 3px #000;max-height:2.6em;overflow:hidden;}
-  .telaio .sottotitoli i{display:block;font-style:normal;font-size:13.5px;color:var(--oro,#C9A24B);text-shadow:0 1px 3px #000;margin-top:2px;}
+  /* I SOTTOTITOLI IN ANTEPRIMA SONO QUELLI CHE ESCONO: italiano Nexa Bold 51
+     giallo, inglese Nexa Bold 55 bianco, misure sul quadro 1080 scalate
+     sull'altezza del monitor (le mette lo script), niente fascia sotto. */
+  .telaio .sottotitoli{position:absolute;left:0;right:0;bottom:0;padding:0 4%;display:flex;flex-direction:column;align-items:center;gap:.35em;text-align:center;pointer-events:none;z-index:6;}
+  .telaio .sottotitoli i{display:block;font-style:normal;font-family:'Nexa','Mazzard',sans-serif;font-weight:700;line-height:1.18;white-space:pre-line;max-width:100%;
+    text-shadow:0 0 2px #0A0F24,0 0 3px #0A0F24,1px 1px 1px #0A0F24,-1px -1px 1px #0A0F24,1px -1px 1px #0A0F24,-1px 1px 1px #0A0F24;}
+  .telaio .sottotitoli i.it{color:#FFFF00;}
+  .telaio .sottotitoli i.en{color:#FFFFFF;}
+  .telaio .sottotitoli i:empty{display:none;}
+  .telaio .sottotitoli i.avviso{font-family:inherit;font-weight:500;color:#BBB;font-size:12px!important;text-shadow:0 1px 3px #000;}
   body.mam .console #rigaFeed{padding-top:0;border-top:0;margin-top:-4px;}
   body.mam .console .notaFeed{flex:1;min-width:0;font-size:11px;line-height:1.4;color:#9A9A9A;}
   body.mam .console .notaFeed b{color:#D0D0D0;} body.mam .console .notaFeed a{color:#5AA7F2;text-decoration:none;font-weight:700;}
@@ -2184,7 +2191,7 @@
           '<div class="telaio" id="telaio"><video id="player" playsinline></video>' +
             // quello che si dice, mentre entra: la frase com'e' detta e sotto
             // la traduzione. Si accende col tasto Sottotitoli.
-            '<div class="sottotitoli" id="sottotitoli" hidden><b id="sottoX"></b><i id="sottoY"></i></div>' +
+            '<div class="sottotitoli" id="sottotitoli" hidden><i id="sottoX"></i><i id="sottoY"></i></div>' +
             '<span class="forma" id="forma">16:9</span>' +
             '<span class="targa" id="targa" hidden><b></b><i></i></span></div>' +
           '<div class="mbarra"><span id="tPos">00:00:00:00</span>' +
@@ -2267,7 +2274,7 @@
           '</div>' +
           '<div class="capo"><span class="rif">' + (MODO === "archivio" ? "PROGRAMMA" : "CLIP LIVE") + '</span>' +
             '<span id="capoSeq">—</span></div>' +
-          '<div class="telaio" id="telaioP"><span class="forma" id="formaP">16:9</span><video id="programma" playsinline></video>' +
+          '<div class="telaio" id="telaioP"><span class="forma" id="formaP">16:9</span><video id="programma" playsinline></video><div class="sottotitoli" id="sottoP" hidden><i class="it" id="sottoPit"></i><i class="en" id="sottoPen"></i></div>' +
             '<span class="targa" id="targaP" hidden><b></b><i></i></span></div>' +
           '<div class="mbarra"><span id="pPos">00:00:00:00</span>' +
             '<span class="fit">sequenza</span><span class="tot" id="pTot">00:00:00:00</span></div>' +
@@ -5886,7 +5893,8 @@
         '<option value="srt">file SRT a parte, in sync col taglio (si importa in Premiere)</option>' +
         '<option value="video">impressi nel video (burn-in)</option>' +
         '<option value="entrambi">impressi nel video + file SRT</option></select> ' +
-        '<select id="expSottoL"><option value="it"' + (SOTTO_ARCH.mostra !== "en" ? " selected" : "") + '>ITA</option><option value="en"' + (SOTTO_ARCH.mostra === "en" ? " selected" : "") + '>ENG</option><option value="entrambe">ITA + ENG insieme</option></select>' +
+        '<select id="expSottoL">' + [["it", "ITA"], ["en", "ENG"], ["entrambe", "ITA + ENG insieme"]].map(function (o) {
+          return '<option value="' + o[0] + '"' + ((SOTTO_ARCH.mostra || "it") === o[0] ? " selected" : "") + '>' + o[1] + '</option>'; }).join("") + '</select>' +
         '<div class="nota">Dalla telecronaca trascritta (Telecronaca \u2192 trascrivi); la lingua che manca si traduce al momento. Impressi: italiano Nexa Bold 51 giallo, inglese Nexa Bold 55 bianco; tutte e due, inglese sotto e italiano sopra. Con le due lingue escono due file SRT. Con i sottotitoli si taglia esatto.</div></td></tr>' +
       '<tr><td>Audio</td><td>stereo AAC 160k (si apre ovunque)</td></tr>' +
       '<tr><td>Destinazione</td><td><select id="expDove">' +
@@ -6975,8 +6983,8 @@
             // parlata la riconosce whisper da solo.
             '<span class="sotto" id="rigaSotto" hidden>' +
               '<button class="b" id="btnSotto" title="trascrive quello che si dice, con una quindicina di secondi di ritardo">Sottotitoli</button>' +
-              '<span class="lingue" title="in che lingua leggere"><b data-l="it" class="acceso">ITA</b><b data-l="en">ENG</b></span>' +
-              '<select id="sottoLingua" hidden><option value="it">ITA</option><option value="en">ENG</option></select>' +
+              '<span class="lingue" title="in che lingua leggere"><b data-l="it" class="acceso">ITA</b><b data-l="en">ENG</b><b data-l="entrambe" id="lingueDue" title="tutte e due insieme, come escono impresse nel video" hidden>ITA+ENG</b></span>' +
+              '<select id="sottoLingua" hidden><option value="it">ITA</option><option value="en">ENG</option><option value="entrambe">ITA+ENG</option></select>' +
               '<button class="b" id="btnSrt" title="scarica la telecronaca intera come file SRT, nella lingua scelta, coi tempi del file: si apre in Premiere" hidden>SRT</button>' +
             '</span>' +
           '</div>' +
@@ -7274,8 +7282,9 @@
       }).catch(function () {});
     }
     function traduciSottoArch() {
-      if (!REG || SOTTO_ARCH.mostra === SOTTO_ARCH.lingua) { SOTTO_ARCH.stato = ""; return; }
-      manda({ tipo: "clip-parlato-traduci", reg: REG.id, a: SOTTO_ARCH.mostra }).then(function (d) {
+      var verso = SOTTO_ARCH.mostra === "entrambe" ? (SOTTO_ARCH.lingua === "it" ? "en" : "it") : SOTTO_ARCH.mostra;
+      if (!REG || verso === SOTTO_ARCH.lingua) { SOTTO_ARCH.stato = ""; return; }
+      manda({ tipo: "clip-parlato-traduci", reg: REG.id, a: verso }).then(function (d) {
         if (d.giaNellaLingua) { SOTTO_ARCH.stato = ""; return; }
         SOTTO_ARCH.stato = d.inCorso ? "traduco " + d.fatte + "/" + d.totale : "";
         caricaSottoArch();
@@ -7283,18 +7292,56 @@
         aggiorna();
       }).catch(function (e) { SOTTO_ARCH.stato = ""; dice(e.message); });
     }
+    // LE RIGHE AL SECONDO t DELLA PARTITA, nella lingua scelta o in tutte e
+    // due: {it, en} col testo da mostrare, vuoto dove non c'e' (la
+    // traduzione che manca arriva in sottofondo e si vede appena c'e')
+    function sottoAlSecondo(t) {
+      var p = null;
+      for (var i = 0; i < SOTTO_ARCH.pezzi.length; i++) { var x = SOTTO_ARCH.pezzi[i]; if (t >= x.a - 0.3 && t < x.b + 0.8) { p = x; break; } }
+      var out = { it: "", en: "" };
+      if (!p) return out;
+      var sua = p.l || SOTTO_ARCH.lingua || "it", altra = sua === "it" ? "en" : "it";
+      var tradotta = (p.y && p.ya === altra) ? p.y : "";
+      if (SOTTO_ARCH.mostra === "entrambe") { out[sua] = p.x || ""; out[altra] = tradotta; }
+      else if (SOTTO_ARCH.mostra === sua) out[sua] = p.x || "";
+      else out[SOTTO_ARCH.mostra] = tradotta || ("\u2026 " + (p.x || ""));
+      return out;
+    }
+    // LO STILE DELLA CASA ANCHE IN ANTEPRIMA: le misure sono sul quadro
+    // 1080 e si scalano sull'altezza del monitor, come fa ffmpeg quando
+    // le imprime. Quello che vedi qui e' quello che esce.
+    function vestiSotto(box, it, en, testoIt, testoEn) {
+      var h = (box.parentNode && box.parentNode.clientHeight) || 300;
+      it.style.fontSize = (h * 51 / 1080).toFixed(1) + "px"; en.style.fontSize = (h * 55 / 1080).toFixed(1) + "px";
+      box.style.paddingBottom = (h * 54 / 1080).toFixed(1) + "px";
+      it.className = "it"; en.className = "en"; it.hidden = false; en.hidden = false;
+      it.textContent = testoIt || ""; en.textContent = testoEn || "";
+    }
     function disegnaSottoArch() {
-      var box = el("sottotitoli"), v = el("player"); if (!box || !v) return;
-      if (MODO !== "archivio") return;
-      if (!SOTTO_ARCH.acceso || !REG) { if (!box.hidden && !(REG && REG.sottotitoli && REG.sottotitoli.acceso)) box.hidden = true; return; }
+      var box = el("sottotitoli"), v = el("player"), bp = el("sottoP"), vp = el("programma");
+      if (!box || !v) return;
+      if (MODO !== "archivio") { if (bp) bp.hidden = true; return; }
+      if (!SOTTO_ARCH.acceso || !REG) { if (!box.hidden && !(REG && REG.sottotitoli && REG.sottotitoli.acceso)) box.hidden = true; if (bp) bp.hidden = true; return; }
       if (SOTTO_ARCH.reg !== REG.id) { caricaSottoArch(); return; }
       box.hidden = false;
-      var t = v.currentTime || 0, p = null;
-      for (var i = 0; i < SOTTO_ARCH.pezzi.length; i++) { var x = SOTTO_ARCH.pezzi[i]; if (t >= x.a - 0.3 && t < x.b + 0.8) { p = x; break; } }
-      if (!p) { el("sottoX").textContent = SOTTO_ARCH.pezzi.length ? "" : "(telecronaca non ancora trascritta: Telecronaca \u2192 trascrivi)"; return; }
-      var suo = (p.l || SOTTO_ARCH.lingua) === SOTTO_ARCH.mostra;
-      el("sottoX").textContent = suo ? (p.x || "") : (p.y && p.ya === SOTTO_ARCH.mostra ? p.y : "\u2026 " + (p.x || ""));
-      el("sottoY").textContent = ""; el("sottoY").hidden = true;
+      if (!SOTTO_ARCH.pezzi.length) {
+        el("sottoX").className = "avviso"; el("sottoX").hidden = false;
+        el("sottoX").textContent = "(telecronaca non ancora trascritta: Telecronaca \u2192 trascrivi)"; el("sottoY").textContent = "";
+        if (bp) bp.hidden = true; return;
+      }
+      var s = sottoAlSecondo(v.currentTime || 0);
+      vestiSotto(box, el("sottoX"), el("sottoY"), s.it, s.en);
+      // IL PROGRAMMA: la testina sta su un pezzo, e il pezzo su un secondo
+      // della partita. Le stesse righe, nel punto dove cadranno nel montato:
+      // metti un pezzo in timeline e i sottotitoli sono gia' li'.
+      if (!bp || !vp) return;
+      var pz = pezziProg(), x = pz[PROG.i], r = regDiSeq();
+      if (!x || x.vivo || PROG.vuoto || !r || r.id !== REG.id) { bp.hidden = true; return; }
+      var tReg = x.dentro + Math.max(0, (vp.currentTime || 0) - (PROG.da || 0));
+      if (tReg > x.fuori + 0.5) { bp.hidden = true; return; }
+      var sp = sottoAlSecondo(tReg);
+      bp.hidden = false;
+      vestiSotto(bp, el("sottoPit"), el("sottoPen"), sp.it, sp.en);
     }
     setInterval(disegnaSottoArch, 400);
     if (el("btnSotto")) el("btnSotto").addEventListener("click", function () {
@@ -7345,7 +7392,7 @@
         aggiorna(); return;
       }
       if (!REG || !(REG.sottotitoli && REG.sottotitoli.acceso)) return;
-      var m = this.value;
+      var m = this.value === "entrambe" ? "it" : this.value;
       manda({ tipo: "clip-sottotitoli", id: REG.id, mostra: m }).then(function (d) { REG = d.reg; SOTTO_DA = 0; aggiorna(); }).catch(function (e) { dice(e.message); });
     });
     function giraSotto() {
@@ -7361,8 +7408,8 @@
         // traduzione (e se la traduzione manca, il parlato con un segno)
         var mostra = (REG.sottotitoli && REG.sottotitoli.mostra) || "it";
         var suo = (u.l || "it") === mostra;
-        el("sottoX").textContent = suo ? (u.x || "") : (u.y || ("\u2026 " + (u.x || "")));
-        el("sottoY").textContent = ""; el("sottoY").hidden = true;
+        var tx = suo ? (u.x || "") : (u.y || ("\u2026 " + (u.x || "")));
+        vestiSotto(box, el("sottoX"), el("sottoY"), mostra === "en" ? "" : tx, mostra === "en" ? tx : "");
         // la telecronaca aperta cresce con le righe nuove
         if (el("telecronaca") && typeof aggiungiAllaTelecronaca === "function") aggiungiAllaTelecronaca(p);
       }).catch(function () {});
@@ -7476,9 +7523,10 @@
       var sottoAcceso = !!(REG && REG.sottotitoli && REG.sottotitoli.acceso) || (MODO === "archivio" && SOTTO_ARCH.acceso);
       el("rigaSotto").hidden = MODO === "archivio" ? !REG : !apertoQui;
       if (el("btnSrt")) el("btnSrt").hidden = MODO !== "archivio";
+      if (el("lingueDue")) el("lingueDue").hidden = MODO !== "archivio";
       el("btnSotto").className = "b" + (sottoAcceso ? " acceso" : "");
       el("btnSotto").textContent = !sottoAcceso ? "Sottotitoli"
-        : MODO === "archivio" ? "Sottotitoli \u00b7 " + SOTTO_ARCH.mostra.toUpperCase() + (SOTTO_ARCH.stato ? " \u00b7 " + SOTTO_ARCH.stato : "")
+        : MODO === "archivio" ? "Sottotitoli \u00b7 " + (SOTTO_ARCH.mostra === "entrambe" ? "ITA+ENG" : SOTTO_ARCH.mostra.toUpperCase()) + (SOTTO_ARCH.stato ? " \u00b7 " + SOTTO_ARCH.stato : "")
         : "Sottotitoli \u00b7 " + ((REG.sottotitoli.mostra || "it").toUpperCase()) +
           (REG.sottotitoliLingua ? " (parlano " + REG.sottotitoliLingua.toUpperCase() + ")" : "");
       if (sottoAcceso && el("sottoLingua").value !== (REG.sottotitoli.mostra || "it")) el("sottoLingua").value = REG.sottotitoli.mostra || "it";
