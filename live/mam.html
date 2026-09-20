@@ -5886,8 +5886,8 @@
         '<option value="srt">file SRT a parte, in sync col taglio (si importa in Premiere)</option>' +
         '<option value="video">impressi nel video (burn-in)</option>' +
         '<option value="entrambi">impressi nel video + file SRT</option></select> ' +
-        '<select id="expSottoL"><option value="it"' + (SOTTO_ARCH.mostra !== "en" ? " selected" : "") + '>ITA</option><option value="en"' + (SOTTO_ARCH.mostra === "en" ? " selected" : "") + '>ENG</option></select>' +
-        '<div class="nota">Dalla telecronaca trascritta (Telecronaca \u2192 trascrivi). Con i sottotitoli si taglia esatto, se no non stanno a tempo.</div></td></tr>' +
+        '<select id="expSottoL"><option value="it"' + (SOTTO_ARCH.mostra !== "en" ? " selected" : "") + '>ITA</option><option value="en"' + (SOTTO_ARCH.mostra === "en" ? " selected" : "") + '>ENG</option><option value="entrambe">ITA + ENG insieme</option></select>' +
+        '<div class="nota">Dalla telecronaca trascritta (Telecronaca \u2192 trascrivi); la lingua che manca si traduce al momento. Impressi: italiano Nexa Bold 51 giallo, inglese Nexa Bold 55 bianco; tutte e due, inglese sotto e italiano sopra. Con le due lingue escono due file SRT. Con i sottotitoli si taglia esatto.</div></td></tr>' +
       '<tr><td>Audio</td><td>stereo AAC 160k (si apre ovunque)</td></tr>' +
       '<tr><td>Destinazione</td><td><select id="expDove">' +
         '<option value="scarica">scarica sul computer appena pronto</option>' +
@@ -5969,7 +5969,9 @@
         (pronta ? "completato" : errore ? "errore: " + pulito(c.errore || "") : "in lavorazione \u00b7 " + Math.round((c.avanza || 0) * 100) + "%") + '</small>' +
         (pronta || errore ? "" : '<span class="barraAv"><i style="width:' + Math.round((c.avanza || 0) * 100) + '%"></i></span>') + '</p>' +
         (pronta ? '<a class="b oro scarica" href="' + url + '?scarica=1">Scarica</a>' +
-          (c.srt ? '<a class="b scarica" href="' + BASE + c.srt + '?scarica=1" title="' + (c.sottoRighe || 0) + ' righe in ' + (c.sottoLingua === "en" ? "inglese" : "italiano") + ', tempi dal primo fotogramma della clip' + (c.sottoMancano ? ' \u00b7 ' + c.sottoMancano + ' non tradotte' : '') + '">SRT</a>' : '') +
+          (c.srts || (c.srt ? [{ lingua: c.sottoLingua, file: c.srt, righe: c.sottoRighe }] : [])).map(function (f) {
+            return '<a class="b scarica" href="' + BASE + f.file + '?scarica=1" title="' + (f.righe || 0) + ' righe, tempi dal primo fotogramma della clip">SRT ' + (f.lingua === "en" ? "ENG" : "ITA") + '</a>';
+          }).join("") +
           '<a href="' + GEN + '&clip=' + encodeURIComponent(url) + '&titolo=' + encodeURIComponent(c.titolo) +
           (c.evento ? "&evento=" + encodeURIComponent(c.evento) : "") + '" target="_blank" rel="noopener">grafica</a>' : '') +
         '<a href="#" class="togli" data-clip="' + c.id + '">togli</a></div>';
@@ -5981,7 +5983,9 @@
                  '<p><b><i class="spunta">\u2713</i> ' + pulito(f[k].nome || q.titolo) + '</b><br><small>sequenza \u00b7 ' + k +
                  ' \u00b7 ' + orologio(f[k].durata) + ' \u00b7 completato</small></p><a class="b oro scarica" href="' + BASE + f[k].file + '?scarica=1">Scarica</a></div>';
       });
-      if (q.sottotitoli) righe += '<div class="az uscita fatta"><span class="telo2"></span><p><b><i class="spunta">\u2713</i> ' + pulito(q.sottotitoli.nome || q.titolo + ".srt") + '</b><br><small>sottotitoli della sequenza \u00b7 ' + (q.sottotitoli.lingua === "en" ? "inglese" : "italiano") + ' \u00b7 ' + q.sottotitoli.righe + ' righe' + (q.sottotitoli.mancano ? ' \u00b7 ' + q.sottotitoli.mancano + ' non tradotte' : '') + ' \u00b7 in sync con il montato</small></p><a class="b oro scarica" href="' + BASE + q.sottotitoli.file + '?scarica=1">Scarica</a></div>';
+      if (q.sottotitoli) (q.sottotitoli.files || [q.sottotitoli]).forEach(function (f) {
+        righe += '<div class="az uscita fatta"><span class="telo2"></span><p><b><i class="spunta">\u2713</i> ' + pulito(f.nome || q.titolo + ".srt") + '</b><br><small>sottotitoli della sequenza \u00b7 ' + (f.lingua === "en" ? "inglese" : "italiano") + ' \u00b7 ' + f.righe + ' righe \u00b7 in sync con il montato</small></p><a class="b oro scarica" href="' + BASE + f.file + '?scarica=1">Scarica</a></div>';
+      });
       if (q.premiere) righe += '<div class="az uscita fatta"><span class="telo2"></span><p><b><i class="spunta">\u2713</i> ' + pulito(q.premiere.nome || q.titolo + ".xml") + '</b><br><small>XML per Premiere \u00b7 completato</small></p><a class="b oro scarica" href="' + BASE + q.premiere.file + '?scarica=1">Scarica</a></div>';
       if (q.export && q.export.stato === "lavora") {
         var av = q.export.avanza || ((q.export.fatti || 0) / Math.max(1, q.export.quanti || 1));

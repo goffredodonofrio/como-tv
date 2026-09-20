@@ -1836,9 +1836,12 @@ async function agganciaStacco(r, quando, raggio) {
 //  al suo secondo, una sequenza incolla pezzi presi qua e la': i tempi vanno
 //  rifasati sul PEZZO, se no in Premiere il sottotitolo arriva dieci minuti
 //  dopo. Da qui escono: le righe che cadono dentro un tratto, gia'
-//  spostate; il testo SRT; e il filtro di ffmpeg che le imprime nel video.
-//  La lingua: la trascritta, o la traduzione se c'e'; dove manca resta la
-//  riga detta, che e' meglio di un buco.
+//  spostate; il testo SRT (un file per lingua); e il file ASS che ffmpeg
+//  imprime nel video, con gli stili della casa: italiano Nexa Bold 51
+//  giallo, inglese Nexa Bold 55 bianco, tutte e due insieme se le si vuole
+//  nello stesso video (inglese sotto, italiano sopra).
+//  La lingua che manca si traduce al momento: per una clip sono dieci
+//  righe, un secondo di Argos, e restano scritte per la prossima volta.
 function righeParlato(reg, lingua, da, a, sposta) {
   const d = PARLATO[reg];
   if (!d || !(d.pezzi || []).length) return [];
@@ -1858,54 +1861,129 @@ function righeParlato(reg, lingua, da, a, sposta) {
     if (b0 - a0 < 0.4) b0 = Math.min(a, a0 + 0.8);
     if (b0 <= a0) return;
     fuori.push({ a: Math.round((a0 - da + (sposta || 0)) * 1000) / 1000,
-                 b: Math.round((b0 - da + (sposta || 0)) * 1000) / 1000, testo, tradotta: sua !== voglio && x.ya === voglio && !!x.y,
+                 b: Math.round((b0 - da + (sposta || 0)) * 1000) / 1000, testo, lingua: voglio, sua, p: x,
+                 tradotta: sua !== voglio && x.ya === voglio && !!x.y,
                  manca: sua !== voglio && !(x.ya === voglio && x.y) });
   });
   return fuori;
+}
+// le stesse righe, ma con la lingua che manca tradotta adesso e scritta
+// nella telecronaca, cosi' la prossima volta c'e' gia'
+async function righeTradotte(reg, lingua, da, a, sposta, r) {
+  const righe = righeParlato(reg, lingua, da, a, sposta);
+  const mancano = righe.filter((x) => x.manca);
+  for (let i = 0; i < mancano.length; i += 20) {
+    const lotto = mancano.slice(i, i + 20);
+    try {
+      const tr = await traduciConINomi(lotto.map((x) => x.p.x), lotto[0].sua, lingua, r || R.reg[reg] || {});
+      if (!tr || tr.some((t) => !t)) console.log("[clip] sottotitoli: traduzione " + lotto[0].sua + "\u2192" + lingua + " di " + lotto.length + " righe: " + (tr ? tr.filter((t) => !t).length + " vuote" : "nessuna risposta"));
+      lotto.forEach((x, k) => { if (tr && tr[k]) { x.p.y = tr[k]; x.p.ya = lingua; x.p.l = x.p.l || x.sua; x.testo = tr[k]; x.manca = false; x.tradotta = true; } });
+    } catch (e) { console.log("[clip] traduzione per i sottotitoli: " + e.message); break; }
+  }
+  if (mancano.some((x) => !x.manca)) scriviParlato();
+  return righe;
 }
 function tempoSrt(s) {
   const ms = Math.max(0, Math.round(s * 1000)), h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60, ss = Math.floor(ms / 1000) % 60;
   return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") + ":" + String(ss).padStart(2, "0") + "," + String(ms % 1000).padStart(3, "0");
 }
+function tempoAss(s) {
+  const cs = Math.max(0, Math.round(s * 100)), h = Math.floor(cs / 360000), m = Math.floor(cs / 6000) % 60, ss = Math.floor(cs / 100) % 60;
+  return h + ":" + String(m).padStart(2, "0") + ":" + String(ss).padStart(2, "0") + "." + String(cs % 100).padStart(2, "0");
+}
 // una riga sopra i 42 caratteri si spezza in due, vicino a meta': e' la
 // misura di sicurezza dei sottotitoli in onda, e Premiere non lo fa da se'
-function spezzaSotto(t) {
+function spezzaSotto(t, aCapo) {
   if (t.length <= 42) return t;
   let k = -1, meglio = 1e9;
   for (let i = 18; i < t.length - 8; i++) if (t[i] === " " && Math.abs(i - t.length / 2) < meglio) { meglio = Math.abs(i - t.length / 2); k = i; }
-  return k < 0 ? t : t.slice(0, k) + "\n" + t.slice(k + 1);
+  return k < 0 ? t : t.slice(0, k) + (aCapo || "\n") + t.slice(k + 1);
 }
 function testoSrt(righe) {
   return righe.map((x, i) => (i + 1) + "\n" + tempoSrt(x.a) + " --> " + tempoSrt(x.b) + "\n" + spezzaSotto(x.testo) + "\n").join("\n");
 }
-// il filtro di ffmpeg: libass legge l'SRT e lo disegna con la Mazzard di
-// sistema, bianco con bordo scuro, in basso, come i sottotitoli della pagina
-function filtroSottotitoli(fileSrt) {
-  const via = fileSrt.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/:/g, "\\:");
-  return "subtitles=filename='" + via + "':charenc=UTF-8:force_style='FontName=Mazzard M,Bold=1,FontSize=22,PrimaryColour=&H00F5F1E6,OutlineColour=&HA00A0F24,BackColour=&H80000000,BorderStyle=1,Outline=1.6,Shadow=0.8,MarginV=34,Alignment=2'";
+// LA FONT DEI SOTTOTITOLI: la Nexa Bold, se e' installata sulla macchina
+// (fontconfig la trova per nome); se no la Mazzard, che c'e' sempre. Si
+// chiede una volta e si tiene a mente.
+let fontSottoVista = null;
+function fontSotto() {
+  if (fontSottoVista) return fontSottoVista;
+  let nome = "Mazzard M";
+  try {
+    const m = String(execFileSync("fc-match", ["-f", "%{family}", "Nexa:bold"], { timeout: 4000 }) || "");
+    if (/nexa/i.test(m)) nome = m.split(",")[0].trim();
+  } catch (e) {}
+  fontSottoVista = nome;
+  console.log("[clip] sottotitoli impressi con la font \"" + nome + "\"" + (nome === "Mazzard M" ? " (la Nexa non e' installata)" : ""));
+  return nome;
 }
-// che cosa chiede chi esporta: niente, il file, impresso nel video, o tutti e due
+// gli stili della casa, su un quadro 1920x1080: libass li scala sull'altezza
+// del video che esce, quindi sul verticale crescono in proporzione
+const STILI_SOTTO = {
+  it: { nome: "IT", corpo: 51, colore: "&H0000FFFF" },   // giallo   (AABBGGRR)
+  en: { nome: "EN", corpo: 55, colore: "&H00FFFFFF" }    // bianco
+};
+function testoAss(blocchi) {
+  const font = fontSotto();
+  const due = blocchi.filter((b) => b.righe.length).length > 1;
+  // con due lingue l'inglese sta sotto e l'italiano sopra, a distanza di
+  // due righe inglesi; da solo ognuno sta in basso
+  const margine = { en: 54, it: due ? 54 + Math.round(55 * 1.25 * 2) + 10 : 54 };
+  const stili = Object.keys(STILI_SOTTO).map((l) => {
+    const st = STILI_SOTTO[l];
+    return "Style: " + st.nome + "," + font + "," + st.corpo + "," + st.colore + ",&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2.2,0,2,80,80," + margine[l] + ",1";
+  }).join("\n");
+  const eventi = [];
+  blocchi.forEach((b) => {
+    const st = STILI_SOTTO[b.lingua] || STILI_SOTTO.it;
+    b.righe.forEach((x) => {
+      const t = spezzaSotto(x.testo.replace(/[{}]/g, ""), "\\N");
+      eventi.push("Dialogue: 0," + tempoAss(x.a) + "," + tempoAss(x.b) + "," + st.nome + ",,0,0,0,," + t);
+    });
+  });
+  return "[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\nWrapStyle: 0\nScaledBorderAndShadow: yes\n\n" +
+    "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n" +
+    stili + "\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n" + eventi.join("\n") + "\n";
+}
+// il filtro di ffmpeg: libass legge l'ASS e lo disegna sul video
+function filtroSottotitoli(fileAss) {
+  const via = fileAss.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/:/g, "\\:");
+  return "subtitles=filename='" + via + "':fontsdir=/usr/local/share/fonts/comotv";
+}
+// che cosa chiede chi esporta: niente, il file, impresso nel video, o tutti
+// e due; e in che lingua — una, o tutte e due insieme
 function vuoleSotto(p) {
   const s = String((p && p.sotto) || "").toLowerCase();
-  return { file: s === "srt" || s === "entrambi", video: s === "video" || s === "entrambi",
-           lingua: ["it", "en"].indexOf(String((p && p.sottoLingua) || "")) >= 0 ? String(p.sottoLingua) : "" };
+  const l = String((p && p.sottoLingua) || "").toLowerCase();
+  const lingue = (l === "entrambe" || l === "it+en" || l === "en+it") ? ["it", "en"] : (["it", "en"].indexOf(l) >= 0 ? [l] : []);
+  return { file: s === "srt" || s === "entrambi", video: s === "video" || s === "entrambi", lingue };
 }
-// per UNA clip: scrive l'srt accanto al file (sempre, se serve a ffmpeg) e
-// dice quale filtro aggiungere. Il tratto e' quello della clip com'e'
-// uscita, rincorsa compresa: cosi' l'srt comincia col primo fotogramma.
-function sottoPerLaClip(r, c, p) {
+function lingueSotto(v, reg) { return v.lingue.length ? v.lingue : [(PARLATO[reg] || {}).lingua || LINGUA_MAM]; }
+// per UNA clip: scrive gli srt accanto al file e l'ASS per ffmpeg, e dice
+// quale filtro aggiungere. Il tratto e' quello della clip com'e' uscita,
+// rincorsa compresa: cosi' comincia col primo fotogramma.
+async function sottoPerLaClip(r, c, p) {
   const v = vuoleSotto(p);
   if (!v.file && !v.video) return "";
-  const righe = righeParlato(r.id, v.lingua, c.dentro, c.fuori, 0);
-  if (!righe.length) throw new Error("sottotitoli chiesti, ma in questo tratto la telecronaca non e' trascritta");
-  const srt = path.join(DIR, CARTELLA_CLIP, c.id + ".srt");
-  fs.writeFileSync(srt, testoSrt(righe));
-  c.sottoLingua = v.lingua || (PARLATO[r.id] || {}).lingua || LINGUA_MAM;
-  c.sottoRighe = righe.length;
-  c.sottoMancano = righe.filter((x) => x.manca).length;
-  if (v.file) c.srt = "/clip/" + CARTELLA_CLIP + "/" + c.id + ".srt";
-  if (v.video) c.sottoImpressi = true;
-  return v.video ? filtroSottotitoli(srt) : "";
+  const blocchi = [];
+  for (const l of lingueSotto(v, r.id)) blocchi.push({ lingua: l, righe: await righeTradotte(r.id, l, c.dentro, c.fuori, 0, r) });
+  if (!blocchi.some((b) => b.righe.length)) throw new Error("sottotitoli chiesti, ma in questo tratto la telecronaca non e' trascritta");
+  c.sottoLingue = blocchi.map((b) => b.lingua);
+  c.sottoLingua = c.sottoLingue[0];
+  c.sottoRighe = blocchi.reduce((n, b) => n + b.righe.length, 0);
+  c.sottoMancano = blocchi.reduce((n, b) => n + b.righe.filter((x) => x.manca).length, 0);
+  if (v.file) {
+    c.srts = blocchi.filter((b) => b.righe.length).map((b) => {
+      fs.writeFileSync(path.join(DIR, CARTELLA_CLIP, c.id + "." + b.lingua + ".srt"), testoSrt(b.righe));
+      return { lingua: b.lingua, file: "/clip/" + CARTELLA_CLIP + "/" + c.id + "." + b.lingua + ".srt", righe: b.righe.length };
+    });
+    c.srt = c.srts[0].file;
+  }
+  if (!v.video) return "";
+  const ass = path.join(DIR, CARTELLA_CLIP, c.id + ".ass");
+  fs.writeFileSync(ass, testoAss(blocchi));
+  c.sottoImpressi = true;
+  return filtroSottotitoli(ass);
 }
 
 async function clipTaglia(p) {
@@ -1946,7 +2024,7 @@ async function clipTaglia(p) {
   // riconoscere una clip basta la miniatura. Si accende chiedendolo.
   const sting = p.sting === true && fontCe();
   const sottoV = vuoleSotto(p);
-  if ((sottoV.file || sottoV.video) && !righeParlato(r.id, sottoV.lingua, dentro, fine, 0).length)
+  if ((sottoV.file || sottoV.video) && !lingueSotto(sottoV, r.id).some((l) => righeParlato(r.id, l, dentro, fine, 0).length))
     throw new Error("sottotitoli chiesti, ma in questo tratto la telecronaca non e' trascritta (Telecronaca \u2192 trascrivi)");
   // imprimere il testo vuol dire ricodificare: si taglia esatto
   const preciso = !!p.preciso || !!ritaglio || sting || sottoV.video;
@@ -1988,7 +2066,7 @@ async function clipTaglia(p) {
     c.rincorsa = Math.round(scarto * 100) / 100;      // quanto comincia prima
     c.dentro = Math.round((dentro - scarto) * 100) / 100;
   }
-  const stingFiltro = [sting ? filtroSting(r, c, path.join(DIR, CARTELLA_CLIP), c.id) : "", sottoPerLaClip(r, c, p)].filter(Boolean).join(",");
+  const stingFiltro = [sting ? filtroSting(r, c, path.join(DIR, CARTELLA_CLIP), c.id) : "", await sottoPerLaClip(r, c, p)].filter(Boolean).join(",");
   // la riserva: gli stessi secondi, ma ricodificati
   const panQui = piuDiUnaCoppia(r) ? panDi(quantiCanali(r), p.coppia, null) : "";
   const riserva = preciso ? null : codifica(
@@ -2000,7 +2078,7 @@ async function clipTaglia(p) {
 
 // Stessa clip, presa dall'integrale invece che dai segmenti: cambia solo da
 // dove si leggono i byte.
-function taglioDaIntegrale(r, p, dentro, fuori, durata) {
+async function taglioDaIntegrale(r, p, dentro, fuori, durata) {
   // il secondo della linea del tempo diventa il secondo dentro il file che
   // in quel momento sta suonando: con la partita intera non sono piu' la
   // stessa cosa
@@ -2016,7 +2094,7 @@ function taglioDaIntegrale(r, p, dentro, fuori, durata) {
   const ritaglio = FORMATI[formato].vf;
   const sting = p.sting === true && fontCe();
   const sottoV = vuoleSotto(p);
-  if ((sottoV.file || sottoV.video) && !righeParlato(r.id, sottoV.lingua, dentro, dentro + durata, 0).length)
+  if ((sottoV.file || sottoV.video) && !lingueSotto(sottoV, r.id).some((l) => righeParlato(r.id, l, dentro, dentro + durata, 0).length))
     throw new Error("sottotitoli chiesti, ma in questo tratto la telecronaca non e' trascritta (Telecronaca \u2192 trascrivi)");
   const preciso = !!p.preciso || !!ritaglio || sting || sottoV.video;
   const c = {
@@ -2034,7 +2112,7 @@ function taglioDaIntegrale(r, p, dentro, fuori, durata) {
   scrivi();
   esegui(c, codifica(["-ss", String(daQui), "-i", file, "-t", String(durata)],
                      preciso, ritaglio,
-                     [sting ? filtroSting(r, c, path.join(DIR, CARTELLA_CLIP), c.id) : "", sottoPerLaClip(r, c, p)].filter(Boolean).join(","),
+                     [sting ? filtroSting(r, c, path.join(DIR, CARTELLA_CLIP), c.id) : "", await sottoPerLaClip(r, c, p)].filter(Boolean).join(","),
                      piuDiUnaCoppia(r) ? panDi(quantiCanali(r), p.coppia, null) : ""), null);
   return { ok: true, clip: c };
 }
@@ -2156,7 +2234,7 @@ function esegui(c, args, lista, riserva) {
     ["t1", "t2", "t3"].forEach((t) => {
       try { fs.unlinkSync(path.join(DIR, CARTELLA_CLIP, c.id + "." + t + ".txt")); } catch (e) {}
     });
-    if (!c.srt) { try { fs.unlinkSync(path.join(DIR, CARTELLA_CLIP, c.id + ".srt")); } catch (e) {} }
+    try { fs.unlinkSync(path.join(DIR, CARTELLA_CLIP, c.id + ".ass")); } catch (e) {}
     if (code === 0) {
       const d = await probe(fuoriFile);
       c.stato = "pronta"; c.peso = d.peso || 0; c.avanza = 1;
@@ -4210,27 +4288,33 @@ function costruisciMix(q, iBase) {
 // per UNA SEQUENZA: i pezzi stanno sulla timeline uno dopo l'altro (o dove
 // li ha messi chi monta, col nero nei buchi): ogni pezzo porta le sue righe
 // spostate al suo posto. Stessa aritmetica del montaggio, se no non torna.
-function righeDellaSequenza(q, lingua) {
+async function righeDellaSequenza(q, lingua) {
   normalizzaSeq(q);
   let orologio = 0; const tutte = [];
-  q.pezzi.forEach((x) => {
+  for (const x of q.pezzi) {
     const parte = Math.max(orologio, x.t0 || 0), dur = Math.max(0, x.fuori - x.dentro);
-    if (!x.vivo) righeParlato(q.reg, lingua, x.dentro, x.fuori, parte).forEach((y) => tutte.push(y));
+    if (!x.vivo) (await righeTradotte(q.reg, lingua, x.dentro, x.fuori, parte, R.reg[q.reg])).forEach((y) => tutte.push(y));
     orologio = parte + dur;
-  });
+  }
   return tutte;
 }
-function scriviSrtSequenza(q, lingua) {
-  const righe = righeDellaSequenza(q, lingua);
-  if (!righe.length) throw new Error("sottotitoli chiesti, ma la telecronaca di questi pezzi non e' trascritta (Telecronaca \u2192 trascrivi)");
+async function scriviSrtSequenza(q, v, conAss) {
+  const blocchi = [];
+  for (const l of lingueSotto(v, q.reg)) blocchi.push({ lingua: l, righe: await righeDellaSequenza(q, l) });
+  if (!blocchi.some((b) => b.righe.length)) throw new Error("sottotitoli chiesti, ma la telecronaca di questi pezzi non e' trascritta (Telecronaca \u2192 trascrivi)");
   assicura(path.join(DIR, CARTELLA_HL));
-  const file = path.join(DIR, CARTELLA_HL, q.id + ".srt");
-  fs.writeFileSync(file, testoSrt(righe));
-  q.sottotitoli = { stato: "pronto", file: "/clip/" + CARTELLA_HL + "/" + q.id + ".srt",
-                    nome: nomeScaricoSeq(q, R.reg[q.reg], "", ".srt"), lingua: lingua || (PARLATO[q.reg] || {}).lingua || LINGUA_MAM,
-                    righe: righe.length, mancano: righe.filter((x) => x.manca).length, quando: Date.now() };
+  const files = blocchi.filter((b) => b.righe.length).map((b) => {
+    fs.writeFileSync(path.join(DIR, CARTELLA_HL, q.id + "." + b.lingua + ".srt"), testoSrt(b.righe));
+    return { lingua: b.lingua, file: "/clip/" + CARTELLA_HL + "/" + q.id + "." + b.lingua + ".srt",
+             nome: nomeScaricoSeq(q, R.reg[q.reg], "", "." + b.lingua + ".srt"), righe: b.righe.length };
+  });
+  q.sottotitoli = { stato: "pronto", file: files[0].file, nome: files[0].nome, files, lingue: files.map((f) => f.lingua),
+                    lingua: files[0].lingua, righe: files.reduce((n, f) => n + f.righe, 0),
+                    mancano: blocchi.reduce((n, b) => n + b.righe.filter((x) => x.manca).length, 0), quando: Date.now() };
   scrivi(); annuncia(0, "clip");
-  return { via: file, righe };
+  let ass = "";
+  if (conAss) { ass = path.join(DIR, CARTELLA_HL, q.id + ".ass"); fs.writeFileSync(ass, testoAss(blocchi)); }
+  return { via: ass, blocchi };
 }
 
 async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
@@ -4315,7 +4399,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   // pezzi cominciano fino a un secondo prima e si sfasano. Con i
   // sottotitoli si taglia esatto, e per imprimerli si ricodifica comunque.
   const sottoV = vuoleSotto(p2);
-  const srtSeq = (sottoV.file || sottoV.video) ? scriviSrtSequenza(q, sottoV.lingua) : null;
+  const srtSeq = (sottoV.file || sottoV.video) ? await scriviSrtSequenza(q, sottoV, !!sottoV.video) : null;
   const brucia = !!(sottoV.video && srtSeq);
   const veloce = (p2 && p2.esatto) || srtSeq ? false : (!ritaglio && !grafiche0.length && !mixato && !buchi.length);
   const dir2 = path.join(dir, "tagli");
@@ -9489,12 +9573,13 @@ function serviHttp(req, res, u) {
       // riceve non vuol dire niente. Si scarica col nome della partita e
       // dell'azione, che e' l'altra meta' del problema che risolve lo sting.
       let nome = pezzi[pezzi.length - 1];
-      const idc = /^([A-Za-z0-9-]+?)(?:_(16x9|3x4|9x16))?\.(mp4|xml|srt)$/.exec(nome);
+      const idc = /^([A-Za-z0-9-]+?)(?:_(16x9|3x4|9x16))?(?:\.(it|en))?\.(mp4|xml|srt)$/.exec(nome);
       const idSeq = idc ? (R.seq[idc[1]] ? idc[1] : (pezzi.length > 1 && R.seq[pezzi[pezzi.length - 2]] ? pezzi[pezzi.length - 2] : null)) : null;
-      if (idc && (idc[3] === "mp4" || idc[3] === "srt") && R.clip[idc[1]]) nome = nomeScarico(R.clip[idc[1]], R.reg[R.clip[idc[1]].reg]).replace(/\.mp4$/, "." + idc[3]);
+      const coda = (idc && idc[3] ? "." + idc[3] : "") + (idc ? "." + idc[4] : "");
+      if (idc && (idc[4] === "mp4" || idc[4] === "srt") && R.clip[idc[1]]) nome = nomeScarico(R.clip[idc[1]], R.reg[R.clip[idc[1]].reg]).replace(/\.mp4$/, coda);
       else if (idc && idSeq) {
         const q = R.seq[idSeq];
-        nome = nomeScaricoSeq(q, R.reg[q.reg], idc[2] ? idc[2].replace("x", ":") : (idc[3] === "mp4" ? "16:9" : ""), "." + idc[3]);
+        nome = nomeScaricoSeq(q, R.reg[q.reg], idc[2] ? idc[2].replace("x", ":") : (idc[4] === "mp4" ? "16:9" : ""), coda);
       } else if (nome === "integrale.mp4" && pezzi.length > 1 && R.reg[pezzi[0]]) {
         nome = R.reg[pezzi[0]].titolo.replace(/[^A-Za-z0-9 _-]/g, "").replace(/\s+/g, "-") + "_integrale.mp4";
       }
@@ -10890,8 +10975,8 @@ const AZIONI = {
   "clip-hl-taratura": hlTaratura,
   "clip-hl-esporta": hlEsporta,
   // l'srt della sequenza da solo: chi porta l'XML in Premiere lo mette a fianco
-  "clip-hl-srt": (p) => { const q = seqDi(p); if (!q.pezzi.length) throw new Error("la sequenza e' vuota");
-                          scriviSrtSequenza(q, vuoleSotto({ sottoLingua: p.lingua }).lingua); return { ok: true, sottotitoli: q.sottotitoli }; },
+  "clip-hl-srt": async (p) => { const q = seqDi(p); if (!q.pezzi.length) throw new Error("la sequenza e' vuota");
+                          await scriviSrtSequenza(q, vuoleSotto({ sottoLingua: p.lingua }), false); return { ok: true, sottotitoli: q.sottotitoli }; },
   "clip-hl-elimina": hlElimina,
   "clip-integrale": clipIntegrale,
   "clip-anello": () => ({ ok: true, tolti: anello() }),
