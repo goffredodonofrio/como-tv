@@ -687,6 +687,17 @@
           <input type="text" id="radioNome" placeholder="Nome del radiocronista" style="flex:1">
           <select id="radioNomeSel" style="flex:1"></select>
         </div>
+        <!-- il campetto DENTRO il cartello: agganciando la partita ESPN, il
+             cartello RADIOCRONACA mostra il campo e il pallone che segue le
+             giocate. Senza aggancio il cartello resta quello di sempre. -->
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+          <select id="radioComp" style="flex:1 1 170px"></select>
+          <select id="radioPart" style="flex:1 1 230px" disabled><option value="">&mdash;</option></select>
+          <button type="button" id="btnRadioEspn" disabled>&#9917; Campetto nel cartello</button>
+          <button type="button" id="btnRadioStacca" style="display:none">Togli il campetto</button>
+          <span id="radioEspnNota" style="flex:1 1 100%;color:var(--gr);font-size:13px">Aggancia la
+            partita ESPN e nel cartello compare il campo col pallone sulle giocate.</span>
+        </div>
 
         <!-- il campetto che segue la partita: attrezzo del banco, non va in onda -->
         <div class="svuotabox" style="align-items:center">
@@ -968,6 +979,8 @@
     osp:  { n: "", s: "", col: "#C50E1F", tid: "", stemma: "" },
     p1: 0, p2: 0, rec: 0, rc1: 0, rc2: 0,
     radioNome: "",
+    // partita ESPN agganciata al cartello radiocronaca: { lega, ev, nome }
+    espn: null,
     // t2: il cronometro e' nel secondo tempo (lo dice il tasto 45:00).
     // Serve al minuto di gioco: 47' nel secondo tempo, 45+2' nel primo.
     clock: { run: false, base: 0, ts: null, t2: false },
@@ -1344,6 +1357,60 @@
     });
   })();
 
+  // ── il campetto del cartello RADIOCRONACA ──────────────────────────
+  //    Qui si sceglie solo QUALE partita: il campo, il pallone e le
+  //    giocate li disegna partita-live.html leggendo ESPN per conto suo.
+  //    Cosi' ogni postazione in onda resta sincronizzata da sola.
+  function radioEspnNota(t) { var n = el("radioEspnNota"); if (n) n.innerHTML = t; }
+  function radioEspnDipingi() {
+    var on = !!(S.espn && S.espn.ev);
+    var b = el("btnRadioStacca"); if (b) b.style.display = on ? "" : "none";
+    if (on) radioEspnNota("Nel cartello c'e' il campetto di <b>" +
+      (S.espn.nome || "questa partita") + "</b>. Il pallone segue le giocate ESPN (circa un minuto di ritardo).");
+    else radioEspnNota("Aggancia la partita ESPN e nel cartello compare il campo col pallone sulle giocate.");
+  }
+  (function () {
+    var selC = el("radioComp"), selP = el("radioPart"), btn = el("btnRadioEspn");
+    if (!selC || !selP || !btn) return;
+    if (window.CompetizioniEspn) CompetizioniEspn.riempi(selC);
+    selC.addEventListener("change", function () {
+      selP.innerHTML = '<option value="">&mdash;</option>'; selP.disabled = true; btn.disabled = true;
+      if (!this.value) return;
+      var d = new Date();
+      var g = d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
+      radioEspnNota("Cerco le partite di oggi&hellip;");
+      fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + this.value + "/scoreboard?dates=" + g)
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          var ev = (j.events || []).map(function (e) {
+            var st = (((e.competitions || [])[0] || {}).status || {}).type || {};
+            return { id: e.id, nome: e.name || e.shortName || "", stato: st.detail || "", viva: st.state === "in" };
+          });
+          selP.innerHTML = ev.length
+            ? '<option value="">&mdash; ' + ev.length + ' oggi &mdash;</option>' + ev.map(function (x) {
+                return '<option value="' + x.id + '">' + (x.viva ? "\u25CF " : "") + x.nome + " \u00B7 " + x.stato + "</option>";
+              }).join("")
+            : '<option value="">&mdash; oggi niente &mdash;</option>';
+          selP.disabled = !ev.length;
+          radioEspnNota(ev.length ? "Scegli la partita e premi <b>Campetto nel cartello</b>."
+                                  : "Oggi in questa competizione non si gioca.");
+        })
+        .catch(function () { radioEspnNota("ESPN non risponde."); });
+    });
+    selP.addEventListener("change", function () { btn.disabled = !this.value; });
+    btn.addEventListener("click", function () {
+      if (!selC.value || !selP.value) return;
+      var nome = (selP.options[selP.selectedIndex].textContent || "").split(" \u00B7 ")[0].replace(/^\u25CF\s*/, "");
+      S.espn = { lega: selC.value, ev: selP.value, nome: nome };
+      radioEspnDipingi(); invia(true);
+      msg.textContent = "Campetto agganciato a " + nome + ": si vede nel cartello RADIOCRONACA.";
+    });
+    el("btnRadioStacca").addEventListener("click", function () {
+      S.espn = null; radioEspnDipingi(); invia(true);
+      msg.textContent = "Campetto tolto: il cartello RADIOCRONACA torna semplice.";
+    });
+  })();
+
   // ── player partita: le schermate del match come una scaletta,
   //    dentro col ▶ e fuori con un tasto solo (stessa logica delle grafiche) ──
   var FASI = [
@@ -1486,7 +1553,7 @@
           casa: { n: "", s: "", col: "#1735C8", tid: "", stemma: "" },
           osp:  { n: "", s: "", col: "#C50E1F", tid: "", stemma: "" },
           p1: 0, p2: 0, rec: 0, rc1: 0, rc2: 0,
-          radioNome: "",
+          radioNome: "", espn: null,
           clock: { run: false, base: 0, ts: null, t2: false },
           rose: null, ev: null, marcatori: [] };
     specchioFase();
@@ -1497,6 +1564,7 @@
     el("no").value = ""; el("so").value = ""; el("co").value = S.osp.col;
     el("radioNome").value = "";
     var rs = el("radioNomeSel"); if (rs) rs.value = "";
+    radioEspnDipingi();
     sel = null;
     disegnaFasi(); dipingi(); dipingiEventi(true);
     invia(true);
@@ -1712,6 +1780,7 @@
                   bug: f === "live", card: (f === "live" || f === "off") ? null : f,
                   casa: S.casa, osp: S.osp,
                   p1: S.p1, p2: S.p2, rec: S.rec, radioNome: S.radioNome || "",
+                  espn: S.espn || null,
                   clock: { run: false, base: elapsed(), ts: null } };
     pvw.src = "partita-live.html?prev=" + b64url(stato);
     pvwcap.textContent = "Anteprima: " + titolo + " — andrà sul layer LIVE MATCH.";
@@ -2525,7 +2594,7 @@
               casa: j.casa || S.casa, osp: j.osp || S.osp,
               p1: j.p1 || 0, p2: j.p2 || 0, rec: j.rec || 0,
               rc1: j.rc1 || 0, rc2: j.rc2 || 0,
-              radioNome: j.radioNome || "",
+              radioNome: j.radioNome || "", espn: j.espn || null,
               clock: j.clock || S.clock, livFase: j.livFase || S.livFase,
               rose: j.rose || null, ev: j.ev || null, marcatori: j.marcatori || [] };
         specchioFase();
@@ -2544,6 +2613,7 @@
         el("nc").value = S.casa.n || ""; el("sc").value = S.casa.s || ""; el("cc").value = S.casa.col || "#1735C8";
         el("no").value = S.osp.n || ""; el("so").value = S.osp.s || ""; el("co").value = S.osp.col || "#C50E1F";
         el("radioNome").value = S.radioNome || "";
+        radioEspnDipingi();
         for (var i = 0; i < CAMPIONATI.length; i++) if (CAMPIONATI[i].nome === S.camp) elCamp.value = i;
         riempiSquadre();
         // le righe devono mostrare subito cosa sta trasmettendo

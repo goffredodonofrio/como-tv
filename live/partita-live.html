@@ -242,6 +242,32 @@
   #radiomarc .m small{font-size:20px;color:#8A8B96;margin-left:9px;}
   #radiomarc .col.b .m{direction:rtl;}      /* il minuto va dall'altra parte */
 
+  /* ── il campetto della radiocronaca ─────────────────────────────────
+     Il pallone si muove dove sta l'azione: le coordinate sono quelle delle
+     giocate ESPN, non un tracciamento (quello non lo pubblica nessuno).
+     Col campetto acceso il cartello si stringe: le due sfere salgono e
+     rimpiccioliscono, i marcatori lasciano il posto al campo. */
+  #radiocampo{position:absolute;left:50%;top:436px;transform:translateX(-50%);
+    width:1100px;height:484px;z-index:2;display:none;}
+  #radio.conCampo #radiocampo{display:block;}
+  #radiocampo svg{width:100%;height:100%;display:block;
+    filter:drop-shadow(0 26px 60px rgba(0,0,0,.45));}
+  #rcazione{position:absolute;left:0;right:0;bottom:-74px;display:flex;align-items:center;gap:18px;
+    padding:0 26px;height:62px;border-radius:12px;background:rgba(10,15,36,.82);
+    border:1px solid rgba(201,162,75,.35);}
+  #rcazione .chi{font-family:'Mazzard',sans-serif;font-weight:800;font-size:26px;letter-spacing:.02em;
+    text-transform:uppercase;color:#F5F1E6;white-space:nowrap;}
+  #rcazione .cosa{font-family:'DM Sans',sans-serif;font-weight:500;font-size:22px;
+    color:rgba(245,241,230,.72);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;}
+  #rcazione .quando{font-family:'Mazzard',sans-serif;font-weight:800;font-size:24px;color:#C9A24B;
+    font-variant-numeric:tabular-nums;}
+  #radio.conCampo #radiorow{top:176px;transform:translate(-50%,-50%) scale(.48);}
+  #radio.conCampo #radioclock{top:276px;font-size:26px;}
+  #radio.conCampo #radiosotto{top:314px;}
+  #radio.conCampo #radiofilo{margin-top:10px;}
+  #radio.conCampo #radiomarc{display:none;}
+  #radio.conCampo #radioev{top:1004px;}
+
   #radioev{position:absolute;left:50%;top:958px;transform:translateX(-50%) translateY(14px);
     z-index:3;display:flex;align-items:center;gap:26px;padding:18px 34px;border-radius:14px;
     background:rgba(10,15,36,.72);border:1px solid rgba(201,162,75,.35);
@@ -433,6 +459,10 @@
       <div id="radiocomp"></div>
       <div id="radiofilo"></div>
       <div id="radiochi" class="vuoto"></div>
+    </div>
+    <!-- il campetto: c'e' solo quando la partita e' agganciata a ESPN -->
+    <div id="radiocampo"><svg id="rcampo" viewBox="0 0 1180 520" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="rcazione"><span class="chi"></span><span class="cosa"></span><span class="quando"></span></div>
     </div>
     <div id="radioev"><span class="sw"></span><span class="min"></span>
       <span class="lab"></span><span class="chi"></span></div>
@@ -748,6 +778,7 @@
       } else rchi.className = "vuoto";
       radioMarcatori(j);
       radioEvento(j, evRadio);
+      rcAccendi(j.espn, j);
       aggiornaRadioClock();
       elRadio.classList.remove("out");
       elRadio.classList.add("on");
@@ -757,6 +788,7 @@
       elRadio.classList.add("out");
       setTimeout(function () { elRadio.classList.remove("out"); }, 420);
       polvereRadio(false);
+      rcSpegni();
     }
 
     if (bug) {
@@ -822,6 +854,190 @@
       elFull.classList.add("out");
       setTimeout(function () { elFull.classList.remove("out"); }, 420);
     }
+  }
+
+  // ══ IL CAMPETTO DELLA RADIOCRONACA ═══════════════════════════════════
+  // La partita raccontata sul campo. ESPN pubblica ogni GIOCATA con le sue
+  // coordinate — passaggio, contrasto, tiro, rimessa: non e' il
+  // tracciamento dei giocatori, e' la catena dei tocchi, e basta a far
+  // vivere il campo. Fra una giocata e l'altra il pallone non salta: ci
+  // scivola, e si lascia dietro una scia che si spegne. Il ritardo e'
+  // quello di ESPN, circa un minuto.
+  //
+  // Si accende solo se il banco ha agganciato la partita (j.espn).
+  var RC = { lega: "", ev: "", casaId: "", coda: [], visti: {}, partito: false,
+             timer: null, passo: null, scia: [], palla: null, alone: null,
+             colCasa: "#C9A24B", colOsp: "#C9A24B", acceso: false };
+  var RCW = 1180, RCH = 520;
+  function rcNs(nome, attr, dentro) {
+    var e = document.createElementNS("http://www.w3.org/2000/svg", nome);
+    for (var k in attr) if (attr[k] !== undefined && attr[k] !== null) e.setAttribute(k, attr[k]);
+    if (dentro) dentro.appendChild(e);
+    return e;
+  }
+  var rcScia = null;
+  function rcDisegnaCampo() {
+    var svg = document.getElementById("rcampo");
+    if (!svg || svg.childNodes.length) return;
+    var fondo = rcNs("g", {}, svg);
+    rcNs("rect", { x: 0, y: 0, width: RCW, height: RCH, rx: 16, fill: "#101A3E" }, fondo);
+    for (var i = 0; i < 10; i += 2) {
+      rcNs("rect", { x: i * (RCW / 10), y: 0, width: RCW / 10, height: RCH, fill: "#FFFFFF", opacity: .022 }, fondo);
+    }
+    var L = rcNs("g", { fill: "none", stroke: "#F5F1E6", "stroke-opacity": .36, "stroke-width": 2.4 }, fondo);
+    var m = 22;
+    rcNs("rect", { x: m, y: m, width: RCW - 2 * m, height: RCH - 2 * m, rx: 3 }, L);
+    rcNs("path", { d: "M" + (RCW / 2) + " " + m + "V" + (RCH - m) }, L);
+    rcNs("circle", { cx: RCW / 2, cy: RCH / 2, r: 66 }, L);
+    rcNs("circle", { cx: RCW / 2, cy: RCH / 2, r: 4.5, fill: "#F5F1E6", "fill-opacity": .5, stroke: "none" }, L);
+    [0, 1].forEach(function (lato) {
+      var x0 = lato ? RCW - m : m, k = lato ? -1 : 1;
+      rcNs("rect", { x: Math.min(x0, x0 + k * 118), y: RCH / 2 - 118, width: 118, height: 236 }, L);
+      rcNs("rect", { x: Math.min(x0, x0 + k * 44), y: RCH / 2 - 58, width: 44, height: 116 }, L);
+      rcNs("circle", { cx: x0 + k * 78, cy: RCH / 2, r: 3.5, fill: "#F5F1E6", "fill-opacity": .5, stroke: "none" }, L);
+      rcNs("path", { d: "M" + (x0 + k * 118) + " " + (RCH / 2 - 33) + "A 44 44 0 0 " + (lato ? 0 : 1) +
+                        " " + (x0 + k * 118) + " " + (RCH / 2 + 33) }, L);
+      rcNs("rect", { x: lato ? RCW - m - 4 : m - 4, y: RCH / 2 - 36, width: 8, height: 72, rx: 3,
+                     fill: "#C9A24B", "fill-opacity": .8, stroke: "none" }, L);
+    });
+    rcScia = rcNs("g", {}, svg);
+    var g = rcNs("g", {}, svg);
+    RC.alone = rcNs("circle", { cx: 0, cy: 0, r: 24, fill: "#C9A24B", opacity: .42 }, g);
+    rcNs("circle", { cx: 0, cy: 0, r: 11, fill: "#E3C271", stroke: "#0A0F24", "stroke-width": 3 }, g);
+    g.style.transition = "transform .6s cubic-bezier(.33,.85,.4,1)";
+    g.style.transform = "translate(" + (RCW / 2) + "px," + (RCH / 2) + "px)";
+    RC.palla = g;
+  }
+  function rcMuovi(x, y, casa) {
+    if (!RC.palla) return;
+    // l'alone attorno al pallone prende il colore di chi ha la palla:
+    // si capisce chi attacca senza leggere niente
+    if (RC.alone && casa != null) RC.alone.setAttribute("fill", casa ? RC.colCasa : RC.colOsp);
+    RC.palla.style.transform = "translate(" + Math.round(x) + "px," + Math.round(y) + "px)";
+    RC.scia.push({ x: x, y: y });
+    if (RC.scia.length > 8) RC.scia.shift();
+    if (!rcScia) return;
+    rcScia.innerHTML = "";
+    for (var i = 1; i < RC.scia.length; i++) {
+      rcNs("line", { x1: RC.scia[i - 1].x, y1: RC.scia[i - 1].y, x2: RC.scia[i].x, y2: RC.scia[i].y,
+                     stroke: "#C9A24B", "stroke-opacity": (i / RC.scia.length) * .45,
+                     "stroke-width": 2.5 + i * .4, "stroke-linecap": "round" }, rcScia);
+    }
+  }
+  // le coordinate ESPN sono girate per chi attacca (x 100 = porta
+  // avversaria, y 100 = la sua sinistra): qui la casa attacca a destra
+  function rcPosto(x, y, casa) {
+    var X = casa ? x / 100 * RCW : (1 - x / 100) * RCW;
+    var Y = casa ? (1 - y / 100) * RCH : y / 100 * RCH;
+    return { x: Math.max(14, Math.min(RCW - 14, X)), y: Math.max(14, Math.min(RCH - 14, Y)) };
+  }
+  // ESPN scrive i tipi in inglese: qui diventano italiano da telecronaca.
+  var RC_DIZ = [[/goal/i, "GOL"], [/^Own Goal$/i, "Autogol"],
+    [/^Penalty.*Scored$/i, "Rigore segnato"], [/^Penalty.*(Missed|Saved)$/i, "Rigore sbagliato"],
+    [/^Shot On Target$/i, "Tiro in porta"], [/^Shot Off Target$/i, "Tiro fuori"],
+    [/^(Shot Blocked|Attempt Blocked)$/i, "Tiro murato"], [/^Post$/i, "Palo"],
+    [/^Save$/i, "Parata"], [/^Keeper.*(Pick|Claim|Punch|Sweep)/i, "Uscita del portiere"],
+    [/^Pass$/i, "Passaggio"], [/^Blocked Pass$/i, "Passaggio murato"], [/^Cross/i, "Cross"],
+    [/^Ball (touch|recovery)/i, "Tocco"], [/^Clear(ance)?$/i, "Spazzata"], [/^Dispossessed$/i, "Palla persa"],
+    [/^Tackle$/i, "Contrasto"], [/^Challenge$/i, "Duello"], [/^Interception/i, "Intercetto"],
+    [/^Aerial/i, "Duello aereo"], [/^Take On$/i, "Dribbling"], [/^Error/i, "Errore"],
+    [/hand ?ball/i, "Fallo di mano"], [/^Foul/i, "Fallo"], [/^Corner/i, "Calcio d'angolo"],
+    [/^Out$/i, "Palla fuori"], [/offside/i, "Fuorigioco"], [/^Yellow Card$/i, "Ammonizione"],
+    [/^(Second Yellow|Red Card)/i, "Espulsione"], [/^Sub/i, "Sostituzione"],
+    [/^Free ?[Kk]ick/i, "Punizione"], [/^Throw ?[Ii]n$/i, "Rimessa laterale"],
+    [/^Goal ?[Kk]ick$/i, "Rinvio dal fondo"], [/^(Start|End) Delay/i, "Gioco fermo"],
+    [/^(Kick ?Off|Start)/i, "Si gioca"], [/^(End|Half|Full)/i, "Fine tempo"]];
+  function rcCosa(g) {
+    var tipo = String((g.type || {}).text || "").trim();
+    for (var i = 0; i < RC_DIZ.length; i++) if (RC_DIZ[i][0].test(tipo)) return RC_DIZ[i][1];
+    return tipo;
+  }
+  // il nome del giocatore: ESPN lo mette nei partecipanti, e quando manca
+  // sta dentro la frase — "Foul by Rodri", "Corner, Arsenal. Conceded by X"
+  function rcChi(g) {
+    var p = (g.participants || [])[0] || {};
+    var nome = (p.athlete || {}).displayName || "";
+    if (nome) return nome;
+    var t = String(g.text || "");
+    var m = t.match(/(?:by|from)\s+([A-Za-zÀ-ÿ'\.\-]+(?:\s+[A-Za-zÀ-ÿ'\.\-]+){0,2})/);
+    if (m) return m[1].trim();
+    m = t.match(/^([A-Za-zÀ-ÿ'\.\-]+(?:\s+[A-Za-zÀ-ÿ'\.\-]+){0,2})\s*\(/);
+    return m ? m[1].trim() : "";
+  }
+  function rcLeggi() {
+    if (!RC.lega || !RC.ev) return;
+    var lega = RC.lega, ev = RC.ev;
+    fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + lega + "/summary?event=" + ev, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (RC.ev !== ev) return;
+        var chi = (((j.header || {}).competitions || [])[0] || {}).competitors || [];
+        var casa = chi.filter(function (x) { return x.homeAway === "home"; })[0] || {};
+        RC.casaId = String((casa.team || {}).id || "");
+      })
+      .catch(function () {});
+    var base = "https://sports.core.api.espn.com/v2/sports/soccer/leagues/" + lega +
+               "/events/" + ev + "/competitions/" + ev + "/plays?limit=1000";
+    fetch(base, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if ((j.pageCount || 1) < 2) return j.items || [];
+        return fetch(base + "&page=" + j.pageCount, { cache: "no-store" })
+          .then(function (r) { return r.json(); }).then(function (k) { return k.items || []; });
+      })
+      .then(function (tutte) {
+        if (RC.ev !== ev) return;
+        var nuove = (tutte || []).filter(function (g) {
+          return g.id && !RC.visti[g.id] && g.fieldPositionX != null && g.fieldPositionY != null;
+        });
+        nuove.forEach(function (g) { RC.visti[g.id] = 1; });
+        if (!RC.partito) { RC.partito = true; nuove = nuove.slice(-3); }
+        nuove.forEach(function (g) {
+          var sq = ((g.team || {}).$ref || "").match(/teams\/(\d+)/);
+          RC.coda.push({ x: g.fieldPositionX, y: g.fieldPositionY,
+                         casa: sq ? sq[1] === RC.casaId : true,
+                         chi: rcChi(g), cosa: rcCosa(g), quando: (g.clock || {}).displayValue || "" });
+        });
+        if (RC.coda.length > 60) RC.coda = RC.coda.slice(-60);
+      })
+      .catch(function () {});
+  }
+  // una giocata alla volta: il pallone deve raccontare, non lampeggiare.
+  // Se ESPN manda un blocco di giocate insieme si accelera, senza correre.
+  function rcPasso() {
+    if (!RC.acceso) return;
+    if (RC.coda.length) {
+      var g = RC.coda.shift();
+      var q = rcPosto(g.x, g.y, g.casa);
+      rcMuovi(q.x, q.y, g.casa);
+      var a = document.getElementById("rcazione");
+      a.querySelector(".chi").textContent = g.chi || "";
+      a.querySelector(".cosa").textContent = g.cosa || "";
+      a.querySelector(".quando").textContent = g.quando || "";
+    }
+    RC.passo = setTimeout(rcPasso, RC.coda.length > 14 ? 380 : RC.coda.length > 6 ? 620 : 1000);
+  }
+  function rcAccendi(espn, j) {
+    var lega = (espn && espn.lega) || "", ev = (espn && String(espn.ev || "")) || "";
+    if (!lega || !ev) { rcSpegni(); return; }
+    RC.colCasa = ((j || {}).casa || {}).col || "#C9A24B";
+    RC.colOsp = ((j || {}).osp || {}).col || "#C9A24B";
+    document.getElementById("radio").classList.add("conCampo");
+    rcDisegnaCampo();
+    if (RC.acceso && RC.lega === lega && RC.ev === ev) return;
+    rcSpegni(true);
+    RC.lega = lega; RC.ev = ev; RC.acceso = true;
+    RC.coda = []; RC.visti = {}; RC.partito = false; RC.scia = [];
+    rcLeggi();
+    RC.timer = setInterval(rcLeggi, 15000);
+    rcPasso();
+  }
+  function rcSpegni(tieniCampo) {
+    RC.acceso = false;
+    if (RC.timer) { clearInterval(RC.timer); RC.timer = null; }
+    if (RC.passo) { clearTimeout(RC.passo); RC.passo = null; }
+    RC.lega = ""; RC.ev = "";
+    if (!tieniCampo) document.getElementById("radio").classList.remove("conCampo");
   }
 
   // ── polvere di stelle dietro il cartello radiocronaca ──────────────
