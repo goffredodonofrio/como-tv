@@ -250,11 +250,51 @@
      giocate ESPN, non un tracciamento (quello non lo pubblica nessuno).
      Col campetto acceso il cartello si stringe: le due sfere salgono e
      rimpiccioliscono, i marcatori lasciano il posto al campo. */
-  #radiocampo{position:absolute;left:50%;top:424px;transform:translateX(-50%);
+  #radiocampo{position:absolute;left:50%;top:400px;transform:translateX(-50%);
     width:1200px;height:529px;z-index:2;display:none;}
   #radio.conCampo #radiocampo{display:block;}
   #radiocampo svg{width:100%;height:100%;display:block;
     filter:drop-shadow(0 26px 60px rgba(0,0,0,.45));}
+  /* la fascia dei dati: una scheda alla volta, e cambia da sola */
+  /* la fascia dei dati: una scheda alla volta, e cambia da sola.
+     La barra cresce dal centro verso le due squadre, cosi' si vede da
+     che parte pende il dato senza leggere i numeri. */
+  #rcdati{position:absolute;left:0;right:0;top:100%;margin-top:14px;padding:15px 30px 17px;
+    border-radius:14px;background:rgba(10,15,36,.82);border:1px solid rgba(201,162,75,.28);
+    opacity:0;transform:translateY(8px);transition:opacity .45s ease,transform .45s ease;}
+  #rcdati.on{opacity:1;transform:none;}
+  #rcdati .tit{font-family:'Mazzard',sans-serif;font-weight:700;font-size:14px;letter-spacing:.22em;
+    text-transform:uppercase;color:#C9A24B;text-align:center;margin-bottom:11px;}
+  #rcdati .riga{display:flex;align-items:center;gap:18px;}
+  #rcdati .sq{display:flex;align-items:center;gap:9px;width:132px;}
+  #rcdati .sq.b{justify-content:flex-end;}
+  #rcdati .sq i{width:13px;height:13px;border-radius:50%;flex:none;
+    box-shadow:0 0 0 2px rgba(245,241,230,.25);}
+  #rcdati .sq b{font-family:'Mazzard',sans-serif;font-weight:800;font-size:21px;letter-spacing:.05em;
+    text-transform:uppercase;color:#F5F1E6;}
+  #rcdati .val{font-family:'Mazzard',sans-serif;font-weight:800;font-size:31px;color:#F5F1E6;
+    white-space:nowrap;font-variant-numeric:tabular-nums;min-width:74px;}
+  #rcdati .val.b{text-align:right;}
+  #rcdati .val em{font-style:normal;font-family:'DM Sans',sans-serif;font-weight:600;font-size:19px;
+    color:rgba(245,241,230,.6);margin-left:7px;}
+  /* la barra: due metà che partono dal centro */
+  #rcdati .duo{flex:1;display:flex;align-items:center;height:16px;gap:3px;min-width:120px;}
+  #rcdati .duo .lato{flex:1;height:100%;display:flex;border-radius:8px;overflow:hidden;
+    background:rgba(245,241,230,.1);}
+  #rcdati .duo .lato.a{justify-content:flex-end;}
+  #rcdati .duo .lato u{display:block;height:100%;text-decoration:none;transition:width .7s cubic-bezier(.3,.8,.4,1);}
+  /* i tre terzi del campo, per "dove si sta giocando" */
+  #rcdati .terzi{flex:1;display:flex;height:16px;border-radius:8px;overflow:hidden;
+    background:rgba(245,241,230,.1);}
+  #rcdati .terzi u{display:block;height:100%;text-decoration:none;transition:width .7s ease;}
+  #rcdati .solo{display:flex;align-items:center;justify-content:center;gap:13px;}
+  #rcdati .solo i{width:15px;height:15px;border-radius:50%;box-shadow:0 0 0 2px rgba(245,241,230,.25);}
+  #rcdati .solo b{font-family:'Mazzard',sans-serif;font-weight:800;font-size:31px;color:#F5F1E6;
+    letter-spacing:.02em;}
+  #rcdati .solo span{font-family:'DM Sans',sans-serif;font-weight:600;font-size:23px;
+    color:rgba(245,241,230,.65);}
+  #rcdati .sotto{margin-top:9px;display:flex;justify-content:space-between;
+    font-family:'DM Sans',sans-serif;font-size:17px;color:rgba(245,241,230,.55);}
   #radio.conCampo #radiorow{top:176px;transform:translate(-50%,-50%) scale(.48);}
   #radio.conCampo #radioclock{top:276px;font-size:26px;}
   #radio.conCampo #radiosotto{top:314px;}
@@ -463,6 +503,7 @@
     </div>
     <!-- il campetto: c'e' solo quando la partita e' agganciata a ESPN -->
     <div id="radiocampo"><svg id="rcampo" viewBox="0 0 1180 520" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="rcdati"></div>
     </div>
     <div id="radioev"><span class="sw"></span><span class="min"></span>
       <span class="lab"></span><span class="chi"></span></div>
@@ -857,18 +898,23 @@
   }
 
   // ══ IL CAMPETTO DELLA RADIOCRONACA ═══════════════════════════════════
-  // La partita raccontata sul campo. ESPN pubblica ogni GIOCATA con le sue
-  // coordinate — passaggio, contrasto, tiro, rimessa: non e' il
-  // tracciamento dei giocatori, e' la catena dei tocchi, e basta a far
-  // vivere il campo. Fra una giocata e l'altra il pallone non salta: ci
-  // scivola, e si lascia dietro una scia che si spegne. Il ritardo e'
-  // quello di ESPN, circa un minuto.
+  // La formazione, ferma, e ogni tanto un dato.
   //
-  // Si accende solo se il banco ha agganciato la partita (j.espn).
-  var RC = { lega: "", ev: "", casaId: "", coda: [], visti: {}, partito: false,
-             timer: null, passo: null, scia: [], palla: null, alone: null,
-             squadre: null, schierato: false, viaPalla: false, pedine: {}, acceso0: null, nomi: {}, pedine: {}, acceso0: null, nomi: {},
-             colCasa: "#C9A24B", colOsp: "#C9A24B", acceso: false };
+  // Il pallone che inseguiva le giocate raccontava una partita che era
+  // gia' passata: ESPN pubblica con circa un minuto di ritardo e a
+  // ondate (misurato: fino a 22 giocate insieme, poi un minuto di
+  // niente). Un dato, invece, regge il ritardo: il possesso di trenta
+  // secondi fa vale ancora.
+  //
+  // Quindi: le due squadre schierate, coi cambi e il modulo che ESPN
+  // aggiorna in corsa, e sotto una fascia che gira le statistiche della
+  // partita. Il racconto lo fa il radiocronista.
+  var RC = { lega: "", ev: "", casaId: "", ospId: "", acceso: false,
+             timer: null, giro: null, scheda: 0,
+             pedine: {}, squadre: null, firma: "", nomi: {},
+             colCasa: "#C9A24B", colOsp: "#C9A24B",
+             stat: { casa: {}, osp: {} }, nomeCasa: "", nomeOsp: "",
+             tocchi: {}, zone: [0, 0, 0], visti: {}, segni: {} };
   var RCW = 1180, RCH = 520;
   function rcNs(nome, attr, dentro) {
     var e = document.createElementNS("http://www.w3.org/2000/svg", nome);
@@ -877,12 +923,10 @@
     return e;
   }
   // ── il campo in prospettiva ─────────────────────────────────────────
-  // Non e' un campo piatto storto: e' una proiezione vera. Il campo si
-  // prende come un quadrato di lato 1 (u = da porta a porta, v = dalla
-  // fascia vicina a quella lontana) e ogni punto passa di qui. La riga
-  // lontana e' piu' stretta di quella vicina e le distanze si comprimono
-  // verso il fondo, come le vede l'occhio; "s" e' quanto rimpicciolisce
-  // li' una cosa, e serve al pallone e ai pali.
+  // Il campo si prende come un quadrato di lato 1 (u = da porta a porta,
+  // v = dalla fascia vicina a quella lontana) e ogni punto passa di qui:
+  // la riga lontana e' piu' stretta, le distanze si comprimono verso il
+  // fondo, e "s" dice quanto rimpicciolisce li' una cosa.
   var RC_YN = 500, RC_YF = 58, RC_WN = 1156, RC_WF = 800, RC_CX = 590;
   var RC_R = RC_WN / RC_WF;
   function rcP(u, v) {
@@ -893,11 +937,9 @@
   function rcPoli(pts) {
     return pts.map(function (q, i) { return (i ? "L" : "M") + q.x.toFixed(1) + " " + q.y.toFixed(1); }).join("");
   }
-  // un rettangolo del campo (in u,v) diventa un quadrilatero
   function rcQuad(u1, v1, u2, v2) {
     return rcPoli([rcP(u1, v1), rcP(u2, v1), rcP(u2, v2), rcP(u1, v2)]) + "Z";
   }
-  // cerchi e archi: si seguono punto per punto, cosi' vengono ellissi giuste
   function rcArco(cu, cv, ru, rv, da, a, passi) {
     var pts = [];
     for (var i = 0; i <= passi; i++) {
@@ -906,7 +948,6 @@
     }
     return rcPoli(pts);
   }
-  var rcScia = null;
   function rcDisegnaCampo() {
     var svg = document.getElementById("rcampo");
     if (!svg || svg.childNodes.length) return;
@@ -956,23 +997,14 @@
                         "L" + p1.x.toFixed(1) + " " + p1.y.toFixed(1) + "Z",
                      fill: "#C9A24B", "fill-opacity": .05, stroke: "none" }, L);
     });
-    rcScia = rcNs("g", {}, svg);
-    var g = rcNs("g", {}, svg);
-    // l'ombra per terra: e' quella che fa stare il pallone sul campo
-    rcNs("ellipse", { cx: 0, cy: 13, rx: 15, ry: 5, fill: "#000000", opacity: .38 }, g);
-    RC.alone = rcNs("circle", { cx: 0, cy: 0, r: 27, fill: "#C9A24B", opacity: .42 }, g);
-    rcNs("circle", { cx: 0, cy: 0, r: 13, fill: "#E3C271", stroke: "#0A0F24", "stroke-width": 3.4 }, g);
-    g.style.transition = "transform .6s cubic-bezier(.33,.85,.4,1)";
-    var mezzo = rcP(.5, .5);
-    g.style.transform = "translate(" + mezzo.x + "px," + mezzo.y + "px) scale(" + mezzo.s.toFixed(3) + ")";
-    RC.palla = g;
   }
-  // ── gli schieramenti ────────────────────────────────────────────────
-  // Prima che si giochi il campo non e' vuoto: ci stanno le due squadre
-  // come le manda in campo l'allenatore. Il ruolo lo dice ESPN (portiere,
-  // difensore centrale destro, mediano...), il modulo dice quante righe
-  // fare: da li' ognuno prende il suo posto, in prospettiva come tutto
-  // il resto. Alla prima giocata le pedine si spengono e resta il pallone.
+  function rcPosto(x, y, casa) {
+    var u = casa ? x / 100 : 1 - x / 100;
+    var v = casa ? 1 - y / 100 : y / 100;
+    // le pedine sono grosse: si tengono dentro il campo, non a cavallo
+    // della riga di fondo
+    return rcP(Math.max(.03, Math.min(.97, u)), Math.max(.07, Math.min(.93, v)));
+  }
   var RC_PROF = [[/^G/, 0], [/^(SW|[CLR]*[DB])/, 1], [/^DM/, 2], [/M$|^[CLR]*M/, 3],
                  [/^AM/, 4], [/^([LR]W|F|ST|CF)/, 5]];
   function rcRuolo(ab) {
@@ -1005,8 +1037,6 @@
     fuori.unshift({ g: port, u: casa ? u0 : 1 - u0, v: .5 });
     return fuori;
   }
-  // una pedina: cerchio col numero, cognome sotto, ombra per terra.
-  // Sta in un gruppo suo, cosi' si sposta con una transizione sola.
   function rcPedina(g, x, casa) {
     var ped = rcNs("g", { "data-pid": x.g.pid || "" }, g);
     ped.style.transition = "transform .7s cubic-bezier(.33,.85,.4,1)";
@@ -1022,202 +1052,230 @@
                            "font-family": "'DM Sans', sans-serif", "font-weight": 700,
                            "font-size": 19, fill: "#F5F1E6", "fill-opacity": .92 }, ped);
     n.textContent = x.g.cognome || "";
+    // chi e' entrato dalla panchina porta la freccia verde: si vede al
+    // volo chi e' il cambio, senza rileggere la formazione
+    if (x.g.entrato) {
+      var fr = rcNs("g", { transform: "translate(-30 -23)" }, ped);
+      rcNs("circle", { cx: 0, cy: 0, r: 18, fill: "#0A0F24", "fill-opacity": .9,
+                       stroke: "#31C46B", "stroke-width": 2.4 }, fr);
+      rcNs("path", { d: "M0 -11 L10 2 L3.8 2 L3.8 11 L-3.8 11 L-3.8 2 L-10 2 Z", fill: "#31C46B" }, fr);
+    }
     var q = rcP(x.u, x.v);
     ped.style.transform = "translate(" + q.x.toFixed(1) + "px," + q.y.toFixed(1) + "px) scale(" + q.s.toFixed(3) + ")";
-    if (x.g.pid) RC.pedine[x.g.pid] = { el: ped, cerchio: c, casa: casa, q: q };
+    if (x.g.pid) RC.pedine[x.g.pid] = { el: ped, cerchio: c, casa: casa };
     return ped;
   }
-  function rcSchiera(rosaCasa, modCasa, rosaOsp, modOsp) {
+  // ── i segni sulla pedina ────────────────────────────────────────────
+  // Stesso principio della freccia del cambio: chi guarda deve capire in
+  // un colpo d'occhio chi e' entrato, chi e' ammonito o espulso e chi ha
+  // segnato. Il gol e' un pallone chiaro; l'autogol lo stesso pallone ma
+  // cerchiato di rosso e con la freccia all'indietro, cosi' non si
+  // confonde con una rete vera.
+  function rcDistintivi() {
+    for (var pid in RC.pedine) {
+      var ped = RC.pedine[pid], seg = RC.segni[pid];
+      var vecchio = ped.el.querySelector("[data-segni]");
+      if (vecchio) vecchio.remove();
+      if (!seg || (!seg.gol && !seg.autogol && !seg.giallo && !seg.rosso)) continue;
+      var g = rcNs("g", { "data-segni": "1" }, ped.el);
+      if (seg.rosso || seg.giallo) {
+        var k = rcNs("g", { transform: "translate(30 -22) rotate(14)" }, g);
+        rcNs("rect", { x: -8, y: -11, width: 16, height: 22, rx: 3,
+                       fill: seg.rosso ? "#E5342B" : "#F2C230",
+                       stroke: "#0A0F24", "stroke-width": 2 }, k);
+      }
+      if (seg.gol || seg.autogol) {
+        var b = rcNs("g", { transform: "translate(30 20)" }, g);
+        rcNs("circle", { cx: 0, cy: 0, r: 13, fill: "#F5F1E6",
+                         stroke: seg.autogol ? "#E5342B" : "#0A0F24",
+                         "stroke-width": seg.autogol ? 3.4 : 2.2 }, b);
+        rcNs("path", { d: "M0 -6 L5.7 -1.9 L3.5 4.9 L-3.5 4.9 L-5.7 -1.9 Z",
+                       fill: seg.autogol ? "#E5342B" : "#0A0F24" }, b);
+        var quanti = (seg.gol || 0) + (seg.autogol || 0);
+        if (quanti > 1) {
+          var n = rcNs("text", { x: 20, y: 6, "text-anchor": "middle",
+                                 "font-family": "'Mazzard', sans-serif", "font-weight": 800,
+                                 "font-size": 17, fill: "#F5F1E6", stroke: "#0A0F24",
+                                 "stroke-width": 3, "paint-order": "stroke" }, b);
+          n.textContent = "\u00D7" + quanti;
+        }
+      }
+    }
+    RC.daSegnare = false;
+  }
+  function rcCampoVisibile(si) {
+    var e = document.getElementById("radio");
+    if (e) e.classList[si ? "add" : "remove"]("conCampo");
+  }
+
+  // ── chi e' in campo adesso ──────────────────────────────────────────
+  // Titolari meno chi e' uscito, piu' chi e' entrato: i cambi ESPN li
+  // segna sul giocatore (subbedIn / subbedOut), e aggiorna anche il
+  // modulo, che in partita cambia piu' spesso di quanto si creda.
+  function rcUndici(r) {
+    var v = [];
+    (r.roster || []).forEach(function (x) {
+      var a = x.athlete || {};
+      var pid = String(a.id || "");
+      if (pid) RC.nomi[pid] = a.displayName || "";
+      var dentro = (x.starter && !x.subbedOut) || (x.subbedIn && !x.subbedOut);
+      if (!dentro) return;
+      v.push({ starter: true, pid: pid, num: x.jersey || a.jersey || "",
+               ab: ((x.position || {}).abbreviation || "").toUpperCase(),
+               entrato: !!x.subbedIn,
+               cognome: (a.shortName || a.displayName || "").split(" ").pop() });
+    });
+    return v;
+  }
+  function rcSchiera(undiciCasa, modCasa, undiciOsp, modOsp) {
     var svg = document.getElementById("rcampo");
-    if (!svg || RC.schierato) return;
-    var A = rcSchieraUno(rosaCasa, modCasa, true), B = rcSchieraUno(rosaOsp, modOsp, false);
+    if (!svg) return;
+    var A = rcSchieraUno(undiciCasa, modCasa, true), B = rcSchieraUno(undiciOsp, modOsp, false);
     if (!A.length || !B.length) return;
-    RC.schierato = true;
+    var vecchio = RC.squadre;
     RC.pedine = {};
     var g = rcNs("g", {}, svg);
-    // le pedine stanno sotto al pallone, non davanti
-    svg.insertBefore(g, rcScia);
+    g.style.transition = "opacity .5s ease";
+    g.style.opacity = vecchio ? "0" : "1";
     A.forEach(function (x) { rcPedina(g, x, true); });
     B.forEach(function (x) { rcPedina(g, x, false); });
     RC.squadre = g;
-  }
-  // Durante la partita i giocatori non restano piantati dove li mette il
-  // modulo: ogni volta che uno tocca la palla, ESPN dice chi e' e in che
-  // punto del campo - e quella e' la sua posizione vera, non una stima.
-  // Cosi' la pedina lo segue e il campo, giocata dopo giocata, si dispone
-  // come sta giocando davvero. Chi non tocca palla resta dov'era.
-  function rcMuoviGiocatore(pid, q) {
-    var ped = RC.pedine[pid];
-    if (!ped) return null;
-    ped.q = q;
-    rcSpazia(pid);
-    ped.el.style.transform = "translate(" + q.x.toFixed(1) + "px," + q.y.toFixed(1) + "px) scale(" + q.s.toFixed(3) + ")";
-    if (ped.el.parentNode) ped.el.parentNode.appendChild(ped.el);   // chi ha la palla sta sopra
-    if (RC.acceso0 && RC.acceso0 !== ped) rcSpegniPedina(RC.acceso0);
-    ped.cerchio.setAttribute("stroke", "#E3C271");
-    ped.cerchio.setAttribute("stroke-width", "5");
-    RC.acceso0 = ped;
-    return ped;
-  }
-  // Quando l'azione si concentra in una zona, le pedine finiscono una
-  // sull'altra e non si legge piu' niente. Qui si allontanano fra loro a
-  // piccoli passi, come tante calamite: chi ha appena toccato la palla
-  // non si muove - quella e' la posizione vera - e gli altri gli fanno
-  // spazio intorno.
-  function rcSpazia(fermo) {
-    var lista = [];
-    for (var k in RC.pedine) if (RC.pedine[k].q) lista.push(RC.pedine[k].el ? RC.pedine[k] : null);
-    lista = lista.filter(Boolean);
-    for (var giro = 0; giro < 4; giro++) {
-      var mosso = false;
-      for (var i = 0; i < lista.length; i++) {
-        for (var j = i + 1; j < lista.length; j++) {
-          var a = lista[i], b = lista[j];
-          var largo = 42 * Math.max(a.q.s, b.q.s);
-          var dx = b.q.x - a.q.x, dy = b.q.y - a.q.y;
-          var d = Math.sqrt(dx * dx + dy * dy);
-          if (d >= largo) continue;
-          mosso = true;
-          var ang = d > .5 ? Math.atan2(dy, dx) : Math.random() * 6.28;
-          var spinta = (largo - d) / 2 + .5;
-          var aFermo = RC.pedine[fermo] === a, bFermo = RC.pedine[fermo] === b;
-          var qa = aFermo ? 0 : (bFermo ? spinta * 2 : spinta);
-          var qb = bFermo ? 0 : (aFermo ? spinta * 2 : spinta);
-          a.q = { x: a.q.x - Math.cos(ang) * qa, y: a.q.y - Math.sin(ang) * qa, s: a.q.s };
-          b.q = { x: b.q.x + Math.cos(ang) * qb, y: b.q.y + Math.sin(ang) * qb, s: b.q.s };
-        }
-      }
-      if (!mosso) break;
+    if (vecchio) {
+      // il cambio si vede: la formazione di prima sfuma, quella nuova arriva
+      vecchio.style.opacity = "0";
+      setTimeout(function () { if (vecchio.parentNode) vecchio.parentNode.removeChild(vecchio); }, 600);
+      setTimeout(function () { g.style.opacity = "1"; }, 60);
     }
-    lista.forEach(function (p) {
-      p.el.style.transform = "translate(" + p.q.x.toFixed(1) + "px," + p.q.y.toFixed(1) +
-        "px) scale(" + p.q.s.toFixed(3) + ")";
-    });
-  }
-  function rcSpegniPedina(ped) {
-    ped.cerchio.setAttribute("stroke", "#F5F1E6");
-    ped.cerchio.setAttribute("stroke-width", "2.6");
-  }
-  // un cambio: chi entra prende il posto di chi esce
-  function rcCambio(entra, esce, q) {
-    if (!esce || !RC.pedine[esce]) return;
-    var ped = RC.pedine[esce];
-    delete RC.pedine[esce];
-    if (!entra) { if (ped.el.parentNode) ped.el.parentNode.removeChild(ped.el); return; }
-    RC.pedine[entra.pid] = ped;
-    ped.el.setAttribute("data-pid", entra.pid);
-    var testi = ped.el.querySelectorAll("text");
-    if (testi[0]) testi[0].textContent = entra.num || "";
-    if (testi[1]) testi[1].textContent = entra.cognome || "";
-    if (q) rcMuoviGiocatore(entra.pid, q);
-  }
-  // il fischio d'inizio: resta il campo con le squadre, va via la riga
-  // delle formazioni e comincia a girare il pallone
-  function rcViaPalla() {
-    RC.viaPalla = true;
   }
 
-  // il pallone si posa sul punto proiettato e prende la misura di li':
-  // il pallone si posa sul punto proiettato e prende la misura di li':
-  // in fondo al campo e' piu' piccolo, davanti piu' grande
-  function rcMuovi(q, casa) {
-    if (!RC.palla) return;
-    // l'alone attorno al pallone prende il colore di chi ha la palla:
-    // si capisce chi attacca senza leggere niente
-    if (RC.alone && casa != null) RC.alone.setAttribute("fill", casa ? RC.colCasa : RC.colOsp);
-    RC.palla.style.transform = "translate(" + q.x.toFixed(1) + "px," +
-      (q.y - (RC.schierato ? 36 * q.s : 0)).toFixed(1) + "px) scale(" + q.s.toFixed(3) + ")";
-    RC.scia.push(q);
-    if (RC.scia.length > 8) RC.scia.shift();
-    if (!rcScia) return;
-    rcScia.innerHTML = "";
-    for (var i = 1; i < RC.scia.length; i++) {
-      var a = RC.scia[i - 1], b = RC.scia[i];
-      rcNs("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y,
-                     stroke: "#C9A24B", "stroke-opacity": (i / RC.scia.length) * .45,
-                     "stroke-width": (2 + i * .35) * b.s, "stroke-linecap": "round" }, rcScia);
+  // ── le schede: una alla volta, sotto il campo ───────────────────────
+  // Solo quelle che hanno davvero i numeri: se ESPN non manda un dato,
+  // quella scheda non esiste e si passa alla prossima.
+  // il nero della Juve su fondo navy non si legge: le tinte troppo scure
+  // si schiariscono nella scritta e nella barra, il campo resta com'e'
+  function rcChiara(col) {
+    var m = String(col || "").match(/^#?([0-9a-f]{6})$/i);
+    if (!m) return "#F5F1E6";
+    var n = parseInt(m[1], 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+    var luce = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    if (luce >= .42) return "#" + m[1];
+    if (luce < .2) return "#EDE8DA";          // nero e blu notte: si va di avorio
+    function su(x) { return Math.min(255, Math.round(x * 1.9 + 72)); }
+    return "rgb(" + su(r) + "," + su(g) + "," + su(b) + ")";
+  }
+  function rcQuanti(n, uno, tanti) { return n + " " + (Math.abs(+n) === 1 ? uno : tanti); }
+  function rcNum(v) { return (v === undefined || v === null || v === "") ? null : v; }
+  function rcPerc(v) {
+    var n = parseFloat(v);
+    if (isNaN(n)) return null;
+    return Math.round(n <= 1 ? n * 100 : n);
+  }
+  function rcSchede() {
+    var c = RC.stat.casa, o = RC.stat.osp, v = [];
+    // a = valore casa, b = valore ospite, pesoA/pesoB = lunghezza delle
+    // due barre (0-100 ciascuna, partono dal centro)
+    function conta(titolo, a, b, coda) {
+      if (rcNum(a) === null || rcNum(b) === null) return;
+      var max = Math.max(+a, +b, 1);
+      v.push({ titolo: titolo, a: a + (coda || ""), b: b + (coda || ""),
+               pesoA: +a * 100 / max, pesoB: +b * 100 / max });
     }
+    var pc = rcPerc(c.possessionPct), po = rcPerc(o.possessionPct);
+    if (pc !== null && po !== null) {
+      v.push({ titolo: "Possesso palla", a: pc + "%", b: po + "%", pesoA: pc, pesoB: po });
+    }
+    if (rcNum(c.totalShots) !== null) {
+      var max = Math.max(+c.totalShots, +o.totalShots, 1);
+      v.push({ titolo: "Tiri", a: c.totalShots, b: o.totalShots,
+               detA: (c.shotsOnTarget || 0) + " in porta", detB: (o.shotsOnTarget || 0) + " in porta",
+               pesoA: +c.totalShots * 100 / max, pesoB: +o.totalShots * 100 / max });
+    }
+    conta("Calci d'angolo", c.wonCorners, o.wonCorners);
+    var qc = rcPerc(c.passPct), qo = rcPerc(o.passPct);
+    if (qc !== null && qo !== null) {
+      v.push({ titolo: "Passaggi riusciti", a: c.accuratePasses, b: o.accuratePasses,
+               detA: qc + "%", detB: qo + "%", pesoA: qc, pesoB: qo });
+    }
+    if (rcNum(c.foulsCommitted) !== null) {
+      var mf = Math.max(+c.foulsCommitted, +o.foulsCommitted, 1);
+      v.push({ titolo: "Falli", a: c.foulsCommitted, b: o.foulsCommitted,
+               detA: +c.yellowCards ? rcQuanti(c.yellowCards, "giallo", "gialli") : "",
+               detB: +o.yellowCards ? rcQuanti(o.yellowCards, "giallo", "gialli") : "",
+               pesoA: +c.foulsCommitted * 100 / mf, pesoB: +o.foulsCommitted * 100 / mf });
+    }
+    conta("Fuorigioco", c.offsides, o.offsides);
+    conta("Contrasti vinti", c.effectiveTackles, o.effectiveTackles);
+    conta("Palloni recuperati", c.interceptions, o.interceptions);
+    conta("Parate", c.saves, o.saves);
+    var tot = RC.zone[0] + RC.zone[1] + RC.zone[2];
+    if (tot > 30) {
+      var d = Math.round(RC.zone[0] * 100 / tot), m = Math.round(RC.zone[1] * 100 / tot);
+      v.push({ titolo: "Dove si sta giocando", terzi: [d, m, 100 - d - m] });
+    }
+    var top = null;
+    for (var pid in RC.tocchi) if (!top || RC.tocchi[pid] > RC.tocchi[top]) top = pid;
+    if (top && RC.tocchi[top] > 12 && RC.nomi[top]) {
+      v.push({ titolo: "Piu' palloni toccati", solo: RC.nomi[top],
+               coda: RC.tocchi[top] + " palloni", luce: top,
+               tinta: (RC.pedine[top] && RC.pedine[top].casa) ? RC.colCasa : RC.colOsp });
+    }
+    return v;
   }
-  // le coordinate ESPN sono girate per chi attacca (x 100 = porta
-  // avversaria, y 100 = la sua sinistra): qui la casa attacca a destra
-  function rcPosto(x, y, casa) {
-    var u = casa ? x / 100 : 1 - x / 100;
-    var v = casa ? 1 - y / 100 : y / 100;
-    // le pedine sono grosse: si tengono dentro il campo, non a cavallo
-    // della riga di fondo
-    return rcP(Math.max(.03, Math.min(.97, u)), Math.max(.07, Math.min(.93, v)));
+  function rcGira() {
+    var box = document.getElementById("rcdati");
+    if (!box || !RC.acceso) return;
+    var v = rcSchede();
+    if (!v.length) { box.classList.remove("on"); return; }
+    if (RC.scheda >= v.length) RC.scheda = 0;
+    var s = v[RC.scheda++];
+    box.classList.remove("on");
+    setTimeout(function () {
+      if (!RC.acceso) return;
+      var ca = rcChiara(RC.colCasa), co = rcChiara(RC.colOsp);
+      function sq(lato, tinta, nome) {
+        return '<div class="sq ' + lato + '"><i style="background:' + tinta + '"></i><b>' +
+               escRadio(nome) + "</b></div>";
+      }
+      function valore(v, det, lato) {
+        return '<div class="val ' + lato + '">' + escRadio(v) +
+               (det ? "<em>" + escRadio(det) + "</em>" : "") + "</div>";
+      }
+      var dentro;
+      if (s.solo) {
+        dentro = '<div class="solo"><i style="background:' + (s.tinta ? rcChiara(s.tinta) : "#C9A24B") +
+                 '"></i><b>' + escRadio(s.solo) + "</b><span>" + escRadio(s.coda || "") + "</span></div>";
+      } else if (s.terzi) {
+        dentro = '<div class="riga">' + sq("a", ca, RC.nomeCasa) +
+          '<div class="terzi">' +
+            '<u style="width:' + s.terzi[0] + '%;background:' + ca + '"></u>' +
+            '<u style="width:' + s.terzi[1] + '%;background:rgba(245,241,230,.28)"></u>' +
+            '<u style="width:' + s.terzi[2] + '%;background:' + co + '"></u>' +
+          "</div>" + sq("b", co, RC.nomeOsp) + "</div>" +
+          '<div class="sotto"><span>' + s.terzi[0] + "% nella metà della " + escRadio(RC.nomeCasa) +
+          "</span><span>" + s.terzi[1] + "% a centrocampo</span><span>" + s.terzi[2] +
+          "% nella metà della " + escRadio(RC.nomeOsp) + "</span></div>";
+      } else {
+        dentro = '<div class="riga">' + sq("a", ca, RC.nomeCasa) + valore(s.a, s.detA, "a") +
+          '<div class="duo">' +
+            '<div class="lato a"><u style="width:' + Math.max(2, Math.min(100, s.pesoA || 0)) +
+              "%;background:" + ca + '"></u></div>' +
+            '<div class="lato b"><u style="width:' + Math.max(2, Math.min(100, s.pesoB || 0)) +
+              "%;background:" + co + '"></u></div>' +
+          "</div>" + valore(s.b, s.detB, "b") + sq("b", co, RC.nomeOsp) + "</div>";
+      }
+      box.innerHTML = '<div class="tit">' + escRadio(s.titolo) + "</div>" + dentro;
+      box.classList.add("on");
+      // se la scheda parla di un giocatore, sul campo si accende lui
+      for (var k in RC.pedine) rcLuce(RC.pedine[k], false);
+      if (s.luce && RC.pedine[s.luce]) rcLuce(RC.pedine[s.luce], true);
+    }, 420);
   }
-  // ESPN scrive i tipi in inglese. Qui diventano italiano da telecronaca:
-  // prima la tabella esatta (sono i 49 tipi che ESPN manda davvero, contati
-  // su otto partite vere), poi le regole di ripiego per quelli nuovi. In
-  // onda non deve finire una parola inglese: se non si riconosce niente,
-  // la riga mostra solo chi e quando.
-  var RC_ESATTI = {
-    "pass": "Passaggio", "cross": "Cross", "blocked pass": "Passaggio murato",
-    "assists shot": "Passaggio per il tiro", "assist": "Assist",
-    "ball touch": "Tocco", "ball recovery": "Palla recuperata",
-    "take on": "Dribbling", "dispossessed": "Palla persa", "shield ball opp": "Palla protetta",
-    "clear": "Spazzata", "clearance": "Spazzata", "tackle": "Contrasto",
-    "attempted tackle": "Contrasto tentato", "challenge": "Duello",
-    "interception": "Intercetto", "aerial": "Duello aereo", "error": "Errore",
-    "out": "Palla fuori", "throw in": "Rimessa laterale", "goal kick": "Rinvio dal fondo",
-    "corner awarded": "Calcio d'angolo", "corner": "Calcio d'angolo",
-    "free kick": "Punizione", "foul": "Fallo", "handball": "Fallo di mano",
-    "offside": "Fuorigioco", "offside provoked": "Fuorigioco provocato",
-    "drop of ball": "Rimessa dell'arbitro",
-    "shot on target": "Tiro in porta", "shot off target": "Tiro fuori",
-    "shot blocked": "Tiro murato", "shot hit woodwork": "Palo", "temp attempt": "Tiro",
-    "save": "Parata", "claim": "Presa del portiere", "punch": "Respinta di pugno",
-    "keeper sweeper": "Uscita del portiere", "smother": "Uscita bassa del portiere",
-    "goal": "GOL", "goal - header": "GOL di testa", "goal - free-kick": "GOL su punizione",
-    "own goal": "Autogol", "penalty - scored": "Rigore trasformato",
-    "penalty - missed": "Rigore sbagliato", "penalty - saved": "Rigore parato",
-    "yellow card": "Ammonizione", "second yellow card": "Espulsione",
-    "red card": "Espulsione", "substitution": "Sostituzione",
-    "start delay": "Gioco fermo", "end delay": "Si riprende",
-    "deleted after review": "Annullato dopo revisione",
-    "var - referee decision cancelled": "VAR: decisione annullata",
-    "kickoff": "Calcio d'inizio", "start 1st half": "Si comincia",
-    "start 2nd half": "Inizio ripresa", "halftime": "Intervallo",
-    "end 1st half": "Fine primo tempo", "end 2nd half": "Fine secondo tempo",
-    "end regular time": "Fine dei tempi regolamentari", "full time": "Finale"
-  };
-  var RC_RIPIEGO = [[/own goal/, "Autogol"], [/goal/, "GOL"], [/penalt/, "Rigore"],
-    [/woodwork|post|crossbar/, "Palo"], [/shot|attempt/, "Tiro"],
-    [/save|claim|punch|smother|keeper/, "Parata"], [/card/, "Cartellino"],
-    [/sub/, "Sostituzione"], [/offside/, "Fuorigioco"], [/hand ?ball/, "Fallo di mano"],
-    [/foul/, "Fallo"], [/corner/, "Calcio d'angolo"], [/throw/, "Rimessa laterale"],
-    [/goal ?kick/, "Rinvio dal fondo"], [/free ?kick/, "Punizione"],
-    [/cross/, "Cross"], [/pass/, "Passaggio"], [/tackle|challenge/, "Contrasto"],
-    [/intercept/, "Intercetto"], [/aerial/, "Duello aereo"], [/clear/, "Spazzata"],
-    [/touch|recovery/, "Tocco"], [/take on|dribbl/, "Dribbling"],
-    [/delay|review|var/, "Gioco fermo"], [/half|regular time|full time/, "Fine tempo"],
-    [/kick ?off|start/, "Si gioca"]];
-  function rcCosa(g) {
-    var tipo = String((g.type || {}).text || "").trim().toLowerCase();
-    if (!tipo) return "";
-    if (RC_ESATTI[tipo]) return RC_ESATTI[tipo];
-    for (var i = 0; i < RC_RIPIEGO.length; i++) if (RC_RIPIEGO[i][0].test(tipo)) return RC_RIPIEGO[i][1];
-    return "";                                   // mai inglese in onda
+  function rcLuce(ped, si) {
+    ped.cerchio.setAttribute("stroke", si ? "#E3C271" : "#F5F1E6");
+    ped.cerchio.setAttribute("stroke-width", si ? "5" : "2.6");
   }
-  // il nome del giocatore: ESPN lo mette nei partecipanti, e quando manca
-  // sta dentro la frase — "Foul by Rodri", "Corner, Arsenal. Conceded by X"
-  function rcPid(q) {
-    return (((q || {}).athlete || {}).$ref || "").match(/athletes\/(\d+)/);
-  }
-  // Chi ha fatto la giocata. La fonte buona e' la rosa: l'id del
-  // partecipante da' il nome esatto. Se manca si legge la frase, ma solo
-  // nella forma "Nome (Squadra)" - il "from" del racconto ESPN porta
-  // fuori strada ("shot from the centre of the box").
-  function rcChi(g) {
-    var m = rcPid((g.participants || [])[0]);
-    if (m && RC.nomi[m[1]]) return RC.nomi[m[1]];
-    var nome = (((g.participants || [])[0] || {}).athlete || {}).displayName || "";
-    if (nome) return nome;
-    var t = String(g.text || "");
-    var n = t.match(/([A-ZÀ-Þ][A-Za-zÀ-ÿ'\.\-]*(?:\s+[A-Za-zÀ-ÿ'\.\-]+){0,2})\s*\(/);
-    return n ? n[1].trim() : "";
-  }
+
+  // ── la lettura ──────────────────────────────────────────────────────
   function rcLeggi() {
     if (!RC.lega || !RC.ev) return;
     var lega = RC.lega, ev = RC.ev;
@@ -1227,112 +1285,111 @@
         if (RC.ev !== ev) return;
         var chi = (((j.header || {}).competitions || [])[0] || {}).competitors || [];
         var casa = chi.filter(function (x) { return x.homeAway === "home"; })[0] || {};
-        RC.casaId = String((casa.team || {}).id || "");
-        // le squadre si mettono in campo anche a partita cominciata: da
-        // li' in poi ogni giocatore che tocca palla va al suo posto vero
-        if (RC.schierato) return;
-        // le formazioni ESPN le pubblica circa un'ora prima
-        var rose = {};
-        (j.rosters || []).forEach(function (r) {
-          rose[String((r.team || {}).id || "")] = {
-            mod: r.formation || "",
-            gioc: (r.roster || []).map(function (x) {
-              var a = x.athlete || {};
-              RC.nomi[String(a.id || "")] = a.displayName || "";
-              return { starter: !!x.starter, num: x.jersey || a.jersey || "", pid: String(a.id || ""),
-                       ab: ((x.position || {}).abbreviation || "").toUpperCase(),
-                       cognome: (a.shortName || a.displayName || "").split(" ").pop() };
-            })
-          };
-        });
         var osp = chi.filter(function (x) { return x.homeAway === "away"; })[0] || {};
-        var rc = rose[RC.casaId], ro = rose[String((osp.team || {}).id || "")];
-        if (rc && ro) {
-          rcDisegnaCampo();
-          rcSchiera(rc.gioc, rc.mod, ro.gioc, ro.mod);
-          if (RC.schierato) rcCampoVisibile(true);
-        }
+        RC.casaId = String((casa.team || {}).id || "");
+        RC.ospId = String((osp.team || {}).id || "");
+        // le statistiche della partita
+        ((j.boxscore || {}).teams || []).forEach(function (t) {
+          var dove = String((t.team || {}).id || "") === RC.casaId ? "casa" : "osp";
+          var m = {};
+          (t.statistics || []).forEach(function (s) { m[s.name] = s.displayValue; });
+          RC.stat[dove] = m;
+        });
+        // la formazione in campo adesso
+        var rose = {};
+        (j.rosters || []).forEach(function (r) { rose[String((r.team || {}).id || "")] = r; });
+        var rc = rose[RC.casaId], ro = rose[RC.ospId];
+        if (!rc || !ro) return;
+        var uc = rcUndici(rc), uo = rcUndici(ro);
+        if (uc.length < 11 || uo.length < 11) return;
+        var firma = (rc.formation || "") + "|" + uc.map(function (x) { return x.pid; }).sort().join(",") +
+                    "#" + (ro.formation || "") + "|" + uo.map(function (x) { return x.pid; }).sort().join(",");
+        if (firma === RC.firma) return;
+        RC.firma = firma;
+        rcDisegnaCampo();
+        rcSchiera(uc, rc.formation, uo, ro.formation);
+        rcDistintivi();
+        rcCampoVisibile(true);
+        rcGira();
       })
       .catch(function () {});
+    // le giocate non muovono piu' niente: servono solo a contare chi
+    // tocca piu' palloni e in che terzo di campo si sta giocando
     var base = "https://sports.core.api.espn.com/v2/sports/soccer/leagues/" + lega +
                "/events/" + ev + "/competitions/" + ev + "/plays?limit=1000";
     fetch(base, { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (j) {
-        if ((j.pageCount || 1) < 2) return j.items || [];
-        return fetch(base + "&page=" + j.pageCount, { cache: "no-store" })
-          .then(function (r) { return r.json(); }).then(function (k) { return k.items || []; });
+        // a partita avanzata le giocate passano il migliaio ed ESPN le
+        // spezza in piu' pagine: vanno lette tutte, se no i gol e i
+        // cartellini del primo tempo non si vedono piu'
+        var pagine = j.pageCount || 1;
+        if (pagine < 2) return j.items || [];
+        var altre = [];
+        for (var n = 2; n <= pagine; n++) {
+          altre.push(fetch(base + "&page=" + n, { cache: "no-store" })
+            .then(function (r) { return r.json(); })
+            .then(function (k) { return k.items || []; })
+            .catch(function () { return []; }));
+        }
+        return Promise.all(altre).then(function (v) {
+          return (j.items || []).concat.apply(j.items || [], v);
+        });
       })
       .then(function (tutte) {
         if (RC.ev !== ev) return;
-        var nuove = (tutte || []).filter(function (g) {
-          return g.id && !RC.visti[g.id] && g.fieldPositionX != null && g.fieldPositionY != null;
+        (tutte || []).forEach(function (g) {
+          if (!g.id || RC.visti[g.id]) return;
+          RC.visti[g.id] = 1;
+          var m = (((g.participants || [])[0] || {}).athlete || {}).$ref || "";
+          var pid = (m.match(/athletes\/(\d+)/) || [])[1];
+          if (pid) {
+            RC.tocchi[pid] = (RC.tocchi[pid] || 0) + 1;
+            // quello che va segnato sulla pedina: gol, autogol, cartellini
+            var tipo = String((g.type || {}).text || "");
+            var seg = RC.segni[pid] = RC.segni[pid] || { gol: 0, autogol: 0, giallo: 0, rosso: 0 };
+            if (/^own goal/i.test(tipo)) seg.autogol++;
+            else if (/^goal( -|$)/i.test(tipo) || /^penalty - scored/i.test(tipo)) seg.gol++;
+            if (/^yellow card/i.test(tipo)) seg.giallo++;
+            if (/^(red card|second yellow)/i.test(tipo)) seg.rosso++;
+            if (seg.giallo > 1) seg.rosso = 1;          // doppia ammonizione
+            RC.daSegnare = true;
+          }
+          if (g.fieldPositionX == null) return;
+          var t = ((g.team || {}).$ref || "").match(/teams\/(\d+)/);
+          var x = t && t[1] === RC.casaId ? g.fieldPositionX : 100 - g.fieldPositionX;
+          RC.zone[x < 33 ? 0 : x > 66 ? 2 : 1]++;
         });
-        nuove.forEach(function (g) { RC.visti[g.id] = 1; });
-        if (!RC.partito) { RC.partito = true; nuove = nuove.slice(-3); }
-        // il campo si accende solo se ESPN ha davvero le giocate: prima
-        // della partita, o dove il play-by-play non c'e', il cartello
-        // resta quello di sempre invece di mostrare un campo vuoto
-        if (nuove.length) { rcCampoVisibile(true); rcViaPalla(); }
-        nuove.forEach(function (g) {
-          var sq = ((g.team || {}).$ref || "").match(/teams\/(\d+)/);
-          var parte = (g.participants || []).map(function (q) {
-            var m = rcPid(q);
-            return { pid: m ? m[1] : "", num: q.jersey || "" };
-          }).filter(function (q) { return q.pid; });
-          RC.coda.push({ x: g.fieldPositionX, y: g.fieldPositionY,
-                         casa: sq ? sq[1] === RC.casaId : true,
-                         chi: rcChi(g), cosa: rcCosa(g), quando: (g.clock || {}).displayValue || "",
-                         parte: parte, cambio: /^sub/i.test(String((g.type || {}).text || "")) });
-        });
-        if (RC.coda.length > 60) RC.coda = RC.coda.slice(-60);
+        if (RC.daSegnare) rcDistintivi();
       })
       .catch(function () {});
   }
-  // una giocata alla volta: il pallone deve raccontare, non lampeggiare.
-  // Se ESPN manda un blocco di giocate insieme si accelera, senza correre.
-  function rcPasso() {
-    if (!RC.acceso) return;
-    if (RC.coda.length) {
-      var g = RC.coda.shift();
-      var q = rcPosto(g.x, g.y, g.casa), parte = g.parte || [];
-      if (g.cambio && parte.length > 1) {
-        rcCambio({ pid: parte[0].pid, num: parte[0].num,
-                   cognome: (RC.nomi[parte[0].pid] || g.chi || "").split(" ").pop() }, parte[1].pid, q);
-      } else if (parte.length) {
-        rcMuoviGiocatore(parte[0].pid, q);
-      }
-      rcMuovi(q, g.casa);
-    }
-    RC.passo = setTimeout(rcPasso, RC.coda.length > 14 ? 380 : RC.coda.length > 6 ? 620 : 1000);
-  }
-  function rcCampoVisibile(si) {
-    var e = document.getElementById("radio");
-    if (e) e.classList[si ? "add" : "remove"]("conCampo");
-  }
+
   function rcAccendi(espn, j) {
     var lega = (espn && espn.lega) || "", ev = (espn && String(espn.ev || "")) || "";
     if (!lega || !ev) { rcSpegni(); return; }
     RC.colCasa = ((j || {}).casa || {}).col || "#C9A24B";
     RC.colOsp = ((j || {}).osp || {}).col || "#C9A24B";
-    rcDisegnaCampo();
+    RC.nomeCasa = ((j || {}).casa || {}).s || ((j || {}).casa || {}).n || "";
+    RC.nomeOsp = ((j || {}).osp || {}).s || ((j || {}).osp || {}).n || "";
     if (RC.acceso && RC.lega === lega && RC.ev === ev) return;
     rcSpegni(true);
     RC.lega = lega; RC.ev = ev; RC.acceso = true;
-    RC.coda = []; RC.visti = {}; RC.partito = false; RC.scia = [];
-    RC.schierato = false; RC.viaPalla = false; RC.pedine = {}; RC.acceso0 = null; RC.nomi = {};
+    RC.firma = ""; RC.visti = {}; RC.tocchi = {}; RC.zone = [0, 0, 0]; RC.scheda = 0; RC.segni = {};
     rcLeggi();
-    RC.timer = setInterval(rcLeggi, 15000);
-    rcPasso();
+    RC.timer = setInterval(rcLeggi, 20000);
+    RC.giro = setInterval(rcGira, 12000);
   }
   function rcSpegni(tieniCampo) {
     RC.acceso = false;
     if (RC.timer) { clearInterval(RC.timer); RC.timer = null; }
-    if (RC.passo) { clearTimeout(RC.passo); RC.passo = null; }
-    RC.lega = ""; RC.ev = "";
-    RC.schierato = false; RC.viaPalla = false; RC.pedine = {}; RC.acceso0 = null; RC.nomi = {};
+    if (RC.giro) { clearInterval(RC.giro); RC.giro = null; }
+    RC.lega = ""; RC.ev = ""; RC.firma = ""; RC.pedine = {}; RC.nomi = {};
+    RC.stat = { casa: {}, osp: {} };
     if (RC.squadre && RC.squadre.parentNode) RC.squadre.parentNode.removeChild(RC.squadre);
     RC.squadre = null;
+    var box = document.getElementById("rcdati");
+    if (box) { box.classList.remove("on"); box.innerHTML = ""; }
     if (!tieniCampo) rcCampoVisibile(false);
   }
 
