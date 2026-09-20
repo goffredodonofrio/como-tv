@@ -65,6 +65,11 @@ window.Lavagna = (function () {
       ".lav .sep{width:1px;height:24px;background:rgba(245,241,230,.08);margin:0 2px;}" +
       ".lav .colore{width:24px;height:24px;border-radius:50%;padding:0;border:2px solid rgba(245,241,230,.25);}" +
       ".lav .colore.on{border-color:#fff;box-shadow:0 0 0 2px rgba(201,162,75,.5);}" +
+      ".lav .fianco{display:flex;gap:12px;align-items:stretch;}" +
+      ".lav .fianco .campoBox{flex:1 1 640px;min-width:0;}" +
+      ".lav .lato{flex:0 0 300px;display:flex;flex-direction:column;gap:10px;min-width:0;}" +
+      ".lav .lato .col{flex:1 1 0;overflow:auto;}" +
+      "@media (max-width:1100px){.lav .fianco{flex-wrap:wrap}.lav .lato{flex:1 1 100%;flex-direction:row}}" +
       ".lav .campoBox{position:relative;width:100%;aspect-ratio:16/9;border-radius:12px;overflow:hidden;" +
       "  border:1px solid rgba(201,162,75,.28);background:#0B5A2E;touch-action:none;}" +
       ".lav .campoBox svg{position:absolute;inset:0;width:100%;height:100%;display:block;}" +
@@ -88,23 +93,26 @@ window.Lavagna = (function () {
       ".lav .curio{font-size:12.5px;color:#D8D2C2;line-height:1.6;}" +
       ".lav .curio div{padding:4px 0;border-bottom:1px solid rgba(245,241,230,.05);}" +
       ".lav .curio b{font-family:'Mazzard',sans-serif;color:var(--lav-oroB);}" +
-      /* la finestrella delle curiosita' */
-      ".lav .finestra{position:fixed;inset:0;z-index:600;background:rgba(4,6,16,.72);display:flex;" +
-      "  align-items:center;justify-content:center;}" +
-      ".lav .finestra .box{width:min(520px,92vw);background:linear-gradient(180deg,#141B3C,#0E1430);" +
-      "  border:1px solid rgba(201,162,75,.4);border-radius:12px;padding:18px;}" +
-      ".lav .finestra h3{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.2em;" +
-      "  text-transform:uppercase;color:var(--lav-oro);margin-bottom:10px;}" +
-      ".lav .finestra textarea{width:100%;height:140px;padding:10px 12px;border-radius:8px;resize:vertical;" +
+      /* il foglietto delle curiosita': sta attaccato al giocatore, sul campo */
+      ".lav .campoBox .foglietto{position:absolute;z-index:8;width:300px;max-width:92%;" +
+      "  background:linear-gradient(180deg,#141B3C,#0E1430);box-shadow:0 12px 30px rgba(0,0,0,.55);" +
+      "  border:1px solid rgba(201,162,75,.5);border-radius:10px;padding:12px;}" +
+      ".lav .foglietto h3{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.16em;" +
+      "  text-transform:uppercase;color:var(--lav-oro);margin-bottom:8px;}" +
+      ".lav .foglietto textarea{width:100%;height:110px;padding:9px 10px;border-radius:7px;resize:vertical;" +
       "  background:rgba(245,241,230,.06);border:1px solid rgba(245,241,230,.16);color:var(--lav-avorio);" +
-      "  font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.5;}" +
-      ".lav .finestra textarea:focus{outline:none;border-color:rgba(201,162,75,.28);}" +
-      ".lav .finestra .piede{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;}";
+      "  font-family:'DM Sans',sans-serif;font-size:13.5px;line-height:1.45;}" +
+      ".lav .foglietto textarea:focus{outline:none;border-color:rgba(201,162,75,.4);}" +
+      ".lav .foglietto .piede{display:flex;gap:6px;justify-content:flex-end;margin-top:9px;}" +
+      ".lav .foglietto .piede button{padding:6px 9px;font-size:10px;}" +
+      ".lav .foglietto .via{color:#FF6B6E;border-color:rgba(229,27,32,.4);}";
     document.head.appendChild(s);
   }
 
+  var quante = 0;
   function monta(box, opz) {
     opz = opz || {};
+    var IO = "lav" + (++quante);   // il nome di questa lavagna: gli id non si scontrano
     stile();
     box.classList.add("lav");
     box.innerHTML =
@@ -128,13 +136,17 @@ window.Lavagna = (function () {
         '<button type="button" data-az="stampa">&#128424; Stampa</button>' +
         (opz.salva ? '<span class="sep"></span><span data-salva="1"></span>' : "") +
       '</div>' +
-      '<div class="campoBox"><svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg"></svg></div>' +
+      // il campo e, DI FIANCO, le due rose: si pesca da li' mentre si guarda
+      // il campo, senza scorrere la pagina
+      '<div class="fianco">' +
+        '<div class="campoBox"><svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg"></svg></div>' +
+        '<div class="lato">' +
+          '<div class="col" data-col="A"><h4><i></i><span data-nome="A">Casa</span></h4><div class="gioc" data-rosa="A"></div></div>' +
+          '<div class="col" data-col="B"><h4><i></i><span data-nome="B">Ospite</span></h4><div class="gioc" data-rosa="B"></div></div>' +
+        '</div>' +
+      '</div>' +
       '<div class="nota" data-nota="1">Trascina i giocatori. <b>Doppio clic</b> su un giocatore: ci scrivi le tue curiosità. ' +
         'Per un cambio: clicca chi esce sul campo, poi chi entra dalla panchina.</div>' +
-      '<div class="sotto">' +
-        '<div class="col" data-col="A"><h4><i></i><span data-nome="A">Casa</span></h4><div class="gioc" data-rosa="A"></div></div>' +
-        '<div class="col" data-col="B"><h4><i></i><span data-nome="B">Ospite</span></h4><div class="gioc" data-rosa="B"></div></div>' +
-      '</div>' +
       '<div class="sotto">' +
         '<div class="col"><h4>Cambi</h4><div class="cambi" data-cambi="1"><span>Nessun cambio.</span></div></div>' +
         '<div class="col"><h4>Curiosità</h4><div class="curio" data-curio="1"><span style="color:var(--lav-fg3)">Doppio clic su un giocatore per scriverci sopra.</span></div></div>' +
@@ -155,11 +167,15 @@ window.Lavagna = (function () {
 
     // ── il campo ────────────────────────────────────────────────────────
     (function campo() {
-      var defs = ns("defs", {}, gCampo);
-      var rig = ns("pattern", { id: "lav-erba", width: W / 8, height: H, patternUnits: "userSpaceOnUse" }, defs);
-      ns("rect", { width: W / 16, height: H, fill: "#ffffff", opacity: .035 }, rig);
+      ns("defs", {}, gCampo);
       ns("rect", { width: W, height: H, fill: "#0E7A3E" }, gCampo);
-      ns("rect", { width: W, height: H, fill: "url(#lav-erba)" }, gCampo);
+      // Le righe dell'erba sono rettangoli, non un "motivo" richiamato per
+      // nome: un altro elemento con lo stesso nome nella pagina — e nelle
+      // Formazioni ce ne sono tanti — faceva sparire il disegno del campo
+      // appena si toccava qualcosa. Cosi' il campo non dipende da nessuno.
+      for (var r = 0; r < 16; r += 2) {
+        ns("rect", { x: r * (W / 16), y: 0, width: W / 16, height: H, fill: "#ffffff", opacity: .035 }, gCampo);
+      }
       var L = ns("g", { fill: "none", stroke: "#F5F1E6", "stroke-opacity": .75, "stroke-width": 3 }, gCampo);
       var m = 40;
       ns("rect", { x: m, y: m, width: W - 2 * m, height: H - 2 * m }, L);
@@ -256,7 +272,7 @@ window.Lavagna = (function () {
       });
     });
     function punta(col) {
-      var id = "lav-punta" + col.replace("#", "");
+      var id = IO + "punta" + col.replace("#", "");
       if (svg.querySelector("#" + id)) return;
       var defs = svg.querySelector("defs");
       var m = ns("marker", { id: id, viewBox: "0 0 10 10", refX: 7, refY: 5, markerWidth: 5, markerHeight: 5,
@@ -266,6 +282,7 @@ window.Lavagna = (function () {
 
     var trascino = null, disegno = null, mosso = false;
     svg.addEventListener("pointerdown", function (ev) {
+      chiudiNota();
       var pt = punto(ev);
       if (ARNESE === "muovi") {
         var p = pedinaDi(ev);
@@ -283,7 +300,7 @@ window.Lavagna = (function () {
         if (ARNESE === "freccia") punta(COLORE);
         d.el = ns("path", { fill: "none", stroke: COLORE, "stroke-width": 5, "stroke-linecap": "round",
                             "stroke-dasharray": ARNESE === "tratteggio" ? "16 12" : null,
-                            "marker-end": ARNESE === "freccia" ? "url(#lav-punta" + COLORE.replace("#", "") + ")" : null }, gDis);
+                            "marker-end": ARNESE === "freccia" ? "url(#" + IO + "punta" + COLORE.replace("#", "") + ")" : null }, gDis);
       }
       disegno = d;
       svg.setPointerCapture(ev.pointerId);
@@ -333,41 +350,58 @@ window.Lavagna = (function () {
     });
 
     // ── la finestrella delle curiosita' ─────────────────────────────────
+    // IL FOGLIETTO: si apre attaccato al giocatore, sul campo, non in mezzo
+    // allo schermo — in telecronaca si guarda il campo, non una finestra che
+    // lo copre. Se il giocatore sta a destra, il foglietto si apre a sinistra.
     function apriNota(p) {
-      var k = chiave(p);
+      chiudiNota();
+      var k = chiave(p), cassa = box.querySelector(".campoBox");
       var f = document.createElement("div");
-      f.className = "lav finestra";
+      f.className = "foglietto";
       f.innerHTML =
-        '<div class="box"><h3>' + esc((p.num ? p.num + " · " : "") + (p.cognome || "")) + ' — ' + esc(SQ[p.lato].nome) + '</h3>' +
+        '<h3>' + esc((p.num ? p.num + " · " : "") + (p.cognome || "")) + ' — ' + esc(SQ[p.lato].nome) + '</h3>' +
         '<textarea placeholder="Quello che vuoi dire in telecronaca: numeri, precedenti, come si pronuncia il nome…"></textarea>' +
         '<div class="piede">' +
           '<button type="button" data-f="togli" class="via">Togli dal campo</button>' +
           '<button type="button" data-f="chiudi">Chiudi</button>' +
           '<button type="button" data-f="salva" class="on">Salva</button>' +
-        '</div></div>';
-      document.body.appendChild(f);
+        '</div>';
+      cassa.appendChild(f);
+      // dove: accanto alla pedina, in percentuale del campo, e sempre dentro
+      var largo = f.offsetWidth || 300, alto = f.offsetHeight || 210;
+      var r = cassa.getBoundingClientRect();
+      var px = p.x / W * r.width, py = p.y / H * r.height;
+      var x = px + 40, y = py - alto / 2;
+      if (x + largo > r.width - 8) x = px - 40 - largo;
+      f.style.left = Math.max(8, Math.min(r.width - largo - 8, x)) + "px";
+      f.style.top = Math.max(8, Math.min(r.height - alto - 8, y)) + "px";
       var ta = f.querySelector("textarea");
       ta.value = NOTE[k] || "";
       ta.focus();
-      function via() { f.remove(); }
+      f.addEventListener("pointerdown", function (ev) { ev.stopPropagation(); });
+      f.addEventListener("dblclick", function (ev) { ev.stopPropagation(); });
       f.addEventListener("click", function (ev) {
-        if (ev.target === f) return via();
         var b = ev.target.closest ? ev.target.closest("button[data-f]") : null;
         if (!b) return;
         if (b.dataset.f === "salva") {
           var t = ta.value.trim();
           if (t) NOTE[k] = t; else delete NOTE[k];
-          segnaNota(p); disegnaCurio();
+          segnaNota(p); disegnaCurio(); disegnaRose();
         }
         if (b.dataset.f === "togli") { togli(p); disegnaRose(); disegnaCurio(); }
-        via();
+        chiudiNota();
       });
       f.addEventListener("keydown", function (ev) {
-        if (ev.key === "Escape") via();
+        if (ev.key === "Escape") chiudiNota();
         // Cmd/Ctrl+Invio salva: in telecronaca non si cercano i pulsanti
         if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) f.querySelector('[data-f="salva"]').click();
       });
     }
+    function chiudiNota() {
+      var f = box.querySelector(".foglietto");
+      if (f) f.remove();
+    }
+
     function disegnaCurio() {
       var c = box.querySelector("[data-curio]");
       var righe = PEDINE.filter(function (p) { return NOTE[chiave(p)]; });
