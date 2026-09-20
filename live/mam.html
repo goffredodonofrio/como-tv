@@ -333,6 +333,32 @@
   .tlpista .clipS .tt{display:block;font-size:10px;line-height:19px;color:#FFE97A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .tlpista .clipS.mod{border-color:#E3C271;}
   .tlpista .clipS:hover{background:#6E5B18;}
+  .tlpista .clipS.sel{background:#8A6F1C;border-color:#FFE97A;box-shadow:0 0 0 1px #FFE97A inset;}
+  .tlpista .clipS .bordo{position:absolute;top:0;bottom:0;width:6px;cursor:ew-resize;z-index:4;}
+  .tlpista .clipS .bordo.sx{left:0;} .tlpista .clipS .bordo.dx{right:0;}
+  /* IL PANNELLO TESTO: le didascalie in lista, come il pannello Testo di
+     Premiere. Ogni riga: entrata, uscita, testo parlato, traduzione; si
+     scrive sul posto e si salva da sola; la riga sotto la testina e' segnata. */
+  #paneTesto{display:flex;flex-direction:column;min-height:0;height:100%;}
+  .testoBarra{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid #0F0F0F;font-size:11px;color:#A8A8A8;}
+  .testoBarra .b{font-size:10.5px;padding:2px 8px;}
+  .testoBarra .segui{margin-left:auto;display:flex;align-items:center;gap:4px;cursor:pointer;}
+  #testoRighe{flex:1 1 auto;overflow:auto;min-height:0;}
+  .did{display:grid;grid-template-columns:78px 1fr 22px;grid-template-rows:auto auto;gap:2px 8px;padding:6px 8px 6px 10px;border-bottom:1px solid #222;border-left:3px solid transparent;position:relative;}
+  .did.ora{border-left-color:#2D8CEB;background:#1E2430;}
+  .did.mod::after{content:'';position:absolute;right:6px;top:8px;width:6px;height:6px;border-radius:50%;background:#C9A24B;}
+  .did .tcs{grid-column:1;grid-row:1/3;display:flex;flex-direction:column;gap:3px;}
+  .did .tx{grid-column:2;grid-row:1;} .did .tr{grid-column:2;grid-row:2;}
+  .did .tcs input{width:74px;font:10.5px/1.4 ui-monospace,Menlo,monospace;background:#151515;border:1px solid #2A2A2A;color:#BDBDBD;padding:2px 4px;border-radius:2px;}
+  .did .tcs input:first-child{cursor:pointer;color:#E6E6E6;}
+  .did textarea{width:100%;box-sizing:border-box;font:inherit;font-size:12.5px;line-height:1.35;background:transparent;border:1px solid transparent;border-radius:2px;color:#EEE;padding:2px 4px;resize:none;overflow:hidden;min-height:20px;}
+  .did textarea:focus{background:#151515;border-color:#2D8CEB;outline:0;}
+  .did textarea.it{color:#FFE97A;} .did textarea.en{color:#fff;}
+  .did textarea.tr{font-size:11.5px;opacity:.85;}
+  .did .via{grid-column:3;grid-row:1/3;align-self:center;color:#8A8A8A;cursor:pointer;font-style:normal;font-size:14px;text-align:center;}
+  .did .via:hover{color:#E24A4A;}
+  .did.vuota{padding:14px 12px;color:#8A8A8A;font-size:12px;display:block;}
+  .telaio .sottotitoli i[contenteditable="true"]{outline:1px dashed rgba(255,255,255,.7);background:rgba(0,0,0,.45);border-radius:3px;padding:0 .2em;}
   .telaio .sottotitoli i{pointer-events:auto;cursor:text;}
   .foglio .editSotto{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;padding:12px 16px;}
   .foglio .editSotto label{display:flex;flex-direction:column;gap:4px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--inchiostro-3,#8A8A8A);}
@@ -1165,7 +1191,7 @@
   /* il pannello Progetto */
   .col.proj{padding:0;display:flex;flex-direction:column;background:#232323;}
   .projTabs{display:flex;align-items:stretch;height:30px;background:#1B1B1B;border-bottom:1px solid #0F0F0F;font-size:11.5px;}
-  .projTabs button{background:transparent;border:0;color:#A8A8A8;padding:0 12px;font:inherit;cursor:default;white-space:nowrap;flex:0 0 auto;}
+  .projTabs button{background:transparent;border:0;color:#A8A8A8;padding:0 9px;font:inherit;cursor:default;white-space:nowrap;flex:0 0 auto;}
   /* il nome della partita puo' essere lungo: si accorcia lui, non le altre linguette */
   .projTabs button:first-child{flex:0 1 auto;min-width:70px;overflow:hidden;text-overflow:ellipsis;}
   .projTabs button.on{color:#E6E6E6;border-bottom:2px solid #2D8CEB;}
@@ -1634,6 +1660,7 @@
       <button data-t="sorgenti">Sorgenti</button>
       <button data-t="info">Info</button>
       <button data-t="grafiche">Grafiche</button>
+      <button data-t="testo" title="le didascalie: la telecronaca riga per riga, si corregge qui">Testo</button>
       <span class="piu">»</span>
     </div>
     <div class="projPath" id="projPath"><i class="cart"></i><span>nessuna partita aperta</span></div>
@@ -1668,6 +1695,11 @@
         <div id="segniCol" class="soloLive"></div>
       </div>
       <div class="projPane" id="paneInfo" hidden><div id="projInfo"></div></div>
+      <div class="projPane" id="paneTesto" hidden>
+        <div class="testoBarra"><b>Didascalie</b><span id="testoConto"></span><button class="b" id="testoPiu" title="una riga nuova al secondo in cui sei">+ riga</button>
+          <label class="segui" title="la lista scorre con la testina"><input type="checkbox" id="testoSegui" checked> segui</label></div>
+        <div id="testoRighe"></div>
+      </div>
     </div>
     <div class="projBarra">
       <i class="ic on" id="pbGriglia" title="vista a icone"><svg viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></svg></i>
@@ -4821,6 +4853,7 @@
       SOTTO_ARCH.pezzi = d.pezzi || []; SOTTO_ARCH.reg = regId;
       SOTTO_ARCH.lingua = (SOTTO_ARCH.pezzi[0] && SOTTO_ARCH.pezzi[0].l) || d.lingua || "it";
       disegnaTimeline();
+      if (TAB === "testo" && !TESTO.focus) disegnaTesto();
       if (poi) poi(d);
     }).catch(function () { if (poi) poi(null); });
   }
@@ -4845,75 +4878,175 @@
         var d = x.fuori - x.dentro, a;
         if (SEQ && SEQ.libera) a = x.t0 || 0; else { a = acc; acc += d; }
         if (x.vivo) return;
-        SOTTO_ARCH.pezzi.forEach(function (s) {
+        SOTTO_ARCH.pezzi.forEach(function (s0) {
+          // mentre si trascina, il blocco segue il mouse: si disegna il fantasma
+          var s = (TL.sottoGhost && TL.sottoGhost.k === s0.k) ? { k: s0.k, a: TL.sottoGhost.a, b: TL.sottoGhost.b, x: s0.x, y: s0.y, ya: s0.ya, l: s0.l, m: s0.m } : s0;
           if (s.b <= x.dentro || s.a >= x.fuori) return;
           var sa = a + Math.max(0, s.a - x.dentro), sb = a + Math.min(d, s.b - x.dentro);
           if (sb < f.a || sa > f.b) return;
           var xa = Math.max(0, X(sa)), xb = Math.min(largo, X(sb));
           var t = testoSottoDi(s);
-          os.push('<div class="clipS' + (s.m ? " mod" : "") + '" data-k="' + s.k + '" style="left:' + xa + 'px;width:' + Math.max(4, xb - xa) +
-                  'px" title="' + pulito(t).replace(/"/g, "&quot;") + (s.m ? " (corretta a mano)" : "") + '"><span class="tt">' + pulito(t) + '</span></div>');
+          os.push('<div class="clipS' + (s.m ? " mod" : "") + (TL.selS === s.k ? " sel" : "") + '" data-k="' + s.k + '" style="left:' + xa + 'px;width:' + Math.max(4, xb - xa) +
+                  'px" title="' + pulito(t).replace(/"/g, "&quot;") + (s.m ? " (corretta a mano)" : "") + '"><span class="tt">' + pulito(t) + '</span>' +
+                  '<span class="bordo sx" data-lato="sx"></span><span class="bordo dx" data-lato="dx"></span></div>');
         });
       });
     }
     st.innerHTML = os.join("");
     st.classList.toggle("vuota", !os.length);
   }
-  // L'EDITOR DI UNA RIGA: entrata, uscita, testo nella lingua parlata e
-  // nella traduzione. Salva scrive nella telecronaca (segno "corretta a
-  // mano"): da li' escono srt, impressi e telecronaca intera.
+  // ── IL PANNELLO TESTO ──
+  // Come il pannello Testo di Premiere: tutte le didascalie in lista,
+  // entrata e uscita, il parlato e la traduzione; si scrive sul posto e si
+  // salva quando si esce dal campo. La riga sotto la testina e' segnata e
+  // la lista la segue; cliccando l'entrata la testina va li'.
+  var TESTO = { q: "", focus: "" };
   function daTcSotto(t, fallback) {
     var p = String(t || "").trim().split(":").map(function (x) { return parseFloat(x) || 0; });
-    if (!p.length || !String(t || "").trim()) return fallback;
+    if (!String(t || "").trim()) return fallback;
     if (p.length === 4) return p[0] * 3600 + p[1] * 60 + p[2] + p[3] / FPS;
     if (p.length === 3) return p[0] * 3600 + p[1] * 60 + p[2];
     if (p.length === 2) return p[0] * 60 + p[1];
     return p[0];
   }
-  function apriEditorSotto(k, altrove) {
-    var x = SOTTO_ARCH.pezzi.filter(function (z) { return z.k === k; })[0] || (altrove || []).filter(function (z) { return z.k === k; })[0];
-    if (!x) return dice("Riga non trovata: ricarica la telecronaca.");
-    var reg = SOTTO_ARCH.reg || (REG && REG.id); if (!reg) return;
-    var vecchio = el("editSotto"); if (vecchio) vecchio.remove();
-    var sua = x.l || SOTTO_ARCH.lingua || "it", altra = sua === "it" ? "en" : "it";
-    var box = document.createElement("div"); box.className = "foglio"; box.id = "editSotto";
-    var campo = function (l) {
-      var mio = l === sua, val = mio ? (x.x || "") : (x.y && x.ya === l ? x.y : "");
-      return '<label class="largo">' + (l === "it" ? "Italiano" : "Inglese") + (mio ? " \u00b7 parlato" : " \u00b7 traduzione") +
-             '<textarea id="es_' + l + '" class="' + l + '" placeholder="' + (mio ? "quello che si dice" : "vuoto = si traduce da sola") + '">' + pulito(val) + '</textarea></label>';
-    };
-    box.innerHTML = '<div><header><b>Sottotitolo</b><span>' + tc(x.a) + ' \u2192 ' + tc(x.b) + (x.m ? " \u00b7 corretta a mano" : "") + '</span><a href="#" id="esChiudi">chiudi</a></header>' +
-      '<div class="editSotto">' +
-      '<label>Entrata (partita)<input id="esA" value="' + tc(x.a) + '"></label>' +
-      '<label>Uscita<input id="esB" value="' + tc(x.b) + '"></label>' +
-      campo("it") + campo("en") +
-      '</div><footer><button class="b" id="esElimina">Elimina</button><button class="b" id="esDopo" title="una riga nuova subito dopo questa">+ Nuova dopo</button>' +
-      '<span style="flex:1"></span><button class="b" id="esAnnulla">Annulla</button><button class="b oro" id="esSalva">Salva</button></footer></div>';
-    document.body.appendChild(box);
-    var via = function (e) { if (e) e.preventDefault(); box.remove(); };
-    var poi = function (f2) { caricaSottoDi(reg, function () { if (f2) f2(); }); };
-    box.addEventListener("click", function (e) { if (e.target === box) via(); });
-    el("esChiudi").addEventListener("click", via); el("esAnnulla").addEventListener("click", via);
-    el("esSalva").addEventListener("click", function () {
-      var c = { tipo: "clip-parlato-modifica", reg: reg, k: x.k,
-                a: daTcSotto(el("esA").value, x.a), b: daTcSotto(el("esB").value, x.b),
-                x: el("es_" + sua).value, y: el("es_" + altra).value };
-      manda(c).then(function () { via(); poi(); dice("Sottotitolo salvato.", true); }).catch(function (e) { dice(e.message); });
-    });
-    el("esElimina").addEventListener("click", function () {
-      if (!confirm("Togliere questa riga dalla telecronaca?")) return;
-      manda({ tipo: "clip-parlato-modifica", reg: reg, k: x.k, cancella: true }).then(function () { via(); poi(); }).catch(function (e) { dice(e.message); });
-    });
-    el("esDopo").addEventListener("click", function () {
-      manda({ tipo: "clip-parlato-modifica", reg: reg, nuova: true, a: x.b + 0.1, b: x.b + 3.1, l: sua })
-        .then(function (d) { via(); poi(function () { apriEditorSotto(d.pezzo.k); }); }).catch(function (e) { dice(e.message); });
-    });
-    el("es_" + sua).focus();
+  function regDelTesto() { var r = regDiSeq(); return (REG && REG.id) || (r && r.id) || ""; }
+  function altezzaGiusta(t) { t.style.height = "auto"; t.style.height = (t.scrollHeight + 2) + "px"; }
+  function salvaRigaSotto(k, campi, poi) {
+    var reg = SOTTO_ARCH.reg; if (!reg) return;
+    var c = { tipo: "clip-parlato-modifica", reg: reg, k: k };
+    Object.keys(campi).forEach(function (n) { c[n] = campi[n]; });
+    manda(c).then(function (d) {
+      if (d.pezzo) {
+        var i2 = SOTTO_ARCH.pezzi.findIndex(function (z) { return z.k === k; });
+        if (i2 >= 0) SOTTO_ARCH.pezzi[i2] = d.pezzo;
+        SOTTO_ARCH.pezzi.sort(function (u, v) { return u.a - v.a; });
+      } else if (d.tolta) SOTTO_ARCH.pezzi = SOTTO_ARCH.pezzi.filter(function (z) { return z.k !== k; });
+      disegnaTimeline();
+      if (poi) poi(d);
+    }).catch(function (e) { dice(e.message); });
   }
-  function nuovaRigaSotto(t) {
-    var reg = SOTTO_ARCH.reg || (REG && REG.id); if (!reg) return dice("Apri prima una partita.");
+  function togliRigaSotto(k) {
+    salvaRigaSotto(k, { cancella: true }, function () {
+      if (TL.selS === k) TL.selS = null;
+      var r = el("testoRighe") && el("testoRighe").querySelector('.did[data-k="' + k + '"]'); if (r) r.remove();
+      dice("Riga tolta.", true);
+    });
+  }
+  function nuovaRigaSotto(t, dopoK) {
+    var reg = SOTTO_ARCH.reg || regDelTesto(); if (!reg) return dice("Apri prima una partita.");
     manda({ tipo: "clip-parlato-modifica", reg: reg, nuova: true, a: t, b: t + 3, l: SOTTO_ARCH.lingua || "it" })
-      .then(function (d) { caricaSottoDi(reg, function () { apriEditorSotto(d.pezzo.k); }); }).catch(function (e) { dice(e.message); });
+      .then(function (d) { caricaSottoDi(reg, function () { vaiRigaTesto(d.pezzo.k, true); }); }).catch(function (e) { dice(e.message); });
+  }
+  // la riga nella lista: si costruisce una volta e si aggiorna sul posto
+  function rigaTesto(x) {
+    var sua = x.l || SOTTO_ARCH.lingua || "it", altra = sua === "it" ? "en" : "it";
+    var d = document.createElement("div");
+    d.className = "did" + (x.m ? " mod" : ""); d.dataset.k = x.k;
+    d.innerHTML = '<div class="tcs"><input class="tcIn" value="' + tc(x.a) + '" title="entrata: clicca per andarci, scrivi per spostarla"><input class="tcOut" value="' + tc(x.b) + '" title="uscita"></div>' +
+      '<textarea class="tx ' + sua + '" rows="1" placeholder="' + (sua === "it" ? "italiano" : "inglese") + '"></textarea>' +
+      '<textarea class="tr ' + altra + '" rows="1" placeholder="' + (altra === "it" ? "italiano" : "inglese") + ' · vuoto = si traduce da sola"></textarea>' +
+      '<i class="via" title="togli la riga">×</i>';
+    var tx = d.querySelector(".tx"), tr = d.querySelector(".tr"), tin = d.querySelector(".tcIn"), tout = d.querySelector(".tcOut");
+    tx.value = x.x || ""; tr.value = (x.y && x.ya === altra) ? x.y : "";
+    [tx, tr].forEach(function (t) {
+      t.addEventListener("input", function () { altezzaGiusta(t); });
+      t.addEventListener("focus", function () { TESTO.focus = x.k; });
+      t.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); t.blur(); }
+        if (e.key === "Escape") { t.value = t === tx ? (x.x || "") : ((x.y && x.ya === altra) ? x.y : ""); t.blur(); }
+      });
+      t.addEventListener("blur", function () {
+        TESTO.focus = "";
+        var vx = tx.value.replace(/\s+/g, " ").trim(), vy = tr.value.replace(/\s+/g, " ").trim();
+        var yPrima = (x.y && x.ya === altra) ? x.y : "";
+        if (vx === (x.x || "") && vy === yPrima) return;
+        salvaRigaSotto(x.k, { x: vx, y: vy }, function (r) { if (r.pezzo) { x = r.pezzo; d.classList.add("mod"); tr.value = (x.y && x.ya === altra) ? x.y : ""; } });
+      });
+    });
+    var tempi = function () {
+      var a = daTcSotto(tin.value, x.a), b = daTcSotto(tout.value, x.b);
+      if (Math.abs(a - x.a) < 0.02 && Math.abs(b - x.b) < 0.02) { tin.value = tc(x.a); tout.value = tc(x.b); return; }
+      if (b <= a) { dice("L'uscita deve venire dopo l'entrata."); tin.value = tc(x.a); tout.value = tc(x.b); return; }
+      salvaRigaSotto(x.k, { a: a, b: b }, function (r) { if (r.pezzo) { x = r.pezzo; tin.value = tc(x.a); tout.value = tc(x.b); d.classList.add("mod"); } });
+    };
+    [tin, tout].forEach(function (t) {
+      t.addEventListener("change", tempi);
+      t.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); t.blur(); } });
+    });
+    tin.addEventListener("click", function () { vaiAlSecondo(x.a); });
+    d.querySelector(".via").addEventListener("click", function () { togliRigaSotto(x.k); });
+    return d;
+  }
+  // la testina va al secondo della partita: nel Programma se un pezzo lo
+  // contiene, se no nella Sorgente
+  function vaiAlSecondo(t) {
+    var pz = pezziProg(), r = regDiSeq();
+    if (MON === "p" && r && SOTTO_ARCH.reg === r.id) {
+      for (var i = 0; i < pz.length; i++) if (!pz[i].vivo && t >= pz[i].dentro && t < pz[i].fuori) { progVai(i, false, t - pz[i].dentro, true); return; }
+    }
+    var v = el("player"); if (!v || !REG || REG.id !== SOTTO_ARCH.reg) return;
+    try { v.currentTime = Math.max(0, t); } catch (e) {}
+    MON = "s"; if (el("monS")) el("monS").classList.add("attivo"); if (el("monP")) el("monP").classList.remove("attivo");
+  }
+  function disegnaTesto(q) {
+    var box = el("testoRighe"); if (!box) return;
+    if (q !== undefined) TESTO.q = q;
+    var reg = regDelTesto();
+    if (!reg) { box.innerHTML = '<div class="did vuota">Apri una partita: qui compaiono le sue didascalie.</div>'; return; }
+    if (SOTTO_ARCH.reg !== reg) { if (!SOTTO_ARCH.caricando) { SOTTO_ARCH.caricando = true; caricaSottoDi(reg, function () { SOTTO_ARCH.caricando = false; disegnaTesto(); }); } return; }
+    var cerca = (TESTO.q || "").toLowerCase();
+    var dentro = SOTTO_ARCH.pezzi.filter(function (x) { return !x.vivo && (!cerca || ((x.x || "") + " " + (x.y || "")).toLowerCase().indexOf(cerca) >= 0); });
+    box.innerHTML = "";
+    if (!dentro.length) box.innerHTML = '<div class="did vuota">' + (SOTTO_ARCH.pezzi.length ? "Nessuna riga con quella parola." : "Telecronaca non ancora trascritta: Telecronaca → trascrivi.") + '</div>';
+    var fr = document.createDocumentFragment();
+    dentro.forEach(function (x) { fr.appendChild(rigaTesto(x)); });
+    box.appendChild(fr);
+    box.querySelectorAll("textarea").forEach(altezzaGiusta);
+    if (el("testoConto")) el("testoConto").textContent = dentro.length + (cerca ? " di " + SOTTO_ARCH.pezzi.length : "") + " righe";
+    if (el("projN")) el("projN").textContent = dentro.length + " righe";
+  }
+  // la riga sotto la testina, segnata nella lista (e la lista la segue)
+  function segnaRigaTesto(x) {
+    var box = el("testoRighe"); if (!box || el("paneTesto").hidden) return;
+    var k = x && x.k ? x.k : "";
+    var ora = box.querySelector(".did.ora");
+    if (ora && ora.dataset.k === k) return;
+    if (ora) ora.classList.remove("ora");
+    if (!k) return;
+    var r = box.querySelector('.did[data-k="' + k + '"]'); if (!r) return;
+    r.classList.add("ora");
+    if (el("testoSegui") && el("testoSegui").checked && !TESTO.focus) r.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+  function vaiRigaTesto(k, scrivi) {
+    if (TAB !== "testo") vaiTab("testo");
+    var r = el("testoRighe") && el("testoRighe").querySelector('.did[data-k="' + k + '"]');
+    if (!r) { disegnaTesto(); r = el("testoRighe") && el("testoRighe").querySelector('.did[data-k="' + k + '"]'); }
+    if (!r) return;
+    r.scrollIntoView({ block: "center" });
+    TL.selS = k; disegnaTimeline();
+    if (scrivi) { var t = r.querySelector(".tx"); if (t) { t.focus(); t.select(); } }
+  }
+  // IL TESTO SI CORREGGE ANCHE SUL MONITOR: doppio clic sulla riga sotto
+  // il video, si scrive li', Invio salva, Esc lascia com'era.
+  function scriviSulMonitor(i, x) {
+    if (!i || !x || i.isContentEditable) return;
+    var l = i.classList.contains("en") ? "en" : "it", sua = x.l || SOTTO_ARCH.lingua || "it";
+    var prima = i.textContent;
+    i.contentEditable = "true"; i.focus();
+    try { var sel = window.getSelection(), rg = document.createRange(); rg.selectNodeContents(i); sel.removeAllRanges(); sel.addRange(rg); } catch (e) {}
+    var chiudi = function (salva) {
+      i.contentEditable = "false";
+      var v = i.textContent.replace(/\s+/g, " ").trim();
+      if (!salva || v === prima.trim()) { i.textContent = prima; return; }
+      var campi = {}; campi[l === sua ? "x" : "y"] = v;
+      salvaRigaSotto(x.k, campi, function () { var r = el("testoRighe") && el("testoRighe").querySelector('.did[data-k="' + x.k + '"]'); if (r) { var t = r.querySelector(l === sua ? ".tx" : ".tr"); if (t) t.value = v; r.classList.add("mod"); } });
+    };
+    i.onkeydown = function (e) {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); chiudi(true); }
+      else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); chiudi(false); }
+      else e.stopPropagation();
+    };
+    i.onblur = function () { if (i.isContentEditable) chiudi(true); };
   }
   function disegnaTimeline() {
     var p = el("tlPista"), rig = el("tlRighello"), v1 = el("tlV1"), a1 = el("tlA1"), v2 = el("tlV2"); if (!p || !rig) return;
@@ -5175,6 +5308,7 @@
     document.addEventListener("keyup", function (e2) { if (e2.key === "Alt") segnaModo(null); });
     p.addEventListener("mousedown", function (e) {
       AREA = "timeline";
+      if (TL.selS && !(e.target.closest && e.target.closest(".clipS"))) { TL.selS = null; }
       var vp = el("programma");
       var bordo = e.target.closest ? e.target.closest(".bordo") : null;
       var blocco = e.target.closest ? e.target.closest(".clipV, .clipA") : null;
@@ -5425,6 +5559,16 @@
         }
         return;
       }
+      if (TL.sotto) {
+        var dss = (e.clientX - TL.sotto.x0) / largo * (f.b - f.a);
+        var ga = TL.sotto.a, gb = TL.sotto.b;
+        if (TL.sotto.lato === "sx") ga = Math.max(0, Math.min(gb - 0.4, TL.sotto.a + dss));
+        else if (TL.sotto.lato === "dx") gb = Math.max(ga + 0.4, TL.sotto.b + dss);
+        else { ga = Math.max(0, TL.sotto.a + dss); gb = ga + (TL.sotto.b - TL.sotto.a); }
+        TL.sottoGhost = { k: TL.sotto.k, a: ga, b: gb };
+        disegnaTimeline();
+        return;
+      }
       if (TL.grafica) {
         var dgg = (e.clientX - TL.grafica.x0) / largo * (f.b - f.a);
         var gq = (SEQ && SEQ.grafiche ? SEQ.grafiche : []).filter(function (x) { return x.id === TL.grafica.id; })[0];
@@ -5533,6 +5677,15 @@
       }
       if (TL.riquadro) { chiudiRiquadro(); return; }
       if (TL.scrub) { TL.scrub = null; var dsx = pezzoAlTempo(progPos()); if (dsx) progVai(dsx.i, false, dsx.dentro); }
+      if (TL.sotto) {
+        var gs = TL.sottoGhost; TL.sotto = null; TL.sottoGhost = null;
+        if (gs) salvaRigaSotto(gs.k, { a: Math.round(gs.a * 100) / 100, b: Math.round(gs.b * 100) / 100 }, function (r) {
+          var rr = el("testoRighe") && el("testoRighe").querySelector('.did[data-k="' + gs.k + '"]');
+          if (rr && r.pezzo) { rr.querySelector(".tcIn").value = tc(r.pezzo.a); rr.querySelector(".tcOut").value = tc(r.pezzo.b); rr.classList.add("mod"); }
+        });
+        else disegnaTimeline();
+        return;
+      }
       if (TL.grafica && SEQ) {
         var gid2 = TL.grafica.id; TL.grafica = null;
         var gq2 = (SEQ.grafiche || []).filter(function (x) { return x.id === gid2; })[0];
@@ -6444,8 +6597,9 @@
 
   document.addEventListener("keydown", function (e) {
     var t = e.target.tagName;
-    if (t === "INPUT" || t === "TEXTAREA" || t === "SELECT") return;
+    if (t === "INPUT" || t === "TEXTAREA" || t === "SELECT" || e.target.isContentEditable) return;
     var mod = e.metaKey || e.ctrlKey;
+    if ((e.key === "Delete" || e.key === "Backspace") && TL.selS && !mod) { e.preventDefault(); togliRigaSotto(TL.selS); return; }
     var v = (MON === "p" && el("programma")) ? el("programma") : el("player"); if (!v) return;
     var vp = el("programma");
     var k = e.key.toLowerCase();
@@ -7001,7 +7155,7 @@
       el("telTesto").addEventListener("click", function (e) {
         var r2 = e.target.closest ? e.target.closest(".riga") : null;
         if (!r2) return;
-        if (e.target.closest && e.target.closest(".modifica")) { apriEditorSotto(r2.dataset.k, pezzi); return; }
+        if (e.target.closest && e.target.closest(".modifica")) { vaiRigaTesto(r2.dataset.k, true); return; }
         var v = el("player"); if (!v) return;
         seguiLive = false;
         try { v.currentTime = Math.max(0, parseFloat(r2.dataset.t) - 2); } catch (x) {}
@@ -7461,7 +7615,8 @@
       }
       var s = sottoAlSecondo(v.currentTime || 0);
       SOTTO_ARCH.ultimaS = s.p;
-      vestiSotto(box, el("sottoX"), el("sottoY"), s.it, s.en);
+      if (!box.contains(document.activeElement)) vestiSotto(box, el("sottoX"), el("sottoY"), s.it, s.en);
+      if (MON !== "p") segnaRigaTesto(s.p);
       // IL PROGRAMMA: la testina sta su un pezzo, e il pezzo su un secondo
       // della partita. Le stesse righe, nel punto dove cadranno nel montato:
       // metti un pezzo in timeline e i sottotitoli sono gia' li'.
@@ -7473,72 +7628,39 @@
       var sp = sottoAlSecondo(tReg);
       SOTTO_ARCH.ultimaP = sp.p;
       bp.hidden = false;
-      vestiSotto(bp, el("sottoPit"), el("sottoPen"), sp.it, sp.en);
+      if (!bp.contains(document.activeElement)) vestiSotto(bp, el("sottoPit"), el("sottoPen"), sp.it, sp.en);
+      if (MON === "p") segnaRigaTesto(sp.p);
     }
     setInterval(disegnaSottoArch, 400);
-    // SI ENTRA COL DOPPIO CLIC, come in una clip di Premiere. Si conta sul
-    // mousedown, non sull'evento dblclick: la timeline si ridisegna spesso
-    // e fra il primo e il secondo clic il blocco puo' essere gia' un altro
-    // elemento — la chiave della riga invece resta quella.
+    // LA TRACCIA ST SI USA COME UNA TRACCIA DI PREMIERE: un clic sceglie il
+    // blocco, trascinandolo si sposta, dai bordi si accorcia o si allunga,
+    // Canc lo toglie, il doppio clic apre la riga nel pannello Testo.
     var DOPPIO_S = { k: "", quando: 0 };
-    function doppioSuRiga(k, e) {
-      var ora = Date.now(), si = (DOPPIO_S.k === k && ora - DOPPIO_S.quando < 450);
-      DOPPIO_S = si ? { k: "", quando: 0 } : { k: k, quando: ora };
-      if (si) { if (e) { e.preventDefault(); e.stopPropagation(); } apriEditorSotto(k); }
-      return si;
-    }
     if (el("tlST")) {
       el("tlST").addEventListener("mousedown", function (e) {
         var b = e.target.closest ? e.target.closest(".clipS") : null;
         if (!b) return;
-        e.stopPropagation();
-        doppioSuRiga(b.dataset.k, e);
+        e.stopPropagation(); e.preventDefault();
+        var k = b.dataset.k, x = SOTTO_ARCH.pezzi.filter(function (z) { return z.k === k; })[0];
+        if (!x) return;
+        var ora = Date.now();
+        if (DOPPIO_S.k === k && ora - DOPPIO_S.quando < 450) { DOPPIO_S = { k: "", quando: 0 }; vaiRigaTesto(k, true); return; }
+        DOPPIO_S = { k: k, quando: ora };
+        TL.selS = k; TL.sel = null; TL.multi = []; TL.selG = null;
+        var bo = e.target.closest(".bordo");
+        TL.sotto = { k: k, x0: e.clientX, a: x.a, b: x.b, lato: bo ? bo.dataset.lato : "" };
+        TL.sottoGhost = null;
+        disegnaTimeline();
       });
     }
-    // la riga sotto il video si clicca e si corregge, in Sorgente e in Programma
+    // la riga sotto il video: doppio clic e si scrive direttamente li'
     [["sottotitoli", "ultimaS"], ["sottoP", "ultimaP"]].forEach(function (c) {
       var box = el(c[0]); if (!box) return;
-      box.addEventListener("mousedown", function (e) {
-        var x = SOTTO_ARCH[c[1]]; if (!x || !x.k) return;
-        e.stopPropagation(); doppioSuRiga(x.k, e);
-      });
+      box.addEventListener("mousedown", function (e) { if (e.target.isContentEditable) e.stopPropagation(); });
       box.addEventListener("dblclick", function (e) {
-        var x = SOTTO_ARCH[c[1]]; if (!x || !x.k) return;
-        e.preventDefault(); e.stopPropagation(); if (!el("editSotto")) apriEditorSotto(x.k);
+        var x = SOTTO_ARCH[c[1]], i = e.target.closest ? e.target.closest("i") : null; if (!x || !x.k || !i) return;
+        e.preventDefault(); e.stopPropagation(); scriviSulMonitor(i, x);
       });
-    });
-    if (el("btnSotto")) el("btnSotto").addEventListener("click", function () {
-      if (MODO === "archivio") {
-        if (!REG) return dice("Apri prima una partita.");
-        SOTTO_ARCH.acceso = !SOTTO_ARCH.acceso;
-        SOTTO_ARCH.mostra = (el("sottoLingua") || {}).value || "it";
-        if (SOTTO_ARCH.acceso) caricaSottoArch(function () { traduciSottoArch(); });
-        else { var b0 = el("sottotitoli"); if (b0) b0.hidden = true; }
-        aggiorna(); return;
-      }
-      if (!REG || REG.stato !== "registra") return dice("Prima apri una porta: i sottotitoli leggono quello che entra.");
-      var acceso = !!(REG.sottotitoli && REG.sottotitoli.acceso);
-      manda({ tipo: "clip-sottotitoli", id: REG.id, on: !acceso, lingua: "auto", mostra: (el("sottoLingua") || {}).value || "it" })
-        .then(function (d) { REG = d.reg; SOTTO_DA = 0; SOTTO_REG = REG.id; aggiorna();
-          dice(acceso ? "Sottotitoli spenti." : "Sottotitoli accesi: la prima riga arriva fra una quindicina di secondi.", true); })
-        .catch(function (e) { dice(e.message); });
-    });
-    // L'SRT DELLA TELECRONACA INTERA: tempi dal primo fotogramma del file,
-    // come lo vede Premiere importando lo stesso file. Per un pezzo solo
-    // c'e' l'esportazione, che lo rifasa sul taglio.
-    function scaricaTesto(nome, testo) {
-      var a = document.createElement("a"), url = URL.createObjectURL(new Blob([testo], { type: "text/plain;charset=utf-8" }));
-      a.href = url; a.download = nome; document.body.appendChild(a); a.click();
-      setTimeout(function () { a.remove(); URL.revokeObjectURL(url); }, 1500);
-    }
-    if (el("btnSrt")) el("btnSrt").addEventListener("click", function () {
-      if (MODO !== "archivio" || !REG) return dice("Apri prima una partita in archivio.");
-      var lingua = (el("sottoLingua") || {}).value || SOTTO_ARCH.mostra || "it";
-      manda({ tipo: "clip-parlato-srt", reg: REG.id, lingua: lingua }).then(function (d) {
-        scaricaTesto(d.nome, d.srt);
-        dice(d.righe + " righe in " + (d.lingua === "en" ? "inglese" : "italiano") +
-             (d.manca ? " \u00b7 " + d.manca + " non ancora tradotte (escono come dette: accendi i sottotitoli in quella lingua e aspetta la traduzione)" : ""), true);
-      }).catch(function (e) { dice(e.message); });
     });
     document.querySelectorAll("#rigaSotto .lingue b").forEach(function (b) {
       b.addEventListener("click", function () {
@@ -8113,10 +8235,11 @@
   function vaiTab(t) {
     TAB = t;
     document.querySelectorAll(".projTabs button").forEach(function (b) { b.classList.toggle("on", b.dataset.t === t); });
-    ["progetto", "sorgenti", "info", "grafiche"].forEach(function (k) { var p = el("pane" + k.charAt(0).toUpperCase() + k.slice(1)); if (p) p.hidden = (k !== t); });
+    ["progetto", "sorgenti", "info", "grafiche", "testo"].forEach(function (k) { var p = el("pane" + k.charAt(0).toUpperCase() + k.slice(1)); if (p) p.hidden = (k !== t); });
     if (t === "grafiche") graficheNellaColonna();
+    if (t === "testo") disegnaTesto();
     var cerca = el("projCerca");
-    if (cerca) cerca.placeholder = MODO === "archivio" ? "azioni: appunti, ESPN, telecronaca \u00b7 Invio"
+    if (cerca) cerca.placeholder = t === "testo" ? "cerca nelle didascalie" : MODO === "archivio" ? "azioni: appunti, ESPN, telecronaca \u00b7 Invio"
       : t === "sorgenti" ? "filtra le registrazioni" : t === "progetto" ? "filtra il progetto" : "";
     if (t === "info") disegnaInfo();
     filtraProgetto();
@@ -8133,6 +8256,7 @@
   }
   function filtraProgetto() {
     var q = (el("projCerca") ? el("projCerca").value : "").toLowerCase().trim(), n = 0;
+    if (TAB === "testo") { disegnaTesto(q); return; }
     if (TAB === "progetto") {
       document.querySelectorAll("#bin .scheda").forEach(function (c) {
         var ok2 = !q || (c.dataset.nome || "").indexOf(q) >= 0; c.hidden = !ok2; if (ok2) n++;
@@ -8172,6 +8296,13 @@
   }
   (function () {
     document.querySelectorAll(".projTabs button").forEach(function (b) { b.addEventListener("click", function () { vaiTab(b.dataset.t); }); });
+    if (el("testoPiu")) el("testoPiu").addEventListener("click", function () {
+      var v = (MON === "p" && el("programma")) ? null : el("player");
+      var t = 0;
+      if (v) t = v.currentTime || 0;
+      else { var pz = pezziProg(), x = pz[PROG.i]; t = x ? x.dentro + Math.max(0, (el("programma").currentTime || 0) - (PROG.da || 0)) : 0; }
+      nuovaRigaSotto(Math.max(0, t));
+    });
     var c = el("projCerca");
     if (c) {
       c.addEventListener("input", filtraProgetto);
