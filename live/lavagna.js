@@ -118,7 +118,14 @@ window.Lavagna = (function () {
       ".lav .foglietto textarea:focus{outline:none;border-color:rgba(201,162,75,.4);}" +
       ".lav .foglietto .piede{display:flex;gap:6px;justify-content:flex-end;margin-top:9px;}" +
       ".lav .foglietto .piede button{padding:6px 9px;font-size:10px;}" +
-      ".lav .foglietto .via{color:#FF6B6E;border-color:rgba(229,27,32,.4);}";
+      ".lav .foglietto .via{color:#FF6B6E;border-color:rgba(229,27,32,.4);}" +
+      /* numero e cognome si scrivono qui: servono alle squadre che su ESPN non ci sono */
+      ".lav .foglietto .chi{display:flex;gap:7px;margin-bottom:8px;}" +
+      ".lav .foglietto .chi input{padding:8px 10px;border-radius:7px;background:rgba(6,10,26,.75);" +
+      "border:1px solid rgba(245,241,230,.14);color:var(--lav-avorio);font-family:'DM Sans',sans-serif;font-size:14px;}" +
+      ".lav .foglietto .chi input[data-f='num']{width:62px;text-align:center;font-weight:700;}" +
+      ".lav .foglietto .chi input[data-f='nome']{flex:1;min-width:0;}" +
+      ".lav .foglietto .chi input:focus{outline:none;border-color:rgba(201,162,75,.45);}";
     document.head.appendChild(s);
   }
 
@@ -257,17 +264,24 @@ window.Lavagna = (function () {
         var t = ns("text", { x: 0, y: 9, "text-anchor": "middle", "font-family": "Mazzard", "font-weight": 800,
                              "font-size": 24, fill: "#F5F1E6" }, g);
         t.textContent = p.num || "";
+        p.tNum = t;
       }
       var n = ns("text", { x: 0, y: 48, "text-anchor": "middle", "font-family": "Mazzard", "font-weight": 700,
                            "font-size": 19, fill: "#F5F1E6", stroke: "#06301A", "stroke-width": 4,
                            "paint-order": "stroke", "stroke-linejoin": "round" }, g);
       n.textContent = (p.cognome || "").toUpperCase();
+      p.tNome = n;
       // il puntino d'oro: questo giocatore ha una curiosita' scritta
       ns("circle", { cx: 20, cy: -20, r: 7, fill: "#E3C271", stroke: "#06301A", "stroke-width": 2,
                      "class": "bollo", style: "display:none" }, g);
       p.g = g;
       posa(p); segnaNota(p);
       return p;
+    }
+    // numero e cognome cambiati a mano: la pedina si riscrive sul posto
+    function ribattezza(p) {
+      if (p.tNum) p.tNum.textContent = p.num || "";
+      if (p.tNome) p.tNome.textContent = (p.cognome || "").toUpperCase();
     }
     function posa(p) { p.g.setAttribute("transform", "translate(" + Math.round(p.x) + " " + Math.round(p.y) + ")"); }
     function segnaNota(p) {
@@ -420,7 +434,11 @@ window.Lavagna = (function () {
       var f = document.createElement("div");
       f.className = "foglietto";
       f.innerHTML =
-        '<h3>' + esc((p.num ? p.num + " · " : "") + (p.cognome || "")) + ' — ' + esc(SQ[p.lato].nome) + '</h3>' +
+        '<h3>' + esc(SQ[p.lato].nome) + (p.mister ? ' · allenatore' : '') + '</h3>' +
+        (p.mister ? "" :
+          '<div class="chi"><input data-f="num" type="text" inputmode="numeric" maxlength="2" ' +
+          'placeholder="N" value="' + esc(p.num || "") + '">' +
+          '<input data-f="nome" type="text" placeholder="Cognome" value="' + esc(p.cognome || "") + '"></div>') +
         '<textarea placeholder="Quello che vuoi dire in telecronaca: numeri, precedenti, come si pronuncia il nome…"></textarea>' +
         '<div class="piede">' +
           '<button type="button" data-f="togli" class="via">Togli dal campo</button>' +
@@ -448,6 +466,18 @@ window.Lavagna = (function () {
           ricorda();
           var t = ta.value.trim();
           if (t) NOTE[k] = t; else delete NOTE[k];
+          var iNum = f.querySelector('input[data-f="num"]'), iNome = f.querySelector('input[data-f="nome"]');
+          if (iNum || iNome) {
+            var num = iNum ? iNum.value.trim() : p.num, cognome = iNome ? iNome.value.trim() : p.cognome;
+            if (num !== p.num || cognome !== p.cognome) {
+              p.num = num; p.cognome = cognome;
+              ribattezza(p);
+              // la rosa deve dire la stessa cosa del campo
+              (SQ[p.lato].rosa || []).forEach(function (g) {
+                if (String(g.pid) === String(p.pid)) { g.num = num; g.cognome = cognome; g.nome = ""; }
+              });
+            }
+          }
           segnaNota(p); disegnaCurio(); disegnaRose();
         }
         if (b.dataset.f === "togli") { ricorda(); togli(p); disegnaRose(); disegnaCurio(); }
@@ -642,12 +672,49 @@ window.Lavagna = (function () {
     });
 
     // ── quello che entra e quello che esce ──────────────────────────────
+    // Le giovanili, i tornei e le amichevoli su ESPN non esistono: niente
+    // rosa, e la lavagna resterebbe un campo vuoto. Allora le pedine se le
+    // fa da sola - undici numerate piu' una panchina - e il giornalista ci
+    // scrive sopra i nomi mentre le squadre scaldano.
+    function rosaInBianco(lato, quanti) {
+      var v = [];
+      for (var n = 1; n <= (quanti || 18); n++) {
+        v.push({ pid: "b" + lato + n, num: String(n), cognome: "", nome: "", bianca: true });
+      }
+      return v;
+    }
     function carica(d) {
       ["A", "B"].forEach(function (lato) {
         var s = d && d[lato];
         if (!s) return;
+        var rosa = (s.rosa || []).slice(), titolari = (s.titolari || []).slice();
+        // niente rosa (giovanili, tornei, amichevoli): undici numerate e via.
+        // Formazione scritta a mano ma incompleta: si completa fino a undici,
+        // cosi' il campo e' sempre tutto e i nomi gia' scritti restano.
+        if (titolari.length < 11) {
+          var usati = {};
+          rosa.concat(titolari).forEach(function (g) { usati[String(g.num || "")] = 1; });
+          var n = 1;
+          while (titolari.length < 11) {
+            while (usati[String(n)] && n < 40) n++;
+            usati[String(n)] = 1;
+            var vuoto = { pid: "b" + lato + n, num: String(n), cognome: "", nome: "", bianca: true };
+            titolari.push(vuoto); rosa.push(vuoto); n++;
+          }
+        }
+        if (rosa.length < titolari.length + 7) {
+          var dentro = {};
+          rosa.forEach(function (g) { dentro[String(g.num || "")] = 1; });
+          var m = 12;
+          while (rosa.length < titolari.length + 7) {
+            while (dentro[String(m)] && m < 60) m++;
+            dentro[String(m)] = 1;
+            rosa.push({ pid: "b" + lato + m, num: String(m), cognome: "", nome: "", bianca: true });
+            m++;
+          }
+        }
         SQ[lato] = { nome: s.nome || SQ[lato].nome, col: s.col || SQ[lato].col,
-                     rosa: s.rosa || [], titolari: s.titolari || [], mod: s.mod || SQ[lato].mod,
+                     rosa: rosa, titolari: titolari, mod: s.mod || SQ[lato].mod,
                      all: s.all || null };
       });
       PEDINE.slice().forEach(togli);
