@@ -10654,8 +10654,15 @@ const AZIONI = {
       scriviParlato(); return { ok: true, tolta: x.k };
     }
     const sua = x.l || propria, altra = sua === "it" ? "en" : "it";
-    if (p.x !== undefined) x.x = String(p.x || "").replace(/\s+/g, " ").trim();
-    if (p.y !== undefined) { x.y = String(p.y || "").replace(/\s+/g, " ").trim(); x.ya = x.y ? altra : undefined; if (!x.y) delete x.ya; }
+    const pulisci = (t) => String(t || "").replace(/\s+/g, " ").trim();
+    const yDato = p.y !== undefined ? pulisci(p.y) : null, yVecchio = x.y || "";
+    if (p.x !== undefined && pulisci(p.x) !== (x.x || "")) {
+      x.x = pulisci(p.x);
+      // cambiato il parlato, la traduzione automatica di prima non vale
+      // piu': si toglie e si rifa' da sola (se non e' stata scritta a mano)
+      if (yDato === null || yDato === yVecchio) { delete x.y; delete x.ya; }
+    }
+    if (yDato !== null && yDato !== yVecchio) { x.y = yDato; if (x.y) x.ya = altra; else { delete x.y; delete x.ya; } }
     if (p.a !== undefined || p.b !== undefined) {
       const a = p.a !== undefined ? Math.max(0, +p.a || 0) : x.a;
       const b = p.b !== undefined ? +p.b : x.b;
