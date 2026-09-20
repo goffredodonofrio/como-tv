@@ -7476,19 +7476,35 @@
       vestiSotto(bp, el("sottoPit"), el("sottoPen"), sp.it, sp.en);
     }
     setInterval(disegnaSottoArch, 400);
+    // SI ENTRA COL DOPPIO CLIC, come in una clip di Premiere. Si conta sul
+    // mousedown, non sull'evento dblclick: la timeline si ridisegna spesso
+    // e fra il primo e il secondo clic il blocco puo' essere gia' un altro
+    // elemento — la chiave della riga invece resta quella.
+    var DOPPIO_S = { k: "", quando: 0 };
+    function doppioSuRiga(k, e) {
+      var ora = Date.now(), si = (DOPPIO_S.k === k && ora - DOPPIO_S.quando < 450);
+      DOPPIO_S = si ? { k: "", quando: 0 } : { k: k, quando: ora };
+      if (si) { if (e) { e.preventDefault(); e.stopPropagation(); } apriEditorSotto(k); }
+      return si;
+    }
     if (el("tlST")) {
-      el("tlST").addEventListener("mousedown", function (e) { if (e.target.closest && e.target.closest(".clipS")) e.stopPropagation(); });
-      el("tlST").addEventListener("click", function (e) {
+      el("tlST").addEventListener("mousedown", function (e) {
         var b = e.target.closest ? e.target.closest(".clipS") : null;
-        if (b) { e.stopPropagation(); apriEditorSotto(b.dataset.k); }
+        if (!b) return;
+        e.stopPropagation();
+        doppioSuRiga(b.dataset.k, e);
       });
     }
     // la riga sotto il video si clicca e si corregge, in Sorgente e in Programma
     [["sottotitoli", "ultimaS"], ["sottoP", "ultimaP"]].forEach(function (c) {
       var box = el(c[0]); if (!box) return;
-      box.addEventListener("click", function (e) {
+      box.addEventListener("mousedown", function (e) {
         var x = SOTTO_ARCH[c[1]]; if (!x || !x.k) return;
-        e.stopPropagation(); apriEditorSotto(x.k);
+        e.stopPropagation(); doppioSuRiga(x.k, e);
+      });
+      box.addEventListener("dblclick", function (e) {
+        var x = SOTTO_ARCH[c[1]]; if (!x || !x.k) return;
+        e.preventDefault(); e.stopPropagation(); if (!el("editSotto")) apriEditorSotto(x.k);
       });
     });
     if (el("btnSotto")) el("btnSotto").addEventListener("click", function () {
