@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<script>
+/* Le Grafiche Live vivono sulla macchina della regia: da GitHub si viene
+   portati sulla macchina giusta. Sulla VM questo non fa nulla. */
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  location.replace("https://projects-cloud.it" + location.pathname + location.search + location.hash);
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lavagna · Como TV</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    color-scheme:dark;
+    --gold:#C9A24B;--gold-bright:#E3C271;--red:#E51B20;
+    --ivory:#F5F1E6;--ivory-dim:#D8D2C2;--fg-3:#8A8B96;
+    --surface-panel:rgba(16,22,48,.66);
+    --line-2:rgba(245,241,230,.08);--line-gold:rgba(201,162,75,.28);
+    --ok:#4FCB8B;
+  }
+  body{
+    font-family:'DM Sans',system-ui,sans-serif;font-weight:500;font-size:14px;line-height:1.5;
+    color:var(--ivory);min-height:100vh;background-color:#0A0F24;
+    background-image:
+      radial-gradient(90% 70% at 20% 8%, rgba(36,64,138,.5), transparent 55%),
+      radial-gradient(80% 80% at 92% 108%, rgba(201,162,75,.16), transparent 55%),
+      linear-gradient(165deg,#141B3C 0%,#0E1430 48%,#0A0F24 100%);
+    background-attachment:fixed;padding-bottom:40px;
+  }
+  .wrap{max-width:1600px;margin:0 auto;padding:0 clamp(14px,2.4vw,26px);}
+  header.page{padding:26px 0 12px;}
+  .eyebrow{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.3em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:8px;}
+  h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(26px,3.6vw,38px);
+    line-height:.94;letter-spacing:-.02em;text-transform:uppercase;}
+  .sub{color:var(--fg-3);font-size:13px;margin-top:8px;max-width:1000px;}
+
+  .panel{background:var(--surface-panel);border:1px solid var(--line-2);border-radius:10px;
+    padding:14px;margin-bottom:14px;}
+  label{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--gold);display:block;margin-bottom:5px;white-space:nowrap;}
+  select,input[type=text]{width:100%;padding:9px 11px;border-radius:7px;background:rgba(245,241,230,.06);
+    border:1px solid rgba(245,241,230,.16);color:var(--ivory);font-family:'DM Sans',sans-serif;font-size:13.5px;}
+  select option{background:#141B3C;color:var(--ivory);}
+  select:focus,input:focus{outline:none;border-color:var(--line-gold);}
+  .riga{display:flex;gap:10px;flex-wrap:wrap;align-items:end;}
+  .riga > div{flex:1 1 150px;min-width:0;}
+
+  button{font-family:'Mazzard',sans-serif;font-weight:700;font-size:11px;letter-spacing:.1em;
+    text-transform:uppercase;padding:9px 13px;border-radius:7px;cursor:pointer;
+    background:rgba(245,241,230,.06);color:var(--ivory-dim);border:1px solid var(--line-2);}
+  button:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  button.on{background:rgba(201,162,75,.16);border-color:var(--gold);color:var(--gold-bright);}
+  button.via{color:#FF6B6E;border-color:rgba(229,27,32,.4);}
+  .barra{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .barra .sep{width:1px;height:26px;background:var(--line-2);margin:0 2px;}
+  .colore{width:26px;height:26px;border-radius:50%;border:2px solid rgba(245,241,230,.25);cursor:pointer;padding:0;}
+  .colore.on{border-color:#fff;box-shadow:0 0 0 2px rgba(201,162,75,.5);}
+
+  /* ── il campo ── */
+  #campoBox{position:relative;width:100%;aspect-ratio:16/9;border-radius:12px;overflow:hidden;
+    border:1px solid var(--line-gold);background:#0B5A2E;touch-action:none;}
+  #campo{position:absolute;inset:0;width:100%;height:100%;display:block;}
+  .nota{font-size:12.5px;color:var(--fg-3);margin-top:8px;}
+  .nota.ok{color:#7BDCAA;} .nota.err{color:#FF8A8C;}
+
+  /* ── le panchine ai lati del campo ── */
+  .rose{display:flex;gap:14px;margin-top:12px;flex-wrap:wrap;}
+  .rosa{flex:1 1 340px;min-width:0;background:var(--surface-panel);border:1px solid var(--line-2);
+    border-radius:10px;padding:12px;}
+  .rosa h3{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+  .rosa h3 i{width:12px;height:12px;border-radius:50%;display:inline-block;font-style:normal;}
+  .gioc{display:flex;flex-wrap:wrap;gap:6px;}
+  .gioc button{padding:6px 9px;font-size:11px;letter-spacing:.04em;font-family:'DM Sans',sans-serif;
+    font-weight:500;text-transform:none;}
+  .gioc button.dentro{opacity:.4;}
+  .gioc button b{font-family:'Mazzard',sans-serif;color:var(--gold-bright);margin-right:6px;}
+</style>
+</head>
+<body>
+
+<script src="nav.js"></script>
+<script src="formazioni-espn.js"></script>
+<script src="giovanili.js"></script>
+
+<div class="wrap">
+  <header class="page">
+    <div class="eyebrow">Como TV · Grafiche Live</div>
+    <h1>Lavagna</h1>
+    <div class="sub">Il campetto per la telecronaca: le rose vere da ESPN (e il database delle giovanili),
+      i giocatori si trascinano, sopra si disegna. È uno strumento di lavoro, non una grafica:
+      <b>non tocca la regia e non va in onda</b>. Ogni lavagna resta salvata su questo computer, con il suo nome.</div>
+  </header>
+
+  <div class="panel">
+    <div class="riga">
+      <div style="flex:1 1 220px"><label for="comp">Competizione</label><select id="comp"><option value="">—</option></select></div>
+      <div style="flex:1 1 200px"><label for="sqA">Squadra di casa</label><select id="sqA" disabled><option value="">—</option></select></div>
+      <div style="flex:1 1 200px"><label for="sqB">Squadra ospite</label><select id="sqB" disabled><option value="">—</option></select></div>
+      <div style="flex:0 1 150px"><label for="modA">Modulo casa</label><select id="modA"></select></div>
+      <div style="flex:0 1 150px"><label for="modB">Modulo ospite</label><select id="modB"></select></div>
+      <div style="flex:0 0 auto"><button type="button" id="btnSchiera">&#9917; Schiera</button></div>
+    </div>
+    <div class="nota" id="nota">Scegli competizione e squadre: le rose arrivano da ESPN.</div>
+  </div>
+
+  <div class="panel">
+    <div class="barra">
+      <button type="button" class="on" data-arnese="muovi">&#10021; Muovi</button>
+      <button type="button" data-arnese="penna">&#9998; Penna</button>
+      <button type="button" data-arnese="freccia">&#10230; Freccia</button>
+      <button type="button" data-arnese="linea">&#9472; Linea</button>
+      <button type="button" data-arnese="tratteggio">&#8943; Tratteggio</button>
+      <button type="button" data-arnese="zona">&#9647; Zona</button>
+      <span class="sep"></span>
+      <button type="button" class="colore on" data-colore="#F5F1E6" style="background:#F5F1E6"></button>
+      <button type="button" class="colore" data-colore="#F5B91E" style="background:#F5B91E"></button>
+      <button type="button" class="colore" data-colore="#E0312B" style="background:#E0312B"></button>
+      <button type="button" class="colore" data-colore="#4FA3E8" style="background:#4FA3E8"></button>
+      <button type="button" class="colore" data-colore="#0A0F24" style="background:#0A0F24"></button>
+      <span class="sep"></span>
+      <button type="button" id="btnIndietro">&#8630; Annulla</button>
+      <button type="button" id="btnPulisci" class="via">Cancella i disegni</button>
+      <span class="sep"></span>
+      <button type="button" id="btnPng">&#11015; Immagine</button>
+      <button type="button" id="btnStampa">&#128424; Stampa</button>
+      <span class="sep" style="margin-left:auto"></span>
+      <div style="flex:0 1 190px"><label for="nomeLav">Nome della lavagna</label><input type="text" id="nomeLav" placeholder="es. Como-Torino U18"></div>
+      <button type="button" id="btnSalva">&#128190; Salva</button>
+      <div style="flex:0 1 190px"><label for="salvate">Le mie lavagne</label><select id="salvate"><option value="">—</option></select></div>
+      <button type="button" id="btnApri">Apri</button>
+      <button type="button" id="btnElimina" class="via">Elimina</button>
+    </div>
+  </div>
+
+  <div id="campoBox"><svg id="campo" viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg"></svg></div>
+  <div class="nota" id="notaCampo">Trascina i giocatori. Doppio clic su un giocatore per toglierlo dal campo.</div>
+
+  <div class="rose">
+    <div class="rosa"><h3><i id="colA"></i><span id="nomeA">Casa</span></h3><div class="gioc" id="rosaA"></div></div>
+    <div class="rosa"><h3><i id="colB"></i><span id="nomeB">Ospite</span></h3><div class="gioc" id="rosaB"></div></div>
+  </div>
+</div>
+
+<script src="competizioni-espn.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // La lavagna e' un attrezzo, non una grafica: niente ponte, niente regia.
+  // Le rose vengono da ESPN come nelle Formazioni (e dal database giovanili
+  // per le squadre del Como, che ESPN non ha), i giocatori sono pedine che si
+  // trascinano, e sopra si disegna. Tutto quello che si fa resta su questo
+  // computer: ogni giornalista ha le sue lavagne.
+  var W = 1600, H = 900;
+  var LS = "comotv.lavagna.";
+  var COL_A = "#2E6BE6", COL_B = "#E0312B";
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function nota(t, cls) { var n = el("nota"); n.className = "nota" + (cls ? " " + cls : ""); n.innerHTML = t; }
+  function ns(nome, attr, dentro) {
+    var e = document.createElementNS("http://www.w3.org/2000/svg", nome);
+    for (var k in attr) if (attr[k] !== undefined && attr[k] !== null) e.setAttribute(k, attr[k]);
+    if (dentro) dentro.appendChild(e);
+    return e;
+  }
+
+  // ── i moduli: dove stanno gli undici, in frazioni di meta' campo ──────
+  // x va da 0 (propria porta) a 1 (meta' campo), y da 0 (alto) a 1 (basso).
+  var MODULI = {
+    "4-3-3":   [[.06,.5],[.28,.14],[.24,.38],[.24,.62],[.28,.86],[.52,.26],[.50,.5],[.52,.74],[.80,.16],[.86,.5],[.80,.84]],
+    "4-2-3-1": [[.06,.5],[.28,.14],[.24,.38],[.24,.62],[.28,.86],[.46,.36],[.46,.64],[.70,.18],[.70,.5],[.70,.82],[.90,.5]],
+    "4-4-2":   [[.06,.5],[.28,.14],[.24,.38],[.24,.62],[.28,.86],[.54,.14],[.50,.40],[.50,.60],[.54,.86],[.84,.38],[.84,.62]],
+    "3-5-2":   [[.06,.5],[.24,.28],[.22,.5],[.24,.72],[.50,.10],[.48,.34],[.46,.5],[.48,.66],[.50,.90],[.84,.38],[.84,.62]],
+    "3-4-2-1": [[.06,.5],[.24,.28],[.22,.5],[.24,.72],[.50,.12],[.48,.40],[.48,.60],[.50,.88],[.74,.34],[.74,.66],[.90,.5]],
+    "5-3-2":   [[.06,.5],[.26,.10],[.22,.32],[.20,.5],[.22,.68],[.26,.90],[.52,.30],[.50,.5],[.52,.70],[.84,.38],[.84,.62]],
+    "4-3-1-2": [[.06,.5],[.28,.14],[.24,.38],[.24,.62],[.28,.86],[.50,.24],[.48,.5],[.50,.76],[.70,.5],[.88,.38],[.88,.62]]
+  };
+  Object.keys(MODULI).forEach(function (m) {
+    ["modA", "modB"].forEach(function (id) {
+      var o = document.createElement("option"); o.value = m; o.textContent = m; el(id).appendChild(o);
+    });
+  });
+  el("modB").value = "4-4-2";
+
+  // ── il campo ──────────────────────────────────────────────────────────
+  var svg = el("campo");
+  var gCampo = ns("g", {}, svg), gDis = ns("g", {}, svg), gPedine = ns("g", {}, svg);
+  function disegnaCampo() {
+    gCampo.innerHTML = "";
+    var defs = ns("defs", {}, gCampo);
+    var rig = ns("pattern", { id: "erba", width: W / 8, height: H, patternUnits: "userSpaceOnUse" }, defs);
+    ns("rect", { width: W / 16, height: H, fill: "#ffffff", opacity: .035 }, rig);
+    ns("rect", { width: W, height: H, fill: "#0E7A3E" }, gCampo);
+    ns("rect", { width: W, height: H, fill: "url(#erba)" }, gCampo);
+    var L = ns("g", { fill: "none", stroke: "#F5F1E6", "stroke-opacity": .75, "stroke-width": 3 }, gCampo);
+    var m = 40;
+    ns("rect", { x: m, y: m, width: W - 2 * m, height: H - 2 * m }, L);
+    ns("path", { d: "M" + (W / 2) + " " + m + "V" + (H - m) }, L);
+    ns("circle", { cx: W / 2, cy: H / 2, r: 110 }, L);
+    ns("circle", { cx: W / 2, cy: H / 2, r: 5, fill: "#F5F1E6", stroke: "none" }, L);
+    // aree
+    [0, 1].forEach(function (lato) {
+      var x0 = lato ? W - m : m, s = lato ? -1 : 1;
+      ns("rect", { x: Math.min(x0, x0 + s * 200), y: H / 2 - 200, width: 200, height: 400 }, L);
+      ns("rect", { x: Math.min(x0, x0 + s * 75), y: H / 2 - 100, width: 75, height: 200 }, L);
+      ns("circle", { cx: x0 + s * 130, cy: H / 2, r: 4, fill: "#F5F1E6", stroke: "none" }, L);
+      ns("path", { d: "M" + (x0 + s * 200) + " " + (H / 2 - 55) + "A 75 75 0 0 " + (lato ? 0 : 1) + " " + (x0 + s * 200) + " " + (H / 2 + 55) }, L);
+    });
+  }
+  disegnaCampo();
+
+  // ── le pedine ─────────────────────────────────────────────────────────
+  // Ogni pedina e' un giocatore: pallino col numero, cognome sotto. Si
+  // trascina col dito o col mouse; doppio clic la rimanda in panchina.
+  var PEDINE = [];   // {lato, pid, num, cognome, x, y, g}
+  function pedina(p) {
+    var g = ns("g", { "data-pid": p.lato + ":" + p.pid, style: "cursor:grab" }, gPedine);
+    var col = p.lato === "A" ? COL_A : COL_B;
+    ns("circle", { cx: 0, cy: 0, r: 26, fill: col, stroke: "#F5F1E6", "stroke-width": 3 }, g);
+    var t = ns("text", { x: 0, y: 9, "text-anchor": "middle", "font-family": "Mazzard", "font-weight": 800,
+                         "font-size": 24, fill: "#F5F1E6" }, g);
+    t.textContent = p.num || "";
+    var n = ns("text", { x: 0, y: 48, "text-anchor": "middle", "font-family": "Mazzard", "font-weight": 700,
+                         "font-size": 19, fill: "#F5F1E6", stroke: "#06301A", "stroke-width": 4,
+                         "paint-order": "stroke", "stroke-linejoin": "round" }, g);
+    n.textContent = (p.cognome || "").toUpperCase();
+    p.g = g;
+    muovi(p);
+    return p;
+  }
+  function muovi(p) { p.g.setAttribute("transform", "translate(" + Math.round(p.x) + " " + Math.round(p.y) + ")"); }
+  function inCampo(lato, pid) {
+    for (var i = 0; i < PEDINE.length; i++) if (PEDINE[i].lato === lato && PEDINE[i].pid === pid) return PEDINE[i];
+    return null;
+  }
+  function metti(lato, g, x, y) {
+    var gia = inCampo(lato, g.pid);
+    if (gia) { gia.x = x; gia.y = y; muovi(gia); return gia; }
+    var p = pedina({ lato: lato, pid: g.pid, num: g.num, cognome: g.cognome, x: x, y: y });
+    PEDINE.push(p);
+    disegnaRose();
+    return p;
+  }
+  function togli(p) {
+    PEDINE = PEDINE.filter(function (x) { return x !== p; });
+    if (p.g && p.g.parentNode) p.g.parentNode.removeChild(p.g);
+    disegnaRose();
+  }
+
+  // coordinate del puntatore dentro il campo, in unita' del disegno
+  function punto(ev) {
+    var r = svg.getBoundingClientRect();
+    return { x: (ev.clientX - r.left) / r.width * W, y: (ev.clientY - r.top) / r.height * H };
+  }
+
+  // ── gli arnesi: muovi, penna, freccia, linea, tratteggio, zona ────────
+  var ARNESE = "muovi", COLORE = "#F5F1E6";
+  document.querySelectorAll("[data-arnese]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      ARNESE = b.dataset.arnese;
+      document.querySelectorAll("[data-arnese]").forEach(function (x) { x.classList.toggle("on", x === b); });
+    });
+  });
+  document.querySelectorAll("[data-colore]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      COLORE = b.dataset.colore;
+      document.querySelectorAll("[data-colore]").forEach(function (x) { x.classList.toggle("on", x === b); });
+    });
+  });
+
+  var trascino = null, disegno = null;
+  svg.addEventListener("pointerdown", function (ev) {
+    var pt = punto(ev);
+    if (ARNESE === "muovi") {
+      var g = ev.target.closest ? ev.target.closest("g[data-pid]") : null;
+      if (!g) return;
+      var chiave = g.getAttribute("data-pid");
+      var p = PEDINE.filter(function (x) { return x.lato + ":" + x.pid === chiave; })[0];
+      if (!p) return;
+      trascino = { p: p, dx: p.x - pt.x, dy: p.y - pt.y };
+      svg.setPointerCapture(ev.pointerId);
+      return;
+    }
+    // la punta d'oro: si comincia a disegnare
+    var d = { tipo: ARNESE, col: COLORE, punti: [pt], el: null };
+    if (ARNESE === "penna") d.el = ns("path", { fill: "none", stroke: COLORE, "stroke-width": 5, "stroke-linecap": "round", "stroke-linejoin": "round" }, gDis);
+    else if (ARNESE === "zona") d.el = ns("rect", { fill: COLORE, "fill-opacity": .18, stroke: COLORE, "stroke-width": 3 }, gDis);
+    else d.el = ns("path", { fill: "none", stroke: COLORE, "stroke-width": 5, "stroke-linecap": "round",
+                             "stroke-dasharray": ARNESE === "tratteggio" ? "16 12" : null,
+                             "marker-end": ARNESE === "freccia" ? "url(#punta" + COLORE.replace("#", "") + ")" : null }, gDis);
+    if (ARNESE === "freccia") punta(COLORE);
+    disegno = d;
+    svg.setPointerCapture(ev.pointerId);
+  });
+  // la punta della freccia, una per colore
+  function punta(col) {
+    var id = "punta" + col.replace("#", "");
+    if (svg.querySelector("#" + id)) return;
+    var defs = svg.querySelector("defs") || ns("defs", {}, gCampo);
+    var m = ns("marker", { id: id, viewBox: "0 0 10 10", refX: 7, refY: 5, markerWidth: 5, markerHeight: 5, orient: "auto-start-reverse" }, defs);
+    ns("path", { d: "M0 0L10 5L0 10z", fill: col }, m);
+  }
+  svg.addEventListener("pointermove", function (ev) {
+    var pt = punto(ev);
+    if (trascino) {
+      trascino.p.x = Math.max(20, Math.min(W - 20, pt.x + trascino.dx));
+      trascino.p.y = Math.max(20, Math.min(H - 30, pt.y + trascino.dy));
+      muovi(trascino.p);
+      return;
+    }
+    if (!disegno) return;
+    var d = disegno;
+    if (d.tipo === "penna") {
+      d.punti.push(pt);
+      d.el.setAttribute("d", d.punti.map(function (q, i) { return (i ? "L" : "M") + Math.round(q.x) + " " + Math.round(q.y); }).join(""));
+    } else if (d.tipo === "zona") {
+      var a = d.punti[0];
+      d.el.setAttribute("x", Math.min(a.x, pt.x)); d.el.setAttribute("y", Math.min(a.y, pt.y));
+      d.el.setAttribute("width", Math.abs(pt.x - a.x)); d.el.setAttribute("height", Math.abs(pt.y - a.y));
+    } else {
+      var b = d.punti[0];
+      d.el.setAttribute("d", "M" + Math.round(b.x) + " " + Math.round(b.y) + "L" + Math.round(pt.x) + " " + Math.round(pt.y));
+    }
+  });
+  function fine(ev) {
+    if (trascino) { trascino = null; return; }
+    if (disegno) { if (!disegno.el.getAttribute("d") && disegno.tipo !== "zona") disegno.el.remove(); disegno = null; }
+  }
+  svg.addEventListener("pointerup", fine);
+  svg.addEventListener("pointercancel", fine);
+  svg.addEventListener("dblclick", function (ev) {
+    var g = ev.target.closest ? ev.target.closest("g[data-pid]") : null;
+    if (!g) return;
+    var chiave = g.getAttribute("data-pid");
+    var p = PEDINE.filter(function (x) { return x.lato + ":" + x.pid === chiave; })[0];
+    if (p) togli(p);
+  });
+  el("btnIndietro").addEventListener("click", function () {
+    var ultimo = gDis.lastElementChild;
+    if (ultimo) ultimo.remove();
+  });
+  el("btnPulisci").addEventListener("click", function () { gDis.innerHTML = ""; });
+
+  // ── le rose: da ESPN, o dal database delle giovanili ──────────────────
+  var ESPN = "https://site.api.espn.com/apis/site/v2/sports/soccer/";
+  var ROSE = { A: [], B: [] }, SQ = { A: null, B: null };
+
+  CompetizioniEspn.riempi(el("comp"));
+  el("comp").addEventListener("change", function () {
+    ["sqA", "sqB"].forEach(function (id) { el(id).innerHTML = '<option value="">—</option>'; el(id).disabled = true; });
+    ROSE = { A: [], B: [] }; disegnaRose();
+    if (!this.value) return;
+    var code = this.value;
+    nota("Cerco le squadre&hellip;");
+    squadre(code).then(function (sq) {
+      ["sqA", "sqB"].forEach(function (id) {
+        el(id).innerHTML = '<option value="">— ' + sq.length + " squadre —</option>" + sq.map(function (x) {
+          return '<option value="' + esc(x.id) + '">' + esc(x.nome) + "</option>";
+        }).join("");
+        el(id).disabled = !sq.length;
+      });
+      nota(sq.length ? "Scegli le due squadre." : "Nessuna squadra per questa competizione.", sq.length ? "" : "err");
+    }).catch(function () { nota("ESPN non risponde.", "err"); });
+  });
+  // le squadre: il database giovanili se e' una competizione nostra, se no la
+  // classifica ESPN (l'elenco /teams non ha il CORS), e per le coppe l'API
+  // "core" con i nomi presi dai campionati dello stesso paese
+  function squadre(code) {
+    if (window.GIOVANILI && GIOVANILI.mia(code)) {
+      return Promise.resolve(GIOVANILI.squadre(code).map(function (q) { return { id: q.id, nome: q.name }; }));
+    }
+    return fetch("https://site.api.espn.com/apis/v2/sports/soccer/" + code + "/standings")
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var visti = {}, sq = [];
+        (function raccogli(n) {
+          if (!n) return;
+          ((n.standings || {}).entries || []).forEach(function (e) {
+            var t = e.team || {};
+            if (t.id && !visti[t.id]) { visti[t.id] = 1; sq.push({ id: String(t.id), nome: t.displayName || t.name || "" }); }
+          });
+          (n.children || []).forEach(raccogli);
+        })(j);
+        sq.sort(function (a, b) { return a.nome.localeCompare(b.nome); });
+        return sq;
+      });
+  }
+  function rosa(code, id) {
+    if (window.GIOVANILI && GIOVANILI.mia(code)) {
+      return Promise.resolve(GIOVANILI.rosa(code, id).map(function (p, i) {
+        return { pid: "g" + i + "-" + (p.cognome || ""), num: p.num || "", nome: p.nome || "", cognome: p.cognome || "", ruolo: p.ruolo || "" };
+      }));
+    }
+    return fetch(ESPN + code + "/teams/" + encodeURIComponent(id) + "/roster")
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        return (j.athletes || []).map(function (a) {
+          var pos = (a.position || {}).abbreviation || "";
+          return { pid: String(a.id), num: a.jersey || "", nome: a.firstName || "",
+                   cognome: a.lastName || String(a.displayName || "").split(" ").pop(), ruolo: pos };
+        });
+      });
+  }
+  ["A", "B"].forEach(function (lato) {
+    el("sq" + lato).addEventListener("change", function () {
+      var code = el("comp").value, id = this.value;
+      if (!id) { ROSE[lato] = []; disegnaRose(); return; }
+      SQ[lato] = { id: id, nome: this.options[this.selectedIndex].text.replace(/^—.*—$/, "") };
+      el("nome" + lato).textContent = SQ[lato].nome;
+      nota("Scarico la rosa di <b>" + esc(SQ[lato].nome) + "</b>&hellip;");
+      rosa(code, id).then(function (r) {
+        ROSE[lato] = r;
+        disegnaRose();
+        nota(r.length ? "<b>" + esc(SQ[lato].nome) + "</b>: " + r.length + " giocatori. Premi <b>Schiera</b> o trascinali sul campo."
+                      : "Per questa squadra non c'è la rosa: i giocatori si mettono in campo dalla lavagna vuota.", r.length ? "ok" : "err");
+      }).catch(function () { nota("Rosa non caricata.", "err"); });
+    });
+  });
+  function disegnaRose() {
+    ["A", "B"].forEach(function (lato) {
+      el("col" + lato).style.background = lato === "A" ? COL_A : COL_B;
+      el("rosa" + lato).innerHTML = ROSE[lato].map(function (g, i) {
+        return '<button type="button" data-lato="' + lato + '" data-i="' + i + '"' +
+               (inCampo(lato, g.pid) ? ' class="dentro"' : "") + '>' +
+               (g.num ? "<b>" + esc(g.num) + "</b>" : "") + esc(g.cognome || g.nome) + "</button>";
+      }).join("") || '<span class="nota">Nessuna rosa: scegli la squadra.</span>';
+    });
+  }
+  document.querySelector(".rose").addEventListener("click", function (ev) {
+    var b = ev.target.closest ? ev.target.closest("button[data-lato]") : null;
+    if (!b) return;
+    var lato = b.dataset.lato, g = ROSE[lato][+b.dataset.i];
+    if (!g) return;
+    var gia = inCampo(lato, g.pid);
+    if (gia) { togli(gia); return; }
+    // entra dove c'e' posto: al centro della propria meta', scostato un po'
+    var n = PEDINE.filter(function (p) { return p.lato === lato; }).length;
+    var x = lato === "A" ? 180 + (n % 4) * 60 : W - 180 - (n % 4) * 60;
+    metti(lato, g, x, 120 + Math.floor(n / 4) * 80);
+  });
+
+  // ── schiera: gli undici della rosa nei posti del modulo ───────────────
+  el("btnSchiera").addEventListener("click", function () {
+    ["A", "B"].forEach(function (lato) {
+      var mod = MODULI[el("mod" + lato).value] || MODULI["4-3-3"];
+      var r = ROSE[lato];
+      if (!r.length) return;
+      // via le pedine di quel lato, poi i primi undici della rosa nei posti
+      PEDINE.filter(function (p) { return p.lato === lato; }).forEach(togli);
+      var undici = ordinaPerRuolo(r).slice(0, 11);
+      undici.forEach(function (g, i) {
+        var q = mod[i] || [.5, .5];
+        var x = lato === "A" ? q[0] * (W / 2) : W - q[0] * (W / 2);
+        metti(lato, g, x, 60 + q[1] * (H - 120));
+      });
+    });
+    disegnaRose();
+    nota("Schierate. Trascina i giocatori dove vuoi; il doppio clic li toglie dal campo.", "ok");
+  });
+  // un portiere, quattro difensori, i centrocampisti, gli attaccanti: la rosa
+  // ESPN arriva in ordine alfabetico, e schierarla cosi' sarebbe un caso
+  function ordinaPerRuolo(r) {
+    var peso = { G: 0, GK: 0, D: 1, CB: 1, LB: 1, RB: 1, M: 2, CM: 2, DM: 2, AM: 2, LM: 2, RM: 2, F: 3, CF: 3, LW: 3, RW: 3, ST: 3 };
+    return r.slice().sort(function (a, b) {
+      var pa = peso[String(a.ruolo || "").toUpperCase()], pb = peso[String(b.ruolo || "").toUpperCase()];
+      if (pa === undefined) pa = 2; if (pb === undefined) pb = 2;
+      return pa - pb || (parseInt(a.num, 10) || 99) - (parseInt(b.num, 10) || 99);
+    });
+  }
+
+  // ── salvare, riaprire, stampare ───────────────────────────────────────
+  function stato() {
+    return { comp: el("comp").value, sqA: el("sqA").value, sqB: el("sqB").value,
+             modA: el("modA").value, modB: el("modB").value,
+             nomeA: el("nomeA").textContent, nomeB: el("nomeB").textContent,
+             roseA: ROSE.A, roseB: ROSE.B,
+             pedine: PEDINE.map(function (p) { return { lato: p.lato, pid: p.pid, num: p.num, cognome: p.cognome, x: p.x, y: p.y }; }),
+             disegni: gDis.innerHTML };
+  }
+  function riapri(s) {
+    if (!s) return;
+    ROSE.A = s.roseA || []; ROSE.B = s.roseB || [];
+    el("nomeA").textContent = s.nomeA || "Casa"; el("nomeB").textContent = s.nomeB || "Ospite";
+    if (s.modA) el("modA").value = s.modA;
+    if (s.modB) el("modB").value = s.modB;
+    PEDINE.slice().forEach(togli);
+    (s.pedine || []).forEach(function (p) { PEDINE.push(pedina(p)); });
+    gDis.innerHTML = s.disegni || "";
+    disegnaRose();
+  }
+  function elenco() {
+    var out = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf(LS) === 0) out.push(k.slice(LS.length));
+    }
+    return out.sort();
+  }
+  function disegnaElenco() {
+    el("salvate").innerHTML = '<option value="">—</option>' + elenco().map(function (n) {
+      return '<option value="' + esc(n) + '">' + esc(n) + "</option>";
+    }).join("");
+  }
+  disegnaElenco();
+  el("btnSalva").addEventListener("click", function () {
+    var n = el("nomeLav").value.trim();
+    if (!n) { nota("Dai un nome alla lavagna prima di salvarla.", "err"); return; }
+    try { localStorage.setItem(LS + n, JSON.stringify(stato())); } catch (e) { nota("Non salvata: memoria piena.", "err"); return; }
+    disegnaElenco(); el("salvate").value = n;
+    nota("Salvata come <b>" + esc(n) + "</b>, su questo computer.", "ok");
+  });
+  el("btnApri").addEventListener("click", function () {
+    var n = el("salvate").value;
+    if (!n) return;
+    try { riapri(JSON.parse(localStorage.getItem(LS + n) || "null")); } catch (e) {}
+    el("nomeLav").value = n;
+    nota("Aperta <b>" + esc(n) + "</b>.", "ok");
+  });
+  el("btnElimina").addEventListener("click", function () {
+    var n = el("salvate").value;
+    if (!n) return;
+    if (!window.confirm("Elimino la lavagna \"" + n + "\" da questo computer?")) return;
+    localStorage.removeItem(LS + n); disegnaElenco();
+    nota("Eliminata.", "");
+  });
+
+  // l'immagine: il campo com'e', da mandare in chat o da stampare
+  function immagine(poi) {
+    var copia = svg.cloneNode(true);
+    copia.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    copia.setAttribute("width", W); copia.setAttribute("height", H);
+    var blob = new Blob([new XMLSerializer().serializeToString(copia)], { type: "image/svg+xml;charset=utf-8" });
+    var url = URL.createObjectURL(blob), img = new Image();
+    img.onload = function () {
+      var c = document.createElement("canvas"); c.width = W; c.height = H;
+      c.getContext("2d").drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      poi(c.toDataURL("image/png"));
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); nota("Immagine non riuscita.", "err"); };
+    img.src = url;
+  }
+  el("btnPng").addEventListener("click", function () {
+    immagine(function (dati) {
+      var a = document.createElement("a");
+      a.href = dati; a.download = (el("nomeLav").value.trim() || "lavagna") + ".png";
+      document.body.appendChild(a); a.click(); a.remove();
+    });
+  });
+  el("btnStampa").addEventListener("click", function () {
+    immagine(function (dati) {
+      var w = window.open("", "_blank");
+      if (!w) { nota("Il browser ha bloccato la finestra di stampa.", "err"); return; }
+      w.document.write('<title>' + esc(el("nomeLav").value.trim() || "Lavagna") + '</title>' +
+        '<style>@page{size:A4 landscape;margin:8mm}body{margin:0}img{width:100%}</style>' +
+        '<img src="' + dati + '" onload="window.print()">');
+      w.document.close();
+    });
+  });
+
+  disegnaRose();
+})();
+</script>
+<script src="dev.js"></script>
+</body>
+</html>
