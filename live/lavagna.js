@@ -93,8 +93,8 @@ window.Lavagna = (function () {
       "  text-transform:uppercase;color:var(--lav-oro);margin-bottom:7px;display:flex;align-items:center;gap:7px;}" +
       ".lav .col h4 i{width:11px;height:11px;border-radius:50%;display:inline-block;font-style:normal;}" +
       ".lav .gioc{display:flex;flex-wrap:wrap;gap:5px;}" +
-      ".lav .gioc button{font-family:'DM Sans',sans-serif;font-weight:500;font-size:11.5px;letter-spacing:.02em;" +
-      "  text-transform:none;padding:5px 8px;}" +
+      ".lav .gioc button{font-family:'DM Sans',sans-serif;font-weight:600;font-size:13px;letter-spacing:.01em;" +
+      "  text-transform:none;padding:6px 9px;}" +
       ".lav .gioc button.dentro{opacity:.42;}" +
       ".lav .gioc button.scelto{border-color:var(--lav-oro);color:var(--lav-oroB);background:rgba(201,162,75,.14);}" +
       ".lav .gioc button b{font-family:'Mazzard',sans-serif;color:var(--lav-oroB);margin-right:5px;}" +
@@ -185,7 +185,52 @@ window.Lavagna = (function () {
       "border:1px solid rgba(245,241,230,.14);color:var(--lav-avorio);font-family:'DM Sans',sans-serif;font-size:14px;}" +
       ".lav .foglietto .chi input[data-f='num']{width:62px;text-align:center;font-weight:700;}" +
       ".lav .foglietto .chi input[data-f='nome']{flex:1;min-width:0;}" +
-      ".lav .foglietto .chi input:focus{outline:none;border-color:rgba(201,162,75,.45);}";
+      ".lav .foglietto .chi input:focus{outline:none;border-color:rgba(201,162,75,.45);}" +
+      /* IL TEMA CHIARO: la lavagna bianca. Blu notte e grigino si leggevano
+         male: qui il testo e' blu notte pieno su avorio, e l'oro e' piu'
+         scuro, perche' quello del marchio sul chiaro sparisce. E' il tema
+         di partenza; il tasto nella barra torna allo scuro. */
+      ".lav.chiara{--lav-oro:#8A6A1E;--lav-oroB:#6E520F;--lav-avorio:#0A0F24;--lav-fg3:#4A5068;" +
+      "color:#0A0F24;background:#F3EFE6;padding:14px;border-radius:14px;color-scheme:light;}" +
+      ".lav.chiara button{background:#FFFFFF;color:#1B2140;border-color:#CFC7B4;}" +
+      ".lav.chiara button:hover{color:#6E520F;border-color:#8A6A1E;}" +
+      ".lav.chiara button.on{background:#F1E3BE;border-color:#8A6A1E;color:#4A370A;}" +
+      ".lav.chiara button.via,.lav.chiara .foglietto .via{color:#B3171C;border-color:rgba(179,23,28,.45);}" +
+      ".lav.chiara .sep{background:#D8D1C0;}" +
+      ".lav.chiara .colore{border-color:rgba(10,15,36,.3);}.lav.chiara .colore.on{border-color:#0A0F24;box-shadow:0 0 0 2px rgba(138,106,30,.45);}" +
+      ".lav.chiara .campoBox{border-color:rgba(10,15,36,.22);}" +
+      ".lav.chiara .col{background:#FFFFFF;border-color:#DCD5C4;box-shadow:0 1px 2px rgba(10,15,36,.06);}" +
+      ".lav.chiara .gioc button{background:#F6F2E9;border-color:#DCD5C4;color:#0A0F24;}" +
+      /* chi e' gia' in campo non si sbiadisce (sul chiaro diventava grigino):
+         resta leggibile, col bordo tratteggiato e senza fondo */
+      ".lav.chiara .gioc button.dentro{opacity:1;background:transparent;border-style:dashed;color:#4A5068;}" +
+      ".lav.chiara .gioc button.dentro b{color:#8A8FA3;}" +
+      ".lav.chiara .conta .ct svg path:first-child{stroke:#0A0F24;}" +
+      ".lav.chiara .lato{flex-basis:330px;}" +
+      ".lav.chiara .gioc button.scelto{background:#F1E3BE;border-color:#8A6A1E;color:#0A0F24;}" +
+      ".lav.chiara .nota{color:#4A5068;}.lav.chiara .nota.ok{color:#1C7A4A;}.lav.chiara .nota.err{color:#B3171C;}" +
+      ".lav.chiara .cambi,.lav.chiara .curio{color:#1B2140;}" +
+      ".lav.chiara .curio div{border-bottom-color:rgba(10,15,36,.08);}" +
+      ".lav.chiara .segui select{background:#FFFFFF;border-color:#CFC7B4;color:#0A0F24;}" +
+      ".lav.chiara .segui select option{background:#FFFFFF;color:#0A0F24;}" +
+      ".lav.chiara .segui b,.lav.chiara .diretta b{color:#B3171C;}" +
+      ".lav.chiara .diretta{background:#FCEDEC;border-color:rgba(179,23,28,.4);}" +
+      ".lav.chiara .diretta .azione{color:#1B2140;}" +
+      ".lav.chiara .conta .ct{background:#F6F2E9;border-color:#DCD5C4;}" +
+      ".lav.chiara .conta .ct:hover,.lav.chiara .conta .ct.chiedo{background:#F1E3BE;border-color:#8A6A1E;}" +
+      ".lav.chiara .conta .ct .meno{background:#FFFFFF;border-color:#CFC7B4;color:#4A5068;}" +
+      ".lav.chiara .conta .ct.su b{color:#8A6A1E;}" +
+      ".lav.chiara.chiedo-A .gioc button[data-lato=\"A\"],.lav.chiara.chiedo-B .gioc button[data-lato=\"B\"]{outline-color:#8A6A1E;}" +
+      ".lav.chiara .campoBox .foglietto{background:#FFFFFF;border-color:#8A6A1E;box-shadow:0 12px 30px rgba(10,15,36,.35);}" +
+      ".lav.chiara .foglietto .stagione{background:#F6F2E9;border-color:#E2D6B6;}" +
+      ".lav.chiara .foglietto .sttit,.lav.chiara .foglietto .cartriga .cl{color:#8A6A1E;}" +
+      ".lav.chiara .foglietto .sttesta select{background:#FFFFFF;color:#6E520F;border-color:#CFC7B4;}" +
+      ".lav.chiara .foglietto .sttesta select option,.lav.chiara .foglietto .sttesta select optgroup{background:#FFFFFF;color:#0A0F24;}" +
+      ".lav.chiara .foglietto td{border-top-color:rgba(10,15,36,.09);}" +
+      ".lav.chiara .foglietto td:first-child{color:#1B2140;}" +
+      ".lav.chiara .foglietto tr.tot td{color:#6E520F;border-top-color:rgba(138,106,30,.45);}" +
+      ".lav.chiara .foglietto textarea,.lav.chiara .foglietto .chi input{background:#FBF9F3;border-color:#CFC7B4;color:#0A0F24;}" +
+      ".lav.chiara .foglietto textarea:focus,.lav.chiara .foglietto .chi input:focus{border-color:#8A6A1E;}";
     document.head.appendChild(s);
   }
 
@@ -195,6 +240,15 @@ window.Lavagna = (function () {
     var IO = "lav" + (++quante);   // il nome di questa lavagna: gli id non si scontrano
     stile();
     box.classList.add("lav");
+    // chiara (la lavagna bianca) o scura: si ricorda la scelta, e la
+    // pagina della lavagna la segue tutta, non solo il riquadro
+    function tema(chiaro, ricordalo) {
+      box.classList.toggle("chiara", chiaro);
+      if (opz.salva) document.documentElement.classList.toggle("lav-chiara", chiaro);
+      var t = box.querySelector('[data-az="tema"]');
+      if (t) t.textContent = chiaro ? "Tema scuro" : "Tema chiaro";
+      if (ricordalo) { try { localStorage.setItem("comotv.lavagna.tema", chiaro ? "chiara" : "scura"); } catch (e) {} }
+    }
     box.innerHTML =
       '<div class="barra">' +
         '<button type="button" class="on" data-arnese="muovi">&#10021; Muovi</button>' +
@@ -214,6 +268,7 @@ window.Lavagna = (function () {
         '<span class="sep"></span>' +
         '<button type="button" data-az="png">&#11015; Immagine</button>' +
         '<button type="button" data-az="stampa">&#128424; Stampa</button>' +
+        '<button type="button" data-az="tema"></button>' +
         (opz.salva ? '<span class="sep"></span><span data-salva="1"></span>' : "") +
       '</div>' +
       // seguire una partita vera: la scelta sta qui dentro, cosi' vale in
@@ -247,6 +302,9 @@ window.Lavagna = (function () {
           '<div class="col"><h4>Cambi</h4><div class="cambi" data-cambi="1"><span>Nessun cambio.</span></div></div>') +
         '<div class="col"><h4>Curiosità</h4><div class="curio" data-curio="1"><span style="color:var(--lav-fg3)">Doppio clic su un giocatore per scriverci sopra.</span></div></div>' +
       '</div>';
+    var temaSalvato = null;
+    try { temaSalvato = localStorage.getItem("comotv.lavagna.tema"); } catch (e) {}
+    tema(temaSalvato !== "scura");
 
     var svg = box.querySelector("svg");
     var gCampo = ns("g", {}, svg), gDis = ns("g", {}, svg), gPedine = ns("g", {}, svg);
@@ -1014,6 +1072,7 @@ window.Lavagna = (function () {
       if (b.dataset.az === "indietro") annulla();
       if (b.dataset.az === "pulisci") { ricorda(); gDis.innerHTML = ""; }
       if (b.dataset.az === "stampa") stampa();
+      if (b.dataset.az === "tema") tema(!box.classList.contains("chiara"), true);
       if (b.dataset.az === "png") immagine(function (dati) {
         var a = document.createElement("a");
         a.href = dati; a.download = titolo().replace(/[^A-Za-z0-9-]+/g, "-") + ".png";
