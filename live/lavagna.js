@@ -110,6 +110,13 @@ window.Lavagna = (function () {
       ".lav .campoBox .foglietto{position:absolute;z-index:8;width:420px;max-width:94%;" +
       "  background:linear-gradient(180deg,#141B3C,#0E1430);box-shadow:0 12px 30px rgba(0,0,0,.55);" +
       "  border:1px solid rgba(201,162,75,.5);border-radius:10px;padding:12px;}" +
+      ".lav .foglietto .testa{display:flex;gap:12px;align-items:flex-end;margin-bottom:2px;}" +
+      ".lav .foglietto .testadx{flex:1;min-width:0;}" +
+      ".lav .foglietto .faccia{flex:0 0 96px;height:108px;border-radius:9px;overflow:hidden;margin-bottom:8px;" +
+      "background:radial-gradient(120% 90% at 50% 100%,color-mix(in srgb,var(--sq) 55%,transparent),transparent 70%),rgba(6,10,26,.55);" +
+      "border:1px solid rgba(201,162,75,.35);}" +
+      ".lav .foglietto .faccia img{width:100%;height:100%;object-fit:cover;object-position:50% 8%;display:block;}" +
+      ".lav.chiara .foglietto .faccia{background:radial-gradient(120% 90% at 50% 100%,color-mix(in srgb,var(--sq) 45%,transparent),transparent 70%),#EFEAE0;border-color:#DCD5C4;}" +
       ".lav .foglietto h3{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.16em;" +
       "  text-transform:uppercase;color:var(--lav-oro);margin-bottom:8px;}" +
       /* i contatori della partita: calci d'angolo, gialli, rossi. Il clic
@@ -784,17 +791,47 @@ window.Lavagna = (function () {
       });
       disegna();
     }
+    // LA FOTO del giocatore: la chiede al ponte, come le card del campetto
+    // in onda (magazzino scontornati, per id ESPN, cognome e squadra). Se
+    // non c'e', la scheda resta com'era: niente sagome vuote.
+    var FACCE = {};
+    function ponte() {
+      return location.pathname.indexOf("/como-tv-dev/") === 0 ? "/como-tv-dev/api" : "/api";
+    }
+    function facciaSu(p, dove) {
+      if (!dove || p.mister || !(p.cognome || "").trim()) return;
+      var chiave = String(p.pid) + "|" + p.cognome;
+      function metti(url) {
+        if (!url || !dove.isConnected) return;
+        var im = new Image();
+        im.alt = "";
+        im.onload = function () { dove.innerHTML = ""; dove.appendChild(im); dove.hidden = false; };
+        im.src = url;
+      }
+      if (FACCE[chiave] !== undefined) return metti(FACCE[chiave]);
+      var tid = SQ[p.lato].tid, finto = /^b[AB]\d+$/.test(String(p.pid));
+      fetch(ponte() + "?foto=" + encodeURIComponent(p.cognome) +
+            (finto ? "" : "&id=" + encodeURIComponent(p.pid)) +
+            (tid ? "&squadra=" + encodeURIComponent(tid) : ""), { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { FACCE[chiave] = (j && j.url) || ""; metti(FACCE[chiave]); })
+        .catch(function () {});
+    }
     function apriNota(p) {
       chiudiNota();
       var k = chiave(p), cassa = box.querySelector(".campoBox");
       var f = document.createElement("div");
       f.className = "foglietto";
       f.innerHTML =
+        // la faccia a sinistra, squadra e nome a destra: si riconosce il
+        // giocatore prima ancora di leggere
+        '<div class="testa"><div class="faccia" data-faccia="1" hidden style="--sq:' + esc(SQ[p.lato].col || "#1B2140") + '"></div><div class="testadx">' +
         '<h3>' + esc(SQ[p.lato].nome) + (p.mister ? ' · allenatore' : '') + '</h3>' +
         (p.mister ? "" :
           '<div class="chi"><input data-f="num" type="text" inputmode="numeric" maxlength="2" ' +
           'placeholder="N" value="' + esc(p.num || "") + '">' +
           '<input data-f="nome" type="text" placeholder="Cognome" value="' + esc(p.cognome || "") + '"></div>') +
+        '</div></div>' +
         '<div class="cartriga" data-cart-box="1"></div>' +
         '<div class="stagione" data-stagione-box="1"></div>' +
         '<textarea placeholder="Le tue curiosità: precedenti, come si pronuncia il nome, cosa dire in telecronaca…"></textarea>' +
@@ -804,6 +841,7 @@ window.Lavagna = (function () {
           '<button type="button" data-f="salva" class="on">Salva</button>' +
         '</div>';
       cassa.appendChild(f);
+      facciaSu(p, f.querySelector("[data-faccia]"));
       stagioneSu(p, f.querySelector("[data-stagione-box]"));
       cartSu(p, f.querySelector("[data-cart-box]"));
       // la tabella della stagione arriva dopo e allunga il foglietto: lo si
