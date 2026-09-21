@@ -260,20 +260,23 @@
     { k:"sfondi",     eti:"Sfondi e format", c:"#8FA3C8", foto:function(n){ return n.indexOf("fmt-") === 0 || n.indexOf("sfondo-") === 0 || n.indexOf("sfondi-") === 0; } },
     { k:"stemmi",     eti:"Stemmi caricati", c:"#E06A6A", foto:function(){ return true; } },
     { k:"espn",       eti:"Stemmi ESPN", c:"#D93A3A" },
-    { k:"detto",      eti:"Telecronache", c:"#F5D76E" },
+    { k:"detto",      eti:"Telecronache \uD83C\uDDEE\uD83C\uDDF9", c:"#F5D76E", lingua:"it" },
+    { k:"dettoEn",    eti:"Telecronache \uD83C\uDDEC\uD83C\uDDE7", c:"#E8B84A", lingua:"en" },
     { k:"file",       eti:"Cartelle",    c:"#A8A8B8" }
   ];
   var CAT = {}; CATEGORIE.forEach(function(c){ CAT[c.k] = c; });
   function famiglia(n){ for (var i = 0; i < CATEGORIE.length; i++) if (CATEGORIE[i].foto && CATEGORIE[i].foto(n)) return CATEGORIE[i].k; return "stemmi"; }
   function etichettaFamiglia(k){ return CAT[k] ? CAT[k].eti : k; }
-  function catDi(x){ return x.t === "foto" ? x.fam : x.t; }
+  function catDi(x){ return x.t === "foto" ? x.fam : x.t === "detto" && x.lingua === "en" ? "dettoEn" : x.t; }
   function chipsCat(){
     var tutto = document.querySelector('#chips .chip[data-t="tutto"]'); if (tutto) tutto.classList.toggle("on", TIPO === "tutto");
     var conta = {};
     FOTO.forEach(function(f){ conta[f.fam] = (conta[f.fam] || 0) + 1; });
-    conta.evento = EVENTI.length; conta.video = VIDEO.length; conta.espn = STEMMI.length; conta.file = FILE.length; conta.detto = DETTO_INFO ? DETTO_INFO.partite : (EVENTI.filter(function(x){ return x.telecronaca; }).length);
+    conta.evento = EVENTI.length; conta.video = VIDEO.length; conta.espn = STEMMI.length; conta.file = FILE.length;
+    conta.detto = DETTO.filter(function(x){ return x.lingua !== "en"; }).length; conta.dettoEn = DETTO.filter(function(x){ return x.lingua === "en"; }).length;
     el("chipsCat").innerHTML = CATEGORIE.map(function(C){
-      var n = conta[C.k] || 0; if (!n && C.k !== "file" && C.k !== "detto") return "";
+      var n = conta[C.k] || 0; if (!n && C.k !== "file" && C.k !== "detto" && C.k !== "dettoEn") return "";
+      if ((C.k === "detto" || C.k === "dettoEn") && !n) n = "";
       return '<button class="chip' + (TIPO === C.k ? " on" : "") + '" data-t="' + C.k + '" data-c="1" style="--c:' + C.c + '" type="button">' + esc(C.eti) + ' <span class="n">' + n + '</span></button>';
     }).join("");
   }
@@ -354,15 +357,19 @@
     el("suggerimento").hidden = attivo;
     if (!attivo) { el("risultati").innerHTML = ""; return; }
     var gruppi = CATEGORIE.map(function(C){
-      var lista = C.k === "evento" ? EVENTI : C.k === "video" ? VIDEO : C.k === "espn" ? STEMMI : C.k === "file" ? FILE : C.k === "detto" ? DETTO : FOTO.filter(function(f){ return f.fam === C.k; });
-      return { t:C.k, nome:C.eti, c:C.c, lista:lista, tetto: TIPO === C.k ? 2000 : 5 };
+      var lista = C.k === "evento" ? EVENTI : C.k === "video" ? VIDEO : C.k === "espn" ? STEMMI : C.k === "file" ? FILE
+                : C.k === "detto" ? DETTO.filter(function(x){ return x.lingua !== "en"; }) : C.k === "dettoEn" ? DETTO.filter(function(x){ return x.lingua === "en"; })
+                : FOTO.filter(function(f){ return f.fam === C.k; });
+      // tutto subito, senza "e altri": la lista scorre nel suo riquadro
+      return { t:C.k, nome:C.eti, c:C.c, lista:lista, tetto: 3000, detto: C.k === "detto" || C.k === "dettoEn" };
     });
     gruppi.forEach(function(g){
       if (TIPO !== "tutto" && TIPO !== g.t) return;
-      var v = g.t === "detto" ? (q.length ? DETTO : []) : (q.length ? g.lista.filter(passa) : g.lista.slice(0, 400));
-      if (!v.length) { if (g.t === "detto" && TIPO === "detto") out += '<div class="vuoto">' + (q.length < 1 ? "Scrivi cosa cerchi nelle telecronache: un nome, una frase." : DETTO_Q === CERCA.trim() ? "Nessuna telecronaca dice \u00ab" + esc(CERCA) + "\u00bb." : "Cerco nelle telecronache\u2026") + '</div>'; return; }
+      var v = g.detto ? (q.length ? g.lista : []) : (q.length ? g.lista.filter(passa) : g.lista.slice(0, 3000));
+      if (!v.length) { if (g.detto && TIPO === g.t) out += '<div class="vuoto">' + (q.length < 1 ? "Scrivi cosa cerchi nelle telecronache: un nome, una frase." : DETTO_Q === CERCA.trim() ? "Nessuna telecronaca dice \u00ab" + esc(CERCA) + "\u00bb." : "Cerco nelle telecronache\u2026") + '</div>'; return; }
       tot += v.length;
-      out += '<div class="gruppo" data-c="1" data-t="' + g.t + '" style="--c:' + g.c + ';cursor:pointer" title="solo ' + esc(g.nome) + '">' + g.nome + '<span>' + (g.t === "detto" && DETTO_INFO ? DETTO_INFO.totale + " in " + DETTO_INFO.partite + (DETTO_INFO.partite === 1 ? " partita" : " partite") : (q.length ? v.length : g.lista.length)) + '</span></div>';
+      var partite = {}; v.forEach(function(x){ if (x.reg) partite[x.reg] = 1; });
+      out += '<div class="gruppo" data-c="1" data-t="' + g.t + '" style="--c:' + g.c + ';cursor:pointer" title="solo ' + esc(g.nome) + '">' + g.nome + '<span>' + v.length + (g.detto ? " in " + Object.keys(partite).length + (Object.keys(partite).length === 1 ? " partita" : " partite") : "") + '</span></div>';
       out += v.slice(0, g.tetto).map(riga).join("");
       if (v.length > g.tetto) out += '<div class="altri" data-t="' + g.t + '" style="cursor:pointer;color:var(--gold-bright)">\u2026e altri ' + (v.length - g.tetto) + ': clicca per vederli tutti</div>';
     });
@@ -382,7 +389,7 @@
     else if (x.t === "espn") { titolo = x.nome; sotto = (x.lega || "ESPN") + (x.logo ? "" : " · stemma non ancora visto"); if (x.logo) ic = '<img src="' + esc(x.logo) + '" alt="" style="width:20px;height:20px;object-fit:contain">'; }
     else if (x.t === "detto") {
       return '<div class="riga' + (sel ? " sel" : "") + '" data-k="' + esc(chiave(x)) + '" data-c="1" style="--c:' + colore(x) + '"><span class="ic detto">' + ic + '</span>' +
-        '<span class="nome" style="text-transform:none;font-family:\'DM Sans\',sans-serif;font-weight:500;flex-direction:column;align-items:flex-start;gap:1px"><span style="white-space:normal;font-size:12.5px">\u201c' + evidenzia(x.testo) + '\u201d</span><small>' + esc(x.titolo) + ' \u00b7 ' + tcMin(x.a) + ' \u00b7 ' + (x.lingua === "en" ? "ENG" : "ITA") + '</small></span></div>';
+        '<span class="nome" style="text-transform:none;font-family:\'DM Sans\',sans-serif;font-weight:500;flex-direction:column;align-items:flex-start;gap:1px"><span style="white-space:normal;font-size:12.5px">\u201c' + evidenzia(x.testo) + '\u201d</span><small>' + (x.lingua === "en" ? "\uD83C\uDDEC\uD83C\uDDE7" : "\uD83C\uDDEE\uD83C\uDDF9") + ' ' + esc(x.titolo) + ' \u00b7 ' + tcMin(x.a) + '</small></span></div>';
     }
     else if (x.t === "evento") { titolo = x.partita || x.nome.replace(/\.[^.]+$/, ""); sotto = x.nome + (x.cartella ? " · " + x.cartella : "") + " · " + peso(x.peso) + (x.durata ? " · " + durata(x.durata) : "") + " · " + quando(x.quando);
       tag = x.telecronaca ? '<span class="tag tc" title="telecronaca trascritta">tc</span>' : (x.partita ? "" : '<span class="tag no">senza nome</span>'); }
@@ -420,7 +427,7 @@
     a.setAttribute("data-c", "1"); a.style.setProperty("--c", colore(x));
     if (x.t === "detto") {
       var apri = MAM + (x.rec ? "&apri=" + encodeURIComponent(x.rec) : "") + "&t=" + Math.floor(x.a);
-      a.innerHTML = '<div class="et">Telecronaca \u00b7 ' + (x.lingua === "en" ? "inglese" : "italiano") + '</div><h3 style="text-transform:none">' + esc(x.titolo) + '</h3>' +
+      a.innerHTML = '<div class="et">Telecronaca ' + (x.lingua === "en" ? "\uD83C\uDDEC\uD83C\uDDE7 inglese" : "\uD83C\uDDEE\uD83C\uDDF9 italiano") + '</div><h3 style="text-transform:none">' + esc(x.titolo) + '</h3>' +
         (x.chiave ? '<div class="media" id="azMedia"><div class="vuoto" style="padding:14px">carico il punto della partita\u2026</div></div>' : '') +
         '<div class="metaf"><span>a</span><b>' + tcMin(x.a) + ' \u2192 ' + tcMin(x.b) + '</b></div>' +
         '<div style="font-size:13.5px;line-height:1.5">' + (x.prima ? '<div style="color:var(--fg-3)">' + esc(x.prima) + '</div>' : '') + '<div style="color:var(--ivory);padding:4px 0">' + evidenzia(x.testo) + '</div>' + (x.dopo ? '<div style="color:var(--fg-3)">' + esc(x.dopo) + '</div>' : '') + '</div>' +
