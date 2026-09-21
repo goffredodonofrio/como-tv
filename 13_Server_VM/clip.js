@@ -3562,7 +3562,8 @@ function hlElenco(p) {
   const prog = String((p && p.prog) || "");
   // Le proposte della macchina le vedono tutti. I montaggi: quelli del
   // progetto aperto, se ce n'e' uno; se no quelli di questo banco.
-  const mie = seq.filter((q) => (q.auto && !q.banco) ||
+  // il MAM nuovo non ha banchi: chiede tutte le sequenze della partita
+  const mie = (p && p.tutte) ? seq : seq.filter((q) => (q.auto && !q.banco) ||
                                 (prog ? q.prog === prog : (!q.banco || q.banco === banco)));
   mie.forEach((q) => { try { crescoLaDiretta(q); } catch (e) {} });
   // prima si mettono in riga — cosi' l'audio c'e' — poi si guarda cosa e'
