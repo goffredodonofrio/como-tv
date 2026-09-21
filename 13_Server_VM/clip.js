@@ -9096,8 +9096,13 @@ async function espnTrova(rec) {
   });
   const comp = (trovato.competitions || [])[0] || {};
   const casaOsp = (comp.competitors || []).map((c) => ((c.team || {}).displayName) || "");
+  // lo stemma di ogni squadra, com'e' su ESPN: serve alla ricerca del magazzino
+  const loghi = {};
+  (comp.competitors || []).forEach((c) => { const tm = c.team || {}; if (!tm.displayName) return;
+    const l = (tm.logos && tm.logos[0] && tm.logos[0].href) || tm.logo || (tm.id ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + tm.id + ".png" : "");
+    if (l) loghi[tm.displayName] = l; });
   ESPN[rec] = { id: trovato.id, lega: legaTrovata, quando: trovato.date || info.quando, nome: trovato.name || "",
-                squadre: casaOsp, eventi: eventi, gamecast: gamecast, rose: rose,
+                squadre: casaOsp, eventi: eventi, gamecast: gamecast, rose: rose, loghi: loghi,
                 letto: new Date().toISOString() };
   misuraRitardo(rec);
   return ESPN[rec];
@@ -10999,6 +11004,58 @@ const AZIONI = {
     return { ok: true, eventi: fuori, peso: fuori.reduce((n, x) => n + x.peso, 0), quanti: fuori.length, scrivibile: qnapSiScrive() };
   },
   "clip-qnap-peso": qnapPeso,
+  // CERCARE NELLE TELECRONACHE: "assist di nico paz" trova la riga in cui e'
+  // stato detto, in quale partita e a che secondo. Si guardano le parole
+  // (senza accenti e maiuscole) su una finestra di due righe, perche' una
+  // frase spesso cade a cavallo. Il nome dei giocatori si cerca anche nella
+  // forma piatta, cosi' "paz" trova "Paz" e "nicolo" trova "Nicolo'".
+  "clip-parlato-cerca": (p) => {
+    const parole = piattaMinuscola(String(p.q || "")).split(/\s+/).filter((w) => w.length >= 2);
+    if (!parole.length) return { ok: true, righe: [], partite: 0 };
+    const tetto = num(p.quante, 1, 500, 120);
+    const fuori = []; const perReg = {};
+    Object.keys(PARLATO).forEach((reg) => {
+      const d = PARLATO[reg]; const r = R.reg[reg]; if (!d || !r || !(d.pezzi || []).length) return;
+      const pz = d.pezzi.filter((x) => !x.vivo).sort((u, v) => u.a - v.a);
+      const piatte = pz.map((x) => piattaMinuscola((x.x || "") + " " + (x.y || "")));
+      for (let i = 0; i < pz.length && fuori.length < tetto * 3; i++) {
+        const qui = piatte[i], due = qui + " " + (piatte[i + 1] || "");
+        const tutte = parole.every((w) => due.indexOf(w) >= 0);
+        if (!tutte) continue;
+        const dentroQui = parole.every((w) => qui.indexOf(w) >= 0);
+        const x = pz[i], y = pz[i + 1];
+        fuori.push({ reg, titolo: r.titolo || reg, rec: (r.arch && r.arch.rec) || r.evento || "", a: x.a, b: dentroQui ? x.b : (y ? y.b : x.b),
+                     testo: dentroQui ? x.x : (x.x + " " + (y ? y.x : "")).trim(), lingua: x.l || d.lingua || "it", k: x.k || "", pieno: dentroQui,
+                     prima: i > 0 ? pz[i - 1].x : "", dopo: (dentroQui ? y : pz[i + 2]) ? (dentroQui ? y : pz[i + 2]).x : "" });
+        perReg[reg] = (perReg[reg] || 0) + 1;
+        if (!dentroQui) i++;
+      }
+    });
+    // prima quelle con tutte le parole nella stessa riga, poi per partita recente
+    fuori.sort((u, v) => (v.pieno ? 1 : 0) - (u.pieno ? 1 : 0) || String((R.reg[v.reg] || {}).finita || 0).localeCompare(String((R.reg[u.reg] || {}).finita || 0)) || u.a - v.a);
+    return { ok: true, righe: fuori.slice(0, tetto), totale: fuori.length, partite: Object.keys(perReg).length, perReg };
+  },
+  // GLI STEMMI DELLE SQUADRE: nelle grafiche vengono da ESPN, non dal
+  // magazzino. Qui si mettono insieme quelli visti (eventi ESPN letti, e le
+  // grafiche salvate che ne portano uno) e le squadre del vocabolario senza
+  // stemma, cosi' la ricerca trova tutte le squadre e mostra lo stemma dove c'e'.
+  "clip-stemmi": () => {
+    const loghi = {};
+    Object.keys(ESPN || {}).forEach((k) => { const e = ESPN[k]; if (e && e.loghi) Object.keys(e.loghi).forEach((n) => { loghi[n] = { logo: e.loghi[n], lega: e.lega || "" }; }); });
+    try {
+      const testo = fs.readFileSync(path.join(path.dirname(DIR), "stato.json"), "utf8");
+      const re = /"n":\s*"([^"]{2,60})"[^{}]{0,400}?"l":\s*"(https:\/\/a\.espncdn\.com\/i\/teamlogos\/[^"]+)"/g; let m;
+      while ((m = re.exec(testo))) { if (!loghi[m[1]]) loghi[m[1]] = { logo: m[2], lega: "" }; }
+    } catch (e) {}
+    const fuori = Object.keys(loghi).map((n) => ({ nome: n, logo: loghi[n].logo, lega: loghi[n].lega }));
+    const visti = new Set(fuori.map((x) => piattaMinuscola(x.nome)));
+    Object.keys((VOCABOLARIO && VOCABOLARIO.squadre) || {}).forEach((n) => {
+      if (visti.has(piattaMinuscola(n))) { const f = fuori.find((x) => piattaMinuscola(x.nome) === piattaMinuscola(n)); if (f && !f.lega) f.lega = VOCABOLARIO.squadre[n].lega || ""; return; }
+      fuori.push({ nome: n, logo: "", lega: VOCABOLARIO.squadre[n].lega || "" });
+    });
+    fuori.sort((a, b) => (b.logo ? 1 : 0) - (a.logo ? 1 : 0) || a.nome.localeCompare(b.nome, "it"));
+    return { ok: true, stemmi: fuori, conLogo: fuori.filter((x) => x.logo).length };
+  },
   "clip-qnap-radici": () => ({ ok: true, radici: qnapRadici().map((r) => ({ id: r.id, nome: r.nome })) }),
   "clip-parlato-importa": (p) => {
     const reg = String(p.reg || ""), r = R.reg[reg];

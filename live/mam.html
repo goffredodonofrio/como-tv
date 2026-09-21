@@ -1817,10 +1817,20 @@
   (function () {
     var m = /(\?|&)apri=([A-Za-z0-9]+)/.exec(location.search); if (!m || MODO !== "archivio") return;
     var rec = m[2], giri = 0;
+    var mt = /(\?|&)t=(\d+(?:\.\d+)?)/.exec(location.search), t = mt ? parseFloat(mt[2]) : null;
+    // ...e, se c'e' un secondo, la Sorgente ci va appena il video e' pronto
+    var vaiAlSecondo = function () {
+      var v = document.getElementById("player"), giri2 = 0;
+      var prova2 = function () {
+        if (v && v.duration > 0 && v.readyState >= 1) { try { v.currentTime = Math.max(0, t - 3); v.play().catch(function () {}); } catch (e) {} return; }
+        if (++giri2 < 60) setTimeout(prova2, 500);
+      };
+      setTimeout(prova2, 1200);
+    };
     var prova = function () {
       var sel = document.getElementById("evento");
       var o = sel && Array.prototype.filter.call(sel.options, function (x) { return x.value === "arc:" + rec; })[0];
-      if (o) { sel.value = o.value; sel.dispatchEvent(new Event("change", { bubbles: true })); return; }
+      if (o) { sel.value = o.value; sel.dispatchEvent(new Event("change", { bubbles: true })); if (t !== null) vaiAlSecondo(); return; }
       if (++giri < 40) setTimeout(prova, 500);
     };
     setTimeout(prova, 800);

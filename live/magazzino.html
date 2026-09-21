@@ -69,6 +69,18 @@
   .chip:hover{color:var(--gold-bright);border-color:var(--line-gold);}
   .chip .n{opacity:.55;margin-left:4px;font-weight:500;}
   .chip.on{border-color:var(--gold);color:var(--gold-bright);background:rgba(201,162,75,.1);}
+  /* OGNI CATEGORIA HA IL SUO COLORE, e lo porta ovunque: il pallino nel
+     chip, il chip acceso, la riga, il titolo del gruppo, l'anteprima. */
+  .chip[data-c]::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--c);display:inline-block;margin-right:7px;vertical-align:1px;}
+  .chip[data-c].on{border-color:var(--c);color:var(--ivory);background:color-mix(in srgb,var(--c) 22%,transparent);}
+  .gruppo[data-c]{color:var(--c);}
+  .riga[data-c]{border-left:3px solid var(--c);background:color-mix(in srgb,var(--c) 9%,rgba(16,22,48,.66));}
+  .riga[data-c] .ic{background:color-mix(in srgb,var(--c) 30%,transparent);}
+  .riga[data-c].sel{border-color:var(--c);background:color-mix(in srgb,var(--c) 22%,rgba(16,22,48,.66));}
+  #anteprima[data-c]{border-color:color-mix(in srgb,var(--c) 45%,transparent);background:color-mix(in srgb,var(--c) 8%,rgba(16,22,48,.66));}
+  #anteprima[data-c] .et{color:var(--c);}
+  #anteprima .stemma{width:100%;max-height:200px;object-fit:contain;padding:14px;background:rgba(245,241,230,.06);}
+  mark{background:rgba(245,215,110,.35);color:var(--ivory);border-radius:2px;padding:0 1px;}
   .chips .spazio{flex:1;}
   .chips .piccolo{font-size:10px;padding:5px 9px;}
   .due.nascosto{display:none;}
@@ -146,10 +158,7 @@
   </div>
   <div class="chips" id="chips">
     <button class="chip on" data-t="tutto" type="button">Tutto</button>
-    <button class="chip" data-t="evento" type="button">Eventi <span class="n" id="cE"></span></button>
-    <button class="chip" data-t="video" type="button">Video <span class="n" id="cV"></span></button>
-    <span id="chipsFoto" style="display:contents"></span>
-    <button class="chip" data-t="file" type="button">Cartelle <span class="n" id="cQ"></span></button>
+    <span id="chipsCat" style="display:contents"></span>
     <span class="spazio"></span>
     <button class="chip piccolo" id="apriCaricaF" type="button" title="carica una foto, un logo, uno stemma">+ Foto</button>
     <button class="chip piccolo" id="apriCaricaV" type="button" title="carica un video MP4">+ Video</button>
@@ -221,24 +230,37 @@
   // Tutto in una lista sola, con un tipo: foto, video, evento completo
   // (partita intera sulla QNAP), file o cartella (QNAP e VM). La ricerca
   // guarda dentro tutti insieme e i risultati escono raggruppati.
-  var FOTO = [], VIDEO = [], EVENTI = [], FILE = [], FILE_CARICATI = false;
+  var FOTO = [], VIDEO = [], EVENTI = [], FILE = [], STEMMI = [], DETTO = [], DETTO_Q = "", DETTO_T = null, DETTO_INFO = null, FILE_CARICATI = false;
   var CERCA = "", TIPO = "tutto", SCELTO = null, DURATE = {};
   // Le famiglie delle foto, lette dal nome del file: sono le categorie con
   // cui si sfoglia. Nell'ordine in cui compaiono nei chip.
-  var FAMIGLIE = [
-    { k:"maglie",     eti:"Maglie",              test:function(n){ return n.indexOf("maglia-") === 0; } },
-    { k:"allenatori", eti:"Allenatori",          test:function(n){ return n.indexOf("foto-premium-coach-") === 0 || n.indexOf("foto-coach-") === 0 || n.indexOf("allenatore-") === 0; } },
-    { k:"premium",    eti:"Premium",             test:function(n){ return n.indexOf("foto-premium") === 0; } },
-    { k:"focus",      eti:"Focus",               test:function(n){ return n.indexOf("foto-focus-") === 0; } },
-    { k:"giocatori",  eti:"Giocatori",           test:function(n){ return n.indexOf("foto-") === 0; } },
-    { k:"stemmi",     eti:"Stemmi",              test:function(){ return true; } }
+  // LE CATEGORIE, nell'ordine dei chip, ciascuna col suo colore. Le foto si
+  // dividono dal nome del file; il resto viene da dove sta (QNAP, ponte, ESPN).
+  var CATEGORIE = [
+    { k:"evento",     eti:"Eventi",      c:"#4FA3E8" },
+    { k:"video",      eti:"Video",       c:"#CE7FA6" },
+    { k:"maglie",     eti:"Maglie",      c:"#4FCB8B", foto:function(n){ return n.indexOf("maglia-") === 0; } },
+    { k:"allenatori", eti:"Allenatori",  c:"#B48CF2", foto:function(n){ return n.indexOf("foto-premium-coach-") === 0 || n.indexOf("foto-coach-") === 0 || n.indexOf("allenatore-") === 0; } },
+    { k:"premium",    eti:"Premium",     c:"#E3C271", foto:function(n){ return n.indexOf("foto-premium") === 0; } },
+    { k:"focus",      eti:"Focus",       c:"#F08A4B", foto:function(n){ return n.indexOf("foto-focus-") === 0 || n.indexOf("foto-crawl-") === 0 || n.indexOf("foto-demo-") === 0; } },
+    { k:"giocatori",  eti:"Giocatori",   c:"#5DD6C8", foto:function(n){ return n.indexOf("foto-") === 0; } },
+    { k:"sfondi",     eti:"Sfondi e format", c:"#8FA3C8", foto:function(n){ return n.indexOf("fmt-") === 0 || n.indexOf("sfondo-") === 0 || n.indexOf("sfondi-") === 0; } },
+    { k:"stemmi",     eti:"Stemmi caricati", c:"#E06A6A", foto:function(){ return true; } },
+    { k:"espn",       eti:"Stemmi ESPN", c:"#D93A3A" },
+    { k:"detto",      eti:"Telecronache", c:"#F5D76E" },
+    { k:"file",       eti:"Cartelle",    c:"#A8A8B8" }
   ];
-  function famiglia(n){ for (var i = 0; i < FAMIGLIE.length; i++) if (FAMIGLIE[i].test(n)) return FAMIGLIE[i].k; return "stemmi"; }
-  function etichettaFamiglia(k){ var f = FAMIGLIE.filter(function(x){ return x.k === k; })[0]; return f ? f.eti : k; }
-  function chipsFoto(){
-    var conta = {}; FOTO.forEach(function(f){ conta[f.fam] = (conta[f.fam] || 0) + 1; });
-    el("chipsFoto").innerHTML = FAMIGLIE.filter(function(F){ return conta[F.k]; }).map(function(F){
-      return '<button class="chip' + (TIPO === "foto:" + F.k ? " on" : "") + '" data-t="foto:' + F.k + '" type="button">' + esc(F.eti) + ' <span class="n">' + conta[F.k] + '</span></button>';
+  var CAT = {}; CATEGORIE.forEach(function(c){ CAT[c.k] = c; });
+  function famiglia(n){ for (var i = 0; i < CATEGORIE.length; i++) if (CATEGORIE[i].foto && CATEGORIE[i].foto(n)) return CATEGORIE[i].k; return "stemmi"; }
+  function etichettaFamiglia(k){ return CAT[k] ? CAT[k].eti : k; }
+  function catDi(x){ return x.t === "foto" ? x.fam : x.t; }
+  function chipsCat(){
+    var conta = {};
+    FOTO.forEach(function(f){ conta[f.fam] = (conta[f.fam] || 0) + 1; });
+    conta.evento = EVENTI.length; conta.video = VIDEO.length; conta.espn = STEMMI.length; conta.file = FILE.length; conta.detto = DETTO_INFO ? DETTO_INFO.partite : (EVENTI.filter(function(x){ return x.telecronaca; }).length);
+    el("chipsCat").innerHTML = CATEGORIE.map(function(C){
+      var n = conta[C.k] || 0; if (!n && C.k !== "file" && C.k !== "detto") return "";
+      return '<button class="chip' + (TIPO === C.k ? " on" : "") + '" data-t="' + C.k + '" data-c="1" style="--c:' + C.c + '" type="button">' + esc(C.eti) + ' <span class="n">' + n + '</span></button>';
     }).join("");
   }
   function caricaTutto(){
@@ -248,16 +270,22 @@
     fetch(PONTE + "?loghi=1", { cache:"no-store" }).then(function(r){ return r.json(); }).then(function(j){
       FOTO = ((j && j.loghi) || []).map(function(f){ return { t:"foto", nome:f.chiave, url:BASE + f.url, peso:f.size, quando:f.ts||0, fam:famiglia(f.chiave), cerca:(f.chiave + " " + famiglia(f.chiave)).toLowerCase() }; });
       FOTO.sort(function(a,b){ return b.quando - a.quando; });
-      el("nFoto").textContent = FOTO.length; chipsFoto(); disegna();
+      el("nFoto").textContent = FOTO.length; chipsCat(); disegna();
     }).catch(function(){ avviso("err","Ponte non raggiungibile."); });
     fetch(PONTE + "?video=1", { cache:"no-store" }).then(function(r){ return r.json(); }).then(function(j){
       VIDEO = ((j && j.video) || []).map(function(c){ return { t:"video", nome:c.file, file:c.file, src:BASE_VIDEO + c.file, peso:c.size, quando:c.ts||0, cerca:c.file.toLowerCase() }; });
-      el("nVideo").textContent = VIDEO.length; el("cV").textContent = VIDEO.length; disegna();
+      el("nVideo").textContent = VIDEO.length; chipsCat(); disegna();
     }).catch(function(){});
     post({ tipo:"clip-qnap-eventi" }).then(function(j){
       EVENTI = (j.eventi || []).map(function(x){ x.t = "evento"; x.cerca = [x.partita, x.nome, x.cartella, x.competizione, quando(x.quando)].join(" ").toLowerCase(); return x; });
-      el("nEventi").textContent = EVENTI.length; el("cE").textContent = EVENTI.length; disegna();
+      el("nEventi").textContent = EVENTI.length; chipsCat(); disegna();
     }).catch(function(e){ el("nEventi").textContent = "—"; avviso("warn", "QNAP non raggiungibile: " + esc(e.message)); });
+    post({ tipo:"clip-stemmi" }).then(function(j){
+      STEMMI = (j.stemmi || []).map(function(x){ return { t:"espn", nome:x.nome, logo:x.logo, lega:x.lega, cerca:(x.nome + " " + x.lega + " stemma logo").toLowerCase() }; });
+      chipsCat(); disegna();
+    }).catch(function(){});
+    // anche le cartelle entrano subito nella ricerca
+    caricaFile();
   }
   // le cartelle e i file si leggono solo quando servono (la prima volta che
   // si cerca o si chiede il gruppo), radice per radice
@@ -270,31 +298,52 @@
           (e.elenco || []).forEach(function(v){ v.t = "file"; v.radice = r.id; v.radiceNome = r.nome; v.cerca = (v.nome + " " + (v.partita||"") + " " + r.nome).toLowerCase(); FILE.push(v); });
         }).catch(function(){});
       }));
-    }).then(function(){ el("cQ").textContent = FILE.length; disegna(); });
+    }).then(function(){ chipsCat(); disegna(); });
   }
 
   // ══════════ LA RICERCA ══════════
   function parole(){ return CERCA.toLowerCase().split(/\s+/).filter(Boolean); }
+  function cercaDetto(){
+    var q = CERCA.trim();
+    if (q.length < 3) { DETTO = []; DETTO_Q = ""; DETTO_INFO = null; return; }
+    if (q === DETTO_Q) return;
+    clearTimeout(DETTO_T);
+    DETTO_T = setTimeout(function(){
+      var mia = q;
+      post({ tipo:"clip-parlato-cerca", q: mia, quante: 150 }).then(function(j){
+        if (mia !== CERCA.trim()) return;
+        DETTO_Q = mia; DETTO_INFO = { partite: j.partite, totale: j.totale };
+        DETTO = (j.righe || []).map(function(r){ r.t = "detto"; r.cerca = "\u0001"; return r; });
+        chipsCat(); disegna();
+      }).catch(function(){});
+    }, 350);
+  }
+  function tcMin(s){ s = Math.max(0, Math.round(s)); var h = Math.floor(s/3600), m = Math.floor(s%3600/60), x = s%60;
+    return (h ? h + ":" : "") + (m < 10 && h ? "0" : "") + m + ":" + (x < 10 ? "0" : "") + x; }
+  function evidenzia(testo){
+    var t = esc(testo), q = parole();
+    q.forEach(function(w){ if (w.length < 2) return; var re = new RegExp("(" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "ig"); t = t.replace(re, "<mark>$1</mark>"); });
+    return t;
+  }
   function passa(x){ var p = parole(); return p.every(function(w){ return x.cerca.indexOf(w) >= 0; }); }
   function disegna(){
     var q = parole(), out = "", tot = 0;
     // senza una parola (o una categoria scelta) la pagina resta pulita
     var attivo = q.length > 0 || TIPO !== "tutto";
+    cercaDetto();
     el("due").classList.toggle("nascosto", !attivo);
     el("suggerimento").hidden = attivo;
     if (!attivo) { el("risultati").innerHTML = ""; return; }
-    var gruppi = [
-      { t:"evento", nome:"Eventi completi", lista:EVENTI, tetto: TIPO === "evento" ? 300 : 6 },
-      { t:"video", nome:"Video", lista:VIDEO, tetto: TIPO === "video" ? 300 : 5 }
-    ];
-    FAMIGLIE.forEach(function(F){ gruppi.push({ t:"foto:" + F.k, nome:F.eti, lista:FOTO.filter(function(f){ return f.fam === F.k; }), tetto: TIPO === "foto:" + F.k ? 400 : 4 }); });
-    gruppi.push({ t:"file", nome:"Cartelle QNAP e VM", lista:FILE, tetto: TIPO === "file" ? 400 : 6 });
+    var gruppi = CATEGORIE.map(function(C){
+      var lista = C.k === "evento" ? EVENTI : C.k === "video" ? VIDEO : C.k === "espn" ? STEMMI : C.k === "file" ? FILE : C.k === "detto" ? DETTO : FOTO.filter(function(f){ return f.fam === C.k; });
+      return { t:C.k, nome:C.eti, c:C.c, lista:lista, tetto: TIPO === C.k ? 400 : 5 };
+    });
     gruppi.forEach(function(g){
       if (TIPO !== "tutto" && TIPO !== g.t) return;
-      var v = q.length ? g.lista.filter(passa) : g.lista.slice(0, 400);
-      if (!v.length) return;
+      var v = g.t === "detto" ? (q.length ? DETTO : []) : (q.length ? g.lista.filter(passa) : g.lista.slice(0, 400));
+      if (!v.length) { if (g.t === "detto" && TIPO === "detto") out += '<div class="vuoto">' + (q.length < 1 ? "Scrivi cosa cerchi nelle telecronache: un nome, una frase." : DETTO_Q === CERCA.trim() ? "Nessuna telecronaca dice \u00ab" + esc(CERCA) + "\u00bb." : "Cerco nelle telecronache\u2026") + '</div>'; return; }
       tot += v.length;
-      out += '<div class="gruppo">' + g.nome + '<span>' + (q.length ? v.length : g.lista.length) + '</span></div>';
+      out += '<div class="gruppo" data-c="1" style="--c:' + g.c + '">' + g.nome + '<span>' + (g.t === "detto" && DETTO_INFO ? DETTO_INFO.totale + " in " + DETTO_INFO.partite + (DETTO_INFO.partite === 1 ? " partita" : " partite") : (q.length ? v.length : g.lista.length)) + '</span></div>';
       out += v.slice(0, g.tetto).map(riga).join("");
       if (v.length > g.tetto) out += '<div class="altri">…e altri ' + (v.length - g.tetto) + ': ' + (TIPO === "tutto" ? 'scegli il gruppo qui sopra o ' : '') + 'affina la ricerca.</div>';
     });
@@ -303,20 +352,26 @@
     if (q.length && !FILE_CARICATI) caricaFile();
     if (TIPO === "file" && !FILE_CARICATI) caricaFile();
   }
-  function chiave(x){ return x.t + ":" + (x.via || x.file || x.nome) + ":" + (x.radice || ""); }
+  function chiave(x){ return x.t === "detto" ? "detto:" + x.reg + ":" + x.a : x.t + ":" + (x.via || x.file || x.nome) + ":" + (x.radice || ""); }
+  function colore(x){ var c = CAT[catDi(x)]; return c ? c.c : "#8A8B96"; }
   function riga(x){
     var sel = SCELTO && chiave(SCELTO) === chiave(x);
-    var ic = x.t === "foto" ? "&#128444;" : x.t === "video" ? "&#127916;" : x.t === "evento" ? "&#9917;" : x.tipo === "cartella" ? "&#128193;" : "&#128196;";
+    var ic = x.t === "foto" ? "&#128444;" : x.t === "video" ? "&#127916;" : x.t === "evento" ? "&#9917;" : x.t === "espn" ? "&#128737;" : x.t === "detto" ? "&#128172;" : x.tipo === "cartella" ? "&#128193;" : "&#128196;";
     var titolo, sotto, tag = "";
     if (x.t === "foto") { titolo = x.nome; sotto = peso(x.peso) + (x.quando ? " · " + quando(x.quando) : ""); }
     else if (x.t === "video") { titolo = x.nome.replace(/\.mp4$/i, ""); sotto = peso(x.peso) + (DURATE[x.file] ? " · " + Math.round(DURATE[x.file]) + " s" : ""); }
+    else if (x.t === "espn") { titolo = x.nome; sotto = (x.lega || "ESPN") + (x.logo ? "" : " · stemma non ancora visto"); if (x.logo) ic = '<img src="' + esc(x.logo) + '" alt="" style="width:20px;height:20px;object-fit:contain">'; }
+    else if (x.t === "detto") {
+      return '<div class="riga' + (sel ? " sel" : "") + '" data-k="' + esc(chiave(x)) + '" data-c="1" style="--c:' + colore(x) + '"><span class="ic detto">' + ic + '</span>' +
+        '<span class="nome" style="text-transform:none;font-family:\'DM Sans\',sans-serif;font-weight:500;flex-direction:column;align-items:flex-start;gap:1px"><span style="white-space:normal;font-size:12.5px">\u201c' + evidenzia(x.testo) + '\u201d</span><small>' + esc(x.titolo) + ' \u00b7 ' + tcMin(x.a) + ' \u00b7 ' + (x.lingua === "en" ? "ENG" : "ITA") + '</small></span></div>';
+    }
     else if (x.t === "evento") { titolo = x.partita || x.nome.replace(/\.[^.]+$/, ""); sotto = x.nome + (x.cartella ? " · " + x.cartella : "") + " · " + peso(x.peso) + (x.durata ? " · " + durata(x.durata) : "") + " · " + quando(x.quando);
       tag = x.telecronaca ? '<span class="tag tc" title="telecronaca trascritta">tc</span>' : (x.partita ? "" : '<span class="tag no">senza nome</span>'); }
     else { titolo = x.nome; sotto = x.radiceNome + (x.via.indexOf("/") >= 0 ? " · " + x.via.split("/").slice(0, -1).join("/") : "") + (x.tipo === "cartella" ? " · cartella" : " · " + peso(x.peso)) + (x.partita ? " · " + x.partita : ""); }
-    return '<div class="riga' + (sel ? " sel" : "") + '" data-k="' + esc(chiave(x)) + '"><span class="ic ' + x.t + '">' + ic + '</span>' +
+    return '<div class="riga' + (sel ? " sel" : "") + '" data-k="' + esc(chiave(x)) + '" data-c="1" style="--c:' + colore(x) + '"><span class="ic ' + x.t + '">' + ic + '</span>' +
       '<span class="nome"><span title="' + esc(titolo) + '">' + esc(titolo) + '</span><small title="' + esc(sotto) + '">' + esc(sotto) + '</small></span>' + tag + '</div>';
   }
-  function trova(k){ return [].concat(EVENTI, VIDEO, FOTO, FILE).filter(function(x){ return chiave(x) === k; })[0]; }
+  function trova(k){ return [].concat(EVENTI, VIDEO, FOTO, FILE, STEMMI, DETTO).filter(function(x){ return chiave(x) === k; })[0]; }
   el("risultati").addEventListener("click", function(e){
     var r = e.target.closest ? e.target.closest(".riga[data-k]") : null; if (!r) return;
     var x = trova(r.dataset.k); if (!x) return;
@@ -328,7 +383,6 @@
   el("chips").addEventListener("click", function(e){
     var c = e.target.closest ? e.target.closest(".chip[data-t]") : null; if (!c) return;
     TIPO = c.dataset.t; document.querySelectorAll("#chips .chip[data-t]").forEach(function(z){ z.classList.toggle("on", z === c); }); disegna();
-    if (TIPO === "file") caricaFile();
   });
   document.addEventListener("keydown", function(e){
     if (e.key === "/" && e.target.tagName !== "INPUT") { e.preventDefault(); el("cerca").focus(); el("cerca").select(); }
@@ -338,6 +392,23 @@
   // ══════════ L'ANTEPRIMA ══════════
   function anteprima(x){
     var a = el("anteprima"), h = "";
+    a.setAttribute("data-c", "1"); a.style.setProperty("--c", colore(x));
+    if (x.t === "detto") {
+      var apri = MAM + (x.rec ? "&apri=" + encodeURIComponent(x.rec) : "") + "&t=" + Math.floor(x.a);
+      a.innerHTML = '<div class="et">Telecronaca \u00b7 ' + (x.lingua === "en" ? "inglese" : "italiano") + '</div><h3 style="text-transform:none">' + esc(x.titolo) + '</h3>' +
+        '<div class="metaf"><span>a</span><b>' + tcMin(x.a) + ' \u2192 ' + tcMin(x.b) + '</b></div>' +
+        '<div style="font-size:13.5px;line-height:1.5">' + (x.prima ? '<div style="color:var(--fg-3)">' + esc(x.prima) + '</div>' : '') + '<div style="color:var(--ivory);padding:4px 0">' + evidenzia(x.testo) + '</div>' + (x.dopo ? '<div style="color:var(--fg-3)">' + esc(x.dopo) + '</div>' : '') + '</div>' +
+        '<div class="azioni">' + (x.rec ? '<a class="tasto oro" href="' + apri + '" target="_blank" rel="noopener">Apri nel MAM a questo punto</a>' : '<span class="vuoto" style="padding:0">partita senza evento: apri il MAM e cerca ' + tcMin(x.a) + '</span>') + '</div>';
+      return;
+    }
+    if (x.t === "espn") {
+      a.innerHTML = '<div class="et">Stemma ESPN' + (x.lega ? ' · ' + esc(x.lega) : '') + '</div><h3>' + esc(x.nome) + '</h3>' +
+        (x.logo ? '<div class="media"><img class="stemma" src="' + esc(x.logo) + '" alt=""></div><div class="metaf"><span>indirizzo</span><b>' + esc(x.logo) + '</b></div>' +
+                  '<div class="azioni"><a class="tasto" href="' + esc(x.logo) + '" target="_blank" rel="noopener">Apri</a><button type="button" id="azCercaSq">Tutto su ' + esc(x.nome) + '</button></div>'
+                : '<div class="vuoto" style="padding:8px 0">Lo stemma arriva da ESPN la prima volta che il MAM legge una partita di questa squadra.</div><div class="azioni"><button type="button" id="azCercaSq">Tutto su ' + esc(x.nome) + '</button></div>');
+      el("azCercaSq").addEventListener("click", function(){ el("cerca").value = x.nome; CERCA = x.nome; el("box").classList.add("pieno"); TIPO = "tutto"; chipsCat(); disegna(); });
+      return;
+    }
     if (x.t === "foto") {
       h = '<div class="et">' + esc(etichettaFamiglia(x.fam)) + '</div><h3>' + esc(x.nome) + '</h3>' +
           '<div class="media"><img class="quadretti" src="' + esc(x.url) + '" alt=""></div>' +
