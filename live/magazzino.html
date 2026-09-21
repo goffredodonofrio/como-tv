@@ -231,6 +231,7 @@
   // (partita intera sulla QNAP), file o cartella (QNAP e VM). La ricerca
   // guarda dentro tutti insieme e i risultati escono raggruppati.
   var FOTO = [], VIDEO = [], EVENTI = [], FILE = [], STEMMI = [], DETTO = [], DETTO_Q = "", DETTO_T = null, DETTO_INFO = null, FILE_CARICATI = false, NOMI = null;
+  var AZIONI = [], AZIONI_Q = "", AZIONI_INFO = null;
   function piatto(t){ return String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
   // il nome intero dietro il file: foto-premium-paz -> "Nico Paz · Como"
   function nomiDellaFoto(chiave){
@@ -251,6 +252,7 @@
   // dividono dal nome del file; il resto viene da dove sta (QNAP, ponte, ESPN).
   var CATEGORIE = [
     { k:"evento",     eti:"Eventi",      c:"#4FA3E8" },
+    { k:"azione",     eti:"Azioni",      c:"#7CD992" },
     { k:"video",      eti:"Video",       c:"#CE7FA6" },
     { k:"maglie",     eti:"Maglie",      c:"#4FCB8B", foto:function(n){ return n.indexOf("maglia-") === 0; } },
     { k:"allenatori", eti:"Allenatori",  c:"#B48CF2", foto:function(n){ return n.indexOf("foto-premium-coach-") === 0 || n.indexOf("foto-coach-") === 0 || n.indexOf("allenatore-") === 0; } },
@@ -273,10 +275,10 @@
     var conta = {};
     FOTO.forEach(function(f){ conta[f.fam] = (conta[f.fam] || 0) + 1; });
     conta.evento = EVENTI.length; conta.video = VIDEO.length; conta.espn = STEMMI.length; conta.file = FILE.length;
-    conta.detto = DETTO.filter(function(x){ return x.lingua !== "en"; }).length; conta.dettoEn = DETTO.filter(function(x){ return x.lingua === "en"; }).length;
+    conta.detto = DETTO.filter(function(x){ return x.lingua !== "en"; }).length; conta.dettoEn = DETTO.filter(function(x){ return x.lingua === "en"; }).length; conta.azione = AZIONI.length;
     el("chipsCat").innerHTML = CATEGORIE.map(function(C){
-      var n = conta[C.k] || 0; if (!n && C.k !== "file" && C.k !== "detto" && C.k !== "dettoEn") return "";
-      if ((C.k === "detto" || C.k === "dettoEn") && !n) n = "";
+      var n = conta[C.k] || 0; if (!n && C.k !== "file" && C.k !== "detto" && C.k !== "dettoEn" && C.k !== "azione") return "";
+      if ((C.k === "detto" || C.k === "dettoEn" || C.k === "azione") && !n) n = "";
       return '<button class="chip' + (TIPO === C.k ? " on" : "") + '" data-t="' + C.k + '" data-c="1" style="--c:' + C.c + '" type="button">' + esc(C.eti) + ' <span class="n">' + n + '</span></button>';
     }).join("");
   }
@@ -327,7 +329,7 @@
   function parole(){ return piatto(CERCA).split(/\s+/).filter(Boolean); }
   function cercaDetto(){
     var q = CERCA.trim();
-    if (q.length < 3) { DETTO = []; DETTO_Q = ""; DETTO_INFO = null; return; }
+    if (q.length < 3) { DETTO = []; DETTO_Q = ""; DETTO_INFO = null; AZIONI = []; AZIONI_Q = ""; AZIONI_INFO = null; return; }
     if (q === DETTO_Q) return;
     clearTimeout(DETTO_T);
     DETTO_T = setTimeout(function(){
@@ -336,6 +338,12 @@
         if (mia !== CERCA.trim()) return;
         DETTO_Q = mia; DETTO_INFO = { partite: j.partite, totale: j.totale };
         DETTO = (j.righe || []).map(function(r){ r.t = "detto"; r.cerca = "\u0001"; return r; });
+        chipsCat(); disegna();
+      }).catch(function(){});
+      post({ tipo:"clip-tabellino-cerca", q: mia, quante: 1000 }).then(function(j){
+        if (mia !== CERCA.trim()) return;
+        AZIONI_Q = mia; AZIONI_INFO = { partite: j.partite, totale: j.totale, tipi: j.tipi };
+        AZIONI = (j.righe || []).map(function(r){ r.t2 = r.t; r.t = "azione"; r.cerca = "\u0001"; return r; });
         chipsCat(); disegna();
       }).catch(function(){});
     }, 350);
@@ -359,14 +367,15 @@
     var gruppi = CATEGORIE.map(function(C){
       var lista = C.k === "evento" ? EVENTI : C.k === "video" ? VIDEO : C.k === "espn" ? STEMMI : C.k === "file" ? FILE
                 : C.k === "detto" ? DETTO.filter(function(x){ return x.lingua !== "en"; }) : C.k === "dettoEn" ? DETTO.filter(function(x){ return x.lingua === "en"; })
+                : C.k === "azione" ? AZIONI
                 : FOTO.filter(function(f){ return f.fam === C.k; });
       // tutto subito, senza "e altri": la lista scorre nel suo riquadro
-      return { t:C.k, nome:C.eti, c:C.c, lista:lista, tetto: 3000, detto: C.k === "detto" || C.k === "dettoEn" };
+      return { t:C.k, nome:C.eti, c:C.c, lista:lista, tetto: 3000, detto: C.k === "detto" || C.k === "dettoEn" || C.k === "azione" };
     });
     gruppi.forEach(function(g){
       if (TIPO !== "tutto" && TIPO !== g.t) return;
       var v = g.detto ? (q.length ? g.lista : []) : (q.length ? g.lista.filter(passa) : g.lista.slice(0, 3000));
-      if (!v.length) { if (g.detto && TIPO === g.t) out += '<div class="vuoto">' + (q.length < 1 ? "Scrivi cosa cerchi nelle telecronache: un nome, una frase." : DETTO_Q === CERCA.trim() ? "Nessuna telecronaca dice \u00ab" + esc(CERCA) + "\u00bb." : "Cerco nelle telecronache\u2026") + '</div>'; return; }
+      if (!v.length) { if (g.detto && TIPO === g.t) out += '<div class="vuoto">' + (q.length < 1 ? (g.t === "azione" ? "Scrivi cosa cerchi nei tabellini: \u201ctutti i gol di Douvikas\u201d, \u201crigori\u201d, \u201cparate Butez\u201d\u2026" : "Scrivi cosa cerchi nelle telecronache: un nome, una frase.") : (g.t === "azione" ? AZIONI_Q : DETTO_Q) === CERCA.trim() ? "Niente per \u00ab" + esc(CERCA) + "\u00bb." : "Cerco\u2026") + '</div>'; return; }
       tot += v.length;
       var partite = {}; v.forEach(function(x){ if (x.reg) partite[x.reg] = 1; });
       out += '<div class="gruppo" data-c="1" data-t="' + g.t + '" style="--c:' + g.c + ';cursor:pointer" title="solo ' + esc(g.nome) + '">' + g.nome + '<span>' + v.length + (g.detto ? " in " + Object.keys(partite).length + (Object.keys(partite).length === 1 ? " partita" : " partite") : "") + '</span></div>';
@@ -378,7 +387,7 @@
     if (q.length && !FILE_CARICATI) caricaFile();
     if (TIPO === "file" && !FILE_CARICATI) caricaFile();
   }
-  function chiave(x){ return x.t === "detto" ? "detto:" + x.reg + ":" + x.a : x.t + ":" + (x.via || x.file || x.nome) + ":" + (x.radice || ""); }
+  function chiave(x){ return x.t === "detto" ? "detto:" + x.reg + ":" + x.a : x.t === "azione" ? "azione:" + x.reg + ":" + x.t2 : x.t + ":" + (x.via || x.file || x.nome) + ":" + (x.radice || ""); }
   function colore(x){ var c = CAT[catDi(x)]; return c ? c.c : "#8A8B96"; }
   function riga(x){
     var sel = SCELTO && chiave(SCELTO) === chiave(x);
@@ -387,6 +396,11 @@
     if (x.t === "foto") { titolo = x.nome; sotto = (x.nomi ? x.nomi.split(" ; ")[0] + " · " : "") + peso(x.peso) + (x.quando ? " · " + quando(x.quando) : ""); }
     else if (x.t === "video") { titolo = x.nome.replace(/\.mp4$/i, ""); sotto = peso(x.peso) + (DURATE[x.file] ? " · " + Math.round(DURATE[x.file]) + " s" : ""); }
     else if (x.t === "espn") { titolo = x.nome; sotto = (x.lega || "ESPN") + (x.logo ? "" : " · stemma non ancora visto"); if (x.logo) ic = '<img src="' + esc(x.logo) + '" alt="" style="width:20px;height:20px;object-fit:contain">'; }
+    else if (x.t === "azione") {
+      var etic = (x.tag || x.tipo || "azione").toUpperCase();
+      return '<div class="riga' + (sel ? " sel" : "") + '" data-k="' + esc(chiave(x)) + '" data-c="1" style="--c:' + colore(x) + '"><span class="ic azione">' + (x.gol ? "&#9917;" : "&#9889;") + '</span>' +
+        '<span class="nome"><span>' + esc(etic) + ' \u00b7 ' + evidenzia(x.titolo || x.giocatore || "") + '</span><small>' + esc(x.partita) + (x.minuto ? ' \u00b7 ' + esc(x.minuto) : '') + ' \u00b7 ' + tcMin(x.t2) + ' \u00b7 ' + esc((x.fonti || [x.fonte]).join("+")) + '</small></span></div>';
+    }
     else if (x.t === "detto") {
       return '<div class="riga' + (sel ? " sel" : "") + '" data-k="' + esc(chiave(x)) + '" data-c="1" style="--c:' + colore(x) + '"><span class="ic detto">' + ic + '</span>' +
         '<span class="nome" style="text-transform:none;font-family:\'DM Sans\',sans-serif;font-weight:500;flex-direction:column;align-items:flex-start;gap:1px"><span style="white-space:normal;font-size:12.5px">\u201c' + evidenzia(x.testo) + '\u201d</span><small>' + (x.lingua === "en" ? "\uD83C\uDDEC\uD83C\uDDE7" : "\uD83C\uDDEE\uD83C\uDDF9") + ' ' + esc(x.titolo) + ' \u00b7 ' + tcMin(x.a) + '</small></span></div>';
@@ -397,7 +411,7 @@
     return '<div class="riga' + (sel ? " sel" : "") + '" data-k="' + esc(chiave(x)) + '" data-c="1" style="--c:' + colore(x) + '"><span class="ic ' + x.t + '">' + ic + '</span>' +
       '<span class="nome"><span title="' + esc(titolo) + '">' + esc(titolo) + '</span><small title="' + esc(sotto) + '">' + esc(sotto) + '</small></span>' + tag + '</div>';
   }
-  function trova(k){ return [].concat(EVENTI, VIDEO, FOTO, FILE, STEMMI, DETTO).filter(function(x){ return chiave(x) === k; })[0]; }
+  function trova(k){ return [].concat(EVENTI, VIDEO, FOTO, FILE, STEMMI, DETTO, AZIONI).filter(function(x){ return chiave(x) === k; })[0]; }
   function vaiCategoria(t){
     TIPO = t; chipsCat(); disegna();
     var c = document.querySelector('#chips .chip[data-t="' + t + '"]'); if (c) c.scrollIntoView({ inline: "nearest", block: "nearest" });
@@ -425,6 +439,23 @@
   function anteprima(x){
     var a = el("anteprima"), h = "";
     a.setAttribute("data-c", "1"); a.style.setProperty("--c", colore(x));
+    if (x.t === "azione") {
+      var apriA = MAM + (x.rec ? "&apri=" + encodeURIComponent(x.rec) : "") + "&t=" + Math.floor(x.dentro);
+      a.innerHTML = '<div class="et">' + esc(x.tag || x.tipo || "Azione") + (x.gol ? ' \u00b7 gol' : '') + '</div><h3 style="text-transform:none">' + esc(x.titolo || x.giocatore || "") + '</h3>' +
+        (x.chiave ? '<div class="media" id="azMedia"><div class="vuoto" style="padding:14px">carico l\u2019azione\u2026</div></div>' : '') +
+        '<div class="metaf"><span>partita</span><b>' + esc(x.partita) + '</b>' + (x.minuto ? '<span>minuto</span><b>' + esc(x.minuto) + '</b>' : '') + '<span>al</span><b>' + tcMin(x.t2) + ' (dal ' + tcMin(x.dentro) + ' al ' + tcMin(x.fuori) + ')</b>' +
+        (x.squadra ? '<span>squadra</span><b>' + esc(x.squadra) + '</b>' : '') + '<span>fonte</span><b>' + esc((x.fonti || [x.fonte]).join(" + ")) + (x.certezza ? ' \u00b7 ' + esc(x.certezza) : '') + '</b></div>' +
+        '<div class="azioni">' + (x.rec ? '<a class="tasto oro" href="' + apriA + '" target="_blank" rel="noopener">Apri nel MAM sull\u2019azione</a>' : '') + '</div>';
+      if (x.chiave) post({ tipo:"clip-qnap-via", via:x.chiave, radice:"qnap" }).then(function(d){
+        var m = el("azMedia"); if (!m) return;
+        var da = Math.max(0, x.dentroFile), fine = da + Math.max(6, x.fuori - x.dentro);
+        m.innerHTML = '<video controls preload="metadata" playsinline src="' + BASE + d.via + '#t=' + da.toFixed(1) + '"></video>';
+        var v = m.querySelector("video");
+        v.addEventListener("loadedmetadata", function(){ try { if (Math.abs(v.currentTime - da) > 1) v.currentTime = da; } catch (e) {} });
+        v.addEventListener("timeupdate", function(){ if (v.currentTime > fine && !v.paused) v.pause(); });
+      }).catch(function(){ var m = el("azMedia"); if (m) m.innerHTML = ""; });
+      return;
+    }
     if (x.t === "detto") {
       var apri = MAM + (x.rec ? "&apri=" + encodeURIComponent(x.rec) : "") + "&t=" + Math.floor(x.a);
       a.innerHTML = '<div class="et">Telecronaca ' + (x.lingua === "en" ? "\uD83C\uDDEC\uD83C\uDDE7 inglese" : "\uD83C\uDDEE\uD83C\uDDF9 italiano") + '</div><h3 style="text-transform:none">' + esc(x.titolo) + '</h3>' +

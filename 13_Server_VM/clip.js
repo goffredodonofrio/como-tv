@@ -11004,6 +11004,63 @@ const AZIONI = {
     return { ok: true, eventi: fuori, peso: fuori.reduce((n, x) => n + x.peso, 0), quanti: fuori.length, scrivibile: qnapSiScrive() };
   },
   "clip-qnap-peso": qnapPeso,
+  // CERCARE NEI TABELLINI DI TUTTE LE PARTITE. "tutti i gol di douvikas":
+  // le parole che dicono un TIPO di azione (gol, rigore, parata, cartellino,
+  // palo, cambio, assist...) diventano un filtro sul tipo; il resto sono
+  // nomi e si cercano nel titolo dell'azione, nel giocatore, nella squadra.
+  // I tabellini si tengono in memoria un minuto: farli costa.
+  "clip-tabellino-cerca": (p) => {
+    const q = String(p.q || "").trim(); if (q.length < 2) return { ok: true, righe: [] };
+    const FERMA = new Set("tutti tutte tutto i il lo la le gli di del della dello dei degli delle da dal dalla a al alla ai alle in nel nella con per e ed o che un una uno su sul sulla mi fammi trova cerca vedere vedi".split(" "));
+    const TIPI = [
+      [/^(gol|goal|goals|rete|reti|marcatur\w*|segna\w*|marc\w+)$/, /\b(gol|goal|rete|autogol)\b/i],
+      [/^(assist)$/, /\bassist/i],
+      [/^(rigor\w*|penalty|dischetto)$/, /\brigor|\bpenalty/i],
+      [/^(parat\w*|miracol\w*|portier\w*)$/, /\bparat/i],
+      [/^(pal[oi]|travers\w*|legn\w*)$/, /\b(palo|pali|traversa)\b/i],
+      [/^(ammoni\w*|giall\w*|cartellin\w*|booking)$/, /\b(ammoni|cartellin|giall)/i],
+      [/^(espuls\w*|ross[oi])$/, /\bespuls|\brosso\b/i],
+      [/^(cambi\w*|sostituz\w*)$/, /\bsostituz|\bcambio\b/i],
+      [/^(occasion\w*|tir[oi]|conclusion\w*|chance)$/, /\boccasion|\btiro\b/i],
+      [/^(skill|dribbling|giocat[ae]|tunnel|tacco)$/, /\bskill/i],
+      [/^(var|annullat\w*)$/, /\bannullat|\bvar\b/i],
+      [/^(boat\w*|esultanz\w*)$/, /\bboato|\besult/i],
+      [/^(angol[oi]|corner)$/, /\b(angolo|corner)\b/i],
+      [/^(punizion\w*)$/, /\bpunizion/i]
+    ];
+    const tipi = []; const parole = [];
+    q.toLowerCase().split(/\s+/).forEach((w0) => {
+      const w = piattaMinuscola(w0); if (!w || FERMA.has(w)) return;
+      const t = TIPI.find((x) => x[0].test(w)); if (t) tipi.push(t[1]); else parole.push(w);
+    });
+    if (!tipi.length && !parole.length) return { ok: true, righe: [] };
+    const ora = Date.now();
+    if (!global.__TAB_CACHE || ora - global.__TAB_CACHE.quando > 60000) {
+      const per = {};
+      Object.keys(R.reg).forEach((k) => { const r = R.reg[k]; if (!r || !(r.evento || r.arch)) return; try { per[k] = tabellino(r).righe; } catch (e) { per[k] = []; } });
+      global.__TAB_CACHE = { quando: ora, per };
+    }
+    const per = global.__TAB_CACHE.per, fuori = [];
+    Object.keys(per).forEach((k) => {
+      const r = R.reg[k]; if (!r) return;
+      per[k].forEach((x) => {
+        // il tipo si legge da tipo ed etichetta (che classificano gia' il
+        // titolo): guardare la prosa faceva prendere "angolo" per "gol"
+        const soggetto = [x.tipo, x.tag].join(" ") || x.titolo;
+        if (tipi.length && !tipi.every((re) => re.test(soggetto))) return;
+        const testo = piattaMinuscola([x.titolo, x.giocatore, x.squadra, x.dettaglio, r.titolo].join(" "));
+        if (!parole.every((w) => testo.indexOf(w) >= 0)) return;
+        let chiave = "", dentroFile = x.dentro;
+        if (r.arch) { const pa = pezzoAl(r, x.dentro); if (pa && pa.pezzo && pa.pezzo.chiave) { chiave = pa.pezzo.chiave; dentroFile = pa.dentro; } else chiave = r.arch.chiave || ""; }
+        fuori.push({ reg: k, partita: r.titolo || k, rec: (r.arch && r.arch.rec) || r.evento || "", t: x.t, dentro: x.dentro, fuori: x.fuori,
+                     tipo: x.tipo, tag: x.tag, titolo: x.titolo, minuto: x.minuto, fonte: x.fonte, fonti: x.fonti, squadra: x.squadra, giocatore: x.giocatore,
+                     gol: x.gol, certezza: x.certezza, chiave, dentroFile, quando: r.finita || r.avviata || 0 });
+      });
+    });
+    fuori.sort((u, v) => (v.gol ? 1 : 0) - (u.gol ? 1 : 0) || String(v.quando).localeCompare(String(u.quando)) || u.t - v.t);
+    const partite = new Set(fuori.map((x) => x.reg)).size;
+    return { ok: true, righe: fuori.slice(0, num(p.quante, 1, 2000, 500)), totale: fuori.length, partite, tipi: tipi.length, parole };
+  },
   // I NOMI DIETRO LE FOTO: una foto premium si chiama col cognome
   // (foto-premium-paz), ma chi cerca scrive "nico paz". Da qui la pagina
   // prende, per ogni cognome, i nomi interi e le squadre del vocabolario,
