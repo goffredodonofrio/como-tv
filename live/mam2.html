@@ -43,6 +43,7 @@
   .testa .stato{font-size:11.5px;color:var(--fumo);white-space:nowrap;}
   .testa .stato b{color:var(--ok);font-weight:500;}
   .vista{flex:1 1 auto;min-height:0;display:none;} .vista.on{display:flex;}
+  @media (max-width:760px){ .testa{flex-wrap:wrap;gap:8px 12px;} .testa .cerca{flex:1 1 100%;order:9;margin-left:0;} .testa .stato{display:none;} }
 
   /* ── LIBRERIA ── */
   #libreria{flex-direction:column;overflow:auto;padding:22px 26px 40px;gap:22px;}
@@ -267,14 +268,33 @@
       disegnaRecenti(); disegnaCategorie();
     }).catch(function(e){ avviso("err", "QNAP non raggiungibile: " + esc(e.message)); });
   }
+  var POSE = {};
+  function posa(reg, t, poi){
+    if (!reg) return;
+    var k = reg + "|" + (t === undefined ? "" : t);
+    if (POSE[k]) { if (POSE[k] !== "…") poi(POSE[k]); return; }
+    POSE[k] = "…";
+    var c = { tipo:"clip-posa", reg: reg }; if (t !== undefined) c.t = t;
+    post(c).then(function(d){ POSE[k] = BASE + d.via; poi(POSE[k]); }).catch(function(){ POSE[k] = ""; });
+  }
   function disegnaRecenti(){
     if (!EVENTI.length) return;
     el("recenti").innerHTML = EVENTI.slice(0, 12).map(function(x){
       var r = x.reg && REGS[x.reg], mini = r && r.mini ? BASE + r.mini : "";
       return '<a class="card" href="mam2.html?asset=' + encodeURIComponent(x.rec || "") + (x.reg ? "&reg=" + encodeURIComponent(x.reg) : "") + '">' +
-        '<div class="mini" style="' + (mini ? "background-image:url('" + esc(mini) + "')" : "") + '">' + (x.telecronaca ? '<span class="tc">tc</span>' : '') + '<span class="play">&#9654;</span>' + (x.durata ? '<span class="dur">' + tc(x.durata) + '</span>' : '') + '</div>' +
+        '<div class="mini" data-reg="' + esc(x.reg || "") + '" style="' + (mini ? "background-image:url('" + esc(mini) + "')" : "") + '">' + (x.telecronaca ? '<span class="tc">tc</span>' : '') + '<span class="play">&#9654;</span>' + (x.durata ? '<span class="dur">' + tc(x.durata) + '</span>' : '') + '</div>' +
         '<div class="t"><b title="' + esc(x.partita || x.nome) + '">' + esc(x.partita || x.nome.replace(/\.[^.]+$/, "")) + '</b><small>' + esc(x.competizione || "") + (x.competizione ? " · " : "") + quando(x.quando) + ' · ' + peso(x.peso) + '</small></div></a>';
     }).join("");
+    // le pose arrivano una alla volta, e la scheda si accende quando c'e'
+    var da = Array.prototype.slice.call(el("recenti").querySelectorAll(".mini[data-reg]")).filter(function(m){ return m.dataset.reg; });
+    var giro = function(){ var m = da.shift(); if (!m) return; posa(m.dataset.reg, undefined, function(u){ m.style.backgroundImage = "url('" + u + "')"; }); setTimeout(giro, 150); };
+    giro();
+    // le partite mai aperte non hanno ancora una registrazione: la si apre
+    // (senza scaricare niente) e poi si chiede la posa
+    var senza = EVENTI.slice(0, 12).filter(function(x){ return !x.reg && x.rec; });
+    var giro2 = function(){ var x = senza.shift(); if (!x) return;
+      post({ tipo:"clip-archivio-apri", rec: x.rec }).then(function(d){ if (d.reg) { x.reg = d.reg.id; REGS[d.reg.id] = d.reg; var a = el("recenti").querySelector('a[href*="asset=' + x.rec + '"]'); if (a) { a.href += "&reg=" + d.reg.id; var m = a.querySelector(".mini"); m.dataset.reg = d.reg.id; posa(d.reg.id, undefined, function(u){ m.style.backgroundImage = "url('" + u + "')"; }); } } giro2(); }).catch(giro2); };
+    giro2();
   }
   function disegnaCategorie(){
     var conta = { evento: EVENTI.length, azione: "", detto: EVENTI.filter(function(x){ return x.telecronaca; }).length + " partite", foto: "", espn: "", file: "" };
@@ -344,11 +364,13 @@
       el("aMeta").innerHTML = [r.competizione, quando(r.avviata), durata(r.durata)].filter(Boolean).map(esc).join(" · ");
       el("sSotto").textContent = (r.arch && r.arch.chiave) || "";
       if (r.mini) el("sMini").src = BASE + r.mini;
+      posa(r.id, undefined, function(u){ el("sMini").src = u; });
       briciole([r.titolo || "partita"]);
       document.title = (r.titolo || "MAM") + " · MAM Como TV";
       V.src = BASE + r.via;
       if (t) V.addEventListener("loadedmetadata", function unaVolta(){ V.removeEventListener("loadedmetadata", unaVolta); try { V.currentTime = Math.max(0, t - 3); } catch (e) {} });
-      try { localStorage.setItem("mam2-ultimo", JSON.stringify({ titolo: r.titolo, url: location.pathname.replace(/^.*\//, "") + location.search, quando: new Date().toLocaleString("it-IT", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }), mini: r.mini ? BASE + r.mini : "", t: t || 0 })); } catch (e) {}
+      var ricorda = function(u){ try { localStorage.setItem("mam2-ultimo", JSON.stringify({ titolo: r.titolo, url: location.pathname.replace(/^.*\//, "") + location.search, quando: new Date().toLocaleString("it-IT", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }), mini: u || (r.mini ? BASE + r.mini : ""), t: t || 0 })); } catch (e) {} };
+      ricorda(""); posa(r.id, t ? Math.round(t) : undefined, ricorda);
       el("aMam").onclick = function(){ window.open(MAM + "&apri=" + encodeURIComponent(rec) + (V.currentTime ? "&t=" + Math.floor(V.currentTime) : ""), "_blank"); };
       el("aScarica").onclick = function(){ if (!r.arch) return; post({ tipo:"clip-qnap-via", via: r.arch.chiave, radice:"qnap" }).then(function(x){ var a = document.createElement("a"); a.href = BASE + x.via + "&scarica=1"; a.download = r.arch.chiave; document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); }, 1000); }).catch(function(e){ avviso("err", esc(e.message)); }); };
       el("aSrt").onclick = function(){ post({ tipo:"clip-parlato-srt", reg: r.id, lingua: LINGUA }).then(function(x){ var a = document.createElement("a"), u = URL.createObjectURL(new Blob([x.srt], { type:"text/plain;charset=utf-8" })); a.href = u; a.download = x.nome; document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); URL.revokeObjectURL(u); }, 1500); avviso("ok", x.righe + " righe in " + (x.lingua === "en" ? "inglese" : "italiano")); }).catch(function(e){ avviso("err", esc(e.message)); }); };

@@ -11004,6 +11004,29 @@ const AZIONI = {
     return { ok: true, eventi: fuori, peso: fuori.reduce((n, x) => n + x.peso, 0), quanti: fuori.length, scrivibile: qnapSiScrive() };
   },
   "clip-qnap-peso": qnapPeso,
+  // UNA POSA: un fotogramma fermo della registrazione al secondo chiesto,
+  // fatto una volta e tenuto nella cartella della registrazione. Serve alle
+  // schede della Libreria (una partita si riconosce dal campo, non dal
+  // nero) e alla testata dell'Asset.
+  "clip-posa": async (p) => {
+    const r = R.reg[String(p.reg || "")]; if (!r) throw new Error("registrazione sconosciuta");
+    const durata = r.durata || durataRegistrata(r.id) || 0;
+    let t = p.t === undefined || p.t === null ? Math.round((r.kickoff && r.kickoff["1"] ? r.kickoff["1"] + 1500 : durata * 0.45)) : Math.max(0, Math.round(+p.t || 0));
+    if (durata && t > durata - 2) t = Math.max(0, Math.floor(durata - 2));
+    t = Math.round(t / 5) * 5;                       // a passi di cinque secondi: le pose si condividono
+    const dir = cartellaReg(r.id); assicura(dir);
+    const f = path.join(dir, "posa-" + t + ".jpg");
+    if (!fs.existsSync(f)) {
+      let via, dentro = t;
+      if (r.arch) { const x = fonteAl(r, t); via = x.via; dentro = x.dentro; }
+      else if (r.materiale === "integrale" || fs.existsSync(path.join(dir, "integrale.mp4"))) via = path.join(dir, "integrale.mp4");
+      else via = sorgenteAudio(r);
+      if (!via) throw new Error("di questa registrazione non c'e' un file da cui prendere la posa");
+      const ok = await miniatura(via, f, dentro);
+      if (!ok) throw new Error("posa non riuscita");
+    }
+    return { ok: true, via: "/clip/" + r.id + "/posa-" + t + ".jpg", t };
+  },
   // CERCARE NEI TABELLINI DI TUTTE LE PARTITE. "tutti i gol di douvikas":
   // le parole che dicono un TIPO di azione (gol, rigore, parata, cartellino,
   // palo, cambio, assist...) diventano un filtro sul tipo; il resto sono
