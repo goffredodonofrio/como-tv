@@ -9580,7 +9580,10 @@ function serviFileLocale(req, res, file, extra) {
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) { res.writeHead(404).end("non trovato"); return; }
     const tipoFile = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp",
-                       ".mov": "video/quicktime", ".mkv": "video/x-matroska", ".ts": "video/mp2t", ".txt": "text/plain; charset=utf-8" }[path.extname(file).toLowerCase()] || "video/mp4";
+                       ".mov": "video/quicktime", ".mkv": "video/x-matroska", ".ts": "video/mp2t", ".txt": "text/plain; charset=utf-8",
+                       ".json": "application/json; charset=utf-8", ".srt": "text/plain; charset=utf-8", ".csv": "text/csv; charset=utf-8",
+                       ".log": "text/plain; charset=utf-8", ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+                       ".wav": "audio/wav", ".mp3": "audio/mpeg", ".pdf": "application/pdf", ".bin": "application/octet-stream" }[path.extname(file).toLowerCase()] || "video/mp4";
     const base = Object.assign({ "Content-Type": tipoFile, "Accept-Ranges": "bytes",
                    "Cache-Control": "private, max-age=3600", "Access-Control-Allow-Origin": "*" }, extra || {});
     const range = req.headers.range;
