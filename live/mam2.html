@@ -247,7 +247,7 @@
       <div class="cat" id="categorie"></div>
     </div>
     <div id="libRecenti">
-      <div class="sez"><h2>Ultime partite</h2><span id="recConto"></span><a class="dx b mini" href="magazzino.html" target="_blank" rel="noopener">Magazzino</a></div>
+      <div class="sez"><h2>Partite</h2><span id="recConto"></span><a class="dx b mini" href="magazzino.html" target="_blank" rel="noopener">Magazzino</a></div>
       <div class="griglia" id="recenti"></div>
     </div>
   </div>
@@ -408,17 +408,17 @@
     }).catch(function(e){ avviso("err", "QNAP non raggiungibile: " + esc(e.message)); });
   }
   var POSE = {};
-  function posa(reg, t, poi){
-    if (!reg) return;
+  function posa(reg, t, poi, fine){
+    if (!reg) { if (fine) fine(); return; }
     var k = reg + "|" + (t === undefined ? "" : t);
-    if (POSE[k]) { if (POSE[k] !== "…") poi(POSE[k]); return; }
+    if (POSE[k]) { if (POSE[k] !== "…") poi(POSE[k]); if (fine) fine(); return; }
     POSE[k] = "…";
     var c = { tipo:"clip-posa", reg: reg }; if (t !== undefined) c.t = t;
-    post(c).then(function(d){ POSE[k] = BASE + d.via; poi(POSE[k]); }).catch(function(){ POSE[k] = ""; });
+    post(c).then(function(d){ POSE[k] = BASE + d.via; poi(POSE[k]); }).catch(function(){ POSE[k] = ""; }).then(function(){ if (fine) fine(); });
   }
   function disegnaRecenti(){
     if (!EVENTI.length) return;
-    el("recenti").innerHTML = EVENTI.slice(0, 12).map(function(x){
+    el("recenti").innerHTML = EVENTI.map(function(x){
       var r = x.reg && REGS[x.reg], mini = r && r.mini ? BASE + r.mini : "";
       return '<a class="card" href="mam2.html?asset=' + encodeURIComponent(x.rec || "") + (x.reg ? "&reg=" + encodeURIComponent(x.reg) : "") + '">' +
         '<div class="mini" data-reg="' + esc(x.reg || "") + '" style="' + (mini ? "background-image:url('" + esc(mini) + "')" : "") + '">' + (x.telecronaca ? '<span class="tc">tc</span>' : '') + '<span class="play">&#9654;</span>' + (x.durata ? '<span class="dur">' + tc(x.durata) + '</span>' : '') + '</div>' +
@@ -426,11 +426,11 @@
     }).join("");
     // le pose arrivano una alla volta, e la scheda si accende quando c'e'
     var da = Array.prototype.slice.call(el("recenti").querySelectorAll(".mini[data-reg]")).filter(function(m){ return m.dataset.reg; });
-    var giro = function(){ var m = da.shift(); if (!m) return; posa(m.dataset.reg, undefined, function(u){ m.style.backgroundImage = "url('" + u + "')"; }); setTimeout(giro, 150); };
+    var giro = function(){ var m = da.shift(); if (!m) return; posa(m.dataset.reg, undefined, function(u){ m.style.backgroundImage = "url('" + u + "')"; }, function(){ setTimeout(giro, 80); }); };
     giro();
     // le partite mai aperte non hanno ancora una registrazione: la si apre
     // (senza scaricare niente) e poi si chiede la posa
-    var senza = EVENTI.slice(0, 12).filter(function(x){ return !x.reg && x.rec; });
+    var senza = EVENTI.filter(function(x){ return !x.reg && x.rec; });
     var giro2 = function(){ var x = senza.shift(); if (!x) return;
       post({ tipo:"clip-archivio-apri", rec: x.rec }).then(function(d){ if (d.reg) { x.reg = d.reg.id; REGS[d.reg.id] = d.reg; var a = el("recenti").querySelector('a[href*="asset=' + x.rec + '"]'); if (a) { a.href += "&reg=" + d.reg.id; var m = a.querySelector(".mini"); m.dataset.reg = d.reg.id; posa(d.reg.id, undefined, function(u){ m.style.backgroundImage = "url('" + u + "')"; }); } } giro2(); }).catch(giro2); };
     giro2();
