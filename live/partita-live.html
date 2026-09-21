@@ -257,7 +257,7 @@
     width:1200px;height:529px;z-index:2;display:none;}
   #radio.conCampo #radiocampo{display:block;}
   /* la card del protagonista: accanto al campo, dalla parte della sua squadra */
-  #rccard{position:absolute;top:560px;width:262px;z-index:4;opacity:0;pointer-events:none;
+  #rccard{position:absolute;top:560px;width:232px;z-index:4;opacity:0;pointer-events:none;
     transition:opacity .5s ease,transform .6s cubic-bezier(.3,.8,.4,1);
     filter:drop-shadow(0 22px 40px rgba(0,0,0,.55));}
   #rccard.a{left:56px;transform:translateX(-30px);}
@@ -1085,14 +1085,17 @@
   // ── la sagoma della card ────────────────────────────────────────────
   // Lo scudo delle card da collezione: bordo alto appena bombato, le due
   // spalle scavate, lati dritti e la punta in basso. Si disegna per una
-  // larghezza w, centrata in x, dall'alto (y0) in giu': alta 1,3 volte w.
+  // larghezza w, centrata in x, dall'alto (y0) in giu'.
   function rcScudo(w, y0) {
+    // misure prese dalla card di riferimento, in frazioni della larghezza:
+    // alta 1,59; le spalle scendono fino a 0,20; i lati dritti fino a 1,36;
+    // poi la punta
     function P(x, y) { return (x * w).toFixed(1) + " " + (y0 + y * w).toFixed(1); }
-    return "M" + P(-.30, .03) + " Q" + P(0, -.02) + " " + P(.30, .03) +
-           " Q" + P(.36, .12) + " " + P(.50, .13) + " L" + P(.50, 1.02) +
-           " Q" + P(.50, 1.12) + " " + P(.30, 1.18) + " L" + P(0, 1.30) +
-           " L" + P(-.30, 1.18) + " Q" + P(-.50, 1.12) + " " + P(-.50, 1.02) +
-           " L" + P(-.50, .13) + " Q" + P(-.36, .12) + " " + P(-.30, .03) + " Z";
+    return "M" + P(-.38, .035) + " Q" + P(0, -.012) + " " + P(.38, .035) +
+           " Q" + P(.385, .200) + " " + P(.50, .205) + " L" + P(.50, 1.36) +
+           " Q" + P(.50, 1.45) + " " + P(.36, 1.48) + " L" + P(0, 1.59) +
+           " L" + P(-.36, 1.48) + " Q" + P(-.50, 1.45) + " " + P(-.50, 1.36) +
+           " L" + P(-.50, .205) + " Q" + P(-.385, .200) + " " + P(-.38, .035) + " Z";
   }
   // i ruoli come li dice un telecronista italiano
   var RC_RUOLI = [[/^G/, "POR"], [/^SW/, "LIB"], [/^CD/, "DC"], [/^(LB|LWB)/, "TS"], [/^(RB|RWB)/, "TD"],
@@ -1119,56 +1122,71 @@
   // la inventiamo), il cognome nella fascia in basso. Il colore della
   // squadra fa lo sfondo, il filo d'oro la cornice. Senza foto la card
   // resta, col numero grande al centro.
-  var RC_CW = 68, RC_CH = 88, RC_CY = -64;        // larghezza, altezza, bordo alto (i piedi sono a 0)
+  var RC_CW = 62, RC_CH = 99, RC_CY = -78;        // larghezza, altezza (1,59), bordo alto: la punta tocca il prato
   function rcPedina(g, x, casa) {
     var ped = rcNs("g", { "data-pid": x.g.pid || "" }, g);
     ped.style.transition = "transform .7s cubic-bezier(.33,.85,.4,1)";
-    var tinta = casa ? RC.colCasa : RC.colOsp;
+    var tinta = casa ? RC.colCasa : RC.colOsp, testo = rcSuTinta(tinta), w = RC_CW, y0 = RC_CY;
     var svg = document.getElementById("rcampo");
     var difs = svg.querySelector("defs") || rcNs("defs", {}, svg);
-    // lo sfondo della card: il colore della squadra che scende nel navy
+    // lo sfondo: il colore della squadra, appena piu' chiaro in alto
     var gid = "rcg-" + (casa ? "a" : "b");
     if (!document.getElementById(gid)) {
-      var gr = rcNs("linearGradient", { id: gid, x1: 0, y1: 0, x2: 0, y2: 1 }, difs);
+      var gr = rcNs("linearGradient", { id: gid, x1: 0, y1: 0, x2: 1, y2: 1 }, difs);
       rcNs("stop", { offset: "0%", "stop-color": rcChiara(tinta) }, gr);
-      rcNs("stop", { offset: "58%", "stop-color": tinta }, gr);
-      rcNs("stop", { offset: "100%", "stop-color": "#0A0F24" }, gr);
+      rcNs("stop", { offset: "100%", "stop-color": tinta }, gr);
     }
-    rcNs("ellipse", { cx: 0, cy: RC_CY + RC_CH + 2, rx: 32, ry: 8, fill: "#000000", opacity: .38 }, ped);
-    var c = rcNs("path", { d: rcScudo(RC_CW, RC_CY), fill: "url(#" + gid + ")",
+    rcNs("ellipse", { cx: 0, cy: y0 + RC_CH + 1, rx: w * .5, ry: 7, fill: "#000000", opacity: .38 }, ped);
+    var c = rcNs("path", { d: rcScudo(w, y0), fill: "url(#" + gid + ")",
                            stroke: "#C9A24B", "stroke-width": 2.2, "stroke-linejoin": "round" }, ped);
     c.style.transition = "stroke .5s ease, stroke-width .5s ease";
-    // la fascia del nome
-    rcNs("rect", { x: -RC_CW / 2 + 1.5, y: RC_CY + 55, width: RC_CW - 3, height: 17, rx: 0,
-                   fill: "#0A0F24", "fill-opacity": .86, "data-fascia": "1" }, ped);
-    var n = rcNs("text", { x: 0, y: RC_CY + 68, "text-anchor": "middle",
-                           "font-family": "'Mazzard', sans-serif", "font-weight": 800,
-                           "font-size": 13, fill: "#F5F1E6", "letter-spacing": .2 }, ped);
+    function scritta(x, y, dim, peso, ancora) {
+      return rcNs("text", { x: x, y: y, "text-anchor": ancora || "middle", "font-family": "'Mazzard', sans-serif",
+                            "font-weight": peso, "font-size": dim, fill: testo }, ped);
+    }
+    // in alto a sinistra: numero e ruolo (dove le card dei videogiochi
+    // mettono una valutazione: noi un voto vero non ce l'abbiamo)
+    var t = scritta(-w * .28, y0 + w * .34, w * .30, 800);
+    t.textContent = x.g.num || "";
+    var ru = scritta(-w * .28, y0 + w * .46, w * .14, 700);
+    ru.textContent = rcRuoloIt(x.g.ab);
+    // la linea sotto la foto, poi il cognome, poi i due numeri live
+    rcNs("rect", { x: -w * .46, y: y0 + w * .835, width: w * .92, height: 1.4, fill: testo, "fill-opacity": .45 }, ped);
+    var n = scritta(0, y0 + w * .99, w * .21, 800);
     var cog = String(x.g.cognome || "").toUpperCase();
     n.textContent = cog;
-    if (cog.length > 7) { n.setAttribute("textLength", RC_CW - 8); n.setAttribute("lengthAdjust", "spacingAndGlyphs"); }
-    // il numero: grande al centro finche' non arriva la faccia
-    var t = rcNs("text", { x: 0, y: RC_CY + 44, "text-anchor": "middle",
-                           "font-family": "'Mazzard', sans-serif", "font-weight": 800,
-                           "font-size": 30, fill: rcSuTinta(tinta) }, ped);
-    t.textContent = x.g.num || "";
-    // il ruolo sotto il numero, come nelle card
-    var ru = rcNs("text", { x: -RC_CW / 2 + 12, y: RC_CY + 34, "text-anchor": "middle",
-                            "font-family": "'Mazzard', sans-serif", "font-weight": 700,
-                            "font-size": 9.5, fill: rcSuTinta(tinta), "letter-spacing": .3,
-                            display: "none" }, ped);
-    ru.textContent = rcRuoloIt(x.g.ab);
+    if (cog.length > 7) { n.setAttribute("textLength", w * .86); n.setAttribute("lengthAdjust", "spacingAndGlyphs"); }
+    rcNs("rect", { x: -w * .40, y: y0 + w * 1.04, width: w * .80, height: 1, fill: testo, "fill-opacity": .35 }, ped);
+    rcNs("rect", { x: -.5, y: y0 + w * 1.08, width: 1, height: w * .2, fill: testo, "fill-opacity": .35 }, ped);
+    var sA = scritta(-w * .22, y0 + w * 1.25, w * .19, 800);
+    var sB = scritta(w * .22, y0 + w * 1.25, w * .19, 800);
+    var eA = scritta(-w * .22, y0 + w * 1.39, w * .12, 700);
+    var eB = scritta(w * .22, y0 + w * 1.39, w * .12, 700);
     // chi e' entrato dalla panchina porta la freccia verde
     if (x.g.entrato) {
-      var fr = rcNs("g", { transform: "translate(-" + (RC_CW / 2 + 4) + " " + (RC_CY + 2) + ")" }, ped);
-      rcNs("circle", { cx: 0, cy: 0, r: 13, fill: "#0A0F24", stroke: "#31C46B", "stroke-width": 2.2 }, fr);
-      rcNs("path", { d: "M0 -8 L7.5 1.5 L2.8 1.5 L2.8 8 L-2.8 8 L-2.8 1.5 L-7.5 1.5 Z", fill: "#31C46B" }, fr);
+      var fr = rcNs("g", { transform: "translate(-" + (w / 2 + 3) + " " + (y0 + 4) + ")" }, ped);
+      rcNs("circle", { cx: 0, cy: 0, r: 12, fill: "#0A0F24", stroke: "#31C46B", "stroke-width": 2.2 }, fr);
+      rcNs("path", { d: "M0 -7.5 L7 1.5 L2.6 1.5 L2.6 7.5 L-2.6 7.5 L-2.6 1.5 L-7 1.5 Z", fill: "#31C46B" }, fr);
     }
     var q = rcP(x.u, x.v);
     ped.style.transform = "translate(" + q.x.toFixed(1) + "px," + q.y.toFixed(1) + "px) scale(" + q.s.toFixed(3) + ")";
-    if (x.g.pid) RC.pedine[x.g.pid] = { el: ped, cerchio: c, casa: casa, num: t, ruolo: ru, cognome: x.g.cognome,
-                                        nome: x.g.nome || "", ab: x.g.ab || "", numero: x.g.num || "" };
+    if (x.g.pid) {
+      RC.pedine[x.g.pid] = { el: ped, cerchio: c, casa: casa, num: t, ruolo: ru, cognome: x.g.cognome,
+                             nome: x.g.nome || "", ab: x.g.ab || "", numero: x.g.num || "",
+                             sA: sA, sB: sB, eA: eA, eB: eB };
+      rcNumeriCard(x.g.pid);
+    }
     return ped;
+  }
+  // i due numeri live della mini-card: tocchi e passaggi, o per il
+  // portiere parate e gol subiti; chi ha segnato mostra i gol
+  function rcNumeriCard(pid) {
+    var ped = RC.pedine[pid];
+    if (!ped || !ped.sA) return;
+    var v = rcNumeriDi(pid);
+    var a = v[0], b = v[1];
+    ped.sA.textContent = String(a[0]); ped.eA.textContent = a[1];
+    ped.sB.textContent = String(b[0]); ped.eB.textContent = b[1];
   }
   // ── le facce ────────────────────────────────────────────────────────
   // Le foto scontornate delle Formazioni Premium stanno gia' nel magazzino:
@@ -1193,37 +1211,23 @@
   function rcMettiFaccia(pid) {
     var url = RC.facce[pid], ped = RC.pedine[pid];
     if (!url || !ped || ped.el.querySelector("[data-faccia]")) return;
+    var w = RC_CW, y0 = RC_CY;
     var svg = document.getElementById("rcampo");
     var difs = svg.querySelector("defs") || rcNs("defs", {}, svg);
     var id = "rcf-card";
     if (!document.getElementById(id)) {
+      // la foto sta a destra della colonna del numero e finisce sulla linea
       var cp = rcNs("clipPath", { id: id }, difs);
-      rcNs("path", { d: rcScudo(RC_CW - 3, RC_CY + 1.5) }, cp);
-      rcNs("rect", { x: -RC_CW / 2, y: RC_CY + 55, width: RC_CW, height: 40, fill: "#000" },
-           rcNs("clipPath", { id: id + "-via" }, difs));
+      rcNs("rect", { x: -w * .14, y: y0 + w * .07, width: w * .62, height: w * .765 }, cp);
     }
-    // la foto e' a mezzo busto: nella card entra dalla testa alle spalle
     var f = rcNs("g", { "data-faccia": "1", "clip-path": "url(#" + id + ")" });
-    var im = rcNs("image", { x: -38, y: RC_CY + 3, width: 88, height: 88, preserveAspectRatio: "xMidYMin slice" }, f);
+    // la testa larga circa 0,41 della card, i capelli a 0,20: come nell'originale
+    var lato = w * 1.45;
+    var im = rcNs("image", { x: w * .17 - lato / 2, y: y0 + w * .10, width: lato, height: lato,
+                             preserveAspectRatio: "xMidYMin slice" }, f);
     im.setAttribute("href", url);
-    var fascia = ped.el.querySelector("[data-fascia]");
-    ped.el.insertBefore(f, fascia);
+    ped.el.insertBefore(f, ped.num);
     ped.faccia = true;
-    // il numero va nell'angolo, piccolo, come la valutazione di una card
-    ped.num.setAttribute("x", String(-RC_CW / 2 + 12)); ped.num.setAttribute("y", String(RC_CY + 24));
-    ped.num.setAttribute("font-size", "19");
-    ped.num.setAttribute("text-anchor", "middle");
-    ped.num.setAttribute("fill", "#FFFFFF");
-    ped.num.setAttribute("stroke", "#0A0F24"); ped.num.setAttribute("stroke-width", "3");
-    ped.num.setAttribute("paint-order", "stroke");
-    ped.el.appendChild(ped.num);
-    if (ped.ruolo && ped.ruolo.textContent) {
-      ped.ruolo.setAttribute("display", "inline");
-      ped.ruolo.setAttribute("fill", "#FFFFFF");
-      ped.ruolo.setAttribute("stroke", "#0A0F24"); ped.ruolo.setAttribute("stroke-width", "2.6");
-      ped.ruolo.setAttribute("paint-order", "stroke");
-      ped.el.appendChild(ped.ruolo);
-    }
   }
 
   // ── la card del protagonista ────────────────────────────────────────
@@ -1304,41 +1308,53 @@
       var foto = r[0], band = r[1], stemma = rcStemmaDi(info.lato);
       var tinta = info.lato === "casa" ? RC.colCasa : RC.colOsp;
       var numeri = rcNumeriDi(pid);
-      var W = 300, sc = "#2B2311", filo = "rgba(43,35,17,.35)";
-      var h = '<svg viewBox="-150 -6 300 400" xmlns="http://www.w3.org/2000/svg">' +
+      // Le misure sono quelle della card di riferimento, in frazioni della
+      // larghezza (W = 300): numero a 0,33, ruolo a 0,44, bandiera 0,49-0,59,
+      // stemma 0,64-0,82, foto fino a 0,84, cognome a 0,975, statistiche
+      // su tre righe a 1,13 / 1,245 / 1,36, punta a 1,59.
+      var W = 300, sc = "#2B2311", filo = "rgba(43,35,17,.32)";
+      function Y(f) { return (f * W).toFixed(1); }
+      var lato = W * 1.45;                                   // la foto: testa larga circa 0,45
+      var h = '<svg viewBox="-150 -6 300 ' + Math.ceil(W * 1.59 + 10) + '" xmlns="http://www.w3.org/2000/svg">' +
         '<defs><linearGradient id="rcoro" x1="0" y1="0" x2="1" y2="1">' +
           '<stop offset="0%" stop-color="#F1DC9A"/><stop offset="48%" stop-color="#D8B25C"/>' +
           '<stop offset="100%" stop-color="#A9843A"/></linearGradient>' +
-          '<clipPath id="rcfoto"><path d="' + rcScudo(W - 10, 5) + '"/></clipPath></defs>' +
+          '<clipPath id="rcfoto"><rect x="' + (-W * .16) + '" y="' + Y(.07) + '" width="' + (W * .64) + '" height="' + Y(.765) + '"/></clipPath>' +
+          '<clipPath id="rcsagoma"><path d="' + rcScudo(W - 6, 3) + '"/></clipPath></defs>' +
         '<path d="' + rcScudo(W, 0) + '" fill="url(#rcoro)" stroke="#F6E6B4" stroke-width="3"/>' +
-        // il filo del colore della squadra, sotto la foto
-        (foto ? '<g clip-path="url(#rcfoto)"><image href="' + foto + '" x="-46" y="14" width="204" height="204" ' +
-                'preserveAspectRatio="xMidYMin slice"/></g>' : "") +
-        '<rect x="-145" y="216" width="290" height="5" fill="' + tinta + '"/>' +
-        '<text x="-96" y="96" text-anchor="middle" font-family="Mazzard, sans-serif" font-weight="800" font-size="64" fill="' + sc + '">' +
-          escRadio(info.num || "") + "</text>" +
-        '<text x="-96" y="132" text-anchor="middle" font-family="Mazzard, sans-serif" font-weight="700" font-size="28" fill="' + sc + '">' +
-          escRadio(rcRuoloIt(info.ab)) + "</text>" +
-        '<line x1="-120" y1="144" x2="-72" y2="144" stroke="' + filo + '" stroke-width="1.5"/>' +
-        (band ? '<image href="' + band + '" x="-118" y="151" width="44" height="28" preserveAspectRatio="xMidYMid meet"/>' : "") +
-        '<line x1="-120" y1="186" x2="-72" y2="186" stroke="' + filo + '" stroke-width="1.5"/>' +
-        (stemma ? '<image href="' + stemma + '" x="-117" y="190" width="42" height="24" preserveAspectRatio="xMidYMid meet"/>' : "") +
-        '<text x="0" y="258" text-anchor="middle" font-family="Mazzard, sans-serif" font-weight="800" font-size="36" fill="' + sc + '"' +
-          (String(info.cognome || "").length > 11 ? ' textLength="250" lengthAdjust="spacingAndGlyphs"' : "") + ">" +
+        (foto ? '<g clip-path="url(#rcsagoma)"><g clip-path="url(#rcfoto)"><image href="' + foto + '" x="' +
+                (W * .17 - lato / 2).toFixed(1) + '" y="' + Y(.10) + '" width="' + lato + '" height="' + lato +
+                '" preserveAspectRatio="xMidYMin slice"/></g></g>' : "") +
+        // la linea sotto la foto, col colore della squadra
+        '<rect x="-147" y="' + Y(.835) + '" width="294" height="4" fill="' + tinta + '"/>' +
+        '<text x="' + (-W * .28) + '" y="' + Y(.335) + '" text-anchor="middle" font-family="Mazzard, sans-serif" ' +
+          'font-weight="800" font-size="66" letter-spacing="-2" fill="' + sc + '">' + escRadio(info.num || "") + "</text>" +
+        '<text x="' + (-W * .28) + '" y="' + Y(.44) + '" text-anchor="middle" font-family="Mazzard, sans-serif" ' +
+          'font-weight="700" font-size="28" fill="' + sc + '">' + escRadio(rcRuoloIt(info.ab)) + "</text>" +
+        '<line x1="' + (-W * .36) + '" y1="' + Y(.47) + '" x2="' + (-W * .20) + '" y2="' + Y(.47) + '" stroke="' + filo + '" stroke-width="1.4"/>' +
+        (band ? '<image href="' + band + '" x="' + (-W * .39) + '" y="' + Y(.475) + '" width="' + (W * .22) +
+                '" height="' + Y(.14) + '" preserveAspectRatio="xMidYMid meet"/>' : "") +
+        '<line x1="' + (-W * .36) + '" y1="' + Y(.62) + '" x2="' + (-W * .20) + '" y2="' + Y(.62) + '" stroke="' + filo + '" stroke-width="1.4"/>' +
+        (stemma ? '<image href="' + stemma + '" x="' + (-W * .39) + '" y="' + Y(.635) + '" width="' + (W * .22) +
+                  '" height="' + Y(.19) + '" preserveAspectRatio="xMidYMid meet"/>' : "") +
+        '<text x="0" y="' + Y(.975) + '" text-anchor="middle" font-family="Mazzard, sans-serif" font-weight="800" ' +
+          'font-size="36" fill="' + sc + '"' +
+          (String(info.cognome || "").length > 10 ? ' textLength="' + (W * .78) + '" lengthAdjust="spacingAndGlyphs"' : "") + ">" +
           escRadio(String(info.cognome || "").toUpperCase()) + "</text>" +
-        '<line x1="-112" y1="270" x2="112" y2="270" stroke="' + filo + '" stroke-width="1.5"/>' +
-        '<line x1="0" y1="278" x2="0" y2="346" stroke="' + filo + '" stroke-width="1.5"/>';
+        '<line x1="' + (-W * .35) + '" y1="' + Y(1.01) + '" x2="' + (W * .36) + '" y2="' + Y(1.01) + '" stroke="' + filo + '" stroke-width="1.4"/>' +
+        '<line x1="0" y1="' + Y(1.055) + '" x2="0" y2="' + Y(1.375) + '" stroke="' + filo + '" stroke-width="1.4"/>';
       numeri.forEach(function (n, i) {
-        var col = i < 3 ? -1 : 1, riga = i % 3;
-        var x = col < 0 ? -96 : 26, y = 298 + riga * 24;
-        h += '<text x="' + x + '" y="' + y + '" font-family="Mazzard, sans-serif" font-weight="800" font-size="22" fill="' + sc + '">' +
-             '<tspan>' + escRadio(n[0]) + '</tspan><tspan dx="10" font-weight="700" font-size="19">' + escRadio(n[1]) + "</tspan></text>";
+        var dx = i < 3 ? -W * .37 : W * .07, y = [1.13, 1.245, 1.36][i % 3];
+        h += '<text x="' + dx.toFixed(1) + '" y="' + Y(y) + '" font-family="Mazzard, sans-serif" font-weight="800" ' +
+             'font-size="30" fill="' + sc + '">' + escRadio(n[0]) + "</text>" +
+             '<text x="' + (dx + W * .165).toFixed(1) + '" y="' + Y(y) + '" font-family="Mazzard, sans-serif" font-weight="700" ' +
+             'font-size="27" fill="' + sc + '">' + escRadio(n[1]) + "</text>";
       });
       h += "</svg>";
       // la card sta sotto i marcatori della sua squadra
       var col = document.querySelector("#radiomarc .col." + (info.lato === "casa" ? "a" : "b"));
       var alto = col ? col.getBoundingClientRect().height : 0;
-      box.style.top = Math.max(540, Math.min(640, 470 + alto + 34)) + "px";
+      box.style.top = Math.max(520, Math.min(600, 470 + alto + 30)) + "px";
       box.className = info.lato === "casa" ? "a" : "b";
       box.innerHTML = h;
       requestAnimationFrame(function () { box.classList.add("on"); });
@@ -1711,6 +1727,7 @@
           RC.zone[x < 33 ? 0 : x > 66 ? 2 : 1]++;
         });
         if (RC.daSegnare) rcDistintivi();
+        for (var pidN in RC.pedine) rcNumeriCard(pidN);
         // i marcatori si riscrivono appena ESPN manda una rete: il
         // cartello, da solo, non si ridisegna (in anteprima mai)
         if (nuoviGol) {
