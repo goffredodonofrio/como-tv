@@ -117,6 +117,10 @@ window.Lavagna = (function () {
       "border:1px solid rgba(201,162,75,.35);}" +
       ".lav .foglietto .faccia img{width:100%;height:100%;object-fit:cover;object-position:50% 8%;display:block;}" +
       ".lav.chiara .foglietto .faccia{background:radial-gradient(120% 90% at 50% 100%,color-mix(in srgb,var(--sq) 45%,transparent),transparent 70%),#EFEAE0;border-color:#DCD5C4;}" +
+      ".lav .foglietto .bio{font-family:'DM Sans',sans-serif;font-size:13.5px;line-height:1.5;white-space:nowrap;color:var(--lav-fg3);" +
+      "margin-bottom:8px;min-height:19px;}" +
+      ".lav .foglietto .bio b{color:var(--lav-avorio);font-weight:700;}" +
+      ".lav .foglietto .bio i{font-style:normal;margin:0 7px;color:var(--lav-oro);}" +
       ".lav .foglietto h3{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.16em;" +
       "  text-transform:uppercase;color:var(--lav-oro);margin-bottom:8px;}" +
       /* i contatori della partita: calci d'angolo, gialli, rossi. Il clic
@@ -817,6 +821,36 @@ window.Lavagna = (function () {
         .then(function (j) { FACCE[chiave] = (j && j.url) || ""; metti(FACCE[chiave]); })
         .catch(function () {});
     }
+    // CHI E': nome intero, nascita, altezza e peso dall'anagrafe di ESPN.
+    // Solo per gli id veri di ESPN (numeri): le giovanili e i giocatori
+    // scritti a mano hanno id finti, e prenderebbero i dati di un altro.
+    // ESPN da' pollici e libbre, arrotondati: qui metri e chili.
+    var ANAG = {};
+    var MESI = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
+    function bioSu(p, dove, iNome) {
+      if (!dove || !/^\d+$/.test(String(p.pid))) return;
+      function metti(a) {
+        if (!a || !dove.isConnected) return;
+        // due righe fisse: quando e' nato, poi quanto e' alto e quanto pesa
+        var riga1 = "", fisico = [];
+        var d = /^(\d{4})-(\d{2})-(\d{2})/.exec(a.dateOfBirth || "");
+        if (d) riga1 = "Nato il " + (+d[3]) + " " + MESI[+d[2] - 1] + " " + d[1] + (a.age ? '<i>·</i><b>' + a.age + " anni</b>" : "");
+        if (a.height) fisico.push("<b>" + (a.height * 0.0254).toFixed(2).replace(".", ",") + " m</b>");
+        if (a.weight) fisico.push("<b>" + Math.round(a.weight * 0.4536) + " kg</b>");
+        dove.innerHTML = (riga1 ? "<div>" + riga1 + "</div>" : "") +
+                         (fisico.length ? "<div>" + fisico.join("<i>·</i>") + "</div>" : "");
+        var intero = (a.fullName || a.displayName || "").trim();
+        // il nome intero va nella casella solo se nessuno ci ha gia' scritto
+        if (iNome && intero && iNome.value.trim() === (p.cognome || "").trim() && document.activeElement !== iNome) {
+          iNome.value = intero; iNome.dataset.intero = intero;
+        }
+      }
+      if (ANAG[p.pid]) return metti(ANAG[p.pid]);
+      fetch("https://sports.core.api.espn.com/v2/sports/soccer/athletes/" + p.pid)
+        .then(function (r) { return r.json(); })
+        .then(function (a) { if (a && (a.fullName || a.dateOfBirth)) { ANAG[p.pid] = a; metti(a); } })
+        .catch(function () {});
+    }
     function apriNota(p) {
       chiudiNota();
       var k = chiave(p), cassa = box.querySelector(".campoBox");
@@ -826,7 +860,9 @@ window.Lavagna = (function () {
         // la faccia a sinistra, squadra e nome a destra: si riconosce il
         // giocatore prima ancora di leggere
         '<div class="testa"><div class="faccia" data-faccia="1" hidden style="--sq:' + esc(SQ[p.lato].col || "#1B2140") + '"></div><div class="testadx">' +
-        '<h3>' + esc(SQ[p.lato].nome) + (p.mister ? ' · allenatore' : '') + '</h3>' +
+        // sopra il nome: nascita, altezza e peso da ESPN (per l'allenatore
+        // la squadra, che li' dice qualcosa)
+        (p.mister ? '<h3>' + esc(SQ[p.lato].nome) + ' · allenatore</h3>' : '<div class="bio" data-bio="1"></div>') +
         (p.mister ? "" :
           '<div class="chi"><input data-f="num" type="text" inputmode="numeric" maxlength="2" ' +
           'placeholder="N" value="' + esc(p.num || "") + '">' +
@@ -842,6 +878,7 @@ window.Lavagna = (function () {
         '</div>';
       cassa.appendChild(f);
       facciaSu(p, f.querySelector("[data-faccia]"));
+      bioSu(p, f.querySelector("[data-bio]"), f.querySelector('input[data-f="nome"]'));
       stagioneSu(p, f.querySelector("[data-stagione-box]"));
       cartSu(p, f.querySelector("[data-cart-box]"));
       // la tabella della stagione arriva dopo e allunga il foglietto: lo si
@@ -877,6 +914,9 @@ window.Lavagna = (function () {
           var iNum = f.querySelector('input[data-f="num"]'), iNome = f.querySelector('input[data-f="nome"]');
           if (iNum || iNome) {
             var num = iNum ? iNum.value.trim() : p.num, cognome = iNome ? iNome.value.trim() : p.cognome;
+            // nella casella c'e' nome e cognome per intero: se non e' stato
+            // toccato, il cognome (quello della pedina) resta com'era
+            if (iNome && iNome.dataset.intero && cognome === iNome.dataset.intero) cognome = p.cognome;
             if (num !== p.num || cognome !== p.cognome) {
               p.num = num; p.cognome = cognome;
               ribattezza(p);
