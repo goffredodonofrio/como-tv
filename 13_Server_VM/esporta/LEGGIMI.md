@@ -1,10 +1,23 @@
 # Esporta grafiche in video
 
-Le grafiche di **Talent Hunters** diventano file video per la post-produzione, dal tasto
-**⬇ Esporta** negli editor (`live/talent-hunters/th-editor.js`).
+Le grafiche diventano file video per la post-produzione, dal tasto **⬇ Esporta** negli editor.
 
-- **MP4 (H.264)** per carta, approved, heatmap: hanno il loro fondo.
-- **MOV ProRes 4444 con alfa** per torta e radar: trasparenti, da mettere sopra le immagini in Premiere.
+| Grafiche | Editor | Motore | Formato | Nome del file |
+|---|---|---|---|---|
+| Talent Hunters: carta, approved, heatmap | `talent-hunters/th-editor.js` | `th-*-vmix.html` | MP4 | `TH_carta_…` |
+| Talent Hunters: torta, radar | idem | idem | MOV ProRes 4444 con alfa | `TH_torta_…` |
+| Risultati (dal 21/09/2026) | `risultati.html` | `risultati-vmix.html` | MP4 | `RISULTATI_…` |
+| Classifiche | `classifiche-campionati.html` | `classifica-vmix.html` | MP4 | `CLASSIFICA_…` |
+| Tabelloni e gironi | `tabelloni.html` | `tabellone-vmix.html`, `gruppi-vmix.html` | MP4 | `TABELLONE_…`, `GIRONI_…` |
+
+- **MP4 (H.264)** per le grafiche col loro fondo.
+- **MOV ProRes 4444 con alfa** per quelle trasparenti, da mettere sopra le immagini in Premiere.
+
+Il tasto di risultati, classifiche e tabelloni e' un modulo solo, `live/esporta-video.js`: prende i dati
+dalla stessa funzione dell'anteprima dell'editor, quindi il video e' esattamente l'anteprima.
+Per aggiungere un'altra grafica: il suo motore deve leggere i dati da `?d=` e finire di muoversi
+(niente rotazioni infinite, o la durata automatica si ferma alla prima); si aggiunge a `MOTORI` in
+`esporta-servizio.js` e si chiama `EsportaVideo.tasto({...})` nel suo editor.
 
 ## Come funziona
 

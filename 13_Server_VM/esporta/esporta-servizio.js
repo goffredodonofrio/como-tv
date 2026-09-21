@@ -13,14 +13,14 @@
  *  sempre la precedenza sulla CPU. Resta la regola della trascrizione —
  *  niente esportazioni durante una diretta — scritta anche accanto al tasto.
  *
- *  Parla con gli editor di Talent Hunters:
+ *  Parla con gli editor (Talent Hunters, risultati, classifiche, tabelloni):
  *    GET  salute              -> {ok, occupato, coda}
  *    POST avvia  {motore, d, nome}  -> {ok, id}
  *    GET  stato?id=           -> {stato: coda|lavoro|pronto|errore, fotogrammi, posto, errore}
  *    GET  file?id=            -> il file, da scaricare
  *
- *  Rende solo i motori di Talent Hunters, e solo dalla casa sua (ESPORTA_BASE):
- *  non e' un Chrome a disposizione di chiunque.
+ *  Rende solo i motori dell'elenco qui sotto, e solo dalla casa sua
+ *  (ESPORTA_BASE): non e' un Chrome a disposizione di chiunque.
  *
  *  Variabili: ESPORTA_PORTA (8091 dev), ESPORTA_BASE (indirizzo della cartella
  *  live), ESPORTA_CHROME (il chrome-headless-shell).
@@ -40,10 +40,19 @@ const TIENI_MS = 2 * 3600 * 1000;          // i file restano due ore, poi si but
 const CODA_MAX = 5;
 fs.mkdirSync(LAVORI, { recursive: true });
 
-// i motori che si possono esportare, e in che formato: le trasparenti in MOV
+// i motori che si possono esportare: il formato (le trasparenti in MOV, le
+// grafiche col loro fondo in MP4) e come comincia il nome del file
 const MOTORI = {
-  "th-carta-vmix.html": "mp4", "th-approved-vmix.html": "mp4", "th-heatmap-vmix.html": "mp4",
-  "th-torta-vmix.html": "mov", "th-radar-vmix.html": "mov"
+  "th-carta-vmix.html":    { ext: "mp4", nome: "TH_carta" },
+  "th-approved-vmix.html": { ext: "mp4", nome: "TH_approved" },
+  "th-heatmap-vmix.html":  { ext: "mp4", nome: "TH_heatmap" },
+  "th-torta-vmix.html":    { ext: "mov", nome: "TH_torta" },
+  "th-radar-vmix.html":    { ext: "mov", nome: "TH_radar" },
+  // dal 21/09/2026: le grafiche di dati, tutte col loro fondo
+  "risultati-vmix.html":   { ext: "mp4", nome: "RISULTATI" },
+  "classifica-vmix.html":  { ext: "mp4", nome: "CLASSIFICA" },
+  "tabellone-vmix.html":   { ext: "mp4", nome: "TABELLONE" },
+  "gruppi-vmix.html":      { ext: "mp4", nome: "GIRONI" }
 };
 
 const lavori = new Map();   // id -> {stato, motore, url, ext, nome, fotogrammi, errore, creato}
@@ -124,8 +133,9 @@ http.createServer((req, res) => {
     req.on("end", () => {
       let p;
       try { p = JSON.parse(corpo); } catch (e) { return rispondi(res, 400, { ok: false, errore: "richiesta non valida" }); }
-      const ext = MOTORI[p.motore];
-      if (!ext) return rispondi(res, 400, { ok: false, errore: "questa grafica non si esporta" });
+      const M = MOTORI[p.motore];
+      if (!M) return rispondi(res, 400, { ok: false, errore: "questa grafica non si esporta" });
+      const ext = M.ext;
       if (!p.d || typeof p.d !== "object") return rispondi(res, 400, { ok: false, errore: "mancano i dati della grafica" });
       if (coda.length >= CODA_MAX) return rispondi(res, 429, { ok: false, errore: "troppe esportazioni in fila: riprova fra poco" });
       const url = BASE + p.motore + "?d=" + b64url(p.d);
@@ -133,7 +143,7 @@ http.createServer((req, res) => {
       if (url.length > 7800) return rispondi(res, 400, { ok: false, errore: "dati troppo lunghi per l'indirizzo della grafica" });
       const id = crypto.randomBytes(8).toString("hex");
       const giorno = new Date().toISOString().slice(0, 10);
-      const nome = ["TH", p.motore.replace(/^th-|-vmix\.html$/g, ""), pulito(p.nome), giorno].filter(Boolean).join("_") + "." + ext;
+      const nome = [M.nome, pulito(p.nome), giorno].filter(Boolean).join("_") + "." + ext;
       lavori.set(id, { stato: "coda", motore: p.motore, url, ext, nome, fotogrammi: 0, creato: Date.now() });
       coda.push(id);
       prossimo();
