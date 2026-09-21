@@ -112,6 +112,26 @@ window.Lavagna = (function () {
       "  border:1px solid rgba(201,162,75,.5);border-radius:10px;padding:12px;}" +
       ".lav .foglietto h3{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.16em;" +
       "  text-transform:uppercase;color:var(--lav-oro);margin-bottom:8px;}" +
+      /* i contatori della partita: calci d'angolo, gialli, rossi. Il clic
+         sul contatore aggiunge uno (in telecronaca si va di fretta), il
+         meno piccolo corregge. */
+      ".lav .conta{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:0 0 10px;}" +
+      ".lav .conta .ct{display:flex;flex-direction:column;align-items:center;gap:3px;position:relative;" +
+      "padding:7px 4px 6px;border-radius:9px;background:rgba(6,10,26,.55);border:1px solid rgba(245,241,230,.1);" +
+      "cursor:pointer;user-select:none;transition:border-color .15s ease,background .15s ease;}" +
+      ".lav .conta .ct:hover{border-color:rgba(201,162,75,.5);background:rgba(201,162,75,.08);}" +
+      ".lav .conta .ct b{font-family:'Mazzard',sans-serif;font-weight:800;font-size:24px;line-height:1;color:var(--lav-avorio);" +
+      "font-variant-numeric:tabular-nums;}" +
+      ".lav .conta .ct em{font-style:normal;font-family:'Mazzard',sans-serif;font-size:9.5px;font-weight:700;" +
+      "letter-spacing:.12em;text-transform:uppercase;color:var(--lav-fg3);}" +
+      ".lav .conta .ct .ic{height:15px;display:flex;align-items:center;}" +
+      ".lav .conta .ct .ic.gia i,.lav .conta .ct .ic.ros i{display:block;width:10px;height:14px;border-radius:2px;}" +
+      ".lav .conta .ct .ic.gia i{background:#F2C230;} .lav .conta .ct .ic.ros i{background:#E5342B;}" +
+      ".lav .conta .ct .meno{position:absolute;top:3px;right:3px;width:18px;height:18px;padding:0;border-radius:5px;" +
+      "font-size:13px;line-height:16px;letter-spacing:0;color:var(--lav-fg3);background:transparent;" +
+      "border:1px solid rgba(245,241,230,.14);cursor:pointer;}" +
+      ".lav .conta .ct .meno:hover{color:#FF8A8C;border-color:rgba(229,52,43,.5);}" +
+      ".lav .conta .ct.su b{color:#E3C271;}" +
       /* presenze e gol della stagione: in cima, come una scheda da tabellino */
       ".lav .foglietto .stagione{margin:0 0 10px;padding:9px 10px 8px;border-radius:8px;" +
       "background:rgba(6,10,26,.55);border:1px solid rgba(201,162,75,.22);}" +
@@ -198,8 +218,8 @@ window.Lavagna = (function () {
       '<div class="fianco">' +
         '<div class="campoBox"><svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg"></svg></div>' +
         '<div class="lato">' +
-          '<div class="col" data-col="A"><h4><i></i><span data-nome="A">Casa</span></h4><div class="gioc" data-rosa="A"></div></div>' +
-          '<div class="col" data-col="B"><h4><i></i><span data-nome="B">Ospite</span></h4><div class="gioc" data-rosa="B"></div></div>' +
+          '<div class="col" data-col="A"><h4><i></i><span data-nome="A">Casa</span></h4><div class="conta" data-conta="A"></div><div class="gioc" data-rosa="A"></div></div>' +
+          '<div class="col" data-col="B"><h4><i></i><span data-nome="B">Ospite</span></h4><div class="conta" data-conta="B"></div><div class="gioc" data-rosa="B"></div></div>' +
         '</div>' +
       '</div>' +
       '<div class="nota" data-nota="1">Trascina i giocatori. <b>Doppio clic</b> su un giocatore: ci scrivi le tue curiosità. ' +
@@ -216,6 +236,25 @@ window.Lavagna = (function () {
     var SQ = { A: { nome: "Casa", col: "#2E6BE6", rosa: [], mod: "4-3-3" },
                B: { nome: "Ospite", col: "#E0312B", rosa: [], mod: "4-4-2" } };
     var PEDINE = [], CAMBI = [], NOTE = {}, SCELTO = null;
+    // i contatori della partita, per squadra: calci d'angolo, gialli, rossi
+    var CONTA = { A: { ang: 0, gia: 0, ros: 0 }, B: { ang: 0, gia: 0, ros: 0 } };
+    var VOCI_CONTA = [["ang", "Angoli"], ["gia", "Gialli"], ["ros", "Rossi"]];
+    function disegnaConta(acceso) {
+      ["A", "B"].forEach(function (lato) {
+        var dove = box.querySelector('[data-conta="' + lato + '"]');
+        if (!dove) return;
+        dove.innerHTML = VOCI_CONTA.map(function (v) {
+          var ic = v[0] === "ang"
+            ? '<svg width="14" height="15" viewBox="0 0 14 15"><path d="M2 1v13" stroke="#F5F1E6" stroke-width="1.6"/>' +
+              '<path d="M2.8 1.5h9l-2.6 3 2.6 3h-9z" fill="#E3C271"/></svg>'
+            : "<i></i>";
+          return '<div class="ct' + (acceso && acceso[0] === lato && acceso[1] === v[0] ? " su" : "") +
+                 '" data-lato="' + lato + '" data-k="' + v[0] + '" title="Clic: +1">' +
+                 '<span class="ic ' + v[0] + '">' + ic + "</span><b>" + CONTA[lato][v[0]] + "</b><em>" + v[1] + "</em>" +
+                 '<button type="button" class="meno" title="Togli uno">&minus;</button></div>';
+        }).join("");
+      });
+    }
     // La pila dei passi: prima di ogni mossa si mette da parte com'era.
     // Cmd/Ctrl+Z torna indietro, Cmd/Ctrl+Maiusc+Z rifa'. Trenta passi
     // bastano: e' una lavagna, non un programma di montaggio.
@@ -692,6 +731,17 @@ window.Lavagna = (function () {
       }
     }
     box.addEventListener("click", function (ev) {
+      var ct = ev.target.closest ? ev.target.closest(".conta .ct") : null;
+      if (ct) {
+        var lt = ct.dataset.lato, k = ct.dataset.k, meno = !!(ev.target.closest && ev.target.closest(".meno"));
+        if (meno && !CONTA[lt][k]) return;
+        ricorda();
+        CONTA[lt][k] = Math.max(0, CONTA[lt][k] + (meno ? -1 : 1));
+        disegnaConta(meno ? null : [lt, k]);
+        return;
+      }
+    });
+    box.addEventListener("click", function (ev) {
       var b = ev.target.closest ? ev.target.closest("button[data-lato]") : null;
       if (!b) return;
       var lato = b.dataset.lato;
@@ -829,6 +879,7 @@ window.Lavagna = (function () {
       return v;
     }
     function carica(d) {
+      var prima = SQ.A.nome + "|" + SQ.B.nome + "|" + (SQ.A.tid || "") + "|" + (SQ.B.tid || "");
       ["A", "B"].forEach(function (lato) {
         var s = d && d[lato];
         if (!s) return;
@@ -867,11 +918,16 @@ window.Lavagna = (function () {
       });
       PEDINE.slice().forEach(togli);
       CAMBI = [];
+      if (prima !== SQ.A.nome + "|" + SQ.B.nome + "|" + (SQ.A.tid || "") + "|" + (SQ.B.tid || "")) {
+        CONTA = { A: { ang: 0, gia: 0, ros: 0 }, B: { ang: 0, gia: 0, ros: 0 } };
+        disegnaConta();
+      }
       disegnaRose(); disegnaCurio();
       if (d && d.schiera !== false) schiera();
     }
     function stato() {
       return { sq: { A: SQ.A, B: SQ.B }, note: NOTE, cambi: CAMBI, disegni: gDis.innerHTML,
+               conta: JSON.parse(JSON.stringify(CONTA)),
                pedine: PEDINE.map(function (p) { return { lato: p.lato, pid: p.pid, num: p.num, cognome: p.cognome,
                                                           mister: !!p.mister, x: p.x, y: p.y }; }) };
     }
@@ -879,6 +935,8 @@ window.Lavagna = (function () {
       if (!s) return;
       if (s.sq) { SQ.A = s.sq.A || SQ.A; SQ.B = s.sq.B || SQ.B; }
       NOTE = s.note || {}; CAMBI = s.cambi || [];
+      CONTA = s.conta || { A: { ang: 0, gia: 0, ros: 0 }, B: { ang: 0, gia: 0, ros: 0 } };
+      disegnaConta();
       PEDINE.slice().forEach(togli);
       (s.pedine || []).forEach(function (p) { PEDINE.push(pedina(p)); });
       gDis.innerHTML = s.disegni || "";
@@ -974,6 +1032,18 @@ window.Lavagna = (function () {
           D.punteggio = ((casa.team || {}).shortDisplayName || "") + " " + (casa.score || 0) + " - " +
                         (osp.score || 0) + " " + ((osp.team || {}).shortDisplayName || "");
           D.minuto = ((c.status || {}).type || {}).detail || "";
+          // Calci d'angolo e cartellini li conta anche ESPN: il contatore si
+          // allinea da solo, ma solo in salita - ESPN arriva in ritardo, e un
+          // conto fatto a mano piu' avanti non va abbassato.
+          var su = false;
+          ((j.boxscore || {}).teams || []).forEach(function (t) {
+            var lato = String((t.team || {}).id || "") === D.casaId ? "A" : "B", m = {};
+            (t.statistics || []).forEach(function (x) { m[x.name] = parseInt(x.displayValue, 10) || 0; });
+            [["ang", m.wonCorners], ["gia", m.yellowCards], ["ros", m.redCards]].forEach(function (v) {
+              if (v[1] > CONTA[lato][v[0]]) { CONTA[lato][v[0]] = v[1]; su = true; }
+            });
+          });
+          if (su) disegnaConta();
           // i cambi di ESPN diventano i nostri, una volta sola ciascuno
           (j.keyEvents || []).forEach(function (e) {
             var k = e.id || ((e.clock || {}).displayValue + (e.type || {}).text + ((e.athletesInvolved || [])[0] || {}).id);
@@ -1106,7 +1176,7 @@ window.Lavagna = (function () {
       if (ev.shiftKey) rifai(); else annulla();
     });
 
-    disegnaRose(); disegnaCurio();
+    disegnaRose(); disegnaCurio(); disegnaConta();
     return { carica: carica, stato: stato, riapri: riapri, schiera: schiera, nota: nota,
              annulla: annulla, rifai: rifai, segui: seguiPartita, stacca: fermaPartita,
              barraSalva: box.querySelector("[data-salva]"), moduli: Object.keys(MODULI) };
