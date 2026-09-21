@@ -7496,13 +7496,18 @@ function ripresaStimata(a) {
 //  al minuto 8 del file; il fischio vero e' al 5', la ripresa al 72'
 //  (in mezzo c'e' una puntata di Goleada).
 function pianoTesto(x) { return String(x || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
-// da un secondo della registrazione a un secondo sull'asse del materiale
+// da un secondo della registrazione all'asse del materiale: quello di
+// doveCade, che conta dal calcio d'inizio STIMATO (il "da" del primo pezzo
+// e' -kickoff, quindi un fischio letto a 299s di file con kickoff 263 fa
+// inizio1 = 36, come nel cronometro letto). Senza pezzi, l'asse e' il
+// file meno il kickoff.
 function alMateriale(a, r, t) {
   const q = pezzoAl(r, t);
-  if (!q) return t;
+  const pezzi = (a.pezzi || []).filter((x) => x.da !== null && x.da !== undefined);
+  if (!q || !pezzi.length) return t - (a.kickoff || 0);
   const idx = (r.arch && r.arch.pezzi && r.arch.pezzi.length > 1) ? q.i : ((r.arch && r.arch.pezzo) || 0);
-  const p = (a.pezzi || [])[idx];
-  return ((p && p.da) || 0) + q.dentro;
+  const p = pezzi[idx] || pezzi[0];
+  return (p.da || 0) + q.dentro;
 }
 function regsDellaPartita(rec) {
   return Object.keys(R.reg).map((k) => R.reg[k]).filter((r) => r.arch && r.arch.rec === rec);
@@ -7535,12 +7540,10 @@ function cognomiDi(nome, testoAppunto) {
 }
 // le ancore di un tempo: valori sull'asse del materiale, con un peso
 function ancoreDelTempo(rec, tempo, righe, inizio1) {
-  const a = ARCHIVIO[rec] || {};
-  const kick0 = a.kickoff || 0;
   const cand = [];
   const prima = tempo === 2 ? (inizio1 === null ? 2400 : inizio1 + 2700 + 240) : -900;
   const dopo = tempo === 2 ? (inizio1 === null ? 7200 : inizio1 + 2700 + 3600) : 3600;
-  const dentro = (v) => v - kick0 >= prima && v - kick0 <= dopo;
+  const dentro = (v) => v >= prima && v <= dopo;
   // 1) le frasi del fischio
   const re = tempo === 2 ? FISCHIO_2T : FISCHIO_1T;
   righe.forEach((x) => {
@@ -7571,7 +7574,7 @@ function ancoreDelTempo(rec, tempo, righe, inizio1) {
     const trovate = [];
     righe.forEach((x, i) => {
       const v = x.m - ev.sec;
-      if (!dentro(x.m) || v - kick0 < prima || v - kick0 > dopo) return;
+      if (!dentro(x.m) || v < prima || v > dopo) return;
       if (!ev.nomi.some((n) => new RegExp("\\b" + n).test(x.p))) return;
       if (ev.tipo) {
         const vicino = (righe[i - 1] ? righe[i - 1].t + " " : "") + x.t + (righe[i + 1] ? " " + righe[i + 1].t : "");
@@ -7592,7 +7595,7 @@ function ancoreDelTempo(rec, tempo, righe, inizio1) {
       const per = min > 45 ? 2 : 1;
       if (per !== tempo) continue;
       const v = x.m - ((min - (per === 2 ? 45 : 0)) - 0.5) * 60;
-      if (v - kick0 < prima || v - kick0 > dopo) continue;
+      if (v < prima || v > dopo) continue;
       cand.push({ v, w: 1, come: "minuto", testo: x.testo, t: x.s, reg: x.reg });
     }
   });
@@ -7607,7 +7610,10 @@ function ancoreDelTempo(rec, tempo, righe, inizio1) {
   }
   const gruppo = cand.slice(meglio.i, meglio.j);
   const frasi = gruppo.some((c) => c.come === "frase");
-  if (meglio.w < 3 || (gruppo.length < 2 && !frasi)) return { scarso: true, peso: Math.round(meglio.w * 10) / 10, prove: gruppo.slice(0, 6) };
+  // una frase sola basta per la ripresa ("fischia, comincia il secondo
+  // tempo"); per il primo tempo no: prima del fischio si parla di tutto,
+  // e "si parte" puo' essere la sigla. Ci vuole almeno un'altra prova.
+  if (meglio.w < 3 || (gruppo.length < 2 && !(frasi && tempo === 2))) return { scarso: true, peso: Math.round(meglio.w * 10) / 10, prove: gruppo.slice(0, 6) };
   let acc = 0, val = gruppo[0].v;
   for (const c of gruppo) { acc += c.w; if (acc >= meglio.w / 2) { val = c.v; break; } }
   // "fischia, comincia il secondo tempo" e' detto AL fischio: se una frase
@@ -7616,8 +7622,8 @@ function ancoreDelTempo(rec, tempo, righe, inizio1) {
     const f = gruppo.filter((c) => c.come === "frase").sort((p, q) => Math.abs(p.v - val) - Math.abs(q.v - val))[0];
     val = f.v;
   }
-  return { inizio: Math.round(val - kick0), peso: Math.round(meglio.w * 10) / 10, quante: gruppo.length,
-           prove: gruppo.sort((p, q) => q.w - p.w).slice(0, 6).map((c) => ({ t: Math.round(c.t), v: Math.round(c.v - kick0), w: Math.round(c.w * 10) / 10, come: c.come, che: c.che || "", testo: String(c.testo || "").slice(0, 120) })) };
+  return { inizio: Math.round(val), peso: Math.round(meglio.w * 10) / 10, quante: gruppo.length,
+           prove: gruppo.sort((p, q) => q.w - p.w).slice(0, 6).map((c) => ({ t: Math.round(c.t), v: Math.round(c.v), w: Math.round(c.w * 10) / 10, come: c.come, che: c.che || "", testo: String(c.testo || "").slice(0, 120) })) };
 }
 function ancoraDallaTelecronaca(rec) {
   const a = ARCHIVIO[rec];
@@ -7682,8 +7688,7 @@ function ancoraAMano(rec, r, tempo, secondi) {
   const o = Object.assign({}, a.orologio || {}, { fonti: Object.assign({}, (a.orologio || {}).fonti || {}) });
   if (secondi === null || secondi === undefined || secondi === "") { delete o["inizio" + n]; delete o.fonti[n]; }
   else {
-    const mat = r ? alMateriale(a, r, +secondi) : +secondi;
-    o["inizio" + n] = Math.round(mat - (a.kickoff || 0));
+    o["inizio" + n] = Math.round(r ? alMateriale(a, r, +secondi) : (+secondi - (a.kickoff || 0)));
     o.fonti[n] = "mano";
   }
   o.fonte = "mano"; o.quando = new Date().toISOString(); delete o.verificato; delete o.scarto;
@@ -7692,10 +7697,13 @@ function ancoraAMano(rec, r, tempo, secondi) {
 }
 // se il cronometro manca, si prova con la voce: una volta per ogni stato
 // della telecronaca, cosi' non si rifa' il conto a ogni tabellino
-function ancoraSeManca(rec) {
+function ancoraSeManca(rec, anchePerForza) {
   const a = ARCHIVIO[rec];
   if (!a) return null;
   if (a.orologio) return a.orologio;
+  // da sola (senza che qualcuno prema il tasto) la voce si prova solo dove
+  // c'e' una partita con eventi: su uno show in studio non c'e' nessun fischio
+  if (!anchePerForza && !((ESPN[rec] || {}).eventi || []).length && !((APPUNTI[rec] || {}).righe || []).length) return null;
   const firma = regsDellaPartita(rec).map((r) => { const d = PARLATO[r.id]; return r.id + ":" + ((d && d.intera) || "") + ":" + ((d && d.pezzi) ? d.pezzi.length : 0); }).join("|") +
                 "#" + (((ESPN[rec] || {}).eventi || []).length) + "/" + (((APPUNTI[rec] || {}).righe || []).length);
   if (a.voceProvata === firma) return null;
@@ -11524,10 +11532,18 @@ const AZIONI = {
     const a = ARCHIVIO[rec];
     if (!a) throw new Error("questa partita non e' nell'indice dell'archivio");
     let esito = null;
+    // solo per vedere: che cosa direbbe la voce, senza toccare niente
+    if (p.prova) return { ok: true, orologio: a.orologio || null, voce: ancoraDallaTelecronaca(rec) };
     if (p.via) { applicaOrologio(rec, null); delete a.voceProvata; }
     else if (p.auto) {
+      // un cronometro letto dal video (anche nel formato vecchio, senza
+      // "fonte") vale piu' della voce: si sovrascrive solo con forza
+      const vecchio = a.orologio || {};
+      const eraCronometro = vecchio.fonte === "cronometro" || (!vecchio.fonte && vecchio.letti > 0);
+      if (eraCronometro && !p.forza) throw new Error("il cronometro di questa partita e' gia' letto dal video: la voce non lo sostituisce (Togli prima, se vuoi rifarlo)");
+      if (vecchio.fonte === "mano" && !p.forza) throw new Error("il fischio e' segnato a mano: la voce non lo sostituisce (Togli prima, se vuoi rifarlo)");
       delete a.orologio; delete a.voceProvata;
-      esito = ancoraSeManca(rec);
+      esito = ancoraSeManca(rec, true);
       if (!esito) {
         const prova = ancoraDallaTelecronaca(rec);
         scriviArchivio();
