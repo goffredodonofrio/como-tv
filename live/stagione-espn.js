@@ -29,7 +29,7 @@ window.StagioneEspn = (function () {
 
   var API = "https://site.api.espn.com/apis/site/v2/sports/soccer";
   var SQUADRE = {};                         // tid -> Promise dei conti di tutta la rosa
-  var LS = "comotv.stagione.ev.";
+  var LS = "comotv.stagione2.ev.";   // 2: con gol subiti e parate dei portieri
 
   // la stagione cambia d'estate: a luglio si comincia a contare la nuova
   function stagione() {
@@ -62,9 +62,12 @@ window.StagioneEspn = (function () {
             if (!pid) return;
             var st = {};
             (x.stats || []).forEach(function (s) { st[s.name] = parseFloat(s.value != null ? s.value : s.displayValue) || 0; });
-            // a lista: titolare, entrato, gol, assist, gialli, rossi
+            // a lista: titolare, entrato, gol, assist, gialli, rossi, e per i
+            // portieri gol subiti, parate e se in porta c'era lui
+            var por = ((x.position || {}).abbreviation || "") === "G" ? 1 : 0;
             g[pid] = [tid, x.starter ? 1 : 0, x.subbedIn ? 1 : 0,
-                      st.totalGoals || 0, st.goalAssists || 0, st.yellowCards || 0, st.redCards || 0];
+                      st.totalGoals || 0, st.goalAssists || 0, st.yellowCards || 0, st.redCards || 0,
+                      st.goalsConceded || 0, st.saves || 0, por];
           });
         });
         var fatto = { lega: ev.lega, g: g };
@@ -110,8 +113,15 @@ window.StagioneEspn = (function () {
             var c = (conti[pid] = conti[pid] || {});
             var k = p.lega.slug || p.lega.nome;
             var r = (c[k] = c[k] || { slug: p.lega.slug, nome: p.lega.nome, presenze: 0, titolare: 0,
-                                      gol: 0, assist: 0, gialli: 0, rossi: 0 });
+                                      gol: 0, assist: 0, gialli: 0, rossi: 0,
+                                      subiti: 0, parate: 0, inviolate: 0, portiere: false });
             r.presenze++; r.titolare += x[1]; r.gol += x[3]; r.assist += x[4]; r.gialli += x[5]; r.rossi += x[6];
+            if (x[9]) {
+              // porta inviolata: titolare e nessun gol preso (se esce prima e
+              // il gol arriva dopo, ESPN lo da' a chi e' entrato)
+              r.portiere = true; r.subiti += x[7] || 0; r.parate += x[8] || 0;
+              if (x[1] && !(x[7] || 0)) r.inviolate++;
+            }
           });
         });
         return conti;
@@ -136,7 +146,7 @@ window.StagioneEspn = (function () {
 
   // ── la carriera ────────────────────────────────────────────────────
   var CORE = "https://sports.core.api.espn.com/v2/sports/soccer";
-  var LSC = "comotv.carriera2.";
+  var LSC = "comotv.carriera3.";   // 3: con gol subiti e porta inviolata
   var NOMI_SQ = {};                           // tid -> nome, una richiesta per squadra
   // le competizioni che l'elenco delle nostre tendine non ha
   var ALTRE = { "fifa.world": "Mondiali", "fifa.worldq.uefa": "Qualificazioni Mondiali",
@@ -228,7 +238,13 @@ window.StagioneEspn = (function () {
               if (!n.appearances) return;              // in rosa ma mai in campo: non e' una presenza
               righe.push({ anno: v.anno, slug: v.slug, nome: nomeSlug(v.slug), tid: v.tid, squadra: r[1],
                            presenze: n.appearances || 0, titolare: n.starts || 0, gol: n.totalGoals || 0,
-                           assist: n.goalAssists || 0, gialli: n.yellowCards || 0, rossi: n.redCards || 0 });
+                           assist: n.goalAssists || 0, gialli: n.yellowCards || 0, rossi: n.redCards || 0,
+                           // ESPN nelle stagioni passate non conta le parate (sempre 0):
+                           // si tengono subiti e porta inviolata
+                           // (ESPN li da' anche ai giocatori di movimento: i gol presi
+                           // dalla squadra mentre erano in campo. Chi e' portiere
+                           // lo dice la rosa, non questi numeri.)
+                           subiti: n.goalsConceded || 0, inviolate: n.cleanSheet || 0, parate: 0 });
             });
           })).then(function () { return giro(i + 8); });
         }

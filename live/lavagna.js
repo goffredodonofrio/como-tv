@@ -754,22 +754,38 @@ window.Lavagna = (function () {
         '<div data-st="corpo"><div class="stvuoto">Conto presenze e gol&hellip;</div></div>';
       var sel = dove.querySelector('[data-st="scelta"]'), corpo = dove.querySelector('[data-st="corpo"]');
       var ora = null, car = null;                     // i dati, quando arrivano
+      // IL PORTIERE: al posto di gol e assist, i gol subiti e le partite senza
+      // subirne; le parate solo se ci sono (ESPN le conta per le partite di
+      // questa stagione, nelle stagioni passate no)
+      var CAMPI = ["presenze", "titolare", "gol", "assist", "gialli", "rossi", "subiti", "parate", "inviolate"];
+      var ruolo = String(((SQ[p.lato].rosa || []).filter(function (g) { return String(g.pid) === pid; })[0] || {}).ruolo || "");
+      var POR = /^(G|GK|P|POR)$/i.test(ruolo), conParate = false;
       function cella(c) {
-        return "<td>" + c.presenze + (c.titolare !== c.presenze && c.titolare != null ?
-               '<small> (' + c.titolare + " tit.)</small>" : "") + "</td><td>" + c.gol + "</td><td>" +
-               c.assist + "</td><td>" + (c.gialli || "") + (c.rossi ? ' <span class="rosso">' + c.rossi + "</span>" : "") + "</td>";
+        var pres = "<td>" + c.presenze + (c.titolare !== c.presenze && c.titolare != null ?
+               '<small> (' + c.titolare + " tit.)</small>" : "") + "</td>";
+        var cart = "<td>" + (c.gialli || "") + (c.rossi ? ' <span class="rosso">' + c.rossi + "</span>" : "") + "</td>";
+        if (POR) return pres + "<td>" + (c.subiti || 0) + "</td><td>" + (c.inviolate || 0) + "</td>" +
+                        (conParate ? "<td>" + (c.parate || 0) + "</td>" : "") + cart;
+        return pres + "<td>" + c.gol + "</td><td>" + c.assist + "</td>" + cart;
       }
       function tabella(righe, primaTh, totale) {
-        return '<div class="sttab"><table><thead><tr><th>' + (primaTh || "") + '</th><th>Pres.</th><th>Gol</th><th>Assist</th>' +
+        var th = POR ? '<th>Subiti</th><th title="Partite senza subire gol">Imbattuto</th>' + (conParate ? "<th>Parate</th>" : "")
+                     : "<th>Gol</th><th>Assist</th>";
+        return '<div class="sttab"><table><thead><tr><th>' + (primaTh || "") + '</th><th>Pres.</th>' + th +
                '<th><i class="giallo"></i></th></tr></thead><tbody>' + righe + (totale || "") + "</tbody></table></div>";
       }
       function somma(v) {
-        var t = { presenze: 0, titolare: 0, gol: 0, assist: 0, gialli: 0, rossi: 0 };
+        var t = {}; CAMPI.forEach(function (k) { t[k] = 0; });
         v.forEach(function (c) { for (var k in t) t[k] += c[k] || 0; });
         return t;
       }
       function mostra() {
         var q = sel.value;
+        // il ruolo lo dice la rosa; se manca, le partite di questa stagione
+        // (li' ESPN segna chi stava in porta). La carriera no: da' i gol
+        // subiti anche a chi gioca in attacco.
+        if (!POR) POR = (ora || []).some(function (c) { return c.portiere; });
+        conParate = POR && q === "ora" && (ora || []).some(function (c) { return c.parate > 0; });
         if (q === "ora") {
           if (!ora) { corpo.innerHTML = '<div class="stvuoto">Conto presenze e gol&hellip;</div>'; return; }
           if (!ora.length) { corpo.innerHTML = '<div class="stvuoto">Nessuna presenza in partite ufficiali.</div>'; return; }
@@ -788,9 +804,9 @@ window.Lavagna = (function () {
           }
           car.forEach(function (c) {
             var k = c.anno + "|" + c.tid;
-            if (!gruppi[k]) { gruppi[k] = { anno: c.anno, squadra: c.squadra, presenze: 0, titolare: 0, gol: 0, assist: 0, gialli: 0, rossi: 0 }; ordine.push(k); }
+            if (!gruppi[k]) { gruppi[k] = { anno: c.anno, squadra: c.squadra }; CAMPI.forEach(function (x) { gruppi[k][x] = 0; }); ordine.push(k); }
             var g = gruppi[k];
-            ["presenze", "titolare", "gol", "assist", "gialli", "rossi"].forEach(function (x) { g[x] += c[x] || 0; });
+            CAMPI.forEach(function (x) { g[x] += c[x] || 0; });
           });
           var righe = ordine.map(function (k) { return gruppi[k]; });
           if (!righe.length) { corpo.innerHTML = '<div class="stvuoto">ESPN non ha la carriera di questo giocatore.</div>'; return; }
