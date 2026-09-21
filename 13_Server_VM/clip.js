@@ -11004,6 +11004,26 @@ const AZIONI = {
     return { ok: true, eventi: fuori, peso: fuori.reduce((n, x) => n + x.peso, 0), quanti: fuori.length, scrivibile: qnapSiScrive() };
   },
   "clip-qnap-peso": qnapPeso,
+  // I NOMI DIETRO LE FOTO: una foto premium si chiama col cognome
+  // (foto-premium-paz), ma chi cerca scrive "nico paz". Da qui la pagina
+  // prende, per ogni cognome, i nomi interi e le squadre del vocabolario,
+  // e per ogni squadra il suo allenatore: cosi' la ricerca li trova.
+  "clip-foto-nomi": () => {
+    const perCognome = {};
+    Object.keys((VOCABOLARIO && VOCABOLARIO.squadre) || {}).forEach((sq) => {
+      const g = VOCABOLARIO.squadre[sq].giocatori || [];
+      (Array.isArray(g) ? g : Object.keys(g)).forEach((n) => {
+        const c = piattaMinuscola(String(n).trim().split(/\s+/).pop()); if (!c) return;
+        (perCognome[c] = perCognome[c] || []).push(n + " \u00b7 " + sq);
+      });
+    });
+    const allenatori = [];
+    try {
+      const a = JSON.parse(fs.readFileSync(fileAllenatori(), "utf8"));
+      Object.keys(a.perId || {}).forEach((id) => { const x = a.perId[id]; if (x && x.squadra) allenatori.push({ id, nome: ((x.nome || "") + " " + (x.cognome || "")).trim(), squadra: x.squadra, slug: piattaMinuscola(x.squadra).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") }); });
+    } catch (e) {}
+    return { ok: true, perCognome, allenatori };
+  },
   // CERCARE NELLE TELECRONACHE: "assist di nico paz" trova la riga in cui e'
   // stato detto, in quale partita e a che secondo. Si guardano le parole
   // (senza accenti e maiuscole) su una finestra di due righe, perche' una
@@ -11024,7 +11044,10 @@ const AZIONI = {
         if (!tutte) continue;
         const dentroQui = parole.every((w) => qui.indexOf(w) >= 0);
         const x = pz[i], y = pz[i + 1];
-        fuori.push({ reg, titolo: r.titolo || reg, rec: (r.arch && r.arch.rec) || r.evento || "", a: x.a, b: dentroQui ? x.b : (y ? y.b : x.b),
+        // il file e il secondo dentro il file: la pagina ci mette il player
+        let chiave = "", dentro = x.a;
+        if (r.arch) { const pa = pezzoAl(r, x.a); if (pa && pa.pezzo && pa.pezzo.chiave) { chiave = pa.pezzo.chiave; dentro = pa.dentro; } else chiave = r.arch.chiave || ""; }
+        fuori.push({ reg, titolo: r.titolo || reg, rec: (r.arch && r.arch.rec) || r.evento || "", a: x.a, b: dentroQui ? x.b : (y ? y.b : x.b), chiave, dentro,
                      testo: dentroQui ? x.x : (x.x + " " + (y ? y.x : "")).trim(), lingua: x.l || d.lingua || "it", k: x.k || "", pieno: dentroQui,
                      prima: i > 0 ? pz[i - 1].x : "", dopo: (dentroQui ? y : pz[i + 2]) ? (dentroQui ? y : pz[i + 2]).x : "" });
         perReg[reg] = (perReg[reg] || 0) + 1;
