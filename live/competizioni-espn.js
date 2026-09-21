@@ -92,17 +92,44 @@ window.CompetizioniEspn = (function () {
         return '<option value="' + esc(x.c.code) + '">' + esc((x.c.band ? x.c.band + " " : "") + x.c.nome) + "</option>";
       }).join("") + "</optgroup>";
     }
-    var paesi = Object.keys(perPaese).filter(function (k) { return PAESE[k]; }).sort(function (a, b) {
-      return (a === "ita" ? -1 : b === "ita" ? 1 : PAESE[a].localeCompare(PAESE[b], "it"));
+    // L'ordine segue quanto si usano, non l'alfabeto: prima l'Italia, poi
+    // le quattro grandi d'Europa, le coppe UEFA, il resto d'Europa, e poi il
+    // resto del mondo per continente. Dentro ogni blocco i paesi vanno in
+    // ordine alfabetico, dentro ogni paese le serie e poi le coppe.
+    var AREE = [
+      ["ita"],
+      ["eng", "esp", "ger", "fra"],
+      ["uefa"],
+      ["aut", "bel", "den", "gre", "nor", "ned", "por", "rus", "sco", "swe", "sui", "tur"],
+      ["arg", "bra", "chi", "col", "ecu", "par", "per", "uru", "conmebol"],
+      ["usa", "mex"],
+      ["ksa", "jpn", "chn", "aus"],
+      ["fifa"]
+    ];
+    function etichetta(k) {
+      var int = INTERNAZIONALI.filter(function (x) { return x[0] === k; })[0];
+      if (int) return int[1];
+      return (perPaese[k] && perPaese[k][0].c.band ? perPaese[k][0].c.band + " " : "") + (PAESE[k] || k.toUpperCase());
+    }
+    var messi = {}, h = "";
+    AREE.forEach(function (area) {
+      area.slice().sort(function (a, b) {
+        // le internazionali restano in fondo al loro blocco
+        var ia = INTERNAZIONALI.some(function (x) { return x[0] === a; }) ? 1 : 0;
+        var ib = INTERNAZIONALI.some(function (x) { return x[0] === b; }) ? 1 : 0;
+        if (ia !== ib) return ia - ib;
+        // le quattro grandi nell'ordine in cui le si cerca, gli altri per nome
+        if (area.length === 4 && area[0] === "eng") return area.indexOf(a) - area.indexOf(b);
+        return String(PAESE[a] || a).localeCompare(String(PAESE[b] || b), "it");
+      }).forEach(function (k) {
+        if (!perPaese[k]) return;
+        messi[k] = 1;
+        h += gruppo(k, etichetta(k));
+      });
     });
-    // un codice di un paese che non e' nella tabella non deve sparire: va in fondo col suo prefisso
-    var ignoti = Object.keys(perPaese).filter(function (k) {
-      return !PAESE[k] && !INTERNAZIONALI.some(function (x) { return x[0] === k; });
-    });
-    sel.innerHTML = '<option value="">—</option>' +
-      paesi.map(function (k) { return gruppo(k, perPaese[k][0].c.band + " " + PAESE[k]); }).join("") +
-      ignoti.map(function (k) { return gruppo(k, k.toUpperCase()); }).join("") +
-      INTERNAZIONALI.map(function (x) { return gruppo(x[0], x[1]); }).join("");
+    // un codice che non sta in nessuna area non deve sparire: va in fondo
+    Object.keys(perPaese).forEach(function (k) { if (!messi[k]) h += gruppo(k, etichetta(k)); });
+    sel.innerHTML = '<option value="">—</option>' + h;
   }
 
   // formazioni-espn.js puo' non esserci ancora: si carica, e la tendina si

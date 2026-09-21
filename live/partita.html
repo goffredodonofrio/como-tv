@@ -313,6 +313,10 @@
   /* Svuota partita: e' l'unico tasto che CANCELLA, e si deve vedere che
      lo e' — rosso, staccato dal resto, in fondo al pannello dove non lo
      si sfiora per sbaglio mentre si segna un gol. */
+  #campoBar input[type=date]{padding:9px 12px;border-radius:7px;background:rgba(245,241,230,.05);
+    border:1px solid rgba(245,241,230,.12);color:#F5F1E6;font-family:'DM Sans',sans-serif;font-size:14px;
+    color-scheme:dark;}
+  #campoBar button:disabled{opacity:.4;cursor:not-allowed;}
   .svuotabox{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
     margin-top:16px;padding-top:13px;border-top:1px solid var(--line-2);}
   .svuotabox button{color:#FF8D90;border-color:rgba(229,27,32,.45);background:rgba(229,27,32,.08);
@@ -529,6 +533,26 @@
         <!-- tre gruppi: il banco (?banco=1) li sposta nei suoi posti -->
         <div class="grp grp-fasi"><div id="fasi"></div></div>
         <div class="grp grp-squadre">
+        <!-- il campetto DENTRO il cartello RADIOCRONACA: si prende dalla
+             partita ESPN con un tasto, come le formazioni ufficiali in
+             Formazioni. Sta in cima, prima di campionato e squadre: se la
+             partita e' quella impostata qui sotto, il pannello la trova gia'
+             da solo e basta premere. -->
+        <div class="ufbar" id="campoBar" style="margin:0 0 16px">
+          <div class="uftitolo">Campetto in radiocronaca · dalla partita ESPN</div>
+          <div class="ufriga">
+            <div class="field" style="flex:1 1 230px;min-width:200px"><label>Competizione</label>
+              <select id="cbComp"></select></div>
+            <div class="field" style="flex:0 0 auto"><label>Giorno</label>
+              <input type="date" id="cbData" style="width:160px"></div>
+            <div class="field" style="flex:1 1 260px;min-width:220px"><label>Partita</label>
+              <select id="cbPart"><option value="">&mdash;</option></select></div>
+            <button type="button" id="cbPrendi" disabled>&#9917; Prendi il campetto in diretta da ESPN</button>
+            <button type="button" id="cbTogli" style="display:none">Togli il campetto</button>
+            <div class="ufnota" id="cbNota">&nbsp;</div>
+          </div>
+        </div>
+
         <h3 class="sotto-titolo">Campionato e squadre</h3>
         <!-- Ogni tendina e' solo un aiuto: accanto c'e' sempre il campo
              scritto, che e' quello che va in onda. Si sceglie o si scrive. -->
@@ -687,14 +711,6 @@
           <input type="text" id="radioNome" placeholder="Nome del radiocronista" style="flex:1">
           <select id="radioNomeSel" style="flex:1"></select>
         </div>
-        <!-- il campetto DENTRO il cartello: niente da scegliere, e' la
-             partita gia' impostata qui sopra. Se ESPN ha le giocate di
-             questa partita il cartello mostra il campo col pallone,
-             altrimenti resta il cartello di sempre. -->
-        <div style="margin-top:6px">
-          <span id="radioEspnNota" style="color:var(--gr);font-size:13px">&nbsp;</span>
-        </div>
-
         <!-- il campetto che segue la partita: attrezzo del banco, non va in onda -->
         <div class="svuotabox" style="align-items:center">
           <button type="button" id="btnCampetto">&#9917; Campetto in diretta</button>
@@ -725,8 +741,10 @@
 <!-- le rose delle giovanili del Como, per gol, cambi e cartellini -->
 <script src="giovanili.js"></script>
 <!-- il campetto in diretta: lo stesso della Lavagna, qui con la partita vera -->
+<script src="formazioni-espn.js"></script>
 <script src="competizioni-espn.js"></script>
 <script src="squadre-espn.js"></script>
+<script src="tendina-cerca.js"></script>
 <script src="lavagna.js"></script>
 <script>
 (function () {
@@ -1080,7 +1098,11 @@
     elComp.appendChild(nostre);
     if (!window.CompetizioniEspn) return;
     var tmp = document.createElement("select");
-    CompetizioniEspn.riempi(tmp, function () {
+    // la tendina puo' riempirsi subito (formazioni-espn.js gia' caricato) o
+    // dopo: in tutti e due i casi il resto si fa a pagina pronta, quando le
+    // funzioni del banco qui sotto esistono gia'
+    CompetizioniEspn.riempi(tmp, function () { setTimeout(dopoMenu, 0); });
+    function dopoMenu() {
       var gia = { "ita.1": 1, "ita.coppa_italia": 1, "uefa.champions": 1 };  // gia' di casa
       Array.prototype.slice.call(tmp.children).forEach(function (g) {
         Array.prototype.slice.call(g.querySelectorAll("option")).forEach(function (o) {
@@ -1090,8 +1112,15 @@
       });
       if (S.lega) mettiCampTxt(S.camp);                 // il menu' e' arrivato dopo lo stato
       allineaDaCamp();
-    });
+      if (tendinaComp) tendinaComp.aggiorna();
+    }
   }
+  // il menu' delle competizioni e' lungo: si sceglie scrivendo.
+  // I nomi stanno nella lingua del paese: "coppa" deve trovare anche la
+  // Copa del Rey e la FA Cup, "campionato" la Liga e la Bundesliga.
+  var tendinaComp = null;
+  var SINONIMI_CALCIO = { coppa: ["copa", "coupe", "cup", "pokal", "beker", "taca", "coppa"],
+                          campionato: ["liga", "league", "serie", "bundesliga", "ligue", "division", "divisie"] };
   function riempiGironi(comp, indiceVoluto) {
     var g = gironiDi(comp);
     elGir.innerHTML = "";
@@ -1151,6 +1180,10 @@
     return true;
   }
   riempiCompetizioni();
+  if (window.TendinaCerca) {
+    tendinaComp = TendinaCerca.su(elComp, { segnaposto: "Cerca: Serie A, Bundesliga, Argentina, coppa\u2026",
+                                            vuoto: "Scegli la competizione", sinonimi: SINONIMI_CALCIO });
+  }
   elComp.addEventListener("change", function () {
     if (elComp.value.indexOf(".") > 0) { apriEspn(elComp.value); return; }
     riempiGironi(elComp.value); sincronizzaCamp();
@@ -1471,39 +1504,166 @@
     var c = CAMPIONATI[parseInt(elCamp.value, 10)];
     return (c && c.lega) || S.lega || "";
   }
-  function radioEspnNota(t) { var n = el("radioEspnNota"); if (n) n.innerHTML = t || "&nbsp;"; }
-  function radioEspnDipingi() {
-    if (S.espn && S.espn.ev) {
-      radioEspnNota("Nel cartello c'e' il campetto di <b>" + (S.espn.nome || "questa partita") +
-        "</b>: il pallone segue le giocate ESPN (circa un minuto di ritardo).");
-    } else if (!legaOra()) {
-      radioEspnNota("Di questa competizione ESPN non ha le giocate: il cartello resta senza campetto.");
-    } else if (!S.casa.tid || !S.osp.tid) {
-      radioEspnNota("Scegli le due squadre dall'elenco e, se ESPN ha la partita, nel cartello compare il campetto.");
-    } else {
-      radioEspnNota("ESPN non ha questa partita fra quelle di oggi: il cartello resta senza campetto.");
+  // ── il campetto in radiocronaca ───────────────────────────────────────
+  // Si prende dalla partita ESPN con un tasto, come le formazioni ufficiali
+  // in Formazioni. Il tasto si accende solo se la partita lo consente: le
+  // formazioni ESPN devono esserci (escono circa un'ora prima), se no il
+  // campo non avrebbe nessuno da schierare.
+  // Il banco aiuta: se le due squadre impostate qui sopra giocano oggi, il
+  // pannello si mette gia' su quella partita. Aggancia pero' solo il tasto,
+  // mai da solo - cosi' nel cartello non compare niente che non si e' deciso.
+  var cb = { comp: el("cbComp"), data: el("cbData"), part: el("cbPart"), prendi: el("cbPrendi"),
+             togli: el("cbTogli"), nota: el("cbNota"), partite: [], giro: 0, pronto: null, tendina: null };
+  function cbNota(t, cls) { cb.nota.className = "ufnota" + (cls ? " " + cls : ""); cb.nota.innerHTML = t || "&nbsp;"; }
+  function cbOggi(d) {
+    d = d || new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function cbStato() {
+    var on = !!(S.espn && S.espn.ev);
+    cb.togli.style.display = on ? "" : "none";
+    if (!on) return;
+    cbNota("Nel cartello c'e' il campetto di <b>" + escH(S.espn.nome || "questa partita") + "</b>.", "ok");
+    // il campetto puo' averlo preso un'altra postazione: i menu' si mettono
+    // sulla stessa partita, cosi' quello che si legge e quello che c'e' in
+    // onda coincidono
+    if (cb.comp.value !== S.espn.lega || cb.part.value !== S.espn.ev) {
+      if (!cb.comp.querySelector('option[value="' + S.espn.lega + '"]')) return;   // menu' non ancora pronto
+      cb.comp.value = S.espn.lega;
+      if (cb.tendina) cb.tendina.aggiorna();
+      if (S.espn.giorno) cb.data.value = S.espn.giorno;
+      if (!cb.allinea) {
+        cb.allinea = true;
+        var ev = S.espn.ev, giorno = S.espn.giorno;
+        cbPartite(ev).then(function () {
+          // senza il giorno scritto nello stato si prova oggi, poi ieri
+          if (cb.part.value === ev || giorno) return;
+          cb.data.value = cbOggi(new Date(Date.now() - 86400000));
+          return cbPartite(ev);
+        }).then(function () { cb.allinea = false; }, function () { cb.allinea = false; });
+      }
     }
   }
+  function escH(t) {
+    return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function cbPartite(scegli) {
+    var lega = cb.comp.value, giorno = (cb.data.value || "").replace(/-/g, "");
+    cb.part.innerHTML = '<option value="">&mdash;</option>'; cb.prendi.disabled = true; cb.pronto = null;
+    if (!lega || !giorno) return Promise.resolve();
+    var mio = ++cb.giro;
+    cbNota("Cerco le partite del giorno&hellip;");
+    return fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + lega + "/scoreboard?dates=" + giorno)
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (mio !== cb.giro) return;
+        cb.partite = (j.events || []).map(function (e) {
+          var c = (e.competitions || [{}])[0], chi = c.competitors || [];
+          function sq(dove) {
+            var t = chi.filter(function (x) { return x.homeAway === dove; })[0] || {};
+            return { id: String((t.team || {}).id || ""), n: (t.team || {}).shortDisplayName || (t.team || {}).displayName || "" };
+          }
+          var casa = sq("home"), osp = sq("away"), st = ((c.status || {}).type || {});
+          var ora = new Date(e.date);
+          return { id: String(e.id), casa: casa, osp: osp, nome: casa.n + " - " + osp.n,
+                   stato: st.state === "in" ? "● " + (st.shortDetail || "in corso") :
+                          st.state === "post" ? "finita" :
+                          String(ora.getHours()).padStart(2, "0") + ":" + String(ora.getMinutes()).padStart(2, "0") };
+        });
+        if (!cb.partite.length) { cbNota("Nessuna partita di questa competizione in quel giorno."); return; }
+        cb.part.innerHTML = '<option value="">&mdash; ' + cb.partite.length + " partite &mdash;</option>" +
+          cb.partite.map(function (p) {
+            return '<option value="' + p.id + '">' + escH(p.nome) + " · " + escH(p.stato) + "</option>";
+          }).join("");
+        if (scegli && cb.partite.some(function (p) { return p.id === scegli; })) {
+          cb.part.value = scegli; return cbVerifica();
+        }
+        cbNota("Scegli la partita.");
+        cbStato();
+      })
+      .catch(function () { if (mio === cb.giro) cbNota("ESPN non risponde.", "err"); });
+  }
+  // la partita lo consente? servono le formazioni di tutte e due le squadre
+  function cbVerifica() {
+    var id = cb.part.value, lega = cb.comp.value;
+    cb.prendi.disabled = true; cb.pronto = null;
+    if (!id) { cbStato(); return Promise.resolve(); }
+    var mio = ++cb.giro;
+    cbNota("Guardo se ESPN ha le formazioni&hellip;");
+    return fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + lega + "/summary?event=" + id)
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (mio !== cb.giro) return;
+        var rose = j.rosters || [];
+        var ok = rose.length === 2 && rose.every(function (r) {
+          return (r.roster || []).filter(function (x) { return x.starter; }).length >= 11;
+        });
+        var p = cb.partite.filter(function (x) { return x.id === id; })[0] || {};
+        if (!ok) {
+          cbNota("ESPN non ha ancora le formazioni di <b>" + escH(p.nome || "questa partita") +
+                 "</b>: il campetto si prende quando escono (di solito un'ora prima).", "err");
+          cbStato();
+          return;
+        }
+        cb.pronto = { lega: lega, ev: id, nome: p.nome || "", giorno: cb.data.value };
+        cb.prendi.disabled = false;
+        if (S.espn && S.espn.ev === id) cbStato();
+        else cbNota("Formazioni ESPN pronte per <b>" + escH(p.nome) + "</b>. Premi il tasto e il campetto va nel cartello RADIOCRONACA.", "ok");
+      })
+      .catch(function () { if (mio === cb.giro) cbNota("ESPN non risponde.", "err"); });
+  }
+  (function () {
+    if (!cb.comp) return;
+    // lo stile verde-acqua dei dati che vengono da fuori: lo stesso di Formazioni
+    if (window.PartitaEspn && PartitaEspn.stile) PartitaEspn.stile();
+    cb.data.value = cbOggi();
+    if (window.CompetizioniEspn) {
+      CompetizioniEspn.riempi(cb.comp, function () { setTimeout(function () {
+        if (window.TendinaCerca) {
+          cb.tendina = TendinaCerca.su(cb.comp, { segnaposto: "Cerca: Serie A, Bundesliga, Argentina, coppa…",
+                                                  vuoto: "Scegli la competizione", sinonimi: SINONIMI_CALCIO });
+        }
+        agganciaEspn(true);
+      }, 0); });
+    }
+    cb.comp.addEventListener("change", function () { cbPartite(); });
+    cb.data.addEventListener("change", function () { cbPartite(); });
+    cb.part.addEventListener("change", cbVerifica);
+    cb.prendi.addEventListener("click", function () {
+      if (!cb.pronto) return;
+      S.espn = cb.pronto;
+      invia(true); cbStato();
+      msg.textContent = "Campetto di " + cb.pronto.nome + " nel cartello RADIOCRONACA.";
+    });
+    cb.togli.addEventListener("click", function () {
+      S.espn = null; invia(true); cbStato();
+      cbNota("Campetto tolto: il cartello RADIOCRONACA torna quello di sempre.");
+      if (cb.pronto) cb.prendi.disabled = false;
+    });
+  })();
+  // il nome vecchio della spia: lo chiamano ancora lo svuota e il ponte
+  function radioEspnDipingi() { cbStato(); }
+
+  // Il banco suggerisce: se le squadre scelte qui sopra giocano oggi (o
+  // ieri sera, dopo mezzanotte per ESPN e' ancora ieri), il pannello si
+  // mette su quella partita. Non aggancia: il tasto resta di chi decide.
   var espnFirma = "";
   function agganciaEspn(rifai) {
     var lega = legaOra();
     var firma = lega + "|" + (S.casa.tid || "") + "|" + (S.osp.tid || "");
     if (!rifai && firma === espnFirma) return;
     espnFirma = firma;
-    if (!lega || !S.casa.tid || !S.osp.tid) {
-      if (S.espn) { S.espn = null; invia(true); }
-      radioEspnDipingi(); return;
-    }
-    // oggi e ieri: una partita cominciata di sera, dopo mezzanotte, per
-    // ESPN e' ancora del giorno prima
-    var giorni = [0, -1].map(function (k) {
-      var d = new Date(Date.now() + k * 86400000);
-      return d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
-    });
+    cbStato();
+    if (!lega || !S.casa.tid || !S.osp.tid || !cb.comp) return;
+    if (S.espn && S.espn.ev) return;           // gia' preso: non si cambia sotto le mani
+    var giorni = [0, -1].map(function (k) { return new Date(Date.now() + k * 86400000); });
     var trovata = null;
-    giorni.reduce(function (cat, g) {
+    giorni.reduce(function (cat, d) {
       return cat.then(function () {
         if (trovata) return;
+        var g = cbOggi(d).replace(/-/g, "");
         return fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + lega + "/scoreboard?dates=" + g)
           .then(function (r) { return r.json(); })
           .then(function (j) {
@@ -1513,21 +1673,19 @@
                 return String((x.team || {}).id || "");
               });
               if (ids.indexOf(String(S.casa.tid)) >= 0 && ids.indexOf(String(S.osp.tid)) >= 0) {
-                trovata = { lega: lega, ev: String(e.id),
-                            nome: (S.casa.n || "") + " - " + (S.osp.n || "") };
+                trovata = { ev: String(e.id), giorno: cbOggi(d) };
               }
             });
           })
           .catch(function () {});
       });
     }, Promise.resolve()).then(function () {
-      // nel frattempo l'operatore puo' aver cambiato squadra: la risposta
-      // vecchia non deve sovrascrivere quella nuova
-      if (firma !== espnFirma) return;
-      var prima = S.espn ? S.espn.ev : "";
-      var dopo = trovata ? trovata.ev : "";
-      if (prima !== dopo) { S.espn = trovata; invia(true); }
-      radioEspnDipingi();
+      if (firma !== espnFirma || !trovata) return;
+      // il pannello va sulla partita trovata: competizione, giorno, partita
+      cb.comp.value = lega;
+      if (cb.tendina) cb.tendina.aggiorna();
+      cb.data.value = trovata.giorno;
+      cbPartite(trovata.ev);
     });
   }
   // la partita del giorno puo' comparire su ESPN anche dopo: si ricontrolla
@@ -1686,7 +1844,7 @@
     el("no").value = ""; el("so").value = ""; el("co").value = S.osp.col;
     el("radioNome").value = "";
     var rs = el("radioNomeSel"); if (rs) rs.value = "";
-    S.espn = null; espnFirma = ""; radioEspnDipingi();
+    S.espn = null; espnFirma = ""; radioEspnDipingi(); cbNota("");
     sel = null;
     disegnaFasi(); dipingi(); dipingiEventi(true);
     invia(true);
