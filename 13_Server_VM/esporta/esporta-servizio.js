@@ -48,12 +48,19 @@ const MOTORI = {
   "th-heatmap-vmix.html":  { ext: "mp4", nome: "TH_heatmap" },
   "th-torta-vmix.html":    { ext: "mov", nome: "TH_torta" },
   "th-radar-vmix.html":    { ext: "mov", nome: "TH_radar" },
-  // dal 21/09/2026: le grafiche di dati, tutte col loro fondo
-  "risultati-vmix.html":   { ext: "mp4", nome: "RISULTATI" },
-  "classifica-vmix.html":  { ext: "mp4", nome: "CLASSIFICA" },
-  "tabellone-vmix.html":   { ext: "mp4", nome: "TABELLONE" },
-  "gruppi-vmix.html":      { ext: "mp4", nome: "GIRONI" }
+  // dal 21/09/2026: le grafiche di dati, col loro fondo e con la WIPE Como
+  // TV davanti (le bande oro, come le montano in post): MOV trasparente,
+  // perche' prima che la wipe copra si vede il pezzo precedente. Talent
+  // Hunters la wipe non ce l'ha.
+  "risultati-vmix.html":   { ext: "mp4", nome: "RISULTATI", wipe: true },
+  "classifica-vmix.html":  { ext: "mp4", nome: "CLASSIFICA", wipe: true },
+  "tabellone-vmix.html":   { ext: "mp4", nome: "TABELLONE", wipe: true },
+  "gruppi-vmix.html":      { ext: "mp4", nome: "GIRONI", wipe: true }
 };
+// la wipe sta accanto al servizio (1920x1080, ProRes 4444, 60 fps, 0,95 s:
+// le bande coprono tutto a 0,5 s). Se manca, si esporta senza, in MP4.
+const WIPE = path.join(__dirname, "wipe-como.mov");
+function conWipe(M) { return !!(M.wipe && fs.existsSync(WIPE)); }
 
 const lavori = new Map();   // id -> {stato, motore, url, ext, nome, fotogrammi, errore, creato}
 const coda = [];
@@ -82,6 +89,7 @@ function prossimo() {
   const args = ["-n", "19", process.execPath, path.join(__dirname, "esporta-grafica.js"),
                 "--url", L.url, "--out", out, "--secondi", "auto"];
   if (CHROME) args.push("--chrome", CHROME);
+  if (L.wipe) args.push("--wipe", WIPE, "--wipe-copre", "0.5");
   const p = spawn("nice", args, { stdio: ["ignore", "pipe", "pipe"] });
   let coda_err = "";
   p.stdout.on("data", (b) => {
@@ -135,7 +143,8 @@ http.createServer((req, res) => {
       try { p = JSON.parse(corpo); } catch (e) { return rispondi(res, 400, { ok: false, errore: "richiesta non valida" }); }
       const M = MOTORI[p.motore];
       if (!M) return rispondi(res, 400, { ok: false, errore: "questa grafica non si esporta" });
-      const ext = M.ext;
+      const wipe = conWipe(M);
+      const ext = wipe ? "mov" : M.ext;
       if (!p.d || typeof p.d !== "object") return rispondi(res, 400, { ok: false, errore: "mancano i dati della grafica" });
       if (coda.length >= CODA_MAX) return rispondi(res, 429, { ok: false, errore: "troppe esportazioni in fila: riprova fra poco" });
       const url = BASE + p.motore + "?d=" + b64url(p.d);
@@ -144,7 +153,7 @@ http.createServer((req, res) => {
       const id = crypto.randomBytes(8).toString("hex");
       const giorno = new Date().toISOString().slice(0, 10);
       const nome = [M.nome, pulito(p.nome), giorno].filter(Boolean).join("_") + "." + ext;
-      lavori.set(id, { stato: "coda", motore: p.motore, url, ext, nome, fotogrammi: 0, creato: Date.now() });
+      lavori.set(id, { stato: "coda", motore: p.motore, url, ext, nome, wipe, fotogrammi: 0, creato: Date.now() });
       coda.push(id);
       prossimo();
       rispondi(res, 200, { ok: true, id, nome, formato: ext });

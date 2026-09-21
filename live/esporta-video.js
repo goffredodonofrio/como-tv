@@ -40,8 +40,9 @@ window.EsportaVideo = (function () {
     var dire = opz.messaggio || function () {};
     var b = document.createElement("button");
     b.type = "button"; b.hidden = true; b.className = opz.classe || "";
-    b.innerHTML = "&#11015; Esporta MP4";
-    b.title = "Video MP4 a tutto schermo, per la post-produzione: la stessa grafica dell'anteprima. " +
+    b.innerHTML = "&#11015; Esporta video";
+    b.title = "Video per la post-produzione: la stessa grafica dell'anteprima, con davanti la wipe Como TV " +
+              "(MOV trasparente, si mette sopra il pezzo prima). " +
               "Non durante una diretta: pesa sulla macchina delle grafiche.";
     opz.dopo.parentNode.insertBefore(b, opz.dopo.nextSibling);
     fetch(B + "salute", { cache: "no-store" })

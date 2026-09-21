@@ -27,9 +27,17 @@
  *  resta niente che si muove verso una fine (animazioni, timer, un video non
  *  in loop), poi si tengono due secondi fermi. Il tetto e' 30 secondi.
  *
+ *  LA WIPE (--wipe file.mov, solo .mov): le due bande oro Como TV davanti
+ *  alla grafica, come la montano in post. Il video comincia trasparente (li'
+ *  sotto c'e' il pezzo prima), le bande coprono tutto, e mentre escono si
+ *  scopre la grafica, che parte da zero proprio quando lo schermo e' coperto
+ *  (--wipe-copre, 0,5 s). La grafica si registra col suo fondo come sempre:
+ *  la trasparenza e' solo quella della wipe.
+ *
  *  Uso:
  *    node esporta-grafica.js --url "<motore ?d=...>" --out file.mp4
  *         [--secondi auto|8] [--fps 25] [--chrome /percorso]
+ *         [--wipe wipe-como.mov --wipe-copre 0.5]
  *  Sullo standard output scrive "FOTOGRAMMI n" mentre lavora e "FATTO" alla
  *  fine: e' quello che legge il servizio per dire a che punto e'.
  */
@@ -47,6 +55,8 @@ const SECONDI = arg("secondi", "auto");
 const FPS = parseInt(arg("fps", "25"), 10);
 const CHROME = arg("chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome");
 const ALFA = /\.mov$/i.test(OUT);
+const WIPE = ALFA ? arg("wipe", "") : "";
+const WIPE_COPRE = parseFloat(arg("wipe-copre", "0.5")) || 0.5;
 const TETTO = 30, FERMO = 2, MINIMO = 3;
 if (!URL_GRAFICA) { console.error("manca --url"); process.exit(2); }
 
@@ -141,7 +151,16 @@ function orologioFinto() {
   await page.goto(URL_GRAFICA, { waitUntil: "networkidle0", timeout: 60000 });
   await page.evaluate(() => document.fonts && document.fonts.ready);
 
+  // con la wipe: la grafica slitta di WIPE_COPRE secondi (trasparenti) e la
+  // wipe le passa sopra
+  const conWipe = WIPE
+    ? ["-i", WIPE, "-filter_complex",
+       "[0:v]format=yuva444p10le,tpad=start_duration=" + WIPE_COPRE + ":color=black@0[g];" +
+       "[1:v]fps=" + FPS + ",format=yuva444p10le[w];" +
+       "[g][w]overlay=0:0:eof_action=pass:format=auto,format=yuva444p10le"]
+    : [];
   const ff = spawn("ffmpeg", ["-y", "-loglevel", "error", "-f", "image2pipe", "-framerate", String(FPS), "-i", "-"].concat(
+    conWipe,
     ALFA
       ? ["-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", "-vendor", "apl0", OUT]
       : ["-c:v", "libx264", "-preset", "medium", "-crf", "14", "-pix_fmt", "yuv420p", "-movflags", "+faststart", OUT]),
@@ -154,7 +173,7 @@ function orologioFinto() {
     const t = (i * 1000) / FPS;
     await page.evaluate((x) => window.__esportaAvanza(x), t);
     await page.evaluate(() => window.__esportaVideoPronti());
-    const png = await page.screenshot({ type: "png", omitBackground: ALFA, optimizeForSpeed: true,
+    const png = await page.screenshot({ type: "png", omitBackground: ALFA && !WIPE, optimizeForSpeed: true,
                                         clip: { x: 0, y: 0, width: 1920, height: 1080 } });
     if (!ff.stdin.write(png)) await new Promise((r) => ff.stdin.once("drain", r));
     // Durata automatica: appena non resta niente in arrivo si decide la fine,

@@ -6,11 +6,19 @@ Le grafiche diventano file video per la post-produzione, dal tasto **⬇ Esporta
 |---|---|---|---|---|
 | Talent Hunters: carta, approved, heatmap | `talent-hunters/th-editor.js` | `th-*-vmix.html` | MP4 | `TH_carta_…` |
 | Talent Hunters: torta, radar | idem | idem | MOV ProRes 4444 con alfa | `TH_torta_…` |
-| Risultati (dal 21/09/2026) | `risultati.html` | `risultati-vmix.html` | MP4 | `RISULTATI_…` |
-| Classifiche | `classifiche-campionati.html` | `classifica-vmix.html` | MP4 | `CLASSIFICA_…` |
-| Tabelloni e gironi | `tabelloni.html` | `tabellone-vmix.html`, `gruppi-vmix.html` | MP4 | `TABELLONE_…`, `GIRONI_…` |
+| Risultati (dal 21/09/2026) | `risultati.html` | `risultati-vmix.html` | MOV con wipe | `RISULTATI_…` |
+| Classifiche | `classifiche-campionati.html` | `classifica-vmix.html` | MOV con wipe | `CLASSIFICA_…` |
+| Tabelloni e gironi | `tabelloni.html` | `tabellone-vmix.html`, `gruppi-vmix.html` | MOV con wipe | `TABELLONE_…`, `GIRONI_…` |
 
 - **MP4 (H.264)** per le grafiche col loro fondo.
+- **MOV con wipe** (dal 21/09/2026, solo risultati, classifiche, tabelloni e gironi; Talent Hunters no):
+  davanti alla grafica le due bande oro Como TV, come le montano in post. Il video comincia
+  trasparente, le bande coprono tutto a 0,5 s, uscendo scoprono la grafica, che parte da zero li'.
+  La wipe e' `wipe-como.mov` accanto al servizio (1920x1080, ProRes 4444, 60 fps, 0,95 s),
+  ricavata dal file dei montatori; l'originale sta in
+  `10_Look&Feel/MOTION/GRAFICA LIVE/WIPE COMO TV (bande oro, alfa).mov`. NON e' nel repo:
+  va copiata a mano in `/opt/comotv-esporta/` e `/opt/comotv-dev-esporta/`. Se manca, quelle
+  grafiche escono in MP4 senza wipe.
 - **MOV ProRes 4444 con alfa** per quelle trasparenti, da mettere sopra le immagini in Premiere.
 
 Il tasto di risultati, classifiche e tabelloni e' un modulo solo, `live/esporta-video.js`: prende i dati
