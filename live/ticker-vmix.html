@@ -66,6 +66,9 @@
   .tito b{font-family:'Mazzard',sans-serif;font-weight:800;font-size:45px;line-height:1.0;letter-spacing:.005em;
     color:#F5F1E6;text-transform:uppercase;
     display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  /* le due caselle dell'editor: due righe vere, nessuna va a capo da sola */
+  .tito b.righe{display:block;-webkit-line-clamp:unset;}
+  .tito b.righe .r{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .tito.in{transform:translateY(0) translateZ(0);}
   .tito.out{transform:translateY(-100%) translateZ(0);}
 
@@ -191,12 +194,50 @@
   function costruisci(t) {
     var el = document.createElement("div");
     el.className = "tito";
-    el.innerHTML = '<b>' + esc(t).replace(/\s·\s/g, "<br>") + '</b>';
+    el.innerHTML = righeTito(t);
     el.__t = t;
     wrap.appendChild(el);
     void el.offsetHeight;
+    adattaTito(el);
     return el;
   }
+
+  // ── le righe del titolo ──
+  // Nell'editor il titolo ha due caselle, e ognuna e' una riga: la seconda
+  // va a capo, sotto la prima (l'editor le unisce con " · "). Una riga non
+  // si spezza mai: se e' piu' lunga della striscia il carattere si stringe
+  // quanto basta, fino a poco meno di tre quarti; oltre, si taglia coi puntini. Il
+  // contatore dell'editor diventa rosso proprio per avvisare di questo.
+  // Un titolo di una casella sola resta com'era: puo' andare su due righe.
+  function righeTito(t) {
+    var p = String(t || "").split(/\s·\s/);
+    if (p.length < 2) return "<b>" + esc(t) + "</b>";
+    return '<b class="righe">' + p.map(function (r) { return '<span class="r">' + esc(r) + "</span>"; }).join("") + "</b>";
+  }
+  function adattaTito(el) {
+    var b = el.querySelector("b.righe");
+    if (!b) return;
+    b.style.fontSize = "";
+    var base = parseFloat(getComputedStyle(b).fontSize) || 40, dim = base;
+    var righe = b.querySelectorAll(".r");
+    // a passi: il carattere non si stringe in modo esattamente proporzionale
+    for (var giro = 0; giro < 6; giro++) {
+      var largo = b.clientWidth, peggio = 1;
+      Array.prototype.forEach.call(righe, function (r) {
+        if (r.scrollWidth > largo) peggio = Math.min(peggio, largo / r.scrollWidth);
+      });
+      if (peggio >= 1) break;
+      dim = Math.max(base * .72, dim * peggio * .985);
+      b.style.fontSize = dim.toFixed(1) + "px";
+      if (dim <= base * .72) break;
+    }
+    // col carattere di ripiego le larghezze sono sbagliate: a Mazzard caricato si rifa'
+    if (document.fonts && document.fonts.status !== "loaded" && !el.__rifatto) {
+      el.__rifatto = true;
+      document.fonts.ready.then(function () { adattaTito(el); });
+    }
+  }
+
 
   function mostraTito(t) {
     var vecchio = cur;
