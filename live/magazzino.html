@@ -37,7 +37,7 @@
   header.page{padding:58px 0 8px;display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap;flex:none;}
   .eyebrow{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:var(--gold);margin-bottom:4px;}
   h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:26px;line-height:.94;letter-spacing:-.02em;text-transform:uppercase;color:var(--ivory);}
-  .contatori{margin-left:auto;display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--fg-3);padding-right:210px;align-items:baseline;}
+  .contatori{margin-left:26px;display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--fg-3);align-items:baseline;padding-bottom:3px;}
   .contatori b{font-family:'Mazzard',sans-serif;font-weight:800;font-size:14px;color:var(--ivory);margin-right:5px;font-variant-numeric:tabular-nums;}
   button,a.tasto{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
     padding:9px 14px;border-radius:7px;cursor:pointer;text-decoration:none;background:rgba(245,241,230,.04);color:var(--ivory-dim);
@@ -62,14 +62,18 @@
   .cercabox .lu{position:absolute;left:20px;top:50%;transform:translateY(-50%);font-size:18px;opacity:.65;pointer-events:none;}
   .cercabox .pulisci{position:absolute;right:12px;top:50%;transform:translateY(-50%);display:none;}
   .cercabox.pieno .pulisci{display:inline-flex;}
-  .chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;flex:none;}
-  .chip{font-family:'Mazzard',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 11px;border-radius:22px;cursor:pointer;
+  .chips{display:flex;gap:5px;flex-wrap:nowrap;align-items:center;margin-bottom:10px;flex:none;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;}
+  .chips::-webkit-scrollbar{display:none;}
+  .chip{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:5px 10px;border-radius:22px;cursor:pointer;flex:none;
     border:1px solid var(--line-2);color:var(--ivory-dim);background:transparent;}
   .chip:hover{color:var(--gold-bright);border-color:var(--line-gold);}
   .chip .n{opacity:.55;margin-left:4px;font-weight:500;}
   .chip.on{border-color:var(--gold);color:var(--gold-bright);background:rgba(201,162,75,.1);}
   .chips .spazio{flex:1;}
-  .chips .piccolo{font-size:10.5px;padding:6px 10px;}
+  .chips .piccolo{font-size:10px;padding:5px 9px;}
+  .due.nascosto{display:none;}
+  .suggerimento{color:var(--fg-3);font-size:13px;padding:26px 4px;text-align:center;flex:1;}
+  .suggerimento b{color:var(--ivory-dim);} .suggerimento kbd{font:11px ui-monospace,Menlo,monospace;border:1px solid var(--line-2);border-radius:3px;padding:0 5px;}
 
   /* ── risultati a sinistra, anteprima a destra ── */
   .due{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,400px);gap:18px;align-items:stretch;flex:1 1 auto;min-height:0;padding-bottom:14px;}
@@ -142,14 +146,14 @@
   </div>
   <div class="chips" id="chips">
     <button class="chip on" data-t="tutto" type="button">Tutto</button>
-    <button class="chip" data-t="evento" type="button">Eventi completi <span class="n" id="cE"></span></button>
+    <button class="chip" data-t="evento" type="button">Eventi <span class="n" id="cE"></span></button>
     <button class="chip" data-t="video" type="button">Video <span class="n" id="cV"></span></button>
     <span id="chipsFoto" style="display:contents"></span>
-    <button class="chip" data-t="file" type="button">Cartelle QNAP e VM <span class="n" id="cQ"></span></button>
+    <button class="chip" data-t="file" type="button">Cartelle <span class="n" id="cQ"></span></button>
     <span class="spazio"></span>
-    <button class="chip piccolo" id="apriCaricaF" type="button">+ Foto</button>
-    <button class="chip piccolo" id="apriCaricaV" type="button">+ Video</button>
-    <a class="chip piccolo" href="magazzino-foto.html" style="text-decoration:none">Formazione premium</a>
+    <button class="chip piccolo" id="apriCaricaF" type="button" title="carica una foto, un logo, uno stemma">+ Foto</button>
+    <button class="chip piccolo" id="apriCaricaV" type="button" title="carica un video MP4">+ Video</button>
+    <a class="chip piccolo" href="magazzino-foto.html" style="text-decoration:none" title="le foto dei giocatori delle formazioni premium">Premium</a>
   </div>
 
   <div class="pannello" id="caricaF" hidden>
@@ -166,8 +170,9 @@
     <div class="nota">Solo MP4 H.264, massimo 800 MB.</div>
   </div>
 
-  <div class="due">
-    <div id="risultati"><div class="vuoto">Carico il magazzino…</div></div>
+  <div class="suggerimento" id="suggerimento">Scrivi per cercare: una partita, una squadra, un giocatore, il nome di un file. <kbd>/</kbd> porta il cursore nella barra.</div>
+  <div class="due nascosto" id="due">
+    <div id="risultati"></div>
     <div id="anteprima"><div class="vuoto" style="padding:10px 0">Cerca qualcosa, poi scegli un risultato: qui lo vedi e lo usi.</div></div>
   </div>
 </div>
@@ -223,10 +228,10 @@
   var FAMIGLIE = [
     { k:"maglie",     eti:"Maglie",              test:function(n){ return n.indexOf("maglia-") === 0; } },
     { k:"allenatori", eti:"Allenatori",          test:function(n){ return n.indexOf("foto-premium-coach-") === 0 || n.indexOf("foto-coach-") === 0 || n.indexOf("allenatore-") === 0; } },
-    { k:"premium",    eti:"Formazioni premium",  test:function(n){ return n.indexOf("foto-premium") === 0; } },
+    { k:"premium",    eti:"Premium",             test:function(n){ return n.indexOf("foto-premium") === 0; } },
     { k:"focus",      eti:"Focus",               test:function(n){ return n.indexOf("foto-focus-") === 0; } },
-    { k:"giocatori",  eti:"Foto giocatori",      test:function(n){ return n.indexOf("foto-") === 0; } },
-    { k:"stemmi",     eti:"Stemmi e loghi",      test:function(){ return true; } }
+    { k:"giocatori",  eti:"Giocatori",           test:function(n){ return n.indexOf("foto-") === 0; } },
+    { k:"stemmi",     eti:"Stemmi",              test:function(){ return true; } }
   ];
   function famiglia(n){ for (var i = 0; i < FAMIGLIE.length; i++) if (FAMIGLIE[i].test(n)) return FAMIGLIE[i].k; return "stemmi"; }
   function etichettaFamiglia(k){ var f = FAMIGLIE.filter(function(x){ return x.k === k; })[0]; return f ? f.eti : k; }
@@ -273,6 +278,11 @@
   function passa(x){ var p = parole(); return p.every(function(w){ return x.cerca.indexOf(w) >= 0; }); }
   function disegna(){
     var q = parole(), out = "", tot = 0;
+    // senza una parola (o una categoria scelta) la pagina resta pulita
+    var attivo = q.length > 0 || TIPO !== "tutto";
+    el("due").classList.toggle("nascosto", !attivo);
+    el("suggerimento").hidden = attivo;
+    if (!attivo) { el("risultati").innerHTML = ""; return; }
     var gruppi = [
       { t:"evento", nome:"Eventi completi", lista:EVENTI, tetto: TIPO === "evento" ? 300 : 6 },
       { t:"video", nome:"Video", lista:VIDEO, tetto: TIPO === "video" ? 300 : 5 }
@@ -281,14 +291,14 @@
     gruppi.push({ t:"file", nome:"Cartelle QNAP e VM", lista:FILE, tetto: TIPO === "file" ? 400 : 6 });
     gruppi.forEach(function(g){
       if (TIPO !== "tutto" && TIPO !== g.t) return;
-      var v = q.length ? g.lista.filter(passa) : g.lista.slice(0, g.t === "file" ? 0 : g.t.indexOf("foto:") === 0 ? 4 : 12);
+      var v = q.length ? g.lista.filter(passa) : g.lista.slice(0, 400);
       if (!v.length) return;
       tot += v.length;
-      out += '<div class="gruppo">' + g.nome + '<span>' + (q.length ? v.length : g.lista.length) + (q.length ? "" : (g.t.indexOf("foto:") === 0 ? " · le ultime" : g.t === "evento" ? " · i più recenti" : "")) + '</span></div>';
+      out += '<div class="gruppo">' + g.nome + '<span>' + (q.length ? v.length : g.lista.length) + '</span></div>';
       out += v.slice(0, g.tetto).map(riga).join("");
       if (v.length > g.tetto) out += '<div class="altri">…e altri ' + (v.length - g.tetto) + ': ' + (TIPO === "tutto" ? 'scegli il gruppo qui sopra o ' : '') + 'affina la ricerca.</div>';
     });
-    if (!tot) out = '<div class="vuoto">' + (q.length ? 'Niente per <b>' + esc(CERCA) + '</b>.' + (!FILE_CARICATI ? ' Sto guardando anche nelle cartelle…' : '') : 'Il magazzino è vuoto.') + '</div>';
+    if (!tot) out = '<div class="vuoto">' + (q.length ? 'Niente per <b>' + esc(CERCA) + '</b>.' + (!FILE_CARICATI ? ' Sto guardando anche nelle cartelle…' : '') : 'Niente in questa categoria.') + '</div>';
     el("risultati").innerHTML = out;
     if (q.length && !FILE_CARICATI) caricaFile();
     if (TIPO === "file" && !FILE_CARICATI) caricaFile();
