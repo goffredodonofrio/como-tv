@@ -313,6 +313,12 @@
   /* Svuota partita: e' l'unico tasto che CANCELLA, e si deve vedere che
      lo e' — rosso, staccato dal resto, in fondo al pannello dove non lo
      si sfiora per sbaglio mentre si segna un gol. */
+  .autoespn{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12.5px;color:var(--gr,#8A8B96);
+    cursor:pointer;user-select:none;flex-wrap:wrap;}
+  .autoespn input{width:16px;height:16px;accent-color:#2DD4BF;margin:0;}
+  .autoespn span{color:#6EE7D4;font-weight:600;}
+  .autoespn em{font-style:normal;flex:1 0 100%;padding-left:24px;}
+  .autoespn.spento span{color:var(--gr,#8A8B96);}
   #campoBar input[type=date]{padding:9px 12px;border-radius:7px;background:rgba(245,241,230,.05);
     border:1px solid rgba(245,241,230,.12);color:#F5F1E6;font-family:'DM Sans',sans-serif;font-size:14px;
     color-scheme:dark;}
@@ -701,6 +707,13 @@
             <span class="pm"><button data-p="2" data-d="1">+1</button><button data-p="2" data-d="-1">&minus;1</button></span>
           </div>
         </div>
+        <!-- il punteggio lo tiene ESPN, quando c'e' una partita presa da ESPN:
+             sale da solo, non scende mai (il VAR si corregge a mano) -->
+        <label class="autoespn" id="autoPuntBox" title="Con una partita presa da ESPN il punteggio sale da solo quando ESPN registra un gol. Non scende mai: un gol annullato si toglie a mano.">
+          <input type="checkbox" id="autoPunt" checked>
+          <span>Punteggio automatico da ESPN</span>
+          <em id="autoPuntNota"></em>
+        </label>
           </div>
         </div>
 
@@ -1444,6 +1457,74 @@
       if (d > 0 && !BANCO) armaGol(k === "p1" ? "casa" : "osp");
     });
   });
+
+  // ── il punteggio da ESPN ──
+  // Con una partita presa da ESPN (S.espn), il banco guarda il punteggio
+  // ogni 20 secondi. Regola: ESPN puo' solo far SALIRE il numero, mai farlo
+  // scendere. ESPN arriva con circa un minuto di ritardo: se la regia ha
+  // gia' messo il 2-0 col tasto GOL e ESPN dice ancora 1-0, abbassare
+  // toglierebbe un gol in onda. Un gol annullato si toglie a mano, col -1.
+  // Le squadre si abbinano per id, non per posizione: se nel banco la
+  // partita e' scritta al contrario, il gol va comunque a chi l'ha fatto.
+  var AUTO_LS = "comotv.partita.autopunteggio";
+  (function () {
+    var box = el("autoPunt"), nota = el("autoPuntNota"), cont = el("autoPuntBox");
+    if (!box) return;
+    try { if (localStorage.getItem(AUTO_LS) === "0") box.checked = false; } catch (e) {}
+    function stato(t) { nota.textContent = t || ""; cont.classList.toggle("spento", !box.checked); }
+    box.addEventListener("change", function () {
+      try { localStorage.setItem(AUTO_LS, box.checked ? "1" : "0"); } catch (e) {}
+      stato(box.checked ? "" : "Spento: il punteggio si tiene a mano.");
+      if (box.checked) guarda();
+    });
+    function guarda() {
+      if (!box.checked) return;
+      var e = S.espn;
+      if (!e || !e.lega || !e.ev) { stato("Si accende quando prendi una partita da ESPN (qui sopra)."); return; }
+      fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + e.lega + "/summary?event=" + e.ev,
+            { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (!S.espn || S.espn.ev !== e.ev || !box.checked) return;
+          var comp = (((j.header || {}).competitions || [])[0] || {});
+          var chi = comp.competitors || [];
+          var st = ((comp.status || {}).type || {});
+          if (st.state === "pre") { stato("La partita non e' ancora cominciata."); return; }
+          var gol = {};
+          chi.forEach(function (x) { gol[String((x.team || {}).id || "")] = parseInt(x.score, 10) || 0; });
+          var casa = chi.filter(function (x) { return x.homeAway === "home"; })[0] || {};
+          var osp = chi.filter(function (x) { return x.homeAway === "away"; })[0] || {};
+          // chi e' p1 nel banco: per id se c'e', se no la squadra di casa ESPN
+          var id1 = S.casa.tid && gol[S.casa.tid] !== undefined ? S.casa.tid : String((casa.team || {}).id || "");
+          var id2 = S.osp.tid && gol[S.osp.tid] !== undefined ? S.osp.tid : String((osp.team || {}).id || "");
+          var g1 = gol[id1] || 0, g2 = gol[id2] || 0;
+          var su = false;
+          if (g1 > (S.p1 || 0)) { S.p1 = g1; su = true; }
+          if (g2 > (S.p2 || 0)) { S.p2 = g2; su = true; }
+          var ora = new Date();
+          var hhmm = String(ora.getHours()).padStart(2, "0") + ":" + String(ora.getMinutes()).padStart(2, "0");
+          if (su) {
+            dipingi(); invia(true);
+            msg.textContent = "Punteggio aggiornato da ESPN: " + (S.casa.s || S.casa.n || "") + " " + S.p1 +
+                              " - " + S.p2 + " " + (S.osp.s || S.osp.n || "") + ".";
+            stato("Aggiornato alle " + hhmm + ": ESPN dice " + g1 + "-" + g2 + ".");
+          } else if (g1 < (S.p1 || 0) || g2 < (S.p2 || 0)) {
+            stato("ESPN dice " + g1 + "-" + g2 + ": qui c'e' di piu', lo lascio (ESPN e' in ritardo, o c'e' un gol annullato da togliere a mano).");
+          } else {
+            stato("Allineato con ESPN alle " + hhmm + " (" + g1 + "-" + g2 + ").");
+          }
+        })
+        .catch(function () { stato("ESPN non risponde: il punteggio resta quello di qui."); });
+    }
+    guarda();
+    setInterval(guarda, 20000);
+    // appena si prende una partita, si guarda subito
+    var ultima = "";
+    setInterval(function () {
+      var ev = S.espn && S.espn.ev ? S.espn.ev : "";
+      if (ev !== ultima) { ultima = ev; guarda(); }
+    }, 1000);
+  })();
 
   // ── cronometro ──
   function elapsed() {
