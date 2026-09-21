@@ -10491,6 +10491,14 @@ function anello() {
     if (r.stato === "registra" || PROC.get(r.id)) return;
     if (!r.finita || r.finita > limite) return;
     if (!fs.existsSync(cartellaReg(r.id))) return;
+    // una trascrizione in corso ha l'audio in quella cartella: portarla via
+    // sotto a whisper e' buttare due ore di macchina (successo il 21/09 su
+    // Udinese-Como, una partita d'archivio vecchia di tre giorni)
+    if (voceAlLavoro && voceAlLavoro.reg === r.id) return;
+    if (fs.existsSync(path.join(cartellaReg(r.id), "voce.corso.json"))) return;
+    // una partita d'archivio non ha materiale qui: nella cartella ci sono
+    // solo i file della voce, che pesano poco e servono ancora
+    if (r.arch) return;
     try {
       fs.rmSync(cartellaReg(r.id), { recursive: true, force: true });
       r.materialeTolto = Date.now();
