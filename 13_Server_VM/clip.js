@@ -10970,6 +10970,34 @@ const AZIONI = {
   "clip-qnap-sposta": qnapSposta,
   "clip-qnap-cartella": qnapCartella,
   "clip-qnap-via": qnapVia,
+  // GLI EVENTI COMPLETI: tutti i video della QNAP, anche nelle sottocartelle,
+  // con la partita se l'archivio la conosce. E' la lista su cui si cerca.
+  "clip-qnap-eventi": (p) => {
+    const partite = qnapPartite();
+    const regs = Object.keys(R.reg).map((k) => R.reg[k]).filter((x) => x.arch);
+    const fuori = []; let contati = 0;
+    const giro = (rel, prof) => {
+      let voci; try { voci = fs.readdirSync(path.join(QNAP_RADICE, rel), { withFileTypes: true }); } catch (e) { return; }
+      for (const d of voci) {
+        if (QNAP_NASCOSTI.test(d.name)) continue;
+        if (++contati > 5000) return;
+        const relSuo = rel ? rel + "/" + d.name : d.name;
+        if (d.isDirectory()) { if (prof < 4) giro(relSuo, prof + 1); continue; }
+        const est = path.extname(d.name).slice(1).toLowerCase();
+        if (!/^(mp4|mov|mxf|mkv|ts|m4v)$/.test(est)) continue;
+        let st; try { st = fs.statSync(path.join(QNAP_RADICE, relSuo)); } catch (e) { continue; }
+        const v = { nome: d.name, via: relSuo, cartella: rel, peso: st.size, quando: st.mtimeMs, est };
+        const pa = partite[relSuo]; if (pa) { v.rec = pa.rec; v.partita = pa.partita; }
+        const r = regs.find((x) => x.arch.chiave === relSuo || (x.arch.pezzi || []).some((z) => z.chiave === relSuo));
+        if (r) { v.reg = r.id; v.partita = v.partita || r.titolo; v.durata = r.durata || 0; if (!v.rec && r.arch.rec) v.rec = r.arch.rec; v.telecronaca = !!(PARLATO[r.id] && (PARLATO[r.id].pezzi || []).length); }
+        const a = v.rec && ARCHIVIO[v.rec]; if (a) { v.quandoPartita = a.quando || a.data || ""; v.competizione = a.competizione || ""; if (!v.durata && a.pezzi) v.durata = (a.pezzi.reduce((n, z) => n + (z.minuti || 0), 0)) * 60; }
+        fuori.push(v);
+      }
+    };
+    giro("", 0);
+    fuori.sort((a, b) => b.quando - a.quando);
+    return { ok: true, eventi: fuori, peso: fuori.reduce((n, x) => n + x.peso, 0), quanti: fuori.length, scrivibile: qnapSiScrive() };
+  },
   "clip-qnap-peso": qnapPeso,
   "clip-qnap-radici": () => ({ ok: true, radici: qnapRadici().map((r) => ({ id: r.id, nome: r.nome })) }),
   "clip-parlato-importa": (p) => {
