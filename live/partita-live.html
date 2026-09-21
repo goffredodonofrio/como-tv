@@ -241,7 +241,7 @@
   #radiomarc .m b{font-family:'Mazzard',sans-serif;font-weight:800;color:#F5F1E6;}
   #radiomarc .m small{font-size:20px;color:#8A8B96;margin-left:9px;}
   /* il pallone di chi ha segnato, in riga col nome */
-  #radiomarc .m .pallone{width:27px;height:27px;vertical-align:-5px;margin-right:10px;flex:none;}
+  #radiomarc .m .pallone{width:28px;height:28px;vertical-align:-6px;margin-right:10px;flex:none;}
   #radiomarc .col.b .m .pallone{margin:0 0 0 9px;order:1;}
   /* a destra il minuto va dopo il nome: si sposta l'elemento, non il verso
      del testo (con direction:rtl l'apostrofo finiva prima del numero) */
@@ -312,9 +312,17 @@
   #radio.conCampo #radiofilo{margin-top:10px;}
   /* i marcatori non spariscono col campetto: si mettono ai lati, uno
      per squadra, all'altezza del campo - chi ha segnato si legge sempre */
-  #radio.conCampo #radiomarc{top:470px;width:1840px;gap:0;align-items:flex-start;}
-  #radio.conCampo #radiomarc .col{max-width:300px;gap:9px;}
-  #radio.conCampo #radiomarc .m{font-size:23px;overflow:hidden;text-overflow:ellipsis;}
+  /* col campetto i marcatori stanno accanto allo stemma della loro squadra,
+     come negli scoreboard: a sinistra della sfera di casa, a destra
+     dell'ospite. Cosi' i lati sotto restano alla card del protagonista. */
+  #radio.conCampo #radiomarc{top:176px;left:0;width:1920px;height:0;transform:none;display:block;}
+  #radio.conCampo #radiomarc .col{position:absolute;top:0;transform:translateY(-50%);
+    max-width:560px;gap:8px;}
+  #radio.conCampo #radiomarc .col.a{right:1305px;align-items:flex-end;text-align:right;}
+  #radio.conCampo #radiomarc .col.b{left:1305px;align-items:flex-start;text-align:left;}
+  #radio.conCampo #radiomarc .col .m{display:flex;align-items:center;}
+  #radio.conCampo #radiomarc .col.b .m{justify-content:flex-start;}
+  #radio.conCampo #radiomarc .m{font-size:25px;white-space:nowrap;}
   #radio.conCampo #radiomarc .m i{margin-right:9px;}
   #radio.conCampo #radiomarc .col.b .m i{margin:0 0 0 9px;}
   #radio.conCampo #radiomarc .m small{font-size:17px;}
@@ -695,32 +703,35 @@
   // cuciture che vanno verso il bordo e gli spicchi scuri intorno. La
   // stessa geometria serve due volte - sulla pedina in campo e accanto
   // al marcatore in grafica - quindi si calcola qui una volta sola.
-  function pallaPezzi(r, dentro) {
-    var pent = [], raggi = [], i, a;
-    for (i = 0; i < 5; i++) {
-      a = -Math.PI / 2 + i * Math.PI * 2 / 5;
-      pent.push((Math.cos(a) * r * .38).toFixed(2) + " " + (Math.sin(a) * r * .38).toFixed(2));
-      raggi.push("M" + (Math.cos(a) * r * .38).toFixed(2) + " " + (Math.sin(a) * r * .38).toFixed(2) +
-                 "L" + (Math.cos(a) * r * .86).toFixed(2) + " " + (Math.sin(a) * r * .86).toFixed(2));
+  // Il disegno classico, quello che si riconosce anche piccolo: il
+  // pentagono nero al centro e cinque pentagoni tagliati dal bordo. Niente
+  // cuciture: sotto i trenta pixel diventano rumore e il pallone sembra un
+  // fiore. L'autogol e' lo stesso pallone, rosso.
+  var pallaConta = 0;
+  function pallaDentro(r, tinta, bordo) {
+    var cid = "pc" + (++pallaConta);
+    function penta(cx, cy, rr, rot) {
+      var v = [];
+      for (var k = 0; k < 5; k++) {
+        var a = rot + k * Math.PI * 2 / 5;
+        v.push((cx + Math.cos(a) * rr).toFixed(2) + " " + (cy + Math.sin(a) * rr).toFixed(2));
+      }
+      return '<path d="M' + v.join("L") + 'Z" fill="' + tinta + '"/>';
     }
-    // gli spicchi sul bordo: un cerchio tratteggiato, cinque tratti
-    var rr = r * .82, giro = 2 * Math.PI * rr;
-    return { pent: "M" + pent.join("L") + "Z", raggi: raggi.join(""),
-             orlo: { r: rr, w: r * .3, dash: (giro / 5 * .46).toFixed(2) + " " + (giro / 5 * .54).toFixed(2),
-                     off: (giro / 10 * .46 + giro / 20).toFixed(2) }, dentro: dentro };
+    var h = '<defs><clipPath id="' + cid + '"><circle cx="0" cy="0" r="' + r + '"/></clipPath></defs>' +
+            '<circle cx="0" cy="0" r="' + r + '" fill="#F7F4EC"/><g clip-path="url(#' + cid + ')">' +
+            penta(0, 0, r * .37, -Math.PI / 2);
+    for (var k = 0; k < 5; k++) {
+      var a = -Math.PI / 2 + Math.PI / 5 + k * Math.PI * 2 / 5;      // davanti a ogni lato del centrale
+      h += penta(Math.cos(a) * r * 1.06, Math.sin(a) * r * 1.06, r * .38, a + Math.PI);
+    }
+    return h + '</g><circle cx="0" cy="0" r="' + (r - r * .05) + '" fill="none" stroke="' + bordo +
+               '" stroke-width="' + (r * .08).toFixed(2) + '"/>';
   }
   function pallaMarcatore(autogol) {
-    var tinta = autogol ? "#E5342B" : "#0A0F24";
-    var q = pallaPezzi(13, tinta);
-    return '<svg class="pallone" viewBox="-16 -16 32 32" aria-hidden="true">' +
-           '<circle cx="0" cy="0" r="13" fill="#F5F1E6" stroke="' + tinta + '" stroke-width="' +
-           (autogol ? 2.6 : 1.4) + '"></circle>' +
-           '<circle cx="0" cy="0" r="' + q.orlo.r + '" fill="none" stroke="' + tinta +
-           '" stroke-width="' + q.orlo.w + '" stroke-dasharray="' + q.orlo.dash +
-           '" stroke-dashoffset="' + q.orlo.off + '"></circle>' +
-           '<path d="' + q.raggi + '" stroke="' + tinta + '" stroke-width="1.5" fill="none"></path>' +
-           '<path d="' + q.pent + '" fill="' + tinta + '"></path>' +
-           "</svg>";
+    var tinta = autogol ? "#E5342B" : "#12162A";
+    return '<svg class="pallone" viewBox="-15 -15 30 30" aria-hidden="true">' +
+           pallaDentro(14, tinta, autogol ? "#E5342B" : "#12162A") + "</svg>";
   }
   function radioMarcatori(j, daEspn) {
     var lista = daEspn || j.marcatori || [];
@@ -1375,9 +1386,7 @@
       });
       h += "</svg>";
       // la card sta sotto i marcatori della sua squadra
-      var col = document.querySelector("#radiomarc .col." + (info.lato === "casa" ? "a" : "b"));
-      var alto = col ? col.getBoundingClientRect().height : 0;
-      box.style.top = Math.max(520, Math.min(600, 470 + alto + 30)) + "px";
+      box.style.top = "470px";                          // all'altezza del campo
       box.className = info.lato === "casa" ? "a" : "b";
       box.innerHTML = h;
       requestAnimationFrame(function () { box.classList.add("on"); });
@@ -1412,15 +1421,8 @@
       }
       if (seg.gol || seg.autogol) {
         var b = rcNs("g", { transform: "translate(" + (RC_CW / 2 + 2) + " " + (RC_CY + 40) + ")" }, g);
-        var tinta = seg.autogol ? "#E5342B" : "#12183A";
-        var q = pallaPezzi(14, tinta);
-        rcNs("circle", { cx: 0, cy: 0, r: 14, fill: "#F5F1E6", stroke: tinta,
-                         "stroke-width": seg.autogol ? 2.8 : 1.6 }, b);
-        rcNs("circle", { cx: 0, cy: 0, r: q.orlo.r, fill: "none", stroke: tinta,
-                         "stroke-width": q.orlo.w, "stroke-dasharray": q.orlo.dash,
-                         "stroke-dashoffset": q.orlo.off }, b);
-        rcNs("path", { d: q.raggi, stroke: tinta, "stroke-width": 1.6, fill: "none" }, b);
-        rcNs("path", { d: q.pent, fill: tinta }, b);
+        var tinta = seg.autogol ? "#E5342B" : "#12162A";
+        b.innerHTML = pallaDentro(14, tinta, tinta);
         var quanti = (seg.gol || 0) + (seg.autogol || 0);
         if (quanti > 1) {
           var n = rcNs("text", { x: 20, y: 6, "text-anchor": "middle",
