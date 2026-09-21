@@ -1513,7 +1513,8 @@
   // pannello si mette gia' su quella partita. Aggancia pero' solo il tasto,
   // mai da solo - cosi' nel cartello non compare niente che non si e' deciso.
   var cb = { comp: el("cbComp"), data: el("cbData"), part: el("cbPart"), prendi: el("cbPrendi"),
-             togli: el("cbTogli"), nota: el("cbNota"), partite: [], giro: 0, pronto: null, tendina: null };
+             togli: el("cbTogli"), nota: el("cbNota"), partite: [], giro: 0, pronto: null, tendina: null,
+             visto: null };
   function cbNota(t, cls) { cb.nota.className = "ufnota" + (cls ? " " + cls : ""); cb.nota.innerHTML = t || "&nbsp;"; }
   function cbOggi(d) {
     d = d || new Date();
@@ -1523,10 +1524,20 @@
     var on = !!(S.espn && S.espn.ev);
     cb.togli.style.display = on ? "" : "none";
     if (!on) return;
+    // si sta guardando un'altra partita: la nota dice che il tasto sostituisce
+    if (cb.part.value && cb.part.value !== S.espn.ev) {
+      if (cb.pronto) cbNota("Formazioni ESPN pronte per <b>" + escH(cb.pronto.nome) +
+        "</b>. Il tasto sostituisce il campetto di <b>" + escH(S.espn.nome || "") + "</b>.", "ok");
+      return;
+    }
     cbNota("Nel cartello c'e' il campetto di <b>" + escH(S.espn.nome || "questa partita") + "</b>.", "ok");
-    // il campetto puo' averlo preso un'altra postazione: i menu' si mettono
-    // sulla stessa partita, cosi' quello che si legge e quello che c'e' in
-    // onda coincidono
+  }
+  // Il campetto puo' averlo preso un'altra postazione: i menu' si mettono
+  // sulla stessa partita, cosi' quello che si legge e quello che c'e' in
+  // onda coincidono. Succede solo quando la partita in onda CAMBIA, mai
+  // mentre qui si sta scegliendo.
+  function cbAllinea() {
+    if (!(S.espn && S.espn.ev)) return;
     if (cb.comp.value !== S.espn.lega || cb.part.value !== S.espn.ev) {
       if (!cb.comp.querySelector('option[value="' + S.espn.lega + '"]')) return;   // menu' non ancora pronto
       cb.comp.value = S.espn.lega;
@@ -1608,6 +1619,7 @@
           return;
         }
         cb.pronto = { lega: lega, ev: id, nome: p.nome || "", giorno: cb.data.value };
+        cb.summary = j;
         cb.prendi.disabled = false;
         if (S.espn && S.espn.ev === id) cbStato();
         else cbNota("Formazioni ESPN pronte per <b>" + escH(p.nome) + "</b>. Premi il tasto e il campetto va nel cartello RADIOCRONACA.", "ok");
@@ -1625,6 +1637,7 @@
           cb.tendina = TendinaCerca.su(cb.comp, { segnaposto: "Cerca: Serie A, Bundesliga, Argentina, coppa…",
                                                   vuoto: "Scegli la competizione", sinonimi: SINONIMI_CALCIO });
         }
+        cb.visto = null; radioEspnDipingi();
         agganciaEspn(true);
       }, 0); });
     }
@@ -1633,18 +1646,80 @@
     cb.part.addEventListener("change", cbVerifica);
     cb.prendi.addEventListener("click", function () {
       if (!cb.pronto) return;
-      S.espn = cb.pronto;
+      var compilato = compilaDaEspn(cb.summary, cb.pronto.lega);
+      S.espn = cb.pronto; cb.visto = cb.pronto.ev;
       invia(true); cbStato();
-      msg.textContent = "Campetto di " + cb.pronto.nome + " nel cartello RADIOCRONACA.";
+      msg.textContent = "Campetto di " + cb.pronto.nome + " nel cartello RADIOCRONACA" +
+        (compilato ? ", e il banco e' compilato: competizione, squadre, sigle, colori e loghi." : ".");
     });
     cb.togli.addEventListener("click", function () {
-      S.espn = null; invia(true); cbStato();
+      S.espn = null; cb.visto = ""; invia(true); cbStato();
       cbNota("Campetto tolto: il cartello RADIOCRONACA torna quello di sempre.");
       if (cb.pronto) cb.prendi.disabled = false;
     });
   })();
+  // ── la partita presa da ESPN compila anche il banco ─────────────────
+  // Competizione, squadre, sigle, colori e loghi: quello che prima si
+  // sceglieva a mano in Campionato e squadre. Se la competizione e' una
+  // delle nostre (Serie A, Coppa Italia, Champions) le squadre si prendono
+  // dal nostro elenco, coi nomi, le sigle e i colori curati da noi;
+  // altrimenti da ESPN. Punteggio e cronometro non si toccano: sono della
+  // regia. Se il banco aveva gia' un'altra partita, prima si chiede.
+  function compilaDaEspn(j, lega) {
+    var chi = ((((j || {}).header || {}).competitions || [])[0] || {}).competitors || [];
+    var casa = chi.filter(function (x) { return x.homeAway === "home"; })[0];
+    var osp = chi.filter(function (x) { return x.homeAway === "away"; })[0];
+    if (!casa || !osp) return false;
+    var idC = String((casa.team || {}).id || ""), idO = String((osp.team || {}).id || "");
+    var altra = (S.casa.tid && S.osp.tid) && !(S.casa.tid === idC && S.osp.tid === idO);
+    if (altra && !window.confirm("Nel banco c'e' " + (S.casa.n || "?") + " - " + (S.osp.n || "?") +
+        ".\n\nLo sostituisco con " + ((casa.team || {}).displayName || "") + " - " +
+        ((osp.team || {}).displayName || "") + " presa da ESPN?\n\n(Annulla: prendo solo il campetto)")) {
+      return false;
+    }
+    // la competizione: una delle nostre, o quella di ESPN
+    var fissa = -1;
+    CAMPIONATI.forEach(function (c, i) { if (!c.espn && c.lega === lega) fissa = i; });
+    if (fissa >= 0) {
+      elCamp.value = fissa;
+      S.camp = CAMPIONATI[fissa].nome; S.lega = lega;
+      mettiCampTxt(S.camp); riempiSquadre(); allineaDaCamp();
+    } else {
+      apriEspn(lega);
+    }
+    var voce = fissa >= 0 ? CAMPIONATI[fissa] : null;
+    function squadra(c, lato) {
+      var t = c.team || {}, id = String(t.id || "");
+      var nostra = voce ? voce.squadre.filter(function (x) { return String(x.tid || "") === id; })[0] : null;
+      var col = nostra ? nostra.col : ("#" + String(t.color || "").replace("#", ""));
+      if (!/^#[0-9a-f]{6}$/i.test(col)) col = lato === "casa" ? "#1735C8" : "#C50E1F";
+      var n = nostra ? nostra.n : (t.shortDisplayName || t.displayName || "");
+      return { n: n, s: nostra ? nostra.s : String(t.abbreviation || n.slice(0, 3)).toUpperCase(),
+               col: col, tid: id, stemma: (window.Scavalco && Scavalco.url(n)) || "",
+               alt: "#" + String(t.alternateColor || "").replace("#", ""), indice: voce ? voce.squadre.indexOf(nostra) : -1 };
+    }
+    var a = squadra(casa, "casa"), b = squadra(osp, "osp");
+    // due squadre dello stesso colore non si distinguono: l'ospite va sul secondo
+    if (a.col.toLowerCase() === b.col.toLowerCase() && /^#[0-9a-f]{6}$/i.test(b.alt)) b.col = b.alt;
+    S.casa = { n: a.n, s: a.s, col: a.col, tid: a.tid, stemma: a.stemma };
+    S.osp = { n: b.n, s: b.s, col: b.col, tid: b.tid, stemma: b.stemma };
+    el("nc").value = a.n; el("sc").value = a.s; el("cc").value = a.col;
+    el("no").value = b.n; el("so").value = b.s; el("co").value = b.col;
+    if (a.indice >= 0) elSqc.value = a.indice; else elSqc.value = "-1";
+    if (b.indice >= 0) elSqo.value = b.indice; else elSqo.value = "-1";
+    espnFirma = (lega + "|" + a.tid + "|" + b.tid);      // e' gia' la partita giusta
+    cercaLoghi(); mostraLogo(1); mostraLogo(2);
+    dipingi(); invia(true);
+    caricaRose(true);
+    return true;
+  }
+
   // il nome vecchio della spia: lo chiamano ancora lo svuota e il ponte
-  function radioEspnDipingi() { cbStato(); }
+  function radioEspnDipingi() {
+    var ora = S.espn && S.espn.ev ? S.espn.ev : "";
+    if (ora !== cb.visto) { cb.visto = ora; cbAllinea(); }
+    cbStato();
+  }
 
   // Il banco suggerisce: se le squadre scelte qui sopra giocano oggi (o
   // ieri sera, dopo mezzanotte per ESPN e' ancora ieri), il pannello si
