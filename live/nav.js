@@ -68,6 +68,7 @@
       ["sfondi.html",                "Sfondi per i box"],
       ["contributi.html",            "Contributi video"]
     ]},
+    ["mam2.html",                  "MAM"],
     ["magazzino.html",             "Magazzino"],
     ["redazione.html",             "Controllo redazione"],
     ["regia.html",                 "Regia"]
