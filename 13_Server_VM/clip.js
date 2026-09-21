@@ -7106,6 +7106,9 @@ function trascriviDavvero(lavoro) {
   const daQui = fonte ? fonte.dentro : lavoro.da;
   const finoA = fonte ? Math.min(lavoro.a, fonte.fine) : lavoro.a;
   const dir = cartellaReg(r.id);
+  // una registrazione vecchia puo' non avere ancora la sua cartella: senza,
+  // ffmpeg non sa dove scrivere e la trascrizione muore in silenzio
+  assicura(dir);
   const wav = path.join(dir, "voce.wav");
   const partenza = Date.now();
 
