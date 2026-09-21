@@ -949,7 +949,7 @@
              pedine: {}, squadre: null, firma: "", nomi: {},
              colCasa: "#C9A24B", colOsp: "#C9A24B",
              stat: { casa: {}, osp: {} }, nomeCasa: "", nomeOsp: "",
-             tocchi: {}, zone: [0, 0, 0], visti: {}, segni: {}, gol: [] };
+             tocchi: {}, zone: [0, 0, 0], visti: {}, segni: {}, gol: [], facce: {} };
   var RCW = 1180, RCH = 520;
   function rcNs(nome, attr, dentro) {
     var e = document.createElementNS("http://www.w3.org/2000/svg", nome);
@@ -1097,9 +1097,60 @@
     }
     var q = rcP(x.u, x.v);
     ped.style.transform = "translate(" + q.x.toFixed(1) + "px," + q.y.toFixed(1) + "px) scale(" + q.s.toFixed(3) + ")";
-    if (x.g.pid) RC.pedine[x.g.pid] = { el: ped, cerchio: c, casa: casa };
+    if (x.g.pid) RC.pedine[x.g.pid] = { el: ped, cerchio: c, casa: casa, num: t, cognome: x.g.cognome };
     return ped;
   }
+  // ── le facce ────────────────────────────────────────────────────────
+  // Sono partite che facciamo con le Formazioni Premium: le foto scontornate
+  // dei giocatori stanno gia' nel magazzino. Si chiedono al ponte come fa
+  // Formazioni Premium - cognome, id ESPN e squadra - e il volto va dentro
+  // la pedina, con l'anello del colore della squadra. Il numero diventa un
+  // bollino in basso. Chi non ha la foto resta la pedina col numero: meglio
+  // una pedina pulita che un buco.
+  function rcFacce(undiciCasa, undiciOsp) {
+    undiciCasa.map(function (x) { return { g: x, tid: RC.casaId }; })
+      .concat(undiciOsp.map(function (x) { return { g: x, tid: RC.ospId }; }))
+      .forEach(function (x) {
+        var pid = x.g.pid;
+        if (!pid) return;
+        if (RC.facce[pid] !== undefined) { rcMettiFaccia(pid); return; }
+        RC.facce[pid] = null;                              // richiesta in volo
+        fetch(PONTE + "?foto=" + encodeURIComponent(x.g.cognome || "") + "&id=" + encodeURIComponent(pid) +
+              (x.tid ? "&squadra=" + encodeURIComponent(x.tid) : ""), { cache: "no-store" })
+          .then(function (r) { return r.json(); })
+          .then(function (j) { RC.facce[pid] = (j && j.url) || ""; rcMettiFaccia(pid); })
+          .catch(function () { delete RC.facce[pid]; });   // ponte muto: si riprova al prossimo giro
+      });
+  }
+  function rcMettiFaccia(pid) {
+    var url = RC.facce[pid], ped = RC.pedine[pid];
+    if (!url || !ped || ped.el.querySelector("[data-faccia]")) return;
+    var svg = document.getElementById("rcampo");
+    var difs = svg.querySelector("defs") || rcNs("defs", {}, svg);
+    var id = "rcf-" + pid;
+    if (!document.getElementById(id)) rcNs("circle", { cx: 0, cy: 0, r: 24 }, rcNs("clipPath", { id: id }, difs));
+    // il volto: la foto e' a mezzo busto, la testa sta in alto al centro
+    var f = rcNs("g", { "data-faccia": "1", "clip-path": "url(#" + id + ")" });
+    rcNs("circle", { cx: 0, cy: 0, r: 24, fill: "#1A2350" }, f);
+    // la testa occupa un terzo della larghezza e sta a un terzo dell'altezza:
+    // l'immagine si ingrandisce finche' il volto riempie il cerchio
+    var im = rcNs("image", { x: -60, y: -38, width: 120, height: 120, preserveAspectRatio: "xMidYMin slice" }, f);
+    im.setAttribute("href", url);
+    ped.el.insertBefore(f, ped.num);
+    // l'anello del colore della squadra, e il numero nel bollino
+    ped.cerchio.setAttribute("stroke", rcChiara(ped.casa ? RC.colCasa : RC.colOsp));
+    ped.cerchio.setAttribute("stroke-width", "3.6");
+    ped.cerchio.setAttribute("stroke-opacity", "1");
+    ped.faccia = true;
+    var bol = rcNs("g", { transform: "translate(-21 20)" });
+    rcNs("circle", { cx: 0, cy: 0, r: 11.5, fill: ped.casa ? RC.colCasa : RC.colOsp,
+                     stroke: "#F5F1E6", "stroke-width": 1.8 }, bol);
+    ped.el.insertBefore(bol, ped.num);
+    ped.num.setAttribute("x", "-21"); ped.num.setAttribute("y", "25");
+    ped.num.setAttribute("font-size", "14");
+    ped.el.appendChild(ped.num);                         // il numero sopra al bollino
+  }
+
   // ── i segni sulla pedina ────────────────────────────────────────────
   // Stesso principio della freccia del cambio: chi guarda deve capire in
   // un colpo d'occhio chi e' entrato, chi e' ammonito o espulso e chi ha
@@ -1333,8 +1384,9 @@
     }, 420);
   }
   function rcLuce(ped, si) {
-    ped.cerchio.setAttribute("stroke", si ? "#E3C271" : "#F5F1E6");
-    ped.cerchio.setAttribute("stroke-width", si ? "5" : "2.6");
+    var normale = ped.faccia ? rcChiara(ped.casa ? RC.colCasa : RC.colOsp) : "#F5F1E6";
+    ped.cerchio.setAttribute("stroke", si ? "#E3C271" : normale);
+    ped.cerchio.setAttribute("stroke-width", si ? "5" : (ped.faccia ? "3.6" : "2.6"));
   }
 
   // ── la lettura ──────────────────────────────────────────────────────
@@ -1370,6 +1422,7 @@
         RC.firma = firma;
         rcDisegnaCampo();
         rcSchiera(uc, rc.formation, uo, ro.formation);
+        rcFacce(uc, uo);
         rcDistintivi();
         rcCampoVisibile(true);
         rcGira();
@@ -1458,7 +1511,7 @@
     rcSpegni(true);
     RC.lega = lega; RC.ev = ev; RC.acceso = true;
     RC.firma = ""; RC.visti = {}; RC.tocchi = {}; RC.zone = [0, 0, 0]; RC.scheda = 0;
-    RC.segni = {}; RC.gol = [];
+    RC.segni = {}; RC.gol = []; RC.facce = {};
     rcLeggi();
     RC.timer = setInterval(rcLeggi, 20000);
     RC.giro = setInterval(rcGira, 12000);
