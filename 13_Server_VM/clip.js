@@ -9576,13 +9576,13 @@ function magazzinoDaFuori(r) {
   if (!m.endpoint) return true;                    // Amazon: sempre
   return m.fuori === true;                         // di casa: solo se lo dici tu
 }
-function serviFileLocale(req, res, file) {
+function serviFileLocale(req, res, file, extra) {
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) { res.writeHead(404).end("non trovato"); return; }
     const tipoFile = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp",
                        ".mov": "video/quicktime", ".mkv": "video/x-matroska", ".ts": "video/mp2t", ".txt": "text/plain; charset=utf-8" }[path.extname(file).toLowerCase()] || "video/mp4";
-    const base = { "Content-Type": tipoFile, "Accept-Ranges": "bytes",
-                   "Cache-Control": "private, max-age=3600", "Access-Control-Allow-Origin": "*" };
+    const base = Object.assign({ "Content-Type": tipoFile, "Accept-Ranges": "bytes",
+                   "Cache-Control": "private, max-age=3600", "Access-Control-Allow-Origin": "*" }, extra || {});
     const range = req.headers.range;
     if (range) {
       const m = /bytes=(\d*)-(\d*)/.exec(range);
@@ -9610,11 +9610,49 @@ function serviFileLocale(req, res, file) {
 const QNAP_RADICE = process.env.COMOTV_NAS_CARTELLA || "/mnt/qnap100";
 const QNAP_NASCOSTI = /^[.@]|^#recycle$|^\.DS_Store$/i;
 let qnapScrivibile = null;
-function qnapDentro(via) {
+// LE RADICI: la QNAP, e le cartelle della VM (dati del ponte, sito, codice,
+// motori). Sulla VM si guarda soltanto: rinominare li' dentro romperebbe
+// il ponte, e per liberare spazio si decide a mano.
+function qnapRadici() {
+  const dev = /comotv-dev/.test(DIR);
+  const suff = dev ? "-dev" : "";
+  return [
+    { id: "qnap", nome: "QNAP \u00b7 archivio partite", via: QNAP_RADICE, scrive: true },
+    { id: "dati", nome: "VM \u00b7 dati del ponte" + (dev ? " (dev)" : ""), via: path.dirname(DIR), scrive: false },
+    { id: "sito", nome: "VM \u00b7 sito pubblicato" + (dev ? " (dev)" : ""), via: "/var/www/comotv" + suff, scrive: false },
+    { id: "ponte", nome: "VM \u00b7 codice del ponte" + (dev ? " (dev)" : ""), via: "/opt/comotv" + suff, scrive: false },
+    { id: "whisper", nome: "VM \u00b7 whisper e modelli", via: "/opt/whisper.cpp", scrive: false },
+    { id: "traduci", nome: "VM \u00b7 traduttore", via: "/opt/traduci", scrive: false }
+  ].filter((r) => { try { return fs.statSync(r.via).isDirectory(); } catch (e) { return false; } });
+}
+function qnapRadice(id) {
+  const r = qnapRadici().find((x) => x.id === String(id || "qnap")) || qnapRadici()[0];
+  if (!r) throw new Error("nessun magazzino raggiungibile");
+  return r;
+}
+function qnapDentro(via, radiceId) {
+  const R0 = qnapRadice(radiceId);
   const pulita = String(via || "").replace(/\\/g, "/").split("/").filter((x) => x && x !== "." && x !== "..").join("/");
-  const pieno = path.resolve(QNAP_RADICE, pulita);
-  if (pieno !== QNAP_RADICE && !pieno.startsWith(QNAP_RADICE + path.sep)) throw new Error("fuori dal magazzino");
-  return { rel: pulita, pieno };
+  const pieno = path.resolve(R0.via, pulita);
+  if (pieno !== R0.via && !pieno.startsWith(R0.via + path.sep)) throw new Error("fuori dal magazzino");
+  return { rel: pulita, pieno, radice: R0 };
+}
+// il peso di una cartella, contando fino a un tetto: sulla VM serve a capire
+// che cosa occupa il disco, sulla QNAP quanto pesa una stagione
+function qnapPeso(p) {
+  const { pieno } = qnapDentro(p.via, p.radice);
+  let peso = 0, file = 0, cartelle = 0, tetto = 60000, tronco = false;
+  const giro = (d) => {
+    let voci; try { voci = fs.readdirSync(d, { withFileTypes: true }); } catch (e) { return; }
+    for (const v of voci) {
+      if (file + cartelle > tetto) { tronco = true; return; }
+      const suo = path.join(d, v.name);
+      if (v.isDirectory()) { cartelle++; giro(suo); }
+      else if (v.isFile()) { file++; try { peso += fs.statSync(suo).size; } catch (e) {} }
+    }
+  };
+  giro(pieno);
+  return { ok: true, peso, file, cartelle, tronco };
 }
 function qnapSiScrive() {
   if (qnapScrivibile !== null) return qnapScrivibile;
@@ -9634,7 +9672,7 @@ function qnapPartite() {
   return m;
 }
 function qnapElenco(p) {
-  const { rel, pieno } = qnapDentro(p.via);
+  const { rel, pieno, radice } = qnapDentro(p.via, p.radice);
   let voci;
   try { voci = fs.readdirSync(pieno, { withFileTypes: true }); }
   catch (e) { throw new Error(e.code === "ENOENT" ? "questa cartella non c'e' (piu')" : "magazzino non raggiungibile: " + e.message); }
@@ -9655,7 +9693,8 @@ function qnapElenco(p) {
     elenco.push(v);
   });
   elenco.sort((a, b) => (a.tipo !== b.tipo) ? (a.tipo === "cartella" ? -1 : 1) : a.nome.localeCompare(b.nome, "it", { numeric: true }));
-  return { ok: true, via: rel, radice: QNAP_RADICE, elenco, scrivibile: qnapSiScrive(), quanti: elenco.length };
+  return { ok: true, via: rel, radice: radice.id, radici: qnapRadici().map((r) => ({ id: r.id, nome: r.nome })), elenco,
+           scrivibile: radice.id === "qnap" ? qnapSiScrive() : false, soloVista: radice.id !== "qnap", quanti: elenco.length };
 }
 function qnapNomeBuono(n) {
   const nome = String(n || "").replace(/[\/\\:*?"<>|\x00-\x1f]/g, "").trim();
@@ -9669,7 +9708,9 @@ function qnapErrore(e) {
   if (e.code === "ENOTEMPTY") return new Error("la cartella non e' vuota");
   return e;
 }
+function qnapSoloQnap(p) { if (String(p.radice || "qnap") !== "qnap") throw new Error("sulla VM si guarda soltanto: qui non si rinomina ne' si sposta"); }
 function qnapRinomina(p) {
+  qnapSoloQnap(p);
   const { pieno, rel } = qnapDentro(p.via);
   const nuovo = qnapNomeBuono(p.nome);
   const dest = path.join(path.dirname(pieno), nuovo);
@@ -9680,6 +9721,7 @@ function qnapRinomina(p) {
   return { ok: true, via: path.relative(QNAP_RADICE, dest).split(path.sep).join("/") };
 }
 function qnapSposta(p) {
+  qnapSoloQnap(p);
   const { pieno, rel } = qnapDentro(p.via);
   const dove = qnapDentro(p.dove);
   let st; try { st = fs.statSync(dove.pieno); } catch (e) { throw new Error("la cartella di destinazione non c'e'"); }
@@ -9694,6 +9736,7 @@ function qnapSposta(p) {
   return { ok: true, via: nuovaRel };
 }
 function qnapCartella(p) {
+  qnapSoloQnap(p);
   const { pieno } = qnapDentro(p.via);
   const nome = qnapNomeBuono(p.nome);
   try { fs.mkdirSync(path.join(pieno, nome)); } catch (e) { throw qnapErrore(e); }
@@ -9710,18 +9753,22 @@ function qnapAggiornaIndice(vecchia, nuova) {
 }
 // l'indirizzo firmato per vedere un file del magazzino dalla pagina
 function qnapVia(p) {
-  const { rel } = qnapDentro(p.via);
+  const { rel, radice } = qnapDentro(p.via, p.radice);
   const fino = Math.floor(Date.now() / 1000) + 21600;
-  return { ok: true, via: "/qnap/" + rel.split("/").map(encodeURIComponent).join("/") + "?fino=" + fino + "&f=" + firmaPonte("qnap:" + rel, fino, 0) };
+  const chiave = radice.id + ":" + rel;
+  return { ok: true, via: "/qnap/" + radice.id + "/" + rel.split("/").map(encodeURIComponent).join("/") + "?fino=" + fino + "&f=" + firmaPonte("qnap:" + chiave, fino, 0) };
 }
 function serviQnap(req, res, u) {
-  const rel = decodeURIComponent(u.pathname.slice("/qnap/".length));
+  const dopo = decodeURIComponent(u.pathname.slice("/qnap/".length));
+  const radiceId = dopo.split("/")[0], rel = dopo.split("/").slice(1).join("/");
   const fino = parseInt(u.searchParams.get("fino") || "0", 10);
-  if (!fino || fino < Math.floor(Date.now() / 1000) || (u.searchParams.get("f") || "") !== firmaPonte("qnap:" + rel, fino, 0)) {
+  if (!fino || fino < Math.floor(Date.now() / 1000) || (u.searchParams.get("f") || "") !== firmaPonte("qnap:" + radiceId + ":" + rel, fino, 0)) {
     res.writeHead(403).end("indirizzo scaduto"); return;
   }
-  let pieno; try { pieno = qnapDentro(rel).pieno; } catch (e) { res.writeHead(404).end("non trovato"); return; }
-  serviFileLocale(req, res, pieno);
+  let pieno; try { pieno = qnapDentro(rel, radiceId).pieno; } catch (e) { res.writeHead(404).end("non trovato"); return; }
+  // ?scarica=1: il file intero arriva sul computer col suo nome
+  const extra = u.searchParams.get("scarica") ? { "Content-Disposition": "attachment; filename*=UTF-8''" + encodeURIComponent(path.basename(pieno)) } : null;
+  serviFileLocale(req, res, pieno, extra);
 }
 
 async function serviMagazzino(req, res, u) {
@@ -10920,6 +10967,8 @@ const AZIONI = {
   "clip-qnap-sposta": qnapSposta,
   "clip-qnap-cartella": qnapCartella,
   "clip-qnap-via": qnapVia,
+  "clip-qnap-peso": qnapPeso,
+  "clip-qnap-radici": () => ({ ok: true, radici: qnapRadici().map((r) => ({ id: r.id, nome: r.nome })) }),
   "clip-parlato-importa": (p) => {
     const reg = String(p.reg || ""), r = R.reg[reg];
     if (!r) throw new Error("registrazione sconosciuta");

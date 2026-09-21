@@ -1877,13 +1877,23 @@
       return b;
     } catch (e) { return "b-senza-memoria"; }
   })();
+  var PARLATO_CACHE = {};
   function manda(c) {
+    // la telecronaca intera pesa 200 KB e all'apertura la chiedevano in due:
+    // per cinque secondi vale la stessa risposta. Una modifica la butta.
+    if (c.tipo === "clip-parlato" && c.reg && c.da === undefined) {
+      var ce = PARLATO_CACHE[c.reg];
+      if (ce && Date.now() - ce.quando < 5000) return ce.p;
+    }
+    if (/^clip-parlato-(modifica|importa|traduci|vivo)$/.test(c.tipo) || c.tipo === "clip-trascrivi") delete PARLATO_CACHE[c.reg];
     c.token = TOKEN;
     if (c.banco === undefined) c.banco = BANCO;
     if (c.prog === undefined && PROGETTO) c.prog = PROGETTO.id;
-    return fetch(PONTE, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
+    var p = fetch(PONTE, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
       body: JSON.stringify(c) }).then(function (r) { return r.json(); })
       .then(function (d) { if (!d.ok) throw new Error(d.errore || "il ponte ha detto no"); return d; });
+    if (c.tipo === "clip-parlato" && c.reg && c.da === undefined) { PARLATO_CACHE[c.reg] = { quando: Date.now(), p: p }; p.catch(function () { delete PARLATO_CACHE[c.reg]; }); }
+    return p;
   }
 
   // ── colonna 1: le partite ───────────────────────────────────────
@@ -2305,6 +2315,7 @@
         // ── PROGRAMMA ──
         '<div class="monitor" id="monP">' +
           '<div class="lato oro">' +
+            '<button class="b" id="btnTabellino" title="il tabellino della partita: gol, azioni, appunti, ESPN; scegli cosa montare (T)">Tabellino</button>' +
             '<button class="b oro" id="seqTutti" title="apre la finestra di esportazione">Esporta</button>' +
             '<button class="b" id="seqMp4" hidden>Solo 16:9</button>' +
             '<button class="b" id="seqXml" title="l’XML per Premiere: la sequenza con i tagli, da aprire e rifinire">XML Premiere</button>' +
@@ -2379,6 +2390,7 @@
     telaioForma();
     el("capoTorna").addEventListener("click", function (e) { e.preventDefault(); tornaAlContenuto(); });
     el("seqTutti").addEventListener("click", function () { apriExport("sequenza"); });   // Esporta accanto al Programma
+    if (el("btnTabellino")) el("btnTabellino").addEventListener("click", function () { if (!REG) return dice("Apri prima una partita."); apriTabellino(); });
     el("seqLivello").addEventListener("click", function () { apriPannelloGrafiche(); });
     attaccaTrascinoInquadratura();
     if (el("inqGira")) el("inqGira").addEventListener("click", function () { giraArma(); });
@@ -7043,7 +7055,8 @@
         // sole nove sequenze decise da una tabella di parole chiave; adesso
         // si apre la lista di quello che sappiamo e si spunta. Il montaggio
         // comincia da una decisione di una persona, non da un'ipotesi.
-        setTimeout(function () { if (REG && REG.id === d.reg.id) apriTabellino(); }, 500);
+        // prima si apriva da solo e copriva tutto: ora c'e' il tasto Tabellino sul Programma (o T)
+        setTimeout(function () { if (REG && REG.id === d.reg.id) dice("Partita aperta \u00b7 Tabellino per scegliere cosa montare (T)", true); }, 500);
       });
     }).catch(function (e) { dice(e.message); });
   }
