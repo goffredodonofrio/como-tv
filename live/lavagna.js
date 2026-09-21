@@ -117,6 +117,13 @@ window.Lavagna = (function () {
       "background:rgba(6,10,26,.55);border:1px solid rgba(201,162,75,.22);}" +
       ".lav .foglietto .sttit{font-family:'Mazzard',sans-serif;font-size:10.5px;font-weight:700;" +
       "letter-spacing:.16em;text-transform:uppercase;color:#C9A24B;margin-bottom:6px;}" +
+      /* il menu' della stagione: sta al posto del titolo */
+      ".lav .foglietto .sttesta{margin-bottom:6px;}" +
+      ".lav .foglietto .sttesta select{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;" +
+      "letter-spacing:.12em;text-transform:uppercase;color:#E3C271;background:rgba(6,10,26,.8);" +
+      "border:1px solid rgba(201,162,75,.35);border-radius:6px;padding:5px 8px;cursor:pointer;}" +
+      ".lav .foglietto .sttesta select option,.lav .foglietto .sttesta select optgroup{background:#141B3C;color:#F5F1E6;text-transform:none;letter-spacing:0;}" +
+      ".lav .foglietto .sttab{max-height:168px;overflow-y:auto;}" +
       ".lav .foglietto .stvuoto{font-size:13px;color:var(--lav-fg3);}" +
       ".lav .foglietto table{width:100%;border-collapse:collapse;font-family:'DM Sans',sans-serif;font-size:14px;}" +
       ".lav .foglietto th{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;" +
@@ -128,7 +135,7 @@ window.Lavagna = (function () {
       ".lav .foglietto tr.tot td{color:#E3C271;border-top:1px solid rgba(201,162,75,.35);}" +
       ".lav .foglietto th i.giallo{display:inline-block;width:8px;height:11px;border-radius:1.5px;background:#F2C230;vertical-align:-1px;}" +
       ".lav .foglietto .rosso{display:inline-block;min-width:14px;padding:0 3px;border-radius:2px;background:#E5342B;color:#fff;font-size:11px;}" +
-      ".lav .foglietto textarea{width:100%;height:150px;padding:11px 12px;border-radius:7px;resize:vertical;" +
+      ".lav .foglietto textarea{width:100%;height:118px;padding:11px 12px;border-radius:7px;resize:vertical;" +
       "  background:rgba(245,241,230,.06);border:1px solid rgba(245,241,230,.16);color:var(--lav-avorio);" +
       "  font-family:'DM Sans',sans-serif;font-size:15px;line-height:1.5;}" +
       ".lav .foglietto textarea:focus{outline:none;border-color:rgba(201,162,75,.4);}" +
@@ -462,32 +469,95 @@ window.Lavagna = (function () {
     // ESPN, che arriva con un giorno di ritardo.
     function stagioneSu(p, dove) {
       var tid = (SQ[p.lato] || {}).tid;
-      if (p.mister || !tid || !/^\d+$/.test(String(p.pid || ""))) {
+      var pid = String(p.pid || "");
+      if (p.mister || !/^\d+$/.test(pid)) {
         dove.style.display = "none";                 // giovanili, rose a mano: si scrive e basta
         return;
       }
-      dove.innerHTML = '<div class="stvuoto">Conto presenze e gol della stagione&hellip;</div>';
-      conStagione(function () {
-        StagioneEspn.giocatore(tid, p.pid).then(function (v) {
-          if (!dove.isConnected) return;
-          var anno = StagioneEspn.stagione();
-          var titolo = '<div class="sttit">Stagione ' + anno + "-" + String(anno + 1).slice(2) + "</div>";
-          if (!v.length) { dove.innerHTML = titolo + '<div class="stvuoto">Nessuna presenza in partite ufficiali.</div>'; return; }
-          var tot = { presenze: 0, titolare: 0, gol: 0, assist: 0, gialli: 0 };
-          var righe = v.map(function (c) {
-            tot.presenze += c.presenze; tot.titolare += c.titolare; tot.gol += c.gol;
-            tot.assist += c.assist; tot.gialli += c.gialli;
-            return "<tr><td>" + esc(c.nome) + "</td><td>" + c.presenze +
-                   (c.titolare !== c.presenze ? '<small> (' + c.titolare + " tit.)</small>" : "") +
-                   "</td><td>" + c.gol + "</td><td>" + c.assist + "</td><td>" + (c.gialli || "") +
-                   (c.rossi ? ' <span class="rosso">' + c.rossi + "</span>" : "") + "</td></tr>";
-          }).join("");
-          if (v.length > 1) {
-            righe += '<tr class="tot"><td>Totale</td><td>' + tot.presenze + "</td><td>" + tot.gol +
-                     "</td><td>" + tot.assist + "</td><td>" + (tot.gialli || "") + "</td></tr>";
+      var anno = new Date().getMonth() >= 6 ? new Date().getFullYear() : new Date().getFullYear() - 1;
+      function etichetta(a) { return a + "-" + String(a + 1).slice(2); }
+      // il menu': la stagione in corso di serie, poi le passate e la carriera
+      dove.innerHTML = '<div class="sttesta"><select data-st="scelta">' +
+        (tid ? '<option value="ora">Stagione ' + etichetta(anno) + "</option>" : "") +
+        '<option value="car">Carriera · carico&hellip;</option></select></div>' +
+        '<div data-st="corpo"><div class="stvuoto">Conto presenze e gol&hellip;</div></div>';
+      var sel = dove.querySelector('[data-st="scelta"]'), corpo = dove.querySelector('[data-st="corpo"]');
+      var ora = null, car = null;                     // i dati, quando arrivano
+      function cella(c) {
+        return "<td>" + c.presenze + (c.titolare !== c.presenze && c.titolare != null ?
+               '<small> (' + c.titolare + " tit.)</small>" : "") + "</td><td>" + c.gol + "</td><td>" +
+               c.assist + "</td><td>" + (c.gialli || "") + (c.rossi ? ' <span class="rosso">' + c.rossi + "</span>" : "") + "</td>";
+      }
+      function tabella(righe, primaTh, totale) {
+        return '<div class="sttab"><table><thead><tr><th>' + (primaTh || "") + '</th><th>Pres.</th><th>Gol</th><th>Assist</th>' +
+               '<th><i class="giallo"></i></th></tr></thead><tbody>' + righe + (totale || "") + "</tbody></table></div>";
+      }
+      function somma(v) {
+        var t = { presenze: 0, titolare: 0, gol: 0, assist: 0, gialli: 0, rossi: 0 };
+        v.forEach(function (c) { for (var k in t) t[k] += c[k] || 0; });
+        return t;
+      }
+      function mostra() {
+        var q = sel.value;
+        if (q === "ora") {
+          if (!ora) { corpo.innerHTML = '<div class="stvuoto">Conto presenze e gol&hellip;</div>'; return; }
+          if (!ora.length) { corpo.innerHTML = '<div class="stvuoto">Nessuna presenza in partite ufficiali.</div>'; return; }
+          var t = somma(ora);
+          corpo.innerHTML = tabella(ora.map(function (c) { return "<tr><td>" + esc(c.nome) + "</td>" + cella(c) + "</tr>"; }).join(""),
+            "", ora.length > 1 ? '<tr class="tot"><td>Totale</td>' + cella(t) + "</tr>" : "");
+          return;
+        }
+        if (!car) { corpo.innerHTML = '<div class="stvuoto">Carico la carriera da ESPN&hellip;</div>'; return; }
+        if (q === "car") {
+          // la carriera: una riga per stagione e squadra, tutte le competizioni sommate
+          var gruppi = {}, ordine = [];
+          if (ora && ora.length) {
+            var so = somma(ora); so.anno = anno; so.squadra = SQ[p.lato].nome;
+            gruppi[anno + "|ora"] = so; ordine.push(anno + "|ora");
           }
-          dove.innerHTML = titolo + '<table><thead><tr><th></th><th>Pres.</th><th>Gol</th><th>Assist</th>' +
-                           '<th><i class="giallo"></i></th></tr></thead><tbody>' + righe + "</tbody></table>";
+          car.forEach(function (c) {
+            var k = c.anno + "|" + c.tid;
+            if (!gruppi[k]) { gruppi[k] = { anno: c.anno, squadra: c.squadra, presenze: 0, titolare: 0, gol: 0, assist: 0, gialli: 0, rossi: 0 }; ordine.push(k); }
+            var g = gruppi[k];
+            ["presenze", "titolare", "gol", "assist", "gialli", "rossi"].forEach(function (x) { g[x] += c[x] || 0; });
+          });
+          var righe = ordine.map(function (k) { return gruppi[k]; });
+          if (!righe.length) { corpo.innerHTML = '<div class="stvuoto">ESPN non ha la carriera di questo giocatore.</div>'; return; }
+          var tt = somma(righe);
+          corpo.innerHTML = tabella(righe.map(function (g) {
+            return '<tr><td>' + etichetta(g.anno) + ' <small>' + esc(g.squadra || "") + "</small></td>" + cella(g) + "</tr>";
+          }).join(""), "", '<tr class="tot"><td>Carriera</td>' + cella(tt) + "</tr>");
+          return;
+        }
+        // una stagione passata: per competizione, con la squadra se l'ha cambiata
+        var a = parseInt(q, 10);
+        var v = car.filter(function (c) { return c.anno === a; });
+        var squadre = {}; v.forEach(function (c) { squadre[c.tid] = 1; });
+        var piu = Object.keys(squadre).length > 1;
+        var t2 = somma(v);
+        corpo.innerHTML = tabella(v.map(function (c) {
+          return "<tr><td>" + esc(c.nome) + (piu ? " <small>" + esc(c.squadra) + "</small>" : "") + "</td>" + cella(c) + "</tr>";
+        }).join(""), piu ? "" : esc(v[0] ? v[0].squadra : ""), v.length > 1 ? '<tr class="tot"><td>Totale</td>' + cella(t2) + "</tr>" : "");
+      }
+      sel.addEventListener("change", mostra);
+      sel.addEventListener("pointerdown", function (ev) { ev.stopPropagation(); });
+      if (!tid) sel.value = "car";
+      mostra();
+      conStagione(function () {
+        if (tid) StagioneEspn.giocatore(tid, pid).then(function (v) { ora = v; if (dove.isConnected) mostra(); });
+        StagioneEspn.carriera(pid).then(function (v) {
+          car = v;
+          if (!dove.isConnected) return;
+          // le stagioni passate nel menu', dalla piu' recente
+          var anni = [];
+          v.forEach(function (c) { if (anni.indexOf(c.anno) < 0) anni.push(c.anno); });
+          var scelto = sel.value;
+          sel.innerHTML = (tid ? '<option value="ora">Stagione ' + etichetta(anno) + "</option>" : "") +
+            (anni.length ? '<optgroup label="Stagioni passate">' + anni.map(function (a) {
+              return '<option value="' + a + '">' + etichetta(a) + "</option>"; }).join("") + "</optgroup>" : "") +
+            '<option value="car">Carriera · tutte le stagioni</option>';
+          sel.value = scelto === "car" || !tid ? "car" : scelto;
+          mostra();
         });
       });
     }
@@ -511,6 +581,16 @@ window.Lavagna = (function () {
         '</div>';
       cassa.appendChild(f);
       stagioneSu(p, f.querySelector("[data-stagione-box]"));
+      // la tabella della stagione arriva dopo e allunga il foglietto: lo si
+      // tiene dentro il campo anche quando cresce
+      if (window.ResizeObserver) {
+        new ResizeObserver(function () {
+          if (!f.isConnected) return;
+          var rr = cassa.getBoundingClientRect(), alto2 = f.offsetHeight;
+          var top = parseFloat(f.style.top) || 0;
+          if (top + alto2 > rr.height - 8) f.style.top = Math.max(8, rr.height - alto2 - 8) + "px";
+        }).observe(f);
+      }
       // dove: accanto alla pedina, in percentuale del campo, e sempre dentro
       var largo = f.offsetWidth || 420, alto = f.offsetHeight || 300;
       var r = cassa.getBoundingClientRect();
