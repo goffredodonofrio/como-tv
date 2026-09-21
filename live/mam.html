@@ -1190,7 +1190,8 @@
   .binCapo{margin-top:var(--s3);}
   /* il pannello Progetto */
   .col.proj{padding:0;display:flex;flex-direction:column;background:#232323;}
-  .projTabs{display:flex;align-items:stretch;height:30px;background:#1B1B1B;border-bottom:1px solid #0F0F0F;font-size:11.5px;}
+  .projTabs{display:flex;align-items:stretch;height:30px;background:#1B1B1B;border-bottom:1px solid #0F0F0F;font-size:11.5px;overflow-x:auto;scrollbar-width:none;}
+  .projTabs::-webkit-scrollbar{display:none;}
   .projTabs button{background:transparent;border:0;color:#A8A8A8;padding:0 9px;font:inherit;cursor:default;white-space:nowrap;flex:0 0 auto;}
   /* il nome della partita puo' essere lungo: si accorcia lui, non le altre linguette */
   .projTabs button:first-child{flex:0 1 auto;min-width:70px;overflow:hidden;text-overflow:ellipsis;}
@@ -1810,6 +1811,20 @@
   // chi entra per registrare non deve inciampare nell'archivio e chi entra
   // per cercare non deve avere sotto le mani il tasto Registra.
   var MODO = /modo=archivio/.test(location.search) ? "archivio" : "live";
+  var HL_POLL = { reg: "", quando: 0 };
+  // ?apri=<rec> (dal Finder del magazzino): la partita si apre da sola
+  // appena la tendina e' pronta
+  (function () {
+    var m = /(\?|&)apri=([A-Za-z0-9]+)/.exec(location.search); if (!m || MODO !== "archivio") return;
+    var rec = m[2], giri = 0;
+    var prova = function () {
+      var sel = document.getElementById("evento");
+      var o = sel && Array.prototype.filter.call(sel.options, function (x) { return x.value === "arc:" + rec; })[0];
+      if (o) { sel.value = o.value; sel.dispatchEvent(new Event("change", { bubbles: true })); return; }
+      if (++giri < 40) setTimeout(prova, 500);
+    };
+    setTimeout(prova, 800);
+  })();
   var MONITOR_IMPILATI = false;
   try { MONITOR_IMPILATI = JSON.parse(localStorage.getItem("mam.misure") || "{}").impilati === true; } catch (e) {}
   document.body.classList.add("modo-" + MODO, "mam");
@@ -1900,7 +1915,14 @@
     c.appendChild(box);
   }
 
-  function albero() { alberoSolo(); }
+  var ALBERO_FIRMA = "";
+  function albero() {
+    var f = MODO + "|" + VISTA + "|" + (REG ? REG.id : "") + "|" + REGISTRAZIONI.map(function (r) {
+      return r.id + r.stato + Math.round(r.durata || 0) + (r.mini ? 1 : 0) + (r.titolo || "") + (r.ascolto ? "a" : "") + (r.attesa ? "w" : "");
+    }).join(",");
+    if (f === ALBERO_FIRMA && el("albero") && el("albero").children.length) return;
+    ALBERO_FIRMA = f; alberoSolo();
+  }
   function alberoSolo() {
     var c = el("albero"); c.innerHTML = "";
     if (MODO !== "archivio") c.innerHTML = '<div class="sez"><span class="et">Registrazioni</span><b id="nPartite">\u2014</b></div>';
@@ -8982,7 +9004,10 @@
       // caricarsi (e con loro la posizione dello scorrimento). Una lista che
       // si rigenera da sola sotto le mani e' peggio di una lista vecchia.
       albero();
-      if (REG) {
+      var hlLavora = SEQS.some(function (q) { return (q.export && q.export.stato === "lavora") || (q.grafica && q.grafica.stato === "lavora"); });
+      var vuoleHl = REG && (REG.id !== HL_POLL.reg || Date.now() - HL_POLL.quando > (hlLavora ? 2500 : 12000));
+      if (vuoleHl) {
+        HL_POLL = { reg: REG.id, quando: Date.now() };
         manda({ tipo:"clip-hl-elenco", reg:REG.id }).then(function (h) {
           SEQS = h.seq || [];
           apriTutteLeSchede();       // la partita si apre con le sue schede gia' pronte

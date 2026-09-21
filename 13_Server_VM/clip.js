@@ -9579,7 +9579,9 @@ function magazzinoDaFuori(r) {
 function serviFileLocale(req, res, file) {
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) { res.writeHead(404).end("non trovato"); return; }
-    const base = { "Content-Type": "video/mp4", "Accept-Ranges": "bytes",
+    const tipoFile = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp",
+                       ".mov": "video/quicktime", ".mkv": "video/x-matroska", ".ts": "video/mp2t", ".txt": "text/plain; charset=utf-8" }[path.extname(file).toLowerCase()] || "video/mp4";
+    const base = { "Content-Type": tipoFile, "Accept-Ranges": "bytes",
                    "Cache-Control": "private, max-age=3600", "Access-Control-Allow-Origin": "*" };
     const range = req.headers.range;
     if (range) {
@@ -9598,6 +9600,130 @@ function serviFileLocale(req, res, file) {
     fs.createReadStream(file).pipe(res);
   });
 }
+// ── IL FINDER DEL MAGAZZINO ────────────────────────────────────────────
+//
+//  La QNAP si sfoglia come una cartella: cartelle e file, con peso, data e
+//  — se il file e' una partita che l'archivio conosce — il nome della
+//  partita e il modo di aprirla nel MAM. Rinominare, spostare e fare una
+//  cartella passano da qui, dentro la radice del magazzino e mai fuori.
+//  Se la QNAP e' montata in sola lettura lo si dice, non si prova.
+const QNAP_RADICE = process.env.COMOTV_NAS_CARTELLA || "/mnt/qnap100";
+const QNAP_NASCOSTI = /^[.@]|^#recycle$|^\.DS_Store$/i;
+let qnapScrivibile = null;
+function qnapDentro(via) {
+  const pulita = String(via || "").replace(/\\/g, "/").split("/").filter((x) => x && x !== "." && x !== "..").join("/");
+  const pieno = path.resolve(QNAP_RADICE, pulita);
+  if (pieno !== QNAP_RADICE && !pieno.startsWith(QNAP_RADICE + path.sep)) throw new Error("fuori dal magazzino");
+  return { rel: pulita, pieno };
+}
+function qnapSiScrive() {
+  if (qnapScrivibile !== null) return qnapScrivibile;
+  try { const f = path.join(QNAP_RADICE, ".comotv-prova-scrittura"); fs.writeFileSync(f, "x"); fs.unlinkSync(f); qnapScrivibile = true; }
+  catch (e) { qnapScrivibile = false; }
+  setTimeout(() => { qnapScrivibile = null; }, 600000);
+  return qnapScrivibile;
+}
+function qnapPartite() {
+  const m = {};
+  Object.keys(ARCHIVIO || {}).forEach((rec) => {
+    const a = ARCHIVIO[rec]; if (!a) return;
+    const nome = a.partita || a.titolo || a.nome || "";
+    const chiavi = (a.pezzi && a.pezzi.length ? a.pezzi.map((x) => x.chiave) : [a.chiave]).filter(Boolean);
+    chiavi.forEach((c) => { m[c] = { rec, partita: nome, riconosciuta: !!a.riconosciuta || !!nome }; });
+  });
+  return m;
+}
+function qnapElenco(p) {
+  const { rel, pieno } = qnapDentro(p.via);
+  let voci;
+  try { voci = fs.readdirSync(pieno, { withFileTypes: true }); }
+  catch (e) { throw new Error(e.code === "ENOENT" ? "questa cartella non c'e' (piu')" : "magazzino non raggiungibile: " + e.message); }
+  const partite = qnapPartite();
+  const elenco = [];
+  voci.forEach((d) => {
+    if (QNAP_NASCOSTI.test(d.name) && !p.nascosti) return;
+    const suo = path.join(pieno, d.name);
+    let st = null; try { st = fs.statSync(suo); } catch (e) { return; }
+    const relSuo = rel ? rel + "/" + d.name : d.name;
+    const est = d.isDirectory() ? "" : path.extname(d.name).slice(1).toLowerCase();
+    const v = { nome: d.name, via: relSuo, tipo: d.isDirectory() ? "cartella" : "file", peso: d.isDirectory() ? 0 : st.size,
+                quando: st.mtimeMs, est, video: /^(mp4|mov|mxf|mkv|ts|m4v)$/.test(est), immagine: /^(jpe?g|png|gif|webp)$/.test(est) };
+    const pa = partite[relSuo]; if (pa) { v.rec = pa.rec; v.partita = pa.partita; }
+    // una registrazione aperta dal magazzino con questo file: si apre nel MAM anche senza indice
+    const r = Object.keys(R.reg).map((k) => R.reg[k]).find((x) => x.arch && (x.arch.chiave === relSuo || (x.arch.pezzi || []).some((z) => z.chiave === relSuo)));
+    if (r) { v.reg = r.id; v.partita = v.partita || r.titolo; if (!v.rec && r.arch.rec) v.rec = r.arch.rec; }
+    elenco.push(v);
+  });
+  elenco.sort((a, b) => (a.tipo !== b.tipo) ? (a.tipo === "cartella" ? -1 : 1) : a.nome.localeCompare(b.nome, "it", { numeric: true }));
+  return { ok: true, via: rel, radice: QNAP_RADICE, elenco, scrivibile: qnapSiScrive(), quanti: elenco.length };
+}
+function qnapNomeBuono(n) {
+  const nome = String(n || "").replace(/[\/\\:*?"<>|\x00-\x1f]/g, "").trim();
+  if (!nome || nome === "." || nome === "..") throw new Error("nome non valido");
+  return nome;
+}
+function qnapErrore(e) {
+  if (e.code === "EROFS" || e.code === "EACCES" || e.code === "EPERM") return new Error("il magazzino e' montato in sola lettura: per rinominare o spostare va montato in scrittura");
+  if (e.code === "EEXIST") return new Error("c'e' gia' un file o una cartella con questo nome");
+  if (e.code === "ENOENT") return new Error("il file non c'e' (piu')");
+  if (e.code === "ENOTEMPTY") return new Error("la cartella non e' vuota");
+  return e;
+}
+function qnapRinomina(p) {
+  const { pieno, rel } = qnapDentro(p.via);
+  const nuovo = qnapNomeBuono(p.nome);
+  const dest = path.join(path.dirname(pieno), nuovo);
+  if (dest === pieno) return { ok: true, via: rel };
+  if (fs.existsSync(dest)) throw new Error("c'e' gia' un file o una cartella con questo nome");
+  try { fs.renameSync(pieno, dest); } catch (e) { throw qnapErrore(e); }
+  qnapAggiornaIndice(rel, path.relative(QNAP_RADICE, dest).split(path.sep).join("/"));
+  return { ok: true, via: path.relative(QNAP_RADICE, dest).split(path.sep).join("/") };
+}
+function qnapSposta(p) {
+  const { pieno, rel } = qnapDentro(p.via);
+  const dove = qnapDentro(p.dove);
+  let st; try { st = fs.statSync(dove.pieno); } catch (e) { throw new Error("la cartella di destinazione non c'e'"); }
+  if (!st.isDirectory()) throw new Error("la destinazione non e' una cartella");
+  const dest = path.join(dove.pieno, path.basename(pieno));
+  if (dest === pieno) return { ok: true, via: rel };
+  if (dest.startsWith(pieno + path.sep)) throw new Error("non si sposta una cartella dentro se stessa");
+  if (fs.existsSync(dest)) throw new Error("nella cartella c'e' gia' un file con questo nome");
+  try { fs.renameSync(pieno, dest); } catch (e) { throw qnapErrore(e); }
+  const nuovaRel = path.relative(QNAP_RADICE, dest).split(path.sep).join("/");
+  qnapAggiornaIndice(rel, nuovaRel);
+  return { ok: true, via: nuovaRel };
+}
+function qnapCartella(p) {
+  const { pieno } = qnapDentro(p.via);
+  const nome = qnapNomeBuono(p.nome);
+  try { fs.mkdirSync(path.join(pieno, nome)); } catch (e) { throw qnapErrore(e); }
+  return { ok: true };
+}
+// un file rinominato o spostato resta la stessa partita: l'indice e le
+// registrazioni aperte seguono il nuovo nome, cosi' il MAM non lo perde
+function qnapAggiornaIndice(vecchia, nuova) {
+  let toccati = 0;
+  const cambia = (o) => { if (o && o.chiave === vecchia) { o.chiave = nuova; toccati++; } if (o && o.chiave && o.chiave.startsWith(vecchia + "/")) { o.chiave = nuova + o.chiave.slice(vecchia.length); toccati++; } };
+  Object.keys(ARCHIVIO || {}).forEach((rec) => { const a = ARCHIVIO[rec]; if (!a) return; cambia(a); (a.pezzi || []).forEach(cambia); });
+  Object.keys(R.reg).forEach((k) => { const r = R.reg[k]; if (!r.arch) return; cambia(r.arch); (r.arch.pezzi || []).forEach(cambia); });
+  if (toccati) { try { scriviArchivio(); } catch (e) {} scrivi(); console.log("[clip] magazzino: \"" + vecchia + "\" \u2192 \"" + nuova + "\" (" + toccati + " riferimenti aggiornati)"); }
+}
+// l'indirizzo firmato per vedere un file del magazzino dalla pagina
+function qnapVia(p) {
+  const { rel } = qnapDentro(p.via);
+  const fino = Math.floor(Date.now() / 1000) + 21600;
+  return { ok: true, via: "/qnap/" + rel.split("/").map(encodeURIComponent).join("/") + "?fino=" + fino + "&f=" + firmaPonte("qnap:" + rel, fino, 0) };
+}
+function serviQnap(req, res, u) {
+  const rel = decodeURIComponent(u.pathname.slice("/qnap/".length));
+  const fino = parseInt(u.searchParams.get("fino") || "0", 10);
+  if (!fino || fino < Math.floor(Date.now() / 1000) || (u.searchParams.get("f") || "") !== firmaPonte("qnap:" + rel, fino, 0)) {
+    res.writeHead(403).end("indirizzo scaduto"); return;
+  }
+  let pieno; try { pieno = qnapDentro(rel).pieno; } catch (e) { res.writeHead(404).end("non trovato"); return; }
+  serviFileLocale(req, res, pieno);
+}
+
 async function serviMagazzino(req, res, u) {
   const id = decodeURIComponent(u.pathname.slice("/magazzino/".length));
   const fino = parseInt(u.searchParams.get("fino") || "0", 10);
@@ -9649,6 +9775,7 @@ async function serviMagazzino(req, res, u) {
 
 function serviHttp(req, res, u) {
   if (ATTIVO && u.pathname.startsWith("/magazzino/")) { serviMagazzino(req, res, u); return true; }
+  if (ATTIVO && u.pathname.startsWith("/qnap/")) { serviQnap(req, res, u); return true; }
   if (!ATTIVO || !u.pathname.startsWith("/clip/")) return false;
   const pezzi = decodeURIComponent(u.pathname.slice(6)).split("/").filter(Boolean);
   if (!pezzi.length || pezzi.length > 3 || pezzi.some((x) => !/^[A-Za-z0-9._-]+$/.test(x) || x.startsWith("."))) {
@@ -10788,6 +10915,11 @@ const AZIONI = {
   // testo come e', righe segnate "a mano" cosi' nessun automatismo le
   // tocca. Con "sostituisci" si butta quello che c'era; se no si tiene il
   // resto e si rimpiazzano solo le righe che cadono nello stesso tratto.
+  "clip-qnap-elenco": qnapElenco,
+  "clip-qnap-rinomina": qnapRinomina,
+  "clip-qnap-sposta": qnapSposta,
+  "clip-qnap-cartella": qnapCartella,
+  "clip-qnap-via": qnapVia,
   "clip-parlato-importa": (p) => {
     const reg = String(p.reg || ""), r = R.reg[reg];
     if (!r) throw new Error("registrazione sconosciuta");
