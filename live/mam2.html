@@ -343,7 +343,9 @@
         <span class="sep"></span>
         <span class="eti">Audio</span><button id="eStacca" title="stacca l'audio dal pezzo scelto: poi lo trascini da solo">Stacca</button><button id="eMuto" title="muto / suona (pezzo o audio scelto)">Muto</button><button id="eAudioTogli" title="togli l'audio scelto (o quello del pezzo scelto)">Togli audio</button>
         <span class="sep"></span>
-        <span class="eti">Lente</span><button id="eMeno">−</button><button id="eTutta">tutta</button><button id="ePiu">+</button>
+        <span class="eti">Lente</span><button id="eMeno" title="allontana (−)">−</button><button id="eTutta" title="tutta la sequenza (\)">tutta</button><button id="ePiu" title="avvicina (+)">+</button>
+        <span class="sep"></span>
+        <button id="eTasti" title="i tasti, come in Premiere">⌨ Tasti</button>
       </div>
       <div class="ed-tl">
         <div class="nomi"><div class="r"></div><div class="st">Sottotitoli</div><div class="g" title="V2: grafiche PNG sopra il video">Grafiche</div><div class="v">Video</div><div class="a" title="l'audio legato segue il video; staccato si sposta da solo (in anteprima non si sente)">Audio</div></div>
@@ -724,10 +726,16 @@
   setInterval(giro, 250);
   document.addEventListener("keydown", function(e){
     if (!el("asset").classList.contains("on") || e.target.tagName === "INPUT") return;
+    // i tasti di Premiere: spazio, J K L, I O, frecce a fotogrammi, Home/End, M
     if (e.key === " ") { e.preventDefault(); el("bPlay").click(); }
     else if (e.key === "i" || e.key === "I") el("bIn").click(); else if (e.key === "o" || e.key === "O") el("bOut").click();
-    else if (e.key === "j" || e.key === "J" || e.key === "ArrowLeft") seek(V.currentTime - (e.shiftKey ? 60 : 10));
-    else if (e.key === "l" || e.key === "L" || e.key === "ArrowRight") seek(V.currentTime + (e.shiftKey ? 60 : 10));
+    else if (e.key === "k" || e.key === "K") { V.pause(); V.playbackRate = 1; }
+    else if (e.key === "j" || e.key === "J") seek(V.currentTime - (e.shiftKey ? 60 : 10));
+    else if (e.key === "l" || e.key === "L") { if (V.paused) V.play().catch(function(){}); else V.playbackRate = Math.min(4, V.playbackRate * 2); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); V.pause(); V.currentTime = Math.max(0, V.currentTime - (e.shiftKey ? 0.2 : 0.04)); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); V.pause(); V.currentTime = V.currentTime + (e.shiftKey ? 0.2 : 0.04); }
+    else if (e.key === "Home") { e.preventDefault(); seek(0); V.pause(); }
+    else if (e.key === "End") { e.preventDefault(); V.pause(); V.currentTime = Math.max(0, (V.duration || 0) - 0.1); }
     else if (e.key === "m" || e.key === "M") el("bMarker").click();
     else if (e.key === "/") { e.preventDefault(); el("cercaTesta").focus(); }
   });
@@ -907,6 +915,36 @@
   el("eStacca").addEventListener("click", function(){ if (!SEQ) return; var au = audioScelto(); if (!au) return avviso("err", "Scegli un pezzo con l'audio."); if (!au.legato) return avviso("err", "E' gia' staccato."); post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"scollega", audio: au.id }).then(function(d){ SELA = au.id; ricaricaSeq(d.seq); avviso("ok", "Audio staccato: trascinalo dove vuoi. In anteprima non si sente, nell'export si'."); }).catch(function(er){ avviso("err", esc(er.message)); }); });
   el("eMuto").addEventListener("click", function(){ if (!SEQ) return; var au = audioScelto(); if (!au) return avviso("err", "Scegli un pezzo o un audio."); post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"muto", audio: au.id }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); }); });
   el("eAudioTogli").addEventListener("click", function(){ if (!SEQ) return; var au = audioScelto(); if (!au) return avviso("err", "Scegli un pezzo o un audio."); post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"togli", audio: au.id }).then(function(d){ SELA = null; ricaricaSeq(d.seq); avviso("ok", "Audio tolto: sotto quel video c'e' silenzio."); }).catch(function(er){ avviso("err", esc(er.message)); }); });
+  // ── LA TASTIERA DI PREMIERE nel montaggio ──
+  //  spazio play/pausa · J indietro · K fermo · L avanti (di nuovo: piu' veloce) · I/Q entrata del pezzo qui · O/W uscita del pezzo qui
+  //  C o Cmd+K dividi · Canc togli · ←/→ un fotogramma (Shift: cinque) · ↑/↓ pezzo prima/dopo · Home/End · +/− lente · \ tutta · Cmd+Z annulla · Shift+Cmd+Z ripeti
+  function pezzoQui(){ var x = PZ[ORA.i]; return (x && SEQ) ? x : null; }
+  function annullaRipeti(rifai){ if (!SEQ) return; post({ tipo: rifai ? "clip-hl-rifai" : "clip-hl-annulla", seq: SEQ.id }).then(function(d){ ricaricaSeq(d.seq); avviso("ok", rifai ? "Ripetuto." : "Annullato."); }).catch(function(er){ avviso("err", esc(er.message)); }); }
+  document.addEventListener("keydown", function(e){
+    if (!el("editor").classList.contains("on") || !VE) return;
+    var tag = (e.target.tagName || "").toUpperCase(); if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable) return;
+    var cmd = e.metaKey || e.ctrlKey, k = e.key;
+    if (cmd && (k === "z" || k === "Z")) { e.preventDefault(); annullaRipeti(e.shiftKey); return; }
+    if (cmd && (k === "k" || k === "K")) { e.preventDefault(); el("eTaglia").click(); return; }
+    if (cmd) return;
+    if (k === " ") { e.preventDefault(); el("ePlay").click(); }
+    else if (k === "k" || k === "K") { VE.pause(); VE.playbackRate = 1; }
+    else if (k === "j" || k === "J") { VE.pause(); vaiTempo(Math.max(0, tSeq() - (e.shiftKey ? 30 : 5)), false); }
+    else if (k === "l" || k === "L") { if (VE.paused) { if (ORA.i < 0 && PZ.length) vaiA(0, 0, true); else VE.play().catch(function(){}); } else VE.playbackRate = Math.min(4, VE.playbackRate * 2); }
+    else if (k === "i" || k === "I" || k === "q" || k === "Q") { var x1 = pezzoQui(); if (!x1) return; var t1 = Math.round(VE.currentTime * 100) / 100; if (t1 >= x1.fuori - 0.5) return avviso("err", "L'entrata verrebbe dopo l'uscita."); post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: x1.id, dentro: t1 }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); }); }
+    else if (k === "o" || k === "O" || k === "w" || k === "W") { var x2 = pezzoQui(); if (!x2) return; var t2 = Math.round(VE.currentTime * 100) / 100; if (t2 <= x2.dentro + 0.5) return avviso("err", "L'uscita verrebbe prima dell'entrata."); post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: x2.id, fuori: t2 }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); }); }
+    else if (k === "c" || k === "C") el("eTaglia").click();
+    else if (k === "Delete" || k === "Backspace") { e.preventDefault(); el("eTogli").click(); }
+    else if (k === "ArrowLeft") { e.preventDefault(); VE.pause(); vaiTempo(Math.max(0, tSeq() - (e.shiftKey ? 0.2 : 0.04)), false); }
+    else if (k === "ArrowRight") { e.preventDefault(); VE.pause(); vaiTempo(Math.min(durSeq() - 0.05, tSeq() + (e.shiftKey ? 0.2 : 0.04)), false); }
+    else if (k === "ArrowUp") { e.preventDefault(); el("ePrima").click(); }
+    else if (k === "ArrowDown") { e.preventDefault(); el("eDopo").click(); }
+    else if (k === "Home") { e.preventDefault(); VE.pause(); if (PZ.length) vaiA(0, 0, false); }
+    else if (k === "End") { e.preventDefault(); VE.pause(); if (PZ.length) vaiA(PZ.length - 1, PZ[PZ.length - 1].fuori - PZ[PZ.length - 1].dentro - 0.05, false); }
+    else if (k === "+" || k === "=") el("ePiu").click(); else if (k === "-" || k === "_") el("eMeno").click(); else if (k === "\\") el("eTutta").click();
+    else if (k === "?") el("eTasti").click();
+  });
+  el("eTasti").addEventListener("click", function(){ avviso("ok", "<b>Tasti</b> · spazio play/pausa · J indietro · K fermo · L avanti (ancora L: più veloce) · I o Q entrata del pezzo qui · O o W uscita del pezzo qui · C o Cmd+K dividi · Canc togli · ← → un fotogramma (Shift: cinque) · ↑ ↓ pezzo prima/dopo · Home/End · + − lente · \\ tutta · Cmd+Z annulla · Shift+Cmd+Z ripeti"); });
   el("eSottoOn").addEventListener("click", function(){ SOTTOE = !SOTTOE; this.textContent = SOTTOE ? "On" : "Off"; this.classList.toggle("on", SOTTOE); if (!SOTTOE) { el("sottoItE").textContent = ""; el("sottoEnE").textContent = ""; } });
   el("eSottoLingua").addEventListener("click", function(){ LINGUAE = LINGUAE === "it" ? "en" : "it"; this.textContent = LINGUAE === "it" ? "ITA" : "ENG"; el("eSottoL").value = LINGUAE; disegnaTl(); if (REGE) post({ tipo:"clip-parlato-traduci", reg: REGE.id, a: LINGUAE }).then(function(){ return post({ tipo:"clip-parlato", reg: REGE.id }); }).then(function(x){ DETTOE = (x.pezzi || []).filter(function(y){ return !y.vivo; }); disegnaTl(); }).catch(function(){}); });
   function lente(f){ var t = tSeq(), span = (LENTE.b - LENTE.a) * f; LENTE = { a: Math.max(0, t - span / 2), b: Math.max(0, t - span / 2) + span }; disegnaTl(); }
@@ -940,14 +978,7 @@
       if (JSON.stringify(q.pezzi.map(function(z){ return [z.id, z.dentro, z.fuori, !!z.locale]; })) !== JSON.stringify(PZ.map(function(z){ return [z.id, z.dentro, z.fuori, !!z.locale]; }))) ricaricaSeq(q);
     }).catch(function(){ GIRO_E = setTimeout(giroUscite, 15000); });
   }
-  document.addEventListener("keydown", function(e){
-    if (!el("editor").classList.contains("on") || e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
-    if (e.key === " ") { e.preventDefault(); el("ePlay").click(); }
-    else if (e.key === "c" || e.key === "C") el("eTaglia").click();
-    else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); el("eTogli").click(); }
-    else if (e.key === "ArrowLeft") vaiTempo(tSeq() - (e.shiftKey ? 10 : 1), false); else if (e.key === "ArrowRight") vaiTempo(tSeq() + (e.shiftKey ? 10 : 1), false);
-    else if (e.key === "-" ) el("eMeno").click(); else if (e.key === "+" || e.key === "=") el("ePiu").click(); else if (e.key === "\\") el("eTutta").click();
-  });
+  // (i tasti del montaggio stanno tutti nel gestore "LA TASTIERA DI PREMIERE", piu' su)
   window.addEventListener("resize", function(){ if (el("editor").classList.contains("on")) disegnaTl(); });
 
   // ══════════ DIRETTA ══════════
