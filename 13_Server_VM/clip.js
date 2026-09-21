@@ -2334,7 +2334,7 @@ function pubblica(r) {
     // all'altro, e chi monta vede due ore, non cinquantasei minuti.
     pezziArch: (r.arch && magazzinoCe(r)) ? pezziArch(r).map((x, i) => ({
       da: x.da || 0, durata: x.durata || 0,
-      via: magazzinoDaFuori(r) ? viaPezzo(r, x) : viaPonte(r.id, 21600, i)
+      via: magazzinoDaFuori(r) ? viaFileArchivio(r, x) : viaPonte(r.id, 21600, i)
     })) : undefined,
     // la miniatura si promette solo se il file c'e': una sfilza di 404 ogni
     // tre secondi non e' un'anteprima
@@ -4799,6 +4799,7 @@ async function hlEsporta(p) {
                 : [FORMATI[p.formato] ? String(p.formato) : "16:9"];
   // non si aspetta l'export per rispondere: la pagina guarda lo stato
   hlEsportaTutti(q, formati, p).catch((e) => {
+    console.log("[clip] export della sequenza \"" + (q.titolo || q.id) + "\" fallito: " + e.message + "\n" + String(e.stack || "").split("\n").slice(1, 5).join("\n"));
     q.export = { stato: "errore", errore: e.message };
     scrivi(); annuncia(0, "clip");
   });
@@ -5545,19 +5546,24 @@ function pezzoAl(r, t) {
   }
   return null;
 }
-function viaPezzo(r, x) {
+// (si chiamava viaPezzo come quella dei pezzi in casa, tre righe piu' su:
+//  la seconda definizione vinceva e l'export di ogni sequenza con i pezzi
+//  gia' in casa moriva con "reading 'regione'". Trovato il 21/09.)
+function viaFileArchivio(r, x) {
+  if (!r || !r.arch) throw new Error("questa registrazione non ha un file nel magazzino");
+  if (!x || !x.chiave) throw new Error("di questa registrazione non so quale file aprire");
   return firmaConRegione(r.arch.regione, x.chiave, {}, 21600, r.arch.bucket);
 }
 function viaArchivio(r, t) {
   const x = pezzoAl(r, t || 0);
-  return viaPezzo(r, x ? x.pezzo : { chiave: r.arch.chiave });
+  return viaFileArchivio(r, x ? x.pezzo : { chiave: r.arch.chiave });
 }
 // Il file giusto e il secondo giusto dentro quel file, per chi poi ci
 // mette un -ss davanti.
 function fonteAl(r, dentro) {
   const x = pezzoAl(r, dentro);
   if (!x) return { via: viaArchivio(r), dentro: Math.max(0, +dentro || 0), fine: Infinity };
-  return { via: viaPezzo(r, x.pezzo), dentro: x.dentro, fine: x.fine, i: x.i };
+  return { via: viaFileArchivio(r, x.pezzo), dentro: x.dentro, fine: x.fine, i: x.i };
 }
 
 // Una partita che sta su S3 diventa una registrazione come le altre. Non
@@ -6476,6 +6482,7 @@ function parlatoLocaleInCoda(quante) {
     if (r.guarda || r.stato === "registra" || r.stato === "carica") return;
     if ((r.durata || 0) < 600) return;
     if (PARLATO[r.id] && PARLATO[r.id].intera) return;
+    if (r.voceFallita && r.voceFallita.n >= 2 && Date.now() - r.voceFallita.quando < 86400000) return;
     if (CODA_VOCE.some((x) => x.reg === r.id) || (voceAlLavoro && voceAlLavoro.reg === r.id)) return;
     if (CODA_VOCE.length >= tetto) return;
     // ANCHE L'ARCHIVIO. Erano escluse perche' l'audio veniva da S3 e due ore
@@ -6547,7 +6554,14 @@ function giraLaCoda() {
       }
       return trascriviDavvero(lavoro);
     })
-    .catch((e) => console.log("[clip] trascrizione fallita: " + e.message))
+    .catch((e) => {
+      console.log("[clip] trascrizione fallita: " + e.message);
+      // si segna sulla registrazione: dopo due fallimenti la coda automatica
+      // la lascia stare per un giorno (in dev un flusso rotto era stato
+      // ritentato 44 volte, un'estrazione audio fallita ogni volta)
+      const rf = R.reg[lavoro.reg];
+      if (rf) { rf.voceFallita = { n: ((rf.voceFallita || {}).n || 0) + 1, quando: Date.now(), perche: String(e.message || "").slice(0, 160) }; scrivi(); }
+    })
     .then(() => { voceAlLavoro = null; annuncia(0, "clip"); setTimeout(giraLaCoda, 1000); setTimeout(giraOrologi, 1500); });
 }
 
@@ -7207,6 +7221,7 @@ function trascriviDavvero(lavoro) {
 
     const dentro = PARLATO[r.id] || (PARLATO[r.id] = { lingua: linguaPezzi, pezzi: [] });
     dentro.lingua = linguaPezzi;
+    if (r.voceFallita) { delete r.voceFallita; scrivi(); }
     if (lavoro.intera) dentro.intera = new Date().toISOString();
     // finche' l'audio e' in mano si prende anche il resto: i boati costano
     // un minuto di CPU e non un byte in piu'
@@ -9596,7 +9611,7 @@ async function serviMagazzino(req, res, u) {
   const pz = pezziArch(r);
   if (i >= pz.length) { res.writeHead(404).end("questo pezzo non c'e'"); return; }
   let sorgente;
-  try { sorgente = viaPezzo(r, pz[i]); } catch (e) { res.writeHead(502).end("magazzino non raggiungibile"); return; }
+  try { sorgente = viaFileArchivio(r, pz[i]); } catch (e) { res.writeHead(502).end("magazzino non raggiungibile"); return; }
   // un magazzino di cartella da' un percorso: si serve il file, con gli
   // intervalli, senza passare da nessuna rete
   if (!/^https?:\/\//.test(sorgente)) return serviFileLocale(req, res, sorgente);
