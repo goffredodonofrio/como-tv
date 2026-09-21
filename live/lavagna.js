@@ -112,7 +112,23 @@ window.Lavagna = (function () {
       "  border:1px solid rgba(201,162,75,.5);border-radius:10px;padding:12px;}" +
       ".lav .foglietto h3{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.16em;" +
       "  text-transform:uppercase;color:var(--lav-oro);margin-bottom:8px;}" +
-      ".lav .foglietto textarea{width:100%;height:190px;padding:11px 12px;border-radius:7px;resize:vertical;" +
+      /* presenze e gol della stagione: in cima, come una scheda da tabellino */
+      ".lav .foglietto .stagione{margin:0 0 10px;padding:9px 10px 8px;border-radius:8px;" +
+      "background:rgba(6,10,26,.55);border:1px solid rgba(201,162,75,.22);}" +
+      ".lav .foglietto .sttit{font-family:'Mazzard',sans-serif;font-size:10.5px;font-weight:700;" +
+      "letter-spacing:.16em;text-transform:uppercase;color:#C9A24B;margin-bottom:6px;}" +
+      ".lav .foglietto .stvuoto{font-size:13px;color:var(--lav-fg3);}" +
+      ".lav .foglietto table{width:100%;border-collapse:collapse;font-family:'DM Sans',sans-serif;font-size:14px;}" +
+      ".lav .foglietto th{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;" +
+      "color:var(--lav-fg3);text-align:center;padding:0 4px 4px;}" +
+      ".lav .foglietto td{padding:4px;text-align:center;color:var(--lav-avorio);font-weight:700;" +
+      "font-variant-numeric:tabular-nums;border-top:1px solid rgba(245,241,230,.07);}" +
+      ".lav .foglietto td:first-child{text-align:left;font-weight:600;color:#E8E3D3;}" +
+      ".lav .foglietto td small{font-weight:500;color:var(--lav-fg3);font-size:11.5px;}" +
+      ".lav .foglietto tr.tot td{color:#E3C271;border-top:1px solid rgba(201,162,75,.35);}" +
+      ".lav .foglietto th i.giallo{display:inline-block;width:8px;height:11px;border-radius:1.5px;background:#F2C230;vertical-align:-1px;}" +
+      ".lav .foglietto .rosso{display:inline-block;min-width:14px;padding:0 3px;border-radius:2px;background:#E5342B;color:#fff;font-size:11px;}" +
+      ".lav .foglietto textarea{width:100%;height:150px;padding:11px 12px;border-radius:7px;resize:vertical;" +
       "  background:rgba(245,241,230,.06);border:1px solid rgba(245,241,230,.16);color:var(--lav-avorio);" +
       "  font-family:'DM Sans',sans-serif;font-size:15px;line-height:1.5;}" +
       ".lav .foglietto textarea:focus{outline:none;border-color:rgba(201,162,75,.4);}" +
@@ -430,6 +446,51 @@ window.Lavagna = (function () {
     // IL FOGLIETTO: si apre attaccato al giocatore, sul campo, non in mezzo
     // allo schermo — in telecronaca si guarda il campo, non una finestra che
     // lo copre. Se il giocatore sta a destra, il foglietto si apre a sinistra.
+    function conStagione(fai) {
+      if (window.StagioneEspn) return fai();
+      var gia = document.querySelector('script[data-stagione]');
+      if (!gia) {
+        gia = document.createElement("script");
+        gia.src = "stagione-espn.js"; gia.dataset.stagione = "1";
+        document.head.appendChild(gia);
+      }
+      gia.addEventListener("load", function () { fai(); });
+    }
+    // Presenze e gol della stagione, per competizione, in cima al foglietto:
+    // quello che il giornalista va sempre a cercare prima di dire un nome.
+    // Si contano dalle partite vere (stagione-espn.js), non dal riepilogo
+    // ESPN, che arriva con un giorno di ritardo.
+    function stagioneSu(p, dove) {
+      var tid = (SQ[p.lato] || {}).tid;
+      if (p.mister || !tid || !/^\d+$/.test(String(p.pid || ""))) {
+        dove.style.display = "none";                 // giovanili, rose a mano: si scrive e basta
+        return;
+      }
+      dove.innerHTML = '<div class="stvuoto">Conto presenze e gol della stagione&hellip;</div>';
+      conStagione(function () {
+        StagioneEspn.giocatore(tid, p.pid).then(function (v) {
+          if (!dove.isConnected) return;
+          var anno = StagioneEspn.stagione();
+          var titolo = '<div class="sttit">Stagione ' + anno + "-" + String(anno + 1).slice(2) + "</div>";
+          if (!v.length) { dove.innerHTML = titolo + '<div class="stvuoto">Nessuna presenza in partite ufficiali.</div>'; return; }
+          var tot = { presenze: 0, titolare: 0, gol: 0, assist: 0, gialli: 0 };
+          var righe = v.map(function (c) {
+            tot.presenze += c.presenze; tot.titolare += c.titolare; tot.gol += c.gol;
+            tot.assist += c.assist; tot.gialli += c.gialli;
+            return "<tr><td>" + esc(c.nome) + "</td><td>" + c.presenze +
+                   (c.titolare !== c.presenze ? '<small> (' + c.titolare + " tit.)</small>" : "") +
+                   "</td><td>" + c.gol + "</td><td>" + c.assist + "</td><td>" + (c.gialli || "") +
+                   (c.rossi ? ' <span class="rosso">' + c.rossi + "</span>" : "") + "</td></tr>";
+          }).join("");
+          if (v.length > 1) {
+            righe += '<tr class="tot"><td>Totale</td><td>' + tot.presenze + "</td><td>" + tot.gol +
+                     "</td><td>" + tot.assist + "</td><td>" + (tot.gialli || "") + "</td></tr>";
+          }
+          dove.innerHTML = titolo + '<table><thead><tr><th></th><th>Pres.</th><th>Gol</th><th>Assist</th>' +
+                           '<th><i class="giallo"></i></th></tr></thead><tbody>' + righe + "</tbody></table>";
+        });
+      });
+    }
     function apriNota(p) {
       chiudiNota();
       var k = chiave(p), cassa = box.querySelector(".campoBox");
@@ -441,13 +502,15 @@ window.Lavagna = (function () {
           '<div class="chi"><input data-f="num" type="text" inputmode="numeric" maxlength="2" ' +
           'placeholder="N" value="' + esc(p.num || "") + '">' +
           '<input data-f="nome" type="text" placeholder="Cognome" value="' + esc(p.cognome || "") + '"></div>') +
-        '<textarea placeholder="Quello che vuoi dire in telecronaca: numeri, precedenti, come si pronuncia il nome…"></textarea>' +
+        '<div class="stagione" data-stagione-box="1"></div>' +
+        '<textarea placeholder="Le tue curiosità: precedenti, come si pronuncia il nome, cosa dire in telecronaca…"></textarea>' +
         '<div class="piede">' +
           '<button type="button" data-f="togli" class="via">Togli dal campo</button>' +
           '<button type="button" data-f="chiudi">Chiudi</button>' +
           '<button type="button" data-f="salva" class="on">Salva</button>' +
         '</div>';
       cassa.appendChild(f);
+      stagioneSu(p, f.querySelector("[data-stagione-box]"));
       // dove: accanto alla pedina, in percentuale del campo, e sempre dentro
       var largo = f.offsetWidth || 420, alto = f.offsetHeight || 300;
       var r = cassa.getBoundingClientRect();
@@ -717,7 +780,10 @@ window.Lavagna = (function () {
         }
         SQ[lato] = { nome: s.nome || SQ[lato].nome, col: s.col || SQ[lato].col,
                      rosa: rosa, titolari: titolari, mod: s.mod || SQ[lato].mod,
-                     all: s.all || null };
+                     all: s.all || null, tid: String(s.tid || "") };
+        // presenze e gol della stagione: si cominciano a contare subito, cosi'
+        // al doppio clic sul giocatore sono gia' pronti
+        if (SQ[lato].tid) conStagione(function () { StagioneEspn.squadra(SQ[lato].tid); });
       });
       PEDINE.slice().forEach(togli);
       CAMBI = [];
@@ -936,9 +1002,9 @@ window.Lavagna = (function () {
             if (rA.length || rB.length) {
               ricorda();
               carica({
-                A: { nome: (casa.team || {}).displayName || "Casa", col: cA, rosa: rA,
+                A: { nome: (casa.team || {}).displayName || "Casa", col: cA, rosa: rA, tid: (casa.team || {}).id,
                      titolari: rA.filter(function (x) { return x.titolare; }), mod: SQ.A.mod, all: SQ.A.all },
-                B: { nome: (osp.team || {}).displayName || "Ospite", col: cB, rosa: rB,
+                B: { nome: (osp.team || {}).displayName || "Ospite", col: cB, rosa: rB, tid: (osp.team || {}).id,
                      titolari: rB.filter(function (x) { return x.titolare; }), mod: SQ.B.mod, all: SQ.B.all }
               });
             }

@@ -117,7 +117,7 @@
   el("modB").value = "4-4-2";
 
   // ── le squadre: giovanili nostre, se no la classifica ESPN ────────────
-  var ROSE = { A: [], B: [] }, NOMI = { A: "Casa", B: "Ospite" }, ALL = { A: null, B: null };
+  var ROSE = { A: [], B: [] }, NOMI = { A: "Casa", B: "Ospite" }, ALL = { A: null, B: null }, TID = { A: "", B: "" };
   function allenatore(id) {
     if (!id || /\D/.test(String(id))) return Promise.resolve(null);   // le giovanili non hanno id ESPN
     return fetch(PONTE + "?allenatore=" + encodeURIComponent(id), { cache: "no-store" })
@@ -180,11 +180,11 @@
   ["A", "B"].forEach(function (lato) {
     el("sq" + lato).addEventListener("change", function () {
       var id = this.value;
-      if (!id) { ROSE[lato] = []; return; }
+      if (!id) { ROSE[lato] = []; TID[lato] = ""; return; }
       NOMI[lato] = this.options[this.selectedIndex].text;
       dico("Scarico la rosa di <b>" + esc(NOMI[lato]) + "</b>&hellip;");
       Promise.all([rosa(el("comp").value, id), allenatore(id)]).then(function (d) {
-        ROSE[lato] = d[0]; ALL[lato] = d[1];
+        ROSE[lato] = d[0]; ALL[lato] = d[1]; TID[lato] = id;
         dico("<b>" + esc(NOMI[lato]) + "</b>: " + d[0].length + " giocatori" +
              (d[1] ? ", allenatore " + esc((d[1].nome ? d[1].nome + " " : "") + d[1].cognome) : "") + ".",
              d[0].length ? "ok" : "err");
@@ -192,8 +192,8 @@
     });
   });
   el("btnCarica").addEventListener("click", function () {
-    L.carica({ A: { nome: NOMI.A, rosa: ROSE.A, mod: el("modA").value, all: ALL.A },
-               B: { nome: NOMI.B, rosa: ROSE.B, mod: el("modB").value, all: ALL.B } });
+    L.carica({ A: { nome: NOMI.A, rosa: ROSE.A, mod: el("modA").value, all: ALL.A, tid: TID.A },
+               B: { nome: NOMI.B, rosa: ROSE.B, mod: el("modB").value, all: ALL.B, tid: TID.B } });
     dico("In lavagna. Da qui si trascina, si cambia e si scrive.", "ok");
   });
 
