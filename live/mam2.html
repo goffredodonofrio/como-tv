@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<script>
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  location.replace("https://projects-cloud.it" + location.pathname + location.search + location.hash);
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAM · Como TV</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-display:swap;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{color-scheme:dark;--navy:#0A0F24;--navy2:#111733;--pan:#141B3C;--pan2:#1A2249;--riga:rgba(245,241,230,.09);--riga2:rgba(245,241,230,.16);
+    --oro:#C9A24B;--oro2:#E3C271;--ivory:#F5F1E6;--ivory2:#D8D2C2;--fumo:#8A8D9C;--ok:#4FCB8B;--blu:#4FA3E8;--rosso:#E5484D;--giallo:#F5D76E;--verde:#7CD992;--rosa:#CE7FA6;}
+  html,body{height:100%;}
+  body{font:14px/1.45 'DM Sans',system-ui,sans-serif;font-weight:500;color:var(--ivory);background:var(--navy);overflow:hidden;}
+  a{color:inherit;text-decoration:none;}
+  button,.b{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:8px 13px;border-radius:7px;cursor:pointer;
+    background:rgba(245,241,230,.05);color:var(--ivory2);border:1px solid var(--riga2);white-space:nowrap;display:inline-flex;align-items:center;gap:7px;}
+  button:hover,.b:hover{color:var(--oro2);border-color:var(--oro);}
+  button:disabled{opacity:.35;cursor:default;}
+  button.oro,.b.oro{background:var(--oro);border-color:var(--oro);color:var(--navy);} button.oro:hover,.b.oro:hover{background:var(--oro2);color:var(--navy);}
+  button.blu{background:var(--blu);border-color:var(--blu);color:var(--navy);}
+  button.mini,.b.mini{padding:5px 9px;font-size:10px;}
+  .app{height:100%;display:flex;flex-direction:column;}
+
+  /* ── LA TESTATA: dove sei, sempre ── */
+  .testa{display:flex;align-items:center;gap:14px;padding:10px 18px;border-bottom:1px solid var(--riga);background:var(--navy2);flex:none;}
+  .testa .logo{font-family:'Mazzard',sans-serif;font-weight:800;font-size:15px;letter-spacing:.18em;color:var(--oro);}
+  .testa .logo small{font-size:9px;letter-spacing:.24em;color:var(--fumo);margin-left:8px;}
+  .briciole{display:flex;align-items:center;gap:8px;font-size:13px;min-width:0;}
+  .briciole a{color:var(--ivory2);} .briciole a:hover{color:var(--oro2);}
+  .briciole i{color:var(--fumo);font-style:normal;} .briciole b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38vw;}
+  .testa .cerca{margin-left:auto;position:relative;flex:0 1 420px;min-width:200px;}
+  .testa .cerca input{width:100%;font:inherit;font-size:13.5px;padding:8px 12px 8px 34px;border-radius:9px;border:1px solid var(--riga2);background:rgba(245,241,230,.06);color:var(--ivory);}
+  .testa .cerca input:focus{outline:none;border-color:var(--oro);}
+  .testa .cerca .lu{position:absolute;left:11px;top:50%;transform:translateY(-50%);opacity:.6;font-size:14px;pointer-events:none;}
+  .testa .stato{font-size:11.5px;color:var(--fumo);white-space:nowrap;}
+  .testa .stato b{color:var(--ok);font-weight:500;}
+  .vista{flex:1 1 auto;min-height:0;display:none;} .vista.on{display:flex;}
+
+  /* ── LIBRERIA ── */
+  #libreria{flex-direction:column;overflow:auto;padding:22px 26px 40px;gap:22px;}
+  .lib-testa h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:28px;letter-spacing:-.01em;}
+  .lib-testa h1 span{color:var(--oro);}
+  .lib-testa p{color:var(--fumo);margin-top:4px;font-size:13px;}
+  .lib-cerca{position:relative;max-width:820px;}
+  .lib-cerca input{width:100%;font:inherit;font-size:17px;padding:14px 16px 14px 50px;border-radius:12px;border:1px solid var(--riga2);background:rgba(245,241,230,.06);color:var(--ivory);}
+  .lib-cerca input:focus{outline:none;border-color:var(--oro);}
+  .lib-cerca .lu{position:absolute;left:18px;top:50%;transform:translateY(-50%);opacity:.6;font-size:18px;pointer-events:none;}
+  .sez{display:flex;align-items:baseline;gap:12px;}
+  .sez h2{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--oro);}
+  .sez span{font-size:12px;color:var(--fumo);}
+  .sez .dx{margin-left:auto;}
+  .cat{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;}
+  .cat a{display:flex;align-items:center;gap:12px;background:var(--pan);border:1px solid var(--riga);border-radius:10px;padding:12px 14px;cursor:pointer;}
+  .cat a:hover{border-color:var(--oro);}
+  .cat i{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:15px;background:color-mix(in srgb,var(--c) 28%,transparent);}
+  .cat b{display:block;font-family:'Mazzard',sans-serif;font-weight:700;font-size:13px;} .cat small{color:var(--fumo);font-size:11px;}
+  .riprendi{display:flex;align-items:center;gap:16px;background:linear-gradient(90deg,rgba(201,162,75,.16),rgba(201,162,75,.04));border:1px solid rgba(201,162,75,.4);border-radius:12px;padding:12px 16px;max-width:820px;}
+  .riprendi img{width:96px;aspect-ratio:16/9;object-fit:cover;border-radius:6px;background:#000;}
+  .riprendi .t b{display:block;font-family:'Mazzard',sans-serif;font-weight:700;font-size:14px;} .riprendi .t span{color:var(--fumo);font-size:12px;}
+  .riprendi .az{margin-left:auto;display:flex;gap:8px;}
+  .griglia{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;}
+  .card{background:var(--pan);border:1px solid var(--riga);border-radius:12px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;}
+  .card:hover{border-color:var(--oro);}
+  .card .mini{position:relative;aspect-ratio:16/9;background:#000 center/cover no-repeat;}
+  .card .mini .dur{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.75);font-size:11px;padding:2px 7px;border-radius:4px;font-variant-numeric:tabular-nums;}
+  .card .mini .tc{position:absolute;left:8px;top:8px;font-family:'Mazzard',sans-serif;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:#7ED494;background:rgba(0,0,0,.7);padding:2px 7px;border-radius:999px;}
+  .card .mini .play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:38px;height:38px;border-radius:50%;background:rgba(10,15,36,.75);border:1px solid rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;font-size:14px;}
+  .card .t{padding:10px 12px 12px;}
+  .card .t b{display:block;font-family:'Mazzard',sans-serif;font-weight:700;font-size:13px;line-height:1.25;text-transform:uppercase;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .card .t small{display:block;color:var(--fumo);font-size:11.5px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ris{max-width:820px;display:flex;flex-direction:column;gap:6px;}
+  .ris .gr{font-family:'Mazzard',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--c,var(--oro));margin:10px 0 2px;}
+  .ris .r{display:flex;align-items:center;gap:10px;background:var(--pan);border:1px solid var(--riga);border-left:3px solid var(--c,var(--oro));border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;}
+  .ris .r:hover{border-color:var(--oro);} .ris .r small{color:var(--fumo);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+  .ris .r b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55%;}
+  mark{background:rgba(245,215,110,.35);color:var(--ivory);border-radius:2px;padding:0 1px;}
+  .vuoto{color:var(--fumo);font-size:13px;padding:10px 0;}
+
+  /* ── ASSET ── */
+  #asset{display:none;grid-template-columns:minmax(0,1fr) 400px;min-height:0;}
+  #asset.on{display:grid;}
+  @media (max-width:1000px){ #asset.on{grid-template-columns:1fr;overflow:auto;} .scheda{border-left:0;border-top:1px solid var(--riga);} }
+  .palco{display:flex;flex-direction:column;min-height:0;padding:14px 18px 12px;gap:10px;overflow:auto;}
+  .palco .titolo{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .palco h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:20px;letter-spacing:.01em;text-transform:uppercase;}
+  .palco .titolo .meta{color:var(--fumo);font-size:12.5px;}
+  .palco .titolo .az{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;}
+  .player{position:relative;background:#000;border-radius:10px;overflow:hidden;border:1px solid var(--riga);flex:none;}
+  .player video{display:block;width:100%;max-height:calc(100vh - 330px);aspect-ratio:16/9;background:#000;}
+  .player .sotto{position:absolute;left:0;right:0;bottom:0;padding:0 4% 2.8%;text-align:center;pointer-events:none;display:flex;flex-direction:column;gap:.3em;align-items:center;}
+  .player .sotto i{font-style:normal;font-family:'Nexa','Mazzard',sans-serif;font-weight:700;color:#FFFF00;line-height:1.18;text-shadow:0 0 2px #0A0F24,0 0 3px #0A0F24,1px 1px 1px #0A0F24,-1px -1px 1px #0A0F24;white-space:pre-line;}
+  .player .sotto i.en{color:#fff;}
+  .player .sotto i:empty{display:none;}
+  .trasporto{background:var(--pan);border:1px solid var(--riga);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;flex:none;}
+  .momenti{position:relative;height:38px;background:rgba(245,241,230,.05);border-radius:6px;cursor:pointer;overflow:hidden;}
+  .momenti .det{position:absolute;bottom:0;height:10px;width:2px;background:rgba(245,215,110,.35);}
+  .momenti .az{position:absolute;top:4px;width:3px;height:16px;border-radius:2px;background:var(--verde);}
+  .momenti .az.gol{background:var(--oro2);height:22px;top:2px;width:4px;}
+  .momenti .az.ammonizione,.momenti .az.espulsione{background:var(--rosso);}
+  .momenti .az.parata{background:var(--blu);}
+  .momenti .testina{position:absolute;top:0;bottom:0;width:2px;background:#fff;pointer-events:none;}
+  .momenti .in,.momenti .out{position:absolute;top:0;bottom:0;width:2px;background:var(--oro);} .momenti .fra{position:absolute;top:0;bottom:0;background:rgba(201,162,75,.18);}
+  .tc{font:12.5px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;}
+  .comandi{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .comandi .gruppo{display:flex;align-items:center;gap:4px;padding:0 8px;border-right:1px solid var(--riga);}
+  .comandi .gruppo:last-child{border-right:0;}
+  .comandi button{padding:6px 9px;font-size:10.5px;}
+  .comandi button.on{background:var(--oro);color:var(--navy);border-color:var(--oro);}
+  .comandi .eti{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--fumo);margin-right:4px;font-family:'Mazzard',sans-serif;}
+  .comandi .tc b{color:var(--oro2);font-weight:500;}
+  .scheda{border-left:1px solid var(--riga);background:var(--navy2);display:flex;flex-direction:column;min-height:0;}
+  .scheda .capo{padding:12px 16px;border-bottom:1px solid var(--riga);display:flex;align-items:center;gap:10px;}
+  .scheda .capo img{width:44px;height:44px;border-radius:8px;object-fit:cover;background:#000;}
+  .scheda .capo b{display:block;font-family:'Mazzard',sans-serif;font-weight:700;font-size:13px;line-height:1.2;} .scheda .capo small{color:var(--fumo);font-size:11.5px;}
+  .scheda .cercaS{padding:8px 12px;border-bottom:1px solid var(--riga);}
+  .scheda .cercaS input{width:100%;font:inherit;font-size:12.5px;padding:7px 10px;border-radius:7px;border:1px solid var(--riga2);background:rgba(245,241,230,.05);color:var(--ivory);}
+  .scheda .cercaS input:focus{outline:none;border-color:var(--oro);}
+  .scheda .corpo{flex:1;overflow:auto;min-height:0;}
+  .blocco{border-bottom:1px solid var(--riga);}
+  .blocco > header{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;user-select:none;}
+  .blocco > header .n{min-width:26px;height:22px;border-radius:6px;background:rgba(245,241,230,.08);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;padding:0 6px;}
+  .blocco > header b{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;flex:1;}
+  .blocco > header .fr{color:var(--fumo);font-size:11px;transition:transform .15s;}
+  .blocco.chiuso > header .fr{transform:rotate(-90deg);}
+  .blocco .dentro{padding:0 10px 10px;} .blocco.chiuso .dentro{display:none;}
+  .voce{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:7px;cursor:pointer;font-size:12.5px;}
+  .voce:hover{background:rgba(245,241,230,.05);} .voce.ora{background:rgba(201,162,75,.14);}
+  .voce .min{font:11.5px ui-monospace,Menlo,monospace;color:var(--oro2);min-width:52px;padding-top:1px;}
+  .voce .tag{font-family:'Mazzard',sans-serif;font-size:9px;letter-spacing:.14em;text-transform:uppercase;padding:2px 6px;border-radius:999px;border:1px solid var(--riga2);color:var(--ivory2);white-space:nowrap;margin-top:1px;}
+  .voce .tag.gol{border-color:var(--oro);color:var(--oro2);} .voce .tag.ammonizione,.voce .tag.espulsione{border-color:var(--rosso);color:#FF9A9C;} .voce .tag.parata{border-color:var(--blu);color:#9DCBF5;}
+  .voce .tx{flex:1;min-width:0;} .voce .tx small{display:block;color:var(--fumo);font-size:11px;}
+  .voce input[type=checkbox]{accent-color:var(--oro);margin-top:2px;}
+  .chipfila{display:flex;flex-wrap:wrap;gap:6px;padding:4px 8px 8px;}
+  .chipfila span{font-size:11.5px;padding:4px 9px;border-radius:999px;border:1px solid var(--riga2);cursor:pointer;color:var(--ivory2);}
+  .chipfila span:hover{border-color:var(--oro);} .chipfila span i{font-style:normal;color:var(--fumo);margin-left:4px;}
+  .info{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:12.5px;padding:2px 8px 6px;}
+  .info span{color:var(--fumo);} .info b{font-weight:500;overflow-wrap:anywhere;}
+  .azioniS{display:flex;gap:6px;flex-wrap:wrap;padding:4px 8px 6px;}
+  #avvisi{position:fixed;right:16px;bottom:16px;z-index:900;display:flex;flex-direction:column;gap:8px;max-width:min(440px,calc(100vw - 32px));}
+  .avviso{background:var(--pan);border:1px solid var(--riga);border-left:3px solid var(--oro);border-radius:8px;padding:11px 14px;font-size:13px;color:var(--ivory2);cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,.45);}
+  .avviso.ok{border-left-color:var(--ok);} .avviso.err{border-left-color:var(--rosso);}
+  .pill{font-family:'Mazzard',sans-serif;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;padding:2px 8px;border-radius:999px;border:1px solid var(--riga2);color:var(--fumo);}
+  .pill.tc{border-color:rgba(79,203,139,.5);color:#7ED494;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="testa">
+    <a class="logo" href="mam2.html">MAM<small>COMO TV</small></a>
+    <div class="briciole" id="briciole"><a href="mam2.html">Libreria</a></div>
+    <div class="cerca"><span class="lu">&#128269;</span><input id="cercaTesta" type="search" placeholder="Cerca: partita, giocatore, frase, “tutti i gol di…”" autocomplete="off"></div>
+    <div class="stato" id="statoPonte">ponte <b>…</b></div>
+  </div>
+
+  <!-- ══════════ LIBRERIA ══════════ -->
+  <div class="vista" id="libreria">
+    <div class="lib-testa"><h1>Buongiorno, <span>Como TV</span></h1><p id="libSotto">L'archivio: partite intere, azioni, telecronache, foto. Cerca, guarda, monta.</p></div>
+    <div class="lib-cerca"><span class="lu">&#128269;</span><input id="cercaLib" type="search" placeholder="Cerca una partita, un giocatore, una frase detta, “tutti i gol di Douvikas”…" autocomplete="off" autofocus></div>
+    <div id="riprendi"></div>
+    <div id="risultati" class="ris" hidden></div>
+    <div id="libCat">
+      <div class="sez"><h2>Categorie</h2><span id="catConto"></span></div>
+      <div class="cat" id="categorie"></div>
+    </div>
+    <div id="libRecenti">
+      <div class="sez"><h2>Ultime partite</h2><span id="recConto"></span><a class="dx b mini" href="magazzino.html" target="_blank" rel="noopener">Magazzino</a></div>
+      <div class="griglia" id="recenti"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ ASSET ══════════ -->
+  <div class="vista" id="asset">
+    <div class="palco">
+      <div class="titolo"><h1 id="aTitolo">…</h1><span class="meta" id="aMeta"></span>
+        <div class="az">
+          <button class="mini" id="aScarica" title="scarica il file intero">&#8595; Scarica</button>
+          <button class="mini" id="aSrt" title="l'SRT della telecronaca intera">SRT</button>
+          <button class="mini oro" id="aMam" title="apre questa partita nel montaggio">Apri nel montaggio</button>
+        </div>
+      </div>
+      <div class="player"><video id="video" playsinline preload="metadata"></video><div class="sotto" id="sottoBox"><i class="it" id="sottoIt"></i><i class="en" id="sottoEn"></i></div></div>
+      <div class="trasporto">
+        <div class="momenti" id="momenti" title="le azioni sulla partita: clicca per andarci"><div class="testina" id="mTestina"></div></div>
+        <div class="comandi">
+          <div class="gruppo tc"><span class="eti">Ora</span><b id="tOra">00:00:00</b></div>
+          <div class="gruppo"><button id="bIndietro" title="−10 s (J)">&#8676; 10s</button><button id="bPlay" title="riproduci / ferma (spazio)">&#9654;</button><button id="bAvanti" title="+10 s (L)">10s &#8677;</button></div>
+          <div class="gruppo"><span class="eti">Velocità</span><button data-v="0.5">0.5×</button><button data-v="1" class="on">1×</button><button data-v="2">2×</button><button data-v="4">4×</button></div>
+          <div class="gruppo tc"><button id="bIn" title="segna l'entrata (I)">IN</button><b id="tIn">—</b><button id="bGoIn" class="mini" title="vai all'entrata">→</button></div>
+          <div class="gruppo tc"><button id="bOut" title="segna l'uscita (O)">OUT</button><b id="tOut">—</b><button id="bGoOut" class="mini" title="vai all'uscita">→</button></div>
+          <div class="gruppo tc"><span class="eti">Dur</span><b id="tDur">—</b><button id="bPulisci" class="mini" title="togli entrata e uscita">×</button></div>
+          <div class="gruppo"><button id="bSotto" title="sottotitoli dalla telecronaca">Sottotitoli</button><button id="bLingua" title="lingua dei sottotitoli">ITA</button></div>
+          <div class="gruppo"><button class="oro" id="bClip" disabled title="esporta la clip fra entrata e uscita">Esporta clip</button><button id="bTimeline" disabled title="apre il montaggio con questa entrata/uscita">In timeline</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="scheda">
+      <div class="capo"><img id="sMini" alt=""><div><b id="sTitolo">…</b><small id="sSotto"></small></div></div>
+      <div class="cercaS"><input id="cercaS" type="search" placeholder="cerca in questa partita: azione, giocatore, frase" autocomplete="off"></div>
+      <div class="corpo" id="scheda"></div>
+    </div>
+  </div>
+</div>
+<div id="avvisi"></div>
+
+<script src="chiave.js"></script>
+<script>
+(function () {
+  "use strict";
+  var PONTE = /^\/como-tv-dev\//.test(location.pathname) ? "/como-tv-dev/api" : "/api";
+  var BASE = PONTE.replace(/\/api$/, "");
+  var TOKEN = ""; try { TOKEN = (window.ChiaveComoTV ? ChiaveComoTV.valore() : "") || ""; } catch (e) {}
+  var MAM = "mam.html?modo=archivio";
+  function el(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
+  function piatto(t){ return String(t||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,""); }
+  function peso(n){ if(!n) return "—"; if (n >= 1073741824) return (n/1073741824).toFixed(1).replace(".",",") + " GB"; if (n >= 1048576) return Math.round(n/1048576) + " MB"; return Math.round(n/1024) + " KB"; }
+  function tc(s){ s = Math.max(0, Math.floor(s||0)); var h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60; return (h<10?"0":"")+h+":"+(m<10?"0":"")+m+":"+(x<10?"0":"")+x; }
+  function tcBreve(s){ s = Math.max(0, Math.round(s||0)); var m=Math.floor(s/60), x=s%60; return m+":"+(x<10?"0":"")+x; }
+  function quando(ms){ var d = new Date(ms); if (!ms || isNaN(d)) return ""; return d.toLocaleDateString("it-IT",{day:"2-digit",month:"2-digit",year:"2-digit"}); }
+  function durata(s){ if(!s) return ""; var m = Math.round(s/60); return m >= 60 ? Math.floor(m/60) + " h " + (m%60) + " min" : m + " min"; }
+  function post(c){
+    c.token = TOKEN;
+    return fetch(PONTE, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(c) })
+      .then(function(r){ return r.json(); })
+      .then(function(j){ if(!j.ok && window.ChiaveComoTV && ChiaveComoTV.rifiutata(j.errore, "contributo")){ TOKEN = ChiaveComoTV.valore(); return post(c); } if(!j.ok) throw new Error(j.errore||"il ponte ha detto no"); return j; });
+  }
+  function avviso(cls, html){
+    var a = document.createElement("div"); a.className = "avviso" + (cls ? " " + cls : ""); a.innerHTML = html;
+    var via = function(){ a.style.opacity = "0"; setTimeout(function(){ a.remove(); }, 300); };
+    a.addEventListener("click", via); el("avvisi").appendChild(a);
+    while (el("avvisi").children.length > 4) el("avvisi").removeChild(el("avvisi").firstChild);
+    if (cls !== "err") setTimeout(via, 4000);
+  }
+  var FERMA = new Set("tutti tutte tutto i il lo la le gli di del della dei delle da dal a al alla in nel con per e ed o che un una su sul mi fammi trova cerca".split(" "));
+  function evidenzia(testo, q){
+    var t = esc(testo);
+    piatto(q).split(/\s+/).filter(function(w){ return w.length > 1 && !FERMA.has(w); }).forEach(function(w){ var re = new RegExp("(" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "ig"); t = t.replace(re, "<mark>$1</mark>"); });
+    return t;
+  }
+  var CAT = { evento:{eti:"Partite",c:"#4FA3E8",ic:"&#9917;"}, azione:{eti:"Azioni",c:"#7CD992",ic:"&#9889;"}, detto:{eti:"Telecronache",c:"#F5D76E",ic:"&#128172;"}, foto:{eti:"Foto",c:"#E3C271",ic:"&#128444;"}, espn:{eti:"Stemmi",c:"#D93A3A",ic:"&#128737;"}, file:{eti:"Cartelle",c:"#A8A8B8",ic:"&#128193;"} };
+
+  // ══════════ STATO E NAVIGAZIONE ══════════
+  var EVENTI = [], REGS = {}, ASSET = null;
+  function vai(vista){ ["libreria","asset"].forEach(function(v){ el(v).classList.toggle("on", v === vista); }); }
+  function briciole(parti){ el("briciole").innerHTML = '<a href="mam2.html">Libreria</a>' + parti.map(function(p){ return '<i>›</i><b title="' + esc(p) + '">' + esc(p) + '</b>'; }).join(""); }
+  function stato(){
+    post({ tipo:"clip-stato" }).then(function(d){
+      var regs = d.reg; regs = Array.isArray(regs) ? regs : Object.keys(regs || {}).map(function(k){ return regs[k]; });
+      regs.forEach(function(r){ REGS[r.id] = r; });
+      var gb = d.disco && (d.disco.liberiGB || d.disco.liberi || (d.disco.libero ? d.disco.libero / 1e9 : 0));
+      el("statoPonte").innerHTML = "ponte <b>ok</b>" + (gb ? " · " + Math.round(gb) + " GB liberi" : "");
+      disegnaRecenti();
+    }).catch(function(){ el("statoPonte").innerHTML = 'ponte <b style="color:var(--rosso)">non risponde</b>'; });
+  }
+  function caricaEventi(){
+    post({ tipo:"clip-qnap-eventi" }).then(function(j){
+      EVENTI = (j.eventi || []).filter(function(x){ return x.partita || x.durata; });
+      el("recConto").textContent = EVENTI.length + " sulla QNAP · " + peso(j.peso);
+      disegnaRecenti(); disegnaCategorie();
+    }).catch(function(e){ avviso("err", "QNAP non raggiungibile: " + esc(e.message)); });
+  }
+  function disegnaRecenti(){
+    if (!EVENTI.length) return;
+    el("recenti").innerHTML = EVENTI.slice(0, 12).map(function(x){
+      var r = x.reg && REGS[x.reg], mini = r && r.mini ? BASE + r.mini : "";
+      return '<a class="card" href="mam2.html?asset=' + encodeURIComponent(x.rec || "") + (x.reg ? "&reg=" + encodeURIComponent(x.reg) : "") + '">' +
+        '<div class="mini" style="' + (mini ? "background-image:url('" + esc(mini) + "')" : "") + '">' + (x.telecronaca ? '<span class="tc">tc</span>' : '') + '<span class="play">&#9654;</span>' + (x.durata ? '<span class="dur">' + tc(x.durata) + '</span>' : '') + '</div>' +
+        '<div class="t"><b title="' + esc(x.partita || x.nome) + '">' + esc(x.partita || x.nome.replace(/\.[^.]+$/, "")) + '</b><small>' + esc(x.competizione || "") + (x.competizione ? " · " : "") + quando(x.quando) + ' · ' + peso(x.peso) + '</small></div></a>';
+    }).join("");
+  }
+  function disegnaCategorie(){
+    var conta = { evento: EVENTI.length, azione: "", detto: EVENTI.filter(function(x){ return x.telecronaca; }).length + " partite", foto: "", espn: "", file: "" };
+    el("categorie").innerHTML = Object.keys(CAT).map(function(k){
+      var c = CAT[k];
+      return '<a data-cat="' + k + '" style="--c:' + c.c + '"><i>' + c.ic + '</i><div><b>' + c.eti + '</b><small>' + (conta[k] !== "" ? conta[k] : "cerca per vederle") + '</small></div></a>';
+    }).join("");
+  }
+  el("categorie").addEventListener("click", function(e){
+    var a = e.target.closest("a[data-cat]"); if (!a) return;
+    if (a.dataset.cat === "evento") { el("libRecenti").scrollIntoView({ behavior:"smooth" }); return; }
+    window.open("magazzino.html", "_blank");
+  });
+
+  // ══════════ LA RICERCA (in libreria) ══════════
+  var Q = "", Q_T = null, RIS = { azioni:[], dette:[] };
+  function cerca(q){
+    Q = q.trim(); el("cercaLib").value = Q; el("cercaTesta").value = Q;
+    var attivo = Q.length > 0;
+    el("risultati").hidden = !attivo; el("libCat").hidden = attivo; el("libRecenti").hidden = attivo; el("riprendi").hidden = attivo;
+    if (!attivo) return;
+    disegnaRisultati();
+    if (Q.length < 3) return;
+    clearTimeout(Q_T);
+    Q_T = setTimeout(function(){
+      var mia = Q;
+      post({ tipo:"clip-tabellino-cerca", q: mia, quante: 300 }).then(function(j){ if (mia !== Q) return; RIS.azioni = j.righe || []; disegnaRisultati(); }).catch(function(){});
+      post({ tipo:"clip-parlato-cerca", q: mia, quante: 300 }).then(function(j){ if (mia !== Q) return; RIS.dette = j.righe || []; disegnaRisultati(); }).catch(function(){});
+    }, 300);
+  }
+  function disegnaRisultati(){
+    var q = piatto(Q).split(/\s+/).filter(function(w){ return w && !FERMA.has(w); });
+    var partite = EVENTI.filter(function(x){ var t = piatto([x.partita, x.nome, x.competizione].join(" ")); return q.length && q.every(function(w){ return t.indexOf(w) >= 0; }); });
+    var h = "";
+    var link = function(x, t){ return "mam2.html?asset=" + encodeURIComponent(x.rec || "") + (x.reg ? "&reg=" + encodeURIComponent(x.reg) : "") + (t !== undefined ? "&t=" + Math.floor(t) : ""); };
+    if (partite.length) h += '<div class="gr" style="--c:' + CAT.evento.c + '">Partite · ' + partite.length + '</div>' + partite.map(function(x){
+      return '<a class="r" style="--c:' + CAT.evento.c + '" href="' + link(x) + '"><span>' + CAT.evento.ic + '</span><b>' + esc(x.partita || x.nome) + '</b><small>' + esc(x.nome) + ' · ' + durata(x.durata) + ' · ' + quando(x.quando) + '</small>' + (x.telecronaca ? '<span class="pill tc">tc</span>' : '') + '</a>'; }).join("");
+    if (RIS.azioni.length) h += '<div class="gr" style="--c:' + CAT.azione.c + '">Azioni · ' + RIS.azioni.length + '</div>' + RIS.azioni.map(function(x){
+      return '<a class="r" style="--c:' + CAT.azione.c + '" href="' + link(x, x.dentro) + '"><span>' + (x.gol ? "&#9917;" : "&#9889;") + '</span><b>' + esc((x.tag || x.tipo || "").toUpperCase()) + ' · ' + evidenzia(x.titolo || x.giocatore || "", Q) + '</b><small>' + esc(x.partita) + (x.minuto ? ' · ' + esc(x.minuto) : '') + ' · ' + tcBreve(x.t) + ' · ' + esc((x.fonti || [x.fonte]).join("+")) + '</small></a>'; }).join("");
+    if (RIS.dette.length) h += '<div class="gr" style="--c:' + CAT.detto.c + '">Telecronache · ' + RIS.dette.length + '</div>' + RIS.dette.map(function(x){
+      return '<a class="r" style="--c:' + CAT.detto.c + '" href="' + link(x, x.a) + '"><span>' + (x.lingua === "en" ? "🇬🇧" : "🇮🇹") + '</span><b style="max-width:70%">“' + evidenzia(x.testo, Q) + '”</b><small>' + esc(x.titolo) + ' · ' + tcBreve(x.a) + '</small></a>'; }).join("");
+    if (!h) h = '<div class="vuoto">' + (Q.length < 3 ? "Scrivi almeno tre lettere." : "Niente per «" + esc(Q) + "»: prova con un cognome, una squadra, “tutti i gol di…”. Foto, stemmi e cartelle stanno nel <a href=\"magazzino.html?q=" + encodeURIComponent(Q) + "\" target=\"_blank\" style=\"color:var(--oro2)\">Magazzino</a>.") + '</div>';
+    else h += '<div class="vuoto">Foto, stemmi e cartelle: <a href="magazzino.html?q=' + encodeURIComponent(Q) + '" target="_blank" style="color:var(--oro2)">cerca nel Magazzino</a>.</div>';
+    el("risultati").innerHTML = h;
+  }
+  el("cercaLib").addEventListener("input", function(){ cerca(this.value); });
+  el("cercaTesta").addEventListener("keydown", function(e){ if (e.key === "Enter") { if (el("asset").classList.contains("on")) location.href = "mam2.html?q=" + encodeURIComponent(this.value.trim()); else cerca(this.value); } });
+  el("cercaTesta").addEventListener("input", function(){ if (el("libreria").classList.contains("on")) cerca(this.value); });
+
+  // ══════════ RIPRENDI ══════════
+  function disegnaRiprendi(){
+    var u = null; try { u = JSON.parse(localStorage.getItem("mam2-ultimo") || "null"); } catch (e) {}
+    if (!u || !u.titolo) { el("riprendi").innerHTML = ""; return; }
+    el("riprendi").innerHTML = '<div class="riprendi">' + (u.mini ? '<img src="' + esc(u.mini) + '" alt="">' : '') + '<div class="t"><b>Riprendi ' + esc(u.titolo) + '</b><span>' + (u.t ? 'al ' + tc(u.t) + ' · ' : '') + 'aperta ' + esc(u.quando) + '</span></div>' +
+      '<div class="az"><a class="b oro" href="' + esc(u.url) + '">Riprendi</a><button class="b" id="ripNo">Nuovo</button></div></div>';
+    el("ripNo").addEventListener("click", function(){ try { localStorage.removeItem("mam2-ultimo"); } catch (e) {} el("riprendi").innerHTML = ""; });
+  }
+
+  // ══════════ ASSET ══════════
+  var V, TAB = [], DETTO = [], DENTRO = null, FUORI = null, SOTTO = false, LINGUA = "it", SCELTE = {};
+  function apriAsset(rec, regId, t){
+    vai("asset"); V = el("video");
+    var apri = regId ? Promise.resolve({ reg: REGS[regId] || null }) : Promise.resolve({ reg: null });
+    apri.then(function(){ return post({ tipo:"clip-archivio-apri", rec: rec }); }).then(function(d){
+      var r = d.reg; ASSET = r;
+      el("aTitolo").textContent = r.titolo || "partita"; el("sTitolo").textContent = r.titolo || "";
+      el("aMeta").innerHTML = [r.competizione, quando(r.avviata), durata(r.durata)].filter(Boolean).map(esc).join(" · ");
+      el("sSotto").textContent = (r.arch && r.arch.chiave) || "";
+      if (r.mini) el("sMini").src = BASE + r.mini;
+      briciole([r.titolo || "partita"]);
+      document.title = (r.titolo || "MAM") + " · MAM Como TV";
+      V.src = BASE + r.via;
+      if (t) V.addEventListener("loadedmetadata", function unaVolta(){ V.removeEventListener("loadedmetadata", unaVolta); try { V.currentTime = Math.max(0, t - 3); } catch (e) {} });
+      try { localStorage.setItem("mam2-ultimo", JSON.stringify({ titolo: r.titolo, url: location.pathname.replace(/^.*\//, "") + location.search, quando: new Date().toLocaleString("it-IT", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }), mini: r.mini ? BASE + r.mini : "", t: t || 0 })); } catch (e) {}
+      el("aMam").onclick = function(){ window.open(MAM + "&apri=" + encodeURIComponent(rec) + (V.currentTime ? "&t=" + Math.floor(V.currentTime) : ""), "_blank"); };
+      el("aScarica").onclick = function(){ if (!r.arch) return; post({ tipo:"clip-qnap-via", via: r.arch.chiave, radice:"qnap" }).then(function(x){ var a = document.createElement("a"); a.href = BASE + x.via + "&scarica=1"; a.download = r.arch.chiave; document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); }, 1000); }).catch(function(e){ avviso("err", esc(e.message)); }); };
+      el("aSrt").onclick = function(){ post({ tipo:"clip-parlato-srt", reg: r.id, lingua: LINGUA }).then(function(x){ var a = document.createElement("a"), u = URL.createObjectURL(new Blob([x.srt], { type:"text/plain;charset=utf-8" })); a.href = u; a.download = x.nome; document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); URL.revokeObjectURL(u); }, 1500); avviso("ok", x.righe + " righe in " + (x.lingua === "en" ? "inglese" : "italiano")); }).catch(function(e){ avviso("err", esc(e.message)); }); };
+      return Promise.all([post({ tipo:"clip-tabellino", reg: r.id }).catch(function(){ return { righe: [] }; }), post({ tipo:"clip-parlato", reg: r.id }).catch(function(){ return { pezzi: [] }; })]);
+    }).then(function(rs){
+      TAB = (rs[0].righe || []).slice().sort(function(a,b){ return a.t - b.t; });
+      DETTO = (rs[1].pezzi || []).filter(function(x){ return !x.vivo; }).sort(function(a,b){ return a.a - b.a; });
+      disegnaScheda(""); disegnaMomenti();
+    }).catch(function(e){ avviso("err", esc(e.message)); });
+  }
+  function persone(){
+    var conta = {};
+    TAB.forEach(function(x){ if (x.giocatore) conta[x.giocatore] = (conta[x.giocatore] || 0) + 1; var m = /^(?:GOL|Gol|Ammonizione|Espulsione|Sostituzione|Rigore)\s*[·:-]\s*([A-ZÀ-Ý][^,.!?]{2,40})$/.exec(x.titolo || ""); if (m) conta[m[1].trim()] = (conta[m[1].trim()] || 0) + 1; });
+    return Object.keys(conta).sort(function(a,b){ return conta[b] - conta[a]; }).map(function(n){ return { nome:n, n:conta[n] }; });
+  }
+  function disegnaScheda(q){
+    q = piatto(q || "");
+    var r = ASSET || {};
+    var tab = TAB.filter(function(x){ return !q || piatto([x.tag, x.tipo, x.titolo, x.giocatore, x.squadra].join(" ")).indexOf(q) >= 0; });
+    var det = DETTO.filter(function(x){ return !q || piatto((x.x || "") + " " + (x.y || "")).indexOf(q) >= 0; });
+    var pers = persone();
+    var lingua = (DETTO[0] && DETTO[0].l) || "it";
+    var h = "";
+    h += blocco("info", "Match info", "", '<div class="info"><span>partita</span><b>' + esc(r.titolo || "") + '</b>' + (r.competizione ? '<span>competizione</span><b>' + esc(r.competizione) + '</b>' : '') + '<span>data</span><b>' + quando(r.avviata) + '</b><span>durata</span><b>' + durata(r.durata) + ' · ' + tc(r.durata) + '</b><span>calcio d’inizio</span><b>' + (r.kickoff && r.kickoff["1"] ? tc(r.kickoff["1"]) + " nel file" : "non letto") + '</b><span>telecronaca</span><b>' + (DETTO.length ? DETTO.length + " righe · " + (lingua === "en" ? "inglese" : "italiano") : "non trascritta") + '</b><span>fonti</span><b>' + esc(Object.keys(TAB.reduce(function(a,x){ a[x.fonte] = 1; return a; }, {})).join(", ") || "—") + '</b></div>', false);
+    h += blocco("azioni", "Azioni", tab.length, (tab.length ? tab.map(function(x, i){
+      var k = TAB.indexOf(x);
+      return '<div class="voce" data-t="' + x.dentro + '" data-i="' + k + '"><input type="checkbox" data-k="' + k + '"' + (SCELTE[k] ? " checked" : "") + ' title="spunta per mandarla in timeline"><span class="min">' + esc(x.minuto || tcBreve(x.t)) + '</span><span class="tag ' + esc((x.tag || x.tipo || "").toLowerCase()) + '">' + esc(x.tag || x.tipo || "azione") + '</span><span class="tx">' + evidenzia(x.titolo || x.giocatore || "", q) + '<small>' + tcBreve(x.t) + ' · ' + esc((x.fonti || [x.fonte]).join(" + ")) + (x.certezza && x.certezza !== "minuto" ? ' · ' + esc(x.certezza) : '') + '</small></span></div>';
+    }).join("") + '<div class="azioniS"><button class="mini oro" id="bMonta" disabled>Metti le spuntate in timeline</button><button class="mini" id="bTutteAz">Tutte</button><button class="mini" id="bGolAz">Solo i gol</button></div>' : '<div class="vuoto" style="padding:6px 8px">Nessuna azione: gli appunti e ESPN non hanno ancora niente per questa partita.</div>'), false);
+    h += blocco("detto", "Telecronaca " + (lingua === "en" ? "🇬🇧" : "🇮🇹"), det.length, (det.length ? det.slice(0, q ? 400 : 120).map(function(x){
+      return '<div class="voce" data-t="' + x.a + '" data-a="' + x.a + '"><span class="min">' + tcBreve(x.a) + '</span><span class="tx">' + evidenzia(x.x, q) + '</span></div>';
+    }).join("") + (!q && det.length > 120 ? '<div class="vuoto" style="padding:6px 8px">…e altre ' + (det.length - 120) + ' righe: cerca qui sopra per trovarle.</div>' : '') : '<div class="vuoto" style="padding:6px 8px">' + (DETTO.length ? "Nessuna riga con quella parola." : "Telecronaca non trascritta.") + '</div>'), !!q ? false : true);
+    h += blocco("persone", "Persone", pers.length, (pers.length ? '<div class="chipfila">' + pers.map(function(p){ return '<span data-q="' + esc(p.nome) + '">' + esc(p.nome) + '<i>×' + p.n + '</i></span>'; }).join("") + '</div>' : '<div class="vuoto" style="padding:6px 8px">Nessun nome negli appunti.</div>'), true);
+    h += blocco("sotto", "Sottotitoli", DETTO.length ? "" : 0, '<div class="azioniS"><button class="mini" data-srt="it">SRT ITA</button><button class="mini" data-srt="en">SRT ENG</button><span class="vuoto" style="padding:4px 0;font-size:12px">Stili in export: ITA Nexa Bold 51 giallo, ENG Nexa Bold 55 bianco. Modifica e traccia nel montaggio.</span></div>', true);
+    h += blocco("file", "File", "", '<div class="info"><span>file</span><b>' + esc((r.arch && r.arch.chiave) || "") + '</b><span>magazzino</span><b>QNAP</b><span>canali audio</span><b>' + esc(r.canali || "") + '</b></div><div class="azioniS"><button class="mini" id="fScarica">&#8595; Scarica il file</button><a class="b mini" href="magazzino.html?q=' + encodeURIComponent(r.titolo || "") + '" target="_blank">Nel Magazzino</a></div>', true);
+    el("scheda").innerHTML = h;
+    el("scheda").querySelectorAll(".blocco > header").forEach(function(hd){ hd.addEventListener("click", function(){ hd.parentNode.classList.toggle("chiuso"); }); });
+    el("scheda").querySelectorAll(".voce[data-t]").forEach(function(v){ v.addEventListener("click", function(e){ if (e.target.tagName === "INPUT") return; seek(+v.dataset.t); }); });
+    el("scheda").querySelectorAll('input[data-k]').forEach(function(c){ c.addEventListener("change", function(){ SCELTE[c.dataset.k] = c.checked; if (!c.checked) delete SCELTE[c.dataset.k]; aggiornaMonta(); }); });
+    el("scheda").querySelectorAll(".chipfila span[data-q]").forEach(function(s){ s.addEventListener("click", function(){ el("cercaS").value = s.dataset.q; disegnaScheda(s.dataset.q); }); });
+    el("scheda").querySelectorAll("button[data-srt]").forEach(function(b){ b.addEventListener("click", function(){ LINGUA = b.dataset.srt; el("bLingua").textContent = LINGUA.toUpperCase() === "IT" ? "ITA" : "ENG"; el("aSrt").click(); }); });
+    if (el("fScarica")) el("fScarica").addEventListener("click", function(){ el("aScarica").click(); });
+    if (el("bTutteAz")) el("bTutteAz").addEventListener("click", function(){ TAB.forEach(function(x, k){ SCELTE[k] = true; }); disegnaScheda(el("cercaS").value); });
+    if (el("bGolAz")) el("bGolAz").addEventListener("click", function(){ SCELTE = {}; TAB.forEach(function(x, k){ if (x.gol || /gol/i.test(x.tag || x.tipo || "")) SCELTE[k] = true; }); disegnaScheda(el("cercaS").value); });
+    if (el("bMonta")) el("bMonta").addEventListener("click", montaScelte);
+    aggiornaMonta();
+  }
+  function blocco(id, nome, n, dentro, chiuso){
+    return '<div class="blocco' + (chiuso ? " chiuso" : "") + '" id="bl-' + id + '"><header><span class="n">' + (n === "" ? "·" : n) + '</span><b>' + nome + '</b><span class="fr">&#9660;</span></header><div class="dentro">' + dentro + '</div></div>';
+  }
+  function aggiornaMonta(){ var b = el("bMonta"); if (!b) return; var n = Object.keys(SCELTE).length; b.disabled = !n; b.textContent = n ? "Metti " + n + (n === 1 ? " azione" : " azioni") + " in timeline" : "Metti le spuntate in timeline"; }
+  function montaScelte(){
+    var righe = Object.keys(SCELTE).map(function(k){ return TAB[k] && TAB[k].t; }).filter(function(t){ return t !== undefined; });
+    if (!righe.length || !ASSET) return;
+    post({ tipo:"clip-tabellino-monta", reg: ASSET.id, righe: righe }).then(function(d){
+      avviso("ok", "Sequenza creata con " + righe.length + " azioni: si apre nel montaggio.");
+      window.open(MAM + "&apri=" + encodeURIComponent(ASSET.evento || (ASSET.arch && ASSET.arch.rec) || ""), "_blank");
+    }).catch(function(e){ avviso("err", esc(e.message)); });
+  }
+  el("cercaS").addEventListener("input", function(){ disegnaScheda(this.value); });
+
+  // ── il player e il trasporto ──
+  function seek(t){ if (!V) return; try { V.currentTime = Math.max(0, t); } catch (e) {} if (V.paused) V.play().catch(function(){}); }
+  function disegnaMomenti(){
+    var m = el("momenti"), D = (ASSET && ASSET.durata) || (V && V.duration) || 1, h = '<div class="testina" id="mTestina"></div>';
+    var passo = Math.max(1, Math.floor(DETTO.length / 300));
+    for (var i = 0; i < DETTO.length; i += passo) h += '<div class="det" style="left:' + (DETTO[i].a / D * 100) + '%"></div>';
+    TAB.forEach(function(x){ var cl = (x.tag || x.tipo || "").toLowerCase(); h += '<div class="az ' + (x.gol ? "gol " : "") + esc(cl) + '" style="left:' + (x.t / D * 100) + '%" title="' + esc((x.minuto || tcBreve(x.t)) + " · " + (x.titolo || "")) + '"></div>'; });
+    if (DENTRO !== null) h += '<div class="in" style="left:' + (DENTRO / D * 100) + '%"></div>';
+    if (FUORI !== null) h += '<div class="out" style="left:' + (FUORI / D * 100) + '%"></div>';
+    if (DENTRO !== null && FUORI !== null) h += '<div class="fra" style="left:' + (DENTRO / D * 100) + '%;width:' + ((FUORI - DENTRO) / D * 100) + '%"></div>';
+    m.innerHTML = h;
+  }
+  el("momenti").addEventListener("click", function(e){ var r = this.getBoundingClientRect(), D = (ASSET && ASSET.durata) || (V && V.duration) || 1; seek((e.clientX - r.left) / r.width * D); });
+  function inOut(){
+    el("tIn").textContent = DENTRO === null ? "—" : tc(DENTRO); el("tOut").textContent = FUORI === null ? "—" : tc(FUORI);
+    var ok = DENTRO !== null && FUORI !== null && FUORI > DENTRO;
+    el("tDur").textContent = ok ? tc(FUORI - DENTRO) : "—";
+    el("bClip").disabled = !ok; el("bTimeline").disabled = !ok; disegnaMomenti();
+  }
+  el("bIn").addEventListener("click", function(){ DENTRO = V.currentTime; if (FUORI !== null && FUORI <= DENTRO) FUORI = null; inOut(); });
+  el("bOut").addEventListener("click", function(){ FUORI = V.currentTime; if (DENTRO !== null && DENTRO >= FUORI) DENTRO = null; inOut(); });
+  el("bGoIn").addEventListener("click", function(){ if (DENTRO !== null) seek(DENTRO); });
+  el("bGoOut").addEventListener("click", function(){ if (FUORI !== null) seek(FUORI); });
+  el("bPulisci").addEventListener("click", function(){ DENTRO = FUORI = null; inOut(); });
+  el("bPlay").addEventListener("click", function(){ if (V.paused) V.play().catch(function(){}); else V.pause(); });
+  el("bIndietro").addEventListener("click", function(){ seek(V.currentTime - 10); });
+  el("bAvanti").addEventListener("click", function(){ seek(V.currentTime + 10); });
+  document.querySelectorAll("button[data-v]").forEach(function(b){ b.addEventListener("click", function(){ V.playbackRate = +b.dataset.v; document.querySelectorAll("button[data-v]").forEach(function(z){ z.classList.toggle("on", z === b); }); }); });
+  el("bClip").addEventListener("click", function(){
+    if (!ASSET) return;
+    post({ tipo:"clip-taglia", reg: ASSET.id, dentro: DENTRO, fuori: FUORI, formato:"16:9", titolo: (ASSET.titolo || "") + " " + tc(DENTRO), sotto: SOTTO ? "srt" : "", sottoLingua: LINGUA })
+      .then(function(d){ avviso("ok", "Clip in lavorazione (" + tc(FUORI - DENTRO) + "): la trovi nelle Esportazioni del montaggio." + (SOTTO ? " Con l'SRT." : "")); })
+      .catch(function(e){ avviso("err", esc(e.message)); });
+  });
+  el("bTimeline").addEventListener("click", function(){ if (!ASSET) return; window.open(MAM + "&apri=" + encodeURIComponent(ASSET.evento || "") + "&t=" + Math.floor(DENTRO), "_blank"); });
+  el("bSotto").addEventListener("click", function(){ SOTTO = !SOTTO; this.classList.toggle("on", SOTTO); if (!SOTTO) { el("sottoIt").textContent = ""; el("sottoEn").textContent = ""; } if (SOTTO && DETTO.some(function(x){ return (x.l || "it") !== LINGUA && !(x.y && x.ya === LINGUA); })) post({ tipo:"clip-parlato-traduci", reg: ASSET.id, a: LINGUA }).then(function(){ return post({ tipo:"clip-parlato", reg: ASSET.id }); }).then(function(d){ DETTO = (d.pezzi || []).filter(function(x){ return !x.vivo; }); }).catch(function(){}); });
+  el("bLingua").addEventListener("click", function(){ LINGUA = LINGUA === "it" ? "en" : "it"; this.textContent = LINGUA === "it" ? "ITA" : "ENG"; if (SOTTO) { el("bSotto").click(); el("bSotto").click(); } });
+  function giro(){
+    if (!V || !ASSET) return;
+    var t = V.currentTime || 0, D = ASSET.durata || V.duration || 1;
+    el("tOra").textContent = tc(t);
+    var mt = el("mTestina"); if (mt) mt.style.left = (t / D * 100) + "%";
+    el("bPlay").innerHTML = V.paused ? "&#9654;" : "&#10074;&#10074;";
+    // la riga della telecronaca e l'azione sotto la testina
+    var ora = null; for (var i = 0; i < DETTO.length; i++) { var x = DETTO[i]; if (t >= x.a - .3 && t < x.b + .8) { ora = x; break; } }
+    if (SOTTO) {
+      var h = V.clientHeight || 300; el("sottoIt").style.fontSize = (h * 51 / 1080) + "px"; el("sottoEn").style.fontSize = (h * 55 / 1080) + "px";
+      var txt = ora ? (((ora.l || "it") === LINGUA) ? ora.x : (ora.y && ora.ya === LINGUA ? ora.y : "… " + ora.x)) : "";
+      el("sottoIt").textContent = LINGUA === "it" ? txt : ""; el("sottoEn").textContent = LINGUA === "en" ? txt : "";
+    }
+    el("scheda").querySelectorAll(".voce.ora").forEach(function(v){ v.classList.remove("ora"); });
+    if (ora) { var vv = el("scheda").querySelector('.voce[data-a="' + ora.a + '"]'); if (vv) { vv.classList.add("ora"); if (!V.paused && el("bl-detto") && !el("bl-detto").classList.contains("chiuso") && !el("cercaS").value) vv.scrollIntoView({ block:"nearest" }); } }
+    var az = null; for (var j = 0; j < TAB.length; j++) { if (t >= TAB[j].dentro && t <= TAB[j].fuori) az = TAB[j]; }
+    if (az) { var va = el("scheda").querySelector('.voce[data-i="' + TAB.indexOf(az) + '"]'); if (va) va.classList.add("ora"); }
+  }
+  setInterval(giro, 250);
+  document.addEventListener("keydown", function(e){
+    if (!el("asset").classList.contains("on") || e.target.tagName === "INPUT") return;
+    if (e.key === " ") { e.preventDefault(); el("bPlay").click(); }
+    else if (e.key === "i" || e.key === "I") el("bIn").click(); else if (e.key === "o" || e.key === "O") el("bOut").click();
+    else if (e.key === "j" || e.key === "J" || e.key === "ArrowLeft") seek(V.currentTime - (e.shiftKey ? 60 : 10));
+    else if (e.key === "l" || e.key === "L" || e.key === "ArrowRight") seek(V.currentTime + (e.shiftKey ? 60 : 10));
+    else if (e.key === "/") { e.preventDefault(); el("cercaTesta").focus(); }
+  });
+
+  // ══════════ AVVIO ══════════
+  stato(); caricaEventi(); disegnaRiprendi();
+  var pa = /(\?|&)asset=([A-Za-z0-9]+)/.exec(location.search), pr = /(\?|&)reg=([a-z0-9]+)/.exec(location.search), pt = /(\?|&)t=(\d+)/.exec(location.search), pq = /(\?|&)q=([^&]+)/.exec(location.search);
+  if (pa) apriAsset(pa[2], pr ? pr[2] : "", pt ? +pt[2] : 0);
+  else { vai("libreria"); if (pq) cerca(decodeURIComponent(pq[2])); }
+})();
+</script>
+<script src="dev.js"></script>
+</body>
+</html>
