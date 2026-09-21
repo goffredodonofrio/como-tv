@@ -919,6 +919,13 @@ function clipKickoff(p) {
   // Puo' essere NEGATIVO: si comincia a registrare a partita gia' iniziata
   // piu' spesso di quanto si creda, e il fischio resta il riferimento.
   else r.kickoff[tempo] = num(p.secondi, -MAX_SECONDI, MAX_SECONDI, 0);
+  // su una partita dell'archivio il fischio segnato a mano vale per la
+  // partita, non per questa sola registrazione: gli appunti, ESPN e il
+  // tabellino si rifanno tutti su quel secondo (vedi ancoraAMano)
+  if (r.arch && ARCHIVIO[r.arch.rec]) {
+    ancoraAMano(r.arch.rec, r, tempo, (p.secondi === null || p.secondi === "") ? null : r.kickoff[tempo]);
+    return { ok: true, kickoff: r.kickoff, orologio: ARCHIVIO[r.arch.rec].orologio || null };
+  }
   scrivi(); annuncia(0, "clip");
   return { ok: true, kickoff: r.kickoff };
 }
@@ -1402,6 +1409,7 @@ function quelloCheSappiamo(r) {
 //  lista invece che un altro pezzo di logica.
 function tabellino(r) {
   const rec = r.evento || (r.arch && r.arch.rec) || "";
+  if (rec && ARCHIVIO[rec] && !ARCHIVIO[rec].orologio) ancoraSeManca(rec);
   const sap = quelloCheSappiamo(r);
   const a = rec && ARCHIVIO[rec];
   // dove sappiamo che cade il taglio, e quanto ci crediamo:
@@ -1445,9 +1453,21 @@ function tabellino(r) {
   // quanto ci si puo' fidare dei minuti: senza cronometro letto e senza ora
   // nel nome del file, l'inizio della partita e' solo un'ipotesi
   const oro = (a && a.orologio) || {};
-  const ancora = oro.inizio1 !== undefined && oro.inizio1 !== null ? "cronometro"
-               : ((a && (a.pezzi || []).some((x) => oraNelNome(path.basename(x.chiave || "")))) ? "ora del file" : "niente");
-  return { ok: true, righe: righe, quante: righe.length, fonti: conta, ancora: ancora,
+  const fonteDi = (n) => (oro["inizio" + n] !== undefined && oro["inizio" + n] !== null) ? ((oro.fonti || {})[n] || oro.fonte || "cronometro") : null;
+  const ancora = fonteDi(1) || fonteDi(2)
+               || ((a && (a.pezzi || []).some((x) => oraNelNome(path.basename(x.chiave || "")))) ? "ora del file" : "niente");
+  // dove cade il fischio su QUESTA registrazione, e da dove lo sappiamo
+  const fischio = {};
+  if (a) ["1", "2"].forEach((n) => {
+    const s = secondoNelFile(rec, { s: +n, d: 0 });
+    if (!s) return;
+    const pz = pezziArch(r);
+    const dentro = pz.length > 1 ? ((pz[s.pezzo] || pz[pz.length - 1]).da || 0) + s.secondi : (s.pezzo === ((r.arch && r.arch.pezzo) || 0) ? s.secondi : null);
+    if (dentro === null) return;
+    fischio[n] = { t: dentro, fonte: fonteDi(n) || "stima", verificato: n === "1" ? !!oro.verificato : !!oro.verificato };
+  });
+  return { ok: true, righe: righe, quante: righe.length, fonti: conta, ancora: ancora, fischio: fischio,
+           prove: oro.prove || null, orologioFallito: (a && a.orologioFallito) || null,
            appunti: !!(rec && APPUNTI[rec]), espn: !!(rec && ESPN[rec]),
            altrove: sap.altrove || {} };
 }
@@ -7243,6 +7263,7 @@ function trascriviDavvero(lavoro) {
                                .concat(pezzi)
                                .sort((x, y) => x.a - y.a);
     scriviParlato();
+    try { if (r.arch && ARCHIVIO[r.arch.rec] && !ARCHIVIO[r.arch.rec].orologio) ancoraSeManca(r.arch.rec); } catch (e) {}
     try { fs.unlinkSync(wav); } catch (e) {}
     console.log("[clip] trascritti " + Math.round((lavoro.a - lavoro.da) / 60) + " minuti di " +
                 r.titolo + " in " + Math.round((Date.now() - partenza) / 1000) + "s: " +
@@ -7463,6 +7484,232 @@ function ripresaStimata(a) {
   return c.length === 1 ? c[0].da + ANTICIPO_RIPRESA : null;
 }
 
+// ── IL FISCHIO DALLA TELECRONACA ─────────────────────────────────
+//  Quando il cronometro in sovrimpressione non si legge (grafica diversa,
+//  file senza orologio) resta la voce. Il telecronista dice "fischia,
+//  comincia il secondo tempo"; chiama il gol di Kamara che ESPN e gli
+//  appunti mettono al 29'; dice "siamo al 23'". Ogni frase e' un'ancora
+//  con un peso; le ancore che vanno d'accordo entro un minuto e mezzo
+//  fanno il fischio. Stessa forma del cronometro letto (inizio1/inizio2
+//  sull'asse dei pezzi, dal kickoff stimato), cosi' il resto non cambia.
+//  Udinese-Como [ITA]: cronometro mai letto, appunti al 15' che cadevano
+//  al minuto 8 del file; il fischio vero e' al 5', la ripresa al 72'
+//  (in mezzo c'e' una puntata di Goleada).
+function pianoTesto(x) { return String(x || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
+// da un secondo della registrazione a un secondo sull'asse del materiale
+function alMateriale(a, r, t) {
+  const q = pezzoAl(r, t);
+  if (!q) return t;
+  const idx = (r.arch && r.arch.pezzi && r.arch.pezzi.length > 1) ? q.i : ((r.arch && r.arch.pezzo) || 0);
+  const p = (a.pezzi || [])[idx];
+  return ((p && p.da) || 0) + q.dentro;
+}
+function regsDellaPartita(rec) {
+  return Object.keys(R.reg).map((k) => R.reg[k]).filter((r) => r.arch && r.arch.rec === rec);
+}
+const FISCHIO_1T = /fischi[ao]\b.{0,30}\b(inizio|via|comincia|si parte|partit|iniz)|(inizio|si parte|si comincia|comincia)\b.{0,30}\bfischi|calcio d.{0,2}inizio|\bsi parte\b|\bsi comincia\b|\bcomincia (la partita|il match|la gara|la sfida|l.incontro|il primo tempo)\b|\bpartiti\b|palla al centro|prende il via|\be.{0,2} (iniziata|cominciata)\b|\b(inizia|comincia|via al|al via il) (la partita|il match|la gara|il primo tempo)|kick.?off|under ?way|we.re off|here we go|get(s)? us started/;
+const FISCHIO_2T = /(comincia|inizia|riparte|ricomincia|si riparte|fischi[ao]|al via|via al|parte)\b.{0,40}\b(secondo tempo|ripresa|seconda frazione)|(secondo tempo|ripresa|seconda frazione)\b.{0,40}\b(comincia|inizia|al via|si parte|si riparte|riparte|ricomincia|e.{0,2} cominciat|e.{0,2} iniziat)|\bsi riparte\b|\bsi ricomincia\b|second half (is )?(under ?way|begins|starts|gets)|back under ?way|restart/;
+const NON_ADESSO = /\b(fra|tra) (poco|pochissimo|qualche|un|pochi|due|tre|cinque|dieci|quindici)\b|a breve|\bmanca(no)?\b|minuti al|prima del fischio|dopo il fischio|\bieri\b|scors[aoie]\b|ultim[aoie]\b|fischi dalla|fischiat|\bnon (comincia|inizia|riparte)|quando (comincia|inizia|riparte)|all.andata|al ritorno|la prossima|moments away|minutes away|about to|shortly|\bsoon\b|earlier|last (week|season|time)/;
+const MINUTO_DETTO = /\b(\d{1,2})\s?(?:°|º|esimo)?\s?(?:minuto|di gioco|del primo tempo|del secondo tempo|di gara|minute)\b|\bminuto (\d{1,2})\b|\bsiamo al (\d{1,2})\b|\b(\d{1,2})[°º]|\bminute (\d{1,2})\b/g;
+function paroleDelTipo(tipo) {
+  const t = pianoTesto(tipo);
+  if (/goal|gol|rete|scored/.test(t) && !/miss|saved/.test(t)) return /\b(gol|goal|rete|segna|vantaggio|pareggi|raddoppi|in rete|la mette dentro|gonfia|scores|finds the net|back of the net|equalis|ahead)/;
+  if (/yellow|ammon|giallo/.test(t)) return /\b(giallo|ammonit|cartellino|ammonizione|yellow|booked|booking|caution)/;
+  if (/red|espuls|rosso/.test(t)) return /\b(rosso|espuls|red card|sent off|dismiss)/;
+  if (/substitution|sostitu|cambio/.test(t)) return /\b(cambio|sostituzion|entra|esce|al posto|lascia il campo|richiamato|substitut|replaces|comes on|goes off|replaced)/;
+  if (/penalty|rigor/.test(t)) return /\b(rigore|dischetto|undici metri|penalty|spot)/;
+  if (/parat/.test(t)) return /\b(parat|para\b|respin|salva|miracol|save)/;
+  if (/occasion|palo|traversa/.test(t)) return /\b(occasion|palo|traversa|tiro|conclusion|colpo di testa|vicin|sfiora|chance|post|crossbar)/;
+  if (/angolo|corner/.test(t)) return /\b(angolo|corner)/;
+  if (/punizion|free/.test(t)) return /\b(punizion|free kick)/;
+  return null;
+}
+function cognomiDi(nome, testoAppunto) {
+  const fuori = [];
+  const agg = (w) => { w = pianoTesto(w).replace(/[^a-z]/g, ""); if (w.length >= 3 && fuori.indexOf(w) < 0) fuori.push(w); };
+  if (nome) { const p = String(nome).trim().split(/\s+/); agg(p[p.length - 1]); if (p.length > 1 && p[p.length - 1].length <= 3) agg(p.slice(-2).join("")); }
+  if (testoAppunto) String(testoAppunto).split(/[^A-Za-zÀ-ÿ']+/).slice(1).forEach((w) => {
+    if (w.length >= 4 && /^[A-ZÀ-Ý]/.test(w) && !/^(GOL|Gol|Occasione|Parata|Udinese|Como|Serie|Butez|Okoye)$/.test(w)) agg(w);
+  });
+  return fuori;
+}
+// le ancore di un tempo: valori sull'asse del materiale, con un peso
+function ancoreDelTempo(rec, tempo, righe, inizio1) {
+  const a = ARCHIVIO[rec] || {};
+  const kick0 = a.kickoff || 0;
+  const cand = [];
+  const prima = tempo === 2 ? (inizio1 === null ? 2400 : inizio1 + 2700 + 240) : -900;
+  const dopo = tempo === 2 ? (inizio1 === null ? 7200 : inizio1 + 2700 + 3600) : 3600;
+  const dentro = (v) => v - kick0 >= prima && v - kick0 <= dopo;
+  // 1) le frasi del fischio
+  const re = tempo === 2 ? FISCHIO_2T : FISCHIO_1T;
+  righe.forEach((x) => {
+    if (!re.test(x.t) || NON_ADESSO.test(x.t)) return;
+    if (tempo === 1 && FISCHIO_2T.test(x.t)) return;
+    if (!dentro(x.m)) return;
+    cand.push({ v: x.m, w: 3, come: "frase", testo: x.testo, t: x.s, reg: x.reg });
+  });
+  // 2) gli eventi con un minuto: ESPN e appunti. Ogni evento vale uno (due
+  //    un gol) e lo divide fra le frasi in cui e' nominato
+  const eventi = [];
+  const e = ESPN[rec];
+  if (e && e.eventi) e.eventi.forEach((x) => {
+    const per = x.periodo === 2 || (!x.periodo && x.min > 45) ? 2 : 1;
+    if (per !== tempo) return;
+    const sec = Math.max(0, (x.min - (per === 2 ? 45 : 0) - 1) * 60 + 30 + (x.stopp || 0) * 60);
+    eventi.push({ sec, nomi: cognomiDi(x.giocatore), tipo: paroleDelTipo(x.tipo), w: /goal|scored/i.test(x.tipo) ? 2 : 1, che: "ESPN " + x.min + "' " + (x.giocatore || "") + " " + x.tipo });
+  });
+  const ap = APPUNTI[rec];
+  const rit = ritardoPartita(rec);
+  if (ap && ap.righe) ap.righe.forEach((x) => {
+    if ((x.s || 1) !== tempo) return;
+    const nomi = cognomiDi("", x.x);
+    if (!nomi.length) return;
+    eventi.push({ sec: Math.max(0, (x.d || 0) - rit), nomi, tipo: paroleDelTipo(x.t || x.x), w: /gol|rete/i.test(x.t || "") || x.g ? 2 : (x.t ? 1 : 0.5), che: "appunti " + (x.m || "") + " " + String(x.x || "").slice(0, 50) });
+  });
+  eventi.forEach((ev) => {
+    const trovate = [];
+    righe.forEach((x, i) => {
+      const v = x.m - ev.sec;
+      if (!dentro(x.m) || v - kick0 < prima || v - kick0 > dopo) return;
+      if (!ev.nomi.some((n) => new RegExp("\\b" + n).test(x.p))) return;
+      if (ev.tipo) {
+        const vicino = (righe[i - 1] ? righe[i - 1].t + " " : "") + x.t + (righe[i + 1] ? " " + righe[i + 1].t : "");
+        if (!ev.tipo.test(vicino)) return;
+      }
+      trovate.push({ v, testo: x.testo, t: x.s, reg: x.reg });
+    });
+    if (!trovate.length) return;
+    trovate.forEach((f) => cand.push({ v: f.v, w: ev.w / trovate.length, come: "evento", testo: f.testo, t: f.t, reg: f.reg, che: ev.che }));
+  });
+  // 3) i minuti detti a voce ("siamo al 23'", "al 45°")
+  righe.forEach((x) => {
+    MINUTO_DETTO.lastIndex = 0;
+    let m;
+    while ((m = MINUTO_DETTO.exec(x.t))) {
+      const min = +(m[1] || m[2] || m[3] || m[4] || m[5]);
+      if (!min || min > 95) continue;
+      const per = min > 45 ? 2 : 1;
+      if (per !== tempo) continue;
+      const v = x.m - ((min - (per === 2 ? 45 : 0)) - 0.5) * 60;
+      if (v - kick0 < prima || v - kick0 > dopo) continue;
+      cand.push({ v, w: 1, come: "minuto", testo: x.testo, t: x.s, reg: x.reg });
+    }
+  });
+  if (!cand.length) return null;
+  // il gruppo piu' pesante entro 150 secondi, poi la mediana pesata
+  cand.sort((p, q) => p.v - q.v);
+  let meglio = null;
+  for (let i = 0; i < cand.length; i++) {
+    let w = 0, j = i;
+    while (j < cand.length && cand[j].v - cand[i].v <= 150) { w += cand[j].w; j++; }
+    if (!meglio || w > meglio.w) meglio = { i, j, w };
+  }
+  const gruppo = cand.slice(meglio.i, meglio.j);
+  const frasi = gruppo.some((c) => c.come === "frase");
+  if (meglio.w < 3 || (gruppo.length < 2 && !frasi)) return { scarso: true, peso: Math.round(meglio.w * 10) / 10, prove: gruppo.slice(0, 6) };
+  let acc = 0, val = gruppo[0].v;
+  for (const c of gruppo) { acc += c.w; if (acc >= meglio.w / 2) { val = c.v; break; } }
+  // "fischia, comincia il secondo tempo" e' detto AL fischio: se una frase
+  // cosi' sta nel gruppo, e' lei il secondo giusto, non la media degli altri
+  if (frasi) {
+    const f = gruppo.filter((c) => c.come === "frase").sort((p, q) => Math.abs(p.v - val) - Math.abs(q.v - val))[0];
+    val = f.v;
+  }
+  return { inizio: Math.round(val - kick0), peso: Math.round(meglio.w * 10) / 10, quante: gruppo.length,
+           prove: gruppo.sort((p, q) => q.w - p.w).slice(0, 6).map((c) => ({ t: Math.round(c.t), v: Math.round(c.v - kick0), w: Math.round(c.w * 10) / 10, come: c.come, che: c.che || "", testo: String(c.testo || "").slice(0, 120) })) };
+}
+function ancoraDallaTelecronaca(rec) {
+  const a = ARCHIVIO[rec];
+  if (!a) return null;
+  const righe = [];
+  regsDellaPartita(rec).forEach((r) => {
+    const d = PARLATO[r.id];
+    if (!d || !(d.pezzi || []).length) return;
+    d.pezzi.forEach((x) => {
+      if (x.vivo || !x.x) return;
+      const t = pianoTesto(x.x);
+      righe.push({ s: x.a, m: alMateriale(a, r, x.a), t, p: t.replace(/[^a-z ]/g, ""), testo: x.x, reg: r.id });
+    });
+  });
+  if (righe.length < 20) return null;
+  righe.sort((p, q) => p.m - q.m);
+  const uno = ancoreDelTempo(rec, 1, righe, null);
+  const inizio1 = uno && uno.inizio !== undefined ? uno.inizio : null;
+  const due = ancoreDelTempo(rec, 2, righe, inizio1);
+  const inizio2 = due && due.inizio !== undefined ? due.inizio : null;
+  if (inizio1 === null && inizio2 === null) return null;
+  const esito = { fonte: "telecronaca", quando: new Date().toISOString(), letti: 0, verificato: false, fonti: {},
+                  prove: { 1: uno ? uno.prove : [], 2: due ? due.prove : [] }, pesi: { 1: uno ? uno.peso : 0, 2: due ? due.peso : 0 } };
+  if (inizio1 !== null) { esito.inizio1 = inizio1; esito.fonti["1"] = "telecronaca"; }
+  if (inizio2 !== null) { esito.inizio2 = inizio2; esito.fonti["2"] = "telecronaca"; }
+  return esito;
+}
+// il fischio vale per tutti: l'indice dell'archivio, le registrazioni
+// aperte su quella partita (r.kickoff), il fermo immagine
+function applicaOrologio(rec, esito) {
+  const a = ARCHIVIO[rec];
+  if (!a) return;
+  if (esito && ((esito.inizio1 !== undefined && esito.inizio1 !== null) || (esito.inizio2 !== undefined && esito.inizio2 !== null))) {
+    esito.fonti = Object.assign({}, esito.fonti || {});
+    ["1", "2"].forEach((n) => {
+      if (esito["inizio" + n] === undefined || esito["inizio" + n] === null) { delete esito["inizio" + n]; delete esito.fonti[n]; return; }
+      if (!esito.fonti[n]) esito.fonti[n] = esito.fonte || "cronometro";
+    });
+    a.orologio = esito; delete a.orologioFallito;
+  } else delete a.orologio;
+  const kick0 = (a.kickoff !== null && a.kickoff !== undefined) ? a.kickoff : null;
+  const o = a.orologio || {};
+  Object.keys(R.reg).forEach((k) => {
+    const r = R.reg[k];
+    if (!r.arch || r.arch.rec !== rec || (r.arch.pezzo || 0) !== 0) return;
+    const kk = {};
+    if (kick0 !== null) {
+      if (o.inizio1 !== undefined) kk["1"] = Math.max(0, Math.round(kick0 + o.inizio1));
+      else kk["1"] = kick0;
+      if (o.inizio2 !== undefined) kk["2"] = Math.max(0, Math.round(kick0 + o.inizio2));
+    }
+    r.kickoff = kk; r.mini = ""; miniaturaViva(r).catch(() => {});
+  });
+  scrivi(); annuncia(0, "clip");
+  scriviArchivio();
+}
+// il fischio segnato da una persona sul video: vince su tutto
+function ancoraAMano(rec, r, tempo, secondi) {
+  const a = ARCHIVIO[rec];
+  if (!a) throw new Error("questa partita non e' nell'indice dell'archivio");
+  const n = String(tempo) === "2" ? "2" : "1";
+  const o = Object.assign({}, a.orologio || {}, { fonti: Object.assign({}, (a.orologio || {}).fonti || {}) });
+  if (secondi === null || secondi === undefined || secondi === "") { delete o["inizio" + n]; delete o.fonti[n]; }
+  else {
+    const mat = r ? alMateriale(a, r, +secondi) : +secondi;
+    o["inizio" + n] = Math.round(mat - (a.kickoff || 0));
+    o.fonti[n] = "mano";
+  }
+  o.fonte = "mano"; o.quando = new Date().toISOString(); delete o.verificato; delete o.scarto;
+  applicaOrologio(rec, o);
+  return a.orologio || null;
+}
+// se il cronometro manca, si prova con la voce: una volta per ogni stato
+// della telecronaca, cosi' non si rifa' il conto a ogni tabellino
+function ancoraSeManca(rec) {
+  const a = ARCHIVIO[rec];
+  if (!a) return null;
+  if (a.orologio) return a.orologio;
+  const firma = regsDellaPartita(rec).map((r) => { const d = PARLATO[r.id]; return r.id + ":" + ((d && d.intera) || "") + ":" + ((d && d.pezzi) ? d.pezzi.length : 0); }).join("|") +
+                "#" + (((ESPN[rec] || {}).eventi || []).length) + "/" + (((APPUNTI[rec] || {}).righe || []).length);
+  if (a.voceProvata === firma) return null;
+  a.voceProvata = firma;
+  let e = null;
+  try { e = ancoraDallaTelecronaca(rec); } catch (err) { console.log("[clip] fischio dalla voce (" + (a.partita || rec) + "): " + err.message); }
+  if (e) {
+    applicaOrologio(rec, e);
+    console.log("[clip] fischio dalla telecronaca: " + (a.partita || rec) + " → 1T " + (e.inizio1 === undefined ? "?" : e.inizio1 + "s (peso " + e.pesi["1"] + ")") +
+                ", 2T " + (e.inizio2 === undefined ? "?" : e.inizio2 + "s (peso " + e.pesi["2"] + ")"));
+  } else scriviArchivio();
+  return e;
+}
+
 function secondoNelFile(rec, r) {
   const a = ARCHIVIO[rec];
   if (!a) return null;
@@ -7471,10 +7718,11 @@ function secondoNelFile(rec, r) {
   // ...a meno che il cronometro non sia stato letto dal video: allora i due
   // tempi cominciano dove cominciano davvero (vedi calibraOrologio)
   const o = a.orologio || {};
+  const i1 = (o.inizio1 !== undefined && o.inizio1 !== null) ? o.inizio1 : 0;
   const inizio = r.s === 2
     ? (o.inizio2 !== undefined && o.inizio2 !== null ? o.inizio2
-       : (ripresaStimata(a) === null ? 60 * 60 : ripresaStimata(a)))
-    : (o.inizio1 !== undefined && o.inizio1 !== null ? o.inizio1 : 0);
+       : (ripresaStimata(a) === null ? i1 + 60 * 60 : ripresaStimata(a)))
+    : i1;
   return doveCade(a, inizio + (r.d || 0));
 }
 // dove cade, fra i pezzi del materiale, un tempo t contato dal calcio
@@ -8123,6 +8371,8 @@ async function calibraOrologio(rec, rifai) {
   const a = ARCHIVIO[rec];
   if (!a) throw new Error("questa partita non e' nell'indice dell'archivio");
   if (a.orologio && !rifai) return a.orologio;
+  // un fischio segnato a mano non si sovrascrive con una lettura automatica
+  if (a.orologio && a.orologio.fonte === "mano" && rifai !== "forza") return a.orologio;
   if (!tesseractCe()) throw new Error("sulla macchina manca tesseract: il cronometro non si puo' leggere");
   if (orologiAttivi.has(rec)) throw new Error("sto gia' leggendo il cronometro di " + (a.partita || rec));
   if (orologiAttivi.size >= OROLOGI_INSIEME + 1) throw new Error("troppe letture insieme: riprova fra un minuto");
@@ -8180,18 +8430,10 @@ async function calibraOrologio(rec, rifai) {
       throw new Error("la prova del nove non torna (al 70' legge " + Math.round(c70 / 60) + "')");
     }
     if (firmaMateriale() !== firma0) throw new Error("il materiale e' cambiato durante la lettura");
-    a.orologio = esito; delete a.orologioFallito;
     // le partite gia' aperte nel progetto imparano il fischio vero: il fermo
     // immagine, l'Info e la miniatura si rifanno sul calcio d'inizio letto
-    const kick0 = (a.kickoff !== null && a.kickoff !== undefined) ? a.kickoff : null;
-    if (kick0 !== null) Object.keys(R.reg).forEach((k) => {
-      const r = R.reg[k];
-      if (!r.arch || r.arch.rec !== rec || (r.arch.pezzo || 0) !== 0) return;
-      r.kickoff = { "1": Math.max(0, Math.round(kick0 + esito.inizio1)), "2": Math.max(0, Math.round(kick0 + esito.inizio2)) };
-      r.mini = ""; miniaturaViva(r).catch(() => {});
-    });
-    scrivi();
-    scriviArchivio();
+    esito.fonte = "cronometro";
+    applicaOrologio(rec, esito);
     console.log("[clip] cronometro letto: " + (a.partita || rec) + " → fischio a " + esito.inizio1 +
                 "s dalla stima, ripresa a " + esito.inizio2 + "s" + (esito.verificato ? " ✓" : " (scarto " + esito.scarto + ")"));
     return esito;
@@ -11272,6 +11514,32 @@ const AZIONI = {
       fuori.dove = d ? d.secondi : null; fuori.pezzo = d ? d.pezzo : 0;
     }
     return fuori;
+  },
+  // il fischio della partita: a mano ("il primo tempo comincia qui"), dalla
+  // telecronaca (auto), o via (torna alla stima). Risponde con il tabellino
+  // rifatto, cosi' la pagina si ridisegna in un colpo.
+  "clip-archivio-ancora": async (p) => {
+    const r = p.reg ? R.reg[String(p.reg)] : null;
+    const rec = String(p.rec || (r && r.arch && r.arch.rec) || "");
+    const a = ARCHIVIO[rec];
+    if (!a) throw new Error("questa partita non e' nell'indice dell'archivio");
+    let esito = null;
+    if (p.via) { applicaOrologio(rec, null); delete a.voceProvata; }
+    else if (p.auto) {
+      delete a.orologio; delete a.voceProvata;
+      esito = ancoraSeManca(rec);
+      if (!esito) {
+        const prova = ancoraDallaTelecronaca(rec);
+        scriviArchivio();
+        throw new Error(prova === null ? "nella telecronaca non trovo ne' il fischio ne' gli eventi con un minuto: segna il fischio a mano" : "la telecronaca non basta: segna il fischio a mano");
+      }
+    } else if (p.cronometro) {
+      esito = await calibraOrologio(rec, "forza");
+    } else {
+      if (p.t === undefined || p.t === null) throw new Error("a che secondo comincia il tempo?");
+      esito = ancoraAMano(rec, r, p.tempo, +p.t);
+    }
+    return Object.assign({ ok: true, orologio: a.orologio || null }, r ? tabellino(r) : {});
   },
   "clip-archivio-espn": (p) => {
     if (p.avvia) espnInCoda(!!p.rifai);
