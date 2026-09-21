@@ -92,6 +92,14 @@ window.Lavagna = (function () {
       ".lav .col h4{font-family:'Mazzard',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.2em;" +
       "  text-transform:uppercase;color:var(--lav-oro);margin-bottom:7px;display:flex;align-items:center;gap:7px;}" +
       ".lav .col h4 i{width:11px;height:11px;border-radius:50%;display:inline-block;font-style:normal;}" +
+      /* il pallino della squadra si clicca: e' il colore delle pedine */
+      ".lav .col h4 .colsq{position:relative;display:inline-flex;cursor:pointer;padding:3px;margin:-3px;border-radius:50%;}" +
+      ".lav .col h4 .colsq:hover i{box-shadow:0 0 0 2px var(--lav-oro);}" +
+      ".lav .col h4 .colsq input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;border:0;padding:0;}" +
+      ".lav .col h4 .magsq{margin-left:auto;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:0;" +
+      "text-transform:none;padding:3px 6px;border-radius:6px;background:rgba(6,10,26,.6);color:var(--lav-avorio);" +
+      "border:1px solid rgba(245,241,230,.16);max-width:130px;}" +
+      ".lav.chiara .col h4 .magsq{background:#FFFFFF;border-color:#CFC7B4;color:#0A0F24;}" +
       ".lav .gioc{display:flex;flex-wrap:wrap;gap:5px;}" +
       ".lav .gioc button{font-family:'DM Sans',sans-serif;font-weight:600;font-size:13px;letter-spacing:.01em;" +
       "  text-transform:none;padding:6px 9px;}" +
@@ -301,8 +309,8 @@ window.Lavagna = (function () {
       '<div class="fianco">' +
         '<div class="campoBox"><svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg"></svg></div>' +
         '<div class="lato">' +
-          '<div class="col" data-col="A"><h4><i></i><span data-nome="A">Casa</span></h4><div class="conta" data-conta="A"></div><div class="gioc" data-rosa="A"></div></div>' +
-          '<div class="col" data-col="B"><h4><i></i><span data-nome="B">Ospite</span></h4><div class="conta" data-conta="B"></div><div class="gioc" data-rosa="B"></div></div>' +
+          '<div class="col" data-col="A"><h4><label class="colsq" title="Il colore delle pedine"><i></i><input type="color" data-colsq="A"></label><span data-nome="A">Casa</span><select class="magsq" data-maglia="A" title="Le pedine con la divisa vera del magazzino" hidden></select></h4><div class="conta" data-conta="A"></div><div class="gioc" data-rosa="A"></div></div>' +
+          '<div class="col" data-col="B"><h4><label class="colsq" title="Il colore delle pedine"><i></i><input type="color" data-colsq="B"></label><span data-nome="B">Ospite</span><select class="magsq" data-maglia="B" title="Le pedine con la divisa vera del magazzino" hidden></select></h4><div class="conta" data-conta="B"></div><div class="gioc" data-rosa="B"></div></div>' +
         '</div>' +
       '</div>' +
       '<div class="nota" data-nota="1">Trascina i giocatori. <b>Doppio clic</b> su un giocatore: ci scrivi le tue curiosità. ' +
@@ -322,6 +330,56 @@ window.Lavagna = (function () {
     var SQ = { A: { nome: "Casa", col: "#2E6BE6", rosa: [], mod: "4-3-3" },
                B: { nome: "Ospite", col: "#E0312B", rosa: [], mod: "4-4-2" } };
     var PEDINE = [], CAMBI = [], NOTE = {}, SCELTO = null;
+    // LE DIVISE: SQ[lato].dove = "casa" | "trasferta" | "terza" | "quarta" |
+    // "" (il pallino colorato) | undefined (si sceglie da sola: casa per chi
+    // gioca in casa, trasferta per l'ospite). L'immagine si tiene come dati
+    // (MG_DATI), cosi' finisce anche nell'Immagine e nella Stampa.
+    var MG_DATI = {};
+    function bordo(p) { return MG_DATI[SQ[p.lato].mg || ""] ? "none" : "#F5F1E6"; }
+    function rivesti() {
+      PEDINE.forEach(function (p) {
+        var vecchia = p.g;
+        pedina(p);
+        if (vecchia && vecchia.parentNode) vecchia.parentNode.removeChild(vecchia);
+      });
+      evidenzia();
+    }
+    function vesti() {
+      if (!window.Maglie) return;
+      Maglie.carica(function () {
+        ["A", "B"].forEach(function (lato) {
+          var S = SQ[lato], ci = Maglie.quali(S.nome);
+          if (S.dove === undefined) S.dove = ci.indexOf(lato === "A" ? "casa" : "trasferta") >= 0
+            ? (lato === "A" ? "casa" : "trasferta") : (ci[0] || "");
+          S.mg = S.mgFisso || (S.dove ? Maglie.url(S.nome, S.dove) : "");
+          if (S.mg && !MG_DATI[S.mg]) {
+            fetch(S.mg).then(function (r) { if (!r.ok) throw 0; return r.blob(); }).then(function (b) {
+              var fr = new FileReader();
+              fr.onload = function () { MG_DATI[S.mg] = fr.result; rivesti(); };
+              fr.readAsDataURL(b);
+            }).catch(function () {});
+          }
+        });
+        disegnaMaglie(); rivesti();
+      });
+    }
+    function disegnaMaglie() {
+      ["A", "B"].forEach(function (lato) {
+        var sel = box.querySelector('[data-maglia="' + lato + '"]'), S = SQ[lato];
+        var col = box.querySelector('[data-colsq="' + lato + '"]');
+        if (col) col.value = /^#[0-9a-f]{6}$/i.test(S.col || "") ? S.col : "#2E6BE6";
+        if (!sel) return;
+        var ci = window.Maglie ? Maglie.quali(S.nome) : [];
+        if (S.mgFisso && S.dove && ci.indexOf(S.dove) < 0) ci.push(S.dove);
+        if (!ci.length) { sel.hidden = true; return; }
+        var NOMI = { casa: "Maglia casa", trasferta: "Maglia trasferta", terza: "Terza maglia", quarta: "Quarta maglia" };
+        sel.innerHTML = '<option value="">Pallino colorato</option>' + ci.map(function (d) {
+          return '<option value="' + d + '"' + (S.dove === d ? " selected" : "") + ">" + NOMI[d] + "</option>";
+        }).join("");
+        if (!S.dove) sel.value = "";
+        sel.hidden = false;
+      });
+    }
     // i contatori della partita, per squadra: calci d'angolo, gialli, rossi
     var CONTA = { A: { ang: 0, gia: 0, ros: 0 }, B: { ang: 0, gia: 0, ros: 0 } };
     var VOCI_CONTA = [["ang", "Angoli"], ["gia", "Gialli"], ["ros", "Rossi"]];
@@ -468,13 +526,23 @@ window.Lavagna = (function () {
                              "font-size": 17, fill: "#F5F1E6", "letter-spacing": 1 }, g);
         m.textContent = "ALL";
       } else {
-        ns("circle", { cx: 0, cy: 0, r: 26, fill: SQ[p.lato].col, stroke: "#F5F1E6", "stroke-width": 3, "class": "disco" }, g);
-        var t = ns("text", { x: 0, y: 9, "text-anchor": "middle", "font-family": "Mazzard", "font-weight": 800,
-                             "font-size": 24, fill: "#F5F1E6" }, g);
+        var kit = MG_DATI[SQ[p.lato].mg || ""];
+        if (kit) {
+          // la divisa vera: il cerchio resta, vuoto, per la selezione e il "chi?"
+          ns("circle", { cx: 0, cy: 0, r: 34, fill: "rgba(0,0,0,0)", stroke: "none", "stroke-width": 3, "class": "disco" }, g);
+          ns("image", { href: kit, x: -36, y: -38, width: 72, height: 72, preserveAspectRatio: "xMidYMid meet" }, g);
+        } else {
+          ns("circle", { cx: 0, cy: 0, r: 26, fill: SQ[p.lato].col, stroke: "#F5F1E6", "stroke-width": 3, "class": "disco" }, g);
+        }
+        var t = ns("text", kit
+          ? { x: 0, y: 8, "text-anchor": "middle", "font-family": "Mazzard", "font-weight": 800, "font-size": 23,
+              fill: "#FFFFFF", stroke: "#06101F", "stroke-width": 4, "paint-order": "stroke", "stroke-linejoin": "round" }
+          : { x: 0, y: 9, "text-anchor": "middle", "font-family": "Mazzard", "font-weight": 800,
+              "font-size": 24, fill: "#F5F1E6" }, g);
         t.textContent = p.num || "";
         p.tNum = t;
       }
-      var n = ns("text", { x: 0, y: 48, "text-anchor": "middle", "font-family": "Mazzard", "font-weight": 700,
+      var n = ns("text", { x: 0, y: kit ? 56 : 48, "text-anchor": "middle", "font-family": "Mazzard", "font-weight": 700,
                            "font-size": 19, fill: "#F5F1E6", stroke: "#06301A", "stroke-width": 4,
                            "paint-order": "stroke", "stroke-linejoin": "round" }, g);
       n.textContent = (p.cognome || "").toUpperCase();
@@ -530,7 +598,7 @@ window.Lavagna = (function () {
     function evidenzia() {
       PEDINE.forEach(function (p) {
         var c = p.g.querySelector(".disco");
-        c.setAttribute("stroke", p === SCELTO ? "#E3C271" : (p.mister ? "#E3C271" : "#F5F1E6"));
+        c.setAttribute("stroke", p === SCELTO ? "#E3C271" : (p.mister ? "#E3C271" : bordo(p)));
         c.setAttribute("stroke-width", p === SCELTO ? 6 : 3);
       });
     }
@@ -1201,9 +1269,14 @@ window.Lavagna = (function () {
             m++;
           }
         }
+        var stessa = (s.nome || SQ[lato].nome) === SQ[lato].nome;
         SQ[lato] = { nome: s.nome || SQ[lato].nome, col: s.col || SQ[lato].col,
                      rosa: rosa, titolari: titolari, mod: s.mod || SQ[lato].mod,
-                     all: s.all || null, tid: String(s.tid || "") };
+                     all: s.all || null, tid: String(s.tid || ""),
+                     // la divisa scelta nelle Formazioni; se no quella di prima
+                     // (stessa squadra) o si sceglie da sola
+                     dove: s.dove !== undefined ? s.dove : (stessa ? SQ[lato].dove : undefined),
+                     mgFisso: s.mg || "", mg: s.mg || (stessa ? SQ[lato].mg : "") };
         // presenze e gol della stagione: si cominciano a contare subito, cosi'
         // al doppio clic sul giocatore sono gia' pronti
         if (SQ[lato].tid) conStagione(function () { StagioneEspn.squadra(SQ[lato].tid); });
@@ -1217,6 +1290,7 @@ window.Lavagna = (function () {
       }
       disegnaRose(); disegnaCurio();
       if (d && d.schiera !== false) schiera();
+      vesti();
     }
     function stato() {
       return { sq: { A: SQ.A, B: SQ.B }, note: NOTE, cambi: CAMBI, disegni: gDis.innerHTML,
@@ -1235,6 +1309,7 @@ window.Lavagna = (function () {
       (s.pedine || []).forEach(function (p) { PEDINE.push(pedina(p)); });
       gDis.innerHTML = s.disegni || "";
       disegnaRose(); disegnaCurio();
+      vesti();
     }
 
     // ── LA DIRETTA ──────────────────────────────────────────────────────
@@ -1266,7 +1341,7 @@ window.Lavagna = (function () {
         var c = p.g.querySelector(".disco");
         if (!c) return;
         var mio = idAtleta && String(p.pid) === String(idAtleta);
-        c.setAttribute("stroke", mio ? "#F5B91E" : (p === SCELTO ? "#E3C271" : (p.mister ? "#E3C271" : "#F5F1E6")));
+        c.setAttribute("stroke", mio ? "#F5B91E" : (p === SCELTO ? "#E3C271" : (p.mister ? "#E3C271" : bordo(p))));
         c.setAttribute("stroke-width", mio ? 7 : (p === SCELTO ? 6 : 3));
       });
     }
@@ -1496,6 +1571,25 @@ window.Lavagna = (function () {
       if (ev.shiftKey) rifai(); else annulla();
     });
 
+    // la maglia e il colore delle pedine, dalla testata della rosa
+    box.addEventListener("change", function (ev) {
+      var t = ev.target;
+      if (t.dataset && t.dataset.maglia) {
+        var S = SQ[t.dataset.maglia];
+        ricorda();
+        S.dove = t.value; S.mgFisso = "";
+        vesti();
+        return;
+      }
+      if (t.dataset && t.dataset.colsq) {
+        var S2 = SQ[t.dataset.colsq];
+        ricorda();
+        S2.col = t.value;
+        // chi sceglie un colore vuole il pallino, non la divisa
+        S2.dove = ""; S2.mg = ""; S2.mgFisso = "";
+        disegnaRose(); disegnaMaglie(); rivesti();
+      }
+    });
     disegnaRose(); disegnaCurio(); disegnaConta();
     return { carica: carica, stato: stato, riapri: riapri, schiera: schiera, nota: nota,
              annulla: annulla, rifai: rifai, segui: seguiPartita, stacca: fermaPartita,
