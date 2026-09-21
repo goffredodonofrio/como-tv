@@ -6524,6 +6524,14 @@ function giraLaCoda() {
   // il magazzino e' della regia prima che nostro: se ci stanno scrivendo,
   // due ore di lettura aspettano
   if (magazzinoOccupato()) { setTimeout(giraLaCoda, 300000); return; }
+  // una trascrizione dura un'ora: non si parte sopra un export video
+  if (!giraLaCoda.chiesto) {
+    siEsporta().then((si) => {
+      if (si) return setTimeout(giraLaCoda, 30000);
+      giraLaCoda.chiesto = true; try { giraLaCoda(); } finally { giraLaCoda.chiesto = false; }
+    });
+    return;
+  }
   voceAlLavoro = CODA_VOCE.shift();
   const lavoro = voceAlLavoro;
   const r0 = R.reg[lavoro.reg];
@@ -7503,11 +7511,47 @@ function fasciaAlta(via, sec) {
       });
   });
 }
+// ── QUANDO SI ESPORTA UN VIDEO, IL MAM ASPETTA ─────────────────────────
+//  Le due macchine sono due core: l'export di una grafica (Chrome e ffmpeg,
+//  a priorita' bassa) con la lettura dei cronometri accanto passava da un
+//  minuto a quattro. Allora si chiede ai due servizi di export (prod e dev)
+//  se stanno lavorando, e finche' uno lavora il MAM non comincia il passo
+//  dopo. I processi gia' partiti non si congelano: hanno un tempo massimo e
+//  verrebbero uccisi come falliti. Un servizio spento non ferma niente.
+const ESPORTA_SALUTE = (process.env.COMOTV_ESPORTA_SALUTE || "http://127.0.0.1:8090/salute http://127.0.0.1:8091/salute")
+  .split(/\s+/).filter(Boolean);
+let esportaVisto = 0, esportaOccupato = false, esportaDetto = false;
+function chiediEsporta(url) {
+  return new Promise((ok) => {
+    const q = http.get(url, { timeout: 2000 }, (res) => {
+      let t = ""; res.on("data", (b) => { t += b; });
+      res.on("end", () => { try { const j = JSON.parse(t); ok(!!(j.occupato || j.coda)); } catch (e) { ok(false); } });
+    });
+    q.on("timeout", () => { q.destroy(); ok(false); });
+    q.on("error", () => ok(false));
+  });
+}
+async function siEsporta() {
+  if (Date.now() - esportaVisto < 4000) return esportaOccupato;
+  esportaVisto = Date.now();
+  esportaOccupato = (await Promise.all(ESPORTA_SALUTE.map(chiediEsporta))).some(Boolean);
+  return esportaOccupato;
+}
+async function aspettaEsporta() {
+  const fino = Date.now() + 30 * 60000;   // una coda d'export impazzita non ferma il MAM per sempre
+  while (Date.now() < fino && await siEsporta()) {
+    if (!esportaDetto) { esportaDetto = true; console.log("[clip] c'e' un export video: il MAM aspetta"); }
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+  if (esportaDetto) { esportaDetto = false; console.log("[clip] export finito: il MAM riparte"); }
+}
+
 // Due fotogrammi a venti secondi di distanza: orologio.py trova la grafica
 // (quello che fra i due sta fermo), la targa del cronometro, e la legge in
 // tutti e due. Se le due letture non distano venti secondi, una delle due
 // e' sbagliata e si buttano via entrambe: meglio niente che un minuto falso.
 async function leggiOrologioSicuro(fascia, t, tutto) {
+  await aspettaEsporta();
   const f1 = await fascia(t), f2 = f1 ? await fascia(t + 20) : null;
   const via = [f1, f2].filter(Boolean);
   const butta = () => { if (!process.env.COMOTV_OROLOGIO_DEBUG) via.forEach((f) => { try { fs.unlinkSync(f); } catch (x) {} }); };
@@ -8691,7 +8735,10 @@ function passaFiltro(a) {
   return FILTRO_OROLOGI.split("|").some((p) => p && testo.indexOf(p.toLowerCase()) >= 0);
 }
 function orologiInCoda(ripasso) {
-  if (!CODA_OROLOGI.length) orologiRipassati = false;
+  // il giro finale non azzera il suo segno: se no, a coda vuota, le partite
+  // senza cronometro leggibile ripartivano all'infinito (21/09/2026: tre
+  // partite ritentate ogni nove minuti per ore, i due core sempre pieni)
+  if (!CODA_OROLOGI.length && !ripasso) orologiRipassati = false;
   const gia = new Set(CODA_OROLOGI);
   // SI PESCA OVUNQUE. Prima la coda guardava solo le partite con gli
   // appunti: ma le partite dove il cronometro serve DI PIU' sono proprio
