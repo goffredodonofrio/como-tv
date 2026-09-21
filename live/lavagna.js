@@ -132,6 +132,23 @@ window.Lavagna = (function () {
       "border:1px solid rgba(245,241,230,.14);cursor:pointer;}" +
       ".lav .conta .ct .meno:hover{color:#FF8A8C;border-color:rgba(229,52,43,.5);}" +
       ".lav .conta .ct.su b{color:#E3C271;}" +
+      ".lav .conta .ct.chiedo{border-color:#E3C271;background:rgba(201,162,75,.18);animation:lavChiedo 1s ease-in-out infinite;}" +
+      "@keyframes lavChiedo{50%{box-shadow:0 0 0 3px rgba(227,194,113,.35);}}" +
+      /* mentre si chiede "chi?", le pedine della squadra si accendono */
+      ".lav.chiedo-A .gioc button[data-lato=\"A\"],.lav.chiedo-B .gioc button[data-lato=\"B\"]{outline:2px solid rgba(227,194,113,.6);}" +
+      ".lav g.cand .disco{stroke:#E3C271;stroke-width:5;}" +
+      ".lav .gioc .crt{display:inline-block;width:8px;height:11px;border-radius:1.5px;margin-left:6px;vertical-align:-1px;}" +
+      ".lav .gioc .crt.g{background:#F2C230;} .lav .gioc .crt.r{background:#E5342B;}" +
+      ".lav .gioc .crt.dd{box-shadow:-3px -2px 0 #F2C230;}" +
+      /* i cartellini nella scheda del giocatore */
+      ".lav .foglietto .cartriga{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px;}" +
+      ".lav .foglietto .cartriga .cl{font-family:'Mazzard',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.14em;" +
+      "text-transform:uppercase;color:#C9A24B;margin-right:2px;}" +
+      ".lav .foglietto .cartriga .stc{font-size:13px;color:var(--lav-avorio);margin-right:auto;}" +
+      ".lav .foglietto .cartriga .stc.vuoto{color:var(--lav-fg3);}" +
+      ".lav .foglietto .cartriga button{padding:5px 8px;font-size:10px;display:inline-flex;align-items:center;gap:5px;}" +
+      ".lav .foglietto .cartriga button i{display:inline-block;width:8px;height:11px;border-radius:1.5px;}" +
+      ".lav .foglietto .cartriga button i.g{background:#F2C230;} .lav .foglietto .cartriga button i.r{background:#E5342B;}" +
       /* presenze e gol della stagione: in cima, come una scheda da tabellino */
       ".lav .foglietto .stagione{margin:0 0 10px;padding:9px 10px 8px;border-radius:8px;" +
       "background:rgba(6,10,26,.55);border:1px solid rgba(201,162,75,.22);}" +
@@ -239,6 +256,60 @@ window.Lavagna = (function () {
     // i contatori della partita, per squadra: calci d'angolo, gialli, rossi
     var CONTA = { A: { ang: 0, gia: 0, ros: 0 }, B: { ang: 0, gia: 0, ros: 0 } };
     var VOCI_CONTA = [["ang", "Angoli"], ["gia", "Gialli"], ["ros", "Rossi"]];
+    // I CARTELLINI hanno un nome: ognuno sa di che squadra e' e, se lo si sa,
+    // di chi (pid). Quelli senza nome contano lo stesso. Il contatore dei
+    // gialli e dei rossi e' il loro conto, quello degli angoli resta un numero.
+    // Il secondo giallo porta con se' il rosso (doppio: true).
+    var CART = [];                      // { lato, pid|null, tipo: "gia"|"ros", doppio?, k? (evento ESPN) }
+    var CHI = null;                     // { lato, tipo }: si aspetta il clic sul giocatore ammonito
+    function quanti(lato, tipo) {
+      return CART.filter(function (c) { return c.lato === lato && c.tipo === tipo; }).length;
+    }
+    function cartDi(lato, pid) {
+      var v = CART.filter(function (c) { return c.lato === lato && pid != null && String(c.pid) === String(pid); });
+      return { gialli: v.filter(function (c) { return c.tipo === "gia"; }).length,
+               rosso: v.some(function (c) { return c.tipo === "ros"; }),
+               doppio: v.some(function (c) { return c.doppio; }) };
+    }
+    function nuovoCart(lato, pid, tipo, k) {
+      CART.push({ lato: lato, pid: pid, tipo: tipo, k: k || null });
+      // il secondo giallo alla stessa persona e' un rosso
+      if (tipo === "gia" && pid != null && cartDi(lato, pid).gialli === 2 && !cartDi(lato, pid).rosso) {
+        CART.push({ lato: lato, pid: pid, tipo: "ros", doppio: true, k: null });
+      }
+    }
+    function togliCart(lato, tipo, pid) {
+      for (var i = CART.length - 1; i >= 0; i--) {
+        var c = CART[i];
+        if (c.lato !== lato || c.tipo !== tipo || (pid !== undefined && String(c.pid) !== String(pid))) continue;
+        CART.splice(i, 1);
+        // tolto un giallo, se c'era il rosso della doppia ammonizione va via anche lui
+        if (tipo === "gia" && c.pid != null) {
+          for (var j = CART.length - 1; j >= 0; j--) {
+            if (CART[j].doppio && CART[j].lato === lato && String(CART[j].pid) === String(c.pid)) { CART.splice(j, 1); break; }
+          }
+        }
+        return true;
+      }
+      return false;
+    }
+    function chiediFine() {
+      box.classList.remove("chiedo-A", "chiedo-B");
+      PEDINE.forEach(function (q) { if (q.g) q.g.classList.remove("cand"); });
+    }
+    // il giocatore scelto (o nessuno): il cartellino e' suo
+    function assegna(g) {
+      if (!CHI) return;
+      var c = CHI; CHI = null;
+      ricorda();
+      nuovoCart(c.lato, g ? g.pid : null, c.tipo);
+      chiediFine();
+      disegnaConta([c.lato, c.tipo]); disegnaRose();
+      var d = g ? cartDi(c.lato, g.pid) : null;
+      nota(g ? ((c.tipo === "gia" ? (d.doppio ? "Secondo giallo: <b>espulso</b> " : "Ammonito ") : "Espulso ") +
+                "<b>" + esc(((g.num ? g.num + " " : "") + (g.cognome || g.nome || "")).trim()) + "</b>.")
+             : (c.tipo === "gia" ? "Giallo senza nome." : "Rosso senza nome.") + " Si puo' dare il nome dalla scheda del giocatore.", "ok");
+    }
     function disegnaConta(acceso) {
       ["A", "B"].forEach(function (lato) {
         var dove = box.querySelector('[data-conta="' + lato + '"]');
@@ -248,12 +319,16 @@ window.Lavagna = (function () {
             ? '<svg width="14" height="15" viewBox="0 0 14 15"><path d="M2 1v13" stroke="#F5F1E6" stroke-width="1.6"/>' +
               '<path d="M2.8 1.5h9l-2.6 3 2.6 3h-9z" fill="#E3C271"/></svg>'
             : "<i></i>";
+          var chiedo = CHI && CHI.lato === lato && CHI.tipo === v[0];
           return '<div class="ct' + (acceso && acceso[0] === lato && acceso[1] === v[0] ? " su" : "") +
-                 '" data-lato="' + lato + '" data-k="' + v[0] + '" title="Clic: +1">' +
-                 '<span class="ic ' + v[0] + '">' + ic + "</span><b>" + CONTA[lato][v[0]] + "</b><em>" + v[1] + "</em>" +
+                 (chiedo ? " chiedo" : "") + '" data-lato="' + lato + '" data-k="' + v[0] + '" title="' +
+                 (v[0] === "ang" ? "Clic: +1" : "Clic, poi il giocatore: il cartellino e' suo") + '">' +
+                 '<span class="ic ' + v[0] + '">' + ic + "</span><b>" +
+                 (v[0] === "ang" ? CONTA[lato].ang : quanti(lato, v[0])) + "</b><em>" + v[1] + "</em>" +
                  '<button type="button" class="meno" title="Togli uno">&minus;</button></div>';
         }).join("");
       });
+      PEDINE.forEach(segnaCart);
     }
     // La pila dei passi: prima di ogni mossa si mette da parte com'era.
     // Cmd/Ctrl+Z torna indietro, Cmd/Ctrl+Maiusc+Z rifa'. Trenta passi
@@ -339,7 +414,7 @@ window.Lavagna = (function () {
       ns("circle", { cx: 20, cy: -20, r: 7, fill: "#E3C271", stroke: "#06301A", "stroke-width": 2,
                      "class": "bollo", style: "display:none" }, g);
       p.g = g;
-      posa(p); segnaNota(p);
+      posa(p); segnaNota(p); segnaCart(p);
       return p;
     }
     // numero e cognome cambiati a mano: la pedina si riscrive sul posto
@@ -348,6 +423,20 @@ window.Lavagna = (function () {
       if (p.tNome) p.tNome.textContent = (p.cognome || "").toUpperCase();
     }
     function posa(p) { p.g.setAttribute("transform", "translate(" + Math.round(p.x) + " " + Math.round(p.y) + ")"); }
+    // il cartellino sulla pedina: giallo, rosso, o il rosso della doppia
+    // ammonizione (giallo dietro, rosso davanti). In alto a sinistra: a
+    // destra c'e' gia' il puntino d'oro delle curiosita'.
+    function segnaCart(p) {
+      if (!p.g) return;
+      var v = p.g.querySelector(".cartellino");
+      if (v) v.remove();
+      var c = cartDi(p.lato, p.pid);
+      if (!c.gialli && !c.rosso) return;
+      var g = ns("g", { "class": "cartellino", transform: "translate(-24 -30) rotate(-12)" }, p.g);
+      if (c.doppio) ns("rect", { x: -9, y: -2, width: 12, height: 17, rx: 2, fill: "#F2C230", stroke: "#06301A", "stroke-width": 1.8 }, g);
+      ns("rect", { x: -4, y: 0, width: 12, height: 17, rx: 2, fill: c.rosso ? "#E5342B" : "#F2C230",
+                   stroke: "#06301A", "stroke-width": 1.8 }, g);
+    }
     function segnaNota(p) {
       var b = p.g.querySelector(".bollo");
       if (b) b.style.display = NOTE[chiave(p)] ? "" : "none";
@@ -420,6 +509,12 @@ window.Lavagna = (function () {
     var trascino = null, disegno = null, mosso = false;
     svg.addEventListener("pointerdown", function (ev) {
       chiudiNota();
+      if (CHI) {
+        var pc = pedinaDi(ev);
+        if (pc && pc.lato === CHI.lato) { assegna(pc); ev.preventDefault(); return; }
+        if (pc) { nota("Quel giocatore e' dell'altra squadra: clicca uno " + (CHI.lato === "A" ? "di casa" : "ospite") + ".", "err"); return; }
+        assegna(null); return;                        // clic sul prato: senza nome
+      }
       var pt = punto(ev);
       if (ARNESE === "muovi") {
         var p = pedinaDi(ev);
@@ -600,6 +695,37 @@ window.Lavagna = (function () {
         });
       });
     }
+    // nella scheda: i cartellini che ha, e i tasti per darne o toglierne
+    function cartSu(p, dove) {
+      function disegna() {
+        var c = cartDi(p.lato, p.pid);
+        dove.innerHTML = '<span class="cl">Cartellini</span>' +
+          (c.doppio ? '<span class="stc">doppio giallo, espulso</span>' :
+           c.rosso ? '<span class="stc">espulso</span>' :
+           c.gialli ? '<span class="stc">ammonito</span>' : '<span class="stc vuoto">nessuno</span>') +
+          '<button type="button" data-c="gia"><i class="g"></i>+ Giallo</button>' +
+          '<button type="button" data-c="ros"><i class="r"></i>+ Rosso</button>' +
+          (c.gialli || c.rosso ? '<button type="button" data-c="via">Togli</button>' : "");
+      }
+      dove.addEventListener("click", function (ev) {
+        var b = ev.target.closest ? ev.target.closest("button[data-c]") : null;
+        if (!b) return;
+        ricorda();
+        var c = cartDi(p.lato, p.pid);
+        if (b.dataset.c === "via") {
+          // si toglie prima il rosso diretto, poi i gialli
+          if (c.rosso && !c.doppio) togliCart(p.lato, "ros", p.pid); else togliCart(p.lato, "gia", p.pid);
+        } else {
+          // un cartellino gia' dato senza nome a questa squadra prende questo nome
+          var anonimo = CART.filter(function (x) { return x.lato === p.lato && x.tipo === b.dataset.c && x.pid == null; })[0];
+          if (anonimo) { anonimo.pid = p.pid; var x2 = cartDi(p.lato, p.pid);
+                         if (b.dataset.c === "gia" && x2.gialli === 2 && !x2.rosso) CART.push({ lato: p.lato, pid: p.pid, tipo: "ros", doppio: true }); }
+          else nuovoCart(p.lato, p.pid, b.dataset.c);
+        }
+        disegna(); disegnaConta(); disegnaRose();
+      });
+      disegna();
+    }
     function apriNota(p) {
       chiudiNota();
       var k = chiave(p), cassa = box.querySelector(".campoBox");
@@ -611,6 +737,7 @@ window.Lavagna = (function () {
           '<div class="chi"><input data-f="num" type="text" inputmode="numeric" maxlength="2" ' +
           'placeholder="N" value="' + esc(p.num || "") + '">' +
           '<input data-f="nome" type="text" placeholder="Cognome" value="' + esc(p.cognome || "") + '"></div>') +
+        '<div class="cartriga" data-cart-box="1"></div>' +
         '<div class="stagione" data-stagione-box="1"></div>' +
         '<textarea placeholder="Le tue curiosità: precedenti, come si pronuncia il nome, cosa dire in telecronaca…"></textarea>' +
         '<div class="piede">' +
@@ -620,6 +747,7 @@ window.Lavagna = (function () {
         '</div>';
       cassa.appendChild(f);
       stagioneSu(p, f.querySelector("[data-stagione-box]"));
+      cartSu(p, f.querySelector("[data-cart-box]"));
       // la tabella della stagione arriva dopo e allunga il foglietto: lo si
       // tiene dentro il campo anche quando cresce
       if (window.ResizeObserver) {
@@ -696,6 +824,11 @@ window.Lavagna = (function () {
     }
 
     // ── le rose, la panchina e i cambi ──────────────────────────────────
+    function segnoRosa(lato, pid) {
+      var c = cartDi(lato, pid);
+      if (!c.gialli && !c.rosso) return "";
+      return '<span class="crt ' + (c.rosso ? "r" : "g") + (c.doppio ? " dd" : "") + '"></span>';
+    }
     function disegnaRose() {
       ["A", "B"].forEach(function (lato) {
         var col = box.querySelector('[data-col="' + lato + '"]');
@@ -710,7 +843,7 @@ window.Lavagna = (function () {
           var dentro = !!inCampo(lato, g.pid);
           return '<button type="button" data-lato="' + lato + '" data-i="' + i + '"' +
                  (dentro ? ' class="dentro"' : "") + '>' +
-                 (g.num ? "<b>" + esc(g.num) + "</b>" : "") + esc(g.cognome || g.nome) +
+                 (g.num ? "<b>" + esc(g.num) + "</b>" : "") + esc(g.cognome || g.nome) + segnoRosa(lato, g.pid) +
                  (NOTE[lato + ":" + g.pid] ? "<em>&#9733;</em>" : "") + "</button>";
         }).join("") || '<span style="color:var(--lav-fg3);font-size:12.5px">Nessuna rosa.</span>';
       });
@@ -734,10 +867,28 @@ window.Lavagna = (function () {
       var ct = ev.target.closest ? ev.target.closest(".conta .ct") : null;
       if (ct) {
         var lt = ct.dataset.lato, k = ct.dataset.k, meno = !!(ev.target.closest && ev.target.closest(".meno"));
-        if (meno && !CONTA[lt][k]) return;
-        ricorda();
-        CONTA[lt][k] = Math.max(0, CONTA[lt][k] + (meno ? -1 : 1));
-        disegnaConta(meno ? null : [lt, k]);
+        if (k === "ang") {
+          if (meno && !CONTA[lt].ang) return;
+          ricorda();
+          CONTA[lt].ang = Math.max(0, CONTA[lt].ang + (meno ? -1 : 1));
+          disegnaConta(meno ? null : [lt, k]);
+          return;
+        }
+        if (meno) {                                   // toglie l'ultimo, con o senza nome
+          CHI = null;
+          ricorda();
+          if (togliCart(lt, k)) disegnaConta();
+          chiediFine();
+          return;
+        }
+        // il secondo clic sullo stesso contatore: senza nome
+        if (CHI && CHI.lato === lt && CHI.tipo === k) { assegna(null); return; }
+        CHI = { lato: lt, tipo: k };
+        disegnaConta();
+        box.classList.add("chiedo-" + lt);
+        PEDINE.forEach(function (q) { if (q.lato === lt && q.g) q.g.classList.add("cand"); });
+        nota("<b>Chi?</b> Clicca il giocatore " + (k === "gia" ? "ammonito" : "espulso") + " — in campo, in panchina o " +
+             "l'allenatore. <b>Esc</b> o di nuovo il contatore: senza nome.", "");
         return;
       }
     });
@@ -747,6 +898,10 @@ window.Lavagna = (function () {
       var lato = b.dataset.lato;
       var g = b.dataset.mister ? misterDi(lato) : SQ[lato].rosa[+b.dataset.i];
       if (!g) return;
+      if (CHI) {
+        if (CHI.lato === lato) assegna(b.dataset.mister ? { pid: "mister", cognome: g.cognome, nome: g.nome } : g);
+        return;
+      }
       var gia = inCampo(lato, g.pid);
       // IL CAMBIO: c'e' un giocatore scelto sul campo, della stessa squadra, e
       // si clicca uno che in campo non c'e'. Entra al posto suo, e resta scritto.
@@ -920,6 +1075,7 @@ window.Lavagna = (function () {
       CAMBI = [];
       if (prima !== SQ.A.nome + "|" + SQ.B.nome + "|" + (SQ.A.tid || "") + "|" + (SQ.B.tid || "")) {
         CONTA = { A: { ang: 0, gia: 0, ros: 0 }, B: { ang: 0, gia: 0, ros: 0 } };
+        CART = []; CHI = null;
         disegnaConta();
       }
       disegnaRose(); disegnaCurio();
@@ -927,7 +1083,7 @@ window.Lavagna = (function () {
     }
     function stato() {
       return { sq: { A: SQ.A, B: SQ.B }, note: NOTE, cambi: CAMBI, disegni: gDis.innerHTML,
-               conta: JSON.parse(JSON.stringify(CONTA)),
+               conta: JSON.parse(JSON.stringify(CONTA)), cart: JSON.parse(JSON.stringify(CART)),
                pedine: PEDINE.map(function (p) { return { lato: p.lato, pid: p.pid, num: p.num, cognome: p.cognome,
                                                           mister: !!p.mister, x: p.x, y: p.y }; }) };
     }
@@ -936,6 +1092,7 @@ window.Lavagna = (function () {
       if (s.sq) { SQ.A = s.sq.A || SQ.A; SQ.B = s.sq.B || SQ.B; }
       NOTE = s.note || {}; CAMBI = s.cambi || [];
       CONTA = s.conta || { A: { ang: 0, gia: 0, ros: 0 }, B: { ang: 0, gia: 0, ros: 0 } };
+      CART = s.cart || []; CHI = null;
       disegnaConta();
       PEDINE.slice().forEach(togli);
       (s.pedine || []).forEach(function (p) { PEDINE.push(pedina(p)); });
@@ -985,15 +1142,21 @@ window.Lavagna = (function () {
     function giocateDi(lega, ev) {
       var base = "https://sports.core.api.espn.com/v2/sports/soccer/leagues/" + lega +
                  "/events/" + ev + "/competitions/" + ev + "/plays?limit=1000";
+      // tutte le pagine: i cartellini del primo tempo stanno nella prima
       return fetch(base).then(function (r) { return r.json(); }).then(function (j) {
-        if ((j.pageCount || 1) < 2) return j.items || [];
-        return fetch(base + "&page=" + j.pageCount).then(function (r) { return r.json(); })
-          .then(function (k) { return k.items || []; });
+        var pag = [];
+        for (var n = 2; n <= (j.pageCount || 1); n++) {
+          pag.push(fetch(base + "&page=" + n).then(function (r) { return r.json(); })
+            .then(function (k) { return k.items || []; }));
+        }
+        return Promise.all(pag).then(function (resto) {
+          return resto.reduce(function (a, b) { return a.concat(b); }, j.items || []);
+        });
       });
     }
     function seguiPartita(opz) {
       fermaPartita();
-      DIR = { lega: opz.lega, ev: opz.event, casa: opz.casa || "", visti: {}, coda: [], vistiEventi: {} };
+      DIR = { lega: opz.lega, ev: opz.event, casa: opz.casa || "", visti: {}, coda: [], vistiEventi: {}, vistiCart: {} };
       striscia('<b>Diretta</b> <span class="azione">mi collego…</span>');
       giro();
       DIR.timer = setInterval(giro, 15000);
@@ -1032,16 +1195,14 @@ window.Lavagna = (function () {
           D.punteggio = ((casa.team || {}).shortDisplayName || "") + " " + (casa.score || 0) + " - " +
                         (osp.score || 0) + " " + ((osp.team || {}).shortDisplayName || "");
           D.minuto = ((c.status || {}).type || {}).detail || "";
-          // Calci d'angolo e cartellini li conta anche ESPN: il contatore si
+          // I calci d'angolo li conta anche ESPN: il contatore si
           // allinea da solo, ma solo in salita - ESPN arriva in ritardo, e un
           // conto fatto a mano piu' avanti non va abbassato.
           var su = false;
           ((j.boxscore || {}).teams || []).forEach(function (t) {
             var lato = String((t.team || {}).id || "") === D.casaId ? "A" : "B", m = {};
             (t.statistics || []).forEach(function (x) { m[x.name] = parseInt(x.displayValue, 10) || 0; });
-            [["ang", m.wonCorners], ["gia", m.yellowCards], ["ros", m.redCards]].forEach(function (v) {
-              if (v[1] > CONTA[lato][v[0]]) { CONTA[lato][v[0]] = v[1]; su = true; }
-            });
+            if ((m.wonCorners || 0) > CONTA[lato].ang) { CONTA[lato].ang = m.wonCorners; su = true; }
           });
           if (su) disegnaConta();
           // i cambi di ESPN diventano i nostri, una volta sola ciascuno
@@ -1065,6 +1226,27 @@ window.Lavagna = (function () {
         .catch(function () {});
       giocateDi(D.lega, D.ev).then(function (tutte) {
         if (DIR !== D) return;
+        // I CARTELLINI li prendo dalle azioni: li' c'e' il giocatore (nei
+        // keyEvents del riassunto no). Uno gia' messo a mano non si
+        // raddoppia: se era suo si conferma, se era senza nome lo prende.
+        var su = false;
+        tutte.forEach(function (g) {
+          var tc = /red card/i.test((g.type || {}).text || "") ? "ros"
+                 : /yellow card/i.test((g.type || {}).text || "") ? "gia" : "";
+          // senza la squadra di casa (il riassunto non e' ancora arrivato) si aspetta il giro dopo
+          if (!tc || !g.id || !D.casaId || D.vistiCart[g.id]) return;
+          D.vistiCart[g.id] = 1;
+          var sq = ((g.team || {}).$ref || "").match(/teams\/(\d+)/);
+          var at = ((((g.participants || [])[0] || {}).athlete || {}).$ref || "").match(/athletes\/(\d+)/);
+          var lato = sq && sq[1] === D.casaId ? "A" : "B", pid = at ? at[1] : null, k = "p" + g.id;
+          var mio = CART.filter(function (x) { return x.lato === lato && x.tipo === tc && !x.k && pid != null && String(x.pid) === pid; })[0] ||
+                    CART.filter(function (x) { return x.lato === lato && x.tipo === tc && !x.k && x.pid == null; })[0];
+          if (mio) { mio.k = k; if (mio.pid == null) mio.pid = pid; }
+          // il rosso del secondo giallo l'ha gia' messo nuovoCart
+          else if (!(tc === "ros" && pid != null && cartDi(lato, pid).doppio)) nuovoCart(lato, pid, tc, k);
+          su = true;
+        });
+        if (su) { disegnaConta(); disegnaRose(); }
         var nuove = tutte.filter(function (g) {
           return g.id && !D.visti[g.id] && g.fieldPositionX != null && g.fieldPositionY != null;
         });
@@ -1168,6 +1350,7 @@ window.Lavagna = (function () {
     // Cmd/Ctrl+Z ovunque nella pagina, ma non mentre si scrive una
     // curiosita': li' l'annullamento e' quello del testo.
     document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" && CHI && box.isConnected) { assegna(null); return; }
       if (!(ev.metaKey || ev.ctrlKey) || String(ev.key).toLowerCase() !== "z") return;
       if (!box.isConnected || !box.offsetParent) return;
       var t = ev.target, tag = t && t.tagName;
