@@ -244,7 +244,7 @@ function dataDa(s) {
   return "";
 }
 // competizioni scritte davanti alle squadre, da togliere
-const COMPETIZIONI = /^(?:(?:saudi\s+)?pro\s+league|premier\s+league|premiership|scottish\s+premiership|championship|eredivisie|2\.?\s*bundesliga|bundesliga|serie\s+[ab]|laliga|la\s+liga|liga(?:\s+profesional)?|ligue\s+1|libertadores|sudamericana|copa(?:\s+\w+)?|carabao(?:\s+cup)?|fa\s+cup|primera(?:\s+division)?|clausura|apertura|efl|hnl|mls)\s+/i;
+const COMPETIZIONI = /^(?:king'?s\s+cup|(?:saudi\s+)?pro\s+league|premier\s+league|premiership|scottish\s+premiership|championship|eredivisie|2\.?\s*bundesliga|bundesliga|serie\s+[ab]|laliga|la\s+liga|liga(?:\s+profesional)?|ligue\s+1|libertadores|sudamericana|copa(?:\s+\w+)?|carabao(?:\s+cup)?|fa\s+cup|primera(?:\s+division)?|clausura|apertura|efl|hnl|mls)\s+/i;
 // i documenti che non sono fogli di una partita o di una squadra: elenchi
 // arbitri, Opta, running order, teamsheet, palinsesti. Restano nell'archivio
 // (le frasi valgono per le schede dei giocatori) ma non fanno da foglio.
@@ -254,7 +254,7 @@ function tipoDi(nome, sq) {
   if (NON_FOGLIO.test(n)) return "altro";
   if (sq.length === 2) return "partita";
   // "Foglio partita Millwall West Ham": una partita scritta senza separatore
-  if (sq.length === 1 && /partita|intro|curiosita/i.test(n)) return "partita";
+  if (sq.length === 1 && (/partita|intro|curiosita|gara|riserve/i.test(n) || sq[0].split(" ").length > 3)) return "partita";
   return sq.length === 1 ? "squadra" : "altro";
 }
 function squadreDa(nome, testo) {
@@ -264,7 +264,7 @@ function squadreDa(nome, testo) {
     .replace(/\(.*?\)/g, " ").replace(/\d{1,2}[-./]\d{1,2}[-./]\d{2,4}/g, " ").replace(/\b20\d{6}\b/g, " ")
     .replace(/\b(?:20)?\d{2}\s*[:/-]\s*(?:20)?\d{2}\b/g, " ")     // la stagione: 2026:27, 26-27
     .replace(/_/g, " ").replace(/\|/g, " ")
-    .replace(/\b(foglio|partita|appunti|curiosita|note|scheda|giornata|rosa|intro|squadre|\d+[aª°]|\d+)\b/gi, " ")
+    .replace(/\b(foglio|partita|appunti|curiosita|note|scheda|giornata|rosa|intro|squadre|gara|riserve|semifinali?|quarti|ottavi|finale|playoff|po|round|\d+[aª°]|\d+)\b/gi, " ")
     .replace(/\s+/g, " ").trim();
   // prima i separatori con gli spazi ("Al-Hilal v Al-Faisaly"), poi il trattino attaccato
   let pezzi = s.split(/\s+(?:-|–|v|vs|x)\.?\s+/i).map((x) => x.trim()).filter(Boolean);
@@ -282,8 +282,10 @@ function squadreDa(nome, testo) {
   if (pezzi.length > 2) pezzi = pezzi.slice(-2);
   pezzi = pezzi.map((x) => x.replace(COMPETIZIONI, "").replace(COMPETIZIONI, "").replace(/[.,;:\s]+$/, "").trim()).filter(Boolean);
   if (pezzi.length === 2) return pezzi;
-  // una squadra sola, corta: e' la scheda di una squadra ("Liverpool 2026:27", "Rosa Crystal Palace")
-  if (pezzi.length === 1 && pezzi[0].split(" ").length <= 3 && !/arbitri|opta|palinsesto|approfondimento|presentazione/i.test(nome)) return pezzi;
+  // un pezzo solo: la scheda di una squadra ("Liverpool 2026:27") o una
+  // partita scritta senza separatore ("INTRO APPUNTI AL ITTIHAD AL FAYHA"):
+  // lo decide tipoDi
+  if (pezzi.length === 1 && !/arbitri|opta|palinsesto|approfondimento|presentazione/i.test(nome)) return pezzi;
   return [];
 }
 // ── salvare un foglio ───────────────────────────────────────────────
@@ -433,11 +435,71 @@ async function tokenGoogle() {
   if (!j.access_token) throw new Error("Google: " + (j.error_description || j.error || "niente token"));
   return j.access_token;
 }
+// ARCHIVIO APPUNTI e' aperta a chi ha il link: senza account di servizio la
+// si legge come la legge un browser (l'elenco di embeddedfolderview e lo
+// scarico diretto), senza nessuna chiave. Con l'account si usa l'API.
+const MESI_EN = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+function dataElenco(t) {
+  const m = /^([A-Za-z]{3})\s+(\d{1,2})(?:,\s*(\d{4}))?$/.exec(String(t || "").trim());
+  if (!m || MESI_EN[m[1].toLowerCase()] === undefined) return "";
+  const ora = new Date();
+  let a = m[3] ? +m[3] : ora.getFullYear();
+  const d = new Date(Date.UTC(a, MESI_EN[m[1].toLowerCase()], +m[2], 12));
+  if (!m[3] && d > ora) d.setUTCFullYear(a - 1);     // "Dec 20" visto a gennaio e' dell'anno prima
+  return d.toISOString();
+}
+async function giroDriveAperto(stato, cartelle) {
+  const visti = stato.drive || (stato.drive = {});
+  const coda = cartelle.slice(), giro = {};
+  let nuovi = 0;
+  const html = (t) => t.replace(/&#39;/g, "'").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+  while (coda.length) {
+    const c = coda.shift();
+    if (giro[c]) continue;
+    giro[c] = 1;
+    let r;
+    try { r = await chiedi("https://drive.google.com/embeddedfolderview?id=" + encodeURIComponent(c)); }
+    catch (e) { console.log("[fogli] Drive: cartella " + c + " saltata (" + e.message + "), al prossimo giro"); continue; }
+    if (r.codice !== 200) { console.log("[fogli] Drive: cartella " + c + " non leggibile (" + r.codice + ")"); continue; }
+    const t = r.corpo.toString("utf8");
+    const voci = t.split('<div class="flip-entry" id="entry-').slice(1);
+    for (const v of voci) {
+      const id = v.slice(0, v.indexOf('"'));
+      const href = (/<a href="([^"]+)"/.exec(v) || [])[1] || "";
+      const nome = html((/flip-entry-title">([^<]*)</.exec(v) || [])[1] || "").trim();
+      const mod = ((/flip-entry-last-modified">\s*<div>([^<]*)</.exec(v) || [])[1] || "").trim();
+      if (/\/drive\/folders\//.test(href)) { coda.push(id); continue; }
+      const doc = /docs\.google\.com\/document\//.test(href);
+      if (!doc && !ESTENSIONI.test(nome)) continue;
+      if (visti[id] === (mod || "?")) continue;
+      const url = doc ? "https://docs.google.com/document/d/" + id + "/export?format=txt"
+                      : "https://drive.google.com/uc?export=download&id=" + id;
+      // un file lento non ferma il giro: si salta e si riprova la prossima volta
+      let f;
+      try { f = await chiedi(url); }
+      catch (e) { console.log("[fogli] Drive: " + nome + " saltato (" + e.message + "), al prossimo giro"); continue; }
+      if (f.codice !== 200 || /text\/html/.test(f.tipo)) { console.log("[fogli] Drive: non scaricato " + nome + " (" + f.codice + ")"); continue; }
+      const n2 = doc ? nome + ".txt" : nome;
+      const tmp = path.join(TMP, id + path.extname(n2));
+      fs.writeFileSync(tmp, f.corpo);
+      try {
+        if (salva({ id: "d-" + id, nomeFile: n2, fonte: "drive", autore: "",
+                    quando: dataElenco(mod) || new Date().toISOString(),
+                    link: doc ? "https://docs.google.com/document/d/" + id + "/view" : "https://drive.google.com/file/d/" + id + "/view" },
+                  ...testoEStruttura(tmp, n2))) nuovi++;
+      } catch (e) { console.log("[fogli] Drive: testo non letto da " + nome + ": " + e.message); }
+      visti[id] = mod || "?";
+      try { fs.unlinkSync(tmp); } catch (e) {}
+      await new Promise((ok) => setTimeout(ok, 300));      // piano: e' Google, non casa nostra
+    }
+  }
+  return nuovi;
+}
 async function giroDrive(stato) {
   const cartelle = String(process.env.DRIVE_CARTELLE || "").split(",").map((x) => x.trim()).filter(Boolean);
   if (!cartelle.length) { console.log("[fogli] Drive: nessuna cartella, salto"); return 0; }
   const tok = await tokenGoogle();
-  if (!tok) { console.log("[fogli] Drive: manca GOOGLE_SA_FILE, salto"); return 0; }
+  if (!tok) return giroDriveAperto(stato, cartelle);
   const H = { Authorization: "Bearer " + tok };
   const visti = stato.drive || (stato.drive = {});
   const API = "https://www.googleapis.com/drive/v3/files";
@@ -620,11 +682,14 @@ async function giroPartite() {
     return rifai();
   }
   let nuovi = 0;
+  const prima = fs.readdirSync(path.join(PUB, "fogli")).length;
   for (const [nome, giro] of [["Slack", giroSlack], ["Drive", giroDrive]]) {
     try { nuovi += await giro(stato); } catch (e) { console.log("[fogli] " + nome + ": " + e.message); }
     scriviJson(STATO, stato);
   }
-  if (nuovi || !fs.existsSync(path.join(PUB, "indice.json"))) rifai();
+  // anche un giro fermato a meta' puo' aver salvato dei fogli: si guarda la cartella
+  const dopo = fs.readdirSync(path.join(PUB, "fogli")).length;
+  if (nuovi || dopo !== prima || !fs.existsSync(path.join(PUB, "indice.json"))) rifai();
   console.log("[fogli] giro fatto: " + nuovi + " fogli nuovi");
   try { await giroPartite(); } catch (e) { console.log("[fogli] partite: " + e.message); }
 })().catch((e) => { console.error("[fogli] ERRORE " + e.message); process.exit(1); });
