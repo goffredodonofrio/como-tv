@@ -6041,9 +6041,9 @@ async function archivioScandaglia(p) {
       // magazzino vero (la QNAP) e questo giro e' su un magazzino di solo
       // elenco (S3 senza chiave), la riga resta com'e': si segna soltanto
       // che la partita sta anche la', per quando la chiave ci sara'
-      if (soloElenco(bucket)) {
+      if (magazzinoInventario(bucket)) {
         const gia = ARCHIVIO[rec.id];
-        if (gia && gia.bucket && gia.bucket !== bucket && !soloElenco(gia.bucket)) {
+        if (gia && gia.bucket && gia.bucket !== bucket && !magazzinoInventario(gia.bucket)) {
           gia.ancheSu = { bucket: bucket, dove: meglio.dove, chiave: scelta.pezzi[0] && scelta.pezzi[0].chiave };
           viste.add(rec.id); agganciate++;
           return;
