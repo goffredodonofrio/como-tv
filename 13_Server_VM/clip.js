@@ -5055,6 +5055,44 @@ const MAGAZZINI = [];
     fuori: process.env.COMOTV_NAS_FUORI === "1"
   });
 })();
+// IL MAGAZZINO DI SOLO ELENCO. L'archivio di Como Football sta su S3 a
+// Parigi (145 TB) e la VM non ha una chiave: l'elenco pero' ce l'abbiamo,
+// fatto dalla EC2 nella stessa regione e portato qui come un JSON da due
+// mega (s3-inventario.json nella cartella dei dati). Con quello le partite
+// entrano nell'indice e nella Libreria come "su S3", si appaiano ad
+// Airtable, si cercano per appunti ed ESPN. Leggerne i byte no: finche'
+// non c'e' una chiave (o un ponte sulla EC2) ogni firma dice di no,
+// chiaramente, e le code che leggono video (misure, cronometro) lo saltano.
+let inventarioVisto = "";
+function registraInventario() {
+  if (!DIR) return;
+  const via = path.join(DIR, "s3-inventario.json");
+  if (inventarioVisto === via) return;
+  if (!fs.existsSync(via)) return;
+  inventarioVisto = via;
+  let j = null;
+  try { j = JSON.parse(fs.readFileSync(via, "utf8")); } catch (e) { console.log("[clip] s3-inventario.json illeggibile: " + e.message); return; }
+  if (!j || !j.bucket || !Array.isArray(j.oggetti)) return;
+  if (MAGAZZINI.some((m) => m.bucket === j.bucket)) return;
+  MAGAZZINI.push({ nome: "amazon-inventario", inventario: via, bucket: String(j.bucket), regione: String(j.regione || "eu-west-3"),
+                   radice: String(j.radice || "TEMP/"), id: "", segreto: "", endpoint: "", fuori: false,
+                   oggetti: j.oggetti.map((o) => ({ chiave: String(o.k), peso: +o.s || 0, quando: String(o.d || "") })).filter((o) => o.peso > 0) });
+  console.log("[clip] magazzino di solo elenco: " + j.bucket + " (" + j.oggetti.length + " oggetti, " + (j.quando || "") + ")");
+}
+function soloElenco(bucket) { const m = MAGAZZINI.filter((x) => x.bucket && x.bucket === (bucket || ""))[0]; return !!(m && m.inventario); }
+// una pagina dell'elenco, ma dall'inventario: stessa forma di S3
+function elencaInventario(mg, prefisso, delimitatore) {
+  const pre = prefisso || "", oggetti = [], cartelle = new Set();
+  mg.oggetti.forEach((o) => {
+    if (pre && !o.chiave.startsWith(pre)) return;
+    if (delimitatore) {
+      const resto = o.chiave.slice(pre.length), i = resto.indexOf(delimitatore);
+      if (i >= 0) { cartelle.add(pre + resto.slice(0, i + 1)); return; }
+    }
+    oggetti.push(o);
+  });
+  return { oggetti: oggetti, cartelle: Array.from(cartelle), ancora: "" };
+}
 // SGANCIARE AMAZON. Non e' un guasto da gestire: e' una decisione. Quando
 // il magazzino di casa c'e' e funziona, il secchio a Francoforte esce dal
 // giro — non si legge, non si elenca, non si firma — e le partite che
@@ -5070,6 +5108,7 @@ function magazzinoPredefinito() {
   return MAGAZZINI.filter(magazzinoAcceso)[0] || MAGAZZINI[0] || AMAZZONE;
 }
 function magazzinoDi(bucket) {
+  registraInventario();
   const b = bucket || (S3_SPENTO ? magazzinoPredefinito().bucket : S3.bucket);
   const m = MAGAZZINI.filter((x) => x.bucket && x.bucket === b)[0];
   if (m) return m;
@@ -5078,8 +5117,8 @@ function magazzinoDi(bucket) {
   if (S3_SPENTO) throw new Error("il magazzino \"" + b + "\" non c'e' piu': Amazon e' sganciato");
   return AMAZZONE;
 }
-function magazzinoAcceso(m) { return !!(m && m.bucket && ((m.id && m.segreto) || (m.cartella && fs.existsSync(m.cartella)))); }
-function s3Acceso() { return magazzinoAcceso(AMAZZONE) || MAGAZZINI.some(magazzinoAcceso); }
+function magazzinoAcceso(m) { return !!(m && m.bucket && ((m.id && m.segreto) || (m.cartella && fs.existsSync(m.cartella)) || (m.inventario && fs.existsSync(m.inventario)))); }
+function s3Acceso() { registraInventario(); return magazzinoAcceso(AMAZZONE) || MAGAZZINI.some(magazzinoAcceso); }
 
 // L'unica codifica che AWS accetta nella firma: encodeURIComponent lascia
 // stare cinque caratteri che invece vanno codificati.
@@ -5101,6 +5140,7 @@ async function s3Regione(bucket) {
   // nome del nostro secchio non avrebbe senso
   const m = magazzinoDi(b);
   if (m.cartella) return "locale";
+  if (m.inventario) return m.regione || "eu-west-3";
   if (m.endpoint) return m.regione || "us-east-1";
   if (!bucket && S3.regione) return S3.regione;
   if (regioneVista[b]) return regioneVista[b];
@@ -5122,6 +5162,7 @@ async function s3Firma(chiave, cerca, quanto, bucket) {
 function firmaConRegione(regione, chiave, cerca, quanto, bucket) {
   const secchio = bucket || S3.bucket;
   const m = magazzinoDi(secchio);
+  if (m.inventario) throw new Error("di questo archivio S3 abbiamo solo l'elenco: per aprire i file serve la chiave in sola lettura (in arrivo da Imam)");
   // una cartella non si firma: si indica. Chi chiede l'indirizzo per
   // elencare (chiave vuota) riceve la cartella stessa.
   if (m.cartella) return path.join(m.cartella, String(chiave || ""));
@@ -5174,6 +5215,7 @@ function fraTag(xml, tag) {
 async function s3Pagina(prefisso, ripresa, bucket, delimitatore) {
   const mg = magazzinoDi(bucket || "");
   if (mg.cartella) return elencaCartella(mg.cartella, prefisso || "", delimitatore);
+  if (mg.inventario) return elencaInventario(mg, prefisso || "", delimitatore);
   const cerca = { "list-type": "2", "max-keys": "1000" };
   if (prefisso) cerca.prefix = prefisso;
   if (ripresa) cerca["continuation-token"] = ripresa;
@@ -5269,7 +5311,7 @@ const ARCH_RADICE = process.env.COMOTV_S3_RADICE || "TEMP/";
 // basta una riga.
 function radiciDi(bucket) {
   const m = magazzinoDi(bucket);
-  const r = (m.endpoint || m.cartella) ? (m.radice || "") : ARCH_RADICE;
+  const r = (m.endpoint || m.cartella || m.inventario) ? (m.radice || "") : ARCH_RADICE;
   const v = String(r).split(",").map((x) => x.trim()).filter((x, i, a) => x !== "" || a.length === 1);
   return v.length ? v : [""];
 }
@@ -8723,7 +8765,7 @@ async function riconosciPartita(rec) {
     // indovinare due ore, e i momenti da guardare cadevano fuori posto: la
     // registrazione di tre ore del 9 settembre veniva letta come se fosse di
     // due, e diceva la partita sbagliata. Con la durata giusta l'ha presa.
-    if (!a.misurato) { try { await misuraPartita(rec); } catch (e) {} }
+    if (!a.misurato && !soloElenco(a.bucket)) { try { await misuraPartita(rec); } catch (e) {} }
     const pz = (a.pezzi || [])[0];
     if (!pz) throw new Error("questa partita non ha materiale");
     const regione = await s3Regione(a.bucket);
@@ -9030,6 +9072,7 @@ function orologiInCoda(ripasso) {
                       .concat(Object.keys(ESPN).filter((k) => ((ESPN[k] || {}).eventi || []).length)));
   candidate.forEach((rec) => {
     const a = ARCHIVIO[rec];
+    if (a && soloElenco(a.bucket)) return;                 // solo elenco: niente da leggere
     if (!a || a.orologio || gia.has(rec)) return;
     if (a.orologioFallito && !ripasso) return;        // gia' provata: al giro finale
     CODA_OROLOGI.push(rec);
@@ -9058,6 +9101,7 @@ const CODA_DURATE = [];
 let durateInMoto = 0, durateFatte = 0, durateFallite = 0, durateCambiate = 0, durateDaScrivere = 0;
 const DURATE_INSIEME = 2;
 async function misuraPartita(rec) {
+  if (ARCHIVIO[rec] && soloElenco(ARCHIVIO[rec].bucket)) throw new Error("solo elenco: le durate si misurano quando ci sara' la chiave");
   const a = ARCHIVIO[rec];
   if (!a) return;
   const regione = await s3Regione(a.bucket);
@@ -11266,8 +11310,23 @@ const AZIONI = {
       }
     };
     giro("", 0);
+    // e le partite che stanno solo su S3: si vedono, si cercano, ma i byte
+    // non si leggono finche' non c'e' la chiave
+    let suS3 = 0;
+    Object.keys(ARCHIVIO).forEach((k) => {
+      const a = ARCHIVIO[k];
+      if (!a.soloS3 || !a.chiave) return;
+      const minuti = (a.pezzi || []).reduce((n, z) => n + (z.minuti || 0), 0);
+      const r = regs.find((x) => x.arch && x.arch.rec === k);
+      fuori.push({ nome: path.basename(a.chiave), via: a.chiave, cartella: a.dove || path.dirname(a.chiave), peso: a.peso || (a.pezzi || []).reduce((n, z) => n + (z.peso || 0), 0),
+                   quando: Date.parse(a.quando) || 0, est: path.extname(a.chiave).slice(1).toLowerCase(), rec: k, partita: a.partita || "", competizione: a.competizione || "",
+                   quandoPartita: a.quando || "", durata: r ? (r.durata || 0) : Math.round(minuti * 60), reg: r ? r.id : undefined,
+                   telecronaca: !!(r && PARLATO[r.id] && (PARLATO[r.id].pezzi || []).length), s3: true, bucket: a.bucket, pezzi: (a.pezzi || []).length || 1,
+                   soloElenco: soloElenco(a.bucket), forse: a.riconosciuta && a.riconosciuta.sicura === false ? a.riconosciuta.nome : "" });
+      suS3++;
+    });
     fuori.sort((a, b) => b.quando - a.quando);
-    return { ok: true, eventi: fuori, peso: fuori.reduce((n, x) => n + x.peso, 0), quanti: fuori.length, scrivibile: qnapSiScrive() };
+    return { ok: true, eventi: fuori, peso: fuori.reduce((n, x) => n + x.peso, 0), quanti: fuori.length, suS3: suS3, scrivibile: qnapSiScrive() };
   },
   "clip-qnap-peso": qnapPeso,
   // UNA POSA: un fotogramma fermo della registrazione al secondo chiesto,
