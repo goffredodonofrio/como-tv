@@ -29,6 +29,14 @@
  *    DRIVE_CARTELLE       1n_2D6_d8wYd2Oqzimjzou0oQLoxS63br (ARCHIVIO APPUNTI)
  *  Senza una delle due chiavi, quella fonte si salta e l'altra lavora.
  *
+ *  LE PARTITE CHE COMMENTIAMO (partite.json): da Airtable, base dei Live
+ *  Events, le partite da ieri a fra tre settimane coi loro telecronisti
+ *  (Commento 1 e 2). A ognuna si aggancia la partita ESPN (per prendere la
+ *  formazione) e il foglio CURIOSITA' del giornalista. Il token di Airtable e'
+ *  quello del ponte: arriva con un rimando alla sua configurazione
+ *  (comotv-fogli.service.d/airtable.conf -> comotv.service.d/airtable.conf),
+ *  non e' copiato da nessuna parte.
+ *
  *  A mano:
  *    node fogli-redazione.js                 un giro (Slack + Drive)
  *    node fogli-redazione.js --file f.docx [--autore "Nome"] [--data 2026-09-20]
@@ -57,9 +65,14 @@ function piano(s) {
 }
 
 // ── la rete ─────────────────────────────────────────────────────────
+// ESPN (Akamai), da questa macchina, rifiuta (403) chi si presenta come
+// browser o come node, e lascia passare curl: come la sonda del MAM (clip.js)
+const UA = "curl/8.5.0 comotv-fogli";
 function chiedi(url, opz, corpo) {
+  opz = Object.assign({}, opz || {});
+  opz.headers = Object.assign({ "User-Agent": UA }, opz.headers || {});
   return new Promise((ok, no) => {
-    const r = https.request(url, opz || {}, (res) => {
+    const r = https.request(url, opz, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume();
         return chiedi(new URL(res.headers.location, url).toString(), { headers: (opz || {}).headers }).then(ok, no);
@@ -464,8 +477,139 @@ async function giroDrive(stato) {
   return nuovi;
 }
 
+// ── LE PARTITE DA AIRTABLE ──────────────────────────────────────────
+const AT_BASE = "appdDMcS8JQ4PTdLB", AT_TAB = "tblXKPRWFCLw5pVSt";
+// le competizioni di Airtable e il loro codice ESPN ("" = ESPN non l'ha:
+// giovanili, King's Cup, HNL... la formazione si mette a mano)
+const AT_ESPN = {
+  "Serie A": "ita.1", "Serie B": "ita.2", "Coppa Italia": "ita.coppa_italia", "seriea": "ita.1",
+  "Clausura Liga Profesional": "arg.1", "Apertura Liga Profesional": "arg.1",
+  "Copa Libertadores": "conmebol.libertadores", "Copa Sudamericana": "conmebol.sudamericana",
+  "Recopa Sudamericana": "conmebol.recopa", "Coppa di Portogallo": "por.taca.portugal", "Eredivisie": "ned.1",
+  "Saudi Pro League": "ksa.1", "Scottish Championship": "sco.2", "Scottish League Cup ": "sco.cis",
+  "Scottish League Cup": "sco.cis", "Premier Sports Cup": "sco.cis", "Scottish Premiership": "sco.1",
+  "Scottish Cup": "sco.tennents", "Coppa di Francia": "fra.coupe_de_france", "Carabao Cup": "eng.league_cup",
+  "Championship": "eng.2", "Coppa di Germania": "ger.dfb_pokal", "Bundesliga Austria": "aut.1",
+  "UEFA Champions League": "uefa.champions"
+};
+// non sono partite: studio, programmi, altri sport
+const AT_NON_PARTITE = /^(Studio Live|Studio REC|PRER|EVENTO REC|Karate Combat|Cage Warriors|Maratona|Premiazione|Training Live|Kings League)$/;
+// nelle colonne dei telecronisti c'e' anche altro: segni di lavoro, non persone
+const AT_NON_NOMI = /^(NO TELECRONACA|\?+|TBC|TBD|OK|SOCIAL|RINVIATA|DA CAMBIARE|!+|\d+|NUOVA STAGIONE|RODSSDI|SOLARIOI)$/i;
+function atLeggi(url) {
+  return chiedi(url, { headers: { Authorization: "Bearer " + process.env.COMOTV_AIRTABLE_PAT } }).then((r) => {
+    if (r.codice !== 200) throw new Error("Airtable risponde " + r.codice);
+    return JSON.parse(r.corpo.toString("utf8"));
+  });
+}
+// "GENOA-COMO [ITA]", "PARMA-COMO 3-4 (dcr)" -> casa, ospite, lingua
+function atPartita(t) {
+  let g = String(t || "");
+  const et = g.match(/\[([^\]]+)\]/);
+  g = g.replace(/\s*\[[^\]]*\]\s*/g, " ").replace(/\s+RINVIATA.*$/i, "").replace(/\s*\(\d+-\d+.*?\).*$/i, "")
+       .replace(/\s+\d+-\d+\s*(dcr)?.*$/i, "").replace(/\s{2,}/g, " ").trim();
+  let p = g.split(/\s+-\s+/);
+  if (p.length !== 2) p = g.split("-");
+  if (p.length > 2) p = [p[0], p.slice(1).join("-")];
+  return { casa: (p[0] || "").trim(), ospite: (p[1] || "").trim(), lingua: et ? et[1].trim().toUpperCase() : "" };
+}
+function pianoS(t) { return piano(t).replace(/\b(fc|cf|sc|ac|afc|cd|club|calcio|united|city|town|county|wanderers|albion|athletic|1907|de|la|del)\b/g, " ").replace(/\s+/g, " ").trim(); }
+// i nomi corti dei giornalisti e quelli italiani di Airtable, contro ESPN
+const ALIAS_NOMI = {
+  "wolves": "wolverhampton", "wba": "west bromwich", "west brom": "west bromwich", "spurs": "tottenham",
+  "boro": "middlesbrough", "man utd": "manchester united", "man city": "manchester city", "psv": "psv eindhoven",
+  "qpr": "queens park rangers", "ind santa fe": "independiente santa fe", "ldu": "ldu quito",
+  "salisburgo": "salzburg", "siviglia": "sevilla", "lipsia": "leipzig", "stoccarda": "stuttgart",
+  "friburgo": "freiburg", "colonia": "koln", "magonza": "mainz", "norimberga": "nurnberg",
+  "monaco di baviera": "bayern", "bayern monaco": "bayern", "lisbona": "lisbon", "porto": "fc porto"
+};
+function conAlias(t) { const k = piano(t); return ALIAS_NOMI[k] || k; }
+function stessoNome(a, b) {
+  const x = pianoS(conAlias(a)), y = pianoS(conAlias(b));
+  if (!x || !y) return false;
+  return (" " + x + " ").indexOf(" " + y + " ") >= 0 || (" " + y + " ").indexOf(" " + x + " ") >= 0 ||
+         x.split(" ")[0] === y.split(" ")[0] && x.split(" ")[0].length >= 5;
+}
+const SCORE = {};
+async function partitaEspn(lega, quando, casa, ospite) {
+  // la data italiana e quella di prima: le partite sudamericane di notte per ESPN sono del giorno prima
+  const d = new Date(quando), giorni = [];
+  [0, -1, 1].forEach((k) => { const x = new Date(d.getTime() + k * 864e5); giorni.push(x.toISOString().slice(0, 10).replace(/-/g, "")); });
+  for (const g of giorni) {
+    const k = lega + "|" + g;
+    if (!SCORE[k]) {
+      try { SCORE[k] = await json("https://site.api.espn.com/apis/site/v2/sports/soccer/" + lega + "/scoreboard?dates=" + g); }
+      catch (e) { SCORE[k] = {}; }
+    }
+    for (const e of SCORE[k].events || []) {
+      const c = ((e.competitions || [])[0] || {}).competitors || [];
+      const h = c.filter((x) => x.homeAway === "home")[0], a = c.filter((x) => x.homeAway === "away")[0];
+      if (!h || !a) continue;
+      const nh = [h.team.displayName, h.team.shortDisplayName, h.team.name], na = [a.team.displayName, a.team.shortDisplayName, a.team.name];
+      const ok = (nomi, x) => nomi.some((n) => stessoNome(n, x));
+      if ((ok(nh, casa) && ok(na, ospite)) || (ok(nh, ospite) && ok(na, casa)))
+        return { lega, ev: String(e.id), nome: e.name, casa: h.team.displayName, ospite: a.team.displayName };
+    }
+  }
+  return null;
+}
+async function giroPartite() {
+  if (!process.env.COMOTV_AIRTABLE_PAT) { console.log("[fogli] Airtable: manca il token, salto le partite"); return; }
+  const formula = "AND(IS_AFTER({Data | Orario}, DATEADD(TODAY(), -2, 'days')), IS_BEFORE({Data | Orario}, DATEADD(TODAY(), 22, 'days')), " +
+                  "NOT({Partita} = BLANK()), NOT(FIND(\"RINVIATA\", UPPER({Partita}))), NOT(FIND(\"PRE SHOW\", UPPER({Partita}))))";
+  let off = "", righe = [], giri = 0;
+  do {
+    const q = new URLSearchParams({ filterByFormula: formula, pageSize: "100", "sort[0][field]": "Data | Orario" });
+    ["Partita", "Data | Orario", "Competizione", "Turno", "Commento 1", "Commento 2"].forEach((c, i) => q.append("fields[]", c));
+    if (off) q.set("offset", off);
+    const j = await atLeggi("https://api.airtable.com/v0/" + AT_BASE + "/" + AT_TAB + "?" + q.toString());
+    righe = righe.concat(j.records || []);
+    off = j.offset || "";
+  } while (off && ++giri < 20);
+  // una riga per feed (ITA, ENG, AUDIO): si uniscono per giorno e squadre
+  const unite = new Map();
+  righe.forEach((r) => {
+    const f = r.fields || {}, comp = String(f["Competizione"] || "").trim();
+    if (AT_NON_PARTITE.test(comp)) return;
+    const p = atPartita(f["Partita"]);
+    if (!p.casa || !p.ospite) return;
+    const quando = f["Data | Orario"] || "";
+    const chiave = quando.slice(0, 10) + "|" + piano(p.casa) + "|" + piano(p.ospite);
+    const tel = [].concat(f["Commento 1"] || [], f["Commento 2"] || []).map((x) => String(x).trim())
+      .filter((x) => x && !AT_NON_NOMI.test(x));
+    const u = unite.get(chiave) || { id: r.id, quando, competizione: comp, turno: f["Turno"] || "", casa: p.casa, ospite: p.ospite,
+                                    lega: AT_ESPN[comp] || AT_ESPN[comp.trim()] || "", telecronisti: [], lingue: [] };
+    tel.forEach((n) => { if (!u.telecronisti.some((t) => t.nome === n)) u.telecronisti.push({ nome: n, lingua: p.lingua || "" }); });
+    if (p.lingua && u.lingue.indexOf(p.lingua) < 0) u.lingue.push(p.lingua);
+    unite.set(chiave, u);
+  });
+  const partite = Array.from(unite.values());
+  // la partita ESPN e il foglio CURIOSITA' di ognuna
+  const indice = leggiJson(path.join(PUB, "indice.json"), { fogli: [] }).fogli || [];
+  for (const m of partite) {
+    if (m.lega) { try { m.espn = await partitaEspn(m.lega, m.quando, m.casa, m.ospite); } catch (e) { m.espn = null; } }
+    const giorno = m.quando.slice(0, 10), t0 = Date.parse(giorno);
+    m.fogli = indice.filter((f) => {
+      if (f.tipo !== "partita") return false;
+      const dt = Math.abs(Date.parse(f.data) - t0) / 864e5;
+      if (!(dt <= 5)) return false;
+      const k = f.chiavi || [];
+      // i nomi di Airtable e, se c'e', quelli di ESPN
+      const C = [m.casa].concat(m.espn ? [m.espn.casa] : []), O = [m.ospite].concat(m.espn ? [m.espn.ospite] : []);
+      const uno = (k1, lista) => lista.some((n) => stessoNome(k1, n));
+      if (k.length === 2) return (uno(k[0], C) && uno(k[1], O)) || (uno(k[0], O) && uno(k[1], C));
+      return stessoNome(f.cerca || "", m.casa) && stessoNome(f.cerca || "", m.ospite) ||
+             (f.cerca || "").indexOf(pianoS(m.casa)) >= 0 && (f.cerca || "").indexOf(pianoS(m.ospite)) >= 0;
+    }).map((f) => f.id);
+  }
+  scriviJson(path.join(PUB, "partite.json"), { aggiornato: new Date().toISOString(), partite });
+  console.log("[fogli] partite: " + partite.length + " da Airtable, " + partite.filter((m) => m.espn).length +
+              " con ESPN, " + partite.filter((m) => m.fogli.length).length + " con le curiosita'");
+}
+
 (async () => {
   const stato = leggiJson(STATO, {});
+  if (arg("partite")) return giroPartite();
   if (arg("rifai")) return rifai();
   const f = arg("file");
   if (f) {
@@ -482,4 +626,5 @@ async function giroDrive(stato) {
   }
   if (nuovi || !fs.existsSync(path.join(PUB, "indice.json"))) rifai();
   console.log("[fogli] giro fatto: " + nuovi + " fogli nuovi");
+  try { await giroPartite(); } catch (e) { console.log("[fogli] partite: " + e.message); }
 })().catch((e) => { console.error("[fogli] ERRORE " + e.message); process.exit(1); });

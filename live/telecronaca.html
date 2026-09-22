@@ -62,10 +62,14 @@
   .nota-esp{font-size:12.5px;color:var(--fg-3);margin-top:8px;}
   .nota-esp.ok{color:#7BDCAA;} .nota-esp.err{color:#FF8A8C;}
   html.lav-chiara .nota-esp{color:#4A5068;} html.lav-chiara .nota-esp.ok{color:#1C7A4A;} html.lav-chiara .nota-esp.err{color:#B3171C;}
+  details.amano .sottotit{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--fg-3);margin:14px 0 6px;}
   details.amano summary{cursor:pointer;font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.14em;
     text-transform:uppercase;color:var(--gold);}
   html.lav-chiara details.amano summary{color:#8A6A1E;}
   button.azione:disabled{opacity:.45;cursor:default;}
+  /* l'orologio del menu e' oro: sul chiaro non si legge, diventa blu notte */
+  html.lav-chiara #cnav-ora{color:#0A0F24;text-shadow:none;}
   html.lav-chiara .tcerca>button.tc-scelta{background:#FBF9F3;color:#0A0F24;border-color:#CFC7B4;}
   html.lav-chiara .tcerca .tc-pan{background:#FFFFFF;border-color:#DCD5C4;}
   html.lav-chiara .tcerca .tc-pan input{background:#FBF9F3;color:#0A0F24;border-color:#CFC7B4;}
@@ -103,22 +107,30 @@
       della redazione. È tutto tuo: <b>non tocca la regia e non va in onda</b>.</div>
   </header>
 
-  <!-- la partita da ESPN: formazioni ufficiali quando ci sono (circa un'ora
-       prima), se no le rose; e volendo la diretta (cambi, cartellini, angoli) -->
+  <!-- LE PARTITE DI COMO TV: quelle che commentiamo, da Airtable (Live Events),
+       coi telecronisti; per ognuna la partita ESPN e il foglio CURIOSITA'.
+       Le raccoglie il lettore sulla VM (13_Server_VM/fogli) in partite.json -->
   <div class="panel">
+    <div class="riga">
+      <div style="flex:0 1 240px"><label for="chiSei">Chi sei</label><select id="chiSei"><option value="">Tutti i telecronisti</option></select></div>
+      <div style="flex:3 1 440px"><label for="atPart">Le partite di Como TV</label><select id="atPart"><option value="">Carico le partite&hellip;</option></select></div>
+      <div style="flex:0 0 auto"><button type="button" class="azione" id="btnPrendi" disabled>&#9917; Prendi la formazione</button></div>
+      <div style="flex:0 0 auto"><button type="button" class="azione" id="btnSegui" disabled>&#128308; Segui in diretta</button></div>
+    </div>
+    <div id="espNota" class="nota-esp">Le partite sono quelle di Airtable, coi loro telecronisti. Scegli chi sei: le tue vengono per prime.</div>
+  </div>
+
+  <details class="panel amano">
+    <summary>Altre partite: da ESPN a scelta, o le squadre a mano (giovanili, amichevoli)</summary>
+    <div class="sottotit">Da ESPN</div>
     <div class="riga">
       <div style="flex:1 1 240px"><label for="espComp">Competizione</label><select id="espComp"><option value="">—</option></select></div>
       <div style="flex:0 1 170px"><label for="espGiorno">Giorno</label><select id="espGiorno"></select></div>
       <div style="flex:2 1 280px"><label for="espPart">Partita</label><select id="espPart" disabled><option value="">—</option></select></div>
       <div style="flex:0 0 auto"><button type="button" class="azione" id="btnEspn" disabled>&#9917; Prendi la formazione</button></div>
-      <div style="flex:0 0 auto"><button type="button" class="azione" id="btnSegui" disabled>&#128308; Segui in diretta</button></div>
     </div>
-    <div id="espNota" class="nota-esp">Scegli competizione, giorno e partita: la formazione arriva da ESPN.</div>
-  </div>
-
-  <details class="panel amano">
-    <summary>Oppure scegli le squadre a mano (giovanili, amichevoli, partite che ESPN non ha)</summary>
-    <div class="riga" style="margin-top:12px">
+    <div class="sottotit">A mano</div>
+    <div class="riga">
       <div style="flex:1 1 220px"><label for="comp">Competizione</label><select id="comp"><option value="">—</option></select></div>
       <div style="flex:1 1 200px"><label for="sqA">Squadra di casa</label><select id="sqA" disabled><option value="">—</option></select></div>
       <div style="flex:1 1 200px"><label for="sqB">Squadra ospite</label><select id="sqB" disabled><option value="">—</option></select></div>
@@ -325,9 +337,11 @@
     });
     return out.concat(resto.slice(k)).filter(Boolean);
   }
-  el("btnEspn").addEventListener("click", function () {
-    var lega = el("espComp").value, ev = el("espPart").value;
+  el("btnEspn").addEventListener("click", function () { caricaEspn(el("espComp").value, el("espPart").value, null); });
+  var PARTITA = null;            // la partita di Airtable in campo (per il nome e il telecronista del salvataggio)
+  function caricaEspn(lega, ev, partita) {
     if (!lega || !ev) return;
+    PARTITA = partita;
     espDico("Prendo la partita da ESPN&hellip;");
     fetch(ESPN + lega + "/summary?event=" + encodeURIComponent(ev))
       .then(function (r) { return r.json(); })
@@ -385,6 +399,82 @@
         });
       })
       .catch(function () { espDico("Partita non caricata: ESPN non risponde.", "err"); });
+  }
+
+  // ── LE PARTITE DI COMO TV ─────────────────────────────────────────────
+  var PARTITE = [], CHI_LS = "comotv.telecronaca.chi";
+  var GIORNI = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"];
+  var MESI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
+  function titolo(t) { return String(t || "").toLowerCase().replace(/(^|[\s.'-])([a-zà-ÿ])/g, function (m, a, b) { return a + b.toUpperCase(); }); }
+  function chiDi(m) {
+    return m.telecronisti.map(function (t) { return t.nome + (t.lingua && m.lingue.length > 1 ? " (" + t.lingua + ")" : ""); }).join(", ");
+  }
+  function mia(m, chi) { return !!chi && m.telecronisti.some(function (t) { return t.nome === chi; }); }
+  function disegnaPartite() {
+    var chi = el("chiSei").value, prima = el("atPart").value;
+    var oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+    function voce(m) {
+      var d = new Date(m.quando);
+      var ora = d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+      return '<option value="' + esc(m.id) + '">' + ora + " · " + esc(titolo(m.casa) + " – " + titolo(m.ospite)) + " · " + esc(m.competizione) +
+             (m.telecronisti.length ? " · " + esc(chiDi(m)) : "") + (m.fogli && m.fogli.length ? " · \u270E curiosità" : "") +
+             (m.espn ? "" : " · a mano") + "</option>";
+    }
+    function perGiorno(lista, testa) {
+      var h = "", g = "";
+      lista.forEach(function (m) {
+        var d = new Date(m.quando), k = d.toDateString();
+        if (k !== g) {
+          if (g) h += "</optgroup>";
+          g = k;
+          var diff = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - oggi) / 864e5);
+          var nome = diff === 0 ? "Oggi" : diff === 1 ? "Domani" : diff === -1 ? "Ieri" : GIORNI[d.getDay()] + " " + d.getDate() + " " + MESI[d.getMonth()];
+          h += '<optgroup label="' + esc((testa ? testa + " · " : "") + nome) + '">';
+        }
+        h += voce(m);
+      });
+      return h + (g ? "</optgroup>" : "");
+    }
+    var mie = chi ? PARTITE.filter(function (m) { return mia(m, chi); }) : [];
+    var altre = PARTITE.filter(function (m) { return mie.indexOf(m) < 0; });
+    el("atPart").innerHTML = '<option value="">— ' + (mie.length ? mie.length + (mie.length > 1 ? " tue partite" : " tua partita") + ", " : "") +
+      PARTITE.length + " in tutto —</option>" + perGiorno(mie, "Le tue") + perGiorno(altre, chi ? "Le altre" : "");
+    // di partenza: la prima tua (o la prima) da oggi in avanti
+    var vicina = (mie.length ? mie : PARTITE).filter(function (m) { return new Date(m.quando) >= oggi; })[0];
+    el("atPart").value = prima && PARTITE.some(function (m) { return m.id === prima; }) ? prima : (vicina ? vicina.id : "");
+    el("btnPrendi").disabled = !el("atPart").value;
+  }
+  fetch("/fogli-redazione/partite.json", { cache: "no-store" })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      PARTITE = (j.partite || []).slice().sort(function (a, b) { return String(a.quando).localeCompare(String(b.quando)); });
+      var nomi = [];
+      PARTITE.forEach(function (m) { m.telecronisti.forEach(function (t) { if (nomi.indexOf(t.nome) < 0) nomi.push(t.nome); }); });
+      nomi.sort(function (a, b) { return a.localeCompare(b); });
+      el("chiSei").innerHTML = '<option value="">Tutti i telecronisti</option>' + nomi.map(function (n) {
+        return '<option value="' + esc(n) + '">' + esc(n) + "</option>";
+      }).join("");
+      var io = ""; try { io = localStorage.getItem(CHI_LS) || ""; } catch (e) {}
+      if (nomi.indexOf(io) >= 0) el("chiSei").value = io;
+      disegnaPartite();
+      espDico(PARTITE.length ? "Le partite di Airtable da ieri a fra tre settimane, coi loro telecronisti. <b>Prendi la formazione</b> la porta in campo da ESPN."
+                             : "Nessuna partita su Airtable nei prossimi giorni.", PARTITE.length ? "" : "err");
+    })
+    .catch(function () { el("atPart").innerHTML = '<option value="">Partite non raggiungibili</option>'; espDico("Le partite di Airtable non si leggono: usa Altre partite qui sotto.", "err"); });
+  el("chiSei").addEventListener("change", function () {
+    try { localStorage.setItem(CHI_LS, this.value); } catch (e) {}
+    disegnaPartite(); disegnaElenco();
+  });
+  el("atPart").addEventListener("change", function () { el("btnPrendi").disabled = !this.value; });
+  el("btnPrendi").addEventListener("click", function () {
+    var m = PARTITE.filter(function (x) { return x.id === el("atPart").value; })[0];
+    if (!m) return;
+    if (m.espn) return caricaEspn(m.espn.lega, m.espn.ev, m);
+    // giovanili, King's Cup...: ESPN non le ha
+    PARTITA = m;
+    document.querySelector("details.amano").open = true;
+    espDico("<b>" + esc(titolo(m.casa) + " – " + titolo(m.ospite)) + "</b> (" + esc(m.competizione) + ") ESPN non ce l'ha: " +
+            "sceglila a mano qui sotto, in <b>Altre partite</b>.", "err");
   });
   el("btnSegui").addEventListener("click", function () {
     if (!ESP.ev) return;
@@ -409,19 +499,33 @@
     }
     return out.sort();
   }
+  // le partite salvate col loro telecronista; quelle di chi e' scelto in "Chi sei" per prime
   function disegnaElenco() {
-    el("salvate").innerHTML = '<option value="">—</option>' + elenco().map(function (n) {
-      return '<option value="' + esc(n) + '">' + esc(n) + "</option>";
+    var chi = el("chiSei") ? el("chiSei").value : "";
+    var v = elenco().map(function (n) {
+      var t = ""; try { t = (JSON.parse(localStorage.getItem(LS + n) || "{}") || {}).tele || ""; } catch (e) {}
+      return { n: n, t: t };
+    });
+    v.sort(function (a, b) { return (chi && a.t === chi ? 0 : 1) - (chi && b.t === chi ? 0 : 1) || a.n.localeCompare(b.n); });
+    el("salvate").innerHTML = '<option value="">—</option>' + v.map(function (x) {
+      return '<option value="' + esc(x.n) + '">' + esc(x.n) + (x.t ? " · " + esc(x.t) : "") + "</option>";
     }).join("");
   }
   disegnaElenco();
   el("btnSalva").addEventListener("click", function () {
     var n = el("nomeLav").value.trim();
+    // senza nome: quello della partita in campo
+    if (!n && PARTITA) { n = titolo(PARTITA.casa) + "-" + titolo(PARTITA.ospite) + " " + new Date(PARTITA.quando).toLocaleDateString("it-IT"); el("nomeLav").value = n; }
     if (!n) { L.nota("Dai un nome alla partita prima di salvarla.", "err"); return; }
-    try { localStorage.setItem(LS + n, JSON.stringify(L.stato())); }
+    // si salva anche chi commenta e che partita e': si vede nell'elenco
+    var st = L.stato();
+    st.tele = el("chiSei").value || (PARTITA && PARTITA.telecronisti[0] ? PARTITA.telecronisti[0].nome : "");
+    st.partita = PARTITA ? { casa: PARTITA.casa, ospite: PARTITA.ospite, quando: PARTITA.quando, competizione: PARTITA.competizione } : null;
+    try { localStorage.setItem(LS + n, JSON.stringify(st)); }
     catch (e) { L.nota("Non salvata: memoria piena.", "err"); return; }
     disegnaElenco(); el("salvate").value = n;
-    L.nota("Salvata come <b>" + esc(n) + "</b>, su questo computer.", "ok");
+    L.nota("Salvata come <b>" + esc(n) + "</b>" + (st.tele ? " (" + esc(st.tele) + ")" : "") +
+           ": campo, cambi, cartellini e curiosita' scritte restano <b>su questo computer</b>, in questo browser.", "ok");
   });
   el("btnApri").addEventListener("click", function () {
     var n = el("salvate").value;
