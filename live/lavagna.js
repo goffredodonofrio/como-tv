@@ -1188,15 +1188,24 @@ window.Lavagna = (function () {
             return k.some(function (c) { return stessaSquadra(c, SQ[p.lato].nome); }) ? 0 : 1;
           }
           suoi.sort(function (a, b) { return mia(a) - mia(b) || String(per[b.id].data).localeCompare(String(per[a.id].data)); });
-          var n = suoi.length;
-          dove.innerHTML = '<div class="sttit">Dai fogli della redazione' + (n > 4 ? " · " + n + " frasi" : "") + "</div>" +
-            suoi.slice(0, 4).map(function (x) {
-              var f = per[x.id];
-              return '<div class="fr">' + esc(x.frase) + "<small>" + (x.sezione ? "<b>" + esc(x.sezione) + "</b> · " : "") +
-                     esc((f.squadre || []).join(" - ") || f.titolo) +
-                     " · " + esc(dataIt(f.data)) + (f.autore ? " · " + esc(f.autore) : "") +
-                     ' · <a data-foglio="' + esc(f.id) + '" data-frase="' + esc(x.frase) + '">leggi le curiosit&agrave;</a></small></div>';
-            }).join("");
+          // due gruppi: il foglio della partita scelta (quello del telecronista)
+          // e quello che hanno scritto i colleghi sul giocatore in altri fogli
+          var qui = SCELTA ? SCELTA.ids : [];
+          var questa = suoi.filter(function (x) { return qui.indexOf(x.id) >= 0; });
+          var altri = suoi.filter(function (x) { return qui.indexOf(x.id) < 0; });
+          function frase(x, conFoglio) {
+            var f = per[x.id];
+            return '<div class="fr">' + esc(x.frase) + "<small>" + (x.sezione ? "<b>" + esc(x.sezione) + "</b> · " : "") +
+                   (conFoglio ? esc((f.squadre || []).join(" - ") || f.titolo) + " · " + esc(dataIt(f.data)) + " · " : "") +
+                   (f.autore ? esc(f.autore) + " · " : "") +
+                   '<a data-foglio="' + esc(f.id) + '" data-frase="' + esc(x.frase) + '">leggi nel foglio</a></small></div>';
+          }
+          dove.innerHTML =
+            (questa.length ? '<div class="sttit">&#128221; Dal foglio di questa partita' + (questa.length > 6 ? " · " + questa.length + " frasi" : "") + "</div>" +
+                             questa.slice(0, 6).map(function (x) { return frase(x, false); }).join("") : "") +
+            (altri.length ? '<div class="sttit"' + (questa.length ? ' style="margin-top:10px"' : "") + '>&#128101; Dai colleghi' +
+                            (altri.length > 4 ? " · " + altri.length + " frasi" : "") + "</div>" +
+                            altri.slice(0, 4).map(function (x) { return frase(x, true); }).join("") : "");
           dove.hidden = false;
         });
     }
@@ -1294,8 +1303,9 @@ window.Lavagna = (function () {
         // fogli arrivano dopo e allungano il foglietto, qui non lo spingono giu'
         '<textarea placeholder="✍️ Le tue curiosità: precedenti, come si pronuncia il nome, cosa dire in telecronaca…"></textarea>' +
         '<div class="dasapere" data-dasapere="1" hidden></div>' +
-        '<div class="dafogli" data-dafogli="1" hidden></div>' +
+        // subito le statistiche, poi le frasi dei fogli (questa partita, poi i colleghi)
         '<div class="stagione" data-stagione-box="1"></div>' +
+        '<div class="dafogli" data-dafogli="1" hidden></div>' +
         '<div class="piede">' +
           '<button type="button" data-f="togli" class="via">Togli dal campo</button>' +
           '<button type="button" data-f="chiudi">Chiudi</button>' +
