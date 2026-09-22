@@ -249,6 +249,7 @@
     });
   });
   el("btnCarica").addEventListener("click", function () {
+    L.partitaScelta(null); PARTITA = null;
     L.carica({ A: { nome: NOMI.A, rosa: ROSE.A, mod: el("modA").value, all: ALL.A, tid: TID.A },
                B: { nome: NOMI.B, rosa: ROSE.B, mod: el("modB").value, all: ALL.B, tid: TID.B } });
     dico("In campo. Da qui si trascina, si cambia e si scrive.", "ok");
@@ -349,6 +350,7 @@
   function caricaEspn(lega, ev, partita) {
     if (!lega || !ev) return;
     PARTITA = partita;
+    if (!partita) L.partitaScelta(null);          // fuori da Airtable: curiosita' agganciate per nome
     espDico("Prendo la partita da ESPN&hellip;");
     fetch(ESPN + lega + "/summary?event=" + encodeURIComponent(ev))
       .then(function (r) { return r.json(); })
@@ -459,6 +461,7 @@
     var scelta = prima && delGiorno.some(function (m) { return m.id === prima; }) ? prima : ((mie[0] || delGiorno[0] || {}).id || "");
     el("atPart").value = scelta;
     el("btnPrendi").disabled = !scelta;
+    scegliPartita();
     var tutti = giorniCon(chi);
     el("giornoPrima").disabled = !tutti.some(function (x) { return x < giorno; });
     el("giornoDopo").disabled = !tutti.some(function (x) { return x > giorno; });
@@ -494,7 +497,13 @@
     try { localStorage.setItem(CHI_LS, this.value); } catch (e) {}
     disegnaPartite(true); disegnaElenco();
   });
-  el("atPart").addEventListener("change", function () { el("btnPrendi").disabled = !this.value; });
+  // la partita scelta nell'elenco: la lavagna ne mostra le curiosita' (i fogli agganciati da Airtable)
+  function scegliPartita() {
+    var m = PARTITE.filter(function (x) { return x.id === el("atPart").value; })[0];
+    if (!m) { L.partitaScelta(null); return; }
+    L.partitaScelta(m.fogli || [], m.espn ? m.espn.casa : titolo(m.casa), m.espn ? m.espn.ospite : titolo(m.ospite));
+  }
+  el("atPart").addEventListener("change", function () { el("btnPrendi").disabled = !this.value; scegliPartita(); });
   el("btnPrendi").addEventListener("click", function () {
     var m = PARTITE.filter(function (x) { return x.id === el("atPart").value; })[0];
     if (!m) return;

@@ -62,6 +62,8 @@ window.Lavagna = (function () {
       ".lav button:hover{color:var(--lav-oroB);border-color:rgba(201,162,75,.28);}" +
       ".lav button.on{background:rgba(201,162,75,.16);border-color:var(--lav-oro);color:var(--lav-oroB);}" +
       ".lav button.via{color:#FF6B6E;border-color:rgba(229,27,32,.4);}" +
+      ".lav button.curio-tasto{color:#E3C271;border-color:rgba(201,162,75,.6);background:rgba(201,162,75,.14);}" +
+      ".lav.chiara button.curio-tasto{color:#6E520F;border-color:#8A6A1E;background:#F1E3BE;}" +
       ".lav .sep{width:1px;height:24px;background:rgba(245,241,230,.08);margin:0 2px;}" +
       ".lav .colore{width:24px;height:24px;border-radius:50%;padding:0;border:2px solid rgba(245,241,230,.25);}" +
       ".lav .colore.on{border-color:#fff;box-shadow:0 0 0 2px rgba(201,162,75,.5);}" +
@@ -300,13 +302,13 @@ window.Lavagna = (function () {
         '<span class="sep"></span>' +
         '<button type="button" data-az="schiera">&#9917; Schiera</button>' +
         '<button type="button" data-az="indietro" title="Annulla l\'ultima mossa (Cmd/Ctrl+Z)">&#8630; Annulla</button>' +
+        // le curiosita' della partita: il foglio del giornalista, in una finestra a parte
+        '<button type="button" class="curio-tasto" data-az="foglio" hidden>&#128161; Curiosit&agrave;</button>' +
         '<button type="button" class="via" data-az="pulisci">Cancella i disegni</button>' +
         '<span class="sep"></span>' +
         '<button type="button" data-az="png">&#11015; Immagine</button>' +
         '<button type="button" data-az="stampa">&#128424; Stampa</button>' +
         '<button type="button" data-az="tema"></button>' +
-        // il foglio partita del giornalista, quando c'e': si apre in una finestra a parte
-        '<button type="button" data-az="foglio" hidden>&#128196; Curiosit&agrave;</button>' +
         (opz.salva ? '<span class="sep"></span><span data-salva="1"></span>' : "") +
       '</div>' +
       // seguire una partita vera: la scelta sta qui dentro, cosi' vale in
@@ -1090,7 +1092,20 @@ window.Lavagna = (function () {
         .catch(function () { return INDICE || []; });
     }
     // i fogli di questa partita, dal piu' recente (anche di sfide passate fra le due)
+    // LA PARTITA SCELTA: chi usa la lavagna (TELECRONACA) puo' dire quale
+    // partita e' selezionata e quali sono i suoi fogli (da Airtable): allora
+    // valgono quelli, non l'aggancio per nome
+    var SCELTA = null;                 // { ids: [...], a: "nome casa", b: "nome ospite" }
+    function partitaScelta(ids, a, b) {
+      SCELTA = ids ? { ids: ids.slice(), a: a || "", b: b || "" } : null;
+      tastoFoglio();
+    }
+    function nomiSquadre() { return SCELTA ? [SCELTA.a, SCELTA.b] : [SQ.A.nome, SQ.B.nome]; }
     function fogliPartita(v) {
+      if (SCELTA) {
+        return v.filter(function (f) { return SCELTA.ids.indexOf(f.id) >= 0; })
+          .sort(function (x, y) { return String(y.data).localeCompare(String(x.data)); });
+      }
       return v.filter(function (f) {
         var k = f.chiavi || [];
         if (f.tipo && f.tipo !== "partita") return false;
@@ -1102,8 +1117,9 @@ window.Lavagna = (function () {
     // le schede di una squadra sola ("Liverpool 2026:27", "Rosa Como 1907")
     function fogliSquadra(v) {
       return v.filter(function (f) {
+        var n = nomiSquadre();
         return f.tipo === "squadra" && (f.chiavi || []).length === 1 &&
-               (stessaSquadra(f.chiavi[0], SQ.A.nome) || stessaSquadra(f.chiavi[0], SQ.B.nome));
+               (stessaSquadra(f.chiavi[0], n[0]) || stessaSquadra(f.chiavi[0], n[1]));
       });
     }
     function tastoFoglio() {
@@ -1124,8 +1140,9 @@ window.Lavagna = (function () {
       function apri(x) {
         if (!x) return;
         // le squadre in lavagna: la finestra elenca anche gli altri fogli della sfida e le schede delle squadre
-        var w = window.open("curiosita.html?id=" + encodeURIComponent(x) + "&a=" + encodeURIComponent(SQ.A.nome || "") +
-                            "&b=" + encodeURIComponent(SQ.B.nome || ""), "comotv-curiosita",
+        var n = nomiSquadre();
+        var w = window.open("curiosita.html?id=" + encodeURIComponent(x) + "&a=" + encodeURIComponent(n[0] || "") +
+                            "&b=" + encodeURIComponent(n[1] || ""), "comotv-curiosita",
                             "width=1000,height=" + Math.min(1100, screen.availHeight || 1000) + ",resizable=yes,scrollbars=yes");
         if (w) w.focus(); else nota("Il browser ha bloccato la finestra delle Curiosit&agrave;: consenti le finestre per questo sito.", "err");
       }
@@ -1934,7 +1951,7 @@ window.Lavagna = (function () {
     });
     disegnaRose(); disegnaCurio(); disegnaConta();
     return { carica: carica, stato: stato, riapri: riapri, schiera: schiera, nota: nota,
-             annulla: annulla, rifai: rifai, segui: seguiPartita, stacca: fermaPartita,
+             annulla: annulla, rifai: rifai, segui: seguiPartita, stacca: fermaPartita, partitaScelta: partitaScelta,
              barraSalva: box.querySelector("[data-salva]"), moduli: Object.keys(MODULI) };
   }
 

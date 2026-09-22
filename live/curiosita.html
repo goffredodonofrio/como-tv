@@ -41,6 +41,7 @@
     --fondo:#0A0F24;--carta:#111833;--testo:#F5F1E6;--testo2:#8A8B96;--oro:#C9A24B;--oroB:#E3C271;
     --linea:rgba(245,241,230,.1);--lineaoro:rgba(201,162,75,.35);--chip:rgba(245,241,230,.05);
   }
+  html:not(.scura) main{background:var(--fondo);}
   body{font-family:'DM Sans',system-ui,sans-serif;font-weight:500;background:var(--fondo);color:var(--testo);
     font-size:16px;line-height:1.6;padding-bottom:60px;}
   .foglio{max-width:920px;margin:0 auto;background:var(--carta);min-height:100vh;
@@ -69,17 +70,26 @@
   nav a:hover{background:var(--chip);}
   nav a.qui{background:var(--oro);border-color:var(--oro);color:var(--carta);}
 
-  main{padding:6px clamp(18px,4vw,40px) 20px;}
-  h2{font-family:'Mazzard',sans-serif;font-size:14px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
-    color:var(--oro);margin:26px 0 9px;padding-top:12px;border-top:1px solid var(--lineaoro);scroll-margin-top:70px;}
-  h3{font-size:17px;font-weight:700;margin:15px 0 5px;}
+  main{padding:14px clamp(12px,3vw,30px) 20px;font-size:var(--corpo,17px);}
+  /* ogni sezione e' una scheda: emoji + titolo, poi il contenuto */
+  .sez{background:var(--carta);border:1px solid var(--linea);border-left:4px solid var(--oro);border-radius:12px;
+    padding:4px 18px 10px;margin:0 0 14px;}
+  .sez.sola{border-left-color:var(--linea);}
+  h2{font-family:'Mazzard',sans-serif;font-size:15px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--oroB);margin:0 -18px 10px;padding:11px 18px 9px;border-bottom:1px solid var(--lineaoro);
+    display:flex;gap:10px;align-items:center;scroll-margin-top:70px;}
+  h2 .emo,nav .emo{font-size:1.25em;letter-spacing:0;line-height:1;}
+  h3{font-size:1.06em;font-weight:700;margin:14px 0 5px;}
+  li::marker{color:var(--oro);}
+  .grande{display:inline-flex;gap:0;}
+  .grande button{min-width:34px;}
   h4{font-size:12.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--testo2);margin:13px 0 4px;}
   p{margin:0 0 9px;}
   ul{margin:0 0 10px;padding-left:20px;}
   li{margin:0 0 6px;}
   b{font-weight:700;}
   dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:2px 0 11px;}
-  dt{font-weight:700;color:var(--testo2);font-size:14px;padding-top:1px;}
+  dt{font-weight:700;color:var(--testo2);font-size:.86em;padding-top:2px;}
   dd{margin:0;}
   table{border-collapse:collapse;margin:4px 0 12px;font-size:14.5px;font-variant-numeric:tabular-nums;}
   th,td{padding:5px 10px;text-align:center;border-bottom:1px solid var(--linea);}
@@ -92,6 +102,7 @@
     nav,.azioni{display:none;}
     .foglio{border:0;max-width:none;}
     h2{break-after:avoid;}
+    .sez{break-inside:avoid-page;border:1px solid #ccc;}
   }
 </style>
 </head>
@@ -105,6 +116,7 @@
       <a id="originale" target="_blank" rel="noopener" hidden>Apri l'originale</a>
       <button type="button" id="stampa">Stampa</button>
       <button type="button" id="tema">Tema scuro</button>
+      <span class="grande"><button type="button" id="piu" title="Testo più grande">A+</button><button type="button" id="meno" title="Testo più piccolo">A&minus;</button></span>
     </div>
     <div class="altri" id="altri" hidden></div>
   </header>
@@ -137,6 +149,17 @@
   try { salvato = localStorage.getItem("comotv.lavagna.tema"); } catch (e) {}
   tema(salvato === "scura");
   el("tema").addEventListener("click", function () { tema(!document.documentElement.classList.contains("scura"), true); });
+  // la grandezza del testo: si ricorda, da 14 a 26
+  var corpo = 17;
+  try { corpo = +localStorage.getItem("comotv.curiosita.corpo") || 17; } catch (e) {}
+  function grandezza(n) {
+    corpo = Math.max(14, Math.min(26, n));
+    document.documentElement.style.setProperty("--corpo", corpo + "px");
+    try { localStorage.setItem("comotv.curiosita.corpo", String(corpo)); } catch (e) {}
+  }
+  grandezza(corpo);
+  el("piu").addEventListener("click", function () { grandezza(corpo + 2); });
+  el("meno").addEventListener("click", function () { grandezza(corpo - 2); });
   el("stampa").addEventListener("click", function () { window.print(); });
 
   var id = new URLSearchParams(location.search).get("id") || "";
@@ -208,13 +231,36 @@
     });
     el("dati").textContent = testa.join(" · ");
 
+    // la stessa icona per lo stesso argomento, chiunque abbia scritto il foglio
+    var ICONE = [
+      [/dati (della |del |di )?(partita|match|gara)|scheda (della )?partita|match info|info partita/, "📋"],
+      [/arbitr|referee|var\b|direttore di gara/, "🟨"],
+      [/precedent|testa a testa|scontri|h2h|head to head|confront/, "⚔️"],
+      [/allenator|tecnic|mister|coach|panchin/, "🧑‍💼"],
+      [/infortun|squalific|indisponibil|assent|diffidat/, "🚑"],
+      [/formazion|probabil|giocator|rosa|uomini chiave|key player|marcator|bomber|capocannon/, "👥"],
+      [/opta|stats|statistic|numer|dati/, "📈"],
+      [/stagione|classifica|ultime \d+|forma|come arriva|risultat|cammino/, "📊"],
+      [/storia|history|palmar|titoli vinti|trofe|promozioni|fondazion/, "📜"],
+      [/stadio|impianto|stadium|arena/, "🏟️"],
+      [/curiosit|info recenti|lo sapevi|sapere|aneddot|facts/, "💡"],
+      [/intro|presentazion|contesto|vigilia|apertura/, "🎙️"],
+      [/clip|playout|audio|bumper|running order|source|\bdur\b|time \(gmt|highlights|playlist|simplylive|off air|to air|gfx|\bcam|shot|titles|break|kick off|tunnel|warm up|match mix|commentary|celebration|coin toss|huddle|arrivals|colour|facs|call time/, "🎬"],
+      [/oitavas|round of|play ?off|finale|semifinal|quarti|ottavi|girone|gruppo|leg\b|andata|ritorno|coppa|cup/, "🏆"]
+    ];
+    function icona(t) {
+      var k = String(t || "").toLowerCase();
+      if (stessa(piano(A), t) || stessa(piano(Bn), t) || (f.chiavi || []).some(function (c) { return stessa(c, t); })) return "🛡️";
+      for (var i = 0; i < ICONE.length; i++) if (ICONE[i][0].test(k)) return ICONE[i][1];
+      return "📌";
+    }
     function riga(x, lead) {
       // "Etichetta: resto" -> l'etichetta in grassetto, se non c'e' gia' un attacco
       var m = !lead && /^([A-Za-zÀ-ÿ][^:\d]{1,30}):\s+(.+)$/.exec(x || "");
       if (m && !/[.!?]/.test(m[1]) && m[1].split(" ").length <= 4) { lead = m[1] + ":"; x = m[2]; }
       return (lead ? "<b>" + esc(lead) + "</b> " : "") + esc(x || "");
     }
-    var h = "", sezioni = [], kv = [], lista = false;
+    var h = "", sezioni = [], kv = [], lista = false, aperta = false;
     function chiudi() {
       if (kv.length) {
         h += "<dl>" + kv.map(function (b) { return "<dt>" + esc(b.k) + "</dt><dd>" + esc(b.v) + "</dd>"; }).join("") + "</dl>";
@@ -223,14 +269,17 @@
       if (lista) { h += "</ul>"; lista = false; }
     }
     B.forEach(function (b) {
+      if (!aperta && b.t !== "h0" && b.t !== "h1") { h += '<section class="sez sola">'; aperta = true; }
       if (b.t !== "kv" && kv.length) { var l = lista; lista = false; chiudi(); lista = l; }
       if (b.t !== "li" && lista) { h += "</ul>"; lista = false; }
       if (b.t === "kv") { kv.push(b); return; }
       if (b.t === "li") { if (!lista) { h += "<ul>"; lista = true; } h += "<li>" + riga(b.x, b.lead) + "</li>"; return; }
       if (b.t === "h0" || b.t === "h1") {
         var n = sezioni.length;
-        sezioni.push(b.x);
-        h += '<h2 id="sez-' + n + '">' + esc(b.x) + "</h2>";
+        sezioni.push({ x: b.x, e: icona(b.x) });
+        h += (aperta ? "</section>" : "") + '<section class="sez"><h2 id="sez-' + n + '"><span class="emo">' + sezioni[n].e +
+             "</span><span>" + esc(b.x) + "</span></h2>";
+        aperta = true;
         return;
       }
       if (b.t === "h2") { h += "<h3>" + esc(b.x) + "</h3>"; return; }
@@ -245,11 +294,15 @@
       h += "<p>" + riga(b.x, b.lead) + "</p>";
     });
     chiudi();
+    if (aperta) h += "</section>";
     el("corpo").innerHTML = h || '<div class="vuoto">Il foglio e\' vuoto.</div>';
 
     // il menu: ogni voce porta alla sua sezione, e si accende quella in cui si e'
     if (sezioni.length > 1) {
-      el("menu").innerHTML = sezioni.map(function (x, i) { return '<a href="#sez-' + i + '" data-i="' + i + '">' + esc(x) + "</a>"; }).join("");
+      el("menu").innerHTML = sezioni.map(function (x, i) {
+        var t = x.x.length > 30 ? x.x.slice(0, 28).replace(/\s+\S*$/, "") + "…" : x.x;
+        return '<a href="#sez-' + i + '" data-i="' + i + '" title="' + esc(x.x) + '"><span class="emo">' + x.e + "</span> " + esc(t) + "</a>";
+      }).join("");
       el("menu").hidden = false;
       el("menu").addEventListener("click", function (ev) {
         var a = ev.target.closest ? ev.target.closest("a[data-i]") : null;
