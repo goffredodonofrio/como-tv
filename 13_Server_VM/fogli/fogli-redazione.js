@@ -30,7 +30,7 @@
  *  Senza una delle due chiavi, quella fonte si salta e l'altra lavora.
  *
  *  LE PARTITE CHE COMMENTIAMO (partite.json): da Airtable, base dei Live
- *  Events, le partite da ieri a fra tre settimane coi loro telecronisti
+ *  Events, TUTTE le partite (passate e future) coi loro telecronisti
  *  (Commento 1 e 2). A ognuna si aggancia la partita ESPN (per prendere la
  *  formazione) e il foglio CURIOSITA' del giornalista. Il token di Airtable e'
  *  quello del ponte: arriva con un rimando alla sua configurazione
@@ -617,10 +617,12 @@ async function partitaEspn(lega, quando, casa, ospite) {
   }
   return null;
 }
-async function giroPartite() {
+async function giroPartite(stato) {
+  stato = stato || leggiJson(STATO, {});
   if (!process.env.COMOTV_AIRTABLE_PAT) { console.log("[fogli] Airtable: manca il token, salto le partite"); return; }
-  const formula = "AND(IS_AFTER({Data | Orario}, DATEADD(TODAY(), -2, 'days')), IS_BEFORE({Data | Orario}, DATEADD(TODAY(), 22, 'days')), " +
-                  "NOT({Partita} = BLANK()), NOT(FIND(\"RINVIATA\", UPPER({Partita}))), NOT(FIND(\"PRE SHOW\", UPPER({Partita}))))";
+  // tutte: il telecronista sceglie il giorno dal calendario
+  const formula = "AND(NOT({Partita} = BLANK()), NOT({Data | Orario} = BLANK()), " +
+                  "NOT(FIND(\"RINVIATA\", UPPER({Partita}))), NOT(FIND(\"PRE SHOW\", UPPER({Partita}))))";
   let off = "", righe = [], giri = 0;
   do {
     const q = new URLSearchParams({ filterByFormula: formula, pageSize: "100", "sort[0][field]": "Data | Orario" });
@@ -629,7 +631,7 @@ async function giroPartite() {
     const j = await atLeggi("https://api.airtable.com/v0/" + AT_BASE + "/" + AT_TAB + "?" + q.toString());
     righe = righe.concat(j.records || []);
     off = j.offset || "";
-  } while (off && ++giri < 20);
+  } while (off && ++giri < 60);
   // una riga per feed (ITA, ENG, AUDIO): si uniscono per giorno e squadre
   const unite = new Map();
   righe.forEach((r) => {
@@ -650,8 +652,24 @@ async function giroPartite() {
   const partite = Array.from(unite.values());
   // la partita ESPN e il foglio CURIOSITA' di ognuna
   const indice = leggiJson(path.join(PUB, "indice.json"), { fogli: [] }).fogli || [];
+  // la partita ESPN si cerca una volta e si ricorda (stato.espn). Chi non
+  // l'ha trovata si riprova solo se e' vicina (ESPN a volte la pubblica
+  // tardi); per giro se ne cercano al massimo 150 nuove, le altre al giro dopo
+  const memo = stato.espn || (stato.espn = {});
+  let cercate = 0;
+  const ora = Date.now();
+  const chiave = (m) => m.quando.slice(0, 10) + "|" + piano(m.casa) + "|" + piano(m.ospite);
+  // prima le piu' vicine a oggi: sono quelle che servono
+  const daCercare = partite.slice().sort((a, b) => Math.abs(Date.parse(a.quando) - ora) - Math.abs(Date.parse(b.quando) - ora));
+  for (const m of daCercare) {
+    const k = chiave(m);
+    const vicina = Math.abs(Date.parse(m.quando) - ora) < 7 * 864e5;
+    if (!m.lega || cercate >= 150 || (k in memo && !(memo[k] === null && vicina))) continue;
+    cercate++;
+    try { memo[k] = await partitaEspn(m.lega, m.quando, m.casa, m.ospite); } catch (e) { memo[k] = null; }
+  }
   for (const m of partite) {
-    if (m.lega) { try { m.espn = await partitaEspn(m.lega, m.quando, m.casa, m.ospite); } catch (e) { m.espn = null; } }
+    m.espn = memo[chiave(m)] || null;
     const giorno = m.quando.slice(0, 10), t0 = Date.parse(giorno);
     m.fogli = indice.filter((f) => {
       if (f.tipo !== "partita") return false;
@@ -667,13 +685,14 @@ async function giroPartite() {
     }).map((f) => f.id);
   }
   scriviJson(path.join(PUB, "partite.json"), { aggiornato: new Date().toISOString(), partite });
+  scriviJson(STATO, stato);
   console.log("[fogli] partite: " + partite.length + " da Airtable, " + partite.filter((m) => m.espn).length +
               " con ESPN, " + partite.filter((m) => m.fogli.length).length + " con le curiosita'");
 }
 
 (async () => {
   const stato = leggiJson(STATO, {});
-  if (arg("partite")) return giroPartite();
+  if (arg("partite")) return giroPartite(stato);
   if (arg("rifai")) return rifai();
   const f = arg("file");
   if (f) {
@@ -693,5 +712,5 @@ async function giroPartite() {
   const dopo = fs.readdirSync(path.join(PUB, "fogli")).length;
   if (nuovi || dopo !== prima || !fs.existsSync(path.join(PUB, "indice.json"))) rifai();
   console.log("[fogli] giro fatto: " + nuovi + " fogli nuovi");
-  try { await giroPartite(); } catch (e) { console.log("[fogli] partite: " + e.message); }
+  try { await giroPartite(stato); } catch (e) { console.log("[fogli] partite: " + e.message); }
 })().catch((e) => { console.error("[fogli] ERRORE " + e.message); process.exit(1); });

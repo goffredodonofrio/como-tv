@@ -62,6 +62,11 @@
   .nota-esp{font-size:12.5px;color:var(--fg-3);margin-top:8px;}
   .nota-esp.ok{color:#7BDCAA;} .nota-esp.err{color:#FF8A8C;}
   html.lav-chiara .nota-esp{color:#4A5068;} html.lav-chiara .nota-esp.ok{color:#1C7A4A;} html.lav-chiara .nota-esp.err{color:#B3171C;}
+  .giorno{display:flex;gap:4px;align-items:stretch;}
+  .giorno input[type=date]{padding:8px 10px;border-radius:7px;background:rgba(245,241,230,.06);border:1px solid rgba(245,241,230,.16);
+    color:var(--ivory);font-family:'DM Sans',sans-serif;font-size:13.5px;}
+  html.lav-chiara .giorno input[type=date]{background:#FBF9F3;border-color:#CFC7B4;color:#0A0F24;}
+  button.azione.freccia{padding:6px 11px;font-size:18px;line-height:1;}
   details.amano .sottotit{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.2em;
     text-transform:uppercase;color:var(--fg-3);margin:14px 0 6px;}
   details.amano summary{cursor:pointer;font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.14em;
@@ -113,7 +118,9 @@
   <div class="panel">
     <div class="riga">
       <div style="flex:0 1 240px"><label for="chiSei">Chi sei</label><select id="chiSei"><option value="">Tutti i telecronisti</option></select></div>
-      <div style="flex:3 1 440px"><label for="atPart">Le partite di Como TV</label><select id="atPart"><option value="">Carico le partite&hellip;</option></select></div>
+      <div style="flex:0 0 auto"><label for="atGiorno">Giorno</label>
+        <div class="giorno"><button type="button" class="azione freccia" id="giornoPrima" title="Il giorno prima con partite">&lsaquo;</button><input type="date" id="atGiorno"><button type="button" class="azione freccia" id="giornoDopo" title="Il giorno dopo con partite">&rsaquo;</button></div></div>
+      <div style="flex:3 1 380px"><label for="atPart">Le partite di Como TV</label><select id="atPart"><option value="">Carico le partite&hellip;</option></select></div>
       <div style="flex:0 0 auto"><button type="button" class="azione" id="btnPrendi" disabled>&#9917; Prendi la formazione</button></div>
       <div style="flex:0 0 auto"><button type="button" class="azione" id="btnSegui" disabled>&#128308; Segui in diretta</button></div>
     </div>
@@ -410,41 +417,61 @@
     return m.telecronisti.map(function (t) { return t.nome + (t.lingua && m.lingue.length > 1 ? " (" + t.lingua + ")" : ""); }).join(", ");
   }
   function mia(m, chi) { return !!chi && m.telecronisti.some(function (t) { return t.nome === chi; }); }
+  // IL CALENDARIO: si sceglie il giorno, e l'elenco sono le partite di quel
+  // giorno (le tue per prime). Le frecce vanno al giorno prima o dopo che ha
+  // partite: le tue, se hai scelto chi sei.
+  function giornoDi(q) {
+    var d = new Date(q);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function oggiStr() { return giornoDi(new Date()); }
+  function giorniCon(chi) {
+    var v = {};
+    PARTITE.forEach(function (m) { if (!chi || mia(m, chi)) v[giornoDi(m.quando)] = 1; });
+    return Object.keys(v).sort();
+  }
   function disegnaPartite(daCapo) {
-    // cambiato "Chi sei": si riparte dalla sua prossima partita
     var chi = el("chiSei").value, prima = daCapo ? "" : el("atPart").value;
-    var oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+    // cambiato "Chi sei": si va alla sua prossima partita (da oggi), se ne ha
+    if (daCapo || !el("atGiorno").value) {
+      var suoi = giorniCon(chi), oggi = oggiStr();
+      var g = suoi.filter(function (x) { return x >= oggi; })[0] || (chi ? suoi[suoi.length - 1] : "") || oggi;
+      el("atGiorno").value = g;
+    }
+    var giorno = el("atGiorno").value;
+    var delGiorno = PARTITE.filter(function (m) { return giornoDi(m.quando) === giorno; });
+    var mie = chi ? delGiorno.filter(function (m) { return mia(m, chi); }) : [];
+    var altre = delGiorno.filter(function (m) { return mie.indexOf(m) < 0; });
     function voce(m) {
-      var d = new Date(m.quando);
-      var ora = d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+      var ora = new Date(m.quando).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
       return '<option value="' + esc(m.id) + '">' + ora + " · " + esc(titolo(m.casa) + " – " + titolo(m.ospite)) + " · " + esc(m.competizione) +
              (m.telecronisti.length ? " · " + esc(chiDi(m)) : "") + (m.fogli && m.fogli.length ? " · \u270E curiosità" : "") +
              (m.espn ? "" : " · a mano") + "</option>";
     }
-    function perGiorno(lista, testa) {
-      var h = "", g = "";
-      lista.forEach(function (m) {
-        var d = new Date(m.quando), k = d.toDateString();
-        if (k !== g) {
-          if (g) h += "</optgroup>";
-          g = k;
-          var diff = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - oggi) / 864e5);
-          var nome = diff === 0 ? "Oggi" : diff === 1 ? "Domani" : diff === -1 ? "Ieri" : GIORNI[d.getDay()] + " " + d.getDate() + " " + MESI[d.getMonth()];
-          h += '<optgroup label="' + esc((testa ? testa + " · " : "") + nome) + '">';
-        }
-        h += voce(m);
-      });
-      return h + (g ? "</optgroup>" : "");
-    }
-    var mie = chi ? PARTITE.filter(function (m) { return mia(m, chi); }) : [];
-    var altre = PARTITE.filter(function (m) { return mie.indexOf(m) < 0; });
-    el("atPart").innerHTML = '<option value="">— ' + (mie.length ? mie.length + (mie.length > 1 ? " tue partite" : " tua partita") + ", " : "") +
-      PARTITE.length + " in tutto —</option>" + perGiorno(mie, "Le tue") + perGiorno(altre, chi ? "Le altre" : "");
-    // di partenza: la prima tua (o la prima) da oggi in avanti
-    var vicina = (mie.length ? mie : PARTITE).filter(function (m) { return new Date(m.quando) >= oggi; })[0];
-    el("atPart").value = prima && PARTITE.some(function (m) { return m.id === prima; }) ? prima : (vicina ? vicina.id : "");
-    el("btnPrendi").disabled = !el("atPart").value;
+    var d = new Date(giorno + "T12:00:00");
+    var nome = GIORNI[d.getDay()] + " " + d.getDate() + " " + MESI[d.getMonth()];
+    el("atPart").innerHTML = !delGiorno.length
+      ? '<option value="">— ' + esc(nome) + ": nessuna partita —</option>"
+      : '<option value="">— ' + esc(nome) + ": " + delGiorno.length + (delGiorno.length > 1 ? " partite" : " partita") +
+        (mie.length ? ", " + mie.length + " tue" : "") + " —</option>" +
+        (mie.length ? '<optgroup label="Le tue">' + mie.map(voce).join("") + "</optgroup>" : "") +
+        (altre.length ? (chi ? '<optgroup label="Le altre">' : "") + altre.map(voce).join("") + (chi ? "</optgroup>" : "") : "");
+    var scelta = prima && delGiorno.some(function (m) { return m.id === prima; }) ? prima : ((mie[0] || delGiorno[0] || {}).id || "");
+    el("atPart").value = scelta;
+    el("btnPrendi").disabled = !scelta;
+    var tutti = giorniCon(chi);
+    el("giornoPrima").disabled = !tutti.some(function (x) { return x < giorno; });
+    el("giornoDopo").disabled = !tutti.some(function (x) { return x > giorno; });
   }
+  el("atGiorno").addEventListener("change", function () { disegnaPartite(false); });
+  el("giornoPrima").addEventListener("click", function () {
+    var g = el("atGiorno").value, v = giorniCon(el("chiSei").value).filter(function (x) { return x < g; });
+    if (v.length) { el("atGiorno").value = v[v.length - 1]; disegnaPartite(false); }
+  });
+  el("giornoDopo").addEventListener("click", function () {
+    var g = el("atGiorno").value, v = giorniCon(el("chiSei").value).filter(function (x) { return x > g; });
+    if (v.length) { el("atGiorno").value = v[0]; disegnaPartite(false); }
+  });
   fetch("/fogli-redazione/partite.json", { cache: "no-store" })
     .then(function (r) { return r.json(); })
     .then(function (j) {
@@ -458,8 +485,9 @@
       var io = ""; try { io = localStorage.getItem(CHI_LS) || ""; } catch (e) {}
       if (nomi.indexOf(io) >= 0) el("chiSei").value = io;
       disegnaPartite();
-      espDico(PARTITE.length ? "Le partite di Airtable da ieri a fra tre settimane, coi loro telecronisti. <b>Prendi la formazione</b> la porta in campo da ESPN."
-                             : "Nessuna partita su Airtable nei prossimi giorni.", PARTITE.length ? "" : "err");
+      espDico(PARTITE.length ? "Tutte le partite di Airtable (" + PARTITE.length + "), coi loro telecronisti: scegli il giorno dal calendario, o scorri con le frecce. " +
+                               "<b>Prendi la formazione</b> la porta in campo da ESPN."
+                             : "Nessuna partita su Airtable.", PARTITE.length ? "" : "err");
     })
     .catch(function () { el("atPart").innerHTML = '<option value="">Partite non raggiungibili</option>'; espDico("Le partite di Airtable non si leggono: usa Altre partite qui sotto.", "err"); });
   el("chiSei").addEventListener("change", function () {
