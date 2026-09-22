@@ -154,15 +154,43 @@
     el("titolo").textContent = sq;
     el("chi").textContent = [f.autore, dataIt(f.data)].filter(Boolean).join(" · ");
     if (f.link) { el("originale").href = f.link; el("originale").hidden = false; }
-    // gli altri fogli della stessa sfida (andata e ritorno, stagioni prima)
-    var chiavi = (f.chiavi || []).slice().sort().join("|");
-    var altri = tutti.filter(function (x) { return x.id !== f.id && chiavi && (x.chiavi || []).slice().sort().join("|") === chiavi; });
-    if (altri.length) {
-      el("altri").innerHTML = "Altri fogli di questa sfida: " + altri.map(function (x) {
-        return '<a href="?id=' + encodeURIComponent(x.id) + '">' + esc(dataIt(x.data) + (x.autore ? " · " + x.autore : "")) + "</a>";
-      }).join("");
-      el("altri").hidden = false;
+    // gli altri fogli della stessa sfida (andata e ritorno, stagioni prima) e
+    // le schede delle due squadre. Le squadre le dice la lavagna (?a=&b=), se
+    // no quelle del foglio.
+    var q = new URLSearchParams(location.search);
+    var A = q.get("a") || (f.squadre || [])[0] || "", Bn = q.get("b") || (f.squadre || [])[1] || "";
+    var ALIAS = { "wolves": "wolverhampton", "wba": "west bromwich", "west brom": "west bromwich", "spurs": "tottenham",
+                  "boro": "middlesbrough", "man utd": "manchester united", "man city": "manchester city", "psv": "psv eindhoven",
+                  "inter": "internazionale", "qpr": "queens park rangers", "ind santa fe": "independiente santa fe", "ldu": "ldu quito" };
+    function stessa(k, nome) {
+      var a = piano(nome), c = piano(ALIAS[k] || k);
+      return !!(a && c) && ((" " + a + " ").indexOf(" " + c + " ") >= 0 || (" " + c + " ").indexOf(" " + a + " ") >= 0);
     }
+    function nominata(cerca, nome) {
+      var a = piano(nome), c = " " + (cerca || "") + " ";
+      var corto = a.replace(/\b(fc|cf|sc|ac|afc|cd|club|calcio|united|city|town|county|wanderers|albion|athletic|1907|de|la|del)\b/g, " ").replace(/\s+/g, " ").trim();
+      return [a, corto].some(function (x) { return x.length >= 3 && c.indexOf(" " + x + " ") >= 0; });
+    }
+    function sfida(x) {
+      var k = x.chiavi || [];
+      if (x.tipo && x.tipo !== "partita") return false;
+      if (k.length === 2) return (stessa(k[0], A) && stessa(k[1], Bn)) || (stessa(k[0], Bn) && stessa(k[1], A));
+      return nominata(x.cerca, A) && nominata(x.cerca, Bn);
+    }
+    function scheda(x) { return x.tipo === "squadra" && (x.chiavi || []).length === 1 && (stessa(x.chiavi[0], A) || stessa(x.chiavi[0], Bn)); }
+    function voce(x, testo) {
+      return '<a href="?id=' + encodeURIComponent(x.id) + "&a=" + encodeURIComponent(A) + "&b=" + encodeURIComponent(Bn) + '">' + esc(testo) + "</a>";
+    }
+    var altre = A && Bn ? tutti.filter(function (x) { return x.id !== f.id && sfida(x); }) : [];
+    var schede = A && Bn ? tutti.filter(function (x) { return x.id !== f.id && scheda(x); }) : [];
+    var h0 = "";
+    if (altre.length) h0 += "<div>Altri fogli di questa sfida: " + altre.map(function (x) {
+      return voce(x, dataIt(x.data) + (x.autore ? " · " + x.autore : ""));
+    }).join("") + "</div>";
+    if (schede.length) h0 += "<div>Schede delle squadre: " + schede.map(function (x) {
+      return voce(x, (x.squadre || [])[0] + " · " + dataIt(x.data) + (x.autore ? " · " + x.autore : ""));
+    }).join("") + "</div>";
+    if (h0) { el("altri").innerHTML = h0; el("altri").hidden = false; }
 
     var B = f.blocchi && f.blocchi.length ? f.blocchi.slice()
       : String(f.testo || "").split(/\n+/).map(function (r) { return { t: "p", x: r }; });

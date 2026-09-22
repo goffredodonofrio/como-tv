@@ -1064,7 +1064,8 @@ window.Lavagna = (function () {
     var ALIAS_SQ = { "wolves": "wolverhampton", "wba": "west bromwich", "west brom": "west bromwich", "spurs": "tottenham",
                      "boro": "middlesbrough", "man utd": "manchester united", "man united": "manchester united",
                      "man city": "manchester city", "psv": "psv eindhoven", "inter": "internazionale", "qpr": "queens park rangers",
-                     "sheffield wed": "sheffield wednesday", "sheffield utd": "sheffield united", "forest": "nottingham forest" };
+                     "sheffield wed": "sheffield wednesday", "sheffield utd": "sheffield united", "forest": "nottingham forest",
+                     "ind santa fe": "independiente santa fe", "gladbach": "monchengladbach", "ldu": "ldu quito" };
     function pianoF(t) {
       return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
     }
@@ -1072,6 +1073,14 @@ window.Lavagna = (function () {
       var a = pianoF(nome), k = pianoF(ALIAS_SQ[chiave] || chiave);
       if (!a || !k) return false;
       return (" " + a + " ").indexOf(" " + k + " ") >= 0 || (" " + k + " ").indexOf(" " + a + " ") >= 0;
+    }
+    // il nome di ESPN nel titolo o nelle prime righe di un foglio ("Millwall
+    // West Ham", senza separatore): intero, o senza le parole di contorno
+    function nominata(cerca, nome) {
+      var a = pianoF(nome), c = " " + (cerca || "") + " ";
+      if (!a) return false;
+      var corto = a.replace(/\b(fc|cf|sc|ac|afc|cd|club|calcio|united|city|town|county|wanderers|albion|athletic|1907|de|la|del)\b/g, " ").replace(/\s+/g, " ").trim();
+      return [a, corto].some(function (x) { return x.length >= 3 && c.indexOf(" " + x + " ") >= 0; });
     }
     function indice() {
       if (INDICE && Date.now() - INDICE_T < 300000) return Promise.resolve(INDICE);
@@ -1084,18 +1093,28 @@ window.Lavagna = (function () {
     function fogliPartita(v) {
       return v.filter(function (f) {
         var k = f.chiavi || [];
-        if (k.length !== 2) return false;
-        return (stessaSquadra(k[0], SQ.A.nome) && stessaSquadra(k[1], SQ.B.nome)) ||
-               (stessaSquadra(k[0], SQ.B.nome) && stessaSquadra(k[1], SQ.A.nome));
+        if (f.tipo && f.tipo !== "partita") return false;
+        if (k.length === 2) return (stessaSquadra(k[0], SQ.A.nome) && stessaSquadra(k[1], SQ.B.nome)) ||
+                                   (stessaSquadra(k[0], SQ.B.nome) && stessaSquadra(k[1], SQ.A.nome));
+        return nominata(f.cerca, SQ.A.nome) && nominata(f.cerca, SQ.B.nome);
+      });
+    }
+    // le schede di una squadra sola ("Liverpool 2026:27", "Rosa Como 1907")
+    function fogliSquadra(v) {
+      return v.filter(function (f) {
+        return f.tipo === "squadra" && (f.chiavi || []).length === 1 &&
+               (stessaSquadra(f.chiavi[0], SQ.A.nome) || stessaSquadra(f.chiavi[0], SQ.B.nome));
       });
     }
     function tastoFoglio() {
       var t = box.querySelector('[data-az="foglio"]');
       if (!t) return;
       indice().then(function (v) {
-        var mie = fogliPartita(v);
-        t.hidden = !mie.length;
-        if (mie.length) t.title = "Il foglio di " + (mie[0].autore || "redazione") + (mie[0].data ? " del " + dataIt(mie[0].data) : "");
+        var mie = fogliPartita(v), sq = fogliSquadra(v);
+        t.hidden = !mie.length && !sq.length;
+        t.title = mie.length ? "Il foglio di " + (mie[0].autore || "redazione") + (mie[0].data ? " del " + dataIt(mie[0].data) : "") +
+                               (sq.length ? " e " + sq.length + (sq.length > 1 ? " schede" : " scheda") + " delle squadre" : "")
+                             : sq.length + (sq.length > 1 ? " schede" : " scheda") + " delle squadre";
       });
     }
     function dataIt(d) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || ""); return m ? (+m[3]) + "/" + (+m[2]) + "/" + m[1] : (d || ""); }
@@ -1104,12 +1123,14 @@ window.Lavagna = (function () {
     function apriFoglio(id) {
       function apri(x) {
         if (!x) return;
-        var w = window.open("curiosita.html?id=" + encodeURIComponent(x), "comotv-curiosita",
+        // le squadre in lavagna: la finestra elenca anche gli altri fogli della sfida e le schede delle squadre
+        var w = window.open("curiosita.html?id=" + encodeURIComponent(x) + "&a=" + encodeURIComponent(SQ.A.nome || "") +
+                            "&b=" + encodeURIComponent(SQ.B.nome || ""), "comotv-curiosita",
                             "width=1000,height=" + Math.min(1100, screen.availHeight || 1000) + ",resizable=yes,scrollbars=yes");
         if (w) w.focus(); else nota("Il browser ha bloccato la finestra delle Curiosit&agrave;: consenti le finestre per questo sito.", "err");
       }
       if (id) return apri(id);
-      indice().then(function (v) { apri((fogliPartita(v)[0] || {}).id); });
+      indice().then(function (v) { apri((fogliPartita(v)[0] || fogliSquadra(v)[0] || {}).id); });
     }
     box.addEventListener("click", function (ev) {
       var b = ev.target.closest ? ev.target.closest("[data-foglio]") : null;

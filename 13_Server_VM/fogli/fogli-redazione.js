@@ -230,14 +230,34 @@ function dataDa(s) {
   if (m) return m[1] + "-" + m[2] + "-" + m[3];
   return "";
 }
+// competizioni scritte davanti alle squadre, da togliere
+const COMPETIZIONI = /^(?:(?:saudi\s+)?pro\s+league|premier\s+league|premiership|scottish\s+premiership|championship|eredivisie|2\.?\s*bundesliga|bundesliga|serie\s+[ab]|laliga|la\s+liga|liga(?:\s+profesional)?|ligue\s+1|libertadores|sudamericana|copa(?:\s+\w+)?|carabao(?:\s+cup)?|fa\s+cup|primera(?:\s+division)?|clausura|apertura|efl|hnl|mls)\s+/i;
+// i documenti che non sono fogli di una partita o di una squadra: elenchi
+// arbitri, Opta, running order, teamsheet, palinsesti. Restano nell'archivio
+// (le frasi valgono per le schede dei giocatori) ma non fanno da foglio.
+const NON_FOGLIO = /arbitri|opta|teamsheet|palinsesto|approfondimento|presentazione|^\s*ro\b|\bro\s+(delle|efl|supert)|efl\s.*carabao\s+cup\s*-\s*\d/i;
+function tipoDi(nome, sq) {
+  const n = String(nome || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (NON_FOGLIO.test(n)) return "altro";
+  if (sq.length === 2) return "partita";
+  // "Foglio partita Millwall West Ham": una partita scritta senza separatore
+  if (sq.length === 1 && /partita|intro|curiosita/i.test(n)) return "partita";
+  return sq.length === 1 ? "squadra" : "altro";
+}
 function squadreDa(nome, testo) {
-  let s = nome.replace(ESTENSIONI, "")
+  let s = String(nome || "").normalize("NFC");
+  while (ESTENSIONI.test(s)) s = s.replace(ESTENSIONI, "");
+  s = s.normalize("NFD").replace(/[̀-ͯ]/g, "")        // "Curiosità" scritto con l'accento staccato
     .replace(/\(.*?\)/g, " ").replace(/\d{1,2}[-./]\d{1,2}[-./]\d{2,4}/g, " ").replace(/\b20\d{6}\b/g, " ")
-    .replace(/_/g, " ").replace(/\|/g, " ").replace(/curiosit[aà]'?/gi, " ")
-    .replace(/\b(foglio|partita|appunti|curiosita|curiosità|note|scheda|giornata|\d+[aª°]|\d+)\b/gi, " ")
+    .replace(/\b(?:20)?\d{2}\s*[:/-]\s*(?:20)?\d{2}\b/g, " ")     // la stagione: 2026:27, 26-27
+    .replace(/_/g, " ").replace(/\|/g, " ")
+    .replace(/\b(foglio|partita|appunti|curiosita|note|scheda|giornata|rosa|intro|squadre|\d+[aª°]|\d+)\b/gi, " ")
     .replace(/\s+/g, " ").trim();
-  // "5a Eredivisie Ajax v PSV": via la competizione davanti se c'e' un separatore dopo
-  let pezzi = s.split(/\s+(?:-|–|v|vs|x)\s+|\s*-\s*|\s+vs?\.?\s+/i).map((x) => x.trim()).filter(Boolean);
+  // prima i separatori con gli spazi ("Al-Hilal v Al-Faisaly"), poi il trattino attaccato
+  let pezzi = s.split(/\s+(?:-|–|v|vs|x)\.?\s+/i).map((x) => x.trim()).filter(Boolean);
+  if (pezzi.length !== 2) pezzi = s.split(/\s*[-–]\s*/).map((x) => x.trim()).filter(Boolean);
+  // "Al-Ula FC", "Al-Hilal": un pezzo di una o due lettere non e' una squadra
+  if (pezzi.length === 2 && pezzi[0].length <= 2) pezzi = [pezzi[0] + "-" + pezzi[1]];
   if (pezzi.length !== 2) {
     // nel testo: la prima riga del tipo "SAN LORENZO vs BOCA JUNIORS" o "... | Middlesbrough-WBA"
     const righe = String(testo || "").split("\n").slice(0, 6);
@@ -246,11 +266,13 @@ function squadreDa(nome, testo) {
       if (m) { pezzi = [m[1].trim(), m[2].trim()]; break; }
     }
   }
-  if (pezzi.length !== 2 && pezzi.length > 2) pezzi = pezzi.slice(-2);
-  if (pezzi.length === 2) pezzi = pezzi.map((x) => x.replace(/^(eredivisie|championship|premiership|libertadores|sudamericana|serie a|liga|clausura|apertura)\s+/i, "").trim());
-  return pezzi.length === 2 ? pezzi : [];
+  if (pezzi.length > 2) pezzi = pezzi.slice(-2);
+  pezzi = pezzi.map((x) => x.replace(COMPETIZIONI, "").replace(COMPETIZIONI, "").replace(/[.,;:\s]+$/, "").trim()).filter(Boolean);
+  if (pezzi.length === 2) return pezzi;
+  // una squadra sola, corta: e' la scheda di una squadra ("Liverpool 2026:27", "Rosa Crystal Palace")
+  if (pezzi.length === 1 && pezzi[0].split(" ").length <= 3 && !/arbitri|opta|palinsesto|approfondimento|presentazione/i.test(nome)) return pezzi;
+  return [];
 }
-
 // ── salvare un foglio ───────────────────────────────────────────────
 function salva(meta, testo, blocchi) {
   testo = pulisci(testo);
@@ -259,7 +281,7 @@ function salva(meta, testo, blocchi) {
   const squadre = squadreDa(meta.nomeFile, testo);
   const data = dataDa(meta.nomeFile) || (meta.quando || "").slice(0, 10);
   const f = {
-    id, titolo: meta.nomeFile.replace(ESTENSIONI, "").replace(/_/g, " ").trim(),
+    id, nomeFile: meta.nomeFile, titolo: meta.nomeFile.replace(ESTENSIONI, "").replace(/_/g, " ").trim(),
     squadre, chiavi: squadre.map(piano), data, autore: meta.autore || "",
     fonte: meta.fonte, link: meta.link || "", caricato: meta.quando || "", hash: crypto.createHash("sha1").update(testo).digest("hex").slice(0, 12),
     testo, blocchi: blocchi || strutturaTesto(testo)
@@ -275,7 +297,14 @@ function rifai() {
   const dir = path.join(PUB, "fogli");
   const tutti = fs.readdirSync(dir).filter((x) => x.endsWith(".json")).map((x) => leggiJson(path.join(dir, x), null)).filter(Boolean);
   // i fogli salvati prima della struttura: la si ricava dal testo
-  tutti.forEach((f) => { if (!f.blocchi) { f.blocchi = strutturaTesto(f.testo); scriviJson(path.join(dir, f.id + ".json"), f); } });
+  tutti.forEach((f) => {
+    // i fogli gia' salvati si rileggono con le regole di adesso (squadre, struttura)
+    const sq = squadreDa(f.nomeFile || f.titolo + ".docx", f.testo);
+    const cambia = !f.blocchi || JSON.stringify(sq) !== JSON.stringify(f.squadre);
+    if (!f.blocchi) f.blocchi = strutturaTesto(f.testo);
+    f.squadre = sq; f.chiavi = sq.map(piano);
+    if (cambia) scriviJson(path.join(dir, f.id + ".json"), f);
+  });
   // lo stesso foglio da Slack e da Drive: vale una volta sola (il testo e' uguale)
   const visti = {}, fogli = [];
   tutti.sort((a, b) => (a.fonte === "slack" ? 0 : 1) - (b.fonte === "slack" ? 0 : 1));
@@ -283,7 +312,11 @@ function rifai() {
   fogli.sort((a, b) => String(b.data || b.caricato).localeCompare(String(a.data || a.caricato)));
   scriviJson(path.join(PUB, "indice.json"), {
     aggiornato: new Date().toISOString(),
+    // tipo: partita (due squadre), squadra (una), altro. cerca: titolo e prime
+    // righe, per agganciare anche "Millwall West Ham" senza separatore
     fogli: fogli.map((f) => ({ id: f.id, titolo: f.titolo, squadre: f.squadre, chiavi: f.chiavi, data: f.data,
+                              tipo: tipoDi(f.nomeFile || f.titolo, f.squadre),
+                              cerca: piano(f.titolo + " " + String(f.testo || "").slice(0, 300)),
                               autore: f.autore, fonte: f.fonte, link: f.link }))
   });
   // I NOMI si cercano sezione per sezione: la frase si porta dietro il titolo
