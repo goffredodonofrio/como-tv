@@ -4914,6 +4914,8 @@ function filtroSting(r, c, cartella, id) {
 //  spesso la fine dell'azione precedente, o una dissolvenza.
 
 function miniatura(file, fuori, quando) {
+  const pp = pontePer(file);
+  if (pp) return fotogrammaDalPonte(pp, quando, fuori, { w: 640, q: 4 });
   return new Promise((si) => {
     const pr = spawn(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin",
       "-ss", String(Math.max(0, quando)), "-i", file, "-frames:v", "1",
@@ -5074,12 +5076,23 @@ function registraInventario() {
   try { j = JSON.parse(fs.readFileSync(via, "utf8")); } catch (e) { console.log("[clip] s3-inventario.json illeggibile: " + e.message); return; }
   if (!j || !j.bucket || !Array.isArray(j.oggetti)) return;
   if (MAGAZZINI.some((m) => m.bucket === j.bucket)) return;
+  // il ponte: il servizio sulla EC2 (nella regione del secchio, quindi a
+  // traffico zero verso S3) che legge a intervalli e conta ogni byte. Con
+  // il ponte i file si aprono; senza, resta il solo elenco
   MAGAZZINI.push({ nome: "amazon-inventario", inventario: via, bucket: String(j.bucket), regione: String(j.regione || "eu-west-3"),
                    radice: String(j.radice || "TEMP/"), id: "", segreto: "", endpoint: "", fuori: false,
+                   ponte: String(process.env.COMOTV_S3_PONTE || "").replace(/\/+$/, ""),
                    oggetti: j.oggetti.map((o) => ({ chiave: String(o.k), peso: +o.s || 0, quando: String(o.d || "") })).filter((o) => o.peso > 0) });
-  console.log("[clip] magazzino di solo elenco: " + j.bucket + " (" + j.oggetti.length + " oggetti, " + (j.quando || "") + ")");
+  const m0 = MAGAZZINI[MAGAZZINI.length - 1];
+  console.log("[clip] magazzino " + (m0.ponte ? "S3 via ponte " + m0.ponte : "di solo elenco") + ": " + j.bucket + " (" + j.oggetti.length + " oggetti, " + (j.quando || "") + ")");
 }
-function soloElenco(bucket) { const m = MAGAZZINI.filter((x) => x.bucket && x.bucket === (bucket || ""))[0]; return !!(m && m.inventario); }
+function magazzinoInventario(bucket) { return MAGAZZINI.filter((x) => x.bucket && x.bucket === (bucket || "") && x.inventario)[0] || null; }
+// solo elenco: niente da leggere (nessun ponte, nessuna chiave)
+function soloElenco(bucket) { const m = magazzinoInventario(bucket); return !!(m && !m.ponte); }
+// dall'inventario: si legge (col ponte) ma le code automatiche — misure,
+// cronometro — non partono da sole: ogni lettura da S3 e' contata, e si fa
+// quando qualcuno la chiede
+function senzaCode(bucket) { return !!magazzinoInventario(bucket); }
 // una pagina dell'elenco, ma dall'inventario: stessa forma di S3
 function elencaInventario(mg, prefisso, delimitatore) {
   const pre = prefisso || "", oggetti = [], cartelle = new Set();
@@ -5162,7 +5175,10 @@ async function s3Firma(chiave, cerca, quanto, bucket) {
 function firmaConRegione(regione, chiave, cerca, quanto, bucket) {
   const secchio = bucket || S3.bucket;
   const m = magazzinoDi(secchio);
-  if (m.inventario) throw new Error("di questo archivio S3 abbiamo solo l'elenco: per aprire i file serve la chiave in sola lettura (in arrivo da Imam)");
+  if (m.inventario) {
+    if (m.ponte) return m.ponte + "/o/" + uriChiave(chiave);
+    throw new Error("di questo archivio S3 abbiamo solo l'elenco: per aprire i file serve il ponte sulla EC2 o la chiave in sola lettura");
+  }
   // una cartella non si firma: si indica. Chi chiede l'indirizzo per
   // elencare (chiave vuota) riceve la cartella stessa.
   if (m.cartella) return path.join(m.cartella, String(chiave || ""));
@@ -7845,7 +7861,35 @@ function tesseractCe() {
 // la grafica. Il file resta su S3: ffmpeg salta al secondo e prende uno
 const OROLOGIO_PY = path.join(__dirname, "orologio.py");
 const CAMPO_PY = path.join(__dirname, "campo.py");
+// IL FOTOGRAMMA DAL PONTE. Se il file sta dietro il ponte S3 (la EC2 a
+// Parigi), il fotogramma lo estrae la EC2 e qui arriva solo l'immagine:
+// cento kB invece dei sette mega che costa leggere indice e GOP da fuori.
+function pontePer(via) {
+  const m = MAGAZZINI.filter((x) => x.inventario && x.ponte && String(via || "").startsWith(x.ponte + "/o/"))[0];
+  return m ? { ponte: m.ponte, chiave: decodeURIComponent(String(via).slice(m.ponte.length + 3)) } : null;
+}
+function fotogrammaDalPonte(p, sec, fuori, come) {
+  return new Promise((ok) => {
+    const q = new URLSearchParams({ k: p.chiave, t: String(Math.max(0, sec)) });
+    if (come && come.crop) q.set("c", come.crop);
+    if (come && come.png) q.set("fmt", "png");
+    if (come && come.w) q.set("w", String(come.w));
+    if (come && come.q) q.set("q", String(come.q));
+    const r = http.get(p.ponte + "/f?" + q.toString(), { timeout: 150000 }, (res) => {
+      if (res.statusCode !== 200) { let t = ""; res.on("data", (b) => { t += b; }); res.on("end", () => { console.log("[clip] ponte S3: fotogramma a " + sec + "s: " + res.statusCode + " " + t.slice(0, 120)); ok(false); }); return; }
+      const w = fs.createWriteStream(fuori);
+      res.pipe(w); w.on("finish", () => ok(true)); w.on("error", () => ok(false));
+    });
+    r.on("error", (e) => { console.log("[clip] ponte S3: " + e.message); ok(false); });
+    r.on("timeout", () => { r.destroy(new Error("tempo scaduto")); });
+  });
+}
 function fasciaAlta(via, sec) {
+  const pp = pontePer(via);
+  if (pp) {
+    const png = path.join(os.tmpdir(), "orologio-" + nuovoId("") + ".png");
+    return fotogrammaDalPonte(pp, sec, png, { crop: "top", png: true }).then((si) => si ? png : null);
+  }
   return new Promise((ok) => {
     const png = path.join(os.tmpdir(), "orologio-" + nuovoId("") + ".png");
     execFile(FFMPEG, ["-hide_banner", "-loglevel", "error", "-ss", String(Math.max(0, sec)), "-i", via,
@@ -8781,7 +8825,7 @@ async function riconosciPartita(rec) {
     // indovinare due ore, e i momenti da guardare cadevano fuori posto: la
     // registrazione di tre ore del 9 settembre veniva letta come se fosse di
     // due, e diceva la partita sbagliata. Con la durata giusta l'ha presa.
-    if (!a.misurato && !soloElenco(a.bucket)) { try { await misuraPartita(rec); } catch (e) {} }
+    if (!a.misurato && !senzaCode(a.bucket)) { try { await misuraPartita(rec); } catch (e) {} }
     const pz = (a.pezzi || [])[0];
     if (!pz) throw new Error("questa partita non ha materiale");
     const regione = await s3Regione(a.bucket);
@@ -9088,7 +9132,7 @@ function orologiInCoda(ripasso) {
                       .concat(Object.keys(ESPN).filter((k) => ((ESPN[k] || {}).eventi || []).length)));
   candidate.forEach((rec) => {
     const a = ARCHIVIO[rec];
-    if (a && soloElenco(a.bucket)) return;                 // solo elenco: niente da leggere
+    if (a && senzaCode(a.bucket)) return;                  // S3 contato: il cronometro si legge a richiesta
     if (!a || a.orologio || gia.has(rec)) return;
     if (a.orologioFallito && !ripasso) return;        // gia' provata: al giro finale
     CODA_OROLOGI.push(rec);
@@ -9117,7 +9161,7 @@ const CODA_DURATE = [];
 let durateInMoto = 0, durateFatte = 0, durateFallite = 0, durateCambiate = 0, durateDaScrivere = 0;
 const DURATE_INSIEME = 2;
 async function misuraPartita(rec) {
-  if (ARCHIVIO[rec] && soloElenco(ARCHIVIO[rec].bucket)) throw new Error("solo elenco: le durate si misurano quando ci sara' la chiave");
+  if (ARCHIVIO[rec] && soloElenco(ARCHIVIO[rec].bucket)) throw new Error("solo elenco: le durate si misurano quando ci sara' il ponte o la chiave");
   const a = ARCHIVIO[rec];
   if (!a) return;
   const regione = await s3Regione(a.bucket);
@@ -9904,6 +9948,7 @@ function magazzinoDaFuori(r) {
   // risponde "no", non si alza un'eccezione. Chiederlo e' una domanda.
   try { m = magazzinoDi(r.arch.bucket); } catch (e) { return false; }
   if (m.cartella) return false;                    // un percorso sul disco: il browser non lo apre mai
+  if (m.inventario) return false;                  // il ponte sta sulla VM: il video passa da qui, contato
   if (!m.endpoint) return true;                    // Amazon: sempre
   return m.fuori === true;                         // di casa: solo se lo dici tu
 }
@@ -10125,7 +10170,9 @@ async function serviMagazzino(req, res, u) {
   const testa = {};
   if (req.headers.range) testa.Range = req.headers.range;
   try {
-    const risp = await fetch(sorgente, { headers: testa, signal: AbortSignal.timeout(30000) });
+    // un HEAD resta un HEAD: con una GET si tirava giu' il file intero da S3
+    // per rispondere a una domanda sulla lunghezza (3 GB buttati il 22/09/2026)
+    const risp = await fetch(sorgente, { method: req.method === "HEAD" ? "HEAD" : "GET", headers: testa, signal: AbortSignal.timeout(30000) });
     const fuori = {
       "Content-Type": risp.headers.get("content-type") || "video/mp4",
       "Accept-Ranges": "bytes",
@@ -11333,7 +11380,7 @@ const AZIONI = {
       const a = ARCHIVIO[k];
       // tutte le partite che stanno in un magazzino di solo elenco: quelle
       // appaiate ad Airtable (rec…) e quelle ancora senza nome (s3:…)
-      if (!a.chiave || !soloElenco(a.bucket)) return;
+      if (!a.chiave || !magazzinoInventario(a.bucket)) return;
       const minuti = (a.pezzi || []).reduce((n, z) => n + (z.minuti || 0), 0);
       const r = regs.find((x) => x.arch && x.arch.rec === k);
       fuori.push({ nome: path.basename(a.chiave), via: a.chiave, cartella: a.dove || path.dirname(a.chiave), peso: a.peso || (a.pezzi || []).reduce((n, z) => n + (z.peso || 0), 0),
