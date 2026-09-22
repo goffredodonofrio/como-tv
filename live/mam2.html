@@ -125,7 +125,11 @@
   .momenti .mtip{position:absolute;top:2px;transform:translateX(-50%);font:11px ui-monospace,Menlo,monospace;color:var(--navy);background:var(--oro2);padding:1px 5px;border-radius:3px;pointer-events:none;white-space:nowrap;}
   .prog{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;} .prog .pc{background:var(--pan);border:1px solid var(--riga);border-radius:12px;padding:12px 14px;cursor:pointer;} .prog .pc:hover{border-color:var(--oro);} .prog .pc b{display:block;font-size:14px;} .prog .pc small{color:var(--fumo);font-size:11.5px;} .prog .pc.on{border-color:var(--oro);}
   .prog .pc .seqs{margin-top:8px;display:flex;flex-direction:column;gap:4px;} .prog .pc .seqs a{font-size:12px;color:var(--ivory2);padding:4px 8px;border:1px solid var(--riga);border-radius:6px;} .prog .pc .seqs a:hover{color:var(--oro2);border-color:var(--oro);}
-  .bozza .voce .n{color:var(--fumo);font:11px ui-monospace,Menlo,monospace;min-width:18px;} .bozza .voce button{padding:2px 6px;font-size:10px;}
+  .bozza-tl{background:var(--pan);border:1px solid var(--riga);border-radius:10px;padding:8px 12px 10px;display:flex;flex-direction:column;gap:6px;flex:none;}
+  .bozza-tl .testa{display:flex;align-items:center;gap:8px;} .bozza-tl .testa h3{font-family:'Mazzard',sans-serif;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--oro);margin:0;} .bozza-tl .testa small{color:var(--fumo);font-size:11.5px;} .bozza-tl .testa .dx{margin-left:auto;display:flex;gap:6px;}
+  .bozza-tl .pista{display:flex;gap:3px;min-height:46px;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px;} .bozza-tl .pista:empty::before{content:'La bozza è vuota: segna IN e OUT e premi B, oppure spunta le azioni e "Aggiungi le spuntate".';color:var(--fumo);font-size:12px;align-self:center;}
+  .bz{flex:0 0 auto;min-width:64px;height:46px;background:#3C4A66;border:1px solid #56688C;border-radius:5px;padding:4px 22px 4px 7px;box-sizing:border-box;position:relative;cursor:grab;overflow:hidden;font-size:11px;line-height:1.25;} .bz b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;} .bz small{color:var(--ivory2);font:10px ui-monospace,Menlo,monospace;} .bz.sel{outline:2px solid var(--oro2);} .bz.ora{background:#4A5A7A;}
+  .bz .via{position:absolute;top:2px;right:3px;width:16px;height:16px;padding:0;font-size:11px;line-height:14px;border-radius:3px;border:0;background:transparent;color:var(--fumo);} .bz .via:hover{color:var(--rosso);background:rgba(0,0,0,.3);} .bz.trascino{opacity:.5;} .bz.dopo{box-shadow:inset 3px 0 0 var(--oro2);}
   .momenti .in,.momenti .out{position:absolute;top:0;bottom:0;width:2px;background:var(--oro);} .momenti .fra{position:absolute;top:0;bottom:0;background:rgba(201,162,75,.18);}
   .tc{font:12.5px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;}
   .comandi{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
@@ -307,6 +311,10 @@
           <span class="inout">IN <b id="tIn">—</b> · OUT <b id="tOut">—</b></span><span class="sep"></span>
           <span class="tcx dur"><small>Dur</small><span id="tDur">—</span></span>
         </div>
+      </div>
+      <div class="bozza-tl" id="bozzaTl">
+        <div class="testa"><h3>Bozza</h3><small id="bzConto">il grezzo di questa partita</small><div class="dx"><button class="mini" id="bBozzaSpuntate" title="le azioni spuntate nella scheda entrano nella bozza con le loro finestre">Aggiungi le spuntate</button><button class="mini" id="bBozzaProg" title="in quale progetto sta la bozza">Progetto</button><button class="mini oro" id="bRifinisci" disabled title="apre questa bozza nel montaggio: rifinisci, sottotitoli, grafiche, export">Manda in montaggio &#9656;</button></div></div>
+        <div class="pista" id="bzPista"></div>
       </div>
     </div>
     <div class="scheda">
@@ -590,7 +598,8 @@
     apri.then(function(){ return post({ tipo:"clip-archivio-apri", rec: rec }); }).then(function(d){
       var r = d.reg; ASSET = r; MARKER = r.marker || []; FORSE = null; BOZZA = null;
       // la bozza: la sequenza "BOZZA · partita" piu' recente di questa registrazione
-      post({ tipo:"clip-hl-elenco", reg: r.id, tutte: true }).then(function(x){ BOZZA = (x.seq || []).filter(function(q){ return q.reg === r.id && /^BOZZA · /.test(q.titolo || ""); }).sort(function(a,b){ return (b.creata || 0) - (a.creata || 0); })[0] || null; disegnaScheda(el("cercaS").value); }).catch(function(){});
+      post({ tipo:"clip-hl-elenco", reg: r.id, tutte: true }).then(function(x){ BOZZA = (x.seq || []).filter(function(q){ return q.reg === r.id && /^BOZZA · /.test(q.titolo || ""); }).sort(function(a,b){ return (b.creata || 0) - (a.creata || 0); })[0] || null; disegnaBozza(); }).catch(function(){});
+      disegnaBozza();
       // la proposta del tabellone ("forse e' Chelsea-Luton"): la conferma una persona
       post({ tipo:"clip-archivio-partite", quante: 4000 }).then(function(x){ var z = (x.partite || []).filter(function(y){ return y.rec === rec; })[0]; FORSE = z && z.forse ? z.forse : null; if (FORSE) disegnaScheda(el("cercaS").value); }).catch(function(){});
       el("aTitolo").textContent = r.titolo || "partita"; el("sTitolo").textContent = r.titolo || "";
@@ -634,11 +643,6 @@
       var k = TAB.indexOf(x);
       return '<div class="voce" data-t="' + x.dentro + '" data-i="' + k + '"><input type="checkbox" data-k="' + k + '"' + (SCELTE[k] ? " checked" : "") + ' title="spunta per mandarla in timeline"><span class="min">' + esc(x.minuto || tcBreve(x.t)) + '</span><span class="tag ' + esc((x.tag || x.tipo || "").toLowerCase()) + '">' + esc(x.tag || x.tipo || "azione") + '</span><span class="tx">' + evidenzia(x.titolo || x.giocatore || "", q) + '<small>' + tcBreve(x.t) + ' · ' + esc((x.fonti || [x.fonte]).join(" + ")) + (x.certezza && x.certezza !== "minuto" ? ' · ' + esc(x.certezza) : '') + '</small></span></div>';
     }).join("") + '<div class="azioniS"><button class="mini oro" id="bMonta" disabled>Metti le spuntate in timeline</button><button class="mini" id="bTutteAz">Tutte</button><button class="mini" id="bGolAz">Solo i gol</button><button class="mini" id="bHlAuto" title="una sequenza fatta da sola: clip del live, gol e azioni del tabellino, boati">HL automatico</button></div>' : '<div class="vuoto" style="padding:6px 8px">Nessuna azione: gli appunti e ESPN non hanno ancora niente per questa partita.</div>'), false);
-    var bz = BOZZA ? (BOZZA.pezzi || []) : [];
-    h += blocco("bozza", "Bozza" + (BOZZA && BOZZA.prog ? "" : ""), bz.length, '<div class="bozza">' + (bz.length ? bz.map(function(x, i){
-      return '<div class="voce" data-t="' + x.dentro + '"><span class="n">' + (i + 1) + '</span><span class="min">' + tcBreve(x.dentro) + '</span><span class="tx">' + esc(x.titolo || "pezzo") + ' <small style="color:var(--fumo)">' + tc(x.fuori - x.dentro) + '</small></span><button class="mini" data-bsu="' + i + '" title="prima">&#8593;</button><button class="mini" data-bgiu="' + i + '" title="dopo">&#8595;</button><button class="mini" data-bvia="' + esc(x.id) + '" title="togli dalla bozza">×</button></div>';
-    }).join("") : '<div class="vuoto" style="padding:6px 8px">La bozza è il grezzo: segna IN e OUT e premi B (o l\u2019icona con la cartella), oppure spunta le azioni e "Aggiungi alla bozza". Poi la rifinisci nel montaggio.</div>') +
-      '<div class="azioniS">' + (bz.length ? '<button class="mini oro" id="bRifinisci">Rifinisci nel montaggio</button>' : '') + '<button class="mini" id="bBozzaSpuntate" title="le azioni spuntate qui sopra entrano nella bozza con le loro finestre">Aggiungi le spuntate</button>' + (BOZZA ? '<button class="mini" id="bBozzaProg" title="in quale progetto sta la bozza">Progetto' + (BOZZA.prog ? " ✓" : "") + '</button>' : '') + '</div></div>', !bz.length && !Object.keys(SCELTE).length);
     var mk = MARKER.filter(function(m){ return !q || piatto(m.testo || "").indexOf(q) >= 0; });
     h += blocco("marker", "Marker e boati", MARKER.length, (mk.length ? mk.map(function(m){
       return '<div class="voce" data-t="' + m.secondi + '"><span class="min">' + tcBreve(m.secondi) + '</span><span class="tx">' + (m.fonte === "boato" ? "🔊 " : "") + esc(m.testo || m.tipo || "marker") + '</span><button class="mini" data-mtogli="' + esc(m.id) + '" title="togli">×</button></div>';
@@ -663,17 +667,6 @@
     }); });
     el("scheda").querySelectorAll("button[data-mtogli]").forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); post({ tipo:"clip-marker", reg: ASSET.id, togli: b.dataset.mtogli }).then(function(d){ MARKER = d.marker || []; ASSET.marker = MARKER; disegnaScheda(el("cercaS").value); disegnaMomenti(); }).catch(function(er){ avviso("err", esc(er.message)); }); }); });
     el("scheda").querySelectorAll("#bl-detto .voce[data-k]").forEach(function(v){ v.addEventListener("dblclick", function(){ correggiRiga(v.dataset.k); }); });
-    if (el("bRifinisci")) el("bRifinisci").addEventListener("click", function(){ if (BOZZA) location.href = "mam2.html?seq=" + encodeURIComponent(BOZZA.id); });
-    if (el("bBozzaSpuntate")) el("bBozzaSpuntate").addEventListener("click", function(){
-      var righe = Object.keys(SCELTE).map(function(k){ return TAB[k]; }).filter(Boolean).sort(function(a,b){ return a.t - b.t; });
-      if (!righe.length) return avviso("err", "Spunta prima qualche azione.");
-      var b = this; b.disabled = true;
-      bozzaAssicura().then(function(){ var p = Promise.resolve(); righe.forEach(function(x){ p = p.then(function(){ return bozzaAggiungi(x.dentro, x.fuori, x.titolo || (x.tag || x.tipo || "azione") + " " + (x.minuto || "")); }); }); return p; })
-        .then(function(){ SCELTE = {}; avviso("ok", righe.length + (righe.length === 1 ? " azione aggiunta" : " azioni aggiunte") + " alla bozza."); disegnaScheda(el("cercaS").value); }).catch(function(e){ avviso("err", esc(e.message)); b.disabled = false; });
-    });
-    if (el("bBozzaProg")) el("bBozzaProg").addEventListener("click", function(){ scegliProgetto(function(pid){ post({ tipo:"clip-hl-progetto", seq: BOZZA.id, prog: pid }).then(function(d){ BOZZA = d.seq || BOZZA; disegnaScheda(el("cercaS").value); avviso("ok", pid ? "Bozza nel progetto." : "Bozza senza progetto."); }).catch(function(e){ avviso("err", esc(e.message)); }); }); });
-    el("scheda").querySelectorAll("button[data-bvia]").forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); post({ tipo:"clip-hl-pezzo", seq: BOZZA.id, pezzo: b.dataset.bvia, togli: true }).then(function(d){ BOZZA = d.seq; disegnaScheda(el("cercaS").value); }).catch(function(er){ avviso("err", esc(er.message)); }); }); });
-    el("scheda").querySelectorAll("button[data-bsu],button[data-bgiu]").forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); var i = +(b.dataset.bsu !== undefined ? b.dataset.bsu : b.dataset.bgiu), n = b.dataset.bsu !== undefined ? -1 : 1, ordine = (BOZZA.pezzi || []).map(function(z){ return z.id; }); if (i + n < 0 || i + n >= ordine.length) return; var id = ordine.splice(i, 1)[0]; ordine.splice(i + n, 0, id); post({ tipo:"clip-hl-ordina", seq: BOZZA.id, ordine: ordine }).then(function(d){ BOZZA = d.seq; disegnaScheda(el("cercaS").value); }).catch(function(er){ avviso("err", esc(er.message)); }); }); });
     if (el("bHlAuto")) el("bHlAuto").addEventListener("click", function(){ var b = this; b.disabled = true; b.textContent = "…"; post({ tipo:"clip-hl-genera", reg: ASSET.id }).then(function(d){ var q = d.seq; if (q && q.id) location.href = "mam2.html?seq=" + encodeURIComponent(q.id); else throw new Error("nessuna sequenza"); }).catch(function(e){ avviso("err", esc(e.message)); b.disabled = false; b.textContent = "HL automatico"; }); });
     if (el("bImportaSrt")) { el("bImportaSrt").addEventListener("click", function(){ el("fSrt").click(); }); el("fSrt").addEventListener("change", function(){ var f = this.files && this.files[0]; if (!f) return; var fr = new FileReader(); fr.onload = function(){ importaSrt(String(fr.result || ""), f.name); }; fr.readAsText(f); this.value = ""; }); }
     el("scheda").querySelectorAll(".fischio[data-t]").forEach(function(v){ v.addEventListener("click", function(){ seek(+v.dataset.t); }); });
@@ -784,6 +777,35 @@
       .then(function(d){ avviso("ok", "Clip in lavorazione (" + tc(FUORI - DENTRO) + "): la trovi nelle Esportazioni del montaggio." + (SOTTO ? " Con l'SRT." : "")); })
       .catch(function(e){ avviso("err", esc(e.message)); });
   });
+  // LA TIMELINE DELLA BOZZA sotto il player: i pezzi in proporzione, clic per andarci, trascina per riordinare
+  var BZ_TRASC = null;
+  function disegnaBozza(){
+    var pz = BOZZA ? (BOZZA.pezzi || []) : [], tot = pz.reduce(function(a, x){ return a + (x.fuori - x.dentro); }, 0);
+    el("bzConto").textContent = pz.length ? pz.length + (pz.length === 1 ? " pezzo" : " pezzi") + " · " + tc(tot) + (BOZZA.prog ? " · nel progetto" : "") : "il grezzo di questa partita";
+    el("bRifinisci").disabled = !pz.length; el("bBozzaProg").hidden = !BOZZA; el("bBozzaProg").textContent = "Progetto" + (BOZZA && BOZZA.prog ? " ✓" : "");
+    var w = el("bzPista").clientWidth || 800, px = tot ? Math.max(0.5, (w - 3 * pz.length) / tot) : 0;
+    el("bzPista").innerHTML = pz.map(function(x, i){
+      var d = x.fuori - x.dentro;
+      return '<div class="bz" draggable="true" data-i="' + i + '" data-id="' + esc(x.id) + '" data-t="' + x.dentro + '" style="width:' + Math.max(64, Math.round(d * px)) + 'px" title="' + esc(x.titolo || "pezzo") + ' · ' + tcBreve(x.dentro) + ' → ' + tcBreve(x.fuori) + '"><b>' + esc(x.titolo || "pezzo") + '</b><small>' + tcBreve(x.dentro) + ' · ' + tc(d) + '</small><button class="via" data-bvia="' + esc(x.id) + '" title="togli dalla bozza">×</button></div>';
+    }).join("");
+    el("bzPista").querySelectorAll(".bz").forEach(function(z){
+      z.addEventListener("click", function(e){ if (e.target.closest(".via")) return; seek(+z.dataset.t); el("bzPista").querySelectorAll(".bz.sel").forEach(function(y){ y.classList.remove("sel"); }); z.classList.add("sel"); });
+      z.addEventListener("dragstart", function(e){ BZ_TRASC = +z.dataset.i; z.classList.add("trascino"); try { e.dataTransfer.setData("text/plain", z.dataset.id); e.dataTransfer.effectAllowed = "move"; } catch (er) {} });
+      z.addEventListener("dragend", function(){ z.classList.remove("trascino"); el("bzPista").querySelectorAll(".bz.dopo").forEach(function(y){ y.classList.remove("dopo"); }); });
+      z.addEventListener("dragover", function(e){ e.preventDefault(); el("bzPista").querySelectorAll(".bz.dopo").forEach(function(y){ y.classList.remove("dopo"); }); z.classList.add("dopo"); });
+      z.addEventListener("drop", function(e){ e.preventDefault(); var a = BZ_TRASC, b = +z.dataset.i; BZ_TRASC = null; if (a === null || a === b) return; var ordine = (BOZZA.pezzi || []).map(function(y){ return y.id; }); var id = ordine.splice(a, 1)[0]; ordine.splice(b, 0, id); post({ tipo:"clip-hl-ordina", seq: BOZZA.id, ordine: ordine }).then(function(d){ BOZZA = d.seq; disegnaBozza(); }).catch(function(er){ avviso("err", esc(er.message)); }); });
+    });
+    el("bzPista").querySelectorAll("button[data-bvia]").forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); post({ tipo:"clip-hl-pezzo", seq: BOZZA.id, pezzo: b.dataset.bvia, togli: true }).then(function(d){ BOZZA = d.seq; disegnaBozza(); }).catch(function(er){ avviso("err", esc(er.message)); }); }); });
+  }
+  el("bRifinisci").addEventListener("click", function(){ if (BOZZA) location.href = "mam2.html?seq=" + encodeURIComponent(BOZZA.id); });
+  el("bBozzaSpuntate").addEventListener("click", function(){
+    var righe = Object.keys(SCELTE).map(function(k){ return TAB[k]; }).filter(Boolean).sort(function(a,b){ return a.t - b.t; });
+    if (!righe.length) return avviso("err", "Spunta prima qualche azione nella scheda a destra.");
+    var b = this; b.disabled = true;
+    bozzaAssicura().then(function(){ var p = Promise.resolve(); righe.forEach(function(x){ p = p.then(function(){ return bozzaAggiungi(x.dentro, x.fuori, x.titolo || (x.tag || x.tipo || "azione") + " " + (x.minuto || "")); }); }); return p; })
+      .then(function(){ SCELTE = {}; avviso("ok", righe.length + (righe.length === 1 ? " azione aggiunta" : " azioni aggiunte") + " alla bozza."); disegnaScheda(el("cercaS").value); disegnaBozza(); b.disabled = false; }).catch(function(e){ avviso("err", esc(e.message)); b.disabled = false; });
+  });
+  el("bBozzaProg").addEventListener("click", function(){ if (!BOZZA) return; scegliProgetto(function(pid){ post({ tipo:"clip-hl-progetto", seq: BOZZA.id, prog: pid }).then(function(d){ BOZZA = d.seq || BOZZA; disegnaBozza(); avviso("ok", pid ? "Bozza nel progetto." : "Bozza senza progetto."); }).catch(function(e){ avviso("err", esc(e.message)); }); }); });
   // LA BOZZA: il grezzo di una partita, una sequenza "BOZZA · partita" che cresce a colpi di B
   function bozzaAssicura(){
     if (BOZZA) return Promise.resolve(BOZZA);
@@ -795,7 +817,7 @@
   el("bBozza").addEventListener("click", function(){
     if (!ASSET || DENTRO === null || FUORI === null || FUORI <= DENTRO) return;
     var b = this; b.disabled = true;
-    bozzaAggiungi(DENTRO, FUORI).then(function(){ avviso("ok", "In bozza: " + tc(DENTRO) + " → " + tc(FUORI) + " (" + (BOZZA.pezzi || []).length + " pezzi)."); disegnaScheda(el("cercaS").value); b.disabled = false; }).catch(function(e){ avviso("err", esc(e.message)); b.disabled = false; });
+    bozzaAggiungi(DENTRO, FUORI).then(function(){ avviso("ok", "In bozza: " + tc(DENTRO) + " → " + tc(FUORI) + " (" + (BOZZA.pezzi || []).length + " pezzi)."); disegnaBozza(); b.disabled = false; }).catch(function(e){ avviso("err", esc(e.message)); b.disabled = false; });
   });
   // IN TIMELINE, DOVE VUOI TU: in coda, all'inizio, dopo un pezzo, o in una sequenza nuova
   function inserisci(seqId, dove){
@@ -836,6 +858,7 @@
     }
     el("scheda").querySelectorAll(".voce.ora").forEach(function(v){ v.classList.remove("ora"); });
     if (ora) { var vv = el("scheda").querySelector('.voce[data-a="' + ora.a + '"]'); if (vv) { vv.classList.add("ora"); if (!V.paused && el("bl-detto") && !el("bl-detto").classList.contains("chiuso") && !el("cercaS").value) vv.scrollIntoView({ block:"nearest" }); } }
+    el("bzPista").querySelectorAll(".bz").forEach(function(z){ var x = BOZZA && BOZZA.pezzi && BOZZA.pezzi[+z.dataset.i]; z.classList.toggle("ora", !!x && t >= x.dentro && t <= x.fuori); });
     var az = null; for (var j = 0; j < TAB.length; j++) { if (t >= TAB[j].dentro && t <= TAB[j].fuori) az = TAB[j]; }
     if (az) { var va = el("scheda").querySelector('.voce[data-i="' + TAB.indexOf(az) + '"]'); if (va) va.classList.add("ora"); }
   }
