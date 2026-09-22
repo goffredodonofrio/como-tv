@@ -73,6 +73,11 @@
   .riprendi .t b{display:block;font-family:'Mazzard',sans-serif;font-weight:700;font-size:14px;} .riprendi .t span{color:var(--fumo);font-size:12px;}
   .riprendi .az{margin-left:auto;display:flex;gap:8px;}
   .griglia{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;}
+  .vista{display:inline-flex;gap:2px;margin-left:auto;} .vista button{padding:3px 8px;font-size:10px;} .vista button.on{background:var(--oro);color:var(--navy);border-color:var(--oro);} .sez .dx.b{margin-left:0;}
+  .lista{width:100%;border-collapse:collapse;font-size:13px;background:var(--pan);border:1px solid var(--riga);border-radius:12px;overflow:hidden;} .lista th{font-family:'Mazzard',sans-serif;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--fumo);text-align:left;padding:8px 10px;border-bottom:1px solid var(--riga);font-weight:700;}
+  .lista td{padding:7px 10px;border-bottom:1px solid var(--riga);vertical-align:middle;white-space:nowrap;} .lista tr:last-child td{border-bottom:0;} .lista tbody tr{cursor:pointer;} .lista tbody tr:hover td{background:rgba(245,241,230,.04);}
+  .lista td.p{white-space:normal;font-weight:600;} .lista td.p small{display:block;color:var(--fumo);font-weight:400;font-size:11px;} .lista td.n{color:var(--fumo);font-variant-numeric:tabular-nums;} .lista .tcb{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ok);border:1px solid var(--ok);border-radius:3px;padding:1px 4px;}
+  .lista td.mini2c{width:64px;padding:4px 0 4px 8px;} .lista .minil{width:56px;height:32px;border-radius:4px;background:#000 center/cover no-repeat;display:block;}
   .card{background:var(--pan);border:1px solid var(--riga);border-radius:12px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;}
   .card:hover{border-color:var(--oro);}
   .card .mini{position:relative;aspect-ratio:16/9;background:#000 center/cover no-repeat;}
@@ -262,7 +267,7 @@
       <div class="cat" id="categorie"></div>
     </div>
     <div id="libRecenti">
-      <div class="sez"><h2>Partite</h2><span id="recConto"></span><a class="dx b mini" href="magazzino.html" target="_blank" rel="noopener">Magazzino</a></div>
+      <div class="sez"><h2>Partite</h2><span id="recConto"></span><span class="vista"><button id="vGriglia" title="schede con l'anteprima">&#9638; Anteprime</button><button id="vLista" title="una riga per partita">&#9776; Lista</button></span><a class="dx b mini" href="magazzino.html" target="_blank" rel="noopener">Magazzino</a></div>
       <div class="griglia" id="recenti"></div>
     </div>
   </div>
@@ -437,11 +442,26 @@
     var c = { tipo:"clip-posa", reg: reg }; if (t !== undefined) c.t = t;
     post(c).then(function(d){ POSE[k] = BASE + d.via; poi(POSE[k]); }).catch(function(){ POSE[k] = ""; }).then(function(){ if (fine) fine(); });
   }
+  var VISTA = "griglia"; try { VISTA = localStorage.getItem("mam2-vista") === "lista" ? "lista" : "griglia"; } catch (e) {}
+  function linkAsset(x){ return "mam2.html?asset=" + encodeURIComponent(x.rec || "") + (x.reg ? "&reg=" + encodeURIComponent(x.reg) : ""); }
   function disegnaRecenti(){
     if (!EVENTI.length) return;
+    el("vGriglia").classList.toggle("on", VISTA === "griglia"); el("vLista").classList.toggle("on", VISTA === "lista");
+    el("recenti").classList.toggle("griglia", VISTA === "griglia");
+    if (VISTA === "lista") {
+      el("recenti").innerHTML = '<table class="lista"><thead><tr><th></th><th>Partita</th><th>Competizione</th><th>Data</th><th>Durata</th><th>Peso</th><th>Telecronaca</th></tr></thead><tbody>' + EVENTI.map(function(x){
+        var r = x.reg && REGS[x.reg], mini = r && r.mini ? BASE + r.mini : "";
+        return '<tr data-href="' + linkAsset(x) + '"><td class="mini2c"><span class="minil" data-reg="' + esc(x.reg || "") + '" style="' + (mini ? "background-image:url('" + esc(mini) + "')" : "") + '"></span></td><td class="p">' + esc(x.partita || x.nome.replace(/\.[^.]+$/, "")) + (x.partita ? '<small>' + esc(x.nome) + '</small>' : '') + '</td><td>' + esc(x.competizione || "—") + '</td><td class="n">' + quando(x.quando) + '</td><td class="n">' + (x.durata ? tc(x.durata) : "—") + '</td><td class="n">' + peso(x.peso) + '</td><td>' + (x.telecronaca ? '<span class="tcb">tc</span>' : '<span style="color:var(--fumo)">—</span>') + '</td></tr>';
+      }).join("") + '</tbody></table>';
+      el("recenti").querySelectorAll("tr[data-href]").forEach(function(tr){ tr.addEventListener("click", function(){ location.href = tr.dataset.href; }); });
+      var daL = Array.prototype.slice.call(el("recenti").querySelectorAll(".minil[data-reg]")).filter(function(m){ return m.dataset.reg; });
+      var giroL = function(){ var m = daL.shift(); if (!m) return; posa(m.dataset.reg, undefined, function(u){ m.style.backgroundImage = "url('" + u + "')"; }, function(){ setTimeout(giroL, 80); }); };
+      giroL();
+      return;
+    }
     el("recenti").innerHTML = EVENTI.map(function(x){
       var r = x.reg && REGS[x.reg], mini = r && r.mini ? BASE + r.mini : "";
-      return '<a class="card" href="mam2.html?asset=' + encodeURIComponent(x.rec || "") + (x.reg ? "&reg=" + encodeURIComponent(x.reg) : "") + '">' +
+      return '<a class="card" href="' + linkAsset(x) + '">' +
         '<div class="mini" data-reg="' + esc(x.reg || "") + '" style="' + (mini ? "background-image:url('" + esc(mini) + "')" : "") + '">' + (x.telecronaca ? '<span class="tc">tc</span>' : '') + '<span class="play">&#9654;</span>' + (x.durata ? '<span class="dur">' + tc(x.durata) + '</span>' : '') + '</div>' +
         '<div class="t"><b title="' + esc(x.partita || x.nome) + '">' + esc(x.partita || x.nome.replace(/\.[^.]+$/, "")) + '</b><small>' + esc(x.competizione || "") + (x.competizione ? " · " : "") + quando(x.quando) + ' · ' + peso(x.peso) + '</small></div></a>';
     }).join("");
@@ -463,6 +483,8 @@
       return '<a data-cat="' + k + '" style="--c:' + c.c + '"><i>' + c.ic + '</i><div><b>' + c.eti + '</b><small>' + (conta[k] !== "" ? conta[k] : "cerca per vederle") + '</small></div></a>';
     }).join("");
   }
+  el("vGriglia").addEventListener("click", function(){ VISTA = "griglia"; try { localStorage.setItem("mam2-vista", VISTA); } catch (e) {} disegnaRecenti(); });
+  el("vLista").addEventListener("click", function(){ VISTA = "lista"; try { localStorage.setItem("mam2-vista", VISTA); } catch (e) {} disegnaRecenti(); });
   el("categorie").addEventListener("click", function(e){
     var a = e.target.closest("a[data-cat]"); if (!a) return;
     if (a.dataset.cat === "evento") { el("libRecenti").scrollIntoView({ behavior:"smooth" }); return; }
