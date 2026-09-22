@@ -5857,6 +5857,7 @@ function fileArchivio() { return path.join(DIR, "archivio.json"); }
 function leggiArchivio() {
   try { ARCHIVIO = JSON.parse(fs.readFileSync(fileArchivio(), "utf8")) || {}; }
   catch (e) { ARCHIVIO = {}; }
+  registraInventario();                 // il magazzino di solo elenco e' vivo: le sue partite restano
   if (!S3_SPENTO) return;
   // il file dell'indice se le ricorda anche dopo: si tolgono qui, una
   // volta, e chi vuole rivederle riaccende Amazon e riscandaglia
@@ -6004,7 +6005,13 @@ async function archivioScandaglia(p) {
       if (!meglio || punteggio < 0.5) {
         if (candidati.length) orfane.push(f["Partita"] + " (" +
           new Date(quando).toISOString().slice(0, 16).replace("T", " ") + ")");
-        senzaMateriale.push({ rec: rec.id, nome: f["Partita"] || "", quando: quandoIso });
+        // il minuto di Roma si calcola qui una volta: dentro il giro delle
+        // cartelle (1.700 su S3 × 3.000 partite × 2 letture dell'ora) la
+        // toLocaleString bloccava il ponte per un quarto d'ora (22/09/2026)
+        const qMs = Date.parse(quandoIso || "");
+        const mR = qMs ? minutiRoma(qMs) : null;
+        senzaMateriale.push({ rec: rec.id, nome: f["Partita"] || "", quando: quandoIso,
+                              minutoRoma: mR, giornoRoma: (qMs && mR !== null) ? giornoNumero(giornoRoma(qMs)) * 1440 + mR : null });
         return;
       }
       // anche le etichette di due parole: "[AUDIO ONLY]" e' una consegna a
@@ -6014,6 +6021,18 @@ async function archivioScandaglia(p) {
       const scelta = scegliMateriale(meglio, tag);
       if (!scelta) return;
       meglio.presa = rec.id;
+      // IL FILE CHE SI LEGGE VINCE. Se la partita ha gia' il materiale in un
+      // magazzino vero (la QNAP) e questo giro e' su un magazzino di solo
+      // elenco (S3 senza chiave), la riga resta com'e': si segna soltanto
+      // che la partita sta anche la', per quando la chiave ci sara'
+      if (soloElenco(bucket)) {
+        const gia = ARCHIVIO[rec.id];
+        if (gia && gia.bucket && gia.bucket !== bucket && !soloElenco(gia.bucket)) {
+          gia.ancheSu = { bucket: bucket, dove: meglio.dove, chiave: scelta.pezzi[0] && scelta.pezzi[0].chiave };
+          viste.add(rec.id); agganciate++;
+          return;
+        }
+      }
 
       let pezzi = scelta.pezzi.map((x) => Object.assign({}, x, {
         da: daKickoffPezzo(x.file, quando)
@@ -6156,11 +6175,8 @@ async function archivioScandaglia(p) {
       [(oraFile.h % 12), (oraFile.h % 12) + 12].forEach((hh) => {
         const parte = base + hh * 60 + oraFile.m;
         senzaMateriale.forEach((sm) => {
-          const q = Date.parse(sm.quando || "");
-          if (!q) return;
-          const m2 = minutiRoma(q);
-          if (m2 === null) return;
-          const d2 = giornoNumero(giornoRoma(q)) * 1440 + m2 - parte;
+          if (sm.giornoRoma === null || sm.giornoRoma === undefined) return;
+          const d2 = sm.giornoRoma - parte;
           if (d2 < -25 || d2 > durataMin) return;
           if (!candidatiSuoi.some((c) => c.rec === sm.rec)) candidatiSuoi.push({ rec: sm.rec, nome: sm.nome, quando: sm.quando });
         });
@@ -11315,13 +11331,15 @@ const AZIONI = {
     let suS3 = 0;
     Object.keys(ARCHIVIO).forEach((k) => {
       const a = ARCHIVIO[k];
-      if (!a.soloS3 || !a.chiave) return;
+      // tutte le partite che stanno in un magazzino di solo elenco: quelle
+      // appaiate ad Airtable (rec…) e quelle ancora senza nome (s3:…)
+      if (!a.chiave || !soloElenco(a.bucket)) return;
       const minuti = (a.pezzi || []).reduce((n, z) => n + (z.minuti || 0), 0);
       const r = regs.find((x) => x.arch && x.arch.rec === k);
       fuori.push({ nome: path.basename(a.chiave), via: a.chiave, cartella: a.dove || path.dirname(a.chiave), peso: a.peso || (a.pezzi || []).reduce((n, z) => n + (z.peso || 0), 0),
                    quando: Date.parse(a.quando) || 0, est: path.extname(a.chiave).slice(1).toLowerCase(), rec: k, partita: a.partita || "", competizione: a.competizione || "",
                    quandoPartita: a.quando || "", durata: r ? (r.durata || 0) : Math.round(minuti * 60), reg: r ? r.id : undefined,
-                   telecronaca: !!(r && PARLATO[r.id] && (PARLATO[r.id].pezzi || []).length), s3: true, bucket: a.bucket, pezzi: (a.pezzi || []).length || 1,
+                   telecronaca: !!(r && PARLATO[r.id] && (PARLATO[r.id].pezzi || []).length), s3: true, senzaNome: !!a.soloS3, bucket: a.bucket, pezzi: (a.pezzi || []).length || 1,
                    soloElenco: soloElenco(a.bucket), forse: a.riconosciuta && a.riconosciuta.sicura === false ? a.riconosciuta.nome : "" });
       suS3++;
     });
