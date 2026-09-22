@@ -254,7 +254,7 @@ function tipoDi(nome, sq) {
   if (NON_FOGLIO.test(n)) return "altro";
   if (sq.length === 2) return "partita";
   // "Foglio partita Millwall West Ham": una partita scritta senza separatore
-  if (sq.length === 1 && (/partita|intro|curiosita|gara|riserve/i.test(n) || sq[0].split(" ").length > 3)) return "partita";
+  if (sq.length === 1 && (/partita|intro|curiosita|gara|riserve|panchine/i.test(n) || sq[0].split(" ").length > 3)) return "partita";
   return sq.length === 1 ? "squadra" : "altro";
 }
 function squadreDa(nome, testo) {
@@ -262,9 +262,11 @@ function squadreDa(nome, testo) {
   while (ESTENSIONI.test(s)) s = s.replace(ESTENSIONI, "");
   s = s.normalize("NFD").replace(/[̀-ͯ]/g, "")        // "Curiosità" scritto con l'accento staccato
     .replace(/\(.*?\)/g, " ").replace(/\d{1,2}[-./]\d{1,2}[-./]\d{2,4}/g, " ").replace(/\b20\d{6}\b/g, " ")
+    .replace(/\b\d{1,2}\s+\d{1,2}\s+20\d{2}\b/g, " ")                     // "1 03 2026"
+    .replace(/([A-Za-zÀ-ÿ]{3,})\.([A-Za-zÀ-ÿ]{3,})/g, "$1 - $2")                 // "River.Bragantino"
     .replace(/\b(?:20)?\d{2}\s*[:/-]\s*(?:20)?\d{2}\b/g, " ")     // la stagione: 2026:27, 26-27
     .replace(/_/g, " ").replace(/\|/g, " ")
-    .replace(/\b(foglio|partita|appunti|curiosita|note|scheda|giornata|rosa|intro|squadre|gara|riserve|semifinali?|quarti|ottavi|finale|playoff|po|round|\d+[aª°]|\d+)\b/gi, " ")
+    .replace(/\b(foglio|partita|appunti|curiosita|note|scheda|giornata|rosa|intro|squadre|gara|riserve|panchine|semifinali?|quarti|ottavi|finale|playoff|po|round|\d+[aª°]|\d+)\b/gi, " ")
     .replace(/\s+/g, " ").trim();
   // prima i separatori con gli spazi ("Al-Hilal v Al-Faisaly"), poi il trattino attaccato
   let pezzi = s.split(/\s+(?:-|–|v|vs|x)\.?\s+/i).map((x) => x.trim()).filter(Boolean);
