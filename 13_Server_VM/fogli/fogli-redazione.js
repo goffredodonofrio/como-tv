@@ -699,7 +699,8 @@ async function partitaEspn(lega, quando, casa, ospite) {
       const nh = [h.team.displayName, h.team.shortDisplayName, h.team.name], na = [a.team.displayName, a.team.shortDisplayName, a.team.name];
       const ok = (nomi, x) => nomi.some((n) => stessoNome(n, x));
       if ((ok(nh, casa) && ok(na, ospite)) || (ok(nh, ospite) && ok(na, casa)))
-        return { lega, ev: String(e.id), nome: e.name, casa: h.team.displayName, ospite: a.team.displayName };
+        return { lega, ev: String(e.id), nome: e.name, casa: h.team.displayName, ospite: a.team.displayName,
+                 casaId: String(h.team.id || ""), ospiteId: String(a.team.id || "") };      // gli id: gli stemmi in TELECRONACA
     }
   }
   return null;
@@ -753,7 +754,8 @@ async function giroPartite(stato) {
   for (const m of daCercare) {
     const k = chiave(m), v = memo[k];
     const vicina = Math.abs(Date.parse(m.quando) - ora) < 7 * 864e5;
-    const daRifare = v === undefined || v === null || (v.nessuna && (vicina || ora - v.nessuna > 864e5));
+    const daRifare = v === undefined || v === null || (v.nessuna && (vicina || ora - v.nessuna > 864e5)) ||
+                     (v.ev && !v.casaId);            // trovate prima degli stemmi: si riprendono gli id
     if (!m.lega || cercate >= 150 || !daRifare) continue;
     cercate++;
     try { memo[k] = (await partitaEspn(m.lega, m.quando, m.casa, m.ospite)) || { nessuna: ora }; } catch (e) { memo[k] = { nessuna: ora }; }
