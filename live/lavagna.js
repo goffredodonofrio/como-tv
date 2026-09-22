@@ -171,6 +171,14 @@ window.Lavagna = (function () {
       /* presenze e gol della stagione: in cima, come una scheda da tabellino */
       ".lav .foglietto .stagione{margin:0 0 10px;padding:9px 10px 8px;border-radius:8px;" +
       "background:rgba(6,10,26,.55);border:1px solid rgba(201,162,75,.22);}" +
+      /* da sapere: poche righe di fatti, sopra la stagione */
+      ".lav .foglietto .dasapere{margin:0 0 10px;padding:9px 10px 8px;border-radius:8px;" +
+      "background:rgba(201,162,75,.10);border:1px solid rgba(201,162,75,.30);}" +
+      ".lav .foglietto .dasapere ul{list-style:none;margin:0;padding:0;}" +
+      ".lav .foglietto .dasapere li{font-size:13.5px;line-height:1.45;padding:2px 0 2px 14px;position:relative;color:var(--lav-avorio);}" +
+      ".lav .foglietto .dasapere li::before{content:'';position:absolute;left:2px;top:9px;width:5px;height:5px;border-radius:50%;background:var(--lav-oro);}" +
+      ".lav .foglietto .dasapere li b{font-weight:700;}" +
+      ".lav.chiara .foglietto .dasapere{background:#FBF4DF;border-color:#E2D6B6;}" +
       ".lav .foglietto .sttit{font-family:'Mazzard',sans-serif;font-size:10.5px;font-weight:700;" +
       "letter-spacing:.16em;text-transform:uppercase;color:#C9A24B;margin-bottom:6px;}" +
       /* il menu' della stagione: sta al posto del titolo */
@@ -929,11 +937,183 @@ window.Lavagna = (function () {
           iNome.value = intero; iNome.dataset.intero = intero;
         }
       }
-      if (ANAG[p.pid]) return metti(ANAG[p.pid]);
-      fetch("https://sports.core.api.espn.com/v2/sports/soccer/athletes/" + p.pid)
-        .then(function (r) { return r.json(); })
-        .then(function (a) { if (a && (a.fullName || a.dateOfBirth)) { ANAG[p.pid] = a; metti(a); } })
-        .catch(function () {});
+      anag(p.pid).then(metti);
+    }
+    // l'anagrafe ESPN di un giocatore, chiesta una volta sola
+    var ANAG_IN = {};
+    function anag(pid) {
+      pid = String(pid || "");
+      if (!/^\d+$/.test(pid)) return Promise.resolve(null);
+      if (ANAG[pid]) return Promise.resolve(ANAG[pid]);
+      if (!ANAG_IN[pid]) {
+        ANAG_IN[pid] = fetch("https://sports.core.api.espn.com/v2/sports/soccer/athletes/" + pid)
+          .then(function (r) { return r.json(); })
+          .then(function (a) { if (a && (a.fullName || a.dateOfBirth)) { ANAG[pid] = a; return a; } return null; })
+          .catch(function () { delete ANAG_IN[pid]; return null; });
+      }
+      return ANAG_IN[pid];
+    }
+
+    // DA SAPERE: poche righe di fatti, calcolate, per chi racconta la
+    // partita. Niente di inventato: dai numeri ESPN (carriera, stagione
+    // partita per partita, anagrafe) e da Wikidata quando c'e' qualcosa.
+    // Una riga compare solo se e' vera; se non c'e' niente, la casella non
+    // c'e'.
+    function dasapereSu(p, dove) {
+      var pid = String(p.pid || "");
+      if (!dove) return;
+      dove.hidden = true;
+      if (p.mister || !/^\d+$/.test(pid)) return;
+      var altro = p.lato === "A" ? "B" : "A", avv = SQ[altro] || {}, tid = SQ[p.lato].tid;
+      var voci = {}, ORDINE = ["ex", "compleanno", "eta", "forma", "porta", "wd"];
+      function scrivi() {
+        if (!dove.isConnected) return;
+        var h = ORDINE.filter(function (k) { return voci[k]; })
+          .map(function (k) { return "<li>" + voci[k] + "</li>"; }).join("");
+        dove.innerHTML = h ? '<div class="sttit">Da sapere</div><ul>' + h + "</ul>" : "";
+        dove.hidden = !h;
+      }
+      // il compleanno, se cade nei giorni della partita
+      anag(pid).then(function (a) {
+        var d = a && /^(\d{4})-(\d{2})-(\d{2})/.exec(a.dateOfBirth || "");
+        if (!d) return;
+        var oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+        var diff = null, anni = 0;
+        [-1, 0, 1].forEach(function (o) {
+          var c = new Date(oggi.getFullYear() + o, +d[2] - 1, +d[3]);
+          var g = Math.round((c - oggi) / 864e5);
+          if (diff === null || Math.abs(g) < Math.abs(diff)) { diff = g; anni = oggi.getFullYear() + o - (+d[1]); }
+        });
+        if (Math.abs(diff) > 3) return;
+        voci.compleanno = diff === 0 ? "<b>Oggi compie " + anni + " anni</b>"
+          : diff === 1 ? "Domani compie <b>" + anni + " anni</b>"
+          : diff > 0 ? "Fra " + diff + " giorni compie <b>" + anni + " anni</b>"
+          : diff === -1 ? "Ieri ha compiuto <b>" + anni + " anni</b>"
+          : "Ha compiuto <b>" + anni + " anni</b> " + (-diff) + " giorni fa";
+        scrivi();
+      });
+      // il piu' giovane o il piu' esperto fra quelli in campo (se ESPN ha la
+      // data di quasi tutti: se no il confronto non vale)
+      var campo = PEDINE.filter(function (q) { return !q.mister && /^\d+$/.test(String(q.pid)); })
+        .map(function (q) { return String(q.pid); });
+      if (campo.indexOf(pid) >= 0 && campo.length >= 12) {
+        Promise.all(campo.map(anag)).then(function (v) {
+          var nati = v.map(function (a, i) { return { pid: campo[i], d: a && a.dateOfBirth }; })
+            .filter(function (x) { return x.d; });
+          if (nati.length < campo.length * 0.8) return;
+          nati.sort(function (x, y) { return String(x.d).localeCompare(String(y.d)); });
+          if (nati[nati.length - 1].pid === pid) voci.eta = "Il <b>pi&ugrave; giovane</b> in campo";
+          else if (nati[0].pid === pid) voci.eta = "Il <b>pi&ugrave; esperto</b> in campo";
+          scrivi();
+        });
+      }
+      conStagione(function () {
+        // ex di turno: ha giocato nella squadra di fronte
+        if (avv.tid) StagioneEspn.carriera(pid).then(function (car) {
+          var anni = [];
+          car.forEach(function (c) { if (String(c.tid) === String(avv.tid) && anni.indexOf(c.anno) < 0) anni.push(c.anno); });
+          if (!anni.length) return;
+          anni.sort();
+          voci.ex = "<b>Ex</b> di turno: ha giocato nel " + esc(avv.nome) + " (" +
+            anni.map(function (a) { return a + "-" + String(a + 1).slice(2); }).join(", ") + ")";
+          scrivi();
+        });
+        // il momento: le presenze di questa stagione, dalla piu' recente
+        if (tid) StagioneEspn.partite(tid, pid).then(function (v) {
+          if (!v.length) { voci.forma = "Nessuna presenza ufficiale in stagione: sarebbe la <b>prima</b>"; scrivi(); return; }
+          if (v[0].portiere) {
+            var k = 0;
+            while (k < v.length && v[k].titolare && !v[k].subiti) k++;
+            if (k >= 2) voci.porta = "Porta inviolata nelle ultime <b>" + k + " partite</b>";
+            else if (k === 1) voci.porta = "Porta inviolata nell'ultima partita";
+          } else {
+            var tot = 0; v.forEach(function (x) { tot += x.gol; });
+            var cinque = v.slice(0, 5), g5 = 0; cinque.forEach(function (x) { g5 += x.gol; });
+            var fr = [];
+            if (v[0].gol) fr.push("a segno nell'ultima partita" + (v[0].gol > 1 ? " (<b>" + v[0].gol + " gol</b>)" : ""));
+            if (g5 >= 2) fr.push("<b>" + g5 + " gol</b> nelle ultime " + cinque.length + " presenze");
+            if (tot > 0 && !v[0].gol) {
+              var n = 0; while (n < v.length && !v[n].gol) n++;
+              if (n >= 3) fr.push("non segna da <b>" + n + " presenze</b>");
+            }
+            if (fr.length) voci.forma = fr[0].charAt(0).toUpperCase() + fr[0].slice(1) + (fr[1] ? ", " + fr[1] : "");
+          }
+          scrivi();
+        });
+      });
+      wikidataSu(pid, function (t) { if (t) { voci.wd = t; scrivi(); } });
+    }
+
+    // WIKIDATA: luogo di nascita, soprannome e parenti calciatori, quando ci
+    // sono (per molti giocatori c'e' solo il luogo). Il giocatore si trova
+    // per id ESPN (P3681), se no per nome + calciatore + anno di nascita
+    // uguale a ESPN: un omonimo non passa. Si chiede una volta e si tiene.
+    var LSW = "comotv.wikidata2.";
+    var PARENTELA = { P22: "Figlio di", P25: "Figlio di", P3373: "Fratello di", P40: "Padre di", P1038: "Parente di" };
+    function wikidataSu(pid, poi) {
+      var c = null;
+      try { c = JSON.parse(localStorage.getItem(LSW + pid) || "null"); } catch (e) {}
+      if (c) return poi(c.t);
+      var W = "https://www.wikidata.org/w/api.php?origin=*&format=json&";
+      function j(u) { return fetch(W + u).then(function (r) { return r.json(); }); }
+      function val(cl, p) {
+        return (cl[p] || []).map(function (x) { return (x.mainsnak.datavalue || {}).value; }).filter(Boolean);
+      }
+      anag(pid).then(function (a) {
+        if (!a) return null;
+        var anno = String(a.dateOfBirth || "").slice(0, 4), nome = a.fullName || a.displayName || "";
+        return j("action=query&list=search&srsearch=" + encodeURIComponent("haswbstatement:P3681=" + pid))
+          .then(function (r) {
+            var ids = ((r.query || {}).search || []).map(function (x) { return x.title; });
+            if (ids.length) return { ids: ids.slice(0, 1), certo: true };
+            return j("action=wbsearchentities&type=item&limit=7&language=en&search=" + encodeURIComponent(nome))
+              .then(function (r2) { return { ids: (r2.search || []).map(function (x) { return x.id; }), certo: false }; });
+          })
+          .then(function (q) {
+            if (!q.ids.length) return null;
+            return j("action=wbgetentities&props=claims&ids=" + q.ids.join("|")).then(function (r) {
+              for (var i = 0; i < q.ids.length; i++) {
+                var cl = ((r.entities || {})[q.ids[i]] || {}).claims || {};
+                var lavoro = val(cl, "P106").map(function (v) { return v.id; });
+                var nato = val(cl, "P569").map(function (v) { return String(v.time || "").slice(1, 5); });
+                if (q.certo || (lavoro.indexOf("Q937857") >= 0 && anno && nato.indexOf(anno) >= 0)) return cl;
+              }
+              return null;
+            });
+          });
+      }).then(function (cl) {
+        if (!cl) return "";
+        var luogo = val(cl, "P19").map(function (v) { return v.id; })[0];
+        var sopr = val(cl, "P1449").filter(function (v) { return v.language === "it"; })[0] ||
+                   val(cl, "P1449").filter(function (v) { return v.language === "en"; })[0] || val(cl, "P1449")[0];
+        var par = [];
+        Object.keys(PARENTELA).forEach(function (p) {
+          val(cl, p).forEach(function (v) { if (v.id) par.push({ p: p, id: v.id }); });
+        });
+        var ids = (luogo ? [luogo] : []).concat(par.map(function (x) { return x.id; })).slice(0, 40);
+        var chiedi = ids.length ? j("action=wbgetentities&props=labels|claims&languages=it|en&ids=" + ids.join("|"))
+                                : Promise.resolve({ entities: {} });
+        return chiedi.then(function (r) {
+          var E = r.entities || {};
+          function nomeDi(id) { var l = (E[id] || {}).labels || {}; return (l.it || l.en || {}).value || ""; }
+          var righe = [];
+          if (luogo && nomeDi(luogo)) righe.push("Nato " + (/^[Aa]/.test(nomeDi(luogo)) ? "ad" : "a") + " <b>" + esc(nomeDi(luogo)) + "</b>");
+          if (sopr && sopr.text) righe.push("Soprannome: <b>" + esc(sopr.text) + "</b>");
+          // solo i parenti che hanno fatto calcio (calciatore o allenatore)
+          par.forEach(function (x) {
+            var cl2 = (E[x.id] || {}).claims || {};
+            var lav = val(cl2, "P106").map(function (v) { return v.id; });
+            if (lav.indexOf("Q937857") < 0 && lav.indexOf("Q628099") < 0) return;
+            if (nomeDi(x.id)) righe.push(PARENTELA[x.p] + " <b>" + esc(nomeDi(x.id)) + "</b>" +
+                                         (lav.indexOf("Q937857") >= 0 ? " (calciatore)" : " (allenatore)"));
+          });
+          return righe.join(" · ");
+        });
+      }).then(function (t) {
+        if (t === undefined || t === null) return;
+        try { localStorage.setItem(LSW + pid, JSON.stringify({ t: t })); } catch (e) {}
+        poi(t);
+      }).catch(function () {});
     }
     function apriNota(p) {
       chiudiNota();
@@ -953,6 +1133,7 @@ window.Lavagna = (function () {
           '<input data-f="nome" type="text" placeholder="Cognome" value="' + esc(p.cognome || "") + '"></div>') +
         '</div></div>' +
         '<div class="cartriga" data-cart-box="1"></div>' +
+        '<div class="dasapere" data-dasapere="1" hidden></div>' +
         '<div class="stagione" data-stagione-box="1"></div>' +
         '<textarea placeholder="Le tue curiosità: precedenti, come si pronuncia il nome, cosa dire in telecronaca…"></textarea>' +
         '<div class="piede">' +
@@ -963,6 +1144,7 @@ window.Lavagna = (function () {
       cassa.appendChild(f);
       facciaSu(p, f.querySelector("[data-faccia]"));
       bioSu(p, f.querySelector("[data-bio]"), f.querySelector('input[data-f="nome"]'));
+      dasapereSu(p, f.querySelector("[data-dasapere]"));
       stagioneSu(p, f.querySelector("[data-stagione-box]"));
       cartSu(p, f.querySelector("[data-cart-box]"));
       // la tabella della stagione arriva dopo e allunga il foglietto: lo si

@@ -23,12 +23,15 @@
  *   StagioneEspn.squadra(tid)            // la prepara in anticipo
  *   StagioneEspn.giocatore(tid, pid)     // -> Promise([{ slug, nome, presenze,
  *                                        //      titolare, gol, assist, gialli, rossi }])
+ *   StagioneEspn.partite(tid, pid)       // -> Promise([{ data, lega, titolare, gol, assist,
+ *                                        //      subiti, portiere }]) le presenze, dalla piu' recente
  */
 window.StagioneEspn = (function () {
   "use strict";
 
   var API = "https://site.api.espn.com/apis/site/v2/sports/soccer";
   var SQUADRE = {};                         // tid -> Promise dei conti di tutta la rosa
+  var LOG = {};                             // tid -> pid -> le sue presenze, una per partita
   var LS = "comotv.stagione2.ev.";   // 2: con gol subiti e parate dei portieri
 
   // la stagione cambia d'estate: a luglio si comincia a contare la nuova
@@ -92,19 +95,23 @@ window.StagioneEspn = (function () {
           return st.state === "post" && !amichevole(e.league);
         }).map(function (e) {
           var l = e.league || {};
-          return { id: String(e.id), finita: true, lega: { slug: l.slug || "", nome: nomeLega(l) } };
+          return { id: String(e.id), finita: true, data: e.date || "", lega: { slug: l.slug || "", nome: nomeLega(l) } };
         });
         // a gruppi di sei, per non sommergere ESPN
         var tutte = [];
         function giro(i) {
           if (i >= giocate.length) return Promise.resolve(tutte);
-          return Promise.all(giocate.slice(i, i + 6).map(riassunto))
+          return Promise.all(giocate.slice(i, i + 6).map(function (ev) {
+            // la data sta nel calendario, non nel riassunto salvato
+            return riassunto(ev).then(function (f) { return f && { lega: f.lega, g: f.g, data: ev.data }; });
+          }))
             .then(function (v) { tutte = tutte.concat(v.filter(Boolean)); return giro(i + 6); });
         }
         return giro(0);
       })
       .then(function (partite) {
         var conti = {};                     // pid -> slug -> numeri
+        var log = (LOG[tid] = {});
         partite.forEach(function (p) {
           Object.keys(p.g).forEach(function (pid) {
             var x = p.g[pid];
@@ -116,6 +123,8 @@ window.StagioneEspn = (function () {
                                       gol: 0, assist: 0, gialli: 0, rossi: 0,
                                       subiti: 0, parate: 0, inviolate: 0, portiere: false });
             r.presenze++; r.titolare += x[1]; r.gol += x[3]; r.assist += x[4]; r.gialli += x[5]; r.rossi += x[6];
+            (log[pid] = log[pid] || []).push({ data: p.data, lega: p.lega.nome, titolare: !!x[1], gol: x[3],
+                                               assist: x[4], subiti: x[7] || 0, portiere: !!x[9] });
             if (x[9]) {
               // porta inviolata: titolare e nessun gol preso (se esce prima e
               // il gol arriva dopo, ESPN lo da' a chi e' entrato)
@@ -141,6 +150,14 @@ window.StagioneEspn = (function () {
       var c = conti[String(pid || "")] || {};
       return Object.keys(c).map(function (k) { return c[k]; })
         .sort(function (a, b) { return peso(a.slug) - peso(b.slug) || b.presenze - a.presenze; });
+    });
+  }
+
+  function partite(tid, pid) {
+    tid = String(tid || "");
+    return squadra(tid).then(function () {
+      return ((LOG[tid] || {})[String(pid || "")] || []).slice()
+        .sort(function (a, b) { return String(b.data).localeCompare(String(a.data)); });
     });
   }
 
@@ -257,5 +274,5 @@ window.StagioneEspn = (function () {
       .catch(function () { return []; });
   }
 
-  return { squadra: squadra, giocatore: giocatore, stagione: stagione, carriera: carriera };
+  return { squadra: squadra, giocatore: giocatore, partite: partite, stagione: stagione, carriera: carriera };
 })();
