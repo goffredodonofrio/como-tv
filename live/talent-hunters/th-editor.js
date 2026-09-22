@@ -816,9 +816,24 @@
               " Non durante una diretta: pesa sulla macchina delle grafiche.";
     var prev = document.getElementById("btnPrev");
     barra.insertBefore(b, prev ? prev.nextSibling : barra.firstChild);
+    // 25 o 50 fps: la scelta e' la stessa degli altri tasti Esporta (esporta-video.js)
+    var CHIAVE_FPS = "comotv.esporta.fps";
+    function fpsScelto() {
+      try { return localStorage.getItem(CHIAVE_FPS) === "50" ? 50 : 25; } catch (e) { return 25; }
+    }
+    var f = document.createElement("button");
+    f.type = "button"; f.hidden = true;
+    f.title = "Fotogrammi al secondo del video: 25 o 50, come la sequenza di Premiere. Clicca per cambiare.";
+    function scriviFps() { f.textContent = fpsScelto() + " fps"; }
+    f.addEventListener("click", function () {
+      try { localStorage.setItem(CHIAVE_FPS, fpsScelto() === 50 ? "25" : "50"); } catch (e) {}
+      scriviFps();
+    });
+    scriviFps();
+    barra.insertBefore(f, b.nextSibling);
     fetch(ESPORTA + "salute", { cache: "no-store" })
       .then(function (r) { return r.json(); })
-      .then(function (j) { if (j && j.ok) b.hidden = false; })
+      .then(function (j) { if (j && j.ok) { b.hidden = false; f.hidden = false; } })
       .catch(function () {});
 
     function scarica(id) {
@@ -858,7 +873,7 @@
         stato("", "Mando la grafica all'esportazione&hellip;");
         return fetch(ESPORTA + "avvia", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ motore: G.motore, d: x.d, nome: x.nome || PAGINA.nome })
+          body: JSON.stringify({ motore: G.motore, d: x.d, nome: x.nome || PAGINA.nome, fps: fpsScelto() })
         })
           .then(function (r) { return r.json(); })
           .then(function (res) {

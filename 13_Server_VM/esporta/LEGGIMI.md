@@ -10,6 +10,9 @@ Le grafiche diventano file video per la post-produzione, dal tasto **⬇ Esporta
 | Classifiche | `classifiche-campionati.html` | `classifica-vmix.html` | MOV con wipe | `CLASSIFICA_…` |
 | Tabelloni e gironi | `tabelloni.html` | `tabellone-vmix.html`, `gruppi-vmix.html` | MOV con wipe | `TABELLONE_…`, `GIRONI_…` |
 
+- **25 o 50 fps** (dal 22/09/2026): accanto al tasto Esporta c'e' il tasto "25 fps / 50 fps", uguale in
+  tutte le pagine (Talent Hunters compreso) e ricordato dal browser (`comotv.esporta.fps`). A 50 fps il
+  lavoro e il file raddoppiano (classifica 6,6 s: 174 s di lavoro, 431 MB) e il nome finisce in `_50p`.
 - **MP4 (H.264)** per le grafiche col loro fondo.
 - **MOV con wipe** (dal 21/09/2026, solo risultati, classifiche, tabelloni e gironi; Talent Hunters no):
   davanti alla grafica le due bande oro Como TV, come le montano in post. Il video comincia

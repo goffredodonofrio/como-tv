@@ -34,20 +34,43 @@ window.EsportaVideo = (function () {
     });
   }
 
+  // 25 o 50 fotogrammi al secondo: quelli della sequenza di Premiere. La
+  // scelta vale per tutti i tasti Esporta (anche Talent Hunters) e si ricorda.
+  var CHIAVE_FPS = "comotv.esporta.fps";
+  function fpsScelto() {
+    try { return localStorage.getItem(CHIAVE_FPS) === "50" ? 50 : 25; } catch (e) { return 25; }
+  }
+  function tastoFps(dopo, classe) {
+    var f = document.createElement("button");
+    f.type = "button"; f.hidden = true; f.className = classe || "";
+    f.style.whiteSpace = "nowrap";
+    function scrivi() { f.textContent = fpsScelto() + " fps"; }
+    f.title = "Fotogrammi al secondo del video: 25 o 50, come la sequenza di Premiere. Clicca per cambiare.";
+    f.addEventListener("click", function () {
+      try { localStorage.setItem(CHIAVE_FPS, fpsScelto() === 50 ? "25" : "50"); } catch (e) {}
+      scrivi();
+    });
+    scrivi();
+    dopo.parentNode.insertBefore(f, dopo.nextSibling);
+    return f;
+  }
+
   function tasto(opz) {
     if (!opz || !opz.dopo || !window.fetch) return null;
     var B = base();
     var dire = opz.messaggio || function () {};
     var b = document.createElement("button");
     b.type = "button"; b.hidden = true; b.className = opz.classe || "";
+    b.style.whiteSpace = "nowrap";
     b.innerHTML = "&#11015; Esporta video";
     b.title = "Video per la post-produzione: la stessa grafica dell'anteprima, con davanti la wipe Como TV " +
               "(MOV trasparente, si mette sopra il pezzo prima). " +
               "Non durante una diretta: pesa sulla macchina delle grafiche.";
     opz.dopo.parentNode.insertBefore(b, opz.dopo.nextSibling);
+    var f = tastoFps(b, opz.classe);
     fetch(B + "salute", { cache: "no-store" })
       .then(function (r) { return r.json(); })
-      .then(function (j) { if (j && j.ok) b.hidden = false; })
+      .then(function (j) { if (j && j.ok) { b.hidden = false; f.hidden = false; } })
       .catch(function () {});
 
     function scarica(id) {
@@ -89,7 +112,7 @@ window.EsportaVideo = (function () {
       dire("", "Mando la grafica all'esportazione…");
       fetch(B + "avvia", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ motore: motore, d: x.d, nome: x.nome || "" })
+        body: JSON.stringify({ motore: motore, d: x.d, nome: x.nome || "", fps: fpsScelto() })
       })
         .then(function (r) { return r.json(); })
         .then(function (res) {
@@ -101,5 +124,5 @@ window.EsportaVideo = (function () {
     return b;
   }
 
-  return { tasto: tasto };
+  return { tasto: tasto, tastoFps: tastoFps, fps: fpsScelto };
 })();

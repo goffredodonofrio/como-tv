@@ -15,7 +15,7 @@
  *
  *  Parla con gli editor (Talent Hunters, risultati, classifiche, tabelloni):
  *    GET  salute              -> {ok, occupato, coda}
- *    POST avvia  {motore, d, nome}  -> {ok, id}
+ *    POST avvia  {motore, d, nome, fps}  -> {ok, id}   (fps: 25 o 50, di serie 25)
  *    GET  stato?id=           -> {stato: coda|lavoro|pronto|errore, fotogrammi, posto, errore}
  *    GET  file?id=            -> il file, da scaricare
  *
@@ -87,7 +87,7 @@ function prossimo() {
   L.stato = "lavoro";
   const out = path.join(LAVORI, id + "." + L.ext);
   const args = ["-n", "19", process.execPath, path.join(__dirname, "esporta-grafica.js"),
-                "--url", L.url, "--out", out, "--secondi", "auto"];
+                "--url", L.url, "--out", out, "--secondi", "auto", "--fps", String(L.fps || 25)];
   if (CHROME) args.push("--chrome", CHROME);
   if (L.wipe) args.push("--wipe", WIPE, "--wipe-copre", "0.5");
   const p = spawn("nice", args, { stdio: ["ignore", "pipe", "pipe"] });
@@ -99,9 +99,10 @@ function prossimo() {
     });
   });
   p.stderr.on("data", (b) => { coda_err = (coda_err + String(b)).slice(-600); });
-  // un'esportazione non dura mai piu' di cinque minuti: se succede, Chrome si
-  // e' piantato, e la coda non deve restare ferma per sempre
-  const tempo = setTimeout(() => { try { p.kill("SIGKILL"); } catch (e) {} }, 5 * 60 * 1000);
+  // un'esportazione non dura mai piu' di cinque minuti (dieci a 50 fps, che
+  // sono il doppio dei fotogrammi): se succede, Chrome si e' piantato, e la
+  // coda non deve restare ferma per sempre
+  const tempo = setTimeout(() => { try { p.kill("SIGKILL"); } catch (e) {} }, (L.fps === 50 ? 10 : 5) * 60 * 1000);
   p.on("close", (codice) => {
     clearTimeout(tempo);
     if (codice === 0 && fs.existsSync(out)) { L.stato = "pronto"; L.file = out; }
@@ -144,6 +145,9 @@ http.createServer((req, res) => {
       const M = MOTORI[p.motore];
       if (!M) return rispondi(res, 400, { ok: false, errore: "questa grafica non si esporta" });
       const wipe = conWipe(M);
+      // 25 o 50 fotogrammi al secondo: lo sceglie il montatore, secondo la
+      // sequenza di Premiere. Altro non si accetta.
+      const fps = parseInt(p.fps, 10) === 50 ? 50 : 25;
       const ext = wipe ? "mov" : M.ext;
       if (!p.d || typeof p.d !== "object") return rispondi(res, 400, { ok: false, errore: "mancano i dati della grafica" });
       if (coda.length >= CODA_MAX) return rispondi(res, 429, { ok: false, errore: "troppe esportazioni in fila: riprova fra poco" });
@@ -152,8 +156,8 @@ http.createServer((req, res) => {
       if (url.length > 7800) return rispondi(res, 400, { ok: false, errore: "dati troppo lunghi per l'indirizzo della grafica" });
       const id = crypto.randomBytes(8).toString("hex");
       const giorno = new Date().toISOString().slice(0, 10);
-      const nome = [M.nome, pulito(p.nome), giorno].filter(Boolean).join("_") + "." + ext;
-      lavori.set(id, { stato: "coda", motore: p.motore, url, ext, nome, wipe, fotogrammi: 0, creato: Date.now() });
+      const nome = [M.nome, pulito(p.nome), giorno, fps === 50 ? "50p" : ""].filter(Boolean).join("_") + "." + ext;
+      lavori.set(id, { stato: "coda", motore: p.motore, url, ext, nome, wipe, fps, fotogrammi: 0, creato: Date.now() });
       coda.push(id);
       prossimo();
       rispondi(res, 200, { ok: true, id, nome, formato: ext });
@@ -164,7 +168,7 @@ http.createServer((req, res) => {
   if (req.method === "GET" && via === "stato") {
     const L = lavori.get(u.searchParams.get("id") || "");
     if (!L) return rispondi(res, 404, { ok: false, errore: "esportazione sconosciuta (forse scaduta)" });
-    return rispondi(res, 200, { ok: true, stato: L.stato, fotogrammi: L.fotogrammi, secondi: +(L.fotogrammi / 25).toFixed(1),
+    return rispondi(res, 200, { ok: true, stato: L.stato, fotogrammi: L.fotogrammi, secondi: +(L.fotogrammi / (L.fps || 25)).toFixed(1),
                                 posto: L.stato === "coda" ? coda.indexOf(u.searchParams.get("id")) + 1 : 0,
                                 nome: L.nome, errore: L.errore || null });
   }
