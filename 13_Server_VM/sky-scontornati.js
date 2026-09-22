@@ -173,7 +173,10 @@ async function testo(u) { const r = await fetch(u, { headers: UA }); if (!r.ok) 
 async function json(u) { const r = await fetch(u, { headers: UA }); if (!r.ok) throw new Error(r.status + " " + u); return r.json(); }
 
 async function squadreEspn(lega) {
-  const d = await json("https://site.api.espn.com/apis/v2/sports/soccer/" + lega + "/standings");
+  // le coppe (Coppa di Germania...) non hanno classifica: allora nessuna
+  // squadra da qui, e il pacchetto puo' dire l'id ESPN da se' ("tid")
+  let d;
+  try { d = await json("https://site.api.espn.com/apis/v2/sports/soccer/" + lega + "/standings"); } catch (e) { return []; }
   // tutti i gironi, non solo il primo: in Libertadores Boca non sta nel girone A
   const visti = new Set();
   return (d.children || []).flatMap((c) => c.standings.entries)
@@ -277,7 +280,7 @@ for (const [k, lega, nome] of [["efl-championship", "eng.2", "Championship"], ["
 // Per i club che pubblicano foto col fondo: si scaricano e si scontornano sul
 // Mac (Vision, lo strumento "Scontorna foto"), si guardano a occhio, e arrivano
 // qui come cartella di PNG con un elenco JSON:
-//   { prefisso, cartella, squadre: [{ squadra, lega, righe: [{ num, nome,
+//   { prefisso, cartella, squadre: [{ squadra, lega, tid?, righe: [{ num, nome,
 //     cognome, id, slug, file, sempre, lato }] }] }
 // --pacchetto <elenco.json>. "Ha gia' la foto" vale solo se e' intestata al suo
 // id (--stato): le poche foto che quei giocatori "avevano" erano omonimi.
@@ -367,7 +370,8 @@ if (PAC) {
         const out = [];
         for (const q of PAC.squadre.filter((x) => x.lega === lega)) {
           const s = slug(q.squadra);
-          const sq = espn.find((e) => slug(e.nome) === s) ||
+          const sq = (q.tid ? { id: String(q.tid), nome: q.squadra } : null) ||
+                     espn.find((e) => slug(e.nome) === s) ||
                      espn.find((e) => { const a = slug(e.nome).split("-"), b = s.split("-"); return b.every((x) => a.includes(x)) || a.every((x) => b.includes(x)); });
           if (!sq) continue;
           const dir = path.resolve(path.dirname(PACCHETTO), PAC.cartella);
