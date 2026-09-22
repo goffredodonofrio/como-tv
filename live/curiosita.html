@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<script>
+/* Le Grafiche Live vivono sulla macchina della regia: da GitHub si viene
+   portati sulla macchina giusta. Sulla VM questo non fa nulla. */
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  location.replace("https://projects-cloud.it" + location.pathname + location.search + location.hash);
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Curiosità · Como TV</title>
+<!--
+  CURIOSITÀ — il foglio partita del giornalista, in una finestra a parte.
+
+  Lo apre la lavagna dei telecronisti (tasto CURIOSITÀ, e "leggi il foglio"
+  nella scheda del giocatore). I fogli li raccoglie da Slack e dal Drive il
+  lettore sulla VM (13_Server_VM/fogli) e li serve su /fogli-redazione/,
+  gia' divisi in blocchi: qui si mostrano tutti con la stessa forma,
+  chiunque li abbia scritti. Non va in onda.
+
+  Indirizzo: curiosita.html?id=<id del foglio>
+-->
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  /* chiaro di partenza, come la lavagna; scuro se la lavagna e' scura */
+  :root{
+    color-scheme:light;
+    --fondo:#E9E4D8;--carta:#FFFFFF;--testo:#0A0F24;--testo2:#4A5068;--oro:#8A6A1E;--oroB:#6E520F;
+    --linea:#DCD5C4;--lineaoro:rgba(138,106,30,.35);--chip:#F6F2E9;
+  }
+  html.scura{
+    color-scheme:dark;
+    --fondo:#0A0F24;--carta:#111833;--testo:#F5F1E6;--testo2:#8A8B96;--oro:#C9A24B;--oroB:#E3C271;
+    --linea:rgba(245,241,230,.1);--lineaoro:rgba(201,162,75,.35);--chip:rgba(245,241,230,.05);
+  }
+  body{font-family:'DM Sans',system-ui,sans-serif;font-weight:500;background:var(--fondo);color:var(--testo);
+    font-size:16px;line-height:1.6;padding-bottom:60px;}
+  .foglio{max-width:920px;margin:0 auto;background:var(--carta);min-height:100vh;
+    border-left:1px solid var(--linea);border-right:1px solid var(--linea);}
+
+  header{padding:26px clamp(18px,4vw,40px) 14px;}
+  .eyebrow{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.3em;
+    text-transform:uppercase;color:var(--oro);display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .eyebrow span{letter-spacing:.04em;text-transform:none;font-family:'DM Sans',sans-serif;font-weight:500;color:var(--testo2);}
+  h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(26px,4.4vw,40px);line-height:1.02;
+    text-transform:uppercase;letter-spacing:-.01em;margin:10px 0 6px;}
+  .dati{color:var(--testo2);font-size:15px;}
+  .azioni{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+  .azioni a,.azioni button{font-family:'Mazzard',sans-serif;font-weight:700;font-size:11px;letter-spacing:.1em;
+    text-transform:uppercase;padding:7px 11px;border-radius:7px;cursor:pointer;text-decoration:none;
+    background:var(--chip);color:var(--testo);border:1px solid var(--linea);}
+  .azioni a:hover,.azioni button:hover{border-color:var(--oro);color:var(--oroB);}
+  .altri{margin-top:10px;font-size:13.5px;color:var(--testo2);}
+  .altri a{color:var(--oro);margin-right:10px;}
+
+  /* il menu delle sezioni: resta in cima, e porta alla sezione */
+  nav{position:sticky;top:0;z-index:5;background:var(--carta);border-bottom:1px solid var(--linea);
+    padding:10px clamp(18px,4vw,40px);display:flex;gap:6px;flex-wrap:wrap;}
+  nav a{font-size:13px;font-weight:600;padding:5px 11px;border-radius:999px;text-decoration:none;
+    border:1px solid var(--lineaoro);color:var(--oroB);white-space:nowrap;}
+  nav a:hover{background:var(--chip);}
+  nav a.qui{background:var(--oro);border-color:var(--oro);color:var(--carta);}
+
+  main{padding:6px clamp(18px,4vw,40px) 20px;}
+  h2{font-family:'Mazzard',sans-serif;font-size:14px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--oro);margin:26px 0 9px;padding-top:12px;border-top:1px solid var(--lineaoro);scroll-margin-top:70px;}
+  h3{font-size:17px;font-weight:700;margin:15px 0 5px;}
+  h4{font-size:12.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--testo2);margin:13px 0 4px;}
+  p{margin:0 0 9px;}
+  ul{margin:0 0 10px;padding-left:20px;}
+  li{margin:0 0 6px;}
+  b{font-weight:700;}
+  dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:2px 0 11px;}
+  dt{font-weight:700;color:var(--testo2);font-size:14px;padding-top:1px;}
+  dd{margin:0;}
+  table{border-collapse:collapse;margin:4px 0 12px;font-size:14.5px;font-variant-numeric:tabular-nums;}
+  th,td{padding:5px 10px;text-align:center;border-bottom:1px solid var(--linea);}
+  th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--testo2);}
+  td:nth-child(2),th:nth-child(2){text-align:left;}
+  .vuoto{padding:60px 40px;color:var(--testo2);}
+
+  @media print{
+    body{background:#fff;}
+    nav,.azioni{display:none;}
+    .foglio{border:0;max-width:none;}
+    h2{break-after:avoid;}
+  }
+</style>
+</head>
+<body>
+<div class="foglio">
+  <header>
+    <div class="eyebrow">Curiosità <span id="chi"></span></div>
+    <h1 id="titolo">&nbsp;</h1>
+    <div class="dati" id="dati"></div>
+    <div class="azioni">
+      <a id="originale" target="_blank" rel="noopener" hidden>Apri l'originale</a>
+      <button type="button" id="stampa">Stampa</button>
+      <button type="button" id="tema">Tema scuro</button>
+    </div>
+    <div class="altri" id="altri" hidden></div>
+  </header>
+  <nav id="menu" hidden></nav>
+  <main id="corpo"><div class="vuoto">Carico il foglio&hellip;</div></main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var FOGLI = "/fogli-redazione/";
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function piano(t) {
+    return String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  }
+  function dataIt(d) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || ""); return m ? (+m[3]) + "/" + (+m[2]) + "/" + m[1] : (d || ""); }
+
+  // il tema della lavagna (lo stesso interruttore, lo stesso ricordo)
+  function tema(scuro, ricorda) {
+    document.documentElement.classList.toggle("scura", scuro);
+    el("tema").textContent = scuro ? "Tema chiaro" : "Tema scuro";
+    if (ricorda) { try { localStorage.setItem("comotv.lavagna.tema", scuro ? "scura" : "chiara"); } catch (e) {} }
+  }
+  var salvato = null;
+  try { salvato = localStorage.getItem("comotv.lavagna.tema"); } catch (e) {}
+  tema(salvato === "scura");
+  el("tema").addEventListener("click", function () { tema(!document.documentElement.classList.contains("scura"), true); });
+  el("stampa").addEventListener("click", function () { window.print(); });
+
+  var id = new URLSearchParams(location.search).get("id") || "";
+  if (!/^[a-z]-[A-Za-z0-9_-]+$/.test(id)) { el("corpo").innerHTML = '<div class="vuoto">Nessun foglio scelto.</div>'; return; }
+
+  Promise.all([
+    fetch(FOGLI + "fogli/" + encodeURIComponent(id) + ".json", { cache: "no-store" }).then(function (r) { if (!r.ok) throw 0; return r.json(); }),
+    fetch(FOGLI + "indice.json", { cache: "no-store" }).then(function (r) { return r.json(); }).catch(function () { return { fogli: [] }; })
+  ]).then(function (r) { mostra(r[0], r[1].fogli || []); })
+    .catch(function () { el("corpo").innerHTML = '<div class="vuoto">Foglio non trovato: forse e\' stato tolto.</div>'; });
+
+  function mostra(f, tutti) {
+    var sq = (f.squadre || []).join(" – ") || f.titolo || "Foglio partita";
+    document.title = "Curiosità · " + sq;
+    el("titolo").textContent = sq;
+    el("chi").textContent = [f.autore, dataIt(f.data)].filter(Boolean).join(" · ");
+    if (f.link) { el("originale").href = f.link; el("originale").hidden = false; }
+    // gli altri fogli della stessa sfida (andata e ritorno, stagioni prima)
+    var chiavi = (f.chiavi || []).slice().sort().join("|");
+    var altri = tutti.filter(function (x) { return x.id !== f.id && chiavi && (x.chiavi || []).slice().sort().join("|") === chiavi; });
+    if (altri.length) {
+      el("altri").innerHTML = "Altri fogli di questa sfida: " + altri.map(function (x) {
+        return '<a href="?id=' + encodeURIComponent(x.id) + '">' + esc(dataIt(x.data) + (x.autore ? " · " + x.autore : "")) + "</a>";
+      }).join("");
+      el("altri").hidden = false;
+    }
+
+    var B = f.blocchi && f.blocchi.length ? f.blocchi.slice()
+      : String(f.testo || "").split(/\n+/).map(function (r) { return { t: "p", x: r }; });
+    // l'intestazione: quello che sta prima della prima sezione, se e' corto
+    var testa = [];
+    while (B.length && B[0].t !== "h1" && B[0].t !== "tab" && testa.length < 5 &&
+           (B[0].t === "meta" || ((B[0].x || "").length <= 140 && B[0].t !== "li" && B[0].t !== "kv"))) {
+      var b0 = B.shift();
+      if (b0.t === "meta") testa = testa.concat(b0.parti); else testa.push(b0.x);
+    }
+    // via la riga che ripete le squadre ("SAN LORENZO vs BOCA JUNIORS")
+    testa = testa.filter(function (x) {
+      var k = piano(x);
+      return k && !(f.chiavi || []).every(function (c) { return k.indexOf(c) >= 0; });
+    });
+    el("dati").textContent = testa.join(" · ");
+
+    function riga(x, lead) {
+      // "Etichetta: resto" -> l'etichetta in grassetto, se non c'e' gia' un attacco
+      var m = !lead && /^([A-Za-zÀ-ÿ][^:\d]{1,30}):\s+(.+)$/.exec(x || "");
+      if (m && !/[.!?]/.test(m[1]) && m[1].split(" ").length <= 4) { lead = m[1] + ":"; x = m[2]; }
+      return (lead ? "<b>" + esc(lead) + "</b> " : "") + esc(x || "");
+    }
+    var h = "", sezioni = [], kv = [], lista = false;
+    function chiudi() {
+      if (kv.length) {
+        h += "<dl>" + kv.map(function (b) { return "<dt>" + esc(b.k) + "</dt><dd>" + esc(b.v) + "</dd>"; }).join("") + "</dl>";
+        kv = [];
+      }
+      if (lista) { h += "</ul>"; lista = false; }
+    }
+    B.forEach(function (b) {
+      if (b.t !== "kv" && kv.length) { var l = lista; lista = false; chiudi(); lista = l; }
+      if (b.t !== "li" && lista) { h += "</ul>"; lista = false; }
+      if (b.t === "kv") { kv.push(b); return; }
+      if (b.t === "li") { if (!lista) { h += "<ul>"; lista = true; } h += "<li>" + riga(b.x, b.lead) + "</li>"; return; }
+      if (b.t === "h0" || b.t === "h1") {
+        var n = sezioni.length;
+        sezioni.push(b.x);
+        h += '<h2 id="sez-' + n + '">' + esc(b.x) + "</h2>";
+        return;
+      }
+      if (b.t === "h2") { h += "<h3>" + esc(b.x) + "</h3>"; return; }
+      if (b.t === "h3") { h += "<h4>" + esc(b.x) + "</h4>"; return; }
+      if (b.t === "meta") { h += "<p>" + esc((b.parti || []).join(" · ")) + "</p>"; return; }
+      if (b.t === "tab") {
+        h += "<table>" + (b.righe || []).map(function (r, i) {
+          return "<tr>" + r.map(function (c) { return i ? "<td>" + esc(c) + "</td>" : "<th>" + esc(c) + "</th>"; }).join("") + "</tr>";
+        }).join("") + "</table>";
+        return;
+      }
+      h += "<p>" + riga(b.x, b.lead) + "</p>";
+    });
+    chiudi();
+    el("corpo").innerHTML = h || '<div class="vuoto">Il foglio e\' vuoto.</div>';
+
+    // il menu: ogni voce porta alla sua sezione, e si accende quella in cui si e'
+    if (sezioni.length > 1) {
+      el("menu").innerHTML = sezioni.map(function (x, i) { return '<a href="#sez-' + i + '" data-i="' + i + '">' + esc(x) + "</a>"; }).join("");
+      el("menu").hidden = false;
+      el("menu").addEventListener("click", function (ev) {
+        var a = ev.target.closest ? ev.target.closest("a[data-i]") : null;
+        if (!a) return;
+        ev.preventDefault();
+        vai(el("sez-" + a.dataset.i), true);
+        history.replaceState(null, "", "#sez-" + a.dataset.i);
+      });
+      // si arriva col titolo appena sotto il menu (che puo' andare su due righe)
+      function vai(s, piano) {
+        if (!s) return;
+        var y = s.getBoundingClientRect().top + window.scrollY - el("menu").offsetHeight - 10;
+        window.scrollTo({ top: Math.max(0, y), behavior: piano ? "smooth" : "auto" });
+      }
+      var voci = el("menu").querySelectorAll("a");
+      var titoli = sezioni.map(function (x, i) { return el("sez-" + i); });
+      function accendi() {
+        var alto = el("menu").getBoundingClientRect().bottom + 12, qui = 0;
+        titoli.forEach(function (t, i) { if (t && t.getBoundingClientRect().top <= alto) qui = i; });
+        Array.prototype.forEach.call(voci, function (v, i) { v.classList.toggle("qui", i === qui); });
+      }
+      window.addEventListener("scroll", accendi, { passive: true });
+      accendi();
+      // arrivati con un # (dal menu o da un link): si va li'
+      if (/^#sez-\d+$/.test(location.hash)) vai(document.querySelector(location.hash), false);
+    }
+  }
+})();
+</script>
+</body>
+</html>
