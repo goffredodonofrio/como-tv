@@ -584,8 +584,16 @@ const ALIAS_NOMI = {
   "boro": "middlesbrough", "man utd": "manchester united", "man city": "manchester city", "psv": "psv eindhoven",
   "qpr": "queens park rangers", "ind santa fe": "independiente santa fe", "ldu": "ldu quito",
   "salisburgo": "salzburg", "siviglia": "sevilla", "lipsia": "leipzig", "stoccarda": "stuttgart",
-  "friburgo": "freiburg", "colonia": "koln", "magonza": "mainz", "norimberga": "nurnberg",
-  "monaco di baviera": "bayern", "bayern monaco": "bayern", "lisbona": "lisbon", "porto": "fc porto"
+  "friburgo": "freiburg", "colonia": "cologne", "koln": "cologne", "fc koln": "cologne", "magonza": "mainz", "norimberga": "nurnberg",
+  "monaco di baviera": "bayern", "bayern monaco": "bayern", "lisbona": "lisbon", "porto": "fc porto",
+  // i nomi italiani (e i refusi) che su Airtable ricorrono
+  "barcellona": "barcelona", "aek atene": "aek athens", "atene": "athens", "amburgo": "hamburg",
+  "eintracht francoforte": "eintracht frankfurt", "eintrach francoforte": "eintracht frankfurt", "francoforte": "frankfurt",
+  "union berlino": "union berlin", "herta berlino": "hertha berlin", "hertha berlino": "hertha berlin",
+  "augusta": "augsburg", "magdeburgo": "magdeburg", "dinamo dresda": "dynamo dresden", "dresda": "dresden",
+  "kilmarnok": "kilmarnock", "fletwood": "fleetwood", "rw essen": "rot weiss essen", "grossaspach": "sonnenhof", "alqadsiah": "al qadsiah", "al faysaly": "al faisaly",
+  "jeddeloh": "jeddeloh", "siviglia": "sevilla", "valenza": "valencia", "maiorca": "mallorca", "atletico madrid": "atletico madrid",
+  "stella rossa": "crvena zvezda", "salonicco": "thessaloniki", "bruges": "brugge", "anversa": "antwerp"
 };
 function conAlias(t) { const k = piano(t); return ALIAS_NOMI[k] || k; }
 function stessoNome(a, b) {
@@ -661,15 +669,19 @@ async function giroPartite(stato) {
   const chiave = (m) => m.quando.slice(0, 10) + "|" + piano(m.casa) + "|" + piano(m.ospite);
   // prima le piu' vicine a oggi: sono quelle che servono
   const daCercare = partite.slice().sort((a, b) => Math.abs(Date.parse(a.quando) - ora) - Math.abs(Date.parse(b.quando) - ora));
+  // "non trovata" ha la sua data: si riprova dopo un giorno (i nomi nuovi in
+  // ALIAS_NOMI, le partite che ESPN aggiunge tardi), e ogni giro se e' vicina
   for (const m of daCercare) {
-    const k = chiave(m);
+    const k = chiave(m), v = memo[k];
     const vicina = Math.abs(Date.parse(m.quando) - ora) < 7 * 864e5;
-    if (!m.lega || cercate >= 150 || (k in memo && !(memo[k] === null && vicina))) continue;
+    const daRifare = v === undefined || v === null || (v.nessuna && (vicina || ora - v.nessuna > 864e5));
+    if (!m.lega || cercate >= 150 || !daRifare) continue;
     cercate++;
-    try { memo[k] = await partitaEspn(m.lega, m.quando, m.casa, m.ospite); } catch (e) { memo[k] = null; }
+    try { memo[k] = (await partitaEspn(m.lega, m.quando, m.casa, m.ospite)) || { nessuna: ora }; } catch (e) { memo[k] = { nessuna: ora }; }
   }
   for (const m of partite) {
-    m.espn = memo[chiave(m)] || null;
+    const v = memo[chiave(m)];
+    m.espn = v && v.ev ? v : null;
     const giorno = m.quando.slice(0, 10), t0 = Date.parse(giorno);
     m.fogli = indice.filter((f) => {
       if (f.tipo !== "partita") return false;
