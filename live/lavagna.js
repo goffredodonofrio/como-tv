@@ -171,6 +171,26 @@ window.Lavagna = (function () {
       /* presenze e gol della stagione: in cima, come una scheda da tabellino */
       ".lav .foglietto .stagione{margin:0 0 10px;padding:9px 10px 8px;border-radius:8px;" +
       "background:rgba(6,10,26,.55);border:1px solid rgba(201,162,75,.22);}" +
+      /* il foglio partita del giornalista: sotto la barra, si legge e si chiude */
+      ".lav .fogliobox{margin:0 0 10px;padding:14px 16px;border-radius:10px;max-height:60vh;overflow:auto;" +
+      "background:rgba(16,22,48,.9);border:1px solid rgba(201,162,75,.4);}" +
+      ".lav .fogliobox .ftesta{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px;}" +
+      ".lav .fogliobox .ftesta b{font-family:'Mazzard',sans-serif;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--lav-oroB);}" +
+      ".lav .fogliobox .ftesta span{font-size:12.5px;color:var(--lav-fg3);}" +
+      ".lav .fogliobox .ftesta a{font-size:12.5px;color:var(--lav-oro);}" +
+      ".lav .fogliobox .fscegli{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}" +
+      ".lav .fogliobox .ftesto{max-width:900px;}" +
+      ".lav .fogliobox .ftesto p{font-size:14.5px;line-height:1.55;margin:0 0 7px;color:var(--lav-avorio);white-space:pre-wrap;}" +
+      ".lav.chiara .fogliobox{background:#FFFFFF;border-color:#DCD5C4;}" +
+      /* nella scheda: le frasi dei fogli che nominano il giocatore */
+      ".lav .foglietto .dafogli{margin:0 0 10px;padding:9px 10px 8px;border-radius:8px;" +
+      "background:rgba(6,10,26,.45);border:1px solid rgba(245,241,230,.12);}" +
+      ".lav .foglietto .dafogli .fr{font-size:13px;line-height:1.45;padding:4px 0;border-top:1px solid rgba(245,241,230,.07);color:var(--lav-avorio);}" +
+      ".lav .foglietto .dafogli .fr:first-of-type{border-top:0;}" +
+      ".lav .foglietto .dafogli .fr small{display:block;color:var(--lav-fg3);font-size:11.5px;margin-top:2px;}" +
+      ".lav .foglietto .dafogli .fr small a{color:var(--lav-oro);cursor:pointer;text-decoration:underline;}" +
+      ".lav.chiara .foglietto .dafogli{background:#F6F2E9;border-color:#E2D6B6;}" +
+      ".lav.chiara .foglietto .dafogli .fr{border-top-color:rgba(10,15,36,.08);}" +
       /* da sapere: poche righe di fatti, sopra la stagione */
       ".lav .foglietto .dasapere{margin:0 0 10px;padding:9px 10px 8px;border-radius:8px;" +
       "background:rgba(201,162,75,.10);border:1px solid rgba(201,162,75,.30);}" +
@@ -296,6 +316,8 @@ window.Lavagna = (function () {
         '<button type="button" data-az="png">&#11015; Immagine</button>' +
         '<button type="button" data-az="stampa">&#128424; Stampa</button>' +
         '<button type="button" data-az="tema"></button>' +
+        // il foglio partita del giornalista, quando c'e' (fogli della redazione)
+        '<button type="button" data-az="foglio" hidden>&#128196; Foglio partita</button>' +
         (opz.salva ? '<span class="sep"></span><span data-salva="1"></span>' : "") +
       '</div>' +
       // seguire una partita vera: la scelta sta qui dentro, cosi' vale in
@@ -314,6 +336,7 @@ window.Lavagna = (function () {
       // il campo e, DI FIANCO, le due rose: si pesca da li' mentre si guarda
       // il campo, senza scorrere la pagina
       '<div class="diretta" data-diretta="1" style="display:none"></div>' +
+      '<div class="fogliobox" data-fogliobox="1" hidden></div>' +
       '<div class="fianco">' +
         '<div class="campoBox"><svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg"></svg></div>' +
         '<div class="lato">' +
@@ -1044,6 +1067,111 @@ window.Lavagna = (function () {
       wikidataSu(pid, function (t) { if (t) { voci.wd = t; scrivi(); } });
     }
 
+    // ── I FOGLI DELLA REDAZIONE ─────────────────────────────────────────
+    // Il foglio partita che il giornalista pubblica su Slack (o nel Drive):
+    // li raccoglie il lettore sulla VM (13_Server_VM/fogli) e nginx li serve
+    // su /fogli-redazione/. Sono gli stessi per prod e dev.
+    var FOGLI = "/fogli-redazione/", INDICE = null, INDICE_T = 0;
+    // i nomi corti dei giornalisti contro quelli di ESPN
+    var ALIAS_SQ = { "wolves": "wolverhampton", "wba": "west bromwich", "west brom": "west bromwich", "spurs": "tottenham",
+                     "boro": "middlesbrough", "man utd": "manchester united", "man united": "manchester united",
+                     "man city": "manchester city", "psv": "psv eindhoven", "inter": "internazionale", "qpr": "queens park rangers",
+                     "sheffield wed": "sheffield wednesday", "sheffield utd": "sheffield united", "forest": "nottingham forest" };
+    function pianoF(t) {
+      return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    }
+    function stessaSquadra(chiave, nome) {
+      var a = pianoF(nome), k = pianoF(ALIAS_SQ[chiave] || chiave);
+      if (!a || !k) return false;
+      return (" " + a + " ").indexOf(" " + k + " ") >= 0 || (" " + k + " ").indexOf(" " + a + " ") >= 0;
+    }
+    function indice() {
+      if (INDICE && Date.now() - INDICE_T < 300000) return Promise.resolve(INDICE);
+      return fetch(FOGLI + "indice.json", { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { INDICE = j.fogli || []; INDICE_T = Date.now(); return INDICE; })
+        .catch(function () { return INDICE || []; });
+    }
+    // i fogli di questa partita, dal piu' recente (anche di sfide passate fra le due)
+    function fogliPartita(v) {
+      return v.filter(function (f) {
+        var k = f.chiavi || [];
+        if (k.length !== 2) return false;
+        return (stessaSquadra(k[0], SQ.A.nome) && stessaSquadra(k[1], SQ.B.nome)) ||
+               (stessaSquadra(k[0], SQ.B.nome) && stessaSquadra(k[1], SQ.A.nome));
+      });
+    }
+    function tastoFoglio() {
+      var t = box.querySelector('[data-az="foglio"]');
+      if (!t) return;
+      indice().then(function (v) {
+        var mie = fogliPartita(v);
+        t.hidden = !mie.length;
+        if (mie.length) t.title = "Il foglio di " + (mie[0].autore || "redazione") + (mie[0].data ? " del " + dataIt(mie[0].data) : "");
+      });
+    }
+    function dataIt(d) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || ""); return m ? (+m[3]) + "/" + (+m[2]) + "/" + m[1] : (d || ""); }
+    function apriFoglio(id) {
+      var fb = box.querySelector("[data-fogliobox]");
+      indice().then(function (v) {
+        var mie = fogliPartita(v);
+        var qui = id || (mie[0] || {}).id;
+        if (!qui) return;
+        var meta = v.filter(function (f) { return f.id === qui; })[0] || {};
+        fb.hidden = false;
+        fb.innerHTML = '<div class="ftesta"><b>' + esc(meta.titolo || "Foglio partita") + "</b><span>" +
+          esc([meta.autore, dataIt(meta.data)].filter(Boolean).join(" · ")) + "</span>" +
+          (meta.link ? '<a href="' + esc(meta.link) + '" target="_blank" rel="noopener">apri l\'originale</a>' : "") +
+          '<button type="button" data-az="foglio" style="margin-left:auto">Chiudi</button></div>' +
+          (mie.length > 1 ? '<div class="fscegli">' + mie.map(function (f) {
+            return '<button type="button" data-foglio="' + esc(f.id) + '"' + (f.id === qui ? ' class="on"' : "") + ">" +
+                   esc((f.autore || "?") + " · " + dataIt(f.data)) + "</button>";
+          }).join("") + "</div>" : "") +
+          '<div class="ftesto">Carico il foglio&hellip;</div>';
+        fetch(FOGLI + "fogli/" + encodeURIComponent(qui) + ".json", { cache: "no-store" })
+          .then(function (r) { return r.json(); })
+          .then(function (f) {
+            var d = fb.querySelector(".ftesto");
+            if (d) d.innerHTML = String(f.testo || "").split(/\n+/).map(function (r) { return "<p>" + esc(r) + "</p>"; }).join("");
+          }).catch(function () { var d = fb.querySelector(".ftesto"); if (d) d.textContent = "Foglio non raggiungibile."; });
+      });
+    }
+    box.addEventListener("click", function (ev) {
+      var b = ev.target.closest ? ev.target.closest("[data-foglio]") : null;
+      if (b) { ev.preventDefault(); apriFoglio(b.dataset.foglio); }
+    });
+    // nella scheda: le frasi dei fogli che nominano questo giocatore. Prima
+    // quelle delle partite della sua squadra; il cognome deve esserci tutto
+    // (per "Da Cunha" non basta "Cunha")
+    function dafogliSu(p, dove) {
+      if (!dove || p.bianca) return;
+      var cog = pianoF(p.cognome || "");
+      if (cog.length < 3) return;
+      var chiave = cog.split(" ").filter(function (x) { return x.length >= 3; }).pop();
+      if (!chiave) return;
+      Promise.all([indice(), fetch(FOGLI + "nomi/" + encodeURIComponent(chiave) + ".json", { cache: "no-store" })
+        .then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; })])
+        .then(function (r) {
+          var per = {}; r[0].forEach(function (f) { per[f.id] = f; });
+          var suoi = r[1].filter(function (x) { return per[x.id] && (" " + pianoF(x.frase) + " ").indexOf(" " + cog + " ") >= 0; });
+          if (!suoi.length || !dove.isConnected) return;
+          function mia(x) {
+            var k = per[x.id].chiavi || [];
+            return k.some(function (c) { return stessaSquadra(c, SQ[p.lato].nome); }) ? 0 : 1;
+          }
+          suoi.sort(function (a, b) { return mia(a) - mia(b) || String(per[b.id].data).localeCompare(String(per[a.id].data)); });
+          var n = suoi.length;
+          dove.innerHTML = '<div class="sttit">Dai fogli della redazione' + (n > 4 ? " · " + n + " frasi" : "") + "</div>" +
+            suoi.slice(0, 4).map(function (x) {
+              var f = per[x.id];
+              return '<div class="fr">' + esc(x.frase) + "<small>" + esc((f.squadre || []).join(" - ") || f.titolo) +
+                     " · " + esc(dataIt(f.data)) + (f.autore ? " · " + esc(f.autore) : "") +
+                     ' · <a data-foglio="' + esc(f.id) + '">leggi il foglio</a></small></div>';
+            }).join("");
+          dove.hidden = false;
+        });
+    }
+
     // WIKIDATA: luogo di nascita, soprannome e parenti calciatori, quando ci
     // sono (per molti giocatori c'e' solo il luogo). Il giocatore si trova
     // per id ESPN (P3681), se no per nome + calciatore + anno di nascita
@@ -1134,6 +1262,7 @@ window.Lavagna = (function () {
         '</div></div>' +
         '<div class="cartriga" data-cart-box="1"></div>' +
         '<div class="dasapere" data-dasapere="1" hidden></div>' +
+        '<div class="dafogli" data-dafogli="1" hidden></div>' +
         '<div class="stagione" data-stagione-box="1"></div>' +
         '<textarea placeholder="Le tue curiosità: precedenti, come si pronuncia il nome, cosa dire in telecronaca…"></textarea>' +
         '<div class="piede">' +
@@ -1145,6 +1274,7 @@ window.Lavagna = (function () {
       facciaSu(p, f.querySelector("[data-faccia]"));
       bioSu(p, f.querySelector("[data-bio]"), f.querySelector('input[data-f="nome"]'));
       dasapereSu(p, f.querySelector("[data-dasapere]"));
+      dafogliSu(p, f.querySelector("[data-dafogli]"));
       stagioneSu(p, f.querySelector("[data-stagione-box]"));
       cartSu(p, f.querySelector("[data-cart-box]"));
       // la tabella della stagione arriva dopo e allunga il foglietto: lo si
@@ -1417,6 +1547,7 @@ window.Lavagna = (function () {
       if (b.dataset.az === "pulisci") { ricorda(); gDis.innerHTML = ""; }
       if (b.dataset.az === "stampa") stampa();
       if (b.dataset.az === "tema") tema(!box.classList.contains("chiara"), true);
+      if (b.dataset.az === "foglio") { var fb = box.querySelector("[data-fogliobox]"); if (fb.hidden) apriFoglio(); else fb.hidden = true; }
       if (b.dataset.az === "png") immagine(function (dati) {
         var a = document.createElement("a");
         a.href = dati; a.download = titolo().replace(/[^A-Za-z0-9-]+/g, "-") + ".png";
@@ -1489,6 +1620,7 @@ window.Lavagna = (function () {
       disegnaRose(); disegnaCurio();
       if (d && d.schiera !== false) schiera();
       vesti();
+      tastoFoglio();
     }
     function stato() {
       return { sq: { A: SQ.A, B: SQ.B }, note: NOTE, cambi: CAMBI, disegni: gDis.innerHTML,
@@ -1507,7 +1639,7 @@ window.Lavagna = (function () {
       (s.pedine || []).forEach(function (p) { PEDINE.push(pedina(p)); });
       gDis.innerHTML = s.disegni || "";
       disegnaRose(); disegnaCurio();
-      vesti();
+      vesti(); tastoFoglio();
     }
 
     // ── LA DIRETTA ──────────────────────────────────────────────────────
