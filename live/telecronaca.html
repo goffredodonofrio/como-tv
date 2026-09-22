@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<script>
+/* Le Grafiche Live vivono sulla macchina della regia: da GitHub si viene
+   portati sulla macchina giusta. Sulla VM questo non fa nulla. */
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  location.replace("https://projects-cloud.it" + location.pathname + location.search + location.hash);
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Telecronaca · Como TV</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    color-scheme:dark;
+    --gold:#C9A24B;--gold-bright:#E3C271;--red:#E51B20;
+    --ivory:#F5F1E6;--ivory-dim:#D8D2C2;--fg-3:#8A8B96;
+    --surface-panel:rgba(16,22,48,.66);
+    --line-2:rgba(245,241,230,.08);--line-gold:rgba(201,162,75,.28);
+  }
+  body{
+    font-family:'DM Sans',system-ui,sans-serif;font-weight:500;font-size:14px;line-height:1.5;
+    color:var(--ivory);min-height:100vh;background-color:#0A0F24;
+    background-image:
+      radial-gradient(90% 70% at 20% 8%, rgba(36,64,138,.5), transparent 55%),
+      radial-gradient(80% 80% at 92% 108%, rgba(201,162,75,.16), transparent 55%),
+      linear-gradient(165deg,#141B3C 0%,#0E1430 48%,#0A0F24 100%);
+    background-attachment:fixed;padding-bottom:40px;
+  }
+  .wrap{max-width:1600px;margin:0 auto;padding:0 clamp(14px,2.4vw,26px);}
+  header.page{padding:26px 0 12px;}
+  .eyebrow{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.3em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:8px;}
+  h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(26px,3.6vw,38px);
+    line-height:.94;letter-spacing:-.02em;text-transform:uppercase;}
+  .sub{color:var(--fg-3);font-size:13px;margin-top:8px;max-width:1000px;}
+  .panel{background:var(--surface-panel);border:1px solid var(--line-2);border-radius:10px;
+    padding:14px;margin-bottom:14px;}
+  label{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--gold);display:block;margin-bottom:5px;white-space:nowrap;}
+  select,input[type=text]{width:100%;padding:9px 11px;border-radius:7px;background:rgba(245,241,230,.06);
+    border:1px solid rgba(245,241,230,.16);color:var(--ivory);font-family:'DM Sans',sans-serif;font-size:13.5px;}
+  select option{background:#141B3C;color:var(--ivory);}
+  select:focus,input:focus{outline:none;border-color:var(--line-gold);}
+  .riga{display:flex;gap:10px;flex-wrap:wrap;align-items:end;}
+  .riga > div{flex:1 1 150px;min-width:0;}
+  button.azione{font-family:'Mazzard',sans-serif;font-weight:700;font-size:11px;letter-spacing:.1em;
+    text-transform:uppercase;padding:9px 13px;border-radius:7px;cursor:pointer;
+    background:rgba(245,241,230,.06);color:var(--ivory-dim);border:1px solid var(--line-2);}
+  button.azione:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  #cerca{font-size:12.5px;color:var(--fg-3);margin-top:8px;}
+  #cerca.ok{color:#7BDCAA;} #cerca.err{color:#FF8A8C;}
+  .salvataggi{display:flex;gap:7px;align-items:end;flex-wrap:wrap;}
+  .salvataggi > div{width:170px;}
+  .nota-esp{font-size:12.5px;color:var(--fg-3);margin-top:8px;}
+  .nota-esp.ok{color:#7BDCAA;} .nota-esp.err{color:#FF8A8C;}
+  html.lav-chiara .nota-esp{color:#4A5068;} html.lav-chiara .nota-esp.ok{color:#1C7A4A;} html.lav-chiara .nota-esp.err{color:#B3171C;}
+  details.amano summary{cursor:pointer;font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--gold);}
+  html.lav-chiara details.amano summary{color:#8A6A1E;}
+  button.azione:disabled{opacity:.45;cursor:default;}
+  html.lav-chiara .tcerca>button.tc-scelta{background:#FBF9F3;color:#0A0F24;border-color:#CFC7B4;}
+  html.lav-chiara .tcerca .tc-pan{background:#FFFFFF;border-color:#DCD5C4;}
+  html.lav-chiara .tcerca .tc-pan input{background:#FBF9F3;color:#0A0F24;border-color:#CFC7B4;}
+  html.lav-chiara .tcerca .tc-v{color:#0A0F24;}
+  html.lav-chiara .tcerca .tc-gr{color:#8A6A1E;}
+  /* la lavagna bianca (il tasto Chiaro/Scuro nella barra): la pagina la segue */
+  html.lav-chiara{color-scheme:light;}
+  html.lav-chiara body{background:#E9E4D8;background-image:none;color:#0A0F24;}
+  html.lav-chiara .eyebrow,html.lav-chiara label{color:#8A6A1E;}
+  html.lav-chiara .sub,html.lav-chiara #cerca{color:#4A5068;}
+  html.lav-chiara #cerca.ok{color:#1C7A4A;} html.lav-chiara #cerca.err{color:#B3171C;}
+  html.lav-chiara .panel{background:#FFFFFF;border-color:#DCD5C4;}
+  html.lav-chiara select,html.lav-chiara input[type=text]{background:#FBF9F3;border-color:#CFC7B4;color:#0A0F24;}
+  html.lav-chiara select option{background:#FFFFFF;color:#0A0F24;}
+  html.lav-chiara button.azione{background:#FFFFFF;color:#1B2140;border-color:#CFC7B4;}
+  html.lav-chiara button.azione:hover{color:#6E520F;border-color:#8A6A1E;}
+</style>
+</head>
+<body>
+
+<script src="nav.js"></script>
+<script src="formazioni-espn.js"></script>
+<script src="giovanili.js"></script>
+<script src="competizioni-espn.js"></script>
+<script src="maglie.js"></script>
+<script src="tendina-cerca.js"></script>
+<script src="lavagna.js"></script>
+
+<div class="wrap">
+  <header class="page">
+    <div class="eyebrow">Como TV · Grafiche Live</div>
+    <h1>Telecronaca</h1>
+    <div class="sub">Lo strumento del telecronista: la partita da ESPN con le formazioni ufficiali, il campetto
+      da muovere, cambi e cartellini, e su ogni giocatore stagione, carriera, cose da sapere e le curiosità
+      della redazione. È tutto tuo: <b>non tocca la regia e non va in onda</b>.</div>
+  </header>
+
+  <!-- la partita da ESPN: formazioni ufficiali quando ci sono (circa un'ora
+       prima), se no le rose; e volendo la diretta (cambi, cartellini, angoli) -->
+  <div class="panel">
+    <div class="riga">
+      <div style="flex:1 1 240px"><label for="espComp">Competizione</label><select id="espComp"><option value="">—</option></select></div>
+      <div style="flex:0 1 170px"><label for="espGiorno">Giorno</label><select id="espGiorno"></select></div>
+      <div style="flex:2 1 280px"><label for="espPart">Partita</label><select id="espPart" disabled><option value="">—</option></select></div>
+      <div style="flex:0 0 auto"><button type="button" class="azione" id="btnEspn" disabled>&#9917; Prendi la formazione</button></div>
+      <div style="flex:0 0 auto"><button type="button" class="azione" id="btnSegui" disabled>&#128308; Segui in diretta</button></div>
+    </div>
+    <div id="espNota" class="nota-esp">Scegli competizione, giorno e partita: la formazione arriva da ESPN.</div>
+  </div>
+
+  <details class="panel amano">
+    <summary>Oppure scegli le squadre a mano (giovanili, amichevoli, partite che ESPN non ha)</summary>
+    <div class="riga" style="margin-top:12px">
+      <div style="flex:1 1 220px"><label for="comp">Competizione</label><select id="comp"><option value="">—</option></select></div>
+      <div style="flex:1 1 200px"><label for="sqA">Squadra di casa</label><select id="sqA" disabled><option value="">—</option></select></div>
+      <div style="flex:1 1 200px"><label for="sqB">Squadra ospite</label><select id="sqB" disabled><option value="">—</option></select></div>
+      <div style="flex:0 1 140px"><label for="modA">Modulo casa</label><select id="modA"></select></div>
+      <div style="flex:0 1 140px"><label for="modB">Modulo ospite</label><select id="modB"></select></div>
+      <div style="flex:0 0 auto"><button type="button" class="azione" id="btnCarica">&#9917; Porta in campo</button></div>
+    </div>
+    <div id="cerca">Scegli competizione e squadre: le rose arrivano da ESPN (o dal database delle giovanili).</div>
+  </details>
+
+  <div id="board"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var ESPN = "https://site.api.espn.com/apis/site/v2/sports/soccer/";
+  // il ponte sa come si chiamano gli allenatori: li aggiorna ogni mattina
+  var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function dico(t, cls) { var n = el("cerca"); n.className = cls || ""; n.innerHTML = t; }
+
+  var L = Lavagna.monta(el("board"), { salva: true });
+  L.moduli.forEach(function (m) {
+    ["modA", "modB"].forEach(function (id) {
+      var o = document.createElement("option"); o.value = m; o.textContent = m; el(id).appendChild(o);
+    });
+  });
+  el("modB").value = "4-4-2";
+
+  // ── le squadre: giovanili nostre, se no la classifica ESPN ────────────
+  var ROSE = { A: [], B: [] }, NOMI = { A: "Casa", B: "Ospite" }, ALL = { A: null, B: null }, TID = { A: "", B: "" };
+  function allenatore(id) {
+    if (!id || /\D/.test(String(id))) return Promise.resolve(null);   // le giovanili non hanno id ESPN
+    return fetch(PONTE + "?allenatore=" + encodeURIComponent(id), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (a) { return a && (a.cognome || a.nome) ? a : null; })
+      .catch(function () { return null; });
+  }
+  function squadre(code) {
+    if (window.GIOVANILI && GIOVANILI.mia(code)) {
+      return Promise.resolve(GIOVANILI.squadre(code).map(function (q) { return { id: q.id, nome: q.name }; }));
+    }
+    return fetch("https://site.api.espn.com/apis/v2/sports/soccer/" + code + "/standings")
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var visti = {}, sq = [];
+        (function raccogli(n) {
+          if (!n) return;
+          ((n.standings || {}).entries || []).forEach(function (e) {
+            var t = e.team || {};
+            if (t.id && !visti[t.id]) { visti[t.id] = 1; sq.push({ id: String(t.id), nome: t.displayName || t.name || "" }); }
+          });
+          (n.children || []).forEach(raccogli);
+        })(j);
+        sq.sort(function (a, b) { return a.nome.localeCompare(b.nome); });
+        return sq;
+      });
+  }
+  function rosa(code, id) {
+    if (window.GIOVANILI && GIOVANILI.mia(code)) {
+      return Promise.resolve(GIOVANILI.rosa(code, id).map(function (p, i) {
+        return { pid: "g" + i, num: p.num || "", nome: p.nome || "", cognome: p.cognome || "", ruolo: p.ruolo || "" };
+      }));
+    }
+    return fetch(ESPN + code + "/teams/" + encodeURIComponent(id) + "/roster")
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        return (j.athletes || []).map(function (a) {
+          return { pid: String(a.id), num: a.jersey || "", nome: a.firstName || "",
+                   cognome: a.lastName || String(a.displayName || "").split(" ").pop(),
+                   ruolo: (a.position || {}).abbreviation || "" };
+        });
+      });
+  }
+
+  CompetizioniEspn.riempi(el("comp"));
+  el("comp").addEventListener("change", function () {
+    ["sqA", "sqB"].forEach(function (id) { el(id).innerHTML = '<option value="">—</option>'; el(id).disabled = true; });
+    if (!this.value) return;
+    dico("Cerco le squadre&hellip;");
+    squadre(this.value).then(function (sq) {
+      ["sqA", "sqB"].forEach(function (id) {
+        el(id).innerHTML = '<option value="">— ' + sq.length + " squadre —</option>" + sq.map(function (x) {
+          return '<option value="' + esc(x.id) + '">' + esc(x.nome) + "</option>";
+        }).join("");
+        el(id).disabled = !sq.length;
+      });
+      dico(sq.length ? "Scegli le due squadre, poi <b>Porta in campo</b>." : "Nessuna squadra per questa competizione.", sq.length ? "" : "err");
+    }).catch(function () { dico("ESPN non risponde.", "err"); });
+  });
+  ["A", "B"].forEach(function (lato) {
+    el("sq" + lato).addEventListener("change", function () {
+      var id = this.value;
+      if (!id) { ROSE[lato] = []; TID[lato] = ""; return; }
+      NOMI[lato] = this.options[this.selectedIndex].text;
+      dico("Scarico la rosa di <b>" + esc(NOMI[lato]) + "</b>&hellip;");
+      Promise.all([rosa(el("comp").value, id), allenatore(id)]).then(function (d) {
+        ROSE[lato] = d[0]; ALL[lato] = d[1]; TID[lato] = id;
+        dico("<b>" + esc(NOMI[lato]) + "</b>: " + d[0].length + " giocatori" +
+             (d[1] ? ", allenatore " + esc((d[1].nome ? d[1].nome + " " : "") + d[1].cognome) : "") + ".",
+             d[0].length ? "ok" : "err");
+      }).catch(function () { dico("Rosa non caricata.", "err"); });
+    });
+  });
+  el("btnCarica").addEventListener("click", function () {
+    L.carica({ A: { nome: NOMI.A, rosa: ROSE.A, mod: el("modA").value, all: ALL.A, tid: TID.A },
+               B: { nome: NOMI.B, rosa: ROSE.B, mod: el("modB").value, all: ALL.B, tid: TID.B } });
+    dico("In campo. Da qui si trascina, si cambia e si scrive.", "ok");
+  });
+
+  // ── LA PARTITA DA ESPN ────────────────────────────────────────────────
+  //  Competizione, giorno, partita: ESPN da' la distinta ufficiale (titolari,
+  //  modulo, panchina) circa un'ora prima del calcio d'inizio. Prima di
+  //  allora si prendono le rose delle due squadre, e lo si dice.
+  function espDico(t, cls) { var n = el("espNota"); n.className = "nota-esp " + (cls || ""); n.innerHTML = t; }
+  var ESP = { lega: "", ev: "" };
+  CompetizioniEspn.riempi(el("espComp"));
+  if (window.TendinaCerca) {
+    TendinaCerca.su(el("espComp"), { segnaposto: "Cerca: serie a, premier, libertadores…", vuoto: "Scegli la competizione" });
+    TendinaCerca.su(el("comp"), { segnaposto: "Cerca una competizione", vuoto: "Scegli la competizione" });
+  }
+  // i giorni: da ieri a fra cinque giorni, oggi di serie
+  (function () {
+    var GG = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"];
+    var h = "";
+    for (var d = -1; d <= 5; d++) {
+      var x = new Date(); x.setDate(x.getDate() + d);
+      var v = x.getFullYear() + String(x.getMonth() + 1).padStart(2, "0") + String(x.getDate()).padStart(2, "0");
+      var t = d === 0 ? "Oggi" : d === -1 ? "Ieri" : d === 1 ? "Domani" : GG[x.getDay()] + " " + x.getDate() + "/" + (x.getMonth() + 1);
+      h += '<option value="' + v + '"' + (d === 0 ? " selected" : "") + ">" + t + "</option>";
+    }
+    el("espGiorno").innerHTML = h;
+  })();
+  function partite() {
+    var lega = el("espComp").value;
+    el("espPart").innerHTML = '<option value="">—</option>'; el("espPart").disabled = true;
+    el("btnEspn").disabled = true;
+    if (!lega) return;
+    espDico("Cerco le partite&hellip;");
+    // un giorno alla volta: le finestre di date di ESPN sono rotte (dal 16/09/2026)
+    fetch(ESPN + lega + "/scoreboard?dates=" + el("espGiorno").value)
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var ev = (j.events || []).map(function (e) {
+          var st = ((e.competitions[0] || {}).status || {}).type || {};
+          var ora = e.date ? new Date(e.date).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "";
+          return { id: e.id, nome: e.name, ora: ora, stato: st.state === "pre" ? ora : (st.detail || ""), viva: st.state === "in" };
+        });
+        el("espPart").innerHTML = ev.length
+          ? '<option value="">— ' + ev.length + (ev.length > 1 ? " partite" : " partita") + " —</option>" + ev.map(function (x) {
+              return '<option value="' + esc(x.id) + '">' + (x.viva ? "\u25CF " : "") + esc(x.nome) + " · " + esc(x.stato) + "</option>";
+            }).join("")
+          : '<option value="">— niente —</option>';
+        el("espPart").disabled = !ev.length;
+        espDico(ev.length ? "Scegli la partita e premi <b>Prendi la formazione</b>." : "Quel giorno in questa competizione non si gioca.", ev.length ? "" : "err");
+      })
+      .catch(function () { espDico("ESPN non risponde.", "err"); });
+  }
+  el("espComp").addEventListener("change", partite);
+  el("espGiorno").addEventListener("change", partite);
+  el("espPart").addEventListener("change", function () { el("btnEspn").disabled = !this.value; });
+
+  // i titolari al loro posto: ESPN da' il ruolo col lato (RB, CD-L, AM-R...)
+  // ma non l'ordine. Si mettono in fila dalla difesa all'attacco, si
+  // dividono nelle linee del modulo e in ogni linea si va da sinistra a
+  // destra (per l'ospite, che attacca dall'altra parte, al contrario).
+  function profondita(r) {
+    r = String(r || "").toUpperCase();
+    if (r === "G" || r === "GK") return 0;
+    if (/^(CD|CB|SW|LB|RB|D)/.test(r) || /^(LWB|RWB|WB)/.test(r)) return /WB/.test(r) ? 2 : 1;
+    if (/^DM/.test(r)) return 3;
+    if (/^(CM|LM|RM|M)(-|$)/.test(r)) return 4;
+    if (/^AM/.test(r)) return 5;
+    if (/^(LW|RW)/.test(r)) return 6;
+    return 7;                                        // F, CF, ST
+  }
+  // da sinistra a destra: l'esterno (LB, LM, LW), il centro-sinistra (CD-L,
+  // AM-L), il centro, il centro-destra, l'esterno destro
+  function lato(r) {
+    r = String(r || "").toUpperCase();
+    if (/^L(B|WB|M|W)$/.test(r)) return 0;
+    if (/-L$/.test(r)) return 1;
+    if (/-R$/.test(r)) return 3;
+    if (/^R(B|WB|M|W)$/.test(r)) return 4;
+    return 2;
+  }
+  function inFila(tit, modulo, ospite) {
+    var gk = tit.filter(function (g) { return profondita(g.ruolo) === 0; })[0] || tit[0];
+    var resto = tit.filter(function (g) { return g !== gk; })
+      .sort(function (a, b) { return profondita(a.ruolo) - profondita(b.ruolo) || (+a.posto || 0) - (+b.posto || 0); });
+    var linee = /^\d(-\d)+$/.test(modulo || "") ? modulo.split("-").map(Number) : [resto.length];
+    var out = [gk], k = 0;
+    linee.forEach(function (n) {
+      var riga = resto.slice(k, k + n); k += n;
+      riga.sort(function (a, b) { return lato(a.ruolo) - lato(b.ruolo); });
+      if (ospite) riga.reverse();
+      out = out.concat(riga);
+    });
+    return out.concat(resto.slice(k)).filter(Boolean);
+  }
+  el("btnEspn").addEventListener("click", function () {
+    var lega = el("espComp").value, ev = el("espPart").value;
+    if (!lega || !ev) return;
+    espDico("Prendo la partita da ESPN&hellip;");
+    fetch(ESPN + lega + "/summary?event=" + encodeURIComponent(ev))
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var c = ((j.header || {}).competitions || [])[0] || {}, chi = c.competitors || [];
+        var casa = chi.filter(function (x) { return x.homeAway === "home"; })[0] || {};
+        var osp = chi.filter(function (x) { return x.homeAway === "away"; })[0] || {};
+        function distinta(t) {
+          var r = (j.rosters || []).filter(function (x) { return String((x.team || {}).id) === String((t.team || {}).id); })[0] || {};
+          var rosa = (r.roster || []).map(function (x) {
+            var a = x.athlete || {};
+            return { pid: String(a.id), num: x.jersey || a.jersey || "", nome: a.firstName || "",
+                     cognome: a.lastName || String(a.displayName || "").split(" ").pop(),
+                     ruolo: (x.position || {}).abbreviation || "", titolare: !!x.starter, posto: x.formationPlace || "" };
+          });
+          return { rosa: rosa, tit: rosa.filter(function (x) { return x.titolare; }), mod: r.formation || "" };
+        }
+        var dA = distinta(casa), dB = distinta(osp);
+        var ufficiale = dA.tit.length >= 11 && dB.tit.length >= 11;
+        var idA = String((casa.team || {}).id || ""), idB = String((osp.team || {}).id || "");
+        // prima dell'ufficiale: le rose delle due squadre
+        var rose = ufficiale ? Promise.resolve([dA.rosa, dB.rosa])
+          : Promise.all([rosa(lega, idA).catch(function () { return []; }), rosa(lega, idB).catch(function () { return []; })]);
+        function tinta(t, dif) {
+          var x = "#" + String((t || {}).color || "").replace("#", "");
+          return x.length === 7 ? x : dif;
+        }
+        var cA = tinta(casa.team, "#2E6BE6"), cB = tinta(osp.team, "#E0312B");
+        if (cA.toLowerCase() === cB.toLowerCase()) cB = "#" + (String((osp.team || {}).alternateColor || "").replace("#", "") || "E0312B");
+        return Promise.all([rose, allenatore(idA), allenatore(idB)]).then(function (v) {
+          function mod(d, sel) {
+            var m = ufficiale && d.mod ? d.mod : el(sel).value;
+            // il modulo di ESPN nel menu, se la lavagna non l'ha fra i suoi
+            if (m && !Array.prototype.some.call(el(sel).options, function (o) { return o.value === m; })) {
+              ["modA", "modB"].forEach(function (id) {
+                var o = document.createElement("option"); o.value = m; o.textContent = m; el(id).appendChild(o);
+              });
+            }
+            el(sel).value = m;
+            return m;
+          }
+          var mA = mod(dA, "modA"), mB = mod(dB, "modB");
+          L.carica({
+            A: { nome: (casa.team || {}).displayName || "Casa", col: cA, tid: idA, rosa: v[0][0], mod: mA, all: v[1],
+                 titolari: ufficiale ? inFila(dA.tit, mA, false) : [] },
+            B: { nome: (osp.team || {}).displayName || "Ospite", col: cB, tid: idB, rosa: v[0][1], mod: mB, all: v[2],
+                 titolari: ufficiale ? inFila(dB.tit, mB, true) : [] }
+          });
+          ESP = { lega: lega, ev: ev };
+          el("btnSegui").disabled = false;
+          espDico(ufficiale
+            ? "<b>Formazioni ufficiali</b> in campo: " + esc(mA) + " e " + esc(mB) + ". Con <b>Segui in diretta</b> cambi, cartellini e angoli arrivano da soli."
+            : "La formazione ufficiale non c'e' ancora (ESPN la da' circa un'ora prima): in campo le <b>rose</b>, da sistemare a mano. Riprova piu' tardi.",
+            ufficiale ? "ok" : "");
+        });
+      })
+      .catch(function () { espDico("Partita non caricata: ESPN non risponde.", "err"); });
+  });
+  el("btnSegui").addEventListener("click", function () {
+    if (!ESP.ev) return;
+    L.segui({ lega: ESP.lega, event: ESP.ev });
+    espDico("In diretta: cambi, cartellini e angoli arrivano da ESPN (col suo ritardo). <b>Stacca</b> nella striscia rossa per fermare.", "ok");
+  });
+
+  // ── le lavagne salvate su questo computer ─────────────────────────────
+  var LS = "comotv.lavagna.";
+  L.barraSalva.className = "salvataggi";
+  L.barraSalva.innerHTML =
+    '<div><label for="nomeLav">Nome</label><input type="text" id="nomeLav" placeholder="es. Como-Torino U18"></div>' +
+    '<button type="button" class="azione" id="btnSalva">&#128190; Salva</button>' +
+    '<div><label for="salvate">Le mie partite</label><select id="salvate"><option value="">—</option></select></div>' +
+    '<button type="button" class="azione" id="btnApri">Apri</button>' +
+    '<button type="button" class="azione" id="btnElimina">Elimina</button>';
+  function elenco() {
+    var out = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf(LS) === 0) out.push(k.slice(LS.length));
+    }
+    return out.sort();
+  }
+  function disegnaElenco() {
+    el("salvate").innerHTML = '<option value="">—</option>' + elenco().map(function (n) {
+      return '<option value="' + esc(n) + '">' + esc(n) + "</option>";
+    }).join("");
+  }
+  disegnaElenco();
+  el("btnSalva").addEventListener("click", function () {
+    var n = el("nomeLav").value.trim();
+    if (!n) { L.nota("Dai un nome alla partita prima di salvarla.", "err"); return; }
+    try { localStorage.setItem(LS + n, JSON.stringify(L.stato())); }
+    catch (e) { L.nota("Non salvata: memoria piena.", "err"); return; }
+    disegnaElenco(); el("salvate").value = n;
+    L.nota("Salvata come <b>" + esc(n) + "</b>, su questo computer.", "ok");
+  });
+  el("btnApri").addEventListener("click", function () {
+    var n = el("salvate").value;
+    if (!n) return;
+    try { L.riapri(JSON.parse(localStorage.getItem(LS + n) || "null")); } catch (e) {}
+    el("nomeLav").value = n;
+    L.nota("Aperta <b>" + esc(n) + "</b>.", "ok");
+  });
+  el("btnElimina").addEventListener("click", function () {
+    var n = el("salvate").value;
+    if (!n) return;
+    if (!window.confirm("Elimino \"" + n + "\" da questo computer?")) return;
+    localStorage.removeItem(LS + n); disegnaElenco();
+    L.nota("Eliminata.", "");
+  });
+})();
+</script>
+<script src="dev.js"></script>
+</body>
+</html>

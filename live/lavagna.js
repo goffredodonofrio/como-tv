@@ -1471,13 +1471,28 @@ window.Lavagna = (function () {
         return pa - pb || (parseInt(a.num, 10) || 99) - (parseInt(b.num, 10) || 99);
       });
     }
+    // un modulo che la lavagna non ha fra i suoi (ESPN ne usa molti: 4-1-4-1,
+    // 3-4-3, 4-4-1-1...): le linee si mettono in fila dalla difesa
+    // all'attacco, e in ogni linea i giocatori si distribuiscono in largo
+    function moduloDa(m) {
+      if (!/^\d(-\d){1,4}$/.test(String(m || ""))) return null;
+      var linee = String(m).split("-").map(Number), tot = 0;
+      linee.forEach(function (n) { tot += n; });
+      if (tot !== 10) return null;
+      var out = [[.06, .5]];
+      linee.forEach(function (n, i) {
+        var x = linee.length === 1 ? .5 : .24 + (.88 - .24) * i / (linee.length - 1);
+        for (var k = 0; k < n; k++) out.push([x, n === 1 ? .5 : .14 + .72 * k / (n - 1)]);
+      });
+      return out;
+    }
     function schiera() {
       ricorda();
       ["A", "B"].forEach(function (lato) {
         var s = SQ[lato];
         var lista = (s.titolari && s.titolari.length) ? s.titolari : ordinaPerRuolo(s.rosa || []).slice(0, 11);
         if (!lista.length) return;
-        var mod = MODULI[s.mod] || MODULI["4-3-3"];
+        var mod = MODULI[s.mod] || moduloDa(s.mod) || MODULI["4-3-3"];
         PEDINE.filter(function (p) { return p.lato === lato; }).forEach(togli);
         lista.slice(0, 11).forEach(function (g, i) {
           var q = mod[i] || [.5, .5];
