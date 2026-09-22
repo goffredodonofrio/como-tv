@@ -3854,7 +3854,22 @@ function hlNuova(p) {
     titolo: String(p.titolo || "").slice(0, 160) || ("HL " + r.titolo),
     pezzi: [], pre: HL_PRE, post: HL_POST, scarto: 0, avvisi: [],
     creata: Date.now(), chi: String(p.__chi || p.chi || "").slice(0, 40), export: null };
+  // nata dentro un progetto: la sequenza lo sa, e il progetto impara la partita
+  if (p.prog && R.prog[String(p.prog)]) { q.prog = String(p.prog); const g = R.prog[q.prog]; g.reg = g.reg || []; if (g.reg.indexOf(r.id) < 0) g.reg.push(r.id); g.tocco = Date.now(); }
   R.seq[q.id] = q;
+  scrivi(); annuncia(0, "clip");
+  return { ok: true, seq: q };
+}
+// una sequenza cambia progetto (o ne esce): serve al montaggio nuovo, che
+// non ha il Progetto a sinistra come quello vecchio
+function hlProgetto(p) {
+  const q = seqDi(p);
+  const prog = String(p.prog || "");
+  if (prog) {
+    const g = R.prog[prog];
+    if (!g) throw new Error("progetto sconosciuto");
+    q.prog = prog; g.reg = g.reg || []; if (g.reg.indexOf(q.reg) < 0) g.reg.push(q.reg); g.tocco = Date.now();
+  } else delete q.prog;
   scrivi(); annuncia(0, "clip");
   return { ok: true, seq: q };
 }
@@ -11804,6 +11819,7 @@ const AZIONI = {
   "clip-diretta-riattacca": (p) => riattaccaLaDiretta(p.seq),
   "clip-diretta-salva": salvaIlMontato,
   "clip-diretta-prendi": prendiDalVivo,
+  "clip-hl-progetto": hlProgetto,
   "clip-hl-imposta": hlImposta,
   "clip-hl-aggiungi": hlAggiungi,
   "clip-hl-suggerimento": hlSuggerimento,

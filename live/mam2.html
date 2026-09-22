@@ -119,7 +119,13 @@
   .momenti .az.gol{background:var(--oro2);height:22px;top:2px;width:4px;}
   .momenti .az.ammonizione,.momenti .az.espulsione{background:var(--rosso);}
   .momenti .az.parata{background:var(--blu);}
-  .momenti .testina{position:absolute;top:0;bottom:0;width:2px;background:#fff;pointer-events:none;}
+  .momenti .testina{position:absolute;top:0;bottom:0;width:2px;background:#fff;pointer-events:none;margin-left:-1px;}
+  .momenti .testina::before{content:'';position:absolute;top:0;left:-5px;border:6px solid transparent;border-top:8px solid #fff;border-bottom:0;}
+  .momenti{cursor:ew-resize;} .momenti.scrub{cursor:grabbing;}
+  .momenti .mtip{position:absolute;top:2px;transform:translateX(-50%);font:11px ui-monospace,Menlo,monospace;color:var(--navy);background:var(--oro2);padding:1px 5px;border-radius:3px;pointer-events:none;white-space:nowrap;}
+  .prog{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;} .prog .pc{background:var(--pan);border:1px solid var(--riga);border-radius:12px;padding:12px 14px;cursor:pointer;} .prog .pc:hover{border-color:var(--oro);} .prog .pc b{display:block;font-size:14px;} .prog .pc small{color:var(--fumo);font-size:11.5px;} .prog .pc.on{border-color:var(--oro);}
+  .prog .pc .seqs{margin-top:8px;display:flex;flex-direction:column;gap:4px;} .prog .pc .seqs a{font-size:12px;color:var(--ivory2);padding:4px 8px;border:1px solid var(--riga);border-radius:6px;} .prog .pc .seqs a:hover{color:var(--oro2);border-color:var(--oro);}
+  .bozza .voce .n{color:var(--fumo);font:11px ui-monospace,Menlo,monospace;min-width:18px;} .bozza .voce button{padding:2px 6px;font-size:10px;}
   .momenti .in,.momenti .out{position:absolute;top:0;bottom:0;width:2px;background:var(--oro);} .momenti .fra{position:absolute;top:0;bottom:0;background:rgba(201,162,75,.18);}
   .tc{font:12.5px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;}
   .comandi{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
@@ -263,6 +269,10 @@
     <div class="lib-testa"><h1>Buongiorno, <span>Como TV</span></h1><p id="libSotto">L'archivio: partite intere, azioni, telecronache, foto. Cerca, guarda, monta.</p></div>
     <div class="lib-cerca"><span class="lu">&#128269;</span><input id="cercaLib" type="search" placeholder="Cerca una partita, un giocatore, una frase detta, “tutti i gol di Douvikas”…" autocomplete="off" autofocus></div>
     <div id="riprendi"></div>
+    <div id="libProg">
+      <div class="sez"><h2>Progetti</h2><span id="progConto"></span><button class="dx b mini" id="progNuovo" title="un progetto raccoglie le sequenze di un lavoro (una puntata, un'uscita social, un cliente)">+ Nuovo progetto</button></div>
+      <div class="prog" id="progetti"></div>
+    </div>
     <div id="risultati" class="ris" hidden></div>
     <div id="libCat">
       <div class="sez"><h2>Categorie</h2><span id="catConto"></span></div>
@@ -291,7 +301,7 @@
         <div class="pm">
           <span class="tcx" id="tOra">00:00:00</span>
           <span class="sep"></span>
-          <button class="ico" id="bMarker" title="Aggiungi marker (M)"><svg viewBox="0 0 16 16"><path d="M3 2h10l-3 4 3 4H3z"/><rect x="3" y="2" width="1.6" height="12"/></svg></button><button class="ico" id="bIn" title="Segna entrata (I, [)"><span class="graffa">{</span></button><button class="ico" id="bOut" title="Segna uscita (O, ])"><span class="graffa">}</span></button><span class="sep"></span><button class="ico" id="bGoIn" title="Vai all’entrata (Shift+I)"><svg viewBox="0 0 16 16"><rect x="2" y="2" width="2" height="12"/><path d="M13 3v10L5 8z"/></svg></button><button class="ico" id="bIndietro" title="Un fotogramma indietro (←) · Shift: 10 s"><svg viewBox="0 0 16 16"><rect x="3" y="3" width="2" height="10"/><path d="M13 3v10L6 8z"/></svg></button><button class="ico play" id="bPlay" title="Riproduci / ferma (spazio)"><svg viewBox="0 0 16 16"><path d="M4 2v12l10-6z"/></svg></button><button class="ico" id="bAvanti" title="Un fotogramma avanti (→) · Shift: 10 s"><svg viewBox="0 0 16 16"><rect x="11" y="3" width="2" height="10"/><path d="M3 3v10l7-5z"/></svg></button><button class="ico" id="bGoOut" title="Vai all’uscita (Shift+O)"><svg viewBox="0 0 16 16"><rect x="12" y="2" width="2" height="12"/><path d="M3 3v10l8-5z"/></svg></button><span class="sep"></span><button class="ico" id="bTimeline" title="Inserisci in timeline (,)" disabled><svg viewBox="0 0 16 16"><path d="M8 1v8l3-3 1 1-4.5 4.5L3 7l1-1 3 3V1z"/><rect x="2" y="13" width="12" height="2"/></svg></button><button class="ico" id="bClip" title="Esporta la clip fra entrata e uscita" disabled><svg viewBox="0 0 16 16"><path d="M9 1h6v6l-2-2-4 4-2-2 4-4z"/><path d="M2 5h4v2H4v5h5v-2h2v4H2z"/></svg></button><button class="ico" id="bPulisci" title="Togli entrata e uscita"><svg viewBox="0 0 16 16"><path d="M3 4l1-1 4 4 4-4 1 1-4 4 4 4-1 1-4-4-4 4-1-1 4-4z"/></svg></button>
+          <button class="ico" id="bMarker" title="Aggiungi marker (M)"><svg viewBox="0 0 16 16"><path d="M3 2h10l-3 4 3 4H3z"/><rect x="3" y="2" width="1.6" height="12"/></svg></button><button class="ico" id="bIn" title="Segna entrata (I, [)"><span class="graffa">{</span></button><button class="ico" id="bOut" title="Segna uscita (O, ])"><span class="graffa">}</span></button><span class="sep"></span><button class="ico" id="bGoIn" title="Vai all’entrata (Shift+I)"><svg viewBox="0 0 16 16"><rect x="2" y="2" width="2" height="12"/><path d="M13 3v10L5 8z"/></svg></button><button class="ico" id="bIndietro" title="Un fotogramma indietro (←) · Shift: 10 s"><svg viewBox="0 0 16 16"><rect x="3" y="3" width="2" height="10"/><path d="M13 3v10L6 8z"/></svg></button><button class="ico play" id="bPlay" title="Riproduci / ferma (spazio)"><svg viewBox="0 0 16 16"><path d="M4 2v12l10-6z"/></svg></button><button class="ico" id="bAvanti" title="Un fotogramma avanti (→) · Shift: 10 s"><svg viewBox="0 0 16 16"><rect x="11" y="3" width="2" height="10"/><path d="M3 3v10l7-5z"/></svg></button><button class="ico" id="bGoOut" title="Vai all’uscita (Shift+O)"><svg viewBox="0 0 16 16"><rect x="12" y="2" width="2" height="12"/><path d="M3 3v10l8-5z"/></svg></button><span class="sep"></span><button class="ico" id="bBozza" title="Aggiungi entrata/uscita alla bozza (B)" disabled><svg viewBox="0 0 16 16"><path d="M2 3h5l1.5 2H14v8H2z"/><path d="M7 8h2v2h2v1.6H9v2H7v-2H5V10h2z" fill="#0A0F24"/></svg></button><button class="ico" id="bTimeline" title="Inserisci in timeline (,)" disabled><svg viewBox="0 0 16 16"><path d="M8 1v8l3-3 1 1-4.5 4.5L3 7l1-1 3 3V1z"/><rect x="2" y="13" width="12" height="2"/></svg></button><button class="ico" id="bClip" title="Esporta la clip fra entrata e uscita" disabled><svg viewBox="0 0 16 16"><path d="M9 1h6v6l-2-2-4 4-2-2 4-4z"/><path d="M2 5h4v2H4v5h5v-2h2v4H2z"/></svg></button><button class="ico" id="bPulisci" title="Togli entrata e uscita"><svg viewBox="0 0 16 16"><path d="M3 4l1-1 4 4 4-4 1 1-4 4 4 4-1 1-4-4-4 4-1-1 4-4z"/></svg></button>
           <span class="sep"></span><button class="mini2" data-v="0.5" title="velocità">0.5×</button><button class="mini2 on" data-v="1" title="velocità">1×</button><button class="mini2" data-v="2" title="velocità">2×</button><button class="mini2" data-v="4" title="velocità">4×</button>
           <span class="spazio"></span>
           <span class="inout">IN <b id="tIn">—</b> · OUT <b id="tOut">—</b></span><span class="sep"></span>
@@ -333,7 +343,7 @@
       </div>
       <div class="ed-lato">
         <div class="sez2"><h4>Sequenza</h4><div class="riga2"><span id="eInfo" style="color:var(--fumo)"></span></div>
-          <div class="riga2"><button class="mini" id="eCasa" title="scarica i pezzi sulla VM: riproduzione immediata ed export senza attese">Pezzi in casa</button><button class="mini" id="eXml" title="l'XML per Premiere con l'SRT a fianco">XML Premiere</button><button class="mini" id="eRinomina">Rinomina</button></div>
+          <div class="riga2"><button class="mini" id="eCasa" title="scarica i pezzi sulla VM: riproduzione immediata ed export senza attese">Pezzi in casa</button><button class="mini" id="eXml" title="l'XML per Premiere con l'SRT a fianco">XML Premiere</button><button class="mini" id="eRinomina">Rinomina</button><button class="mini" id="eProg" title="in quale progetto sta questa sequenza">Progetto</button></div>
           <div id="eCasaStato" style="font-size:11.5px;color:var(--fumo)"></div></div>
         <div class="sez2"><h4>Esporta</h4>
           <div class="riga2" id="eFormati"><span class="fchip on" data-f="16:9">16:9</span><span class="fchip" data-f="9:16">9:16</span><span class="fchip" data-f="1:1">1:1</span><span class="fchip" data-f="3:4">3:4</span></div>
@@ -528,6 +538,41 @@
   el("cercaTesta").addEventListener("input", function(){ if (el("libreria").classList.contains("on")) cerca(this.value); });
 
   // ══════════ RIPRENDI ══════════
+  // ── I PROGETTI: le sequenze di un lavoro, insieme ──
+  var PROGETTI = [], SEQ_TUTTE = [], PROG_APERTO = null;
+  function caricaProgetti(){
+    return Promise.all([post({ tipo:"clip-prog-elenco" }).catch(function(){ return { prog: [] }; }), post({ tipo:"clip-hl-elenco", tutte: true }).catch(function(){ return { seq: [] }; })]).then(function(rs){
+      PROGETTI = rs[0].prog || []; SEQ_TUTTE = rs[1].seq || []; disegnaProgetti();
+    });
+  }
+  function disegnaProgetti(){
+    el("progConto").textContent = PROGETTI.length ? PROGETTI.length + (PROGETTI.length === 1 ? " progetto" : " progetti") : "";
+    if (!PROGETTI.length) { el("progetti").innerHTML = '<div class="vuoto" style="padding:6px 0">Nessun progetto: creane uno e dal montaggio assegna le sequenze.</div>'; return; }
+    el("progetti").innerHTML = PROGETTI.map(function(g){
+      var seqs = SEQ_TUTTE.filter(function(q){ return q.prog === g.id; }).sort(function(a,b){ return (b.creata || 0) - (a.creata || 0); });
+      var regs = {}; seqs.forEach(function(q){ if (REGS[q.reg]) regs[REGS[q.reg].titolo || q.reg] = 1; });
+      return '<div class="pc' + (PROG_APERTO === g.id ? " on" : "") + '" data-prog="' + esc(g.id) + '"><b>' + esc(g.nome) + '</b><small>' + seqs.length + (seqs.length === 1 ? " sequenza" : " sequenze") + (g.partite ? " · " + g.partite + (g.partite === 1 ? " partita" : " partite") : "") + ' · ' + quando(g.tocco || g.creata) + '</small>' +
+        (PROG_APERTO === g.id ? '<div class="seqs">' + (seqs.length ? seqs.map(function(q){ return '<a href="mam2.html?seq=' + encodeURIComponent(q.id) + '">' + esc(q.titolo || "sequenza") + ' <small>' + (q.pezzi || []).length + ' pezzi</small></a>'; }).join("") : '<small>ancora nessuna sequenza: dal montaggio, tasto Progetto</small>') + '<a href="#" data-progrin="' + esc(g.id) + '">Rinomina</a><a href="#" data-progvia="' + esc(g.id) + '" style="color:var(--rosso)">Elimina progetto (le sequenze restano)</a></div>' : '') + '</div>';
+    }).join("");
+    el("progetti").querySelectorAll(".pc").forEach(function(c){ c.addEventListener("click", function(e){ if (e.target.closest("a")) return; PROG_APERTO = PROG_APERTO === c.dataset.prog ? null : c.dataset.prog; disegnaProgetti(); }); });
+    el("progetti").querySelectorAll("a[data-progrin]").forEach(function(a){ a.addEventListener("click", function(e){ e.preventDefault(); var g = PROGETTI.filter(function(z){ return z.id === a.dataset.progrin; })[0]; var n = window.prompt("Nome del progetto:", g ? g.nome : ""); if (!n) return; post({ tipo:"clip-prog-tocca", prog: a.dataset.progrin, nome: n }).then(caricaProgetti).catch(function(er){ avviso("err", esc(er.message)); }); }); });
+    el("progetti").querySelectorAll("a[data-progvia]").forEach(function(a){ a.addEventListener("click", function(e){ e.preventDefault(); if (!window.confirm("Elimino il progetto? Le sequenze restano, senza progetto.")) return; post({ tipo:"clip-prog-elimina", prog: a.dataset.progvia }).then(caricaProgetti).catch(function(er){ avviso("err", esc(er.message)); }); }); });
+  }
+  el("progNuovo").addEventListener("click", function(){ var n = window.prompt("Nome del progetto (una puntata, un'uscita social, un cliente):", ""); if (!n) return; post({ tipo:"clip-prog-nuovo", nome: n }).then(function(){ return caricaProgetti(); }).then(function(){ avviso("ok", "Progetto creato."); }).catch(function(er){ avviso("err", esc(er.message)); }); });
+  // scegliere un progetto (o crearne uno) da una finestrella: serve alla bozza e al montaggio
+  function scegliProgetto(poi){
+    post({ tipo:"clip-prog-elenco" }).then(function(d){
+      var lista = d.prog || [];
+      var vecchio = el("progPop"); if (vecchio) vecchio.remove();
+      var pop = document.createElement("div"); pop.id = "progPop"; pop.className = "forse"; pop.style.cssText = "position:fixed;right:16px;bottom:16px;z-index:60;background:var(--pan);max-width:380px;flex-direction:column;align-items:stretch;box-shadow:0 8px 30px rgba(0,0,0,.5)";
+      pop.innerHTML = '<div>In quale <b>progetto</b>?</div><div style="max-height:220px;overflow:auto;display:flex;flex-direction:column;gap:3px">' + lista.map(function(g){ return '<button class="mini" data-p="' + esc(g.id) + '" style="text-align:left">' + esc(g.nome) + ' <small style="color:var(--fumo)">' + g.quante + ' seq.</small></button>'; }).join("") + '</div><div class="azioniS" style="padding:0"><button class="mini oro" data-p="nuovo">+ Nuovo progetto</button><button class="mini" data-p="nessuno">Nessun progetto</button><button class="mini" data-p="x">Annulla</button></div>';
+      document.body.appendChild(pop);
+      pop.addEventListener("click", function(e){ var b = e.target.closest("button[data-p]"); if (!b) return; var v = b.dataset.p; pop.remove();
+        if (v === "x") return; if (v === "nessuno") return poi("");
+        if (v === "nuovo") { var n = window.prompt("Nome del progetto:", ""); if (!n) return; return post({ tipo:"clip-prog-nuovo", nome: n }).then(function(d2){ poi(d2.prog.id); }).catch(function(er){ avviso("err", esc(er.message)); }); }
+        poi(v); });
+    }).catch(function(er){ avviso("err", esc(er.message)); });
+  }
   function disegnaRiprendi(){
     var u = null; try { u = JSON.parse(localStorage.getItem("mam2-ultimo") || "null"); } catch (e) {}
     if (!u || !u.titolo) { el("riprendi").innerHTML = ""; return; }
@@ -538,12 +583,14 @@
 
   // ══════════ ASSET ══════════
   var V, TAB = [], DETTO = [], DENTRO = null, FUORI = null, SOTTO = false, LINGUA = "it", SCELTE = {};
-  var FISCHIO = {}, ANCORA = "", PROVE = null, MARKER = [], FORSE = null;
+  var FISCHIO = {}, ANCORA = "", PROVE = null, MARKER = [], FORSE = null, BOZZA = null;
   function apriAsset(rec, regId, t){
     vai("asset"); V = el("video");
     var apri = regId ? Promise.resolve({ reg: REGS[regId] || null }) : Promise.resolve({ reg: null });
     apri.then(function(){ return post({ tipo:"clip-archivio-apri", rec: rec }); }).then(function(d){
-      var r = d.reg; ASSET = r; MARKER = r.marker || []; FORSE = null;
+      var r = d.reg; ASSET = r; MARKER = r.marker || []; FORSE = null; BOZZA = null;
+      // la bozza: la sequenza "BOZZA · partita" piu' recente di questa registrazione
+      post({ tipo:"clip-hl-elenco", reg: r.id, tutte: true }).then(function(x){ BOZZA = (x.seq || []).filter(function(q){ return q.reg === r.id && /^BOZZA · /.test(q.titolo || ""); }).sort(function(a,b){ return (b.creata || 0) - (a.creata || 0); })[0] || null; disegnaScheda(el("cercaS").value); }).catch(function(){});
       // la proposta del tabellone ("forse e' Chelsea-Luton"): la conferma una persona
       post({ tipo:"clip-archivio-partite", quante: 4000 }).then(function(x){ var z = (x.partite || []).filter(function(y){ return y.rec === rec; })[0]; FORSE = z && z.forse ? z.forse : null; if (FORSE) disegnaScheda(el("cercaS").value); }).catch(function(){});
       el("aTitolo").textContent = r.titolo || "partita"; el("sTitolo").textContent = r.titolo || "";
@@ -587,6 +634,11 @@
       var k = TAB.indexOf(x);
       return '<div class="voce" data-t="' + x.dentro + '" data-i="' + k + '"><input type="checkbox" data-k="' + k + '"' + (SCELTE[k] ? " checked" : "") + ' title="spunta per mandarla in timeline"><span class="min">' + esc(x.minuto || tcBreve(x.t)) + '</span><span class="tag ' + esc((x.tag || x.tipo || "").toLowerCase()) + '">' + esc(x.tag || x.tipo || "azione") + '</span><span class="tx">' + evidenzia(x.titolo || x.giocatore || "", q) + '<small>' + tcBreve(x.t) + ' · ' + esc((x.fonti || [x.fonte]).join(" + ")) + (x.certezza && x.certezza !== "minuto" ? ' · ' + esc(x.certezza) : '') + '</small></span></div>';
     }).join("") + '<div class="azioniS"><button class="mini oro" id="bMonta" disabled>Metti le spuntate in timeline</button><button class="mini" id="bTutteAz">Tutte</button><button class="mini" id="bGolAz">Solo i gol</button><button class="mini" id="bHlAuto" title="una sequenza fatta da sola: clip del live, gol e azioni del tabellino, boati">HL automatico</button></div>' : '<div class="vuoto" style="padding:6px 8px">Nessuna azione: gli appunti e ESPN non hanno ancora niente per questa partita.</div>'), false);
+    var bz = BOZZA ? (BOZZA.pezzi || []) : [];
+    h += blocco("bozza", "Bozza" + (BOZZA && BOZZA.prog ? "" : ""), bz.length, '<div class="bozza">' + (bz.length ? bz.map(function(x, i){
+      return '<div class="voce" data-t="' + x.dentro + '"><span class="n">' + (i + 1) + '</span><span class="min">' + tcBreve(x.dentro) + '</span><span class="tx">' + esc(x.titolo || "pezzo") + ' <small style="color:var(--fumo)">' + tc(x.fuori - x.dentro) + '</small></span><button class="mini" data-bsu="' + i + '" title="prima">&#8593;</button><button class="mini" data-bgiu="' + i + '" title="dopo">&#8595;</button><button class="mini" data-bvia="' + esc(x.id) + '" title="togli dalla bozza">×</button></div>';
+    }).join("") : '<div class="vuoto" style="padding:6px 8px">La bozza è il grezzo: segna IN e OUT e premi B (o l\u2019icona con la cartella), oppure spunta le azioni e "Aggiungi alla bozza". Poi la rifinisci nel montaggio.</div>') +
+      '<div class="azioniS">' + (bz.length ? '<button class="mini oro" id="bRifinisci">Rifinisci nel montaggio</button>' : '') + '<button class="mini" id="bBozzaSpuntate" title="le azioni spuntate qui sopra entrano nella bozza con le loro finestre">Aggiungi le spuntate</button>' + (BOZZA ? '<button class="mini" id="bBozzaProg" title="in quale progetto sta la bozza">Progetto' + (BOZZA.prog ? " ✓" : "") + '</button>' : '') + '</div></div>', !bz.length && !Object.keys(SCELTE).length);
     var mk = MARKER.filter(function(m){ return !q || piatto(m.testo || "").indexOf(q) >= 0; });
     h += blocco("marker", "Marker e boati", MARKER.length, (mk.length ? mk.map(function(m){
       return '<div class="voce" data-t="' + m.secondi + '"><span class="min">' + tcBreve(m.secondi) + '</span><span class="tx">' + (m.fonte === "boato" ? "🔊 " : "") + esc(m.testo || m.tipo || "marker") + '</span><button class="mini" data-mtogli="' + esc(m.id) + '" title="togli">×</button></div>';
@@ -611,6 +663,17 @@
     }); });
     el("scheda").querySelectorAll("button[data-mtogli]").forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); post({ tipo:"clip-marker", reg: ASSET.id, togli: b.dataset.mtogli }).then(function(d){ MARKER = d.marker || []; ASSET.marker = MARKER; disegnaScheda(el("cercaS").value); disegnaMomenti(); }).catch(function(er){ avviso("err", esc(er.message)); }); }); });
     el("scheda").querySelectorAll("#bl-detto .voce[data-k]").forEach(function(v){ v.addEventListener("dblclick", function(){ correggiRiga(v.dataset.k); }); });
+    if (el("bRifinisci")) el("bRifinisci").addEventListener("click", function(){ if (BOZZA) location.href = "mam2.html?seq=" + encodeURIComponent(BOZZA.id); });
+    if (el("bBozzaSpuntate")) el("bBozzaSpuntate").addEventListener("click", function(){
+      var righe = Object.keys(SCELTE).map(function(k){ return TAB[k]; }).filter(Boolean).sort(function(a,b){ return a.t - b.t; });
+      if (!righe.length) return avviso("err", "Spunta prima qualche azione.");
+      var b = this; b.disabled = true;
+      bozzaAssicura().then(function(){ var p = Promise.resolve(); righe.forEach(function(x){ p = p.then(function(){ return bozzaAggiungi(x.dentro, x.fuori, x.titolo || (x.tag || x.tipo || "azione") + " " + (x.minuto || "")); }); }); return p; })
+        .then(function(){ SCELTE = {}; avviso("ok", righe.length + (righe.length === 1 ? " azione aggiunta" : " azioni aggiunte") + " alla bozza."); disegnaScheda(el("cercaS").value); }).catch(function(e){ avviso("err", esc(e.message)); b.disabled = false; });
+    });
+    if (el("bBozzaProg")) el("bBozzaProg").addEventListener("click", function(){ scegliProgetto(function(pid){ post({ tipo:"clip-hl-progetto", seq: BOZZA.id, prog: pid }).then(function(d){ BOZZA = d.seq || BOZZA; disegnaScheda(el("cercaS").value); avviso("ok", pid ? "Bozza nel progetto." : "Bozza senza progetto."); }).catch(function(e){ avviso("err", esc(e.message)); }); }); });
+    el("scheda").querySelectorAll("button[data-bvia]").forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); post({ tipo:"clip-hl-pezzo", seq: BOZZA.id, pezzo: b.dataset.bvia, togli: true }).then(function(d){ BOZZA = d.seq; disegnaScheda(el("cercaS").value); }).catch(function(er){ avviso("err", esc(er.message)); }); }); });
+    el("scheda").querySelectorAll("button[data-bsu],button[data-bgiu]").forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); var i = +(b.dataset.bsu !== undefined ? b.dataset.bsu : b.dataset.bgiu), n = b.dataset.bsu !== undefined ? -1 : 1, ordine = (BOZZA.pezzi || []).map(function(z){ return z.id; }); if (i + n < 0 || i + n >= ordine.length) return; var id = ordine.splice(i, 1)[0]; ordine.splice(i + n, 0, id); post({ tipo:"clip-hl-ordina", seq: BOZZA.id, ordine: ordine }).then(function(d){ BOZZA = d.seq; disegnaScheda(el("cercaS").value); }).catch(function(er){ avviso("err", esc(er.message)); }); }); });
     if (el("bHlAuto")) el("bHlAuto").addEventListener("click", function(){ var b = this; b.disabled = true; b.textContent = "…"; post({ tipo:"clip-hl-genera", reg: ASSET.id }).then(function(d){ var q = d.seq; if (q && q.id) location.href = "mam2.html?seq=" + encodeURIComponent(q.id); else throw new Error("nessuna sequenza"); }).catch(function(e){ avviso("err", esc(e.message)); b.disabled = false; b.textContent = "HL automatico"; }); });
     if (el("bImportaSrt")) { el("bImportaSrt").addEventListener("click", function(){ el("fSrt").click(); }); el("fSrt").addEventListener("change", function(){ var f = this.files && this.files[0]; if (!f) return; var fr = new FileReader(); fr.onload = function(){ importaSrt(String(fr.result || ""), f.name); }; fr.readAsText(f); this.value = ""; }); }
     el("scheda").querySelectorAll(".fischio[data-t]").forEach(function(v){ v.addEventListener("click", function(){ seek(+v.dataset.t); }); });
@@ -684,12 +747,22 @@
     if (DENTRO !== null && FUORI !== null) h += '<div class="fra" style="left:' + (DENTRO / D * 100) + '%;width:' + ((FUORI - DENTRO) / D * 100) + '%"></div>';
     m.innerHTML = h;
   }
-  el("momenti").addEventListener("click", function(e){ var r = this.getBoundingClientRect(), D = (ASSET && ASSET.durata) || (V && V.duration) || 1; seek((e.clientX - r.left) / r.width * D); });
+  // la testina si prende e si trascina come in Premiere: mentre trascini il video segue (in pausa), e un'etichetta dice il secondo
+  (function(){
+    var m = el("momenti"), giu = false, eraInPlay = false, ultimo = 0;
+    function tAl(e){ var r = m.getBoundingClientRect(), D = (ASSET && ASSET.durata) || (V && V.duration) || 1; return Math.max(0, Math.min(D, (e.clientX - r.left) / r.width * D)); }
+    function etichetta(e, mostra){ var t = m.querySelector(".mtip"); if (!mostra) { if (t) t.remove(); return; } if (!t) { t = document.createElement("div"); t.className = "mtip"; m.appendChild(t); } var r = m.getBoundingClientRect(); t.style.left = (e.clientX - r.left) + "px"; t.textContent = tc(tAl(e)); }
+    m.addEventListener("pointerdown", function(e){ if (!V) return; giu = true; eraInPlay = !V.paused; V.pause(); m.classList.add("scrub"); m.setPointerCapture(e.pointerId); try { V.currentTime = tAl(e); } catch (er) {} etichetta(e, true); e.preventDefault(); });
+    m.addEventListener("pointermove", function(e){ if (!V) return; etichetta(e, true); if (!giu) return; var ora = performance.now(); if (ora - ultimo < 60) return; ultimo = ora; try { V.currentTime = tAl(e); } catch (er) {} });
+    m.addEventListener("pointerup", function(e){ if (!giu) return; giu = false; m.classList.remove("scrub"); try { V.currentTime = tAl(e); } catch (er) {} if (eraInPlay) V.play().catch(function(){}); etichetta(e, false); });
+    m.addEventListener("pointerleave", function(e){ if (!giu) etichetta(e, false); });
+    m.addEventListener("pointercancel", function(){ giu = false; m.classList.remove("scrub"); });
+  })();
   function inOut(){
     el("tIn").textContent = DENTRO === null ? "—" : tc(DENTRO); el("tOut").textContent = FUORI === null ? "—" : tc(FUORI);
     var ok = DENTRO !== null && FUORI !== null && FUORI > DENTRO;
     el("tDur").textContent = ok ? tc(FUORI - DENTRO) : "—";
-    el("bClip").disabled = !ok; el("bTimeline").disabled = !ok; disegnaMomenti();
+    el("bClip").disabled = !ok; el("bTimeline").disabled = !ok; el("bBozza").disabled = !ok; disegnaMomenti();
   }
   el("bIn").addEventListener("click", function(){ DENTRO = V.currentTime; if (FUORI !== null && FUORI <= DENTRO) FUORI = null; inOut(); });
   el("bOut").addEventListener("click", function(){ FUORI = V.currentTime; if (DENTRO !== null && DENTRO >= FUORI) DENTRO = null; inOut(); });
@@ -710,6 +783,19 @@
     post({ tipo:"clip-taglia", reg: ASSET.id, dentro: DENTRO, fuori: FUORI, formato:"16:9", titolo: (ASSET.titolo || "") + " " + tc(DENTRO), sotto: SOTTO ? "srt" : "", sottoLingua: LINGUA })
       .then(function(d){ avviso("ok", "Clip in lavorazione (" + tc(FUORI - DENTRO) + "): la trovi nelle Esportazioni del montaggio." + (SOTTO ? " Con l'SRT." : "")); })
       .catch(function(e){ avviso("err", esc(e.message)); });
+  });
+  // LA BOZZA: il grezzo di una partita, una sequenza "BOZZA · partita" che cresce a colpi di B
+  function bozzaAssicura(){
+    if (BOZZA) return Promise.resolve(BOZZA);
+    return post({ tipo:"clip-hl-nuova", reg: ASSET.id, titolo: "BOZZA · " + (ASSET.titolo || "") }).then(function(d){ BOZZA = d.seq; return BOZZA; });
+  }
+  function bozzaAggiungi(dentro, fuori, titolo){
+    return bozzaAssicura().then(function(){ return post({ tipo:"clip-hl-inserisci", reg: ASSET.id, seq: BOZZA.id, dentro: Math.round(dentro * 100) / 100, fuori: Math.round(fuori * 100) / 100, titolo: titolo || ((ASSET.titolo || "") + " " + tc(dentro)), aggancia: false }); }).then(function(d){ BOZZA = d.seq || BOZZA; return BOZZA; });
+  }
+  el("bBozza").addEventListener("click", function(){
+    if (!ASSET || DENTRO === null || FUORI === null || FUORI <= DENTRO) return;
+    var b = this; b.disabled = true;
+    bozzaAggiungi(DENTRO, FUORI).then(function(){ avviso("ok", "In bozza: " + tc(DENTRO) + " → " + tc(FUORI) + " (" + (BOZZA.pezzi || []).length + " pezzi)."); disegnaScheda(el("cercaS").value); b.disabled = false; }).catch(function(e){ avviso("err", esc(e.message)); b.disabled = false; });
   });
   // IN TIMELINE, DOVE VUOI TU: in coda, all'inizio, dopo un pezzo, o in una sequenza nuova
   function inserisci(seqId, dove){
@@ -761,6 +847,7 @@
     else if (e.key === "I" && e.shiftKey) el("bGoIn").click(); else if (e.key === "O" && e.shiftKey) el("bGoOut").click();
     else if (e.key === "i" || e.key === "I" || e.key === "[" || e.key === "{") el("bIn").click(); else if (e.key === "o" || e.key === "O" || e.key === "]" || e.key === "}") el("bOut").click();
     else if (e.key === ",") { if (!el("bTimeline").disabled) el("bTimeline").click(); }
+    else if (e.key === "b" || e.key === "B") { if (!el("bBozza").disabled) el("bBozza").click(); else avviso("err", "Segna prima IN e OUT."); }
     else if (e.key === "k" || e.key === "K") { V.pause(); V.playbackRate = 1; }
     else if (e.key === "j" || e.key === "J") seek(V.currentTime - (e.shiftKey ? 60 : 10));
     else if (e.key === "l" || e.key === "L") { if (V.paused) V.play().catch(function(){}); else V.playbackRate = Math.min(4, V.playbackRate * 2); }
@@ -793,6 +880,7 @@
     }).then(function(d){
       REGE = d.reg || REGS[SEQ.reg] || null;
       if (!REGE) throw new Error("la partita di questa sequenza non e' aperta");
+      el("eProg").textContent = "Progetto" + (SEQ.prog ? " ✓" : "");
       el("eTitolo").textContent = SEQ.titolo || "sequenza"; el("eMeta").textContent = (REGE.titolo || "") + " · " + PZ.length + " pezzi · " + tc(durSeq());
       briciole([REGE.titolo || "partita", SEQ.titolo || "sequenza"]);
       document.title = (SEQ.titolo || "sequenza") + " · MAM Como TV";
@@ -985,6 +1073,7 @@
   function lente(f){ var t = tSeq(), span = (LENTE.b - LENTE.a) * f; LENTE = { a: Math.max(0, t - span / 2), b: Math.max(0, t - span / 2) + span }; disegnaTl(); }
   el("eMeno").addEventListener("click", function(){ lente(1.6); }); el("ePiu").addEventListener("click", function(){ lente(0.6); }); el("eTutta").addEventListener("click", function(){ LENTE = { a: 0, b: Math.max(10, durSeq()) }; disegnaTl(); });
   el("eRinomina").addEventListener("click", function(){ if (!SEQ) return; var n = window.prompt("Nome della sequenza:", SEQ.titolo || ""); if (!n) return; post({ tipo:"clip-hl-imposta", seq: SEQ.id, titolo: n }).then(function(d){ if (d.seq) { SEQ.titolo = d.seq.titolo || n; } else SEQ.titolo = n; el("eTitolo").textContent = SEQ.titolo; }).catch(function(er){ avviso("err", esc(er.message)); }); });
+  el("eProg").addEventListener("click", function(){ if (!SEQ) return; scegliProgetto(function(pid){ post({ tipo:"clip-hl-progetto", seq: SEQ.id, prog: pid }).then(function(d){ if (d.seq) SEQ.prog = d.seq.prog; el("eProg").textContent = "Progetto" + (SEQ.prog ? " ✓" : ""); avviso("ok", pid ? "Sequenza nel progetto." : "Sequenza senza progetto."); }).catch(function(er){ avviso("err", esc(er.message)); }); }); });
   el("eCasa").addEventListener("click", function(){ if (!SEQ) return; post({ tipo:"clip-hl-in-casa", seq: SEQ.id }).then(function(){ avviso("ok", "Porto i pezzi in casa\u2026"); }).catch(function(er){ avviso("err", esc(er.message)); }); });
   el("eFormati").addEventListener("click", function(e){ var c = e.target.closest(".fchip"); if (!c) return; c.classList.toggle("on"); FORMATI = Array.prototype.map.call(el("eFormati").querySelectorAll(".fchip.on"), function(z){ return z.dataset.f; }); });
   el("eEsporta").addEventListener("click", function(){
@@ -1110,7 +1199,7 @@
   el("lFerma").addEventListener("click", function(){ if (!LIVE.reg) return; if (!window.confirm("Fermo la registrazione di " + (LIVE.reg.titolo || "questa porta") + "?")) return; post({ tipo:"clip-ferma", id: LIVE.reg.id }).then(function(){ avviso("ok", "Fermata."); giroLive(); }).catch(function(er){ avviso("err", esc(er.message)); }); });
 
   // ══════════ AVVIO ══════════
-  stato(); caricaEventi(); disegnaRiprendi();
+  stato(); caricaEventi(); disegnaRiprendi(); caricaProgetti();
   var pa = /(\?|&)asset=([A-Za-z0-9]+)/.exec(location.search), pr = /(\?|&)reg=([a-z0-9]+)/.exec(location.search), pt = /(\?|&)t=(\d+)/.exec(location.search), pq = /(\?|&)q=([^&]+)/.exec(location.search), ps = /(\?|&)seq=([a-z0-9]+)/.exec(location.search);
   if (/(\?|&)live=1/.test(location.search)) apriLive();
   else if (ps) apriEditor(ps[2]);
