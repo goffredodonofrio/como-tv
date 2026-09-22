@@ -26,6 +26,8 @@
  */
 window.Lavagna = (function () {
   "use strict";
+  // col dito o col mouse: cambia come si apre la scheda e cosa c'e' scritto
+  var TOCCO = (navigator.maxTouchPoints || 0) > 0 && !window.matchMedia("(hover:hover)").matches;
 
   var W = 1600, H = 900;
   var MODULI = {
@@ -336,8 +338,10 @@ window.Lavagna = (function () {
           '<div class="col" data-col="B"><h4><label class="colsq" title="Il colore delle pedine"><i></i><input type="color" data-colsq="B"></label><span data-nome="B">Ospite</span><select class="magsq" data-maglia="B" title="Le pedine con la divisa vera del magazzino" hidden></select></h4><div class="conta" data-conta="B"></div><div class="gioc" data-rosa="B"></div></div>' +
         '</div>' +
       '</div>' +
-      '<div class="nota" data-nota="1">Trascina i giocatori. <b>Doppio clic</b> su un giocatore: ci scrivi le tue curiosità. ' +
-        'Per un cambio: clicca chi esce sul campo, poi chi entra dalla panchina.</div>' +
+      // col dito (iPad) si tocca, col mouse si clicca: la spiegazione cambia
+      '<div class="nota" data-nota="1">Trascina i giocatori. <b>' + (TOCCO ? "Tocca due volte" : "Doppio clic") + '</b> su un giocatore: ' +
+        'la sua scheda, dove scrivi le tue curiosità. Per un cambio: ' + (TOCCO ? "tocca" : "clicca") +
+        ' chi esce sul campo, poi chi entra dalla panchina.</div>' +
       '<div class="sotto">' +
         // in diretta i cambi si vedono gia' sul campo, la lista e' rumore
         (opz.diretta ? "" :
@@ -722,11 +726,25 @@ window.Lavagna = (function () {
         d.el.setAttribute("d", "M" + Math.round(b0.x) + " " + Math.round(b0.y) + "L" + Math.round(pt.x) + " " + Math.round(pt.y));
       }
     });
-    function fine() {
+    // sul touch (iPad) il doppio clic non arriva: due tocchi vicini sullo
+    // stesso giocatore aprono la sua scheda
+    var ultimoTocco = null;
+    function fine(ev) {
       if (trascino) {
         // un clic senza trascinamento sceglie il giocatore: e' il primo passo
         // del cambio (chi esce)
-        if (!mosso) { SCELTO = SCELTO === trascino.p ? null : trascino.p; evidenzia(); disegnaRose(); }
+        if (!mosso) {
+          var p0 = trascino.p;
+          if (ev && ev.pointerType === "touch" && ultimoTocco && ultimoTocco.p === p0 && Date.now() - ultimoTocco.t < 500) {
+            ultimoTocco = null;
+            trascino = null;
+            SCELTO = null; evidenzia(); disegnaRose();
+            apriNota(p0);
+            return;
+          }
+          if (ev && ev.pointerType === "touch") ultimoTocco = { p: p0, t: Date.now() };
+          SCELTO = SCELTO === p0 ? null : p0; evidenzia(); disegnaRose();
+        }
         trascino = null;
         return;
       }
@@ -1152,17 +1170,29 @@ window.Lavagna = (function () {
     // il foglio si legge in CURIOSITA' (curiosita.html), in una finestra a
     // parte: la lavagna resta dov'e'. Sempre la stessa finestra, riusata.
     function apriFoglio(id, frase) {
-      function apri(x) {
-        if (!x) return;
-        // le squadre in lavagna: la finestra elenca anche gli altri fogli della sfida e le schede delle squadre
+      var misure = "width=1000,height=" + Math.min(1100, screen.availHeight || 1000) + ",resizable=yes,scrollbars=yes";
+      function via(x) {
         var n = nomiSquadre();
-        var w = window.open("curiosita.html?id=" + encodeURIComponent(x) + "&a=" + encodeURIComponent(n[0] || "") +
-                            "&b=" + encodeURIComponent(n[1] || "") + (frase ? "&frase=" + encodeURIComponent(frase.slice(0, 300)) : ""), "comotv-curiosita",
-                            "width=1000,height=" + Math.min(1100, screen.availHeight || 1000) + ",resizable=yes,scrollbars=yes");
-        if (w) w.focus(); else nota("Il browser ha bloccato la finestra delle Curiosit&agrave;: consenti le finestre per questo sito.", "err");
+        return "curiosita.html?id=" + encodeURIComponent(x) + "&a=" + encodeURIComponent(n[0] || "") +
+               "&b=" + encodeURIComponent(n[1] || "") + (frase ? "&frase=" + encodeURIComponent(frase.slice(0, 300)) : "");
       }
-      if (id) return apri(id);
-      indice().then(function (v) { apri((fogliPartita(v)[0] || fogliSquadra(v)[0] || {}).id); });
+      function bloccata() { nota("Il browser ha bloccato la finestra delle Curiosit&agrave;: consenti le finestre per questo sito.", "err"); }
+      // la partita scelta dice gia' il suo foglio: si apre subito, col tocco
+      // (Safari su iPad blocca le finestre aperte dopo una risposta di rete)
+      if (!id && SCELTA && SCELTA.ids.length) id = SCELTA.ids[0];
+      if (id) {
+        var w = window.open(via(id), "comotv-curiosita", misure);
+        if (w) w.focus(); else bloccata();
+        return;
+      }
+      // se no si cerca il foglio: la finestra si apre subito vuota e poi ci si va
+      var w2 = window.open("", "comotv-curiosita", misure);
+      if (!w2) return bloccata();
+      indice().then(function (v) {
+        var x = (fogliPartita(v)[0] || fogliSquadra(v)[0] || {}).id;
+        if (x) { w2.location.href = via(x); w2.focus(); }
+        else { w2.close(); nota("Per questa partita non c'&egrave; nessun foglio della redazione.", ""); }
+      }).catch(function () { w2.close(); });
     }
     box.addEventListener("click", function (ev) {
       var b = ev.target.closest ? ev.target.closest("[data-foglio]") : null;
