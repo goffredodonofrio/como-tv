@@ -33,7 +33,25 @@ TESSERACT = os.environ.get("COMOTV_TESSERACT", "tesseract")
 OROLOGIO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "orologio.py")
 
 
+PONTE = os.environ.get("COMOTV_S3_PONTE", "").rstrip("/")
+
+
 def fotogramma(file, secondi, fuori):
+    # dietro il ponte S3 (la EC2 a Parigi) il fotogramma lo estrae la EC2:
+    # qui arriva la sola fascia alta, poche decine di kB invece di un GOP
+    if PONTE and file.startswith(PONTE + "/o/"):
+        import urllib.request, urllib.parse
+        chiave = urllib.parse.unquote(file[len(PONTE) + 3:])
+        q = urllib.parse.urlencode({"k": chiave, "t": str(int(max(0, secondi))), "c": "top", "fmt": "png"})
+        try:
+            with urllib.request.urlopen(PONTE + "/f?" + q, timeout=150) as r:
+                dati = r.read()
+            if len(dati) < 1000:
+                return False
+            open(fuori, "wb").write(dati)
+            return True
+        except Exception:
+            return False
     try:
         subprocess.run([FFMPEG, "-hide_banner", "-loglevel", "error",
                         "-ss", str(int(max(0, secondi))), "-i", file, "-frames:v", "1",

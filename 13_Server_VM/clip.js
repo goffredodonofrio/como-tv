@@ -7887,8 +7887,10 @@ function fotogrammaDalPonte(p, sec, fuori, come) {
 function fasciaAlta(via, sec) {
   const pp = pontePer(via);
   if (pp) {
-    const png = path.join(os.tmpdir(), "orologio-" + nuovoId("") + ".png");
-    return fotogrammaDalPonte(pp, sec, png, { crop: "top", png: true }).then((si) => si ? png : null);
+    // in JPEG: la fascia alta in PNG pesava mezzo mega a fotogramma, e un
+    // cronometro letto e verificato ne prende venti (12 MB → ~3 MB)
+    const jpg = path.join(os.tmpdir(), "orologio-" + nuovoId("") + ".jpg");
+    return fotogrammaDalPonte(pp, sec, jpg, { crop: "top", q: 3 }).then((si) => si ? jpg : null);
   }
   return new Promise((ok) => {
     const png = path.join(os.tmpdir(), "orologio-" + nuovoId("") + ".png");
@@ -11451,11 +11453,40 @@ const AZIONI = {
     if (!global.__TAB_CACHE || ora - global.__TAB_CACHE.quando > 60000) {
       const per = {};
       Object.keys(R.reg).forEach((k) => { const r = R.reg[k]; if (!r || !(r.evento || r.arch)) return; try { per[k] = tabellino(r).righe; } catch (e) { per[k] = []; } });
-      global.__TAB_CACHE = { quando: ora, per };
+      // E LE PARTITE MAI APERTE. La ricerca guardava solo le registrazioni:
+      // "tutti i gol di Douvikas" trovava Udinese-Como e basta, con venti
+      // partite negli appunti. Per una partita dell'indice bastano appunti
+      // ed ESPN: il secondo lo da' secondoNelFile, e la pagina la apre da
+      // sola al primo clic
+      const conReg = new Set(); Object.keys(R.reg).forEach((k) => { const r = R.reg[k]; if (r && (r.arch || r.evento)) conReg.add((r.arch && r.arch.rec) || r.evento); });
+      const finti = {};
+      Object.keys(ARCHIVIO).forEach((rec) => {
+        if (conReg.has(rec) || rec.indexOf("s3:") === 0) return;
+        const a = ARCHIVIO[rec], ap = APPUNTI[rec], es = ESPN[rec];
+        if (!a || !(a.pezzi || []).length) return;
+        if (!ap && !(es && es.eventi && es.eventi.length)) return;
+        const righe = [], rit = ritardoPartita(rec);
+        const dove = (s, d) => { const x = secondoNelFile(rec, { s: s, d: Math.max(0, d) }); if (!x) return null; const pz = (a.pezzi || [])[x.pezzo]; return { t: ((pz && pz.da) || 0) + x.secondi, chiave: x.chiave, dentroFile: x.secondi }; };
+        if (ap) (ap.righe || []).forEach((x) => {
+          const d = dove(x.s || 1, (x.d || 0) - rit); if (!d) return;
+          righe.push(Object.assign({ titolo: x.x || "", tipo: x.t || "", minuto: x.m || "", fonte: "appunti", fonti: ["appunti"], giocatore: "", squadra: "", dettaglio: "",
+            gol: /gol|rete/i.test(x.t || "") || !!x.g, tag: etichettaAzione(x.t, x.x), rating: x.g || 0, certezza: "minuto" }, d));
+        });
+        if (es && es.eventi) es.eventi.forEach((x) => {
+          const ita = tipoItaliano(x.tipo);
+          const d = dove(x.periodo || 1, (x.min - (x.periodo === 2 ? 45 : 0)) * 60 + (x.stopp || 0) * 60); if (!d) return;
+          righe.push(Object.assign({ titolo: ita + (x.giocatore ? " \u00b7 " + x.giocatore : ""), tipo: ita, minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), fonte: "espn", fonti: ["espn"],
+            giocatore: x.giocatore || "", squadra: x.squadra || "", dettaglio: x.testo || "", gol: /Gol/.test(ita), tag: etichettaAzione(ita, x.testo), rating: 0, certezza: "minuto" }, d));
+        });
+        if (!righe.length) return;
+        per["arch:" + rec] = righe.map((x) => Object.assign(x, { t: Math.round(x.t * 10) / 10, dentro: Math.max(0, x.t - (x.gol ? GOL_PRE : APP_PRE)), fuori: x.t + (x.gol ? GOL_POST : APP_POST) }));
+        finti["arch:" + rec] = { titolo: a.partita || rec, arch: { rec: rec, chiave: a.chiave, bucket: a.bucket }, avviata: Date.parse(a.quando) || 0, finita: 0, finto: true };
+      });
+      global.__TAB_CACHE = { quando: ora, per, finti };
     }
-    const per = global.__TAB_CACHE.per, fuori = [];
+    const per = global.__TAB_CACHE.per, finti = global.__TAB_CACHE.finti || {}, fuori = [];
     Object.keys(per).forEach((k) => {
-      const r = R.reg[k]; if (!r) return;
+      const r = R.reg[k] || finti[k]; if (!r) return;
       per[k].forEach((x) => {
         // il tipo si legge da tipo ed etichetta (che classificano gia' il
         // titolo): guardare la prosa faceva prendere "angolo" per "gol"
@@ -11463,9 +11494,9 @@ const AZIONI = {
         if (tipi.length && !tipi.every((re) => re.test(soggetto))) return;
         const testo = piattaMinuscola([x.titolo, x.giocatore, x.squadra, x.dettaglio, r.titolo].join(" "));
         if (!parole.every((w) => testo.indexOf(w) >= 0)) return;
-        let chiave = "", dentroFile = x.dentro;
-        if (r.arch) { const pa = pezzoAl(r, x.dentro); if (pa && pa.pezzo && pa.pezzo.chiave) { chiave = pa.pezzo.chiave; dentroFile = pa.dentro; } else chiave = r.arch.chiave || ""; }
-        fuori.push({ reg: k, partita: r.titolo || k, rec: (r.arch && r.arch.rec) || r.evento || "", t: x.t, dentro: x.dentro, fuori: x.fuori,
+        let chiave = x.chiave || "", dentroFile = x.dentroFile !== undefined ? x.dentroFile : x.dentro;
+        if (r.arch && !r.finto) { const pa = pezzoAl(r, x.dentro); if (pa && pa.pezzo && pa.pezzo.chiave) { chiave = pa.pezzo.chiave; dentroFile = pa.dentro; } else chiave = r.arch.chiave || ""; }
+        fuori.push({ reg: r.finto ? "" : k, partita: r.titolo || k, rec: (r.arch && r.arch.rec) || r.evento || "", t: x.t, dentro: x.dentro, fuori: x.fuori, s3: !!(r.arch && magazzinoInventario(r.arch.bucket)),
                      tipo: x.tipo, tag: x.tag, titolo: x.titolo, minuto: x.minuto, fonte: x.fonte, fonti: x.fonti, squadra: x.squadra, giocatore: x.giocatore,
                      gol: x.gol, certezza: x.certezza, chiave, dentroFile, quando: r.finita || r.avviata || 0 });
       });
