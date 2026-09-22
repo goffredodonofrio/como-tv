@@ -191,7 +191,88 @@ print(json.dumps(out,ensure_ascii=False))
 // Dal testo nudo (PDF, documenti Google, txt). Le righe spezzate dal PDF si
 // riuniscono; una riga corta, con la maiuscola e senza punto in fondo, e' un
 // titolo; "Voce: valore" corto e' una voce; trattini e pallini sono elenchi.
+// I FOGLI TUTTI IN MAIUSCOLO (i copioni di Manolo: "MARESCA\nQUESTA\nSERA\nNON"):
+// le righe si uniscono fino al punto, e il testo torna in minuscolo con la
+// maiuscola a inizio frase. I nomi propri e le sigle si riconoscono da come
+// sono scritti negli altri fogli (PROPRI, fatto da rifai()).
+let PROPRI = null;
+function tuttoMaiuscolo(t) {
+  const l = String(t || "").match(/[A-Za-zÀ-ÿ]/g) || [];
+  if (l.length < 300) return false;
+  return l.filter((c) => c !== c.toLowerCase() || !/[a-zà-ÿ]/.test(c)).length / l.length > 0.85;
+}
+function propriDa(fogli) {
+  const c = {};                     // parola -> [Maiuscola, minuscola, SIGLA]
+  fogli.forEach((f) => {
+    if (!f.testo || tuttoMaiuscolo(f.testo)) return;
+    const re = /[A-Za-zÀ-ÿ]+/g;
+    let m;
+    while ((m = re.exec(f.testo))) {
+      const w = m[0], k = w.toLowerCase();
+      if (w.length < 2) continue;
+      // a inizio frase la maiuscola non dice niente
+      const prima = f.testo.slice(Math.max(0, m.index - 3), m.index);
+      const inizio = m.index === 0 || /[.!?\n:]\s*["“]?$/.test(prima) || /^\s*$/.test(prima);
+      const v = c[k] || (c[k] = [0, 0, 0]);
+      if (w === w.toUpperCase() && w.length >= 2) v[2]++;
+      else if (w[0] !== w[0].toLowerCase()) { if (!inizio) v[0]++; }
+      else v[1]++;
+    }
+  });
+  const out = {};
+  Object.keys(c).forEach((k) => {
+    const [M, m, S] = c[k];
+    if (S >= 3 && S > (M + m) * 2 && k.length <= 5) out[k] = "S";            // VAR, EFL, UEFA
+    else if (M >= 2 && M > m * 3) out[k] = "M";                                // Doku, Manchester
+    else if (m) out[k] = "m";                                                  // parola comune
+  });
+  return out;
+}
+// le parole italiane non viste altrove (coadiuvato, sospesi, retrocedera'):
+// dalla desinenza, restano minuscole
+const ITALIANA = /(at[oaie]|it[oaie]|ut[oaie]|es[oaie]|os[oaie]|are|ere|ire|ando|endo|issim[oaie]|mente|zion[ei]|ità|tà|rà|rò|ò|ì|ssero|ebbe|ebbero|ano|ono|ava|avano|eva|evano|iva|ivano|ente|enti|ante|anti|ist[aie]|ism[oi]|ic[oaie]|ich[ei]|abil[ei]|ibil[ei])$/;
+function minuscolo(t) {
+  const P = PROPRI || {};
+  // una parola mai vista negli altri fogli e' quasi sempre un nome (Mainwaring)
+  let x = String(t).toLowerCase().replace(/[a-zà-ÿ]+/g, (w) =>
+    P[w] === "S" ? w.toUpperCase() : (P[w] === "M" || (!P[w] && w.length >= 3 && !ITALIANA.test(w))) ? w[0].toUpperCase() + w.slice(1) : w);
+  x = x.replace(/\bfa (cup|trophy|vase)\b/gi, (m, c) => "FA " + c[0].toUpperCase() + c.slice(1))
+       .replace(/\b([Oo])['’]([a-zà-ÿ])/g, (m, o, c) => "O'" + c.toUpperCase())
+       .replace(/\bman (city|utd|united)\b/gi, (m, c) => "Man " + c[0].toUpperCase() + c.slice(1))
+       .replace(/\b(var|efl|uefa|fifa|mls|psv|az|mk)\b/g, (m) => m.toUpperCase());
+  // la maiuscola a inizio frase
+  x = x.replace(/(^|[.!?]\s+|["“(]\s*)([a-zà-ÿ])/g, (m, a, b) => a + b.toUpperCase());
+  return x;
+}
+const TITOLI_MAIUSCOLI = /^(le formazioni|formazioni|probabili formazioni|precedenti|i precedenti|curiosit[aà]|storia|arbitr[io]|squadra arbitrale|classifica|statistiche|numeri|allenatori|gli allenatori|intro|chiusura|il match|la partita|come arrivano|gli assenti|indisponibili|stadio|lo stadio)\b.{0,25}$/i;
+function strutturaMaiuscola(testo) {
+  const righe = String(testo || "").replace(/\r/g, "").split(/\n/).map((x) => x.replace(/\s+/g, " ").trim());
+  const out = [];
+  let buf = "", ultima = "", singole = 0;
+  const chiudi = () => { if (buf) out.push({ t: "p", x: minuscolo(buf) }); buf = ""; ultima = ""; singole = 0; };
+  const una = (x) => /^\S+$/.test(x);
+  righe.forEach((r) => {
+    if (!r) { if (/[.!?:)]$/.test(buf)) chiudi(); return; }
+    // si continua la frase solo se la riga prima era una riga di testo
+    // spezzata (lunga, senza punto) o una serie di parole sole ("MARESCA /
+    // QUESTA / SERA"); se no la riga sta da sola (elenchi: rose, riserve)
+    if (buf && !(!/[.!?:;]["”)]?$/.test(ultima) && (ultima.length >= 35 || (una(ultima) && (una(r) || singole >= 2))))) chiudi();
+    if (r.length <= 45 && TITOLI_MAIUSCOLI.test(r.replace(/[:.\s]+$/, ""))) {
+      chiudi(); out.push({ t: "h1", x: minuscolo(r.replace(/[:.\s]+$/, "")) }); return;
+    }
+    if (/^[-•–▪·●]\s*/.test(r)) { chiudi(); buf = r.replace(/^[-•–▪·●]\s*/, ""); chiudi(); out[out.length - 1].t = "li"; return; }
+    buf = buf ? buf + " " + r : r;
+    singole = una(r) ? singole + 1 : 0;
+    ultima = r;
+    if (/[.!?]["”)]?$/.test(r)) chiudi();
+  });
+  chiudi();
+  // quello che c'e' prima del primo titolo e' l'apertura della telecronaca
+  if (out.length && out[0].t !== "h1" && out.slice(0, 3).some((b) => (b.x || "").length > 60)) out.unshift({ t: "h1", x: "Intro" });
+  return out;
+}
 function strutturaTesto(testo) {
+  if (tuttoMaiuscolo(testo)) return strutturaMaiuscola(testo);
   let righe = String(testo || "").replace(/\r/g, "").split("\f").join("\n").split("\n").map((x) => x.replace(/\s+/g, " ").trim());
   // intestazioni e pie' di pagina del PDF ("Opta/Stats Perform © 2026",
   // "Oitavas de final (ida)"): una riga corta che torna a ogni pagina si
@@ -387,6 +468,7 @@ function salva(meta, testo, blocchi) {
 function rifai() {
   const dir = path.join(PUB, "fogli");
   const tutti = fs.readdirSync(dir).filter((x) => x.endsWith(".json")).map((x) => leggiJson(path.join(dir, x), null)).filter(Boolean);
+  PROPRI = propriDa(tutti);
   // i fogli salvati prima della struttura: la si ricava dal testo
   tutti.forEach((f) => {
     // i fogli gia' salvati si rileggono con le regole di adesso (squadre, struttura)
