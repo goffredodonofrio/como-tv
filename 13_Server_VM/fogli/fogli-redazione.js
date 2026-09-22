@@ -92,8 +92,119 @@ function testoDocx(file) {
     "print('\\n'.join(out))\n";
   return execFileSync("python3", ["-c", py, file], { maxBuffer: 32 * 1024 * 1024, timeout: 60000 }).toString("utf8");
 }
+// LA STRUTTURA, uguale per tutti i fogli. Ogni giornalista scrive a modo suo
+// (Word con titoli e tabelle, PDF, testo): qui diventano tutti una lista di
+// blocchi, e la lavagna li mostra tutti allo stesso modo.
+//   { t: "h1"|"h2"|"h3", x }     titoli di sezione e sottotitoli
+//   { t: "p", x, lead? }         paragrafo (lead: l'attacco in grassetto)
+//   { t: "li", x, lead? }        voce di elenco
+//   { t: "kv", k, v }            voce e valore (le tabelle a due colonne)
+//   { t: "tab", righe: [[...]] } tabella vera (classifiche)
+// Il Word la dice da solo: stili dei titoli, elenchi numerati, tabelle,
+// grassetti. Il PDF no: si ricostruisce dal testo (strutturaTesto).
+function strutturaDocx(file) {
+  const py = String.raw`
+import zipfile,re,sys,json,html
+x=zipfile.ZipFile(sys.argv[1]).read('word/document.xml').decode('utf8')
+body=re.search(r'<w:body>(.*)</w:body>',x,re.S).group(1)
+def testo(b):
+  b=re.sub(r'<w:tab/>',' ',b); b=re.sub(r'<w:br[^>]*/>',' ',b)
+  return re.sub(r'\s+',' ',html.unescape(''.join(re.findall(r'<w:t[^>]*>([^<]*)</w:t>',b)))).strip()
+def grassetto(r):
+  m=re.search(r'<w:b(?: w:val="([^"]*)")?/>',r)
+  return bool(m) and (m.group(1) or '1') not in ('0','false')
+out=[]
+for m in re.finditer(r'<w:tbl>.*?</w:tbl>|<w:p[ >].*?</w:p>|<w:p/>',body,re.S):
+  b=m.group(0)
+  if b.startswith('<w:tbl>'):
+    righe=[[testo(c) for c in re.findall(r'<w:tc>.*?</w:tc>',r,re.S)] for r in re.findall(r'<w:tr[ >].*?</w:tr>',b,re.S)]
+    righe=[r for r in righe if any(r)]
+    if righe and all(len(r)==2 for r in righe): out+= [{'t':'kv','k':r[0],'v':r[1]} for r in righe]
+    elif righe: out.append({'t':'tab','righe':righe})
+    continue
+  t=testo(b)
+  if not t: continue
+  st=re.search(r'<w:pStyle w:val="([^"]+)"',b); st=st.group(1) if st else ''
+  lv=re.search(r'(\d)$',st)
+  if re.search(r'(titolo|heading|title)',st,re.I):
+    out.append({'t':'h'+str(min(3,int(lv.group(1)) if lv else 1)) if not re.search(r'^(title|titolo)$',st,re.I) else 'h0','x':t}); continue
+  runs=[r for r in re.findall(r'<w:r[ >].*?</w:r>',b,re.S) if testo(r)]
+  bold=[grassetto(r) for r in runs]
+  li='<w:numPr>' in b or re.match(r'^[-•–▪·]\s',t)
+  if li: t=re.sub(r'^[-•–▪·]\s*','',t)
+  if bold and all(bold) and len(t)<=90 and not li:
+    out.append({'t':'h3','x':t.rstrip(':')}); continue
+  lead=''
+  if bold and bold[0] and not all(bold):
+    k=0
+    while k<len(bold) and bold[k]: k+=1
+    lead=' '.join(testo(r) for r in runs[:k]).strip()
+    if lead and t.startswith(lead): t=t[len(lead):].strip()
+    else: lead=''
+  d={'t':'li' if li else 'p','x':t}
+  if lead: d['lead']=lead
+  out.append(d)
+print(json.dumps(out,ensure_ascii=False))
+`;
+  return JSON.parse(execFileSync("python3", ["-c", py, file], { maxBuffer: 32 * 1024 * 1024, timeout: 60000 }).toString("utf8"));
+}
+// Dal testo nudo (PDF, documenti Google, txt). Le righe spezzate dal PDF si
+// riuniscono; una riga corta, con la maiuscola e senza punto in fondo, e' un
+// titolo; "Voce: valore" corto e' una voce; trattini e pallini sono elenchi.
+function strutturaTesto(testo) {
+  const righe = String(testo || "").replace(/\r/g, "").split("\n").map((x) => x.replace(/\s+/g, " ").trim());
+  // 1. le righe spezzate dal PDF (anche con una riga vuota in mezzo): si
+  //    attacca alla precedente chi comincia minuscolo o con un numero, se la
+  //    precedente non finiva la frase
+  const unite = [];
+  righe.forEach((r) => {
+    if (!r) { if (unite.length && unite[unite.length - 1] !== null) unite.push(null); return; }
+    let k = unite.length - 1;
+    if (unite[k] === null) k--;
+    const u = unite[k];
+    if (u && !/^[-•–▪·]\s/.test(r) && /^[a-zà-ÿ(0-9,;’']/.test(r) && !/[.!?:]$/.test(u)) {
+      unite[k] = u + " " + r; unite.length = k + 1; return;
+    }
+    unite.push(r);
+  });
+  const out = [];
+  // piu' voci sulla stessa riga: "Capocannoniere: X Piu' impiegato: Y"
+  function voci(t) {
+    const pezzi = t.split(/\s+(?=[A-ZÀ-Ý][A-Za-zà-ÿ'’-]+(?:\s[a-zà-ÿ'’-]+)?:\s)/);
+    const kv = pezzi.map((p) => /^([A-ZÀ-Ý][^:]{1,28}):\s+(.+)$/.exec(p));
+    return kv.every(Boolean) ? kv.map((m) => ({ t: "kv", k: m[1].trim(), v: m[2].trim() })) : null;
+  }
+  unite.forEach((t) => {
+    if (!t) return;
+    // l'intestazione: "Sabato 29 agosto | Ore 13.30 | Championship | Middlesbrough-WBA"
+    if ((t.match(/\s\|\s/g) || []).length >= 2) { out.push({ t: "meta", parti: t.split(/\s\|\s/).map((x) => x.trim()).filter(Boolean) }); return; }
+    const barra = /^([^|]{2,28})\s\|\s(.+)$/.exec(t);
+    if (barra) { out.push({ t: "kv", k: barra[1].trim(), v: barra[2].trim() }); return; }
+    if (/^[-•–▪·]\s*/.test(t) && t.length > 2) { out.push({ t: "li", x: t.replace(/^[-•–▪·]\s*/, "") }); return; }
+    if (t.length <= 220) { const v = voci(t); if (v) { out.push.apply(out, v); return; } }
+    const corta = t.length <= 70 && !/[.;,]$/.test(t) && /^[A-ZÀ-Ý0-9"“]/.test(t) && (t.match(/\s/g) || []).length <= 9;
+    if (corta) {
+      const maiuscole = t === t.toUpperCase() && /[A-Z]/.test(t);
+      out.push({ t: maiuscole ? "h2" : "h1", x: t.replace(/[:\s-]+$/, "") });
+      return;
+    }
+    // "SCORSA STAGIONE 5° in Championship...": l'attacco in maiuscolo e' il suo titolo
+    const attacco = /^((?:[A-ZÀ-Ý]{2,}\s){1,4})(.+)$/.exec(t);
+    if (attacco && attacco[2].length > 20) { out.push({ t: "p", lead: attacco[1].trim(), x: attacco[2] }); return; }
+    out.push({ t: "p", x: t });
+  });
+  return out;
+}
 function testoPdf(file) {
   return execFileSync("pdftotext", ["-enc", "UTF-8", file, "-"], { maxBuffer: 32 * 1024 * 1024, timeout: 60000 }).toString("utf8");
+}
+function strutturaDi(file, nome, testo) {
+  if (/\.docx$/i.test(nome)) { try { return strutturaDocx(file); } catch (e) { console.log("[fogli] struttura Word non letta: " + e.message); } }
+  return strutturaTesto(testo);
+}
+function testoEStruttura(file, nome) {
+  const t = testoDi(file, nome);
+  return [t, strutturaDi(file, nome, t)];
 }
 function testoDi(file, nome) {
   if (/\.docx$/i.test(nome)) return testoDocx(file);
@@ -141,7 +252,7 @@ function squadreDa(nome, testo) {
 }
 
 // ── salvare un foglio ───────────────────────────────────────────────
-function salva(meta, testo) {
+function salva(meta, testo, blocchi) {
   testo = pulisci(testo);
   if (testo.length < 200) return false;              // un file vuoto o un'immagine: non e' un foglio
   const id = meta.id;
@@ -151,7 +262,7 @@ function salva(meta, testo) {
     id, titolo: meta.nomeFile.replace(ESTENSIONI, "").replace(/_/g, " ").trim(),
     squadre, chiavi: squadre.map(piano), data, autore: meta.autore || "",
     fonte: meta.fonte, link: meta.link || "", caricato: meta.quando || "", hash: crypto.createHash("sha1").update(testo).digest("hex").slice(0, 12),
-    testo
+    testo, blocchi: blocchi || strutturaTesto(testo)
   };
   scriviJson(path.join(PUB, "fogli", id + ".json"), f);
   return true;
@@ -163,6 +274,8 @@ function salva(meta, testo) {
 function rifai() {
   const dir = path.join(PUB, "fogli");
   const tutti = fs.readdirSync(dir).filter((x) => x.endsWith(".json")).map((x) => leggiJson(path.join(dir, x), null)).filter(Boolean);
+  // i fogli salvati prima della struttura: la si ricava dal testo
+  tutti.forEach((f) => { if (!f.blocchi) { f.blocchi = strutturaTesto(f.testo); scriviJson(path.join(dir, f.id + ".json"), f); } });
   // lo stesso foglio da Slack e da Drive: vale una volta sola (il testo e' uguale)
   const visti = {}, fogli = [];
   tutti.sort((a, b) => (a.fonte === "slack" ? 0 : 1) - (b.fonte === "slack" ? 0 : 1));
@@ -230,7 +343,7 @@ async function giroSlack(stato) {
             const ok = salva({ id: "s-" + fl.id, nomeFile: fl.name, fonte: "slack", autore: utenti[m.user] || "",
                                quando: new Date(parseFloat(m.ts) * 1000).toISOString(),
                                link: "https://comotv.slack.com/archives/" + canale + "/p" + String(m.ts).replace(".", "") },
-                             testoDi(tmp, fl.name));
+                             ...testoEStruttura(tmp, fl.name));
             if (ok) nuovi++;
             visti[fl.id] = 1;
           } catch (e) { console.log("[fogli] Slack: testo non letto da " + fl.name + ": " + e.message); visti[fl.id] = 1; }
@@ -291,7 +404,7 @@ async function giroDrive(stato) {
         fs.writeFileSync(tmp, r.corpo);
         try {
           if (salva({ id: "d-" + fl.id, nomeFile: nome, fonte: "drive", autore: ((fl.owners || [])[0] || {}).displayName || "",
-                      quando: fl.createdTime, link: fl.webViewLink }, testoDi(tmp, nome))) nuovi++;
+                      quando: fl.createdTime, link: fl.webViewLink }, ...testoEStruttura(tmp, nome))) nuovi++;
         } catch (e) { console.log("[fogli] Drive: testo non letto da " + fl.name + ": " + e.message); }
         visti[fl.id] = fl.modifiedTime;
         try { fs.unlinkSync(tmp); } catch (e) {}
@@ -309,7 +422,7 @@ async function giroDrive(stato) {
   if (f) {
     const nome = path.basename(f);
     const ok = salva({ id: "m-" + crypto.createHash("sha1").update(nome).digest("hex").slice(0, 12), nomeFile: nome, fonte: "mano",
-                       autore: arg("autore") || "", quando: arg("data") || new Date().toISOString() }, testoDi(f, nome));
+                       autore: arg("autore") || "", quando: arg("data") || new Date().toISOString() }, ...testoEStruttura(f, nome));
     console.log(ok ? "[fogli] salvato " + nome : "[fogli] " + nome + ": testo troppo corto");
     return rifai();
   }

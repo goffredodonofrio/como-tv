@@ -179,8 +179,31 @@ window.Lavagna = (function () {
       ".lav .fogliobox .ftesta span{font-size:12.5px;color:var(--lav-fg3);}" +
       ".lav .fogliobox .ftesta a{font-size:12.5px;color:var(--lav-oro);}" +
       ".lav .fogliobox .fscegli{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}" +
-      ".lav .fogliobox .ftesto{max-width:900px;}" +
-      ".lav .fogliobox .ftesto p{font-size:14.5px;line-height:1.55;margin:0 0 7px;color:var(--lav-avorio);white-space:pre-wrap;}" +
+      ".lav .fogliobox{position:relative;}" +
+      ".lav .fogliobox .ftesto{max-width:920px;font-size:14.5px;line-height:1.55;color:var(--lav-avorio);}" +
+      ".lav .fogliobox .fint{margin:2px 0 10px;}" +
+      ".lav .fogliobox .fsq{font-family:'Mazzard',sans-serif;font-weight:800;font-size:24px;letter-spacing:.01em;text-transform:uppercase;line-height:1.1;}" +
+      ".lav .fogliobox .fdati{font-size:13.5px;color:var(--lav-fg3);margin-top:4px;}" +
+      ".lav .fogliobox .findice{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 6px;position:sticky;top:-14px;padding:8px 0;" +
+      "background:inherit;z-index:1;}" +
+      ".lav .fogliobox .findice a{font-size:12px;font-weight:600;padding:4px 9px;border-radius:999px;cursor:pointer;" +
+      "border:1px solid rgba(201,162,75,.4);color:var(--lav-oroB);}" +
+      ".lav .fogliobox .findice a:hover{background:rgba(201,162,75,.15);}" +
+      ".lav .fogliobox h4{font-family:'Mazzard',sans-serif;font-size:13px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;" +
+      "color:var(--lav-oro);margin:16px 0 7px;padding-top:10px;border-top:1px solid rgba(201,162,75,.3);}" +
+      ".lav .fogliobox h5{font-size:15px;font-weight:700;margin:11px 0 4px;}" +
+      ".lav .fogliobox h6{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--lav-fg3);margin:10px 0 3px;}" +
+      ".lav .fogliobox p{margin:0 0 7px;}" +
+      ".lav .fogliobox ul{margin:0 0 8px;padding-left:18px;}" +
+      ".lav .fogliobox li{margin:0 0 5px;}" +
+      ".lav .fogliobox .fkv{display:grid;grid-template-columns:max-content 1fr;gap:3px 14px;margin:2px 0 9px;}" +
+      ".lav .fogliobox .fkv dt{font-weight:700;color:var(--lav-fg3);font-size:13px;padding-top:1px;}" +
+      ".lav .fogliobox .fkv dd{margin:0;}" +
+      ".lav .fogliobox .ftab{border-collapse:collapse;margin:4px 0 10px;font-size:13.5px;font-variant-numeric:tabular-nums;}" +
+      ".lav .fogliobox .ftab th,.lav .fogliobox .ftab td{padding:4px 9px;text-align:center;border-bottom:1px solid rgba(245,241,230,.1);}" +
+      ".lav .fogliobox .ftab th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--lav-fg3);}" +
+      ".lav .fogliobox .ftab td:nth-child(2),.lav .fogliobox .ftab th:nth-child(2){text-align:left;}" +
+      ".lav.chiara .fogliobox .ftab th,.lav.chiara .fogliobox .ftab td{border-bottom-color:rgba(10,15,36,.1);}" +
       ".lav.chiara .fogliobox{background:#FFFFFF;border-color:#DCD5C4;}" +
       /* nella scheda: le frasi dei fogli che nominano il giocatore */
       ".lav .foglietto .dafogli{margin:0 0 10px;padding:9px 10px 8px;border-radius:8px;" +
@@ -1119,7 +1142,7 @@ window.Lavagna = (function () {
         if (!qui) return;
         var meta = v.filter(function (f) { return f.id === qui; })[0] || {};
         fb.hidden = false;
-        fb.innerHTML = '<div class="ftesta"><b>' + esc(meta.titolo || "Foglio partita") + "</b><span>" +
+        fb.innerHTML = '<div class="ftesta"><b>Foglio partita</b><span>' +
           esc([meta.autore, dataIt(meta.data)].filter(Boolean).join(" · ")) + "</span>" +
           (meta.link ? '<a href="' + esc(meta.link) + '" target="_blank" rel="noopener">apri l\'originale</a>' : "") +
           '<button type="button" data-az="foglio" style="margin-left:auto">Chiudi</button></div>' +
@@ -1132,11 +1155,76 @@ window.Lavagna = (function () {
           .then(function (r) { return r.json(); })
           .then(function (f) {
             var d = fb.querySelector(".ftesto");
-            if (d) d.innerHTML = String(f.testo || "").split(/\n+/).map(function (r) { return "<p>" + esc(r) + "</p>"; }).join("");
+            if (d) d.innerHTML = fogliolHtml(f, meta);
           }).catch(function () { var d = fb.querySelector(".ftesto"); if (d) d.textContent = "Foglio non raggiungibile."; });
       });
     }
+    // IL FOGLIO, SEMPRE UGUALE: chiunque l'abbia scritto e comunque (Word,
+    // PDF), la stessa intestazione, i rimandi alle sezioni e le sezioni coi
+    // loro titoli. La struttura la prepara il lettore sulla VM (blocchi).
+    function fogliolHtml(f, meta) {
+      var B = f.blocchi && f.blocchi.length ? f.blocchi.slice()
+        : String(f.testo || "").split(/\n+/).map(function (r) { return { t: "p", x: r }; });
+      // l'intestazione: quello che sta prima della prima sezione, se e' corto
+      var testa = [];
+      while (B.length && B[0].t !== "h1" && B[0].t !== "tab" && testa.length < 5 &&
+             (B[0].t === "meta" || ((B[0].x || "").length <= 140 && B[0].t !== "li" && B[0].t !== "kv"))) {
+        var b0 = B.shift();
+        if (b0.t === "meta") testa = testa.concat(b0.parti); else testa.push(b0.x);
+      }
+      var sq = (meta.squadre || []).join(" – ") || meta.titolo || "";
+      // via la riga che ripete le squadre ("SAN LORENZO vs BOCA JUNIORS")
+      testa = testa.filter(function (x) {
+        var k = pianoF(x);
+        return k && !(meta.chiavi || []).every(function (c) { return k.indexOf(c) >= 0; });
+      });
+      var sezioni = B.filter(function (b) { return b.t === "h1"; }).map(function (b) { return b.x; });
+      function riga(x, lead) {
+        // "Etichetta: resto" -> l'etichetta in grassetto, se non c'e' gia' un attacco
+        var m = !lead && /^([A-Za-zÀ-ÿ][^:\d]{1,30}):\s+(.+)$/.exec(x || "");
+        if (m && !/[.!?]/.test(m[1]) && m[1].split(" ").length <= 4) { lead = m[1] + ":"; x = m[2]; }
+        return (lead ? "<b>" + esc(lead) + "</b> " : "") + esc(x || "");
+      }
+      var h = '<div class="fint"><div class="fsq">' + esc(sq) + "</div>" +
+              (testa.length ? '<div class="fdati">' + testa.map(esc).join(" &middot; ") + "</div>" : "") + "</div>";
+      if (sezioni.length > 1) h += '<div class="findice">' + sezioni.map(function (x, i) {
+        return '<a data-sez="' + i + '">' + esc(x) + "</a>";
+      }).join("") + "</div>";
+      var n = 0, kv = [];
+      function chiudiKv() {
+        if (!kv.length) return;
+        h += '<dl class="fkv">' + kv.map(function (b) { return "<dt>" + esc(b.k) + "</dt><dd>" + esc(b.v) + "</dd>"; }).join("") + "</dl>";
+        kv = [];
+      }
+      var lista = false;
+      B.forEach(function (b) {
+        if (b.t !== "kv") chiudiKv();
+        if (b.t !== "li" && lista) { h += "</ul>"; lista = false; }
+        if (b.t === "kv") { kv.push(b); return; }
+        if (b.t === "li") { if (!lista) { h += "<ul>"; lista = true; } h += "<li>" + riga(b.x, b.lead) + "</li>"; return; }
+        if (b.t === "h0" || b.t === "h1") { h += '<h4 data-sezn="' + (n++) + '">' + esc(b.x) + "</h4>"; return; }
+        if (b.t === "h2") { h += "<h5>" + esc(b.x) + "</h5>"; return; }
+        if (b.t === "h3") { h += "<h6>" + esc(b.x) + "</h6>"; return; }
+        if (b.t === "meta") { h += "<p>" + esc((b.parti || []).join(" · ")) + "</p>"; return; }
+        if (b.t === "tab") {
+          h += '<table class="ftab">' + (b.righe || []).map(function (r, i) {
+            return "<tr>" + r.map(function (c) { return i ? "<td>" + esc(c) + "</td>" : "<th>" + esc(c) + "</th>"; }).join("") + "</tr>";
+          }).join("") + "</table>";
+          return;
+        }
+        h += "<p>" + riga(b.x, b.lead) + "</p>";
+      });
+      chiudiKv();
+      if (lista) h += "</ul>";
+      return h;
+    }
     box.addEventListener("click", function (ev) {
+      var z = ev.target.closest ? ev.target.closest("[data-sez]") : null;
+      if (z) {
+        var fb2 = box.querySelector("[data-fogliobox]"), h4 = fb2.querySelector('[data-sezn="' + z.dataset.sez + '"]');
+        if (h4) fb2.scrollTop = h4.offsetTop - fb2.offsetTop - 8;
+        return;
+      }
       var b = ev.target.closest ? ev.target.closest("[data-foglio]") : null;
       if (b) { ev.preventDefault(); apriFoglio(b.dataset.foglio); }
     });
