@@ -81,6 +81,13 @@
   h2 .emo,nav .emo{font-size:1.25em;letter-spacing:0;line-height:1;}
   h3{font-size:1.06em;font-weight:700;margin:14px 0 5px;}
   li::marker{color:var(--oro);}
+  .sez{overflow-wrap:anywhere;}
+  .tabw{overflow-x:auto;margin:4px 0 12px;}
+  .tabw table{margin:0;}
+  td{text-align:left;}
+  /* la frase cercata dalla scheda del giocatore */
+  mark,.evid{background:#FBE7A1;color:#0A0F24;border-radius:4px;box-shadow:0 0 0 3px #FBE7A1;}
+  html.scura mark,html.scura .evid{background:#6B5418;color:#F5F1E6;box-shadow:0 0 0 3px #6B5418;}
   .grande{display:inline-flex;gap:0;}
   .grande button{min-width:34px;}
   h4{font-size:12.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--testo2);margin:13px 0 4px;}
@@ -88,8 +95,8 @@
   ul{margin:0 0 10px;padding-left:20px;}
   li{margin:0 0 6px;}
   b{font-weight:700;}
-  dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:2px 0 11px;}
-  dt{font-weight:700;color:var(--testo2);font-size:.86em;padding-top:2px;}
+  dl{display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);gap:4px 16px;margin:2px 0 11px;}
+  dt{font-weight:700;color:var(--testo2);font-size:.86em;padding-top:2px;max-width:16em;}
   dd{margin:0;}
   table{border-collapse:collapse;margin:4px 0 12px;font-size:14.5px;font-variant-numeric:tabular-nums;}
   th,td{padding:5px 10px;text-align:center;border-bottom:1px solid var(--linea);}
@@ -272,6 +279,10 @@
       if (!aperta && b.t !== "h0" && b.t !== "h1") { h += '<section class="sez sola">'; aperta = true; }
       if (b.t !== "kv" && kv.length) { var l = lista; lista = false; chiudi(); lista = l; }
       if (b.t !== "li" && lista) { h += "</ul>"; lista = false; }
+      if (b.t === "kv" && String(b.k || "").length > 40) {
+        h += "<p><b>" + esc(b.k) + "</b></p>" + (b.v ? "<p>" + esc(b.v) + "</p>" : "");
+        return;
+      }
       if (b.t === "kv") { kv.push(b); return; }
       if (b.t === "li") { if (!lista) { h += "<ul>"; lista = true; } h += "<li>" + riga(b.x, b.lead) + "</li>"; return; }
       if (b.t === "h0" || b.t === "h1") {
@@ -286,9 +297,9 @@
       if (b.t === "h3") { h += "<h4>" + esc(b.x) + "</h4>"; return; }
       if (b.t === "meta") { h += "<p>" + esc((b.parti || []).join(" · ")) + "</p>"; return; }
       if (b.t === "tab") {
-        h += "<table>" + (b.righe || []).map(function (r, i) {
+        h += '<div class="tabw"><table>' + (b.righe || []).map(function (r, i) {
           return "<tr>" + r.map(function (c) { return i ? "<td>" + esc(c) + "</td>" : "<th>" + esc(c) + "</th>"; }).join("") + "</tr>";
-        }).join("") + "</table>";
+        }).join("") + "</table></div>";
         return;
       }
       h += "<p>" + riga(b.x, b.lead) + "</p>";
@@ -329,6 +340,45 @@
       // arrivati con un # (dal menu o da un link): si va li'
       if (/^#sez-\d+$/.test(location.hash)) vai(document.querySelector(location.hash), false);
     }
+    evidenzia(q.get("frase"));
+  }
+
+  // "leggi le curiosita'" dalla scheda del giocatore: ?frase=... si cerca nel
+  // foglio, si evidenzia e ci si arriva
+  function evidenzia(frase) {
+    frase = String(frase || "").replace(/…$/, "").trim();
+    if (frase.length < 12) return;
+    var pezzi = [frase];
+    var dp = frase.indexOf(": ");
+    if (dp > 0 && dp < 60) pezzi.push(frase.slice(dp + 2));       // voce: valore
+    var el0 = null, dove = document.querySelectorAll("#corpo p, #corpo li, #corpo dd, #corpo td, #corpo h3, #corpo h4");
+    pezzi.some(function (x) {
+      var k = piano(x).slice(0, 70);
+      for (var i = 0; i < dove.length; i++) if (piano(dove[i].textContent).indexOf(k) >= 0) { el0 = dove[i]; return true; }
+      return false;
+    });
+    if (!el0) return;
+    // la frase esatta dentro il paragrafo, se sta in un pezzo di testo solo
+    var fatto = pezzi.some(function (x) {
+      var w = document.createTreeWalker(el0, NodeFilter.SHOW_TEXT), n;
+      while ((n = w.nextNode())) {
+        var i = n.nodeValue.indexOf(x);
+        if (i < 0) continue;
+        var rg = document.createRange();
+        rg.setStart(n, i); rg.setEnd(n, i + x.length);
+        var mk = document.createElement("mark"); mk.id = "frase";
+        rg.surroundContents(mk);
+        return true;
+      }
+      return false;
+    });
+    if (!fatto) { el0.classList.add("evid"); el0.id = "frase"; }
+    // al centro della finestra; di nuovo quando i caratteri hanno finito di
+    // caricare (l'altezza della pagina cambia)
+    function giu() { var t = document.getElementById("frase"); if (t) t.scrollIntoView({ block: "center" }); }
+    setTimeout(giu, 50);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { setTimeout(giu, 30); });
+    window.addEventListener("load", function () { setTimeout(giu, 30); });
   }
 })();
 </script>

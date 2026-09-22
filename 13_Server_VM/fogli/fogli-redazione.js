@@ -126,27 +126,19 @@ def testo(b):
 def grassetto(r):
   m=re.search(r'<w:b(?: w:val="([^"]*)")?/>',r)
   return bool(m) and (m.group(1) or '1') not in ('0','false')
-out=[]
-for m in re.finditer(r'<w:tbl>.*?</w:tbl>|<w:p[ >].*?</w:p>|<w:p/>',body,re.S):
-  b=m.group(0)
-  if b.startswith('<w:tbl>'):
-    righe=[[testo(c) for c in re.findall(r'<w:tc>.*?</w:tc>',r,re.S)] for r in re.findall(r'<w:tr[ >].*?</w:tr>',b,re.S)]
-    righe=[r for r in righe if any(r)]
-    if righe and all(len(r)==2 for r in righe): out+= [{'t':'kv','k':r[0],'v':r[1]} for r in righe]
-    elif righe: out.append({'t':'tab','righe':righe})
-    continue
+def paragrafo(b):
   t=testo(b)
-  if not t: continue
+  if not t: return None
   st=re.search(r'<w:pStyle w:val="([^"]+)"',b); st=st.group(1) if st else ''
   lv=re.search(r'(\d)$',st)
   if re.search(r'(titolo|heading|title)',st,re.I):
-    out.append({'t':'h'+str(min(3,int(lv.group(1)) if lv else 1)) if not re.search(r'^(title|titolo)$',st,re.I) else 'h0','x':t}); continue
+    return {'t':'h'+str(min(3,int(lv.group(1)) if lv else 1)) if not re.search(r'^(title|titolo)$',st,re.I) else 'h0','x':t}
   runs=[r for r in re.findall(r'<w:r[ >].*?</w:r>',b,re.S) if testo(r)]
   bold=[grassetto(r) for r in runs]
   li='<w:numPr>' in b or re.match(r'^[-•–▪·]\s',t)
   if li: t=re.sub(r'^[-•–▪·]\s*','',t)
   if bold and all(bold) and len(t)<=90 and not li:
-    out.append({'t':'h3','x':t.rstrip(':')}); continue
+    return {'t':'h3','x':t.rstrip(':')}
   lead=''
   if bold and bold[0] and not all(bold):
     k=0
@@ -156,7 +148,42 @@ for m in re.finditer(r'<w:tbl>.*?</w:tbl>|<w:p[ >].*?</w:p>|<w:p/>',body,re.S):
     else: lead=''
   d={'t':'li' if li else 'p','x':t}
   if lead: d['lead']=lead
-  out.append(d)
+  return d
+# LE TABELLE: ogni cella tiene i suoi paragrafi (prima si incollavano:
+# "Ex mediano.Da giocatoreAirdrieonians"). Tre casi:
+#  - voce | valore corti (Arbitro | Nome): kv
+#  - celle corte (classifiche, risultati): tabella vera
+#  - testo lungo in colonne affiancate (i due allenatori uno accanto
+#    all'altro): una colonna dopo l'altra, col nome in testa come titolo
+def tabella(b):
+  righe=[]
+  for rr in re.findall(r'<w:tr[ >].*?</w:tr>',b,re.S):
+    celle=[[q for q in (paragrafo(p) for p in re.findall(r'<w:p[ >].*?</w:p>',c,re.S)) if q] for c in re.findall(r'<w:tc>.*?</w:tc>',rr,re.S)]
+    if any(celle): righe.append(celle)
+  if not righe: return []
+  def piatto(c): return ' '.join(q.get('lead','')+' '+(q.get('x') or '') for q in c).strip()
+  semplici=all(len(c)<=1 for r in righe for c in r)
+  if semplici and all(len(r)==2 for r in righe) and all(len(piatto(r[0]))<=40 for r in righe):
+    return [{'t':'kv','k':piatto(r[0]),'v':piatto(r[1])} for r in righe]
+  lunghi=[len(piatto(c)) for r in righe for c in r]
+  if semplici and max(lunghi)<=80:
+    return [{'t':'tab','righe':[[piatto(c) for c in r] for r in righe]}]
+  out=[]
+  for k in range(max(len(r) for r in righe)):
+    for i,r in enumerate(righe):
+      if k>=len(r): continue
+      for j,q in enumerate(r[k]):
+        q=dict(q)
+        if i==0 and j==0 and len(piatto([q]))<=90 and q['t'] in ('p','h3'):
+          q={'t':'h2','x':piatto([q]).rstrip(':')}
+        out.append(q)
+  return out
+out=[]
+for m in re.finditer(r'<w:tbl>.*?</w:tbl>|<w:p[ >].*?</w:p>|<w:p/>',body,re.S):
+  b=m.group(0)
+  if b.startswith('<w:tbl>'): out+=tabella(b); continue
+  q=paragrafo(b)
+  if q: out.append(q)
 print(json.dumps(out,ensure_ascii=False))
 `;
   return JSON.parse(execFileSync("python3", ["-c", py, file], { maxBuffer: 32 * 1024 * 1024, timeout: 60000 }).toString("utf8"));
@@ -165,7 +192,26 @@ print(json.dumps(out,ensure_ascii=False))
 // riuniscono; una riga corta, con la maiuscola e senza punto in fondo, e' un
 // titolo; "Voce: valore" corto e' una voce; trattini e pallini sono elenchi.
 function strutturaTesto(testo) {
-  const righe = String(testo || "").replace(/\r/g, "").split("\n").map((x) => x.replace(/\s+/g, " ").trim());
+  let righe = String(testo || "").replace(/\r/g, "").split("\f").join("\n").split("\n").map((x) => x.replace(/\s+/g, " ").trim());
+  // intestazioni e pie' di pagina del PDF ("Opta/Stats Perform © 2026",
+  // "Oitavas de final (ida)"): una riga corta che torna a ogni pagina si
+  // tiene la prima volta sola, se no diventa una sezione per pagina
+  const volte = {};
+  righe.forEach((x) => { if (x && x.length <= 70) volte[x] = (volte[x] || 0) + 1; });
+  const gia = {};
+  righe = righe.filter((x) => {
+    if (!x || (volte[x] || 0) < 3 || /^[-•–▪·●○◦■]$/.test(x)) return true;
+    if (gia[x]) return false;
+    gia[x] = 1; return true;
+  });
+  // il pallino da solo su una riga: va col testo che segue
+  righe = righe.reduce((acc, x) => {
+    const k = acc.length - 1;
+    if (k >= 0 && /^[-•–▪·●○◦■]$/.test(acc[k]) && !x) return acc;
+    if (k >= 0 && /^[-•–▪·●○◦■]$/.test(acc[k]) && x) { acc[k] = "• " + x; return acc; }
+    if (/^[-•–▪·●○◦■]$/.test(x) && k >= 0 && /^[-•–▪·●○◦■]$/.test(acc[k])) return acc;
+    acc.push(x); return acc;
+  }, []).filter((x) => !/^[-•–▪·●○◦■]$/.test(x));
   // 1. le righe spezzate dal PDF (anche con una riga vuota in mezzo): si
   //    attacca alla precedente chi comincia minuscolo o con un numero, se la
   //    precedente non finiva la frase
@@ -175,7 +221,7 @@ function strutturaTesto(testo) {
     let k = unite.length - 1;
     if (unite[k] === null) k--;
     const u = unite[k];
-    if (u && !/^[-•–▪·]\s/.test(r) && /^[a-zà-ÿ(0-9,;’']/.test(r) && !/[.!?:]$/.test(u)) {
+    if (u && !/^[-•–▪·●○◦■]\s/.test(r) && /^[a-zà-ÿ(0-9,;’']/.test(r) && !/[.!?:]$/.test(u)) {
       unite[k] = u + " " + r; unite.length = k + 1; return;
     }
     unite.push(r);
@@ -193,7 +239,7 @@ function strutturaTesto(testo) {
     if ((t.match(/\s\|\s/g) || []).length >= 2) { out.push({ t: "meta", parti: t.split(/\s\|\s/).map((x) => x.trim()).filter(Boolean) }); return; }
     const barra = /^([^|]{2,28})\s\|\s(.+)$/.exec(t);
     if (barra) { out.push({ t: "kv", k: barra[1].trim(), v: barra[2].trim() }); return; }
-    if (/^[-•–▪·]\s*/.test(t) && t.length > 2) { out.push({ t: "li", x: t.replace(/^[-•–▪·]\s*/, "") }); return; }
+    if (/^[-•–▪·●○◦■]\s*/.test(t) && t.length > 2) { out.push({ t: "li", x: t.replace(/^[-•–▪·●○◦■]\s*/, "") }); return; }
     if (t.length <= 220) { const v = voci(t); if (v) { out.push.apply(out, v); return; } }
     const corta = t.length <= 70 && !/[.;,]$/.test(t) && /^[A-ZÀ-Ý0-9"“]/.test(t) && (t.match(/\s/g) || []).length <= 9;
     if (corta) {
@@ -208,8 +254,36 @@ function strutturaTesto(testo) {
   });
   return out;
 }
+// I PDF esportati dal Mac hanno "fi", "fl", "ffi" come un segno solo
+// (legatura) senza tabella Unicode: pdftotext li butta ("nale", "u ciali",
+// "a rontano"). pypdf (nel venv accanto al lettore) li legge: il testo resta
+// quello di pdftotext, con le sue righe, e si rimettono solo le parole rotte.
+const VENV_PY = path.join(__dirname, "venv", "bin", "python");
+const LEGATURE = { "\uFB00": "ff", "\uFB01": "fi", "\uFB02": "fl", "\uFB03": "ffi", "\uFB04": "ffl" };
+function legature(file, t) {
+  if (!fs.existsSync(VENV_PY)) return t;
+  let p;
+  try {
+    p = execFileSync(VENV_PY, ["-c", "import sys,pypdf\nprint('\\n'.join((x.extract_text() or '') for x in pypdf.PdfReader(sys.argv[1]).pages))", file],
+                     { maxBuffer: 32 * 1024 * 1024, timeout: 60000, stdio: ["ignore", "pipe", "ignore"] }).toString("utf8");
+  } catch (e) { return t; }
+  const parole = {};
+  (p.match(/[A-Za-zÀ-ÿ]*[\uFB00-\uFB04][A-Za-zÀ-ÿ\uFB00-\uFB04]*/g) || []).forEach((w) => { parole[w] = 1; });
+  Object.keys(parole).sort((a, b) => b.length - a.length).forEach((w) => {
+    const giusta = w.replace(/[\uFB00-\uFB04]/g, (c) => LEGATURE[c]);
+    // la forma rotta: la legatura sparita, o al suo posto uno spazio
+    const pezzi = w.split(/[\uFB00-\uFB04]/).map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    if (pezzi.join("").length < 3) return;
+    // se la forma rotta e' anche una parola vera ("ne" da "fine"), non si tocca
+    if (new RegExp("(^|[^A-Za-zÀ-ÿ\\uFB00-\\uFB04])" + pezzi.join("") + "(?![A-Za-zÀ-ÿ\\uFB00-\\uFB04])").test(p)) return;
+    const re = new RegExp("(^|[^A-Za-zÀ-ÿ])" + pezzi.join(" ?") + "(?![A-Za-zÀ-ÿ])", "g");
+    t = t.replace(re, (m, a) => a + giusta);
+  });
+  return t;
+}
 function testoPdf(file) {
-  return execFileSync("pdftotext", ["-enc", "UTF-8", file, "-"], { maxBuffer: 32 * 1024 * 1024, timeout: 60000 }).toString("utf8");
+  const t = execFileSync("pdftotext", ["-enc", "UTF-8", file, "-"], { maxBuffer: 32 * 1024 * 1024, timeout: 60000 }).toString("utf8");
+  return legature(file, t);
 }
 function strutturaDi(file, nome, testo) {
   if (/\.docx$/i.test(nome)) { try { return strutturaDocx(file); } catch (e) { console.log("[fogli] struttura Word non letta: " + e.message); } }
@@ -317,8 +391,13 @@ function rifai() {
   tutti.forEach((f) => {
     // i fogli gia' salvati si rileggono con le regole di adesso (squadre, struttura)
     const sq = squadreDa(f.nomeFile || f.titolo + ".docx", f.testo);
-    const cambia = !f.blocchi || JSON.stringify(sq) !== JSON.stringify(f.squadre);
-    if (!f.blocchi) f.blocchi = strutturaTesto(f.testo);
+    let cambia = !f.blocchi || JSON.stringify(sq) !== JSON.stringify(f.squadre);
+    // PDF e testo: la struttura viene dal testo salvato, e si rifa' sempre
+    // con le regole di adesso (il Word no: serve il file, vedi --rileggi)
+    if (!f.blocchi || !/\.docx$/i.test(f.nomeFile || "")) {
+      const nb = strutturaTesto(f.testo);
+      if (JSON.stringify(nb) !== JSON.stringify(f.blocchi)) { f.blocchi = nb; cambia = true; }
+    }
     f.squadre = sq; f.chiavi = sq.map(piano);
     if (cambia) scriviJson(path.join(dir, f.id + ".json"), f);
   });
@@ -714,6 +793,9 @@ async function giroPartite(stato) {
     console.log(ok ? "[fogli] salvato " + nome : "[fogli] " + nome + ": testo troppo corto");
     return rifai();
   }
+  // --rileggi: si riscarica e si rilegge tutto con le regole di adesso
+  // (i file originali non si tengono: stanno su Slack e sul Drive)
+  if (arg("rileggi")) { stato.slack = {}; stato.drive = {}; }
   let nuovi = 0;
   const prima = fs.readdirSync(path.join(PUB, "fogli")).length;
   for (const [nome, giro] of [["Slack", giroSlack], ["Drive", giroDrive]]) {

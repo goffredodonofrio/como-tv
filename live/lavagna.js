@@ -210,7 +210,7 @@ window.Lavagna = (function () {
       ".lav .foglietto tr.tot td{color:#E3C271;border-top:1px solid rgba(201,162,75,.35);}" +
       ".lav .foglietto th i.giallo{display:inline-block;width:8px;height:11px;border-radius:1.5px;background:#F2C230;vertical-align:-1px;}" +
       ".lav .foglietto .rosso{display:inline-block;min-width:14px;padding:0 3px;border-radius:2px;background:#E5342B;color:#fff;font-size:11px;}" +
-      ".lav .foglietto textarea{width:100%;height:118px;padding:11px 12px;border-radius:7px;resize:vertical;" +
+      ".lav .foglietto textarea{width:100%;height:96px;margin:6px 0 8px;display:block;padding:11px 12px;border-radius:7px;resize:vertical;" +
       "  background:rgba(245,241,230,.06);border:1px solid rgba(245,241,230,.16);color:var(--lav-avorio);" +
       "  font-family:'DM Sans',sans-serif;font-size:15px;line-height:1.5;}" +
       ".lav .foglietto textarea:focus{outline:none;border-color:rgba(201,162,75,.4);}" +
@@ -1136,13 +1136,13 @@ window.Lavagna = (function () {
     function dataIt(d) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || ""); return m ? (+m[3]) + "/" + (+m[2]) + "/" + m[1] : (d || ""); }
     // il foglio si legge in CURIOSITA' (curiosita.html), in una finestra a
     // parte: la lavagna resta dov'e'. Sempre la stessa finestra, riusata.
-    function apriFoglio(id) {
+    function apriFoglio(id, frase) {
       function apri(x) {
         if (!x) return;
         // le squadre in lavagna: la finestra elenca anche gli altri fogli della sfida e le schede delle squadre
         var n = nomiSquadre();
         var w = window.open("curiosita.html?id=" + encodeURIComponent(x) + "&a=" + encodeURIComponent(n[0] || "") +
-                            "&b=" + encodeURIComponent(n[1] || ""), "comotv-curiosita",
+                            "&b=" + encodeURIComponent(n[1] || "") + (frase ? "&frase=" + encodeURIComponent(frase.slice(0, 300)) : ""), "comotv-curiosita",
                             "width=1000,height=" + Math.min(1100, screen.availHeight || 1000) + ",resizable=yes,scrollbars=yes");
         if (w) w.focus(); else nota("Il browser ha bloccato la finestra delle Curiosit&agrave;: consenti le finestre per questo sito.", "err");
       }
@@ -1151,7 +1151,7 @@ window.Lavagna = (function () {
     }
     box.addEventListener("click", function (ev) {
       var b = ev.target.closest ? ev.target.closest("[data-foglio]") : null;
-      if (b) { ev.preventDefault(); apriFoglio(b.dataset.foglio); }
+      if (b) { ev.preventDefault(); apriFoglio(b.dataset.foglio, b.dataset.frase); }
     });
     // nella scheda: le frasi dei fogli che nominano questo giocatore. Prima
     // quelle delle partite della sua squadra; il cognome deve esserci tutto
@@ -1180,7 +1180,7 @@ window.Lavagna = (function () {
               return '<div class="fr">' + esc(x.frase) + "<small>" + (x.sezione ? "<b>" + esc(x.sezione) + "</b> · " : "") +
                      esc((f.squadre || []).join(" - ") || f.titolo) +
                      " · " + esc(dataIt(f.data)) + (f.autore ? " · " + esc(f.autore) : "") +
-                     ' · <a data-foglio="' + esc(f.id) + '">leggi le curiosit&agrave;</a></small></div>';
+                     ' · <a data-foglio="' + esc(f.id) + '" data-frase="' + esc(x.frase) + '">leggi le curiosit&agrave;</a></small></div>';
             }).join("");
           dove.hidden = false;
         });
@@ -1275,10 +1275,12 @@ window.Lavagna = (function () {
           '<input data-f="nome" type="text" placeholder="Cognome" value="' + esc(p.cognome || "") + '"></div>') +
         '</div></div>' +
         '<div class="cartriga" data-cart-box="1"></div>' +
+        // lo spazio per scrivere a mano sta in alto: le schede ESPN e dei
+        // fogli arrivano dopo e allungano il foglietto, qui non lo spingono giu'
+        '<textarea placeholder="✍️ Le tue curiosità: precedenti, come si pronuncia il nome, cosa dire in telecronaca…"></textarea>' +
         '<div class="dasapere" data-dasapere="1" hidden></div>' +
         '<div class="dafogli" data-dafogli="1" hidden></div>' +
         '<div class="stagione" data-stagione-box="1"></div>' +
-        '<textarea placeholder="Le tue curiosità: precedenti, come si pronuncia il nome, cosa dire in telecronaca…"></textarea>' +
         '<div class="piede">' +
           '<button type="button" data-f="togli" class="via">Togli dal campo</button>' +
           '<button type="button" data-f="chiudi">Chiudi</button>' +

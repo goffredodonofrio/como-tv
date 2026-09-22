@@ -25,3 +25,11 @@ dopo un cambio si ricopia `fogli-redazione.js` in `/opt/comotv-fogli/`.
 
 A mano (come comotv): `node fogli-redazione.js` (un giro), `--file foglio.docx` (uno dal
 disco), `--rifai` (indice e nomi da capo). Log: `journalctl -u comotv-fogli`.
+`--rileggi` riscarica e rilegge tutti i fogli con le regole di adesso (serve dopo un cambio
+alla lettura dei Word o dei PDF: i file originali non si tengono). Prova senza toccare prod:
+`FOGLI_DIR=/tmp/fp` con `pub/fogli`, `pub/nomi` e `tmp` vuote.
+
+PDF dal Mac: "fi", "fl", "ffi" sono una legatura senza Unicode e pdftotext li perde
+("nale", "u ciali"). Il lettore li rimette con pypdf, dal venv `/opt/comotv-fogli/venv`
+(`python3 -m venv venv && venv/bin/pip install pypdf`, fatto il 22/09/2026). Senza venv
+si salta la riparazione.
