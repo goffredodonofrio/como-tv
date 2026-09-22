@@ -119,7 +119,9 @@ window.Lavagna = (function () {
       /* il foglietto delle curiosita': sta attaccato al giocatore, sul campo */
       ".lav .campoBox .foglietto{position:absolute;z-index:8;width:420px;max-width:94%;" +
       "  background:linear-gradient(180deg,#141B3C,#0E1430);box-shadow:0 12px 30px rgba(0,0,0,.55);" +
-      "  border:1px solid rgba(201,162,75,.5);border-radius:10px;padding:12px;}" +
+      "  border:1px solid rgba(201,162,75,.5);border-radius:10px;padding:12px;" +
+      // piu' alta del campo non puo' andare (il campo taglia): scorre dentro
+      "  max-height:calc(100% - 16px);overflow-y:auto;overscroll-behavior:contain;}" +
       ".lav .foglietto .testa{display:flex;gap:12px;align-items:flex-end;margin-bottom:2px;}" +
       ".lav .foglietto .testadx{flex:1;min-width:0;}" +
       ".lav .foglietto .faccia{flex:0 0 96px;height:108px;border-radius:9px;overflow:hidden;margin-bottom:8px;" +
@@ -908,7 +910,20 @@ window.Lavagna = (function () {
       return location.pathname.indexOf("/como-tv-dev/") === 0 ? "/como-tv-dev/api" : "/api";
     }
     function facciaSu(p, dove) {
-      if (!dove || p.mister || !(p.cognome || "").trim()) return;
+      if (!dove) return;
+      // l'allenatore: la foto della grafica Premium, per nome della squadra ESPN
+      // (foto-premium-coach-<squadra>.png); se non c'e', niente faccia
+      if (p.mister) {
+        var sl = String(SQ[p.lato].nome || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+        if (!sl) return;
+        var im0 = new Image();
+        im0.alt = "";
+        im0.onload = function () { if (!dove.isConnected) return; dove.innerHTML = ""; dove.appendChild(im0); dove.hidden = false; };
+        im0.src = "/loghi/foto-premium-coach-" + sl + ".png";
+        return;
+      }
+      if (!(p.cognome || "").trim()) return;
       var chiave = String(p.pid) + "|" + p.cognome;
       function metti(url) {
         if (!url || !dove.isConnected) return;
