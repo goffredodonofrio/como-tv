@@ -66,9 +66,27 @@
   nav{position:sticky;top:0;z-index:5;background:var(--carta);border-bottom:1px solid var(--linea);
     padding:10px clamp(18px,4vw,40px);display:flex;gap:6px;flex-wrap:wrap;}
   nav a{font-size:13px;font-weight:600;padding:5px 11px;border-radius:999px;text-decoration:none;
-    border:1px solid var(--lineaoro);color:var(--oroB);white-space:nowrap;}
+    border:1px solid var(--lineaoro);color:var(--oroB);white-space:nowrap;max-width:22em;overflow:hidden;text-overflow:ellipsis;flex:0 0 auto;}
   nav a:hover{background:var(--chip);}
   nav a.qui{background:var(--oro);border-color:var(--oro);color:var(--carta);}
+  nav a .n{display:none;}
+  /* stretto: una riga sola che scorre di lato */
+  nav{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;}
+  /* largo: l'indice a sinistra, fisso, con tutte le voci intere */
+  @media (min-width:1100px){
+    .foglio{max-width:1260px;}
+    .libro{display:grid;grid-template-columns:260px minmax(0,1fr);align-items:start;}
+    nav[hidden] + main{grid-column:1/-1;}
+    nav{flex-direction:column;flex-wrap:nowrap;gap:2px;overflow-x:hidden;overflow-y:auto;max-height:100vh;
+      border-bottom:0;border-right:1px solid var(--linea);padding:14px 10px 20px;}
+    nav::before{content:"Indice";font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.2em;
+      text-transform:uppercase;color:var(--oro);padding:0 10px 8px;}
+    nav a{white-space:normal;max-width:none;border:0;border-radius:8px;padding:6px 10px;display:flex;gap:8px;
+      align-items:flex-start;line-height:1.3;color:var(--testo);font-size:13.5px;}
+    nav a .n{display:inline;min-width:1.4em;color:var(--testo2);font-variant-numeric:tabular-nums;}
+    nav a.qui{background:var(--chip);color:var(--oroB);box-shadow:inset 3px 0 0 var(--oro);}
+    nav a.qui .n{color:var(--oroB);}
+  }
 
   main{padding:14px clamp(12px,3vw,30px) 20px;font-size:var(--corpo,17px);}
   /* ogni sezione e' una scheda: emoji + titolo, poi il contenuto */
@@ -105,6 +123,7 @@
   .vuoto{padding:60px 40px;color:var(--testo2);}
 
   @media print{
+    .libro{display:block;}
     body{background:#fff;}
     nav,.azioni{display:none;}
     .foglio{border:0;max-width:none;}
@@ -127,8 +146,10 @@
     </div>
     <div class="altri" id="altri" hidden></div>
   </header>
+  <div class="libro">
   <nav id="menu" hidden></nav>
   <main id="corpo"><div class="vuoto">Carico il foglio&hellip;</div></main>
+  </div>
 </div>
 
 <script>
@@ -261,6 +282,14 @@
       for (var i = 0; i < ICONE.length; i++) if (ICONE[i][0].test(k)) return ICONE[i][1];
       return "📌";
     }
+    // nel menu i titoli tutti maiuscoli si scrivono normali: la prima lettera
+    // di ogni parola, le parole corte (di, e, tra...) in minuscolo
+    function etichetta(t) {
+      if (t !== t.toUpperCase() || !/[A-ZÀ-Ý]{3}/.test(t)) return t;
+      return t.toLowerCase().replace(/[a-zà-ÿ][a-zà-ÿ'’]*/g, function (w, k) {
+        return k && /^(di|da|in|con|su|per|tra|fra|e|il|lo|la|i|gli|le|un|una|del|della|dei|delle|al|alla|ai|nel|nella|vs|v|of|the|and)$/.test(w) ? w : w[0].toUpperCase() + w.slice(1);
+      });
+    }
     function riga(x, lead) {
       // "Etichetta: resto" -> l'etichetta in grassetto, se non c'e' gia' un attacco
       var m = !lead && /^([A-Za-zÀ-ÿ][^:\d]{1,30}):\s+(.+)$/.exec(x || "");
@@ -311,8 +340,8 @@
     // il menu: ogni voce porta alla sua sezione, e si accende quella in cui si e'
     if (sezioni.length > 1) {
       el("menu").innerHTML = sezioni.map(function (x, i) {
-        var t = x.x.length > 30 ? x.x.slice(0, 28).replace(/\s+\S*$/, "") + "…" : x.x;
-        return '<a href="#sez-' + i + '" data-i="' + i + '" title="' + esc(x.x) + '"><span class="emo">' + x.e + "</span> " + esc(t) + "</a>";
+        return '<a href="#sez-' + i + '" data-i="' + i + '" title="' + esc(x.x) + '"><span class="n">' + (i + 1) + '</span><span class="emo">' + x.e +
+               "</span><span>" + esc(etichetta(x.x)) + "</span></a>";
       }).join("");
       el("menu").hidden = false;
       el("menu").addEventListener("click", function (ev) {
@@ -322,18 +351,27 @@
         vai(el("sez-" + a.dataset.i), true);
         history.replaceState(null, "", "#sez-" + a.dataset.i);
       });
-      // si arriva col titolo appena sotto il menu (che puo' andare su due righe)
+      // l'indice a lato (schermo largo) o la riga in alto (stretto)
+      function aLato() { return getComputedStyle(el("menu")).flexDirection === "column"; }
+      // si arriva col titolo appena sotto il menu, o in cima se l'indice e' a lato
       function vai(s, piano) {
         if (!s) return;
-        var y = s.getBoundingClientRect().top + window.scrollY - el("menu").offsetHeight - 10;
+        var y = s.getBoundingClientRect().top + window.scrollY - (aLato() ? 0 : el("menu").offsetHeight) - 12;
         window.scrollTo({ top: Math.max(0, y), behavior: piano ? "smooth" : "auto" });
       }
-      var voci = el("menu").querySelectorAll("a");
+      var voci = el("menu").querySelectorAll("a"), ultimaAccesa = null;
       var titoli = sezioni.map(function (x, i) { return el("sez-" + i); });
       function accendi() {
-        var alto = el("menu").getBoundingClientRect().bottom + 12, qui = 0;
+        var alto = (aLato() ? 0 : el("menu").getBoundingClientRect().bottom) + 40, qui = 0;
         titoli.forEach(function (t, i) { if (t && t.getBoundingClientRect().top <= alto) qui = i; });
         Array.prototype.forEach.call(voci, function (v, i) { v.classList.toggle("qui", i === qui); });
+        // la voce accesa resta in vista dentro il menu (senza muovere la pagina)
+        var m = el("menu"), v = voci[qui];
+        if (v && v !== ultimaAccesa) {
+          ultimaAccesa = v;
+          if (aLato()) { if (v.offsetTop < m.scrollTop || v.offsetTop + v.offsetHeight > m.scrollTop + m.clientHeight) m.scrollTop = v.offsetTop - m.clientHeight / 3; }
+          else m.scrollLeft = v.offsetLeft - m.clientWidth / 3;
+        }
       }
       window.addEventListener("scroll", accendi, { passive: true });
       accendi();
