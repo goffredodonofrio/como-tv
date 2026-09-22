@@ -1139,7 +1139,8 @@ window.Lavagna = (function () {
           dove.innerHTML = '<div class="sttit">Dai fogli della redazione' + (n > 4 ? " · " + n + " frasi" : "") + "</div>" +
             suoi.slice(0, 4).map(function (x) {
               var f = per[x.id];
-              return '<div class="fr">' + esc(x.frase) + "<small>" + esc((f.squadre || []).join(" - ") || f.titolo) +
+              return '<div class="fr">' + esc(x.frase) + "<small>" + (x.sezione ? "<b>" + esc(x.sezione) + "</b> · " : "") +
+                     esc((f.squadre || []).join(" - ") || f.titolo) +
                      " · " + esc(dataIt(f.data)) + (f.autore ? " · " + esc(f.autore) : "") +
                      ' · <a data-foglio="' + esc(f.id) + '">leggi le curiosit&agrave;</a></small></div>';
             }).join("");

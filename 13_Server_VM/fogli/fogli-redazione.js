@@ -286,18 +286,34 @@ function rifai() {
     fogli: fogli.map((f) => ({ id: f.id, titolo: f.titolo, squadre: f.squadre, chiavi: f.chiavi, data: f.data,
                               autore: f.autore, fonte: f.fonte, link: f.link }))
   });
+  // I NOMI si cercano sezione per sezione: la frase si porta dietro il titolo
+  // della sua sezione. Le sezioni sull'arbitro restano fuori: li' un
+  // giocatore compare solo come marcatore di una partita arbitrata da lui
+  // (Merentiel nel foglio San Lorenzo-Boca), e non e' una curiosita' sua.
+  const ARBITRO = /arbitr|\bvar\b|assistent|designat|direttore di gara|quarto uomo|4° uomo/i;
   const nomi = {};
   fogli.forEach((f) => {
-    const frasi = f.testo.split(/\n+|(?<=[.!?])\s+(?=[A-ZÀ-Ý"“(])/).map((x) => x.trim()).filter((x) => x.length > 25);
-    frasi.forEach((fr) => {
-      const corta = fr.length > 420 ? fr.slice(0, 417) + "…" : fr;
-      const parole = fr.match(/[A-ZÀ-Ý][A-Za-zÀ-ÿ'’-]{2,}/g) || [];
-      const gia = {};
-      parole.forEach((p) => {
-        const k = piano(p).replace(/\s+/g, "-");
-        if (k.length < 3 || gia[k]) return;
-        gia[k] = 1;
-        (nomi[k] = nomi[k] || []).push({ id: f.id, frase: corta });
+    const B = f.blocchi && f.blocchi.length ? f.blocchi : strutturaTesto(f.testo);
+    let sezione = "", sotto = "";
+    B.forEach((b) => {
+      if (b.t === "h0" || b.t === "h1") { sezione = b.x || ""; sotto = ""; return; }
+      if (b.t === "h2" || b.t === "h3") { sotto = b.x || ""; return; }
+      if (ARBITRO.test(sezione) || ARBITRO.test(sotto)) return;
+      let testo = "";
+      if (b.t === "p" || b.t === "li") testo = (b.lead ? b.lead + " " : "") + (b.x || "");
+      else if (b.t === "kv") { if (ARBITRO.test(b.k || "")) return; testo = b.k + ": " + b.v; }
+      else return;
+      const frasi = testo.split(/(?<=[.!?])\s+(?=[A-ZÀ-Ý"“(])/).map((x) => x.trim()).filter((x) => x.length > 25);
+      frasi.forEach((fr) => {
+        const corta = fr.length > 420 ? fr.slice(0, 417) + "…" : fr;
+        const parole = fr.match(/[A-ZÀ-Ý][A-Za-zÀ-ÿ'’-]{2,}/g) || [];
+        const gia = {};
+        parole.forEach((p) => {
+          const k = piano(p).replace(/\s+/g, "-");
+          if (k.length < 3 || gia[k]) return;
+          gia[k] = 1;
+          (nomi[k] = nomi[k] || []).push({ id: f.id, frase: corta, sezione: sotto || sezione });
+        });
       });
     });
   });
