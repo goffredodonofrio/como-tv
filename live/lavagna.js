@@ -88,8 +88,13 @@ window.Lavagna = (function () {
       ".lav .diretta .punteggio{font-family:'Mazzard',sans-serif;font-weight:800;font-size:17px;color:var(--lav-avorio);}" +
       ".lav .diretta .azione{color:#D8D2C2;flex:1 1 220px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}" +
       ".lav .campoBox{position:relative;width:100%;aspect-ratio:16/9;border-radius:12px;overflow:hidden;" +
+      // se aspect-ratio non c'e' (Safari vecchio), il campo si tiene alto col
+      // vecchio trucco del padding: senza, sparirebbe
+      "@supports not (aspect-ratio:16/9){.lav .campoBox{height:0;padding-bottom:56.25%;}}" +
       "  border:1px solid rgba(201,162,75,.28);background:#0B5A2E;touch-action:none;}" +
-      ".lav .campoBox svg{position:absolute;inset:0;width:100%;height:100%;display:block;}" +
+      // top/left/right/bottom prima di inset: i Safari vecchi (iPadOS 14) non
+      // capiscono inset e lascerebbero il campo senza disegno
+      ".lav .campoBox svg{position:absolute;top:0;left:0;right:0;bottom:0;inset:0;width:100%;height:100%;display:block;}" +
       ".lav .sotto{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;}" +
       ".lav .col{flex:1 1 330px;min-width:0;background:rgba(16,22,48,.66);border:1px solid rgba(245,241,230,.08);" +
       "  border-radius:10px;padding:11px;}" +
