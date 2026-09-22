@@ -15,7 +15,7 @@
  *
  *  Parla con gli editor (Talent Hunters, risultati, classifiche, tabelloni):
  *    GET  salute              -> {ok, occupato, coda}
- *    POST avvia  {motore, d, nome, fps}  -> {ok, id}   (fps: 25 o 50, di serie 25)
+ *    POST avvia  {motore, d, nome}  -> {ok, id}   (sempre a 50 fps, dal 22/09/2026)
  *    GET  stato?id=           -> {stato: coda|lavoro|pronto|errore, fotogrammi, posto, errore}
  *    GET  file?id=            -> il file, da scaricare
  *
@@ -145,9 +145,9 @@ http.createServer((req, res) => {
       const M = MOTORI[p.motore];
       if (!M) return rispondi(res, 400, { ok: false, errore: "questa grafica non si esporta" });
       const wipe = conWipe(M);
-      // 25 o 50 fotogrammi al secondo: lo sceglie il montatore, secondo la
-      // sequenza di Premiere. Altro non si accetta.
-      const fps = parseInt(p.fps, 10) === 50 ? 50 : 25;
+      // sempre 50 fotogrammi al secondo: le sequenze di Premiere dei montatori
+      // sono a 50p (il 25 e' stato tolto il 22/09/2026)
+      const fps = 50;
       const ext = wipe ? "mov" : M.ext;
       if (!p.d || typeof p.d !== "object") return rispondi(res, 400, { ok: false, errore: "mancano i dati della grafica" });
       if (coda.length >= CODA_MAX) return rispondi(res, 429, { ok: false, errore: "troppe esportazioni in fila: riprova fra poco" });
@@ -156,7 +156,7 @@ http.createServer((req, res) => {
       if (url.length > 7800) return rispondi(res, 400, { ok: false, errore: "dati troppo lunghi per l'indirizzo della grafica" });
       const id = crypto.randomBytes(8).toString("hex");
       const giorno = new Date().toISOString().slice(0, 10);
-      const nome = [M.nome, pulito(p.nome), giorno, fps === 50 ? "50p" : ""].filter(Boolean).join("_") + "." + ext;
+      const nome = [M.nome, pulito(p.nome), giorno].filter(Boolean).join("_") + "." + ext;
       lavori.set(id, { stato: "coda", motore: p.motore, url, ext, nome, wipe, fps, fotogrammi: 0, creato: Date.now() });
       coda.push(id);
       prossimo();
