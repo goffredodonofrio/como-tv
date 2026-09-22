@@ -449,6 +449,39 @@
     });
     return out.concat(resto.slice(k)).filter(Boolean);
   }
+  // LA FORMAZIONE PROBABILE: prima dell'ufficiale (ESPN la da' un'ora prima)
+  // si mettono in campo i titolari dell'ultima partita giocata dalla squadra,
+  // in qualunque competizione, col loro modulo. Nomi e statistiche ci sono.
+  function ultimaFormazione(lega, tid) {
+    if (!tid) return Promise.resolve(null);
+    function sched(l) {
+      return fetch(ESPN + l + "/teams/" + encodeURIComponent(tid) + "/schedule")
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          return (j.events || []).filter(function (e) {
+            var c = (e.competitions || [])[0] || {};
+            return ((c.status || {}).type || {}).completed;
+          }).map(function (e) { return { id: e.id, data: e.date, nome: e.name, lega: (e.league || {}).slug || l }; });
+        }).catch(function () { return []; });
+    }
+    return sched("all").then(function (v) { return v.length ? v : sched(lega); }).then(function (v) {
+      v.sort(function (a, b) { return String(b.data).localeCompare(String(a.data)); });
+      var u = v[0];
+      if (!u) return null;
+      return fetch(ESPN + u.lega + "/summary?event=" + encodeURIComponent(u.id))
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          var ro = (j.rosters || []).filter(function (x) { return String((x.team || {}).id) === String(tid); })[0] || {};
+          var tit = (ro.roster || []).filter(function (x) { return x.starter; }).map(function (x) {
+            var a = x.athlete || {};
+            return { pid: String(a.id), num: x.jersey || a.jersey || "", nome: a.firstName || "",
+                     cognome: a.lastName || String(a.displayName || "").split(" ").pop(),
+                     ruolo: (x.position || {}).abbreviation || "", titolare: true, posto: x.formationPlace || "" };
+          });
+          return tit.length >= 11 ? { tit: tit, mod: ro.formation || "", data: u.data, nome: u.nome } : null;
+        }).catch(function () { return null; });
+    });
+  }
   el("btnEspn").addEventListener("click", function () { caricaEspn(el("espComp").value, el("espPart").value, null); });
   var PARTITA = null;            // la partita di Airtable in campo (per il nome e il telecronista del salvataggio)
   function caricaEspn(lega, ev, partita) {
@@ -484,9 +517,22 @@
         }
         var cA = tinta(casa.team, "#2E6BE6"), cB = tinta(osp.team, "#E0312B");
         if (cA.toLowerCase() === cB.toLowerCase()) cB = "#" + (String((osp.team || {}).alternateColor || "").replace("#", "") || "E0312B");
-        return Promise.all([rose, allenatore(idA), allenatore(idB)]).then(function (v) {
-          function mod(d, sel) {
-            var m = ufficiale && d.mod ? d.mod : el(sel).value;
+        var prob = ufficiale ? Promise.resolve([null, null]) : Promise.all([ultimaFormazione(lega, idA), ultimaFormazione(lega, idB)]);
+        return Promise.all([rose, allenatore(idA), allenatore(idB), prob]).then(function (v) {
+          var pA = v[3][0], pB = v[3][1];
+          // la rosa di adesso piu' chi ha giocato l'ultima (se manca, es. appena ceduto: resta fuori)
+          function soloDellaRosa(p, rosa) {
+            if (!p) return null;
+            if (!rosa.length) return p;
+            var ids = {}; rosa.forEach(function (g) { ids[g.pid] = g; });
+            var t = p.tit.map(function (g) { return ids[g.pid] ? Object.assign({}, ids[g.pid], { ruolo: g.ruolo || ids[g.pid].ruolo, posto: g.posto, titolare: true }) : null; }).filter(Boolean);
+            return t.length >= 10 ? { tit: t, mod: p.mod, data: p.data, nome: p.nome } : null;
+          }
+          pA = soloDellaRosa(pA, v[0][0]); pB = soloDellaRosa(pB, v[0][1]);
+          if (pA) dA.mod = pA.mod;
+          if (pB) dB.mod = pB.mod;
+          function mod(d, sel, p) {
+            var m = (ufficiale || p) && d.mod ? d.mod : el(sel).value;
             // il modulo di ESPN nel menu, se la lavagna non l'ha fra i suoi
             if (m && !Array.prototype.some.call(el(sel).options, function (o) { return o.value === m; })) {
               ["modA", "modB"].forEach(function (id) {
@@ -496,18 +542,24 @@
             el(sel).value = m;
             return m;
           }
-          var mA = mod(dA, "modA"), mB = mod(dB, "modB");
+          var mA = mod(dA, "modA", pA), mB = mod(dB, "modB", pB);
           L.carica({
             A: { nome: (casa.team || {}).displayName || "Casa", col: cA, tid: idA, rosa: v[0][0], mod: mA, all: v[1],
-                 titolari: ufficiale ? inFila(dA.tit, mA, false) : [] },
+                 titolari: ufficiale ? inFila(dA.tit, mA, false) : (pA ? inFila(pA.tit, mA, false) : []) },
             B: { nome: (osp.team || {}).displayName || "Ospite", col: cB, tid: idB, rosa: v[0][1], mod: mB, all: v[2],
-                 titolari: ufficiale ? inFila(dB.tit, mB, true) : [] }
+                 titolari: ufficiale ? inFila(dB.tit, mB, true) : (pB ? inFila(pB.tit, mB, true) : []) }
           });
           ESP = { lega: lega, ev: ev };
           el("btnSegui").disabled = false;
           espDico(ufficiale
             ? "<b>Formazioni ufficiali</b> in campo: " + esc(mA) + " e " + esc(mB) + ". Con <b>Segui in diretta</b> cambi, cartellini e angoli arrivano da soli."
-            : "La formazione ufficiale non c'e' ancora (ESPN la da' circa un'ora prima): in campo le <b>rose</b>, da sistemare a mano. Riprova piu' tardi.",
+            : (pA || pB
+                ? "<b>Formazione probabile</b>: i titolari dell'ultima partita" +
+                  [[pA, (casa.team || {}).displayName], [pB, (osp.team || {}).displayName]].filter(function (x) { return x[0]; }).map(function (x) {
+                    var d = new Date(x[0].data);
+                    return " — " + esc(x[1]) + ": " + esc(x[0].mod || "") + ", " + d.getDate() + "/" + (d.getMonth() + 1);
+                  }).join("") + ". L'ufficiale ESPN la da' circa un'ora prima: allora premi di nuovo <b>Prendi la formazione</b>."
+                : "La formazione ufficiale non c'e' ancora (ESPN la da' circa un'ora prima): in campo le <b>rose</b>, da sistemare a mano. Riprova piu' tardi."),
             ufficiale ? "ok" : "");
         });
       })
