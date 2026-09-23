@@ -9043,7 +9043,7 @@ async function boatoVicino(rec, tRiga, chiave, secFile) {
       // niente tratto senza pause: si prova col picco piu' vicino, ma solo se
       // e' un boato vero
       const picchi = picchiDiVolume(v, 0, BOATO_MINIMO + 2, 25, 12);
-      let colmo = -1; vicino = 1e9;
+      let colmo = -1, vicino = 1e9;   // "vicino" non era dichiarato: qui dentro il boato moriva con "vicino is not defined" (23/09)
       picchi.forEach((x) => { const q = Math.abs(x.secondi - qui); if (q < vicino) { vicino = q; colmo = x.secondi; } });
       if (colmo >= 0) {
         const forza = v[colmo] - solito, soglia = solito + forza * 0.45;
@@ -11776,7 +11776,12 @@ const AZIONI = {
     const uno = async (rec) => {
       const a = ARCHIVIO[rec];
       if (!a) return null;
-      if (!a.tabellone) {
+      // SU S3 IL TABELLONE NON SI FA PER ABITUDINE. Leggerlo vuol dire cento
+      // fotogrammi e cinque minuti per partita, e su Como-Lipsia ha trovato
+      // zero gol: il boato da' lo stesso secondo in quindici secondi. Si
+      // legge solo se lo si chiede (23/09).
+      const saltaTabellone = senzaCode(a.bucket) && !p.tabellone;
+      if (!a.tabellone && !saltaTabellone) {
         try { await leggiTabellone(rec); }
         catch (e) { console.log("[clip] punta (" + (a.partita || rec) + "): tabellone no — " + e.message); }
       }
