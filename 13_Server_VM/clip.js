@@ -8580,14 +8580,35 @@ async function calibraOrologio(rec, rifai) {
     // primo tempo: dal 10' stimato in poi, finche' il lettore non legge
     // un'ora da primo tempo (prima del 45') che stia a meno di un quarto
     // d'ora dalla stima
+    let vistaRipresa = null;
     for (const t of [600, 780, 960, 1200, 1500, 1800, 2100]) {
       const e = await leggiOrologioSicuro(leggiA, t, true); esito.letti += 2;
       const c = e && e.c;
       if (e && e.cifre && !esito.cifre) esito.cifre = e.cifre;
-      if (c === null || c === undefined || c <= 0 || c >= 2700) continue;
+      if (c === null || c === undefined || c <= 0) continue;
+      // IL CRONOMETRO CHE DICE "57:00" NON E' DA BUTTARE. Certe partite —
+      // le giovanili soprattutto — hanno su Airtable un orario sbagliato di
+      // quasi un'ora: le sonde del primo tempo cadono tutte nel secondo, il
+      // lettore legge una cifra oltre il 45' e la lettura veniva scartata.
+      // Quella cifra pero' dice dove sta la ripresa, e da li' si ritrova il
+      // primo tempo. Si sposta la finestra e si riprova, una volta sola.
+      if (c >= 2700) { if (c < 7500 && !vistaRipresa) vistaRipresa = { t: t, c: c }; continue; }
       const inizio1 = t - c;
       if (Math.abs(inizio1) > 1500) continue;
       esito.inizio1 = inizio1; break;
+    }
+    if (esito.inizio1 === undefined && vistaRipresa) {
+      const ripresaQui = vistaRipresa.t - (vistaRipresa.c - 2700);   // dove comincia il secondo tempo
+      const primoQui = ripresaQui - 3600;                            // e dove doveva cominciare il primo
+      console.log("[clip] cronometro: le sonde cadevano nel secondo tempo (letto " +
+                  Math.round(vistaRipresa.c / 60) + "'): sposto di " + Math.round(primoQui / 60) + "' e riprovo");
+      for (const d of [600, 900, 1200, 1500, 1800]) {
+        const e = await leggiOrologioSicuro(leggiA, primoQui + d, true); esito.letti += 2;
+        const c = e && e.c;
+        if (e && e.cifre && !esito.cifre) esito.cifre = e.cifre;
+        if (c === null || c === undefined || c <= 0 || c >= 2700) continue;
+        esito.inizio1 = primoQui + d - c; break;
+      }
     }
     if (esito.inizio1 === undefined) throw new Error("nel primo tempo non ho letto nessun cronometro");
     // secondo tempo: dal 60' stimato in poi (dopo la ripresa vera in ogni
@@ -11856,7 +11877,14 @@ const AZIONI = {
         throw new Error(prova === null ? "nella telecronaca non trovo ne' il fischio ne' gli eventi con un minuto: segna il fischio a mano" : "la telecronaca non basta: segna il fischio a mano");
       }
     } else if (p.cronometro) {
-      esito = await calibraOrologio(rec, "forza");
+      // una lettura andata male lascia il segno: se no chi gira l'archivio
+      // riprova la stessa partita all'infinito (23/09)
+      try { esito = await calibraOrologio(rec, "forza"); }
+      catch (e) {
+        a.orologioFallito = { quando: new Date().toISOString(), motivo: String(e.message).slice(0, 120) };
+        scriviArchivio();
+        throw e;
+      }
     } else {
       if (p.t === undefined || p.t === null) throw new Error("a che secondo comincia il tempo?");
       esito = ancoraAMano(rec, r, p.tempo, +p.t);
