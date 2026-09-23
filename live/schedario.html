@@ -382,6 +382,13 @@
   });
 
   // ── le schede ────────────────────────────────────────────────────────
+  // chi c'e' dietro un foglio: chi l'ha scritto se si sa; se no per chi era
+  // (i telecronisti della partita, da Airtable), se no da dove viene
+  function chiFoglio(f) {
+    if (f.autore) return f.autore;
+    if (f.tele && f.tele.length) return "per la telecronaca di " + f.tele.join(" e ");
+    return f.fonte === "drive" ? "dal Drive" : f.fonte === "slack" ? "da Slack" : "autore non indicato";
+  }
   function frase(x) {
     return '<div class="fr' + (x.sua ? " mia" : "") + '">' + esc(x.frase) + "<small>" +
            (x.sezione ? "<b>" + esc(x.sezione) + "</b> · " : "") + esc(dataIt(x.data)) +
@@ -444,8 +451,9 @@
           (suoi.length ? '<div class="gruppo">I suoi giocatori nello schedario</div><div class="elenco">' + suoi.map(voceG).join("") + "</div>" : "") +
           '<div class="gruppo">I fogli</div><div class="elenco">' + s.fogli.map(function (f) {
             return '<a class="voce" href="curiosita.html?id=' + encodeURIComponent(f.id) + '" target="comotv-curiosita">' +
-                   '<span class="n2"><b>' + esc(f.titolo || "Foglio") + "</b><small>" + esc(dataIt(f.data)) +
-                   (f.autore ? " · " + esc(f.autore) : "") + "</small></span></a>";
+                   '<span class="n2"><b>' + esc(f.titolo || "Foglio") + "</b><small>" + esc(dataIt(f.data)) + " · " +
+                   esc(chiFoglio(f)) +
+                   "</small></span></a>";
           }).join("") + "</div>" +
           '<div id="aggiunte"></div>' +
           '<div class="gruppo">Le curiosità dai fogli</div>' +

@@ -362,6 +362,45 @@ function legature(file, t) {
   });
   return t;
 }
+// L'AUTORE quando la fonte non lo dice (il Drive non lo dice mai): lo porta
+// il file stesso — il Word in docProps/core.xml, il PDF nei suoi dati.
+const NON_AUTORE = /^(utente|user|administrator|admin|microsoft|word|pages|acrobat|apple|hp|pc|mac|macbook|comotv|como tv)$/i;
+function autoreDa(file, nome) {
+  let a = "";
+  try {
+    if (/\.docx$/i.test(nome)) {
+      const py = "import zipfile,re,sys,html\n" +
+        "x=zipfile.ZipFile(sys.argv[1]).read('docProps/core.xml').decode('utf8')\n" +
+        "m=re.search(r'<dc:creator>([^<]*)</dc:creator>',x) or re.search(r'<cp:lastModifiedBy>([^<]*)</cp:lastModifiedBy>',x)\n" +
+        "print(html.unescape(m.group(1)) if m else '')\n";
+      a = execFileSync("python3", ["-c", py, file], { timeout: 20000, stdio: ["ignore", "pipe", "ignore"] }).toString("utf8").trim();
+    } else if (/\.pdf$/i.test(nome)) {
+      const t = execFileSync("pdfinfo", [file], { timeout: 20000, stdio: ["ignore", "pipe", "ignore"] }).toString("utf8");
+      a = ((/^Author:\s*(.+)$/m.exec(t) || [])[1] || "").trim();
+    }
+  } catch (e) { return ""; }
+  a = a.replace(/\s+/g, " ").trim();
+  if (a.length < 4 || a.length > 40 || NON_AUTORE.test(a) || /@/.test(a)) return "";
+  // "MacBook di Simone", "Simone Solario (Como TV)"
+  a = a.replace(/^(macbook|imac|pc|portatile)\s+(di|of)\s+/i, "").replace(/\s*\(.*?\)\s*$/, "").trim();
+  return a.length >= 4 ? a : "";
+}
+// Se ne' Slack ne' il file dicono chi l'ha scritto, lo dice spesso il testo
+// ("un caloroso benvenuto da Manolo Chirico", "a cura di ..."). Si accettano
+// solo i nomi che conosciamo: i giornalisti di Slack e i telecronisti di
+// Airtable. Cosi' non si attribuisce un foglio a qualcuno per sbaglio.
+let NOMI_NOTI = [];
+function nomiNoti(stato) {
+  const v = {};
+  Object.keys(stato.utenti || {}).forEach((k) => { if (stato.utenti[k]) v[stato.utenti[k]] = 1; });
+  (stato.telecronisti || []).forEach((n) => { if (n) v[n] = 1; });
+  NOMI_NOTI = Object.keys(v).map((n) => ({ nome: n, k: piano(n) })).filter((x) => x.k.split(" ").length >= 2);
+}
+function autoreDaTesto(testo) {
+  const t = " " + piano(String(testo || "").slice(0, 4000)) + " ";
+  for (const n of NOMI_NOTI) if (t.indexOf(" " + n.k + " ") >= 0) return n.nome;
+  return "";
+}
 function testoPdf(file) {
   const t = execFileSync("pdftotext", ["-enc", "UTF-8", file, "-"], { maxBuffer: 32 * 1024 * 1024, timeout: 60000 }).toString("utf8");
   return legature(file, t);
@@ -420,10 +459,62 @@ const PICCOLE = /^(of|the|and|de|del|della|dei|des|di|da|do|dos|das|la|le|les|el
 function titoloIt(t) {
   return String(t || "").toLowerCase().replace(/[a-zà-ÿ][a-zà-ÿ'’]*/g, (w, k) => (k && PICCOLE.test(w)) ? w : w[0].toUpperCase() + w.slice(1));
 }
+// Le squadre che conosciamo davvero: quelle delle rose ESPN scaricate. Un
+// nome scritto storto nel file ("Ind.Santa Fe", "Boca Jrs", "Wolves") si
+// riporta al suo ("Independiente Santa Fe", "Boca Juniors", "Wolverhampton
+// Wanderers") confrontandolo con queste.
+let NOTE_SQ = [];
+const ABBR = { jrs: "juniors", jr: "juniors", utd: "united", un: "united", dep: "deportivo", depor: "deportivo",
+               ind: "independiente", indep: "independiente", atl: "atletico", ath: "athletic", sp: "sporting",
+               univ: "universidad", est: "estudiantes", gim: "gimnasia", wolves: "wolverhampton", spurs: "tottenham",
+               wba: "west bromwich", psv: "psv eindhoven", boro: "middlesbrough", qpr: "queens park rangers" };
+function squadreNote(stato) {
+  const v = [];
+  Object.keys(stato.rose || {}).forEach((t) => {
+    const n = (stato.rose[t] || {}).nome;
+    if (n) v.push({ nome: n, k: espandiSq(pianoS(n)) });
+  });
+  NOTE_SQ = v;
+}
+function espandiSq(k) { return String(k || "").split(" ").map((w) => ABBR[w] || w).join(" ").trim(); }
+function squadraNota(nome, esatto) {
+  const k = espandiSq(pianoS(conAlias(nome)));
+  if (!k) return "";
+  let dentro = "";
+  for (const t of NOTE_SQ) {
+    if (t.k === k) return t.nome;
+    if (esatto) continue;
+    if (!dentro && ((" " + t.k + " ").indexOf(" " + k + " ") >= 0 || (" " + k + " ").indexOf(" " + t.k + " ") >= 0)) dentro = t.nome;
+    if (!dentro) {
+      // parola per parola, anche accorciata: "ind santa fe" -> "independiente santa fe"
+      const a = k.split(" "), b = t.k.split(" ");
+      if (a.length === b.length && a.every((w, i) => w.length >= 2 && b[i].indexOf(w) === 0)) dentro = t.nome;
+    }
+  }
+  return dentro;
+}
+// "Al Ittihad Al Fayha", "Millwall West Ham": due squadre note attaccate
+function dueSquadre(uno) {
+  const k = espandiSq(pianoS(conAlias(uno))).split(" ").filter(Boolean);
+  if (k.length < 2) return null;
+  for (let i = 1; i < k.length; i++) {
+    const a = squadraNota(k.slice(0, i).join(" "), true), b = squadraNota(k.slice(i).join(" "), true);
+    if (a && b) return [a, b];
+  }
+  for (let i = 1; i < k.length; i++) {
+    const a = squadraNota(k.slice(0, i).join(" ")), b = squadraNota(k.slice(i).join(" "));
+    if (a && b && a !== b) return [a, b];
+  }
+  return null;
+}
+function nomeSq(x) { return squadraNota(x) || titoloIt(x); }
 function nomeFoglio(f) {
   const sq = f.squadre || [];
-  if (sq.length === 2) return titoloIt(sq[0]) + " – " + titoloIt(sq[1]);
-  if (sq.length === 1) return titoloIt(sq[0]);
+  if (sq.length === 2) return nomeSq(sq[0]) + " – " + nomeSq(sq[1]);
+  if (sq.length === 1) {
+    const due = dueSquadre(sq[0]);
+    return due ? due[0] + " – " + due[1] : nomeSq(sq[0]);
+  }
   // niente squadre: il nome del file, ripulito da date, numeri e trattini
   let t = String(f.titolo || f.nomeFile || "").replace(ESTENSIONI, "")
     .replace(/[_]+/g, " ").replace(/\b20\d{6}\b/g, " ")
@@ -436,13 +527,15 @@ function squadreDa(nome, testo) {
   s = s.normalize("NFD").replace(/[̀-ͯ]/g, "")        // "Curiosità" scritto con l'accento staccato
     .replace(/\(.*?\)/g, " ").replace(/\d{1,2}[-./]\d{1,2}[-./]\d{2,4}/g, " ").replace(/\b20\d{6}\b/g, " ")
     .replace(/\b\d{1,2}\s+\d{1,2}\s+20\d{2}\b/g, " ")                     // "1 03 2026"
-    .replace(/([A-Za-zÀ-ÿ]{3,})\.([A-Za-zÀ-ÿ]{3,})/g, "$1 - $2")                 // "River.Bragantino"
+    .replace(/([A-Za-zÀ-ÿ]{4,})\.([A-Za-zÀ-ÿ]{4,})/g, "$1 - $2")                 // "River.Bragantino" (ma non "Ind.Santa Fe")
     .replace(/\b(?:20)?\d{2}\s*[:/-]\s*(?:20)?\d{2}\b/g, " ")     // la stagione: 2026:27, 26-27
     .replace(/_/g, " ").replace(/\|/g, " ")
     .replace(/\b(foglio|partita|appunti|curiosita|note|scheda|giornata|rosa|intro|squadre|gara|riserve|panchine|semifinali?|quarti|ottavi|finale|playoff|po|round|\d+[aª°]|\d+)\b/gi, " ")
     .replace(/\s+/g, " ").trim();
   // prima i separatori con gli spazi ("Al-Hilal v Al-Faisaly"), poi il trattino attaccato
-  let pezzi = s.split(/\s+(?:-|–|v|vs|x)\.?\s+/i).map((x) => x.trim()).filter(Boolean);
+  // prima "v"/"vs" (il piu' chiaro), poi il trattino con gli spazi, poi attaccato
+  let pezzi = s.split(/\s+(?:v|vs|x)\.?\s+/i).map((x) => x.trim()).filter(Boolean);
+  if (pezzi.length !== 2) pezzi = s.split(/\s+[-–]\s+/).map((x) => x.trim()).filter(Boolean);
   if (pezzi.length !== 2) pezzi = s.split(/\s*[-–]\s*/).map((x) => x.trim()).filter(Boolean);
   // "Al-Ula FC", "Al-Hilal": un pezzo di una o due lettere non e' una squadra
   if (pezzi.length === 2 && pezzi[0].length <= 2) pezzi = [pezzi[0] + "-" + pezzi[1]];
@@ -492,6 +585,8 @@ function rifai() {
     // i fogli gia' salvati si rileggono con le regole di adesso (squadre, struttura)
     const sq = squadreDa(f.nomeFile || f.titolo + ".docx", f.testo);
     let cambia = !f.blocchi || JSON.stringify(sq) !== JSON.stringify(f.squadre);
+    // chi l'ha scritto, quando la fonte non lo dice
+    if (!f.autore) { const a = autoreDaTesto(f.testo); if (a) { f.autore = a; cambia = true; } }
     // il nome uguale per tutti; se il foglio ha gia' la sua partita, lo tiene
     const nome = f.partita && f.nome ? f.nome : nomeFoglio(Object.assign({}, f, { squadre: sq }));
     if (nome !== f.nome) { f.nome = nome; cambia = true; }
@@ -513,7 +608,8 @@ function rifai() {
     aggiornato: new Date().toISOString(),
     // tipo: partita (due squadre), squadra (una), altro. cerca: titolo e prime
     // righe, per agganciare anche "Millwall West Ham" senza separatore
-    fogli: fogli.map((f) => ({ id: f.id, titolo: f.titolo, nome: f.nome || nomeFoglio(f), squadre: f.squadre, chiavi: f.chiavi, data: f.data,
+    fogli: fogli.map((f) => ({ id: f.id, titolo: f.titolo, nome: f.nome || nomeFoglio(f), tele: (f.partita || {}).telecronisti || [],
+                              squadre: f.squadre, chiavi: f.chiavi, data: f.data,
                               tipo: tipoDi(f.nomeFile || f.titolo, f.squadre),
                               cerca: piano(f.titolo + " " + String(f.testo || "").slice(0, 300)),
                               autore: f.autore, fonte: f.fonte, link: f.link }))
@@ -588,7 +684,7 @@ async function giroSlack(stato) {
             } catch (e) { utenti[m.user] = ""; }
           }
           try {
-            const ok = salva({ id: "s-" + fl.id, nomeFile: fl.name, fonte: "slack", autore: utenti[m.user] || "",
+            const ok = salva({ id: "s-" + fl.id, nomeFile: fl.name, fonte: "slack", autore: utenti[m.user] || autoreDa(tmp, fl.name),
                                quando: new Date(parseFloat(m.ts) * 1000).toISOString(),
                                link: "https://comotv.slack.com/archives/" + canale + "/p" + String(m.ts).replace(".", "") },
                              ...testoEStruttura(tmp, fl.name));
@@ -667,7 +763,7 @@ async function giroDriveAperto(stato, cartelle) {
       const tmp = path.join(TMP, id + path.extname(n2));
       fs.writeFileSync(tmp, f.corpo);
       try {
-        if (salva({ id: "d-" + id, nomeFile: n2, fonte: "drive", autore: "",
+        if (salva({ id: "d-" + id, nomeFile: n2, fonte: "drive", autore: autoreDa(tmp, n2),
                     quando: dataElenco(mod) || new Date().toISOString(),
                     link: doc ? "https://docs.google.com/document/d/" + id + "/view" : "https://drive.google.com/file/d/" + id + "/view" },
                   ...testoEStruttura(tmp, n2))) nuovi++;
@@ -711,7 +807,7 @@ async function giroDrive(stato) {
         const tmp = path.join(TMP, fl.id + path.extname(nome));
         fs.writeFileSync(tmp, r.corpo);
         try {
-          if (salva({ id: "d-" + fl.id, nomeFile: nome, fonte: "drive", autore: ((fl.owners || [])[0] || {}).displayName || "",
+          if (salva({ id: "d-" + fl.id, nomeFile: nome, fonte: "drive", autore: ((fl.owners || [])[0] || {}).displayName || autoreDa(tmp, nome),
                       quando: fl.createdTime, link: fl.webViewLink }, ...testoEStruttura(tmp, nome))) nuovi++;
         } catch (e) { console.log("[fogli] Drive: testo non letto da " + fl.name + ": " + e.message); }
         visti[fl.id] = fl.modifiedTime;
@@ -924,7 +1020,8 @@ function schedario(stato) {
     // partita, e sta nel foglio
     const SUE_SEZIONI = /storia|stadio|impianto|precedent|classific|forma|societ|club|palmar|mercato|allenator|tifos|rivalit/i;
     sue.forEach((s) => {
-      s.fogli.push({ id: f.id, data: f.data, autore: f.autore, titolo: f.nome || nomeFoglio(f) });
+      s.fogli.push({ id: f.id, data: f.data, autore: f.autore, fonte: f.fonte, tele: (f.partita || {}).telecronisti || [],
+                     titolo: f.nome || nomeFoglio(f) });
       const nome = pianoS(s.nome);
       frasi.forEach((x) => {
         const dentro = nome && (" " + piano(x.frase) + " ").indexOf(" " + nome + " ") >= 0;
@@ -1023,6 +1120,10 @@ async function giroPartite(stato) {
     unite.set(chiave, u);
   });
   const partite = Array.from(unite.values());
+  // i nomi dei telecronisti: servono a riconoscere chi ha scritto un foglio
+  const chi = {};
+  partite.forEach((m) => m.telecronisti.forEach((t) => { if (t.nome) chi[t.nome] = 1; }));
+  stato.telecronisti = Object.keys(chi);
   // la partita ESPN e il foglio CURIOSITA' di ognuna
   const indice = leggiJson(path.join(PUB, "indice.json"), { fogli: [] }).fogli || [];
   // la partita ESPN si cerca una volta e si ricorda (stato.espn). Chi non
@@ -1076,11 +1177,14 @@ async function giroPartite(stato) {
     (m.fogli || []).forEach((id) => {
       const f = leggiJson(path.join(dirF, id + ".json"), null);
       if (!f) return;
-      const part = { casa, ospite: osp, quando: m.quando, competizione: m.competizione };
+      // chi commenta quella partita lo dice Airtable: non e' detto che sia
+      // anche chi ha scritto il foglio, quindi si tiene come cosa sua
+      const part = { casa, ospite: osp, quando: m.quando, competizione: m.competizione,
+                     telecronisti: m.telecronisti.map((t) => t.nome) };
       if (f.nome === nome && JSON.stringify(f.partita) === JSON.stringify(part)) return;
       f.nome = nome; f.partita = part;
       scriviJson(path.join(dirF, id + ".json"), f);
-      if (perId[id]) perId[id].nome = nome;
+      if (perId[id]) { perId[id].nome = nome; perId[id].tele = part.telecronisti; }
       toccati++;
     });
   });
@@ -1094,6 +1198,8 @@ async function giroPartite(stato) {
 (async () => {
   const stato = leggiJson(STATO, {});
   if (arg("partite")) return giroPartite(stato);
+  squadreNote(stato);
+  nomiNoti(stato);
   if (arg("rifai")) return rifai();
   if (arg("schedario")) { await giroRose(stato); scriviJson(STATO, stato); return schedario(stato); }
   const f = arg("file");
