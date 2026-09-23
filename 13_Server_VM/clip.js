@@ -11780,7 +11780,10 @@ const AZIONI = {
       // fotogrammi e cinque minuti per partita, e su Como-Lipsia ha trovato
       // zero gol: il boato da' lo stesso secondo in quindici secondi. Si
       // legge solo se lo si chiede (23/09).
-      const saltaTabellone = senzaCode(a.bucket) && !p.tabellone;
+      // con tabellone:false non si legge mai: serve ai giri lunghi, dove
+      // cinque minuti a partita per il tabellone tengono occupati i due core
+      // mentre il boato darebbe lo stesso secondo in dieci
+      const saltaTabellone = p.tabellone === false || (senzaCode(a.bucket) && !p.tabellone);
       if (!a.tabellone && !saltaTabellone) {
         try { await leggiTabellone(rec); }
         catch (e) { console.log("[clip] punta (" + (a.partita || rec) + "): tabellone no — " + e.message); }
