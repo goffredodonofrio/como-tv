@@ -1131,7 +1131,10 @@ function etichettaAzione(tipo, titolo) {
   // scelto "Gol" come tipo: "Quinones vicino al gol", "Zajc si mangia il
   // gol", "Stojkovic vicino al gol del pari". Nella legenda una partita da
   // due gol ne mostrava tre (23/09).
-  const quasi = /sfior|si mangia|si divora|mangia(to)? il gol|vicino al gol|per poco|gol (mangiato|sbagliato|fallito)|a un passo dal gol|fallisce/i.test(testo);
+  // LA RETE PRESA DA FUORI NON E' UN GOL. "sull'esterno della rete" e
+  // "calcia alto" sono conclusioni sbagliate, e la parola rete le faceva
+  // passare per gol anche quando chi scrive aveva messo tipo "Gol".
+  const quasi = /sfior|si mangia|si divora|mangia(to)? il gol|vicino al gol|per poco|gol (mangiato|sbagliato|fallito)|a un passo dal gol|fallisce|esterno della rete|sull.esterno|\ba lato\b|sul fondo|di poco fuori|calcia (alto|fuori)|alto sopra/i.test(testo);
   // UN GOL VERO PORTA CON SE' IL PUNTEGGIO CHE CAMBIA: "AUTOGOL DI VALINCIC,
   // sulla conclusione di Babec (3-1 DIN)" e' un gol anche se il tipo dice
   // "Occasione". E' il modo in cui la redazione segna che la palla e' entrata.
@@ -1195,11 +1198,14 @@ function nomiDentro(x) {
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase()
     .split(/[^A-Z]+/).filter((w) => w.length >= 4 && !NON_NOMI.has(w));
 }
-function stessoNome(a, b) {
+// IL NOME DELLA SQUADRA NON E' IL NOME DI UN GIOCATORE. "GOL VALLE. Tiro di
+// Loor..." e "GOL VALLE. Rigore dato..." sono due gol diversi dell'Independiente
+// del Valle, e la parola VALLE li faceva contare per uno solo (23/09).
+function stessoNome(a, b, squadre) {
   const na = nomiDentro(a), nb = nomiDentro(b);
-  return na.some((w) => nb.indexOf(w) >= 0);
+  return na.some((w) => nb.indexOf(w) >= 0 && !(squadre && squadre.has(w)));
 }
-function togliDoppioni(pezzi, vicino) {
+function togliDoppioni(pezzi, vicino, squadre) {
   const fuori = [];
   const eti = (z) => etichettaAzione(z.tipo, z.titolo);
   pezzi.sort((a, b) => a.dentro - b.dentro).forEach((x) => {
@@ -1209,14 +1215,17 @@ function togliDoppioni(pezzi, vicino) {
     const ex = eti(x);
     for (let n = fuori.length - 1; n >= 0; n--) {
       const y = fuori[n], dist = Math.abs(x.dentro - y.dentro);
-      if (dist >= 100) break;                       // piu' indietro non si guarda
+      if (dist >= 240) break;                       // piu' indietro non si guarda
       const ey = eti(y);
       // LO STESSO GOL VISTO DA DUE PARTI ARRIVA A UN MINUTO DI DISTANZA:
       // ESPN arrotonda al minuto, il giornalista scrive dopo aver visto.
       // Per i gol la finestra si allarga a cento secondi, ma solo se le due
       // righe nominano lo stesso giocatore: cosi' una doppietta ravvicinata
       // resta di due gol.
-      const quanto = (ex === "gol" && ey === "gol" && stessoNome(x, y)) ? 100 : (vicino || 20);
+      // quattro minuti, non due: il ritardo del giornalista sposta la sua
+      // riga rispetto a quella di ESPN, e "Johansen gol" al 48' con "Gol ·
+      // Nicolas Johansen" al 49' finivano a tre minuti di distanza
+      const quanto = (ex === "gol" && ey === "gol" && stessoNome(x, y, squadre)) ? 240 : (vicino || 20);
       if (dist >= quanto) continue;
       // Ma solo se parlano davvero della stessa cosa: un gol e
       // un'ammonizione a venti secondi restano due righe.
@@ -1456,7 +1465,10 @@ function quelloCheSappiamo(r) {
   });
   // con maniglie larghe due azioni vicine si sovrappongono: si sta piu' larghi
   // anche nel togliere i doppioni
-  return { azioni: togliDoppioni(azioni, 45), gol: uniscoIGol(gol, rec), voce: voceScelta,
+  // le parole del nome della partita: servono a non scambiare una squadra
+  // per un giocatore quando si decide se due righe sono lo stesso gol
+  const squadre = new Set(nomiDentro({ titolo: ((ARCHIVIO[rec] || {}).partita || r.titolo || "") }));
+  return { azioni: togliDoppioni(azioni, 45, squadre), gol: uniscoIGol(gol, rec), voce: voceScelta,
            boati: boati, altrove: altrove, stelle: (a && a.stelle) || 0 };
 }
 
@@ -2739,6 +2751,16 @@ function leggiAppunti(testo, durataTempo) {
   if (!titoli) fuori.forEach((r) => {
     if (r.sezione === 1 && r.minutoVero >= 46) {
       r.sezione = 2; r.dentroTempo = (r.minutoVero - dur) * 60 + r.secVero + r.stoppVero * 60;
+    }
+  });
+  // UN 48' NEL BLOCCO DEL PRIMO TEMPO E' UNA RIGA SCRITTA NEL POSTO
+  // SBAGLIATO. Capita quando il titolo "secondo tempo" arriva dopo: la riga
+  // resta sopra, e l'azione finisce quindici minuti prima di dove sta
+  // davvero. Nell'archivio erano trecentocinquanta. Il 46' e il 47' invece
+  // si lasciano stare: quasi sempre sono il recupero scritto senza il piu'.
+  fuori.forEach((r) => {
+    if (r.sezione === 1 && r.stoppVero === 0 && r.minutoVero >= 48) {
+      r.sezione = 2; r.dentroTempo = (r.minutoVero - dur) * 60 + r.secVero;
     }
   });
   // il voto si attacca al gol piu' vicino: lo stesso minuto, o quasi. Se
