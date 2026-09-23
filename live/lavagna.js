@@ -32,6 +32,10 @@ window.Lavagna = (function () {
   // schermo intero senza browser. Li' una finestra nuova butterebbe fuori
   // dall'app (Safari la apre per conto suo), quindi CURIOSITA' e SCHEDARIO
   // si aprono dentro, in un pannello.
+  // le parole che cambiano col dito: si scrivono una volta sola
+  function DUEVOLTE() { return TOCCO ? "Tocca due volte" : "Doppio clic"; }
+  function duevolte() { return TOCCO ? "tocca due volte" : "doppio clic"; }
+  function tocca(M) { return M ? (TOCCO ? "Tocca" : "Clicca") : (TOCCO ? "tocca" : "clicca"); }
   var APP = !!(window.navigator.standalone || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
                || /[?&]app=1/.test(location.search));       // ?app=1 per provarla senza installarla
   function pannello(via, titolo) {
@@ -51,7 +55,7 @@ window.Lavagna = (function () {
       });
     }
     v.querySelector("b").textContent = titolo || "";
-    v.querySelector("iframe").src = via;
+    if (via) v.querySelector("iframe").src = via;      // vuoto: ci si scrive dentro
     return v;
   }
 
@@ -177,6 +181,9 @@ window.Lavagna = (function () {
       " .lav .foglietto .piede button{min-height:42px;}" +
       "}" +
       ".lav .campoBox{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}" +
+      // col dito: niente attesa del doppio tocco sui pulsanti, e niente lampo grigio
+      ".lav button,.lav select,.lav label{touch-action:manipulation;-webkit-tap-highlight-color:rgba(201,162,75,.18);}" +
+      ".lav .rose{-webkit-overflow-scrolling:touch;}" +
       ".lav .foglietto .allo-schedario{font-size:12px;margin-top:3px;}" +
       ".lav .foglietto .allo-schedario a{color:var(--lav-oroB);cursor:pointer;text-decoration:underline;}" +
       ".lav .foglietto .testa{display:flex;gap:12px;align-items:flex-end;margin-bottom:2px;}" +
@@ -360,7 +367,7 @@ window.Lavagna = (function () {
         }).join("") +
         '<span class="sep"></span>' +
         '<button type="button" data-az="schiera">&#9917; Schiera</button>' +
-        '<button type="button" data-az="indietro" title="Annulla l\'ultima mossa (Cmd/Ctrl+Z)">&#8630; Annulla</button>' +
+        '<button type="button" data-az="indietro" title="Annulla l\'ultima mossa' + (TOCCO ? "" : " (Cmd/Ctrl+Z)") + '">&#8630; Annulla</button>' +
         // le curiosita' della partita: il foglio del giornalista, in una finestra a parte
         '<button type="button" class="curio-tasto" data-az="foglio" hidden>&#128161; Curiosit&agrave;</button>' +
         '<button type="button" class="curio-tasto" data-az="schedario">&#128193; Schedario</button>' +
@@ -402,7 +409,7 @@ window.Lavagna = (function () {
         // in diretta i cambi si vedono gia' sul campo, la lista e' rumore
         (opz.diretta ? "" :
           '<div class="col"><h4>Cambi</h4><div class="cambi" data-cambi="1"><span>Nessun cambio.</span></div></div>') +
-        '<div class="col"><h4>Curiosità</h4><div class="curio" data-curio="1"><span style="color:var(--lav-fg3)">Doppio clic su un giocatore per scriverci sopra.</span></div></div>' +
+        '<div class="col"><h4>Curiosità</h4><div class="curio" data-curio="1"><span style="color:var(--lav-fg3)">' + DUEVOLTE() + ' su un giocatore per scriverci sopra.</span></div></div>' +
       '</div>';
     var temaSalvato = null;
     try { temaSalvato = localStorage.getItem("comotv.lavagna.tema"); } catch (e) {}
@@ -555,7 +562,7 @@ window.Lavagna = (function () {
       if (!PASSI.length) { nota("Non c'è più niente da annullare.", ""); return; }
       try { RIFAI.push(JSON.stringify(stato())); } catch (e) {}
       riapri(JSON.parse(PASSI.pop()));
-      nota("Annullato. <b>Cmd/Ctrl+Maiusc+Z</b> per rifare.", "");
+      nota(TOCCO ? "Annullato." : "Annullato. <b>Cmd/Ctrl+Maiusc+Z</b> per rifare.", "");
     }
     function rifai() {
       if (!RIFAI.length) return;
@@ -732,7 +739,7 @@ window.Lavagna = (function () {
       if (CHI) {
         var pc = pedinaDi(ev);
         if (pc && pc.lato === CHI.lato) { assegna(pc); ev.preventDefault(); return; }
-        if (pc) { nota("Quel giocatore e' dell'altra squadra: clicca uno " + (CHI.lato === "A" ? "di casa" : "ospite") + ".", "err"); return; }
+        if (pc) { nota("Quel giocatore e' dell'altra squadra: " + tocca() + " uno " + (CHI.lato === "A" ? "di casa" : "ospite") + ".", "err"); return; }
         assegna(null); return;                        // clic sul prato: senza nome
       }
       var pt = punto(ev);
@@ -1501,7 +1508,7 @@ window.Lavagna = (function () {
       c.innerHTML = righe.length ? righe.map(function (p) {
         return '<div><b>' + esc((p.num ? p.num + " " : "") + (p.cognome || "")) + '</b> · ' +
                esc(SQ[p.lato].nome) + (p.fuori ? " (fuori)" : "") + '<br>' + esc(NOTE[p.lato + ":" + p.pid]) + '</div>';
-      }).join("") : '<span style="color:var(--lav-fg3)">Doppio clic su un giocatore per scriverci sopra.</span>';
+      }).join("") : '<span style="color:var(--lav-fg3)">' + DUEVOLTE() + ' su un giocatore per scriverci sopra.</span>';
     }
 
     // ── le rose, la panchina e i cambi ──────────────────────────────────
@@ -1568,7 +1575,7 @@ window.Lavagna = (function () {
         disegnaConta();
         box.classList.add("chiedo-" + lt);
         PEDINE.forEach(function (q) { if (q.lato === lt && q.g) q.g.classList.add("cand"); });
-        nota("<b>Chi?</b> Clicca il giocatore " + (k === "gia" ? "ammonito" : "espulso") + " — in campo, in panchina o " +
+        nota("<b>Chi?</b> " + tocca(1) + " il giocatore " + (k === "gia" ? "ammonito" : "espulso") + " — in campo, in panchina o " +
              "l'allenatore. <b>Esc</b> o di nuovo il contatore: senza nome.", "");
         return;
       }
@@ -1657,8 +1664,8 @@ window.Lavagna = (function () {
         if (mis) metti(lato, mis, lato === "A" ? 150 : W - 150, H - 78);
       });
       disegnaRose(); disegnaCurio();
-      nota("Schierate. Clicca un giocatore per sceglierlo (poi uno dalla panchina per il cambio), " +
-           "doppio clic per le curiosità.", "ok");
+      nota("Schierate. " + tocca(1) + " un giocatore per sceglierlo (poi uno dalla panchina per il cambio), " +
+           duevolte() + " per le curiosità.", "ok");
     }
 
     // ── immagine e stampa ───────────────────────────────────────────────
@@ -1678,10 +1685,61 @@ window.Lavagna = (function () {
       img.src = url;
     }
     function titolo() { return (SQ.A.nome || "Casa") + " - " + (SQ.B.nome || "Ospite"); }
+    function nomeFile() { return titolo().replace(/[^A-Za-z0-9-]+/g, "-") + ".png"; }
+    // SALVARE L'IMMAGINE. Su iPad il vecchio modo (un link con "download") non
+    // salva niente: Safari lo ignora. Si passa dal foglio di condivisione, che
+    // sull'iPad porta a Foto, File, Mail; se non c'e' si scarica come sempre, e
+    // se nemmeno quello funziona l'immagine si apre qui, da tenere premuta per
+    // salvarla.
+    function salvaImmagine(dati) {
+      function scarica() {
+        var a = document.createElement("a");
+        a.href = dati; a.download = nomeFile();
+        document.body.appendChild(a); a.click(); a.remove();
+      }
+      if (!TOCCO) return scarica();                      // col mouse: si scarica e basta
+      function aMano(e) {
+        if (e && e.name === "AbortError") return;          // l'ha chiusa lui
+        var v = pannello("", "Immagine");
+        setTimeout(function () {
+          var d = v.querySelector("iframe").contentWindow.document;
+          d.open();
+          d.write('<body style="margin:0;background:#0A0F24;display:flex;align-items:center;justify-content:center">' +
+                  '<img src="' + dati + '" style="max-width:100%;max-height:100%">');
+          d.close();
+        }, 30);
+        nota("Tieni premuta l'immagine per salvarla nelle Foto.", "");
+      }
+      // iPad: il foglio di condivisione (Foto, File, Mail). Senza, l'immagine
+      // si apre qui: un tablet vecchio non salverebbe niente col solo link.
+      if (!navigator.canShare) return aMano();
+      fetch(dati).then(function (r2) { return r2.blob(); }).then(function (b) {
+        var file = new File([b], nomeFile(), { type: "image/png" });
+        if (!navigator.canShare({ files: [file] })) throw new Error("niente condivisione");
+        return navigator.share({ files: [file], title: titolo() });
+      }).catch(aMano);
+    }
+    // STAMPA. La finestra nuova su iPad viene bloccata (e dentro l'app
+    // butterebbe fuori): il foglio si costruisce in un riquadro nascosto qui
+    // dentro e si stampa quello.
+    function stampaFoglio(html) {
+      var f = document.createElement("iframe");
+      f.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0";
+      document.body.appendChild(f);
+      var d = f.contentWindow.document;
+      d.open(); d.write(html); d.close();
+      function vai() {
+        try { f.contentWindow.focus(); f.contentWindow.print(); }
+        catch (e) { nota("La stampa non e' partita.", "err"); }
+        setTimeout(function () { f.remove(); }, 60000);
+      }
+      var im = d.images && d.images[0];
+      if (im && !im.complete) { im.onload = function () { setTimeout(vai, 120); }; im.onerror = vai; }
+      else setTimeout(vai, 200);
+    }
     function stampa() {
       immagine(function (dati) {
-        var w = window.open("", "_blank");
-        if (!w) { nota("Il browser ha bloccato la finestra di stampa.", "err"); return; }
+        var w = { document: { write: function (h) { stampaFoglio(h); }, close: function () {} } };
         var note = Object.keys(NOTE).map(function (k) {
           var pezzi = k.split(":");
           var g = (SQ[pezzi[0]].rosa || []).filter(function (x) { return String(x.pid) === pezzi[1]; })[0] ||
@@ -1697,7 +1755,7 @@ window.Lavagna = (function () {
           'h1{font-size:16pt;margin:0 0 4mm}img{width:100%;border-radius:3mm}' +
           '.b{display:flex;gap:6mm;margin-top:4mm;font-size:9.5pt;line-height:1.5}' +
           '.b > div{flex:1}.b h2{font-size:10pt;margin-bottom:2mm}</style>' +
-          '<h1>' + esc(titolo()) + '</h1><img src="' + dati + '" onload="window.print()">' +
+          '<h1>' + esc(titolo()) + '</h1><img src="' + dati + '">' +
           '<div class="b"><div><h2>Cambi</h2>' + (cambi || "—") + '</div>' +
           '<div><h2>Curiosità</h2>' + (note || "—") + '</div></div>');
         w.document.close();
@@ -1713,11 +1771,7 @@ window.Lavagna = (function () {
       if (b.dataset.az === "tema") tema(!box.classList.contains("chiara"), true);
       if (b.dataset.az === "foglio") apriFoglio();
       if (b.dataset.az === "schedario") apriSchedario("");
-      if (b.dataset.az === "png") immagine(function (dati) {
-        var a = document.createElement("a");
-        a.href = dati; a.download = titolo().replace(/[^A-Za-z0-9-]+/g, "-") + ".png";
-        document.body.appendChild(a); a.click(); a.remove();
-      });
+      if (b.dataset.az === "png") immagine(salvaImmagine);
     });
 
     // ── quello che entra e quello che esce ──────────────────────────────
@@ -1861,8 +1915,29 @@ window.Lavagna = (function () {
         });
       });
     }
+    // LO SCHERMO ACCESO. In telecronaca il tablet resta fermo sul tavolo: senza
+    // questo iOS lo spegne dopo pochi minuti e il telecronista deve sbloccarlo
+    // con la partita in corso. Vale solo mentre si segue la diretta.
+    var SVEGLIA = null;
+    function tieniAcceso(si) {
+      if (!si) {
+        if (SVEGLIA && SVEGLIA.release) { try { SVEGLIA.release(); } catch (e) {} }
+        SVEGLIA = null;
+        return;
+      }
+      if (!navigator.wakeLock || SVEGLIA) return;
+      navigator.wakeLock.request("screen").then(function (w) {
+        SVEGLIA = w;
+        w.addEventListener("release", function () { SVEGLIA = null; });
+      }).catch(function () {});
+    }
+    // tornando sull'app dopo averla lasciata, il blocco va richiesto di nuovo
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible" && DIR) tieniAcceso(true);
+    });
     function seguiPartita(opz) {
       fermaPartita();
+      tieniAcceso(true);
       DIR = { lega: opz.lega, ev: opz.event, casa: opz.casa || "", visti: {}, coda: [], vistiEventi: {}, vistiCart: {} };
       striscia('<b>Diretta</b> <span class="azione">mi collego…</span>');
       giro();
@@ -1881,6 +1956,7 @@ window.Lavagna = (function () {
       }, 900);
     }
     function fermaPartita() {
+      tieniAcceso(false);
       if (!DIR) return;
       clearInterval(DIR.timer); clearInterval(DIR.passo);
       DIR = null; striscia("");
