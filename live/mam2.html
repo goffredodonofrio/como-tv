@@ -641,7 +641,7 @@
     var pers = persone();
     var lingua = (DETTO[0] && DETTO[0].l) || "it";
     var h = "";
-    h += blocco("info", "Match info", "", (FORSE ? '<div class="forse">Il tabellone dice: forse è <b>' + esc(FORSE.nome) + '</b> (voto ' + esc(String(FORSE.voto)) + ')<button class="mini oro" data-forse="si">Conferma</button><button class="mini" data-forse="no">Non è lei</button></div>' : '') + '<div class="info"><span>partita</span><b>' + esc(r.titolo || "") + '</b>' + (r.competizione ? '<span>competizione</span><b>' + esc(r.competizione) + '</b>' : '') + '<span>data</span><b>' + quando(r.avviata) + '</b><span>durata</span><b>' + durata(r.durata) + ' · ' + tc(r.durata) + '</b><span>calcio d’inizio</span><b>' + fischioTesto("1") + '</b><span>ripresa</span><b>' + fischioTesto("2") + '</b><span>telecronaca</span><b>' + (DETTO.length ? DETTO.length + " righe · " + (lingua === "en" ? "inglese" : "italiano") : "non trascritta") + '</b><span>fonti</span><b>' + esc(Object.keys(TAB.reduce(function(a,x){ a[x.fonte] = 1; return a; }, {})).join(", ") || "—") + '</b></div>' +
+    h += blocco("info", "Match info", "", (FORSE ? '<div class="forse">' + (FORSE.voto ? 'Il tabellone dice: forse è ' : 'Forse è ') + '<b>' + esc(FORSE.nome) + '</b> <small style="color:var(--fumo)">' + esc(FORSE.voto ? "voto " + FORSE.voto : (FORSE.perche || [])[0] || "") + '</small><button class="mini oro" data-forse="si">Conferma</button><button class="mini" data-forse="no">Non è lei</button></div>' : '') + '<div class="info"><span>partita</span><b>' + esc(r.titolo || "") + '</b>' + (r.competizione ? '<span>competizione</span><b>' + esc(r.competizione) + '</b>' : '') + '<span>data</span><b>' + quando(r.avviata) + '</b><span>durata</span><b>' + durata(r.durata) + ' · ' + tc(r.durata) + '</b><span>calcio d’inizio</span><b>' + fischioTesto("1") + '</b><span>ripresa</span><b>' + fischioTesto("2") + '</b><span>telecronaca</span><b>' + (DETTO.length ? DETTO.length + " righe · " + (lingua === "en" ? "inglese" : "italiano") : "non trascritta") + '</b><span>fonti</span><b>' + esc(Object.keys(TAB.reduce(function(a,x){ a[x.fonte] = 1; return a; }, {})).join(", ") || "—") + '</b></div>' +
          '<div class="azioniS"><button class="mini" data-anc="1" title="il primo tempo comincia al secondo in cui è fermo il video">1T comincia qui</button><button class="mini" data-anc="2" title="il secondo tempo comincia al secondo in cui è fermo il video">2T comincia qui</button><button class="mini" data-anc="auto" title="cerca il fischio nelle frasi del telecronista, nei gol e nei minuti detti">Dalla telecronaca</button><button class="mini" data-anc="cronometro" title="rilegge il cronometro in sovrimpressione (un minuto di lavoro)">Rileggi cronometro</button>' + (ANCORA && ANCORA !== "niente" && ANCORA !== "ora del file" ? '<button class="mini" data-anc="via" title="torna alla stima">Togli</button>' : '') + '</div>', false);
     h += blocco("azioni", "Azioni", tab.length, (tab.length ? tab.map(function(x, i){
       var k = TAB.indexOf(x);
@@ -1267,11 +1267,15 @@
 
   // ══════════ AVVIO ══════════
   stato(); caricaEventi(); disegnaRiprendi(); caricaProgetti();
-  var pa = /(\?|&)asset=([A-Za-z0-9]+)/.exec(location.search), pr = /(\?|&)reg=([a-z0-9]+)/.exec(location.search), pt = /(\?|&)t=(\d+)/.exec(location.search), pq = /(\?|&)q=([^&]+)/.exec(location.search), ps = /(\?|&)seq=([a-z0-9]+)/.exec(location.search);
+  // l'identificativo di una partita che sta solo su S3 ha i due punti
+  // ("s3:4579…"), e nell'indirizzo arriva come %3A: con [A-Za-z0-9]+ se ne
+  // prendeva solo "s3" e la pagina diceva "non e' nell'indice" (23/09)
+  var vai0 = function(n){ var m = new RegExp("(\\?|&)" + n + "=([^&]+)").exec(location.search); return m ? decodeURIComponent(m[2]) : ""; };
+  var pa = vai0("asset"), pr = vai0("reg"), pt = vai0("t"), pq = vai0("q"), ps = vai0("seq");
   if (/(\?|&)live=1/.test(location.search)) apriLive();
-  else if (ps) apriEditor(ps[2]);
-  else if (pa) apriAsset(pa[2], pr ? pr[2] : "", pt ? +pt[2] : 0);
-  else { vai("libreria"); if (pq) cerca(decodeURIComponent(pq[2])); }
+  else if (ps) apriEditor(ps);
+  else if (pa) apriAsset(pa, pr, +pt || 0);
+  else { vai("libreria"); if (pq) cerca(pq); }
 })();
 </script>
 <script src="dev.js"></script>
