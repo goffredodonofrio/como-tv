@@ -11311,7 +11311,101 @@ function anello() {
 
 // ── innesto nel ponte ─────────────────────────────────────────────────
 
+// ═══════════════════════════════════════════════════════════════════
+//  CANTO — le foto di Mola dentro la nostra ricerca
+// ═══════════════════════════════════════════════════════════════════
+//
+//  Il portale sta su mola.canto.global e parla OAuth 2.0 con credenziali
+//  d'applicazione: un identificativo e un segreto che un amministratore del
+//  portale crea una volta. Qui dentro non ci sono, e non ci devono essere:
+//  si leggono dall'ambiente, come la chiave di Airtable.
+//
+//      COMOTV_CANTO_ID        l'identificativo dell'applicazione
+//      COMOTV_CANTO_SEGRETO   il segreto
+//      COMOTV_CANTO_DOMINIO   mola.canto.global
+//
+//  Il disegno e' lo stesso dell'archivio S3: prima si porta a casa SOLO
+//  l'elenco — nome, album, tag, data, misure — che pesa pochi mega e si
+//  cerca in casa; le anteprime si tengono in cache; l'originale si scarica
+//  soltanto quando qualcuno lo chiede davvero.
+const CANTO = {
+  id: process.env.COMOTV_CANTO_ID || "",
+  segreto: process.env.COMOTV_CANTO_SEGRETO || "",
+  dominio: (process.env.COMOTV_CANTO_DOMINIO || "mola.canto.global").replace(/^https?:\/\//, "").replace(/\/+$/, "")
+};
+const CANTO_TOKEN_URL = "https://oauth.canto.global/oauth/api/oauth2/compatible/token";
+function cantoAcceso() { return !!(CANTO.id && CANTO.segreto && CANTO.dominio); }
+let cantoGettone = { valore: "", scade: 0 };
+
+function cantoChiediHttps(url, opzioni, corpo) {
+  return new Promise((si, no) => {
+    const req = https.request(url, opzioni, (res) => {
+      let t = "";
+      res.on("data", (d) => { t += d; });
+      res.on("end", () => si({ stato: res.statusCode, testo: t }));
+    });
+    req.on("error", (e) => no(new Error("Canto non raggiungibile: " + e.message)));
+    req.setTimeout(30000, () => { req.destroy(); no(new Error("Canto non risponde")); });
+    if (corpo) req.write(corpo);
+    req.end();
+  });
+}
+
+// il gettone dura un po': si tiene finche' vale, e si rifa' da solo
+async function cantoGettoneValido() {
+  if (!cantoAcceso()) throw new Error("mancano le credenziali di Canto sul ponte (COMOTV_CANTO_ID e COMOTV_CANTO_SEGRETO)");
+  if (cantoGettone.valore && Date.now() < cantoGettone.scade - 60000) return cantoGettone.valore;
+  const corpo = new URLSearchParams({
+    grant_type: "client_credentials", app_id: CANTO.id, app_secret: CANTO.segreto, scope: "admin"
+  }).toString();
+  const r = await cantoChiediHttps(CANTO_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", "Content-Length": Buffer.byteLength(corpo) }
+  }, corpo);
+  if (r.stato !== 200) throw new Error("Canto non da' il gettone (" + r.stato + "): " + r.testo.slice(0, 160));
+  let j; try { j = JSON.parse(r.testo); } catch (e) { throw new Error("il gettone di Canto e' illeggibile"); }
+  if (!j.accessToken && !j.access_token) throw new Error("nella risposta di Canto non c'e' nessun gettone: " + r.testo.slice(0, 160));
+  cantoGettone = { valore: j.accessToken || j.access_token,
+                   scade: Date.now() + (Number(j.expiresIn || j.expires_in || 1800) * 1000) };
+  return cantoGettone.valore;
+}
+
+async function cantoChiedi(via, cerca) {
+  const tok = await cantoGettoneValido();
+  const q = cerca ? "?" + new URLSearchParams(cerca).toString() : "";
+  const url = "https://" + CANTO.dominio + "/api/v1/" + String(via).replace(/^\/+/, "") + q;
+  const r = await cantoChiediHttps(url, { method: "GET", headers: { Authorization: "Bearer " + tok } });
+  if (r.stato !== 200) throw new Error("Canto risponde " + r.stato + " su /" + via + ": " + r.testo.slice(0, 160));
+  try { return JSON.parse(r.testo); } catch (e) { throw new Error("Canto ha risposto qualcosa che non e' JSON"); }
+}
+
+// LA SONDA. Al primo accesso non si sa come sono fatti i campi di questo
+// portale: invece di indovinarli, si chiede una manciata di asset e si
+// riferisce quali nomi ci sono dentro. Da li' si scrive la mappatura vera.
+async function cantoProva() {
+  const fuori = { ok: true, dominio: CANTO.dominio, credenziali: cantoAcceso() };
+  if (!cantoAcceso()) { fuori.ok = false; fuori.errore = "mancano COMOTV_CANTO_ID e COMOTV_CANTO_SEGRETO"; return fuori; }
+  await cantoGettoneValido();
+  fuori.gettone = "preso";
+  const prove = [["search", { limit: "5" }], ["album", { limit: "5" }], ["tree", {}]];
+  fuori.risposte = {};
+  for (const [via, cerca] of prove) {
+    try {
+      const j = await cantoChiedi(via, cerca);
+      const primo = Array.isArray(j) ? j[0] : (j.results && j.results[0]) || (j.found !== undefined ? j : j);
+      fuori.risposte[via] = {
+        chiaviInAlto: Object.keys(j || {}).slice(0, 12),
+        quanti: j && (j.found !== undefined ? j.found : (Array.isArray(j.results) ? j.results.length : undefined)),
+        campiDiUnAsset: primo && typeof primo === "object" ? Object.keys(primo).slice(0, 30) : null,
+        assaggio: JSON.stringify(primo || j).slice(0, 700)
+      };
+    } catch (e) { fuori.risposte[via] = { errore: String(e.message).slice(0, 200) }; }
+  }
+  return fuori;
+}
+
 const AZIONI = {
+  "clip-canto-prova": cantoProva,
   "clip-avvia": clipAvvia,
   "clip-ferma": clipFerma,
   "clip-rinomina": clipRinomina,
