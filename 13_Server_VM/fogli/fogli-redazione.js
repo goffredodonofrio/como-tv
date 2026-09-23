@@ -412,6 +412,24 @@ function tipoDi(nome, sq) {
   if (sq.length === 1 && (/partita|intro|curiosita|gara|riserve|panchine/i.test(n) || sq[0].split(" ").length > 3)) return "partita";
   return sq.length === 1 ? "squadra" : "altro";
 }
+// IL NOME DEL FOGLIO, uguale per tutti. I giornalisti chiamano i file come
+// vogliono ("River.Bragantino", "20260827 Ritorno Ottavi..."): qui diventano
+// "Casa – Ospite". Se il foglio e' agganciato a una partita di Airtable il
+// nome lo danno le due squadre vere (giroPartite lo riscrive).
+const PICCOLE = /^(of|the|and|de|del|della|dei|des|di|da|do|dos|das|la|le|les|el|al|il|lo|y|e|en|van|von|der|den|bin)$/;
+function titoloIt(t) {
+  return String(t || "").toLowerCase().replace(/[a-zà-ÿ][a-zà-ÿ'’]*/g, (w, k) => (k && PICCOLE.test(w)) ? w : w[0].toUpperCase() + w.slice(1));
+}
+function nomeFoglio(f) {
+  const sq = f.squadre || [];
+  if (sq.length === 2) return titoloIt(sq[0]) + " – " + titoloIt(sq[1]);
+  if (sq.length === 1) return titoloIt(sq[0]);
+  // niente squadre: il nome del file, ripulito da date, numeri e trattini
+  let t = String(f.titolo || f.nomeFile || "").replace(ESTENSIONI, "")
+    .replace(/[_]+/g, " ").replace(/\b20\d{6}\b/g, " ")
+    .replace(/\d{1,2}[-./]\d{1,2}[-./]\d{2,4}/g, " ").replace(/\s+/g, " ").trim();
+  return t || "Foglio della redazione";
+}
 function squadreDa(nome, testo) {
   let s = String(nome || "").normalize("NFC");
   while (ESTENSIONI.test(s)) s = s.replace(ESTENSIONI, "");
@@ -474,6 +492,9 @@ function rifai() {
     // i fogli gia' salvati si rileggono con le regole di adesso (squadre, struttura)
     const sq = squadreDa(f.nomeFile || f.titolo + ".docx", f.testo);
     let cambia = !f.blocchi || JSON.stringify(sq) !== JSON.stringify(f.squadre);
+    // il nome uguale per tutti; se il foglio ha gia' la sua partita, lo tiene
+    const nome = f.partita && f.nome ? f.nome : nomeFoglio(Object.assign({}, f, { squadre: sq }));
+    if (nome !== f.nome) { f.nome = nome; cambia = true; }
     // PDF e testo: la struttura viene dal testo salvato, e si rifa' sempre
     // con le regole di adesso (il Word no: serve il file, vedi --rileggi)
     if (!f.blocchi || !/\.docx$/i.test(f.nomeFile || "")) {
@@ -492,7 +513,7 @@ function rifai() {
     aggiornato: new Date().toISOString(),
     // tipo: partita (due squadre), squadra (una), altro. cerca: titolo e prime
     // righe, per agganciare anche "Millwall West Ham" senza separatore
-    fogli: fogli.map((f) => ({ id: f.id, titolo: f.titolo, squadre: f.squadre, chiavi: f.chiavi, data: f.data,
+    fogli: fogli.map((f) => ({ id: f.id, titolo: f.titolo, nome: f.nome || nomeFoglio(f), squadre: f.squadre, chiavi: f.chiavi, data: f.data,
                               tipo: tipoDi(f.nomeFile || f.titolo, f.squadre),
                               cerca: piano(f.titolo + " " + String(f.testo || "").slice(0, 300)),
                               autore: f.autore, fonte: f.fonte, link: f.link }))
@@ -903,7 +924,7 @@ function schedario(stato) {
     // partita, e sta nel foglio
     const SUE_SEZIONI = /storia|stadio|impianto|precedent|classific|forma|societ|club|palmar|mercato|allenator|tifos|rivalit/i;
     sue.forEach((s) => {
-      s.fogli.push({ id: f.id, data: f.data, autore: f.autore, titolo: f.titolo });
+      s.fogli.push({ id: f.id, data: f.data, autore: f.autore, titolo: f.nome || nomeFoglio(f) });
       const nome = pianoS(s.nome);
       frasi.forEach((x) => {
         const dentro = nome && (" " + piano(x.frase) + " ").indexOf(" " + nome + " ") >= 0;
@@ -1041,6 +1062,29 @@ async function giroPartite(stato) {
              (f.cerca || "").indexOf(pianoS(m.casa)) >= 0 && (f.cerca || "").indexOf(pianoS(m.ospite)) >= 0;
     }).map((f) => f.id);
   }
+  // IL NOME DEI FOGLI agganciati a una partita: le due squadre vere, cosi'
+  // "River.Bragantino" e "Bragantino-River" si chiamano tutti e due
+  // "River Plate – Bragantino"
+  const dirF = path.join(PUB, "fogli");
+  const ind = leggiJson(path.join(PUB, "indice.json"), { fogli: [] });
+  const perId = {};
+  (ind.fogli || []).forEach((f) => { perId[f.id] = f; });
+  let toccati = 0;
+  partite.forEach((m) => {
+    const casa = titoloIt(m.espn ? m.espn.casa : m.casa), osp = titoloIt(m.espn ? m.espn.ospite : m.ospite);
+    const nome = casa + " – " + osp;
+    (m.fogli || []).forEach((id) => {
+      const f = leggiJson(path.join(dirF, id + ".json"), null);
+      if (!f) return;
+      const part = { casa, ospite: osp, quando: m.quando, competizione: m.competizione };
+      if (f.nome === nome && JSON.stringify(f.partita) === JSON.stringify(part)) return;
+      f.nome = nome; f.partita = part;
+      scriviJson(path.join(dirF, id + ".json"), f);
+      if (perId[id]) perId[id].nome = nome;
+      toccati++;
+    });
+  });
+  if (toccati) scriviJson(path.join(PUB, "indice.json"), ind);
   scriviJson(path.join(PUB, "partite.json"), { aggiornato: new Date().toISOString(), partite });
   scriviJson(STATO, stato);
   console.log("[fogli] partite: " + partite.length + " da Airtable, " + partite.filter((m) => m.espn).length +

@@ -1243,7 +1243,7 @@ window.Lavagna = (function () {
           function frase(x, conFoglio) {
             var f = per[x.id];
             return '<div class="fr">' + esc(x.frase) + "<small>" + (x.sezione ? "<b>" + esc(x.sezione) + "</b> · " : "") +
-                   (conFoglio ? esc((f.squadre || []).join(" - ") || f.titolo) + " · " + esc(dataIt(f.data)) + " · " : "") +
+                   (conFoglio ? esc(f.nome || (f.squadre || []).join(" - ") || f.titolo) + " · " + esc(dataIt(f.data)) + " · " : "") +
                    (f.autore ? esc(f.autore) + " · " : "") +
                    '<a data-foglio="' + esc(f.id) + '" data-frase="' + esc(x.frase) + '">leggi nel foglio</a></small></div>';
           }
