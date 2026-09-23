@@ -1012,16 +1012,31 @@ function giovanili() {
     new Function("window", src)(finestra);
     G = finestra.GIOVANILI;
   } catch (e) { console.log("[fogli] giovanili non lette: " + e.message); return {}; }
+  // Le squadre del Como tenute distinte per eta', coi nomi che usa la
+  // redazione: la Primavera e' l'U20, e la squadra di Youth League e' la
+  // stessa rosa (nel database si chiama "Como 1907" e finiva per confondersi
+  // con la prima squadra).
+  // eta: serve ad attaccare a ognuna solo i fogli della sua squadra
+  const COMO_GIO = {
+    "como-primavera": { id: "gio-como-u20", nome: "Como U20 (Primavera)", eta: /primavera|u ?20|under ?20|youth league/i },
+    "como-yl":        { id: "gio-como-u20", nome: "Como U20 (Primavera)", eta: /primavera|u ?20|under ?20|youth league/i },
+    "como-u18":       { id: "gio-como-u18", nome: "Como U18", eta: /u ?18|under ?18/i },
+    "como-u17":       { id: "gio-como-u17", nome: "Como U17", eta: /u ?17|under ?17/i }
+  };
   const out = {};
   (G && G.COMPS || []).forEach((c) => {
     (c.squadre || []).forEach((q) => {
+      const chi = COMO_GIO[q.id] || { id: "gio-" + q.id, nome: q.n };
       const gi = (q.rosa || []).map((x) => ({
-        id: "gio-" + q.id + "-" + piano(x.cognome).replace(/\s+/g, "-"),
+        id: chi.id + "-" + piano(x.cognome).replace(/\s+/g, "-"),
         nome: x.nome || "", cognome: x.cognome || "", intero: ((x.nome || "") + " " + (x.cognome || "")).trim(),
         num: x.num || "", ruolo: x.ruolo || ""
       })).filter((x) => x.cognome);
       if (!gi.length) return;
-      out["gio-" + q.id] = { quando: Date.now(), lega: c.code, nome: q.n, giovanili: true, giocatori: gi };
+      const v = out[chi.id] || (out[chi.id] = { quando: Date.now(), lega: c.code, nome: chi.nome, giovanili: true,
+                                                eta: chi.eta || null, giocatori: [] });
+      // la stessa rosa arriva da due competizioni (Primavera e Youth League): una volta sola
+      gi.forEach((x) => { if (!v.giocatori.some((y) => y.id === x.id)) v.giocatori.push(x); });
     });
   });
   return out;
@@ -1097,15 +1112,21 @@ function schedario(stato) {
   const squadre = new Map();
   Object.keys(rose).forEach((tid) => {
     squadre.set(tid, { tid: tid, nome: rose[tid].nome, lega: rose[tid].lega, giovanili: !!rose[tid].giovanili,
-                       chiave: pianoS(rose[tid].nome), fogli: [], frasi: [] });
+                       eta: rose[tid].eta || null, chiave: pianoS(rose[tid].nome), fogli: [], frasi: [] });
   });
   fogli.forEach((f) => {
     const frasi = perFoglio.get(f.id) || [];
     const capo = { id: f.id, titolo: f.titolo, squadre: f.squadre, data: f.data, autore: f.autore, fonte: f.fonte };
     // la squadra: il foglio la nomina nel titolo
     const sue = [];
+    const dove = (f.nomeFile || "") + " " + (f.nome || "") + " " + (f.titolo || "") + " " +
+                 ((f.partita || {}).competizione || "") + " " + String(f.testo || "");
     squadre.forEach((s) => {
-      if ((f.chiavi || []).some((c) => stessoNome(c, s.nome))) sue.push(s);
+      if (!(f.chiavi || []).some((c) => stessoNome(c, s.nome))) return;
+      // le giovanili: solo i fogli della loro fascia d'eta', se no un foglio
+      // dell'Under 17 finirebbe anche sulla Primavera
+      if (s.eta && !s.eta.test(dove)) return;
+      sue.push(s);
     });
     // della squadra si tengono le frasi che la nominano e quelle delle sezioni
     // che parlano di lei (storia, stadio, precedenti, forma): il resto e' la
@@ -1118,12 +1139,44 @@ function schedario(stato) {
       const nome = pianoS(s.nome);
       frasi.forEach((x) => {
         const dentro = nome && (" " + piano(x.frase) + " ").indexOf(" " + nome + " ") >= 0;
-        if (!dentro && !SUE_SEZIONI.test(x.sezione || "")) return;
+        // di una giovanile il foglio parla tutto: e' gia' stato scelto per la
+        // sua fascia d'eta', quindi si tengono tutte le frasi
+        if (!s.eta && !dentro && !SUE_SEZIONI.test(x.sezione || "")) return;
         s.frasi.push({ id: f.id, data: f.data, autore: f.autore, frase: x.frase, sezione: x.sezione, sua: dentro });
       });
     });
+    // QUANDO IL TITOLO E' IL NOME: nei fogli sulle giovanili (la rosa
+    // commentata ragazzo per ragazzo) il nome sta nel titolo della sezione e
+    // le righe sotto non lo ripetono. Allora le frasi di quella sezione sono
+    // sue, senza doverlo rinominare ogni volta.
+    const diSezione = {};
+    if (sue.length) {
+      const viste = {};
+      frasi.forEach((x) => {
+        const sez = String(x.sezione || "").trim();
+        if (!sez || sez.length > 60 || viste[sez] !== undefined) return;
+        const piatta = " " + piano(sez) + " ";
+        const chi = [];
+        sue.forEach((s) => {
+          (rose[s.tid].giocatori || []).forEach((g) => {
+            const cog = piano(g.cognome);
+            if (cog.length >= 3 && piatta.indexOf(" " + cog + " ") >= 0 && giocatori.get(g.id)) chi.push(giocatori.get(g.id));
+          });
+        });
+        // lo stesso ragazzo tesserato in due squadre (Primavera e Under 18) e'
+        // una persona sola: le frasi vanno su tutte e due le schede. Due nomi
+        // diversi nel titolo invece no: meglio non indovinare.
+        const quale = chi.map((g) => piano(g.nome + " " + g.cognome));
+        viste[sez] = chi.length && quale.every((q) => q === quale[0]) ? chi : null;
+      });
+      Object.keys(viste).forEach((k) => { if (viste[k]) diSezione[k] = viste[k]; });
+    }
     // i giocatori nominati nella frase
     frasi.forEach((x) => {
+      (diSezione[String(x.sezione || "").trim()] || []).forEach((suo) => {
+        if (!suo.frasi.some((y) => y.id === f.id && y.frase === x.frase))
+          suo.frasi.push({ id: f.id, data: f.data, autore: f.autore, frase: x.frase, sezione: x.sezione, sua: true });
+      });
       const gia = {};
       (x.frase.match(/[A-ZÀ-Ý][A-Za-zÀ-ÿ'’-]{2,}/g) || []).forEach((par) => {
         const k = piano(par);

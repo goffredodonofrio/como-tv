@@ -28,6 +28,32 @@ window.Lavagna = (function () {
   "use strict";
   // col dito o col mouse: cambia come si apre la scheda e cosa c'e' scritto
   var TOCCO = (navigator.maxTouchPoints || 0) > 0 && !window.matchMedia("(hover:hover)").matches;
+  // APP: quando TELECRONACA e' stata aggiunta alla schermata Home gira a
+  // schermo intero senza browser. Li' una finestra nuova butterebbe fuori
+  // dall'app (Safari la apre per conto suo), quindi CURIOSITA' e SCHEDARIO
+  // si aprono dentro, in un pannello.
+  var APP = !!(window.navigator.standalone || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
+               || /[?&]app=1/.test(location.search));       // ?app=1 per provarla senza installarla
+  function pannello(via, titolo) {
+    var v = document.querySelector(".lav-pannello");
+    if (!v) {
+      v = document.createElement("div");
+      v.className = "lav-pannello";
+      v.innerHTML = '<div class="lp-testa"><b></b><span></span>' +
+        '<button type="button" data-lp="fuori">Apri a parte</button>' +
+        '<button type="button" data-lp="via">Chiudi</button></div><iframe></iframe>';
+      document.body.appendChild(v);
+      v.addEventListener("click", function (ev) {
+        var b = ev.target.closest ? ev.target.closest("[data-lp]") : null;
+        if (!b) return;
+        if (b.dataset.lp === "via") v.remove();
+        else window.open(v.querySelector("iframe").src, "_blank");
+      });
+    }
+    v.querySelector("b").textContent = titolo || "";
+    v.querySelector("iframe").src = via;
+    return v;
+  }
 
   var W = 1600, H = 900;
   var MODULI = {
@@ -129,6 +155,28 @@ window.Lavagna = (function () {
       "  border:1px solid rgba(201,162,75,.5);border-radius:10px;padding:12px;" +
       // piu' alta del campo non puo' andare (il campo taglia): scorre dentro
       "  max-height:calc(100% - 16px);overflow-y:auto;overscroll-behavior:contain;}" +
+      // il pannello dentro l'app (iPad a schermo intero): copre la pagina,
+      // si chiude col tasto, e "Apri a parte" resta per chi ha una finestra vera
+      ".lav-pannello{position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:#0A0F24;display:flex;flex-direction:column;" +
+      "  padding-top:env(safe-area-inset-top);}" +
+      ".lav-pannello .lp-testa{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#141B3C;" +
+      "  border-bottom:1px solid rgba(245,241,230,.12);}" +
+      ".lav-pannello .lp-testa b{font-family:'Mazzard',sans-serif;font-size:13px;letter-spacing:.18em;" +
+      "  text-transform:uppercase;color:#E3C271;flex:1 1 auto;}" +
+      ".lav-pannello .lp-testa button{font-family:'Mazzard',sans-serif;font-weight:700;font-size:11px;letter-spacing:.1em;" +
+      "  text-transform:uppercase;padding:10px 14px;border-radius:8px;cursor:pointer;background:rgba(245,241,230,.08);" +
+      "  color:#F5F1E6;border:1px solid rgba(245,241,230,.18);}" +
+      ".lav-pannello iframe{flex:1 1 auto;width:100%;border:0;background:#E9E4D8;}" +
+      // COL DITO: bersagli piu' grandi, niente selezione del testo per sbaglio,
+      // niente menu di iOS tenendo premuto su un giocatore
+      "@media (pointer:coarse){" +
+      " .lav .barra button,.lav .sotto button,.lav .segui button{min-height:40px;padding:10px 14px;font-size:12px;}" +
+      " .lav .barra select,.lav .barra input,.lav .sotto select,.lav .sotto input{min-height:40px;font-size:15px;}" +
+      " .lav .rose button{min-height:38px;font-size:13.5px;}" +
+      " .lav .foglietto{width:min(460px,94%);}" +
+      " .lav .foglietto .piede button{min-height:42px;}" +
+      "}" +
+      ".lav .campoBox{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}" +
       ".lav .foglietto .allo-schedario{font-size:12px;margin-top:3px;}" +
       ".lav .foglietto .allo-schedario a{color:var(--lav-oroB);cursor:pointer;text-decoration:underline;}" +
       ".lav .foglietto .testa{display:flex;gap:12px;align-items:flex-end;margin-bottom:2px;}" +
@@ -1179,6 +1227,7 @@ window.Lavagna = (function () {
     // parte: la lavagna resta dov'e'. Sempre la stessa finestra, riusata.
     // LO SCHEDARIO: squadre e giocatori fatti con le curiosita' della redazione
     function apriSchedario(dove) {
+      if (APP) return pannello("schedario.html" + (dove || ""), "Schedario");
       var w = window.open("schedario.html" + (dove || ""), "comotv-schedario",
                           "width=1040,height=" + Math.min(1100, screen.availHeight || 1000) + ",resizable=yes,scrollbars=yes");
       if (w) w.focus();
@@ -1196,11 +1245,20 @@ window.Lavagna = (function () {
       // (Safari su iPad blocca le finestre aperte dopo una risposta di rete)
       if (!id && SCELTA && SCELTA.ids.length) id = SCELTA.ids[0];
       if (id) {
+        if (APP) { pannello(via(id), "Curiosit\u00e0"); return; }
         var w = window.open(via(id), "comotv-curiosita", misure);
         if (w) w.focus(); else bloccata();
         return;
       }
       // se no si cerca il foglio: la finestra si apre subito vuota e poi ci si va
+      if (APP) {
+        indice().then(function (v) {
+          var x = (fogliPartita(v)[0] || fogliSquadra(v)[0] || {}).id;
+          if (x) pannello(via(x), "Curiosit\u00e0");
+          else nota("Per questa partita non c'&egrave; nessun foglio della redazione.", "");
+        });
+        return;
+      }
       var w2 = window.open("", "comotv-curiosita", misure);
       if (!w2) return bloccata();
       indice().then(function (v) {

@@ -2192,6 +2192,117 @@ function json(res, corpo, codice) {
   res.end(testo);
 }
 
+// ── SCHEDARIO: le aggiunte a mano ─────────────────────────────────────
+// Le frasi dei fogli le prepara il lettore della redazione; qui si tiene solo
+// quello che i telecronisti aggiungono a mano su un giocatore o su una
+// squadra. Chi scrive lascia il suo nome: non c'e' password (la pagina e'
+// interna), quindi tutto e' cappato e di ogni scrittura resta la copia
+// di prima.
+const SCHEDARIO_FILE = path.join(path.dirname(CONFIG.STATO), "schedario-note.json");
+const SCHEDARIO_CHIAVE = /^[gs]-[A-Za-z0-9-]{1,48}$/;      // anche le giovanili: g-gio-como-primavera-bensi
+function schedarioTutto() {
+  try { return JSON.parse(fs.readFileSync(SCHEDARIO_FILE, "utf8")); } catch (e) { return {}; }
+}
+function schedarioSalva(tutto) {
+  const testo = JSON.stringify(tutto);
+  if (testo.length > 8e6) throw new Error("schedario pieno: chiedi a chi tiene il ponte");
+  try { if (fs.existsSync(SCHEDARIO_FILE)) fs.copyFileSync(SCHEDARIO_FILE, SCHEDARIO_FILE + ".bak"); } catch (e) {}
+  const tmp = SCHEDARIO_FILE + ".tmp";
+  fs.writeFileSync(tmp, testo);
+  fs.renameSync(tmp, SCHEDARIO_FILE);
+}
+function schedarioNota(p) {
+  const chiave = String(p.chiave || "");
+  if (!SCHEDARIO_CHIAVE.test(chiave)) throw new Error("scheda sconosciuta");
+  const testo = String(p.testo || "").replace(/\s+/g, " ").trim().slice(0, 1200);
+  const chi = String(p.chi || "").trim().slice(0, 40);
+  if (!testo) throw new Error("scrivi qualcosa");
+  const tutto = schedarioTutto();
+  const note = tutto[chiave] || (tutto[chiave] = []);
+  if (p.id) {
+    // correzione: solo il testo cambia, chi e quando restano scritti
+    const v = note.filter(x => x.id === String(p.id))[0];
+    if (!v) throw new Error("nota non trovata");
+    v.testo = testo;
+    v.corretta = { chi, quando: new Date().toISOString() };
+  } else {
+    if (note.length >= 60) throw new Error("su questa scheda ci sono gia' 60 aggiunte");
+    note.push({ id: Math.random().toString(36).slice(2, 10), testo, chi, quando: new Date().toISOString() });
+  }
+  schedarioSalva(tutto);
+  return { ok: true, note };
+}
+function schedarioTogli(p) {
+  const chiave = String(p.chiave || "");
+  if (!SCHEDARIO_CHIAVE.test(chiave)) throw new Error("scheda sconosciuta");
+  const tutto = schedarioTutto();
+  const note = tutto[chiave] || [];
+  const resta = note.filter(x => x.id !== String(p.id || ""));
+  if (resta.length === note.length) throw new Error("nota non trovata");
+  tutto[chiave] = resta;
+  schedarioSalva(tutto);
+  return { ok: true, note: resta };
+}
+
+// ── LE LAVAGNE DEI TELECRONISTI ───────────────────────────────────────
+// Quello che un telecronista prepara in TELECRONACA (campo, cambi,
+// cartellini, appunti sui giocatori) stava nella memoria del browser: su un
+// iPad iOS la svuota dopo giorni di inattivita', e chi cambiava tablet non
+// ritrovava niente. Qui vive sul disco della VM: una lavagna per file, col
+// nome di chi l'ha salvata. Nessuna chiave, come per lo schedario: la pagina
+// e' interna, e ogni salvataggio porta scritto chi e quando.
+const LAVAGNE_DIR = path.join(path.dirname(CONFIG.STATO), "lavagne");
+const LAVAGNA_MAX = 800 * 1024;          // una lavagna piena di disegni sta in mezzo mega
+const LAVAGNE_MAX = 600;
+function lavagneDir() { try { fs.mkdirSync(LAVAGNE_DIR, { recursive: true }); } catch (e) {} return LAVAGNE_DIR; }
+function lavagnaFile(id) {
+  if (!/^[a-z0-9]{6,20}$/.test(String(id || ""))) throw new Error("lavagna sconosciuta");
+  return path.join(lavagneDir(), id + ".json");
+}
+function lavagneElenco() {
+  let v = [];
+  try {
+    v = fs.readdirSync(lavagneDir()).filter(x => x.endsWith(".json")).map(x => {
+      try {
+        const j = JSON.parse(fs.readFileSync(path.join(LAVAGNE_DIR, x), "utf8"));
+        return { id: j.id, nome: j.nome, chi: j.chi || "", quando: j.quando, partita: j.partita || null };
+      } catch (e) { return null; }
+    }).filter(Boolean);
+  } catch (e) {}
+  v.sort((a, b) => String(b.quando).localeCompare(String(a.quando)));
+  return v;
+}
+function lavagnaSalva(p) {
+  const nome = String(p.nome || "").replace(/\s+/g, " ").trim().slice(0, 80);
+  const chi = String(p.chi || "").trim().slice(0, 40);
+  if (!nome) throw new Error("dai un nome alla partita");
+  const dati = JSON.stringify(p.dati || {});
+  if (dati.length > LAVAGNA_MAX) throw new Error("lavagna troppo pesante (" + Math.round(dati.length / 1024) + " KB)");
+  const elenco = lavagneElenco();
+  // stesso nome e stessa persona: si sovrascrive, non si accumula
+  let id = String(p.id || "");
+  if (!id) {
+    const gia = elenco.filter(x => x.nome === nome && (x.chi || "") === chi)[0];
+    id = gia ? gia.id : (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+  }
+  if (!elenco.some(x => x.id === id) && elenco.length >= LAVAGNE_MAX) throw new Error("troppe lavagne salvate: cancellane qualcuna");
+  const f = lavagnaFile(id);
+  const j = { id, nome, chi, quando: new Date().toISOString(), partita: p.partita || null, dati: p.dati || {} };
+  try { if (fs.existsSync(f)) fs.copyFileSync(f, f + ".bak"); } catch (e) {}
+  const tmp = f + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(j));
+  fs.renameSync(tmp, f);
+  return { ok: true, id, elenco: lavagneElenco() };
+}
+function lavagnaLeggi(id) {
+  try { return JSON.parse(fs.readFileSync(lavagnaFile(id), "utf8")); } catch (e) { return null; }
+}
+function lavagnaTogli(p) {
+  const f = lavagnaFile(p.id);
+  try { fs.copyFileSync(f, f + ".tolta"); fs.unlinkSync(f); } catch (e) { throw new Error("lavagna non trovata"); }
+  return { ok: true, elenco: lavagneElenco() };
+}
+
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, "http://" + (req.headers.host || "localhost"));
   const q = u.searchParams;
@@ -2379,6 +2490,12 @@ const server = http.createServer((req, res) => {
       return json(res, { url: url, orfana: url ? "" : fotoOrfana(chi) });
     }
     if (q.get("allenatore")) return json(res, allenatoreDi(q.get("allenatore")));
+    // le lavagne dei telecronisti: l'elenco, o una sola col suo contenuto
+    if (q.get("lavagne")) return json(res, { elenco: lavagneElenco() });
+    if (q.get("lavagna")) {
+      const j = lavagnaLeggi(q.get("lavagna"));
+      return json(res, j ? { ok: true, lavagna: j } : { ok: false, errore: "non trovata" });
+    }
     // SCHEDARIO: le aggiunte a mano alle schede (le frasi dei fogli le fa il
     // lettore, qui stanno solo quelle scritte dai telecronisti)
     if (q.get("schedario")) {
@@ -2407,58 +2524,6 @@ const server = http.createServer((req, res) => {
     if (q.get("budget")) return json(res, S.budget || {});
     return json(res, { ok: true, servizio: "Ponte Como TV", canali: CONFIG.CANALI, versione: 1 });
   }
-
-// ── SCHEDARIO: le aggiunte a mano ─────────────────────────────────────
-// Le frasi dei fogli le prepara il lettore della redazione; qui si tiene solo
-// quello che i telecronisti aggiungono a mano su un giocatore o su una
-// squadra. Chi scrive lascia il suo nome: non c'e' password (la pagina e'
-// interna), quindi tutto e' cappato e di ogni scrittura resta la copia
-// di prima.
-const SCHEDARIO_FILE = path.join(path.dirname(CONFIG.STATO), "schedario-note.json");
-const SCHEDARIO_CHIAVE = /^[gs]-[A-Za-z0-9-]{1,48}$/;      // anche le giovanili: g-gio-como-primavera-bensi
-function schedarioTutto() {
-  try { return JSON.parse(fs.readFileSync(SCHEDARIO_FILE, "utf8")); } catch (e) { return {}; }
-}
-function schedarioSalva(tutto) {
-  const testo = JSON.stringify(tutto);
-  if (testo.length > 8e6) throw new Error("schedario pieno: chiedi a chi tiene il ponte");
-  try { if (fs.existsSync(SCHEDARIO_FILE)) fs.copyFileSync(SCHEDARIO_FILE, SCHEDARIO_FILE + ".bak"); } catch (e) {}
-  const tmp = SCHEDARIO_FILE + ".tmp";
-  fs.writeFileSync(tmp, testo);
-  fs.renameSync(tmp, SCHEDARIO_FILE);
-}
-function schedarioNota(p) {
-  const chiave = String(p.chiave || "");
-  if (!SCHEDARIO_CHIAVE.test(chiave)) throw new Error("scheda sconosciuta");
-  const testo = String(p.testo || "").replace(/\s+/g, " ").trim().slice(0, 1200);
-  const chi = String(p.chi || "").trim().slice(0, 40);
-  if (!testo) throw new Error("scrivi qualcosa");
-  const tutto = schedarioTutto();
-  const note = tutto[chiave] || (tutto[chiave] = []);
-  if (p.id) {
-    // correzione: solo il testo cambia, chi e quando restano scritti
-    const v = note.filter(x => x.id === String(p.id))[0];
-    if (!v) throw new Error("nota non trovata");
-    v.testo = testo;
-    v.corretta = { chi, quando: new Date().toISOString() };
-  } else {
-    if (note.length >= 60) throw new Error("su questa scheda ci sono gia' 60 aggiunte");
-    note.push({ id: Math.random().toString(36).slice(2, 10), testo, chi, quando: new Date().toISOString() });
-  }
-  schedarioSalva(tutto);
-  return { ok: true, note };
-}
-function schedarioTogli(p) {
-  const chiave = String(p.chiave || "");
-  if (!SCHEDARIO_CHIAVE.test(chiave)) throw new Error("scheda sconosciuta");
-  const tutto = schedarioTutto();
-  const note = tutto[chiave] || [];
-  const resta = note.filter(x => x.id !== String(p.id || ""));
-  if (resta.length === note.length) throw new Error("nota non trovata");
-  tutto[chiave] = resta;
-  schedarioSalva(tutto);
-  return { ok: true, note: resta };
-}
 
 // ── CHI PUO' FARE COSA ────────────────────────────────────────────────
 // Due livelli soltanto:
@@ -2564,6 +2629,10 @@ function permesso(p, ip) {
       // Le aggiunte allo schedario: come il referto, senza chiave (la pagina
       // e' interna e ogni riga porta il nome di chi l'ha scritta), cappate e
       // con la copia di prima a ogni scrittura.
+      if (p.tipo === "lavagna-salva" || p.tipo === "lavagna-togli") {
+        try { return json(res, p.tipo === "lavagna-salva" ? lavagnaSalva(p) : lavagnaTogli(p)); }
+        catch (err) { return json(res, { ok: false, errore: err.message }); }
+      }
       if (p.tipo === "schedario-nota" || p.tipo === "schedario-togli") {
         try {
           return json(res, p.tipo === "schedario-nota" ? schedarioNota(p) : schedarioTogli(p));
