@@ -2415,7 +2415,7 @@ const server = http.createServer((req, res) => {
 // interna), quindi tutto e' cappato e di ogni scrittura resta la copia
 // di prima.
 const SCHEDARIO_FILE = path.join(path.dirname(CONFIG.STATO), "schedario-note.json");
-const SCHEDARIO_CHIAVE = /^[gs]-[0-9]{1,12}$/;
+const SCHEDARIO_CHIAVE = /^[gs]-[A-Za-z0-9-]{1,48}$/;      // anche le giovanili: g-gio-como-primavera-bensi
 function schedarioTutto() {
   try { return JSON.parse(fs.readFileSync(SCHEDARIO_FILE, "utf8")); } catch (e) { return {}; }
 }

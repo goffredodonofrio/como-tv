@@ -157,9 +157,12 @@
     return String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   }
   function dataIt(d) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || ""); return m ? (+m[3]) + "/" + (+m[2]) + "/" + m[1] : (d || ""); }
+  // lo stemma: ESPN per le squadre vere, il Como per le nostre giovanili
   function stemma(tid) {
-    return tid ? '<img src="https://a.espncdn.com/i/teamlogos/soccer/500/' + encodeURIComponent(tid) +
-                 '.png" alt="" loading="lazy" onerror="this.replaceWith(document.createElement(\'i\'))">' : "<i></i>";
+    if (!tid) return "<i></i>";
+    var url = String(tid).indexOf("gio-") === 0 ? "https://a.espncdn.com/i/teamlogos/soccer/500/2572.png"
+            : "https://a.espncdn.com/i/teamlogos/soccer/500/" + encodeURIComponent(tid) + ".png";
+    return '<img src="' + url + '" alt="" loading="lazy" onerror="this.replaceWith(document.createElement(\'i\'))">';
   }
 
   // il tema della lavagna (lo stesso interruttore, lo stesso ricordo)
@@ -228,7 +231,12 @@
   var CAMPI = ["presenze", "titolare", "gol", "assist", "gialli", "rossi", "subiti", "parate", "inviolate"];
   function etichettaAnno(a) { return a + "-" + String(a + 1).slice(2); }
   function statistiche(g, dove) {
-    if (!window.StagioneEspn || !/^\d+$/.test(String(g.id))) { dove.innerHTML = ""; return; }
+    // le giovanili non hanno statistiche: ESPN non le segue
+    if (!window.StagioneEspn || !/^\d+$/.test(String(g.id))) {
+      dove.innerHTML = g.giovanili ? '<div class="gruppo">Le statistiche</div>' +
+        '<div class="stat"><div class="vuota">Primavera, Under 17 e Under 18 non sono su ESPN: qui contano le nostre note.</div></div>' : "";
+      return;
+    }
     var POR = /^(G|GK|P|POR)$/i.test(g.ruolo || ""), conParate = false;
     var anno = new Date().getMonth() >= 6 ? new Date().getFullYear() : new Date().getFullYear() - 1;
     dove.innerHTML = '<div class="gruppo">Le statistiche</div><div class="stat" id="stat"><div class="vuota">Conto presenze e gol&hellip;</div></div>';
@@ -417,13 +425,16 @@
         statistiche(g, el("statistiche"));
         scatolaAggiunte("g-" + g.id, el("aggiunte"));
         // la faccia dal magazzino e l'anagrafe da ESPN
-        fetch(PONTE + "?foto=" + encodeURIComponent(g.cognome) + "&id=" + encodeURIComponent(g.id) +
-              (g.tid ? "&squadra=" + encodeURIComponent(g.tid) : ""), { cache: "no-store" })
+        // le foto delle giovanili stanno in magazzino col solo cognome
+        fetch(PONTE + "?foto=" + encodeURIComponent(g.cognome) +
+              (g.giovanili ? "" : "&id=" + encodeURIComponent(g.id) + (g.tid ? "&squadra=" + encodeURIComponent(g.tid) : "")),
+              { cache: "no-store" })
           .then(function (r) { return r.json(); })
           .then(function (j) { if (j && j.url) el("faccia").innerHTML = '<img src="' + esc(j.url) + '" alt="">'; })
           .catch(function () {});
         // l'anagrafe ESPN, come nella lavagna: in metri e chili
-        fetch("https://sports.core.api.espn.com/v2/sports/soccer/athletes/" + encodeURIComponent(g.id))
+        if (g.giovanili) el("anag").textContent = [g.squadra, g.ruolo ? "ruolo " + g.ruolo : "", g.num ? "maglia " + g.num : ""].filter(Boolean).join(" · ");
+        else fetch("https://sports.core.api.espn.com/v2/sports/soccer/athletes/" + encodeURIComponent(g.id))
           .then(function (r) { return r.json(); })
           .then(function (a) {
             if (!a) return;

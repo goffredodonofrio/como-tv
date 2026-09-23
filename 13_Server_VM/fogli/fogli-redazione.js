@@ -998,12 +998,40 @@ async function giroRose(stato) {
   console.log("[fogli] rose: " + Object.keys(rose).length + " squadre, " + tot + " giocatori (" + prese + " chieste ora)");
   return rose;
 }
+// LE GIOVANILI: ESPN non le ha, le rose stanno in casa nostra (live/
+// giovanili.js, tenuto a mano dalla redazione). Si leggono da li' e entrano
+// nello schedario come le altre squadre: niente statistiche ESPN, ma foto,
+// ruolo e quello che scriviamo noi.
+const GIOVANILI_JS = process.env.COMOTV_GIOVANILI || "/var/www/comotv/live/giovanili.js";
+function giovanili() {
+  let src = "";
+  try { src = fs.readFileSync(GIOVANILI_JS, "utf8"); } catch (e) { return {}; }
+  let G = null;
+  try {
+    const finestra = {};
+    new Function("window", src)(finestra);
+    G = finestra.GIOVANILI;
+  } catch (e) { console.log("[fogli] giovanili non lette: " + e.message); return {}; }
+  const out = {};
+  (G && G.COMPS || []).forEach((c) => {
+    (c.squadre || []).forEach((q) => {
+      const gi = (q.rosa || []).map((x) => ({
+        id: "gio-" + q.id + "-" + piano(x.cognome).replace(/\s+/g, "-"),
+        nome: x.nome || "", cognome: x.cognome || "", intero: ((x.nome || "") + " " + (x.cognome || "")).trim(),
+        num: x.num || "", ruolo: x.ruolo || ""
+      })).filter((x) => x.cognome);
+      if (!gi.length) return;
+      out["gio-" + q.id] = { quando: Date.now(), lega: c.code, nome: q.n, giovanili: true, giocatori: gi };
+    });
+  });
+  return out;
+}
 // Le schede: per ogni squadra e ogni giocatore le frasi dei fogli che li
 // nominano, con foglio, autore e data. Una frase va a un giocatore solo se il
 // foglio parla della sua squadra, oppure se quel cognome ce l'ha lui solo:
 // cosi' due Silva di due squadre diverse non si mescolano.
 function schedario(stato) {
-  const rose = stato.rose || {};
+  const rose = Object.assign({}, stato.rose || {}, giovanili());
   const dir = path.join(PUB, "fogli");
   let fogli = fs.readdirSync(dir).filter((x) => x.endsWith(".json")).map((x) => leggiJson(path.join(dir, x), null)).filter(Boolean);
   // lo stesso foglio da Slack e dal Drive: vale una volta sola (come nell'indice)
@@ -1046,7 +1074,8 @@ function schedario(stato) {
       const chiave = g.id;
       if (!giocatori.has(chiave)) {
         giocatori.set(chiave, { id: g.id, nome: g.nome, cognome: g.cognome, intero: g.intero, num: g.num,
-                                ruolo: g.ruolo, tid: tid, squadra: r.nome, lega: r.lega, cog: piano(g.cognome), k: k, frasi: [] });
+                                ruolo: g.ruolo, tid: tid, squadra: r.nome, lega: r.lega, giovanili: !!r.giovanili,
+                                cog: piano(g.cognome), k: k, frasi: [] });
       }
       if (!perCognome.has(k)) perCognome.set(k, []);
       if (!perCognome.get(k).some((x) => x.id === g.id)) perCognome.get(k).push(giocatori.get(chiave));
@@ -1067,7 +1096,8 @@ function schedario(stato) {
   // le squadre: quelle delle rose, piu' i nomi dei fogli
   const squadre = new Map();
   Object.keys(rose).forEach((tid) => {
-    squadre.set(tid, { tid: tid, nome: rose[tid].nome, lega: rose[tid].lega, chiave: pianoS(rose[tid].nome), fogli: [], frasi: [] });
+    squadre.set(tid, { tid: tid, nome: rose[tid].nome, lega: rose[tid].lega, giovanili: !!rose[tid].giovanili,
+                       chiave: pianoS(rose[tid].nome), fogli: [], frasi: [] });
   });
   fogli.forEach((f) => {
     const frasi = perFoglio.get(f.id) || [];
@@ -1127,22 +1157,26 @@ function schedario(stato) {
   const perData = (a, b) => String(b.data || "").localeCompare(String(a.data || ""));
   const iG = [], iS = [];
   giocatori.forEach((g) => {
-    if (!g.frasi.length) return;
+    if (!g.frasi.length && !g.giovanili) return;      // le giovanili ci sono comunque: le teniamo noi
     g.frasi.sort(perData);
     const f = "g-" + g.id + ".json";
     scriviJson(path.join(dirS, f), { id: g.id, nome: g.nome, cognome: g.cognome, intero: g.intero, num: g.num,
-                                     ruolo: g.ruolo, tid: g.tid, squadra: g.squadra, lega: g.lega, frasi: g.frasi });
+                                     ruolo: g.ruolo, tid: g.tid, squadra: g.squadra, lega: g.lega,
+                                     giovanili: g.giovanili, frasi: g.frasi });
     vecchi.delete(f);
     iG.push({ id: g.id, nome: g.nome, cognome: g.cognome, intero: g.intero, tid: g.tid, squadra: g.squadra,
-              lega: g.lega, ruolo: g.ruolo, n: g.frasi.length, cerca: piano((g.intero || (g.nome + " " + g.cognome)) + " " + g.squadra) });
+              lega: g.lega, ruolo: g.ruolo, giovanili: g.giovanili, n: g.frasi.length,
+              cerca: piano((g.intero || (g.nome + " " + g.cognome)) + " " + g.squadra) });
   });
   squadre.forEach((s) => {
-    if (!s.frasi.length && !s.fogli.length) return;
+    if (!s.frasi.length && !s.fogli.length && !s.giovanili) return;
     s.frasi.sort(perData); s.fogli.sort(perData);
     const f = "s-" + s.tid + ".json";
-    scriviJson(path.join(dirS, f), { tid: s.tid, nome: s.nome, lega: s.lega, fogli: s.fogli, frasi: s.frasi.slice(0, 400) });
+    scriviJson(path.join(dirS, f), { tid: s.tid, nome: s.nome, lega: s.lega, giovanili: s.giovanili,
+                                     fogli: s.fogli, frasi: s.frasi.slice(0, 400) });
     vecchi.delete(f);
-    iS.push({ tid: s.tid, nome: s.nome, lega: s.lega, n: s.frasi.length, fogli: s.fogli.length, cerca: piano(s.nome) });
+    iS.push({ tid: s.tid, nome: s.nome, lega: s.lega, giovanili: s.giovanili, n: s.frasi.length,
+              fogli: s.fogli.length, cerca: piano(s.nome) });
   });
   iG.sort((a, b) => b.n - a.n); iS.sort((a, b) => b.n - a.n);
   scriviJson(path.join(dirS, "indice.json"), { aggiornato: new Date().toISOString(), giocatori: iG, squadre: iS });
