@@ -964,6 +964,24 @@ function clipMarker(p) {
 // per puntare un gol bastano due minuti d'audio, non due ore — e il
 // magazzino e' della regia, non nostro.
 function volumeAlSecondo(via, da, quanto) {
+  // DIETRO IL PONTE IL CONTO LO FA LA EC2. Misurare il livello di tre minuti
+  // vuol dire leggere tre minuti di video: centocinquanta mega per una sola
+  // azione, e le azioni sono migliaia. Sulla EC2 il file si legge in regione
+  // (gratis) e qui arriva la lista dei decibel: un kilobyte, tre secondi.
+  const pp = pontePer(via);
+  if (pp) return new Promise((ok) => {
+    const q = new URLSearchParams({ k: pp.chiave, da: String(Math.max(0, Math.round(da || 0))),
+                                    dur: String(Math.max(1, Math.round(quanto || 180))) });
+    const r = http.get(pp.ponte + "/rms?" + q.toString(), { timeout: 900000 }, (res) => {
+      let t = ""; res.on("data", (b) => { t += b; });
+      res.on("end", () => {
+        try { const j = JSON.parse(t); ok(j && j.ok && Array.isArray(j.db) ? j.db : []); }
+        catch (e) { ok([]); }
+      });
+    });
+    r.on("error", () => ok([]));
+    r.on("timeout", () => { r.destroy(); ok([]); });
+  });
   const prima = ["-hide_banner", "-nostdin"];
   if (da) prima.push("-ss", String(Math.max(0, Math.round(da))));
   if (quanto) prima.push("-t", String(Math.round(quanto)));

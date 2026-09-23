@@ -42,6 +42,53 @@ class H(BaseHTTPRequestHandler):
         chiave, u = self._chiave()
         if u.path == '/conto':
             m, g = usato(); return self._json(200, {'ok': True, 'mese_byte': m, 'giorno_byte': g, 'tetto_mese_byte': TETTO_MESE, 'tetto_giorno_byte': TETTO_GIORNO, 'bucket': BUCKET, 'regione': REGIONE})
+        if u.path == '/rms':
+            # IL LIVELLO DELL'AUDIO, SECONDO PER SECONDO, CALCOLATO QUI. Serve
+            # a trovare il boato che inchioda il secondo del gol. Se lo
+            # facesse la VM dovrebbe tirarsi giu' tre minuti di video, cioe'
+            # centocinquanta mega per una sola azione; qui ffmpeg legge in
+            # regione (gratis) e parte una lista di numeri: un kilobyte.
+            q = urllib.parse.parse_qs(u.query)
+            k = urllib.parse.unquote(q.get('k', [''])[0])
+            da = float(q.get('da', ['0'])[0]); dur = float(q.get('dur', ['180'])[0])
+            if not k: return self._json(400, {'ok': False, 'errore': 'manca la chiave'})
+            if dur <= 0 or dur > 7200: return self._json(400, {'ok': False, 'errore': 'finestra fuori misura'})
+            import subprocess, re as _re
+            url = s3.generate_presigned_url('get_object', Params={'Bucket': BUCKET, 'Key': k}, ExpiresIn=900)
+            cmd = ['ffmpeg', '-hide_banner', '-nostdin', '-ss', '%.3f' % max(0.0, da), '-t', '%.3f' % dur,
+                   '-i', url, '-vn', '-af',
+                   'aresample=8000,asetnsamples=8000,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-',
+                   '-f', 'null', '-']
+            try:
+                r = subprocess.run(cmd, capture_output=True, timeout=900)
+            except subprocess.TimeoutExpired:
+                return self._json(504, {'ok': False, 'errore': 'ffmpeg troppo lento'})
+            testo = (r.stdout or b'').decode('utf8', 'ignore')
+            db = [(-90.0 if x == '-inf' else float(x)) for x in _re.findall(r'RMS_level=(-?[0-9.]+|-inf)', testo)]
+            if not db:
+                return self._json(502, {'ok': False, 'errore': (r.stderr or b'')[-200:].decode('utf8', 'ignore')})
+            segna(0)
+            return self._json(200, {'ok': True, 'db': db})
+        if u.path == '/dur':
+            # LA DURATA, MISURATA QUI. ffprobe legge l'indice del file dentro
+            # la regione del secchio (gratis) e alla VM parte un numero. Senza
+            # la durata vera il riconoscimento tira a indovinare due ore e
+            # guarda i fotogrammi nei posti sbagliati.
+            q = urllib.parse.parse_qs(u.query)
+            k = urllib.parse.unquote(q.get('k', [''])[0])
+            if not k: return self._json(400, {'ok': False, 'errore': 'manca la chiave'})
+            import subprocess
+            url = s3.generate_presigned_url('get_object', Params={'Bucket': BUCKET, 'Key': k}, ExpiresIn=600)
+            try:
+                r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', url], capture_output=True, timeout=180)
+            except subprocess.TimeoutExpired:
+                return self._json(504, {'ok': False, 'errore': 'ffprobe troppo lento'})
+            try:
+                sec = float((r.stdout or b'').decode().strip())
+            except Exception:
+                return self._json(502, {'ok': False, 'errore': (r.stderr or b'')[-200:].decode('utf8', 'ignore')})
+            segna(0)
+            return self._json(200, {'ok': True, 'secondi': round(sec, 2)})
         if u.path == '/f':
             # UN FOTOGRAMMA, ESTRATTO QUI. ffmpeg legge S3 nella stessa regione
             # (gratis) e alla VM parte solo il JPEG: cento kB invece dei sette
