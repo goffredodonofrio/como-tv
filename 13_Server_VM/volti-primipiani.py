@@ -49,6 +49,10 @@ VICINO = 0.50       # gli autori di SFace dicono 0.363, ma su un fotogramma di
                     # rumore: meglio dire "non lo so" che dire un nome sbagliato
 STACCO = 0.05       # e il secondo deve stare indietro: due che si somigliano
                     # uguale vogliono dire che non si e' riconosciuto nessuno
+CERTO = 0.62        # per dire un nome da solo, senza chiedere conferma,
+DISTACCO = 0.10     # serve molto di piu', e serve che lo dica anche l'azione
+PROPOSTE = 3        # quanti nomi mettere in fila quando non si e' sicuri
+CONFERME = "conferme.json"
 
 
 def api(corpo, attesa=300):
@@ -109,6 +113,26 @@ def galleria_ristretta(rose):
     return v, chi
 
 
+def quanto_sicuri(x, confermato):
+    """Tre stati, non due. Un nome si scrive da solo SOLO quando due fonti
+    indipendenti dicono la stessa cosa: il volto con largo margine e l'azione
+    che nomina quella persona. Tutto il resto diventa una proposta da
+    confermare, e quello che non somiglia a nessuno resta senza nome — che e'
+    una risposta buona, non un fallimento."""
+    if confermato is not None:
+        return confermato.get("chi", ""), "confermato"
+    p = x.get("proposte") or []
+    if not p:
+        return "", "senza nome"
+    primo, secondo = p[0], (p[1]["quanto"] if len(p) > 1 else 0.0)
+    daccordo = x.get("dedotto") and cognome(primo["chi"]) == cognome(x["dedotto"])
+    if primo["quanto"] >= CERTO and (primo["quanto"] - secondo) >= DISTACCO and daccordo:
+        return primo["chi"], "certo"
+    if primo["quanto"] >= VICINO - 0.08:
+        return "", "da confermare"
+    return "", "senza nome"
+
+
 def di_faccia(volto):
     """Un volto di taglio o di spalle non si riconosce, e non e' nemmeno un
     primo piano: e' una nuca grande. YuNet segna anche gli occhi, e la loro
@@ -155,6 +179,24 @@ def letture_s3():
         return 0
 
 
+def leggi_conferme():
+    try:
+        return json.load(open(os.path.join(CASA, CONFERME)))
+    except Exception:
+        return {}
+
+
+def scrivi_conferma(rec, sec, chi):
+    """Quello che dici tu vale piu' di qualunque somiglianza, e vale per
+    sempre: la prossima lettura non ti richiede la stessa cosa. Un nome
+    vuoto vuol dire "nessuno di questi", ed e' una risposta buona."""
+    tutte = leggi_conferme()
+    tutte.setdefault(rec, {})["%.1f" % float(sec)] = {
+        "chi": chi, "quando": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    os.makedirs(CASA, exist_ok=True)
+    json.dump(tutte, open(os.path.join(CASA, CONFERME), "w"), ensure_ascii=False, indent=1)
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--rec", required=True)
@@ -162,7 +204,14 @@ def main():
     p.add_argument("--dopo", type=float, default=35, help="secondi dopo: il replay e le facce stanno li'")
     p.add_argument("--passo", type=float, default=2.5)
     p.add_argument("--foglio", default="", help="dove scrivere il provino da guardare")
+    p.add_argument("--conferma", action="append", default=[],
+                   help="1188.0=Martin Baturina  oppure  1188.0=  per \"nessuno di questi\"")
     a = p.parse_args()
+
+    for c in a.conferma:
+        sec, _, chi = c.partition("=")
+        scrivi_conferma(a.rec, sec, chi.strip())
+        print("segnato: %ss -> %s" % (sec, chi.strip() or "nessuno di questi"))
 
     os.environ.setdefault("OPENCV_LOG_LEVEL", "SILENT")
     arch = json.load(open(DATI + "/archivio.json"))[a.rec]
@@ -211,6 +260,8 @@ def main():
         immagini = list(pool.map(lambda s: (s, fotogramma(chiave, s)), secondi))
     print("presi in %.0f s — S3 letti %.1f MB" % (time.time() - inizio, (letture_s3() - prima) / 1e6))
 
+    conferme = leggi_conferme()
+    gia_dette = conferme.get(a.rec, {})
     rilevatore = cv2.FaceDetectorYN.create(MODELLI + "/yunet.onnx", "", (LATO, LATO), 0.7, 0.3, 5000)
     traduttore = cv2.FaceRecognizerSF.create(MODELLI + "/sface.onnx", "")
     primi, visti = [], 0
@@ -229,33 +280,42 @@ def main():
             continue
         riga = righe[quando[sec]]
         dedotto = chi_nomina(riga, rosa)
-        detto, punteggio, sicuro = "", 0.0, False
+        proposte = []
         if volti is not None:
             v = traduttore.feature(traduttore.alignCrop(im, volto)).flatten().astype(np.float32)
             v /= (np.linalg.norm(v) + 1e-9)
             somiglianze = volti @ v
-            ordine = np.argsort(-somiglianze)
-            i = int(ordine[0])
-            punteggio = float(somiglianze[i])
-            secondo = float(somiglianze[ordine[1]]) if len(ordine) > 1 else 0.0
-            detto = nomi[i]["nome"]
-            sicuro = punteggio >= VICINO and (punteggio - secondo) >= STACCO
-        primi.append({"t": sec, "quota": round(quota, 3), "azione": riga.get("titolo", ""),
-                      "minuto": riga.get("minuto", ""), "dedotto": dedotto,
-                      "volto": detto, "somiglianza": round(punteggio, 3),
-                      "riconosciuto": bool(volti is not None and sicuro),
-                      "_im": im, "_box": volto[:4].astype(int)})
+            for i in np.argsort(-somiglianze)[:PROPOSTE]:
+                proposte.append({"chi": nomi[int(i)]["nome"], "squadra": nomi[int(i)]["squadra"],
+                                 "quanto": round(float(somiglianze[int(i)]), 3)})
+        x = {"t": sec, "quota": round(quota, 3), "azione": riga.get("titolo", ""),
+             "minuto": riga.get("minuto", ""), "dedotto": dedotto, "proposte": proposte,
+             "_im": im, "_box": volto[:4].astype(int)}
+        x["chi"], x["certezza"] = quanto_sicuri(x, gia_dette.get("%.1f" % sec))
+        primi.append(x)
 
-    print("\n--- %d fotogrammi letti, %d primi piani ---" % (visti, len(primi)))
-    dacc = sum(1 for x in primi if x["riconosciuto"] and cognome(x["volto"]) == cognome(x["dedotto"]))
-    ric = sum(1 for x in primi if x["riconosciuto"])
-    print("  riconosciuti dal volto: %d" % ric)
-    print("  dove volto e deduzione dicono lo stesso nome: %d" % dacc)
+    gruppi = {"confermato": [], "certo": [], "da confermare": [], "senza nome": []}
     for x in primi:
-        print("  %7.1fs  volto %3.0f%%  %-26s | dedotto: %-22s | volto: %-22s %.2f%s"
-              % (x["t"], x["quota"] * 100, x["minuto"] + " " + x["azione"][:22],
-                 x["dedotto"][:22], x["volto"][:22], x["somiglianza"],
-                 "" if x["riconosciuto"] else "  (sotto soglia)"))
+        gruppi[x["certezza"]].append(x)
+    print("\n--- %d fotogrammi letti, %d primi piani ---" % (visti, len(primi)))
+    for nome in ("confermato", "certo", "da confermare", "senza nome"):
+        print("  %-14s %d" % (nome, len(gruppi[nome])))
+
+    for nome in ("confermato", "certo"):
+        for x in gruppi[nome]:
+            print("\n  %7.1fs  %s  ->  %s  (%s)" % (x["t"], x["minuto"], x["chi"], nome))
+    if gruppi["da confermare"]:
+        print("\n--- da confermare: chi e'? ---")
+        for x in gruppi["da confermare"]:
+            print("  %7.1fs  %-7s %s" % (x["t"], x["minuto"], x["azione"][:40]))
+            if x["dedotto"]:
+                print("           l'azione nomina: %s" % x["dedotto"])
+            for i, q in enumerate(x["proposte"], 1):
+                print("           %d) %-24s %-18s %.2f" % (i, q["chi"], q["squadra"][:18], q["quanto"]))
+    if gruppi["senza nome"]:
+        print("\n--- senza nome (nessuno somiglia abbastanza) ---")
+        for x in gruppi["senza nome"]:
+            print("  %7.1fs  %-7s %s" % (x["t"], x["minuto"], x["azione"][:50]))
 
     os.makedirs(CASA, exist_ok=True)
     json.dump([{k: v for k, v in x.items() if not k.startswith("_")} for x in primi],
@@ -282,9 +342,15 @@ def provino(primi, dove):
         tela[y:y + ALT, xx:xx + LARG] = im
         f = cv2.FONT_HERSHEY_SIMPLEX
         cv2.putText(tela, "%.0fs  %s" % (x["t"], piatto(x["minuto"])), (xx + 6, y + ALT + 14), f, 0.38, (150, 150, 150), 1, cv2.LINE_AA)
-        cv2.putText(tela, "ded: " + piatto(x["dedotto"])[:30], (xx + 6, y + ALT + 28), f, 0.38, (120, 200, 250), 1, cv2.LINE_AA)
-        col = (120, 250, 150) if x["riconosciuto"] else (110, 110, 110)
-        cv2.putText(tela, "vol: %s %.2f" % (piatto(x["volto"])[:24], x["somiglianza"]), (xx + 6, y + ALT + 42), f, 0.38, col, 1, cv2.LINE_AA)
+        if x["chi"]:
+            cv2.putText(tela, piatto(x["chi"])[:30], (xx + 6, y + ALT + 29), f, 0.44, (140, 250, 160), 1, cv2.LINE_AA)
+            cv2.putText(tela, x["certezza"], (xx + 6, y + ALT + 42), f, 0.34, (110, 160, 120), 1, cv2.LINE_AA)
+        elif x["proposte"] and x["certezza"] == "da confermare":
+            for j, q in enumerate(x["proposte"][:2]):
+                cv2.putText(tela, "%d) %s %.2f" % (j + 1, piatto(q["chi"])[:20], q["quanto"]),
+                            (xx + 6, y + ALT + 29 + j * 13), f, 0.36, (120, 200, 250), 1, cv2.LINE_AA)
+        else:
+            cv2.putText(tela, "senza nome", (xx + 6, y + ALT + 30), f, 0.38, (120, 120, 120), 1, cv2.LINE_AA)
     cv2.imwrite(dove, tela, [cv2.IMWRITE_JPEG_QUALITY, 88])
 
 
