@@ -8580,12 +8580,17 @@ async function calibraOrologio(rec, rifai) {
     // primo tempo: dal 10' stimato in poi, finche' il lettore non legge
     // un'ora da primo tempo (prima del 45') che stia a meno di un quarto
     // d'ora dalla stima
-    let vistaRipresa = null;
+    let vistaRipresa = null, buio = 0;
     for (const t of [600, 780, 960, 1200, 1500, 1800, 2100]) {
       const e = await leggiOrologioSicuro(leggiA, t, true); esito.letti += 2;
       const c = e && e.c;
       if (e && e.cifre && !esito.cifre) esito.cifre = e.cifre;
-      if (c === null || c === undefined || c <= 0) continue;
+      // QUATTRO SONDE AL BUIO BASTANO. Un file di solo audio, o una partita
+      // giovanile senza cronometro in sovrimpressione, non ne ha uno da
+      // leggere: insistere fino alla settima sonda costa quattordici
+      // fotogrammi per niente, e nell'archivio queste partite sono centinaia.
+      if (c === null || c === undefined) { if (++buio >= 4) break; continue; }
+      if (c <= 0) continue;
       // IL CRONOMETRO CHE DICE "57:00" NON E' DA BUTTARE. Certe partite —
       // le giovanili soprattutto — hanno su Airtable un orario sbagliato di
       // quasi un'ora: le sonde del primo tempo cadono tutte nel secondo, il

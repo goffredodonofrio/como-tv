@@ -65,6 +65,9 @@ def prossima():
             continue
         if k not in appunti and not ((espn.get(k) or {}).get("eventi") or []):
             continue
+        # un file di solo audio non ha un cronometro da leggere
+        if "AUDIO ONLY" in (a.get("partita") or "").upper():
+            continue
         como = 0 if "COMO" in (a.get("partita") or "").upper() else 1
         giorno = a.get("giorno") or "00000000"
         coda.append((como, -int(giorno) if giorno.isdigit() else 0, k))
