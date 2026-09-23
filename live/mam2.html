@@ -113,12 +113,20 @@
   .player .sotto i.en{color:#fff;}
   .player .sotto i:empty{display:none;}
   .trasporto{background:var(--pan);border:1px solid var(--riga);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;flex:none;}
-  .momenti{position:relative;height:38px;background:rgba(245,241,230,.05);border-radius:6px;cursor:pointer;overflow:hidden;}
-  .momenti .det{position:absolute;bottom:0;height:10px;width:2px;background:rgba(245,215,110,.35);}
-  .momenti .az{position:absolute;top:4px;width:3px;height:16px;border-radius:2px;background:var(--verde);}
-  .momenti .az.gol{background:var(--oro2);height:22px;top:2px;width:4px;}
-  .momenti .az.ammonizione,.momenti .az.espulsione{background:var(--rosso);}
-  .momenti .az.parata{background:var(--blu);}
+  .momenti{position:relative;height:46px;background:rgba(245,241,230,.05);border-radius:6px;cursor:pointer;overflow:hidden;}
+  .momenti .det{position:absolute;bottom:0;height:9px;width:2px;background:rgba(245,215,110,.30);}
+  /* OGNI TIPO DI AZIONE HA IL SUO SEGNO. Colore e altezza dicono che cos'e'
+     senza doverci passare sopra: il gol e' la pastiglia alta e oro con il
+     pallino, i cartellini sono giallo e rosso, la parata blu. Sotto c'e' la
+     legenda con i conti, e cliccandola si tiene solo quel tipo. */
+  .momenti .az{position:absolute;bottom:12px;width:4px;border-radius:2px;background:#9AA7B8;transition:opacity .12s;}
+  .momenti .az.grosso{width:6px;}
+  .momenti .az.gol::after{content:'';position:absolute;top:-5px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:inherit;}
+  .momenti.filtra .az{opacity:.14;} .momenti.filtra .az.tieni{opacity:1;}
+  .legenda{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;}
+  .legenda span{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border:1px solid var(--riga);border-radius:999px;font-size:10.5px;color:var(--ivory2);cursor:pointer;white-space:nowrap;}
+  .legenda span:hover{border-color:var(--oro);} .legenda span.on{border-color:var(--oro);color:var(--oro2);background:rgba(201,162,75,.12);}
+  .legenda span i{width:8px;height:8px;border-radius:2px;display:inline-block;} .legenda span b{font-weight:600;color:var(--fumo);}
   .momenti .testina{position:absolute;top:0;bottom:0;width:2px;background:#fff;pointer-events:none;margin-left:-1px;}
   .momenti .testina::before{content:'';position:absolute;top:0;left:-5px;border:6px solid transparent;border-top:8px solid #fff;border-bottom:0;}
   .momenti{cursor:ew-resize;} .momenti.scrub{cursor:grabbing;}
@@ -300,14 +308,15 @@
         <div class="az">
           <button class="mini" id="aScarica" title="scarica il file intero">&#8595; Scarica</button>
           <button class="mini" id="aSrt" title="l'SRT della telecronaca intera">SRT</button>
-          <button class="mini" id="bSotto" title="sottotitoli dalla telecronaca sul video">Sottotitoli</button><button class="mini" id="bLingua" title="lingua dei sottotitoli">ITA</button>
+          <button class="mini" data-sub="it" title="sottotitoli italiani sul video, e l'SRT esce in italiano">SUB ITA</button><button class="mini" data-sub="en" title="sottotitoli inglesi sul video, e l'SRT esce in inglese">SUB ENG</button><button class="mini" data-sub="due" title="tutte e due le lingue insieme, l'inglese sotto: l'SRT esce in due file">SUB ITA+ENG</button>
           <span class="s3conto" id="s3Conto" hidden></span>
           <button class="mini oro" id="aMam" title="apre questa partita nel montaggio">Apri nel montaggio</button>
         </div>
       </div>
       <div class="player"><video id="video" playsinline preload="metadata"></video><div class="sotto" id="sottoBox"><i class="it" id="sottoIt"></i><i class="en" id="sottoEn"></i></div></div>
       <div class="trasporto">
-        <div class="momenti" id="momenti" title="le azioni sulla partita: clicca per andarci"><div class="testina" id="mTestina"></div></div>
+        <div class="momenti" id="momenti" title="le azioni sulla partita: clicca per andarci, trascina per scorrere"><div class="testina" id="mTestina"></div></div>
+        <div class="legenda" id="legenda"></div>
         <div class="pm">
           <span class="tcx" id="tOra">00:00:00</span>
           <span class="sep"></span>
@@ -667,7 +676,7 @@
       ricorda(""); posa(r.id, t ? Math.round(t) : undefined, ricorda);
       el("aMam").onclick = function(){ window.open(MAM + "&apri=" + encodeURIComponent(rec) + (V.currentTime ? "&t=" + Math.floor(V.currentTime) : ""), "_blank"); };
       el("aScarica").onclick = function(){ if (!r.arch) return; post({ tipo:"clip-qnap-via", via: r.arch.chiave, radice:"qnap" }).then(function(x){ var a = document.createElement("a"); a.href = BASE + x.via + "&scarica=1"; a.download = r.arch.chiave; document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); }, 1000); }).catch(function(e){ avviso("err", esc(e.message)); }); };
-      el("aSrt").onclick = function(){ post({ tipo:"clip-parlato-srt", reg: r.id, lingua: LINGUA }).then(function(x){ var a = document.createElement("a"), u = URL.createObjectURL(new Blob([x.srt], { type:"text/plain;charset=utf-8" })); a.href = u; a.download = x.nome; document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); URL.revokeObjectURL(u); }, 1500); avviso("ok", x.righe + " righe in " + (x.lingua === "en" ? "inglese" : "italiano")); }).catch(function(e){ avviso("err", esc(e.message)); }); };
+      el("aSrt").onclick = function(){ lingueChieste().forEach(function(l, k){ setTimeout(function(){ scaricaSrt(r.id, l); }, k * 500); }); };
       return Promise.all([post({ tipo:"clip-tabellino", reg: r.id }).catch(function(){ return { righe: [] }; }), post({ tipo:"clip-parlato", reg: r.id }).catch(function(){ return { pezzi: [] }; })]);
     }).then(function(rs){
       TAB = (rs[0].righe || []).slice().sort(function(a,b){ return a.t - b.t; });
@@ -719,7 +728,7 @@
     el("scheda").querySelectorAll(".voce[data-t]").forEach(function(v){ v.addEventListener("click", function(e){ if (e.target.tagName === "INPUT") return; seek(+v.dataset.t); }); });
     el("scheda").querySelectorAll('input[data-k]').forEach(function(c){ c.addEventListener("change", function(){ SCELTE[c.dataset.k] = c.checked; if (!c.checked) delete SCELTE[c.dataset.k]; aggiornaMonta(); }); });
     el("scheda").querySelectorAll(".chipfila span[data-q]").forEach(function(s){ s.addEventListener("click", function(){ el("cercaS").value = s.dataset.q; disegnaScheda(s.dataset.q); }); });
-    el("scheda").querySelectorAll("button[data-srt]").forEach(function(b){ b.addEventListener("click", function(){ LINGUA = b.dataset.srt; el("bLingua").textContent = LINGUA.toUpperCase() === "IT" ? "ITA" : "ENG"; el("aSrt").click(); }); });
+    el("scheda").querySelectorAll("button[data-srt]").forEach(function(b){ b.addEventListener("click", function(){ scaricaSrt(ASSET.id, b.dataset.srt); }); });
     if (el("fScarica")) el("fScarica").addEventListener("click", function(){ el("aScarica").click(); });
     el("scheda").querySelectorAll("button[data-anc]").forEach(function(b){ b.addEventListener("click", function(){ ancora(b.dataset.anc, b); }); });
     el("scheda").querySelectorAll("button[data-forse]").forEach(function(b){ b.addEventListener("click", function(){
@@ -745,6 +754,14 @@
     if (!f || f.t === undefined || f.t === null) return n === "1" ? "non letto (stima: inizio file)" : "non letto (stima: un’ora dopo il 1T)";
     var come = { cronometro: "cronometro letto" + (f.verificato ? " ✓" : ""), telecronaca: "dalla telecronaca", mano: "segnato a mano", stima: "stima" }[f.fonte] || f.fonte;
     return '<a class="fischio" data-t="' + f.t + '" title="vai lì">' + tc(f.t) + '</a> · ' + come;
+  }
+  function scaricaSrt(reg, lingua){
+    return post({ tipo:"clip-parlato-srt", reg: reg, lingua: lingua }).then(function(x){
+      var a = document.createElement("a"), u = URL.createObjectURL(new Blob([x.srt], { type:"text/plain;charset=utf-8" }));
+      a.href = u; a.download = x.nome; document.body.appendChild(a); a.click();
+      setTimeout(function(){ a.remove(); URL.revokeObjectURL(u); }, 2000);
+      avviso("ok", x.righe + " righe in " + (x.lingua === "en" ? "inglese" : "italiano") + ".");
+    }).catch(function(e){ avviso("err", esc(e.message)); });
   }
   function ricaricaDetto(){ return post({ tipo:"clip-parlato", reg: ASSET.id }).then(function(x){ DETTO = (x.pezzi || []).filter(function(y){ return !y.vivo; }).sort(function(a,b){ return a.a - b.a; }); disegnaScheda(el("cercaS").value); disegnaMomenti(); }); }
   // il pannello Testo: doppio clic su una riga della telecronaca, si corregge, resta corretta (anche nei sottotitoli e nell'SRT)
@@ -790,17 +807,54 @@
 
   // ── il player e il trasporto ──
   function seek(t){ if (!V) return; try { V.currentTime = Math.max(0, t); } catch (e) {} if (V.paused) V.play().catch(function(){}); }
+  // che segno fa ogni tipo di azione: colore, altezza e nome per la legenda
+  var SEGNI = {
+    gol:         { c: "#E3C271", h: 26, n: "gol" },
+    rigore:      { c: "#F0A93B", h: 22, n: "rigore" },
+    annullato:   { c: "#B48CF2", h: 18, n: "annullato" },
+    var:         { c: "#B48CF2", h: 16, n: "VAR" },
+    espulsione:  { c: "#E0574A", h: 20, n: "espulsione" },
+    ammonizione: { c: "#F5D76E", h: 15, n: "ammonizione" },
+    palo:        { c: "#F08A4B", h: 19, n: "palo o traversa" },
+    parata:      { c: "#5AA7E8", h: 18, n: "parata" },
+    occasione:   { c: "#7CD992", h: 17, n: "occasione" },
+    angolo:      { c: "#4FCB8B", h: 12, n: "angolo" },
+    punizione:   { c: "#6FD3C0", h: 13, n: "punizione" },
+    fallo:       { c: "#A8A8B8", h: 11, n: "fallo" },
+    cambio:      { c: "#8FA3C8", h: 12, n: "cambio" },
+    inizio:      { c: "#EDEDEE", h: 14, n: "inizio e fine" },
+    azione:      { c: "#9AA7B8", h: 14, n: "azione" }
+  };
+  function segnoDi(x){ return SEGNI[(x.tag || "").toLowerCase()] || (x.gol ? SEGNI.gol : SEGNI.azione); }
+  var TAGF = "";
   function disegnaMomenti(){
     var m = el("momenti"), D = (ASSET && ASSET.durata) || (V && V.duration) || 1, h = '<div class="testina" id="mTestina"></div>';
     var passo = Math.max(1, Math.floor(DETTO.length / 300));
     for (var i = 0; i < DETTO.length; i += passo) h += '<div class="det" style="left:' + (DETTO[i].a / D * 100) + '%"></div>';
-    TAB.forEach(function(x){ var cl = (x.tag || x.tipo || "").toLowerCase(); h += '<div class="az ' + (x.gol ? "gol " : "") + esc(cl) + '" style="left:' + (x.t / D * 100) + '%" title="' + esc((x.minuto || tcBreve(x.t)) + " · " + (x.titolo || "")) + '"></div>'; });
+    var conta = {};
+    TAB.forEach(function(x){
+      var g = segnoDi(x), t = (x.tag || "azione").toLowerCase();
+      conta[t] = (conta[t] || 0) + 1;
+      h += '<div class="az' + (t === "gol" ? " gol grosso" : "") + (TAGF && t === TAGF ? " tieni" : "") + '" style="left:' + (x.t / D * 100) + '%;height:' + g.h + 'px;background:' + g.c + '" title="' + esc((x.minuto || tcBreve(x.t)) + " · " + (g.n) + (x.titolo ? " · " + x.titolo : "")) + '"></div>';
+    });
+    m.classList.toggle("filtra", !!TAGF);
+    var ord = Object.keys(conta).sort(function(a, b){ return (SEGNI[b] ? SEGNI[b].h : 0) - (SEGNI[a] ? SEGNI[a].h : 0) || conta[b] - conta[a]; });
+    el("legenda").innerHTML = ord.map(function(t){
+      var g = SEGNI[t] || SEGNI.azione;
+      return '<span data-tag="' + esc(t) + '"' + (TAGF === t ? ' class="on"' : '') + '><i style="background:' + g.c + '"></i>' + esc(g.n) + ' <b>' + conta[t] + '</b></span>';
+    }).join("");
     MARKER.forEach(function(m){ h += '<div class="mk' + (m.fonte === "boato" ? " boato" : "") + '" style="left:' + (m.secondi / D * 100) + '%" title="' + esc(tcBreve(m.secondi) + " · " + (m.testo || "")) + '"></div>'; });
     if (DENTRO !== null) h += '<div class="in" style="left:' + (DENTRO / D * 100) + '%"></div>';
     if (FUORI !== null) h += '<div class="out" style="left:' + (FUORI / D * 100) + '%"></div>';
     if (DENTRO !== null && FUORI !== null) h += '<div class="fra" style="left:' + (DENTRO / D * 100) + '%;width:' + ((FUORI - DENTRO) / D * 100) + '%"></div>';
     m.innerHTML = h;
   }
+  // cliccando la legenda si tiene un tipo solo: sulla barra e nell'elenco
+  el("legenda").addEventListener("click", function(e){
+    var c = e.target.closest("span[data-tag]"); if (!c) return;
+    TAGF = TAGF === c.dataset.tag ? "" : c.dataset.tag;
+    el("cercaS").value = TAGF; disegnaScheda(TAGF); disegnaMomenti();
+  });
   // la testina si prende e si trascina come in Premiere: mentre trascini il video segue (in pausa), e un'etichetta dice il secondo
   (function(){
     var m = el("momenti"), giu = false, eraInPlay = false, ultimo = 0;
@@ -834,7 +888,7 @@
   document.querySelectorAll("button[data-v]").forEach(function(b){ b.addEventListener("click", function(){ V.playbackRate = +b.dataset.v; document.querySelectorAll("button[data-v]").forEach(function(z){ z.classList.toggle("on", z === b); }); }); });
   el("bClip").addEventListener("click", function(){
     if (!ASSET) return;
-    post({ tipo:"clip-taglia", reg: ASSET.id, dentro: DENTRO, fuori: FUORI, formato:"16:9", titolo: (ASSET.titolo || "") + " " + tc(DENTRO), sotto: SOTTO ? "srt" : "", sottoLingua: LINGUA })
+    post({ tipo:"clip-taglia", reg: ASSET.id, dentro: DENTRO, fuori: FUORI, formato:"16:9", titolo: (ASSET.titolo || "") + " " + tc(DENTRO), sotto: SOTTO ? "srt" : "", sottoLingua: lingExport() })
       .then(function(d){ avviso("ok", "Clip in lavorazione (" + tc(FUORI - DENTRO) + "): la trovi nelle Esportazioni del montaggio." + (SOTTO ? " Con l'SRT." : "")); })
       .catch(function(e){ avviso("err", esc(e.message)); });
   });
@@ -886,8 +940,33 @@
     if (seqId) c.seq = seqId; if (dove !== undefined && dove !== null) c.dove = dove;
     return post(c).then(function(d){ var q = d.seq; if (q && q.id) location.href = "mam2.html?seq=" + encodeURIComponent(q.id); }).catch(function(e){ avviso("err", esc(e.message)); });
   }
-  el("bSotto").addEventListener("click", function(){ SOTTO = !SOTTO; this.classList.toggle("on", SOTTO); if (!SOTTO) { el("sottoIt").textContent = ""; el("sottoEn").textContent = ""; } if (SOTTO && DETTO.some(function(x){ return (x.l || "it") !== LINGUA && !(x.y && x.ya === LINGUA); })) post({ tipo:"clip-parlato-traduci", reg: ASSET.id, a: LINGUA }).then(function(){ return post({ tipo:"clip-parlato", reg: ASSET.id }); }).then(function(d){ DETTO = (d.pezzi || []).filter(function(x){ return !x.vivo; }); }).catch(function(){}); });
-  el("bLingua").addEventListener("click", function(){ LINGUA = LINGUA === "it" ? "en" : "it"; this.textContent = LINGUA === "it" ? "ITA" : "ENG"; if (SOTTO) { el("bSotto").click(); el("bSotto").click(); } });
+  // I SOTTOTITOLI SI SCELGONO COL TASTO CHE DICE COSA ESCE. Tre tasti, uno
+  // acceso alla volta: quello acceso comanda sia quello che si vede sul
+  // video sia la lingua dell'SRT e dei sottotitoli nella clip. Premendo di
+  // nuovo quello acceso si spengono.
+  function lingueChieste(){ return LINGUA === "due" ? ["it", "en"] : [LINGUA]; }
+  function lingExport(){ return LINGUA === "due" ? "entrambe" : LINGUA; }
+  function disegnaSub(){
+    document.querySelectorAll("#asset [data-sub]").forEach(function(b){ b.classList.toggle("on", SOTTO && b.dataset.sub === LINGUA); });
+    if (!SOTTO) { el("sottoIt").textContent = ""; el("sottoEn").textContent = ""; }
+  }
+  function serveTradurre(){
+    return lingueChieste().some(function(l){
+      return DETTO.some(function(x){ return (x.l || "it") !== l && !(x.y && x.ya === l); });
+    });
+  }
+  function accendiSub(quale){
+    if (SOTTO && LINGUA === quale) { SOTTO = false; disegnaSub(); return; }
+    LINGUA = quale; SOTTO = true; disegnaSub();
+    if (!ASSET || !serveTradurre()) return;
+    avviso("ok", "Traduco le righe che mancano: compaiono man mano.");
+    var giro = Promise.resolve();
+    lingueChieste().forEach(function(l){ giro = giro.then(function(){ return post({ tipo:"clip-parlato-traduci", reg: ASSET.id, a: l }); }); });
+    giro.then(function(){ return post({ tipo:"clip-parlato", reg: ASSET.id }); })
+        .then(function(d){ DETTO = (d.pezzi || []).filter(function(x){ return !x.vivo; }).sort(function(a,b){ return a.a - b.a; }); })
+        .catch(function(){});
+  }
+  document.querySelectorAll("#asset [data-sub]").forEach(function(b){ b.addEventListener("click", function(){ accendiSub(b.dataset.sub); }); });
   function giro(){
     if (!V || !ASSET) return;
     var t = V.currentTime || 0, D = ASSET.durata || V.duration || 1;
@@ -900,8 +979,9 @@
     var ora = null; for (var i = 0; i < DETTO.length; i++) { var x = DETTO[i]; if (t >= x.a - .3 && t < x.b + .8) { ora = x; break; } }
     if (SOTTO) {
       var h = V.clientHeight || 300; el("sottoIt").style.fontSize = (h * 51 / 1080) + "px"; el("sottoEn").style.fontSize = (h * 55 / 1080) + "px";
-      var txt = ora ? (((ora.l || "it") === LINGUA) ? ora.x : (ora.y && ora.ya === LINGUA ? ora.y : "… " + ora.x)) : "";
-      el("sottoIt").textContent = LINGUA === "it" ? txt : ""; el("sottoEn").textContent = LINGUA === "en" ? txt : "";
+      var dice = function(l){ if (!ora) return ""; return ((ora.l || "it") === l) ? ora.x : (ora.y && ora.ya === l ? ora.y : "… " + ora.x); };
+      el("sottoIt").textContent = (LINGUA === "it" || LINGUA === "due") ? dice("it") : "";
+      el("sottoEn").textContent = (LINGUA === "en" || LINGUA === "due") ? dice("en") : "";
     }
     el("scheda").querySelectorAll(".voce.ora").forEach(function(v){ v.classList.remove("ora"); });
     if (ora) { var vv = el("scheda").querySelector('.voce[data-a="' + ora.a + '"]'); if (vv) { vv.classList.add("ora"); if (!V.paused && el("bl-detto") && !el("bl-detto").classList.contains("chiuso") && !el("cercaS").value) vv.scrollIntoView({ block:"nearest" }); } }
