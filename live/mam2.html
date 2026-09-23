@@ -141,6 +141,10 @@
   .pm .sep{width:1px;height:18px;background:var(--riga);margin:0 5px;flex:none;} .pm .spazio{flex:1;}
   .pm .mini2{padding:3px 6px;font-size:10px;flex:none;} .pm .mini2.on{background:var(--oro);color:var(--navy);border-color:var(--oro);}
   .titolo .az .mini.on{background:var(--oro);color:var(--navy);border-color:var(--oro);}
+  .s3conto{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px solid #2F5E86;border-radius:999px;font-size:10.5px;color:#7FB4F0;white-space:nowrap;}
+  .s3conto b{font-weight:600;font-variant-numeric:tabular-nums;} .s3conto .barra{width:44px;height:4px;border-radius:2px;background:rgba(127,180,240,.25);overflow:hidden;} .s3conto .barra i{display:block;height:100%;background:#5AA7E8;}
+  .s3conto.tanto{border-color:var(--oro);color:var(--oro2);} .s3conto.tanto .barra i{background:var(--oro);}
+  .s3conto.pieno{border-color:var(--rosso);color:var(--rosso);} .s3conto.pieno .barra i{background:var(--rosso);}
   .pm .inout{font:11px ui-monospace,Menlo,monospace;color:var(--fumo);flex:none;} .pm .inout b{color:#5AA7E8;font-weight:500;}
   .comandi .gruppo{display:flex;align-items:center;gap:4px;padding:0 8px;border-right:1px solid var(--riga);}
   .comandi .gruppo:last-child{border-right:0;}
@@ -297,6 +301,7 @@
           <button class="mini" id="aScarica" title="scarica il file intero">&#8595; Scarica</button>
           <button class="mini" id="aSrt" title="l'SRT della telecronaca intera">SRT</button>
           <button class="mini" id="bSotto" title="sottotitoli dalla telecronaca sul video">Sottotitoli</button><button class="mini" id="bLingua" title="lingua dei sottotitoli">ITA</button>
+          <span class="s3conto" id="s3Conto" hidden></span>
           <button class="mini oro" id="aMam" title="apre questa partita nel montaggio">Apri nel montaggio</button>
         </div>
       </div>
@@ -594,11 +599,39 @@
   // ══════════ ASSET ══════════
   var V, TAB = [], DETTO = [], DENTRO = null, FUORI = null, SOTTO = false, LINGUA = "it", SCELTE = {};
   var FISCHIO = {}, ANCORA = "", PROVE = null, MARKER = [], FORSE = null, BOZZA = null;
+  // IL CONTATORE DI S3. Questa partita sta a Parigi: ogni secondo guardato e'
+  // circa un mega letto da Amazon. Fino a cento giga al mese non si paga
+  // niente, e il ponte si ferma a ottanta: qui si vede a che punto siamo,
+  // cosi' nessuno deve chiederlo.
+  var S3 = { ponte: false, bucket: "", giorno: 0, mese: 0, tettoGiorno: 0, tettoMese: 0, quando: 0 };
+  function suS3(){ return !!(ASSET && ASSET.arch && S3.bucket && ASSET.arch.bucket === S3.bucket); }
+  function contoS3(poi){
+    return post({ tipo:"clip-s3-conto" }).then(function(d){
+      S3 = { ponte: !!d.ponte, bucket: d.bucket || "", giorno: d.giorno || 0, mese: d.mese || 0,
+             tettoGiorno: d.tettoGiorno || 0, tettoMese: d.tettoMese || 0, quando: Date.now() };
+      disegnaConto(); if (poi) poi(S3);
+      return S3;
+    }).catch(function(){ return S3; });
+  }
+  function mb(n){ return n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : Math.round(n / 1e6) + " MB"; }
+  function disegnaConto(){
+    var c = el("s3Conto"); if (!c) return;
+    if (!S3.ponte || !suS3()) { c.hidden = true; return; }
+    var q = S3.tettoGiorno ? S3.giorno / S3.tettoGiorno : 0;
+    c.hidden = false;
+    c.className = "s3conto" + (q >= 1 ? " pieno" : q > 0.75 ? " tanto" : "");
+    c.innerHTML = 'S3 <b>' + mb(S3.giorno) + '</b> / ' + mb(S3.tettoGiorno) + '<span class="barra"><i style="width:' + Math.min(100, Math.round(q * 100)) + '%"></i></span>';
+    c.title = "Questa partita sta su S3 a Parigi: un secondo guardato è circa un mega.\n" +
+              "Oggi: " + mb(S3.giorno) + " su " + mb(S3.tettoGiorno) + ".\n" +
+              "Questo mese: " + mb(S3.mese) + " su " + mb(S3.tettoMese) + " (gratis fino a 100 GB).\n" +
+              (q >= 1 ? "Tetto di oggi raggiunto: le partite S3 tornano domani." : "Costo: zero euro finché restiamo dentro il tetto.");
+  }
   function apriAsset(rec, regId, t){
     vai("asset"); V = el("video");
     var apri = regId ? Promise.resolve({ reg: REGS[regId] || null }) : Promise.resolve({ reg: null });
     apri.then(function(){ return post({ tipo:"clip-archivio-apri", rec: rec }); }).then(function(d){
       var r = d.reg; ASSET = r; MARKER = r.marker || []; FORSE = null; BOZZA = null;
+      contoS3();
       // la bozza: la sequenza "BOZZA · partita" piu' recente di questa registrazione
       post({ tipo:"clip-hl-elenco", reg: r.id, tutte: true }).then(function(x){ BOZZA = (x.seq || []).filter(function(q){ return q.reg === r.id && /^BOZZA · /.test(q.titolo || ""); }).sort(function(a,b){ return (b.creata || 0) - (a.creata || 0); })[0] || null; disegnaBozza(); }).catch(function(){});
       disegnaBozza();
@@ -612,6 +645,14 @@
       briciole([r.titolo || "partita"]);
       document.title = (r.titolo || "MAM") + " · MAM Como TV";
       V.src = BASE + r.via;
+      V.onerror = function(){
+        if (!suS3()) return avviso("err", "Questo video non si apre: il file del magazzino non risponde.");
+        contoS3(function(s){
+          if (s.tettoGiorno && s.giorno >= s.tettoGiorno)
+            avviso("err", "Tetto di oggi raggiunto (" + mb(s.giorno) + "): le partite su S3 tornano domani. Quelle sulla QNAP si vedono lo stesso.");
+          else avviso("err", "Questo video non arriva da S3: riprova, o controlla il ponte verso la EC2.");
+        });
+      };
       if (t) V.addEventListener("loadedmetadata", function unaVolta(){ V.removeEventListener("loadedmetadata", unaVolta); try { V.currentTime = Math.max(0, t - 3); } catch (e) {} });
       // una partita su S3 non e' misurata (le misure costano byte): la durata la dice il video appena carica
       V.addEventListener("loadedmetadata", function durataVera(){ V.removeEventListener("loadedmetadata", durataVera); if (!r.durata && isFinite(V.duration) && V.duration > 0) { r.durata = Math.round(V.duration); ASSET.durata = r.durata; el("aMeta").innerHTML = [r.competizione, quando(r.avviata), durata(r.durata)].filter(Boolean).map(esc).join(" · "); disegnaScheda(el("cercaS").value); disegnaMomenti(); } });
@@ -836,6 +877,8 @@
     var t = V.currentTime || 0, D = ASSET.durata || V.duration || 1;
     el("tOra").textContent = tc(t);
     var mt = el("mTestina"); if (mt) mt.style.left = (t / D * 100) + "%";
+    // mentre il video va il contatore si aggiorna, ma senza tempestare il ponte
+    if (suS3() && !V.paused && Date.now() - S3.quando > 8000) contoS3();
     el("bPlay").innerHTML = V.paused ? '<svg viewBox="0 0 16 16"><path d="M4 2v12l10-6z"/></svg>' : '<svg viewBox="0 0 16 16"><rect x="3" y="2" width="4" height="12"/><rect x="9" y="2" width="4" height="12"/></svg>';
     // la riga della telecronaca e l'azione sotto la testina
     var ora = null; for (var i = 0; i < DETTO.length; i++) { var x = DETTO[i]; if (t >= x.a - .3 && t < x.b + .8) { ora = x; break; } }

@@ -5498,11 +5498,39 @@ function tempoDi(nome) {
   return 0;
 }
 
+// come si chiama un registratore, non una partita
+const NOME_MACCHINA = /multicorder|^\s*output\s*\d|^\s*rec\s*\d|^\s*camera/i;
+// le cartelle di servizio dentro una partita: non sono il suo nome
+const CARTELLA_TECNICA = /^(tagli|clean\s*feed|cleanfeed|materiale|feed|audio|grafiche|clip|iso|camere|social|export|render)\b/i;
+// IL NOME DELLA PARTITA STA NELLA CARTELLA. Nell'archivio di Mola il
+// cleanfeed — che e' la partita intera — si chiama "MultiCorder3 - Output 1",
+// e il nome vero ce l'ha la cartella sopra: "ABERDEEN-RANGERS". Prendendo il
+// nome dal file, milleseicento partite si chiamavano MultiCorder e si
+// agganciavano ad Airtable solo passando dai TAGLI, che nel nome il nome ce
+// l'hanno. Tolti i tagli, restavano orfane (23/09/2026).
+function daCartella(p) {
+  for (let i = 0; i < p.length - 1; i++) {
+    let giorno = "", partita = "", primo = i;
+    if (/^\d{8}$/.test(p[i])) { giorno = p[i]; partita = p[i + 1] || ""; primo = i + 1; }
+    else {
+      const m = /^(\d{8})[_\s-]+(.+)$/.exec(p[i]);
+      if (!m) continue;
+      giorno = m[1]; partita = m[2];
+    }
+    if (!/^20\d{2}(0\d|1[0-2])([0-2]\d|3[01])$/.test(giorno)) continue;
+    if (!partita || CARTELLA_TECNICA.test(partita) || NOME_MACCHINA.test(partita)) continue;
+    return { giorno: giorno, partita: partita, gruppo: p.slice(0, primo + 1).join("/"),
+             dentro: p.slice(primo + 1, p.length - 1).join("/"), file: p[p.length - 1] };
+  }
+  return null;
+}
 function pezziChiave(k) {
   const p = k.split("/");
   // prima la forma di vMix: la data e' nel nome del file, e il gruppo e'
   // "giorno + titolo", perche' non c'e' una cartella per partita
   const vm = nomeVmix(p[p.length - 1]);
+  const cart = daCartella(p);
+  if (cart && (!vm || NOME_MACCHINA.test(vm.partita || ""))) return cart;
   if (vm) {
     // LE VARIANTI STANNO NELLO STESSO GRUPPO. "COMO-NAPOLI [ITA]" e
     // "COMO-NAPOLI [ENG]" sono la stessa partita in due lingue, e "COMO-NAPOLI
@@ -5516,18 +5544,7 @@ function pezziChiave(k) {
              dentro: [t.coda, vm.uscita > 1 ? "Output " + vm.uscita : ""].filter(Boolean).join(" "),
              file: p[p.length - 1], uscita: vm.uscita };
   }
-  for (let i = 0; i < p.length - 1; i++) {
-    let giorno = "", partita = "", primo = i;
-    if (/^\d{8}$/.test(p[i])) { giorno = p[i]; partita = p[i + 1] || ""; primo = i + 1; }
-    else {
-      const m = /^(\d{8})[_\s-]+(.+)$/.exec(p[i]);
-      if (!m) continue;
-      giorno = m[1]; partita = m[2];
-    }
-    if (!/^20\d{2}(0\d|1[0-2])([0-2]\d|3[01])$/.test(giorno)) continue;
-    return { giorno: giorno, partita: partita, gruppo: p.slice(0, primo + 1).join("/"),
-             dentro: p.slice(primo + 1, p.length - 1).join("/"), file: p[p.length - 1] };
-  }
+  if (cart) return cart;
   // NON TUTTO PASSA DA VMIX. Una parte dei file e' salvata a mano —
   // "20260905_TORINO-COMO U20_PRIMO TEMPO.mp4" — senza data italiana ne'
   // orario: il riconoscitore di vMix li scartava tutti e restavano fuori
@@ -5569,10 +5586,29 @@ function diceUnAltraLingua(testo, tag) {
   if (LINGUA_NEL_NOME[tag].test(testo)) return false;
   return Object.keys(LINGUA_NEL_NOME).some((k) => k !== tag && LINGUA_NEL_NOME[k].test(testo));
 }
+// I TAGLI NON SONO LA PARTITA. Nell'archivio di Mola ogni giornata ha due
+// cartelle: CLEANFEED con la registrazione intera, TAGLI con i pezzi montati
+// (mezz'ora, tre quarti d'ora). Fino al 23/09 l'indice prendeva l'uno o
+// l'altro a seconda di com'era scritto il nome, e milleottocento partite su
+// tremila aprivano un taglio: gli appunti del secondo tempo cadevano in un
+// file che finiva prima, e il tabellino restava vuoto. Un taglio si usa solo
+// se di quella partita non c'e' altro, e allora non e' una partita intera:
+// fuori dall'indice.
+const TAGLIO = /TAGLI/i;
+// il taglio puo' stare a qualsiasi altezza del percorso: "PARTITA/TAGLI/x.mp4"
+// ma anche "TEMP/20250225/TAGLI/x.mp4", dove la cartella dei tagli e' finita
+// a fare da nome alla partita. Si guardano tutte le cartelle, non il nome
+// del file (un giocatore puo' chiamarsi Tagliafico)
+function dentroUnTaglio(f) {
+  const via = String((f && f.chiave) || "");
+  const cartelle = via.split("/").slice(0, -1);
+  return cartelle.some((c) => TAGLIO.test(c)) || TAGLIO.test(String((f && f.dentro) || ""));
+}
 function scegliMateriale(gruppo, tag) {
-  const buoni = gruppo.file.filter((f) =>
+  const tutti = gruppo.file.filter((f) =>
     VIDEO.test(f.file) && (E_LA_PARTITA.test(f.dentro + " " + f.file) ||
                            !NON_E_LA_PARTITA.test(f.dentro + " " + f.file)));
+  const buoni = tutti.filter((f) => !dentroUnTaglio(f));
   if (!buoni.length) return null;
   const vuole = (f) => !tag || (f.dentro + " " + f.file).toUpperCase().indexOf(tag) >= 0;
   const conTag = buoni.filter(vuole);
@@ -5928,6 +5964,7 @@ async function archivioScandaglia(p) {
     pg.oggetti.forEach((o) => {
       visti++;
       if (o.peso < minimo || !VIDEO.test(o.chiave)) return;
+      if (dentroUnTaglio(o)) return;                   // i tagli non sono la partita
       const z = pezziChiave(o.chiave);
       if (!z) return;
       const g = z.giorno;
@@ -11639,6 +11676,26 @@ const AZIONI = {
   // Airtable comincia dentro di lui. Quando ne resta UNA SOLA, quella e' la
   // proposta: costa zero byte, e la conferma la da' una persona dall'Asset.
   // Il tabellone, che costa minuti e mega, resta per i casi dubbi.
+  // QUANTO ABBIAMO LETTO DA S3. Il traffico in uscita da AWS e' gratis fino a
+  // cento giga al mese: il ponte sulla EC2 conta ogni byte e si ferma prima.
+  // La pagina lo mostra a chi guarda una partita d'archivio, cosi' si sa
+  // quanto costa un play senza doverlo chiedere a nessuno.
+  "clip-s3-conto": () => new Promise((ok) => {
+    const m = MAGAZZINI.filter((x) => x.inventario && x.ponte)[0];
+    if (!m) return ok({ ok: true, ponte: false });
+    const r = http.get(m.ponte + "/conto", { timeout: 8000 }, (res) => {
+      let t = ""; res.on("data", (b) => { t += b; });
+      res.on("end", () => {
+        try {
+          const j = JSON.parse(t);
+          ok({ ok: true, ponte: true, bucket: m.bucket, giorno: j.giorno_byte || 0, mese: j.mese_byte || 0,
+               tettoGiorno: j.tetto_giorno_byte || 0, tettoMese: j.tetto_mese_byte || 0 });
+        } catch (e) { ok({ ok: true, ponte: false }); }
+      });
+    });
+    r.on("error", () => ok({ ok: true, ponte: false }));
+    r.on("timeout", () => { r.destroy(); ok({ ok: true, ponte: false }); });
+  }),
   "clip-archivio-proponi": (p) => {
     const quali = Object.keys(ARCHIVIO).filter((k) => {
       const a = ARCHIVIO[k];
