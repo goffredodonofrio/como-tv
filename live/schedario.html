@@ -105,6 +105,10 @@
   .nostra .tasti{display:flex;gap:8px;margin-top:6px;}
   .nostra .tasti button{background:none;border:0;color:var(--oro);font-size:12px;cursor:pointer;text-decoration:underline;padding:0;}
   /* le statistiche, come nella scheda del giocatore in TELECRONACA */
+  .stat .testa2{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px;}
+  .stat select{padding:7px 10px;border-radius:8px;border:1px solid var(--linea);background:var(--chip);color:var(--testo);
+    font-family:'DM Sans',sans-serif;font-size:14px;}
+  .stat select:focus{outline:none;border-color:var(--oro);}
   .stat table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums;}
   .stat th{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--testo2);padding:0 6px 5px;text-align:center;}
   .stat td{padding:5px 6px;text-align:center;border-top:1px solid var(--linea);}
@@ -250,29 +254,50 @@
     ]).then(function (v) {
       var ora = v[0] || [], car = v[1] || [];
       if (!POR) POR = ora.some(function (c) { return c.portiere; });
-      conParate = POR && ora.some(function (c) { return c.parate > 0; });
-      var h = "";
-      if (ora.length) {
-        var t = somma(ora);
-        h += tabella("Stagione " + etichettaAnno(anno),
-          ora.map(function (c) { return "<tr><td>" + esc(c.nome) + "</td>" + cella(c) + "</tr>"; }).join(""),
-          ora.length > 1 ? '<tr class="tot"><td>Totale</td>' + cella(t) + "</tr>" : "");
+      // il menu: la stagione in corso, la carriera, poi le stagioni passate
+      var anni = [];
+      car.forEach(function (c) { if (anni.indexOf(c.anno) < 0 && c.anno !== anno) anni.push(c.anno); });
+      anni.sort(function (a, b) { return b - a; });
+      if (!ora.length && !car.length) { el("stat").innerHTML = '<div class="vuota">ESPN non ha le statistiche di questo giocatore.</div>'; return; }
+      el("stat").innerHTML = '<div class="testa2"><select id="qualiStat">' +
+        (ora.length ? '<option value="ora">Stagione ' + etichettaAnno(anno) + "</option>" : "") +
+        (car.length ? '<option value="car">Carriera</option>' : "") +
+        anni.map(function (a) { return '<option value="' + a + '">Stagione ' + etichettaAnno(a) + "</option>"; }).join("") +
+        '</select></div><div id="statCorpo"></div>';
+      function mostra() {
+        var q = el("qualiStat").value, c2 = el("statCorpo");
+        if (q === "ora") {
+          conParate = POR && ora.some(function (x) { return x.parate > 0; });
+          c2.innerHTML = tabella(g.squadra || "", ora.map(function (x) { return "<tr><td>" + esc(x.nome) + "</td>" + cella(x) + "</tr>"; }).join(""),
+            ora.length > 1 ? '<tr class="tot"><td>Totale</td>' + cella(somma(ora)) + "</tr>" : "");
+          return;
+        }
+        conParate = false;
+        if (q === "car") {
+          // una riga per stagione e squadra, tutte le competizioni sommate
+          var gruppi = {}, ordine = [];
+          if (ora.length) { var so = somma(ora); so.anno = anno; so.squadra = g.squadra; gruppi[anno + "|ora"] = so; ordine.push(anno + "|ora"); }
+          car.forEach(function (x) {
+            var k = x.anno + "|" + x.tid;
+            if (!gruppi[k]) { gruppi[k] = { anno: x.anno, squadra: x.squadra }; CAMPI.forEach(function (y) { gruppi[k][y] = 0; }); ordine.push(k); }
+            CAMPI.forEach(function (y) { gruppi[k][y] += x[y] || 0; });
+          });
+          var righe = ordine.map(function (k) { return gruppi[k]; });
+          c2.innerHTML = tabella("", righe.map(function (x) {
+            return "<tr><td>" + etichettaAnno(x.anno) + " <small>" + esc(x.squadra || "") + "</small></td>" + cella(x) + "</tr>";
+          }).join(""), '<tr class="tot"><td>In tutto</td>' + cella(somma(righe)) + "</tr>");
+          return;
+        }
+        // una stagione passata: per competizione, con la squadra se l'ha cambiata
+        var a2 = parseInt(q, 10), quella = car.filter(function (x) { return x.anno === a2; });
+        var sq = {}; quella.forEach(function (x) { sq[x.tid] = 1; });
+        var piu = Object.keys(sq).length > 1;
+        c2.innerHTML = tabella(piu ? "" : (quella[0] || {}).squadra || "", quella.map(function (x) {
+          return "<tr><td>" + esc(x.nome) + (piu ? " <small>" + esc(x.squadra) + "</small>" : "") + "</td>" + cella(x) + "</tr>";
+        }).join(""), quella.length > 1 ? '<tr class="tot"><td>Totale</td>' + cella(somma(quella)) + "</tr>" : "");
       }
-      // la carriera: una riga per stagione e squadra
-      var gruppi = {}, ordine = [];
-      if (ora.length) { var so = somma(ora); so.anno = anno; so.squadra = g.squadra; gruppi[anno + "|ora"] = so; ordine.push(anno + "|ora"); }
-      car.forEach(function (c) {
-        var k = c.anno + "|" + c.tid;
-        if (!gruppi[k]) { gruppi[k] = { anno: c.anno, squadra: c.squadra }; CAMPI.forEach(function (x) { gruppi[k][x] = 0; }); ordine.push(k); }
-        CAMPI.forEach(function (x) { gruppi[k][x] += c[x] || 0; });
-      });
-      var righe = ordine.map(function (k) { return gruppi[k]; });
-      if (righe.length) {
-        h += tabella("Carriera", righe.map(function (x) {
-          return "<tr><td>" + etichettaAnno(x.anno) + " <small>" + esc(x.squadra || "") + "</small></td>" + cella(x) + "</tr>";
-        }).join(""), '<tr class="tot"><td>In tutto</td>' + cella(somma(righe)) + "</tr>");
-      }
-      el("stat").innerHTML = h || '<div class="vuota">ESPN non ha le statistiche di questo giocatore.</div>';
+      el("qualiStat").addEventListener("change", mostra);
+      mostra();
     });
   }
 
