@@ -9116,7 +9116,12 @@ async function puntaBoati(rec) {
     const b = await boatoVicino(rec, t, f.chiave, f.sec);
     if (b && b.t !== null) trovati++;
   }
-  if (cercati) { scriviArchivio(); console.log("[clip] boati: " + (a.partita || rec) + " → " + trovati + " su " + cercati + " azioni puntate"); }
+  // il giro fatto si segna comunque: una partita senza azioni rumorose da
+  // puntare non lascerebbe traccia, e chi gira l'archivio la ripescherebbe
+  // all'infinito (23/09)
+  a.boatiFatti = new Date().toISOString();
+  scriviArchivio();
+  if (cercati) console.log("[clip] boati: " + (a.partita || rec) + " → " + trovati + " su " + cercati + " azioni puntate");
   return { cercati: cercati, trovati: trovati };
 }
 
