@@ -1161,7 +1161,13 @@ function etichettaAzione(tipo, titolo) {
 //  sull'azione. Quindi quando due righe raccontano la stessa cosa: l'ora
 //  la mette chi ce l'ha piu' precisa, il testo lo mette chi dice di piu'.
 function precisioneDi(x) {
-  if (x.tabellone) return 4;
+  if (x.tabellone) return 5;
+  // IL BOATO MANCAVA DA QUESTA SCALA. Una riga inchiodata al secondo dallo
+  // stadio che non prende fiato vale piu' del minuto ufficiale di ESPN, che
+  // e' un minuto e basta: fondendo le due, il secondo esatto veniva buttato
+  // via e restava l'arrotondamento. Ordine: tabellone > boato > cronometro >
+  // minuto di ESPN > minuto del giornalista.
+  if (x.certezza === "boato" || x.boato) return 4;
   if (x.certezza === "cronometro") return 3;
   if (x.fonte === "espn") return 2;
   if (x.fonte === "appunti") return 1;
@@ -9567,15 +9573,43 @@ function squadreDi(partita) {
     parole: x.split(/[^A-Za-zÀ-ÿ]+/).map((w) => nomeSemplice(w)).filter((w) => w.length >= 4 && !/^(real|club|atletico|deportivo|sporting|united|city|town|athletic|football)$/.test(w))
   })).filter((x) => x.tutto.length >= 3);
 }
-function squadraCombacia(nostra, ev) {
+function nomiDellEvento(ev) {
   const nomi = [];
   ((ev.competitions || [])[0] || {}).competitors && ev.competitions[0].competitors.forEach((c) => {
     const tm = c.team || {};
     [tm.displayName, tm.shortDisplayName, tm.name, tm.location, tm.abbreviation].forEach((n) => { if (n) nomi.push(nomeSemplice(n)); });
   });
   [ev.name, ev.shortName].forEach((n) => { if (n) nomi.push(nomeSemplice(n)); });
+  return nomi;
+}
+function combaciaCoiNomi(nostra, nomi) {
   if (nomi.some((n) => n.length >= 4 && (n.indexOf(nostra.tutto) >= 0 || nostra.tutto.indexOf(n) >= 0))) return true;
   return nostra.parole.some((w) => nomi.some((n) => n.indexOf(w) >= 0));
+}
+function squadraCombacia(nostra, ev) { return combaciaCoiNomi(nostra, nomiDellEvento(ev)); }
+// QUANTO SI ASSOMIGLIANO DUE NOMI DI SQUADRA. Serve a distinguere un nome
+// scritto male da un'altra squadra: "cesenà" e "cesena" sono la stessa,
+// "entella" e "lecce" no. Distanza di Levenshtein sul nome semplice.
+function distanzaNomi(a, b) {
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (!m || !n) return Math.max(m, n);
+  let riga = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    let prec = riga[0]; riga[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const q = riga[j];
+      riga[j] = Math.min(riga[j] + 1, riga[j - 1] + 1, prec + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prec = q;
+    }
+  }
+  return riga[n];
+}
+function somigliaNome(a, b) {
+  if (!a || !b) return false;
+  if (a.indexOf(b) >= 0 || b.indexOf(a) >= 0) return true;
+  const lungo = Math.max(a.length, b.length);
+  return 1 - distanzaNomi(a, b) / lungo >= 0.6;
 }
 const espnCache = {};
 async function espnScoreboard(lega, giorno) {
@@ -9619,7 +9653,22 @@ async function espnTrova(rec) {
       if (buoni.length && buoni[0].n === 1) {
         const sq = squadre.find((x) => squadraCombacia(x, buoni[0].ev));
         const altre = eventi.filter((ev) => ev !== buoni[0].ev && squadraCombacia(sq, ev));
-        if (!altre.length && buoni[0].dt < 6 * 3600000) { trovato = buoni[0].ev; legaTrovata = lega; break; }
+        // L'ALTRA SQUADRA DEVE ESSERE UN NOME SCRITTO MALE, NON UN'ALTRA
+        // SQUADRA. Questa scorciatoia serviva a salvare i titoli storpiati,
+        // ma non sapeva distinguerli: "VIRTUS ENTELLA-COMO" del 19/04/2025
+        // finiva su Lecce-Como di quel giorno, perche' il Como in Serie A
+        // giocava una partita sola e di Entella non importava niente a
+        // nessuno. Risultato: i gol del Lecce dentro una partita dell'Entella.
+        const suoi = nomiDellEvento(buoni[0].ev);
+        const nonPresa = squadre.find((x) => x !== sq);
+        // due modi di essere la stessa partita malgrado il nome che non
+        // torna: o il nome si assomiglia (storpiato), o l'ora e' la stessa.
+        // "COLONIA" contro "FC Cologne" non si assomigliano per niente ma
+        // sono la stessa gara e cominciano insieme; Lecce-Como cominciava
+        // quattro ore dopo la registrazione dell'Entella.
+        const storpiata = !nonPresa || suoi.some((n) => somigliaNome(n, nonPresa.tutto));
+        const stessaOra = buoni[0].dt < 2.5 * 3600000;
+        if (!altre.length && (storpiata || stessaOra) && buoni[0].dt < 6 * 3600000) { trovato = buoni[0].ev; legaTrovata = lega; break; }
       }
     }
     if (trovato) break;
@@ -12081,6 +12130,61 @@ const AZIONI = {
       esito = ancoraAMano(rec, r, p.tempo, +p.t);
     }
     return Object.assign({ ok: true, orologio: a.orologio || null }, r ? tabellino(r) : {});
+  },
+  // CONTROLLA CHE LA PARTITA DI ESPN SIA DAVVERO QUELLA. Una volta legata,
+  // nessuno tornava a verificarla: la firma dell'errore e' una squadra del
+  // titolo che combacia e l'altra che non combacia ne' assomiglia a niente
+  // di quella partita. Con {pulisci:true} le slega, cosi' vengono ricercate
+  // con la regola nuova; quelle che non si ritrovano restano senza, che e'
+  // meglio di avere addosso i gol di un'altra partita.
+  "clip-espn-verifica": (p) => {
+    const sospette = [];
+    for (const rec of Object.keys(ESPN)) {
+      const e = ESPN[rec]; const a = ARCHIVIO[rec];
+      if (!e || !e.id || !a) continue;
+      const squadre = squadreDi(a.partita);
+      if (squadre.length < 2) continue;
+      const nomi = (e.squadre || []).map(nomeSemplice).concat(nomeSemplice(e.nome || ""));
+      const prese = squadre.filter((x) => combaciaCoiNomi(x, nomi));
+      if (prese.length >= 2 || prese.length === 0) continue;
+      const fuori = squadre.find((x) => prese.indexOf(x) < 0);
+      if (nomi.some((n) => somigliaNome(n, fuori.tutto))) continue;
+      sospette.push({ rec: rec, partita: a.partita, giorno: a.giorno || "",
+                      competizione: a.competizione || "", espn: e.nome || "",
+                      squadreEspn: e.squadre || [], nonTorna: fuori.tutto,
+                      eventi: (e.eventi || []).length, gamecast: (e.gamecast || []).length });
+    }
+    sospette.sort((x, y) => String(y.giorno).localeCompare(String(x.giorno)));
+    return { ok: true, quante: sospette.length, righe: sospette.slice(0, +p.quante || 60) };
+  },
+  // IL SOSPETTO NON BASTA PER BUTTARE VIA. Il controllo qui sopra vede solo
+  // i nomi che abbiamo salvato, e quelli sono i nomi lunghi: "HEARTS" contro
+  // "Heart of Midlothian", "PSG" contro "Paris Saint-Germain", "COLONIA"
+  // contro "FC Cologne" sembrano tutte sbagliate e non lo sono. L'unico modo
+  // onesto di sapere se il legame regge e' rifare la ricerca con la regola
+  // nuova, che ha davanti i nomi corti e le sigle, e vedere se cade sulla
+  // stessa partita. Se cade su un'altra, quella nuova e' quella buona; se non
+  // cade su niente, meglio restare senza che tenere i gol di un'altra gara.
+  "clip-espn-ricontrolla": async (p) => {
+    const quante = Math.max(1, Math.min(200, +p.quante || 60));
+    const soli = Array.isArray(p.rec) ? p.rec : (p.rec ? [String(p.rec)] : null);
+    const lista = soli || (AZIONI["clip-espn-verifica"]({ quante: 999 }).righe || []).map((x) => x.rec);
+    const esito = [];
+    for (const rec of lista.slice(0, quante)) {
+      const prima = ESPN[rec] || {};
+      if (!ARCHIVIO[rec]) continue;
+      let dopo = null;
+      try { dopo = await espnTrova(rec); } catch (e) { ESPN[rec] = prima; esito.push({ rec: rec, come: "errore", perche: String(e.message).slice(0, 80) }); continue; }
+      const uguale = dopo && dopo.id && String(dopo.id) === String(prima.id);
+      if (uguale) esito.push({ rec: rec, come: "confermata", partita: ARCHIVIO[rec].partita, espn: dopo.nome || "" });
+      else if (dopo && dopo.id) esito.push({ rec: rec, come: "corretta", partita: ARCHIVIO[rec].partita, era: prima.nome || "", ora: dopo.nome || "" });
+      else { delete RITARDI[rec]; esito.push({ rec: rec, come: "slegata", partita: ARCHIVIO[rec].partita, era: prima.nome || "" }); }
+      await new Promise((f) => setTimeout(f, 250));
+    }
+    scriviEspn();
+    const conto = {};
+    esito.forEach((x) => { conto[x.come] = (conto[x.come] || 0) + 1; });
+    return { ok: true, viste: esito.length, conto: conto, righe: esito };
   },
   "clip-archivio-espn": (p) => {
     if (p.avvia) espnInCoda(!!p.rifai);
