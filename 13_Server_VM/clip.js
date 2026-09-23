@@ -1370,9 +1370,9 @@ function quelloCheSappiamo(r) {
     });
   }
   if (a) {
-    const rit = ritardoPartita(rec);
+    const rit = ritardoPartita(rec), fine = ritardoFine(rec);
     (a.righe || []).forEach((x) => {
-      const t = dove(x.s, Math.max(0, (x.d || 0) - rit));
+      const t = dove(x.s, Math.max(0, (x.d || 0) - rit - fine));
       if (t === null) return;
       const p = pezzoDa(t - APP_PRE, t + APP_POST, x.x, x.t, x.m, "appunti", pesoAzione(x.t, x.hl, x.g));
       p.rating = x.g || 0; p.t = t;
@@ -9752,6 +9752,22 @@ function misuraRitardo(rec) {
     RIT_PARTITA[rec] = RIT_PARTITA[rec] || { valori: [] };
     RIT_PARTITA[rec].valori.push(meglio);
   });
+}
+// IL RITARDO FINE, MISURATO SUL BOATO. Il minuto che scrive il giornalista
+// cade sul replay, non sull'azione, e di quanto lo dice il boato: sul gol
+// il boato da' il secondo esatto, e la differenza fra dove la riga era
+// stimata e dove lo stadio ha urlato e' il ritardo di QUELLA sera, contato
+// in secondi invece che in minuti. Si applica alle azioni silenziose — un
+// tiro alto, una parata — che un boato non ce l'hanno e che altrimenti
+// restano indietro di tutta la distanza.
+function ritardoFine(rec) {
+  const a = ARCHIVIO[rec];
+  if (!a || !(a.boati || []).length) return 0;
+  const scarti = a.boati.filter((x) => x.t !== null && x.t !== undefined && x.stimato !== undefined)
+                        .map((x) => x.stimato - x.t);
+  if (scarti.length < 2) return 0;                  // con un gol solo non e' una misura
+  const m = mediana(scarti);
+  return Math.abs(m) <= 120 ? Math.round(m) : 0;    // oltre due minuti non e' ritardo, e' un altro errore
 }
 function mediana(v) {
   const x = v.slice().sort((a, b) => a - b);
