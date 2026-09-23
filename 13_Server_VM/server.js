@@ -2379,6 +2379,18 @@ const server = http.createServer((req, res) => {
       return json(res, { url: url, orfana: url ? "" : fotoOrfana(chi) });
     }
     if (q.get("allenatore")) return json(res, allenatoreDi(q.get("allenatore")));
+    // SCHEDARIO: le aggiunte a mano alle schede (le frasi dei fogli le fa il
+    // lettore, qui stanno solo quelle scritte dai telecronisti)
+    if (q.get("schedario")) {
+      const k = String(q.get("schedario"));
+      const tutto = schedarioTutto();
+      if (k === "*") {
+        const quante = {};
+        Object.keys(tutto).forEach(x => { quante[x] = tutto[x].length; });
+        return json(res, { quante });
+      }
+      return json(res, { note: tutto[k] || [] });
+    }
     if (q.get("intestazioni")) return json(res, intestaLeggi());
     if (q.get("video")) return json(res, videoElenco());
     if (q.get("magazzino")) return json(res, magazzinoStato());
@@ -2395,6 +2407,58 @@ const server = http.createServer((req, res) => {
     if (q.get("budget")) return json(res, S.budget || {});
     return json(res, { ok: true, servizio: "Ponte Como TV", canali: CONFIG.CANALI, versione: 1 });
   }
+
+// ── SCHEDARIO: le aggiunte a mano ─────────────────────────────────────
+// Le frasi dei fogli le prepara il lettore della redazione; qui si tiene solo
+// quello che i telecronisti aggiungono a mano su un giocatore o su una
+// squadra. Chi scrive lascia il suo nome: non c'e' password (la pagina e'
+// interna), quindi tutto e' cappato e di ogni scrittura resta la copia
+// di prima.
+const SCHEDARIO_FILE = path.join(path.dirname(CONFIG.STATO), "schedario-note.json");
+const SCHEDARIO_CHIAVE = /^[gs]-[0-9]{1,12}$/;
+function schedarioTutto() {
+  try { return JSON.parse(fs.readFileSync(SCHEDARIO_FILE, "utf8")); } catch (e) { return {}; }
+}
+function schedarioSalva(tutto) {
+  const testo = JSON.stringify(tutto);
+  if (testo.length > 8e6) throw new Error("schedario pieno: chiedi a chi tiene il ponte");
+  try { if (fs.existsSync(SCHEDARIO_FILE)) fs.copyFileSync(SCHEDARIO_FILE, SCHEDARIO_FILE + ".bak"); } catch (e) {}
+  const tmp = SCHEDARIO_FILE + ".tmp";
+  fs.writeFileSync(tmp, testo);
+  fs.renameSync(tmp, SCHEDARIO_FILE);
+}
+function schedarioNota(p) {
+  const chiave = String(p.chiave || "");
+  if (!SCHEDARIO_CHIAVE.test(chiave)) throw new Error("scheda sconosciuta");
+  const testo = String(p.testo || "").replace(/\s+/g, " ").trim().slice(0, 1200);
+  const chi = String(p.chi || "").trim().slice(0, 40);
+  if (!testo) throw new Error("scrivi qualcosa");
+  const tutto = schedarioTutto();
+  const note = tutto[chiave] || (tutto[chiave] = []);
+  if (p.id) {
+    // correzione: solo il testo cambia, chi e quando restano scritti
+    const v = note.filter(x => x.id === String(p.id))[0];
+    if (!v) throw new Error("nota non trovata");
+    v.testo = testo;
+    v.corretta = { chi, quando: new Date().toISOString() };
+  } else {
+    if (note.length >= 60) throw new Error("su questa scheda ci sono gia' 60 aggiunte");
+    note.push({ id: Math.random().toString(36).slice(2, 10), testo, chi, quando: new Date().toISOString() });
+  }
+  schedarioSalva(tutto);
+  return { ok: true, note };
+}
+function schedarioTogli(p) {
+  const chiave = String(p.chiave || "");
+  if (!SCHEDARIO_CHIAVE.test(chiave)) throw new Error("scheda sconosciuta");
+  const tutto = schedarioTutto();
+  const note = tutto[chiave] || [];
+  const resta = note.filter(x => x.id !== String(p.id || ""));
+  if (resta.length === note.length) throw new Error("nota non trovata");
+  tutto[chiave] = resta;
+  schedarioSalva(tutto);
+  return { ok: true, note: resta };
+}
 
 // ── CHI PUO' FARE COSA ────────────────────────────────────────────────
 // Due livelli soltanto:
@@ -2497,6 +2561,14 @@ function permesso(p, ip) {
       // del ponte per spedire un pezzo di testo sarebbe uno scambio pessimo.
       // Non tocca niente, non legge niente: scrive solo in coda a un file che
       // leggo io. Cappato in lunghezza, e solo qui in sviluppo.
+      // Le aggiunte allo schedario: come il referto, senza chiave (la pagina
+      // e' interna e ogni riga porta il nome di chi l'ha scritta), cappate e
+      // con la copia di prima a ogni scrittura.
+      if (p.tipo === "schedario-nota" || p.tipo === "schedario-togli") {
+        try {
+          return json(res, p.tipo === "schedario-nota" ? schedarioNota(p) : schedarioTogli(p));
+        } catch (err) { return json(res, { ok: false, errore: err.message }); }
+      }
       if (p.tipo === "referto") {
         try {
           const t = String(p.testo || "").slice(0, 200000);

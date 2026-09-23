@@ -89,6 +89,31 @@
   .vuoto{padding:40px 4px;color:var(--testo2);}
   mark{background:#FBE7A1;color:#0A0F24;border-radius:3px;}
   html.scura mark{background:#6B5418;color:#F5F1E6;}
+  /* le aggiunte a mano: nostre, separate dalle frasi dei fogli */
+  .agg{border:1px solid var(--lineaoro);border-radius:11px;padding:11px 13px;margin:10px 0 14px;background:rgba(201,162,75,.07);}
+  .agg textarea{width:100%;height:76px;padding:9px 11px;border-radius:8px;border:1px solid var(--linea);background:var(--carta);
+    color:var(--testo);font-family:'DM Sans',sans-serif;font-size:15px;resize:vertical;}
+  .agg .riga2{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;}
+  .agg input{padding:8px 10px;border-radius:8px;border:1px solid var(--linea);background:var(--carta);color:var(--testo);
+    font-family:'DM Sans',sans-serif;font-size:14px;width:200px;}
+  .agg button{font-family:'Mazzard',sans-serif;font-weight:700;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    padding:8px 12px;border-radius:7px;cursor:pointer;background:var(--oro);color:var(--carta);border:1px solid var(--oro);}
+  .agg button.chiaro{background:var(--chip);color:var(--testo);border-color:var(--linea);}
+  .agg .dice{font-size:12.5px;color:var(--testo2);}
+  .agg .dice.err{color:#B3171C;}
+  .nostra{border-left:4px solid var(--oro);}
+  .nostra .tasti{display:flex;gap:8px;margin-top:6px;}
+  .nostra .tasti button{background:none;border:0;color:var(--oro);font-size:12px;cursor:pointer;text-decoration:underline;padding:0;}
+  /* le statistiche, come nella scheda del giocatore in TELECRONACA */
+  .stat table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums;}
+  .stat th{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--testo2);padding:0 6px 5px;text-align:center;}
+  .stat td{padding:5px 6px;text-align:center;border-top:1px solid var(--linea);}
+  .stat td:first-child,.stat th:first-child{text-align:left;}
+  .stat td small{color:var(--testo2);}
+  .stat tr.tot td{color:var(--oroB);font-weight:700;border-top:1px solid var(--lineaoro);}
+  .stat .rosso{display:inline-block;min-width:14px;padding:0 3px;border-radius:2px;background:#E5342B;color:#fff;font-size:11px;}
+  .stat i.giallo{display:inline-block;width:8px;height:11px;border-radius:1.5px;background:#F2C230;vertical-align:-1px;}
+  .stat .vuota{color:var(--testo2);font-size:13.5px;}
   .kv2{display:flex;gap:14px;flex-wrap:wrap;color:var(--testo2);font-size:14px;margin-top:4px;}
   .kv2 b{color:var(--testo);}
   @media print{ .cerca,.azioni{display:none;} .foglio{border:0;max-width:none;} }
@@ -112,6 +137,7 @@
   <main id="corpo"><div class="vuoto">Carico lo schedario&hellip;</div></main>
 </div>
 
+<script src="stagione-espn.js"></script>
 <script>
 (function () {
   "use strict";
@@ -194,6 +220,142 @@
       (!r.g.length && !r.s.length ? '<div class="vuoto">Nessuno con questo nome. Le schede si fanno con le squadre che commentiamo.</div>' : "");
   }
 
+  // ── le statistiche ESPN: stagione in corso e carriera ────────────────
+  var CAMPI = ["presenze", "titolare", "gol", "assist", "gialli", "rossi", "subiti", "parate", "inviolate"];
+  function etichettaAnno(a) { return a + "-" + String(a + 1).slice(2); }
+  function statistiche(g, dove) {
+    if (!window.StagioneEspn || !/^\d+$/.test(String(g.id))) { dove.innerHTML = ""; return; }
+    var POR = /^(G|GK|P|POR)$/i.test(g.ruolo || ""), conParate = false;
+    var anno = new Date().getMonth() >= 6 ? new Date().getFullYear() : new Date().getFullYear() - 1;
+    dove.innerHTML = '<div class="gruppo">Le statistiche</div><div class="stat" id="stat"><div class="vuota">Conto presenze e gol&hellip;</div></div>';
+    function somma(v) {
+      var t = {}; CAMPI.forEach(function (k) { t[k] = 0; });
+      v.forEach(function (c) { CAMPI.forEach(function (k) { t[k] += c[k] || 0; }); });
+      return t;
+    }
+    function cella(c) {
+      var pres = "<td>" + (c.presenze || 0) + (c.titolare !== c.presenze && c.titolare != null ? " <small>(" + c.titolare + " tit.)</small>" : "") + "</td>";
+      var cart = "<td>" + (c.gialli || "") + (c.rossi ? ' <span class="rosso">' + c.rossi + "</span>" : "") + "</td>";
+      if (POR) return pres + "<td>" + (c.subiti || 0) + "</td><td>" + (c.inviolate || 0) + "</td>" + (conParate ? "<td>" + (c.parate || 0) + "</td>" : "") + cart;
+      return pres + "<td>" + (c.gol || 0) + "</td><td>" + (c.assist || 0) + "</td>" + cart;
+    }
+    function tabella(titolo, righe, totale) {
+      var th = POR ? "<th>Subiti</th><th>Imbattuto</th>" + (conParate ? "<th>Parate</th>" : "") : "<th>Gol</th><th>Assist</th>";
+      return "<table><thead><tr><th>" + esc(titolo) + "</th><th>Pres.</th>" + th + '<th><i class="giallo"></i></th></tr></thead><tbody>' +
+             righe + (totale || "") + "</tbody></table>";
+    }
+    Promise.all([
+      g.tid ? StagioneEspn.giocatore(g.tid, g.id).catch(function () { return []; }) : Promise.resolve([]),
+      StagioneEspn.carriera(g.id).catch(function () { return []; })
+    ]).then(function (v) {
+      var ora = v[0] || [], car = v[1] || [];
+      if (!POR) POR = ora.some(function (c) { return c.portiere; });
+      conParate = POR && ora.some(function (c) { return c.parate > 0; });
+      var h = "";
+      if (ora.length) {
+        var t = somma(ora);
+        h += tabella("Stagione " + etichettaAnno(anno),
+          ora.map(function (c) { return "<tr><td>" + esc(c.nome) + "</td>" + cella(c) + "</tr>"; }).join(""),
+          ora.length > 1 ? '<tr class="tot"><td>Totale</td>' + cella(t) + "</tr>" : "");
+      }
+      // la carriera: una riga per stagione e squadra
+      var gruppi = {}, ordine = [];
+      if (ora.length) { var so = somma(ora); so.anno = anno; so.squadra = g.squadra; gruppi[anno + "|ora"] = so; ordine.push(anno + "|ora"); }
+      car.forEach(function (c) {
+        var k = c.anno + "|" + c.tid;
+        if (!gruppi[k]) { gruppi[k] = { anno: c.anno, squadra: c.squadra }; CAMPI.forEach(function (x) { gruppi[k][x] = 0; }); ordine.push(k); }
+        CAMPI.forEach(function (x) { gruppi[k][x] += c[x] || 0; });
+      });
+      var righe = ordine.map(function (k) { return gruppi[k]; });
+      if (righe.length) {
+        h += tabella("Carriera", righe.map(function (x) {
+          return "<tr><td>" + etichettaAnno(x.anno) + " <small>" + esc(x.squadra || "") + "</small></td>" + cella(x) + "</tr>";
+        }).join(""), '<tr class="tot"><td>In tutto</td>' + cella(somma(righe)) + "</tr>");
+      }
+      el("stat").innerHTML = h || '<div class="vuota">ESPN non ha le statistiche di questo giocatore.</div>';
+    });
+  }
+
+  // ── le aggiunte a mano ───────────────────────────────────────────────
+  // Le frasi dei fogli le fa il lettore della redazione: queste le scrivono i
+  // telecronisti, e restano separate. Chi scrive lascia il nome (lo stesso di
+  // TELECRONACA, se c'e').
+  var CHIAVE = "";
+  function chiIo() { try { return localStorage.getItem("comotv.telecronaca.chi") || ""; } catch (e) { return ""; } }
+  function scatolaAggiunte(chiave, dove) {
+    CHIAVE = chiave;
+    dove.innerHTML =
+      '<div class="gruppo">Le nostre aggiunte</div>' +
+      '<div id="nostre"></div>' +
+      '<div class="agg">' +
+        '<textarea id="testo" maxlength="1200" placeholder="Aggiungi una curiosità, una pronuncia, un precedente… La vedranno tutti."></textarea>' +
+        '<div class="riga2"><input type="text" id="chi" maxlength="40" placeholder="Il tuo nome" value="' + esc(chiIo()) + '">' +
+          '<button type="button" id="salvaNota">Aggiungi</button>' +
+          '<span class="dice" id="dice">Resta scritto chi e quando. Le frasi dei fogli non si toccano.</span></div>' +
+      "</div>";
+    caricaNote();
+    dove.querySelector("#salvaNota").addEventListener("click", function () { manda({ testo: dove.querySelector("#testo").value }); });
+    dove.querySelector("#chi").addEventListener("change", function () {
+      try { localStorage.setItem("comotv.telecronaca.chi", this.value.trim()); } catch (e) {}
+    });
+  }
+  function dice(t, err) {
+    var d = el("dice");
+    if (!d) return;
+    d.className = "dice" + (err ? " err" : "");
+    d.textContent = t;
+  }
+  function caricaNote() {
+    fetch(PONTE + "?schedario=" + encodeURIComponent(CHIAVE), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { disegnaNote(j.note || []); })
+      .catch(function () { disegnaNote([]); });
+  }
+  function disegnaNote(note) {
+    var d = el("nostre");
+    if (!d) return;
+    d.innerHTML = note.length ? note.map(function (n) {
+      return '<div class="fr nostra"><span data-testo="' + esc(n.id) + '">' + esc(n.testo) + "</span><small>" +
+             (n.chi ? "<b>" + esc(n.chi) + "</b> · " : "") + esc(dataIt(n.quando)) +
+             (n.corretta ? " · corretta da " + esc(n.corretta.chi || "") + " il " + esc(dataIt(n.corretta.quando)) : "") +
+             '</small><span class="tasti"><button type="button" data-corr="' + esc(n.id) + '">correggi</button>' +
+             '<button type="button" data-togli="' + esc(n.id) + '">togli</button></span></div>';
+    }).join("") : '<div class="dice" style="margin-bottom:10px">Nessuna aggiunta nostra, per ora.</div>';
+  }
+  function manda(p) {
+    var chi = (el("chi") || {}).value || "";
+    if (!String(p.testo || "").trim()) return dice("Scrivi qualcosa prima di aggiungere.", true);
+    dice("Salvo…");
+    fetch(PONTE, { method: "POST", headers: { "Content-Type": "application/json" },
+                   body: JSON.stringify({ tipo: "schedario-nota", chiave: CHIAVE, testo: p.testo, chi: chi.trim(), id: p.id || "" }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || j.ok === false) return dice("Non salvata: " + ((j && j.errore) || "il ponte non risponde"), true);
+        if (el("testo") && !p.id) el("testo").value = "";
+        disegnaNote(j.note || []);
+        dice(p.id ? "Corretta." : "Aggiunta. La vedono tutti.");
+      })
+      .catch(function () { dice("Non salvata: il ponte non risponde.", true); });
+  }
+  document.addEventListener("click", function (ev) {
+    var t = ev.target.closest ? ev.target.closest("[data-togli]") : null;
+    if (t) {
+      if (!confirm("Tolgo questa aggiunta?")) return;
+      fetch(PONTE, { method: "POST", headers: { "Content-Type": "application/json" },
+                     body: JSON.stringify({ tipo: "schedario-togli", chiave: CHIAVE, id: t.dataset.togli }) })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { if (j && j.ok !== false) { disegnaNote(j.note || []); dice("Tolta."); } else dice("Non tolta.", true); })
+        .catch(function () { dice("Non tolta: il ponte non risponde.", true); });
+      return;
+    }
+    var c = ev.target.closest ? ev.target.closest("[data-corr]") : null;
+    if (!c) return;
+    var span = document.querySelector('[data-testo="' + c.dataset.corr + '"]');
+    var nuovo = prompt("Correggi l'aggiunta:", span ? span.textContent : "");
+    if (nuovo === null) return;
+    manda({ testo: nuovo, id: c.dataset.corr });
+  });
+
   // ── le schede ────────────────────────────────────────────────────────
   function frase(x) {
     return '<div class="fr' + (x.sua ? " mia" : "") + '">' + esc(x.frase) + "<small>" +
@@ -213,8 +375,12 @@
         el("indietro").hidden = false;
         el("corpo").innerHTML =
           '<div class="scheda"><div class="faccia" id="faccia"></div><div><div class="kv2" id="anag"></div></div></div>' +
+          '<div id="statistiche"></div>' +
+          '<div id="aggiunte"></div>' +
           '<div class="gruppo">' + g.frasi.length + (g.frasi.length === 1 ? " frase dai fogli" : " frasi dai fogli") + "</div>" +
-          (g.frasi.length ? g.frasi.map(frase).join("") : '<div class="vuoto">Ancora nessuna curiosità su di lui.</div>');
+          (g.frasi.length ? g.frasi.map(frase).join("") : '<div class="vuoto">Ancora nessuna curiosità dai fogli.</div>');
+        statistiche(g, el("statistiche"));
+        scatolaAggiunte("g-" + g.id, el("aggiunte"));
         // la faccia dal magazzino e l'anagrafe da ESPN
         fetch(PONTE + "?foto=" + encodeURIComponent(g.cognome) + "&id=" + encodeURIComponent(g.id) +
               (g.tid ? "&squadra=" + encodeURIComponent(g.tid) : ""), { cache: "no-store" })
@@ -256,8 +422,10 @@
                    '<span class="n2"><b>' + esc(f.titolo || "Foglio") + "</b><small>" + esc(dataIt(f.data)) +
                    (f.autore ? " · " + esc(f.autore) : "") + "</small></span></a>";
           }).join("") + "</div>" +
-          '<div class="gruppo">Le curiosità</div>' +
+          '<div id="aggiunte"></div>' +
+          '<div class="gruppo">Le curiosità dai fogli</div>' +
           (s.frasi.length ? s.frasi.map(frase).join("") : '<div class="vuoto">Ancora nessuna curiosità.</div>');
+        scatolaAggiunte("s-" + s.tid, el("aggiunte"));
       })
       .catch(function () { el("corpo").innerHTML = '<div class="vuoto">Scheda non trovata.</div>'; });
   }
