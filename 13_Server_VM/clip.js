@@ -5766,7 +5766,9 @@ async function archivioApri(p) {
   R.reg[r.id] = r; scrivi(); annuncia(0, "clip");
   // una partita che si apre passa in testa alla coda delle durate: in pochi
   // secondi si sa se il file e' l'intera o un tempo, e il nome si aggiusta
-  if (!a.misurato && CODA_DURATE.indexOf(p.rec) < 0) { CODA_DURATE.unshift(String(p.rec)); giraDurate(); }
+  // (la durata di una partita S3 non si misura qui: la dice il video appena
+  //  carica nel browser, e la misura vera si chiede quando serve)
+  if (!a.misurato && !senzaCode(a.bucket) && CODA_DURATE.indexOf(p.rec) < 0) { CODA_DURATE.unshift(String(p.rec)); giraDurate(); }
   // SENZA CRONOMETRO QUESTA PARTITA NON SA CHE ORA E'. Una registrazione
   // intera comincia con il cartello — tredici minuti di "COMING SOON" su
   // Como-Lipsia — e in mezzo ha l'intervallo, altri diciassette. Se il file
@@ -5776,7 +5778,9 @@ async function archivioApri(p) {
   // cronometro in sovrimpressione, e costa venticinque secondi: si legge
   // appena la partita si apre, senza far aspettare chi l'ha aperta.
   const senzaOra = (a.pezzi || []).every((x) => !oraNelNome(path.basename(x.chiave || "")));
-  if (!a.orologio && !a.orologioFallito && senzaOra && tesseractCe()) {
+  // su S3 ogni lettura e' traffico contato: il cronometro si legge col tasto
+  // nell'Asset, non da solo all'apertura (il 23/09 partiva a ogni apertura)
+  if (!a.orologio && !a.orologioFallito && senzaOra && tesseractCe() && !senzaCode(a.bucket)) {
     setTimeout(() => {
       calibraOrologio(String(p.rec))
         .then((o) => console.log("[clip] cronometro all'apertura di " + (a.partita || "") +
@@ -8811,6 +8815,8 @@ async function leggiTabellone(rec, rifai) {
 //  con tredici minuti di cartello e diciassette di intervallo, letto a
 //  percentuali, si guarda sempre nel posto sbagliato.
 let riconoscimentiAlLavoro = new Set();
+// un file che non dice come si chiama: "MultiCorder3 - Output 1", "Output 2"
+const SENZA_NOME = /multicorder|output\s*\d|^\s*$/i;
 async function riconosciPartita(rec) {
   const a = ARCHIVIO[String(rec || "")];
   if (!a) throw new Error("questa partita non e' nell'indice");
@@ -8827,7 +8833,7 @@ async function riconosciPartita(rec) {
     // indovinare due ore, e i momenti da guardare cadevano fuori posto: la
     // registrazione di tre ore del 9 settembre veniva letta come se fosse di
     // due, e diceva la partita sbagliata. Con la durata giusta l'ha presa.
-    if (!a.misurato && !senzaCode(a.bucket)) { try { await misuraPartita(rec); } catch (e) {} }
+    if (!a.misurato) { try { await misuraPartita(rec); } catch (e) {} }
     const pz = (a.pezzi || [])[0];
     if (!pz) throw new Error("questa partita non ha materiale");
     const regione = await s3Regione(a.bucket);
@@ -9151,6 +9157,22 @@ function orologiInCoda(ripasso) {
 //  cento minuti in su e' la partita intera e basta lui; due da 45-75 sono i
 //  due tempi; sotto i 35 e' un taglio di regia e si scarta, se c'e' altro.
 function durataFile(via) {
+  // dietro il ponte S3 la misura la fa la EC2: ffprobe legge l'indice del
+  // file nella regione del secchio (gratis) e qui arriva un numero. Senza la
+  // durata vera il riconoscimento tira a indovinare due ore e guarda i
+  // fotogrammi nei posti sbagliati (2 partite nominate su 15, il 22/09)
+  const pp = pontePer(via);
+  if (pp) return new Promise((ok) => {
+    const r = http.get(pp.ponte + "/dur?k=" + encodeURIComponent(pp.chiave), { timeout: 200000 }, (res) => {
+      let t = ""; res.on("data", (b) => { t += b; });
+      res.on("end", () => {
+        try { const j = JSON.parse(t); ok(j && j.ok && isFinite(j.secondi) ? Math.round(j.secondi / 60 * 10) / 10 : null); }
+        catch (e) { ok(null); }
+      });
+    });
+    r.on("error", () => ok(null));
+    r.on("timeout", () => { r.destroy(); ok(null); });
+  });
   return new Promise((ok) => {
     execFile("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", via],
       { timeout: 90000 }, (e, so) => {
@@ -9164,6 +9186,7 @@ let durateInMoto = 0, durateFatte = 0, durateFallite = 0, durateCambiate = 0, du
 const DURATE_INSIEME = 2;
 async function misuraPartita(rec) {
   if (ARCHIVIO[rec] && soloElenco(ARCHIVIO[rec].bucket)) throw new Error("solo elenco: le durate si misurano quando ci sara' il ponte o la chiave");
+  // col ponte la misura non costa: ffprobe gira sulla EC2, in regione
   const a = ARCHIVIO[rec];
   if (!a) return;
   const regione = await s3Regione(a.bucket);
@@ -11611,10 +11634,40 @@ const AZIONI = {
   "clip-appunti-storici": appuntiStoriciImporta,
   // legge il cronometro di una partita (o restituisce quello gia' letto) e
   // dice dove cade un minuto degli appunti, se glielo si chiede
+  // IL NOME SENZA LEGGERE NIENTE. Un file "MultiCorder3 - Output 1" porta
+  // pero' il giorno e l'ora nel nome, e quell'ora dice quale partita di
+  // Airtable comincia dentro di lui. Quando ne resta UNA SOLA, quella e' la
+  // proposta: costa zero byte, e la conferma la da' una persona dall'Asset.
+  // Il tabellone, che costa minuti e mega, resta per i casi dubbi.
+  "clip-archivio-proponi": (p) => {
+    const quali = Object.keys(ARCHIVIO).filter((k) => {
+      const a = ARCHIVIO[k];
+      return a.soloS3 && !a.riconosciuta && (a.candidati || []).length === 1 &&
+             (p.anchePerNome ? true : SENZA_NOME.test(a.partita || ""));
+    });
+    let fatte = 0;
+    quali.slice(0, num(p.quante, 1, 4000, 2000)).forEach((k) => {
+      const a = ARCHIVIO[k], c = a.candidati[0];
+      if (!c || !c.rec || !a.dove) return;
+      const r = { rec: c.rec, nome: c.nome, voto: 0, sicura: false,
+                  perche: ["l'unica partita del " + (a.giorno || "") + " che comincia dentro questo file"],
+                  quando: new Date().toISOString() };
+      RICONOSCIUTE[a.dove] = r; a.riconosciuta = r; fatte++;
+    });
+    if (fatte) { scriviRiconosciute(); scriviArchivio(); }
+    return { ok: true, proposte: fatte, restano: quali.length - fatte,
+             nota: "proposte senza leggere un byte: le conferma una persona dall'Asset" };
+  },
   "clip-archivio-riconosci": async (p) => {
     if (p.tutte) {
+      // SOLO CHI NON HA UN NOME. Duecentotrentotto cartelle su S3 si
+      // chiamano gia' "CERRO PORTENO-MONAGAS": leggere il loro tabellone e'
+      // spendere cinque minuti e qualche decina di mega per sapere una cosa
+      // che c'e' scritta sopra. Il tabellone serve ai file che si chiamano
+      // "MultiCorder3 - Output 1", e basta.
       const quali = Object.keys(ARCHIVIO).filter((k) => ARCHIVIO[k].soloS3 &&
-        (ARCHIVIO[k].candidati || []).length && !ARCHIVIO[k].riconosciuta);
+        (ARCHIVIO[k].candidati || []).length && !ARCHIVIO[k].riconosciuta &&
+        SENZA_NOME.test(ARCHIVIO[k].partita || ""));
       let fatte = 0, decise = 0;
       for (const k of quali.slice(0, num(p.quante, 1, 60, 40))) {
         if (registrandoDavvero() || laDirettaGira() || magazzinoOccupato()) break;
