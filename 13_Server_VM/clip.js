@@ -1103,7 +1103,7 @@ function pezzoDa(dentro, fuori, titolo, tipo, minuto, fonte, peso) {
 //  la si ricava dal testo — non da chi l'ha scritto.
 const ETICHETTE = [
   ["annullato", /annullat|disallow/i],
-  ["gol", /\bgol\b|\bgoal\b|\brete\b|autogol|segna/i],
+  ["gol", /\bgol\b|\bgoal\b|autogol|\bsegna\b|\bsegnat[oa]\b|marcatur|in rete\b|gonfia la rete/i],
   ["rigore", /rigore|penalty|penal/i],
   ["espulsione", /espuls|cartellino rosso|red card/i],
   ["ammonizione", /ammoni|cartellino giallo|yellow card|giallo a /i],
@@ -1117,11 +1117,38 @@ const ETICHETTE = [
   ["cambio", /sostituzion|cambio|substitution/i],
   ["inizio", /fischio|inizio|fine (primo|secondo) tempo|kick.?off|half.?time/i]
 ];
+// IL TIPO SCELTO DA CHI SCRIVE VALE PIU' DELLA PROSA. Il giornalista sceglie
+// "Gol", "Occasione", "Parata", "Palo" da un elenco chiuso; il testo invece
+// racconta, e in un racconto "il guardalinee ha SEGNAlato il fuorigioco" o
+// "tiro a RETE" finivano etichettati come gol. Una partita da due gol ne
+// mostrava tre nella legenda (23/09). Il testo si guarda solo quando il tipo
+// non c'e': succede negli appunti scritti di fretta.
 function etichettaAzione(tipo, titolo) {
-  const t = String(tipo || "") + " " + String(titolo || "");
-  for (const [nome, forma] of ETICHETTE) if (forma.test(t)) return nome;
-  return "azione";
+  const soloTipo = String(tipo || "").trim(), testo = String(titolo || "");
+  // un gol annullato non e' un gol, e lo dice il testo: vale piu' del tipo
+  if (/annullat|disallow/i.test(testo)) return "annullato";
+  // QUELLO CHE NON E' ENTRATO NON E' UN GOL, anche quando chi scrive ha
+  // scelto "Gol" come tipo: "Quinones vicino al gol", "Zajc si mangia il
+  // gol", "Stojkovic vicino al gol del pari". Nella legenda una partita da
+  // due gol ne mostrava tre (23/09).
+  const quasi = /sfior|si mangia|si divora|mangia(to)? il gol|vicino al gol|per poco|gol (mangiato|sbagliato|fallito)|a un passo dal gol|fallisce/i.test(testo);
+  // UN GOL VERO PORTA CON SE' IL PUNTEGGIO CHE CAMBIA: "AUTOGOL DI VALINCIC,
+  // sulla conclusione di Babec (3-1 DIN)" e' un gol anche se il tipo dice
+  // "Occasione". E' il modo in cui la redazione segna che la palla e' entrata.
+  if (!quasi && /\b(auto)?gol\b/i.test(testo) && /\(\s*\d{1,2}\s*[-\u2013]\s*\d{1,2}/.test(testo)) return "gol";
+  const cerca = (dove) => {
+    for (const [nome, forma] of ETICHETTE) {
+      if (!forma.test(dove)) continue;
+      if (nome === "gol" && quasi) continue;
+      return nome;
+    }
+    return null;
+  };
+  // il tipo scelto da chi scrive vale piu' della prosa: il testo racconta, e
+  // in un racconto "ha SEGNAlato il fuorigioco" passava per gol
+  return (soloTipo && cerca(soloTipo)) || cerca(soloTipo + " " + testo) || "azione";
 }
+
 
 // ── QUANTO CI SI PUO' FIDARE DEL SECONDO ──────────────────────────────
 //  Non tutte le fonti portano allo stesso fotogramma. Il tabellone che
@@ -1159,20 +1186,42 @@ function fondiDue(a, b) {
   return fuso;
 }
 
+// le parole che in un appunto non sono un cognome
+const NON_NOMI = new Set(("GOAL GOLS RETE RETI CROSS ASSIST TIRO TIRI CALCIO ANGOLO PUNIZIONE RIGORE AREA PALLA PALLONE " +
+  "SINISTRO DESTRO TESTA PIEDE PORTA PORTIERE TRAVERSA PALO DOPO PRIMA SUPER GRANDE BELLA BELLO PRIMO SECONDO TEMPO " +
+  "MINUTO CONTROPIEDE AZIONE VANTAGGIO PAREGGIO RADDOPPIO ANNULLATO CONCLUSIONE DEVIAZIONE PARATA CASA OSPITI").split(" "));
+function nomiDentro(x) {
+  return (String(x.giocatore || "") + " " + String(x.titolo || ""))
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase()
+    .split(/[^A-Z]+/).filter((w) => w.length >= 4 && !NON_NOMI.has(w));
+}
+function stessoNome(a, b) {
+  const na = nomiDentro(a), nb = nomiDentro(b);
+  return na.some((w) => nb.indexOf(w) >= 0);
+}
 function togliDoppioni(pezzi, vicino) {
   const fuori = [];
+  const eti = (z) => etichettaAzione(z.tipo, z.titolo);
   pezzi.sort((a, b) => a.dentro - b.dentro).forEach((x) => {
-    const prima = fuori[fuori.length - 1];
-    if (prima && Math.abs(x.dentro - prima.dentro) < (vicino || 20)) {
-      // LA STESSA COSA RACCONTATA DA DUE. Prima se ne buttava una — e con
-      // lei il minuto piu' preciso, oppure il nome del giocatore. Adesso si
-      // fondono: l'ora di chi ce l'ha esatta, il testo di chi dice di piu'.
-      // Ma solo se parlano davvero della stessa cosa: un gol e un'
-      // ammonizione a venti secondi restano due righe.
-      const ea = etichettaAzione(prima.tipo, prima.titolo);
-      const eb = etichettaAzione(x.tipo, x.titolo);
-      if (ea === eb || ea === "azione" || eb === "azione") {
-        fuori[fuori.length - 1] = fondiDue(prima, x);
+    // SI GUARDA INDIETRO, NON SOLO ALLA RIGA DI PRIMA. Fra il gol visto da
+    // ESPN e quello scritto dalla redazione ci puo' stare un'occasione, e
+    // allora la catena si spezzava e il gol restava doppio (23/09).
+    const ex = eti(x);
+    for (let n = fuori.length - 1; n >= 0; n--) {
+      const y = fuori[n], dist = Math.abs(x.dentro - y.dentro);
+      if (dist >= 100) break;                       // piu' indietro non si guarda
+      const ey = eti(y);
+      // LO STESSO GOL VISTO DA DUE PARTI ARRIVA A UN MINUTO DI DISTANZA:
+      // ESPN arrotonda al minuto, il giornalista scrive dopo aver visto.
+      // Per i gol la finestra si allarga a cento secondi, ma solo se le due
+      // righe nominano lo stesso giocatore: cosi' una doppietta ravvicinata
+      // resta di due gol.
+      const quanto = (ex === "gol" && ey === "gol" && stessoNome(x, y)) ? 100 : (vicino || 20);
+      if (dist >= quanto) continue;
+      // Ma solo se parlano davvero della stessa cosa: un gol e
+      // un'ammonizione a venti secondi restano due righe.
+      if (ex === ey || ex === "azione" || ey === "azione") {
+        fuori[n] = fondiDue(y, x);
         return;
       }
     }
