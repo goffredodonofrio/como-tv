@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<script>
+/* Le Grafiche Live vivono sulla macchina della regia: da GitHub si viene
+   portati sulla macchina giusta. Sulla VM questo non fa nulla. */
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  location.replace("https://projects-cloud.it" + location.pathname + location.search + location.hash);
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Schedario · Como TV</title>
+<!--
+  SCHEDARIO — squadre e giocatori, fatti con le curiosita' della redazione.
+
+  Lo apre TELECRONACA (tasto Schedario, e dalla scheda del giocatore). Le
+  schede le prepara il lettore dei fogli sulla VM (13_Server_VM/fogli) in
+  /fogli-redazione/schede/: per ogni giocatore e ogni squadra le frasi dei
+  fogli che li nominano, con foglio, autore e data. Non va in onda.
+
+  Indirizzi: schedario.html            la ricerca
+             schedario.html?g=<id>     la scheda di un giocatore (id ESPN)
+             schedario.html?s=<id>     la scheda di una squadra (id ESPN)
+             schedario.html?q=<testo>  la ricerca gia' scritta
+-->
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    color-scheme:light;
+    --fondo:#E9E4D8;--carta:#FFFFFF;--testo:#0A0F24;--testo2:#4A5068;--oro:#8A6A1E;--oroB:#6E520F;
+    --linea:#DCD5C4;--lineaoro:rgba(138,106,30,.35);--chip:#F6F2E9;
+  }
+  html.scura{
+    color-scheme:dark;
+    --fondo:#0A0F24;--carta:#111833;--testo:#F5F1E6;--testo2:#8A8B96;--oro:#C9A24B;--oroB:#E3C271;
+    --linea:rgba(245,241,230,.1);--lineaoro:rgba(201,162,75,.35);--chip:rgba(245,241,230,.05);
+  }
+  body{font-family:'DM Sans',system-ui,sans-serif;font-weight:500;background:var(--fondo);color:var(--testo);
+    font-size:16px;line-height:1.55;padding-bottom:50px;}
+  .foglio{max-width:1100px;margin:0 auto;background:var(--carta);min-height:100vh;
+    border-left:1px solid var(--linea);border-right:1px solid var(--linea);}
+  header{padding:22px clamp(16px,4vw,34px) 12px;}
+  .eyebrow{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.3em;
+    text-transform:uppercase;color:var(--oro);}
+  h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(24px,4vw,36px);line-height:1.02;
+    text-transform:uppercase;letter-spacing:-.01em;margin:8px 0 4px;}
+  .dati{color:var(--testo2);font-size:15px;}
+  .azioni{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+  .azioni a,.azioni button{font-family:'Mazzard',sans-serif;font-weight:700;font-size:11px;letter-spacing:.1em;
+    text-transform:uppercase;padding:7px 11px;border-radius:7px;cursor:pointer;text-decoration:none;
+    background:var(--chip);color:var(--testo);border:1px solid var(--linea);}
+  .azioni a:hover,.azioni button:hover{border-color:var(--oro);color:var(--oroB);}
+
+  .cerca{position:sticky;top:0;z-index:5;background:var(--carta);border-bottom:1px solid var(--linea);
+    padding:10px clamp(16px,4vw,34px);display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  .cerca input{flex:1 1 320px;min-width:0;padding:10px 13px;border-radius:9px;border:1px solid var(--linea);
+    background:var(--chip);color:var(--testo);font-family:'DM Sans',sans-serif;font-size:15.5px;}
+  .cerca input:focus{outline:none;border-color:var(--oro);}
+  .cerca .quanti{font-size:12.5px;color:var(--testo2);}
+  main{padding:14px clamp(16px,4vw,34px) 20px;}
+
+  .gruppo{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--oro);margin:16px 0 8px;}
+  .elenco{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:9px;}
+  .voce{display:flex;gap:10px;align-items:center;text-align:left;cursor:pointer;padding:9px 11px;border-radius:10px;
+    background:var(--carta);border:1px solid var(--linea);color:var(--testo);font-family:'DM Sans',sans-serif;min-width:0;}
+  .voce:hover{border-color:var(--oro);}
+  .voce img,.voce i{width:34px;height:34px;flex:0 0 34px;object-fit:contain;border-radius:50%;background:var(--chip);}
+  .voce .n2{min-width:0;}
+  .voce b{display:block;font-size:15px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .voce small{color:var(--testo2);font-size:12px;}
+
+  .scheda{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:6px;}
+  .scheda .faccia{width:120px;height:120px;border-radius:12px;background:var(--chip);flex:0 0 120px;overflow:hidden;
+    display:flex;align-items:flex-end;justify-content:center;}
+  .scheda .faccia img{width:100%;height:100%;object-fit:cover;object-position:top center;}
+  .fr{padding:10px 12px;border-radius:10px;background:var(--chip);border:1px solid var(--linea);margin-bottom:8px;}
+  .fr small{display:block;margin-top:5px;color:var(--testo2);font-size:12px;}
+  .fr small b{color:var(--oroB);font-weight:700;}
+  .fr a{color:var(--oro);}
+  .fr.mia{border-color:var(--lineaoro);background:rgba(201,162,75,.10);}
+  .vuoto{padding:40px 4px;color:var(--testo2);}
+  mark{background:#FBE7A1;color:#0A0F24;border-radius:3px;}
+  html.scura mark{background:#6B5418;color:#F5F1E6;}
+  .kv2{display:flex;gap:14px;flex-wrap:wrap;color:var(--testo2);font-size:14px;margin-top:4px;}
+  .kv2 b{color:var(--testo);}
+  @media print{ .cerca,.azioni{display:none;} .foglio{border:0;max-width:none;} }
+</style>
+</head>
+<body>
+<div class="foglio">
+  <header>
+    <div class="eyebrow">Schedario</div>
+    <h1 id="titolo">Squadre e giocatori</h1>
+    <div class="dati" id="dati">Le curiosit&agrave; della redazione, messe per giocatore e per squadra.</div>
+    <div class="azioni">
+      <button type="button" id="indietro" hidden>&lsaquo; Torna alla ricerca</button>
+      <button type="button" id="tema">Tema scuro</button>
+    </div>
+  </header>
+  <div class="cerca">
+    <input type="search" id="q" placeholder="Cerca un giocatore, una squadra o una parola nelle curiosità…" autocomplete="off">
+    <span class="quanti" id="quanti"></span>
+  </div>
+  <main id="corpo"><div class="vuoto">Carico lo schedario&hellip;</div></main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var FOGLI = "/fogli-redazione/";
+  var PONTE = "/api";            // in dev ci pensa comotv-dev-fix a spostarlo
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function piano(t) {
+    return String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  }
+  function dataIt(d) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || ""); return m ? (+m[3]) + "/" + (+m[2]) + "/" + m[1] : (d || ""); }
+  function stemma(tid) {
+    return tid ? '<img src="https://a.espncdn.com/i/teamlogos/soccer/500/' + encodeURIComponent(tid) +
+                 '.png" alt="" loading="lazy" onerror="this.replaceWith(document.createElement(\'i\'))">' : "<i></i>";
+  }
+
+  // il tema della lavagna (lo stesso interruttore, lo stesso ricordo)
+  function tema(scuro, ricorda) {
+    document.documentElement.classList.toggle("scura", scuro);
+    el("tema").textContent = scuro ? "Tema chiaro" : "Tema scuro";
+    if (ricorda) { try { localStorage.setItem("comotv.lavagna.tema", scuro ? "scura" : "chiara"); } catch (e) {} }
+  }
+  var salvato = null;
+  try { salvato = localStorage.getItem("comotv.lavagna.tema"); } catch (e) {}
+  tema(salvato === "scura");
+  el("tema").addEventListener("click", function () { tema(!document.documentElement.classList.contains("scura"), true); });
+
+  var IND = { giocatori: [], squadre: [] };
+  fetch(FOGLI + "schede/indice.json", { cache: "no-store" })
+    .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+    .then(function (j) { IND = j; dove(); })
+    .catch(function () { el("corpo").innerHTML = '<div class="vuoto">Lo schedario non &egrave; ancora pronto: il lettore dei fogli lo prepara al prossimo giro.</div>'; });
+
+  // ── la ricerca: nomi di squadre e giocatori, e le parole delle frasi ──
+  function cerca(q) {
+    var k = piano(q);
+    if (!k) return null;
+    var par = k.split(" ");
+    function punti(x) {
+      var c = x.cerca || "";
+      if (!par.every(function (p) { return c.indexOf(p) >= 0; })) return 0;
+      return c.indexOf(k) === 0 ? 3 : (c.indexOf(" " + k) >= 0 ? 2 : 1);
+    }
+    var g = IND.giocatori.map(function (x) { return { x: x, p: punti(x) }; }).filter(function (v) { return v.p; });
+    var s = IND.squadre.map(function (x) { return { x: x, p: punti(x) }; }).filter(function (v) { return v.p; });
+    g.sort(function (a, b) { return b.p - a.p || b.x.n - a.x.n; });
+    s.sort(function (a, b) { return b.p - a.p || b.x.n - a.x.n; });
+    return { g: g.map(function (v) { return v.x; }), s: s.map(function (v) { return v.x; }) };
+  }
+  function voceG(x) {
+    return '<button type="button" class="voce" data-g="' + esc(x.id) + '">' + stemma(x.tid) +
+           '<span class="n2"><b>' + esc(x.intero || (x.nome + " " + x.cognome)) + "</b><small>" + esc(x.squadra || "") +
+           (x.ruolo ? " · " + esc(x.ruolo) : "") + " · " + x.n + (x.n === 1 ? " frase" : " frasi") + "</small></span></button>";
+  }
+  function voceS(x) {
+    return '<button type="button" class="voce" data-s="' + esc(x.tid) + '">' + stemma(x.tid) +
+           '<span class="n2"><b>' + esc(x.nome) + "</b><small>" + x.fogli + (x.fogli === 1 ? " foglio" : " fogli") +
+           " · " + x.n + (x.n === 1 ? " frase" : " frasi") + "</small></span></button>";
+  }
+  function elenco(q) {
+    el("indietro").hidden = true;
+    el("titolo").textContent = "Squadre e giocatori";
+    el("dati").textContent = "Le curiosità della redazione, messe per giocatore e per squadra.";
+    document.title = "Schedario · Como TV";
+    var r = cerca(q);
+    if (!r) {
+      var gp = IND.giocatori.slice(0, 24), sp = IND.squadre.slice(0, 24);
+      el("quanti").textContent = IND.giocatori.length + " giocatori · " + IND.squadre.length + " squadre";
+      el("corpo").innerHTML = '<div class="gruppo">Le squadre con più curiosità</div><div class="elenco">' + sp.map(voceS).join("") + "</div>" +
+        '<div class="gruppo">I giocatori con più curiosità</div><div class="elenco">' + gp.map(voceG).join("") + "</div>";
+      return;
+    }
+    el("quanti").textContent = r.g.length + " giocatori · " + r.s.length + " squadre";
+    el("corpo").innerHTML = (r.s.length ? '<div class="gruppo">Squadre</div><div class="elenco">' + r.s.slice(0, 30).map(voceS).join("") + "</div>" : "") +
+      (r.g.length ? '<div class="gruppo">Giocatori</div><div class="elenco">' + r.g.slice(0, 60).map(voceG).join("") + "</div>" : "") +
+      (!r.g.length && !r.s.length ? '<div class="vuoto">Nessuno con questo nome. Le schede si fanno con le squadre che commentiamo.</div>' : "");
+  }
+
+  // ── le schede ────────────────────────────────────────────────────────
+  function frase(x) {
+    return '<div class="fr' + (x.sua ? " mia" : "") + '">' + esc(x.frase) + "<small>" +
+           (x.sezione ? "<b>" + esc(x.sezione) + "</b> · " : "") + esc(dataIt(x.data)) +
+           (x.autore ? " · " + esc(x.autore) : "") +
+           ' · <a href="curiosita.html?id=' + encodeURIComponent(x.id) + "&frase=" + encodeURIComponent(x.frase.slice(0, 300)) +
+           '" target="comotv-curiosita">leggi nel foglio</a></small></div>';
+  }
+  function schedaG(id) {
+    fetch(FOGLI + "schede/g-" + encodeURIComponent(id) + ".json", { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      .then(function (g) {
+        var nome = g.intero || (g.nome + " " + g.cognome);
+        document.title = "Schedario · " + nome;
+        el("titolo").textContent = nome;
+        el("dati").innerHTML = esc(g.squadra || "") + (g.ruolo ? " · " + esc(g.ruolo) : "") + (g.num ? " · maglia " + esc(g.num) : "");
+        el("indietro").hidden = false;
+        el("corpo").innerHTML =
+          '<div class="scheda"><div class="faccia" id="faccia"></div><div><div class="kv2" id="anag"></div></div></div>' +
+          '<div class="gruppo">' + g.frasi.length + (g.frasi.length === 1 ? " frase dai fogli" : " frasi dai fogli") + "</div>" +
+          (g.frasi.length ? g.frasi.map(frase).join("") : '<div class="vuoto">Ancora nessuna curiosità su di lui.</div>');
+        // la faccia dal magazzino e l'anagrafe da ESPN
+        fetch(PONTE + "?foto=" + encodeURIComponent(g.cognome) + "&id=" + encodeURIComponent(g.id) +
+              (g.tid ? "&squadra=" + encodeURIComponent(g.tid) : ""), { cache: "no-store" })
+          .then(function (r) { return r.json(); })
+          .then(function (j) { if (j && j.url) el("faccia").innerHTML = '<img src="' + esc(j.url) + '" alt="">'; })
+          .catch(function () {});
+        // l'anagrafe ESPN, come nella lavagna: in metri e chili
+        fetch("https://sports.core.api.espn.com/v2/sports/soccer/athletes/" + encodeURIComponent(g.id))
+          .then(function (r) { return r.json(); })
+          .then(function (a) {
+            if (!a) return;
+            var v = [], d = /^(\d{4})-(\d{2})-(\d{2})/.exec(a.dateOfBirth || "");
+            if (d) v.push("Nato il <b>" + (+d[3]) + "/" + (+d[2]) + "/" + d[1] + "</b>" + (a.age ? " · <b>" + a.age + " anni</b>" : ""));
+            if (a.height) v.push("<b>" + (a.height * 0.0254).toFixed(2).replace(".", ",") + " m</b>");
+            if (a.weight) v.push("<b>" + Math.round(a.weight * 0.4536) + " kg</b>");
+            if (a.fullName && a.fullName !== (g.intero || "")) v.push(esc(a.fullName));
+            if (v.length) el("anag").innerHTML = v.join(" · ");
+          })
+          .catch(function () {});
+      })
+      .catch(function () { el("corpo").innerHTML = '<div class="vuoto">Scheda non trovata.</div>'; });
+  }
+  function schedaS(tid) {
+    fetch(FOGLI + "schede/s-" + encodeURIComponent(tid) + ".json", { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      .then(function (s) {
+        document.title = "Schedario · " + s.nome;
+        el("titolo").textContent = s.nome;
+        el("dati").textContent = s.fogli.length + (s.fogli.length === 1 ? " foglio" : " fogli") + " della redazione · " +
+                                 s.frasi.length + (s.frasi.length === 1 ? " frase" : " frasi");
+        el("indietro").hidden = false;
+        // i giocatori di questa squadra che hanno una scheda
+        var suoi = IND.giocatori.filter(function (x) { return String(x.tid) === String(tid); });
+        el("corpo").innerHTML =
+          '<div class="scheda"><div class="faccia">' + stemma(s.tid) + "</div></div>" +
+          (suoi.length ? '<div class="gruppo">I suoi giocatori nello schedario</div><div class="elenco">' + suoi.map(voceG).join("") + "</div>" : "") +
+          '<div class="gruppo">I fogli</div><div class="elenco">' + s.fogli.map(function (f) {
+            return '<a class="voce" href="curiosita.html?id=' + encodeURIComponent(f.id) + '" target="comotv-curiosita">' +
+                   '<span class="n2"><b>' + esc(f.titolo || "Foglio") + "</b><small>" + esc(dataIt(f.data)) +
+                   (f.autore ? " · " + esc(f.autore) : "") + "</small></span></a>";
+          }).join("") + "</div>" +
+          '<div class="gruppo">Le curiosità</div>' +
+          (s.frasi.length ? s.frasi.map(frase).join("") : '<div class="vuoto">Ancora nessuna curiosità.</div>');
+      })
+      .catch(function () { el("corpo").innerHTML = '<div class="vuoto">Scheda non trovata.</div>'; });
+  }
+
+  // ── dove siamo: la ricerca, un giocatore, una squadra ────────────────
+  function dove() {
+    var q = new URLSearchParams(location.search);
+    if (q.get("g")) return schedaG(q.get("g"));
+    if (q.get("s")) return schedaS(q.get("s"));
+    el("q").value = q.get("q") || "";
+    elenco(el("q").value);
+  }
+  function vai(par, val) {
+    var q = new URLSearchParams();
+    if (val) q.set(par, val);
+    history.pushState(null, "", "schedario.html" + (val ? "?" + q.toString() : ""));
+    dove();
+    window.scrollTo(0, 0);
+  }
+  el("corpo").addEventListener("click", function (ev) {
+    var b = ev.target.closest ? ev.target.closest("[data-g],[data-s]") : null;
+    if (!b) return;
+    vai(b.dataset.g ? "g" : "s", b.dataset.g || b.dataset.s);
+  });
+  el("indietro").addEventListener("click", function () { vai("q", el("q").value); });
+  var aspetta = null;
+  el("q").addEventListener("input", function () {
+    clearTimeout(aspetta);
+    var v = this.value;
+    aspetta = setTimeout(function () {
+      if (new URLSearchParams(location.search).get("g") || new URLSearchParams(location.search).get("s")) return vai("q", v);
+      history.replaceState(null, "", "schedario.html" + (v ? "?q=" + encodeURIComponent(v) : ""));
+      elenco(v);
+    }, 180);
+  });
+  window.addEventListener("popstate", dove);
+})();
+</script>
+</body>
+</html>

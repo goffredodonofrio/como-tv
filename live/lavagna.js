@@ -129,6 +129,8 @@ window.Lavagna = (function () {
       "  border:1px solid rgba(201,162,75,.5);border-radius:10px;padding:12px;" +
       // piu' alta del campo non puo' andare (il campo taglia): scorre dentro
       "  max-height:calc(100% - 16px);overflow-y:auto;overscroll-behavior:contain;}" +
+      ".lav .foglietto .allo-schedario{font-size:12px;margin-top:3px;}" +
+      ".lav .foglietto .allo-schedario a{color:var(--lav-oroB);cursor:pointer;text-decoration:underline;}" +
       ".lav .foglietto .testa{display:flex;gap:12px;align-items:flex-end;margin-bottom:2px;}" +
       ".lav .foglietto .testadx{flex:1;min-width:0;}" +
       ".lav .foglietto .faccia{flex:0 0 96px;height:108px;border-radius:9px;overflow:hidden;margin-bottom:8px;" +
@@ -313,6 +315,7 @@ window.Lavagna = (function () {
         '<button type="button" data-az="indietro" title="Annulla l\'ultima mossa (Cmd/Ctrl+Z)">&#8630; Annulla</button>' +
         // le curiosita' della partita: il foglio del giornalista, in una finestra a parte
         '<button type="button" class="curio-tasto" data-az="foglio" hidden>&#128161; Curiosit&agrave;</button>' +
+        '<button type="button" class="curio-tasto" data-az="schedario">&#128193; Schedario</button>' +
         '<button type="button" class="via" data-az="pulisci">Cancella i disegni</button>' +
         '<span class="sep"></span>' +
         '<button type="button" data-az="png">&#11015; Immagine</button>' +
@@ -1174,6 +1177,13 @@ window.Lavagna = (function () {
     function dataIt(d) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || ""); return m ? (+m[3]) + "/" + (+m[2]) + "/" + m[1] : (d || ""); }
     // il foglio si legge in CURIOSITA' (curiosita.html), in una finestra a
     // parte: la lavagna resta dov'e'. Sempre la stessa finestra, riusata.
+    // LO SCHEDARIO: squadre e giocatori fatti con le curiosita' della redazione
+    function apriSchedario(dove) {
+      var w = window.open("schedario.html" + (dove || ""), "comotv-schedario",
+                          "width=1040,height=" + Math.min(1100, screen.availHeight || 1000) + ",resizable=yes,scrollbars=yes");
+      if (w) w.focus();
+      else nota("Il browser ha bloccato la finestra dello Schedario: consenti le finestre per questo sito.", "err");
+    }
     function apriFoglio(id, frase) {
       var misure = "width=1000,height=" + Math.min(1100, screen.availHeight || 1000) + ",resizable=yes,scrollbars=yes";
       function via(x) {
@@ -1202,6 +1212,8 @@ window.Lavagna = (function () {
     box.addEventListener("click", function (ev) {
       var b = ev.target.closest ? ev.target.closest("[data-foglio]") : null;
       if (b) { ev.preventDefault(); apriFoglio(b.dataset.foglio, b.dataset.frase); }
+      var sc = ev.target.closest ? ev.target.closest("[data-schedario]") : null;
+      if (sc) { ev.preventDefault(); apriSchedario("?g=" + encodeURIComponent(sc.dataset.schedario)); }
     });
     // nella scheda: le frasi dei fogli che nominano questo giocatore. Prima
     // quelle delle partite della sua squadra; il cognome deve esserci tutto
@@ -1328,6 +1340,9 @@ window.Lavagna = (function () {
         // sopra il nome: nascita, altezza e peso da ESPN (per l'allenatore
         // la squadra, che li' dice qualcosa)
         (p.mister ? '<h3>' + esc(SQ[p.lato].nome) + ' · allenatore</h3>' : '<div class="bio" data-bio="1"></div>') +
+        // la sua pagina nello Schedario (tutte le curiosita' su di lui, non solo di questa partita)
+        (p.mister || !/^\d+$/.test(String(p.pid)) ? "" :
+          '<div class="allo-schedario"><a data-schedario="' + esc(p.pid) + '">&#128193; La sua pagina nello Schedario</a></div>') +
         (p.mister ? "" :
           '<div class="chi"><input data-f="num" type="text" inputmode="numeric" maxlength="2" ' +
           'placeholder="N" value="' + esc(p.num || "") + '">' +
@@ -1639,6 +1654,7 @@ window.Lavagna = (function () {
       if (b.dataset.az === "stampa") stampa();
       if (b.dataset.az === "tema") tema(!box.classList.contains("chiara"), true);
       if (b.dataset.az === "foglio") apriFoglio();
+      if (b.dataset.az === "schedario") apriSchedario("");
       if (b.dataset.az === "png") immagine(function (dati) {
         var a = document.createElement("a");
         a.href = dati; a.download = titolo().replace(/[^A-Za-z0-9-]+/g, "-") + ".png";

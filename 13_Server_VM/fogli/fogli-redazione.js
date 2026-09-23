@@ -787,6 +787,188 @@ async function partitaEspn(lega, quando, casa, ospite) {
   }
   return null;
 }
+// ── LO SCHEDARIO: schede di squadre e giocatori dai fogli ────────────
+// Le rose ESPN delle squadre che commentiamo: servono a sapere chi e' un
+// giocatore (e di chi), e a non confondere due cognomi uguali. Si chiedono
+// una volta e si rinfrescano ogni due settimane, poche per giro.
+async function giroRose(stato) {
+  const memo = stato.espn || {};
+  const quali = new Map();
+  Object.keys(memo).forEach((k) => {
+    const v = memo[k];
+    if (!v || !v.ev || !v.lega) return;
+    if (v.casaId) quali.set(v.casaId, { lega: v.lega, nome: v.casa });
+    if (v.ospiteId) quali.set(v.ospiteId, { lega: v.lega, nome: v.ospite });
+  });
+  const rose = stato.rose || (stato.rose = {});
+  const ora = Date.now();
+  let prese = 0;
+  for (const [tid, q] of quali) {
+    const v = rose[tid];
+    if (v && ora - (v.quando || 0) < 14 * 864e5) continue;
+    if (prese >= 150) break;
+    prese++;
+    try {
+      const j = await json("https://site.api.espn.com/apis/site/v2/sports/soccer/" + q.lega +
+                           "/teams/" + encodeURIComponent(tid) + "/roster");
+      const gi = (j.athletes || []).map((a) => ({
+        id: String(a.id), nome: a.firstName || "", cognome: a.lastName || String(a.displayName || "").split(" ").pop(),
+        intero: a.displayName || "", num: a.jersey || "", ruolo: (a.position || {}).abbreviation || ""
+      })).filter((x) => x.id && x.cognome);
+      rose[tid] = { quando: ora, lega: q.lega, nome: q.nome, giocatori: gi };
+    } catch (e) { rose[tid] = { quando: ora, lega: q.lega, nome: q.nome, giocatori: (v || {}).giocatori || [] }; }
+    await new Promise((ok) => setTimeout(ok, 250));
+  }
+  const tot = Object.keys(rose).reduce((n, k) => n + (rose[k].giocatori || []).length, 0);
+  console.log("[fogli] rose: " + Object.keys(rose).length + " squadre, " + tot + " giocatori (" + prese + " chieste ora)");
+  return rose;
+}
+// Le schede: per ogni squadra e ogni giocatore le frasi dei fogli che li
+// nominano, con foglio, autore e data. Una frase va a un giocatore solo se il
+// foglio parla della sua squadra, oppure se quel cognome ce l'ha lui solo:
+// cosi' due Silva di due squadre diverse non si mescolano.
+function schedario(stato) {
+  const rose = stato.rose || {};
+  const dir = path.join(PUB, "fogli");
+  const fogli = fs.readdirSync(dir).filter((x) => x.endsWith(".json")).map((x) => leggiJson(path.join(dir, x), null)).filter(Boolean);
+  const ARBITRO = /arbitr|\bvar\b|assistent|designat|direttore di gara|quarto uomo|4° uomo/i;
+  // le parole comuni: un cognome che e' anche una parola italiana ("Nel",
+  // "Prima", "Rio") non vale come nome, o si attaccherebbe a mezzo foglio
+  PROPRI = propriDa(fogli);
+  const COMUNE = (k) => PROPRI[k] === "m" || PROPRI[k] === "S";
+  // le frasi di ogni foglio, con la loro sezione
+  const perFoglio = new Map();
+  fogli.forEach((f) => {
+    const B = f.blocchi && f.blocchi.length ? f.blocchi : strutturaTesto(f.testo);
+    let sezione = "", sotto = "";
+    const out = [];
+    B.forEach((b) => {
+      if (b.t === "h0" || b.t === "h1") { sezione = b.x || ""; sotto = ""; return; }
+      if (b.t === "h2" || b.t === "h3") { sotto = b.x || ""; return; }
+      if (ARBITRO.test(sezione) || ARBITRO.test(sotto)) return;
+      let testo = "";
+      if (b.t === "p" || b.t === "li") testo = (b.lead ? b.lead + " " : "") + (b.x || "");
+      else if (b.t === "kv") { if (ARBITRO.test(b.k || "")) return; testo = b.k + ": " + b.v; }
+      else return;
+      testo.split(/(?<=[.!?])\s+(?=[A-ZÀ-Ý"“(])/).map((x) => x.trim()).filter((x) => x.length > 25).forEach((fr) => {
+        out.push({ frase: fr.length > 420 ? fr.slice(0, 417) + "…" : fr, sezione: sotto || sezione });
+      });
+    });
+    perFoglio.set(f.id, out);
+  });
+  // i giocatori: cognome -> chi lo porta
+  const perCognome = new Map();
+  const giocatori = new Map();
+  Object.keys(rose).forEach((tid) => {
+    const r = rose[tid];
+    (r.giocatori || []).forEach((g) => {
+      const k = piano(g.cognome).split(" ").filter((x) => x.length >= 3).pop();
+      if (!k) return;
+      const chiave = g.id;
+      if (!giocatori.has(chiave)) {
+        giocatori.set(chiave, { id: g.id, nome: g.nome, cognome: g.cognome, intero: g.intero, num: g.num,
+                                ruolo: g.ruolo, tid: tid, squadra: r.nome, lega: r.lega, cog: piano(g.cognome), k: k, frasi: [] });
+      }
+      if (!perCognome.has(k)) perCognome.set(k, []);
+      if (!perCognome.get(k).some((x) => x.id === g.id)) perCognome.get(k).push(giocatori.get(chiave));
+    });
+  });
+  // le parole che sono nomi di squadre, di stadi o di citta': da sole non
+  // fanno un giocatore ("Lorenzo" e' San Lorenzo, "Park" e' Ibrox Park)
+  const VIETATE = new Set(("park arena stadium stadio central plate city united junior juniors real club sporting racing athletic atletico nacional national olimpico " +
+    "glasgow londra london manchester liverpool birmingham rotterdam amsterdam lisbona porto siviglia madrid barcellona monaco berlino vienna atene " +
+    "buenos aires montevideo rosario cordoba santiago riad jeddah istanbul zagabria belgrado").split(" "));
+  // i nomi di battesimo: chi si chiama di cognome come si chiamano di nome in
+  // tanti (José, Paulo, Cristiano) vale solo col nome accanto
+  Object.keys(rose).forEach((tid) => (rose[tid].giocatori || []).forEach((g) => {
+    piano(g.nome || "").split(" ").forEach((w) => { if (w.length >= 3) VIETATE.add(w); });
+  }));
+  Object.keys(rose).forEach((tid) => { piano(rose[tid].nome).split(" ").forEach((w) => { if (w.length >= 3) VIETATE.add(w); }); });
+  fogli.forEach((f) => (f.squadre || []).forEach((n) => piano(n).split(" ").forEach((w) => { if (w.length >= 3) VIETATE.add(w); })));
+  // le squadre: quelle delle rose, piu' i nomi dei fogli
+  const squadre = new Map();
+  Object.keys(rose).forEach((tid) => {
+    squadre.set(tid, { tid: tid, nome: rose[tid].nome, lega: rose[tid].lega, chiave: pianoS(rose[tid].nome), fogli: [], frasi: [] });
+  });
+  fogli.forEach((f) => {
+    const frasi = perFoglio.get(f.id) || [];
+    const capo = { id: f.id, titolo: f.titolo, squadre: f.squadre, data: f.data, autore: f.autore, fonte: f.fonte };
+    // la squadra: il foglio la nomina nel titolo
+    const sue = [];
+    squadre.forEach((s) => {
+      if ((f.chiavi || []).some((c) => stessoNome(c, s.nome))) sue.push(s);
+    });
+    // della squadra si tengono le frasi che la nominano e quelle delle sezioni
+    // che parlano di lei (storia, stadio, precedenti, forma): il resto e' la
+    // partita, e sta nel foglio
+    const SUE_SEZIONI = /storia|stadio|impianto|precedent|classific|forma|societ|club|palmar|mercato|allenator|tifos|rivalit/i;
+    sue.forEach((s) => {
+      s.fogli.push({ id: f.id, data: f.data, autore: f.autore, titolo: f.titolo });
+      const nome = pianoS(s.nome);
+      frasi.forEach((x) => {
+        const dentro = nome && (" " + piano(x.frase) + " ").indexOf(" " + nome + " ") >= 0;
+        if (!dentro && !SUE_SEZIONI.test(x.sezione || "")) return;
+        s.frasi.push({ id: f.id, data: f.data, autore: f.autore, frase: x.frase, sezione: x.sezione, sua: dentro });
+      });
+    });
+    // i giocatori nominati nella frase
+    frasi.forEach((x) => {
+      const gia = {};
+      (x.frase.match(/[A-ZÀ-Ý][A-Za-zÀ-ÿ'’-]{2,}/g) || []).forEach((par) => {
+        const k = piano(par);
+        if (gia[k] || !perCognome.has(k)) return;
+        gia[k] = 1;
+        const chi = perCognome.get(k);
+        // il cognome intero deve esserci ("Da Cunha" non e' "Cunha")
+        if (COMUNE(k)) return;                       // "Nel secondo ciclo" non e' il signor Nel
+        const piatta = " " + piano(x.frase) + " ";
+        // il cognome deve esserci tutto ("Da Cunha" non e' "Cunha")
+        const lista = chi.filter((g) => piatta.indexOf(" " + g.cog + " ") >= 0);
+        if (!lista.length) return;
+        const dellaPartita = lista.filter((g) => sue.some((s) => s.tid === g.tid));
+        // se la parola e' anche un nome di squadra o di stadio, serve il nome
+        // di battesimo accanto
+        const sicuri = (VIETATE.has(k) ? lista.filter((g) => g.nome && piatta.indexOf(" " + piano(g.nome + " " + g.cognome) + " ") >= 0) : lista);
+        if (!sicuri.length) return;
+        const suoi = sicuri.filter((g) => sue.some((s) => s.tid === g.tid));
+        // fuori dai fogli della sua squadra servono nome e cognome insieme
+        const buoni = suoi.length ? suoi
+                    : sicuri.filter((g) => g.nome && piatta.indexOf(" " + piano(g.nome + " " + g.cognome) + " ") >= 0);
+        buoni.forEach((g) => g.frasi.push({ id: f.id, data: f.data, autore: f.autore, frase: x.frase, sezione: x.sezione,
+                                            sua: dellaPartita.indexOf(g) >= 0 }));
+      });
+    });
+  });
+  // si scrive: l'indice (leggero) e una scheda per giocatore e per squadra
+  const dirS = path.join(PUB, "schede");
+  fs.mkdirSync(dirS, { recursive: true });
+  const vecchi = new Set(fs.readdirSync(dirS));
+  const perData = (a, b) => String(b.data || "").localeCompare(String(a.data || ""));
+  const iG = [], iS = [];
+  giocatori.forEach((g) => {
+    if (!g.frasi.length) return;
+    g.frasi.sort(perData);
+    const f = "g-" + g.id + ".json";
+    scriviJson(path.join(dirS, f), { id: g.id, nome: g.nome, cognome: g.cognome, intero: g.intero, num: g.num,
+                                     ruolo: g.ruolo, tid: g.tid, squadra: g.squadra, lega: g.lega, frasi: g.frasi });
+    vecchi.delete(f);
+    iG.push({ id: g.id, nome: g.nome, cognome: g.cognome, intero: g.intero, tid: g.tid, squadra: g.squadra,
+              lega: g.lega, ruolo: g.ruolo, n: g.frasi.length, cerca: piano((g.intero || (g.nome + " " + g.cognome)) + " " + g.squadra) });
+  });
+  squadre.forEach((s) => {
+    if (!s.frasi.length && !s.fogli.length) return;
+    s.frasi.sort(perData); s.fogli.sort(perData);
+    const f = "s-" + s.tid + ".json";
+    scriviJson(path.join(dirS, f), { tid: s.tid, nome: s.nome, lega: s.lega, fogli: s.fogli, frasi: s.frasi.slice(0, 400) });
+    vecchi.delete(f);
+    iS.push({ tid: s.tid, nome: s.nome, lega: s.lega, n: s.frasi.length, fogli: s.fogli.length, cerca: piano(s.nome) });
+  });
+  iG.sort((a, b) => b.n - a.n); iS.sort((a, b) => b.n - a.n);
+  scriviJson(path.join(dirS, "indice.json"), { aggiornato: new Date().toISOString(), giocatori: iG, squadre: iS });
+  vecchi.forEach((x) => { if (/^[gs]-/.test(x)) { try { fs.unlinkSync(path.join(dirS, x)); } catch (e) {} } });
+  console.log("[fogli] schedario: " + iG.length + " giocatori, " + iS.length + " squadre");
+}
+
 async function giroPartite(stato) {
   stato = stato || leggiJson(STATO, {});
   if (!process.env.COMOTV_AIRTABLE_PAT) { console.log("[fogli] Airtable: manca il token, salto le partite"); return; }
@@ -869,6 +1051,7 @@ async function giroPartite(stato) {
   const stato = leggiJson(STATO, {});
   if (arg("partite")) return giroPartite(stato);
   if (arg("rifai")) return rifai();
+  if (arg("schedario")) { await giroRose(stato); scriviJson(STATO, stato); return schedario(stato); }
   const f = arg("file");
   if (f) {
     const nome = path.basename(f);
@@ -891,4 +1074,5 @@ async function giroPartite(stato) {
   if (nuovi || dopo !== prima || !fs.existsSync(path.join(PUB, "indice.json"))) rifai();
   console.log("[fogli] giro fatto: " + nuovi + " fogli nuovi");
   try { await giroPartite(stato); } catch (e) { console.log("[fogli] partite: " + e.message); }
+  try { await giroRose(stato); scriviJson(STATO, stato); schedario(stato); } catch (e) { console.log("[fogli] schedario: " + e.message); }
 })().catch((e) => { console.error("[fogli] ERRORE " + e.message); process.exit(1); });
