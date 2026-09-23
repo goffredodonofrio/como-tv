@@ -477,10 +477,26 @@ function squadreNote(stato) {
   NOTE_SQ = v;
 }
 function espandiSq(k) { return String(k || "").split(" ").map((w) => ABBR[w] || w).join(" ").trim(); }
+// quante lettere cambiare per passare da una parola all'altra: i nomi nei
+// file hanno refusi ("Bloming" per Blooming, "Al Khaalej" per Al Khaleej)
+function distanza(a, b) {
+  if (Math.abs(a.length - b.length) > 2) return 9;
+  const v = [];
+  for (let i = 0; i <= b.length; i++) v[i] = i;
+  for (let i = 1; i <= a.length; i++) {
+    let prec = v[0]; v[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const t = v[j];
+      v[j] = Math.min(v[j] + 1, v[j - 1] + 1, prec + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prec = t;
+    }
+  }
+  return v[b.length];
+}
 function squadraNota(nome, esatto) {
   const k = espandiSq(pianoS(conAlias(nome)));
   if (!k) return "";
-  let dentro = "";
+  let dentro = "", quasi = "";
   for (const t of NOTE_SQ) {
     if (t.k === k) return t.nome;
     if (esatto) continue;
@@ -490,36 +506,67 @@ function squadraNota(nome, esatto) {
       const a = k.split(" "), b = t.k.split(" ");
       if (a.length === b.length && a.every((w, i) => w.length >= 2 && b[i].indexOf(w) === 0)) dentro = t.nome;
     }
+    // un refuso o due, sulle parole abbastanza lunghe
+    if (!dentro && !quasi && k.length >= 6 && distanza(k, t.k) <= (k.length >= 9 ? 2 : 1)) quasi = t.nome;
   }
-  return dentro;
+  return dentro || quasi;
 }
 // "Al Ittihad Al Fayha", "Millwall West Ham": due squadre note attaccate
-function dueSquadre(uno) {
+function dueSquadre(uno, esatto) {
   const k = espandiSq(pianoS(conAlias(uno))).split(" ").filter(Boolean);
   if (k.length < 2) return null;
   for (let i = 1; i < k.length; i++) {
     const a = squadraNota(k.slice(0, i).join(" "), true), b = squadraNota(k.slice(i).join(" "), true);
-    if (a && b) return [a, b];
+    if (a && b && a !== b) return [a, b];
   }
+  if (esatto) return null;
   for (let i = 1; i < k.length; i++) {
     const a = squadraNota(k.slice(0, i).join(" ")), b = squadraNota(k.slice(i).join(" "));
     if (a && b && a !== b) return [a, b];
   }
   return null;
 }
+// da un pezzo solo: prima due squadre esatte ("Al Taawoun Al Nassr"), poi una
+// squadra sola ("Atletico Bucaramanga"), poi due riconosciute alla buona
+function squadreDaUno(uno) {
+  return dueSquadre(uno, true) || (squadraNota(uno) ? [squadraNota(uno)] : null) || dueSquadre(uno) || null;
+}
 function nomeSq(x) { return squadraNota(x) || titoloIt(x); }
+// due nomi della stessa squadra, scritti in modo diverso
+function comeSquadra(a, b) {
+  const x = espandiSq(pianoS(conAlias(a))), y = espandiSq(pianoS(conAlias(b)));
+  if (!x || !y) return false;
+  if (x === y) return true;
+  if ((" " + x + " ").indexOf(" " + y + " ") >= 0 || (" " + y + " ").indexOf(" " + x + " ") >= 0) return true;
+  const p1 = x.split(" "), p2 = y.split(" ");
+  if (p1.length === p2.length && p1.every((w, i) => w.length >= 2 && (p2[i].indexOf(w) === 0 || w.indexOf(p2[i]) === 0))) return true;
+  return x.length >= 6 && distanza(x, y) <= (x.length >= 9 ? 2 : 1);
+}
 function nomeFoglio(f) {
   const sq = f.squadre || [];
   if (sq.length === 2) return nomeSq(sq[0]) + " – " + nomeSq(sq[1]);
   if (sq.length === 1) {
-    const due = dueSquadre(sq[0]);
-    return due ? due[0] + " – " + due[1] : nomeSq(sq[0]);
+    const v = squadreDaUno(sq[0]);
+    return v ? v.join(" – ") : nomeSq(sq[0]);
   }
   // niente squadre: il nome del file, ripulito da date, numeri e trattini
   let t = String(f.titolo || f.nomeFile || "").replace(ESTENSIONI, "")
     .replace(/[_]+/g, " ").replace(/\b20\d{6}\b/g, " ")
     .replace(/\d{1,2}[-./]\d{1,2}[-./]\d{2,4}/g, " ").replace(/\s+/g, " ").trim();
   return t || "Foglio della redazione";
+}
+// Di che foglio si tratta: della stessa partita ne arrivano piu' d'uno
+// (intro, gara, riserve, panchine): il nome del file lo dice.
+function genereDi(nome) {
+  const n = String(nome || "");
+  if (/riserv/i.test(n)) return "riserve";
+  if (/panchin/i.test(n)) return "panchine";
+  if (/\barbitr/i.test(n)) return "arbitri";
+  if (/intro/i.test(n)) return "intro";
+  if (/foglio[ _]?gara|\bgara\b/i.test(n)) return "gara";
+  if (/opta/i.test(n)) return "opta";
+  if (/running order|\bmro\b|playout/i.test(n)) return "scaletta";
+  return "";
 }
 function squadreDa(nome, testo) {
   let s = String(nome || "").normalize("NFC");
@@ -530,6 +577,7 @@ function squadreDa(nome, testo) {
     .replace(/([A-Za-zÀ-ÿ]{4,})\.([A-Za-zÀ-ÿ]{4,})/g, "$1 - $2")                 // "River.Bragantino" (ma non "Ind.Santa Fe")
     .replace(/\b(?:20)?\d{2}\s*[:/-]\s*(?:20)?\d{2}\b/g, " ")     // la stagione: 2026:27, 26-27
     .replace(/_/g, " ").replace(/\|/g, " ")
+    .replace(/\bmd\s?\d+\b/gi, " ")                                            // "MD6 | TRM V Zeta Como"
     .replace(/\b(foglio|partita|appunti|curiosita|note|scheda|giornata|rosa|intro|squadre|gara|riserve|panchine|semifinali?|quarti|ottavi|finale|playoff|po|round|\d+[aª°]|\d+)\b/gi, " ")
     .replace(/\s+/g, " ").trim();
   // prima i separatori con gli spazi ("Al-Hilal v Al-Faisaly"), poi il trattino attaccato
@@ -596,7 +644,16 @@ function rifai() {
       const nb = strutturaTesto(f.testo);
       if (JSON.stringify(nb) !== JSON.stringify(f.blocchi)) { f.blocchi = nb; cambia = true; }
     }
-    f.squadre = sq; f.chiavi = sq.map(piano);
+    f.squadre = sq;
+    // le chiavi: i nomi come sono scritti e, quando si riconosce, quello vero
+    // della squadra (cosi' il foglio si aggancia alla partita di Airtable)
+    const k = {};
+    sq.forEach((x) => { k[piano(x)] = 1; const c = squadraNota(x); if (c) k[piano(c)] = 1; });
+    const due = sq.length === 1 ? squadreDaUno(sq[0]) : null;
+    if (due) due.forEach((x) => { k[piano(x)] = 1; });
+    f.chiavi = Object.keys(k);
+    const gen = genereDi(f.nomeFile || f.titolo);
+    if (gen !== (f.genere || "")) { f.genere = gen; cambia = true; }
     if (cambia) scriviJson(path.join(dir, f.id + ".json"), f);
   });
   // lo stesso foglio da Slack e da Drive: vale una volta sola (il testo e' uguale)
@@ -609,6 +666,7 @@ function rifai() {
     // tipo: partita (due squadre), squadra (una), altro. cerca: titolo e prime
     // righe, per agganciare anche "Millwall West Ham" senza separatore
     fogli: fogli.map((f) => ({ id: f.id, titolo: f.titolo, nome: f.nome || nomeFoglio(f), tele: (f.partita || {}).telecronisti || [],
+                              genere: f.genere || "",
                               squadre: f.squadre, chiavi: f.chiavi, data: f.data,
                               tipo: tipoDi(f.nomeFile || f.titolo, f.squadre),
                               cerca: piano(f.titolo + " " + String(f.testo || "").slice(0, 300)),
@@ -947,7 +1005,11 @@ async function giroRose(stato) {
 function schedario(stato) {
   const rose = stato.rose || {};
   const dir = path.join(PUB, "fogli");
-  const fogli = fs.readdirSync(dir).filter((x) => x.endsWith(".json")).map((x) => leggiJson(path.join(dir, x), null)).filter(Boolean);
+  let fogli = fs.readdirSync(dir).filter((x) => x.endsWith(".json")).map((x) => leggiJson(path.join(dir, x), null)).filter(Boolean);
+  // lo stesso foglio da Slack e dal Drive: vale una volta sola (come nell'indice)
+  fogli.sort((a, b) => (a.fonte === "slack" ? 0 : 1) - (b.fonte === "slack" ? 0 : 1));
+  const visti = {};
+  fogli = fogli.filter((f) => (f.hash && visti[f.hash]) ? false : (visti[f.hash] = 1));
   const ARBITRO = /arbitr|\bvar\b|assistent|designat|direttore di gara|quarto uomo|4° uomo/i;
   // le parole comuni: un cognome che e' anche una parola italiana ("Nel",
   // "Prima", "Rio") non vale come nome, o si attaccherebbe a mezzo foglio
@@ -1020,7 +1082,8 @@ function schedario(stato) {
     // partita, e sta nel foglio
     const SUE_SEZIONI = /storia|stadio|impianto|precedent|classific|forma|societ|club|palmar|mercato|allenator|tifos|rivalit/i;
     sue.forEach((s) => {
-      s.fogli.push({ id: f.id, data: f.data, autore: f.autore, fonte: f.fonte, tele: (f.partita || {}).telecronisti || [],
+      s.fogli.push({ id: f.id, data: f.data, autore: f.autore, fonte: f.fonte, genere: f.genere || "",
+                     tele: (f.partita || {}).telecronisti || [],
                      titolo: f.nome || nomeFoglio(f) });
       const nome = pianoS(s.nome);
       frasi.forEach((x) => {
@@ -1157,8 +1220,12 @@ async function giroPartite(stato) {
       const k = f.chiavi || [];
       // i nomi di Airtable e, se c'e', quelli di ESPN
       const C = [m.casa].concat(m.espn ? [m.espn.casa] : []), O = [m.ospite].concat(m.espn ? [m.espn.ospite] : []);
-      const uno = (k1, lista) => lista.some((n) => stessoNome(k1, n));
-      if (k.length === 2) return (uno(k[0], C) && uno(k[1], O)) || (uno(k[0], O) && uno(k[1], C));
+      // il confronto tollerante: abbreviazioni sciolte, parole accorciate
+      // ("Univ. Catolica" = "Universidad Catolica") e un refuso o due
+      const uno = (k1, lista) => lista.some((n) => stessoNome(k1, n) || comeSquadra(k1, n));
+      // le chiavi possono essere piu' di due (il nome come e' scritto e quello
+      // vero): basta che una sia la squadra di casa e una quella ospite
+      if (k.length >= 2) return k.some((x) => uno(x, C)) && k.some((x) => uno(x, O));
       return stessoNome(f.cerca || "", m.casa) && stessoNome(f.cerca || "", m.ospite) ||
              (f.cerca || "").indexOf(pianoS(m.casa)) >= 0 && (f.cerca || "").indexOf(pianoS(m.ospite)) >= 0;
     }).map((f) => f.id);

@@ -384,10 +384,13 @@
   // ── le schede ────────────────────────────────────────────────────────
   // chi c'e' dietro un foglio: chi l'ha scritto se si sa; se no per chi era
   // (i telecronisti della partita, da Airtable), se no da dove viene
+  var GENERI = { intro: "Intro", gara: "Foglio gara", riserve: "Riserve", panchine: "Panchine",
+                 arbitri: "Arbitri", opta: "Opta", scaletta: "Scaletta" };
   function chiFoglio(f) {
+    // il telecronista della partita: e' quasi sempre anche chi scrive il foglio
+    if (f.tele && f.tele.length) return f.tele.join(" e ");
     if (f.autore) return f.autore;
-    if (f.tele && f.tele.length) return "per la telecronaca di " + f.tele.join(" e ");
-    return f.fonte === "drive" ? "dal Drive" : f.fonte === "slack" ? "da Slack" : "autore non indicato";
+    return f.fonte === "drive" ? "dal Drive · non collegato a una partita" : "da Slack";
   }
   function frase(x) {
     return '<div class="fr' + (x.sua ? " mia" : "") + '">' + esc(x.frase) + "<small>" +
@@ -451,7 +454,8 @@
           (suoi.length ? '<div class="gruppo">I suoi giocatori nello schedario</div><div class="elenco">' + suoi.map(voceG).join("") + "</div>" : "") +
           '<div class="gruppo">I fogli</div><div class="elenco">' + s.fogli.map(function (f) {
             return '<a class="voce" href="curiosita.html?id=' + encodeURIComponent(f.id) + '" target="comotv-curiosita">' +
-                   '<span class="n2"><b>' + esc(f.titolo || "Foglio") + "</b><small>" + esc(dataIt(f.data)) + " · " +
+                   '<span class="n2"><b>' + esc(f.titolo || "Foglio") + (f.genere && GENERI[f.genere] ? ' <small style="font-weight:500">· ' + esc(GENERI[f.genere]) + "</small>" : "") +
+                   "</b><small>" + esc(dataIt(f.data)) + " · " +
                    esc(chiFoglio(f)) +
                    "</small></span></a>";
           }).join("") + "</div>" +
