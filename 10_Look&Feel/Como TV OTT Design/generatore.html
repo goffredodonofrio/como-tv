@@ -3181,14 +3181,14 @@ function propagaFoto(key){
  var nat=PHOTONAT[curPhotoSrc()];if(!nat||nat.w<2)return 0;
  var a=STATE[key].adj.photo;if(!a)return 0;
  var s=a.s||1;if(!(s>0))return 0;
- var g=coverOf(key,nat),m=mirFor(key);
+ var g=coverOf(key,nat),m=mirInTela(key);
  // che punto dell'immagine sta ora sotto il centro del mirino (frazioni 0..1)
  var u=((m.x*g.W-g.W/2-(a.dx||0))/(s*g.cov)+nat.w/2)/nat.w;
  var v=((m.y*g.H-g.H/2-(a.dy||0))/(s*g.cov)+nat.h/2)/nat.h;
  var fam=famigliaMir(key),n=0;
  ITEMS.forEach(function(it){
   if(it.key===key||famigliaMir(it.key)!==fam||!photoFullBleed(it.key))return;
-  var q=coverOf(it.key,nat),mm=mirFor(it.key);
+  var q=coverOf(it.key,nat),mm=mirInTela(it.key);
   var aa={s:s,cx:q.W/2,cy:q.H/2,
    dx:mm.x*q.W-q.W/2-s*q.cov*(u*nat.w-nat.w/2),
    dy:mm.y*q.H-q.H/2-s*q.cov*(v*nat.h-nat.h/2)};
@@ -3530,13 +3530,15 @@ function compUsa(){
     // riquadro — Talent Hunters orizzontale, alcune miniature YouTube — un
     // inquadratura calcolata sul formato intero la farebbe scivolare fuori:
     // li' resta com'e', e si inquadra a mano come una foto normale.
-    if(OTTGEN.svgFor(it,p,imgsFor(it.key),{},'',true).indexOf('<clipPath id="pcp'+it.w+'x'+it.h+'"')<0)return;
-    var g=coverOf(it.key,nat);
+    var tela=telaDaSvg(OTTGEN.svgFor(it,p,imgsFor(it.key),{},'',true),it);
+    if(!tela)return;
+    var g={W:tela.W,H:tela.H,cov:Math.max(tela.W/nat.w,tela.H/nat.h)};
+    g.Dw=nat.w*g.cov;g.Dh=nat.h*g.cov;
     // Il formato su cui si e' composto, e quelli della stessa forma, la
     // ricevono esattamente dove la si e' messa. Gli altri intera, con un margine.
-    if(chiave&&Math.abs(it.w/it.h-W/H)<0.01*(W/H)){
-     var q=it.w/W;
-     STATE[it.key].adj.photo={s:pos.w*q/g.Dw,dx:(pos.x0+pos.w/2)*q-it.w/2,dy:(pos.y0+pos.h/2)*q-it.h/2,cx:it.w/2,cy:it.h/2};
+    if(chiave&&Math.abs(tela.W/tela.H-W/H)<0.01*(W/H)){
+     var q=tela.W/W;
+     STATE[it.key].adj.photo={s:pos.w*q/g.Dw,dx:(pos.x0+pos.w/2)*q-tela.W/2,dy:(pos.y0+pos.h/2)*q-tela.H/2,cx:tela.W/2,cy:tela.H/2};
     }else STATE[it.key].adj.photo={s:Math.min(g.W/g.Dw,g.H/g.Dh)*0.94,dx:0,dy:0,cx:g.W/2,cy:g.H/2};
    });
    renderStage();refreshThumbs();busy(false);compChiudi();
@@ -4955,8 +4957,12 @@ var MIRDEF={
 // Il banner-mid sta per conto suo: con un rapporto di 3,66 un'inquadratura
 // buona per un 16:9 li' non vuol dire niente.
 function famigliaMir(key){var it=BYKEY[key];if(!it)return 'orizzontali';
- var r=it.w/it.h;
- if(r>=3)return 'banner-mid';
+ // Il banner-mid sta per conto suo solo quando la foto occupa davvero tutta
+ // la sua lunghezza. Nei Format VOD (Talent Hunters) la foto sta in una banda
+ // quasi quadrata: li' il banner e' un orizzontale come gli altri, e deve
+ // ricevere l'inquadratura insieme a loro.
+ var t=telaFoto(key), r=it.w/it.h, rt=t?t.W/t.H:r;
+ if(r>=3&&rt>=3)return 'banner-mid';
  return r>=1.5?'orizzontali':'verticali';}
 var MIRUSER={};
 function mirFor(key){
@@ -4968,23 +4974,48 @@ function mirFor(key){
  if(r<=0.85)return {x:0.50,y:0.27,r:0.20}; // verticali: testo in basso
  return {x:0.50,y:0.32,r:0.20};
 }
-// Vero solo dove la foto e' a pieno formato dentro una clip fissa: li' spostare
-// il gruppo fa scorrere la foto nella finestra. Sui pannelli YouTube (ritaglio
-// "slice") muovere il gruppo sposterebbe il pannello stesso, quindi si esclude.
-var _fullBleed={};
-function photoFullBleed(key){
- if(_fullBleed[key]===undefined){
-  // La clip 'pcpWxH' la emette solo GPHOTO, cioe' esattamente il caso a pieno
-  // formato. Cercare l'attributo sull'<image> non funziona: il data URI della
-  // foto e' lungo centinaia di migliaia di caratteri e sfonda ogni finestra.
-  var it=BYKEY[key];
-  _fullBleed[key]=svgScreen(key).indexOf('<clipPath id="pcp'+it.w+'x'+it.h+'"')>=0;
- }
- return _fullBleed[key];
+// LA TELA DELLA FOTO: dove la foto e' disegnata dentro il formato. Sono due
+// casi soltanto, e si leggono dal disegno: tutto il formato (GPHOTO emette la
+// clip 'pcpWxH') oppure una banda (il Talent Hunters orizzontale mette il
+// giocatore a destra, clip '<qualcosa>ph'). Altrove — i pannelli YouTube col
+// ritaglio "slice" — la foto non si muove, e la tela non c'e'.
+// Prima si guardava solo il pieno formato, e cosi' l'inquadratura data sul
+// landscape di Talent Hunters non arrivava agli altri orizzontali (banner,
+// background): per loro la foto "non era spostabile".
+// La risposta dipende dal programma scelto nei Format VOD, quindi si ricorda
+// per formato E per programma: prima si ricordava la prima risposta e basta.
+function telaDaSvg(s,it){
+ if(s.indexOf('<clipPath id="pcp'+it.w+'x'+it.h+'"')>=0)return {x:0,y:0,W:it.w,H:it.h};
+ var m=/<clipPath id="[A-Za-z0-9]*ph"><rect x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)" height="([\d.]+)"/.exec(s);
+ return m?{x:+m[1],y:+m[2],W:+m[3],H:+m[4]}:null;
 }
-// Geometria della foto "cover" per un formato, a scala 1.
-function coverOf(key,nat){var it=BYKEY[key],cov=Math.max(it.w/nat.w,it.h/nat.h);
- return {W:it.w,H:it.h,cov:cov,Dw:nat.w*cov,Dh:nat.h*cov};}
+var _telaFoto={};
+function telaFoto(key){
+ var ck=key+'|'+((window.SHARED&&SHARED.fcKey)||'');
+ if(_telaFoto[ck]===undefined){
+  // Cercare l'attributo sull'<image> non funziona: il data URI della foto e'
+  // lungo centinaia di migliaia di caratteri e sfonda ogni finestra.
+  _telaFoto[ck]=telaDaSvg(svgScreen(key),BYKEY[key]);
+ }
+ return _telaFoto[ck];
+}
+// Vero dove la foto si puo' spostare: pieno formato o banda.
+function photoFullBleed(key){return !!telaFoto(key);}
+// Geometria della foto "cover" per un formato, a scala 1: si misura sulla tela
+// della foto, non sul formato — nella banda la foto copre la banda.
+function coverOf(key,nat){var it=BYKEY[key],t=telaFoto(key)||{x:0,y:0,W:it.w,H:it.h};
+ var cov=Math.max(t.W/nat.w,t.H/nat.h);
+ return {W:t.W,H:t.H,x:t.x,y:t.y,cov:cov,Dw:nat.w*cov,Dh:nat.h*cov};}
+// Il mirino sta nelle misure del formato; qui serve nelle misure della tela.
+// Se cade fuori dalla banda (o sul suo bordo) si prende il centro della banda:
+// un mirino pensato per il formato intero, dentro una banda stretta, manderebbe
+// il volto a ridosso della sfumatura.
+function mirInTela(key){
+ var m=mirFor(key),it=BYKEY[key],t=telaFoto(key);
+ if(!t)return m;
+ function q(v,a,l){var f=(v-a)/l;return (f<0.12||f>0.88)?0.5:f;}
+ return {x:q(m.x*it.w,t.x,t.W),y:q(m.y*it.h,t.y,t.H),r:m.r};
+}
 // Zoom massimo: non un numero fisso ma la risoluzione. Finche' cov*s resta sotto
 // 1 la foto viene ancora rimpicciolita e si puo' ingrandire senza perdere nulla;
 // le foto piccole restano protette dal limite fisso.
