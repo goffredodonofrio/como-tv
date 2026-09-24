@@ -3444,7 +3444,8 @@ function audioSemplice(q) {
   if (TRACCE_A.slice(1).some((n) => t[n] && t[n].solo)) return false;
   if (t.A1 && !t.A1.solo && TRACCE_A.some((n) => t[n] && t[n].solo)) return false;
   return (q.audio || []).every((a) => a.legato && a.traccia === "A1" && !a.gain
-                                   && !a.entra && !a.esce && !a.muto && !a.canale);
+                                   && !a.entra && !a.esce && !a.muto && !a.canale
+                                   && !((a.volumi || []).length));
 }
 
 // Quali tracce si sentono: il solo di Premiere spegne tutte le altre.
@@ -3633,6 +3634,16 @@ function hlAudio(p) {
     a.gain = num(p.gain, -60, 12, 0);
   } else if (azione === "muto") {
     a.muto = p.muto === undefined ? !a.muto : !!p.muto;
+  } else if (azione === "volume") {
+    // LA LINEA DEL VOLUME. Il gain e' un numero solo per tutta la clip: va
+    // bene per alzare una voce bassa, non per abbassare il campo mentre
+    // parla il telecronista e rialzarlo sul boato. I punti dicono quanti
+    // decibel a quale secondo DENTRO la clip, e in mezzo si interpola.
+    const dur = Math.max(0.05, a.fuori - a.dentro);
+    const punti = Array.isArray(p.punti) ? p.punti
+      .map((k) => ({ t: num(k.t, 0, dur, 0), db: num(k.db, -60, 12, 0) }))
+      .sort((x, y) => x.t - y.t).slice(0, 40) : [];
+    if (punti.length) a.volumi = punti; else delete a.volumi;
   } else if (azione === "dissolvenza") {
     const d = Math.max(0.05, a.fuori - a.dentro);
     if (p.entra !== undefined) a.entra = num(p.entra, 0, d, a.entra);
@@ -4433,7 +4444,16 @@ function costruisciMix(q, iBase) {
     // "aformat=stereo" qui pieghegava un sei canali su due sommando i bus
     f += "," + panDi(canaliQui, a.coppia, a.canale);
     const g = (a.gain || 0) + (t.gain || 0);
-    if (g) f += ",volume=" + g.toFixed(2) + "dB";
+    // con i punti il volume si muove nel tempo: si scrive l'espressione a
+    // tratti (la stessa macchina del ritaglio verticale) e la si rivaluta a
+    // ogni fotogramma. In decibel dentro, lineare fuori, perche' il filtro
+    // volume di ffmpeg accetta il suffisso dB solo per le costanti.
+    const curva = (a.volumi || []).length >= 2
+      ? espressioneDi((a.volumi || []).map((k) => ({ t: k.t, db: (k.db || 0) + (t.gain || 0) })),
+                      "db", 0, (v) => Number(v).toFixed(2))
+      : null;
+    if (curva) f += ",volume=volume='pow(10\\," + "(" + curva + ")/20)':eval=frame";
+    else if (g) f += ",volume=" + g.toFixed(2) + "dB";
     if (a.entra > 0.01) f += ",afade=t=in:st=0:d=" + a.entra.toFixed(2);
     if (a.esce > 0.01) f += ",afade=t=out:st=" + Math.max(0, dur - a.esce).toFixed(2) + ":d=" + a.esce.toFixed(2);
     const ms = Math.round(Math.max(0, a.t0 || 0) * 1000);

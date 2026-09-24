@@ -373,6 +373,12 @@
   .ed-audio .diss{position:absolute;top:1px;width:9px;height:9px;background:var(--oro);border-radius:2px;cursor:ew-resize;z-index:3;opacity:.85;}
   .ed-audio .diss:hover,.ed-audio .diss.tira{opacity:1;}
   .ed-audio .rampa{position:absolute;top:0;bottom:0;pointer-events:none;background:rgba(4,12,28,.55);}
+  /* LA LINEA DEL VOLUME sopra l'onda: i punti si prendono e si tirano */
+  .ed-audio .vol{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;}
+  .ed-audio .vol path{fill:none;stroke:#F5D76E;stroke-width:1.6;}
+  .ed-audio .vp{position:absolute;width:9px;height:9px;margin:-5px 0 0 -5px;border-radius:50%;
+    background:#F5D76E;border:1px solid rgba(4,12,28,.6);cursor:ns-resize;z-index:4;}
+  .ed-audio .vp:hover,.ed-audio .vp.tira{transform:scale(1.35);}
   .ed-audio .db{position:absolute;right:5px;bottom:1px;font:9.5px ui-monospace,Menlo,monospace;color:rgba(245,241,230,.75);pointer-events:none;}
   .ed-st{position:absolute;top:2px;bottom:2px;height:auto;background:#4A4020;border:1px solid #7A6630;border-radius:3px;overflow:hidden;padding:0 4px;font-size:10px;line-height:18px;color:#FFE97A;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;}
   .ed-st.mod{border-color:#E3C271;}
@@ -1450,6 +1456,38 @@
     }
     return '<svg class="onda" viewBox="0 0 ' + larga.toFixed(0) + ' ' + alta.toFixed(0) + '" preserveAspectRatio="none"><path d="M' + su.join("L") + "L" + giu.join("L") + 'Z"/></svg>';
   }
+  // dai decibel alla riga, e ritorno: da +6 in cima a -30 in fondo, che e'
+  // la finestra dentro cui si lavora davvero su una telecronaca
+  var VOL_SU = 6, VOL_GIU = -30;
+  function yDiDb(db, alta){ return alta * (1 - (Math.max(VOL_GIU, Math.min(VOL_SU, db)) - VOL_GIU) / (VOL_SU - VOL_GIU)); }
+  function dbDiY(y, alta){ return Math.max(VOL_GIU, Math.min(VOL_SU, VOL_GIU + (1 - y / Math.max(1, alta)) * (VOL_SU - VOL_GIU))); }
+  function volumiDi(au){ return (au.volumi || []).slice().sort(function(a, b){ return a.t - b.t; }); }
+  function dbAl(au, t){
+    var v = volumiDi(au);
+    if (!v.length) return au.gain || 0;
+    if (t <= v[0].t) return v[0].db;
+    for (var i = 1; i < v.length; i++) {
+      if (t <= v[i].t) { var a = v[i - 1], b = v[i]; return a.db + (b.db - a.db) * ((t - a.t) / Math.max(0.001, b.t - a.t)); }
+    }
+    return v[v.length - 1].db;
+  }
+  function lineaVolume(au, larga, alta){
+    var v = volumiDi(au), dur = Math.max(0.2, au.fuori - au.dentro);
+    var px = larga / dur, nodi = [], d = "";
+    if (!v.length) {
+      var y0 = yDiDb(au.gain || 0, alta);
+      d = "M0 " + y0.toFixed(1) + "L" + larga.toFixed(1) + " " + y0.toFixed(1);
+    } else {
+      var pti = [{ t: 0, db: v[0].db }].concat(v, [{ t: dur, db: v[v.length - 1].db }]);
+      d = "M" + pti.map(function(k){ return (k.t * px).toFixed(1) + " " + yDiDb(k.db, alta).toFixed(1); }).join("L");
+      v.forEach(function(k, i){
+        nodi.push('<span class="vp" data-vp="' + i + '" data-a="' + esc(au.id) + '" style="left:' + (k.t * px).toFixed(1) +
+                  'px;top:' + yDiDb(k.db, alta).toFixed(1) + 'px" title="' + (k.db > 0 ? "+" : "") + k.db.toFixed(1) +
+                  ' dB a ' + tcBreve(k.t) + ' \u00b7 doppio clic per toglierlo"></span>');
+      });
+    }
+    return '<svg class="vol" viewBox="0 0 ' + larga.toFixed(0) + ' ' + alta.toFixed(0) + '" preserveAspectRatio="none"><path d="' + d + '"/></svg>' + nodi.join("");
+  }
   function audioHtml(au, xa, ww, staccato){
     var alta = Math.max(10, misura("a") - 8);
     var d = Math.max(0.2, au.fuori - au.dentro), px = ww / d;
@@ -1457,7 +1495,7 @@
     return '<div class="ed-audio' + (staccato ? " staccato" : "") + (au.muto ? " muto" : "") + (SELA === au.id ? " sel" : "") +
       '" data-a="' + esc(au.id) + '" style="left:' + xa + 'px;width:' + ww + 'px" title="' + esc(au.titolo || "audio") +
       (au.muto ? " \u00b7 muto" : "") + (au.gain ? " \u00b7 " + au.gain + " dB" : "") + '">' +
-      ondaHtml(au, ww, alta) +
+      ondaHtml(au, ww, alta) + (ww > 24 ? lineaVolume(au, ww, alta) : "") +
       (entra > 1 ? '<span class="rampa" style="left:0;width:' + entra.toFixed(0) + 'px;clip-path:polygon(0 0,100% 0,0 100%)"></span>' : "") +
       (esce > 1 ? '<span class="rampa" style="right:0;width:' + esce.toFixed(0) + 'px;clip-path:polygon(100% 0,100% 100%,0 0)"></span>' : "") +
       (ww > 40 ? '<span class="diss sx" data-diss="entra" data-ad="' + esc(au.id) + '" style="left:' + Math.max(0, entra - 4).toFixed(0) + 'px" title="dissolvenza in entrata: trascina"></span>' +
@@ -1607,6 +1645,10 @@
       bt("Muto / suona", "", "eMuto"),
       bt("Togli l\u2019audio", "", "eAudioTogli"),
       vc("Gain\u2026", "G", chiediGain),
+      vc("Togli la linea del volume", "", function(){
+        var ag = audioScelto(); if (!ag) return avviso("err", "Scegli un pezzo o un audio.");
+        scriviVolumi(ag, []); avviso("ok", "Linea tolta: resta il gain della clip.");
+      }),
       vc("Dissolvenza in entrata\u2026", "", function(){ chiediDissolvenza("entra"); }),
       vc("Dissolvenza in uscita\u2026", "", function(){ chiediDissolvenza("esce"); }),
       { riga: 1 },
@@ -1770,8 +1812,13 @@
     // le due prese della dissolvenza stanno SOPRA la clip audio: vanno
     // guardate per prime, se no si prende la clip e la si sposta invece di
     // allungare la rampa
+    var vp = e.target.closest(".vp");
+    if (vp) { prendiPuntoVolume(vp, e); return; }
     var dz = e.target.closest(".diss");
     if (dz) { prendiDissolvenza(dz, e); return; }
+    // alt+clic sulla clip audio: un punto nuovo dove hai cliccato
+    var au0 = e.altKey ? e.target.closest(".ed-audio") : null;
+    if (au0) { aggiungiPuntoVolume(au0, e); return; }
     var pz = e.target.closest(".ed-pezzo"), bordo = e.target.closest(".bordo"), st = e.target.closest(".ed-st"), gf = e.target.closest(".ed-graf"), ad = e.target.closest(".ed-audio");
     if (st) { vaiTempo(+st.dataset.t, false); return; }
     if (gf) { var g = GRAF.filter(function(z){ return z.id === gf.dataset.g; })[0]; if (!g) return; SELG = g.id; SELA = null; TRASC = { tipo: bordo ? bordo.dataset.lato : "g-muovi", g_id: g.id, x0: e.clientX, a: g.dentro, b: g.fuori, d0: g.dentro, f0: g.fuori, mosso: false }; e.preventDefault(); disegnaTl(); return; }
@@ -1946,6 +1993,47 @@
     LENTE = { a: a2, b: a2 + span };
     disegnaTl();
   }, { passive: false });
+  function scriviVolumi(au, punti){
+    post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"volume", audio: au.id, punti: punti })
+      .then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
+  }
+  function aggiungiPuntoVolume(nodo, e){
+    var au = AUD.filter(function(z){ return z.id === nodo.dataset.a; })[0]; if (!au || !SEQ) return;
+    if (traccaBloccata(au.traccia)) return avviso("err", "La traccia e' bloccata.");
+    var r = nodo.getBoundingClientRect(), dur = Math.max(0.2, au.fuori - au.dentro);
+    var t = Math.max(0, Math.min(dur, (e.clientX - r.left) / r.width * dur));
+    var v = volumiDi(au);
+    // il primo punto non deve far saltare il livello: si comincia da dove
+    // sta la linea adesso, e se la linea era piatta se ne mettono due
+    var punti = v.length ? v.concat([{ t: Math.round(t * 100) / 100, db: Math.round(dbAl(au, t) * 10) / 10 }])
+                         : [{ t: 0, db: au.gain || 0 }, { t: t, db: au.gain || 0 }];
+    punti.sort(function(a, b){ return a.t - b.t; });
+    SELA = au.id;
+    scriviVolumi(au, punti);
+    e.preventDefault(); e.stopPropagation();
+  }
+  function prendiPuntoVolume(nodo, e){
+    var au = AUD.filter(function(z){ return z.id === nodo.dataset.a; })[0]; if (!au || !SEQ) return;
+    if (traccaBloccata(au.traccia)) return avviso("err", "La traccia e' bloccata.");
+    var clip = nodo.parentElement.getBoundingClientRect(), alta = Math.max(10, misura("a") - 8);
+    var dur = Math.max(0.2, au.fuori - au.dentro), i = +nodo.dataset.vp;
+    var v = volumiDi(au), mosso = false;
+    nodo.classList.add("tira"); SELA = au.id;
+    function muovi(ev){
+      mosso = true;
+      v[i] = { t: Math.max(0, Math.min(dur, (ev.clientX - clip.left) / clip.width * dur)),
+               db: Math.round(dbDiY(ev.clientY - clip.top, alta) * 10) / 10 };
+      au.volumi = v.slice().sort(function(a, b){ return a.t - b.t; });
+      disegnaTl();
+    }
+    function molla(){
+      document.removeEventListener("mousemove", muovi); document.removeEventListener("mouseup", molla);
+      nodo.classList.remove("tira");
+      if (mosso) scriviVolumi(au, au.volumi); else disegnaTl();
+    }
+    document.addEventListener("mousemove", muovi); document.addEventListener("mouseup", molla);
+    e.preventDefault(); e.stopPropagation();
+  }
   function prendiDissolvenza(nodo, e){
     var au = AUD.filter(function(z){ return z.id === nodo.dataset.ad; })[0]; if (!au || !SEQ) return;
     var quale = nodo.dataset.diss, clip = nodo.parentElement.getBoundingClientRect();
@@ -1968,6 +2056,13 @@
     e.preventDefault(); e.stopPropagation();
   }
   el("pista").addEventListener("dblclick", function(e){
+    var vp = e.target.closest(".vp");
+    if (vp) {
+      var au = AUD.filter(function(z){ return z.id === vp.dataset.a; })[0]; if (!au) return;
+      var v = volumiDi(au); v.splice(+vp.dataset.vp, 1);
+      scriviVolumi(au, v.length === 1 ? [] : v);   // un punto solo non e' una curva
+      e.preventDefault(); e.stopPropagation(); return;
+    }
     var st = e.target.closest(".ed-st"); if (!st || !st.dataset.k) return;
     var s = DETTOE.filter(function(z){ return z.k === st.dataset.k; })[0]; if (!s) return;
     var sua = s.l || "it", nuovo = window.prompt("Sottotitolo (" + (sua === "en" ? "inglese" : "italiano") + "):", s.x || ""); if (nuovo === null || nuovo === s.x) return;
