@@ -3357,10 +3357,15 @@ function riallinea(q) {
     q.pezzi.sort((a, b) => (a.t0 || 0) - (b.t0 || 0));
     return normalizzaSeq(q);
   }
-  let t = 0;
+  // OGNI TRACCIA VA IN FILA PER CONTO SUO. Un pezzo su V2 sta SOPRA il
+  // video, non dopo: impacchettarlo insieme agli altri lo spingeva in coda
+  // al montato invece di lasciarlo dove si sovrappone.
+  const fin = {};
   q.pezzi.forEach((x) => {
-    x.t0 = Math.round(t * 1000) / 1000;
-    t += Math.max(0, x.fuori - x.dentro);
+    const n = x.traccia || "V1";
+    if (fin[n] === undefined) fin[n] = 0;
+    x.t0 = Math.round(fin[n] * 1000) / 1000;
+    fin[n] += Math.max(0, x.fuori - x.dentro);
   });
   return normalizzaSeq(q);
 }
@@ -3409,7 +3414,9 @@ function buchiDi(q) {
   normalizzaSeq(q);
   const fuori = [];
   let t = 0;
-  q.pezzi.forEach((x) => {
+  // il nero si mette dove manca il VIDEO DI BASE: sopra V2 c'e' quello che
+  // c'e', e un buco su V2 non e' un buco nel montato
+  q.pezzi.filter((x) => (x.traccia || "V1") === "V1").forEach((x) => {
     const a = x.t0 || 0;
     if (a > t + 0.04) fuori.push({ da: t, a: a });
     t = Math.max(t, a + Math.max(0, x.fuori - x.dentro));
@@ -3750,6 +3757,19 @@ function hlPezzo(p) {
   // IL COLORE DEL PEZZO. Tre manopole, quelle che servono davvero su un
   // campo: quanta luce, quanto stacco fra chiaro e scuro, quanto colore.
   // Le partite arrivano da regie diverse e una accanto all'altra si vede.
+  // DOVE STA IL RIQUADRO di un pezzo messo sopra: in frazioni del
+  // fotogramma, cosi' vale uguale in 16:9 e in verticale.
+  if (p.riquadro !== undefined) {
+    const r0 = p.riquadro || {};
+    x.riquadro = { x: num(r0.x, 0, 1, 0.66), y: num(r0.y, 0, 1, 0.62), w: num(r0.w, 0.1, 1, 0.3) };
+  }
+  if (p.traccia !== undefined) {
+    const n = String(p.traccia);
+    if (["V1", "V2"].indexOf(n) < 0) throw new Error("traccia video sconosciuta");
+    x.traccia = n;
+    if (n === "V2" && !x.riquadro) x.riquadro = { x: 0.66, y: 0.62, w: 0.3 };
+    riallinea(q);
+  }
   if (p.colore !== undefined) {
     const c = p.colore || {};
     const lum = num(c.lum, -0.5, 0.5, 0), con = num(c.con, 0.5, 2, 1), sat = num(c.sat, 0, 2.5, 1);
@@ -4631,14 +4651,16 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   const sottoV = vuoleSotto(p2);
   const srtSeq = (sottoV.file || sottoV.video) ? await scriviSrtSequenza(q, sottoV, !!sottoV.video) : null;
   const brucia = !!(sottoV.video && srtSeq);
-  const rallentati = (q.pezzi || []).some((x) => (+x.velocita && +x.velocita !== 1) || x.colore);
+  const rallentati = (q.pezzi || []).some((x) => (+x.velocita && +x.velocita !== 1) || x.colore || (x.traccia || "V1") === "V2");
   const veloce = (p2 && p2.esatto) || srtSeq ? false : (!ritaglio && !grafiche0.length && !mixato && !buchi.length && !rallentati);
   const dir2 = path.join(dir, "tagli");
   assicura(dir2);
   const parti = [];
   let orologio = 0;                     // dove siamo arrivati sulla timeline
-  for (let i = 0; i < q.pezzi.length; i++) {
-    const x = q.pezzi[i];
+  const sopra = (q.pezzi || []).filter((x) => (x.traccia || "V1") === "V2");
+  const base = (q.pezzi || []).filter((x) => (x.traccia || "V1") !== "V2");
+  for (let i = 0; i < base.length; i++) {
+    const x = base[i];
     const k = chiavePezzo(q.reg, x.dentro, x.fuori);
     const casa = filePezzo(k);
     if (!fs.existsSync(casa)) continue;
@@ -4733,7 +4755,10 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   q.export.fase = grafiche.length ? "incollo le grafiche" : (veloce ? "monto" : "monto");
   scrivi(); annuncia(0, "clip");
 
-  const soloIncollare = !grafiche.length && !mixato && !brucia;
+  // UN PEZZO SOPRA VA COMPOSTO, non incollato. Senza questo l'export
+  // prendeva la strada corta — copiare il video e basta — e il riquadro nel
+  // riquadro spariva in silenzio: il montato usciva, solo senza.
+  const soloIncollare = !grafiche.length && !mixato && !brucia && !sopra.length;
   if (soloIncollare) {
     await new Promise((si, no) => {
       const pr = spawn(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin",
@@ -4742,7 +4767,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
       pr.on("error", no);
       pr.on("close", (code) => code === 0 ? si() : no(new Error("incollatura fallita")));
     });
-  } else if (mixato && !grafiche.length && !brucia) {
+  } else if (mixato && !grafiche.length && !brucia && !sopra.length) {
     // SOLO L'AUDIO E' CAMBIATO. Il video si copia com'e' — nessuna
     // ricodifica, nessuna perdita — e il suono si costruisce accanto.
     q.export.fase = "monto l'audio";
@@ -4772,16 +4797,48 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     let catena = "";
     const ingressi = [];
     let ultimo = "0:v";
+    // I PEZZI SOPRA (V2). Vanno prima delle grafiche, perche' una grafica
+    // deve poter stare anche sopra di loro. Ognuno entra come un ingresso
+    // suo, si rimpicciolisce al riquadro che gli e' stato dato e si sposta
+    // nel tempo con setpts: l'enable da solo non basterebbe, farebbe
+    // comparire il primo fotogramma del pezzo invece di quello giusto.
+    {
+      sopra.forEach((x, j) => {
+        const k2 = chiavePezzo(q.reg, x.dentro, x.fuori);
+        const casa2 = filePezzo(k2);
+        if (!fs.existsSync(casa2)) return;
+        const off2 = scartoPezzo(k2), dur2 = Math.max(0.2, x.fuori - x.dentro);
+        const v2 = +x.velocita || 1;
+        ingressi.push("-ss", String(off2), "-t", String(dur2 * v2), "-i", casa2);
+        const n2 = ingressi.filter((z) => z === "-i").length;   // il suo numero d'ingresso
+        const rq = x.riquadro || { x: 0.66, y: 0.62, w: 0.3 };
+        const w2 = Math.max(2, Math.round(VW * Math.min(1, rq.w) / 2) * 2);
+        const px = Math.round(VW * Math.min(1, rq.x)), py = Math.round(VH * Math.min(1, rq.y));
+        const a2 = (x.t0 || 0), b2 = a2 + dur2;
+        let f2 = "[" + n2 + ":v]scale=" + w2 + ":-2:flags=lanczos";
+        if (v2 !== 1) f2 += ",setpts=PTS/" + v2.toFixed(4);
+        if (x.colore) f2 += ",eq=brightness=" + (x.colore.lum || 0).toFixed(3) +
+                            ":contrast=" + (x.colore.con || 1).toFixed(3) +
+                            ":saturation=" + (x.colore.sat || 1).toFixed(3);
+        f2 += ",setpts=PTS+" + a2.toFixed(3) + "/TB[s" + j + "];";
+        const usc2 = "s" + j + "o";
+        catena += f2 + "[" + ultimo + "][s" + j + "]overlay=" + px + ":" + py +
+                  ":enable='between(t," + a2.toFixed(2) + "," + b2.toFixed(2) + ")'" +
+                  ":eof_action=pass:format=auto[" + usc2 + "];";
+        ultimo = usc2;
+      });
+    }
     {
       const dopoW = VW, dopoH = VH;
       grafiche.forEach((g, i) => {
         ingressi.push("-i", path.join(cartellaGrafiche(), g.id + ".png"));
+        const nG = ingressi.filter((z) => z === "-i").length;
         const kk = Math.min(dopoW / (g.w || dopoW), dopoH / (g.h || dopoH));
         const w2 = Math.max(2, Math.round((g.w || dopoW) * kk / 2) * 2);
         const h2 = Math.max(2, Math.round((g.h || dopoH) * kk / 2) * 2);
         const x = Math.round((dopoW - w2) / 2), y = Math.round((dopoH - h2) / 2);
         const usc = (i === grafiche.length - 1) ? "v" : ("g" + i + "o");
-        catena += "[" + (i + 1) + ":v]scale=" + w2 + ":" + h2 + "[g" + i + "];" +
+        catena += "[" + nG + ":v]scale=" + w2 + ":" + h2 + "[g" + i + "];" +
                   "[" + ultimo + "][g" + i + "]overlay=" + x + ":" + y +
                   ":enable='between(t," + g.dentro.toFixed(2) + "," + g.fuori.toFixed(2) + ")'" +
                   ":format=auto[" + usc + "];";
@@ -4794,7 +4851,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     catena = catena.replace(/;$/, "");
     // l'audio: quello del video se nessuno l'ha toccato, il mix se invece
     // c'e' un montaggio sonoro sotto
-    const mix = mixato ? costruisciMix(q, 1 + grafiche.length) : null;
+    const mix = mixato ? costruisciMix(q, ingressi.filter((z) => z === "-i").length + 1) : null;
     const catenaTutta = catena + (mix && !mix.muta ? ";" + mix.catena.replace(/;$/, "") : "");
     const args = ["-hide_banner", "-loglevel", "error", "-nostdin",
       "-f", "concat", "-safe", "0", "-i", listaFin].concat(ingressi)
