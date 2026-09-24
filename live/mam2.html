@@ -515,6 +515,23 @@
         <div class="az" style="margin-left:auto;display:flex;gap:8px"><button class="mini" id="lSotto">Sottotitoli</button><button class="mini" id="lLingua">ITA</button><button class="mini" id="lClip" title="una clip degli ultimi 30 secondi">Clip 30 s</button><button class="mini" id="lAsset" title="apri la registrazione come partita">Apri</button><button class="mini" id="lFerma" style="color:#FF9A9C">&#9632; Ferma</button></div></div>
       <div id="lVuoto" class="lv-vuoto"><b>Nessun flusso in arrivo</b><span>Apri una porta a destra: vMix spinge in SRT (listener) e qui compare la partita.</span></div>
       <div class="player" id="lPlayer" hidden><video id="videoL" playsinline muted autoplay></video><div class="sotto" id="sottoBoxL"><i class="it" id="sottoItL"></i><i class="en" id="sottoEnL"></i></div></div>
+      <div class="trasporto" id="lTrasporto" hidden>
+        <div class="pm">
+          <span class="tcx" id="lOra">00:00:00</span>
+          <span class="sep"></span>
+          <button class="ico" id="lIn" title="Segna entrata (I, [)"><span class="graffa">{</span></button><button class="ico" id="lOut" title="Segna uscita (O, ])"><span class="graffa">}</span></button>
+          <span class="sep"></span>
+          <button class="ico" id="lGoIn" title="Vai all&#8217;entrata (Shift+I)"><svg viewBox="0 0 16 16"><rect x="2" y="2" width="2" height="12"/><path d="M13 3v10L5 8z"/></svg></button><button class="ico" id="lIndietro" title="Indietro 10 s (&#8592;) &#183; Shift: 60 s"><svg viewBox="0 0 16 16"><rect x="3" y="3" width="2" height="10"/><path d="M13 3v10L6 8z"/></svg></button><button class="ico play" id="lPlay" title="Riproduci / ferma (spazio)"><svg viewBox="0 0 16 16"><path d="M4 2v12l10-6z"/></svg></button><button class="ico" id="lAvanti" title="Avanti 10 s (&#8594;) &#183; Shift: 60 s"><svg viewBox="0 0 16 16"><rect x="11" y="3" width="2" height="10"/><path d="M3 3v10l7-5z"/></svg></button><button class="ico" id="lGoOut" title="Vai all&#8217;uscita (Shift+O)"><svg viewBox="0 0 16 16"><rect x="12" y="2" width="2" height="12"/><path d="M3 3v10l8-5z"/></svg></button>
+          <span class="sep"></span>
+          <button class="ico wide" id="lVivo" title="torna in fondo, dove il flusso sta arrivando adesso">&#9679; DAL VIVO</button>
+          <span class="spazio"></span>
+          <span class="inout">IN <b id="lTIn">&#8212;</b> &#183; OUT <b id="lTOut">&#8212;</b></span><span class="sep"></span>
+          <span class="tcx dur"><small>Dur</small><span id="lTDur">&#8212;</span></span>
+          <span class="sep"></span>
+          <button class="ico wide" id="lBozza" title="il tratto segnato va in timeline (B o ,)" disabled>IN TIMELINE</button><button class="ico wide" id="lClipIO" title="esporta il tratto segnato come clip" disabled>CLIP</button><button class="ico" id="lPulisci" title="Togli entrata e uscita"><svg viewBox="0 0 16 16"><path d="M3 4l1-1 4 4 4-4 1 1-4 4 4 4-1 1-4-4-4 4-1-1 4-4z"/></svg></button>
+        </div>
+        <div class="legenda" id="lRitardo" style="color:var(--fumo);font-size:11px"></div>
+      </div>
       <div class="salute" id="lSalute" hidden></div>
     </div>
     <div class="lv-lato">
@@ -2949,11 +2966,13 @@
     if (window.Hls && Hls.isSupported()) { LIVE.hls = new Hls({ liveSyncDurationCount: 3 }); LIVE.hls.loadSource(url); LIVE.hls.attachMedia(v); LIVE.hls.on(Hls.Events.MANIFEST_PARSED, function(){ v.play().catch(function(){}); }); }
     else { v.src = url; v.play().catch(function(){}); }
     LIVE.da = 0; LIVE.righe = []; el("lDetto").innerHTML = "";
+    LDENTRO = LFUORI = null; lInOut();
   }
   function staccaLive(){ if (LIVE.hls) { LIVE.hls.destroy(); LIVE.hls = null; } var v = el("videoL"); if (v) { v.removeAttribute("src"); v.load(); } }
   function disegnaLive(){
     var r = LIVE.reg;
     el("lVuoto").hidden = !!r; el("lPlayer").hidden = !r; el("lSalute").hidden = !r;
+    el("lTrasporto").hidden = !r;
     ["lSotto","lLingua","lClip","lAsset","lFerma"].forEach(function(id){ el(id).disabled = !r; });
     if (!r) { el("lTitolo").textContent = "Diretta"; el("lMeta").textContent = LIVE.porte.length ? LIVE.porte.length + " porte · nessun flusso" : ""; return; }
     el("lTitolo").textContent = r.titolo || "in arrivo"; el("lMeta").textContent = "porta " + r.ascolto.porta + (r.attesa ? " · in attesa del flusso" : " · " + tc(r.durata || 0) + " registrati");
@@ -2990,6 +3009,74 @@
   el("lLingua").addEventListener("click", function(){ LIVE.lingua = LIVE.lingua === "it" ? "en" : "it"; this.textContent = LIVE.lingua === "it" ? "ITA" : "ENG"; if (LIVE.reg && LIVE.sotto) post({ tipo:"clip-sottotitoli", id: LIVE.reg.id, mostra: LIVE.lingua }).catch(function(){}); });
   el("lClip").addEventListener("click", function(){ var r = LIVE.reg; if (!r) return; var fuori = r.durata || 0; if (fuori < 5) return avviso("err", "Ancora troppo poco registrato."); post({ tipo:"clip-taglia", reg: r.id, dentro: Math.max(0, fuori - 30), fuori: fuori, formato:"16:9", titolo: (r.titolo || "diretta") + " " + tc(fuori) }).then(function(){ avviso("ok", "Clip degli ultimi 30 secondi in lavorazione."); }).catch(function(er){ avviso("err", esc(er.message)); }); });
   el("lAsset").addEventListener("click", function(){ if (LIVE.reg) location.href = "mam2.html?asset=" + encodeURIComponent(LIVE.reg.evento || "") + "&reg=" + LIVE.reg.id; });
+
+  // ── ENTRATA E USCITA SULLA DIRETTA ────────────────────────────────
+  //  Gli stessi tasti del montaggio, sul flusso che sta arrivando. Si puo'
+  //  fare perche' la playlist della diretta e' di tipo EVENT: tiene tutti i
+  //  segmenti dal primo, quindi il tempo del lettore E' il tempo della
+  //  registrazione — si torna indietro, si segna { e }, e il tratto esce
+  //  gia' preciso senza aspettare la fine della partita.
+  //  Il tasto DAL VIVO riporta in fondo, dove il flusso arriva adesso.
+  var LDENTRO = null, LFUORI = null, VL = el("videoL");
+  function lFine(){ try { return VL.seekable.length ? VL.seekable.end(VL.seekable.length - 1) : (VL.duration || 0); } catch (e) { return VL.duration || 0; } }
+  function lVaiA(t){ try { VL.currentTime = Math.max(0, Math.min(lFine(), t)); } catch (e) {} }
+  function lInOut(){
+    el("lTIn").textContent = LDENTRO === null ? "\u2014" : tc(LDENTRO);
+    el("lTOut").textContent = LFUORI === null ? "\u2014" : tc(LFUORI);
+    var buono = LDENTRO !== null && LFUORI !== null && LFUORI - LDENTRO > 0.5;
+    el("lTDur").textContent = buono ? tc(LFUORI - LDENTRO) : "\u2014";
+    el("lBozza").disabled = !buono; el("lClipIO").disabled = !buono;
+    el("lIn").classList.toggle("on", LDENTRO !== null); el("lOut").classList.toggle("on", LFUORI !== null);
+  }
+  el("lIn").addEventListener("click", function(){ if (!LIVE.reg) return; LDENTRO = VL.currentTime; if (LFUORI !== null && LFUORI <= LDENTRO) LFUORI = null; lInOut(); });
+  el("lOut").addEventListener("click", function(){ if (!LIVE.reg) return; LFUORI = VL.currentTime; if (LDENTRO !== null && LDENTRO >= LFUORI) LDENTRO = null; lInOut(); });
+  el("lGoIn").addEventListener("click", function(){ if (LDENTRO !== null) lVaiA(LDENTRO); });
+  el("lGoOut").addEventListener("click", function(){ if (LFUORI !== null) lVaiA(LFUORI); });
+  el("lPulisci").addEventListener("click", function(){ LDENTRO = LFUORI = null; lInOut(); });
+  el("lIndietro").addEventListener("click", function(e){ lVaiA(VL.currentTime - (e.shiftKey ? 60 : 10)); });
+  el("lAvanti").addEventListener("click", function(e){ lVaiA(VL.currentTime + (e.shiftKey ? 60 : 10)); });
+  el("lPlay").addEventListener("click", function(){ if (VL.paused) VL.play().catch(function(){}); else VL.pause(); });
+  el("lVivo").addEventListener("click", function(){ lVaiA(lFine()); VL.play().catch(function(){}); });
+  el("lBozza").addEventListener("click", function(){
+    var r = LIVE.reg; if (!r || LDENTRO === null || LFUORI === null) return;
+    var b = this; b.disabled = true;
+    // aggancia:false — lo stacco di regia si cerca leggendo il file, e il
+    // file in diretta lo sta ancora scrivendo il ponte: non lo si tocca
+    post({ tipo:"clip-hl-inserisci", reg: r.id, dentro: LDENTRO, fuori: LFUORI, aggancia: false,
+           titolo: (r.titolo || "diretta") + " " + tc(LDENTRO) }).then(function(d){
+      avviso("ok", "Tratto di " + Math.round(LFUORI - LDENTRO) + " s in timeline. <a href=\"mam2.html?seq=" + esc(d.seq.id) + "\" style=\"color:var(--oro)\">Aprilo nel montaggio</a>");
+      LDENTRO = LFUORI = null; lInOut();
+    }).catch(function(er){ avviso("err", esc(er.message)); b.disabled = false; });
+  });
+  el("lClipIO").addEventListener("click", function(){
+    var r = LIVE.reg; if (!r || LDENTRO === null || LFUORI === null) return;
+    post({ tipo:"clip-taglia", reg: r.id, dentro: LDENTRO, fuori: LFUORI, formato:"16:9",
+           titolo: (r.titolo || "diretta") + " " + tc(LDENTRO) })
+      .then(function(){ avviso("ok", "Clip in lavorazione: la trovi fra le clip della partita."); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  });
+  VL.addEventListener("timeupdate", function(){
+    if (!el("live").classList.contains("on")) return;
+    el("lOra").textContent = tc(VL.currentTime);
+    var dietro = lFine() - VL.currentTime;
+    el("lRitardo").textContent = dietro > 3
+      ? "sei indietro di " + Math.round(dietro) + " s rispetto al vivo \u00b7 DAL VIVO per tornare in fondo"
+      : "sei sul vivo";
+  });
+  document.addEventListener("keydown", function(e){
+    if (!el("live").classList.contains("on") || !LIVE.reg) return;
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    if (e.key === " ") { e.preventDefault(); el("lPlay").click(); }
+    else if (e.key === "I" && e.shiftKey) el("lGoIn").click();
+    else if (e.key === "O" && e.shiftKey) el("lGoOut").click();
+    else if (e.key === "i" || e.key === "I" || e.key === "[" || e.key === "{") el("lIn").click();
+    else if (e.key === "o" || e.key === "O" || e.key === "]" || e.key === "}") el("lOut").click();
+    else if (e.key === "," || e.key === "b" || e.key === "B") { if (!el("lBozza").disabled) el("lBozza").click(); else avviso("err", "Segna prima IN e OUT."); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); lVaiA(VL.currentTime - (e.shiftKey ? 60 : 10)); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); lVaiA(VL.currentTime + (e.shiftKey ? 60 : 10)); }
+    else if (e.key === "k" || e.key === "K") VL.pause();
+    else if (e.key === "l" || e.key === "L") { lVaiA(lFine()); VL.play().catch(function(){}); }
+  });
   el("lFerma").addEventListener("click", function(){ if (!LIVE.reg) return; if (!window.confirm("Fermo la registrazione di " + (LIVE.reg.titolo || "questa porta") + "?")) return; post({ tipo:"clip-ferma", id: LIVE.reg.id }).then(function(){ avviso("ok", "Fermata."); giroLive(); }).catch(function(er){ avviso("err", esc(er.message)); }); });
 
   // ══════════ AVVIO ══════════

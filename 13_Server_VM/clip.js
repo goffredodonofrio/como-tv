@@ -4843,11 +4843,31 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   if (conFusione && parti.length > 1 && !buchi.length) {
     q.export.fase = "sfumo gli stacchi";
     scrivi(); annuncia(0, "clip");
-    const durataDi = (i) => Math.max(0.2, base[i].fuori - base[i].dentro) / (+base[i].velocita || 1);
+    // QUANTO OCCUPA UN PEZZO NEL MONTATO: "fuori meno dentro", e basta.
+    // La velocita' non allunga il posto, cambia quanta partita ci sta
+    // dentro (mezza velocita' = meta' materiale, stessa lunghezza sulla
+    // timeline). Dividendo per la velocita' la dissolvenza successiva
+    // veniva chiesta a un secondo che nel file non esiste.
+    const durataDi = (i) => Math.max(0.2, base[i].fuori - base[i].dentro);
+    // E GLI INGRESSI VANNO PAREGGIATI. xfade pretende che i due pezzi
+    // abbiano la stessa misura, gli stessi fotogrammi al secondo e la
+    // stessa base dei tempi: una sigla girata col telefono ha 1/12800
+    // dove un taglio di partita ha 1/50000, e ffmpeg si rifiutava di
+    // comporli — "Nothing was written into output file", cioe' export
+    // fallito senza dire perche'. Si pareggia tutto sul primo pezzo.
+    const mis0 = await probeMisure(parti[0].file);
+    const LW = mis0.w || 1920, LH2 = mis0.h || 1080;
+    const FPS = (await fpsDi(parti[0].file)) || 25;
     const ingr = [];
     parti.forEach((z) => ingr.push("-i", z.file));
     const fv = [], fa = [];
-    let uv = "0:v", ua = "0:a", lungo = durataDi(0);
+    for (let i = 0; i < parti.length; i++) {
+      fv.push("[" + i + ":v]fps=" + FPS + ",scale=" + LW + ":" + LH2 +
+              ":force_original_aspect_ratio=decrease:flags=lanczos,pad=" + LW + ":" + LH2 +
+              ":(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p,settb=1/90000,setpts=PTS-STARTPTS[n" + i + "v]");
+      fa.push("[" + i + ":a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[n" + i + "a]");
+    }
+    let uv = "n0v", ua = "n0a", lungo = durataDi(0);
     for (let i = 1; i < parti.length; i++) {
       const tr = base[i] && base[i].transizione;
       const suo = durataDi(i);
@@ -4856,13 +4876,13 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
       const uscV = "v" + i, uscA = "a" + i;
       if (D > 0.06) {
         const come = tr.tipo === "nero" ? "fadeblack" : "fade";
-        fv.push("[" + uv + "][" + i + ":v]xfade=transition=" + come + ":duration=" + D.toFixed(2) +
+        fv.push("[" + uv + "][n" + i + "v]xfade=transition=" + come + ":duration=" + D.toFixed(2) +
                 ":offset=" + (lungo - D).toFixed(2) + "[" + uscV + "]");
-        fa.push("[" + ua + "][" + i + ":a]acrossfade=d=" + D.toFixed(2) + ":c1=tri:c2=tri[" + uscA + "]");
+        fa.push("[" + ua + "][n" + i + "a]acrossfade=d=" + D.toFixed(2) + ":c1=tri:c2=tri[" + uscA + "]");
         lungo = lungo + suo - D;
       } else {
-        fv.push("[" + uv + "][" + i + ":v]concat=n=2:v=1:a=0[" + uscV + "]");
-        fa.push("[" + ua + "][" + i + ":a]concat=n=2:v=0:a=1[" + uscA + "]");
+        fv.push("[" + uv + "][n" + i + "v]concat=n=2:v=1:a=0[" + uscV + "]");
+        fa.push("[" + ua + "][n" + i + "a]concat=n=2:v=0:a=1[" + uscA + "]");
         lungo = lungo + suo;
       }
       uv = uscV; ua = uscA;
