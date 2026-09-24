@@ -3498,6 +3498,23 @@ async function calcolaOnda(reg, dentro, fuori) {
   ONDE_IN_CORSO.add(k);
   const lista = path.join(cartellaOnde(), k + ".txt");
   try {
+    // SE IL FILE STA DIETRO IL PONTE, L'ONDA LA MISURA LA EC2. Tirare qui i
+    // campioni grezzi di un pezzo vuol dire scaricarne l'audio da S3 —
+    // centinaia di mega per disegnare una linea verde. A Parigi il file si
+    // legge in regione e torna una lista di decibel: un kilobyte. Un valore
+    // al secondo invece di dodici, quindi la forma e' piu' grossa, ma dice
+    // lo stesso dove parla il telecronista e dove urla lo stadio, che e'
+    // tutto quello che serve per tagliare e per mettere una dissolvenza.
+    const reggi = R.reg[reg];
+    const fonte = (reggi && reggi.arch) ? fonteAl(reggi, dentro) : null;
+    if (fonte && fonte.via && pontePer(fonte.via)) {
+      const db = await volumeAlSecondo(fonte.via, fonte.dentro, Math.max(1, Math.round(fuori - dentro)));
+      if (!db.length) return null;
+      // da decibel a zero-cento: sotto i -60 dB non c'e' niente da vedere
+      const onda = db.map((v) => Math.max(0, Math.min(100, Math.round((v + 60) / 60 * 100))));
+      try { fs.writeFileSync(via, JSON.stringify(onda)); } catch (e) {}
+      return onda;
+    }
     const ingresso = ingressoSolaudio(reg, dentro, fuori, lista);
     if (!ingresso) return null;
     // mono a 8 kHz, grezzo: non serve la qualita', serve la forma. Un pezzo
