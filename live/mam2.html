@@ -203,6 +203,19 @@
   .info span{color:var(--fumo);} .info b{font-weight:500;overflow-wrap:anywhere;} .info a.fischio{color:var(--oro);cursor:pointer;text-decoration:underline dotted;}
   .azioniS{display:flex;gap:6px;flex-wrap:wrap;padding:4px 8px 6px;}
   /* ── EDITOR ── */
+  /* LA BARRA DEI MENU. Ogni voce chiama un gesto che esiste davvero: niente
+     righe che non fanno niente per far sembrare il menu piu' ricco. */
+  .menubar{position:relative;display:flex;align-items:center;gap:1px;padding:0 6px;background:var(--navy2);border-bottom:1px solid var(--riga);flex:0 0 auto;z-index:60;}
+  .menubar > button{background:none;border:none;color:var(--ivory2);font:inherit;font-size:12.5px;padding:6px 11px;border-radius:6px;cursor:pointer;}
+  .menubar > button:hover{background:rgba(245,241,230,.07);}
+  .menubar > button.on{background:var(--oro);color:var(--navy);font-weight:600;}
+  .tendina-menu{position:absolute;top:100%;left:0;min-width:270px;background:var(--navy2);border:1px solid var(--riga2);
+    border-radius:0 0 9px 9px;box-shadow:0 14px 34px rgba(0,0,0,.55);padding:5px;z-index:70;}
+  .tendina-menu a{display:flex;align-items:center;gap:14px;padding:6px 10px;border-radius:6px;font-size:12.5px;color:var(--ivory2);cursor:pointer;white-space:nowrap;}
+  .tendina-menu a:hover{background:rgba(201,162,75,.16);color:var(--ivory);}
+  .tendina-menu a span{flex:1;} .tendina-menu a i{font-style:normal;font:11px ui-monospace,Menlo,monospace;color:var(--fumo);}
+  .tendina-menu hr{border:none;border-top:1px solid var(--riga);margin:5px 8px;}
+  .tendina-menu .capo2{padding:6px 10px 3px;font-family:'Mazzard',sans-serif;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--oro);}
   #editor{display:none;flex-direction:column;min-height:0;}
   #editor.on{display:flex;}
   .ed-sopra{display:grid;grid-template-columns:var(--bin,300px) 9px minmax(0,1fr) 9px var(--lato,300px);gap:0;flex:1 1 auto;min-height:0;border-bottom:1px solid var(--riga);}
@@ -482,6 +495,10 @@
 
   <!-- ══════════ EDITOR ══════════ -->
   <div class="vista" id="editor">
+    <div class="menubar" id="menubar">
+      <button data-menu="file">File</button><button data-menu="modifica">Modifica</button><button data-menu="clip">Clip</button><button data-menu="sequenza">Sequenza</button><button data-menu="vista">Vista</button><button data-menu="aiuto">Aiuto</button>
+      <div class="tendina-menu" id="tendinaMenu" hidden></div>
+    </div>
     <div class="ed-sopra">
       <div class="ed-bin"><div class="capo">Pezzi <span id="binConto"></span></div><div class="corpo" id="bin"></div></div>
       <div class="ed-divisore" id="divBin" title="trascina per allargare l’elenco dei pezzi · doppio clic: misura di partenza"></div>
@@ -1387,6 +1404,10 @@
     PZ.forEach(function(x, i){
       var d = x.fuori - x.dentro, a = x.t0 || 0, b = a + d;
       if (TRASC && TRASC.i === i && (TRASC.tipo !== "muovi" || TRASC.mosso)) { a = TRASC.a; b = TRASC.b; }
+      else if (TRASC && TRASC.gruppo && TRASC.mosso && TRASC.tipo === "muovi") {
+        var g = TRASC.gruppo.filter(function(z){ return z.id === x.id; })[0];
+        if (g) { a = Math.max(0, g.t0 + (TRASC.a - TRASC.t00)); b = a + d; }
+      }
       if (b < LENTE.a || a > LENTE.b) return;
       var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)), ww = Math.max(6, xb - xa);
       var po = POSE[REGE ? (REGE.id + "|" + x.dentro) : ""];
@@ -1522,6 +1543,149 @@
     post(c).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); });
   });
   function traccaBloccata(n){ return !!(((SEQ && SEQ.tracce) || {})[n || "A1"] || {}).bloccata; }
+  // ══════════ I MENU ══════════
+  //  Ogni voce e' un gesto che esiste: o preme un tasto che c'e' gia' nella
+  //  barra, o chiama una delle funzioni qui sopra. Quello che il montaggio
+  //  non sa fare non compare, per non prometterlo.
+  function vc(e, t, f){ return { e: e, t: t || "", f: f }; }
+  function bt(e, t, id){ return { e: e, t: t || "", f: function(){ el(id).click(); } }; }
+  var MENU = {
+    file: [
+      { capo: "Sequenza" },
+      bt("Rinomina\u2026", "", "eRinomina"),
+      bt("Progetto\u2026", "", "eProg"),
+      vc("Elimina la sequenza\u2026", "", eliminaSequenza),
+      { riga: 1 },
+      { capo: "Materiale" },
+      bt("Porta i pezzi in casa", "", "eCasa"),
+      bt("Apri la partita (Sorgente)", "", "eAsset"),
+      vc("Apri la partita a questo secondo", "F", vaiAllaPartita),
+      { riga: 1 },
+      { capo: "Uscita" },
+      bt("XML per Premiere", "", "eXml"),
+      vc("Esporta\u2026", "cmd M", function(){ el("eEsporta").scrollIntoView({ block:"center" }); el("eEsporta").focus(); avviso("ok", "Scegli formato e sottotitoli, poi Esporta."); }),
+      { riga: 1 },
+      vc("Torna alla libreria", "", function(){ location.href = "mam2.html"; })
+    ],
+    modifica: [
+      vc("Annulla", "cmd Z", function(){ annullaRipeti(false); }),
+      vc("Ripeti", "\u21e7cmd Z", function(){ annullaRipeti(true); }),
+      { riga: 1 },
+      vc("Taglia", "cmd X", function(){ copiaPezzi(true); }),
+      vc("Copia", "cmd C", function(){ copiaPezzi(false); }),
+      vc("Incolla dopo la testina", "cmd V", function(){ incolla(); }),
+      { riga: 1 },
+      vc("Scegli tutti i pezzi", "cmd A", function(){ SELS = PZ.map(function(z){ return z.id; }); SEL = SELS[SELS.length - 1] || null; disegnaEditor(); }),
+      vc("Non scegliere niente", "\u21e7cmd A", function(){ scegli(null); disegnaEditor(); }),
+      bt("Togli i pezzi scelti", "canc", "eTogli"),
+      { riga: 1 },
+      bt("Dividi sotto la testina", "C", "eTaglia"),
+      vc("Estrai fra entrata e uscita", ";", function(){ estrai(); }),
+      { riga: 1 },
+      vc("Segna l\u2019entrata", "I", function(){ INS = Math.round(tSeq() * 100) / 100; if (OUTS !== null && OUTS <= INS) OUTS = null; disegnaTl(); }),
+      vc("Segna l\u2019uscita", "O", function(){ OUTS = Math.round(tSeq() * 100) / 100; if (INS !== null && INS >= OUTS) INS = null; disegnaTl(); }),
+      vc("Togli entrata e uscita", "\u2325X", function(){ INS = OUTS = null; disegnaTl(); })
+    ],
+    clip: [
+      { capo: "Il taglio" },
+      vc("Accorcia l\u2019inizio alla testina", "Q", function(){ accorcia("inizio"); }),
+      vc("Accorcia la fine alla testina", "W", function(){ accorcia("fine"); }),
+      vc("Allunga fino alla testina", "E", allungaQui),
+      vc("Entrata e uscita sul pezzo", "X", inOutSulPezzo),
+      { riga: 1 },
+      { capo: "Spostare" },
+      vc("Scivolo indietro", "\u2325\u2190", function(){ scivolo(-0.04); }),
+      vc("Scivolo avanti", "\u2325\u2192", function(){ scivolo(0.04); }),
+      vc("Giunzione indietro", "\u2325\u21e7\u2190", function(){ giunzione(-0.04); }),
+      vc("Giunzione avanti", "\u2325\u21e7\u2192", function(){ giunzione(0.04); }),
+      { riga: 1 },
+      { capo: "Audio" },
+      bt("Stacca l\u2019audio dal video", "cmd L", "eStacca"),
+      bt("Muto / suona", "", "eMuto"),
+      bt("Togli l\u2019audio", "", "eAudioTogli"),
+      vc("Gain\u2026", "G", chiediGain),
+      vc("Dissolvenza in entrata\u2026", "", function(){ chiediDissolvenza("entra"); }),
+      vc("Dissolvenza in uscita\u2026", "", function(){ chiediDissolvenza("esce"); }),
+      { riga: 1 },
+      { capo: "Inquadratura verticale" },
+      bt("La propone la macchina", "", "inqProponi"),
+      bt("Ferma qui", "", "inqFermo"),
+      bt("Togli l\u2019inquadratura", "", "inqVia")
+    ],
+    sequenza: [
+      bt("Attacca: richiudi i buchi", "", "eAttacca"),
+      bt("Magnete acceso / spento", "S", "eMagnete"),
+      { riga: 1 },
+      bt("Aggiungi una grafica\u2026", "", "eGrafica"),
+      bt("Sottotitoli acceso / spento", "", "eSottoOn"),
+      bt("Lingua dei sottotitoli", "", "eSottoLingua"),
+      { riga: 1 },
+      vc("Marker sulla partita\u2026", "M", segnaMarker),
+      { riga: 1 },
+      vc("Vai all\u2019entrata", "\u21e7I", function(){ if (INS !== null) vaiTempo(INS, false); }),
+      vc("Vai all\u2019uscita", "\u21e7O", function(){ if (OUTS !== null) vaiTempo(OUTS, false); }),
+      vc("Vai all\u2019inizio", "home", function(){ VE.pause(); if (PZ.length) vaiA(0, 0, false); }),
+      vc("Vai alla fine", "end", function(){ VE.pause(); if (PZ.length) vaiA(PZ.length - 1, PZ[PZ.length - 1].fuori - PZ[PZ.length - 1].dentro - 0.05, false); })
+    ],
+    vista: [
+      { capo: "Formato del monitor" },
+      vc("16:9", "", function(){ scegliFormatoMenu("16:9"); }),
+      vc("9:16 verticale", "", function(){ scegliFormatoMenu("9:16"); }),
+      vc("1:1 quadrato", "", function(){ scegliFormatoMenu("1:1"); }),
+      vc("3:4", "", function(){ scegliFormatoMenu("3:4"); }),
+      bt("Campo intero col riquadro", "", "eCampo"),
+      { riga: 1 },
+      { capo: "Lente" },
+      bt("Avvicina", "+", "ePiu"),
+      bt("Allontana", "\u2212", "eMeno"),
+      bt("Tutta la sequenza", "\\", "eTutta"),
+      { riga: 1 },
+      vc("Rimetti le misure dei pannelli", "", function(){
+        MISURE = {}; try { localStorage.removeItem("mam2-misure"); } catch (e) {}
+        applicaMisure(); avviso("ok", "Pannelli e tracce alle misure di partenza.");
+      })
+    ],
+    aiuto: [ bt("I tasti, come in Premiere", "?", "eTasti") ]
+  };
+  function scegliFormatoMenu(f){
+    var c = el("eFormati").querySelector('.fchip[data-f="' + f + '"]');
+    if (c) c.click();
+  }
+  var MENU_APERTO = "";
+  function chiudiMenu(){
+    MENU_APERTO = ""; el("tendinaMenu").hidden = true;
+    Array.prototype.forEach.call(el("menubar").querySelectorAll("button[data-menu]"), function(b){ b.classList.remove("on"); });
+  }
+  function apriMenu(n){
+    if (MENU_APERTO === n) return chiudiMenu();
+    MENU_APERTO = n;
+    var b = el("menubar").querySelector('button[data-menu="' + n + '"]');
+    Array.prototype.forEach.call(el("menubar").querySelectorAll("button[data-menu]"), function(z){ z.classList.toggle("on", z === b); });
+    var t = el("tendinaMenu");
+    t.innerHTML = (MENU[n] || []).map(function(v, i){
+      if (v.riga) return "<hr>";
+      if (v.capo) return '<div class="capo2">' + esc(v.capo) + "</div>";
+      return '<a data-v="' + i + '"><span>' + esc(v.e) + "</span><i>" + esc(v.t) + "</i></a>";
+    }).join("");
+    t.style.left = Math.max(0, b.offsetLeft) + "px";
+    t.hidden = false;
+  }
+  el("menubar").addEventListener("click", function(e){
+    var b = e.target.closest("button[data-menu]");
+    if (b) { apriMenu(b.dataset.menu); return; }
+    var a = e.target.closest("a[data-v]");
+    if (!a) return;
+    var v = (MENU[MENU_APERTO] || [])[+a.dataset.v];
+    chiudiMenu();
+    if (v && v.f) { try { v.f(); } catch (er) { avviso("err", esc(er.message)); } }
+  });
+  el("menubar").addEventListener("mouseover", function(e){
+    // una volta aperto, si passa da un menu all'altro senza cliccare
+    var b = e.target.closest("button[data-menu]");
+    if (b && MENU_APERTO && b.dataset.menu !== MENU_APERTO) apriMenu(b.dataset.menu);
+  });
+  document.addEventListener("mousedown", function(e){ if (MENU_APERTO && !e.target.closest("#menubar")) chiudiMenu(); });
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape" && MENU_APERTO) chiudiMenu(); });
   // ── IL MAGNETE. Quello che cerchi quasi sempre e' un bordo che combacia:
   //    con un altro stacco, con la testina, con l'entrata o l'uscita. Senza,
   //    il montaggio diventa un lavoro di mira al pixel.
@@ -1617,6 +1781,12 @@
     var i = +pz.dataset.i, x = PZ[i]; if (e.shiftKey || e.metaKey || e.ctrlKey) scegli(x.id, true); else if (!scelto(x.id)) scegli(x.id, false);
     TRASC = { i: i, x0: e.clientX, tipo: bordo ? bordo.dataset.lato : "muovi", dentro: x.dentro, fuori: x.fuori,
               t00: x.t0 || 0, a: x.t0 || 0, b: (x.t0 || 0) + (x.fuori - x.dentro), mosso: false };
+    // PIU' CLIP INSIEME. Se quella che prendi fa parte di una scelta, si
+    // muovono tutte mantenendo le distanze: spostarle una per una e sperare
+    // che restino in fila non e' montare.
+    if (!bordo && SELS.length > 1 && scelto(x.id)) {
+      TRASC.gruppo = PZ.filter(function(z){ return scelto(z.id); }).map(function(z){ return { id: z.id, t0: z.t0 || 0 }; });
+    }
     e.preventDefault(); disegnaEditor();
   });
   document.addEventListener("mousemove", function(e){
@@ -1691,9 +1861,20 @@
       // IL PEZZO VA DOVE LO LASCI. Se si infila fra due vicini la sequenza
       // resta attaccata e si e' solo riordinata; se lo porti nel vuoto,
       // resta li' e il buco si vede — e si richiude col tasto Attacca.
-      if (Math.abs(tr.a - tr.t00) < 0.02) { disegnaTl(); return; }
-      post({ tipo:"clip-hl-sposta", seq: SEQ.id, pezzo: x.id, t0: Math.round(tr.a * 1000) / 1000 })
-        .then(function(d){ ricaricaSeq(d.seq); })
+      var salto = tr.a - tr.t00;
+      if (Math.abs(salto) < 0.02) { disegnaTl(); return; }
+      // in gruppo si spostano dal lato verso cui si va, se no il primo che
+      // si muove va a sbattere contro quelli che non si sono ancora mossi
+      var quali = (tr.gruppo || [{ id: x.id, t0: tr.t00 }]).slice()
+        .sort(function(p1, p2){ return salto > 0 ? p2.t0 - p1.t0 : p1.t0 - p2.t0; });
+      var passo = Promise.resolve(), ultima = null;
+      quali.forEach(function(z){
+        passo = passo.then(function(){
+          return post({ tipo:"clip-hl-sposta", seq: SEQ.id, pezzo: z.id, t0: Math.round(Math.max(0, z.t0 + salto) * 1000) / 1000 })
+            .then(function(d){ ultima = d; });
+        });
+      });
+      passo.then(function(){ if (ultima) ricaricaSeq(ultima.seq); if (quali.length > 1) avviso("ok", quali.length + " pezzi spostati."); })
         .catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
     }
   });
@@ -1808,6 +1989,66 @@
     ["= · − · \\", "lente: avvicina · allontana · tutta"], ["Cmd+M", "esporta"], ["Cmd+S", "salva (è già tutto salvato, sempre)"], ["?", "questo elenco"]
   ];
   function pezzoQui(){ var x = PZ[ORA.i]; return (x && SEQ) ? x : null; }
+  // I GESTI HANNO UN NOME. Erano scritti dentro il gestore della tastiera, e
+  // da li' nessun altro poteva chiamarli: un menu avrebbe dovuto riscriverli.
+  function scivolo(ds){
+    var x = pezzoQui(); if (!x) return avviso("err", "Porta la testina dentro un pezzo.");
+    if (x.dentro + ds < 0 || x.fuori + ds > (REGE.durata || 99999)) return avviso("err", "Il pezzo non ha piu' margine da quella parte.");
+    ritocca(x, { dentro: Math.round((x.dentro + ds) * 100) / 100, fuori: Math.round((x.fuori + ds) * 100) / 100 });
+  }
+  function accorcia(dove){
+    var x = pezzoQui(); if (!x) return avviso("err", "Porta la testina dentro un pezzo.");
+    var t = tMateriale();
+    if (dove === "inizio") { if (t >= x.fuori - 0.5) return avviso("err", "L'entrata verrebbe dopo l'uscita."); ritocca(x, { dentro: t }); }
+    else { if (t <= x.dentro + 0.5) return avviso("err", "L'uscita verrebbe prima dell'entrata."); ritocca(x, { fuori: t }); }
+  }
+  function allungaQui(){
+    var xe = PZ.filter(function(z){ return z.id === SEL; })[0];
+    if (!xe) return avviso("err", "Scegli prima un pezzo.");
+    if (PZ[ORA.i] !== xe) return avviso("err", "Porta la testina dentro il pezzo scelto, poi E.");
+    var te = tMateriale();
+    if (te > (xe.dentro + xe.fuori) / 2) ritocca(xe, { fuori: Math.max(xe.dentro + 0.5, te) });
+    else ritocca(xe, { dentro: Math.min(xe.fuori - 0.5, te) });
+  }
+  function inOutSulPezzo(){
+    var xx = pezzoQui(); if (!xx) return avviso("err", "Porta la testina dentro un pezzo.");
+    INS = inizioDi(ORA.i); OUTS = INS + (xx.fuori - xx.dentro); disegnaTl();
+  }
+  function copiaPezzi(taglia){
+    APPUNTI_COPIA = PZ.filter(function(z){ return scelto(z.id); }).map(function(z){ return { dentro: z.dentro, fuori: z.fuori, titolo: z.titolo }; });
+    if (!APPUNTI_COPIA.length) return avviso("err", "Scegli prima un pezzo.");
+    avviso("ok", APPUNTI_COPIA.length + (taglia ? " da tagliare." : " copiati."));
+    if (taglia) el("eTogli").click();
+  }
+  function chiediGain(){
+    var ag = audioScelto(); if (!ag) return avviso("err", "Scegli un pezzo o un audio.");
+    var g = window.prompt("Gain in dB (\u221260 \u2026 +12):", String(ag.gain || 0)); if (g === null) return;
+    post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"gain", audio: ag.id, gain: +g })
+      .then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Gain " + (+g) + " dB."); }).catch(function(er){ avviso("err", esc(er.message)); });
+  }
+  function chiediDissolvenza(quale){
+    var ag = audioScelto(); if (!ag) return avviso("err", "Scegli un pezzo o un audio.");
+    var v = window.prompt("Dissolvenza in " + (quale === "entra" ? "entrata" : "uscita") + ", in secondi:", String(ag[quale] || 0));
+    if (v === null) return;
+    var c = { tipo:"clip-hl-audio", seq: SEQ.id, azione:"dissolvenza", audio: ag.id }; c[quale] = Math.max(0, +v || 0);
+    post(c).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); });
+  }
+  function segnaMarker(){
+    if (!REGE) return;
+    var tm = tMateriale(), testo = window.prompt("Marker sulla partita a " + tc(tm) + ":", ""); if (testo === null) return;
+    post({ tipo:"clip-marker", reg: REGE.id, secondi: tm, testo: testo })
+      .then(function(){ avviso("ok", "Marker segnato sulla partita."); }).catch(function(er){ avviso("err", esc(er.message)); });
+  }
+  function vaiAllaPartita(){
+    if (!REGE) return;
+    location.href = "mam2.html?asset=" + encodeURIComponent(REGE.evento || (REGE.arch && REGE.arch.rec) || "") + "&reg=" + REGE.id + "&t=" + Math.floor(tMateriale() + 3);
+  }
+  function eliminaSequenza(){
+    if (!SEQ) return;
+    if (!window.confirm("Elimino la sequenza \u201c" + (SEQ.titolo || "") + "\u201d?\n\nI pezzi del montaggio se ne vanno con lei. La partita e il materiale restano dove sono.")) return;
+    post({ tipo:"clip-hl-elimina", seq: SEQ.id }).then(function(){ location.href = "mam2.html"; })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  }
   function tMateriale(){ return Math.round(VE.currentTime * 100) / 100; }
   function annullaRipeti(rifai){ if (!SEQ) return; post({ tipo: rifai ? "clip-hl-rifai" : "clip-hl-annulla", seq: SEQ.id }).then(function(d){ if (d.ok === false) throw new Error(d.errore); ricaricaSeq(d.seq); avviso("ok", rifai ? "Ripetuto." : "Annullato."); }).catch(function(er){ avviso("err", esc(er.message)); }); }
   function ritocca(x, c){ return post(Object.assign({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: x.id }, c)).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); }); }
@@ -1834,7 +2075,7 @@
       if (K === "Z") { e.preventDefault(); annullaRipeti(e.shiftKey); }
       else if (K === "K") { e.preventDefault(); el("eTaglia").click(); }
       else if (K === "A") { e.preventDefault(); if (e.shiftKey) scegli(null); else { SELS = PZ.map(function(z){ return z.id; }); SEL = SELS[SELS.length - 1] || null; } disegnaEditor(); }
-      else if (K === "C" || K === "X") { e.preventDefault(); APPUNTI_COPIA = PZ.filter(function(z){ return scelto(z.id); }).map(function(z){ return { dentro: z.dentro, fuori: z.fuori, titolo: z.titolo }; }); if (!APPUNTI_COPIA.length) return avviso("err", "Scegli prima un pezzo."); avviso("ok", APPUNTI_COPIA.length + (K === "X" ? " da tagliare." : " copiati.")); if (K === "X") el("eTogli").click(); }
+      else if (K === "C" || K === "X") { e.preventDefault(); copiaPezzi(K === "X"); }
       else if (K === "V") { e.preventDefault(); incolla(); }
       else if (K === "L") { e.preventDefault(); var au = audioScelto(); if (!au) return avviso("err", "Scegli un pezzo."); post({ tipo:"clip-hl-audio", seq: SEQ.id, azione: au.legato ? "scollega" : "lega", audio: au.id }).then(function(d){ ricaricaSeq(d.seq); avviso("ok", au.legato ? "Audio staccato." : "Audio legato."); }).catch(function(er){ avviso("err", esc(er.message)); }); }
       else if (K === "M") { e.preventDefault(); el("eEsporta").scrollIntoView({ block:"center" }); el("eEsporta").focus(); avviso("ok", "Esporta: scegli formato e sottotitoli, poi Esporta."); }
@@ -1846,9 +2087,7 @@
         e.preventDefault();
         var verso = (k === "ArrowLeft" ? -1 : 1) * 0.04;
         if (e.shiftKey) return giunzione(verso);     // la clip scorre, i vicini le fanno spazio
-        var xs = pezzoQui(); if (!xs) return;
-        if (xs.dentro + verso < 0 || xs.fuori + verso > (REGE.durata || 99999)) return avviso("err", "Il pezzo non ha piu' margine da quella parte.");
-        ritocca(xs, { dentro: Math.round((xs.dentro + verso) * 100) / 100, fuori: Math.round((xs.fuori + verso) * 100) / 100 });
+        scivolo(verso);
       }
       else if (K === "I") { INS = null; disegnaTl(); } else if (K === "O") { OUTS = null; disegnaTl(); } else if (K === "X") { INS = OUTS = null; disegnaTl(); }
       return;
@@ -1861,11 +2100,11 @@
     else if (K === "O" && e.shiftKey) { if (OUTS !== null) vaiTempo(OUTS, false); }
     else if (K === "I") { INS = Math.round(tSeq() * 100) / 100; if (OUTS !== null && OUTS <= INS) OUTS = null; disegnaTl(); }
     else if (K === "O") { OUTS = Math.round(tSeq() * 100) / 100; if (INS !== null && INS >= OUTS) INS = null; disegnaTl(); }
-    else if (K === "X") { var xx = pezzoQui(); if (!xx) return; INS = inizioDi(ORA.i); OUTS = INS + (xx.fuori - xx.dentro); disegnaTl(); }
+    else if (K === "X") { inOutSulPezzo(); }
     else if (k === ";" || k === "'") { estrai(); }
-    else if (K === "Q") { var x1 = pezzoQui(); if (!x1) return; var t1 = tMateriale(); if (t1 >= x1.fuori - 0.5) return avviso("err", "L'entrata verrebbe dopo l'uscita."); ritocca(x1, { dentro: t1 }); }
-    else if (K === "W") { var x2 = pezzoQui(); if (!x2) return; var t2 = tMateriale(); if (t2 <= x2.dentro + 0.5) return avviso("err", "L'uscita verrebbe prima dell'entrata."); ritocca(x2, { fuori: t2 }); }
-    else if (K === "E") { var xe = PZ.filter(function(z){ return z.id === SEL; })[0]; if (!xe) return avviso("err", "Scegli prima un pezzo."); if (PZ[ORA.i] !== xe) return avviso("err", "Porta la testina dentro il pezzo scelto, poi E."); var te = tMateriale(); if (te > (xe.dentro + xe.fuori) / 2) ritocca(xe, { fuori: Math.max(xe.dentro + 0.5, te) }); else ritocca(xe, { dentro: Math.min(xe.fuori - 0.5, te) }); }
+    else if (K === "Q") { accorcia("inizio"); }
+    else if (K === "W") { accorcia("fine"); }
+    else if (K === "E") { allungaQui(); }
     else if (K === "C") el("eTaglia").click();
     else if (k === "Delete" || k === "Backspace") { e.preventDefault(); el("eTogli").click(); }
     else if (K === "D") { var xd = pezzoQui(); if (xd) { scegli(xd.id, false); disegnaEditor(); } }
@@ -1876,9 +2115,9 @@
     else if (k === "ArrowDown") { e.preventDefault(); el("eDopo").click(); }
     else if (k === "Home") { e.preventDefault(); VE.pause(); if (PZ.length) vaiA(0, 0, false); }
     else if (k === "End") { e.preventDefault(); VE.pause(); if (PZ.length) vaiA(PZ.length - 1, PZ[PZ.length - 1].fuori - PZ[PZ.length - 1].dentro - 0.05, false); }
-    else if (K === "G") { var ag = audioScelto(); if (!ag) return avviso("err", "Scegli un pezzo o un audio."); var g = window.prompt("Gain in dB (−60 … +12):", String(ag.gain || 0)); if (g === null) return; post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"gain", audio: ag.id, gain: +g }).then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Gain " + (+g) + " dB."); }).catch(function(er){ avviso("err", esc(er.message)); }); }
-    else if (K === "M") { if (!REGE) return; var tm = tMateriale(), testo = window.prompt("Marker sulla partita a " + tc(tm) + ":", ""); if (testo === null) return; post({ tipo:"clip-marker", reg: REGE.id, secondi: tm, testo: testo }).then(function(){ avviso("ok", "Marker segnato sulla partita."); }).catch(function(er){ avviso("err", esc(er.message)); }); }
-    else if (K === "F") { if (!REGE) return; location.href = "mam2.html?asset=" + encodeURIComponent(REGE.evento || (REGE.arch && REGE.arch.rec) || "") + "&reg=" + REGE.id + "&t=" + Math.floor(tMateriale() + 3); }
+    else if (K === "G") { chiediGain(); }
+    else if (K === "M") { segnaMarker(); }
+    else if (K === "F") { vaiAllaPartita(); }
     else if (k === "+" || k === "=") el("ePiu").click(); else if (k === "-" || k === "_") el("eMeno").click(); else if (k === "\\") el("eTutta").click();
     else if (k === "?") el("eTasti").click();
   });
