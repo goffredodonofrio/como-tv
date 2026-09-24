@@ -1384,8 +1384,9 @@ function quelloCheSappiamo(r) {
       golTab.push(p);
     });
   }
+  const fine = a ? ritardoFine(rec) : 0;
   if (a) {
-    const rit = ritardoPartita(rec), fine = ritardoFine(rec);
+    const rit = ritardoPartita(rec);
     (a.righe || []).forEach((x) => {
       const t = dove(x.s, Math.max(0, (x.d || 0) - rit - fine));
       if (t === null) return;
@@ -1466,19 +1467,51 @@ function quelloCheSappiamo(r) {
   // POI IL BOATO, per quello che il tabellone non ha messo al secondo.
   // Vale per i gol delle partite senza lettura, e per le azioni che un
   // tabellone non registra: un palo, un rosso, una parata.
-  const boa = (ARCHIVIO[rec] || {}).boati || [];
-  azioni.forEach((x) => {
-    if (x.tabellone) return;
-    if (!DA_BOATO.test(String(x.tipo || "") + " " + String(x.titolo || ""))) return;
-    const t = x.t !== undefined ? x.t : x.dentro + APP_PRE;
-    const b = boa.find((y) => y.t !== null && y.t !== undefined && Math.abs(y.stimato - t) <= 12);
-    if (!b) return;
-    x.spostato = Math.round(t - b.t);
-    x.t = b.t; x.boato = b.db;
-    // il boato ha detto il secondo: rincorsa corta
-    const w = finestraGol(b.t, rec, true);
-    x.dentro = w.dentro; x.fuori = w.fuori; x.base = x.dentro;
-  });
+  // IL BOATO SI RIATTACCA ALLA SUA RIGA, e questo era il punto rotto.
+  //
+  //  Il boato veniva cercato per vicinanza: "un boato entro dodici secondi
+  //  dal secondo della riga". Solo che il secondo della riga NON STA FERMO
+  //  — lo sposta indietro la correzione del ritardo del giornalista, che e'
+  //  la mediana degli scarti dei boati stessi, quasi quaranta secondi. Cioe'
+  //  la misura buona spostava la riga via dal boato che l'aveva prodotta:
+  //  piu' misuravamo bene, meno boati si attaccavano. Su 548 righe ne
+  //  arrivavano sedici. Seimila secondi gia' misurati non arrivavano a
+  //  nessuno.
+  //
+  //  Adesso: prima la chiave (chi l'ha scritta, che minuto, che cosa) che
+  //  non si muove; poi, per i boati vecchi che la chiave non ce l'hanno, il
+  //  piu' vicino — provato anche sull'asse di PRIMA della correzione — con
+  //  due regole che tengono: ogni boato vale per UNA riga sola, e si
+  //  assegnano partendo dalle coppie piu' vicine. Cosi' due azioni a
+  //  cinquanta secondi non si contendono lo stesso urlo.
+  const boa = ((ARCHIVIO[rec] || {}).boati || []).filter((y) => y.t !== null && y.t !== undefined);
+  if (boa.length) {
+    const rumorose = azioni.filter((x) => !x.tabellone &&
+      DA_BOATO.test(String(x.tipo || "") + " " + String(x.titolo || "")));
+    const tDi = (x) => (x.t !== undefined ? x.t : x.dentro + APP_PRE);
+    const paia = [];
+    rumorose.forEach((x, i) => {
+      const t = tDi(x), k = chiaveRiga(x);
+      boa.forEach((y, j) => {
+        if (y.rigaK && y.rigaK === k) { paia.push({ i: i, j: j, d: -1 }); return; }
+        if (y.rigaK) return;                  // ha gia' la sua riga, e non e' questa
+        const d = Math.min(Math.abs(y.stimato - t), Math.abs(y.stimato - (t + fine)));
+        if (d <= BOATO_LONTANO) paia.push({ i: i, j: j, d: d });
+      });
+    });
+    paia.sort((p, q) => p.d - q.d);
+    const rPresa = {}, bPreso = {};
+    paia.forEach((p) => {
+      if (rPresa[p.i] || bPreso[p.j]) return;
+      rPresa[p.i] = 1; bPreso[p.j] = 1;
+      const x = rumorose[p.i], b = boa[p.j], t = tDi(x);
+      x.spostato = Math.round(t - b.t);
+      x.t = b.t; x.boato = b.db;
+      // il boato ha detto il secondo: rincorsa corta
+      const w = finestraGol(b.t, rec, true);
+      x.dentro = w.dentro; x.fuori = w.fuori; x.base = x.dentro;
+    });
+  }
   // con maniglie larghe due azioni vicine si sovrappongono: si sta piu' larghi
   // anche nel togliere i doppioni
   // le parole del nome della partita: servono a non scambiare una squadra
@@ -9402,12 +9435,20 @@ async function riconosciPartita(rec) {
 // prendere il boato dell'azione successiva.
 const BOATO_PRIMA = 75, BOATO_DOPO = 25;
 const BOATO_MINIMO = 6;           // decibel sopra il solito: meno di cosi' non e' un boato
-async function boatoVicino(rec, tRiga, chiave, secFile) {
+// Quanto lontano puo' stare un boato dalla riga a cui lo si riattacca,
+// quando la chiave non c'e'. Novanta secondi: il giornalista scrive in
+// mediana trentasette secondi dopo, il novantesimo percentile e'
+// settantacinque. Piu' in la' si prenderebbe l'urlo dell'azione dopo.
+const BOATO_LONTANO = 90;
+async function boatoVicino(rec, tRiga, chiave, secFile, rigaK) {
   const a = ARCHIVIO[rec];
   if (!a) return null;
   a.boati = a.boati || [];
-  const gia = a.boati.find((x) => Math.abs(x.stimato - tRiga) <= 12);
-  if (gia) return gia;
+  // gia' misurato? prima per chiave (regge anche se il tempo si e' spostato),
+  // poi per vicinanza, come si faceva prima
+  const gia = (rigaK && a.boati.find((x) => x.rigaK === rigaK))
+           || a.boati.find((x) => Math.abs(x.stimato - tRiga) <= 12);
+  if (gia) { if (rigaK && !gia.rigaK) { gia.rigaK = rigaK; scriviArchivio(); } return gia; }
   // LE COORDINATE NON SI MESCOLANO. La riga del tabellino sta nei secondi
   // del file (o della partita intera); l'asse di doveCade parte dal calcio
   // d'inizio scritto in Airtable. Passare l'uno per l'altro voleva dire
@@ -9421,6 +9462,7 @@ async function boatoVicino(rec, tRiga, chiave, secFile) {
   const via = firmaConRegione(regione, chiave, {}, 3600, a.bucket);
   const v = await volumeAlSecondo(via, daFile, qui + BOATO_DOPO);
   const esito = { stimato: Math.round(tRiga), t: null, db: 0 };
+  if (rigaK) esito.rigaK = rigaK;
   if (v.length >= 40) {
     const ordinati = v.slice().sort((x, y) => x - y);
     const solito = ordinati[Math.floor(ordinati.length / 2)];
@@ -9485,6 +9527,15 @@ function pezzoDellaRiga(a, t) {
 }
 // le righe che possono fare rumore: un cambio non lo fa, un gol si'
 const DA_BOATO = /gol|rete|rigore|espuls|rosso|traversa|palo|parat/i;
+// LA CHIAVE DI UNA RIGA. Il secondo di una riga si muove a ogni giro — lo
+// spostano il ritardo del giornalista, il cronometro riletto, il fischio
+// corretto a mano. Quello che NON si muove e' chi l'ha scritta, il minuto
+// che c'era scritto, che cos'era e di chi. Un boato misurato su quella riga
+// deve portarsi dietro questa, non un numero di secondi.
+function chiaveRiga(x) {
+  return [x.fonte || "", x.minuto || "", String(x.tipo || "").toLowerCase(),
+          String(x.giocatore || x.titolo || "").slice(0, 40).toLowerCase()].join("|");
+}
 // Punta col boato tutte le azioni rumorose di una partita. Quelle che il
 // tabellone ha gia' messo al secondo non si toccano: il tabellone e' una
 // prova, il boato e' un indizio forte.
@@ -9504,7 +9555,7 @@ async function puntaBoati(rec) {
     const t = x.t !== undefined ? x.t : x.dentro + APP_PRE;
     const f = dentroIlFile(t);
     cercati++;
-    const b = await boatoVicino(rec, t, f.chiave, f.sec);
+    const b = await boatoVicino(rec, t, f.chiave, f.sec, chiaveRiga(x));
     if (b && b.t !== null) trovati++;
   }
   // il giro fatto si segna comunque: una partita senza azioni rumorose da
