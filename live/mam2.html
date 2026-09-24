@@ -542,7 +542,7 @@
         <span class="sep"></span>
         <span class="eti">Sottotitoli</span><button id="eSottoOn">Off</button><button id="eSottoLingua">ITA</button>
         <span class="sep"></span>
-        <span class="eti">V2</span><button id="eGrafica" title="una grafica PNG sotto la testina, 5 secondi: poi la allunghi dai bordi">+ Grafica</button><input type="file" id="fGrafica" accept="image/png" hidden>
+        <span class="eti">V2</span><button id="eTitolo" title="scrivi un nome sullo schermo, nei font di Como TV">+ Titolo</button><button id="eGrafica" title="una grafica PNG sotto la testina, 5 secondi: poi la allunghi dai bordi">+ Grafica</button><input type="file" id="fGrafica" accept="image/png" hidden>
         <span class="sep"></span>
         <span class="eti">Audio</span><button id="eStacca" title="stacca l'audio dal pezzo scelto: poi lo trascini da solo">Stacca</button><button id="eMuto" title="muto / suona (pezzo o audio scelto)">Muto</button><button id="eAudioTogli" title="togli l'audio scelto (o quello del pezzo scelto)">Togli audio</button>
         <span class="sep"></span>
@@ -1679,6 +1679,7 @@
       bt("Attacca: richiudi i buchi", "", "eAttacca"),
       bt("Magnete acceso / spento", "S", "eMagnete"),
       { riga: 1 },
+      vc("Scrivi un titolo\u2026", "T", chiediTitolo),
       bt("Aggiungi una grafica\u2026", "", "eGrafica"),
       bt("Sottotitoli acceso / spento", "", "eSottoOn"),
       bt("Lingua dei sottotitoli", "", "eSottoLingua"),
@@ -2124,6 +2125,25 @@
   el("eGiuSx").addEventListener("click", function(){ giunzione(-0.04); });
   el("eGiuDx").addEventListener("click", function(){ giunzione(0.04); });
   // V2: una grafica PNG sotto la testina, cinque secondi, poi si allunga dai bordi e si trascina
+  // IL TITOLO. Per scrivere un nome sullo schermo si usciva dal montaggio,
+  // si faceva un PNG altrove e lo si ricaricava: cioe' si apriva un altro
+  // programma. Adesso lo disegna la macchina, nei font di Como TV, e da li'
+  // in poi e' una grafica come le altre: si trascina e si allunga.
+  function chiediTitolo(){
+    if (!SEQ) return;
+    if (!PZ.length) return avviso("err", "Prima metti un pezzo video: il titolo va sopra il video.");
+    var testo = window.prompt("Il nome, grande:", "");
+    if (!testo) return;
+    var sopra = window.prompt("La riga piccola sopra (vuoto per niente):", "COMO 1907");
+    if (sopra === null) return;
+    var stile = window.prompt("Dove? basso \u00b7 centro \u00b7 angolo", "basso");
+    if (stile === null) return;
+    post({ tipo:"clip-hl-titolo", seq: SEQ.id, testo: testo, sopra: sopra, stile: stile,
+           dentro: Math.round(tSeq() * 100) / 100, durata: 5 })
+      .then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Titolo a " + tc(tSeq()) + ": cinque secondi, allungalo dai bordi."); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  }
+  el("eTitolo").addEventListener("click", chiediTitolo);
   el("eGrafica").addEventListener("click", function(){ if (!SEQ) return; if (!PZ.length) return avviso("err", "Prima metti un pezzo video: la grafica va sopra il video."); el("fGrafica").click(); });
   el("fGrafica").addEventListener("change", function(){
     var f = this.files && this.files[0]; this.value = ""; if (!f || !SEQ) return;
@@ -2140,7 +2160,7 @@
     ["Spazio", "riproduci / ferma"], ["J · K · L", "indietro · fermo · avanti (L di nuovo: più veloce, Shift+J/L: più piano)"], ["← →", "un fotogramma (Shift: cinque)"], ["↑ ↓", "punto di montaggio prima / dopo"], ["Home · End", "inizio / fine"],
     ["I · O", "entrata / uscita della sequenza"], ["Shift+I · Shift+O", "vai all'entrata / all'uscita"], ["Alt+I · Alt+O · Alt+X", "togli entrata / uscita / tutte e due"], ["X", "entrata e uscita sul pezzo sotto la testina"],
     ["; · '", "solleva · estrai l'intervallo (qui senza buchi: tutte e due estraggono)"],
-    ["Q · W", "accorcia l'inizio / la fine del pezzo alla testina"], ["E", "allunga il pezzo scelto fino alla testina"], ["C · Cmd+K", "dividi sotto la testina"], ["Alt+← →", "scivolo: cambia cosa si vede dentro la clip, che resta dov'è"], ["Alt+Shift+← →", "giunzione: la clip scorre nel montato e i vicini le fanno spazio"], ["S", "magnete: i bordi si attaccano agli stacchi e alla testina"], ["cmd+rotella", "lente attorno al mouse · shift+rotella: scorri"],
+    ["Q · W", "accorcia l'inizio / la fine del pezzo alla testina"], ["E", "allunga il pezzo scelto fino alla testina"], ["C · Cmd+K", "dividi sotto la testina"], ["Alt+← →", "scivolo: cambia cosa si vede dentro la clip, che resta dov'è"], ["Alt+Shift+← →", "giunzione: la clip scorre nel montato e i vicini le fanno spazio"], ["S", "magnete: i bordi si attaccano agli stacchi e alla testina"], ["T", "scrivi un titolo sullo schermo"], ["cmd+rotella", "lente attorno al mouse · shift+rotella: scorri"],
     ["Canc", "togli i pezzi scelti"], ["Cmd+A · Cmd+Shift+A", "scegli tutti / nessuno"], ["D", "scegli il pezzo sotto la testina"], ["Shift+clic", "aggiungi alla scelta"],
     ["Cmd+C · Cmd+X · Cmd+V", "copia · taglia · incolla dopo la testina"], ["Cmd+Z · Shift+Cmd+Z", "annulla / ripeti"],
     ["Cmd+L", "lega / stacca l'audio del pezzo scelto"], ["G", "gain dell'audio scelto (dB)"], ["M", "marker sulla partita al punto della testina"], ["F", "match frame: apri la partita a questo secondo"],
@@ -2281,6 +2301,7 @@
     else if (k === "Escape") { RETE = null; disegnaTl(); }
     else if (K === "D") { var xd = pezzoQui(); if (xd) { scegli(xd.id, false); disegnaEditor(); } }
     else if (K === "S") { el("eMagnete").click(); }
+    else if (K === "T") { chiediTitolo(); }
     else if (k === "ArrowLeft") { e.preventDefault(); VE.pause(); vaiTempo(Math.max(0, tSeq() - fot), false); }
     else if (k === "ArrowRight") { e.preventDefault(); VE.pause(); vaiTempo(Math.min(durSeq() - 0.05, tSeq() + fot), false); }
     else if (k === "ArrowUp") { e.preventDefault(); el("ePrima").click(); }

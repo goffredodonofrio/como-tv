@@ -10879,6 +10879,65 @@ function cartellaGrafiche() {
   return d;
 }
 
+// ══════════ I TITOLI ══════════
+//  Per scrivere un nome sullo schermo si usciva dal montaggio, si faceva un
+//  PNG da un'altra parte e lo si ricaricava: cioe' si apriva un altro
+//  programma, che e' esattamente quello che vogliamo smettere di fare.
+//  Un titolo qui e' una grafica come le altre — si trascina, si allunga dai
+//  bordi, esce dall'export con lo stesso strato di overlay — solo che il
+//  PNG lo disegna la macchina, nei font di Como TV, quando lo chiedi.
+const STILI_TITOLO = {
+  // [dove sta il blocco, quanto e' grande il titolo, quanto il sopratitolo]
+  basso:  { x: 96,  y: 812, dim: 58, dim2: 26, fondo: 1 },
+  centro: { x: 0,   y: 430, dim: 86, dim2: 32, fondo: 0, mezzo: 1 },
+  angolo: { x: 72,  y: 72,  dim: 38, dim2: 20, fondo: 1 }
+};
+async function disegnaTitolo(via, testo, sopra, stile, colore) {
+  const st = STILI_TITOLO[stile] || STILI_TITOLO.basso;
+  const W = 1920, H = 1080;
+  const f1 = via + ".t1.txt", f2 = via + ".t2.txt";
+  fs.writeFileSync(f1, String(testo || "").slice(0, 120));
+  if (sopra) fs.writeFileSync(f2, String(sopra).slice(0, 80));
+  const fg = FONT_GROSSO.replace(/:/g, "\\:"), fm = FONT_MEDIO.replace(/:/g, "\\:");
+  const oro = "0x" + String(colore || "C9A24B").replace(/[^0-9A-Fa-f]/g, "").slice(0, 6);
+  const xT = st.mezzo ? "(w-text_w)/2" : String(st.x);
+  // LA TELA DEVE ESSERE DAVVERO TRASPARENTE. "color=black@0.0" sembra
+  // trasparente e non lo e': la sorgente color esce senza canale alfa e lo
+  // zero se ne va prima del primo filtro. E drawbox scrive il colore ma NON
+  // tocca l'alfa, quindi un rettangolo disegnato su una tela trasparente
+  // resta invisibile. Il fondo si fa allora con una seconda sorgente, con la
+  // sua opacita', sovrapposta alla tela: li' l'alfa arriva davvero.
+  const ingressi = ["-f", "lavfi", "-i", "color=c=black:s=" + W + "x" + H + ":d=1"];
+  let catena = "[0:v]format=rgba,colorchannelmixer=aa=0[tela];";
+  let ultimo = "tela";
+  if (st.fondo) {
+    const altoB = st.dim + (sopra ? st.dim2 + 14 : 0) + 44;
+    const bx = Math.max(0, st.x - 28), by = Math.max(0, st.y - (sopra ? st.dim2 + 30 : 22));
+    ingressi.push("-f", "lavfi", "-i", "color=c=0x040C1C:s=1200x" + altoB + ":d=1");
+    catena += "[1:v]format=rgba,colorchannelmixer=aa=0.66[fondo];" +
+              "[" + ultimo + "][fondo]overlay=" + bx + ":" + by + ":format=auto[conFondo];";
+    ultimo = "conFondo";
+  }
+  let testi = "";
+  if (sopra) {
+    testi += "drawtext=fontfile='" + fm + "':textfile='" + f2.replace(/:/g, "\\:") + "'" +
+             ":fontsize=" + st.dim2 + ":fontcolor=" + oro + ":x=" + xT + ":y=" + (st.y - st.dim2 - 12) + ",";
+  }
+  testi += "drawtext=fontfile='" + fg + "':textfile='" + f1.replace(/:/g, "\\:") + "'" +
+           ":fontsize=" + st.dim + ":fontcolor=0xF5F1E6:x=" + xT + ":y=" + st.y +
+           ":shadowcolor=0x040C1C@0.85:shadowx=2:shadowy=2";
+  catena += "[" + ultimo + "]" + testi + "[fuori]";
+  await new Promise((si, no) => {
+    execFile(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin"].concat(ingressi)
+      .concat(["-filter_complex", catena, "-map", "[fuori]", "-frames:v", "1", "-y", via]),
+      { timeout: 60000 },
+      (e, so, se) => e ? no(new Error(ultimaRiga(String(se || e.message)) || "non sono riuscito a disegnare il titolo")) : si());
+  });
+  try { fs.unlinkSync(f1); } catch (e) {}
+  try { fs.unlinkSync(f2); } catch (e) {}
+  return { w: W, h: H };
+}
+
 function hlGrafica(p) {
   const q = seqMia(p);
   q.grafiche = q.grafiche || [];
@@ -12545,6 +12604,26 @@ const AZIONI = {
   "clip-anello": () => ({ ok: true, tolti: anello() }),
   "clip-grafica-uscita": graficaSuUscita,
   "clip-hl-grafica": hlGrafica,
+  // un titolo: una grafica che si disegna da sola, nei font di Como TV
+  "clip-hl-titolo": async (p) => {
+    const q = seqMia(p);
+    const testo = String(p.testo || "").trim();
+    if (!testo) throw new Error("scrivi il testo del titolo");
+    q.grafiche = q.grafiche || [];
+    const durataSeq = (q.pezzi || []).reduce((n, x) => n + (x.fuori - x.dentro), 0) || 60;
+    const id = nuovoId("g"), via = path.join(cartellaGrafiche(), id + ".png");
+    const mis = await disegnaTitolo(via, testo, p.sopra, String(p.stile || "basso"), p.colore);
+    const dentro = num(p.dentro, 0, durataSeq, 0);
+    const durata = num(p.durata, 0.5, 120, 4);
+    q.grafiche.push({ id: id, file: "/clip/" + CARTELLA_HL + "/_grafiche/" + id + ".png",
+                      w: mis.w, h: mis.h, nome: testo.slice(0, 60),
+                      dentro: dentro, fuori: Math.min(durataSeq + durata, dentro + durata),
+                      titolo: { testo: testo, sopra: String(p.sopra || ""), stile: String(p.stile || "basso") },
+                      quando: Date.now() });
+    q.grafiche.sort((a, b) => a.dentro - b.dentro);
+    toccataAMano(q); scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: q, grafica: id };
+  },
   "clip-hl-in-casa": hlInCasa,
   "clip-prog-elenco": progElenco,
   "clip-prog-nuovo": progNuovo,
