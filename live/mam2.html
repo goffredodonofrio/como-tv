@@ -251,6 +251,12 @@
   .ed-palco .taglio.presa{cursor:grabbing;border-style:solid;}
   .ed-palco .taglio b{position:absolute;top:6px;left:50%;transform:translateX(-50%);font-family:'Mazzard',sans-serif;
     font-size:9.5px;letter-spacing:.14em;color:var(--oro);background:rgba(4,12,28,.75);padding:2px 7px;border-radius:999px;white-space:nowrap;}
+  /* LE MANOPOLE. Una fila di prompt non e' un montaggio: qui si tira e si
+     vede subito, e quello che si vede nel monitor e' quello che uscira'. */
+  .ed-lato .man{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ivory2);}
+  .ed-lato .man label{width:56px;color:var(--fumo);}
+  .ed-lato .man input[type=range]{flex:1;accent-color:var(--oro);}
+  .ed-lato .man b{width:44px;text-align:right;font:11px ui-monospace,Menlo,monospace;color:var(--oro2);}
   .ed-lato .inq{display:flex;align-items:center;gap:8px;font-size:12px;}
   .ed-lato .inq input[type=range]{flex:1;accent-color:var(--oro);}
   .ed-lato .avviso2{font-size:11.5px;color:var(--oro2);}
@@ -516,6 +522,14 @@
       </div>
       <div class="ed-divisore" id="divLato" title="trascina per allargare il pannello · doppio clic: misura di partenza"></div>
       <div class="ed-lato">
+        <div class="sez2" id="sezPezzo" hidden><h4>Il pezzo <span id="ipNome" style="color:var(--ivory2);font-weight:400"></span></h4>
+          <div class="riga2" id="ipQuando" style="color:var(--fumo);font-size:11.5px"></div>
+          <div class="man"><label>velocità</label><input type="range" id="ipVel" min="20" max="400" step="5" value="100"><b id="ipVelV">100%</b></div>
+          <div class="man"><label>luce</label><input type="range" id="ipLum" min="-40" max="40" step="1" value="0"><b id="ipLumV">0</b></div>
+          <div class="man"><label>stacco</label><input type="range" id="ipCon" min="50" max="200" step="1" value="100"><b id="ipConV">100</b></div>
+          <div class="man"><label>colore</label><input type="range" id="ipSat" min="0" max="250" step="1" value="100"><b id="ipSatV">100</b></div>
+          <div class="riga2"><button class="mini" id="ipRimetti">Rimetti com’era</button><span id="ipAud" style="color:var(--fumo);font-size:11.5px"></span></div>
+        </div>
         <div class="sez2"><h4>Sequenza</h4><div class="riga2"><span id="eInfo" style="color:var(--fumo)"></span></div>
           <div class="riga2"><button class="mini" id="eCasa" title="scarica i pezzi sulla VM: riproduzione immediata ed export senza attese">Pezzi in casa</button><button class="mini" id="eXml" title="l'XML per Premiere con l'SRT a fianco">XML Premiere</button><button class="mini" id="eRinomina">Rinomina</button><button class="mini" id="eProg" title="in quale progetto sta questa sequenza">Progetto</button></div>
           <div id="eCasaStato" style="font-size:11.5px;color:var(--fumo)"></div></div>
@@ -1661,6 +1675,7 @@
       vc("Accorcia la fine alla testina", "W", function(){ accorcia("fine"); }),
       vc("Allunga fino alla testina", "E", allungaQui),
       vc("Velocita\u2019 del pezzo\u2026", "R", chiediVelocita),
+      vc("Colore: rimetti com\u2019era", "", function(){ el("ipRimetti").click(); }),
       vc("Entrata e uscita sul pezzo", "X", inOutSulPezzo),
       { riga: 1 },
       { capo: "Spostare" },
@@ -1827,6 +1842,7 @@
     var tt = el("eTestina"); tt.hidden = false; tt.style.left = X(t) + "px";
     if (CAMPO && ANTE !== "16:9") disegnaTaglio();
     if (ORA.i !== INQ_VISTO) { INQ_VISTO = ORA.i; aggiornaInq(); }
+    disegnaIspettore();
     if (!VE.paused && (t > LENTE.b || t < LENTE.a)) { var span = LENTE.b - LENTE.a; LENTE = { a: Math.max(0, t - span * 0.1), b: Math.max(0, t - span * 0.1) + span }; disegnaTl(); }
     if (SOTTOE) {
       var ora = null; for (var k = 0; k < DETTOE.length; k++) { var s = DETTOE[k]; if (VE.currentTime >= s.a - .3 && VE.currentTime < s.b + .8) { ora = s; break; } }
@@ -2211,6 +2227,72 @@
     avviso("ok", APPUNTI_COPIA.length + (taglia ? " da tagliare." : " copiati."));
     if (taglia) el("eTogli").click();
   }
+  // ══════════ L'ISPETTORE DEL PEZZO ══════════
+  //  Velocita' e colore si tirano e si vedono subito sul monitor: il video
+  //  si colora con lo stesso filtro che poi usera' l'export, cosi' quello
+  //  che guardi e' quello che esce. Si scrive al ponte quando molli, non a
+  //  ogni pixel, se no sarebbero cento richieste per una manopola.
+  function pezzoScelto(){ return PZ.filter(function(z){ return z.id === SEL; })[0] || pezzoQui(); }
+  function coloreDi(x){ var c = (x || {}).colore || {}; return { lum: +c.lum || 0, con: c.con === undefined ? 1 : +c.con, sat: c.sat === undefined ? 1 : +c.sat }; }
+  function vestiMonitor(x){
+    var c = coloreDi(x), f = [];
+    // il filtro del browser non e' identico a quello di ffmpeg, ma la
+    // direzione e la misura sono quelle: serve a decidere, non a misurare
+    if (c.lum) f.push("brightness(" + (1 + c.lum).toFixed(3) + ")");
+    if (c.con !== 1) f.push("contrast(" + c.con.toFixed(3) + ")");
+    if (c.sat !== 1) f.push("saturate(" + c.sat.toFixed(3) + ")");
+    try { VE.style.filter = f.join(" "); } catch (e) {}
+  }
+  var IP_VISTO = "";
+  function disegnaIspettore(){
+    var x = pezzoScelto(), box = el("sezPezzo");
+    if (!box) return;
+    box.hidden = !x;
+    if (!x) { try { VE.style.filter = ""; } catch (e) {} return; }
+    vestiMonitor(x);
+    if (IP_VISTO === x.id + "|" + JSON.stringify(x.colore || 0) + "|" + (x.velocita || 1)) return;
+    IP_VISTO = x.id + "|" + JSON.stringify(x.colore || 0) + "|" + (x.velocita || 1);
+    var c = coloreDi(x);
+    el("ipNome").textContent = (x.titolo || "pezzo").slice(0, 40);
+    el("ipQuando").textContent = tcBreve(x.dentro) + " \u2192 " + tcBreve(x.fuori) + " \u00b7 dura " + tc(x.fuori - x.dentro);
+    el("ipVel").value = Math.round(velDi(x) * 100); el("ipVelV").textContent = Math.round(velDi(x) * 100) + "%";
+    el("ipLum").value = Math.round(c.lum * 100); el("ipLumV").textContent = Math.round(c.lum * 100);
+    el("ipCon").value = Math.round(c.con * 100); el("ipConV").textContent = Math.round(c.con * 100);
+    el("ipSat").value = Math.round(c.sat * 100); el("ipSatV").textContent = Math.round(c.sat * 100);
+    var au = AUD.filter(function(z){ return z.legato === x.id; })[0];
+    el("ipAud").textContent = au ? ("audio " + (au.gain ? (au.gain > 0 ? "+" : "") + au.gain + " dB" : "0 dB") +
+      (au.entra ? " \u00b7 entra " + au.entra.toFixed(1) + "s" : "") + (au.esce ? " \u00b7 esce " + au.esce.toFixed(1) + "s" : "") +
+      ((au.volumi || []).length ? " \u00b7 " + au.volumi.length + " punti" : "")) : "senza audio";
+  }
+  function coloreDalleManopole(){
+    return { lum: (+el("ipLum").value || 0) / 100, con: (+el("ipCon").value || 100) / 100, sat: (+el("ipSat").value || 100) / 100 };
+  }
+  function mandaColore(){
+    var x = pezzoScelto(); if (!x || !SEQ) return;
+    post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: x.id, colore: coloreDalleManopole() })
+      .then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); });
+  }
+  ["ipLum", "ipCon", "ipSat"].forEach(function(id){
+    el(id).addEventListener("input", function(){
+      var x = pezzoScelto(); if (!x) return;
+      el(id + "V").textContent = this.value;
+      x.colore = coloreDalleManopole();      // subito sul monitor
+      vestiMonitor(x);
+    });
+    el(id).addEventListener("change", mandaColore);
+  });
+  el("ipVel").addEventListener("input", function(){ el("ipVelV").textContent = this.value + "%"; });
+  el("ipVel").addEventListener("change", function(){
+    var x = pezzoScelto(); if (!x || !SEQ) return;
+    post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: x.id, velocita: (+this.value || 100) / 100 })
+      .then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); });
+  });
+  el("ipRimetti").addEventListener("click", function(){
+    var x = pezzoScelto(); if (!x || !SEQ) return;
+    post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: x.id, velocita: 1, colore: { lum: 0, con: 1, sat: 1 } })
+      .then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Pezzo rimesso com\u2019era."); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  });
   function chiediVelocita(){
     var x = PZ.filter(function(z){ return z.id === SEL; })[0] || pezzoQui();
     if (!x) return avviso("err", "Scegli un pezzo o portaci la testina.");

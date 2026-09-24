@@ -3747,6 +3747,15 @@ function hlPezzo(p) {
   // tempo — che e' il replay al rallentatore. Fatta cosi', la lunghezza sulla
   // timeline resta "fuori meno dentro" dappertutto, e nessuno degli altri
   // conti della sequenza deve sapere che la velocita' esiste.
+  // IL COLORE DEL PEZZO. Tre manopole, quelle che servono davvero su un
+  // campo: quanta luce, quanto stacco fra chiaro e scuro, quanto colore.
+  // Le partite arrivano da regie diverse e una accanto all'altra si vede.
+  if (p.colore !== undefined) {
+    const c = p.colore || {};
+    const lum = num(c.lum, -0.5, 0.5, 0), con = num(c.con, 0.5, 2, 1), sat = num(c.sat, 0, 2.5, 1);
+    if (Math.abs(lum) < 0.005 && Math.abs(con - 1) < 0.005 && Math.abs(sat - 1) < 0.005) delete x.colore;
+    else x.colore = { lum: Math.round(lum * 1000) / 1000, con: Math.round(con * 1000) / 1000, sat: Math.round(sat * 1000) / 1000 };
+  }
   if (p.velocita !== undefined) {
     const v = num(p.velocita, 0.2, 4, 1);
     if (Math.abs(v - 1) < 0.001) delete x.velocita; else x.velocita = Math.round(v * 100) / 100;
@@ -4622,7 +4631,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   const sottoV = vuoleSotto(p2);
   const srtSeq = (sottoV.file || sottoV.video) ? await scriviSrtSequenza(q, sottoV, !!sottoV.video) : null;
   const brucia = !!(sottoV.video && srtSeq);
-  const rallentati = (q.pezzi || []).some((x) => +x.velocita && +x.velocita !== 1);
+  const rallentati = (q.pezzi || []).some((x) => (+x.velocita && +x.velocita !== 1) || x.colore);
   const veloce = (p2 && p2.esatto) || srtSeq ? false : (!ritaglio && !grafiche0.length && !mixato && !buchi.length && !rallentati);
   const dir2 = path.join(dir, "tagli");
   assicura(dir2);
@@ -4649,7 +4658,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     const args = ["-hide_banner", "-loglevel", "error", "-nostdin",
       "-ss", String(off), "-i", casa, "-t", String(dur)];
     // se il pezzo comincia gia' dove deve, si copia e basta: niente da fare
-    const copiabile = off < 0.08 && !ritaglioQui && vel === 1;
+    const copiabile = off < 0.08 && !ritaglioQui && vel === 1 && !x.colore;
     await new Promise((si, no) => {
       const pr = spawn(FFMPEG, args.concat(copiabile
         ? ["-c", "copy", "-movflags", "+faststart", "-y", esatto]
@@ -4659,6 +4668,9 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
         : (function(){
             const filtri = [];
             if (vel !== 1) filtri.push("setpts=PTS/" + vel.toFixed(4));
+            if (x.colore) filtri.push("eq=brightness=" + (x.colore.lum || 0).toFixed(3) +
+                                      ":contrast=" + (x.colore.con || 1).toFixed(3) +
+                                      ":saturation=" + (x.colore.sat || 1).toFixed(3));
             if (ritaglioQui) filtri.push(ritaglioQui.replace(/(scale=\d+:\d+)/, "$1:flags=lanczos"));
             return filtri.length ? ["-vf", filtri.join(",")] : [];
           })()
