@@ -424,6 +424,11 @@
   .porta{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--riga);}
   /* LE CLIP DELLA PARTITA, mentre la partita va avanti: il taglio grezzo si
      scarica e si manda subito, e la stessa clip resta li' per la timeline. */
+  /* IL VELO DELL'AUDIO. Un tasto piccolo in una barra piena di tasti non
+     si vede: chi apre la Diretta sente silenzio e pensa che manchi l'audio.
+     Allora lo dice il video stesso, grande, e si spegne al primo clic. */
+  .mutoVelo{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(11,20,38,.34);z-index:4;}
+  .mutoVelo b{display:flex;align-items:center;gap:10px;padding:12px 20px;border:1px solid var(--oro);border-radius:999px;background:rgba(11,20,38,.82);color:var(--oro2);font:600 13px/1 'Mazzard',sans-serif;letter-spacing:.06em;text-transform:uppercase;}
   .lclip{display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid var(--riga);align-items:flex-start;}
   .lclip img{width:78px;height:44px;object-fit:cover;border-radius:4px;background:#000;flex:none;}
   .lclip .vuota{width:78px;height:44px;border-radius:4px;background:rgba(245,241,230,.06);flex:none;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--fumo);text-align:center;}
@@ -528,11 +533,12 @@
 
   <!-- ══════════ DIRETTA ══════════ -->
   <div class="vista" id="live">
+
     <div class="lv-palco">
       <div class="titolo" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h1 id="lTitolo" style="font-family:'Mazzard',sans-serif;font-weight:800;font-size:20px;text-transform:uppercase">Diretta</h1><span class="meta" id="lMeta" style="color:var(--fumo);font-size:12.5px"></span>
         <div class="az" style="margin-left:auto;display:flex;gap:8px"><button class="mini" id="lSotto">Sottotitoli</button><button class="mini" id="lLingua">ITA</button><button class="mini" id="lClip" title="una clip degli ultimi 30 secondi">Clip 30 s</button><button class="mini" id="lAsset" title="apri la registrazione come partita">Apri</button><button class="mini" id="lFerma" style="color:#FF9A9C">&#9632; Ferma</button></div></div>
       <div id="lVuoto" class="lv-vuoto"><b>Nessun flusso in arrivo</b><span>Apri una porta a destra: vMix spinge in SRT (listener) e qui compare la partita.</span></div>
-      <div class="player" id="lPlayer" hidden><video id="videoL" playsinline muted autoplay></video><div class="sotto" id="sottoBoxL"><i class="it" id="sottoItL"></i><i class="en" id="sottoEnL"></i></div></div>
+      <div class="player" id="lPlayer" hidden><video id="videoL" playsinline muted autoplay></video><div class="mutoVelo" id="lVelo" hidden><b>&#9836; Audio spento &#183; clicca per accenderlo</b></div><div class="sotto" id="sottoBoxL"><i class="it" id="sottoItL"></i><i class="en" id="sottoEnL"></i></div></div>
       <div class="trasporto" id="lTrasporto" hidden>
         <div class="momenti lbarra" id="lBarra" title="clicca o trascina per andare a quel secondo della registrazione">
           <div class="scritto" id="lScritto"></div><div class="tratto" id="lTratto" hidden></div><div class="righello" id="lRighello"></div><div class="testina" id="lTestina"></div>
@@ -562,6 +568,7 @@
       <div class="capo" style="padding:12px 14px;border-bottom:1px solid var(--riga);font-family:'Mazzard',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--oro)">Porte in ascolto</div>
       <div id="lPorte"></div>
       <div class="capo" style="padding:12px 14px;border-bottom:1px solid var(--riga);border-top:1px solid var(--riga);font-family:'Mazzard',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--oro);display:flex;align-items:center;gap:8px">Clip della partita <span id="lClipConto" style="color:var(--fumo);letter-spacing:0;text-transform:none;font-family:inherit"></span></div>
+      <div style="padding:8px 14px;border-bottom:1px solid var(--riga);display:flex;align-items:center;gap:8px"><span style="color:var(--fumo);font-size:10.5px;flex:none">Alla regia in</span><select id="lCanale" style="flex:1;min-width:0;background:var(--pan);color:var(--ivory2);border:1px solid var(--riga2);border-radius:5px;padding:4px 6px;font-size:11px"></select></div>
       <div id="lClipElenco"></div>
       <div class="capo" style="padding:12px 14px;border-bottom:1px solid var(--riga);border-top:1px solid var(--riga);font-family:'Mazzard',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--oro)">Telecronaca dal vivo</div>
       <div class="lv-detto" id="lDetto"><span style="color:var(--fumo);font-size:12px;padding:8px">Con i sottotitoli accesi le righe arrivano qui.</span></div>
@@ -669,6 +676,7 @@
 <div id="avvisi"></div>
 
 <script src="chiave.js"></script>
+<script src="destinazione.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
 <script>
 (function () {
@@ -3012,11 +3020,28 @@
             '<a href="' + url + '" download="' + esc(c.nome || (c.id + ".mp4")) + '">\u2913 Scarica</a>' +
             '<a href="' + url + '" target="_blank" rel="noopener">Guarda</a>' +
             '<button data-tl="' + esc(c.id) + '">In timeline</button>' +
+            '<button data-regia="' + esc(c.id) + '" data-dur="' + (c.durata || 0) + '" data-tit="' + esc(c.titolo || "") + '" title="va in scaletta come un contributo: dalla regia lo mandano in onda">&#128225; Alla regia</button>' +
           "</div>" : "") +
         "</div></div>";
     }).join("");
   }
   el("lClipElenco").addEventListener("click", function(ev){
+    // ALLA REGIA, come un contributo del Controllo Redazione. Stesso
+    // comando, stessa tendina, stessa scaletta: il taglio grezzo fatto in
+    // diretta puo' andare in onda senza passare da nessun'altra parte.
+    var g = ev.target.closest("button[data-regia]");
+    if (g) {
+      if (!window.Destinazione) return avviso("err", "Manca destinazione.js: non so dove mandarla.");
+      var url = location.origin + BASE + "/clip/_clip/" + g.dataset.regia + ".mp4";
+      var titolo = (g.dataset.tit || "CLIP").toUpperCase().slice(0, 60);
+      g.disabled = true;
+      post(Destinazione.corpo({ grafica: "video", titolo: titolo,
+        dati: { k: "video", src: url, dur: +g.dataset.dur || 0, fit: "contain", loop: false, mute: false, bg: "nero" } }))
+        .then(function(){ avviso("ok", "\u201c" + esc(titolo) + "\u201d in scaletta su " + esc(Destinazione.dove()) + ". Dalla regia la mandano in onda."); })
+        .catch(function(er){ avviso("err", esc(er.message)); })
+        .then(function(){ g.disabled = false; });
+      return;
+    }
     var b = ev.target.closest("button[data-tl]"); if (!b) return;
     b.disabled = true;
     post({ tipo:"clip-hl-aggiungi", clip: b.dataset.tl }).then(function(d){
@@ -3062,13 +3087,25 @@
       inFondo();
     });
     LIVE.da = 0; LIVE.righe = []; el("lDetto").innerHTML = "";
-    LDENTRO = LFUORI = null; L_FINE = 0; LIVE.fermoVoluto = false; lInOut(); segnoAudio(); segnoPlay();
+    LDENTRO = LFUORI = null; L_FINE = 0; LIVE.fermoVoluto = false; lInOut(); segnoPlay();
+    // CHI L'AUDIO L'AVEVA ACCESO NON DEVE RIACCENDERLO OGNI VOLTA. Si
+    // riprova da soli; se il browser rifiuta di far partire un video che
+    // suona, si torna muti e il velo lo chiede con un clic.
+    var vuole = false; try { vuole = localStorage.getItem("mam2-live-audio") === "si"; } catch (e) {}
+    if (vuole) {
+      v.muted = false;
+      v.play().catch(function(){ v.muted = true; segnoAudio(); });
+    }
+    segnoAudio();
   }
   function staccaLive(){ clearInterval(LIVE.parti); if (LIVE.hls) { LIVE.hls.destroy(); LIVE.hls = null; } var v = el("videoL"); if (v) { v.removeAttribute("src"); v.load(); } }
   function disegnaLive(){
     var r = LIVE.reg;
     el("lVuoto").hidden = !!r; el("lPlayer").hidden = !r; el("lSalute").hidden = !r;
     el("lTrasporto").hidden = !r;
+    // il velo dell'audio si decide qui, non all'attacco: quando il video si
+    // attacca la pagina non sa ancora quale partita sta guardando
+    segnoAudio();
     ["lSotto","lLingua","lClip","lAsset","lFerma"].forEach(function(id){ el(id).disabled = !r; });
     if (!r) { el("lTitolo").textContent = "Diretta"; el("lMeta").textContent = LIVE.porte.length ? LIVE.porte.length + " porte · nessun flusso" : ""; return; }
     el("lTitolo").textContent = r.titolo || "in arrivo"; el("lMeta").textContent = "porta " + r.ascolto.porta + (r.attesa ? " · in attesa del flusso" : " · " + tc(r.durata || 0) + " registrati");
@@ -3179,6 +3216,8 @@
   // accende chi guarda. Prima non c'era il tasto per accenderlo.
   function segnoAudio(){
     var spento = VL.muted || !VL.volume;
+    var velo = el("lVelo"); if (velo) velo.hidden = !spento || !LIVE.reg;
+    try { localStorage.setItem("mam2-live-audio", spento ? "no" : "si"); } catch (e) {}
     el("lAudio").classList.toggle("on", !spento);
     el("lAudio").innerHTML = spento
       ? '<svg viewBox="0 0 16 16"><path d="M3 6h3l4-3v10l-4-3H3z"/><path d="M11 5l4 6M15 5l-4 6" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>'
@@ -3190,6 +3229,13 @@
     if (!VL.muted && !VL.volume) { VL.volume = 1; el("lVol").value = 100; }
     segnoAudio();
   });
+  el("lVelo").addEventListener("click", function(){ accendiAudio(); });
+  function accendiAudio(){
+    VL.muted = false;
+    if (!VL.volume) { VL.volume = 1; el("lVol").value = 100; }
+    if (VL.paused && !LIVE.fermoVoluto) VL.play().catch(function(){});
+    segnoAudio();
+  }
   el("lVol").addEventListener("input", function(){ VL.volume = (+this.value || 0) / 100; if (VL.volume) VL.muted = false; segnoAudio(); });
   VL.addEventListener("volumechange", segnoAudio);
 
@@ -3258,6 +3304,7 @@
   // prendeva solo "s3" e la pagina diceva "non e' nell'indice" (23/09)
   var vai0 = function(n){ var m = new RegExp("(\\?|&)" + n + "=([^&]+)").exec(location.search); return m ? decodeURIComponent(m[2]) : ""; };
   var pa = vai0("asset"), pr = vai0("reg"), pt = vai0("t"), pq = vai0("q"), ps = vai0("seq");
+  if (window.Destinazione) Destinazione.adotta(el("lCanale"), PONTE, TOKEN);
   if (/(\?|&)live=1/.test(location.search)) apriLive();
   // ?montaggio=1 — si entra dal montaggio, non dalla libreria: apre l'ultima
   // sequenza su cui si stava lavorando. Se non ce n'e' ancora nessuna resta
