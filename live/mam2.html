@@ -575,7 +575,12 @@
     </div>
     <div class="ed-maniglia" id="edManiglia" title="trascina per dare piu’ o meno spazio alla timeline"><span></span></div>
     <div class="tendina" id="tendaMedia" hidden style="position:absolute;left:14px;right:14px;bottom:56px;z-index:40;max-width:none">
-      <input id="mediaCerca" type="search" placeholder="filtra il materiale…" autocomplete="off">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <input id="mediaCerca" type="search" placeholder="filtra il materiale…" autocomplete="off" style="flex:1;margin:0">
+        <button class="b mini oro" id="mediaCarica" title="porta qui un file dal tuo computer (MP4, fino a 800 MB)">↑ Carica un file</button>
+        <input type="file" id="mediaFile" accept="video/mp4,.mp4" hidden>
+      </div>
+      <div id="mediaBarra" hidden style="height:5px;background:rgba(245,241,230,.08);border-radius:3px;overflow:hidden;margin-bottom:8px"><i style="display:block;height:100%;width:0;background:var(--oro)"></i></div>
       <div class="elenco" id="mediaElenco"></div>
     </div>
     <div class="ed-sotto">
@@ -1688,6 +1693,7 @@
       { riga: 1 },
       { capo: "Materiale" },
       bt("Porta i pezzi in casa", "", "eCasa"),
+      bt("Materiale di casa e caricamento\u2026", "", "eMateriale"),
       bt("Apri la partita (Sorgente)", "", "eAsset"),
       vc("Apri la partita a questo secondo", "F", vaiAllaPartita),
       { riga: 1 },
@@ -2299,6 +2305,42 @@
     }).catch(function(er){ avviso("err", esc(er.message)); });
   }
   el("eMateriale").addEventListener("click", apriMateriale);
+  // CARICARE DA QUI. La macchina c'era gia' — a pezzi da otto mega, tre per
+  // volta, fino a 800 MB — ma viveva solo nel Magazzino: per portare una
+  // sigla in un montaggio si cambiava pagina e si tornava indietro.
+  el("mediaCarica").addEventListener("click", function(){ el("mediaFile").click(); });
+  el("mediaFile").addEventListener("change", function(){
+    var f = this.files && this.files[0]; this.value = "";
+    if (!f) return;
+    if (!/\.mp4$/i.test(f.name)) return avviso("err", "Per ora solo MP4 (H.264).");
+    if (f.size > 800 * 1048576) return avviso("err", "File troppo grande: il massimo è 800 MB.");
+    var PEZZO = 8 * 1048576, quanti = Math.ceil(f.size / PEZZO), fatti = 0, offs = [];
+    for (var o = 0; o < f.size; o += PEZZO) offs.push(o);
+    var barra = el("mediaBarra"), dentro = barra.firstElementChild;
+    barra.hidden = false; dentro.style.width = "0"; el("mediaCarica").disabled = true;
+    avviso("ok", "Carico " + esc(f.name) + "…");
+    post({ tipo:"video-inizia", nome: f.name, tot: f.size }).then(function(ini){
+      function operaio(){
+        if (!offs.length) return Promise.resolve();
+        var off = offs.shift();
+        return f.slice(off, Math.min(off + PEZZO, f.size)).arrayBuffer().then(function(buf){
+          var b = "", u = new Uint8Array(buf);
+          for (var i = 0; i < u.length; i += 0x8000) b += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+          return post({ tipo:"video-pezzo", id: ini.id, off: off, dati: btoa(b) });
+        }).then(function(){ fatti++; dentro.style.width = Math.round(fatti / quanti * 100) + "%"; return operaio(); });
+      }
+      return Promise.all([operaio(), operaio(), operaio()])
+        .then(function(){ return post({ tipo:"video-fine", id: ini.id }); })
+        .then(function(fine){
+          barra.hidden = true; el("mediaCarica").disabled = false;
+          avviso("ok", esc(fine.file) + " caricato.");
+          return post({ tipo:"clip-hl-media" }).then(function(d){ MEDIA = d.media || []; disegnaMedia(); });
+        });
+    }).catch(function(er){
+      barra.hidden = true; el("mediaCarica").disabled = false;
+      avviso("err", "Caricamento fallito: " + esc(er.message));
+    });
+  });
   el("mediaCerca").addEventListener("input", disegnaMedia);
   el("mediaCerca").addEventListener("keydown", function(e){ if (e.key === "Escape") el("tendaMedia").hidden = true; });
   el("mediaElenco").addEventListener("click", function(e){
