@@ -378,6 +378,10 @@
   .ed-pezzo{position:absolute;top:4px;bottom:4px;height:auto;background:#2A3448 var(--posa,none) no-repeat left center/auto 100%;
     border:1px solid #56688C;border-radius:5px;overflow:hidden;cursor:grab;box-sizing:border-box;}
   .ed-pezzo::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(24,32,50,.32) 0%,rgba(24,32,50,.80) 40%,rgba(24,32,50,.86) 100%);}
+  /* il cuneo sullo stacco: si vede che non e' netto senza doverlo cercare */
+  .ed-pezzo .fusione{position:absolute;left:0;top:0;bottom:0;pointer-events:none;
+    background:linear-gradient(90deg,rgba(201,162,75,.55),rgba(201,162,75,0));border-left:2px solid var(--oro);}
+  .ed-pezzo .fusione.nero{background:linear-gradient(90deg,rgba(4,12,28,.9),rgba(4,12,28,0));border-left-color:#fff;}
   .ed-pezzo .cima i{font-style:normal;background:var(--oro);color:var(--navy);font-weight:700;font-size:9px;padding:1px 4px;border-radius:3px;}
   .ed-pezzo .cima{position:absolute;top:0;left:0;right:0;height:17px;background:rgba(18,26,42,.85);border-bottom:1px solid rgba(245,241,230,.10);
     font-size:10.5px;line-height:17px;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ivory);}
@@ -542,7 +546,13 @@
           <div class="man"><label>luce</label><input type="range" id="ipLum" min="-40" max="40" step="1" value="0"><b id="ipLumV">0</b></div>
           <div class="man"><label>stacco</label><input type="range" id="ipCon" min="50" max="200" step="1" value="100"><b id="ipConV">100</b></div>
           <div class="man"><label>colore</label><input type="range" id="ipSat" min="0" max="250" step="1" value="100"><b id="ipSatV">100</b></div>
-          <div class="riga2"><button class="mini" id="ipRimetti">Rimetti com’era</button><span id="ipAud" style="color:var(--fumo);font-size:11.5px"></span></div>
+          <div id="ipSopra" hidden>
+            <div class="man"><label>riquadro</label><input type="range" id="ipRw" min="10" max="100" step="1" value="30"><b id="ipRwV">30%</b></div>
+            <div class="man"><label>da sinistra</label><input type="range" id="ipRx" min="0" max="100" step="1" value="66"><b id="ipRxV">66</b></div>
+            <div class="man"><label>dall’alto</label><input type="range" id="ipRy" min="0" max="100" step="1" value="62"><b id="ipRyV">62</b></div>
+          </div>
+          <div class="man"><label>stacco</label><select id="ipTrTipo" style="flex:1;font:inherit;font-size:11.5px;padding:3px 6px;border-radius:5px;border:1px solid var(--riga2);background:rgba(245,241,230,.05);color:var(--ivory)"><option value="">netto</option><option value="dissolvenza">dissolvenza</option><option value="nero">dal nero</option></select><input type="number" id="ipTrDur" min="0.1" max="5" step="0.1" value="1" style="width:46px;font:inherit;font-size:11.5px;padding:3px 4px;border-radius:5px;border:1px solid var(--riga2);background:rgba(245,241,230,.05);color:var(--ivory)"></div>
+          <div class="riga2"><button class="mini" id="ipRimetti">Rimetti com’era</button><button class="mini" id="ipTraccia">Mettilo sopra</button><span id="ipAud" style="color:var(--fumo);font-size:11.5px"></span></div>
         </div>
         <div class="sez2"><h4>Sequenza</h4><div class="riga2"><span id="eInfo" style="color:var(--fumo)"></span></div>
           <div class="riga2"><button class="mini" id="eCasa" title="scarica i pezzi sulla VM: riproduzione immediata ed export senza attese">Pezzi in casa</button><button class="mini" id="eXml" title="l'XML per Premiere con l'SRT a fianco">XML Premiere</button><button class="mini" id="eRinomina">Rinomina</button><button class="mini" id="eProg" title="in quale progetto sta questa sequenza">Progetto</button></div>
@@ -1487,6 +1497,13 @@
       var suSopra = (x.traccia || "V1") === "V2";
       var dove = suSopra ? "hv2" : "hv";
       var pezzoHtml = '<div class="ed-pezzo' + (scelto(x.id) ? " sel" : "") + (ORA.i === i ? " ora" : "") + '" data-i="' + i + '" data-posa="' + esc(x.dentro) + '" style="left:' + xa + 'px;width:' + ww + 'px' + (po && po !== "\u2026" ? ";--posa:url(\'" + po + "\')" : "") + '"><span class="cima">' + (velDi(x) !== 1 ? '<i class="vel">' + Math.round(velDi(x) * 100) + '%</i> ' : '') + esc(x.titolo || "pezzo") + '</span><span class="mm">' + tcBreve(x.dentro) + ' \u2192 ' + tcBreve(x.fuori) + '</span><span class="bordo sx" data-lato="sx"></span><span class="bordo dx" data-lato="dx"></span></div>';
+      // il cuneo della transizione, dentro la clip che entra
+      if (x.transizione && +x.transizione.durata > 0.06 && ww > 10) {
+        var wf = Math.max(3, Math.min(ww * 0.6, (+x.transizione.durata) * (w / Math.max(0.001, LENTE.b - LENTE.a))));
+        pezzoHtml = pezzoHtml.slice(0, -6) + '<span class="fusione' + (x.transizione.tipo === "nero" ? " nero" : "") +
+          '" style="width:' + wf.toFixed(0) + 'px" title="' + (x.transizione.tipo === "nero" ? "dal nero" : "dissolvenza") +
+          ' di ' + (+x.transizione.durata).toFixed(1) + 's"></span></div>';
+      }
       if (suSopra) hv2 += pezzoHtml; else hv += pezzoHtml;
       // l'audio legato sta sotto il suo video; se e' stato tolto, sotto c'e' silenzio
       var au = AUD.filter(function(z){ return z.legato === x.id; })[0];
@@ -2333,7 +2350,7 @@
     if (!x) { try { VE.style.filter = ""; } catch (e) {} return; }
     vestiMonitor(x);
     if (IP_VISTO === x.id + "|" + JSON.stringify(x.colore || 0) + "|" + (x.velocita || 1)) return;
-    IP_VISTO = x.id + "|" + JSON.stringify(x.colore || 0) + "|" + (x.velocita || 1);
+    IP_VISTO = x.id + "|" + JSON.stringify(x.colore || 0) + "|" + (x.velocita || 1) + "|" + (x.traccia || "V1") + "|" + JSON.stringify(x.riquadro || 0) + "|" + JSON.stringify(x.transizione || 0);
     var c = coloreDi(x);
     el("ipNome").textContent = (x.titolo || "pezzo").slice(0, 40);
     el("ipQuando").textContent = tcBreve(x.dentro) + " \u2192 " + tcBreve(x.fuori) + " \u00b7 dura " + tc(x.fuori - x.dentro);
@@ -2341,6 +2358,21 @@
     el("ipLum").value = Math.round(c.lum * 100); el("ipLumV").textContent = Math.round(c.lum * 100);
     el("ipCon").value = Math.round(c.con * 100); el("ipConV").textContent = Math.round(c.con * 100);
     el("ipSat").value = Math.round(c.sat * 100); el("ipSatV").textContent = Math.round(c.sat * 100);
+    var sopra = (x.traccia || "V1") === "V2", rq = x.riquadro || { x: 0.66, y: 0.62, w: 0.3 };
+    el("ipSopra").hidden = !sopra;
+    el("ipTraccia").textContent = sopra ? "Rimettilo sotto" : "Mettilo sopra";
+    if (sopra) {
+      el("ipRw").value = Math.round(rq.w * 100); el("ipRwV").textContent = Math.round(rq.w * 100) + "%";
+      el("ipRx").value = Math.round(rq.x * 100); el("ipRxV").textContent = Math.round(rq.x * 100);
+      el("ipRy").value = Math.round(rq.y * 100); el("ipRyV").textContent = Math.round(rq.y * 100);
+    }
+    var tr = x.transizione || null;
+    el("ipTrTipo").value = tr ? tr.tipo : "";
+    el("ipTrDur").value = tr ? tr.durata : 1;
+    // il primo pezzo non ha uno stacco prima di se': non c'e' niente da cui
+    // sfumare, e offrirlo sarebbe una promessa che l'export non mantiene
+    var primo = PZ.filter(function(z){ return (z.traccia || "V1") !== "V2"; })[0];
+    el("ipTrTipo").disabled = !!(primo && primo.id === x.id) || sopra;
     var au = AUD.filter(function(z){ return z.legato === x.id; })[0];
     el("ipAud").textContent = au ? ("audio " + (au.gain ? (au.gain > 0 ? "+" : "") + au.gain + " dB" : "0 dB") +
       (au.entra ? " \u00b7 entra " + au.entra.toFixed(1) + "s" : "") + (au.esce ? " \u00b7 esce " + au.esce.toFixed(1) + "s" : "") +
@@ -2363,6 +2395,32 @@
     });
     el(id).addEventListener("change", mandaColore);
   });
+  ["ipRw", "ipRx", "ipRy"].forEach(function(id){
+    el(id).addEventListener("input", function(){ el(id + "V").textContent = this.value + (id === "ipRw" ? "%" : ""); });
+    el(id).addEventListener("change", function(){
+      var x = pezzoScelto(); if (!x || !SEQ) return;
+      post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: x.id,
+             riquadro: { w: (+el("ipRw").value || 30) / 100, x: (+el("ipRx").value || 66) / 100, y: (+el("ipRy").value || 62) / 100 } })
+        .then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); });
+    });
+  });
+  el("ipTraccia").addEventListener("click", function(){
+    var x = pezzoScelto(); if (!x || !SEQ) return;
+    var n = (x.traccia || "V1") === "V2" ? "V1" : "V2";
+    post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: x.id, traccia: n })
+      .then(function(d){ ricaricaSeq(d.seq); avviso("ok", n === "V2" ? "Pezzo messo sopra: adesso ha un riquadro." : "Pezzo rimesso nella linea principale."); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  });
+  function mandaTransizione(){
+    var x = pezzoScelto(); if (!x || !SEQ) return;
+    var tipo = el("ipTrTipo").value, d = Math.max(0.1, Math.min(5, +el("ipTrDur").value || 1));
+    post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: x.id, transizione: tipo ? { tipo: tipo, durata: d } : { durata: 0 } })
+      .then(function(dd){ ricaricaSeq(dd.seq);
+        avviso("ok", tipo ? ("Stacco sfumato di " + d.toFixed(1) + "s: il montato si accorcia di altrettanto.") : "Stacco netto."); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  }
+  el("ipTrTipo").addEventListener("change", mandaTransizione);
+  el("ipTrDur").addEventListener("change", function(){ if (el("ipTrTipo").value) mandaTransizione(); });
   el("ipVel").addEventListener("input", function(){ el("ipVelV").textContent = this.value + "%"; });
   el("ipVel").addEventListener("change", function(){
     var x = pezzoScelto(); if (!x || !SEQ) return;

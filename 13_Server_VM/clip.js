@@ -3759,6 +3759,16 @@ function hlPezzo(p) {
   // Le partite arrivano da regie diverse e una accanto all'altra si vede.
   // DOVE STA IL RIQUADRO di un pezzo messo sopra: in frazioni del
   // fotogramma, cosi' vale uguale in 16:9 e in verticale.
+  // LA TRANSIZIONE STA SULLO STACCO, e si tiene sul pezzo che entra: e'
+  // l'unico modo perche' resti attaccata al taglio giusto quando i pezzi si
+  // riordinano. Due sole, quelle che si usano: la dissolvenza incrociata e
+  // il passaggio dal nero.
+  if (p.transizione !== undefined) {
+    const t0 = p.transizione || {};
+    const d0 = num(t0.durata, 0, 5, 0);
+    const tipo = String(t0.tipo || "dissolvenza") === "nero" ? "nero" : "dissolvenza";
+    if (d0 < 0.06) delete x.transizione; else x.transizione = { tipo: tipo, durata: Math.round(d0 * 100) / 100 };
+  }
   if (p.riquadro !== undefined) {
     const r0 = p.riquadro || {};
     x.riquadro = { x: num(r0.x, 0, 1, 0.66), y: num(r0.y, 0, 1, 0.62), w: num(r0.w, 0.1, 1, 0.3) };
@@ -4652,7 +4662,10 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   const srtSeq = (sottoV.file || sottoV.video) ? await scriviSrtSequenza(q, sottoV, !!sottoV.video) : null;
   const brucia = !!(sottoV.video && srtSeq);
   const rallentati = (q.pezzi || []).some((x) => (+x.velocita && +x.velocita !== 1) || x.colore || (x.traccia || "V1") === "V2");
-  const veloce = (p2 && p2.esatto) || srtSeq ? false : (!ritaglio && !grafiche0.length && !mixato && !buchi.length && !rallentati);
+  // le transizioni vogliono che i pezzi si SOVRAPPONGANO: incollare e basta
+  // non basta piu', e ogni pezzo dev'essere tagliato esatto
+  const conFusione = (q.pezzi || []).some((x, i) => i > 0 && (x.traccia || "V1") !== "V2" && x.transizione && +x.transizione.durata > 0.06);
+  const veloce = (p2 && p2.esatto) || srtSeq ? false : (!ritaglio && !grafiche0.length && !mixato && !buchi.length && !rallentati && !conFusione);
   const dir2 = path.join(dir, "tagli");
   assicura(dir2);
   const parti = [];
@@ -4751,6 +4764,58 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   // attaccano e basta: secondi invece di minuti, e zero perdita.
   const listaFin = path.join(dir, "tutti.txt");
   fs.writeFileSync(listaFin, parti.map((x) => "file '" + x.file + "'").join("\n") + "\n");
+
+  // ── LE TRANSIZIONI ────────────────────────────────────────────────
+  //  Incollare mette il primo fotogramma del pezzo dopo subito dopo
+  //  l'ultimo di quello prima. Una dissolvenza invece li fa vivere insieme
+  //  per un secondo, quindi il montato si ACCORCIA di quel secondo: il
+  //  materiale non si inventa, i due pezzi si sovrappongono.
+  //  Si costruisce un file unito con xfade e si rimette al posto della
+  //  lista: da qui in poi tutto il resto dell'export non cambia di una
+  //  riga, e non c'e' un secondo posto dove le cose possono rompersi.
+  if (conFusione && parti.length > 1 && !buchi.length) {
+    q.export.fase = "sfumo gli stacchi";
+    scrivi(); annuncia(0, "clip");
+    const durataDi = (i) => Math.max(0.2, base[i].fuori - base[i].dentro) / (+base[i].velocita || 1);
+    const ingr = [];
+    parti.forEach((z) => ingr.push("-i", z.file));
+    const fv = [], fa = [];
+    let uv = "0:v", ua = "0:a", lungo = durataDi(0);
+    for (let i = 1; i < parti.length; i++) {
+      const tr = base[i] && base[i].transizione;
+      const suo = durataDi(i);
+      let D = tr && +tr.durata > 0.06 ? +tr.durata : 0;
+      D = Math.min(D, suo - 0.2, lungo - 0.2);
+      const uscV = "v" + i, uscA = "a" + i;
+      if (D > 0.06) {
+        const come = tr.tipo === "nero" ? "fadeblack" : "fade";
+        fv.push("[" + uv + "][" + i + ":v]xfade=transition=" + come + ":duration=" + D.toFixed(2) +
+                ":offset=" + (lungo - D).toFixed(2) + "[" + uscV + "]");
+        fa.push("[" + ua + "][" + i + ":a]acrossfade=d=" + D.toFixed(2) + ":c1=tri:c2=tri[" + uscA + "]");
+        lungo = lungo + suo - D;
+      } else {
+        fv.push("[" + uv + "][" + i + ":v]concat=n=2:v=1:a=0[" + uscV + "]");
+        fa.push("[" + ua + "][" + i + ":a]concat=n=2:v=0:a=1[" + uscA + "]");
+        lungo = lungo + suo;
+      }
+      uv = uscV; ua = uscA;
+    }
+    const unito = path.join(dir2, "unito.mp4");
+    await new Promise((si, no) => {
+      const pr = spawn(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin"].concat(ingr).concat([
+        "-filter_complex", fv.concat(fa).join(";"),
+        "-map", "[" + uv + "]", "-map", "[" + ua + "]",
+        "-c:v", "libx264", "-preset", CACHE_PRESET, "-crf", CACHE_CRF, "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", "-y", unito]),
+        { stdio: ["ignore", "ignore", "pipe"] });
+      let coda = "";
+      pr.stderr.on("data", (d) => { coda = (coda + d).slice(-1200); });
+      pr.on("error", no);
+      pr.on("close", (code) => code === 0 ? si() : no(new Error(ultimaRiga(coda) || ("sfumature " + code))));
+    });
+    fs.writeFileSync(listaFin, "file '" + unito + "'\n");
+    console.log("[clip] esporto \"" + (q.titolo || q.id) + "\": stacchi sfumati, il montato dura " + Math.round(lungo) + "s");
+  }
   q.export.avanza = 0.92;
   q.export.fase = grafiche.length ? "incollo le grafiche" : (veloce ? "monto" : "monto");
   scrivi(); annuncia(0, "clip");
