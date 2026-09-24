@@ -325,7 +325,7 @@
   .ed-barra .tc{font-size:13px;color:var(--oro2);min-width:78px;} .ed-barra .tc small{color:var(--fumo);font-size:11px;margin-left:6px;}
   .ed-barra button{padding:5px 9px;font-size:10px;} .ed-barra .sep{width:1px;height:18px;background:var(--riga);margin:0 4px;}
   .ed-barra .eti{font-family:'Mazzard',sans-serif;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--fumo);}
-  .ed-tl{height:var(--tl,171px);display:grid;grid-template-columns:var(--nomi,96px) 1fr;min-height:0;overflow-x:hidden;overflow-y:auto;position:relative;}
+  .ed-tl{height:var(--tl,171px);display:grid;grid-template-columns:34px var(--nomi,96px) 1fr;min-height:0;overflow-x:hidden;overflow-y:auto;position:relative;}
   .ed-tl .nomi{border-right:1px solid var(--riga);display:flex;flex-direction:column;position:relative;min-width:0;min-height:min-content;}
   .ed-tl .nomi div{position:relative;overflow:hidden;}
   .presa{position:absolute;left:0;right:0;bottom:-4px;height:8px;cursor:row-resize;z-index:3;}
@@ -347,6 +347,18 @@
   .ed-buco{position:absolute;top:4px;bottom:4px;border-radius:4px;pointer-events:none;
     background:repeating-linear-gradient(135deg,rgba(245,241,230,.07) 0 6px,transparent 6px 12px);
     border:1px dashed rgba(245,241,230,.18);}
+  /* LA STRISCIA DEGLI ATTREZZI, come in un montaggio vero: lo strumento e'
+     un modo di stare, non un tasto da premere ogni volta. E i vu-meter, che
+     senza non si sa se il montato esce basso o in clip. */
+  .attrezzi{border-right:1px solid var(--riga);background:var(--navy2);display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 0;}
+  .attrezzi button{width:26px;height:26px;padding:0;font-size:13px;line-height:26px;border-radius:3px;border:1px solid transparent;
+    background:none;color:var(--ivory2);cursor:pointer;}
+  .attrezzi button:hover{background:rgba(245,241,230,.08);}
+  .attrezzi button.on{background:var(--oro);color:var(--navy);border-color:var(--oro);}
+  .attrezzi .vu{margin-top:auto;width:14px;flex:1;min-height:24px;display:flex;gap:2px;align-items:flex-end;justify-content:center;padding-bottom:3px;}
+  .attrezzi .vu i{width:5px;height:0%;border-radius:1px;background:linear-gradient(to top,#3FBF6A 0%,#3FBF6A 62%,#E3C271 82%,#E0574A 100%);
+    background-size:100% 400%;background-position:bottom;transition:height .06s linear;}
+  .ed-pista.lametta,.ed-pista.lametta .ed-pezzo{cursor:crosshair;}
   .ed-rete{position:absolute;top:0;bottom:0;background:rgba(201,162,75,.14);border:1px solid var(--oro2);border-radius:3px;pointer-events:none;}
   .ed-magnete{position:absolute;top:0;bottom:0;width:1px;background:#7CD992;box-shadow:0 0 5px #7CD992;pointer-events:none;z-index:4;}
   .ed-corsia{position:relative;border-bottom:1px solid var(--riga);} .ed-corsia.r{height:22px;} .ed-corsia.st{height:var(--st,26px);} .ed-corsia.g{height:var(--g,28px);} .ed-corsia.v{flex:1 1 auto;height:auto;min-height:64px;background:rgba(245,241,230,.02);} .ed-corsia.a{height:var(--a,30px);}
@@ -572,6 +584,11 @@
         <button id="eTasti" title="i tasti, come in Premiere">⌨ Tasti</button>
       </div>
       <div class="ed-tl">
+        <div class="attrezzi" id="attrezzi">
+          <button data-str="scelta" class="on" title="Scelta (V): prendi, sposta, accorcia">&#10148;</button>
+          <button data-str="lametta" title="Lametta (C): clicca una clip per dividerla li&rsquo;">&#9986;</button>
+          <div class="vu" id="vu" title="livello dell&rsquo;audio in riproduzione"><i></i><i></i></div>
+        </div>
         <div class="nomi" id="edNomi"><div class="r"></div><div class="st">Sottotitoli<span class="presa" data-alta="st"></span></div><div class="g" title="V2: grafiche PNG sopra il video">Grafiche<span class="presa" data-alta="g"></span></div><div class="v">Video</div><span class="presa lato" id="presaNomi" title="larghezza della colonna"></span></div>
         <div class="ed-pista" id="pista">
           <div class="ed-corsia r" id="cRig"></div>
@@ -1426,7 +1443,11 @@
   function ricaricaSeq(q){ if (q) { SEQ = q; PZ = SEQ.pezzi || []; GRAF = SEQ.grafiche || []; AUD = SEQ.audio || []; } SELS = SELS.filter(function(id){ return PZ.some(function(z){ return z.id === id; }); }); SEL = SELS.length ? SELS[SELS.length - 1] : null;
     // togliendo pezzi la lente restava larga com'era e la timeline finiva
     // per essere due terzi di vuoto: si stringe su quello che c'e'
-    var d0 = durSeq(); if (LENTE.b > d0 + 1 || LENTE.b - LENTE.a < 1) LENTE = { a: 0, b: Math.max(10, d0) }; el("eMeta").textContent = (REGE.titolo || "") + " · " + PZ.length + " pezzi · " + tc(durSeq()); disegnaEditor(); }
+    var d0 = durSeq(); if (LENTE.b > d0 + 1 || LENTE.b - LENTE.a < 1) LENTE = { a: 0, b: Math.max(10, d0) }; el("eMeta").textContent = (REGE.titolo || "") + " · " + PZ.length + " pezzi · " + tc(durSeq());
+    // il conto nel pannello lo scriveva solo il giro delle uscite, ogni
+    // quindici secondi: dopo un taglio restava indietro e sembrava rotto
+    if (el("eInfo")) el("eInfo").textContent = PZ.length + " pezzi · " + tc(durSeq()) + (SEQ && SEQ.chi ? " · " + SEQ.chi : "");
+    disegnaEditor(); }
   function disegnaEditor(){ disegnaBin(); disegnaTl(); }
   function disegnaBin(){
     el("binConto").textContent = PZ.length + " · " + tc(durSeq());
@@ -1776,6 +1797,58 @@
   });
   document.addEventListener("mousedown", function(e){ if (MENU_APERTO && !e.target.closest("#menubar")) chiudiMenu(); });
   document.addEventListener("keydown", function(e){ if (e.key === "Escape" && MENU_APERTO) chiudiMenu(); });
+  // ══════════ GLI STRUMENTI ══════════
+  //  Con la lametta in mano un clic su una clip la divide li'. Prima la
+  //  lametta tagliava solo sotto la testina: per tagliare in tre punti
+  //  bisognava portarci la testina tre volte.
+  var STRUMENTO = "scelta";
+  function mettiStrumento(n){
+    STRUMENTO = (n === "lametta") ? "lametta" : "scelta";
+    Array.prototype.forEach.call(el("attrezzi").querySelectorAll("button[data-str]"),
+      function(b){ b.classList.toggle("on", b.dataset.str === STRUMENTO); });
+    el("pista").classList.toggle("lametta", STRUMENTO === "lametta");
+  }
+  el("attrezzi").addEventListener("click", function(e){
+    var b = e.target.closest("button[data-str]"); if (b) mettiStrumento(b.dataset.str);
+  });
+  function tagliaQui(pz, e){
+    var i = +pz.dataset.i, x = PZ[i]; if (!x || !SEQ) return;
+    var t = tDiX(e.clientX - el("pista").getBoundingClientRect().left);
+    var dentroIl = t - (x.t0 || 0);
+    if (dentroIl < 0.3 || dentroIl > (x.fuori - x.dentro) - 0.3) return avviso("err", "Il taglio cadrebbe sul bordo.");
+    post({ tipo:"clip-hl-dividi", seq: SEQ.id, pezzo: x.id, a: Math.round((x.dentro + dentroIl * velDi(x)) * 100) / 100 })
+      .then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Diviso a " + tc(t) + "."); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  }
+  // ── I VU-METER. Senza, non si sa se il montato esce basso o in clip, e
+  //    lo si scopre quando e' gia' online.
+  var VU_CTX = null, VU_AN = null, VU_DATI = null;
+  function accendiVu(){
+    if (VU_CTX || !VE) return;
+    try {
+      var C = window.AudioContext || window.webkitAudioContext; if (!C) return;
+      VU_CTX = new C();
+      var sorg = VU_CTX.createMediaElementSource(VE);
+      VU_AN = VU_CTX.createAnalyser(); VU_AN.fftSize = 1024;
+      sorg.connect(VU_AN); VU_AN.connect(VU_CTX.destination);   // il suono deve continuare a uscire
+      VU_DATI = new Uint8Array(VU_AN.fftSize);
+    } catch (e) { VU_CTX = null; }
+  }
+  function giroVu(){
+    var vu = el("vu"); if (!vu) return;
+    var barre = vu.querySelectorAll("i"); if (!barre.length) return;
+    if (!VU_AN || VE.paused) {
+      if (barre[0].style.height !== "0%") { barre[0].style.height = "0%"; barre[1].style.height = "0%"; }
+      return;
+    }
+    VU_AN.getByteTimeDomainData(VU_DATI);
+    var picco = 0;
+    for (var i = 0; i < VU_DATI.length; i += 4) { var v = Math.abs(VU_DATI[i] - 128) / 128; if (v > picco) picco = v; }
+    // in decibel, da -54 a 0: una scala lineare schiaccia tutto in fondo
+    var db = picco > 0.0008 ? 20 * Math.log10(picco) : -60;
+    var h = Math.max(0, Math.min(100, (db + 54) / 54 * 100));
+    barre[0].style.height = h.toFixed(0) + "%"; barre[1].style.height = h.toFixed(0) + "%";
+  }
   // ── IL MAGNETE. Quello che cerchi quasi sempre e' un bordo che combacia:
   //    con un altro stacco, con la testina, con l'entrata o l'uscita. Senza,
   //    il montaggio diventa un lavoro di mira al pixel.
@@ -1840,6 +1913,7 @@
     VE.muted = !auOra || !!auOra.muto;
     if (FERMO !== VE.paused) { FERMO = VE.paused; el("ePlay").innerHTML = FERMO ? '<svg viewBox="0 0 16 16"><path d="M4 2v12l10-6z"/></svg>' : '<svg viewBox="0 0 16 16"><rect x="3" y="2" width="4" height="12"/><rect x="9" y="2" width="4" height="12"/></svg>'; }
     var tt = el("eTestina"); tt.hidden = false; tt.style.left = X(t) + "px";
+    giroVu();
     if (CAMPO && ANTE !== "16:9") disegnaTaglio();
     if (ORA.i !== INQ_VISTO) { INQ_VISTO = ORA.i; aggiornaInq(); }
     disegnaIspettore();
@@ -1888,6 +1962,7 @@
       RETE = { x0: e.clientX - r0.left, x1: e.clientX - r0.left, agg: e.shiftKey || e.metaKey || e.ctrlKey, preso: SELS.slice(), mosso: false };
       e.preventDefault(); return;
     }
+    if (STRUMENTO === "lametta") { tagliaQui(pz, e); e.preventDefault(); return; }
     var i = +pz.dataset.i, x = PZ[i], conTasto = e.shiftKey || e.metaKey || e.ctrlKey;
     if (conTasto) scegli(x.id, true); else if (!scelto(x.id)) scegli(x.id, false);
     TRASC = { i: i, x0: e.clientX, tipo: bordo ? bordo.dataset.lato : "muovi", dentro: x.dentro, fuori: x.fuori,
@@ -2118,7 +2193,7 @@
   });
   el("bin").addEventListener("click", function(e){ var tr = e.target.closest("tr[data-i]"); if (!tr) return; scegli(PZ[+tr.dataset.i].id, e.shiftKey || e.metaKey || e.ctrlKey); vaiA(+tr.dataset.i, 0, false); disegnaTl(); });
   el("bin").addEventListener("dblclick", function(e){ var tr = e.target.closest("tr[data-i]"); if (tr) vaiA(+tr.dataset.i, 0, true); });
-  el("ePlay").addEventListener("click", function(){ if (!VE) return; if (VE.paused) { if (ORA.i < 0 && PZ.length) vaiA(0, 0, true); else VE.play().catch(function(){}); } else VE.pause(); });
+  el("ePlay").addEventListener("click", function(){ if (!VE) return; accendiVu(); if (VU_CTX && VU_CTX.state === "suspended") VU_CTX.resume(); if (VE.paused) { if (ORA.i < 0 && PZ.length) vaiA(0, 0, true); else VE.play().catch(function(){}); } else VE.pause(); });
   el("ePrima").addEventListener("click", function(){ vaiA(Math.max(0, ORA.i - 1), 0, !VE.paused); });
   el("eDopo").addEventListener("click", function(){ vaiA(Math.min(PZ.length - 1, ORA.i + 1), 0, !VE.paused); });
   el("eTaglia").addEventListener("click", function(){ if (SELG && SEQ) { var g0 = GRAF.filter(function(z){ return z.id === SELG; })[0], t0 = tSeq(); if (g0 && t0 > g0.dentro + 0.3 && t0 < g0.fuori - 0.3) return post({ tipo:"clip-hl-grafica", seq: SEQ.id, grafica: SELG, dividi: Math.round(t0 * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Grafica divisa."); }).catch(function(er){ avviso("err", esc(er.message)); }); } var x = PZ[ORA.i]; if (!x || !SEQ) return; post({ tipo:"clip-hl-dividi", seq: SEQ.id, pezzo: x.id, a: Math.round(VE.currentTime * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Diviso."); }).catch(function(er){ avviso("err", esc(er.message)); }); });
@@ -2189,7 +2264,7 @@
     ["Spazio", "riproduci / ferma"], ["J · K · L", "indietro · fermo · avanti (L di nuovo: più veloce, Shift+J/L: più piano)"], ["← →", "un fotogramma (Shift: cinque)"], ["↑ ↓", "punto di montaggio prima / dopo"], ["Home · End", "inizio / fine"],
     ["I · O", "entrata / uscita della sequenza"], ["Shift+I · Shift+O", "vai all'entrata / all'uscita"], ["Alt+I · Alt+O · Alt+X", "togli entrata / uscita / tutte e due"], ["X", "entrata e uscita sul pezzo sotto la testina"],
     ["; · '", "solleva · estrai l'intervallo (qui senza buchi: tutte e due estraggono)"],
-    ["Q · W", "accorcia l'inizio / la fine del pezzo alla testina"], ["E", "allunga il pezzo scelto fino alla testina"], ["C · Cmd+K", "dividi sotto la testina"], ["Alt+← →", "scivolo: cambia cosa si vede dentro la clip, che resta dov'è"], ["Alt+Shift+← →", "giunzione: la clip scorre nel montato e i vicini le fanno spazio"], ["S", "magnete: i bordi si attaccano agli stacchi e alla testina"], ["T", "scrivi un titolo sullo schermo"], ["R", "velocit\u00e0 del pezzo: 50% \u00e8 il rallentatore"], ["cmd+rotella", "lente attorno al mouse · shift+rotella: scorri"],
+    ["Q · W", "accorcia l'inizio / la fine del pezzo alla testina"], ["E", "allunga il pezzo scelto fino alla testina"], ["V · C", "strumento: scelta · lametta (poi clicca la clip dove tagliarla)"], ["Cmd+K", "dividi sotto la testina"], ["Alt+← →", "scivolo: cambia cosa si vede dentro la clip, che resta dov'è"], ["Alt+Shift+← →", "giunzione: la clip scorre nel montato e i vicini le fanno spazio"], ["S", "magnete: i bordi si attaccano agli stacchi e alla testina"], ["T", "scrivi un titolo sullo schermo"], ["R", "velocit\u00e0 del pezzo: 50% \u00e8 il rallentatore"], ["cmd+rotella", "lente attorno al mouse · shift+rotella: scorri"],
     ["Canc", "togli i pezzi scelti"], ["Cmd+A · Cmd+Shift+A", "scegli tutti / nessuno"], ["D", "scegli il pezzo sotto la testina"], ["Shift+clic", "aggiungi alla scelta"],
     ["Cmd+C · Cmd+X · Cmd+V", "copia · taglia · incolla dopo la testina"], ["Cmd+Z · Shift+Cmd+Z", "annulla / ripeti"],
     ["Cmd+L", "lega / stacca l'audio del pezzo scelto"], ["G", "gain dell'audio scelto (dB)"], ["M", "marker sulla partita al punto della testina"], ["F", "match frame: apri la partita a questo secondo"],
@@ -2402,7 +2477,8 @@
     else if (K === "Q") { accorcia("inizio"); }
     else if (K === "W") { accorcia("fine"); }
     else if (K === "E") { allungaQui(); }
-    else if (K === "C") el("eTaglia").click();
+    else if (K === "C") { mettiStrumento("lametta"); }
+    else if (K === "V") { mettiStrumento("scelta"); }
     else if (k === "Delete" || k === "Backspace") { e.preventDefault(); el("eTogli").click(); }
     else if (k === "Escape") { RETE = null; disegnaTl(); }
     else if (K === "D") { var xd = pezzoQui(); if (xd) { scegli(xd.id, false); disegnaEditor(); } }
