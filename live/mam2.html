@@ -1056,7 +1056,6 @@
   // esistono — ma i NOMI si', e l'archivio quei nomi ce li ha tutti.
   // Quindi si legge il taglio e si riattacca al nostro materiale: la
   // sequenza arriva intera, senza che nessuno sposti un file.
-  el("eImportaXml").addEventListener("click", function(){ el("fXml").click(); });
   el("fXml").addEventListener("change", function(){
     var f = this.files && this.files[0]; this.value = "";
     if (!f) return;
@@ -1678,12 +1677,13 @@
       if (x.transizione) tag += '<span class="tag">' + (x.transizione.tipo === "nero" ? "dal nero" : "dissolv.") + "</span>";
       if (x.colore) tag += '<span class="tag">colore</span>';
       tag += '<span class="tag">' + esc(x.media ? "casa" : (x.fonte || "mano")) + "</span>";
+      if (x.reg && x.partita) tag += '<span class="tag oro" title="questa clip viene da un\u2019altra partita">' + esc(x.partita.slice(0, 22)) + "</span>";
       var ante = x.media
         ? '<video src="' + BASE + "/video/" + encodeURIComponent(x.media) + '#t=' + (x.dentro + 0.5).toFixed(2) + '" preload="metadata" muted playsinline></video>'
         : "";
       return '<div class="pz' + (scelto(x.id) ? " sel" : "") + (ORA.i === i ? " ora" : "") + '" data-i="' + i + '" draggable="true">' +
         '<span class="n">' + (i + 1) + "</span>" +
-        '<span class="ante" data-posa="' + esc(x.dentro) + '">' + ante + '<i class="sc"></i><em>' + tcBreve(dur) + "</em></span>" +
+        '<span class="ante" data-posa="' + esc(x.dentro) + '" data-reg="' + esc(x.reg || "") + '">' + ante + '<i class="sc"></i><em>' + tcBreve(dur) + "</em></span>" +
         '<span class="d"><b>' + esc(x.titolo || "pezzo") + "</b><small>" + tag +
           (x.minuto ? esc(x.minuto) + " · " : "") + tcBreve(x.dentro) + " → " + tcBreve(x.fuori) + "</small></span>" +
         '<span class="dur">' + tcBreve(dur) + "</span></div>";
@@ -1694,7 +1694,7 @@
         .filter(function(z){ return !z.firstElementChild || z.firstElementChild.tagName !== "VIDEO"; });
       var giro = function(){
         var z = da.shift(); if (!z) return;
-        posa(REGE.id, Math.round(+z.dataset.posa), function(u){ z.style.backgroundImage = "url('" + u + "')"; }, function(){ setTimeout(giro, 60); });
+        posa(z.dataset.reg || REGE.id, Math.round(+z.dataset.posa), function(u){ z.style.backgroundImage = "url('" + u + "')"; }, function(){ setTimeout(giro, 60); });
       };
       giro();
     }
@@ -1716,7 +1716,7 @@
     var passo = Math.max(5, Math.round(dur / 8)), tt = Math.round(t / passo) * passo;
     if (a.dataset.ora == tt) return;
     a.dataset.ora = tt;
-    posa(REGE.id, tt, function(u){ if (a.dataset.ora == tt) a.style.backgroundImage = "url('" + u + "')"; });
+    posa(a.dataset.reg || REGE.id, tt, function(u){ if (a.dataset.ora == tt) a.style.backgroundImage = "url('" + u + "')"; });
   });
   el("bin").addEventListener("mouseleave", function(){
     Array.prototype.forEach.call(el("bin").querySelectorAll(".ante .sc"), function(z){ z.style.width = "0"; });
@@ -1948,7 +1948,7 @@
       { capo: "Importa" },
       bt("Importa…", "", "eMateriale"),
       bt("Apri nel monitor Sorgente", "", "eAsset"),
-      bt("XML di Premiere (ritrova i file qui)…", "", "eImportaXml"),
+      vc("XML di Premiere (ritrova i file qui)…", "", function(){ el("fXml").click(); }),
       vc("Corrispondenza fotogramma", "F", vaiAllaPartita),
       bt("Trascodifica in locale", "", "eCasa"),
       { riga: 1 },
@@ -2194,7 +2194,12 @@
     var t = x.dentro + Math.max(0, Math.min((x.fuori - x.dentro) * v - 0.05, (dentroIlPezzo || 0) * v));
     // UN PEZZO DI CASA HA UN ALTRO FILE SOTTO: il monitor deve cambiare
     // sorgente, e cercare il secondo solo quando la nuova e' pronta
-    var sorg = x.media ? (BASE + "/video/" + encodeURIComponent(x.media)) : (REGE ? BASE + REGE.via : "");
+    // E UN PEZZO DI UN'ALTRA PARTITA ANCHE: in una gol collection ogni
+    // clip ha la sua registrazione, e il monitor deve andare a prendere
+    // quella, non quella su cui la sequenza e' nata.
+    var suaR = x.reg ? (REGS[x.reg] || null) : REGE;
+    var sorg = x.media ? (BASE + "/video/" + encodeURIComponent(x.media))
+             : (suaR && suaR.via ? BASE + suaR.via : (REGE ? BASE + REGE.via : ""));
     if (sorg && VE.getAttribute("src") !== sorg) {
       VE.setAttribute("src", sorg);
       VE.addEventListener("loadedmetadata", function una(){

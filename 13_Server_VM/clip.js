@@ -3809,7 +3809,8 @@ function hlPezzo(p) {
   //  2. E il controllo "il pezzo diventerebbe vuoto" arrivava DOPO aver
   //     gia' scritto i nuovi valori: l'errore usciva, ma il pezzo restava
   //     rotto. Adesso si calcola a parte e si scrive solo se regge.
-  const dReg = R.reg[q.reg] ? (R.reg[q.reg].durata || durataRegistrata(q.reg)) : 0;
+  const rPz = regDi(q, x);
+  const dReg = rPz ? (rPz.durata || durataRegistrata(rPz.id)) : 0;
   const durata = dReg > 0 ? dReg : MAX_SECONDI;
   let nDentro = x.dentro, nFuori = x.fuori;
   if (p.dentro !== undefined) nDentro = num(p.dentro, 0, durata, x.dentro);
@@ -4058,7 +4059,7 @@ function salvaIlMontato(p) {
 // Chiede a inquadra.py dove guarderebbe lui. Legge dal pezzo gia' in casa
 // se c'e' (costa solo CPU), se no dal materiale della registrazione.
 async function proponiInquadratura(q, x, largo) {
-  const k = chiavePezzo(q.reg, x.dentro, x.fuori);
+  const k = chiavePezzo(idRegDi(q, x), x.dentro, x.fuori);
   const casa = filePezzo(k);
   let via, da;
   if (fs.existsSync(casa)) { via = casa; da = scartoPezzo(k); }
@@ -4337,6 +4338,21 @@ function cartellaPezzi() {
   assicura(d);
   return d;
 }
+// LA PARTITA DI UN PEZZO. Una sequenza nasce su una partita, e per quasi
+// tutti i pezzi e' quella. Ma una gol collection prende da dieci partite
+// diverse, e allora il pezzo se la porta dietro: x.reg. Dove non c'e',
+// vale quella della sequenza — cosi' tutto il montato di prima resta
+// esattamente com'era.
+function regDi(q, x) { return R.reg[(x && x.reg) || q.reg] || null; }
+function idRegDi(q, x) { return ((x && x.reg) || q.reg); }
+// le partite che una sequenza tocca davvero
+function regDellaSeq(q) {
+  const vis = {};
+  (q.pezzi || []).forEach((x) => { if (!x.media) vis[idRegDi(q, x)] = 1; });
+  (q.audio || []).forEach((a) => { vis[idRegDi(q, a)] = 1; });
+  vis[q.reg] = 1;
+  return Object.keys(vis).filter((k) => R.reg[k]);
+}
 function chiavePezzo(reg, dentro, fuori) {
   return crypto.createHash("sha1")
     .update(String(reg) + "|" + Number(dentro).toFixed(2) + "|" + Number(fuori).toFixed(2))
@@ -4423,7 +4439,7 @@ function pezziDaScaricare(q) {
   const visti = {};
   return tutti.filter((x) => {
     if (mediaVia(x)) return false;          // ce l'ha gia' in casa: e' suo
-    const k = chiavePezzo(q.reg, x.dentro, x.fuori);
+    const k = chiavePezzo(idRegDi(q, x), x.dentro, x.fuori);
     if (visti[k]) return false;
     visti[k] = true;
     return !fs.existsSync(filePezzo(k));
@@ -4437,19 +4453,23 @@ function pezziDaScaricare(q) {
 // sette minuti sarebbero stati venti minuti di macchina, per riottenere
 // un'immagine peggiore di quella che c'era gia'.
 async function costruisciPezzi(q, avanti) {
-  const r = R.reg[q.reg];
-  if (!r) throw new Error("registrazione sconosciuta");
-  await assicuraCanali(r);
-  const segs = segmenti(q.reg);
-  const usaIntegrale = !segs.length;
-  const integrale = (r && r.arch) ? viaArchivio(r) : path.join(cartellaReg(q.reg), "integrale.mp4");
-  if (usaIntegrale && !(r && r.arch) && !fs.existsSync(integrale)) throw new Error("non c'e' piu' materiale per questa registrazione");
+  if (!R.reg[q.reg]) throw new Error("registrazione sconosciuta");
+  // OGNI PARTITA CHE LA SEQUENZA TOCCA, non solo quella su cui e' nata:
+  // in una gol collection i pezzi arrivano da dieci registrazioni diverse
+  // e ognuna ha i suoi canali, i suoi segmenti, il suo file.
+  for (const id of regDellaSeq(q)) await assicuraCanali(R.reg[id]);
 
   const daFare = pezziDaScaricare(q);
   let fatti = 0;
   const uno = async (x) => {
     if (mediaVia(x)) return;                // gia' in casa
-    const k = chiavePezzo(q.reg, x.dentro, x.fuori);
+    const r = regDi(q, x);
+    if (!r) return;
+    const segs = segmenti(r.id);
+    const usaIntegrale = !segs.length;
+    const integrale = r.arch ? viaArchivio(r) : path.join(cartellaReg(r.id), "integrale.mp4");
+    if (usaIntegrale && !r.arch && !fs.existsSync(integrale)) throw new Error("di \"" + (r.titolo || r.id) + "\" non c'e' piu' materiale");
+    const k = chiavePezzo(r.id, x.dentro, x.fuori);
     const fuoriFile = filePezzo(k);
     const parziale = fuoriFile.replace(/\.mp4$/, "-parte.mp4");
     let ingresso, lista = null, scarto = 0;
@@ -4523,7 +4543,7 @@ function segnaPezziLocali(q) {
   (q.pezzi || []).forEach((x) => {
     const mio = mediaVia(x);
     if (mio) { x.locale = "/video/" + path.basename(mio); x.scarto = 0; quanti++; return; }
-    const k = chiavePezzo(q.reg, x.dentro, x.fuori);
+    const k = chiavePezzo(idRegDi(q, x), x.dentro, x.fuori);
     if (fs.existsSync(filePezzo(k))) {
       x.locale = viaPezzo(k);
       x.scarto = scartoPezzo(k);        // di quanto il file comincia prima
@@ -4533,7 +4553,7 @@ function segnaPezziLocali(q) {
   // e i pezzi audio: uno scollegato pesca da un altro punto della partita,
   // e per farlo sentire alla pagina serve il suo file, non quello del video
   (q.audio || []).forEach((a) => {
-    const k = chiavePezzo(q.reg, a.dentro, a.fuori);
+    const k = chiavePezzo(idRegDi(q, a), a.dentro, a.fuori);
     if (fs.existsSync(filePezzo(k))) { a.locale = viaPezzo(k); a.scarto = scartoPezzo(k); }
     else { delete a.locale; delete a.scarto; }
     a.onda = fs.existsSync(path.join(cartellaOnde(), k + ".json"));
@@ -4582,7 +4602,7 @@ function costruisciMix(q, iBase) {
     const t = (q.tracce && q.tracce[a.traccia]) || {};
     const suoP = a.legato ? (q.pezzi || []).filter((y) => y.id === a.legato)[0] : null;
     const mioA = mediaVia(suoP);
-    const k = chiavePezzo(q.reg, a.dentro, a.fuori);
+    const k = chiavePezzo(idRegDi(q, suoP || a), a.dentro, a.fuori);
     const casa = mioA || filePezzo(k);
     const dur = Math.max(0.05, a.fuori - a.dentro);
     // se il video sopra e' rallentato, il suo suono va steso insieme a lui:
@@ -4778,17 +4798,30 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   // un file di casa non e' codificato come i pezzi della partita: incollarli
   // e basta vorrebbe dire pretendere che abbiano lo stesso codificatore
   const conMedia = (q.pezzi || []).some((x) => !!mediaVia(x));
-  const veloce = (p2 && p2.esatto) || srtSeq ? false : (!ritaglio && !grafiche0.length && !mixato && !buchi.length && !rallentati && !conFusione && !conMedia);
+  let veloce = (p2 && p2.esatto) || srtSeq ? false : (!ritaglio && !grafiche0.length && !mixato && !buchi.length && !rallentati && !conFusione && !conMedia);
   const dir2 = path.join(dir, "tagli");
   assicura(dir2);
   const parti = [];
   let orologio = 0;                     // dove siamo arrivati sulla timeline
   const sopra = (q.pezzi || []).filter((x) => (x.traccia || "V1") === "V2");
   const base = (q.pezzi || []).filter((x) => (x.traccia || "V1") !== "V2");
+  // LA STRADA VELOCE INCOLLA I PEZZI COM'E' IL FILE, e il file in casa
+  // comincia PRIMA del taglio: il ritaglio in copia parte dal fotogramma
+  // chiave precedente, e quel secondo di rincorsa serve a riprodurlo
+  // esatto. Incollandolo cosi' finiva nel montato: ogni clip partiva un
+  // secondo prima di dove l'avevi tagliata, e il montato usciva piu' lungo
+  // di quello che avevi fatto (148,9 s diventavano 151,3). Se anche un
+  // pezzo solo ha la rincorsa, si ricodifica e si taglia esatto: meglio
+  // qualche minuto di macchina che un gol che comincia prima.
+  if (veloce && base.some((x) => {
+    if (mediaVia(x)) return (x.dentro || 0) > 0.04;
+    const k = chiavePezzo(idRegDi(q, x), x.dentro, x.fuori);
+    return fs.existsSync(filePezzo(k)) && scartoPezzo(k) > 0.04;
+  })) veloce = false;
   for (let i = 0; i < base.length; i++) {
     const x = base[i];
     const mio = mediaVia(x);
-    const k = chiavePezzo(q.reg, x.dentro, x.fuori);
+    const k = chiavePezzo(idRegDi(q, x), x.dentro, x.fuori);
     const casa = mio || filePezzo(k);
     if (!fs.existsSync(casa)) continue;
     // il buco davanti a questo pezzo: nero, per la durata giusta
@@ -5003,7 +5036,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     // comparire il primo fotogramma del pezzo invece di quello giusto.
     {
       sopra.forEach((x, j) => {
-        const k2 = chiavePezzo(q.reg, x.dentro, x.fuori);
+        const k2 = chiavePezzo(idRegDi(q, x), x.dentro, x.fuori);
         const casa2 = filePezzo(k2);
         if (!fs.existsSync(casa2)) return;
         const off2 = scartoPezzo(k2), dur2 = Math.max(0.2, x.fuori - x.dentro);
@@ -5231,15 +5264,18 @@ async function hlImportaXml(p) {
   if (!trovate.length) {
     throw new Error("nessuno dei file dell'XML sta nell'archivio: " + voci.slice(0, 3).map((v) => v.nome).join(", "));
   }
-  // la partita della sequenza e' quella che compare di piu'. Le clip di
-  // un'ALTRA partita non le sappiamo ancora tenere nella stessa sequenza:
-  // si dicono, non si buttano dentro storte.
+  // UNA SEQUENZA, DIECI PARTITE. La gol collection della stagione prende
+  // da dieci partite diverse: si apre ognuna e ogni pezzo si porta dietro
+  // la sua. Quella "della sequenza" resta la piu' presente, che e' quella
+  // su cui si apre il monitor, ma non comanda piu' sul materiale.
   const rec = Object.keys(conta).sort((a, b) => conta[b] - conta[a])[0] || "";
-  let reg = null;
-  if (rec) {
-    reg = Object.keys(R.reg).map((k) => R.reg[k]).find((x) => x.arch && x.arch.rec === rec);
-    if (!reg) reg = (await archivioApri({ rec: rec })).reg;
+  const regDiRec = {};
+  for (const k of Object.keys(conta)) {
+    let rr = Object.keys(R.reg).map((z) => R.reg[z]).find((x) => x.arch && x.arch.rec === k);
+    if (!rr) { const ap = await archivioApri({ rec: k }); rr = ap && ap.reg; }
+    if (rr) regDiRec[k] = R.reg[rr.id] || rr;
   }
+  const reg = regDiRec[rec] || null;
   if (!reg) throw new Error("i file ci sono ma non riesco ad aprire la partita a cui appartengono");
   const q = { id: nuovoId("s"), reg: reg.id, libera: true,
               titolo: String(p.titolo || "").slice(0, 160) || ("IMPORTATA " + (reg.titolo || "")),
@@ -5255,19 +5291,23 @@ async function hlImportaXml(p) {
                      titolo: v.titolo || d.media });
       return;
     }
-    if (d.rec !== rec) { if (altrove.indexOf(v.nome) < 0) altrove.push(v.nome); return; }
+    const suaReg = regDiRec[d.rec];
+    if (!suaReg) { if (altrove.indexOf(v.nome) < 0) altrove.push(v.nome); return; }
     // IL SECONDO DENTRO IL FILE DIVENTA IL SECONDO DENTRO LA PARTITA, e lo
     // scostamento va preso da DOVE LO PRENDE L'EXPORT — i pezzi della
     // registrazione, non quelli dell'indice. I due possono non coincidere
     // (l'indice ha i minuti dichiarati, la registrazione le durate
     // misurate) e allora la sequenza rientrava spostata di una manciata di
     // secondi: i tagli c'erano tutti, ma un filo in la'.
-    const suo = pezziArch(reg).find((z) => z.chiave === d.chiave);
+    const suo = pezziArch(suaReg).find((z) => z.chiave === d.chiave);
     const da = suo ? (suo.da || 0) : (d.da || 0);
     const dentro = da + v.dentro, fuori = da + v.fuori;
-    q.pezzi.push({ id: nuovoId("p"), dentro: dentro, fuori: fuori, base: dentro,
-                   t0: Math.round(v.t0 * 100) / 100, traccia: "V1", fonte: "xml", mano: true,
-                   titolo: v.titolo || "" });
+    const pz = { id: nuovoId("p"), dentro: dentro, fuori: fuori, base: dentro,
+                 t0: Math.round(v.t0 * 100) / 100, traccia: "V1", fonte: "xml", mano: true,
+                 titolo: v.titolo || "" };
+    // la sua partita, se non e' quella della sequenza
+    if (suaReg.id !== reg.id) { pz.reg = suaReg.id; pz.partita = suaReg.titolo || ""; }
+    q.pezzi.push(pz);
   });
   if (!q.pezzi.length) throw new Error("i pezzi dell'XML non sono di questa partita");
   q.pezzi.sort((a, b) => (a.t0 || 0) - (b.t0 || 0));
@@ -5275,8 +5315,9 @@ async function hlImportaXml(p) {
   scrivi(); annuncia(0, "clip");
   console.log("[clip] XML importato su \"" + (reg.titolo || reg.id) + "\": " + q.pezzi.length + " clip, " +
               mancanti.length + " file non trovati");
+  const partite = regDellaSeq(q).map((id) => (R.reg[id] || {}).titolo || id);
   return { ok: true, seq: q, quante: q.pezzi.length, mancanti: mancanti, altrove: altrove,
-           partita: reg.titolo || "", clipNellXml: voci.length };
+           partita: reg.titolo || "", partite: partite, clipNellXml: voci.length };
 }
 
 async function hlEsportaPremiere(q, percorso, volume) {
@@ -5300,15 +5341,33 @@ async function hlEsportaPremiere(q, percorso, volume) {
   const vol = String(volume || "").trim().replace(/\/+$/, "");
   // sulla NAS le cartelle ce le ha anche il montatore: si scrive la chiave
   // intera. Altrove il file ce l'ha scaricato lui, e il nome basta.
-  const suNas = !!(r && r.arch && (magazzinoDi2(r.arch.bucket) || {}).cartella);
-  const sotto = (chiave) => (suNas ? chiave : path.basename(chiave));
+  const suNasDi = (rx) => !!(rx && rx.arch && (magazzinoDi2(rx.arch.bucket) || {}).cartella);
+  const suNas = suNasDi(r);
+  const sotto = (chiave, rx) => (suNasDi(rx || r) ? chiave : path.basename(chiave));
   const cartellaVia = vol ? vol + "/" : (via.indexOf("/") >= 0 ? via.slice(0, via.lastIndexOf("/") + 1) : "");
   const via1 = (vol && r && r.arch && !c1 && !percorso) ? vol + "/" + sotto(r.arch.chiave) : via;
-  const dovE = (t) => {
+  // OGNI PEZZO IL SUO FILE, anche di un'altra partita. In una gol
+  // collection i pezzi arrivano da dieci registrazioni: l'XML deve
+  // dichiarare dieci file, e ogni taglio si conta dall'inizio del SUO.
+  const dovE = (t, pz) => {
+    const rx = pz ? regDi(q, pz) : r;
+    if (pz && pz.media) {
+      return { id: "casa-" + pz.media.replace(/[^A-Za-z0-9]/g, "-"), nome: path.basename(pz.media),
+               via: (vol ? vol + "/" : "") + path.basename(pz.media), da: 0, durata: 0 };
+    }
+    if (rx && rx.id !== q.reg) {
+      const pzz = pezziArch(rx);
+      let i = 0; pzz.forEach((z, k) => { if ((z.da || 0) <= t) i = k; });
+      const y = pzz[i] || pzz[0];
+      if (!y) return { id: "file-1", nome: nome, via: via1, da: 0 };
+      const base = rx.arch ? (vol ? vol + "/" : "") + sotto(y.chiave, rx) : path.join(cartellaReg(rx.id), "integrale.mp4");
+      return { id: "reg-" + rx.id + "-" + (i + 1), nome: path.basename(y.chiave || "integrale.mp4"),
+               via: base, da: y.da || 0, durata: rx.durata || 0 };
+    }
     if (!arch) return { id: "file-1", nome: nome, via: via1, da: 0 };
     const x = pezzoAl(r, t) || { i: 0, pezzo: arch[0], da: 0 };
     return { id: "file-" + (x.i + 1), nome: path.basename(x.pezzo.chiave),
-             via: cartellaVia + sotto(x.pezzo.chiave), da: x.da || 0 };
+             via: cartellaVia + sotto(x.pezzo.chiave, r), da: x.da || 0 };
   };
   const info = c1 ? await probe(integrale) : {};
   const segs = segmenti(q.reg);
@@ -5361,19 +5420,19 @@ async function hlEsportaPremiere(q, percorso, volume) {
 
   let video = "", marker = "", pos = 0;
   const gia = {};
-  const schedaFile = (t) => {
-    const d = dovE(t || 0);
+  const schedaFile = (t, pz) => {
+    const d = dovE(t || 0, pz);
     if (gia[d.id]) return '<file id="' + d.id + '"/>';
     gia[d.id] = true;
     return '<file id="' + d.id + '"><name>' + xmlEsc(d.nome) + '</name><pathurl>' + xmlEsc(indirizzo(d.via)) + '</pathurl>' + rate +
-      '<duration>' + durataFile + '</duration>' + tc +
+      '<duration>' + (d.durata ? frame(d.durata) : durataFile) + '</duration>' + tc +
       '<media><video><samplecharacteristics><width>1920</width><height>1080</height>' +
       '</samplecharacteristics></video><audio><channelcount>2</channelcount></audio></media></file>';
   };
 
   q.pezzi.forEach((x, i) => {
     // il taglio si conta dall'inizio del SUO file, non della partita
-    const dv = dovE(x.dentro);
+    const dv = dovE(x.dentro, x);
     const inF = frame(x.dentro - dv.da), outF = frame(x.fuori - dv.da);
     const durF = Math.max(1, outF - inF);
     const start = frame(x.t0 || 0), end = start + durF;
@@ -5390,14 +5449,14 @@ async function hlEsportaPremiere(q, percorso, volume) {
     });
     video += '<clipitem id="v' + i + '"><name>' + n2 + '</name><duration>' + durF + '</duration>' + rate +
              '<start>' + start + '</start><end>' + end + '</end><in>' + inF + '</in><out>' + outF + '</out>' +
-             schedaFile(x.dentro) + '<sourcetrack><mediatype>video</mediatype><trackindex>1</trackindex></sourcetrack>' +
+             schedaFile(x.dentro, x) + '<sourcetrack><mediatype>video</mediatype><trackindex>1</trackindex></sourcetrack>' +
              (suoi.length ? link : "") + '</clipitem>';
     marker += '<marker><name>' + n2 + '</name><comment>' + xmlEsc(x.fonte || "") +
               '</comment><in>' + start + '</in><out>-1</out></marker>';
   });
 
   (q.audio || []).forEach((a) => {
-    const da = dovE(a.dentro).da;
+    const da = dovE(a.dentro, (q.pezzi || []).filter((y) => y.id === a.legato)[0]).da;
     const inF = frame(a.dentro - da), outF = frame(a.fuori - da);
     const durF = Math.max(1, outF - inF);
     const start = frame(a.t0 || 0), end = start + durF;
@@ -5416,7 +5475,7 @@ async function hlEsportaPremiere(q, percorso, volume) {
     audioTr[k] += '<clipitem id="' + a.id + '"><name>' + xmlEsc(a.titolo || "audio") + '</name>' +
       '<duration>' + durF + '</duration>' + rate +
       '<start>' + start + '</start><end>' + end + '</end><in>' + inF + '</in><out>' + outF + '</out>' +
-      (a.muto ? '<enabled>FALSE</enabled>' : '') + schedaFile(a.dentro) +
+      (a.muto ? '<enabled>FALSE</enabled>' : '') + schedaFile(a.dentro, (q.pezzi || []).filter((y) => y.id === a.legato)[0]) +
       '<sourcetrack><mediatype>audio</mediatype><trackindex>' + sorg + '</trackindex></sourcetrack>' +
       link + livello(a.gain || 0) + '</clipitem>';
   });
@@ -9002,7 +9061,7 @@ async function rifinisciGol(idSeq) {
     // cose: dove e' stato fatto il gol e dove il gioco riparte. Sul pezzo
     // gia' in casa costa solo CPU.
     let campo = [], base = 0;
-    const k2 = chiavePezzo(q.reg, pz.dentro, pz.fuori);
+    const k2 = chiavePezzo(idRegDi(q, pz), pz.dentro, pz.fuori);
     const casa = filePezzo(k2);
     if (fs.existsSync(casa)) {
       campo = await guardaIlCampo(casa, 0, 200, 1);
@@ -13108,7 +13167,7 @@ const AZIONI = {
       const suoP = a.legato ? (q.pezzi || []).filter((y) => y.id === a.legato)[0] : null;
       const mioW = mediaVia(suoP);
       const k = mioW ? ("media-" + path.basename(mioW) + "-" + a.dentro.toFixed(2) + "-" + a.fuori.toFixed(2)).replace(/[^A-Za-z0-9._-]/g, "_")
-                     : chiavePezzo(q.reg, a.dentro, a.fuori);
+                     : chiavePezzo(idRegDi(q, suoP || a), a.dentro, a.fuori);
       const via = path.join(cartellaOnde(), k + ".json");
       if (fs.existsSync(via)) { try { fuori[a.id] = JSON.parse(fs.readFileSync(via, "utf8")); } catch (e) {} continue; }
       if (fatte >= 4) { mancano++; continue; }      // le altre al giro dopo
