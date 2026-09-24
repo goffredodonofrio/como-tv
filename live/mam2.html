@@ -314,7 +314,16 @@
   .presa.alto{top:-4px;bottom:auto;}
   .presa.lato{left:auto;right:-4px;top:0;bottom:0;width:8px;height:auto;cursor:col-resize;z-index:4;}
   .ed-tl .nomi div{display:flex;align-items:center;padding:0 10px;font-family:'Mazzard',sans-serif;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ivory2);border-bottom:1px solid var(--riga);}
-  .ed-tl .nomi .r{height:22px;color:var(--fumo);} .ed-tl .nomi .st{height:var(--st,26px);} .ed-tl .nomi .g{height:var(--g,28px);} .ed-tl .nomi .v{flex:1 1 auto;height:auto;min-height:64px;} .ed-tl .nomi .a{height:var(--a,30px);}
+  .ed-tl .nomi .r{height:22px;color:var(--fumo);} .ed-tl .nomi .st{height:var(--st,26px);} .ed-tl .nomi .g{height:var(--g,28px);} .ed-tl .nomi .v{flex:1 1 auto;height:auto;min-height:64px;} .ed-tl .nomi .a{height:var(--a,30px);gap:4px;}
+  .ed-tl .nomi .a b{font-weight:700;font-size:10px;letter-spacing:.1em;color:var(--oro2);}
+  .ed-tl .nomi .a i{font-style:normal;font-size:9px;font-family:'Mazzard',sans-serif;padding:1px 4px;border-radius:3px;
+    border:1px solid var(--riga2);color:var(--fumo);cursor:pointer;line-height:1.5;}
+  .ed-tl .nomi .a i:hover{border-color:var(--oro2);color:var(--oro2);}
+  .ed-tl .nomi .a i.on{background:var(--oro);border-color:var(--oro);color:var(--navy);font-weight:700;}
+  .ed-tl .nomi .a i.on.solo{background:#7CD992;border-color:#7CD992;color:var(--navy);}
+  .ed-tl .nomi .a i.on.blocco{background:var(--rosso);border-color:var(--rosso);color:#fff;}
+  .ed-tl .nomi .a.vuota b{color:var(--fumo);}
+  .ed-corsia.a.mira{background:rgba(201,162,75,.12);box-shadow:0 0 0 1px var(--oro) inset;}
   .ed-pista{position:relative;overflow:hidden;cursor:default;user-select:none;display:flex;flex-direction:column;min-height:min-content;}
   .ed-infila{position:absolute;top:0;bottom:0;width:3px;background:var(--oro);box-shadow:0 0 6px var(--oro);pointer-events:none;}
   .ed-magnete{position:absolute;top:0;bottom:0;width:1px;background:#7CD992;box-shadow:0 0 5px #7CD992;pointer-events:none;z-index:4;}
@@ -520,13 +529,12 @@
         <button id="eTasti" title="i tasti, come in Premiere">⌨ Tasti</button>
       </div>
       <div class="ed-tl">
-        <div class="nomi" id="edNomi"><div class="r"></div><div class="st">Sottotitoli<span class="presa" data-alta="st"></span></div><div class="g" title="V2: grafiche PNG sopra il video">Grafiche<span class="presa" data-alta="g"></span></div><div class="v">Video</div><div class="a" title="l'audio legato segue il video; staccato si sposta da solo (in anteprima non si sente)">Audio<span class="presa alto" data-alta="a" data-verso="-1"></span></div><span class="presa lato" id="presaNomi" title="larghezza della colonna"></span></div>
+        <div class="nomi" id="edNomi"><div class="r"></div><div class="st">Sottotitoli<span class="presa" data-alta="st"></span></div><div class="g" title="V2: grafiche PNG sopra il video">Grafiche<span class="presa" data-alta="g"></span></div><div class="v">Video</div><span class="presa lato" id="presaNomi" title="larghezza della colonna"></span></div>
         <div class="ed-pista" id="pista">
           <div class="ed-corsia r" id="cRig"></div>
           <div class="ed-corsia st" id="cSt"></div>
           <div class="ed-corsia g" id="cG"></div>
           <div class="ed-corsia v" id="cV"></div>
-          <div class="ed-corsia a" id="cA"></div>
           <div class="ed-testina" id="eTestina" hidden></div>
         </div>
       </div>
@@ -1336,7 +1344,8 @@
   function X(t){ var p = el("pista"), w = p.clientWidth || 800; return (t - LENTE.a) / (LENTE.b - LENTE.a) * w; }
   function tDiX(px){ var p = el("pista"), w = p.clientWidth || 800; return LENTE.a + px / w * (LENTE.b - LENTE.a); }
   function disegnaTl(){
-    var rig = el("cRig"), cv = el("cV"), ca = el("cA"), cst = el("cSt"), cg = el("cG"), w = el("pista").clientWidth || 800;
+    var corsie = assicuraCorsie();
+    var rig = el("cRig"), cv = el("cV"), cst = el("cSt"), cg = el("cG"), w = el("pista").clientWidth || 800;
     var tot = durSeq(), span = Math.max(1, LENTE.b - LENTE.a), pxSec = w / span;
     var passi = [1,2,5,10,15,30,60,120,300,600,900,1800], passo = passi.find(function(x){ return x * pxSec >= 90; }) || 3600, sotto = passo / 5;
     var h = "";
@@ -1345,7 +1354,8 @@
     if (INS !== null) h += '<span class="rin" style="left:' + X(INS) + 'px" title="entrata della sequenza ' + tc(INS) + '"></span>';
     if (OUTS !== null) h += '<span class="rout" style="left:' + X(OUTS) + 'px" title="uscita della sequenza ' + tc(OUTS) + '"></span>';
     rig.innerHTML = h;
-    var hv = "", ha = "", hs = "", acc = 0;
+    var hv = "", haT = {}, hs = "", acc = 0;
+    corsie.forEach(function(n){ haT[n] = ""; });
     PZ.forEach(function(x, i){
       var d = x.fuori - x.dentro, a = acc, b = acc + d; acc += d;
       if (TRASC && TRASC.i === i && TRASC.tipo !== "muovi") { a = TRASC.a; b = TRASC.b; }
@@ -1355,17 +1365,21 @@
       hv += '<div class="ed-pezzo' + (scelto(x.id) ? " sel" : "") + (ORA.i === i ? " ora" : "") + '" data-i="' + i + '" data-posa="' + esc(x.dentro) + '" style="left:' + xa + 'px;width:' + ww + 'px' + (po && po !== "\u2026" ? ";--posa:url(\'" + po + "\')" : "") + '"><span class="cima">' + esc(x.titolo || "pezzo") + '</span><span class="mm">' + tcBreve(x.dentro) + ' \u2192 ' + tcBreve(x.fuori) + '</span><span class="bordo sx" data-lato="sx"></span><span class="bordo dx" data-lato="dx"></span></div>';
       // l'audio legato sta sotto il suo video; se e' stato tolto, sotto c'e' silenzio
       var au = AUD.filter(function(z){ return z.legato === x.id; })[0];
-      if (au) ha += audioHtml(au, xa, ww);
+      if (au) haT[au.traccia || "A1"] = (haT[au.traccia || "A1"] || "") + audioHtml(au, xa, ww);
       DETTOE.forEach(function(s){ if (s.b <= x.dentro || s.a >= x.fuori) return; var sa = a + Math.max(0, s.a - x.dentro), sb = a + Math.min(d, s.b - x.dentro); if (sb < LENTE.a || sa > LENTE.b) return; var t2 = (s.l || "it") === LINGUAE ? s.x : (s.y && s.ya === LINGUAE ? s.y : s.x); hs += '<div class="ed-st' + (s.m ? " mod" : "") + '" data-k="' + esc(s.k || "") + '" data-t="' + sa + '" style="left:' + Math.max(0, X(sa)) + 'px;width:' + Math.max(4, Math.min(w, X(sb)) - Math.max(0, X(sa))) + 'px" title="' + esc(t2) + '">' + esc(t2) + '</div>'; });
     });
     // l'audio staccato: a t0, per la sua durata, dove lo lasci
-    AUD.forEach(function(au){ if (au.legato) return; var a = au.t0 || 0, b = a + Math.max(0.2, (au.fuori - au.dentro)); if (TRASC && TRASC.tipo === "a-muovi" && TRASC.a_id === au.id) { a = TRASC.a; b = TRASC.b; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); ha += audioHtml(au, xa, Math.max(6, xb - xa), true); });
+    AUD.forEach(function(au){ if (au.legato) return; var a = au.t0 || 0, b = a + Math.max(0.2, (au.fuori - au.dentro)); if (TRASC && TRASC.tipo === "a-muovi" && TRASC.a_id === au.id) { a = TRASC.a; b = TRASC.b; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); haT[au.traccia || "A1"] = (haT[au.traccia || "A1"] || "") + audioHtml(au, xa, Math.max(6, xb - xa), true); });
     var hg = "";
     GRAF.forEach(function(g){ var a = g.dentro, b = g.fuori; if (TRASC && TRASC.g_id === g.id && TRASC.tipo !== "g-muovi") { a = TRASC.a; b = TRASC.b; } else if (TRASC && TRASC.g_id === g.id && TRASC.tipo === "g-muovi" && TRASC.mosso) { a = TRASC.a; b = TRASC.b; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); hg += '<div class="ed-graf' + (SELG === g.id ? " sel" : "") + '" data-g="' + esc(g.id) + '" style="left:' + xa + 'px;width:' + Math.max(8, xb - xa) + 'px" title="' + esc(g.nome || "grafica") + ' · ' + tcBreve(a) + ' → ' + tcBreve(b) + '"><span class="bordo sx" data-lato="g-sx"></span>' + esc(g.nome || "grafica") + '<span class="bordo dx" data-lato="g-dx"></span></div>'; });
     if (AGGANCIO !== null && TRASC) hv += '<div class="ed-magnete" style="left:' + X(AGGANCIO) + 'px"></div>';
     if (TRASC && TRASC.tipo === "muovi" && TRASC.mosso && TRASC.dove !== undefined && TRASC.dove !== TRASC.i)
       hv += '<div class="ed-infila" style="left:' + X(inizioDi(TRASC.dove + (TRASC.dove > TRASC.i ? 1 : 0))) + 'px"></div>';
-    cv.innerHTML = hv || '<div class="ed-vuoto">Sequenza vuota.</div>'; ca.innerHTML = ha; cst.innerHTML = hs; cg.innerHTML = hg;
+    cv.innerHTML = hv || '<div class="ed-vuoto">Sequenza vuota.</div>'; cst.innerHTML = hs; cg.innerHTML = hg;
+    corsie.forEach(function(n){
+      var c = el("pista").querySelector('.ed-corsia.a[data-tr="' + n + '"]');
+      if (c) c.innerHTML = haT[n] || "";
+    });
     el("eTot").textContent = " / " + tc(tot);
     posePezzi();
   }
@@ -1421,6 +1435,62 @@
     };
     giro();
   }
+  // ══════════ LE TRACCE AUDIO ══════════
+  //  Il ponte ne tiene quattro, ognuna con muto, solo, blocco e volume, e
+  //  l'esportazione le rispetta davvero: ogni pezzo esce sulla sua traccia.
+  //  In pagina se ne vedono quelle che hanno qualcosa, piu' una libera in
+  //  coda, cosi' c'e' sempre dove posare quello che si stacca.
+  //  Il V2 video no: l'export incolla tutti i pezzi in fila, e una seconda
+  //  traccia video darebbe un montaggio che poi non esce come si vede.
+  var TRACCE_AU = ["A1", "A2", "A3", "A4"], CORSIE_FIRMA = "";
+  function tracceUsate(){
+    var usate = { A1: 1 };
+    AUD.forEach(function(a){ usate[a.traccia || "A1"] = 1; });
+    var lista = TRACCE_AU.filter(function(n){ return usate[n]; });
+    var libera = TRACCE_AU.filter(function(n){ return !usate[n]; })[0];
+    if (libera) lista.push(libera);
+    return lista;
+  }
+  function assicuraCorsie(){
+    var lista = tracceUsate(), tr = (SEQ && SEQ.tracce) || {};
+    var piena = {}; AUD.forEach(function(a){ piena[a.traccia || "A1"] = 1; });
+    var firma = lista.map(function(n){ var t = tr[n] || {};
+      return n + (t.muto ? "m" : "") + (t.solo ? "s" : "") + (t.bloccata ? "b" : "") + (t.gain || 0) + (piena[n] ? "x" : ""); }).join("|");
+    if (firma === CORSIE_FIRMA) return lista;
+    CORSIE_FIRMA = firma;
+    var nomi = el("edNomi"), pista = el("pista");
+    Array.prototype.forEach.call(nomi.querySelectorAll(".a"), function(n){ if (lista.indexOf(n.dataset.tr) < 0) n.remove(); });
+    Array.prototype.forEach.call(pista.querySelectorAll(".ed-corsia.a"), function(n){ if (lista.indexOf(n.dataset.tr) < 0) n.remove(); });
+    lista.forEach(function(n, k){
+      var d = nomi.querySelector('.a[data-tr="' + n + '"]');
+      if (!d) { d = document.createElement("div"); d.className = "a"; d.dataset.tr = n; }
+      nomi.insertBefore(d, el("presaNomi"));
+      var c = pista.querySelector('.ed-corsia.a[data-tr="' + n + '"]');
+      if (!c) { c = document.createElement("div"); c.className = "ed-corsia a"; c.dataset.tr = n; }
+      pista.insertBefore(c, el("eTestina"));
+      var t = tr[n] || {};
+      d.classList.toggle("vuota", !piena[n]);
+      d.title = n === "A1" ? "l'audio legato segue il suo video; staccato si sposta da solo" : "trascina qui un audio per spostarcelo";
+      d.innerHTML = '<b>' + n + '</b>' +
+        '<i class="muto' + (t.muto ? " on" : "") + '" data-tr="' + n + '" data-fai="muto" title="muto">M</i>' +
+        '<i class="solo' + (t.solo ? " on" : "") + '" data-tr="' + n + '" data-fai="solo" title="solo: spegne tutte le altre">S</i>' +
+        '<i class="blocco' + (t.bloccata ? " on" : "") + '" data-tr="' + n + '" data-fai="bloccata" title="bloccata: non si tocca">&#9679;</i>' +
+        '<i data-tr="' + n + '" data-fai="gain" title="volume di tutta la traccia">' + (t.gain ? (t.gain > 0 ? "+" : "") + t.gain : "dB") + '</i>' +
+        (k === 0 ? '<span class="presa alto" data-alta="a" data-verso="-1"></span>' : '');
+      if (k === 0) presaSu(d.querySelector(".presa"), "a", "y", -1);
+    });
+    return lista;
+  }
+  el("edNomi").addEventListener("click", function(e){
+    var i = e.target.closest("i[data-fai]"); if (!i || !SEQ) return;
+    var n = i.dataset.tr, t = ((SEQ.tracce || {})[n] || {}), c = { tipo:"clip-hl-audio", seq: SEQ.id, azione:"traccia", traccia: n };
+    if (i.dataset.fai === "gain") {
+      var g = window.prompt("Volume della traccia " + n + " in dB (\u221260 \u2026 +12):", String(t.gain || 0));
+      if (g === null) return; c.gain = +g;
+    } else c[i.dataset.fai] = !t[i.dataset.fai];
+    post(c).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); });
+  });
+  function traccaBloccata(n){ return !!(((SEQ && SEQ.tracce) || {})[n || "A1"] || {}).bloccata; }
   // ── IL MAGNETE. Quello che cerchi quasi sempre e' un bordo che combacia:
   //    con un altro stacco, con la testina, con l'entrata o l'uscita. Senza,
   //    il montaggio diventa un lavoro di mira al pixel.
@@ -1501,7 +1571,16 @@
     var pz = e.target.closest(".ed-pezzo"), bordo = e.target.closest(".bordo"), st = e.target.closest(".ed-st"), gf = e.target.closest(".ed-graf"), ad = e.target.closest(".ed-audio");
     if (st) { vaiTempo(+st.dataset.t, false); return; }
     if (gf) { var g = GRAF.filter(function(z){ return z.id === gf.dataset.g; })[0]; if (!g) return; SELG = g.id; SELA = null; TRASC = { tipo: bordo ? bordo.dataset.lato : "g-muovi", g_id: g.id, x0: e.clientX, a: g.dentro, b: g.fuori, d0: g.dentro, f0: g.fuori, mosso: false }; e.preventDefault(); disegnaTl(); return; }
-    if (ad) { var au = AUD.filter(function(z){ return z.id === ad.dataset.a; })[0]; if (!au) return; SELA = au.id; SELG = null; if (!au.legato) TRASC = { tipo: "a-muovi", a_id: au.id, x0: e.clientX, a: au.t0 || 0, b: (au.t0 || 0) + (au.fuori - au.dentro), t00: au.t0 || 0, mosso: false }; e.preventDefault(); disegnaTl(); return; }
+    if (ad) {
+      var au = AUD.filter(function(z){ return z.id === ad.dataset.a; })[0]; if (!au) return;
+      SELA = au.id; SELG = null;
+      if (traccaBloccata(au.traccia)) { avviso("err", "La traccia " + (au.traccia || "A1") + " e' bloccata."); disegnaTl(); return; }
+      // anche l'audio legato si prende: non per spostarlo nel tempo (quello
+      // lo scollegherebbe dal suo video) ma per portarlo su un'altra traccia
+      TRASC = { tipo: "a-muovi", a_id: au.id, legato: !!au.legato, trDa: au.traccia || "A1", trA: au.traccia || "A1",
+                x0: e.clientX, y0: e.clientY, a: au.t0 || 0, b: (au.t0 || 0) + (au.fuori - au.dentro), t00: au.t0 || 0, mosso: false };
+      e.preventDefault(); disegnaTl(); return;
+    }
     SELG = null; SELA = null;
     if (!pz) { vaiTempo(tDiX(e.clientX - el("pista").getBoundingClientRect().left), false); return; }
     var i = +pz.dataset.i, x = PZ[i]; if (e.shiftKey || e.metaKey || e.ctrlKey) scegli(x.id, true); else if (!scelto(x.id)) scegli(x.id, false);
@@ -1517,7 +1596,18 @@
       if (TRASC.tipo === "g-sx") { TRASC.a = Math.max(0, Math.min(TRASC.f0 - 0.4, TRASC.d0 + ds)); }
       else if (TRASC.tipo === "g-dx") { TRASC.b = Math.max(TRASC.d0 + 0.4, Math.min(tot2, TRASC.f0 + ds)); }
       else if (TRASC.tipo === "g-muovi") { var dur2 = TRASC.f0 - TRASC.d0; TRASC.a = Math.max(0, Math.min(tot2 - dur2, aggancia(TRASC.d0 + ds, -1))); TRASC.b = TRASC.a + dur2; }
-      else if (TRASC.tipo === "a-muovi") { var dur3 = TRASC.b - TRASC.a; TRASC.a = Math.max(0, aggancia(TRASC.t00 + ds, -1)); TRASC.b = TRASC.a + dur3; }
+      else if (TRASC.tipo === "a-muovi") {
+        // su quale corsia sta il mouse: e' li' che finira'
+        var sotto = document.elementFromPoint(e.clientX, e.clientY);
+        var lane = sotto && sotto.closest ? sotto.closest(".ed-corsia.a") : null;
+        var nuova = lane ? lane.dataset.tr : TRASC.trA;
+        if (nuova !== TRASC.trA) {
+          TRASC.trA = nuova;
+          Array.prototype.forEach.call(el("pista").querySelectorAll(".ed-corsia.a"),
+            function(c){ c.classList.toggle("mira", c.dataset.tr === nuova && nuova !== TRASC.trDa); });
+        }
+        if (!TRASC.legato) { var dur3 = TRASC.b - TRASC.a; TRASC.a = Math.max(0, aggancia(TRASC.t00 + ds, -1)); TRASC.b = TRASC.a + dur3; }
+      }
       disegnaTl(); return;
     }
     var x = PZ[TRASC.i], durMax = REGE ? REGE.durata : 99999;
@@ -1546,7 +1636,19 @@
     if (!TRASC) return;
     var tr = TRASC; TRASC = null; AGGANCIO = null; el("pista").style.cursor = "";
     if (tr.g_id) { if (!tr.mosso) { disegnaTl(); return; } post({ tipo:"clip-hl-grafica", seq: SEQ.id, grafica: tr.g_id, dentro: Math.round(tr.a * 100) / 100, fuori: Math.round(tr.b * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); }); return; }
-    if (tr.a_id) { if (!tr.mosso) { disegnaTl(); return; } post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"sposta", audio: tr.a_id, t0: Math.round(tr.a * 1000) / 1000 }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); }); return; }
+    if (tr.a_id) {
+      Array.prototype.forEach.call(el("pista").querySelectorAll(".ed-corsia.a"), function(c){ c.classList.remove("mira"); });
+      var cambiaTraccia = tr.trA && tr.trA !== tr.trDa;
+      if (!tr.mosso && !cambiaTraccia) { disegnaTl(); return; }
+      var c2 = { tipo:"clip-hl-audio", seq: SEQ.id, azione:"sposta", audio: tr.a_id };
+      if (cambiaTraccia) c2.traccia = tr.trA;
+      // spostarlo nel tempo lo scollega dal video: si fa solo se lo si e'
+      // davvero mosso in orizzontale, e solo se era gia' staccato
+      if (!tr.legato && tr.mosso) c2.t0 = Math.round(tr.a * 1000) / 1000;
+      post(c2).then(function(d){ ricaricaSeq(d.seq); if (cambiaTraccia) avviso("ok", "Audio su " + tr.trA + "."); })
+        .catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
+      return;
+    }
     var x = PZ[tr.i]; if (!x) return;
     if (!tr.mosso) { vaiA(tr.i, 0, false); disegnaEditor(); return; }
     if (tr.tipo === "sx" && tr.nuovoDentro !== undefined) post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: x.id, dentro: Math.round(tr.nuovoDentro * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
