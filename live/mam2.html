@@ -1030,6 +1030,24 @@
     if (el("bTutteAz")) el("bTutteAz").addEventListener("click", function(){ TAB.forEach(function(x, k){ SCELTE[k] = true; }); disegnaScheda(el("cercaS").value); });
     if (el("bGolAz")) el("bGolAz").addEventListener("click", function(){ SCELTE = {}; TAB.forEach(function(x, k){ if (x.gol || /gol/i.test(x.tag || x.tipo || "")) SCELTE[k] = true; }); disegnaScheda(el("cercaS").value); });
     if (el("bMonta")) el("bMonta").addEventListener("click", montaScelte);
+    // IL MONTAGGIO SCRITTO A PAROLE: la stessa domanda della ricerca, ma
+    // invece di un elenco esce una sequenza gia' pronta. Non e' un montato
+    // finito, e' il grezzo da cui si parte.
+    if (el("bRicetta")) el("bRicetta").addEventListener("click", function(){
+      if (!ASSET || !ASSET.id) return avviso("err", "Apri prima una partita.");
+      var cosa = window.prompt("Cosa monto?\n\nEsempi: \u201ci gol\u201d \u00b7 \u201cle parate\u201d \u00b7 \u201cle occasioni di Paz\u201d \u00b7 \u201ccartellini\u201d", "i gol");
+      if (!cosa) return;
+      var quanti = window.prompt("Quanti secondi per azione? (quattro prima, il resto dopo)", "12");
+      if (quanti === null) return;
+      var d = Math.max(5, +quanti || 12);
+      avviso("ok", "Monto \u201c" + esc(cosa) + "\u201d\u2026");
+      post({ tipo:"clip-hl-ricetta", reg: ASSET.id, cosa: cosa, prima: 4, dopo: d - 4, quante: 30 })
+        .then(function(j){
+          avviso("ok", j.quante + (j.quante === 1 ? " azione montata" : " azioni montate") + (j.trovate > j.quante ? " di " + j.trovate : "") + ".");
+          setTimeout(function(){ location.href = "mam2.html?seq=" + encodeURIComponent(j.seq.id); }, 800);
+        })
+        .catch(function(er){ avviso("err", esc(er.message)); });
+    });
     aggiornaMonta();
   }
   function blocco(id, nome, n, dentro, chiuso){

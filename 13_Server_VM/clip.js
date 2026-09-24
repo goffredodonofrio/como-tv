@@ -11506,6 +11506,44 @@ async function cantoProva() {
   return fuori;
 }
 
+// ── LA DOMANDA SCRITTA A PAROLE ───────────────────────────────────────
+//  "tutti i gol di Douvikas" si spezza in due: i TIPI (gol) e le PAROLE
+//  (douvikas). I tipi si cercano in tipo ed etichetta, che il titolo
+//  l'hanno gia' classificato; le parole nel testo. Stava dentro la ricerca:
+//  adesso lo usa anche chi monta da una ricetta, cosi' la stessa domanda da'
+//  le stesse azioni in tutti e due i posti.
+const FERMA_DOMANDA = new Set("tutti tutte tutto i il lo la le gli di del della dello dei degli delle da dal dalla a al alla ai alle in nel nella con per e ed o che un una uno su sul sulla mi fammi trova cerca vedere vedi".split(" "));
+const TIPI_DOMANDA = [
+    [/^(gol|goal|goals|rete|reti|marcatur\w*|segna\w*|marc\w+)$/, /\b(gol|goal|rete|autogol)\b/i],
+    [/^(assist)$/, /\bassist/i],
+    [/^(rigor\w*|penalty|dischetto)$/, /\brigor|\bpenalty/i],
+    [/^(parat\w*|miracol\w*|portier\w*)$/, /\bparat/i],
+    [/^(pal[oi]|travers\w*|legn\w*)$/, /\b(palo|pali|traversa)\b/i],
+    [/^(ammoni\w*|giall\w*|cartellin\w*|booking)$/, /\b(ammoni|cartellin|giall)/i],
+    [/^(espuls\w*|ross[oi])$/, /\bespuls|\brosso\b/i],
+    [/^(cambi\w*|sostituz\w*)$/, /\bsostituz|\bcambio\b/i],
+    [/^(occasion\w*|tir[oi]|conclusion\w*|chance)$/, /\boccasion|\btiro\b/i],
+    [/^(skill|dribbling|giocat[ae]|tunnel|tacco)$/, /\bskill/i],
+    [/^(var|annullat\w*)$/, /\bannullat|\bvar\b/i],
+    [/^(boat\w*|esultanz\w*)$/, /\bboato|\besult/i],
+    [/^(angol[oi]|corner)$/, /\b(angolo|corner)\b/i],
+    [/^(punizion\w*)$/, /\bpunizion/i]
+  ];
+function chiaviDellaDomanda(q) {
+  const tipi = [], parole = [];
+  String(q || "").toLowerCase().split(/\s+/).forEach((w0) => {
+    const w = piattaMinuscola(w0); if (!w || FERMA_DOMANDA.has(w)) return;
+    const t = TIPI_DOMANDA.find((x) => x[0].test(w)); if (t) tipi.push(t[1]); else parole.push(w);
+  });
+  return { tipi, parole };
+}
+function combaciaRiga(x, titoloPartita, tipi, parole) {
+  const soggetto = [x.tipo, x.tag].join(" ") || x.titolo;
+  if (tipi.length && !tipi.every((re) => re.test(soggetto))) return false;
+  const testo = piattaMinuscola([x.titolo, x.giocatore, x.squadra, x.dettaglio, titoloPartita].join(" "));
+  return parole.every((w) => testo.indexOf(w) >= 0);
+}
+
 const AZIONI = {
   "clip-canto-prova": cantoProva,
   "clip-avvia": clipAvvia,
@@ -11800,30 +11838,55 @@ const AZIONI = {
   // palo, cambio, assist...) diventano un filtro sul tipo; il resto sono
   // nomi e si cercano nel titolo dell'azione, nel giocatore, nella squadra.
   // I tabellini si tengono in memoria un minuto: farli costa.
+  // ══════════ IL MONTAGGIO SCRITTO A PAROLE ══════════
+  //  "tutti i gol", "le parate", "le occasioni di Douvikas": la stessa
+  //  domanda della ricerca, ma invece di un elenco esce una sequenza gia'
+  //  pronta. Non e' un montato finito — e' il grezzo da cui si parte, che e'
+  //  il pezzo di lavoro che nessuno ha voglia di fare a mano venti volte.
+  //
+  //  UNA SEQUENZA STA DENTRO UNA PARTITA SOLA: e' cosi' che il ponte la
+  //  tiene (q.reg), e l'export scarica i pezzi da quella registrazione. Una
+  //  ricetta che attraversa piu' partite ("tutti i gol di Douvikas della
+  //  stagione") vuole che ogni pezzo si porti dietro la sua registrazione:
+  //  e' un lavoro suo, e finche' non c'e' meglio non prometterlo.
+  "clip-hl-ricetta": (p) => {
+    const r = R.reg[String(p.reg || "")];
+    if (!r) throw new Error("registrazione sconosciuta");
+    const cosa = String(p.cosa || "").trim();
+    const { tipi, parole } = chiaviDellaDomanda(cosa);
+    if (!tipi.length && !parole.length) throw new Error("dimmi cosa montare: \"i gol\", \"le parate\", \"le occasioni di Paz\"");
+    const prima = num(p.prima, 0, 60, 4), dopo = num(p.dopo, 0.5, 120, 8);
+    const quante = num(p.quante, 1, 60, 20);
+    const durata = r.durata || durataRegistrata(r.id) || MAX_SECONDI;
+    const trovate = (tabellino(r).righe || [])
+      .filter((x) => combaciaRiga(x, r.titolo, tipi, parole))
+      .sort((a, b) => a.t - b.t);
+    if (!trovate.length) throw new Error("in questa partita non c'e' niente che risponda a \"" + cosa + "\"");
+    const scelte = trovate.slice(0, quante);
+    const q = {
+      id: nuovoId("s"), reg: r.id,
+      titolo: String(p.titolo || "").slice(0, 120) || (cosa.toUpperCase() + " \u00b7 " + (r.titolo || "")),
+      pezzi: [], grafiche: [], audio: [], pre: HL_PRE, post: HL_POST, scarto: 0, avvisi: [],
+      formato: FORMATI[String(p.formato || "")] ? String(p.formato) : "16:9",
+      creata: Date.now(), chi: String(p.__chi || p.chi || "").slice(0, 40), export: null, ricetta: cosa
+    };
+    let t0 = 0;
+    scelte.forEach((x) => {
+      const dentro = Math.max(0, Math.min(durata - 1, (x.t || x.dentro || 0) - prima));
+      const fuori = Math.max(dentro + 0.5, Math.min(durata, (x.t || x.dentro || 0) + dopo));
+      q.pezzi.push({ id: nuovoId("p"), dentro: dentro, fuori: fuori, base: dentro, t0: Math.round(t0 * 1000) / 1000,
+                     traccia: "V1", stacco: 0, titolo: (x.minuto ? x.minuto + " " : "") + (x.titolo || "azione"),
+                     tipo: x.tipo || "", minuto: x.minuto || "", fonte: "ricetta" });
+      t0 += fuori - dentro;
+    });
+    R.seq[q.id] = q;
+    normalizzaSeq(q);              // l'audio sotto ogni pezzo, come sempre
+    scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: q, quante: q.pezzi.length, trovate: trovate.length };
+  },
   "clip-tabellino-cerca": (p) => {
     const q = String(p.q || "").trim(); if (q.length < 2) return { ok: true, righe: [] };
-    const FERMA = new Set("tutti tutte tutto i il lo la le gli di del della dello dei degli delle da dal dalla a al alla ai alle in nel nella con per e ed o che un una uno su sul sulla mi fammi trova cerca vedere vedi".split(" "));
-    const TIPI = [
-      [/^(gol|goal|goals|rete|reti|marcatur\w*|segna\w*|marc\w+)$/, /\b(gol|goal|rete|autogol)\b/i],
-      [/^(assist)$/, /\bassist/i],
-      [/^(rigor\w*|penalty|dischetto)$/, /\brigor|\bpenalty/i],
-      [/^(parat\w*|miracol\w*|portier\w*)$/, /\bparat/i],
-      [/^(pal[oi]|travers\w*|legn\w*)$/, /\b(palo|pali|traversa)\b/i],
-      [/^(ammoni\w*|giall\w*|cartellin\w*|booking)$/, /\b(ammoni|cartellin|giall)/i],
-      [/^(espuls\w*|ross[oi])$/, /\bespuls|\brosso\b/i],
-      [/^(cambi\w*|sostituz\w*)$/, /\bsostituz|\bcambio\b/i],
-      [/^(occasion\w*|tir[oi]|conclusion\w*|chance)$/, /\boccasion|\btiro\b/i],
-      [/^(skill|dribbling|giocat[ae]|tunnel|tacco)$/, /\bskill/i],
-      [/^(var|annullat\w*)$/, /\bannullat|\bvar\b/i],
-      [/^(boat\w*|esultanz\w*)$/, /\bboato|\besult/i],
-      [/^(angol[oi]|corner)$/, /\b(angolo|corner)\b/i],
-      [/^(punizion\w*)$/, /\bpunizion/i]
-    ];
-    const tipi = []; const parole = [];
-    q.toLowerCase().split(/\s+/).forEach((w0) => {
-      const w = piattaMinuscola(w0); if (!w || FERMA.has(w)) return;
-      const t = TIPI.find((x) => x[0].test(w)); if (t) tipi.push(t[1]); else parole.push(w);
-    });
+    const { tipi, parole } = chiaviDellaDomanda(q);
     if (!tipi.length && !parole.length) return { ok: true, righe: [] };
     const ora = Date.now();
     if (!global.__TAB_CACHE || ora - global.__TAB_CACHE.quando > 60000) {
@@ -11866,10 +11929,7 @@ const AZIONI = {
       per[k].forEach((x) => {
         // il tipo si legge da tipo ed etichetta (che classificano gia' il
         // titolo): guardare la prosa faceva prendere "angolo" per "gol"
-        const soggetto = [x.tipo, x.tag].join(" ") || x.titolo;
-        if (tipi.length && !tipi.every((re) => re.test(soggetto))) return;
-        const testo = piattaMinuscola([x.titolo, x.giocatore, x.squadra, x.dettaglio, r.titolo].join(" "));
-        if (!parole.every((w) => testo.indexOf(w) >= 0)) return;
+        if (!combaciaRiga(x, r.titolo, tipi, parole)) return;
         let chiave = x.chiave || "", dentroFile = x.dentroFile !== undefined ? x.dentroFile : x.dentro;
         if (r.arch && !r.finto) { const pa = pezzoAl(r, x.dentro); if (pa && pa.pezzo && pa.pezzo.chiave) { chiave = pa.pezzo.chiave; dentroFile = pa.dentro; } else chiave = r.arch.chiave || ""; }
         fuori.push({ reg: r.finto ? "" : k, partita: r.titolo || k, rec: (r.arch && r.arch.rec) || r.evento || "", t: x.t, dentro: x.dentro, fuori: x.fuori, s3: !!(r.arch && magazzinoInventario(r.arch.bucket)),
