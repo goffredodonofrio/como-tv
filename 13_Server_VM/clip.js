@@ -3626,7 +3626,8 @@ function hlAudio(p) {
     }
   } else if (azione === "taglia") {
     if (a.legato) delete a.legato;
-    const dur = R.reg[q.reg] ? (R.reg[q.reg].durata || durataRegistrata(q.reg)) : 99999;
+    const dReg2 = R.reg[q.reg] ? (R.reg[q.reg].durata || durataRegistrata(q.reg)) : 0;
+    const dur = dReg2 > 0 ? dReg2 : MAX_SECONDI;
     // trascinando il bordo sinistro il pezzo si accorcia in testa E si
     // sposta avanti, se no il suono scivolerebbe sotto le immagini
     if (p.dentro !== undefined) {
@@ -3744,9 +3745,24 @@ function hlPezzo(p) {
   if (i < 0) throw new Error("pezzo sconosciuto");
   if (p.togli) { q.pezzi.splice(i, 1); scrivi(); return { ok: true, seq: q }; }
   const x = q.pezzi[i];
-  const durata = R.reg[q.reg] ? (R.reg[q.reg].durata || durataRegistrata(q.reg)) : 99999;
-  if (p.dentro !== undefined) x.dentro = num(p.dentro, 0, durata, x.dentro);
-  if (p.fuori !== undefined) x.fuori = num(p.fuori, 0, durata, x.fuori);
+  // DUE GUASTI IN TRE RIGHE, e insieme distruggevano il pezzo invece di
+  // rifiutare il gesto.
+  //  1. Una partita che sta su S3 ha durata ZERO: nessuno l'ha misurata,
+  //     perche' misurarla vorrebbe dire leggere il file. Zero finiva come
+  //     limite superiore, e allora QUALUNQUE entrata o uscita veniva
+  //     schiacciata a zero: bastava tirare il bordo di una clip e quella
+  //     diventava 0 → 0. Non sapere quanto dura non vuol dire che duri
+  //     niente.
+  //  2. E il controllo "il pezzo diventerebbe vuoto" arrivava DOPO aver
+  //     gia' scritto i nuovi valori: l'errore usciva, ma il pezzo restava
+  //     rotto. Adesso si calcola a parte e si scrive solo se regge.
+  const dReg = R.reg[q.reg] ? (R.reg[q.reg].durata || durataRegistrata(q.reg)) : 0;
+  const durata = dReg > 0 ? dReg : MAX_SECONDI;
+  let nDentro = x.dentro, nFuori = x.fuori;
+  if (p.dentro !== undefined) nDentro = num(p.dentro, 0, durata, x.dentro);
+  if (p.fuori !== undefined) nFuori = num(p.fuori, 0, durata, x.fuori);
+  if (nFuori - nDentro < 0.5) throw new Error("il pezzo diventerebbe vuoto: non c'e' piu' materiale da quella parte");
+  x.dentro = nDentro; x.fuori = nFuori;
   if (p.titolo !== undefined) x.titolo = String(p.titolo).slice(0, 160);
   // LA VELOCITA'. Il posto che il pezzo occupa nel montato non cambia: e'
   // quanta azione ci entra dentro che cambia. A meta' velocita', in quattro
@@ -3790,7 +3806,6 @@ function hlPezzo(p) {
     const v = num(p.velocita, 0.2, 4, 1);
     if (Math.abs(v - 1) < 0.001) delete x.velocita; else x.velocita = Math.round(v * 100) / 100;
   }
-  if (x.fuori - x.dentro < 0.5) throw new Error("il pezzo diventerebbe vuoto");
   // toccato a mano: la taratura dell'orologio non deve piu' spostarlo
   if (p.dentro !== undefined || p.fuori !== undefined) x.mano = true;
   // e se era il pezzo del vivo, adesso e' tuo: smette di allungarsi da solo.
