@@ -325,7 +325,9 @@
   .ed-tl .nomi .a.vuota b{color:var(--fumo);}
   .ed-corsia.a.mira{background:rgba(201,162,75,.12);box-shadow:0 0 0 1px var(--oro) inset;}
   .ed-pista{position:relative;overflow:hidden;cursor:default;user-select:none;display:flex;flex-direction:column;min-height:min-content;}
-  .ed-infila{position:absolute;top:0;bottom:0;width:3px;background:var(--oro);box-shadow:0 0 6px var(--oro);pointer-events:none;}
+  .ed-buco{position:absolute;top:4px;bottom:4px;border-radius:4px;pointer-events:none;
+    background:repeating-linear-gradient(135deg,rgba(245,241,230,.07) 0 6px,transparent 6px 12px);
+    border:1px dashed rgba(245,241,230,.18);}
   .ed-magnete{position:absolute;top:0;bottom:0;width:1px;background:#7CD992;box-shadow:0 0 5px #7CD992;pointer-events:none;z-index:4;}
   .ed-corsia{position:relative;border-bottom:1px solid var(--riga);} .ed-corsia.r{height:22px;} .ed-corsia.st{height:var(--st,26px);} .ed-corsia.g{height:var(--g,28px);} .ed-corsia.v{flex:1 1 auto;height:auto;min-height:64px;background:rgba(245,241,230,.02);} .ed-corsia.a{height:var(--a,30px);}
   .ed-graf{position:absolute;top:3px;bottom:3px;height:auto;background:#4E3A6E;border:1px solid #8C6BB5;border-radius:4px;overflow:hidden;padding:0 6px;font-size:10px;line-height:19px;white-space:nowrap;cursor:grab;box-sizing:border-box;color:var(--ivory);} .ed-graf.sel{outline:2px solid var(--oro2);}
@@ -521,6 +523,8 @@
         <span class="eti">Audio</span><button id="eStacca" title="stacca l'audio dal pezzo scelto: poi lo trascini da solo">Stacca</button><button id="eMuto" title="muto / suona (pezzo o audio scelto)">Muto</button><button id="eAudioTogli" title="togli l'audio scelto (o quello del pezzo scelto)">Togli audio</button>
         <span class="sep"></span>
         <span class="eti">Giunzione</span><button id="eGiuSx" title="la clip resta dov'e' e i vicini le fanno spazio (Alt+Shift+&larr;)">&#10214;&#9664;</button><button id="eGiuDx" title="la clip resta dov'e' e i vicini le fanno spazio (Alt+Shift+&rarr;)">&#9654;&#10215;</button>
+        <span class="sep"></span>
+        <button id="eAttacca" title="richiude i buchi: i pezzi tornano uno dietro l'altro">&#8676;&#8677; Attacca</button>
         <span class="sep"></span>
         <button id="eMagnete" title="magnetismo: i bordi si attaccano agli stacchi, alla testina e all'entrata/uscita (S)">&#129522; Magnete</button>
         <span class="sep"></span>
@@ -1299,10 +1303,34 @@
   function scelto(id){ return SELS.indexOf(id) >= 0; }
   function scegli(id, aggiungi){ if (!aggiungi) SELS = []; if (id) { if (aggiungi && scelto(id)) SELS = SELS.filter(function(z){ return z !== id; }); else SELS.push(id); } SEL = SELS.length ? SELS[SELS.length - 1] : null; }
   var SEQ = null, REGE = null, VE, PZ = [], DETTOE = [], SEL = null, ORA = { i: -1, pos: 0 }, LENTE = { a: 0, b: 0 }, TRASC = null, SOTTOE = false, LINGUAE = "it", GIRO_E = null, FORMATI = ["16:9"];
-  function durSeq(){ return PZ.reduce(function(a, x){ return a + (x.fuori - x.dentro); }, 0); }
-  function inizioDi(i){ var t = 0; for (var k = 0; k < i; k++) t += PZ[k].fuori - PZ[k].dentro; return t; }
-  function tSeq(){ var x = PZ[ORA.i]; if (!x || !VE) return 0; return inizioDi(ORA.i) + Math.max(0, Math.min(x.fuori - x.dentro, (VE.currentTime || 0) - x.dentro)); }
-  function pezzoAlTempo(t){ var acc = 0; for (var i = 0; i < PZ.length; i++) { var d = PZ[i].fuori - PZ[i].dentro; if (t < acc + d) return { i: i, dentro: t - acc }; acc += d; } return PZ.length ? { i: PZ.length - 1, dentro: PZ[PZ.length - 1].fuori - PZ[PZ.length - 1].dentro } : null; }
+  // OGNI PEZZO SA DOVE STA. Il ponte tiene per ogni clip il suo t0, il
+  // secondo in cui comincia nel montato, e sa gestire una sequenza "libera"
+  // con i buchi. La pagina invece impilava i pezzi sommando le durate: cosi'
+  // trascinarne uno non poteva che scambiarlo di posto con un altro, perche'
+  // la posizione non esisteva — era solo la somma di chi veniva prima.
+  // Adesso si legge t0. Per una sequenza attaccata non cambia niente (t0 e'
+  // proprio quella somma), ma da qui una clip puo' stare dove la metti.
+  function durSeq(){ return PZ.reduce(function(m, x){ return Math.max(m, (x.t0 || 0) + (x.fuori - x.dentro)); }, 0); }
+  function inizioDi(i){ var x = PZ[i]; return x ? (x.t0 || 0) : 0; }
+  function tSeq(){ var x = PZ[ORA.i]; if (!x || !VE) return 0; return (x.t0 || 0) + Math.max(0, Math.min(x.fuori - x.dentro, (VE.currentTime || 0) - x.dentro)); }
+  function pezzoAlTempo(t){
+    for (var i = 0; i < PZ.length; i++) {
+      var a = PZ[i].t0 || 0, b = a + (PZ[i].fuori - PZ[i].dentro);
+      if (t >= a && t < b) return { i: i, dentro: t - a };
+    }
+    // in un buco, o oltre la fine: il primo che comincia dopo, se no l'ultimo
+    for (var j = 0; j < PZ.length; j++) if ((PZ[j].t0 || 0) > t) return { i: j, dentro: 0 };
+    return PZ.length ? { i: PZ.length - 1, dentro: Math.max(0, PZ[PZ.length - 1].fuori - PZ[PZ.length - 1].dentro - 0.05) } : null;
+  }
+  function buchiDiQui(){
+    var b = [], fin = 0;
+    PZ.slice().sort(function(x, y){ return (x.t0 || 0) - (y.t0 || 0); }).forEach(function(x){
+      var a = x.t0 || 0;
+      if (a > fin + 0.05) b.push({ a: fin, b: a });
+      fin = Math.max(fin, a + (x.fuori - x.dentro));
+    });
+    return b;
+  }
   function apriEditor(seqId){
     vai("editor"); VE = el("videoE");
     post({ tipo:"clip-hl-elenco", tutte: true }).then(function(d){
@@ -1354,11 +1382,11 @@
     if (INS !== null) h += '<span class="rin" style="left:' + X(INS) + 'px" title="entrata della sequenza ' + tc(INS) + '"></span>';
     if (OUTS !== null) h += '<span class="rout" style="left:' + X(OUTS) + 'px" title="uscita della sequenza ' + tc(OUTS) + '"></span>';
     rig.innerHTML = h;
-    var hv = "", haT = {}, hs = "", acc = 0;
+    var hv = "", haT = {}, hs = "";
     corsie.forEach(function(n){ haT[n] = ""; });
     PZ.forEach(function(x, i){
-      var d = x.fuori - x.dentro, a = acc, b = acc + d; acc += d;
-      if (TRASC && TRASC.i === i && TRASC.tipo !== "muovi") { a = TRASC.a; b = TRASC.b; }
+      var d = x.fuori - x.dentro, a = x.t0 || 0, b = a + d;
+      if (TRASC && TRASC.i === i && (TRASC.tipo !== "muovi" || TRASC.mosso)) { a = TRASC.a; b = TRASC.b; }
       if (b < LENTE.a || a > LENTE.b) return;
       var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)), ww = Math.max(6, xb - xa);
       var po = POSE[REGE ? (REGE.id + "|" + x.dentro) : ""];
@@ -1372,9 +1400,12 @@
     AUD.forEach(function(au){ if (au.legato) return; var a = au.t0 || 0, b = a + Math.max(0.2, (au.fuori - au.dentro)); if (TRASC && TRASC.tipo === "a-muovi" && TRASC.a_id === au.id) { a = TRASC.a; b = TRASC.b; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); haT[au.traccia || "A1"] = (haT[au.traccia || "A1"] || "") + audioHtml(au, xa, Math.max(6, xb - xa), true); });
     var hg = "";
     GRAF.forEach(function(g){ var a = g.dentro, b = g.fuori; if (TRASC && TRASC.g_id === g.id && TRASC.tipo !== "g-muovi") { a = TRASC.a; b = TRASC.b; } else if (TRASC && TRASC.g_id === g.id && TRASC.tipo === "g-muovi" && TRASC.mosso) { a = TRASC.a; b = TRASC.b; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); hg += '<div class="ed-graf' + (SELG === g.id ? " sel" : "") + '" data-g="' + esc(g.id) + '" style="left:' + xa + 'px;width:' + Math.max(8, xb - xa) + 'px" title="' + esc(g.nome || "grafica") + ' · ' + tcBreve(a) + ' → ' + tcBreve(b) + '"><span class="bordo sx" data-lato="g-sx"></span>' + esc(g.nome || "grafica") + '<span class="bordo dx" data-lato="g-dx"></span></div>'; });
+    buchiDiQui().forEach(function(z){
+      if (z.b < LENTE.a || z.a > LENTE.b) return;
+      var xa = Math.max(0, X(z.a)), xb = Math.min(w, X(z.b));
+      hv += '<div class="ed-buco" style="left:' + xa + 'px;width:' + Math.max(2, xb - xa) + 'px" title="buco di ' + tc(z.b - z.a) + '"></div>';
+    });
     if (AGGANCIO !== null && TRASC) hv += '<div class="ed-magnete" style="left:' + X(AGGANCIO) + 'px"></div>';
-    if (TRASC && TRASC.tipo === "muovi" && TRASC.mosso && TRASC.dove !== undefined && TRASC.dove !== TRASC.i)
-      hv += '<div class="ed-infila" style="left:' + X(inizioDi(TRASC.dove + (TRASC.dove > TRASC.i ? 1 : 0))) + 'px"></div>';
     cv.innerHTML = hv || '<div class="ed-vuoto">Sequenza vuota.</div>'; cst.innerHTML = hs; cg.innerHTML = hg;
     corsie.forEach(function(n){
       var c = el("pista").querySelector('.ed-corsia.a[data-tr="' + n + '"]');
@@ -1584,7 +1615,8 @@
     SELG = null; SELA = null;
     if (!pz) { vaiTempo(tDiX(e.clientX - el("pista").getBoundingClientRect().left), false); return; }
     var i = +pz.dataset.i, x = PZ[i]; if (e.shiftKey || e.metaKey || e.ctrlKey) scegli(x.id, true); else if (!scelto(x.id)) scegli(x.id, false);
-    TRASC = { i: i, x0: e.clientX, tipo: bordo ? bordo.dataset.lato : "muovi", dentro: x.dentro, fuori: x.fuori, a: inizioDi(i), b: inizioDi(i) + (x.fuori - x.dentro), mosso: false };
+    TRASC = { i: i, x0: e.clientX, tipo: bordo ? bordo.dataset.lato : "muovi", dentro: x.dentro, fuori: x.fuori,
+              t00: x.t0 || 0, a: x.t0 || 0, b: (x.t0 || 0) + (x.fuori - x.dentro), mosso: false };
     e.preventDefault(); disegnaEditor();
   });
   document.addEventListener("mousemove", function(e){
@@ -1623,14 +1655,16 @@
       TRASC.b = inizioDi(TRASC.i) + (nf - TRASC.dentro); TRASC.nuovoFuori = nf;
     }
     else {
-      // PRIMA NON SI VEDEVA NIENTE finche' non si mollava il pezzo: ora una
-      // riga d'oro dice in che buco fra i vicini andra' a finire
+      // il pezzo segue il mouse e si attacca a quello che trova
       el("pista").style.cursor = "grabbing";
-      var q = pezzoAlTempo(tDiX(e.clientX - el("pista").getBoundingClientRect().left));
-      var dove = q ? q.i : PZ.length - 1;
-      if (dove !== TRASC.dove) { TRASC.dove = dove; disegnaTl(); }
+      var dur0 = TRASC.fuori - TRASC.dentro;
+      var na = Math.max(0, aggancia(TRASC.t00 + ds, TRASC.i));
+      // si aggancia anche con la CODA, non solo con la testa
+      var nb = aggancia(TRASC.t00 + dur0 + ds, TRASC.i);
+      if (AGGANCIO !== null && Math.abs(nb - (TRASC.t00 + dur0 + ds)) < Math.abs(na - (TRASC.t00 + ds))) na = Math.max(0, nb - dur0);
+      TRASC.a = na; TRASC.b = na + dur0;
     }
-    if (TRASC.tipo !== "muovi") disegnaTl();
+    disegnaTl();
   });
   document.addEventListener("mouseup", function(e){
     if (!TRASC) return;
@@ -1654,11 +1688,13 @@
     if (tr.tipo === "sx" && tr.nuovoDentro !== undefined) post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: x.id, dentro: Math.round(tr.nuovoDentro * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
     else if (tr.tipo === "dx" && tr.nuovoFuori !== undefined) post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: x.id, fuori: Math.round(tr.nuovoFuori * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
     else if (tr.tipo === "muovi") {
-      // il pezzo va dove lo lasci: prima o dopo i vicini, in fila
-      var t = tDiX(e.clientX - el("pista").getBoundingClientRect().left), p = pezzoAlTempo(t), dove = p ? p.i : PZ.length - 1;
-      if (dove === tr.i) { disegnaTl(); return; }
-      var ordine = PZ.map(function(z){ return z.id; }); ordine.splice(tr.i, 1); ordine.splice(dove, 0, x.id);
-      post({ tipo:"clip-hl-ordina", seq: SEQ.id, ordine: ordine }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
+      // IL PEZZO VA DOVE LO LASCI. Se si infila fra due vicini la sequenza
+      // resta attaccata e si e' solo riordinata; se lo porti nel vuoto,
+      // resta li' e il buco si vede — e si richiude col tasto Attacca.
+      if (Math.abs(tr.a - tr.t00) < 0.02) { disegnaTl(); return; }
+      post({ tipo:"clip-hl-sposta", seq: SEQ.id, pezzo: x.id, t0: Math.round(tr.a * 1000) / 1000 })
+        .then(function(d){ ricaricaSeq(d.seq); })
+        .catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
     }
   });
   // LA ROTELLA. Con cmd/ctrl la lente si stringe e si allarga ATTORNO AL
@@ -1739,6 +1775,13 @@
       .then(function(d){ ricaricaSeq(d.seq); })
       .catch(function(er){ avviso("err", esc(er.message)); });
   }
+  el("eAttacca").addEventListener("click", function(){
+    if (!SEQ) return;
+    var b = buchiDiQui();
+    if (!b.length) return avviso("ok", "Non ci sono buchi: i pezzi sono gia' uno dietro l'altro.");
+    post({ tipo:"clip-hl-attacca", seq: SEQ.id }).then(function(d){ ricaricaSeq(d.seq); avviso("ok", b.length === 1 ? "Buco richiuso." : b.length + " buchi richiusi."); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  });
   el("eGiuSx").addEventListener("click", function(){ giunzione(-0.04); });
   el("eGiuDx").addEventListener("click", function(){ giunzione(0.04); });
   // V2: una grafica PNG sotto la testina, cinque secondi, poi si allunga dai bordi e si trascina
@@ -1773,7 +1816,7 @@
     if (INS === null || OUTS === null || OUTS <= INS) return avviso("err", "Segna prima entrata e uscita (I e O).");
     var passo = Promise.resolve();
     [OUTS, INS].forEach(function(t){ passo = passo.then(function(){ var p = pezzoAlTempo(t); if (!p) return; var x = PZ[p.i]; if (p.dentro < 0.3 || p.dentro > (x.fuori - x.dentro) - 0.3) return; return post({ tipo:"clip-hl-dividi", seq: SEQ.id, pezzo: x.id, a: Math.round((x.dentro + p.dentro) * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); }); }); });
-    passo.then(function(){ var via = [], acc = 0; PZ.forEach(function(x){ var d = x.fuori - x.dentro, a = acc, b = acc + d; acc += d; if (a >= INS - 0.05 && b <= OUTS + 0.05) via.push(x.id); }); if (!via.length) throw new Error("nell'intervallo non c'è nessun pezzo intero");
+    passo.then(function(){ var via = []; PZ.forEach(function(x){ var a = x.t0 || 0, b = a + (x.fuori - x.dentro); if (a >= INS - 0.05 && b <= OUTS + 0.05) via.push(x.id); }); if (!via.length) throw new Error("nell'intervallo non c'è nessun pezzo intero");
       return post({ tipo:"clip-hl-pezzo", seq: SEQ.id, togli: true, pezzi: via }); }).then(function(d){ ricaricaSeq(d.seq); INS = OUTS = null; scegli(null); disegnaTl(); avviso("ok", "Estratto."); }).catch(function(er){ avviso("err", esc(er.message)); });
   }
   function incolla(){
