@@ -207,12 +207,12 @@
 
 <script src="nav.js"></script>
 <!-- ?v=: si cambia a ogni aggiornamento, se no i browser tengono la versione vecchia -->
-<script src="formazioni-espn.js?v=20260923c"></script>
-<script src="giovanili.js?v=20260923c"></script>
-<script src="competizioni-espn.js?v=20260923c"></script>
-<script src="maglie.js?v=20260923c"></script>
-<script src="tendina-cerca.js?v=20260923c"></script>
-<script src="lavagna.js?v=20260923c"></script>
+<script src="formazioni-espn.js?v=20260924a"></script>
+<script src="giovanili.js?v=20260924a"></script>
+<script src="competizioni-espn.js?v=20260924a"></script>
+<script src="maglie.js?v=20260924a"></script>
+<script src="tendina-cerca.js?v=20260924a"></script>
+<script src="lavagna.js?v=20260924a"></script>
 
 <div class="wrap">
   <header class="page">
@@ -228,7 +228,8 @@
        Le raccoglie il lettore sulla VM (13_Server_VM/fogli) in partite.json -->
   <div class="panel">
     <div class="riga">
-      <div style="flex:0 1 240px"><label for="chiSei">Chi sei</label><select id="chiSei"><option value="">Tutti i telecronisti</option></select></div>
+      <div style="flex:0 1 220px"><label for="chiSei">Chi sei</label><select id="chiSei"><option value="">Tutti i telecronisti</option></select></div>
+      <div style="flex:0 1 260px"><label for="cercaPart">Cerca la partita</label><select id="cercaPart"><option value="">&mdash;</option></select></div>
       <div style="flex:1 1 520px"><label>Giorno</label>
         <div class="giorno">
           <button type="button" class="azione freccia" id="giornoPrima" title="Il giorno prima con partite">&lsaquo;</button>
@@ -776,6 +777,7 @@
       }).join("");
       var io = ""; try { io = localStorage.getItem(CHI_LS) || ""; } catch (e) {}
       if (nomi.indexOf(io) >= 0) el("chiSei").value = io;
+      riempiCerca();
       disegnaPartite();
       espDico(PARTITE.length ? "Scegli il giorno e poi la partita: <b>Prendi la formazione</b> (o un doppio clic sulla scheda) la porta in campo da ESPN. " +
                                "<b>&#128161; Curiosit&agrave;</b> vuol dire che c'&egrave; il foglio della redazione."
@@ -849,6 +851,44 @@
     t.hidden = !loc.length;
     if (loc.length) t.textContent = "\u2601 Porta sul server " + loc.length + (loc.length > 1 ? " partite di qui" : " partita di qui");
   }
+  // LA RICERCA fra tutte le partite: una tendina con la casella per scrivere,
+  // la stessa delle competizioni. Si cerca per squadra, competizione,
+  // telecronista o data; scelta una, la pagina va al suo giorno e la seleziona.
+  var TCERCA = null;
+  function riempiCerca() {
+    var oggi = oggiStr(), mesi = {}, ordine = [];
+    PARTITE.forEach(function (m) {
+      var g = giornoDi(m.quando), d = new Date(g + "T12:00:00");
+      var k = d.getFullYear() + "-" + d.getMonth();
+      if (!mesi[k]) { mesi[k] = []; ordine.push({ k: k, nome: MESI[d.getMonth()] + " " + d.getFullYear(), da: g }); }
+      var casa = m.espn ? m.espn.casa : titolo(m.casa), osp = m.espn ? m.espn.ospite : titolo(m.ospite);
+      mesi[k].push('<option value="' + esc(m.id) + '">' + GG[d.getDay()] + " " + d.getDate() + " " + MM[d.getMonth()] +
+        " · " + esc(casa + " – " + osp) + " · " + esc(m.competizione) +
+        (m.telecronisti.length ? " · " + esc(chiDi(m)) : "") + (m.fogli && m.fogli.length ? " · curiosità" : "") + "</option>");
+    });
+    // dal mese di oggi in avanti, poi i passati dal piu' recente: si cerca
+    // quasi sempre una partita che deve arrivare
+    var futuri = ordine.filter(function (x) { return x.da >= oggi.slice(0, 7); }).sort(function (a, b) { return a.da.localeCompare(b.da); });
+    var passati = ordine.filter(function (x) { return x.da < oggi.slice(0, 7); }).sort(function (a, b) { return b.da.localeCompare(a.da); });
+    el("cercaPart").innerHTML = '<option value="">— ' + PARTITE.length + " partite —</option>" +
+      futuri.concat(passati).map(function (x) {
+        return '<optgroup label="' + esc(x.nome) + '">' + mesi[x.k].join("") + "</optgroup>";
+      }).join("");
+    if (!TCERCA && window.TendinaCerca) TCERCA = TendinaCerca.su(el("cercaPart"), { segnaposto: "Squadra, competizione o telecronista" });
+    else if (TCERCA) TCERCA.aggiorna();
+  }
+  el("cercaPart").addEventListener("change", function () {
+    var m = PARTITE.filter(function (x) { return x.id === this.value; }, this)[0];
+    if (!m) return;
+    var chi = el("chiSei").value;
+    // se la partita non e' di chi ha detto di essere, si mostrano tutte quelle del giorno
+    VEDI_ALTRE = (chi && !mia(m, chi)) ? giornoDi(m.quando) : VEDI_ALTRE;
+    el("atGiorno").value = giornoDi(m.quando);
+    disegnaPartite(false);
+    segna(m.id);
+    var s = el("schede").querySelector(".scheda.su");
+    if (s) s.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  });
   function caricaSalvate() {
     return fetch(PONTE + "?lavagne=1", { cache: "no-store" })
       .then(function (r) { return r.json(); })
