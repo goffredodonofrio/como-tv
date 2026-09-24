@@ -3,7 +3,7 @@
  * ══════════════════════════════════════════════════════════════════════
  *  Generato da 13_Server_VM/estrai-motore.py leggendo
  *  10_Look&Feel/Como TV OTT Design/generatore.html
- *  (righe 16 e 628-2477)
+ *  (righe 16 e 628-2499)
  *
  *  Ogni modifica fatta qui sparisce alla prossima estrazione: si cambia il
  *  generatore, non questo file.
@@ -1230,15 +1230,29 @@ function vlogCard(W,H,p,I,A,V,stretta){
   +'<rect x="0" y="'+R(H*(orizz?0.42:0.52))+'" width="'+W+'" height="'+R(H*(orizz?0.58:0.48))+'" fill="url(#'+q+'b)" pointer-events="none"/>';
  function perLarghezza(t,largo,s){ return Math.min(s, R(largo/Math.max(estW(up(t),1,0.02),0.001))); }
  // IL TITOLO sdoppiato: viola e ciano dietro, avorio sopra
- function titoloRighe(x,base,s,righe,ancora){
-  var sp=R(s*0.06), o='';
-  [[-sp, R(sp*0.55), art.viola, .55],[sp, -R(sp*0.55), art.ciano, .5]].forEach(function(v){
-   o+='<g opacity="'+v[3]+'">'+righe.map(function(l,i){
-    return T(x+v[0], base+v[1]+i*R(s*1.02), l, {s:s,w:800,fill:v[2],ls:R(-s*0.01),anchor:ancora});
+ // OGNI RIGA HA IL SUO CORPO: la prima non e' legata alla seconda (l'ha
+ // chiesto la redazione). Ognuna e' grande quanto le concede la larghezza a
+ // disposizione, con lo stesso tetto in altezza; il blocco resta appoggiato
+ // in basso, quindi le righe si impilano partendo dall'ultima.
+ function misuraRighe(righe,largo,tetto){
+  var v=righe.map(function(l){ return { t:l, s:Math.min(perLarghezza(l,largo,999), tetto) }; });
+  return v;
+ }
+ function impila(v,base){
+  var y=base;
+  for(var i=v.length-1;i>=0;i--){ v[i].y=y; y-=R(v[i].s*1.10); }
+  return v;
+ }
+ function titoloRighe(x,v,ancora){
+  var o='';
+  [[-1, .55, art.viola, .55],[1, -.55, art.ciano, .5]].forEach(function(q){
+   o+='<g opacity="'+q[3]+'">'+v.map(function(l){
+    var sp=R(l.s*0.06);
+    return T(x+q[0]*sp, l.y+R(q[1]*sp), l.t, {s:l.s,w:800,fill:q[2],ls:R(-l.s*0.01),anchor:ancora});
    }).join('')+'</g>';
   });
-  return o+righe.map(function(l,i){
-   return T(x, base+i*R(s*1.02), l, {s:s,w:800,fill:C.ivory,ls:R(-s*0.01),anchor:ancora});
+  return o+v.map(function(l){
+   return T(x, l.y, l.t, {s:l.s,w:800,fill:C.ivory,ls:R(-l.s*0.01),anchor:ancora});
   }).join('');
  }
  var occhio='VLOG';
@@ -1250,16 +1264,21 @@ function vlogCard(W,H,p,I,A,V,stretta){
   var lMax=R(H*(lungo?0.62:0.42)); if(lH>lMax){lH=lMax;lW=R(lH*AR);}
   var cH=R(H*(lungo?0.14:0.060));
   var sOc=Math.min(R(H*(lungo?0.085:0.036)), perLarghezza(occhio, W*0.30, 999));
-  var piuLunga=titolo2&&titolo2.length>titolo.length?titolo2:titolo;
-  var sT=Math.min(perLarghezza(piuLunga, W*(lungo?0.52:0.56), 999), R(H*(lungo?0.30:0.135)));
-  var righe=titolo2?[titolo,titolo2]:(lungo?[titolo]:ytWrap(titolo, sT, R(-sT*0.01), W*0.56));
+  var largo=W*(lungo?0.52:0.56), tetto=R(H*(lungo?0.30:0.135));
+  var sMis=Math.min(perLarghezza(titolo, largo, 999), tetto);
+  var righe=titolo2?[titolo,titolo2]:(lungo?[titolo]:ytWrap(titolo, sMis, R(-sMis*0.01), W*0.56));
   if(righe.length>2)righe=[righe[0], righe.slice(1).join(' ')];
-  var base=R(H*0.90)-(righe.length-1)*R(sT*1.02);
+  // le righe scritte a mano hanno ognuna il suo corpo; quelle spezzate da noi
+  // restano uguali fra loro, se no una frase sola ballerebbe
+  var v=misuraRighe(righe, largo, tetto);
+  if(!titolo2){ var sU=Math.min.apply(null, v.map(function(l){return l.s;})); v.forEach(function(l){ l.s=sU; }); }
+  impila(v, R(H*0.90));
+  var sT=v[0].s;
   return out
    +brandMark(A,M,M,cH)
    +G('vl-logo',A,'<image href="'+art.logo+'" x="'+R(W-M-lW)+'" y="'+R(H*(lungo?0.16:0.10))+'" width="'+lW+'" height="'+lH+'" preserveAspectRatio="xMidYMid meet"/>')
-   +G('t-comp',A,T(M,R(base-sT*0.92),occhio,{s:sOc,w:700,fill:C.gold,ls:R(sOc*0.26)}))
-   +G('t-title',A,titoloRighe(M,base,sT,righe))
+   +G('t-comp',A,T(M,R(v[0].y-v[0].s*0.92),occhio,{s:sOc,w:700,fill:C.gold,ls:R(sOc*0.26)}))
+   +G('t-title',A,titoloRighe(M,v))
    +hair(W,H,H-5);
  }
 
@@ -1269,16 +1288,19 @@ function vlogCard(W,H,p,I,A,V,stretta){
  var lW2=R(W*0.80), lH2=R(lW2/AR);
  var lMax2=R(H*0.34); if(lH2>lMax2){lH2=lMax2;lW2=R(lH2*AR);}
  var sOc2=R(H*0.022);
- var piuLunga2=titolo2&&titolo2.length>titolo.length?titolo2:titolo;
- var sT2=Math.min(perLarghezza(piuLunga2, W*0.86, 999), R(H*0.085));
- var righe2=titolo2?[titolo,titolo2]:ytWrap(titolo, sT2, R(-sT2*0.01), W*0.84);
+ var largo2=W*0.86, tetto2=R(H*0.085);
+ var sMis2=Math.min(perLarghezza(titolo, largo2, 999), tetto2);
+ var righe2=titolo2?[titolo,titolo2]:ytWrap(titolo, sMis2, R(-sMis2*0.01), W*0.84);
  if(righe2.length>3)righe2=[righe2[0],righe2[1],righe2.slice(2).join(' ')];
- var base2=R(H*0.90)-(righe2.length-1)*R(sT2*1.02);
+ var v2=misuraRighe(righe2, largo2, tetto2);
+ if(!titolo2){ var sU2=Math.min.apply(null, v2.map(function(l){return l.s;})); v2.forEach(function(l){ l.s=sU2; }); }
+ impila(v2, R(H*0.90));
+ var sT2=v2[0].s;
  return out
   +brandMark(A,R(W/2),R(H*0.030),cH2,true)
   +G('vl-logo',A,'<image href="'+art.logo+'" x="'+R(W/2-lW2/2)+'" y="'+R(H*0.30-lH2/2)+'" width="'+lW2+'" height="'+lH2+'" preserveAspectRatio="xMidYMid meet"/>')
-  +G('t-comp',A,T(R(W/2),R(base2-sT2*0.95),occhio,{s:sOc2,w:700,fill:C.gold,ls:R(sOc2*0.26),anchor:'middle'}))
-  +G('t-title',A,titoloRighe(R(W/2),base2,sT2,righe2,'middle'))
+  +G('t-comp',A,T(R(W/2),R(v2[0].y-v2[0].s*0.95),occhio,{s:sOc2,w:700,fill:C.gold,ls:R(sOc2*0.26),anchor:'middle'}))
+  +G('t-title',A,titoloRighe(R(W/2),v2,'middle'))
   +hair(W,H,H-5);
 }
 function fcCard(W,H,p,I,A,stretta){
