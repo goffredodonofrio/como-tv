@@ -1077,6 +1077,13 @@ async function cercaBoati(p) {
 const APP_PRE = 30, APP_POST = 45;      // un'azione qualsiasi: c'e' aria per il replay corto
 const GOL_PRE = 35, GOL_POST = 80;      // un gol il replay ce l'ha sempre, e lungo
 const AZIONE_PRE = 12;          // quanta rincorsa prima della palla in rete
+// QUANDO IL SECONDO E' MISURATO, LA RINCORSA SI ACCORCIA. Le maniglie larghe
+// (trenta, trentacinque secondi) servivano a coprire l'errore dell'appunto:
+// il minuto scritto cade sul replay e non si sa di quanto. Ma dove il
+// tabellone o il boato hanno detto il secondo esatto quell'errore non c'e'
+// piu', e trenta secondi di rincorsa sono trenta secondi di gioco in mezzo
+// al campo prima dell'azione. Quindici bastano a far capire da dove nasce.
+const PUNTATO_PRE = 15;
 const HL_STRETTO_PRE = 8, HL_STRETTO_POST = 12;   // quando bisogna stare nei minuti
 // Cinque minuti di GIOCO. Apertura e calcio d'inizio si aggiungono, non si
 // tolgono: prima si mangiavano due minuti di azioni, e il montato perdeva
@@ -1309,11 +1316,13 @@ function vicinoNella(mappa, t) {
   });
   return meglio;
 }
-function finestraGol(t, rec) {
+function finestraGol(t, rec, misurato) {
   const a = rec && ARCHIVIO[rec];
   const noto = a && vicinoNella(a.replay, t);
   const rete = a && vicinoNella(a.gol, t);
-  const dentro = rete ? Math.max(0, Math.min(t - GOL_PRE, rete - AZIONE_PRE)) : Math.max(0, t - GOL_PRE);
+  const dentro = rete ? Math.max(0, rete - PUNTATO_PRE)
+               : misurato ? Math.max(0, t - PUNTATO_PRE)
+               : Math.max(0, t - GOL_PRE);
   return { dentro: dentro,
            fuori: noto ? Math.min(dentro + 200, noto + 3) : t + GOL_POST,
            replay: !!noto, rete: rete || 0 };
@@ -1466,7 +1475,8 @@ function quelloCheSappiamo(r) {
     if (!b) return;
     x.spostato = Math.round(t - b.t);
     x.t = b.t; x.boato = b.db;
-    const w = finestraGol(b.t, rec);
+    // il boato ha detto il secondo: rincorsa corta
+    const w = finestraGol(b.t, rec, true);
     x.dentro = w.dentro; x.fuori = w.fuori; x.base = x.dentro;
   });
   // con maniglie larghe due azioni vicine si sovrappongono: si sta piu' larghi

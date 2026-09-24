@@ -548,7 +548,7 @@
 
     <div class="lv-palco">
       <div class="titolo" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h1 id="lTitolo" style="font-family:'Mazzard',sans-serif;font-weight:800;font-size:20px;text-transform:uppercase">Diretta</h1><span class="meta" id="lMeta" style="color:var(--fumo);font-size:12.5px"></span>
-        <div class="az" style="margin-left:auto;display:flex;gap:8px"><button class="mini" id="lSotto">Sottotitoli</button><button class="mini" id="lLingua">ITA</button><button class="mini" id="lClip" title="una clip degli ultimi 30 secondi">Clip 30 s</button><button class="mini" id="lAsset" title="apri la registrazione come partita">Apri</button><button class="mini" id="lFerma" style="color:#FF9A9C">&#9632; Ferma</button></div></div>
+        <div class="az" style="margin-left:auto;display:flex;gap:8px"><button class="mini" data-lsub="it" title="la telecronaca scritta in italiano, dal vivo">SUB ITA</button><button class="mini" data-lsub="en" title="la telecronaca tradotta in inglese, dal vivo">SUB ENG</button><button class="mini" data-lsub="due" title="tutte e due le lingue insieme, l&#8217;inglese sotto">SUB ITA+ENG</button><button class="mini" id="lClip" title="una clip degli ultimi 30 secondi">Clip 30 s</button><button class="mini" id="lAsset" title="apri la registrazione come partita">Apri</button><button class="mini" id="lFerma" style="color:#FF9A9C">&#9632; Ferma</button></div></div>
       <div id="lVuoto" class="lv-vuoto"><b>Nessun flusso in arrivo</b><span>Apri una porta a destra: vMix spinge in SRT (listener) e qui compare la partita.</span></div>
       <div class="player" id="lPlayer" hidden><video id="videoL" playsinline muted autoplay></video><div class="mutoVelo" id="lVelo" hidden><b>&#9836; Audio spento &#183; clicca per accenderlo</b></div><div class="sotto" id="sottoBoxL"><i class="it" id="sottoItL"></i><i class="en" id="sottoEnL"></i></div></div>
       <div class="trasporto" id="lTrasporto" hidden>
@@ -2981,7 +2981,7 @@
   // registra a segmenti e la pagina li legge in HLS. La salute del flusso
   // si misura dalla playlist: quanti segmenti, quanto e' vecchio l'ultimo,
   // quanto pesa (bitrate). Come il pannello di un encoder, senza l'encoder.
-  var LIVE = { reg: null, hls: null, porte: [], giro: null, sotto: false, lingua: "it", da: 0, righe: [], ultimoSeg: null, ultimoQuando: 0, ricezione: true, parti: null, fermoVoluto: false };
+  var LIVE = { reg: null, hls: null, porte: [], giro: null, sotto: false, lingua: "it", da: 0, righe: [], ultimoSeg: null, ultimoQuando: 0, ricezione: true, parti: null, fermoVoluto: false, parlata: "" };
   function apriLive(){
     vai("live"); briciole(["Diretta"]); document.title = "Diretta · MAM Como TV";
     giroLive();
@@ -3133,7 +3133,8 @@
     // il velo dell'audio si decide qui, non all'attacco: quando il video si
     // attacca la pagina non sa ancora quale partita sta guardando
     segnoAudio();
-    ["lSotto","lLingua","lClip","lAsset","lFerma"].forEach(function(id){ el(id).disabled = !r; });
+    ["lClip","lAsset","lFerma"].forEach(function(id){ el(id).disabled = !r; });
+    document.querySelectorAll("#live [data-lsub]").forEach(function(b){ b.disabled = !r; });
     if (!r) { el("lTitolo").textContent = "Diretta"; el("lMeta").textContent = LIVE.porte.length ? LIVE.porte.length + " porte · nessun flusso" : ""; return; }
     el("lTitolo").textContent = r.titolo || "in arrivo"; el("lMeta").textContent = "porta " + r.ascolto.porta + (r.attesa ? " · in attesa del flusso" : " · " + tc(r.durata || 0) + " registrati");
     fetch(BASE + "/clip/" + r.id + "/live.m3u8", { cache:"no-store" }).then(function(x){ return x.ok ? x.text() : ""; }).then(function(t){
@@ -3156,18 +3157,54 @@
     if (LIVE.sotto) post({ tipo:"clip-parlato-vivo", reg: r.id, da: LIVE.da }).then(function(d){
       var p = d.pezzi || []; if (!p.length) return;
       p.forEach(function(x){ if (x.a > LIVE.da) LIVE.righe.push(x); }); LIVE.da = p[p.length - 1].a;
-      var u = p[p.length - 1], suo = (u.l || "it") === LIVE.lingua, txt = suo ? u.x : (u.y || "\u2026 " + u.x);
+      var u = p[p.length - 1], parlata = u.l || "it";
       var v = el("videoL"), hh = v.clientHeight || 300; el("sottoItL").style.fontSize = (hh * 51 / 1080) + "px"; el("sottoEnL").style.fontSize = (hh * 55 / 1080) + "px";
-      el("sottoItL").textContent = LIVE.lingua === "it" ? txt : ""; el("sottoEnL").textContent = LIVE.lingua === "en" ? txt : "";
+      // SI E' CAPITO IN CHE LINGUA PARLANO. Con "tutte e due" la traduzione
+      // va chiesta verso l'ALTRA lingua: se si e' chiesto inglese e il
+      // telecronista parla inglese non arriva niente da mettere sotto.
+      if (parlata !== LIVE.parlata) {
+        LIVE.parlata = parlata;
+        if (LIVE.sotto && LIVE.lingua === "due") post({ tipo:"clip-sottotitoli", id: r.id, mostra: mostraDi("due") }).catch(function(){});
+      }
+      var suo = parlata === LIVE.lingua, txt = suo ? u.x : (u.y || "\u2026 " + u.x);
+      if (LIVE.lingua === "due") {
+        el("sottoItL").textContent = parlata === "it" ? u.x : (u.y || "");
+        el("sottoEnL").textContent = parlata === "en" ? u.x : (u.y || "");
+      } else {
+        el("sottoItL").textContent = LIVE.lingua === "it" ? txt : "";
+        el("sottoEnL").textContent = LIVE.lingua === "en" ? txt : "";
+      }
       el("lDetto").innerHTML = LIVE.righe.slice(-40).map(function(x){ return '<div><small>' + tcBreve(x.a) + '</small>' + esc(x.x) + '</div>'; }).join(""); el("lDetto").scrollTop = el("lDetto").scrollHeight;
     }).catch(function(){});
   }
-  el("lSotto").addEventListener("click", function(){
+  // TRE TASTI, COME NELL'ASSET: ITA, ENG, tutte e due. Prima erano un
+  // interruttore piu' una linguetta che si scambiava — due gesti per dire
+  // una cosa sola, e la lingua che stavi guardando non si leggeva a colpo
+  // d'occhio. Ripremendo quello acceso si spengono.
+  function disegnaSubLive(){
+    document.querySelectorAll("#live [data-lsub]").forEach(function(b){
+      b.classList.toggle("on", LIVE.sotto && b.dataset.lsub === LIVE.lingua);
+    });
+    if (!LIVE.sotto) { el("sottoItL").textContent = ""; el("sottoEnL").textContent = ""; }
+  }
+  function mostraDi(q){ return q === "due" ? (LIVE.parlata === "en" ? "it" : "en") : q; }
+  function accendiSubLive(quale){
     var r = LIVE.reg; if (!r) return;
-    LIVE.sotto = !LIVE.sotto; this.classList.toggle("on", LIVE.sotto);
-    post({ tipo:"clip-sottotitoli", id: r.id, on: LIVE.sotto, lingua:"auto", mostra: LIVE.lingua }).then(function(){ avviso("ok", LIVE.sotto ? "Sottotitoli accesi: la prima riga arriva fra una decina di secondi." : "Sottotitoli spenti."); if (!LIVE.sotto) { el("sottoItL").textContent = ""; el("sottoEnL").textContent = ""; } }).catch(function(er){ avviso("err", esc(er.message)); });
+    if (LIVE.sotto && LIVE.lingua === quale) {
+      LIVE.sotto = false; disegnaSubLive();
+      post({ tipo:"clip-sottotitoli", id: r.id, on: false }).then(function(){ avviso("ok", "Sottotitoli spenti."); }).catch(function(er){ avviso("err", esc(er.message)); });
+      return;
+    }
+    var gia = LIVE.sotto;
+    LIVE.lingua = quale; LIVE.sotto = true; disegnaSubLive();
+    var c = { tipo:"clip-sottotitoli", id: r.id, mostra: mostraDi(quale) };
+    if (!gia) { c.on = true; c.lingua = "auto"; }
+    post(c).then(function(){ if (!gia) avviso("ok", "Sottotitoli accesi: la prima riga arriva fra una decina di secondi."); })
+      .catch(function(er){ LIVE.sotto = gia; disegnaSubLive(); avviso("err", esc(er.message)); });
+  }
+  document.querySelectorAll("#live [data-lsub]").forEach(function(b){
+    b.addEventListener("click", function(){ accendiSubLive(b.dataset.lsub); });
   });
-  el("lLingua").addEventListener("click", function(){ LIVE.lingua = LIVE.lingua === "it" ? "en" : "it"; this.textContent = LIVE.lingua === "it" ? "ITA" : "ENG"; if (LIVE.reg && LIVE.sotto) post({ tipo:"clip-sottotitoli", id: LIVE.reg.id, mostra: LIVE.lingua }).catch(function(){}); });
   el("lClip").addEventListener("click", function(){ var r = LIVE.reg; if (!r) return; var fuori = r.durata || 0; if (fuori < 5) return avviso("err", "Ancora troppo poco registrato."); post({ tipo:"clip-taglia", reg: r.id, dentro: Math.max(0, fuori - 30), fuori: fuori, formato:"16:9", titolo: (r.titolo || "diretta") + " " + tc(fuori) }).then(function(){ avviso("ok", "Clip degli ultimi 30 secondi in lavorazione."); }).catch(function(er){ avviso("err", esc(er.message)); }); });
   el("lAsset").addEventListener("click", function(){ if (LIVE.reg) location.href = "mam2.html?asset=" + encodeURIComponent(LIVE.reg.evento || "") + "&reg=" + LIVE.reg.id; });
 
