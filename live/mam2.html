@@ -129,6 +129,13 @@
   .momenti .az.grosso{width:6px;}
   .momenti .az.gol::after{content:'';position:absolute;top:-5px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:inherit;}
   .momenti.filtra .az{opacity:.14;} .momenti.filtra .az.tieni{opacity:1;}
+  /* LA BARRA DEI SECONDI DELLA DIRETTA. Piu' bassa di quella della partita
+     — qui non ci sono azioni da disegnare, c'e' il tempo — con il tratto
+     fra entrata e uscita in oro e la coda in arrivo segnata a parte. */
+  .lbarra{height:36px;}
+  .lbarra .scritto{position:absolute;top:0;bottom:11px;left:0;background:rgba(245,241,230,.07);}
+  .lbarra .tratto{position:absolute;top:0;bottom:11px;background:rgba(201,162,75,.28);border-left:2px solid var(--oro);border-right:2px solid var(--oro);}
+  .lbarra .coda{position:absolute;top:0;bottom:11px;right:0;background:repeating-linear-gradient(135deg,rgba(90,167,232,.16) 0 5px,transparent 5px 10px);}
   .legenda{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;}
   .legenda span{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border:1px solid var(--riga);border-radius:999px;font-size:10.5px;color:var(--ivory2);cursor:pointer;white-space:nowrap;}
   .legenda span:hover{border-color:var(--oro);} .legenda span.on{border-color:var(--oro);color:var(--oro2);background:rgba(201,162,75,.12);}
@@ -415,6 +422,17 @@
   .lv-palco{display:flex;flex-direction:column;min-height:0;padding:14px 18px;gap:10px;overflow:auto;}
   .lv-lato{border-left:1px solid var(--riga);background:var(--navy2);overflow:auto;display:flex;flex-direction:column;}
   .porta{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--riga);}
+  /* LE CLIP DELLA PARTITA, mentre la partita va avanti: il taglio grezzo si
+     scarica e si manda subito, e la stessa clip resta li' per la timeline. */
+  .lclip{display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid var(--riga);align-items:flex-start;}
+  .lclip img{width:78px;height:44px;object-fit:cover;border-radius:4px;background:#000;flex:none;}
+  .lclip .vuota{width:78px;height:44px;border-radius:4px;background:rgba(245,241,230,.06);flex:none;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--fumo);text-align:center;}
+  .lclip .d{flex:1;min-width:0;}
+  .lclip b{display:block;font-size:12px;color:var(--ivory2);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .lclip small{display:block;color:var(--fumo);font-size:10.5px;margin-top:2px;}
+  .lclip .az{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap;}
+  .lclip .az a,.lclip .az button{font-size:10px;padding:3px 7px;border:1px solid var(--riga2);border-radius:4px;color:var(--ivory2);background:transparent;text-decoration:none;cursor:pointer;}
+  .lclip .az a:hover,.lclip .az button:hover{border-color:var(--oro);color:var(--oro2);}
   .porta .led{width:10px;height:10px;border-radius:50%;background:var(--fumo);flex:none;} .porta.libera .led{background:var(--fumo);} .porta.attesa .led{background:var(--giallo);box-shadow:0 0 8px var(--giallo);} .porta.registra .led{background:var(--rosso);box-shadow:0 0 8px var(--rosso);animation:pulsa 1.2s infinite;}
   @keyframes pulsa{50%{opacity:.5}}
   .porta b{font-family:'Mazzard',sans-serif;font-size:13px;} .porta small{display:block;color:var(--fumo);font-size:11.5px;}
@@ -516,8 +534,14 @@
       <div id="lVuoto" class="lv-vuoto"><b>Nessun flusso in arrivo</b><span>Apri una porta a destra: vMix spinge in SRT (listener) e qui compare la partita.</span></div>
       <div class="player" id="lPlayer" hidden><video id="videoL" playsinline muted autoplay></video><div class="sotto" id="sottoBoxL"><i class="it" id="sottoItL"></i><i class="en" id="sottoEnL"></i></div></div>
       <div class="trasporto" id="lTrasporto" hidden>
+        <div class="momenti lbarra" id="lBarra" title="clicca o trascina per andare a quel secondo della registrazione">
+          <div class="scritto" id="lScritto"></div><div class="tratto" id="lTratto" hidden></div><div class="righello" id="lRighello"></div><div class="testina" id="lTestina"></div>
+        </div>
         <div class="pm">
           <span class="tcx" id="lOra">00:00:00</span>
+          <span class="sep"></span>
+          <button class="ico" id="lAudio" title="il browser fa partire la diretta senza audio: clicca per accenderlo"><svg viewBox="0 0 16 16"><path d="M3 6h3l4-3v10l-4-3H3z"/><path d="M11 5l4 6M15 5l-4 6" stroke="currentColor" stroke-width="1.4" fill="none"/></svg></button>
+          <input type="range" id="lVol" min="0" max="100" value="100" title="volume" style="width:66px;accent-color:var(--oro);flex:none">
           <span class="sep"></span>
           <button class="ico" id="lIn" title="Segna entrata (I, [)"><span class="graffa">{</span></button><button class="ico" id="lOut" title="Segna uscita (O, ])"><span class="graffa">}</span></button>
           <span class="sep"></span>
@@ -537,6 +561,8 @@
     <div class="lv-lato">
       <div class="capo" style="padding:12px 14px;border-bottom:1px solid var(--riga);font-family:'Mazzard',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--oro)">Porte in ascolto</div>
       <div id="lPorte"></div>
+      <div class="capo" style="padding:12px 14px;border-bottom:1px solid var(--riga);border-top:1px solid var(--riga);font-family:'Mazzard',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--oro);display:flex;align-items:center;gap:8px">Clip della partita <span id="lClipConto" style="color:var(--fumo);letter-spacing:0;text-transform:none;font-family:inherit"></span></div>
+      <div id="lClipElenco"></div>
       <div class="capo" style="padding:12px 14px;border-bottom:1px solid var(--riga);border-top:1px solid var(--riga);font-family:'Mazzard',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--oro)">Telecronaca dal vivo</div>
       <div class="lv-detto" id="lDetto"><span style="color:var(--fumo);font-size:12px;padding:8px">Con i sottotitoli accesi le righe arrivano qui.</span></div>
     </div>
@@ -2921,7 +2947,7 @@
   // registra a segmenti e la pagina li legge in HLS. La salute del flusso
   // si misura dalla playlist: quanti segmenti, quanto e' vecchio l'ultimo,
   // quanto pesa (bitrate). Come il pannello di un encoder, senza l'encoder.
-  var LIVE = { reg: null, hls: null, porte: [], giro: null, sotto: false, lingua: "it", da: 0, righe: [], ultimoSeg: null, ultimoQuando: 0, ricezione: true };
+  var LIVE = { reg: null, hls: null, porte: [], giro: null, sotto: false, lingua: "it", da: 0, righe: [], ultimoSeg: null, ultimoQuando: 0, ricezione: true, parti: null, fermoVoluto: false };
   function apriLive(){
     vai("live"); briciole(["Diretta"]); document.title = "Diretta · MAM Como TV";
     giroLive();
@@ -2935,6 +2961,7 @@
       LIVE.porte = d.porte || [];
       var viva = regs.filter(function(r){ return r.stato === "registra" && r.ascolto; }).sort(function(a,b){ return (b.avviata||0) - (a.avviata||0) })[0] || null;
       disegnaPorte(regs);
+      LIVE.clip = (d.clip || []);
       if (viva && (!LIVE.reg || LIVE.reg.id !== viva.id)) attaccaLive(viva);
       else if (!viva && LIVE.reg) staccaLive();
       LIVE.reg = viva;
@@ -2960,15 +2987,84 @@
     }
     if (f) { if (!window.confirm("Chiudo la porta e fermo la registrazione?")) return; post({ tipo:"clip-ferma", id: f.dataset.ferma }).then(function(){ avviso("ok", "Fermata."); giroLive(); }).catch(function(er){ avviso("err", esc(er.message)); }); }
   });
+  // LE CLIP DELLA PARTITA. Il taglio grezzo esce mentre la partita va
+  // avanti: si scarica e si manda a chi lo aspetta, e la stessa clip resta
+  // qui per andare in timeline e diventare il montato buono. Sono le due
+  // cose che servono in diretta, e sono la stessa clip.
+  function disegnaClipLive(){
+    var r = LIVE.reg, e = el("lClipElenco");
+    if (!e) return;
+    var mie = (LIVE.clip || []).filter(function(c){ return r && c.reg === r.id; });
+    el("lClipConto").textContent = mie.length ? mie.length : "";
+    if (!r) { e.innerHTML = ""; return; }
+    if (!mie.length) { e.innerHTML = '<div class="lclip"><div class="d"><small>Nessuna clip ancora. Segna { e } sulla barra e premi CLIP: esce un taglio grezzo, pronto da scaricare.</small></div></div>'; return; }
+    e.innerHTML = mie.slice(0, 40).map(function(c){
+      var url = BASE + "/clip/_clip/" + c.id + ".mp4", pronta = c.stato === "pronta";
+      var ante = pronta ? '<img src="' + BASE + "/clip/_clip/" + c.id + '.jpg" alt="" loading="lazy">'
+               : '<div class="vuota">' + (c.stato === "errore" ? "errore" : "in forno") + "</div>";
+      return '<div class="lclip" data-clip="' + esc(c.id) + '">' + ante +
+        '<div class="d"><b>' + esc(c.titolo || c.id) + "</b>" +
+        "<small>" + tc(c.durata || 0) + " \u00b7 " + (c.formato || "16:9") +
+          (pronta ? (c.peso ? " \u00b7 " + (c.peso / 1048576).toFixed(1) + " MB" : "")
+                  : c.stato === "errore" ? " \u00b7 " + esc((c.errore || "non riuscita")).slice(0, 60)
+                  : " \u00b7 sta uscendo\u2026") + "</small>" +
+        (pronta ? '<div class="az">' +
+            '<a href="' + url + '" download="' + esc(c.nome || (c.id + ".mp4")) + '">\u2913 Scarica</a>' +
+            '<a href="' + url + '" target="_blank" rel="noopener">Guarda</a>' +
+            '<button data-tl="' + esc(c.id) + '">In timeline</button>' +
+          "</div>" : "") +
+        "</div></div>";
+    }).join("");
+  }
+  el("lClipElenco").addEventListener("click", function(ev){
+    var b = ev.target.closest("button[data-tl]"); if (!b) return;
+    b.disabled = true;
+    post({ tipo:"clip-hl-aggiungi", clip: b.dataset.tl }).then(function(d){
+      avviso("ok", "In timeline. <a href=\"mam2.html?seq=" + esc(d.seq.id) + "\" style=\"color:var(--oro)\">Aprila nel montaggio</a>");
+    }).catch(function(er){ avviso("err", esc(er.message)); }).then(function(){ b.disabled = false; });
+  });
+
   function attaccaLive(r){
     var v = el("videoL"); staccaLive();
     var url = BASE + "/clip/" + r.id + "/live.m3u8";
-    if (window.Hls && Hls.isSupported()) { LIVE.hls = new Hls({ liveSyncDurationCount: 3 }); LIVE.hls.loadSource(url); LIVE.hls.attachMedia(v); LIVE.hls.on(Hls.Events.MANIFEST_PARSED, function(){ v.play().catch(function(){}); }); }
-    else { v.src = url; v.play().catch(function(){}); }
+    // SI ENTRA DAL VIVO, NON DALL'INIZIO. La playlist della diretta tiene
+    // tutti i segmenti dal primo (e' quello che permette di tornare
+    // indietro), ma per il lettore vuol dire partire da zero: si apriva la
+    // Diretta e si guardava mezz'ora fa. Appena c'e' qualcosa da riprodurre
+    // si salta in fondo — poi chi vuole torna indietro con la barra.
+    // Il salto in fondo e la riproduzione non vanno chiesti insieme: il
+    // browser annulla il play() se nel frattempo il video si sta spostando,
+    // e la diretta restava ferma sul primo fotogramma (nero) senza dire
+    // niente. Prima si arriva, poi si parte.
+    function inFondo(){
+      try {
+        var f = v.seekable.length ? v.seekable.end(v.seekable.length - 1) : (v.duration || 0);
+        if (f > 1) {
+          v.currentTime = Math.max(0, f - 1);
+          v.play().catch(function(){});
+          return true;
+        }
+      } catch (e) {}
+      return false;
+    }
+    if (window.Hls && Hls.isSupported()) {
+      LIVE.hls = new Hls({ liveSyncDurationCount: 3 });
+      LIVE.hls.loadSource(url); LIVE.hls.attachMedia(v);
+      LIVE.hls.on(Hls.Events.MANIFEST_PARSED, function(){ v.play().catch(function(){}); });
+    } else { v.src = url; v.play().catch(function(){}); }
+    // UNA VOLTA SOLA, E QUANDO C'E' DAVVERO QUALCOSA DA RIPRODURRE.
+    // Chiedere il salto a ripetizione teneva il video in "mi sto
+    // spostando" per sempre: partiva e veniva subito rispedito in fondo,
+    // e chi guardava vedeva un fotogramma fermo. Un "canplay" vuol dire
+    // che i dati ci sono: si salta li' e si parte, e basta.
+    v.addEventListener("canplay", function una(){
+      v.removeEventListener("canplay", una);
+      inFondo();
+    });
     LIVE.da = 0; LIVE.righe = []; el("lDetto").innerHTML = "";
-    LDENTRO = LFUORI = null; lInOut();
+    LDENTRO = LFUORI = null; L_FINE = 0; LIVE.fermoVoluto = false; lInOut(); segnoAudio(); segnoPlay();
   }
-  function staccaLive(){ if (LIVE.hls) { LIVE.hls.destroy(); LIVE.hls = null; } var v = el("videoL"); if (v) { v.removeAttribute("src"); v.load(); } }
+  function staccaLive(){ clearInterval(LIVE.parti); if (LIVE.hls) { LIVE.hls.destroy(); LIVE.hls = null; } var v = el("videoL"); if (v) { v.removeAttribute("src"); v.load(); } }
   function disegnaLive(){
     var r = LIVE.reg;
     el("lVuoto").hidden = !!r; el("lPlayer").hidden = !r; el("lSalute").hidden = !r;
@@ -2990,6 +3086,7 @@
               '<div id="lBitrate"><b>…</b><span>bitrate</span></div>' +
               '<div><b>' + (r.canali || "—") + '</b><span>canali audio</span></div>';
       el("lSalute").innerHTML = h;
+      disegnaClipLive();
       if (ultimo) fetch(BASE + "/clip/" + r.id + "/" + ultimo.trim(), { method:"HEAD", cache:"no-store" }).then(function(x){ var b = +x.headers.get("content-length") || 0; var d2 = 0; for (var i = righe.length - 1; i >= 0; i--) { var m = /^#EXTINF:([\d.]+)/.exec(righe[i]); if (m) { d2 = parseFloat(m[1]); break; } } var e = el("lBitrate"); if (e && b && d2) e.firstChild.textContent = (b * 8 / d2 / 1e6).toFixed(1) + " Mb/s"; }).catch(function(){});
     }).catch(function(){});
     if (LIVE.sotto) post({ tipo:"clip-parlato-vivo", reg: r.id, da: LIVE.da }).then(function(d){
@@ -3027,6 +3124,7 @@
     el("lTDur").textContent = buono ? tc(LFUORI - LDENTRO) : "\u2014";
     el("lBozza").disabled = !buono; el("lClipIO").disabled = !buono;
     el("lIn").classList.toggle("on", LDENTRO !== null); el("lOut").classList.toggle("on", LFUORI !== null);
+    disegnaBarraLive();
   }
   el("lIn").addEventListener("click", function(){ if (!LIVE.reg) return; LDENTRO = VL.currentTime; if (LFUORI !== null && LFUORI <= LDENTRO) LFUORI = null; lInOut(); });
   el("lOut").addEventListener("click", function(){ if (!LIVE.reg) return; LFUORI = VL.currentTime; if (LDENTRO !== null && LDENTRO >= LFUORI) LDENTRO = null; lInOut(); });
@@ -3035,8 +3133,29 @@
   el("lPulisci").addEventListener("click", function(){ LDENTRO = LFUORI = null; lInOut(); });
   el("lIndietro").addEventListener("click", function(e){ lVaiA(VL.currentTime - (e.shiftKey ? 60 : 10)); });
   el("lAvanti").addEventListener("click", function(e){ lVaiA(VL.currentTime + (e.shiftKey ? 60 : 10)); });
-  el("lPlay").addEventListener("click", function(){ if (VL.paused) VL.play().catch(function(){}); else VL.pause(); });
-  el("lVivo").addEventListener("click", function(){ lVaiA(lFine()); VL.play().catch(function(){}); });
+  el("lPlay").addEventListener("click", function(){
+    if (VL.paused) { LIVE.fermoVoluto = false; VL.play().catch(function(){}); }
+    else { LIVE.fermoVoluto = true; VL.pause(); }
+  });
+  // il tasto dice se sta andando o e' fermo, come in ogni lettore
+  function segnoPlay(){
+    el("lPlay").innerHTML = VL.paused
+      ? '<svg viewBox="0 0 16 16"><path d="M4 2v12l10-6z"/></svg>'
+      : '<svg viewBox="0 0 16 16"><rect x="3.5" y="2.5" width="3.5" height="11"/><rect x="9" y="2.5" width="3.5" height="11"/></svg>';
+    el("lPlay").classList.toggle("on", !VL.paused);
+  }
+  VL.addEventListener("play", segnoPlay); VL.addEventListener("pause", segnoPlay);
+  // CAMBIARE SCHEDA METTE IN PAUSA LA DIRETTA: e' il browser, che sospende
+  // i video nelle pagine che non si vedono. Tornando si ripartirebbe da
+  // dove si era rimasti — cioe' indietro di tutto il tempo passato altrove.
+  // Quindi al rientro si torna dov'e' il flusso adesso, a meno che la pausa
+  // l'abbia messa qualcuno apposta.
+  document.addEventListener("visibilitychange", function(){
+    if (document.hidden || !LIVE.reg || LIVE.fermoVoluto) return;
+    if (!el("live").classList.contains("on")) return;
+    setTimeout(function(){ if (VL.paused) { lVaiA(lFine()); VL.play().catch(function(){}); } }, 250);
+  });
+  el("lVivo").addEventListener("click", function(){ LIVE.fermoVoluto = false; lVaiA(lFine()); VL.play().catch(function(){}); });
   el("lBozza").addEventListener("click", function(){
     var r = LIVE.reg; if (!r || LDENTRO === null || LFUORI === null) return;
     var b = this; b.disabled = true;
@@ -3055,13 +3174,65 @@
       .then(function(){ avviso("ok", "Clip in lavorazione: la trovi fra le clip della partita."); })
       .catch(function(er){ avviso("err", esc(er.message)); });
   });
+  // L'AUDIO PARTE SPENTO E NON E' UN GUASTO: il browser non fa partire da
+  // solo un video che suona, quindi la diretta si attacca muta e l'audio lo
+  // accende chi guarda. Prima non c'era il tasto per accenderlo.
+  function segnoAudio(){
+    var spento = VL.muted || !VL.volume;
+    el("lAudio").classList.toggle("on", !spento);
+    el("lAudio").innerHTML = spento
+      ? '<svg viewBox="0 0 16 16"><path d="M3 6h3l4-3v10l-4-3H3z"/><path d="M11 5l4 6M15 5l-4 6" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>'
+      : '<svg viewBox="0 0 16 16"><path d="M3 6h3l4-3v10l-4-3H3z"/><path d="M11.5 5.5a4 4 0 010 5M13.5 3.5a7 7 0 010 9" stroke="currentColor" stroke-width="1.3" fill="none"/></svg>';
+    el("lAudio").title = spento ? "audio spento: clicca per accenderlo" : "audio acceso: clicca per spegnerlo";
+  }
+  el("lAudio").addEventListener("click", function(){
+    VL.muted = !VL.muted;
+    if (!VL.muted && !VL.volume) { VL.volume = 1; el("lVol").value = 100; }
+    segnoAudio();
+  });
+  el("lVol").addEventListener("input", function(){ VL.volume = (+this.value || 0) / 100; if (VL.volume) VL.muted = false; segnoAudio(); });
+  VL.addEventListener("volumechange", segnoAudio);
+
+  // LA BARRA DEI SECONDI. La registrazione cresce mentre la guardi, quindi
+  // la scala cambia: il righello si rifa' solo quando il totale si muove
+  // davvero, non trenta volte al secondo.
+  var L_FINE = 0;
+  function disegnaBarraLive(){
+    var f = lFine(); if (!(f > 0)) { el("lTestina").style.left = "0"; return; }
+    if (Math.abs(f - L_FINE) > 3) {
+      L_FINE = f;
+      var passo = f < 120 ? 10 : f < 600 ? 30 : f < 1800 ? 60 : f < 7200 ? 300 : 600, h = "";
+      for (var t = 0; t <= f; t += passo) {
+        var x = (t / f * 100).toFixed(3) + "%";
+        h += '<i class="tacca" style="left:' + x + '"></i><i class="mnum" style="left:' + x + '">' + tcBreve(t) + "</i>";
+      }
+      el("lRighello").innerHTML = h;
+      el("lScritto").style.width = "100%";
+    }
+    el("lTestina").style.left = (Math.min(1, VL.currentTime / f) * 100) + "%";
+    var tr = el("lTratto");
+    if (LDENTRO !== null && LFUORI !== null && LFUORI > LDENTRO) {
+      tr.hidden = false; tr.style.left = (LDENTRO / f * 100) + "%"; tr.style.width = ((LFUORI - LDENTRO) / f * 100) + "%";
+    } else if (LDENTRO !== null) {
+      tr.hidden = false; tr.style.left = (LDENTRO / f * 100) + "%"; tr.style.width = "2px";
+    } else tr.hidden = true;
+  }
+  (function(){
+    var tira = false;
+    function dove(e){ var r = el("lBarra").getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * lFine(); }
+    el("lBarra").addEventListener("mousedown", function(e){ tira = true; lVaiA(dove(e)); disegnaBarraLive(); e.preventDefault(); });
+    document.addEventListener("mousemove", function(e){ if (tira) { lVaiA(dove(e)); disegnaBarraLive(); } });
+    document.addEventListener("mouseup", function(){ tira = false; });
+  })();
+
   VL.addEventListener("timeupdate", function(){
     if (!el("live").classList.contains("on")) return;
     el("lOra").textContent = tc(VL.currentTime);
+    disegnaBarraLive();
     var dietro = lFine() - VL.currentTime;
-    el("lRitardo").textContent = dietro > 3
+    el("lRitardo").textContent = (dietro > 3
       ? "sei indietro di " + Math.round(dietro) + " s rispetto al vivo \u00b7 DAL VIVO per tornare in fondo"
-      : "sei sul vivo";
+      : "sei sul vivo") + (VL.muted ? " \u00b7 audio spento: accendilo col tasto qui sopra" : "");
   });
   document.addEventListener("keydown", function(e){
     if (!el("live").classList.contains("on") || !LIVE.reg) return;
@@ -3074,8 +3245,9 @@
     else if (e.key === "," || e.key === "b" || e.key === "B") { if (!el("lBozza").disabled) el("lBozza").click(); else avviso("err", "Segna prima IN e OUT."); }
     else if (e.key === "ArrowLeft") { e.preventDefault(); lVaiA(VL.currentTime - (e.shiftKey ? 60 : 10)); }
     else if (e.key === "ArrowRight") { e.preventDefault(); lVaiA(VL.currentTime + (e.shiftKey ? 60 : 10)); }
-    else if (e.key === "k" || e.key === "K") VL.pause();
-    else if (e.key === "l" || e.key === "L") { lVaiA(lFine()); VL.play().catch(function(){}); }
+    else if (e.key === "k" || e.key === "K") { LIVE.fermoVoluto = true; VL.pause(); }
+    else if (e.key === "l" || e.key === "L") { LIVE.fermoVoluto = false; lVaiA(lFine()); VL.play().catch(function(){}); }
+    else if (e.key === "m" || e.key === "M") el("lAudio").click();
   });
   el("lFerma").addEventListener("click", function(){ if (!LIVE.reg) return; if (!window.confirm("Fermo la registrazione di " + (LIVE.reg.titolo || "questa porta") + "?")) return; post({ tipo:"clip-ferma", id: LIVE.reg.id }).then(function(){ avviso("ok", "Fermata."); giroLive(); }).catch(function(er){ avviso("err", esc(er.message)); }); });
 
