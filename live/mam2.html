@@ -229,14 +229,17 @@
      si esportava alla cieca: ora la cornice e' quella vera e il video dentro
      e' ritagliato come lo ritaglia l'export, cosi' si vede cosa resta fuori. */
   .ed-palco .palcoBox{flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center;}
-  .ed-palco .player{height:100%;width:auto;max-width:100%;aspect-ratio:var(--ar,16/9);flex:0 0 auto;}
+  .ed-palco .player{flex:0 0 auto;}
   .ed-palco .player video{width:100%;height:100%;object-fit:cover;aspect-ratio:auto;}
   .ed-palco .player.campo video{object-fit:contain;}
   /* il riquadro del formato sul campo intero: quello che l'export terra' */
-  .ed-palco .taglio{position:absolute;top:0;bottom:0;left:50%;transform:translateX(-50%);
-    border:1.5px dashed var(--oro);box-shadow:0 0 0 2000px rgba(4,12,28,.55);pointer-events:none;}
+  .ed-palco .taglio{position:absolute;border:1.5px dashed var(--oro);box-shadow:0 0 0 2000px rgba(4,12,28,.55);
+    cursor:grab;touch-action:none;}
+  .ed-palco .taglio.presa{cursor:grabbing;border-style:solid;}
   .ed-palco .taglio b{position:absolute;top:6px;left:50%;transform:translateX(-50%);font-family:'Mazzard',sans-serif;
     font-size:9.5px;letter-spacing:.14em;color:var(--oro);background:rgba(4,12,28,.75);padding:2px 7px;border-radius:999px;white-space:nowrap;}
+  .ed-lato .inq{display:flex;align-items:center;gap:8px;font-size:12px;}
+  .ed-lato .inq input[type=range]{flex:1;accent-color:var(--oro);}
   .ed-lato .avviso2{font-size:11.5px;color:var(--oro2);}
   /* LE ETICHETTE. Prima qui c'erano sei riquadri, quattro dei quali dicevano
      "cerca per vederle" e portavano tutti nello stesso posto: spazio speso
@@ -471,6 +474,11 @@
           <div class="riga2"><select id="eSotto"><option value="">senza sottotitoli</option><option value="srt">file SRT</option><option value="video">impressi nel video</option><option value="entrambi">impressi + SRT</option></select><select id="eSottoL"><option value="it">ITA</option><option value="en">ENG</option><option value="entrambe">ITA + ENG</option></select></div>
           <div class="riga2"><button class="oro" id="eEsporta">Esporta</button></div>
           <div id="eStato" style="font-size:11.5px;color:var(--fumo)"></div>
+        </div>
+        <div class="sez2" id="sezInq" hidden><h4>Inquadratura <span id="inqF" style="color:var(--ivory2)"></span></h4>
+          <div class="riga2" style="color:var(--fumo);font-size:11.5px" id="inqDice"></div>
+          <div class="riga2 inq"><span>zoom</span><input type="range" id="inqZoom" min="35" max="100" value="100"><b id="inqZval" style="font:11px ui-monospace,Menlo,monospace;color:var(--oro2)">100%</b></div>
+          <div class="riga2"><button class="mini" id="inqFermo" title="una sola posizione per tutto il pezzo">Fermo qui</button><button class="mini" id="inqProponi" title="la macchina guarda il pezzo e propone dove inquadrare">Proponi</button><button class="mini" id="inqVia" title="torna al centro, senza punti">Togli</button></div>
         </div>
         <div class="sez2"><h4>Uscite</h4><div id="eUscite" style="display:flex;flex-direction:column;gap:6px"><span style="color:var(--fumo);font-size:12px">Ancora niente.</span></div></div>
       </div>
@@ -1346,7 +1354,7 @@
     disegnaBin();
   }
   function vaiTempo(t, riproduci){ var p = pezzoAlTempo(t); if (p) vaiA(p.i, p.dentro, riproduci); }
-  var FERMO = null, ALTOE = 0, ORAE = "";
+  var FERMO = null, ALTOE = 0, ORAE = "", INQ_VISTO = -2;
   function giroEditor(){
     if (!el("editor").classList.contains("on") || !VE || !PZ.length) return;
     var x = PZ[ORA.i]; if (!x) return;
@@ -1359,6 +1367,8 @@
     VE.muted = !auOra || !!auOra.muto;
     if (FERMO !== VE.paused) { FERMO = VE.paused; el("ePlay").innerHTML = FERMO ? '<svg viewBox="0 0 16 16"><path d="M4 2v12l10-6z"/></svg>' : '<svg viewBox="0 0 16 16"><rect x="3" y="2" width="4" height="12"/><rect x="9" y="2" width="4" height="12"/></svg>'; }
     var tt = el("eTestina"); tt.hidden = false; tt.style.left = X(t) + "px";
+    if (CAMPO && ANTE !== "16:9") disegnaTaglio();
+    if (ORA.i !== INQ_VISTO) { INQ_VISTO = ORA.i; aggiornaInq(); }
     if (!VE.paused && (t > LENTE.b || t < LENTE.a)) { var span = LENTE.b - LENTE.a; LENTE = { a: Math.max(0, t - span * 0.1), b: Math.max(0, t - span * 0.1) + span }; disegnaTl(); }
     if (SOTTOE) {
       var ora = null; for (var k = 0; k < DETTOE.length; k++) { var s = DETTOE[k]; if (VE.currentTime >= s.a - .3 && VE.currentTime < s.b + .8) { ora = s; break; } }
@@ -1547,15 +1557,26 @@
   // si puo' spegnerli tutti (l'export chiederebbe un formato che non c'e').
   var ANTE = "16:9", CAMPO = false;
   var RAPPORTO = { "16:9": 16 / 9, "9:16": 9 / 16, "1:1": 1, "3:4": 3 / 4 };
+  function misuraPalco(){
+    var pal = el("palcoE"); if (!pal || !pal.parentElement) return;
+    var box = pal.parentElement, w = box.clientWidth, h = box.clientHeight;
+    if (!w || !h) return;
+    var ar = CAMPO ? RAPPORTO["16:9"] : (RAPPORTO[ANTE] || RAPPORTO["16:9"]);
+    var W = Math.min(w, h * ar);
+    pal.style.width = Math.floor(W) + "px";
+    pal.style.height = Math.floor(W / ar) + "px";
+  }
   function applicaFormato(){
     var pal = el("palcoE"); if (!pal) return;
     pal.style.setProperty("--ar", CAMPO ? "16/9" : ANTE.replace(":", "/"));
+    misuraPalco();
     pal.classList.toggle("campo", CAMPO);
     var t = el("eTaglioVista");
     if (CAMPO && ANTE !== "16:9") { t.hidden = false; t.style.width = (RAPPORTO[ANTE] / RAPPORTO["16:9"] * 100) + "%"; t.querySelector("b").textContent = ANTE; }
     else t.hidden = true;
     Array.prototype.forEach.call(el("eFormati").querySelectorAll(".fchip"), function(z){ z.classList.toggle("vista", z.dataset.f === ANTE); });
     el("eCampo").classList.toggle("on", CAMPO);
+    if (typeof aggiornaInq === "function") { aggiornaInq(); disegnaTaglio(); }
     el("eQuanti").textContent = FORMATI.length > 1
       ? "In uscita " + FORMATI.length + " file: " + FORMATI.join(", ")
       : (ANTE !== FORMATI[0] ? "Nel monitor " + ANTE + ", in uscita " + FORMATI[0] : "");
@@ -1570,6 +1591,113 @@
     applicaFormato();
   });
   el("eCampo").addEventListener("click", function(){ CAMPO = !CAMPO; applicaFormato(); });
+
+  // ══════════ L'INQUADRATURA VERTICALE, PEZZO PER PEZZO ══════════
+  //  Il 9:16 non e' un altro montaggio: sono gli stessi tagli visti da una
+  //  finestra piu' stretta, e dove sta quella finestra lo decide chi monta.
+  //  Il ponte la tiene per pezzo e per formato, come punti {t, x, y} in
+  //  secondi dall'inizio del pezzo: un punto solo vuol dire "ferma li'",
+  //  piu' punti vogliono dire che la finestra si muove seguendo l'azione.
+  //  Qui si trascina il riquadro e il punto si scrive dove sta la testina.
+  function inqDi(x){
+    var i = x && x.inquadra && x.inquadra[ANTE];
+    if (!i) return { z: 1, punti: [], fisso: false };
+    if (Array.isArray(i)) return { z: 1, punti: i, fisso: false };
+    return { z: i.z || 1, punti: i.punti || [], fisso: !!i.fisso };
+  }
+  function dovEra(inq, t){
+    var p = inq.punti;
+    if (!p.length) return { x: 0.5, y: 0.5 };
+    if (t <= p[0].t) return { x: p[0].x, y: p[0].y };
+    for (var i = 1; i < p.length; i++) {
+      if (t <= p[i].t) {
+        var a = p[i - 1], b = p[i], f = (t - a.t) / Math.max(0.001, b.t - a.t);
+        return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
+      }
+    }
+    return { x: p[p.length - 1].x, y: p[p.length - 1].y };
+  }
+  var TRASCINO_INQ = null;
+  function disegnaTaglio(){
+    var t = el("eTaglioVista"), x = PZ[ORA.i];
+    if (!CAMPO || ANTE === "16:9" || !x) { t.hidden = true; return; }
+    var inq = TRASCINO_INQ ? TRASCINO_INQ.inq : inqDi(x);
+    var largo = RAPPORTO[ANTE] / RAPPORTO["16:9"];
+    var w = Math.min(1, inq.z * largo), h = Math.min(1, inq.z);
+    var c = TRASCINO_INQ ? TRASCINO_INQ.ora : dovEra(inq, Math.max(0, (VE.currentTime || 0) - x.dentro));
+    var cx = Math.max(w / 2, Math.min(1 - w / 2, c.x)), cy = Math.max(h / 2, Math.min(1 - h / 2, c.y));
+    t.hidden = false;
+    t.style.left = ((cx - w / 2) * 100) + "%"; t.style.width = (w * 100) + "%";
+    t.style.top = ((cy - h / 2) * 100) + "%"; t.style.height = (h * 100) + "%";
+    t.querySelector("b").textContent = ANTE + (inq.punti.length > 1 ? " \u00b7 " + inq.punti.length + " punti" : "");
+  }
+  function scriviInquadratura(inq, dice){
+    var x = PZ[ORA.i]; if (!x || !SEQ) return;
+    post({ tipo:"clip-hl-inquadra", seq: SEQ.id, pezzo: x.id, formato: ANTE, z: inq.z, punti: inq.punti })
+      .then(function(d){ ricaricaSeq(d.seq); if (dice) avviso("ok", dice); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  }
+  el("eTaglioVista").addEventListener("mousedown", function(e){
+    var x = PZ[ORA.i]; if (!x || !CAMPO || ANTE === "16:9") return;
+    var box = el("palcoE").getBoundingClientRect(), inq = inqDi(x);
+    var t0 = Math.max(0, (VE.currentTime || 0) - x.dentro);
+    TRASCINO_INQ = { inq: inq, ora: dovEra(inq, t0), x0: e.clientX, y0: e.clientY, t: t0, box: box, mosso: false };
+    var d0 = TRASCINO_INQ.ora;
+    function muovi(ev){
+      TRASCINO_INQ.mosso = true;
+      TRASCINO_INQ.ora = { x: Math.max(0, Math.min(1, d0.x + (ev.clientX - TRASCINO_INQ.x0) / box.width)),
+                           y: Math.max(0, Math.min(1, d0.y + (ev.clientY - TRASCINO_INQ.y0) / box.height)) };
+      disegnaTaglio();
+    }
+    function molla(){
+      document.removeEventListener("mousemove", muovi); document.removeEventListener("mouseup", molla);
+      el("eTaglioVista").classList.remove("presa");
+      var tr = TRASCINO_INQ; TRASCINO_INQ = null;
+      if (!tr || !tr.mosso) { disegnaTaglio(); return; }
+      // il punto si scrive dove sta la testina; se ce n'era gia' uno li'
+      // vicino prende il suo posto, se no si aggiunge e i punti si ordinano
+      var punti = tr.inq.punti.filter(function(k){ return Math.abs(k.t - tr.t) > 0.25; });
+      punti.push({ t: Math.round(tr.t * 100) / 100, x: Math.round(tr.ora.x * 1000) / 1000, y: Math.round(tr.ora.y * 1000) / 1000 });
+      punti.sort(function(a, b){ return a.t - b.t; });
+      scriviInquadratura({ z: tr.inq.z, punti: punti },
+        punti.length === 1 ? "Inquadratura ferma qui." : "Punto segnato a " + tc(tr.t) + " del pezzo: " + punti.length + " in tutto.");
+    }
+    el("eTaglioVista").classList.add("presa");
+    document.addEventListener("mousemove", muovi); document.addEventListener("mouseup", molla);
+    e.preventDefault(); e.stopPropagation();
+  });
+  function aggiornaInq(){
+    var mostra = ANTE !== "16:9" && !!PZ[ORA.i];
+    el("sezInq").hidden = !mostra;
+    if (!mostra) return;
+    var inq = inqDi(PZ[ORA.i]);
+    el("inqF").textContent = ANTE;
+    el("inqZoom").value = Math.round(inq.z * 100); el("inqZval").textContent = Math.round(inq.z * 100) + "%";
+    el("inqDice").textContent = !inq.punti.length ? "Ferma al centro. Accendi \u201cCampo intero\u201d e trascina il riquadro."
+      : inq.punti.length === 1 ? "Ferma dove l\u2019hai messa." : inq.punti.length + " punti: la finestra segue l\u2019azione.";
+  }
+  el("inqZoom").addEventListener("change", function(){
+    var x = PZ[ORA.i]; if (!x) return;
+    var inq = inqDi(x); inq.z = Math.max(0.35, Math.min(1, (+this.value || 100) / 100));
+    scriviInquadratura(inq, "Zoom " + this.value + "%: adesso c\u2019e\u2019 margine anche sopra e sotto.");
+  });
+  el("inqZoom").addEventListener("input", function(){ el("inqZval").textContent = this.value + "%"; });
+  el("inqFermo").addEventListener("click", function(){
+    var x = PZ[ORA.i]; if (!x) return;
+    var inq = inqDi(x), t0 = Math.max(0, (VE.currentTime || 0) - x.dentro), c = dovEra(inq, t0);
+    scriviInquadratura({ z: inq.z, punti: [{ t: 0, x: c.x, y: c.y }] }, "Ferma qui per tutto il pezzo.");
+  });
+  el("inqProponi").addEventListener("click", function(){
+    var x = PZ[ORA.i]; if (!x || !SEQ) return;
+    avviso("ok", "Guardo il pezzo e propongo dove inquadrare\u2026");
+    post({ tipo:"clip-hl-inquadra-proponi", seq: SEQ.id, pezzo: x.id, formato: ANTE })
+      .then(function(d){ ricaricaSeq(d.seq); aggiornaInq(); avviso("ok", "Proposta pronta: correggila trascinando il riquadro."); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  });
+  el("inqVia").addEventListener("click", function(){
+    var x = PZ[ORA.i]; if (!x) return;
+    scriviInquadratura({ z: 1, punti: [] }, "Inquadratura tolta: torna al centro.");
+  });
   // ── LE MISURE DEL MONTAGGIO ──────────────────────────────────────────
   //  Tutto quello che ha una misura sensata si puo' tirare: le due colonne
   //  laterali, la colonna dei nomi delle tracce, l'altezza della timeline e
@@ -1591,12 +1719,13 @@
   function applicaMisure(){
     var ed = el("editor"); if (!ed) return;
     Object.keys(PREDEF).forEach(function(k){ ed.style.setProperty("--" + k, stretta(k, misura(k)) + "px"); });
+    if (typeof misuraPalco === "function") misuraPalco();
     if (typeof disegnaTl === "function" && SEQ) disegnaTl();
   }
   function salvaMisure(){ try { localStorage.setItem("mam2-misure", JSON.stringify(MISURE)); } catch (e) {} }
   function cambiaMisura(k, v){ MISURE[k] = stretta(k, v); applicaMisure(); }
   applicaMisure();
-  window.addEventListener("resize", applicaMisure);
+  window.addEventListener("resize", function(){ applicaMisure(); if (typeof misuraPalco === "function") misuraPalco(); });
   // una presa sola, uguale per tutte: asse, verso e quale misura muove
   function presaSu(nodo, k, asse, verso){
     if (!nodo) return;
