@@ -4141,11 +4141,36 @@ function hlProgetto(p) {
 // L'ANNULLA. La pagina tiene lo storico della sequenza e, quando si torna
 // indietro, manda qui l'intera lista dei pezzi com'era. Il server non
 // ragiona: controlla che ogni pezzo abbia senso e la rimette cosi'.
+// QUESTA FUNZIONE CANCELLAVA I MONTAGGI, e nel modo peggiore: senza dire
+// niente e facendo finta di aver fatto il suo lavoro.
+//
+//  Riscrive la lista dei pezzi con quella che le arriva. Ma "Rinomina la
+//  sequenza" manda soltanto il titolo — nessun pezzo — e la lista che
+//  arrivava era VUOTA: q.pezzi = []. Rinominare un montaggio lo
+//  svuotava. E il titolo non lo scriveva nemmeno: la funzione p.titolo non
+//  l'ha mai letto. Quindi il gesto piu' innocuo che esista — dare un nome
+//  a una selezione — buttava via il lavoro e non faceva quello che aveva
+//  promesso. Cinque sequenze vuote in una settimana: tutte rinominate.
+//
+//  Adesso: si tocca solo quello che arriva davvero. I pezzi si riscrivono
+//  SOLO se qualcuno li manda; il titolo, le maniglie, lo scarto e il
+//  formato si scrivono quando ci sono. E prima di riscrivere i pezzi si
+//  tiene da parte com'era, che Annulla li riporti indietro.
 function hlImposta(p) {
   const q = seqDi(p);
   const durata = R.reg[q.reg] ? (R.reg[q.reg].durata || durataRegistrata(q.reg) || MAX_SECONDI) : MAX_SECONDI;
-  const dati = Array.isArray(p.pezzi) ? p.pezzi : [];
+  if (p.titolo !== undefined) q.titolo = String(p.titolo).slice(0, 160);
+  if (p.pre !== undefined) q.pre = num(p.pre, 0, 120, q.pre || HL_PRE);
+  if (p.post !== undefined) q.post = num(p.post, 0, 120, q.post || HL_POST);
+  if (p.scarto !== undefined) q.scarto = num(p.scarto, -600, 600, q.scarto || 0);
+  if (p.formato !== undefined && FORMATI[String(p.formato)]) q.formato = String(p.formato);
+  if (!Array.isArray(p.pezzi)) { scrivi(); annuncia(0, "clip"); return { ok: true, seq: q }; }
+  const dati = p.pezzi;
   if (dati.length > 400) throw new Error("troppi pezzi");
+  if (!dati.length && (q.pezzi || []).length) {
+    throw new Error("per svuotare un montaggio si tolgono i pezzi uno a uno: cosi' non si fa");
+  }
+  ricorda(q);                       // com'era prima: Annulla lo riporta
   const vecchi = {}; q.pezzi.forEach((x) => { vecchi[x.id] = x; });
   q.pezzi = dati.map((d) => {
     const dentro = num(d.dentro, 0, durata, 0), fuori = num(d.fuori, 0, durata, 0);
