@@ -341,6 +341,7 @@
   .ed-buco{position:absolute;top:4px;bottom:4px;border-radius:4px;pointer-events:none;
     background:repeating-linear-gradient(135deg,rgba(245,241,230,.07) 0 6px,transparent 6px 12px);
     border:1px dashed rgba(245,241,230,.18);}
+  .ed-rete{position:absolute;top:0;bottom:0;background:rgba(201,162,75,.14);border:1px solid var(--oro2);border-radius:3px;pointer-events:none;}
   .ed-magnete{position:absolute;top:0;bottom:0;width:1px;background:#7CD992;box-shadow:0 0 5px #7CD992;pointer-events:none;z-index:4;}
   .ed-corsia{position:relative;border-bottom:1px solid var(--riga);} .ed-corsia.r{height:22px;} .ed-corsia.st{height:var(--st,26px);} .ed-corsia.g{height:var(--g,28px);} .ed-corsia.v{flex:1 1 auto;height:auto;min-height:64px;background:rgba(245,241,230,.02);} .ed-corsia.a{height:var(--a,30px);}
   .ed-graf{position:absolute;top:3px;bottom:3px;height:auto;background:#4E3A6E;border:1px solid #8C6BB5;border-radius:4px;overflow:hidden;padding:0 6px;font-size:10px;line-height:19px;white-space:nowrap;cursor:grab;box-sizing:border-box;color:var(--ivory);} .ed-graf.sel{outline:2px solid var(--oro2);}
@@ -1427,6 +1428,7 @@
       hv += '<div class="ed-buco" style="left:' + xa + 'px;width:' + Math.max(2, xb - xa) + 'px" title="buco di ' + tc(z.b - z.a) + '"></div>';
     });
     if (AGGANCIO !== null && TRASC) hv += '<div class="ed-magnete" style="left:' + X(AGGANCIO) + 'px"></div>';
+    if (RETE && RETE.mosso) hv += '<div class="ed-rete" style="left:' + Math.min(RETE.x0, RETE.x1) + 'px;width:' + Math.abs(RETE.x1 - RETE.x0) + 'px"></div>';
     cv.innerHTML = hv || '<div class="ed-vuoto">Sequenza vuota.</div>'; cst.innerHTML = hs; cg.innerHTML = hg;
     corsie.forEach(function(n){
       var c = el("pista").querySelector('.ed-corsia.a[data-tr="' + n + '"]');
@@ -1578,6 +1580,7 @@
       vc("Scegli tutti i pezzi", "cmd A", function(){ SELS = PZ.map(function(z){ return z.id; }); SEL = SELS[SELS.length - 1] || null; disegnaEditor(); }),
       vc("Non scegliere niente", "\u21e7cmd A", function(){ scegli(null); disegnaEditor(); }),
       bt("Togli i pezzi scelti", "canc", "eTogli"),
+      vc("Togli e richiudi il buco", "\u2325canc", togliERichiudi),
       { riga: 1 },
       bt("Dividi sotto la testina", "C", "eTaglia"),
       vc("Estrai fra entrata e uscita", ";", function(){ estrai(); }),
@@ -1689,7 +1692,7 @@
   // ── IL MAGNETE. Quello che cerchi quasi sempre e' un bordo che combacia:
   //    con un altro stacco, con la testina, con l'entrata o l'uscita. Senza,
   //    il montaggio diventa un lavoro di mira al pixel.
-  var MAGNETE = true, AGGANCIO = null;
+  var MAGNETE = true, AGGANCIO = null, RETE = null;
   try { MAGNETE = localStorage.getItem("mam2-magnete") !== "0"; } catch (e) {}
   function puntiDiAggancio(saltaPezzo){
     var p = [0, durSeq(), tSeq()], acc = 0;
@@ -1703,9 +1706,15 @@
     GRAF.forEach(function(g){ p.push(g.dentro); p.push(g.fuori); });
     return p;
   }
+  var ALT_GIU = false;
+  window.addEventListener("keydown", function(e){ if (e.altKey) ALT_GIU = true; });
+  window.addEventListener("keyup", function(e){ if (!e.altKey) ALT_GIU = false; });
+  window.addEventListener("blur", function(){ ALT_GIU = false; });
   function aggancia(t, saltaPezzo){
     AGGANCIO = null;
-    if (!MAGNETE) return t;
+    // tenendo alt il magnete si scavalca per un attimo, senza spegnerlo:
+    // serve nelle due volte in cui vuoi il bordo dove dici tu e basta
+    if (!MAGNETE || ALT_GIU) return t;
     var span = Math.max(0.001, LENTE.b - LENTE.a), w = el("pista").clientWidth || 800;
     var soglia = 9 / w * span, buono = null, vicino = soglia;
     puntiDiAggancio(saltaPezzo).forEach(function(q){
@@ -1777,10 +1786,17 @@
       e.preventDefault(); disegnaTl(); return;
     }
     SELG = null; SELA = null;
-    if (!pz) { vaiTempo(tDiX(e.clientX - el("pista").getBoundingClientRect().left), false); return; }
-    var i = +pz.dataset.i, x = PZ[i]; if (e.shiftKey || e.metaKey || e.ctrlKey) scegli(x.id, true); else if (!scelto(x.id)) scegli(x.id, false);
+    if (!pz) {
+      // sul vuoto: un clic porta la testina, un trascinamento tira una rete
+      // e prende tutte le clip che tocca
+      var r0 = el("pista").getBoundingClientRect();
+      RETE = { x0: e.clientX - r0.left, x1: e.clientX - r0.left, agg: e.shiftKey || e.metaKey || e.ctrlKey, preso: SELS.slice(), mosso: false };
+      e.preventDefault(); return;
+    }
+    var i = +pz.dataset.i, x = PZ[i], conTasto = e.shiftKey || e.metaKey || e.ctrlKey;
+    if (conTasto) scegli(x.id, true); else if (!scelto(x.id)) scegli(x.id, false);
     TRASC = { i: i, x0: e.clientX, tipo: bordo ? bordo.dataset.lato : "muovi", dentro: x.dentro, fuori: x.fuori,
-              t00: x.t0 || 0, a: x.t0 || 0, b: (x.t0 || 0) + (x.fuori - x.dentro), mosso: false };
+              t00: x.t0 || 0, a: x.t0 || 0, b: (x.t0 || 0) + (x.fuori - x.dentro), mosso: false, conTasto: conTasto };
     // PIU' CLIP INSIEME. Se quella che prendi fa parte di una scelta, si
     // muovono tutte mantenendo le distanze: spostarle una per una e sperare
     // che restino in fila non e' montare.
@@ -1790,6 +1806,22 @@
     e.preventDefault(); disegnaEditor();
   });
   document.addEventListener("mousemove", function(e){
+    if (RETE) {
+      var r0 = el("pista").getBoundingClientRect();
+      RETE.x1 = Math.max(0, Math.min(r0.width, e.clientX - r0.left));
+      if (Math.abs(RETE.x1 - RETE.x0) > 3) RETE.mosso = true;
+      if (RETE.mosso) {
+        var a = tDiX(Math.min(RETE.x0, RETE.x1)), b = tDiX(Math.max(RETE.x0, RETE.x1));
+        SELS = (RETE.agg ? RETE.preso.slice() : []);
+        PZ.forEach(function(z){
+          var za = z.t0 || 0, zb = za + (z.fuori - z.dentro);
+          if (zb > a && za < b && SELS.indexOf(z.id) < 0) SELS.push(z.id);
+        });
+        SEL = SELS.length ? SELS[SELS.length - 1] : null;
+        disegnaEditor();
+      }
+      return;
+    }
     if (!TRASC) return;
     var ds = (e.clientX - TRASC.x0) / (el("pista").clientWidth || 800) * (LENTE.b - LENTE.a);
     if (Math.abs(e.clientX - TRASC.x0) > 3) TRASC.mosso = true;
@@ -1837,6 +1869,12 @@
     disegnaTl();
   });
   document.addEventListener("mouseup", function(e){
+    if (RETE) {
+      var re = RETE; RETE = null;
+      if (!re.mosso) vaiTempo(tDiX(re.x0), false);
+      disegnaTl();
+      return;
+    }
     if (!TRASC) return;
     var tr = TRASC; TRASC = null; AGGANCIO = null; el("pista").style.cursor = "";
     if (tr.g_id) { if (!tr.mosso) { disegnaTl(); return; } post({ tipo:"clip-hl-grafica", seq: SEQ.id, grafica: tr.g_id, dentro: Math.round(tr.a * 100) / 100, fuori: Math.round(tr.b * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); }); return; }
@@ -1854,7 +1892,14 @@
       return;
     }
     var x = PZ[tr.i]; if (!x) return;
-    if (!tr.mosso) { vaiA(tr.i, 0, false); disegnaEditor(); return; }
+    if (!tr.mosso) {
+      // UN CLIC SECCO SU UNA CLIP GIA' SCELTA RESTRINGE LA SCELTA A LEI. Il
+      // gruppo va tenuto mentre si trascina — se no non si sposterebbe piu'
+      // di una — ma se poi non trascini volevi sceglierne una: senza questo,
+      // premere Canc dopo quel clic ne cancella tre.
+      if (!tr.conTasto && SELS.length > 1 && scelto(x.id)) scegli(x.id, false);
+      vaiA(tr.i, 0, false); disegnaEditor(); return;
+    }
     if (tr.tipo === "sx" && tr.nuovoDentro !== undefined) post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: x.id, dentro: Math.round(tr.nuovoDentro * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
     else if (tr.tipo === "dx" && tr.nuovoFuori !== undefined) post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: x.id, fuori: Math.round(tr.nuovoFuori * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
     else if (tr.tipo === "muovi") {
@@ -2043,6 +2088,18 @@
     if (!REGE) return;
     location.href = "mam2.html?asset=" + encodeURIComponent(REGE.evento || (REGE.arch && REGE.arch.rec) || "") + "&reg=" + REGE.id + "&t=" + Math.floor(tMateriale() + 3);
   }
+  // TOGLIERE E RICHIUDERE. Togliere e basta lascia il buco dov'era la clip,
+  // che va bene quando il buco lo vuoi e non quando volevi solo buttare via
+  // un pezzo. Sono due gesti diversi e adesso ci sono tutti e due.
+  function togliERichiudi(){
+    if (!SELS.length || !SEQ) return avviso("err", "Scegli prima un pezzo.");
+    var quanti = SELS.length;
+    post(SELS.length > 1 ? { tipo:"clip-hl-pezzo", seq: SEQ.id, togli: true, pezzi: SELS.slice() }
+                         : { tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: SEL, togli: true })
+      .then(function(){ return post({ tipo:"clip-hl-attacca", seq: SEQ.id }); })
+      .then(function(d){ scegli(null); ricaricaSeq(d.seq); avviso("ok", quanti === 1 ? "Tolto, e il buco richiuso." : quanti + " tolti, e i buchi richiusi."); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  }
   function eliminaSequenza(){
     if (!SEQ) return;
     if (!window.confirm("Elimino la sequenza \u201c" + (SEQ.titolo || "") + "\u201d?\n\nI pezzi del montaggio se ne vanno con lei. La partita e il materiale restano dove sono.")) return;
@@ -2089,6 +2146,7 @@
         if (e.shiftKey) return giunzione(verso);     // la clip scorre, i vicini le fanno spazio
         scivolo(verso);
       }
+      else if (k === "Delete" || k === "Backspace") { e.preventDefault(); togliERichiudi(); }
       else if (K === "I") { INS = null; disegnaTl(); } else if (K === "O") { OUTS = null; disegnaTl(); } else if (K === "X") { INS = OUTS = null; disegnaTl(); }
       return;
     }
@@ -2107,6 +2165,7 @@
     else if (K === "E") { allungaQui(); }
     else if (K === "C") el("eTaglia").click();
     else if (k === "Delete" || k === "Backspace") { e.preventDefault(); el("eTogli").click(); }
+    else if (k === "Escape") { RETE = null; disegnaTl(); }
     else if (K === "D") { var xd = pezzoQui(); if (xd) { scegli(xd.id, false); disegnaEditor(); } }
     else if (K === "S") { el("eMagnete").click(); }
     else if (k === "ArrowLeft") { e.preventDefault(); VE.pause(); vaiTempo(Math.max(0, tSeq() - fot), false); }
