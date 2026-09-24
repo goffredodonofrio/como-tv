@@ -5114,6 +5114,171 @@ function xmlEsc(t) {
 // vero e la sequenza si apre gia' attaccata al materiale. Per le partite
 // che stanno sulla NAS si scrive la chiave intera (le cartelle sono
 // quelle); per le altre il nome del file, che il montatore ha scaricato.
+// ══════════════════════════════════════════════════════════════════════
+//  IMPORTARE UN XML — e ritrovare i file nell'archivio
+// ══════════════════════════════════════════════════════════════════════
+//
+//  Un montatore ha una sequenza in Premiere e la vuole qui: la esporta in
+//  XML e la porta dentro. L'XML pero' dice dove stavano i file sul SUO
+//  computer, e quei percorsi qui non esistono.
+//
+//  Non importa: il nome del file lo sappiamo leggere, e l'archivio quei
+//  nomi ce li ha tutti — le chiavi dei magazzini, i pezzi delle partite
+//  intere, il materiale di casa. Quindi si prende il nome, si cerca, e la
+//  sequenza si ricostruisce ATTACCATA al nostro materiale: i tagli sono
+//  quelli, i secondi sono quelli, ma quello che si vede viene da qui.
+//
+//  Quello che non si trova non si inventa: si dice quale file manca, per
+//  nome, e la sequenza entra lo stesso con i pezzi che abbiamo.
+function xmlBlocchi(testo, tag) {
+  const fuori = [], re = new RegExp("<" + tag + "\\b[^>]*>[\\s\\S]*?</" + tag + ">", "g");
+  let m; while ((m = re.exec(testo))) fuori.push(m[0]);
+  return fuori;
+}
+function xmlDentro(blocco, tag) {
+  const m = new RegExp("<" + tag + "\\b[^>]*>([\\s\\S]*?)</" + tag + ">").exec(blocco || "");
+  return m ? m[1] : "";
+}
+function xmlTesto(blocco, tag) {
+  const v = xmlDentro(blocco, tag).trim();
+  return v.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+}
+function xmlNum(blocco, tag) { const v = parseFloat(xmlTesto(blocco, tag)); return isNaN(v) ? null : v; }
+function xmlId(blocco) { const m = /\bid="([^"]+)"/.exec(blocco || ""); return m ? m[1] : ""; }
+// il nome del file, da <name> o dall'indirizzo, senza cartelle e senza %20
+function nomeDaXml(bl) {
+  let n = xmlTesto(bl, "name");
+  const u = xmlTesto(bl, "pathurl");
+  if (!n && u) { try { n = decodeURIComponent(u); } catch (e) { n = u; } n = n.split("/").pop(); }
+  return String(n || "").trim();
+}
+// UN NOME SI RICONOSCE ANCHE SE QUALCUNO L'HA TOCCATO: via l'estensione,
+// via i doppi spazi, tutto minuscolo. Un file rinominato "copia 2" non si
+// riconosce, e va bene cosi': meglio dire che manca che attaccare il video
+// sbagliato a un montaggio.
+function nomePiatto(n) {
+  return String(n || "").toLowerCase().replace(/\.[a-z0-9]{2,4}$/, "")
+    .replace(/[_]+/g, " ").replace(/\s+/g, " ").trim();
+}
+// (il nome cercaNellArchivio era gia' preso: quella cerca le partite per
+// parole, questa cerca UN FILE per nome. Due mestieri diversi.)
+function cercaFileNellArchivio(nome) {
+  const piatto = nomePiatto(nome);
+  if (!piatto) return null;
+  // prima il materiale di casa: e' piccolo e i nomi sono esatti
+  try {
+    for (const f of fs.readdirSync(cartellaMedia())) {
+      if (nomePiatto(f) === piatto) return { media: f };
+    }
+  } catch (e) {}
+  // poi le partite: la chiave del magazzino, o uno dei pezzi
+  for (const rec of Object.keys(ARCHIVIO)) {
+    const a = ARCHIVIO[rec];
+    const pz = (a.pezzi && a.pezzi.length) ? a.pezzi : (a.chiave ? [{ chiave: a.chiave, da: 0 }] : []);
+    for (const x of pz) {
+      if (nomePiatto(path.basename(x.chiave || "")) === piatto) {
+        return { rec: rec, da: x.da || 0, chiave: x.chiave };
+      }
+    }
+  }
+  return null;
+}
+async function hlImportaXml(p) {
+  const testo = String(p.xml || "");
+  if (testo.length < 40 || testo.indexOf("<") < 0) throw new Error("questo non sembra un XML");
+  if (/<fcpxml/i.test(testo)) {
+    throw new Error("questo e' FCPXML di Final Cut X: da Premiere scegli \"Final Cut Pro XML\" (quello vecchio), che e' quello che leggiamo");
+  }
+  // i file dichiarati, per id: dopo la prima volta l'XML li richiama vuoti
+  const file = {};
+  xmlBlocchi(testo, "file").forEach((bl) => {
+    const id = xmlId(bl); if (!id) return;
+    const nome = nomeDaXml(bl);
+    if (!nome && file[id]) return;
+    const tb = xmlNum(bl, "timebase");
+    file[id] = { nome: nome, fps: tb && tb > 4 ? tb : 0 };
+  });
+  const fpsSeq = (function(){ const t = xmlNum(xmlDentro(testo, "sequence"), "timebase"); return t && t > 4 ? t : 25; })();
+  // LE CLIP VIDEO, e qui c'era la trappola: dentro OGNI file c'e' un altro
+  // <media><video>, quindi tagliare il documento al primo </video> tagliava
+  // in mezzo alla prima clip e non si trovava piu' niente. Si prendono
+  // tutte le clip e si scartano quelle audio, che lo dicono da sole.
+  const voci = [];
+  xmlBlocchi(testo, "clipitem").forEach((bl) => {
+    // il tipo e' quello della clip, non quello dei suoi collegamenti: una
+    // clip video porta dentro i <link> alle sue due tracce audio, e
+    // guardando tutto il blocco sembrava audio anche lei
+    if (/<mediatype>\s*audio\s*<\/mediatype>/i.test(bl.split("<link")[0])) return;
+    const idf = (function(){ const f = /<file\b[^>]*\bid="([^"]+)"/.exec(bl); return f ? f[1] : ""; })();
+    const f = file[idf] || { nome: nomeDaXml(xmlDentro(bl, "file")), fps: 0 };
+    const fps = f.fps || xmlNum(bl, "timebase") || fpsSeq;
+    const dentro = xmlNum(bl, "in"), fuori = xmlNum(bl, "out"), start = xmlNum(bl, "start");
+    if (dentro === null || fuori === null || fuori <= dentro) return;
+    if (start === null || start < 0) return;             // dentro una transizione: lo rifa' chi monta
+    voci.push({ nome: f.nome, titolo: xmlTesto(bl, "name") || f.nome,
+                dentro: dentro / fps, fuori: fuori / fps, t0: start / fpsSeq });
+  });
+  if (!voci.length) throw new Error("nell'XML non ho trovato nessuna clip video");
+  // dove stanno, da noi
+  const mancanti = [], trovate = [];
+  const conta = {};
+  voci.forEach((v) => {
+    const dove = cercaFileNellArchivio(v.nome);
+    if (!dove) { if (mancanti.indexOf(v.nome) < 0) mancanti.push(v.nome); return; }
+    v.dove = dove; trovate.push(v);
+    if (dove.rec) conta[dove.rec] = (conta[dove.rec] || 0) + 1;
+  });
+  if (!trovate.length) {
+    throw new Error("nessuno dei file dell'XML sta nell'archivio: " + voci.slice(0, 3).map((v) => v.nome).join(", "));
+  }
+  // la partita della sequenza e' quella che compare di piu'. Le clip di
+  // un'ALTRA partita non le sappiamo ancora tenere nella stessa sequenza:
+  // si dicono, non si buttano dentro storte.
+  const rec = Object.keys(conta).sort((a, b) => conta[b] - conta[a])[0] || "";
+  let reg = null;
+  if (rec) {
+    reg = Object.keys(R.reg).map((k) => R.reg[k]).find((x) => x.arch && x.arch.rec === rec);
+    if (!reg) reg = (await archivioApri({ rec: rec })).reg;
+  }
+  if (!reg) throw new Error("i file ci sono ma non riesco ad aprire la partita a cui appartengono");
+  const q = { id: nuovoId("s"), reg: reg.id, libera: true,
+              titolo: String(p.titolo || "").slice(0, 160) || ("IMPORTATA " + (reg.titolo || "")),
+              pezzi: [], grafiche: [], audio: [], pre: HL_PRE, post: HL_POST, scarto: 0, avvisi: [],
+              creata: Date.now(), chi: String(p.__chi || p.chi || "").slice(0, 40), export: null };
+  if (p.prog && R.prog[String(p.prog)]) q.prog = String(p.prog);
+  const altrove = [];
+  trovate.forEach((v) => {
+    const d = v.dove;
+    if (d.media) {
+      q.pezzi.push({ id: nuovoId("p"), media: d.media, dentro: v.dentro, fuori: v.fuori, base: v.dentro,
+                     t0: Math.round(v.t0 * 100) / 100, traccia: "V1", fonte: "casa", mano: true,
+                     titolo: v.titolo || d.media });
+      return;
+    }
+    if (d.rec !== rec) { if (altrove.indexOf(v.nome) < 0) altrove.push(v.nome); return; }
+    // IL SECONDO DENTRO IL FILE DIVENTA IL SECONDO DENTRO LA PARTITA, e lo
+    // scostamento va preso da DOVE LO PRENDE L'EXPORT — i pezzi della
+    // registrazione, non quelli dell'indice. I due possono non coincidere
+    // (l'indice ha i minuti dichiarati, la registrazione le durate
+    // misurate) e allora la sequenza rientrava spostata di una manciata di
+    // secondi: i tagli c'erano tutti, ma un filo in la'.
+    const suo = pezziArch(reg).find((z) => z.chiave === d.chiave);
+    const da = suo ? (suo.da || 0) : (d.da || 0);
+    const dentro = da + v.dentro, fuori = da + v.fuori;
+    q.pezzi.push({ id: nuovoId("p"), dentro: dentro, fuori: fuori, base: dentro,
+                   t0: Math.round(v.t0 * 100) / 100, traccia: "V1", fonte: "xml", mano: true,
+                   titolo: v.titolo || "" });
+  });
+  if (!q.pezzi.length) throw new Error("i pezzi dell'XML non sono di questa partita");
+  q.pezzi.sort((a, b) => (a.t0 || 0) - (b.t0 || 0));
+  R.seq[q.id] = q;
+  scrivi(); annuncia(0, "clip");
+  console.log("[clip] XML importato su \"" + (reg.titolo || reg.id) + "\": " + q.pezzi.length + " clip, " +
+              mancanti.length + " file non trovati");
+  return { ok: true, seq: q, quante: q.pezzi.length, mancanti: mancanti, altrove: altrove,
+           partita: reg.titolo || "", clipNellXml: voci.length };
+}
+
 async function hlEsportaPremiere(q, percorso, volume) {
   const r = R.reg[q.reg];
   if (r && r.integrale === "sospetto" && !percorso) {
@@ -12994,6 +13159,10 @@ const AZIONI = {
   // l'srt della sequenza da solo: chi porta l'XML in Premiere lo mette a fianco
   "clip-hl-srt": async (p) => { const q = seqDi(p); if (!q.pezzi.length) throw new Error("la sequenza e' vuota");
                           await scriviSrtSequenza(q, vuoleSotto({ sottoLingua: p.lingua }), false); return { ok: true, sottotitoli: q.sottotitoli }; },
+  "clip-hl-importa-xml": async (p) => {
+    try { return await hlImportaXml(p); }
+    catch (e) { console.log("[clip] importa-xml: " + e.message + "\n" + String(e.stack || "").split("\n").slice(1, 4).join("\n")); throw e; }
+  },
   "clip-hl-elimina": hlElimina,
   "clip-integrale": clipIntegrale,
   "clip-anello": () => ({ ok: true, tolti: anello() }),

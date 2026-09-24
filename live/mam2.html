@@ -676,7 +676,7 @@
         <span class="sep"></span>
         <span class="eti">Sottotitoli</span><button id="eSottoOn">Off</button><button id="eSottoLingua">ITA</button>
         <span class="sep"></span>
-        <span class="eti">V2</span><button id="eMateriale" title="sigle, grafiche in movimento, clip girate col telefono: il materiale che sta sulla VM">+ Materiale</button><button id="eTitolo" title="scrivi un nome sullo schermo, nei font di Como TV">+ Titolo</button><button id="eGrafica" title="una grafica PNG sotto la testina, 5 secondi: poi la allunghi dai bordi">+ Grafica</button><input type="file" id="fGrafica" accept="image/png" hidden>
+        <span class="eti">V2</span><button id="eMateriale" title="sigle, grafiche in movimento, clip girate col telefono: il materiale che sta sulla VM">+ Materiale</button><button id="eTitolo" title="scrivi un nome sullo schermo, nei font di Como TV">+ Titolo</button><button id="eGrafica" title="una grafica PNG sotto la testina, 5 secondi: poi la allunghi dai bordi">+ Grafica</button><input type="file" id="fGrafica" accept="image/png" hidden><input type="file" id="fXml" accept=".xml,text/xml,application/xml" hidden>
         <span class="sep"></span>
         <span class="eti">Audio</span><button id="eStacca" title="stacca l'audio dal pezzo scelto: poi lo trascini da solo">Stacca</button><button id="eMuto" title="muto / suona (pezzo o audio scelto)">Muto</button><button id="eAudioTogli" title="togli l'audio scelto (o quello del pezzo scelto)">Togli audio</button>
         <span class="sep"></span>
@@ -1051,6 +1051,28 @@
   //  lavoro, con dentro le sequenze. Mancavano le due voci piu' ovvie —
   //  crearne uno, e aprirne uno gia' fatto — e per arrivarci bisognava
   //  tornare in libreria.
+  // IMPORTARE UNA SEQUENZA FATTA IN PREMIERE. L'XML dice dove stavano i
+  // file sul computer di chi l'ha montata, e quei percorsi qui non
+  // esistono — ma i NOMI si', e l'archivio quei nomi ce li ha tutti.
+  // Quindi si legge il taglio e si riattacca al nostro materiale: la
+  // sequenza arriva intera, senza che nessuno sposti un file.
+  el("eImportaXml").addEventListener("click", function(){ el("fXml").click(); });
+  el("fXml").addEventListener("change", function(){
+    var f = this.files && this.files[0]; this.value = "";
+    if (!f) return;
+    avviso("ok", "Leggo " + esc(f.name) + "\u2026");
+    f.text().then(function(testo){
+      return post({ tipo:"clip-hl-importa-xml", xml: testo,
+                    titolo: f.name.replace(/\.[^.]+$/, ""),
+                    prog: (SEQ && SEQ.prog) || "" });
+    }).then(function(d){
+      var m = "";
+      if ((d.mancanti || []).length) m += " Non ho trovato " + d.mancanti.length + " file: " + esc(d.mancanti.slice(0, 3).join(", ")) + (d.mancanti.length > 3 ? "\u2026" : "") + ".";
+      if ((d.altrove || []).length) m += " " + d.altrove.length + " clip sono di un'altra partita e restano fuori.";
+      try { sessionStorage.setItem("mam2-avviso", "Importate " + d.quante + " clip su " + d.clipNellXml + " da " + esc(f.name) + "." + m); } catch (e) {}
+      location.href = "mam2.html?seq=" + encodeURIComponent(d.seq.id);
+    }).catch(function(er){ avviso("err", esc(er.message)); });
+  });
   function nuovoProgetto(){
     var n = window.prompt("Nome del nuovo progetto (es. Football Show 01/09):", "");
     if (!n || !n.trim()) return;
@@ -1926,6 +1948,7 @@
       { capo: "Importa" },
       bt("Importa…", "", "eMateriale"),
       bt("Apri nel monitor Sorgente", "", "eAsset"),
+      bt("XML di Premiere (ritrova i file qui)…", "", "eImportaXml"),
       vc("Corrispondenza fotogramma", "F", vaiAllaPartita),
       bt("Trascodifica in locale", "", "eCasa"),
       { riga: 1 },
@@ -3638,6 +3661,9 @@
   el("lFerma").addEventListener("click", function(){ if (!LIVE.reg) return; if (!window.confirm("Fermo la registrazione di " + (LIVE.reg.titolo || "questa porta") + "?")) return; post({ tipo:"clip-ferma", id: LIVE.reg.id }).then(function(){ avviso("ok", "Fermata."); giroLive(); }).catch(function(er){ avviso("err", esc(er.message)); }); });
 
   // ══════════ AVVIO ══════════
+  // l'avviso che viene da un'altra pagina (per esempio l'XML appena
+  // importato): si mostra qui, una volta sola
+  try { var av = sessionStorage.getItem("mam2-avviso"); if (av) { sessionStorage.removeItem("mam2-avviso"); setTimeout(function(){ avviso("ok", av); }, 700); } } catch (e) {}
   stato(); caricaEventi(); disegnaRiprendi(); caricaProgetti();
   // l'identificativo di una partita che sta solo su S3 ha i due punti
   // ("s3:4579…"), e nell'indirizzo arriva come %3A: con [A-Za-z0-9]+ se ne
