@@ -76,10 +76,52 @@ def giovane(a):
     except ValueError:
         return False
 
+# ── la scheda del giocatore ──────────────────────────────────────────
+# Le rose ESPN si portano dietro anagrafica, fisico, nazionalita' e le
+# statistiche della stagione: oggi ne usavamo solo il nome. Qui diventano una
+# scheda per giocatore, che il ponte serve a TELECRONACA (?giocatore=<id>).
+GIOCATORI = {}
+
+def statistiche(a):
+    v = {}
+    for c in (a.get("statistics") or {}).get("splits", {}).get("categories", []):
+        for x in c.get("stats", []):
+            try: v[x.get("name")] = float(x.get("value") or 0)
+            except (TypeError, ValueError): pass
+    def n(k):
+        return int(v.get(k, 0))
+    s = {"presenze": n("appearances"), "titolare": n("appearances") - n("subIns"), "gol": n("totalGoals"),
+         "assist": n("goalAssists"), "tiri": n("totalShots"), "tiri_porta": n("shotsOnTarget"),
+         "gialli": n("yellowCards"), "rossi": n("redCards"), "falli_fatti": n("foulsCommitted"),
+         "falli_subiti": n("foulsSuffered")}
+    if v.get("saves") or v.get("shotsFaced"):
+        s["parate"] = n("saves"); s["gol_subiti"] = n("goalsConceded")
+    return s
+
+def scheda(a, tid, squadra, lega, con_foto):
+    # altezza e peso arrivano in pollici e libbre
+    alt = a.get("height") or 0
+    peso = a.get("weight") or 0
+    inf = [i.get("type") or i.get("status") or "" for i in (a.get("injuries") or [])]
+    return {
+        "id": str(a["id"]), "nome": a.get("firstName") or "", "cognome": a.get("lastName") or "",
+        "completo": a.get("displayName") or "", "num": a.get("jersey") or "",
+        "ruolo": (a.get("position") or {}).get("displayName", ""), "ruolo_breve": (a.get("position") or {}).get("abbreviation", ""),
+        "eta": a.get("age") or "", "nato": (a.get("dateOfBirth") or "")[:10],
+        "altezza_cm": int(round(alt * 2.54)) if alt else "", "peso_kg": int(round(peso * 0.4536)) if peso else "",
+        "paese": a.get("citizenship") or "", "bandiera": ((a.get("flag") or {}).get("href") or ""),
+        "squadra": squadra, "squadra_id": str(tid), "lega": lega,
+        "foto": con_foto, "infortunio": ", ".join([x for x in inf if x]),
+        "stat": statistiche(a),
+    }
+
 def squadra_espn(lega, tid, nome):
     rosa = leggi("https://site.api.espn.com/apis/site/v2/sports/soccer/%s/teams/%s/roster" % (lega, tid)).get("athletes", [])
     senza = [a for a in rosa
              if not foto("foto=%s&id=%s&squadra=%s" % (urllib.parse.quote(a.get("lastName") or a["displayName"]), a["id"], tid))]
+    ko = set(a["id"] for a in senza)
+    for a in rosa:
+        GIOCATORI[str(a["id"])] = scheda(a, tid, nome, lega, a["id"] not in ko)
     al = allenatori.get(str(tid)) or {}
     return {"squadra": nome, "totale": len(rosa), "con_foto": len(rosa) - len(senza),
             "mancano": [a["displayName"] for a in senza],
@@ -115,6 +157,14 @@ try:
     for t in json.loads(subprocess.run(["node", "-e", js], capture_output=True, text=True, timeout=60).stdout):
         mancano = [p["nome"] + " " + p["cognome"] for p in t["rosa"]
                    if not foto("foto=%s&squadra=%s" % (urllib.parse.quote(p["cognome"]), t["id"]))]
+        for p in t["rosa"]:
+            gid = "como-giov-" + slug(p["cognome"])
+            GIOCATORI[gid] = {"id": gid, "nome": p.get("nome", ""), "cognome": p.get("cognome", ""),
+                              "completo": (p.get("nome", "") + " " + p.get("cognome", "")).strip(),
+                              "num": p.get("num", ""), "ruolo": "", "ruolo_breve": p.get("ruolo", ""),
+                              "eta": "", "nato": "", "altezza_cm": "", "peso_kg": "", "paese": "", "bandiera": "",
+                              "squadra": t["n"], "squadra_id": t["id"], "lega": "giovanili",
+                              "foto": (p["nome"] + " " + p["cognome"]) not in mancano, "infortunio": "", "stat": {}}
         al = t.get("all") or {}
         comp.setdefault("Como giovanili", []).append({"squadra": t["n"], "totale": len(t["rosa"]), "con_foto": len(t["rosa"]) - len(mancano),
                                                       "mancano": mancano, "mancanti": [{"nome": n, "giovane": False} for n in mancano], "allenatore": (al.get("nome", "") + " " + al.get("cognome", "")).strip(),
@@ -137,9 +187,31 @@ uscita = {
     "allenatori_con_nome": len(allenatori),
     "competizioni": [{"nome": c, "squadre": sorted(comp[c], key=lambda r: r["squadra"])} for c in ordine if c in comp],
 }
+# L'archivio giocatori: un file per squadra dentro il sito (live/giocatori/),
+# cosi' TELECRONACA lo legge da sola senza passare dal ponte — il ponte delle
+# grafiche non si tocca. Il file intero resta accanto agli altri stati.
+per_sq = {}
+for g in GIOCATORI.values():
+    per_sq.setdefault(g["squadra_id"], []).append(g["id"])
+arch = {"generato": time.strftime("%d/%m/%Y %H:%M"), "perId": GIOCATORI,
+        "perSq": {k: sorted(v, key=lambda i: (GIOCATORI[i]["cognome"], GIOCATORI[i]["nome"])) for k, v in per_sq.items()}}
+gfile = os.path.join(STATO, "giocatori.json")
+json.dump(arch, open(gfile + ".tmp", "w"), ensure_ascii=False)
+os.replace(gfile + ".tmp", gfile)
+
+# un file per squadra: poche decine di schede, si scarica in un attimo
+gdir = os.path.join(SITO, "live", "giocatori")
+os.makedirs(gdir, exist_ok=True)
+for tid, ids in arch["perSq"].items():
+    f = os.path.join(gdir, "%s.json" % re.sub(r"[^A-Za-z0-9_-]", "", str(tid)))
+    json.dump({"generato": arch["generato"], "squadra": tid,
+               "giocatori": [GIOCATORI[i] for i in ids]}, open(f + ".tmp", "w"), ensure_ascii=False)
+    os.replace(f + ".tmp", f)
+
 tmp = OUT + ".tmp"
 json.dump(uscita, open(tmp, "w"), ensure_ascii=False)
 os.replace(tmp, OUT)
 tot = sum(r.get("totale", 0) for c in comp.values() for r in c)
 con = sum(r.get("con_foto", 0) for c in comp.values() for r in c)
 print("stato foto: %d/%d giocatori con foto, scritto %s" % (con, tot, OUT))
+print("archivio giocatori: %d schede, %d squadre, scritto %s e %s" % (len(GIOCATORI), len(per_sq), gfile, gdir))

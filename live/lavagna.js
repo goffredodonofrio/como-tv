@@ -197,6 +197,12 @@ window.Lavagna = (function () {
       "margin-bottom:8px;min-height:19px;}" +
       ".lav .foglietto .bio b{color:var(--lav-avorio);font-weight:700;}" +
       ".lav .foglietto .bio i{font-style:normal;margin:0 7px;color:var(--lav-oro);}" +
+      /* nazionalita' con bandierina, stagione in corso e infortunio: righe
+         nuove della stessa bio, che arrivano dall'archivio del ponte */
+      ".lav .foglietto .bio .band{height:11px;width:16px;object-fit:cover;border-radius:2px;" +
+      "vertical-align:-1px;margin-right:5px;}" +
+      ".lav .foglietto .bio .stag b{color:var(--lav-oroB);}" +
+      ".lav .foglietto .bio .inf b{color:#E5655E;}" +
       ".lav .foglietto h3{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.16em;" +
       "  text-transform:uppercase;color:var(--lav-oro);margin-bottom:8px;}" +
       /* i contatori della partita: calci d'angolo, gialli, rossi. Il clic
@@ -1038,8 +1044,23 @@ window.Lavagna = (function () {
         if (d) riga1 = "Nato il " + (+d[3]) + " " + MESI[+d[2] - 1] + " " + d[1] + (a.age ? '<i>·</i><b>' + a.age + " anni</b>" : "");
         if (a.height) fisico.push("<b>" + (a.height * 0.0254).toFixed(2).replace(".", ",") + " m</b>");
         if (a.weight) fisico.push("<b>" + Math.round(a.weight * 0.4536) + " kg</b>");
+        // terza riga: nazionalita' e ruolo; quarta: la stagione in corso.
+        // Vengono dall'archivio del ponte, che ha gia' tutto pronto.
+        var sc = a.archivio || {}, terza = [], st = sc.stat || {};
+        if (sc.paese) terza.push((sc.bandiera ? '<img class="band" src="' + esc(sc.bandiera) + '" alt="">' : "") + esc(sc.paese));
+        if (sc.ruolo) terza.push(esc(RUOLI[sc.ruolo] || sc.ruolo));
+        var quarta = [];
+        if (st.presenze) quarta.push("<b>" + st.presenze + "</b> " + (st.presenze === 1 ? "presenza" : "presenze"));
+        if (st.gol) quarta.push("<b>" + st.gol + "</b> gol");
+        if (st.assist) quarta.push("<b>" + st.assist + "</b> assist");
+        if (st.parate) quarta.push("<b>" + st.parate + "</b> parate");
+        if (st.gialli) quarta.push("<b>" + st.gialli + "</b> " + (st.gialli === 1 ? "giallo" : "gialli"));
+        if (st.rossi) quarta.push("<b>" + st.rossi + "</b> " + (st.rossi === 1 ? "rosso" : "rossi"));
         dove.innerHTML = (riga1 ? "<div>" + riga1 + "</div>" : "") +
-                         (fisico.length ? "<div>" + fisico.join("<i>·</i>") + "</div>" : "");
+                         (fisico.length ? "<div>" + fisico.join("<i>·</i>") + "</div>" : "") +
+                         (terza.length ? '<div class="naz">' + terza.join("<i>·</i>") + "</div>" : "") +
+                         (quarta.length ? '<div class="stag">' + quarta.join("<i>·</i>") + "</div>" : "") +
+                         (sc.infortunio ? '<div class="inf">Infortunio: <b>' + esc(sc.infortunio) + "</b></div>" : "");
         var intero = (a.fullName || a.displayName || "").trim();
         // il nome intero va nella casella solo se nessuno ci ha gia' scritto
         if (iNome && intero && iNome.value.trim() === (p.cognome || "").trim() && document.activeElement !== iNome) {
@@ -1048,19 +1069,68 @@ window.Lavagna = (function () {
       }
       anag(p.pid).then(metti);
     }
-    // l'anagrafe ESPN di un giocatore, chiesta una volta sola
+    // I ruoli ESPN in italiano, per la riga sotto il nome
+    var RUOLI = { Goalkeeper: "portiere", Defender: "difensore", Midfielder: "centrocampista", Forward: "attaccante" };
+    // L'ARCHIVIO DEL PONTE: la scheda del giocatore e' gia' pronta sulla VM
+    // (anagrafica, fisico, nazionalita' e statistiche di stagione, rifatte ogni
+    // mattina). Si chiede prima questa: arriva subito e va anche quando l'API
+    // di ESPN non risponde. Se non c'e', si torna a chiederla a ESPN.
+    // Un file per squadra dentro il sito (live/giocatori/<id squadra>.json),
+    // scritto ogni mattina insieme al conteggio delle foto: si scarica una
+    // volta sola per squadra e non passa dal ponte delle grafiche.
+    var ARCH = {}, ARCH_SQ = {};
+    function archivioSquadra(tid) {
+      tid = String(tid || "");
+      if (!tid) return Promise.resolve(null);
+      if (!ARCH_SQ[tid]) {
+        ARCH_SQ[tid] = fetch("giocatori/" + encodeURIComponent(tid) + ".json", { cache: "no-store" })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) {
+            ((d && d.giocatori) || []).forEach(function (g) { ARCH[String(g.id)] = g; });
+            return d;
+          })
+          .catch(function () { return null; });
+      }
+      return ARCH_SQ[tid];
+    }
+    // la scheda di un giocatore: si guarda nelle squadre gia' scaricate, se no
+    // si scarica quella della sua squadra (le due in campo bastano quasi sempre)
+    function archivio(pid) {
+      pid = String(pid || "");
+      if (ARCH[pid] !== undefined) return Promise.resolve(ARCH[pid]);
+      var tids = ["A", "B"].map(function (l) { return (SQ[l] || {}).tid; }).filter(Boolean);
+      return Promise.all(tids.map(archivioSquadra)).then(function () {
+        if (ARCH[pid] === undefined) ARCH[pid] = null;
+        return ARCH[pid];
+      });
+    }
+    // la scheda dell'archivio vestita come l'anagrafe ESPN (pollici e libbre),
+    // cosi' chi la legge non cambia
+    function comeEspn(g) {
+      return { fullName: g.completo || "", dateOfBirth: g.nato || "", age: g.eta || 0,
+               height: g.altezza_cm ? g.altezza_cm / 2.54 : 0, weight: g.peso_kg ? g.peso_kg / 0.4536 : 0,
+               citizenship: g.paese || "", archivio: g };
+    }
+    // l'anagrafe di un giocatore, chiesta una volta sola
     var ANAG_IN = {};
     function anag(pid) {
       pid = String(pid || "");
       if (!/^\d+$/.test(pid)) return Promise.resolve(null);
       if (ANAG[pid]) return Promise.resolve(ANAG[pid]);
       if (!ANAG_IN[pid]) {
-        ANAG_IN[pid] = fetch("https://sports.core.api.espn.com/v2/sports/soccer/athletes/" + pid)
-          .then(function (r) { return r.json(); })
-          .then(function (a) { if (a && (a.fullName || a.dateOfBirth)) { ANAG[pid] = a; return a; } return null; })
-          .catch(function () { delete ANAG_IN[pid]; return null; });
+        ANAG_IN[pid] = archivio(pid).then(function (g) {
+          if (g && (g.nato || g.eta)) { ANAG[pid] = comeEspn(g); return ANAG[pid]; }
+          return espnAnag(pid);
+        });
       }
       return ANAG_IN[pid];
+    }
+    function espnAnag(pid) {
+      return fetch("https://sports.core.api.espn.com/v2/sports/soccer/athletes/" + pid)
+          .then(function (r) { return r.json(); })
+        .then(function (r) { return r.json(); })
+        .then(function (a) { if (a && (a.fullName || a.dateOfBirth)) { ANAG[pid] = a; return a; } return null; })
+        .catch(function () { delete ANAG_IN[pid]; return null; });
     }
 
     // DA SAPERE: poche righe di fatti, calcolate, per chi racconta la
