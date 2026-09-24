@@ -742,6 +742,7 @@
   function caricaEventi(){
     post({ tipo:"clip-qnap-eventi" }).then(function(j){
       EVENTI = (j.eventi || []).filter(function(x){ return x.partita || x.durata; });
+      QUANTE_PUNTATE = EVENTI.filter(function(x){ return x.puntata; }).length;
       var nS3 = EVENTI.filter(function(x){ return x.s3; }).length;
       disegnaCategorie(); disegnaRecenti();
     }).catch(function(e){ avviso("err", "QNAP non raggiungibile: " + esc(e.message)); });
@@ -829,10 +830,20 @@
   var UNO = { "partite": "partita", "giovanili": "giovanili", "studio": "studio",
               "allenamenti": "allenamento", "altri sport": "altri sport" };
   function etichettaTipo(x){ var t = tipoDi(x); return UNO[t] || t; }
-  var FILTRO = { tipo: "", comp: "", stato: "" }, COMP_TUTTE = false;
+  // LA LIBRERIA SI APRE SULLE PARTITE PRONTE. "Puntata" vuol dire che il
+  // cronometro e' stato letto e il giro del boato e' passato: un appunto
+  // del 23' cade sul 23' vero. Le altre ci sono ancora — basta spegnere la
+  // pastiglia — ma non stanno piu' in mezzo, perche' aprirne una vuol dire
+  // cercare un gol dove il gol non e'. La scelta si ricorda.
+  var FILTRO = { tipo: "", comp: "", stato: "" }, COMP_TUTTE = false, QUANTE_PUNTATE = 0;
+  try { var st0 = localStorage.getItem("mam2-stato"); FILTRO.stato = st0 === null ? "puntate" : st0; } catch (e) { FILTRO.stato = "puntate"; }
   function passa(x){
     if (FILTRO.tipo && tipoDi(x) !== FILTRO.tipo) return false;
     if (FILTRO.comp && (compDi(x) || "\u2014") !== FILTRO.comp) return false;
+    // se il ponte non sa ancora dire chi e' puntata (vecchia versione, o
+    // riavvio non ancora fatto) il filtro non nasconde niente: meglio una
+    // libreria intera che una libreria vuota
+    if (FILTRO.stato === "puntate" && QUANTE_PUNTATE && !x.puntata) return false;
     if (FILTRO.stato === "tc" && !x.telecronaca) return false;
     if (FILTRO.stato === "s3" && !x.s3) return false;
     if (FILTRO.stato === "qnap" && x.s3) return false;
@@ -864,7 +875,9 @@
       .map(function(t){ return pastiglia("tipo", t, t, perTipo[t], coloreTipo(t)); }).join("");
     var tc = EVENTI.filter(function(x){ return x.telecronaca; }).length;
     var s3 = EVENTI.filter(function(x){ return x.s3; }).length;
-    el("etiStato").innerHTML = (tc ? pastiglia("stato", "tc", "con telecronaca", tc, "") : "") +
+    var pun = QUANTE_PUNTATE;
+    el("etiStato").innerHTML = (pun ? pastiglia("stato", "puntate", "gi\u00e0 puntate", pun, "") : "") +
+      (tc ? pastiglia("stato", "tc", "con telecronaca", tc, "") : "") +
       (s3 ? pastiglia("stato", "s3", "su S3 a Parigi", s3, "") : "") +
       (EVENTI.length - s3 ? pastiglia("stato", "qnap", "sulla QNAP", EVENTI.length - s3, "") : "");
     var comp = Object.keys(perComp).sort(function(a, b){ return perComp[b] - perComp[a] || a.localeCompare(b); });
@@ -886,6 +899,7 @@
   }
   function scegliEtichetta(chiave, valore){
     FILTRO[chiave] = FILTRO[chiave] === valore ? "" : valore;
+    if (chiave === "stato") { try { localStorage.setItem("mam2-stato", FILTRO.stato); } catch (e) {} }
     disegnaCategorie(); disegnaRecenti();
     var attivi = ["tipo", "comp", "stato"].filter(function(k){ return FILTRO[k]; });
     el("recPulisci").hidden = !attivi.length;
@@ -925,7 +939,7 @@
     el("compTenda").hidden = true; el("compCerca").value = "";
     scegliEtichetta("comp", a.dataset.comp);
   });
-  el("recPulisci").addEventListener("click", function(){ FILTRO = { tipo:"", comp:"", stato:"" }; el("recPulisci").hidden = true; el("recTitolo").textContent = "Partite"; disegnaCategorie(); disegnaRecenti(); });
+  el("recPulisci").addEventListener("click", function(){ FILTRO = { tipo:"", comp:"", stato:"" }; try { localStorage.setItem("mam2-stato", ""); } catch (e) {} el("recPulisci").hidden = true; el("recTitolo").textContent = "Partite"; disegnaCategorie(); disegnaRecenti(); });
   el("vGriglia").addEventListener("click", function(){ VISTA = "griglia"; try { localStorage.setItem("mam2-vista", VISTA); } catch (e) {} disegnaRecenti(); });
   el("vLista").addEventListener("click", function(){ VISTA = "lista"; try { localStorage.setItem("mam2-vista", VISTA); } catch (e) {} disegnaRecenti(); });
 

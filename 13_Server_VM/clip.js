@@ -4345,6 +4345,10 @@ async function chiaveVicina(via, quando) {
 //  partita. Adesso un pezzo puo' portarsi la SUA sorgente: se ce l'ha, non
 //  si scarica niente perche' e' gia' qui, e dentro/fuori sono i secondi
 //  dentro QUEL file.
+function puntata(a) {
+  if (!a) return false;
+  return !!(a.orologio || a.orologioFallito) && !!(a.boati || a.boatiFatti);
+}
 function cartellaMedia() {
   const d = (process.env.COMOTV_VIDEO || path.join(path.dirname(DIR), "video"));
   return d;
@@ -12088,6 +12092,12 @@ const AZIONI = {
   "clip-qnap-via": qnapVia,
   // GLI EVENTI COMPLETI: tutti i video della QNAP, anche nelle sottocartelle,
   // con la partita se l'archivio la conosce. E' la lista su cui si cerca.
+  // UNA PARTITA E' "PUNTATA" quando il cronometro e' stato letto (o
+  // dichiarato illeggibile, che e' comunque una risposta) e il giro del
+  // boato e' passato: da quel momento un appunto scritto al 23' cade sul
+  // 23' vero, e cercarci dentro serve a qualcosa. Prima non lo si poteva
+  // chiedere: in Libreria le partite pronte stavano in mezzo a quelle
+  // ancora da raddrizzare, e si aprivano a caso.
   "clip-qnap-eventi": (p) => {
     const partite = qnapPartite();
     const regs = Object.keys(R.reg).map((k) => R.reg[k]).filter((x) => x.arch);
@@ -12106,7 +12116,7 @@ const AZIONI = {
         const pa = partite[relSuo]; if (pa) { v.rec = pa.rec; v.partita = pa.partita; }
         const r = regs.find((x) => x.arch.chiave === relSuo || (x.arch.pezzi || []).some((z) => z.chiave === relSuo));
         if (r) { v.reg = r.id; v.partita = v.partita || r.titolo; v.durata = r.durata || 0; if (!v.rec && r.arch.rec) v.rec = r.arch.rec; v.telecronaca = !!(PARLATO[r.id] && (PARLATO[r.id].pezzi || []).length); }
-        const a = v.rec && ARCHIVIO[v.rec]; if (a) { v.quandoPartita = a.quando || a.data || ""; v.competizione = a.competizione || ""; if (!v.durata && a.pezzi) v.durata = (a.pezzi.reduce((n, z) => n + (z.minuti || 0), 0)) * 60; }
+        const a = v.rec && ARCHIVIO[v.rec]; if (a) { v.quandoPartita = a.quando || a.data || ""; v.competizione = a.competizione || ""; if (!v.durata && a.pezzi) v.durata = (a.pezzi.reduce((n, z) => n + (z.minuti || 0), 0)) * 60; v.puntata = puntata(a); }
         fuori.push(v);
       }
     };
@@ -12125,7 +12135,8 @@ const AZIONI = {
                    quando: Date.parse(a.quando) || 0, est: path.extname(a.chiave).slice(1).toLowerCase(), rec: k, partita: a.partita || "", competizione: a.competizione || "",
                    quandoPartita: a.quando || "", durata: r ? (r.durata || 0) : Math.round(minuti * 60), reg: r ? r.id : undefined,
                    telecronaca: !!(r && PARLATO[r.id] && (PARLATO[r.id].pezzi || []).length), s3: true, senzaNome: !!a.soloS3, bucket: a.bucket, pezzi: (a.pezzi || []).length || 1,
-                   soloElenco: soloElenco(a.bucket), forse: a.riconosciuta && a.riconosciuta.sicura === false ? a.riconosciuta.nome : "" });
+                   soloElenco: soloElenco(a.bucket), puntata: puntata(a),
+                   forse: a.riconosciuta && a.riconosciuta.sicura === false ? a.riconosciuta.nome : "" });
       suS3++;
     });
     fuori.sort((a, b) => b.quando - a.quando);
