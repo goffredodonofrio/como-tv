@@ -216,7 +216,7 @@
   .tendina-menu a span{flex:1;} .tendina-menu a i{font-style:normal;font:11px ui-monospace,Menlo,monospace;color:var(--fumo);}
   .tendina-menu hr{border:none;border-top:1px solid var(--riga);margin:5px 8px;}
   .tendina-menu .capo2{padding:6px 10px 3px;font-family:'Mazzard',sans-serif;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--oro);}
-  #editor{display:none;flex-direction:column;min-height:0;}
+  #editor{display:none;flex-direction:column;min-height:0;position:relative;}
   #editor.on{display:flex;}
   .ed-sopra{display:grid;grid-template-columns:var(--bin,300px) 9px minmax(0,1fr) 9px var(--lato,300px);gap:0;flex:1 1 auto;min-height:0;border-bottom:1px solid var(--riga);}
   /* OGNI COSA CHE HA UNA MISURA SI PUO' TIRARE. Le due colonne, la colonna
@@ -574,6 +574,10 @@
       </div>
     </div>
     <div class="ed-maniglia" id="edManiglia" title="trascina per dare piu’ o meno spazio alla timeline"><span></span></div>
+    <div class="tendina" id="tendaMedia" hidden style="position:absolute;left:14px;right:14px;bottom:56px;z-index:40;max-width:none">
+      <input id="mediaCerca" type="search" placeholder="filtra il materiale…" autocomplete="off">
+      <div class="elenco" id="mediaElenco"></div>
+    </div>
     <div class="ed-sotto">
       <div class="ed-barra">
         <span class="tc" id="eOra">00:00:00<small id="eTot"></small></span>
@@ -581,7 +585,7 @@
         <span class="sep"></span>
         <span class="eti">Sottotitoli</span><button id="eSottoOn">Off</button><button id="eSottoLingua">ITA</button>
         <span class="sep"></span>
-        <span class="eti">V2</span><button id="eTitolo" title="scrivi un nome sullo schermo, nei font di Como TV">+ Titolo</button><button id="eGrafica" title="una grafica PNG sotto la testina, 5 secondi: poi la allunghi dai bordi">+ Grafica</button><input type="file" id="fGrafica" accept="image/png" hidden>
+        <span class="eti">V2</span><button id="eMateriale" title="sigle, grafiche in movimento, clip girate col telefono: il materiale che sta sulla VM">+ Materiale</button><button id="eTitolo" title="scrivi un nome sullo schermo, nei font di Como TV">+ Titolo</button><button id="eGrafica" title="una grafica PNG sotto la testina, 5 secondi: poi la allunghi dai bordi">+ Grafica</button><input type="file" id="fGrafica" accept="image/png" hidden>
         <span class="sep"></span>
         <span class="eti">Audio</span><button id="eStacca" title="stacca l'audio dal pezzo scelto: poi lo trascini da solo">Stacca</button><button id="eMuto" title="muto / suona (pezzo o audio scelto)">Muto</button><button id="eAudioTogli" title="togli l'audio scelto (o quello del pezzo scelto)">Togli audio</button>
         <span class="sep"></span>
@@ -1918,6 +1922,18 @@
     ORA.i = i;
     var v = velDi(x);
     var t = x.dentro + Math.max(0, Math.min((x.fuori - x.dentro) * v - 0.05, (dentroIlPezzo || 0) * v));
+    // UN PEZZO DI CASA HA UN ALTRO FILE SOTTO: il monitor deve cambiare
+    // sorgente, e cercare il secondo solo quando la nuova e' pronta
+    var sorg = x.media ? (BASE + "/video/" + encodeURIComponent(x.media)) : (REGE ? BASE + REGE.via : "");
+    if (sorg && VE.getAttribute("src") !== sorg) {
+      VE.setAttribute("src", sorg);
+      VE.addEventListener("loadedmetadata", function una(){
+        VE.removeEventListener("loadedmetadata", una);
+        try { VE.currentTime = t; } catch (e) {}
+        if (riproduci) VE.play().catch(function(){});
+      });
+      ORA.i = i; disegnaBin(); return;
+    }
     try { VE.currentTime = t; } catch (e) {}
     try { if (VE.playbackRate !== v) VE.playbackRate = v; } catch (e) {}
     if (riproduci) VE.play().catch(function(){});
@@ -2259,6 +2275,40 @@
   el("eGiuSx").addEventListener("click", function(){ giunzione(-0.04); });
   el("eGiuDx").addEventListener("click", function(){ giunzione(0.04); });
   // V2: una grafica PNG sotto la testina, cinque secondi, poi si allunga dai bordi e si trascina
+  // ══════════ IL MATERIALE DI CASA ══════════
+  //  Sigle, grafiche in movimento, clip girate col telefono: stanno gia'
+  //  sulla VM e il montaggio non le vedeva. Un pezzo di materiale porta la
+  //  SUA sorgente, quindi non si scarica niente e l'entrata e l'uscita sono
+  //  i secondi dentro quel file, non dentro la partita.
+  var MEDIA = [];
+  function disegnaMedia(){
+    var q = (el("mediaCerca").value || "").trim().toLowerCase();
+    var v = MEDIA.filter(function(m){ return !q || m.file.toLowerCase().indexOf(q) >= 0; });
+    el("mediaElenco").innerHTML = v.length ? v.map(function(m){
+      return '<a data-media="' + esc(m.file) + '"><span>' + esc(m.file.replace(/\.[^.]+$/, "")) + '</span><i>' +
+             tc(m.durata) + ' · ' + Math.round(m.peso / 1e6) + ' MB</i></a>';
+    }).join("") : '<div class="niente">Niente che si chiami così.</div>';
+  }
+  function apriMateriale(){
+    var t = el("tendaMedia");
+    if (!t.hidden) { t.hidden = true; return; }
+    post({ tipo:"clip-hl-media" }).then(function(d){
+      MEDIA = d.media || [];
+      if (!MEDIA.length) return avviso("err", "Non c'è materiale sulla VM: caricalo dal Controllo Redazione.");
+      t.hidden = false; disegnaMedia(); el("mediaCerca").focus();
+    }).catch(function(er){ avviso("err", esc(er.message)); });
+  }
+  el("eMateriale").addEventListener("click", apriMateriale);
+  el("mediaCerca").addEventListener("input", disegnaMedia);
+  el("mediaCerca").addEventListener("keydown", function(e){ if (e.key === "Escape") el("tendaMedia").hidden = true; });
+  el("mediaElenco").addEventListener("click", function(e){
+    var a = e.target.closest("a[data-media]"); if (!a || !SEQ) return;
+    el("tendaMedia").hidden = true;
+    var dove = ORA.i >= 0 ? ORA.i + 1 : PZ.length;
+    post({ tipo:"clip-hl-metti-media", seq: SEQ.id, media: a.dataset.media, dove: dove })
+      .then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Messo in timeline: entrata e uscita sono dentro quel file."); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  });
   // IL TITOLO. Per scrivere un nome sullo schermo si usciva dal montaggio,
   // si faceva un PNG altrove e lo si ricaricava: cioe' si apriva un altro
   // programma. Adesso lo disegna la macchina, nei font di Como TV, e da li'

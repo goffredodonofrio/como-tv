@@ -3499,6 +3499,16 @@ function ingressoSolaudio(reg, dentro, fuori, lista) {
   return ["-ss", String(f.dentro), "-i", f.via, "-t", String(Math.min(fuori, fineNota) - dentro)];
 }
 
+// l'onda di un file che sta gia' qui: si legge e basta, niente ponte
+async function ondaDaFile(via, dentro, fuori, dove) {
+  try { return JSON.parse(fs.readFileSync(dove, "utf8")); } catch (e) {}
+  const db = await volumeAlSecondo(via, dentro, Math.max(1, Math.round(fuori - dentro)));
+  if (!db.length) return null;
+  const onda = db.map((v) => Math.max(0, Math.min(100, Math.round((v + 60) / 60 * 100))));
+  try { fs.writeFileSync(dove, JSON.stringify(onda)); } catch (e) {}
+  return onda;
+}
+
 async function calcolaOnda(reg, dentro, fuori) {
   const k = chiavePezzo(reg, dentro, fuori);
   const via = path.join(cartellaOnde(), k + ".json");
@@ -4327,12 +4337,45 @@ async function chiaveVicina(via, quando) {
   return k === null ? Math.max(0, quando) : k;
 }
 
+// ══════════ IL MATERIALE DI CASA ══════════
+//  Fino a qui una sequenza era una finestra dentro UNA partita: ogni pezzo
+//  diceva "da qui a qui" e il resto lo sapeva la registrazione. Ma un
+//  montato vero ha anche le sigle, le grafiche in movimento, una clip
+//  girata col telefono — roba che sta sulla VM e non dentro nessuna
+//  partita. Adesso un pezzo puo' portarsi la SUA sorgente: se ce l'ha, non
+//  si scarica niente perche' e' gia' qui, e dentro/fuori sono i secondi
+//  dentro QUEL file.
+function cartellaMedia() {
+  const d = (process.env.COMOTV_VIDEO || path.join(path.dirname(DIR), "video"));
+  return d;
+}
+function mediaVia(x) {
+  const f = x && x.media ? path.basename(String(x.media)) : "";
+  if (!f || !/\.(mp4|mov|m4v)$/i.test(f)) return null;
+  const via = path.join(cartellaMedia(), f);
+  return fs.existsSync(via) ? via : null;
+}
+const DURATE_MEDIA = new Map();
+function durataMedia(via) {
+  if (DURATE_MEDIA.has(via)) return DURATE_MEDIA.get(via);
+  let d = 0;
+  try {
+    const r = require("child_process").execFileSync(FFPROBE || "ffprobe",
+      ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", via],
+      { timeout: 20000 });
+    d = Math.max(0, parseFloat(String(r).trim()) || 0);
+  } catch (e) { d = 0; }
+  DURATE_MEDIA.set(via, d);
+  return d;
+}
+
 function pezziDaScaricare(q) {
   // l'audio scollegato pesca da un altro punto della partita: quel pezzo
   // va portato in casa come gli altri, o all'esportazione non c'e'
   const tutti = (q.pezzi || []).concat((q.audio || []).filter((a) => !a.legato));
   const visti = {};
   return tutti.filter((x) => {
+    if (mediaVia(x)) return false;          // ce l'ha gia' in casa: e' suo
     const k = chiavePezzo(q.reg, x.dentro, x.fuori);
     if (visti[k]) return false;
     visti[k] = true;
@@ -4358,6 +4401,7 @@ async function costruisciPezzi(q, avanti) {
   const daFare = pezziDaScaricare(q);
   let fatti = 0;
   const uno = async (x) => {
+    if (mediaVia(x)) return;                // gia' in casa
     const k = chiavePezzo(q.reg, x.dentro, x.fuori);
     const fuoriFile = filePezzo(k);
     const parziale = fuoriFile.replace(/\.mp4$/, "-parte.mp4");
@@ -4430,6 +4474,8 @@ function scartoPezzo(k) {
 function segnaPezziLocali(q) {
   let quanti = 0;
   (q.pezzi || []).forEach((x) => {
+    const mio = mediaVia(x);
+    if (mio) { x.locale = "/video/" + path.basename(mio); x.scarto = 0; quanti++; return; }
     const k = chiavePezzo(q.reg, x.dentro, x.fuori);
     if (fs.existsSync(filePezzo(k))) {
       x.locale = viaPezzo(k);
@@ -4487,8 +4533,10 @@ function costruisciMix(q, iBase) {
   (q.audio || []).forEach((a) => {
     if (a.muto || !suona[a.traccia]) return;
     const t = (q.tracce && q.tracce[a.traccia]) || {};
+    const suoP = a.legato ? (q.pezzi || []).filter((y) => y.id === a.legato)[0] : null;
+    const mioA = mediaVia(suoP);
     const k = chiavePezzo(q.reg, a.dentro, a.fuori);
-    const casa = filePezzo(k);
+    const casa = mioA || filePezzo(k);
     const dur = Math.max(0.05, a.fuori - a.dentro);
     // se il video sopra e' rallentato, il suo suono va steso insieme a lui:
     // se no la voce finisce prima delle immagini
@@ -4503,7 +4551,7 @@ function costruisciMix(q, iBase) {
     // accorgi quando e' gia' online.
     let off = 0;
     if (fs.existsSync(casa)) {
-      off = scartoPezzo(k);
+      off = mioA ? a.dentro : scartoPezzo(k);
       ingressi.push("-ss", String(off), "-t", String(Math.max(0.05, dur * velA)), "-i", casa);
     } else {
       const rq = R.reg[q.reg];
@@ -4680,7 +4728,10 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   // le transizioni vogliono che i pezzi si SOVRAPPONGANO: incollare e basta
   // non basta piu', e ogni pezzo dev'essere tagliato esatto
   const conFusione = (q.pezzi || []).some((x, i) => i > 0 && (x.traccia || "V1") !== "V2" && x.transizione && +x.transizione.durata > 0.06);
-  const veloce = (p2 && p2.esatto) || srtSeq ? false : (!ritaglio && !grafiche0.length && !mixato && !buchi.length && !rallentati && !conFusione);
+  // un file di casa non e' codificato come i pezzi della partita: incollarli
+  // e basta vorrebbe dire pretendere che abbiano lo stesso codificatore
+  const conMedia = (q.pezzi || []).some((x) => !!mediaVia(x));
+  const veloce = (p2 && p2.esatto) || srtSeq ? false : (!ritaglio && !grafiche0.length && !mixato && !buchi.length && !rallentati && !conFusione && !conMedia);
   const dir2 = path.join(dir, "tagli");
   assicura(dir2);
   const parti = [];
@@ -4689,13 +4740,14 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   const base = (q.pezzi || []).filter((x) => (x.traccia || "V1") !== "V2");
   for (let i = 0; i < base.length; i++) {
     const x = base[i];
+    const mio = mediaVia(x);
     const k = chiavePezzo(q.reg, x.dentro, x.fuori);
-    const casa = filePezzo(k);
+    const casa = mio || filePezzo(k);
     if (!fs.existsSync(casa)) continue;
     // il buco davanti a questo pezzo: nero, per la durata giusta
     if ((x.t0 || 0) > orologio + 0.04) { parti.push({ vuoto: (x.t0 || 0) - orologio }); }
     orologio = Math.max(orologio, (x.t0 || 0) + (x.fuori - x.dentro));
-    const off = scartoPezzo(k), dur = x.fuori - x.dentro;
+    const off = mio ? x.dentro : scartoPezzo(k), dur = x.fuori - x.dentro;
     // l'inquadratura di QUESTO pezzo: se ha i suoi punti, il ritaglio segue
     const ritaglioQui = ritaglioDelPezzo(formato, x.inquadra && x.inquadra[formato]);
     if (veloce) { parti.push({ file: casa }); q.export.fatti = i + 1; q.export.fase = "preparo"; continue; }
@@ -12642,6 +12694,43 @@ const AZIONI = {
   "clip-hl-pezzo": hlPezzo,
   "clip-hl-dividi": hlDividi,
   "clip-hl-inserisci": hlInserisci,
+  // IL MATERIALE DI CASA: sigle, grafiche in movimento, clip girate col
+  // telefono. Stanno gia' sulla VM e il montaggio non le vedeva.
+  "clip-hl-media": () => {
+    const dir = cartellaMedia();
+    let file = [];
+    try { file = fs.readdirSync(dir).filter((f) => /\.(mp4|mov|m4v)$/i.test(f) && f[0] !== "."); } catch (e) {}
+    const elenco = file.map((f) => {
+      const via = path.join(dir, f);
+      let peso = 0; try { peso = fs.statSync(via).size; } catch (e) {}
+      return { file: f, url: "/video/" + f, peso: peso, durata: Math.round(durataMedia(via) * 10) / 10 };
+    }).filter((x) => x.durata > 0.2).sort((a, b) => a.file.localeCompare(b.file));
+    return { ok: true, media: elenco };
+  },
+  // un pezzo di materiale in timeline: entrata e uscita sono dentro QUEL
+  // file, non dentro la partita
+  "clip-hl-metti-media": (p) => {
+    const q = seqMia(p);
+    const f = path.basename(String(p.media || ""));
+    const via = mediaVia({ media: f });
+    if (!via) throw new Error("quel file non c'e' piu' nel materiale");
+    const dur = durataMedia(via);
+    if (!(dur > 0.2)) throw new Error("di quel file non riesco a leggere la durata");
+    const dentro = num(p.dentro, 0, Math.max(0.1, dur - 0.2), 0);
+    const fuori = num(p.fuori, dentro + 0.2, dur, dur);
+    const pezzo = { id: nuovoId("p"), media: f, dentro: dentro, fuori: fuori, base: dentro,
+                    traccia: ["V1", "V2"].indexOf(String(p.traccia)) >= 0 ? String(p.traccia) : "V1",
+                    titolo: String(p.titolo || "").slice(0, 160) || f.replace(/\.[^.]+$/, ""),
+                    tipo: "", minuto: "", fonte: "casa", mano: true };
+    const dove = (p.dove === undefined || p.dove === null) ? q.pezzi.length
+               : Math.max(0, Math.min(q.pezzi.length, Math.round(num(p.dove, 0, 999, 0))));
+    ricorda(q);
+    q.pezzi.splice(dove, 0, pezzo);
+    toccataAMano(q);
+    riallinea(q);
+    scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: q, pezzo: pezzo.id };
+  },
   // L'INQUADRATURA DI UN PEZZO, formato per formato. Punti vuoti = fermo
   // al centro, come prima.
   "clip-hl-inquadra": (p) => {
@@ -12740,11 +12829,15 @@ const AZIONI = {
     const fuori = {};
     let mancano = 0, fatte = 0;
     for (const a of (q.audio || [])) {
-      const k = chiavePezzo(q.reg, a.dentro, a.fuori);
+      const suoP = a.legato ? (q.pezzi || []).filter((y) => y.id === a.legato)[0] : null;
+      const mioW = mediaVia(suoP);
+      const k = mioW ? ("media-" + path.basename(mioW) + "-" + a.dentro.toFixed(2) + "-" + a.fuori.toFixed(2)).replace(/[^A-Za-z0-9._-]/g, "_")
+                     : chiavePezzo(q.reg, a.dentro, a.fuori);
       const via = path.join(cartellaOnde(), k + ".json");
       if (fs.existsSync(via)) { try { fuori[a.id] = JSON.parse(fs.readFileSync(via, "utf8")); } catch (e) {} continue; }
       if (fatte >= 4) { mancano++; continue; }      // le altre al giro dopo
-      const o = await calcolaOnda(q.reg, a.dentro, a.fuori);
+      const o = mioW ? await ondaDaFile(mioW, a.dentro, a.fuori, via)
+                     : await calcolaOnda(q.reg, a.dentro, a.fuori);
       if (o) { fuori[a.id] = o; fatte++; } else mancano++;
     }
     return { ok: true, onde: fuori, mancano: mancano };
