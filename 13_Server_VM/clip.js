@@ -3488,7 +3488,8 @@ function ingressoSolaudio(reg, dentro, fuori, lista) {
           : { via: path.join(cartellaReg(reg), "integrale.mp4"), dentro: dentro, fine: Infinity };
   if (!f.via) return null;
   if (!(r && r.arch) && !fs.existsSync(f.via)) return null;
-  return ["-ss", String(f.dentro), "-i", f.via, "-t", String(Math.min(fuori, f.fine) - dentro)];
+  const fineNota = (f.fine > dentro && isFinite(f.fine)) ? f.fine : Infinity;
+  return ["-ss", String(f.dentro), "-i", f.via, "-t", String(Math.min(fuori, fineNota) - dentro)];
 }
 
 async function calcolaOnda(reg, dentro, fuori) {
@@ -3740,6 +3741,16 @@ function hlPezzo(p) {
   if (p.dentro !== undefined) x.dentro = num(p.dentro, 0, durata, x.dentro);
   if (p.fuori !== undefined) x.fuori = num(p.fuori, 0, durata, x.fuori);
   if (p.titolo !== undefined) x.titolo = String(p.titolo).slice(0, 160);
+  // LA VELOCITA'. Il posto che il pezzo occupa nel montato non cambia: e'
+  // quanta azione ci entra dentro che cambia. A meta' velocita', in quattro
+  // secondi di montato ci stanno due secondi di partita, visti al doppio del
+  // tempo — che e' il replay al rallentatore. Fatta cosi', la lunghezza sulla
+  // timeline resta "fuori meno dentro" dappertutto, e nessuno degli altri
+  // conti della sequenza deve sapere che la velocita' esiste.
+  if (p.velocita !== undefined) {
+    const v = num(p.velocita, 0.2, 4, 1);
+    if (Math.abs(v - 1) < 0.001) delete x.velocita; else x.velocita = Math.round(v * 100) / 100;
+  }
   if (x.fuori - x.dentro < 0.5) throw new Error("il pezzo diventerebbe vuoto");
   // toccato a mano: la taratura dell'orologio non deve piu' spostarlo
   if (p.dentro !== undefined || p.fuori !== undefined) x.mano = true;
@@ -4300,7 +4311,16 @@ async function costruisciPezzi(q, avanti) {
     if (usaIntegrale) {
       const f = (r && r.arch) ? fonteAl(r, x.dentro)
               : { via: integrale, dentro: x.dentro, fine: Infinity };
-      const quanto = Math.min(x.fuori, f.fine) - x.dentro;
+      // SE NON SI SA DOVE FINISCE IL PEZZO, NON SI ACCORCIA LA LETTURA.
+      // I pezzi dell'archivio arrivano dall'inventario di S3 con la durata a
+      // zero: nessuno l'ha misurata, e misurarla vorrebbe dire leggere il
+      // file. Ma "durata zero" veniva letto come "finisce adesso", e allora
+      // di un pezzo da sei secondi se ne chiedevano due decimi: ogni export
+      // di una partita che sta su S3 usciva come un moncone da un secondo e
+      // mezzo, senza un errore. Non sapere dove finisce vuol dire non
+      // mettere un limite, non metterne uno a zero.
+      const fineNota = (f.fine > x.dentro && isFinite(f.fine)) ? f.fine : Infinity;
+      const quanto = Math.min(x.fuori, fineNota) - x.dentro;
       const kf = await chiaveVicina(f.via, f.dentro);
       scarto = Math.max(0, f.dentro - kf);
       ingresso = ["-ss", String(kf), "-i", f.via, "-t", String(scarto + Math.max(0.2, quanto) + 0.2)];
@@ -4416,6 +4436,10 @@ function costruisciMix(q, iBase) {
     const k = chiavePezzo(q.reg, a.dentro, a.fuori);
     const casa = filePezzo(k);
     const dur = Math.max(0.05, a.fuori - a.dentro);
+    // se il video sopra e' rallentato, il suo suono va steso insieme a lui:
+    // se no la voce finisce prima delle immagini
+    const suo = a.legato ? (q.pezzi || []).filter((y) => y.id === a.legato)[0] : null;
+    const velA = (suo && +suo.velocita) || 1;
     const idx = iBase + n;
     // SE IN CASA NON C'E', SI VA A PRENDERLO DOVE STA. Prima un pezzo audio
     // che non fosse gia' sul disco veniva semplicemente saltato: il mix
@@ -4426,13 +4450,13 @@ function costruisciMix(q, iBase) {
     let off = 0;
     if (fs.existsSync(casa)) {
       off = scartoPezzo(k);
-      ingressi.push("-ss", String(off), "-t", String(dur), "-i", casa);
+      ingressi.push("-ss", String(off), "-t", String(Math.max(0.05, dur * velA)), "-i", casa);
     } else {
       const rq = R.reg[q.reg];
       const f = rq && rq.arch ? fonteAl(rq, a.dentro)
               : { via: path.join(cartellaReg(q.reg), "integrale.mp4"), dentro: a.dentro };
       if (!f || !f.via || (!rq.arch && !fs.existsSync(f.via))) { saltati++; return; }
-      ingressi.push("-ss", String(f.dentro), "-t", String(dur), "-i", f.via);
+      ingressi.push("-ss", String(f.dentro), "-t", String(Math.max(0.05, dur * velA)), "-i", f.via);
     }
     // da quale pista: 0 se ce n'e' una sola, come e' oggi su questo
     // materiale. Il giorno che la regia ne manda tre, qui si sceglie.
@@ -4443,6 +4467,13 @@ function costruisciMix(q, iBase) {
     // la coppia di canali, e dentro la coppia l'eventuale mezzo canale:
     // "aformat=stereo" qui pieghegava un sei canali su due sommando i bus
     f += "," + panDi(canaliQui, a.coppia, a.canale);
+    // atempo tiene solo da 0.5 a 2: fuori di li' si incatena piu' passaggi
+    if (velA !== 1) {
+      let resta = velA;
+      while (resta < 0.5) { f += ",atempo=0.5"; resta /= 0.5; }
+      while (resta > 2) { f += ",atempo=2"; resta /= 2; }
+      if (Math.abs(resta - 1) > 0.001) f += ",atempo=" + resta.toFixed(4);
+    }
     const g = (a.gain || 0) + (t.gain || 0);
     // con i punti il volume si muove nel tempo: si scrive l'espressione a
     // tratti (la stessa macchina del ritaglio verticale) e la si rivaluta a
@@ -4591,7 +4622,8 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   const sottoV = vuoleSotto(p2);
   const srtSeq = (sottoV.file || sottoV.video) ? await scriviSrtSequenza(q, sottoV, !!sottoV.video) : null;
   const brucia = !!(sottoV.video && srtSeq);
-  const veloce = (p2 && p2.esatto) || srtSeq ? false : (!ritaglio && !grafiche0.length && !mixato && !buchi.length);
+  const rallentati = (q.pezzi || []).some((x) => +x.velocita && +x.velocita !== 1);
+  const veloce = (p2 && p2.esatto) || srtSeq ? false : (!ritaglio && !grafiche0.length && !mixato && !buchi.length && !rallentati);
   const dir2 = path.join(dir, "tagli");
   assicura(dir2);
   const parti = [];
@@ -4609,17 +4641,27 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     const ritaglioQui = ritaglioDelPezzo(formato, x.inquadra && x.inquadra[formato]);
     if (veloce) { parti.push({ file: casa }); q.export.fatti = i + 1; q.export.fase = "preparo"; continue; }
     const esatto = path.join(dir2, "p" + String(i + 1).padStart(3, "0") + ".mp4");
+    // A META' VELOCITA' SI LEGGE META' SORGENTE. Non serve dirlo a ffmpeg:
+    // "-t" dopo "-i" limita l'USCITA, e con setpts che stende i tempi
+    // ffmpeg legge da solo quanta sorgente gli serve per riempire quei
+    // secondi. Scriverlo sull'ingresso tagliava il montato a meta'.
+    const vel = +x.velocita || 1;
     const args = ["-hide_banner", "-loglevel", "error", "-nostdin",
       "-ss", String(off), "-i", casa, "-t", String(dur)];
     // se il pezzo comincia gia' dove deve, si copia e basta: niente da fare
-    const copiabile = off < 0.08 && !ritaglioQui;
+    const copiabile = off < 0.08 && !ritaglioQui && vel === 1;
     await new Promise((si, no) => {
       const pr = spawn(FFMPEG, args.concat(copiabile
         ? ["-c", "copy", "-movflags", "+faststart", "-y", esatto]
         // lanczos va IN CODA alla scala, non in testa: scritto davanti
         // ffmpeg lo prendeva come unico argomento e l'ingrandimento saltava,
         // e il verticale usciva 608x1080 invece di 1080x1920
-        : (ritaglioQui ? ["-vf", ritaglioQui.replace(/(scale=\d+:\d+)/, "$1:flags=lanczos")] : [])
+        : (function(){
+            const filtri = [];
+            if (vel !== 1) filtri.push("setpts=PTS/" + vel.toFixed(4));
+            if (ritaglioQui) filtri.push(ritaglioQui.replace(/(scale=\d+:\d+)/, "$1:flags=lanczos"));
+            return filtri.length ? ["-vf", filtri.join(",")] : [];
+          })()
           .concat(["-c:v", "libx264", "-preset", CACHE_PRESET, "-crf", CACHE_CRF, "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
            "-movflags", "+faststart", "-y", esatto])), { stdio: ["ignore", "ignore", "pipe"] });

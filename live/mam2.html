@@ -358,6 +358,7 @@
   .ed-pezzo{position:absolute;top:4px;bottom:4px;height:auto;background:#2A3448 var(--posa,none) no-repeat left center/auto 100%;
     border:1px solid #56688C;border-radius:5px;overflow:hidden;cursor:grab;box-sizing:border-box;}
   .ed-pezzo::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(24,32,50,.32) 0%,rgba(24,32,50,.80) 40%,rgba(24,32,50,.86) 100%);}
+  .ed-pezzo .cima i{font-style:normal;background:var(--oro);color:var(--navy);font-weight:700;font-size:9px;padding:1px 4px;border-radius:3px;}
   .ed-pezzo .cima{position:absolute;top:0;left:0;right:0;height:17px;background:rgba(18,26,42,.85);border-bottom:1px solid rgba(245,241,230,.10);
     font-size:10.5px;line-height:17px;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ivory);}
   .ed-pezzo.sel{border-color:var(--oro);box-shadow:0 0 0 1px var(--oro) inset;}
@@ -1354,7 +1355,16 @@
   // proprio quella somma), ma da qui una clip puo' stare dove la metti.
   function durSeq(){ return PZ.reduce(function(m, x){ return Math.max(m, (x.t0 || 0) + (x.fuori - x.dentro)); }, 0); }
   function inizioDi(i){ var x = PZ[i]; return x ? (x.t0 || 0) : 0; }
-  function tSeq(){ var x = PZ[ORA.i]; if (!x || !VE) return 0; return (x.t0 || 0) + Math.max(0, Math.min(x.fuori - x.dentro, (VE.currentTime || 0) - x.dentro)); }
+  // LA VELOCITA'. Il posto che il pezzo occupa nel montato non cambia: a
+  // meta' velocita' in quattro secondi di montato ci stanno due secondi di
+  // partita, visti al doppio del tempo. Quindi la sorgente scorre piu' piano
+  // del montato, e per sapere dove siamo si divide per la velocita'.
+  function velDi(x){ var v = +((x || {}).velocita) || 1; return (v > 0.19 && v < 4.01) ? v : 1; }
+  function tSeq(){
+    var x = PZ[ORA.i]; if (!x || !VE) return 0;
+    var d = x.fuori - x.dentro, v = velDi(x);
+    return (x.t0 || 0) + Math.max(0, Math.min(d, ((VE.currentTime || 0) - x.dentro) / v));
+  }
   function pezzoAlTempo(t){
     for (var i = 0; i < PZ.length; i++) {
       var a = PZ[i].t0 || 0, b = a + (PZ[i].fuori - PZ[i].dentro);
@@ -1436,7 +1446,7 @@
       if (b < LENTE.a || a > LENTE.b) return;
       var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)), ww = Math.max(6, xb - xa);
       var po = POSE[REGE ? (REGE.id + "|" + x.dentro) : ""];
-      hv += '<div class="ed-pezzo' + (scelto(x.id) ? " sel" : "") + (ORA.i === i ? " ora" : "") + '" data-i="' + i + '" data-posa="' + esc(x.dentro) + '" style="left:' + xa + 'px;width:' + ww + 'px' + (po && po !== "\u2026" ? ";--posa:url(\'" + po + "\')" : "") + '"><span class="cima">' + esc(x.titolo || "pezzo") + '</span><span class="mm">' + tcBreve(x.dentro) + ' \u2192 ' + tcBreve(x.fuori) + '</span><span class="bordo sx" data-lato="sx"></span><span class="bordo dx" data-lato="dx"></span></div>';
+      hv += '<div class="ed-pezzo' + (scelto(x.id) ? " sel" : "") + (ORA.i === i ? " ora" : "") + '" data-i="' + i + '" data-posa="' + esc(x.dentro) + '" style="left:' + xa + 'px;width:' + ww + 'px' + (po && po !== "\u2026" ? ";--posa:url(\'" + po + "\')" : "") + '"><span class="cima">' + (velDi(x) !== 1 ? '<i class="vel">' + Math.round(velDi(x) * 100) + '%</i> ' : '') + esc(x.titolo || "pezzo") + '</span><span class="mm">' + tcBreve(x.dentro) + ' \u2192 ' + tcBreve(x.fuori) + '</span><span class="bordo sx" data-lato="sx"></span><span class="bordo dx" data-lato="dx"></span></div>';
       // l'audio legato sta sotto il suo video; se e' stato tolto, sotto c'e' silenzio
       var au = AUD.filter(function(z){ return z.legato === x.id; })[0];
       if (au) haT[au.traccia || "A1"] = (haT[au.traccia || "A1"] || "") + audioHtml(au, xa, ww);
@@ -1650,6 +1660,7 @@
       vc("Accorcia l\u2019inizio alla testina", "Q", function(){ accorcia("inizio"); }),
       vc("Accorcia la fine alla testina", "W", function(){ accorcia("fine"); }),
       vc("Allunga fino alla testina", "E", allungaQui),
+      vc("Velocita\u2019 del pezzo\u2026", "R", chiediVelocita),
       vc("Entrata e uscita sul pezzo", "X", inOutSulPezzo),
       { riga: 1 },
       { capo: "Spostare" },
@@ -1793,8 +1804,10 @@
   function vaiA(i, dentroIlPezzo, riproduci){
     var x = PZ[i]; if (!x || !VE) return;
     ORA.i = i;
-    var t = x.dentro + Math.max(0, Math.min(x.fuori - x.dentro - 0.05, dentroIlPezzo || 0));
+    var v = velDi(x);
+    var t = x.dentro + Math.max(0, Math.min((x.fuori - x.dentro) * v - 0.05, (dentroIlPezzo || 0) * v));
     try { VE.currentTime = t; } catch (e) {}
+    try { if (VE.playbackRate !== v) VE.playbackRate = v; } catch (e) {}
     if (riproduci) VE.play().catch(function(){});
     disegnaBin();
   }
@@ -1803,7 +1816,7 @@
   function giroEditor(){
     if (!el("editor").classList.contains("on") || !VE || !PZ.length) return;
     var x = PZ[ORA.i]; if (!x) return;
-    if (!VE.paused && VE.currentTime >= x.fuori - 0.05) { if (ORA.i + 1 < PZ.length) vaiA(ORA.i + 1, 0, true); else { VE.pause(); vaiA(ORA.i, x.fuori - x.dentro - 0.05, false); } }
+    if (!VE.paused && VE.currentTime >= x.dentro + (x.fuori - x.dentro) * velDi(x) - 0.05) { if (ORA.i + 1 < PZ.length) vaiA(ORA.i + 1, 0, true); else { VE.pause(); vaiA(ORA.i, x.fuori - x.dentro - 0.05, false); } }
     var t = tSeq();
     var ts = tc(t); if (ts !== ORAE) { ORAE = ts; el("eOra").firstChild.nodeValue = ts; }
     var gOra = GRAF.filter(function(g){ return t >= g.dentro && t < g.fuori; })[0], img = el("grafE");
@@ -2160,7 +2173,7 @@
     ["Spazio", "riproduci / ferma"], ["J · K · L", "indietro · fermo · avanti (L di nuovo: più veloce, Shift+J/L: più piano)"], ["← →", "un fotogramma (Shift: cinque)"], ["↑ ↓", "punto di montaggio prima / dopo"], ["Home · End", "inizio / fine"],
     ["I · O", "entrata / uscita della sequenza"], ["Shift+I · Shift+O", "vai all'entrata / all'uscita"], ["Alt+I · Alt+O · Alt+X", "togli entrata / uscita / tutte e due"], ["X", "entrata e uscita sul pezzo sotto la testina"],
     ["; · '", "solleva · estrai l'intervallo (qui senza buchi: tutte e due estraggono)"],
-    ["Q · W", "accorcia l'inizio / la fine del pezzo alla testina"], ["E", "allunga il pezzo scelto fino alla testina"], ["C · Cmd+K", "dividi sotto la testina"], ["Alt+← →", "scivolo: cambia cosa si vede dentro la clip, che resta dov'è"], ["Alt+Shift+← →", "giunzione: la clip scorre nel montato e i vicini le fanno spazio"], ["S", "magnete: i bordi si attaccano agli stacchi e alla testina"], ["T", "scrivi un titolo sullo schermo"], ["cmd+rotella", "lente attorno al mouse · shift+rotella: scorri"],
+    ["Q · W", "accorcia l'inizio / la fine del pezzo alla testina"], ["E", "allunga il pezzo scelto fino alla testina"], ["C · Cmd+K", "dividi sotto la testina"], ["Alt+← →", "scivolo: cambia cosa si vede dentro la clip, che resta dov'è"], ["Alt+Shift+← →", "giunzione: la clip scorre nel montato e i vicini le fanno spazio"], ["S", "magnete: i bordi si attaccano agli stacchi e alla testina"], ["T", "scrivi un titolo sullo schermo"], ["R", "velocit\u00e0 del pezzo: 50% \u00e8 il rallentatore"], ["cmd+rotella", "lente attorno al mouse · shift+rotella: scorri"],
     ["Canc", "togli i pezzi scelti"], ["Cmd+A · Cmd+Shift+A", "scegli tutti / nessuno"], ["D", "scegli il pezzo sotto la testina"], ["Shift+clic", "aggiungi alla scelta"],
     ["Cmd+C · Cmd+X · Cmd+V", "copia · taglia · incolla dopo la testina"], ["Cmd+Z · Shift+Cmd+Z", "annulla / ripeti"],
     ["Cmd+L", "lega / stacca l'audio del pezzo scelto"], ["G", "gain dell'audio scelto (dB)"], ["M", "marker sulla partita al punto della testina"], ["F", "match frame: apri la partita a questo secondo"],
@@ -2197,6 +2210,17 @@
     if (!APPUNTI_COPIA.length) return avviso("err", "Scegli prima un pezzo.");
     avviso("ok", APPUNTI_COPIA.length + (taglia ? " da tagliare." : " copiati."));
     if (taglia) el("eTogli").click();
+  }
+  function chiediVelocita(){
+    var x = PZ.filter(function(z){ return z.id === SEL; })[0] || pezzoQui();
+    if (!x) return avviso("err", "Scegli un pezzo o portaci la testina.");
+    var v = window.prompt("Velocita\u2019 del pezzo, in per cento.\n\n50 = rallentatore \u00b7 100 = normale \u00b7 200 = doppio\n\nIl posto che occupa nel montato non cambia: cambia quanta azione ci entra.",
+                          String(Math.round(velDi(x) * 100)));
+    if (v === null) return;
+    var n = Math.max(20, Math.min(400, +v || 100)) / 100;
+    post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: x.id, velocita: n })
+      .then(function(d){ ricaricaSeq(d.seq); avviso("ok", n === 1 ? "Velocita\u2019 normale." : Math.round(n * 100) + "%: in " + tc(x.fuori - x.dentro) + " di montato ci entrano " + tc((x.fuori - x.dentro) * n) + " di partita."); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
   }
   function chiediGain(){
     var ag = audioScelto(); if (!ag) return avviso("err", "Scegli un pezzo o un audio.");
@@ -2302,6 +2326,7 @@
     else if (K === "D") { var xd = pezzoQui(); if (xd) { scegli(xd.id, false); disegnaEditor(); } }
     else if (K === "S") { el("eMagnete").click(); }
     else if (K === "T") { chiediTitolo(); }
+    else if (K === "R") { chiediVelocita(); }
     else if (k === "ArrowLeft") { e.preventDefault(); VE.pause(); vaiTempo(Math.max(0, tSeq() - fot), false); }
     else if (k === "ArrowRight") { e.preventDefault(); VE.pause(); vaiTempo(Math.min(durSeq() - 0.05, tSeq() + fot), false); }
     else if (k === "ArrowUp") { e.preventDefault(); el("ePrima").click(); }

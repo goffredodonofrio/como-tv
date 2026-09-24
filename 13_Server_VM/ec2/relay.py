@@ -126,14 +126,30 @@ class H(BaseHTTPRequestHandler):
             # avanti quanto pare: ogni richiesta si chiude a un tratto corto,
             # e se serve altro si richiede. Sono byte contati. Senza Range si
             # risponde comunque a tratti: un file intero non parte mai.
-            TRATTO = int(os.environ.get('RELAY_TRATTO_MB', '2')) * 1024 * 1024
+            # NON SI TAGLIA QUELLO CHE IL CLIENTE CHIEDE. Il tetto a
+            # tratti sembrava prudente e invece rompeva due cose: ffmpeg
+            # chiede "dall'offset X alla fine" e la fine di ogni risposta
+            # per lui e' la fine del file, quindi l'indice dell'mp4 (che sta
+            # in fondo) arrivava mozzo e il file risultava rotto, e la
+            # lettura del video si fermava dopo un gruppo di fotogrammi.
+            # Da quando c'era quel tetto nessuna sequenza su S3 si e'
+            # potuta esportare.
+            # Pagare solo quello che serve resta garantito lo stesso, ma
+            # dall'altra parte: si scrive a tratti e si conta quello che si
+            # e' scritto davvero, e quando il cliente ha abbastanza chiude —
+            # il resto non passa e non si paga. La sonda che serve al MAM
+            # (durate, fotogrammi, livelli) non passa comunque di qui.
             args = {'Bucket': BUCKET, 'Key': chiave}
             a0, b0 = 0, None
             if rng:
                 mm = re.match(r'bytes=(\d+)-(\d*)$', rng.strip())
                 if mm:
                     a0 = int(mm.group(1)); b0 = int(mm.group(2)) if mm.group(2) else None
-            if b0 is None or b0 - a0 + 1 > TRATTO * 8: b0 = a0 + TRATTO - 1
+            if b0 is None:
+                try: quanto = s3.head_object(Bucket=BUCKET, Key=chiave)['ContentLength']
+                except Exception: quanto = 0
+                b0 = max(a0, quanto - 1)
+            if b0 < a0: b0 = a0
             rng = 'bytes=%d-%d' % (a0, b0)
             args['Range'] = rng
             o = s3.get_object(**args)
