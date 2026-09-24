@@ -3,7 +3,7 @@
  * ══════════════════════════════════════════════════════════════════════
  *  Generato da 13_Server_VM/estrai-motore.py leggendo
  *  10_Look&Feel/Como TV OTT Design/generatore.html
- *  (righe 16 e 628-2499)
+ *  (righe 16 e 628-2509)
  *
  *  Ogni modifica fatta qui sparisce alla prossima estrazione: si cambia il
  *  generatore, non questo file.
@@ -1219,9 +1219,10 @@ function vlogCard(W,H,p,I,A,V,stretta){
  // un pixel trasparente: quello non e' una foto, e il fondo resta la folla.
  var uFoto=ph(I,'photo');
  var conFoto=!NOPHOTO&&uFoto.length>1000;
- var out=conFoto
-  ? '<rect width="'+W+'" height="'+H+'" fill="'+(V.velo||'#0C0A22')+'"/>'+GPHOTO(W,H,A,I)
-  : fondoProgramma(q,W,H,V,orizz);
+ // La folla resta SEMPRE il fondo, anche con la foto: le foto della redazione
+ // sono quasi tutte scontornate, e senza scenografia dietro restava un fondo
+ // blu piatto. Una foto piena copre la folla da sola.
+ var out=fondoProgramma(q,W,H,V,orizz)+(conFoto?GPHOTO(W,H,A,I):'');
  // la velatura in basso: senza, il titolo cade sulla folla e sparisce
  out+='<defs><linearGradient id="'+q+'b" x1="0" y1="0" x2="0" y2="1">'
   +'<stop offset="0" stop-color="'+(V.velo||'#0C0A22')+'" stop-opacity="0"/>'
@@ -1260,8 +1261,11 @@ function vlogCard(W,H,p,I,A,V,stretta){
  // ORIZZONTALE — il telefono in alto a destra, il titolo in basso a sinistra
  if(orizz){
   var M=R(W*(lungo?0.028:0.042));
-  var lW=R(W*(lungo?0.20:0.30)), lH=R(lW/AR);
-  var lMax=R(H*(lungo?0.62:0.42)); if(lH>lMax){lH=lMax;lW=R(lH*AR);}
+  // col soggetto in scena il marchio si fa piu' piccolo: se resta grande in
+  // alto a destra finisce sulle facce (le foto della redazione sono scontornate
+  // e il soggetto sta al centro)
+  var lW=R(W*(lungo?0.20:(conFoto?0.22:0.30))), lH=R(lW/AR);
+  var lMax=R(H*(lungo?0.62:(conFoto?0.30:0.42))); if(lH>lMax){lH=lMax;lW=R(lH*AR);}
   var cH=R(H*(lungo?0.14:0.060));
   var sOc=Math.min(R(H*(lungo?0.085:0.036)), perLarghezza(occhio, W*0.30, 999));
   var largo=W*(lungo?0.52:0.56), tetto=R(H*(lungo?0.30:0.135));
@@ -1276,7 +1280,10 @@ function vlogCard(W,H,p,I,A,V,stretta){
   var sT=v[0].s;
   return out
    +brandMark(A,M,M,cH)
-   +G('vl-logo',A,'<image href="'+art.logo+'" x="'+R(W-M-lW)+'" y="'+R(H*(lungo?0.16:0.10))+'" width="'+lW+'" height="'+lH+'" preserveAspectRatio="xMidYMid meet"/>')
+   // senza foto sta in alto a destra; con la foto scende in fondo a destra,
+   // dalla parte opposta alle scritte, dove non copre nessuno
+   +G('vl-logo',A,'<image href="'+art.logo+'" x="'+R(W-M-lW)+'" y="'+
+       (conFoto?R(H*0.90-lH):R(H*(lungo?0.16:0.10)))+'" width="'+lW+'" height="'+lH+'" preserveAspectRatio="xMidYMid meet"/>')
    +G('t-comp',A,T(M,R(v[0].y-v[0].s*0.92),occhio,{s:sOc,w:700,fill:C.gold,ls:R(sOc*0.26)}))
    +G('t-title',A,titoloRighe(M,v))
    +hair(W,H,H-5);
@@ -1285,8 +1292,8 @@ function vlogCard(W,H,p,I,A,V,stretta){
  // VERTICALE — il telefono sopra, il titolo in fondo, tutto al centro
  var M2=R(W*0.075);
  var cH2=R(H*0.050);
- var lW2=R(W*0.80), lH2=R(lW2/AR);
- var lMax2=R(H*0.34); if(lH2>lMax2){lH2=lMax2;lW2=R(lH2*AR);}
+ var lW2=R(W*(conFoto?0.52:0.80)), lH2=R(lW2/AR);
+ var lMax2=R(H*(conFoto?0.20:0.34)); if(lH2>lMax2){lH2=lMax2;lW2=R(lH2*AR);}
  var sOc2=R(H*0.022);
  var largo2=W*0.86, tetto2=R(H*0.085);
  var sMis2=Math.min(perLarghezza(titolo, largo2, 999), tetto2);
@@ -1298,7 +1305,10 @@ function vlogCard(W,H,p,I,A,V,stretta){
  var sT2=v2[0].s;
  return out
   +brandMark(A,R(W/2),R(H*0.030),cH2,true)
-  +G('vl-logo',A,'<image href="'+art.logo+'" x="'+R(W/2-lW2/2)+'" y="'+R(H*0.30-lH2/2)+'" width="'+lW2+'" height="'+lH2+'" preserveAspectRatio="xMidYMid meet"/>')
+  // senza foto sta in alto, al centro; con la foto si appoggia sopra le
+  // scritte, cosi' non finisce sulla testa del soggetto
+  +G('vl-logo',A,'<image href="'+art.logo+'" x="'+R(W/2-lW2/2)+'" y="'+
+      (conFoto?R(v2[0].y-v2[0].s*1.4-lH2):R(H*0.30-lH2/2))+'" width="'+lW2+'" height="'+lH2+'" preserveAspectRatio="xMidYMid meet"/>')
   +G('t-comp',A,T(R(W/2),R(v2[0].y-v2[0].s*0.95),occhio,{s:sOc2,w:700,fill:C.gold,ls:R(sOc2*0.26),anchor:'middle'}))
   +G('t-title',A,titoloRighe(R(W/2),v2,'middle'))
   +hair(W,H,H-5);
