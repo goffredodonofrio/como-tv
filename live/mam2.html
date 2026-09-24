@@ -511,6 +511,10 @@
         <span class="sep"></span>
         <span class="eti">Audio</span><button id="eStacca" title="stacca l'audio dal pezzo scelto: poi lo trascini da solo">Stacca</button><button id="eMuto" title="muto / suona (pezzo o audio scelto)">Muto</button><button id="eAudioTogli" title="togli l'audio scelto (o quello del pezzo scelto)">Togli audio</button>
         <span class="sep"></span>
+        <span class="eti">Giunzione</span><button id="eGiuSx" title="la clip resta dov'e' e i vicini le fanno spazio (Alt+Shift+&larr;)">&#10214;&#9664;</button><button id="eGiuDx" title="la clip resta dov'e' e i vicini le fanno spazio (Alt+Shift+&rarr;)">&#9654;&#10215;</button>
+        <span class="sep"></span>
+        <button id="eMagnete" title="magnetismo: i bordi si attaccano agli stacchi, alla testina e all'entrata/uscita (S)">&#129522; Magnete</button>
+        <span class="sep"></span>
         <span class="eti">Lente</span><button id="eMeno" title="allontana (−)">−</button><button id="eTutta" title="tutta la sequenza (\)">tutta</button><button id="ePiu" title="avvicina (+)">+</button>
         <span class="sep"></span>
         <button id="eTasti" title="i tasti, come in Premiere">⌨ Tasti</button>
@@ -1358,6 +1362,7 @@
     AUD.forEach(function(au){ if (au.legato) return; var a = au.t0 || 0, b = a + Math.max(0.2, (au.fuori - au.dentro)); if (TRASC && TRASC.tipo === "a-muovi" && TRASC.a_id === au.id) { a = TRASC.a; b = TRASC.b; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); ha += audioHtml(au, xa, Math.max(6, xb - xa), true); });
     var hg = "";
     GRAF.forEach(function(g){ var a = g.dentro, b = g.fuori; if (TRASC && TRASC.g_id === g.id && TRASC.tipo !== "g-muovi") { a = TRASC.a; b = TRASC.b; } else if (TRASC && TRASC.g_id === g.id && TRASC.tipo === "g-muovi" && TRASC.mosso) { a = TRASC.a; b = TRASC.b; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); hg += '<div class="ed-graf' + (SELG === g.id ? " sel" : "") + '" data-g="' + esc(g.id) + '" style="left:' + xa + 'px;width:' + Math.max(8, xb - xa) + 'px" title="' + esc(g.nome || "grafica") + ' · ' + tcBreve(a) + ' → ' + tcBreve(b) + '"><span class="bordo sx" data-lato="g-sx"></span>' + esc(g.nome || "grafica") + '<span class="bordo dx" data-lato="g-dx"></span></div>'; });
+    if (AGGANCIO !== null && TRASC) hv += '<div class="ed-magnete" style="left:' + X(AGGANCIO) + 'px"></div>';
     if (TRASC && TRASC.tipo === "muovi" && TRASC.mosso && TRASC.dove !== undefined && TRASC.dove !== TRASC.i)
       hv += '<div class="ed-infila" style="left:' + X(inizioDi(TRASC.dove + (TRASC.dove > TRASC.i ? 1 : 0))) + 'px"></div>';
     cv.innerHTML = hv || '<div class="ed-vuoto">Sequenza vuota.</div>'; ca.innerHTML = ha; cst.innerHTML = hs; cg.innerHTML = hg;
@@ -1416,6 +1421,40 @@
     };
     giro();
   }
+  // ── IL MAGNETE. Quello che cerchi quasi sempre e' un bordo che combacia:
+  //    con un altro stacco, con la testina, con l'entrata o l'uscita. Senza,
+  //    il montaggio diventa un lavoro di mira al pixel.
+  var MAGNETE = true, AGGANCIO = null;
+  try { MAGNETE = localStorage.getItem("mam2-magnete") !== "0"; } catch (e) {}
+  function puntiDiAggancio(saltaPezzo){
+    var p = [0, durSeq(), tSeq()], acc = 0;
+    PZ.forEach(function(x, i){
+      var d = x.fuori - x.dentro;
+      if (i !== saltaPezzo) { p.push(acc); p.push(acc + d); }
+      acc += d;
+    });
+    if (INS !== null) p.push(INS);
+    if (OUTS !== null) p.push(OUTS);
+    GRAF.forEach(function(g){ p.push(g.dentro); p.push(g.fuori); });
+    return p;
+  }
+  function aggancia(t, saltaPezzo){
+    AGGANCIO = null;
+    if (!MAGNETE) return t;
+    var span = Math.max(0.001, LENTE.b - LENTE.a), w = el("pista").clientWidth || 800;
+    var soglia = 9 / w * span, buono = null, vicino = soglia;
+    puntiDiAggancio(saltaPezzo).forEach(function(q){
+      var d = Math.abs(q - t); if (d < vicino) { vicino = d; buono = q; }
+    });
+    if (buono === null) return t;
+    AGGANCIO = buono; return buono;
+  }
+  function segnaMagnete(){ el("eMagnete").classList.toggle("on", MAGNETE); }
+  el("eMagnete").addEventListener("click", function(){
+    MAGNETE = !MAGNETE; try { localStorage.setItem("mam2-magnete", MAGNETE ? "1" : "0"); } catch (e) {}
+    segnaMagnete(); avviso("ok", MAGNETE ? "Magnete acceso." : "Magnete spento.");
+  });
+  segnaMagnete();
   function vaiA(i, dentroIlPezzo, riproduci){
     var x = PZ[i]; if (!x || !VE) return;
     ORA.i = i;
@@ -1454,6 +1493,11 @@
   (function girotondo(){ giroEditor(); requestAnimationFrame(girotondo); })();
   // ── i gesti sulla timeline: scegli, trascina, accorcia, clicca per andare
   el("pista").addEventListener("mousedown", function(e){
+    // le due prese della dissolvenza stanno SOPRA la clip audio: vanno
+    // guardate per prime, se no si prende la clip e la si sposta invece di
+    // allungare la rampa
+    var dz = e.target.closest(".diss");
+    if (dz) { prendiDissolvenza(dz, e); return; }
     var pz = e.target.closest(".ed-pezzo"), bordo = e.target.closest(".bordo"), st = e.target.closest(".ed-st"), gf = e.target.closest(".ed-graf"), ad = e.target.closest(".ed-audio");
     if (st) { vaiTempo(+st.dataset.t, false); return; }
     if (gf) { var g = GRAF.filter(function(z){ return z.id === gf.dataset.g; })[0]; if (!g) return; SELG = g.id; SELA = null; TRASC = { tipo: bordo ? bordo.dataset.lato : "g-muovi", g_id: g.id, x0: e.clientX, a: g.dentro, b: g.fuori, d0: g.dentro, f0: g.fuori, mosso: false }; e.preventDefault(); disegnaTl(); return; }
@@ -1472,13 +1516,22 @@
       var tot2 = durSeq();
       if (TRASC.tipo === "g-sx") { TRASC.a = Math.max(0, Math.min(TRASC.f0 - 0.4, TRASC.d0 + ds)); }
       else if (TRASC.tipo === "g-dx") { TRASC.b = Math.max(TRASC.d0 + 0.4, Math.min(tot2, TRASC.f0 + ds)); }
-      else if (TRASC.tipo === "g-muovi") { var dur2 = TRASC.f0 - TRASC.d0; TRASC.a = Math.max(0, Math.min(tot2 - dur2, TRASC.d0 + ds)); TRASC.b = TRASC.a + dur2; }
-      else if (TRASC.tipo === "a-muovi") { var dur3 = TRASC.b - TRASC.a; TRASC.a = Math.max(0, TRASC.t00 + ds); TRASC.b = TRASC.a + dur3; }
+      else if (TRASC.tipo === "g-muovi") { var dur2 = TRASC.f0 - TRASC.d0; TRASC.a = Math.max(0, Math.min(tot2 - dur2, aggancia(TRASC.d0 + ds, -1))); TRASC.b = TRASC.a + dur2; }
+      else if (TRASC.tipo === "a-muovi") { var dur3 = TRASC.b - TRASC.a; TRASC.a = Math.max(0, aggancia(TRASC.t00 + ds, -1)); TRASC.b = TRASC.a + dur3; }
       disegnaTl(); return;
     }
     var x = PZ[TRASC.i], durMax = REGE ? REGE.durata : 99999;
-    if (TRASC.tipo === "sx") { var nd = Math.max(0, Math.min(TRASC.fuori - 0.5, TRASC.dentro + ds)); TRASC.a = inizioDi(TRASC.i) + (nd - TRASC.dentro); TRASC.nuovoDentro = nd; }
-    else if (TRASC.tipo === "dx") { var nf = Math.max(TRASC.dentro + 0.5, Math.min(durMax, TRASC.fuori + ds)); TRASC.b = inizioDi(TRASC.i) + (nf - TRASC.dentro); TRASC.nuovoFuori = nf; }
+    if (TRASC.tipo === "sx") {
+      var nd = Math.max(0, Math.min(TRASC.fuori - 0.5, TRASC.dentro + ds));
+      var aG = aggancia(inizioDi(TRASC.i) + (nd - TRASC.dentro), TRASC.i);
+      nd = Math.max(0, Math.min(TRASC.fuori - 0.5, TRASC.dentro + (aG - inizioDi(TRASC.i))));
+      TRASC.a = inizioDi(TRASC.i) + (nd - TRASC.dentro); TRASC.nuovoDentro = nd;
+    } else if (TRASC.tipo === "dx") {
+      var nf = Math.max(TRASC.dentro + 0.5, Math.min(durMax, TRASC.fuori + ds));
+      var bG = aggancia(inizioDi(TRASC.i) + (nf - TRASC.dentro), TRASC.i);
+      nf = Math.max(TRASC.dentro + 0.5, Math.min(durMax, TRASC.dentro + (bG - inizioDi(TRASC.i))));
+      TRASC.b = inizioDi(TRASC.i) + (nf - TRASC.dentro); TRASC.nuovoFuori = nf;
+    }
     else {
       // PRIMA NON SI VEDEVA NIENTE finche' non si mollava il pezzo: ora una
       // riga d'oro dice in che buco fra i vicini andra' a finire
@@ -1491,7 +1544,7 @@
   });
   document.addEventListener("mouseup", function(e){
     if (!TRASC) return;
-    var tr = TRASC; TRASC = null; el("pista").style.cursor = "";
+    var tr = TRASC; TRASC = null; AGGANCIO = null; el("pista").style.cursor = "";
     if (tr.g_id) { if (!tr.mosso) { disegnaTl(); return; } post({ tipo:"clip-hl-grafica", seq: SEQ.id, grafica: tr.g_id, dentro: Math.round(tr.a * 100) / 100, fuori: Math.round(tr.b * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); }); return; }
     if (tr.a_id) { if (!tr.mosso) { disegnaTl(); return; } post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"sposta", audio: tr.a_id, t0: Math.round(tr.a * 1000) / 1000 }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); }); return; }
     var x = PZ[tr.i]; if (!x) return;
@@ -1506,6 +1559,50 @@
       post({ tipo:"clip-hl-ordina", seq: SEQ.id, ordine: ordine }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
     }
   });
+  // LA ROTELLA. Con cmd/ctrl la lente si stringe e si allarga ATTORNO AL
+  // PUNTO DOVE STA IL MOUSE, che e' quello che uno guarda; con shift o con
+  // un trackpad orizzontale la timeline scorre. La rotella verticale nuda
+  // resta al pannello, che ha le sue tracce da far scorrere.
+  el("pista").addEventListener("wheel", function(e){
+    var span = Math.max(0.5, LENTE.b - LENTE.a), w = el("pista").clientWidth || 800;
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      var r = el("pista").getBoundingClientRect(), f = Math.max(0, Math.min(1, (e.clientX - r.left) / w));
+      var qui = LENTE.a + f * span;
+      var nuovo = Math.max(1, Math.min(Math.max(10, durSeq()), span * (e.deltaY > 0 ? 1.2 : 1 / 1.2)));
+      var a = Math.max(0, qui - f * nuovo);
+      LENTE = { a: a, b: a + nuovo };
+      disegnaTl(); return;
+    }
+    var scorri = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : (e.shiftKey ? e.deltaY : 0);
+    if (!scorri) return;
+    e.preventDefault();
+    var d = scorri / w * span, tot = Math.max(10, durSeq());
+    var a2 = Math.max(0, Math.min(Math.max(0, tot - span), LENTE.a + d));
+    LENTE = { a: a2, b: a2 + span };
+    disegnaTl();
+  }, { passive: false });
+  function prendiDissolvenza(nodo, e){
+    var au = AUD.filter(function(z){ return z.id === nodo.dataset.ad; })[0]; if (!au || !SEQ) return;
+    var quale = nodo.dataset.diss, clip = nodo.parentElement.getBoundingClientRect();
+    var dur = Math.max(0.2, au.fuori - au.dentro), px = clip.width / dur;
+    var da = (quale === "entra" ? (au.entra || 0) : (au.esce || 0)), x0 = e.clientX, ora = da;
+    nodo.classList.add("tira"); SELA = au.id;
+    function muovi(ev){
+      var d = (ev.clientX - x0) / px * (quale === "entra" ? 1 : -1);
+      ora = Math.max(0, Math.min(dur / 2, da + d));
+      au[quale] = ora; disegnaTl();   // si vede subito, senza aspettare il ponte
+    }
+    function molla(){
+      document.removeEventListener("mousemove", muovi); document.removeEventListener("mouseup", molla);
+      nodo.classList.remove("tira");
+      var c = { tipo:"clip-hl-audio", seq: SEQ.id, azione:"dissolvenza", audio: au.id };
+      c[quale] = Math.round(ora * 100) / 100;
+      post(c).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
+    }
+    document.addEventListener("mousemove", muovi); document.addEventListener("mouseup", molla);
+    e.preventDefault(); e.stopPropagation();
+  }
   el("pista").addEventListener("dblclick", function(e){
     var st = e.target.closest(".ed-st"); if (!st || !st.dataset.k) return;
     var s = DETTOE.filter(function(z){ return z.k === st.dataset.k; })[0]; if (!s) return;
@@ -1521,6 +1618,27 @@
   el("eTogli").addEventListener("click", function(){ if (SELG && SEQ) return post({ tipo:"clip-hl-grafica", seq: SEQ.id, grafica: SELG, togli: 1 }).then(function(d){ SELG = null; ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); }); if (SELA && SEQ) return post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"togli", audio: SELA }).then(function(d){ SELA = null; ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); }); if (!SELS.length || !SEQ) return; post(SELS.length > 1 ? { tipo:"clip-hl-pezzo", seq: SEQ.id, togli: true, pezzi: SELS.slice() } : { tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: SEL, togli: true }).then(function(d){ scegli(null); ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); }); });
   function spostaDi(n){ var i = PZ.findIndex(function(z){ return z.id === SEL; }); if (i < 0 || i + n < 0 || i + n >= PZ.length) return; var ordine = PZ.map(function(z){ return z.id; }); ordine.splice(i, 1); ordine.splice(i + n, 0, SEL); post({ tipo:"clip-hl-ordina", seq: SEQ.id, ordine: ordine }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); }); }
   el("eSu").addEventListener("click", function(){ spostaDi(-1); }); el("eGiu").addEventListener("click", function(){ spostaDi(1); });
+  // LA GIUNZIONE (slide). Lo scivolo cambia COSA si vede dentro la clip e la
+  // lascia dov'e'; la giunzione lascia la clip com'e' e la fa scorrere nel
+  // montato, allungando il vicino di prima e accorciando quello di dopo.
+  // Serve un vicino da tutte e due le parti: la prima e l'ultima non
+  // scorrono, perche' non c'e' chi gli faccia spazio.
+  function giunzione(ds){
+    if (!SEQ) return;
+    var i = PZ.findIndex(function(z){ return z.id === SEL; });
+    if (i < 0) i = ORA.i;
+    var prima = PZ[i - 1], dopo = PZ[i + 1];
+    if (i <= 0 || !prima || !dopo) return avviso("err", "La giunzione vuole un pezzo prima e uno dopo: la prima e l'ultima clip non scorrono.");
+    var durMax = REGE ? (REGE.durata || 99999) : 99999;
+    if (prima.fuori + ds <= prima.dentro + 0.3 || prima.fuori + ds > durMax) return avviso("err", "Il pezzo prima non ha piu' margine.");
+    if (dopo.dentro + ds < 0 || dopo.dentro + ds >= dopo.fuori - 0.3) return avviso("err", "Il pezzo dopo non ha piu' margine.");
+    post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: prima.id, fuori: Math.round((prima.fuori + ds) * 100) / 100 })
+      .then(function(){ return post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: dopo.id, dentro: Math.round((dopo.dentro + ds) * 100) / 100 }); })
+      .then(function(d){ ricaricaSeq(d.seq); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  }
+  el("eGiuSx").addEventListener("click", function(){ giunzione(-0.04); });
+  el("eGiuDx").addEventListener("click", function(){ giunzione(0.04); });
   // V2: una grafica PNG sotto la testina, cinque secondi, poi si allunga dai bordi e si trascina
   el("eGrafica").addEventListener("click", function(){ if (!SEQ) return; if (!PZ.length) return avviso("err", "Prima metti un pezzo video: la grafica va sopra il video."); el("fGrafica").click(); });
   el("fGrafica").addEventListener("change", function(){
@@ -1538,7 +1656,7 @@
     ["Spazio", "riproduci / ferma"], ["J · K · L", "indietro · fermo · avanti (L di nuovo: più veloce, Shift+J/L: più piano)"], ["← →", "un fotogramma (Shift: cinque)"], ["↑ ↓", "punto di montaggio prima / dopo"], ["Home · End", "inizio / fine"],
     ["I · O", "entrata / uscita della sequenza"], ["Shift+I · Shift+O", "vai all'entrata / all'uscita"], ["Alt+I · Alt+O · Alt+X", "togli entrata / uscita / tutte e due"], ["X", "entrata e uscita sul pezzo sotto la testina"],
     ["; · '", "solleva · estrai l'intervallo (qui senza buchi: tutte e due estraggono)"],
-    ["Q · W", "accorcia l'inizio / la fine del pezzo alla testina"], ["E", "allunga il pezzo scelto fino alla testina"], ["C · Cmd+K", "dividi sotto la testina"], ["Alt+← →", "scivolo: entrata e uscita insieme di un fotogramma (Shift: cinque)"],
+    ["Q · W", "accorcia l'inizio / la fine del pezzo alla testina"], ["E", "allunga il pezzo scelto fino alla testina"], ["C · Cmd+K", "dividi sotto la testina"], ["Alt+← →", "scivolo: cambia cosa si vede dentro la clip, che resta dov'è"], ["Alt+Shift+← →", "giunzione: la clip scorre nel montato e i vicini le fanno spazio"], ["S", "magnete: i bordi si attaccano agli stacchi e alla testina"], ["cmd+rotella", "lente attorno al mouse · shift+rotella: scorri"],
     ["Canc", "togli i pezzi scelti"], ["Cmd+A · Cmd+Shift+A", "scegli tutti / nessuno"], ["D", "scegli il pezzo sotto la testina"], ["Shift+clic", "aggiungi alla scelta"],
     ["Cmd+C · Cmd+X · Cmd+V", "copia · taglia · incolla dopo la testina"], ["Cmd+Z · Shift+Cmd+Z", "annulla / ripeti"],
     ["Cmd+L", "lega / stacca l'audio del pezzo scelto"], ["G", "gain dell'audio scelto (dB)"], ["M", "marker sulla partita al punto della testina"], ["F", "match frame: apri la partita a questo secondo"],
@@ -1579,7 +1697,14 @@
       return;
     }
     if (alt) {
-      if (k === "ArrowLeft" || k === "ArrowRight") { e.preventDefault(); var xs = pezzoQui(); if (!xs) return; var ds = (k === "ArrowLeft" ? -1 : 1) * fot; if (xs.dentro + ds < 0 || xs.fuori + ds > (REGE.durata || 99999)) return; ritocca(xs, { dentro: Math.round((xs.dentro + ds) * 100) / 100, fuori: Math.round((xs.fuori + ds) * 100) / 100 }); }
+      if (k === "ArrowLeft" || k === "ArrowRight") {
+        e.preventDefault();
+        var verso = (k === "ArrowLeft" ? -1 : 1) * 0.04;
+        if (e.shiftKey) return giunzione(verso);     // la clip scorre, i vicini le fanno spazio
+        var xs = pezzoQui(); if (!xs) return;
+        if (xs.dentro + verso < 0 || xs.fuori + verso > (REGE.durata || 99999)) return avviso("err", "Il pezzo non ha piu' margine da quella parte.");
+        ritocca(xs, { dentro: Math.round((xs.dentro + verso) * 100) / 100, fuori: Math.round((xs.fuori + verso) * 100) / 100 });
+      }
       else if (K === "I") { INS = null; disegnaTl(); } else if (K === "O") { OUTS = null; disegnaTl(); } else if (K === "X") { INS = OUTS = null; disegnaTl(); }
       return;
     }
@@ -1599,6 +1724,7 @@
     else if (K === "C") el("eTaglia").click();
     else if (k === "Delete" || k === "Backspace") { e.preventDefault(); el("eTogli").click(); }
     else if (K === "D") { var xd = pezzoQui(); if (xd) { scegli(xd.id, false); disegnaEditor(); } }
+    else if (K === "S") { el("eMagnete").click(); }
     else if (k === "ArrowLeft") { e.preventDefault(); VE.pause(); vaiTempo(Math.max(0, tSeq() - fot), false); }
     else if (k === "ArrowRight") { e.preventDefault(); VE.pause(); vaiTempo(Math.min(durSeq() - 0.05, tSeq() + fot), false); }
     else if (k === "ArrowUp") { e.preventDefault(); el("ePrima").click(); }
