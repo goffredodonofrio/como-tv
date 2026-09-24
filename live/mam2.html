@@ -1046,6 +1046,80 @@
         poi(v); });
     }).catch(function(er){ avviso("err", esc(er.message)); });
   }
+  // ── NUOVO E APRI, COME IN UN PROGRAMMA DI MONTAGGIO ───────────────
+  //  Un progetto qui e' quello che e' in Premiere: il contenitore del
+  //  lavoro, con dentro le sequenze. Mancavano le due voci piu' ovvie —
+  //  crearne uno, e aprirne uno gia' fatto — e per arrivarci bisognava
+  //  tornare in libreria.
+  function nuovoProgetto(){
+    var n = window.prompt("Nome del nuovo progetto (es. Football Show 01/09):", "");
+    if (!n || !n.trim()) return;
+    post({ tipo:"clip-prog-nuovo", nome: n.trim() }).then(function(d){
+      var pid = d.prog.id;
+      if (!SEQ) { avviso("ok", "Progetto “" + esc(n.trim()) + "” creato."); return; }
+      return post({ tipo:"clip-hl-progetto", seq: SEQ.id, prog: pid }).then(function(d2){
+        if (d2.seq) ricaricaSeq(d2.seq);
+        avviso("ok", "Progetto “" + esc(n.trim()) + "” creato: questa sequenza e' dentro.");
+      });
+    }).catch(function(er){ avviso("err", esc(er.message)); });
+  }
+  function nuovaSequenza(){
+    if (!SEQ) return avviso("err", "Apri prima una partita.");
+    var n = window.prompt("Nome della nuova sequenza:", "");
+    if (!n || !n.trim()) return;
+    post({ tipo:"clip-hl-nuova", reg: SEQ.reg, titolo: n.trim(), prog: SEQ.prog || "" })
+      .then(function(d){ location.href = "mam2.html?seq=" + encodeURIComponent(d.seq.id); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  }
+  function scatola(titolo, voci, poi){
+    var v = el("scatolaApri"); if (v) v.remove();
+    var pop = document.createElement("div");
+    pop.id = "scatolaApri";
+    pop.style.cssText = "position:fixed;inset:0;z-index:70;background:rgba(5,7,13,.6);display:flex;align-items:center;justify-content:center";
+    pop.innerHTML = '<div style="width:min(520px,92vw);max-height:70vh;display:flex;flex-direction:column;background:var(--pan);border:1px solid var(--riga2);border-radius:12px;overflow:hidden">' +
+      '<div style="padding:12px 16px;border-bottom:1px solid var(--riga);font-family:\'Mazzard\',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--oro)">' + esc(titolo) + "</div>" +
+      '<div style="overflow:auto;padding:6px">' + (voci.length ? voci.map(function(v){
+        return '<button data-v="' + esc(v.id) + '" style="display:flex;width:100%;gap:10px;align-items:baseline;text-align:left;padding:9px 11px;background:transparent;border:0;border-radius:7px;color:var(--ivory2);cursor:pointer;font-size:13px"><b style="flex:1;font-weight:600">' + esc(v.nome) + '</b><small style="color:var(--fumo);font-size:11px">' + esc(v.nota || "") + "</small></button>";
+      }).join("") : '<div style="padding:18px;color:var(--fumo);font-size:12.5px">Non c’e’ niente qui.</div>') + "</div>" +
+      '<div style="padding:10px 14px;border-top:1px solid var(--riga);text-align:right"><button data-v="" class="b mini">Annulla</button></div></div>';
+    document.body.appendChild(pop);
+    pop.addEventListener("click", function(e){
+      var b = e.target.closest("button[data-v]");
+      if (!b) { if (e.target === pop) pop.remove(); return; }
+      var id = b.dataset.v; pop.remove(); if (id) poi(id);
+    });
+    pop.querySelectorAll("button[data-v]").forEach(function(b){
+      b.addEventListener("mouseenter", function(){ b.style.background = "rgba(201,162,75,.14)"; });
+      b.addEventListener("mouseleave", function(){ b.style.background = "transparent"; });
+    });
+  }
+  function apriProgetto(){
+    post({ tipo:"clip-prog-elenco" }).then(function(d){
+      var lista = (d.prog || []).map(function(g){
+        return { id: g.id, nome: g.nome, nota: (g.quante || 0) + " sequenze · " + (g.partite || 0) + " partite" };
+      });
+      lista.push({ id: "__tutte", nome: "Tutte le sequenze", nota: "senza progetto compreso" });
+      scatola("Apri progetto", lista, function(pid){
+        post({ tipo:"clip-hl-elenco" }).then(function(j){
+          var seq = (j.seq || []).filter(function(z){ return pid === "__tutte" || z.prog === pid; })
+            .sort(function(a, b){ return (b.tocco || b.creata || 0) - (a.tocco || a.creata || 0); })
+            .map(function(z){ return { id: z.id, nome: z.titolo || z.id, nota: (z.pezzi || []).length + " pezzi" }; });
+          scatola("Apri sequenza", seq, function(sid){ location.href = "mam2.html?seq=" + encodeURIComponent(sid); });
+        }).catch(function(er){ avviso("err", esc(er.message)); });
+      });
+    }).catch(function(er){ avviso("err", esc(er.message)); });
+  }
+  // IL VOLUME DOVE IL MONTATORE HA L'ARCHIVIO. Si chiede una volta e si
+  // ricorda: da li' in poi l'XML esce con i percorsi veri e Premiere apre
+  // la sequenza gia' attaccata al materiale, senza ricollegare niente.
+  function volumeMontaggio(chiedi){
+    var v = ""; try { v = localStorage.getItem("mam2-volume") || ""; } catch (e) {}
+    if (!chiedi && v) return v;
+    var n = window.prompt("Dove hai montato l’archivio sul tuo computer?\nSe lo lasci vuoto l’XML esce coi soli nomi dei file, e in Premiere li ricolleghi a mano.", v || "/Volumes/COMOTV - VOD");
+    if (n === null) return null;
+    v = n.trim(); try { localStorage.setItem("mam2-volume", v); } catch (e) {}
+    return v;
+  }
   function disegnaRiprendi(){
     var u = null; try { u = JSON.parse(localStorage.getItem("mam2-ultimo") || "null"); } catch (e) {}
     if (!u || !u.titolo) { el("riprendi").innerHTML = ""; return; }
@@ -1839,9 +1913,14 @@
   // Dove facciamo una cosa che Premiere non fa, il nome e' nostro e si vede.
   var MENU = {
     file: [
+      { capo: "Nuovo" },
+      vc("Progetto…", "", nuovoProgetto),
+      vc("Sequenza…", "", nuovaSequenza),
+      { riga: 1 },
       { capo: "Progetto" },
+      vc("Apri progetto…", "cmd O", apriProgetto),
+      bt("Sposta in un altro progetto…", "", "eProg"),
       bt("Rinomina la sequenza…", "", "eRinomina"),
-      bt("Impostazioni progetto…", "", "eProg"),
       vc("Elimina la sequenza…", "", eliminaSequenza),
       { riga: 1 },
       { capo: "Importa" },
@@ -1853,6 +1932,12 @@
       { capo: "Esporta" },
       vc("Media…", "cmd M", function(){ el("eEsporta").scrollIntoView({ block:"center" }); el("eEsporta").focus(); avviso("ok", "Scegli formato e sottotitoli, poi Esporta."); }),
       bt("XML Final Cut Pro (per Premiere)", "", "eXml"),
+      vc("Dove ho l\u2019archivio sul mio computer" + "\u2026", "", function(){
+        var v = volumeMontaggio(true);
+        if (v === null) return;
+        avviso("ok", v ? "L\u2019XML uscira\u2019 coi percorsi dentro " + esc(v) + ": in Premiere le clip si attaccano da sole."
+                       : "L\u2019XML uscira\u2019 coi soli nomi dei file: in Premiere li ricolleghi a mano una volta.");
+      }),
       { riga: 1 },
       vc("Chiudi il progetto", "", function(){ location.href = "mam2.html"; })
     ],
@@ -3143,7 +3228,7 @@
     if (FORMATI.length > 1) c.formati = FORMATI; else c.formato = FORMATI[0];
     post(c).then(function(){ avviso("ok", "Export in coda: lo segui qui a destra."); giroUscite(); }).catch(function(er){ avviso("err", esc(er.message)); });
   });
-  el("eXml").addEventListener("click", function(){ if (!SEQ) return; post({ tipo:"clip-hl-esporta", seq: SEQ.id, come:"premiere" }).then(function(){ return post({ tipo:"clip-hl-srt", seq: SEQ.id, lingua: el("eSottoL").value }); }).then(function(){ avviso("ok", "XML e SRT pronti: li trovi nelle uscite."); giroUscite(); }).catch(function(er){ avviso("err", esc(er.message)); }); });
+  el("eXml").addEventListener("click", function(){ if (!SEQ) return; post({ tipo:"clip-hl-esporta", seq: SEQ.id, come:"premiere", volume: volumeMontaggio(false) || "" }).then(function(){ return post({ tipo:"clip-hl-srt", seq: SEQ.id, lingua: el("eSottoL").value }); }).then(function(){ avviso("ok", "XML e SRT pronti: li trovi nelle uscite."); giroUscite(); }).catch(function(er){ avviso("err", esc(er.message)); }); });
   function giroUscite(){
     if (!SEQ) return;
     clearTimeout(GIRO_E);

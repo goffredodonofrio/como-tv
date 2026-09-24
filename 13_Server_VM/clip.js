@@ -5106,7 +5106,15 @@ function xmlEsc(t) {
     .replace(/'/g, "&apos;");
 }
 
-async function hlEsportaPremiere(q, percorso) {
+// IL VOLUME DEL MONTATORE. L'XML dichiara dove sta ogni file. Finora
+// dichiarava il nome e basta: Premiere apriva la sequenza con tutte le
+// clip OFFLINE e il montatore doveva ricollegarne una a mano. Ma il
+// magazzino il montatore ce l'ha montato sul suo Mac — la QNAP e'
+// "COMOTV - VOD" — e allora basta dirgli dove: si scrive il percorso
+// vero e la sequenza si apre gia' attaccata al materiale. Per le partite
+// che stanno sulla NAS si scrive la chiave intera (le cartelle sono
+// quelle); per le altre il nome del file, che il montatore ha scaricato.
+async function hlEsportaPremiere(q, percorso, volume) {
   const r = R.reg[q.reg];
   if (r && r.integrale === "sospetto" && !percorso) {
     throw new Error("l'integrale non torna con la registrazione (" + (r.integraleErrore || "") +
@@ -5124,12 +5132,18 @@ async function hlEsportaPremiere(q, percorso) {
   // secondo tempo nel primo, spostati di un'ora. Qui ogni pezzo diventa un
   // <file> suo, e il taglio si conta dall'inizio del file a cui appartiene.
   const arch = (r && r.arch && !c1 && !percorso) ? pezziArch(r) : null;
-  const cartellaVia = via.indexOf("/") >= 0 ? via.slice(0, via.lastIndexOf("/") + 1) : "";
+  const vol = String(volume || "").trim().replace(/\/+$/, "");
+  // sulla NAS le cartelle ce le ha anche il montatore: si scrive la chiave
+  // intera. Altrove il file ce l'ha scaricato lui, e il nome basta.
+  const suNas = !!(r && r.arch && (magazzinoDi2(r.arch.bucket) || {}).cartella);
+  const sotto = (chiave) => (suNas ? chiave : path.basename(chiave));
+  const cartellaVia = vol ? vol + "/" : (via.indexOf("/") >= 0 ? via.slice(0, via.lastIndexOf("/") + 1) : "");
+  const via1 = (vol && r && r.arch && !c1 && !percorso) ? vol + "/" + sotto(r.arch.chiave) : via;
   const dovE = (t) => {
-    if (!arch) return { id: "file-1", nome: nome, via: via, da: 0 };
+    if (!arch) return { id: "file-1", nome: nome, via: via1, da: 0 };
     const x = pezzoAl(r, t) || { i: 0, pezzo: arch[0], da: 0 };
     return { id: "file-" + (x.i + 1), nome: path.basename(x.pezzo.chiave),
-             via: cartellaVia + path.basename(x.pezzo.chiave), da: x.da || 0 };
+             via: cartellaVia + sotto(x.pezzo.chiave), da: x.da || 0 };
   };
   const info = c1 ? await probe(integrale) : {};
   const segs = segmenti(q.reg);
@@ -5146,7 +5160,7 @@ async function hlEsportaPremiere(q, percorso) {
   const tc = "<timecode>" + rate + "<string>00:00:00:00</string><frame>0</frame>" +
              "<displayformat>NDF</displayformat></timecode>";
   const indirizzo = (v) => "file://localhost" + (v.charAt(0) === "/" ? "" : "/") + encodeURI(v).replace(/#/g, "%23");
-  const url = indirizzo(via);
+  const url = indirizzo(via1);
 
   // LE TRACCE ESCONO COME SONO. Prima l'XML raccontava sempre la stessa
   // storia — un video su V1 e due canali su A1/A2, incollati sotto — anche
@@ -5269,7 +5283,7 @@ async function hlEsporta(p) {
   const q = seqDi(p);
   if (!q.pezzi.length) throw new Error("la sequenza e' vuota");
   if (String(p.come) === "premiere") {
-    return { ok: true, premiere: await hlEsportaPremiere(q, p.percorso) };
+    return { ok: true, premiere: await hlEsportaPremiere(q, p.percorso, p.volume) };
   }
   if (q.export && q.export.stato === "lavora") return { ok: true, export: q.export };
   const elenco = Array.isArray(p.formati) ? p.formati.filter((f) => FORMATI[f]) : [];
@@ -10549,6 +10563,11 @@ function viaPonte(id, quanto, pezzo) {
 }
 // il magazzino di questa partita e' raggiungibile dal browser?
 // il magazzino di questa partita esiste ancora?
+// come magazzinoDi, ma senza lanciare: serve solo a sapere se quel secchio
+// e' una cartella montata (la NAS) o un secchio vero
+function magazzinoDi2(bucket) {
+  try { return magazzinoDi(bucket); } catch (e) { return null; }
+}
 function magazzinoCe(r) {
   if (!r || !r.arch) return false;
   try { magazzinoDi(r.arch.bucket); return true; } catch (e) { return false; }
