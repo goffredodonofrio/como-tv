@@ -283,7 +283,29 @@ function statoPorte() {
 function assicura(d) { try { fs.mkdirSync(d, { recursive: true }); } catch (e) {} }
 
 let scritturaInCorso = null;
+// UNA SEQUENZA CHE PERDE TUTTI I PEZZI LASCIA UN SEGNO. E' successo cinque
+// volte in una settimana, a montaggi di giorni diversi, e nel registro non
+// resta traccia di chi l'ha fatto: la sequenza c'e' ancora, col suo nome e
+// il suo formato, e dentro non c'e' piu' niente. Qui non si difende nulla —
+// si guarda soltanto: prima di ogni salvataggio, se una sequenza che aveva
+// dei pezzi adesso e' vuota, si scrive nel giornale con la pila delle
+// chiamate. La prossima volta si sa da dove e' arrivata.
+const PEZZI_PRIMA = {};
+function guardaSeVuota() {
+  try {
+    Object.keys(R.seq || {}).forEach((k) => {
+      const n = ((R.seq[k] || {}).pezzi || []).length;
+      const p0 = PEZZI_PRIMA[k];
+      if (p0 > 0 && n === 0) {
+        console.log("[clip] ATTENZIONE: \"" + ((R.seq[k] || {}).titolo || k) + "\" (" + k + ") aveva " + p0 +
+                    " pezzi e adesso e' vuota\n" + String(new Error().stack || "").split("\n").slice(2, 8).join("\n"));
+      }
+      PEZZI_PRIMA[k] = n;
+    });
+  } catch (e) {}
+}
 function scrivi() {
+  guardaSeVuota();
   if (scritturaInCorso) { scritturaInCorso.ancora = true; return; }
   scritturaInCorso = { ancora: false };
   const tmp = path.join(DIR, "registro.tmp");

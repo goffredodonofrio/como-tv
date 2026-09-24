@@ -1634,11 +1634,25 @@
   }
   function apriEditor(seqId){
     vai("editor"); VE = el("videoE");
-    post({ tipo:"clip-hl-elenco", tutte: true }).then(function(d){
+    // LE REGISTRAZIONI SI CHIEDONO QUI, NON SI SPERA CHE CI SIANO GIA'.
+    // Prima si guardava REGS, che lo riempie stato() all'avvio: aprendo un
+    // montaggio dall'indirizzo la risposta di stato() poteva non essere
+    // ancora arrivata, e allora la partita "non era aperta" — un errore
+    // che dipendeva da chi rispondeva prima. Adesso si chiedono insieme.
+    Promise.all([
+      post({ tipo:"clip-hl-elenco", tutte: true }),
+      post({ tipo:"clip-stato" }).catch(function(){ return { reg: [] }; })
+    ]).then(function(rs){
+      var d = rs[0], st = rs[1];
+      var regs = Array.isArray(st.reg) ? st.reg : Object.keys(st.reg || {}).map(function(k){ return st.reg[k]; });
+      regs.forEach(function(r){ REGS[r.id] = r; });
       SEQ = (d.seq || []).filter(function(q){ return q.id === seqId; })[0];
       if (!SEQ) throw new Error("sequenza non trovata");
       PZ = SEQ.pezzi || []; GRAF = SEQ.grafiche || []; AUD = SEQ.audio || [];
-      return post({ tipo:"clip-archivio-apri", rec: (REGS[SEQ.reg] && (REGS[SEQ.reg].evento || (REGS[SEQ.reg].arch || {}).rec)) || "" }).catch(function(){ return { reg: REGS[SEQ.reg] }; });
+      var rr = REGS[SEQ.reg];
+      // una partita d'archivio va riaperta: il suo indirizzo e' firmato e scade
+      if (rr && rr.arch) return post({ tipo:"clip-archivio-apri", rec: rr.evento || rr.arch.rec || "" }).catch(function(){ return { reg: rr }; });
+      return { reg: rr || null };
     }).then(function(d){
       REGE = d.reg || REGS[SEQ.reg] || null;
       if (!REGE) throw new Error("la partita di questa sequenza non e' aperta");
