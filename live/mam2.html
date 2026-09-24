@@ -238,6 +238,29 @@
   .ed-bin .capo,.ed-lato .capo{padding:9px 12px;border-bottom:1px solid var(--riga);font-family:'Mazzard',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--oro);display:flex;align-items:center;gap:8px;}
   .ed-bin .capo span{color:var(--fumo);font-family:'DM Sans',sans-serif;letter-spacing:0;text-transform:none;font-weight:500;}
   .ed-bin .corpo{flex:1;overflow:auto;min-height:0;}
+  /* I PEZZI COME LE CLIP DI UN MONTAGGIO VERO. Una riga di testo non dice
+     che cos'e' un pezzo: serve il fotogramma. E passandoci sopra il dito si
+     scorre dentro la clip, che e' il modo piu' veloce per ritrovare quella
+     giusta fra venti che si chiamano tutte uguale. */
+  .ed-bin .pz{display:flex;align-items:center;gap:9px;padding:7px 9px;border-bottom:1px solid var(--riga);cursor:default;user-select:none;}
+  .ed-bin .pz:hover{background:rgba(245,241,230,.045);}
+  .ed-bin .pz.sel{background:rgba(201,162,75,.15);box-shadow:inset 3px 0 0 var(--oro);}
+  .ed-bin .pz.ora b{color:var(--oro2);}
+  .ed-bin .pz.cade{box-shadow:inset 0 2px 0 var(--oro);}
+  .ed-bin .pz .n{width:16px;flex:none;text-align:right;font:10px ui-monospace,Menlo,monospace;color:var(--fumo);}
+  .ed-bin .pz .ante{width:66px;height:37px;flex:none;border-radius:3px;background:#05070d center/cover no-repeat;position:relative;overflow:hidden;border:1px solid var(--riga);}
+  .ed-bin .pz .ante video{width:100%;height:100%;object-fit:cover;display:block;}
+  .ed-bin .pz .ante i.sc{position:absolute;left:0;bottom:0;height:2px;background:var(--oro);width:0;}
+  .ed-bin .pz .ante em{position:absolute;right:2px;bottom:2px;font:9px ui-monospace,Menlo,monospace;color:#fff;background:rgba(0,0,0,.6);border-radius:2px;padding:0 3px;font-style:normal;}
+  .ed-bin .pz .d{flex:1;min-width:0;}
+  .ed-bin .pz b{display:block;font-size:12px;font-weight:600;color:var(--ivory2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ed-bin .pz small{display:block;color:var(--fumo);font-size:10.5px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ed-bin .pz .tag{display:inline-block;border:1px solid var(--riga2);border-radius:3px;padding:0 4px;margin-right:4px;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--fumo);}
+  .ed-bin .pz .tag.oro{border-color:var(--oro);color:var(--oro2);}
+  .ed-bin .pz .dur{flex:none;font:11px ui-monospace,Menlo,monospace;color:var(--ivory2);}
+  .ed-bin .pz input.rin{width:100%;font:600 12px 'DM Sans',sans-serif;color:var(--ivory);background:rgba(245,241,230,.1);border:1px solid var(--oro);border-radius:4px;padding:2px 5px;}
+  .ed-bin .corpo:focus{outline:none;box-shadow:inset 0 0 0 1px var(--riga2);}
+  #tendinaPezzo{position:fixed;z-index:60;min-width:250px;}
   .ed-bin table{width:100%;border-collapse:collapse;font-size:12px;}
   .ed-bin th{position:sticky;top:0;background:var(--navy2);text-align:left;font-family:'Mazzard',sans-serif;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--fumo);padding:6px 8px;border-bottom:1px solid var(--riga);}
   .ed-bin td{padding:6px 8px;border-bottom:1px solid var(--riga);vertical-align:middle;white-space:nowrap;}
@@ -594,7 +617,8 @@
       <div class="tendina-menu" id="tendinaMenu" hidden></div>
     </div>
     <div class="ed-sopra">
-      <div class="ed-bin"><div class="capo">Pezzi <span id="binConto"></span></div><div class="corpo" id="bin"></div></div>
+      <div class="ed-bin"><div class="capo">Pezzi <span id="binConto"></span></div><div class="corpo" id="bin" tabindex="0"></div></div>
+      <div class="tendina-menu" id="tendinaPezzo" hidden></div>
       <div class="ed-divisore" id="divBin" title="trascina per allargare l’elenco dei pezzi · doppio clic: misura di partenza"></div>
       <div class="ed-palco">
         <div class="titolo" style="display:flex;align-items:center;gap:10px"><h1 id="eTitolo" style="font-family:'Mazzard',sans-serif;font-weight:800;font-size:16px;text-transform:uppercase">…</h1><span class="meta" id="eMeta" style="color:var(--fumo);font-size:12px"></span><span style="margin-left:auto;display:flex;gap:6px"><button class="mini" id="eCampo" title="mostra tutto il campo con il riquadro di quello che l’export terrà">Campo intero</button><button class="mini" id="eAsset">Sorgente</button></span></div>
@@ -1551,10 +1575,56 @@
   function disegnaBin(){
     el("binConto").textContent = PZ.length + " · " + tc(durSeq());
     if (!PZ.length) { el("bin").innerHTML = '<div class="vuoto" style="padding:14px 12px">Sequenza vuota: dalla Sorgente segna entrata e uscita e premi \u201cIn timeline\u201d, o spunta le azioni.</div>'; return; }
-    el("bin").innerHTML = '<table><thead><tr><th>#</th><th>Pezzo</th><th>Dur</th></tr></thead><tbody>' + PZ.map(function(x, i){
-      return '<tr data-i="' + i + '" class="' + (scelto(x.id) ? "sel " : "") + (ORA.i === i ? "ora" : "") + '"><td class="n">' + (i + 1) + '</td><td class="tt">' + esc(x.titolo || "pezzo") + '<small>' + (x.minuto ? esc(x.minuto) + " · " : "") + tcBreve(x.dentro) + ' → ' + tcBreve(x.fuori) + (x.fonte ? " · " + esc(x.fonte) : "") + (x.locale ? " · in casa" : "") + '</small></td><td class="n">' + tcBreve(x.fuori - x.dentro) + '</td></tr>';
-    }).join("") + '</tbody></table>';
+    el("bin").innerHTML = PZ.map(function(x, i){
+      var dur = x.fuori - x.dentro, tag = "";
+      if ((x.traccia || "V1") === "V2") tag += '<span class="tag oro">V2</span>';
+      if (+x.velocita && +x.velocita !== 1) tag += '<span class="tag oro">' + (+x.velocita).toFixed(2).replace(/0+$/, "").replace(/\.$/, "") + '×</span>';
+      if (x.transizione) tag += '<span class="tag">' + (x.transizione.tipo === "nero" ? "dal nero" : "dissolv.") + "</span>";
+      if (x.colore) tag += '<span class="tag">colore</span>';
+      tag += '<span class="tag">' + esc(x.media ? "casa" : (x.fonte || "mano")) + "</span>";
+      var ante = x.media
+        ? '<video src="' + BASE + "/video/" + encodeURIComponent(x.media) + '#t=' + (x.dentro + 0.5).toFixed(2) + '" preload="metadata" muted playsinline></video>'
+        : "";
+      return '<div class="pz' + (scelto(x.id) ? " sel" : "") + (ORA.i === i ? " ora" : "") + '" data-i="' + i + '" draggable="true">' +
+        '<span class="n">' + (i + 1) + "</span>" +
+        '<span class="ante" data-posa="' + esc(x.dentro) + '">' + ante + '<i class="sc"></i><em>' + tcBreve(dur) + "</em></span>" +
+        '<span class="d"><b>' + esc(x.titolo || "pezzo") + "</b><small>" + tag +
+          (x.minuto ? esc(x.minuto) + " · " : "") + tcBreve(x.dentro) + " → " + tcBreve(x.fuori) + "</small></span>" +
+        '<span class="dur">' + tcBreve(dur) + "</span></div>";
+    }).join("");
+    // i fotogrammi arrivano uno alla volta: la clip si accende quando c'e'
+    if (REGE) {
+      var da = Array.prototype.slice.call(el("bin").querySelectorAll(".ante[data-posa]"))
+        .filter(function(z){ return !z.firstElementChild || z.firstElementChild.tagName !== "VIDEO"; });
+      var giro = function(){
+        var z = da.shift(); if (!z) return;
+        posa(REGE.id, Math.round(+z.dataset.posa), function(u){ z.style.backgroundImage = "url('" + u + "')"; }, function(){ setTimeout(giro, 60); });
+      };
+      giro();
+    }
   }
+  // LO SCORRIMENTO COL DITO SOPRA IL FOTOGRAMMA. Passando sul riquadro si
+  // scorre dentro la clip, come nel cestino di un montaggio vero: e' il modo
+  // piu' veloce per ritrovare quella giusta fra venti che si chiamano uguale.
+  // Il materiale di casa scorre da solo (il video ce l'ha il browser);
+  // l'archivio chiede i fotogrammi al ponte, a passi, e se li tiene.
+  el("bin").addEventListener("mousemove", function(e){
+    var a = e.target.closest(".ante"); if (!a) return;
+    var riga = a.parentNode, x = PZ[+riga.dataset.i]; if (!x) return;
+    var r = a.getBoundingClientRect(), f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    var dur = x.fuori - x.dentro, t = x.dentro + f * dur;
+    a.querySelector(".sc").style.width = (f * 100) + "%";
+    var v = a.firstElementChild && a.firstElementChild.tagName === "VIDEO" ? a.firstElementChild : null;
+    if (v) { try { v.currentTime = t; } catch (err) {} return; }
+    if (!REGE) return;
+    var passo = Math.max(5, Math.round(dur / 8)), tt = Math.round(t / passo) * passo;
+    if (a.dataset.ora == tt) return;
+    a.dataset.ora = tt;
+    posa(REGE.id, tt, function(u){ if (a.dataset.ora == tt) a.style.backgroundImage = "url('" + u + "')"; });
+  });
+  el("bin").addEventListener("mouseleave", function(){
+    Array.prototype.forEach.call(el("bin").querySelectorAll(".ante .sc"), function(z){ z.style.width = "0"; });
+  });
   function X(t){ var p = el("pista"), w = p.clientWidth || 800; return (t - LENTE.a) / (LENTE.b - LENTE.a) * w; }
   function tDiX(px){ var p = el("pista"), w = p.clientWidth || 800; return LENTE.a + px / w * (LENTE.b - LENTE.a); }
   function disegnaTl(){
@@ -1761,113 +1831,122 @@
   //  non sa fare non compare, per non prometterlo.
   function vc(e, t, f){ return { e: e, t: t || "", f: f }; }
   function bt(e, t, id){ return { e: e, t: t || "", f: function(){ el(id).click(); } }; }
+  // I MENU PARLANO PREMIERE. Chi monta arriva da li': se una voce si chiama
+  // come si chiama in Premiere non la deve cercare, e se si chiama in un
+  // altro modo la cerca ogni volta. Quindi i nomi sono i suoi — Contrassegna
+  // entrata, Elimina con raccordo, Velocita'/durata, Guadagno audio,
+  // Magnetismo, Corrispondenza fotogramma — e anche i tasti, dove possiamo.
+  // Dove facciamo una cosa che Premiere non fa, il nome e' nostro e si vede.
   var MENU = {
     file: [
-      { capo: "Sequenza" },
-      bt("Rinomina\u2026", "", "eRinomina"),
-      bt("Progetto\u2026", "", "eProg"),
-      vc("Elimina la sequenza\u2026", "", eliminaSequenza),
+      { capo: "Progetto" },
+      bt("Rinomina la sequenza…", "", "eRinomina"),
+      bt("Impostazioni progetto…", "", "eProg"),
+      vc("Elimina la sequenza…", "", eliminaSequenza),
       { riga: 1 },
-      { capo: "Materiale" },
-      bt("Porta i pezzi in casa", "", "eCasa"),
-      bt("Materiale di casa e caricamento\u2026", "", "eMateriale"),
-      bt("Apri la partita (Sorgente)", "", "eAsset"),
-      vc("Apri la partita a questo secondo", "F", vaiAllaPartita),
+      { capo: "Importa" },
+      bt("Importa…", "", "eMateriale"),
+      bt("Apri nel monitor Sorgente", "", "eAsset"),
+      vc("Corrispondenza fotogramma", "F", vaiAllaPartita),
+      bt("Trascodifica in locale", "", "eCasa"),
       { riga: 1 },
-      { capo: "Uscita" },
-      bt("XML per Premiere", "", "eXml"),
-      vc("Esporta\u2026", "cmd M", function(){ el("eEsporta").scrollIntoView({ block:"center" }); el("eEsporta").focus(); avviso("ok", "Scegli formato e sottotitoli, poi Esporta."); }),
+      { capo: "Esporta" },
+      vc("Media…", "cmd M", function(){ el("eEsporta").scrollIntoView({ block:"center" }); el("eEsporta").focus(); avviso("ok", "Scegli formato e sottotitoli, poi Esporta."); }),
+      bt("XML Final Cut Pro (per Premiere)", "", "eXml"),
       { riga: 1 },
-      vc("Torna alla libreria", "", function(){ location.href = "mam2.html"; })
+      vc("Chiudi il progetto", "", function(){ location.href = "mam2.html"; })
     ],
     modifica: [
       vc("Annulla", "cmd Z", function(){ annullaRipeti(false); }),
-      vc("Ripeti", "\u21e7cmd Z", function(){ annullaRipeti(true); }),
+      vc("Ripeti", "⇧cmd Z", function(){ annullaRipeti(true); }),
       { riga: 1 },
       vc("Taglia", "cmd X", function(){ copiaPezzi(true); }),
       vc("Copia", "cmd C", function(){ copiaPezzi(false); }),
-      vc("Incolla dopo la testina", "cmd V", function(){ incolla(); }),
+      vc("Incolla", "cmd V", function(){ incolla(); }),
       { riga: 1 },
-      vc("Scegli tutti i pezzi", "cmd A", function(){ SELS = PZ.map(function(z){ return z.id; }); SEL = SELS[SELS.length - 1] || null; disegnaEditor(); }),
-      vc("Non scegliere niente", "\u21e7cmd A", function(){ scegli(null); disegnaEditor(); }),
-      bt("Togli i pezzi scelti", "canc", "eTogli"),
-      vc("Togli e richiudi il buco", "\u2325canc", togliERichiudi),
+      bt("Cancella", "canc", "eTogli"),
+      vc("Elimina con raccordo", "⌥canc", togliERichiudi),
+      vc("Estrai", ";", function(){ estrai(); }),
       { riga: 1 },
-      bt("Dividi sotto la testina", "C", "eTaglia"),
-      vc("Estrai fra entrata e uscita", ";", function(){ estrai(); }),
+      vc("Seleziona tutto", "cmd A", function(){ SELS = PZ.map(function(z){ return z.id; }); SEL = SELS[SELS.length - 1] || null; disegnaEditor(); }),
+      vc("Deseleziona tutto", "⇧cmd A", function(){ scegli(null); disegnaEditor(); }),
       { riga: 1 },
-      vc("Segna l\u2019entrata", "I", function(){ INS = Math.round(tSeq() * 100) / 100; if (OUTS !== null && OUTS <= INS) OUTS = null; disegnaTl(); }),
-      vc("Segna l\u2019uscita", "O", function(){ OUTS = Math.round(tSeq() * 100) / 100; if (INS !== null && INS >= OUTS) INS = null; disegnaTl(); }),
-      vc("Togli entrata e uscita", "\u2325X", function(){ INS = OUTS = null; disegnaTl(); })
+      vc("Contrassegna entrata", "I", function(){ INS = Math.round(tSeq() * 100) / 100; if (OUTS !== null && OUTS <= INS) OUTS = null; disegnaTl(); }),
+      vc("Contrassegna uscita", "O", function(){ OUTS = Math.round(tSeq() * 100) / 100; if (INS !== null && INS >= OUTS) INS = null; disegnaTl(); }),
+      vc("Cancella entrata e uscita", "⌥X", function(){ INS = OUTS = null; disegnaTl(); })
     ],
     clip: [
-      { capo: "Il taglio" },
-      vc("Accorcia l\u2019inizio alla testina", "Q", function(){ accorcia("inizio"); }),
-      vc("Accorcia la fine alla testina", "W", function(){ accorcia("fine"); }),
-      vc("Allunga fino alla testina", "E", allungaQui),
-      vc("Velocita\u2019 del pezzo\u2026", "R", chiediVelocita),
-      vc("Colore: rimetti com\u2019era", "", function(){ el("ipRimetti").click(); }),
-      vc("Mettilo sopra / rimettilo sotto (V2)", "", function(){ el("ipTraccia").click(); }),
-      vc("Entrata e uscita sul pezzo", "X", inOutSulPezzo),
+      { capo: "Modifica" },
+      vc("Velocita’/durata…", "R", chiediVelocita),
+      vc("Contrassegna clip", "X", inOutSulPezzo),
+      vc("Rimuovi attributi (colore)", "", function(){ el("ipRimetti").click(); }),
+      vc("Porta sopra / rimetti sotto (V2)", "", function(){ el("ipTraccia").click(); }),
       { riga: 1 },
-      { capo: "Spostare" },
-      vc("Scivolo indietro", "\u2325\u2190", function(){ scivolo(-0.04); }),
-      vc("Scivolo avanti", "\u2325\u2192", function(){ scivolo(0.04); }),
-      vc("Giunzione indietro", "\u2325\u21e7\u2190", function(){ giunzione(-0.04); }),
-      vc("Giunzione avanti", "\u2325\u21e7\u2192", function(){ giunzione(0.04); }),
+      { capo: "Taglio" },
+      vc("Taglia l’inizio alla testina", "Q", function(){ accorcia("inizio"); }),
+      vc("Taglia la fine alla testina", "W", function(){ accorcia("fine"); }),
+      vc("Estendi fino alla testina", "E", allungaQui),
+      vc("Scorrimento indietro", "⌥←", function(){ scivolo(-0.04); }),
+      vc("Scorrimento avanti", "⌥→", function(){ scivolo(0.04); }),
+      vc("Scivolamento indietro", "⌥⇧←", function(){ giunzione(-0.04); }),
+      vc("Scivolamento avanti", "⌥⇧→", function(){ giunzione(0.04); }),
       { riga: 1 },
       { capo: "Audio" },
-      bt("Stacca l\u2019audio dal video", "cmd L", "eStacca"),
-      bt("Muto / suona", "", "eMuto"),
-      bt("Togli l\u2019audio", "", "eAudioTogli"),
-      vc("Gain\u2026", "G", chiediGain),
-      vc("Togli la linea del volume", "", function(){
+      bt("Scollega", "cmd L", "eStacca"),
+      bt("Disattiva audio clip", "", "eMuto"),
+      bt("Elimina la traccia audio", "", "eAudioTogli"),
+      vc("Guadagno audio…", "G", chiediGain),
+      vc("Applica dissolvenza in entrata…", "", function(){ chiediDissolvenza("entra"); }),
+      vc("Applica dissolvenza in uscita…", "", function(){ chiediDissolvenza("esce"); }),
+      vc("Rimuovi i fotogrammi chiave del volume", "", function(){
         var ag = audioScelto(); if (!ag) return avviso("err", "Scegli un pezzo o un audio.");
-        scriviVolumi(ag, []); avviso("ok", "Linea tolta: resta il gain della clip.");
+        scriviVolumi(ag, []); avviso("ok", "Linea tolta: resta il guadagno della clip.");
       }),
-      vc("Dissolvenza in entrata\u2026", "", function(){ chiediDissolvenza("entra"); }),
-      vc("Dissolvenza in uscita\u2026", "", function(){ chiediDissolvenza("esce"); }),
       { riga: 1 },
-      { capo: "Inquadratura verticale" },
-      bt("La propone la macchina", "", "inqProponi"),
-      bt("Ferma qui", "", "inqFermo"),
-      bt("Togli l\u2019inquadratura", "", "inqVia")
+      { capo: "Riquadro verticale" },
+      bt("Proponi l’inquadratura", "", "inqProponi"),
+      bt("Blocca qui", "", "inqFermo"),
+      bt("Rimuovi l’inquadratura", "", "inqVia")
     ],
     sequenza: [
-      bt("Attacca: richiudi i buchi", "", "eAttacca"),
-      bt("Magnete acceso / spento", "S", "eMagnete"),
+      bt("Aggiungi modifica (taglierino)", "C", "eTaglia"),
+      bt("Chiudi gli spazi vuoti", "", "eAttacca"),
+      bt("Magnetismo", "S", "eMagnete"),
       { riga: 1 },
-      vc("Scrivi un titolo\u2026", "T", chiediTitolo),
-      bt("Aggiungi una grafica\u2026", "", "eGrafica"),
-      bt("Sottotitoli acceso / spento", "", "eSottoOn"),
+      { capo: "Nuovo elemento" },
+      vc("Testo…", "T", chiediTitolo),
+      bt("Grafica…", "", "eGrafica"),
+      vc("Aggiungi marcatore", "M", segnaMarker),
+      { riga: 1 },
+      { capo: "Sottotitoli" },
+      bt("Attiva / disattiva i sottotitoli", "", "eSottoOn"),
       bt("Lingua dei sottotitoli", "", "eSottoLingua"),
       { riga: 1 },
-      vc("Marker sulla partita\u2026", "M", segnaMarker),
-      { riga: 1 },
-      vc("Vai all\u2019entrata", "\u21e7I", function(){ if (INS !== null) vaiTempo(INS, false); }),
-      vc("Vai all\u2019uscita", "\u21e7O", function(){ if (OUTS !== null) vaiTempo(OUTS, false); }),
-      vc("Vai all\u2019inizio", "home", function(){ VE.pause(); if (PZ.length) vaiA(0, 0, false); }),
-      vc("Vai alla fine", "end", function(){ VE.pause(); if (PZ.length) vaiA(PZ.length - 1, PZ[PZ.length - 1].fuori - PZ[PZ.length - 1].dentro - 0.05, false); })
+      { capo: "Vai a" },
+      vc("Entrata della sequenza", "⇧I", function(){ if (INS !== null) vaiTempo(INS, false); }),
+      vc("Uscita della sequenza", "⇧O", function(){ if (OUTS !== null) vaiTempo(OUTS, false); }),
+      vc("Inizio della sequenza", "home", function(){ VE.pause(); if (PZ.length) vaiA(0, 0, false); }),
+      vc("Fine della sequenza", "end", function(){ VE.pause(); if (PZ.length) vaiA(PZ.length - 1, PZ[PZ.length - 1].fuori - PZ[PZ.length - 1].dentro - 0.05, false); })
     ],
     vista: [
-      { capo: "Formato del monitor" },
+      { capo: "Formato di riproduzione" },
       vc("16:9", "", function(){ scegliFormatoMenu("16:9"); }),
       vc("9:16 verticale", "", function(){ scegliFormatoMenu("9:16"); }),
       vc("1:1 quadrato", "", function(){ scegliFormatoMenu("1:1"); }),
       vc("3:4", "", function(){ scegliFormatoMenu("3:4"); }),
-      bt("Campo intero col riquadro", "", "eCampo"),
+      bt("Mostra tutto il campo col riquadro", "", "eCampo"),
       { riga: 1 },
-      { capo: "Lente" },
-      bt("Avvicina", "+", "ePiu"),
-      bt("Allontana", "\u2212", "eMeno"),
-      bt("Tutta la sequenza", "\\", "eTutta"),
+      { capo: "Zoom" },
+      bt("Zoom avanti", "+", "ePiu"),
+      bt("Zoom indietro", "−", "eMeno"),
+      bt("Adatta alla finestra", "\\", "eTutta"),
       { riga: 1 },
-      vc("Rimetti le misure dei pannelli", "", function(){
+      vc("Ripristina il layout dell’area di lavoro", "", function(){
         MISURE = {}; try { localStorage.removeItem("mam2-misure"); } catch (e) {}
         applicaMisure(); avviso("ok", "Pannelli e tracce alle misure di partenza.");
       })
     ],
-    aiuto: [ bt("I tasti, come in Premiere", "?", "eTasti") ]
+    aiuto: [ bt("Scelte rapide da tastiera", "?", "eTasti") ]
   };
   function scegliFormatoMenu(f){
     var c = el("eFormati").querySelector('.fchip[data-f="' + f + '"]');
@@ -2320,8 +2399,119 @@
     var sua = s.l || "it", nuovo = window.prompt("Sottotitolo (" + (sua === "en" ? "inglese" : "italiano") + "):", s.x || ""); if (nuovo === null || nuovo === s.x) return;
     post({ tipo:"clip-parlato-modifica", reg: REGE.id, k: s.k, x: nuovo }).then(function(d){ if (d.pezzo) { s.x = d.pezzo.x; s.m = true; delete s.y; } disegnaTl(); avviso("ok", "Sottotitolo salvato."); }).catch(function(er){ avviso("err", esc(er.message)); });
   });
-  el("bin").addEventListener("click", function(e){ var tr = e.target.closest("tr[data-i]"); if (!tr) return; scegli(PZ[+tr.dataset.i].id, e.shiftKey || e.metaKey || e.ctrlKey); vaiA(+tr.dataset.i, 0, false); disegnaTl(); });
-  el("bin").addEventListener("dblclick", function(e){ var tr = e.target.closest("tr[data-i]"); if (tr) vaiA(+tr.dataset.i, 0, true); });
+  el("bin").addEventListener("click", function(e){ var tr = e.target.closest(".pz[data-i]"); if (!tr) return; scegli(PZ[+tr.dataset.i].id, e.shiftKey || e.metaKey || e.ctrlKey); vaiA(+tr.dataset.i, 0, false); disegnaTl(); el("bin").focus(); });
+  el("bin").addEventListener("dblclick", function(e){
+    var tr = e.target.closest(".pz[data-i]"); if (!tr) return;
+    if (e.target.closest("b")) return rinominaPezzo(+tr.dataset.i);   // due clic sul nome: si rinomina, come in un cestino
+    vaiA(+tr.dataset.i, 0, true);
+  });
+  // ── I COMANDI DELLA CLIP ──────────────────────────────────────────
+  //  Tasto destro sulla clip, come in un montaggio vero. Le voci sono le
+  //  stesse del menu' Clip, con gli stessi nomi e gli stessi tasti: chi le
+  //  ha imparate una volta non le impara due.
+  function rinominaPezzo(i){
+    var x = PZ[i]; if (!x) return;
+    var riga = el("bin").querySelector('.pz[data-i="' + i + '"]'); if (!riga) return;
+    var b = riga.querySelector("b"); if (!b) return;
+    var vecchio = x.titolo || "";
+    b.innerHTML = '<input class="rin" value="' + esc(vecchio) + '">';
+    var inp = b.firstElementChild; inp.focus(); inp.select();
+    var chiudi = function(salva){
+      var nuovo = (inp.value || "").trim();
+      if (!salva || nuovo === vecchio || !nuovo) return disegnaBin();
+      post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: x.id, titolo: nuovo })
+        .then(function(d){ ricaricaSeq(d.seq); disegnaEditor(); })
+        .catch(function(er){ avviso("err", esc(er.message)); disegnaBin(); });
+    };
+    inp.addEventListener("keydown", function(ev){ ev.stopPropagation(); if (ev.key === "Enter") chiudi(true); if (ev.key === "Escape") chiudi(false); });
+    inp.addEventListener("blur", function(){ chiudi(true); });
+  }
+  function duplicaPezzo(i){
+    var x = PZ[i]; if (!x || !SEQ) return;
+    var c = x.media
+      ? { tipo:"clip-hl-metti-media", seq: SEQ.id, media: x.media, dentro: x.dentro, fuori: x.fuori, dove: i + 1, traccia: x.traccia || "V1", titolo: x.titolo }
+      : { tipo:"clip-hl-inserisci", seq: SEQ.id, reg: SEQ.reg, dentro: x.dentro, fuori: x.fuori, dove: i + 1, aggancia: false, titolo: x.titolo };
+    post(c).then(function(d){ ricaricaSeq(d.seq); disegnaEditor(); avviso("ok", "Clip duplicata."); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  }
+  var PEZZO_MENU = null;
+  function chiudiMenuPezzo(){ el("tendinaPezzo").hidden = true; PEZZO_MENU = null; }
+  function apriMenuPezzo(i, x, y){
+    PEZZO_MENU = i;
+    var voci = [
+      { e: "Rinomina…", t: "F2", f: function(){ rinominaPezzo(i); } },
+      { e: "Velocita’/durata…", t: "R", f: chiediVelocita },
+      { e: "Contrassegna clip", t: "X", f: inOutSulPezzo },
+      { riga: 1 },
+      { e: "Duplica", t: "cmd D", f: function(){ duplicaPezzo(i); } },
+      { e: "Cancella", t: "canc", f: function(){ el("eTogli").click(); } },
+      { e: "Elimina con raccordo", t: "⌥canc", f: togliERichiudi },
+      { riga: 1 },
+      { e: "Corrispondenza fotogramma", t: "F", f: vaiAllaPartita },
+      { e: "Porta sopra / rimetti sotto (V2)", t: "", f: function(){ el("ipTraccia").click(); } }
+    ];
+    var t = el("tendinaPezzo");
+    t.innerHTML = voci.map(function(v, k){ return v.riga ? "<hr>" : '<a data-v="' + k + '"><span>' + esc(v.e) + "</span><i>" + esc(v.t) + "</i></a>"; }).join("");
+    t.hidden = false;
+    var w = t.offsetWidth || 250, h = t.offsetHeight || 220;
+    t.style.left = Math.min(x, window.innerWidth - w - 8) + "px";
+    t.style.top = Math.min(y, window.innerHeight - h - 8) + "px";
+    t.onclick = function(ev){
+      var a = ev.target.closest("a[data-v]"); if (!a) return;
+      chiudiMenuPezzo(); var v = voci[+a.dataset.v]; if (v && v.f) v.f();
+    };
+  }
+  el("bin").addEventListener("contextmenu", function(e){
+    var tr = e.target.closest(".pz[data-i]"); if (!tr) return;
+    e.preventDefault();
+    var i = +tr.dataset.i;
+    if (!scelto(PZ[i].id)) { scegli(PZ[i].id, false); vaiA(i, 0, false); }
+    apriMenuPezzo(i, e.clientX, e.clientY);
+  });
+  document.addEventListener("mousedown", function(e){ if (PEZZO_MENU !== null && !e.target.closest("#tendinaPezzo")) chiudiMenuPezzo(); });
+  // ── TRASCINARE PER RIORDINARE ─────────────────────────────────────
+  var BIN_DA = null;
+  el("bin").addEventListener("dragstart", function(e){
+    var tr = e.target.closest(".pz[data-i]"); if (!tr) return;
+    BIN_DA = +tr.dataset.i;
+    try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(BIN_DA)); } catch (err) {}
+  });
+  el("bin").addEventListener("dragover", function(e){
+    if (BIN_DA === null) return;
+    var tr = e.target.closest(".pz[data-i]"); if (!tr) return;
+    e.preventDefault();
+    Array.prototype.forEach.call(el("bin").querySelectorAll(".pz.cade"), function(z){ z.classList.remove("cade"); });
+    tr.classList.add("cade");
+  });
+  el("bin").addEventListener("drop", function(e){
+    var tr = e.target.closest(".pz[data-i]");
+    Array.prototype.forEach.call(el("bin").querySelectorAll(".pz.cade"), function(z){ z.classList.remove("cade"); });
+    if (BIN_DA === null || !tr || !SEQ) { BIN_DA = null; return; }
+    e.preventDefault();
+    var a = BIN_DA, b = +tr.dataset.i; BIN_DA = null;
+    if (a === b) return;
+    var ordine = PZ.map(function(z){ return z.id; }), id = ordine[a];
+    ordine.splice(a, 1); ordine.splice(b, 0, id);
+    post({ tipo:"clip-hl-ordina", seq: SEQ.id, ordine: ordine })
+      .then(function(d){ ricaricaSeq(d.seq); disegnaEditor(); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  });
+  el("bin").addEventListener("dragend", function(){ BIN_DA = null; Array.prototype.forEach.call(el("bin").querySelectorAll(".pz.cade"), function(z){ z.classList.remove("cade"); }); });
+  // ── I TASTI, QUANDO IL CESTINO HA IL FUOCO ────────────────────────
+  el("bin").addEventListener("keydown", function(e){
+    if (e.target.tagName === "INPUT") return;
+    var i = PZ.findIndex(function(z){ return z.id === SEL; });
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault(); e.stopPropagation();
+      var n = Math.max(0, Math.min(PZ.length - 1, (i < 0 ? 0 : i + (e.key === "ArrowDown" ? 1 : -1))));
+      if (PZ[n]) { scegli(PZ[n].id, false); vaiA(n, 0, false); var r = el("bin").querySelector('.pz[data-i="' + n + '"]'); if (r) r.scrollIntoView({ block:"nearest" }); }
+      return;
+    }
+    if (i < 0) return;
+    if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); vaiA(i, 0, true); }
+    else if (e.key === "F2") { e.preventDefault(); e.stopPropagation(); rinominaPezzo(i); }
+    else if ((e.key === "d" || e.key === "D") && (e.metaKey || e.ctrlKey)) { e.preventDefault(); e.stopPropagation(); duplicaPezzo(i); }
+  });
   el("ePlay").addEventListener("click", function(){ if (!VE) return; accendiVu(); if (VU_CTX && VU_CTX.state === "suspended") VU_CTX.resume(); if (VE.paused) { if (ORA.i < 0 && PZ.length) vaiA(0, 0, true); else VE.play().catch(function(){}); } else VE.pause(); });
   el("ePrima").addEventListener("click", function(){ vaiA(Math.max(0, ORA.i - 1), 0, !VE.paused); });
   el("eDopo").addEventListener("click", function(){ vaiA(Math.min(PZ.length - 1, ORA.i + 1), 0, !VE.paused); });
