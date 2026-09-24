@@ -253,6 +253,20 @@
   .pc .ctrl button[data-progvia]:hover{border-color:var(--rosso);color:#FF9A9C;}
   @media (hover:none){ .pc .ctrl{opacity:1;} }
   .eti.comp a{font-size:12px;padding:5px 10px;}
+  /* SESSANTUNO PASTIGLIE SONO UN MURO. Le poche che si usano ogni giorno
+     restano in vista; tutte le altre stanno in un cassetto che si filtra
+     scrivendo, con il loro conto a destra. */
+  .tendina{border:1px solid var(--riga2);border-radius:10px;background:var(--navy2);padding:10px;margin-bottom:10px;max-width:760px;}
+  .tendina input{width:100%;font:inherit;font-size:13px;padding:8px 10px;border-radius:7px;border:1px solid var(--riga2);
+    background:rgba(245,241,230,.05);color:var(--ivory);margin-bottom:8px;}
+  .tendina input:focus{outline:none;border-color:var(--oro);}
+  .tendina .elenco{max-height:260px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:2px;}
+  .tendina .elenco a{display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:6px;cursor:pointer;font-size:12.5px;color:var(--ivory2);}
+  .tendina .elenco a:hover{background:rgba(201,162,75,.12);}
+  .tendina .elenco a.on{background:rgba(201,162,75,.22);color:var(--oro2);}
+  .tendina .elenco a span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .tendina .elenco a i{font-style:normal;font:11px ui-monospace,Menlo,monospace;color:var(--fumo);}
+  .tendina .niente{color:var(--fumo);font-size:12.5px;padding:8px 9px;}
   .card .tipo,.lista .tipo{font-family:'Mazzard',sans-serif;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;
     padding:1px 6px;border-radius:3px;border:1px solid var(--riga2);color:var(--fumo);white-space:nowrap;}
   .ed-lato{border-left:1px solid var(--riga);background:var(--navy2);display:flex;flex-direction:column;min-height:0;overflow:auto;}
@@ -353,10 +367,14 @@
     </div>
     <div id="risultati" class="ris" hidden></div>
     <div id="libCat">
-      <div class="sez"><h2>Sfoglia</h2><span id="catConto"></span><button class="dx b mini" id="compTutte" hidden>Tutte le competizioni</button></div>
+      <div class="sez"><h2>Sfoglia</h2><span id="catConto"></span><button class="dx b mini" id="compTutte">Tutte le competizioni</button></div>
       <div class="eti" id="etiTipo"></div>
       <div class="eti" id="etiStato"></div>
       <div class="eti comp" id="etiComp"></div>
+      <div class="tendina" id="compTenda" hidden>
+        <input id="compCerca" type="search" placeholder="filtra le competizioni…" autocomplete="off">
+        <div class="elenco" id="compElenco"></div>
+      </div>
     </div>
     <div id="libRecenti">
       <div class="sez"><h2 id="recTitolo">Partite</h2><span id="recConto"></span><button class="b mini" id="recPulisci" hidden title="togli i filtri">&#10005; togli i filtri</button><span class="vsel"><button id="vGriglia" title="schede con l'anteprima">&#9638; Anteprime</button><button id="vLista" title="una riga per partita">&#9776; Lista</button></span><a class="dx b mini" href="magazzino.html" target="_blank" rel="noopener">Magazzino</a></div>
@@ -595,6 +613,21 @@
     for (var i = TIPI.length - 1; i >= 1; i--) if (TIPI[i][1].test(s)) return TIPI[i][0];
     return "partite";
   }
+  // IL CAMPO "competizione" E' SPORCO. C'e' chi ci ha scritto CLEANFEED, ITA,
+  // EVENTO REC o direttamente il titolo della partita, e "Scottish League Cup"
+  // esiste due volte perche' una delle due ha uno spazio in coda. Qui si
+  // ripulisce SOLO per guardare e raggruppare: nei file non si tocca niente.
+  var COMP_NULLA = /^(o\d+\s+)?cleanfeed$|^(ita|eng)$|^evento rec$|^\d+$/;
+  function compDi(x){
+    var c = String(x.competizione || "").replace(/\s+/g, " ").trim();
+    if (!c) return "";
+    var b = c.toLowerCase();
+    if (COMP_NULLA.test(b)) return "";
+    // se quello che c'e' scritto e' il titolo della partita, non e' un torneo
+    var t = String(x.partita || "").replace(/\s+/g, " ").trim().toLowerCase();
+    if (t && (b === t || t.indexOf(b) >= 0 || / vs /.test(b))) return "";
+    return c;
+  }
   function coloreTipo(t){ for (var i = 0; i < TIPI.length; i++) if (TIPI[i][0] === t) return TIPI[i][2]; return "#9AA7B8"; }
   // il gruppo si chiama al plurale ("partite"), la singola riga al singolare
   var UNO = { "partite": "partita", "giovanili": "giovanili", "studio": "studio",
@@ -603,7 +636,7 @@
   var FILTRO = { tipo: "", comp: "", stato: "" }, COMP_TUTTE = false;
   function passa(x){
     if (FILTRO.tipo && tipoDi(x) !== FILTRO.tipo) return false;
-    if (FILTRO.comp && (x.competizione || "\u2014") !== FILTRO.comp) return false;
+    if (FILTRO.comp && (compDi(x) || "\u2014") !== FILTRO.comp) return false;
     if (FILTRO.stato === "tc" && !x.telecronaca) return false;
     if (FILTRO.stato === "s3" && !x.s3) return false;
     if (FILTRO.stato === "qnap" && x.s3) return false;
@@ -617,11 +650,19 @@
   }
   function disegnaCategorie(){
     // il tipo: solo i gruppi che esistono davvero in archivio
-    var perTipo = {}, perComp = {};
+    var perTipo = {}, perComp = {}, scritture = {};
     EVENTI.forEach(function(x){
       var t = tipoDi(x); perTipo[t] = (perTipo[t] || 0) + 1;
-      var c = x.competizione || "\u2014"; perComp[c] = (perComp[c] || 0) + 1;
+      var c = compDi(x) || "\u2014", k = c.toLowerCase();
+      perComp[k] = (perComp[k] || 0) + 1;
+      // fra due scritture della stessa cosa vince quella usata di piu'
+      scritture[k] = scritture[k] || {}; scritture[k][c] = (scritture[k][c] || 0) + 1;
     });
+    COMP_NOME = {};
+    Object.keys(scritture).forEach(function(k){
+      COMP_NOME[k] = Object.keys(scritture[k]).sort(function(a, b){ return scritture[k][b] - scritture[k][a]; })[0];
+    });
+    COMP_CONTO = perComp;
     el("etiTipo").innerHTML = TIPI.map(function(z){ return z[0]; })
       .filter(function(t){ return perTipo[t]; })
       .map(function(t){ return pastiglia("tipo", t, t, perTipo[t], coloreTipo(t)); }).join("");
@@ -631,11 +672,16 @@
       (s3 ? pastiglia("stato", "s3", "su S3 a Parigi", s3, "") : "") +
       (EVENTI.length - s3 ? pastiglia("stato", "qnap", "sulla QNAP", EVENTI.length - s3, "") : "");
     var comp = Object.keys(perComp).sort(function(a, b){ return perComp[b] - perComp[a] || a.localeCompare(b); });
-    var quante = COMP_TUTTE ? comp.length : 12;
-    el("etiComp").innerHTML = comp.slice(0, quante).map(function(c){ return pastiglia("comp", c, c, perComp[c], ""); }).join("");
-    el("compTutte").hidden = comp.length <= 12;
-    el("compTutte").textContent = COMP_TUTTE ? "Solo le principali" : "Tutte le competizioni (" + comp.length + ")";
+    // in vista solo quelle che si usano davvero; se ne hai scelta una che
+    // sta nella coda, quella resta in vista finche' e' accesa
+    // "senza competizione" non e' una competizione: sta nel cassetto, non
+    // fra le prime in vista, anche se di file senza torneo ce ne sono tanti
+    var inVista = comp.filter(function(k){ return k !== "\u2014"; }).slice(0, 8);
+    if (FILTRO.comp && inVista.indexOf(FILTRO.comp.toLowerCase()) < 0) inVista.push(FILTRO.comp.toLowerCase());
+    el("etiComp").innerHTML = inVista.map(function(k){ return pastiglia("comp", COMP_NOME[k], COMP_NOME[k], perComp[k], ""); }).join("");
+    el("compTutte").textContent = "Tutte le competizioni (" + comp.length + ")";
     el("catConto").textContent = comp.length + " competizioni";
+    if (!el("compTenda").hidden) disegnaTenda();
     var sotto = el("libSotto");
     if (sotto) sotto.textContent = EVENTI.length.toLocaleString("it-IT") + " partite in archivio · " + comp.length +
       " competizioni · " + tc + " con la telecronaca trascritta. Cerca, guarda, monta.";
@@ -657,7 +703,32 @@
       scegliEtichetta(k, a.dataset[k]);
     });
   });
-  el("compTutte").addEventListener("click", function(){ COMP_TUTTE = !COMP_TUTTE; disegnaCategorie(); });
+  var COMP_NOME = {}, COMP_CONTO = {};
+  function disegnaTenda(){
+    var q = (el("compCerca").value || "").trim().toLowerCase();
+    var chiavi = Object.keys(COMP_CONTO)
+      .filter(function(k){ return !q || COMP_NOME[k].toLowerCase().indexOf(q) >= 0; })
+      .sort(function(a, b){ return COMP_NOME[a].localeCompare(COMP_NOME[b], "it"); });
+    el("compElenco").innerHTML = chiavi.length
+      ? chiavi.map(function(k){
+          return '<a data-comp="' + esc(COMP_NOME[k]) + '"' + (FILTRO.comp === COMP_NOME[k] ? ' class="on"' : '') +
+                 '><span>' + esc(COMP_NOME[k]) + '</span><i>' + COMP_CONTO[k] + '</i></a>'; }).join("")
+      : '<div class="niente">Nessuna competizione con questo nome.</div>';
+  }
+  el("compTutte").addEventListener("click", function(){
+    var t = el("compTenda"); t.hidden = !t.hidden;
+    if (!t.hidden) { disegnaTenda(); el("compCerca").focus(); }
+  });
+  el("compCerca").addEventListener("input", disegnaTenda);
+  el("compCerca").addEventListener("keydown", function(e){
+    if (e.key === "Escape") { el("compTenda").hidden = true; el("compTutte").focus(); }
+    if (e.key === "Enter") { var primo = el("compElenco").querySelector("a[data-comp]"); if (primo) primo.click(); }
+  });
+  el("compElenco").addEventListener("click", function(e){
+    var a = e.target.closest("a[data-comp]"); if (!a) return;
+    el("compTenda").hidden = true; el("compCerca").value = "";
+    scegliEtichetta("comp", a.dataset.comp);
+  });
   el("recPulisci").addEventListener("click", function(){ FILTRO = { tipo:"", comp:"", stato:"" }; el("recPulisci").hidden = true; el("recTitolo").textContent = "Partite"; disegnaCategorie(); disegnaRecenti(); });
   el("vGriglia").addEventListener("click", function(){ VISTA = "griglia"; try { localStorage.setItem("mam2-vista", VISTA); } catch (e) {} disegnaRecenti(); });
   el("vLista").addEventListener("click", function(){ VISTA = "lista"; try { localStorage.setItem("mam2-vista", VISTA); } catch (e) {} disegnaRecenti(); });
@@ -1645,6 +1716,17 @@
   var vai0 = function(n){ var m = new RegExp("(\\?|&)" + n + "=([^&]+)").exec(location.search); return m ? decodeURIComponent(m[2]) : ""; };
   var pa = vai0("asset"), pr = vai0("reg"), pt = vai0("t"), pq = vai0("q"), ps = vai0("seq");
   if (/(\?|&)live=1/.test(location.search)) apriLive();
+  // ?montaggio=1 — si entra dal montaggio, non dalla libreria: apre l'ultima
+  // sequenza su cui si stava lavorando. Se non ce n'e' ancora nessuna resta
+  // la libreria, perche' una sequenza nasce da una partita.
+  else if (/(\?|&)montaggio=1/.test(location.search)) {
+    vai("libreria");
+    post({ tipo:"clip-hl-elenco", tutte: true }).then(function(d){
+      var qs = (d.seq || []).slice().sort(function(a, b){ return (b.tocco || b.creata || 0) - (a.tocco || a.creata || 0); });
+      if (qs.length) apriEditor(qs[0].id);
+      else avviso("ok", "Ancora nessun montaggio: apri una partita, spunta le azioni e mandale in timeline.");
+    }).catch(function(er){ avviso("err", esc(er.message)); });
+  }
   else if (ps) apriEditor(ps);
   else if (pa) apriAsset(pa, pr, +pt || 0);
   else { vai("libreria"); if (pq) cerca(pq); }
