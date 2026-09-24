@@ -164,6 +164,20 @@
   .sc2 .sq2 i{border-radius:50%;background:rgba(245,241,230,.1);}
   .sc2 .cp{font-size:10.5px;color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
   .altre-tasto{grid-column:1/-1;justify-self:start;}
+  /* i due tasti della partita: dentro la scheda scelta, in evidenza */
+  .azioni-partita{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;}
+  .scheda .azioni-partita{border-top:1px solid rgba(245,241,230,.12);padding-top:9px;margin-top:2px;}
+  html.lav-chiara .scheda .azioni-partita{border-top-color:#E6E0D2;}
+  button.azione.forte{background:var(--gold);color:#0A0F24;border-color:var(--gold);}
+  button.azione.forte:hover{background:var(--gold-bright);color:#0A0F24;border-color:var(--gold-bright);}
+  button.azione.forte:disabled{background:rgba(201,162,75,.25);border-color:transparent;color:var(--ivory-dim);}
+  button.azione.diretta{border-color:rgba(229,52,43,.5);color:#FF8A8C;}
+  button.azione.diretta:hover{border-color:#E5342B;color:#FF8A8C;}
+  button.azione.diretta:disabled{opacity:.4;}
+  html.lav-chiara button.azione.forte{background:#8A6A1E;color:#FFFFFF;border-color:#8A6A1E;}
+  html.lav-chiara button.azione.forte:hover{background:#6E520F;color:#FFFFFF;}
+  html.lav-chiara button.azione.forte:disabled{background:#E6E0D2;color:#6A6F82;border-color:#E6E0D2;}
+  html.lav-chiara button.azione.diretta{color:#B3171C;border-color:rgba(179,23,28,.4);}
   html.lav-chiara .storico{background:#FBF4E2;border-color:#E3D3A8;}
   html.lav-chiara .storico .st-t{color:#6E520F;}
   html.lav-chiara .storico .st-n,html.lav-chiara .storico .st-lab,html.lav-chiara .sc2 .cp{color:#6A6F82;}
@@ -246,12 +260,12 @@
 
 <script src="nav.js"></script>
 <!-- ?v=: si cambia a ogni aggiornamento, se no i browser tengono la versione vecchia -->
-<script src="formazioni-espn.js?v=20260924b"></script>
-<script src="giovanili.js?v=20260924b"></script>
-<script src="competizioni-espn.js?v=20260924b"></script>
-<script src="maglie.js?v=20260924b"></script>
-<script src="tendina-cerca.js?v=20260924b"></script>
-<script src="lavagna.js?v=20260924b"></script>
+<script src="formazioni-espn.js?v=20260924c"></script>
+<script src="giovanili.js?v=20260924c"></script>
+<script src="competizioni-espn.js?v=20260924c"></script>
+<script src="maglie.js?v=20260924c"></script>
+<script src="tendina-cerca.js?v=20260924c"></script>
+<script src="lavagna.js?v=20260924c"></script>
 
 <div class="wrap">
   <header class="page">
@@ -289,10 +303,10 @@
     <div class="titpart"><span id="titGiorno">Le partite di Como TV</span></div>
     <div class="schede" id="schede"><div class="vuote">Carico le partite&hellip;</div></div>
     <select id="atPart" hidden><option value=""></option></select>
-    <div class="riga" style="margin-top:12px">
-      <div style="flex:0 0 auto"><button type="button" class="azione" id="btnPrendi" disabled>&#9917; Prendi la formazione</button></div>
-      <div style="flex:0 0 auto"><button type="button" class="azione" id="btnSegui" disabled>&#128308; Segui in diretta</button></div>
-    </div>
+    <div id="azioniCasa"><div class="azioni-partita" id="azioniPartita">
+      <button type="button" class="azione forte" id="btnPrendi" disabled>&#9917; Prendi la formazione</button>
+      <button type="button" class="azione diretta" id="btnSegui" disabled hidden>&#128308; Segui in diretta</button>
+    </div></div>
     <div id="espNota" class="nota-esp">Le partite sono quelle di Airtable, coi loro telecronisti. Scegli chi sei: le tue vengono per prime.</div>
   </div>
 
@@ -614,8 +628,10 @@
             B: { nome: (osp.team || {}).displayName || "Ospite", col: cB, tid: idB, rosa: v[0][1], mod: mB, all: v[2],
                  titolari: ufficiale ? inFila(dB.tit, mB, true) : (pB ? inFila(pB.tit, mB, true) : []) }
           });
-          ESP = { lega: lega, ev: ev };
+          ESP = { lega: lega, ev: ev, idPartita: partita ? partita.id : "" };
           el("btnSegui").disabled = false;
+          el("btnSegui").hidden = false;
+          el("btnSegui2").hidden = false;
           espDico(ufficiale
             ? "<b>Formazioni ufficiali</b> in campo: " + esc(mA) + " e " + esc(mB) + ". Con <b>Segui in diretta</b> cambi, cartellini e angoli arrivano da soli."
             : (pA || pB
@@ -710,15 +726,18 @@
     function scheda(m) {
       var casa = m.espn ? m.espn.casa : titolo(m.casa), osp = m.espn ? m.espn.ospite : titolo(m.ospite);
       var tel = m.telecronisti.map(function (t) { return esc(t.nome) + (t.lingua && m.lingue.length > 1 ? " <small>(" + esc(t.lingua) + ")</small>" : ""); }).join(" · ");
-      return '<button type="button" class="scheda' + (mia(m, chi) ? " tua" : "") + '" data-id="' + esc(m.id) + '">' +
+      return '<div class="scheda' + (mia(m, chi) ? " tua" : "") + '" data-id="' + esc(m.id) + '" role="button" tabindex="0">' +
         '<div class="alto"><span class="ora">' + oraDi(m) + '</span><span class="comp">' + esc(m.competizione + (m.turno ? " · " + titolo(m.turno) : "")) + "</span></div>" +
         '<div class="sq">' + stemma(m.espn && m.espn.casaId) + "<span>" + esc(casa) + "</span></div>" +
         '<div class="sq">' + stemma(m.espn && m.espn.ospiteId) + "<span>" + esc(osp) + "</span></div>" +
         '<div class="basso">' + (tel ? "<span>&#127897;&#65039; " + tel + "</span>" : "<span>&#127897;&#65039; —</span>") +
           (m.fogli && m.fogli.length ? '<span class="bollo curio">&#128161; Curiosit&agrave;' + (m.fogli.length > 1 ? " · " + m.fogli.length : "") + "</span>" : "") +
           (m.espn ? "" : '<span class="bollo mano" title="ESPN non ce l\'ha: la formazione si mette a mano">A mano</span>') +
-        "</div></button>";
+        "</div></div>";
     }
+    // i tasti della partita vivono dentro la scheda scelta: prima di rifare
+    // l'elenco si mettono al riparo, se no l'innerHTML se li porta via
+    el("azioniCasa").appendChild(el("azioniPartita"));
     // scelto il telecronista, solo le sue: le altre a richiesta
     var tutte = !chi || VEDI_ALTRE === giorno;
     el("schede").innerHTML = !delGiorno.length
@@ -777,13 +796,29 @@
   });
   function segna(id) {
     el("atPart").value = id;
-    Array.prototype.forEach.call(el("schede").querySelectorAll(".scheda"), function (b) { b.classList.toggle("su", b.dataset.id === id); });
+    var scelta = null;
+    Array.prototype.forEach.call(el("schede").querySelectorAll(".scheda"), function (b) {
+      var su = b.dataset.id === id;
+      b.classList.toggle("su", su);
+      if (su) scelta = b;
+    });
     el("btnPrendi").disabled = !id;
+    if (id !== (ESP && ESP.idPartita)) { el("btnSegui").hidden = true; el("btnSegui2").hidden = true; }
+    // i due tasti stanno dentro la scheda scelta: sono la sua azione, e li'
+    // si guarda davvero. In fondo alla pagina, in grigio, non li vedeva nessuno.
+    (scelta || el("azioniCasa")).appendChild(el("azioniPartita"));
     scegliPartita();
   }
   var VEDI_ALTRE = "";
+  el("schede").addEventListener("keydown", function (ev) {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    var b = ev.target.closest ? ev.target.closest(".scheda") : null;
+    if (!b) return;
+    ev.preventDefault(); segna(b.dataset.id);
+  });
   el("schede").addEventListener("click", function (ev) {
     if (ev.target.id === "vediAltre") { VEDI_ALTRE = el("atGiorno").value; disegnaPartite(false); return; }
+    if (ev.target.closest && ev.target.closest("#azioniPartita")) return;   // i tasti dentro la scheda
     var b = ev.target.closest ? ev.target.closest(".scheda") : null;
     if (b) segna(b.dataset.id);
   });
@@ -870,7 +905,12 @@
     '<div><label for="salvate">Le mie partite</label><select id="salvate"><option value="">&mdash;</option></select></div>' +
     '<button type="button" class="azione" id="btnApri">Apri</button>' +
     '<button type="button" class="azione" id="btnElimina">Elimina</button>' +
-    '<button type="button" class="azione" id="btnTrasloca" hidden></button>';
+    '<button type="button" class="azione" id="btnTrasloca" hidden></button>' +
+    // la diretta si accende anche da qui: quando si guarda il campo, i tasti
+    // della partita sono rimasti in alto
+    '<button type="button" class="azione diretta" id="btnSegui2" hidden>&#128308; Segui in diretta</button>';
+  // il tasto vive nella barra dei salvataggi, che nasce qui: si collega adesso
+  el("btnSegui2").addEventListener("click", function () { el("btnSegui").click(); });
   function localiSalvate() {
     var out = [];
     for (var i = 0; i < localStorage.length; i++) {
