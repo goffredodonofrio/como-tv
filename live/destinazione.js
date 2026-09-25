@@ -3,7 +3,7 @@
  *  DESTINAZIONE — vMix subito, oppure un Progetto per dopo
  * ═══════════════════════════════════════════════════════════════════
  *
- *  Il menu' della destinazione, oltre ai sette vMix, offre i Progetti:
+ *  Il menu' della destinazione, oltre agli undici vMix e alla regia, offre i Progetti:
  *  contenitori con nome dove la redazione prepara le grafiche nei
  *  giorni prima (il Football Show del lunedi' si prepara il sabato).
  *  Il giorno del live, dalla regia, il progetto si versa nel canale.
@@ -15,9 +15,20 @@ window.Destinazione = (function () {
   "use strict";
   var sel = null, ponte = "", token = "", progetti = [];
   var LS = "comotv.regia.destinazione";
-  var N_CANALI = 8;
-  // l'ottavo vMix e' quello della regia: ha un nome suo, non "vMix 8"
-  function nomeCanale(c) { return c == 8 ? "VMIX REGIA" : "vMix " + c; }
+  // La VMIX REGIA era il canale 8, ora e' il 12 (25/09/2026). Un browser che
+  // se la ricordava sull'8 la ritrova sul 12, una volta sola: dopo, l'8 e'
+  // un vMix come gli altri e va lasciato stare.
+  try {
+    if (!localStorage.getItem("comotv.canali12")) {
+      ["comotv.regia.canale", "comotv.regia.destinazione"].forEach(function (k) {
+        if (localStorage.getItem(k) === "8") localStorage.setItem(k, "12");
+      });
+      localStorage.setItem("comotv.canali12", "1");
+    }
+  } catch (e) {}
+  var N_CANALI = 12;
+  // il dodicesimo e' quello della regia: ha un nome suo, non "vMix 12"
+  function nomeCanale(c) { return c == 12 ? "VMIX REGIA" : "vMix " + c; }
 
   var guasto = "";      // se l'elenco non arriva, il menu' lo dice
 

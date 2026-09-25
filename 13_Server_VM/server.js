@@ -81,7 +81,11 @@ const CONFIG = {
   // dev e produzione hanno cartelle separate senza configurare nulla
   VIDEO: process.env.COMOTV_VIDEO || null,   // risolta a runtime da STATO
 
-  CANALI: 8,
+  // Undici vMix e la regia (25/09/2026, erano sette e la regia). La regia e'
+  // l'ULTIMO canale, il 12: prima era l'8, e al primo avvio carica() sposta
+  // la sua scaletta dall'8 al 12.
+  CANALI: 12,
+  CANALE_REGIA: 12,
   // Nessun tetto alle grafiche in scaletta: trenta bastavano per una partita,
   // non per una giornata intera o per un progetto d'archivio. Resta un numero
   // altissimo come rete di sicurezza contro un invio impazzito che riempirebbe
@@ -235,6 +239,23 @@ function carica() {
           delete ix.state; delete ix.onair; delete ix.playNonce;
           convertiti++;
         }
+      }
+      // La VMIX REGIA era il canale 8 e ora e' il 12: una volta sola si
+      // sposta tutto quello che le apparteneva (scaletta, voci, partita).
+      // Il segno in S.canali impedisce di rifarlo, se no a ogni riavvio il
+      // nuovo vMix 8 finirebbe dentro la regia.
+      if (!S.canali) {
+        const spostati = [];
+        ["regia", "voci", "partita"].forEach(k => {
+          if (S[k] && S[k]["8"] && !S[k][String(CONFIG.CANALE_REGIA)]) {
+            S[k][String(CONFIG.CANALE_REGIA)] = S[k]["8"];
+            delete S[k]["8"];
+            spostati.push(k);
+          }
+        });
+        S.canali = { quanti: CONFIG.CANALI, regia: CONFIG.CANALE_REGIA, spostato: Date.now() };
+        if (spostati.length) console.log("[stato] VMIX REGIA spostata dal canale 8 al " + CONFIG.CANALE_REGIA + ": " + spostati.join(", "));
+        salva();
       }
       console.log("[stato] ripreso da " + CONFIG.STATO + (convertiti ? " (" + convertiti + " canali convertiti ai livelli)" : ""));
     }
@@ -2124,7 +2145,7 @@ const SCORCIATOIE_CANALE = {
 function scorciatoia(percorso) {
   const pulito = percorso.replace(/\/+$/, "") || "/";
   if (SCORCIATOIE[pulito]) return { file: SCORCIATOIE[pulito] };
-  const m = pulito.match(/^\/([a-z]+)\/([1-7])$/);
+  const m = pulito.match(/^\/([a-z]+)\/([1-9]|1[0-2])$/);
   if (m && SCORCIATOIE_CANALE[m[1]]) {
     return { file: SCORCIATOIE_CANALE[m[1]], canale: m[2] };
   }
