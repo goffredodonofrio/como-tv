@@ -3345,7 +3345,9 @@ function toccataAMano(q) {
 //  taglia, sposta, butta, lametta, PRENDI, il vivo che cresce — continui a
 //  funzionare senza sapere che l'audio esiste. Uno SCOLLEGATO ce l'ha, e da
 //  quel momento va dove vuole.
-const TRACCE_V = ["V1", "V2"];
+// "G" e' la traccia delle grafiche e dei titoli, cioe' la V3 di Premiere;
+// "C" quella dei sottotitoli. Hanno l'occhio e il lucchetto come le altre.
+const TRACCE_V = ["V1", "V2", "G", "C"];
 const TRACCE_A = ["A1", "A2", "A3", "A4"];
 
 function tracceDi(q) {
@@ -4758,9 +4760,13 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   const dir = path.join(DIR, CARTELLA_HL, q.id);
   assicura(dir);
   if (!q.pezzi.length) throw new Error("nessun pezzo da esportare");
-  const grafiche0 = (q.grafiche || []).filter((g) => {
+  // L'OCCHIO SPENTO VALE ANCHE NELL'EXPORT. Una traccia nascosta in
+  // Premiere non esce: qui era un interruttore che si ricordava e basta.
+  const trV = tracceDi(q);
+  const grafiche0 = trV.G.muto ? [] : (q.grafiche || []).filter((g) => {
     try { return fs.existsSync(path.join(cartellaGrafiche(), g.id + ".png")); } catch (e) { return false; }
   });
+  const v1Spenta = !!trV.V1.muto;
 
   await assicuraCanali(R.reg[q.reg]);
   const ritaglio = (FORMATI[formato] || FORMATI["16:9"]).vf;
@@ -4837,7 +4843,8 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   // sottotitoli si taglia esatto, e per imprimerli si ricodifica comunque.
   const sottoV = vuoleSotto(p2);
   const srtSeq = (sottoV.file || sottoV.video) ? await scriviSrtSequenza(q, sottoV, !!sottoV.video) : null;
-  const brucia = !!(sottoV.video && srtSeq);
+  // la traccia dei sottotitoli nascosta: il file SRT esce, impressi no
+  const brucia = !!(sottoV.video && srtSeq) && !tracceDi(q).C.muto;
   const rallentati = (q.pezzi || []).some((x) => (+x.velocita && +x.velocita !== 1) || x.colore || (x.traccia || "V1") === "V2");
   // le transizioni vogliono che i pezzi si SOVRAPPONGANO: incollare e basta
   // non basta piu', e ogni pezzo dev'essere tagliato esatto
@@ -4845,12 +4852,12 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   // un file di casa non e' codificato come i pezzi della partita: incollarli
   // e basta vorrebbe dire pretendere che abbiano lo stesso codificatore
   const conMedia = (q.pezzi || []).some((x) => !!mediaVia(x));
-  let veloce = (p2 && p2.esatto) || srtSeq ? false : (!ritaglio && !grafiche0.length && !mixato && !buchi.length && !rallentati && !conFusione && !conMedia);
+  let veloce = (p2 && p2.esatto) || srtSeq || v1Spenta ? false : (!ritaglio && !grafiche0.length && !mixato && !buchi.length && !rallentati && !conFusione && !conMedia);
   const dir2 = path.join(dir, "tagli");
   assicura(dir2);
   const parti = [];
   let orologio = 0;                     // dove siamo arrivati sulla timeline
-  const sopra = (q.pezzi || []).filter((x) => (x.traccia || "V1") === "V2");
+  const sopra = trV.V2.muto ? [] : (q.pezzi || []).filter((x) => (x.traccia || "V1") === "V2");
   const base = (q.pezzi || []).filter((x) => (x.traccia || "V1") !== "V2");
   // LA STRADA VELOCE INCOLLA I PEZZI COM'E' IL FILE, e il file in casa
   // comincia PRIMA del taglio: il ritaglio in copia parte dal fotogramma
@@ -4887,7 +4894,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     const args = ["-hide_banner", "-loglevel", "error", "-nostdin",
       "-ss", String(off), "-i", casa, "-t", String(dur)];
     // se il pezzo comincia gia' dove deve, si copia e basta: niente da fare
-    const copiabile = off < 0.08 && !ritaglioQui && vel === 1 && !x.colore;
+    const copiabile = off < 0.08 && !ritaglioQui && vel === 1 && !x.colore && !v1Spenta;
     await new Promise((si, no) => {
       const pr = spawn(FFMPEG, args.concat(copiabile
         ? ["-c", "copy", "-movflags", "+faststart", "-y", esatto]
@@ -4901,6 +4908,8 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
                                       ":contrast=" + (x.colore.con || 1).toFixed(3) +
                                       ":saturation=" + (x.colore.sat || 1).toFixed(3));
             if (ritaglioQui) filtri.push(ritaglioQui.replace(/(scale=\d+:\d+)/, "$1:flags=lanczos"));
+            // V1 nascosta: sotto non c'e' niente, quindi nero — l'audio resta
+            if (v1Spenta) filtri.push("drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill");
             return filtri.length ? ["-vf", filtri.join(",")] : [];
           })()
           .concat(["-c:v", "libx264", "-preset", CACHE_PRESET, "-crf", CACHE_CRF, "-pix_fmt", "yuv420p",
