@@ -1883,13 +1883,22 @@
     var ant = anteprimaHtml(x);
     return '<a class="card tes" href="' + link(x) + '"><div class="mini">' + ant + '</div><div class="t">' + didascalia(x) + '<small>' + compEtichetta(x, true) + quando(x.quando) + ' · ' + durata(x.durata) + '</small></div></a>';
   }
+  // DOVE SI APRE. La finestra (dentro-fuori) e' larga apposta, per il montaggio;
+  // chi clicca vuole vedere la giocata. Quando il secondo l'ha detto
+  // l'inquadratura (palla in rete, parata, palo) si apre poco prima: per il gol
+  // e l'assist sette secondi, il cross o il passaggio ci stanno dentro
+  var RINCORSA = { "gol": 7, "assist": 7, "nel gol": 7, "autogol": 7, "tiro": 6, "tiro parato": 6, "parata": 6, "palo": 6, "passaggio chiave": 7 };
+  function apriA(x){
+    if (x.certezza !== "inquadratura" || x.t === undefined) return x.dentro;
+    return Math.max(0, x.t - (RINCORSA[x.ruolo] || (x.gol ? 7 : 8)));
+  }
   function tesseraAzione(x, ev, link){
     // la partita non e' ancora sulla NAS: sotto, il fondo blu col suo nome
     var ta = tipoAzione(x), sotto = anteprimaHtml(ev || { partita: x.partita, titolo: x.partita, quando: x.quando ? new Date(x.quando).toISOString() : "" });
     var fonte = (x.fonti || [x.fonte]).filter(Boolean).join(" + ");
     // il fotogramma si puo' fare solo se la partita e' sulla NAS
     var casa = !!(ev && !ev.s3);
-    return '<a class="card tes az" href="' + link(x, x.dentro) + '" data-reg="' + esc(x.reg || "") + '" data-rec="' + esc(casa ? (x.rec || "") : "") + '" data-t="' + Math.round(x.t || 0) + '">' +
+    return '<a class="card tes az" href="' + link(x, apriA(x)) + '" data-reg="' + esc(x.reg || "") + '" data-rec="' + esc(casa ? (x.rec || "") : "") + '" data-t="' + Math.round(x.t || 0) + '">' +
       '<div class="mini">' + sotto + '<div class="foto"></div><div class="sopra"><div class="su"><span class="tipo-az ' + ta.cl + '">' + esc(ta.eti) + '</span>' +
         (x.minuto ? '<span class="minuto">' + esc(String(x.minuto).replace(/'?$/, "'")) + '</span>' : '') + '</div><div class="giu">' + esc(fonte) + (!ev || ev.s3 ? ' \u00b7 in arrivo sulla NAS' : '') + '</div></div></div>' +
       '<div class="t"><div class="testo">' + evidenzia(x.titolo || x.giocatore || "", Q) + '</div><small>' + (ev ? compEtichetta(ev, true) : '') + esc(ev ? (ev.squadre ? ev.squadre.map(function(s){ return s.nome; }).join(" – ") + (ev.ris ? " " + ev.ris.join("-") : "") : nomeDi(ev)) : x.partita) + '</small></div></a>';

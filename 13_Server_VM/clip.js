@@ -1197,6 +1197,7 @@ function etichettaAzione(tipo, titolo) {
 //  sull'azione. Quindi quando due righe raccontano la stessa cosa: l'ora
 //  la mette chi ce l'ha piu' precisa, il testo lo mette chi dice di piu'.
 function precisioneDi(x) {
+  if (x.momento) return 6;                 // l'inquadratura: al secondo
   if (x.tabellone) return 5;
   // IL BOATO MANCAVA DA QUESTA SCALA. Una riga inchiodata al secondo dallo
   // stadio che non prende fiato vale piu' del minuto ufficiale di ESPN, che
@@ -1222,6 +1223,7 @@ function fondiDue(a, b) {
   fuso.t = ora.t !== undefined ? ora.t : ora.dentro;
   fuso.dentro = ora.dentro; fuso.fuori = ora.fuori; fuso.base = ora.dentro;
   fuso.tabellone = a.tabellone || b.tabellone || "";
+  fuso.momento = ora.momento || 0;
   fuso.minuto = a.minuto || b.minuto || "";
   fuso.rating = Math.max(a.rating || 0, b.rating || 0);
   fuso.peso = Math.max(a.peso || 1, b.peso || 1);
@@ -1541,12 +1543,30 @@ function quelloCheSappiamo(r) {
       x.dentro = w.dentro; x.fuori = w.fuori; x.base = x.dentro;
     });
   }
+  // POI L'INQUADRATURA, che viene per ultima perche' e' la piu' precisa:
+  //  il tabellone sa il gol entro venti secondi, il boato entro una decina;
+  //  la regia che passa dalla camera larga ai primi piani lo sa al secondo.
+  //  Misurata una volta dal giro della casa (puntaMomenti), per chiave di
+  //  riga e in secondi del FILE: si riporta in qualunque coordinata.
+  // (dopo aver tolto i doppioni: e' sulle righe fuse che si e' misurato)
+  const squadre = new Set(nomiDentro({ titolo: ((ARCHIVIO[rec] || {}).partita || r.titolo || "") }));
+  const fuse = togliDoppioni(azioni, 45, squadre);
+  const mom = (ARCHIVIO[rec] || {}).momenti;
+  if (mom) fuse.forEach((x) => {
+    const m = mom[chiaveRiga(x)]; if (!m || m.sec === null || m.sec === undefined) return;
+    const t = x.t !== undefined ? x.t : x.dentro + APP_PRE;
+    const p = pezzoAl(r, t); if (!p || !p.pezzo || (p.pezzo.chiave && m.chiave && p.pezzo.chiave !== m.chiave)) return;
+    const nuovo = t + (m.sec - p.dentro);
+    if (Math.abs(nuovo - t) > 150) return;
+    x.spostato = Math.round(t - nuovo); x.t = nuovo; x.momento = 1;
+    const w = finestraGol(nuovo, rec, true);
+    x.dentro = w.dentro; x.fuori = w.fuori; x.base = x.dentro;
+  });
   // con maniglie larghe due azioni vicine si sovrappongono: si sta piu' larghi
   // anche nel togliere i doppioni
   // le parole del nome della partita: servono a non scambiare una squadra
   // per un giocatore quando si decide se due righe sono lo stesso gol
-  const squadre = new Set(nomiDentro({ titolo: ((ARCHIVIO[rec] || {}).partita || r.titolo || "") }));
-  return { azioni: togliDoppioni(azioni, 45, squadre), gol: uniscoIGol(gol, rec), voce: voceScelta,
+  return { azioni: fuse, gol: uniscoIGol(gol, rec), voce: voceScelta,
            boati: boati, altrove: altrove, stelle: (a && a.stelle) || 0 };
 }
 
@@ -1573,6 +1593,7 @@ function tabellino(r) {
   //   cronometro -> il numero in sovrimpressione l'abbiamo letto: e' esatto
   //   minuto     -> sappiamo solo il minuto scritto: e' una stima
   const comeLoSappiamo = (t, x) => {
+    if (x && x.momento) return "inquadratura";
     if (x && x.tabellone) return "tabellone";
     if (x && x.boato) return "boato";
     if (a && vicinoNella(a.gol, t)) return "cronometro";
@@ -1588,8 +1609,9 @@ function tabellino(r) {
     // se quell'azione e' un gol, la finestra buona e' quella larga del gol,
     // non le maniglie corte dell'azione: dentro c'e' anche l'esultanza
     const g = golVicino(t);
-    const dentro = g ? g.dentro : x.dentro;
-    const fuori = g ? g.fuori : x.fuori;
+    // una riga messa al secondo dall'inquadratura tiene la sua finestra
+    const dentro = g && !x.momento ? g.dentro : x.dentro;
+    const fuori = g && !x.momento ? g.fuori : x.fuori;
     return {
       t: Math.round(t * 10) / 10,
       dentro: Math.round(dentro * 10) / 10,
@@ -1598,7 +1620,7 @@ function tabellino(r) {
       fonte: x.fonte || "", peso: x.peso || 1, rating: x.rating || 0,
       squadra: x.squadra || "", giocatore: x.giocatore || "",
       dettaglio: String(x.dettaglio || "").slice(0, 200),
-      gol: !!g || !!x.tabellone, certezza: comeLoSappiamo(t, x),
+      gol: !!g || !!x.tabellone || !!(x.momento && /\b(gol|goal|rete)\b/i.test((x.tipo || "") + " " + (x.titolo || ""))), certezza: comeLoSappiamo(t, x),
       tabellone: x.tabellone || "", boato: x.boato || 0,
       spostato: x.spostato === undefined ? 0 : x.spostato,
       tag: etichettaAzione(x.tipo, x.titolo),
@@ -6134,6 +6156,7 @@ function passoCasa(rec, a) {
   if (!a.orologio && !a.orologioFallito) return "cronometro";
   if (a.orologio && !a.tabellone && !a.tabelloneFallito) return "tabellone";
   if (!a.boatiFatti && ((APPUNTI[rec] || {}).righe || []).length + (((ESPN[rec] || {}).eventi) || []).length) return "boati";
+  if (a.boatiFatti && !a.momentiFatti && ((APPUNTI[rec] || {}).righe || []).length + (((ESPN[rec] || {}).eventi) || []).length) return "momenti";
   return null;
 }
 function inCasaDaLavorare() {
@@ -6159,6 +6182,7 @@ async function giroCasa() {
     else if (passo === "cronometro") await calibraOrologio(rec);
     else if (passo === "tabellone") { const t = await leggiTabellone(rec); NOMI.fatte++; if (t && t.verificato) NOMI.verificate++; }
     else if (passo === "boati") await puntaBoati(rec);
+    else if (passo === "momenti") await puntaMomenti(rec);
     CASA.fatte++;
   } catch (e) {
     CASA.fallite++;
@@ -6169,6 +6193,7 @@ async function giroCasa() {
     else if (passo === "cronometro") a.orologioFallito = { quando: new Date().toISOString(), motivo: perche.slice(0, 80) };
     else if (passo === "tabellone") { a.tabelloneFallito = perche; NOMI.fallite++; }
     else if (passo === "boati") a.boatiFatti = new Date().toISOString();
+    else if (passo === "momenti") a.momentiFatti = new Date().toISOString();
     scriviArchivio();
   } finally {
     CASA.attive.delete(rec);
@@ -6176,7 +6201,7 @@ async function giroCasa() {
   }
 }
 function statoCasa() {
-  const n = { partite: 0, espn: 0, appunti: 0, cronometro: 0, tabellone: 0, boati: 0, finite: 0, studio: 0 };
+  const n = { partite: 0, espn: 0, appunti: 0, cronometro: 0, tabellone: 0, boati: 0, momenti: 0, finite: 0, studio: 0 };
   Object.keys(ARCHIVIO).forEach((k) => {
     const a = ARCHIVIO[k];
     if (!a || !a.chiave || !magazzinoInventario(a.bucket) || !inCasa(a)) return;
@@ -6186,6 +6211,7 @@ function statoCasa() {
     if (a.orologio || a.orologioFallito) n.cronometro++;
     if (a.tabellone || a.tabelloneFallito) n.tabellone++;
     if (a.boatiFatti) n.boati++;
+    if (a.momentiFatti) n.momenti++;
     if (a.orologio && a.orologio.inizio1 > 600) n.studio++;
     if (!passoCasa(k, a)) n.finite++;
   });
@@ -7456,6 +7482,7 @@ async function archivioScandaglia(p) {
       const stessaRoba = prima.dove === meglio.dove && prima.bucket === bucket;
       const letture = stessaRoba
         ? { orologio: prima.orologio, tabellone: prima.tabellone, boati: prima.boati,
+            momenti: prima.momenti, momentiFatti: prima.momentiFatti,
             gol: prima.gol, replay: prima.replay, misurato: prima.misurato, stelle: prima.stelle }
         : { orologio: prima.orologio };
       ARCHIVIO[rec.id] = Object.assign(letture, { bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
@@ -10435,6 +10462,78 @@ function pezzoDellaRiga(a, t) {
   if (pz.length <= 1) return { chiave: (pz[0] || a).chiave || a.chiave, sec: t };
   let i = 0; pz.forEach((x, k) => { if (x.da <= t) i = k; });
   return { chiave: pz[i].chiave, sec: Math.max(0, t - pz[i].da) };
+}
+// ── IL MOMENTO VERO, DALL'INQUADRATURA ────────────────────────────────
+//  "Assist Diao: passano una decina di secondi prima dell'assist" (Goffredo,
+//  26/09/2026). Il tabellone sa il gol entro venti secondi e ci toglie otto
+//  secondi fissi di ritardo; su Como-Pisa il tabellone cambia insieme alla
+//  palla in rete, e la clip partiva 25 s prima del cross. La regia invece
+//  lo dice al secondo: finche' si gioca c'e' la camera larga, e quando la
+//  palla entra (o il portiere para, o si prende il palo) si passa ai primi
+//  piani e ci si resta. Il momento e' la FINE dell'ultima camera larga
+//  lunga seguita dai primi piani (le regole di momentoDelGol), scegliendo
+//  quella piu' vicina al punto stimato, dentro una finestra che dipende
+//  da quanto la stima e' buona. Su Como-Pisa: larga fino a 2138, primi
+//  piani dal 2139, palla in rete a 2138-2140.
+const DA_MOMENTO = /gol|goal|rete|rigore|espuls|rosso|traversa|palo|parat|occasion|tiro/i;
+// Qui il movimento conta poco: in un contropiede la camera larga fa una
+// panoramica veloce (moto 30-45) e con la soglia della ripartenza sembrava un
+// primo piano — il gol di Diao in Como-Pisa non si trovava. Il primo piano si
+// riconosce gia' dal prato in cima al quadro, il pubblico dal prato che manca.
+// E il quarto alto: col gioco vicino alla telecamera la camera larga si
+// inclina e in cima entra prato (0,15-0,23); i primi piani stanno sopra 0,68.
+function larghiMomento(campo) { return campo.map((x) => x.prato > 0.4 && x.alto < 0.35 && x.moto < 45); }
+function momentiNelCampo(campo) {
+  const largo = larghiMomento(campo), LUNGA = 6, DOPO = 8, fuori = [];
+  for (let i = LUNGA - 1; i + DOPO < largo.length; i++) {
+    if (!largo[i] || largo[i + 1]) continue;
+    let lunga = 0; for (let j = i; j >= 0 && largo[j]; j--) lunga++;
+    if (lunga < LUNGA) continue;
+    let stretti = 0; for (let j = i + 1; j <= i + DOPO; j++) if (!largo[j]) stretti++;
+    if (stretti < DOPO - 2) continue;
+    fuori.push(i);
+  }
+  return fuori;
+}
+// dove cercare, rispetto al punto stimato: il tabellone e' otto secondi
+// prima del cambio di punteggio (che sta entro sette); il boato e' l'inizio
+// del grido; il minuto scritto cade spesso sul replay, cioe' dopo
+const FINESTRE_MOMENTO = { tabellone: [-25, 10, 8], boato: [-20, 12, 0], minuto: [-90, 30, 0] };
+async function puntaMomenti(rec) {
+  const a = ARCHIVIO[rec];
+  if (!a) throw new Error("questa partita non e' nell'indice dell'archivio");
+  const finto = { arch: { rec: rec, pezzo: 0, pezzi: a.pezzi, chiave: a.chiave }, durata: 0 };
+  const sap = quelloCheSappiamo(finto);
+  a.momenti = a.momenti || {};
+  const regione = await s3Regione(a.bucket);
+  let cercati = 0, trovati = 0;
+  for (const x of sap.azioni) {
+    if (x.momento || !DA_MOMENTO.test(String(x.tipo || "") + " " + String(x.titolo || ""))) continue;
+    const k = chiaveRiga(x); if (a.momenti[k]) continue;
+    if (registrandoDavvero() || laDirettaGira()) break;          // si riprende al prossimo giro
+    const cert = x.tabellone ? "tabellone" : x.boato ? "boato" : "minuto";
+    const fin = FINESTRE_MOMENTO[cert];
+    const t = x.t !== undefined ? x.t : x.dentro + APP_PRE;
+    const p = pezzoAl(finto, t); if (!p || !p.pezzo) continue;
+    const chiave = p.pezzo.chiave || a.chiave, stima = p.dentro + fin[2];
+    const da = Math.max(0, Math.round(stima + fin[0]));
+    cercati++;
+    let campo = [];
+    try { campo = await guardaIlCampo(firmaConRegione(regione, chiave, {}, 3600, a.bucket), da, fin[1] - fin[0] + 10, 1); } catch (e) { campo = []; }
+    const esito = { chiave: chiave, sec: null, stima: Math.round(stima), cert: cert };
+    if (campo.length >= 20) {
+      const vicino = (i) => { const d = campo[i].s - stima; return Math.abs(d) * (cert === "minuto" && d > 0 ? 2 : 1); };
+      const c = momentiNelCampo(campo).filter((i) => campo[i].s >= stima + fin[0] && campo[i].s <= stima + fin[1])
+        .sort((u, v) => vicino(u) - vicino(v))[0];
+      if (c !== undefined) { esito.sec = Math.round(campo[c].s); trovati++; }
+    } else esito.perche = "poco video";
+    a.momenti[k] = esito;
+    if (cercati % 5 === 0) scriviArchivio();
+  }
+  if (!registrandoDavvero() && !laDirettaGira()) a.momentiFatti = new Date().toISOString();
+  scriviArchivio();
+  if (cercati) console.log("[clip] momenti: " + (a.partita || rec) + " → " + trovati + " su " + cercati + " azioni al secondo");
+  return { cercati, trovati };
 }
 // le righe che possono fare rumore: un cambio non lo fa, un gol si'
 const DA_BOATO = /gol|rete|rigore|espuls|rosso|traversa|palo|parat/i;
@@ -14095,6 +14194,13 @@ const AZIONI = {
     a.partita = t; scriviArchivio(); STEMMI_CACHE.clear();
     return { ok: true, rec: p.rec, titolo: t };
   },
+  // il momento dall'inquadratura, a mano su una partita (rifai: si riparte da zero)
+  "clip-momenti": async (p) => {
+    const a = ARCHIVIO[String(p.rec || "")]; if (!a) return { ok: false, errore: "partita sconosciuta" };
+    if (p.rifai) { delete a.momenti; delete a.momentiFatti; }
+    const esito = await puntaMomenti(String(p.rec));
+    return { ok: true, esito, momenti: a.momenti };
+  },
   "clip-espn-rileggi": (p) => {
     if (p.avvia) giroRileggiEspn().catch(() => {});
     return { ok: true, stato: RILEGGI };
@@ -14237,6 +14343,20 @@ const AZIONI = {
         const a = ARCHIVIO[rec], ap = APPUNTI[rec], es = ESPN[rec];
         if (!a || !(a.pezzi || []).length) return;
         if (!ap && !(es && es.eventi && es.eventi.length)) return;
+        // CON LE LETTURE (cronometro, tabellone, boati, inquadratura) la
+        // partita passa dal tabellino vero, come quelle aperte: il minuto
+        // scritto da solo sbaglia di mezzo minuto e piu'
+        if (a.orologio && (a.momenti || (a.boati || []).length || (a.tabellone && a.tabellone.punti))) {
+          const fr = { titolo: a.partita || rec, arch: { rec: rec, chiave: a.chiave, bucket: a.bucket, pezzi: a.pezzi, pezzo: 0 },
+                       avviata: Date.parse(a.quando) || 0, finita: 0, finto: true };
+          try {
+            const tb = tabellino(fr).righe.map((x) => {
+              const pa = pezzoAl(fr, x.dentro);
+              return Object.assign({}, x, { chiave: (pa && pa.pezzo && pa.pezzo.chiave) || a.chiave, dentroFile: pa ? pa.dentro : x.dentro });
+            });
+            if (tb.length) { per["arch:" + rec] = tb; finti["arch:" + rec] = fr; return; }
+          } catch (e) {}
+        }
         const righe = [], rit = ritardoPartita(rec);
         const dove = (s, d) => { const x = secondoNelFile(rec, { s: s, d: Math.max(0, d) }); if (!x) return null; const pz = (a.pezzi || [])[x.pezzo]; return { t: ((pz && pz.da) || 0) + x.secondi, chiave: x.chiave, dentroFile: x.secondi }; };
         if (ap) (ap.righe || []).forEach((x) => {
