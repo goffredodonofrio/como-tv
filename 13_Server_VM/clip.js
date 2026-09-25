@@ -3281,12 +3281,16 @@ function ricorda(q) {
   if (!q || !q.id) return;
   let p = PASSI.get(q.id);
   if (!p) { p = { indietro: [], avanti: [] }; PASSI.set(q.id, p); }
+  if (GIRO_AZIONE && p.giro === GIRO_AZIONE) return;   // questo comando ha gia' il suo passo
   const t = JSON.stringify(q);
   // se e' identica all'ultima messa da parte, non e' un passo: e' lo stesso
   // punto. Senza questo controllo un comando che chiama due volte il gancio
   // costerebbe due ⌘Z per tornare indietro di una mossa sola.
-  if (p.indietro.length && p.indietro[p.indietro.length - 1] === t) { p.avanti.length = 0; return; }
-  p.indietro.push(t);
+  if (p.indietro.length && p.indietro[p.indietro.length - 1].t === t) { p.avanti.length = 0; return; }
+  const voce = { t: t, cosa: PASSO_IN_CORSO || "Modifica", quando: Date.now() };
+  ULTIMO_PASSO = { pila: p, voce: voce, giro: GIRO_AZIONE, avanti: p.avanti.slice() };
+  p.indietro.push(voce);
+  p.giro = GIRO_AZIONE;
   if (p.indietro.length > QUANTI_PASSI) p.indietro.shift();
   p.avanti.length = 0;            // si riscrive la storia: il "rifai" decade
 }
@@ -3301,6 +3305,27 @@ function rimetti(q, testo) {
   return q;
 }
 
+// LA CRONOLOGIA. I passi fatti (dal piu' vecchio) e quelli annullati (dal
+// prossimo da rifare), col loro nome. E un salto: si torna al passo scelto
+// annullando o rifacendo quanti passi servono, uno per uno, come fa Annulla.
+function storiaSeq(p) {
+  const q = seqDi(p);
+  const st = PASSI.get(q.id) || { indietro: [], avanti: [] };
+  const riga = (x) => ({ cosa: x.cosa || "Modifica", quando: x.quando || 0 });
+  return { ok: true, fatti: st.indietro.map(riga), disfatti: st.avanti.slice().reverse().map(riga) };
+}
+function storiaVai(p) {
+  const n = Math.round(+p.passi || 0);
+  if (!n) return storiaSeq(p);
+  let ultimo = null;
+  for (let i = 0; i < Math.abs(n); i++) {
+    const r = annullaSeq(p, n > 0);
+    if (!r.ok) break;
+    ultimo = r;
+  }
+  const s0 = storiaSeq(p);
+  return { ok: true, seq: ultimo ? ultimo.seq : seqDi(p), fatti: s0.fatti, disfatti: s0.disfatti };
+}
 function annullaSeq(p, avanti) {
   const q = seqDi(p);
   const st = PASSI.get(q.id);
@@ -3309,8 +3334,10 @@ function annullaSeq(p, avanti) {
     return { ok: false, errore: avanti ? "non c'e' niente da rifare" : "non c'e' altro da annullare" };
   }
   const altra = avanti ? st.indietro : st.avanti;
-  altra.push(JSON.stringify(q));
-  rimetti(q, pila.pop());
+  const passo = pila.pop();
+  // il passo cambia pila ma resta lui: col suo nome e la sua ora
+  altra.push({ t: JSON.stringify(q), cosa: passo.cosa, quando: passo.quando });
+  rimetti(q, passo.t);
   normalizzaSeq(q);
   segnaPezziLocali(q);
   scrivi(); annuncia(0, "clip");
@@ -13209,6 +13236,8 @@ const AZIONI = {
   },
   "clip-tabellino-monta": tabellinoMonta,
   "clip-hl-annulla": (p) => annullaSeq(p, false),
+  "clip-hl-storia": storiaSeq,
+  "clip-hl-storia-vai": storiaVai,
   "clip-hl-rifai": (p) => annullaSeq(p, true),
   "clip-hl-audio": hlAudio,
   // le onde: la pagina chiede quelle che le mancano, poche alla volta, e
@@ -13346,12 +13375,71 @@ function rimettiInRiga(d) {
   return d;
 }
 
+// IL NOME DEL PASSO, per la Cronologia. In Premiere ogni riga della
+// Cronologia dice che cosa e' stato fatto — Taglierino, Sposta, Cancella —
+// e non "modifica 14". Il comando che sta girando lo sa, e lo dice qui.
+let PASSO_IN_CORSO = "";
+// UN COMANDO, UN PASSO. Molti comandi mettono da parte la sequenza due
+// volte — "com'era prima" e poi toccataAMano — e fra le due il pezzo e' gia'
+// entrato: nella pila finivano due passi, e il primo cmd Z dopo un
+// Inserisci rimetteva la sequenza... com'era gia'. Niente di visibile, e si
+// pensava che Annulla non funzionasse. Adesso ogni comando ha il suo
+// numero e nella pila entra una volta sola, col suo stato di PRIMA.
+let GIRO_AZIONE = 0;
+// UN COMANDO RIFIUTATO NON LASCIA UN PASSO. Molti comandi mettono da parte
+// la sequenza prima di controllare se possono fare quello che gli si chiede
+// ("pezzo sconosciuto", "traccia bloccata"...). Il comando si rifiutava,
+// ma nella pila di Annulla restava un passo — e il cmd Z successivo non
+// cambiava niente. Qui si ricorda l'ultimo passo messo da parte, e se il
+// comando fallisce si toglie, rimettendo anche i "rifai" che aveva spento.
+let ULTIMO_PASSO = null;
+function togliPassoFantasma(giro) {
+  const u = ULTIMO_PASSO;
+  if (!u || u.giro !== giro) return;
+  if (u.pila.indietro.length && u.pila.indietro[u.pila.indietro.length - 1] === u.voce) {
+    u.pila.indietro.pop();
+    u.pila.avanti = u.avanti;
+    u.pila.giro = 0;
+  }
+  ULTIMO_PASSO = null;
+}
+function nomeDelPasso(p) {
+  const t = String(p.tipo || "");
+  if (t === "clip-hl-pezzo") {
+    if (p.togli) return "Cancella";
+    if (p.velocita !== undefined) return "Velocit\u00e0/durata";
+    if (p.colore !== undefined) return "Colore";
+    if (p.transizione !== undefined) return "Transizione";
+    if (p.traccia !== undefined) return "Sposta di traccia";
+    if (p.riquadro !== undefined) return "Riquadro";
+    if (p.titolo !== undefined) return "Rinomina clip";
+    if (p.dentro !== undefined || p.fuori !== undefined) return "Taglio";
+    return "Modifica clip";
+  }
+  if (t === "clip-hl-audio") {
+    const a = String(p.azione || "");
+    return { scollega: "Scollega", collega: "Collega", traccia: "Traccia", gain: "Guadagno audio",
+             volume: "Volume", muto: "Disattiva audio clip", togli: "Elimina audio", sposta: "Sposta audio" }[a] || "Audio";
+  }
+  return ({ "clip-hl-inserisci": "Inserisci", "clip-hl-dividi": "Taglierino", "clip-hl-sposta": "Sposta",
+            "clip-hl-ordina": "Riordina", "clip-hl-attacca": "Chiudi gli spazi vuoti", "clip-hl-aggiungi": "Aggiungi clip",
+            "clip-hl-metti-media": "Importa materiale", "clip-hl-imposta": "Impostazioni sequenza",
+            "clip-hl-titolo": "Testo", "clip-hl-grafica": "Grafica", "clip-hl-inquadra": "Inquadratura" })[t] || "Modifica";
+}
 function azione(p) {
   const f = AZIONI[p.tipo];
   if (!f) throw new Error("tipo di invio sconosciuto: " + p.tipo);
   if (String(p.tipo || "").indexOf("clip-") !== 0) return f(p);
-  const d = f(p);
-  return (d && typeof d.then === "function") ? d.then(rimettiInRiga) : rimettiInRiga(d);
+  PASSO_IN_CORSO = nomeDelPasso(p);
+  const giro = ++GIRO_AZIONE;
+  let d;
+  try { d = f(p); } catch (e) { togliPassoFantasma(giro); throw e; }
+  if (d && typeof d.then === "function") {
+    return d.then((x) => { if (x && x.ok === false) togliPassoFantasma(giro); return rimettiInRiga(x); },
+                  (e) => { togliPassoFantasma(giro); throw e; });
+  }
+  if (d && d.ok === false) togliPassoFantasma(giro);
+  return rimettiInRiga(d);
 }
 
 function avvio(opz) {

@@ -251,6 +251,16 @@
   .pan-corpo.ed-bin{border-right:0;background:transparent;}
   .pan-corpo.tl-corpo{display:flex;flex-direction:column;overflow:hidden;}
   .eff-vuoto{padding:14px 12px;color:var(--fumo);font-size:12px;}
+  /* LA CRONOLOGIA, come in Premiere: un passo per riga, quello dove sei e'
+     acceso, quelli annullati sono spenti ma si possono ancora riprendere. */
+  .storia{display:flex;flex-direction:column;padding:4px 0;}
+  .storia a{display:flex;align-items:center;gap:10px;padding:5px 12px;font-size:12px;color:var(--ivory2);cursor:pointer;border-left:3px solid transparent;}
+  .storia a:hover{background:rgba(245,241,230,.05);}
+  .storia a.ora{background:rgba(201,162,75,.16);border-left-color:var(--oro);color:var(--ivory);}
+  .storia a.futuro{color:var(--fumo);font-style:italic;}
+  .storia a span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .storia a i{font:10.5px ui-monospace,Menlo,monospace;color:var(--fumo);font-style:normal;}
+  .storia .nota{padding:8px 12px;color:var(--fumo);font-size:11px;}
   .meta-corpo{padding:10px 12px;display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px;align-content:start;}
   .meta-corpo dt{color:var(--fumo);} .meta-corpo dd{margin:0;color:var(--ivory2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .meta-corpo dd.tc{font:12px ui-monospace,Menlo,monospace;color:var(--oro2);}
@@ -723,7 +733,7 @@
       <div class="ed-maniglia" id="edManiglia" title="trascina per dare piu’ o meno spazio alla timeline"><span></span></div>
       <div class="ws-giu">
         <section class="pan" data-pan="progetto">
-          <header class="pan-schede"><button class="scheda on" data-scheda="progetto">Progetto</button><button class="scheda" data-scheda="materiale">Materiale di casa</button><button class="scheda" data-scheda="esporta">Esporta</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
+          <header class="pan-schede"><button class="scheda on" data-scheda="progetto">Progetto</button><button class="scheda" data-scheda="materiale">Materiale di casa</button><button class="scheda" data-scheda="esporta">Esporta</button><button class="scheda" data-scheda="cronologia">Cronologia</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
           <div class="pan-corpo ed-bin" data-corpo="progetto"><div class="capo">Pezzi <span id="binConto"></span></div><div class="corpo" id="bin" tabindex="0"></div></div>
           <div class="pan-corpo" data-corpo="materiale" hidden>
           <div id="tendaMedia" class="tenda-scheda">
@@ -736,6 +746,7 @@
           <div class="elenco" id="mediaElenco"></div>
           </div>
           </div>
+          <div class="pan-corpo" data-corpo="cronologia" hidden><div id="storiaElenco" class="storia"></div></div>
           <div class="pan-corpo ed-lato" data-corpo="esporta" hidden>
             <div class="sez2"><h4>Sequenza</h4><div class="riga2"><span id="eInfo" style="color:var(--fumo)"></span></div>
             <div class="riga2"><button class="mini" id="eCasa" title="scarica i pezzi sulla VM: riproduzione immediata ed export senza attese">Pezzi in casa</button><button class="mini" id="eXml" title="l'XML per Premiere con l'SRT a fianco">XML Premiere</button><button class="mini" id="eRinomina">Rinomina</button><button class="mini" id="eProg" title="in quale progetto sta questa sequenza">Progetto</button></div>
@@ -1754,7 +1765,7 @@
       giroUscite();
     }).catch(function(e){ avviso("err", esc(e.message)); });
   }
-  function ricaricaSeq(q){ if (q) { SEQ = q; PZ = SEQ.pezzi || []; GRAF = SEQ.grafiche || []; AUD = SEQ.audio || []; } SELS = SELS.filter(function(id){ return PZ.some(function(z){ return z.id === id; }); }); SEL = SELS.length ? SELS[SELS.length - 1] : null;
+  function ricaricaSeq(q){ if (q) { SEQ = q; PZ = SEQ.pezzi || []; GRAF = SEQ.grafiche || []; AUD = SEQ.audio || []; if (typeof disegnaStoria === "function") setTimeout(disegnaStoria, 0); } SELS = SELS.filter(function(id){ return PZ.some(function(z){ return z.id === id; }); }); SEL = SELS.length ? SELS[SELS.length - 1] : null;
     // togliendo pezzi la lente restava larga com'era e la timeline finiva
     // per essere due terzi di vuoto: si stringe su quello che c'e'
     var d0 = durSeq(); if (LENTE.b > d0 + 1 || LENTE.b - LENTE.a < 1) LENTE = { a: 0, b: Math.max(10, d0) }; el("eMeta").textContent = (REGE.titolo || "") + " · " + PZ.length + " pezzi · " + tc(durSeq());
@@ -3438,6 +3449,7 @@
     if (!senzaAttivare) attivaPannello(pan.dataset.pan);
     if (k === "materiale") caricaMateriale();
     if (k === "metadati") disegnaMetadati();
+    if (k === "cronologia") disegnaStoria();
   }
   function massimizza(n){
     var ws = el("ws");
@@ -3507,6 +3519,35 @@
   // le schede scelte l'ultima volta
   Object.keys(WS.schede).forEach(function(pn){ if (WS.schede[pn]) mostraScheda(WS.schede[pn], true); });
   attivaPannello("timeline");
+
+  // ── CRONOLOGIA: la pila di Annulla, con un nome per ogni passo ─────
+  //  Cliccando un passo si torna li': si annullano (o si rifanno) quanti
+  //  passi servono, uno per uno, come se si premesse cmd Z tante volte.
+  function oraBreve(ms){ try { return ms ? new Date(ms).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : ""; } catch (e) { return ""; } }
+  function disegnaStoria(){
+    var c = el("storiaElenco"); if (!c || !SEQ) return;
+    var corpo = c.closest(".pan-corpo"); if (corpo && corpo.hidden) return;
+    post({ tipo:"clip-hl-storia", seq: SEQ.id }).then(function(d){
+      var fatti = d.fatti || [], disf = d.disfatti || [];
+      var h = '<a data-passi="' + (-fatti.length) + '" class="' + (fatti.length ? "" : "ora") + '"><span>Apertura</span><i></i></a>';
+      fatti.forEach(function(x, i){
+        h += '<a data-passi="' + (-(fatti.length - 1 - i)) + '" class="' + (i === fatti.length - 1 ? "ora" : "") + '"><span>' + esc(x.cosa) + "</span><i>" + oraBreve(x.quando) + "</i></a>";
+      });
+      disf.forEach(function(x, j){
+        h += '<a data-passi="' + (j + 1) + '" class="futuro" title="annullato: clic per rifarlo"><span>' + esc(x.cosa) + "</span><i>" + oraBreve(x.quando) + "</i></a>";
+      });
+      if (!fatti.length && !disf.length) h += '<div class="nota">Ancora nessun passo: ogni modifica alla sequenza compare qui, e ci si puo\u2019 tornare con un clic.</div>';
+      c.innerHTML = h;
+      var o = c.querySelector("a.ora"); if (o) o.scrollIntoView({ block: "nearest" });
+    }).catch(function(){});
+  }
+  el("storiaElenco").addEventListener("click", function(e){
+    var a = e.target.closest("a[data-passi]"); if (!a || !SEQ) return;
+    var n = +a.dataset.passi; if (!n) return;
+    post({ tipo:"clip-hl-storia-vai", seq: SEQ.id, passi: n })
+      .then(function(d){ if (d.seq) ricaricaSeq(d.seq); disegnaEditor(); disegnaStoria(); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  });
 
   // ── METADATI: la carta d'identita' della clip scelta ───────────────
   function disegnaMetadati(){
