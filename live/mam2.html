@@ -595,12 +595,12 @@
   .copia.ferma .copia-barra i.casa,.copia.finita .copia-barra i.casa{animation:none;}
   .copia-dati{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px;color:var(--ivory2);}
   .copia-dati span b{color:var(--ivory);font-weight:600;}
-  .copia-vivo{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 18px;align-items:end;}
+  .copia-vivo{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px 20px;align-items:start;}
   .copia-vivo div{display:flex;flex-direction:column;gap:2px;min-width:0;}
   .copia-vivo small{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--fumo);}
-  .copia-vivo strong{font:600 19px ui-monospace,Menlo,monospace;color:var(--ivory);font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .copia-vivo strong{font:600 19px ui-monospace,Menlo,monospace;color:var(--ivory);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0 1px;}
   .copia-vivo strong.oro{color:var(--oro2);}
-  .copia-vivo em{font-style:normal;font-size:11.5px;color:var(--ivory2);font-variant-numeric:tabular-nums;}
+  .copia-vivo em{font-style:normal;font-size:11.5px;line-height:1.35;color:var(--ivory2);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .copia-grafico{position:relative;height:46px;}
   .copia-grafico canvas{width:100%;height:46px;display:block;}
   .copia-grafico span{position:absolute;right:0;top:0;font-size:10.5px;color:var(--fumo);}
@@ -5142,6 +5142,10 @@
   function quandoFine(ms){
     try { return new Date(ms).toLocaleString("it-IT", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; }
   }
+  // una casella dei numeri: etichetta, valore grande, due righe sotto (sempre due, cosi' si allineano)
+  function cella(tit, valore, r1, r2){ return '<div><small>' + tit + '</small>' + valore + '<em>' + (r1 || "&nbsp;") + '</em><em>' + (r2 || "&nbsp;") + '</em></div>'; }
+  function quandoOra(ms){ try { return new Date(ms).toLocaleString("it-IT", { weekday: "short", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } }
+  function quandoGiorno(ms){ try { return new Date(ms).toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" }); } catch (e) { return ""; } }
   function durataTesto(ms){
     var m = Math.max(0, Math.round(ms / 60000)), h = Math.floor(m / 60), g = Math.floor(h / 24);
     return g ? g + " g " + (h % 24) + " h" : h ? h + " h " + ("0" + (m % 60)).slice(-2) + " min" : m + " min";
@@ -5189,11 +5193,11 @@
         (d.inCorso ? '<em>' + d.inCorso + ' file insieme</em>' : '') + '<span class="perc">' + arr.toFixed(2).replace(".", ",") + '%</span></div>' +
       '<div class="copia-barra" title="velato: dati già arrivati, file a metà compresi · pieno: partite già tutte in casa"><i class="arr" style="width:' + arr.toFixed(2) + '%"></i><i class="casa" style="width:' + Math.max(0.4, perc).toFixed(2) + '%"></i></div>' +
       '<div class="copia-vivo">' +
-        '<div><small>Sulla NAS</small><strong class="oro" data-b="' + d.sullaNas + '" data-v="' + vOra + '">' + gbFine(d.sullaNas) + '</strong><em>di ' + gbTesto(d.byteTot) + '</em></div>' +
-        '<div><small>Velocità adesso</small><strong>' + (d.attiva ? mbs(d.velocitaOra) : "0 MB/s") + '</strong><em>' + (d.attiva && d.velocitaOra ? Math.round(d.velocitaOra * 8 / 1e6) + ' Mbit/s · ' : '') + 'media 10 min ' + mbs(d.velocita) + '</em></div>' +
-        '<div><small>Partite in casa</small><strong>' + d.partiteCasa.toLocaleString("it-IT") + '</strong><em>di ' + d.partite.toLocaleString("it-IT") + ' · ' + perc.toFixed(1).replace(".", ",") + '%</em></div>' +
-        '<div><small>Fine prevista</small><strong>' + (d.fine && !finita ? esc(quandoFine(d.fine)) : finita ? "fatto" : "—") + '</strong><em>' + (d.fine && !finita ? "tra " + durataTesto(d.fine - Date.now()) + " · mancano " + gbTesto(Math.max(0, d.byteTot - d.sullaNas)) : "la misuro…") + '</em></div>' +
-        (d.spesi !== null && d.spesi !== undefined ? '<div><small>Spesa S3</small><strong>' + d.spesi.toFixed(2).replace(".", ",") + ' $</strong><em>ne restano circa ' + (d.daSpendere || 0) + ' $ · tetto 450 $</em></div>' : '') +
+        cella("Sulla NAS", '<strong class="oro" data-b="' + d.sullaNas + '" data-v="' + vOra + '">' + gbFine(d.sullaNas) + '</strong>', "di " + gbTesto(d.byteTot), "mancano " + gbTesto(Math.max(0, d.byteTot - d.sullaNas))) +
+        cella("Velocità adesso", '<strong>' + (d.attiva ? mbs(d.velocitaOra) : "0 MB/s") + '</strong>', d.attiva && d.velocitaOra ? Math.round(d.velocitaOra * 8 / 1e6) + " Mbit/s" : "—", "media 10 min " + mbs(d.velocita)) +
+        cella("Partite in casa", '<strong>' + d.partiteCasa.toLocaleString("it-IT") + '</strong>', "di " + d.partite.toLocaleString("it-IT"), perc.toFixed(1).replace(".", ",") + "% dell’archivio") +
+        (finita ? cella("Fine", '<strong>fatto</strong>', "", "") : d.fine ? cella("Fine prevista", '<strong>' + esc(quandoOra(d.fine)) + '</strong>', esc(quandoGiorno(d.fine)), "tra " + durataTesto(d.fine - Date.now())) : cella("Fine prevista", '<strong>—</strong>', "la misuro…", "")) +
+        (d.spesi !== null && d.spesi !== undefined ? cella("Spesa S3", '<strong>' + d.spesi.toFixed(2).replace(".", ",") + ' $</strong>', "restano circa " + (d.daSpendere || 0) + " $", "tetto 450 $") : '') +
       '</div>' +
       (d.storia && d.storia.length > 1 ? '<div class="copia-grafico"><canvas></canvas><span></span></div>' : '') +
       (file.length ? '<div class="copia-titoletto">In arrivo adesso</div><div class="copia-file">' + file.map(function(f){
