@@ -4414,9 +4414,14 @@ function hlElimina(p) {
 // pubblica li vuole tutti, non uno.
 async function hlEsportaTutti(q, formati, p2) {
   q.esportati = q.esportati || {};
-  for (const f of formati) {
-    await hlEsportaVideo(q, f, true, p2);
+  // IL GIRO: quale formato di quanti, e da quando. La pagina ne fa una
+  // barra sola per tutto l'export, col tempo passato e quello che manca.
+  const inizio = Date.now();
+  for (let i = 0; i < formati.length; i++) {
+    q.exportGiro = { i: i, n: formati.length, inizio: inizio };
+    await hlEsportaVideo(q, formati[i], true, p2);
   }
+  delete q.exportGiro;
   q.export = { stato: "pronto", tutti: true, formati: formati,
                fatti: formati.length, quanti: formati.length };
   scrivi(); annuncia(0, "clip");
@@ -4851,7 +4856,8 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   await assicuraCanali(R.reg[q.reg]);
   const ritaglio = (FORMATI[formato] || FORMATI["16:9"]).vf;
   q.export = { stato: "lavora", formato: formato, fatti: 0, quanti: q.pezzi.length, file: "",
-               fase: "porto in casa i pezzi", tutti: !!dentroUnGiro };
+               fase: "porto in casa i pezzi", tutti: !!dentroUnGiro, avanza: 0,
+               inizio: Date.now(), giro: dentroUnGiro && q.exportGiro ? q.exportGiro : null };
   scrivi(); annuncia(0, "clip");
 
   // PRIMO: i pezzi in casa. Se ci sono gia' non si scarica niente; se
@@ -4859,7 +4865,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   const esito = await costruisciPezzi(q, (f, n) => {
     q.export.fatti = f; q.export.quanti = n || q.pezzi.length;
     q.export.fase = "porto in casa i pezzi";
-    q.export.avanza = n ? f / n * 0.5 : 0.5;
+    q.export.avanza = n ? f / n * 0.25 : 0.25;
     scrivi(); annuncia(0, "clip");
   });
   segnaPezziLocali(q);
@@ -4877,7 +4883,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     const daFare = q.pezzi.filter((x) => !(x.inquadra && x.inquadra[formato]));
     for (let i = 0; i < daFare.length; i++) {
       q.export.fase = "guardo dove inquadrare (" + (i + 1) + " di " + daFare.length + ")";
-      q.export.avanza = 0.5;
+      q.export.avanza = 0.25 + 0.1 * (i / daFare.length);
       scrivi(); annuncia(0, "clip");
       try {
         const pr = await proponiInquadratura(q, daFare[i], largoF);
@@ -5003,7 +5009,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     parti.push({ file: esatto });
     q.export.fatti = i + 1;
     q.export.fase = "taglio al fotogramma";
-    q.export.avanza = 0.5 + 0.4 * ((i + 1) / q.pezzi.length);
+    q.export.avanza = 0.35 + 0.25 * ((i + 1) / q.pezzi.length);
     scrivi(); annuncia(0, "clip");
   }
   if (!parti.filter((z) => z.file).length) throw new Error("nessun pezzo da esportare");
@@ -5119,7 +5125,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     fs.writeFileSync(listaFin, "file '" + unito + "'\n");
     console.log("[clip] esporto \"" + (q.titolo || q.id) + "\": stacchi sfumati, il montato dura " + Math.round(lungo) + "s");
   }
-  q.export.avanza = 0.92;
+  q.export.avanza = 0.6;
   q.export.fase = grafiche.length ? "incollo le grafiche" : (veloce ? "monto" : "monto");
   scrivi(); annuncia(0, "clip");
 
@@ -5232,17 +5238,30 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     // c'e' un montaggio sonoro sotto
     const mix = mixato ? costruisciMix(q, ingressi.filter((z) => z === "-i").length + 1) : null;
     const catenaTutta = catena + (mix && !mix.muta ? ";" + mix.catena.replace(/;$/, "") : "");
-    const args = ["-hide_banner", "-loglevel", "error", "-nostdin",
-      "-f", "concat", "-safe", "0", "-i", listaFin].concat(ingressi)
+    const args = ["-hide_banner", "-loglevel", "error", "-nostdin"].concat(CON_PROGRESSO).concat([
+      "-f", "concat", "-safe", "0", "-i", listaFin]).concat(ingressi)
       .concat(mix && !mix.muta ? mix.ingressi : []).concat([
       "-filter_complex", catenaTutta, "-map", "[" + ultimo + "]"])
       .concat(mix ? (mix.muta ? ["-an"] : ["-map", "[amix]"]) : ["-map", "0:a?"]).concat([
       "-c:v", "libx264", "-preset", CACHE_PRESET, "-crf", CACHE_CRF, "-pix_fmt", "yuv420p",
       "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-y", finale]);
+    // IL PASSAGGIO LUNGO SI MISURA: e' qui che se ne va il grosso del
+    // tempo, e con la barra ferma al 92% sembrava che l'export fosse morto.
+    // ffmpeg dice quanti secondi ha scritto; la sequenza quanti ne ha.
+    const totale = Math.max(1, (q.pezzi || []).reduce((m, x) => Math.max(m, (x.t0 || 0) + Math.max(0, x.fuori - x.dentro)), 0));
+    let ultimoAnnuncio = 0;
     await new Promise((si, no) => {
       const pr = spawn(FFMPEG, args, { stdio: ["ignore", "ignore", "pipe"] });
       let coda = "";
-      pr.stderr.on("data", (d) => { coda = (coda + d).slice(-1500); });
+      pr.stderr.on("data", (d) => {
+        // le righe chiave=valore sono il progresso: per l'errore si tiene il resto
+        coda = (coda + String(d).replace(/^[a-z_0-9]+=\S*\r?$/gm, "")).replace(/\n{2,}/g, "\n").slice(-1500);
+        const sec = secondiScritti(String(d));
+        if (sec !== null) {
+          q.export.avanza = Math.max(q.export.avanza || 0, 0.6 + 0.39 * Math.min(1, sec / totale));
+          if (Date.now() - ultimoAnnuncio > 1000) { ultimoAnnuncio = Date.now(); annuncia(0, "clip"); }
+        }
+      });
       pr.on("error", no);
       pr.on("close", (code) => code === 0 ? si() : no(new Error(ultimaRiga(coda) || ("ffmpeg " + code))));
     });
