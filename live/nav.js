@@ -31,6 +31,12 @@
   // destra finirebbe sopra al monitor del montaggio.
   var SENZA_ORA = !!(document.currentScript && document.currentScript.dataset &&
                      document.currentScript.dataset.senzaOra != null);
+  // <script src="nav.js" data-solo-voci></script> non monta niente: mette
+  // solo l'elenco in window.COMO_NAV. Lo usa il MAM, che la stessa mappa la
+  // mostra dentro il suo menu' "Como TV" (una riga sola, come in Premiere):
+  // cosi' l'elenco resta uno, questo.
+  var SOLO_VOCI = !!(document.currentScript && document.currentScript.dataset &&
+                     document.currentScript.dataset.soloVoci != null);
 
   // ordine e gruppi del menù — specchio del catalogo (classifiche.html).
   // Una coppia [indirizzo, nome] è una voce sola; un oggetto è una tendina.
@@ -78,6 +84,9 @@
     ["redazione.html",             "Controllo redazione"],
     ["regia.html",                 "Regia"]
   ];
+
+  window.COMO_NAV = { voci: VOCI };
+  if (SOLO_VOCI) return;
 
   var qui = (location.pathname.split("/").pop() || "").toLowerCase();
   // le pagine "figlie" accendono comunque la voce del loro capofila

@@ -25,9 +25,6 @@
     --oro:#C9A24B;--oro2:#E3C271;--ivory:#EDEDEE;--ivory2:#C9CACF;--fumo:#8E9096;--ok:#4FCB8B;--blu:#5AA7E8;--rosso:#E5484D;--giallo:#F5D76E;--verde:#7CD992;--rosa:#CE7FA6;}
   html,body{height:100%;}
   body{font:14px/1.45 'DM Sans',system-ui,sans-serif;font-weight:500;color:var(--ivory);background:var(--navy);overflow:hidden;display:flex;flex-direction:column;}
-  /* in cima la barra comune di Como TV (nav.js), uguale su tutte le pagine;
-     sotto, l'applicazione, che prende tutto il resto */
-  body > .cnav{flex:none;}
   a{color:inherit;text-decoration:none;}
   button,.b{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:8px 13px;border-radius:7px;cursor:pointer;
     background:rgba(245,241,230,.05);color:var(--ivory2);border:1px solid var(--riga2);white-space:nowrap;display:inline-flex;align-items:center;gap:7px;}
@@ -236,6 +233,8 @@
   .menubar > button.app-menu{font-weight:700;color:var(--oro2);}
   .menubar > button.app-menu.on{color:var(--navy);}
   .tendina-menu a.spento{color:var(--fumo);opacity:.45;cursor:default;}
+  #tendinaSotto{position:fixed;z-index:61;}
+  .tendina-menu a.ha-sotto.aperto{background:rgba(201,162,75,.16);color:var(--ivory);}
   .tendina-menu a.spento:hover{background:none;color:var(--fumo);}
   .tendina-menu a .fuori{font-style:normal;color:var(--fumo);font-size:10px;margin-left:6px;}
   .tendina-menu{position:absolute;top:100%;left:0;min-width:270px;background:var(--navy2);border:1px solid var(--riga2);
@@ -685,11 +684,12 @@
 </style>
 </head>
 <body>
-<script src="nav.js" data-senza-ora></script>
+<script src="nav.js" data-solo-voci></script>
 <div class="app">
   <!-- LA BARRA DEI MENU sta sopra a tutte le viste, come in Premiere: le voci
        che non valgono dove sei restano li', spente; le altre lavorano sul
-       monitor che hai davanti. Il primo menu porta al resto di Como TV. -->
+       monitor che hai davanti. Il primo menu, Como TV, e' la barra comune
+       delle altre pagine (nav.js) coi suoi sottomenu: una riga sola. -->
   <div class="menubar" id="menubar">
     <button data-menu="app" class="app-menu">Como TV</button><button data-menu="file">File</button><button data-menu="modifica">Modifica</button><button data-menu="clip">Clip</button><button data-menu="sequenza">Sequenza</button><button data-menu="vista">Visualizza</button><button data-menu="finestra">Finestra</button><button data-menu="aiuto">Aiuto</button>
     <div class="briciole" id="briciole"><a href="mam2.html">Libreria</a></div>
@@ -698,6 +698,7 @@
     <div class="aree" id="aree" title="Aree di lavoro"><button data-area="montaggio">Montaggio</button><button data-area="audio">Audio</button><button data-area="sottotitoli">Sottotitoli</button></div>
     <div class="stato" id="statoPonte">ponte <b>…</b></div>
     <div class="tendina-menu" id="tendinaMenu" hidden></div>
+    <div class="tendina-menu" id="tendinaSotto" hidden></div>
   </div>
 
   <!-- ══════════ LIBRERIA ══════════ -->
@@ -2464,29 +2465,30 @@
   // della home. Le parti del MAM si aprono qui; gli altri strumenti in una
   // scheda nuova, perche' un montaggio a meta' non si lascia per sbaglio.
   function vaiA_(u){ return function(){ location.href = u; }; }
+  // LA MAPPA DI COMO TV, letta da nav.js (window.COMO_NAV): stesse voci,
+  // stesso ordine, stesse tendine della barra delle altre pagine. Le pagine
+  // del MAM si aprono qui; tutto il resto in una scheda nuova, perche' un
+  // montaggio a meta' non si lascia per sbaglio.
+  var PAGINE_MAM = { "mam2.html": 1, "magazzino.html": 1, "qnap.html": 1 };
+  function voceNav(v){
+    var u = v[0], f = PAGINE_MAM[u.split("?")[0]] ? vaiA_(u) : apriFuori(u);
+    return { e: v[1], t: PAGINE_MAM[u.split("?")[0]] ? "" : "\u2197", per: { editor: f, libreria: f, asset: f, live: f } };
+  }
+  function vociComoTv(){
+    var V = (window.COMO_NAV && window.COMO_NAV.voci) || [["../index.html", "Home"]];
+    return V.map(function(v){ return v.voci ? { e: v.nome, t: "\u25B8", sotto: v.voci.map(voceNav) } : voceNav(v); });
+  }
   function apriFuori(u){ return function(){ window.open(u, "_blank", "noopener"); }; }
   MENU.app = [
-    { e: "Home di Como TV", t: "", per: { editor: vaiA_("../index.html"), libreria: vaiA_("../index.html"), asset: vaiA_("../index.html"), live: vaiA_("../index.html") } },
-    { riga: 1 },
-    { capo: "MAM" },
+    { capo: "Il MAM" },
     { e: "Libreria", t: "", per: { editor: vaiA_("mam2.html"), asset: vaiA_("mam2.html"), live: vaiA_("mam2.html"), libreria: function(){ vai("libreria"); } } },
     { e: "MAM Live", t: "", per: { editor: vaiA_("mam2.html?live=1"), libreria: function(){ apriLive(); }, asset: vaiA_("mam2.html?live=1"), live: function(){} } },
     { e: "Editing (l’ultima sequenza)", t: "", per: { editor: vaiA_("mam2.html?montaggio=1"), libreria: vaiA_("mam2.html?montaggio=1"), asset: vaiA_("mam2.html?montaggio=1"), live: vaiA_("mam2.html?montaggio=1") } },
     { e: "Magazzino", t: "", per: { editor: vaiA_("magazzino.html"), libreria: vaiA_("magazzino.html"), asset: vaiA_("magazzino.html"), live: vaiA_("magazzino.html") } },
     { e: "Finder della QNAP", t: "", per: { editor: vaiA_("qnap.html"), libreria: vaiA_("qnap.html"), asset: vaiA_("qnap.html"), live: vaiA_("qnap.html") } },
     { riga: 1 },
-    { capo: "Live" },
-    { e: "Grafiche Live", t: "↗", u: "classifiche.html" },
-    { e: "Controllo Redazione", t: "↗", u: "redazione.html" },
-    { e: "Regia", t: "↗", u: "regia.html" },
-    { e: "Telecronaca", t: "↗", u: "telecronaca.html" },
-    { riga: 1 },
-    { capo: "Grafiche statiche e social" },
-    { e: "Grafiche Statiche", t: "↗", u: "../10_Look%26Feel/Como%20TV%20OTT%20Design/generatore.html" },
-    { e: "Social Video e Maschere", t: "↗", u: "../10_Look%26Feel/Como%20TV%20OTT%20Design/generatore.html?solo=social" },
-    { e: "UEFA Club Channel", t: "↗", u: "../uefa-club-channel.html" }
-  ];
-  MENU.app.forEach(function(v){ if (v.u) { var f = apriFuori(v.u); v.per = { editor: f, libreria: f, asset: f, live: f }; } });
+    { capo: "Como TV" }
+  ].concat(vociComoTv());
   // File
   perVista("file", "Progetto…", OVUNQUE);
   perVista("file", "Apri progetto…", OVUNQUE);
@@ -2537,12 +2539,27 @@
     if (c) c.click();
   }
   var MENU_APERTO = "";
+  // IL SOTTOMENU (▸): si apre passandoci sopra, a destra della voce
+  var SOTTO_APERTO = null;
+  function chiudiSotto(){ SOTTO_APERTO = null; el("tendinaSotto").hidden = true; Array.prototype.forEach.call(el("tendinaMenu").querySelectorAll("a.ha-sotto.aperto"), function(a){ a.classList.remove("aperto"); }); }
+  function apriSotto(a){
+    var v = (MENU[MENU_APERTO] || [])[+a.dataset.v]; if (!v || !v.sotto) return chiudiSotto();
+    if (SOTTO_APERTO === v) return;
+    chiudiSotto(); SOTTO_APERTO = v; a.classList.add("aperto");
+    var t = el("tendinaSotto"), r = a.getBoundingClientRect();
+    t.innerHTML = v.sotto.map(function(w, k){ return '<a data-s="' + k + '"' + (fnDi(w) ? "" : ' class="spento"') + '><span>' + esc(w.e) + "</span><i>" + esc(w.t) + "</i></a>"; }).join("");
+    t.hidden = false;
+    t.style.left = Math.min(window.innerWidth - t.offsetWidth - 6, Math.round(r.right + 2)) + "px";
+    t.style.top = Math.max(6, Math.min(window.innerHeight - t.offsetHeight - 6, Math.round(r.top - 6))) + "px";
+  }
   function chiudiMenu(){
+    if (el("tendinaSotto")) chiudiSotto();
     MENU_APERTO = ""; el("tendinaMenu").hidden = true;
     Array.prototype.forEach.call(el("menubar").querySelectorAll("button[data-menu]"), function(b){ b.classList.remove("on"); });
   }
   function apriMenu(n){
     if (MENU_APERTO === n) return chiudiMenu();
+    chiudiSotto();
     MENU_APERTO = n;
     var b = el("menubar").querySelector('button[data-menu="' + n + '"]');
     Array.prototype.forEach.call(el("menubar").querySelectorAll("button[data-menu]"), function(z){ z.classList.toggle("on", z === b); });
@@ -2550,6 +2567,7 @@
     t.innerHTML = (MENU[n] || []).map(function(v, i){
       if (v.riga) return "<hr>";
       if (v.capo) return '<div class="capo2">' + esc(v.capo) + "</div>";
+      if (v.sotto) return '<a data-v="' + i + '" class="ha-sotto"><span>' + esc(v.e) + "</span><i>" + esc(v.t) + "</i></a>";
       return '<a data-v="' + i + '"' + (fnDi(v) ? "" : ' class="spento" title="non vale qui"') + '><span>' + esc(v.e) + "</span><i>" + esc(v.t) + "</i></a>";
     }).join("");
     t.style.left = Math.max(0, b.offsetLeft) + "px";
@@ -2558,8 +2576,11 @@
   el("menubar").addEventListener("click", function(e){
     var b = e.target.closest("button[data-menu]");
     if (b) { apriMenu(b.dataset.menu); return; }
+    var s2 = e.target.closest("#tendinaSotto a[data-s]");
+    if (s2) { var w = SOTTO_APERTO && SOTTO_APERTO.sotto[+s2.dataset.s], g = fnDi(w); if (!g) return; chiudiMenu(); try { g(); } catch (er) { avviso("err", esc(er.message)); } return; }
     var a = e.target.closest("a[data-v]");
     if (!a) return;
+    if (a.classList.contains("ha-sotto")) { apriSotto(a); return; }
     var v = (MENU[MENU_APERTO] || [])[+a.dataset.v], f = fnDi(v);
     if (!f) return;                 // una voce spenta non chiude il menu, come in Premiere
     chiudiMenu();
@@ -2569,6 +2590,9 @@
     // una volta aperto, si passa da un menu all'altro senza cliccare
     var b = e.target.closest("button[data-menu]");
     if (b && MENU_APERTO && b.dataset.menu !== MENU_APERTO) apriMenu(b.dataset.menu);
+    // dentro la tendina: sulla voce con ▸ si apre il sottomenu, sulle altre si chiude
+    var a = e.target.closest("#tendinaMenu a[data-v]");
+    if (a) { if (a.classList.contains("ha-sotto")) apriSotto(a); else chiudiSotto(); }
   });
   document.addEventListener("mousedown", function(e){ if (MENU_APERTO && !e.target.closest("#menubar")) chiudiMenu(); });
   document.addEventListener("keydown", function(e){ if (e.key === "Escape" && MENU_APERTO) chiudiMenu(); });
