@@ -579,6 +579,26 @@
   .esp-av small{font-size:11px;color:var(--fumo);}
   #espUscite .uscita{display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 8px;border:1px solid var(--riga);border-radius:7px;}
   #espUscite .uscita b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;}
+  /* LA COPIA DELL'ARCHIVIO S3 SULLA NAS: la barra nella Libreria e
+     l'indicatore nei menu. Pieno = partite gia' in casa (tutte le parti);
+     velato = byte gia' arrivati, file a meta' compresi. */
+  .copia{border:1px solid rgba(201,162,75,.45);border-radius:12px;padding:12px 16px;margin:10px 0 18px;background:rgba(201,162,75,.06);display:flex;flex-direction:column;gap:8px;max-width:900px;}
+  .copia-testa{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .copia-testa b{font-family:'Mazzard',sans-serif;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--oro);}
+  .copia-testa em{font-style:normal;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--riga2);color:var(--ivory2);}
+  .copia-testa em.va{border-color:rgba(124,217,146,.6);color:#7CD992;} .copia-testa em.ferma{border-color:rgba(240,169,59,.6);color:#F0A93B;} .copia-testa em.finita{border-color:var(--oro);color:var(--oro2);}
+  .copia-testa .perc{margin-left:auto;font:600 20px ui-monospace,Menlo,monospace;color:var(--oro2);}
+  .copia-barra{position:relative;height:12px;border-radius:6px;background:rgba(245,241,230,.08);overflow:hidden;}
+  .copia-barra i{position:absolute;left:0;top:0;bottom:0;border-radius:6px;}
+  .copia-barra i.arr{background:rgba(201,162,75,.35);}
+  .copia-barra i.casa{background:repeating-linear-gradient(45deg,var(--oro) 0 10px,#E3C271 10px 20px);background-size:28px 28px;animation:espScorre 1.2s linear infinite;}
+  .copia.ferma .copia-barra i.casa,.copia.finita .copia-barra i.casa{animation:none;}
+  .copia-dati{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px;color:var(--ivory2);}
+  .copia-dati span b{color:var(--ivory);font-weight:600;}
+  .copia-ultimi{font-size:11.5px;color:var(--fumo);}
+  .copia-ultimi i{font-style:normal;color:var(--ivory2);}
+  .copia-err{font-size:12px;color:#E0574A;}
+  #copiaMini{margin-left:8px;font:600 11px 'DM Sans',sans-serif;color:#7CD992;border:1px solid rgba(124,217,146,.5);border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap;}
   #espMini{margin-left:8px;font:600 11px 'DM Sans',sans-serif;color:var(--oro2);border:1px solid rgba(201,162,75,.5);border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap;}
   .ed-lato .uscita{display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 8px;border:1px solid var(--riga);border-radius:7px;}
   .ed-lato .uscita b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;}
@@ -805,6 +825,7 @@
     <button data-menu="app" class="app-menu">Como TV</button><button data-menu="file">File</button><button data-menu="modifica">Modifica</button><button data-menu="clip">Clip</button><button data-menu="sequenza">Sequenza</button><button data-menu="vista">Visualizza</button><button data-menu="finestra">Finestra</button><button data-menu="aiuto">Aiuto</button>
     <div class="briciole" id="briciole"><a href="mam2.html">Libreria</a></div>
     <div class="cerca"><span class="lu">&#128269;</span><input id="cercaTesta" type="search" placeholder="Cerca: partita, giocatore, frase, “tutti i gol di…”" autocomplete="off"></div>
+    <a id="copiaMini" hidden title="la copia dell&#8217;archivio S3 sulla NAS: clic per i dettagli">&#8675; Archivio</a>
     <a id="espMini" hidden title="l&#8217;export in corso: clic per vederlo">&#9210; Esporto</a>
     <a class="b mini" href="mam2.html?live=1" id="vaiLive" title="le porte in ascolto e la partita in arrivo">&#9679; Diretta</a>
     <div class="aree" id="aree" title="Aree di lavoro"><button data-area="montaggio">Montaggio</button><button data-area="audio">Audio</button><button data-area="sottotitoli">Sottotitoli</button></div>
@@ -818,6 +839,7 @@
     <div class="lib-testa"><h1 id="libSaluto">Buongiorno, <span>Como TV</span></h1><p id="libSotto">L'archivio: partite intere, azioni, telecronache, foto. Cerca, guarda, monta.</p></div>
     <div class="lib-cerca"><span class="lu">&#128269;</span><input id="cercaLib" type="search" placeholder="Cerca una partita, un giocatore, una frase detta, “tutti i gol di Douvikas”…" autocomplete="off" autofocus></div>
     <div id="riprendi"></div>
+    <div class="copia" id="copiaS3" hidden></div>
     <div id="libProg">
       <div class="sez"><h2>Progetti</h2><span id="progConto"></span><button class="dx b mini" id="progNuovo" title="un progetto raccoglie le sequenze di un lavoro (una puntata, un'uscita social, un cliente)">+ Nuovo progetto</button></div>
       <div class="prog" id="progetti"></div>
@@ -5092,6 +5114,40 @@
     post(c).then(function(){ avviso("ok", "Export in coda: lo segui qui a destra."); giroUscite(); }).catch(function(er){ avviso("err", esc(er.message)); });
   });
   el("eXml").addEventListener("click", function(){ if (!SEQ) return; post({ tipo:"clip-hl-esporta", seq: SEQ.id, come:"premiere", volume: volumeMontaggio(false) || "" }).then(function(){ return post({ tipo:"clip-hl-srt", seq: SEQ.id, lingua: el("eSottoL").value }); }).then(function(){ avviso("ok", "XML e SRT pronti: li trovi nelle uscite."); giroUscite(); }).catch(function(er){ avviso("err", esc(er.message)); }); });
+  // ── LA COPIA DELL'ARCHIVIO S3 SULLA NAS ──
+  function gbTesto(b){ return b >= 1e12 ? (b / 1e12).toFixed(2).replace(".", ",") + " TB" : Math.round(b / 1e9) + " GB"; }
+  function quandoFine(ms){
+    try { return new Date(ms).toLocaleString("it-IT", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; }
+  }
+  function disegnaCopia(d){
+    var c = el("copiaS3"), mini = el("copiaMini");
+    if (!d || !d.partite) { c.hidden = true; mini.hidden = true; return; }
+    var finita = d.partiteCasa >= d.partite, perc = d.byteTot ? d.byteCasa / d.byteTot * 100 : 0, arr = d.byteTot ? Math.min(100, d.sullaNas / d.byteTot * 100) : 0;
+    var st = finita ? "finita" : (d.attiva ? "va" : "ferma");
+    var etichetta = finita ? "finita" : d.attiva ? "sta scaricando" : ("ferma" + (d.fermaDa ? " da " + Math.round(d.fermaDa / 60000) + " min" : ""));
+    c.hidden = false; c.className = "copia " + st;
+    c.innerHTML = '<div class="copia-testa"><b>Archivio S3 \u2192 NAS</b><em class="' + st + '">' + etichetta + '</em><span class="perc">' + perc.toFixed(1).replace(".", ",") + '%</span></div>' +
+      '<div class="copia-barra" title="pieno: partite gi\u00e0 in casa \u00b7 velato: dati gi\u00e0 arrivati, file a met\u00e0 compresi"><i class="arr" style="width:' + arr.toFixed(2) + '%"></i><i class="casa" style="width:' + Math.max(0.4, perc).toFixed(2) + '%"></i></div>' +
+      '<div class="copia-dati"><span><b>' + d.partiteCasa.toLocaleString("it-IT") + '</b> di ' + d.partite.toLocaleString("it-IT") + ' partite in casa</span>' +
+      '<span><b>' + gbTesto(d.sullaNas) + '</b> di ' + gbTesto(d.byteTot) + ' sulla NAS</span>' +
+      (d.velocita !== null && d.velocita !== undefined ? '<span><b>' + Math.round(d.velocita / 1e6) + ' MB/s</b> (' + Math.round(d.velocita * 8 / 1e6) + ' Mbit/s)</span>' : '<span>velocit\u00e0: la misuro\u2026</span>') +
+      (d.fine && !finita ? '<span>fine prevista <b>' + esc(quandoFine(d.fine)) + '</b></span>' : '') +
+      (d.spesi !== null && d.spesi !== undefined ? '<span>spesi circa <b>' + Math.round(d.spesi) + ' $</b></span>' : '') + '</div>' +
+      (d.ultimi && d.ultimi.length ? '<div class="copia-ultimi">Ultime arrivate: ' + d.ultimi.slice(0, 4).map(function(u){ return "<i>" + esc(u.file) + "</i>"; }).join(" \u00b7 ") + '</div>' : '') +
+      (d.errore ? '<div class="copia-err">\u26a0 ' + esc(d.errore) + '</div>' : '');
+    mini.hidden = finita;
+    mini.textContent = "\u21e3 Archivio " + perc.toFixed(1).replace(".", ",") + "%";
+    mini.style.color = d.attiva ? "" : "#F0A93B";
+  }
+  function giroCopia(){
+    post({ tipo:"clip-archivio-copia" }).then(disegnaCopia).catch(function(){})
+      .then(function(){ setTimeout(giroCopia, VISTA_ORA === "libreria" ? 30000 : 120000); });
+  }
+  el("copiaMini").addEventListener("click", function(){
+    if (VISTA_ORA === "libreria") { el("copiaS3").scrollIntoView({ behavior: "smooth", block: "center" }); return; }
+    location.href = "mam2.html";
+  });
+  setTimeout(giroCopia, 1500);
   function avanzaExport(x){ var g = x.giro, p = Math.max(0, Math.min(1, x.avanza || 0)); return g && g.n ? (g.i + p) / g.n : p; }
   function mmss(s){ s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ":" + ("0" + (s % 60)).slice(-2); }
   function barraExport(x){

@@ -5955,6 +5955,7 @@ function senzaCode(bucket) { return !!magazzinoInventario(bucket); }
 //  l'indice, non puo' rimettere niente com'era.
 const SPECCHIO_DIR = process.env.COMOTV_NAS_SPECCHIO || "S3-ARCHIVIO";
 let SPECCHIO = new Map();                            // chiave S3 -> percorso sulla NAS
+let SPECCHIO_QUANDO = 0;
 function copiaInCasa(chiave) { return chiave ? (SPECCHIO.get(String(chiave)) || null) : null; }
 function partiDi(a) { return a && a.pezzi && a.pezzi.length ? a.pezzi : (a && a.chiave ? [{ chiave: a.chiave, peso: a.peso }] : []); }
 // una riga d'indice o una registrazione: in casa solo se c'e' TUTTA
@@ -5962,6 +5963,69 @@ function inCasa(a) { const pz = partiDi(a); return !!pz.length && pz.every((z) =
 function inCasaReg(r) { return !!(r && r.arch && magazzinoInventario(r.arch.bucket) && inCasa(r.arch)); }
 // il freno delle code S3 non vale per le partite gia' in casa
 function senzaCodeDi(a) { return !!a && senzaCode(a.bucket) && !inCasa(a); }
+// ── L'AVANZAMENTO DELLA COPIA, per la barra nella Libreria ─────────────
+//  Si legge quello che lo script lascia sulla NAS (.scarica-stato.json,
+//  .scarica.log) e si pesa la cartella, file a meta' compresi: la velocita'
+//  e' la crescita degli ultimi minuti, la fine prevista quello che manca
+//  diviso per la velocita'. Il conto delle partite e' quello del MAM: una
+//  partita conta quando c'e' TUTTA (inCasa), non quando e' arrivato un file.
+const COPIA_CAMPIONI = [];
+let COPIA_ULTIMO = null;
+function statoCopia() {
+  if (COPIA_ULTIMO && Date.now() - COPIA_ULTIMO.quando < 20000) return COPIA_ULTIMO;
+  // chi guarda la barra vuole il conto di adesso, non di dieci minuti fa
+  if (Date.now() - SPECCHIO_QUANDO > 120000) { try { aggiornaSpecchio(); } catch (e) {} }
+  const base = path.join(QNAP_RADICE, SPECCHIO_DIR);
+  let sullaNas = 0, inCorso = 0;
+  const giro = (d, prof) => {
+    let v; try { v = fs.readdirSync(d, { withFileTypes: true }); } catch (e) { return; }
+    for (const x of v) {
+      if (x.name.startsWith(".") || x.name === "_script") continue;
+      const p = path.join(d, x.name);
+      if (x.isDirectory()) { if (prof < 8) giro(p, prof + 1); continue; }
+      try { sullaNas += fs.statSync(p).size; } catch (e) { continue; }
+      if (/\.parziale/.test(x.name)) inCorso++;
+    }
+  };
+  giro(path.join(base, "TEMP"), 0);
+  const ora = Date.now();
+  COPIA_CAMPIONI.push({ t: ora, b: sullaNas });
+  while (COPIA_CAMPIONI.length > 2 && ora - COPIA_CAMPIONI[0].t > 600000) COPIA_CAMPIONI.shift();
+  const c0 = COPIA_CAMPIONI[0];
+  const velocita = c0 && ora - c0.t > 25000 ? Math.max(0, (sullaNas - c0.b) / ((ora - c0.t) / 1000)) : null;
+  let partite = 0, byteTot = 0, partiteCasa = 0, byteCasa = 0;
+  Object.keys(ARCHIVIO).forEach((rec) => {
+    const a = ARCHIVIO[rec]; if (!a || !a.chiave || !magazzinoInventario(a.bucket)) return;
+    const b = partiDi(a).reduce((n, z) => n + (z.peso || 0), 0);
+    partite++; byteTot += b;
+    if (inCasa(a)) { partiteCasa++; byteCasa += b; }
+  });
+  let stato = null; try { stato = JSON.parse(fs.readFileSync(path.join(base, ".scarica-stato.json"), "utf8")); } catch (e) {}
+  let righe = [], logQuando = 0;
+  try { righe = fs.readFileSync(path.join(base, ".scarica.log"), "utf8").trim().split("\n").slice(-300); logQuando = fs.statSync(path.join(base, ".scarica.log")).mtimeMs; } catch (e) {}
+  const ultimi = righe.filter((r) => /  ok /.test(r)).slice(-6).reverse().map((r) => {
+    const m = /  ok (.+?) ([\d.]+) GB in/.exec(r);
+    // TEMP/giorno/PARTITA/[lingua]/...: il nome e' la cartella della partita, con la lingua se c'e'
+    const pz = m ? m[1].split("/") : [];
+    const lingua = pz.slice(3, -1).map((z) => (/\b(ITA|ENG)\b/i.exec(z) || [])[1]).filter(Boolean)[0];
+    return m ? { file: (pz[2] || pz[pz.length - 1]) + (lingua ? " (" + lingua.toUpperCase() + ")" : ""), gb: +m[2] } : null;
+  }).filter(Boolean);
+  // un errore conta solo se e' l'ultima cosa successa: quelli vecchi sono passati
+  const ultimaRiga = righe.length ? righe[righe.length - 1] : "";
+  const errore = /ERRORE|\['  File/.test(ultimaRiga) ? (righe.filter((r) => /ERRORE/.test(r)).slice(-1)[0] || "").replace(/^\S+ \S+\s+/, "").slice(0, 200) : "";
+  const manca = Math.max(0, byteTot - byteCasa);
+  COPIA_ULTIMO = {
+    ok: true, quando: ora, cartella: base,
+    partite, partiteCasa, byteTot, byteCasa, sullaNas, inCorso,
+    velocita, fine: velocita && velocita > 1e5 ? ora + manca / velocita * 1000 : null,
+    spesi: stato ? Math.round((stato.byte || 0) / 1e9 * 0.03 * 100) / 100 : null,
+    scaricati: stato ? { byte: stato.byte || 0, file: stato.file || 0 } : null,
+    attiva: !!logQuando && ora - logQuando < 20 * 60000 && (inCorso > 0 || (velocita || 0) > 1e5),
+    fermaDa: logQuando ? ora - logQuando : null,
+    ultimi, errore
+  };
+  return COPIA_ULTIMO;
+}
 function aggiornaSpecchio() {
   const base = path.join(QNAP_RADICE, SPECCHIO_DIR);
   let c = false; try { c = fs.statSync(base).isDirectory(); } catch (e) { c = false; }
@@ -5978,7 +6042,7 @@ function aggiornaSpecchio() {
     trovati.forEach((x) => nuovo.set(x[0], x[1])); partite++;
   });
   const cambiato = nuovo.size !== SPECCHIO.size;
-  SPECCHIO = nuovo;
+  SPECCHIO = nuovo; SPECCHIO_QUANDO = Date.now();
   if (cambiato) { console.log("[clip] specchio S3: " + partite + " partite in casa (" + nuovo.size + " file) in " + base); annuncia(0, "clip"); }
   return { partite, file: nuovo.size };
 }
@@ -12739,6 +12803,8 @@ const AZIONI = {
     return { ok: true, eventi: fuori, peso: fuori.reduce((n, x) => n + x.peso, 0), quanti: fuori.length, suS3: suS3, scrivibile: qnapSiScrive() };
   },
   "clip-qnap-peso": qnapPeso,
+  // L'AVANZAMENTO DELLA COPIA S3 -> NAS, per la barra della Libreria
+  "clip-archivio-copia": () => statoCopia(),
   // quante partite S3 sono gia' in casa (ricontate adesso)
   "clip-archivio-specchio": () => Object.assign({ ok: true, cartella: path.join(QNAP_RADICE, SPECCHIO_DIR) }, aggiornaSpecchio()),
   // UNA POSA: un fotogramma fermo della registrazione al secondo chiesto,
