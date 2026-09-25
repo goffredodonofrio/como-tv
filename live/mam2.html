@@ -237,12 +237,12 @@
   .pan{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--navy2);border:1px solid var(--riga);border-radius:3px;position:relative;overflow:hidden;}
   .pan.attivo{border-color:var(--oro);box-shadow:inset 0 0 0 1px rgba(201,162,75,.55);}
   .pan-schede{display:flex;align-items:stretch;height:27px;flex:none;border-bottom:1px solid var(--riga);background:rgba(0,0,0,.14);overflow:hidden;}
-  .pan-schede .scheda{background:none;border:0;border-radius:0;padding:0 11px;font:500 11.5px/27px 'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--fumo);position:relative;white-space:nowrap;cursor:pointer;flex:none;}
-  .pan-schede .scheda:hover{color:var(--ivory2);}
-  .pan-schede .scheda.on{color:var(--ivory);}
-  .pan.attivo .pan-schede .scheda.on{color:var(--oro2);}
-  .pan-schede .scheda.on::after{content:'';position:absolute;left:8px;right:8px;bottom:0;height:2px;background:var(--oro);}
-  .pan-schede .scheda span{display:inline;}
+  .pan-schede .linguetta{background:none;border:0;border-radius:0;padding:0 11px;font:500 11.5px/27px 'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--fumo);position:relative;white-space:nowrap;cursor:pointer;flex:none;}
+  .pan-schede .linguetta:hover{color:var(--ivory2);}
+  .pan-schede .linguetta.on{color:var(--ivory);}
+  .pan.attivo .pan-schede .linguetta.on{color:var(--oro2);}
+  .pan-schede .linguetta.on::after{content:'';position:absolute;left:8px;right:8px;bottom:0;height:2px;background:var(--oro);}
+  .pan-schede .linguetta span{display:inline;}
   .pan-schede .pan-menu{margin-left:auto;background:none;border:0;border-radius:0;width:28px;padding:0;color:var(--fumo);font-size:14px;cursor:pointer;flex:none;}
   .pan-schede .pan-menu:hover{color:var(--oro2);}
   .pan-corpo{flex:1 1 auto;min-height:0;min-width:0;overflow:auto;}
@@ -274,7 +274,7 @@
   .indicatori .vu{width:14px;height:100%;min-height:24px;display:flex;gap:2px;align-items:flex-end;justify-content:center;}
   .indicatori .vu i{width:5px;height:0%;border-radius:1px;background:linear-gradient(to top,#3FBF6A 0%,#3FBF6A 62%,#E3C271 82%,#E0574A 100%);background-size:100% 400%;background-position:bottom;transition:height .06s linear;}
   /* il pannello massimizzato (tasto `) occupa tutto lo spazio di lavoro */
-  .ws.massimo > .ws-su, .ws.massimo > .ws-giu, .ws.massimo > .ed-maniglia{visibility:hidden;}
+  .ws.massimo > *{visibility:hidden;}
   .ws .pan.massimo{visibility:visible;position:absolute;inset:0 3px 3px;z-index:30;}
   .ws.massimo .pan.massimo *{visibility:visible;}
   /* OGNI COSA CHE HA UNA MISURA SI PUO' TIRARE. Le due colonne, la colonna
@@ -507,10 +507,18 @@
   .ed-testina{position:absolute;top:0;bottom:0;width:2px;background:#fff;pointer-events:none;z-index:5;} .ed-testina::before{content:'';position:absolute;top:0;left:-5px;border:6px solid transparent;border-top:8px solid #fff;}
   .ed-vuoto{position:absolute;inset:22px 0 0;display:flex;align-items:center;justify-content:center;color:var(--fumo);font-size:13px;text-align:center;padding:20px;}
   /* ── DIRETTA ── */
-  #live{display:none;grid-template-columns:minmax(0,1fr) 380px;min-height:0;}
-  #live.on{display:grid;}
-  .lv-palco{display:flex;flex-direction:column;min-height:0;padding:14px 18px;gap:10px;overflow:auto;}
-  .lv-lato{border-left:1px solid var(--riga);background:var(--navy2);overflow:auto;display:flex;flex-direction:column;}
+  #live{display:none;min-height:0;}
+  #live.on{display:flex;flex-direction:column;}
+  /* la Diretta a pannelli: Acquisizione|Info e Trascrizione a sinistra, la
+     Sorgente al centro, le clip della partita a destra dove stavano */
+  .lv-ws{display:grid;grid-template-columns:var(--lv-sx,280px) 6px minmax(0,1fr) 6px var(--lv-dx,360px);flex:1 1 auto;min-height:0;padding:3px;}
+  .lv-col{display:flex;flex-direction:column;min-height:0;min-width:0;}
+  .lv-col > .lv-acq{flex:0 0 var(--lv-acq,260px);}
+  .lv-col > .pan[data-pan="testo"]{flex:1 1 auto;}
+  .pan .lv-detto{max-height:none;padding:8px 10px;}
+  .lv-pm2{justify-content:flex-start;gap:6px;flex:none;}
+  .conto-scheda{color:var(--fumo);margin-left:4px;}
+  .lv-palco{display:flex;flex-direction:column;min-height:0;padding:10px 12px;gap:8px;overflow:auto;}
   .porta{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--riga);}
   /* LE CLIP DELLA PARTITA, mentre la partita va avanti: il taglio grezzo si
      scarica e si manda subito, e la stessa clip resta li' per la timeline. */
@@ -635,13 +643,32 @@
 
   <!-- ══════════ DIRETTA ══════════ -->
   <div class="vista" id="live">
-
-    <div class="lv-palco">
-      <div class="titolo" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h1 id="lTitolo" style="font-family:'Mazzard',sans-serif;font-weight:800;font-size:20px;text-transform:uppercase">Diretta</h1><span class="meta" id="lMeta" style="color:var(--fumo);font-size:12.5px"></span>
-        <div class="az" style="margin-left:auto;display:flex;gap:8px"><button class="mini" data-lsub="it" title="la telecronaca scritta in italiano, dal vivo">SUB ITA</button><button class="mini" data-lsub="en" title="la telecronaca tradotta in inglese, dal vivo">SUB ENG</button><button class="mini" data-lsub="due" title="tutte e due le lingue insieme, l&#8217;inglese sotto">SUB ITA+ENG</button><button class="mini" id="lClip" title="una clip degli ultimi 30 secondi">Clip 30 s</button><button class="mini" id="lAsset" title="apri la registrazione come partita">Apri</button><button class="mini" id="lFerma" style="color:#FF9A9C">&#9632; Ferma</button></div></div>
-      <div id="lVuoto" class="lv-vuoto"><b>Nessun flusso in arrivo</b><span>Apri una porta a destra: vMix spinge in SRT (listener) e qui compare la partita.</span></div>
-      <div class="player" id="lPlayer" hidden><video id="videoL" playsinline muted autoplay></video><div class="mutoVelo" id="lVelo" hidden><b>&#9836; Audio spento &#183; clicca per accenderlo</b></div><div class="sotto" id="sottoBoxL"><i class="it" id="sottoItL"></i><i class="en" id="sottoEnL"></i></div></div>
-      <div class="trasporto" id="lTrasporto" hidden>
+    <!-- LA DIRETTA A PANNELLI, con lo stesso componente del Montaggio.
+         Il monitor e' la Sorgente: si segna entrata e uscita sul flusso che
+         arriva e il tratto va in timeline, come dal monitor Sorgente di
+         Premiere. A sinistra l'Acquisizione e le Info del flusso, sotto la
+         Trascrizione; a destra le clip della partita, dove stavano. -->
+    <div class="ws lv-ws" id="wsLive">
+      <div class="lv-col">
+        <section class="pan lv-acq" data-pan="acquisizione">
+          <header class="pan-schede"><button class="linguetta on" data-scheda="acquisizione">Acquisizione</button><button class="linguetta" data-scheda="info">Info</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
+          <div class="pan-corpo" data-corpo="acquisizione"><div id="lPorte"></div></div>
+          <div class="pan-corpo" data-corpo="info" hidden><div class="eff-vuoto" id="lInfoVuoto">Nessun flusso in arrivo.</div><div class="salute" id="lSalute" hidden></div></div>
+        </section>
+        <div class="ed-maniglia lv-maniglia" id="lvManiglia" title="trascina per dare piu’ o meno spazio · doppio clic: misura di partenza"><span></span></div>
+        <section class="pan" data-pan="testo">
+          <header class="pan-schede"><button class="linguetta on" data-scheda="trascrizione">Trascrizione</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
+          <div class="pan-corpo" data-corpo="trascrizione"><div class="lv-detto" id="lDetto"><span style="color:var(--fumo);font-size:12px;padding:8px">Con i sottotitoli accesi le righe arrivano qui.</span></div></div>
+        </section>
+      </div>
+      <div class="ed-divisore" id="lvDivSx" title="trascina per allargare · doppio clic: misura di partenza"></div>
+      <section class="pan" data-pan="sorgente">
+        <header class="pan-schede"><button class="linguetta on" data-scheda="sorgente">Sorgente: <span id="lTabNome">Diretta</span></button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
+        <div class="pan-corpo lv-palco" data-corpo="sorgente">
+          <div class="titolo" hidden><h1 id="lTitolo" style="font-family:'Mazzard',sans-serif;font-weight:800;font-size:20px;text-transform:uppercase">Diretta</h1><span class="meta" id="lMeta" style="color:var(--fumo);font-size:12.5px"></span></div>
+          <div id="lVuoto" class="lv-vuoto"><b>Nessun flusso in arrivo</b><span>Apri una porta a destra: vMix spinge in SRT (listener) e qui compare la partita.</span></div>
+          <div class="player" id="lPlayer" hidden><video id="videoL" playsinline muted autoplay></video><div class="mutoVelo" id="lVelo" hidden><b>&#9836; Audio spento &#183; clicca per accenderlo</b></div><div class="sotto" id="sottoBoxL"><i class="it" id="sottoItL"></i><i class="en" id="sottoEnL"></i></div></div>
+          <div class="trasporto" id="lTrasporto" hidden>
         <div class="momenti lbarra" id="lBarra" title="clicca o trascina per andare a quel secondo della registrazione">
           <div class="scritto" id="lScritto"></div><div class="tratto" id="lTratto" hidden></div><div class="righello" id="lRighello"></div><div class="testina" id="lTestina"></div>
         </div>
@@ -664,16 +691,15 @@
         </div>
         <div class="legenda" id="lRitardo" style="color:var(--fumo);font-size:11px"></div>
       </div>
-      <div class="salute" id="lSalute" hidden></div>
-    </div>
-    <div class="lv-lato">
-      <div class="capo" style="padding:12px 14px;border-bottom:1px solid var(--riga);font-family:'Mazzard',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--oro)">Porte in ascolto</div>
-      <div id="lPorte"></div>
-      <div class="capo" style="padding:12px 14px;border-bottom:1px solid var(--riga);border-top:1px solid var(--riga);font-family:'Mazzard',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--oro);display:flex;align-items:center;gap:8px">Clip della partita <span id="lClipConto" style="color:var(--fumo);letter-spacing:0;text-transform:none;font-family:inherit"></span></div>
-      <div style="padding:10px 14px;border-bottom:1px solid var(--riga)"><div style="font-family:'Mazzard',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--oro);margin-bottom:6px">Destinazione &#183; dove va la clip</div><select id="lCanale" class="tendaDest"></select></div>
-      <div id="lClipElenco"></div>
-      <div class="capo" style="padding:12px 14px;border-bottom:1px solid var(--riga);border-top:1px solid var(--riga);font-family:'Mazzard',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--oro)">Telecronaca dal vivo</div>
-      <div class="lv-detto" id="lDetto"><span style="color:var(--fumo);font-size:12px;padding:8px">Con i sottotitoli accesi le righe arrivano qui.</span></div>
+          <div class="pm lv-pm2"><button class="mini" data-lsub="it" title="la telecronaca scritta in italiano, dal vivo">SUB ITA</button><button class="mini" data-lsub="en" title="la telecronaca tradotta in inglese, dal vivo">SUB ENG</button><button class="mini" data-lsub="due" title="tutte e due le lingue insieme, l&#8217;inglese sotto">SUB ITA+ENG</button><span class="sep"></span><button class="mini" id="lClip" title="una clip degli ultimi 30 secondi">Clip 30 s</button></div>
+          <div id="lComandi" hidden><button class="mini" id="lAsset" title="apri la registrazione come partita">Apri</button><button class="mini" id="lFerma" style="color:#FF9A9C">&#9632; Ferma</button></div>
+        </div>
+      </section>
+      <div class="ed-divisore" id="lvDivDx" title="trascina per allargare · doppio clic: misura di partenza"></div>
+      <section class="pan" data-pan="clip">
+        <header class="pan-schede"><button class="linguetta on" data-scheda="clip">Clip della partita <span id="lClipConto" class="conto-scheda"></span></button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
+        <div class="pan-corpo" data-corpo="clip"><div style="padding:10px 14px;border-bottom:1px solid var(--riga)"><div style="font-family:'Mazzard',sans-serif;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--oro);margin-bottom:6px">Destinazione &#183; dove va la clip</div><select id="lCanale" class="tendaDest"></select></div><div id="lClipElenco"></div></div>
+      </section>
     </div>
   </div>
 
@@ -689,7 +715,7 @@
     <div class="ws" id="ws">
       <div class="ws-su">
         <section class="pan" data-pan="effetti">
-          <header class="pan-schede"><button class="scheda on" data-scheda="effetti">Controllo effetti</button><button class="scheda" data-scheda="metadati">Metadati</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
+          <header class="pan-schede"><button class="linguetta on" data-scheda="effetti">Controllo effetti</button><button class="linguetta" data-scheda="metadati">Metadati</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
           <div class="pan-corpo ed-lato" data-corpo="effetti">
             <div class="eff-vuoto" id="effVuoto">(nessuna clip selezionata)</div>
             <div class="sez2" id="sezPezzo" hidden><h4>Il pezzo <span id="ipNome" style="color:var(--ivory2);font-weight:400"></span></h4>
@@ -716,7 +742,7 @@
         </section>
         <div class="ed-divisore" id="divLato" title="trascina per allargare il pannello · doppio clic: misura di partenza"></div>
         <section class="pan" data-pan="programma">
-          <header class="pan-schede"><button class="scheda on" data-scheda="programma">Programma: <span id="panProgNome">sequenza</span></button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
+          <header class="pan-schede"><button class="linguetta on" data-scheda="programma">Programma: <span id="panProgNome">sequenza</span></button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
           <div class="pan-corpo ed-palco" data-corpo="programma">
             <div class="titolo" hidden><h1 id="eTitolo" style="font-family:'Mazzard',sans-serif;font-weight:800;font-size:16px;text-transform:uppercase">…</h1><span class="meta" id="eMeta" style="color:var(--fumo);font-size:12px"></span><span style="margin-left:auto;display:flex;gap:6px"></span></div>
             <div class="palcoBox"><div class="player" id="palcoE"><video id="videoE" playsinline preload="metadata"></video><img id="grafE" class="graf-over" alt="" hidden><div class="taglio" id="eTaglioVista" hidden><b></b></div><div class="sotto" id="sottoBoxE"><i class="it" id="sottoItE"></i><i class="en" id="sottoEnE"></i></div></div></div>
@@ -733,7 +759,7 @@
       <div class="ed-maniglia" id="edManiglia" title="trascina per dare piu’ o meno spazio alla timeline"><span></span></div>
       <div class="ws-giu">
         <section class="pan" data-pan="progetto">
-          <header class="pan-schede"><button class="scheda on" data-scheda="progetto">Progetto</button><button class="scheda" data-scheda="materiale">Materiale di casa</button><button class="scheda" data-scheda="esporta">Esporta</button><button class="scheda" data-scheda="cronologia">Cronologia</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
+          <header class="pan-schede"><button class="linguetta on" data-scheda="progetto">Progetto</button><button class="linguetta" data-scheda="materiale">Materiale di casa</button><button class="linguetta" data-scheda="esporta">Esporta</button><button class="linguetta" data-scheda="cronologia">Cronologia</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
           <div class="pan-corpo ed-bin" data-corpo="progetto"><div class="capo">Pezzi <span id="binConto"></span></div><div class="corpo" id="bin" tabindex="0"></div></div>
           <div class="pan-corpo" data-corpo="materiale" hidden>
           <div id="tendaMedia" class="tenda-scheda">
@@ -769,7 +795,7 @@
           <button data-str="lametta" title="Lametta (C): clicca una clip per dividerla li&rsquo;">&#9986;</button>
         </div>
         <section class="pan" data-pan="timeline">
-          <header class="pan-schede"><button class="scheda on" data-scheda="timeline"><span id="panTlNome">sequenza</span></button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
+          <header class="pan-schede"><button class="linguetta on" data-scheda="timeline"><span id="panTlNome">sequenza</span></button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
           <div class="pan-corpo tl-corpo" data-corpo="timeline">
             <div class="ed-barra barra-tl">
               <span class="tc tc-tl" id="eOraTl" title="la posizione della testina">00:00:00</span>
@@ -3376,7 +3402,7 @@
   //  l'altezza di ogni singola traccia. Stanno tutte in una variabile CSS,
   //  cosi' il disegno non deve sapere niente: cambia il numero e la pagina
   //  si riassesta da sola. Doppio clic su una presa la rimette com'era.
-  var PREDEF = { bin: 300, lato: 300, nomi: 118, tl: 171,
+  var PREDEF = { bin: 300, lato: 300, nomi: 118, tl: 171, "lv-sx": 280, "lv-dx": 360, "lv-acq": 260,
                  "h-C": 26, "h-G": 28, "h-V2": 40, "h-V1": 64, "h-A1": 34, "h-A2": 34, "h-A3": 34, "h-A4": 34 };
   var MISURE = {};
   try { MISURE = JSON.parse(localStorage.getItem("mam2-misure") || "{}") || {}; } catch (e) { MISURE = {}; }
@@ -3388,7 +3414,8 @@
   function limiti(k){
     var alto = Math.max(200, Math.round((window.innerHeight || 900) * 0.72));
     if (String(k).indexOf("h-") === 0) return [18, 260];
-    return { bin: [170, 640], lato: [200, 640], nomi: [80, 280], tl: [120, alto] }[k];
+    return { bin: [170, 640], lato: [200, 640], nomi: [80, 280], tl: [120, alto],
+             "lv-sx": [200, 560], "lv-dx": [260, 640], "lv-acq": [110, 640] }[k];
   }
   function misura(k){ var v = MISURE[k]; return (typeof v === "number" && isFinite(v)) ? v : PREDEF[k]; }
   function stretta(k, v){ var l = limiti(k); return Math.max(l[0], Math.min(l[1], Math.round(v))); }
@@ -3396,7 +3423,12 @@
   // la pagina si monta, e allora la finestra puo' essere ancora alta zero
   function applicaMisure(){
     var ed = el("editor"); if (!ed) return;
-    Object.keys(PREDEF).forEach(function(k){ ed.style.setProperty("--" + k, stretta(k, misura(k)) + "px"); });
+    var lv = el("live");
+    Object.keys(PREDEF).forEach(function(k){
+      var v = stretta(k, misura(k)) + "px";
+      ed.style.setProperty("--" + k, v);
+      if (lv) lv.style.setProperty("--" + k, v);      // la Diretta ha le sue, con lo stesso meccanismo
+    });
     if (typeof misuraPalco === "function") misuraPalco();
     if (typeof disegnaTl === "function" && SEQ) disegnaTl();
   }
@@ -3428,97 +3460,137 @@
   //  Il comportamento dei pannelli di Premiere, senza la sua pelle:
   //  · le schede: una sola visibile per pannello, e la scelta si ricorda;
   //  · il PANNELLO ATTIVO: quello dove hai appena cliccato ha il bordo oro,
-  //    e i tasti del montaggio valgono li'. Canc nel Progetto non tocca la
-  //    timeline, frecce e spazio negli Effetti non spostano la testina;
+  //    e i tasti valgono li'. Canc nel Progetto non tocca la timeline,
+  //    frecce e spazio negli Effetti non spostano la testina;
   //  · il menu del pannello (≡);
   //  · MASSIMIZZA col tasto ` — il pannello sotto il mouse, come in Premiere
   //    — e lo stesso tasto lo rimette al suo posto.
-  var WS = { attivo: "timeline", schede: {}, massimo: "" };
-  try { var ws0 = JSON.parse(localStorage.getItem("mam2-ws") || "null"); if (ws0 && ws0.schede) WS.schede = ws0.schede; } catch (e) {}
-  function salvaWs(){ try { localStorage.setItem("mam2-ws", JSON.stringify({ schede: WS.schede })); } catch (e) {} }
-  function attivaPannello(n){
-    WS.attivo = n;
-    Array.prototype.forEach.call(document.querySelectorAll("#ws .pan"), function(p){ p.classList.toggle("attivo", p.dataset.pan === n); });
-  }
-  function mostraScheda(k, senzaAttivare){
-    var b = document.querySelector('#ws .scheda[data-scheda="' + k + '"]'); if (!b) return;
-    var pan = b.closest(".pan");
-    Array.prototype.forEach.call(pan.querySelectorAll(".scheda"), function(z){ z.classList.toggle("on", z === b); });
-    Array.prototype.forEach.call(pan.querySelectorAll(".pan-corpo"), function(z){ z.hidden = z.dataset.corpo !== k; });
-    WS.schede[pan.dataset.pan] = k; salvaWs();
-    if (!senzaAttivare) attivaPannello(pan.dataset.pan);
-    if (k === "materiale") caricaMateriale();
-    if (k === "metadati") disegnaMetadati();
-    if (k === "cronologia") disegnaStoria();
-  }
-  function massimizza(n){
-    var ws = el("ws");
-    var togli = !n || WS.massimo === n;
-    WS.massimo = togli ? "" : n;
-    ws.classList.toggle("massimo", !togli);
-    Array.prototype.forEach.call(ws.querySelectorAll(".pan"), function(p){ p.classList.toggle("massimo", !togli && p.dataset.pan === n); });
-    if (!togli) attivaPannello(n);
-    // il monitor e la timeline si rimisurano sullo spazio nuovo
-    if (typeof misuraPalco === "function") misuraPalco();
-    if (SEQ && typeof disegnaTl === "function") disegnaTl();
-  }
-  var TENDA_PAN = null;
-  function chiudiMenuPannello(){ var t = el("tendinaPan"); if (t) t.hidden = true; TENDA_PAN = null; }
-  function apriMenuPannello(n, bottone){
-    var t = el("tendinaPan");
-    if (!t) { t = document.createElement("div"); t.id = "tendinaPan"; t.className = "tendina-menu"; t.style.cssText = "position:fixed;z-index:70;min-width:250px"; document.body.appendChild(t); }
-    if (TENDA_PAN === n) return chiudiMenuPannello();
-    TENDA_PAN = n;
-    var voci = [
-      { e: WS.massimo === n ? "Ripristina il pannello" : "Massimizza il pannello", t: "`", f: function(){ massimizza(n); } },
-      { riga: 1 },
-      { e: "Ripristina l’area di lavoro", t: "", f: ripristinaArea }
-    ];
-    t.innerHTML = voci.map(function(v, k){ return v.riga ? "<hr>" : '<a data-v="' + k + '"><span>' + esc(v.e) + "</span><i>" + esc(v.t) + "</i></a>"; }).join("");
-    t.hidden = false;
-    var r = bottone.getBoundingClientRect();
-    t.style.top = Math.round(r.bottom + 2) + "px";
-    t.style.left = Math.round(Math.max(6, Math.min(window.innerWidth - (t.offsetWidth || 250) - 6, r.right - (t.offsetWidth || 250)))) + "px";
-    t.onclick = function(ev){ var a = ev.target.closest("a[data-v]"); if (!a) return; chiudiMenuPannello(); var v = voci[+a.dataset.v]; if (v && v.f) v.f(); };
-  }
-  // RIPRISTINA L'AREA DI LAVORO: misure, schede e pannello massimizzato
-  // tornano quelli di partenza. E' la voce che in Premiere salva la vita.
-  function ripristinaArea(){
-    if (WS.massimo) massimizza("");
-    MISURE = {}; try { localStorage.removeItem("mam2-misure"); } catch (e) {}
-    WS.schede = {}; salvaWs();
-    ["effetti", "progetto"].forEach(function(k){ mostraScheda(k, true); });
-    applicaMisure();
-    avviso("ok", "Area di lavoro ripristinata: pannelli, schede e tracce alle misure di partenza.");
-  }
-  el("ws").addEventListener("click", function(e){
-    var s = e.target.closest(".scheda"); if (s) { mostraScheda(s.dataset.scheda); return; }
-    var m = e.target.closest(".pan-menu"); if (m) { e.stopPropagation(); apriMenuPannello(m.closest(".pan").dataset.pan, m); }
-  });
-  // il pannello attivo e' quello dove si e' appena premuto
-  el("ws").addEventListener("mousedown", function(e){ var p = e.target.closest(".pan"); if (p) attivaPannello(p.dataset.pan); }, true);
-  document.addEventListener("mousedown", function(e){ if (TENDA_PAN !== null && !e.target.closest("#tendinaPan") && !e.target.closest(".pan-menu")) chiudiMenuPannello(); });
-  // doppio clic sulla linguetta di una scheda: massimizza, come in Premiere
-  el("ws").addEventListener("dblclick", function(e){ var s = e.target.closest(".scheda"); if (s) massimizza(s.closest(".pan").dataset.pan); });
-  // IL TASTO ` — il tasto a sinistra dell'1, qualunque cosa ci sia disegnato
-  // sopra: sulle tastiere italiane e' il \, e per questo si guarda il TASTO
-  // (e.code) e non il carattere. Il \ vero (Adatta alla finestra) resta suo.
-  var MOUSE_WS = { x: 0, y: 0 };
+  //  UN COMPONENTE SOLO, usato dal Montaggio e dalla Diretta: stessi gesti
+  //  dappertutto, che e' il motivo per cui in Premiere si impara una volta.
+  var TENDA_PAN = null, MOUSE_WS = { x: 0, y: 0 };
   document.addEventListener("mousemove", function(e){ MOUSE_WS.x = e.clientX; MOUSE_WS.y = e.clientY; }, { passive: true });
-  window.addEventListener("keydown", function(e){
-    if (!el("editor").classList.contains("on")) return;
-    if (e.code !== "Backquote" && e.key !== "`") return;
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    var tag = (e.target.tagName || "").toUpperCase(); if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-    e.preventDefault(); e.stopImmediatePropagation();
-    if (WS.massimo) return massimizza("");
-    var sotto = document.elementFromPoint(MOUSE_WS.x, MOUSE_WS.y);
-    var p = sotto && sotto.closest ? sotto.closest("#ws .pan") : null;
-    massimizza(p ? p.dataset.pan : WS.attivo);
-  }, true);
-  // le schede scelte l'ultima volta
-  Object.keys(WS.schede).forEach(function(pn){ if (WS.schede[pn]) mostraScheda(WS.schede[pn], true); });
-  attivaPannello("timeline");
+  function chiudiMenuPannello(){ var t = el("tendinaPan"); if (t) t.hidden = true; TENDA_PAN = null; }
+  document.addEventListener("mousedown", function(e){ var t = e.target && e.target.closest ? e.target : null; if (TENDA_PAN !== null && !(t && (t.closest("#tendinaPan") || t.closest(".pan-menu")))) chiudiMenuPannello(); });
+  function SpazioDiLavoro(o){
+    var S = { attivo: o.primo, schede: {}, massimo: "" };
+    var rad = el(o.radice);
+    try { var w0 = JSON.parse(localStorage.getItem(o.chiave) || "null"); if (w0 && w0.schede) S.schede = w0.schede; } catch (e) {}
+    function salva(){ try { localStorage.setItem(o.chiave, JSON.stringify({ schede: S.schede })); } catch (e) {} }
+    S.attiva = function(n){
+      S.attivo = n;
+      Array.prototype.forEach.call(rad.querySelectorAll(".pan"), function(p){ p.classList.toggle("attivo", p.dataset.pan === n); });
+    };
+    S.mostra = function(k, senzaAttivare){
+      var b = rad.querySelector('.linguetta[data-scheda="' + k + '"]'); if (!b) return;
+      var pan = b.closest(".pan");
+      Array.prototype.forEach.call(pan.querySelectorAll(".linguetta"), function(z){ z.classList.toggle("on", z === b); });
+      Array.prototype.forEach.call(pan.querySelectorAll(".pan-corpo"), function(z){ z.hidden = z.dataset.corpo !== k; });
+      S.schede[pan.dataset.pan] = k; salva();
+      if (!senzaAttivare) S.attiva(pan.dataset.pan);
+      if (o.allaScheda) o.allaScheda(k);
+    };
+    S.massimizza = function(n){
+      var togli = !n || S.massimo === n;
+      S.massimo = togli ? "" : n;
+      rad.classList.toggle("massimo", !togli);
+      Array.prototype.forEach.call(rad.querySelectorAll(".pan"), function(p){ p.classList.toggle("massimo", !togli && p.dataset.pan === n); });
+      if (!togli) S.attiva(n);
+      if (o.dopoMisura) o.dopoMisura();
+    };
+    // RIPRISTINA L'AREA DI LAVORO: misure, schede e pannello massimizzato
+    // tornano quelli di partenza. E' la voce che in Premiere salva la vita.
+    S.ripristina = function(){
+      if (S.massimo) S.massimizza("");
+      S.schede = {}; salva();
+      (o.primeSchede || []).forEach(function(k){ S.mostra(k, true); });
+      if (o.ripristina) o.ripristina();
+      avviso("ok", "Area di lavoro ripristinata: pannelli e schede alle misure di partenza.");
+    };
+    S.menu = function(n, bottone){
+      var t = el("tendinaPan");
+      if (!t) { t = document.createElement("div"); t.id = "tendinaPan"; t.className = "tendina-menu"; t.style.cssText = "position:fixed;z-index:70;min-width:250px"; document.body.appendChild(t); }
+      if (TENDA_PAN === o.radice + ":" + n) return chiudiMenuPannello();
+      TENDA_PAN = o.radice + ":" + n;
+      var voci = (o.voci ? o.voci(n) : []);
+      if (voci.length) voci = voci.concat([{ riga: 1 }]);
+      voci = voci.concat([
+        { e: S.massimo === n ? "Ripristina il pannello" : "Massimizza il pannello", t: "`", f: function(){ S.massimizza(n); } },
+        { riga: 1 },
+        { e: "Ripristina l’area di lavoro", t: "", f: S.ripristina }
+      ]);
+      t.innerHTML = voci.map(function(v, k){ return v.riga ? "<hr>" : '<a data-v="' + k + '"><span>' + esc(v.e) + "</span><i>" + esc(v.t || "") + "</i></a>"; }).join("");
+      t.hidden = false;
+      var r = bottone.getBoundingClientRect();
+      t.style.top = Math.round(r.bottom + 2) + "px";
+      t.style.left = Math.round(Math.max(6, Math.min(window.innerWidth - (t.offsetWidth || 250) - 6, r.right - (t.offsetWidth || 250)))) + "px";
+      t.onclick = function(ev){ var a = ev.target.closest("a[data-v]"); if (!a) return; chiudiMenuPannello(); var v = voci[+a.dataset.v]; if (v && v.f) v.f(); };
+    };
+    rad.addEventListener("click", function(e){
+      var s = e.target.closest(".linguetta"); if (s) { S.mostra(s.dataset.scheda); return; }
+      var m = e.target.closest(".pan-menu"); if (m) { e.stopPropagation(); S.menu(m.closest(".pan").dataset.pan, m); }
+    });
+    // il pannello attivo e' quello dove si e' appena premuto
+    rad.addEventListener("mousedown", function(e){ var p = e.target.closest(".pan"); if (p) S.attiva(p.dataset.pan); }, true);
+    // doppio clic sulla linguetta di una scheda: massimizza, come in Premiere
+    rad.addEventListener("dblclick", function(e){ var s = e.target.closest(".linguetta"); if (s) S.massimizza(s.closest(".pan").dataset.pan); });
+    // IL TASTO ` — il tasto a sinistra dell'1, qualunque cosa ci sia disegnato
+    // sopra: sulle tastiere italiane e' il \, e per questo si guarda il TASTO
+    // (e.code) e non il carattere. Il \ vero (Adatta alla finestra) resta suo.
+    window.addEventListener("keydown", function(e){
+      if (!el(o.vista).classList.contains("on")) return;
+      if (e.code !== "Backquote" && e.key !== "`") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      var tag = (e.target.tagName || "").toUpperCase(); if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      if (S.massimo) return S.massimizza("");
+      var sotto = document.elementFromPoint(MOUSE_WS.x, MOUSE_WS.y);
+      var p = sotto && sotto.closest ? sotto.closest("#" + o.radice + " .pan") : null;
+      S.massimizza(p ? p.dataset.pan : S.attivo);
+    }, true);
+    // le schede scelte l'ultima volta
+    Object.keys(S.schede).forEach(function(pn){ if (S.schede[pn]) S.mostra(S.schede[pn], true); });
+    S.attiva(o.primo);
+    return S;
+  }
+
+  // ── IL MONTAGGIO ──────────────────────────────────────────────────
+  var WS = SpazioDiLavoro({
+    radice: "ws", vista: "editor", chiave: "mam2-ws", primo: "timeline", primeSchede: ["effetti", "progetto"],
+    allaScheda: function(k){
+      if (k === "materiale") caricaMateriale();
+      if (k === "metadati") disegnaMetadati();
+      if (k === "cronologia") disegnaStoria();
+    },
+    // il monitor e la timeline si rimisurano sullo spazio nuovo
+    dopoMisura: function(){ if (typeof misuraPalco === "function") misuraPalco(); if (SEQ && typeof disegnaTl === "function") disegnaTl(); },
+    ripristina: function(){
+      ["bin", "lato", "nomi", "tl", "h-C", "h-G", "h-V2", "h-V1", "h-A1", "h-A2", "h-A3", "h-A4"].forEach(function(k){ delete MISURE[k]; });
+      salvaMisure(); applicaMisure();
+    }
+  });
+  // ── LA DIRETTA ────────────────────────────────────────────────────
+  var WSL = SpazioDiLavoro({
+    radice: "wsLive", vista: "live", chiave: "mam2-ws-live", primo: "sorgente", primeSchede: ["acquisizione"],
+    // nel menu del monitor: le cose che si fanno di rado, e quella che non
+    // si deve fare per sbaglio (Ferma) lontana da un clic nella barra
+    voci: function(n){
+      if (n !== "sorgente") return [];
+      return [
+        { e: "Clip degli ultimi 30 secondi", t: "", f: function(){ el("lClip").click(); } },
+        { e: "Apri la partita nella Libreria", t: "", f: function(){ el("lAsset").click(); } },
+        { riga: 1 },
+        { e: "Ferma la registrazione\u2026", t: "", f: function(){ el("lFerma").click(); } }
+      ];
+    },
+    ripristina: function(){ ["lv-sx", "lv-dx", "lv-acq"].forEach(function(k){ delete MISURE[k]; }); salvaMisure(); applicaMisure(); }
+  });
+  presaSu(el("lvDivSx"), "lv-sx", "x", 1);
+  presaSu(el("lvDivDx"), "lv-dx", "x", -1);      // le clip crescono andando a sinistra
+  presaSu(el("lvManiglia"), "lv-acq", "y", 1);
+  function attivaPannello(n){ WS.attiva(n); }
+  function mostraScheda(k, senzaAttivare){ WS.mostra(k, senzaAttivare); }
+  function massimizza(n){ WS.massimizza(n); }
+  function ripristinaArea(){ WS.ripristina(); }
 
   // ── CRONOLOGIA: la pila di Annulla, con un nome per ogni passo ─────
   //  Cliccando un passo si torna li': si annullano (o si rifanno) quanti
@@ -3660,7 +3732,7 @@
     if (!e) return;
     var mie = (LIVE.clip || []).filter(function(c){ return r && c.reg === r.id; });
     var dove = window.Destinazione ? Destinazione.dove() : "";
-    el("lClipConto").textContent = mie.length ? mie.length : "";
+    el("lClipConto").textContent = mie.length ? "\u00b7 " + mie.length : "";
     if (!r) { e.innerHTML = ""; return; }
     if (!mie.length) { e.innerHTML = '<div class="lclip"><div class="d"><small>Nessuna clip ancora. Segna { e } sulla barra e premi CLIP: esce un taglio grezzo, pronto da scaricare.</small></div></div>'; return; }
     e.innerHTML = mie.slice(0, 40).map(function(c){
@@ -3765,8 +3837,8 @@
     segnoAudio();
     ["lClip","lAsset","lFerma"].forEach(function(id){ el(id).disabled = !r; });
     document.querySelectorAll("#live [data-lsub]").forEach(function(b){ b.disabled = !r; });
-    if (!r) { el("lTitolo").textContent = "Diretta"; el("lMeta").textContent = LIVE.porte.length ? LIVE.porte.length + " porte · nessun flusso" : ""; return; }
-    el("lTitolo").textContent = r.titolo || "in arrivo"; el("lMeta").textContent = "porta " + r.ascolto.porta + (r.attesa ? " · in attesa del flusso" : " · " + tc(r.durata || 0) + " registrati");
+    if (!r) { el("lTabNome").textContent = "Diretta"; el("lInfoVuoto").hidden = false; el("lTitolo").textContent = "Diretta"; el("lMeta").textContent = LIVE.porte.length ? LIVE.porte.length + " porte · nessun flusso" : ""; return; }
+    el("lTitolo").textContent = r.titolo || "in arrivo"; el("lTabNome").textContent = r.titolo || "in arrivo"; el("lInfoVuoto").hidden = true; el("lMeta").textContent = "porta " + r.ascolto.porta + (r.attesa ? " · in attesa del flusso" : " · " + tc(r.durata || 0) + " registrati");
     fetch(BASE + "/clip/" + r.id + "/live.m3u8", { cache:"no-store" }).then(function(x){ return x.ok ? x.text() : ""; }).then(function(t){
       var righe = t.split("\n"), segs = righe.filter(function(l){ return /\.ts\s*$/.test(l); }), dur = 0, n = 0;
       righe.forEach(function(l){ var m = /^#EXTINF:([\d.]+)/.exec(l); if (m) { dur += parseFloat(m[1]); n++; } });
@@ -3978,6 +4050,8 @@
   document.addEventListener("keydown", function(e){
     if (!el("live").classList.contains("on") || !LIVE.reg) return;
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    // come nel Montaggio: I, O, B, frecce valgono sul pannello attivo
+    if (e.key !== " " && typeof WSL !== "undefined" && WSL.attivo !== "sorgente") return;
     if (e.key === " ") { e.preventDefault(); el("lPlay").click(); }
     else if (e.key === "I" && e.shiftKey) el("lGoIn").click();
     else if (e.key === "O" && e.shiftKey) el("lGoOut").click();
