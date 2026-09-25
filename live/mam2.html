@@ -272,6 +272,10 @@
   .storia a span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .storia a i{font:10.5px ui-monospace,Menlo,monospace;color:var(--fumo);font-style:normal;}
   .storia .nota{padding:8px 12px;color:var(--fumo);font-size:11px;}
+  .storia a .mk-tc{font:11px ui-monospace,Menlo,monospace;color:var(--oro2);flex:none;min-width:84px;}
+  .storia a .mk-via{flex:none;opacity:.5;padding:0 4px;} .storia a .mk-via:hover{opacity:1;color:var(--rosso);}
+  /* le bandierine dei marcatori sul righello, come in Premiere */
+  .ed-corsia.r .mk{position:absolute;top:0;width:0;height:0;margin-left:-5px;border-left:5px solid transparent;border-right:5px solid transparent;border-top:8px solid #E3C271;z-index:2;cursor:pointer;}
   .meta-corpo{padding:10px 12px;display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px;align-content:start;}
   .meta-corpo dt{color:var(--fumo);} .meta-corpo dd{margin:0;color:var(--ivory2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .meta-corpo dd.tc{font:12px ui-monospace,Menlo,monospace;color:var(--oro2);}
@@ -774,7 +778,7 @@
       <div class="ed-maniglia" id="edManiglia" title="trascina per dare piu’ o meno spazio alla timeline"><span></span></div>
       <div class="ws-giu">
         <section class="pan" data-pan="progetto">
-          <header class="pan-schede"><button class="linguetta on" data-scheda="progetto">Progetto</button><button class="linguetta" data-scheda="materiale">Materiale di casa</button><button class="linguetta" data-scheda="esporta">Esporta</button><button class="linguetta" data-scheda="cronologia">Cronologia</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
+          <header class="pan-schede"><button class="linguetta on" data-scheda="progetto">Progetto</button><button class="linguetta" data-scheda="materiale">Materiale di casa</button><button class="linguetta" data-scheda="esporta">Esporta</button><button class="linguetta" data-scheda="cronologia">Cronologia</button><button class="linguetta" data-scheda="marcatori">Marcatori</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
           <div class="pan-corpo ed-bin" data-corpo="progetto"><div class="capo">Pezzi <span id="binConto"></span></div><div class="corpo" id="bin" tabindex="0"></div></div>
           <div class="pan-corpo" data-corpo="materiale" hidden>
           <div id="tendaMedia" class="tenda-scheda">
@@ -788,6 +792,7 @@
           </div>
           </div>
           <div class="pan-corpo" data-corpo="cronologia" hidden><div id="storiaElenco" class="storia"></div></div>
+          <div class="pan-corpo" data-corpo="marcatori" hidden><div id="marcElenco" class="storia"></div></div>
           <div class="pan-corpo ed-lato" data-corpo="esporta" hidden>
             <div class="sez2"><h4>Sequenza</h4><div class="riga2"><span id="eInfo" style="color:var(--fumo)"></span></div>
             <div class="riga2"><button class="mini" id="eCasa" title="scarica i pezzi sulla VM: riproduzione immediata ed export senza attese">Pezzi in casa</button><button class="mini" id="eXml" title="l'XML per Premiere con l'SRT a fianco">XML Premiere</button><button class="mini" id="eRinomina">Rinomina</button><button class="mini" id="eProg" title="in quale progetto sta questa sequenza">Progetto</button></div>
@@ -1893,6 +1898,10 @@
     if (INS !== null && OUTS !== null && OUTS > INS) h += '<span class="rfra" style="left:' + X(INS) + 'px;width:' + Math.max(1, X(OUTS) - X(INS)) + 'px"></span>';
     if (INS !== null) h += '<span class="rin" style="left:' + X(INS) + 'px" title="entrata della sequenza ' + tc(INS) + '"></span>';
     if (OUTS !== null) h += '<span class="rout" style="left:' + X(OUTS) + 'px" title="uscita della sequenza ' + tc(OUTS) + '"></span>';
+    if (typeof marcatoriDellaSeq === "function") marcatoriDellaSeq().dentro.forEach(function(z){
+      if (z.t < LENTE.a || z.t > LENTE.b) return;
+      h += '<span class="mk" style="left:' + X(z.t) + 'px" data-mkt="' + z.t.toFixed(3) + '" title="' + esc(tcf(z.t) + " \u00b7 " + (z.m.testo || "marcatore")) + '"></span>';
+    });
     rig.innerHTML = h;
     var hv = "", hv2 = "", haT = {}, hs = "";
     corsie.forEach(function(n){ haT[n] = ""; });
@@ -3161,7 +3170,7 @@
     if (!REGE) return;
     var tm = tMateriale(), testo = window.prompt("Marker sulla partita a " + tc(tm) + ":", ""); if (testo === null) return;
     post({ tipo:"clip-marker", reg: REGE.id, secondi: tm, testo: testo })
-      .then(function(){ avviso("ok", "Marker segnato sulla partita."); }).catch(function(er){ avviso("err", esc(er.message)); });
+      .then(function(d){ REGE.marker = d.marker || REGE.marker; if (REGS[REGE.id]) REGS[REGE.id].marker = REGE.marker; disegnaMarcatori(); disegnaTl(); avviso("ok", "Marcatore segnato sulla partita."); }).catch(function(er){ avviso("err", esc(er.message)); });
   }
   function vaiAllaPartita(){
     if (!REGE) return;
@@ -3589,6 +3598,7 @@
       if (k === "metadati") disegnaMetadati();
       if (k === "cronologia") disegnaStoria();
       if (k === "grafiche") { apriGeneratore(); disegnaDestGrafica(); }
+      if (k === "marcatori") disegnaMarcatori();
     },
     voci: function(n){
       if (n !== "effetti") return [];
@@ -3753,6 +3763,53 @@
       avviso("ok", g0 ? "Versione " + (r.formato || fmt) + " di “" + esc(g0.nome || "grafica") + "”: in uscita " + (r.formato || fmt) + " usera’ questa."
                       : "Grafica " + fmt + " in timeline al " + tc(c.dentro) + ", cinque secondi: allungala dai bordi.");
     }).catch(function(er){ avviso("err", esc(er.message)); });
+  });
+
+  // ── MARCATORI ────────────────────────────────────────────────────
+  //  I marcatori stanno sulla PARTITA (li segna chi guarda la diretta, o M
+  //  nel montaggio). Nel montaggio contano quelli che cadono dentro una
+  //  clip: si portano sul tempo della sequenza — tenendo conto della
+  //  velocita' — si elencano, si vedono sul righello come bandierine, e un
+  //  clic ci porta la testina. Quelli fuori dal montaggio si contano.
+  function marcatoriDellaSeq(){
+    var dentro = [], fuori = 0;
+    PZ.forEach(function(x){
+      if (x.media) return;
+      var r = x.reg ? REGS[x.reg] : REGE; if (!r || !r.marker) return;
+      var vel = +x.velocita || 1, fine = x.dentro + (x.fuori - x.dentro) * vel;
+      r.marker.forEach(function(m){
+        if (m.secondi >= x.dentro && m.secondi <= fine) dentro.push({ m: m, r: r, t: (x.t0 || 0) + (m.secondi - x.dentro) / vel });
+      });
+    });
+    var visti = {}; PZ.forEach(function(x){ var r = x.reg ? REGS[x.reg] : REGE; if (r && r.marker && !visti[r.id]) { visti[r.id] = 1; fuori += r.marker.length; } });
+    dentro.sort(function(a, b){ return a.t - b.t; });
+    return { dentro: dentro, fuori: Math.max(0, fuori - dentro.length) };
+  }
+  function disegnaMarcatori(){
+    var c = el("marcElenco"); if (!c || !SEQ) return;
+    var corpo = c.closest(".pan-corpo"); if (corpo && corpo.hidden) return;
+    var mk = marcatoriDellaSeq(), h = "";
+    mk.dentro.forEach(function(z, i){
+      h += '<a data-mk="' + i + '"><span class="mk-tc">' + tcf(z.t) + "</span><span>" + esc(z.m.testo || "(senza nome)") + "</span>" +
+           '<i title="' + esc((z.m.chi ? z.m.chi + " \u00b7 " : "") + (z.m.fonte || "")) + '">' + esc(z.m.fonte || "") + "</i>" +
+           '<i class="mk-via" data-via="' + esc(z.m.id) + '" data-reg="' + esc(z.r.id) + '" title="togli il marcatore">\u2715</i></a>';
+    });
+    if (!mk.dentro.length) h += '<div class="nota">Nessun marcatore dentro il montaggio. M segna un marcatore sulla partita, sotto la testina.</div>';
+    if (mk.fuori) h += '<div class="nota">' + mk.fuori + " marcator" + (mk.fuori > 1 ? "i" : "e") + " della partita cad" + (mk.fuori > 1 ? "ono" : "e") + " fuori dalle clip del montaggio.</div>";
+    c.innerHTML = h;
+    c._mk = mk.dentro;
+  }
+  el("marcElenco").addEventListener("click", function(e){
+    var via = e.target.closest("[data-via]");
+    if (via) {
+      e.stopPropagation();
+      post({ tipo:"clip-marker", reg: via.dataset.reg, togli: via.dataset.via })
+        .then(function(d){ var r = REGS[via.dataset.reg] || (REGE && REGE.id === via.dataset.reg ? REGE : null); if (r) r.marker = d.marker || []; if (REGE && REGE.id === via.dataset.reg) REGE.marker = d.marker || []; disegnaMarcatori(); disegnaTl(); })
+        .catch(function(er){ avviso("err", esc(er.message)); });
+      return;
+    }
+    var a = e.target.closest("a[data-mk]"); if (!a) return;
+    var z = (el("marcElenco")._mk || [])[+a.dataset.mk]; if (z) vaiTempo(z.t, false);
   });
 
   // ── METADATI: la carta d'identita' della clip scelta ───────────────
