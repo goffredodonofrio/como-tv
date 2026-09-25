@@ -659,7 +659,7 @@
   .attrezzi button.on{background:var(--oro);color:var(--navy);border-color:var(--oro);}
 
   .ed-pista.lametta,.ed-pista.lametta .ed-pezzo{cursor:crosshair;}
-  .ed-rete{position:absolute;top:0;bottom:0;background:rgba(201,162,75,.14);border:1px solid var(--oro2);border-radius:3px;pointer-events:none;}
+  .ed-rete{position:absolute;z-index:6;background:rgba(201,162,75,.14);border:1px solid var(--oro2);border-radius:3px;pointer-events:none;}
   .ed-magnete{position:absolute;top:0;bottom:0;width:1px;background:#7CD992;box-shadow:0 0 5px #7CD992;pointer-events:none;z-index:4;}
   .ed-corsia{position:relative;border-bottom:1px solid var(--riga);} .ed-corsia.r{height:22px;} .ed-corsia.st{height:var(--h-C,26px);} .ed-corsia.g{height:var(--h-G,28px);} .ed-corsia.v2{height:var(--h-V2,40px);background:rgba(140,120,200,.05);} .ed-corsia.v2.mira{background:rgba(201,162,75,.12);box-shadow:0 0 0 1px var(--oro) inset;}
   .ed-corsia.v.mira{background:rgba(201,162,75,.10);box-shadow:0 0 0 1px var(--oro) inset;}
@@ -2054,7 +2054,7 @@
   // Programma legge il materiale della partita e salta da un pezzo al
   // seguente; la timeline disegna i pezzi in proporzione; le modifiche
   // vanno al ponte, che e' lo stesso del MAM di prima.
-  var GRAF = [], AUD = [], SELG = null, SELA = null;
+  var GRAF = [], AUD = [], SELG = null, SELA = null, SELGS = [], SELAS = [];   // SELGS/SELAS: le grafiche e gli audio presi col riquadro
   var SELS = [], INS = null, OUTS = null, APPUNTI_COPIA = [];
   function scelto(id){ return SELS.indexOf(id) >= 0; }
   function scegli(id, aggiungi){ if (!aggiungi) SELS = []; if (id) { if (aggiungi && scelto(id)) SELS = SELS.filter(function(z){ return z !== id; }); else SELS.push(id); } SEL = SELS.length ? SELS[SELS.length - 1] : null; }
@@ -2286,14 +2286,13 @@
     // l'audio staccato: a t0, per la sua durata, dove lo lasci
     AUD.forEach(function(au){ if (au.legato) return; var a = au.t0 || 0, b = a + Math.max(0.2, (au.fuori - au.dentro)); if (TRASC && TRASC.tipo === "a-muovi" && TRASC.a_id === au.id) { a = TRASC.a; b = TRASC.b; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); haT[au.traccia || "A1"] = (haT[au.traccia || "A1"] || "") + audioHtml(au, xa, Math.max(6, xb - xa), true); });
     var hg = "";
-    GRAF.forEach(function(g){ var a = g.dentro, b = g.fuori; if (TRASC && TRASC.g_id === g.id && TRASC.tipo !== "g-muovi") { a = TRASC.a; b = TRASC.b; } else if (TRASC && TRASC.g_id === g.id && TRASC.tipo === "g-muovi" && TRASC.mosso) { a = TRASC.a; b = TRASC.b; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); var fg = formatiDiGrafica(g), manca = FORMATI.filter(function(f){ return fg.indexOf(f) < 0; }); hg += '<div class="ed-graf' + (SELG === g.id ? " sel" : "") + '" data-g="' + esc(g.id) + '" style="left:' + xa + 'px;width:' + Math.max(8, xb - xa) + 'px" title="' + esc(g.nome || "grafica") + ' · ' + tcBreve(a) + ' → ' + tcBreve(b) + ' · formati: ' + fg.join(", ") + (manca.length ? " · manca " + manca.join(", ") + ": in uscita verra\u2019 adattata" : "") + '"><span class="bordo sx" data-lato="g-sx"></span>' + esc(g.nome || "grafica") + '<i class="gf">' + (g.titolo ? "tutti" : fg.join(" ")) + '</i>' + (manca.length ? '<b class="gm">' + esc(manca.join(" ")) + '?</b>' : '') + '<span class="bordo dx" data-lato="g-dx"></span></div>'; });
+    GRAF.forEach(function(g){ var a = g.dentro, b = g.fuori; if (TRASC && TRASC.g_id === g.id && TRASC.tipo !== "g-muovi") { a = TRASC.a; b = TRASC.b; } else if (TRASC && TRASC.g_id === g.id && TRASC.tipo === "g-muovi" && TRASC.mosso) { a = TRASC.a; b = TRASC.b; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); var fg = formatiDiGrafica(g), manca = FORMATI.filter(function(f){ return fg.indexOf(f) < 0; }); hg += '<div class="ed-graf' + (SELG === g.id || SELGS.indexOf(g.id) >= 0 ? " sel" : "") + '" data-g="' + esc(g.id) + '" style="left:' + xa + 'px;width:' + Math.max(8, xb - xa) + 'px" title="' + esc(g.nome || "grafica") + ' · ' + tcBreve(a) + ' → ' + tcBreve(b) + ' · formati: ' + fg.join(", ") + (manca.length ? " · manca " + manca.join(", ") + ": in uscita verra\u2019 adattata" : "") + '"><span class="bordo sx" data-lato="g-sx"></span>' + esc(g.nome || "grafica") + '<i class="gf">' + (g.titolo ? "tutti" : fg.join(" ")) + '</i>' + (manca.length ? '<b class="gm">' + esc(manca.join(" ")) + '?</b>' : '') + '<span class="bordo dx" data-lato="g-dx"></span></div>'; });
     buchiDiQui().forEach(function(z){
       if (z.b < LENTE.a || z.a > LENTE.b) return;
       var xa = Math.max(0, X(z.a)), xb = Math.min(w, X(z.b));
       hv += '<div class="ed-buco" style="left:' + xa + 'px;width:' + Math.max(2, xb - xa) + 'px" title="buco di ' + tc(z.b - z.a) + '"></div>';
     });
     if (AGGANCIO !== null && TRASC) hv += '<div class="ed-magnete" style="left:' + X(AGGANCIO) + 'px"></div>';
-    if (RETE && RETE.mosso) hv += '<div class="ed-rete" style="left:' + Math.min(RETE.x0, RETE.x1) + 'px;width:' + Math.abs(RETE.x1 - RETE.x0) + 'px"></div>';
     cv.innerHTML = hv || '<div class="ed-vuoto">Sequenza vuota.</div>'; cv2.innerHTML = hv2; cst.innerHTML = hs; cg.innerHTML = hg;
     corsie.forEach(function(n){
       var c = el("pista").querySelector('.ed-corsia.a[data-tr="' + n + '"]');
@@ -2384,7 +2383,7 @@
     var alta = Math.max(10, misura("h-" + (au.traccia || "A1")) - 8);
     var d = Math.max(0.2, au.fuori - au.dentro), px = ww / d;
     var entra = Math.min(ww * 0.5, (au.entra || 0) * px), esce = Math.min(ww * 0.5, (au.esce || 0) * px);
-    return '<div class="ed-audio' + (staccato ? " staccato" : "") + (au.muto ? " muto" : "") + (SELA === au.id ? " sel" : "") +
+    return '<div class="ed-audio' + (staccato ? " staccato" : "") + (au.muto ? " muto" : "") + (SELA === au.id || SELAS.indexOf(au.id) >= 0 ? " sel" : "") +
       '" data-a="' + esc(au.id) + '" style="left:' + xa + 'px;width:' + ww + 'px" title="' + esc(au.titolo || "audio") +
       (au.muto ? " \u00b7 muto" : "") + (au.gain ? " \u00b7 " + au.gain + " dB" : "") + '">' +
       ondaHtml(au, ww, alta) + (ww > 24 ? lineaVolume(au, ww, alta) : "") +
@@ -3168,6 +3167,7 @@
   (function girotondo(){ giroEditor(); if (el("editor").classList.contains("on")) { BT_PROG.aggiorna(); BT_SRG.aggiorna(); if (ESP.aperta && ESP.bt) { ESP.bt.aggiorna(); var o = tcf(tSeq()); if (el("espOra").textContent !== o) el("espOra").textContent = o; } } requestAnimationFrame(girotondo); })();
   // ── i gesti sulla timeline: scegli, trascina, accorcia, clicca per andare
   el("pista").addEventListener("mousedown", function(e){
+    if (!(e.shiftKey || e.metaKey || e.ctrlKey)) { SELGS = []; SELAS = []; }
     // le due prese della dissolvenza stanno SOPRA la clip audio: vanno
     // guardate per prime, se no si prende la clip e la si sposta invece di
     // allungare la rampa
@@ -3196,8 +3196,11 @@
     if (!pz) {
       // sul vuoto: un clic porta la testina, un trascinamento tira una rete
       // e prende tutte le clip che tocca
-      var r0 = el("pista").getBoundingClientRect();
-      RETE = { x0: e.clientX - r0.left, x1: e.clientX - r0.left, agg: e.shiftKey || e.metaKey || e.ctrlKey, preso: SELS.slice(), mosso: false };
+      // LA SELEZIONE A RIQUADRO, come in Premiere: un rettangolo vero, in
+      // larghezza e in altezza, che prende tutto quello che tocca su
+      // qualunque traccia — pezzi, grafiche, audio staccato
+      RETE = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, agg: e.shiftKey || e.metaKey || e.ctrlKey,
+               preso: SELS.slice(), presoG: SELGS.slice(), presoA: SELAS.slice(), mosso: false };
       e.preventDefault(); return;
     }
     if (STRUMENTO === "lametta") { tagliaQui(pz, e); e.preventDefault(); return; }
@@ -3218,16 +3221,20 @@
   document.addEventListener("mousemove", function(e){
     if (RETE) {
       var r0 = el("pista").getBoundingClientRect();
-      RETE.x1 = Math.max(0, Math.min(r0.width, e.clientX - r0.left));
-      if (Math.abs(RETE.x1 - RETE.x0) > 3) RETE.mosso = true;
+      RETE.x1 = Math.max(r0.left, Math.min(r0.right, e.clientX));
+      RETE.y1 = Math.max(r0.top, Math.min(r0.bottom, e.clientY));
+      if (Math.abs(RETE.x1 - RETE.x0) > 3 || Math.abs(RETE.y1 - RETE.y0) > 3) RETE.mosso = true;
       if (RETE.mosso) {
-        var a = tDiX(Math.min(RETE.x0, RETE.x1)), b = tDiX(Math.max(RETE.x0, RETE.x1));
-        SELS = (RETE.agg ? RETE.preso.slice() : []);
-        PZ.forEach(function(z){
-          var za = z.t0 || 0, zb = za + (z.fuori - z.dentro);
-          if (zb > a && za < b && SELS.indexOf(z.id) < 0) SELS.push(z.id);
-        });
-        SEL = SELS.length ? SELS[SELS.length - 1] : null;
+        var q = { l: Math.min(RETE.x0, RETE.x1), r: Math.max(RETE.x0, RETE.x1), t: Math.min(RETE.y0, RETE.y1), b: Math.max(RETE.y0, RETE.y1) };
+        var tocca = function(n){ var z = n.getBoundingClientRect(); return z.right > q.l && z.left < q.r && z.bottom > q.t && z.top < q.b; };
+        SELS = RETE.agg ? RETE.preso.slice() : []; SELGS = RETE.agg ? RETE.presoG.slice() : []; SELAS = RETE.agg ? RETE.presoA.slice() : [];
+        Array.prototype.forEach.call(el("pista").querySelectorAll(".ed-pezzo[data-i]"), function(n){ var z = PZ[+n.dataset.i]; if (z && tocca(n) && SELS.indexOf(z.id) < 0) SELS.push(z.id); });
+        Array.prototype.forEach.call(el("pista").querySelectorAll(".ed-graf[data-g]"), function(n){ if (tocca(n) && SELGS.indexOf(n.dataset.g) < 0) SELGS.push(n.dataset.g); });
+        // l'audio legato segue il suo pezzo: col riquadro si prende quello staccato
+        Array.prototype.forEach.call(el("pista").querySelectorAll(".ed-audio.staccato[data-a]"), function(n){ if (tocca(n) && SELAS.indexOf(n.dataset.a) < 0) SELAS.push(n.dataset.a); });
+        SEL = SELS.length ? SELS[SELS.length - 1] : null; SELG = null; SELA = null;
+        var box = el("reteBox"); if (!box) { box = document.createElement("div"); box.id = "reteBox"; box.className = "ed-rete"; el("pista").appendChild(box); }
+        box.hidden = false; box.style.left = (q.l - r0.left) + "px"; box.style.top = (q.t - r0.top) + "px"; box.style.width = (q.r - q.l) + "px"; box.style.height = (q.b - q.t) + "px";
         disegnaEditor();
       }
       return;
@@ -3281,7 +3288,9 @@
   document.addEventListener("mouseup", function(e){
     if (RETE) {
       var re = RETE; RETE = null;
-      if (!re.mosso) vaiTempo(tDiX(re.x0), false);
+      if (el("reteBox")) el("reteBox").hidden = true;
+      if (!re.mosso) vaiTempo(tDiX(re.x0 - el("pista").getBoundingClientRect().left), false);
+      else { var nSel = SELS.length + SELGS.length + SELAS.length; if (nSel > 1) avviso("ok", nSel + " elementi selezionati: Canc li toglie tutti."); }
       disegnaTl();
       return;
     }
@@ -3555,7 +3564,20 @@
   el("ePrima").addEventListener("click", function(){ vaiA(Math.max(0, ORA.i - 1), 0, !VE.paused); });
   el("eDopo").addEventListener("click", function(){ vaiA(Math.min(PZ.length - 1, ORA.i + 1), 0, !VE.paused); });
   el("eTaglia").addEventListener("click", function(){ if (SELG && SEQ) { var g0 = GRAF.filter(function(z){ return z.id === SELG; })[0], t0 = tSeq(); if (g0 && t0 > g0.dentro + 0.3 && t0 < g0.fuori - 0.3) return post({ tipo:"clip-hl-grafica", seq: SEQ.id, grafica: SELG, dividi: Math.round(t0 * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Grafica divisa."); }).catch(function(er){ avviso("err", esc(er.message)); }); } var x = PZ[ORA.i]; if (!x || !SEQ) return; post({ tipo:"clip-hl-dividi", seq: SEQ.id, pezzo: x.id, a: Math.round(VE.currentTime * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Diviso."); }).catch(function(er){ avviso("err", esc(er.message)); }); });
-  el("eTogli").addEventListener("click", function(){ if (SELG && SEQ) return post({ tipo:"clip-hl-grafica", seq: SEQ.id, grafica: SELG, togli: 1 }).then(function(d){ SELG = null; ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); }); if (SELA && SEQ) return post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"togli", audio: SELA }).then(function(d){ SELA = null; ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); }); if (!SELS.length || !SEQ) return; post(SELS.length > 1 ? { tipo:"clip-hl-pezzo", seq: SEQ.id, togli: true, pezzi: SELS.slice() } : { tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: SEL, togli: true }).then(function(d){ scegli(null); ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); }); });
+  el("eTogli").addEventListener("click", function(){
+    // PRESI COL RIQUADRO: pezzi, grafiche e audio insieme, uno dopo l'altro
+    if (SEQ && (SELGS.length || SELAS.length)) {
+      var passi = [], ultima = null;
+      if (SELS.length) passi.push({ tipo:"clip-hl-pezzo", seq: SEQ.id, togli: true, pezzi: SELS.slice() });
+      SELGS.forEach(function(g){ passi.push({ tipo:"clip-hl-grafica", seq: SEQ.id, grafica: g, togli: 1 }); });
+      SELAS.forEach(function(a){ passi.push({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"togli", audio: a }); });
+      var giro = Promise.resolve(), n = passi.length;
+      passi.forEach(function(c){ giro = giro.then(function(){ return post(c).then(function(d){ ultima = d; }); }); });
+      giro.then(function(){ SELGS = []; SELAS = []; SELG = null; SELA = null; scegli(null); if (ultima && ultima.seq) ricaricaSeq(ultima.seq); avviso("ok", n + (n === 1 ? " elemento tolto." : " elementi tolti.")); })
+          .catch(function(er){ avviso("err", esc(er.message)); if (ultima && ultima.seq) ricaricaSeq(ultima.seq); });
+      return;
+    }
+    if (SELG && SEQ) return post({ tipo:"clip-hl-grafica", seq: SEQ.id, grafica: SELG, togli: 1 }).then(function(d){ SELG = null; ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); }); if (SELA && SEQ) return post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"togli", audio: SELA }).then(function(d){ SELA = null; ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); }); if (!SELS.length || !SEQ) return; post(SELS.length > 1 ? { tipo:"clip-hl-pezzo", seq: SEQ.id, togli: true, pezzi: SELS.slice() } : { tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: SEL, togli: true }).then(function(d){ scegli(null); ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); }); });
   function spostaDi(n){ var i = PZ.findIndex(function(z){ return z.id === SEL; }); if (i < 0 || i + n < 0 || i + n >= PZ.length) return; var ordine = PZ.map(function(z){ return z.id; }); ordine.splice(i, 1); ordine.splice(i + n, 0, SEL); post({ tipo:"clip-hl-ordina", seq: SEQ.id, ordine: ordine }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); }); }
   el("eSu").addEventListener("click", function(){ spostaDi(-1); }); el("eGiu").addEventListener("click", function(){ spostaDi(1); });
   // LA GIUNZIONE (slide). Lo scivolo cambia COSA si vede dentro la clip e la
@@ -3964,7 +3986,7 @@
     else if (K === "C") { mettiStrumento("lametta"); }
     else if (K === "V") { mettiStrumento("scelta"); }
     else if (k === "Delete" || k === "Backspace") { e.preventDefault(); el("eTogli").click(); }
-    else if (k === "Escape") { RETE = null; disegnaTl(); }
+    else if (k === "Escape") { RETE = null; if (el("reteBox")) el("reteBox").hidden = true; SELGS = []; SELAS = []; disegnaTl(); }
     else if (K === "D") { var xd = pezzoQui(); if (xd) { scegli(xd.id, false); disegnaEditor(); } }
     else if (K === "S") { el("eMagnete").click(); }
     else if (K === "T") { chiediTitolo(); }
