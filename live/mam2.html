@@ -223,6 +223,11 @@
   .menubar > button{background:none;border:none;color:var(--ivory2);font:inherit;font-size:12.5px;padding:6px 11px;border-radius:6px;cursor:pointer;}
   .menubar > button:hover{background:rgba(245,241,230,.07);}
   .menubar > button.on{background:var(--oro);color:var(--navy);font-weight:600;}
+  .menubar > button.app-menu{font-weight:700;color:var(--oro2);}
+  .menubar > button.app-menu.on{color:var(--navy);}
+  .tendina-menu a.spento{color:var(--fumo);opacity:.45;cursor:default;}
+  .tendina-menu a.spento:hover{background:none;color:var(--fumo);}
+  .tendina-menu a .fuori{font-style:normal;color:var(--fumo);font-size:10px;margin-left:6px;}
   .tendina-menu{position:absolute;top:100%;left:0;min-width:270px;background:var(--navy2);border:1px solid var(--riga2);
     border-radius:0 0 9px 9px;box-shadow:0 14px 34px rgba(0,0,0,.55);padding:5px;z-index:70;}
   .tendina-menu a{display:flex;align-items:center;gap:14px;padding:6px 10px;border-radius:6px;font-size:12.5px;color:var(--ivory2);cursor:pointer;white-space:nowrap;}
@@ -626,6 +631,14 @@
     <div class="cerca"><span class="lu">&#128269;</span><input id="cercaTesta" type="search" placeholder="Cerca: partita, giocatore, frase, “tutti i gol di…”" autocomplete="off"></div>
     <div class="stato" id="statoPonte">ponte <b>…</b></div>
   </div>
+  <!-- LA BARRA DEI MENU sta sopra a tutte le viste, come in Premiere: le voci
+       che non valgono dove sei restano li', spente; le altre lavorano sul
+       monitor che hai davanti. Il primo menu porta al resto di Como TV. -->
+  <div class="menubar" id="menubar">
+    <button data-menu="app" class="app-menu">Como TV</button><button data-menu="file">File</button><button data-menu="modifica">Modifica</button><button data-menu="clip">Clip</button><button data-menu="sequenza">Sequenza</button><button data-menu="vista">Visualizza</button><button data-menu="finestra">Finestra</button><button data-menu="aiuto">Aiuto</button>
+    <div class="aree" id="aree" title="Aree di lavoro"><button data-area="montaggio">Montaggio</button><button data-area="audio">Audio</button><button data-area="sottotitoli">Sottotitoli</button></div>
+    <div class="tendina-menu" id="tendinaMenu" hidden></div>
+  </div>
 
   <!-- ══════════ LIBRERIA ══════════ -->
   <div class="vista" id="libreria">
@@ -755,11 +768,6 @@
 
   <!-- ══════════ EDITOR ══════════ -->
   <div class="vista" id="editor">
-    <div class="menubar" id="menubar">
-      <button data-menu="file">File</button><button data-menu="modifica">Modifica</button><button data-menu="clip">Clip</button><button data-menu="sequenza">Sequenza</button><button data-menu="vista">Visualizza</button><button data-menu="finestra">Finestra</button><button data-menu="aiuto">Aiuto</button>
-      <div class="aree" id="aree" title="Aree di lavoro"><button data-area="montaggio">Montaggio</button><button data-area="audio">Audio</button><button data-area="sottotitoli">Sottotitoli</button></div>
-      <div class="tendina-menu" id="tendinaMenu" hidden></div>
-    </div>
     <!-- LO SPAZIO DI LAVORO A PANNELLI, come l’area "Montaggio" di Premiere.
          Ogni pannello ha le sue schede, il suo menu ≡ e si massimizza col tasto `.
          Il pannello attivo ha il bordo oro: i tasti agiscono li’. -->
@@ -955,7 +963,8 @@
 
   // ══════════ STATO E NAVIGAZIONE ══════════
   var EVENTI = [], REGS = {}, ASSET = null;
-  function vai(vista){ ["libreria","asset","editor","live"].forEach(function(v){ el(v).classList.toggle("on", v === vista); }); el("vaiLive").classList.toggle("on", vista === "live"); }
+  var VISTA = "libreria";
+  function vai(vista){ VISTA = vista; ["libreria","asset","editor","live"].forEach(function(v){ el(v).classList.toggle("on", v === vista); }); el("vaiLive").classList.toggle("on", vista === "live"); if (el("aree")) el("aree").hidden = vista !== "editor"; if (typeof chiudiMenu === "function" && MENU_APERTO) chiudiMenu(); }
   function briciole(parti){ el("briciole").innerHTML = '<a href="mam2.html">Libreria</a>' + parti.map(function(p){ return '<i>›</i><b title="' + esc(p) + '">' + esc(p) + '</b>'; }).join(""); }
   function stato(){
     post({ tipo:"clip-stato" }).then(function(d){
@@ -2342,6 +2351,101 @@
     ],
     aiuto: [ bt("Scelte rapide da tastiera", "?", "eTasti") ]
   };
+  // ── I MENU IN OGNI VISTA ──────────────────────────────────────────
+  //  Le voci scritte sopra sono del montaggio. Qui si dice quali valgono
+  //  anche altrove, e cosa fanno li': Contrassegna entrata nella partita
+  //  segna l'entrata del monitor della partita, come in Premiere segna
+  //  quella del monitor Sorgente se e' li' che sei. Quello che non vale
+  //  dove sei resta nel menu, spento: il menu non cambia forma da una
+  //  vista all'altra, e chi lo cerca lo trova sempre allo stesso posto.
+  function perVista(menu, nome, per){
+    var v = (MENU[menu] || []).filter(function(z){ return z.e === nome; })[0]; if (!v) { console.warn("menu " + menu + ": manca la voce " + nome); return; }
+    v.per = v.per || { editor: v.f };
+    Object.keys(per).forEach(function(k){ v.per[k] = per[k] === true ? v.f : per[k]; });
+  }
+  var OVUNQUE = { libreria: true, asset: true, live: true };
+  function fnDi(v){ if (!v || v.riga || v.capo) return null; if (!v.per) return VISTA === "editor" ? v.f : null; return v.per[VISTA] || null; }
+  function dopoLaVoce(menu, nome, voci){
+    var m = MENU[menu], i = -1; m.forEach(function(z, k){ if (z.e === nome) i = k; });
+    Array.prototype.splice.apply(m, [i < 0 ? m.length : i + 1, 0].concat(voci));
+  }
+  function suAsset(f){ return function(){ if (!ASSET) return avviso("err", "Apri prima una partita."); f(); }; }
+  function suLive(f){ return function(){ if (!LIVE.reg) return avviso("err", "Nessun flusso in arrivo."); f(); }; }
+  function clicca(id){ return function(){ var b = el(id); if (!b) return; if (b.disabled) return avviso("err", "Segna prima entrata e uscita."); b.click(); }; }
+  function nuovaSequenzaSu(r){
+    var n = window.prompt("Nome della nuova sequenza:", "HL " + (r.titolo || "")); if (!n || !n.trim()) return;
+    post({ tipo:"clip-hl-nuova", reg: r.id, titolo: n.trim() })
+      .then(function(d){ location.href = "mam2.html?seq=" + encodeURIComponent(d.seq.id); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  }
+  // IL MENU COMO TV: il resto della casa, nello stesso ordine della barra
+  // della home. Le parti del MAM si aprono qui; gli altri strumenti in una
+  // scheda nuova, perche' un montaggio a meta' non si lascia per sbaglio.
+  function vaiA_(u){ return function(){ location.href = u; }; }
+  function apriFuori(u){ return function(){ window.open(u, "_blank", "noopener"); }; }
+  MENU.app = [
+    { e: "Home di Como TV", t: "", per: { editor: vaiA_("../index.html"), libreria: vaiA_("../index.html"), asset: vaiA_("../index.html"), live: vaiA_("../index.html") } },
+    { riga: 1 },
+    { capo: "MAM" },
+    { e: "Libreria", t: "", per: { editor: vaiA_("mam2.html"), asset: vaiA_("mam2.html"), live: vaiA_("mam2.html"), libreria: function(){ vai("libreria"); } } },
+    { e: "MAM Live", t: "", per: { editor: vaiA_("mam2.html?live=1"), libreria: function(){ apriLive(); }, asset: vaiA_("mam2.html?live=1"), live: function(){} } },
+    { e: "Editing (l’ultima sequenza)", t: "", per: { editor: vaiA_("mam2.html?montaggio=1"), libreria: vaiA_("mam2.html?montaggio=1"), asset: vaiA_("mam2.html?montaggio=1"), live: vaiA_("mam2.html?montaggio=1") } },
+    { e: "Magazzino", t: "", per: { editor: vaiA_("magazzino.html"), libreria: vaiA_("magazzino.html"), asset: vaiA_("magazzino.html"), live: vaiA_("magazzino.html") } },
+    { e: "Finder della QNAP", t: "", per: { editor: vaiA_("qnap.html"), libreria: vaiA_("qnap.html"), asset: vaiA_("qnap.html"), live: vaiA_("qnap.html") } },
+    { riga: 1 },
+    { capo: "Live" },
+    { e: "Grafiche Live", t: "↗", u: "classifiche.html" },
+    { e: "Controllo Redazione", t: "↗", u: "redazione.html" },
+    { e: "Regia", t: "↗", u: "regia.html" },
+    { e: "Telecronaca", t: "↗", u: "telecronaca.html" },
+    { riga: 1 },
+    { capo: "Grafiche statiche e social" },
+    { e: "Grafiche Statiche", t: "↗", u: "../10_Look%26Feel/Como%20TV%20OTT%20Design/generatore.html" },
+    { e: "Social Video e Maschere", t: "↗", u: "../10_Look%26Feel/Como%20TV%20OTT%20Design/generatore.html?solo=social" },
+    { e: "UEFA Club Channel", t: "↗", u: "../uefa-club-channel.html" }
+  ];
+  MENU.app.forEach(function(v){ if (v.u) { var f = apriFuori(v.u); v.per = { editor: f, libreria: f, asset: f, live: f }; } });
+  // File
+  perVista("file", "Progetto…", OVUNQUE);
+  perVista("file", "Apri progetto…", OVUNQUE);
+  perVista("file", "XML di Premiere (ritrova i file qui)…", OVUNQUE);
+  perVista("file", "Dove ho l’archivio sul mio computer…", OVUNQUE);
+  perVista("file", "Sequenza…", { asset: suAsset(function(){ nuovaSequenzaSu(ASSET); }), live: suLive(function(){ nuovaSequenzaSu(LIVE.reg); }) });
+  perVista("file", "Media…", { asset: clicca("bClip") });
+  dopoLaVoce("file", "Media…", [
+    { e: "SRT della telecronaca", t: "", per: { asset: suAsset(function(){ el("aSrt").click(); }) } },
+    { e: "Scarica il file della partita", t: "", per: { asset: suAsset(function(){ el("aScarica").click(); }) } }
+  ]);
+  dopoLaVoce("file", "Apri progetto…", [
+    { e: "Apri la partita nel montaggio", t: "", per: { asset: suAsset(function(){ apriNelMontaggio(ASSET); }), live: suLive(function(){ apriNelMontaggio(LIVE.reg); }) } }
+  ]);
+  // Modifica: entrata e uscita sul monitor che hai davanti
+  perVista("modifica", "Contrassegna entrata", { asset: suAsset(clicca("bIn")), live: suLive(clicca("lIn")) });
+  perVista("modifica", "Contrassegna uscita", { asset: suAsset(clicca("bOut")), live: suLive(clicca("lOut")) });
+  perVista("modifica", "Cancella entrata e uscita", { asset: suAsset(clicca("bPulisci")) });
+  // Clip: Inserisci, come la virgola di Premiere dal monitor Sorgente
+  MENU.clip.unshift(
+    { capo: "Dal monitor della partita" },
+    { e: "Inserisci nella bozza", t: ",", per: { asset: suAsset(clicca("bBozza")), live: suLive(clicca("lBozza")) } },
+    { e: "Esporta la clip fra entrata e uscita", t: "", per: { asset: suAsset(clicca("bClip")) } },
+    { e: "Clip degli ultimi 30 secondi", t: "", per: { live: suLive(clicca("lClip")) } },
+    { riga: 1 });
+  perVista("sequenza", "Aggiungi marcatore", { asset: suAsset(clicca("bMarker")) });
+  // Finestra: nella Diretta i suoi pannelli; da fuori le aree portano al montaggio
+  function areaDaFuori(n){ return function(){ try { localStorage.setItem("mam2-area", n); } catch (e) {} location.href = "mam2.html?montaggio=1"; }; }
+  perVista("finestra", "Montaggio", { libreria: areaDaFuori("montaggio"), asset: areaDaFuori("montaggio"), live: areaDaFuori("montaggio") });
+  perVista("finestra", "Audio", { libreria: areaDaFuori("audio"), asset: areaDaFuori("audio"), live: areaDaFuori("audio") });
+  perVista("finestra", "Sottotitoli", { libreria: areaDaFuori("sottotitoli"), asset: areaDaFuori("sottotitoli"), live: areaDaFuori("sottotitoli") });
+  perVista("finestra", "Massimizza il pannello attivo", { live: function(){ WSL.massimizza(WSL.attivo); } });
+  perVista("finestra", "Ripristina l’area di lavoro", { live: function(){ WSL.ripristina(); } });
+  MENU.finestra.splice(1, 0,
+    { e: "Acquisizione", t: "", per: { live: function(){ WSL.mostra("acquisizione"); } } },
+    { e: "Info", t: "", per: { live: function(){ WSL.mostra("info"); } } },
+    { e: "Trascrizione", t: "", per: { live: function(){ WSL.mostra("trascrizione"); } } },
+    { e: "Sorgente", t: "", per: { live: function(){ WSL.mostra("sorgente"); } } },
+    { e: "Clip della partita", t: "", per: { live: function(){ WSL.mostra("clip"); } } },
+    { riga: 1 });
+  perVista("aiuto", "Scelte rapide da tastiera", OVUNQUE);
   function scegliFormatoMenu(f){
     var c = el("eFormati").querySelector('.fchip[data-f="' + f + '"]');
     if (c) c.click();
@@ -2360,7 +2464,7 @@
     t.innerHTML = (MENU[n] || []).map(function(v, i){
       if (v.riga) return "<hr>";
       if (v.capo) return '<div class="capo2">' + esc(v.capo) + "</div>";
-      return '<a data-v="' + i + '"><span>' + esc(v.e) + "</span><i>" + esc(v.t) + "</i></a>";
+      return '<a data-v="' + i + '"' + (fnDi(v) ? "" : ' class="spento" title="non vale qui"') + '><span>' + esc(v.e) + "</span><i>" + esc(v.t) + "</i></a>";
     }).join("");
     t.style.left = Math.max(0, b.offsetLeft) + "px";
     t.hidden = false;
@@ -2370,9 +2474,10 @@
     if (b) { apriMenu(b.dataset.menu); return; }
     var a = e.target.closest("a[data-v]");
     if (!a) return;
-    var v = (MENU[MENU_APERTO] || [])[+a.dataset.v];
+    var v = (MENU[MENU_APERTO] || [])[+a.dataset.v], f = fnDi(v);
+    if (!f) return;                 // una voce spenta non chiude il menu, come in Premiere
     chiudiMenu();
-    if (v && v.f) { try { v.f(); } catch (er) { avviso("err", esc(er.message)); } }
+    try { f(); } catch (er) { avviso("err", esc(er.message)); }
   });
   el("menubar").addEventListener("mouseover", function(e){
     // una volta aperto, si passa da un menu all'altro senza cliccare
