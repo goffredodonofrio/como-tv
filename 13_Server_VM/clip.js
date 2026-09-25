@@ -6353,6 +6353,9 @@ function elencaCartella(radice, prefisso, delimitatore) {
       // altre, e per giunta illeggibile
       if (v.name.startsWith(".") || v.name === "#recycle" || v.name === "@eaDir" ||
           v.name.toLowerCase() === "@recycle") return;
+      // LO SPECCHIO DI S3 NON E' ARCHIVIO DELLA NAS: quelle partite restano
+      // le righe S3 che erano (con le loro letture), solo lette da qui
+      if (!rel && v.name === SPECCHIO_DIR) return;
       const k = rel ? rel + "/" + v.name : v.name;
       if (v.isDirectory()) {
         if (delimitatore && k.startsWith(prefisso)) { cartelle.add(k + "/"); return; }
@@ -6438,12 +6441,51 @@ function livelloDi(x) {
   if (/\bprimavera\b/.test(t)) return "primavera";
   return "";
 }
+// parole che nel nome di una cartella non dicono niente della partita
+const PAROLE_VUOTE = new Set(["full", "match", "cleanfeed", "clean", "feed", "audio", "only", "commentary", "output",
+  "multicorder1", "multicorder2", "multicorder3", "coppa", "italia", "gara", "live", "partita", "intera"]);
+// la stessa parola scritta un po' diversa: Villareal/Villarreal,
+// Feynoord/Feyenoord, Strasburgo/Strasbourg, Guaira/Laguaira
+function paroleUguali(x, y) {
+  if (x === y) return true;
+  if (x.length < 5 || y.length < 5) return false;
+  if (x.startsWith(y) || y.startsWith(x) || x.endsWith(y) || y.endsWith(x)) return true;
+  if (x.slice(0, 5) === y.slice(0, 5) && Math.abs(x.length - y.length) <= 2) return true;
+  if (Math.abs(x.length - y.length) > 1) return false;
+  // una lettera in piu', in meno o cambiata
+  let i = 0, j = 0, diff = 0;
+  while (i < x.length && j < y.length) {
+    if (x[i] === y[j]) { i++; j++; continue; }
+    if (++diff > 1) return false;
+    if (x.length > y.length) i++; else if (y.length > x.length) j++; else { i++; j++; }
+  }
+  return diff + (x.length - i) + (y.length - j) <= 1;
+}
 function quantoSiSomigliano(a, b, livA) {
   const la = (livA === undefined ? livelloDi(a) : livA), lb = livelloDi(b);
   if (la && lb && la !== lb) return 0;
   const A = new Set(paroleSquadre(a)), B = new Set(paroleSquadre(b));
   if (!A.size || !B.size) return 0;
-  let insieme = 0; A.forEach((w) => { if (B.has(w)) insieme++; });
+  const Bv = [...B], ha = (w, lista) => lista.some((v) => paroleUguali(w, v));
+  let insieme = 0; A.forEach((w) => { if (ha(w, Bv)) insieme++; });
+  // COMO NON BASTA. Il Como sta in centinaia di partite: averlo in comune
+  // non dice niente. Se tutt'e due i nomi hanno un'altra squadra e l'altra
+  // squadra non combacia, non e' la stessa partita. Con 0,5 di soglia
+  // Como-Milan passava per Como-Fiorentina e Fiorentina-Como per
+  // Como-Parma (25/09/2026). Le partite senza il Como restano come prima:
+  // li' "Nizza" e "Nice" sono la stessa squadra scritta in due lingue.
+  const Ax = [...A].filter((w) => w !== "como"), Bx = Bv.filter((w) => w !== "como" && !PAROLE_VUOTE.has(w));
+  if (A.has("como") && B.has("como") && Ax.length && Bx.length && !Ax.some((w) => ha(w, Bx))) return 0;
+  // e i numeri: Karate Combat 55 non e' il 56, gara 1 non e' gara 2 (i
+  // risultati "2-1" non contano)
+  const numeri = (x) => {
+    const t = senzaAccenti(String(x || "")).replace(/\b\d+\s*-\s*\d+\b/g, " ");
+    const n = new Set(t.match(/\b\d{2,3}\b/g) || []);
+    (t.match(/\b(?:gara|game|leg)\s*(\d)\b/g) || []).forEach((z) => n.add("g" + z.replace(/\D/g, "")));
+    return n;
+  };
+  const na = numeri(a), nb = numeri(b);
+  if (na.size && nb.size && ![...na].some((n) => nb.has(n))) return 0;
   const s = insieme / Math.max(A.size, B.size);
   return (la === lb) ? s : s * 0.55;
 }
@@ -7073,6 +7115,7 @@ async function archivioScandaglia(p) {
     ", 'days')), NOT({Partita} = BLANK()))";
   let offset = "", tornate = 0, agganciate = 0, conKickoff = 0, intere = 0, scartati = 0;
   const orfane = [];
+  const PROPOSTE = [];
   // chi ha trovato materiale in QUESTO giro: a fine scandaglio, le righe di
   // questo magazzino che non ci sono dentro non hanno piu' niente da
   // mostrare e vanno tolte. Senza, una riga che il materiale l'ha perso —
@@ -7095,6 +7138,47 @@ async function archivioScandaglia(p) {
   } while (offset);
   // ...e gli eventi della base storica, letti dall'ultimo import
   STORICI.forEach((e) => aggancia(e.id, e.partita, e.competizione, e.quando));
+  // L'ASSEGNAZIONE: dalla proposta piu' sicura alla meno sicura
+  const usati = new Set();
+  let contese = 0;
+  // a pari sicurezza (la stessa partita scritta due volte in Airtable) vince
+  // la riga che ha gia' piu' lavoro sopra: cronometro, boati, ESPN
+  const lavoro = (id) => { const v = ARCHIVIO[id] || {}; return (v.orologio ? 1 : 0) + (v.boati ? 1 : 0) + (v.tabellone ? 1 : 0) + (v.gol ? 1 : 0) + (ESPN[id] ? 1 : 0); };
+  PROPOSTE.sort((x, y) => y.meglio - x.meglio || (y.conTag ? 1 : 0) - (x.conTag ? 1 : 0) ||
+                          x.vicino - y.vicino || lavoro(y.recId) - lavoro(x.recId));
+  // UNA CARTELLA, PIU' PARTITE (la COMO CUP: quattro partite in ENG/ITA).
+  // Il file il cui nome dice un'altra partita non e' questa: fuori. I file
+  // senza nomi di squadra (MultiCorder...) restano, li decide il resto.
+  const nomeNelFile = (f) => {
+    const b = path.basename(f.chiave).replace(/\.[^.]+$/, "");
+    if (/multicorder|output\s*\d/i.test(b)) return "";
+    const n = b.replace(/^\d{6,9}\s*[-_ ]*/, " ").replace(/\d{1,2}\s+[a-z\u00e0-\u00f9]+\s+\d{4}/ig, " ").replace(/\d{2}-\d{2}-\d{2}/g, " ");
+    return paroleSquadre(n).filter((w) => !PAROLE_VUOTE.has(w)).length >= 2 ? n : "";
+  };
+  const soloSuoi = (gr, nome) => {
+    // vale solo dove i file con un nome di partita sono piu' d'uno
+    if (gr.file.filter((f) => nomeNelFile(f)).length < 2) return gr;
+    const giusti = gr.file.filter((f) => { const n = nomeNelFile(f); return !n || quantoSiSomigliano(nome, n) > 0; });
+    return giusti.length === gr.file.length ? gr : Object.assign({}, gr, { file: giusti });
+  };
+  PROPOSTE.forEach((pr) => {
+    // lo studio sta spesso nello stesso file della partita (pre, intervallo,
+    // post): puo' dividerlo con lei, e non lo toglie a nessuno
+    const studio = DA_STUDIO.test(pr.nomePartita);
+    let presa = null;
+    for (const c of pr.classifica) {
+      const gr2 = soloSuoi(c.gr, pr.nomePartita);
+      if (!gr2.file.length) continue;
+      const scelta = scegliMateriale(gr2, pr.tag);
+      if (!scelta || !scelta.pezzi.length) continue;
+      // la cartella dice un'altra lingua: "COMO ATALANTA ENG" non e' la ITA
+      if (pr.tag && diceUnAltraLingua(scelta.pezzi.map((z) => z.chiave).join(" "), pr.tag)) continue;
+      if (!studio && scelta.pezzi.some((z) => usati.has(z.chiave))) { contese++; continue; }
+      presa = { gr: c.gr, s: c.s, scelta }; break;
+    }
+    if (presa && !studio) presa.scelta.pezzi.forEach((z) => usati.add(z.chiave));
+    aggancia(pr.recId, pr.nomePartita, pr.nomeComp, pr.quandoIso, presa || { gr: null, s: 0 });
+  });
   // LE PARTITE APPENA AGGANCIATE VANNO CERCATE SU ESPN DA SOLE. Su una
   // partita della notte prima nessuno ha ancora scritto appunti: se ESPN
   // non la cerca, il tabellino esce vuoto e sembra che il magazzino non
@@ -7108,9 +7192,14 @@ async function archivioScandaglia(p) {
   });
   if (daCercare) { console.log("[clip] scandaglio: " + daCercare + " partite da cercare su ESPN"); giraEspn(); }
 
-  function aggancia(recId, nomePartita, nomeComp, quandoIso) {
+  // UN FILE, UNA PARTITA. Prima si raccolgono le proposte di tutte le
+  // partite, poi si assegnano dalla piu' sicura: un file gia' preso non si
+  // da' a nessun altro. Prima si andava in fila e vinceva l'ultima arrivata:
+  // 33 file stavano sotto due partite, e cliccando Fiorentina-Como si apriva
+  // Como-Parma (25/09/2026).
+  function aggancia(recId, nomePartita, nomeComp, quandoIso, deciso) {
     {
-      tornate++;
+      if (!deciso) tornate++;
       const f = { "Partita": nomePartita, "Competizione": nomeComp, "Data | Orario": quandoIso };
       const rec = { id: recId };
       const quando = Date.parse(quandoIso || "");
@@ -7130,8 +7219,10 @@ async function archivioScandaglia(p) {
       });
       const livello = livelloDi(String(f["Partita"] || "") + " " + String(f["Competizione"] || ""));
       let meglio = null, punteggio = 0;
-      candidati.forEach((gr) => {
+      const classifica = [];
+      if (!deciso) candidati.forEach((gr) => {
         const s = quantoSiSomigliano(f["Partita"], gr.partita, livello);
+        if (s >= 0.5) classifica.push({ gr, s });
         if (s > punteggio) { punteggio = s; meglio = gr; }
       });
       // SE QUALCUNO L'HA GIA' RICONOSCIUTA, VALE PIU' DI QUALSIASI SOMIGLIANZA.
@@ -7139,11 +7230,27 @@ async function archivioScandaglia(p) {
       // del file non c'entra piu' niente.
       const detto = Object.keys(RICONOSCIUTE).find((dove) => RICONOSCIUTE[dove].rec === rec.id &&
                                                              RICONOSCIUTE[dove].sicura !== false);
-      if (detto) {
+      if (detto && !deciso) {
         const suo = candidati.find((gr) => gr.dove === detto) ||
                     Object.keys(gruppi).map((kk) => gruppi[kk]).find((gr) => gr.dove === detto);
-        if (suo && !suo.presa) { meglio = suo; punteggio = 1; }
+        if (suo) { meglio = suo; punteggio = 1; classifica.unshift({ gr: suo, s: 1.5 }); }
       }
+      // la lingua si legge anche senza parentesi: "NAPOLI-COMO - ITA"
+      const tag = (/\[([A-Z][A-Z ]{1,12})\]/.exec(String(f["Partita"] || "")) || [])[1] ||
+                  (/(?:^|[^A-Z])(ITA|ENG)(?:[^A-Z]|$)/.exec(String(f["Partita"] || "").toUpperCase()) || [])[1] || "";
+      if (!deciso) {
+        // il giorno conta a parita' di nome: prima la cartella dello stesso giorno
+        const lontano = (gr) => Math.abs(giornoNumero(gr.giorno) - giornoNumero(giornoRoma(quando)));
+        classifica.sort((x, y) => y.s - x.s || lontano(x.gr) - lontano(y.gr));
+        const primo = classifica[0];
+        PROPOSTE.push({ recId, nomePartita, nomeComp, quandoIso, tag, classifica,
+                        meglio: primo ? primo.s : 0, conCandidati: candidati.length > 0,
+                        // a pari nome: prima chi ha la lingua scritta nel file, poi chi e' dello stesso giorno
+                        conTag: !!(primo && tag && primo.gr.file.some((z) => (z.dentro + " " + z.file).toUpperCase().indexOf(tag) >= 0)),
+                        vicino: primo ? lontano(primo.gr) : 9 });
+        return;
+      }
+      meglio = deciso.gr; punteggio = deciso.s > 1 ? 1 : deciso.s;
       if (!meglio || punteggio < 0.5) {
         if (candidati.length) orfane.push(f["Partita"] + " (" +
           new Date(quando).toISOString().slice(0, 16).replace("T", " ") + ")");
@@ -7159,8 +7266,7 @@ async function archivioScandaglia(p) {
       // anche le etichette di due parole: "[AUDIO ONLY]" e' una consegna a
       // se', non un modo di dire la stessa partita, e prendersi l'export
       // completo di qualcun altro non le serve
-      const tag = (/\[([A-Z][A-Z ]{1,12})\]/.exec(String(f["Partita"] || "")) || [])[1] || "";
-      const scelta = scegliMateriale(meglio, tag);
+      const scelta = deciso.scelta;
       if (!scelta) return;
       meglio.presa = rec.id;
       // IL FILE CHE SI LEGGE VINCE. Se la partita ha gia' il materiale in un
@@ -7356,7 +7462,7 @@ async function archivioScandaglia(p) {
   return { ok: true, oggettiVisti: visti, fileTenuti: tenuti, durateRimesse: riavuti, pezziScartati: scartati,
            cartellePartita: Object.keys(gruppi).length,
            partiteViste: tornate, agganciate: agganciate, intere: intere, doppieAssorbite: assorbite, promosseAIntere: promosse,
-           conKickoff: conKickoff, soloS3: soleS3, tolte: tolte, senzaAggancio: orfane.slice(0, 15),
+           conKickoff: conKickoff, soloS3: soleS3, tolte: tolte, senzaAggancio: orfane.slice(0, 15), fileContesi: contese,
            // l'elenco intero, per chi vuole capire PERCHE' non si agganciano:
            // le partite di Airtable rimaste senza file, e i file rimasti senza
            // partita — messi uno accanto all'altro si vede se e' una regola
@@ -12921,7 +13027,10 @@ const AZIONI = {
       // appaiate ad Airtable (rec…) e quelle ancora senza nome (s3:…)
       if (!a.chiave || !magazzinoInventario(a.bucket)) return;
       const minuti = (a.pezzi || []).reduce((n, z) => n + (z.minuti || 0), 0);
-      const r = regs.find((x) => x.arch && x.arch.rec === k);
+      // la registrazione di QUESTO file: una aperta quando la riga puntava un
+      // altro file (prima dell'abbinamento unico) non e' sua
+      const r = regs.find((x) => x.arch && x.arch.rec === k && x.arch.chiave === a.chiave) ||
+                regs.find((x) => x.arch && x.arch.rec === k && !x.arch.chiave);
       fuori.push({ nome: path.basename(a.chiave), via: a.chiave, cartella: a.dove || path.dirname(a.chiave), peso: a.peso || (a.pezzi || []).reduce((n, z) => n + (z.peso || 0), 0),
                    quando: Date.parse(a.quando) || 0, est: path.extname(a.chiave).slice(1).toLowerCase(), rec: k, partita: a.partita || nomeDaCartella(a) || "",
                    nomeDa: a.soloS3 ? "cartella" : (a.partita ? "airtable" : (nomeDaCartella(a) ? "cartella" : "")), sicuro: !!a.partita && nomeSicuro(a), competizione: a.competizione || "",
