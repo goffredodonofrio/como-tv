@@ -7509,7 +7509,7 @@ async function archivioScandaglia(p) {
     }
     const id = "s3:" + crypto.createHash("sha1").update(gr.dove).digest("hex").slice(0, 14);
     ARCHIVIO[id] = Object.assign({}, lettureSoleS3[id], { bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
-      partita: gr.partita.replace(/[_]+/g, " ").trim(), competizione: comp.replace(/[_]+/g, " "),
+      partita: titoloAMano(gr.dove) || gr.partita.replace(/[_]+/g, " ").trim(), competizione: comp.replace(/[_]+/g, " "),
       variante: "", giorno: g, dove: gr.dove, fonte: scelta.fonte, pezzi: pezzi,
       kickoff: null, sicuro: false, quando: quando, soloS3: true,
       candidati: candidatiSuoi, riconosciuta: RICONOSCIUTE[gr.dove] || undefined });
@@ -10899,6 +10899,479 @@ async function espnTrova(rec) {
   misuraRitardo(rec);
   return ESPN[rec];
 }
+// ═══════════════════════════════════════════════════════════
+//  GLI STEMMI DELLE SQUADRE, per le anteprime della Libreria
+// ═══════════════════════════════════════════════════════════
+//
+//  Da dove, in ordine:
+//    1. la cartella dei loghi della redazione: "stemma-<squadra>" o il nome
+//       semplice ("padova.svg", "al-faisaly.png"). Vince su tutto: e' chi li
+//       mette a mano che sa quale e' giusto.
+//    2. ESPN, dalla PARTITA: per le 3.000 partite che ESPN ha riconosciuto
+//       conosciamo il nome esatto delle due squadre. Estudiantes, Racing,
+//       Liverpool non si indovinano dal nome: si leggono dall'evento.
+//    3. ESPN, dal NOME, cercando prima nel campionato della partita. A
+//       parita' di candidati non si sceglie: meglio la sigla che uno stemma
+//       sbagliato (Red Bull Salisburgo finiva sul Red Bull New York).
+//  Gli stemmi ESPN si scaricano una volta sola e stanno nella cartella dei
+//  loghi come "stemma-espn-<id>.png": la pagina non dipende da ESPN.
+const STEMMI_DIR = process.env.COMOTV_LOGHI || "/var/lib/comotv/loghi";
+const LEGHE_STEMMI = ("ita.1 ita.2 ita.coppa_italia eng.1 eng.2 eng.3 eng.4 eng.league_cup eng.fa ger.1 ger.2 ger.dfb_pokal " +
+  "fra.1 fra.2 fra.coupe_de_france esp.1 esp.2 por.1 por.taca.portugal ned.1 ned.2 sco.1 sco.2 sco.3 sco.tennents sco.cis " +
+  "bel.1 aut.1 sui.1 gre.1 tur.1 den.1 nor.1 swe.1 ksa.1 ksa.kings.cup arg.1 bra.1 col.1 uru.1 chi.1 ecu.1 per.1 par.1 ven.1 " +
+  "bol.1 mex.1 usa.1 conmebol.libertadores conmebol.sudamericana uefa.champions uefa.europa uefa.europa.conf").split(" ");
+// la cartella di lavoro si conosce solo all'avvio: il file si chiede al momento
+function fileCatalogo() { return path.join(DIR, "espn-squadre.json"); }
+let CATALOGO = { quando: 0, squadre: {} };            // id -> { id, nomi[], logo, leghe[] }
+function leggiCatalogo() {
+  try { const c = JSON.parse(fs.readFileSync(fileCatalogo(), "utf8")); if (c.squadre) CATALOGO = c; } catch (e) {}
+}
+let catalogoInCorso = false;
+async function aggiornaCatalogo() {
+  if (catalogoInCorso) return; catalogoInCorso = true;
+  try {
+    const nuovo = {};
+    for (const l of LEGHE_STEMMI) {
+      try {
+        const r = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + l + "/teams", { signal: AbortSignal.timeout(30000) });
+        if (!r.ok) continue;
+        const j = await r.json();
+        const lega = (((j.sports || [])[0] || {}).leagues || [])[0];
+        ((lega && lega.teams) || []).forEach((x) => {
+          const t = x.team || {}, logo = ((t.logos || [])[0] || {}).href;
+          if (!t.id || !logo) return;
+          const v = nuovo[t.id] || (nuovo[t.id] = { id: t.id, nomi: [], logo: logo, leghe: [] });
+          ["displayName", "shortDisplayName", "name", "location"].forEach((k) => { if (t[k] && v.nomi.indexOf(t[k]) < 0) v.nomi.push(t[k]); });
+          if (v.leghe.indexOf(l) < 0) v.leghe.push(l);
+        });
+      } catch (e) {}
+    }
+    // quelle gia' viste restano anche se quest'anno giocano in un'altra serie
+    Object.keys(CATALOGO.squadre || {}).forEach((id) => { if (!nuovo[id]) nuovo[id] = CATALOGO.squadre[id]; });
+    if (Object.keys(nuovo).length > 200) {
+      CATALOGO = { quando: Date.now(), squadre: nuovo };
+      fs.writeFileSync(fileCatalogo(), JSON.stringify(CATALOGO));
+      STEMMI_CACHE.clear();
+      console.log("[clip] stemmi: catalogo ESPN con " + Object.keys(nuovo).length + " squadre");
+    }
+  } finally { catalogoInCorso = false; }
+}
+// le parole che non dicono quale squadra e'
+const PAROLE_CLUB = new Set(["fc", "cf", "ac", "as", "sc", "ssc", "us", "club", "calcio", "de", "del", "da", "la", "le", "los", "el", "the",
+  "cd", "ca", "afc", "bk", "fk", "sv", "vfb", "vfl", "tsg", "rb", "sk", "if", "united", "city", "town", "1907", "1909", "1913"]);
+// si ricorda: conEsonimi passa sessanta espressioni, e i nomi si ripetono
+const PAROLE_MEMO = new Map();
+function paroleSquadra(x) {
+  const k = String(x || "");
+  let v = PAROLE_MEMO.get(k);
+  if (!v) {
+    v = senzaAccenti(conEsonimi(k)).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !PAROLE_CLUB.has(w) && !/^(19|20)\d\d$/.test(w));
+    if (PAROLE_MEMO.size > 20000) PAROLE_MEMO.clear();
+    PAROLE_MEMO.set(k, v);
+  }
+  return v;
+}
+// le parole e i nomi esatti di ogni squadra del catalogo, fatti una volta
+let CAT_INDICE = null;
+function indiceCatalogo() {
+  if (CAT_INDICE && CAT_INDICE.n === Object.keys(CATALOGO.squadre).length) return CAT_INDICE;
+  const voci = Object.keys(CATALOGO.squadre).map((id) => {
+    const t = CATALOGO.squadre[id], parole = [];
+    t.nomi.forEach((n) => paroleSquadra(n).forEach((w) => { if (parole.indexOf(w) < 0) parole.push(w); }));
+    return { id, t, parole, esatti: t.nomi.map((n) => nomeSemplice(n)) };
+  });
+  CAT_INDICE = { n: voci.length, voci };
+  return CAT_INDICE;
+}
+function senzaGiovanili(nome) {
+  return String(nome || "").replace(/\b(U\s?\d{2}|UNDER\s?\d{2}|PRIMAVERA|WOMEN|FEMMINILE|FEM|YOUTH|ACADEMY)\b/gi, " ").replace(/\s+/g, " ").trim();
+}
+function slugSquadra(nome) {
+  return senzaAccenti(senzaGiovanili(nome)).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+// LA STESSA PAROLA, SCRITTA UN PO' DIVERSA — ma solo se e' lunga. Con le
+// parole corte una lettera cambia la squadra: Lecco non e' Lecce, Parma non
+// e' Palma (25/09/2026: Lecco e Bresso prendevano lo stemma del Lecce).
+function stessaParola(w, v) {
+  if (w === v) return true;
+  const corta = Math.min(w.length, v.length);
+  if (corta >= 6 && (w.startsWith(v) || v.startsWith(w))) return true;        // Lokomotiv/Lokomotiva
+  if (corta >= 7 && Math.abs(w.length - v.length) <= 1) return paroleUguali(w, v); // Villareal/Villarreal
+  return false;
+}
+// quelle che non si possono indovinare: nomi della redazione che non somigliano a quelli di ESPN
+const ALIAS_STEMMI = {
+  "olympique lyonnais": "Lyon", "ol lyonnes": "Lyon", "olympique de marseille": "Marseille", "olympique marsiglia": "Marseille",
+  "red bull salzburg": "Salzburg", "red bull salisburgo": "Salzburg", "rb salisburgo": "Salzburg",
+  "sk puntigamer sturm graz": "Sturm Graz", "sturm graz": "Sturm Graz", "paris st germain": "Paris Saint-Germain",
+  "psg": "Paris Saint-Germain", "paris saint germain": "Paris Saint-Germain", "al nayma": "Al Najma", "al najmah": "Al Najma",
+  "al okhdooood": "Al Okhdood", "al okhdoood": "Al Okhdood", "al faysaly": "Al Faisaly", "manchester utd": "Manchester United",
+  "man city": "Manchester City", "man utd": "Manchester United", "birminhgham city": "Birmingham City", "milwall": "Millwall",
+  "u de cile": "Universidad de Chile", "univ de cile": "Universidad de Chile", "universitario de cile": "Universidad de Chile",
+  "universidad de cile": "Universidad de Chile", "u de chile": "Universidad de Chile", "betis siviglia": "Real Betis", "betis": "Real Betis",
+  "junior barranquilla": "Junior", "atletico junior": "Junior", "universidad cile": "Universidad de Chile", "losc lille": "Lille", "racing avellaneda": "Racing Club", "racing club avellaneda": "Racing Club", "hadjuk split": "Hajduk Split", "hadjuk spalato": "Hajduk Split",
+  "idv": "Independiente del Valle", "ind del valle": "Independiente del Valle", "al qadisiyah": "Al Qadsiah", "al qadsiyah": "Al Qadsiah"
+};
+// PAESE DELLA COMPETIZIONE: TheSportsDB cerca in tutto il mondo, e "Gorica"
+// trovava quella slovena, "Manchester" una squadra di Gibilterra, "Zebras"
+// una delle Bermuda. Uno stemma si accetta solo se il paese combacia; dove il
+// paese non si sa, o non e' calcio a squadre di club, non si accetta.
+const SUDAMERICA = ["Argentina", "Brazil", "Uruguay", "Chile", "Colombia", "Ecuador", "Peru", "Paraguay", "Bolivia", "Venezuela"];
+function paesiDi(comp) {
+  const c = String(comp || "");
+  if (/kings league|cage warriors|karate|maratona/i.test(c)) return null;
+  if (/HNL|croazia/i.test(c)) return ["Croatia"];
+  if (/francia|coupe de france|ligue/i.test(c)) return ["France"];
+  if (/portogallo|portugal|ta[cç]a|superta/i.test(c)) return ["Portugal"];
+  if (/germania|dfb|bundesliga(?! austria)/i.test(c)) return ["Germany"];
+  if (/austria/i.test(c)) return ["Austria"];
+  if (/grecia/i.test(c)) return ["Greece"];
+  if (/saudi|king'?s cup/i.test(c)) return ["Saudi Arabia"];
+  if (/scottish|scozia|premier sports/i.test(c)) return ["Scotland"];
+  if (/carabao|efl|fa cup/i.test(c)) return ["England", "Wales"];
+  if (/^championship$/i.test(c.trim())) return ["England", "Wales", "Scotland"];
+  if (/eredivisie/i.test(c)) return ["Netherlands"];
+  if (/serie a|serie b|serie c|primavera|coppa italia|como 1907|under 1\d|coppa gambardella/i.test(c)) return ["Italy"];
+  if (/liga profesional|apertura|clausura|argentin|trofeo de campeones/i.test(c)) return ["Argentina"];
+  if (/libertadores|sudamericana|recopa/i.test(c)) return SUDAMERICA;
+  return [];                                           // non si sa: TheSportsDB no
+}
+// come chiedere a TheSportsDB le squadre che hanno un nome piu' lungo la'
+const TSDB_CHIEDI = { "gorica": "HNK Gorica", "rw essen": "Rot-Weiss Essen", "vukovar 1991": "Vukovar", "nk istra 1961": "Istra 1961" };
+// i loghi della redazione con un nome di file diverso da quello della squadra
+const FILE_STEMMI = { "hebc amburgo": "hamburg-eimsbutteler-ballspiel-club-logo-svg.webp", "al faysaly": "al-faisaly.png" };
+// dal nome: prima nel campionato della partita, e solo se il candidato e' uno
+const DAL_NOME_MEMO = new Map();
+function squadraEspnDalNome(nome, comp) {
+  const km = nome + "|" + (comp || "") + "|" + Object.keys(CATALOGO.squadre).length;
+  if (DAL_NOME_MEMO.has(km)) return DAL_NOME_MEMO.get(km);
+  const v = squadraEspnDalNomeDavvero(nome, comp);
+  DAL_NOME_MEMO.set(km, v);
+  return v;
+}
+function squadraEspnDalNomeDavvero(nome, comp) {
+  const alias = ALIAS_STEMMI[senzaAccenti(senzaGiovanili(nome)).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()];
+  if (alias) nome = alias;
+  const noi = paroleSquadra(senzaGiovanili(nome)); if (!noi.length) return null;
+  const esatto = nomeSemplice(conEsonimi(senzaGiovanili(nome)));
+  const leghe = legheDi(comp);
+  const cand = [];
+  indiceCatalogo().voci.forEach(({ id, t, parole: loro, esatti }) => {
+    const inLega = t.leghe.some((l) => leghe.indexOf(l) >= 0);
+    if (esatti.indexOf(esatto) >= 0) { cand.push({ id, s: 2, lega: inLega }); return; }
+    const prese = noi.filter((w) => loro.some((v) => stessaParola(w, v))).length;
+    // tutte le nostre parole devono esserci: "Red Bull Salisburgo" non e' "Red Bull New York"
+    if (prese === noi.length) cand.push({ id, s: 1, lega: inLega });
+  });
+  const MAGGIORI = ["ita.1", "eng.1", "esp.1", "ger.1", "fra.1", "por.1", "ned.1", "sco.1", "uefa.champions"];
+  const scegli = (lista) => {
+    if (!lista.length) return null;
+    const top = Math.max.apply(null, lista.map((c) => c.s)), primi = lista.filter((c) => c.s === top);
+    if (primi.length === 1) return primi[0].id;
+    // a pari merito, e senza campionato che decida: la squadra di un campionato maggiore, se e' una sola
+    const grandi = primi.filter((c) => CATALOGO.squadre[c.id].leghe.some((l) => MAGGIORI.indexOf(l) >= 0));
+    return grandi.length === 1 ? grandi[0].id : null;
+  };
+  const inLega = cand.filter((c) => c.lega);
+  return inLega.length ? scegli(inLega) : scegli(cand);
+}
+function squadraEspnDalNomeEspn(n) {
+  const k = nomeSemplice(n);
+  const v = indiceCatalogo().voci.find((x) => x.esatti.indexOf(k) >= 0);
+  return v ? v.id : null;
+}
+const STEMMI_CACHE = new Map();
+const STEMMI_CODA = new Set();
+let stemmiInCorso = false;
+function fileRedazione(nome) {
+  const chiaro = senzaAccenti(senzaGiovanili(nome)).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (FILE_STEMMI[chiaro] && fs.existsSync(path.join(STEMMI_DIR, FILE_STEMMI[chiaro]))) return "/loghi/" + FILE_STEMMI[chiaro];
+  const slug = slugSquadra(nome); if (!slug) return "";
+  for (const b of ["stemma-" + slug, slug]) for (const est of [".png", ".svg", ".webp"]) {
+    if (fs.existsSync(path.join(STEMMI_DIR, b + est))) return "/loghi/" + b + est;
+  }
+  return "";
+}
+function stemmaEspn(id, logo) {
+  const f = "stemma-espn-" + id + ".png";
+  if (fs.existsSync(path.join(STEMMI_DIR, f))) return "/loghi/" + f;
+  STEMMI_CODA.add(JSON.stringify([id, logo || (CATALOGO.squadre[id] || {}).logo || ""]));
+  if (!stemmiInCorso) setTimeout(() => { scaricaStemmi().catch(() => {}); }, 500);
+  return "";
+}
+async function scaricaStemmi() {
+  if (stemmiInCorso) return; stemmiInCorso = true;
+  let presi = 0;
+  try {
+    while (STEMMI_CODA.size) {
+      const k = STEMMI_CODA.values().next().value; STEMMI_CODA.delete(k);
+      const [id, logo] = JSON.parse(k); if (!logo) continue;
+      const f = path.join(STEMMI_DIR, "stemma-espn-" + id + ".png");
+      if (fs.existsSync(f)) continue;
+      try {
+        // la versione da 250 px basta per una scheda e pesa un quarto
+        const u = logo.indexOf("a.espncdn.com/i/teamlogos") >= 0
+          ? "https://a.espncdn.com/combiner/i?img=" + encodeURIComponent(new URL(logo).pathname) + "&w=250&h=250" : logo;
+        const r = await fetch(u, { signal: AbortSignal.timeout(20000) });
+        if (!r.ok) continue;
+        fs.writeFileSync(f + ".tmp", Buffer.from(await r.arrayBuffer()));
+        fs.renameSync(f + ".tmp", f);
+        presi++;
+      } catch (e) {}
+      await new Promise((ok) => setTimeout(ok, 150));
+    }
+    STEMMI_CACHE.clear();
+    if (presi) console.log("[clip] stemmi: " + presi + " scaricati da ESPN");
+  } finally { stemmiInCorso = false; }
+}
+// LE DUE SQUADRE DA UN TITOLO. I titoli sono scritti a mano e in cento modi:
+// "BOLOGNA - COMO - ITA", "INTER-COMO - SEMI COPPA ITALIA RITORNO",
+// "UNIV. CATOLICA-ESTUDIANTES 1-1", "Como U19 vs Empoli U19", "BOLOGNA.COMO".
+// Si tolgono lingua, risultato e parole di servizio; poi, tra i pezzi separati
+// da " - ", quello con dentro un trattino (o "vs") e' la partita.
+const MESI_NOMI = "gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre";
+function dueSquadre(testo) {
+  let t = String(testo || "").replace(/\u{1F3A5}/gu, " ").replace(/\.(mp4|mov|mxf|mkv|m4v|ts)$/i, "").replace(/_+/g, " ")
+    .replace(/\[[^\]]*\]|\([^)]*\)/g, " ")
+    .replace(new RegExp("\\b\\d{1,2}\\s+(" + MESI_NOMI + ")\\s+\\d{4}\\b.*$", "i"), " ")
+    .replace(/^\s*\d{6,9}\s*[_-]?\s*/, "")
+    .replace(/\b(MultiCorder\d*|Output\s*\d+|BCK|SRT|FULL\s*MATCH|FULLMATCH|FULL|PARTITA\s+INTERA|CLEAN\s*FEED|CLEANFEED|INTERNATIONAL\s+SOUND|COMMENTARY|AUDIO\s*ONLY|PGM FX|PGM_FX|GARA\s*\d|GAME\s*\d|LEG\s*\d|SEMI\s*FINALS?|SEMIFINALE|QUARTI|OTTAVI|FINALE?)\b/gi, " ")
+    .replace(/_+/g, " ").replace(/\s+/g, " ").trim();
+  t = t.replace(/\s\d{1,2}\s*-\s*\d{1,2}\b.*$/, "").trim();                       // il risultato e quello che segue
+  t = t.replace(/(\s*[-–]\s*|\s+)(ITA|ENG|ITALIANO|ENGLISH)\s*$/i, "").replace(/^[\s\-–:]+|[\s\-–:]+$/g, "").trim();
+  const seg = t.split(/\s+[-–]\s+/).map((x) => x.trim()).filter(Boolean);
+  let coppia = null;
+  const conTrattino = seg.find((x) => /\S-\S|\svs\.?\s/i.test(x));
+  if (conTrattino) {
+    coppia = conTrattino.split(/\s+vs\.?\s+|(?<=\S)-(?=\S)/i);
+    // un trattino dentro il nome (Al-Ahli, Al-Hilal): il pezzo corto si riattacca al seguente
+    if (coppia.length > 2) {
+      const uniti = [];
+      for (let k = 0; k < coppia.length; k++) {
+        if ((coppia[k].trim().length <= 3 || /\bSAINT$/i.test(coppia[k].trim())) && k + 1 < coppia.length) { coppia[k + 1] = coppia[k].trim() + (/\bSAINT$/i.test(coppia[k].trim()) ? "-" : " ") + coppia[k + 1]; continue; }
+        uniti.push(coppia[k]);
+      }
+      coppia = uniti;
+    }
+  }
+  else if (seg.length === 2) coppia = seg;
+  else if (seg.length === 1 && /^[^.]+\.[^.]+$/.test(seg[0]) && !/\b[A-Z]{1,4}\.\s/i.test(seg[0])) coppia = seg[0].split(".");  // BOLOGNA.COMO
+  if (!coppia || coppia.length !== 2) return null;
+  coppia = coppia.map((x) => x.replace(/^[\s\-–:+]+|[\s\-–:+]+$/g, "").replace(/\s+/g, " ").trim());
+  // due nomi veri: almeno due lettere, e non parole di servizio
+  if (coppia.some((x) => x.length < 2 || !/[A-Za-zÀ-ÿ]{2}/.test(x) || /^(ITA|ENG|LIVE|SHOW|STUDIO|COMO CUP)$/i.test(x))) return null;
+  // non sono partite: conferenze, allenamenti, sorteggi, discorsi
+  if (coppia.some((x) => /\b(PRESS|CONFERENC|CONFERENZA|TRAINING|SESSION|CAMP|SORTEGGI|RESPEECH|INTERVIST|CERIMONIA)/i.test(x))) return null;
+  // "GRONINGEN RINVIATA": la partita resta, la parola no
+  coppia = coppia.map((x) => x.replace(/\s+(RINVIATA|SOSPESA|ANNULLATA)\b/i, "").trim());
+  return coppia;
+}
+// il titolo, il nome del file, la cartella: il primo che dice due squadre
+function dueSquadreDi(a) {
+  const cartelle = String(a.dove || "").split("/").filter((x) => x && !/^(TEMP|\d{6,9}|CLEAN ?FEED|ITA|ENG|\[.*\])$/i.test(x));
+  for (const t of [a.partita, path.basename(String(a.chiave || ""))].concat(cartelle.reverse())) {
+    const q = dueSquadre(t); if (q) return q;
+  }
+  return null;
+}
+// TheSportsDB, ultima fonte (gratis, senza chiave): per le squadre che ESPN
+// non ha — il campionato croato, le serie minori. Si accetta solo se il
+// risultato di calcio che contiene tutte le nostre parole e' uno solo.
+const TSDB_FILE = () => path.join(DIR, "sportsdb-squadre.json");
+let TSDB = null, tsdbInCorso = false;
+const TSDB_CODA = new Set();
+function tsdbDi(nome, comp) {
+  const paesi = paesiDi(comp);
+  if (!paesi || !paesi.length) return "";
+  if (!TSDB) { try { TSDB = JSON.parse(fs.readFileSync(TSDB_FILE(), "utf8")); } catch (e) { TSDB = {}; } }
+  let k = senzaAccenti(conEsonimi(senzaGiovanili(nome))).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (TSDB_CHIEDI[k]) k = TSDB_CHIEDI[k].toLowerCase();
+  if (!k) return "";
+  if (TSDB[k] === undefined) { TSDB_CODA.add(k); if (!tsdbInCorso) setTimeout(() => { cercaTsdb().catch(() => {}); }, 1000); return ""; }
+  if (!TSDB[k]) return "";
+  if (paesi.indexOf(TSDB[k].paese) < 0) return "";      // un'omonima di un altro paese
+  const f = "stemma-tsdb-" + TSDB[k].id + ".png";
+  return fs.existsSync(path.join(STEMMI_DIR, f)) ? "/loghi/" + f : "";
+}
+async function cercaTsdb() {
+  if (tsdbInCorso) return; tsdbInCorso = true;
+  let presi = 0;
+  try {
+    while (TSDB_CODA.size) {
+      const k = TSDB_CODA.values().next().value; TSDB_CODA.delete(k);
+      if (TSDB[k] !== undefined) continue;
+      let esito = null;
+      try {
+        const r = await fetch("https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=" + encodeURIComponent(k), { signal: AbortSignal.timeout(20000) });
+        if (r.status === 429) { TSDB_CODA.add(k); await new Promise((ok) => setTimeout(ok, 60000)); continue; }
+        const j = r.ok ? await r.json() : {};
+        const noi = paroleSquadra(k);
+        const buoni = ((j && j.teams) || []).filter((t) => t.strSport === "Soccer" && t.strBadge && noi.length &&
+          noi.every((w) => paroleSquadra(t.strTeam + " " + (t.strTeamAlternate || "")).some((v) => stessaParola(w, v))));
+        if (buoni.length === 1) {
+          const t = buoni[0], f = path.join(STEMMI_DIR, "stemma-tsdb-" + t.idTeam + ".png");
+          if (!fs.existsSync(f)) {
+            const g = await fetch(t.strBadge + "/small", { signal: AbortSignal.timeout(20000) });
+            const b = g.ok ? g : await fetch(t.strBadge, { signal: AbortSignal.timeout(20000) });
+            if (b.ok) { fs.writeFileSync(f + ".tmp", Buffer.from(await b.arrayBuffer())); fs.renameSync(f + ".tmp", f); presi++; }
+          }
+          esito = { id: t.idTeam, nome: t.strTeam, paese: t.strCountry || "" };
+        }
+      } catch (e) { continue; }                          // rete: si riprova al prossimo giro
+      TSDB[k] = esito || false;
+      if (Object.keys(TSDB).length % 10 === 0) { try { fs.writeFileSync(TSDB_FILE(), JSON.stringify(TSDB)); } catch (e) {} }
+      await new Promise((ok) => setTimeout(ok, 2200));   // la chiave gratuita regge una trentina di domande al minuto
+    }
+    fs.writeFileSync(TSDB_FILE(), JSON.stringify(TSDB));
+    STEMMI_CACHE.clear();
+    if (presi) console.log("[clip] stemmi: " + presi + " presi da TheSportsDB");
+  } finally { tsdbInCorso = false; }
+}
+// Le due squadre di una partita, con lo stemma (o "": la pagina fa la sigla)
+function squadreConStemma(rec, a) {
+  const chiaveCache = rec + "|" + (a.partita || "") + "|" + (a.chiave || "");
+  if (STEMMI_CACHE.has(chiaveCache)) return STEMMI_CACHE.get(chiaveCache);
+  // l'MMA e il karate non hanno squadre ne' stemmi: resta il titolo
+  const nomi = DA_STUDIO.test(a.partita || "") || /cage warriors|karate/i.test(a.competizione || "") ? null : dueSquadreDi(a);
+  if (!nomi) { STEMMI_CACHE.set(chiaveCache, null); return null; }
+  const e = ESPN[rec] || {};
+  // nel confronto con l'evento le parole di tante squadre non contano: Boca
+  // Juniors e Argentinos Juniors hanno in comune solo "juniors"
+  const GENERICHE = new Set(["juniors", "junior", "atletico", "deportivo", "athletic", "universidad", "univ", "unidos",
+    "futebol", "football", "calcio", "club", "rovers", "wanderers", "albion"]);
+  const simile = (noi, loro) => {
+    const tutte = paroleSquadra(senzaGiovanili(noi)), distinte = tutte.filter((w) => !GENERICHE.has(w));
+    const A = distinte.length ? distinte : tutte, B = paroleSquadra(loro);
+    return A.filter((w) => B.some((v) => stessaParola(w, v))).length;
+  };
+  // DALL'EVENTO ESPN, ma solo se e' davvero questa partita: ogni nostra
+  // squadra deve somigliare alla sua. ESPN a volte ha preso un'altra partita
+  // dello stesso giorno (Libertad-U. Central letta come IdV-Rosario Central).
+  let daEvento = [null, null], loghiEvento = ["", ""];
+  if ((e.squadre || []).length === 2 && Object.keys(CATALOGO.squadre).length) {
+    const ids = e.squadre.map((n) => {
+      const u = (e.loghi || {})[n]; const m = u && /\/(\d+)\.png/.exec(u);
+      return m ? m[1] : squadraEspnDalNomeEspn(n);
+    });
+    const lg = e.squadre.map((n) => (e.loghi || {})[n] || "");
+    const d0 = simile(nomi[0], e.squadre[0]), d1 = simile(nomi[1], e.squadre[1]);
+    const s0 = simile(nomi[0], e.squadre[1]), s1 = simile(nomi[1], e.squadre[0]);
+    if (d0 && d1 && d0 + d1 >= s0 + s1) { daEvento = [ids[0], ids[1]]; loghiEvento = [lg[0], lg[1]]; }
+    else if (s0 && s1) { daEvento = [ids[1], ids[0]]; loghiEvento = [lg[1], lg[0]]; }
+  }
+  let manca = false;
+  const fuori = nomi.map((nome, i) => {
+    const suo = fileRedazione(nome);
+    if (suo) return { nome, stemma: suo };
+    const id = daEvento[i] || squadraEspnDalNome(nome, a.competizione);
+    let st = id ? stemmaEspn(id, loghiEvento[i]) : "";
+    if (id && !st) manca = true;                        // sta arrivando: non si tiene in memoria
+    if (!id) { st = tsdbDi(nome, a.competizione); if (!st && TSDB_CODA.size) manca = true; }
+    return { nome, stemma: st };
+  });
+  if (!manca) STEMMI_CACHE.set(chiaveCache, fuori);
+  return fuori;
+}
+function preparaStemmi() {
+  const chiavi = Object.keys(ARCHIVIO); let i = 0;
+  const blocco = () => {
+    const fine = Math.min(chiavi.length, i + 40);
+    for (; i < fine; i++) {
+      const a = ARCHIVIO[chiavi[i]]; if (!a || !a.chiave) continue;
+      try { squadreConStemma(chiavi[i], a); studioDi(chiavi[i], a); } catch (e) {}
+    }
+    if (i < chiavi.length) setTimeout(blocco, 50);
+  };
+  blocco();
+}
+// I NOMI DATI A MANO alle cartelle senza riga Airtable (soloS3): il giro
+// dell'indice rimetterebbe il nome della cartella, quindi stanno a parte,
+// per cartella, e vincono sempre. "FESTEGGIAMENTI PULLMAN COMO CHAMPIONS"
+// -> "Bus scoperto Champions League" (Goffredo, 25/09/2026).
+const TITOLI_FILE = () => path.join(DIR, "titoli-a-mano.json");
+let TITOLI = null;
+function titoliAMano() { if (!TITOLI) { try { TITOLI = JSON.parse(fs.readFileSync(TITOLI_FILE(), "utf8")); } catch (e) { TITOLI = {}; } } return TITOLI; }
+function titoloAMano(dove) { return titoliAMano()[dove] || ""; }
+// IL TITOLO per le anteprime senza squadre: il nome se dice qualcosa, se no
+// la cartella ("MultiCorder3 - Output 1…" non dice niente a nessuno)
+// il logo di un evento (Como Cup, Kings League…): "evento-<nome>" nella cartella dei loghi
+function logoEvento(a) {
+  for (const n of [a.competizione, titoloDi(a)]) {
+    const slug = senzaAccenti(String(n || "")).toLowerCase().replace(/\b(ita|eng)\b/g, " ").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    if (!slug) continue;
+    for (const est of [".png", ".svg", ".webp"]) if (fs.existsSync(path.join(STEMMI_DIR, "evento-" + slug + est))) return "/loghi/evento-" + slug + est;
+  }
+  return "";
+}
+function titoloDi(a) {
+  if (a.soloS3 && titoloAMano(a.dove)) return titoloAMano(a.dove);
+  const p = String(a.partita || "").trim().replace(/\s*[-–]\s*(ITA|ENG)\s*$/i, "");
+  if (p && !/multicorder|output\s*\d/i.test(p) && p.replace(/[\s\-–]/g, "").length > 2) return p.replace(/\s*[-–]\s*$/, "");
+  const cartelle = String(a.dove || "").split("/").filter((x) => x && !/^(TEMP|\d{6,9}|CLEAN ?FEED|ITA|ENG|\[.*\]|\d_?CLEANFEED)$/i.test(x));
+  return (cartelle.pop() || path.basename(String(a.chiave || "")).replace(/\.[^.]+$/, "")).replace(/_+/g, " ").trim();
+}
+// LO STUDIO: il format (Football Show, Pre Show, Intervallo, Post Partita,
+// Speciale) e il resto del titolo; se dentro c'e' una partita ("+ Como-Parma",
+// "Liverpool-Como") le sue due squadre, con gli stemmi.
+const FORMATI_STUDIO = [
+  [/FOOTBALL\s*SHOW/i, "Football Show"], [/FUTBOL\s*SHOW/i, "Futbol Show"], [/COMO\s*CUP\s*SHOW/i, "Como Cup Show"],
+  [/PRE[ -]?SHOW/i, "Pre Show"], [/PRE[ -]?PARTITA/i, "Pre Partita"], [/POST[ -]?PARTITA/i, "Post Partita"],
+  [/INTERVALLO/i, "Intervallo"], [/SPECIALE/i, "Speciale"], [/RECAP/i, "Recap"], [/STUDIO/i, "Studio"], [/SHOW/i, "Show"]
+];
+function studioDi(rec, a) {
+  const t0 = String(a.partita || "").replace(/\u{1F3A5}/gu, " ").replace(/\s+/g, " ").trim();
+  if (!DA_STUDIO.test(a.partita || "")) return null;
+  const f = FORMATI_STUDIO.find(([re]) => re.test(t0));
+  const formato = f ? f[1] : "Studio";
+  let sotto = f ? t0.replace(f[0], " ") : t0;
+  sotto = sotto.replace(/^[\s:+\-–·|]+|[\s:+\-–·|]+$/g, "").replace(/\s+/g, " ").trim();
+  // la partita di cui si parla: "Live Monday Night + Como-Parma" -> Como-Parma
+  const dopoPiu = sotto.split("+").pop().replace(/^\s*(PRE|POST|LIVE)\b\s*/i, "");
+  const q2 = dueSquadre(dopoPiu);
+  let squadre = null;
+  if (q2) {
+    const q = squadreConStemma("studio|" + rec, { partita: q2.join("-"), competizione: a.competizione });
+    if (q && q.length === 2) squadre = q;
+  }
+  return { formato, sotto, squadre };
+}
+// telecronista e lingua: l'inglese e' sempre Paul Dempsey; l'audio senza voce non ha telecronista
+function voceDi(rec, a) {
+  const p = String(a.partita || "").toUpperCase();
+  if (/AUDIO ?ONLY|INTERNATIONAL SOUND/.test(p)) return { lingua: "AUDIO", tele: "" };
+  if (/(^|[^A-Z])ENG([^A-Z]|$)/.test(p)) return { lingua: "ENG", tele: "Paul Dempsey" };
+  const tele = (APPUNTI[rec] || {}).telecronista || "";
+  return { lingua: tele || /(^|[^A-Z])ITA([^A-Z]|$)/.test(p) ? "ITA" : "", tele };
+}
+function risultatoProprio(a) {
+  const m = /\s(\d{1,2})\s*-\s*(\d{1,2})\b/.exec(String(a.partita || ""));
+  if (m) return [+m[1], +m[2]];
+  const f = a.tabellone && a.tabellone.verificato && /^(\d+)-(\d+)$/.exec(a.tabellone.finale || "");
+  return f ? [+f[1], +f[2]] : null;
+}
+// LA PARTITA E' UNA, LE VERSIONI TANTE: la ENG e l'audio internazionale non
+// portano il risultato nel titolo, ma e' lo stesso della ITA. Si cerca la
+// gemella: stesso giorno, stesse due squadre.
+let GEMELLI = null, gemelliQuando = 0;
+function chiaveGemella(a) {
+  const q = dueSquadreDi(a); if (!q) return "";
+  const g = a.giorno || (Date.parse(a.quando) ? giornoRoma(Date.parse(a.quando)) : "");
+  return g + "|" + q.map((x) => nomeSemplice(conEsonimi(x))).join("|");
+}
+function risultatoDi(a) {
+  const mio = risultatoProprio(a); if (mio) return mio;
+  if (!GEMELLI || Date.now() - gemelliQuando > 60000) {
+    GEMELLI = new Map(); gemelliQuando = Date.now();
+    Object.keys(ARCHIVIO).forEach((k) => {
+      const x = ARCHIVIO[k]; if (!x || DA_STUDIO.test(x.partita || "")) return;
+      const r = risultatoProprio(x); if (!r) return;
+      const c = chiaveGemella(x); if (c && !GEMELLI.has(c)) GEMELLI.set(c, r);
+    });
+  }
+  const c = chiaveGemella(a);
+  return (c && GEMELLI.get(c)) || null;
+}
+
 // ══════════════════════════════════════════════════════════════════════
 //  GAMECAST — la telecronaca scritta di ESPN
 // ══════════════════════════════════════════════════════════════════════
@@ -13090,7 +13563,8 @@ const AZIONI = {
         const pa = partite[relSuo]; if (pa) { v.rec = pa.rec; v.partita = pa.partita; }
         const r = regs.find((x) => x.arch.chiave === relSuo || (x.arch.pezzi || []).some((z) => z.chiave === relSuo));
         if (r) { v.reg = r.id; v.partita = v.partita || r.titolo; v.durata = r.durata || 0; if (!v.rec && r.arch.rec) v.rec = r.arch.rec; v.telecronaca = !!(PARLATO[r.id] && (PARLATO[r.id].pezzi || []).length); }
-        const a = v.rec && ARCHIVIO[v.rec]; if (a) { v.quandoPartita = a.quando || a.data || ""; v.competizione = a.competizione || ""; if (!v.durata && a.pezzi) v.durata = (a.pezzi.reduce((n, z) => n + (z.minuti || 0), 0)) * 60; v.puntata = puntata(a); }
+        const a = v.rec && ARCHIVIO[v.rec]; if (a) { v.quandoPartita = a.quando || a.data || ""; v.competizione = a.competizione || "";
+          v.squadre = squadreConStemma(v.rec, a); v.voce = voceDi(v.rec, a); v.ris = risultatoDi(a); v.studio = studioDi(v.rec, a); v.titolo = titoloDi(a); v.evento = logoEvento(a); if (!v.durata && a.pezzi) v.durata = (a.pezzi.reduce((n, z) => n + (z.minuti || 0), 0)) * 60; v.puntata = puntata(a); }
         fuori.push(v);
       }
     };
@@ -13114,6 +13588,10 @@ const AZIONI = {
                    quandoPartita: a.quando || "", durata: r ? (r.durata || 0) : Math.round(minuti * 60), reg: r ? r.id : undefined,
                    telecronaca: !!(r && PARLATO[r.id] && (PARLATO[r.id].pezzi || []).length), s3: !inCasa(a), inCasa: inCasa(a), senzaNome: !!a.soloS3, bucket: a.bucket, pezzi: (a.pezzi || []).length || 1,
                    soloElenco: soloElenco(a.bucket) && !inCasa(a), puntata: puntata(a),
+                   // per l'anteprima: stemmi, telecronista e lingua, risultato
+                   // l'anteprima solo per quelle che la Libreria mostra (in casa); gli stemmi
+                   // delle altre li prepara prepararaStemmi in sottofondo
+                   ...(inCasa(a) ? { squadre: squadreConStemma(k, a), voce: voceDi(k, a), ris: risultatoDi(a), studio: studioDi(k, a), titolo: titoloDi(a), evento: logoEvento(a) } : {}),
                    forse: a.riconosciuta && a.riconosciuta.sicura === false ? a.riconosciuta.nome : "" });
       suS3++;
     });
@@ -13122,6 +13600,41 @@ const AZIONI = {
   },
   "clip-qnap-peso": qnapPeso,
   // L'AVANZAMENTO DELLA COPIA S3 -> NAS, per la barra della Libreria
+  // IL CONTROLLO DEGLI STEMMI: per ogni squadra dell'archivio, da dove viene
+  // lo stemma e come si chiama la', per trovare a occhio quelli sbagliati
+  // RINOMINARE UNA CARTELLA SENZA RIGA AIRTABLE: il nome resta anche dopo i giri dell'indice
+  "clip-archivio-titolo": (p) => {
+    const a = ARCHIVIO[String(p.rec || "")];
+    if (!a) throw new Error("questa voce non e' nell'archivio");
+    if (!a.soloS3) throw new Error("questa partita ha il nome di Airtable: si cambia li'");
+    const t = String(p.titolo || "").trim().slice(0, 120);
+    if (!t) throw new Error("manca il nome");
+    titoliAMano()[a.dove] = t;
+    fs.writeFileSync(TITOLI_FILE(), JSON.stringify(TITOLI, null, 1));
+    a.partita = t; scriviArchivio(); STEMMI_CACHE.clear();
+    return { ok: true, rec: p.rec, titolo: t };
+  },
+  "clip-stemmi-verifica": () => {
+    const tsdbNome = {}; Object.keys(TSDB || {}).forEach((k) => { if (TSDB[k]) tsdbNome[TSDB[k].id] = TSDB[k].nome; });
+    const visti = {};
+    Object.keys(ARCHIVIO).forEach((k) => {
+      const a = ARCHIVIO[k]; if (!a || !a.chiave) return;
+      const q = squadreConStemma(k, a) || ((studioDi(k, a) || {}).squadre) || [];
+      q.forEach((x) => {
+        const n = String(x.nome).toUpperCase();
+        const v = visti[n] || (visti[n] = { nome: n, partite: 0, fonti: {} });
+        v.partite++;
+        let f = "sigla";
+        const me = /stemma-espn-(\d+)/.exec(x.stemma || ""), mt = /stemma-tsdb-(\d+)/.exec(x.stemma || "");
+        if (me) f = "ESPN: " + ((CATALOGO.squadre[me[1]] || {}).nomi || [me[1]])[0];
+        else if (mt) f = "TheSportsDB: " + (tsdbNome[mt[1]] || mt[1]);
+        else if (x.stemma) f = "redazione: " + x.stemma.replace("/loghi/", "");
+        v.fonti[f] = (v.fonti[f] || 0) + 1;
+      });
+    });
+    const squadre = Object.values(visti).sort((x, y) => y.partite - x.partite);
+    return { ok: true, squadre, conStemma: squadre.filter((x) => !x.fonti.sigla || Object.keys(x.fonti).length > 1).length, totale: squadre.length };
+  },
   "clip-archivio-copia": () => Object.assign({}, statoCopia(), { nomi: statoNomi(), casa: statoCasa() }),
   // quante partite S3 sono gia' in casa (ricontate adesso)
   "clip-archivio-specchio": () => Object.assign({ ok: true, cartella: path.join(QNAP_RADICE, SPECCHIO_DIR) }, aggiornaSpecchio()),
@@ -14122,6 +14635,14 @@ function avvio(opz) {
   setTimeout(() => { try { giroNomi(); } catch (e) {} }, 60000).unref();
   setInterval(() => { try { giroNomi(); } catch (e) {} }, 300000).unref();
   setTimeout(() => { giroCasa().catch(() => {}); }, 90000).unref();
+  // il catalogo delle squadre ESPN per gli stemmi: una volta a settimana
+  leggiCatalogo();
+  // gli stemmi di tutto l'archivio, a blocchi, senza fermare il ponte
+  setTimeout(() => { preparaStemmi(); }, 60000).unref();
+  setInterval(() => { preparaStemmi(); }, 6 * 3600000).unref();
+  const catalogoNo = (e) => console.log("[clip] stemmi: catalogo ESPN non aggiornato — " + e.message);
+  setTimeout(() => { if (Date.now() - (CATALOGO.quando || 0) > 7 * 86400000) aggiornaCatalogo().catch(catalogoNo); }, 30000).unref();
+  setInterval(() => { aggiornaCatalogo().catch(catalogoNo); }, 7 * 86400000).unref();
   setInterval(() => { giroCasa().catch(() => {}); }, 120000).unref();
   setInterval(() => { try { aggiornaSpecchio(); } catch (e) { console.log("[clip] specchio: " + e.message); } }, 600000).unref();
   // Gli appunti delle partite appena giocate: la redazione li scrive nei
