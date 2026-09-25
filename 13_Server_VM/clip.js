@@ -130,6 +130,13 @@ function ritaglioDelPezzo(formato, inq) {
          (scala ? "," + scala[0] : "");
 }
 
+// il riquadro di un formato, spostato in orizzontale (cx da 0 a 1)
+function ritaglioDi(formato, cx) {
+  const f = { "1:1": ["1", 1080, 1080], "3:4": ["3/4", 1080, 1440], "9:16": ["9/16", 1080, 1920] }[formato];
+  if (!f) return "";
+  if (Math.abs(cx - 0.5) < 0.005) return FORMATI[formato].vf;
+  return "crop=ih*" + f[0] + ":ih:(iw-ih*" + f[0] + ")*" + cx.toFixed(3) + ":0,scale=" + f[1] + ":" + f[2];
+}
 const FORMATI = {
   "16:9": { vf: "" },
   "1:1":  { vf: "crop=ih:ih,scale=1080:1080" },
@@ -2210,7 +2217,11 @@ async function clipTaglia(p) {
   const quanto = Math.round((fine - dentro) * 100) / 100;
 
   const formato = FORMATI[p.formato] ? String(p.formato) : "16:9";
-  const ritaglio = FORMATI[formato].vf;
+  // DOVE STA IL RIQUADRO (cx: 0 tutto a sinistra, 1 tutto a destra). Nel
+  // verticale di una partita l'azione non sta sempre al centro: la Diretta
+  // lo sposta come la Riformattazione di Premiere. Senza cx, al centro.
+  const cx = (p.cx === undefined || p.cx === null || p.cx === "") ? 0.5 : num(p.cx, 0, 1, 0.5);
+  const ritaglio = ritaglioDi(formato, cx);
   // Lo sting (la fascia con partita e azione bruciata nei primi tre
   // secondi) esiste, ma di suo e' SPENTO: costa una ricodifica, e per
   // riconoscere una clip basta la miniatura. Si accende chiedendolo.
@@ -2230,6 +2241,7 @@ async function clipTaglia(p) {
     dentro: dentro, fuori: dentro + quanto, durata: quanto,
     troncata: fuori > registrato,
     formato: formato,
+    cx: (typeof cx === "number" && Math.abs(cx - 0.5) >= 0.005) ? Math.round(cx * 1000) / 1000 : undefined,
     preciso: preciso,
     tipo: String(p.tipoAzione || "").slice(0, 40),
     inSequenza: !!p.inSequenza,
@@ -2283,7 +2295,11 @@ async function taglioDaIntegrale(r, p, dentro, fuori, durata) {
   // c'e' dopo il buco e' un altro file, e li' dentro non c'e'
   if (r.arch && dentro + durata > f.fine) durata = Math.max(1, f.fine - dentro);
   const formato = FORMATI[p.formato] ? String(p.formato) : "16:9";
-  const ritaglio = FORMATI[formato].vf;
+  // DOVE STA IL RIQUADRO (cx: 0 tutto a sinistra, 1 tutto a destra). Nel
+  // verticale di una partita l'azione non sta sempre al centro: la Diretta
+  // lo sposta come la Riformattazione di Premiere. Senza cx, al centro.
+  const cx = (p.cx === undefined || p.cx === null || p.cx === "") ? 0.5 : num(p.cx, 0, 1, 0.5);
+  const ritaglio = ritaglioDi(formato, cx);
   const sting = p.sting === true && fontCe();
   const sottoV = vuoleSotto(p);
   if ((sottoV.file || sottoV.video) && !lingueSotto(sottoV, r.id).some((l) => righeParlato(r.id, l, dentro, dentro + durata, 0).length))
