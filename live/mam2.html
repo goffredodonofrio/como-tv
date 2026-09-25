@@ -1656,9 +1656,12 @@
     v = n.trim(); try { localStorage.setItem("mam2-volume", v); } catch (e) {}
     return v;
   }
+  // NIENTE "RIPRENDI" (25/09/2026, Goffredo): quando si entra si riparte
+  // sempre da zero. Si pulisce anche quello che era rimasto salvato.
   function disegnaRiprendi(){
-    var u = null; try { u = JSON.parse(localStorage.getItem("mam2-ultimo") || "null"); } catch (e) {}
-    if (!u || !u.titolo) { el("riprendi").innerHTML = ""; return; }
+    try { localStorage.removeItem("mam2-ultimo"); } catch (e) {}
+    el("riprendi").innerHTML = ""; return;
+    var u = null;
     el("riprendi").innerHTML = '<div class="riprendi">' + (u.mini ? '<img src="' + esc(u.mini) + '" alt="">' : '') + '<div class="t"><b>Riprendi ' + esc(u.titolo) + '</b><span>' + (u.t ? 'al ' + tc(u.t) + ' · ' : '') + 'aperta ' + esc(u.quando) + '</span></div>' +
       '<div class="az"><a class="b oro" href="' + esc(u.url) + '">Riprendi</a><button class="b" id="ripNo">Nuovo</button></div></div>';
     el("ripNo").addEventListener("click", function(){ try { localStorage.removeItem("mam2-ultimo"); } catch (e) {} el("riprendi").innerHTML = ""; });
@@ -1769,8 +1772,6 @@
       if (t) V.addEventListener("loadedmetadata", function unaVolta(){ V.removeEventListener("loadedmetadata", unaVolta); try { V.currentTime = Math.max(0, t - 3); } catch (e) {} });
       // una partita su S3 non e' misurata (le misure costano byte): la durata la dice il video appena carica
       V.addEventListener("loadedmetadata", function durataVera(){ V.removeEventListener("loadedmetadata", durataVera); if (!r.durata && isFinite(V.duration) && V.duration > 0) { r.durata = Math.round(V.duration); ASSET.durata = r.durata; el("aMeta").innerHTML = [r.competizione, quando(r.avviata), durata(r.durata)].filter(Boolean).map(esc).join(" · "); disegnaScheda(el("cercaS").value); disegnaMomenti(); } });
-      var ricorda = function(u){ try { localStorage.setItem("mam2-ultimo", JSON.stringify({ titolo: r.titolo, url: location.pathname.replace(/^.*\//, "") + location.search, quando: new Date().toLocaleString("it-IT", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }), mini: u || (r.mini ? BASE + r.mini : ""), t: t || 0 })); } catch (e) {} };
-      ricorda(""); posa(r.id, t ? Math.round(t) : undefined, ricorda);
       el("aMam").onclick = function(){ apriNelMontaggio(r); };
       el("aScarica").onclick = function(){ if (!r.arch) return; post({ tipo:"clip-qnap-via", via: r.arch.chiave, radice:"qnap" }).then(function(x){ var a = document.createElement("a"); a.href = BASE + x.via + "&scarica=1"; a.download = r.arch.chiave; document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); }, 1000); }).catch(function(e){ avviso("err", esc(e.message)); }); };
       el("aSrt").onclick = function(){ lingueChieste().forEach(function(l, k){ setTimeout(function(){ scaricaSrt(r.id, l); }, k * 500); }); };
@@ -2257,7 +2258,6 @@
       document.title = (SEQ.titolo || "sequenza") + " · MAM Como TV";
       VE.src = BASE + REGE.via;
       el("eAsset").onclick = vaiAllaPartita;
-      try { localStorage.setItem("mam2-ultimo", JSON.stringify({ titolo: (SEQ.titolo || "sequenza") + " · " + (REGE.titolo || ""), url: "mam2.html?seq=" + SEQ.id, quando: new Date().toLocaleString("it-IT", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }), mini: REGE.mini ? BASE + REGE.mini : "" })); } catch (e) {}
       LENTE = { a: 0, b: Math.max(10, durSeq()) };
       applicaFormato();
       disegnaEditor();
