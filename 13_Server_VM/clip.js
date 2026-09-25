@@ -10978,16 +10978,7 @@ async function espnTrova(rec) {
   // occasioni, falli — e soprattutto ci sono anche dove nessun giornalista
   // ha scritto appunti, che sono migliaia di partite.
   const gamecast = leggiGamecast(sm);
-  const eventi = (sm.keyEvents || []).map((k) => {
-    const tipo = ((k.type || {}).text) || "";
-    const mm = minutoEspn((k.clock || {}).displayValue);
-    if (!mm || /kickoff|half|end |full|start/i.test(tipo)) return null;
-    const periodo = ((k.period || {}).number) || (mm.min > 45 ? 2 : 1);
-    return { tipo: tipo, min: mm.min, stopp: mm.stopp, periodo: periodo,
-             squadra: ((k.team || {}).displayName) || "",
-             giocatore: (((k.participants || [])[0] || {}).athlete || {}).displayName || "",
-             testo: k.shortText || k.text || "" };
-  }).filter(Boolean);
+  const eventi = eventiEspn(sm);
   const rose = {};
   (sm.rosters || []).forEach((r) => {
     const nome = ((r.team || {}).displayName) || "?";
@@ -11703,6 +11694,60 @@ function tipoGamecast(testo, tipoEspn) {
 function chiFaGamecast(testo) {
   const m = /([A-ZÀ-Þ][\wÀ-ÿ'’.-]+(?: [A-ZÀ-Þ][\wÀ-ÿ'’.-]+){0,3})\s*\(/.exec(String(testo || ""));
   return m ? m[1].trim() : "";
+}
+// Gli eventi chiave di ESPN. In un gol il secondo "participant" e'
+// l'assistman: fino al 26/09/2026 si teneva solo il primo, e "assist di
+// Nico Paz" non si poteva sapere.
+function eventiEspn(sm) {
+  return (sm.keyEvents || []).map((k) => {
+    const tipo = ((k.type || {}).text) || "";
+    const mm = minutoEspn((k.clock || {}).displayValue);
+    if (!mm || /kickoff|half|end |full|start/i.test(tipo)) return null;
+    const periodo = ((k.period || {}).number) || (mm.min > 45 ? 2 : 1);
+    const chi = (k.participants || []).map((p) => ((p || {}).athlete || {}).displayName || "");
+    const x = { tipo: tipo, min: mm.min, stopp: mm.stopp, periodo: periodo,
+                squadra: ((k.team || {}).displayName) || "",
+                giocatore: chi[0] || "",
+                testo: k.shortText || k.text || "" };
+    if (/goal|penalty - scored/i.test(tipo) && !/own goal/i.test(tipo)) x.assist = chi[1] || "";
+    if (k.text && k.text !== x.testo) x.lungo = String(k.text).slice(0, 240);
+    return x;
+  }).filter(Boolean);
+}
+// RILEGGERE ESPN per le partite gia' riconosciute: gli assistman degli
+// eventi chiave e, dove manca, la cronaca (tiri, parate, pali). Si
+// chiede l'evento per numero, una partita alla volta, piano: ESPN e'
+// gratis e non ha fretta. Le versioni ITA/ENG/AUDIO della stessa gara
+// hanno lo stesso numero ESPN: una domanda sola per tutte.
+const RILEGGI = { fatte: 0, fallite: 0, totale: 0, inCorso: false, ultima: "" };
+async function giroRileggiEspn() {
+  if (RILEGGI.inCorso) return; RILEGGI.inCorso = true;
+  try {
+    const perId = {};
+    Object.keys(ESPN).forEach((rec) => { const e = ESPN[rec]; if (!e || !e.id || !e.lega || e.riletto) return; (perId[e.id] = perId[e.id] || []).push(rec); });
+    // prima le partite che sono in casa, poi quelle dell'archivio, poi il resto
+    const peso = (ids) => ids.some((rec) => ARCHIVIO[rec] && !ARCHIVIO[rec].soloS3) ? 0 : ids.some((rec) => ARCHIVIO[rec]) ? 1 : 2;
+    const coda = Object.keys(perId).sort((a, b) => peso(perId[a]) - peso(perId[b]));
+    RILEGGI.totale = coda.length + RILEGGI.fatte;
+    for (const id of coda) {
+      const recs = perId[id], e0 = ESPN[recs[0]];
+      try {
+        const sm = await espnPrendi("https://site.api.espn.com/apis/site/v2/sports/soccer/" + e0.lega + "/summary?event=" + id);
+        const eventi = eventiEspn(sm), gamecast = leggiGamecast(sm);
+        recs.forEach((rec) => {
+          const e = ESPN[rec]; if (!e || String(e.id) !== String(id)) return;
+          if (eventi.length) e.eventi = eventi;
+          if (gamecast.length) e.gamecast = gamecast;
+          e.riletto = new Date().toISOString();
+        });
+        RILEGGI.fatte++; RILEGGI.ultima = e0.nome || id;
+      } catch (err) { RILEGGI.fallite++; recs.forEach((rec) => { if (ESPN[rec]) ESPN[rec].riletto = "errore " + String(err.message).slice(0, 60); }); }
+      if ((RILEGGI.fatte + RILEGGI.fallite) % 25 === 0) { scriviEspn(); if (global.__TAB_CACHE) global.__TAB_CACHE.quando = 0; }
+      await new Promise((ok) => setTimeout(ok, 1500));
+    }
+    scriviEspn(); if (global.__TAB_CACHE) global.__TAB_CACHE.quando = 0;
+    console.log("[clip] espn riletto: " + RILEGGI.fatte + " partite, " + RILEGGI.fallite + " non lette");
+  } finally { RILEGGI.inCorso = false; }
 }
 function leggiGamecast(sm) {
   const fuori = [];
@@ -13590,6 +13635,157 @@ function chiaviDellaDomanda(q) {
   });
   return { tipi, parole };
 }
+// ── CHI HA FATTO COSA ─────────────────────────────────────────────────
+//  "assist Nico Paz": gli appunti scrivono "GOL Perrone! ... assist di Nico
+//  Paz" e la riga e' un Gol, ma per chi cerca Nico Paz e' un ASSIST
+//  (Goffredo, 26/09/2026). ESPN lo sa gia': negli eventi chiave il secondo
+//  "participant" di un gol e' l'assistman, nella cronaca c'e' "Assisted by".
+//  Quindi per ogni partita le GIOCATE ESPN — chi segna, chi fa l'assist, chi
+//  tira, chi para — e ogni riga (appunti compresi) si aggancia alla giocata
+//  del suo minuto. Il testo degli appunti si legge solo dove ESPN non c'e'
+//  (giovanili, femminile).
+function nomeParole(n) { return String(n || "").split(/[\s\-']+/).map(piattaMinuscola).filter(Boolean); }
+function eLui(nome, chi) {
+  if (!nome || !chi.length) return false;
+  const w = nomeParole(nome);
+  return chi.every((p) => w.some((x) => x === p || (p.length >= 4 && x.indexOf(p) === 0)));
+}
+function assistDalTesto(t) { const m = /Assisted by ([^.]+?)(?:\s+(?:with|following)\b|\.|$)/.exec(String(t || "")); return m ? m[1].trim() : ""; }
+function giocateEspn(rec) {
+  const e = ESPN[rec]; if (!e || (!e.eventi && !e.gamecast)) return [];
+  const g = [];
+  const metti = (f) => {
+    // lo stesso gol dagli eventi chiave e dalla cronaca: uno solo, con tutto quello che sa ciascuno
+    const d = g.find((x) => x.tipo === f.tipo && x.per === f.per && Math.abs(x.min - f.min) <= 1 && x.autore && f.autore && eLui(x.autore, nomeParole(f.autore).slice(-1)));
+    if (d) { d.assist = d.assist || f.assist; d.parataDa = d.parataDa || f.parataDa; return; }
+    g.push(f);
+  };
+  (e.eventi || []).forEach((x) => {
+    const t = String(x.tipo || ""); let tipo = "";
+    if (/own goal/i.test(t)) tipo = "autogol";
+    else if (/penalty - (saved|missed|hit)/i.test(t)) tipo = "rigore sbagliato";
+    else if (/goal|penalty - scored/i.test(t) && !/disallow|cancel|no goal/i.test(t)) tipo = "gol";
+    else if (/yellow/i.test(t)) tipo = "giallo";
+    else if (/red card/i.test(t)) tipo = "rosso";
+    if (!tipo) return;
+    metti({ tipo, per: x.periodo || 1, min: (x.min || 0) + (x.stopp || 0), autore: x.giocatore || "", assist: x.assist || assistDalTesto(x.lungo), parataDa: "" });
+  });
+  (e.gamecast || []).forEach((x) => {
+    const t = String(x.testo || ""); let tipo = "";
+    if (x.tipo === "Gol") tipo = /own goal/i.test(t) ? "autogol" : "gol";
+    else if (x.tipo === "Occasione") tipo = "tiro";
+    else if (x.tipo === "Parata") tipo = "tiro parato";
+    else if (x.tipo === "Palo") tipo = "palo";
+    else if (x.tipo === "Rigore") tipo = "rigore sbagliato";
+    else if (x.tipo === "Ammonizione") tipo = "giallo";
+    else if (x.tipo === "Espulsione") tipo = "rosso";
+    if (!tipo) return;
+    const pd = /saved[^.]*? by ([^(.]+?) \(/.exec(t);
+    metti({ tipo, per: x.periodo || 1, min: (x.min || 0) + (x.stopp || 0), autore: x.giocatore || "", assist: assistDalTesto(t), parataDa: pd ? pd[1].trim() : "" });
+  });
+  return g;
+}
+// il ruolo di chi si cerca in una giocata
+function ruoloIn(f, chi) {
+  if (eLui(f.autore, chi)) return f.tipo;
+  if (eLui(f.assist, chi)) return f.tipo === "gol" ? "assist" : "passaggio chiave";
+  if (eLui(f.parataDa, chi)) return /rigore/.test(f.tipo) ? "rigore parato" : "parata";
+  return "";
+}
+function minutoRiga(x) {
+  const m = /(\d+)(?:\s*\+\s*(\d+))?/.exec(String(x.minuto || "")); if (!m) return null;
+  const min = +m[1], st = m[2] ? +m[2] : 0;
+  return { per: (min > 45 || (min === 45 && !st && x.periodo === 2)) ? 2 : 1, min: min + st };
+}
+// Senza ESPN: il testo intorno al nome. "assist/lancio/cross ... di Nico Paz"
+// e' un assist; il nome subito dopo "GOL" e' il marcatore.
+const CUE_ASSIST = /(assist|assit|asssit|asist|passaggio|lancio|verticalizzazione|cross|traversone|imbucata|suggerimento|sponda|filtrante|invito|servizio)\s+(?:\S+\s+){0,2}?(?:di|da|del|dello|della)\s+(?:\S+\s+)?$/;
+function ruoloDalTesto(x, chi) {
+  const t = senzaAccenti(String(x.titolo || "") + " · " + String(x.dettaglio || "")).toLowerCase().replace(/\s+/g, " ");
+  const tipo = senzaAccenti(String(x.tipo || "") + " " + String(x.tag || "")).toLowerCase();
+  const i = t.indexOf(chi[chi.length - 1]); if (i < 0) return "";
+  const prima = t.slice(Math.max(0, i - 60), i), dopo = t.slice(i, i + 90);
+  if (CUE_ASSIST.test(prima) || /\b(il suo tiro diventa un assist|assist per)\b/.test(dopo)) return x.gol || /gol|rete/.test(tipo) ? "assist" : "passaggio chiave";
+  if (/rigore (sbagliat|parat)|sbaglia (il )?rigore/.test(tipo + " " + t)) return "rigore sbagliato";
+  if (x.gol || /\b(gol|goal|rete)\b/.test(tipo)) return /(gol|goal|rete)[^.!?;]{0,40}$/.test(prima) || /^\S+\s+(segna|insacca|risolve|punisce|batte|firma|sblocca|raddoppia)/.test(dopo) ? "gol" : "nel gol";
+  if (/espuls|rosso/.test(tipo)) return "rosso";
+  if (/ammoni|giall/.test(tipo)) return "giallo";
+  if (/palo|traversa/.test(tipo)) return "palo";
+  if (/parat/.test(tipo)) return /(parata di|respinge|salva)\s*$/.test(prima) ? "parata" : "tiro parato";
+  if (/occasion|tiro/.test(tipo)) return "tiro";
+  return "";
+}
+// il tipo della riga, per agganciarla solo a giocate dello stesso tipo: un
+// cambio al 45' non e' il gol di Nico Paz al 45'+2. Prima il tipo scritto
+// (una parata a dieci secondi da un gol ha gol:true, ma resta una parata)
+function categoriaRiga(x) {
+  const t = senzaAccenti(String(x.tipo || "") + " " + String(x.tag || "")).toLowerCase();
+  if (/sostituz|cambio/.test(t)) return "cambio";
+  if (/espuls|rosso|red card/.test(t)) return "rosso";
+  if (/ammoni|giallo|yellow/.test(t)) return "giallo";
+  if (/rigore|penalty/.test(t) && !/\b(gol|goal)\b/.test(t)) return "rigore";
+  if (/palo|traversa/.test(t)) return "palo";
+  if (/parat/.test(t)) return "parata";
+  if (/occasion|tiro|chance/.test(t)) return "tiro";
+  if (/\b(gol|goal|rete|autogol)\b/.test(t)) return "gol";
+  if (x.gol && /^\W*(gol|goal)\b/i.test(String(x.titolo || ""))) return "gol";
+  return "";
+}
+const GIOCATE_COMPATIBILI = { gol: ["gol", "autogol"], giallo: ["giallo"], rosso: ["rosso"], palo: ["palo"],
+  parata: ["tiro parato", "rigore sbagliato"], tiro: ["tiro", "tiro parato", "palo"], rigore: ["rigore sbagliato", "gol"], cambio: [] };
+// il ruolo di chi si cerca in questa riga: prima ESPN, poi il testo
+function ruoloDi(x, rec, chi, giocate) {
+  if (!chi.length) return { ruolo: "", da: "" };
+  const m = minutoRiga(x), cat = categoriaRiga(x);
+  const parole = new Set(nomeParole([x.titolo, x.giocatore, x.dettaglio].join(" ")));
+  const nomina = (n) => { const w = nomeParole(n); return !!w.length && parole.has(w[w.length - 1]); };
+  const nominaChi = chi.every((w) => parole.has(w) || Array.from(parole).some((p) => w.length >= 4 && p.indexOf(w) === 0));
+  if (giocate.length && m && cat !== "cambio") {
+    const ok = cat ? GIOCATE_COMPATIBILI[cat] : null;
+    const vicine = giocate.filter((f) => f.per === m.per && Math.abs(f.min - m.min) <= (cat === "gol" ? 3 : 2) &&
+                                         (ok ? ok.indexOf(f.tipo) >= 0 : f.tipo !== "gol" && f.tipo !== "autogol"));
+    // la giocata di chi la riga nomina, se no la piu' vicina
+    const peso = (f) => (nomina(f.autore) || nomina(f.assist) || nomina(f.parataDa) ? 0 : 10) + Math.abs(f.min - m.min);
+    vicine.sort((u, v) => peso(u) - peso(v));
+    // una riga senza tipo si aggancia solo se nomina chi si cerca
+    const f = (ok || nominaChi) ? vicine[0] : null;
+    if (f) { const r = ruoloIn(f, chi); if (r) return { ruolo: r, da: "espn" }; }
+  }
+  if (!nominaChi) return { ruolo: "", da: "" };
+  const r = ruoloDalTesto(x, chi);
+  return { ruolo: r, da: r ? "testo" : "" };
+}
+// LA SCHEDA DEL GIOCATORE: le sue giocate ESPN nelle partite dell'archivio,
+// una volta per gara (ITA, ENG e AUDIO sono la stessa partita)
+function schedaGiocatore(parole, cache) {
+  if (!cache.parolesquadre) {
+    const w = new Set();
+    Object.keys(ESPN).forEach((rec) => { ((ESPN[rec] || {}).squadre || []).forEach((n) => nomeParole(n).forEach((x) => w.add(x))); });
+    cache.parolesquadre = w;
+  }
+  const chi = parole.filter((x) => !cache.parolesquadre.has(x));
+  if (!chi.length) return null;
+  const visti = new Set(), conta = {}, nomi = {}, partite = new Set();
+  let conCronaca = 0, gare = 0;
+  Object.keys(ARCHIVIO).forEach((rec) => {
+    const e = ESPN[rec]; if (!e || !e.id || visti.has(e.id)) return; visti.add(e.id);
+    gare++; if (e.gamecast && e.gamecast.length) conCronaca++;
+    const gc = cache.giocate || (cache.giocate = {});
+    (gc[rec] || (gc[rec] = giocateEspn(rec))).forEach((f) => {
+      const r = ruoloIn(f, chi); if (!r) return;
+      conta[r] = (conta[r] || 0) + 1; partite.add(e.id);
+      const n = eLui(f.autore, chi) ? f.autore : eLui(f.assist, chi) ? f.assist : f.parataDa;
+      nomi[n] = (nomi[n] || 0) + 1;
+    });
+  });
+  if (!partite.size) return null;
+  const nome = Object.keys(nomi).sort((a, b) => nomi[b] - nomi[a])[0];
+  return { nome, chi, conta, partite: partite.size, gare, conCronaca };
+}
+// come la domanda chiama ogni ruolo: "gol" vuole i SUOI gol, "assist" i suoi assist
+const RUOLO_PAROLE = { "gol": "gol", "assist": "assist", "autogol": "autogol", "rigore sbagliato": "rigore sbagliato", "rigore parato": "rigore parata",
+  "parata": "parata", "tiro parato": "tiro occasione", "tiro": "tiro occasione", "passaggio chiave": "occasione", "palo": "palo", "giallo": "ammonizione giallo",
+  "rosso": "espulsione rosso", "nel gol": "" };
 function combaciaRiga(x, titoloPartita, tipi, parole) {
   const soggetto = [x.tipo, x.tag].join(" ") || x.titolo;
   if (tipi.length && !tipi.every((re) => re.test(soggetto))) return false;
@@ -13899,6 +14095,10 @@ const AZIONI = {
     a.partita = t; scriviArchivio(); STEMMI_CACHE.clear();
     return { ok: true, rec: p.rec, titolo: t };
   },
+  "clip-espn-rileggi": (p) => {
+    if (p.avvia) giroRileggiEspn().catch(() => {});
+    return { ok: true, stato: RILEGGI };
+  },
   "clip-espn-controllo": (p) => {
     const sbagliate = Object.keys(ESPN).filter((rec) => ESPN[rec] && ESPN[rec].id && ARCHIVIO[rec] && !espnCombacia(rec))
       .map((rec) => ({ rec, partita: ARCHIVIO[rec].partita, espn: ESPN[rec].nome || (ESPN[rec].squadre || []).join(" - "), quando: ARCHIVIO[rec].quando }));
@@ -14048,7 +14248,16 @@ const AZIONI = {
           const ita = tipoItaliano(x.tipo);
           const d = dove(x.periodo || 1, (x.min - (x.periodo === 2 ? 45 : 0)) * 60 + (x.stopp || 0) * 60); if (!d) return;
           righe.push(Object.assign({ titolo: ita + (x.giocatore ? " \u00b7 " + x.giocatore : ""), tipo: ita, minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), fonte: "espn", fonti: ["espn"],
-            giocatore: x.giocatore || "", squadra: x.squadra || "", dettaglio: x.testo || "", gol: /Gol/.test(ita), tag: etichettaAzione(ita, x.testo), rating: 0, certezza: "minuto" }, d));
+            giocatore: x.giocatore || "", squadra: x.squadra || "", dettaglio: x.lungo || x.testo || "", gol: /Gol/.test(ita), tag: etichettaAzione(ita, x.testo), rating: 0, certezza: "minuto" }, d));
+        });
+        // LA CRONACA ESPN: tiri, parate, pali. Dove nessuno ha scritto
+        // niente, il minuto di ESPN basta per andare a prendere l'immagine;
+        // come nel tabellino, entra solo dove non c'e' gia' una riga vicina
+        if (es && es.gamecast) es.gamecast.forEach((x) => {
+          const d = dove(x.periodo || 1, (x.min - (x.periodo === 2 ? 45 : 0)) * 60 + (x.stopp || 0) * 60); if (!d) return;
+          if (righe.some((y) => Math.abs(y.t - d.t) < 50)) return;
+          righe.push(Object.assign({ titolo: [x.tipo, x.giocatore].filter(Boolean).join(" \u00b7 "), tipo: x.tipo, minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), fonte: "gamecast", fonti: ["gamecast"],
+            giocatore: x.giocatore || "", squadra: "", dettaglio: x.testo || "", gol: x.tipo === "Gol", tag: etichettaAzione(x.tipo, x.testo), rating: 0, certezza: "minuto" }, d));
         });
         if (!righe.length) return;
         per["arch:" + rec] = righe.map((x) => Object.assign(x, { t: Math.round(x.t * 10) / 10, dentro: Math.max(0, x.t - (x.gol ? GOL_PRE : APP_PRE)), fuori: x.t + (x.gol ? GOL_POST : APP_POST) }));
@@ -14059,20 +14268,34 @@ const AZIONI = {
     const per = global.__TAB_CACHE.per, finti = global.__TAB_CACHE.finti || {}, fuori = [];
     Object.keys(per).forEach((k) => {
       const r = R.reg[k] || finti[k]; if (!r) return;
+      const recR = (r.arch && r.arch.rec) || r.evento || "";
+      const gc = global.__TAB_CACHE.giocate || (global.__TAB_CACHE.giocate = {});
+      const giocate = recR ? (gc[recR] || (gc[recR] = giocateEspn(recR))) : [];
       per[k].forEach((x) => {
         // il tipo si legge da tipo ed etichetta (che classificano gia' il
         // titolo): guardare la prosa faceva prendere "angolo" per "gol"
-        if (!combaciaRiga(x, r.titolo, tipi, parole)) return;
+        // CHI SI CERCA: le parole che non sono nel nome della partita
+        const tp = new Set(nomeParole(String(r.titolo || "").replace(/[\[\]()|\-]/g, " ")));
+        const chi = parole.filter((w) => !tp.has(w));
+        const { ruolo, da } = ruoloDi(x, recR, chi, giocate);
+        if (chi.length && (ruolo || da)) {
+          // con un giocatore nella domanda, i tipi sono i SUOI: il suo assist non e' un suo gol
+          if (tipi.length && !tipi.every((re) => re.test(RUOLO_PAROLE[ruolo] || ""))) return;
+          // ESPN dice che c'era lui anche dove gli appunti non lo nominano ("GOL Douvikas", assist di Paz)
+          if (da !== "espn" && !combaciaRiga(x, r.titolo, [], parole)) return;
+        } else if (!combaciaRiga(x, r.titolo, tipi, parole)) return;
+        x = Object.assign({}, x, { ruolo, ruoloDa: da });
         let chiave = x.chiave || "", dentroFile = x.dentroFile !== undefined ? x.dentroFile : x.dentro;
         if (r.arch && !r.finto) { const pa = pezzoAl(r, x.dentro); if (pa && pa.pezzo && pa.pezzo.chiave) { chiave = pa.pezzo.chiave; dentroFile = pa.dentro; } else chiave = r.arch.chiave || ""; }
         fuori.push({ reg: r.finto ? "" : k, partita: r.titolo || k, rec: (r.arch && r.arch.rec) || r.evento || "", t: x.t, dentro: x.dentro, fuori: x.fuori, s3: !!(r.arch && magazzinoInventario(r.arch.bucket) && !inCasaReg(r)),
                      tipo: x.tipo, tag: x.tag, titolo: x.titolo, minuto: x.minuto, fonte: x.fonte, fonti: x.fonti, squadra: x.squadra, giocatore: x.giocatore,
-                     gol: x.gol, certezza: x.certezza, chiave, dentroFile, quando: r.finita || r.avviata || 0 });
+                     gol: x.gol, certezza: x.certezza, chiave, dentroFile, quando: r.finita || r.avviata || 0, ruolo: x.ruolo || "", ruoloDa: x.ruoloDa || "" });
       });
     });
     fuori.sort((u, v) => (v.gol ? 1 : 0) - (u.gol ? 1 : 0) || String(v.quando).localeCompare(String(u.quando)) || u.t - v.t);
     const partite = new Set(fuori.map((x) => x.reg)).size;
-    return { ok: true, righe: fuori.slice(0, num(p.quante, 1, 2000, 500)), totale: fuori.length, partite, tipi: tipi.length, parole };
+    let scheda = null; try { scheda = schedaGiocatore(parole, global.__TAB_CACHE); } catch (e) {}
+    return { ok: true, righe: fuori.slice(0, num(p.quante, 1, 2000, 500)), totale: fuori.length, partite, tipi: tipi.length, parole, scheda };
   },
   // I NOMI DIETRO LE FOTO: una foto premium si chiama col cognome
   // (foto-premium-paz), ma chi cerca scrive "nico paz". Da qui la pagina
@@ -14944,6 +15167,8 @@ function avvio(opz) {
   setTimeout(() => { giroCasa().catch(() => {}); }, 90000).unref();
   // il catalogo delle squadre ESPN per gli stemmi: una volta a settimana
   leggiCatalogo();
+  // assistman e cronaca ESPN per le partite gia' riconosciute (una volta sola per partita)
+  setTimeout(() => { giroRileggiEspn().catch((e) => console.log("[clip] rileggi espn: " + e.message)); }, 90000).unref();
   setTimeout(() => { try { appuntiGemelli(); } catch (e) { console.log("[clip] appunti gemelli: " + e.message); } }, 40000).unref();
   setTimeout(() => {
     let n = 0;

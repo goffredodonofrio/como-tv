@@ -216,6 +216,16 @@
     background:linear-gradient(180deg,rgba(10,15,36,.55),transparent 35%,transparent 60%,rgba(10,15,36,.7));}
   .tes .mini .sopra .su{display:flex;justify-content:space-between;align-items:flex-start;gap:6px;}
   .tes .tipo-az{font:800 10px/1 'Mazzard',sans-serif;letter-spacing:.12em;text-transform:uppercase;padding:5px 8px;border-radius:4px;color:#10131c;background:#C9A24B;}
+  /* la scheda del giocatore: le sue giocate ESPN, e i filtri per ruolo */
+  .ris .scheda-g{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:10px 12px;border:1px solid var(--riga2);border-radius:8px;background:rgba(201,162,75,.05);margin:0 0 4px;}
+  .ris .scheda-g h4{margin:0;font:700 12px/1.2 'Mazzard',sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--oro2);}
+  .ris .scheda-g .nota{flex-basis:100%;font-size:11px;color:var(--fumo);}
+  .ris .ruoli{display:flex;flex-wrap:wrap;gap:6px;}
+  .ris .ruoli button{font:700 10px/1 'Mazzard',sans-serif;letter-spacing:.12em;text-transform:uppercase;padding:6px 9px;border-radius:4px;cursor:pointer;
+    border:1px solid var(--riga2);background:transparent;color:var(--ivory2);}
+  .ris .ruoli button b{font-family:ui-monospace,Menlo,monospace;margin-left:5px;letter-spacing:0;}
+  .ris .ruoli button.on{background:var(--c,#C9A24B);border-color:var(--c,#C9A24B);color:#10131c;}
+  .tes .tipo-az.assist{background:#6EE7A8;}
   .tes .tipo-az.giallo{background:#FCD34D;} .tes .tipo-az.rosso{background:#E51B20;color:#fff;} .tes .tipo-az.occ{background:#5AA7E8;} .tes .tipo-az.altro{background:rgba(245,241,230,.85);}
   .tes .minuto{font:700 11px/1 ui-monospace,Menlo,monospace;color:#F5F1E6;background:rgba(10,15,36,.8);padding:4px 6px;border-radius:4px;}
   .tes .mini .sopra .giu{font-size:10px;color:rgba(245,241,230,.8);text-transform:uppercase;letter-spacing:.08em;}
@@ -1785,7 +1795,7 @@
   el("vLista").addEventListener("click", function(){ VISTA = "lista"; try { localStorage.setItem("mam2-vista", VISTA); } catch (e) {} disegnaRecenti(); });
 
   // ══════════ LA RICERCA (in libreria) ══════════
-  var Q = "", Q_T = null, RIS = { azioni:[], dette:[] };
+  var Q = "", Q_T = null, RIS = { azioni:[], dette:[], scheda:null }, RIS_RUOLO = "";
   function cerca(q){
     // LA CASELLA IN CUI SI STA SCRIVENDO NON SI TOCCA. Qui prima si
     // riscrivevano tutte e due con il testo ripulito: lo spazio appena
@@ -1805,13 +1815,25 @@
     clearTimeout(Q_T);
     Q_T = setTimeout(function(){
       var mia = Q;
-      post({ tipo:"clip-tabellino-cerca", q: mia, quante: 300 }).then(function(j){ if (mia !== Q) return; RIS.azioni = j.righe || []; disegnaRisultati(); }).catch(function(){});
+      post({ tipo:"clip-tabellino-cerca", q: mia, quante: 300 }).then(function(j){ if (mia !== Q) return; RIS.azioni = j.righe || []; RIS.scheda = j.scheda || null; RIS_RUOLO = ""; disegnaRisultati(); }).catch(function(){});
       post({ tipo:"clip-parlato-cerca", q: mia, quante: 300 }).then(function(j){ if (mia !== Q) return; RIS.dette = j.righe || []; disegnaRisultati(); }).catch(function(){});
     }, 300);
   }
   // ── I RISULTATI A TESSERE ──
   var RIS_TAB = "tutto";
+  // IL RUOLO di chi si cerca (dal ponte: ESPN, se no il testo degli appunti)
+  var RUOLI = {
+    "gol": { eti: "Gol", cl: "", c: "#C9A24B" }, "assist": { eti: "Assist", cl: "assist", c: "#6EE7A8" },
+    "autogol": { eti: "Autogol", cl: "altro", c: "#F5F1E6" }, "nel gol": { eti: "Nel gol", cl: "altro", c: "#F5F1E6" },
+    "tiro": { eti: "Tiro", cl: "occ", c: "#5AA7E8" }, "tiro parato": { eti: "Tiro parato", cl: "occ", c: "#5AA7E8" },
+    "palo": { eti: "Palo", cl: "occ", c: "#5AA7E8" }, "passaggio chiave": { eti: "Pass. chiave", cl: "occ", c: "#5AA7E8" },
+    "parata": { eti: "Parata", cl: "occ", c: "#5AA7E8" }, "rigore parato": { eti: "Rigore parato", cl: "occ", c: "#5AA7E8" },
+    "rigore sbagliato": { eti: "Rigore sbagliato", cl: "altro", c: "#F5F1E6" },
+    "giallo": { eti: "Giallo", cl: "giallo", c: "#FCD34D" }, "rosso": { eti: "Rosso", cl: "rosso", c: "#E51B20" }
+  };
+  var ORDINE_RUOLI = ["gol", "assist", "nel gol", "tiro", "tiro parato", "palo", "passaggio chiave", "parata", "rigore parato", "rigore sbagliato", "autogol", "giallo", "rosso"];
   function tipoAzione(x){
+    if (x.ruolo && RUOLI[x.ruolo]) return RUOLI[x.ruolo];
     var t = String((x.tag || x.tipo || "") + " " + (x.titolo || "")).toLowerCase();
     if (x.gol || /\bgol\b|rete|autogol/.test(t)) return { eti: "Gol", cl: "" };
     if (/rosso|espuls/.test(t)) return { eti: "Rosso", cl: "rosso" };
@@ -1821,12 +1843,41 @@
     return { eti: String(x.tag || x.tipo || "Azione").slice(0, 14), cl: "altro" };
   }
   // la stessa azione arriva da piu' parti (due registrazioni della stessa partita, appunti ed ESPN): una sola
-  function senzaDoppioni(lista){
-    var visti = {};
-    return lista.filter(function(x){
-      var k = (x.rec || x.partita) + "|" + Math.round((x.t || 0) / 20) + "|" + String(x.giocatore || x.titolo || "").toLowerCase().replace(/[^a-z]/g, "").slice(0, 24);
-      if (visti[k]) return false; visti[k] = 1; return true;
+  // e la stessa giocata nelle versioni ITA, ENG e AUDIO della partita: una, quella in casa e in italiano
+  // le due squadre e basta: niente lingua, risultato, data (l'ENG spesso ha la data, l'ITA il risultato)
+  function partitaSola(x){ return piatto(x.partita).replace(/\[[^\]]*\]|\b(eng|ita|english|italiano|audio|only|international|intl|sound|feed|clean\s*feed|cleanfeed)\b/g, " ").replace(/\d+\s*[-\u2013:]\s*\d+|\d{1,2}\/\d{1,2}\/\d{2,4}|\d+/g, " ").replace(/[^a-z]+/g, " ").trim(); }
+  function senzaDoppioni(lista, perRec){
+    // si tiene la versione in casa, in italiano, con le immagini (l'AUDIO ONLY ha il fotogramma nero)
+    var bravura = function(x){ var ev = perRec[x.rec]; return (ev && !ev.s3 ? 0 : 4) + (/\baudio\b/i.test(x.partita || "") ? 2 : /\beng\b/i.test(x.partita || "") ? 1 : 0); };
+    var ordine = lista.map(function(x, i){ return { x: x, i: i, b: bravura(x) }; });
+    // senza il giorno: quello della registrazione e' quando la si e' aperta nel MAM, e una
+    // partita ancora su S3 non ce l'ha. Stesse squadre, stesso ruolo, stesso minuto basta
+    var scelti = {}, visti = {};
+    ordine.slice().sort(function(a, b){ return a.b - b.b || a.i - b.i; }).forEach(function(o){
+      var x = o.x, m = parseInt(String(x.minuto || ""), 10);
+      var k1 = (x.rec || x.partita) + "|" + Math.round((x.t || 0) / 20) + "|" + String(x.giocatore || x.titolo || "").toLowerCase().replace(/[^a-z]/g, "").slice(0, 24);
+      var base = partitaSola(x) + "|" + (x.ruolo || (x.gol ? "gol" : String(x.tipo || "").toLowerCase())) + "|";
+      var doppio = visti[k1] || (!isNaN(m) && (visti[base + (m - 1)] || visti[base + m] || visti[base + (m + 1)]));
+      if (doppio) return;
+      visti[k1] = 1; if (!isNaN(m)) visti[base + m] = 1; scelti[o.i] = 1;
     });
+    return lista.filter(function(x, i){ return scelti[i]; });
+  }
+  function schedaHtml(sc, azioni){
+    var conta = {}; azioni.forEach(function(x){ if (x.ruolo) conta[x.ruolo] = (conta[x.ruolo] || 0) + 1; });
+    var ruoli = ORDINE_RUOLI.filter(function(r){ return conta[r]; });
+    if (!sc && !ruoli.length) return "";
+    var h = '<div class="scheda-g">';
+    if (sc) {
+      var c = sc.conta || {}, pezzi = [];
+      [["gol", "gol", "gol"], ["assist", "assist", "assist"], ["tiro", "tiro", "tiri"], ["tiro parato", "tiro parato", "tiri parati"], ["palo", "palo", "pali"], ["passaggio chiave", "passaggio chiave", "passaggi chiave"], ["parata", "parata", "parate"], ["giallo", "giallo", "gialli"], ["rosso", "rosso", "rossi"], ["rigore sbagliato", "rigore sbagliato", "rigori sbagliati"]]
+        .forEach(function(v){ if (c[v[0]]) pezzi.push('<b>' + c[v[0]] + '</b> ' + (c[v[0]] === 1 ? v[1] : v[2])); });
+      h += '<h4>' + esc(sc.nome) + '</h4><span>' + pezzi.join(' · ') + ' <small style="color:var(--fumo)">in ' + sc.partite + (sc.partite === 1 ? ' partita' : ' partite') + ' dell’archivio</small></span>';
+      if (sc.conCronaca < sc.gare) h += '<div class="nota">Dati ESPN. Tiri, parate e pali ci sono per ' + sc.conCronaca + ' partite su ' + sc.gare + ': le altre si stanno rileggendo da ESPN.</div>';
+    }
+    if (ruoli.length) h += '<div class="ruoli"><button data-ruolo="" class="' + (RIS_RUOLO ? "" : "on") + '">Tutte<b>' + azioni.length + '</b></button>' +
+      ruoli.map(function(r){ return '<button data-ruolo="' + r + '" style="--c:' + RUOLI[r].c + '" class="' + (RIS_RUOLO === r ? "on" : "") + '">' + RUOLI[r].eti + '<b>' + conta[r] + '</b></button>'; }).join("") + '</div>';
+    return h + '</div>';
   }
   function tesseraPartita(x, link){
     var ant = anteprimaHtml(x);
@@ -1852,7 +1903,8 @@
     var q = piatto(Q).split(/\s+/).filter(function(w){ return w && !FERMA.has(w); });
     var partite = EVENTI.filter(function(x){ var t = piatto([x.partita, x.nome, x.competizione, x.compVista].join(" ")); return q.length && q.every(function(w){ return t.indexOf(w) >= 0; }); });
     var perRec = {}; EVENTI.forEach(function(x){ if (x.rec) perRec[x.rec] = x; });
-    var azioni = senzaDoppioni(RIS.azioni), dette = RIS.dette;
+    var tutteAz = senzaDoppioni(RIS.azioni, perRec), dette = RIS.dette;
+    var azioni = RIS_RUOLO ? tutteAz.filter(function(x){ return x.ruolo === RIS_RUOLO; }) : tutteAz;
     var link = function(x, t){ return "mam2.html?asset=" + encodeURIComponent(x.rec || "") + (x.reg ? "&reg=" + encodeURIComponent(x.reg) : "") + (t !== undefined ? "&t=" + Math.floor(t) : ""); };
     var gruppi = [
       { k: "partite", eti: "Partite", c: CAT.evento.c, n: partite.length, html: function(max){ return partite.slice(0, max).map(function(x){ return tesseraPartita(x, link); }).join(""); } },
@@ -1866,6 +1918,7 @@
       h += '<div class="filtri-ris"><button data-rt="tutto" class="' + (RIS_TAB === "tutto" ? "on" : "") + '">Tutto<b>' + tot + '</b></button>' +
         gruppi.filter(function(g){ return g.n; }).map(function(g){ return '<button data-rt="' + g.k + '" style="--c:' + g.c + '" class="' + (RIS_TAB === g.k ? "on" : "") + '">' + g.eti + '<b>' + g.n + '</b></button>'; }).join("") +
         '<button disabled title="arrivano con l’archivio foto">Foto<b>—</b></button></div>';
+      h += schedaHtml(RIS.scheda, tutteAz);
       gruppi.forEach(function(g){
         if (!g.n || (RIS_TAB !== "tutto" && RIS_TAB !== g.k)) return;
         var max = RIS_TAB === "tutto" ? 10 : 300;
@@ -1876,6 +1929,7 @@
     if (!h) h = '<div class="vuoto">' + (Q.length < 3 ? "Scrivi almeno tre lettere." : "Niente per «" + esc(Q) + "»: prova con un cognome, una squadra, “tutti i gol di…”. Foto, stemmi e cartelle stanno nel <a href=\"magazzino.html?q=" + encodeURIComponent(Q) + "\" target=\"_blank\" style=\"color:var(--oro2)\">Magazzino</a>.") + '</div>';
     else h += '<div class="vuoto">Foto, stemmi e cartelle: <a href="magazzino.html?q=' + encodeURIComponent(Q) + '" target="_blank" style="color:var(--oro2)">cerca nel Magazzino</a>.</div>';
     var box = el("risultati"); box.classList.add("tessere"); box.innerHTML = h;
+    box.querySelectorAll("[data-ruolo]").forEach(function(b){ b.addEventListener("click", function(){ RIS_RUOLO = b.dataset.ruolo; if (RIS_RUOLO) RIS_TAB = "azioni"; disegnaRisultati(); }); });
     box.querySelectorAll("[data-rt]").forEach(function(b){ b.addEventListener("click", function(){ RIS_TAB = b.dataset.rt; disegnaRisultati(); }); });
     fotogrammiAzioni(box);
   }
