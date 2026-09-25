@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Viz · Grafica vMix</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-SemiBold.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#070B1D;}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+    transform-origin:center center;
+    font-family:'DM Sans',system-ui,sans-serif;color:#F5F1E6;
+    background:
+      radial-gradient(120% 90% at 8% 0%, rgba(28,48,110,.55), transparent 55%),
+      radial-gradient(90% 70% at 100% 100%, rgba(20,27,60,.6), transparent 60%),
+      linear-gradient(160deg,#10173A 0%,#0A0F26 45%,#070B1D 100%);
+  }
+
+  /* la testata di casa, identica a Come arrivano e ai Precedenti */
+  #eyebrow{position:absolute;left:128px;top:82px;
+    font-family:'DM Sans',sans-serif;font-weight:600;font-size:22px;letter-spacing:.24em;
+    color:#C9A24B;text-transform:uppercase;white-space:nowrap;opacity:0;}
+  #title{position:absolute;left:125px;top:104px;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:76px;letter-spacing:.01em;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;
+    clip-path:inset(0 100% 0 0);}
+  #rule{position:absolute;left:128px;top:212px;width:300px;height:3px;
+    background:linear-gradient(90deg,#C9A24B 0%,rgba(201,162,75,.15) 100%);
+    transform:scaleX(0);transform-origin:left center;}
+  #fonte{position:absolute;left:128px;bottom:52px;
+    font-family:'DM Sans',sans-serif;font-weight:500;font-size:17px;letter-spacing:.18em;
+    color:rgba(245,241,230,.42);text-transform:uppercase;white-space:nowrap;opacity:0;}
+
+  /* i numeri in evidenza (valore attuale, valore piu' alto) */
+  .cifra{position:absolute;opacity:0;}
+  .cifra .et{font-family:'DM Sans',sans-serif;font-weight:600;font-size:18px;letter-spacing:.22em;
+    color:#C9A24B;text-transform:uppercase;white-space:nowrap;}
+  .cifra .num{font-family:'Mazzard',sans-serif;font-weight:800;font-size:64px;line-height:1.05;
+    color:#F5F1E6;white-space:nowrap;font-variant-numeric:tabular-nums;margin-top:4px;}
+  .cifra .num small{font-size:32px;font-weight:700;color:#D8D2C2;margin-left:10px;letter-spacing:.02em;}
+  .cifra .quando{font-family:'DM Sans',sans-serif;font-size:18px;letter-spacing:.14em;
+    color:rgba(245,241,230,.5);text-transform:uppercase;margin-top:2px;white-space:nowrap;}
+
+  /* la legenda: chi e' chi, con la faccia o lo stemma e il colore della serie */
+  .legenda{position:absolute;left:128px;right:128px;display:flex;gap:44px;flex-wrap:nowrap;}
+  .voce{display:flex;align-items:center;gap:18px;min-width:0;opacity:0;}
+  .voce .tondo{position:relative;flex:none;width:92px;height:92px;border-radius:50%;
+    background:#20284E;overflow:hidden;box-shadow:0 0 0 4px var(--c);}
+  .voce .tondo img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;object-position:50% 12%;}
+  .voce .tondo.stemma{background:transparent;overflow:visible;box-shadow:none;}
+  .voce .tondo.stemma img{object-fit:contain;object-position:center;filter:drop-shadow(0 6px 16px rgba(0,0,0,.5));}
+  .voce .tondo .ini{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-family:'Mazzard',sans-serif;font-weight:800;font-size:32px;color:#F5F1E6;}
+  .voce .chi{min-width:0;}
+  .voce .nome{font-family:'Mazzard',sans-serif;font-weight:800;font-size:36px;line-height:1.05;
+    color:#F5F1E6;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .voce .det{display:flex;align-items:center;gap:10px;margin-top:6px;
+    font-family:'DM Sans',sans-serif;font-weight:600;font-size:17px;letter-spacing:.16em;
+    color:#D8D2C2;text-transform:uppercase;white-space:nowrap;}
+  .voce .det i{flex:none;width:26px;height:6px;border-radius:3px;background:var(--c);}
+  .legenda.stretta .voce .tondo{width:74px;height:74px;}
+  .legenda.stretta .voce .nome{font-size:28px;}
+  .legenda.stretta .voce .det{font-size:15px;letter-spacing:.12em;}
+  .legenda.stretta{gap:32px;}
+
+  /* la foto grande a quinta, per le grafiche di un giocatore solo */
+  /* la foto e' in piedi sul bordo basso e alta quasi quanto lo schermo: le
+     foto del magazzino sono mezzi busti quasi quadrati, e chiuse in una
+     colonna stretta venivano piccole e schiacciate nell'angolo */
+  #quinta{position:absolute;right:0;bottom:0;width:700px;height:1080px;opacity:0;
+    overflow:hidden;pointer-events:none;
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 110px);
+            mask-image:linear-gradient(90deg,transparent 0,#000 110px);}
+  #quinta img{position:absolute;bottom:0;left:52%;transform:translateX(-50%);
+    height:860px;width:auto;max-width:none;
+    filter:drop-shadow(0 20px 40px rgba(0,0,0,.55));
+    -webkit-mask-image:linear-gradient(180deg,#000 78%,transparent 100%);
+            mask-image:linear-gradient(180deg,#000 78%,transparent 100%);}
+
+  svg#grafico{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:visible;}
+  svg text{font-family:'DM Sans',sans-serif;}
+  .asse{fill:rgba(245,241,230,.45);font-size:19px;font-variant-numeric:tabular-nums;}
+  .xlab{fill:#D8D2C2;font-size:20px;font-weight:500;letter-spacing:.04em;}
+  .val{fill:#F5F1E6;font-family:'Mazzard',sans-serif;font-weight:700;font-size:24px;font-variant-numeric:tabular-nums;}
+  .val.forte{font-size:30px;font-weight:800;}
+  .pannello{fill:#C9A24B;font-family:'DM Sans',sans-serif;font-weight:600;font-size:18px;letter-spacing:.22em;}
+  .metrica{fill:#F5F1E6;font-family:'Mazzard',sans-serif;font-weight:700;font-size:26px;letter-spacing:.04em;}
+
+  /* le entrate: le barre crescono dalla base, le linee si disegnano */
+  .cresce{transform-box:fill-box;transform-origin:50% 100%;transform:scaleY(0);}
+  .allunga{transform-box:fill-box;transform-origin:0% 50%;transform:scaleX(0);}
+  .traccia{stroke-dasharray:1;stroke-dashoffset:1;}
+  .appare{opacity:0;}
+  @keyframes crescita { to { transform:scale(1); } }
+  @keyframes tratto { to { stroke-dashoffset:0; } }
+  @keyframes wipeIn { to { clip-path:inset(0 0 0 0); } }
+  @keyframes fadeIn { to { opacity:1; } }
+  @keyframes ruleIn { to { transform:scaleX(1); } }
+  @keyframes suIn { 0%{opacity:0;transform:translateY(16px);} 100%{opacity:1;transform:translateY(0);} }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="quinta"></div>
+  <div id="eyebrow"></div>
+  <div id="title"></div>
+  <div id="rule"></div>
+  <div id="corpo"></div>
+  <svg id="grafico" viewBox="0 0 1920 1080"></svg>
+  <div id="fonte"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ── I dati ────────────────────────────────────────────────────────────
+  //   ?d=<base64url>   { k, e, t, fo, ... }  — k dice che grafico e':
+  //
+  //   k:"valore"   il valore di mercato di UN giocatore nel tempo (area)
+  //                { p:{n,s,f}, u:"mln €", pt:[{x:"dic 23", v:110, l:"stemma"}] }
+  //   k:"valori"   il valore di mercato di piu' giocatori (linee)
+  //   k:"stagioni" una misura per stagione (presenze, gol...) di 1-4 giocatori
+  //                { x:["2021-22",...], m:"PRESENZE", p:[{n,s,f,v:[..]}] }
+  //                un giocatore solo: barre; due o piu': linee
+  //   k:"golpres"  gol E presenze per stagione di 1-2 giocatori, in due
+  //                pannelli (due misure di scala diversa non stanno su un asse)
+  //                { x:[...], p:[{n,s,f,g:[..],v:[..]}] }
+  //   k:"squadre"  confronto fra 2-4 squadre, una riga per misura, ognuna
+  //                con la sua scala  { q:[{n,l}], r:[["Gol fatti",[..]],...] }
+  //
+  //   I colori delle serie sono validati sul fondo navy (daltonismo e
+  //   contrasto): oro, blu, corallo, viola — sempre in questo ordine, e il
+  //   colore segue il giocatore, non la posizione. Il testo resta avorio.
+  var SERIE = ["#B38C2C", "#3E8BD8", "#D4575C", "#8E72DA"];
+  // un giocatore solo non e' una serie da distinguere: prende l'oro di casa
+  var ORO = "#C9A24B", ORO_VIVO = "#E3C271";
+
+  var DEMO = {
+    k: "valore", e: "COMO · SERIE A", t: "VALORE DI MERCATO", fo: "Fonte: Transfermarkt",
+    p: { n: "Nico Paz", s: "Como" }, u: "mln €",
+    pt: [{ x: "set 22", v: 0.5 }, { x: "mar 23", v: 1.5 }, { x: "set 23", v: 6 }, { x: "dic 23", v: 12 },
+         { x: "mag 24", v: 15 }, { x: "lug 24", v: 16, l: "https://a.espncdn.com/i/teamlogos/soccer/500/2572.png" },
+         { x: "dic 24", v: 25 }, { x: "mar 25", v: 45 }, { x: "giu 25", v: 55 }, { x: "dic 25", v: 70 },
+         { x: "mar 26", v: 80 }, { x: "mag 26", v: 85 }]
+  };
+
+  function decodeData() {
+    var q = new URLSearchParams(location.search).get("d");
+    if (!q) return DEMO;
+    try {
+      var d = JSON.parse(decodeURIComponent(escape(atob(q.replace(/-/g, "+").replace(/_/g, "/")))));
+      return d && d.k ? d : null;
+    } catch (err) { return null; }
+  }
+  var STILL = new URLSearchParams(location.search).get("still") === "1";
+  var D = decodeData();
+  if (!D) {
+    document.title = "DATA VIZ — dati non validi";
+    document.getElementById("stage").style.display = "none";
+    return;
+  }
+  document.title = "DATA VIZ " + (D.t || "");
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    el("stage").style.transform = "translate(-50%,-50%) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+  function num(v) { var n = parseFloat(String(v == null ? "" : v).replace(",", ".")); return isFinite(n) ? n : null; }
+
+  // ── la testata ────────────────────────────────────────────────────────
+  el("eyebrow").textContent = D.e || "";
+  el("title").textContent = D.t || "";
+  el("fonte").textContent = D.fo || "";
+  if (STILL) {
+    el("eyebrow").style.opacity = 1; el("title").style.clipPath = "inset(0 0 0 0)";
+    el("rule").style.transform = "scaleX(1)"; el("fonte").style.opacity = 1;
+  } else {
+    el("eyebrow").style.animation = "fadeIn .5s ease .15s forwards";
+    el("title").style.animation = "wipeIn .7s cubic-bezier(.2,.7,.3,1) .3s forwards";
+    el("rule").style.animation = "ruleIn .55s cubic-bezier(.2,.7,.3,1) .85s forwards";
+    el("fonte").style.animation = "fadeIn .6s ease 1.6s forwards";
+  }
+  // l'entrata di un pezzo: parte da "quando" secondi
+  function entra(cosa, quando, durata) {
+    if (STILL) return cosa === "sale" ? "opacity:1" : "";
+    var f = { sale: "suIn", cresce: "crescita", traccia: "tratto", appare: "fadeIn" }[cosa] || "fadeIn";
+    return "animation:" + f + " " + (durata || .55) + "s cubic-bezier(.2,.7,.3,1) " + quando.toFixed(2) + "s forwards";
+  }
+  function classeEntrata(c) { return STILL ? "" : c; }
+
+  // ── i numeri come li diciamo in onda ─────────────────────────────────
+  // 85 -> "85", 1.5 -> "1,5"; i valori di mercato sotto il milione in migliaia
+  function cifra(v, dec) {
+    if (v == null) return "";
+    var s = (Math.round(v * Math.pow(10, dec || 0)) / Math.pow(10, dec || 0)).toString();
+    return s.replace(".", ",");
+  }
+  function soldi(v, u) {
+    u = u == null ? "mln €" : u;
+    if (v == null) return "";
+    if (/mln/i.test(u) && v > 0 && v < 1) return { n: cifra(v * 1000), u: "mila €" };
+    return { n: cifra(v, v < 10 && v % 1 ? 1 : (v % 1 ? 1 : 0)), u: u };
+  }
+  function soldiTesto(v, u) { var s = soldi(v, u); return s ? s.n + " " + s.u : ""; }
+
+  // la scala: 4-5 tacche su numeri tondi (1, 2, 2.5, 5 per potenze di 10)
+  function scala(max) {
+    if (!(max > 0)) max = 1;
+    var grezzo = max / 4, pot = Math.pow(10, Math.floor(Math.log(grezzo) / Math.LN10)), passo = pot;
+    [1, 2, 2.5, 5, 10].some(function (m) { passo = m * pot; return passo >= grezzo; });
+    var top = Math.ceil(max / passo) * passo;
+    if (top / passo < 3) top = passo * 3;
+    var t = []; for (var x = 0; x <= top + 1e-9; x += passo) t.push(Math.round(x * 1000) / 1000);
+    return { top: top, tacche: t };
+  }
+
+  var svg = el("grafico"), S = "";
+  var corpo = "";
+
+  // la griglia e le tacche di un pannello: righe appena visibili, numeri a sinistra
+  function griglia(x0, x1, y0, y1, sc, fmt) {
+    var o = "";
+    sc.tacche.forEach(function (t) {
+      var y = y1 - (t / sc.top) * (y1 - y0);
+      o += '<line x1="' + x0 + '" x2="' + x1 + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '" stroke="' +
+           (t === 0 ? "rgba(245,241,230,.28)" : "rgba(245,241,230,.08)") + '" stroke-width="' + (t === 0 ? 2 : 1.5) + '"/>' +
+           '<text class="asse" x="' + (x0 - 16) + '" y="' + (y + 7).toFixed(1) + '" text-anchor="end">' + esc(fmt ? fmt(t) : cifra(t, 1)) + '</text>';
+    });
+    return o;
+  }
+  // quante etichette sull'asse orizzontale: tutte finche' ci stanno
+  function ogniQuante(n, largo, spazio) { return Math.max(1, Math.ceil(n / Math.max(1, Math.floor(largo / spazio)))); }
+
+  function iniziali(n) {
+    return String(n || "").split(/\s+/).filter(Boolean).slice(0, 2).map(function (p) { return p[0]; }).join("").toUpperCase();
+  }
+  // la legenda: faccia (o stemma) + nome + riga di dettaglio col colore
+  function legenda(voci, top, stemmi) {
+    var h = '<div class="legenda' + (voci.length > 2 ? " stretta" : "") + '" style="top:' + top + 'px">';
+    voci.forEach(function (v, i) {
+      var img = v.f || v.l;
+      h += '<div class="voce" style="--c:' + v.c + ';' + entra("sale", 0.9 + i * 0.12) + '">' +
+        '<div class="tondo' + (stemmi ? " stemma" : "") + '">' +
+          (img ? '<img src="' + esc(img) + '" onerror="this.remove()">' : '') +
+          (!img ? '<div class="ini">' + esc(iniziali(v.n)) + '</div>' : '') + '</div>' +
+        '<div class="chi"><div class="nome">' + esc(v.n || "") + '</div>' +
+        '<div class="det"><i></i>' + esc(v.det || v.s || "") + '</div></div></div>';
+    });
+    return h + "</div>";
+  }
+  function quinta(f) {
+    if (!f) return false;
+    el("quinta").innerHTML = '<img src="' + esc(f) + '" onerror="this.parentNode.style.display=\'none\'">';
+    el("quinta").setAttribute("style", entra("appare", 0.6, .9) || "opacity:1");
+    if (STILL) el("quinta").style.opacity = 1;
+    return true;
+  }
+
+  // ── LINEE (e l'area, quando la serie e' una sola) ────────────────────
+  // serie: [{c, v:[..], n}]; x: etichette; opzioni: area, stemmi, evidenzia
+  function linee(x, serie, box, op) {
+    op = op || {};
+    var x0 = box.x0, x1 = box.x1, y0 = box.y0, y1 = box.y1;
+    var max = 0;
+    serie.forEach(function (s) { s.v.forEach(function (v) { if (v != null && v > max) max = v; }); });
+    var sc = scala(max);
+    var n = x.length, passo = n > 1 ? (x1 - x0 - 40) / (n - 1) : 0;
+    function px(i) { return n > 1 ? x0 + 20 + i * passo : (x0 + x1) / 2; }
+    function py(v) { return y1 - (v / sc.top) * (y1 - y0); }
+    var o = griglia(x0, x1, y0, y1, sc, op.fmtAsse);
+    var ogni = ogniQuante(n, x1 - x0, 110);
+    x.forEach(function (lab, i) {
+      if (i % ogni && i !== n - 1) return;
+      o += '<text class="xlab" x="' + px(i).toFixed(1) + '" y="' + (y1 + 40) + '" text-anchor="middle">' + esc(lab) + '</text>';
+    });
+    var t0 = 1.2, fini = [];
+    serie.forEach(function (s, k) {
+      // una linea spezzata dove manca il dato: tanti tratti quanti i pezzi continui
+      var pezzi = [], cur = [];
+      s.v.forEach(function (v, i) {
+        if (v == null) { if (cur.length) pezzi.push(cur); cur = []; return; }
+        cur.push([px(i), py(v)]);
+      });
+      if (cur.length) pezzi.push(cur);
+      var inizio = t0 + k * 0.25;
+      pezzi.forEach(function (pz) {
+        var d = pz.map(function (p, j) { return (j ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1); }).join(" ");
+        if (op.area && pz.length > 1) {
+          var id = "ar" + k;
+          o += '<defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1">' +
+               '<stop offset="0" stop-color="' + s.c + '" stop-opacity=".42"/>' +
+               '<stop offset="1" stop-color="' + s.c + '" stop-opacity=".04"/></linearGradient></defs>' +
+               '<path class="' + classeEntrata("appare") + '" style="' + entra("appare", inizio + 0.9, .8) + '" d="' + d +
+               ' L' + pz[pz.length - 1][0].toFixed(1) + ' ' + y1 + ' L' + pz[0][0].toFixed(1) + ' ' + y1 + ' Z" fill="url(#' + id + ')"/>';
+        }
+        o += '<path class="' + classeEntrata("traccia") + '" pathLength="1" style="' + entra("traccia", inizio, 1.3) +
+             '" d="' + d + '" fill="none" stroke="' + s.c + '" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>';
+      });
+      // i punti: dischetto col bordo del fondo, cosi' si staccano dalla linea
+      s.v.forEach(function (v, i) {
+        if (v == null) return;
+        var quando = inizio + 0.2 + (n > 1 ? i / (n - 1) : 0) * 1.1;
+        var r = (op.evidenzia && op.evidenzia(i, v)) ? 12 : 8;
+        o += '<circle class="' + classeEntrata("appare") + '" style="' + entra("appare", quando, .3) + '" cx="' + px(i).toFixed(1) +
+             '" cy="' + py(v).toFixed(1) + '" r="' + r + '" fill="' + (r > 8 ? ORO_VIVO : s.c) + '" stroke="#0E1430" stroke-width="4"/>';
+        if (op.stemmi && op.stemmi[i]) {
+          o += '<image class="' + classeEntrata("appare") + '" style="' + entra("appare", quando + .1, .4) + '" href="' + esc(op.stemmi[i]) +
+               '" x="' + (px(i) - 26).toFixed(1) + '" y="' + (py(v) - 78).toFixed(1) + '" width="52" height="52" preserveAspectRatio="xMidYMid meet"/>';
+        }
+      });
+      // l'etichetta in fondo alla linea: l'ultimo valore, vicino al suo punto
+      if (op.fine !== false) {
+        var ult = -1; s.v.forEach(function (v, i) { if (v != null) ult = i; });
+        if (ult >= 0) fini.push({ x: px(ult) + 20, y: py(s.v[ult]) + 10, t: op.fmtVal ? op.fmtVal(s.v[ult]) : cifra(s.v[ult], 1), q: inizio + 1.4 });
+      }
+    });
+    // le linee che finiscono vicine si sovrappongono: le etichette si
+    // allontanano di quanto serve, dall'alto in basso, senza uscire dal grafico
+    fini.sort(function (a, b) { return a.y - b.y; });
+    for (var f = 1; f < fini.length; f++) if (fini[f].y - fini[f - 1].y < 36) fini[f].y = fini[f - 1].y + 36;
+    var sfora = fini.length ? fini[fini.length - 1].y - (y1 + 10) : 0;
+    if (sfora > 0) fini.forEach(function (e) { e.y -= sfora; });
+    fini.forEach(function (e) {
+      o += '<text class="val forte ' + classeEntrata("appare") + '" style="' + entra("appare", e.q, .4) + '" x="' + e.x.toFixed(1) +
+           '" y="' + e.y.toFixed(1) + '">' + esc(e.t) + '</text>';
+    });
+    return o;
+  }
+
+  // ── BARRE raggruppate (una o piu' serie per ogni etichetta) ──────────
+  function barre(x, serie, box, op) {
+    op = op || {};
+    var x0 = box.x0, x1 = box.x1, y0 = box.y0, y1 = box.y1;
+    var max = 0;
+    serie.forEach(function (s) { s.v.forEach(function (v) { if (v != null && v > max) max = v; }); });
+    var sc = scala(max);
+    var n = x.length, gruppo = (x1 - x0) / Math.max(1, n);
+    var ns = serie.length, spazio = 2;
+    var largo = Math.min(ns > 1 ? 64 : 92, (gruppo * 0.72 - (ns - 1) * spazio) / ns);
+    var o = griglia(x0, x1, y0, y1, sc);
+    x.forEach(function (lab, i) {
+      var cx = x0 + gruppo * (i + 0.5);
+      if (op.etichette !== false) o += '<text class="xlab" x="' + cx.toFixed(1) + '" y="' + (y1 + 38) + '" text-anchor="middle">' + esc(lab) + '</text>';
+      var tot = ns * largo + (ns - 1) * spazio, sx = cx - tot / 2;
+      serie.forEach(function (s, k) {
+        var v = s.v[i];
+        if (v == null) return;
+        var h = Math.max(0, (v / sc.top) * (y1 - y0)), bx = sx + k * (largo + spazio);
+        var quando = (op.t0 || 1.2) + i * 0.08 + k * 0.05;
+        // la testa arrotondata, la base dritta sulla linea dello zero
+        var r = Math.min(6, largo / 2, h);
+        var d = "M" + bx.toFixed(1) + " " + y1 + " V" + (y1 - h + r).toFixed(1) +
+                " Q" + bx.toFixed(1) + " " + (y1 - h).toFixed(1) + " " + (bx + r).toFixed(1) + " " + (y1 - h).toFixed(1) +
+                " H" + (bx + largo - r).toFixed(1) +
+                " Q" + (bx + largo).toFixed(1) + " " + (y1 - h).toFixed(1) + " " + (bx + largo).toFixed(1) + " " + (y1 - h + r).toFixed(1) +
+                " V" + y1 + " Z";
+        o += '<path class="' + classeEntrata("cresce") + '" style="' + entra("cresce", quando, .6) + '" d="' + d + '" fill="' + s.c + '"/>';
+        {
+          o += '<text class="val ' + classeEntrata("appare") + '" style="' + entra("appare", quando + .45, .35) + '" x="' + (bx + largo / 2).toFixed(1) +
+               '" y="' + (y1 - h - 12).toFixed(1) + '" text-anchor="middle"' + (largo < 40 ? ' font-size="20"' : '') + '>' + esc(cifra(v, 1)) + '</text>';
+        }
+      });
+    });
+    return o;
+  }
+
+  // ── i tipi ────────────────────────────────────────────────────────────
+  var X0 = 128 + 70, X1 = 1792;
+
+  if (D.k === "valore") {
+    var p = D.p || {}, pt = (D.pt || []).filter(function (q) { return num(q.v) != null; });
+    var vs = pt.map(function (q) { return num(q.v); });
+    var conFoto = quinta(p.f);
+    var dx = conFoto ? 1160 : X1;
+    // i due numeri che contano, come su Transfermarkt: adesso e il massimo
+    var ultimo = vs.length ? vs[vs.length - 1] : null, iMax = 0;
+    vs.forEach(function (v, i) { if (v >= vs[iMax]) iMax = i; });
+    var a = soldi(ultimo, D.u), m = soldi(vs[iMax], D.u);
+    corpo += '<div class="cifra" style="left:128px;top:262px;' + entra("sale", .9) + '">' +
+      '<div class="et">' + esc(p.n ? p.n : "") + (p.s ? " · " + esc(p.s) : "") + '</div>' +
+      '<div class="et" style="color:rgba(245,241,230,.55);margin-top:14px">Valore attuale</div>' +
+      '<div class="num">' + esc(a ? a.n : "—") + '<small>' + esc(a ? a.u : "") + '</small></div></div>';
+    if (vs.length > 1 && iMax !== vs.length - 1) corpo += '<div class="cifra" style="left:640px;top:298px;' + entra("sale", 1.05) + '">' +
+      '<div class="et" style="color:rgba(245,241,230,.55)">Valore più alto</div>' +
+      '<div class="num">' + esc(m.n) + '<small>' + esc(m.u) + '</small></div>' +
+      '<div class="quando">' + esc(pt[iMax].x || "") + '</div></div>';
+    var stemmi = pt.map(function (q) { return q.l || ""; });
+    S += linee(pt.map(function (q) { return q.x || ""; }), [{ c: ORO, v: vs }],
+               { x0: X0, x1: dx, y0: 520, y1: 930 },
+               { area: true, stemmi: stemmi, fine: false,
+                 fmtAsse: function (t) { return soldiTesto(t, D.u).replace(" €", ""); },
+                 evidenzia: function (i) { return i === iMax || i === vs.length - 1; } });
+    // il valore scritto sopra il massimo e sopra l'ultimo punto
+    [iMax, vs.length - 1].filter(function (i, j, arr) { return i >= 0 && arr.indexOf(i) === j; }).forEach(function (i) {
+      var n = vs.length, passo = n > 1 ? (dx - X0 - 40) / (n - 1) : 0, sc = scala(Math.max.apply(null, vs));
+      var cx = n > 1 ? X0 + 20 + i * passo : (X0 + dx) / 2, cy = 930 - (vs[i] / sc.top) * 410;
+      var su = stemmi[i] ? 96 : 30;
+      S += '<text class="val forte ' + classeEntrata("appare") + '" style="' + entra("appare", 2.6, .4) + '" x="' + cx.toFixed(1) +
+           '" y="' + (cy - su).toFixed(1) + '" text-anchor="' + (i === n - 1 ? "end" : "middle") + '">' + esc(soldiTesto(vs[i], D.u)) + '</text>';
+    });
+  }
+
+  else if (D.k === "valori") {
+    var ps = (D.p || []).slice(0, 4).map(function (q, i) {
+      var vv = (q.v || []).map(num), u = null; vv.forEach(function (v) { if (v != null) u = v; });
+      return { n: q.n, s: q.s, f: q.f, c: SERIE[i], v: vv, det: [q.s, u != null ? soldiTesto(u, D.u) : ""].filter(Boolean).join(" · ") };
+    });
+    corpo += legenda(ps, 262);
+    S += linee(D.x || [], ps, { x0: X0, x1: X1 - 150, y0: 440, y1: 930 },
+               { fmtAsse: function (t) { return soldiTesto(t, D.u).replace(" €", ""); },
+                 fmtVal: function (v) { return soldiTesto(v, D.u); } });
+  }
+
+  else if (D.k === "stagioni") {
+    var quanti = Math.min(4, (D.p || []).length);
+    var ps2 = (D.p || []).slice(0, 4).map(function (q, i) {
+      var vv = (q.v || []).map(num), tot = 0; vv.forEach(function (v) { tot += v || 0; });
+      return { n: q.n, s: q.s, f: q.f, c: quanti === 1 ? ORO : SERIE[i], v: vv,
+               det: [q.s, cifra(tot) + " " + String(D.m || "").toLowerCase() + " in tutto"].filter(Boolean).join(" · ") };
+    });
+    if (ps2.length === 1) {
+      // un giocatore solo: barre, la foto a quinta, il totale in evidenza
+      var solo = ps2[0], conF = quinta(solo.f), tot1 = 0;
+      solo.v.forEach(function (v) { tot1 += v || 0; });
+      corpo += '<div class="cifra" style="left:128px;top:262px;' + entra("sale", .9) + '">' +
+        '<div class="et">' + esc(solo.n || "") + (solo.s ? " · " + esc(solo.s) : "") + '</div>' +
+        '<div class="num">' + esc(cifra(tot1)) + '<small>' + esc(String(D.m || "").toLowerCase()) + '</small></div></div>';
+      S += barre(D.x || [], [solo], { x0: X0, x1: conF ? 1160 : X1, y0: 460, y1: 930 });
+    } else {
+      corpo += legenda(ps2, 262);
+      if (String(D.t || "").toUpperCase().indexOf(String(D.m || "").toUpperCase()) < 0)
+        S += '<text class="pannello" x="' + X0 + '" y="428">' + esc(String(D.m || "").toUpperCase()) + '</text>';
+      // due giocatori: barre affiancate; da tre in su le barre sarebbero
+      // troppe per essere lette, e diventano linee
+      if (ps2.length === 2) S += barre(D.x || [], ps2, { x0: X0, x1: X1, y0: 470, y1: 930 });
+      else S += linee(D.x || [], ps2, { x0: X0, x1: X1 - 90, y0: 470, y1: 930 }, { fmtVal: function (v) { return cifra(v); } });
+    }
+  }
+
+  else if (D.k === "golpres") {
+    var ps3 = (D.p || []).slice(0, 2).map(function (q, i, arr) {
+      var pv = (q.v || []).map(num), gv = (q.g || []).map(num), tp = 0, tg = 0;
+      pv.forEach(function (v) { tp += v || 0; }); gv.forEach(function (v) { tg += v || 0; });
+      return { n: q.n, s: q.s, f: q.f, c: arr.length === 1 ? ORO : SERIE[i], pv: pv, gv: gv,
+               det: [q.s, cifra(tp) + " pres. · " + cifra(tg) + " gol"].filter(Boolean).join(" · ") };
+    });
+    corpo += legenda(ps3, 262);
+    // due misure di scala diversa: due pannelli uno sopra l'altro, stesse
+    // stagioni in colonna, ognuno col suo asse (mai due scale su un asse solo)
+    S += '<text class="pannello" x="' + X0 + '" y="420">PRESENZE</text>';
+    S += barre(D.x || [], ps3.map(function (s) { return { c: s.c, v: s.pv }; }), { x0: X0, x1: X1, y0: 448, y1: 640 }, { etichette: false, t0: 1.2 });
+    S += '<text class="pannello" x="' + X0 + '" y="712">GOL</text>';
+    S += barre(D.x || [], ps3.map(function (s) { return { c: s.c, v: s.gv }; }), { x0: X0, x1: X1, y0: 740, y1: 930 }, { t0: 1.7 });
+  }
+
+  else if (D.k === "squadre") {
+    var qs = (D.q || []).slice(0, 4).map(function (q, i) { return { n: q.n, l: q.l, c: SERIE[i], det: q.s || "" }; });
+    corpo += legenda(qs, 262, true);
+    var righe = (D.r || []).filter(function (r) { return r && r[0]; }).slice(0, 7);
+    var y = 420, alto = 930 - y, nq = qs.length || 1;
+    var passoR = alto / Math.max(1, righe.length);
+    var sp = Math.min(34, Math.max(14, passoR * 0.8 / nq - 6));
+    var LX = 128, BX = 520, BW = 1792 - BX - 110;
+    righe.forEach(function (r, ri) {
+      var vv = (r[1] || []).map(num), mx = 0;
+      vv.forEach(function (v) { if (v != null && v > mx) mx = v; });
+      var yR = y + ri * passoR, blocco = nq * (sp + 6) - 6, yB = yR + (passoR - blocco) / 2;
+      var quando = 1.2 + ri * 0.14;
+      S += '<text class="metrica ' + classeEntrata("appare") + '" style="' + entra("appare", quando, .4) + '" x="' + LX + '" y="' + (yR + passoR / 2 + 9).toFixed(1) + '">' + esc(String(r[0]).toUpperCase()) + '</text>';
+      if (ri) S += '<line x1="' + LX + '" x2="1792" y1="' + yR.toFixed(1) + '" y2="' + yR.toFixed(1) + '" stroke="rgba(245,241,230,.07)" stroke-width="1.5"/>';
+      qs.forEach(function (q, k) {
+        var v = vv[k]; if (v == null) return;
+        var w = mx > 0 ? (v / mx) * BW : 0, yy = yB + k * (sp + 6);
+        if (w < 1) {
+          S += '<text class="val ' + classeEntrata("appare") + '" style="' + entra("appare", quando + .5, .35) + '" x="' + BX +
+               '" y="' + (yy + sp / 2 + 8).toFixed(1) + '"' + (sp < 22 ? ' font-size="20"' : '') + '>0</text>';
+          return;
+        }
+        w = Math.max(8, w);
+        var rr = Math.min(6, sp / 2);
+        var d = "M" + BX + " " + yy.toFixed(1) + " H" + (BX + w - rr).toFixed(1) +
+                " Q" + (BX + w).toFixed(1) + " " + yy.toFixed(1) + " " + (BX + w).toFixed(1) + " " + (yy + rr).toFixed(1) +
+                " V" + (yy + sp - rr).toFixed(1) +
+                " Q" + (BX + w).toFixed(1) + " " + (yy + sp).toFixed(1) + " " + (BX + w - rr).toFixed(1) + " " + (yy + sp).toFixed(1) +
+                " H" + BX + " Z";
+        S += '<path class="' + classeEntrata("allunga") + '" style="' + entra("cresce", quando + k * .06, .6) + '" d="' + d + '" fill="' + q.c + '"/>' +
+             '<text class="val ' + classeEntrata("appare") + '" style="' + entra("appare", quando + .5, .35) + '" x="' + (BX + w + 14).toFixed(1) +
+             '" y="' + (yy + sp / 2 + 8).toFixed(1) + '"' + (sp < 22 ? ' font-size="20"' : '') + '>' + esc(cifra(v, 1)) + '</text>';
+      });
+    });
+  }
+
+  el("corpo").innerHTML = corpo;
+  svg.innerHTML = S;
+
+  function replay() { location.reload(); }
+  document.addEventListener("keydown", function (e) { if (e.key === "r" || e.key === "R") replay(); });
+  document.addEventListener("dblclick", replay);
+})();
+</script>
+<script src="sfondo.js"></script>
+</body>
+</html>

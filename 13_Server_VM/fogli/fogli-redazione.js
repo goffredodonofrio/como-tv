@@ -1233,6 +1233,20 @@ function schedario(stato) {
   });
   iG.sort((a, b) => b.n - a.n); iS.sort((a, b) => b.n - a.n);
   scriviJson(path.join(dirS, "indice.json"), { aggiornato: new Date().toISOString(), giocatori: iG, squadre: iS });
+  // Le rose intere, non solo chi compare nei fogli: servono alle grafiche Data
+  // Viz per trovare un giocatore dal cognome. La ricerca ESPN da sola non basta
+  // ("kean" non trova Moise Kean). Righe corte, e' un file che si scarica tutto:
+  // [id, nome intero, id squadra, squadra, lega, ruolo]. Le giovanili no: hanno
+  // id finti e ESPN non ha i loro numeri.
+  const tutte = [];
+  Object.keys(stato.rose || {}).forEach((tid) => {
+    const r = stato.rose[tid] || {};
+    (r.giocatori || []).forEach((g) => {
+      if (g && g.id) tutte.push([String(g.id), g.intero || [g.nome, g.cognome].filter(Boolean).join(" "),
+                                 String(tid), r.nome || "", r.lega || "", g.ruolo || ""]);
+    });
+  });
+  scriviJson(path.join(dirS, "rose.json"), { aggiornato: new Date().toISOString(), g: tutte });
   vecchi.forEach((x) => { if (/^[gs]-/.test(x)) { try { fs.unlinkSync(path.join(dirS, x)); } catch (e) {} } });
   console.log("[fogli] schedario: " + iG.length + " giocatori, " + iS.length + " squadre");
 }

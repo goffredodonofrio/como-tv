@@ -69,6 +69,13 @@
       ["talent-hunters.html",        "Talent Hunters"],
       ["goleada.html",               "Goleada"]
     ]},
+    { nome: "Data Viz", voci: [
+      ["dataviz.html?k=valore",      "Valore di mercato"],
+      ["dataviz.html?k=valori",      "Valore a confronto"],
+      ["dataviz.html?k=golpres",     "Gol e presenze"],
+      ["dataviz.html?k=stagioni",    "Numeri per stagione"],
+      ["dataviz.html?k=squadre",     "Squadre a confronto"]
+    ]},
     { nome: "Tabelloni", voci: [
       ["tabelloni.html",             "Tabelloni e gironi"],
       ["appuntamenti.html",          "Prossimi appuntamenti"]
@@ -162,9 +169,18 @@
     var nav = document.createElement("nav");
     nav.className = "cnav";
 
-    function nomeFile(indirizzo) { return indirizzo.split("/").pop().toLowerCase(); }
+    // il nome del file senza la domanda: "dataviz.html?k=valore" e' dataviz.html
+    function nomeFile(indirizzo) { return indirizzo.split("?")[0].split("/").pop().toLowerCase(); }
+    // una voce con la domanda (le cinque di Data Viz) si accende solo se la
+    // pagina e' stata aperta proprio con quella; la tendina che la contiene
+    // si accende comunque
+    function eQui(indirizzo) {
+      if (nomeFile(indirizzo) !== qui) return false;
+      var d = indirizzo.indexOf("?") >= 0 ? indirizzo.slice(indirizzo.indexOf("?")) : "";
+      return !d || d === location.search;
+    }
     function collegamento(v) {
-      var attivo = (nomeFile(v[0]) === qui) ? ' class="qui"' : "";
+      var attivo = eQui(v[0]) ? ' class="qui"' : "";
       return '<a href="' + esc(v[0]) + '"' + attivo + '>' + esc(v[1]) + '</a>';
     }
 

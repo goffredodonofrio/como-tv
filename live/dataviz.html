@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<script>
+/* Le Grafiche Live vivono sulla macchina della regia. Su GitHub resta una
+   copia di questa pagina, ma li' parla a un altro ponte: chi la aprisse per
+   sbaglio comanderebbe un sistema che nessuno ascolta. Da GitHub si viene
+   quindi portati sulla macchina giusta. Sulla VM questo non fa nulla. */
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  location.replace("https://projects-cloud.it" + location.pathname + location.search + location.hash);
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Viz · Como TV</title>
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    color-scheme:dark;
+    --gold:#C9A24B;--gold-bright:#E3C271;--red:#E51B20;
+    --ivory:#F5F1E6;--ivory-dim:#D8D2C2;--fg-3:#8A8B96;
+    --surface-panel:rgba(16,22,48,.66);
+    --line-2:rgba(245,241,230,.08);--line-gold:rgba(201,162,75,.28);
+    --ok:#4FCB8B;
+  }
+  body{
+    font-family:'DM Sans',system-ui,sans-serif;font-weight:500;font-size:14px;line-height:1.5;
+    color:var(--ivory);min-height:100vh;
+    background-color:#0A0F24;
+    background-image:
+      radial-gradient(90% 70% at 20% 8%, rgba(36,64,138,.5), transparent 55%),
+      radial-gradient(80% 80% at 92% 108%, rgba(201,162,75,.16), transparent 55%),
+      linear-gradient(165deg,#141B3C 0%,#0E1430 48%,#0A0F24 100%);
+    background-attachment:fixed;padding-bottom:90px;
+  }
+  .wrap{max-width:1500px;margin:0 auto;padding:0 clamp(18px,3vw,32px);}
+  header.page{padding:38px 0 18px;}
+  .eyebrow{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.3em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:10px;}
+  h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(28px,4vw,42px);
+    line-height:.94;letter-spacing:-.02em;text-transform:uppercase;color:var(--ivory);}
+  .sub{color:var(--fg-3);font-size:13.5px;margin-top:10px;max-width:900px;}
+
+  .panel{background:var(--surface-panel);border:1px solid var(--line-2);border-radius:10px;
+    padding:16px;margin-bottom:16px;}
+  .panel h2{font-family:'Mazzard',sans-serif;font-size:12px;font-weight:700;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:12px;}
+  .panel h2 small{font-family:'DM Sans',sans-serif;letter-spacing:0;text-transform:none;
+    color:var(--fg-3);font-weight:500;font-size:11px;}
+  label{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;
+    letter-spacing:.18em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:5px;
+    white-space:nowrap;}
+  input[type=text],select,textarea{
+    width:100%;padding:10px 12px;border-radius:7px;background:rgba(245,241,230,.06);
+    border:1px solid rgba(245,241,230,.16);color:var(--ivory);font-family:'DM Sans',sans-serif;font-size:14px;}
+  textarea{min-height:110px;resize:vertical;font-size:13px;line-height:1.45;}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--line-gold);}
+  select option{background:#141B3C;color:var(--ivory);}
+  .riga{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;align-items:end;}
+  .riga > div{flex:1;min-width:0;}
+
+  button{font-family:'Mazzard',sans-serif;font-weight:700;font-size:12px;letter-spacing:.12em;
+    text-transform:uppercase;padding:11px 18px;border-radius:7px;cursor:pointer;
+    background:rgba(245,241,230,.06);color:var(--ivory-dim);border:1px solid var(--line-2);}
+  button:hover{color:var(--gold-bright);border-color:var(--line-gold);}
+  button:disabled{opacity:.4;cursor:default;}
+  button.prendi{background:rgba(79,163,232,.12);border-color:rgba(79,163,232,.5);color:#8CC4F2;}
+  button.prendi:hover{background:rgba(79,163,232,.22);border-color:#4FA3E8;color:#B3D8F7;}
+  #btnPrev{background:rgba(79,203,139,.14);border-color:rgba(79,203,139,.55);color:#7BDCAA;}
+  #btnPrev:hover{background:rgba(79,203,139,.24);border-color:#4FCB8B;color:#8FE8BB;}
+  #btnRegia{background:#4FA3E8;border-color:#4FA3E8;color:#0A0F24;}
+  #btnRegia:hover{background:#74B9F0;border-color:#74B9F0;color:#0A0F24;}
+  #btnPrevChiudi{color:#FF6B6E;border-color:rgba(229,27,32,.5);}
+  #btnPrevChiudi:hover{background:rgba(229,27,32,.12);border-color:var(--red);color:#FF6B6E;}
+
+  .barra{display:flex;align-items:end;gap:8px;flex-wrap:wrap;
+    padding:12px 14px;border-radius:10px;margin-bottom:16px;
+    background:var(--surface-panel);border:1px solid var(--line-2);}
+  .barra button{padding:10px 13px;font-size:11px;letter-spacing:.09em;}
+  .barra .campo{display:flex;flex-direction:column;gap:5px;}
+  .barra .campo label{margin-bottom:0;}
+  .barra .campo select{padding:8px 9px;font-size:13px;}
+
+  #stato{margin-top:10px;font-size:13px;color:var(--fg-3);min-height:20px;
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  #stato .ok{color:var(--ok);} #stato .err{color:#FF6B6E;}
+  .pbar{height:6px;background:rgba(245,241,230,.08);border-radius:3px;overflow:hidden;
+    flex:1 1 240px;min-width:200px;align-self:center;}
+  .pfill{display:block;height:100%;width:0;background:var(--gold);border-radius:3px;
+    animation:pfill 2.6s cubic-bezier(.2,.7,.3,1) forwards;}
+  @keyframes pfill{0%{width:0}60%{width:72%}100%{width:92%}}
+  .pfill.done{animation:none;width:100%;background:var(--ok);transition:width .25s ease;}
+
+  #prevbox{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:9px;
+    border:1px solid var(--line-gold);background:#070B1D;}
+  #prev{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;transform-origin:top left;}
+
+  /* ── che grafico: una scheda per tipo, col disegnino di come viene ── */
+  .tipi{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;}
+  .tipo{display:flex;flex-direction:column;gap:8px;cursor:pointer;text-align:left;
+    padding:12px 14px;border-radius:9px;border:1px solid var(--line-2);
+    background:rgba(245,241,230,.04);color:var(--ivory-dim);text-transform:none;letter-spacing:0;
+    font-family:'DM Sans',sans-serif;font-weight:500;font-size:12.5px;line-height:1.4;}
+  .tipo:hover{border-color:var(--line-gold);color:var(--ivory-dim);}
+  .tipo.on{border-color:var(--gold);background:rgba(201,162,75,.10);color:var(--ivory);}
+  .tipo b{font-family:'Mazzard',sans-serif;font-weight:800;letter-spacing:.1em;
+    text-transform:uppercase;font-size:12px;color:var(--gold);}
+  .tipo.on b{color:var(--gold-bright);}
+  .tipo svg{width:100%;height:44px;}
+
+  /* ── i giocatori e le squadre scelti ── */
+  .posti{display:flex;flex-direction:column;gap:10px;}
+  .posto{display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+    padding:10px 12px;border-radius:9px;border:1px solid var(--line-2);background:rgba(245,241,230,.03);}
+  .posto .pallino{flex:none;width:12px;height:12px;border-radius:50%;}
+  .posto .faccia{flex:none;width:52px;height:52px;border-radius:50%;background:#20284E;overflow:hidden;
+    display:flex;align-items:center;justify-content:center;font-family:'Mazzard',sans-serif;font-weight:800;color:var(--ivory-dim);}
+  .posto .faccia img{width:100%;height:100%;object-fit:cover;object-position:50% 12%;}
+  .posto .faccia.stemma{background:transparent;border-radius:0;}
+  .posto .faccia.stemma img{object-fit:contain;}
+  .posto .chi{flex:1 1 220px;min-width:0;}
+  .posto .chi input{margin-bottom:0;}
+  .posto .nome{font-family:'Mazzard',sans-serif;font-weight:800;font-size:15px;letter-spacing:.04em;text-transform:uppercase;}
+  .posto .det{color:var(--fg-3);font-size:12.5px;}
+  .posto button{padding:8px 11px;font-size:10px;letter-spacing:.08em;}
+  .cercabox{position:relative;flex:1 1 320px;min-width:0;}
+  .tendina{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:50;display:none;
+    max-height:330px;overflow:auto;border-radius:9px;background:#141B3C;
+    border:1px solid rgba(245,241,230,.18);box-shadow:0 16px 38px rgba(0,0,0,.55);}
+  .tendina.aperta{display:block;}
+  .tendina .r{display:grid;grid-template-columns:36px 1fr auto;gap:10px;align-items:center;
+    padding:8px 12px;cursor:pointer;border-bottom:1px solid rgba(245,241,230,.05);}
+  .tendina .r:hover,.tendina .r.su{background:rgba(201,162,75,.12);}
+  .tendina .r img{width:30px;height:30px;object-fit:contain;}
+  .tendina .r b{font-weight:600;color:var(--ivory);}
+  .tendina .r span{color:var(--fg-3);font-size:12px;}
+  .tendina .r em{font-style:normal;color:var(--fg-3);font-size:11px;letter-spacing:.08em;text-transform:uppercase;}
+  .tendina .vuota{padding:10px 12px;color:var(--fg-3);}
+
+  /* ── le tabelle dei numeri ── */
+  .tabella{width:100%;border-collapse:collapse;font-size:13px;}
+  .tabella th{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--gold);text-align:left;padding:0 8px 9px;
+    border-bottom:1px solid var(--line-2);white-space:nowrap;}
+  .tabella td{padding:5px 8px;border-bottom:1px solid rgba(245,241,230,.05);vertical-align:middle;}
+  .tabella input[type=text],.tabella select{padding:7px 9px;font-size:13px;}
+  .tabella input.n{text-align:center;font-variant-numeric:tabular-nums;max-width:110px;}
+  .tabella .via{width:1%;white-space:nowrap;}
+  .tabella .via button{padding:6px 11px;font-size:10px;letter-spacing:.08em;}
+  .tabella img.st{width:26px;height:26px;object-fit:contain;vertical-align:middle;margin-right:6px;}
+  .scorri{overflow-x:auto;}
+  .vuoto{color:var(--fg-3);font-size:13px;padding:6px 2px;}
+  .nota{color:var(--fg-3);font-size:12.5px;margin-top:8px;}
+  .nota b{color:var(--ivory-dim);}
+  [hidden]{display:none !important;}
+</style>
+</head>
+<body>
+
+<script src="nav.js"></script>
+
+<div class="wrap">
+  <header class="page">
+    <div class="eyebrow">Como TV · Grafiche Live</div>
+    <h1>Data Viz</h1>
+    <div class="sub">I numeri messi a confronto con i grafici: valore di mercato nel tempo, gol e presenze stagione
+      per stagione, squadre a confronto. Gol e presenze arrivano da ESPN; il valore di mercato si scrive
+      a mano o si incolla da Transfermarkt. Tutto resta modificabile prima di andare in onda.</div>
+  </header>
+
+  <div class="barra">
+    <button id="btnPrev">Anteprima</button>
+    <div class="campo" style="margin-left:auto"><label for="canaleSel">Seleziona vMix o progetto</label><select id="canaleSel" style="min-width:0;width:290px;max-width:100%"></select></div>
+    <button id="btnRegia">&#128225; Invia alla regia</button>
+  </div>
+
+  <div id="stato">Scegli il grafico, poi i giocatori o le squadre.</div>
+  <div id="prevwrap" style="display:none;margin:14px 0 20px">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+      <button id="btnPrevChiudi">Chiudi anteprima</button>
+    </div>
+    <div id="prevbox"><iframe id="prev" src="about:blank" scrolling="no"></iframe></div>
+  </div>
+
+  <div class="panel">
+    <h2>Che grafico</h2>
+    <div class="tipi" id="tipi"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Testata</h2>
+    <div class="riga" style="margin-bottom:0">
+      <div><label for="e">Occhiello</label><input type="text" id="e" placeholder="es. SERIE A · IL CONFRONTO"></div>
+      <div><label for="t">Titolo</label><input type="text" id="t"></div>
+      <div><label for="fo">Fonte</label><input type="text" id="fo"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panGio">
+    <h2 id="titGio">Giocatori</h2>
+    <div class="posti" id="posti"></div>
+    <div class="nota" id="notaGio"></div>
+  </div>
+
+  <div class="panel" id="panDati">
+    <h2 id="titDati">I numeri</h2>
+    <div id="comandi"></div>
+    <div class="scorri" id="tabDati"></div>
+    <div class="nota" id="notaDati"></div>
+  </div>
+</div>
+
+<script src="chiave.js"></script>
+<script src="destinazione.js"></script>
+<script src="sceglifoto.js"></script>
+<script src="competizioni-espn.js"></script>
+<script src="stagione-espn.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var PONTE = "https://script.google.com/macros/s/AKfycbwAw49xwBpCt9P6HfNgJTsc2MBwxy72T7RUsSPqtcHBnh0fyuC40phQTR3FeZEKdfPw/exec";
+  var TOKEN = (window.ChiaveComoTV ? ChiaveComoTV.valore() : "");
+  var BASEIMG = PONTE.replace(/\/(api|exec)$/, "");
+  var FOGLI = "/fogli-redazione/";
+  if (window.Destinazione) Destinazione.adotta(el("canaleSel"), PONTE, TOKEN);
+  if (window.SceltaFoto) SceltaFoto.adotta(PONTE, TOKEN);
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function b64url(obj) {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(obj))))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function stato(cls, txt) { el("stato").innerHTML = '<span class="' + cls + '">' + txt + '</span>'; }
+  function piano(s) {
+    return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, " ").trim();
+  }
+  function num(v) { var n = parseFloat(String(v == null ? "" : v).replace(/\s/g, "").replace(",", ".")); return isFinite(n) ? n : null; }
+  function cifraIt(v) { return v == null ? "" : String(v).replace(".", ","); }
+
+  // I colori delle serie: gli stessi della grafica in onda (validati sul
+  // navy). Qui servono solo a far capire chi sara' di che colore.
+  var SERIE = ["#B38C2C", "#3E8BD8", "#D4575C", "#8E72DA"];
+
+  // ── i tipi di grafico ────────────────────────────────────────────────
+  // max: quanti giocatori (o squadre) ci stanno; il disegnino e' un'idea
+  // di come viene, non l'anteprima
+  var TIPI = [
+    { k: "valore", nome: "Valore di mercato", d: "Un giocatore nel tempo, come su Transfermarkt: valore attuale, il più alto, gli stemmi dei trasferimenti.",
+      max: 1, t: "VALORE DI MERCATO", fo: "Fonte: Transfermarkt",
+      ico: '<path d="M4 38 L40 34 L76 30 L112 22 L148 12 L196 6" fill="none" stroke="#C9A24B" stroke-width="3"/><path d="M4 38 L40 34 L76 30 L112 22 L148 12 L196 6 L196 42 L4 42Z" fill="#C9A24B" opacity=".2"/>' },
+    { k: "valori", nome: "Valore a confronto", d: "Il valore di mercato di due, tre o quattro giocatori, una linea per ciascuno.",
+      max: 4, t: "VALORE DI MERCATO", fo: "Fonte: Transfermarkt",
+      ico: '<path d="M4 38 L60 32 L120 18 L196 8" fill="none" stroke="#B38C2C" stroke-width="3"/><path d="M4 36 L60 26 L120 22 L196 16" fill="none" stroke="#3E8BD8" stroke-width="3"/>' },
+    { k: "golpres", nome: "Gol e presenze", d: "Uno o due giocatori stagione per stagione: presenze sopra, gol sotto, ognuno col suo asse.",
+      max: 2, t: "GOL E PRESENZE", fo: "Fonte: ESPN",
+      ico: '<g fill="#B38C2C"><rect x="10" y="6" width="14" height="14"/><rect x="60" y="4" width="14" height="16"/><rect x="110" y="8" width="14" height="12"/><rect x="160" y="5" width="14" height="15"/><rect x="10" y="32" width="14" height="10"/><rect x="60" y="36" width="14" height="6"/><rect x="110" y="30" width="14" height="12"/><rect x="160" y="34" width="14" height="8"/></g><g fill="#3E8BD8"><rect x="26" y="8" width="14" height="12"/><rect x="76" y="6" width="14" height="14"/><rect x="126" y="4" width="14" height="16"/><rect x="176" y="7" width="14" height="13"/><rect x="26" y="28" width="14" height="14"/><rect x="76" y="31" width="14" height="11"/><rect x="126" y="33" width="14" height="9"/><rect x="176" y="29" width="14" height="13"/></g>' },
+    { k: "stagioni", nome: "Numeri per stagione", d: "Presenze, gol, assist o partite da titolare di uno o più giocatori: barre se è uno solo, linee se sono tre o quattro.",
+      max: 4, t: "PRESENZE PER STAGIONE", fo: "Fonte: ESPN",
+      ico: '<g fill="#C9A24B"><rect x="8" y="16" width="24" height="26"/><rect x="48" y="10" width="24" height="32"/><rect x="88" y="22" width="24" height="20"/><rect x="128" y="6" width="24" height="36"/><rect x="168" y="12" width="24" height="30"/></g>' },
+    { k: "squadre", nome: "Squadre a confronto", d: "Da due a quattro squadre, una riga per misura: punti, gol fatti e subiti, vittorie, trofei…",
+      max: 4, t: "IL CONFRONTO", fo: "Fonte: ESPN",
+      ico: '<rect x="60" y="4" width="130" height="8" fill="#B38C2C"/><rect x="60" y="14" width="96" height="8" fill="#3E8BD8"/><rect x="60" y="28" width="80" height="8" fill="#B38C2C"/><rect x="60" y="38" width="120" height="6" fill="#3E8BD8"/><rect x="4" y="8" width="40" height="6" fill="#8A8B96"/><rect x="4" y="32" width="40" height="6" fill="#8A8B96"/>' }
+  ];
+  function tipo(k) { return TIPI.filter(function (x) { return x.k === k; })[0] || TIPI[0]; }
+
+  // le misure per stagione: il campo dei conti ESPN e come si chiama in onda
+  var MISURE = [
+    { k: "presenze", n: "Presenze", t: "PRESENZE PER STAGIONE" },
+    { k: "gol", n: "Gol", t: "GOL PER STAGIONE" },
+    { k: "assist", n: "Assist", t: "ASSIST PER STAGIONE" },
+    { k: "titolare", n: "Da titolare", t: "PARTITE DA TITOLARE" },
+    { k: "gialli", n: "Gialli", t: "CARTELLINI GIALLI" }
+  ];
+
+  // ── lo stato della pagina (resta nel browser: un ricarico non perde il lavoro)
+  var LS = "comotv.dataviz.1";
+  var ST = {
+    k: "valore", e: "", t: "", fo: "", tocchi: {},
+    gio: [],            // [{pid, n, s, tid, f}]
+    sq: [],             // [{tid, n, l, lega}]
+    pt: [],             // valore: [{x, v, sq, l}]
+    mv: { x: [], v: [] },   // valori: etichette e, per riga, un valore per giocatore
+    tab: { x: [], v: [], g: [] }, // stagioni/golpres: righe stagione, colonne giocatore
+    misura: "presenze", comp: "tutte", quante: 5,
+    r: []               // squadre: [[misura, [valori]]]
+  };
+  try { var vecchio = JSON.parse(localStorage.getItem(LS) || "null"); if (vecchio && vecchio.k) ST = Object.assign(ST, vecchio); } catch (e) {}
+  function salva() { try { localStorage.setItem(LS, JSON.stringify(ST)); } catch (e) {} }
+  // dal menu si arriva gia' sul tipo giusto: dataviz.html?k=valore
+  var kUrl = new URLSearchParams(location.search).get("k");
+  if (kUrl && kUrl !== ST.k && TIPI.some(function (x) { return x.k === kUrl; })) {
+    ST.k = kUrl; ST.t = ""; ST.tocchi = {};
+    var maxK = TIPI.filter(function (x) { return x.k === kUrl; })[0].max;
+    if (ST.gio.length > maxK) ST.gio = ST.gio.slice(0, maxK);
+  }
+
+  // ── stemmi caricati a mano che scavalcano quelli ESPN (neri sul navy) ──
+  var SCAVALCO = {};
+  function slugM(nome) {
+    return String(nome || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+  }
+  fetch(PONTE + "?loghi=1", { cache: "no-store" })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      (j.loghi || []).forEach(function (x) { if (!/^(maglia|foto)-/.test(x.chiave)) SCAVALCO[x.chiave] = BASEIMG + x.url; });
+    }).catch(function () {});
+  function stemma(tid, nome) {
+    return SCAVALCO[slugM(nome)] || (tid ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + tid + ".png" : "");
+  }
+
+  // ── la ricerca: prima le rose (tutte le squadre che seguiamo), poi ESPN ──
+  var ROSE = null, ROSE_P = null;
+  function rose() {
+    if (ROSE_P) return ROSE_P;
+    ROSE_P = fetch(FOGLI + "schede/rose.json", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var visti = {};
+        ROSE = (j.g || []).filter(function (g) { if (visti[g[0]]) return false; visti[g[0]] = 1; return true; })
+          .map(function (g) { return { pid: g[0], n: g[1], tid: g[2], s: g[3], lega: g[4], ruolo: g[5], c: piano(g[1] + " " + g[3]) }; });
+        return ROSE;
+      })
+      .catch(function () { ROSE = []; return ROSE; });
+    return ROSE_P;
+  }
+  function espnCerca(q, tipoR) {
+    return fetch("https://site.web.api.espn.com/apis/search/v2?limit=40&type=" + tipoR + "&query=" + encodeURIComponent(q))
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var out = [];
+        (j.results || []).forEach(function (r) {
+          if (r.type !== tipoR) return;
+          (r.contents || []).forEach(function (c) {
+            var m = String(c.uid || "").match(/^s:600~(?:l:[^~]+~)?[at]:(\d+)/);
+            if (m) out.push({ id: m[1], n: c.displayName || "", s: c.subtitle || "", lega: c.defaultLeagueSlug || "", desc: c.description || "" });
+          });
+        });
+        return out;
+      })
+      .catch(function () { return []; });
+  }
+  function cercaGiocatori(q) {
+    var p = piano(q), parole = p.split(" ").filter(Boolean);
+    if (!parole.length) return Promise.resolve([]);
+    return rose().then(function (R) {
+      var locali = R.filter(function (g) { return parole.every(function (w) { return g.c.indexOf(w) >= 0; }); })
+        .map(function (g) {
+          // prima chi ha il cognome che comincia cosi', poi il resto
+          var pn = piano(g.n), cogn = pn.split(" ").slice(1).join(" "), w = parole[0];
+          var peso = cogn === w || (" " + pn + " ").indexOf(" " + w + " ") >= 0 ? 0
+                   : cogn.indexOf(w) === 0 ? 1 : pn.indexOf(w) === 0 ? 2 : 3;
+          return { g: g, peso: peso };
+        })
+        .sort(function (a, b) { return a.peso - b.peso || a.g.n.localeCompare(b.g.n); })
+        .slice(0, 12).map(function (x) { return x.g; });
+      if (locali.length >= 6 || p.length < 4) return locali;
+      return espnCerca(q, "player").then(function (E) {
+        var gia = {}; locali.forEach(function (g) { gia[g.pid] = 1; });
+        return locali.concat(E.filter(function (e) { return !gia[e.id]; }).slice(0, 12 - locali.length)
+          .map(function (e) { return { pid: e.id, n: e.n, s: e.s, tid: "", lega: e.lega, espn: true }; }));
+      });
+    });
+  }
+  // i nomi che diciamo noi e che ESPN scrive in un altro modo
+  var ALIAS_SQ = { "inter": "internazionale", "inter milan": "internazionale", "fc internazionale": "internazionale",
+                   "ac milan": "milan", "juve": "juventus", "as roma": "roma", "ss lazio": "lazio", "ssc napoli": "napoli" };
+  function cercaSquadre(q) {
+    var p = piano(q);
+    if (p.length < 2) return Promise.resolve([]);
+    var cerco = ALIAS_SQ[p] || p;
+    return Promise.all([rose(), espnCerca(q, "team")]).then(function (r) {
+      // prima il nome esatto, poi le squadre che seguiamo (le rose), poi ESPN:
+      // "Inter" su ESPN porta prima l'Inter Miami
+      var locali = {}, esp = [], out = [], gia = {};
+      r[0].forEach(function (g) { if (!locali[g.tid] && piano(g.s).indexOf(cerco) >= 0) locali[g.tid] = { tid: g.tid, n: g.s, lega: g.lega, desc: g.lega }; });
+      r[1].forEach(function (t) { esp.push({ tid: t.id, n: t.n, lega: t.lega, desc: t.s }); });
+      var tutte = Object.keys(locali).map(function (k) { return locali[k]; }).concat(esp);
+      function peso(t) {
+        var n = piano(t.n);
+        return n === cerco ? 0 : (locali[t.tid] && n.indexOf(cerco) === 0 ? 1 : (locali[t.tid] ? 2 : 3));
+      }
+      tutte.map(function (t, i) { return { t: t, p: peso(t), i: i }; })
+        .sort(function (a, b) { return a.p - b.p || a.i - b.i; })
+        .forEach(function (x) { if (!gia[x.t.tid]) { gia[x.t.tid] = 1; out.push(x.t); } });
+      return out.slice(0, 12);
+    });
+  }
+
+  // la tendina sotto un campo di ricerca: frecce, Invio, Esc
+  function tendina(input, box, cerca, riga, scelto) {
+    var voci = [], su = -1, giro = 0, timer = null;
+    function disegna() {
+      if (!voci.length) { box.innerHTML = '<div class="vuota">Nessun risultato.</div>'; return; }
+      box.innerHTML = voci.map(function (v, i) { return '<div class="r' + (i === su ? " su" : "") + '" data-i="' + i + '">' + riga(v) + '</div>'; }).join("");
+    }
+    input.addEventListener("input", function () {
+      clearTimeout(timer);
+      var q = input.value, mio = ++giro;
+      if (piano(q).length < 2) { box.classList.remove("aperta"); return; }
+      timer = setTimeout(function () {
+        cerca(q).then(function (v) {
+          if (mio !== giro) return;
+          voci = v; su = v.length ? 0 : -1; disegna(); box.classList.add("aperta");
+        });
+      }, 220);
+    });
+    input.addEventListener("keydown", function (ev) {
+      if (!box.classList.contains("aperta")) return;
+      if (ev.key === "ArrowDown") { su = Math.min(voci.length - 1, su + 1); disegna(); ev.preventDefault(); }
+      else if (ev.key === "ArrowUp") { su = Math.max(0, su - 1); disegna(); ev.preventDefault(); }
+      else if (ev.key === "Enter" && su >= 0) { box.classList.remove("aperta"); scelto(voci[su]); ev.preventDefault(); }
+      else if (ev.key === "Escape") box.classList.remove("aperta");
+    });
+    box.addEventListener("mousedown", function (ev) {
+      var r = ev.target.closest(".r"); if (!r) return;
+      ev.preventDefault(); box.classList.remove("aperta"); scelto(voci[+r.dataset.i]);
+    });
+    input.addEventListener("blur", function () { setTimeout(function () { box.classList.remove("aperta"); }, 150); });
+  }
+
+  // ── la faccia: il magazzino prima, poi il ritratto ESPN ────────────────
+  function faccia(g) {
+    var cognome = String(g.n || "").split(/\s+/).slice(1).join(" ") || g.n;
+    return fetch(PONTE + "?foto=" + encodeURIComponent(cognome) + "&id=" + encodeURIComponent(g.pid) +
+                 (g.tid ? "&squadra=" + encodeURIComponent(g.tid) : ""), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { return j && j.url ? j.url : Promise.reject(); })
+      .catch(function () {
+        var u = "https://a.espncdn.com/i/headshots/soccer/players/full/" + g.pid + ".png";
+        return new Promise(function (ok) {
+          var im = new Image(); im.onload = function () { ok(u); }; im.onerror = function () { ok(""); }; im.src = u;
+        });
+      });
+  }
+  // la squadra di adesso, quando la ricerca ESPN non la dice per id
+  function squadraDi(pid) {
+    return fetch("https://site.web.api.espn.com/apis/common/v3/sports/soccer/athletes/" + encodeURIComponent(pid))
+      .then(function (r) { return r.json(); })
+      .then(function (j) { var t = ((j.athlete || {}).team) || {}; return { tid: String(t.id || ""), s: t.displayName || "" }; })
+      .catch(function () { return { tid: "", s: "" }; });
+  }
+
+  // ── la scelta del tipo ─────────────────────────────────────────────────
+  function disegnaTipi() {
+    el("tipi").innerHTML = TIPI.map(function (x) {
+      return '<button type="button" class="tipo' + (x.k === ST.k ? " on" : "") + '" data-k="' + x.k + '">' +
+        '<svg viewBox="0 0 200 46" preserveAspectRatio="none">' + x.ico + '</svg><b>' + esc(x.nome) + '</b><span>' + esc(x.d) + '</span></button>';
+    }).join("");
+  }
+  el("tipi").addEventListener("click", function (ev) {
+    var b = ev.target.closest(".tipo"); if (!b) return;
+    ST.k = b.dataset.k;
+    // titolo e fonte seguono il tipo, finche' non li si scrive a mano
+    riempiTestata(true);
+    ST.gio = ST.gio.slice(0, tipo(ST.k).max);
+    disegnaTutto();
+  });
+  function riempiTestata(cambio) {
+    var T = tipo(ST.k);
+    if (!ST.tocchi.t || cambio) { ST.t = ST.k === "stagioni" ? misura().t : T.t; ST.tocchi.t = false; }
+    if (!ST.tocchi.fo || cambio) { ST.fo = T.fo; ST.tocchi.fo = false; }
+    el("t").value = ST.t; el("fo").value = ST.fo; el("e").value = ST.e;
+  }
+  ["e", "t", "fo"].forEach(function (id) {
+    el(id).addEventListener("input", function () { ST[id] = el(id).value; ST.tocchi[id] = true; salva(); });
+  });
+  function misura() { return MISURE.filter(function (m) { return m.k === ST.misura; })[0] || MISURE[0]; }
+
+  // ── i posti: giocatori o squadre ───────────────────────────────────────
+  function disegnaPosti() {
+    var T = tipo(ST.k), squadre = ST.k === "squadre";
+    el("titGio").innerHTML = (squadre ? "Squadre" : (T.max > 1 ? "Giocatori" : "Giocatore")) +
+      ' <small>' + (T.max > 1 ? "fino a " + T.max + " — il colore segue l'ordine" : "uno") + '</small>';
+    var lista = squadre ? ST.sq : ST.gio, h = "";
+    lista.forEach(function (x, i) {
+      var img = squadre ? x.l : x.f;
+      h += '<div class="posto" data-i="' + i + '">' +
+        '<span class="pallino" style="background:' + (T.max > 1 ? SERIE[i] : "#C9A24B") + '"></span>' +
+        '<div class="faccia' + (squadre ? " stemma" : "") + '">' + (img ? '<img src="' + esc(img) + '" alt="">' : esc(String(x.n || "?").slice(0, 2).toUpperCase())) + '</div>' +
+        // nome e squadra si correggono qui: ESPN scrive "Internazionale", in
+        // onda si dice "Inter"
+        '<div class="chi"><div class="riga" style="margin:0;gap:6px">' +
+          '<div style="flex:2 1 160px"><input type="text" data-campo="n" value="' + esc(x.n) + '" title="Nome in onda"></div>' +
+          (squadre ? '' : '<div style="flex:1 1 120px"><input type="text" data-campo="s" value="' + esc(x.s) + '" title="Squadra in onda"></div>') +
+        '</div><div class="det">' + esc(x.lega || "") + '</div></div>' +
+        '<button type="button" data-az="immagine">' + (squadre ? "Cambia stemma" : "Cambia foto") + '</button>' +
+        (i > 0 ? '<button type="button" data-az="su">&uarr;</button>' : '') +
+        '<button type="button" data-az="via">Togli</button></div>';
+    });
+    if (lista.length < T.max) {
+      h += '<div class="posto"><span class="pallino" style="background:' + (T.max > 1 ? SERIE[lista.length] : "#C9A24B") + '"></span>' +
+        '<div class="cercabox"><input type="text" id="cercaNuovo" placeholder="' + (squadre ? "Cerca la squadra…" : "Cerca il giocatore per cognome…") + '" autocomplete="off">' +
+        '<div class="tendina" id="tendNuovo"></div></div></div>';
+    }
+    el("posti").innerHTML = h;
+    el("notaGio").innerHTML = squadre
+      ? "Gli stemmi neri si scambiano con quelli caricati nel magazzino (stessa regola delle Formazioni)."
+      : "La ricerca guarda prima le rose delle squadre che seguiamo, poi tutto ESPN. La foto viene dal magazzino; se manca, il ritratto ESPN.";
+    var inp = el("cercaNuovo");
+    if (!inp) return;
+    if (squadre) {
+      tendina(inp, el("tendNuovo"), cercaSquadre, function (t) {
+        return '<img src="' + esc(stemma(t.tid, t.n)) + '" onerror="this.style.visibility=\'hidden\'"><div><b>' + esc(t.n) + '</b></div><em>' + esc(t.desc || t.lega) + '</em>';
+      }, function (t) {
+        ST.sq.push({ tid: t.tid, n: t.n, l: stemma(t.tid, t.n), lega: t.lega });
+        ST.r.forEach(function (r) { r[1].push(null); });
+        salva(); disegnaTutto();
+      });
+    } else {
+      tendina(inp, el("tendNuovo"), cercaGiocatori, function (g) {
+        return '<img src="' + esc(stemma(g.tid, g.s)) + '" onerror="this.style.visibility=\'hidden\'"><div><b>' + esc(g.n) + '</b> <span>' + esc(g.s) + '</span></div><em>' + esc(g.espn ? "ESPN" : g.lega) + '</em>';
+      }, function (g) { aggiungiGiocatore(g); });
+    }
+    setTimeout(function () { inp.focus(); }, 0);
+  }
+  function aggiungiGiocatore(g) {
+    var x = { pid: g.pid, n: g.n, s: g.s, tid: g.tid, lega: g.lega, f: "" };
+    ST.gio.push(x);
+    // le colonne delle tabelle crescono insieme ai giocatori
+    ST.mv.v.forEach(function (r) { r.push(null); });
+    ST.tab.v.forEach(function (r) { r.push(null); }); ST.tab.g.forEach(function (r) { r.push(null); });
+    salva(); disegnaTutto();
+    var pronto = x.tid ? Promise.resolve() : squadraDi(x.pid).then(function (t) { x.tid = t.tid; if (t.s) x.s = t.s; });
+    pronto.then(function () { return faccia(x); }).then(function (u) { x.f = u; salva(); disegnaPosti(); });
+    stato("", "Aggiunto " + esc(x.n) + ".");
+  }
+  el("posti").addEventListener("input", function (ev) {
+    var inp = ev.target.closest("input[data-campo]"); if (!inp) return;
+    var i = +inp.closest(".posto").dataset.i, lista = ST.k === "squadre" ? ST.sq : ST.gio;
+    if (lista[i]) { lista[i][inp.dataset.campo] = inp.value; salva(); }
+  });
+  el("posti").addEventListener("click", function (ev) {
+    var b = ev.target.closest("button[data-az]"); if (!b) return;
+    var i = +b.closest(".posto").dataset.i, squadre = ST.k === "squadre", lista = squadre ? ST.sq : ST.gio;
+    function sposta(arr) { if (arr && arr.length > i) { var t = arr[i - 1]; arr[i - 1] = arr[i]; arr[i] = t; } }
+    if (b.dataset.az === "via") {
+      lista.splice(i, 1);
+      if (squadre) ST.r.forEach(function (r) { r[1].splice(i, 1); });
+      else { ST.mv.v.forEach(function (r) { r.splice(i, 1); }); ST.tab.v.forEach(function (r) { r.splice(i, 1); }); ST.tab.g.forEach(function (r) { r.splice(i, 1); }); }
+    } else if (b.dataset.az === "su") {
+      sposta(lista);
+      if (squadre) ST.r.forEach(function (r) { sposta(r[1]); });
+      else { ST.mv.v.forEach(sposta); ST.tab.v.forEach(sposta); ST.tab.g.forEach(sposta); }
+    } else if (b.dataset.az === "immagine" && window.SceltaFoto) {
+      SceltaFoto.apri(function (u) { if (squadre) lista[i].l = u; else lista[i].f = u; salva(); disegnaPosti(); },
+                      squadre ? { filtro: "loghi", espn: true } : { filtro: "foto" });
+      return;
+    }
+    salva(); disegnaTutto();
+  });
+
+  // ── i numeri, tipo per tipo ────────────────────────────────────────────
+  function campo(v, cls, extra) {
+    return '<input type="text"' + (cls ? ' class="' + cls + '"' : '') + ' value="' + esc(v == null ? "" : v) + '"' + (extra || "") + '>';
+  }
+  // ogni riga delle tabelle ha tante caselle quanti i giocatori (o le squadre):
+  // cambiando tipo si possono perdere dei giocatori, e le colonne in piu'
+  // finirebbero sotto il prossimo che si aggiunge
+  function allinea(righe, n) {
+    righe.forEach(function (r) { r.length = Math.min(r.length, n); while (r.length < n) r.push(null); });
+  }
+  function disegnaDati() {
+    var k = ST.k, h = "", c = "";
+    allinea(ST.mv.v, ST.gio.length); allinea(ST.tab.v, ST.gio.length); allinea(ST.tab.g, ST.gio.length);
+    allinea(ST.r.map(function (r) { return r[1]; }), ST.sq.length);
+    if (k === "valore") {
+      el("titDati").innerHTML = 'Valore di mercato <small>in milioni di euro; la squadra accanto a una data mette lo stemma sul grafico (per i trasferimenti)</small>';
+      c = '<div class="riga"><div style="flex:3 1 400px"><label for="incolla">Incolla da Transfermarkt</label>' +
+          '<textarea id="incolla" placeholder="Seleziona lo storico del valore di mercato sul sito, copia e incolla qui. Va bene anche scritto a mano, una riga per data:&#10;20/12/2023  Inter  110 mln&#10;mag 2026  85"></textarea></div>' +
+          '<div style="flex:0 0 auto"><button type="button" class="prendi" id="btnLeggi">Leggi le righe</button></div></div>';
+      h = '<table class="tabella"><tr><th>Data</th><th>Valore (mln €)</th><th>Squadra (stemma)</th><th></th></tr>';
+      ST.pt.forEach(function (p, i) {
+        h += '<tr data-i="' + i + '"><td>' + campo(p.x, "", ' data-c="x"') + '</td><td>' + campo(cifraIt(p.v), "n", ' data-c="v"') + '</td>' +
+          '<td style="display:flex;align-items:center;gap:6px">' + (p.l ? '<img class="st" src="' + esc(p.l) + '">' : '') + campo(p.sq, "", ' data-c="sq" placeholder="nessuno"') + '</td>' +
+          '<td class="via"><button type="button" data-az="via">togli</button></td></tr>';
+      });
+      h += '</table><div style="margin-top:8px"><button type="button" id="btnRiga">+ Riga</button></div>';
+      el("notaDati").innerHTML = "Il <b>valore attuale</b> è l'ultima riga, il <b>più alto</b> si trova da solo. Le righe vanno dalla più vecchia alla più recente (quelle incollate si mettono in ordine da sole).";
+    }
+    else if (k === "valori") {
+      el("titDati").innerHTML = 'Valore di mercato <small>in milioni di euro; una riga per data o stagione, una colonna per giocatore</small>';
+      h = '<table class="tabella"><tr><th>Data / stagione</th>' + ST.gio.map(function (g, i) {
+        return '<th><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + SERIE[i] + ';margin-right:6px"></span>' + esc(g.n) + '</th>';
+      }).join("") + '<th></th></tr>';
+      ST.mv.x.forEach(function (x, i) {
+        h += '<tr data-i="' + i + '"><td>' + campo(x, "", ' data-c="x"') + '</td>' +
+          ST.gio.map(function (g, j) { return '<td>' + campo(cifraIt((ST.mv.v[i] || [])[j]), "n", ' data-c="v" data-j="' + j + '"') + '</td>'; }).join("") +
+          '<td class="via"><button type="button" data-az="via">togli</button></td></tr>';
+      });
+      h += '</table><div style="margin-top:8px"><button type="button" id="btnRiga">+ Riga</button></div>';
+      el("notaDati").innerHTML = ST.gio.length ? "Una casella vuota interrompe la linea di quel giocatore (per esempio prima che avesse un valore)." : "Scegli prima i giocatori.";
+    }
+    else if (k === "stagioni" || k === "golpres") {
+      el("titDati").innerHTML = (k === "golpres" ? "Gol e presenze" : misura().n) + ' <small>da ESPN, stagione per stagione; si correggono a mano</small>';
+      c = '<div class="riga">' +
+        (k === "stagioni" ? '<div style="flex:0 1 190px"><label for="misura">Misura</label><select id="misura">' +
+          MISURE.map(function (m) { return '<option value="' + m.k + '"' + (m.k === ST.misura ? " selected" : "") + '>' + m.n + '</option>'; }).join("") + '</select></div>' : '') +
+        '<div style="flex:0 1 230px"><label for="comp">Competizioni</label><select id="comp">' +
+          [["tutte", "Tutte (senza amichevoli)"], ["campionato", "Solo campionato"], ["coppe", "Solo coppe europee"]].map(function (o) {
+            return '<option value="' + o[0] + '"' + (o[0] === ST.comp ? " selected" : "") + '>' + o[1] + '</option>'; }).join("") + '</select></div>' +
+        '<div style="flex:0 1 150px"><label for="quante">Stagioni</label><select id="quante">' +
+          [3, 4, 5, 6, 7, 8, 10].map(function (n) { return '<option value="' + n + '"' + (n === +ST.quante ? " selected" : "") + '>ultime ' + n + '</option>'; }).join("") + '</select></div>' +
+        '<div style="flex:0 0 auto"><button type="button" class="prendi" id="btnEspn"' + (ST.gio.length ? "" : " disabled") + '>Prendi da ESPN</button></div></div>';
+      var gp = k === "golpres";
+      h = '<table class="tabella"><tr><th>Stagione</th>' + ST.gio.map(function (g, i) {
+        var pal = '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + (ST.gio.length > 1 ? SERIE[i] : "#C9A24B") + ';margin-right:6px"></span>';
+        return gp ? '<th>' + pal + esc(g.n) + ' · pres.</th><th>gol</th>' : '<th>' + pal + esc(g.n) + '</th>';
+      }).join("") + '<th></th></tr>';
+      ST.tab.x.forEach(function (x, i) {
+        h += '<tr data-i="' + i + '"><td>' + campo(x, "", ' data-c="x"') + '</td>' +
+          ST.gio.map(function (g, j) {
+            return '<td>' + campo((ST.tab.v[i] || [])[j], "n", ' data-c="v" data-j="' + j + '"') + '</td>' +
+                   (gp ? '<td>' + campo((ST.tab.g[i] || [])[j], "n", ' data-c="g" data-j="' + j + '"') + '</td>' : '');
+          }).join("") + '<td class="via"><button type="button" data-az="via">togli</button></td></tr>';
+      });
+      h += '</table><div style="margin-top:8px"><button type="button" id="btnRiga">+ Riga</button></div>';
+      el("notaDati").innerHTML = ST.gio.length
+        ? "Le stagioni passate vengono dal registro ESPN del giocatore; quella in corso si conta dalle partite giocate, come nella Telecronaca. Da sinistra a destra, dalla più vecchia."
+        : "Scegli prima i giocatori.";
+    }
+    else if (k === "squadre") {
+      el("titDati").innerHTML = 'Le misure <small>una riga per misura, ognuna con la sua scala; i trofei si scrivono a mano</small>';
+      c = '<div class="riga"><div style="flex:0 0 auto"><button type="button" class="prendi" id="btnClassifica"' + (ST.sq.length ? "" : " disabled") +
+          '>Prendi dalla classifica ESPN</button></div><div class="nota" style="margin:0 0 10px">Punti, gol fatti e subiti, vittorie, pareggi e sconfitte del campionato in corso.</div></div>';
+      h = '<table class="tabella"><tr><th>Misura</th>' + ST.sq.map(function (q, i) {
+        return '<th><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + SERIE[i] + ';margin-right:6px"></span>' + esc(q.n) + '</th>';
+      }).join("") + '<th></th></tr>';
+      ST.r.forEach(function (r, i) {
+        h += '<tr data-i="' + i + '"><td>' + campo(r[0], "", ' data-c="x"') + '</td>' +
+          ST.sq.map(function (q, j) { return '<td>' + campo(cifraIt((r[1] || [])[j]), "n", ' data-c="v" data-j="' + j + '"') + '</td>'; }).join("") +
+          '<td class="via"><button type="button" data-az="via">togli</button></td></tr>';
+      });
+      h += '</table><div style="margin-top:8px"><button type="button" id="btnRiga">+ Riga</button></div>';
+      el("notaDati").innerHTML = "Fino a sette righe. L'ordine qui è l'ordine in onda.";
+    }
+    el("comandi").innerHTML = c;
+    el("tabDati").innerHTML = h;
+    agganciaDati();
+  }
+
+  function agganciaDati() {
+    var k = ST.k;
+    el("tabDati").querySelectorAll("tr[data-i]").forEach(function (tr) {
+      var i = +tr.dataset.i;
+      tr.querySelectorAll("input").forEach(function (inp) {
+        inp.addEventListener("input", function () {
+          var c = inp.dataset.c, j = +inp.dataset.j, v = inp.value;
+          if (k === "valore") { if (c === "v") ST.pt[i].v = num(v); else ST.pt[i][c] = v; }
+          else if (k === "valori") { if (c === "x") ST.mv.x[i] = v; else ST.mv.v[i][j] = num(v); }
+          else if (k === "squadre") { if (c === "x") ST.r[i][0] = v; else ST.r[i][1][j] = num(v); }
+          else { if (c === "x") ST.tab.x[i] = v; else ST.tab[c][i][j] = num(v); }
+          salva();
+        });
+        // lo stemma del trasferimento: si cerca la squadra quando si esce dal campo
+        if (k === "valore" && inp.dataset.c === "sq") inp.addEventListener("change", function () {
+          var q = inp.value.trim();
+          if (!q) { ST.pt[i].l = ""; salva(); disegnaDati(); return; }
+          cercaSquadre(q).then(function (r) {
+            ST.pt[i].l = r.length ? stemma(r[0].tid, r[0].n) : "";
+            if (r.length) ST.pt[i].sq = r[0].n;
+            salva(); disegnaDati();
+          });
+        });
+      });
+      var via = tr.querySelector('button[data-az="via"]');
+      if (via) via.addEventListener("click", function () {
+        if (k === "valore") ST.pt.splice(i, 1);
+        else if (k === "valori") { ST.mv.x.splice(i, 1); ST.mv.v.splice(i, 1); }
+        else if (k === "squadre") ST.r.splice(i, 1);
+        else { ST.tab.x.splice(i, 1); ST.tab.v.splice(i, 1); ST.tab.g.splice(i, 1); }
+        salva(); disegnaDati();
+      });
+    });
+    var nuova = el("btnRiga");
+    if (nuova) nuova.addEventListener("click", function () {
+      var vuoti = function (n) { var a = []; for (var q = 0; q < n; q++) a.push(null); return a; };
+      if (k === "valore") ST.pt.push({ x: "", v: null, sq: "", l: "" });
+      else if (k === "valori") { ST.mv.x.push(""); ST.mv.v.push(vuoti(ST.gio.length)); }
+      else if (k === "squadre") ST.r.push(["", vuoti(ST.sq.length)]);
+      else { ST.tab.x.push(""); ST.tab.v.push(vuoti(ST.gio.length)); ST.tab.g.push(vuoti(ST.gio.length)); }
+      salva(); disegnaDati();
+    });
+    if (el("btnLeggi")) el("btnLeggi").addEventListener("click", leggiIncollato);
+    if (el("misura")) el("misura").addEventListener("change", function () {
+      ST.misura = el("misura").value;
+      if (!ST.tocchi.t) { ST.t = misura().t; el("t").value = ST.t; }
+      salva(); if (ST.gio.some(function (g) { return CAR[g.pid]; })) prendiEspn(); else disegnaDati();
+    });
+    if (el("comp")) el("comp").addEventListener("change", function () { ST.comp = el("comp").value; salva(); if (ST.gio.length) prendiEspn(); });
+    if (el("quante")) el("quante").addEventListener("change", function () { ST.quante = +el("quante").value; salva(); if (ST.gio.length) prendiEspn(); });
+    if (el("btnEspn")) el("btnEspn").addEventListener("click", prendiEspn);
+    if (el("btnClassifica")) el("btnClassifica").addEventListener("click", prendiClassifica);
+  }
+
+  // ── INCOLLA: le righe di Transfermarkt, o scritte a mano ───────────────
+  // Una riga buona ha una data e un valore; quello che resta in mezzo e' la
+  // squadra. Il sito cambia lingua e formato: si accetta tutto quello che si
+  // riconosce, il resto si scarta e si dice quante righe sono state lette.
+  var MESI_IT = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
+  var MESI_RE = { gen: 0, jan: 0, feb: 1, mar: 2, apr: 3, mag: 4, may: 4, giu: 5, jun: 5, lug: 6, jul: 6,
+                  ago: 7, aug: 7, set: 8, sep: 8, ott: 9, oct: 9, nov: 10, dic: 11, dec: 11 };
+  function leggiRiga(r) {
+    var s = r.replace(/ /g, " ").trim(), m, d = null, resto = s;
+    if ((m = s.match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/))) {
+      d = new Date(+(m[3].length === 2 ? "20" + m[3] : m[3]), +m[2] - 1, +m[1]);
+    } else if ((m = s.match(/([A-Za-zàé]{3})[a-zàé]*\.?\s+(\d{1,2}),?\s+(\d{4})/)) && MESI_RE[m[1].toLowerCase()] != null) {
+      d = new Date(+m[3], MESI_RE[m[1].toLowerCase()], +m[2]);
+    } else if ((m = s.match(/(\d{1,2})\s+([A-Za-zàé]{3})[a-zàé]*\.?\s+(\d{4})/)) && MESI_RE[m[2].toLowerCase()] != null) {
+      d = new Date(+m[3], MESI_RE[m[2].toLowerCase()], +m[1]);
+    } else if ((m = s.match(/([A-Za-zàé]{3})[a-zàé]*\.?\s+(\d{2,4})/)) && MESI_RE[m[1].toLowerCase()] != null) {
+      d = new Date(+(m[2].length === 2 ? "20" + m[2] : m[2]), MESI_RE[m[1].toLowerCase()], 1);
+    }
+    if (!d || isNaN(d)) return null;
+    resto = s.replace(m[0], " ");
+    // il valore: "110,00 mln €", "€110.00m", "800 mila", "€800k", "85"
+    var v = resto.match(/€?\s*(\d+(?:[.,]\d+)?)\s*(mila|milioni|mln|mio|mil\.?|m\b|k\b|tsd|th\.?)?\s*€?/i);
+    if (!v) return null;
+    var n = parseFloat(v[1].replace(",", "."));
+    var u = (v[2] || "").toLowerCase();
+    if (/^(mila|k|tsd|th)/.test(u)) n = n / 1000;
+    var sq = resto.replace(v[0], " ").replace(/[€\t|]+/g, " ").replace(/\s{2,}/g, " ").trim();
+    if (/^[-–—\d\s,.]*$/.test(sq)) sq = "";
+    return { d: d, v: Math.round(n * 1000) / 1000, sq: sq };
+  }
+  function etichettaData(d) { return MESI_IT[d.getMonth()] + " " + String(d.getFullYear()).slice(2); }
+  function leggiIncollato() {
+    var righe = el("incolla").value.split(/\n+/), buone = [];
+    righe.forEach(function (r) { var x = leggiRiga(r); if (x) buone.push(x); });
+    if (!buone.length) { stato("err", "Non ho riconosciuto nessuna riga: servono una data e un valore."); return; }
+    buone.sort(function (a, b) { return a.d - b.d; });
+    var prima = "";
+    ST.pt = buone.map(function (b) {
+      // lo stemma solo quando la squadra cambia: e' il segno del trasferimento
+      var cambio = b.sq && piano(b.sq) !== prima; if (b.sq) prima = piano(b.sq);
+      return { x: etichettaData(b.d), v: b.v, sq: cambio ? b.sq : "", l: "" };
+    });
+    salva(); disegnaDati();
+    // gli stemmi si cercano dopo, uno per squadra
+    ST.pt.forEach(function (p, i) {
+      if (!p.sq) return;
+      cercaSquadre(p.sq).then(function (r) { if (r.length) { ST.pt[i].l = stemma(r[0].tid, r[0].n); ST.pt[i].sq = r[0].n; salva(); disegnaDati(); } });
+    });
+    stato("ok", "Lette " + buone.length + " righe su " + righe.filter(function (r) { return r.trim(); }).length + ". Controllale qui sotto.");
+  }
+
+  // ── ESPN: stagione per stagione ────────────────────────────────────────
+  var CAR = {};   // pid -> { anno: [{slug, presenze, gol, ...}] }
+  var ORA = window.StagioneEspn ? StagioneEspn.stagione() : new Date().getFullYear();
+  function carrieraIntera(g) {
+    if (CAR[g.pid]) return Promise.resolve(CAR[g.pid]);
+    var passate = StagioneEspn.carriera(g.pid);
+    var adesso = g.tid ? StagioneEspn.giocatore(g.tid, g.pid).catch(function () { return []; }) : Promise.resolve([]);
+    return Promise.all([passate, adesso]).then(function (r) {
+      var per = {};
+      (r[0] || []).forEach(function (x) { (per[x.anno] = per[x.anno] || []).push(x); });
+      if ((r[1] || []).length) per[ORA] = r[1];
+      CAR[g.pid] = per;
+      return per;
+    });
+  }
+  // "solo campionato": le leghe nazionali (ita.1, eng.2...); "coppe": le europee
+  function passa(slug) {
+    slug = String(slug || "");
+    if (ST.comp === "campionato") return /^[a-z]{3}\.\d+$/.test(slug);
+    if (ST.comp === "coppe") return /^uefa\.(champions|europa)/.test(slug) && !/qual/.test(slug);
+    return !/friendly/.test(slug);
+  }
+  function etichettaStagione(a) { return a + "-" + String((a + 1) % 100).padStart(2, "0"); }
+  function prendiEspn() {
+    if (!ST.gio.length || !window.StagioneEspn) return;
+    el("stato").innerHTML = '<span>Leggo le carriere da ESPN&hellip;</span><span class="pbar"><span class="pfill"></span></span>';
+    Promise.all(ST.gio.map(carrieraIntera)).then(function (tutte) {
+      // le stagioni: le ultime N in cui almeno uno ha giocato
+      var anni = {};
+      tutte.forEach(function (per) { Object.keys(per).forEach(function (a) {
+        if (per[a].some(function (x) { return passa(x.slug) && x.presenze > 0; })) anni[a] = 1;
+      }); });
+      var lista = Object.keys(anni).map(Number).sort(function (a, b) { return a - b; }).slice(-ST.quante);
+      function somma(per, a, campo) {
+        var righe = (per[a] || []).filter(function (x) { return passa(x.slug); });
+        if (!righe.length) return null;
+        return righe.reduce(function (t, x) { return t + (x[campo] || 0); }, 0);
+      }
+      var campo = ST.k === "golpres" ? "presenze" : ST.misura;
+      ST.tab.x = lista.map(etichettaStagione);
+      ST.tab.v = lista.map(function (a) { return tutte.map(function (per) { return somma(per, a, campo); }); });
+      ST.tab.g = lista.map(function (a) { return tutte.map(function (per) { return somma(per, a, "gol"); }); });
+      salva(); disegnaDati();
+      stato(lista.length ? "ok" : "err", lista.length
+        ? "Prese " + lista.length + " stagioni da ESPN. La stagione in corso è contata fino all'ultima partita giocata."
+        : "ESPN non ha stagioni per questi giocatori con questo filtro.");
+    }).catch(function () { stato("err", "ESPN non risponde. Riprova, o scrivi i numeri a mano."); });
+  }
+
+  // ── la classifica: i numeri del campionato in corso ─────────────────────
+  function prendiClassifica() {
+    if (!ST.sq.length) return;
+    stato("", "Leggo le classifiche ESPN…");
+    var leghe = {};
+    ST.sq.forEach(function (q) { if (q.lega && /^[a-z]{3}\.\d+$/.test(q.lega)) leghe[q.lega] = 1; });
+    Promise.all(Object.keys(leghe).map(function (lg) {
+      return fetch("https://site.api.espn.com/apis/v2/sports/soccer/" + lg + "/standings")
+        .then(function (r) { return r.json(); }).catch(function () { return {}; });
+    })).then(function (cl) {
+      var per = {};
+      cl.forEach(function (j) {
+        var gruppi = j.children && j.children.length ? j.children : [j];
+        gruppi.forEach(function (ch) {
+          ((ch.standings || {}).entries || []).forEach(function (e) {
+            var s = {}; (e.stats || []).forEach(function (x) { s[x.name] = x.value; });
+            per[String((e.team || {}).id)] = s;
+          });
+        });
+      });
+      var MIS = [["Punti", "points"], ["Gol fatti", "pointsFor"], ["Gol subiti", "pointsAgainst"],
+                 ["Vittorie", "wins"], ["Pareggi", "ties"], ["Sconfitte", "losses"]];
+      var trovate = ST.sq.filter(function (q) { return per[q.tid]; }).length;
+      if (!trovate) { stato("err", "Nessuna di queste squadre è in una classifica ESPN di campionato."); return; }
+      // le righe che ci sono gia' (i trofei, per esempio) restano in fondo
+      var altre = ST.r.filter(function (r) { return !MIS.some(function (m) { return m[0] === r[0]; }); });
+      ST.r = MIS.map(function (m) { return [m[0], ST.sq.map(function (q) { var s = per[q.tid]; return s && s[m[1]] != null ? s[m[1]] : null; })]; })
+        .concat(altre.length ? altre : [["Trofei", ST.sq.map(function () { return null; })]]);
+      if (!ST.e) { ST.e = "CAMPIONATO " + etichettaStagione(ORA); el("e").value = ST.e; }
+      salva(); disegnaDati();
+      stato("ok", "Classifica presa per " + trovate + " squadre su " + ST.sq.length + ". I trofei vanno scritti a mano.");
+    });
+  }
+
+  // ── il pacchetto per la grafica ────────────────────────────────────────
+  function dati() {
+    var k = ST.k, d = { k: k, e: el("e").value.trim(), t: el("t").value.trim() || tipo(k).t, fo: el("fo").value.trim() };
+    function gio(g) { return { n: g.n, s: g.s, f: g.f }; }
+    if (k === "valore") {
+      var g0 = ST.gio[0] || {};
+      d.u = "mln €"; d.p = gio(g0);
+      // lo stemma e' il segno del trasferimento: due righe di fila con la
+      // stessa squadra (scritta in due modi, "Inter" e "Inter Milan") ne
+      // mettono uno solo
+      var prima = "";
+      d.pt = ST.pt.filter(function (p) { return p.v != null; }).map(function (p) {
+        var o = { x: p.x, v: p.v };
+        if (p.l && p.l !== prima) o.l = p.l;
+        if (p.l) prima = p.l;
+        return o;
+      });
+    } else if (k === "valori") {
+      d.u = "mln €"; d.x = ST.mv.x.slice();
+      d.p = ST.gio.map(function (g, j) { var o = gio(g); o.v = ST.mv.v.map(function (r) { return r[j]; }); return o; });
+    } else if (k === "stagioni" || k === "golpres") {
+      d.x = ST.tab.x.slice();
+      if (k === "stagioni") d.m = misura().n;
+      d.p = ST.gio.map(function (g, j) {
+        var o = gio(g); o.v = ST.tab.v.map(function (r) { return r[j]; });
+        if (k === "golpres") o.g = ST.tab.g.map(function (r) { return r[j]; });
+        return o;
+      });
+    } else if (k === "squadre") {
+      d.q = ST.sq.map(function (q) { return { n: q.n, l: q.l }; });
+      // una riga senza nemmeno un numero (i trofei non ancora scritti) non va in onda
+      d.r = ST.r.filter(function (r) { return r[0] && r[1].some(function (v) { return v != null; }); })
+        .map(function (r) { return [r[0], r[1].slice()]; });
+    }
+    return d;
+  }
+  function valido(d) {
+    var k = d.k;
+    if (k === "squadre") {
+      if (d.q.length < 2) { stato("err", "Servono almeno due squadre."); return false; }
+      if (!d.r.length) { stato("err", "Manca almeno una misura."); return false; }
+      return true;
+    }
+    if (!ST.gio.length) { stato("err", "Scegli il giocatore."); return false; }
+    if (k === "valore" && d.pt.length < 2) { stato("err", "Servono almeno due valori per fare una linea."); return false; }
+    if (k === "valori" && (ST.gio.length < 2 || d.x.length < 2)) { stato("err", "Servono almeno due giocatori e due righe."); return false; }
+    if ((k === "stagioni" || k === "golpres") && !d.x.length) { stato("err", "Mancano le stagioni: premi Prendi da ESPN o aggiungi le righe."); return false; }
+    return true;
+  }
+
+  function adattaPrev() { el("prev").style.transform = "scale(" + (el("prevbox").clientWidth / 1920) + ")"; }
+  window.addEventListener("resize", adattaPrev);
+  el("btnPrevChiudi").addEventListener("click", function () { el("prevwrap").style.display = "none"; el("prev").src = "about:blank"; });
+  el("btnPrev").addEventListener("click", function () {
+    var d = dati(); if (!valido(d)) return;
+    el("prevwrap").style.display = "block";
+    el("prev").src = "dataviz-vmix.html?d=" + b64url(d) + "&n=" + Date.now();
+    adattaPrev();
+    el("prevwrap").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    stato("", "Anteprima aggiornata.");
+  });
+  el("btnRegia").addEventListener("click", function () {
+    var d = dati(); if (!valido(d)) return;
+    var chi = d.k === "squadre" ? d.q.map(function (q) { return q.n; }) : (d.p && d.p.length ? d.p.map(function (p) { return p.n; }) : [d.p.n]);
+    var proposta = (d.t + " " + chi.filter(Boolean).join(" - ")).toUpperCase();
+    var titolo = window.prompt("Nome in scaletta di regia:", proposta);
+    if (titolo === null) return;
+    el("stato").innerHTML = '<span>Invio a ' + Destinazione.dove() + '&hellip;</span><span class="pbar"><span class="pfill" id="pfill"></span></span>';
+    fetch(PONTE, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(Object.assign({ token: TOKEN }, Destinazione.corpo({ grafica: "dataviz", titolo: titolo.trim() || proposta, dati: d })))
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.ok) {
+          var pf = el("pfill"); if (pf) pf.className = "pfill done";
+          setTimeout(function () { stato("ok", "Aggiunta a " + Destinazione.dove() + ". Dalla regia la mandi in onda."); }, 350);
+        } else stato("err", "Errore: " + (res.errore || "sconosciuto"));
+      })
+      .catch(function () { stato("err", "Ponte non raggiungibile."); });
+  });
+
+  function disegnaTutto() {
+    disegnaTipi(); disegnaPosti(); disegnaDati();
+    el("t").value = ST.t; el("fo").value = ST.fo; el("e").value = ST.e;
+  }
+  if (!ST.t) riempiTestata(true);
+  disegnaTutto();
+  rose();   // la si scarica subito: alla prima ricerca e' gia' qui
+})();
+</script>
+<script src="dev.js"></script>
+</body>
+</html>
