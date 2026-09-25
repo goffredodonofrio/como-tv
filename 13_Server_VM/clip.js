@@ -6026,22 +6026,20 @@ function velocitaTra(campioni, ora, finestra) {
   if (!ultimo || !primo || ultimo.t - primo.t < 4000) return null;
   return Math.max(0, (ultimo.b - primo.b) / ((ultimo.t - primo.t) / 1000));
 }
-function statoCopia() {
+async function statoCopia() {
   if (COPIA_ULTIMO && Date.now() - COPIA_ULTIMO.quando < 2500) return COPIA_ULTIMO;
-  // chi guarda la barra vuole il conto di adesso, non di dieci minuti fa
-  if (Date.now() - SPECCHIO_QUANDO > 120000) { try { aggiornaSpecchio(); } catch (e) {} }
   const base = path.join(QNAP_RADICE, SPECCHIO_DIR);
-  if (Date.now() - COPIA_PESO.quando > 20000) pesaCopia(base);
-  // i file a meta' si ripesano adesso; quello sparito e' stato rinominato: e' finito
+  // la passata sulla NAS gira in sottofondo ogni 20 secondi; la prima volta la si aspetta
+  if (Date.now() - COPIA_PESO.quando > 20000) { const g = giroNas(); if (!COPIA_PESO.quando) await g; }
+  // i file a meta' si ripesano adesso (sono pochi), senza bloccare; quello
+  // sparito e' stato rinominato: e' finito, e la prossima passata lo conta
   const ora = Date.now(), inArrivo = [];
   let inCorsoByte = 0;
-  COPIA_PESO.parziali = COPIA_PESO.parziali.filter((p) => {
-    let b; try { b = fs.statSync(p).size; } catch (e) {
-      try { COPIA_PESO.fatti += fs.statSync(p.replace(/\.parziale(\.[^/]*)?$/, "")).size; } catch (e2) {}
-      // un file finito: lo specchio si riconta alla prossima domanda, cosi' la partita si apre subito dalla NAS
-      SPECCHIO_QUANDO = 0;
-      COPIA_FILE.delete(p); return false;
-    }
+  const pesi = await Promise.all(COPIA_PESO.parziali.map((p) => fs.promises.stat(p).then((st) => st.size, () => null)));
+  const finito = [];
+  COPIA_PESO.parziali = COPIA_PESO.parziali.filter((p, i) => {
+    const b = pesi[i];
+    if (b === null) { finito.push(p); COPIA_FILE.delete(p); return false; }
     inCorsoByte += b;
     const cc = COPIA_FILE.get(p) || []; cc.push({ t: ora, b });
     while (cc.length > 2 && ora - cc[0].t > 60000) cc.shift();
@@ -6050,6 +6048,8 @@ function statoCopia() {
     return true;
   });
   for (const p of COPIA_FILE.keys()) if (!COPIA_PESO.parziali.includes(p)) COPIA_FILE.delete(p);
+  // un file appena finito: si ricontano specchio e peso (in sottofondo), cosi' la partita si apre subito dalla NAS
+  if (finito.length) giroNas();
   const sullaNas = COPIA_PESO.fatti + inCorsoByte, inCorso = inArrivo.length;
   COPIA_CAMPIONI.push({ t: ora, b: sullaNas });
   while (COPIA_CAMPIONI.length > 2 && ora - COPIA_CAMPIONI[0].t > 600000) COPIA_CAMPIONI.shift();
@@ -6230,26 +6230,51 @@ function statoNomi() {
   return { partite, sicure, daControllare, inAttesa, inCorso: [...CASA.attive.values()].filter((x) => x.passo === "tabellone").map((x) => x.partita),
            fatte: NOMI.fatte, verificate: NOMI.verificate, fallite: NOMI.fallite };
 }
-function aggiornaSpecchio() {
+// LA NAS SI LEGGE UNA VOLTA SOLA, IN SOTTOFONDO. Prima lo specchio faceva
+// 1.850 domande alla NAS una dopo l'altra (una per file dell'archivio), e il
+// peso della copia camminava la cartella: tutto bloccante. Con la copia che
+// scrive a 100 MB/s la NAS risponde piano, e il ponte restava fermo 40-60
+// secondi — pagine vuote, loghi in 504 (25/09/2026). Adesso: una passata
+// asincrona sulla cartella (dove ci sono solo i file arrivati), e specchio
+// e peso si calcolano in memoria da quella.
+let NAS_FILE = new Map();          // chiave S3 -> byte, per i file finiti
+let NAS_PARZIALI = [];             // percorsi dei file a meta'
+let nasInCorso = null;
+function giroNas() {
+  if (nasInCorso) return nasInCorso;
   const base = path.join(QNAP_RADICE, SPECCHIO_DIR);
-  let c = false; try { c = fs.statSync(base).isDirectory(); } catch (e) { c = false; }
-  const nuovo = new Map(); let partite = 0;
-  if (c) Object.keys(ARCHIVIO).forEach((rec) => {
-    const a = ARCHIVIO[rec]; if (!a || !a.chiave || !magazzinoInventario(a.bucket)) return;
-    const trovati = [];
-    for (const z of partiDi(a)) {
-      const f = path.join(base, z.chiave); let st;
-      try { st = fs.statSync(f); } catch (e) { return; }
-      if (!st.isFile() || (z.peso && st.size !== z.peso)) return;   // a meta' o diverso: non ancora
-      trovati.push([z.chiave, f]);
-    }
-    trovati.forEach((x) => nuovo.set(x[0], x[1])); partite++;
-  });
-  const cambiato = nuovo.size !== SPECCHIO.size;
-  SPECCHIO = nuovo; SPECCHIO_QUANDO = Date.now();
-  if (cambiato) { console.log("[clip] specchio S3: " + partite + " partite in casa (" + nuovo.size + " file) in " + base); annuncia(0, "clip"); }
-  return { partite, file: nuovo.size };
+  nasInCorso = (async () => {
+    const finiti = new Map(), parziali = [];
+    const giro = async (dir, rel, prof) => {
+      let voci; try { voci = await fs.promises.readdir(dir, { withFileTypes: true }); } catch (e) { return; }
+      for (const v of voci) {
+        if (v.name.startsWith(".") || v.name === "_script") continue;
+        const p = path.join(dir, v.name), r = rel ? rel + "/" + v.name : v.name;
+        if (v.isDirectory()) { if (prof < 8) await giro(p, r, prof + 1); continue; }
+        if (/\.parziale/.test(v.name)) { parziali.push(p); continue; }
+        try { finiti.set(r, (await fs.promises.stat(p)).size); } catch (e) {}
+      }
+    };
+    await giro(path.join(base, "TEMP"), "TEMP", 0);
+    NAS_FILE = finiti; NAS_PARZIALI = parziali;
+    // lo specchio: una partita e' in casa se c'e' TUTTA, al byte
+    const nuovo = new Map(); let partite = 0;
+    Object.keys(ARCHIVIO).forEach((rec) => {
+      const a = ARCHIVIO[rec]; if (!a || !a.chiave || !magazzinoInventario(a.bucket)) return;
+      const pz = partiDi(a);
+      if (!pz.length || !pz.every((z) => finiti.has(z.chiave) && (!z.peso || finiti.get(z.chiave) === z.peso))) return;
+      pz.forEach((z) => nuovo.set(z.chiave, path.join(base, z.chiave))); partite++;
+    });
+    const cambiato = nuovo.size !== SPECCHIO.size;
+    SPECCHIO = nuovo; SPECCHIO_QUANDO = Date.now();
+    let fatti = 0; finiti.forEach((b) => { fatti += b; });
+    Object.assign(COPIA_PESO, { quando: Date.now(), fatti, parziali: parziali.slice() });
+    if (cambiato) { console.log("[clip] specchio S3: " + partite + " partite in casa (" + nuovo.size + " file) in " + base); annuncia(0, "clip"); }
+    return { partite, file: nuovo.size };
+  })().finally(() => { nasInCorso = null; });
+  return nasInCorso;
 }
+function aggiornaSpecchio() { return giroNas(); }
 // una pagina dell'elenco, ma dall'inventario: stessa forma di S3
 function elencaInventario(mg, prefisso, delimitatore) {
   const pre = prefisso || "", oggetti = [], cartelle = new Set();
@@ -7232,11 +7257,24 @@ async function archivioScandaglia(p) {
     const n = b.replace(/^\d{6,9}\s*[-_ ]*/, " ").replace(/\d{1,2}\s+[a-z\u00e0-\u00f9]+\s+\d{4}/ig, " ").replace(/\d{2}-\d{2}-\d{2}/g, " ");
     return paroleSquadre(n).filter((w) => !PAROLE_VUOTE.has(w)).length >= 2 ? n : "";
   };
-  const soloSuoi = (gr, nome) => {
-    // vale solo dove i file con un nome di partita sono piu' d'uno
-    if (gr.file.filter((f) => nomeNelFile(f)).length < 2) return gr;
-    const giusti = gr.file.filter((f) => { const n = nomeNelFile(f); return !n || quantoSiSomigliano(nome, n) > 0; });
-    return giusti.length === gr.file.length ? gr : Object.assign({}, gr, { file: giusti });
+  const soloSuoi = (gr, nome, tag) => {
+    // 1) fuori i file che nel nome dicono UN'ALTRA partita: nella cartella
+    //    della Como Cup Como-AlUla non e' AlUla-Villarreal
+    const nostre = dueSquadre(nome);
+    const combacia = (x, y) => paroleSquadra(x).some((w) => paroleSquadra(y).some((v) => stessaParola(w, v)));
+    const suaPartita = (f) => {
+      const q = dueSquadre(path.basename(f.chiave));
+      if (!q || !nostre) return null;                      // il file non dice che partita e'
+      return (combacia(nostre[0], q[0]) && combacia(nostre[1], q[1])) || (combacia(nostre[0], q[1]) && combacia(nostre[1], q[0]));
+    };
+    const tenuti = gr.file.filter((f) => suaPartita(f) !== false);
+    // 2) se c'e' un file che porta proprio questa partita nella lingua chiesta,
+    //    vince lui (Villarreal-Como ITA prendeva il file piu' grosso della cartella)
+    if (tag) {
+      const giusti = tenuti.filter((f) => suaPartita(f) === true && (f.dentro + " " + f.file).toUpperCase().indexOf(tag) >= 0);
+      if (giusti.length) return Object.assign({}, gr, { file: giusti });
+    }
+    return tenuti.length === gr.file.length ? gr : Object.assign({}, gr, { file: tenuti });
   };
   PROPOSTE.forEach((pr) => {
     // lo studio sta spesso nello stesso file della partita (pre, intervallo,
@@ -7244,7 +7282,7 @@ async function archivioScandaglia(p) {
     const studio = DA_STUDIO.test(pr.nomePartita);
     let presa = null;
     for (const c of pr.classifica) {
-      const gr2 = soloSuoi(c.gr, pr.nomePartita);
+      const gr2 = soloSuoi(c.gr, pr.nomePartita, pr.tag);
       if (!gr2.file.length) continue;
       const scelta = scegliMateriale(gr2, pr.tag);
       if (!scelta || !scelta.pezzi.length) continue;
@@ -10822,6 +10860,10 @@ function espnDatiDi(rec) {
 async function espnTrova(rec) {
   const info = espnDatiDi(rec);
   if (!info || !info.quando) throw new Error("partita senza data");
+  // GIOVANILI E FEMMINILE NON STANNO SU ESPN (che ha le prime squadre): cercandole
+  // si trovava la prima squadra di quel giorno — Padova U19-Como U19 diventava
+  // Parma-Como, Como Femminile-Bresso diventava Lecce-Como (25/09/2026)
+  if (nonDaEspn(rec)) { ESPN[rec] = { mancante: "giovanili o femminile: ESPN non le ha", quando: info.quando }; return ESPN[rec]; }
   const leghe = legheDi(info.competizione);
   if (!leghe.length) { ESPN[rec] = { mancante: "competizione non coperta", quando: info.quando }; return ESPN[rec]; }
   const squadre = squadreDi(info.partita);
@@ -10859,12 +10901,27 @@ async function espnTrova(rec) {
         // quattro ore dopo la registrazione dell'Entella.
         const storpiata = !nonPresa || suoi.some((n) => somigliaNome(n, nonPresa.tutto));
         const stessaOra = buoni[0].dt < 2.5 * 3600000;
-        if (!altre.length && (storpiata || stessaOra) && buoni[0].dt < 6 * 3600000) { trovato = buoni[0].ev; legaTrovata = lega; break; }
+        // lo stesso orario da solo NON basta: Padova U19-Como U19 e Parma-Como
+        // cominciavano insieme ed erano due partite diverse (25/09/2026)
+        void stessaOra;
+        if (!altre.length && storpiata && buoni[0].dt < 6 * 3600000) { trovato = buoni[0].ev; legaTrovata = lega; break; }
       }
     }
     if (trovato) break;
   }
   if (!trovato) { ESPN[rec] = { mancante: "non trovata su ESPN", quando: info.quando }; return ESPN[rec]; }
+  // L'ULTIMA PAROLA: le due squadre dell'evento devono essere le nostre due,
+  // con il confronto severo (stessaSquadra). La ricerca qui sopra e' larga
+  // apposta, e "nacional" dentro "internacional" le bastava.
+  {
+    const noi = dueSquadreDi(ARCHIVIO[rec] || { partita: info.partita });
+    const loro = ((((trovato.competitions || [])[0] || {}).competitors) || []).map((c) => (c.team || {}).displayName || "");
+    if (noi && loro.length === 2) {
+      const ok = (stessaSquadra(noi[0], loro[0], info.competizione) && stessaSquadra(noi[1], loro[1], info.competizione)) ||
+                 (stessaSquadra(noi[0], loro[1], info.competizione) && stessaSquadra(noi[1], loro[0], info.competizione));
+      if (!ok) { ESPN[rec] = { mancante: "ESPN ha solo un'altra partita: " + loro.join(" - "), quando: info.quando }; return ESPN[rec]; }
+    }
+  }
   const sm = await espnPrendi("https://site.api.espn.com/apis/site/v2/sports/soccer/" + legaTrovata + "/summary?event=" + trovato.id);
   // GAMECAST: nella stessa risposta c'e' la telecronaca scritta, che finora
   // buttavamo via. Sono cinque volte gli eventi chiave — tiri, parate,
@@ -11010,6 +11067,8 @@ const ALIAS_STEMMI = {
   "u de cile": "Universidad de Chile", "univ de cile": "Universidad de Chile", "universitario de cile": "Universidad de Chile",
   "universidad de cile": "Universidad de Chile", "u de chile": "Universidad de Chile", "betis siviglia": "Real Betis", "betis": "Real Betis",
   "junior barranquilla": "Junior", "atletico junior": "Junior", "universidad cile": "Universidad de Chile", "losc lille": "Lille", "racing avellaneda": "Racing Club", "racing club avellaneda": "Racing Club", "hadjuk split": "Hajduk Split", "hadjuk spalato": "Hajduk Split",
+  "universidad central": "UCV FC", "universidad central ven": "UCV FC", "afs": "AVS", "tarma": "ADT", "colonia": "FC Cologne",
+  "psg": "Paris Saint-Germain", "inter": "Internazionale",
   "idv": "Independiente del Valle", "ind del valle": "Independiente del Valle", "al qadisiyah": "Al Qadsiah", "al qadsiyah": "Al Qadsiah"
 };
 // PAESE DELLA COMPETIZIONE: TheSportsDB cerca in tutto il mondo, e "Gorica"
@@ -11133,7 +11192,7 @@ const MESI_NOMI = "gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|set
 function dueSquadre(testo) {
   let t = String(testo || "").replace(/\u{1F3A5}/gu, " ").replace(/\.(mp4|mov|mxf|mkv|m4v|ts)$/i, "").replace(/_+/g, " ")
     .replace(/\[[^\]]*\]|\([^)]*\)/g, " ")
-    .replace(new RegExp("\\b\\d{1,2}\\s+(" + MESI_NOMI + ")\\s+\\d{4}\\b.*$", "i"), " ")
+    .replace(new RegExp("\\d{1,2}\\s+(" + MESI_NOMI + ")\\s+\\d{4}\\b.*$", "i"), " ")
     .replace(/^\s*\d{6,9}\s*[_-]?\s*/, "")
     .replace(/\b(MultiCorder\d*|Output\s*\d+|BCK|SRT|FULL\s*MATCH|FULLMATCH|FULL|PARTITA\s+INTERA|CLEAN\s*FEED|CLEANFEED|INTERNATIONAL\s+SOUND|COMMENTARY|AUDIO\s*ONLY|PGM FX|PGM_FX|GARA\s*\d|GAME\s*\d|LEG\s*\d|SEMI\s*FINALS?|SEMIFINALE|QUARTI|OTTAVI|FINALE?)\b/gi, " ")
     .replace(/_+/g, " ").replace(/\s+/g, " ").trim();
@@ -11310,8 +11369,10 @@ function logoEvento(a) {
 function titoloDi(a) {
   if (a.soloS3 && titoloAMano(a.dove)) return titoloAMano(a.dove);
   const p = String(a.partita || "").trim().replace(/\s*[-–]\s*(ITA|ENG)\s*$/i, "");
-  // un nome che e' solo una data o "3 CLEANFEED" non dice niente
-  const vuoto = /^\d{6,9}$|^\d*[\s_]*clean ?feed$/i.test(p.trim());
+  // un nome che e' solo una data o "3 CLEANFEED" non dice niente; "20260728_COMO CUP CLEANFEED" dice COMO CUP
+  const pulito = p.replace(/\.(mp4|mov|mxf|mkv)$/i, "").replace(/^\d{6,9}[\s_-]*/, "").replace(/[\s_-]*clean ?feed\s*$/i, "").replace(/_+/g, " ").trim();
+  const vuoto = !pulito || /^\d{6,9}$|^\d*[\s_]*clean ?feed$/i.test(p.trim());
+  if (!vuoto && pulito !== p && !/multicorder|output\s*\d/i.test(pulito)) return pulito;
   if (p && !vuoto && !/multicorder|output\s*\d/i.test(p) && p.replace(/[\s\-–]/g, "").length > 2) return p.replace(/\s*[-–]\s*$/, "");
   const cartelle = String(a.dove || "").split("/").filter((x) => x && !/^(TEMP|\d{6,9}|ITA|ENG|\[.*\]|\d*[\s_]*CLEAN ?FEED|cleanfeed)$/i.test(x.trim()));
   const t = (cartelle.pop() || "").replace(/_+/g, " ").trim();
@@ -11344,6 +11405,136 @@ function studioDi(rec, a) {
     if (q && q.length === 2) squadre = q;
   }
   return { formato, sotto, squadre };
+}
+// LA STESSA SQUADRA? Il nostro nome (scritto a mano, spesso in italiano) e
+// quello di ESPN. Ne' troppo largo — "nacional" sta dentro "internacional",
+// e Nacional-Atletico Nacional diventava Bahia-Internacional — ne' troppo
+// stretto: "inter" e' l'inizio di "internazionale", "U de Cile" e'
+// l'Universidad de Chile, e lo stemma uguale vuol dire squadra uguale.
+function stessaSquadra(noi, loro, comp) {
+  const chiaro = senzaAccenti(senzaGiovanili(noi)).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const alias = ALIAS_STEMMI[chiaro];
+  const A = paroleSquadra(senzaGiovanili(alias || noi)), B = paroleSquadra(loro);
+  if (A.some((w) => B.some((v) => stessaParola(w, v) || (w.length >= 3 && v.length > w.length && v.startsWith(w))))) return true;
+  if (alias && nomeSemplice(alias) === nomeSemplice(loro)) return true;
+  const idNoi = squadraEspnDalNome(noi, comp), idLoro = squadraEspnDalNomeEspn(loro);
+  return !!(idNoi && idLoro && idNoi === idLoro);
+}
+// giovanili e femminile: dal titolo, dalla competizione o dalla cartella
+function nonDaEspn(rec) {
+  const a = ARCHIVIO[rec] || {};
+  return /\b(U\s?\d{2}|UNDER\s?\d{2}|PRIMAVERA|FEMMINILE|WOMEN|GIOVANILI)\b/i.test([a.partita, a.competizione, a.dove].join(" "));
+}
+// L'EVENTO ESPN E' DAVVERO QUESTA PARTITA? Le due squadre nostre devono
+// esserci tutte e due tra quelle dell'evento.
+function espnCombacia(rec) {
+  const a = ARCHIVIO[rec], e = ESPN[rec];
+  if (!a || !e || !e.id) return true;
+  if (nonDaEspn(rec)) return false;
+  const noi = dueSquadreDi(a);
+  const loro = (e.squadre && e.squadre.length === 2) ? e.squadre : String(e.nome || "").split(/\s+(?:at|vs\.?)\s+/i);
+  if (!noi || loro.length !== 2) return true;             // non si puo' dire: si lascia
+  const sim = (x, y) => stessaSquadra(x, y, a.competizione);
+  return (sim(noi[0], loro[0]) && sim(noi[1], loro[1])) || (sim(noi[0], loro[1]) && sim(noi[1], loro[0]));
+}
+// UNO STEMMA DA UN NOME SOLO (conferenze, giornate): redazione, ESPN, TheSportsDB
+function unoStemma(nome, comp) {
+  const suo = fileRedazione(nome); if (suo) return suo;
+  const id = squadraEspnDalNome(nome, comp);
+  if (id) return stemmaEspn(id, "");
+  return tsdbDi(nome, comp);
+}
+// I CONTENUTI SPECIALI, disegnati come gli studi (Goffredo, 25/09/2026):
+//   conferenza stampa -> lo stemma della squadra e la scritta
+//   giornata di Como Cup -> gli stemmi di tutte le squadre di quel giorno,
+//                           lette dai nomi dei file della cartella del giorno
+function specialeDi(rec, a) {
+  const t = String(a.partita || "");
+  const conf = /(?:REC\s+)?(?:CONF(?:ERENZA)?\.?\s*STAMPA|PRESS\s+CONFERENCE)\s+(.+)$/i.exec(t);
+  if (conf) {
+    const chi = conf[1].split(/\s+[-–]\s+/)[0].trim();
+    const comp = /sudamericana/i.test(t + " " + a.competizione) ? "Copa Sudamericana" : a.competizione;
+    return { formato: "Conferenza stampa", sotto: chi, squadre: [{ nome: chi, stemma: unoStemma(chi, comp) }] };
+  }
+  if ((/como cup/i.test(a.competizione || "") || /^COMO CUP\b/i.test(titoloDi(a))) && !dueSquadreDi(a)) {
+    const g = a.giorno || (Date.parse(a.quando) ? giornoRoma(Date.parse(a.quando)) : "");
+    const mg = magazzinoInventario(a.bucket);
+    // SOLO LA CARTELLA DEL TORNEO: quel giorno nella cartella del giorno ci
+    // sono anche altre partite (Aberdeen, Porto…). Se il file sta alla radice
+    // del giorno, si guarda la cartella "COMO CUP" accanto.
+    // fino alla cartella del torneo compresa: "TEMP/20260728/COMO CUP/ITA/…" -> "TEMP/20260728/COMO CUP/"
+    const pezzi = String(a.dove || "").split("/"), i = pezzi.findIndex((x) => /^\s*como\s*cup\s*$/i.test(x));
+    let cartella = i >= 0 ? pezzi.slice(0, i + 1).join("/") + "/" : "";
+    if (!cartella && g && mg) {
+      const c = elencaInventario(mg, "TEMP/" + g + "/", "/").cartelle.find((x) => /como\s*cup/i.test(x));
+      if (c) cartella = c;
+    }
+    const nomi = [];
+    if (cartella && mg) elencaInventario(mg, cartella, "").oggetti.forEach((o) => {
+      if (!VIDEO.test(o.chiave)) return;
+      const q = dueSquadre(path.basename(o.chiave)); if (!q) return;
+      q.forEach((n) => {
+        const p = paroleSquadra(senzaGiovanili(n));
+        // la stessa squadra scritta male (Famalico/Famalicao) non e' una squadra in piu'
+        if (p.length && !nomi.some((m) => paroleSquadra(senzaGiovanili(m)).some((v) => p.some((w) => stessaParola(w, v))))) nomi.push(n);
+      });
+    });
+    nomi.splice(6);
+    if (!nomi.length) return null;
+    return { formato: "Como Cup", sotto: nomi.join(" · "), squadre: nomi.map((n) => ({ nome: n, stemma: unoStemma(n, "") })) };
+  }
+  return null;
+}
+// I LOGHI DI UN EVENTO: quelli nominati nel titolo o nella competizione
+// (un sorteggio Libertadores + Sudamericana ne ha due), e "CW 183" e' Cage
+// Warriors, "KC53" Karate Combat
+const EVENTI_NOTI = [
+  [/libertadores/i, "copa-libertadores"], [/sudamericana/i, "copa-sudamericana"], [/champions/i, "uefa-champions-league"],
+  [/cage\s*warriors|^\s*CW\s*\d+/i, "cage-warriors"], [/karate\s*combat|\bKC\s*\d+/i, "karate-combat"],
+  [/maratona|marathon|marat[oó]n/i, "maratona-valencia"], [/kings\s*league/i, "kings-league"], [/como\s*cup/i, "como-cup"]
+];
+function loghiEvento(a) {
+  const testo = String(a.partita || "") + " | " + String(a.competizione || "") + " | " + titoloDi(a);
+  const fuori = [];
+  EVENTI_NOTI.forEach(([re, slug]) => {
+    if (!re.test(testo)) return;
+    for (const est of [".png", ".svg", ".webp"]) if (fs.existsSync(path.join(STEMMI_DIR, "evento-" + slug + est))) { fuori.push("/loghi/evento-" + slug + est); break; }
+  });
+  const suo = logoEvento(a); if (suo && fuori.indexOf(suo) < 0) fuori.push(suo);
+  return fuori.slice(0, 3);
+}
+// LA COMPETIZIONE DA SCRIVERE in alto a sinistra: quella di Airtable, o
+// quella che si capisce dal titolo quando Airtable non c'e'
+const LEGHE_NOMI = { "ita.1": "Serie A", "ita.2": "Serie B", "ita.coppa_italia": "Coppa Italia" };
+function competizioneVista(a, rec) {
+  const c = String(a.competizione || "").trim();
+  // "Como 1907 | Prima Squadra" in Airtable e' un contenitore: dentro ci sono
+  // femminile, Primavera e amichevoli. Si dice che cosa e' davvero.
+  if (/prima squadra/i.test(c)) {
+    const tutto = [a.partita, a.dove].join(" ");
+    if (/femminile|women/i.test(tutto)) return "Como Women";
+    if (/\b(U\s?\d{2}|UNDER\s?\d{2}|PRIMAVERA)\b/i.test(tutto)) return "Primavera";
+    const e = rec ? ESPN[rec] : null;
+    if (e && e.id && LEGHE_NOMI[e.lega]) return LEGHE_NOMI[e.lega];
+    const m = Date.parse(a.quando) ? new Date(Date.parse(a.quando)).getUTCMonth() + 1 : 0;
+    if (m >= 6 && m <= 8) return "Amichevole";
+    // in stagione, e ESPN (che ha la prima squadra) non la conosce: e' la Primavera
+    return m ? "Primavera" : "Como 1907";
+  }
+  if (c && !/^(ITA|ENG|EVENTO REC)$/i.test(c) && !/ vs | - /.test(c)) return c;
+  const t = String(a.partita || "") + " " + titoloDi(a);
+  const u = /\bU\s?(\d{2})\b|\bUNDER\s?(\d{2})\b/i.exec(t);
+  if (u) return "Under " + (u[1] || u[2]);
+  if (/femminile|women/i.test(t)) return "Como Women";
+  if (/primavera/i.test(t)) return "Primavera";
+  if (/cage\s*warriors|^\s*CW\s*\d+/i.test(t)) return "Cage Warriors";
+  if (/karate\s*combat|\bKC\s*\d+/i.test(t)) return "Karate Combat";
+  if (/libertadores/i.test(t)) return "Copa Libertadores";
+  if (/sudamericana/i.test(t)) return "Copa Sudamericana";
+  if (/champions/i.test(t)) return "UEFA Champions League";
+  if (/como\s*cup/i.test(t)) return "Como Cup";
+  if (/marat/i.test(t)) return "Maratona";
+  return "";
 }
 // telecronista e lingua: l'inglese e' sempre Paul Dempsey; l'audio senza voce non ha telecronista
 function voceDi(rec, a) {
@@ -13574,7 +13765,7 @@ const AZIONI = {
         const r = regs.find((x) => x.arch.chiave === relSuo || (x.arch.pezzi || []).some((z) => z.chiave === relSuo));
         if (r) { v.reg = r.id; v.partita = v.partita || r.titolo; v.durata = r.durata || 0; if (!v.rec && r.arch.rec) v.rec = r.arch.rec; v.telecronaca = !!(PARLATO[r.id] && (PARLATO[r.id].pezzi || []).length); }
         const a = v.rec && ARCHIVIO[v.rec]; if (a) { v.quandoPartita = a.quando || a.data || ""; v.competizione = a.competizione || "";
-          v.squadre = squadreConStemma(v.rec, a); v.voce = voceDi(v.rec, a); v.ris = risultatoDi(a); v.studio = studioDi(v.rec, a); v.titolo = titoloDi(a); v.evento = logoEvento(a); if (!v.durata && a.pezzi) v.durata = (a.pezzi.reduce((n, z) => n + (z.minuti || 0), 0)) * 60; v.puntata = puntata(a); }
+          v.squadre = squadreConStemma(v.rec, a); v.voce = voceDi(v.rec, a); v.ris = risultatoDi(a); v.studio = studioDi(v.rec, a) || specialeDi(v.rec, a); v.titolo = titoloDi(a); v.eventi = loghiEvento(a); v.compVista = competizioneVista(a, v.rec); if (!v.durata && a.pezzi) v.durata = (a.pezzi.reduce((n, z) => n + (z.minuti || 0), 0)) * 60; v.puntata = puntata(a); }
         fuori.push(v);
       }
     };
@@ -13601,7 +13792,8 @@ const AZIONI = {
                    // per l'anteprima: stemmi, telecronista e lingua, risultato
                    // l'anteprima solo per quelle che la Libreria mostra (in casa); gli stemmi
                    // delle altre li prepara prepararaStemmi in sottofondo
-                   ...(inCasa(a) ? { squadre: squadreConStemma(k, a), voce: voceDi(k, a), ris: risultatoDi(a), studio: studioDi(k, a), titolo: titoloDi(a), evento: logoEvento(a) } : {}),
+                   ...(inCasa(a) ? { squadre: squadreConStemma(k, a), voce: voceDi(k, a), ris: risultatoDi(a), studio: studioDi(k, a) || specialeDi(k, a),
+                                    titolo: titoloDi(a), eventi: loghiEvento(a), compVista: competizioneVista(a, k) } : {}),
                    forse: a.riconosciuta && a.riconosciuta.sicura === false ? a.riconosciuta.nome : "" });
       suS3++;
     });
@@ -13624,6 +13816,20 @@ const AZIONI = {
     a.partita = t; scriviArchivio(); STEMMI_CACHE.clear();
     return { ok: true, rec: p.rec, titolo: t };
   },
+  "clip-espn-controllo": (p) => {
+    const sbagliate = Object.keys(ESPN).filter((rec) => ESPN[rec] && ESPN[rec].id && ARCHIVIO[rec] && !espnCombacia(rec))
+      .map((rec) => ({ rec, partita: ARCHIVIO[rec].partita, espn: ESPN[rec].nome || (ESPN[rec].squadre || []).join(" - "), quando: ARCHIVIO[rec].quando }));
+    if (p.applica) {
+      sbagliate.forEach((x) => {
+        const a = ARCHIVIO[x.rec];
+        ESPN[x.rec] = { mancante: "abbinamento ESPN sbagliato, tolto il " + new Date().toISOString().slice(0, 10), quando: a.quando };
+        // i boati misurati su azioni di un'altra partita non valgono: il giro della casa li rifa'
+        delete a.boati; delete a.boatiFatti;
+      });
+      if (sbagliate.length) { scriviEspn(); scriviArchivio(); STEMMI_CACHE.clear(); }
+    }
+    return { ok: true, sbagliate, tolte: p.applica ? sbagliate.length : 0 };
+  },
   "clip-stemmi-verifica": () => {
     const tsdbNome = {}; Object.keys(TSDB || {}).forEach((k) => { if (TSDB[k]) tsdbNome[TSDB[k].id] = TSDB[k].nome; });
     const visti = {};
@@ -13645,14 +13851,15 @@ const AZIONI = {
     const squadre = Object.values(visti).sort((x, y) => y.partite - x.partite);
     // e i contenuti che non sono ne' partite ne' studi: restano col titolo
     const altri = Object.keys(ARCHIVIO).filter((k) => {
-      const a = ARCHIVIO[k]; return a && a.chiave && !squadreConStemma(k, a) && !studioDi(k, a);
-    }).map((k) => { const a = ARCHIVIO[k]; return { rec: k, titolo: titoloDi(a), competizione: a.competizione || "", quando: a.quando || "",
-      senzaAirtable: !!a.soloS3, inCasa: inCasa(a), logo: logoEvento(a) }; });
-    return { ok: true, squadre, altri, conStemma: squadre.filter((x) => !x.fonti.sigla || Object.keys(x.fonti).length > 1).length, totale: squadre.length };
+      const a = ARCHIVIO[k]; return a && a.chiave && !squadreConStemma(k, a) && !studioDi(k, a) && !specialeDi(k, a);
+    }).map((k) => { const a = ARCHIVIO[k]; return { rec: k, titolo: titoloDi(a), competizione: competizioneVista(a), quando: a.quando || "",
+      senzaAirtable: !!a.soloS3, inCasa: inCasa(a), loghi: loghiEvento(a) }; });
+    const speciali = Object.keys(ARCHIVIO).map((k) => { const a = ARCHIVIO[k]; const sp = a && a.chiave && specialeDi(k, a); return sp ? { titolo: titoloDi(a), ...sp } : null; }).filter(Boolean);
+    return { ok: true, squadre, altri, speciali, conStemma: squadre.filter((x) => !x.fonti.sigla || Object.keys(x.fonti).length > 1).length, totale: squadre.length };
   },
-  "clip-archivio-copia": () => Object.assign({}, statoCopia(), { nomi: statoNomi(), casa: statoCasa() }),
+  "clip-archivio-copia": async () => Object.assign({}, await statoCopia(), { nomi: statoNomi(), casa: statoCasa() }),
   // quante partite S3 sono gia' in casa (ricontate adesso)
-  "clip-archivio-specchio": () => Object.assign({ ok: true, cartella: path.join(QNAP_RADICE, SPECCHIO_DIR) }, aggiornaSpecchio()),
+  "clip-archivio-specchio": async () => Object.assign({ ok: true, cartella: path.join(QNAP_RADICE, SPECCHIO_DIR) }, await aggiornaSpecchio()),
   // UNA POSA: un fotogramma fermo della registrazione al secondo chiesto,
   // fatto una volta e tenuto nella cartella della registrazione. Serve alle
   // schede della Libreria (una partita si riconosce dal campo, non dal
@@ -14645,7 +14852,7 @@ function avvio(opz) {
   setInterval(() => { try { giraAnteprime(); } catch (e) {} }, ANTEPRIMA_OGNI * 1000).unref();
   setInterval(() => { giroEspn().catch(() => {}); }, GIRO_ESPN).unref();
   // le partite S3 che arrivano sulla NAS: ogni dieci minuti si guarda chi e' in casa
-  setTimeout(() => { try { aggiornaSpecchio(); } catch (e) { console.log("[clip] specchio: " + e.message); } }, 15000).unref();
+  setTimeout(() => { aggiornaSpecchio().catch((e) => console.log("[clip] specchio: " + e.message)); }, 15000).unref();
   // i nomi delle partite in casa: il giro riparte ogni cinque minuti (e da solo appena finisce una)
   setTimeout(() => { try { giroNomi(); } catch (e) {} }, 60000).unref();
   setInterval(() => { try { giroNomi(); } catch (e) {} }, 300000).unref();
@@ -14659,7 +14866,7 @@ function avvio(opz) {
   setTimeout(() => { if (Date.now() - (CATALOGO.quando || 0) > 7 * 86400000) aggiornaCatalogo().catch(catalogoNo); }, 30000).unref();
   setInterval(() => { aggiornaCatalogo().catch(catalogoNo); }, 7 * 86400000).unref();
   setInterval(() => { giroCasa().catch(() => {}); }, 120000).unref();
-  setInterval(() => { try { aggiornaSpecchio(); } catch (e) { console.log("[clip] specchio: " + e.message); } }, 600000).unref();
+  setInterval(() => { aggiornaSpecchio().catch((e) => console.log("[clip] specchio: " + e.message)); }, 600000).unref();
   // Gli appunti delle partite appena giocate: la redazione li scrive nei
   // giorni dopo, quindi si ripassa una finestra corta e si lascia stare
   // il resto dell'archivio, che non cambia piu'.
