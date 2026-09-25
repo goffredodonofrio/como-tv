@@ -6176,12 +6176,13 @@ async function giroCasa() {
   }
 }
 function statoCasa() {
-  const n = { partite: 0, espn: 0, cronometro: 0, tabellone: 0, boati: 0, finite: 0, studio: 0 };
+  const n = { partite: 0, espn: 0, appunti: 0, cronometro: 0, tabellone: 0, boati: 0, finite: 0, studio: 0 };
   Object.keys(ARCHIVIO).forEach((k) => {
     const a = ARCHIVIO[k];
     if (!a || !a.chiave || !magazzinoInventario(a.bucket) || !inCasa(a)) return;
     n.partite++;
     if (ESPN[k]) n.espn++;
+    if (((APPUNTI[k] || {}).righe || []).length) n.appunti++;
     if (a.orologio || a.orologioFallito) n.cronometro++;
     if (a.tabellone || a.tabelloneFallito) n.tabellone++;
     if (a.boatiFatti) n.boati++;
@@ -8786,6 +8787,37 @@ function chiRacconta(f) {
   }
   return "";
 }
+// GLI APPUNTI SONO DELLA PARTITA, NON DELLA VERSIONE. La redazione li scrive
+// sulla riga ITA; la ENG e l'audio internazionale sono la stessa partita e
+// restavano senza (113 partite in casa su 274, il 25/09/2026). Li ereditano
+// dalla gemella — stesso giorno, stesse squadre — segnati "ereditati": i
+// minuti sono della partita, e il cronometro di ogni file li mette al secondo.
+function appuntiGemelli() {
+  const conAppunti = new Map();
+  Object.keys(ARCHIVIO).forEach((k) => {
+    const a = ARCHIVIO[k], ap = APPUNTI[k];
+    if (!a || !ap || !(ap.righe || []).length || ap.ereditati || DA_STUDIO.test(a.partita || "")) return;
+    const c = chiaveGemella(a); if (!c) return;
+    // a parita', quella in italiano (e' li' che scrive la redazione)
+    if (!conAppunti.has(c) || /\bITA\b/i.test(a.partita || "")) conAppunti.set(c, k);
+  });
+  let dati = 0;
+  Object.keys(ARCHIVIO).forEach((k) => {
+    const a = ARCHIVIO[k];
+    if (!a || k.startsWith("s3:") || DA_STUDIO.test(a.partita || "")) return;
+    if (APPUNTI[k] && (APPUNTI[k].righe || []).length && !APPUNTI[k].ereditati) return;
+    const c = chiaveGemella(a), da = c && conAppunti.get(c);
+    if (!da || da === k) return;
+    const nuovo = !APPUNTI[k] || APPUNTI[k].ereditati !== da;
+    const eng = /(^|[^A-Z])ENG([^A-Z]|$)/.test(String(a.partita || "").toUpperCase());
+    APPUNTI[k] = Object.assign({}, APPUNTI[da], { partita: a.partita || APPUNTI[da].partita, ereditati: da,
+      telecronista: eng ? "Paul Dempsey" : (/AUDIO ?ONLY/i.test(a.partita || "") ? "" : APPUNTI[da].telecronista) });
+    // col puntamento fatto senza appunti si rifanno i boati
+    if (nuovo) { delete a.boatiFatti; dati++; }
+  });
+  if (dati) { scriviArchivioAppunti(); scriviArchivio(); console.log("[clip] appunti: " + dati + " versioni (ENG, audio) prendono quelli della gemella"); }
+  return dati;
+}
 async function appuntiImporta(p) {
   const giorni = num(p.giorni, 1, 3650, 400);
   const tetto = num(p.quante, 1, 5000, 1200);
@@ -8826,6 +8858,7 @@ async function appuntiImporta(p) {
   } while (offset && ++giri < 30 && viste < tetto);
 
   scriviArchivioAppunti();
+  appuntiGemelli();
   return { ok: true, partiteViste: viste, partiteConAzioni: conRighe, azioni: righe };
 }
 
@@ -8885,6 +8918,7 @@ async function appuntiStoriciImporta(p) {
   STORICI = eventi;
   try { fs.writeFileSync(fileStorici(), JSON.stringify(STORICI)); } catch (e) {}
   scriviArchivioAppunti();
+  appuntiGemelli();
   console.log("[clip] base storica: " + viste + " partite, " + conRighe + " con appunti, " + righe + " righe");
   return { ok: true, partiteViste: viste, partiteConAzioni: conRighe, azioni: righe };
 }
@@ -14910,6 +14944,7 @@ function avvio(opz) {
   setTimeout(() => { giroCasa().catch(() => {}); }, 90000).unref();
   // il catalogo delle squadre ESPN per gli stemmi: una volta a settimana
   leggiCatalogo();
+  setTimeout(() => { try { appuntiGemelli(); } catch (e) { console.log("[clip] appunti gemelli: " + e.message); } }, 40000).unref();
   setTimeout(() => {
     let n = 0;
     Object.keys(ESPN).forEach((k) => { if (ESPN[k] && ESPN[k].mancante === "titolo senza due squadre" && ARCHIVIO[k] && dueSquadre(ARCHIVIO[k].partita)) { delete ESPN[k]; n++; } });
