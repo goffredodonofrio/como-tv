@@ -11138,6 +11138,8 @@ function dueSquadre(testo) {
     .replace(/\b(MultiCorder\d*|Output\s*\d+|BCK|SRT|FULL\s*MATCH|FULLMATCH|FULL|PARTITA\s+INTERA|CLEAN\s*FEED|CLEANFEED|INTERNATIONAL\s+SOUND|COMMENTARY|AUDIO\s*ONLY|PGM FX|PGM_FX|GARA\s*\d|GAME\s*\d|LEG\s*\d|SEMI\s*FINALS?|SEMIFINALE|QUARTI|OTTAVI|FINALE?)\b/gi, " ")
     .replace(/_+/g, " ").replace(/\s+/g, " ").trim();
   t = t.replace(/\s\d{1,2}\s*-\s*\d{1,2}\b.*$/, "").trim();                       // il risultato e quello che segue
+  // "UNIVERSITARIO (PERU)-BARCELONA": tolto il paese resta "UNIVERSITARIO  -BARCELONA"
+  t = t.replace(/\s+-(?=\S)/g, " - ").replace(/(?<=\S)-\s+/g, " - ");
   t = t.replace(/(\s*[-–]\s*|\s+)(ITA|ENG|ITALIANO|ENGLISH)\s*$/i, "").replace(/^[\s\-–:]+|[\s\-–:]+$/g, "").trim();
   const seg = t.split(/\s+[-–]\s+/).map((x) => x.trim()).filter(Boolean);
   let coppia = null;
@@ -11230,10 +11232,12 @@ async function cercaTsdb() {
 // Le due squadre di una partita, con lo stemma (o "": la pagina fa la sigla)
 function squadreConStemma(rec, a) {
   const chiaveCache = rec + "|" + (a.partita || "") + "|" + (a.chiave || "");
-  if (STEMMI_CACHE.has(chiaveCache)) return STEMMI_CACHE.get(chiaveCache);
+  // la memoria scade: un "senza stemma" deciso prima che ESPN fosse caricato non deve restare
+  const c = STEMMI_CACHE.get(chiaveCache);
+  if (c && Date.now() - c.t < 15 * 60000) return c.v;
   // l'MMA e il karate non hanno squadre ne' stemmi: resta il titolo
   const nomi = DA_STUDIO.test(a.partita || "") || /cage warriors|karate/i.test(a.competizione || "") ? null : dueSquadreDi(a);
-  if (!nomi) { STEMMI_CACHE.set(chiaveCache, null); return null; }
+  if (!nomi) { STEMMI_CACHE.set(chiaveCache, { v: null, t: Date.now() }); return null; }
   const e = ESPN[rec] || {};
   // nel confronto con l'evento le parole di tante squadre non contano: Boca
   // Juniors e Argentinos Juniors hanno in comune solo "juniors"
@@ -11269,7 +11273,7 @@ function squadreConStemma(rec, a) {
     if (!id) { st = tsdbDi(nome, a.competizione); if (!st && TSDB_CODA.size) manca = true; }
     return { nome, stemma: st };
   });
-  if (!manca) STEMMI_CACHE.set(chiaveCache, fuori);
+  if (!manca) STEMMI_CACHE.set(chiaveCache, { v: fuori, t: Date.now() });
   return fuori;
 }
 function preparaStemmi() {
@@ -11306,9 +11310,15 @@ function logoEvento(a) {
 function titoloDi(a) {
   if (a.soloS3 && titoloAMano(a.dove)) return titoloAMano(a.dove);
   const p = String(a.partita || "").trim().replace(/\s*[-–]\s*(ITA|ENG)\s*$/i, "");
-  if (p && !/multicorder|output\s*\d/i.test(p) && p.replace(/[\s\-–]/g, "").length > 2) return p.replace(/\s*[-–]\s*$/, "");
-  const cartelle = String(a.dove || "").split("/").filter((x) => x && !/^(TEMP|\d{6,9}|CLEAN ?FEED|ITA|ENG|\[.*\]|\d_?CLEANFEED)$/i.test(x));
-  return (cartelle.pop() || path.basename(String(a.chiave || "")).replace(/\.[^.]+$/, "")).replace(/_+/g, " ").trim();
+  // un nome che e' solo una data o "3 CLEANFEED" non dice niente
+  const vuoto = /^\d{6,9}$|^\d*[\s_]*clean ?feed$/i.test(p.trim());
+  if (p && !vuoto && !/multicorder|output\s*\d/i.test(p) && p.replace(/[\s\-–]/g, "").length > 2) return p.replace(/\s*[-–]\s*$/, "");
+  const cartelle = String(a.dove || "").split("/").filter((x) => x && !/^(TEMP|\d{6,9}|ITA|ENG|\[.*\]|\d*[\s_]*CLEAN ?FEED|cleanfeed)$/i.test(x.trim()));
+  const t = (cartelle.pop() || "").replace(/_+/g, " ").trim();
+  if (t && !/multicorder|output\s*\d/i.test(t)) return t;
+  // non dice niente nemmeno la cartella: si dice che cosa e' e quando
+  const g = a.giorno || (Date.parse(a.quando) ? giornoRoma(Date.parse(a.quando)) : "");
+  return g ? "Registrazione del " + g.slice(6, 8) + "/" + g.slice(4, 6) + "/" + g.slice(0, 4) : "Registrazione";
 }
 // LO STUDIO: il format (Football Show, Pre Show, Intervallo, Post Partita,
 // Speciale) e il resto del titolo; se dentro c'e' una partita ("+ Como-Parma",
@@ -13633,7 +13643,12 @@ const AZIONI = {
       });
     });
     const squadre = Object.values(visti).sort((x, y) => y.partite - x.partite);
-    return { ok: true, squadre, conStemma: squadre.filter((x) => !x.fonti.sigla || Object.keys(x.fonti).length > 1).length, totale: squadre.length };
+    // e i contenuti che non sono ne' partite ne' studi: restano col titolo
+    const altri = Object.keys(ARCHIVIO).filter((k) => {
+      const a = ARCHIVIO[k]; return a && a.chiave && !squadreConStemma(k, a) && !studioDi(k, a);
+    }).map((k) => { const a = ARCHIVIO[k]; return { rec: k, titolo: titoloDi(a), competizione: a.competizione || "", quando: a.quando || "",
+      senzaAirtable: !!a.soloS3, inCasa: inCasa(a), logo: logoEvento(a) }; });
+    return { ok: true, squadre, altri, conStemma: squadre.filter((x) => !x.fonti.sigla || Object.keys(x.fonti).length > 1).length, totale: squadre.length };
   },
   "clip-archivio-copia": () => Object.assign({}, statoCopia(), { nomi: statoNomi(), casa: statoCasa() }),
   // quante partite S3 sono gia' in casa (ricontate adesso)
@@ -14638,7 +14653,7 @@ function avvio(opz) {
   // il catalogo delle squadre ESPN per gli stemmi: una volta a settimana
   leggiCatalogo();
   // gli stemmi di tutto l'archivio, a blocchi, senza fermare il ponte
-  setTimeout(() => { preparaStemmi(); }, 60000).unref();
+  setTimeout(() => { STEMMI_CACHE.clear(); preparaStemmi(); }, 90000).unref();
   setInterval(() => { preparaStemmi(); }, 6 * 3600000).unref();
   const catalogoNo = (e) => console.log("[clip] stemmi: catalogo ESPN non aggiornato — " + e.message);
   setTimeout(() => { if (Date.now() - (CATALOGO.quando || 0) > 7 * 86400000) aggiornaCatalogo().catch(catalogoNo); }, 30000).unref();
