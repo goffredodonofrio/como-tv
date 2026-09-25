@@ -10499,15 +10499,22 @@ const DA_MOMENTO = /gol|goal|rete|rigore|espuls|rosso|traversa|palo|parat|occasi
 // riconosce gia' dal prato in cima al quadro, il pubblico dal prato che manca.
 // E il quarto alto: col gioco vicino alla telecamera la camera larga si
 // inclina e in cima entra prato (0,15-0,23); i primi piani stanno sopra 0,68.
-function larghiMomento(campo) { return campo.map((x) => x.prato > 0.4 && x.alto < 0.35 && x.moto < 45); }
-function momentiNelCampo(campo) {
+// E NON BASTA: quando il gioco e' proprio sotto la telecamera, la larga si
+// inclina tanto che il quarto alto e' tutto prato (0,55-0,78) — come un primo
+// piano. La differenza e' il movimento: la larga cambia poco (8-16), i primi
+// piani molto (23-55). Misurato sui falsi di Frosinone-Como e Como-Parma.
+function larghiMomento(campo) {
+  return campo.map((x) => x.prato > 0.4 && x.moto < 45 && (x.alto < 0.35 || x.moto <= 18));
+}
+function momentiNelCampo(campo, severo) {
   const largo = larghiMomento(campo), LUNGA = 6, DOPO = 8, fuori = [];
+  const bastano = severo ? DOPO - 1 : DOPO - 2;
   for (let i = LUNGA - 1; i + DOPO < largo.length; i++) {
     if (!largo[i] || largo[i + 1]) continue;
     let lunga = 0; for (let j = i; j >= 0 && largo[j]; j--) lunga++;
     if (lunga < LUNGA) continue;
     let stretti = 0; for (let j = i + 1; j <= i + DOPO; j++) if (!largo[j]) stretti++;
-    if (stretti < DOPO - 2) continue;
+    if (stretti < bastano) continue;
     fuori.push(i);
   }
   return fuori;
@@ -10529,6 +10536,13 @@ async function puntaMomenti(rec) {
     const k = chiaveRiga(x); if (a.momenti[k]) continue;
     if (registrandoDavvero() || laDirettaGira()) break;          // si riprende al prossimo giro
     const cert = x.tabellone ? "tabellone" : x.boato ? "boato" : "minuto";
+    // un gol la regia lo segna sempre (esultanza, replay); un tiro o una
+    // parata molto meno. Senza tabellone ne' boato la finestra e' di due
+    // minuti, e per un'azione qualsiasi il rischio di prendere un'altra cosa
+    // e' troppo alto: la' si resta al minuto (a campione, 26/09: cadeva perfino
+    // sulla presentazione delle squadre)
+    const eGol = /\b(gol|goal|rete|autogol)\b/i.test(String(x.tipo || "") + " " + String(x.tag || "")) || !!x.tabellone;
+    if (!eGol && cert === "minuto") continue;
     const fin = FINESTRE_MOMENTO[cert];
     const t = x.t !== undefined ? x.t : x.dentro + APP_PRE;
     const p = pezzoAl(finto, t); if (!p || !p.pezzo) continue;
@@ -10540,7 +10554,7 @@ async function puntaMomenti(rec) {
     const esito = { chiave: chiave, sec: null, stima: Math.round(stima), cert: cert };
     if (campo.length >= 20) {
       const vicino = (i) => { const d = campo[i].s - stima; return Math.abs(d) * (cert === "minuto" && d > 0 ? 2 : 1); };
-      const c = momentiNelCampo(campo).filter((i) => campo[i].s >= stima + fin[0] && campo[i].s <= stima + fin[1])
+      const c = momentiNelCampo(campo, !eGol).filter((i) => campo[i].s >= stima + fin[0] && campo[i].s <= stima + fin[1])
         .sort((u, v) => vicino(u) - vicino(v))[0];
       if (c !== undefined) { esito.sec = Math.round(campo[c].s); trovati++; }
     } else esito.perche = "poco video";
