@@ -246,6 +246,14 @@
   .tendina-menu .capo2{padding:6px 10px 3px;font-family:'Mazzard',sans-serif;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--oro);}
   #editor{display:none;flex-direction:column;min-height:0;position:relative;}
   /* LA MODALITA' ESPORTA: formati | anteprima | impostazioni, la coda sotto */
+  /* IL FORMATO NEL PROGRAMMA: un gruppo di tasti, uno acceso */
+  /* la barra del monitor va a capo invece di schiacciare i tasti */
+  .barra-monitor{flex-wrap:wrap;row-gap:6px;}
+  .barra-monitor > *{flex-shrink:0;}
+  .fmt-mon{display:inline-flex;flex:none;margin-right:10px;border:1px solid var(--riga2);border-radius:5px;overflow:hidden;}
+  .fmt-mon button{border:0;border-radius:0;padding:4px 9px;font:600 11px ui-monospace,Menlo,monospace;background:transparent;color:var(--ivory2);}
+  .fmt-mon button + button{border-left:1px solid var(--riga2);}
+  .fmt-mon button.on{background:var(--oro);color:var(--navy);}
   .esp{position:absolute;inset:0;z-index:55;background:var(--navy);display:grid;grid-template-columns:270px minmax(0,1fr) 300px;grid-template-rows:auto minmax(0,1fr) 190px;}
   .esp-testa{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--riga);background:var(--navy2);}
   .esp-testa b{font-family:'Mazzard',sans-serif;font-size:13px;letter-spacing:.22em;text-transform:uppercase;color:var(--oro);}
@@ -1031,6 +1039,7 @@
               <span class="tc" id="eOra">00:00:00<small id="eTot"></small></span>
               <span class="pm"><button class="ico" id="eIn" title="Entrata della sequenza (I) · Q accorcia il pezzo"><span class="graffa">{</span></button><button class="ico" id="eOut" title="Uscita della sequenza (O) · W accorcia il pezzo"><span class="graffa">}</span></button><span class="sep"></span><button class="ico" id="ePrima" title="Pezzo precedente (↑)"><svg viewBox="0 0 16 16"><rect x="2" y="3" width="2" height="10"/><path d="M14 3v10L5 8z"/></svg></button><button class="ico" id="eIndietro" title="Un fotogramma indietro (←) · Shift: cinque"><svg viewBox="0 0 16 16"><rect x="3" y="3" width="2" height="10"/><path d="M13 3v10L6 8z"/></svg></button><button class="ico play" id="ePlay" title="Riproduci / ferma (spazio)"><svg viewBox="0 0 16 16"><path d="M4 2v12l10-6z"/></svg></button><button class="ico" id="eAvanti" title="Un fotogramma avanti (→) · Shift: cinque"><svg viewBox="0 0 16 16"><rect x="11" y="3" width="2" height="10"/><path d="M3 3v10l7-5z"/></svg></button><button class="ico" id="eDopo" title="Pezzo successivo (↓)"><svg viewBox="0 0 16 16"><rect x="12" y="3" width="2" height="10"/><path d="M2 3v10l9-5z"/></svg></button><span class="sep"></span><button class="ico" id="eTaglia" title="Dividi sotto la testina (C, Cmd+K)"><svg viewBox="0 0 16 16"><circle cx="4.5" cy="12" r="2"/><circle cx="11.5" cy="12" r="2"/><path d="M6 10.5L12 1h1.5L7.2 11.3zM10 10.5L4 1H2.5l6.3 10.3z"/></svg></button><button class="ico" id="eTogli" title="Togli il pezzo, la grafica o l’audio scelto (Canc)"><svg viewBox="0 0 16 16"><path d="M5 2h6v1.5h3V5H2V3.5h3zM3.5 6h9l-.8 9H4.3z"/></svg></button></span><button id="eSu" title="sposta prima">&#8593;</button><button id="eGiu" title="sposta dopo">&#8595;</button>
               <span class="spazio"></span>
+              <span class="fmt-mon" id="eFmtMon" title="il formato che guardi nel Programma: taglio, grafiche e inquadratura di quel formato"><button data-ante="16:9" class="on">16:9</button><button data-ante="9:16">9:16</button><button data-ante="3:4">3:4</button></span>
               <span class="eti">Sottotitoli</span><button id="eSottoOn">Off</button><button id="eSottoLingua">ITA</button>
               <button class="mini" id="eCampo" title="mostra tutto il campo con il riquadro di quello che l’export terrà">Campo intero</button><button class="mini" id="eAsset">Sorgente</button>
             </div>
@@ -4007,6 +4016,7 @@
     if (CAMPO && ANTE !== "16:9") { t.hidden = false; t.style.width = (RAPPORTO[ANTE] / RAPPORTO["16:9"] * 100) + "%"; t.querySelector("b").textContent = ANTE; }
     else t.hidden = true;
     Array.prototype.forEach.call(el("eFormati").querySelectorAll(".fchip"), function(z){ z.classList.toggle("vista", z.dataset.f === ANTE); });
+    Array.prototype.forEach.call(el("eFmtMon").querySelectorAll("button"), function(z){ z.classList.toggle("on", z.dataset.ante === ANTE); });
     el("eCampo").classList.toggle("on", CAMPO);
     if (typeof aggiornaInq === "function") { aggiornaInq(); disegnaTaglio(); }
     el("eQuanti").textContent = FORMATI.length > 1
@@ -4023,6 +4033,12 @@
     applicaFormato();
   });
   el("eCampo").addEventListener("click", function(){ CAMPO = !CAMPO; applicaFormato(); });
+  // i tasti del formato nel Programma: cambiano cosa GUARDI, non cosa esce
+  // (quello si sceglie in Esporta); le grafiche prendono la loro versione
+  el("eFmtMon").addEventListener("click", function(e){
+    var b = e.target.closest("button[data-ante]"); if (!b) return;
+    ANTE = b.dataset.ante; CAMPO = false; applicaFormato(); if (SEQ) disegnaTl();
+  });
 
   // ══════════ L'INQUADRATURA VERTICALE, PEZZO PER PEZZO ══════════
   //  Il 9:16 non e' un altro montaggio: sono gli stessi tagli visti da una
