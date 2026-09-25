@@ -6030,12 +6030,17 @@ async function statoCopia() {
   if (COPIA_ULTIMO && Date.now() - COPIA_ULTIMO.quando < 2500) return COPIA_ULTIMO;
   const base = path.join(QNAP_RADICE, SPECCHIO_DIR);
   // la passata sulla NAS gira in sottofondo ogni 20 secondi; la prima volta la si aspetta
-  if (Date.now() - COPIA_PESO.quando > 20000) { const g = giroNas(); if (!COPIA_PESO.quando) await g; }
+  if (Date.now() - COPIA_PESO.quando > 120000) { const g = giroNas(); if (!COPIA_PESO.quando) await g; }
   // i file a meta' si ripesano adesso (sono pochi), senza bloccare; quello
   // sparito e' stato rinominato: e' finito, e la prossima passata lo conta
   const ora = Date.now(), inArrivo = [];
   let inCorsoByte = 0;
   const pesi = await Promise.all(COPIA_PESO.parziali.map((p) => fs.promises.stat(p).then((st) => st.size, () => null)));
+  // un file a meta' sparito e' stato rinominato: il suo peso passa SUBITO tra i
+  // finiti, se no i GB calano fino alla prossima passata e la velocita' va a zero
+  const finali = await Promise.all(COPIA_PESO.parziali.map((p, i) => pesi[i] !== null ? null
+    : fs.promises.stat(p.replace(/\.parziale(\.[^/]*)?$/, "")).then((st) => st.size, () => null)));
+  finali.forEach((b) => { if (b) COPIA_PESO.fatti += b; });
   const finito = [];
   COPIA_PESO.parziali = COPIA_PESO.parziali.filter((p, i) => {
     const b = pesi[i];
@@ -6244,18 +6249,24 @@ function giroNas() {
   if (nasInCorso) return nasInCorso;
   const base = path.join(QNAP_RADICE, SPECCHIO_DIR);
   nasInCorso = (async () => {
-    const finiti = new Map(), parziali = [];
+    const finiti = new Map(), parziali = [], daPesare = [];
+    // prima le cartelle (poche domande), poi i pesi SEDICI ALLA VOLTA: con la
+    // copia che scrive, la NAS mette ~0,2 s a domanda, e 337 domande in fila
+    // erano 66 secondi (25/09/2026)
     const giro = async (dir, rel, prof) => {
       let voci; try { voci = await fs.promises.readdir(dir, { withFileTypes: true }); } catch (e) { return; }
-      for (const v of voci) {
-        if (v.name.startsWith(".") || v.name === "_script") continue;
+      await Promise.all(voci.map(async (v) => {
+        if (v.name.startsWith(".") || v.name === "_script") return;
         const p = path.join(dir, v.name), r = rel ? rel + "/" + v.name : v.name;
-        if (v.isDirectory()) { if (prof < 8) await giro(p, r, prof + 1); continue; }
-        if (/\.parziale/.test(v.name)) { parziali.push(p); continue; }
-        try { finiti.set(r, (await fs.promises.stat(p)).size); } catch (e) {}
-      }
+        if (v.isDirectory()) { if (prof < 8) await giro(p, r, prof + 1); return; }
+        if (/\.parziale/.test(v.name)) { parziali.push(p); return; }
+        daPesare.push([r, p]);
+      }));
     };
     await giro(path.join(base, "TEMP"), "TEMP", 0);
+    for (let i = 0; i < daPesare.length; i += 16) {
+      await Promise.all(daPesare.slice(i, i + 16).map(([r, p]) => fs.promises.stat(p).then((st) => { finiti.set(r, st.size); }, () => {})));
+    }
     NAS_FILE = finiti; NAS_PARZIALI = parziali;
     // lo specchio: una partita e' in casa se c'e' TUTTA, al byte
     const nuovo = new Map(); let partite = 0;
@@ -6267,6 +6278,8 @@ function giroNas() {
     });
     const cambiato = nuovo.size !== SPECCHIO.size;
     SPECCHIO = nuovo; SPECCHIO_QUANDO = Date.now();
+    // si tiene su disco: al riavvio lo specchio c'e' subito, senza aspettare la NAS
+    if (cambiato) { try { fs.writeFileSync(path.join(DIR, "specchio.json"), JSON.stringify([...nuovo])); } catch (e) {} }
     let fatti = 0; finiti.forEach((b) => { fatti += b; });
     Object.assign(COPIA_PESO, { quando: Date.now(), fatti, parziali: parziali.slice() });
     if (cambiato) { console.log("[clip] specchio S3: " + partite + " partite in casa (" + nuovo.size + " file) in " + base); annuncia(0, "clip"); }
@@ -10866,7 +10879,10 @@ async function espnTrova(rec) {
   if (nonDaEspn(rec)) { ESPN[rec] = { mancante: "giovanili o femminile: ESPN non le ha", quando: info.quando }; return ESPN[rec]; }
   const leghe = legheDi(info.competizione);
   if (!leghe.length) { ESPN[rec] = { mancante: "competizione non coperta", quando: info.quando }; return ESPN[rec]; }
-  const squadre = squadreDi(info.partita);
+  let squadre = squadreDi(info.partita);
+  // "BOLOGNA.COMO", "NAPOLI-COMO - ITA": se la divisione semplice non basta, si
+  // leggono le due squadre come per gli stemmi (dueSquadre)
+  if (squadre.length !== 2) { const q = dueSquadre(info.partita); if (q) squadre = squadreDi(q.join("-")); }
   if (squadre.length < 2) { ESPN[rec] = { mancante: "titolo senza due squadre", quando: info.quando }; return ESPN[rec]; }
   const t0 = Date.parse(info.quando);
   let trovato = null, legaTrovata = "";
@@ -11534,6 +11550,39 @@ function competizioneVista(a, rec) {
   if (/champions/i.test(t)) return "UEFA Champions League";
   if (/como\s*cup/i.test(t)) return "Como Cup";
   if (/marat/i.test(t)) return "Maratona";
+  return competizioneDedotta(a, rec, t);
+}
+// SENZA NIENTE IN AIRTABLE (cartelle senza riga): la si deduce, senza inventare
+const LEGHE_CASA = { "ita.1": "Serie A", "ita.2": "Serie B", "eng.1": "Premier League", "eng.2": "Championship", "sco.1": "Scottish Premiership",
+  "ned.1": "Eredivisie", "aut.1": "Bundesliga Austria", "ger.1": "Bundesliga", "fra.1": "Ligue 1", "esp.1": "LaLiga", "por.1": "Liga Portugal",
+  "gre.1": "Super League Grecia", "ksa.1": "Saudi Pro League", "arg.1": "Liga Profesional", "bra.1": "Brasileirao" };
+let COMP_GEMELLE = null, compGemelleQuando = 0;
+function competizioneDedotta(a, rec, t) {
+  // 1) la gemella: stesso giorno, stesse squadre, con la competizione scritta
+  if (!COMP_GEMELLE || Date.now() - compGemelleQuando > 60000) {
+    COMP_GEMELLE = new Map(); compGemelleQuando = Date.now();
+    Object.keys(ARCHIVIO).forEach((k) => {
+      const x = ARCHIVIO[k]; if (!x || !x.competizione || /^(ITA|ENG|EVENTO REC)$/i.test(x.competizione.trim())) return;
+      const c = chiaveGemella(x); if (!c || COMP_GEMELLE.has(c)) return;
+      const v = competizioneVista(x, k); if (v) COMP_GEMELLE.set(c, v);
+    });
+  }
+  const g = chiaveGemella(a); if (g && COMP_GEMELLE.has(g)) return COMP_GEMELLE.get(g);
+  // 2) il titolo
+  if (/coppa italia/i.test(t)) return "Coppa Italia";
+  if (DA_STUDIO.test(t)) return "Studio Live";
+  // 3) le due squadre giocano nello stesso campionato
+  const q = dueSquadreDi(a);
+  if (q) {
+    const ids = q.map((n) => squadraEspnDalNome(n, "")).filter(Boolean);
+    if (ids.length === 2) {
+      const comuni = CATALOGO.squadre[ids[0]].leghe.filter((l) => LEGHE_CASA[l] && CATALOGO.squadre[ids[1]].leghe.indexOf(l) >= 0);
+      if (comuni.length === 1) return LEGHE_CASA[comuni[0]];
+    }
+    // 4) il Como d'estate, fuori dalle coppe: amichevole
+    const m = Date.parse(a.quando) ? new Date(Date.parse(a.quando)).getUTCMonth() + 1 : 0;
+    if (m >= 6 && m <= 8 && q.some((n) => /^como$/i.test(senzaGiovanili(n).trim()))) return "Amichevole";
+  }
   return "";
 }
 // telecronista e lingua: l'inglese e' sempre Paul Dempsey; l'audio senza voce non ha telecronista
@@ -14852,13 +14901,20 @@ function avvio(opz) {
   setInterval(() => { try { giraAnteprime(); } catch (e) {} }, ANTEPRIMA_OGNI * 1000).unref();
   setInterval(() => { giroEspn().catch(() => {}); }, GIRO_ESPN).unref();
   // le partite S3 che arrivano sulla NAS: ogni dieci minuti si guarda chi e' in casa
-  setTimeout(() => { aggiornaSpecchio().catch((e) => console.log("[clip] specchio: " + e.message)); }, 15000).unref();
+  // lo specchio dell'ultima volta, subito; poi la NAS lo rinfresca
+  try { const v = JSON.parse(fs.readFileSync(path.join(DIR, "specchio.json"), "utf8")); if (Array.isArray(v)) { SPECCHIO = new Map(v); SPECCHIO_QUANDO = Date.now(); } } catch (e) {}
+  setTimeout(() => { aggiornaSpecchio().catch((e) => console.log("[clip] specchio: " + e.message)); }, 1000).unref();
   // i nomi delle partite in casa: il giro riparte ogni cinque minuti (e da solo appena finisce una)
   setTimeout(() => { try { giroNomi(); } catch (e) {} }, 60000).unref();
   setInterval(() => { try { giroNomi(); } catch (e) {} }, 300000).unref();
   setTimeout(() => { giroCasa().catch(() => {}); }, 90000).unref();
   // il catalogo delle squadre ESPN per gli stemmi: una volta a settimana
   leggiCatalogo();
+  setTimeout(() => {
+    let n = 0;
+    Object.keys(ESPN).forEach((k) => { if (ESPN[k] && ESPN[k].mancante === "titolo senza due squadre" && ARCHIVIO[k] && dueSquadre(ARCHIVIO[k].partita)) { delete ESPN[k]; n++; } });
+    if (n) { scriviEspn(); console.log("[clip] ESPN: " + n + " partite da rifare (titolo letto meglio)"); }
+  }, 20000).unref();
   // gli stemmi di tutto l'archivio, a blocchi, senza fermare il ponte
   setTimeout(() => { STEMMI_CACHE.clear(); preparaStemmi(); }, 90000).unref();
   setInterval(() => { preparaStemmi(); }, 6 * 3600000).unref();
