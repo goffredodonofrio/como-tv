@@ -3808,6 +3808,29 @@ function hlAudio(p) {
   return { ok: true, seq: q, audio: a.id };
 }
 
+// LA BASE DEI TEMPI DELLA SEQUENZA. Il timecode di Premiere ha i
+// fotogrammi (HH:MM:SS:FF), e i fotogrammi dipendono dal materiale: il
+// MultiCorder registra a 50, un file da telefono a 30. Si misura UNA volta
+// sulla registrazione — pochi byte di intestazione, anche dall'archivio —
+// e si ricorda. Finche' non si sa, la pagina non inventa: niente
+// fotogrammi, solo i secondi.
+const FPS_IN_CORSO = new Set();
+function fpsDellaSeq(q) {
+  const r = R.reg[q.reg]; if (!r) return 0;
+  if (r.fps) return r.fps;
+  if (!FPS_IN_CORSO.has(r.id)) {
+    FPS_IN_CORSO.add(r.id);
+    (async () => {
+      let via = "";
+      try {
+        via = r.arch ? viaArchivio(r) : ((segmenti(r.id)[0] || {}).file || path.join(cartellaReg(r.id), "integrale.mp4"));
+      } catch (e) {}
+      const f = via ? await fpsDi(via) : 0;
+      if (f) { r.fps = f; scrivi(); annuncia(0, "clip"); }
+    })().catch(() => {}).then(() => FPS_IN_CORSO.delete(r.id));
+  }
+  return 0;
+}
 function hlElenco(p) {
   const seq = Object.keys(R.seq).map((k) => R.seq[k])
     .filter((q) => !p || !p.reg || q.reg === p.reg)
@@ -3827,6 +3850,7 @@ function hlElenco(p) {
   // l'audio non ce l'aveva ancora, e le onde risultavano sempre mancanti
   mie.forEach((q) => { try { riallinea(q); } catch (e) {} });
   mie.forEach((q) => { try { segnaPezziLocali(q); } catch (e) {} });
+  mie.forEach((q) => { try { const f = fpsDellaSeq(q); if (f) q.fps = f; } catch (e) {} });
   return { ok: true, seq: mie };
 }
 

@@ -859,6 +859,16 @@
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
   function piatto(t){ return String(t||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,""); }
   function peso(n){ if(!n) return "—"; if (n >= 1073741824) return (n/1073741824).toFixed(1).replace(".",",") + " GB"; if (n >= 1048576) return Math.round(n/1048576) + " MB"; return Math.round(n/1024) + " KB"; }
+  // IL TIMECODE DEL MONTAGGIO HA I FOTOGRAMMI, come in Premiere
+  // (HH:MM:SS:FF), sulla base dei tempi della sequenza che dice il ponte.
+  // Finche' il ponte non l'ha misurata, niente fotogrammi inventati.
+  function tcf(s){
+    var f = (SEQ && +SEQ.fps) || 0;
+    if (!f) return tc(s);
+    var tot = Math.floor(Math.max(0, +s || 0) * f + 1e-6), fr = tot % f, sec = Math.floor(tot / f);
+    var p2 = function(n){ return (n < 10 ? "0" : "") + n; };
+    return p2(Math.floor(sec / 3600)) + ":" + p2(Math.floor(sec % 3600 / 60)) + ":" + p2(sec % 60) + ":" + p2(fr);
+  }
   function tc(s){ s = Math.max(0, Math.floor(s||0)); var h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60; return (h<10?"0":"")+h+":"+(m<10?"0":"")+m+":"+(x<10?"0":"")+x; }
   function tcBreve(s){ s = Math.max(0, Math.round(s||0)); var m=Math.floor(s/60), x=s%60; return m+":"+(x<10?"0":"")+x; }
   function quando(ms){ var d = new Date(ms); if (!ms || isNaN(d)) return ""; return d.toLocaleDateString("it-IT",{day:"2-digit",month:"2-digit",year:"2-digit"}); }
@@ -1928,7 +1938,7 @@
       var c = el("pista").querySelector('.ed-corsia.a[data-tr="' + n + '"]');
       if (c) c.innerHTML = haT[n] || "";
     });
-    el("eTot").textContent = " / " + tc(tot);
+    el("eTot").textContent = " / " + tcf(tot);
     posePezzi();
   }
   // ── L'AUDIO SI VEDE: l'onda, le due dissolvenze, il gain ─────────────
@@ -2427,7 +2437,7 @@
     var x = PZ[ORA.i]; if (!x) return;
     if (!VE.paused && VE.currentTime >= x.dentro + (x.fuori - x.dentro) * velDi(x) - 0.05) { if (ORA.i + 1 < PZ.length) vaiA(ORA.i + 1, 0, true); else { VE.pause(); vaiA(ORA.i, x.fuori - x.dentro - 0.05, false); } }
     var t = tSeq();
-    var ts = tc(t); if (ts !== ORAE) { ORAE = ts; el("eOra").firstChild.nodeValue = ts; if (el("eOraTl")) el("eOraTl").textContent = ts; }
+    var ts = tcf(t); if (ts !== ORAE) { ORAE = ts; el("eOra").firstChild.nodeValue = ts; if (el("eOraTl")) el("eOraTl").textContent = ts; }
     var gOra = GRAF.filter(function(g){ return t >= g.dentro && t < g.fuori; })[0], img = el("grafE");
     if (gOra) { var src = urlGrafica(gOra, ANTE); if (img.getAttribute("src") !== src) img.src = src; img.hidden = false; } else img.hidden = true;
     var auOra = AUD.filter(function(z){ return z.legato === x.id; })[0];
@@ -3760,12 +3770,13 @@
       ["File", file || "—", ""],
       ["Fonte", x.media ? "casa" : (x.fonte || "mano"), ""],
       ["Minuto", x.minuto || "—", ""],
-      ["Entrata", tc(x.dentro), "tc"],
-      ["Uscita", tc(x.fuori), "tc"],
-      ["Durata", tc(x.fuori - x.dentro), "tc"],
-      ["In sequenza a", tc(x.t0 || 0), "tc"],
+      ["Entrata", tcf(x.dentro), "tc"],
+      ["Uscita", tcf(x.fuori), "tc"],
+      ["Durata", tcf(x.fuori - x.dentro), "tc"],
+      ["In sequenza a", tcf(x.t0 || 0), "tc"],
       ["Traccia", x.traccia || "V1", ""],
       ["Velocità", Math.round(vel * 100) + "%", ""],
+      ["Base dei tempi", SEQ && SEQ.fps ? SEQ.fps + " fotogrammi al secondo" : "in misura\u2026", ""],
       ["Transizione", x.transizione ? ((x.transizione.tipo === "nero" ? "dal nero " : "dissolvenza ") + x.transizione.durata + " s") : "stacco netto", ""]
     ];
     c.innerHTML = righe.map(function(z){ return "<dt>" + esc(z[0]) + '</dt><dd class="' + z[2] + '" title="' + esc(z[1]) + '">' + esc(z[1]) + "</dd>"; }).join("");
