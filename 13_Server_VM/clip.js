@@ -2497,6 +2497,8 @@ function pubblica(r) {
     // in ascolto e ancora nessun byte: non e' rotta, sta aspettando che
     // dall'altra parte comincino a trasmettere
     attesa: !!(r.ascolto && r.stato === "registra" && vive && scritto === 0),
+    // una partita S3 gia' copiata sulla NAS: la pagina toglie i freni
+    inCasa: inCasaReg(r),
     // una partita d'archivio non ha byte qui: ha un indirizzo, che scade e
     // quindi si rifa' ogni volta che qualcuno chiede lo stato
     materiale: r.arch ? (magazzinoCe(r) ? "archivio" : "scaduto")
@@ -5941,6 +5943,45 @@ function soloElenco(bucket) { const m = magazzinoInventario(bucket); return !!(m
 // cronometro — non partono da sole: ogni lettura da S3 e' contata, e si fa
 // quando qualcuno la chiede
 function senzaCode(bucket) { return !!magazzinoInventario(bucket); }
+
+// ── LE PARTITE S3 PORTATE IN CASA ─────────────────────────────────────
+//  scarica_partite.py copia le partite da S3 sulla QNAP, nella cartella
+//  S3-ARCHIVIO, con lo STESSO percorso della chiave. Una partita e' "in
+//  casa" quando TUTTI i suoi pezzi ci sono, col peso giusto al byte: da li'
+//  ogni lettura (riproduzione, tagli, pose, misure, cronometro) va sulla
+//  NAS invece che a Parigi, le code automatiche la trattano come una della
+//  NAS, e nella Libreria resta UNA voce sola. L'indice non cambia: cambia
+//  da dove si leggono i byte — cosi' lo scandaglio orario, che riscrive
+//  l'indice, non puo' rimettere niente com'era.
+const SPECCHIO_DIR = process.env.COMOTV_NAS_SPECCHIO || "S3-ARCHIVIO";
+let SPECCHIO = new Map();                            // chiave S3 -> percorso sulla NAS
+function copiaInCasa(chiave) { return chiave ? (SPECCHIO.get(String(chiave)) || null) : null; }
+function partiDi(a) { return a && a.pezzi && a.pezzi.length ? a.pezzi : (a && a.chiave ? [{ chiave: a.chiave, peso: a.peso }] : []); }
+// una riga d'indice o una registrazione: in casa solo se c'e' TUTTA
+function inCasa(a) { const pz = partiDi(a); return !!pz.length && pz.every((z) => SPECCHIO.has(z.chiave)); }
+function inCasaReg(r) { return !!(r && r.arch && magazzinoInventario(r.arch.bucket) && inCasa(r.arch)); }
+// il freno delle code S3 non vale per le partite gia' in casa
+function senzaCodeDi(a) { return !!a && senzaCode(a.bucket) && !inCasa(a); }
+function aggiornaSpecchio() {
+  const base = path.join(QNAP_RADICE, SPECCHIO_DIR);
+  let c = false; try { c = fs.statSync(base).isDirectory(); } catch (e) { c = false; }
+  const nuovo = new Map(); let partite = 0;
+  if (c) Object.keys(ARCHIVIO).forEach((rec) => {
+    const a = ARCHIVIO[rec]; if (!a || !a.chiave || !magazzinoInventario(a.bucket)) return;
+    const trovati = [];
+    for (const z of partiDi(a)) {
+      const f = path.join(base, z.chiave); let st;
+      try { st = fs.statSync(f); } catch (e) { return; }
+      if (!st.isFile() || (z.peso && st.size !== z.peso)) return;   // a meta' o diverso: non ancora
+      trovati.push([z.chiave, f]);
+    }
+    trovati.forEach((x) => nuovo.set(x[0], x[1])); partite++;
+  });
+  const cambiato = nuovo.size !== SPECCHIO.size;
+  SPECCHIO = nuovo;
+  if (cambiato) { console.log("[clip] specchio S3: " + partite + " partite in casa (" + nuovo.size + " file) in " + base); annuncia(0, "clip"); }
+  return { partite, file: nuovo.size };
+}
 // una pagina dell'elenco, ma dall'inventario: stessa forma di S3
 function elencaInventario(mg, prefisso, delimitatore) {
   const pre = prefisso || "", oggetti = [], cartelle = new Set();
@@ -6023,6 +6064,7 @@ async function s3Firma(chiave, cerca, quanto, bucket) {
 function firmaConRegione(regione, chiave, cerca, quanto, bucket) {
   const secchio = bucket || S3.bucket;
   const m = magazzinoDi(secchio);
+  if (m.inventario && chiave) { const qui = copiaInCasa(chiave); if (qui) return qui; }   // gia' in casa: la NAS
   if (m.inventario) {
     if (m.ponte) return m.ponte + "/o/" + uriChiave(chiave);
     throw new Error("di questo archivio S3 abbiamo solo l'elenco: per aprire i file serve il ponte sulla EC2 o la chiave in sola lettura");
@@ -6652,7 +6694,7 @@ async function archivioApri(p) {
   // secondi si sa se il file e' l'intera o un tempo, e il nome si aggiusta
   // (la durata di una partita S3 non si misura qui: la dice il video appena
   //  carica nel browser, e la misura vera si chiede quando serve)
-  if (!a.misurato && !senzaCode(a.bucket) && CODA_DURATE.indexOf(p.rec) < 0) { CODA_DURATE.unshift(String(p.rec)); giraDurate(); }
+  if (!a.misurato && !senzaCodeDi(a) && CODA_DURATE.indexOf(p.rec) < 0) { CODA_DURATE.unshift(String(p.rec)); giraDurate(); }
   // SENZA CRONOMETRO QUESTA PARTITA NON SA CHE ORA E'. Una registrazione
   // intera comincia con il cartello — tredici minuti di "COMING SOON" su
   // Como-Lipsia — e in mezzo ha l'intervallo, altri diciassette. Se il file
@@ -6664,7 +6706,7 @@ async function archivioApri(p) {
   const senzaOra = (a.pezzi || []).every((x) => !oraNelNome(path.basename(x.chiave || "")));
   // su S3 ogni lettura e' traffico contato: il cronometro si legge col tasto
   // nell'Asset, non da solo all'apertura (il 23/09 partiva a ogni apertura)
-  if (!a.orologio && !a.orologioFallito && senzaOra && tesseractCe() && !senzaCode(a.bucket)) {
+  if (!a.orologio && !a.orologioFallito && senzaOra && tesseractCe() && !senzaCodeDi(a)) {
     setTimeout(() => {
       calibraOrologio(String(p.rec))
         .then((o) => console.log("[clip] cronometro all'apertura di " + (a.partita || "") +
@@ -10074,7 +10116,7 @@ function orologiInCoda(ripasso) {
                       .concat(Object.keys(ESPN).filter((k) => ((ESPN[k] || {}).eventi || []).length)));
   candidate.forEach((rec) => {
     const a = ARCHIVIO[rec];
-    if (a && senzaCode(a.bucket)) return;                  // S3 contato: il cronometro si legge a richiesta
+    if (a && senzaCodeDi(a)) return;                       // S3 contato: il cronometro si legge a richiesta
     if (!a || a.orologio || gia.has(rec)) return;
     if (a.orologioFallito && !ripasso) return;        // gia' provata: al giro finale
     CODA_OROLOGI.push(rec);
@@ -10119,7 +10161,7 @@ const CODA_DURATE = [];
 let durateInMoto = 0, durateFatte = 0, durateFallite = 0, durateCambiate = 0, durateDaScrivere = 0;
 const DURATE_INSIEME = 2;
 async function misuraPartita(rec) {
-  if (ARCHIVIO[rec] && soloElenco(ARCHIVIO[rec].bucket)) throw new Error("solo elenco: le durate si misurano quando ci sara' il ponte o la chiave");
+  if (ARCHIVIO[rec] && soloElenco(ARCHIVIO[rec].bucket) && !inCasa(ARCHIVIO[rec])) throw new Error("solo elenco: le durate si misurano quando ci sara' il ponte o la chiave");
   // col ponte la misura non costa: ffprobe gira sulla EC2, in regione
   const a = ARCHIVIO[rec];
   if (!a) return;
@@ -12656,6 +12698,10 @@ const AZIONI = {
       let voci; try { voci = fs.readdirSync(path.join(QNAP_RADICE, rel), { withFileTypes: true }); } catch (e) { return; }
       for (const d of voci) {
         if (QNAP_NASCOSTI.test(d.name)) continue;
+        // la copia delle partite S3 non fa voci sue: sarebbero doppioni (e una
+        // partita in due file, due voci). Quelle partite restano la riga S3,
+        // segnata "in casa" qui sotto.
+        if (!rel && d.name === SPECCHIO_DIR) continue;
         if (++contati > 5000) return;
         const relSuo = rel ? rel + "/" + d.name : d.name;
         if (d.isDirectory()) { if (prof < 4) giro(relSuo, prof + 1); continue; }
@@ -12684,8 +12730,8 @@ const AZIONI = {
       fuori.push({ nome: path.basename(a.chiave), via: a.chiave, cartella: a.dove || path.dirname(a.chiave), peso: a.peso || (a.pezzi || []).reduce((n, z) => n + (z.peso || 0), 0),
                    quando: Date.parse(a.quando) || 0, est: path.extname(a.chiave).slice(1).toLowerCase(), rec: k, partita: a.partita || "", competizione: a.competizione || "",
                    quandoPartita: a.quando || "", durata: r ? (r.durata || 0) : Math.round(minuti * 60), reg: r ? r.id : undefined,
-                   telecronaca: !!(r && PARLATO[r.id] && (PARLATO[r.id].pezzi || []).length), s3: true, senzaNome: !!a.soloS3, bucket: a.bucket, pezzi: (a.pezzi || []).length || 1,
-                   soloElenco: soloElenco(a.bucket), puntata: puntata(a),
+                   telecronaca: !!(r && PARLATO[r.id] && (PARLATO[r.id].pezzi || []).length), s3: !inCasa(a), inCasa: inCasa(a), senzaNome: !!a.soloS3, bucket: a.bucket, pezzi: (a.pezzi || []).length || 1,
+                   soloElenco: soloElenco(a.bucket) && !inCasa(a), puntata: puntata(a),
                    forse: a.riconosciuta && a.riconosciuta.sicura === false ? a.riconosciuta.nome : "" });
       suS3++;
     });
@@ -12693,6 +12739,8 @@ const AZIONI = {
     return { ok: true, eventi: fuori, peso: fuori.reduce((n, x) => n + x.peso, 0), quanti: fuori.length, suS3: suS3, scrivibile: qnapSiScrive() };
   },
   "clip-qnap-peso": qnapPeso,
+  // quante partite S3 sono gia' in casa (ricontate adesso)
+  "clip-archivio-specchio": () => Object.assign({ ok: true, cartella: path.join(QNAP_RADICE, SPECCHIO_DIR) }, aggiornaSpecchio()),
   // UNA POSA: un fotogramma fermo della registrazione al secondo chiesto,
   // fatto una volta e tenuto nella cartella della registrazione. Serve alle
   // schede della Libreria (una partita si riconosce dal campo, non dal
@@ -12815,7 +12863,7 @@ const AZIONI = {
         if (!combaciaRiga(x, r.titolo, tipi, parole)) return;
         let chiave = x.chiave || "", dentroFile = x.dentroFile !== undefined ? x.dentroFile : x.dentro;
         if (r.arch && !r.finto) { const pa = pezzoAl(r, x.dentro); if (pa && pa.pezzo && pa.pezzo.chiave) { chiave = pa.pezzo.chiave; dentroFile = pa.dentro; } else chiave = r.arch.chiave || ""; }
-        fuori.push({ reg: r.finto ? "" : k, partita: r.titolo || k, rec: (r.arch && r.arch.rec) || r.evento || "", t: x.t, dentro: x.dentro, fuori: x.fuori, s3: !!(r.arch && magazzinoInventario(r.arch.bucket)),
+        fuori.push({ reg: r.finto ? "" : k, partita: r.titolo || k, rec: (r.arch && r.arch.rec) || r.evento || "", t: x.t, dentro: x.dentro, fuori: x.fuori, s3: !!(r.arch && magazzinoInventario(r.arch.bucket) && !inCasaReg(r)),
                      tipo: x.tipo, tag: x.tag, titolo: x.titolo, minuto: x.minuto, fonte: x.fonte, fonti: x.fonti, squadra: x.squadra, giocatore: x.giocatore,
                      gol: x.gol, certezza: x.certezza, chiave, dentroFile, quando: r.finita || r.avviata || 0 });
       });
@@ -13024,7 +13072,7 @@ const AZIONI = {
       // con tabellone:false non si legge mai: serve ai giri lunghi, dove
       // cinque minuti a partita per il tabellone tengono occupati i due core
       // mentre il boato darebbe lo stesso secondo in dieci
-      const saltaTabellone = p.tabellone === false || (senzaCode(a.bucket) && !p.tabellone);
+      const saltaTabellone = p.tabellone === false || (senzaCodeDi(a) && !p.tabellone);
       if (!a.tabellone && !saltaTabellone) {
         try { await leggiTabellone(rec); }
         catch (e) { console.log("[clip] punta (" + (a.partita || rec) + "): tabellone no — " + e.message); }
@@ -13684,6 +13732,9 @@ function avvio(opz) {
   // il multiview: un fotogramma per porta, ogni pochi secondi
   setInterval(() => { try { giraAnteprime(); } catch (e) {} }, ANTEPRIMA_OGNI * 1000).unref();
   setInterval(() => { giroEspn().catch(() => {}); }, GIRO_ESPN).unref();
+  // le partite S3 che arrivano sulla NAS: ogni dieci minuti si guarda chi e' in casa
+  setTimeout(() => { try { aggiornaSpecchio(); } catch (e) { console.log("[clip] specchio: " + e.message); } }, 15000).unref();
+  setInterval(() => { try { aggiornaSpecchio(); } catch (e) { console.log("[clip] specchio: " + e.message); } }, 600000).unref();
   // Gli appunti delle partite appena giocate: la redazione li scrive nei
   // giorni dopo, quindi si ripassa una finestra corta e si lascia stare
   // il resto dell'archivio, che non cambia piu'.
