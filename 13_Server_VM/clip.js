@@ -6110,6 +6110,73 @@ function statoCopia() {
   };
   return COPIA_ULTIMO;
 }
+// ── IL GIRO DELLA CASA ──────────────────────────────────────────────
+//  Ogni partita arrivata sulla NAS passa da tutte le letture, una partita
+//  alla volta e un passo alla volta, prima il Como e poi dalla piu' recente:
+//    ESPN        gol, cartellini, cambi e la telecronaca scritta (gratis, fuori)
+//    cronometro  dove comincia la partita nel file: con lo studio dentro
+//                (pre-show, intervallo) il fischio non e' all'inizio
+//    tabellone   i gol al secondo, e il risultato che conferma il nome
+//    boati       le azioni rumorose di appunti ed ESPN, al secondo
+//  In casa costa zero. Mai sopra una registrazione, una diretta, una
+//  trascrizione o un'altra lettura: la macchina ha due core.
+const CASA = { attiva: null, fatte: 0, fallite: 0, dal: Date.now() };
+function passoCasa(rec, a) {
+  if (!ESPN[rec]) return "espn";
+  if (!a.orologio && !a.orologioFallito) return "cronometro";
+  if (a.orologio && !a.tabellone && !a.tabelloneFallito) return "tabellone";
+  if (!a.boatiFatti && ((APPUNTI[rec] || {}).righe || []).length + (((ESPN[rec] || {}).eventi) || []).length) return "boati";
+  return null;
+}
+function inCasaDaLavorare() {
+  return Object.keys(ARCHIVIO).filter((k) => {
+    const a = ARCHIVIO[k];
+    return a && a.chiave && magazzinoInventario(a.bucket) && inCasa(a) && passoCasa(k, a);
+  }).sort((x, y) => prioritaPartita(x) - prioritaPartita(y));
+}
+async function giroCasa() {
+  if (CASA.attiva) return;
+  if (registrandoDavvero() || laDirettaGira() || magazzinoOccupato() || voceAlLavoro || whisperGira() ||
+      orologiInMoto || tabelloniAttivi.size || NOMI.attive.size || CODA_DURATE.length || durateInMoto) return;
+  const rec = inCasaDaLavorare()[0]; if (!rec) return;
+  const a = ARCHIVIO[rec], passo = passoCasa(rec, a);
+  CASA.attiva = { rec, partita: a.partita || rec, passo, dal: Date.now() };
+  try {
+    if (passo === "espn") { await espnTrova(rec); scriviEspn(); }
+    else if (passo === "cronometro") await calibraOrologio(rec);
+    else if (passo === "tabellone") await leggiTabellone(rec);
+    else if (passo === "boati") await puntaBoati(rec);
+    CASA.fatte++;
+  } catch (e) {
+    CASA.fallite++;
+    const perche = String(e.message || e).slice(0, 160);
+    console.log("[clip] casa: " + (a.partita || rec) + ", " + passo + " no — " + perche);
+    // ci si ricorda del no: il giro non deve ripescare la stessa partita all'infinito
+    if (passo === "espn") { ESPN[rec] = { mancante: "errore: " + perche.slice(0, 80), quando: a.quando }; scriviEspn(); }
+    else if (passo === "cronometro") a.orologioFallito = { quando: new Date().toISOString(), motivo: perche.slice(0, 80) };
+    else if (passo === "tabellone") a.tabelloneFallito = perche;
+    else if (passo === "boati") a.boatiFatti = new Date().toISOString();
+    scriviArchivio();
+  } finally {
+    CASA.attiva = null;
+    setTimeout(() => { giroCasa().catch(() => {}); }, 3000);
+  }
+}
+function statoCasa() {
+  const n = { partite: 0, espn: 0, cronometro: 0, tabellone: 0, boati: 0, finite: 0, studio: 0 };
+  Object.keys(ARCHIVIO).forEach((k) => {
+    const a = ARCHIVIO[k];
+    if (!a || !a.chiave || !magazzinoInventario(a.bucket) || !inCasa(a)) return;
+    n.partite++;
+    if (ESPN[k]) n.espn++;
+    if (a.orologio || a.orologioFallito) n.cronometro++;
+    if (a.tabellone || a.tabelloneFallito) n.tabellone++;
+    if (a.boatiFatti) n.boati++;
+    if (a.orologio && a.orologio.inizio1 > 600) n.studio++;
+    if (!passoCasa(k, a)) n.finite++;
+  });
+  return Object.assign(n, { adesso: CASA.attiva, fatte: CASA.fatte, fallite: CASA.fallite });
+}
 // ── IL GIRO DEI NOMI ────────────────────────────────────────────────────
 //  Per le partite gia' in casa col nome non sicuro si legge il tabellone:
 //  se il finale combacia con quello atteso (nel nome o in ESPN) la partita
@@ -13045,7 +13112,7 @@ const AZIONI = {
   },
   "clip-qnap-peso": qnapPeso,
   // L'AVANZAMENTO DELLA COPIA S3 -> NAS, per la barra della Libreria
-  "clip-archivio-copia": () => Object.assign({}, statoCopia(), { nomi: statoNomi() }),
+  "clip-archivio-copia": () => Object.assign({}, statoCopia(), { nomi: statoNomi(), casa: statoCasa() }),
   // quante partite S3 sono gia' in casa (ricontate adesso)
   "clip-archivio-specchio": () => Object.assign({ ok: true, cartella: path.join(QNAP_RADICE, SPECCHIO_DIR) }, aggiornaSpecchio()),
   // UNA POSA: un fotogramma fermo della registrazione al secondo chiesto,
@@ -14044,6 +14111,8 @@ function avvio(opz) {
   // i nomi delle partite in casa: il giro riparte ogni cinque minuti (e da solo appena finisce una)
   setTimeout(() => { try { giroNomi(); } catch (e) {} }, 60000).unref();
   setInterval(() => { try { giroNomi(); } catch (e) {} }, 300000).unref();
+  setTimeout(() => { giroCasa().catch(() => {}); }, 90000).unref();
+  setInterval(() => { giroCasa().catch(() => {}); }, 120000).unref();
   setInterval(() => { try { aggiornaSpecchio(); } catch (e) { console.log("[clip] specchio: " + e.message); } }, 600000).unref();
   // Gli appunti delle partite appena giocate: la redazione li scrive nei
   // giorni dopo, quindi si ripassa una finestra corta e si lascia stare
