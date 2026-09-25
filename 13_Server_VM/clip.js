@@ -2513,6 +2513,7 @@ function pubblica(r) {
     // solo: niente registrazioni, niente monitor, e sembrava rotto tutto.
     via: (function () {
       if (!r.arch) return undefined;
+      if (staccataDaS3(r)) return undefined;   // ancora solo a Parigi: non si apre
       try { return magazzinoDaFuori(r) ? viaArchivio(r) : viaPonte(r.id); }
       catch (e) { return undefined; }
     })(),
@@ -2520,7 +2521,7 @@ function pubblica(r) {
     // entra nella linea del tempo, quanto dura e da dove si prende: il
     // monitor cambia file da solo quando la testina passa da un tempo
     // all'altro, e chi monta vede due ore, non cinquantasei minuti.
-    pezziArch: (r.arch && magazzinoCe(r)) ? pezziArch(r).map((x, i) => ({
+    pezziArch: (r.arch && magazzinoCe(r) && !staccataDaS3(r)) ? pezziArch(r).map((x, i) => ({
       da: x.da || 0, durata: x.durata || 0,
       via: magazzinoDaFuori(r) ? viaFileArchivio(r, x) : viaPonte(r.id, 21600, i)
     })) : undefined,
@@ -5992,6 +5993,9 @@ function senzaCodeDi(a) { return !!a && senzaCode(a.bucket) && !inCasa(a); }
 //  e' la crescita degli ultimi minuti, la fine prevista quello che manca
 //  diviso per la velocita'. Il conto delle partite e' quello del MAM: una
 //  partita conta quando c'e' TUTTA (inCasa), non quando e' arrivato un file.
+// il MAM non legge da S3: solo lo script di copia (fuori dal ponte) ci parla
+const S3_STACCATO = process.env.COMOTV_S3_STACCATO !== "0";
+function staccataDaS3(r) { return !!(S3_STACCATO && r && r.arch && magazzinoInventario(r.arch.bucket) && !inCasa(r.arch)); }
 const COPIA_CAMPIONI = [];
 let COPIA_ULTIMO = null;
 //  Pesare tutta la cartella sulla NFS costa: si fa ogni 20 secondi. In mezzo
@@ -6034,6 +6038,8 @@ function statoCopia() {
   COPIA_PESO.parziali = COPIA_PESO.parziali.filter((p) => {
     let b; try { b = fs.statSync(p).size; } catch (e) {
       try { COPIA_PESO.fatti += fs.statSync(p.replace(/\.parziale(\.[^/]*)?$/, "")).size; } catch (e2) {}
+      // un file finito: lo specchio si riconta alla prossima domanda, cosi' la partita si apre subito dalla NAS
+      SPECCHIO_QUANDO = 0;
       COPIA_FILE.delete(p); return false;
     }
     inCorsoByte += b;
@@ -6074,7 +6080,7 @@ function statoCopia() {
   const file = inArrivo.map((x) => {
     const chiave = path.relative(base, x.p).replace(/\.parziale(\.[^/]*)?$/, "");
     const info = pesoDi.get(chiave) || {};
-    return { file: nomeFile(chiave), giorno: (chiave.split("/")[1] || ""), byte: x.b, peso: info.peso || null, velocita: x.v };
+    return { file: nomeFile(chiave), chiave, giorno: (chiave.split("/")[1] || ""), byte: x.b, peso: info.peso || null, velocita: x.v };
   }).sort((a, b) => (b.peso ? b.byte / b.peso : 0) - (a.peso ? a.byte / a.peso : 0));
   // un errore conta solo se e' l'ultima cosa successa: quelli vecchi sono passati
   const ultimaRiga = righe.length ? righe[righe.length - 1] : "";
@@ -6250,6 +6256,10 @@ function firmaConRegione(regione, chiave, cerca, quanto, bucket) {
   const secchio = bucket || S3.bucket;
   const m = magazzinoDi(secchio);
   if (m.inventario && chiave) { const qui = copiaInCasa(chiave); if (qui) return qui; }   // gia' in casa: la NAS
+  // STACCATI DA S3 (25/09/2026, deciso da Goffredo): il MAM non legge piu'
+  // niente da Parigi. Le partite ci arrivano solo con la copia sulla NAS;
+  // finche' non e' finita, una partita che sta solo su S3 non si apre.
+  if (m.inventario && S3_STACCATO) throw new Error("questa partita sta ancora su S3: si apre quando la copia l'ha portata sulla NAS");
   if (m.inventario) {
     if (m.ponte) return m.ponte + "/o/" + uriChiave(chiave);
     throw new Error("di questo archivio S3 abbiamo solo l'elenco: per aprire i file serve il ponte sulla EC2 o la chiave in sola lettura");

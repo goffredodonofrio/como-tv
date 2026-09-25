@@ -172,6 +172,9 @@
   .s3conto{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px solid #2F5E86;border-radius:999px;font-size:10.5px;color:#7FB4F0;white-space:nowrap;}
   .s3conto b{font-weight:600;font-variant-numeric:tabular-nums;} .s3conto .barra{width:44px;height:4px;border-radius:2px;background:rgba(127,180,240,.25);overflow:hidden;} .s3conto .barra i{display:block;height:100%;background:#5AA7E8;}
   .s3conto.tanto{border-color:var(--oro);color:var(--oro2);} .s3conto.tanto .barra i{background:var(--oro);}
+  .s3arriva{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px solid rgba(124,217,146,.55);border-radius:999px;font-size:10.5px;color:#7CD992;white-space:nowrap;font-variant-numeric:tabular-nums;}
+  .s3arriva .barra{width:44px;height:4px;border-radius:2px;background:rgba(124,217,146,.2);overflow:hidden;} .s3arriva .barra i{display:block;height:100%;background:#7CD992;}
+  .s3arriva.coda{border-color:var(--riga2);color:var(--ivory2);}
   .s3conto.pieno{border-color:var(--rosso);color:var(--rosso);} .s3conto.pieno .barra i{background:var(--rosso);}
   .pm .inout{font:11px ui-monospace,Menlo,monospace;color:var(--fumo);flex:none;} .pm .inout b{color:#5AA7E8;font-weight:500;}
   .comandi .gruppo{display:flex;align-items:center;gap:4px;padding:0 8px;border-right:1px solid var(--riga);}
@@ -897,6 +900,7 @@
           <button class="mini" id="aSrt" title="l'SRT della telecronaca intera">SRT</button>
           <button class="mini" data-sub="it" title="sottotitoli italiani sul video, e l'SRT esce in italiano">SUB ITA</button><button class="mini" data-sub="en" title="sottotitoli inglesi sul video, e l'SRT esce in inglese">SUB ENG</button><button class="mini" data-sub="due" title="tutte e due le lingue insieme, l'inglese sotto: l'SRT esce in due file">SUB ITA+ENG</button>
           <span class="s3conto" id="s3Conto" hidden></span>
+          <span class="s3arriva" id="s3Arriva" hidden></span>
           <button class="mini oro" id="aMam" title="apre questa partita nel montaggio">Apri nel montaggio</button>
         </div>
         <div class="a-per" id="aPer" hidden><span>Stai montando <b id="aPerNome">…</b>: segna entrata e uscita e</span><button class="mini oro" id="aPerInserisci" title="inserisce entrata-uscita nella sequenza che stai montando (,)">Inserisci nella sequenza ,</button><button class="mini" id="aPerTorna" title="torna al montaggio">&#8617; Torna al montaggio</button></div>
@@ -1237,7 +1241,11 @@
   var CAT = { evento:{eti:"Partite",c:"#4FA3E8",ic:"&#9917;"}, azione:{eti:"Azioni",c:"#7CD992",ic:"&#9889;"}, detto:{eti:"Telecronache",c:"#F5D76E",ic:"&#128172;"}, foto:{eti:"Foto",c:"#E3C271",ic:"&#128444;"}, espn:{eti:"Stemmi",c:"#D93A3A",ic:"&#128737;"}, file:{eti:"Cartelle",c:"#A8A8B8",ic:"&#128193;"} };
 
   // ══════════ STATO E NAVIGAZIONE ══════════
-  var EVENTI = [], REGS = {}, ASSET = null;
+  // DA S3 CI SIAMO STACCATI (25/09/2026): il MAM mostra solo le partite che
+  // stanno sulla NAS; quelle ancora a Parigi si contano (IN_ARRIVO) e
+  // compaiono da sole man mano che la copia le porta in casa.
+  var EVENTI = [], REGS = {}, ASSET = null, IN_ARRIVO = 0;
+  function soloNas(v){ IN_ARRIVO = v.filter(function(x){ return x.s3; }).length; return v.filter(function(x){ return !x.s3; }); }
   var VISTA_ORA = "libreria";   // la vista aperta (i menu); VISTA e' della Libreria: anteprime o lista
   function vai(vista){ VISTA_ORA = vista; ["libreria","asset","editor","live"].forEach(function(v){ el(v).classList.toggle("on", v === vista); }); el("vaiLive").classList.toggle("on", vista === "live"); if (el("aree")) el("aree").hidden = vista !== "editor"; if (typeof chiudiMenu === "function" && MENU_APERTO) chiudiMenu(); }
   function briciole(parti){ el("briciole").innerHTML = '<a href="mam2.html">Libreria</a>' + parti.map(function(p){ return '<i>›</i><b title="' + esc(p) + '">' + esc(p) + '</b>'; }).join(""); }
@@ -1252,7 +1260,8 @@
   }
   function caricaEventi(){
     post({ tipo:"clip-qnap-eventi" }).then(function(j){
-      EVENTI = (j.eventi || []).filter(function(x){ return x.partita || x.durata; });
+      EVENTI = soloNas((j.eventi || []).filter(function(x){ return x.partita || x.durata; }));
+      if (FILTRO.stato === "s3") FILTRO.stato = "";
       QUANTE_PUNTATE = EVENTI.filter(function(x){ return x.puntata; }).length;
       var nS3 = EVENTI.filter(function(x){ return x.s3; }).length;
       disegnaCategorie(); disegnaRecenti();
@@ -1393,8 +1402,7 @@
     var pun = QUANTE_PUNTATE;
     el("etiStato").innerHTML = (pun ? pastiglia("stato", "puntate", "gi\u00e0 puntate", pun, "") : "") +
       (tc ? pastiglia("stato", "tc", "con telecronaca", tc, "") : "") +
-      (s3 ? pastiglia("stato", "s3", "su S3 a Parigi", s3, "") : "") +
-      (EVENTI.length - s3 ? pastiglia("stato", "qnap", "sulla QNAP", EVENTI.length - s3, "") : "");
+      "";
     var comp = Object.keys(perComp).sort(function(a, b){ return perComp[b] - perComp[a] || a.localeCompare(b); });
     // in vista solo quelle che si usano davvero; se ne hai scelta una che
     // sta nella coda, quella resta in vista finche' e' accesa
@@ -1419,8 +1427,8 @@
     el("catConto").textContent = comp.length + " competizioni";
     if (!el("compTenda").hidden) disegnaTenda();
     var sotto = el("libSotto");
-    if (sotto) sotto.textContent = EVENTI.length.toLocaleString("it-IT") + " partite in archivio · " + comp.length +
-      " competizioni · " + tc + " con la telecronaca trascritta. Cerca, guarda, monta.";
+    if (sotto) sotto.textContent = EVENTI.length.toLocaleString("it-IT") + " partite sulla NAS · " + comp.length +
+      " competizioni · " + tc + " con la telecronaca trascritta" + (IN_ARRIVO ? " · " + IN_ARRIVO.toLocaleString("it-IT") + " in arrivo da S3" : "") + ". Cerca, guarda, monta.";
     var ora = new Date().getHours();
     el("libSaluto").innerHTML = (ora < 13 ? "Buongiorno" : ora < 19 ? "Buon pomeriggio" : "Buonasera") + ', <span>Como TV</span>';
   }
@@ -1676,6 +1684,8 @@
   function mb(n){ return n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : Math.round(n / 1e6) + " MB"; }
   function disegnaConto(){
     var c = el("s3Conto"); if (!c) return;
+    // staccati da S3: il MAM non legge piu' da Parigi, il tetto non si consuma
+    if (IN_ARRIVO >= 0) { c.hidden = true; return; }
     if (!S3.ponte || !suS3()) { c.hidden = true; return; }
     var q = S3.tettoGiorno ? S3.giorno / S3.tettoGiorno : 0;
     c.hidden = false;
@@ -1686,12 +1696,51 @@
               "Questo mese: " + mb(S3.mese) + " su " + mb(S3.tettoMese) + " (gratis fino a 100 GB).\n" +
               (q >= 1 ? "Tetto di oggi raggiunto: le partite S3 tornano domani." : "Costo: zero euro finché restiamo dentro il tetto.");
   }
+  // UNA PARTITA A META' COPIA. Finche' non e' tutta sulla NAS si legge da S3
+  // (col tetto del giorno): qui si vede quanto manca e, appena e' arrivata,
+  // la pagina la riapre da sola dalla NAS, allo stesso secondo.
+  var ARRIVO = 0, ARRIVO_VISTO = false;
+  function guardaArrivo(rec, r){
+    clearTimeout(ARRIVO); ARRIVO_VISTO = false;
+    var b = el("s3Arriva"); b.hidden = true;
+    if (!r || !r.arch || r.inCasa) return;
+    var chiavi = (r.arch.pezzi && r.arch.pezzi.length ? r.arch.pezzi : [r.arch]).map(function(z){ return z.chiave; });
+    var giro = function(){
+      if (ASSET !== r) return;
+      post({ tipo:"clip-archivio-copia" }).then(function(d){
+        if (ASSET !== r) return;
+        disegnaCopia(d);
+        var qui = (d.file || []).filter(function(f){ return chiavi.indexOf(f.chiave) >= 0; });
+        if (qui.length) {
+          ARRIVO_VISTO = true;
+          var byte = 0, peso = 0, vel = 0;
+          qui.forEach(function(f){ byte += f.byte; peso += f.peso || f.byte; vel += d.attiva ? f.velocita || 0 : 0; });
+          var q = peso ? byte / peso : 0, resto = vel > 1e5 ? (peso - byte) / vel * 1000 : 0;
+          b.className = "s3arriva"; b.hidden = false;
+          b.innerHTML = '\u21e3 in arrivo sulla NAS <b>' + Math.round(q * 100) + '%</b><span class="barra"><i style="width:' + (q * 100).toFixed(1) + '%"></i></span>' + (resto ? "tra ~" + Math.max(1, Math.round(resto / 60000)) + " min" : "");
+          b.title = "La copia la sta portando sulla NAS: " + gbFine(byte) + " di " + gbFine(peso) + ".\nAppena \u00e8 arrivata la riapro da qui, senza tetto.";
+        } else if (ARRIVO_VISTO) {
+          // arrivata: se il ponte la vede in casa si riapre dalla NAS, se no si riprova
+          b.className = "s3arriva"; b.hidden = false; b.innerHTML = "\u2713 arrivata, la riapro\u2026";
+          return post({ tipo:"clip-archivio-apri", rec: rec }).then(function(x){
+            if (ASSET !== r) return;
+            if (x.reg && x.reg.inCasa) { avviso("ok", "Arrivata sulla NAS: ora si vede senza tetto."); apriAsset(rec, null, V && V.currentTime > 1 ? V.currentTime + 3 : undefined); return "fatto"; }
+          });
+        } else if (d.attiva && suS3()) {
+          b.className = "s3arriva coda"; b.hidden = false;
+          b.innerHTML = "in coda per la NAS";
+          b.title = "Questa partita non \u00e8 ancora sulla NAS: la copia ci arriva" + (d.fine ? " entro " + quandoFine(d.fine) : "") + ".";
+        }
+      }).catch(function(){}).then(function(z){ if (z !== "fatto" && ASSET === r) ARRIVO = setTimeout(giro, 15000); });
+    };
+    giro();
+  }
   function apriAsset(rec, regId, t){
     vai("asset"); V = el("video"); mostraPer();
     var apri = regId ? Promise.resolve({ reg: REGS[regId] || null }) : Promise.resolve({ reg: null });
     apri.then(function(){ return post({ tipo:"clip-archivio-apri", rec: rec }); }).then(function(d){
       var r = d.reg; ASSET = r; MARKER = r.marker || []; FORSE = null; BOZZA = null;
-      contoS3();
+      contoS3(); guardaArrivo(rec, r);
       // la bozza: la sequenza "BOZZA · partita" piu' recente di questa registrazione
       post({ tipo:"clip-hl-elenco", reg: r.id, tutte: true }).then(function(x){ BOZZA = (x.seq || []).filter(function(q){ return q.reg === r.id && /^BOZZA · /.test(q.titolo || ""); }).sort(function(a,b){ return (b.creata || 0) - (a.creata || 0); })[0] || null; disegnaBozza(); }).catch(function(){});
       disegnaBozza();
@@ -1704,12 +1753,16 @@
       posa(r.id, undefined, function(u){ el("sMini").src = u; });
       briciole([r.titolo || "partita"]);
       document.title = (r.titolo || "MAM") + " · MAM Como TV";
-      V.src = BASE + r.via;
+      if (r.arch && !r.inCasa && !r.via) {
+        V.removeAttribute("src"); try { V.load(); } catch (e) {}
+        avviso("err", "Questa partita sta ancora su S3: si vede appena la copia la porta sulla NAS (la riapro da sola se \u00e8 in arrivo).");
+      } else V.src = BASE + r.via;
       V.onerror = function(){
         if (!suS3()) return avviso("err", "Questo video non si apre: il file del magazzino non risponde.");
         contoS3(function(s){
           if (s.tettoGiorno && s.giorno >= s.tettoGiorno)
-            avviso("err", "Tetto di oggi raggiunto (" + mb(s.giorno) + "): le partite su S3 tornano domani. Quelle sulla QNAP si vedono lo stesso.");
+            avviso("err", ARRIVO_VISTO ? "Tetto S3 di oggi raggiunto, ma questa partita sta arrivando sulla NAS: la riapro da sola appena c\u2019\u00e8."
+              : "Tetto di oggi raggiunto (" + mb(s.giorno) + "): le partite su S3 tornano domani, o appena la copia le porta sulla NAS. Quelle gi\u00e0 sulla NAS si vedono lo stesso.");
           else avviso("err", "Questo video non arriva da S3: riprova, o controlla il ponte verso la EC2.");
         });
       };
@@ -4940,7 +4993,7 @@
     var corpo = c.closest(".pan-corpo"); if (corpo && corpo.hidden) return;
     if (!EVENTI.length && !BM.chiesti) {
       BM.chiesti = true; c.innerHTML = '<div class="storia"><div class="nota">Leggo l’archivio…</div></div>';
-      post({ tipo:"clip-qnap-eventi" }).then(function(j){ EVENTI = (j.eventi || []).filter(function(x){ return x.partita || x.durata; }); disegnaBrowser(); })
+      post({ tipo:"clip-qnap-eventi" }).then(function(j){ EVENTI = soloNas((j.eventi || []).filter(function(x){ return x.partita || x.durata; })); disegnaBrowser(); })
         .catch(function(er){ BM.chiesti = false; c.innerHTML = '<div class="storia"><div class="nota">Archivio non raggiungibile: ' + esc(er.message) + "</div></div>"; });
       return;
     }
@@ -4963,6 +5016,7 @@
   }
   el("bmCerca").addEventListener("input", disegnaBrowser);
   el("bmCerca").addEventListener("keydown", function(e){ e.stopPropagation(); if (e.key === "ArrowDown") { e.preventDefault(); el("bmElenco").focus(); muoviBrowser(1); } if (e.key === "Escape") { this.value = ""; disegnaBrowser(); } });
+  el("bmS3").hidden = true;
   el("bmS3").addEventListener("click", function(){ BM.s3 = !BM.s3; try { localStorage.setItem("mam2-bm-s3", BM.s3 ? "si" : "no"); } catch (e) {} disegnaBrowser(); });
   function scegliBrowser(rec){ BM.sel = rec; Array.prototype.forEach.call(el("bmElenco").querySelectorAll(".bm-riga"), function(r){ r.classList.toggle("sel", r.dataset.rec === rec); }); }
   function muoviBrowser(d){
