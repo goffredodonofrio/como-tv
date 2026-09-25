@@ -6120,8 +6120,11 @@ function statoCopia() {
 //    boati       le azioni rumorose di appunti ed ESPN, al secondo
 //  In casa costa zero. Mai sopra una registrazione, una diretta, una
 //  trascrizione o un'altra lettura: la macchina ha due core.
-const CASA = { attiva: null, fatte: 0, fallite: 0, dal: Date.now() };
+const CASA = { attive: new Map(), fatte: 0, fallite: 0, dal: Date.now() };
 function passoCasa(rec, a) {
+  // lo studio (pre, intervallo, post) non ha ne' risultato ne' fischio suo:
+  // sta nel file della partita, e la partita la legge lei
+  if (DA_STUDIO.test(a.partita || "")) return null;
   if (!ESPN[rec]) return "espn";
   if (!a.orologio && !a.orologioFallito) return "cronometro";
   if (a.orologio && !a.tabellone && !a.tabelloneFallito) return "tabellone";
@@ -6131,20 +6134,25 @@ function passoCasa(rec, a) {
 function inCasaDaLavorare() {
   return Object.keys(ARCHIVIO).filter((k) => {
     const a = ARCHIVIO[k];
-    return a && a.chiave && magazzinoInventario(a.bucket) && inCasa(a) && passoCasa(k, a);
+    return a && a.chiave && magazzinoInventario(a.bucket) && inCasa(a) && !CASA.attive.has(k) && passoCasa(k, a);
   }).sort((x, y) => prioritaPartita(x) - prioritaPartita(y));
 }
+// due partite insieme (una sola se qualcuno sta usando il MAM): assorbe
+// anche il giro dei nomi, perche' il tabellone letto qui dice gia' se il
+// risultato combacia con quello atteso (tabellone.verificato)
 async function giroCasa() {
-  if (CASA.attiva) return;
+  const quante = qualcunoLavora() ? 1 : 2;
+  if (CASA.attive.size >= quante) return;
   if (registrandoDavvero() || laDirettaGira() || magazzinoOccupato() || voceAlLavoro || whisperGira() ||
-      orologiInMoto || tabelloniAttivi.size || NOMI.attive.size || CODA_DURATE.length || durateInMoto) return;
+      orologiInMoto || NOMI.attive.size || CODA_DURATE.length || durateInMoto) return;
   const rec = inCasaDaLavorare()[0]; if (!rec) return;
   const a = ARCHIVIO[rec], passo = passoCasa(rec, a);
-  CASA.attiva = { rec, partita: a.partita || rec, passo, dal: Date.now() };
+  CASA.attive.set(rec, { rec, partita: a.partita || rec, passo, dal: Date.now() });
+  setTimeout(() => { giroCasa().catch(() => {}); }, 5000);      // e intanto parte la seconda
   try {
     if (passo === "espn") { await espnTrova(rec); scriviEspn(); }
     else if (passo === "cronometro") await calibraOrologio(rec);
-    else if (passo === "tabellone") await leggiTabellone(rec);
+    else if (passo === "tabellone") { const t = await leggiTabellone(rec); NOMI.fatte++; if (t && t.verificato) NOMI.verificate++; }
     else if (passo === "boati") await puntaBoati(rec);
     CASA.fatte++;
   } catch (e) {
@@ -6154,11 +6162,11 @@ async function giroCasa() {
     // ci si ricorda del no: il giro non deve ripescare la stessa partita all'infinito
     if (passo === "espn") { ESPN[rec] = { mancante: "errore: " + perche.slice(0, 80), quando: a.quando }; scriviEspn(); }
     else if (passo === "cronometro") a.orologioFallito = { quando: new Date().toISOString(), motivo: perche.slice(0, 80) };
-    else if (passo === "tabellone") a.tabelloneFallito = perche;
+    else if (passo === "tabellone") { a.tabelloneFallito = perche; NOMI.fallite++; }
     else if (passo === "boati") a.boatiFatti = new Date().toISOString();
     scriviArchivio();
   } finally {
-    CASA.attiva = null;
+    CASA.attive.delete(rec);
     setTimeout(() => { giroCasa().catch(() => {}); }, 3000);
   }
 }
@@ -6175,7 +6183,8 @@ function statoCasa() {
     if (a.orologio && a.orologio.inizio1 > 600) n.studio++;
     if (!passoCasa(k, a)) n.finite++;
   });
-  return Object.assign(n, { adesso: CASA.attiva, fatte: CASA.fatte, fallite: CASA.fallite });
+  const adesso = [...CASA.attive.values()];
+  return Object.assign(n, { adesso: adesso[0] || null, tutte: adesso, fatte: CASA.fatte, fallite: CASA.fallite });
 }
 // ── IL GIRO DEI NOMI ────────────────────────────────────────────────────
 //  Per le partite gia' in casa col nome non sicuro si legge il tabellone:
@@ -6195,6 +6204,7 @@ function daVerificare() {
   });
 }
 function giroNomi() {
+  return;   // dal 25/09/2026 lo fa il giro della casa (passo "tabellone")
   if (!tesseractCe()) return;
   if ([...PROC.keys()].length) return;                       // c'e' una registrazione: la diretta viene prima
   if (!NOMI.dal) NOMI.dal = Date.now();
@@ -6217,7 +6227,7 @@ function statoNomi() {
     else if (a.tabellone || a.tabelloneFallito || !a.partita) daControllare++;
     else inAttesa++;
   });
-  return { partite, sicure, daControllare, inAttesa, inCorso: [...NOMI.attive].map((r) => (ARCHIVIO[r] || {}).partita || r),
+  return { partite, sicure, daControllare, inAttesa, inCorso: [...CASA.attive.values()].filter((x) => x.passo === "tabellone").map((x) => x.partita),
            fatte: NOMI.fatte, verificate: NOMI.verificate, fallite: NOMI.fallite };
 }
 function aggiornaSpecchio() {
