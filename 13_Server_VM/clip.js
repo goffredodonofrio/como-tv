@@ -5994,58 +5994,113 @@ function senzaCodeDi(a) { return !!a && senzaCode(a.bucket) && !inCasa(a); }
 //  partita conta quando c'e' TUTTA (inCasa), non quando e' arrivato un file.
 const COPIA_CAMPIONI = [];
 let COPIA_ULTIMO = null;
-function statoCopia() {
-  if (COPIA_ULTIMO && Date.now() - COPIA_ULTIMO.quando < 20000) return COPIA_ULTIMO;
-  // chi guarda la barra vuole il conto di adesso, non di dieci minuti fa
-  if (Date.now() - SPECCHIO_QUANDO > 120000) { try { aggiornaSpecchio(); } catch (e) {} }
-  const base = path.join(QNAP_RADICE, SPECCHIO_DIR);
-  let sullaNas = 0, inCorso = 0;
+//  Pesare tutta la cartella sulla NFS costa: si fa ogni 20 secondi. In mezzo
+//  (la barra chiede ogni pochi secondi) si ripesano solo i file a meta', e
+//  quelli finiti restano nel conto di prima: cosi' i MB salgono dal vivo
+//  senza bloccare il ponte.
+const COPIA_PESO = { quando: 0, fatti: 0, parziali: [] };
+const COPIA_FILE = new Map();   // file a meta' -> campioni {t, b} per la sua velocita'
+function pesaCopia(base) {
+  let fatti = 0; const parziali = [];
   const giro = (d, prof) => {
     let v; try { v = fs.readdirSync(d, { withFileTypes: true }); } catch (e) { return; }
     for (const x of v) {
       if (x.name.startsWith(".") || x.name === "_script") continue;
       const p = path.join(d, x.name);
       if (x.isDirectory()) { if (prof < 8) giro(p, prof + 1); continue; }
-      try { sullaNas += fs.statSync(p).size; } catch (e) { continue; }
-      if (/\.parziale/.test(x.name)) inCorso++;
+      if (/\.parziale/.test(x.name)) { parziali.push(p); continue; }
+      try { fatti += fs.statSync(p).size; } catch (e) {}
     }
   };
   giro(path.join(base, "TEMP"), 0);
-  const ora = Date.now();
+  Object.assign(COPIA_PESO, { quando: Date.now(), fatti, parziali });
+}
+function velocitaTra(campioni, ora, finestra) {
+  // la crescita tra adesso e il campione piu' vecchio dentro la finestra
+  const ultimo = campioni[campioni.length - 1];
+  const primo = campioni.find((c) => ora - c.t <= finestra);
+  if (!ultimo || !primo || ultimo.t - primo.t < 4000) return null;
+  return Math.max(0, (ultimo.b - primo.b) / ((ultimo.t - primo.t) / 1000));
+}
+function statoCopia() {
+  if (COPIA_ULTIMO && Date.now() - COPIA_ULTIMO.quando < 2500) return COPIA_ULTIMO;
+  // chi guarda la barra vuole il conto di adesso, non di dieci minuti fa
+  if (Date.now() - SPECCHIO_QUANDO > 120000) { try { aggiornaSpecchio(); } catch (e) {} }
+  const base = path.join(QNAP_RADICE, SPECCHIO_DIR);
+  if (Date.now() - COPIA_PESO.quando > 20000) pesaCopia(base);
+  // i file a meta' si ripesano adesso; quello sparito e' stato rinominato: e' finito
+  const ora = Date.now(), inArrivo = [];
+  let inCorsoByte = 0;
+  COPIA_PESO.parziali = COPIA_PESO.parziali.filter((p) => {
+    let b; try { b = fs.statSync(p).size; } catch (e) {
+      try { COPIA_PESO.fatti += fs.statSync(p.replace(/\.parziale(\.[^/]*)?$/, "")).size; } catch (e2) {}
+      COPIA_FILE.delete(p); return false;
+    }
+    inCorsoByte += b;
+    const cc = COPIA_FILE.get(p) || []; cc.push({ t: ora, b });
+    while (cc.length > 2 && ora - cc[0].t > 60000) cc.shift();
+    COPIA_FILE.set(p, cc);
+    inArrivo.push({ p, b, v: velocitaTra(cc, ora, 30000) });
+    return true;
+  });
+  for (const p of COPIA_FILE.keys()) if (!COPIA_PESO.parziali.includes(p)) COPIA_FILE.delete(p);
+  const sullaNas = COPIA_PESO.fatti + inCorsoByte, inCorso = inArrivo.length;
   COPIA_CAMPIONI.push({ t: ora, b: sullaNas });
   while (COPIA_CAMPIONI.length > 2 && ora - COPIA_CAMPIONI[0].t > 600000) COPIA_CAMPIONI.shift();
-  const c0 = COPIA_CAMPIONI[0];
-  const velocita = c0 && ora - c0.t > 25000 ? Math.max(0, (sullaNas - c0.b) / ((ora - c0.t) / 1000)) : null;
+  const velocita = COPIA_CAMPIONI[0] && ora - COPIA_CAMPIONI[0].t > 25000 ? velocitaTra(COPIA_CAMPIONI, ora, 600000) : null;
+  const velocitaOra = velocitaTra(COPIA_CAMPIONI, ora, 30000);
   let partite = 0, byteTot = 0, partiteCasa = 0, byteCasa = 0;
+  const pesoDi = new Map();
   Object.keys(ARCHIVIO).forEach((rec) => {
     const a = ARCHIVIO[rec]; if (!a || !a.chiave || !magazzinoInventario(a.bucket)) return;
-    const b = partiDi(a).reduce((n, z) => n + (z.peso || 0), 0);
+    const pz = partiDi(a), b = pz.reduce((n, z) => n + (z.peso || 0), 0);
+    pz.forEach((z) => pesoDi.set(z.chiave, { peso: z.peso || 0, partita: a.partita || "" }));
     partite++; byteTot += b;
     if (inCasa(a)) { partiteCasa++; byteCasa += b; }
   });
   let stato = null; try { stato = JSON.parse(fs.readFileSync(path.join(base, ".scarica-stato.json"), "utf8")); } catch (e) {}
   let righe = [], logQuando = 0;
   try { righe = fs.readFileSync(path.join(base, ".scarica.log"), "utf8").trim().split("\n").slice(-300); logQuando = fs.statSync(path.join(base, ".scarica.log")).mtimeMs; } catch (e) {}
+  // TEMP/giorno/PARTITA/[lingua]/...: il nome e' la cartella della partita, con la lingua se c'e'
+  const nomeFile = (chiave) => {
+    const pz = chiave.split("/");
+    const lingua = pz.slice(3, -1).map((z) => /AUDIO ONLY/i.test(z) ? "solo audio" : ((/\b(ITA|ENG)\b/i.exec(z) || [])[1] || "").toUpperCase()).filter(Boolean)[0];
+    return (pz[2] || pz[pz.length - 1]) + (lingua ? " (" + lingua + ")" : "");
+  };
   const ultimi = righe.filter((r) => /  ok /.test(r)).slice(-6).reverse().map((r) => {
-    const m = /  ok (.+?) ([\d.]+) GB in/.exec(r);
-    // TEMP/giorno/PARTITA/[lingua]/...: il nome e' la cartella della partita, con la lingua se c'e'
-    const pz = m ? m[1].split("/") : [];
-    const lingua = pz.slice(3, -1).map((z) => (/\b(ITA|ENG)\b/i.exec(z) || [])[1]).filter(Boolean)[0];
-    return m ? { file: (pz[2] || pz[pz.length - 1]) + (lingua ? " (" + lingua.toUpperCase() + ")" : ""), gb: +m[2] } : null;
+    const m = /  ok (.+?) ([\d.]+) GB in (\d+) s/.exec(r);
+    return m ? { file: nomeFile(m[1]), gb: +m[2], secondi: +m[3] } : null;
   }).filter(Boolean);
+  const file = inArrivo.map((x) => {
+    const chiave = path.relative(base, x.p).replace(/\.parziale(\.[^/]*)?$/, "");
+    const info = pesoDi.get(chiave) || {};
+    return { file: nomeFile(chiave), giorno: (chiave.split("/")[1] || ""), byte: x.b, peso: info.peso || null, velocita: x.v };
+  }).sort((a, b) => (b.peso ? b.byte / b.peso : 0) - (a.peso ? a.byte / a.peso : 0));
   // un errore conta solo se e' l'ultima cosa successa: quelli vecchi sono passati
   const ultimaRiga = righe.length ? righe[righe.length - 1] : "";
   const errore = /ERRORE|\['  File/.test(ultimaRiga) ? (righe.filter((r) => /ERRORE/.test(r)).slice(-1)[0] || "").replace(/^\S+ \S+\s+/, "").slice(0, 200) : "";
-  const manca = Math.max(0, byteTot - byteCasa);
+  const manca = Math.max(0, byteTot - sullaNas);
+  // il grafico: un punto ogni 15 secondi sugli ultimi 10 minuti
+  const storia = [];
+  let ancora = COPIA_CAMPIONI[0];
+  for (const c of COPIA_CAMPIONI) {
+    if (c.t - ancora.t < 15000) continue;
+    storia.push({ t: c.t, v: Math.round(Math.max(0, (c.b - ancora.b) / ((c.t - ancora.t) / 1000))) });
+    ancora = c;
+  }
+  const vFine = velocita || velocitaOra;
   COPIA_ULTIMO = {
     ok: true, quando: ora, cartella: base,
     partite, partiteCasa, byteTot, byteCasa, sullaNas, inCorso,
-    velocita, fine: velocita && velocita > 1e5 ? ora + manca / velocita * 1000 : null,
-    spesi: stato ? Math.round((stato.byte || 0) / 1e9 * 0.03 * 100) / 100 : null,
+    velocita, velocitaOra, storia: storia.slice(-40),
+    fine: vFine && vFine > 1e5 ? ora + manca / vFine * 1000 : null,
+    // pagato e' tutto quello che e' uscito da S3, file a meta' compresi
+    spesi: Math.round(Math.max(stato ? stato.byte || 0 : 0, sullaNas) / 1e9 * 0.03 * 100) / 100,
+    daSpendere: Math.round(manca / 1e9 * 0.03),
     scaricati: stato ? { byte: stato.byte || 0, file: stato.file || 0 } : null,
     attiva: !!logQuando && ora - logQuando < 20 * 60000 && (inCorso > 0 || (velocita || 0) > 1e5),
     fermaDa: logQuando ? ora - logQuando : null,
-    ultimi, errore
+    file, ultimi, errore
   };
   return COPIA_ULTIMO;
 }

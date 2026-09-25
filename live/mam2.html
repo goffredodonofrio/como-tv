@@ -595,9 +595,27 @@
   .copia.ferma .copia-barra i.casa,.copia.finita .copia-barra i.casa{animation:none;}
   .copia-dati{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px;color:var(--ivory2);}
   .copia-dati span b{color:var(--ivory);font-weight:600;}
+  .copia-vivo{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 18px;align-items:end;}
+  .copia-vivo div{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  .copia-vivo small{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--fumo);}
+  .copia-vivo strong{font:600 19px ui-monospace,Menlo,monospace;color:var(--ivory);font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .copia-vivo strong.oro{color:var(--oro2);}
+  .copia-vivo em{font-style:normal;font-size:11.5px;color:var(--ivory2);font-variant-numeric:tabular-nums;}
+  .copia-grafico{position:relative;height:46px;}
+  .copia-grafico canvas{width:100%;height:46px;display:block;}
+  .copia-grafico span{position:absolute;right:0;top:0;font-size:10.5px;color:var(--fumo);}
+  .copia-file{display:flex;flex-direction:column;gap:5px;}
+  .copia-file .f{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(80px,1fr) auto;gap:10px;align-items:center;font-size:12px;}
+  .copia-file .f b{font-weight:500;color:var(--ivory);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .copia-file .f b small{color:var(--fumo);font-weight:400;margin-left:6px;}
+  .copia-file .f i{height:6px;border-radius:3px;background:rgba(245,241,230,.08);overflow:hidden;display:block;}
+  .copia-file .f i u{display:block;height:100%;background:#7CD992;border-radius:3px;transition:width .4s linear;}
+  .copia-file .f span{color:var(--ivory2);font-variant-numeric:tabular-nums;white-space:nowrap;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;}
+  .copia-titoletto{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--fumo);}
   .copia-ultimi{font-size:11.5px;color:var(--fumo);}
   .copia-ultimi i{font-style:normal;color:var(--ivory2);}
   .copia-err{font-size:12px;color:#E0574A;}
+  @media (max-width:640px){ .copia-file .f{grid-template-columns:1fr auto;} .copia-file .f i{grid-column:1 / -1;order:3;} }
   #copiaMini{margin-left:8px;font:600 11px 'DM Sans',sans-serif;color:#7CD992;border:1px solid rgba(124,217,146,.5);border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap;}
   #espMini{margin-left:8px;font:600 11px 'DM Sans',sans-serif;color:var(--oro2);border:1px solid rgba(201,162,75,.5);border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap;}
   .ed-lato .uscita{display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 8px;border:1px solid var(--riga);border-radius:7px;}
@@ -5118,8 +5136,45 @@
   el("eXml").addEventListener("click", function(){ if (!SEQ) return; post({ tipo:"clip-hl-esporta", seq: SEQ.id, come:"premiere", volume: volumeMontaggio(false) || "" }).then(function(){ return post({ tipo:"clip-hl-srt", seq: SEQ.id, lingua: el("eSottoL").value }); }).then(function(){ avviso("ok", "XML e SRT pronti: li trovi nelle uscite."); giroUscite(); }).catch(function(er){ avviso("err", esc(er.message)); }); });
   // ── LA COPIA DELL'ARCHIVIO S3 SULLA NAS ──
   function gbTesto(b){ return b >= 1e12 ? (b / 1e12).toFixed(2).replace(".", ",") + " TB" : Math.round(b / 1e9) + " GB"; }
+  // i GB con due decimali: ogni 10 MB cambia cifra, si vede che sale
+  function gbFine(b){ return b >= 1e12 ? (b / 1e12).toFixed(3).replace(".", ",") + " TB" : (b / 1e9).toFixed(2).replace(".", ",") + " GB"; }
+  function mbs(v){ return v === null || v === undefined ? "—" : Math.round(v / 1e6) + " MB/s"; }
   function quandoFine(ms){
     try { return new Date(ms).toLocaleString("it-IT", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; }
+  }
+  function durataTesto(ms){
+    var m = Math.max(0, Math.round(ms / 60000)), h = Math.floor(m / 60), g = Math.floor(h / 24);
+    return g ? g + " g " + (h % 24) + " h" : h ? h + " h " + ("0" + (m % 60)).slice(-2) + " min" : m + " min";
+  }
+  // IL CONTATORE DAL VIVO: tra una domanda e l'altra al ponte i numeri
+  // avanzano da soli alla velocita' misurata (data-b + data-v * secondi)
+  var COPIA_T0 = 0, COPIA_RAF = 0;
+  function copiaVivo(){
+    COPIA_RAF = 0;
+    var c = el("copiaS3"); if (c.hidden || document.hidden || !c.offsetParent) return;
+    var dt = (performance.now() - COPIA_T0) / 1000;
+    Array.prototype.forEach.call(c.querySelectorAll("[data-b]"), function(x){
+      var b = +x.getAttribute("data-b") + (+x.getAttribute("data-v") || 0) * Math.min(dt, 30), max = +x.getAttribute("data-max") || 0;
+      if (max) b = Math.min(b, max);
+      if (x.tagName === "U") x.style.width = (max ? b / max * 100 : 0).toFixed(2) + "%";
+      else x.textContent = gbFine(b);
+    });
+    COPIA_RAF = setTimeout(copiaVivo, 100);
+  }
+  function graficoCopia(cv, storia){
+    if (!cv || !storia || storia.length < 2) return;
+    var w = cv.clientWidth, h = cv.clientHeight, r = window.devicePixelRatio || 1;
+    cv.width = w * r; cv.height = h * r;
+    var g = cv.getContext("2d"); g.scale(r, r);
+    var max = Math.max.apply(null, storia.map(function(p){ return p.v; })) || 1;
+    var t0 = storia[0].t, t1 = storia[storia.length - 1].t || t0 + 1;
+    var X = function(t){ return (t - t0) / Math.max(1, t1 - t0) * (w - 2) + 1; }, Y = function(v){ return h - 3 - v / max * (h - 14); };
+    g.beginPath(); g.moveTo(X(storia[0].t), h);
+    storia.forEach(function(p){ g.lineTo(X(p.t), Y(p.v)); });
+    g.lineTo(X(t1), h); g.closePath(); g.fillStyle = "rgba(201,162,75,.18)"; g.fill();
+    g.beginPath(); storia.forEach(function(p, i){ i ? g.lineTo(X(p.t), Y(p.v)) : g.moveTo(X(p.t), Y(p.v)); });
+    g.strokeStyle = "#E3C271"; g.lineWidth = 1.5; g.stroke();
+    cv.parentNode.querySelector("span").textContent = "picco " + Math.round(max / 1e6) + " MB/s · ultimi " + Math.max(1, Math.round((t1 - t0) / 60000)) + " min";
   }
   function disegnaCopia(d){
     var c = el("copiaS3"), mini = el("copiaMini");
@@ -5127,25 +5182,46 @@
     var finita = d.partiteCasa >= d.partite, perc = d.byteTot ? d.byteCasa / d.byteTot * 100 : 0, arr = d.byteTot ? Math.min(100, d.sullaNas / d.byteTot * 100) : 0;
     var st = finita ? "finita" : (d.attiva ? "va" : "ferma");
     var etichetta = finita ? "finita" : d.attiva ? "sta scaricando" : ("ferma" + (d.fermaDa ? " da " + Math.round(d.fermaDa / 60000) + " min" : ""));
+    var vOra = d.attiva ? (d.velocitaOra !== null && d.velocitaOra !== undefined ? d.velocitaOra : d.velocita) || 0 : 0;
+    var file = d.file || [];
     c.hidden = false; c.className = "copia " + st;
-    c.innerHTML = '<div class="copia-testa"><b>Archivio S3 \u2192 NAS</b><em class="' + st + '">' + etichetta + '</em><span class="perc">' + perc.toFixed(1).replace(".", ",") + '%</span></div>' +
-      '<div class="copia-barra" title="pieno: partite gi\u00e0 in casa \u00b7 velato: dati gi\u00e0 arrivati, file a met\u00e0 compresi"><i class="arr" style="width:' + arr.toFixed(2) + '%"></i><i class="casa" style="width:' + Math.max(0.4, perc).toFixed(2) + '%"></i></div>' +
-      '<div class="copia-dati"><span><b>' + d.partiteCasa.toLocaleString("it-IT") + '</b> di ' + d.partite.toLocaleString("it-IT") + ' partite in casa</span>' +
-      '<span><b>' + gbTesto(d.sullaNas) + '</b> di ' + gbTesto(d.byteTot) + ' sulla NAS</span>' +
-      (d.velocita !== null && d.velocita !== undefined ? '<span><b>' + Math.round(d.velocita / 1e6) + ' MB/s</b> (' + Math.round(d.velocita * 8 / 1e6) + ' Mbit/s)</span>' : '<span>velocit\u00e0: la misuro\u2026</span>') +
-      (d.fine && !finita ? '<span>fine prevista <b>' + esc(quandoFine(d.fine)) + '</b></span>' : '') +
-      (d.spesi !== null && d.spesi !== undefined ? '<span>spesi circa <b>' + Math.round(d.spesi) + ' $</b></span>' : '') + '</div>' +
-      (d.ultimi && d.ultimi.length ? '<div class="copia-ultimi">Ultime arrivate: ' + d.ultimi.slice(0, 4).map(function(u){ return "<i>" + esc(u.file) + "</i>"; }).join(" \u00b7 ") + '</div>' : '') +
-      (d.nomi ? '<div class="copia-ultimi">Nomi: <i>' + d.nomi.sicure.toLocaleString("it-IT") + ' sicuri</i> \u00b7 ' + d.nomi.inAttesa.toLocaleString("it-IT") + ' da verificare col tabellone quando arrivano \u00b7 ' + d.nomi.daControllare.toLocaleString("it-IT") + ' da controllare a mano' + (d.nomi.inCorso && d.nomi.inCorso.length ? ' \u00b7 sto leggendo il tabellone di <i>' + esc(d.nomi.inCorso.join(", ")) + '</i>' : '') + '</div>' : '') +
-      (d.errore ? '<div class="copia-err">\u26a0 ' + esc(d.errore) + '</div>' : '');
+    c.innerHTML = '<div class="copia-testa"><b>Archivio S3 → NAS</b><em class="' + st + '">' + etichetta + '</em>' +
+        (d.inCorso ? '<em>' + d.inCorso + ' file insieme</em>' : '') + '<span class="perc">' + arr.toFixed(2).replace(".", ",") + '%</span></div>' +
+      '<div class="copia-barra" title="velato: dati già arrivati, file a metà compresi · pieno: partite già tutte in casa"><i class="arr" style="width:' + arr.toFixed(2) + '%"></i><i class="casa" style="width:' + Math.max(0.4, perc).toFixed(2) + '%"></i></div>' +
+      '<div class="copia-vivo">' +
+        '<div><small>Sulla NAS</small><strong class="oro" data-b="' + d.sullaNas + '" data-v="' + vOra + '">' + gbFine(d.sullaNas) + '</strong><em>di ' + gbTesto(d.byteTot) + '</em></div>' +
+        '<div><small>Velocità adesso</small><strong>' + (d.attiva ? mbs(d.velocitaOra) : "0 MB/s") + '</strong><em>' + (d.attiva && d.velocitaOra ? Math.round(d.velocitaOra * 8 / 1e6) + ' Mbit/s · ' : '') + 'media 10 min ' + mbs(d.velocita) + '</em></div>' +
+        '<div><small>Partite in casa</small><strong>' + d.partiteCasa.toLocaleString("it-IT") + '</strong><em>di ' + d.partite.toLocaleString("it-IT") + ' · ' + perc.toFixed(1).replace(".", ",") + '%</em></div>' +
+        '<div><small>Fine prevista</small><strong>' + (d.fine && !finita ? esc(quandoFine(d.fine)) : finita ? "fatto" : "—") + '</strong><em>' + (d.fine && !finita ? "tra " + durataTesto(d.fine - Date.now()) + " · mancano " + gbTesto(Math.max(0, d.byteTot - d.sullaNas)) : "la misuro…") + '</em></div>' +
+        (d.spesi !== null && d.spesi !== undefined ? '<div><small>Spesa S3</small><strong>' + d.spesi.toFixed(2).replace(".", ",") + ' $</strong><em>ne restano circa ' + (d.daSpendere || 0) + ' $ · tetto 450 $</em></div>' : '') +
+      '</div>' +
+      (d.storia && d.storia.length > 1 ? '<div class="copia-grafico"><canvas></canvas><span></span></div>' : '') +
+      (file.length ? '<div class="copia-titoletto">In arrivo adesso</div><div class="copia-file">' + file.map(function(f){
+        var v = d.attiva ? f.velocita || 0 : 0;
+        return '<div class="f"><b title="' + esc(f.file) + '">' + esc(f.file) + (f.giorno ? '<small>' + esc(f.giorno.replace(/^(\d{4})(\d\d)(\d\d)$/, "$3/$2/$1")) + '</small>' : '') + '</b>' +
+          '<i><u data-b="' + f.byte + '" data-v="' + v + '" data-max="' + (f.peso || 0) + '" style="width:' + (f.peso ? f.byte / f.peso * 100 : 0).toFixed(2) + '%"></u></i>' +
+          '<span><em data-b="' + f.byte + '" data-v="' + v + '"' + (f.peso ? ' data-max="' + f.peso + '"' : '') + ' style="font-style:normal">' + gbFine(f.byte) + '</em>' + (f.peso ? ' / ' + gbFine(f.peso) : '') + ' · ' + mbs(f.velocita) + '</span></div>';
+      }).join("") + '</div>' : '') +
+      (d.ultimi && d.ultimi.length ? '<div class="copia-ultimi">Ultime arrivate: ' + d.ultimi.slice(0, 4).map(function(u){ return "<i>" + esc(u.file) + "</i> (" + String(u.gb).replace(".", ",") + " GB" + (u.secondi ? " in " + durataTesto(u.secondi * 1000) : "") + ")"; }).join(" · ") + '</div>' : '') +
+      (d.nomi ? '<div class="copia-ultimi">Nomi: <i>' + d.nomi.sicure.toLocaleString("it-IT") + ' sicuri</i> · ' + d.nomi.inAttesa.toLocaleString("it-IT") + ' da verificare col tabellone quando arrivano · ' + d.nomi.daControllare.toLocaleString("it-IT") + ' da controllare a mano' + (d.nomi.inCorso && d.nomi.inCorso.length ? ' · sto leggendo il tabellone di <i>' + esc(d.nomi.inCorso.join(", ")) + '</i>' : '') + '</div>' : '') +
+      (d.errore ? '<div class="copia-err">⚠ ' + esc(d.errore) + '</div>' : '');
+    graficoCopia(c.querySelector(".copia-grafico canvas"), d.storia);
+    COPIA_T0 = performance.now();
+    if (!COPIA_RAF) COPIA_RAF = setTimeout(copiaVivo, 100);
     mini.hidden = finita;
-    mini.textContent = "\u21e3 Archivio " + perc.toFixed(1).replace(".", ",") + "%";
+    mini.textContent = "⇣ Archivio " + arr.toFixed(1).replace(".", ",") + "%" + (d.attiva && vOra ? " · " + Math.round(vOra / 1e6) + " MB/s" : "");
     mini.style.color = d.attiva ? "" : "#F0A93B";
   }
+  // nella Libreria si chiede ogni 5 secondi (il ponte ripesa solo i file a meta'),
+  // altrove basta il bottoncino in alto; a scheda nascosta non si chiede niente
+  var COPIA_PRIMA = true;
+  function chiediCopia(){ return post({ tipo:"clip-archivio-copia" }).then(disegnaCopia).catch(function(){}); }
   function giroCopia(){
-    post({ tipo:"clip-archivio-copia" }).then(disegnaCopia).catch(function(){})
-      .then(function(){ setTimeout(giroCopia, VISTA_ORA === "libreria" ? 30000 : 120000); });
+    var dopo = function(){ setTimeout(giroCopia, VISTA_ORA === "libreria" ? 5000 : 60000); };
+    if (document.hidden && !COPIA_PRIMA) return dopo();
+    COPIA_PRIMA = false; chiediCopia().then(dopo);
   }
+  document.addEventListener("visibilitychange", function(){ if (!document.hidden) chiediCopia(); });
   el("copiaMini").addEventListener("click", function(){
     if (VISTA_ORA === "libreria") { el("copiaS3").scrollIntoView({ behavior: "smooth", block: "center" }); return; }
     location.href = "mam2.html";
