@@ -3971,6 +3971,10 @@ async function hlInserisci(p) {
   const pezzo = { id: nuovoId("p"), dentro: dentro, fuori: fuori, base: dentro, stacco: agganciato || 0,
     titolo: String(p.titolo || "").slice(0, 160) || (r.titolo + " " + orologio(dentro)),
     tipo: "", minuto: "", fonte: "mano", mano: true };
+  // UN PEZZO DI UN'ALTRA PARTITA si ricorda da dove viene. Senza, un pezzo
+  // di Chelsea-Luton messo nella sequenza di Udinese-Como diventava
+  // Udinese-Como allo stesso minuto: immagini, audio e sottotitoli sbagliati.
+  if (r.id !== q.reg) { pezzo.reg = r.id; pezzo.partita = r.titolo || ""; }
   const dove = (p.dove === undefined || p.dove === null) ? q.pezzi.length
              : Math.max(0, Math.min(q.pezzi.length, Math.round(num(p.dove, 0, 999, 0))));
   ricorda(q);                     // com'era prima che entrasse
@@ -4783,7 +4787,15 @@ async function righeDellaSequenza(q, lingua) {
   let orologio = 0; const tutte = [];
   for (const x of q.pezzi) {
     const parte = Math.max(orologio, x.t0 || 0), dur = Math.max(0, x.fuori - x.dentro);
-    if (!x.vivo) (await righeTradotte(q.reg, lingua, x.dentro, x.fuori, parte, R.reg[q.reg])).forEach((y) => tutte.push(y));
+    // OGNI PEZZO PARLA CON LA SUA PARTITA: in una gol collection il pezzo
+    // di Como-Lazio portava le righe di Como-Genoa (quelle di q.reg), nello
+    // stesso punto del file. E a meta' velocita' ci sta meta' partita, e
+    // ogni riga dura il doppio: stessa aritmetica dei marcatori.
+    const vel = +x.velocita || 1, reg = idRegDi(q, x);
+    if (!x.vivo && !x.media) (await righeTradotte(reg, lingua, x.dentro, x.dentro + dur * vel, 0, R.reg[reg])).forEach((y) => {
+      y.a = Math.round((parte + y.a / vel) * 1000) / 1000; y.b = Math.round((parte + y.b / vel) * 1000) / 1000;
+      tutte.push(y);
+    });
     orologio = parte + dur;
   }
   return tutte;
