@@ -978,7 +978,7 @@
           </div>
           </div>
           <div class="pan-corpo pan-browser" data-corpo="browser" hidden>
-            <div class="ts-barra"><input id="bmCerca" type="search" placeholder="Cerca nell&#8217;archivio: partita, competizione&#8230;" autocomplete="off"><button id="bmS3" title="mostra anche le partite che stanno solo su S3: guardarle consuma il tetto giornaliero">+ S3</button><span class="conto" id="bmConto"></span></div>
+            <div class="ts-barra"><input id="bmCerca" type="search" placeholder="Cerca nell&#8217;archivio: partita, competizione&#8230;" autocomplete="off"><button id="bmS3" title="solo le partite della QNAP: guardarle non costa niente (quelle su S3 consumano il tetto giornaliero)">Solo QNAP</button><span class="conto" id="bmConto"></span></div>
             <div class="bm-elenco" id="bmElenco" tabindex="0"></div>
           </div>
           <div class="pan-corpo" data-corpo="cronologia" hidden><div id="storiaElenco" class="storia"></div></div>
@@ -1970,7 +1970,7 @@
   function scelto(id){ return SELS.indexOf(id) >= 0; }
   function scegli(id, aggiungi){ if (!aggiungi) SELS = []; if (id) { if (aggiungi && scelto(id)) SELS = SELS.filter(function(z){ return z !== id; }); else SELS.push(id); } SEL = SELS.length ? SELS[SELS.length - 1] : null; }
   var GRAF_DEST = { forza: "", per: "", finestra: null }, GRAF_URL = {}, GRAF_CHIESTE = {};
-  var SEQ = null, REGE = null, VE, PZ = [], DETTOE = [], DETTI = {}, DETTI_CHIESTI = {}, LF = (function(){ var d = { vista: "16:9", cx: 0.5, formati: ["16:9"], sotto: "", sottoL: "it" }; try { var z = JSON.parse(localStorage.getItem("mam2-live-formati") || "null"); if (z && z.formati) { d.vista = z.vista || d.vista; d.cx = typeof z.cx === "number" ? z.cx : 0.5; d.formati = z.formati; d.sotto = z.sotto || ""; d.sottoL = z.sottoL || "it"; } } catch (e) {} return d; })(), TS_SEL = "", TS_RIGHE = [], TS_SEGUI = true, TS_ORA = -1, TS_BOZZA = null, SRG = { r: null, rec: "", dentro: null, fuori: null }, BM = { sel: "", s3: false, chiesti: false }, SEL = null, ORA = { i: -1, pos: 0 }, LENTE = { a: 0, b: 0 }, TRASC = null, SOTTOE = false, LINGUAE = "it", GIRO_E = null, FORMATI = ["16:9"];
+  var SEQ = null, REGE = null, VE, PZ = [], DETTOE = [], DETTI = {}, DETTI_CHIESTI = {}, LF = (function(){ var d = { vista: "16:9", cx: 0.5, formati: ["16:9"], sotto: "", sottoL: "it" }; try { var z = JSON.parse(localStorage.getItem("mam2-live-formati") || "null"); if (z && z.formati) { d.vista = z.vista || d.vista; d.cx = typeof z.cx === "number" ? z.cx : 0.5; d.formati = z.formati; d.sotto = z.sotto || ""; d.sottoL = z.sottoL || "it"; } } catch (e) {} return d; })(), TS_SEL = "", TS_RIGHE = [], TS_SEGUI = true, TS_ORA = -1, TS_BOZZA = null, SRG = { r: null, rec: "", dentro: null, fuori: null }, BM = { sel: "", s3: (function(){ try { return localStorage.getItem("mam2-bm-s3") !== "no"; } catch (e) { return true; } })(), chiesti: false }, SEL = null, ORA = { i: -1, pos: 0 }, LENTE = { a: 0, b: 0 }, TRASC = null, SOTTOE = false, LINGUAE = "it", GIRO_E = null, FORMATI = ["16:9"];
   // OGNI PEZZO SA DOVE STA. Il ponte tiene per ogni clip il suo t0, il
   // secondo in cui comincia nel montato, e sa gestire una sequenza "libera"
   // con i buchi. La pagina invece impilava i pezzi sommando le durate: cosi'
@@ -4585,25 +4585,26 @@
         .catch(function(er){ BM.chiesti = false; c.innerHTML = '<div class="storia"><div class="nota">Archivio non raggiungibile: ' + esc(er.message) + "</div></div>"; });
       return;
     }
-    el("bmS3").classList.toggle("on", BM.s3);
+    el("bmS3").classList.toggle("on", !BM.s3);
     var parole = (el("bmCerca").value || "").toLowerCase().split(/\s+/).filter(Boolean), qui = recsDellaSeq();
     var tutte = EVENTI.filter(function(x){ return x.rec && (BM.s3 || !x.s3); }), scelte = tutte.filter(function(x){
       var t = ((x.partita || "") + " " + (x.competizione || "") + " " + (x.nome || "")).toLowerCase();
       return parole.every(function(p){ return t.indexOf(p) >= 0; });
     }).sort(function(a, b){ return (qui[b.rec] ? 1 : 0) - (qui[a.rec] ? 1 : 0) || String(b.quandoPartita || b.quando || "").localeCompare(String(a.quandoPartita || a.quando || "")); });
-    var h = scelte.slice(0, 250).map(function(x){
+    var h = scelte.map(function(x){
       return '<div class="bm-riga' + (BM.sel === x.rec ? " sel" : "") + '" data-rec="' + esc(x.rec) + '"><b title="' + esc(x.partita || x.nome) + '">' + esc(x.partita || x.nome) + "</b>" +
         "<small>" + esc([x.competizione, quandoBreve(x.quandoPartita || x.quando), x.durata ? durata(x.durata) : ""].filter(Boolean).join(" · ")) + "</small>" +
         '<span class="bm-segni">' + (qui[x.rec] ? '<i class="qui" title="c’e’ gia’ in questa sequenza">in sequenza</i>' : "") + (x.telecronaca ? '<i class="tc" title="telecronaca trascritta: sottotitoli pronti">telecronaca</i>' : "") +
         (x.s3 ? '<i class="s3" title="sta su S3: guardarla consuma il tetto giornaliero">S3</i>' : '<i class="qnap" title="sta sulla QNAP: costo zero">QNAP</i>') + "</span></div>";
     }).join("");
-    if (!scelte.length) h = '<div class="storia"><div class="nota">' + (tutte.length ? "Nessuna partita con queste parole." : "Nessuna partita sulla QNAP. Con + S3 si vedono anche quelle su S3.") + "</div></div>";
+    if (!scelte.length) h = '<div class="storia"><div class="nota">' + (tutte.length ? "Nessuna partita con queste parole." + (!BM.s3 ? " Togli \u201cSolo QNAP\u201d per cercare anche su S3." : "") : "Nessuna partita sulla QNAP. Togli \u201cSolo QNAP\u201d per vedere anche quelle su S3.") + "</div></div>";
     c.innerHTML = h;
-    el("bmConto").textContent = scelte.length + (scelte.length === 1 ? " partita" : " partite") + (scelte.length > 250 ? " (le prime 250)" : "");
+    var inS3 = scelte.filter(function(x){ return x.s3; }).length;
+    el("bmConto").textContent = scelte.length + (scelte.length === 1 ? " partita" : " partite") + (inS3 && inS3 < scelte.length ? " \u00b7 " + (scelte.length - inS3) + " QNAP, " + inS3 + " S3" : "");
   }
   el("bmCerca").addEventListener("input", disegnaBrowser);
   el("bmCerca").addEventListener("keydown", function(e){ e.stopPropagation(); if (e.key === "ArrowDown") { e.preventDefault(); el("bmElenco").focus(); muoviBrowser(1); } if (e.key === "Escape") { this.value = ""; disegnaBrowser(); } });
-  el("bmS3").addEventListener("click", function(){ BM.s3 = !BM.s3; disegnaBrowser(); });
+  el("bmS3").addEventListener("click", function(){ BM.s3 = !BM.s3; try { localStorage.setItem("mam2-bm-s3", BM.s3 ? "si" : "no"); } catch (e) {} disegnaBrowser(); });
   function scegliBrowser(rec){ BM.sel = rec; Array.prototype.forEach.call(el("bmElenco").querySelectorAll(".bm-riga"), function(r){ r.classList.toggle("sel", r.dataset.rec === rec); }); }
   function muoviBrowser(d){
     var righe = Array.prototype.slice.call(el("bmElenco").querySelectorAll(".bm-riga")); if (!righe.length) return;
