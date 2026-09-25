@@ -213,6 +213,13 @@
   /* LA BARRA DEI MENU. Ogni voce chiama un gesto che esiste davvero: niente
      righe che non fanno niente per far sembrare il menu piu' ricco. */
   .menubar{position:relative;display:flex;align-items:center;gap:1px;padding:0 6px;background:var(--navy2);border-bottom:1px solid var(--riga);flex:0 0 auto;z-index:60;}
+  /* LE AREE DI LAVORO, a destra della barra dei menu come in Premiere: la
+     linguetta accesa e' quella in cui stai lavorando */
+  .menubar .aree{margin-left:auto;display:flex;align-items:stretch;gap:2px;}
+  .menubar .aree button{background:none;border:0;border-radius:0;padding:0 10px;font:500 11.5px/28px 'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--fumo);position:relative;}
+  .menubar .aree button:hover{color:var(--ivory2);}
+  .menubar .aree button.on{color:var(--oro2);}
+  .menubar .aree button.on::after{content:'';position:absolute;left:8px;right:8px;bottom:0;height:2px;background:var(--oro);}
   .menubar > button{background:none;border:none;color:var(--ivory2);font:inherit;font-size:12.5px;padding:6px 11px;border-radius:6px;cursor:pointer;}
   .menubar > button:hover{background:rgba(245,241,230,.07);}
   .menubar > button.on{background:var(--oro);color:var(--navy);font-weight:600;}
@@ -722,6 +729,7 @@
   <div class="vista" id="editor">
     <div class="menubar" id="menubar">
       <button data-menu="file">File</button><button data-menu="modifica">Modifica</button><button data-menu="clip">Clip</button><button data-menu="sequenza">Sequenza</button><button data-menu="vista">Visualizza</button><button data-menu="finestra">Finestra</button><button data-menu="aiuto">Aiuto</button>
+      <div class="aree" id="aree" title="Aree di lavoro"><button data-area="montaggio">Montaggio</button><button data-area="audio">Audio</button><button data-area="sottotitoli">Sottotitoli</button></div>
       <div class="tendina-menu" id="tendinaMenu" hidden></div>
     </div>
     <!-- LO SPAZIO DI LAVORO A PANNELLI, come l’area "Montaggio" di Premiere.
@@ -2275,7 +2283,11 @@
       vc("Esporta", "cmd M", function(){ mostraScheda("esporta"); }),
       vc("Timeline", "", function(){ mostraScheda("timeline"); }),
       { riga: 1 },
-      { capo: "Area di lavoro" },
+      { capo: "Aree di lavoro" },
+      vc("Montaggio", "", function(){ cambiaArea("montaggio"); }),
+      vc("Audio", "", function(){ cambiaArea("audio"); }),
+      vc("Sottotitoli", "", function(){ cambiaArea("sottotitoli"); }),
+      { riga: 1 },
       vc("Massimizza il pannello attivo", "`", function(){ massimizza(WS.attivo); }),
       vc("Ripristina l\u2019area di lavoro", "", function(){ ripristinaArea(); })
     ],
@@ -3607,8 +3619,10 @@
     // il monitor e la timeline si rimisurano sullo spazio nuovo
     dopoMisura: function(){ if (typeof misuraPalco === "function") misuraPalco(); if (SEQ && typeof disegnaTl === "function") disegnaTl(); },
     ripristina: function(){
-      ["bin", "lato", "nomi", "tl", "h-C", "h-G", "h-V2", "h-V1", "h-A1", "h-A2", "h-A3", "h-A4"].forEach(function(k){ delete MISURE[k]; });
-      salvaMisure(); applicaMisure();
+      try { localStorage.removeItem("mam2-area-" + AREA); } catch (e) {}
+      metteMisure(AREE[AREA].misure);
+      AREE[AREA].schede.forEach(function(k){ WS.mostra(k, true); });
+      if (SEQ) { CORSIE_FIRMA = ""; disegnaEditor(); }
     }
   });
   // ── LA DIRETTA ────────────────────────────────────────────────────
@@ -3630,6 +3644,48 @@
   presaSu(el("lvDivSx"), "lv-sx", "x", 1);
   presaSu(el("lvDivDx"), "lv-dx", "x", -1);      // le clip crescono andando a sinistra
   presaSu(el("lvManiglia"), "lv-acq", "y", 1);
+  // ── LE AREE DI LAVORO ─────────────────────────────────────────────
+  //  Come in Premiere: la stessa pagina disposta per un mestiere diverso.
+  //  Montaggio e' quella di sempre; Audio allarga le tracce audio e
+  //  stringe le video (i volumi e le dissolvenze si lavorano sulle onde);
+  //  Sottotitoli alza la traccia C1, dove le righe si leggono intere.
+  //  Ogni area si ricorda come l'hai lasciata; "Ripristina l'area di
+  //  lavoro" la riporta alla sua forma di partenza, non a quella di
+  //  un'altra.
+  var CHIAVI_MONTAGGIO = ["bin", "lato", "nomi", "tl", "h-C", "h-G", "h-V2", "h-V1", "h-A1", "h-A2", "h-A3", "h-A4"];
+  var AREE = {
+    montaggio:   { misure: {}, schede: ["effetti", "progetto"] },
+    audio:       { misure: { tl: 320, "h-A1": 90, "h-A2": 90, "h-A3": 70, "h-A4": 70, "h-V1": 40, "h-V2": 24, "h-G": 20, "h-C": 20 }, schede: ["effetti", "progetto"] },
+    sottotitoli: { misure: { tl: 260, "h-C": 72, "h-V1": 48, "h-V2": 24, "h-G": 20, "h-A1": 30 }, schede: ["metadati", "progetto"] }
+  };
+  var AREA = "montaggio"; try { AREA = localStorage.getItem("mam2-area") || "montaggio"; } catch (e) {}
+  if (!AREE[AREA]) AREA = "montaggio";
+  function misureDellArea(nome){
+    var salvate = null; try { salvate = JSON.parse(localStorage.getItem("mam2-area-" + nome) || "null"); } catch (e) {}
+    return salvate || AREE[nome].misure;
+  }
+  function metteMisure(m){
+    CHIAVI_MONTAGGIO.forEach(function(k){ delete MISURE[k]; });
+    Object.keys(m || {}).forEach(function(k){ if (CHIAVI_MONTAGGIO.indexOf(k) >= 0) MISURE[k] = m[k]; });
+    salvaMisure(); applicaMisure();
+  }
+  function ricordaArea(){
+    var m = {}; CHIAVI_MONTAGGIO.forEach(function(k){ if (typeof MISURE[k] === "number") m[k] = MISURE[k]; });
+    try { localStorage.setItem("mam2-area-" + AREA, JSON.stringify(m)); } catch (e) {}
+  }
+  function segnaArea(){ Array.prototype.forEach.call(document.querySelectorAll("#aree button"), function(b){ b.classList.toggle("on", b.dataset.area === AREA); }); }
+  function cambiaArea(nome){
+    if (!AREE[nome]) return;
+    if (WS.massimo) WS.massimizza("");
+    ricordaArea();                                  // quella che lasci resta come l'hai lasciata
+    AREA = nome; try { localStorage.setItem("mam2-area", nome); } catch (e) {}
+    metteMisure(misureDellArea(nome));
+    AREE[nome].schede.forEach(function(k){ mostraScheda(k, true); });
+    segnaArea();
+    if (SEQ) { CORSIE_FIRMA = ""; disegnaEditor(); }
+  }
+  el("aree").addEventListener("click", function(e){ var b = e.target.closest("button[data-area]"); if (b) cambiaArea(b.dataset.area); });
+  segnaArea();
   function attivaPannello(n){ WS.attiva(n); }
   function mostraScheda(k, senzaAttivare){ WS.mostra(k, senzaAttivare); }
   function massimizza(n){ WS.massimizza(n); }
