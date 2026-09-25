@@ -198,11 +198,13 @@
   </div>
 
   <div class="panel">
-    <h2>Foto <span style="font-family:'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--fg-3);font-weight:500;font-size:11px">facoltativa: una, dal magazzino. Si scopre in onda dietro una lama d\'oro e poi deriva piano</span></h2>
+    <h2>Foto <span style="font-family:'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--fg-3);font-weight:500;font-size:11px">facoltativa: una, dal magazzino o dal computer. Si scopre in onda dietro una lama d\'oro e poi deriva piano</span></h2>
     <div class="fotoslot">
       <div class="anteprimina vuota" id="f1prev">nessuna<br>foto</div>
-      <div><button type="button" id="f1scegli">Scegli dal magazzino</button>
-        <button type="button" id="f1togli" style="margin-top:6px">&times; Togli</button></div>
+      <div><button type="button" id="f1carica">Carica dal computer</button>
+        <button type="button" id="f1scegli" style="margin-top:6px">Scegli dal magazzino</button>
+        <button type="button" id="f1togli" style="margin-top:6px">&times; Togli</button>
+        <input type="file" id="f1file" accept="image/*" hidden></div>
       <div style="font-size:12.5px;color:var(--fg-3);max-width:420px">Meglio una foto larga: entra
         in un pannello alto tutto il quadro e viene ritagliata al centro. L\'anteprima qui sopra la
         mostra ferma, in onda si muove.</div>
@@ -354,6 +356,44 @@
     SceltaFoto.apri(function (url) { mettiFoto(url); });
   });
   el("f1togli").addEventListener("click", function () { mettiFoto(""); });
+  // Una foto dal computer: la redazione non ha sempre il tempo di passare dal
+  // magazzino. Si rimpicciolisce qui (una foto del telefono pesa megabyte, e
+  // la grafica ne usa al massimo un quadro pieno) e si salva comunque nel
+  // magazzino, come nelle Dichiarazioni: la grafica in regia la va a prendere
+  // li', e resta pronta per la volta dopo.
+  var BASEIMG = PONTE.replace(/\/(api|exec)$/, "");
+  el("f1carica").addEventListener("click", function () { el("f1file").click(); });
+  el("f1file").addEventListener("change", function () {
+    var f = this.files && this.files[0];
+    this.value = "";
+    if (!f) return;
+    stato("", "Carico la foto nel magazzino…");
+    var lettore = new FileReader();
+    lettore.onload = function () {
+      var img = new Image();
+      img.onload = function () {
+        var k = Math.min(1, 1920 / img.naturalWidth, 1920 / img.naturalHeight);
+        var tela = document.createElement("canvas");
+        tela.width = Math.round(img.naturalWidth * k); tela.height = Math.round(img.naturalHeight * k);
+        tela.getContext("2d").drawImage(img, 0, 0, tela.width, tela.height);
+        var nome = "foto appuntamenti " + String(f.name || "").replace(/\.[a-z0-9]+$/i, "").toLowerCase();
+        fetch(PONTE, {
+          method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ token: TOKEN, tipo: "logo-carica", nome: nome, dati: tela.toDataURL("image/jpeg", 0.85) })
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            if (!res.ok || !res.url) throw new Error(res.errore || "salvataggio non riuscito");
+            mettiFoto(BASEIMG + res.url + "?t=" + Date.now());
+            stato("ok", "Foto caricata (e salvata anche nel magazzino).");
+          })
+          .catch(function (e) { stato("err", "Foto non caricata: " + e.message); });
+      };
+      img.onerror = function () { stato("err", "Questo file non è un'immagine che il browser sa leggere."); };
+      img.src = lettore.result;
+    };
+    lettore.readAsDataURL(f);
+  });
 
   // ══ DAL CALENDARIO ════════════════════════════════════════════════════
   // Le partite arrivano dallo scoreboard su una finestra di date: e' l'unica
