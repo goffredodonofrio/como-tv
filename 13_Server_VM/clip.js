@@ -4531,6 +4531,29 @@ async function chiaveVicina(via, quando) {
 //  partita. Adesso un pezzo puo' portarsi la SUA sorgente: se ce l'ha, non
 //  si scarica niente perche' e' gia' qui, e dentro/fuori sono i secondi
 //  dentro QUEL file.
+// IL NOME DALLA CARTELLA. Le partite che Airtable non conosce (soloS3) un
+// nome ce l'hanno: la cartella che chi le ha caricate ha scritto a mano,
+// TEMP/giorno/NOME/... ("Red Bull Salzburg vs SK Puntigamer Sturm Graz",
+// "COMO CUP", "FOOTBALL SHOW MONDAY NIGHT"). La lingua in coda (ITA, ENG)
+// non e' il nome: e' la versione audio.
+function nomeDaCartella(a) {
+  if (!a) return "";
+  const pz = String(a.dove || a.chiave || "").split("/");
+  let n = (pz[0] === "TEMP" ? pz[2] : pz[pz.length - 2]) || "";
+  n = n.replace(/\[[^\]]*\b(ITA|ENG|INT)\b[^\]]*\]/ig, "").replace(/[\s_-]+(ITA|ENG)$/i, "").replace(/\s+/g, " ").trim();
+  return /^\d{6,8}$/.test(n) ? "" : n;
+}
+// UN NOME E' SICURO se l'abbinamento con Airtable e' certo, oppure se il
+// tabellone letto sul video ha dato lo stesso risultato che dice il nome
+// (o ESPN): calcolato qui e non scritto, cosi' lo scandaglio orario, che
+// riscrive "sicuro", non puo' cancellarlo.
+function nomeSicuro(a) {
+  if (!a) return false;
+  if (a.sicuro === true) return true;
+  if (a.tabellone && a.tabellone.verificato) return true;
+  if (a.riconosciuta && a.riconosciuta.sicura !== false && a.riconosciuta.confermata) return true;
+  return false;
+}
 function puntata(a) {
   if (!a) return false;
   return !!(a.orologio || a.orologioFallito) && !!(a.boati || a.boatiFatti);
@@ -6026,6 +6049,49 @@ function statoCopia() {
   };
   return COPIA_ULTIMO;
 }
+// ── IL GIRO DEI NOMI ────────────────────────────────────────────────────
+//  Per le partite gia' in casa col nome non sicuro si legge il tabellone:
+//  se il finale combacia con quello atteso (nel nome o in ESPN) la partita
+//  diventa sicura (nomeSicuro). Due alla volta, prima il Como e poi dalla
+//  piu' recente; mai sopra una registrazione in corso. In casa costa zero.
+const NOMI = { attive: new Set(), fatte: 0, verificate: 0, fallite: 0, dal: 0 };
+function daVerificare() {
+  return Object.keys(ARCHIVIO).filter((rec) => {
+    const a = ARCHIVIO[rec];
+    return a && a.partita && magazzinoInventario(a.bucket) && inCasa(a) && !nomeSicuro(a) &&
+           !a.tabellone && !a.tabelloneFallito && !NOMI.attive.has(rec);
+  }).sort((x, y) => {
+    const a = ARCHIVIO[x], b = ARCHIVIO[y];
+    const cx = /\bCOMO\b/i.test(a.partita) ? 0 : 1, cy = /\bCOMO\b/i.test(b.partita) ? 0 : 1;
+    return cx - cy || String(b.quando || "").localeCompare(String(a.quando || ""));
+  });
+}
+function giroNomi() {
+  if (!tesseractCe()) return;
+  if ([...PROC.keys()].length) return;                       // c'e' una registrazione: la diretta viene prima
+  if (!NOMI.dal) NOMI.dal = Date.now();
+  while (NOMI.attive.size < 2) {
+    const rec = daVerificare()[0]; if (!rec) return;
+    const a = ARCHIVIO[rec];
+    NOMI.attive.add(rec);
+    leggiTabellone(rec)
+      .then((t) => { NOMI.fatte++; if (t && t.verificato) NOMI.verificate++; })
+      .catch((e) => { NOMI.fallite++; a.tabelloneFallito = String(e.message || e).slice(0, 160); scriviArchivio(); })
+      .then(() => { NOMI.attive.delete(rec); setTimeout(giroNomi, 2000); });
+  }
+}
+function statoNomi() {
+  let partite = 0, sicure = 0, daControllare = 0, inAttesa = 0;
+  Object.keys(ARCHIVIO).forEach((rec) => {
+    const a = ARCHIVIO[rec]; if (!a || !magazzinoInventario(a.bucket)) return;
+    partite++;
+    if (a.partita && nomeSicuro(a)) sicure++;
+    else if (a.tabellone || a.tabelloneFallito || !a.partita) daControllare++;
+    else inAttesa++;
+  });
+  return { partite, sicure, daControllare, inAttesa, inCorso: [...NOMI.attive].map((r) => (ARCHIVIO[r] || {}).partita || r),
+           fatte: NOMI.fatte, verificate: NOMI.verificate, fallite: NOMI.fallite };
+}
 function aggiornaSpecchio() {
   const base = path.join(QNAP_RADICE, SPECCHIO_DIR);
   let c = false; try { c = fs.statSync(base).isDirectory(); } catch (e) { c = false; }
@@ -6788,7 +6854,7 @@ async function archivioApri(p) {
 // con il risultato se c'e' o la data se no — e un suffisso solo quando il file
 // e' davvero un tempo. "1ª parte" era il nome del file, non della partita.
 function titoloMateriale(a, i, durataVera) {
-  let nome = String(a.partita || "partita").toUpperCase().replace(/\s+VS\.?\s+/g, "-").replace(/\s*-\s*/g, "-").replace(/\s+/g, " ").trim();
+  let nome = String(a.partita || nomeDaCartella(a) || "partita").toUpperCase().replace(/\s+VS\.?\s+/g, "-").replace(/\s*-\s*/g, "-").replace(/\s+/g, " ").trim();
   if (!/\b\d+-\d+\b/.test(nome)) {
     const d = new Date(a.quando || 0);
     if (isFinite(d) && d.getTime()) nome += " \u00b7 " + String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + String(d.getFullYear()).slice(2);
@@ -12792,7 +12858,8 @@ const AZIONI = {
       const minuti = (a.pezzi || []).reduce((n, z) => n + (z.minuti || 0), 0);
       const r = regs.find((x) => x.arch && x.arch.rec === k);
       fuori.push({ nome: path.basename(a.chiave), via: a.chiave, cartella: a.dove || path.dirname(a.chiave), peso: a.peso || (a.pezzi || []).reduce((n, z) => n + (z.peso || 0), 0),
-                   quando: Date.parse(a.quando) || 0, est: path.extname(a.chiave).slice(1).toLowerCase(), rec: k, partita: a.partita || "", competizione: a.competizione || "",
+                   quando: Date.parse(a.quando) || 0, est: path.extname(a.chiave).slice(1).toLowerCase(), rec: k, partita: a.partita || nomeDaCartella(a) || "",
+                   nomeDa: a.soloS3 ? "cartella" : (a.partita ? "airtable" : (nomeDaCartella(a) ? "cartella" : "")), sicuro: !!a.partita && nomeSicuro(a), competizione: a.competizione || "",
                    quandoPartita: a.quando || "", durata: r ? (r.durata || 0) : Math.round(minuti * 60), reg: r ? r.id : undefined,
                    telecronaca: !!(r && PARLATO[r.id] && (PARLATO[r.id].pezzi || []).length), s3: !inCasa(a), inCasa: inCasa(a), senzaNome: !!a.soloS3, bucket: a.bucket, pezzi: (a.pezzi || []).length || 1,
                    soloElenco: soloElenco(a.bucket) && !inCasa(a), puntata: puntata(a),
@@ -12804,7 +12871,7 @@ const AZIONI = {
   },
   "clip-qnap-peso": qnapPeso,
   // L'AVANZAMENTO DELLA COPIA S3 -> NAS, per la barra della Libreria
-  "clip-archivio-copia": () => statoCopia(),
+  "clip-archivio-copia": () => Object.assign({}, statoCopia(), { nomi: statoNomi() }),
   // quante partite S3 sono gia' in casa (ricontate adesso)
   "clip-archivio-specchio": () => Object.assign({ ok: true, cartella: path.join(QNAP_RADICE, SPECCHIO_DIR) }, aggiornaSpecchio()),
   // UNA POSA: un fotogramma fermo della registrazione al secondo chiesto,
@@ -13800,6 +13867,9 @@ function avvio(opz) {
   setInterval(() => { giroEspn().catch(() => {}); }, GIRO_ESPN).unref();
   // le partite S3 che arrivano sulla NAS: ogni dieci minuti si guarda chi e' in casa
   setTimeout(() => { try { aggiornaSpecchio(); } catch (e) { console.log("[clip] specchio: " + e.message); } }, 15000).unref();
+  // i nomi delle partite in casa: il giro riparte ogni cinque minuti (e da solo appena finisce una)
+  setTimeout(() => { try { giroNomi(); } catch (e) {} }, 60000).unref();
+  setInterval(() => { try { giroNomi(); } catch (e) {} }, 300000).unref();
   setInterval(() => { try { aggiornaSpecchio(); } catch (e) { console.log("[clip] specchio: " + e.message); } }, 600000).unref();
   // Gli appunti delle partite appena giocate: la redazione li scrive nei
   // giorni dopo, quindi si ripassa una finestra corta e si lascia stare

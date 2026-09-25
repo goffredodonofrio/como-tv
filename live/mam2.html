@@ -1343,6 +1343,7 @@
     if (FILTRO.stato === "tc" && !x.telecronaca) return false;
     if (FILTRO.stato === "s3" && !x.s3) return false;
     if (FILTRO.stato === "qnap" && x.s3) return false;
+    if (FILTRO.stato === "controllare" && x.sicuro !== false) return false;
     return true;
   }
   function eventiVisti(){ return EVENTI.filter(passa); }
@@ -1394,7 +1395,8 @@
       (pun ? '<option value="puntate"' + (FILTRO.stato === "puntate" ? " selected" : "") + ">gi\u00e0 puntate (" + pun + ")</option>" : "") +
       (tc ? '<option value="tc"' + (FILTRO.stato === "tc" ? " selected" : "") + ">con telecronaca (" + tc + ")</option>" : "") +
       (EVENTI.length - s3 ? '<option value="qnap"' + (FILTRO.stato === "qnap" ? " selected" : "") + ">sulla QNAP (" + (EVENTI.length - s3) + ")</option>" : "") +
-      (s3 ? '<option value="s3"' + (FILTRO.stato === "s3" ? " selected" : "") + ">su S3 a Parigi (" + s3 + ")</option>" : "");
+      (s3 ? '<option value="s3"' + (FILTRO.stato === "s3" ? " selected" : "") + ">su S3 a Parigi (" + s3 + ")</option>" : "") +
+      (function(){ var n = EVENTI.filter(function(x){ return x.sicuro === false; }).length; return n ? '<option value="controllare"' + (FILTRO.stato === "controllare" ? " selected" : "") + ">nome da controllare (" + n + ")</option>" : ""; })();
     el("selStato").classList.toggle("on", !!FILTRO.stato);
     el("catConto").textContent = comp.length + " competizioni";
     if (!el("compTenda").hidden) disegnaTenda();
@@ -5134,6 +5136,7 @@
       (d.fine && !finita ? '<span>fine prevista <b>' + esc(quandoFine(d.fine)) + '</b></span>' : '') +
       (d.spesi !== null && d.spesi !== undefined ? '<span>spesi circa <b>' + Math.round(d.spesi) + ' $</b></span>' : '') + '</div>' +
       (d.ultimi && d.ultimi.length ? '<div class="copia-ultimi">Ultime arrivate: ' + d.ultimi.slice(0, 4).map(function(u){ return "<i>" + esc(u.file) + "</i>"; }).join(" \u00b7 ") + '</div>' : '') +
+      (d.nomi ? '<div class="copia-ultimi">Nomi: <i>' + d.nomi.sicure.toLocaleString("it-IT") + ' sicuri</i> \u00b7 ' + d.nomi.inAttesa.toLocaleString("it-IT") + ' da verificare col tabellone quando arrivano \u00b7 ' + d.nomi.daControllare.toLocaleString("it-IT") + ' da controllare a mano' + (d.nomi.inCorso && d.nomi.inCorso.length ? ' \u00b7 sto leggendo il tabellone di <i>' + esc(d.nomi.inCorso.join(", ")) + '</i>' : '') + '</div>' : '') +
       (d.errore ? '<div class="copia-err">\u26a0 ' + esc(d.errore) + '</div>' : '');
     mini.hidden = finita;
     mini.textContent = "\u21e3 Archivio " + perc.toFixed(1).replace(".", ",") + "%";
