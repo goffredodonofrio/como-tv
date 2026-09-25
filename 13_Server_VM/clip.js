@@ -7201,6 +7201,10 @@ function scriviArchivio() {
   } catch (e) { console.log("[clip] indice archivio non salvato: " + e.message); }
 }
 
+// quello che si e' misurato sul file di una partita e che uno scandaglio
+// dell'indice non deve buttare, finche' il materiale e' lo stesso
+const LETTURE_DEL_FILE = ["orologio", "orologioFallito", "tabellone", "tabelloneFallito", "boati", "boatiFatti",
+  "momenti", "momentiFatti", "appuntiImpronta", "gol", "replay", "primoReplay", "replayNo", "cronometroCieco", "misurato", "stelle", "voceProvata"];
 async function archivioScandaglia(p) {
   if (!s3Acceso()) return { ok: false, errore: "nessun magazzino configurato" };
   const bucket = p.bucket || ARCH_BUCKET;
@@ -7480,11 +7484,11 @@ async function archivioScandaglia(p) {
       // parlano di un altro file.
       const prima = ARCHIVIO[rec.id] || {};
       const stessaRoba = prima.dove === meglio.dove && prima.bucket === bucket;
-      const letture = stessaRoba
-        ? { orologio: prima.orologio, tabellone: prima.tabellone, boati: prima.boati,
-            momenti: prima.momenti, momentiFatti: prima.momentiFatti,
-            gol: prima.gol, replay: prima.replay, misurato: prima.misurato, stelle: prima.stelle }
-        : { orologio: prima.orologio };
+      // TUTTE, anche i "fatto" e i "fallito": senza boatiFatti,
+      // orologioFallito, tabelloneFallito il giro della casa rifaceva i boati
+      // e riprovava i cronometri gia' falliti a ogni scandaglio (26/09/2026)
+      const letture = { orologio: prima.orologio };
+      if (stessaRoba) LETTURE_DEL_FILE.forEach((c) => { if (prima[c] !== undefined) letture[c] = prima[c]; });
       ARCHIVIO[rec.id] = Object.assign(letture, { bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
         partita: f["Partita"] || "", competizione: f["Competizione"] || "",
         variante: "", giorno: meglio.giorno, dove: meglio.dove,
@@ -7514,8 +7518,8 @@ async function archivioScandaglia(p) {
   Object.keys(ARCHIVIO).forEach((k) => {
     if (k.indexOf("s3:") !== 0 || ARCHIVIO[k].bucket !== bucket) return;
     const v = ARCHIVIO[k];
-    lettureSoleS3[k] = { orologio: v.orologio, tabellone: v.tabellone, boati: v.boati,
-                         gol: v.gol, replay: v.replay, misurato: v.misurato, stelle: v.stelle };
+    lettureSoleS3[k] = {};
+    LETTURE_DEL_FILE.forEach((c) => { if (v[c] !== undefined) lettureSoleS3[k][c] = v[c]; });
     delete ARCHIVIO[k];
   });
   Object.keys(gruppi).forEach((k) => {
@@ -8825,8 +8829,15 @@ function appuntiGemelli() {
     const a = ARCHIVIO[k], ap = APPUNTI[k];
     if (!a || !ap || !(ap.righe || []).length || ap.ereditati || DA_STUDIO.test(a.partita || "")) return;
     const c = chiaveGemella(a); if (!c) return;
-    // a parita', quella in italiano (e' li' che scrive la redazione)
-    if (!conAppunti.has(c) || /\bITA\b/i.test(a.partita || "")) conAppunti.set(c, k);
+    // a parita', quella in italiano (e' li' che scrive la redazione); poi
+    // quella con piu' righe, poi la chiave. SEMPRE LA STESSA: la scelta
+    // dipendeva dall'ordine delle chiavi, che cambia a ogni scandaglio, e
+    // nove versioni cambiavano fonte a ogni avvio perdendo i boati (26/09)
+    const voto = (x) => [/\bITA\b/i.test((ARCHIVIO[x] || {}).partita || "") ? 1 : 0, ((APPUNTI[x] || {}).righe || []).length];
+    const g = conAppunti.get(c);
+    if (!g) { conAppunti.set(c, k); return; }
+    const vk = voto(k), vg = voto(g);
+    if (vk[0] > vg[0] || (vk[0] === vg[0] && (vk[1] > vg[1] || (vk[1] === vg[1] && k < g)))) conAppunti.set(c, k);
   });
   let dati = 0;
   Object.keys(ARCHIVIO).forEach((k) => {
@@ -8835,7 +8846,13 @@ function appuntiGemelli() {
     if (APPUNTI[k] && (APPUNTI[k].righe || []).length && !APPUNTI[k].ereditati) return;
     const c = chiaveGemella(a), da = c && conAppunti.get(c);
     if (!da || da === k) return;
-    const nuovo = !APPUNTI[k] || APPUNTI[k].ereditati !== da;
+    // nuovi davvero solo se cambiano le righe. L'impronta sta sulla partita:
+    // l'import di Airtable all'avvio rimette a queste versioni i loro appunti
+    // vuoti, e confrontare con quelli rifaceva i boati a ogni riavvio (26/09)
+    const impronta = crypto.createHash("md5").update(JSON.stringify(((APPUNTI[da] || {}).righe || []).map((y) => [y.m, y.t, y.x]))).digest("hex").slice(0, 16);
+    // (la prima volta, chi ha gia' ereditato da questa gemella non e' nuovo)
+    const nuovo = a.appuntiImpronta === undefined ? !(APPUNTI[k] && APPUNTI[k].ereditati === da) : a.appuntiImpronta !== impronta;
+    a.appuntiImpronta = impronta;
     const eng = /(^|[^A-Z])ENG([^A-Z]|$)/.test(String(a.partita || "").toUpperCase());
     APPUNTI[k] = Object.assign({}, APPUNTI[da], { partita: a.partita || APPUNTI[da].partita, ereditati: da,
       telecronista: eng ? "Paul Dempsey" : (/AUDIO ?ONLY/i.test(a.partita || "") ? "" : APPUNTI[da].telecronista) });
