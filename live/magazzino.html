@@ -192,7 +192,8 @@
   var TOKEN = (window.ChiaveComoTV ? ChiaveComoTV.valore() : "");
   var BASE = PONTE.replace(/\/(api|exec)$/, "");
   var BASE_VIDEO = BASE + "/video/";
-  var MAM = "mam.html?modo=archivio";
+  // il MAM e' uno solo, mam2.html: la partita si apre nella Libreria, al secondo giusto
+  function mamA(rec, t){ return "mam2.html" + (rec ? "?asset=" + encodeURIComponent(rec) + (t !== undefined && t !== null ? "&t=" + Math.floor(t) : "") : ""); }
 
   function el(id){ return document.getElementById(id); }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
@@ -437,7 +438,7 @@
     var a = el("anteprima"), h = "";
     a.setAttribute("data-c", "1"); a.style.setProperty("--c", colore(x));
     if (x.t === "azione") {
-      var apriA = MAM + (x.rec ? "&apri=" + encodeURIComponent(x.rec) : "") + "&t=" + Math.floor(x.dentro);
+      var apriA = mamA(x.rec, x.dentro);
       a.innerHTML = '<div class="et">' + esc(x.tag || x.tipo || "Azione") + (x.gol ? ' \u00b7 gol' : '') + '</div><h3 style="text-transform:none">' + esc(x.titolo || x.giocatore || "") + '</h3>' +
         (x.chiave ? '<div class="media" id="azMedia"><div class="vuoto" style="padding:14px">carico l\u2019azione\u2026</div></div>' : '') +
         '<div class="metaf"><span>partita</span><b>' + esc(x.partita) + '</b>' + (x.minuto ? '<span>minuto</span><b>' + esc(x.minuto) + '</b>' : '') + '<span>al</span><b>' + tcMin(x.t2) + ' (dal ' + tcMin(x.dentro) + ' al ' + tcMin(x.fuori) + ')</b>' +
@@ -454,7 +455,7 @@
       return;
     }
     if (x.t === "detto") {
-      var apri = MAM + (x.rec ? "&apri=" + encodeURIComponent(x.rec) : "") + "&t=" + Math.floor(x.a);
+      var apri = mamA(x.rec, x.a);
       a.innerHTML = '<div class="et">Telecronaca ' + (x.lingua === "en" ? "\uD83C\uDDEC\uD83C\uDDE7 inglese" : "\uD83C\uDDEE\uD83C\uDDF9 italiano") + '</div><h3 style="text-transform:none">' + esc(x.titolo) + '</h3>' +
         (x.chiave ? '<div class="media" id="azMedia"><div class="vuoto" style="padding:14px">carico il punto della partita\u2026</div></div>' : '') +
         '<div class="metaf"><span>a</span><b>' + tcMin(x.a) + ' \u2192 ' + tcMin(x.b) + '</b></div>' +
@@ -522,7 +523,7 @@
     if (x.t === "evento" || (x.t === "file" && x.tipo === "file")) {
       var radice = x.t === "evento" ? "qnap" : x.radice;
       var titolo = x.partita || x.nome.replace(/\.[^.]+$/, "");
-      var apri = x.rec ? MAM + "&apri=" + encodeURIComponent(x.rec) : (x.reg ? MAM : "");
+      var apri = x.rec ? mamA(x.rec) : (x.reg ? mamA("") : "");
       h = '<div class="et">' + (x.t === "evento" ? "Evento completo · QNAP" : esc(x.radiceNome || "file")) + '</div><h3>' + esc(titolo) + '</h3>' +
           ((x.video || x.t === "evento" || x.immagine) ? '<div class="media" id="azMedia"><div class="vuoto" style="padding:14px">anteprima…</div></div>' : '') +
           '<div class="metaf"><span>file</span><b>' + esc(x.nome) + '</b>' + (x.cartella || (x.via && x.via.indexOf("/") >= 0) ? '<span>cartella</span><b>' + esc(x.cartella || x.via.split("/").slice(0,-1).join("/")) + '</b>' : '') +

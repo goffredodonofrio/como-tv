@@ -900,7 +900,20 @@
   var PONTE = /^\/como-tv-dev\//.test(location.pathname) ? "/como-tv-dev/api" : "/api";
   var BASE = PONTE.replace(/\/api$/, "");
   var TOKEN = ""; try { TOKEN = (window.ChiaveComoTV ? ChiaveComoTV.valore() : "") || ""; } catch (e) {}
-  var MAM = "mam.html?modo=archivio";
+  // "Apri nel montaggio" porta nel montaggio di QUESTA pagina: l'ultima
+  // sequenza della partita, o una nuova se non ce n'e'. Prima apriva il
+  // MAM vecchio (mam.html), un altro montaggio, senza pannelli ne' partite
+  // miste: ci si finiva senza accorgersene.
+  function apriNelMontaggio(r){
+    if (!r || !r.id) return avviso("err", "Apri prima una partita.");
+    post({ tipo:"clip-hl-elenco", reg: r.id, tutte: true }).then(function(d){
+      var qs = (d.seq || []).filter(function(q){ return q.reg === r.id || (q.pezzi || []).some(function(x){ return x.reg === r.id; }); })
+        .sort(function(a, b){ return (b.tocco || b.creata || 0) - (a.tocco || a.creata || 0); });
+      if (qs.length) return qs[0];
+      return post({ tipo:"clip-hl-nuova", reg: r.id, titolo: "HL " + (r.titolo || "partita") }).then(function(x){ return x.seq; });
+    }).then(function(q){ if (q && q.id) location.href = "mam2.html?seq=" + encodeURIComponent(q.id); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  }
   function el(id){ return document.getElementById(id); }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
   function piatto(t){ return String(t||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,""); }
@@ -1401,7 +1414,7 @@
       V.addEventListener("loadedmetadata", function durataVera(){ V.removeEventListener("loadedmetadata", durataVera); if (!r.durata && isFinite(V.duration) && V.duration > 0) { r.durata = Math.round(V.duration); ASSET.durata = r.durata; el("aMeta").innerHTML = [r.competizione, quando(r.avviata), durata(r.durata)].filter(Boolean).map(esc).join(" · "); disegnaScheda(el("cercaS").value); disegnaMomenti(); } });
       var ricorda = function(u){ try { localStorage.setItem("mam2-ultimo", JSON.stringify({ titolo: r.titolo, url: location.pathname.replace(/^.*\//, "") + location.search, quando: new Date().toLocaleString("it-IT", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }), mini: u || (r.mini ? BASE + r.mini : ""), t: t || 0 })); } catch (e) {} };
       ricorda(""); posa(r.id, t ? Math.round(t) : undefined, ricorda);
-      el("aMam").onclick = function(){ window.open(MAM + "&apri=" + encodeURIComponent(rec) + (V.currentTime ? "&t=" + Math.floor(V.currentTime) : ""), "_blank"); };
+      el("aMam").onclick = function(){ apriNelMontaggio(r); };
       el("aScarica").onclick = function(){ if (!r.arch) return; post({ tipo:"clip-qnap-via", via: r.arch.chiave, radice:"qnap" }).then(function(x){ var a = document.createElement("a"); a.href = BASE + x.via + "&scarica=1"; a.download = r.arch.chiave; document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); }, 1000); }).catch(function(e){ avviso("err", esc(e.message)); }); };
       el("aSrt").onclick = function(){ lingueChieste().forEach(function(l, k){ setTimeout(function(){ scaricaSrt(r.id, l); }, k * 500); }); };
       return Promise.all([post({ tipo:"clip-tabellino", reg: r.id }).catch(function(){ return { righe: [] }; }), post({ tipo:"clip-parlato", reg: r.id }).catch(function(){ return { pezzi: [] }; })]);
@@ -1545,7 +1558,7 @@
     if (!righe.length || !ASSET) return;
     post({ tipo:"clip-tabellino-monta", reg: ASSET.id, righe: righe }).then(function(d){
       var q = d.seq || d.sequenza; if (q && q.id) location.href = "mam2.html?seq=" + encodeURIComponent(q.id);
-      else { avviso("ok", "Sequenza creata: si apre nel montaggio."); window.open(MAM + "&apri=" + encodeURIComponent(ASSET.evento || ""), "_blank"); }
+      else { avviso("ok", "Sequenza creata: si apre nel montaggio."); apriNelMontaggio(ASSET); }
     }).catch(function(e){ avviso("err", esc(e.message)); });
   }
   el("cercaS").addEventListener("input", function(){ disegnaScheda(this.value); });
