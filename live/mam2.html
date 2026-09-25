@@ -316,6 +316,39 @@
   .ts-riga:hover .via{opacity:.6;} .ts-riga .via:hover{opacity:1;color:var(--rosso);}
   .ts-riga .pz{grid-column:2/4;font-size:10px;color:var(--fumo);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .ts-capo{padding:8px 10px 3px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--oro);font-family:'Mazzard',sans-serif;}
+  /* IL MONITOR SORGENTE nel montaggio: una partita dell'archivio, entrata,
+     uscita, e la virgola che la inserisce in sequenza. Accanto a Progetto
+     il BROWSER MEDIA: l'archivio sfogliato senza uscire dal montaggio. */
+  .pan-srg{display:flex;flex-direction:column;overflow:hidden!important;}
+  .srg-testa{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--riga);flex:none;min-width:0;}
+  .srg-testa b{font-size:12.5px;color:var(--ivory);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+  .srg-testa span{font-size:10.5px;color:var(--fumo);white-space:nowrap;}
+  .srg-testa button{margin-left:auto;flex:none;padding:3px 8px;font-size:10.5px;border-radius:3px;}
+  .srg-palco{flex:1 1 auto;min-height:0;position:relative;background:#000;display:flex;align-items:center;justify-content:center;}
+  .srg-palco video{width:100%;height:100%;object-fit:contain;display:block;}
+  .srg-vuoto{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:18px;color:var(--fumo);font-size:12px;line-height:1.5;}
+  .srg-barra{display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding:5px 8px;border-top:1px solid var(--riga);flex:none;}
+  .srg-barra .tcx{font:12px ui-monospace,Menlo,monospace;color:var(--oro2);min-width:92px;}
+  .srg-barra button{padding:2px 7px;font-size:11px;border-radius:3px;min-width:26px;}
+  .srg-barra .srg-io{margin-left:auto;font:10.5px ui-monospace,Menlo,monospace;color:var(--fumo);white-space:nowrap;}
+  .srg-barra .srg-io b{color:var(--ivory2);font-weight:500;}
+  .srg-barra #srgInserisci{background:var(--oro);color:var(--navy);border-color:var(--oro);font-weight:600;}
+  .srg-barra #srgInserisci:disabled{opacity:.4;}
+  .pan-browser{display:flex;flex-direction:column;overflow:hidden!important;}
+  .bm-elenco{flex:1 1 auto;overflow:auto;min-height:0;}
+  .bm-riga{display:grid;grid-template-columns:1fr auto;gap:1px 10px;padding:6px 10px;border-bottom:1px solid rgba(245,241,230,.04);cursor:default;border-left:3px solid transparent;}
+  .bm-riga:hover{background:rgba(245,241,230,.04);}
+  .bm-riga.sel{background:rgba(201,162,75,.13);border-left-color:var(--oro);}
+  .bm-riga b{font-size:12.5px;font-weight:600;color:var(--ivory);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .bm-riga small{grid-column:1;font-size:10.5px;color:var(--fumo);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .bm-riga .bm-segni{grid-row:1/3;grid-column:2;display:flex;gap:4px;align-items:center;}
+  .bm-riga i{font-style:normal;font-size:9px;letter-spacing:.06em;text-transform:uppercase;padding:1px 5px;border-radius:2px;border:1px solid var(--riga2);color:var(--fumo);}
+  .bm-riga i.qnap{color:#7CD992;border-color:rgba(124,217,146,.4);}
+  .bm-riga i.s3{color:#F0A93B;border-color:rgba(240,169,59,.45);}
+  .bm-riga i.tc{color:var(--oro2);border-color:rgba(201,162,75,.45);}
+  .bm-riga i.qui{background:var(--oro);color:var(--navy);border-color:var(--oro);}
+  .a-per{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;padding:6px 10px;border:1px solid rgba(201,162,75,.45);border-radius:6px;background:rgba(201,162,75,.08);font-size:12px;color:var(--ivory2);}
+  .a-per b{color:var(--oro2);}
   .meta-corpo{padding:10px 12px;display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px;align-content:start;}
   .meta-corpo dt{color:var(--fumo);} .meta-corpo dd{margin:0;color:var(--ivory2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .meta-corpo dd.tc{font:12px ui-monospace,Menlo,monospace;color:var(--oro2);}
@@ -677,6 +710,7 @@
           <span class="s3conto" id="s3Conto" hidden></span>
           <button class="mini oro" id="aMam" title="apre questa partita nel montaggio">Apri nel montaggio</button>
         </div>
+        <div class="a-per" id="aPer" hidden><span>Stai montando <b id="aPerNome">…</b>: segna entrata e uscita e</span><button class="mini oro" id="aPerInserisci" title="inserisce entrata-uscita nella sequenza che stai montando (,)">Inserisci nella sequenza ,</button><button class="mini" id="aPerTorna" title="torna al montaggio">&#8617; Torna al montaggio</button></div>
       </div>
       <div class="player"><video id="video" playsinline preload="metadata"></video><div class="sotto" id="sottoBox"><i class="it" id="sottoIt"></i><i class="en" id="sottoEn"></i></div></div>
       <div class="trasporto">
@@ -774,7 +808,18 @@
     <div class="ws" id="ws">
       <div class="ws-su">
         <section class="pan" data-pan="effetti">
-          <header class="pan-schede"><button class="linguetta on" data-scheda="effetti">Controllo effetti</button><button class="linguetta" data-scheda="metadati">Metadati</button><button class="linguetta" data-scheda="grafiche">Grafiche essenziali</button><button class="linguetta" data-scheda="testo">Testo</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
+          <header class="pan-schede"><button class="linguetta" data-scheda="srg">Sorgente: <span id="srgNome">(nessuna)</span></button><button class="linguetta on" data-scheda="effetti">Controllo effetti</button><button class="linguetta" data-scheda="metadati">Metadati</button><button class="linguetta" data-scheda="grafiche">Grafiche essenziali</button><button class="linguetta" data-scheda="testo">Testo</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
+          <div class="pan-corpo pan-srg" data-corpo="srg" hidden>
+            <div class="srg-testa"><b id="srgTitolo">Nessuna partita</b><span id="srgMeta"></span><button id="srgLibreria" title="apre questa partita nella Libreria; da li&#8217; si torna a questa sequenza" disabled>Apri nella Libreria &#8599;</button></div>
+            <div class="srg-palco"><video id="videoS" playsinline preload="metadata"></video><div class="srg-vuoto" id="srgVuoto">Apri una partita dal Browser media (due clic),<br>oppure premi F su un pezzo: la sua partita arriva qui, sullo stesso fotogramma.</div></div>
+            <div class="srg-barra">
+              <span class="tcx" id="srgOra">00:00:00</span>
+              <button id="srgIn" title="Contrassegna entrata (I)">{</button><button id="srgOut" title="Contrassegna uscita (O)">}</button>
+              <button id="srgGoIn" title="Vai all&#8217;entrata (&#8679;I)">&#8676;</button><button id="srgIndietro" title="un fotogramma indietro (&#8592;) &#183; &#8679; 10 s">&#9664;&#9646;</button><button id="srgPlay" title="riproduci / ferma (spazio)">&#9654;</button><button id="srgAvanti" title="un fotogramma avanti (&#8594;) &#183; &#8679; 10 s">&#9646;&#9654;</button><button id="srgGoOut" title="Vai all&#8217;uscita (&#8679;O)">&#8677;</button>
+              <button id="srgInserisci" title="Inserisci in sequenza, dopo il pezzo sotto la testina (,)" disabled>Inserisci ,</button>
+              <span class="srg-io">IN <b id="srgTIn">&#8212;</b> &#183; OUT <b id="srgTOut">&#8212;</b> &#183; <b id="srgDur">&#8212;</b></span>
+            </div>
+          </div>
           <div class="pan-corpo ed-lato" data-corpo="effetti">
             <div class="eff-vuoto" id="effVuoto">(nessuna clip selezionata)</div>
             <div class="sez2" id="sezPezzo" hidden><h4>Il pezzo <span id="ipNome" style="color:var(--ivory2);font-weight:400"></span></h4>
@@ -827,7 +872,7 @@
       <div class="ed-maniglia" id="edManiglia" title="trascina per dare piu’ o meno spazio alla timeline"><span></span></div>
       <div class="ws-giu">
         <section class="pan" data-pan="progetto">
-          <header class="pan-schede"><button class="linguetta on" data-scheda="progetto">Progetto</button><button class="linguetta" data-scheda="materiale">Materiale di casa</button><button class="linguetta" data-scheda="esporta">Esporta</button><button class="linguetta" data-scheda="cronologia">Cronologia</button><button class="linguetta" data-scheda="marcatori">Marcatori</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
+          <header class="pan-schede"><button class="linguetta on" data-scheda="progetto">Progetto</button><button class="linguetta" data-scheda="browser">Browser media</button><button class="linguetta" data-scheda="materiale">Materiale di casa</button><button class="linguetta" data-scheda="esporta">Esporta</button><button class="linguetta" data-scheda="cronologia">Cronologia</button><button class="linguetta" data-scheda="marcatori">Marcatori</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
           <div class="pan-corpo ed-bin" data-corpo="progetto"><div class="capo">Pezzi <span id="binConto"></span></div><div class="corpo" id="bin" tabindex="0"></div></div>
           <div class="pan-corpo" data-corpo="materiale" hidden>
           <div id="tendaMedia" class="tenda-scheda">
@@ -839,6 +884,10 @@
           <div id="mediaBarra" hidden style="height:5px;background:rgba(245,241,230,.08);border-radius:3px;overflow:hidden;margin-bottom:8px"><i style="display:block;height:100%;width:0;background:var(--oro)"></i></div>
           <div class="elenco" id="mediaElenco"></div>
           </div>
+          </div>
+          <div class="pan-corpo pan-browser" data-corpo="browser" hidden>
+            <div class="ts-barra"><input id="bmCerca" type="search" placeholder="Cerca nell&#8217;archivio: partita, competizione&#8230;" autocomplete="off"><button id="bmS3" title="mostra anche le partite che stanno solo su S3: guardarle consuma il tetto giornaliero">+ S3</button><span class="conto" id="bmConto"></span></div>
+            <div class="bm-elenco" id="bmElenco" tabindex="0"></div>
           </div>
           <div class="pan-corpo" data-corpo="cronologia" hidden><div id="storiaElenco" class="storia"></div></div>
           <div class="pan-corpo" data-corpo="marcatori" hidden><div id="marcElenco" class="storia"></div></div>
@@ -914,6 +963,8 @@
   // miste: ci si finiva senza accorgersene.
   function apriNelMontaggio(r){
     if (!r || !r.id) return avviso("err", "Apri prima una partita.");
+    // arrivati dal montaggio con la sequenza in mano: si torna a quella
+    if (perSeq()) { location.href = "mam2.html?seq=" + encodeURIComponent(perSeq()); return; }
     post({ tipo:"clip-hl-elenco", reg: r.id, tutte: true }).then(function(d){
       var qs = (d.seq || []).filter(function(q){ return q.reg === r.id || (q.pezzi || []).some(function(x){ return x.reg === r.id; }); })
         .sort(function(a, b){ return (b.tocco || b.creata || 0) - (a.tocco || a.creata || 0); });
@@ -1392,7 +1443,7 @@
               (q >= 1 ? "Tetto di oggi raggiunto: le partite S3 tornano domani." : "Costo: zero euro finché restiamo dentro il tetto.");
   }
   function apriAsset(rec, regId, t){
-    vai("asset"); V = el("video");
+    vai("asset"); V = el("video"); mostraPer();
     var apri = regId ? Promise.resolve({ reg: REGS[regId] || null }) : Promise.resolve({ reg: null });
     apri.then(function(){ return post({ tipo:"clip-archivio-apri", rec: rec }); }).then(function(d){
       var r = d.reg; ASSET = r; MARKER = r.marker || []; FORSE = null; BOZZA = null;
@@ -1785,6 +1836,7 @@
     if (e.key === " ") { e.preventDefault(); el("bPlay").click(); }
     else if (e.key === "I" && e.shiftKey) el("bGoIn").click(); else if (e.key === "O" && e.shiftKey) el("bGoOut").click();
     else if (e.key === "i" || e.key === "I" || e.key === "[" || e.key === "{") el("bIn").click(); else if (e.key === "o" || e.key === "O" || e.key === "]" || e.key === "}") el("bOut").click();
+    else if (e.key === "," && perSeq()) inserisciInPer();
     else if (e.key === "," || e.key === "b" || e.key === "B") { if (!el("bBozza").disabled) el("bBozza").click(); else avviso("err", "Segna prima IN e OUT."); }
     else if (e.key === "k" || e.key === "K") { V.pause(); V.playbackRate = 1; }
     else if (e.key === "j" || e.key === "J") seek(V.currentTime - (e.shiftKey ? 60 : 10));
@@ -1807,7 +1859,7 @@
   function scelto(id){ return SELS.indexOf(id) >= 0; }
   function scegli(id, aggiungi){ if (!aggiungi) SELS = []; if (id) { if (aggiungi && scelto(id)) SELS = SELS.filter(function(z){ return z !== id; }); else SELS.push(id); } SEL = SELS.length ? SELS[SELS.length - 1] : null; }
   var GRAF_DEST = { forza: "", per: "", finestra: null }, GRAF_URL = {}, GRAF_CHIESTE = {};
-  var SEQ = null, REGE = null, VE, PZ = [], DETTOE = [], DETTI = {}, DETTI_CHIESTI = {}, TS_SEL = "", TS_RIGHE = [], TS_SEGUI = true, TS_ORA = -1, TS_BOZZA = null, SEL = null, ORA = { i: -1, pos: 0 }, LENTE = { a: 0, b: 0 }, TRASC = null, SOTTOE = false, LINGUAE = "it", GIRO_E = null, FORMATI = ["16:9"];
+  var SEQ = null, REGE = null, VE, PZ = [], DETTOE = [], DETTI = {}, DETTI_CHIESTI = {}, TS_SEL = "", TS_RIGHE = [], TS_SEGUI = true, TS_ORA = -1, TS_BOZZA = null, SRG = { r: null, rec: "", dentro: null, fuori: null }, BM = { sel: "", s3: false, chiesti: false }, SEL = null, ORA = { i: -1, pos: 0 }, LENTE = { a: 0, b: 0 }, TRASC = null, SOTTOE = false, LINGUAE = "it", GIRO_E = null, FORMATI = ["16:9"];
   // OGNI PEZZO SA DOVE STA. Il ponte tiene per ogni clip il suo t0, il
   // secondo in cui comincia nel montato, e sa gestire una sequenza "libera"
   // con i buchi. La pagina invece impilava i pezzi sommando le durate: cosi'
@@ -1874,7 +1926,7 @@
       briciole([REGE.titolo || "partita", SEQ.titolo || "sequenza"]);
       document.title = (SEQ.titolo || "sequenza") + " · MAM Como TV";
       VE.src = BASE + REGE.via;
-      el("eAsset").onclick = function(){ location.href = "mam2.html?asset=" + encodeURIComponent(REGE.evento || (REGE.arch && REGE.arch.rec) || "") + "&reg=" + REGE.id; };
+      el("eAsset").onclick = vaiAllaPartita;
       try { localStorage.setItem("mam2-ultimo", JSON.stringify({ titolo: (SEQ.titolo || "sequenza") + " · " + (REGE.titolo || ""), url: "mam2.html?seq=" + SEQ.id, quando: new Date().toLocaleString("it-IT", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }), mini: REGE.mini ? BASE + REGE.mini : "" })); } catch (e) {}
       LENTE = { a: 0, b: Math.max(10, durSeq()) };
       applicaFormato();
@@ -2426,7 +2478,9 @@
   // Clip: Inserisci, come la virgola di Premiere dal monitor Sorgente
   MENU.clip.unshift(
     { capo: "Dal monitor della partita" },
-    { e: "Inserisci nella bozza", t: ",", per: { asset: suAsset(clicca("bBozza")), live: suLive(clicca("lBozza")) } },
+    { e: "Inserisci dalla Sorgente", t: ",", per: { editor: function(){ el("srgInserisci").disabled ? avviso("err", "Apri una partita nella Sorgente e segna entrata e uscita.") : el("srgInserisci").click(); } } },
+    { e: "Inserisci nella sequenza che stai montando", t: ",", per: { asset: function(){ if (!perSeq()) return avviso("err", "Apri la partita dal montaggio (Sorgente \u2192 Apri nella Libreria) per inserire li\u2019."); inserisciInPer(); } } },
+    { e: "Inserisci nella bozza", t: "B", per: { asset: suAsset(clicca("bBozza")), live: suLive(clicca("lBozza")) } },
     { e: "Esporta la clip fra entrata e uscita", t: "", per: { asset: suAsset(clicca("bClip")) } },
     { e: "Clip degli ultimi 30 secondi", t: "", per: { live: suLive(clicca("lClip")) } },
     { riga: 1 });
@@ -2439,6 +2493,8 @@
   perVista("finestra", "Massimizza il pannello attivo", { live: function(){ WSL.massimizza(WSL.attivo); } });
   perVista("finestra", "Ripristina l’area di lavoro", { live: function(){ WSL.ripristina(); } });
   MENU.finestra.splice(1, 0,
+    { e: "Sorgente", t: "", per: { editor: function(){ mostraScheda("srg"); } } },
+    { e: "Browser media", t: "", per: { editor: function(){ mostraScheda("browser"); el("bmCerca").focus(); } } },
     { e: "Acquisizione", t: "", per: { live: function(){ WSL.mostra("acquisizione"); } } },
     { e: "Info", t: "", per: { live: function(){ WSL.mostra("info"); } } },
     { e: "Trascrizione", t: "", per: { live: function(){ WSL.mostra("trascrizione"); } } },
@@ -3338,9 +3394,13 @@
     post({ tipo:"clip-marker", reg: REGE.id, secondi: tm, testo: testo })
       .then(function(d){ REGE.marker = d.marker || REGE.marker; if (REGS[REGE.id]) REGS[REGE.id].marker = REGE.marker; disegnaMarcatori(); disegnaTl(); avviso("ok", "Marcatore segnato sulla partita."); }).catch(function(er){ avviso("err", esc(er.message)); });
   }
+  // CORRISPONDENZA FOTOGRAMMA (F), come in Premiere: la partita del pezzo
+  // sotto la testina si apre nel monitor Sorgente, sullo stesso fotogramma.
+  // Prima si lasciava il montaggio per andare in Libreria.
   function vaiAllaPartita(){
-    if (!REGE) return;
-    location.href = "mam2.html?asset=" + encodeURIComponent(REGE.evento || (REGE.arch && REGE.arch.rec) || "") + "&reg=" + REGE.id + "&t=" + Math.floor(tMateriale() + 3);
+    var x = PZ[ORA.i], r = x && !x.media ? (x.reg ? REGS[x.reg] : REGE) : REGE;
+    if (!r) return;
+    apriSorgente(recDi(r), x && !x.media ? tMateriale() : null, r);
   }
   // TOGLIERE E RICHIUDERE. Togliere e basta lascia il buco dov'era la clip,
   // che va bene quando il buco lo vuoi e non quando volevi solo buttare via
@@ -3387,6 +3447,8 @@
     // I TASTI VANNO AL PANNELLO ATTIVO, come in Premiere: quelli col cmd
     // (annulla, esporta) valgono ovunque, lo spazio fa partire il montato da
     // qualunque pannello, tutto il resto solo da Timeline e Programma.
+    // la Sorgente ha i suoi: I, O, la virgola e lo spazio valgono per lei
+    if (!cmd && !alt && typeof WS !== "undefined" && WS.attivo === "effetti" && WS.schede.effetti === "srg" && tastiSorgente(e)) return;
     if (!cmd && k !== " " && typeof WS !== "undefined" && WS.attivo !== "timeline" && WS.attivo !== "programma") return;
     if (cmd) {
       if (K === "Z") { e.preventDefault(); annullaRipeti(e.shiftKey); }
@@ -3770,6 +3832,7 @@
       if (k === "grafiche") { apriGeneratore(); disegnaDestGrafica(); }
       if (k === "marcatori") disegnaMarcatori();
       if (k === "testo") { disegnaTesto(); seguiTesto(true); }
+      if (k === "browser") disegnaBrowser();
     },
     voci: function(n){
       if (n !== "effetti") return [];
@@ -4259,6 +4322,145 @@
     TS_BOZZA = { reg: regDelPezzo(x), a: Math.round(VE.currentTime * 100) / 100, seq: tSeq(), vel: velDi(x) };
     disegnaTesto();
   });
+
+  // ── L'ARCHIVIO DENTRO IL MONTAGGIO: BROWSER MEDIA E SORGENTE ────────
+  //  Come in Premiere: il Browser media sfoglia l'archivio, due clic aprono
+  //  una partita nel monitor Sorgente, I e O la segnano e la virgola la
+  //  inserisce nella sequenza — il pezzo si ricorda di che partita e'.
+  //  E al contrario: "Apri nella Libreria" porta la partita nell'archivio
+  //  con la sequenza in mano (?per=), e da li' si inserisce e si torna.
+  //  Per prime le partite della QNAP: guardarle non costa niente. Quelle
+  //  che stanno solo su S3 si vedono col loro segno e chiedono conferma.
+  function recDi(r){ return r ? (r.evento || (r.arch && r.arch.rec) || "") : ""; }
+  function recsDellaSeq(){
+    var v = {}; if (REGE) v[recDi(REGE)] = 1;
+    PZ.forEach(function(x){ if (!x.media) { var r = x.reg ? REGS[x.reg] : REGE; if (r) v[recDi(r)] = 1; } });
+    return v;
+  }
+  function quandoBreve(s){ try { return s ? new Date(s).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit" }) : ""; } catch (e) { return ""; } }
+  function disegnaBrowser(){
+    var c = el("bmElenco"); if (!c) return;
+    var corpo = c.closest(".pan-corpo"); if (corpo && corpo.hidden) return;
+    if (!EVENTI.length && !BM.chiesti) {
+      BM.chiesti = true; c.innerHTML = '<div class="storia"><div class="nota">Leggo l’archivio…</div></div>';
+      post({ tipo:"clip-qnap-eventi" }).then(function(j){ EVENTI = (j.eventi || []).filter(function(x){ return x.partita || x.durata; }); disegnaBrowser(); })
+        .catch(function(er){ BM.chiesti = false; c.innerHTML = '<div class="storia"><div class="nota">Archivio non raggiungibile: ' + esc(er.message) + "</div></div>"; });
+      return;
+    }
+    el("bmS3").classList.toggle("on", BM.s3);
+    var parole = (el("bmCerca").value || "").toLowerCase().split(/\s+/).filter(Boolean), qui = recsDellaSeq();
+    var tutte = EVENTI.filter(function(x){ return x.rec && (BM.s3 || !x.s3); }), scelte = tutte.filter(function(x){
+      var t = ((x.partita || "") + " " + (x.competizione || "") + " " + (x.nome || "")).toLowerCase();
+      return parole.every(function(p){ return t.indexOf(p) >= 0; });
+    }).sort(function(a, b){ return (qui[b.rec] ? 1 : 0) - (qui[a.rec] ? 1 : 0) || String(b.quandoPartita || b.quando || "").localeCompare(String(a.quandoPartita || a.quando || "")); });
+    var h = scelte.slice(0, 250).map(function(x){
+      return '<div class="bm-riga' + (BM.sel === x.rec ? " sel" : "") + '" data-rec="' + esc(x.rec) + '"><b title="' + esc(x.partita || x.nome) + '">' + esc(x.partita || x.nome) + "</b>" +
+        "<small>" + esc([x.competizione, quandoBreve(x.quandoPartita || x.quando), x.durata ? durata(x.durata) : ""].filter(Boolean).join(" · ")) + "</small>" +
+        '<span class="bm-segni">' + (qui[x.rec] ? '<i class="qui" title="c’e’ gia’ in questa sequenza">in sequenza</i>' : "") + (x.telecronaca ? '<i class="tc" title="telecronaca trascritta: sottotitoli pronti">telecronaca</i>' : "") +
+        (x.s3 ? '<i class="s3" title="sta su S3: guardarla consuma il tetto giornaliero">S3</i>' : '<i class="qnap" title="sta sulla QNAP: costo zero">QNAP</i>') + "</span></div>";
+    }).join("");
+    if (!scelte.length) h = '<div class="storia"><div class="nota">' + (tutte.length ? "Nessuna partita con queste parole." : "Nessuna partita sulla QNAP. Con + S3 si vedono anche quelle su S3.") + "</div></div>";
+    c.innerHTML = h;
+    el("bmConto").textContent = scelte.length + (scelte.length === 1 ? " partita" : " partite") + (scelte.length > 250 ? " (le prime 250)" : "");
+  }
+  el("bmCerca").addEventListener("input", disegnaBrowser);
+  el("bmCerca").addEventListener("keydown", function(e){ e.stopPropagation(); if (e.key === "ArrowDown") { e.preventDefault(); el("bmElenco").focus(); muoviBrowser(1); } if (e.key === "Escape") { this.value = ""; disegnaBrowser(); } });
+  el("bmS3").addEventListener("click", function(){ BM.s3 = !BM.s3; disegnaBrowser(); });
+  function scegliBrowser(rec){ BM.sel = rec; Array.prototype.forEach.call(el("bmElenco").querySelectorAll(".bm-riga"), function(r){ r.classList.toggle("sel", r.dataset.rec === rec); }); }
+  function muoviBrowser(d){
+    var righe = Array.prototype.slice.call(el("bmElenco").querySelectorAll(".bm-riga")); if (!righe.length) return;
+    var i = righe.findIndex(function(r){ return r.dataset.rec === BM.sel; }); i = Math.max(0, Math.min(righe.length - 1, i + d));
+    scegliBrowser(righe[i].dataset.rec); righe[i].scrollIntoView({ block: "nearest" });
+  }
+  el("bmElenco").addEventListener("click", function(e){ var r = e.target.closest(".bm-riga"); if (r) scegliBrowser(r.dataset.rec); });
+  el("bmElenco").addEventListener("dblclick", function(e){ var r = e.target.closest(".bm-riga"); if (r) apriSorgente(r.dataset.rec, null); });
+  el("bmElenco").addEventListener("keydown", function(e){
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); e.stopPropagation(); muoviBrowser(e.key === "ArrowDown" ? 1 : -1); }
+    else if (e.key === "Enter" && BM.sel) { e.preventDefault(); e.stopPropagation(); apriSorgente(BM.sel, null); }
+  });
+  // UNA PARTITA NEL MONITOR SORGENTE. rec = la partita dell'archivio; t = il
+  // secondo del file (Corrispondenza fotogramma), se no dove era rimasta.
+  function apriSorgente(rec, t, gia){
+    if (!rec && !(gia && gia.via)) return avviso("err", "Questa registrazione non sta nell’archivio.");
+    var ev = EVENTI.filter(function(x){ return x.rec === rec; })[0];
+    if (ev && ev.s3 && !window.confirm("“" + (ev.partita || ev.nome) + "” sta solo su S3: guardarla consuma il tetto giornaliero di lettura. La apro?")) return;
+    mostraScheda("srg");
+    el("srgTitolo").textContent = (ev && ev.partita) || (gia && gia.titolo) || "apro…";
+    (gia && gia.via && !gia.arch ? Promise.resolve({ reg: gia }) : post({ tipo:"clip-archivio-apri", rec: rec })).then(function(d){
+      var r = d.reg; if (!r || !r.via) throw new Error("questa partita non si apre");
+      REGS[r.id] = r; SRG.r = r; SRG.rec = rec; SRG.dentro = SRG.fuori = null;
+      var v = el("videoS"), dove = (t !== null && t !== undefined) ? Math.max(0, t) : null;
+      el("srgNome").textContent = r.titolo || "partita"; el("srgTitolo").textContent = r.titolo || "partita";
+      el("srgMeta").textContent = [r.competizione, r.durata ? durata(r.durata) : ""].filter(Boolean).join(" · ");
+      el("srgVuoto").hidden = true; el("srgLibreria").disabled = false;
+      v.src = BASE + r.via;
+      if (dove !== null) v.addEventListener("loadedmetadata", function una(){ v.removeEventListener("loadedmetadata", una); try { v.currentTime = dove; } catch (e) {} });
+      srgInOut(); scegliBrowser(rec);
+    }).catch(function(er){ el("srgTitolo").textContent = "Nessuna partita"; avviso("err", esc(er.message)); });
+  }
+  function srgInOut(){
+    el("srgTIn").textContent = SRG.dentro === null ? "—" : tc(SRG.dentro);
+    el("srgTOut").textContent = SRG.fuori === null ? "—" : tc(SRG.fuori);
+    var ok = SRG.r && SRG.dentro !== null && SRG.fuori !== null && SRG.fuori > SRG.dentro + 0.2;
+    el("srgDur").textContent = ok ? tc(SRG.fuori - SRG.dentro) : "—";
+    el("srgInserisci").disabled = !ok || !SEQ;
+  }
+  function srgVai(t){ var v = el("videoS"); if (!SRG.r) return; try { v.currentTime = Math.max(0, Math.min((v.duration || 1e9) - 0.05, t)); } catch (e) {} }
+  el("srgIn").addEventListener("click", function(){ if (!SRG.r) return; SRG.dentro = Math.round(el("videoS").currentTime * 100) / 100; if (SRG.fuori !== null && SRG.fuori <= SRG.dentro) SRG.fuori = null; srgInOut(); });
+  el("srgOut").addEventListener("click", function(){ if (!SRG.r) return; SRG.fuori = Math.round(el("videoS").currentTime * 100) / 100; if (SRG.dentro !== null && SRG.dentro >= SRG.fuori) SRG.dentro = null; srgInOut(); });
+  el("srgGoIn").addEventListener("click", function(){ if (SRG.dentro !== null) srgVai(SRG.dentro); });
+  el("srgGoOut").addEventListener("click", function(){ if (SRG.fuori !== null) srgVai(SRG.fuori); });
+  el("srgIndietro").addEventListener("click", function(e){ srgVai(el("videoS").currentTime - (e.shiftKey ? 10 : 0.04)); });
+  el("srgAvanti").addEventListener("click", function(e){ srgVai(el("videoS").currentTime + (e.shiftKey ? 10 : 0.04)); });
+  el("srgPlay").addEventListener("click", function(){ var v = el("videoS"); if (!SRG.r) return; if (v.paused) { if (VE && !VE.paused) VE.pause(); v.play().catch(function(){}); } else v.pause(); });
+  el("videoS").addEventListener("play", function(){ el("srgPlay").innerHTML = "&#10074;&#10074;"; });
+  el("videoS").addEventListener("pause", function(){ el("srgPlay").innerHTML = "&#9654;"; });
+  el("videoS").addEventListener("timeupdate", function(){ el("srgOra").textContent = tcf(this.currentTime); });
+  // INSERISCI: entrata-uscita in sequenza, dopo il pezzo sotto la testina
+  el("srgInserisci").addEventListener("click", function(){
+    if (!SEQ || !SRG.r || SRG.dentro === null || SRG.fuori === null) return avviso("err", "Segna prima entrata e uscita nella Sorgente.");
+    var r = SRG.r, dove = ORA.i >= 0 ? ORA.i + 1 : PZ.length;
+    post({ tipo:"clip-hl-inserisci", seq: SEQ.id, reg: r.id, dentro: SRG.dentro, fuori: SRG.fuori, dove: dove, aggancia: false, titolo: (r.titolo || "") + " " + tc(SRG.dentro) })
+      .then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Inserito in sequenza: " + esc(r.titolo || "partita") + ", " + tc(SRG.fuori - SRG.dentro) + "."); disegnaBrowser(); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  });
+  el("srgLibreria").addEventListener("click", function(){
+    if (!SRG.r) return;
+    location.href = "mam2.html?asset=" + encodeURIComponent(SRG.rec) + "&reg=" + SRG.r.id + "&t=" + Math.floor(el("videoS").currentTime + 3) + (SEQ ? "&per=" + encodeURIComponent(SEQ.id) : "");
+  });
+  // i tasti della Sorgente, quando e' lei il pannello attivo
+  function tastiSorgente(e){
+    var k = e.key, v = el("videoS");
+    if (k === " ") { e.preventDefault(); el("srgPlay").click(); }
+    else if (k === "I" && e.shiftKey) el("srgGoIn").click(); else if (k === "O" && e.shiftKey) el("srgGoOut").click();
+    else if (k === "i" || k === "I") el("srgIn").click(); else if (k === "o" || k === "O") el("srgOut").click();
+    else if (k === ",") { e.preventDefault(); el("srgInserisci").click(); }
+    else if (k === "ArrowLeft" || k === "ArrowRight") { e.preventDefault(); srgVai(v.currentTime + (k === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 10 : 0.04)); }
+    else if (k === "k" || k === "K") v.pause();
+    else if (k === "l" || k === "L") { v.playbackRate = v.paused ? 1 : Math.min(8, v.playbackRate * 2); v.play().catch(function(){}); }
+    else if (k === "j" || k === "J") srgVai(v.currentTime - 5);
+    else return false;
+    return true;
+  }
+  // DALLA LIBRERIA CON LA SEQUENZA IN MANO (?per=): si inserisce li' e si torna
+  function perSeq(){ var m = /(\?|&)per=([^&]+)/.exec(location.search); return m ? decodeURIComponent(m[2]) : ""; }
+  function inserisciInPer(){
+    var id = perSeq(); if (!id || !ASSET) return;
+    if (DENTRO === null || FUORI === null || FUORI <= DENTRO) return avviso("err", "Segna prima entrata e uscita.");
+    post({ tipo:"clip-hl-inserisci", seq: id, reg: ASSET.id, dentro: Math.round(DENTRO * 100) / 100, fuori: Math.round(FUORI * 100) / 100, aggancia: false, titolo: (ASSET.titolo || "") + " " + tc(DENTRO) })
+      .then(function(){ avviso("ok", "Inserito in “" + esc(el("aPerNome").textContent) + "”. Segna il prossimo, o torna al montaggio."); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  }
+  function mostraPer(){
+    var id = perSeq(), b = el("aPer"); if (!b) return;
+    if (!id) { b.hidden = true; return; }
+    post({ tipo:"clip-hl-elenco", tutte: true }).then(function(d){
+      var q = (d.seq || []).filter(function(z){ return z.id === id; })[0]; if (!q) { b.hidden = true; return; }
+      el("aPerNome").textContent = q.titolo || "sequenza"; b.hidden = false;
+    }).catch(function(){ b.hidden = true; });
+  }
+  el("aPerInserisci").addEventListener("click", inserisciInPer);
+  el("aPerTorna").addEventListener("click", function(){ location.href = "mam2.html?seq=" + encodeURIComponent(perSeq()); });
 
   // ── METADATI: la carta d'identita' della clip scelta ───────────────
   function disegnaMetadati(){
