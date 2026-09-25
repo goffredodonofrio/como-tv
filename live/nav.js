@@ -26,6 +26,11 @@
   // pagina — ma al momento non lo adopera nessuno.
   var SOLO_ORA = !!(document.currentScript && document.currentScript.dataset &&
                     document.currentScript.dataset.senzaMenu != null);
+  // <script src="nav.js" data-senza-ora></script> monta il menu' SENZA
+  // l'orologio grande: lo usa il MAM, dove l'orologio fisso in alto a
+  // destra finirebbe sopra al monitor del montaggio.
+  var SENZA_ORA = !!(document.currentScript && document.currentScript.dataset &&
+                     document.currentScript.dataset.senzaOra != null);
 
   // ordine e gruppi del menù — specchio del catalogo (classifiche.html).
   // Una coppia [indirizzo, nome] è una voce sola; un oggetto è una tendina.
@@ -207,7 +212,7 @@
     document.addEventListener("keydown", function (ev) { if (ev.key === "Escape") chiudi(); });
     window.addEventListener("resize", chiudi);
 
-    montaOrologio();
+    if (!SENZA_ORA) montaOrologio();
   }
 
   // orologio in alto a destra della testata: ora ITALIANA (Europe/Rome),
