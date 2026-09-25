@@ -251,6 +251,17 @@
   .pan-corpo.ed-bin{border-right:0;background:transparent;}
   .pan-corpo.tl-corpo{display:flex;flex-direction:column;overflow:hidden;}
   .eff-vuoto{padding:14px 12px;color:var(--fumo);font-size:12px;}
+  /* GRAFICHE ESSENZIALI: il Generatore dentro un pannello. Sopra, una riga
+     sola che dice DOVE andra' la grafica che stai per mandare: nuova alla
+     testina, oppure la versione in un altro formato di quella scelta. */
+  .pan-grafiche{display:flex;flex-direction:column;overflow:hidden!important;}
+  .pan-grafiche iframe{flex:1 1 auto;width:100%;border:0;background:#fff;min-height:0;}
+  .graf-dest{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 8px;border-bottom:1px solid var(--riga);font-size:11px;color:var(--fumo);flex:none;}
+  .graf-dest button{padding:3px 8px;font-size:10.5px;border-radius:3px;}
+  .graf-dest button.on{background:var(--oro);color:var(--navy);border-color:var(--oro);}
+  .graf-dest b{color:var(--ivory2);font-weight:600;}
+  .ed-graf .gf{font-style:normal;opacity:.75;margin-left:5px;font:9px ui-monospace,Menlo,monospace;}
+  .ed-graf .gm{display:inline-block;margin-left:4px;padding:0 4px;border-radius:2px;background:var(--rosso);color:#fff;font-size:9px;line-height:13px;}
   /* LA CRONOLOGIA, come in Premiere: un passo per riga, quello dove sei e'
      acceso, quelli annullati sono spenti ma si possono ancora riprendere. */
   .storia{display:flex;flex-direction:column;padding:4px 0;}
@@ -715,7 +726,7 @@
     <div class="ws" id="ws">
       <div class="ws-su">
         <section class="pan" data-pan="effetti">
-          <header class="pan-schede"><button class="linguetta on" data-scheda="effetti">Controllo effetti</button><button class="linguetta" data-scheda="metadati">Metadati</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
+          <header class="pan-schede"><button class="linguetta on" data-scheda="effetti">Controllo effetti</button><button class="linguetta" data-scheda="metadati">Metadati</button><button class="linguetta" data-scheda="grafiche">Grafiche essenziali</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
           <div class="pan-corpo ed-lato" data-corpo="effetti">
             <div class="eff-vuoto" id="effVuoto">(nessuna clip selezionata)</div>
             <div class="sez2" id="sezPezzo" hidden><h4>Il pezzo <span id="ipNome" style="color:var(--ivory2);font-weight:400"></span></h4>
@@ -739,6 +750,10 @@
             </div>
           </div>
           <div class="pan-corpo ed-lato" data-corpo="metadati" hidden><div id="metaCorpo" class="meta-corpo"></div></div>
+          <div class="pan-corpo pan-grafiche" data-corpo="grafiche" hidden>
+            <div class="graf-dest" id="grafDest"></div>
+            <iframe id="grafTelaio" title="Generatore grafiche Como TV"></iframe>
+          </div>
         </section>
         <div class="ed-divisore" id="divLato" title="trascina per allargare il pannello · doppio clic: misura di partenza"></div>
         <section class="pan" data-pan="programma">
@@ -1713,6 +1728,7 @@
   var SELS = [], INS = null, OUTS = null, APPUNTI_COPIA = [];
   function scelto(id){ return SELS.indexOf(id) >= 0; }
   function scegli(id, aggiungi){ if (!aggiungi) SELS = []; if (id) { if (aggiungi && scelto(id)) SELS = SELS.filter(function(z){ return z !== id; }); else SELS.push(id); } SEL = SELS.length ? SELS[SELS.length - 1] : null; }
+  var GRAF_DEST = { forza: "", per: "", finestra: null }, GRAF_URL = {}, GRAF_CHIESTE = {};
   var SEQ = null, REGE = null, VE, PZ = [], DETTOE = [], SEL = null, ORA = { i: -1, pos: 0 }, LENTE = { a: 0, b: 0 }, TRASC = null, SOTTOE = false, LINGUAE = "it", GIRO_E = null, FORMATI = ["16:9"];
   // OGNI PEZZO SA DOVE STA. Il ponte tiene per ogni clip il suo t0, il
   // secondo in cui comincia nel montato, e sa gestire una sequenza "libera"
@@ -1799,7 +1815,7 @@
     // quindici secondi: dopo un taglio restava indietro e sembrava rotto
     if (el("eInfo")) el("eInfo").textContent = PZ.length + " pezzi · " + tc(durSeq()) + (SEQ && SEQ.chi ? " · " + SEQ.chi : "");
     disegnaEditor(); }
-  function disegnaEditor(){ disegnaBin(); disegnaTl(); }
+  function disegnaEditor(){ disegnaBin(); disegnaTl(); if (typeof disegnaDestGrafica === "function") disegnaDestGrafica(); }
   function disegnaBin(){
     el("binConto").textContent = PZ.length + " · " + tc(durSeq());
     if (!PZ.length) { el("bin").innerHTML = '<div class="vuoto" style="padding:14px 12px">Sequenza vuota: dalla Sorgente segna entrata e uscita e premi \u201cIn timeline\u201d, o spunta le azioni.</div>'; return; }
@@ -1857,6 +1873,7 @@
   function X(t){ var p = el("pista"), w = p.clientWidth || 800; return (t - LENTE.a) / (LENTE.b - LENTE.a) * w; }
   function tDiX(px){ var p = el("pista"), w = p.clientWidth || 800; return LENTE.a + px / w * (LENTE.b - LENTE.a); }
   function disegnaTl(){
+    if (typeof disegnaDestGrafica === "function") setTimeout(disegnaDestGrafica, 0);
     var corsie = assicuraCorsie();
     var rig = el("cRig"), cv = el("cV"), cv2 = el("cV2"), cst = el("cSt"), cg = el("cG"), w = el("pista").clientWidth || 800;
     var tot = durSeq(), span = Math.max(1, LENTE.b - LENTE.a), pxSec = w / span;
@@ -1898,7 +1915,7 @@
     // l'audio staccato: a t0, per la sua durata, dove lo lasci
     AUD.forEach(function(au){ if (au.legato) return; var a = au.t0 || 0, b = a + Math.max(0.2, (au.fuori - au.dentro)); if (TRASC && TRASC.tipo === "a-muovi" && TRASC.a_id === au.id) { a = TRASC.a; b = TRASC.b; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); haT[au.traccia || "A1"] = (haT[au.traccia || "A1"] || "") + audioHtml(au, xa, Math.max(6, xb - xa), true); });
     var hg = "";
-    GRAF.forEach(function(g){ var a = g.dentro, b = g.fuori; if (TRASC && TRASC.g_id === g.id && TRASC.tipo !== "g-muovi") { a = TRASC.a; b = TRASC.b; } else if (TRASC && TRASC.g_id === g.id && TRASC.tipo === "g-muovi" && TRASC.mosso) { a = TRASC.a; b = TRASC.b; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); hg += '<div class="ed-graf' + (SELG === g.id ? " sel" : "") + '" data-g="' + esc(g.id) + '" style="left:' + xa + 'px;width:' + Math.max(8, xb - xa) + 'px" title="' + esc(g.nome || "grafica") + ' · ' + tcBreve(a) + ' → ' + tcBreve(b) + '"><span class="bordo sx" data-lato="g-sx"></span>' + esc(g.nome || "grafica") + '<span class="bordo dx" data-lato="g-dx"></span></div>'; });
+    GRAF.forEach(function(g){ var a = g.dentro, b = g.fuori; if (TRASC && TRASC.g_id === g.id && TRASC.tipo !== "g-muovi") { a = TRASC.a; b = TRASC.b; } else if (TRASC && TRASC.g_id === g.id && TRASC.tipo === "g-muovi" && TRASC.mosso) { a = TRASC.a; b = TRASC.b; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); var fg = formatiDiGrafica(g), manca = FORMATI.filter(function(f){ return fg.indexOf(f) < 0; }); hg += '<div class="ed-graf' + (SELG === g.id ? " sel" : "") + '" data-g="' + esc(g.id) + '" style="left:' + xa + 'px;width:' + Math.max(8, xb - xa) + 'px" title="' + esc(g.nome || "grafica") + ' · ' + tcBreve(a) + ' → ' + tcBreve(b) + ' · formati: ' + fg.join(", ") + (manca.length ? " · manca " + manca.join(", ") + ": in uscita verra\u2019 adattata" : "") + '"><span class="bordo sx" data-lato="g-sx"></span>' + esc(g.nome || "grafica") + '<i class="gf">' + (g.titolo ? "tutti" : fg.join(" ")) + '</i>' + (manca.length ? '<b class="gm">' + esc(manca.join(" ")) + '?</b>' : '') + '<span class="bordo dx" data-lato="g-dx"></span></div>'; });
     buchiDiQui().forEach(function(z){
       if (z.b < LENTE.a || z.a > LENTE.b) return;
       var xa = Math.max(0, X(z.a)), xb = Math.min(w, X(z.b));
@@ -2197,7 +2214,8 @@
       { riga: 1 },
       { capo: "Nuovo elemento" },
       vc("Testo…", "T", chiediTitolo),
-      bt("Grafica…", "", "eGrafica"),
+      vc("Grafica dal Generatore…", "", function(){ mostraScheda("grafiche"); }),
+      bt("Grafica da un file PNG…", "", "eGrafica"),
       vc("Aggiungi marcatore", "M", segnaMarker),
       { riga: 1 },
       { capo: "Sottotitoli" },
@@ -2411,7 +2429,7 @@
     var t = tSeq();
     var ts = tc(t); if (ts !== ORAE) { ORAE = ts; el("eOra").firstChild.nodeValue = ts; if (el("eOraTl")) el("eOraTl").textContent = ts; }
     var gOra = GRAF.filter(function(g){ return t >= g.dentro && t < g.fuori; })[0], img = el("grafE");
-    if (gOra) { var src = BASE + gOra.file; if (img.getAttribute("src") !== src) img.src = src; img.hidden = false; } else img.hidden = true;
+    if (gOra) { var src = urlGrafica(gOra, ANTE); if (img.getAttribute("src") !== src) img.src = src; img.hidden = false; } else img.hidden = true;
     var auOra = AUD.filter(function(z){ return z.legato === x.id; })[0];
     VE.muted = !auOra || !!auOra.muto;
     if (FERMO !== VE.paused) { FERMO = VE.paused; el("ePlay").innerHTML = FERMO ? '<svg viewBox="0 0 16 16"><path d="M4 2v12l10-6z"/></svg>' : '<svg viewBox="0 0 16 16"><rect x="3" y="2" width="4" height="12"/><rect x="9" y="2" width="4" height="12"/></svg>'; }
@@ -3560,6 +3578,11 @@
       if (k === "materiale") caricaMateriale();
       if (k === "metadati") disegnaMetadati();
       if (k === "cronologia") disegnaStoria();
+      if (k === "grafiche") { apriGeneratore(); disegnaDestGrafica(); }
+    },
+    voci: function(n){
+      if (n !== "effetti") return [];
+      return [{ e: "Apri il Generatore in una finestra a parte", t: "", f: generatoreFuori }];
     },
     // il monitor e la timeline si rimisurano sullo spazio nuovo
     dopoMisura: function(){ if (typeof misuraPalco === "function") misuraPalco(); if (SEQ && typeof disegnaTl === "function") disegnaTl(); },
@@ -3621,6 +3644,107 @@
       .catch(function(er){ avviso("err", esc(er.message)); });
   });
 
+  // ── GRAFICHE ESSENZIALI: il Generatore dentro il montaggio ─────────
+  //  Il Generatore disegna la grafica (font, maschere, dati della partita)
+  //  e la rimanda qui come PNG trasparente, alla sua misura nativa — la
+  //  story 9:16 e' 1080x1920, il sottopancia 16:9 1920x1080. Dal PNG si
+  //  capisce il formato. La grafica arriva o NUOVA, alla testina, o come
+  //  VERSIONE di quella scelta in timeline nel suo formato: cosi' una
+  //  grafica sola ha il 16:9 per YouTube e il 9:16 per i Reel, e l'export
+  //  usa quella giusta per ogni file.
+  // L'INDIRIZZO E' UNA FUNZIONE, NON UNA VARIABILE. All'apertura la pagina
+  // rimette le schede lasciate aperte, e lo fa prima di arrivare fin qui:
+  // con una variabile l'iframe caricava "/live/undefined". Una funzione
+  // esiste da subito.
+  function indirizzoGeneratore(){
+    return "../10_Look%26Feel/Como%20TV%20OTT%20Design/generatore.html?solo=social&dentro=mam" +
+           (REGE && REGE.evento ? "&evento=" + encodeURIComponent(REGE.evento) : "");
+  }
+  function apriGeneratore(){
+    var f = el("grafTelaio"); if (!f) return;
+    if ((f.getAttribute("src") || "").indexOf("generatore.html") >= 0) return;
+    f.src = indirizzoGeneratore();
+  }
+  function generatoreFuori(){
+    if (GRAF_DEST.finestra && !GRAF_DEST.finestra.closed) { try { GRAF_DEST.finestra.focus(); } catch (e) {} return; }
+    var w = null;
+    try { w = window.open(indirizzoGeneratore(), "comotv-grafiche", "width=1000,height=1040,menubar=no,toolbar=no,location=no"); } catch (e) {}
+    if (!w) return avviso("err", "Il browser ha bloccato la finestra: permettila per questo sito e riprova.");
+    GRAF_DEST.finestra = w;
+    avviso("ok", "Generatore in una finestra a parte: portala pure sull’altro schermo. Le grafiche tornano qui.");
+  }
+  function formatoDi(w, h){
+    var r = (+w || 16) / (+h || 9), m = "16:9", sc = 1e9;
+    [["16:9", 16 / 9], ["1:1", 1], ["3:4", 3 / 4], ["9:16", 9 / 16]].forEach(function(z){ var d = Math.abs(Math.log(r / z[1])); if (d < sc) { sc = d; m = z[0]; } });
+    return m;
+  }
+  // i formati che una grafica copre davvero: i titoli tutti (li ridisegna
+  // il ponte), le altre il loro e le versioni aggiunte
+  function formatiDiGrafica(g){
+    if (g.titolo) return ["16:9", "1:1", "3:4", "9:16"];
+    var f = [g.formato || formatoDi(g.w, g.h)];
+    Object.keys(g.varianti || {}).forEach(function(k){ if (f.indexOf(k) < 0) f.push(k); });
+    return f;
+  }
+  // l'immagine da mostrare nel monitor per il formato che si sta guardando
+  function urlGrafica(g, f){
+    if (!g.titolo) {
+      if ((g.formato || formatoDi(g.w, g.h)) === f) return BASE + g.file;
+      if (g.varianti && g.varianti[f]) return BASE + g.varianti[f].file;
+      return BASE + g.file;                     // adattata: e' quello che uscira'
+    }
+    if (f === "16:9") return BASE + g.file;
+    var k = g.id + "|" + f + "|" + (g.quando || 0);
+    if (GRAF_URL[k]) return GRAF_URL[k];
+    if (!GRAF_CHIESTE[k] && SEQ) {
+      GRAF_CHIESTE[k] = 1;
+      post({ tipo:"clip-hl-grafica-formato", seq: SEQ.id, grafica: g.id, formato: f })
+        .then(function(d){ GRAF_URL[k] = BASE + d.url; }).catch(function(){});
+    }
+    return BASE + g.file;
+  }
+  // DOVE ANDRA' la prossima grafica: si decide qui, a vista. Con una
+  // grafica scelta in timeline la proposta e' "versione di questa"; senza,
+  // "nuova alla testina". Si puo' sempre cambiare con un clic.
+  // la destinazione si decide sulla selezione VERA, nel momento in cui
+  // serve: grafica scelta = versione di quella, a meno che chi monta non
+  // abbia detto "nuova" per QUELLA grafica
+  function destinazioneGrafica(){
+    var g = SELG ? GRAF.filter(function(z){ return z.id === SELG; })[0] : null;
+    if (!g) return { g: null, modo: "nuova" };
+    return { g: g, modo: (GRAF_DEST.per === g.id && GRAF_DEST.forza) ? GRAF_DEST.forza : "variante" };
+  }
+  function disegnaDestGrafica(){
+    var d = el("grafDest"); if (!d) return;
+    var corpo = d.closest(".pan-corpo"); if (corpo && corpo.hidden) return;
+    var ds = destinazioneGrafica(), g = ds.g;
+    var h = "<span>La prossima grafica va:</span>" +
+      '<button data-gd="nuova" class="' + (ds.modo === "nuova" ? "on" : "") + '">nuova, alla testina</button>';
+    if (g) h += '<button data-gd="variante" class="' + (ds.modo === "variante" ? "on" : "") + '">come versione di <b>' + esc((g.nome || "grafica").slice(0, 28)) + "</b></button>" +
+                '<span>ha ' + formatiDiGrafica(g).join(", ") + "</span>";
+    if (d.innerHTML !== h) d.innerHTML = h;
+  }
+  el("grafDest").addEventListener("click", function(e){
+    var b = e.target.closest("button[data-gd]"); if (!b) return;
+    GRAF_DEST.forza = b.dataset.gd; GRAF_DEST.per = SELG || ""; disegnaDestGrafica();
+  });
+  // LA GRAFICA TORNA DAL GENERATORE, dal pannello o dalla finestra a parte
+  window.addEventListener("message", function(ev){
+    if (ev.origin !== location.origin) return;
+    var d = ev.data || {};
+    if (d.tipo !== "grafica-per-timeline") return;
+    if (!SEQ) return avviso("err", "Apri prima una sequenza: la grafica va sulla sua traccia V3.");
+    var ds = destinazioneGrafica(), g0 = ds.modo === "variante" ? ds.g : null;
+    var fmt = formatoDi(d.w, d.h);
+    var c = { tipo:"clip-hl-grafica", seq: SEQ.id, png: d.png, w: d.w, h: d.h, nome: d.nome || "grafica" };
+    if (g0) c.variante = g0.id; else { c.dentro = Math.max(0, tSeq()); c.durata = 5; }
+    post(c).then(function(r){
+      ricaricaSeq(r.seq); disegnaEditor(); disegnaDestGrafica();
+      avviso("ok", g0 ? "Versione " + (r.formato || fmt) + " di “" + esc(g0.nome || "grafica") + "”: in uscita " + (r.formato || fmt) + " usera’ questa."
+                      : "Grafica " + fmt + " in timeline al " + tc(c.dentro) + ", cinque secondi: allungala dai bordi.");
+    }).catch(function(er){ avviso("err", esc(er.message)); });
+  });
+
   // ── METADATI: la carta d'identita' della clip scelta ───────────────
   function disegnaMetadati(){
     var c = el("metaCorpo"); if (!c) return;
@@ -3664,7 +3788,7 @@
       var h = "";
       if (q.export && q.export.stato === "lavora") h += '<div class="uscita"><b>' + esc(q.export.fase || "esporto") + ' · ' + esc(q.export.formato || "") + '</b><span>' + Math.round((q.export.avanza || 0) * 100) + '%</span></div><div class="barra"><i style="width:' + Math.round((q.export.avanza || 0) * 100) + '%"></i></div>';
       if (q.export && q.export.stato === "errore") h += '<div class="uscita" style="border-color:var(--rosso)"><b>errore: ' + esc(q.export.errore || "") + '</b></div>';
-      Object.keys(q.esportati || {}).forEach(function(k){ var f = q.esportati[k]; h += '<div class="uscita"><b>' + esc(f.nome || k) + '</b><span>' + esc(k) + '</span><a class="b mini oro" href="' + BASE + f.file + '?scarica=1">Scarica</a></div>'; });
+      Object.keys(q.esportati || {}).forEach(function(k){ var f = q.esportati[k]; if (f.adattate && f.adattate.length) h += '<div class="uscita" style="border-color:var(--oro)" title="in questo formato non c\u2019e\u2019 la loro versione: il Generatore la fa, con la grafica scelta in timeline"><b>\u26a0 ' + esc(k) + ': ' + f.adattate.length + ' grafic' + (f.adattate.length > 1 ? 'he adattate' : 'a adattata') + ' \u00b7 ' + esc(f.adattate.join(', ')) + '</b></div>'; h += '<div class="uscita"><b>' + esc(f.nome || k) + '</b><span>' + esc(k) + '</span><a class="b mini oro" href="' + BASE + f.file + '?scarica=1">Scarica</a></div>'; });
       (q.sottotitoli && q.sottotitoli.files ? q.sottotitoli.files : (q.sottotitoli ? [q.sottotitoli] : [])).forEach(function(f){ h += '<div class="uscita"><b>' + esc(f.nome) + '</b><span>SRT</span><a class="b mini" href="' + BASE + f.file + '?scarica=1">Scarica</a></div>'; });
       if (q.premiere) h += '<div class="uscita"><b>' + esc(q.premiere.nome || "sequenza.xml") + '</b><span>XML</span><a class="b mini" href="' + BASE + q.premiere.file + '?scarica=1">Scarica</a></div>';
       if (q.casa) el("eCasaStato").textContent = q.casa.stato === "lavora" ? "in casa: " + q.casa.fatti + "/" + q.casa.quanti : (q.casa.stato === "pronto" ? "pezzi in casa" : "");

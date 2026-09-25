@@ -4794,6 +4794,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     try { return fs.existsSync(path.join(cartellaGrafiche(), g.id + ".png")); } catch (e) { return false; }
   });
   const v1Spenta = !!trV.V1.muto;
+  const adattate = [];               // grafiche senza la versione per questo formato
 
   await assicuraCanali(R.reg[q.reg]);
   const ritaglio = (FORMATI[formato] || FORMATI["16:9"]).vf;
@@ -5143,10 +5144,21 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
         ultimo = usc2;
       });
     }
+    // QUALE STRATO PER OGNI GRAFICA, IN QUESTO FORMATO. La versione fatta per
+    // questo formato se c'e'; il titolo ridisegnato nativo (lo scriviamo
+    // noi); altrimenti l'originale adattato — e allora lo si dice, perche'
+    // un sottopancia 16:9 dentro un verticale non e' quello che si voleva.
+    const strati = [];
+    for (const g of grafiche) {
+      const st = await stratoPerFormato(g, formato);
+      if (st.adattata) adattate.push(g.nome || "grafica");
+      strati.push(st);
+    }
     {
       const dopoW = VW, dopoH = VH;
-      grafiche.forEach((g, i) => {
-        ingressi.push("-i", path.join(cartellaGrafiche(), g.id + ".png"));
+      grafiche.forEach((g0, i) => {
+        const g = strati[i];
+        ingressi.push("-i", g.file);
         const nG = ingressi.filter((z) => z === "-i").length;
         const kk = Math.min(dopoW / (g.w || dopoW), dopoH / (g.h || dopoH));
         const w2 = Math.max(2, Math.round((g.w || dopoW) * kk / 2) * 2);
@@ -5155,7 +5167,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
         const usc = (i === grafiche.length - 1) ? "v" : ("g" + i + "o");
         catena += "[" + nG + ":v]scale=" + w2 + ":" + h2 + "[g" + i + "];" +
                   "[" + ultimo + "][g" + i + "]overlay=" + x + ":" + y +
-                  ":enable='between(t," + g.dentro.toFixed(2) + "," + g.fuori.toFixed(2) + ")'" +
+                  ":enable='between(t," + g0.dentro.toFixed(2) + "," + g0.fuori.toFixed(2) + ")'" +
                   ":format=auto[" + usc + "];";
         ultimo = usc;
       });
@@ -5191,7 +5203,9 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     q.mini = mini ? "/clip/" + CARTELLA_HL + "/" + q.id + ".jpg" : "";
   }
   q.esportati = q.esportati || {};
+  if (adattate.length) console.log("[clip] export " + formato + ": grafiche senza la loro versione, adattate: " + adattate.join(", "));
   q.esportati[formato] = {
+    adattate: adattate.slice(0, 20),
     file: "/clip/" + CARTELLA_HL + "/" + q.id + suffisso + ".mp4",
     durata: d.durata ? Math.round(d.durata * 10) / 10 : 0, peso: d.peso || 0,
     // l'istante serve alla pagina per accorgersi che questa e' un'uscita
@@ -11540,15 +11554,43 @@ function cartellaGrafiche() {
 //  Un titolo qui e' una grafica come le altre — si trascina, si allunga dai
 //  bordi, esce dall'export con lo stesso strato di overlay — solo che il
 //  PNG lo disegna la macchina, nei font di Como TV, quando lo chiedi.
+// LE GRAFICHE HANNO UNA VERSIONE PER FORMATO. Una grafica del Generatore
+// nasce per un formato — la story 9:16 e' 1080x1920, il sottopancia 16:9
+// e' 1920x1080 — e posata "contenuta" su un altro formato diventa una
+// colonnina al centro o una striscia minuscola. Quindi ogni grafica puo'
+// avere una versione per formato (g.varianti), e l'export usa quella
+// giusta. Il formato di un PNG si riconosce dalla sua misura.
+const TELA_FORMATO = { "16:9": [1920, 1080], "1:1": [1080, 1080], "3:4": [1080, 1440], "9:16": [1080, 1920] };
+function formatoDiMisura(w, h) {
+  const r = (+w || 16) / (+h || 9);
+  let meglio = "16:9", scarto = 1e9;
+  Object.keys(TELA_FORMATO).forEach((k) => {
+    const t = TELA_FORMATO[k], d = Math.abs(Math.log(r / (t[0] / t[1])));
+    if (d < scarto) { scarto = d; meglio = k; }
+  });
+  return meglio;
+}
 const STILI_TITOLO = {
   // [dove sta il blocco, quanto e' grande il titolo, quanto il sopratitolo]
   basso:  { x: 96,  y: 812, dim: 58, dim2: 26, fondo: 1 },
   centro: { x: 0,   y: 430, dim: 86, dim2: 32, fondo: 0, mezzo: 1 },
   angolo: { x: 72,  y: 72,  dim: 38, dim2: 20, fondo: 1 }
 };
-async function disegnaTitolo(via, testo, sopra, stile, colore) {
-  const st = STILI_TITOLO[stile] || STILI_TITOLO.basso;
-  const W = 1920, H = 1080;
+// Il titolo lo disegniamo noi, quindi non si adatta: si RIDISEGNA per il
+// formato. La misura del testo resta quella (su un 1080 di larghezza e'
+// anzi piu' leggibile), cambiano la tela e il posto: nei formati alti il
+// titolo "in basso" sale al 70% dell'altezza, fuori dalla fascia che nei
+// Reel e nei TikTok copre la didascalia e i pulsanti.
+async function disegnaTitolo(via, testo, sopra, stile, colore, formato) {
+  const st0 = STILI_TITOLO[stile] || STILI_TITOLO.basso;
+  const tela = TELA_FORMATO[formato] || TELA_FORMATO["16:9"];
+  const W = tela[0], H = tela[1], alto = H > W;
+  const st = Object.assign({}, st0);
+  if (W !== 1920 || H !== 1080) {
+    if (stile === "centro") { st.y = Math.round(H / 2 - 110); }
+    else if (stile === "angolo") { st.x = st.y = Math.round(Math.min(W, H) * 0.067); }
+    else { st.x = Math.round(W * 0.05); st.y = alto ? Math.round(H * 0.70) : H - (1080 - st0.y); }
+  }
   const f1 = via + ".t1.txt", f2 = via + ".t2.txt";
   fs.writeFileSync(f1, String(testo || "").slice(0, 120));
   if (sopra) fs.writeFileSync(f2, String(sopra).slice(0, 80));
@@ -11567,7 +11609,8 @@ async function disegnaTitolo(via, testo, sopra, stile, colore) {
   if (st.fondo) {
     const altoB = st.dim + (sopra ? st.dim2 + 14 : 0) + 44;
     const bx = Math.max(0, st.x - 28), by = Math.max(0, st.y - (sopra ? st.dim2 + 30 : 22));
-    ingressi.push("-f", "lavfi", "-i", "color=c=0x040C1C:s=1200x" + altoB + ":d=1");
+    const largoB = Math.min(1200, W - 2 * Math.max(0, st.x - 28));
+    ingressi.push("-f", "lavfi", "-i", "color=c=0x040C1C:s=" + largoB + "x" + altoB + ":d=1");
     catena += "[1:v]format=rgba,colorchannelmixer=aa=0.66[fondo];" +
               "[" + ultimo + "][fondo]overlay=" + bx + ":" + by + ":format=auto[conFondo];";
     ultimo = "conFondo";
@@ -11592,6 +11635,25 @@ async function disegnaTitolo(via, testo, sopra, stile, colore) {
   return { w: W, h: H };
 }
 
+// QUALE STRATO DI UNA GRAFICA, IN UN FORMATO. Lo usano l'export e il
+// monitor, cosi' quello che si guarda e' quello che esce: la versione fatta
+// per quel formato se c'e', il titolo ridisegnato nativo, altrimenti
+// l'originale — segnato come adattato.
+async function stratoPerFormato(g, formato) {
+  const f = TELA_FORMATO[formato] ? formato : "16:9";
+  if (g.titolo && f !== "16:9") {
+    const nome = g.id + "-" + f.replace(":", "x") + ".png";
+    const via = path.join(cartellaGrafiche(), nome);
+    let fatto = false; try { fatto = fs.statSync(via).mtimeMs >= (g.quando || 0); } catch (e) {}
+    if (!fatto) await disegnaTitolo(via, g.titolo.testo, g.titolo.sopra, g.titolo.stile, g.titolo.colore, f);
+    const t = TELA_FORMATO[f];
+    return { file: via, url: "/clip/" + CARTELLA_HL + "/_grafiche/" + nome, w: t[0], h: t[1], adattata: false };
+  }
+  const v = g.varianti && g.varianti[f];
+  if (v) return { file: path.join(cartellaGrafiche(), v.id + ".png"), url: v.file, w: v.w, h: v.h, adattata: false };
+  return { file: path.join(cartellaGrafiche(), g.id + ".png"), url: g.file, w: g.w, h: g.h,
+           adattata: !g.titolo && formatoDiMisura(g.w, g.h) !== f };
+}
 function hlGrafica(p) {
   const q = seqMia(p);
   q.grafiche = q.grafiche || [];
@@ -11602,6 +11664,7 @@ function hlGrafica(p) {
     q.grafiche = q.grafiche.filter((g) => {
       if (g.id !== p.grafica) return true;
       try { fs.unlinkSync(path.join(cartellaGrafiche(), g.id + ".png")); } catch (e) {}
+      Object.keys(g.varianti || {}).forEach((f) => { try { fs.unlinkSync(path.join(cartellaGrafiche(), g.varianti[f].id + ".png")); } catch (e) {} });
       return false;
     });
     toccataAMano(q); scrivi(); annuncia(0, "clip");
@@ -11620,7 +11683,13 @@ function hlGrafica(p) {
       fs.copyFileSync(path.join(cartellaGrafiche(), g.id + ".png"),
                       path.join(cartellaGrafiche(), id2 + ".png"));
     } catch (e) { throw new Error("non sono riuscito a copiare la grafica"); }
-    const g2 = Object.assign({}, g, { id: id2, dentro: dove,
+    const var2 = {};
+    Object.keys(g.varianti || {}).forEach((f) => {
+      const v = g.varianti[f], idv = nuovoId("g");
+      try { fs.copyFileSync(path.join(cartellaGrafiche(), v.id + ".png"), path.join(cartellaGrafiche(), idv + ".png")); } catch (e) { return; }
+      var2[f] = Object.assign({}, v, { id: idv, file: "/clip/" + CARTELLA_HL + "/_grafiche/" + idv + ".png" });
+    });
+    const g2 = Object.assign({}, g, { id: id2, dentro: dove, varianti: var2,
       file: "/clip/" + CARTELLA_HL + "/_grafiche/" + id2 + ".png", quando: Date.now() });
     g.fuori = dove;
     q.grafiche.push(g2);
@@ -11645,13 +11714,36 @@ function hlGrafica(p) {
   if (!m) throw new Error("la grafica non e' arrivata come PNG");
   const dati = Buffer.from(m[1], "base64");
   if (dati.length > 12 * 1024 * 1024) throw new Error("grafica troppo pesante");
+  const wN = Math.round(num(p.w, 16, 4096, 1080)), hN = Math.round(num(p.h, 16, 4096, 1920));
+  const fmt = formatoDiMisura(wN, hN);
+  // LA VERSIONE DI UN'ALTRA GRAFICA. Con una grafica scelta in timeline, il
+  // PNG che arriva ne diventa la versione nel suo formato: stessa grafica,
+  // stesso posto, stessa durata — un file in piu'.
+  if (p.variante) {
+    const g0 = q.grafiche.filter((x) => x.id === String(p.variante))[0];
+    if (!g0) throw new Error("la grafica scelta non c'e' piu'");
+    if (formatoDiMisura(g0.w, g0.h) === fmt && !g0.titolo) {
+      // e' lo stesso formato dell'originale: la si sostituisce
+      fs.writeFileSync(path.join(cartellaGrafiche(), g0.id + ".png"), dati);
+      g0.w = wN; g0.h = hN; g0.quando = Date.now();
+    } else {
+      g0.varianti = g0.varianti || {};
+      const vecchia = g0.varianti[fmt];
+      if (vecchia) { try { fs.unlinkSync(path.join(cartellaGrafiche(), vecchia.id + ".png")); } catch (e) {} }
+      const idv = nuovoId("g");
+      fs.writeFileSync(path.join(cartellaGrafiche(), idv + ".png"), dati);
+      g0.varianti[fmt] = { id: idv, w: wN, h: hN, file: "/clip/" + CARTELLA_HL + "/_grafiche/" + idv + ".png" };
+    }
+    toccataAMano(q); scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: q, grafica: g0, formato: fmt, variante: true };
+  }
   const id = nuovoId("g");
   fs.writeFileSync(path.join(cartellaGrafiche(), id + ".png"), dati);
   const dentro = num(p.dentro, 0, Math.max(0, durataSeq), 0);
   const dur = num(p.durata, 0.5, 600, 5);
   const g = { id: id, dentro: dentro, fuori: Math.min(durataSeq || dentro + dur, dentro + dur),
               nome: String(p.nome || "grafica").slice(0, 120),
-              w: Math.round(num(p.w, 16, 4096, 1080)), h: Math.round(num(p.h, 16, 4096, 1920)),
+              w: wN, h: hN, formato: fmt,
               file: "/clip/" + CARTELLA_HL + "/_grafiche/" + id + ".png", quando: Date.now() };
   if (g.fuori - g.dentro < 0.5) g.fuori = g.dentro + dur;
   q.grafiche.push(g);
@@ -13312,6 +13404,13 @@ const AZIONI = {
   "clip-anello": () => ({ ok: true, tolti: anello() }),
   "clip-grafica-uscita": graficaSuUscita,
   "clip-hl-grafica": hlGrafica,
+  "clip-hl-grafica-formato": async (p) => {
+    const q = seqDi(p);
+    const g = (q.grafiche || []).filter((x) => x.id === String(p.grafica || ""))[0];
+    if (!g) throw new Error("grafica sconosciuta");
+    const st = await stratoPerFormato(g, String(p.formato || "16:9"));
+    return { ok: true, url: st.url, w: st.w, h: st.h, adattata: st.adattata };
+  },
   // un titolo: una grafica che si disegna da sola, nei font di Como TV
   "clip-hl-titolo": async (p) => {
     const q = seqMia(p);
@@ -13326,7 +13425,7 @@ const AZIONI = {
     q.grafiche.push({ id: id, file: "/clip/" + CARTELLA_HL + "/_grafiche/" + id + ".png",
                       w: mis.w, h: mis.h, nome: testo.slice(0, 60),
                       dentro: dentro, fuori: Math.min(durataSeq + durata, dentro + durata),
-                      titolo: { testo: testo, sopra: String(p.sopra || ""), stile: String(p.stile || "basso") },
+                      titolo: { testo: testo, sopra: String(p.sopra || ""), stile: String(p.stile || "basso"), colore: p.colore ? String(p.colore) : "" },
                       quando: Date.now() });
     q.grafiche.sort((a, b) => a.dentro - b.dentro);
     toccataAMano(q); scrivi(); annuncia(0, "clip");
