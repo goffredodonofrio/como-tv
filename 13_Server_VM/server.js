@@ -2588,6 +2588,32 @@ function daCasa(ip) {
   return RETE_CASA.indexOf(pulito) >= 0;
 }
 
+// ── LA PASSPHRASE SRT NON ESCE DI CASA ────────────────────────────────
+// clip-stato risponde a chiunque, e dentro ogni registrazione in ascolto
+// c'erano url, ascolto.indirizzo e ascolto.passphrase: con quelli uno
+// sconosciuto spingeva un flusso nelle porte 10021-10022. Le pagine usano
+// solo la porta, quindi da fuori la passphrase si toglie e basta: dalle
+// stringhe srt:// (il resto dell'indirizzo resta) e dai campi che si
+// chiamano cosi'. Restano intere solo per la macchina stessa (l'altro
+// ponte, l'esportatore: arrivano senza X-Real-IP, da 127.0.0.1) e per la
+// rete Como TV. nginx riscrive sempre X-Real-IP: da fuori non si finge.
+function dallaMacchina(ip) {
+  const pulito = String(ip || "").replace(/^::ffff:/, "").trim();
+  return pulito === "127.0.0.1" || pulito === "::1";
+}
+function senzaPassphrase(x) {
+  if (Array.isArray(x)) return x.map(senzaPassphrase);
+  if (x && typeof x === "object") {
+    const o = {};
+    Object.keys(x).forEach((k) => { if (k.toLowerCase() !== "passphrase") o[k] = senzaPassphrase(x[k]); });
+    return o;
+  }
+  if (typeof x === "string" && /passphrase=/i.test(x)) {
+    return x.replace(/([?&])passphrase=[^&#\s"]*&?/gi, "$1").replace(/[?&]$/, "");
+  }
+  return x;
+}
+
 const OP_COMANDO = new Set([
   "regia-state", "regia-del", "regia-svuota", "regia-move", "regia-order",
   "regia-rename", "regia-taglio", "regia-liv", "regia-arma", "regia-megafono",
@@ -2718,7 +2744,12 @@ function permesso(p, ip) {
           case "eventi":
           case "drive-info":   out = await inoltra(p); break;
           default:
-            if (CLIP && CLIP.attivo() && /^clip-/.test(p.tipo)) { out = await CLIP.azione(p); break; }
+            if (CLIP && CLIP.attivo() && /^clip-/.test(p.tipo)) {
+              out = await CLIP.azione(p);
+              const ip = req.headers["x-real-ip"] || req.socket.remoteAddress;
+              if (!dallaMacchina(ip) && !daCasa(ip)) out = senzaPassphrase(out);
+              break;
+            }
             throw new Error("tipo di invio sconosciuto: " + p.tipo);
         }
         if (out.ok === undefined) out.ok = true;
