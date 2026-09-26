@@ -1634,12 +1634,24 @@
     return /^(ita|eng|\d+|(o\d+\s+)?cleanfeed)$/i.test(c) ? "" : c;
   }
   // breve = sulle schede (Clausura ARG), dove accanto devono stare data e peso
+  // IL TESTO SI LEGGE SEMPRE. Prima decideva il nome del colore ("Bright" =
+  // bianco), e il bianco sul giallo della Champions non si leggeva (26/09).
+  // Adesso la luminosita' vera dello sfondo: fra bianco e scuro vince quello
+  // che contrasta di piu' (il rapporto di contrasto delle regole WCAG).
+  function luce(hex){
+    var n = parseInt(String(hex).replace("#", ""), 16);
+    return [n >> 16 & 255, n >> 8 & 255, n & 255].map(function(v){ v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); })
+      .reduce(function(t, v, i){ return t + v * [0.2126, 0.7152, 0.0722][i]; }, 0);
+  }
+  // Il bianco resta dove si legge bene (blu Serie A, rosso Studio Live: e'
+  // il look approvato); sotto 3,5 di contrasto si passa al testo scuro.
+  function testoSu(bg){ return 1.05 / (luce(bg) + 0.05) >= 3.5 ? "#fff" : "#1d1f25"; }
   function compEtichetta(x, breve){ return compEtichettaNome(compNome(x), breve); }
   function compEtichettaNome(c, breve){
     if (!c || c === "\u2014") return "";
     var k = c.toLowerCase(), col = COLORI_COMP[k] || COLORI_COMP["como 1907 | " + k] || (/^under/.test(k) ? "blueBright" : /primavera/.test(k) ? "blueBright" : "");
-    var bg = AT_HEX[col] || "#3a3d46", scuro = !col || /Bright|Dark1/.test(col);
-    return '<span class="comp-et" style="background:' + bg + ';color:' + (scuro ? "#fff" : "#1d1f25") + '" title="' + esc(c) + '">' + esc(breve ? compBreve(c) : c.replace(/^como 1907\s*\|\s*/i, "")) + '</span>';
+    var bg = AT_HEX[col] || "#3a3d46";
+    return '<span class="comp-et" style="background:' + bg + ';color:' + testoSu(bg) + '" title="' + esc(c) + '">' + esc(breve ? compBreve(c) : c.replace(/^como 1907\s*\|\s*/i, "")) + '</span>';
   }
   function tipoDi(x){
     var s = (x.compVista || x.competizione || "") + " " + (x.partita || x.nome || "");
