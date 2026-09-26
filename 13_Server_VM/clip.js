@@ -12598,6 +12598,74 @@ function leggiGamecast(sm) {
   return fuori;
 }
 
+// DI CHI E' OGNI AZIONE, E IL PUNTEGGIO DOPO OGNI GOL (26/09/2026), per la
+// barra della partita a due corsie. Le righe fuse perdono la squadra: la si
+// ritrova dalla squadra scritta (ESPN), dalla rosa del giocatore, dal
+// "(Como)" della cronaca, o dalla giocata ESPN dello stesso minuto e tipo.
+function latiTabellino(r, out) {
+  const rec = (r.arch && r.arch.rec) || r.evento || "";
+  const e = ESPN[rec];
+  if (!out || !out.righe || !e || !Array.isArray(e.squadre) || e.squadre.length < 2) return out;
+  const [casa, osp] = e.squadre;
+  const pc = piattaMinuscola(casa), po = piattaMinuscola(osp);
+  const latoNome = (n) => {
+    const k = piattaMinuscola(n || ""); if (k.length < 3) return "";
+    const c = k === pc || pc.indexOf(k) >= 0 || k.indexOf(pc) >= 0, o = k === po || po.indexOf(k) >= 0 || k.indexOf(po) >= 0;
+    return c && !o ? "casa" : o && !c ? "ospite" : "";
+  };
+  const rose = e.rose || {};
+  const dellaRosa = (g) => {
+    const w = nomeParole(g).join(" "); if (!w) return "";
+    for (const sq of Object.keys(rose)) if ((rose[sq] || []).some((n) => nomeParole(n).join(" ") === w)) return latoNome(sq);
+    return "";
+  };
+  const traParentesi = (t) => { const m = /\(([^()]{2,40})\)/.exec(String(t || "")); return m ? latoNome(m[1]) : ""; };
+  const minDi = (m) => { const x = /(\d+)(?:\s*\+\s*(\d+))?/.exec(String(m || "")); return x ? +x[1] + (x[2] ? +x[2] : 0) : null; };
+  const cat = (t) => { t = String(t || "").toLowerCase(); return /goal|gol/.test(t) ? "gol" : /yellow|ammoni|giall/.test(t) ? "giallo" : /red|espuls|rosso/.test(t) ? "rosso"
+    : /parat|saved/.test(t) ? "parata" : /palo|post|bar\b|traversa/.test(t) ? "palo" : /sostit|cambio|substitution/.test(t) ? "cambio" : /occasion|attempt|tiro/.test(t) ? "tiro" : ""; };
+  // le giocate ESPN con la loro squadra
+  const esp = [];
+  (e.eventi || []).forEach((y) => { const l = latoNome(y.squadra) || dellaRosa(y.giocatore); if (l) esp.push({ min: (y.min || 0) + (y.stopp || 0), c: cat(y.tipo), l }); });
+  (e.gamecast || []).forEach((y) => { const l = traParentesi(y.testo) || dellaRosa(y.giocatore); if (l) esp.push({ min: (y.min || 0) + (y.stopp || 0), c: cat(y.tipo + " " + y.testo), l }); });
+  out.righe.forEach((x) => {
+    let l = latoNome(x.squadra) || dellaRosa(x.giocatore) || traParentesi(x.titolo) || traParentesi(x.dettaglio);
+    if (!l) {
+      const m = minDi(x.minuto), c = cat((x.gol ? "gol " : "") + (x.tag || x.tipo || ""));
+      if (m !== null && c) {
+        const lati = new Set(esp.filter((y) => y.c === c && Math.abs(y.min - m) <= 1).map((y) => y.l));
+        if (lati.size === 1) l = [...lati][0];
+      }
+    }
+    // l'ultima strada: il nome di una sola delle due squadre nel testo ("Rigore per il Milan")
+    if (!l) {
+      const tt = " " + piattaMinuscola(String(x.titolo || "").replace(/[^A-Za-z\u00C0-\u017F]+/g, " ")) + " ";
+      const nomi = (n) => nomeParole(n).filter((w) => w.length >= 4 && !/^(club|calcio|football|united|city|real|sporting)$/.test(w));
+      const inT = (n) => nomi(n).some((w) => tt.indexOf(w) >= 0);
+      const c = inT(casa), o = inT(osp);
+      if (c !== o) l = c ? "casa" : "ospite";
+    }
+    if (l) x.lato = l;
+  });
+  let gc = 0, go = 0;
+  out.righe.slice().sort((a, b) => a.t - b.t).forEach((x) => {
+    // il segno "gol" ce l'hanno anche le righe vicine a un gol: conta l'etichetta
+    if (!/^(gol|autogol)$/i.test(x.tag || "")) return;
+    let l = x.lato; if (!l) return;
+    if (/autogol|own goal/i.test((x.tag || "") + " " + (x.titolo || ""))) l = l === "casa" ? "ospite" : "casa";
+    if (l === "casa") gc++; else go++;
+    x.punteggio = gc + "-" + go;
+  });
+  const lg = e.loghi || {};
+  const logoDi = (n) => {
+    if (lg[n]) return lg[n];
+    const k = piattaMinuscola(n);
+    const id = Object.keys(CATALOGO.squadre || {}).find((i) => ((CATALOGO.squadre[i] || {}).nomi || []).some((z) => piattaMinuscola(z) === k));
+    return id ? (CATALOGO.squadre[id].logo || "https://a.espncdn.com/i/teamlogos/soccer/500/" + id + ".png") : "";
+  };
+  out.squadre = { casa, ospite: osp, logoCasa: logoDi(casa), logoOspite: logoDi(osp) };
+  return out;
+}
+
 // Un telecronista scrive il minuto DOPO aver visto l'azione. Sui gol, dove
 // ESPN dice il minuto vero, si misura di quanto: la mediana per persona e'
 // il suo ritardo, e si sottrae a tutte le sue righe.
@@ -15891,7 +15959,7 @@ const AZIONI = {
       if (p.t === undefined || p.t === null) throw new Error("a che secondo comincia il tempo?");
       esito = ancoraAMano(rec, r, p.tempo, +p.t);
     }
-    return Object.assign({ ok: true, orologio: a.orologio || null }, r ? tabellino(r) : {});
+    return Object.assign({ ok: true, orologio: a.orologio || null }, r ? latiTabellino(r, tabellino(r)) : {});
   },
   // CONTROLLA CHE LA PARTITA DI ESPN SIA DAVVERO QUELLA. Una volta legata,
   // nessuno tornava a verificarla: la firma dell'errore e' una squadra del
@@ -16177,7 +16245,7 @@ const AZIONI = {
   "clip-tabellino": (p) => {
     const r = R.reg[String(p.reg || "")];
     if (!r) throw new Error("registrazione sconosciuta");
-    return tabellino(r);
+    return latiTabellino(r, tabellino(r));
   },
   "clip-tabellino-monta": tabellinoMonta,
   "clip-hl-annulla": (p) => annullaSeq(p, false),
