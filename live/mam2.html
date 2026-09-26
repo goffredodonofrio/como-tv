@@ -416,6 +416,15 @@
   .momenti{cursor:ew-resize;} .momenti.scrub{cursor:grabbing;}
   .momenti .mtip{position:absolute;top:2px;transform:translateX(-50%);font:11px ui-monospace,Menlo,monospace;color:var(--navy);background:var(--oro2);padding:1px 5px;border-radius:3px;pointer-events:none;white-space:nowrap;}
   .prog{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;} .prog .pc{background:var(--pan);border:1px solid var(--riga);border-radius:12px;padding:12px 14px;cursor:pointer;} .prog .pc:hover{border-color:var(--oro);} .prog .pc b{display:block;font-size:14px;} .prog .pc small{color:var(--fumo);font-size:11.5px;} .prog .pc.on{border-color:var(--oro);}
+  /* LE RACCOLTE (26/09/2026) */
+  .racc .pc{display:flex;flex-direction:column;gap:4px;} .racc .pc .rc-n{display:flex;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--fumo);} .racc .pc .rc-n b{display:inline;font-size:11.5px;color:var(--oro2);font-variant-numeric:tabular-nums;}
+  .rac-testa{display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px;margin:0 0 12px;padding:12px 14px;border:1px solid var(--oro);border-radius:12px;background:rgba(201,162,75,.08);}
+  .rac-testa .rc-eti{font:700 10.5px/1 'Mazzard',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--oro2);}
+  .rac-testa h2{margin:0;font-size:18px;min-width:0;overflow-wrap:anywhere;} .rac-testa small{color:var(--fumo);font-size:12px;}
+  .rac-testa .rc-az{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;}
+  #barraScelte .salva{background:transparent;border:1px solid #C9A24B;color:#E3C271;}
+  #barraScelte form{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;} #barraScelte > span{white-space:nowrap;} @media (max-width:560px){ #barraScelte form{flex-wrap:wrap;} } #barraScelte form input{font:inherit;font-size:13px;padding:8px 12px;border-radius:999px;border:1px solid var(--riga2);background:rgba(245,241,230,.08);color:var(--ivory);min-width:0;width:220px;max-width:100%;}
+  #barraScelte form input:focus{outline:none;border-color:var(--oro);}
   .prog .pc .seqs{margin-top:8px;display:flex;flex-direction:column;gap:4px;} .prog .pc .seqs a{font-size:12px;color:var(--ivory2);padding:4px 8px;border:1px solid var(--riga);border-radius:6px;} .prog .pc .seqs a:hover{color:var(--oro2);border-color:var(--oro);}
   .bozza-tl{background:var(--pan);border:1px solid var(--riga);border-radius:10px;padding:8px 12px 10px;display:flex;flex-direction:column;gap:6px;flex:none;}
   .bozza-tl .testa{display:flex;align-items:center;gap:8px;} .bozza-tl .testa h3{font-family:'Mazzard',sans-serif;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--oro);margin:0;} .bozza-tl .testa small{color:var(--fumo);font-size:11.5px;} .bozza-tl .testa .dx{margin-left:auto;display:flex;gap:6px;}
@@ -1153,6 +1162,10 @@
     <div id="libProg">
       <div class="sez"><h2>Progetti</h2><span id="progConto"></span><button class="dx b mini" id="progNuovo" title="un progetto raccoglie le sequenze di un lavoro (una puntata, un'uscita social, un cliente)">+ Nuovo progetto</button></div>
       <div class="prog" id="progetti"></div>
+    </div>
+    <div id="libRac" hidden>
+      <div class="sez"><h2>Raccolte</h2><span id="racConto"></span></div>
+      <div class="prog racc" id="raccolte"></div>
     </div>
     <div id="risultati" class="ris" hidden></div>
     <div id="libCat">
@@ -2132,6 +2145,7 @@
   function aggiornaUrlRicerca(){
     if (!el("libreria").classList.contains("on")) return;
     var pezzi = [];
+    if (RACCOLTA) pezzi.push("rac=" + encodeURIComponent(RACCOLTA.id));
     if (Q) pezzi.push("q=" + encodeURIComponent(Q));
     if (GETTONI.length) pezzi.push("f=" + encodeURIComponent(JSON.stringify(GETTONI.map(function(x){ return [x.t, x.v, x.eti, x.sq || "", x.img || ""]; }))));
     try { history.replaceState(null, "", "mam2.html" + (pezzi.length ? "?" + pezzi.join("&") : "")); } catch (e) {}
@@ -2176,8 +2190,9 @@
     Q = String(q || "").trim();
     if (document.activeElement !== el("cercaLib")) el("cercaLib").value = q || "";
     if (document.activeElement !== el("cercaTesta")) el("cercaTesta").value = q || "";
-    var attivo = Q.length > 0 || GETTONI.length > 0;
+    var attivo = Q.length > 0 || GETTONI.length > 0 || !!RACCOLTA;
     el("risultati").hidden = !attivo; el("libCat").hidden = attivo; el("libRecenti").hidden = attivo; el("riprendi").hidden = attivo;
+    el("libRac").hidden = attivo || !RACCOLTE_EL.length;
     // mentre si cerca la scheda della copia non sta in mezzo (resta il bottoncino in alto)
     el("copiaS3").style.display = attivo ? "none" : "";
     aggiornaUrlRicerca();
@@ -2189,6 +2204,13 @@
     var libero = Q.replace(/"[^"]*"?|“[^”]*”?/g, " ").replace(/\s+/g, " ").trim();
     var qAz = frase ? "" : [gio ? gio.v : "", libero].join(" ").trim();
     var qDet = frase ? (frase[1] || frase[2]) : [gio ? gio.v : "", libero].join(" ").trim();
+    // DENTRO UNA RACCOLTA si cerca fra le sue azioni, in pagina: il ponte non serve
+    if (RACCOLTA) {
+      CHIAVE_RIC = "";
+      var parole = piatto(qAz).split(/\s+/).filter(function(w){ return w.length >= 2 && !FERMA.has(w); });
+      RIS.azioni = RACCOLTA.azioni.filter(function(x){ var t = piatto([x.titolo, x.giocatore, x.partita, x.tipo, x.ruolo].join(" ")); return parole.every(function(w){ return t.indexOf(w) >= 0; }); });
+      RIS.dette = []; RIS.scheda = null; disegnaRisultati(); return;
+    }
     var chiave = JSON.stringify([qAz, qDet, gio ? gio.sq : ""]);
     // la stessa domanda al ponte (e' cambiato solo un gettone che si filtra in pagina): si ridisegna e basta
     if (chiave === CHIAVE_RIC) { disegnaRisultati(); return; }
@@ -2348,7 +2370,7 @@
     var rosa = gio && RIS.scheda && RIS.scheda.inRosa ? new Set(RIS.scheda.inRosa) : null;
     var conAz = new Set(RIS.azioni.map(function(x){ return x.rec; }));
     var qualcosa = q.length || gio || scelti("s").length || scelti("c").length || scelti("st").length;
-    var partite = !qualcosa || frase ? [] : EVENTI.filter(function(x){
+    var partite = !qualcosa || frase || RACCOLTA ? [] : EVENTI.filter(function(x){
       if (!metaOk(x, x.partita)) return false;
       if (gio && !((rosa && rosa.has(x.rec)) || conAz.has(x.rec))) return false;
       if (q.length) { var t = piatto([x.partita, x.nome, x.competizione, x.compVista].join(" ")); if (!q.every(function(w){ return t.indexOf(w) >= 0; })) return false; }
@@ -2388,7 +2410,8 @@
     };
     // L'ORDINE DICE COSA CERCHI: un giocatore porta avanti le sue giocate, una
     // frase le telecronache, una squadra o una competizione le partite
-    var ordine = gio ? ["azioni", "partite", "dette"] : frase ? ["dette", "azioni", "partite"] : ["partite", "azioni", "dette"];
+    var ordine = gio || RACCOLTA ? ["azioni", "partite", "dette"] : frase ? ["dette", "azioni", "partite"] : ["partite", "azioni", "dette"];
+    if (RACCOLTA) gruppi.azioni.eti = "Raccolta · " + RACCOLTA.nome + (azioni.length !== RACCOLTA.azioni.length ? " (filtrate)" : "");
     var lista = ordine.map(function(k){ return gruppi[k]; });
     var tot = lista.reduce(function(n, g){ return n + g.n; }, 0);
     if (RIS_TAB !== "tutto" && !lista.some(function(g){ return g.k === RIS_TAB && g.n; })) RIS_TAB = "tutto";
@@ -2398,6 +2421,7 @@
       '<button disabled title="arrivano con l’archivio foto">Foto<b>—</b></button>' +
       '<button type="button" id="apriFiltri" class="apri-filtri' + (PANNELLO_APERTO ? " aperto" : "") + '" aria-expanded="' + PANNELLO_APERTO + '" aria-controls="pannelloFiltri">Filtri' + (nFiltri ? '<b>' + nFiltri + '</b>' : '') + ' <span aria-hidden="true">' + (PANNELLO_APERTO ? "▴" : "▾") + '</span></button>' +
       (azioni.length > 1 ? '<label class="ordina">Ordina <select id="ordRis"><option value="pertinenza">più pertinenti</option><option value="recenti">più recenti</option><option value="migliori">migliori prima</option></select></label>' : '') + '</div>';
+    if (RACCOLTA) h = testaRaccolta() + h;
     if (PANNELLO_APERTO) h += pannelloHtml();
     if (gio) {
       var contaAz = {}; F.tutteAz.forEach(function(x){ if (x.ruolo) contaAz[x.ruolo] = (contaAz[x.ruolo] || 0) + 1; });
@@ -2414,7 +2438,8 @@
         '<div class="griglia">' + g.html(max) + '</div>';
     });
     var cosa = [GETTONI.map(function(x){ return etiValore(x.t, x.eti || x.v); }).join(" · "), Q].filter(Boolean).join(" · ");
-    if (!tot) h += '<div class="vuoto">' + (!GETTONI.length && Q.length < 3 ? "Scrivi almeno tre lettere, o scegli un suggerimento." : "Niente per «" + esc(cosa) + "»: prova a togliere un filtro, o con un cognome, una squadra, “tutti i gol di…”. Foto, stemmi e cartelle stanno nel <a href=\"magazzino.html?q=" + encodeURIComponent(Q || (gio ? gio.v : "")) + "\" target=\"_blank\" style=\"color:var(--oro2)\">Magazzino</a>.") + '</div>';
+    if (!tot && RACCOLTA) h += '<div class="vuoto">' + (RACCOLTA.azioni.length ? "Nessuna azione della raccolta con questi filtri." : "La raccolta è vuota: dai risultati di una ricerca, scegli le azioni con il + e premi «Salva in raccolta».") + '</div>';
+    else if (!tot) h += '<div class="vuoto">' + (!GETTONI.length && Q.length < 3 ? "Scrivi almeno tre lettere, o scegli un suggerimento." : "Niente per «" + esc(cosa) + "»: prova a togliere un filtro, o con un cognome, una squadra, “tutti i gol di…”. Foto, stemmi e cartelle stanno nel <a href=\"magazzino.html?q=" + encodeURIComponent(Q || (gio ? gio.v : "")) + "\" target=\"_blank\" style=\"color:var(--oro2)\">Magazzino</a>.") + '</div>';
     else h += '<div class="vuoto">Foto, stemmi e cartelle: <a href="magazzino.html?q=' + encodeURIComponent(Q || (gio ? gio.v : "")) + '" target="_blank" style="color:var(--oro2)">cerca nel Magazzino</a>.</div>';
     var box = el("risultati"); box.classList.add("tessere");
     var scorri = window.scrollY, cercaAttiva = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.colcerca;
@@ -2441,6 +2466,7 @@
       azioni.forEach(function(x){ var ev = evDi(x); if (!ev || ev.s3) return; var k = chiaveAz(x); AZ_PER_CHIAVE[k] = x; if (tutte) SCELTE_RIC.set(k, x); else SCELTE_RIC.delete(k); });
       disegnaRisultati(); disegnaBarraScelte();
     }); });
+    legaTestaRaccolta(box);
     fotogrammiAzioni(box);
     disegnaBarraScelte();
   }
@@ -2461,20 +2487,104 @@
         var t = e.target.closest("button"); if (!t) return;
         if (t.dataset.fa === "svuota") { SCELTE_RIC.clear(); disegnaBarraScelte(); if (!el("risultati").hidden) disegnaRisultati(); }
         if (t.dataset.fa === "monta") montaDallaRicerca(t);
+        if (t.dataset.fa === "salva") { SALVA_APERTO = true; disegnaBarraScelte(); var i = el("racNome"); if (i) i.focus(); }
+        if (t.dataset.fa === "annulla") { SALVA_APERTO = false; disegnaBarraScelte(); }
+        if (t.dataset.fa === "togli") togliDallaRaccolta(t);
       });
+      b.addEventListener("submit", function(e){ e.preventDefault(); salvaInRaccolta(el("racNome").value, e.target.querySelector("button[type=submit]")); });
+      b.addEventListener("keydown", function(e){ if (e.key === "Escape" && SALVA_APERTO) { SALVA_APERTO = false; disegnaBarraScelte(); } });
     }
     var n = SCELTE_RIC.size;
     b.hidden = !n || !el("libreria").classList.contains("on");
     if (!n) return;
     var partite = new Set(Array.from(SCELTE_RIC.values()).map(function(x){ return x.rec; })).size;
-    b.innerHTML = '<span><b>' + n + '</b> ' + (n === 1 ? "azione scelta" : "azioni scelte") + (partite > 1 ? ' <em>da ' + partite + ' partite</em>' : '') + '</span>' +
-      '<button type="button" class="monta" data-fa="monta">Monta questi</button><button type="button" class="svuota" data-fa="svuota">Svuota</button>';
+    var conta = '<span><b>' + n + '</b> ' + (n === 1 ? "azione scelta" : "azioni scelte") + (partite > 1 ? ' <em>da ' + partite + ' partite</em>' : '') + '</span>';
+    if (SALVA_APERTO) {
+      b.innerHTML = conta + '<form><input id="racNome" aria-label="Nome della raccolta" list="racNomi" placeholder="Nome della raccolta" autocomplete="off" maxlength="120" value="' + esc(RACCOLTA ? RACCOLTA.nome : "") + '">' +
+        '<datalist id="racNomi">' + RACCOLTE_EL.map(function(r){ return '<option value="' + esc(r.nome) + '">'; }).join("") + '</datalist>' +
+        '<button type="submit" class="monta">Salva</button><button type="button" class="svuota" data-fa="annulla">Annulla</button></form>';
+      return;
+    }
+    b.innerHTML = conta + '<button type="button" class="monta" data-fa="monta">Monta questi</button>' +
+      '<button type="button" class="salva" data-fa="salva" title="mettile da parte con un nome: le ritrovi nella Libreria">Salva in raccolta</button>' +
+      (RACCOLTA ? '<button type="button" class="svuota" data-fa="togli">Togli dalla raccolta</button>' : '') +
+      '<button type="button" class="svuota" data-fa="svuota">Svuota</button>';
+  }
+  // ══════════ LE RACCOLTE (26/09/2026) ══════════
+  // Le azioni scelte, messe da parte con un nome. Si ritrovano nella
+  // Libreria; aperta, una raccolta e' una ricerca come le altre (filtri,
+  // ordine, scegli tutte, Monta questi), ma fra le sue azioni soltanto.
+  var RACCOLTE_EL = [], RACCOLTA = null, SALVA_APERTO = false;
+  function caricaRaccolte(){
+    return post({ tipo:"clip-raccolte-elenco" }).then(function(d){ RACCOLTE_EL = (d && d.raccolte) || []; disegnaRaccolte(); }).catch(function(){});
+  }
+  function disegnaRaccolte(){
+    var n = RACCOLTE_EL.length;
+    el("racConto").textContent = n ? n + (n === 1 ? " raccolta" : " raccolte") : "";
+    el("libRac").hidden = !n || !el("risultati").hidden;
+    el("raccolte").innerHTML = RACCOLTE_EL.map(function(r){
+      return '<div class="pc" role="link" tabindex="0" data-rac="' + esc(r.id) + '"><b>' + esc(r.nome) + '</b>' +
+        '<div class="rc-n"><span><b>' + r.quante + '</b> ' + (r.quante === 1 ? "azione" : "azioni") + '</span><span><b>' + r.partite + '</b> ' + (r.partite === 1 ? "partita" : "partite") + '</span>' +
+        (r.gol ? '<span><b>' + r.gol + '</b> gol</span>' : '') + '</div><small>aggiornata ' + quando(r.aggiornata) + '</small></div>';
+    }).join("");
+  }
+  el("raccolte").addEventListener("click", function(e){ var c = e.target.closest("[data-rac]"); if (c) apriRaccolta(c.dataset.rac); });
+  el("raccolte").addEventListener("keydown", function(e){ var c = e.target.closest("[data-rac]"); if (c && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); apriRaccolta(c.dataset.rac); } });
+  function apriRaccolta(id, f, q){
+    return post({ tipo:"clip-raccolta-leggi", id: id }).then(function(d){
+      RACCOLTA = d.raccolta; RIS_TAB = "azioni";
+      if (f) gettoniDaUrl(f); else { GETTONI = []; disegnaGettoni(); }
+      el("cercaLib").value = q || ""; cerca(q || ""); window.scrollTo(0, 0);
+    }).catch(function(er){ avviso("err", "Raccolta non trovata: " + esc(er.message)); });
+  }
+  function esciRaccolta(){ RACCOLTA = null; RIS_TAB = "tutto"; SCELTE_RIC.clear(); SALVA_APERTO = false; disegnaBarraScelte(); cerca(el("cercaLib").value); disegnaRaccolte(); }
+  function testaRaccolta(){
+    var r = RACCOLTA, part = new Set(r.azioni.map(function(x){ return x.rec || x.partita; })).size;
+    return '<div class="rac-testa"><span class="rc-eti">Raccolta</span><h2>' + esc(r.nome) + '</h2><small>' + r.azioni.length + (r.azioni.length === 1 ? " azione" : " azioni") + ' · ' + part + (part === 1 ? " partita" : " partite") + ' · aggiornata ' + quando(r.aggiornata) + '</small>' +
+      '<span class="rc-az"><button type="button" class="b mini" data-rc="rinomina">Rinomina</button><button type="button" class="b mini" data-rc="cancella">Cancella</button><button type="button" class="b mini" data-rc="esci">Chiudi</button></span></div>';
+  }
+  function legaTestaRaccolta(box){
+    box.querySelectorAll("[data-rc]").forEach(function(b){ b.addEventListener("click", function(){
+      var r = RACCOLTA; if (!r) return;
+      if (b.dataset.rc === "esci") return esciRaccolta();
+      if (b.dataset.rc === "rinomina") { var n = window.prompt("Nome della raccolta:", r.nome); if (!n || !n.trim()) return;
+        post({ tipo:"clip-raccolta-rinomina", id: r.id, nome: n.trim() }).then(function(d){ r.nome = d.raccolta.nome; disegnaRisultati(); caricaRaccolte(); }).catch(function(er){ avviso("err", esc(er.message)); }); }
+      if (b.dataset.rc === "cancella") { if (!window.confirm("Cancellare la raccolta «" + r.nome + "»? Le partite e le sequenze restano dove sono.")) return;
+        post({ tipo:"clip-raccolta-cancella", id: r.id }).then(function(){
+          var id = r.id, nome = r.nome; esciRaccolta(); caricaRaccolte();
+          avviso("ok", "Raccolta «" + esc(nome) + "» cancellata. <a href=\"#\" id=\"racRipristina\" style=\"color:inherit;text-decoration:underline\">Annulla</a>");
+          var a = el("racRipristina"); if (a) a.addEventListener("click", function(e){ e.preventDefault(); post({ tipo:"clip-raccolta-ripristina", id: id }).then(function(){ caricaRaccolte(); avviso("ok", "Raccolta ripristinata."); }); });
+        }).catch(function(er){ avviso("err", esc(er.message)); }); }
+    }); });
+  }
+  function salvaInRaccolta(nome, bottone){
+    nome = String(nome || "").trim(); if (!nome) { var i = el("racNome"); if (i) i.focus(); return; }
+    var lista = Array.from(SCELTE_RIC.values()); if (!lista.length) return;
+    if (bottone) { bottone.disabled = true; bottone.textContent = "Salvo…"; }
+    post({ tipo:"clip-raccolta-salva", nome: nome, azioni: lista }).then(function(d){
+      if (!d || d.ok === false) throw new Error((d && d.errore) || "raccolta non salvata");
+      SALVA_APERTO = false; SCELTE_RIC.clear(); disegnaBarraScelte();
+      if (!el("risultati").hidden) disegnaRisultati();
+      caricaRaccolte();
+      if (RACCOLTA && RACCOLTA.id === d.raccolta.id) apriRaccolta(RACCOLTA.id);
+      avviso("ok", (d.nuove ? d.nuove + (d.nuove === 1 ? " azione messa" : " azioni messe") : "Nessuna azione nuova") + " in «" + esc(d.raccolta.nome) + "»" + (d.gia ? " · " + d.gia + " c’erano già" : "") +
+        ' · <a href="mam2.html?rac=' + encodeURIComponent(d.raccolta.id) + '" style="color:inherit;text-decoration:underline">apri la raccolta</a>');
+    }).catch(function(er){ if (bottone) { bottone.disabled = false; bottone.textContent = "Salva"; } avviso("err", esc(er.message)); });
+  }
+  function togliDallaRaccolta(bottone){
+    if (!RACCOLTA) return;
+    var chiavi = Array.from(SCELTE_RIC.values()).map(function(x){ return (x.rec || x.partita || "") + "|" + Math.round(x.t || 0); });
+    bottone.disabled = true;
+    post({ tipo:"clip-raccolta-togli", id: RACCOLTA.id, chiavi: chiavi }).then(function(d){
+      RACCOLTA = d.raccolta; SCELTE_RIC.clear(); disegnaBarraScelte(); cerca(el("cercaLib").value); caricaRaccolte();
+      avviso("ok", d.tolte + (d.tolte === 1 ? " azione tolta" : " azioni tolte") + " dalla raccolta.");
+    }).catch(function(er){ bottone.disabled = false; avviso("err", esc(er.message)); });
   }
   function montaDallaRicerca(bottone){
     var lista = Array.from(SCELTE_RIC.values());
     if (!lista.length) return;
     var gio = gettone("g")[0], ruoli = scelti("r").map(function(r){ return (RUOLI[r] || {}).eti || r; });
-    var titolo = [ruoli.join(" e "), gio ? gio.eti : "", Q].filter(Boolean).join(" · ") || ("Dalla ricerca · " + lista.length + " azioni");
+    var titolo = [RACCOLTA ? RACCOLTA.nome : "", ruoli.join(" e "), gio ? gio.eti : "", Q].filter(Boolean).join(" · ") || ("Dalla ricerca · " + lista.length + " azioni");
     bottone.disabled = true; bottone.textContent = "Preparo la sequenza…";
     post({ tipo:"clip-monta-scelte", titolo: titolo, domanda: [GETTONI.map(function(x){ return x.eti; }).join(" · "), Q].filter(Boolean).join(" · "),
       pezzi: lista.map(function(x){ return { rec: x.rec, reg: x.reg || "", chiave: x.chiave || "", secFile: (x.dentroFile !== undefined ? x.dentroFile : x.dentro || 0) + ((x.t || 0) - (x.dentro || 0)),
@@ -5853,10 +5963,12 @@
     });
     return out.sort(function(u, v){ return u.a - v.a; });
   }
-  function evidenzia(t, cerca){
-    if (!cerca) return esc(t);
+  // (si chiamava anche lei evidenzia e, dichiarata dopo, prendeva il posto di
+  // quella della ricerca: a campo vuoto segnava gli spazi fra le parole)
+  function evidenziaFrase(t, cerca){
+    if (!cerca || !cerca.trim()) return esc(t);
     var i = t.toLowerCase().indexOf(cerca); if (i < 0) return esc(t);
-    return esc(t.slice(0, i)) + "<mark>" + esc(t.slice(i, i + cerca.length)) + "</mark>" + evidenzia(t.slice(i + cerca.length), cerca);
+    return esc(t.slice(0, i)) + "<mark>" + esc(t.slice(i, i + cerca.length)) + "</mark>" + evidenziaFrase(t.slice(i + cerca.length), cerca);
   }
   function disegnaTesto(){
     var c = el("tsElenco"); if (!c) return;
@@ -5876,7 +5988,7 @@
         h += '<div class="ts-capo">' + esc(x.titolo || "pezzo") + (piu ? " · " + esc(x.partita || r.titolo || "") : "") + "</div>";
       }
       h += '<div class="ts-riga' + (z.id === TS_SEL ? " sel" : "") + '" data-n="' + k + '"><span class="tc">' + tcf(z.a) + "<small>" + tcf(z.b) + "</small></span>" +
-           '<div class="tx' + (tr.manca ? " manca" : "") + '" contenteditable="plaintext-only" spellcheck="true" data-n="' + k + '"' + (tr.manca ? ' title="manca la traduzione: si vede la riga detta, scrivi sopra quella giusta"' : "") + ">" + evidenzia(tr.t, cerca) + "</div>" +
+           '<div class="tx' + (tr.manca ? " manca" : "") + '" contenteditable="plaintext-only" spellcheck="true" data-n="' + k + '"' + (tr.manca ? ' title="manca la traduzione: si vede la riga detta, scrivi sopra quella giusta"' : "") + ">" + evidenziaFrase(tr.t, cerca) + "</div>" +
            '<span class="dx"><span class="segno' + (z.s.m ? " mano" : "") + '">' + (z.s.m ? "a mano" : tr.manca ? "da tradurre" : "") + '</span><button class="via" data-via="' + k + '" title="togli la riga dalla telecronaca">✕</button></span></div>';
     });
     if (TS_BOZZA) h += '<div class="ts-capo">Riga nuova</div><div class="ts-riga sel" data-n="bozza"><span class="tc">' + tcf(TS_BOZZA.seq) + "<small>" + tcf(TS_BOZZA.seq + 3) + '</small></span><div class="tx" contenteditable="plaintext-only" spellcheck="true" data-n="bozza"></div><span class="dx"><span class="segno mano">nuova</span></span></div>';
@@ -6866,12 +6978,12 @@
   // l'avviso che viene da un'altra pagina (per esempio l'XML appena
   // importato): si mostra qui, una volta sola
   try { var av = sessionStorage.getItem("mam2-avviso"); if (av) { sessionStorage.removeItem("mam2-avviso"); setTimeout(function(){ avviso("ok", av); }, 700); } } catch (e) {}
-  stato(); caricaEventi(); disegnaRiprendi(); caricaProgetti();
+  stato(); caricaEventi(); disegnaRiprendi(); caricaProgetti(); caricaRaccolte();
   // l'identificativo di una partita che sta solo su S3 ha i due punti
   // ("s3:4579…"), e nell'indirizzo arriva come %3A: con [A-Za-z0-9]+ se ne
   // prendeva solo "s3" e la pagina diceva "non e' nell'indice" (23/09)
   var vai0 = function(n){ var m = new RegExp("(\\?|&)" + n + "=([^&]+)").exec(location.search); return m ? decodeURIComponent(m[2]) : ""; };
-  var pa = vai0("asset"), pr = vai0("reg"), pt = vai0("t"), pq = vai0("q"), ps = vai0("seq");
+  var pa = vai0("asset"), pr = vai0("reg"), pt = vai0("t"), pq = vai0("q"), ps = vai0("seq"), prac = vai0("rac");
   if (window.Destinazione) Destinazione.adotta(el("lCanale"), PONTE, TOKEN);
   if (/(\?|&)live=1/.test(location.search)) apriLive();
   // ?montaggio=1 — il montaggio VUOTO, sempre (Goffredo, 25/09/2026): i
@@ -6880,6 +6992,7 @@
   else if (/(\?|&)montaggio=1/.test(location.search)) apriEditorVuoto();
   else if (ps) apriEditor(ps);
   else if (pa) apriAsset(pa, pr, +pt || 0);
+  else if (prac) { vai("libreria"); apriRaccolta(prac, vai0("f"), pq); }
   else { vai("libreria"); var pf = vai0("f"); if (pf) gettoniDaUrl(pf); if (pq || pf) cerca(pq); }
 })();
 </script>

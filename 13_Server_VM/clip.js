@@ -12212,6 +12212,32 @@ function roseConId(sm) {
   });
   return r;
 }
+// ── LE RACCOLTE: azioni della ricerca messe da parte con un nome ──
+let RACCOLTE = null; const RACCOLTE_VIA = {};
+function fileRaccolte() { return path.join(DIR, "raccolte.json"); }
+function raccolte() {
+  if (!RACCOLTE) { try { RACCOLTE = JSON.parse(fs.readFileSync(fileRaccolte(), "utf8")) || {}; } catch (e) { RACCOLTE = {}; } }
+  return RACCOLTE;
+}
+function scriviRaccolte() {
+  try { const tmp = fileRaccolte() + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(RACCOLTE || {})); fs.renameSync(tmp, fileRaccolte()); }
+  catch (e) { console.log("[clip] raccolte non salvate: " + e.message); }
+}
+function chiaveRaccolta(x) { return String(x.rec || x.partita || "") + "|" + Math.round(+x.t || 0); }
+const CAMPI_RACCOLTA = ["reg", "partita", "rec", "t", "dentro", "fuori", "s3", "tipo", "tag", "titolo", "minuto", "fonte", "fonti", "squadra", "giocatore",
+  "gol", "certezza", "chiave", "dentroFile", "quando", "ruolo", "ruoloDa", "rating", "boato"];
+function azioneDaRaccogliere(x) {
+  if (!x || typeof x !== "object" || (!x.rec && !x.partita)) return null;
+  const y = {}; CAMPI_RACCOLTA.forEach((k) => { if (x[k] !== undefined && x[k] !== null) y[k] = typeof x[k] === "string" ? x[k].slice(0, 400) : x[k]; });
+  y.messa = Date.now();
+  return y;
+}
+function sommarioRaccolta(r) {
+  const az = r.azioni || [];
+  return { id: r.id, nome: r.nome, creata: r.creata, aggiornata: r.aggiornata, chi: r.chi || "", quante: az.length,
+    partite: new Set(az.map((x) => x.rec || x.partita)).size, gol: az.filter((x) => x.gol || x.ruolo === "gol").length,
+    prima: az[0] ? { rec: az[0].rec, reg: az[0].reg || "", t: az[0].t, dentroFile: az[0].dentroFile, chiave: az[0].chiave || "" } : null };
+}
 const ROSE_ID = { fatte: 0, fallite: 0, totale: 0, inCorso: false };
 async function giroRoseId() {
   if (ROSE_ID.inCorso) return; ROSE_ID.inCorso = true;
@@ -15009,6 +15035,52 @@ const AZIONI = {
     normalizzaSeq(q);              // l'audio sotto ogni pezzo, come sempre
     scrivi(); annuncia(0, "clip");
     return { ok: true, seq: q, quante: q.pezzi.length, trovate: trovate.length };
+  },
+  // ══════════ LE RACCOLTE (26/09/2026) ══════════
+  //  Le azioni scelte nella ricerca, messe da parte con un nome ("Gol di Paz
+  //  2025-26", "Parate di Butez"): si ritrovano nella Libreria, si filtrano
+  //  come una ricerca, si montano quando serve. Un file loro (raccolte.json),
+  //  fuori dal registro. Un'azione e' la riga della ricerca com'era: si
+  //  riconosce da partita + secondo, e salvarla due volte non la raddoppia.
+  "clip-raccolte-elenco": () => ({ ok: true, raccolte: Object.keys(raccolte()).map((k) => sommarioRaccolta(raccolte()[k]))
+    .sort((a, b) => (b.aggiornata || 0) - (a.aggiornata || 0)) }),
+  "clip-raccolta-leggi": (p) => { const r = raccolte()[String(p.id || "")]; if (!r) throw new Error("raccolta sconosciuta"); return { ok: true, raccolta: r }; },
+  "clip-raccolta-salva": (p) => {
+    const tutte = raccolte(), azioni = (Array.isArray(p.azioni) ? p.azioni : []).slice(0, 500).map(azioneDaRaccogliere).filter(Boolean);
+    let r = p.id ? tutte[String(p.id)] : null;
+    const nome = String(p.nome || "").trim().slice(0, 120);
+    if (!r && nome) r = Object.keys(tutte).map((k) => tutte[k]).filter((x) => piattaMinuscola(x.nome) === piattaMinuscola(nome))[0] || null;
+    if (!r) { if (!nome) throw new Error("la raccolta ha bisogno di un nome"); const id = nuovoId("rc"); r = tutte[id] = { id, nome, creata: Date.now(), aggiornata: Date.now(), chi: String(p.__chi || "").slice(0, 40), azioni: [] }; }
+    const gia = new Set(r.azioni.map(chiaveRaccolta));
+    let nuove = 0;
+    azioni.forEach((x) => { const k = chiaveRaccolta(x); if (gia.has(k)) return; gia.add(k); r.azioni.push(x); nuove++; });
+    r.aggiornata = Date.now();
+    scriviRaccolte();
+    return { ok: true, raccolta: sommarioRaccolta(r), nuove, gia: azioni.length - nuove };
+  },
+  "clip-raccolta-togli": (p) => {
+    const r = raccolte()[String(p.id || "")]; if (!r) throw new Error("raccolta sconosciuta");
+    const via = new Set((Array.isArray(p.chiavi) ? p.chiavi : []).map(String));
+    const prima = r.azioni.length; r.azioni = r.azioni.filter((x) => !via.has(chiaveRaccolta(x)));
+    r.aggiornata = Date.now(); scriviRaccolte();
+    return { ok: true, raccolta: r, tolte: prima - r.azioni.length };
+  },
+  "clip-raccolta-rinomina": (p) => {
+    const r = raccolte()[String(p.id || "")]; if (!r) throw new Error("raccolta sconosciuta");
+    const nome = String(p.nome || "").trim().slice(0, 120); if (!nome) throw new Error("serve un nome");
+    r.nome = nome; r.aggiornata = Date.now(); scriviRaccolte();
+    return { ok: true, raccolta: sommarioRaccolta(r) };
+  },
+  // cancellare una raccolta non tocca ne' i file ne' le sequenze: e' solo l'elenco
+  "clip-raccolta-cancella": (p) => {
+    const tutte = raccolte(), id = String(p.id || ""); if (!tutte[id]) throw new Error("raccolta sconosciuta");
+    RACCOLTE_VIA[id] = tutte[id]; delete tutte[id]; scriviRaccolte();
+    return { ok: true };
+  },
+  "clip-raccolta-ripristina": (p) => {
+    const id = String(p.id || ""), r = RACCOLTE_VIA[id]; if (!r) throw new Error("niente da ripristinare");
+    raccolte()[id] = r; delete RACCOLTE_VIA[id]; scriviRaccolte();
+    return { ok: true, raccolta: sommarioRaccolta(r) };
   },
   // ══════════ MONTA QUESTI (26/09/2026) ══════════
   //  Dai risultati della ricerca si scelgono le azioni — di partite diverse —
