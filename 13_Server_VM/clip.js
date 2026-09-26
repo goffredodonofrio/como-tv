@@ -11249,6 +11249,11 @@ function espnPrendi(url) {
     });
     req.on("error", no);
     req.setTimeout(20000, () => { req.destroy(new Error("ESPN: tempo scaduto")); });
+    // UN TETTO VERO (26/09/2026): setTimeout scatta solo se la connessione
+    // tace; una risposta che arriva a gocce teneva fermo il giro delle rose
+    // da un'ora, a 887 partite su 927
+    const tetto = setTimeout(() => { req.destroy(new Error("ESPN: oltre 45 s")); }, 45000);
+    req.on("close", () => clearTimeout(tetto));
   });
 }
 // in quali leghe ESPN puo' stare questa partita: la competizione dice
