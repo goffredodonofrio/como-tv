@@ -3456,10 +3456,14 @@ function tracceDi(q) {
 }
 
 function audioDaPezzo(x, traccia) {
-  return { id: nuovoId("a"), traccia: traccia || "A1", legato: x.id,
-           t0: x.t0 || 0, dentro: x.dentro, fuori: x.fuori,
-           canale: "", coppia: 0, gain: 0, entra: 0, esce: 0, muto: false,
-           titolo: x.titolo || "" };
+  const a = { id: nuovoId("a"), traccia: traccia || "A1", legato: x.id,
+              t0: x.t0 || 0, dentro: x.dentro, fuori: x.fuori,
+              canale: "", coppia: 0, gain: 0, entra: 0, esce: 0, muto: false,
+              titolo: x.titolo || "" };
+  // l'audio sta nella stessa partita del suo video: senza, in una sequenza di
+  // piu' partite ogni pezzo avrebbe avuto sotto l'audio della prima (26/09/2026)
+  if (x.reg) a.reg = x.reg;
+  return a;
 }
 
 // Una sequenza vecchia non ha ne' posizioni ne' audio: gliele si da' qui,
@@ -6086,11 +6090,11 @@ async function statoCopia() {
   // sparito e' stato rinominato: e' finito, e la prossima passata lo conta
   const ora = Date.now(), inArrivo = [];
   let inCorsoByte = 0;
-  const pesi = await Promise.all(COPIA_PESO.parziali.map((p) => fs.promises.stat(p).then((st) => st.size, () => null)));
+  const pesi = await Promise.all(COPIA_PESO.parziali.map((p) => NFS(() => fs.promises.stat(p)).then((st) => st.size, () => null)));
   // un file a meta' sparito e' stato rinominato: il suo peso passa SUBITO tra i
   // finiti, se no i GB calano fino alla prossima passata e la velocita' va a zero
   const finali = await Promise.all(COPIA_PESO.parziali.map((p, i) => pesi[i] !== null ? null
-    : fs.promises.stat(p.replace(/\.parziale(\.[^/]*)?$/, "")).then((st) => st.size, () => null)));
+    : NFS(() => fs.promises.stat(p.replace(/\.parziale(\.[^/]*)?$/, ""))).then((st) => st.size, () => null)));
   finali.forEach((b) => { if (b) COPIA_PESO.fatti += b; });
   const finito = [];
   COPIA_PESO.parziali = COPIA_PESO.parziali.filter((p, i) => {
@@ -6302,6 +6306,22 @@ function statoNomi() {
 // e peso si calcolano in memoria da quella.
 let NAS_FILE = new Map();          // chiave S3 -> byte, per i file finiti
 let NAS_PARZIALI = [];             // percorsi dei file a meta'
+// AL MASSIMO SEI DOMANDE ALLA NAS INSIEME (26/09/2026). Le funzioni asincrone
+// dei file usano i thread di servizio di Node: centinaia di cartelle lette in
+// parallelo attraverso la rete li occupavano tutti, e la lettura di una
+// PAGINA dal disco locale restava in coda dietro di loro per un minuto
+// (504 subito dopo ogni riavvio). Con un limite ne resta sempre di liberi.
+function limitatore(n) {
+  let attivi = 0; const coda = [];
+  const via = () => {
+    while (attivi < n && coda.length) {
+      const x = coda.shift(); attivi++;
+      Promise.resolve().then(x.f).then(x.ok, x.no).finally(() => { attivi--; via(); });
+    }
+  };
+  return (f) => new Promise((ok, no) => { coda.push({ f, ok, no }); via(); });
+}
+const NFS = limitatore(6);
 let nasInCorso = null;
 function giroNas() {
   if (nasInCorso) return nasInCorso;
@@ -6312,7 +6332,7 @@ function giroNas() {
     // copia che scrive, la NAS mette ~0,2 s a domanda, e 337 domande in fila
     // erano 66 secondi (25/09/2026)
     const giro = async (dir, rel, prof) => {
-      let voci; try { voci = await fs.promises.readdir(dir, { withFileTypes: true }); } catch (e) { return; }
+      let voci; try { voci = await NFS(() => fs.promises.readdir(dir, { withFileTypes: true })); } catch (e) { return; }
       await Promise.all(voci.map(async (v) => {
         if (v.name.startsWith(".") || v.name === "_script") return;
         const p = path.join(dir, v.name), r = rel ? rel + "/" + v.name : v.name;
@@ -6323,7 +6343,7 @@ function giroNas() {
     };
     await giro(path.join(base, "TEMP"), "TEMP", 0);
     for (let i = 0; i < daPesare.length; i += 16) {
-      await Promise.all(daPesare.slice(i, i + 16).map(([r, p]) => fs.promises.stat(p).then((st) => { finiti.set(r, st.size); }, () => {})));
+      await Promise.all(daPesare.slice(i, i + 16).map(([r, p]) => NFS(() => fs.promises.stat(p)).then((st) => { finiti.set(r, st.size); }, () => {})));
     }
     NAS_FILE = finiti; NAS_PARZIALI = parziali;
     // lo specchio: una partita e' in casa se c'e' TUTTA, al byte
@@ -12640,7 +12660,7 @@ function giroQnapFile() {
   QNAP_GIRO.inCorso = (async () => {
     const fuori = []; let contati = 0;
     const giro = async (rel, prof) => {
-      let voci; try { voci = await fs.promises.readdir(path.join(QNAP_RADICE, rel), { withFileTypes: true }); } catch (e) { return; }
+      let voci; try { voci = await NFS(() => fs.promises.readdir(path.join(QNAP_RADICE, rel), { withFileTypes: true })); } catch (e) { return; }
       for (const d of voci) {
         if (QNAP_NASCOSTI.test(d.name)) continue;
         // la copia delle partite S3 non fa voci sue: sarebbero doppioni (e una
@@ -12652,7 +12672,7 @@ function giroQnapFile() {
         if (d.isDirectory()) { if (prof < 4) await giro(relSuo, prof + 1); continue; }
         const est = path.extname(d.name).slice(1).toLowerCase();
         if (!/^(mp4|mov|mxf|mkv|ts|m4v)$/.test(est)) continue;
-        let st; try { st = await fs.promises.stat(path.join(QNAP_RADICE, relSuo)); } catch (e) { continue; }
+        let st; try { st = await NFS(() => fs.promises.stat(path.join(QNAP_RADICE, relSuo))); } catch (e) { continue; }
         fuori.push({ nome: d.name, via: relSuo, cartella: rel, peso: st.size, quando: st.mtimeMs, est });
       }
     };
@@ -14732,6 +14752,63 @@ const AZIONI = {
     normalizzaSeq(q);              // l'audio sotto ogni pezzo, come sempre
     scrivi(); annuncia(0, "clip");
     return { ok: true, seq: q, quante: q.pezzi.length, trovate: trovate.length };
+  },
+  // ══════════ MONTA QUESTI (26/09/2026) ══════════
+  //  Dai risultati della ricerca si scelgono le azioni — di partite diverse —
+  //  e diventano UNA sequenza: ogni pezzo porta la sua registrazione (x.reg,
+  //  vedi "una sequenza, piu' partite"). La ricerca conosce il file e il
+  //  secondo nel file di ogni azione: si apre (o si ritrova) la partita e si
+  //  riporta quel secondo nelle sue coordinate. Rincorsa corta: gol e assist
+  //  8 s prima e 14 dopo (l'esultanza), il resto 6 e 7; in montaggio si
+  //  allungano come sempre. Le partite ancora su S3 non si aprono: si saltano
+  //  e si dice quante.
+  "clip-monta-scelte": async (p) => {
+    const lista = Array.isArray(p.pezzi) ? p.pezzi.slice(0, 120) : [];
+    if (!lista.length) throw new Error("nessuna azione scelta");
+    const regDiRec = {}, saltate = [];
+    const tempoInReg = (r, chiave, sec) => {
+      const pz = pezziArch(r);
+      if (pz.length <= 1) return sec;
+      const z = pz.find((x) => x.chiave === chiave);
+      return z ? (z.da || 0) + sec : null;
+    };
+    const pezzi = [];
+    let t0 = 0;
+    for (const x of lista) {
+      const rec = String(x.rec || "");
+      if (!rec || !ARCHIVIO[rec]) { saltate.push(x.titolo || rec); continue; }
+      if (!inCasa(ARCHIVIO[rec])) { saltate.push((x.partita || rec) + " (ancora su S3)"); continue; }
+      let r = x.reg && R.reg[String(x.reg)];
+      if (!r || !r.arch || r.arch.rec !== rec) {
+        if (!regDiRec[rec]) { const ap = await archivioApri({ rec }); if (!ap || !ap.ok || !ap.reg) { saltate.push(x.partita || rec); continue; } regDiRec[rec] = ap.reg.id; }
+        r = R.reg[regDiRec[rec]];
+      }
+      if (!r) { saltate.push(x.partita || rec); continue; }
+      const t = tempoInReg(r, String(x.chiave || ""), +x.secFile || 0);
+      if (t === null) { saltate.push((x.titolo || "azione") + " (file non trovato nella partita)"); continue; }
+      const grande = /^(gol|assist|autogol|nel gol)$/.test(String(x.ruolo || "")) || x.gol;
+      const prima = num(p.prima, 0, 60, grande ? 8 : 6), dopo = num(p.dopo, 1, 120, grande ? 14 : 7);
+      const durata = r.durata || durataRegistrata(r.id) || MAX_SECONDI;
+      const dentro = Math.max(0, Math.min(durata - 1, t - prima)), fuori = Math.max(dentro + 0.5, Math.min(durata, t + dopo));
+      pezzi.push({ id: nuovoId("p"), reg: r.id, partita: r.titolo || x.partita || "", dentro, fuori, base: dentro, t0: Math.round(t0 * 1000) / 1000,
+                   traccia: "V1", stacco: 0, titolo: (x.minuto ? x.minuto + " " : "") + String(x.titolo || "azione").slice(0, 140),
+                   tipo: x.tipo || "", minuto: x.minuto || "", fonte: "ricerca" });
+      t0 += fuori - dentro;
+    }
+    if (!pezzi.length) throw new Error("nessuna delle azioni scelte si puo' montare adesso" + (saltate.length ? ": " + saltate.slice(0, 3).join(", ") : ""));
+    const q = {
+      id: nuovoId("s"), reg: pezzi[0].reg,
+      titolo: String(p.titolo || "").slice(0, 120) || "Dalla ricerca \u00b7 " + pezzi.length + " azioni",
+      pezzi, grafiche: [], audio: [], pre: HL_PRE, post: HL_POST, scarto: 0, avvisi: [],
+      formato: FORMATI[String(p.formato || "")] ? String(p.formato) : "16:9",
+      creata: Date.now(), chi: String(p.__chi || p.chi || "").slice(0, 40), export: null, ricerca: String(p.domanda || "").slice(0, 300)
+    };
+    // il pezzo della prima partita non ha bisogno del suo reg (vale q.reg)
+    q.pezzi.forEach((x) => { if (x.reg === q.reg) delete x.reg; });
+    R.seq[q.id] = q;
+    normalizzaSeq(q);              // l'audio sotto ogni pezzo, come sempre
+    scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: { id: q.id, titolo: q.titolo }, quante: q.pezzi.length, saltate };
   },
   "clip-tabellino-cerca": async (p) => {
     const q = String(p.q || "").trim(); if (q.length < 2) return { ok: true, righe: [] };

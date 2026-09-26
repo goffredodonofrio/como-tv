@@ -98,6 +98,25 @@
   .sugg a em{font-style:normal;color:var(--fumo);font-size:12.5px;margin-left:4px;}
   .sugg a small{margin-left:auto;color:var(--fumo);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap;}
   .sugg a.on,.sugg a:hover{background:rgba(201,162,75,.14);}
+  /* MONTA QUESTI: la casella sulla tessera e la barra in basso */
+  .tes.az{position:relative;}
+  .tes .scegli{position:absolute;right:8px;top:8px;z-index:3;width:30px;height:30px;border-radius:50%;border:1.5px solid rgba(245,241,230,.85);
+    background:rgba(10,15,36,.72);color:#F5F1E6;font:700 17px/1 system-ui,sans-serif;cursor:pointer;display:grid;place-items:center;padding:0;}
+  .tes .scegli:hover,.tes .scegli:focus-visible{background:rgba(201,162,75,.35);outline:none;}
+  .tes .scegli.on{background:#C9A24B;border-color:#C9A24B;color:#10131c;}
+  .tes .scegli:disabled{opacity:.3;cursor:not-allowed;}
+  .tes.az .mini .sopra .su{padding-right:38px;}
+  .tes.az.scelta{box-shadow:0 0 0 2px #C9A24B inset, 0 0 0 1px #C9A24B;}
+  .ris .sez-ris .sceglitutte{margin-left:auto;font-size:11.5px;color:var(--oro2);cursor:pointer;}
+  .ris .sez-ris .sceglitutte + a{margin-left:14px;}
+  #barraScelte{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);z-index:90;display:flex;align-items:center;gap:10px;
+    padding:8px 8px 8px 18px;border-radius:999px;background:#141826;border:1px solid #C9A24B;box-shadow:0 14px 34px rgba(0,0,0,.55);color:var(--ivory);font-size:14px;max-width:calc(100vw - 32px);}
+  #barraScelte[hidden]{display:none;}
+  #barraScelte b{color:#E3C271;font-variant-numeric:tabular-nums;} #barraScelte em{font-style:normal;color:var(--fumo);font-size:12.5px;}
+  #barraScelte button{border-radius:999px;padding:9px 16px;font:700 11px/1 'Mazzard',sans-serif;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;white-space:nowrap;}
+  #barraScelte .monta{background:#C9A24B;border:1px solid #C9A24B;color:#10131c;} #barraScelte .monta:disabled{opacity:.6;cursor:wait;}
+  #barraScelte .svuota{background:transparent;border:1px solid var(--riga2);color:var(--ivory2);}
+  @media (max-width:560px){ #barraScelte{left:16px;right:16px;transform:none;flex-wrap:wrap;border-radius:14px;} }
   /* IL PANNELLO FILTRI: una colonna per tipo, caselle con i numeri */
   .ris .filtri-ris .apri-filtri{margin-left:auto;}
   .ris .filtri-ris .apri-filtri.aperto{border-color:var(--oro);color:var(--oro2);}
@@ -2053,7 +2072,11 @@
     disegnaRisultati();
     clearTimeout(Q_T);
     Q_T = setTimeout(function(){
-      if (qAz.length >= 3) post({ tipo:"clip-tabellino-cerca", q: qAz, quante: 500 }).then(function(j){ if (CHIAVE_RIC !== chiave) return; RIS.azioni = j.righe || []; RIS.scheda = j.scheda || null; disegnaRisultati(); }).catch(function(){});
+      // SE LA DOMANDA FALLISCE SI RIFA' (26/09/2026): la pagina ricorda l'ultima
+      // domanda per non ripeterla, e se la prima cadeva (il ponte che si
+      // riavvia) non la rifaceva piu' — risultati vuoti qualunque cosa si toccasse
+      var riprova = function(){ if (CHIAVE_RIC !== chiave) return; CHIAVE_RIC = ""; setTimeout(function(){ if (!CHIAVE_RIC) cerca(el("cercaLib").value); }, 3000); };
+      if (qAz.length >= 3) post({ tipo:"clip-tabellino-cerca", q: qAz, quante: 500 }).then(function(j){ if (CHIAVE_RIC !== chiave) return; if (!j || j.ok === false) return riprova(); RIS.azioni = j.righe || []; RIS.scheda = j.scheda || null; disegnaRisultati(); }).catch(riprova);
       if (qDet.length >= 3) post({ tipo:"clip-parlato-cerca", q: qDet, quante: 300 }).then(function(j){ if (CHIAVE_RIC !== chiave) return; RIS.dette = j.righe || []; disegnaRisultati(); }).catch(function(){});
     }, 300);
   }
@@ -2137,7 +2160,11 @@
     var fonte = (x.fonti || [x.fonte]).filter(Boolean).join(" + ");
     // il fotogramma si puo' fare solo se la partita e' sulla NAS
     var casa = !!(ev && !ev.s3);
-    return '<a class="card tes az" href="' + link(x, apriA(x)) + '" data-reg="' + esc(x.reg || "") + '" data-rec="' + esc(casa ? (x.rec || "") : "") + '" data-t="' + Math.round(x.t || 0) + '">' +
+    // MONTA QUESTI: la casella per scegliere l'azione (solo se la partita e' in casa)
+    var k = chiaveAz(x), on = SCELTE_RIC.has(k); AZ_PER_CHIAVE[k] = x;
+    var scegli = '<button type="button" class="scegli' + (on ? " on" : "") + '" data-scegli="' + esc(k) + '" aria-pressed="' + on + '"' +
+      (casa ? ' title="Scegli per il montaggio"' : ' disabled title="La partita e\u2019 ancora in arrivo sulla NAS"') + '>' + (on ? "\u2713" : "+") + '</button>';
+    return '<a class="card tes az' + (on ? " scelta" : "") + '" href="' + link(x, apriA(x)) + '" data-reg="' + esc(x.reg || "") + '" data-rec="' + esc(casa ? (x.rec || "") : "") + '" data-t="' + Math.round(x.t || 0) + '">' + scegli +
       '<div class="mini">' + sotto + '<div class="foto"></div><div class="sopra"><div class="su"><span class="tipo-az ' + ta.cl + '">' + esc(ta.eti) + '</span>' +
         (x.minuto ? '<span class="minuto">' + esc(String(x.minuto).replace(/'?$/, "'")) + '</span>' : '') + '</div><div class="giu">' + esc(fonte) + (!ev || ev.s3 ? ' \u00b7 in arrivo sulla NAS' : '') + '</div></div></div>' +
       '<div class="t"><div class="testo">' + evidenzia(x.titolo || x.giocatore || "", QEV || Q) + '</div><small>' + (ev ? compEtichetta(ev, true) : '') + esc(ev ? (ev.squadre ? ev.squadre.map(function(s){ return s.nome; }).join(" – ") + (ev.ris ? " " + ev.ris.join("-") : "") : nomeDi(ev)) : x.partita) + '</small></div></a>';
@@ -2249,7 +2276,10 @@
     lista.forEach(function(g){
       if (!g.n || (RIS_TAB !== "tutto" && RIS_TAB !== g.k)) return;
       var max = RIS_TAB === "tutto" ? (g.k === ordine[0] ? 12 : 8) : 300;
-      h += '<div class="sez-ris" style="--c:' + g.c + '"><h3>' + esc(g.eti) + ' · ' + g.n + '</h3>' + (RIS_TAB === "tutto" && g.n > max ? '<a data-rt="' + g.k + '">Mostra tutte (' + g.n + ')</a>' : '') + '</div>' +
+      var tutteScelte = g.k === "azioni" && azioni.filter(function(x){ var ev = evDi(x); return ev && !ev.s3; }).every(function(x){ return SCELTE_RIC.has(chiaveAz(x)); });
+      h += '<div class="sez-ris" style="--c:' + g.c + '"><h3>' + esc(g.eti) + ' · ' + g.n + '</h3>' +
+        (g.k === "azioni" ? '<a class="sceglitutte" data-sceglitutte="' + (tutteScelte ? "0" : "1") + '">' + (tutteScelte ? "Togli tutte dal montaggio" : "Scegli tutte per il montaggio") + '</a>' : '') +
+        (RIS_TAB === "tutto" && g.n > max ? '<a data-rt="' + g.k + '">Mostra tutte (' + g.n + ')</a>' : '') + '</div>' +
         '<div class="griglia">' + g.html(max) + '</div>';
     });
     var cosa = [GETTONI.map(function(x){ return etiValore(x.t, x.eti || x.v); }).join(" · "), Q].filter(Boolean).join(" · ");
@@ -2272,8 +2302,65 @@
     box.querySelectorAll("input[data-colcerca]").forEach(function(i){ i.addEventListener("input", function(){ COLONNA_CERCA[i.dataset.colcerca] = i.value; COLONNA_TUTTE[i.dataset.colcerca] = true; disegnaRisultati(); }); });
     box.querySelectorAll("[data-azzera]").forEach(function(b){ b.addEventListener("click", function(){ GETTONI = GETTONI.filter(function(y){ return y.t === "g"; }); disegnaGettoni(); disegnaRisultati(); aggiornaUrlRicerca(); }); });
     box.querySelectorAll("[data-rt]").forEach(function(b){ b.addEventListener("click", function(){ RIS_TAB = b.dataset.rt; disegnaRisultati(); }); });
+    box.querySelectorAll("[data-sceglitutte]").forEach(function(b){ b.addEventListener("click", function(){
+      var tutte = b.dataset.sceglitutte === "1";
+      azioni.forEach(function(x){ var ev = evDi(x); if (!ev || ev.s3) return; var k = chiaveAz(x); AZ_PER_CHIAVE[k] = x; if (tutte) SCELTE_RIC.set(k, x); else SCELTE_RIC.delete(k); });
+      disegnaRisultati(); disegnaBarraScelte();
+    }); });
     fotogrammiAzioni(box);
+    disegnaBarraScelte();
   }
+  // ══════════ MONTA QUESTI (26/09/2026) ══════════
+  // Dai risultati si scelgono le azioni, anche di partite diverse, e diventano
+  // una sequenza sola nel montaggio. La scelta resta cambiando ricerca: si
+  // possono mettere insieme i gol di Paz e gli assist di Diao.
+  var SCELTE_RIC = new Map(), AZ_PER_CHIAVE = {};
+  function chiaveAz(x){ return (x.rec || x.partita || "") + "|" + Math.round(x.t || 0); }
+  function disegnaBarraScelte(){
+    var b = el("barraScelte");
+    if (!b) { b = document.createElement("div"); b.id = "barraScelte"; b.setAttribute("role", "region"); b.setAttribute("aria-label", "Azioni scelte per il montaggio"); document.body.appendChild(b);
+      b.addEventListener("click", function(e){
+        var t = e.target.closest("button"); if (!t) return;
+        if (t.dataset.fa === "svuota") { SCELTE_RIC.clear(); disegnaBarraScelte(); if (!el("risultati").hidden) disegnaRisultati(); }
+        if (t.dataset.fa === "monta") montaDallaRicerca(t);
+      });
+    }
+    var n = SCELTE_RIC.size;
+    b.hidden = !n || !el("libreria").classList.contains("on");
+    if (!n) return;
+    var partite = new Set(Array.from(SCELTE_RIC.values()).map(function(x){ return x.rec; })).size;
+    b.innerHTML = '<span><b>' + n + '</b> ' + (n === 1 ? "azione scelta" : "azioni scelte") + (partite > 1 ? ' <em>da ' + partite + ' partite</em>' : '') + '</span>' +
+      '<button type="button" class="monta" data-fa="monta">Monta questi</button><button type="button" class="svuota" data-fa="svuota">Svuota</button>';
+  }
+  function montaDallaRicerca(bottone){
+    var lista = Array.from(SCELTE_RIC.values());
+    if (!lista.length) return;
+    var gio = gettone("g")[0], ruoli = scelti("r").map(function(r){ return (RUOLI[r] || {}).eti || r; });
+    var titolo = [ruoli.join(" e "), gio ? gio.eti : "", Q].filter(Boolean).join(" · ") || ("Dalla ricerca · " + lista.length + " azioni");
+    bottone.disabled = true; bottone.textContent = "Preparo la sequenza…";
+    post({ tipo:"clip-monta-scelte", titolo: titolo, domanda: [GETTONI.map(function(x){ return x.eti; }).join(" · "), Q].filter(Boolean).join(" · "),
+      pezzi: lista.map(function(x){ return { rec: x.rec, reg: x.reg || "", chiave: x.chiave || "", secFile: (x.dentroFile !== undefined ? x.dentroFile : x.dentro || 0) + ((x.t || 0) - (x.dentro || 0)),
+        titolo: x.titolo || x.giocatore || "", minuto: x.minuto || "", tipo: x.tipo || "", ruolo: x.ruolo || "", gol: !!x.gol, partita: x.partita || "" }; }) })
+    .then(function(d){
+      if (!d || d.ok === false) throw new Error((d && d.errore) || "sequenza non creata");
+      var nota = "Sequenza “" + d.seq.titolo + "”: " + d.quante + (d.quante === 1 ? " pezzo" : " pezzi") + (d.saltate && d.saltate.length ? " · " + d.saltate.length + " azioni saltate (partite non ancora sulla NAS)" : "");
+      try { sessionStorage.setItem("mam2-avviso", nota); } catch (e) {}
+      SCELTE_RIC.clear();
+      location.href = "mam2.html?seq=" + encodeURIComponent(d.seq.id);
+    })
+    .catch(function(e){ bottone.disabled = false; bottone.textContent = "Monta questi"; avviso("err", esc(e.message)); });
+  }
+  el("risultati").addEventListener("click", function(e){
+    var b = e.target.closest("[data-scegli]"); if (!b) return;
+    e.preventDefault(); e.stopPropagation();
+    if (b.disabled) return;
+    var k = b.dataset.scegli, x = AZ_PER_CHIAVE[k]; if (!x) return;
+    if (SCELTE_RIC.has(k)) SCELTE_RIC.delete(k); else SCELTE_RIC.set(k, x);
+    var on = SCELTE_RIC.has(k), card = b.closest(".tes");
+    b.classList.toggle("on", on); b.setAttribute("aria-pressed", on); b.textContent = on ? "✓" : "+";
+    if (card) card.classList.toggle("scelta", on);
+    disegnaBarraScelte();
+  });
   // IL PANNELLO: una colonna per tipo, i valori con la casella e il numero
   function pannelloHtml(){
     var cols = COLONNE.map(function(col){

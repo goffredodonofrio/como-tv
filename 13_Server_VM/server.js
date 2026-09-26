@@ -24,6 +24,10 @@
  */
 
 "use strict";
+// I THREAD DI SERVIZIO DI NODE (file, dns, zlib) sono quattro: con la NAS
+// lenta sotto la copia bastava poco a occuparli tutti e le pagine restavano
+// in coda. Si fissa prima di qualunque lettura di file (26/09/2026).
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || "24";
 
 const http = require("http");
 const https = require("https");
