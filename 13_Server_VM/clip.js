@@ -27,7 +27,23 @@ const fs = require("fs");
 const path = require("path");
 const https = require("https");
 const http = require("http");
-const { spawn, execFile, execFileSync } = require("child_process");
+const cp = require("child_process");
+const { execFileSync } = cp;
+// IL LAVORO DI FONDO CEDE IL PASSO (26/09/2026). Il giro della casa teneva i
+// due core al 100% con ffmpeg e tesseract alla stessa priorita' del ponte:
+// la Libreria rispondeva in 3,5 s invece di 2, e sulla stessa macchina girano
+// le grafiche live. Quello che parte dentro SFONDO.run(...) si lancia con
+// "nice -n 15": usa tutto il processore che avanza, e quando una pagina chiede
+// qualcosa passa davanti. Le stesse funzioni chiamate da una pagina restano a
+// priorita' normale (il contesto lo porta avanti AsyncLocalStorage, anche
+// attraverso await e callback).
+const SFONDO = new (require("async_hooks").AsyncLocalStorage)();
+function conNice(cmd, args) {
+  if (!SFONDO.getStore() || cmd === "nice") return [cmd, args || []];
+  return ["nice", ["-n", "15", cmd].concat(args || [])];
+}
+function spawn(cmd, args, ...resto) { const x = conNice(cmd, args); return cp.spawn(x[0], x[1], ...resto); }
+function execFile(cmd, args, ...resto) { const x = conNice(cmd, args); return cp.execFile(x[0], x[1], ...resto); }
 const os = require("os");
 const dgram = require("dgram");
 const crypto = require("crypto");
@@ -6178,11 +6194,13 @@ async function giroCasa() {
   CASA.attive.set(rec, { rec, partita: a.partita || rec, passo, dal: Date.now() });
   setTimeout(() => { giroCasa().catch(() => {}); }, 5000);      // e intanto parte la seconda
   try {
+    await SFONDO.run(true, async () => {
     if (passo === "espn") { await espnTrova(rec); scriviEspn(); }
     else if (passo === "cronometro") await calibraOrologio(rec);
     else if (passo === "tabellone") { const t = await leggiTabellone(rec); NOMI.fatte++; if (t && t.verificato) NOMI.verificate++; }
     else if (passo === "boati") await puntaBoati(rec);
     else if (passo === "momenti") await puntaMomenti(rec);
+    });
     CASA.fatte++;
   } catch (e) {
     CASA.fallite++;
