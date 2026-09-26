@@ -1186,7 +1186,9 @@ function etichettaAzione(tipo, titolo) {
   // LA RETE PRESA DA FUORI NON E' UN GOL. "sull'esterno della rete" e
   // "calcia alto" sono conclusioni sbagliate, e la parola rete le faceva
   // passare per gol anche quando chi scrive aveva messo tipo "Gol".
-  const quasi = /sfior|si mangia|si divora|mangia(to)? il gol|vicino al gol|per poco|gol (mangiato|sbagliato|fallito)|a un passo dal gol|fallisce|esterno della rete|sull.esterno|\ba lato\b|sul fondo|di poco fuori|calcia (alto|fuori)|alto sopra/i.test(testo);
+  // "occasione per il raddoppio... sopra la traversa" (Como-Milan, 26/09/2026):
+  // il raddoppio annunciato non e' un raddoppio fatto
+  const quasi = /sfior|si mangia|si divora|mangia(to)? il gol|vicino al gol|per poco|gol (mangiato|sbagliato|fallito)|a un passo dal gol|fallisce|esterno della rete|sull.esterno|\ba lato\b|sul fondo|di poco fuori|calcia (alto|fuori)|alto sopra|sopra la traversa|\boccasion|\bchance\b|opportunit/i.test(testo);
   // UN GOL VERO PORTA CON SE' IL PUNTEGGIO CHE CAMBIA: "AUTOGOL DI VALINCIC,
   // sulla conclusione di Babec (3-1 DIN)" e' un gol anche se il tipo dice
   // "Occasione". E' il modo in cui la redazione segna che la palla e' entrata.
@@ -2836,12 +2838,14 @@ function tipoDellaRiga(t) {
   // ma "GOL di Steijn, fallisce la prima conclusione ma rimedia" resta un gol:
   // chi comincia la riga con GOL racconta un gol (se non e' "gol sfiorato")
   const apreGol = /^ (gol|goal|autogol) (?!sfior|annullat|mangiat|sbagliat|fallit)/.test(b);
-  const quasi = !apreGol && / (sfior|si mangia|si divora|per poco|a un passo dal gol|fallisce|di poco fuori|a lato|sul fondo)| vicino al gol | gol (mangiato|sbagliato|fallito) | esterno della rete /.test(b);
+  const quasi = !apreGol && / (sfior|si mangia|si divora|per poco|a un passo dal gol|fallisce|di poco fuori|a lato|sul fondo|occasion|chance|opportunit)| vicino al gol | gol (mangiato|sbagliato|fallito) | esterno della rete | sopra la traversa /.test(b);
   for (const [nome, chiavi] of TIPI_APPUNTI) {
     if (nome === "Gol" && quasi) continue;
     if (!chiavi.some(dentro)) continue;
     // "primo palo", "secondo palo", "sul palo lontano" sono POSTI del campo,
     // non legni colpiti: se il palo compare solo cosi', non e' un palo
+    // "calcia sopra la traversa", "sfiora la traversa": alta, non colpita
+    if (nome === "Palo" && / (sopra|sfiora|sfiorando|oltre) (la )?traversa /.test(b) && !/ (colpisce|colpito|prende|centra|centrato|stampa|stampato|sbatte) /.test(b)) continue;
     if (nome === "Palo" && !/ (traversa|legno|montante|pali) /.test(b)) {
       const posto = / (primo|secondo) palo | sul palo /.test(b);
       const colpito = / (colpisce|colpito|prende|preso|centra|centrato|stampa|stampato|sbatte) /.test(b) ||
