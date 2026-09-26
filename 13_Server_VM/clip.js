@@ -1214,6 +1214,7 @@ function etichettaAzione(tipo, titolo) {
 //  la mette chi ce l'ha piu' precisa, il testo lo mette chi dice di piu'.
 function precisioneDi(x) {
   if (x.momento) return 6;                 // l'inquadratura: al secondo
+  if (x.espnSec) return 5.5;               // il cronometro ESPN al secondo, col cronometro della partita letto
   if (x.tabellone) return 5;
   // IL BOATO MANCAVA DA QUESTA SCALA. Una riga inchiodata al secondo dallo
   // stadio che non prende fiato vale piu' del minuto ufficiale di ESPN, che
@@ -1240,6 +1241,7 @@ function fondiDue(a, b) {
   fuso.dentro = ora.dentro; fuso.fuori = ora.fuori; fuso.base = ora.dentro;
   fuso.tabellone = a.tabellone || b.tabellone || "";
   fuso.momento = ora.momento || 0;
+  fuso.espnSec = ora.espnSec || 0;
   fuso.minuto = a.minuto || b.minuto || "";
   fuso.rating = Math.max(a.rating || 0, b.rating || 0);
   fuso.peso = Math.max(a.peso || 1, b.peso || 1);
@@ -1445,13 +1447,14 @@ function quelloCheSappiamo(r) {
   }
   if (e && e.eventi) {
     e.eventi.forEach((x) => {
-      const d = (x.min - (x.periodo === 2 ? 45 : 0)) * 60 + x.stopp * 60;
-      const t = dove(x.periodo, Math.max(0, d));
+      const de = dEspn(x);
+      const t = dove(x.periodo, de.d);
       if (t === null) return;
       const ita = tipoItaliano(x.tipo);
       if (/sostituzione/i.test(ita)) return;                  // un cambio non e' un pezzo
       const p = pezzoDa(t - APP_PRE, t + APP_POST, [ita, x.giocatore].filter(Boolean).join(" · "), ita, x.min + "'", "espn", pesoAzione(ita, false, 0));
-      p.t = t;
+      p.t = t; p.giocatore = x.giocatore || ""; p.periodo = x.periodo;
+      if (de.alSecondo && orologioLetto(rec, x.periodo)) { p.espnSec = 1; const w = finestraGol(t, rec, true); p.dentro = w.dentro; p.fuori = w.fuori; p.base = p.dentro; }
       azioni.push(p);
       if (/gol|rigore|autogol/i.test(ita) && !/annullato/i.test(ita)) gol.push(allargaPerIlReplay(p, rec));
     });
@@ -1474,14 +1477,16 @@ function quelloCheSappiamo(r) {
   //  entra SOLO se in quel minuto non c'e' gia' qualcosa di piu' autorevole.
   if (e && e.gamecast && e.gamecast.length) {
     e.gamecast.forEach((x) => {
-      const d = (x.min - (x.periodo === 2 ? 45 : 0)) * 60 + x.stopp * 60;
-      const t = dove(x.periodo, Math.max(0, d));
+      const de = dEspn(x), alSec = de.alSecondo && orologioLetto(rec, x.periodo);
+      const t = dove(x.periodo, de.d);
       if (t === null) return;
-      if (azioni.some((a2) => Math.abs((a2.t !== undefined ? a2.t : a2.dentro) - t) < 50)) return;
+      // al secondo la cronaca ESPN entra sempre (gli appunti vicini ci si agganciano, poi si fondono)
+      if (!alSec && azioni.some((a2) => Math.abs((a2.t !== undefined ? a2.t : a2.dentro) - t) < 50)) return;
       const p = pezzoDa(t - APP_PRE, t + APP_POST,
                         [x.tipo, x.giocatore].filter(Boolean).join(" · ") + (x.giocatore ? "" : " · " + x.testo.slice(0, 60)),
                         x.tipo, x.min + "'", "gamecast", x.peso);
-      p.t = t; p.dettaglio = x.testo;
+      p.t = t; p.dettaglio = x.testo; p.giocatore = x.giocatore || ""; p.periodo = x.periodo;
+      if (alSec) { p.espnSec = 1; const w = finestraGol(t, rec, true); p.dentro = w.dentro; p.fuori = w.fuori; p.base = p.dentro; }
       azioni.push(p);
     });
   }
@@ -1564,6 +1569,35 @@ function quelloCheSappiamo(r) {
   //  la regia che passa dalla camera larga ai primi piani lo sa al secondo.
   //  Misurata una volta dal giro della casa (puntaMomenti), per chiave di
   //  riga e in secondi del FILE: si riporta in qualunque coordinata.
+  // GLI APPUNTI SI AGGANCIANO ALLA GIOCATA ESPN AL SECONDO (26/09/2026). Chi
+  //  scrive annota dopo (spesso sul replay) e il boato puo' prendere il rumore
+  //  sbagliato — su Como-Bologna il VAR, 150 s dal palo di Nico Paz. ESPN la
+  //  stessa giocata la da' al secondo: la riga degli appunti prende quel
+  //  secondo, se e' dello stesso tipo, entro tre minuti, e — quando la riga
+  //  nomina qualcuno — dello stesso giocatore. Poi le due righe si fondono.
+  const alSec = azioni.filter((x) => x.espnSec);
+  if (alSec.length) {
+    const cognomeDi = (n) => { const w = nomeParole(n); return w.length ? w[w.length - 1] : ""; };
+    const COMPAT = { gol: ["gol"], palo: ["palo", "tiro"], parata: ["parata", "tiro", "rigore"], tiro: ["tiro", "parata", "palo"],
+                     giallo: ["giallo"], rosso: ["rosso"], rigore: ["rigore", "gol", "parata"] };
+    const minDi = (x) => { const m = minutoRiga(x); return m ? m.min + (m.per === 2 ? 0 : 0) : null; };
+    azioni.forEach((x) => {
+      if (x.espnSec || x.fonte === "tabellone") return;
+      const cat = categoriaRiga(x); if (!cat || !COMPAT[cat]) return;
+      const m = minDi(x); if (m === null) return;
+      const parole = new Set(nomeParole([x.titolo, x.dettaglio].join(" ")));
+      const cand = alSec.filter((y) => COMPAT[cat].indexOf(categoriaRiga(y)) >= 0 && Math.abs((minDi(y) || -99) - m) <= 3);
+      if (!cand.length) return;
+      const nominati = cand.filter((y) => y.giocatore && parole.has(cognomeDi(y.giocatore)));
+      // la riga nomina qualcuno che ESPN non ha in quel minuto: meglio non spostarla su un altro
+      const nominaQualcuno = cand.some((y) => y.giocatore) && !nominati.length && Array.from(parole).some((w) => w.length > 3 && alSec.some((y) => cognomeDi(y.giocatore) === w));
+      if (nominaQualcuno) return;
+      const scelta = (nominati.length ? nominati : cand).sort((u, v) => Math.abs((minDi(u) || 0) - m) - Math.abs((minDi(v) || 0) - m))[0];
+      const t0 = x.t !== undefined ? x.t : x.dentro + APP_PRE;
+      x.spostato = Math.round(t0 - scelta.t); x.t = scelta.t; x.espnSec = 1; delete x.boato;
+      const w = finestraGol(scelta.t, rec, true); x.dentro = w.dentro; x.fuori = w.fuori; x.base = x.dentro;
+    });
+  }
   // (dopo aver tolto i doppioni: e' sulle righe fuse che si e' misurato)
   const squadre = new Set(nomiDentro({ titolo: ((ARCHIVIO[rec] || {}).partita || r.titolo || "") }));
   const fuse = togliDoppioni(azioni, 45, squadre);
@@ -1610,6 +1644,7 @@ function tabellino(r) {
   //   minuto     -> sappiamo solo il minuto scritto: e' una stima
   const comeLoSappiamo = (t, x) => {
     if (x && x.momento) return "inquadratura";
+    if (x && x.espnSec) return "espn";
     if (x && x.tabellone) return "tabellone";
     if (x && x.boato) return "boato";
     if (a && vicinoNella(a.gol, t)) return "cronometro";
@@ -1626,8 +1661,8 @@ function tabellino(r) {
     // non le maniglie corte dell'azione: dentro c'e' anche l'esultanza
     const g = golVicino(t);
     // una riga messa al secondo dall'inquadratura tiene la sua finestra
-    const dentro = g && !x.momento ? g.dentro : x.dentro;
-    const fuori = g && !x.momento ? g.fuori : x.fuori;
+    const dentro = g && !x.momento && !x.espnSec ? g.dentro : x.dentro;
+    const fuori = g && !x.momento && !x.espnSec ? g.fuori : x.fuori;
     return {
       t: Math.round(t * 10) / 10,
       dentro: Math.round(dentro * 10) / 10,
@@ -1636,7 +1671,7 @@ function tabellino(r) {
       fonte: x.fonte || "", peso: x.peso || 1, rating: x.rating || 0,
       squadra: x.squadra || "", giocatore: x.giocatore || "",
       dettaglio: String(x.dettaglio || "").slice(0, 200),
-      gol: !!g || !!x.tabellone || !!(x.momento && /\b(gol|goal|rete)\b/i.test((x.tipo || "") + " " + (x.titolo || ""))), certezza: comeLoSappiamo(t, x),
+      gol: !!g || !!x.tabellone || !!((x.momento || x.espnSec) && /\b(gol|goal|rete)\b/i.test((x.tipo || "") + " " + (x.titolo || ""))), certezza: comeLoSappiamo(t, x),
       tabellone: x.tabellone || "", boato: x.boato || 0,
       spostato: x.spostato === undefined ? 0 : x.spostato,
       tag: etichettaAzione(x.tipo, x.titolo),
@@ -2796,7 +2831,14 @@ function tipoDellaRiga(t) {
   const dentro = (k) => k.slice(-1) === "-"
     ? b.indexOf(" " + k.slice(0, -1)) >= 0
     : b.indexOf(" " + k + " ") >= 0;
+  // "Nico Paz che sfiora il gol", "vicino al gol": un'occasione, non un gol
+  // (Como-Verona usciva fra i gol di Nico Paz, 26/09/2026)
+  // ma "GOL di Steijn, fallisce la prima conclusione ma rimedia" resta un gol:
+  // chi comincia la riga con GOL racconta un gol (se non e' "gol sfiorato")
+  const apreGol = /^ (gol|goal|autogol) (?!sfior|annullat|mangiat|sbagliat|fallit)/.test(b);
+  const quasi = !apreGol && / (sfior|si mangia|si divora|per poco|a un passo dal gol|fallisce|di poco fuori|a lato|sul fondo)| vicino al gol | gol (mangiato|sbagliato|fallito) | esterno della rete /.test(b);
   for (const [nome, chiavi] of TIPI_APPUNTI) {
+    if (nome === "Gol" && quasi) continue;
     if (!chiavi.some(dentro)) continue;
     // "primo palo", "secondo palo", "sul palo lontano" sono POSTI del campo,
     // non legni colpiti: se il palo compare solo cosi', non e' un palo
@@ -2808,7 +2850,7 @@ function tipoDellaRiga(t) {
     }
     return nome;
   }
-  return "";
+  return quasi ? "Occasione" : "";
 }
 
 // Se la riga e' un'intestazione di sezione: 1, 2, 3, 4, null (da saltare)
@@ -8857,6 +8899,10 @@ function fileAppunti() { return path.join(DIR, "appunti.json"); }
 function leggiArchivioAppunti() {
   try { APPUNTI = JSON.parse(fs.readFileSync(fileAppunti(), "utf8")) || {}; }
   catch (e) { APPUNTI = {}; }
+  // le righe lette prima del 26/09/2026: "Nico Paz che sfiora il gol" era un Gol
+  Object.keys(APPUNTI).forEach((rec) => ((APPUNTI[rec] || {}).righe || []).forEach((r) => {
+    if (r && r.t === "Gol" && r.x) { const t = tipoDellaRiga(r.x); if (t !== "Gol") r.t = t; }
+  }));
 }
 function scriviArchivioAppunti() {
   try {
@@ -11171,6 +11217,8 @@ function fileEspn() { return path.join(DIR, "espn.json"); }
 function fileRitardi() { return path.join(DIR, "ritardi.json"); }
 function leggiEspn() {
   try { ESPN = JSON.parse(fs.readFileSync(fileEspn(), "utf8")) || {}; } catch (e) { ESPN = {}; }
+  // i secondi del recupero anche per le partite gia' lette (vedi recuperoAlSecondo)
+  Object.keys(ESPN).forEach((rec) => { try { recuperoAlSecondo(ESPN[rec]); } catch (e) {} });
   try {
     const r = JSON.parse(fs.readFileSync(fileRitardi(), "utf8")) || {};
     // il file vecchio era solo la tabella per persona
@@ -11375,6 +11423,7 @@ async function espnTrova(rec) {
   // ha scritto appunti, che sono migliaia di partite.
   const gamecast = leggiGamecast(sm);
   const eventi = eventiEspn(sm);
+  recuperoAlSecondo({ eventi, gamecast });
   const rose = {}, roseId = roseConId(sm);
   (sm.rosters || []).forEach((r) => {
     const nome = ((r.team || {}).displayName) || "?";
@@ -11388,7 +11437,7 @@ async function espnTrova(rec) {
     const l = (tm.logos && tm.logos[0] && tm.logos[0].href) || tm.logo || (tm.id ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + tm.id + ".png" : "");
     if (l) loghi[tm.displayName] = l; });
   ESPN[rec] = { id: trovato.id, lega: legaTrovata, quando: trovato.date || info.quando, nome: trovato.name || "",
-                squadre: casaOsp, eventi: eventi, gamecast: gamecast, rose: rose, roseId: roseId, loghi: loghi,
+                squadre: casaOsp, eventi: eventi, gamecast: gamecast, rose: rose, roseId: roseId, conSecondi: true, loghi: loghi,
                 letto: new Date().toISOString() };
   misuraRitardo(rec);
   return ESPN[rec];
@@ -12094,6 +12143,44 @@ function chiFaGamecast(testo) {
 // Gli eventi chiave di ESPN. In un gol il secondo "participant" e'
 // l'assistman: fino al 26/09/2026 si teneva solo il primo, e "assist di
 // Nico Paz" non si poteva sapere.
+// I SECONDI DI UNA GIOCATA ESPN dall'inizio del suo tempo (26/09/2026).
+// ESPN non da' solo "34'": da' il cronometro al secondo (1987 = 33'07"). Con il
+// cronometro letto dal video il secondo nel file e' inizio del tempo + questi:
+// su Como-Pisa i cinque gol cadevano entro due secondi dalla palla in rete
+// vista a fotogrammi, e i pali di Nico Paz dove la regia li mostra. Senza i
+// secondi (letture vecchie) resta il minuto.
+// il cronometro di QUEL tempo e' stato letto dal video: solo allora i secondi ESPN stanno al loro posto
+function orologioLetto(rec, per) {
+  const o = (ARCHIVIO[rec] || {}).orologio;
+  if (!o) return false;
+  const v = (k) => o[k] !== undefined && o[k] !== null;
+  return per === 2 ? v("inizio2") : v("inizio1");
+}
+function dEspn(x) {
+  if (typeof x.sec === "number" && x.sec > 0) return { d: Math.max(0, (x.periodo === 2 ? x.sec - 2700 : x.sec)), alSecondo: true };
+  return { d: Math.max(0, (x.min - (x.periodo === 2 ? 45 : 0)) * 60 + (x.stopp || 0) * 60), alSecondo: false };
+}
+// IL RECUPERO (26/09/2026): nel recupero ESPN ferma il cronometro a 45:00 o
+// 90:00 (clock.value 2700/5400) per tutto quello che succede dopo. In
+// Como-Verona gol di Vojvoda, giallo a Orban e parata su Mosquera stavano
+// tutti a 5400, e l'ultimo era in realta' tre minuti dopo. L'ora vera
+// (wallclock) invece corre: si parte dall'ultima giocata prima del recupero
+// e si aggiungono i secondi passati. Senza ora vera, resta il minuto.
+const FINE_TEMPO = { 1: 2700, 2: 5400, 3: 6300, 4: 7200 };
+function recuperoAlSecondo(e) {
+  if (!e) return;
+  const tutte = [].concat(e.eventi || [], e.gamecast || []);
+  const ora = (x) => { const t = Date.parse(x.wall || ""); return isFinite(t) ? t : null; };
+  tutte.forEach((x) => {
+    const cap = FINE_TEMPO[x.periodo]; if (!cap || x.sec !== cap) return;
+    const w = ora(x);
+    let rif = null;
+    if (w !== null) tutte.forEach((y) => { const wy = ora(y);
+      if (y.periodo === x.periodo && typeof y.sec === "number" && y.sec < cap && wy !== null && wy <= w && (!rif || wy > rif.w)) rif = { s: y.sec, w: wy }; });
+    if (rif) x.sec = Math.max(cap, Math.round(rif.s + (w - rif.w) / 1000));
+    else if (x.stopp) delete x.sec;          // niente ora: meglio il minuto +stopp che 90:00 per tutti
+  });
+}
 function eventiEspn(sm) {
   return (sm.keyEvents || []).map((k) => {
     const tipo = ((k.type || {}).text) || "";
@@ -12105,6 +12192,9 @@ function eventiEspn(sm) {
                 squadra: ((k.team || {}).displayName) || "",
                 giocatore: chi[0] || "",
                 testo: k.shortText || k.text || "" };
+    // il cronometro AL SECONDO (clock.value) e l'ora vera: vedi dEspn
+    const sec = +((k.clock || {}).value); if (sec > 0) x.sec = sec;
+    if (k.wallclock) x.wall = k.wallclock;
     if (/goal|penalty - scored/i.test(tipo) && !/own goal/i.test(tipo)) x.assist = chi[1] || "";
     if (k.text && k.text !== x.testo) x.lungo = String(k.text).slice(0, 240);
     return x;
@@ -12127,7 +12217,8 @@ async function giroRoseId() {
   if (ROSE_ID.inCorso) return; ROSE_ID.inCorso = true;
   try {
     const perId = {};
-    Object.keys(ESPN).forEach((rec) => { const e = ESPN[rec]; if (!e || !e.id || !e.lega || e.roseId) return; (perId[e.id] = perId[e.id] || []).push(rec); });
+    // anche chi ha gia' le rose ma non i SECONDI delle giocate (vedi dEspn)
+    Object.keys(ESPN).forEach((rec) => { const e = ESPN[rec]; if (!e || !e.id || !e.lega || (e.roseId && e.conSecondi)) return; (perId[e.id] = perId[e.id] || []).push(rec); });
     const peso = (ids) => ids.some((rec) => ARCHIVIO[rec] && inCasa(ARCHIVIO[rec])) ? 0 : ids.some((rec) => ARCHIVIO[rec]) ? 1 : 2;
     const coda = Object.keys(perId).sort((a, b) => peso(perId[a]) - peso(perId[b]));
     ROSE_ID.totale = coda.length;
@@ -12135,11 +12226,13 @@ async function giroRoseId() {
       const recs = perId[id], e0 = ESPN[recs[0]];
       try {
         const sm = await espnPrendi("https://site.api.espn.com/apis/site/v2/sports/soccer/" + e0.lega + "/summary?event=" + id);
-        const r = roseConId(sm);
-        recs.forEach((rec) => { if (ESPN[rec] && String(ESPN[rec].id) === String(id)) ESPN[rec].roseId = r; });
+        const r = roseConId(sm), ev = eventiEspn(sm), gc = leggiGamecast(sm);
+        recuperoAlSecondo({ eventi: ev, gamecast: gc });
+        recs.forEach((rec) => { const e = ESPN[rec]; if (!e || String(e.id) !== String(id)) return;
+          e.roseId = r; if (ev.length) e.eventi = ev; if (gc.length) e.gamecast = gc; e.conSecondi = true; });
         ROSE_ID.fatte++;
       } catch (err) { ROSE_ID.fallite++; recs.forEach((rec) => { if (ESPN[rec]) ESPN[rec].roseId = {}; }); }
-      if ((ROSE_ID.fatte + ROSE_ID.fallite) % 50 === 0) { scriviEspn(); global.__DIZ_GIOCATORI = null; }
+      if ((ROSE_ID.fatte + ROSE_ID.fallite) % 50 === 0) { scriviEspn(); global.__DIZ_GIOCATORI = null; if (global.__TAB_CACHE) global.__TAB_CACHE.quando = 0; }
       await new Promise((ok) => setTimeout(ok, 1500));
     }
     if (coda.length) { scriviEspn(); global.__DIZ_GIOCATORI = null; console.log("[clip] rose con i codici: " + ROSE_ID.fatte + " partite, " + ROSE_ID.fallite + " non lette"); }
@@ -12165,6 +12258,7 @@ async function giroRileggiEspn() {
       try {
         const sm = await espnPrendi("https://site.api.espn.com/apis/site/v2/sports/soccer/" + e0.lega + "/summary?event=" + id);
         const eventi = eventiEspn(sm), gamecast = leggiGamecast(sm);
+        recuperoAlSecondo({ eventi, gamecast });
         recs.forEach((rec) => {
           const e = ESPN[rec]; if (!e || String(e.id) !== String(id)) return;
           if (eventi.length) e.eventi = eventi;
@@ -12195,8 +12289,11 @@ function leggiGamecast(sm) {
     // non ci vanno, e in elenco coprirebbero le cose che contano
     if (!q.tipo || q.peso < 4) return;
     const periodo = ((pl.period || {}).number) || (mm.min > 45 ? 2 : 1);
-    fuori.push({ tipo: q.tipo, peso: q.peso, min: mm.min, stopp: mm.stopp, periodo: periodo,
-                 giocatore: chiFaGamecast(testo), testo: testo.slice(0, 200) });
+    const g = { tipo: q.tipo, peso: q.peso, min: mm.min, stopp: mm.stopp, periodo: periodo,
+                giocatore: chiFaGamecast(testo), testo: testo.slice(0, 200) };
+    const sec = +((c.time || {}).value); if (sec > 0) g.sec = sec;
+    if (pl.wallclock) g.wall = pl.wallclock;
+    fuori.push(g);
   });
   return fuori;
 }
@@ -14318,15 +14415,16 @@ async function costruisciCercaCache() {
         });
         if (es && es.eventi) es.eventi.forEach((x) => {
           const ita = tipoItaliano(x.tipo);
-          const d = dove(x.periodo || 1, (x.min - (x.periodo === 2 ? 45 : 0)) * 60 + (x.stopp || 0) * 60); if (!d) return;
-          righe.push(Object.assign({ titolo: ita + (x.giocatore ? " \u00b7 " + x.giocatore : ""), tipo: ita, minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), fonte: "espn", fonti: ["espn"],
+          const de = dEspn(Object.assign({ periodo: x.periodo || 1 }, x)), d = dove(x.periodo || 1, de.d); if (!d) return;
+          righe.push(Object.assign({ espnSec: de.alSecondo && orologioLetto(rec, x.periodo || 1) ? 1 : 0, titolo: ita + (x.giocatore ? " \u00b7 " + x.giocatore : ""), tipo: ita, minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), fonte: "espn", fonti: ["espn"],
             giocatore: x.giocatore || "", squadra: x.squadra || "", dettaglio: x.lungo || x.testo || "", gol: /Gol/.test(ita), tag: etichettaAzione(ita, x.testo), rating: 0, certezza: "minuto" }, d));
+          if (righe[righe.length - 1].espnSec) righe[righe.length - 1].certezza = "espn";
         });
         // LA CRONACA ESPN: tiri, parate, pali. Dove nessuno ha scritto
         // niente, il minuto di ESPN basta per andare a prendere l'immagine;
         // come nel tabellino, entra solo dove non c'e' gia' una riga vicina
         if (es && es.gamecast) es.gamecast.forEach((x) => {
-          const d = dove(x.periodo || 1, (x.min - (x.periodo === 2 ? 45 : 0)) * 60 + (x.stopp || 0) * 60); if (!d) return;
+          const de = dEspn(Object.assign({ periodo: x.periodo || 1 }, x)), d = dove(x.periodo || 1, de.d); if (!d) return;
           if (righe.some((y) => Math.abs(y.t - d.t) < 50)) return;
           righe.push(Object.assign({ titolo: [x.tipo, x.giocatore].filter(Boolean).join(" \u00b7 "), tipo: x.tipo, minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), fonte: "gamecast", fonti: ["gamecast"],
             giocatore: x.giocatore || "", squadra: "", dettaglio: x.testo || "", gol: x.tipo === "Gol", tag: etichettaAzione(x.tipo, x.testo), rating: 0, certezza: "minuto" }, d));
@@ -14760,6 +14858,35 @@ const AZIONI = {
     if (n) scriviArchivio();
     return { ok: true, riprova: n };
   },
+  // PROVA: le giocate ESPN al secondo di cronometro, riportate nel file (non salva niente)
+  "clip-espn-secondi-prova": async (p) => {
+    const rec = String(p.rec || ""), e = ESPN[rec], a = ARCHIVIO[rec];
+    if (!e || !e.id || !a) return { ok: false, errore: "partita senza ESPN" };
+    const sm = await espnPrendi("https://site.api.espn.com/apis/site/v2/sports/soccer/" + e.lega + "/summary?event=" + e.id);
+    const fuori = [];
+    const metti = (tipo, testo, per, val, wall) => {
+      if (!per || val === undefined || val === null) return;
+      const d = per === 2 ? val - 2700 : val;
+      const x = secondoNelFile(rec, { s: per, d: d });
+      fuori.push({ tipo, testo: String(testo || "").slice(0, 70), per, clock: val, file: x ? Math.round(x.secondi) : null, wall: wall || "" });
+    };
+    (sm.keyEvents || []).forEach((k) => metti(((k.type || {}).text) || "", k.shortText || k.text, ((k.period || {}).number), ((k.clock || {}).value), k.wallclock));
+    (sm.commentary || []).forEach((c) => { const pl = c.play || {}; if (!/shot|save|post|bar|penalty|goal/i.test(((pl.type || {}).text) || "")) return;
+      metti("cronaca: " + ((pl.type || {}).text || ""), c.text, ((pl.period || {}).number), ((c.time || {}).value), pl.wallclock); });
+    return { ok: true, orologio: a.orologio || null, momenti: a.momenti || null, fuori };
+  },
+  // rilegge SUBITO una partita (rose con i codici e giocate al secondo), senza aspettare il giro
+  "clip-espn-secondi": async (p) => {
+    const e0 = ESPN[String(p.rec || "")]; if (!e0 || !e0.id) return { ok: false, errore: "partita senza ESPN" };
+    const sm = await espnPrendi("https://site.api.espn.com/apis/site/v2/sports/soccer/" + e0.lega + "/summary?event=" + e0.id);
+    const r = roseConId(sm), ev = eventiEspn(sm), gc = leggiGamecast(sm);
+    recuperoAlSecondo({ eventi: ev, gamecast: gc });
+    let n = 0;
+    Object.keys(ESPN).forEach((rec) => { const e = ESPN[rec]; if (!e || String(e.id) !== String(e0.id)) return;
+      e.roseId = r; if (ev.length) e.eventi = ev; if (gc.length) e.gamecast = gc; e.conSecondi = true; n++; });
+    scriviEspn(); if (global.__TAB_CACHE) global.__TAB_CACHE.quando = 0;
+    return { ok: true, versioni: n, eventi: ev.length, cronaca: gc.length, conSecondi: gc.filter((x) => x.sec).length };
+  },
   "clip-rose-id": (p) => { if (p.avvia) giroRoseId().catch(() => {}); return { ok: true, stato: ROSE_ID }; },
   "clip-espn-rileggi": (p) => {
     if (p.avvia) giroRileggiEspn().catch(() => {});
@@ -14993,6 +15120,17 @@ const AZIONI = {
                      gol: x.gol, certezza: x.certezza, chiave, dentroFile, quando: r.finita || r.avviata || 0, ruolo: x.ruolo || "", ruoloDa: x.ruoloDa || "", rating: x.rating || 0, boato: x.boato || 0 });
       });
     });
+    // LO STESSO FILE APERTO DUE VOLTE (26/09/2026): due registrazioni sulla
+    // stessa partita davano la stessa azione due volte. Una sola: la piu' precisa.
+    const PREC = { inquadratura: 6, espn: 5.5, tabellone: 5, boato: 4, minuto: 1 }, unica = {};
+    fuori.splice(0, fuori.length, ...fuori.filter((x) => {
+      if (!x.chiave) return true;
+      const k = x.chiave + "|" + Math.round(x.dentroFile) + "|" + (x.tag || x.tipo || "");
+      const g = unica[k];
+      if (!g) { unica[k] = x; return true; }
+      if ((PREC[x.certezza] || 0) > (PREC[g.certezza] || 0)) Object.assign(g, x);
+      return false;
+    }));
     fuori.sort((u, v) => (v.gol ? 1 : 0) - (u.gol ? 1 : 0) || String(v.quando).localeCompare(String(u.quando)) || u.t - v.t);
     const partite = new Set(fuori.map((x) => x.reg)).size;
     let scheda = null; try { scheda = schedaGiocatore(parole, global.__TAB_CACHE); } catch (e) {}
