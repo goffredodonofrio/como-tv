@@ -15405,6 +15405,23 @@ const AZIONI = {
       metti(k, chi.length === 1 ? chi[0] : "", sq);
       if (chi.length === 1 && !premium[chi[0]]) premium[chi[0]] = k;
     }));
+    // LA STESSA RISERVA DEL MAM (fotoDi, passo 3): in una squadra coperta
+    // dall'archivio foto, un cognome non ambiguo con il suo foto-premium-<cognome>
+    // e' quel giocatore. Nel Como 20 foto su 28 c'erano ma non erano registrate.
+    let fileSet = new Set(); try { fileSet = new Set(fs.readdirSync(STEMMI_DIR).map((f) => f.replace(/\.[a-z0-9]+$/i, ""))); } catch (e) {}
+    const ambigui = new Set(fi.ambigui || []), coperte = new Set();
+    Object.keys(fi.perSq || {}).forEach((cg) => Object.keys(fi.perSq[cg] || {}).forEach((sq) => coperte.add(sq)));
+    Object.keys(gj.perSq || {}).forEach((sq) => { if (!coperte.has(sq)) return;
+      (gj.perSq[sq] || []).forEach((id) => {
+        if (premium[id]) return; const x = (gj.perId || {})[id]; if (!x) return;
+        const w = slug(x.completo || "").split("-").filter(Boolean);
+        const prove = [slug(x.cognome || ""), w.slice(-2).join("-"), w.slice(-1)[0]].filter(Boolean);
+        for (const cg of prove) {
+          const k = "foto-premium-" + cg;
+          if (ambigui.has(cg) || !fileSet.has(k) || (rel[k] && rel[k].p && rel[k].p.length)) continue;
+          metti(k, id, sq); premium[id] = k; break;
+        }
+      }); });
     const allen = {};
     Object.keys(al.perId || {}).forEach((id) => { const x = al.perId[id]; if (x && x.squadra) allen[slug(x.squadra)] = ((x.nome || "") + " " + (x.cognome || "")).trim(); });
     let file = []; try { file = fs.readdirSync(STEMMI_DIR); } catch (e) {}
