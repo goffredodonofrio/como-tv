@@ -640,6 +640,26 @@
   .esp-rac input[type=text]{font:500 13px/1.3 'DM Sans',system-ui,sans-serif;padding:7px 9px;border-radius:5px;border:1px solid rgba(245,241,230,.16);background:rgba(245,241,230,.06);color:var(--ivory);min-width:0;width:100%;max-width:260px;}
   .esp-rac input[type=text]:focus{outline:none;border-color:var(--oro);}
   .tes.montato .mini{background:#0c1128 center/cover no-repeat;}
+  /* INVIA ALLA REGIA dall'export (26/09/2026): un pannello fermo, fuori dalla
+     coda che si ridisegna ogni pochi secondi */
+  .b.mini.regia-esp{background:#4FA3E8;border-color:#4FA3E8;color:#0A0F24;} .b.mini.regia-esp:hover{background:#74B9F0;border-color:#74B9F0;color:#0A0F24;}
+  #regiaEsp{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);z-index:95;width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;
+    display:flex;flex-direction:column;gap:10px;padding:14px 18px;border:1px solid rgba(79,163,232,.6);border-radius:14px;background:#141722;box-shadow:0 18px 50px rgba(0,0,0,.6);}
+  #regiaEsp[hidden]{display:none;}
+  #regiaEsp .pr-testa{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 12px;font-size:13px;color:var(--ivory2);}
+  #regiaEsp .pr-testa b{font:700 11px/1 'Mazzard',sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#9CCBF2;}
+  #regiaEsp .riga-r{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 14px;}
+  #regiaEsp .campo-r{display:flex;flex-direction:column;gap:5px;min-width:0;}
+  #regiaEsp .campo-r > label{font:700 10px/1.2 'Mazzard',sans-serif;letter-spacing:.22em;text-transform:uppercase;color:var(--oro);white-space:nowrap;}
+  #regiaEsp input[type=text],#regiaEsp select{font:500 13px/1.3 'DM Sans',system-ui,sans-serif;padding:8px 10px;border-radius:5px;border:1px solid rgba(245,241,230,.16);background:rgba(245,241,230,.06);color:var(--ivory);min-width:0;}
+  #regiaEsp input[type=text]{width:240px;max-width:100%;} #regiaEsp select{width:230px;max-width:100%;}
+  #regiaEsp select option,#regiaEsp select optgroup{background:#10131c;color:var(--ivory);}
+  #regiaEsp input[type=text]:focus,#regiaEsp select:focus{outline:none;border-color:var(--oro);}
+  #regiaEsp .spunta{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ivory2);white-space:nowrap;cursor:pointer;padding:8px 0;}
+  #regiaEsp .spunta input{accent-color:#C9A24B;width:15px;height:15px;margin:0;}
+  #regiaEsp button{border-radius:5px;padding:10px 13px;font:700 10.5px/1 'Mazzard',sans-serif;letter-spacing:.09em;text-transform:uppercase;cursor:pointer;white-space:nowrap;}
+  #regiaEsp .manda{background:#4FA3E8;border:1px solid #4FA3E8;color:#0A0F24;} #regiaEsp .manda:hover{background:#74B9F0;border-color:#74B9F0;}
+  #regiaEsp .annulla{background:transparent;border:1px solid var(--riga2);color:var(--ivory2);}
   .esp-coda-testa h4{margin:0;font-family:'Mazzard',sans-serif;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--oro);}
   .esp-coda-testa #espRiassunto{display:flex;gap:4px;} .esp-coda-testa #espRiassunto span{font:11px ui-monospace,Menlo,monospace;border:1px solid var(--riga2);border-radius:3px;padding:1px 5px;color:var(--ivory2);}
   .esp-coda-testa #espVai{margin-left:auto;background:var(--oro);color:var(--navy);border-color:var(--oro);font-weight:700;padding:8px 22px;font-size:13px;border-radius:5px;}
@@ -6706,8 +6726,37 @@
       "<small>" + (pass ? mmss(pass) + " passati" : "appena partito") + (resta !== null ? " \u00b7 circa " + mmss(resta) + " alla fine" : " \u00b7 calcolo quanto manca\u2026") + "</small></div>";
   }
   el("espMini").addEventListener("click", function(){ if (el("editor").classList.contains("on") && SEQ) apriEsporta(); });
+  // ── INVIA ALLA REGIA un file dell'export: stessa scaletta e stesso menu'
+  // delle grafiche (regia-load, grafica "video"). Il montato ha il suo audio,
+  // quindi qui la telecronaca parte accesa.
+  function apriRegiaEsp(b){
+    var p = el("regiaEsp");
+    if (!p) { p = document.createElement("div"); p.id = "regiaEsp"; p.setAttribute("role", "dialog"); p.setAttribute("aria-label", "Invia alla regia"); document.body.appendChild(p);
+      p.addEventListener("click", function(e){ var t = e.target.closest("button"); if (!t) return; if (t.dataset.fa === "annulla") p.hidden = true; if (t.dataset.fa === "manda") mandaEsp(p); });
+      p.addEventListener("keydown", function(e){ if (e.key === "Escape") p.hidden = true; if (e.key === "Enter" && e.target.id === "regiaEspTitolo") { e.preventDefault(); mandaEsp(p); } });
+    }
+    var dest = el("lCanale"), opz = dest ? [].filter.call(dest.options, function(o){ return o.value && o.value.indexOf("__") !== 0 && !o.disabled; }) : [];
+    p.dataset.file = b.dataset.file; p.dataset.dur = b.dataset.dur; p.dataset.formato = b.dataset.regiaesp;
+    p.innerHTML = '<div class="pr-testa"><b>&#128225; Invia alla regia</b><span>' + esc((SEQ && SEQ.titolo) || "sequenza") + ' · ' + esc(b.dataset.regiaesp) + ' · ' + tc(+b.dataset.dur || 0) + '</span></div>' +
+      '<div class="riga-r"><div class="campo-r"><label for="regiaEspTitolo">Nome in scaletta</label><input id="regiaEspTitolo" type="text" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" maxlength="60" value="' + esc(String((SEQ && SEQ.titolo) || "MONTATO").replace(/^BOZZA\s*·\s*/i, "").toUpperCase()) + '"></div>' +
+      '<div class="campo-r"><label for="regiaEspDove">Seleziona vMix o progetto</label><select id="regiaEspDove">' + opz.map(function(o){ return '<option value="' + esc(o.value) + '"' + (dest && o.value === dest.value ? " selected" : "") + '>' + esc(o.textContent) + '</option>'; }).join("") + '</select></div>' +
+      '<label class="spunta" title="il montato esce con il suo audio"><input type="checkbox" id="regiaEspAudio" checked> Con l’audio del montato</label>' +
+      '<button type="button" class="manda" data-fa="manda">&#128225; Invia alla regia</button><button type="button" class="annulla" data-fa="annulla">Annulla</button></div>';
+    p.hidden = false;
+    setTimeout(function(){ var t = el("regiaEspTitolo"); if (t) { t.focus(); t.select(); } }, 0);
+  }
+  function mandaEsp(p){
+    var titolo = (el("regiaEspTitolo").value || "").trim().toUpperCase().slice(0, 60) || "MONTATO", dove = el("regiaEspDove").value, audio = el("regiaEspAudio").checked;
+    if (el("lCanale") && dove) { el("lCanale").value = dove; try { el("lCanale").dispatchEvent(new Event("change")); } catch (e) {} }
+    var btn = p.querySelector("[data-fa=manda]"); btn.disabled = true;
+    post(Destinazione.corpo({ grafica: "video", titolo: titolo,
+      dati: { k: "video", src: location.origin + BASE + p.dataset.file, dur: +p.dataset.dur || 0, fit: "contain", loop: false, mute: !audio, bg: "nero" } }))
+      .then(function(){ p.hidden = true; avviso("ok", "“" + esc(titolo) + "” in scaletta su " + esc(Destinazione.dove()) + ". Dalla regia lo mandano in onda."); })
+      .catch(function(er){ btn.disabled = false; avviso("err", "La regia non l’ha preso: " + esc(er.message)); });
+  }
   // UN'USCITA IN RACCOLTA: il file gia' esportato, senza rifare niente
   ["eUscite", "espUscite"].forEach(function(id){ var c = el(id); if (!c) return; c.addEventListener("click", function(e){
+    var rg = e.target.closest("[data-regiaesp]"); if (rg) { if (!window.Destinazione) return avviso("err", "Manca destinazione.js: non so dove mandarlo."); return apriRegiaEsp(rg); }
     var b = e.target.closest("[data-racmont]"); if (!b || !SEQ) return;
     var n = window.prompt("In quale raccolta? (un nome che c\u2019e\u2019 gia\u2019 aggiunge, uno nuovo la crea)", (RACCOLTE_EL[0] && RACCOLTE_EL[0].nome) || SEQ.titolo || "");
     if (!n || !n.trim()) return;
@@ -6727,7 +6776,7 @@
       var mini = el("espMini"); if (mini) { mini.hidden = !lav; if (lav) mini.textContent = "\u23fa Esporto " + Math.round(avanzaExport(q.export) * 100) + "%"; }
       if (q.export && q.export.stato === "errore") h += '<div class="uscita" style="border-color:var(--rosso)"><b>errore: ' + esc(q.export.errore || "") + '</b></div>';
       if (q.export && q.export.raccolta) h += '<div class="uscita" style="border-color:var(--oro)"><b>In Raccolte / Macchie: ' + esc(q.export.raccolta.nome) + '</b><a class="b mini" href="mam2.html?rac=' + encodeURIComponent(q.export.raccolta.id) + '" target="_blank">Apri</a></div>';
-      Object.keys(q.esportati || {}).forEach(function(k){ var f = q.esportati[k]; if (f.adattate && f.adattate.length) h += '<div class="uscita" style="border-color:var(--oro)" title="in questo formato non c\u2019e\u2019 la loro versione: il Generatore la fa, con la grafica scelta in timeline"><b>\u26a0 ' + esc(k) + ': ' + f.adattate.length + ' grafic' + (f.adattate.length > 1 ? 'he adattate' : 'a adattata') + ' \u00b7 ' + esc(f.adattate.join(', ')) + '</b></div>'; h += '<div class="uscita"><b>' + esc(f.nome || k) + '</b><span>' + esc(k) + '</span><button type="button" class="b mini" data-racmont="' + esc(k) + '" title="questo file in una raccolta: da li\u2019 va in regia come macchia">In Raccolte / Macchie</button><a class="b mini oro" href="' + BASE + f.file + '?scarica=1">Scarica</a></div>'; });
+      Object.keys(q.esportati || {}).forEach(function(k){ var f = q.esportati[k]; if (f.adattate && f.adattate.length) h += '<div class="uscita" style="border-color:var(--oro)" title="in questo formato non c\u2019e\u2019 la loro versione: il Generatore la fa, con la grafica scelta in timeline"><b>\u26a0 ' + esc(k) + ': ' + f.adattate.length + ' grafic' + (f.adattate.length > 1 ? 'he adattate' : 'a adattata') + ' \u00b7 ' + esc(f.adattate.join(', ')) + '</b></div>'; h += '<div class="uscita"><b>' + esc(f.nome || k) + '</b><span>' + esc(k) + '</span><button type="button" class="b mini" data-racmont="' + esc(k) + '" title="questo file in una raccolta: da li\u2019 va in regia come macchia">In Raccolte / Macchie</button>' + (window.Destinazione ? '<button type="button" class="b mini regia-esp" data-regiaesp="' + esc(k) + '" data-file="' + esc(f.file) + '" data-dur="' + (f.durata || 0) + '" title="il file in scaletta su un vMix, come le grafiche">&#128225; Invia alla regia</button>' : '') + '<a class="b mini oro" href="' + BASE + f.file + '?scarica=1">Scarica</a></div>'; });
       (q.sottotitoli && q.sottotitoli.files ? q.sottotitoli.files : (q.sottotitoli ? [q.sottotitoli] : [])).forEach(function(f){ h += '<div class="uscita"><b>' + esc(f.nome) + '</b><span>SRT</span><a class="b mini" href="' + BASE + f.file + '?scarica=1">Scarica</a></div>'; });
       if (q.premiere) h += '<div class="uscita"><b>' + esc(q.premiere.nome || "sequenza.xml") + '</b><span>XML</span><a class="b mini" href="' + BASE + q.premiere.file + '?scarica=1">Scarica</a></div>';
       if (q.casa) el("eCasaStato").textContent = q.casa.stato === "lavora" ? "in casa: " + q.casa.fatti + "/" + q.casa.quanti : (q.casa.stato === "pronto" ? "pezzi in casa" : "");
