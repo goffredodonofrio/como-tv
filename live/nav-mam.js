@@ -15,7 +15,7 @@
     ["home", "../index.html", "Home"],
     ["mam", "mam2.html", "MAM"],
     // le raccolte hanno una pagina loro (Goffredo, 26/09/2026)
-    ["raccolte", "mam2.html?raccolte=1", "Raccolte"],
+    ["raccolte", "mam2.html?raccolte=1", "Raccolte / Macchie"],
     ["live", "mam2.html?live=1", "MAM Live"],
     ["editing", "mam2.html?montaggio=1", "Editing"],
     ["magazzino", "magazzino.html", "Magazzino"]
