@@ -9407,7 +9407,39 @@ async function aspettaEsporta() {
 // (quello che fra i due sta fermo), la targa del cronometro, e la legge in
 // tutti e due. Se le due letture non distano venti secondi, una delle due
 // e' sbagliata e si buttano via entrambe: meglio niente che un minuto falso.
-async function leggiOrologioSicuro(fascia, t, tutto) {
+// DOVE IL CRONOMETRO E' GIA' STATO LETTO (26/09/2026). La ricerca
+// automatica della grafica (quello che sta fermo fra due fotogrammi) sulla
+// grafica della Serie A 2025-26 prendeva il posto sbagliato — un cartellone
+// a bordo campo, l'angolo in alto — e 46 partite restavano senza cronometro,
+// 19 di Serie A. Ma su 1.210 partite lette la posizione delle cifre e' gia'
+// salvata, e si ripete: se la ricerca non legge niente si provano quelle,
+// prima della stessa competizione e poi le piu' frequenti. Una lettura vale
+// solo se i due fotogrammi a venti secondi danno due ore a venti secondi.
+let TARGHE_NOTE = { quando: 0, tutte: [], perComp: {} };
+function targheNoteDi(a) {
+  if (Date.now() - TARGHE_NOTE.quando > 600000) {
+    const tutte = {}, perComp = {};
+    Object.keys(ARCHIVIO).forEach((k) => {
+      const x = ARCHIVIO[k], b = x && x.orologio && x.orologio.cifre;
+      if (!Array.isArray(b) || b.length !== 4) return;
+      const chiave = b.map((v) => Math.round(v / 10) * 10).join(",");
+      tutte[chiave] = tutte[chiave] || { box: b, n: 0 }; tutte[chiave].n++;
+      const c = String(x.competizione || "").trim().toLowerCase();
+      const pc = perComp[c] = perComp[c] || {};
+      pc[chiave] = pc[chiave] || { box: b, n: 0 }; pc[chiave].n++;
+    });
+    const ordina = (m) => Object.keys(m).sort((u, v) => m[v].n - m[u].n).map((k) => ({ k, box: m[k].box }));
+    TARGHE_NOTE = { quando: Date.now(), tutte: ordina(tutte), perComp: {} };
+    Object.keys(perComp).forEach((c) => { TARGHE_NOTE.perComp[c] = ordina(perComp[c]); });
+  }
+  const c = String((a && a.competizione) || "").trim().toLowerCase();
+  const fuori = [], visti = new Set();
+  (TARGHE_NOTE.perComp[c] || []).slice(0, 2).concat(TARGHE_NOTE.tutte.slice(0, 4)).forEach((x) => {
+    if (visti.has(x.k) || fuori.length >= 4) return; visti.add(x.k); fuori.push(x.box);
+  });
+  return fuori;
+}
+async function leggiOrologioSicuro(fascia, t, tutto, targhe) {
   await aspettaEsporta();
   const f1 = await fascia(t), f2 = f1 ? await fascia(t + 20) : null;
   const via = [f1, f2].filter(Boolean);
@@ -9419,14 +9451,28 @@ async function leggiOrologioSicuro(fascia, t, tutto) {
       try { ok(JSON.parse(String(so))); } catch (x) { ok(null); }
     });
   });
+  let c1 = esito && esito.letture ? esito.letture[0] : null, c2 = esito && esito.letture ? esito.letture[1] : null;
+  let cifre = esito ? (esito.cifre || esito.box || null) : null;
+  const buona = (u, v) => u !== null && u !== undefined && v !== null && v !== undefined && Math.abs((v - u) - 20) <= 3;
+  if (!buona(c1, c2) && targhe && targhe.length) {
+    // ogni posizione nota anche allargata di 40 pixel: la stessa grafica non
+    // sta sempre allo stesso pixel (Juventus-Como: le cifre trenta pixel piu'
+    // in alto che nelle altre partite di Serie A)
+    const prove = [];
+    targhe.forEach((b) => { prove.push(b); prove.push([Math.max(0, b[0] - 40), Math.max(0, b[1] - 40), b[2] + 80, b[3] + 80]); });
+    for (const box of prove) {
+      const r = await new Promise((ok) => {
+        execFile("python3", [OROLOGIO_PY, "--targa", box.join(","), f1, f2], { timeout: 60000 },
+          (e, so) => { if (e) return ok(null); try { ok(JSON.parse(String(so)).letture); } catch (x) { ok(null); } });
+      });
+      if (r && buona(r[0], r[1])) { c1 = r[0]; c2 = r[1]; cifre = box; console.log("[clip] cronometro: letto nella posizione nota " + box.join(",")); break; }
+    }
+  }
   butta();
-  if (!esito || !esito.letture) return null;
-  const c1 = esito.letture[0], c2 = esito.letture[1];
   console.log("[clip] cronometro: a " + t + "s dalla stima legge " + c1 + " e " + c2 +
-              (esito.cifre ? " (targa " + esito.cifre.join(",") + ")" : "") + (esito.perche ? " — " + esito.perche : ""));
-  if (c1 === null || c2 === null) return null;
-  if (Math.abs((c2 - c1) - 20) > 3) return null;
-  return tutto ? { c: c1, cifre: esito.cifre || esito.box || null } : c1;
+              (cifre ? " (targa " + cifre.join(",") + ")" : "") + (esito && esito.perche ? " — " + esito.perche : ""));
+  if (!buona(c1, c2)) return null;
+  return tutto ? { c: c1, cifre: cifre } : c1;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -9767,7 +9813,7 @@ async function rifinisciGol(idSeq) {
         quando.push(t - 150, t + 200, t - 400);
       });
       for (const t0 of quando.filter((x) => x > 60).slice(0, 8)) {
-        const e = await leggiOrologioSicuro((t) => { const f = fetta(t); return fasciaAlta(f.via, f.dentro); }, Math.round(t0), true);
+        const e = await leggiOrologioSicuro((t) => { const f = fetta(t); return fasciaAlta(f.via, f.dentro); }, Math.round(t0), true, targheNoteDi(a));
         if (e && e.cifre) { targa = e.cifre; break; }
       }
       if (!targa) return orologio;
@@ -9988,15 +10034,19 @@ async function calibraOrologio(rec, rifai) {
     // un'ora da primo tempo (prima del 45') che stia a meno di un quarto
     // d'ora dalla stima
     let vistaRipresa = null, buio = 0;
-    for (const t of [600, 780, 960, 1200, 1500, 1800, 2100]) {
-      const e = await leggiOrologioSicuro(leggiA, t, true); esito.letti += 2;
+    const targhe = targheNoteDi(a);
+    // la grafica della Serie A 2025-26 va e viene: su Juventus-Como non c'era
+    // a 10' e a 25', c'era a 40'. Quattro sonde al buio non bastano piu' a
+    // dire "qui non c'e' cronometro": ne servono sei, su nove punti
+    for (const t of [600, 780, 960, 1200, 1500, 1800, 2100, 2400, 2600]) {
+      const e = await leggiOrologioSicuro(leggiA, t, true, targhe); esito.letti += 2;
       const c = e && e.c;
       if (e && e.cifre && !esito.cifre) esito.cifre = e.cifre;
       // QUATTRO SONDE AL BUIO BASTANO. Un file di solo audio, o una partita
       // giovanile senza cronometro in sovrimpressione, non ne ha uno da
       // leggere: insistere fino alla settima sonda costa quattordici
       // fotogrammi per niente, e nell'archivio queste partite sono centinaia.
-      if (c === null || c === undefined) { if (++buio >= 4) break; continue; }
+      if (c === null || c === undefined) { if (++buio >= 6) break; continue; }
       if (c <= 0) continue;
       // IL CRONOMETRO CHE DICE "57:00" NON E' DA BUTTARE. Certe partite —
       // le giovanili soprattutto — hanno su Airtable un orario sbagliato di
@@ -10015,7 +10065,7 @@ async function calibraOrologio(rec, rifai) {
       console.log("[clip] cronometro: le sonde cadevano nel secondo tempo (letto " +
                   Math.round(vistaRipresa.c / 60) + "'): sposto di " + Math.round(primoQui / 60) + "' e riprovo");
       for (const d of [600, 900, 1200, 1500, 1800]) {
-        const e = await leggiOrologioSicuro(leggiA, primoQui + d, true); esito.letti += 2;
+        const e = await leggiOrologioSicuro(leggiA, primoQui + d, true, targhe); esito.letti += 2;
         const c = e && e.c;
         if (e && e.cifre && !esito.cifre) esito.cifre = e.cifre;
         if (c === null || c === undefined || c <= 0 || c >= 2700) continue;
@@ -10028,7 +10078,7 @@ async function calibraOrologio(rec, rifai) {
     // minuti dopo il primo
     const base = esito.inizio1 + 2700;
     for (const t of [base + 1200, base + 1440, base + 1680, base + 1920, base + 2160, base + 2400, base + 2700]) {
-      const c = await leggiOrologioSicuro(leggiA, t); esito.letti += 2;
+      const c = await leggiOrologioSicuro(leggiA, t, false, targhe); esito.letti += 2;
       if (c === null || c <= 2700) continue;
       const inizio2 = t - (c - 2700);
       if (inizio2 < base + 480 || inizio2 > base + 2400) continue;
@@ -10038,7 +10088,7 @@ async function calibraOrologio(rec, rifai) {
     // la prova del nove: al 70' il cronometro deve dire 70:00, piu' o meno
     let c70 = null, atteso = 4200;
     for (const piu of [0, 60, 120]) {
-      c70 = await leggiOrologioSicuro(leggiA, esito.inizio2 + 1500 + piu); esito.letti += 2;
+      c70 = await leggiOrologioSicuro(leggiA, esito.inizio2 + 1500 + piu, false, targhe); esito.letti += 2;
       if (c70 !== null) { atteso = 4200 + piu; break; }
     }
     esito.scarto = c70 === null ? null : c70 - atteso;
@@ -14272,6 +14322,14 @@ const AZIONI = {
     if (p.rifai) { delete a.momenti; delete a.momentiFatti; delete a.momentiVer; }
     const esito = await puntaMomenti(String(p.rec));
     return { ok: true, esito, momenti: a.momenti };
+  },
+  // RIPROVARE I CRONOMETRI FALLITI: si toglie il "fallito" e il giro della
+  // casa li rilegge da solo (con le posizioni note, dal 26/09/2026)
+  "clip-orologio-riprova": () => {
+    let n = 0;
+    Object.keys(ARCHIVIO).forEach((k) => { const a = ARCHIVIO[k]; if (a && a.orologioFallito && !a.orologio) { delete a.orologioFallito; n++; } });
+    if (n) scriviArchivio();
+    return { ok: true, riprova: n };
   },
   "clip-espn-rileggi": (p) => {
     if (p.avvia) giroRileggiEspn().catch(() => {});
