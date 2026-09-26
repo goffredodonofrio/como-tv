@@ -1,8 +1,8 @@
 /**
  * NAV-MAM — la barra delle pagine del MAM (Goffredo, 25/09/2026)
  *
- * La stessa testata della home — stemma, COMO TV — con le cinque porte del
- * MAM: Home, MAM, MAM Live, Editing, Magazzino. Un file solo, incluso dal
+ * La stessa testata della home — stemma, COMO TV — con le porte del
+ * MAM: Home, MAM, Raccolte, MAM Live, Editing, Magazzino. Un file solo, incluso dal
  * MAM (tutte le viste) e dal Magazzino, cosi' la barra e' identica ovunque.
  * La voce della pagina aperta si accende da sola; il MAM, che cambia vista
  * senza ricaricare, la riaccende con NAV_MAM.accendi("editing").
@@ -14,6 +14,8 @@
   var VOCI = [
     ["home", "../index.html", "Home"],
     ["mam", "mam2.html", "MAM"],
+    // le raccolte hanno una pagina loro (Goffredo, 26/09/2026)
+    ["raccolte", "mam2.html?raccolte=1", "Raccolte"],
     ["live", "mam2.html?live=1", "MAM Live"],
     ["editing", "mam2.html?montaggio=1", "Editing"],
     ["magazzino", "magazzino.html", "Magazzino"]
@@ -22,6 +24,7 @@
     var f = (location.pathname.split("/").pop() || "").toLowerCase(), q = location.search;
     if (f === "magazzino.html" || f === "magazzino-foto.html" || f === "video.html") return "magazzino";
     if (/[?&]live=1/.test(q)) return "live";
+    if (/[?&](raccolte=1|rac=)/.test(q)) return "raccolte";
     if (/[?&](montaggio=1|seq=)/.test(q)) return "editing";
     return "mam";
   }
