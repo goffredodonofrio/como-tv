@@ -2745,6 +2745,10 @@ function permesso(p, ip) {
           case "drive-info":   out = await inoltra(p); break;
           default:
             if (CLIP && CLIP.attivo() && /^clip-/.test(p.tipo)) {
+              // chi arriva senza passare da nginx (niente X-Real-IP) e' una sonda
+              // della macchina — il ponte di sviluppo, un controllo — non una
+              // persona davanti al MAM (26/09/2026). Lo decide il ponte, non chi chiama.
+              p.__sonda = !req.headers["x-real-ip"];
               out = await CLIP.azione(p);
               const ip = req.headers["x-real-ip"] || req.socket.remoteAddress;
               if (!dallaMacchina(ip) && !daCasa(ip)) out = senzaPassphrase(out);

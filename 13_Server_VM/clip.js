@@ -2589,8 +2589,19 @@ function pubblica(r) {
   });
 }
 
+let STATO_MEMO = { quando: 0, esito: null };
 function clipStato(p) {
+  // LA SONDA (il ponte di sviluppo chiede ogni minuto se si registra): non e'
+  // una persona, e le basta lo stato. Prima contava come "qualcuno davanti al
+  // MAM" e il giro della casa lavorava sempre a una partita alla volta; e ogni
+  // risposta preparava le schede di 669 registrazioni (0,9 s a ponte fermo).
+  if (p && p.__sonda && !p.reg) {
+    return { ok: true, sonda: true, srv: Date.now(),
+             reg: Object.keys(R.reg).map((k) => { const r = R.reg[k]; return { id: r.id, titolo: r.titolo, stato: r.stato, guarda: r.guarda }; }) };
+  }
   ultimaPagina = Date.now();          // c'e' qualcuno davanti al MAM
+  // piu' finestre aperte chiedono lo stato insieme: la stessa risposta per due secondi
+  if (!(p && p.reg) && STATO_MEMO.esito && Date.now() - STATO_MEMO.quando < 2000) return STATO_MEMO.esito;
   // occasione buona per dare una faccia alle registrazioni in corso
   Object.keys(R.reg).forEach((k) => {
     const r = R.reg[k];
@@ -2615,7 +2626,7 @@ function clipStato(p) {
     .filter((c) => !soloReg || c.reg === soloReg)
     .sort((a, b) => b.creata - a.creata);
   const gb = liberiGB();
-  return {
+  const esito = {
     ok: true, reg: reg, clip: clip, srv: Date.now(),
     ricezione: !RICEZIONE_SPENTA,
     porte: statoPorte(),
@@ -2627,6 +2638,8 @@ function clipStato(p) {
       tetto: MAX_REG, giorni: GIORNI
     }
   };
+  if (!soloReg) STATO_MEMO = { quando: Date.now(), esito };
+  return esito;
 }
 
 
@@ -10106,11 +10119,123 @@ async function calibraOrologio(rec, rifai) {
     console.log("[clip] cronometro letto: " + (a.partita || rec) + " → fischio a " + esito.inizio1 +
                 "s dalla stima, ripresa a " + esito.inizio2 + "s" + (esito.verificato ? " ✓" : " (scarto " + esito.scarto + ")"));
     return esito;
+  } catch (primo) {
+    // SECONDO TENTATIVO: la mappa di tutto il file (vedi orologioDallaMappa)
+    if (firmaMateriale() !== firma0) throw primo;
+    let m = null;
+    try { m = await orologioDallaMappa(rec); } catch (e) { m = null; }
+    if (!m || firmaMateriale() !== firma0) throw primo;
+    applicaOrologio(rec, m);
+    console.log("[clip] cronometro dalla mappa: " + (a.partita || rec) + " → fischio a " + m.inizio1 + "s" +
+                (m.inizio2 !== undefined ? ", ripresa a " + m.inizio2 + "s" : " (ripresa non letta)") + " — prima: " + primo.message);
+    return m;
   } finally {
     orologiAttivi.delete(rec);
     const altro = Array.from(orologiAttivi)[0];
     orologioAlLavoro = altro ? ((ARCHIVIO[altro] || {}).partita || altro) : null;
   }
+}
+
+// ── LA MAPPA DEL CRONOMETRO (26/09/2026) ─────────────────────────────
+//  Il primo modo cerca il fischio con sonde fisse, dando per buoni l'orario
+//  di Airtable, tempi da 45' e una ripresa che riparte da 45:00. Sulle 44
+//  partite rimaste senza cronometro nessuna di queste cose era vera:
+//  Arsenal-Como ha 55 minuti di pre-partita, Palermo-Como U19 un file
+//  ancorato con cinque ore di scarto, la Kings League tempi da 20' con la
+//  ripresa che parte da 20:00, Como-Paris un'interruzione di nove minuti a
+//  meta' primo tempo. Il cronometro pero' c'era quasi sempre.
+//  Quindi: si legge ogni quattro minuti su TUTTO il file, e ogni lettura dice
+//  dove comincia il suo tempo (secondo meno cronometro). Letture dello stesso
+//  tempo danno lo stesso inizio e fanno un gruppo; una lettura sola e' un
+//  errore di lettura e si butta. Il primo gruppo e' il fischio d'inizio; la
+//  ripresa e' il gruppo che riparte dalla durata del tempo (45', 40' per le
+//  Under 17, 20' per la Kings League) o da zero. Se si trova solo il primo
+//  tempo, si salva solo quello: meta' cronometro vero vale piu' della stima.
+function durataTempoDi(a) {
+  const t = String((a.competizione || "") + " " + (a.partita || "")).toLowerCase();
+  if (/kings league|zeta como/.test(t)) return 1200;
+  if (/under ?1[4-7]\b|\bu1[4-7]\b/.test(t)) return 2400;
+  return 2700;
+}
+async function orologioDallaMappa(rec) {
+  const a = ARCHIVIO[rec];
+  if (!a) return null;
+  const regione = await s3Regione(a.bucket);
+  const vie = {};
+  const leggiA = async (t) => {
+    const d = doveCade(a, t);
+    if (!d) return null;
+    if (!vie[d.chiave]) vie[d.chiave] = firmaConRegione(regione, d.chiave, {}, 3600, a.bucket);
+    return fasciaAlta(vie[d.chiave], d.secondi);
+  };
+  let targhe = targheNoteDi(a);
+  const punti = [];
+  // PRIMA POCHI PUNTI SPARSI, POI GLI ALTRI. Una partita che il cronometro
+  // non ce l'ha (solo audio, giovanili a una camera, Como Cup) costava venti
+  // minuti di letture al buio e frenava tutto il giro: se nel primo giro
+  // largo (un punto ogni sedici minuti) non si legge niente, ci si ferma.
+  const tutti = [];
+  (a.pezzi || []).slice(0, 4).forEach((pz) => {
+    const da = pz.da || 0, dur = (pz.minuti || 130) * 60;
+    let i = 0;
+    for (let s = 120; s < dur - 30; s += 240, i++) tutti.push({ t: da + s, giro: i % 4 === 2 ? 0 : i % 2 === 0 ? 1 : 2 });
+  });
+  tutti.sort((u, v) => u.giro - v.giro || u.t - v.t);
+  let largoFatto = false, targaBuona = null;
+  // DENTRO UNA PARTITA LA GRAFICA NON SI SPOSTA: trovata una volta la
+  // posizione giusta si legge solo li'. Rifare ogni volta la ricerca e le
+  // otto posizioni note costava quasi un minuto a punto (Palermo-Como U19:
+  // 24 minuti per una mappa).
+  const leggiLi = async (t, box) => {
+    const f1 = await leggiA(t), f2 = f1 ? await leggiA(t + 20) : null;
+    const r = f1 && f2 ? await new Promise((ok) => {
+      execFile("python3", [OROLOGIO_PY, "--targa", box.join(","), f1, f2], { timeout: 60000 },
+        (e2, so) => { if (e2) return ok(null); try { ok(JSON.parse(String(so)).letture); } catch (z) { ok(null); } });
+    }) : null;
+    [f1, f2].forEach((f) => { if (f) try { fs.unlinkSync(f); } catch (z) {} });
+    return r && r[0] !== null && r[1] !== null && Math.abs(r[1] - r[0] - 20) <= 3 ? { c: r[0], cifre: box } : null;
+  };
+  for (const x of tutti) {
+    if (!largoFatto && x.giro > 0) { largoFatto = true; if (!punti.length) return null; }
+    if (registrandoDavvero() || laDirettaGira()) return null;
+    const e = targaBuona ? await leggiLi(x.t, targaBuona) : await leggiOrologioSicuro(leggiA, x.t, true, targhe);
+    const c = e && e.c;
+    if (c !== null && c !== undefined && e.cifre && !targaBuona) targaBuona = e.cifre;
+    if (c !== null && c !== undefined && c >= 0 && c < 8000) {
+      punti.push({ t: x.t, c: c, o: x.t - c });
+      // la posizione che ha funzionato si prova per prima alle letture dopo
+      if (e.cifre && !targhe.some((b) => b.join(",") === e.cifre.join(","))) targhe = [e.cifre].concat(targhe).slice(0, 5);
+    }
+  }
+  // i gruppi: letture di fila (nel tempo) con lo stesso inizio, a mezzo minuto
+  const gruppi = [];
+  punti.sort((u, v) => u.t - v.t).forEach((x) => {
+    const g = gruppi.find((y) => Math.abs(y.o - x.o) <= 30 && x.t - y.fine <= 1800);
+    if (g) { g.p.push(x); g.fine = x.t; g.o = g.p.map((z) => z.o).sort((u, v) => u - v)[Math.floor(g.p.length / 2)]; }
+    else gruppi.push({ p: [x], o: x.o, fine: x.t });
+  });
+  const buoni = gruppi.filter((g) => g.p.length >= 2).sort((u, v) => u.p[0].t - v.p[0].t);
+  if (!buoni.length) return null;
+  const H = durataTempoDi(a);
+  const minC = (g) => Math.min.apply(null, g.p.map((z) => z.c)), maxC = (g) => Math.max.apply(null, g.p.map((z) => z.c));
+  // il primo tempo: il primo gruppo che parte da poco (entro mezz'ora di gioco)
+  const g1 = buoni.find((g) => minC(g) < Math.min(1800, H));
+  if (!g1) return null;
+  const esito = { letti: punti.length * 2, quando: new Date().toISOString(), fonte: "cronometro", mappa: true,
+                  inizio1: Math.round(g1.o), punti: punti.length };
+  // la ripresa: dopo il primo tempo, e o riparte dalla durata del tempo o da zero
+  const dopo = buoni.filter((g) => g !== g1 && g.p[0].t > g1.p[0].t && g.o > g1.o + 300);
+  const g2 = dopo.find((g) => minC(g) >= H - 60 && minC(g) < H + 2400)
+          || dopo.find((g) => minC(g) < 900 && g.o > g1.o + H);
+  if (g2) {
+    const base = minC(g2) >= H - 60 ? H : 0;
+    esito.inizio2 = Math.round(g2.o + base);
+    // una ripresa prima della fine del primo tempo non e' una ripresa
+    if (esito.inizio2 < esito.inizio1 + H) delete esito.inizio2;
+  }
+  esito.verificato = g1.p.length >= 3 && (esito.inizio2 === undefined || g2.p.length >= 3);
+  esito.gruppi = buoni.map((g) => ({ o: Math.round(g.o), n: g.p.length, da: minC(g), a: maxC(g) }));
+  return esito;
 }
 
 // Tutte le partite con appunti e materiale, una alla volta, mai mentre si
@@ -11966,8 +12091,10 @@ async function giroRileggiEspn() {
       if ((RILEGGI.fatte + RILEGGI.fallite) % 25 === 0) { scriviEspn(); if (global.__TAB_CACHE) global.__TAB_CACHE.quando = 0; }
       await new Promise((ok) => setTimeout(ok, 1500));
     }
-    scriviEspn(); if (global.__TAB_CACHE) global.__TAB_CACHE.quando = 0;
-    console.log("[clip] espn riletto: " + RILEGGI.fatte + " partite, " + RILEGGI.fallite + " non lette");
+    // espn.json pesa 36 MB: riscriverlo senza aver cambiato niente teneva
+    // fermo il ponte tre secondi a ogni avvio (26/09/2026)
+    if (coda.length) { scriviEspn(); if (global.__TAB_CACHE) global.__TAB_CACHE.quando = 0; }
+    if (coda.length) console.log("[clip] espn riletto: " + RILEGGI.fatte + " partite, " + RILEGGI.fallite + " non lette");
   } finally { RILEGGI.inCorso = false; }
 }
 function leggiGamecast(sm) {
@@ -12505,6 +12632,49 @@ function qnapSiScrive() {
   catch (e) { qnapScrivibile = false; }
   setTimeout(() => { qnapScrivibile = null; }, 600000);
   return qnapScrivibile;
+}
+// il giro delle cartelle della NAS (fuori dalla copia S3), fatto senza bloccare
+const QNAP_GIRO = { quando: 0, file: [], inCorso: null };
+function giroQnapFile() {
+  if (QNAP_GIRO.inCorso) return QNAP_GIRO.inCorso;
+  QNAP_GIRO.inCorso = (async () => {
+    const fuori = []; let contati = 0;
+    const giro = async (rel, prof) => {
+      let voci; try { voci = await fs.promises.readdir(path.join(QNAP_RADICE, rel), { withFileTypes: true }); } catch (e) { return; }
+      for (const d of voci) {
+        if (QNAP_NASCOSTI.test(d.name)) continue;
+        // la copia delle partite S3 non fa voci sue: sarebbero doppioni (e una
+        // partita in due file, due voci). Quelle partite restano la riga S3,
+        // segnata "in casa" nell'elenco.
+        if (!rel && d.name === SPECCHIO_DIR) continue;
+        if (++contati > 5000) return;
+        const relSuo = rel ? rel + "/" + d.name : d.name;
+        if (d.isDirectory()) { if (prof < 4) await giro(relSuo, prof + 1); continue; }
+        const est = path.extname(d.name).slice(1).toLowerCase();
+        if (!/^(mp4|mov|mxf|mkv|ts|m4v)$/.test(est)) continue;
+        let st; try { st = await fs.promises.stat(path.join(QNAP_RADICE, relSuo)); } catch (e) { continue; }
+        fuori.push({ nome: d.name, via: relSuo, cartella: rel, peso: st.size, quando: st.mtimeMs, est });
+      }
+    };
+    await giro("", 0);
+    QNAP_GIRO.file = fuori; QNAP_GIRO.quando = Date.now();
+  })().finally(() => { QNAP_GIRO.inCorso = null; });
+  return QNAP_GIRO.inCorso;
+}
+// I DATI DELL'ANTEPRIMA di una partita (stemmi, voce, risultato, competizione
+// vista...): cambiano di rado, e ricalcolarli per mille partite a ogni
+// apertura della Libreria costava secondi. Si tengono dieci minuti, e si
+// rifanno subito se cambia quello da cui dipendono.
+const ANTE_CACHE = new Map();
+function datiAnteprima(rec, a) {
+  const e = ESPN[rec] || {};
+  const firma = [a.partita, a.competizione, a.quando, a.chiave, e.id || "", (a.tabellone && a.tabellone.punti || []).length, TITOLI && TITOLI[a.dove] || ""].join("|");
+  const c = ANTE_CACHE.get(rec);
+  if (c && c.firma === firma && Date.now() - c.quando < 600000) return c.dati;
+  const dati = { squadre: squadreConStemma(rec, a), voce: voceDi(rec, a), ris: risultatoDi(a), studio: studioDi(rec, a) || specialeDi(rec, a),
+                 titolo: titoloDi(a), eventi: loghiEvento(a), compVista: competizioneVista(a, rec) };
+  ANTE_CACHE.set(rec, { quando: Date.now(), firma, dati });
+  return dati;
 }
 function qnapPartite() {
   const m = {};
@@ -14014,6 +14184,72 @@ function combaciaRiga(x, titoloPartita, tipi, parole) {
   return parole.every((w) => testo.indexOf(w) >= 0);
 }
 
+// la cache della ricerca delle azioni (vedi clip-tabellino-cerca)
+let CERCA_CACHE_IN_CORSO = null;
+async function aPezzi(lista, fn, quanti) {
+  const n = quanti || 25;
+  for (let i = 0; i < lista.length; i += n) { lista.slice(i, i + n).forEach(fn); await new Promise((ok) => setImmediate(ok)); }
+}
+async function costruisciCercaCache() {
+  const ora = Date.now();
+      const per = {};
+      await aPezzi(Object.keys(R.reg), (k) => { const r = R.reg[k]; if (!r || !(r.evento || r.arch)) return; try { per[k] = tabellino(r).righe; } catch (e) { per[k] = []; } }, 5);
+      // E LE PARTITE MAI APERTE. La ricerca guardava solo le registrazioni:
+      // "tutti i gol di Douvikas" trovava Udinese-Como e basta, con venti
+      // partite negli appunti. Per una partita dell'indice bastano appunti
+      // ed ESPN: il secondo lo da' secondoNelFile, e la pagina la apre da
+      // sola al primo clic
+      const conReg = new Set(); Object.keys(R.reg).forEach((k) => { const r = R.reg[k]; if (r && (r.arch || r.evento)) conReg.add((r.arch && r.arch.rec) || r.evento); });
+      const finti = {};
+      await aPezzi(Object.keys(ARCHIVIO), (rec) => {
+        if (conReg.has(rec) || rec.indexOf("s3:") === 0) return;
+        const a = ARCHIVIO[rec], ap = APPUNTI[rec], es = ESPN[rec];
+        if (!a || !(a.pezzi || []).length) return;
+        if (!ap && !(es && es.eventi && es.eventi.length)) return;
+        // CON LE LETTURE (cronometro, tabellone, boati, inquadratura) la
+        // partita passa dal tabellino vero, come quelle aperte: il minuto
+        // scritto da solo sbaglia di mezzo minuto e piu'
+        if (a.orologio && (a.momenti || (a.boati || []).length || (a.tabellone && a.tabellone.punti))) {
+          const fr = { titolo: a.partita || rec, arch: { rec: rec, chiave: a.chiave, bucket: a.bucket, pezzi: a.pezzi, pezzo: 0 },
+                       avviata: Date.parse(a.quando) || 0, finita: 0, finto: true };
+          try {
+            const tb = tabellino(fr).righe.map((x) => {
+              const pa = pezzoAl(fr, x.dentro);
+              return Object.assign({}, x, { chiave: (pa && pa.pezzo && pa.pezzo.chiave) || a.chiave, dentroFile: pa ? pa.dentro : x.dentro });
+            });
+            if (tb.length) { per["arch:" + rec] = tb; finti["arch:" + rec] = fr; return; }
+          } catch (e) {}
+        }
+        const righe = [], rit = ritardoPartita(rec);
+        const dove = (s, d) => { const x = secondoNelFile(rec, { s: s, d: Math.max(0, d) }); if (!x) return null; const pz = (a.pezzi || [])[x.pezzo]; return { t: ((pz && pz.da) || 0) + x.secondi, chiave: x.chiave, dentroFile: x.secondi }; };
+        if (ap) (ap.righe || []).forEach((x) => {
+          const d = dove(x.s || 1, (x.d || 0) - rit); if (!d) return;
+          righe.push(Object.assign({ titolo: x.x || "", tipo: x.t || "", minuto: x.m || "", fonte: "appunti", fonti: ["appunti"], giocatore: "", squadra: "", dettaglio: "",
+            gol: /gol|rete/i.test(x.t || "") || !!x.g, tag: etichettaAzione(x.t, x.x), rating: x.g || 0, certezza: "minuto" }, d));
+        });
+        if (es && es.eventi) es.eventi.forEach((x) => {
+          const ita = tipoItaliano(x.tipo);
+          const d = dove(x.periodo || 1, (x.min - (x.periodo === 2 ? 45 : 0)) * 60 + (x.stopp || 0) * 60); if (!d) return;
+          righe.push(Object.assign({ titolo: ita + (x.giocatore ? " \u00b7 " + x.giocatore : ""), tipo: ita, minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), fonte: "espn", fonti: ["espn"],
+            giocatore: x.giocatore || "", squadra: x.squadra || "", dettaglio: x.lungo || x.testo || "", gol: /Gol/.test(ita), tag: etichettaAzione(ita, x.testo), rating: 0, certezza: "minuto" }, d));
+        });
+        // LA CRONACA ESPN: tiri, parate, pali. Dove nessuno ha scritto
+        // niente, il minuto di ESPN basta per andare a prendere l'immagine;
+        // come nel tabellino, entra solo dove non c'e' gia' una riga vicina
+        if (es && es.gamecast) es.gamecast.forEach((x) => {
+          const d = dove(x.periodo || 1, (x.min - (x.periodo === 2 ? 45 : 0)) * 60 + (x.stopp || 0) * 60); if (!d) return;
+          if (righe.some((y) => Math.abs(y.t - d.t) < 50)) return;
+          righe.push(Object.assign({ titolo: [x.tipo, x.giocatore].filter(Boolean).join(" \u00b7 "), tipo: x.tipo, minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), fonte: "gamecast", fonti: ["gamecast"],
+            giocatore: x.giocatore || "", squadra: "", dettaglio: x.testo || "", gol: x.tipo === "Gol", tag: etichettaAzione(x.tipo, x.testo), rating: 0, certezza: "minuto" }, d));
+        });
+        if (!righe.length) return;
+        per["arch:" + rec] = righe.map((x) => Object.assign(x, { t: Math.round(x.t * 10) / 10, dentro: Math.max(0, x.t - (x.gol ? GOL_PRE : APP_PRE)), fuori: x.t + (x.gol ? GOL_POST : APP_POST) }));
+        finti["arch:" + rec] = { titolo: a.partita || rec, arch: { rec: rec, chiave: a.chiave, bucket: a.bucket }, avviata: Date.parse(a.quando) || 0, finita: 0, finto: true };
+      });
+      // il testo di ogni riga, gia' pronto per il primo scarto della ricerca
+      await aPezzi(Object.keys(per), (k) => per[k].forEach((x) => { x._t = piattaMinuscola([x.titolo, x.giocatore, x.squadra, x.dettaglio].join(" ")); }), 50);
+      global.__TAB_CACHE = { quando: ora, per, finti };
+}
 const AZIONI = {
   "clip-canto-prova": cantoProva,
   "clip-avvia": clipAvvia,
@@ -14242,34 +14478,33 @@ const AZIONI = {
   // 23' vero, e cercarci dentro serve a qualcosa. Prima non lo si poteva
   // chiedere: in Libreria le partite pronte stavano in mezzo a quelle
   // ancora da raddrizzare, e si aprivano a caso.
-  "clip-qnap-eventi": (p) => {
+  "clip-qnap-eventi": async (p) => {
     const partite = qnapPartite();
     const regs = Object.keys(R.reg).map((k) => R.reg[k]).filter((x) => x.arch);
-    const fuori = []; let contati = 0;
-    const giro = (rel, prof) => {
-      let voci; try { voci = fs.readdirSync(path.join(QNAP_RADICE, rel), { withFileTypes: true }); } catch (e) { return; }
-      for (const d of voci) {
-        if (QNAP_NASCOSTI.test(d.name)) continue;
-        // la copia delle partite S3 non fa voci sue: sarebbero doppioni (e una
-        // partita in due file, due voci). Quelle partite restano la riga S3,
-        // segnata "in casa" qui sotto.
-        if (!rel && d.name === SPECCHIO_DIR) continue;
-        if (++contati > 5000) return;
-        const relSuo = rel ? rel + "/" + d.name : d.name;
-        if (d.isDirectory()) { if (prof < 4) giro(relSuo, prof + 1); continue; }
-        const est = path.extname(d.name).slice(1).toLowerCase();
-        if (!/^(mp4|mov|mxf|mkv|ts|m4v)$/.test(est)) continue;
-        let st; try { st = fs.statSync(path.join(QNAP_RADICE, relSuo)); } catch (e) { continue; }
-        const v = { nome: d.name, via: relSuo, cartella: rel, peso: st.size, quando: st.mtimeMs, est };
+    // LE REGISTRAZIONI PER CHIAVE E PER PARTITA: prima si cercavano scorrendo
+    // tutte e 669 le registrazioni per ognuna delle mille partite
+    const regPerChiave = new Map(), regPerRec = new Map();
+    regs.forEach((r) => {
+      if (r.arch.chiave && !regPerChiave.has(r.arch.chiave)) regPerChiave.set(r.arch.chiave, r);
+      (r.arch.pezzi || []).forEach((z) => { if (z.chiave && !regPerChiave.has(z.chiave)) regPerChiave.set(z.chiave, r); });
+      if (r.arch.rec) { if (!regPerRec.has(r.arch.rec)) regPerRec.set(r.arch.rec, []); regPerRec.get(r.arch.rec).push(r); }
+    });
+    // LE CARTELLE DELLA NAS SI GIRANO IN SOTTOFONDO (26/09/2026): scorrerle e
+    // pesare ogni file a ogni richiesta, bloccando, attraverso la rete, teneva
+    // fermo il ponte tre secondi a ogni apertura della Libreria
+    // (il primo giro parte all'avvio; finche' non e' pronto l'elenco esce senza
+    // le cartelle fuori dalla copia, e le partite ci sono comunque)
+    if (!QNAP_GIRO.quando || Date.now() - QNAP_GIRO.quando > 120000) giroQnapFile().catch(() => {});
+    const fuori = [];
+    QNAP_GIRO.file.forEach((f0) => {
+        const v = Object.assign({}, f0), relSuo = v.via;
         const pa = partite[relSuo]; if (pa) { v.rec = pa.rec; v.partita = pa.partita; }
-        const r = regs.find((x) => x.arch.chiave === relSuo || (x.arch.pezzi || []).some((z) => z.chiave === relSuo));
+        const r = regPerChiave.get(relSuo);
         if (r) { v.reg = r.id; v.partita = v.partita || r.titolo; v.durata = r.durata || 0; if (!v.rec && r.arch.rec) v.rec = r.arch.rec; v.telecronaca = !!(PARLATO[r.id] && (PARLATO[r.id].pezzi || []).length); }
         const a = v.rec && ARCHIVIO[v.rec]; if (a) { v.quandoPartita = a.quando || a.data || ""; v.competizione = a.competizione || "";
-          v.squadre = squadreConStemma(v.rec, a); v.voce = voceDi(v.rec, a); v.ris = risultatoDi(a); v.studio = studioDi(v.rec, a) || specialeDi(v.rec, a); v.titolo = titoloDi(a); v.eventi = loghiEvento(a); v.compVista = competizioneVista(a, v.rec); if (!v.durata && a.pezzi) v.durata = (a.pezzi.reduce((n, z) => n + (z.minuti || 0), 0)) * 60; v.puntata = puntata(a); }
+          Object.assign(v, datiAnteprima(v.rec, a)); if (!v.durata && a.pezzi) v.durata = (a.pezzi.reduce((n, z) => n + (z.minuti || 0), 0)) * 60; v.puntata = puntata(a); }
         fuori.push(v);
-      }
-    };
-    giro("", 0);
+    });
     // e le partite che stanno solo su S3: si vedono, si cercano, ma i byte
     // non si leggono finche' non c'e' la chiave
     let suS3 = 0;
@@ -14281,8 +14516,8 @@ const AZIONI = {
       const minuti = (a.pezzi || []).reduce((n, z) => n + (z.minuti || 0), 0);
       // la registrazione di QUESTO file: una aperta quando la riga puntava un
       // altro file (prima dell'abbinamento unico) non e' sua
-      const r = regs.find((x) => x.arch && x.arch.rec === k && x.arch.chiave === a.chiave) ||
-                regs.find((x) => x.arch && x.arch.rec === k && !x.arch.chiave);
+      const suoi = regPerRec.get(k) || [];
+      const r = suoi.find((x) => x.arch.chiave === a.chiave) || suoi.find((x) => !x.arch.chiave);
       fuori.push({ nome: path.basename(a.chiave), via: a.chiave, cartella: a.dove || path.dirname(a.chiave), peso: a.peso || (a.pezzi || []).reduce((n, z) => n + (z.peso || 0), 0),
                    quando: Date.parse(a.quando) || 0, est: path.extname(a.chiave).slice(1).toLowerCase(), rec: k, partita: a.partita || nomeDaCartella(a) || "",
                    nomeDa: a.soloS3 ? "cartella" : (a.partita ? "airtable" : (nomeDaCartella(a) ? "cartella" : "")), sicuro: !!a.partita && nomeSicuro(a), competizione: a.competizione || "",
@@ -14292,8 +14527,7 @@ const AZIONI = {
                    // per l'anteprima: stemmi, telecronista e lingua, risultato
                    // l'anteprima solo per quelle che la Libreria mostra (in casa); gli stemmi
                    // delle altre li prepara prepararaStemmi in sottofondo
-                   ...(inCasa(a) ? { squadre: squadreConStemma(k, a), voce: voceDi(k, a), ris: risultatoDi(a), studio: studioDi(k, a) || specialeDi(k, a),
-                                    titolo: titoloDi(a), eventi: loghiEvento(a), compVista: competizioneVista(a, k) } : {}),
+                   ...(inCasa(a) ? datiAnteprima(k, a) : {}),
                    forse: a.riconosciuta && a.riconosciuta.sicura === false ? a.riconosciuta.nome : "" });
       suS3++;
     });
@@ -14325,6 +14559,52 @@ const AZIONI = {
   },
   // RIPROVARE I CRONOMETRI FALLITI: si toglie il "fallito" e il giro della
   // casa li rilegge da solo (con le posizioni note, dal 26/09/2026)
+  // IL DIZIONARIO DEI GIOCATORI per i suggerimenti della ricerca (26/09/2026):
+  // chi compare nelle rose ESPN delle partite dell'archivio, con la squadra,
+  // in quante partite, e i nomi con cui lo chiama la cronaca ("Tasos
+  // Douvikas" e' Anastasios Douvikas). [nome, squadra, partite, [altri nomi]]
+  "clip-cerca-giocatori": () => {
+    const c = global.__DIZ_GIOCATORI;
+    if (c && Date.now() - c.quando < 1800000) return c.esito;
+    const per = new Map();
+    Object.keys(ARCHIVIO).forEach((rec) => {
+      const e = ESPN[rec]; if (!e || !e.rose) return;
+      const inRosa = [];
+      Object.keys(e.rose).forEach((sq) => (e.rose[sq] || []).forEach((n) => {
+        const k = n + "|" + sq;
+        const x = per.get(k) || { n, sq, partite: new Set(), alias: new Set() };
+        x.partite.add(e.id || rec); per.set(k, x); inRosa.push(x);
+      }));
+      // i nomi della cronaca che non sono in rosa: si attaccano a chi ha lo stesso cognome
+      const detti = new Set();
+      (e.eventi || []).concat(e.gamecast || []).forEach((y) => { if (y.giocatore) detti.add(y.giocatore); if (y.assist) detti.add(y.assist); });
+      detti.forEach((d) => {
+        if (inRosa.some((x) => x.n === d)) return;
+        const cg = nomeParole(d).slice(-1)[0]; if (!cg || cg.length < 3) return;
+        const chi = inRosa.filter((x) => nomeParole(x.n).slice(-1)[0] === cg);
+        if (chi.length === 1) chi[0].alias.add(d);
+      });
+    });
+    // LA FOTO GIUSTA, non quella del cognome: le foto premium stanno per
+    // cognome E squadra (foto-intestazioni.json, perSq: cognome -> id ESPN
+    // della squadra -> file). "Nicolas Paz" dell'Union prendeva la foto di
+    // Nico Paz del Como (26/09/2026): la foto si da' solo se la squadra torna.
+    let perSq = {};
+    try { perSq = JSON.parse(fs.readFileSync(path.join(path.dirname(STEMMI_DIR), "foto-intestazioni.json"), "utf8")).perSq || {}; } catch (e) {}
+    const idDi = {};
+    Object.keys(CATALOGO.squadre || {}).forEach((id) => (CATALOGO.squadre[id].nomi || []).forEach((n) => { idDi[piattaMinuscola(n)] = id; }));
+    const fotoDi = (nome, sq) => {
+      const id = idDi[piattaMinuscola(sq)]; if (!id) return "";
+      const w = String(nome).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().split(/[\s]+/).filter(Boolean);
+      for (const k of [w.slice(-2).join("-"), w.slice(-1)[0]]) { const f = perSq[k] && perSq[k][id]; if (f) return f; }
+      return "";
+    };
+    const g = Array.from(per.values()).map((x) => [x.n, x.sq, x.partite.size, Array.from(x.alias), fotoDi(x.n, x.sq)])
+      .sort((u, v) => v[2] - u[2]);
+    const esito = { ok: true, g };
+    global.__DIZ_GIOCATORI = { quando: Date.now(), esito };
+    return esito;
+  },
   "clip-orologio-riprova": () => {
     let n = 0;
     Object.keys(ARCHIVIO).forEach((k) => { const a = ARCHIVIO[k]; if (a && a.orologioFallito && !a.orologio) { delete a.orologioFallito; n++; } });
@@ -14453,80 +14733,35 @@ const AZIONI = {
     scrivi(); annuncia(0, "clip");
     return { ok: true, seq: q, quante: q.pezzi.length, trovate: trovate.length };
   },
-  "clip-tabellino-cerca": (p) => {
+  "clip-tabellino-cerca": async (p) => {
     const q = String(p.q || "").trim(); if (q.length < 2) return { ok: true, righe: [] };
     const { tipi, parole } = chiaviDellaDomanda(q);
     if (!tipi.length && !parole.length) return { ok: true, righe: [] };
     const ora = Date.now();
-    if (!global.__TAB_CACHE || ora - global.__TAB_CACHE.quando > 60000) {
-      const per = {};
-      Object.keys(R.reg).forEach((k) => { const r = R.reg[k]; if (!r || !(r.evento || r.arch)) return; try { per[k] = tabellino(r).righe; } catch (e) { per[k] = []; } });
-      // E LE PARTITE MAI APERTE. La ricerca guardava solo le registrazioni:
-      // "tutti i gol di Douvikas" trovava Udinese-Como e basta, con venti
-      // partite negli appunti. Per una partita dell'indice bastano appunti
-      // ed ESPN: il secondo lo da' secondoNelFile, e la pagina la apre da
-      // sola al primo clic
-      const conReg = new Set(); Object.keys(R.reg).forEach((k) => { const r = R.reg[k]; if (r && (r.arch || r.evento)) conReg.add((r.arch && r.arch.rec) || r.evento); });
-      const finti = {};
-      Object.keys(ARCHIVIO).forEach((rec) => {
-        if (conReg.has(rec) || rec.indexOf("s3:") === 0) return;
-        const a = ARCHIVIO[rec], ap = APPUNTI[rec], es = ESPN[rec];
-        if (!a || !(a.pezzi || []).length) return;
-        if (!ap && !(es && es.eventi && es.eventi.length)) return;
-        // CON LE LETTURE (cronometro, tabellone, boati, inquadratura) la
-        // partita passa dal tabellino vero, come quelle aperte: il minuto
-        // scritto da solo sbaglia di mezzo minuto e piu'
-        if (a.orologio && (a.momenti || (a.boati || []).length || (a.tabellone && a.tabellone.punti))) {
-          const fr = { titolo: a.partita || rec, arch: { rec: rec, chiave: a.chiave, bucket: a.bucket, pezzi: a.pezzi, pezzo: 0 },
-                       avviata: Date.parse(a.quando) || 0, finita: 0, finto: true };
-          try {
-            const tb = tabellino(fr).righe.map((x) => {
-              const pa = pezzoAl(fr, x.dentro);
-              return Object.assign({}, x, { chiave: (pa && pa.pezzo && pa.pezzo.chiave) || a.chiave, dentroFile: pa ? pa.dentro : x.dentro });
-            });
-            if (tb.length) { per["arch:" + rec] = tb; finti["arch:" + rec] = fr; return; }
-          } catch (e) {}
-        }
-        const righe = [], rit = ritardoPartita(rec);
-        const dove = (s, d) => { const x = secondoNelFile(rec, { s: s, d: Math.max(0, d) }); if (!x) return null; const pz = (a.pezzi || [])[x.pezzo]; return { t: ((pz && pz.da) || 0) + x.secondi, chiave: x.chiave, dentroFile: x.secondi }; };
-        if (ap) (ap.righe || []).forEach((x) => {
-          const d = dove(x.s || 1, (x.d || 0) - rit); if (!d) return;
-          righe.push(Object.assign({ titolo: x.x || "", tipo: x.t || "", minuto: x.m || "", fonte: "appunti", fonti: ["appunti"], giocatore: "", squadra: "", dettaglio: "",
-            gol: /gol|rete/i.test(x.t || "") || !!x.g, tag: etichettaAzione(x.t, x.x), rating: x.g || 0, certezza: "minuto" }, d));
-        });
-        if (es && es.eventi) es.eventi.forEach((x) => {
-          const ita = tipoItaliano(x.tipo);
-          const d = dove(x.periodo || 1, (x.min - (x.periodo === 2 ? 45 : 0)) * 60 + (x.stopp || 0) * 60); if (!d) return;
-          righe.push(Object.assign({ titolo: ita + (x.giocatore ? " \u00b7 " + x.giocatore : ""), tipo: ita, minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), fonte: "espn", fonti: ["espn"],
-            giocatore: x.giocatore || "", squadra: x.squadra || "", dettaglio: x.lungo || x.testo || "", gol: /Gol/.test(ita), tag: etichettaAzione(ita, x.testo), rating: 0, certezza: "minuto" }, d));
-        });
-        // LA CRONACA ESPN: tiri, parate, pali. Dove nessuno ha scritto
-        // niente, il minuto di ESPN basta per andare a prendere l'immagine;
-        // come nel tabellino, entra solo dove non c'e' gia' una riga vicina
-        if (es && es.gamecast) es.gamecast.forEach((x) => {
-          const d = dove(x.periodo || 1, (x.min - (x.periodo === 2 ? 45 : 0)) * 60 + (x.stopp || 0) * 60); if (!d) return;
-          if (righe.some((y) => Math.abs(y.t - d.t) < 50)) return;
-          righe.push(Object.assign({ titolo: [x.tipo, x.giocatore].filter(Boolean).join(" \u00b7 "), tipo: x.tipo, minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), fonte: "gamecast", fonti: ["gamecast"],
-            giocatore: x.giocatore || "", squadra: "", dettaglio: x.testo || "", gol: x.tipo === "Gol", tag: etichettaAzione(x.tipo, x.testo), rating: 0, certezza: "minuto" }, d));
-        });
-        if (!righe.length) return;
-        per["arch:" + rec] = righe.map((x) => Object.assign(x, { t: Math.round(x.t * 10) / 10, dentro: Math.max(0, x.t - (x.gol ? GOL_PRE : APP_PRE)), fuori: x.t + (x.gol ? GOL_POST : APP_POST) }));
-        finti["arch:" + rec] = { titolo: a.partita || rec, arch: { rec: rec, chiave: a.chiave, bucket: a.bucket }, avviata: Date.parse(a.quando) || 0, finita: 0, finto: true };
-      });
-      global.__TAB_CACHE = { quando: ora, per, finti };
-    }
+    // LA CACHE SI FA A PEZZI, IN SOTTOFONDO (26/09/2026): ricostruirla tutta
+    // d'un fiato teneva fermo il ponte 1,6-2,8 s ogni minuto (grafiche live
+    // comprese). La prima volta si aspetta; poi si risponde con quella di prima
+    // e la nuova si prepara lasciando respirare il ponte ogni venticinque partite.
+    if (!global.__TAB_CACHE) await (CERCA_CACHE_IN_CORSO || (CERCA_CACHE_IN_CORSO = costruisciCercaCache().finally(() => { CERCA_CACHE_IN_CORSO = null; })));
+    else if (ora - global.__TAB_CACHE.quando > 60000 && !CERCA_CACHE_IN_CORSO) CERCA_CACHE_IN_CORSO = costruisciCercaCache().catch(() => {}).finally(() => { CERCA_CACHE_IN_CORSO = null; });
     const per = global.__TAB_CACHE.per, finti = global.__TAB_CACHE.finti || {}, fuori = [];
     Object.keys(per).forEach((k) => {
       const r = R.reg[k] || finti[k]; if (!r) return;
       const recR = (r.arch && r.arch.rec) || r.evento || "";
       const gc = global.__TAB_CACHE.giocate || (global.__TAB_CACHE.giocate = {});
       const giocate = recR ? (gc[recR] || (gc[recR] = giocateEspn(recR))) : [];
+      // CHI SI CERCA: le parole che non sono nel nome della partita
+      const tp = new Set(nomeParole(String(r.titolo || "").replace(/[\[\]()|\-]/g, " ")));
+      const chi = parole.filter((w) => !tp.has(w));
+      // PRIMO SCARTO, VELOCE (26/09/2026): una riga che non contiene le parole
+      // cercate, in una partita dove ESPN non dice che lui c'entra, non puo'
+      // uscire. Le regole del ruolo costavano 1,6 s su tutte le righe.
+      const coinvolto = chi.length > 0 && giocate.some((f) => ruoloIn(f, chi));
+      const titoloP = piattaMinuscola(r.titolo || "");
       per[k].forEach((x) => {
+        if (!coinvolto && x._t !== undefined && !parole.every((w) => x._t.indexOf(w) >= 0 || titoloP.indexOf(w) >= 0)) return;
         // il tipo si legge da tipo ed etichetta (che classificano gia' il
         // titolo): guardare la prosa faceva prendere "angolo" per "gol"
-        // CHI SI CERCA: le parole che non sono nel nome della partita
-        const tp = new Set(nomeParole(String(r.titolo || "").replace(/[\[\]()|\-]/g, " ")));
-        const chi = parole.filter((w) => !tp.has(w));
         const { ruolo, da } = ruoloDi(x, recR, chi, giocate);
         if (chi.length && (ruolo || da)) {
           // con un giocatore nella domanda, i tipi sono i SUOI: il suo assist non e' un suo gol
@@ -14539,12 +14774,22 @@ const AZIONI = {
         if (r.arch && !r.finto) { const pa = pezzoAl(r, x.dentro); if (pa && pa.pezzo && pa.pezzo.chiave) { chiave = pa.pezzo.chiave; dentroFile = pa.dentro; } else chiave = r.arch.chiave || ""; }
         fuori.push({ reg: r.finto ? "" : k, partita: r.titolo || k, rec: (r.arch && r.arch.rec) || r.evento || "", t: x.t, dentro: x.dentro, fuori: x.fuori, s3: !!(r.arch && magazzinoInventario(r.arch.bucket) && !inCasaReg(r)),
                      tipo: x.tipo, tag: x.tag, titolo: x.titolo, minuto: x.minuto, fonte: x.fonte, fonti: x.fonti, squadra: x.squadra, giocatore: x.giocatore,
-                     gol: x.gol, certezza: x.certezza, chiave, dentroFile, quando: r.finita || r.avviata || 0, ruolo: x.ruolo || "", ruoloDa: x.ruoloDa || "" });
+                     gol: x.gol, certezza: x.certezza, chiave, dentroFile, quando: r.finita || r.avviata || 0, ruolo: x.ruolo || "", ruoloDa: x.ruoloDa || "", rating: x.rating || 0, boato: x.boato || 0 });
       });
     });
     fuori.sort((u, v) => (v.gol ? 1 : 0) - (u.gol ? 1 : 0) || String(v.quando).localeCompare(String(u.quando)) || u.t - v.t);
     const partite = new Set(fuori.map((x) => x.reg)).size;
     let scheda = null; try { scheda = schedaGiocatore(parole, global.__TAB_CACHE); } catch (e) {}
+    // le partite dell'archivio in cui era in rosa: la pagina le mostra come
+    // "partite con lui" anche dove non ha fatto niente di scritto
+    if (scheda) {
+      const inRosa = [];
+      Object.keys(ARCHIVIO).forEach((rec) => {
+        const r = (ESPN[rec] || {}).rose; if (!r) return;
+        if (Object.keys(r).some((sq) => (r[sq] || []).some((n) => eLui(n, scheda.chi)))) inRosa.push(rec);
+      });
+      scheda.inRosa = inRosa;
+    }
     return { ok: true, righe: fuori.slice(0, num(p.quante, 1, 2000, 500)), totale: fuori.length, partite, tipi: tipi.length, parole, scheda };
   },
   // I NOMI DIETRO LE FOTO: una foto premium si chiama col cognome
@@ -15319,6 +15564,14 @@ function nomeDelPasso(p) {
             "clip-hl-metti-media": "Importa materiale", "clip-hl-imposta": "Impostazioni sequenza",
             "clip-hl-titolo": "Testo", "clip-hl-grafica": "Grafica", "clip-hl-inquadra": "Inquadratura" })[t] || "Modifica";
 }
+let ULTIMA_AZIONE = "";
+// e un orologio che se ne accorge anche quando a fermare e' un giro interno
+let PONTE_BATTITO = Date.now();
+setInterval(() => {
+  const ora = Date.now(), fermo = ora - PONTE_BATTITO - 1000;
+  if (fermo > 1500) console.log("[clip] ponte fermo " + fermo + " ms (ultima richiesta: " + ULTIMA_AZIONE + ")");
+  PONTE_BATTITO = ora;
+}, 1000).unref();
 function azione(p) {
   const f = AZIONI[p.tipo];
   if (!f) throw new Error("tipo di invio sconosciuto: " + p.tipo);
@@ -15326,7 +15579,15 @@ function azione(p) {
   PASSO_IN_CORSO = nomeDelPasso(p);
   const giro = ++GIRO_AZIONE;
   let d;
+  const t0 = Date.now();
   try { d = f(p); } catch (e) { togliPassoFantasma(giro); throw e; }
+  finally {
+    // IL SENSORE DEL PONTE FERMO (26/09/2026): chi tiene occupato il
+    // processo senza lasciare respirare le altre richieste
+    const ms = Date.now() - t0;
+    if (ms > 700) console.log("[clip] lento: " + p.tipo + " ha tenuto fermo il ponte " + ms + " ms");
+    ULTIMA_AZIONE = p.tipo;
+  }
   if (d && typeof d.then === "function") {
     return d.then((x) => { if (x && x.ok === false) togliPassoFantasma(giro); return rimettiInRiga(x); },
                   (e) => { togliPassoFantasma(giro); throw e; });
@@ -15419,6 +15680,9 @@ function avvio(opz) {
   leggiCatalogo();
   // assistman e cronaca ESPN per le partite gia' riconosciute (una volta sola per partita)
   setTimeout(() => { giroRileggiEspn().catch((e) => console.log("[clip] rileggi espn: " + e.message)); }, 90000).unref();
+  // la Libreria e la ricerca pronte prima che qualcuno le chieda (senza bloccare)
+  setTimeout(() => { giroQnapFile().catch(() => {}); }, 5000).unref();
+  setTimeout(() => { if (!global.__TAB_CACHE && !CERCA_CACHE_IN_CORSO) CERCA_CACHE_IN_CORSO = costruisciCercaCache().catch(() => {}).finally(() => { CERCA_CACHE_IN_CORSO = null; }); }, 60000).unref();
   setTimeout(() => { try { appuntiGemelli(); } catch (e) { console.log("[clip] appunti gemelli: " + e.message); } }, 40000).unref();
   setTimeout(() => {
     let n = 0;
