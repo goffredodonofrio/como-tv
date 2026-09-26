@@ -25,6 +25,12 @@ window.SceltaFoto = (function () {
   var ponte = "", token = "", base = "";
   var elenco = [], caricato = false;
   var quandoScelta = null, filtro = "tutto", cerca = "", conEspn = false;
+  // Il magazzino e' arrivato a migliaia di immagini (8.815 il 26/09/2026) e
+  // la finestra le disegnava tutte: ogni scheda scaricava la sua immagine
+  // intera, e la pagina restava bloccata piu' di un minuto. Si mostrano le
+  // piu' recenti a blocchi, e ogni immagine si scarica solo quando entra
+  // nella parte visibile. La ricerca guarda sempre tutto il magazzino.
+  var BLOCCO = 150, quante = BLOCCO, guarda = null;
   var espnRisultati = [], espnPer = "", espnGiro = 0, espnTimer = null;
   var finestra = null;
 
@@ -111,8 +117,10 @@ window.SceltaFoto = (function () {
       var chip = e.target.closest ? e.target.closest(".sf-chip") : null;
       if (chip) {
         finestra.querySelectorAll(".sf-chip").forEach(function (c) { c.classList.toggle("on", c === chip); });
-        filtro = chip.dataset.f; dipingi(); cercaEspn(); return;
+        filtro = chip.dataset.f; quante = BLOCCO; dipingi(); cercaEspn(); return;
       }
+      var altre = e.target.closest ? e.target.closest(".sf-altre") : null;
+      if (altre) { quante += BLOCCO; dipingi(); return; }
       var card = e.target.closest ? e.target.closest(".sf-card") : null;
       if (card) {
         var url = card.dataset.url;
@@ -122,7 +130,7 @@ window.SceltaFoto = (function () {
     });
     document.getElementById("sf-chiudi").addEventListener("click", chiudi);
     document.getElementById("sf-cerca").addEventListener("input", function () {
-      cerca = norm(this.value); dipingi(); cercaEspn();
+      cerca = norm(this.value); quante = BLOCCO; dipingi(); cercaEspn();
     });
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape" && finestra && finestra.style.display === "flex") chiudi();
@@ -139,7 +147,7 @@ window.SceltaFoto = (function () {
   }
   function carta(url, nome, sotto) {
     return '<div class="sf-card" data-url="' + esc(url) + '">' +
-      '<div class="p" style="background-image:url(\'' + esc(url) + '\')"></div>' +
+      '<div class="p" data-bg="' + esc(url) + '"></div>' +
       '<div class="n">' + esc(nome) + '</div>' +
       '<div class="k">' + esc(sotto || "") + '</div></div>';
   }
@@ -186,15 +194,34 @@ window.SceltaFoto = (function () {
     });
     // l'indirizzo restituito porta il prefisso dell'ambiente, cosi' la foto
     // scelta si vede sia qui sia nella grafica in onda
-    var h = v.map(function (f) { return carta(base + f.url, f.chiave, peso(f.size)); }).join("");
+    var h = v.slice(0, quante).map(function (f) { return carta(base + f.url, f.chiave, peso(f.size)); }).join("");
+    if (v.length > quante) {
+      h += '<button type="button" class="sf-altre" style="grid-column:1/-1;margin:6px 0 10px;padding:11px;border-radius:7px;' +
+        'border:1px solid rgba(201,162,75,.45);background:rgba(201,162,75,.08);color:#E3C271;cursor:pointer;' +
+        'font-family:\'Mazzard\',sans-serif;font-weight:700;font-size:11px;letter-spacing:.12em;text-transform:uppercase">' +
+        'Mostra altre ' + Math.min(BLOCCO, v.length - quante) + ' (ne restano ' + (v.length - quante) + ') — oppure cerca</button>';
+    }
     if (espnRisultati.length) {
       h += '<div class="sf-titolo">Da ESPN</div>' +
         espnRisultati.map(function (x) { return carta(x.url, x.nome, x.sotto); }).join("");
     }
     g.innerHTML = h || '<div style="color:#8A8B96;padding:16px 4px">Nessuna immagine trovata.</div>';
+    accendi(g);
     document.getElementById("sf-conta").textContent =
       v.length + " di " + elenco.length + " immagini in magazzino" +
       (espnRisultati.length ? " · " + espnRisultati.length + " da ESPN" : "");
+  }
+
+  // l'immagine di una scheda si scarica quando la scheda si vede
+  function accendi(g) {
+    var carte = g.querySelectorAll(".p[data-bg]");
+    function metti(el) { el.style.backgroundImage = "url('" + el.getAttribute("data-bg").replace(/'/g, "%27") + "')"; el.removeAttribute("data-bg"); }
+    if (!("IntersectionObserver" in window)) { carte.forEach(metti); return; }
+    if (guarda) guarda.disconnect();
+    guarda = new IntersectionObserver(function (voci) {
+      voci.forEach(function (v) { if (v.isIntersecting) { metti(v.target); guarda.unobserve(v.target); } });
+    }, { root: g, rootMargin: "300px" });
+    carte.forEach(function (c) { guarda.observe(c); });
   }
 
   function chiudi() { if (finestra) finestra.style.display = "none"; }
@@ -210,7 +237,7 @@ window.SceltaFoto = (function () {
     }
     // ogni apertura riparte senza ricerca: quella di prima (lo stemma di una
     // squadra) nascondeva tutto quando si cercava una foto
-    espnRisultati = []; espnPer = ""; cerca = "";
+    espnRisultati = []; espnPer = ""; cerca = ""; quante = BLOCCO;
     document.getElementById("sf-cerca").value = "";
     cercaEspn();
     finestra.style.display = "flex";
