@@ -6156,7 +6156,7 @@ function passoCasa(rec, a) {
   if (!a.orologio && !a.orologioFallito) return "cronometro";
   if (a.orologio && !a.tabellone && !a.tabelloneFallito) return "tabellone";
   if (!a.boatiFatti && ((APPUNTI[rec] || {}).righe || []).length + (((ESPN[rec] || {}).eventi) || []).length) return "boati";
-  if (a.boatiFatti && !a.momentiFatti && ((APPUNTI[rec] || {}).righe || []).length + (((ESPN[rec] || {}).eventi) || []).length) return "momenti";
+  if (a.boatiFatti && (!a.momentiFatti || (a.momentiVer || 1) < MOMENTI_VER) && ((APPUNTI[rec] || {}).righe || []).length + (((ESPN[rec] || {}).eventi) || []).length) return "momenti";
   return null;
 }
 function inCasaDaLavorare() {
@@ -6211,7 +6211,7 @@ function statoCasa() {
     if (a.orologio || a.orologioFallito) n.cronometro++;
     if (a.tabellone || a.tabelloneFallito) n.tabellone++;
     if (a.boatiFatti) n.boati++;
-    if (a.momentiFatti) n.momenti++;
+    if (a.momentiFatti && (a.momentiVer || 1) >= MOMENTI_VER) n.momenti++;
     if (a.orologio && a.orologio.inizio1 > 600) n.studio++;
     if (!passoCasa(k, a)) n.finite++;
   });
@@ -7204,7 +7204,7 @@ function scriviArchivio() {
 // quello che si e' misurato sul file di una partita e che uno scandaglio
 // dell'indice non deve buttare, finche' il materiale e' lo stesso
 const LETTURE_DEL_FILE = ["orologio", "orologioFallito", "tabellone", "tabelloneFallito", "boati", "boatiFatti",
-  "momenti", "momentiFatti", "appuntiImpronta", "gol", "replay", "primoReplay", "replayNo", "cronometroCieco", "misurato", "stelle", "voceProvata"];
+  "momenti", "momentiFatti", "momentiVer", "appuntiImpronta", "gol", "replay", "primoReplay", "replayNo", "cronometroCieco", "misurato", "stelle", "voceProvata"];
 async function archivioScandaglia(p) {
   if (!s3Acceso()) return { ok: false, errore: "nessun magazzino configurato" };
   const bucket = p.bucket || ARCH_BUCKET;
@@ -10492,6 +10492,8 @@ function pezzoDellaRiga(a, t) {
 //  quella piu' vicina al punto stimato, dentro una finestra che dipende
 //  da quanto la stima e' buona. Su Como-Pisa: larga fino a 2138, primi
 //  piani dal 2139, palla in rete a 2138-2140.
+// la versione delle regole: cambiandola, il giro della casa rifa' le misure vecchie
+const MOMENTI_VER = 3;
 const DA_MOMENTO = /gol|goal|rete|rigore|espuls|rosso|traversa|palo|parat|occasion|tiro/i;
 // Qui il movimento conta poco: in un contropiede la camera larga fa una
 // panoramica veloce (moto 30-45) e con la soglia della ripartenza sembrava un
@@ -10528,6 +10530,14 @@ async function puntaMomenti(rec) {
   if (!a) throw new Error("questa partita non e' nell'indice dell'archivio");
   const finto = { arch: { rec: rec, pezzo: 0, pezzi: a.pezzi, chiave: a.chiave }, durata: 0 };
   const sap = quelloCheSappiamo(finto);
+  // misure fatte con regole piu' vecchie: si rifanno da capo
+  // (i gol si tengono: sui gol le regole vecchie e nuove danno lo stesso
+  // secondo, verificato su Como-Pisa e a campione su 5 gol di 4 partite)
+  if ((a.momentiVer || 1) < MOMENTI_VER) {
+    const tieni = {};
+    Object.keys(a.momenti || {}).forEach((k) => { if (/\|(gol|goal|rete|autogol)\|/i.test(k) || a.momenti[k].cert === "tabellone") tieni[k] = a.momenti[k]; });
+    a.momenti = tieni; delete a.momentiFatti;
+  }
   a.momenti = a.momenti || {};
   const regione = await s3Regione(a.bucket);
   let cercati = 0, trovati = 0;
@@ -10542,7 +10552,10 @@ async function puntaMomenti(rec) {
     // e' troppo alto: la' si resta al minuto (a campione, 26/09: cadeva perfino
     // sulla presentazione delle squadre)
     const eGol = /\b(gol|goal|rete|autogol)\b/i.test(String(x.tipo || "") + " " + String(x.tag || "")) || !!x.tabellone;
-    if (!eGol && cert === "minuto") continue;
+    // SOLO I GOL (26/09, secondo controllo a campione: 5 gol su 5 giusti, 0 su
+    // 3 fra tiri e parate — la regia dopo un tiro va sulla panchina, su un
+    // contrasto, su chiunque). Tiri e parate restano al boato o al minuto.
+    if (!eGol) continue;
     const fin = FINESTRE_MOMENTO[cert];
     const t = x.t !== undefined ? x.t : x.dentro + APP_PRE;
     const p = pezzoAl(finto, t); if (!p || !p.pezzo) continue;
@@ -10561,7 +10574,7 @@ async function puntaMomenti(rec) {
     a.momenti[k] = esito;
     if (cercati % 5 === 0) scriviArchivio();
   }
-  if (!registrandoDavvero() && !laDirettaGira()) a.momentiFatti = new Date().toISOString();
+  if (!registrandoDavvero() && !laDirettaGira()) { a.momentiFatti = new Date().toISOString(); a.momentiVer = MOMENTI_VER; }
   scriviArchivio();
   if (cercati) console.log("[clip] momenti: " + (a.partita || rec) + " → " + trovati + " su " + cercati + " azioni al secondo");
   return { cercati, trovati };
@@ -14228,7 +14241,7 @@ const AZIONI = {
   // il momento dall'inquadratura, a mano su una partita (rifai: si riparte da zero)
   "clip-momenti": async (p) => {
     const a = ARCHIVIO[String(p.rec || "")]; if (!a) return { ok: false, errore: "partita sconosciuta" };
-    if (p.rifai) { delete a.momenti; delete a.momentiFatti; }
+    if (p.rifai) { delete a.momenti; delete a.momentiFatti; delete a.momentiVer; }
     const esito = await puntaMomenti(String(p.rec));
     return { ok: true, esito, momenti: a.momenti };
   },
