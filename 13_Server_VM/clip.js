@@ -10748,6 +10748,36 @@ function momentiNelCampo(campo, severo) {
 // prima del cambio di punteggio (che sta entro sette); il boato e' l'inizio
 // del grido; il minuto scritto cade spesso sul replay, cioe' dopo
 const FINESTRE_MOMENTO = { tabellone: [-25, 10, 8], boato: [-20, 12, 0], minuto: [-90, 30, 0] };
+// ── IL MOMENTO DI UNA GIOCATA ESPN (26/09/2026) ─────────────────────────
+//  Goffredo: "nico paz palo mi becca solo il palo vs Genoa". Per tutto quello
+//  che non e' un gol il punto veniva dagli appunti (che cadono sul replay) o
+//  dal boato (su Como-Bologna ha preso il VAR: 150 s di scarto). L'ancora
+//  buona e' il MINUTO ESPN letto sul cronometro della partita: "68'" vuol
+//  dire fra 67:00 e 68:00 di gioco. Dentro quel minuto (piu' margine) si cerca
+//  il segno della regia — camera larga fino al tiro, poi i primi piani — e fra
+//  i segni si sceglie quello seguito dal tratto di primi piani PIU' LUNGO: un
+//  palo o una grande parata hanno la reazione e il replay, un fallo no.
+//  Solo con il cronometro letto: senza, il minuto non sta al suo posto.
+async function momentoDaEspn(rec, g, dettagli) {
+  const a = ARCHIVIO[rec], o = a && a.orologio;
+  if (!o || o.inizio1 === undefined || o.inizio1 === null) return null;
+  if (g.per === 2 && (o.inizio2 === undefined || o.inizio2 === null)) return null;
+  const x = secondoNelFile(rec, { s: g.per, d: (g.min - (g.per === 2 ? 45 : 0)) * 60 });
+  if (!x) return null;
+  const regione = await s3Regione(a.bucket);
+  const via = firmaConRegione(regione, x.chiave, {}, 3600, a.bucket);
+  const fine = x.secondi;                              // la fine del minuto ESPN, nel file
+  const campo = await guardaIlCampo(via, Math.max(0, fine - 90), 125, 1);
+  if (campo.length < 20) return { chiave: x.chiave, fine, sec: null, perche: "poco video" };
+  const largo = larghiMomento(campo);
+  const stretti = (i) => { let n = 0, buchi = 0; for (let j = i + 1; j < largo.length && j <= i + 45; j++) { if (!largo[j]) { n++; buchi = 0; } else if (++buchi > 1) break; } return n; };
+  const c = momentiNelCampo(campo, false).map((i) => ({ s: Math.round(campo[i].s), stretti: stretti(i) }))
+    .filter((y) => y.s >= fine - 75 && y.s <= fine + 15 && y.stretti >= 8)
+    .sort((u, v) => v.stretti - u.stretti || Math.abs(u.s - (fine - 30)) - Math.abs(v.s - (fine - 30)));
+  const esito = { chiave: x.chiave, fine, sec: c.length ? c[0].s : null };
+  if (dettagli) esito.candidati = c;
+  return esito;
+}
 async function puntaMomenti(rec) {
   const a = ARCHIVIO[rec];
   if (!a) throw new Error("questa partita non e' nell'indice dell'archivio");
@@ -14112,8 +14142,8 @@ function minutoRiga(x) {
 // e' un assist; il nome subito dopo "GOL" e' il marcatore.
 const CUE_ASSIST = /(assist|assit|asssit|asist|passaggio|lancio|verticalizzazione|cross|traversone|imbucata|suggerimento|sponda|filtrante|invito|servizio)\s+(?:\S+\s+){0,2}?(?:di|da|del|dello|della)\s+(?:\S+\s+)?$/;
 function ruoloDalTesto(x, chi) {
-  const t = senzaAccenti(String(x.titolo || "") + " · " + String(x.dettaglio || "")).toLowerCase().replace(/\s+/g, " ");
-  const tipo = senzaAccenti(String(x.tipo || "") + " " + String(x.tag || "")).toLowerCase();
+  const t = senzaAccenti(String(x.titolo || "") + " · " + String(x.dettaglio || "")).toLowerCase().replace(/\s+/g, " ").replace(PALO_FINTO, " ");
+  const tipo = senzaAccenti(String(x.tipo || "") + " " + String(x.tag || "")).toLowerCase().replace(PALO_FINTO, " ");
   const i = t.indexOf(chi[chi.length - 1]); if (i < 0) return "";
   const prima = t.slice(Math.max(0, i - 60), i), dopo = t.slice(i, i + 90);
   if (CUE_ASSIST.test(prima) || /\b(il suo tiro diventa un assist|assist per)\b/.test(dopo)) return x.gol || /gol|rete/.test(tipo) ? "assist" : "passaggio chiave";
@@ -14129,8 +14159,12 @@ function ruoloDalTesto(x, chi) {
 // il tipo della riga, per agganciarla solo a giocate dello stesso tipo: un
 // cambio al 45' non e' il gol di Nico Paz al 45'+2. Prima il tipo scritto
 // (una parata a dieci secondi da un gol ha gol:true, ma resta una parata)
+// "palo" non e' sempre un palo: "cross sul secondo palo", "palo lungo",
+// "sfiora l'incrocio dei pali", "tra i pali" sono posti, non tiri che lo
+// prendono (Sassuolo-Como e Como-Verona uscivano fra i pali di Nico Paz)
+const PALO_FINTO = /\b(primo|secondo) palo\b|\bpalo (lungo|corto)\b|incrocio dei pali|\b(tra|fra|sotto) i pali\b/g;
 function categoriaRiga(x) {
-  const t = senzaAccenti(String(x.tipo || "") + " " + String(x.tag || "")).toLowerCase();
+  const t = senzaAccenti(String(x.tipo || "") + " " + String(x.tag || "")).toLowerCase().replace(PALO_FINTO, " ");
   if (/sostituz|cambio/.test(t)) return "cambio";
   if (/espuls|rosso|red card/.test(t)) return "rosso";
   if (/ammoni|giallo|yellow/.test(t)) return "giallo";
@@ -14625,6 +14659,52 @@ const AZIONI = {
     global.__DIZ_GIOCATORI = { quando: Date.now(), esito };
     return esito;
   },
+  // LA SCHEDA DI UN GIOCATORE per la ricerca (26/09/2026): le sue giocate
+  // ESPN, in quante partite dell'archivio c'e' (una per gara: ITA, ENG e
+  // AUDIO sono la stessa), divise per competizione e per stagione, le squadre
+  // con cui compare, l'ultima partita. Si tiene dieci minuti per nome.
+  "clip-scheda-giocatore": (p) => {
+    const nome = String(p.nome || "").trim(); if (!nome) return { ok: false, errore: "manca il nome" };
+    const squadra = String(p.squadra || "").trim();
+    const mem = global.__SCHEDE_G || (global.__SCHEDE_G = new Map());
+    const kMem = nome + "|" + squadra;
+    const c0 = mem.get(kMem); if (c0 && Date.now() - c0.quando < 600000) return c0.esito;
+    const chi = nomeParole(nome), esatto = chi.join(" "), sqP = piattaMinuscola(squadra);
+    // IL NOME ESATTO E LA SUA SQUADRA: "Nico" e' l'inizio di "Nicolas", e la
+    // scheda di Nico Paz del Como si prendeva anche Nicolas Paz dell'Union
+    const gare = new Map(), contaR = {};
+    Object.keys(ARCHIVIO).forEach((rec) => {
+      const e = ESPN[rec]; if (!e || !e.rose) return;
+      const sq = Object.keys(e.rose).find((k) => (!sqP || piattaMinuscola(k) === sqP) && (e.rose[k] || []).some((n) => nomeParole(n).join(" ") === esatto));
+      if (!sq) return;
+      if (!gare.has(e.id || rec)) giocateEspn(rec).forEach((f) => { const r = ruoloIn(f, chi); if (r) contaR[r] = (contaR[r] || 0) + 1; });
+      const id = e.id || rec, a = ARCHIVIO[rec];
+      const x = gare.get(id) || { rec, sq, comp: "", quando: a.quando || e.quando || "", casa: false };
+      if (!x.comp) { try { x.comp = competizioneVista(a, rec) || a.competizione || ""; } catch (z) { x.comp = a.competizione || ""; } }
+      // fra le versioni della stessa gara si mostra quella in casa e in italiano
+      const voto = (r) => { const b = ARCHIVIO[r] || {}; return (inCasa(b) ? 0 : 4) + (/\baudio\b/i.test(b.partita || "") ? 2 : /\beng\b/i.test(b.partita || "") ? 1 : 0); };
+      if (inCasa(a)) x.casa = true;
+      if (voto(rec) < voto(x.rec)) x.rec = rec;
+      gare.set(id, x);
+    });
+    const stagione = (q) => { const d = new Date(q); if (!q || isNaN(d)) return ""; const y = d.getFullYear() - (d.getMonth() < 6 ? 1 : 0); return y + "/" + String((y + 1) % 100).padStart(2, "0"); };
+    const conta = (fn) => { const m = {}; gare.forEach((x) => { const k = fn(x); if (k) m[k] = (m[k] || 0) + 1; }); return Object.keys(m).map((k) => ({ k, n: m[k] })).sort((u, v) => v.n - u.n); };
+    const ultime = Array.from(gare.values()).sort((u, v) => String(v.quando).localeCompare(String(u.quando)));
+    const esito = { ok: true, nome, squadra, conta: contaR, partite: gare.size, inCasa: ultime.filter((x) => x.casa).length,
+                    competizioni: conta((x) => x.comp), stagioni: conta((x) => stagione(x.quando)), squadre: conta((x) => x.sq),
+                    ultima: ultime[0] ? { partita: (ARCHIVIO[ultime[0].rec] || {}).partita || "", quando: ultime[0].quando } : null,
+                    rec: ultime.map((x) => x.rec) };
+    mem.set(kMem, { quando: Date.now(), esito });
+    return esito;
+  },
+  // PROVA: dove metterebbe il momento delle giocate ESPN di un giocatore (non salva niente)
+  "clip-momento-prova": async (p) => {
+    const rec = String(p.rec || ""), chi = nomeParole(String(p.chi || ""));
+    const g = giocateEspn(rec).filter((f) => (!p.giocata || f.tipo === p.giocata) && (!chi.length || ruoloIn(f, chi)));
+    const fuori = [];
+    for (const f of g.slice(0, 8)) fuori.push({ giocata: f, momento: await momentoDaEspn(rec, f, true) });
+    return { ok: true, orologio: (ARCHIVIO[rec] || {}).orologio || null, fuori };
+  },
   "clip-orologio-riprova": () => {
     let n = 0;
     Object.keys(ARCHIVIO).forEach((k) => { const a = ARCHIVIO[k]; if (a && a.orologioFallito && !a.orologio) { delete a.orologioFallito; n++; } });
@@ -14822,9 +14902,18 @@ const AZIONI = {
     if (!global.__TAB_CACHE) await (CERCA_CACHE_IN_CORSO || (CERCA_CACHE_IN_CORSO = costruisciCercaCache().finally(() => { CERCA_CACHE_IN_CORSO = null; })));
     else if (ora - global.__TAB_CACHE.quando > 60000 && !CERCA_CACHE_IN_CORSO) CERCA_CACHE_IN_CORSO = costruisciCercaCache().catch(() => {}).finally(() => { CERCA_CACHE_IN_CORSO = null; });
     const per = global.__TAB_CACHE.per, finti = global.__TAB_CACHE.finti || {}, fuori = [];
+    // IL GIOCATORE DEL GETTONE (nome esatto + squadra): le partite dove ESPN ha
+    // le rose e lui non c'e' non sono sue, anche se il nome ci somiglia
+    const gEsatto = p.giocatore ? nomeParole(String(p.giocatore)).join(" ") : "", gSq = piattaMinuscola(String(p.squadra || ""));
+    const fuoriRosa = (rec) => {
+      if (!gEsatto || !rec) return false;
+      const e = ESPN[rec]; if (!e || !e.rose || !Object.keys(e.rose).length) return false;
+      return !Object.keys(e.rose).some((k) => (!gSq || piattaMinuscola(k) === gSq) && (e.rose[k] || []).some((n) => nomeParole(n).join(" ") === gEsatto));
+    };
     Object.keys(per).forEach((k) => {
       const r = R.reg[k] || finti[k]; if (!r) return;
       const recR = (r.arch && r.arch.rec) || r.evento || "";
+      if (fuoriRosa(recR)) return;
       const gc = global.__TAB_CACHE.giocate || (global.__TAB_CACHE.giocate = {});
       const giocate = recR ? (gc[recR] || (gc[recR] = giocateEspn(recR))) : [];
       // CHI SI CERCA: le parole che non sono nel nome della partita
@@ -14863,6 +14952,7 @@ const AZIONI = {
       const inRosa = [];
       Object.keys(ARCHIVIO).forEach((rec) => {
         const r = (ESPN[rec] || {}).rose; if (!r) return;
+        if (gEsatto) { if (!fuoriRosa(rec)) inRosa.push(rec); return; }
         if (Object.keys(r).some((sq) => (r[sq] || []).some((n) => eLui(n, scheda.chi)))) inRosa.push(rec);
       });
       scheda.inRosa = inRosa;
