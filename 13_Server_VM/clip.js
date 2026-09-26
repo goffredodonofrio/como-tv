@@ -11375,7 +11375,7 @@ async function espnTrova(rec) {
   // ha scritto appunti, che sono migliaia di partite.
   const gamecast = leggiGamecast(sm);
   const eventi = eventiEspn(sm);
-  const rose = {};
+  const rose = {}, roseId = roseConId(sm);
   (sm.rosters || []).forEach((r) => {
     const nome = ((r.team || {}).displayName) || "?";
     rose[nome] = (r.roster || []).map((x) => (x.athlete || {}).displayName).filter(Boolean);
@@ -11388,7 +11388,7 @@ async function espnTrova(rec) {
     const l = (tm.logos && tm.logos[0] && tm.logos[0].href) || tm.logo || (tm.id ? "https://a.espncdn.com/i/teamlogos/soccer/500/" + tm.id + ".png" : "");
     if (l) loghi[tm.displayName] = l; });
   ESPN[rec] = { id: trovato.id, lega: legaTrovata, quando: trovato.date || info.quando, nome: trovato.name || "",
-                squadre: casaOsp, eventi: eventi, gamecast: gamecast, rose: rose, loghi: loghi,
+                squadre: casaOsp, eventi: eventi, gamecast: gamecast, rose: rose, roseId: roseId, loghi: loghi,
                 letto: new Date().toISOString() };
   misuraRitardo(rec);
   return ESPN[rec];
@@ -12109,6 +12109,41 @@ function eventiEspn(sm) {
     if (k.text && k.text !== x.testo) x.lungo = String(k.text).slice(0, 240);
     return x;
   }).filter(Boolean);
+}
+// LE ROSE CON IL CODICE DI OGNI GIOCATORE (26/09/2026). Le foto premium sono
+// registrate soprattutto per codice ESPN (foto-intestazioni.json perId: 6.777),
+// ma delle rose si tenevano solo i nomi: tre quarti dei giocatori restavano
+// senza foto (tutto il Como compreso). { squadra: [[nome, id], ...] }
+function roseConId(sm) {
+  const r = {};
+  (sm.rosters || []).forEach((x) => {
+    const nome = ((x.team || {}).displayName) || "?";
+    r[nome] = (x.roster || []).map((y) => { const a = y.athlete || {}; return a.displayName && a.id ? [a.displayName, String(a.id)] : null; }).filter(Boolean);
+  });
+  return r;
+}
+const ROSE_ID = { fatte: 0, fallite: 0, totale: 0, inCorso: false };
+async function giroRoseId() {
+  if (ROSE_ID.inCorso) return; ROSE_ID.inCorso = true;
+  try {
+    const perId = {};
+    Object.keys(ESPN).forEach((rec) => { const e = ESPN[rec]; if (!e || !e.id || !e.lega || e.roseId) return; (perId[e.id] = perId[e.id] || []).push(rec); });
+    const peso = (ids) => ids.some((rec) => ARCHIVIO[rec] && inCasa(ARCHIVIO[rec])) ? 0 : ids.some((rec) => ARCHIVIO[rec]) ? 1 : 2;
+    const coda = Object.keys(perId).sort((a, b) => peso(perId[a]) - peso(perId[b]));
+    ROSE_ID.totale = coda.length;
+    for (const id of coda) {
+      const recs = perId[id], e0 = ESPN[recs[0]];
+      try {
+        const sm = await espnPrendi("https://site.api.espn.com/apis/site/v2/sports/soccer/" + e0.lega + "/summary?event=" + id);
+        const r = roseConId(sm);
+        recs.forEach((rec) => { if (ESPN[rec] && String(ESPN[rec].id) === String(id)) ESPN[rec].roseId = r; });
+        ROSE_ID.fatte++;
+      } catch (err) { ROSE_ID.fallite++; recs.forEach((rec) => { if (ESPN[rec]) ESPN[rec].roseId = {}; }); }
+      if ((ROSE_ID.fatte + ROSE_ID.fallite) % 50 === 0) { scriviEspn(); global.__DIZ_GIOCATORI = null; }
+      await new Promise((ok) => setTimeout(ok, 1500));
+    }
+    if (coda.length) { scriviEspn(); global.__DIZ_GIOCATORI = null; console.log("[clip] rose con i codici: " + ROSE_ID.fatte + " partite, " + ROSE_ID.fallite + " non lette"); }
+  } finally { ROSE_ID.inCorso = false; }
 }
 // RILEGGERE ESPN per le partite gia' riconosciute: gli assistman degli
 // eventi chiave e, dove manca, la cronaca (tiri, parate, pali). Si
@@ -14643,14 +14678,28 @@ const AZIONI = {
     // cognome E squadra (foto-intestazioni.json, perSq: cognome -> id ESPN
     // della squadra -> file). "Nicolas Paz" dell'Union prendeva la foto di
     // Nico Paz del Como (26/09/2026): la foto si da' solo se la squadra torna.
-    let perSq = {};
-    try { perSq = JSON.parse(fs.readFileSync(path.join(path.dirname(STEMMI_DIR), "foto-intestazioni.json"), "utf8")).perSq || {}; } catch (e) {}
+    let perSq = {}, perIdF = {}, ambigui = new Set(), fileFoto = new Set();
+    try { const fi = JSON.parse(fs.readFileSync(path.join(path.dirname(STEMMI_DIR), "foto-intestazioni.json"), "utf8")); perSq = fi.perSq || {}; perIdF = fi.perId || {}; ambigui = new Set(fi.ambigui || []); } catch (e) {}
+    try { fs.readdirSync(STEMMI_DIR).forEach((f) => { if (f.indexOf("foto-premium-") === 0) fileFoto.add(f); }); } catch (e) {}
+    // le squadre che l'archivio foto copre: li' un cognome non ambiguo e' uno solo
+    const coperte = new Set(); Object.keys(perSq).forEach((k) => Object.keys(perSq[k] || {}).forEach((id) => coperte.add(id)));
+    // il codice ESPN di ogni giocatore, dalle rose con i codici
+    const codice = {};
+    Object.keys(ARCHIVIO).forEach((rec) => { const e = ESPN[rec]; if (!e || !e.roseId) return;
+      Object.keys(e.roseId).forEach((sq) => (e.roseId[sq] || []).forEach((x) => { codice[x[0] + "|" + sq] = x[1]; })); });
     const idDi = {};
     Object.keys(CATALOGO.squadre || {}).forEach((id) => (CATALOGO.squadre[id].nomi || []).forEach((n) => { idDi[piattaMinuscola(n)] = id; }));
     const fotoDi = (nome, sq) => {
-      const id = idDi[piattaMinuscola(sq)]; if (!id) return "";
+      // 1) per codice ESPN: e' lui, senza dubbi
+      const cod = codice[nome + "|" + sq];
+      if (cod && perIdF[cod] && fileFoto.has(perIdF[cod])) return perIdF[cod];
+      const id = idDi[piattaMinuscola(sq)];
       const w = String(nome).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().split(/[\s]+/).filter(Boolean);
-      for (const k of [w.slice(-2).join("-"), w.slice(-1)[0]]) { const f = perSq[k] && perSq[k][id]; if (f) return f; }
+      const chiavi = [w.slice(-2).join("-"), w.slice(-1)[0]];
+      // 2) per cognome e squadra
+      if (id) for (const k of chiavi) { const f = perSq[k] && perSq[k][id]; if (f) return f; }
+      // 3) squadra coperta dall'archivio foto e cognome non ambiguo: la foto col solo cognome e' la sua
+      if (id && coperte.has(id)) for (const k of chiavi) { if (!ambigui.has(k) && fileFoto.has("foto-premium-" + k + ".png")) return "foto-premium-" + k + ".png"; }
       return "";
     };
     const g = Array.from(per.values()).map((x) => [x.n, x.sq, x.partite.size, Array.from(x.alias), fotoDi(x.n, x.sq)])
@@ -14711,6 +14760,7 @@ const AZIONI = {
     if (n) scriviArchivio();
     return { ok: true, riprova: n };
   },
+  "clip-rose-id": (p) => { if (p.avvia) giroRoseId().catch(() => {}); return { ok: true, stato: ROSE_ID }; },
   "clip-espn-rileggi": (p) => {
     if (p.avvia) giroRileggiEspn().catch(() => {});
     return { ok: true, stato: RILEGGI };
@@ -15849,6 +15899,8 @@ function avvio(opz) {
   setTimeout(() => { giroRileggiEspn().catch((e) => console.log("[clip] rileggi espn: " + e.message)); }, 90000).unref();
   // la Libreria e la ricerca pronte prima che qualcuno le chieda (senza bloccare)
   setTimeout(() => { giroQnapFile().catch(() => {}); }, 5000).unref();
+  // i codici dei giocatori per le foto (una volta per partita, gratis, piano)
+  setTimeout(() => { giroRoseId().catch((e) => console.log("[clip] rose con i codici: " + e.message)); }, 150000).unref();
   setTimeout(() => { if (!global.__TAB_CACHE && !CERCA_CACHE_IN_CORSO) CERCA_CACHE_IN_CORSO = costruisciCercaCache().catch(() => {}).finally(() => { CERCA_CACHE_IN_CORSO = null; }); }, 60000).unref();
   setTimeout(() => { try { appuntiGemelli(); } catch (e) { console.log("[clip] appunti gemelli: " + e.message); } }, 40000).unref();
   setTimeout(() => {
