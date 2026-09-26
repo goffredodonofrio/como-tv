@@ -11399,6 +11399,8 @@ function leggiEspn() {
   try { ESPN = JSON.parse(fs.readFileSync(fileEspn(), "utf8")) || {}; } catch (e) { ESPN = {}; }
   // i secondi del recupero anche per le partite gia' lette (vedi recuperoAlSecondo)
   Object.keys(ESPN).forEach((rec) => { try { recuperoAlSecondo(ESPN[rec]); } catch (e) {} });
+  // le pause per infortunio lette come VAR prima del 26/09/2026: fuori dalla cronaca
+  Object.keys(ESPN).forEach((rec) => { const e = ESPN[rec]; if (e && Array.isArray(e.gamecast)) e.gamecast = e.gamecast.filter((y) => !/^delay (in match|over)/i.test(String(y.testo || ""))); });
   try {
     const r = JSON.parse(fs.readFileSync(fileRitardi(), "utf8")) || {};
     // il file vecchio era solo la tabella per persona
@@ -12306,7 +12308,9 @@ const TIPI_GAMECAST = [
   [/corner/i,                            "Angolo",        3],
   [/wins a free kick/i,                  "Punizione",     2],
   [/^foul by|hand ball/i,                "Fallo",         1],
-  [/delay|var|review/i,                  "VAR",           4],
+  // "Delay in match because of an injury" / "Delay over" sono pause, non VAR (26/09/2026)
+  [/^delay (in match|over)/i,            "Pausa",         1],
+  [/\bvar\b|video assistant|review/i,    "VAR",           4],
   [/first half (begins|ends)|second half (begins|ends)|match ends/i, "Tempo", 1]
 ];
 function tipoGamecast(testo, tipoEspn) {
@@ -12630,13 +12634,15 @@ function latiTabellino(r, out) {
   // le giocate ESPN con la loro squadra
   const esp = [];
   (e.eventi || []).forEach((y) => { const l = latoNome(y.squadra) || dellaRosa(y.giocatore); if (l) esp.push({ min: (y.min || 0) + (y.stopp || 0), c: cat(y.tipo), l }); });
-  (e.gamecast || []).forEach((y) => { const l = traParentesi(y.testo) || dellaRosa(y.giocatore); if (l) esp.push({ min: (y.min || 0) + (y.stopp || 0), c: cat(y.tipo + " " + y.testo), l }); });
+  // prima il tipo, poi il testo: "saved in the centre of the goal" e' una parata, non un gol
+  (e.gamecast || []).forEach((y) => { const l = traParentesi(y.testo) || dellaRosa(y.giocatore); if (l) esp.push({ min: (y.min || 0) + (y.stopp || 0), c: cat(y.tipo) || cat(y.testo), l }); });
   out.righe.forEach((x) => {
     let l = latoNome(x.squadra) || dellaRosa(x.giocatore) || traParentesi(x.titolo) || traParentesi(x.dettaglio);
     if (!l) {
       const m = minDi(x.minuto), c = cat((x.gol ? "gol " : "") + (x.tag || x.tipo || ""));
       if (m !== null && c) {
-        const lati = new Set(esp.filter((y) => y.c === c && Math.abs(y.min - m) <= 1).map((y) => y.l));
+        // i gol sono pochi e inconfondibili: tre minuti (il 90' degli appunti e' il 90'+2 di ESPN)
+        const lati = new Set(esp.filter((y) => y.c === c && Math.abs(y.min - m) <= (c === "gol" ? 3 : 1)).map((y) => y.l));
         if (lati.size === 1) l = [...lati][0];
       }
     }
