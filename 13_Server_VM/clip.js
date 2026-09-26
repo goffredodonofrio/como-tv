@@ -12238,6 +12238,76 @@ function sommarioRaccolta(r) {
     partite: new Set(az.map((x) => x.rec || x.partita)).size, gol: az.filter((x) => x.gol || x.ruolo === "gol").length,
     prima: az[0] ? { rec: az[0].rec, reg: az[0].reg || "", t: az[0].t, dentroFile: az[0].dentroFile, chiave: az[0].chiave || "" } : null };
 }
+// ── LE RACCOLTE IN REGIA (26/09/2026) ──
+// Goffredo: "durante i live trovare delle macchie, anche grezze, e mandarle:
+// si parla dei pali di Nico Paz e glieli mando". Ogni azione diventa un pezzo
+// corto (8 s prima, 10 dopo) tagliato IN COPIA dal file della NAS: niente
+// ricodifica, perche' sulla VM di oggi ricodificare costa 36 s ogni 18 s di
+// video, mentre la copia fa sei pali in meno di un minuto (misurato il 26/09).
+// I pezzi si uniscono in un MP4 solo, servito da /clip/_clip/: lo stesso
+// indirizzo delle clip della Diretta, che il playout sa gia' suonare. Se i
+// file non si somigliano (misura, cadenza, codifica, audio) la copia non si
+// puo' unire: allora, e solo allora, si ricodifica.
+const REGIA_LAVORI = {};
+function testaFile(f) {
+  return new Promise((ok) => {
+    execFile(FFPROBE, ["-v", "error", "-show_entries", "stream=codec_type,codec_name,profile,width,height,r_frame_rate,channels,sample_rate", "-of", "json", f], { timeout: 30000 }, (err, out) => {
+      try { const st = JSON.parse(out).streams || []; ok(st.map((x) => [x.codec_type, x.codec_name, x.profile, x.width, x.height, x.r_frame_rate, x.channels, x.sample_rate].join("/")).join("|")); } catch (e) { ok(""); }
+    });
+  });
+}
+function ffmpegFa(args, quanto) {
+  return new Promise((ok, no) => {
+    const c = spawn(FFMPEG, ["-v", "error", "-y"].concat(args), { stdio: ["ignore", "ignore", "pipe"] });
+    let err = ""; c.stderr.on("data", (d) => { err += d; if (err.length > 4000) err = err.slice(-4000); });
+    const t = setTimeout(() => { try { c.kill("SIGKILL"); } catch (e) {} }, quanto || 300000);
+    c.on("close", (code) => { clearTimeout(t); code === 0 ? ok() : no(new Error((err.trim().split("\n").pop() || "ffmpeg " + code).slice(0, 200))); });
+  });
+}
+async function lavoroRegia(L, pezzi) {
+  const cart = path.join(DIR, CARTELLA_CLIP), tmp = [];
+  try {
+    for (const [i, x] of pezzi.entries()) {
+      const f = path.join(cart, L.id + "-" + i + ".mp4");
+      await ffmpegFa(["-ss", String(Math.max(0, x.da)), "-i", x.file, "-t", String(x.dur), "-map", "0:v:0", "-map", "0:a:0?", "-c", "copy", "-avoid_negative_ts", "make_zero", f], 120000);
+      tmp.push(f); L.fatti = i + 1;
+    }
+    const firme = await Promise.all(tmp.map(testaFile));
+    const uguali = firme.every((x) => x && x === firme[0]);
+    const fine = path.join(cart, L.id + ".mp4");
+    L.fase = uguali ? "unisco" : "ricodifico";
+    if (uguali) {
+      const lista = path.join(cart, L.id + ".txt");
+      fs.writeFileSync(lista, tmp.map((f) => "file '" + f + "'").join("\n") + "\n"); tmp.push(lista);
+      await ffmpegFa(["-f", "concat", "-safe", "0", "-i", lista, "-c", "copy", "-movflags", "+faststart", fine], 120000);
+    } else {
+      // file diversi: tutto a 1080p50 con l'audio in stereo, poi unito
+      const ing = [], fil = [];
+      tmp.forEach((f, i) => { ing.push("-i", f); fil.push("[" + i + ":v:0]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=50,setsar=1,format=yuv420p[v" + i + "];[" + i + ":a:0]aformat=sample_rates=48000:channel_layouts=stereo[a" + i + "]"); });
+      const fc = fil.join(";") + ";" + tmp.map((f, i) => "[v" + i + "][a" + i + "]").join("") + "concat=n=" + tmp.length + ":v=1:a=1[v][a]";
+      await ffmpegFa(ing.concat(["-filter_complex", fc, "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", fine]), 1800000);
+    }
+    try { await ffmpegFa(["-ss", String(Math.min(8, pezzi[0].dur / 2)), "-i", fine, "-frames:v", "1", "-vf", "scale=480:-1", path.join(cart, L.id + ".jpg")], 30000); } catch (e) {}
+    const st = fs.statSync(fine);
+    L.peso = st.size; L.durata = pezzi.reduce((n, x) => n + x.dur, 0);
+    L.file = "/clip/" + CARTELLA_CLIP + "/" + L.id + ".mp4"; L.anteprima = "/clip/" + CARTELLA_CLIP + "/" + L.id + ".jpg";
+    L.stato = "pronto"; L.finito = Date.now();
+    console.log("[clip] alla regia: \"" + L.titolo + "\" " + pezzi.length + " pezzi, " + Math.round((L.finito - L.creato) / 1000) + " s" + (uguali ? "" : " (ricodificato)"));
+  } catch (e) {
+    L.stato = "errore"; L.errore = e.message; console.log("[clip] alla regia, errore: " + e.message);
+  } finally {
+    tmp.forEach((f) => { try { fs.unlinkSync(f); } catch (e) {} });
+  }
+}
+// i filmati per la regia servono il giorno stesso: dopo una settimana si tolgono
+function puliziaRegia() {
+  try {
+    const cart = path.join(DIR, CARTELLA_CLIP), vecchio = Date.now() - 7 * 86400000;
+    fs.readdirSync(cart).filter((n) => /^rr[A-Za-z0-9]+(-\d+)?\.(mp4|jpg|txt)$/.test(n)).forEach((n) => {
+      const f = path.join(cart, n); try { if (fs.statSync(f).mtimeMs < vecchio) fs.unlinkSync(f); } catch (e) {}
+    });
+  } catch (e) {}
+}
 const ROSE_ID = { fatte: 0, fallite: 0, totale: 0, inCorso: false };
 async function giroRoseId() {
   if (ROSE_ID.inCorso) return; ROSE_ID.inCorso = true;
@@ -15082,6 +15152,23 @@ const AZIONI = {
     raccolte()[id] = r; delete RACCOLTE_VIA[id]; scriviRaccolte();
     return { ok: true, raccolta: sommarioRaccolta(r) };
   },
+  // la raccolta (o le azioni scelte) come UN filmato grezzo per la regia
+  "clip-raccolta-regia": (p) => {
+    const prima = num(p.prima, 2, 30, 8), dopo = num(p.dopo, 2, 40, 10);
+    const pezzi = [], saltate = [];
+    (Array.isArray(p.pezzi) ? p.pezzi : []).slice(0, 40).forEach((x) => {
+      const file = copiaInCasa(x && x.chiave);
+      if (!file || typeof x.secFile !== "number") { saltate.push(String((x && (x.partita || x.titolo)) || "?").slice(0, 80)); return; }
+      pezzi.push({ file, da: x.secFile - prima, dur: prima + dopo });
+    });
+    if (!pezzi.length) throw new Error("nessuna di queste azioni e' ancora sulla NAS");
+    const L = { id: nuovoId("rr"), titolo: String(p.titolo || "Raccolta").slice(0, 80), stato: "lavora", fase: "taglio", fatti: 0, tot: pezzi.length, saltate, creato: Date.now() };
+    REGIA_LAVORI[L.id] = L;
+    Object.keys(REGIA_LAVORI).forEach((k) => { if (Date.now() - REGIA_LAVORI[k].creato > 86400000) delete REGIA_LAVORI[k]; });
+    SFONDO.run(true, () => lavoroRegia(L, pezzi));
+    return { ok: true, lavoro: L };
+  },
+  "clip-raccolta-regia-stato": (p) => { const L = REGIA_LAVORI[String(p.id || "")]; if (!L) throw new Error("lavoro sconosciuto"); return { ok: true, lavoro: L }; },
   // ══════════ MONTA QUESTI (26/09/2026) ══════════
   //  Dai risultati della ricerca si scelgono le azioni — di partite diverse —
   //  e diventano UNA sequenza: ogni pezzo porta la sua registrazione (x.reg,
@@ -16111,6 +16198,7 @@ function avvio(opz) {
   setTimeout(() => { giroQnapFile().catch(() => {}); }, 5000).unref();
   // i codici dei giocatori per le foto (una volta per partita, gratis, piano)
   setTimeout(() => { giroRoseId().catch((e) => console.log("[clip] rose con i codici: " + e.message)); }, 150000).unref();
+  setTimeout(puliziaRegia, 20000).unref(); setInterval(puliziaRegia, 6 * 3600000).unref();
   setTimeout(() => { if (!global.__TAB_CACHE && !CERCA_CACHE_IN_CORSO) CERCA_CACHE_IN_CORSO = costruisciCercaCache().catch(() => {}).finally(() => { CERCA_CACHE_IN_CORSO = null; }); }, 60000).unref();
   setTimeout(() => { try { appuntiGemelli(); } catch (e) { console.log("[clip] appunti gemelli: " + e.message); } }, 40000).unref();
   setTimeout(() => {
