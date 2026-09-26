@@ -15361,6 +15361,64 @@ const AZIONI = {
   // (foto-premium-paz), ma chi cerca scrive "nico paz". Da qui la pagina
   // prende, per ogni cognome, i nomi interi e le squadre del vocabolario,
   // e per ogni squadra il suo allenatore: cosi' la ricerca li trova.
+  // ══════════ L'INDICE DEL MAGAZZINO (26/09/2026) ══════════
+  //  Il Magazzino diventa il posto delle immagini, con la ricerca come nel
+  //  MAM: giocatori, squadre, tipi. Qui si dice di CHI e' ogni immagine, senza
+  //  indovinare dal cognome dove si puo' fare meglio:
+  //   - foto premium: codice ESPN (foto-intestazioni.json perId) -> giocatori.json
+  //   - premium senza codice: cognome + squadra (perSq)
+  //   - stemma-espn-<id>: la squadra con quel codice
+  //   - maglia-<squadra>-..., foto-premium-coach-<squadra>: la squadra dal nome
+  //  E le rose (giocatori.json perSq), per dire quali foto mancano.
+  "clip-magazzino-indice": () => {
+    const c0 = global.__IND_MAG; if (c0 && Date.now() - c0.quando < 600000) return c0.esito;
+    const dirV = path.dirname(STEMMI_DIR);
+    const leggi = (n) => { try { return JSON.parse(fs.readFileSync(path.join(dirV, n), "utf8")); } catch (e) { return {}; } };
+    const fi = leggi("foto-intestazioni.json"), gj = leggi("giocatori.json"), al = leggi("allenatori.json");
+    // (piattaMinuscola toglie anche spazi e trattini: "Aston Villa" diventava "astonvilla")
+    const slug = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    // le squadre: codice ESPN -> [nome, lega, stemma]
+    const squadre = {};
+    Object.keys(CATALOGO.squadre || {}).forEach((id) => { const x = CATALOGO.squadre[id]; squadre[id] = [(x.nomi || [])[0] || id, (x.leghe || [])[0] || "", x.logo || ""]; });
+    const giocatori = {};
+    Object.keys(gj.perId || {}).forEach((id) => { const x = gj.perId[id]; if (!x) return;
+      giocatori[id] = [x.completo || ((x.nome || "") + " " + (x.cognome || "")).trim(), String(x.squadra_id || ""), x.ruolo_breve || "", x.num || ""];
+      if (x.squadra_id && !squadre[x.squadra_id]) squadre[x.squadra_id] = [x.squadra || x.squadra_id, x.lega || "", ""];
+      else if (x.squadra_id && !squadre[x.squadra_id][1] && x.lega) squadre[x.squadra_id][1] = x.lega; });
+    // dal nome della squadra (in ogni forma) al codice
+    const perSlug = {};
+    Object.keys(squadre).forEach((id) => { perSlug[slug(squadre[id][0])] = id; ((CATALOGO.squadre[id] || {}).nomi || []).forEach((n) => { if (!perSlug[slug(n)]) perSlug[slug(n)] = id; }); });
+    const squadraDaSlug = (t) => {
+      if (perSlug[t]) return perSlug[t];
+      // "sheffield-united" contro "sheffield-united-fc": il nome piu' lungo che comincia uguale
+      const k = Object.keys(perSlug).filter((z) => z.indexOf(t + "-") === 0 || t.indexOf(z + "-") === 0).sort((u, v) => u.length - v.length)[0];
+      return k ? perSlug[k] : "";
+    };
+    const rel = {}, premium = {};
+    const metti = (chiave, chi, sq) => { const r = rel[chiave] || (rel[chiave] = { p: [], s: [] }); if (chi && r.p.indexOf(chi) < 0) r.p.push(chi); if (sq && r.s.indexOf(sq) < 0) r.s.push(sq); };
+    Object.keys(fi.perId || {}).forEach((id) => { const f = fi.perId[id], k = String(f).replace(/\.[a-z]+$/, ""); premium[id] = k; metti(k, id, (giocatori[id] || [])[1] || ""); });
+    Object.keys(fi.perSq || {}).forEach((cg) => Object.keys(fi.perSq[cg] || {}).forEach((sq) => {
+      const k = String(fi.perSq[cg][sq]).replace(/\.[a-z]+$/, "");
+      if (rel[k] && rel[k].p.length) { metti(k, "", sq); return; }
+      // chi e': nella rosa di quella squadra, il cognome che torna
+      const chi = ((gj.perSq || {})[sq] || []).filter((id) => slug(((gj.perId || {})[id] || {}).cognome || "") === cg || slug(((gj.perId || {})[id] || {}).completo || "").endsWith("-" + cg));
+      metti(k, chi.length === 1 ? chi[0] : "", sq);
+      if (chi.length === 1 && !premium[chi[0]]) premium[chi[0]] = k;
+    }));
+    const allen = {};
+    Object.keys(al.perId || {}).forEach((id) => { const x = al.perId[id]; if (x && x.squadra) allen[slug(x.squadra)] = ((x.nome || "") + " " + (x.cognome || "")).trim(); });
+    let file = []; try { file = fs.readdirSync(STEMMI_DIR); } catch (e) {}
+    file.forEach((f) => {
+      const k = f.replace(/\.[a-z0-9]+$/i, ""); let m;
+      if ((m = /^stemma-espn-(\d+)$/.exec(k))) metti(k, "", m[1]);
+      else if ((m = /^maglia-(.+?)-(casa|trasferta|terza|quarta|portiere|portiere-casa|portiere-trasferta|speciale|\d+)$/.exec(k))) metti(k, "", squadraDaSlug(m[1]));
+      else if ((m = /^foto-(?:premium-)?coach-(.+)$/.exec(k))) { const sq = squadraDaSlug(m[1]); metti(k, "", sq); if (allen[m[1]]) rel[k].coach = allen[m[1]]; }
+    });
+    Object.keys(rel).forEach((k) => { if (!rel[k].p.length) delete rel[k].p; if (!rel[k].s.length) delete rel[k].s; });
+    const esito = { ok: true, rel, giocatori, squadre, rose: gj.perSq || {}, premium, generato: gj.generato || "" };
+    global.__IND_MAG = { quando: Date.now(), esito };
+    return esito;
+  },
   "clip-foto-nomi": () => {
     const perCognome = {};
     Object.keys((VOCABOLARIO && VOCABOLARIO.squadre) || {}).forEach((sq) => {
