@@ -7990,7 +7990,10 @@ function parlatoLocaleInCoda(quante) {
     // ANCHE L'ARCHIVIO. Erano escluse perche' l'audio veniva da S3 e due ore
     // di partita erano due ore di traffico da pagare. Dal magazzino di casa
     // non costa niente, e sono le partite che nessuno ha mai trascritto.
-    const via = r.arch ? viaArchivio(r, 0) : sorgenteAudio(r);
+    // una partita ancora su S3 non si apre (e' staccato): prima faceva cadere
+    // il ponte ogni mezz'ora, perche' l'errore usciva da un timer (26/09)
+    let via = null;
+    try { via = r.arch ? viaArchivio(r, 0) : sorgenteAudio(r); } catch (e) { return; }
     if (!via || /^https?:/i.test(via)) return;      // niente che si paghi a consumo
     // la lingua scritta nel nome basta; quella da annusare la decide la coda
     // quando ci arriva, perche' costa dodici secondi di macchina
@@ -8006,7 +8009,14 @@ function parlatoLocaleInCoda(quante) {
   giraLaCoda();
   return n;
 }
-setInterval(() => { const h = new Date().getHours(); if (h >= 1 && h < 6) parlatoLocaleInCoda(); }, 1800000);
+// LA TRASCRIZIONE DI NOTTE ASPETTA LA COPIA. Goffredo: "quello lo facciamo
+// quando tutte le partite sono sul nas". Whisper tiene i due core per ore, e
+// il giro della casa (cronometro, tabellone, boati, gol) ha la precedenza.
+setInterval(async () => {
+  const h = new Date().getHours(); if (h < 1 || h >= 6) return;
+  try { const c = await statoCopia(); if (!(c && c.partite && c.partiteCasa >= c.partite)) return; } catch (e) { return; }
+  try { parlatoLocaleInCoda(); } catch (e) { console.log("[clip] trascrizione di notte: " + e.message); }
+}, 1800000);
 let vocePid = 0, voceSpenta = false;
 // SI DEVE POTER DIRE BASTA. Whisper gira staccato dal servizio apposta —
 // cosi' due ore di lavoro sopravvivono a un riavvio — ma questo vuol dire
