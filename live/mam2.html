@@ -71,7 +71,9 @@
   .lib-cerca input:focus{outline:none;border-color:var(--oro);}
   .lib-cerca .lu{position:absolute;left:18px;top:50%;transform:translateY(-50%);opacity:.6;font-size:18px;pointer-events:none;}
   /* LA BARRA A GETTONI (26/09/2026): i gettoni stanno dentro il campo, prima del testo */
-  .lib-cerca.campo-g{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-height:54px;padding:7px 14px 7px 50px;box-sizing:border-box;
+  /* flex:0 0 auto: la Libreria e' una colonna ad altezza fissa, e la barra si
+     schiacciava a 54 px lasciando il campo, andato a capo, fuori dal bordo */
+  .lib-cerca.campo-g{flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-height:54px;padding:7px 14px 7px 50px;box-sizing:border-box;
     border-radius:12px;border:1px solid var(--riga2);background:rgba(245,241,230,.06);cursor:text;}
   .lib-cerca.campo-g:focus-within{border-color:var(--oro);}
   .lib-cerca.campo-g .lu{top:27px;}
@@ -106,19 +108,21 @@
   .sg{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;align-items:center;}
   .sg-foto{grid-row:span 1;position:relative;width:84px;height:84px;border-radius:50%;background:radial-gradient(circle at 50% 35%,#E3C271,#9c7a2f);
     color:#10131c;display:grid;place-items:center;font:800 26px/1 'Mazzard',sans-serif;overflow:hidden;box-shadow:0 0 0 2px rgba(201,162,75,.55),0 8px 22px rgba(0,0,0,.35);}
-  .sg-foto img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top;}
+  /* la foto e' scontornata: senza il suo fondo si vedevano le iniziali dietro */
+  .sg-foto img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top;background:radial-gradient(circle at 50% 35%,#E3C271,#9c7a2f);}
   .sg-testa{min-width:0;display:flex;flex-direction:column;gap:5px;}
   .sg-nome{font:800 22px/1.05 'Mazzard',sans-serif;color:var(--ivory);letter-spacing:.01em;text-wrap:balance;}
   .sg-sq{display:flex;align-items:center;gap:7px;font:600 13px/1.2 'DM Sans',sans-serif;color:var(--ivory2);}
   .sg-stemma{width:20px;height:20px;object-fit:contain;}
   .sg-riga{font-size:12px;color:var(--fumo);line-height:1.4;} .sg-riga b{color:var(--ivory);font-variant-numeric:tabular-nums;}
   .sg-tessere{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;margin-top:10px;}
-  .sg-t{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:9px 10px 8px;border-radius:9px;border:1px solid var(--riga2);
-    background:rgba(245,241,230,.04);color:var(--ivory);cursor:pointer;text-align:left;position:relative;}
+  .sg-t{display:flex;flex-direction:column;align-items:stretch;gap:4px;padding:9px 10px 8px;border-radius:9px;border:1px solid var(--riga2);
+    background:rgba(245,241,230,.04);color:var(--ivory);cursor:pointer;text-align:left;position:relative;min-width:0;overflow:hidden;}
   .sg-t b{font:800 22px/1 'Mazzard',sans-serif;font-variant-numeric:tabular-nums;color:var(--ivory);}
-  .sg-t span{display:flex;align-items:flex-start;gap:5px;font:700 9.5px/1.2 'Mazzard',sans-serif;letter-spacing:.1em;text-transform:uppercase;color:var(--ivory2);
-    min-width:0;overflow-wrap:anywhere;}
-  .sg-t span::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--c);flex:0 0 7px;margin-top:2px;}
+  /* testo semplice (non flex): cosi' va a capo e, se una parola non ci sta, si sillaba */
+  .sg-t span{display:block;font:700 9.5px/1.25 'Mazzard',sans-serif;letter-spacing:.07em;text-transform:uppercase;color:var(--ivory2);
+    min-width:0;white-space:normal;overflow-wrap:break-word;hyphens:auto;-webkit-hyphens:auto;}
+  .sg-t span::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--c);margin:0 5px 1px 0;vertical-align:middle;}
   .sg-t:hover,.sg-t:focus-visible{border-color:rgba(201,162,75,.6);outline:none;}
   .sg-t.on{border-color:#C9A24B;background:rgba(201,162,75,.16);}
   .sg-t.on::after{content:"";position:absolute;top:8px;right:8px;width:14px;height:14px;border-radius:50%;background:#C9A24B center/10px no-repeat
@@ -2010,7 +2014,7 @@
     var foto = '<span class="sg-foto">' + esc(ini) + (g.img ? '<img src="/loghi/' + esc(g.img) + '" alt="" onerror="this.remove()">' : '') + '</span>';
     var sel = function(t, v){ return modo === "ris" ? scelti(t).indexOf(v) >= 0 : !!(SCHEDA_SEL[t] || {})[v]; };
     var conta = modo === "ris" ? (contaAz || {}) : ((info && info.conta) || {});
-    var h = '<div class="sg sg-' + modo + '">' + foto + '<div class="sg-testa"><div class="sg-nome">' + esc(g.eti || g.v) + '</div>' +
+    var h = '<div class="sg sg-modo-' + modo + '">' + foto + '<div class="sg-testa"><div class="sg-nome">' + esc(g.eti || g.v) + '</div>' +
       '<div class="sg-sq">' + stemmaSquadra(g.sq) + esc(g.sq || "") + '</div>' +
       (info ? '<div class="sg-riga"><b>' + info.partite + '</b> ' + (info.partite === 1 ? "partita" : "partite") + ' nell’archivio' +
         (info.inCasa ? ' · <b>' + info.inCasa + '</b> sulla NAS' : '') + (info.ultima ? ' · ultima: ' + esc(info.ultima.partita) + ' ' + quando(info.ultima.quando) : '') + '</div>' : '<div class="sg-riga">…</div>') +
