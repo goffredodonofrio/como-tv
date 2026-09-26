@@ -3388,13 +3388,23 @@ function seqMia(p) {
 //  sessione, non della storia della partita.
 const PASSI = new Map();          // sequenza -> { indietro: [], avanti: [] }
 const QUANTI_PASSI = 60;
+// SI METTE DA PARTE SOLO IL MONTAGGIO (26/09/2026). La copia intera
+// rimetteva anche export, esportati, casa, titolo, prog: un ⌘Z dopo un
+// export faceva sparire il file appena uscito, o riportava "lavora" su un
+// export finito. Annulla riguarda la timeline e basta.
+const CAMPI_PASSO = ["pezzi", "audio", "grafiche", "libera", "tracce"];
+function fotoPasso(q) {
+  const o = {};
+  CAMPI_PASSO.forEach((k) => { if (k in q) o[k] = q[k]; });
+  return JSON.stringify(o);
+}
 
 function ricorda(q) {
   if (!q || !q.id) return;
   let p = PASSI.get(q.id);
   if (!p) { p = { indietro: [], avanti: [] }; PASSI.set(q.id, p); }
   if (GIRO_AZIONE && p.giro === GIRO_AZIONE) return;   // questo comando ha gia' il suo passo
-  const t = JSON.stringify(q);
+  const t = fotoPasso(q);
   // se e' identica all'ultima messa da parte, non e' un passo: e' lo stesso
   // punto. Senza questo controllo un comando che chiama due volte il gancio
   // costerebbe due ⌘Z per tornare indietro di una mossa sola.
@@ -3412,8 +3422,8 @@ function ricorda(q) {
 // parlare della stessa cosa
 function rimetti(q, testo) {
   const v = JSON.parse(testo);
-  Object.keys(q).forEach((k) => { if (!(k in v)) delete q[k]; });
-  Object.keys(v).forEach((k) => { q[k] = v[k]; });
+  // solo i campi del montaggio: il resto della sequenza resta com'e' adesso
+  CAMPI_PASSO.forEach((k) => { if (k in v) q[k] = v[k]; else delete q[k]; });
   return q;
 }
 
@@ -3448,7 +3458,7 @@ function annullaSeq(p, avanti) {
   const altra = avanti ? st.indietro : st.avanti;
   const passo = pila.pop();
   // il passo cambia pila ma resta lui: col suo nome e la sua ora
-  altra.push({ t: JSON.stringify(q), cosa: passo.cosa, quando: passo.quando });
+  altra.push({ t: fotoPasso(q), cosa: passo.cosa, quando: passo.quando });
   rimetti(q, passo.t);
   normalizzaSeq(q);
   segnaPezziLocali(q);
@@ -3655,12 +3665,24 @@ function audioSemplice(q) {
   normalizzaSeq(q);
   // con piu' di due canali la strada corta non c'e': ricopiare l'audio
   // com'e' vuol dire riportare fuori tutti i bus, e l'eco con loro
-  if (piuDiUnaCoppia(R.reg[q.reg])) return false;
+  // ...di qualunque partita la sequenza tocchi, non solo della sua (26/09/2026)
+  if (regDellaSeq(q).some((id) => piuDiUnaCoppia(R.reg[id]))) return false;
   const t = q.tracce || {};
   if ((t.A1 && (t.A1.muto || t.A1.gain)) ) return false;
   if (TRACCE_A.slice(1).some((n) => t[n] && t[n].solo)) return false;
   if (t.A1 && !t.A1.solo && TRACCE_A.some((n) => t[n] && t[n].solo)) return false;
-  return (q.audio || []).every((a) => a.legato && a.traccia === "A1" && !a.gain
+  // L'AUDIO TOLTO DEVE RESTARE MUTO (26/09/2026). Incollare in fretta si
+  // porta dietro il suono dentro il file del video: un pezzo di V1 senza il
+  // suo audio legato (buttato o scollegato e spostato) nell'export tornava a
+  // parlare. E a velocita' diversa da 1 il suono va steso con atempo, che
+  // c'e' solo nella strada del mix.
+  const pz = q.pezzi || [], au = q.audio || [];
+  if (pz.length && !au.length) return false;
+  if (pz.some((x) => (+x.velocita || 1) !== 1)) return false;
+  const legati = {};
+  au.forEach((a) => { if (a.legato) legati[a.legato] = true; });
+  if (pz.some((x) => (x.traccia || "V1") === "V1" && !legati[x.id])) return false;
+  return au.every((a) => a.legato && a.traccia === "A1" && !a.gain
                                    && !a.entra && !a.esce && !a.muto && !a.canale
                                    && !((a.volumi || []).length));
 }
@@ -3850,6 +3872,7 @@ function hlAudio(p) {
     const dur = dReg2 > 0 ? dReg2 : MAX_SECONDI;
     // trascinando il bordo sinistro il pezzo si accorcia in testa E si
     // sposta avanti, se no il suono scivolerebbe sotto le immagini
+    const L0 = a.fuori - a.dentro, d0 = a.dentro;
     if (p.dentro !== undefined) {
       const d = num(p.dentro, 0, dur, a.dentro);
       a.t0 = Math.max(0, a.t0 + (d - a.dentro));
@@ -3857,6 +3880,11 @@ function hlAudio(p) {
     }
     if (p.fuori !== undefined) a.fuori = num(p.fuori, 0, dur, a.fuori);
     if (a.fuori - a.dentro < 0.2) throw new Error("il pezzo audio diventerebbe vuoto");
+    // i punti del volume seguono l'inizio della clip (26/09/2026)
+    if ((a.volumi || []).length && (a.dentro !== d0 || a.fuori - a.dentro !== L0)) {
+      const v = ritagliaVolumi(a.volumi, a.dentro - d0, a.fuori - d0);
+      if (v.length) a.volumi = v; else delete a.volumi;
+    }
   } else if (azione === "togli") {
     q.audio = q.audio.filter((y) => y.id !== a.id);
   } else if (azione === "gain") {
@@ -3884,6 +3912,13 @@ function hlAudio(p) {
     if (!(t > a.t0 + 0.15 && t < fin - 0.15)) throw new Error("il taglio cadrebbe sul bordo del pezzo");
     const dopo = Object.assign({}, a, { id: nuovoId("a"), t0: t, dentro: a.dentro + (t - a.t0), entra: 0 });
     delete dopo.legato;
+    // la testa tiene i suoi punti del volume, la coda quelli dopo il taglio (26/09/2026)
+    if ((a.volumi || []).length) {
+      const oA = t - a.t0, LA = a.fuori - a.dentro;
+      const v1 = ritagliaVolumi(a.volumi, 0, oA), v2 = ritagliaVolumi(a.volumi, oA, LA);
+      if (v1.length) a.volumi = v1; else delete a.volumi;
+      if (v2.length) dopo.volumi = v2; else delete dopo.volumi;
+    }
     a.fuori = a.dentro + (t - a.t0);
     a.esce = 0;
     delete a.legato;
@@ -3970,6 +4005,39 @@ function hlElenco(p) {
   return { ok: true, seq: mie };
 }
 
+// IL PEZZO PIU' CORTO, uno solo per la lametta e per il ritocco
+// (26/09/2026): la lametta lasciava pezzi da 0,2 s che il ritocco, col suo
+// mezzo secondo, rifiutava poi in qualunque modifica.
+const MIN_PEZZO = 0.2;
+
+// I PUNTI DEL VOLUME di un tratto della clip [da, a), in secondi della
+// timeline dall'inizio della clip: quelli dentro si spostano a zero, e ai
+// due bordi si mette il valore che la linea aveva li', cosi' la forma non
+// cambia (prima del primo punto e dopo l'ultimo la linea sta ferma, come
+// in espressioneDi) (26/09/2026)
+function ritagliaVolumi(punti, da, a) {
+  const p = (punti || []).filter((k) => k && isFinite(k.t)).slice().sort((x, y) => x.t - y.t);
+  if (!p.length) return [];
+  const r3 = (n) => Math.round(n * 1000) / 1000, r2 = (n) => Math.round(n * 100) / 100;
+  const val = (t) => {
+    if (t <= p[0].t) return p[0].db || 0;
+    for (let i = 0; i + 1 < p.length; i++) {
+      const k0 = p[i], k1 = p[i + 1];
+      if (t <= k1.t) return k1.t - k0.t < 1e-6 ? (k1.db || 0)
+        : (k0.db || 0) + ((k1.db || 0) - (k0.db || 0)) * (t - k0.t) / (k1.t - k0.t);
+    }
+    return p[p.length - 1].db || 0;
+  };
+  const len = a - da;
+  if (!(len > 0)) return [];
+  const fuori = p.filter((k) => k.t > da + 0.001 && k.t < a - 0.001).map((k) => ({ t: r3(k.t - da), db: k.db || 0 }));
+  // un punto solo non disegna una linea (il mix lo ignora): si sposta e basta
+  if (p.length < 2) return fuori;
+  fuori.unshift({ t: 0, db: r2(val(da)) });
+  fuori.push({ t: r3(len), db: r2(val(a)) });
+  return fuori;
+}
+
 // ritocco di un pezzo: sposta l'entrata, l'uscita, il nome — o lo butta
 function hlPezzo(p) {
   const q = seqMia(p);
@@ -4000,14 +4068,73 @@ function hlPezzo(p) {
   //  2. E il controllo "il pezzo diventerebbe vuoto" arrivava DOPO aver
   //     gia' scritto i nuovi valori: l'errore usciva, ma il pezzo restava
   //     rotto. Adesso si calcola a parte e si scrive solo se regge.
-  const rPz = regDi(q, x);
-  const dReg = rPz ? (rPz.durata || durataRegistrata(rPz.id)) : 0;
-  const durata = dReg > 0 ? dReg : MAX_SECONDI;
-  let nDentro = x.dentro, nFuori = x.fuori;
-  if (p.dentro !== undefined) nDentro = num(p.dentro, 0, durata, x.dentro);
-  if (p.fuori !== undefined) nFuori = num(p.fuori, 0, durata, x.fuori);
-  if (nFuori - nDentro < 0.5) throw new Error("il pezzo diventerebbe vuoto: non c'e' piu' materiale da quella parte");
-  x.dentro = nDentro; x.fuori = nFuori;
+  // SOLO SE SI TOCCANO I BORDI (26/09/2026): il controllo della lunghezza
+  // girava anche per un nome, un colore o una velocita', e un pezzo corto
+  // nato dalla lametta non si poteva piu' ritoccare in niente.
+  if (p.dentro !== undefined || p.fuori !== undefined) {
+    // un file di casa finisce dove finisce IL FILE, non la partita:
+    // regDi ricadeva su q.reg e lasciava tirare il bordo oltre la coda
+    let dLim = 0;
+    if (x.media) { const mv = mediaVia(x); dLim = mv ? durataMedia(mv) : 0; }
+    else {
+      const rPz = regDi(q, x);
+      dLim = rPz ? (rPz.durata || durataRegistrata(rPz.id)) : 0;
+    }
+    const durata = dLim > 0 ? dLim : MAX_SECONDI;
+    const r3 = (n) => Math.round(n * 1000) / 1000;
+    // dentro e' un secondo della SORGENTE, fuori-dentro la lunghezza sulla
+    // timeline: la sorgente usata va da dentro a dentro+(fuori-dentro)*vel
+    const vel = +x.velocita || 1, L0 = x.fuori - x.dentro;
+    let nDentro = x.dentro, nFuori = x.fuori;
+    if (p.dentro !== undefined) nDentro = num(p.dentro, 0, durata, x.dentro);
+    if (p.fuori !== undefined) nFuori = num(p.fuori, 0, MAX_SECONDI, x.fuori);
+    // il bordo sinistro da solo: l'uscita nella sorgente resta dov'e' (a
+    // velocita' 1 e' fuori che non si muove, come prima)
+    let dT = 0;                        // di quanto si sposta l'inizio sulla timeline
+    if (p.dentro !== undefined && p.fuori === undefined) {
+      const fineSrc = x.dentro + L0 * vel;
+      dT = (nDentro - x.dentro) / vel;
+      // SEQUENZA LIBERA: allungando a sinistra non si passa sotto lo zero
+      // ne' sopra il pezzo di prima sulla stessa traccia
+      if (q.libera && dT < 0) {
+        const t0 = x.t0 || 0;
+        let minT0 = 0;
+        q.pezzi.forEach((y) => {
+          if (y === x || (y.traccia || "V1") !== (x.traccia || "V1")) return;
+          const fy = (y.t0 || 0) + Math.max(0, y.fuori - y.dentro);
+          if ((y.t0 || 0) < t0 && fy <= t0 + 0.02) minT0 = Math.max(minT0, fy);
+        });
+        dT = Math.min(0, Math.max(dT, minT0 - t0));
+        nDentro = Math.max(0, x.dentro + dT * vel);
+      }
+      nFuori = nDentro + (fineSrc - nDentro) / vel;
+    }
+    // la sorgente non va oltre la sua fine, a qualunque velocita'
+    nFuori = Math.min(nFuori, nDentro + Math.max(0, durata - nDentro) / vel);
+    // SEQUENZA LIBERA: allungando a destra ci si ferma sul pezzo dopo della
+    // stessa traccia. facciaPosto qui non va: sposta il pezzo trascinato
+    // su un bordo e fa scalare gli altri, e' il gesto di Sposta, non di un taglio
+    if (q.libera && p.dentro === undefined && nFuori - nDentro > L0) {
+      const t0 = x.t0 || 0;
+      let maxL = Infinity;
+      q.pezzi.forEach((y) => {
+        if (y === x || (y.traccia || "V1") !== (x.traccia || "V1")) return;
+        if ((y.t0 || 0) >= t0 + L0 - 0.02) maxL = Math.min(maxL, (y.t0 || 0) - t0);
+      });
+      if (nFuori - nDentro > maxL) nFuori = nDentro + Math.max(L0, maxL);
+    }
+    if (nFuori - nDentro < MIN_PEZZO) throw new Error("il pezzo diventerebbe vuoto: non c'e' piu' materiale da quella parte");
+    const L1 = nFuori - nDentro;
+    x.dentro = r3(nDentro); x.fuori = r3(nFuori);
+    if (q.libera && dT) x.t0 = r3(Math.max(0, (x.t0 || 0) + dT));
+    // i punti del volume sono secondi DENTRO la clip: se l'inizio si sposta,
+    // si spostano con lui, se no il boato abbassato finisce altrove
+    if (dT || Math.abs(L1 - L0) > 0.0005) (q.audio || []).forEach((a) => {
+      if (a.legato !== x.id || !(a.volumi || []).length) return;
+      const v = ritagliaVolumi(a.volumi, dT, dT + L1);
+      if (v.length) a.volumi = v; else delete a.volumi;
+    });
+  }
   if (p.titolo !== undefined) x.titolo = String(p.titolo).slice(0, 160);
   // LA VELOCITA'. Il posto che il pezzo occupa nel montato non cambia: e'
   // quanta azione ci entra dentro che cambia. A meta' velocita', in quattro
@@ -4254,7 +4381,7 @@ function salvaIlMontato(p) {
 // Chiede a inquadra.py dove guarderebbe lui. Legge dal pezzo gia' in casa
 // se c'e' (costa solo CPU), se no dal materiale della registrazione.
 async function proponiInquadratura(q, x, largo) {
-  const k = chiavePezzo(idRegDi(q, x), x.dentro, x.fuori);
+  const k = chiaveCasa(q, x);
   const casa = filePezzo(k);
   let via, da;
   if (fs.existsSync(casa)) { via = casa; da = scartoPezzo(k); }
@@ -4367,9 +4494,20 @@ function hlDividi(p) {
   if (i < 0) throw new Error("pezzo sconosciuto");
   const x = q.pezzi[i];
   const a = +p.a;
-  if (!(a > x.dentro + 0.2 && a < x.fuori - 0.2)) throw new Error("il taglio cadrebbe sul bordo del pezzo");
-  const nuovo = Object.assign({}, x, { id: nuovoId("p"), dentro: a, base: a, mano: true });
-  x.fuori = a; x.mano = true;
+  // "a" e' un secondo della SORGENTE (26/09/2026). Il pezzo usa la sorgente
+  // da dentro a dentro+(fuori-dentro)*vel e sulla timeline dura fuori-dentro:
+  // a velocita' diversa da 1 fare fuori=a e dentro=a spostava il taglio
+  // (e il resto del pezzo) di quanto il rallenty stende i tempi.
+  const vel = +x.velocita || 1, L = x.fuori - x.dentro;
+  const o = (a - x.dentro) / vel;     // dove cade il taglio sulla timeline, dall'inizio del pezzo
+  if (!(isFinite(o) && o > MIN_PEZZO && o < L - MIN_PEZZO)) throw new Error("il taglio cadrebbe sul bordo del pezzo");
+  const r3 = (n) => Math.round(n * 1000) / 1000;
+  const nuovo = Object.assign({}, x, { id: nuovoId("p"), dentro: r3(a), fuori: r3(a + (L - o)), base: r3(a), mano: true,
+                                       t0: r3((x.t0 || 0) + o) });   // in una libera la coda resta dov'era
+  // la transizione sta sullo stacco di prima, non sul taglio appena fatto:
+  // copiata sulla coda metteva una dissolvenza in mezzo all'azione (26/09/2026)
+  delete nuovo.transizione;
+  x.fuori = r3(x.dentro + o); x.mano = true;
   delete x.vivo;                      // la testa e' tua, la coda resta il vivo
   q.pezzi.splice(i + 1, 0, nuovo);
   // la lametta taglia anche l'audio, e la meta' nuova si porta dietro
@@ -4377,9 +4515,18 @@ function hlDividi(p) {
   normalizzaSeq(q);
   const suo = (q.audio || []).filter((y) => y.legato === x.id)[0];
   if (suo) {
-    q.audio.push(Object.assign({}, suo, { id: nuovoId("a"), legato: nuovo.id, entra: 0 }));
+    const coda = Object.assign({}, suo, { id: nuovoId("a"), legato: nuovo.id, entra: 0 });
+    // i punti del volume contano dall'inizio della clip: la testa tiene i
+    // suoi, la coda quelli dopo il taglio, riportati a zero (26/09/2026)
+    if ((suo.volumi || []).length) {
+      const v1 = ritagliaVolumi(suo.volumi, 0, o), v2 = ritagliaVolumi(suo.volumi, o, L);
+      if (v1.length) suo.volumi = v1; else delete suo.volumi;
+      if (v2.length) coda.volumi = v2; else delete coda.volumi;
+    }
+    q.audio.push(coda);
     suo.esce = 0;
   }
+  normalizzaSeq(q);
   scrivi(); annuncia(0, "clip");
   return { ok: true, seq: q, nuovo: nuovo.id };
 }
@@ -4591,6 +4738,16 @@ function chiavePezzo(reg, dentro, fuori) {
     .update(String(reg) + "|" + Number(dentro).toFixed(2) + "|" + Number(fuori).toFixed(2))
     .digest("hex").slice(0, 16);
 }
+// FIN DOVE VA PORTATO IN CASA UN PEZZO (26/09/2026). Un pezzo accelerato
+// legge (fuori-dentro)*vel secondi di sorgente: il file in casa tagliato a
+// "fuori" finiva prima, e l'export al doppio usciva monco. La fine entra
+// nella chiave, quindi i file vecchi troppo corti non vengono ripresi; a
+// velocita' <= 1 la chiave e' quella di sempre.
+function fuoriCasa(x) {
+  const v = +(x && x.velocita) || 1;
+  return v > 1 ? x.dentro + (x.fuori - x.dentro) * v : x.fuori;
+}
+function chiaveCasa(q, x) { return chiavePezzo(idRegDi(q, x), x.dentro, fuoriCasa(x)); }
 function filePezzo(k) { return path.join(cartellaPezzi(), k + ".mp4"); }
 function viaPezzo(k) { return "/clip/" + CARTELLA_HL + "/_pezzi/" + k + ".mp4"; }
 
@@ -4695,7 +4852,7 @@ function pezziDaScaricare(q) {
   const visti = {};
   return tutti.filter((x) => {
     if (mediaVia(x)) return false;          // ce l'ha gia' in casa: e' suo
-    const k = chiavePezzo(idRegDi(q, x), x.dentro, x.fuori);
+    const k = chiaveCasa(q, x);
     if (visti[k]) return false;
     visti[k] = true;
     return !fs.existsSync(filePezzo(k));
@@ -4725,7 +4882,9 @@ async function costruisciPezzi(q, avanti) {
     const usaIntegrale = !segs.length;
     const integrale = r.arch ? viaArchivio(r) : path.join(cartellaReg(r.id), "integrale.mp4");
     if (usaIntegrale && !r.arch && !fs.existsSync(integrale)) throw new Error("di \"" + (r.titolo || r.id) + "\" non c'e' piu' materiale");
-    const k = chiavePezzo(r.id, x.dentro, x.fuori);
+    const k = chiaveCasa(q, x);
+    // un pezzo accelerato legge piu' sorgente di fuori-dentro (26/09/2026)
+    const fx = fuoriCasa(x);
     const fuoriFile = filePezzo(k);
     const parziale = fuoriFile.replace(/\.mp4$/, "-parte.mp4");
     let ingresso, lista = null, scarto = 0;
@@ -4741,12 +4900,12 @@ async function costruisciPezzi(q, avanti) {
       // mezzo, senza un errore. Non sapere dove finisce vuol dire non
       // mettere un limite, non metterne uno a zero.
       const fineNota = (f.fine > x.dentro && isFinite(f.fine)) ? f.fine : Infinity;
-      const quanto = Math.min(x.fuori, fineNota) - x.dentro;
+      const quanto = Math.min(fx, fineNota) - x.dentro;
       const kf = await chiaveVicina(f.via, f.dentro);
       scarto = Math.max(0, f.dentro - kf);
       ingresso = ["-ss", String(kf), "-i", f.via, "-t", String(scarto + Math.max(0.2, quanto) + 0.2)];
     } else {
-      const scelti = segs.filter((sg) => sg.t0 + sg.dur > x.dentro && sg.t0 < x.fuori);
+      const scelti = segs.filter((sg) => sg.t0 + sg.dur > x.dentro && sg.t0 < fx);
       if (!scelti.length) return;
       lista = parziale.replace(/\.mp4$/, "") + ".txt";
       fs.writeFileSync(lista, scelti.map((sg) => "file '" + sg.file + "'").join("\n") + "\n");
@@ -4754,7 +4913,7 @@ async function costruisciPezzi(q, avanti) {
       const kf = await chiaveVicina(lista, da);      // sui segmenti la lista basta a ffprobe
       scarto = Math.max(0, da - kf);
       ingresso = ["-f", "concat", "-safe", "0", "-ss", String(kf), "-i", lista,
-                  "-t", String(x.fuori - scelti[0].t0 - kf + 0.2)];
+                  "-t", String(fx - scelti[0].t0 - kf + 0.2)];
     }
     const args = ["-hide_banner", "-loglevel", "error", "-nostdin"].concat(ingresso).concat([
       // le piste audio se le porta dietro tutte: il montaggio le vuole
@@ -4799,7 +4958,7 @@ function segnaPezziLocali(q) {
   (q.pezzi || []).forEach((x) => {
     const mio = mediaVia(x);
     if (mio) { x.locale = "/video/" + path.basename(mio); x.scarto = 0; quanti++; return; }
-    const k = chiavePezzo(idRegDi(q, x), x.dentro, x.fuori);
+    const k = chiaveCasa(q, x);
     if (fs.existsSync(filePezzo(k))) {
       x.locale = viaPezzo(k);
       x.scarto = scartoPezzo(k);        // di quanto il file comincia prima
@@ -4810,7 +4969,11 @@ function segnaPezziLocali(q) {
   // e per farlo sentire alla pagina serve il suo file, non quello del video
   (q.audio || []).forEach((a) => {
     const k = chiavePezzo(idRegDi(q, a), a.dentro, a.fuori);
-    if (fs.existsSync(filePezzo(k))) { a.locale = viaPezzo(k); a.scarto = scartoPezzo(k); }
+    // il legato suona dal file del suo video, che a velocita' > 1 ha la
+    // chiave lunga; l'onda resta sulla chiave di sempre (26/09/2026)
+    const suoP = a.legato ? (q.pezzi || []).filter((y) => y.id === a.legato)[0] : null;
+    const kc = suoP && !mediaVia(suoP) ? chiaveCasa(q, suoP) : k;
+    if (fs.existsSync(filePezzo(kc))) { a.locale = viaPezzo(kc); a.scarto = scartoPezzo(kc); }
     else { delete a.locale; delete a.scarto; }
     a.onda = fs.existsSync(path.join(cartellaOnde(), k + ".json"));
   });
@@ -4848,7 +5011,6 @@ async function hlInCasa(p) {
 //  effetto, e' quello che fa un mixer.
 function costruisciMix(q, iBase) {
   normalizzaSeq(q);
-  const canaliQui = quantiCanali(R.reg[q.reg]);
   const suona = tracceCheSuonano(q);
   const ingressi = [];
   const uscite = [];
@@ -4858,7 +5020,12 @@ function costruisciMix(q, iBase) {
     const t = (q.tracce && q.tracce[a.traccia]) || {};
     const suoP = a.legato ? (q.pezzi || []).filter((y) => y.id === a.legato)[0] : null;
     const mioA = mediaVia(suoP);
-    const k = chiavePezzo(idRegDi(q, suoP || a), a.dentro, a.fuori);
+    // OGNI PEZZO CON LA SUA PARTITA (26/09/2026): canali e materiale di
+    // riserva erano sempre quelli di q.reg, anche per un pezzo di un'altra
+    // partita in una gol collection
+    const rA = regDi(q, suoP || a);
+    const canaliQui = quantiCanali(rA);
+    const k = suoP ? chiaveCasa(q, suoP) : chiavePezzo(idRegDi(q, a), a.dentro, a.fuori);
     const casa = mioA || filePezzo(k);
     const dur = Math.max(0.05, a.fuori - a.dentro);
     // se il video sopra e' rallentato, il suo suono va steso insieme a lui:
@@ -4877,9 +5044,10 @@ function costruisciMix(q, iBase) {
       off = mioA ? a.dentro : scartoPezzo(k);
       ingressi.push("-ss", String(off), "-t", String(Math.max(0.05, dur * velA)), "-i", casa);
     } else {
-      const rq = R.reg[q.reg];
-      const f = rq && rq.arch ? fonteAl(rq, a.dentro)
-              : { via: path.join(cartellaReg(q.reg), "integrale.mp4"), dentro: a.dentro };
+      const rq = rA;
+      if (!rq) { saltati++; return; }
+      const f = rq.arch ? fonteAl(rq, a.dentro)
+              : { via: path.join(cartellaReg(rq.id), "integrale.mp4"), dentro: a.dentro };
       if (!f || !f.via || (!rq.arch && !fs.existsSync(f.via))) { saltati++; return; }
       ingressi.push("-ss", String(f.dentro), "-t", String(Math.max(0.05, dur * velA)), "-i", f.via);
     }
@@ -5086,13 +5254,13 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   // qualche minuto di macchina che un gol che comincia prima.
   if (veloce && base.some((x) => {
     if (mediaVia(x)) return (x.dentro || 0) > 0.04;
-    const k = chiavePezzo(idRegDi(q, x), x.dentro, x.fuori);
+    const k = chiaveCasa(q, x);
     return fs.existsSync(filePezzo(k)) && scartoPezzo(k) > 0.04;
   })) veloce = false;
   for (let i = 0; i < base.length; i++) {
     const x = base[i];
     const mio = mediaVia(x);
-    const k = chiavePezzo(idRegDi(q, x), x.dentro, x.fuori);
+    const k = chiaveCasa(q, x);
     const casa = mio || filePezzo(k);
     if (!fs.existsSync(casa)) continue;
     // il buco davanti a questo pezzo: nero, per la durata giusta
@@ -5309,7 +5477,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     // comparire il primo fotogramma del pezzo invece di quello giusto.
     {
       sopra.forEach((x, j) => {
-        const k2 = chiavePezzo(idRegDi(q, x), x.dentro, x.fuori);
+        const k2 = chiaveCasa(q, x);
         const casa2 = filePezzo(k2);
         if (!fs.existsSync(casa2)) return;
         const off2 = scartoPezzo(k2), dur2 = Math.max(0.2, x.fuori - x.dentro);
@@ -9939,7 +10107,7 @@ async function rifinisciGol(idSeq) {
     // cose: dove e' stato fatto il gol e dove il gioco riparte. Sul pezzo
     // gia' in casa costa solo CPU.
     let campo = [], base = 0;
-    const k2 = chiavePezzo(idRegDi(q, pz), pz.dentro, pz.fuori);
+    const k2 = chiaveCasa(q, pz);
     const casa = filePezzo(k2);
     if (fs.existsSync(casa)) {
       campo = await guardaIlCampo(casa, 0, 200, 1);
@@ -13654,18 +13822,20 @@ async function stratoPerFormato(g, formato) {
 }
 function hlGrafica(p) {
   const q = seqMia(p);
+  // PRIMA DI TOCCARLA, com'era (26/09/2026): il passo si prendeva dopo aver
+  // gia' cambiato la grafica, e ⌘Z rimetteva lo stato nuovo. Se il comando
+  // poi si rifiuta, il passo fantasma lo toglie azione().
+  toccataAMano(q);
   q.grafiche = q.grafiche || [];
   const durataSeq = q.pezzi.reduce((n, x) => n + (x.fuori - x.dentro), 0);
 
   if (p.togli) {
     const prima = q.grafiche.length;
-    q.grafiche = q.grafiche.filter((g) => {
-      if (g.id !== p.grafica) return true;
-      try { fs.unlinkSync(path.join(cartellaGrafiche(), g.id + ".png")); } catch (e) {}
-      Object.keys(g.varianti || {}).forEach((f) => { try { fs.unlinkSync(path.join(cartellaGrafiche(), g.varianti[f].id + ".png")); } catch (e) {} });
-      return false;
-    });
-    toccataAMano(q); scrivi(); annuncia(0, "clip");
+    // IL PNG RESTA SUL DISCO (26/09/2026): cancellarlo qui voleva dire che
+    // ⌘Z rimetteva in timeline una grafica senza immagine. Qualche file in
+    // piu' in _grafiche, che la pulizia delle uscite vede gia' come orfani.
+    q.grafiche = q.grafiche.filter((g) => g.id !== p.grafica);
+    scrivi(); annuncia(0, "clip");
     return { ok: true, seq: q, tolte: prima - q.grafiche.length };
   }
 
@@ -13692,7 +13862,7 @@ function hlGrafica(p) {
     g.fuori = dove;
     q.grafiche.push(g2);
     q.grafiche.sort((a, b) => a.dentro - b.dentro);
-    toccataAMano(q); scrivi(); annuncia(0, "clip");
+    scrivi(); annuncia(0, "clip");
     return { ok: true, seq: q, grafica: g2 };
   }
 
@@ -13703,7 +13873,7 @@ function hlGrafica(p) {
     if (p.fuori !== undefined) g.fuori = num(p.fuori, 0, durataSeq, g.fuori);
     if (p.nome !== undefined) g.nome = String(p.nome).slice(0, 120);
     if (g.fuori - g.dentro < 0.4) throw new Error("la grafica diventerebbe un lampo");
-    toccataAMano(q); scrivi(); annuncia(0, "clip");
+    scrivi(); annuncia(0, "clip");
     return { ok: true, seq: q };
   }
 
@@ -13726,13 +13896,12 @@ function hlGrafica(p) {
       g0.w = wN; g0.h = hN; g0.quando = Date.now();
     } else {
       g0.varianti = g0.varianti || {};
-      const vecchia = g0.varianti[fmt];
-      if (vecchia) { try { fs.unlinkSync(path.join(cartellaGrafiche(), vecchia.id + ".png")); } catch (e) {} }
+      // la versione vecchia non si cancella: ⌘Z la rimette (26/09/2026)
       const idv = nuovoId("g");
       fs.writeFileSync(path.join(cartellaGrafiche(), idv + ".png"), dati);
       g0.varianti[fmt] = { id: idv, w: wN, h: hN, file: "/clip/" + CARTELLA_HL + "/_grafiche/" + idv + ".png" };
     }
-    toccataAMano(q); scrivi(); annuncia(0, "clip");
+    scrivi(); annuncia(0, "clip");
     return { ok: true, seq: q, grafica: g0, formato: fmt, variante: true };
   }
   const id = nuovoId("g");
@@ -13746,7 +13915,7 @@ function hlGrafica(p) {
   if (g.fuori - g.dentro < 0.5) g.fuori = g.dentro + dur;
   q.grafiche.push(g);
   q.grafiche.sort((a, b) => a.dentro - b.dentro);
-  toccataAMano(q); scrivi(); annuncia(0, "clip");
+  scrivi(); annuncia(0, "clip");
   return { ok: true, seq: q, grafica: g };
 }
 
@@ -14076,7 +14245,7 @@ function uscite() {
         // intera mentre qualcuno sta montando.
         const vivi = {};
         Object.keys(R.seq).forEach((k2) => {
-          (R.seq[k2].pezzi || []).forEach((x) => { vivi[chiavePezzo(R.seq[k2].reg, x.dentro, x.fuori)] = true; });
+          (R.seq[k2].pezzi || []).forEach((x) => { vivi[chiaveCasa(R.seq[k2], x)] = true; });
         });
         let dentro2 = [];
         try { dentro2 = fs.readdirSync(via); } catch (e) { return; }
@@ -16098,6 +16267,9 @@ const AZIONI = {
   // un titolo: una grafica che si disegna da sola, nei font di Como TV
   "clip-hl-titolo": async (p) => {
     const q = seqMia(p);
+    // il passo prima di disegnare e di toccare le grafiche, e prima
+    // dell'attesa: dopo, GIRO_AZIONE puo' essere gia' di un altro (26/09/2026)
+    toccataAMano(q);
     const testo = String(p.testo || "").trim();
     if (!testo) throw new Error("scrivi il testo del titolo");
     q.grafiche = q.grafiche || [];
@@ -16112,7 +16284,7 @@ const AZIONI = {
                       titolo: { testo: testo, sopra: String(p.sopra || ""), stile: String(p.stile || "basso"), colore: p.colore ? String(p.colore) : "" },
                       quando: Date.now() });
     q.grafiche.sort((a, b) => a.dentro - b.dentro);
-    toccataAMano(q); scrivi(); annuncia(0, "clip");
+    scrivi(); annuncia(0, "clip");
     return { ok: true, seq: q, grafica: id };
   },
   "clip-hl-in-casa": hlInCasa,

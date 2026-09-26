@@ -793,6 +793,8 @@
   .srg-vuoto{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:18px;color:var(--fumo);font-size:12px;line-height:1.5;}
   .pan-browser{display:flex;flex-direction:column;overflow:hidden!important;}
   .bm-elenco{flex:1 1 auto;overflow:auto;min-height:0;}
+  /* il doppio clic apre nella Sorgente: non deve anche evidenziare il testo */
+  .bm-elenco,#pista{-webkit-user-select:none;user-select:none;}
   .bm-riga{display:grid;grid-template-columns:1fr auto;gap:1px 10px;padding:6px 10px;border-bottom:1px solid rgba(245,241,230,.04);cursor:default;border-left:3px solid transparent;}
   .bm-riga:hover{background:rgba(245,241,230,.04);}
   .bm-riga.sel{background:rgba(201,162,75,.13);border-left-color:var(--oro);}
@@ -3670,7 +3672,8 @@
       el("eTitolo").textContent = SEQ.titolo || "sequenza"; el("panProgNome").textContent = el("panTlNome").textContent = SEQ.titolo || "sequenza"; el("eMeta").textContent = (REGE.titolo || "") + " · " + PZ.length + " pezzi · " + tc(durSeq());
       briciole([REGE.titolo || "partita", SEQ.titolo || "sequenza"]);
       document.title = (SEQ.titolo || "sequenza") + " · MAM Como TV";
-      VE.src = BASE + REGE.via;
+      // una sequenza vuota ha il Programma nero, non il primo fotogramma della partita
+      if (PZ.length) VE.src = BASE + REGE.via;
       el("eAsset").onclick = vaiAllaPartita;
       LENTE = { a: 0, b: Math.max(10, durSeq()) };
       applicaFormato();
@@ -3691,6 +3694,12 @@
     // il conto nel pannello lo scriveva solo il giro delle uscite, ogni
     // quindici secondi: dopo un taglio restava indietro e sembrava rotto
     if (el("eInfo")) el("eInfo").textContent = PZ.length + " pezzi · " + tc(durSeq()) + (SEQ && SEQ.chi ? " · " + SEQ.chi : "");
+    // IL PROGRAMMA SEGUE LA SEQUENZA (26/09/2026): dopo il primo inserimento
+    // restava nero, e svuotata la sequenza mostrava ancora l'ultimo pezzo
+    if (VE) {
+      if (!PZ.length) { ORA.i = -1; if (VE.getAttribute("src")) { VE.pause(); VE.removeAttribute("src"); try { VE.load(); } catch (e) {} } }
+      else if (ORA.i < 0 || ORA.i >= PZ.length || !VE.getAttribute("src")) vaiA(Math.min(Math.max(ORA.i, 0), PZ.length - 1), 0, false);
+    }
     disegnaEditor(); }
   function disegnaEditor(){ disegnaBin(); disegnaTl(); if (typeof disegnaDestGrafica === "function") disegnaDestGrafica(); }
   function disegnaBin(){
@@ -4045,7 +4054,7 @@
       vc("Sequenza…", "", nuovaSequenza),
       { riga: 1 },
       { capo: "Progetto" },
-      vc("Apri progetto…", "cmd O", apriProgetto),
+      vc("Apri progetto…", "", apriProgetto),
       bt("Sposta in un altro progetto…", "", "eProg"),
       bt("Rinomina la sequenza…", "", "eRinomina"),
       vc("Elimina la sequenza…", "", eliminaSequenza),
@@ -4116,7 +4125,7 @@
       bt("Rimuovi l’inquadratura", "", "inqVia")
     ],
     sequenza: [
-      bt("Aggiungi modifica (taglierino)", "C", "eTaglia"),
+      bt("Aggiungi modifica (taglierino)", "cmd K", "eTaglia"),
       bt("Chiudi gli spazi vuoti", "", "eAttacca"),
       bt("Magnetismo", "S", "eMagnete"),
       { riga: 1 },
@@ -4395,6 +4404,76 @@
       .then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Diviso a " + tc(t) + "."); })
       .catch(function(er){ avviso("err", esc(er.message)); });
   }
+  // ── L'AUDIO DELL'ANTEPRIMA, con le stesse regole dell'export (clip.js, mix)
+  function tracciaSuona(n){
+    var tr = (SEQ && SEQ.tracce) || {}, soli = Object.keys(tr).filter(function(k){ return /^A/.test(k) && tr[k] && tr[k].solo; });
+    var t = tr[n || "A1"] || {};
+    return soli.length ? !!t.solo : !t.muto;
+  }
+  // il volume in lineare: guadagno (o punti) + traccia + dissolvenze. Sopra 0 dB
+  // un <video> non va: l'anteprima si ferma a 0, l'export alza davvero
+  function volumeAudio(a, t){
+    var tr = ((SEQ && SEQ.tracce) || {})[a.traccia || "A1"] || {}, rel = t - (a.t0 || 0), dur = a.fuori - a.dentro, db;
+    var pts = volumiDi(a);
+    if (pts.length >= 2) {
+      if (rel <= pts[0].t) db = pts[0].db || 0;
+      else if (rel >= pts[pts.length - 1].t) db = pts[pts.length - 1].db || 0;
+      else for (var k = 1; k < pts.length; k++) if (rel < pts[k].t) { var p0 = pts[k - 1], p1 = pts[k], f = (rel - p0.t) / Math.max(0.001, p1.t - p0.t); db = (p0.db || 0) + ((p1.db || 0) - (p0.db || 0)) * f; break; }
+    } else db = a.gain || 0;
+    var lin = Math.pow(10, ((db || 0) + (tr.gain || 0)) / 20);
+    if (a.entra > 0.01 && rel < a.entra) lin *= Math.max(0, rel / a.entra);
+    if (a.esce > 0.01 && rel > dur - a.esce) lin *= Math.max(0, (dur - rel) / a.esce);
+    return Math.max(0, Math.min(1, lin));
+  }
+  function sorgenteAudio(a){
+    var p = a.legato ? PZ.filter(function(z){ return z.id === a.legato; })[0] : null;
+    if (p && p.media) return BASE + "/video/" + encodeURIComponent(p.media);
+    var rid = a.reg || (p && p.reg) || (SEQ && SEQ.reg), r = rid ? (REGS[rid] || (REGE && REGE.id === rid ? REGE : null)) : REGE;
+    return r && r.via ? BASE + r.via : (REGE && REGE.via ? BASE + REGE.via : "");
+  }
+  var AE = null;
+  // i due monitor non suonano insieme, e il secondo lettore segue il Programma;
+  // il contesto dei VU-meter si riprende a ogni play (L, clic, trascinamento):
+  // se resta sospeso, il Programma va in silenzio
+  (function(){
+    var ve = el("videoE"), vs = el("videoS");
+    if (ve) {
+      ve.addEventListener("play", function(){ if (vs && !vs.paused) vs.pause(); if (VU_CTX && VU_CTX.state === "suspended") VU_CTX.resume().catch(function(){}); });
+      ["pause", "emptied", "seeking"].forEach(function(ev){ ve.addEventListener(ev, function(){ if (AE && !AE.paused && (ev !== "seeking" || ve.paused)) AE.pause(); }); });
+    }
+    if (vs && ve) vs.addEventListener("play", function(){ if (!ve.paused) ve.pause(); });
+  })();
+  // L'AUDIO CHE IL BROWSER NON SA LEGGERE (26/09/2026). Alcuni file
+  // (MultiCorder "BCK", AAC a 8 canali) hanno un audio che ne' Chrome ne'
+  // ffmpeg decodificano: il video va e il suono non c'e', senza un errore.
+  // Se dopo due secondi di play non e' arrivato un solo byte d'audio, si dice.
+  var AUDIO_ROTTO_DETTO = {};
+  ["videoE", "videoS"].forEach(function(id){
+    var v = el(id); if (!v || !("webkitAudioDecodedByteCount" in v)) return;
+    v.addEventListener("playing", function(){
+      var src = v.currentSrc || v.getAttribute("src") || "", b0 = v.webkitAudioDecodedByteCount;
+      if (!src || AUDIO_ROTTO_DETTO[src]) return;
+      setTimeout(function(){
+        if (v.paused || (v.currentSrc || v.getAttribute("src")) !== src || AUDIO_ROTTO_DETTO[src]) return;
+        if (v.webkitAudioDecodedByteCount === 0 && b0 === 0) {
+          AUDIO_ROTTO_DETTO[src] = 1;
+          avviso("warn", "<b>L\u2019audio di questo file non si riesce a leggere</b>: la codifica (spesso un AAC a 8 canali del registratore di scorta) non la decodifica ne\u2019 il browser ne\u2019 il ponte. Il video si vede, il suono no, e anche l\u2019export uscir\u00e0 muto. Se c\u2019\u00e8, usa un\u2019altra versione della partita.");
+        }
+      }, 2000);
+    });
+  });
+  function suonaAltro(a, t){
+    if (!a || !VE || VE.paused) { if (AE && !AE.paused) AE.pause(); return; }
+    if (!AE) { AE = document.createElement("audio"); AE.preload = "auto"; AE.style.display = "none"; document.body.appendChild(AE); }
+    var src = sorgenteAudio(a); if (!src) return;
+    var p = a.legato ? PZ.filter(function(z){ return z.id === a.legato; })[0] : null, v = (p && +p.velocita) || 1;
+    var dove = a.dentro + (t - (a.t0 || 0)) * v;
+    if (AE.getAttribute("src") !== src) { AE.setAttribute("src", src); AE.addEventListener("loadedmetadata", function una(){ AE.removeEventListener("loadedmetadata", una); try { AE.currentTime = dove; } catch (e) {} }); }
+    else if (Math.abs(AE.currentTime - dove) > 0.25) { try { AE.currentTime = dove; } catch (e) {} }
+    try { if (AE.playbackRate !== v) AE.playbackRate = v; } catch (e) {}
+    var vol = volumeAudio(a, t); if (Math.abs(AE.volume - vol) > 0.01) AE.volume = vol;
+    if (AE.paused) AE.play().catch(function(){});
+  }
   // ── I VU-METER. Senza, non si sa se il montato esce basso o in clip, e
   //    lo si scopre quando e' gia' online.
   var VU_CTX = null, VU_AN = null, VU_DATI = null;
@@ -4464,6 +4543,7 @@
     segnaMagnete(); avviso("ok", MAGNETE ? "Magnete acceso." : "Magnete spento.");
   });
   segnaMagnete();
+  var VAI_GEN = 0;
   function vaiA(i, dentroIlPezzo, riproduci){
     var x = PZ[i]; if (!x || !VE) return;
     ORA.i = i;
@@ -4477,11 +4557,18 @@
     var suaR = x.reg ? (REGS[x.reg] || null) : REGE;
     var sorg = x.media ? (BASE + "/video/" + encodeURIComponent(x.media))
              : (suaR && suaR.via ? BASE + suaR.via : (REGE ? BASE + REGE.via : ""));
+    // UNA SOLA ATTESA ALLA VOLTA (26/09/2026): due salti di fila fra partite
+    // diverse lasciavano in piedi l'ascoltatore del primo, che a file pronto
+    // riportava il monitor al secondo sbagliato. E un file nuovo riparte a
+    // velocita' 1: il rallentato va rimesso qui, se no si vede al 100%.
+    var gen = ++VAI_GEN;
     if (sorg && VE.getAttribute("src") !== sorg) {
       VE.setAttribute("src", sorg);
       VE.addEventListener("loadedmetadata", function una(){
         VE.removeEventListener("loadedmetadata", una);
+        if (gen !== VAI_GEN) return;
         try { VE.currentTime = t; } catch (e) {}
+        try { VE.playbackRate = v; } catch (e) {}
         if (riproduci) VE.play().catch(function(){});
       });
       ORA.i = i; disegnaBin(); return;
@@ -4501,8 +4588,18 @@
     var ts = tcf(t); if (ts !== ORAE) { ORAE = ts; el("eOra").firstChild.nodeValue = ts; if (el("eOraTl")) el("eOraTl").textContent = ts; }
     var gOra = GRAF.filter(function(g){ return t >= g.dentro && t < g.fuori; })[0], img = el("grafE");
     if (gOra) { var src = urlGrafica(gOra, ANTE); if (img.getAttribute("src") !== src) img.src = src; img.hidden = false; } else img.hidden = true;
+    // L'AUDIO COME NELL'EXPORT (26/09/2026). Prima suonava solo l'audio
+    // incollato al suo video, e tutto il resto taceva: un audio staccato,
+    // spostato su A2 o fatto scivolare non si sentiva in anteprima ma usciva
+    // nell'export. E mute, solo, guadagno, punti e dissolvenze valevano solo
+    // li'. Ora: il video suona se il suo audio e' al suo posto; ogni altro
+    // audio che cade sotto la testina lo suona un secondo lettore.
     var auOra = AUD.filter(function(z){ return z.legato === x.id; })[0];
-    VE.muted = !auOra || !!auOra.muto;
+    var alSuoPosto = auOra && Math.abs((auOra.t0 || 0) - (x.t0 || 0)) < 0.05 && Math.abs(auOra.dentro - x.dentro) < 0.05;
+    var daVE = alSuoPosto && !auOra.muto && tracciaSuona(auOra.traccia) ? auOra : null;
+    VE.muted = !daVE;
+    if (daVE) { var vv = volumeAudio(daVE, t); if (Math.abs(VE.volume - vv) > 0.01) VE.volume = vv; }
+    suonaAltro(AUD.filter(function(a){ return a !== daVE && !(alSuoPosto && a === auOra) && !a.muto && tracciaSuona(a.traccia) && t >= (a.t0 || 0) && t < (a.t0 || 0) + (a.fuori - a.dentro); })[0] || null, t);
     if (FERMO !== VE.paused) { FERMO = VE.paused; el("ePlay").innerHTML = FERMO ? '<svg viewBox="0 0 16 16"><path d="M4 2v12l10-6z"/></svg>' : '<svg viewBox="0 0 16 16"><rect x="3" y="2" width="4" height="12"/><rect x="9" y="2" width="4" height="12"/></svg>'; }
     var tt = el("eTestina"); tt.hidden = false; tt.style.left = X(t) + "px";
     giroVu();
@@ -4686,6 +4783,9 @@
   (function girotondo(){ giroEditor(); if (el("editor").classList.contains("on")) { BT_PROG.aggiorna(); BT_SRG.aggiorna(); if (ESP.aperta && ESP.bt) { ESP.bt.aggiorna(); var o = tcf(tSeq()); if (el("espOra").textContent !== o) el("espOra").textContent = o; } } requestAnimationFrame(girotondo); })();
   // ── i gesti sulla timeline: scegli, trascina, accorcia, clicca per andare
   el("pista").addEventListener("mousedown", function(e){
+    // (il preventDefault qui sotto lasciava il fuoco su un campo: la tastiera
+    // restava muta finche' non si cliccava altrove)
+    var ae = document.activeElement; if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) ae.blur();
     if (!(e.shiftKey || e.metaKey || e.ctrlKey)) { SELGS = []; SELAS = []; }
     // le due prese della dissolvenza stanno SOPRA la clip audio: vanno
     // guardate per prime, se no si prende la clip e la si sposta invece di
@@ -4782,10 +4882,12 @@
     }
     var x = PZ[TRASC.i], durMax = (REGE && REGE.durata > 0) ? REGE.durata : 99999;
     if (TRASC.tipo === "sx") {
-      var nd = Math.max(0, Math.min(TRASC.fuori - 0.5, TRASC.dentro + ds));
-      var aG = aggancia(inizioDi(TRASC.i) + (nd - TRASC.dentro), TRASC.i);
-      nd = Math.max(0, Math.min(TRASC.fuori - 0.5, TRASC.dentro + (aG - inizioDi(TRASC.i))));
-      TRASC.a = inizioDi(TRASC.i) + (nd - TRASC.dentro); TRASC.nuovoDentro = nd;
+      // a velocita' diversa da 1 un secondo di timeline e' vel secondi di sorgente (26/09/2026)
+      var vs = velDi(x);
+      var nd = Math.max(0, Math.min(TRASC.fuori - 0.2, TRASC.dentro + ds * vs));
+      var aG = aggancia(inizioDi(TRASC.i) + (nd - TRASC.dentro) / vs, TRASC.i);
+      nd = Math.max(0, Math.min(TRASC.fuori - 0.2, TRASC.dentro + (aG - inizioDi(TRASC.i)) * vs));
+      TRASC.a = inizioDi(TRASC.i) + (nd - TRASC.dentro) / vs; TRASC.nuovoDentro = nd;
     } else if (TRASC.tipo === "dx") {
       var nf = Math.max(TRASC.dentro + 0.5, Math.min(durMax, TRASC.fuori + ds));
       var bG = aggancia(inizioDi(TRASC.i) + (nf - TRASC.dentro), TRASC.i);
@@ -5079,7 +5181,7 @@
     else if (e.key === "F2") { e.preventDefault(); e.stopPropagation(); rinominaPezzo(i); }
     else if ((e.key === "d" || e.key === "D") && (e.metaKey || e.ctrlKey)) { e.preventDefault(); e.stopPropagation(); duplicaPezzo(i); }
   });
-  el("ePlay").addEventListener("click", function(){ if (!VE) return; accendiVu(); if (VU_CTX && VU_CTX.state === "suspended") VU_CTX.resume(); if (VE.paused) { if (ORA.i < 0 && PZ.length) vaiA(0, 0, true); else VE.play().catch(function(){}); } else VE.pause(); });
+  el("ePlay").addEventListener("click", function(){ if (!VE) return; accendiVu(); if (VU_CTX && VU_CTX.state === "suspended") VU_CTX.resume(); if (VE.paused) { if (ORA.i < 0 && PZ.length) vaiA(0, 0, true); else { if (PZ[ORA.i]) VE.playbackRate = velDi(PZ[ORA.i]); VE.play().catch(function(){}); } } else VE.pause(); });
   el("ePrima").addEventListener("click", function(){ vaiA(Math.max(0, ORA.i - 1), 0, !VE.paused); });
   el("eDopo").addEventListener("click", function(){ vaiA(Math.min(PZ.length - 1, ORA.i + 1), 0, !VE.paused); });
   el("eTaglia").addEventListener("click", function(){ if (SELG && SEQ) { var g0 = GRAF.filter(function(z){ return z.id === SELG; })[0], t0 = tSeq(); if (g0 && t0 > g0.dentro + 0.3 && t0 < g0.fuori - 0.3) return post({ tipo:"clip-hl-grafica", seq: SEQ.id, grafica: SELG, dividi: Math.round(t0 * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Grafica divisa."); }).catch(function(er){ avviso("err", esc(er.message)); }); } var x = PZ[ORA.i]; if (!x || !SEQ) return; post({ tipo:"clip-hl-dividi", seq: SEQ.id, pezzo: x.id, a: Math.round(VE.currentTime * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Diviso."); }).catch(function(er){ avviso("err", esc(er.message)); }); });
@@ -5113,8 +5215,13 @@
     var durMax = REGE ? (REGE.durata || 99999) : 99999;
     if (prima.fuori + ds <= prima.dentro + 0.3 || prima.fuori + ds > durMax) return avviso("err", "Il pezzo prima non ha piu' margine.");
     if (dopo.dentro + ds < 0 || dopo.dentro + ds >= dopo.fuori - 0.3) return avviso("err", "Il pezzo dopo non ha piu' margine.");
-    post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: prima.id, fuori: Math.round((prima.fuori + ds) * 100) / 100 })
-      .then(function(){ return post({ tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: dopo.id, dentro: Math.round((dopo.dentro + ds) * 100) / 100 }); })
+    // prima chi cede spazio, poi chi lo prende: nelle sequenze libere il ponte
+    // non lascia piu' sovrapporre due pezzi, e l'ordine sbagliato apriva un buco
+    var cPrima = { tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: prima.id, fuori: Math.round((prima.fuori + ds) * 100) / 100 };
+    var cDopo = { tipo:"clip-hl-pezzo", seq: SEQ.id, pezzo: dopo.id, dentro: Math.round((dopo.dentro + ds) * 100) / 100 };
+    var uno = ds > 0 ? cDopo : cPrima, due = ds > 0 ? cPrima : cDopo;
+    post(uno)
+      .then(function(){ return post(due); })
       .then(function(d){ ricaricaSeq(d.seq); })
       .catch(function(er){ avviso("err", esc(er.message)); });
   }
@@ -5231,7 +5338,7 @@
   el("eAudioTogli").addEventListener("click", function(){ if (!SEQ) return; var au = audioScelto(); if (!au) return avviso("err", "Scegli un pezzo o un audio."); post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"togli", audio: au.id }).then(function(d){ SELA = null; ricaricaSeq(d.seq); avviso("ok", "Audio tolto: sotto quel video c'e' silenzio."); }).catch(function(er){ avviso("err", esc(er.message)); }); });
   // ── LA TASTIERA DI PREMIERE nel montaggio, uguale in tutto ──
   var TASTI = [
-    ["Spazio", "riproduci / ferma"], ["J · K · L", "indietro · fermo · avanti (L di nuovo: più veloce, Shift+J/L: più piano)"], ["← →", "un fotogramma (Shift: cinque)"], ["↑ ↓", "punto di montaggio prima / dopo"], ["Home · End", "inizio / fine"],
+    ["Spazio", "riproduci / ferma"], ["J · K · L", "indietro 5 s · fermo · avanti (L di nuovo: più veloce, Shift+L: più piano, Shift+J: 30 s indietro)"], [", (virgola)", "inserisci dalla Sorgente, dopo il pezzo sotto la testina"], ["⌘D", "duplica il pezzo scelto"], ["← →", "un fotogramma (Shift: cinque)"], ["↑ ↓", "punto di montaggio prima / dopo"], ["Home · End", "inizio / fine"],
     ["I · O", "entrata / uscita della sequenza"], ["Shift+I · Shift+O", "vai all'entrata / all'uscita"], ["Alt+I · Alt+O · Alt+X", "togli entrata / uscita / tutte e due"], ["X", "entrata e uscita sul pezzo sotto la testina"],
     ["; · '", "solleva · estrai l'intervallo (qui senza buchi: tutte e due estraggono)"],
     ["Q · W", "accorcia l'inizio / la fine del pezzo alla testina"], ["E", "allunga il pezzo scelto fino alla testina"], ["V · C", "strumento: scelta · lametta (poi clicca la clip dove tagliarla)"], ["Cmd+K", "dividi sotto la testina"], ["Alt+← →", "scivolo: cambia cosa si vede dentro la clip, che resta dov'è"], ["Alt+Shift+← →", "giunzione: la clip scorre nel montato e i vicini le fanno spazio"], ["S", "magnete: i bordi si attaccano agli stacchi e alla testina"], ["T", "scrivi un titolo sullo schermo"], ["R", "velocit\u00e0 del pezzo: 50% \u00e8 il rallentatore"], ["cmd+rotella", "lente attorno al mouse · shift+rotella: scorri"],
@@ -5444,7 +5551,7 @@
   function estrai(){
     if (INS === null || OUTS === null || OUTS <= INS) return avviso("err", "Segna prima entrata e uscita (I e O).");
     var passo = Promise.resolve();
-    [OUTS, INS].forEach(function(t){ passo = passo.then(function(){ var p = pezzoAlTempo(t); if (!p) return; var x = PZ[p.i]; if (p.dentro < 0.3 || p.dentro > (x.fuori - x.dentro) - 0.3) return; return post({ tipo:"clip-hl-dividi", seq: SEQ.id, pezzo: x.id, a: Math.round((x.dentro + p.dentro) * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); }); }); });
+    [OUTS, INS].forEach(function(t){ passo = passo.then(function(){ var p = pezzoAlTempo(t); if (!p) return; var x = PZ[p.i]; if (p.dentro < 0.3 || p.dentro > (x.fuori - x.dentro) - 0.3) return; return post({ tipo:"clip-hl-dividi", seq: SEQ.id, pezzo: x.id, a: Math.round((x.dentro + p.dentro * velDi(x)) * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); }); }); });
     passo.then(function(){ var via = []; PZ.forEach(function(x){ var a = x.t0 || 0, b = a + (x.fuori - x.dentro); if (a >= INS - 0.05 && b <= OUTS + 0.05) via.push(x.id); }); if (!via.length) throw new Error("nell'intervallo non c'è nessun pezzo intero");
       return post({ tipo:"clip-hl-pezzo", seq: SEQ.id, togli: true, pezzi: via }); }).then(function(d){ ricaricaSeq(d.seq); INS = OUTS = null; scegli(null); disegnaTl(); avviso("ok", "Estratto."); }).catch(function(er){ avviso("err", esc(er.message)); });
   }
@@ -5458,8 +5565,14 @@
   }
   document.addEventListener("keydown", function(e){
     if (!el("editor").classList.contains("on") || !VE) return;
+    // in modalita' Esporta i tasti col cmd passavano di qui e tagliavano,
+    // incollavano, annullavano la sequenza che si stava esportando (26/09/2026)
+    if (typeof ESP !== "undefined" && ESP.aperta) return;
     var tag = (e.target.tagName || "").toUpperCase(); if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable) return;
-    var cmd = e.metaKey || e.ctrlKey, alt = e.altKey, k = e.key, K = k.length === 1 ? k.toUpperCase() : k;
+    var cmd = e.metaKey || e.ctrlKey, alt = e.altKey, k = e.key, K = k.length === 1 ? k.toUpperCase() : k, C = e.code || "";
+    // un tasto che cambia la sequenza, tenuto premuto, mandava la stessa
+    // richiesta decine di volte calcolata sullo stesso stato vecchio
+    if (e.repeat && (k === "Delete" || k === "Backspace" || (cmd && /^(V|X|K|D|Z)$/.test(K)) || (!cmd && /^(Q|W|E|X|,)$/.test(K)))) { e.preventDefault(); return; }
     var fot = e.shiftKey ? 0.2 : 0.04;
     // I TASTI VANNO AL PANNELLO ATTIVO, come in Premiere: quelli col cmd
     // (annulla, esporta) valgono ovunque, lo spazio fa partire il montato da
@@ -5468,7 +5581,10 @@
     if (!cmd && !alt && typeof WS !== "undefined" && WS.attivo === "effetti" && WS.schede.effetti === "srg" && tastiSorgente(e)) return;
     if (!cmd && k !== " " && typeof WS !== "undefined" && WS.attivo !== "timeline" && WS.attivo !== "programma") return;
     if (cmd) {
+      var suTl = typeof WS === "undefined" || WS.attivo === "timeline" || WS.attivo === "programma";
+      if (/^(C|X|A|V|D)$/.test(K) && (!suTl || String(window.getSelection ? window.getSelection() : "").trim())) return;
       if (K === "Z") { e.preventDefault(); annullaRipeti(e.shiftKey); }
+      else if (K === "D") { e.preventDefault(); var id0 = PZ.findIndex(function(z){ return z.id === SEL; }); if (id0 < 0) return avviso("err", "Scegli prima un pezzo."); duplicaPezzo(id0); }
       else if (K === "K") { e.preventDefault(); el("eTaglia").click(); }
       else if (K === "A") { e.preventDefault(); if (e.shiftKey) scegli(null); else { SELS = PZ.map(function(z){ return z.id; }); SEL = SELS[SELS.length - 1] || null; } disegnaEditor(); }
       else if (K === "C" || K === "X") { e.preventDefault(); copiaPezzi(K === "X"); }
@@ -5486,11 +5602,11 @@
         scivolo(verso);
       }
       else if (k === "Delete" || k === "Backspace") { e.preventDefault(); togliERichiudi(); }
-      else if (K === "I") { INS = null; disegnaTl(); } else if (K === "O") { OUTS = null; disegnaTl(); } else if (K === "X") { INS = OUTS = null; disegnaTl(); }
+      else if (C === "KeyI" || K === "I") { e.preventDefault(); INS = null; disegnaTl(); } else if (C === "KeyO" || K === "O") { e.preventDefault(); OUTS = null; disegnaTl(); } else if (C === "KeyX" || K === "X") { e.preventDefault(); INS = OUTS = null; disegnaTl(); }
       return;
     }
     if (k === " ") { e.preventDefault(); el("ePlay").click(); }
-    else if (K === "K") { VE.pause(); VE.playbackRate = 1; }
+    else if (K === "K") { VE.pause(); VE.playbackRate = PZ[ORA.i] ? velDi(PZ[ORA.i]) : 1; }
     else if (K === "J") { VE.pause(); vaiTempo(Math.max(0, tSeq() - (e.shiftKey ? 30 : 5)), false); }
     else if (K === "L") { if (VE.paused) { if (ORA.i < 0 && PZ.length) vaiA(0, 0, true); else VE.play().catch(function(){}); } else VE.playbackRate = e.shiftKey ? Math.max(0.25, VE.playbackRate / 2) : Math.min(4, VE.playbackRate * 2); }
     else if (K === "I" && e.shiftKey) { if (INS !== null) vaiTempo(INS, false); }
@@ -5498,6 +5614,7 @@
     else if (K === "I") { INS = Math.round(tSeq() * 100) / 100; if (OUTS !== null && OUTS <= INS) OUTS = null; disegnaTl(); }
     else if (K === "O") { OUTS = Math.round(tSeq() * 100) / 100; if (INS !== null && INS >= OUTS) INS = null; disegnaTl(); }
     else if (K === "X") { inOutSulPezzo(); }
+    else if (k === ",") { e.preventDefault(); el("srgInserisci").click(); }
     else if (k === ";" || k === "'") { estrai(); }
     else if (K === "Q") { accorcia("inizio"); }
     else if (K === "W") { accorcia("fine"); }
@@ -5515,7 +5632,7 @@
     else if (k === "ArrowUp") { e.preventDefault(); el("ePrima").click(); }
     else if (k === "ArrowDown") { e.preventDefault(); el("eDopo").click(); }
     else if (k === "Home") { e.preventDefault(); VE.pause(); if (PZ.length) vaiA(0, 0, false); }
-    else if (k === "End") { e.preventDefault(); VE.pause(); if (PZ.length) vaiA(PZ.length - 1, PZ[PZ.length - 1].fuori - PZ[PZ.length - 1].dentro - 0.05, false); }
+    else if (k === "End") { e.preventDefault(); VE.pause(); if (PZ.length) vaiTempo(Math.max(0, durSeq() - 0.05), false); }
     else if (K === "G") { chiediGain(); }
     else if (K === "M") { segnaMarker(); }
     else if (K === "F") { vaiAllaPartita(); }
@@ -6785,7 +6902,9 @@
       el("eInfo").textContent = PZ.length + " pezzi · " + tc(durSeq()) + (q.chi ? " · " + q.chi : "");
       var lavora = (q.export && q.export.stato === "lavora") || (q.casa && q.casa.stato === "lavora");
       GIRO_E = setTimeout(giroUscite, lavora ? 1500 : 15000);
-      if (JSON.stringify(q.pezzi.map(function(z){ return [z.id, z.dentro, z.fuori, !!z.locale]; })) !== JSON.stringify(PZ.map(function(z){ return [z.id, z.dentro, z.fuori, !!z.locale]; }))) ricaricaSeq(q);
+      // mai durante un trascinamento o una selezione a riquadro: il gesto tiene
+      // l'indice del pezzo, e ricaricando sotto i piedi si toccava un altro pezzo
+      if (!TRASC && !RETE && JSON.stringify(q.pezzi.map(function(z){ return [z.id, z.dentro, z.fuori, !!z.locale]; })) !== JSON.stringify(PZ.map(function(z){ return [z.id, z.dentro, z.fuori, !!z.locale]; }))) ricaricaSeq(q);
     }).catch(function(){ GIRO_E = setTimeout(giroUscite, 15000); });
   }
   // (i tasti del montaggio stanno tutti nel gestore "LA TASTIERA DI PREMIERE", piu' su)
