@@ -4524,6 +4524,14 @@ async function hlEsportaTutti(q, formati, p2) {
   delete q.exportGiro;
   q.export = { stato: "pronto", tutti: true, formati: formati,
                fatti: formati.length, quanti: formati.length };
+  // "anche in Raccolte / Macchie": i file appena usciti entrano nella raccolta
+  if (p2 && p2.raccolta) {
+    try {
+      const m = mettiInRaccolta(p2.raccolta, formati.map((f) => montatoDaSeq(q, f)).filter(Boolean), p2.__chi);
+      q.export.raccolta = { id: m.r.id, nome: m.r.nome };
+      console.log("[clip] export \"" + (q.titolo || q.id) + "\" in raccolta \"" + m.r.nome + "\"");
+    } catch (e) { console.log("[clip] export in raccolta non riuscito: " + e.message); }
+  }
   scrivi(); annuncia(0, "clip");
 }
 
@@ -12225,7 +12233,29 @@ function scriviRaccolte() {
 }
 function chiaveRaccolta(x) { return String(x.rec || x.partita || "") + "|" + Math.round(+x.t || 0); }
 const CAMPI_RACCOLTA = ["reg", "partita", "rec", "t", "dentro", "fuori", "s3", "tipo", "tag", "titolo", "minuto", "fonte", "fonti", "squadra", "giocatore",
-  "gol", "certezza", "chiave", "dentroFile", "quando", "ruolo", "ruoloDa", "rating", "boato"];
+  "gol", "certezza", "chiave", "dentroFile", "quando", "ruolo", "ruoloDa", "rating", "boato",
+  // i MONTATI (26/09/2026): una sequenza esportata dall'Editing, messa in raccolta come una macchia
+  "voce", "seq", "formato", "file", "durata", "mini"];
+// un montato si riconosce da sequenza + formato: rec "seq:<id>:<formato>", secondo 0
+function montatoDaSeq(q, formato) {
+  const f = (q.esportati || {})[formato]; if (!f || !f.file) return null;
+  return { voce: "montato", rec: "seq:" + q.id + ":" + formato, partita: (q.titolo || "Montato") + " \u00b7 " + formato, titolo: q.titolo || "Montato",
+    t: 0, seq: q.id, formato, file: f.file, durata: f.durata || 0, mini: q.mini || "", tipo: "Montato", quando: f.quando || Date.now() };
+}
+function mettiInRaccolta(nome, azioni, chi) {
+  const tutte = raccolte(); nome = String(nome || "").trim().slice(0, 120);
+  let r = Object.keys(tutte).map((k) => tutte[k]).filter((x) => piattaMinuscola(x.nome) === piattaMinuscola(nome))[0] || null;
+  if (!r) { if (!nome) throw new Error("la raccolta ha bisogno di un nome"); const id = nuovoId("rc"); r = tutte[id] = { id, nome, creata: Date.now(), aggiornata: Date.now(), chi: String(chi || "").slice(0, 40), azioni: [] }; }
+  let nuove = 0;
+  azioni.map(azioneDaRaccogliere).filter(Boolean).forEach((x) => {
+    const k = chiaveRaccolta(x), i = r.azioni.findIndex((y) => chiaveRaccolta(y) === k);
+    // un montato riesportato prende il posto del vecchio (il file e' lo stesso, la durata no)
+    if (i >= 0) { if (x.voce === "montato") r.azioni[i] = x; return; }
+    r.azioni.push(x); nuove++;
+  });
+  r.aggiornata = Date.now(); scriviRaccolte();
+  return { r, nuove };
+}
 function azioneDaRaccogliere(x) {
   if (!x || typeof x !== "object" || (!x.rec && !x.partita)) return null;
   const y = {}; CAMPI_RACCOLTA.forEach((k) => { if (x[k] !== undefined && x[k] !== null) y[k] = typeof x[k] === "string" ? x[k].slice(0, 400) : x[k]; });
@@ -12236,7 +12266,8 @@ function sommarioRaccolta(r) {
   const az = r.azioni || [];
   return { id: r.id, nome: r.nome, creata: r.creata, aggiornata: r.aggiornata, chi: r.chi || "", quante: az.length,
     partite: new Set(az.map((x) => x.rec || x.partita)).size, gol: az.filter((x) => x.gol || x.ruolo === "gol").length,
-    prima: az[0] ? { rec: az[0].rec, reg: az[0].reg || "", t: az[0].t, dentroFile: az[0].dentroFile, chiave: az[0].chiave || "" } : null };
+    montati: az.filter((x) => x.voce === "montato").length,
+    prima: az[0] ? { rec: az[0].rec, reg: az[0].reg || "", t: az[0].t, dentroFile: az[0].dentroFile, chiave: az[0].chiave || "", mini: az[0].voce === "montato" ? (az[0].mini || "") : "" } : null };
 }
 // ── LE RACCOLTE IN REGIA (26/09/2026) ──
 // Goffredo: "durante i live trovare delle macchie, anche grezze, e mandarle:
@@ -15128,6 +15159,15 @@ const AZIONI = {
     scriviRaccolte();
     return { ok: true, raccolta: sommarioRaccolta(r), nuove, gia: azioni.length - nuove };
   },
+  // un'uscita gia' esportata dell'Editing, messa in raccolta
+  "clip-raccolta-montato": (p) => {
+    const q = R.seq[String(p.seq || "")]; if (!q) throw new Error("sequenza sconosciuta");
+    const formati = p.formato ? [String(p.formato)] : Object.keys(q.esportati || {});
+    const vv = formati.map((f) => montatoDaSeq(q, f)).filter(Boolean);
+    if (!vv.length) throw new Error("questa sequenza non ha ancora un export");
+    const m = mettiInRaccolta(p.nome, vv, p.__chi);
+    return { ok: true, raccolta: sommarioRaccolta(m.r), nuove: m.nuove };
+  },
   "clip-raccolta-togli": (p) => {
     const r = raccolte()[String(p.id || "")]; if (!r) throw new Error("raccolta sconosciuta");
     const via = new Set((Array.isArray(p.chiavi) ? p.chiavi : []).map(String));
@@ -15157,6 +15197,12 @@ const AZIONI = {
     const prima = num(p.prima, 2, 30, 8), dopo = num(p.dopo, 2, 40, 10);
     const pezzi = [], saltate = [];
     (Array.isArray(p.pezzi) ? p.pezzi : []).slice(0, 40).forEach((x) => {
+      if (x && x.montato) {
+        const f = path.join(DIR, String(x.file || "").replace(/^\/clip\//, ""));
+        if (!f.startsWith(DIR + path.sep) || !fs.existsSync(f)) { saltate.push(String(x.titolo || "montato").slice(0, 80)); return; }
+        pezzi.push({ file: f, da: 0, dur: Math.max(1, +x.durata || 0), montato: String(x.file) });
+        return;
+      }
       const file = copiaInCasa(x && x.chiave);
       if (!file || typeof x.secFile !== "number") { saltate.push(String((x && (x.partita || x.titolo)) || "?").slice(0, 80)); return; }
       pezzi.push({ file, da: x.secFile - prima, dur: prima + dopo });
@@ -15164,6 +15210,11 @@ const AZIONI = {
     if (!pezzi.length) throw new Error("nessuna di queste azioni e' ancora sulla NAS");
     const L = { id: nuovoId("rr"), titolo: String(p.titolo || "Raccolta").slice(0, 80), stato: "lavora", fase: "taglio", fatti: 0, tot: pezzi.length, saltate, creato: Date.now() };
     REGIA_LAVORI[L.id] = L;
+    // un montato da solo e' gia' il filmato: niente da tagliare
+    if (pezzi.length === 1 && pezzi[0].montato) {
+      Object.assign(L, { stato: "pronto", fase: "unisco", fatti: 1, file: pezzi[0].montato, durata: pezzi[0].dur, finito: Date.now() });
+      return { ok: true, lavoro: L };
+    }
     Object.keys(REGIA_LAVORI).forEach((k) => { if (Date.now() - REGIA_LAVORI[k].creato > 86400000) delete REGIA_LAVORI[k]; });
     SFONDO.run(true, () => lavoroRegia(L, pezzi));
     return { ok: true, lavoro: L };

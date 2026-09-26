@@ -637,6 +637,9 @@
   .esp-riga small{color:var(--fumo);font-size:11px;line-height:1.45;} .esp-riga small.warn{color:#F0A93B;}
   .esp-coda{grid-column:1/-1;border-top:1px solid var(--riga);background:var(--navy2);display:flex;flex-direction:column;min-height:0;}
   .esp-coda-testa{display:flex;align-items:center;gap:10px;padding:8px 16px;}
+  .esp-rac input[type=text]{font:500 13px/1.3 'DM Sans',system-ui,sans-serif;padding:7px 9px;border-radius:5px;border:1px solid rgba(245,241,230,.16);background:rgba(245,241,230,.06);color:var(--ivory);min-width:0;width:100%;max-width:260px;}
+  .esp-rac input[type=text]:focus{outline:none;border-color:var(--oro);}
+  .tes.montato .mini{background:#0c1128 center/cover no-repeat;}
   .esp-coda-testa h4{margin:0;font-family:'Mazzard',sans-serif;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--oro);}
   .esp-coda-testa #espRiassunto{display:flex;gap:4px;} .esp-coda-testa #espRiassunto span{font:11px ui-monospace,Menlo,monospace;border:1px solid var(--riga2);border-radius:3px;padding:1px 5px;color:var(--ivory2);}
   .esp-coda-testa #espVai{margin-left:auto;background:var(--oro);color:var(--navy);border-color:var(--oro);font-weight:700;padding:8px 22px;font-size:13px;border-radius:5px;}
@@ -1389,6 +1392,7 @@
         <div class="esp-riga"><span>Sottotitoli</span><select id="espSotto"><option value="">senza sottotitoli</option><option value="srt">file SRT</option><option value="video">impressi nel video</option><option value="entrambi">impressi + SRT</option></select><select id="espSottoL"><option value="it">ITA</option><option value="en">ENG</option><option value="entrambe">ITA + ENG</option></select><small>Impressi: li vedi gi&#224; nell&#8217;anteprima.</small></div>
         <div class="esp-riga"><label><input type="checkbox" id="espEsatto"> taglio esatto</label><small>Ogni pezzo parte dal fotogramma giusto: pi&#249; lento, ricodifica tutto.</small></div>
         <div class="esp-riga"><span>Grafiche</span><div id="espGrafiche"></div></div>
+        <div class="esp-riga esp-rac"><span>Raccolte / Macchie</span><label><input type="checkbox" id="espRac"> metti anche in una raccolta</label><input id="espRacNome" type="text" list="espRacNomi" placeholder="Nome della raccolta" maxlength="120" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" aria-label="Nome della raccolta" hidden><datalist id="espRacNomi"></datalist><small>Il file esce come sempre; in pi&#249; il montato entra nella raccolta, e da l&#236; va in regia come macchia.</small></div>
         <div class="esp-riga"><span>Nome dei file</span><small>Automatico: giorno, partita, sequenza e formato (es. &#8230;_9x16.mp4).</small></div>
       </aside>
       <div class="esp-coda"><div class="esp-coda-testa"><h4>Coda</h4><div id="espRiassunto"></div><button id="espVai">Esporta</button></div><div id="espUscite"></div></div>
@@ -2369,7 +2373,15 @@
     if ((x.certezza !== "inquadratura" && x.certezza !== "espn") || x.t === undefined) return x.dentro;
     return Math.max(0, x.t - (RINCORSA[x.ruolo] || (x.gol ? 7 : 8)));
   }
+  function tesseraMontato(x){
+    var k = chiaveAz(x), on = SCELTE_RIC.has(k); AZ_PER_CHIAVE[k] = x;
+    var scegli = '<button type="button" class="scegli' + (on ? " on" : "") + '" data-scegli="' + esc(k) + '" aria-pressed="' + on + '" title="Scegli">' + (on ? ICONA_SCELTA : ICONA_SCEGLI) + '</button>';
+    return '<a class="card tes az montato' + (on ? " scelta" : "") + '" href="mam2.html?seq=' + encodeURIComponent(x.seq || "") + '" title="apri la sequenza nell\u2019Editing">' + scegli +
+      '<div class="mini"' + (x.mini ? ' style="background-image:url(\'' + esc(BASE + x.mini) + '\')"' : '') + '><div class="sopra"><div class="su"><span class="tipo-az altro">Montato</span><span class="minuto">' + esc(tc(x.durata || 0).replace(/^00:/, "")) + '</span></div><div class="giu">' + esc(x.formato || "") + '</div></div></div>' +
+      '<div class="t"><div class="testo">' + esc(x.titolo || "Montato") + '</div><small>dall\u2019Editing \u00b7 ' + quando(x.quando) + '</small></div></a>';
+  }
   function tesseraAzione(x, ev, link){
+    if (x.voce === "montato") return tesseraMontato(x);
     // la partita non e' ancora sulla NAS: sotto, il fondo blu col suo nome
     var ta = tipoAzione(x), sotto = anteprimaHtml(ev || { partita: x.partita, titolo: x.partita, quando: x.quando ? new Date(x.quando).toISOString() : "" });
     var fonte = (x.fonti || [x.fonte]).filter(Boolean).join(" + ");
@@ -2496,7 +2508,7 @@
     lista.forEach(function(g){
       if (!g.n || (RIS_TAB !== "tutto" && RIS_TAB !== g.k)) return;
       var max = RIS_TAB === "tutto" ? (g.k === ordine[0] ? 12 : 8) : 300;
-      var tutteScelte = g.k === "azioni" && azioni.filter(function(x){ var ev = evDi(x); return ev && !ev.s3; }).every(function(x){ return SCELTE_RIC.has(chiaveAz(x)); });
+      var tutteScelte = g.k === "azioni" && azioni.filter(function(x){ var ev = evDi(x); return x.voce === "montato" || (ev && !ev.s3); }).every(function(x){ return SCELTE_RIC.has(chiaveAz(x)); });
       h += '<div class="sez-ris" style="--c:' + g.c + '"><h3>' + esc(g.eti) + ' · ' + g.n + '</h3>' +
         (g.k === "azioni" ? '<a class="sceglitutte" data-sceglitutte="' + (tutteScelte ? "0" : "1") + '">' + (tutteScelte ? "Togli tutte dal montaggio" : "Scegli tutte per il montaggio") + '</a>' : '') +
         (RIS_TAB === "tutto" && g.n > max ? '<a data-rt="' + g.k + '">Mostra tutte (' + g.n + ')</a>' : '') + '</div>' +
@@ -2528,7 +2540,7 @@
     }); });
     box.querySelectorAll("[data-sceglitutte]").forEach(function(b){ b.addEventListener("click", function(){
       var tutte = b.dataset.sceglitutte === "1";
-      azioni.forEach(function(x){ var ev = evDi(x); if (!ev || ev.s3) return; var k = chiaveAz(x); AZ_PER_CHIAVE[k] = x; if (tutte) SCELTE_RIC.set(k, x); else SCELTE_RIC.delete(k); });
+      azioni.forEach(function(x){ var ev = evDi(x); if (x.voce !== "montato" && (!ev || ev.s3)) return; var k = chiaveAz(x); AZ_PER_CHIAVE[k] = x; if (tutte) SCELTE_RIC.set(k, x); else SCELTE_RIC.delete(k); });
       disegnaRisultati(); disegnaBarraScelte();
     }); });
     disegnaBarraScelte();
@@ -2681,6 +2693,7 @@
     // le copertine: il fotogramma della prima azione
     lista.forEach(function(r){
       var p = r.prima; if (!p) return;
+      if (p.mini) { var c0 = el("rcGriglia").querySelector('[data-rcid="' + r.id + '"] .rc-cop'); if (c0) c0.style.backgroundImage = "url('" + BASE + p.mini + "')"; return; }
       // la scheda si cerca quando il fotogramma arriva: nel frattempo la griglia puo' essere stata ridisegnata
       var cerca_ = function(){ return el("rcGriglia").querySelector('[data-rcid="' + r.id + '"] .rc-cop'); };
       var metti = function(u){ COPERTINE[r.id] = u; var cop = cerca_(); if (u && cop) cop.style.backgroundImage = "url('" + u + "')"; };
@@ -2759,7 +2772,7 @@
     REGIA_APERTO = false; REGIA_LAVORO = { stato: "lavora", fase: "taglio", fatti: 0, tot: lista.length }; disegnaBarraScelte();
     var fallito = function(er){ REGIA_LAVORO = null; disegnaBarraScelte(); avviso("err", "Alla regia non è andato: " + esc(er.message)); };
     post({ tipo:"clip-raccolta-regia", titolo: titolo,
-      pezzi: lista.map(function(x){ return { chiave: x.chiave || "", partita: x.partita || "", titolo: x.titolo || "",
+      pezzi: lista.map(function(x){ return x.voce === "montato" ? { montato: true, file: x.file, durata: x.durata || 0, titolo: x.titolo || "" } : { chiave: x.chiave || "", partita: x.partita || "", titolo: x.titolo || "",
         secFile: (x.dentroFile !== undefined ? x.dentroFile : x.dentro || 0) + ((x.t || 0) - (x.dentro || 0)) }; }) })
     .then(function(d){
       var L = d.lavoro; REGIA_LAVORO = L; disegnaBarraScelte();
@@ -2792,8 +2805,8 @@
     }).catch(function(er){ bottone.disabled = false; avviso("err", esc(er.message)); });
   }
   function montaDallaRicerca(bottone){
-    var lista = Array.from(SCELTE_RIC.values());
-    if (!lista.length) return;
+    var tutti = Array.from(SCELTE_RIC.values()), lista = tutti.filter(function(x){ return x.voce !== "montato"; });
+    if (!lista.length) return avviso("err", tutti.length ? "I montati sono gi\u00e0 sequenze: aprili dall\u2019Editing, o mandali in regia." : "Scegli prima qualche azione.");
     var gio = gettone("g")[0], ruoli = scelti("r").map(function(r){ return (RUOLI[r] || {}).eti || r; });
     var titolo = [RACCOLTA ? RACCOLTA.nome : "", ruoli.join(" e "), gio ? gio.eti : "", Q].filter(Boolean).join(" · ") || ("Dalla ricerca · " + lista.length + " azioni");
     bottone.disabled = true; bottone.textContent = "Preparo la sequenza…";
@@ -4626,6 +4639,12 @@
   el("espSotto").addEventListener("change", function(){ el("eSotto").value = this.value; espGuarda(ESP.vista); });
   el("espSottoL").addEventListener("change", function(){ el("eSottoL").value = this.value; espGuarda(ESP.vista); });
   el("espEsatto").addEventListener("change", function(){ el("eEsatto").checked = this.checked; });
+  el("espRac").addEventListener("change", function(){
+    el("espRacNome").hidden = !this.checked;
+    var riempi = function(){ el("espRacNomi").innerHTML = RACCOLTE_EL.map(function(r){ return '<option value="' + esc(r.nome) + '">'; }).join(""); };
+    riempi(); caricaRaccolte().then(riempi);
+    if (this.checked) el("espRacNome").focus();
+  });
   el("espPlay").addEventListener("click", function(){ if (!VE) return; if (VE.paused) VE.play().catch(function(){}); else VE.pause(); });
   el("espChiudi").addEventListener("click", chiudiEsporta);
   el("espVai").addEventListener("click", function(){ el("eEsporta").click(); setTimeout(giroUscite, 800); });
@@ -6567,8 +6586,13 @@
   el("eEsporta").addEventListener("click", function(){
     if (!SEQ) return; if (!FORMATI.length) return avviso("err", "Scegli almeno un formato.");
     var c = { tipo:"clip-hl-esporta", seq: SEQ.id, esatto: el("eEsatto").checked, sotto: el("eSotto").value, sottoLingua: el("eSottoL").value };
+    if (ESP.aperta && el("espRac").checked) {
+      var nr = (el("espRacNome").value || "").trim();
+      if (!nr) { el("espRacNome").focus(); return avviso("err", "Scrivi il nome della raccolta, o togli la spunta."); }
+      c.raccolta = nr;
+    }
     if (FORMATI.length > 1) c.formati = FORMATI; else c.formato = FORMATI[0];
-    post(c).then(function(){ avviso("ok", "Export in coda: lo segui qui a destra."); giroUscite(); }).catch(function(er){ avviso("err", esc(er.message)); });
+    post(c).then(function(){ avviso("ok", "Export in coda: lo segui qui a destra." + (c.raccolta ? " Finito, entra in «" + esc(c.raccolta) + "»." : "")); giroUscite(); }).catch(function(er){ avviso("err", esc(er.message)); });
   });
   el("eXml").addEventListener("click", function(){ if (!SEQ) return; post({ tipo:"clip-hl-esporta", seq: SEQ.id, come:"premiere", volume: volumeMontaggio(false) || "" }).then(function(){ return post({ tipo:"clip-hl-srt", seq: SEQ.id, lingua: el("eSottoL").value }); }).then(function(){ avviso("ok", "XML e SRT pronti: li trovi nelle uscite."); giroUscite(); }).catch(function(er){ avviso("err", esc(er.message)); }); });
   // ── LA COPIA DELL'ARCHIVIO S3 SULLA NAS ──
@@ -6682,6 +6706,16 @@
       "<small>" + (pass ? mmss(pass) + " passati" : "appena partito") + (resta !== null ? " \u00b7 circa " + mmss(resta) + " alla fine" : " \u00b7 calcolo quanto manca\u2026") + "</small></div>";
   }
   el("espMini").addEventListener("click", function(){ if (el("editor").classList.contains("on") && SEQ) apriEsporta(); });
+  // UN'USCITA IN RACCOLTA: il file gia' esportato, senza rifare niente
+  ["eUscite", "espUscite"].forEach(function(id){ var c = el(id); if (!c) return; c.addEventListener("click", function(e){
+    var b = e.target.closest("[data-racmont]"); if (!b || !SEQ) return;
+    var n = window.prompt("In quale raccolta? (un nome che c\u2019e\u2019 gia\u2019 aggiunge, uno nuovo la crea)", (RACCOLTE_EL[0] && RACCOLTE_EL[0].nome) || SEQ.titolo || "");
+    if (!n || !n.trim()) return;
+    post({ tipo:"clip-raccolta-montato", seq: SEQ.id, formato: b.dataset.racmont, nome: n.trim() }).then(function(d){
+      caricaRaccolte();
+      avviso("ok", (d.nuove ? "Montato messo" : "Montato aggiornato") + " in «" + esc(d.raccolta.nome) + "» \u00b7 <a href=\"mam2.html?rac=" + encodeURIComponent(d.raccolta.id) + "\" target=\"_blank\" style=\"color:inherit;text-decoration:underline\">apri</a>");
+    }).catch(function(er){ avviso("err", esc(er.message)); });
+  }); });
   function giroUscite(){
     if (!SEQ) return;
     clearTimeout(GIRO_E);
@@ -6692,7 +6726,8 @@
       if (lav) h += barraExport(q.export);
       var mini = el("espMini"); if (mini) { mini.hidden = !lav; if (lav) mini.textContent = "\u23fa Esporto " + Math.round(avanzaExport(q.export) * 100) + "%"; }
       if (q.export && q.export.stato === "errore") h += '<div class="uscita" style="border-color:var(--rosso)"><b>errore: ' + esc(q.export.errore || "") + '</b></div>';
-      Object.keys(q.esportati || {}).forEach(function(k){ var f = q.esportati[k]; if (f.adattate && f.adattate.length) h += '<div class="uscita" style="border-color:var(--oro)" title="in questo formato non c\u2019e\u2019 la loro versione: il Generatore la fa, con la grafica scelta in timeline"><b>\u26a0 ' + esc(k) + ': ' + f.adattate.length + ' grafic' + (f.adattate.length > 1 ? 'he adattate' : 'a adattata') + ' \u00b7 ' + esc(f.adattate.join(', ')) + '</b></div>'; h += '<div class="uscita"><b>' + esc(f.nome || k) + '</b><span>' + esc(k) + '</span><a class="b mini oro" href="' + BASE + f.file + '?scarica=1">Scarica</a></div>'; });
+      if (q.export && q.export.raccolta) h += '<div class="uscita" style="border-color:var(--oro)"><b>In Raccolte / Macchie: ' + esc(q.export.raccolta.nome) + '</b><a class="b mini" href="mam2.html?rac=' + encodeURIComponent(q.export.raccolta.id) + '" target="_blank">Apri</a></div>';
+      Object.keys(q.esportati || {}).forEach(function(k){ var f = q.esportati[k]; if (f.adattate && f.adattate.length) h += '<div class="uscita" style="border-color:var(--oro)" title="in questo formato non c\u2019e\u2019 la loro versione: il Generatore la fa, con la grafica scelta in timeline"><b>\u26a0 ' + esc(k) + ': ' + f.adattate.length + ' grafic' + (f.adattate.length > 1 ? 'he adattate' : 'a adattata') + ' \u00b7 ' + esc(f.adattate.join(', ')) + '</b></div>'; h += '<div class="uscita"><b>' + esc(f.nome || k) + '</b><span>' + esc(k) + '</span><button type="button" class="b mini" data-racmont="' + esc(k) + '" title="questo file in una raccolta: da li\u2019 va in regia come macchia">In Raccolte / Macchie</button><a class="b mini oro" href="' + BASE + f.file + '?scarica=1">Scarica</a></div>'; });
       (q.sottotitoli && q.sottotitoli.files ? q.sottotitoli.files : (q.sottotitoli ? [q.sottotitoli] : [])).forEach(function(f){ h += '<div class="uscita"><b>' + esc(f.nome) + '</b><span>SRT</span><a class="b mini" href="' + BASE + f.file + '?scarica=1">Scarica</a></div>'; });
       if (q.premiere) h += '<div class="uscita"><b>' + esc(q.premiere.nome || "sequenza.xml") + '</b><span>XML</span><a class="b mini" href="' + BASE + q.premiere.file + '?scarica=1">Scarica</a></div>';
       if (q.casa) el("eCasaStato").textContent = q.casa.stato === "lavora" ? "in casa: " + q.casa.fatti + "/" + q.casa.quanti : (q.casa.stato === "pronto" ? "pezzi in casa" : "");
