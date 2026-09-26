@@ -35,11 +35,39 @@ from PIL import Image
 FFMPEG = os.environ.get("COMOTV_FFMPEG", "ffmpeg")
 
 
+FFPROBE = os.environ.get("COMOTV_FFPROBE", "ffprobe")
+
+
+def chiaviFitte(via, da, passo):
+    """SOLO I FOTOGRAMMI CHIAVE, QUANDO BASTANO (26/09/2026).
+
+    Le nostre partite sono 1080p a 50 fotogrammi con un fotogramma chiave
+    ogni secondo esatto: per guardarne uno al secondo se ne decodificavano
+    cinquanta e se ne buttavano quarantanove. Decodificando solo i chiave
+    esce la stessa fila di fotogrammi, dodici volte piu' in fretta (75 s di
+    partita: 19,3 s contro 1,5 s). Vale solo se i chiave arrivano almeno una
+    volta per passo: si guardano i primi secondi della finestra, e se sono
+    piu' radi (altri feed, altri encoder) si decodifica tutto come prima.
+    """
+    try:
+        r = subprocess.run([FFPROBE, "-v", "error", "-select_streams", "v:0", "-skip_frame", "nokey",
+                            "-show_entries", "frame=pts_time", "-read_intervals", "%g%%+8" % da,
+                            "-of", "csv=p=0", via], capture_output=True, text=True, timeout=60)
+        t = [float(x.strip().strip(",")) for x in r.stdout.split() if x.strip().strip(",")]
+    except Exception:
+        return False
+    if len(t) < 4:
+        return False
+    salti = [b - a for a, b in zip(t, t[1:])]
+    return max(salti) <= passo * 1.05
+
+
 def campo(via, da, durata, passo):
     fuori = tempfile.mkdtemp(prefix="campo-")
     try:
-        subprocess.run([FFMPEG, "-hide_banner", "-loglevel", "error",
-                        "-ss", str(da), "-t", str(durata), "-i", via,
+        chiavi = ["-skip_frame", "nokey"] if chiaviFitte(via, da, passo) else []
+        subprocess.run([FFMPEG, "-hide_banner", "-loglevel", "error"] + chiavi +
+                       ["-ss", str(da), "-t", str(durata), "-i", via,
                         "-vf", "fps=%g,scale=320:180" % (1.0 / passo),
                         "-y", os.path.join(fuori, "f%05d.png")],
                        check=True, timeout=900)
