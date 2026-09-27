@@ -102,6 +102,34 @@ def ammesso(email, hd=None):
     return dominio in domini and (hd is None or (hd or "").lower() == dominio)
 
 
+# ── I FOGLI PRESENZE (Goffredo, 27/09/2026): niente piu' password. Ogni dipendente
+#    (nome.cognome@sent.tv) apre solo il proprio foglio, il super utente tutti; le ore
+#    si salvano qui sul server (prima restavano nel browser di chi le scriveva).
+DIPENDENTI = "/etc/comotv/dipendenti.json"          # {slug: {"nome", "email"}}; mai nel repo
+PRESENZE = "/var/lib/comotv-presenze"
+TETTO_PRESENZE = 2 * 1024 * 1024
+
+
+def dipendenti():
+    try: return json.load(open(DIPENDENTI))
+    except Exception: return {}
+
+
+def fogli_di(email):
+    """i fogli che questa persona puo' aprire: il suo; il super utente tutti"""
+    d = dipendenti(); admin = email in super_utenti()
+    return sorted([(k, v) for k, v in d.items() if admin or (v.get("email") or "").lower() == email], key=lambda x: x[1].get("nome", ""))
+
+
+def pagina_permessa(email, percorso):
+    """per il cancello della cartella HR: i fogli personali solo al titolare e al super utente"""
+    p = urllib.parse.unquote(percorso.split("?", 1)[0])
+    if "/presenze/" in p:
+        slug = p.rsplit("/", 1)[-1].replace(".html", "")
+        return any(k == slug for k, _ in fogli_di(email))
+    return True
+
+
 def super_utenti():
     return {x.strip().lower() for x in conf().get("ACCESSO_ADMIN", "goffredo.donofrio@sent.tv").split(",") if x.strip()}
 
@@ -147,6 +175,8 @@ def azione_di(percorso, stato):
     p = urllib.parse.unquote(percorso.split("?", 1)[0])
     if "/mam-1907/mini/" in p or "/mam-1907/provino/" in p or "/mam-1907/indice/" in p: return None
     if p.endswith("/live/mam-1907.html"): return ("apre la pagina", "MAM Como 1907")
+    if "/presenze/" in p and p.endswith(".html"): return ("apre il foglio presenze", p.rsplit("/", 1)[-1].replace(".html", ""))
+    if p.endswith("/foglio-presenze.html"): return ("apre l'elenco presenze", "")
     if "/mam-1907/file/" in p: return ("guarda / scarica l'originale", p.split("/mam-1907/file/", 1)[1])
     if "/mam-1907/copie/" in p: return ("guarda la copia leggera", p.rsplit("/", 1)[-1])
     if p.endswith("/mam-1907/copia"):
@@ -162,7 +192,7 @@ def registro(quante=4000):
     try:
         for r in open(REGISTRO).read().splitlines()[-quante:]:
             d = json.loads(r)
-            voci.append({"q": d["quando"], "chi": d.get("chi") or "", "az": {"entra": "entra", "esce": "esce", "rifiutato": "accesso rifiutato"}.get(d["evento"], d["evento"]), "cosa": "", "ip": d.get("ip", "")})
+            voci.append({"q": d["quando"], "chi": d.get("chi") or "", "az": {"entra": "entra", "esce": "esce", "rifiutato": "accesso rifiutato"}.get(d["evento"], d["evento"]), "cosa": d.get("foglio", ""), "ip": d.get("ip", "")})
     except OSError:
         pass
     ultimo = {}
@@ -275,6 +305,22 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/auth/verifica":
             email = sessione_valida(self.cookie())
             return self.manda(200, b"", extra=[("X-Utente", email)]) if email else self.manda(401)
+        if u.path == "/auth/verifica-dip":
+            email = sessione_valida(self.cookie())
+            if not email: return self.manda(401)
+            return self.manda(200, b"", extra=[("X-Utente", email)]) if pagina_permessa(email, self.headers.get("X-Pagina") or "") else self.manda(403)
+        if u.path == "/auth/dipendenti":
+            email = sessione_valida(self.cookie())
+            if not email: return self.manda(401, json.dumps({"errore": "serve l'accesso"}), "application/json")
+            return self.manda(200, json.dumps({"email": email, "admin": email in super_utenti(),
+                                               "persone": [{"slug": k, "nome": v.get("nome", k)} for k, v in fogli_di(email)]}, ensure_ascii=False), "application/json; charset=utf-8")
+        if u.path.startswith("/auth/presenze/"):
+            email = sessione_valida(self.cookie()); slug = u.path.rsplit("/", 1)[-1]
+            if not email: return self.manda(401, json.dumps({"errore": "serve l'accesso"}), "application/json")
+            if not any(k == slug for k, _ in fogli_di(email)): return self.manda(403, json.dumps({"errore": "non e' il tuo foglio"}), "application/json")
+            try: dati = open(os.path.join(PRESENZE, slug, "presenze.json")).read()
+            except OSError: dati = json.dumps({"chiavi": {}, "aggiornato": 0})
+            return self.manda(200, dati, "application/json; charset=utf-8")
         if u.path == "/auth/chi":
             email = sessione_valida(self.cookie())
             return self.manda(200, json.dumps({"email": email or "", "admin": bool(email and email in super_utenti())}), "application/json")
@@ -328,6 +374,41 @@ class H(BaseHTTPRequestHandler):
             return self.manda(302, extra=[("Location", torna),
                                           ("Set-Cookie", COOKIE + "=" + sessione_nuova(email) + "; Path=/; Secure; HttpOnly; SameSite=Lax")])
         return self.manda(404)
+
+
+def do_POST_presenze(self):
+    u = urllib.parse.urlparse(self.path)
+    if not u.path.startswith("/auth/presenze/"): return self.manda(404)
+    email = sessione_valida(self.cookie()); slug = u.path.rsplit("/", 1)[-1]
+    if not email: return self.manda(401, json.dumps({"errore": "serve l'accesso"}), "application/json")
+    if not any(k == slug for k, _ in fogli_di(email)): return self.manda(403, json.dumps({"errore": "non e' il tuo foglio"}), "application/json")
+    n = int(self.headers.get("Content-Length") or 0)
+    if n <= 0 or n > TETTO_PRESENZE: return self.manda(413, json.dumps({"errore": "troppo grande"}), "application/json")
+    try:
+        chiavi = json.loads(self.rfile.read(n).decode()).get("chiavi") or {}
+        # solo le chiavi di questo foglio, e solo testo
+        chiavi = {k: v for k, v in chiavi.items() if isinstance(k, str) and k.startswith("presenze_" + slug) and isinstance(v, str)}
+    except Exception:
+        return self.manda(400, json.dumps({"errore": "dati non leggibili"}), "application/json")
+    cart = os.path.join(PRESENZE, slug); os.makedirs(os.path.join(cart, "storico"), exist_ok=True)
+    f = os.path.join(cart, "presenze.json")
+    # la versione di prima va nello storico (se ne tengono 200): niente si perde per un errore
+    if os.path.exists(f):
+        os.replace(f, os.path.join(cart, "storico", time.strftime("%Y%m%d-%H%M%S") + ".json"))
+        vecchie = sorted(os.listdir(os.path.join(cart, "storico")))
+        for x in vecchie[:-200]: os.remove(os.path.join(cart, "storico", x))
+    ora = int(time.time())
+    with open(f + ".tmp", "w") as g: json.dump({"chiavi": chiavi, "aggiornato": ora, "chi": email}, g, ensure_ascii=False)
+    os.replace(f + ".tmp", f)
+    # nel registro una volta ogni quarto d'ora per persona e foglio
+    k = (email, slug)
+    if ora - ULTIMO_SALVA.get(k, 0) > 900:
+        ULTIMO_SALVA[k] = ora; registra("salva presenze", email, self.ip(), {"foglio": slug})
+    return self.manda(200, json.dumps({"ok": True, "aggiornato": ora}), "application/json")
+
+
+ULTIMO_SALVA = {}
+H.do_POST = do_POST_presenze
 
 
 if __name__ == "__main__":

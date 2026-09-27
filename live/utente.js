@@ -42,7 +42,7 @@
       var nome = j.email.split("@")[0].replace(/[._]+/g, " ");
       box.innerHTML = '<button type="button" class="un-chi" aria-haspopup="true" aria-expanded="false" title="' + esc(j.email) + '"><i>' + esc(iniziali(j.email)) + "</i>" + esc(nome) + "</button>" +
         '<div class="un-menu" role="menu" hidden><div class="un-mail"><b>' + esc(nome) + "</b>" + esc(j.email) + (j.admin ? " · super utente" : "") + "</div>" +
-        (j.admin ? '<a role="menuitem" href="/auth/registro">Registro di controllo</a>' : "") +
+        (j.admin ? '<a role="menuitem" href="/auth/registro">Registro di controllo</a><a role="menuitem" href="/como-tv/area-personale.html">Area personale</a>' : "") +
         '<a role="menuitem" class="esci" href="/auth/esci">Esci</a></div>';
       var b = box.querySelector(".un-chi"), m = box.querySelector(".un-menu");
       var chiudi = function () { m.hidden = true; b.setAttribute("aria-expanded", "false"); };
