@@ -6479,7 +6479,12 @@ function rifinitura(k) {
 // due partite insieme (una sola se qualcuno sta usando il MAM): assorbe
 // anche il giro dei nomi, perche' il tabellone letto qui dice gia' se il
 // risultato combacia con quello atteso (tabellone.verificato)
+// IL DEV NON LAVORA L'ARCHIVIO (27/09/2026): ha un indice suo, e rileggeva
+// gli stessi cronometri della produzione sulla stessa NAS, meta' macchina per
+// niente. COMOTV_CODE_SPENTE=1 spegne il giro della casa e quello dei cronometri
+const CODE_SPENTE = process.env.COMOTV_CODE_SPENTE === "1";
 async function giroCasa() {
+  if (CODE_SPENTE) return;
   const quante = qualcunoLavora() ? 1 : 2;
   if (CASA.attive.size >= quante) return;
   if (registrandoDavvero() || laDirettaGira() || magazzinoOccupato() || voceAlLavoro || whisperGira() ||
@@ -11397,6 +11402,7 @@ function magazzinoOccupato() {
 }
 
 function giraOrologi() {
+  if (CODE_SPENTE) return;
   // mentre si trascrive i cronometri stanno fermi: due core non si dividono
   // in tre, e una trascrizione lasciata a meta' costa piu' di un'attesa.
   // Quando la voce ha finito, riprendono da soli.
