@@ -6548,7 +6548,7 @@ function nomeQuasiCerto(k, a) {
 // DA GUARDARE: la macchina ci ha provato (tabellone letto o fallito) e non sa
 // ancora che partita e'. Da sola non ci arriva: serve un occhio
 function daGuardare(a) {
-  return !!a && inCasa(a) && !nomeSicuro(a) && !DA_STUDIO.test(a.partita || "") && !!(a.tabellone || a.tabelloneFallito || !a.partita);
+  return !!a && inCasa(a) && !nomeSicuro(a) && !DA_STUDIO.test(a.partita || "") && !!(a.tabellone || a.tabelloneFallito || a.orologioFallito || !a.partita);
 }
 function statoCasa() {
   const n = { partite: 0, espn: 0, appunti: 0, cronometro: 0, tabellone: 0, boati: 0, momenti: 0, finite: 0, studio: 0, utilizzabili: 0, daGuardare: 0 };
@@ -8383,6 +8383,9 @@ function parlatoLocaleInCoda(quante) {
 setInterval(async () => {
   const h = new Date().getHours(); if (h < 1 || h >= 6) return;
   try { const c = await statoCopia(); if (!(c && c.partite && c.partiteCasa >= c.partite)) return; } catch (e) { return; }
+  // e prima tutte utilizzabili (Goffredo, 27/09/2026: "facciamo salire tutto,
+  // poi pensiamo alla trascrizione"): whisper ferma i cronometri
+  try { const cs = statoCasa(); if (cs.utilizzabili + cs.daGuardare < cs.partite) return; } catch (e) { return; }
   try { parlatoLocaleInCoda(); } catch (e) { console.log("[clip] trascrizione di notte: " + e.message); }
 }, 1800000);
 let vocePid = 0, voceSpenta = false;
@@ -8435,6 +8438,7 @@ function giraLaCoda() {
       return trascriviDavvero(lavoro);
     })
     .catch((e) => {
+      if (e && e.fermata) { console.log("[clip] trascrizione fermata prima di whisper: l'audio resta pronto"); return; }
       console.log("[clip] trascrizione fallita: " + e.message);
       // si segna sulla registrazione: dopo due fallimenti la coda automatica
       // la lascia stare per un giorno (in dev un flusso rotto era stato
@@ -9075,6 +9079,8 @@ function trascriviDavvero(lavoro) {
     // sopravvive al riavvio, finisce, e raccogliParlato lo va a prendere.
     let log;
     try { log = fs.openSync(path.join(dir, "voce.log"), "w"); } catch (e) { log = "ignore"; }
+    // fermata a mano mentre si estraeva l'audio: il wav resta (servira'), whisper no
+    if (voceSpenta) return no(Object.assign(new Error("trascrizione fermata a mano"), { fermata: true }));
     const bimbo = spawn("nice", ["-n", "15", WHISPER].concat(args),
                         { detached: true, stdio: ["ignore", log, log] });
     vocePid = bimbo.pid || 0;
@@ -15184,7 +15190,7 @@ const AZIONI = {
                    nomeDa: a.soloS3 ? "cartella" : (a.partita ? "airtable" : (nomeDaCartella(a) ? "cartella" : "")), sicuro: !!a.partita && nomeSicuro(a), competizione: a.competizione || "",
                    quandoPartita: a.quando || "", durata: r ? (r.durata || 0) : Math.round(minuti * 60), reg: r ? r.id : undefined,
                    telecronaca: !!(r && PARLATO[r.id] && (PARLATO[r.id].pezzi || []).length), s3: !inCasa(a), inCasa: inCasa(a), senzaNome: !!a.soloS3, bucket: a.bucket, pezzi: (a.pezzi || []).length || 1,
-                   soloElenco: soloElenco(a.bucket) && !inCasa(a), puntata: puntata(a), guardare: daGuardare(a),
+                   soloElenco: soloElenco(a.bucket) && !inCasa(a), puntata: puntata(a), guardare: !utilizzabile(k, a) && daGuardare(a),
                    // per l'anteprima: stemmi, telecronista e lingua, risultato
                    // l'anteprima solo per quelle che la Libreria mostra (in casa); gli stemmi
                    // delle altre li prepara prepararaStemmi in sottofondo
