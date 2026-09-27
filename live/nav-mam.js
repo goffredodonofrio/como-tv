@@ -67,3 +67,17 @@
   accendi(quale());
   window.NAV_MAM = { accendi: accendi, destra: document.getElementById("sitoDestra") };
 })();
+
+// LA GUIDA DENTRO LE PAGINE (27/09/2026): coach.js monta la linguetta GUIDA e
+// accompagna passo passo. Si carica una volta sola, dopo la pagina, e se non
+// arriva la pagina resta com'era. Le pagine -vmix (in onda) non la vedono.
+(function () {
+  try {
+    if (window.__COACH_CARICATO || /-vmix\.html$/i.test(location.pathname)) return;
+    window.__COACH_CARICATO = 1;
+    var qui = document.currentScript && document.currentScript.src;
+    var s = document.createElement("script");
+    s.src = qui ? qui.replace(/[^\/]*$/, "coach.js") : "coach.js"; s.async = true;
+    (document.head || document.documentElement).appendChild(s);
+  } catch (e) {}
+})();
