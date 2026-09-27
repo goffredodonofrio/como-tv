@@ -2589,6 +2589,7 @@ function pubblica(r) {
     via: (function () {
       if (!r.arch) return undefined;
       if (staccataDaS3(r)) return undefined;   // ancora solo a Parigi: non si apre
+      if (copia1907(r)) return copia1907(r);  // Como 1907: la copia leggera, se c'e'
       try { return magazzinoDaFuori(r) ? viaArchivio(r) : viaPonte(r.id); }
       catch (e) { return undefined; }
     })(),
@@ -2598,7 +2599,7 @@ function pubblica(r) {
     // all'altro, e chi monta vede due ore, non cinquantasei minuti.
     pezziArch: (r.arch && magazzinoCe(r) && !staccataDaS3(r)) ? pezziArch(r).map((x, i) => ({
       da: x.da || 0, durata: x.durata || 0,
-      via: magazzinoDaFuori(r) ? viaFileArchivio(r, x) : viaPonte(r.id, 21600, i)
+      via: copia1907(r) || (magazzinoDaFuori(r) ? viaFileArchivio(r, x) : viaPonte(r.id, 21600, i))
     })) : undefined,
     // la miniatura si promette solo se il file c'e': una sfilza di 404 ogni
     // tre secondi non e' un'anteprima
@@ -6200,6 +6201,13 @@ const MAGAZZINI = [];
       regione: "locale", id: "", segreto: "", endpoint: "", fuori: false
     });
   }
+  // IL FRAME DEL CLUB (27/09/2026): il materiale del Como 1907 sta in
+  // un'altra cartella della QNAP (COMOTV - FRAME), montata in sola lettura.
+  // Un magazzino di cartella come l'altro: nessun controllo sul disco qui,
+  // perche' un NFS che non risponde terrebbe fermo l'avvio del ponte.
+  const f1907 = process.env.COMOTV_1907_CARTELLA || "/mnt/qnap100-frame";
+  if (f1907 !== "0") MAGAZZINI.push({ nome: "frame1907", cartella: f1907.replace(/\/+$/, ""), bucket: "frame1907",
+    radice: "", regione: "locale", id: "", segreto: "", endpoint: "", fuori: false, solo1907: true });
   // il Synology, o qualunque altro S3 di casa
   const e = process.env.COMOTV_NAS_ENDPOINT || "";
   if (!e) return;
@@ -8502,6 +8510,7 @@ function parlatoLocaleInCoda(quante) {
   Object.keys(R.reg).forEach((k) => {
     const r = R.reg[k];
     if (r.guarda || r.stato === "registra" || r.stato === "carica") return;
+    if (r.origine === "1907") return;          // il materiale del club non si trascrive da solo
     if ((r.durata || 0) < 600) return;
     if (PARLATO[r.id] && PARLATO[r.id].intera) return;
     if (r.voceFallita && r.voceFallita.n >= 2 && Date.now() - r.voceFallita.quando < 86400000) return;
@@ -12721,6 +12730,90 @@ function sommarioRaccolta(r) {
     montati: az.filter((x) => x.voce === "montato").length,
     prima: az[0] ? { rec: az[0].rec, reg: az[0].reg || "", t: az[0].t, dentroFile: az[0].dentroFile, chiave: az[0].chiave || "", mini: az[0].voce === "montato" ? (az[0].mini || "") : "" } : null };
 }
+// ── MAM COMO 1907 (27/09/2026) ─────────────────────────────────────
+//  Il materiale del club (QNAP "COMOTV - FRAME"). Non sono partite: un file
+//  si apre come una registrazione d'archivio di un pezzo solo (origine
+//  "1907") e da li' taglio, sequenze ed export vanno come sempre. L'export
+//  legge l'ORIGINALE; la pagina guarda la COPIA LEGGERA se servizio-1907
+//  l'ha fatta (i 4K a 10 bit delle camere il browser non li legge). Le
+//  raccolte 1907 stanno in un file loro: quelle di Como TV non si toccano,
+//  e niente regia.
+const F1907_BUCKET = "frame1907";
+const F1907_COPIE = process.env.COMOTV_1907_COPIE || "/var/lib/comotv-1907/proxy";
+const F1907_VIDEO = /\.(mp4|mov|mxf|m4v|avi|mkv|mts|m2ts|webm)$/i;
+function chiave1907(rel) { return crypto.createHash("sha1").update(String(rel)).digest("hex").slice(0, 16); }
+function copia1907(r) {
+  if (!r || r.origine !== "1907" || !r.arch) return "";
+  const k = chiave1907(r.arch.chiave);
+  try { return fs.existsSync(path.join(F1907_COPIE, k + ".mp4")) ? "/como-tv/mam-1907/copie/" + k + ".mp4" : ""; } catch (e) { return ""; }
+}
+function via1907(v) {
+  const m = magazzinoDi2(F1907_BUCKET); if (!m || !m.cartella) throw new Error("il FRAME del Como 1907 non e' collegato");
+  const rel = String(v || "").replace(/\\/g, "/").split("/").filter((x) => x && x !== "." && x !== "..").join("/");
+  if (!rel || /(^|\/)[.@]/.test(rel)) throw new Error("file non valido");
+  return { rel, pieno: path.join(m.cartella, rel) };
+}
+// la copia leggera si chiede al servizio-1907: la fa lui, a bassa priorita'
+function chiediCopia1907(rel) {
+  try { http.get("http://127.0.0.1:8097/copia?fai=1&v=" + encodeURIComponent(rel), (res) => res.resume()).on("error", () => {}); } catch (e) {}
+}
+function prova1907(pieno) {
+  return new Promise((ok) => {
+    execFile(FFPROBE, ["-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name,pix_fmt,channels", "-of", "json", pieno], { timeout: 60000 }, (err, out) => {
+      try { const j = JSON.parse(out); const st = j.streams || [], a = st.filter((x) => x.codec_type === "audio")[0], v = st.filter((x) => x.codec_type === "video")[0];
+        // il browser legge l'H.264 a 8 bit 4:2:0 e basta: tutto il resto vuole la copia leggera
+        const legge = !!(v && v.codec_name === "h264" && /^yuvj?420p$/.test(v.pix_fmt || ""));
+        ok({ durata: +((j.format || {}).duration || 0), canali: a ? (+a.channels || 2) : 0, video: !!v, legge }); }
+      catch (e) { ok({ durata: 0, canali: 0, video: false, legge: false }); }
+    });
+  });
+}
+async function apri1907(p) {
+  const { rel, pieno } = via1907(p.via);
+  if (!F1907_VIDEO.test(rel)) throw new Error("si montano solo i video");
+  const gia = Object.keys(R.reg).map((k) => R.reg[k]).find((r) => r.origine === "1907" && r.arch && r.arch.chiave === rel);
+  if (gia) { if (gia.copia1907 && !copia1907(gia)) chiediCopia1907(rel); return { ok: true, reg: pubblica(gia), giaAperta: true }; }
+  let st; try { st = await NFS(() => fs.promises.stat(pieno)); } catch (e) { throw new Error("file non trovato sulla QNAP: " + path.basename(rel)); }
+  const info = await prova1907(pieno);
+  if (!info.video || !info.durata) throw new Error("questo file non si legge: " + path.basename(rel));
+  const durata = Math.round(info.durata * 1000) / 1000, parti = rel.split("/");
+  const r = {
+    id: nuovoId("r"), evento: "", __durata: durata,
+    titolo: (path.basename(rel) + " · " + parti.slice(0, -1).slice(-2).join(" › ")).slice(0, 160),
+    competizione: "Como 1907", sorgente: "archivio", origine: "1907", url: "",
+    stato: "finita", avviata: Math.round(st.mtimeMs), finita: Date.now(),
+    durata, kickoff: {}, marker: [], chi: String(p.__chi || "").slice(0, 40), errore: "", canali: info.canali || 2,
+    arch: { rec: "f1907:" + chiave1907(rel), bucket: F1907_BUCKET, chiave: rel, regione: "locale", pezzo: 0,
+            pezzi: [{ chiave: rel, da: 0, durata }], intera: false }
+  };
+  if (!info.legge) r.copia1907 = 1;           // il browser non lo legge: serve la copia
+  assicura(cartellaReg(r.id));
+  R.reg[r.id] = r; scrivi(); annuncia(0, "clip");
+  if (r.copia1907) chiediCopia1907(rel);
+  return { ok: true, reg: pubblica(r) };
+}
+// LE RACCOLTE 1907: file del FRAME messi da parte con un nome
+let RACC1907 = null; const RACC1907_VIA = {};
+function fileRacc1907() { return path.join(DIR, "raccolte-1907.json"); }
+function racc1907() {
+  if (!RACC1907) { try { RACC1907 = JSON.parse(fs.readFileSync(fileRacc1907(), "utf8")) || {}; } catch (e) { RACC1907 = {}; } }
+  return RACC1907;
+}
+function scriviRacc1907() {
+  try { const tmp = fileRacc1907() + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(RACC1907 || {})); fs.renameSync(tmp, fileRacc1907()); }
+  catch (e) { console.log("[clip] raccolte 1907 non salvate: " + e.message); }
+}
+function voce1907(x) {
+  if (!x || typeof x !== "object") return null;
+  let rel; try { rel = via1907(x.via).rel; } catch (e) { return null; }
+  return { via: rel, peso: +x.peso || 0, quando: +x.quando || 0, data: String(x.data || "").slice(0, 20), messa: Date.now() };
+}
+function sommario1907(r) {
+  const f = r.file || [];
+  return { id: r.id, nome: r.nome, creata: r.creata, aggiornata: r.aggiornata, chi: r.chi || "", quante: f.length,
+    video: f.filter((x) => F1907_VIDEO.test(x.via)).length, peso: f.reduce((t, x) => t + (x.peso || 0), 0),
+    prime: f.slice(0, 4).map((x) => x.via) };
+}
 // ── LE RACCOLTE IN REGIA (26/09/2026) ──
 // Goffredo: "durante i live trovare delle macchie, anche grezze, e mandarle:
 // si parla dei pali di Nico Paz e glieli mando". Ogni azione diventa un pezzo
@@ -15745,6 +15838,79 @@ const AZIONI = {
     return { ok: true, lavoro: L };
   },
   "clip-raccolta-regia-stato": (p) => { const L = REGIA_LAVORI[String(p.id || "")]; if (!L) throw new Error("lavoro sconosciuto"); return { ok: true, lavoro: L }; },
+  // ══════════ MAM COMO 1907 (27/09/2026) ══════════
+  //  Raccolte loro, file del FRAME aperti come materiale, "Monta questi".
+  //  Niente regia: e' materiale da montare, non da mandare in onda.
+  "clip-1907-raccolte-elenco": () => ({ ok: true, raccolte: Object.keys(racc1907()).map((k) => sommario1907(racc1907()[k]))
+    .sort((a, b) => (b.aggiornata || 0) - (a.aggiornata || 0)) }),
+  "clip-1907-raccolta-leggi": (p) => { const r = racc1907()[String(p.id || "")]; if (!r) throw new Error("raccolta sconosciuta"); return { ok: true, raccolta: r }; },
+  "clip-1907-raccolta-salva": (p) => {
+    const tutte = racc1907(), file = (Array.isArray(p.file) ? p.file : []).slice(0, 500).map(voce1907).filter(Boolean);
+    let r = p.id ? tutte[String(p.id)] : null;
+    const nome = String(p.nome || "").trim().slice(0, 120);
+    if (!r && nome) r = Object.keys(tutte).map((k) => tutte[k]).filter((x) => piattaMinuscola(x.nome) === piattaMinuscola(nome))[0] || null;
+    if (!r) { if (!nome) throw new Error("la raccolta ha bisogno di un nome"); const id = nuovoId("rs"); r = tutte[id] = { id, nome, creata: Date.now(), aggiornata: Date.now(), chi: String(p.__chi || "").slice(0, 40), file: [] }; }
+    const gia = new Set(r.file.map((x) => x.via)); let nuove = 0;
+    file.forEach((x) => { if (gia.has(x.via)) return; gia.add(x.via); r.file.push(x); nuove++; });
+    r.aggiornata = Date.now(); scriviRacc1907();
+    return { ok: true, raccolta: sommario1907(r), nuove, gia: file.length - nuove };
+  },
+  "clip-1907-raccolta-togli": (p) => {
+    const r = racc1907()[String(p.id || "")]; if (!r) throw new Error("raccolta sconosciuta");
+    const via = new Set((Array.isArray(p.vie) ? p.vie : []).map(String)), prima = r.file.length;
+    r.file = r.file.filter((x) => !via.has(x.via)); r.aggiornata = Date.now(); scriviRacc1907();
+    return { ok: true, raccolta: r, tolte: prima - r.file.length };
+  },
+  "clip-1907-raccolta-rinomina": (p) => {
+    const r = racc1907()[String(p.id || "")]; if (!r) throw new Error("raccolta sconosciuta");
+    const nome = String(p.nome || "").trim().slice(0, 120); if (!nome) throw new Error("serve un nome");
+    r.nome = nome; r.aggiornata = Date.now(); scriviRacc1907();
+    return { ok: true, raccolta: sommario1907(r) };
+  },
+  // cancellare una raccolta non tocca i file: e' solo l'elenco
+  "clip-1907-raccolta-cancella": (p) => {
+    const tutte = racc1907(), id = String(p.id || ""); if (!tutte[id]) throw new Error("raccolta sconosciuta");
+    RACC1907_VIA[id] = tutte[id]; delete tutte[id]; scriviRacc1907();
+    return { ok: true };
+  },
+  "clip-1907-raccolta-ripristina": (p) => {
+    const id = String(p.id || ""), r = RACC1907_VIA[id]; if (!r) throw new Error("niente da ripristinare");
+    racc1907()[id] = r; delete RACC1907_VIA[id]; scriviRacc1907();
+    return { ok: true, raccolta: sommario1907(r) };
+  },
+  "clip-1907-apri": apri1907,
+  // MONTA QUESTI: i file scelti diventano una sequenza, uno dopo l'altro.
+  // Un file entra intero fino a cinque minuti (un'intervista di un'ora no:
+  // se ne prendono i primi cinque, e il resto lo si allunga nell'Editing).
+  "clip-1907-monta": async (p) => {
+    const lista = Array.isArray(p.file) ? p.file.slice(0, 80) : [];
+    if (!lista.length) throw new Error("nessun file scelto");
+    const pezzi = [], saltati = [];
+    let t0 = 0;
+    for (const x of lista) {
+      let ap; try { ap = await apri1907({ via: x.via, __chi: p.__chi }); } catch (e) { saltati.push(path.basename(String(x.via || "")) + " (" + e.message + ")"); continue; }
+      const r = R.reg[ap.reg.id]; if (!r) { saltati.push(String(x.via || "")); continue; }
+      const durata = r.durata || 0;
+      const dentro = Math.max(0, Math.min(durata - 0.5, +x.dentro || 0));
+      const fuori = Math.max(dentro + 0.5, Math.min(durata, x.fuori ? +x.fuori : dentro + 300));
+      pezzi.push({ id: nuovoId("p"), reg: r.id, partita: r.titolo, dentro, fuori, base: dentro, t0: Math.round(t0 * 1000) / 1000,
+                   traccia: "V1", stacco: 0, titolo: path.basename(r.arch.chiave).slice(0, 140), tipo: "", minuto: "", fonte: "1907" });
+      t0 += fuori - dentro;
+    }
+    if (!pezzi.length) throw new Error("nessuno dei file scelti si puo' montare" + (saltati.length ? ": " + saltati.slice(0, 3).join(", ") : ""));
+    const q = {
+      id: nuovoId("s"), reg: pezzi[0].reg,
+      titolo: String(p.titolo || "").slice(0, 120) || "Como 1907 \u00b7 " + pezzi.length + " file",
+      pezzi, grafiche: [], audio: [], pre: HL_PRE, post: HL_POST, scarto: 0, avvisi: [],
+      formato: FORMATI[String(p.formato || "")] ? String(p.formato) : "16:9",
+      creata: Date.now(), chi: String(p.__chi || p.chi || "").slice(0, 40), export: null, ricerca: String(p.domanda || "").slice(0, 300), origine: "1907"
+    };
+    q.pezzi.forEach((x) => { if (x.reg === q.reg) delete x.reg; });
+    R.seq[q.id] = q;
+    normalizzaSeq(q);
+    scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: { id: q.id, titolo: q.titolo }, quante: q.pezzi.length, saltati };
+  },
   // ══════════ MONTA QUESTI (26/09/2026) ══════════
   //  Dai risultati della ricerca si scelgono le azioni — di partite diverse —
   //  e diventano UNA sequenza: ogni pezzo porta la sua registrazione (x.reg,
