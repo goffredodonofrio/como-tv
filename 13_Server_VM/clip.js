@@ -12753,7 +12753,9 @@ function chiaveRaccolta(x) { return String(x.rec || x.partita || "") + "|" + Mat
 const CAMPI_RACCOLTA = ["reg", "partita", "rec", "t", "dentro", "fuori", "s3", "tipo", "tag", "titolo", "minuto", "fonte", "fonti", "squadra", "giocatore",
   "gol", "certezza", "chiave", "dentroFile", "quando", "ruolo", "ruoloDa", "rating", "boato",
   // i MONTATI (26/09/2026): una sequenza esportata dall'Editing, messa in raccolta come una macchia
-  "voce", "seq", "formato", "file", "durata", "mini"];
+  "voce", "seq", "formato", "file", "durata", "mini",
+  // le clip dell'ARCHIVIO DEL COMO 1907 (28/09/2026): voce "1907", rec "f1907:<chiave>", t 0
+  "via1907", "k1907", "slow", "data", "g", "comp", "stagione"];
 // un montato si riconosce da sequenza + formato: rec "seq:<id>:<formato>", secondo 0
 function montatoDaSeq(q, formato) {
   const f = (q.esportati || {})[formato]; if (!f || !f.file) return null;
@@ -12785,7 +12787,8 @@ function sommarioRaccolta(r) {
   return { id: r.id, nome: r.nome, creata: r.creata, aggiornata: r.aggiornata, chi: r.chi || "", quante: az.length,
     partite: new Set(az.map((x) => x.rec || x.partita)).size, gol: az.filter((x) => x.gol || x.ruolo === "gol").length,
     montati: az.filter((x) => x.voce === "montato").length,
-    prima: az[0] ? { rec: az[0].rec, reg: az[0].reg || "", t: az[0].t, dentroFile: az[0].dentroFile, chiave: az[0].chiave || "", mini: az[0].voce === "montato" ? (az[0].mini || "") : "" } : null };
+    prima: az[0] ? { rec: az[0].rec, reg: az[0].reg || "", t: az[0].t, dentroFile: az[0].dentroFile, chiave: az[0].chiave || "", mini: az[0].voce === "montato" ? (az[0].mini || "") : "",
+      mini1907: az[0].voce === "1907" && az[0].k1907 ? "/como-tv/mam-1907/mini/" + az[0].k1907 + ".jpg?v=" + encodeURIComponent(az[0].via1907 || "") : "" } : null };
 }
 // ── MAM COMO 1907 (27/09/2026) ─────────────────────────────────────
 //  Il materiale del club (QNAP "COMOTV - FRAME"). Non sono partite: un file
@@ -12907,6 +12910,12 @@ async function lavoroRegia(L, pezzi) {
   try {
     for (const [i, x] of pezzi.entries()) {
       const f = path.join(cart, L.id + "-" + i + ".mp4");
+      if (x.ricodifica) {
+        const ing = ["-ss", String(Math.max(0, x.da)), "-t", String(x.dur), "-i", x.file].concat(x.muto ? ["-f", "lavfi", "-t", String(x.dur), "-i", "anullsrc=r=48000:cl=stereo"] : []);
+        await ffmpegFa(ing.concat(["-map", "0:v:0", "-map", x.muto ? "1:a:0" : "0:a:0",
+          "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=50,setsar=1,format=yuv420p",
+          "-af", "aformat=sample_rates=48000:channel_layouts=stereo", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k", "-shortest", f]), 900000);
+      } else
       await ffmpegFa(["-ss", String(Math.max(0, x.da)), "-i", x.file, "-t", String(x.dur), "-map", "0:v:0", "-map", "0:a:0?", "-c", "copy", "-avoid_negative_ts", "make_zero", f], 120000);
       tmp.push(f); L.fatti = i + 1;
     }
@@ -15874,10 +15883,23 @@ const AZIONI = {
     return { ok: true, raccolta: sommarioRaccolta(r) };
   },
   // la raccolta (o le azioni scelte) come UN filmato grezzo per la regia
-  "clip-raccolta-regia": (p) => {
+  "clip-raccolta-regia": async (p) => {
     const prima = num(p.prima, 2, 30, 8), dopo = num(p.dopo, 2, 40, 10);
     const pezzi = [], saltate = [];
+    // LE CLIP DEL COMO 1907 (28/09/2026): entrano intere, fino a 90 secondi. Sono
+    // originali di camera (ProRes, 4K, spesso senza audio): si ricodificano al taglio
+    const in1907 = {};
+    for (const x of (Array.isArray(p.pezzi) ? p.pezzi : []).slice(0, 40)) {
+      if (!x || !x.v1907) continue;
+      try { const { rel, pieno } = via1907(x.v1907); const info = await prova1907(pieno); if (info.video && info.durata) in1907[x.v1907] = { rel, pieno, info }; } catch (e) {}
+    }
     (Array.isArray(p.pezzi) ? p.pezzi : []).slice(0, 40).forEach((x) => {
+      if (x && x.v1907) {
+        const c = in1907[x.v1907];
+        if (!c) { saltate.push(String(x.titolo || path.basename(String(x.v1907))).slice(0, 80)); return; }
+        pezzi.push({ file: c.pieno, da: 0, dur: Math.min(90, Math.max(1, c.info.durata)), ricodifica: true, muto: !c.info.canali });
+        return;
+      }
       if (x && x.montato) {
         const f = path.join(DIR, String(x.file || "").replace(/^\/clip\//, ""));
         if (!f.startsWith(DIR + path.sep) || !fs.existsSync(f)) { saltate.push(String(x.titolo || "montato").slice(0, 80)); return; }
@@ -15996,6 +16018,15 @@ const AZIONI = {
     const pezzi = [];
     let t0 = 0;
     for (const x of lista) {
+      if (x.v1907) {
+        let ap; try { ap = await apri1907({ via: x.v1907, __chi: p.__chi }); } catch (e) { saltate.push(String(x.titolo || x.v1907).slice(0, 80) + " (" + e.message + ")"); continue; }
+        const r1 = R.reg[ap.reg.id]; if (!r1) { saltate.push(String(x.titolo || x.v1907)); continue; }
+        const d1 = r1.durata || 0, fuori1 = Math.max(0.5, Math.min(d1, 300));
+        pezzi.push({ id: nuovoId("p"), reg: r1.id, partita: r1.titolo, dentro: 0, fuori: fuori1, base: 0, t0: Math.round(t0 * 1000) / 1000,
+                     traccia: "V1", stacco: 0, titolo: String(x.titolo || path.basename(r1.arch.chiave)).slice(0, 140), tipo: x.gol ? "Gol" : "", minuto: "", fonte: "1907" });
+        t0 += fuori1;
+        continue;
+      }
       const rec = String(x.rec || "");
       if (!rec || !ARCHIVIO[rec]) { saltate.push(x.titolo || rec); continue; }
       if (!inCasa(ARCHIVIO[rec])) { saltate.push((x.partita || rec) + " (ancora su S3)"); continue; }

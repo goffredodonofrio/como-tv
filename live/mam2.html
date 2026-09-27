@@ -365,6 +365,8 @@
   .tes .mini .foto{position:absolute;inset:0;background:#000 center/cover no-repeat;opacity:0;transition:opacity .3s;}
   .tes .mini .foto.su{opacity:1;}
   .a1907 .mini img.foto{width:100%;height:100%;object-fit:cover;display:block;}
+  .a1907 .va1907{margin-left:auto;pointer-events:auto;cursor:pointer;background:rgba(0,0,0,.65);color:#E3C77E;border-radius:999px;padding:0 7px;font-size:12px;line-height:18px;}
+  .a1907 .va1907:hover,.a1907 .va1907:focus-visible{background:#C9A24B;color:#0B1B33;outline:none;}
   .tes .mini .sopra{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;padding:8px;pointer-events:none;
     background:linear-gradient(180deg,rgba(10,15,36,.55),transparent 35%,transparent 60%,rgba(10,15,36,.7));}
   .tes .mini .sopra .su{display:flex;justify-content:space-between;align-items:flex-start;gap:6px;}
@@ -2458,6 +2460,7 @@
   }
   function tesseraAzione(x, ev, link){
     if (x.voce === "montato") return tesseraMontato(x);
+    if (x.voce === "1907") return tessera1907(x);
     // la partita non e' ancora sulla NAS: sotto, il fondo blu col suo nome
     var ta = tipoAzione(x), sotto = anteprimaHtml(ev || { partita: x.partita, titolo: x.partita, quando: x.quando ? new Date(x.quando).toISOString() : "" });
     var fonte = (x.fonti || [x.fonte]).filter(Boolean).join(" + ");
@@ -2551,16 +2554,42 @@
     }).catch(function(){ ARCH1907_CHIESTA = ""; });
   }
   function dataBreve1907(d){ d = String(d || ""); return d.length === 8 ? d.slice(6, 8) + "/" + d.slice(4, 6) + "/" + d.slice(2, 4) : ""; }
-  // la tessera apre il MAM del Como 1907 sul file (li' c'e' la copia leggera per guardarlo)
-  function tessera1907(x){
-    var nome = x.nome.replace(/\.[^.]+$/, "");
-    var cerca = nome.replace(/[_]+/g, " ");
-    var mini = "/como-tv/mam-1907/mini/" + x.k + ".jpg?v=" + encodeURIComponent(x.via);
-    return '<a class="card tes a1907" href="mam-1907.html#q=' + encodeURIComponent(cerca) + '" target="_blank" rel="noopener" title="' + esc(x.via) + '"><div class="mini">' +
-      '<img class="foto su" loading="lazy" alt="" src="' + esc(mini) + '" onerror="this.remove()">' +
-      '<div class="sopra"><div class="su"><span class="tipo-az" style="background:#C9A24B;color:#0B1B33">' + (x.gol ? "GOL" : "1907") + '</span>' + (x.slow ? '<span class="tipo-az altro">SLOW MOTION</span>' : '') + '</div><div class="giu"><span>' + esc(x.g ? x.g + " · " : "") + esc(dataBreve1907(x.data)) + '</span></div></div></div>' +
-      '<div class="t"><div class="testo">' + evidenzia(nome.replace(/[_]+/g, " "), QEV || Q) + '</div><small>' + esc([x.partita, x.comp, x.stagione].filter(Boolean).join(" · ")) + '</small></div></a>';
+  // LA CLIP DEL 1907 COME LE AZIONI (28/09/2026): il + la sceglie (Monta
+  // questi, Salva in raccolta, Invia alla regia), il clic la apre in Editing,
+  // la freccia in alto la mostra nel MAM del Como 1907. In raccolta e' una
+  // voce "1907": rec "f1907:<chiave>", t 0
+  function voce1907(x){
+    if (x.voce === "1907") return x;
+    var nome = String(x.nome || "").replace(/\.[^.]+$/, "").replace(/[_]+/g, " ");
+    return { voce: "1907", rec: "f1907:" + x.k, t: 0, via1907: x.via, k1907: x.k, titolo: nome, partita: x.partita || "Como 1907",
+             data: x.data || "", g: x.g || "", comp: x.comp || "", stagione: x.stagione || "", slow: !!x.slow, gol: !!x.gol, tipo: x.gol ? "Gol" : "", fonte: "1907" };
   }
+  function tessera1907(x0){
+    var x = voce1907(x0), k = chiaveAz(x), on = SCELTE_RIC.has(k); AZ_PER_CHIAVE[k] = x;
+    var mini = "/como-tv/mam-1907/mini/" + x.k1907 + ".jpg?v=" + encodeURIComponent(x.via1907);
+    var scegli = '<button type="button" class="scegli' + (on ? " on" : "") + '" data-scegli="' + esc(k) + '" aria-pressed="' + on + '" title="Scegli per il montaggio, la raccolta o la regia">' + (on ? ICONA_SCELTA : ICONA_SCEGLI) + '</button>';
+    return '<a class="card tes a1907' + (on ? " scelta" : "") + '" href="#" data-e1907="' + esc(k) + '" title="Apri in Editing · ' + esc(x.via1907) + '">' + scegli +
+      '<div class="mini"><img class="foto su" loading="lazy" alt="" src="' + esc(mini) + '" onerror="this.remove()">' +
+      '<div class="sopra"><div class="su"><span class="tipo-az" style="background:#C9A24B;color:#0B1B33">' + (x.gol ? "GOL" : "1907") + '</span>' + (x.slow ? '<span class="tipo-az altro">SLOW MOTION</span>' : '') +
+      '<span class="va1907" data-mam1907="' + esc(x.titolo) + '" title="Guardala nel MAM del Como 1907" role="link" tabindex="0">&#8599;</span></div>' +
+      '<div class="giu"><span>' + esc(x.g ? x.g + " · " : "") + esc(dataBreve1907(x.data)) + '</span></div></div></div>' +
+      '<div class="t"><div class="testo">' + evidenzia(x.titolo, QEV || Q) + '</div><small>' + esc([x.partita, x.comp, x.stagione].filter(Boolean).join(" · ")) + '</small></div></a>';
+  }
+  // un pezzo per il ponte (Monta questi, regia)
+  function pezzo1907(x){ return { v1907: x.via1907, titolo: x.titolo || "", gol: !!x.gol }; }
+  function apri1907InEditing(x){
+    avviso("", "Apro «" + esc(x.titolo) + "» in Editing…");
+    post({ tipo: "clip-monta-scelte", titolo: x.titolo + " · Como 1907", domanda: Q, pezzi: [pezzo1907(x)] }).then(function(d){
+      if (!d || d.ok === false) throw new Error((d && d.errore) || "non si apre");
+      location.href = "mam2.html?seq=" + encodeURIComponent(d.seq.id);
+    }).catch(function(er){ avviso("err", esc(er.message)); });
+  }
+  el("risultati").addEventListener("click", function(e){
+    var v = e.target.closest("[data-mam1907]");
+    if (v) { e.preventDefault(); e.stopPropagation(); window.open("mam-1907.html#q=" + encodeURIComponent(v.dataset.mam1907), "_blank", "noopener"); return; }
+    var c = e.target.closest("[data-e1907]"); if (!c || e.target.closest("[data-scegli]")) return;
+    e.preventDefault(); var x = AZ_PER_CHIAVE[c.dataset.e1907]; if (x) apri1907InEditing(x);
+  });
   var PER_REC = {}, RIS_AZ_UNICHE = [];
   function disegnaRisultati(){
     PER_REC = {}; EVENTI.forEach(function(x){ if (x.rec) PER_REC[x.rec] = x; });
@@ -2614,7 +2643,7 @@
     lista.forEach(function(g){
       if (!g.n || (RIS_TAB !== "tutto" && RIS_TAB !== g.k)) return;
       var max = RIS_TAB === "tutto" ? (g.k === ordine[0] ? 12 : 8) : 300;
-      var tutteScelte = g.k === "azioni" && azioni.filter(function(x){ var ev = evDi(x); return x.voce === "montato" || (ev && !ev.s3); }).every(function(x){ return SCELTE_RIC.has(chiaveAz(x)); });
+      var tutteScelte = g.k === "azioni" && azioni.filter(function(x){ var ev = evDi(x); return x.voce === "montato" || x.voce === "1907" || (ev && !ev.s3); }).every(function(x){ return SCELTE_RIC.has(chiaveAz(x)); });
       h += '<div class="sez-ris" style="--c:' + g.c + '"><h3>' + esc(g.eti) + ' · ' + g.n + '</h3>' +
         (g.k === "azioni" ? '<a class="sceglitutte" data-sceglitutte="' + (tutteScelte ? "0" : "1") + '">' + (tutteScelte ? "Togli tutte dal montaggio" : "Scegli tutte per il montaggio") + '</a>' : '') +
         (RIS_TAB === "tutto" && g.n > max ? '<a data-rt="' + g.k + '">Mostra tutte (' + g.n + ')</a>' : '') + '</div>' +
@@ -2646,7 +2675,7 @@
     }); });
     box.querySelectorAll("[data-sceglitutte]").forEach(function(b){ b.addEventListener("click", function(){
       var tutte = b.dataset.sceglitutte === "1";
-      azioni.forEach(function(x){ var ev = evDi(x); if (x.voce !== "montato" && (!ev || ev.s3)) return; var k = chiaveAz(x); AZ_PER_CHIAVE[k] = x; if (tutte) SCELTE_RIC.set(k, x); else SCELTE_RIC.delete(k); });
+      azioni.forEach(function(x){ var ev = evDi(x); if (x.voce !== "montato" && x.voce !== "1907" && (!ev || ev.s3)) return; var k = chiaveAz(x); AZ_PER_CHIAVE[k] = x; if (tutte) SCELTE_RIC.set(k, x); else SCELTE_RIC.delete(k); });
       disegnaRisultati(); disegnaBarraScelte();
     }); });
     disegnaBarraScelte();
@@ -2799,6 +2828,7 @@
     // le copertine: il fotogramma della prima azione
     lista.forEach(function(r){
       var p = r.prima; if (!p) return;
+      if (p.mini1907) { var c1 = el("rcGriglia").querySelector('[data-rcid="' + r.id + '"] .rc-cop'); if (c1) c1.style.backgroundImage = "url('" + p.mini1907 + "')"; return; }
       if (p.mini) { var c0 = el("rcGriglia").querySelector('[data-rcid="' + r.id + '"] .rc-cop'); if (c0) c0.style.backgroundImage = "url('" + BASE + p.mini + "')"; return; }
       // la scheda si cerca quando il fotogramma arriva: nel frattempo la griglia puo' essere stata ridisegnata
       var cerca_ = function(){ return el("rcGriglia").querySelector('[data-rcid="' + r.id + '"] .rc-cop'); };
@@ -2878,7 +2908,7 @@
     REGIA_APERTO = false; REGIA_LAVORO = { stato: "lavora", fase: "taglio", fatti: 0, tot: lista.length }; disegnaBarraScelte();
     var fallito = function(er){ REGIA_LAVORO = null; disegnaBarraScelte(); avviso("err", "Alla regia non è andato: " + esc(er.message)); };
     post({ tipo:"clip-raccolta-regia", titolo: titolo,
-      pezzi: lista.map(function(x){ return x.voce === "montato" ? { montato: true, file: x.file, durata: x.durata || 0, titolo: x.titolo || "" } : { chiave: x.chiave || "", partita: x.partita || "", titolo: x.titolo || "",
+      pezzi: lista.map(function(x){ if (x.voce === "1907") return pezzo1907(x); return x.voce === "montato" ? { montato: true, file: x.file, durata: x.durata || 0, titolo: x.titolo || "" } : { chiave: x.chiave || "", partita: x.partita || "", titolo: x.titolo || "",
         secFile: (x.dentroFile !== undefined ? x.dentroFile : x.dentro || 0) + ((x.t || 0) - (x.dentro || 0)) }; }) })
     .then(function(d){
       var L = d.lavoro; REGIA_LAVORO = L; disegnaBarraScelte();
@@ -2917,7 +2947,7 @@
     var titolo = [RACCOLTA ? RACCOLTA.nome : "", ruoli.join(" e "), gio ? gio.eti : "", Q].filter(Boolean).join(" · ") || ("Dalla ricerca · " + lista.length + " azioni");
     bottone.disabled = true; bottone.textContent = "Preparo la sequenza…";
     post({ tipo:"clip-monta-scelte", titolo: titolo, domanda: [GETTONI.map(function(x){ return x.eti; }).join(" · "), Q].filter(Boolean).join(" · "),
-      pezzi: lista.map(function(x){ return { rec: x.rec, reg: x.reg || "", chiave: x.chiave || "", secFile: (x.dentroFile !== undefined ? x.dentroFile : x.dentro || 0) + ((x.t || 0) - (x.dentro || 0)),
+      pezzi: lista.map(function(x){ if (x.voce === "1907") return pezzo1907(x); return { rec: x.rec, reg: x.reg || "", chiave: x.chiave || "", secFile: (x.dentroFile !== undefined ? x.dentroFile : x.dentro || 0) + ((x.t || 0) - (x.dentro || 0)),
         titolo: x.titolo || x.giocatore || "", minuto: x.minuto || "", tipo: x.tipo || "", ruolo: x.ruolo || "", gol: !!x.gol, partita: x.partita || "" }; }) })
     .then(function(d){
       if (!d || d.ok === false) throw new Error((d && d.errore) || "sequenza non creata");
