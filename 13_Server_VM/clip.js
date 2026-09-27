@@ -6441,7 +6441,7 @@ const CASA = { attive: new Map(), fatte: 0, fallite: 0, dal: Date.now() };
 function passoCasa(rec, a) {
   // lo studio (pre, intervallo, post) non ha ne' risultato ne' fischio suo:
   // sta nel file della partita, e la partita la legge lei
-  if (DA_STUDIO.test(a.partita || "")) return null;
+  if (senzaPartita(a)) return null;
   if (!ESPN[rec]) return "espn";
   if (!a.orologio && !a.orologioFallito) return "cronometro";
   if (a.orologio && !a.tabellone && !a.tabelloneFallito) return "tabellone";
@@ -6512,7 +6512,7 @@ async function giroCasa() {
 // al secondo dopo, in silenzio. Lo studio non ha partita: basta che ci sia.
 function utilizzabile(k, a) {
   if (!a || !inCasa(a)) return false;
-  if (DA_STUDIO.test(a.partita || "")) return true;
+  if (senzaPartita(a)) return true;
   return !!a.partita && (nomeSicuro(a) || nomeQuasiCerto(k, a)) && !!ESPN[k] && !!(a.orologio || a.orologioFallito);
 }
 // NOME QUASI CERTO (27/09/2026): l'abbinamento riga Airtable -> cartella non
@@ -6550,7 +6550,7 @@ function nomeQuasiCerto(k, a) {
 // DA GUARDARE: la macchina ci ha provato (tabellone letto o fallito) e non sa
 // ancora che partita e'. Da sola non ci arriva: serve un occhio
 function daGuardare(a) {
-  return !!a && inCasa(a) && !nomeSicuro(a) && !DA_STUDIO.test(a.partita || "") && !!(a.tabellone || a.tabelloneFallito || a.orologioFallito || !a.partita);
+  return !!a && inCasa(a) && !nomeSicuro(a) && !senzaPartita(a) && !!(a.tabellone || a.tabelloneFallito || a.orologioFallito || !a.partita);
 }
 function statoCasa() {
   const n = { partite: 0, espn: 0, appunti: 0, cronometro: 0, tabellone: 0, boati: 0, momenti: 0, finite: 0, studio: 0, utilizzabili: 0, daGuardare: 0 };
@@ -7057,6 +7057,14 @@ function daKickoffPezzo(file, quandoMs) {
 // come si riconosce uno show dal nome: non e' una partita, e' una
 // trasmissione — studio, pre, post, il recap del lunedi'
 const DA_STUDIO = /SHOW|STUDIO|INTERVALLO|SPECIALE|RECAP|PRE[ -]?PARTITA|POST[ -]?PARTITA|\u{1F3A5}/iu;
+// NON SONO PARTITE (Goffredo, 27/09/2026: "non ha senso sforzarsi li'"):
+// Cage Warriors, allenamenti, camp, Karate Combat, sorteggi, maratone, feste.
+// Nessun cronometro da cercare: il giro della casa le salta e contano come
+// utilizzabili appena sono sulla NAS, come lo studio
+const NON_PARTITA = /\bCAMP\b|TRAINING|ALLENAMENT|CAGE WARRIORS|\bCW\s?\d+|\bKC\s?\d+|KARATE|SORTEGG|DRAWING|FESTEGGIAMENT|BUS SCOPERTO|MARATONA/i;
+function senzaPartita(a) {
+  return !!a && (DA_STUDIO.test(a.partita || "") || NON_PARTITA.test(a.partita || "") || NON_PARTITA.test(a.competizione || ""));
+}
 function kickoffNelFile(file, quandoMs) {
   const da = daKickoffPezzo(file, quandoMs);
   return da === null ? null : Math.max(0, -da);
@@ -11369,7 +11377,7 @@ function orologiInCoda(ripasso) {
   candidate.forEach((rec) => {
     const a = ARCHIVIO[rec];
     if (a && senzaCodeDi(a)) return;                       // S3 contato: il cronometro si legge a richiesta
-    if (!a || a.orologio || gia.has(rec)) return;
+    if (!a || a.orologio || gia.has(rec) || senzaPartita(a)) return;
     if (a.orologioFallito && !ripasso) return;        // gia' provata: al giro finale
     CODA_OROLOGI.push(rec);
   });
