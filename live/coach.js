@@ -92,36 +92,36 @@
     ".coach-ui,.coach-ui *{box-sizing:border-box;font-family:'DM Sans',system-ui,-apple-system,'Segoe UI',sans-serif;letter-spacing:normal;text-transform:none}",
     ".coach-tab{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:2147483000;writing-mode:vertical-rl;background:#C9A24B;color:#0A0F24;border:0;border-radius:10px 0 0 10px;padding:16px 9px;font:800 13px/1 'Mazzard','Arial Black',sans-serif!important;letter-spacing:.18em!important;cursor:pointer;box-shadow:-4px 0 18px rgba(0,0,0,.35)}",
     ".coach-tab:hover{background:#E3C271}",
-    ".coach-card{position:fixed;z-index:2147483001;top:84px;width:min(380px,calc(100vw - 24px));max-height:calc(100vh - 110px);overflow:auto;background:#F6F2E8;color:#101631;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.5);border:2px solid #C9A24B}",
+    ".coach-card{position:fixed;z-index:2147483001;top:84px;width:min(520px,calc(100vw - 24px));max-height:calc(100vh - 110px);overflow:auto;background:#F6F2E8;color:#101631;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.5);border:2px solid #C9A24B}",
     ".coach-card.destra{right:14px}.coach-card.sinistra{left:14px}",
-    ".coach-card header{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid #E3DCCB}",
-    ".coach-card header b{font:800 14px/1.2 'Mazzard','Arial Black',sans-serif;text-transform:uppercase!important;letter-spacing:.02em!important}",
-    ".coach-card header .x{margin-left:auto;background:transparent;border:0;font-size:22px;line-height:1;cursor:pointer;color:#6D7186;padding:2px 6px}",
-    ".coach-card .corpo{padding:14px;display:grid;gap:12px}",
+    ".coach-card header{display:flex;align-items:center;gap:10px;padding:18px 22px;border-bottom:1px solid #E3DCCB}",
+    ".coach-card header b{font:800 17px/1.2 'Mazzard','Arial Black',sans-serif;text-transform:uppercase!important;letter-spacing:.02em!important}",
+    ".coach-card header .x{margin-left:auto;background:transparent;border:0;font-size:30px;line-height:1;cursor:pointer;color:#6D7186;padding:2px 6px}",
+    ".coach-card .corpo{padding:20px 22px 22px;display:grid;gap:18px}",
     ".coach-card .avviso{background:#FBE7E7;border-radius:10px;padding:10px 12px;font-size:14px}",
     ".coach-card .avviso b{color:#B4232A}",
     ".coach-card .pezzi{display:grid;gap:8px}",
     ".coach-card .pezzo{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;text-align:left;background:#fff;border:1px solid #E3DCCB;border-radius:12px;padding:10px 12px;cursor:pointer;color:#101631}",
     ".coach-card .pezzo:hover{border-color:#C9A24B}",
-    ".coach-card .pezzo .t{font:700 15px/1.25 inherit}",
-    ".coach-card .pezzo .m{font-size:12px;color:#6D7186}",
-    ".coach-card .pezzo .v{grid-row:span 2;font:800 12px/1 inherit;color:#fff;background:#0A0F24;border-radius:999px;padding:7px 10px}",
+    ".coach-card .pezzo .t{font:700 19px/1.25 'DM Sans',system-ui,-apple-system,sans-serif}",
+    ".coach-card .pezzo .m{font-size:15px;color:#6D7186}",
+    ".coach-card .pezzo .v{grid-row:span 2;font:800 12px/1 'DM Sans',system-ui,-apple-system,sans-serif;color:#fff;background:#0A0F24;border-radius:999px;padding:7px 10px}",
     ".coach-card .pezzo.fatto .v{background:#2F7D55}",
-    ".coach-card .ordine{font:800 22px/1.3 inherit}",
-    ".coach-card .aiuto{font-size:14px;color:#3F455E;background:#F4E9CF;border-radius:10px;padding:8px 10px}",
-    ".coach-card .pallini{display:flex;gap:5px;flex-wrap:wrap}",
-    ".coach-card .pallini i{width:10px;height:10px;border-radius:50%;background:#E3DCCB}",
+    ".coach-card .ordine{font:800 30px/1.25 'DM Sans',system-ui,-apple-system,sans-serif;color:#0A0F24}",
+    ".coach-card .aiuto{font-size:19px;line-height:1.4;color:#3F455E;background:#F4E9CF;border-radius:12px;padding:12px 16px}",
+    ".coach-card .pallini{display:flex;gap:8px;flex-wrap:wrap}",
+    ".coach-card .pallini i{width:16px;height:16px;border-radius:50%;background:#E3DCCB}",
     ".coach-card .pallini i.ok{background:#2F7D55}.coach-card .pallini i.ora{background:#C9A24B}",
-    ".coach-card .bottoni{display:flex;gap:8px;flex-wrap:wrap}",
-    ".coach-card button.b{border:0;border-radius:10px;padding:9px 12px;font:700 13px/1 inherit;cursor:pointer;background:#EFE9DB;color:#101631}",
+    ".coach-card .bottoni{display:flex;gap:10px;flex-wrap:wrap}",
+    ".coach-card button.b{border:0;border-radius:12px;padding:15px 20px;font:700 18px/1 'DM Sans',system-ui,-apple-system,sans-serif;cursor:pointer;background:#EFE9DB;color:#101631}",
     ".coach-card button.b.oro{background:#C9A24B;color:#0A0F24}.coach-card button.b.navy{background:#0A0F24;color:#F5F1E6}",
-    ".coach-card .stato{font-size:13px;color:#6D7186}",
-    ".coach-card .bravo{font:800 16px/1.2 inherit;color:#2F7D55}",
-    ".coach-card input.nome{width:100%;font:600 16px/1 inherit;padding:10px 12px;border-radius:10px;border:2px solid #E3DCCB;background:#fff;color:#101631}",
+    ".coach-card .stato{font-size:17px;color:#6D7186}",
+    ".coach-card .bravo{font:800 26px/1.25 'DM Sans',system-ui,-apple-system,sans-serif;color:#2F7D55}",
+    ".coach-card input.nome{width:100%;font:600 16px/1 'DM Sans',system-ui,-apple-system,sans-serif;padding:10px 12px;border-radius:10px;border:2px solid #E3DCCB;background:#fff;color:#101631}",
     ".coach-card video{width:100%;border-radius:10px;background:#000;display:block}",
     ".coach-anello{position:fixed;z-index:2147482999;pointer-events:none;border:3px solid #E3C271;border-radius:10px;box-shadow:0 0 0 4px rgba(10,15,36,.55),0 0 22px rgba(227,194,113,.9);transition:all .18s ease;animation:coachPulsa 1.2s ease-in-out infinite}",
     "@keyframes coachPulsa{0%,100%{outline:0 solid rgba(227,194,113,.6)}50%{outline:9px solid rgba(227,194,113,0)}}",
-    ".coach-badge{position:fixed;left:12px;bottom:12px;z-index:2147483000;background:#0A0F24;color:#F5F1E6;border:2px solid #C9A24B;border-radius:999px;padding:8px 14px;font:700 13px/1 'DM Sans',system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.4)}",
+    ".coach-badge{position:fixed;left:12px;bottom:12px;z-index:2147483000;background:#0A0F24;color:#F5F1E6;border:2px solid #C9A24B;border-radius:999px;padding:13px 20px;font:700 17px/1 'DM Sans',system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.4)}",
     ".coach-badge b{color:#E3C271}",
     ".coach-piu{position:fixed;z-index:2147483002;font:800 26px/1 'Mazzard','Arial Black',sans-serif;color:#3DDC84;pointer-events:none;animation:coachSale 1s ease-out forwards;text-shadow:0 2px 8px rgba(0,0,0,.6)}",
     "@keyframes coachSale{from{transform:translateY(0);opacity:1}to{transform:translateY(-46px);opacity:0}}",
@@ -190,7 +190,7 @@
     html += l.length ? '<div class="pezzi">' + l.map(function (p) { return '<button class="pezzo' + (PAL.fatti[p.id] ? " fatto" : "") + '" data-p="' + esc(p.id) + '"><span class="t">' + esc(p.titolo) + '</span><span class="v">' + (PAL.fatti[p.id] ? "✓ rifai" : DEV ? "Allenati" : "Guidami") + '</span><span class="m">' + p.passi.length + " passi" + (p.video ? " · con video" : "") + '</span></button>'; }).join("") + "</div>"
       : '<div class="stato">Per questa pagina non ci sono ancora pezzi guidati.</div>';
     if (!DEV) html += '<div class="bottoni"><button class="b navy" data-c="palestra">Allenati in palestra</button></div>';
-    html += '<div class="bottoni"><a class="b" style="text-decoration:none;display:inline-block;border-radius:10px;padding:9px 12px;background:#EFE9DB;color:#101631;font:700 13px/1 inherit" href="' + RADICE.replace("-dev", "") + 'guida/index.html" target="_blank">Tutta la guida ↗</a></div>';
+    html += '<div class="bottoni"><a class="b" style="text-decoration:none;display:inline-block;border-radius:10px;padding:9px 12px;background:#EFE9DB;color:#101631;font:700 17px/1 DM Sans,system-ui,sans-serif" href="' + RADICE.replace("-dev", "") + 'guida/index.html" target="_blank">Tutta la guida ↗</a></div>';
     if (altri.length) html += '<div class="stato">Altri ' + altri.length + ' pezzi sono nelle altre pagine: li trovi nella guida.</div>';
     html += "</div>";
     var c = apriCard(html, "destra");
@@ -236,7 +236,7 @@
     var altrove = s.pagina && paginaQui() !== s.pagina.replace(/^.*\//, "").replace(/\.html.*$/, "") && !(s.paginaChiave && s.paginaChiave === paginaQui());
     var html = '<header><b>' + esc(p.titolo) + '</b><button class="x" data-c="esci" aria-label="Esci">×</button></header><div class="corpo">' +
       '<div class="pallini">' + p.passi.map(function (_, j) { return '<i class="' + (j < RUN.i ? "ok" : j === RUN.i ? "ora" : "") + '"></i>'; }).join("") + '</div>' +
-      '<div class="ordine">' + (RUN.i + 1) + ". " + esc(s.t) + "</div>" +
+      '<div class="stato" style="margin-top:-8px">Passo ' + (RUN.i + 1) + " di " + p.passi.length + '</div><div class="ordine">' + esc(s.t) + "</div>" +
       (s.aiuto ? '<div class="aiuto">' + esc(s.aiuto) + "</div>" : "") +
       (!bersaglio && s.su && s.fai !== "vedi" ? '<div class="stato">Non vedo ancora il punto giusto su questa pagina: ' + (altrove ? "prima apri la pagina giusta." : "scorri o aspetta che carichi.") + "</div>" : "") +
       '<div class="bottoni">' + (s.fai === "leggi" ? '<button class="b oro" data-c="avanti">Fatto, avanti</button>' : "") +
