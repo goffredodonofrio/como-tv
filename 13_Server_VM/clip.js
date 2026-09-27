@@ -6308,38 +6308,45 @@ function velocitaTra(campioni, ora, finestra) {
 // arrivate, non 100% perche' l'indice e' tutto in casa. Si pesa al massimo
 // una volta al minuto: sono qualche centinaio di stat sulla NFS.
 // LE AGGIUNTE (.aggiunte.txt): i file fuori dall'indice che il container
-// scarica in coda. Si ripesano in sottofondo ogni minuto, mai bloccando il
-// ponte: sulla NAS 278 stat una dopo l'altra lo fermavano 4 secondi
-const AGGIUNTE = { quando: 0, v: null, gira: false };
-async function pesaAggiunte(base) {
+// scarica in coda. Il file si rilegge ogni 5 minuti; i pesi NON si chiedono
+// alla NAS: li ha gia' la passata della NAS (NAS_FILE). Prima 278 domande
+// in piu' ogni minuto intasavano la fila NFS e la Libreria restava in coda
+const AGGIUNTE = { quando: 0, voci: null, gira: false };
+async function leggiAggiunte(base) {
   AGGIUNTE.gira = true; AGGIUNTE.quando = Date.now();
   try {
-    let testo = ""; try { testo = await NFS(() => fs.promises.readFile(path.join(base, ".aggiunte.txt"), "utf8")); } catch (e) { AGGIUNTE.v = null; return; }
+    let testo = ""; try { testo = await NFS(() => fs.promises.readFile(path.join(base, ".aggiunte.txt"), "utf8")); } catch (e) { AGGIUNTE.voci = null; return; }
     const voci = [];
     testo.split("\n").slice(1).forEach((r) => { r = r.trim(); if (!r) return; const m = /^(?:"((?:[^"]|"")*)"|([^,]*)),(\d*)$/.exec(r); if (!m) return; voci.push({ k: (m[1] !== undefined ? m[1].replace(/""/g, '"') : m[2]), b: +m[3] || 0 }); });
-    const pesi = await Promise.all(voci.map((v) => NFS(() => fs.promises.stat(path.join(base, v.k))).then((st) => st.size, () => null)));
-    let fatti = 0, byte = 0, byteFatti = 0;
-    voci.forEach((v, i) => { byte += v.b; const b = pesi[i]; if (b !== null && (!v.b || b === v.b)) { fatti++; byteFatti += v.b || b; } });
-    AGGIUNTE.v = { file: voci.length, fatti, byte, byteFatti, chiavi: new Set(voci.map((v) => v.k)) };
+    AGGIUNTE.voci = voci;
   } finally { AGGIUNTE.gira = false; }
 }
 function statoAggiunte(base, inArrivo) {
-  if (!AGGIUNTE.gira && Date.now() - AGGIUNTE.quando > 60000) pesaAggiunte(base).catch(() => {});
-  const a = AGGIUNTE.v; if (!a) return null;
+  if (!AGGIUNTE.gira && Date.now() - AGGIUNTE.quando > 300000) leggiAggiunte(base).catch(() => {});
+  const voci = AGGIUNTE.voci; if (!voci || !NAS_FILE.size) return null;
+  let fatti = 0, byte = 0, byteFatti = 0;
+  voci.forEach((v) => { byte += v.b; const b = NAS_FILE.get(v.k); if (b !== undefined && (!v.b || b === v.b)) { fatti++; byteFatti += v.b || b; } });
   // i file a meta' delle aggiunte contano per quello che e' gia' arrivato
-  const inCorso = (inArrivo || []).filter((x) => a.chiavi.has(path.relative(base, x.p).replace(/\.parziale(\.[^/]*)?$/, ""))).reduce((n, x) => n + (x.b || 0), 0);
-  return { file: a.file, fatti: a.fatti, byte: a.byte, byteArrivati: a.byteFatti + inCorso };
+  const chiavi = new Set(voci.map((v) => v.k));
+  const inCorso = (inArrivo || []).filter((x) => chiavi.has(path.relative(base, x.p).replace(/\.parziale(\.[^/]*)?$/, ""))).reduce((n, x) => n + (x.b || 0), 0);
+  return { file: voci.length, fatti, byte, byteArrivati: byteFatti + inCorso };
 }
 async function statoCopia() {
   if (COPIA_ULTIMO && Date.now() - COPIA_ULTIMO.quando < 2500) return COPIA_ULTIMO;
   const base = path.join(QNAP_RADICE, SPECCHIO_DIR);
   // la passata sulla NAS gira in sottofondo ogni 20 secondi; la prima volta la si aspetta
-  if (Date.now() - COPIA_PESO.quando > 120000) { const g = giroNas(); if (!COPIA_PESO.quando) await g; }
+  // (la prima volta dopo un riavvio non si aspetta piu': sono 5 minuti di
+  // richieste appese; si risponde "sto contando" e la scheda arriva dopo)
+  if (Date.now() - COPIA_PESO.quando > 120000) { giroNas(); if (!COPIA_PESO.quando) return { ok: true, contando: true }; }
   // i file a meta' si ripesano adesso (sono pochi), senza bloccare; quello
   // sparito e' stato rinominato: e' finito, e la prossima passata lo conta
   const ora = Date.now(), inArrivo = [];
   let inCorsoByte = 0;
-  const pesi = await Promise.all(COPIA_PESO.parziali.map((p) => NFS(() => fs.promises.stat(p)).then((st) => st.size, () => null)));
+  // se la fila NFS e' piena (la passata della NAS), non si aspetta: si
+  // risponde con l'ultima fotografia, fra 3 secondi
+  const pesati = Promise.all(COPIA_PESO.parziali.map((p) => NFS(() => fs.promises.stat(p)).then((st) => st.size, () => null)));
+  const pesi = COPIA_ULTIMO ? await Promise.race([pesati, new Promise((ok) => setTimeout(() => ok(null), 3000))]) : await pesati;
+  if (!pesi) return COPIA_ULTIMO;
   // un file a meta' sparito e' stato rinominato: il suo peso passa SUBITO tra i
   // finiti, se no i GB calano fino alla prossima passata e la velocita' va a zero
   const finali = await Promise.all(COPIA_PESO.parziali.map((p, i) => pesi[i] !== null ? null
