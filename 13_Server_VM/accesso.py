@@ -135,6 +135,17 @@ __ERRORE__
 </main></body></html>"""
 
 
+PRIVACY = """<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · Accesso Como TV</title><style>body{max-width:680px;margin:40px auto;padding:0 16px;font:15px/1.6 system-ui,sans-serif;color:#1d1d1f;background:#fff}h1{font-size:22px}h2{font-size:16px;margin-top:22px}</style></head><body>
+<h1>Accesso a Como TV · informativa sui dati</h1>
+<p>Gli strumenti di lavoro di Como TV su projects-cloud.it sono riservati al personale con un account Google aziendale <b>@sent.tv</b> o <b>@comofootball.com</b> e alle persone autorizzate singolarmente.</p>
+<h2>Quali dati</h2><p>Dall'accesso con Google leggiamo soltanto l'<b>indirizzo email</b> e la conferma che l'account appartiene al dominio aziendale. Non leggiamo contatti, file, calendario o altri dati dell'account.</p>
+<h2>A cosa servono</h2><p>A decidere chi può entrare e a registrare chi fa cosa negli strumenti (accessi, aperture, download, montaggi, invii), per sicurezza e per il lavoro della redazione.</p>
+<h2>Dove restano</h2><p>Su un server usato solo da Como TV. Non vengono ceduti a terzi né usati per pubblicità.</p>
+<h2>Uscire</h2><p>Si esce da <a href="/auth/esci">/auth/esci</a>. Per domande o per chiedere la cancellazione del proprio registro scrivere al responsabile degli strumenti Como TV.</p>
+</body></html>"""
+
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 
@@ -169,6 +180,8 @@ class H(BaseHTTPRequestHandler):
             return self.manda(200, json.dumps({"email": email or ""}), "application/json")
         if u.path == "/auth/entra":
             return self.pagina(torna)
+        if u.path == "/auth/privacy":
+            return self.manda(200, PRIVACY, "text/html; charset=utf-8")
         if u.path == "/auth/esci":
             registra("esce", sessione_valida(self.cookie()), self.ip())
             return self.manda(302, extra=[("Location", "/auth/entra"), ("Set-Cookie", COOKIE + "=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax")])
