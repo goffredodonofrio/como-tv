@@ -344,8 +344,13 @@ def schede_persone(righe):
     for r in righe:
         chi = [(pid, r[4], r[5]) for pid in r[9].get("p", [])] + [(pid, v, f) for pid, (v, f) in PF.get(r[0], {}).items()]
         for pid, nv, nfo in chi:
-            c = conti.setdefault(pid, {"cartelle": 0, "video": 0, "foto": 0, "stagioni": {}, "generi": {}, "collezioni": {}})
+            c = conti.setdefault(pid, {"cartelle": 0, "video": 0, "foto": 0, "stagioni": {}, "generi": {}, "collezioni": {}, "competizioni": {}, "ultima": None})
             c["cartelle"] += 1; c["video"] += nv; c["foto"] += nfo
+            if r[9].get("c"): c["competizioni"][r[9]["c"]] = c["competizioni"].get(r[9]["c"], 0) + nv + nfo
+            # l'ultimo servizio in cui compare: giorno, titolo, cartella
+            if r[1] and r[1] % 100 and (not c["ultima"] or r[1] > c["ultima"][0]):
+                partita = next((pulito1(x) for x in r[0].split("/") if re.search(r"\bcomo\b", x, re.I) and squadre_in(x) and len(squadre_in(x)) >= 2), "")
+                c["ultima"] = [r[1], partita or pulito(r[0]), r[0]]
             if r[2]: c["stagioni"][r[2]] = c["stagioni"].get(r[2], 0) + nv + nfo
             for g in r[9].get("g", []): c["generi"][g] = c["generi"].get(g, 0) + nv + nfo
             k = r[0].split("/")[0]; c["collezioni"][k] = c["collezioni"].get(k, 0) + nv + nfo
