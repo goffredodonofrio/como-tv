@@ -141,7 +141,7 @@ def squadra(x):
     return ALIAS.get(x, x)
 
 
-ESPN_CAL = os.path.join(CASA, "calendario-espn.json")
+ESPN_CAL = os.path.join(CASA, "calendario-espn2.json")   # [giorno, casa, ospite, lega]
 
 
 def calendario_espn():
@@ -167,7 +167,8 @@ def calendario_espn():
                 ospite = [x for x in c if x.get("homeAway") == "away"][0]["team"]["displayName"]
                 # l'ora e' UTC: una partita alle 20:45 italiane resta nel suo giorno
                 g = time.strftime("%Y%m%d", time.localtime(time.mktime(time.strptime(e["date"][:16], "%Y-%m-%dT%H:%M")) - time.timezone))
-                fuori.append([int(g), casa, ospite])
+                lg = (e.get("league") or {}).get("name") or (e.get("season") or {}).get("name") or ""
+                fuori.append([int(g), casa, ospite, lg])
             except Exception:
                 continue
     if fuori:
@@ -183,10 +184,10 @@ def calendario():
     if CAL is not None: return CAL
     CAL = []
     visti = set(); coperte = collections.Counter()
-    for g, casa, ospite in calendario_espn():
-        casa, ospite = squadra(casa), squadra(ospite)
+    for x in calendario_espn():
+        g, casa, ospite = x[0], squadra(x[1]), squadra(x[2]); comp = META.lega(x[3]) if len(x) > 3 and x[3] else ""
         if "COMO" in (casa, ospite) and (g, casa, ospite) not in visti:
-            visti.add((g, casa, ospite)); CAL.append((g, casa, ospite)); coperte[stagione_di(g)] += 1
+            visti.add((g, casa, ospite)); CAL.append((g, casa, ospite, comp)); coperte[stagione_di(g)] += 1
     try: a = json.load(open(ARCHIVIO))
     except Exception: return CAL
     for v in a.values():
@@ -198,7 +199,7 @@ def calendario():
         casa, fuori = [squadra(x) for x in nome.split("-", 1)]
         if "COMO" not in (casa, fuori): continue
         k = (int(g), casa, fuori)
-        if k not in visti: visti.add(k); CAL.append(k)
+        if k not in visti: visti.add(k); CAL.append(k + (str(v.get("competizione") or ""),))
     return CAL
 
 
@@ -209,7 +210,7 @@ def squadre_in(nome):
     """le squadre scritte in un nome, col nome piu' lungo prima ("INTER MILAN" non e' anche "MILAN")"""
     global NOMI
     if NOMI is None:
-        tutte = {x for c in calendario() for x in c[1:]}
+        tutte = {x for c in calendario() for x in c[1:3]}
         NOMI = sorted({(x, x) for x in tutte} | {(k, v) for k, v in ALIAS.items() if v in tutte}, key=lambda x: -len(x[0]))
     t = " " + re.sub(r"[^A-Z0-9]+", " ", nome.upper()) + " "
     trovate = []
@@ -221,14 +222,20 @@ def squadre_in(nome):
 
 
 def data_partita(nome, stag):
-    """il giorno di una partita del Como scritta nel nome di una cartella"""
+    x = partita_in(nome, stag)
+    return x[0] if x else 0
+
+
+def partita_in(nome, stag):
+    """la partita del Como scritta nel nome di una cartella: (giorno, competizione, avversario);
+    il giorno e' 0 se l'avversario c'e' ma la partita non si capisce quale sia"""
     sq = squadre_in(nome)
-    if not any(x[1] == "COMO" for x in sq): return 0
+    if not any(x[1] == "COMO" for x in sq): return None
     altre = [x for x in sq if x[1] != "COMO"]
-    if len(altre) != 1: return 0
+    if len(altre) != 1: return None
     pos_como = [x[0] for x in sq if x[1] == "COMO"][0]; pos_altra, altra = altre[0]
-    cand = [c for c in calendario() if altra in c[1:] and (not stag or stagione_di(c[0]) == stag)]
-    if not cand: return 0
+    cand = [c for c in calendario() if altra in c[1:3] and (not stag or stagione_di(c[0]) == stag)]
+    if not cand: return (0, "", altra)
     # un mese scritto ("NOVEMBER 30 - COMO MONZA") restringe
     m = re.search(r"(?<![a-z])" + MESE + r"[a-z]*\s*(\d{1,2})?(?!\d)", nome, re.I)
     if m and len(cand) > 1:
@@ -239,7 +246,8 @@ def data_partita(nome, stag):
         # l'ordine dice chi gioca in casa: "COMO v JUVENTUS" o "SASSUOLO v COMO"
         c2 = [c for c in cand if (c[1] == "COMO") == (pos_como < pos_altra)]
         if c2: cand = c2
-    return cand[0][0] if len(set(c[0] for c in cand)) == 1 else 0
+    if len(set(c[0] for c in cand)) == 1: return (cand[0][0], cand[0][3] if len(cand[0]) > 3 else "", altra)
+    return (0, "", altra)
 
 
 def senza_date(t):
@@ -248,9 +256,11 @@ def senza_date(t):
 
 
 def stagione_in(percorso):
-    # la cartella piu' vicina vince: "Pre-season 26-27/.../COMO ALESSANDRIA 2020 21" e' 2020/21.
+    # COMANDA LA CARTELLA PIU' ALTA (Goffredo, 27/09/2026: "collocare bene i contenuti
+    # nelle loro categorie e cartelle"): "SEASON 2025-2026/.../Preseason 2026-27" sta
+    # nella 2025/26, dove l'ha messo chi ha archiviato.
     # Prima si tolgono le date: "2024-10-11" non e' la stagione 2010/11.
-    for pezzo in reversed(percorso.split("/")):
+    for pezzo in percorso.split("/"):
         pezzo = senza_date(pezzo)
         for x in R_STAG.finditer(pezzo):
             a, b = int(x.group(1)), int(x.group(2))
@@ -318,6 +328,35 @@ def tipo(n):
     return "video" if n.endswith(VIDEO) else "foto" if n.endswith(FOTO) else "altro"
 
 
+import importlib.util as _iu
+_sp = _iu.spec_from_file_location("metadati_1907", os.path.join(os.path.dirname(os.path.abspath(__file__)), "metadati_1907.py"))
+META = _iu.module_from_spec(_sp); _sp.loader.exec_module(META)
+PERS = META.persone()
+RIC = META.Riconosci(PERS)
+
+
+PF = {}
+
+
+def schede_persone(righe):
+    """per ogni persona trovata: in quante cartelle, quanti video/foto, per stagione e per tipo"""
+    conti = {}
+    for r in righe:
+        chi = [(pid, r[4], r[5]) for pid in r[9].get("p", [])] + [(pid, v, f) for pid, (v, f) in PF.get(r[0], {}).items()]
+        for pid, nv, nfo in chi:
+            c = conti.setdefault(pid, {"cartelle": 0, "video": 0, "foto": 0, "stagioni": {}, "generi": {}, "collezioni": {}})
+            c["cartelle"] += 1; c["video"] += nv; c["foto"] += nfo
+            if r[2]: c["stagioni"][r[2]] = c["stagioni"].get(r[2], 0) + nv + nfo
+            for g in r[9].get("g", []): c["generi"][g] = c["generi"].get(g, 0) + nv + nfo
+            k = r[0].split("/")[0]; c["collezioni"][k] = c["collezioni"].get(k, 0) + nv + nfo
+    fuori = []
+    for p in PERS:
+        c = conti.get(p["id"])
+        if not c: continue
+        fuori.append(dict({k: p[k] for k in ("id", "nome", "ruolo", "maglia", "stagioni", "foto", "alias")}, **{"conti": c}))
+    return sorted(fuori, key=lambda p: -(p["conti"]["video"] + p["conti"]["foto"]))
+
+
 def main():
     cartelle = collections.defaultdict(list)
     conta = {}
@@ -374,6 +413,8 @@ def main():
     try: cam = json.load(open(os.path.join(CASA, "date-1907.json")))
     except Exception: cam = {}
     righe = []
+    global PF
+    PF = {}
     for d, fs in sorted(cartelle.items()):
         stag_p = stagione_in(d); anno_p = 0 if stag_p else anno_in(d)
         dn, fonte = 0, ""
@@ -392,12 +433,37 @@ def main():
         dfile = sorted(f[3] for f in fs if f[3] and in_stagione(f[3], stag_p))
         if not dn and dfile: dn, fonte = dfile[len(dfile) // 2], "file"
         # la stagione: quella della data, se c'e'; se no quella scritta nel percorso
-        # la stagione scritta dalla società vale finche' la data ci sta dentro
-        # (le riprese di giugno 2025 in "SEASON 2025-2026" restano 2025/26)
-        stag = stag_p if stag_p and (not dn or in_stagione(dn, stag_p)) else (stagione_di(dn) if dn and dn % 10000 // 100 else stag_p)
+        # la stagione scritta nel percorso comanda sempre; una data che la contraddice
+        # si tiene solo se e' scritta nel nome o viene dal calendario
+        if stag_p and dn and not in_stagione(dn, stag_p) and fonte not in ("nome", "calendario"): dn, fonte = 0, ""
+        stag = stag_p or (stagione_di(dn) if dn and dn % 10000 // 100 else "")
         vid = sorted(f[0] for f in fs if tipo(f[0]) == "video")
         v = len(vid); fo = sum(1 for f in fs if tipo(f[0]) == "foto")
-        righe.append([d, dn, stag, len(fs), v, fo, sum(f[1] for f in fs), fonte, (d + "/" + vid[len(vid) // 2]) if vid else ""])
+        # I METADATI: tipo, squadra, competizione, avversario, persone
+        md = {}
+        gg = RIC.generi(d)
+        if gg: md["g"] = gg
+        q = RIC.squadra(d)
+        if q: md["q"] = q
+        pt = None if R_GIOVANI.search(d) else next((x for x in (partita_in(pz, stag_p) for pz in reversed(d.split("/"))) if x), None)
+        if pt:
+            if pt[2]: md["a"] = pt[2].title()
+            if pt[1]: md["c"] = pt[1]
+            if "Partita" not in md.get("g", []): md["g"] = ["Partita"] + md.get("g", [])
+        c = RIC.competizione(d)
+        if c and "c" not in md: md["c"] = c
+        # le persone: se il nome e' nel percorso vale per tutta la cartella ("p"); se e' solo
+        # nei nomi di alcuni file vale solo per quelli ("pf": "INTV DIAO" accanto a
+        # "INTV FABREGAS" non e' di Fabregas)
+        pp = RIC.persone(d)
+        if pp: md["p"] = pp
+        pf = {}
+        for f in fs:
+            if tipo(f[0]) == "altro": continue
+            for pid in RIC.persone(f[0].rsplit(".", 1)[0]):
+                if pid not in pp: pf.setdefault(pid, [0, 0])[0 if tipo(f[0]) == "video" else 1] += 1
+        if pf: md["pf"] = sorted(pf); PF[d] = pf
+        righe.append([d, dn, stag, len(fs), v, fo, sum(f[1] for f in fs), fonte, (d + "/" + vid[len(vid) // 2]) if vid else "", md])
     # LE VICINE: una cartella senza data dentro una ripresa datata ("G07 - COMO v
     # JUVENTUS/match/HUDI'S CAM", camera sbagliata) prende il giorno delle sue
     # sorelle, se sotto lo stesso genitore c'e' un giorno solo.
@@ -414,7 +480,7 @@ def main():
             if g:
                 if len(g) == 1:
                     r[1] = next(iter(g)); r[7] = "vicine"
-                    if r[1] % 10000 // 100 and not (r[2] and in_stagione(r[1], r[2])): r[2] = stagione_di(r[1])
+                    if r[1] % 10000 // 100 and not r[2]: r[2] = stagione_di(r[1])
                 break
     # I SERVIZI: stesso giorno (o stesso mese), stessa sezione -> il loro percorso comune
     gruppi = collections.defaultdict(list)
@@ -433,7 +499,15 @@ def main():
         via = "/".join(comune) or sez
         rappr = max(rr, key=lambda r: r[4])[8]
         fonte = rr[0][7]
-        servizi.append([via, dt, rr[0][2], sum(r[4] for r in rr), sum(r[5] for r in rr), sum(r[6] for r in rr), fonte, rappr, pulito(via)])
+        mu = {}
+        for r in rr:
+            for k, v in r[9].items():
+                if isinstance(v, list):
+                    l = mu.setdefault(k, [])
+                    for x in v:
+                        if x not in l: l.append(x)
+                elif k not in mu: mu[k] = v
+        servizi.append([via, dt, rr[0][2], sum(r[4] for r in rr), sum(r[5] for r in rr), sum(r[6] for r in rr), fonte, rappr, pulito(via), mu])
     servizi.sort(key=lambda x: (-x[1], x[0]))
     colls = sorted((c for c in conta.values() if c["liv"] == 1), key=lambda c: -c["ultima"])
     eps = sorted((c for c in conta.values() if c["liv"] == 2), key=lambda c: c["p"].lower())
@@ -448,7 +522,7 @@ def main():
         if per.get(c["p"]): c["data"] = per[c["p"]]
     tot_file = sum(len(v) for v in cartelle.values()); tot_peso = sum(f[1] for v in cartelle.values() for f in v)
     indice = {"aggiornato": int(time.time()), "file": tot_file, "peso": tot_peso, "collezioni": colls, "episodi": eps,
-              "cartelle": [r[:8] for r in righe], "servizi": servizi, "conDataCamera": len(cam), "esclusi": {"file": tolti, "cartelle": sorted(fuori)}}
+              "cartelle": [r[:8] + [r[9]] for r in righe], "servizi": servizi, "persone": schede_persone(righe), "conDataCamera": len(cam), "esclusi": {"file": tolti, "cartelle": sorted(fuori)}}
     if len(sys.argv) > 1: indice["parziale"] = 1
     dati_file = [[d, [f[:3] + ([f[3]] if f[3] else []) for f in sorted(v)]] for d, v in sorted(cartelle.items())]
     for nomef, dati in (("indice.json", indice), ("file.json", dati_file)):

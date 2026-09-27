@@ -57,6 +57,22 @@
   .gt button:hover{opacity:1;background:rgba(245,241,230,.16);}
   .gt-dot{width:10px;height:10px;border-radius:50%;flex:0 0 10px;background:var(--c,var(--oro));margin:0 3px;}
   .gt-mini{width:18px;height:26px;border-radius:3px;background:#111 center/cover;flex:0 0 18px;}
+  .gt-av{width:24px;height:24px;border-radius:50%;background:#2c2f3a center 15%/cover no-repeat;flex:0 0 24px;display:inline-grid;place-items:center;font:700 9px/1 'Mazzard',sans-serif;color:var(--oro2);}
+  .gt-av-l{width:34px;height:34px;flex-basis:34px;font-size:11px;}
+  /* la scheda della persona */
+  .scheda-p{display:flex;gap:22px;align-items:flex-start;padding:18px 20px;border:1px solid var(--riga2);border-radius:12px;background:linear-gradient(135deg,rgba(201,162,75,.10),rgba(245,241,230,.02) 60%);}
+  .sp-foto{width:120px;height:120px;border-radius:50%;background:#2c2f3a center 15%/cover no-repeat;flex:0 0 120px;display:grid;place-items:center;font:800 34px/1 'Mazzard',sans-serif;color:var(--oro2);border:2px solid rgba(201,162,75,.5);}
+  .sp-corpo{min-width:0;display:flex;flex-direction:column;gap:8px;}
+  .sp-eti{font:700 10.5px/1 'Mazzard',sans-serif;letter-spacing:.2em;text-transform:uppercase;color:var(--oro2);}
+  .scheda-p h2{font:800 30px/1.05 'Mazzard',sans-serif;}
+  .sp-num{color:var(--ivory2);font-size:13px;} .sp-num b{color:var(--ivory);}
+  .sp-riga{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+  .sp-riga i{font:700 9.5px/1 'Mazzard',sans-serif;font-style:normal;letter-spacing:.16em;text-transform:uppercase;color:var(--fumo);min-width:74px;}
+  .chip-p{border-radius:999px;padding:6px 10px;font:600 12px/1 'DM Sans',sans-serif;letter-spacing:0;text-transform:none;}
+  .chip-p b{font:600 11px/1 ui-monospace,Menlo,monospace;color:var(--fumo);margin-left:6px;}
+  .chip-p.on{background:rgba(201,162,75,.18);border-color:var(--oro);color:var(--ivory);}
+  .sp-nota{color:var(--fumo);font-size:11.5px;}
+  @media (max-width:640px){ .scheda-p{flex-direction:column;} .sp-foto{width:88px;height:88px;flex-basis:88px;} }
   .sugg{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:40;background:#141826;border:1px solid var(--riga2);border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,.45);padding:6px;max-height:480px;overflow:auto;}
   .sugg h5{margin:10px 10px 4px;font:700 10px/1 'Mazzard',sans-serif;letter-spacing:.2em;text-transform:uppercase;color:var(--fumo);}
   .sugg h5:first-child{margin-top:6px;}
@@ -316,13 +332,19 @@
   (function () { var h = new Date().getHours(); $("saluto").innerHTML = (h < 13 ? "Buongiorno" : h < 18 ? "Buon pomeriggio" : "Buonasera") + ", <span>Como 1907</span>"; })();
 
   // ══════════ GETTONI ══════════
-  var ETI = { coll: "Collezione", ep: "Episodio", cart: "Cartella", stag: "Stagione", anno: "Anno", tipo: "Tipo" };
+  var ETI = { coll: "Collezione", ep: "Episodio", cart: "Cartella", stag: "Stagione", anno: "Anno", tipo: "Tipo", pers: "Persona", gen: "Tipo di contenuto", sq: "Squadra", comp: "Competizione", avv: "Avversario" };
+  // I METADATI (Goffredo, 27/09/2026: "criterio universale per le ricerche"): per ogni cartella
+  // g tipo di contenuto, q squadra, c competizione, a avversario, p persone (dall'indice)
+  var MD = {}, PERS = {}, VOC = { gen: {}, sq: {}, comp: {}, avv: {} };
+  var FOTO = "/loghi/";
+  function iniziali(nome) { return nome.split(/\s+/).map(function (w) { return w[0]; }).slice(0, 2).join("").toUpperCase(); }
+  function avatar(p, cls) { return p && p.foto ? '<span class="' + (cls || "gt-av") + '" style="background-image:url(&quot;' + FOTO + esc(p.foto) + '&quot;)"></span>' : '<span class="' + (cls || "gt-av") + ' ini">' + esc(iniziali(p ? p.nome : "?")) + "</span>"; }
   function di(k) { return G.filter(function (x) { return x.k === k; }).map(function (x) { return x.v; }); }
   function disegnaGettoni() {
     $("gettoni").innerHTML = G.map(function (g, i) {
       var u = (g.k === "coll" || g.k === "ep") ? copertina(g.v) : "";
       var nome = g.k === "cart" ? g.v.split("/").slice(-2).join(" › ") : g.n;
-      return '<span class="gt" title="' + esc(ETI[g.k] + ": " + g.v) + '">' + (u ? '<span class="gt-mini" style="' + bg(u) + '"></span>' : '<span class="gt-dot"' + (g.k === "coll" ? ' style="--c:' + colore(g.v) + '"' : "") + "></span>") + "<b>" + esc(nome) + "</b>" + (g.k === "ep" ? "<small>" + esc(g.v.split("/")[0]) + "</small>" : "") + '<button data-via="' + i + '" aria-label="togli ' + esc(nome) + '">×</button></span>';
+      return '<span class="gt" title="' + esc(ETI[g.k] + ": " + g.v) + '">' + (g.k === "pers" ? avatar(PERS[g.v]) : u ? '<span class="gt-mini" style="' + bg(u) + '"></span>' : '<span class="gt-dot"' + (g.k === "coll" ? ' style="--c:' + colore(g.v) + '"' : "") + "></span>") + "<b>" + esc(nome) + "</b>" + (g.k === "ep" ? "<small>" + esc(g.v.split("/")[0]) + "</small>" : "") + '<button data-via="' + i + '" aria-label="togli ' + esc(nome) + '">×</button></span>';
     }).join("");
     $("svuota").hidden = !G.length && !$("cerca").value && !RACCOLTA;
   }
@@ -347,10 +369,17 @@
     VOCI_S = [];
     function voce(g, testo, dett, conta) { VOCI_S.push(g); var u = (g.k === "coll" || g.k === "ep") ? copertina(g.v) : ""; return '<a data-s="' + (VOCI_S.length - 1) + '">' + (u ? '<span class="gt-mini" style="' + bg(u) + '"></span>' : '<span class="gt-dot"></span>') + "<span>" + esc(testo) + (dett ? "<em>" + esc(dett) + "</em>" : "") + "</span><small>" + conta + "</small></a>"; }
     var h = "";
+    // le persone: nome o come si scrivono nelle cartelle ("fabregas", "cesc", "da cunha")
+    var pers = Object.keys(PERS).map(function (k) { return PERS[k]; }).filter(function (p) { return norm(p.nome).indexOf(q) >= 0 || p.alias.some(function (a) { return a.indexOf(q) >= 0; }); }).slice(0, 6);
+    if (pers.length) { h += "<h5>Persone</h5>" + pers.map(function (p) { VOCI_S.push({ k: "pers", v: p.id, n: p.nome }); return '<a data-s="' + (VOCI_S.length - 1) + '">' + avatar(p, "gt-av gt-av-l") + "<span>" + esc(p.nome) + "<em>" + esc([p.ruolo, p.maglia ? "n. " + p.maglia : ""].filter(Boolean).join(" · ")) + "</em></span><small>" + n(p.conti.video) + " video</small></a>"; }).join(""); }
     if (coll.length) h += "<h5>Collezioni</h5>" + coll.map(function (c) { return voce({ k: "coll", v: c.p, n: c.p }, c.p, "", c.attesa ? "in indicizzazione" : n(c.file) + " file"); }).join("");
     if (ep.length) h += "<h5>Episodi</h5>" + ep.map(function (e) { return voce({ k: "ep", v: e.p, n: e.p.split("/")[1] }, e.p.split("/")[1], e.p.split("/")[0], n(e.file) + " file"); }).join("");
     if (cart.length) h += "<h5>Cartelle</h5>" + cart.map(function (r) { return voce({ k: "cart", v: r[0], n: ultimo(r[0]) }, ultimo(r[0]), r[0].split("/").slice(0, -1).join(" › "), (r[1] ? dataRip(r[1]) + " · " : "") + n(r[3]) + " file"); }).join("");
     if (stag.length) h += "<h5>Stagioni</h5>" + stag.map(function (s) { return voce({ k: "stag", v: s, n: "Stagione " + s }, "Stagione " + s, "", n(STAGIONI[s]) + " file"); }).join("");
+    [["gen", "Tipo di contenuto"], ["sq", "Squadra"], ["comp", "Competizione"], ["avv", "Avversario"]].forEach(function (kk) {
+      var vv = Object.keys(VOC[kk[0]]).filter(function (v) { return norm(v).indexOf(q) >= 0; }).sort(function (a, b) { return VOC[kk[0]][b] - VOC[kk[0]][a]; }).slice(0, 4);
+      if (vv.length) h += "<h5>" + kk[1] + "</h5>" + vv.map(function (v) { return voce({ k: kk[0], v: v, n: nomeDi(kk[0], v) }, nomeDi(kk[0], v), "", n(VOC[kk[0]][v]) + " file"); }).join("");
+    });
     if (tipi.length) h += "<h5>Tipo</h5>" + tipi.map(function (t) { return voce({ k: "tipo", v: t[0], n: t[1] }, t[1], "", ""); }).join("");
     h += '<h5>File</h5><a data-testo="1"><span class="gt-dot" style="--c:var(--fumo)"></span><span>Cerca «' + esc($("cerca").value.trim()) + '» nei nomi dei file e delle cartelle</span><small>Invio</small></a>';
     $("sugg").innerHTML = h; $("sugg").hidden = false; SEL = -1;
@@ -359,11 +388,20 @@
   $("cerca").addEventListener("keydown", function (e) {
     var tutte = $("sugg").querySelectorAll("a");
     if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !$("sugg").hidden) { e.preventDefault(); if (!tutte.length) return; SEL = (SEL + (e.key === "ArrowDown" ? 1 : -1) + tutte.length) % tutte.length; tutte.forEach(function (a, i) { a.classList.toggle("on", i === SEL); }); return; }
-    if (e.key === "Enter") { e.preventDefault(); if (SEL >= 0 && tutte[SEL] && tutte[SEL].dataset.s) { metti(VOCI_S[+tutte[SEL].dataset.s], VOCI_S[+tutte[SEL].dataset.s].k === "tipo"); return; } Q = this.value.trim(); chiudiSugg(); vai(); return; }
+    if (e.key === "Enter") { e.preventDefault(); if (SEL >= 0 && tutte[SEL] && tutte[SEL].dataset.s) { metti(VOCI_S[+tutte[SEL].dataset.s], VOCI_S[+tutte[SEL].dataset.s].k === "tipo"); return; } Q = this.value.trim(); chiudiSugg(); riconosciPersona(); vai(); return; }
     if (e.key === "Escape") chiudiSugg();
     if (e.key === "Backspace" && !this.value && G.length) { G.pop(); disegnaGettoni(); vai(); }
   });
-  $("sugg").addEventListener("mousedown", function (e) { var a = e.target.closest("a"); if (!a) return; e.preventDefault(); if (a.dataset.s) { var g = VOCI_S[+a.dataset.s]; metti(g, g.k === "tipo"); } else { Q = $("cerca").value.trim(); chiudiSugg(); vai(); } });
+  $("sugg").addEventListener("mousedown", function (e) { var a = e.target.closest("a"); if (!a) return; e.preventDefault(); if (a.dataset.s) { var g = VOCI_S[+a.dataset.s]; metti(g, g.k === "tipo"); } else { Q = $("cerca").value.trim(); chiudiSugg(); riconosciPersona(); vai(); } });
+  // una persona scritta per esteso nella ricerca diventa il suo gettone, il resto resta testo
+  function riconosciPersona() {
+    var t = " " + norm(Q).replace(/[^a-z0-9]+/g, " ") + " ";
+    var best = null;
+    Object.keys(PERS).forEach(function (k) { PERS[k].alias.forEach(function (a) { if (t.indexOf(" " + a + " ") >= 0 && (!best || a.length > best[1].length)) best = [k, a]; }); });
+    if (!best || G.some(function (g) { return g.k === "pers" && g.v === best[0]; })) return;
+    G.push({ k: "pers", v: best[0], n: PERS[best[0]].nome });
+    Q = t.replace(" " + best[1] + " ", " ").replace(/\s+/g, " ").trim(); $("cerca").value = Q; disegnaGettoni();
+  }
   $("cerca").addEventListener("blur", function () { setTimeout(chiudiSugg, 150); });
   $("campoG").addEventListener("click", function (e) { var b = e.target.closest("[data-via]"); if (b) { G.splice(+b.dataset.via, 1); disegnaGettoni(); vai(); return; } $("cerca").focus(); });
   $("svuota").onclick = function () { G = []; Q = ""; RACCOLTA = null; $("cerca").value = ""; disegnaGettoni(); vai(); };
@@ -375,7 +413,7 @@
     if (Q) h.set("q", Q); if (RACCOLTA) h.set("r", RACCOLTA.id); if (TAB !== "tutto") h.set("t", TAB);
     history.replaceState(null, "", location.pathname + location.search + (h.toString() ? "#" + h.toString() : ""));
   }
-  function nomeDi(k, v) { return k === "ep" ? v.split("/")[1] : k === "cart" ? ultimo(v) : k === "stag" ? "Stagione " + v : k === "tipo" ? (v === "video" ? "Solo video" : "Solo foto") : v; }
+  function nomeDi(k, v) { return k === "ep" ? v.split("/")[1] : k === "cart" ? ultimo(v) : k === "stag" ? "Stagione " + v : k === "tipo" ? (v === "video" ? "Solo video" : "Solo foto") : k === "pers" ? ((PERS[v] || {}).nome || v) : k === "avv" ? "contro " + v : v; }
   function leggiIndirizzo() {
     var h = new URLSearchParams(location.hash.slice(1)); G = [];
     try { (JSON.parse(h.get("g") || "[]") || []).forEach(function (x) { if (ETI[x[0]]) G.push({ k: x[0], v: String(x[1]), n: nomeDi(x[0], String(x[1])) }); }); } catch (e) {}
@@ -511,6 +549,7 @@
   // tutti i file che rispondono a gettoni e parole, con la loro data vera
   function trovati(escludi) {
     var coll = di("coll"), ep = di("ep"), cart = di("cart"), stag = di("stag"), anno = di("anno");
+    var fp = di("pers"), fg = di("gen"), fq = di("sq"), fc = di("comp"), fa = di("avv");
     var parole = norm(Q).split(/\s+/).filter(function (w) { return w.length > 1; });
     var inRacc = RACCOLTA ? new Set(RACCOLTA.file.filter(function (x) { return !x.cartella; }).map(function (x) { return x.via; })) : null;
     var cartRacc = RACCOLTA ? RACCOLTA.file.filter(function (x) { return x.cartella; }).map(function (x) { return x.via; }) : [];
@@ -522,8 +561,14 @@
       if (escludi !== "coll" && coll.length && coll.indexOf(c0) < 0) continue;
       if (ep.length && !ep.some(function (e) { return d === e || d.indexOf(e + "/") === 0; })) continue;
       if (cart.length && !cart.some(function (e) { return d === e || d.indexOf(e + "/") === 0; })) continue;
-      var info = CART[d] || [0, ""], st = info[1];
+      var info = CART[d] || [0, ""], st = info[1], md = MD[d] || {};
       if (escludi !== "stag" && stag.length && stag.indexOf(st) < 0) continue;
+      var tuttaP = (md.p || []).some(function (x) { return fp.indexOf(x) >= 0; });
+      if (escludi !== "pers" && fp.length && !tuttaP && !(md.pf || []).some(function (x) { return fp.indexOf(x) >= 0; })) continue;
+      if (escludi !== "gen" && fg.length && !(md.g || []).some(function (x) { return fg.indexOf(x) >= 0; })) continue;
+      if (escludi !== "sq" && fq.length && fq.indexOf(md.q) < 0) continue;
+      if (escludi !== "comp" && fc.length && fc.indexOf(md.c) < 0) continue;
+      if (escludi !== "avv" && fa.length && fa.indexOf(md.a) < 0) continue;
       var fs = F[i].f;
       for (var j = 0; j < fs.length; j++) {
         var f = fs[j], via = d + "/" + f[0];
@@ -531,8 +576,12 @@
         var tp = tipo(f[0]); if (tp === "altro") continue;
         var dt = f[3] && (!st || stagioneDi(f[3]) === st) ? f[3] : info[0];
         if (escludi !== "anno" && anno.length && anno.indexOf(String(Math.floor(dt / 10000))) < 0) continue;
+        // le persone di questo file: quelle della cartella, piu' quelle scritte nel suo nome
+        var pers = md.p || [];
+        if (md.pf) { var nf = " " + norm(f[0].replace(/\.[^.]+$/, "")).replace(/[^a-z0-9]+/g, " ") + " "; pers = pers.concat(md.pf.filter(function (pid) { return PERS[pid] && PERS[pid].alias.some(function (a) { return nf.indexOf(" " + a + " ") >= 0; }); })); }
+        if (escludi !== "pers" && fp.length && !tuttaP && !pers.some(function (x) { return fp.indexOf(x) >= 0; })) continue;
         if (parole.length) { var nn = F[i].nd + "/" + norm(f[0]), ok = true; for (var w = 0; w < parole.length; w++) if (nn.indexOf(parole[w]) < 0) { ok = false; break; } if (!ok) continue; }
-        out.push({ via: via, d: d, nome: f[0], peso: f[1], mtime: f[2], data: dt, stag: st || (dt ? stagioneDi(dt) : ""), tipo: tp, coll: c0 });
+        out.push({ via: via, d: d, nome: f[0], peso: f[1], mtime: f[2], data: dt, stag: st || (dt ? stagioneDi(dt) : ""), tipo: tp, coll: c0, md: md, pers: pers });
       }
     }
     return out;
@@ -547,6 +596,7 @@
       : function (a, b) { return (b.data || 0) - (a.data || 0) || a.via.localeCompare(b.via); });
     VISTI = lista;
     var h = "";
+    var unaP = di("pers"); if (unaP.length === 1 && PERS[unaP[0]] && !RACCOLTA) h += schedaPersona(PERS[unaP[0]], tutti);
     if (RACCOLTA) h += '<div class="rac-testa"><span class="rc-eti">Raccolta 1907</span><h2>' + esc(RACCOLTA.nome) + "</h2><small>" + (function () { var nc = RACCOLTA.file.filter(function (x) { return x.cartella; }).length, nf = RACCOLTA.file.length - nc; return [nf ? nf + " file" : "", nc ? nc + (nc === 1 ? " cartella intera" : " cartelle intere") : ""].filter(Boolean).join(" · "); })() + " · aggiornata " + dataCorta((RACCOLTA.aggiornata || 0) / 1000) + (RACCOLTA.chi ? " · " + esc(RACCOLTA.chi) : "") +
       '</small><span class="rc-az"><button class="oro" data-fa="monta-racc">Monta tutta</button><button data-fa="rinomina">Rinomina</button><button data-fa="cancella">Elimina</button><button data-fa="esci">Esci</button></span></div>';
     var nFiltri = G.filter(function (x) { return x.k !== "tipo"; }).length;
@@ -583,6 +633,18 @@
     miniature();
   }
   var VISTI = [], CART_TUTTE = false;
+  // LA SCHEDA DELLA PERSONA, come nel MAM di Como TV: chi e', dove compare, in che cosa
+  function schedaPersona(p, tutti) {
+    var c = p.conti, st = Object.keys(c.stagioni).sort().reverse(), gen = Object.keys(c.generi).sort(function (a, b) { return c.generi[b] - c.generi[a]; });
+    var co = Object.keys(c.collezioni).sort(function (a, b) { return c.collezioni[b] - c.collezioni[a]; }).slice(0, 6);
+    function chip(k, v, eti, num) { var on = di(k).indexOf(v) >= 0; return '<button class="chip-p' + (on ? " on" : "") + '" data-chip="' + k + '" data-v="' + esc(v) + '">' + esc(eti) + (num ? "<b>" + n(num) + "</b>" : "") + "</button>"; }
+    return '<div class="scheda-p">' + avatar(p, "sp-foto") + '<div class="sp-corpo"><div class="sp-eti">' + esc([p.ruolo, p.maglia && !/Club|Staff|Allenatore/.test(p.ruolo) ? "n. " + p.maglia : ""].filter(Boolean).join(" · ") || "Persona") + '</div><h2>' + esc(p.nome) + "</h2>" +
+      '<p class="sp-num"><b>' + n(c.video) + "</b> video · <b>" + n(c.foto) + "</b> foto · <b>" + n(c.cartelle) + "</b> cartelle" + (p.stagioni.length ? " · al Como nelle rose " + esc(p.stagioni.slice().reverse().join(", ")) : "") + "</p>" +
+      (st.length ? '<div class="sp-riga"><i>Stagioni</i>' + st.map(function (s) { return chip("stag", s, s, c.stagioni[s]); }).join("") + "</div>" : "") +
+      (gen.length ? '<div class="sp-riga"><i>Che cosa</i>' + gen.map(function (g) { return chip("gen", g, g, c.generi[g]); }).join("") + "</div>" : "") +
+      (co.length ? '<div class="sp-riga"><i>Dove</i>' + co.map(function (k) { return chip("coll", k, k, c.collezioni[k]); }).join("") + "</div>" : "") +
+      '<p class="sp-nota">Trovato dove il nome è scritto nelle cartelle e nei file (' + esc(p.alias.slice(0, 4).join(", ")) + ').</p></div></div>';
+  }
   function servizioDi(via) {
     var s0 = (I.servizi || []).filter(function (x) { return x[0] === via; })[0]; if (s0) return s0;
     var c = contenitore(via), r0 = I.cartelle.filter(function (r) { return r[0] === via || r[0].indexOf(via + "/") === 0; });
@@ -672,7 +734,7 @@
       return '<fieldset class="col-f"><legend>' + eti + (sc.length ? "<em>" + sc.length + "</em>" : "") + "<small>file</small></legend>" +
         (Object.keys(conta).length > 8 ? '<input class="col-cerca" data-colcerca="' + k + '" placeholder="Filtra…" value="' + esc(COL_CERCA[k] || "") + '">' : "") +
         voci.slice(0, max).map(function (v) {
-          var on = sc.indexOf(v) >= 0, nome = k === "cart" ? v.split("/").slice(-2).join(" › ") : k === "ep" ? v.split("/")[1] : v;
+          var on = sc.indexOf(v) >= 0, nome = k === "cart" ? v.split("/").slice(-2).join(" › ") : k === "ep" ? v.split("/")[1] : k === "pers" ? ((PERS[v] || {}).nome || v) : v;
           return '<label class="col-v' + (conta[v] ? "" : " zero") + '" title="' + esc(v) + '"><input type="checkbox" data-col="' + k + '" value="' + esc(v) + '"' + (on ? " checked" : "") + '><span class="col-n">' + esc(nome) + "</span><b>" + n(conta[v]) + "</b></label>";
         }).join("") + (voci.length > max ? '<button class="col-tutte" data-coltutte="' + k + '">Mostra tutte (' + voci.length + ")</button>" : "") + "</fieldset>";
     }
@@ -681,8 +743,11 @@
     var perStag = conta(di("stag").length ? trovati("stag") : tutti, function (x) { return x.stag; });
     var perAnno = conta(di("anno").length ? trovati("anno") : tutti, function (x) { return x.data ? String(Math.floor(x.data / 10000)) : ""; });
     var perEp = conta(tutti, function (x) { var p = x.d.split("/"); return p.length > 1 ? p[0] + "/" + p[1] : ""; });
-    var cols = colonna("coll", "Collezione", perColl) + colonna("stag", "Stagione", perStag, function (a, b) { return b.localeCompare(a); }) +
-      colonna("anno", "Anno delle riprese", perAnno, function (a, b) { return b.localeCompare(a); }) + colonna("ep", "Episodio / cartella", perEp);
+    function contaLista(k, campo) { var c = {}; (di(k).length ? trovati(k) : tutti).forEach(function (x) { var v = campo === "p" ? x.pers : x.md[campo]; (Array.isArray(v) ? v : v ? [v] : []).forEach(function (y) { c[y] = (c[y] || 0) + 1; }); }); return c; }
+    var cols = colonna("gen", "Tipo di contenuto", contaLista("gen", "g")) + colonna("pers", "Persone", contaLista("pers", "p")) +
+      colonna("stag", "Stagione", perStag, function (a, b) { return b.localeCompare(a); }) + colonna("sq", "Squadra", contaLista("sq", "q")) +
+      colonna("comp", "Competizione", contaLista("comp", "c")) + colonna("avv", "Avversario", contaLista("avv", "a")) +
+      colonna("coll", "Collezione", perColl) + colonna("anno", "Anno delle riprese", perAnno, function (a, b) { return b.localeCompare(a); }) + colonna("ep", "Episodio / cartella", perEp);
     var nF = G.filter(function (x) { return x.k !== "tipo"; }).length;
     return '<div class="pannello-filtri" id="pannelloFiltri">' + (cols || '<p class="vuoto">Nessun filtro utile per questa ricerca.</p>') + (nF ? '<button class="col-azzera" data-azzera="1">Togli tutti i filtri</button>' : "") + "</div>";
   }
@@ -779,6 +844,7 @@
     var t;
     if ((t = e.target.closest("[data-sc]"))) { e.stopPropagation(); scegli(t.dataset.sc); return; }
     if ((t = e.target.closest("[data-scc]"))) { e.preventDefault(); e.stopPropagation(); scegliCartella(t.dataset.scc); return; }
+    if ((t = e.target.closest("[data-chip]"))) { var k = t.dataset.chip, v = t.dataset.v; if (di(k).indexOf(v) >= 0) togli(k, v); else metti({ k: k, v: v, n: nomeDi(k, v) }); return; }
     if ((t = e.target.closest(".srv[data-cart]"))) { metti({ k: "cart", v: t.dataset.cart, n: ultimo(t.dataset.cart) }); window.scrollTo(0, 0); return; }
     if ((t = e.target.closest("[data-tab]"))) { TAB = t.dataset.tab; quanti = MAX; salvaIndirizzo(); risultati(); return; }
     if ((t = e.target.closest("#apriFiltri"))) { PANNELLO = !PANNELLO; try { localStorage.setItem("mam1907-filtri", PANNELLO ? "1" : "0"); } catch (x) {} risultati(); return; }
@@ -873,7 +939,13 @@
     .then(function (r) { if (!r.ok) throw 0; return r.json(); })
     .then(function (j) {
       I = j; I.episodi = I.episodi || []; I.cartelle = I.cartelle || [];
-      I.cartelle.forEach(function (r) { CART[r[0]] = [r[1], r[2]]; if (r[2]) STAGIONI[r[2]] = (STAGIONI[r[2]] || 0) + r[4] + r[5]; });
+      I.cartelle.forEach(function (r) {
+        CART[r[0]] = [r[1], r[2]]; if (r[2]) STAGIONI[r[2]] = (STAGIONI[r[2]] || 0) + r[4] + r[5];
+        var m = r[8] || {}; MD[r[0]] = m; var nf = r[4] + r[5];
+        (m.g || []).forEach(function (g) { VOC.gen[g] = (VOC.gen[g] || 0) + nf; });
+        if (m.q) VOC.sq[m.q] = (VOC.sq[m.q] || 0) + nf; if (m.c) VOC.comp[m.c] = (VOC.comp[m.c] || 0) + nf; if (m.a) VOC.avv[m.a] = (VOC.avv[m.a] || 0) + nf;
+      });
+      (I.persone || []).forEach(function (p) { PERS[p.id] = p; });
       var datate = I.cartelle.filter(function (r) { return r[1]; }).length;
       $("sotto").textContent = n(I.file) + " file · " + I.collezioni.length + " collezioni · " + n(I.episodi.length) + " episodi · " + gb(I.peso) + " sulla NAS" +
         (I.parziale ? " · indicizzazione in corso" : "") + ". Cerca, guarda, monta.";
