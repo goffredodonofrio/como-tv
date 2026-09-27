@@ -6303,6 +6303,26 @@ function velocitaTra(campioni, ora, finestra) {
   if (!ultimo || !primo || ultimo.t - primo.t < 4000) return null;
   return Math.max(0, (ultimo.b - primo.b) / ((ultimo.t - primo.t) / 1000));
 }
+// LE AGGIUNTE (27/09/2026): i file approvati a mano dopo la copia grande
+// (.aggiunte.txt accanto al diario). La barra deve dire quante ne sono
+// arrivate, non 100% perche' l'indice e' tutto in casa. Si pesa al massimo
+// una volta al minuto: sono qualche centinaio di stat sulla NFS.
+const AGGIUNTE = { quando: 0, v: null };
+function statoAggiunte(base, inArrivo) {
+  if (Date.now() - AGGIUNTE.quando > 60000) {
+    AGGIUNTE.quando = Date.now();
+    let testo = ""; try { testo = fs.readFileSync(path.join(base, ".aggiunte.txt"), "utf8"); } catch (e) { AGGIUNTE.v = null; return null; }
+    const voci = [];
+    testo.split("\n").slice(1).forEach((r) => { r = r.trim(); if (!r) return; const m = /^(?:"((?:[^"]|"")*)"|([^,]*)),(\d*)$/.exec(r); if (!m) return; voci.push({ k: (m[1] !== undefined ? m[1].replace(/""/g, '"') : m[2]), b: +m[3] || 0 }); });
+    let fatti = 0, byte = 0, byteFatti = 0;
+    voci.forEach((v) => { byte += v.b; try { const st = fs.statSync(path.join(base, v.k)); if (!v.b || st.size === v.b) { fatti++; byteFatti += v.b || st.size; } } catch (e) {} });
+    AGGIUNTE.v = { file: voci.length, fatti, byte, byteFatti, chiavi: new Set(voci.map((v) => v.k)) };
+  }
+  const a = AGGIUNTE.v; if (!a) return null;
+  // i file a meta' delle aggiunte contano per quello che e' gia' arrivato
+  const inCorso = (inArrivo || []).filter((x) => a.chiavi.has(path.relative(base, x.p).replace(/\.parziale(\.[^/]*)?$/, ""))).reduce((n, x) => n + (x.b || 0), 0);
+  return { file: a.file, fatti: a.fatti, byte: a.byte, byteArrivati: a.byteFatti + inCorso };
+}
 async function statoCopia() {
   if (COPIA_ULTIMO && Date.now() - COPIA_ULTIMO.quando < 2500) return COPIA_ULTIMO;
   const base = path.join(QNAP_RADICE, SPECCHIO_DIR);
@@ -6382,6 +6402,7 @@ async function statoCopia() {
     partite, partiteCasa, byteTot, byteCasa, sullaNas, inCorso,
     velocita, velocitaOra, storia: storia.slice(-40),
     fine: vFine && vFine > 1e5 ? ora + manca / vFine * 1000 : null,
+    aggiunte: statoAggiunte(base, inArrivo),
     // pagato e' tutto quello che e' uscito da S3, file a meta' compresi
     spesi: Math.round(Math.max(stato ? stato.byte || 0 : 0, sullaNas) / 1e9 * 0.03 * 100) / 100,
     daSpendere: Math.round(manca / 1e9 * 0.03),
