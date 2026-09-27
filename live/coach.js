@@ -32,6 +32,11 @@
   var QUI = (document.currentScript && document.currentScript.src) || (RADICE + "live/coach.js");
   var VIDEO = "/como-tv/guida/video/";
   var K_RUN = "coach-cammino", K_PAL = "coach-palestra";
+  // la lingua: ?lang=en (dalla palestra inglese) vale per tutto il giro
+  var EN = (function () { try { var m = /[?&]lang=(en|it)\b/.exec(location.search); if (m) sessionStorage.setItem("coach-lingua", m[1]); return sessionStorage.getItem("coach-lingua") === "en"; } catch (e) { return false; } })();
+  function X(t) { return EN && window.COACH_EN && window.COACH_EN[t] ? window.COACH_EN[t] : t; }
+  function U(t) { return EN && window.COACH_EN && window.COACH_EN.__ui && window.COACH_EN.__ui[t] ? window.COACH_EN.__ui[t] : t; }
+  var PAL_URL = EN ? "/como-tv/guida/palestra-en.html" : "/como-tv/guida/palestra.html";
 
   function leggi(k, d, sess) { try { var v = (sess ? sessionStorage : localStorage).getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
   function scrivi(k, v, sess) { try { (sess ? sessionStorage : localStorage).setItem(k, JSON.stringify(v)); } catch (e) {} }
@@ -177,7 +182,7 @@
     document.addEventListener("keydown", suTasto, true);
     setInterval(giro, 350);
   }
-  function disegnaBadge() { if (badge) badge.innerHTML = "← PALESTRA · <b>" + PAL.punti + "</b> punti"; }
+  function disegnaBadge() { if (badge) badge.innerHTML = "← " + U("PALESTRA") + " · <b>" + PAL.punti + "</b> " + U("punti"); }
   function apriCard(html, lato) {
     if (!card) { card = el("div", "coach-ui coach-card"); document.body.appendChild(card); }
     card.className = "coach-ui coach-card " + (lato || "destra"); card.innerHTML = html; return card;
@@ -208,7 +213,7 @@
     if (c === "avanti") return avanza();
     if (c === "video") return mostraVideo();
     if (c === "elenco") { esci(); return elenco(); }
-    if (c === "torna") { RUN = null; togli(K_RUN, true); location.href = "/como-tv/guida/palestra.html"; return; }
+    if (c === "torna") { RUN = null; togli(K_RUN, true); location.href = PAL_URL; return; }
     if (c === "rifai") { var id = leggi("coach-finito-id", null, true); if (id) inizia(id); return; }
   }
   function versoPalestra(id) {
@@ -235,16 +240,16 @@
     var lato = "destra";
     if (bersaglio) { var r = bersaglio.getBoundingClientRect(); if (r.left + r.width / 2 > innerWidth * 0.55) lato = "sinistra"; }
     var altrove = s.pagina && paginaQui() !== s.pagina.replace(/^.*\//, "").replace(/\.html.*$/, "") && !(s.paginaChiave && s.paginaChiave === paginaQui());
-    var html = '<header><b>' + esc(p.titolo) + '</b><button class="x" data-c="esci" aria-label="Esci">×</button></header><div class="corpo">' +
+    var html = '<header><b>' + esc(X(p.titolo)) + '</b><button class="x" data-c="esci" aria-label="Esci">×</button></header><div class="corpo">' +
       '<div class="pallini">' + p.passi.map(function (_, j) { return '<i class="' + (j < RUN.i ? "ok" : j === RUN.i ? "ora" : "") + '"></i>'; }).join("") + '</div>' +
-      '<div class="stato" style="margin-top:-8px">Passo ' + (RUN.i + 1) + " di " + p.passi.length + '</div><div class="ordine">' + esc(s.t) + "</div>" +
-      (s.aiuto ? '<div class="aiuto">' + esc(s.aiuto) + "</div>" : "") +
-      (!bersaglio && s.su && s.fai !== "vedi" ? '<div class="stato">Non vedo ancora il punto giusto su questa pagina: ' + (altrove ? "prima apri la pagina giusta." : "scorri o aspetta che carichi.") + "</div>" : "") +
-      (s.fai === "leggi" ? '<button class="b oro" data-c="avanti" style="width:100%;padding:16px;font-size:18px">Fatto, avanti →</button>' : "") +
-      (altrove ? '<button class="b oro" data-c="vaiPagina" style="width:100%;padding:16px;font-size:18px">Apri la pagina</button>' : "") +
+      '<div class="stato" style="margin-top:-8px">' + U("Passo") + " " + (RUN.i + 1) + " " + U("di") + " " + p.passi.length + '</div><div class="ordine">' + esc(X(s.t)) + "</div>" +
+      (s.aiuto ? '<div class="aiuto">' + esc(X(s.aiuto)) + "</div>" : "") +
+      (!bersaglio && s.su && s.fai !== "vedi" ? '<div class="stato">' + U("Non vedo ancora il punto giusto su questa pagina:") + " " + (altrove ? U("prima apri la pagina giusta.") : U("scorri o aspetta che carichi.")) + "</div>" : "") +
+      (s.fai === "leggi" ? '<button class="b oro" data-c="avanti" style="width:100%;padding:16px;font-size:18px">' + U("Fatto, avanti →") + '</button>' : "") +
+      (altrove ? '<button class="b oro" data-c="vaiPagina" style="width:100%;padding:16px;font-size:18px">' + U("Apri la pagina") + '</button>' : "") +
       '<div class="bottoni">' +
-      (p.video ? '<button class="b rosso" data-c="video"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" style="vertical-align:-2px;margin-right:8px"><path d="M4 2v12l10-6z" fill="currentColor"/></svg>Guarda come si fa</button>' : "") +
-      '<button class="b" data-c="salta">Salta</button>' + (DEV ? '<button class="b" data-c="torna">Torna alla palestra</button>' : '<button class="b" data-c="elenco">Altri pezzi</button>') + '</div>' +
+      (p.video ? '<button class="b rosso" data-c="video"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" style="vertical-align:-2px;margin-right:8px"><path d="M4 2v12l10-6z" fill="currentColor"/></svg>' + U("Guarda come si fa") + '</button>' : "") +
+      '<button class="b" data-c="salta">' + U("Salta") + '</button>' + (DEV ? '<button class="b" data-c="torna">' + U("Torna alla palestra") + '</button>' : '<button class="b" data-c="elenco">Altri pezzi</button>') + '</div>' +
       '<div class="stato" id="coachEsito"></div></div>';
     var c = apriCard(html, lato);
     c.querySelectorAll("[data-c]").forEach(function (b) { b.onclick = function () { if (b.dataset.c === "vaiPagina") location.href = RADICE + s.pagina; else comando(b.dataset.c); }; });
@@ -266,9 +271,9 @@
   }
   function mostraFine(p, dopo, gia) {
     var area = p.area, tutti = pezzi().filter(function (x) { return x.area === area; }), presa = DEV && tutti.length && tutti.every(function (x) { return PAL.fatti[x.id]; });
-    var c = apriCard('<header><b>Fatto</b><button class="x" data-c="chiudi" aria-label="Chiudi">×</button></header><div class="corpo"><div class="bravo">Pezzo completato: ' + esc(p.titolo) + '</div>' +
-      (DEV ? '<div>' + (dopo ? "" : "+" + (gia ? 0 : 20) + " punti · ") + 'totale <b>' + PAL.punti + "</b> punti</div>" : "") + (presa ? '<div class="bravo">Hai preso la patente ' + esc(area) + "</div>" : "") +
-      '<div class="bottoni">' + (DEV ? '<button class="b oro" data-c="torna">Torna alla palestra</button><button class="b" data-c="rifai">Rifallo</button>' : '<button class="b oro" data-c="elenco">Altri pezzi</button><button class="b" data-c="chiudi">Chiudi</button>') + '</div></div>', "destra");
+    var c = apriCard('<header><b>' + U("Fatto") + '</b><button class="x" data-c="chiudi" aria-label="Chiudi">×</button></header><div class="corpo"><div class="bravo">' + U("Pezzo completato:") + " " + esc(X(p.titolo)) + '</div>' +
+      (DEV ? '<div>' + (dopo ? "" : "+" + (gia ? 0 : 20) + " " + U("punti") + " · ") + U("totale") + ' <b>' + PAL.punti + "</b> " + U("punti") + "</div>" : "") + (presa ? '<div class="bravo">' + U("Hai preso la patente") + " " + esc(area) + "</div>" : "") +
+      '<div class="bottoni">' + (DEV ? '<button class="b oro" data-c="torna">' + U("Torna alla palestra") + '</button><button class="b" data-c="rifai">' + U("Rifallo") + '</button>' : '<button class="b oro" data-c="elenco">Altri pezzi</button><button class="b" data-c="chiudi">Chiudi</button>') + '</div></div>', "destra");
     scrivi("coach-finito-id", p.id, true);
     c.querySelectorAll("[data-c]").forEach(function (b) { b.onclick = function () { comando(b.dataset.c); }; });
   }
@@ -276,7 +281,7 @@
   function mostraVideo() {
     var p = RUN && pezzo(RUN.id); if (!p || !p.video) return;
     var box = card.querySelector(".corpo"); if (box.querySelector("video")) return;
-    var v = el("video"); v.src = VIDEO + p.video + ".mp4"; v.controls = true; v.muted = true; v.playsInline = true; box.insertBefore(v, box.firstChild); v.play().catch(function () {});
+    var v = el("video"); v.src = VIDEO + p.video + (EN ? "-en" : "") + ".mp4"; v.controls = true; v.muted = true; v.playsInline = true; box.insertBefore(v, box.firstChild); v.play().catch(function () {});
   }
   function nascondiAnello() { if (anello) anello.style.display = "none"; }
 
@@ -320,6 +325,7 @@
     else { var f = leggi("coach-finito", null, true); if (f && Date.now() - f.t < 15000) { togli("coach-finito", true); var pf = pezzo(f.id); if (pf) setTimeout(function () { mostraFine(pf, true); }, 900); } }
   }
   function carica() {
+    if (EN && !window.COACH_EN && !carica.provato) { carica.provato = 1; var e = document.createElement("script"); e.src = QUI.replace(/coach\.js(\?.*)?$/, "coach-dati-en.js"); e.onload = e.onerror = function () { carica(); }; document.head.appendChild(e); return; }
     if (window.COACH_DATI) return avvia();
     var s = document.createElement("script"); s.src = QUI.replace(/coach\.js(\?.*)?$/, "coach-dati.js"); s.onload = avvia; s.onerror = avvia; document.head.appendChild(s);
   }
