@@ -6560,7 +6560,9 @@ function nomeQuasiCerto(k, a) {
     // il giorno della cartella contro quello della partita in ora italiana
     const giorno = Date.UTC(+g[1], +g[2] - 1, +g[3]), locale = q + 2 * 3600000;
     const dg = Math.abs(Math.floor(locale / 86400000) * 86400000 - giorno) / 86400000;
-    const cw = paroleNome(pz[2] || "");
+    // cartelle generiche ("TAGLI", "CLEANFEED", "20251012"): le squadre sono nel nome del file
+    const cart = pz[2] || "";
+    const cw = paroleNome(/^(tagli|cleanfeed|clean feed|ita|eng|\d{6,8})$/i.test(cart.trim()) || pz.length <= 3 ? path.basename(a.chiave || "") : cart);
     const c = (n) => paroleNome(n).some((w) => cw.some((x) => x.slice(0, 4) === w.slice(0, 4)));
     const espnTutte = !!sq && c(sq[0]) && c(sq[1]);
     si = dg <= 1 && (c(lati[0]) || espnTutte) && (c(lati[1]) || espnTutte);
