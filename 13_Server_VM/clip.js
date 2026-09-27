@@ -12806,12 +12806,17 @@ function scriviRacc1907() {
 function voce1907(x) {
   if (!x || typeof x !== "object") return null;
   let rel; try { rel = via1907(x.via).rel; } catch (e) { return null; }
-  return { via: rel, peso: +x.peso || 0, quando: +x.quando || 0, data: String(x.data || "").slice(0, 20), messa: Date.now() };
+  const y = { via: rel, peso: +x.peso || 0, quando: +x.quando || 0, data: String(x.data || "").slice(0, 20), messa: Date.now() };
+  // una collezione, un episodio o una cartella intera: resta un riferimento, e i
+  // file nuovi che ci arrivano dentro fanno parte della raccolta
+  if (x.cartella) { y.cartella = 1; y.video = +x.video || 0; y.foto = +x.foto || 0; }
+  return y;
 }
 function sommario1907(r) {
   const f = r.file || [];
   return { id: r.id, nome: r.nome, creata: r.creata, aggiornata: r.aggiornata, chi: r.chi || "", quante: f.length,
-    video: f.filter((x) => F1907_VIDEO.test(x.via)).length, peso: f.reduce((t, x) => t + (x.peso || 0), 0),
+    video: f.reduce((t, x) => t + (x.cartella ? (x.video || 0) : (F1907_VIDEO.test(x.via) ? 1 : 0)), 0), peso: f.reduce((t, x) => t + (x.peso || 0), 0),
+    cartelle: f.filter((x) => x.cartella).length,
     prime: f.slice(0, 4).map((x) => x.via) };
 }
 // ── LE RACCOLTE IN REGIA (26/09/2026) ──

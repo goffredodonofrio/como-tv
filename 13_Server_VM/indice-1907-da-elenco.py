@@ -29,7 +29,7 @@ nella linea del tempo si mostrano raccolte in SERVIZI, cioe' le cartelle dello
 stesso giorno dentro la stessa sezione (collezione/squadra/tipo), riunite
 sotto il loro percorso comune: "G07 - COMO v JUVENTUS", "2025-03-05".
 """
-import json, os, re, sys, time, collections
+import gzip, json, os, re, sys, time, collections
 
 CASA = "/var/lib/comotv-1907"
 PUB = os.path.join(CASA, "pub")
@@ -454,6 +454,9 @@ def main():
     for nomef, dati in (("indice.json", indice), ("file.json", dati_file)):
         tmp = os.path.join(PUB, nomef + ".tmp")
         json.dump(dati, open(tmp, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+        # la versione compressa accanto (nginx gzip_static): 13 MB diventano 3, e nessuno li ricomprime a ogni visita
+        with open(tmp, "rb") as f, gzip.open(tmp + ".gz", "wb", 9) as g: g.write(f.read())
+        os.replace(tmp + ".gz", os.path.join(PUB, nomef + ".gz"))
         os.replace(tmp, os.path.join(PUB, nomef))
     datate = sum(1 for r in righe if r[1])
     print("indice: %d file, %d collezioni, %d episodi, %d cartelle (%d con data), %d servizi; %d file esclusi a mano" % (tot_file, len(colls), len(eps), len(righe), datate, len(servizi), tolti))

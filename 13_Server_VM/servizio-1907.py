@@ -12,6 +12,8 @@ sempre l'originale: la copia serve solo agli occhi.
 
 Fuori dal ponte, dietro nginx su 127.0.0.1:8097:
   GET /mini/<k>.jpg?v=<percorso>   miniatura (fatta la prima volta che la si chiede)
+  GET /provino/<k>.jpg?v=<percorso> il provino: 6 fotogrammi lungo la clip in una striscia,
+                                   per l'anteprima che scorre col mouse sulla tessera
   GET /copia?v=<percorso>          stato della copia leggera; se non c'e', la mette in coda
   GET /code                        cosa c'e' in coda
 Le copie finiscono in /var/lib/comotv-1907/proxy/<k>.mp4 e le serve nginx.
@@ -23,6 +25,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 R = "/mnt/qnap100-frame"
 CASA = "/var/lib/comotv-1907"
 MINI = os.path.join(CASA, "mini")
+PROVINI = os.path.join(CASA, "provini")
+PROVINO_INSIEME = threading.BoundedSemaphore(2)
+FOTOGRAMMI = 6
 COPIE = os.path.join(CASA, "proxy")
 VIDEO = (".mp4", ".mov", ".mxf", ".m4v", ".avi", ".mkv", ".mts", ".m2ts", ".webm")
 FOTO = (".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff")
@@ -72,6 +77,35 @@ def fai_mini(v, pieno, dest):
     if os.path.exists(tmp) and os.path.getsize(tmp) > 0:
         os.replace(tmp, dest); return True
     return False
+
+
+def fai_provino(pieno, dest):
+    """6 fotogrammi (dal 5% al 95% della durata) affiancati in una striscia da 6x320 px.
+    Solo fotogrammi chiave (-skip_frame nokey): su un 4K a 10 bit decodificare fino al
+    secondo esatto costa il triplo, e per un'anteprima il fotogramma chiave vicino basta"""
+    d = durata(pieno)
+    if not d: return False
+    tmp = dest + ".tmp"; os.makedirs(tmp, exist_ok=True)
+    try:
+        pezzi = []
+        for i in range(FOTOGRAMMI):
+            t = d * (0.05 + 0.9 * i / (FOTOGRAMMI - 1))
+            f = os.path.join(tmp, "%d.jpg" % i)
+            subprocess.run(["nice", "-n", "10", "ffmpeg", "-v", "error", "-nostdin", "-y", "-skip_frame", "nokey", "-ss", "%.2f" % t, "-i", pieno, "-frames:v", "1",
+                            "-vf", "scale=320:180:force_original_aspect_ratio=decrease,pad=320:180:(ow-iw)/2:(oh-ih)/2", "-q:v", "6", f],
+                           capture_output=True, timeout=90)
+            if os.path.exists(f): pezzi.append(f)
+        if not pezzi: return False
+        while len(pezzi) < FOTOGRAMMI: pezzi.append(pezzi[-1])
+        cmd = ["ffmpeg", "-v", "error", "-nostdin", "-y"]
+        for f in pezzi: cmd += ["-i", f]
+        cmd += ["-filter_complex", "hstack=inputs=%d" % FOTOGRAMMI, "-q:v", "6", dest + ".tmp.jpg"]
+        subprocess.run(cmd, capture_output=True, timeout=60)
+        if os.path.exists(dest + ".tmp.jpg"): os.replace(dest + ".tmp.jpg", dest); return True
+        return False
+    finally:
+        for f in os.listdir(tmp): os.remove(os.path.join(tmp, f))
+        os.rmdir(tmp)
 
 
 def lavora():
@@ -130,6 +164,17 @@ class H(BaseHTTPRequestHandler):
                         return self.rispondi(404, {"ok": False, "errore": "miniatura non riuscita"})
             with open(dest, "rb") as f:
                 return self.rispondi(200, f.read(), "image/jpeg", {"Cache-Control": "public, max-age=2592000"})
+        if u.path.startswith("/provino/"):
+            k = u.path[9:].replace(".jpg", "")
+            v, pieno = dentro((q.get("v") or [""])[0])
+            if not v or chiave(v) != k or not v.lower().endswith(VIDEO): return self.rispondi(404, {"ok": False})
+            dest = os.path.join(PROVINI, k + ".jpg")
+            if not os.path.exists(dest):
+                with PROVINO_INSIEME:
+                    if not os.path.exists(dest) and not fai_provino(pieno, dest):
+                        return self.rispondi(404, {"ok": False, "errore": "provino non riuscito"})
+            with open(dest, "rb") as f:
+                return self.rispondi(200, f.read(), "image/jpeg", {"Cache-Control": "public, max-age=2592000"})
         if u.path == "/copia":
             v, pieno = dentro((q.get("v") or [""])[0])
             if not v or not v.lower().endswith(VIDEO): return self.rispondi(400, {"ok": False, "errore": "non e' un video"})
@@ -154,6 +199,6 @@ class H(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    os.makedirs(MINI, exist_ok=True); os.makedirs(COPIE, exist_ok=True)
+    os.makedirs(MINI, exist_ok=True); os.makedirs(COPIE, exist_ok=True); os.makedirs(PROVINI, exist_ok=True)
     threading.Thread(target=lavora, daemon=True).start()
     ThreadingHTTPServer(("127.0.0.1", 8097), H).serve_forever()
