@@ -70,8 +70,8 @@ def b64(s): return base64.urlsafe_b64encode(s.encode()).decode().rstrip("=")
 def deb64(s): return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4)).decode()
 
 
-def sessione_nuova(email):
-    corpo = b64(json.dumps({"e": email, "s": int(time.time()) + DURATA}))
+def sessione_nuova(email, durata=None):
+    corpo = b64(json.dumps({"e": email, "s": int(time.time()) + (durata or DURATA)}))
     return corpo + "." + firma(corpo)
 
 
@@ -93,8 +93,35 @@ def autorizzati():
         return set()
 
 
+# ── GLI UTENTI TECNICI (Goffredo, 28/09/2026: "un altro super user per sviluppo e
+#    debug"). Nome + password, senza Google. Sulla VM c'e' solo l'impronta (PBKDF2),
+#    in /etc/comotv/accesso-locali.json: {"admin": {"hash": "...", "admin": true}}.
+#    Ogni ingresso finisce nel registro; 5 errori dallo stesso indirizzo = 15 minuti fermi.
+LOCALI = "/etc/comotv/accesso-locali.json"
+ERRORI_TECNICO = {}
+
+
+def locali():
+    try: return json.load(open(LOCALI))
+    except Exception: return {}
+
+
+def impronta(password, sale=None, giri=310000):
+    sale = sale or secrets.token_hex(16)
+    return "pbkdf2_sha256$%d$%s$%s" % (giri, sale, hashlib.pbkdf2_hmac("sha256", password.encode(), sale.encode(), giri).hex())
+
+
+def password_giusta(password, salvata):
+    try:
+        _, giri, sale, h = salvata.split("$")
+        return hmac.compare_digest(impronta(password, sale, int(giri)).split("$")[3], h)
+    except Exception:
+        return False
+
+
 def ammesso(email, hd=None):
     email = (email or "").lower()
+    if email in locali(): return True
     domini = [d.strip().lower() for d in conf().get("ACCESSO_DOMINI", "sent.tv,comofootball.com").split(",") if d.strip()]
     dominio = email.rsplit("@", 1)[-1]
     if email in autorizzati(): return True
@@ -131,7 +158,8 @@ def pagina_permessa(email, percorso):
 
 
 def super_utenti():
-    return {x.strip().lower() for x in conf().get("ACCESSO_ADMIN", "goffredo.donofrio@sent.tv").split(",") if x.strip()}
+    su = {x.strip().lower() for x in conf().get("ACCESSO_ADMIN", "goffredo.donofrio@sent.tv").split(",") if x.strip()}
+    return su | {k for k, v in locali().items() if v.get("admin")}
 
 
 def torna_sicuro(t):
@@ -167,6 +195,7 @@ __ERRORE__
 <p>Con il tuo account Google di lavoro: <b>@sent.tv</b> o <b>@comofootball.com</b>.</p>
 <a class="g" id="vai" href="/auth/google?torna=__TORNA__"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.2C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.3 5.7c4.3-4 7-9.9 7-17.2z"/><path fill="#FBBC05" d="M10.6 28.5c-.5-1.4-.8-2.9-.8-4.5s.3-3.1.8-4.5l-7.9-6.2C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.3-5.7c-2.2 1.5-5 2.3-8.6 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.2C6.6 42.6 14.6 48 24 48z"/></svg>Accedi con Google</a>
 <p>Ogni azione viene registrata con la tua mail.</p>
+<p><a href="/auth/tecnico?torna=__TORNA__" style="color:#6B6E78;font-size:12px">Accesso tecnico</a></p>
 </main><script>if(location.hash){var a=document.getElementById("vai");a.href+=encodeURIComponent(location.hash);}</script></body></html>"""
 
 
@@ -268,6 +297,18 @@ fetch("/auth/registro.json",{cache:"no-store"}).then(function(r){return r.json()
 </script></body></html>"""
 
 
+TECNICO = """<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accesso tecnico · Como TV</title><meta name="robots" content="noindex">
+<style>*{box-sizing:border-box;margin:0;padding:0}body{min-height:100vh;display:grid;place-items:center;background:#0A0F24;color:#EDEDEE;font:15px/1.5 system-ui,sans-serif;padding:24px 16px}
+form{width:min(380px,100%);background:#141826;border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:26px;display:flex;flex-direction:column;gap:12px}
+h1{font-size:19px}label{font-size:12px;color:#9A9CA4}input{width:100%;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.05);color:#EDEDEE;font:inherit}
+button{padding:11px;border-radius:8px;border:0;background:#C9A24B;color:#10131c;font-weight:700;cursor:pointer}p{font-size:12.5px;color:#9A9CA4}.err{color:#FF9A9C}a{color:#E3C271}</style></head><body>
+<form method="post" action="/auth/tecnico"><h1>Accesso tecnico</h1><p>Per sviluppo e debug. Ogni ingresso viene registrato.</p>__ERRORE__
+<input type="hidden" name="torna" value="__TORNA__"><label for="u">Utente</label><input id="u" name="utente" autocomplete="username" required>
+<label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password" required>
+<button type="submit">Entra</button><p><a href="/auth/entra">Torna all'accesso con Google</a></p></form></body></html>"""
+
+
 PRIVACY = """<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Privacy · Accesso Como TV</title><style>body{max-width:680px;margin:40px auto;padding:0 16px;font:15px/1.6 system-ui,sans-serif;color:#1d1d1f;background:#fff}h1{font-size:22px}h2{font-size:16px;margin-top:22px}</style></head><body>
 <h1>Accesso a Como TV · informativa sui dati</h1>
@@ -336,6 +377,8 @@ class H(BaseHTTPRequestHandler):
             if email not in super_utenti(): return self.manda(403, "Il registro lo vede solo il super utente.")
             if u.path.endswith(".json"): return self.manda(200, json.dumps(registro(), ensure_ascii=False), "application/json; charset=utf-8")
             return self.manda(200, REGISTRO_HTML, "text/html; charset=utf-8")
+        if u.path == "/auth/tecnico":
+            return self.manda(200, TECNICO.replace("__TORNA__", html.escape(torna)).replace("__ERRORE__", ""), "text/html; charset=utf-8")
         if u.path == "/auth/privacy":
             return self.manda(200, PRIVACY, "text/html; charset=utf-8")
         if u.path == "/auth/esci":
@@ -380,8 +423,31 @@ class H(BaseHTTPRequestHandler):
         return self.manda(404)
 
 
+def do_POST_tecnico(self):
+    ip = self.ip(); ora = time.time()
+    errori = [t for t in ERRORI_TECNICO.get(ip, []) if ora - t < 900]; ERRORI_TECNICO[ip] = errori
+    n = int(self.headers.get("Content-Length") or 0)
+    dati = urllib.parse.parse_qs(self.rfile.read(min(n, 4096)).decode(errors="replace")) if n > 0 else {}
+    utente = (dati.get("utente") or [""])[0].strip().lower(); pw = (dati.get("password") or [""])[0]
+    torna = torna_sicuro((dati.get("torna") or [""])[0])
+    def pagina_err(msg):
+        return self.manda(200, TECNICO.replace("__TORNA__", html.escape(torna)).replace("__ERRORE__", '<p class="err">' + html.escape(msg) + "</p>"), "text/html; charset=utf-8")
+    if len(errori) >= 5:
+        registra("accesso tecnico bloccato", utente, ip)
+        return pagina_err("Troppi tentativi sbagliati: riprova tra 15 minuti.")
+    u = locali().get(utente)
+    if not u or not password_giusta(pw, u.get("hash", "")):
+        ERRORI_TECNICO[ip] = errori + [ora]
+        registra("accesso tecnico rifiutato", utente, ip)
+        return pagina_err("Utente o password non corretti.")
+    ERRORI_TECNICO.pop(ip, None)
+    registra("entra (accesso tecnico)", utente, ip)
+    return self.manda(302, extra=[("Location", torna), ("Set-Cookie", COOKIE + "=" + sessione_nuova(utente) + "; Path=/; Secure; HttpOnly; SameSite=Lax")])
+
+
 def do_POST_presenze(self):
     u = urllib.parse.urlparse(self.path)
+    if u.path == "/auth/tecnico": return do_POST_tecnico(self)
     if not u.path.startswith("/auth/presenze/"): return self.manda(404)
     email = sessione_valida(self.cookie()); slug = u.path.rsplit("/", 1)[-1]
     if not email: return self.manda(401, json.dumps({"errore": "serve l'accesso"}), "application/json")
@@ -415,6 +481,17 @@ ULTIMO_SALVA = {}
 H.do_POST = do_POST_presenze
 
 
+def sessione_debug(utente="admin", ore=2, perche=""):
+    """per le prove automatiche (headless): una sessione a tempo, fatta sul server e
+    scritta nel registro. Da riga di comando: python3 accesso.py debug [utente] [ore] [perche']"""
+    if utente not in locali(): raise SystemExit("utente tecnico sconosciuto: " + utente)
+    registra("sessione di debug", utente, "server", {"foglio": perche[:80]} if perche else None)
+    return sessione_nuova(utente, int(float(ore) * 3600))
+
+
 if __name__ == "__main__":
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "debug":
+        print(sessione_debug(*(sys.argv[2:5] or ["admin"]))); raise SystemExit(0)
     chiave()
     ThreadingHTTPServer(("127.0.0.1", 8098), H).serve_forever()
