@@ -7082,7 +7082,7 @@ const DA_STUDIO = /SHOW|STUDIO|INTERVALLO|SPECIALE|RECAP|PRE[ -]?PARTITA|POST[ -
 // Cage Warriors, allenamenti, camp, Karate Combat, sorteggi, maratone, feste.
 // Nessun cronometro da cercare: il giro della casa le salta e contano come
 // utilizzabili appena sono sulla NAS, come lo studio
-const NON_PARTITA = /\bCAMP\b|TRAINING|ALLENAMENT|CAGE WARRIORS|\bCW\s?\d+|\bKC\s?\d+|KARATE|SORTEGG|DRAWING|FESTEGGIAMENT|BUS SCOPERTO|MARATONA/i;
+const NON_PARTITA = /\bCAMP\b|TRAINING|ALLENAMENT|CAGE WARRIORS|\bCW\s?\d+|\bKC\s?\d+|KARATE|SORTEGG|DRAWING|FESTEGGIAMENT|BUS SCOPERTO|MARATONA|CONF\.? STAMPA|CONFERENZA STAMPA|PRESS CONFERENCE/i;
 function senzaPartita(a) {
   return !!a && (DA_STUDIO.test(a.partita || "") || NON_PARTITA.test(a.partita || "") || NON_PARTITA.test(a.competizione || ""));
 }
