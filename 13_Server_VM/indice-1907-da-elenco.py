@@ -338,6 +338,8 @@ RIC = META.Riconosci(PERS)
 
 
 PF = {}
+PV = {}
+VOLTI = {}
 PARTITE = {}
 
 
@@ -398,6 +400,9 @@ def schede_persone(righe):
     conti = {}
     for r in righe:
         chi = [(pid, r[4], r[5]) for pid in r[9].get("p", [])] + [(pid, v, f) for pid, (v, f) in PF.get(r[0], {}).items()]
+        # i volti: solo i file dove si vede e dove il nome non l'aveva gia' detto
+        for pid, (v, f) in PV.get(r[0], {}).items():
+            if pid not in PF.get(r[0], {}): chi.append((pid, v, f))
         for pid, nv, nfo in chi:
             c = conti.setdefault(pid, {"cartelle": 0, "video": 0, "foto": 0, "stagioni": {}, "generi": {}, "collezioni": {}, "competizioni": {}, "ultima": None})
             c["cartelle"] += 1; c["video"] += nv; c["foto"] += nfo
@@ -419,6 +424,7 @@ def schede_persone(righe):
     for p in PERS:
         c = conti.get(p["id"])
         if c and gol.get(p["id"]): c["gol"] = gol[p["id"]]
+        if c: c["volti"] = sum(v for d, x in PV.items() for pid, (v, f) in x.items() if pid == p["id"])
         if not c: continue
         fuori.append(dict({k: p[k] for k in ("id", "nome", "ruolo", "maglia", "stagioni", "foto", "alias")}, **{"conti": c}))
     return sorted(fuori, key=lambda p: -(p["conti"]["video"] + p["conti"]["foto"]))
@@ -476,12 +482,21 @@ def main():
                 for f in fs:
                     c["file"] += 1; c["peso"] += f[1]; t = tipo(f[0])
                     if t in ("video", "foto"): c[t] += 1
+    # I VOLTI (volti-1907.py): chi si vede nei video, file per file
+    VOLTI.clear()
+    try:
+        for riga in open(os.path.join(CASA, "volti.jsonl"), encoding="utf-8"):
+            try: x = json.loads(riga)
+            except Exception: continue
+            if x.get("p"): VOLTI[x["v"]] = [p[0] for p in x["p"]]
+    except OSError:
+        pass
     # l'orologio delle camere (date-1907.py): [prima, ultima] per cartella
     try: cam = json.load(open(os.path.join(CASA, "date-1907.json")))
     except Exception: cam = {}
     righe = []
-    global PF
-    PF = {}
+    global PF, PV
+    PF = {}; PV = {}
     PARTITE.clear()
     for d, fs in sorted(cartelle.items()):
         stag_p = stagione_in(d); anno_p = 0 if stag_p else anno_in(d)
@@ -544,6 +559,12 @@ def main():
             for pid in RIC.persone(f[0].rsplit(".", 1)[0]):
                 if pid not in pp: pf.setdefault(pid, [0, 0])[0 if tipo(f[0]) == "video" else 1] += 1
         if pf: md["pf"] = sorted(pf); PF[d] = pf
+        # chi si vede (volti): anche questo vale solo per i suoi file
+        pv = {}
+        for f in fs:
+            for pid in VOLTI.get(d + "/" + f[0], []):
+                if pid not in pp: pv.setdefault(pid, [0, 0])[0] += 1
+        if pv: md["pv"] = sorted(pv); PV[d] = pv
         righe.append([d, dn, stag, len(fs), v, fo, sum(f[1] for f in fs), fonte, (d + "/" + vid[len(vid) // 2]) if vid else "", md])
     # LE VICINE: una cartella senza data dentro una ripresa datata ("G07 - COMO v
     # JUVENTUS/match/HUDI'S CAM", camera sbagliata) prende il giorno delle sue
@@ -613,7 +634,7 @@ def main():
     if len(sys.argv) > 1: indice["parziale"] = 1
     dati_file = [[d, [f[:3] + ([f[3]] if f[3] else []) for f in sorted(v)]] for d, v in sorted(cartelle.items())]
     piccolo = {k: {"n": v.get("v", 0) + v.get("f", 0), "avv": v["avv"], "casa": v["casa"]} for k, v in indice["partite"].items()}
-    for nomef, dati in (("indice.json", indice), ("file.json", dati_file), ("partite.json", piccolo)):
+    for nomef, dati in (("indice.json", indice), ("file.json", dati_file), ("partite.json", piccolo), ("volti.json", VOLTI)):
         tmp = os.path.join(PUB, nomef + ".tmp")
         json.dump(dati, open(tmp, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
         # la versione compressa accanto (nginx gzip_static): 13 MB diventano 3, e nessuno li ricomprime a ogni visita
