@@ -18,11 +18,14 @@
     ["raccolte", "mam2.html?raccolte=1", "Raccolte / Macchie"],
     ["live", "mam2.html?live=1", "MAM Live"],
     ["editing", "mam2.html?montaggio=1", "Editing"],
+    // il materiale del club (QNAP COMOTV - FRAME), 27/09/2026
+    ["1907", "mam-1907.html", "MAM Como 1907"],
     ["magazzino", "magazzino.html", "Magazzino"]
   ];
   function quale() {
     var f = (location.pathname.split("/").pop() || "").toLowerCase(), q = location.search;
     if (f === "magazzino.html" || f === "magazzino-foto.html" || f === "video.html") return "magazzino";
+    if (f === "mam-1907.html") return "1907";
     if (/[?&]live=1/.test(q)) return "live";
     if (/[?&](raccolte=1|rac=)/.test(q)) return "raccolte";
     if (/[?&](montaggio=1|seq=)/.test(q)) return "editing";

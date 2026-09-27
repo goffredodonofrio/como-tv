@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAM Como 1907 · Como TV</title>
+<!--
+  MAM COMO 1907 (Goffredo, 27/09/2026)
+  Il materiale del club che sta nella cartella "COMOTV - FRAME" della QNAP:
+  stagioni, academy, documentari, format (Taste of Como, Inside Sinigaglia,
+  Discover Como…), drone, interviste, fan stories. NON sono partite: niente
+  ESPN, niente azioni, niente barra. Si sfoglia per collezioni (le cartelle
+  di primo livello), si cerca per nome e cartella, si guarda.
+  L'indice lo fa 13_Server_VM/indice-1907.py sulla VM; nginx serve l'indice
+  su /como-tv/mam-1907/indice/ e i file (sola lettura) su /como-tv/mam-1907/file/.
+  Prima versione "vetrina": come organizzarlo davvero lo decidiamo dopo.
+-->
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-display:swap;}
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{color-scheme:dark;--gold:#C9A24B;--gold-bright:#E3C271;--ivory:#EDEDEE;--ivory-dim:#C9CACF;--fg-3:#8E9096;
+    --panel:#2A2B30;--fondo:#1B1C20;--riga:rgba(255,255,255,.08);--line-gold:rgba(201,162,75,.35);--ok:#4FCB8B;--red:#E51B20}
+  body{font-family:'DM Sans',system-ui,sans-serif;font-weight:500;font-size:14px;line-height:1.5;color:var(--ivory);background:var(--fondo);min-height:100vh}
+  .wrap{max-width:1500px;margin:0 auto;padding:0 clamp(14px,2.5vw,28px) 60px}
+  header.page{padding:22px 0 14px;display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap}
+  .eyebrow{font-family:'Mazzard',sans-serif;font-size:10px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:var(--gold);margin-bottom:4px}
+  h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:26px;line-height:.94;text-transform:uppercase}
+  h1 em{font-style:normal;color:var(--gold-bright)}
+  .contatori{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--fg-3);align-items:baseline;padding-bottom:3px}
+  .contatori b{font-family:'Mazzard',sans-serif;font-weight:800;font-size:14px;color:var(--ivory);margin-right:5px;font-variant-numeric:tabular-nums}
+  .barra{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0 18px}
+  .cerca{flex:1 1 420px;display:flex;align-items:center;gap:10px;background:rgba(245,241,230,.06);border:1px solid var(--line-gold);border-radius:10px;padding:0 14px}
+  .cerca input{flex:1;background:transparent;border:0;color:var(--ivory);font:500 16px/1 'DM Sans',sans-serif;padding:14px 0;outline:none}
+  button,a.tasto{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:10px 14px;border-radius:8px;cursor:pointer;text-decoration:none;
+    background:rgba(245,241,230,.04);color:var(--ivory-dim);border:1px solid var(--riga);white-space:nowrap;display:inline-flex;align-items:center;gap:7px}
+  button:hover,a.tasto:hover{color:var(--gold-bright);border-color:var(--line-gold)}
+  button.on{background:var(--gold);color:#0A0F24;border-color:var(--gold)}
+  :focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+  .briciole{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 14px;font-size:13px;color:var(--fg-3)}
+  .briciole a{color:var(--ivory-dim);text-decoration:none;cursor:pointer}.briciole a:hover{color:var(--gold-bright)}
+  .briciole b{color:var(--ivory)}
+  .griglia{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+  .coll,.voce{background:var(--panel);border:1px solid var(--riga);border-radius:12px;overflow:hidden;cursor:pointer;text-align:left;display:flex;flex-direction:column}
+  .coll:hover,.voce:hover{border-color:var(--line-gold)}
+  .img{aspect-ratio:16/9;background:#101114 center/cover no-repeat;position:relative}
+  .img .dur{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.75);border-radius:5px;padding:2px 6px;font:700 11px/1.3 'DM Sans',sans-serif;font-variant-numeric:tabular-nums}
+  .img .tipo{position:absolute;left:8px;top:8px;background:rgba(10,15,36,.8);border-radius:5px;padding:2px 7px;font:700 10px/1.4 'Mazzard',sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--gold-bright)}
+  .img .cartella{position:absolute;inset:0;display:grid;place-items:center;color:var(--fg-3);font-size:34px}
+  .testo{padding:10px 12px 12px;display:grid;gap:3px}
+  .testo .n{font-weight:700;color:var(--ivory);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .coll .testo .n{font-family:'Mazzard',sans-serif;font-weight:800;text-transform:uppercase;font-size:15px;white-space:normal}
+  .testo .m{font-size:12px;color:var(--fg-3)}
+  .vuoto{grid-column:1/-1;padding:40px;text-align:center;color:var(--fg-3);border:1px dashed var(--riga);border-radius:12px}
+  .cartelle{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}
+  .cartelle button{text-transform:none;letter-spacing:0;font:700 13px/1 'DM Sans',sans-serif}
+  .velo[hidden]{display:none}
+  .velo{position:fixed;inset:0;background:rgba(5,6,10,.88);display:grid;place-items:center;padding:20px;z-index:50}
+  .lettore{width:min(1200px,100%);background:var(--panel);border-radius:14px;overflow:hidden;border:1px solid var(--line-gold)}
+  .lettore video,.lettore img{display:block;width:100%;max-height:72vh;background:#000;object-fit:contain}
+  .lettore .info{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:12px 16px;font-size:13px;color:var(--ivory-dim)}
+  .lettore .info b{color:var(--ivory)}
+  .lettore .info .dx{margin-left:auto;display:flex;gap:8px}
+  .avviso{padding:14px 16px;background:rgba(229,27,32,.12);color:#FF9A9C;font-size:13px}
+</style>
+</head>
+<body>
+<script src="nav-mam.js"></script>
+<div class="wrap">
+  <header class="page">
+    <div><div class="eyebrow">Como TV · MAM</div><h1>MAM <em>Como 1907</em></h1></div>
+    <div class="contatori" id="contatori"></div>
+  </header>
+  <div class="barra">
+    <label class="cerca"><span aria-hidden="true">🔍</span><input id="cerca" type="search" placeholder="Cerca: nome del file o della cartella (es. drone, sinigaglia, fabregas)" autocomplete="off" aria-label="Cerca nel materiale del club"></label>
+    <button data-f="tutto" class="on">Tutto</button><button data-f="video">Video</button><button data-f="foto">Foto</button>
+  </div>
+  <nav class="briciole" id="briciole" aria-label="Dove sei"></nav>
+  <div class="cartelle" id="sottocartelle"></div>
+  <div class="griglia" id="griglia"></div>
+</div>
+<div class="velo" id="velo" hidden></div>
+<script>
+(function () {
+  var BASE = "/como-tv/mam-1907/";
+  var I = null, FILTRO = "tutto", DOVE = "", Q = "";
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function gb(b) { return b > 1e12 ? (b / 1e12).toFixed(2) + " TB" : b > 1e9 ? (b / 1e9).toFixed(1) + " GB" : (b / 1e6).toFixed(0) + " MB"; }
+  function tc(s) { s = Math.round(s || 0); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); }
+  function ore(s) { return s >= 3600 ? Math.round(s / 3600) + " h" : Math.round(s / 60) + " min"; }
+  function data(t) { return new Date(t * 1000).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit" }); }
+  function url(p) { return BASE + "file/" + p.split("/").map(encodeURIComponent).join("/"); }
+  function mini(k) { return BASE + "indice/mini/" + k + ".jpg"; }
+  function nome(p) { return p.split("/").pop(); }
+
+  function stato() { var h = new URLSearchParams(location.hash.slice(1)); DOVE = h.get("c") || ""; Q = h.get("q") || ""; $("cerca").value = Q; }
+  function vai(c, q) { var h = new URLSearchParams(); if (c) h.set("c", c); if (q) h.set("q", q); location.hash = h.toString(); }
+
+  function disegna() {
+    if (!I) return;
+    $("contatori").innerHTML = "<span><b>" + I.collezioni.length + "</b>collezioni</span><span><b>" + I.file.toLocaleString("it-IT") + "</b>file</span><span><b>" + gb(I.peso) + "</b>sulla NAS</span><span>aggiornato " + data(I.aggiornato) + "</span>";
+    var q = Q.trim().toLowerCase(), g = $("griglia"), br = $("briciole"), sc = $("sottocartelle");
+    br.innerHTML = '<a data-c="">Tutte le collezioni</a>' + (DOVE ? DOVE.split("/").map(function (x, i, a) { var p = a.slice(0, i + 1).join("/"); return ' › ' + (i === a.length - 1 ? "<b>" + esc(x) + "</b>" : '<a data-c="' + esc(p) + '">' + esc(x) + "</a>"); }).join("") : "");
+    if (!DOVE && !q) {
+      sc.innerHTML = "";
+      g.innerHTML = I.collezioni.map(function (c) {
+        return '<button class="coll" data-c="' + esc(c.n) + '"><div class="img" style="' + (c.mini ? "background-image:url(" + mini(c.mini) + ")" : "") + '">' + (c.mini ? "" : '<span class="cartella">📁</span>') + '</div><div class="testo"><span class="n">' + esc(c.n) + '</span><span class="m">' +
+          [c.video ? c.video + " video" : "", c.foto ? c.foto + " foto" : "", c.durata ? ore(c.durata) : "", gb(c.peso)].filter(Boolean).join(" · ") + '</span><span class="m">ultimo aggiornamento ' + data(c.ultima) + "</span></div></button>";
+      }).join("");
+      return;
+    }
+    var voci = I.voci.filter(function (v) {
+      if (FILTRO !== "tutto" && v.t !== FILTRO) return false;
+      if (DOVE && v.p.indexOf(DOVE + "/") !== 0) return false;
+      if (q) return q.split(/\s+/).every(function (w) { return v.p.toLowerCase().indexOf(w) >= 0; });
+      return true;
+    });
+    // sottocartelle del punto in cui sei (solo senza ricerca)
+    if (DOVE && !q) {
+      var sub = {}; voci.forEach(function (v) { var r = v.p.slice(DOVE.length + 1).split("/"); if (r.length > 1) sub[r[0]] = (sub[r[0]] || 0) + 1; });
+      var dirette = voci.filter(function (v) { return v.p.slice(DOVE.length + 1).indexOf("/") < 0; });
+      sc.innerHTML = Object.keys(sub).sort().map(function (s) { return '<button data-c="' + esc(DOVE + "/" + s) + '">📁 ' + esc(s) + " · " + sub[s] + "</button>"; }).join("");
+      voci = dirette;
+    } else sc.innerHTML = "";
+    if (!voci.length) { g.innerHTML = '<div class="vuoto">' + (q ? "Niente con «" + esc(Q) + "»." : DOVE && sc.innerHTML ? "I file sono nelle cartelle qui sopra." : "Questa cartella è vuota.") + "</div>"; return; }
+    var MAX = 400, piu = voci.length > MAX;
+    g.innerHTML = voci.slice(0, MAX).map(function (v, i) {
+      return '<button class="voce" data-i="' + I.voci.indexOf(v) + '"><div class="img" style="' + (v.mi ? "background-image:url(" + mini(v.k) + ")" : "") + '"><span class="tipo">' + v.t + "</span>" + (v.d ? '<span class="dur">' + tc(v.d) + "</span>" : "") + '</div><div class="testo"><span class="n" title="' + esc(v.p) + '">' + esc(nome(v.p)) + '</span><span class="m">' +
+        esc(v.p.split("/").slice(0, -1).join(" › ") || "") + '</span><span class="m">' + [gb(v.s), v.w ? v.w + "×" + v.h : "", data(v.m)].filter(Boolean).join(" · ") + "</span></div></button>";
+    }).join("") + (piu ? '<div class="vuoto" style="grid-column:1/-1">Ne mostro ' + MAX + " su " + voci.length + ": restringi con la ricerca o entra in una cartella.</div>" : "");
+  }
+
+  function apri(v) {
+    var velo = $("velo"), u = url(v.p), media = "";
+    if (v.t === "video") media = v.ok === false ? '<div class="avviso">Questo file è un originale di camera (' + esc((v.c || "").toUpperCase()) + " " + esc(v.px || "") + "): il browser non lo sa mostrare. Scaricalo e aprilo con Premiere o VLC.</div>" + (v.mi ? '<img src="' + mini(v.k) + '" alt="">' : "")
+      : '<video src="' + u + '" controls autoplay playsinline preload="metadata"></video>';
+    else if (v.t === "foto" && /\.(jpe?g|png|webp)$/i.test(v.p)) media = '<img src="' + u + '" alt="' + esc(nome(v.p)) + '">';
+    else media = v.mi ? '<img src="' + mini(v.k) + '" alt="">' : '<div class="avviso">Anteprima non disponibile per questo tipo di file.</div>';
+    velo.innerHTML = '<div class="lettore" role="dialog" aria-label="' + esc(nome(v.p)) + '">' + media + '<div class="info"><div><b>' + esc(nome(v.p)) + "</b><br>" + esc(v.p.split("/").slice(0, -1).join(" › ")) + " · " + [gb(v.s), v.d ? tc(v.d) : "", v.w ? v.w + "×" + v.h : "", v.c ? v.c.toUpperCase() : ""].filter(Boolean).join(" · ") +
+      '</div><div class="dx"><a class="tasto" href="' + u + '" download>Scarica</a><button id="chiudi">Chiudi</button></div></div></div>';
+    velo.hidden = false; $("chiudi").onclick = chiudi;
+  }
+  function chiudi() { var v = $("velo"); var vid = v.querySelector("video"); if (vid) vid.pause(); v.hidden = true; v.innerHTML = ""; }
+  $("velo").addEventListener("click", function (e) { if (e.target.id === "velo") chiudi(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") chiudi(); });
+
+  document.addEventListener("click", function (e) {
+    var c = e.target.closest("[data-c]"); if (c) { vai(c.dataset.c, ""); window.scrollTo(0, 0); return; }
+    var i = e.target.closest("[data-i]"); if (i) apri(I.voci[+i.dataset.i]);
+    var f = e.target.closest("[data-f]"); if (f) { FILTRO = f.dataset.f; document.querySelectorAll("[data-f]").forEach(function (b) { b.classList.toggle("on", b === f); }); disegna(); }
+  });
+  var tq; $("cerca").addEventListener("input", function () { clearTimeout(tq); var v = this.value; tq = setTimeout(function () { vai(DOVE, v); }, 250); });
+  window.addEventListener("hashchange", function () { stato(); disegna(); });
+  stato();
+  fetch(BASE + "indice/indice.json", { cache: "no-store" }).then(function (r) { if (!r.ok) throw 0; return r.json(); })
+    .then(function (j) { I = j; disegna(); })
+    .catch(function () { $("griglia").innerHTML = '<div class="vuoto">L’indice del materiale non è ancora pronto: lo stiamo preparando sulla NAS.</div>'; });
+})();
+</script>
+</body>
+</html>
