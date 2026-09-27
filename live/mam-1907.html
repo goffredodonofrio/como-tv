@@ -523,15 +523,87 @@
       $("sugg").querySelector(".sg-lato").innerHTML = cardPersona(SCHEDA_P, "sugg"); return; }
     if (e.target.closest("[data-sgcerca]") && SCHEDA_P) { e.preventDefault(); cercaDaScheda(SCHEDA_P); return; }
     var a = e.target.closest("a"); if (!a) return; e.preventDefault(); if (a.dataset.s) { var g = VOCI_S[+a.dataset.s]; metti(g, g.k === "tipo"); } else { Q = $("cerca").value.trim(); chiudiSugg(); riconosciPersona(); vai(); } });
-  // una persona scritta per esteso nella ricerca diventa il suo gettone, il resto resta testo
-  function riconosciPersona() {
-    var t = " " + norm(Q).replace(/[^a-z0-9]+/g, " ") + " ";
-    var best = null;
-    Object.keys(PERS).forEach(function (k) { PERS[k].alias.forEach(function (a) { if (t.indexOf(" " + a + " ") >= 0 && (!best || a.length > best[1].length)) best = [k, a]; }); });
-    if (!best || G.some(function (g) { return g.k === "pers" && g.v === best[0]; })) return;
-    G.push({ k: "pers", v: best[0], n: PERS[best[0]].nome });
-    Q = t.replace(" " + best[1] + " ", " ").replace(/\s+/g, " ").trim(); $("cerca").value = Q; disegnaGettoni();
+  // IL CAMPO CAPISCE LE FRASI (Goffredo, 27/09/2026: "Nico Paz · tuti i gol" deve funzionare,
+  // per tutte le azioni), come nel MAM di Como TV. Le parole che dicono un'azione, un tipo, un
+  // momento, un luogo, una competizione… diventano gettoni; le parole vuote (tutti, i, di…) si
+  // lasciano; un nome, anche a meta' ("douv"), diventa la persona; il resto resta testo libero.
+  // Un errore di battitura di una lettera si perdona ("tuti", "intervsta").
+  var VUOTE = "tutti tutte tutto i il lo la le gli l di del della dei delle degli da dal dalla in nel nella nei con per e ed o che un una su sul sui mi fammi trova cerca cercami mostra mostrami voglio vedere solo soltanto anche quelli quelle quello quella tipo a ad al alla alle allo ai agli girati girato girata girate ripreso ripresi ripresa fatto fatti fatta fatte dove quando come ci c".split(" ");
+  var AZIONI = [
+    [["gol", "goal", "gols", "goals", "reti", "rete"], "mo", "Gol"],
+    [["esultanza", "esultanze", "festeggiamenti", "festa", "celebrazione", "celebration"], "mo", "Esultanza"],
+    [["riscaldamento", "riscaldamenti", "warm up", "warmup"], "mo", "Riscaldamento"],
+    [["arrivo", "arrivi", "arrival"], "mo", "Arrivo"], [["tunnel"], "mo", "Tunnel"],
+    [["spogliatoio", "spogliatoi", "dressing room"], "mo", "Spogliatoio"], [["intervallo"], "mo", "Intervallo"],
+    [["post partita", "postpartita", "post match"], "mo", "Post-partita"], [["pre partita", "prepartita", "pre match"], "mo", "Pre-partita"],
+    [["intervista", "interviste", "itw", "interview", "interviews"], "gen", "Intervista"],
+    [["conferenza stampa", "conferenze stampa", "conferenza", "conferenze", "press conference"], "gen", "Conferenza stampa"],
+    [["allenamento", "allenamenti", "training"], "gen", "Allenamento"], [["partita", "partite", "match"], "gen", "Partita"],
+    [["ritiro", "ritiri", "training camp"], "gen", "Ritiro"], [["tifosi", "tifoseria", "fans", "fan"], "gen", "Tifosi"],
+    [["evento", "eventi"], "gen", "Evento"], [["backstage", "dietro le quinte"], "gen", "Backstage"], [["drone", "droni"], "gen", "Drone"],
+    [["social", "reel", "reels", "tiktok"], "gen", "Social"], [["nuovo acquisto", "nuovi acquisti", "presentazione", "presentazioni", "signing"], "gen", "Nuovo acquisto"],
+    [["documentario", "documentari"], "gen", "Documentario"], [["grafica", "grafiche"], "gen", "Grafica"],
+    [["commerciale", "sponsor", "shooting"], "gen", "Commerciale"],
+    [["foto", "fotografie", "immagini"], "tipo", "foto"], [["video", "filmati"], "tipo", "video"],
+    [["grezzo", "grezzi", "raw"], "st", "Grezzo"], [["montato", "montati", "export"], "st", "Montato"],
+    [["in casa"], "ct", "Casa"], [["in trasferta", "trasferta", "trasferte"], "ct", "Trasferta"],
+    [["assist"], "assist", "1"]
+  ];
+  function lev1(a, b) { // due parole sono "quasi uguali" se differiscono di una lettera
+    if (Math.abs(a.length - b.length) > 1 || a.length < 4) return false;
+    var i = 0, j = 0, err = 0;
+    while (i < a.length && j < b.length) { if (a[i] === b[j]) { i++; j++; continue; } if (++err > 1) return false;
+      if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; } }
+    return err + (a.length - i) + (b.length - j) <= 1;
   }
+  function capisci() {
+    var t = " " + norm(Q).replace(/[^a-z0-9/]+/g, " ") + " ";
+    if (!t.trim()) return;
+    var nuovi = [], assist = false;
+    var metti1 = function (k, v, nome) { if (k === "assist") { assist = true; return; }
+      if (G.some(function (g) { return g.k === k && g.v === v; }) || nuovi.some(function (g) { return g.k === k && g.v === v; })) return;
+      if (k === "tipo") { G = G.filter(function (g) { return g.k !== "tipo"; }); }
+      nuovi.push({ k: k, v: v, n: nome || nomeDi(k, v) }); };
+    var togliFrase = function (f) { var r = new RegExp(" " + f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " "); if (r.test(t)) { t = t.replace(r, " "); return true; } return false; };
+    // 1. le frasi di piu' parole e i nomi dei vocabolari (competizioni, luoghi, camere, avversari)
+    AZIONI.forEach(function (a) { a[0].forEach(function (f) { if (f.indexOf(" ") > 0 && togliFrase(f)) metti1(a[1], a[2]); }); });
+    [["comp", VOC.comp], ["lu", VOC.lu], ["cam", VOC.cam], ["avv", VOC.avv]].forEach(function (kv) {
+      Object.keys(kv[1]).sort(function (a, b) { return b.length - a.length; }).forEach(function (v) {
+        var n0 = norm(v).replace(/[^a-z0-9]+/g, " ").trim(), corto = n0.split(" ").pop();
+        if (togliFrase(n0) || (kv[0] === "lu" && corto.length > 4 && togliFrase(corto))) metti1(kv[0], v);
+      }); });
+    // 2. le persone scritte per intero (il nome piu' lungo vince)
+    var trovate = true;
+    while (trovate) { trovate = false; var best = null;
+      Object.keys(PERS).forEach(function (k) { PERS[k].alias.forEach(function (a) { if (t.indexOf(" " + a + " ") >= 0 && (!best || a.length > best[1].length)) best = [k, a]; }); });
+      if (best) { t = t.replace(" " + best[1] + " ", " "); metti1("pers", best[0], PERS[best[0]].nome); trovate = true; } }
+    // 3. parola per parola: vuote, azioni (anche con un errore), stagioni, persone a meta'
+    var resto = [];
+    t.trim().split(/\s+/).filter(Boolean).forEach(function (w) {
+      if (VUOTE.indexOf(w) >= 0 || VUOTE.some(function (v) { return v.length >= 4 && lev1(w, v); })) return;
+      var az = AZIONI.filter(function (a) { return a[0].some(function (f) { return f.indexOf(" ") < 0 && (f === w || lev1(w, f)); }); })[0];
+      if (az) { metti1(az[1], az[2]); return; }
+      var st = /^(20)?(\d\d)[\/-](20)?(\d\d)$/.exec(w);
+      if (st && +st[4] === (+st[2] + 1) % 100) { var s0 = "20" + st[2] + "/" + st[4]; if (STAGIONI[s0]) { metti1("stag", s0); return; } }
+      if (w.length >= 3) {
+        var cand = Object.keys(PERS).filter(function (k) { return PERS[k].alias.some(function (a) { return a.split(" ").some(function (x) { return x.indexOf(w) === 0; }); }); });
+        if (cand.length) { cand.sort(function (a, b) { return (PERS[b].conti.video + PERS[b].conti.foto) - (PERS[a].conti.video + PERS[a].conti.foto); });
+          if (cand.length === 1 || w.length >= 4) { metti1("pers", cand[0], PERS[cand[0]].nome); return; } }
+      }
+      resto.push(w);
+    });
+    // 4. "assist" con una persona: le partite in cui ha fatto un assist (ESPN)
+    if (assist) {
+      var chi = G.concat(nuovi).filter(function (g) { return g.k === "pers"; }).map(function (g) { return g.v; });
+      var pk = Object.keys(PART).filter(function (k) { return ((PART[k].espn || {}).eventi || []).some(function (e) { return e.assist && chi.indexOf(personaDaNome(e.assist)) >= 0; }); });
+      if (!chi.length) resto.push("assist");
+      else if (!pk.length) avviso("err", "Nessun assist con materiale del club per " + esc(chi.map(function (k) { return PERS[k].nome; }).join(", ")) + ".");
+      else pk.forEach(function (k) { metti1("part", k); });
+    }
+    G = G.concat(nuovi);
+    Q = resto.join(" "); $("cerca").value = Q; disegnaGettoni();
+  }
+  function riconosciPersona() { capisci(); }
   $("cerca").addEventListener("blur", function () { setTimeout(chiudiSugg, 150); });
   $("campoG").addEventListener("click", function (e) { var b = e.target.closest("[data-via]"); if (b) { G.splice(+b.dataset.via, 1); disegnaGettoni(); vai(); return; } $("cerca").focus(); });
   $("svuota").onclick = function () { G = []; Q = ""; RACCOLTA = null; $("cerca").value = ""; disegnaGettoni(); vai(); };
@@ -828,12 +900,18 @@
       (lista.length ? '<a data-fa="scegli-tutti">Scegli tutti per il montaggio</a>' : "") + (lista.length > quanti ? '<a data-fa="mostra-tutti">Mostra tutti (' + n(lista.length) + ")</a>" : "") + "</div>";
     h += lista.length ? '<div class="griglia">' + lista.slice(0, quanti).map(tessera).join("") + "</div>" +
       (lista.length > quanti ? '<div class="piu">Ne vedi ' + n(quanti) + " su " + n(lista.length) + '. <button class="mini" data-fa="altri">Mostra altri ' + MAX + "</button></div>" : "")
-      : '<div class="vuoto">Nessun file' + (Q ? " con «" + esc(Q) + "»" : "") + ". Prova a togliere un gettone o un filtro.</div>";
+      : '<div class="vuoto">Nessun file' + (Q ? " con «" + esc(Q) + "»" : "") + ". Prova a togliere un gettone o un filtro." + golAiuto() + "</div>";
     $("risultati").innerHTML = h;
     $("selOrd").value = ORD;
     miniature();
   }
   var VISTI = [], CART_TUTTE = false, NASCOSTI = 0, VOLTI = {};
+  // "i gol di X" e nessun file nel momento Gol: si propongono le partite in cui ha segnato
+  function golAiuto() {
+    var pp = di("pers"); if (pp.length !== 1 || di("mo").indexOf("Gol") < 0 || !PERS[pp[0]]) return "";
+    var gl = ((PERS[pp[0]].conti || {}).gol || []).filter(function (x) { return PART[x[0]]; }); if (!gl.length) return "";
+    return '<br><a href="#" data-golpart="1" style="color:var(--oro2)">Vedi il materiale delle ' + n(new Set(gl.map(function (x) { return x[0]; })).size) + " partite in cui " + esc(PERS[pp[0]].nome) + " ha segnato</a>";
+  }
   // LA SCHEDA COME NEL MAM DI COMO TV, con i dati del materiale 1907.
   //  modo "sugg": i numeri di tutto il FRAME, le spunte aspettano "Cerca";
   //  modo "ris": i numeri di quello che la ricerca ha trovato, le spunte sono gettoni.
@@ -902,7 +980,7 @@
     G = G.filter(function (g) { return g.k !== "pers"; }); G.push({ k: "pers", v: p.id, n: p.nome });
     Object.keys(SCHEDA_SEL).forEach(function (k) { Object.keys(SCHEDA_SEL[k]).forEach(function (v) { if (k === "tipo") G = G.filter(function (g) { return g.k !== "tipo"; }); G.push({ k: k, v: v, n: nomeDi(k, v) }); }); });
     SCHEDA_SEL = { tipo: {}, gen: {}, stag: {}, comp: {}, coll: {}, part: {} }; SCHEDA_P = null;
-    Q = ""; $("cerca").value = ""; chiudiSugg(); disegnaGettoni(); vai();
+    Q = $("cerca").value.trim(); chiudiSugg(); capisci(); disegnaGettoni(); vai();
   }
   function schedaPersona(p, tutti) {
     var c = p.conti, st = Object.keys(c.stagioni).sort().reverse(), gen = Object.keys(c.generi).sort(function (a, b) { return c.generi[b] - c.generi[a]; });
@@ -1127,6 +1205,8 @@
     if ((t = e.target.closest(".srv[data-cart]"))) { metti({ k: "cart", v: t.dataset.cart, n: ultimo(t.dataset.cart) }); window.scrollTo(0, 0); return; }
     if ((t = e.target.closest("[data-tab]"))) { TAB = t.dataset.tab; quanti = MAX; salvaIndirizzo(); risultati(); return; }
     if ((t = e.target.closest("#apriFiltri"))) { PANNELLO = !PANNELLO; try { localStorage.setItem("mam1907-filtri", PANNELLO ? "1" : "0"); } catch (x) {} risultati(); return; }
+    if ((t = e.target.closest("[data-golpart]"))) { e.preventDefault(); var pp = di("pers")[0], gl = (PERS[pp].conti.gol || []).filter(function (x) { return PART[x[0]]; });
+      G = G.filter(function (g) { return !(g.k === "mo" && g.v === "Gol"); }); Array.from(new Set(gl.map(function (x) { return x[0]; }))).forEach(function (k) { G.push({ k: "part", v: k, n: nomeDi("part", k) }); }); disegnaGettoni(); vai(); return; }
     if ((t = e.target.closest("[data-coltutte]"))) { COL_TUTTE[t.dataset.coltutte] = true; risultati(); return; }
     if ((t = e.target.closest("[data-azzera]"))) { G = G.filter(function (x) { return x.k === "tipo"; }); disegnaGettoni(); vai(); return; }
     if ((t = e.target.closest("[data-fa]"))) {
