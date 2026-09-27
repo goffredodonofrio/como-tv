@@ -1623,6 +1623,11 @@
 (function () {
   "use strict";
   var PONTE = /^\/como-tv-dev\//.test(location.pathname) ? "/como-tv-dev/api" : "/api";
+  // DUE AMBITI, UN EDITING (27/09/2026, Goffredo: "quello che facciamo sul MAM
+  // Como TV non va dentro Como 1907"). Le sequenze montate dal MAM Como 1907
+  // (origine "1907") si vedono solo in ?ambito=1907; nel resto dell'Editing no.
+  var AMBITO = new URLSearchParams(location.search).get("ambito") === "1907" ? "1907" : "";
+  function delMioAmbito(q){ return ((q && q.origine === "1907") ? "1907" : "") === AMBITO; }
   var BASE = PONTE.replace(/\/api$/, "");
   var TOKEN = ""; try { TOKEN = (window.ChiaveComoTV ? ChiaveComoTV.valore() : "") || ""; } catch (e) {}
   // "Apri nel montaggio" porta nel montaggio di QUESTA pagina: l'ultima
@@ -2991,7 +2996,7 @@
   var PROGETTI = [], SEQ_TUTTE = [], PROG_APERTO = null;
   function caricaProgetti(){
     return Promise.all([post({ tipo:"clip-prog-elenco" }).catch(function(){ return { prog: [] }; }), post({ tipo:"clip-hl-elenco", tutte: true }).catch(function(){ return { seq: [] }; })]).then(function(rs){
-      PROGETTI = rs[0].prog || []; SEQ_TUTTE = rs[1].seq || []; disegnaProgetti();
+      PROGETTI = rs[0].prog || []; SEQ_TUTTE = (rs[1].seq || []).filter(delMioAmbito); disegnaProgetti();
     });
   }
   function disegnaProgetti(){
@@ -3101,7 +3106,7 @@
       lista.push({ id: "__tutte", nome: "Tutte le sequenze", nota: "senza progetto compreso" });
       scatola("Apri progetto", lista, function(pid){
         post({ tipo:"clip-hl-elenco" }).then(function(j){
-          var seq = (j.seq || []).filter(function(z){ return pid === "__tutte" || z.prog === pid; })
+          var seq = (j.seq || []).filter(function(z){ return delMioAmbito(z) && (pid === "__tutte" || z.prog === pid); })
             .sort(function(a, b){ return (b.tocco || b.creata || 0) - (a.tocco || a.creata || 0); })
             .map(function(z){ return { id: z.id, nome: z.titolo || z.id, nota: (z.pezzi || []).length + " pezzi" }; });
           scatola("Apri sequenza", seq, function(sid){ location.href = "mam2.html?seq=" + encodeURIComponent(sid); });
@@ -3762,16 +3767,16 @@
     ]).then(function(rs){
       var st = rs[1], regs = Array.isArray(st.reg) ? st.reg : Object.keys(st.reg || {}).map(function(k){ return st.reg[k]; });
       regs.forEach(function(r){ REGS[r.id] = r; });
-      var qs = (rs[0].seq || []).slice().sort(function(a, b){ return (b.tocco || b.creata || 0) - (a.tocco || a.creata || 0); });
-      el("binConto").textContent = qs.length + " sequenze";
+      var qs = (rs[0].seq || []).filter(delMioAmbito).sort(function(a, b){ return (b.tocco || b.creata || 0) - (a.tocco || a.creata || 0); });
+      el("binConto").textContent = qs.length + " sequenze" + (AMBITO ? " Como 1907" : "");
       el("bin").innerHTML = qs.length ? qs.map(function(q){
         var r = REGS[q.reg] || {};
         return '<div class="seqr" data-seq="' + esc(q.id) + '" title="apri questa sequenza"><b>' + esc(q.titolo || "sequenza") + "</b><small>" + (q.pezzi || []).length + " pezzi \u00b7 " + esc(r.titolo || "") + "</small></div>";
-      }).join("") : '<div class="vuoto" style="padding:14px 12px">Ancora nessuna sequenza: nasce dalla Sorgente, con la virgola.</div>';
+      }).join("") : (AMBITO ? '<div class="vuoto" style="padding:14px 12px">Ancora nessuna sequenza Como 1907: nasce dal MAM Como 1907, con Monta questi.</div>' : '<div class="vuoto" style="padding:14px 12px">Ancora nessuna sequenza: nasce dalla Sorgente, con la virgola.</div>');
       disegnaBrowser();
     }).catch(function(er){ avviso("err", esc(er.message)); });
   }
-  el("bin").addEventListener("click", function(e){ var r = e.target.closest(".seqr[data-seq]"); if (r) location.href = "mam2.html?seq=" + encodeURIComponent(r.dataset.seq); });
+  el("bin").addEventListener("click", function(e){ var r = e.target.closest(".seqr[data-seq]"); if (r) location.href = "mam2.html?seq=" + encodeURIComponent(r.dataset.seq) + (AMBITO ? "&ambito=1907" : ""); });
   el("tlVuota").addEventListener("click", function(e){
     var a = e.target.closest("a[data-vuota]"); if (!a) return;
     if (a.dataset.vuota === "browser") { mostraScheda("browser"); el("bmCerca").focus(); } else apriProgetto();
@@ -3794,6 +3799,10 @@
       regs.forEach(function(r){ REGS[r.id] = r; });
       SEQ = (d.seq || []).filter(function(q){ return q.id === seqId; })[0];
       if (!SEQ) throw new Error("sequenza non trovata");
+      if (!delMioAmbito(SEQ)) {
+        var u = new URL(location.href); if (SEQ.origine === "1907") u.searchParams.set("ambito", "1907"); else u.searchParams.delete("ambito");
+        location.replace(u.toString()); throw new Error("cambio ambito");
+      }
       PZ = SEQ.pezzi || []; GRAF = SEQ.grafiche || []; AUD = SEQ.audio || [];
       var rr = REGS[SEQ.reg];
       // una partita d'archivio va riaperta: il suo indirizzo e' firmato e scade
@@ -6663,6 +6672,10 @@
   function quandoBreve(s){ try { return s ? new Date(s).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit" }) : ""; } catch (e) { return ""; } }
   function disegnaBrowser(){
     var c = el("bmElenco"); if (!c) return;
+    if (AMBITO) {
+      c.innerHTML = '<div class="storia"><div class="nota">Qui c’è solo il materiale del Como 1907: si cerca e si sceglie nel <a href="mam-1907.html" style="color:var(--oro2)">MAM Como 1907</a>, con il + e <b>Monta questi</b>.</div></div>';
+      if (el("bmConto")) el("bmConto").textContent = ""; return;
+    }
     var corpo = c.closest(".pan-corpo"); if (corpo && corpo.hidden) return;
     if (!EVENTI.length && !BM.chiesti) {
       BM.chiesti = true; c.innerHTML = '<div class="storia"><div class="nota">Leggo l’archivio…</div></div>';
@@ -6993,7 +7006,7 @@
       var mini = el("espMini"); if (mini) { mini.hidden = !lav; if (lav) mini.textContent = "\u23fa Esporto " + Math.round(avanzaExport(q.export) * 100) + "%"; }
       if (q.export && q.export.stato === "errore") h += '<div class="uscita" style="border-color:var(--rosso)"><b>errore: ' + esc(q.export.errore || "") + '</b></div>';
       if (q.export && q.export.raccolta) h += '<div class="uscita" style="border-color:var(--oro)"><b>In Raccolte / Macchie: ' + esc(q.export.raccolta.nome) + '</b><a class="b mini" href="mam2.html?rac=' + encodeURIComponent(q.export.raccolta.id) + '" target="_blank">Apri</a></div>';
-      Object.keys(q.esportati || {}).forEach(function(k){ var f = q.esportati[k]; if (f.adattate && f.adattate.length) h += '<div class="uscita" style="border-color:var(--oro)" title="in questo formato non c\u2019e\u2019 la loro versione: il Generatore la fa, con la grafica scelta in timeline"><b>\u26a0 ' + esc(k) + ': ' + f.adattate.length + ' grafic' + (f.adattate.length > 1 ? 'he adattate' : 'a adattata') + ' \u00b7 ' + esc(f.adattate.join(', ')) + '</b></div>'; h += '<div class="uscita"><b>' + esc(f.nome || k) + '</b><span>' + esc(k) + '</span><button type="button" class="b mini" data-racmont="' + esc(k) + '" title="questo file in una raccolta: da li\u2019 va in regia come macchia">In Raccolte / Macchie</button>' + (window.Destinazione ? '<button type="button" class="b mini regia-esp" data-regiaesp="' + esc(k) + '" data-file="' + esc(f.file) + '" data-dur="' + (f.durata || 0) + '" title="il file in scaletta su un vMix, come le grafiche">&#128225; Invia alla regia</button>' : '') + '<a class="b mini oro" href="' + BASE + f.file + '?scarica=1">Scarica</a></div>'; });
+      Object.keys(q.esportati || {}).forEach(function(k){ var f = q.esportati[k]; if (f.adattate && f.adattate.length) h += '<div class="uscita" style="border-color:var(--oro)" title="in questo formato non c\u2019e\u2019 la loro versione: il Generatore la fa, con la grafica scelta in timeline"><b>\u26a0 ' + esc(k) + ': ' + f.adattate.length + ' grafic' + (f.adattate.length > 1 ? 'he adattate' : 'a adattata') + ' \u00b7 ' + esc(f.adattate.join(', ')) + '</b></div>'; h += '<div class="uscita"><b>' + esc(f.nome || k) + '</b><span>' + esc(k) + '</span>' + (AMBITO ? '' : '<button type="button" class="b mini" data-racmont="' + esc(k) + '" title="questo file in una raccolta: da li\u2019 va in regia come macchia">In Raccolte / Macchie</button>') + (window.Destinazione && !AMBITO ? '<button type="button" class="b mini regia-esp" data-regiaesp="' + esc(k) + '" data-file="' + esc(f.file) + '" data-dur="' + (f.durata || 0) + '" title="il file in scaletta su un vMix, come le grafiche">&#128225; Invia alla regia</button>' : '') + '<a class="b mini oro" href="' + BASE + f.file + '?scarica=1">Scarica</a></div>'; });
       (q.sottotitoli && q.sottotitoli.files ? q.sottotitoli.files : (q.sottotitoli ? [q.sottotitoli] : [])).forEach(function(f){ h += '<div class="uscita"><b>' + esc(f.nome) + '</b><span>SRT</span><a class="b mini" href="' + BASE + f.file + '?scarica=1">Scarica</a></div>'; });
       if (q.premiere) h += '<div class="uscita"><b>' + esc(q.premiere.nome || "sequenza.xml") + '</b><span>XML</span><a class="b mini" href="' + BASE + q.premiere.file + '?scarica=1">Scarica</a></div>';
       if (q.casa) el("eCasaStato").textContent = q.casa.stato === "lavora" ? "in casa: " + q.casa.fatti + "/" + q.casa.quanti : (q.casa.stato === "pronto" ? "pezzi in casa" : "");
