@@ -364,6 +364,7 @@
   .tes.az .mini .an-top{display:none;}
   .tes .mini .foto{position:absolute;inset:0;background:#000 center/cover no-repeat;opacity:0;transition:opacity .3s;}
   .tes .mini .foto.su{opacity:1;}
+  .a1907 .mini img.foto{width:100%;height:100%;object-fit:cover;display:block;}
   .tes .mini .sopra{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;padding:8px;pointer-events:none;
     background:linear-gradient(180deg,rgba(10,15,36,.55),transparent 35%,transparent 60%,rgba(10,15,36,.7));}
   .tes .mini .sopra .su{display:flex;justify-content:space-between;align-items:flex-start;gap:6px;}
@@ -2538,6 +2539,28 @@
     var dette = RIS.dette.filter(function(x){ return metaOk(evDi(x), x.titolo); });
     return { partite: partite, tutteAz: tutteAz, azioni: azioni, dette: dette, gio: gio, frase: frase, q: q, evDi: evDi };
   }
+  var ARCH1907 = { q: "", n: 0, clip: [] }, ARCH1907_CHIESTA = "";
+  function chiedi1907(testo){
+    if (!testo || testo.length < 3) { ARCH1907 = { q: testo, n: 0, clip: [] }; return; }
+    if (testo === ARCH1907.q || testo === ARCH1907_CHIESTA) return;
+    ARCH1907_CHIESTA = testo;
+    post({ tipo: "clip-1907-cerca", q: testo, quante: 120 }).then(function(d){
+      if (ARCH1907_CHIESTA !== testo) return;
+      ARCH1907 = { q: testo, n: d.n || 0, clip: d.clip || [] }; ARCH1907_CHIESTA = "";
+      if (el("risultati") && !el("risultati").hidden) disegnaRisultati();
+    }).catch(function(){ ARCH1907_CHIESTA = ""; });
+  }
+  function dataBreve1907(d){ d = String(d || ""); return d.length === 8 ? d.slice(6, 8) + "/" + d.slice(4, 6) + "/" + d.slice(2, 4) : ""; }
+  // la tessera apre il MAM del Como 1907 sul file (li' c'e' la copia leggera per guardarlo)
+  function tessera1907(x){
+    var nome = x.nome.replace(/\.[^.]+$/, "");
+    var cerca = nome.replace(/[_]+/g, " ");
+    var mini = "/como-tv/mam-1907/mini/" + x.k + ".jpg?v=" + encodeURIComponent(x.via);
+    return '<a class="card tes a1907" href="mam-1907.html#q=' + encodeURIComponent(cerca) + '" target="_blank" rel="noopener" title="' + esc(x.via) + '"><div class="mini">' +
+      '<img class="foto su" loading="lazy" alt="" src="' + esc(mini) + '" onerror="this.remove()">' +
+      '<div class="sopra"><div class="su"><span class="tipo-az" style="background:#C9A24B;color:#0B1B33">' + (x.gol ? "GOL" : "1907") + '</span>' + (x.slow ? '<span class="tipo-az altro">SLOW MOTION</span>' : '') + '</div><div class="giu"><span>' + esc(x.g ? x.g + " · " : "") + esc(dataBreve1907(x.data)) + '</span></div></div></div>' +
+      '<div class="t"><div class="testo">' + evidenzia(nome.replace(/[_]+/g, " "), QEV || Q) + '</div><small>' + esc([x.partita, x.comp, x.stagione].filter(Boolean).join(" · ")) + '</small></div></a>';
+  }
   var PER_REC = {}, RIS_AZ_UNICHE = [];
   function disegnaRisultati(){
     PER_REC = {}; EVENTI.forEach(function(x){ if (x.rec) PER_REC[x.rec] = x; });
@@ -2545,6 +2568,13 @@
     var F = filtraRisultati(null), gio = F.gio, frase = F.frase, evDi = F.evDi;
     var rls = scelti("r"); RIS_RUOLO = rls.length === 1 ? rls[0] : "";
     QEV = [gio ? gio.v : "", frase ? (frase[1] || frase[2]) : Q.replace(/"[^"]*"?|“[^”]*”?/g, " ")].join(" ");
+    // DALL'ARCHIVIO DEL COMO 1907: le clip delle partite della prima squadra
+    // (gol, slow motion, angoli di camera) che stanno nel MAM del Como 1907.
+    // Si chiedono al ponte con il giocatore e le parole cercate; arrivano dopo
+    // e la pagina si ridisegna. Non per una frase tra virgolette ne' per una raccolta
+    var cognome1907 = gio ? String(gio.eti || gio.v || "").trim().split(/\s+/).pop() : "";
+    var testo1907 = frase || RACCOLTA ? "" : [cognome1907, Q.replace(/"[^"]*"?|“[^”]*”?/g, " ")].join(" ").replace(/\s+/g, " ").trim();
+    chiedi1907(testo1907);
     var partite = F.partite.sort(function(a, b){ return String(b.quando || "").localeCompare(String(a.quando || "")); });
     var azioni = F.azioni, dette = F.dette;
     var quandoDi = function(x){ var ev = evDi(x); return ev && ev.quando ? Date.parse(ev.quando) : (x.quando || 0); };
@@ -2559,18 +2589,19 @@
     var gruppi = {
       partite: { k: "partite", eti: gio ? "Partite con " + gio.eti : nomeSq ? "Partite · " + nomeSq : "Partite", c: CAT.evento.c, n: partite.length, html: function(max){ return partite.slice(0, max).map(function(x){ return tesseraPartita(x, link); }).join(""); } },
       azioni: { k: "azioni", eti: gio ? (etiRuoli ? etiRuoli + " · " : "Giocate · ") + gio.eti : (etiRuoli || "Azioni"), c: CAT.azione.c, n: azioni.length, html: function(max){ return azioni.slice(0, max).map(function(x){ return tesseraAzione(x, evDi(x), link); }).join(""); } },
-      dette: { k: "dette", eti: "Telecronache", c: CAT.detto.c, n: dette.length, html: function(max){ return dette.slice(0, max).map(function(x){ return tesseraDetto(x, evDi(x), link); }).join(""); } }
+      dette: { k: "dette", eti: "Telecronache", c: CAT.detto.c, n: dette.length, html: function(max){ return dette.slice(0, max).map(function(x){ return tesseraDetto(x, evDi(x), link); }).join(""); } },
+      arch1907: { k: "arch1907", eti: "Dall\u2019Archivio del Como 1907", c: "#C9A24B", n: ARCH1907.q === testo1907 ? ARCH1907.n : 0, html: function(max){ return ARCH1907.clip.slice(0, max).map(tessera1907).join(""); } }
     };
     // L'ORDINE DICE COSA CERCHI: un giocatore porta avanti le sue giocate, una
     // frase le telecronache, una squadra o una competizione le partite
-    var ordine = gio || RACCOLTA ? ["azioni", "partite", "dette"] : frase ? ["dette", "azioni", "partite"] : ["partite", "azioni", "dette"];
+    var ordine = RACCOLTA ? ["azioni", "partite", "dette"] : gio ? ["azioni", "partite", "arch1907", "dette"] : frase ? ["dette", "azioni", "partite"] : ["partite", "azioni", "arch1907", "dette"];
     if (RACCOLTA) gruppi.azioni.eti = "Raccolta · " + RACCOLTA.nome + (azioni.length !== RACCOLTA.azioni.length ? " (filtrate)" : "");
     var lista = ordine.map(function(k){ return gruppi[k]; });
     var tot = lista.reduce(function(n, g){ return n + g.n; }, 0);
     if (RIS_TAB !== "tutto" && !lista.some(function(g){ return g.k === RIS_TAB && g.n; })) RIS_TAB = "tutto";
     var nFiltri = GETTONI.filter(function(x){ return x.t !== "g"; }).length;
     var h = '<div class="filtri-ris"><button data-rt="tutto" class="' + (RIS_TAB === "tutto" ? "on" : "") + '">Tutto<b>' + tot + '</b></button>' +
-      lista.filter(function(g){ return g.n; }).map(function(g){ return '<button data-rt="' + g.k + '" style="--c:' + g.c + '" class="' + (RIS_TAB === g.k ? "on" : "") + '">' + (g.k === "partite" ? "Partite" : g.k === "azioni" ? "Azioni" : "Telecronache") + '<b>' + g.n + '</b></button>'; }).join("") +
+      lista.filter(function(g){ return g.n; }).map(function(g){ return '<button data-rt="' + g.k + '" style="--c:' + g.c + '" class="' + (RIS_TAB === g.k ? "on" : "") + '">' + (g.k === "partite" ? "Partite" : g.k === "azioni" ? "Azioni" : g.k === "arch1907" ? "Como 1907" : "Telecronache") + '<b>' + g.n + '</b></button>'; }).join("") +
       '<button disabled title="arrivano con l’archivio foto">Foto<b>—</b></button>' +
       '<button type="button" id="apriFiltri" class="apri-filtri' + (PANNELLO_APERTO ? " aperto" : "") + '" aria-expanded="' + PANNELLO_APERTO + '" aria-controls="pannelloFiltri">Filtri' + (nFiltri ? '<b>' + nFiltri + '</b>' : '') + ' <span aria-hidden="true">' + (PANNELLO_APERTO ? "▴" : "▾") + '</span></button>' +
       (azioni.length > 1 ? '<label class="ordina">Ordina <select id="ordRis"><option value="pertinenza">più pertinenti</option><option value="recenti">più recenti</option><option value="migliori">migliori prima</option></select></label>' : '') + '</div>';

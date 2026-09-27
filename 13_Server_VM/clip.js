@@ -7721,6 +7721,61 @@ function correggiArchivio(voci) {
   console.log("[clip] correzioni a mano: " + esito.filter((x) => !x.errore).length + " fatte, " + esito.filter((x) => x.errore).length + " no");
   return { ok: true, esito };
 }
+// DALL'ARCHIVIO DEL COMO 1907 (27/09/2026). Nella ricerca del MAM di Como
+// TV anche le clip delle partite della prima squadra che stanno nel MAM del
+// Como 1907 (il gol di Baturina a Napoli, anche in slow motion). Si legge
+// l'indice di quel MAM (pub/file.json, lo rifa' indice-1907-da-elenco.py) e
+// si tengono solo i video delle partite della prima squadra maschile.
+const ARCH1907 = { quando: 0, mtime: 0, voci: [] };
+const DIR_1907 = process.env.COMOTV_1907_PUB || "/var/lib/comotv-1907/pub";
+const PARTITE_1907 = /(men'?s? first team|men first team)\/(matchdays?|matchday_[^/]*)\/|\/match\/men'?s first team\//i;
+function carica1907() {
+  const f = path.join(DIR_1907, "file.json");
+  let st; try { st = fs.statSync(f); } catch (e) { return ARCH1907; }
+  if (st.mtimeMs === ARCH1907.mtime && ARCH1907.voci.length) return ARCH1907;
+  let j = []; try { j = JSON.parse(fs.readFileSync(f, "utf8")); } catch (e) { return ARCH1907; }
+  const voci = [];
+  j.forEach(([cartella, file]) => {
+    if (!PARTITE_1907.test(cartella + "/")) return;
+    (file || []).forEach((x) => {
+      const nome = x[0];
+      if (!/\.(mp4|mov|mxf|m4v|mkv|mts)$/i.test(nome)) return;
+      const via = cartella + "/" + nome;
+      // LA PARTITA e' la cartella subito dopo "Matchdays" / "MATCHDAY_Serie A":
+      // "G07 - COMO v JUVENTUS", "G05 Atalanta v Como", "G02_20260830_NAPOLI-COMO"
+      const pz = cartella.split("/");
+      const iM = pz.findIndex((z) => /^matchdays?$|^matchday_/i.test(z));
+      const cp = iM >= 0 ? (pz[iM + 1] || "") : "";
+      const comp = iM >= 0 ? (pz[iM].replace(/^matchdays?_?/i, "").trim()) : "";
+      const g = (/^G\s?(\d{1,2})(?!\d)/i.exec(cp) || [])[1] || "";
+      const dataC = (/(20\d{6})/.exec(cp) || [])[1] || "";
+      const partita = cp.replace(/^G\s?\d{1,2}(?!\d)/i, "").replace(/20\d{6}/, "").replace(/[_]+/g, " ")
+        .replace(/\s+(v|vs)\.?\s+/i, "-").replace(/^[\s-]+|[\s-]+$/g, "").replace(/\s*-\s*/g, "-").toUpperCase();
+      const sa = /(20\d\d)\s*-\s*(20)?(\d\d)/.exec(pz[0]) || /(\d\d)\s*-\s*(\d\d)/.exec(pz[0]);
+      const stagione = sa ? (sa[1].length === 4 ? sa[1] + "/" + sa[3] : "20" + sa[1] + "/" + sa[2]) : pz[0];
+      voci.push({ via, nome, cartella, peso: x[1] || 0, g: g ? "G" + ("0" + g).slice(-2) : "", data: dataC || String(x[3] || ""), partita, comp,
+                  stagione, slow: /slow ?mo|rallent/i.test(nome), gol: /\/gol\b|\bgol\b|\bgoal\b/i.test(via),
+                  t: senzaAccenti(via.replace(/[_./-]+/g, " ")).toLowerCase() });
+    });
+  });
+  Object.assign(ARCH1907, { quando: Date.now(), mtime: st.mtimeMs, voci });
+  console.log("[clip] archivio Como 1907: " + voci.length + " clip delle partite della prima squadra");
+  return ARCH1907;
+}
+const VUOTE_1907 = new Set("di del della dei il lo la le i gli un una e tutti tutte tutto che con per in a da su".split(" "));
+function cerca1907(q, quante) {
+  const A = carica1907();
+  let parole = senzaAccenti(String(q || "")).toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter((w) => w.length > 1 && !VUOTE_1907.has(w));
+  if (!parole.length) return { ok: true, n: 0, clip: [] };
+  // gol e goal sono la stessa cosa; slow motion si scrive in tanti modi
+  const varianti = (w) => w === "gol" || w === "goal" || w === "gols" ? ["gol", "goal"] : /^slow|^rallent/.test(w) ? ["slowmo", "slow mo", "slow"] : [w];
+  const trovate = A.voci.filter((v) => parole.every((w) => varianti(w).some((x) => v.t.indexOf(x) >= 0)));
+  const voto = (v) => (v.gol ? 4 : 0) + (v.slow ? 2 : 0) + (/materiale serie a|archivio/i.test(v.cartella) ? 1 : 0);
+  trovate.sort((a, b) => voto(b) - voto(a) || String(b.data).localeCompare(String(a.data)));
+  const n = Math.min(Math.max(+quante || 60, 1), 300);
+  return { ok: true, n: trovate.length, clip: trovate.slice(0, n).map((v) => ({ via: v.via, nome: v.nome, cartella: v.cartella, peso: v.peso, g: v.g, data: v.data,
+    partita: v.partita, comp: v.comp, stagione: v.stagione, slow: v.slow, gol: v.gol, k: crypto.createHash("sha1").update(v.via).digest("hex").slice(0, 16) })) };
+}
 function scriviArchivio() {
   try {
     const tmp = fileArchivio() + ".tmp";
@@ -15685,6 +15740,7 @@ const AZIONI = {
   },
   "clip-nas-aggiunte": () => importaAggiunteNas(),
   "clip-archivio-correggi": (p) => correggiArchivio(p.voci),
+  "clip-1907-cerca": (p) => cerca1907(p.q, p.quante),
   "clip-archivio-copia": async () => Object.assign({}, await statoCopia(), { nomi: statoNomi(), casa: statoCasa() }),
   // quante partite S3 sono gia' in casa (ricontate adesso)
   "clip-archivio-specchio": async () => Object.assign({ ok: true, cartella: path.join(QNAP_RADICE, SPECCHIO_DIR) }, await aggiornaSpecchio()),
