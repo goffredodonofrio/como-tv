@@ -25,6 +25,9 @@
   if (/-vmix\.html$/i.test(location.pathname)) return;
 
   var DEV = /^\/como-tv-dev\//.test(location.pathname);
+  // Si impara solo in PALESTRA (le pagine di prova): sul sito vero le pagine
+  // di lavoro restano pulite, niente linguetta (Goffredo, 27/09/2026).
+  if (!DEV) return;
   var RADICE = DEV ? "/como-tv-dev/" : "/como-tv/";
   var QUI = (document.currentScript && document.currentScript.src) || (RADICE + "live/coach.js");
   var VIDEO = "/como-tv/guida/video/";
@@ -104,7 +107,7 @@
     ".coach-card .pezzo .m{font-size:12px;color:#6D7186}",
     ".coach-card .pezzo .v{grid-row:span 2;font:800 12px/1 inherit;color:#fff;background:#0A0F24;border-radius:999px;padding:7px 10px}",
     ".coach-card .pezzo.fatto .v{background:#2F7D55}",
-    ".coach-card .ordine{font:700 19px/1.3 inherit}",
+    ".coach-card .ordine{font:800 22px/1.3 inherit}",
     ".coach-card .aiuto{font-size:14px;color:#3F455E;background:#F4E9CF;border-radius:10px;padding:8px 10px}",
     ".coach-card .pallini{display:flex;gap:5px;flex-wrap:wrap}",
     ".coach-card .pallini i{width:10px;height:10px;border-radius:50%;background:#E3DCCB}",
@@ -165,7 +168,7 @@
     tab = el("button", "coach-ui coach-tab", "GUIDA"); tab.type = "button"; tab.title = "Guida passo passo di questa pagina"; tab.onclick = function () { card && !RUN ? chiudi() : elenco(); };
     document.body.appendChild(tab);
     anello = el("div", "coach-ui coach-anello"); anello.style.display = "none"; document.body.appendChild(anello);
-    if (DEV) { badge = el("div", "coach-ui coach-badge"); document.body.appendChild(badge); disegnaBadge(); }
+    if (DEV) { badge = el("a", "coach-ui coach-badge"); badge.href = "/como-tv/guida/palestra.html"; badge.style.textDecoration = "none"; document.body.appendChild(badge); disegnaBadge(); }
     window.addEventListener("pointerdown", suPremi, true); window.addEventListener("mousedown", suPremi, true);
     window.addEventListener("click", suClic, true);
     document.addEventListener("change", suCambio, true);
@@ -173,7 +176,7 @@
     document.addEventListener("keydown", suTasto, true);
     setInterval(giro, 350);
   }
-  function disegnaBadge() { if (badge) badge.innerHTML = "PALESTRA · " + (PAL.nome ? esc(PAL.nome) + " · " : "") + "<b>" + PAL.punti + "</b> punti"; }
+  function disegnaBadge() { if (badge) badge.innerHTML = "← PALESTRA · <b>" + PAL.punti + "</b> punti"; }
   function apriCard(html, lato) {
     if (!card) { card = el("div", "coach-ui coach-card"); document.body.appendChild(card); }
     card.className = "coach-ui coach-card " + (lato || "destra"); card.innerHTML = html; return card;
@@ -183,7 +186,6 @@
   function elenco() {
     var l = pezziQui(), altri = pezzi().filter(function (p) { return !suQuestaPagina(p); });
     var html = '<header><b>Guida · questa pagina</b><button class="x" data-c="chiudi" aria-label="Chiudi">×</button></header><div class="corpo">';
-    if (DEV && !PAL.nome) html += '<div>Come ti chiami? Servono per punti e patenti.</div><input class="nome" id="coachNome" placeholder="Il tuo nome"><button class="b oro" data-c="nome">Salva</button>';
     if (!DEV) html += '<div class="avviso"><b>Sei sul sito vero:</b> quello che fai resta (e un invio arriva davvero in regia). Per esercitarti usa la <b>palestra</b>.</div>';
     html += l.length ? '<div class="pezzi">' + l.map(function (p) { return '<button class="pezzo' + (PAL.fatti[p.id] ? " fatto" : "") + '" data-p="' + esc(p.id) + '"><span class="t">' + esc(p.titolo) + '</span><span class="v">' + (PAL.fatti[p.id] ? "✓ rifai" : DEV ? "Allenati" : "Guidami") + '</span><span class="m">' + p.passi.length + " passi" + (p.video ? " · con video" : "") + '</span></button>'; }).join("") + "</div>"
       : '<div class="stato">Per questa pagina non ci sono ancora pezzi guidati.</div>';
@@ -205,6 +207,8 @@
     if (c === "avanti") return avanza();
     if (c === "video") return mostraVideo();
     if (c === "elenco") { esci(); return elenco(); }
+    if (c === "torna") { RUN = null; togli(K_RUN, true); location.href = "/como-tv/guida/palestra.html"; return; }
+    if (c === "rifai") { var id = leggi("coach-finito-id", null, true); if (id) inizia(id); return; }
   }
   function versoPalestra(id) {
     var u = location.pathname.replace(/^\/como-tv\//, "/como-tv-dev/") + location.search;
@@ -238,8 +242,7 @@
       '<div class="bottoni">' + (s.fai === "leggi" ? '<button class="b oro" data-c="avanti">Fatto, avanti</button>' : "") +
       (altrove ? '<button class="b oro" data-c="vaiPagina">Apri la pagina</button>' : "") +
       (p.video ? '<button class="b" data-c="video">Guarda come si fa</button>' : "") +
-      (p.video ? '<a class="b" style="text-decoration:none;display:inline-block;border-radius:10px;padding:9px 12px;background:#EFE9DB;color:#101631;font:700 13px/1 inherit" href="/como-tv/guida/index.html#' + (p.id[0] === "e" ? "editing" : p.id[0] === "m" || p.id === "02-raccolte" ? "mam" : /^g|05-/.test(p.id) ? "grafiche" : "altri") + "/" + esc(p.id) + '" target="_blank">Capitolo della guida ↗</a>' : "") +
-      '<button class="b" data-c="salta">Salta</button><button class="b" data-c="elenco">Altri pezzi</button></div>' +
+      '<button class="b" data-c="salta">Salta</button>' + (DEV ? '<button class="b" data-c="torna">Torna alla palestra</button>' : '<button class="b" data-c="elenco">Altri pezzi</button>') + '</div>' +
       '<div class="stato" id="coachEsito"></div></div>';
     var c = apriCard(html, lato);
     c.querySelectorAll("[data-c]").forEach(function (b) { b.onclick = function () { if (b.dataset.c === "vaiPagina") location.href = RADICE + s.pagina; else comando(b.dataset.c); }; });
@@ -263,7 +266,8 @@
     var area = p.area, tutti = pezzi().filter(function (x) { return x.area === area; }), presa = DEV && tutti.length && tutti.every(function (x) { return PAL.fatti[x.id]; });
     var c = apriCard('<header><b>Fatto</b><button class="x" data-c="chiudi" aria-label="Chiudi">×</button></header><div class="corpo"><div class="bravo">Pezzo completato: ' + esc(p.titolo) + '</div>' +
       (DEV ? '<div>' + (dopo ? "" : "+" + (gia ? 0 : 20) + " punti · ") + 'totale <b>' + PAL.punti + "</b> punti</div>" : "") + (presa ? '<div class="bravo">Hai preso la patente ' + esc(area) + "</div>" : "") +
-      '<div class="bottoni"><button class="b oro" data-c="elenco">Altri pezzi</button><button class="b" data-c="chiudi">Chiudi</button></div></div>', "destra");
+      '<div class="bottoni">' + (DEV ? '<button class="b oro" data-c="torna">Torna alla palestra</button><button class="b" data-c="rifai">Rifallo</button>' : '<button class="b oro" data-c="elenco">Altri pezzi</button><button class="b" data-c="chiudi">Chiudi</button>') + '</div></div>', "destra");
+    scrivi("coach-finito-id", p.id, true);
     c.querySelectorAll("[data-c]").forEach(function (b) { b.onclick = function () { comando(b.dataset.c); }; });
   }
   function piu(n) { var s = passoCorrente(), e = s && trova(s.su), r = e ? e.getBoundingClientRect() : { left: innerWidth / 2, top: innerHeight / 2, width: 0 }; var d = el("div", "coach-ui coach-piu", "+" + n); d.style.left = (r.left + r.width / 2) + "px"; d.style.top = (r.top) + "px"; document.body.appendChild(d); setTimeout(function () { d.remove(); }, 1100); }
