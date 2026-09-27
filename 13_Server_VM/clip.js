@@ -4814,9 +4814,17 @@ function nomeDaCartella(a) {
 // tabellone letto sul video ha dato lo stesso risultato che dice il nome
 // (o ESPN): calcolato qui e non scritto, cosi' lo scandaglio orario, che
 // riscrive "sicuro", non puo' cancellarlo.
+// I NOMI CONFERMATI A MANO (27/09/2026): per file, perche' lo scandaglio
+// rifa' "sicuro" dalla soglia a ogni giro e una conferma sulla voce sparirebbe
+let CONFERMATI = null;
+function confermati() {
+  if (!CONFERMATI) { try { CONFERMATI = JSON.parse(fs.readFileSync(path.join(DIR, "confermati.json"), "utf8")) || {}; } catch (e) { CONFERMATI = {}; } }
+  return CONFERMATI;
+}
 function nomeSicuro(a) {
   if (!a) return false;
   if (a.sicuro === true) return true;
+  if (a.chiave && confermati()[a.chiave]) return true;
   if (a.tabellone && a.tabellone.verificato) return true;
   if (a.riconosciuta && a.riconosciuta.sicura !== false && a.riconosciuta.confermata) return true;
   return false;
@@ -7583,6 +7591,28 @@ function NAS_VOCI() {
   Object.keys(ARCHIVIO).forEach((k) => { if (k.indexOf("nas:") === 0) (ARCHIVIO[k].pezzi || []).forEach((z) => s2.add(z.chiave)); });
   return s2;
 }
+function voceNas(v, secchio) {
+    const file = (v.file || []).filter((k) => NAS_FILE.has(k));
+    if (!file.length) return null;
+    const dove = file[0].split("/").slice(0, -1).join("/");
+    const id = "nas:" + crypto.createHash("sha1").update(v.giorno + "|" + v.partita + "|" + file.join("|")).digest("hex").slice(0, 14);
+    const g = String(v.giorno || "");
+    const pezzi = file.map((k) => ({ chiave: k, peso: NAS_FILE.get(k), file: path.basename(k), dentro: path.dirname(k).split("/").slice(3).join("/") }));
+    // l'ordine e l'asse dall'ora scritta nel nome, come per le orfane di S3
+    const secondi = (f) => { const o = oraNelNome(f); return o ? (o.h % 12) * 3600 + o.m * 60 + o.s : null; };
+    pezzi.sort((x, y) => (secondi(x.file) || 0) - (secondi(y.file) || 0));
+    const primo = secondi(pezzi[0].file);
+    let scorso = 0;
+    pezzi.forEach((x, n) => {
+      if (n === 0) { x.da = 0; return; }
+      const s2 = secondi(x.file); if (primo === null || s2 === null) { x.da = null; return; }
+      let d = s2 - primo; while (d < scorso) d += 12 * 3600; x.da = d; scorso = d;
+    });
+    return { id, voce: { bucket: secchio, chiave: pezzi[0].chiave, peso: pezzi[0].peso, partita: v.partita, competizione: v.competizione || "",
+      variante: "", giorno: g, dove, fonte: pezzi.length > 1 ? "pezzi" : "intero", pezzi,
+      kickoff: null, sicuro: false, soloNas: true, gemella: v.fratello || undefined,
+      quando: v.quando || new Date(Date.UTC(+g.slice(0, 4), +g.slice(4, 6) - 1, +g.slice(6, 8), 18, 0)).toISOString() } };
+}
 function importaAggiunteNas() {
   let piano = [];
   try { piano = JSON.parse(fs.readFileSync(path.join(DIR, "nas-aggiunte.json"), "utf8")); } catch (e) { return { ok: false, errore: "manca nas-aggiunte.json: " + e.message }; }
@@ -7601,27 +7631,10 @@ function importaAggiunteNas() {
     delete v.misurato;
   });
   piano.forEach((v) => {
-    const file = (v.file || []).filter((k) => NAS_FILE.has(k));
-    if (!file.length) { senzaFile++; return; }
-    const dove = file[0].split("/").slice(0, -1).join("/");
-    const id = "nas:" + crypto.createHash("sha1").update(v.giorno + "|" + v.partita + "|" + file.join("|")).digest("hex").slice(0, 14);
-    if (ARCHIVIO[id]) { gia++; return; }
-    const g = String(v.giorno || "");
-    const pezzi = file.map((k) => ({ chiave: k, peso: NAS_FILE.get(k), file: path.basename(k), dentro: path.dirname(k).split("/").slice(3).join("/") }));
-    // l'ordine e l'asse dall'ora scritta nel nome, come per le orfane di S3
-    const secondi = (f) => { const o = oraNelNome(f); return o ? (o.h % 12) * 3600 + o.m * 60 + o.s : null; };
-    pezzi.sort((x, y) => (secondi(x.file) || 0) - (secondi(y.file) || 0));
-    const primo = secondi(pezzi[0].file);
-    let scorso = 0;
-    pezzi.forEach((x, n) => {
-      if (n === 0) { x.da = 0; return; }
-      const s2 = secondi(x.file); if (primo === null || s2 === null) { x.da = null; return; }
-      let d = s2 - primo; while (d < scorso) d += 12 * 3600; x.da = d; scorso = d;
-    });
-    ARCHIVIO[id] = { bucket: secchio, chiave: pezzi[0].chiave, peso: pezzi[0].peso, partita: v.partita, competizione: v.competizione || "",
-      variante: "", giorno: g, dove, fonte: pezzi.length > 1 ? "pezzi" : "intero", pezzi,
-      kickoff: null, sicuro: false, soloNas: true, gemella: v.fratello || undefined,
-      quando: v.quando || new Date(Date.UTC(+g.slice(0, 4), +g.slice(4, 6) - 1, +g.slice(6, 8), 18, 0)).toISOString() };
+    const fatta = voceNas(v, secchio);
+    if (!fatta) { senzaFile++; return; }
+    if (ARCHIVIO[fatta.id]) { gia++; return; }
+    ARCHIVIO[fatta.id] = fatta.voce;
     nuove++;
   });
   // ESPN le aveva scartate per la competizione che non c'e': si riprova con le squadre
@@ -7632,6 +7645,66 @@ function importaAggiunteNas() {
   if (espnDaRifare) { scriviEspn(); console.log("[clip] aggiunte dalla NAS: " + espnDaRifare + " da ricercare su ESPN con le squadre"); }
   if (nuove || corrette) { scriviArchivio(); giroNas(); console.log("[clip] aggiunte dalla NAS: " + nuove + " partite entrate in indice" + (corrette ? ", " + corrette + " rimesse nel secchio giusto" : "")); }
   return { ok: true, nuove, gia, senzaFile, corrette, espnDaRifare };
+}
+// LE CORREZIONI A MANO, IN BLOCCO (27/09/2026). Ogni voce: { rec, conferma,
+// partita, competizione, dividi: [{ partita, competizione, file: [...] }] }.
+//  - conferma: il nome e' giusto (per file, in confermati.json)
+//  - partita: il nome nuovo. Le voci di Airtable no (si cambiano la');
+//    le cartelle senza Airtable come "clip-archivio-titolo"; le "nas:" nel
+//    piano, cosi' rifare l'importazione da' le stesse voci
+//  - dividi (solo "nas:"): una cartella con due partite diventa due voci
+function correggiArchivio(voci) {
+  const secchio = (MAGAZZINI.filter((x) => x.inventario)[0] || {}).bucket;
+  let piano = [];
+  try { piano = JSON.parse(fs.readFileSync(path.join(DIR, "nas-aggiunte.json"), "utf8")); } catch (e) {}
+  const stessiFile = (x, y) => x.length === y.length && x.every((f) => y.indexOf(f) >= 0);
+  const conferma = (a) => { if (a && a.chiave) confermati()[a.chiave] = { quando: new Date().toISOString(), partita: a.partita }; };
+  const esito = [];
+  (voci || []).forEach((v) => {
+    const rec = String(v.rec || ""), a = ARCHIVIO[rec];
+    if (!a) { esito.push({ rec, errore: "non e' nell'indice" }); return; }
+    const suoiFile = (a.pezzi || []).map((z) => z.chiave);
+    const iPiano = piano.findIndex((x) => stessiFile(x.file || [], suoiFile));
+    if (v.dividi && v.dividi.length) {
+      if (rec.indexOf("nas:") !== 0 || iPiano < 0) { esito.push({ rec, errore: "si dividono solo le voci entrate dalla NAS" }); return; }
+      const base = piano[iPiano], nuove = [];
+      v.dividi.forEach((d) => {
+        const pz = Object.assign({}, base, { partita: String(d.partita), competizione: d.competizione !== undefined ? String(d.competizione) : base.competizione, file: d.file.filter((f) => suoiFile.indexOf(f) >= 0) });
+        const fatta = voceNas(pz, secchio); if (!fatta) return;
+        ARCHIVIO[fatta.id] = fatta.voce; if (v.conferma) conferma(fatta.voce);
+        nuove.push(pz); esito.push({ rec: fatta.id, partita: pz.partita, da: rec });
+      });
+      if (!nuove.length) { esito.push({ rec, errore: "nessun file nelle parti" }); return; }
+      piano.splice(iPiano, 1, ...nuove); delete ARCHIVIO[rec]; delete ESPN[rec];
+      return;
+    }
+    if (v.partita || v.competizione !== undefined) {
+      if (rec.indexOf("nas:") === 0 && iPiano >= 0) {
+        const pz = Object.assign({}, piano[iPiano], v.partita ? { partita: String(v.partita) } : {}, v.competizione !== undefined ? { competizione: String(v.competizione) } : {});
+        const fatta = voceNas(pz, secchio);
+        if (fatta) {
+          // le letture restano: e' lo stesso materiale
+          LETTURE_DEL_FILE.forEach((c) => { if (a[c] !== undefined) fatta.voce[c] = a[c]; });
+          delete ARCHIVIO[rec]; ARCHIVIO[fatta.id] = fatta.voce; piano[iPiano] = pz;
+          if (ESPN[rec] && fatta.id !== rec) delete ESPN[rec];
+          if (v.conferma) conferma(fatta.voce);
+          esito.push({ rec: fatta.id, partita: pz.partita, da: rec }); return;
+        }
+      } else if (a.soloS3 && v.partita) {
+        const t = String(v.partita).trim().slice(0, 120);
+        titoliAMano()[a.dove] = t; fs.writeFileSync(TITOLI_FILE(), JSON.stringify(TITOLI, null, 1)); a.partita = t; STEMMI_CACHE.clear();
+        if (v.competizione !== undefined) a.competizione = String(v.competizione);
+        delete ESPN[rec];
+      } else if (v.partita) { esito.push({ rec, errore: "nome di Airtable: si cambia li'" }); return; }
+    }
+    if (v.conferma) conferma(a);
+    esito.push({ rec, partita: a.partita, confermata: !!v.conferma });
+  });
+  try { fs.writeFileSync(path.join(DIR, "nas-aggiunte.json"), JSON.stringify(piano)); } catch (e) {}
+  try { fs.writeFileSync(path.join(DIR, "confermati.json"), JSON.stringify(confermati(), null, 1)); } catch (e) {}
+  scriviArchivio(); scriviEspn(); giroNas(); STEMMI_CACHE.clear();
+  console.log("[clip] correzioni a mano: " + esito.filter((x) => !x.errore).length + " fatte, " + esito.filter((x) => x.errore).length + " no");
+  return { ok: true, esito };
 }
 function scriviArchivio() {
   try {
@@ -11279,7 +11352,10 @@ const OROLOGI_INSIEME = 2;          // due partite alla volta: ffmpeg e tesserac
 // prima il Como, poi le partite piu' recenti: e' l'ordine in cui servono
 function prioritaPartita(rec) {
   const a = ARCHIVIO[rec] || {};
-  const como = /\bCOMO\b/i.test(a.partita || "") ? 0 : 1;
+  // prima la prima squadra del Como, poi le sue giovanili, poi tutto il resto
+  // (27/09/2026: Como-Juventus aspettava dietro le U17 di settembre)
+  const t = a.partita || "";
+  const como = !/\bCOMO\b/i.test(t) ? 2 : /\bU\s?1\d|\bU\s?2\d|UNDER|PRIMAVERA|FEMMINILE|WOMEN|WOMAN/i.test(t) ? 1 : 0;
   return como * 1e13 + (1e13 - (Date.parse(a.quando) || 0));
 }
 // Se una pagina sta chiedendo lo stato, qualcuno sta lavorando: le code di
@@ -15502,6 +15578,7 @@ const AZIONI = {
     return { ok: true, squadre, altri, speciali, conStemma: squadre.filter((x) => !x.fonti.sigla || Object.keys(x.fonti).length > 1).length, totale: squadre.length };
   },
   "clip-nas-aggiunte": () => importaAggiunteNas(),
+  "clip-archivio-correggi": (p) => correggiArchivio(p.voci),
   "clip-archivio-copia": async () => Object.assign({}, await statoCopia(), { nomi: statoNomi(), casa: statoCasa() }),
   // quante partite S3 sono gia' in casa (ricontate adesso)
   "clip-archivio-specchio": async () => Object.assign({ ok: true, cartella: path.join(QNAP_RADICE, SPECCHIO_DIR) }, await aggiornaSpecchio()),
