@@ -190,9 +190,6 @@
   .loc.scelta .poster{box-shadow:0 0 0 2px #C9A24B inset;}
   .loc.on .poster{border:2px solid var(--oro);box-shadow:0 0 0 3px rgba(201,162,75,.25);}
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
-  /* ACCADDE OGGI: in riga, dal piu' recente; sopra ogni scheda l'anno */
-  .oggi{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(230px,260px);gap:14px;overflow-x:auto;padding-bottom:8px;margin-top:12px;}
-  .oggi .anno{font:800 13px/1 'Mazzard',sans-serif;color:var(--oro2);margin:0 0 6px 2px;letter-spacing:.04em;}
   .filtri select.on,.filtri #tipiTutti.on{border-color:var(--oro);color:var(--oro2);}
   #sfConto{font-size:11.5px;color:var(--fumo);}
   .tendina{border:1px solid var(--riga2);border-radius:10px;background:var(--navy2);padding:10px;margin:10px 0 0;max-width:760px;}
@@ -323,10 +320,6 @@
     <section id="raccolteBox">
       <div class="sez"><h2>Raccolte 1907</h2><span id="raccConto"></span><button class="dx" id="vediRacc" hidden>Vedi tutte</button></div>
       <div id="raccolte"></div>
-    </section>
-    <section style="margin-top:24px" id="oggiBox" hidden>
-      <div class="sez"><h2 id="oggiTitolo">Accadde oggi</h2><span id="oggiConto"></span></div>
-      <div class="oggi" id="oggi"></div>
     </section>
     <section style="margin-top:24px">
       <div class="sez"><h2>Stagioni</h2><span>scegli una stagione: sotto trovi le sue collezioni e, mese per mese, i servizi</span></div>
@@ -683,28 +676,6 @@
     $("tempo").innerHTML = h || '<div class="vuoto">Niente con questi filtri.</div>';
     miniatureDi($("tempo"));
   }
-  // ACCADDE OGGI (Goffredo, 27/09/2026): lo stesso giorno negli anni passati; se quel
-  // giorno non c'e' niente, la stessa settimana (tre giorni prima e dopo)
-  function disegnaOggi() {
-    var ora = new Date(), mm = ora.getMonth() + 1, gg = ora.getDate(), anno = ora.getFullYear();
-    var giornoDi = function (d) { return [Math.floor(d / 100) % 100, d % 100]; };
-    var dist = function (d) { var x = giornoDi(d); var a = new Date(2001, x[0] - 1, x[1]), b = new Date(2001, mm - 1, gg); var t = Math.abs(a - b) / 864e5; return Math.min(t, 365 - t); };
-    var tutti = (I.servizi || []).filter(function (x) { return x[1] && x[1] % 100 && Math.floor(x[1] / 10000) < anno && (x[3] || x[4]); });
-    var esatti = tutti.filter(function (x) { return dist(x[1]) === 0; }), sett = false;
-    var lista = esatti;
-    if (lista.length < 3) { lista = tutti.filter(function (x) { return dist(x[1]) <= 3; }); sett = true; }
-    if (!lista.length) { $("oggiBox").hidden = true; return; }
-    lista.sort(function (a, b) { return b[1] - a[1] || (b[3] + b[4]) - (a[3] + a[4]); });
-    $("oggiTitolo").textContent = sett ? "Accadde in questi giorni" : "Accadde oggi";
-    $("oggiConto").textContent = (sett ? "dal " + (gg - 3 > 0 ? gg - 3 : 1) + " al " + (gg + 3) + " " + MESI[mm - 1] : gg + " " + MESI[mm - 1]) + " negli anni passati · " + n(lista.length) + " servizi";
-    $("oggi").innerHTML = lista.slice(0, 30).map(function (x) { return '<div><div class="anno">' + Math.floor(x[1] / 10000) + "</div>" + schedaServizio(x, true) + "</div>"; }).join("");
-    $("oggiBox").hidden = false; miniatureDi($("oggi"));
-  }
-  $("oggi").addEventListener("click", function (e) {
-    var c = e.target.closest(".srv[data-cart]"); if (!c || e.target.closest("[data-scc]")) return;
-    if (c.dataset.pk && PART[c.dataset.pk]) metti({ k: "part", v: c.dataset.pk, n: nomeDi("part", c.dataset.pk) }); else metti({ k: "cart", v: c.dataset.cart, n: ultimo(c.dataset.cart) });
-    window.scrollTo(0, 0);
-  });
   function scegliStagione(k) { STAG = k; COLL = ""; APERTI = {}; disegnaStagioni(); disegnaAlbero(); disegnaCollezioni(); disegnaHome(); }
   $("stagioni").addEventListener("click", function (e) { var b = e.target.closest("[data-stag]"); if (b) scegliStagione(b.dataset.stag); });
   $("collezioni").addEventListener("click", function (e) {
@@ -1322,7 +1293,7 @@
       var stg = Object.keys(STAGIONI).sort().reverse(); STAG = stg[0] || "";
 
 
-      disegnaOggi(); disegnaStagioni(); disegnaAlbero(); disegnaCollezioni(); disegnaHome();
+      disegnaStagioni(); disegnaAlbero(); disegnaCollezioni(); disegnaHome();
       var soloRacc = location.hash === "#raccolte";
       caricaRaccolte().then(function () { if (soloRacc) { disegnaRaccolte(true); $("raccolteBox").scrollIntoView({ block: "start" }); } });
       if (!soloRacc) { leggiIndirizzo(); vai(); }
