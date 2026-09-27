@@ -181,6 +181,55 @@
       { t: "Clicca nella timeline e premi ?", fai: "tasto", tasto: "?", su: "#pista" }
     ]) },
 
+    // ═══════ MAM COMO 1907 (il materiale del club, dal FRAME) ═══════
+    { id: "c01", area: "MAM Como 1907", titolo: "La pagina del MAM Como 1907", video: "c01", pagine: ["mam-1907"], pagina: "live/mam-1907.html", passi: [
+      { t: "Le stagioni: una locandina per stagione", fai: "leggi", su: "#stagioni" },
+      { t: "Clicca una stagione", fai: "clic", su: "#stagioni [data-stag]" },
+      { t: "Le collezioni della stagione scelta", fai: "leggi", su: "#collezioni" },
+      { t: "Sotto, i servizi: dal più recente, con la data delle riprese", fai: "leggi", su: "#tempo" }
+    ] },
+    { id: "c02", area: "MAM Como 1907", titolo: "Stagione, squadra, tipo", video: "c02", pagine: ["mam-1907"], pagina: "live/mam-1907.html", passi: [
+      { t: "Nella riga Sfoglia scegli la squadra: Prima squadra", fai: "scegli", su: "#selSquadra", atteso: "Prima squadra" },
+      { t: "Clicca Tutti i tipi: si apre la tendina", fai: "clic", su: "#tipiTutti" },
+      { t: "Clicca Intervista", aiuto: "Il numero accanto conta i servizi di quel tipo.", fai: "clic", su: '#tipiElenco a[data-tp="Intervista"]' },
+      { t: "Clicca Lista: gli stessi servizi in righe", fai: "clic", su: "#vLista" }
+    ] },
+    { id: "c03", area: "MAM Como 1907", titolo: "Cercare una persona", video: "c03", pagine: ["mam-1907"], pagina: "live/mam-1907.html", passi: [
+      { t: "Scrivi: douvikas", fai: "scrivi", su: "#cerca", atteso: "douvikas" },
+      { t: "Nella sua scheda clicca la tessera Intervista", aiuto: "La scheda dice cosa c'è di lui nel materiale del club: video, foto, tipi, stagioni, partite.", fai: "clic", su: '.sg-lato button.sg-t[data-sg="gen|Intervista"]' },
+      { t: "Clicca Cerca: le sue interviste", fai: "clic", su: ".sg-lato [data-sgcerca]" }
+    ] },
+    { id: "c04", area: "MAM Como 1907", titolo: "La scheda partita", video: "c04", pagine: ["mam-1907"], pagina: "live/mam-1907.html", passi: [
+      { t: "Scrivi: napoli", fai: "scrivi", su: "#cerca", atteso: "napoli" },
+      { t: "Sotto Partite clicca Napoli–Como", fai: "clic", su: { testo: "^napoli", in: "#sugg", tag: "a" } },
+      { t: "La scheda: risultato, gol, e cosa ha girato il club quel giorno", fai: "leggi", su: ".pa-testa" },
+      { t: "Momenti: clicca Riscaldamento", fai: "clic", su: 'button.sg-c[data-sg="mo|Riscaldamento"]' }
+    ] },
+    { id: "c05", area: "MAM Como 1907", titolo: "Chi ha girato, dove, quando", video: "c05", pagine: ["mam-1907"], pagina: "live/mam-1907.html", passi: [
+      { t: "Scrivi: juventus", fai: "scrivi", su: "#cerca", atteso: "juventus" },
+      { t: "Premi Invio", fai: "tasto", tasto: "Enter", su: "#cerca" },
+      { t: "Clicca Filtri", fai: "clic", su: "#apriFiltri" },
+      { t: "Chi ha girato: spunta un nome", aiuto: "Ogni spunta diventa un gettone nel campo di ricerca.", fai: "clic", su: 'label.col-v:has(input[data-col="cam"])' }
+    ] },
+    { id: "c06", area: "MAM Como 1907", titolo: "Guardare un video, anche i .mov", video: "c06", pagine: ["mam-1907"], pagina: "live/mam-1907.html", passi: [
+      { t: "Scrivi: drone", fai: "scrivi", su: "#cerca", atteso: "drone" },
+      { t: "Premi Invio", fai: "tasto", tasto: "Enter", su: "#cerca" },
+      { t: "Clicca il nome di un file: si apre", aiuto: "Passando col mouse sulla miniatura scorre il provino.", fai: "clic", su: "#risultati .card[data-f] .t" },
+      { t: "Copia percorso: il file sulla NAS, da aprire sul Mac", fai: "leggi", su: '[data-fa="percorso-uno"]' }
+    ] },
+    { id: "c07", area: "MAM Como 1907", titolo: "Scegliere e salvare in raccolta", video: "c07", pagine: ["mam-1907"], pagina: "live/mam-1907.html", passi: [
+      { t: "Scrivi: douvikas", fai: "scrivi", su: "#cerca", atteso: "douvikas" },
+      { t: "Premi Invio", fai: "tasto", tasto: "Enter", su: "#cerca" },
+      { t: "Clicca il + su un file", fai: "clic", su: "#risultati .card[data-f] .scegli" },
+      { t: "In basso: Salva in raccolta", fai: "clic", su: '#barraScelte [data-fa="salva"]' },
+      { t: "Scrivi un nome e clicca Salva", fai: "clic", su: '#barraScelte [data-fa="salva-ok"]' }
+    ] },
+    { id: "c08", area: "MAM Como 1907", titolo: "Montare: Editing e Premiere", video: "c08", pagine: ["mam-1907"], pagina: "live/mam-1907.html", passi: [
+      { t: "Clicca una raccolta", fai: "clic", su: "#raccolte .pc" },
+      { t: "Premiere (XML): gli originali della NAS già collegati", fai: "leggi", su: '[data-fa="premiere-racc"]' },
+      { t: "Monta tutta: una sequenza nell'Editing 1907", fai: "clic", su: '[data-fa="monta-racc"]' }
+    ] },
+
     // ═══════ GRAFICHE LIVE ═══════
     { id: "05-grafiche-live", area: "Grafiche live", titolo: "Il catalogo delle grafiche", video: "05-grafiche-live", pagine: ["classifiche"], pagina: "live/classifiche.html", passi: [
       { t: "Ogni anteprima è la grafica vera: passaci sopra", fai: "leggi", su: { testo: "^formazioni premium con foto$", tag: "h3,h2,div,span,b" } },
