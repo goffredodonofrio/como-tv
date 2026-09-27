@@ -62,6 +62,9 @@
   /* LA SCHEDA DELLA PERSONA nei suggerimenti e in cima ai risultati: la stessa del MAM di Como TV */
   .sugg.con-scheda{display:grid;grid-template-columns:minmax(280px,38%) 1fr;gap:0;padding:0;max-height:none;overflow:visible;right:auto;width:min(1120px,calc(100vw - 52px));}
   .sugg.con-scheda .sg-lista{padding:6px;max-height:520px;overflow:auto;}
+  /* con la scheda aperta la lista va in secondo piano; ci si passa sopra e torna */
+  .sugg.con-scheda .sg-lista{opacity:.38;filter:saturate(.4);transition:opacity .2s,filter .2s;}
+  .sugg.con-scheda .sg-lista:hover,.sugg.con-scheda .sg-lista:focus-within,.sugg.con-scheda .sg-lista.attiva{opacity:1;filter:none;}
   .sugg .sg-lato{border-left:1px solid var(--riga2);padding:16px 18px;min-width:0;}
   @media (max-width:720px){ .sugg.con-scheda{grid-template-columns:1fr;} .sugg .sg-lato{border-left:0;border-top:1px solid var(--riga2);} }
   .sg{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;align-items:center;}
@@ -395,23 +398,30 @@
   function suggerisci() {
     var q = norm($("cerca").value.trim());
     if (!I || q.length < 2) { chiudiSugg(); return; }
-    var coll = I.collezioni.filter(function (c) { return norm(c.p).indexOf(q) >= 0; }).slice(0, 5);
-    var ep = I.episodi.filter(function (e) { return norm(e.p.split("/")[1]).indexOf(q) >= 0 || norm(titolo(e.p)).indexOf(q) >= 0; }).slice(0, 8);
-    var cart = I.cartelle.filter(function (r) { var u = ultimo(r[0]); return r[0].split("/").length > 2 && norm(u).indexOf(q) >= 0; }).slice(0, 6);
+    // si cerca dall'inizio delle parole: "cesc" non e' dentro "Francesca"
+    var inizia = function (testo) { return (" " + norm(testo).replace(/[^a-z0-9]+/g, " ")).indexOf(" " + q.replace(/[^a-z0-9]+/g, " ").trim()) >= 0; };
+    var coll = I.collezioni.filter(function (c) { return inizia(c.p); }).slice(0, 5);
+    var ep = I.episodi.filter(function (e) { return inizia(e.p.split("/")[1]) || inizia(titolo(e.p)); }).slice(0, 8);
+    var cart = I.cartelle.filter(function (r) { var u = ultimo(r[0]); return r[0].split("/").length > 2 && inizia(u); }).slice(0, 6);
     var stag = Object.keys(STAGIONI).filter(function (s) { return s.indexOf(q.replace(/[-]/g, "/")) >= 0 || ("stagione " + s).indexOf(q) >= 0; }).slice(0, 4);
     var tipi = [["video", "Solo video"], ["foto", "Solo foto"]].filter(function (t) { return norm(t[1]).indexOf(q) >= 0 || t[0].indexOf(q) === 0; });
     VOCI_S = [];
     function voce(g, testo, dett, conta) { VOCI_S.push(g); var u = (g.k === "coll" || g.k === "ep") ? copertina(g.v) : ""; return '<a data-s="' + (VOCI_S.length - 1) + '">' + (u ? '<span class="gt-mini" style="' + bg(u) + '"></span>' : '<span class="gt-dot"></span>') + "<span>" + esc(testo) + (dett ? "<em>" + esc(dett) + "</em>" : "") + "</span><small>" + conta + "</small></a>"; }
     var h = "";
     // le persone: nome o come si scrivono nelle cartelle ("fabregas", "cesc", "da cunha")
-    var pers = Object.keys(PERS).map(function (k) { return PERS[k]; }).filter(function (p) { return norm(p.nome).indexOf(q) >= 0 || p.alias.some(function (a) { return a.indexOf(q) >= 0; }); }).slice(0, 6);
+    // dall'inizio di una parola: "cesc" e' Fabregas, non "Francesco"
+    var qq = " " + q.replace(/[^a-z0-9]+/g, " ").trim();
+    var punti = function (p) { var t = [" " + norm(p.nome).replace(/[^a-z0-9]+/g, " ")].concat(p.alias.map(function (a) { return " " + a; }));
+      var m = 0; t.forEach(function (x) { if (x === qq) m = Math.max(m, 3); else if (x.indexOf(qq + " ") === 0 || x.indexOf(qq) === 0) m = Math.max(m, 2); else if (x.indexOf(qq) > 0) m = Math.max(m, 1); }); return m; };
+    var pers = Object.keys(PERS).map(function (k) { return PERS[k]; }).map(function (p) { return [punti(p), p]; }).filter(function (x) { return x[0]; })
+      .sort(function (a, b) { return b[0] - a[0] || (b[1].conti.video + b[1].conti.foto) - (a[1].conti.video + a[1].conti.foto); }).map(function (x) { return x[1]; }).slice(0, 6);
     if (pers.length) { h += "<h5>Persone</h5>" + pers.map(function (p) { VOCI_S.push({ k: "pers", v: p.id, n: p.nome }); return '<a data-s="' + (VOCI_S.length - 1) + '">' + avatar(p, "gt-av gt-av-l") + "<span>" + esc(p.nome) + "<em>" + esc([p.ruolo, p.maglia ? "n. " + p.maglia : ""].filter(Boolean).join(" · ")) + "</em></span><small>" + n(p.conti.video) + " video</small></a>"; }).join(""); }
     if (coll.length) h += "<h5>Collezioni</h5>" + coll.map(function (c) { return voce({ k: "coll", v: c.p, n: c.p }, c.p, "", c.attesa ? "in indicizzazione" : n(c.file) + " file"); }).join("");
     if (ep.length) h += "<h5>Episodi</h5>" + ep.map(function (e) { return voce({ k: "ep", v: e.p, n: e.p.split("/")[1] }, e.p.split("/")[1], e.p.split("/")[0], n(e.file) + " file"); }).join("");
     if (cart.length) h += "<h5>Cartelle</h5>" + cart.map(function (r) { return voce({ k: "cart", v: r[0], n: ultimo(r[0]) }, ultimo(r[0]), r[0].split("/").slice(0, -1).join(" › "), (r[1] ? dataRip(r[1]) + " · " : "") + n(r[3]) + " file"); }).join("");
     if (stag.length) h += "<h5>Stagioni</h5>" + stag.map(function (s) { return voce({ k: "stag", v: s, n: "Stagione " + s }, "Stagione " + s, "", n(STAGIONI[s]) + " file"); }).join("");
     [["gen", "Tipo di contenuto"], ["sq", "Squadra"], ["comp", "Competizione"], ["avv", "Avversario"]].forEach(function (kk) {
-      var vv = Object.keys(VOC[kk[0]]).filter(function (v) { return norm(v).indexOf(q) >= 0; }).sort(function (a, b) { return VOC[kk[0]][b] - VOC[kk[0]][a]; }).slice(0, 4);
+      var vv = Object.keys(VOC[kk[0]]).filter(function (v) { return inizia(v); }).sort(function (a, b) { return VOC[kk[0]][b] - VOC[kk[0]][a]; }).slice(0, 4);
       if (vv.length) h += "<h5>" + kk[1] + "</h5>" + vv.map(function (v) { return voce({ k: kk[0], v: v, n: nomeDi(kk[0], v) }, nomeDi(kk[0], v), "", n(VOC[kk[0]][v]) + " file"); }).join("");
     });
     if (tipi.length) h += "<h5>Tipo</h5>" + tipi.map(function (t) { return voce({ k: "tipo", v: t[0], n: t[1] }, t[1], "", ""); }).join("");
@@ -427,7 +437,7 @@
   $("cerca").addEventListener("input", function () { suggerisci(); disegnaGettoni(); });
   $("cerca").addEventListener("keydown", function (e) {
     var tutte = $("sugg").querySelectorAll("a");
-    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !$("sugg").hidden) { e.preventDefault(); if (!tutte.length) return; SEL = (SEL + (e.key === "ArrowDown" ? 1 : -1) + tutte.length) % tutte.length; tutte.forEach(function (a, i) { a.classList.toggle("on", i === SEL); }); return; }
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !$("sugg").hidden) { e.preventDefault(); if (!tutte.length) return; var sl = $("sugg").querySelector(".sg-lista"); if (sl) sl.classList.add("attiva"); SEL = (SEL + (e.key === "ArrowDown" ? 1 : -1) + tutte.length) % tutte.length; tutte.forEach(function (a, i) { a.classList.toggle("on", i === SEL); }); return; }
     if (e.key === "Enter") { e.preventDefault(); if (SEL >= 0 && tutte[SEL] && tutte[SEL].dataset.s) { metti(VOCI_S[+tutte[SEL].dataset.s], VOCI_S[+tutte[SEL].dataset.s].k === "tipo"); return; }
       if (SCHEDA_P && !$("sugg").hidden) { cercaDaScheda(SCHEDA_P); return; }
       Q = this.value.trim(); chiudiSugg(); riconosciPersona(); vai(); return; }
