@@ -226,11 +226,18 @@
       { t: "Clicca Prendi la formazione", fai: "clic", su: "#btnPrendi" },
       { t: "Prendi la penna e disegna sul campo", fai: "clic", su: { testo: "penna", tag: "button" } }
     ] },
-    { id: "07-grafiche-statiche", area: "Altri strumenti", titolo: "Fare una copertina", video: "07-grafiche-statiche", pagine: ["statiche", "social"], pagina: "10_Look%26Feel/Como%20TV%20OTT%20Design/generatore.html", passi: [
-      { t: "Scegli la partita in alto (o scrivi i campi)", fai: "scegli", su: "select" },
+    { id: "07-grafiche-statiche", area: "Grafiche statiche", titolo: "Fare una copertina", video: "07-grafiche-statiche", pagine: ["statiche"], pagina: "10_Look%26Feel/Como%20TV%20OTT%20Design/generatore.html", passi: [
+      { t: "Scegli la partita dal menu in alto", aiuto: "Riempie da solo competizione, squadre, data e ora. Si può anche scrivere a mano.", fai: "scegli", su: "#airtableEventSelect" },
+      { t: "Controlla i campi a sinistra", fai: "leggi", su: function () { var e = document.querySelector("input"); return e ? (e.closest("section,.pannello,.card,div[class*=cont]") || e.parentElement.parentElement) : null; } },
       { t: "Clicca SELEZIONA su un gruppo di modelli", fai: "clic", su: "button.gselbtn" },
-      { t: "Scarica: il bottone in alto a destra (o lo ZIP)", fai: "leggi", su: { testo: "zip", tag: "button" } }
-    ] }
+      { t: "Scarica: la freccia in alto a destra, o lo ZIP per tutti", fai: "leggi", su: ["#dlAll", "#dlPng"] }
+    ] },
+    { id: "07b-social", area: "Grafiche statiche", titolo: "Fare un post per i social", pagine: ["social"], pagina: "10_Look%26Feel/Como%20TV%20OTT%20Design/generatore.html?solo=social", passi: [
+      { t: "Scegli la partita dal menu in alto", fai: "scegli", su: "#airtableEventSelect" },
+      { t: "Clicca SELEZIONA su Social media", aiuto: "Il primo gruppo: i formati per il feed e le storie.", fai: "clic", su: "button.gselbtn" },
+      { t: "Clicca il mirino: sposti la foto nel riquadro", fai: "clic", su: "#tMirino" },
+      { t: "Scarica tutto nello ZIP", fai: "leggi", su: "#dlAll" }
+    ] },
   ];
   window.COACH_DATI = { pezzi: PEZZI };
 })();
