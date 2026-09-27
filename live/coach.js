@@ -241,7 +241,7 @@
       (!bersaglio && s.su && s.fai !== "vedi" ? '<div class="stato">Non vedo ancora il punto giusto su questa pagina: ' + (altrove ? "prima apri la pagina giusta." : "scorri o aspetta che carichi.") + "</div>" : "") +
       '<div class="bottoni">' + (s.fai === "leggi" ? '<button class="b oro" data-c="avanti">Fatto, avanti</button>' : "") +
       (altrove ? '<button class="b oro" data-c="vaiPagina">Apri la pagina</button>' : "") +
-      (p.video ? '<button class="b" data-c="video">Guarda come si fa</button>' : "") +
+      (p.video ? '<button class="b" data-c="video"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" style="vertical-align:-2px;margin-right:8px"><path d="M4 2v12l10-6z" fill="currentColor"/></svg>Guarda come si fa</button>' : "") +
       '<button class="b" data-c="salta">Salta</button>' + (DEV ? '<button class="b" data-c="torna">Torna alla palestra</button>' : '<button class="b" data-c="elenco">Altri pezzi</button>') + '</div>' +
       '<div class="stato" id="coachEsito"></div></div>';
     var c = apriCard(html, lato);
