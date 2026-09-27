@@ -6557,8 +6557,8 @@ function nomeQuasiCerto(k, a) {
 }
 // DA GUARDARE: la macchina ci ha provato (tabellone letto o fallito) e non sa
 // ancora che partita e'. Da sola non ci arriva: serve un occhio
-function daGuardare(a) {
-  return !!a && inCasa(a) && !nomeSicuro(a) && !senzaPartita(a) && !!(a.tabellone || a.tabelloneFallito || a.orologioFallito || !a.partita);
+function daGuardare(a, k) {
+  return !!a && inCasa(a) && !nomeSicuro(a) && !(k && nomeQuasiCerto(k, a)) && !senzaPartita(a) && !!(a.tabellone || a.tabelloneFallito || a.orologioFallito || !a.partita);
 }
 function statoCasa() {
   const n = { partite: 0, espn: 0, appunti: 0, cronometro: 0, tabellone: 0, boati: 0, momenti: 0, finite: 0, studio: 0, utilizzabili: 0, daGuardare: 0 };
@@ -6566,7 +6566,7 @@ function statoCasa() {
     const a = ARCHIVIO[k];
     if (!a || !a.chiave || !magazzinoInventario(a.bucket) || !inCasa(a)) return;
     if (utilizzabile(k, a)) n.utilizzabili++;
-    else if (daGuardare(a)) n.daGuardare++;
+    else if (daGuardare(a, k)) n.daGuardare++;
     n.partite++;
     if (ESPN[k]) n.espn++;
     if (((APPUNTI[k] || {}).righe || []).length) n.appunti++;
@@ -15354,7 +15354,7 @@ const AZIONI = {
                    nomeDa: a.soloS3 ? "cartella" : (a.partita ? "airtable" : (nomeDaCartella(a) ? "cartella" : "")), sicuro: !!a.partita && nomeSicuro(a), competizione: a.competizione || "",
                    quandoPartita: a.quando || "", durata: r ? (r.durata || 0) : Math.round(minuti * 60), reg: r ? r.id : undefined,
                    telecronaca: !!(r && PARLATO[r.id] && (PARLATO[r.id].pezzi || []).length), s3: !inCasa(a), inCasa: inCasa(a), senzaNome: !!a.soloS3, bucket: a.bucket, pezzi: (a.pezzi || []).length || 1,
-                   soloElenco: soloElenco(a.bucket) && !inCasa(a), puntata: puntata(a), guardare: !utilizzabile(k, a) && daGuardare(a),
+                   soloElenco: soloElenco(a.bucket) && !inCasa(a), puntata: puntata(a), guardare: !utilizzabile(k, a) && daGuardare(a, k),
                    // per l'anteprima: stemmi, telecronista e lingua, risultato
                    // l'anteprima solo per quelle che la Libreria mostra (in casa); gli stemmi
                    // delle altre li prepara prepararaStemmi in sottofondo
