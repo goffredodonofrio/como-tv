@@ -50,6 +50,8 @@
         (j.admin ? '<a role="menuitem" href="/auth/registro">Registro di controllo</a><a role="menuitem" href="/como-tv/area-personale.html">Area personale</a>' : "") +
         '<a role="menuitem" class="esci" href="/auth/esci">Esci</a></div>';
       var b = box.querySelector(".un-chi"), m = box.querySelector(".un-menu");
+      // la tendina sta fuori dalla barra: la barra (sfocata e scorrevole) la taglierebbe
+      document.body.appendChild(m);
       var chiudi = function () { m.hidden = true; b.setAttribute("aria-expanded", "false"); };
       b.addEventListener("click", function (e) {
         e.stopPropagation();
@@ -58,7 +60,7 @@
         m.style.top = (r.bottom + 6) + "px"; m.style.right = Math.max(8, window.innerWidth - r.right) + "px";
         m.hidden = false; b.setAttribute("aria-expanded", "true");
       });
-      document.addEventListener("click", function (e) { if (!box.contains(e.target)) chiudi(); });
+      document.addEventListener("click", function (e) { if (!box.contains(e.target) && !m.contains(e.target)) chiudi(); });
       document.addEventListener("keydown", function (e) { if (e.key === "Escape") chiudi(); });
       window.addEventListener("scroll", chiudi, true);
     }
