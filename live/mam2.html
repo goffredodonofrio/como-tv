@@ -3207,6 +3207,17 @@
     };
     giro();
   }
+  // IL PONTE VERSO IL MAM COMO 1907 (Goffredo, 27/09/2026): la stessa partita del Como
+  // girata dal club (camere, riscaldamento, tunnel, spogliatoio). I due MAM restano
+  // separati: qui c'e' solo il link, se il club ha materiale di quel giorno.
+  var P1907 = null;
+  function ponte1907(r){
+    if (!r || !r.avviata || !/\bcomo\b/i.test(r.titolo || "") || /\bu ?\d\d\b|women|femminile|primavera/i.test(r.titolo || "")) return;
+    var d = new Date(r.avviata), g = String(d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate());
+    (P1907 ? Promise.resolve(P1907) : fetch("/como-tv/mam-1907/indice/partite.json", { cache: "no-cache" }).then(function(x){ return x.ok ? x.json() : {}; }).catch(function(){ return {}; }).then(function(j){ P1907 = j || {}; return P1907; }))
+      .then(function(P){ var x = P[g]; if (!x || !x.n || ASSET !== r) return;
+        el("aMeta").insertAdjacentHTML("beforeend", ' · <a href="mam-1907.html#g=' + encodeURIComponent(JSON.stringify([["part", g]])) + '" target="_blank" rel="noopener" style="color:var(--oro2)" title="la stessa partita girata dal club, nel MAM Como 1907">Materiale del club: ' + x.n.toLocaleString("it-IT") + ' file ↗</a>'); });
+  }
   function apriAsset(rec, regId, t){
     vai("asset"); V = el("video"); mostraPer();
     var apri = regId ? Promise.resolve({ reg: REGS[regId] || null }) : Promise.resolve({ reg: null });
@@ -3220,6 +3231,7 @@
       post({ tipo:"clip-archivio-partite", quante: 4000 }).then(function(x){ var z = (x.partite || []).filter(function(y){ return y.rec === rec; })[0]; FORSE = z && z.forse ? z.forse : null; if (FORSE) disegnaScheda(el("cercaS").value); }).catch(function(){});
       el("aTitolo").textContent = r.titolo || "partita"; el("sTitolo").textContent = r.titolo || "";
       el("aMeta").innerHTML = [r.competizione, quando(r.avviata), durata(r.durata)].filter(Boolean).map(esc).join(" · ");
+      ponte1907(r);
       el("sSotto").textContent = (r.arch && r.arch.chiave) || "";
       if (r.mini) el("sMini").src = BASE + r.mini;
       posa(r.id, undefined, function(u){ el("sMini").src = u; });
@@ -3240,7 +3252,7 @@
       };
       if (t) V.addEventListener("loadedmetadata", function unaVolta(){ V.removeEventListener("loadedmetadata", unaVolta); try { V.currentTime = Math.max(0, t - 3); } catch (e) {} });
       // una partita su S3 non e' misurata (le misure costano byte): la durata la dice il video appena carica
-      V.addEventListener("loadedmetadata", function durataVera(){ V.removeEventListener("loadedmetadata", durataVera); if (!r.durata && isFinite(V.duration) && V.duration > 0) { r.durata = Math.round(V.duration); ASSET.durata = r.durata; el("aMeta").innerHTML = [r.competizione, quando(r.avviata), durata(r.durata)].filter(Boolean).map(esc).join(" · "); disegnaScheda(el("cercaS").value); disegnaMomenti(); } });
+      V.addEventListener("loadedmetadata", function durataVera(){ V.removeEventListener("loadedmetadata", durataVera); if (!r.durata && isFinite(V.duration) && V.duration > 0) { r.durata = Math.round(V.duration); ASSET.durata = r.durata; el("aMeta").innerHTML = [r.competizione, quando(r.avviata), durata(r.durata)].filter(Boolean).map(esc).join(" · "); ponte1907(r); disegnaScheda(el("cercaS").value); disegnaMomenti(); } });
       el("aMam").onclick = function(){ apriNelMontaggio(r); };
       el("aScarica").onclick = function(){ if (!r.arch) return; post({ tipo:"clip-qnap-via", via: r.arch.chiave, radice:"qnap" }).then(function(x){ var a = document.createElement("a"); a.href = BASE + x.via + "&scarica=1"; a.download = r.arch.chiave; document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); }, 1000); }).catch(function(e){ avviso("err", esc(e.message)); }); };
       el("aSrt").onclick = function(){ lingueChieste().forEach(function(l, k){ setTimeout(function(){ scaricaSrt(r.id, l); }, k * 500); }); };

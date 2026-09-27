@@ -141,7 +141,8 @@ def squadra(x):
     return ALIAS.get(x, x)
 
 
-ESPN_CAL = os.path.join(CASA, "calendario-espn2.json")   # [giorno, casa, ospite, lega]
+ESPN_CAL = os.path.join(CASA, "calendario-espn3.json")   # [giorno, casa, ospite, lega, id ESPN]
+ESPN_PARTITE = os.path.join(CASA, "espn")                 # il riepilogo di ogni partita (gol, cartellini), una volta sola
 
 
 def calendario_espn():
@@ -168,7 +169,7 @@ def calendario_espn():
                 # l'ora e' UTC: una partita alle 20:45 italiane resta nel suo giorno
                 g = time.strftime("%Y%m%d", time.localtime(time.mktime(time.strptime(e["date"][:16], "%Y-%m-%dT%H:%M")) - time.timezone))
                 lg = (e.get("league") or {}).get("name") or (e.get("season") or {}).get("name") or ""
-                fuori.append([int(g), casa, ospite, lg])
+                fuori.append([int(g), casa, ospite, lg, str(e.get("id") or "")])
             except Exception:
                 continue
     if fuori:
@@ -187,7 +188,7 @@ def calendario():
     for x in calendario_espn():
         g, casa, ospite = x[0], squadra(x[1]), squadra(x[2]); comp = META.lega(x[3]) if len(x) > 3 and x[3] else ""
         if "COMO" in (casa, ospite) and (g, casa, ospite) not in visti:
-            visti.add((g, casa, ospite)); CAL.append((g, casa, ospite, comp)); coperte[stagione_di(g)] += 1
+            visti.add((g, casa, ospite)); CAL.append((g, casa, ospite, comp, x[4] if len(x) > 4 else "")); coperte[stagione_di(g)] += 1
     try: a = json.load(open(ARCHIVIO))
     except Exception: return CAL
     for v in a.values():
@@ -199,7 +200,7 @@ def calendario():
         casa, fuori = [squadra(x) for x in nome.split("-", 1)]
         if "COMO" not in (casa, fuori): continue
         k = (int(g), casa, fuori)
-        if k not in visti: visti.add(k); CAL.append(k + (str(v.get("competizione") or ""),))
+        if k not in visti: visti.add(k); CAL.append(k + (str(v.get("competizione") or ""), ""))
     return CAL
 
 
@@ -236,7 +237,7 @@ def partita_in(nome, stag):
     pos_como = [x[0] for x in sq if x[1] == "COMO"][0]; pos_altra, altra = altre[0]
     cand = [c for c in calendario() if altra in c[1:3] and (not stag or stagione_di(c[0]) == stag)]
     casa = pos_como < pos_altra          # "COMO v X": in casa; "X v COMO": in trasferta
-    if not cand: return (0, "", altra, casa)
+    if not cand: return (0, "", altra, casa, "")
     # un mese scritto ("NOVEMBER 30 - COMO MONZA") restringe
     m = re.search(r"(?<![a-z])" + MESE + r"[a-z]*\s*(\d{1,2})?(?!\d)", nome, re.I)
     if m and len(cand) > 1:
@@ -247,8 +248,8 @@ def partita_in(nome, stag):
         # l'ordine dice chi gioca in casa: "COMO v JUVENTUS" o "SASSUOLO v COMO"
         c2 = [c for c in cand if (c[1] == "COMO") == (pos_como < pos_altra)]
         if c2: cand = c2
-    if len(set(c[0] for c in cand)) == 1: return (cand[0][0], cand[0][3] if len(cand[0]) > 3 else "", altra, cand[0][1] == "COMO")
-    return (0, "", altra, casa)
+    if len(set(c[0] for c in cand)) == 1: return (cand[0][0], cand[0][3] if len(cand[0]) > 3 else "", altra, cand[0][1] == "COMO", cand[0][4] if len(cand[0]) > 4 else "")
+    return (0, "", altra, casa, "")
 
 
 def senza_date(t):
@@ -337,6 +338,59 @@ RIC = META.Riconosci(PERS)
 
 
 PF = {}
+PARTITE = {}
+
+
+def riepilogo_espn(eid):
+    """risultato, gol, cartellini, stadio e stemmi di una partita ESPN (tenuto in cache: il passato non cambia)"""
+    if not eid: return None
+    os.makedirs(ESPN_PARTITE, exist_ok=True)
+    f = os.path.join(ESPN_PARTITE, eid + ".json")
+    try: return json.load(open(f))
+    except Exception: pass
+    import subprocess
+    try:
+        j = json.loads(subprocess.run(["curl", "-s", "--max-time", "20", "https://site.api.espn.com/apis/site/v2/sports/soccer/all/summary?event=" + eid],
+                                      capture_output=True, text=True, timeout=30).stdout or "{}")
+        h = j["header"]["competitions"][0]
+        sq = [{"nome": c["team"]["displayName"], "id": str(c["team"].get("id") or ""), "gol": c.get("score", ""), "casa": c.get("homeAway") == "home"} for c in h["competitors"]]
+        ev = []
+        for k in j.get("keyEvents", []):
+            t = (k.get("type") or {}).get("text", "")
+            if not re.search(r"goal|penalty|own goal|red card|yellow card", t, re.I) or re.search(r"missed|saved", t, re.I): continue
+            chi = [p.get("athlete", {}).get("displayName", "") for p in k.get("participants", [])]
+            ev.append({"t": t, "min": (k.get("clock") or {}).get("displayValue", ""), "chi": chi[0] if chi else "", "assist": chi[1] if len(chi) > 1 and "Goal" in t else "",
+                       "sq": (k.get("team") or {}).get("displayName", "")})
+        x = {"squadre": sq, "eventi": ev, "stadio": ((j.get("gameInfo") or {}).get("venue") or {}).get("fullName", ""), "finita": (h.get("status") or {}).get("type", {}).get("completed", True)}
+    except Exception:
+        return None
+    if x.get("finita"):
+        json.dump(x, open(f + ".tmp", "w"), ensure_ascii=False); os.replace(f + ".tmp", f)
+    return x
+
+
+def schede_partite(righe):
+    """per ogni partita del Como con materiale del club: i numeri, i momenti, chi ha girato,
+    il riepilogo ESPN e le stesse partite nel MAM di Como TV (archivio partite)"""
+    for r in righe:
+        pk = r[9].get("pk")
+        if not pk or pk not in PARTITE: continue
+        p = PARTITE[pk]
+        p["v"] = p.get("v", 0) + r[4]; p["f"] = p.get("f", 0) + r[5]; p["cartelle"] = p.get("cartelle", 0) + 1
+        for k, campo in (("mo", "mo"), ("cam", "cam")):
+            v = r[9].get(campo); d = p.setdefault(k, {})
+            for x in (v if isinstance(v, list) else [v] if v else []): d[x] = d.get(x, 0) + r[4] + r[5]
+    try: arch = json.load(open(ARCHIVIO))
+    except Exception: arch = {}
+    mam = {}
+    for rec, v in arch.items():
+        nome = str(v.get("partita") or ""); g = str(v.get("giorno") or "")
+        if "COMO" in nome.upper() and not R_GIOVANI.search(nome + " " + str(v.get("competizione") or "")): mam.setdefault(g, []).append([rec, nome])
+    for pk, p in PARTITE.items():
+        e = riepilogo_espn(p.get("id"))
+        if e: p["espn"] = e
+        if mam.get(pk): p["mam"] = sorted(mam[pk], key=lambda x: x[1])
+    return {k: v for k, v in PARTITE.items() if v.get("v") or v.get("f")}
 
 
 def schede_persone(righe):
@@ -355,9 +409,16 @@ def schede_persone(righe):
             if r[2]: c["stagioni"][r[2]] = c["stagioni"].get(r[2], 0) + nv + nfo
             for g in r[9].get("g", []): c["generi"][g] = c["generi"].get(g, 0) + nv + nfo
             k = r[0].split("/")[0]; c["collezioni"][k] = c["collezioni"].get(k, 0) + nv + nfo
+    gol = {}
+    for pk, pa in PARTITE.items():
+        for e in ((pa.get("espn") or {}).get("eventi") or []):
+            if "Goal" not in e["t"] and "Penalty" not in e["t"]: continue
+            for pid in RIC.persone(e["chi"]):
+                gol.setdefault(pid, []).append([pk, e["min"]])
     fuori = []
     for p in PERS:
         c = conti.get(p["id"])
+        if c and gol.get(p["id"]): c["gol"] = gol[p["id"]]
         if not c: continue
         fuori.append(dict({k: p[k] for k in ("id", "nome", "ruolo", "maglia", "stagioni", "foto", "alias")}, **{"conti": c}))
     return sorted(fuori, key=lambda p: -(p["conti"]["video"] + p["conti"]["foto"]))
@@ -421,6 +482,7 @@ def main():
     righe = []
     global PF
     PF = {}
+    PARTITE.clear()
     for d, fs in sorted(cartelle.items()):
         stag_p = stagione_in(d); anno_p = 0 if stag_p else anno_in(d)
         dn, fonte = 0, ""
@@ -456,6 +518,10 @@ def main():
             if pt[2]: md["a"] = pt[2].title()
             if pt[1]: md["c"] = pt[1]
             md["ct"] = "Casa" if pt[3] else "Trasferta"
+            # LA PARTITA: il giorno del calendario (il Como gioca una partita al giorno)
+            if pt[0]:
+                md["pk"] = str(pt[0])
+                PARTITE.setdefault(str(pt[0]), {"g": pt[0], "avv": pt[2].title(), "casa": bool(pt[3]), "comp": pt[1], "id": pt[4]})
             if "Partita" not in md.get("g", []): md["g"] = ["Partita"] + md.get("g", [])
         c = RIC.competizione(d)
         if c and "c" not in md: md["c"] = c
@@ -541,11 +607,13 @@ def main():
     for c in colls + eps:
         if per.get(c["p"]): c["data"] = per[c["p"]]
     tot_file = sum(len(v) for v in cartelle.values()); tot_peso = sum(f[1] for v in cartelle.values() for f in v)
+    partite = schede_partite(righe)            # prima delle persone: i loro gol vengono da qui
     indice = {"aggiornato": int(time.time()), "file": tot_file, "peso": tot_peso, "collezioni": colls, "episodi": eps,
-              "cartelle": [r[:8] + [r[9]] for r in righe], "servizi": servizi, "persone": schede_persone(righe), "conDataCamera": len(cam), "esclusi": {"file": tolti, "cartelle": sorted(fuori)}}
+              "cartelle": [r[:8] + [r[9]] for r in righe], "servizi": servizi, "partite": partite, "persone": schede_persone(righe), "conDataCamera": len(cam), "esclusi": {"file": tolti, "cartelle": sorted(fuori)}}
     if len(sys.argv) > 1: indice["parziale"] = 1
     dati_file = [[d, [f[:3] + ([f[3]] if f[3] else []) for f in sorted(v)]] for d, v in sorted(cartelle.items())]
-    for nomef, dati in (("indice.json", indice), ("file.json", dati_file)):
+    piccolo = {k: {"n": v.get("v", 0) + v.get("f", 0), "avv": v["avv"], "casa": v["casa"]} for k, v in indice["partite"].items()}
+    for nomef, dati in (("indice.json", indice), ("file.json", dati_file), ("partite.json", piccolo)):
         tmp = os.path.join(PUB, nomef + ".tmp")
         json.dump(dati, open(tmp, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
         # la versione compressa accanto (nginx gzip_static): 13 MB diventano 3, e nessuno li ricomprime a ogni visita

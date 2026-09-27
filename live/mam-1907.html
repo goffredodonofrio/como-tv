@@ -94,7 +94,10 @@
   .sg-cerca:hover{color:#10131c;background:var(--oro2);}
   .sg-azioni span{font-size:11px;color:var(--fumo);border:1px solid var(--riga2);border-radius:5px;padding:3px 6px;}
   .sg-ris{padding:18px 20px;border:1px solid var(--riga2);border-radius:12px;background:linear-gradient(135deg,rgba(201,162,75,.08),rgba(245,241,230,.02) 60%);}
-  .sg-ris .sg-foto{width:104px;height:104px;font-size:30px;} .sg-ris .sg-nome{font-size:28px;}
+  .sg-ris .sg-foto{width:104px;height:104px;font-size:30px;}
+  .pa-testa{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font:800 26px/1.1 'Mazzard',sans-serif;text-transform:uppercase;}
+  .pa-stemma{width:44px;height:44px;object-fit:contain;} .pa-ris{color:var(--oro2);font-variant-numeric:tabular-nums;padding:4px 12px;border:1px solid rgba(201,162,75,.45);border-radius:8px;background:rgba(201,162,75,.08);}
+  a.sg-c{text-decoration:none;} .sg-ris .sg-nome{font-size:28px;}
   .sg-ris .sg-tessere{grid-template-columns:repeat(auto-fill,minmax(110px,1fr));}
   /* la scheda della persona (vecchia) */
   .scheda-p{display:flex;gap:22px;align-items:flex-start;padding:18px 20px;border:1px solid var(--riga2);border-radius:12px;background:linear-gradient(135deg,rgba(201,162,75,.10),rgba(245,241,230,.02) 60%);}
@@ -407,7 +410,10 @@
 
   // ══════════ GETTONI ══════════
   var ETI = { coll: "Collezione", ep: "Episodio", cart: "Cartella", stag: "Stagione", anno: "Anno", tipo: "Tipo", pers: "Persona", gen: "Tipo di contenuto", sq: "Squadra", comp: "Competizione", avv: "Avversario",
-    st: "Stato del materiale", cam: "Chi ha girato", mo: "Momento", lu: "Luogo", ct: "Casa o trasferta" };
+    st: "Stato del materiale", cam: "Chi ha girato", mo: "Momento", lu: "Luogo", ct: "Casa o trasferta", part: "Partita" };
+  // LE PARTITE DEL COMO con materiale del club (Goffredo, 27/09/2026): chiave = il giorno
+  var PART = {};
+  function titoloPartita(p) { return p ? (p.casa ? "Como–" + p.avv : p.avv + "–Como") : ""; }
   // I METADATI (Goffredo, 27/09/2026: "criterio universale per le ricerche"): per ogni cartella
   // g tipo di contenuto, q squadra, c competizione, a avversario, p persone (dall'indice)
   var MD = {}, PERS = {}, VOC = { gen: {}, sq: {}, comp: {}, avv: {}, cam: {}, mo: {}, lu: {}, ct: {}, st: { Grezzo: 1, Montato: 1, Proxy: 1, Foto: 1, Grafica: 1 } };
@@ -470,6 +476,10 @@
     VOCI_S = [];
     function voce(g, testo, dett, conta) { VOCI_S.push(g); var u = (g.k === "coll" || g.k === "ep") ? copertina(g.v) : ""; return '<a data-s="' + (VOCI_S.length - 1) + '">' + (u ? '<span class="gt-mini" style="' + bg(u) + '"></span>' : '<span class="gt-dot"></span>') + "<span>" + esc(testo) + (dett ? "<em>" + esc(dett) + "</em>" : "") + "</span><small>" + conta + "</small></a>"; }
     var h = "";
+    // le partite: per avversario ("juventus", "napoli")
+    var parti = Object.keys(PART).map(function (k) { return PART[k]; }).filter(function (pa) { return inizia(pa.avv) || inizia("como " + pa.avv); })
+      .sort(function (a, b) { return b.g - a.g; }).slice(0, 6);
+    if (parti.length) h += "<h5>Partite</h5>" + parti.map(function (pa) { return voce({ k: "part", v: String(pa.g), n: nomeDi("part", String(pa.g)) }, titoloPartita(pa), [pa.comp, dataRip(pa.g)].filter(Boolean).join(" · "), n((pa.v || 0) + (pa.f || 0)) + " file"); }).join("");
     // le persone: nome o come si scrivono nelle cartelle ("fabregas", "cesc", "da cunha")
     // dall'inizio di una parola: "cesc" e' Fabregas, non "Francesco"
     var qq = " " + q.replace(/[^a-z0-9]+/g, " ").trim();
@@ -490,7 +500,7 @@
     h += '<h5>File</h5><a data-testo="1"><span class="gt-dot" style="--c:var(--fumo)"></span><span>Cerca «' + esc($("cerca").value.trim()) + '» nei nomi dei file e delle cartelle</span><small>Invio</small></a>';
     // la persona che si sta scrivendo: la sua scheda accanto, come nel MAM
     var p0 = q.length >= 3 && pers.length ? pers[0] : null;
-    if (!p0 || !SCHEDA_P || SCHEDA_P.id !== p0.id) SCHEDA_SEL = { tipo: {}, gen: {}, stag: {}, comp: {}, coll: {} };
+    if (!p0 || !SCHEDA_P || SCHEDA_P.id !== p0.id) SCHEDA_SEL = { tipo: {}, gen: {}, stag: {}, comp: {}, coll: {}, part: {} };
     SCHEDA_P = p0;
     $("sugg").classList.toggle("con-scheda", !!p0);
     $("sugg").innerHTML = p0 ? '<div class="sg-lista">' + h + '</div><div class="sg-lato">' + cardPersona(p0, "sugg") + "</div>" : h;
@@ -532,7 +542,7 @@
     if (Q) h.set("q", Q); if (RACCOLTA) h.set("r", RACCOLTA.id); if (TAB !== "tutto") h.set("t", TAB);
     history.replaceState(null, "", location.pathname + location.search + (h.toString() ? "#" + h.toString() : ""));
   }
-  function nomeDi(k, v) { return k === "ep" ? v.split("/")[1] : k === "cart" ? ultimo(v) : k === "stag" ? "Stagione " + v : k === "tipo" ? (v === "video" ? "Solo video" : "Solo foto") : k === "pers" ? ((PERS[v] || {}).nome || v) : k === "avv" ? "contro " + v : k === "cam" ? "Girato da " + v : k === "ct" ? (v === "Casa" ? "In casa" : "In trasferta") : v; }
+  function nomeDi(k, v) { return k === "ep" ? v.split("/")[1] : k === "cart" ? ultimo(v) : k === "stag" ? "Stagione " + v : k === "tipo" ? (v === "video" ? "Solo video" : "Solo foto") : k === "pers" ? ((PERS[v] || {}).nome || v) : k === "avv" ? "contro " + v : k === "cam" ? "Girato da " + v : k === "ct" ? (v === "Casa" ? "In casa" : "In trasferta") : k === "part" ? (PART[v] ? titoloPartita(PART[v]) + " " + dataRip(PART[v].g) : v) : v; }
   function leggiIndirizzo() {
     var h = new URLSearchParams(location.hash.slice(1)); G = [];
     try { (JSON.parse(h.get("g") || "[]") || []).forEach(function (x) { if (ETI[x[0]]) G.push({ k: x[0], v: String(x[1]), n: nomeDi(x[0], String(x[1])) }); }); } catch (e) {}
@@ -647,7 +657,7 @@
       $("tempo").innerHTML = sv.length ? '<div style="overflow-x:auto"><table class="lista-s"><thead><tr><th></th><th>Data</th><th>Servizio</th><th>Squadra</th><th>Tipo</th><th>Video</th><th>Foto</th></tr></thead><tbody>' +
         tutti.slice(0, APERTI.lista ? 5000 : 300).map(function (x) { var parti = x[0].split("/"), m = x[9] || {}, gn = m.gn || {};
           var tipi = Object.keys(gn).sort(function (a, b) { return gn[b] - gn[a]; }).slice(0, 2).join(", ");
-          return '<tr class="srv-r" data-cart="' + esc(x[0]) + '"><td class="mini-l"><span' + (x[7] ? ' data-mini="' + esc(x[7]) + '"' : "") + '><span class="foto"></span></span></td><td class="n">' + (x[1] ? dataRip(x[1]) : "—") +
+          return '<tr class="srv-r" data-cart="' + esc(x[0]) + '"' + (m.pk ? ' data-pk="' + esc(m.pk) + '"' : "") + '><td class="mini-l"><span' + (x[7] ? ' data-mini="' + esc(x[7]) + '"' : "") + '><span class="foto"></span></span></td><td class="n">' + (x[1] ? dataRip(x[1]) : "—") +
             '</td><td class="p">' + esc(x[8] || ultimo(x[0])) + "<small>" + esc(parti.slice(0, -1).join(" › ")) + '</small></td><td class="n">' + esc(m.q || SENZA_SQ) + '</td><td class="n">' + esc(tipi) + '</td><td class="n">' + n(x[3]) + '</td><td class="n">' + (x[4] ? n(x[4]) : "") + "</td></tr>"; }).join("") +
         "</tbody></table></div>" + (tutti.length > 300 && !APERTI.lista ? '<div class="piu">Ne vedi 300 su ' + n(tutti.length) + '. <button class="mini" data-apri-m="lista">Mostrali tutti</button></div>' : "") : '<div class="vuoto">Niente con questi filtri.</div>';
       miniatureDi($("tempo")); return;
@@ -677,7 +687,7 @@
   function schedaServizio(x, conPiu) {
     var parti = x[0].split("/"), c0 = parti[0], dt = x[1];
     var eti = dt ? (dt % 100 ? ("0" + (dt % 100)).slice(-2) + "." + ("0" + (Math.floor(dt / 100) % 100)).slice(-2) + "." + String(Math.floor(dt / 10000)).slice(2) : MESI[Math.floor(dt / 100) % 100 - 1].slice(0, 3) + " " + Math.floor(dt / 10000)) : (x[2] ? "Stagione " + x[2] : "");
-    return '<div class="card srv' + (SCELTI.has(x[0]) ? " scelta" : "") + '" data-cart="' + esc(x[0]) + '"' + (x[7] ? ' data-prov="' + esc(x[7]) + '"' : "") + ' tabindex="0" title="' + esc(x[0]) + '">' + (conPiu ? bottonePiu(x[0], true) : "") + '<div class="mini"' + (x[7] ? ' data-mini="' + esc(x[7]) + '"' : "") + '><div class="foto"></div><span class="scorri"><i></i></span><span class="prep">anteprima…</span>' +
+    return '<div class="card srv' + (SCELTI.has(x[0]) ? " scelta" : "") + '" data-cart="' + esc(x[0]) + '"' + ((x[9] || {}).pk ? ' data-pk="' + esc(x[9].pk) + '"' : "") + '' + (x[7] ? ' data-prov="' + esc(x[7]) + '"' : "") + ' tabindex="0" title="' + esc(x[0]) + '">' + (conPiu ? bottonePiu(x[0], true) : "") + '<div class="mini"' + (x[7] ? ' data-mini="' + esc(x[7]) + '"' : "") + '><div class="foto"></div><span class="scorri"><i></i></span><span class="prep">anteprima…</span>' +
       '<span class="eti">' + esc(eti) + '</span><span class="nn">' + (TIPO_H && (x[9] || {}).gn && x[9].gn[TIPO_H] ? n(x[9].gn[TIPO_H]) + " di " + esc(TIPO_H.toLowerCase()) : [x[3] ? n(x[3]) + " video" : "", x[4] ? n(x[4]) + " foto" : ""].filter(Boolean).join(" · ")) + "</span></div>" +
       '<div class="t"><b>' + esc(x[8] || ultimo(x[0])) + '</b><small><span class="comp-et" style="background:' + colore(c0) + '">' + esc(c0) + "</span>" + esc(parti.slice(1, -1).join(" › ")) + "</small>" +
       (dt && x[6] && x[6] !== "nome" ? '<small style="margin-top:2px">data ' + esc(FONTI[x[6]] || "") + "</small>" : "") + "</div></div>";
@@ -685,7 +695,9 @@
   $("selTipo").onchange = function () { APERTI = {}; disegnaAlbero(); disegnaHome(); };
   $("tempo").addEventListener("click", function (e) {
     var b = e.target.closest("[data-apri-m]"); if (b) { APERTI[b.dataset.apriM] = true; disegnaHome(); return; }
-    var c = e.target.closest(".srv[data-cart],.srv-r[data-cart]"); if (c) { if (TIPO_H && !G.some(function (g) { return g.k === "gen" && g.v === TIPO_H; })) G.push({ k: "gen", v: TIPO_H, n: TIPO_H }); metti({ k: "cart", v: c.dataset.cart, n: ultimo(c.dataset.cart) }); window.scrollTo(0, 0); }
+    var c = e.target.closest(".srv[data-cart],.srv-r[data-cart]");
+    if (c && c.dataset.pk && PART[c.dataset.pk]) { G = G.filter(function (g) { return g.k === "tipo"; }); metti({ k: "part", v: c.dataset.pk, n: nomeDi("part", c.dataset.pk) }); window.scrollTo(0, 0); return; }
+    if (c) { if (TIPO_H && !G.some(function (g) { return g.k === "gen" && g.v === TIPO_H; })) G.push({ k: "gen", v: TIPO_H, n: TIPO_H }); metti({ k: "cart", v: c.dataset.cart, n: ultimo(c.dataset.cart) }); window.scrollTo(0, 0); }
   });
   $("tempo").addEventListener("keydown", function (e) { if (e.key === "Enter" && e.target.classList.contains("srv")) e.target.click(); });
 
@@ -722,7 +734,7 @@
   function trovati(escludi) {
     var coll = di("coll"), ep = di("ep"), cart = di("cart"), stag = di("stag"), anno = di("anno");
     var fp = di("pers"), fg = di("gen"), fq = di("sq"), fc = di("comp"), fa = di("avv"), fcam = di("cam"), fmo = di("mo"), flu = di("lu"), fct = di("ct"), fst = di("st");
-    var DD = doppioni(); NASCOSTI = 0;
+    var DD = doppioni(); NASCOSTI = 0; var fpart = di("part");
     var parole = norm(Q).split(/\s+/).filter(function (w) { return w.length > 1; });
     var inRacc = RACCOLTA ? new Set(RACCOLTA.file.filter(function (x) { return !x.cartella; }).map(function (x) { return x.via; })) : null;
     var cartRacc = RACCOLTA ? RACCOLTA.file.filter(function (x) { return x.cartella; }).map(function (x) { return x.via; }) : [];
@@ -743,6 +755,7 @@
       if (escludi !== "comp" && fc.length && fc.indexOf(md.c) < 0) continue;
       if (escludi !== "avv" && fa.length && fa.indexOf(md.a) < 0) continue;
       if (escludi !== "cam" && fcam.length && fcam.indexOf(md.cam) < 0) continue;
+      if (fpart.length && fpart.indexOf(md.pk) < 0) continue;
       if (escludi !== "ct" && fct.length && fct.indexOf(md.ct) < 0) continue;
       if (escludi !== "mo" && fmo.length && !(md.mo || []).some(function (x) { return fmo.indexOf(x) >= 0; })) continue;
       if (escludi !== "lu" && flu.length && !(md.lu || []).some(function (x) { return flu.indexOf(x) >= 0; })) continue;
@@ -777,7 +790,8 @@
       : function (a, b) { return (b.data || 0) - (a.data || 0) || a.via.localeCompare(b.via); });
     VISTI = lista;
     var h = "";
-    var unaP = di("pers"); if (unaP.length === 1 && PERS[unaP[0]] && !RACCOLTA) h += '<div class="sg-ris">' + cardPersona(PERS[unaP[0]], "ris", tutti) + "</div>";
+    var unaPa = di("part"); if (unaPa.length === 1 && PART[unaPa[0]] && !RACCOLTA) h += '<div class="sg-ris">' + cardPartita(PART[unaPa[0]], tutti) + "</div>";
+    var unaP = di("pers"); if (unaP.length === 1 && PERS[unaP[0]] && !RACCOLTA && !unaPa.length) h += '<div class="sg-ris">' + cardPersona(PERS[unaP[0]], "ris", tutti) + "</div>";
     if (RACCOLTA) h += '<div class="rac-testa"><span class="rc-eti">Raccolta 1907</span><h2>' + esc(RACCOLTA.nome) + "</h2><small>" + (function () { var nc = RACCOLTA.file.filter(function (x) { return x.cartella; }).length, nf = RACCOLTA.file.length - nc; return [nf ? nf + " file" : "", nc ? nc + (nc === 1 ? " cartella intera" : " cartelle intere") : ""].filter(Boolean).join(" · "); })() + " · aggiornata " + dataCorta((RACCOLTA.aggiornata || 0) / 1000) + (RACCOLTA.chi ? " · " + esc(RACCOLTA.chi) : "") +
       '</small><span class="rc-az"><button class="oro" data-fa="monta-racc">Monta tutta</button><button data-fa="premiere-racc" title="la raccolta come sequenza per Premiere, con gli originali della NAS">Premiere (XML)</button><button data-fa="vlc-racc" title="tutta la raccolta in VLC, dalla NAS montata sul Mac">Apri in VLC</button><button data-fa="copie-racc" title="prepara ora le copie leggere per guardarla nel browser">Prepara le copie</button><button data-fa="rinomina">Rinomina</button><button data-fa="cancella">Elimina</button><button data-fa="esci">Esci</button></span></div>';
     var nFiltri = G.filter(function (x) { return x.k !== "tipo"; }).length;
@@ -821,7 +835,7 @@
   var COL_GEN = { "Partita": "#C9A24B", "Allenamento": "#7FDCA9", "Intervista": "#8CC5F2", "Conferenza stampa": "#5AA7E8", "Ritiro": "#6EE7A8", "Nuovo acquisto": "#F2C98C",
     "Tifosi": "#F2A0A0", "Evento": "#C7A6F2", "Lifestyle e territorio": "#9FE0E0", "Drone": "#E3E08C", "Backstage": "#F5D76E", "Commerciale": "#F29C6B",
     "Grafica": "#B8B8C8", "Documentario": "#E3C271", "Social": "#E58BD0" };
-  var SCHEDA_P = null, SCHEDA_SEL = { tipo: {}, gen: {}, stag: {}, comp: {}, coll: {} };
+  var SCHEDA_P = null, SCHEDA_SEL = { tipo: {}, gen: {}, stag: {}, comp: {}, coll: {}, part: {} };
   function cardPersona(p, modo, tutti) {
     var sel = function (k, v) { return modo === "ris" ? di(k).indexOf(v) >= 0 : !!SCHEDA_SEL[k][v]; };
     var c = p.conti, nv, nf, gen = {}, stg = {}, cmp = {}, dove = {};
@@ -842,16 +856,46 @@
     function gruppo(eti, k, o, max, fmt) { var ks = ord(o).slice(0, max); if (!ks.length) return ""; if (k === "stag") ks.sort().reverse();
       return '<div class="sg-gruppo"><i>' + eti + "</i>" + ks.map(function (v) { var on = sel(k, v); return '<button type="button" class="sg-c' + (on ? " on" : "") + '" data-sg="' + k + "|" + esc(v) + '">' + (k === "coll" ? '<span class="gt-dot" style="--c:' + colore(v) + '"></span>' : "") + esc(fmt ? fmt(v) : v) + "<b>" + n(o[v]) + "</b></button>"; }).join("") + "</div>"; }
     h += gruppo("Competizioni", "comp", cmp, 6) + gruppo("Stagioni", "stag", stg, 6) + gruppo("Dove", "coll", dove, 5);
+    var gl = (c.gol || []).filter(function (x) { return PART[x[0]]; });
+    if (gl.length) { var perP = {}; gl.forEach(function (x) { (perP[x[0]] = perP[x[0]] || []).push(x[1]); });
+      h += '<div class="sg-gruppo"><i>Ha segnato</i>' + Object.keys(perP).sort().reverse().slice(0, 12).map(function (pk) { var on = sel("part", pk);
+        return '<button type="button" class="sg-c' + (on ? " on" : "") + '" data-sg="part|' + pk + '" title="il materiale del club di quella partita">⚽ ' + esc(titoloPartita(PART[pk])) + " " + dataRip(+pk) + "<b>" + esc(perP[pk].join(" ")) + "</b></button>"; }).join("") + "</div>"; }
     if (modo === "sugg") {
       var nn = Object.keys(SCHEDA_SEL).reduce(function (t, k) { return t + Object.keys(SCHEDA_SEL[k]).length; }, 0);
       h += '<div class="sg-azioni"><button type="button" class="sg-cerca" data-sgcerca="1">Cerca' + (nn ? " con " + nn + (nn === 1 ? " filtro" : " filtri") : " tutto di " + esc(p.nome.split(/\s+/).pop())) + "</button><span>Invio</span></div>";
     }
     return h + "</div>";
   }
+  // LA SCHEDA PARTITA: risultato e gol da ESPN, il materiale del club per momento e per
+  // chi ha girato, e la stessa partita nel MAM di Como TV
+  function personaDaNome(nome) { var t = " " + norm(nome).replace(/[^a-z0-9]+/g, " ") + " ", best = null;
+    Object.keys(PERS).forEach(function (k) { PERS[k].alias.forEach(function (a) { if (t.indexOf(" " + a + " ") >= 0 && (!best || a.length > best[1].length)) best = [k, a]; }); }); return best ? best[0] : ""; }
+  function cardPartita(pa, tutti) {
+    var e = pa.espn || {}, sq = (e.squadre || []).slice().sort(function (a, b) { return (b.casa ? 1 : 0) - (a.casa ? 1 : 0); });
+    var stemma = function (x) { return x && x.id ? '<img class="pa-stemma" src="' + FOTO + "stemma-espn-" + esc(x.id) + '.png" alt="" onerror="this.style.visibility=\'hidden\'">' : ""; };
+    var testa = sq.length === 2 ? stemma(sq[0]) + "<b>" + esc(sq[0].nome) + '</b><span class="pa-ris">' + esc(sq[0].gol) + "–" + esc(sq[1].gol) + "</span><b>" + esc(sq[1].nome) + "</b>" + stemma(sq[1])
+      : "<b>" + esc(titoloPartita(pa)) + "</b>";
+    var mo = {}, cam = {}, nv = 0, nf = 0;
+    tutti.forEach(function (x) { if (x.tipo === "video") nv++; else nf++; (x.md.mo || []).forEach(function (m) { mo[m] = (mo[m] || 0) + 1; }); if (x.md.cam) cam[x.md.cam] = (cam[x.md.cam] || 0) + 1; });
+    var ORD_MO = ["Arrivo", "Pre-partita", "Spogliatoio", "Tunnel", "Riscaldamento", "Partita", "Gol", "Esultanza", "Intervallo", "Post-partita"];
+    var chip = function (k, v, eti, num) { var on = di(k).indexOf(v) >= 0; return '<button type="button" class="sg-c' + (on ? " on" : "") + '" data-sg="' + k + "|" + esc(v) + '">' + esc(eti) + (num ? "<b>" + n(num) + "</b>" : "") + "</button>"; };
+    var gol = (e.eventi || []).filter(function (x) { return /goal|penalty|red card/i.test(x.t); });
+    var h = '<div class="pa-testa">' + testa + "</div>" +
+      '<div class="sg-riga" style="margin-top:6px">' + esc([pa.comp, dataRip(pa.g), e.stadio || (pa.casa ? "Stadio Sinigaglia" : "In trasferta")].filter(Boolean).join(" · ")) + " · <b>" + n(nv) + "</b> video · <b>" + n(nf) + "</b> foto del club</div>";
+    if (gol.length) h += '<div class="sg-gruppo"><i>In campo</i>' + gol.map(function (x) {
+      var pid = personaDaNome(x.chi), ic = /red/i.test(x.t) ? "🟥" : "⚽", eti = ic + " " + x.min + " " + x.chi + (x.assist ? " (assist " + x.assist.split(" ").pop() + ")" : "") + (/own/i.test(x.t) ? " (autogol)" : "");
+      return pid ? '<button type="button" class="sg-c' + (di("pers").indexOf(pid) >= 0 ? " on" : "") + '" data-sg="pers|' + esc(pid) + '" title="il materiale del club su ' + esc(x.chi) + ' in questa partita">' + esc(eti) + "</button>" : '<span class="sg-c" style="cursor:default">' + esc(eti) + "</span>"; }).join("") + "</div>";
+    var mos = ORD_MO.filter(function (m) { return mo[m]; });
+    if (mos.length) h += '<div class="sg-gruppo"><i>Momenti</i>' + mos.map(function (m) { return chip("mo", m, m, mo[m]); }).join("") + "</div>";
+    var cs = Object.keys(cam).sort(function (a, b) { return cam[b] - cam[a]; });
+    if (cs.length) h += '<div class="sg-gruppo"><i>Chi ha girato</i>' + cs.map(function (c) { return chip("cam", c, c, cam[c]); }).join("") + "</div>";
+    if (pa.mam && pa.mam.length) h += '<div class="sg-gruppo"><i>MAM Como TV</i>' + pa.mam.map(function (m) { return '<a class="sg-c" href="mam2.html?asset=' + encodeURIComponent(m[0]) + '" target="_blank" rel="noopener" title="la stessa partita nel MAM di Como TV">' + esc(m[1]) + " ↗</a>"; }).join("") + "</div>";
+    return h;
+  }
   function cercaDaScheda(p) {
     G = G.filter(function (g) { return g.k !== "pers"; }); G.push({ k: "pers", v: p.id, n: p.nome });
     Object.keys(SCHEDA_SEL).forEach(function (k) { Object.keys(SCHEDA_SEL[k]).forEach(function (v) { if (k === "tipo") G = G.filter(function (g) { return g.k !== "tipo"; }); G.push({ k: k, v: v, n: nomeDi(k, v) }); }); });
-    SCHEDA_SEL = { tipo: {}, gen: {}, stag: {}, comp: {}, coll: {} }; SCHEDA_P = null;
+    SCHEDA_SEL = { tipo: {}, gen: {}, stag: {}, comp: {}, coll: {}, part: {} }; SCHEDA_P = null;
     Q = ""; $("cerca").value = ""; chiudiSugg(); disegnaGettoni(); vai();
   }
   function schedaPersona(p, tutti) {
@@ -1234,6 +1278,7 @@
         (m.mo || []).forEach(function (x) { VOC.mo[x] = (VOC.mo[x] || 0) + nf; }); (m.lu || []).forEach(function (x) { VOC.lu[x] = (VOC.lu[x] || 0) + nf; });
       });
       (I.persone || []).forEach(function (p) { PERS[p.id] = p; });
+      PART = I.partite || {};
       var datate = I.cartelle.filter(function (r) { return r[1]; }).length;
       $("sotto").textContent = n(I.file) + " file · " + I.collezioni.length + " collezioni · " + n(I.episodi.length) + " episodi · " + gb(I.peso) + " sulla NAS" +
         (I.parziale ? " · indicizzazione in corso" : "") + ". Cerca, guarda, monta.";
