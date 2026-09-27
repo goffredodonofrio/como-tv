@@ -12914,7 +12914,7 @@ async function lavoroRegia(L, pezzi) {
         const ing = ["-ss", String(Math.max(0, x.da)), "-t", String(x.dur), "-i", x.file].concat(x.muto ? ["-f", "lavfi", "-t", String(x.dur), "-i", "anullsrc=r=48000:cl=stereo"] : []);
         await ffmpegFa(ing.concat(["-map", "0:v:0", "-map", x.muto ? "1:a:0" : "0:a:0",
           "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=50,setsar=1,format=yuv420p",
-          "-af", "aformat=sample_rates=48000:channel_layouts=stereo", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k", "-shortest", f]), 900000);
+          "-af", "aformat=sample_rates=48000:channel_layouts=stereo", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k", "-shortest", "-map_metadata", "-1", "-write_tmcd", "0", f]), 900000);
       } else
       await ffmpegFa(["-ss", String(Math.max(0, x.da)), "-i", x.file, "-t", String(x.dur), "-map", "0:v:0", "-map", "0:a:0?", "-c", "copy", "-avoid_negative_ts", "make_zero", f], 120000);
       tmp.push(f); L.fatti = i + 1;
