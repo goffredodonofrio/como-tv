@@ -6562,7 +6562,9 @@ function nomeQuasiCerto(k, a) {
     const dg = Math.abs(Math.floor(locale / 86400000) * 86400000 - giorno) / 86400000;
     // cartelle generiche ("TAGLI", "CLEANFEED", "20251012"): le squadre sono nel nome del file
     const cart = pz[2] || "";
-    const cw = paroleNome(/^(tagli|cleanfeed|clean feed|ita|eng|\d{6,8})$/i.test(cart.trim()) || pz.length <= 3 ? path.basename(a.chiave || "") : cart);
+    // (27/09 notte: c'era "|| pz.length <= 3", ma TEMP/giorno/cartella ha proprio tre
+    // pezzi, e tutte le cartelle normali finivano sul nome del file: -250 utilizzabili)
+    const cw = paroleNome(!cart.trim() || /^(tagli|cleanfeed|clean feed|ita|eng|\d{6,8})$/i.test(cart.trim()) ? path.basename(a.chiave || "") : cart);
     const c = (n) => paroleNome(n).some((w) => cw.some((x) => x.slice(0, 4) === w.slice(0, 4)));
     const espnTutte = !!sq && c(sq[0]) && c(sq[1]);
     si = dg <= 1 && (c(lati[0]) || espnTutte) && (c(lati[1]) || espnTutte);
