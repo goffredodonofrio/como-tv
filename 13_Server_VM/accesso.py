@@ -188,6 +188,13 @@ img{width:56px} h1{font:800 24px/1.1 'Mazzard',sans-serif} p{color:#9A9CA4;font-
 a.g{display:inline-flex;align-items:center;gap:10px;background:#fff;color:#1f1f1f;text-decoration:none;border-radius:999px;padding:11px 20px;font-weight:600;font-size:14px}
 a.g:focus-visible{outline:3px solid #C9A24B;outline-offset:3px}
 .err{color:#FF9A9C;background:rgba(229,27,32,.12);border-radius:8px;padding:10px 12px;font-size:13px}
+.tec{width:100%;margin-top:8px;padding-top:16px;border-top:1px solid rgba(255,255,255,.08);display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center}
+.tec-eti{grid-column:1/-1;text-align:left;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#6B6E78}
+.tec input{min-width:0;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#EDEDEE;font:inherit;font-size:13px}
+.tec input:focus{outline:none;border-color:#C9A24B}
+.tec button{padding:9px 14px;border-radius:8px;border:1px solid rgba(201,162,75,.5);background:transparent;color:#E3C271;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.tec button:hover{background:rgba(201,162,75,.12)}
+@media (max-width:420px){.tec{grid-template-columns:1fr}}
 </style></head><body><main class="box">
 <img src="/loghi/como-tv-logo.png" alt="Como TV">
 <h1>Accedi a Como TV</h1>
@@ -195,8 +202,14 @@ __ERRORE__
 <p>Con il tuo account Google di lavoro: <b>@sent.tv</b> o <b>@comofootball.com</b>.</p>
 <a class="g" id="vai" href="/auth/google?torna=__TORNA__"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.2C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.3 5.7c4.3-4 7-9.9 7-17.2z"/><path fill="#FBBC05" d="M10.6 28.5c-.5-1.4-.8-2.9-.8-4.5s.3-3.1.8-4.5l-7.9-6.2C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.3-5.7c-2.2 1.5-5 2.3-8.6 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.2C6.6 42.6 14.6 48 24 48z"/></svg>Accedi con Google</a>
 <p>Ogni azione viene registrata con la tua mail.</p>
-<p><a href="/auth/tecnico?torna=__TORNA__" style="color:#6B6E78;font-size:12px">Accesso tecnico</a></p>
-</main><script>if(location.hash){var a=document.getElementById("vai");a.href+=encodeURIComponent(location.hash);}</script></body></html>"""
+<form class="tec" method="post" action="/auth/tecnico">
+<div class="tec-eti">Accesso tecnico</div>
+<input type="hidden" name="torna" id="tornaTec" value="__TORNA_TESTO__">
+<input name="utente" placeholder="Utente" autocomplete="username" aria-label="Utente" required>
+<input name="password" type="password" placeholder="Password" autocomplete="current-password" aria-label="Password" required>
+<button type="submit">Entra</button>
+</form>
+</main><script>if(location.hash){var a=document.getElementById("vai");a.href+=encodeURIComponent(location.hash);var t=document.getElementById("tornaTec");t.value+=location.hash;}</script></body></html>"""
 
 
 def azione_di(percorso, stato):
@@ -340,7 +353,7 @@ class H(BaseHTTPRequestHandler):
         self.end_headers(); self.wfile.write(b)
 
     def pagina(self, torna, errore=""):
-        h = PAGINA.replace("__TORNA__", urllib.parse.quote(torna, safe="")).replace("__ERRORE__", '<p class="err">' + html.escape(errore) + "</p>" if errore else "")
+        h = PAGINA.replace("__TORNA_TESTO__", html.escape(torna)).replace("__TORNA__", urllib.parse.quote(torna, safe="")).replace("__ERRORE__", '<p class="err">' + html.escape(errore) + "</p>" if errore else "")
         self.manda(200, h, "text/html; charset=utf-8")
 
     def do_GET(self):
