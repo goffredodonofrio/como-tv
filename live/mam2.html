@@ -6885,7 +6885,10 @@
     var completo = tuttoIndice && agFinite;
     var st = completo ? "finita" : scarica ? "va" : "ferma";
     var etichetta = completo ? "completo" : scarica ? (tuttoIndice && ag ? "scarica le aggiunte" : "sta scaricando") : ("ferma" + (d.fermaDa ? " da " + Math.round(d.fermaDa / 60000) + " min" : ""));
-    var v = d.attiva ? (d.velocitaOra || d.velocita || 0) : 0;
+    // la media dei 10 minuti: quella dei 30 secondi salta a ogni file che la
+    // passata sulla NAS trova finito tutto insieme (3.868 MB/s il 27/09)
+    var v = d.attiva ? (d.velocita || d.velocitaOra || 0) : 0;
+    if (v > 150e6) v = 0;
     // avanzamento: le aggiunte se ci sono e non sono finite, se no l'indice
     var tot, fatto, cosa, manca;
     if (ag && !agFinite) { tot = ag.byte; fatto = Math.min(ag.byte, ag.byteArrivati); cosa = ag.fatti + " di " + ag.file + " file aggiunti"; }
@@ -6898,7 +6901,7 @@
     var mancanoInd = Math.max(0, d.partite - d.partiteCasa);
     c.hidden = false; c.className = "copia compatta " + st;
     c.innerHTML = '<div class="copia-testa"><b>Archivio</b><em class="' + st + '">' + etichetta + '</em>' +
-        '<span class="copia-num"><strong>' + num(d.partiteCasa) + '</strong> partite sulla NAS · <strong>' + gbTesto(d.sullaNas) + '</strong></span></div>' +
+        '<span class="copia-num" title="le partite dell\u2019indice S3 gi\u00e0 sulla NAS; le aggiunte arrivate si contano nel totale in alto"><strong>' + num(d.partiteCasa) + '</strong> di ' + num(d.partite) + ' dall\u2019indice S3 · <strong>' + gbTesto(d.sullaNas) + '</strong></span></div>' +
       (!completo ? '<div class="copia-riga"><div class="copia-barra"><i class="casa" style="width:' + Math.max(0.5, perc).toFixed(1) + '%"></i></div>' +
         '<span>' + esc(cosa) + ' · ' + perc.toFixed(0) + '%' + (v ? ' · ' + mbs(v) : '') + (fine ? ' · fine verso le ' + esc(quandoOra(fine).replace(/^\S+\s/, "")) : '') +
         (d.spesi !== null && d.spesi !== undefined ? ' · ' + Math.round(d.spesi) + ' $ di 450' : '') + '</span></div>' : '') +
