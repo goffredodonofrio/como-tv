@@ -6462,7 +6462,9 @@ function inCasaDaLavorare() {
 // tabellone e boati per il secondo giusto
 function rifinitura(k) {
   const a = ARCHIVIO[k], passo = passoCasa(k, a);
-  if (passo === "espn" || passo === "cronometro") return 0;
+  // ESPN e' una domanda in rete di pochi secondi: prima di tutto il resto
+  if (passo === "espn") return -1;
+  if (passo === "cronometro") return 0;
   if (passo === "tabellone" && !nomeSicuro(a) && !nomeQuasiCerto(k, a)) return 0;
   return 1;
 }
@@ -7614,8 +7616,14 @@ function importaAggiunteNas() {
       quando: v.quando || new Date(Date.UTC(+g.slice(0, 4), +g.slice(4, 6) - 1, +g.slice(6, 8), 18, 0)).toISOString() };
     nuove++;
   });
+  // ESPN le aveva scartate per la competizione che non c'e': si riprova con le squadre
+  let espnDaRifare = 0;
+  Object.keys(ARCHIVIO).forEach((k) => {
+    if (k.indexOf("nas:") === 0 && !ARCHIVIO[k].competizione && ESPN[k] && /competizione non coperta/.test(ESPN[k].mancante || "")) { delete ESPN[k]; espnDaRifare++; }
+  });
+  if (espnDaRifare) { scriviEspn(); console.log("[clip] aggiunte dalla NAS: " + espnDaRifare + " da ricercare su ESPN con le squadre"); }
   if (nuove || corrette) { scriviArchivio(); giroNas(); console.log("[clip] aggiunte dalla NAS: " + nuove + " partite entrate in indice" + (corrette ? ", " + corrette + " rimesse nel secchio giusto" : "")); }
-  return { ok: true, nuove, gia, senzaFile, corrette };
+  return { ok: true, nuove, gia, senzaFile, corrette, espnDaRifare };
 }
 function scriviArchivio() {
   try {
@@ -11694,6 +11702,15 @@ function espnDatiDi(rec) {
   const a = ARCHIVIO[rec] || APPUNTI[rec] || (STORICI.find((e) => e.id === rec) || null);
   return a ? { partita: a.partita, competizione: a.competizione, quando: a.quando } : null;
 }
+function legheDalleSquadre(partita) {
+  const q = dueSquadre(partita) || String(partita || "").split(/\s*-\s*/).slice(0, 2);
+  if (!q || q.length !== 2) return [];
+  const t = q.map((n) => { const id = squadraEspnDalNome(n, ""); return id && CATALOGO.squadre[id] ? CATALOGO.squadre[id].leghe : null; });
+  if (!t[0] || !t[1]) return [];
+  // prima i campionati in comune, poi (coppe con squadre di leghe diverse) tutti
+  const comuni = t[0].filter((l) => t[1].indexOf(l) >= 0);
+  return comuni.length ? comuni : t[0].concat(t[1].filter((l) => t[0].indexOf(l) < 0)).slice(0, 6);
+}
 async function espnTrova(rec) {
   const info = espnDatiDi(rec);
   if (!info || !info.quando) throw new Error("partita senza data");
@@ -11701,7 +11718,12 @@ async function espnTrova(rec) {
   // si trovava la prima squadra di quel giorno — Padova U19-Como U19 diventava
   // Parma-Como, Como Femminile-Bresso diventava Lecce-Como (25/09/2026)
   if (nonDaEspn(rec)) { ESPN[rec] = { mancante: "giovanili o femminile: ESPN non le ha", quando: info.quando }; return ESPN[rec]; }
-  const leghe = legheDi(info.competizione);
+  let leghe = legheDi(info.competizione);
+  // SENZA COMPETIZIONE (le partite entrate dalla NAS il 27/09/2026, che non
+  // vengono da Airtable): i campionati si prendono dalle due squadre nel
+  // catalogo ESPN, e allora servono tutte e due, niente scorciatoie
+  const dalleSquadre = !leghe.length && !info.competizione;
+  if (dalleSquadre) leghe = legheDalleSquadre(info.partita);
   if (!leghe.length) { ESPN[rec] = { mancante: "competizione non coperta", quando: info.quando }; return ESPN[rec]; }
   let squadre = squadreDi(info.partita);
   // "BOLOGNA.COMO", "NAPOLI-COMO - ITA": se la divisione semplice non basta, si
@@ -11723,7 +11745,7 @@ async function espnTrova(rec) {
       // tutte e due le squadre; una sola basta se quel giorno, in quella lega,
       // quella squadra gioca in una partita sola (l'altra e' scritta male)
       if (buoni.length && buoni[0].n >= Math.min(2, squadre.length)) { trovato = buoni[0].ev; legaTrovata = lega; break; }
-      if (buoni.length && buoni[0].n === 1) {
+      if (buoni.length && buoni[0].n === 1 && !dalleSquadre) {
         const sq = squadre.find((x) => squadraCombacia(x, buoni[0].ev));
         const altre = eventi.filter((ev) => ev !== buoni[0].ev && squadraCombacia(sq, ev));
         // L'ALTRA SQUADRA DEVE ESSERE UN NOME SCRITTO MALE, NON UN'ALTRA
