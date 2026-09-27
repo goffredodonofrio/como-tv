@@ -112,8 +112,9 @@
     ".coach-card .pallini{display:flex;gap:8px;flex-wrap:wrap}",
     ".coach-card .pallini i{width:16px;height:16px;border-radius:50%;background:#E3DCCB}",
     ".coach-card .pallini i.ok{background:#2F7D55}.coach-card .pallini i.ora{background:#C9A24B}",
-    ".coach-card .bottoni{display:flex;gap:10px;flex-wrap:wrap}",
-    ".coach-card button.b{border:0;border-radius:12px;padding:15px 20px;font:700 18px/1 'DM Sans',system-ui,-apple-system,sans-serif;cursor:pointer;background:#EFE9DB;color:#101631}",
+    ".coach-card .bottoni{display:flex;gap:8px;flex-wrap:nowrap}",
+    ".coach-card button.b{border:0;border-radius:12px;padding:14px 14px;white-space:nowrap;font:700 16px/1 'DM Sans',system-ui,-apple-system,sans-serif;cursor:pointer;background:#EFE9DB;color:#101631}",
+    ".coach-card button.b.rosso{background:#E51B20;color:#fff}.coach-card button.b.rosso:hover{background:#C8161B}",
     ".coach-card button.b.oro{background:#C9A24B;color:#0A0F24}.coach-card button.b.navy{background:#0A0F24;color:#F5F1E6}",
     ".coach-card .stato{font-size:17px;color:#6D7186}",
     ".coach-card .bravo{font:800 26px/1.25 'DM Sans',system-ui,-apple-system,sans-serif;color:#2F7D55}",
@@ -239,9 +240,10 @@
       '<div class="stato" style="margin-top:-8px">Passo ' + (RUN.i + 1) + " di " + p.passi.length + '</div><div class="ordine">' + esc(s.t) + "</div>" +
       (s.aiuto ? '<div class="aiuto">' + esc(s.aiuto) + "</div>" : "") +
       (!bersaglio && s.su && s.fai !== "vedi" ? '<div class="stato">Non vedo ancora il punto giusto su questa pagina: ' + (altrove ? "prima apri la pagina giusta." : "scorri o aspetta che carichi.") + "</div>" : "") +
-      '<div class="bottoni">' + (s.fai === "leggi" ? '<button class="b oro" data-c="avanti">Fatto, avanti</button>' : "") +
-      (altrove ? '<button class="b oro" data-c="vaiPagina">Apri la pagina</button>' : "") +
-      (p.video ? '<button class="b" data-c="video"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" style="vertical-align:-2px;margin-right:8px"><path d="M4 2v12l10-6z" fill="currentColor"/></svg>Guarda come si fa</button>' : "") +
+      (s.fai === "leggi" ? '<button class="b oro" data-c="avanti" style="width:100%;padding:16px;font-size:18px">Fatto, avanti →</button>' : "") +
+      (altrove ? '<button class="b oro" data-c="vaiPagina" style="width:100%;padding:16px;font-size:18px">Apri la pagina</button>' : "") +
+      '<div class="bottoni">' +
+      (p.video ? '<button class="b rosso" data-c="video"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" style="vertical-align:-2px;margin-right:8px"><path d="M4 2v12l10-6z" fill="currentColor"/></svg>Guarda come si fa</button>' : "") +
       '<button class="b" data-c="salta">Salta</button>' + (DEV ? '<button class="b" data-c="torna">Torna alla palestra</button>' : '<button class="b" data-c="elenco">Altri pezzi</button>') + '</div>' +
       '<div class="stato" id="coachEsito"></div></div>';
     var c = apriCard(html, lato);
