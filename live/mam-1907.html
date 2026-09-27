@@ -779,7 +779,7 @@
     var h = "";
     var unaP = di("pers"); if (unaP.length === 1 && PERS[unaP[0]] && !RACCOLTA) h += '<div class="sg-ris">' + cardPersona(PERS[unaP[0]], "ris", tutti) + "</div>";
     if (RACCOLTA) h += '<div class="rac-testa"><span class="rc-eti">Raccolta 1907</span><h2>' + esc(RACCOLTA.nome) + "</h2><small>" + (function () { var nc = RACCOLTA.file.filter(function (x) { return x.cartella; }).length, nf = RACCOLTA.file.length - nc; return [nf ? nf + " file" : "", nc ? nc + (nc === 1 ? " cartella intera" : " cartelle intere") : ""].filter(Boolean).join(" · "); })() + " · aggiornata " + dataCorta((RACCOLTA.aggiornata || 0) / 1000) + (RACCOLTA.chi ? " · " + esc(RACCOLTA.chi) : "") +
-      '</small><span class="rc-az"><button class="oro" data-fa="monta-racc">Monta tutta</button><button data-fa="rinomina">Rinomina</button><button data-fa="cancella">Elimina</button><button data-fa="esci">Esci</button></span></div>';
+      '</small><span class="rc-az"><button class="oro" data-fa="monta-racc">Monta tutta</button><button data-fa="vlc-racc" title="tutta la raccolta in VLC, dalla NAS montata sul Mac">Apri in VLC</button><button data-fa="copie-racc" title="prepara ora le copie leggere per guardarla nel browser">Prepara le copie</button><button data-fa="rinomina">Rinomina</button><button data-fa="cancella">Elimina</button><button data-fa="esci">Esci</button></span></div>';
     var nFiltri = G.filter(function (x) { return x.k !== "tipo"; }).length;
     h += '<div class="filtri-ris"><button data-tab="tutto" class="' + (TAB === "tutto" ? "on" : "") + '">Tutto<b>' + n(tutti.length) + '</b></button><button data-tab="video" class="' + (TAB === "video" ? "on" : "") + '"' + (nV ? "" : " disabled") + ">Video<b>" + n(nV) + '</b></button><button data-tab="foto" class="' + (TAB === "foto" ? "on" : "") + '"' + (nF ? "" : " disabled") + ">Foto<b>" + (nF ? n(nF) : "–") + "</b></button>" +
       '<button id="apriFiltri" class="apri-filtri' + (PANNELLO ? " aperto" : "") + '" aria-expanded="' + PANNELLO + '">Filtri' + (nFiltri ? "<b>" + nFiltri + "</b>" : "") + " " + (PANNELLO ? "▴" : "▾") + "</button>" +
@@ -990,6 +990,7 @@
     }
     b.innerHTML = "<span>" + detto + " <em>(" + n(nv) + " video da montare)</em></span>" +
       '<button class="monta" data-fa="monta"' + (nv ? "" : " disabled") + '>Monta questi</button><button class="salva" data-fa="salva">Salva in raccolta</button>' +
+      (nv ? '<button class="svuota" data-fa="vlc" title="apre la scelta in VLC dalla NAS montata sul Mac">VLC</button><button class="svuota" data-fa="copie" title="prepara le copie leggere per guardarli nel browser">Prepara le copie</button>' : "") +
       (RACCOLTA ? '<button class="svuota" data-fa="togli-racc">Togli dalla raccolta</button>' : "") + '<button class="svuota" data-fa="svuota">Svuota</button>';
   }
   function scegli(via, forza) {
@@ -1052,6 +1053,8 @@
     var t = e.target.closest("[data-fa]"); if (!t) return;
     if (t.dataset.fa === "monta") monta(Array.from(SCELTI.values()), t);
     if (t.dataset.fa === "salva") { SALVA_APERTO = true; disegnaBarra(); }
+    if (t.dataset.fa === "vlc") apriInVlc(videoDi(Array.from(SCELTI.values())).slice(0, 2000), "scelta Como 1907");
+    if (t.dataset.fa === "copie") preparaCopie(videoDi(Array.from(SCELTI.values())));
     if (t.dataset.fa === "salva-ok") salvaInRaccolta();
     if (t.dataset.fa === "salva-no") { SALVA_APERTO = false; disegnaBarra(); }
     if (t.dataset.fa === "svuota") { SCELTI.clear(); disegnaBarra(); if (!$("risultati").hidden) risultati(); }
@@ -1083,6 +1086,8 @@
       if (fa === "scegli-tutti") { VISTI.slice(0, Math.max(quanti, 80)).forEach(function (x) { SCELTI.set(x.via, x); }); risultati(); disegnaBarra(); }
       if (fa === "esci") { RACCOLTA = null; disegnaGettoni(); vai(); }
       if (fa === "monta-racc" && RACCOLTA) monta(RACCOLTA.file, t, RACCOLTA.nome);
+      if (fa === "vlc-racc" && RACCOLTA) apriInVlc(videoDi(RACCOLTA.file).slice(0, 2000), RACCOLTA.nome);
+      if (fa === "copie-racc" && RACCOLTA) preparaCopie(videoDi(RACCOLTA.file));
       if (fa === "rinomina" && RACCOLTA) { var nm = prompt("Nuovo nome della raccolta", RACCOLTA.nome); if (nm && nm.trim()) post({ tipo: "clip-1907-raccolta-rinomina", id: RACCOLTA.id, nome: nm.trim() }).then(function (d) { RACCOLTA.nome = d.raccolta.nome; caricaRaccolte(); risultati(); }).catch(function (x) { avviso("err", esc(x.message)); }); }
       if (fa === "cancella" && RACCOLTA) { if (confirm("Eliminare la raccolta “" + RACCOLTA.nome + "”? I file sulla QNAP non si toccano.")) { var id = RACCOLTA.id; post({ tipo: "clip-1907-raccolta-cancella", id: id }).then(function () { RACCOLTA = null; caricaRaccolte(); vai(); avviso("", 'Raccolta eliminata. <a href="#" data-ripristina="' + esc(id) + '" style="color:var(--oro2)">Annulla</a>'); }).catch(function (x) { avviso("err", esc(x.message)); }); } }
       return;
@@ -1111,12 +1116,44 @@
   function apriCollezione(p) { var ep = p.indexOf("/") > 0; G = G.filter(function (x) { return x.k === "tipo"; }); metti({ k: ep ? "ep" : "coll", v: p, n: nomeDi(ep ? "ep" : "coll", p) }); window.scrollTo(0, 0); }
   document.addEventListener("keydown", function (e) { if ((e.key === "Enter" || e.key === " ") && e.target.classList && (e.target.classList.contains("card") || e.target.classList.contains("loc"))) { e.preventDefault(); e.target.click(); } });
 
+  // ══════════ VLC (Goffredo, 27/09/2026: "possibilità di vedere i .mov") ══════════
+  //  I .mov del club sono in buona parte ProRes e HEVC 4:2:2: Chrome non li legge e la
+  //  VM non ce la fa a convertirli mentre si guardano. Chi ha la NAS montata sul Mac
+  //  li apre con VLC direttamente da li', a piena qualita': la pagina scarica una
+  //  piccola playlist (.m3u) che punta al file sul volume della NAS.
+  var RADICE_NAS = "/Volumes/COMOTV - FRAME";
+  try { RADICE_NAS = localStorage.getItem("mam1907-nas") || RADICE_NAS; } catch (e) {}
+  function sulMac(via) { return RADICE_NAS.replace(/\/+$/, "") + "/" + via; }
+  function urlFile(via) { return "file://" + sulMac(via).split("/").map(function (x) { return encodeURIComponent(x); }).join("/"); }
+  function apriInVlc(vie, nome) {
+    if (!vie.length) { avviso("err", "Niente da aprire."); return; }
+    var m3u = "#EXTM3U\n" + vie.map(function (v) { return "#EXTINF:-1," + ultimo(v) + "\n" + urlFile(v); }).join("\n") + "\n";
+    var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([m3u], { type: "audio/x-mpegurl" }));
+    a.download = (nome || "como1907").replace(/[^A-Za-z0-9 _.-]+/g, " ").trim().slice(0, 60) + ".m3u"; document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+    avviso("", "Playlist scaricata: aprila con VLC. Legge dalla NAS montata sul Mac (" + esc(RADICE_NAS) + "). <a href=\"#\" data-cambia-nas=\"1\" style=\"color:var(--oro2)\">La NAS sta altrove?</a>");
+  }
+  function cambiaNas() {
+    var v = prompt("Dove si vede la cartella COMOTV - FRAME sul tuo Mac? (Finder → la cartella della NAS → tasto destro → Copia come percorso)", RADICE_NAS);
+    if (!v) return; RADICE_NAS = v.trim().replace(/\/+$/, ""); try { localStorage.setItem("mam1907-nas", RADICE_NAS); } catch (e) {}
+    avviso("", "Ok: da ora VLC cerca i file in " + esc(RADICE_NAS) + ".");
+  }
+  document.addEventListener("click", function (e) { var a = e.target.closest && e.target.closest("[data-cambia-nas]"); if (a) { e.preventDefault(); cambiaNas(); } });
+  // PREPARA LE COPIE: le copie leggere di una raccolta o di una scelta si mettono in coda
+  // subito, cosi' quando si apre il lettore sono gia' pronte (la VM le fa una alla volta)
+  function preparaCopie(vie) {
+    var video = vie.filter(function (v) { return tipo(v) === "video"; }).slice(0, 400);
+    if (!video.length) { avviso("err", "Niente video da preparare."); return; }
+    var fatte = 0;
+    video.forEach(function (v) { fetch(BASE + "copia?fai=1&v=" + encodeURIComponent(v), { cache: "no-store" }).then(function (r) { return r.json(); }).then(function () { fatte++; if (fatte === video.length) avviso("", n(video.length) + " copie leggere in coda: la VM le prepara una alla volta, a bassa priorità."); }).catch(function () {}); });
+  }
+
   // ══════════ IL LETTORE ══════════
   // I 4K a 10 bit delle camere il browser non li legge: si guarda la copia
   // leggera (720p) se c'e', e se non c'e' la si chiede al servizio-1907.
   var SEGUI = null;
   function apri(x) {
-    var u = url(x.via), dx = '<a class="b" href="' + u + '" download>Scarica l’originale</a>' + (x.tipo === "video" ? '<button data-fa="monta-uno" class="oro">Monta questo</button>' : "") + '<button data-fa="scegli-uno">' + (SCELTI.has(x.via) ? "Togli dalla scelta" : "Scegli") + '</button><button id="chiudi">Chiudi</button>';
+    var u = url(x.via), dx = (x.tipo === "video" ? '<button data-fa="vlc-uno" title="apre il file originale con VLC dalla NAS montata sul Mac">Apri in VLC</button><button data-fa="percorso-uno" title="il percorso del file sulla NAS, da incollare nel Finder (Vai alla cartella)">Copia percorso</button>' : "") + '<a class="b" href="' + u + '" download>Scarica l’originale</a>' + (x.tipo === "video" ? '<button data-fa="monta-uno" class="oro">Monta questo</button>' : "") + '<button data-fa="scegli-uno">' + (SCELTI.has(x.via) ? "Togli dalla scelta" : "Scegli") + '</button><button id="chiudi">Chiudi</button>';
     var info = '<div class="info"><div><b>' + esc(x.nome) + "</b><br>" + esc(x.d.split("/").join(" › ")) + " · " + gb(x.peso) + (x.data ? " · girato il " + dataRip(x.data) : "") + '</div><div class="dx">' + dx + "</div></div>";
     var schermo;
     if (x.tipo === "foto" && /\.(jpe?g|png|webp)$/i.test(x.via)) schermo = '<div class="schermo"><img src="' + u + '" alt=""></div>';
@@ -1126,6 +1163,8 @@
     $("velo").hidden = false; $("chiudi").onclick = chiudi;
     $("velo").querySelector('[data-fa="scegli-uno"]').onclick = function () { scegli(x.via); this.textContent = SCELTI.has(x.via) ? "Togli dalla scelta" : "Scegli"; };
     var mu = $("velo").querySelector('[data-fa="monta-uno"]'); if (mu) mu.onclick = function () { monta([x.via], mu, x.nome); };
+    var vl = $("velo").querySelector('[data-fa="vlc-uno"]'); if (vl) vl.onclick = function () { apriInVlc([x.via], x.nome); };
+    var pc = $("velo").querySelector('[data-fa="percorso-uno"]'); if (pc) pc.onclick = function () { var t = sulMac(x.via); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { avviso("", "Percorso copiato: nel Finder, Vai → Vai alla cartella e incolla."); }).catch(function () { prompt("Il percorso sulla NAS", t); }); };
     if (x.tipo === "video") {
       chiave(x.via).then(function (k) { $("schermo").style.backgroundImage = 'url("' + BASE + "mini/" + k + ".jpg?v=" + encodeURIComponent(x.via) + '")'; });
       guardaCopia(x, false);
@@ -1148,9 +1187,10 @@
       var c = $("statoCopia"); if (!c) return;
       var pct = Math.round((s.avanzamento || 0) * 100);
       c.innerHTML = "<b>Questo originale il browser non lo legge</b><span>" + (s.stato === "errore" ? "La copia leggera non è riuscita." : s.stato === "lavoro" ? "Sto facendo la copia leggera (720p): " + pct + "%" : /pausa/.test(s.stato) ? "Copia in pausa: c’è una diretta." : "Copia leggera in coda" + (s.davanti ? " (" + s.davanti + " prima)" : "") + ".") +
-        "</span>" + (s.stato === "lavoro" ? '<div class="barra-c"><i style="width:' + pct + '%"></i></div>' : "") + '<span style="font-size:12px;color:var(--fumo)">Si fa sulla VM, a bassa priorità: un 4K a 10 bit richiede più o meno la sua durata, di più se la macchina è occupata. Puoi chiudere e tornare dopo.</span>' +
+        "</span>" + (s.stato === "lavoro" ? '<div class="barra-c"><i style="width:' + pct + '%"></i></div>' : "") + '<span style="font-size:12px">Hai la NAS montata sul Mac? <a href="#" data-vlc-ora="1" style="color:var(--oro2)">Aprilo subito in VLC</a>, a piena qualità.</span>' + '<span style="font-size:12px;color:var(--fumo)">Si fa sulla VM, a bassa priorità: un 4K a 10 bit richiede più o meno la sua durata, di più se la macchina è occupata. Puoi chiudere e tornare dopo.</span>' +
         (s.stato === "errore" ? '<button class="mini" id="riprova">Riprova</button>' : "");
       var rp = $("riprova"); if (rp) rp.onclick = function () { guardaCopia(x, 2); };
+      var vo = c.querySelector("[data-vlc-ora]"); if (vo) vo.onclick = function (ev) { ev.preventDefault(); apriInVlc([x.via], x.nome); };
       if (s.stato !== "errore") SEGUI = setTimeout(function () { guardaCopia(x, 1); }, 5000);
     }).catch(function () {});
   }
