@@ -7371,6 +7371,14 @@ function fonteAl(r, dentro) {
 // del tempo, e questa ce l'ha. Da qui in poi taglio, formati, sequenza,
 // ricerca e grafica funzionano senza sapere che i byte sono a Francoforte.
 async function archivioApri(p) {
+  // una clip dell'Archivio del Como 1907 (28/09/2026): la registrazione l'ha
+  // fatta clip-1907-apri, qui la si ritrova per il player del MAM
+  if (/^f1907:/.test(String(p.rec || ""))) {
+    const r = Object.keys(R.reg).map((k) => R.reg[k]).find((x) => x.origine === "1907" && x.arch && x.arch.rec === String(p.rec));
+    if (!r) return { ok: false, errore: "questa clip del Como 1907 non e' ancora aperta" };
+    if (r.copia1907 && !copia1907(r)) chiediCopia1907(r.arch.chiave);
+    return { ok: true, reg: pubblica(r) };
+  }
   const a = ARCHIVIO[String(p.rec || "")];
   if (!a) return { ok: false, errore: "questa partita non e' nell'indice dell'archivio" };
   const tutti = a.pezzi && a.pezzi.length ? a.pezzi : [{ chiave: a.chiave, peso: a.peso }];
