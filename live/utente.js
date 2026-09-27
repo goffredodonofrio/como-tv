@@ -61,5 +61,7 @@
     var mia = barra.querySelector(".nav-mia");
     if (mia) mia.insertAdjacentElement("afterend", box); else { box.classList.add("solo"); barra.appendChild(box); }
   }
-  fetch("/auth/chi", { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : {}; }).then(monta).catch(function () {});
+  // il lucchetto "Area personale" della home e' solo del super utente
+  function areaPersonale(j) { var a = document.querySelector(".area-personale"); if (a && !(j && j.admin)) a.style.display = "none"; return j; }
+  fetch("/auth/chi", { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : {}; }).then(areaPersonale).then(monta).catch(function () {});
 })();
