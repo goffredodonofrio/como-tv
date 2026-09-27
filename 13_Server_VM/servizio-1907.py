@@ -19,6 +19,11 @@ Fuori dal ponte, dietro nginx su 127.0.0.1:8097:
   POST /premiere {nome, vie, radice} l'XML per Premiere (xmeml 4, come il MAM di Como TV): una
                                    sequenza con i file uno dopo l'altro, collegati agli
                                    originali sulla NAS montata sul Mac (radice)
+  POST /volti {k: [ritagli], pid | nome [, ruolo] | scarta | togli}
+                                   battezza un gruppo di volti sconosciuti (battesimi.json): li
+                                   da' a una persona che c'e' gia', a una persona nuova, o li
+                                   scarta (tifosi, passanti); "togli" annulla. Un minuto dopo
+                                   l'ultimo battesimo si rifanno i gruppi e l'indice.
 Le copie finiscono in /var/lib/comotv-1907/proxy/<k>.mp4 e le serve nginx.
 <k> = sha1(percorso)[:16]: la chiave la calcola chi chiede e qui si ricontrolla.
 """
@@ -208,6 +213,67 @@ def xml_premiere(nome, vie, radice):
     return xml, len(voci)
 
 
+# ── I BATTESIMI DEI VOLTI (28/09/2026) ──────────────────────────────────
+BATTESIMI = os.path.join(CASA, "battesimi.json")
+B_LOCK = threading.Lock()
+RIFAI = {"quando": 0, "gira": False}
+
+
+def _meta():
+    import importlib.util
+    sp = importlib.util.spec_from_file_location("meta", "/opt/comotv/metadati_1907.py")
+    m = importlib.util.module_from_spec(sp); sp.loader.exec_module(m); return m
+
+
+def battezza(p, chi):
+    import re
+    ks = [str(k) for k in (p.get("k") or []) if re.fullmatch(r"[0-9a-f]{14}", str(k))][:5000]
+    if not ks: return 400, {"ok": False, "errore": "nessun volto"}
+    with B_LOCK:
+        try: b = json.load(open(BATTESIMI))
+        except Exception: b = {}
+        crop = b.setdefault("crop", {}); pers = b.setdefault("persone", {}); storia = b.setdefault("storia", [])
+        if p.get("togli"):
+            for k in ks: crop.pop(k, None)
+            pid = "togli"
+        elif p.get("scarta"):
+            pid = "-"
+        else:
+            M = _meta(); tutte = {x["id"]: x for x in M.persone()}
+            pid = str(p.get("pid") or "")
+            if pid and pid not in tutte: return 400, {"ok": False, "errore": "persona sconosciuta"}
+            if not pid:
+                nome = " ".join(str(p.get("nome") or "").split())[:60]
+                if len(nome) < 3: return 400, {"ok": False, "errore": "scrivi il nome"}
+                pid = M.slug(nome)
+                if pid not in tutte: pers[pid] = {"nome": nome, "ruolo": str(p.get("ruolo") or "")[:40], "volto": ks[0]}
+        if pid != "togli":
+            for k in ks: crop[k] = pid
+        # una persona nuova rimasta senza volti non serve piu'
+        usati = set(crop.values())
+        for q in [q for q in pers if q not in usati]: pers.pop(q)
+        storia.append([int(time.time()), chi, pid, len(ks)]); del storia[:-500]
+        tmp = BATTESIMI + ".tmp"; json.dump(b, open(tmp, "w"), ensure_ascii=False); os.replace(tmp, BATTESIMI)
+    RIFAI["quando"] = time.time() + 60
+    if not RIFAI["gira"]: threading.Thread(target=rifai, daemon=True).start()
+    return 200, {"ok": True, "pid": pid, "quanti": len(ks)}
+
+
+def rifai():
+    """un minuto dopo l'ultimo battesimo: i gruppi dei volti e l'indice (se non c'e' una diretta)"""
+    RIFAI["gira"] = True
+    try:
+        while time.time() < RIFAI["quando"] or in_diretta(): time.sleep(10)
+        RIFAI["quando"] = 0
+        subprocess.run(["nice", "-n", "10", "/opt/volti/bin/python", "/opt/comotv/ignoti-1907.py"], capture_output=True, timeout=1800)
+        subprocess.run(["nice", "-n", "10", "python3", "/opt/comotv/indice-1907-da-elenco.py"], capture_output=True, timeout=3600)
+    except Exception:
+        pass
+    finally:
+        RIFAI["gira"] = False
+        if RIFAI["quando"]: threading.Thread(target=rifai, daemon=True).start()
+
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 
@@ -218,12 +284,16 @@ class H(BaseHTTPRequestHandler):
         self.end_headers(); self.wfile.write(b)
 
     def do_POST(self):
-        if urllib.parse.urlparse(self.path).path != "/premiere": return self.rispondi(404, {"ok": False})
+        via = urllib.parse.urlparse(self.path).path
+        if via not in ("/premiere", "/volti"): return self.rispondi(404, {"ok": False})
         try:
             n = int(self.headers.get("Content-Length") or 0)
             p = json.loads(self.rfile.read(min(n, 2_000_000)) or b"{}")
         except Exception:
             return self.rispondi(400, {"ok": False, "errore": "richiesta non valida"})
+        if via == "/volti":
+            cod, r = battezza(p, str(self.headers.get("X-Utente") or ""))
+            return self.rispondi(cod, r)
         vie = [str(v) for v in (p.get("vie") or [])][:600]
         xml, quanti = xml_premiere(str(p.get("nome") or ""), vie, str(p.get("radice") or ""))
         if not xml: return self.rispondi(400, {"ok": False, "errore": "nessun video leggibile"})

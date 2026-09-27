@@ -340,6 +340,8 @@ RIC = META.Riconosci(PERS)
 PF = {}
 PV = {}
 VOLTI = {}
+VISTI = {}          # {file: [[persona, altezza del volto]]}: sopra PRIMO_PIANO e' un primo piano
+PRIMO_PIANO = 0.25
 PARTITE = {}
 
 
@@ -425,8 +427,12 @@ def schede_persone(righe):
         c = conti.get(p["id"])
         if c and gol.get(p["id"]): c["gol"] = gol[p["id"]]
         if c: c["volti"] = sum(v for d, x in PV.items() for pid, (v, f) in x.items() if pid == p["id"])
+        if c:
+            # si vede: in tutti i file dove c'e' il suo volto, anche se il nome lo diceva gia'
+            hh = [h for vv in VISTI.values() for pid, h in vv if pid == p["id"]]
+            if hh: c["visti"] = len(hh); c["primi"] = sum(1 for h in hh if h >= PRIMO_PIANO)
         if not c: continue
-        fuori.append(dict({k: p[k] for k in ("id", "nome", "ruolo", "maglia", "stagioni", "foto", "alias")}, **{"conti": c}))
+        fuori.append(dict({k: p[k] for k in ("id", "nome", "ruolo", "maglia", "stagioni", "foto", "alias", "volto")}, **{"conti": c}))
     return sorted(fuori, key=lambda p: -(p["conti"]["video"] + p["conti"]["foto"]))
 
 
@@ -483,14 +489,35 @@ def main():
                     c["file"] += 1; c["peso"] += f[1]; t = tipo(f[0])
                     if t in ("video", "foto"): c[t] += 1
     # I VOLTI (volti-1907.py): chi si vede nei video, file per file
-    VOLTI.clear()
+    # l'ultima riga di un file vale (i file rifatti con l'altezza del volto sostituiscono i primi)
+    VOLTI.clear(); VISTI.clear()
     try:
         for riga in open(os.path.join(CASA, "volti.jsonl"), encoding="utf-8"):
             try: x = json.loads(riga)
             except Exception: continue
-            if x.get("p"): VOLTI[x["v"]] = [p[0] for p in x["p"]]
+            if x.get("p"):
+                VOLTI[x["v"]] = [p[0] for p in x["p"]]
+                VISTI[x["v"]] = [[p[0], p[2] if len(p) > 2 else 0] for p in x["p"]]
+            else:
+                VOLTI.pop(x["v"], None); VISTI.pop(x["v"], None)
     except OSError:
         pass
+    # i volti sconosciuti battezzati a mano (battesimi.json): quel file ha quella persona
+    try: nomi = json.load(open(os.path.join(CASA, "battesimi.json"))).get("crop", {})
+    except Exception: nomi = {}
+    if nomi:
+        try:
+            for riga in open(os.path.join(CASA, "ignoti.jsonl"), encoding="utf-8"):
+                try: x = json.loads(riga)
+                except Exception: continue
+                pid = nomi.get(x.get("k"))
+                if not pid or pid == "-": continue
+                if pid not in VOLTI.setdefault(x["v"], []): VOLTI[x["v"]].append(pid)
+                vv = VISTI.setdefault(x["v"], []); gia = next((p for p in vv if p[0] == pid), None)
+                if gia: gia[1] = max(gia[1], x.get("h", 0))
+                else: vv.append([pid, x.get("h", 0)])
+        except OSError:
+            pass
     # l'orologio delle camere (date-1907.py): [prima, ultima] per cartella
     try: cam = json.load(open(os.path.join(CASA, "date-1907.json")))
     except Exception: cam = {}
@@ -634,7 +661,7 @@ def main():
     if len(sys.argv) > 1: indice["parziale"] = 1
     dati_file = [[d, [f[:3] + ([f[3]] if f[3] else []) for f in sorted(v)]] for d, v in sorted(cartelle.items())]
     piccolo = {k: {"n": v.get("v", 0) + v.get("f", 0), "avv": v["avv"], "casa": v["casa"]} for k, v in indice["partite"].items()}
-    for nomef, dati in (("indice.json", indice), ("file.json", dati_file), ("partite.json", piccolo), ("volti.json", VOLTI)):
+    for nomef, dati in (("indice.json", indice), ("file.json", dati_file), ("partite.json", piccolo), ("volti.json", VOLTI), ("visti.json", VISTI)):
         tmp = os.path.join(PUB, nomef + ".tmp")
         json.dump(dati, open(tmp, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
         # la versione compressa accanto (nginx gzip_static): 13 MB diventano 3, e nessuno li ricomprime a ogni visita

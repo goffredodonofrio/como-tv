@@ -289,6 +289,18 @@
   #barraScelte .form-r input:focus{outline:none;border-color:var(--oro);}
   @media (max-width:560px){ #barraScelte{left:16px;right:16px;transform:none;border-radius:14px;width:auto;} #barraScelte .form-r{flex-wrap:wrap;} #libreria{padding:16px 16px 140px;} }
   /* lettore */
+  /* VOLTI DA BATTEZZARE (28/09/2026) */
+  .vb-griglia{display:grid;grid-template-columns:repeat(auto-fill,minmax(236px,1fr));gap:10px;margin-top:10px;}
+  .vb{background:var(--pan);border:1px solid var(--riga);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px;min-width:0;}
+  .vb-facce{display:flex;gap:4px;align-items:flex-end;flex-wrap:wrap;}
+  .vb-facce img{width:40px;height:40px;border-radius:8px;object-fit:cover;background:#101114;}
+  .vb-facce img:first-child{width:72px;height:72px;}
+  .vb-facce span{font-size:11px;color:var(--fumo);padding:0 0 4px 2px;}
+  .vb-info{font-size:12px;color:var(--ivory2);} .vb-info a{color:var(--oro);cursor:pointer;text-decoration:underline;text-underline-offset:2px;}
+  .vb-forse{font-size:12px;color:var(--ivory2);display:flex;gap:6px;align-items:center;flex-wrap:wrap;} .vb-forse b{color:var(--ivory);}
+  .vb-nome{display:flex;gap:6px;} .vb-nome input{flex:1;min-width:0;background:var(--navy2);border:1px solid var(--riga2);border-radius:8px;color:var(--ivory);padding:6px 8px;font:inherit;font-size:12px;}
+  .vb-nome input:focus{outline:none;border-color:var(--oro);}
+  .vb-no{align-self:flex-start;background:none;border:0;color:var(--fumo);font-size:11px;padding:0;cursor:pointer;} .vb-no:hover{color:var(--ivory);}
   .velo[hidden]{display:none}
   .velo{position:fixed;inset:0;background:rgba(5,6,10,.88);display:grid;place-items:center;padding:20px;z-index:100;}
   .lettore{width:min(1200px,100%);background:var(--pan);border-radius:14px;overflow:hidden;border:1px solid rgba(201,162,75,.35);}
@@ -351,6 +363,14 @@
       <div id="tempo" class="tempo"><div class="attesa">Carico…</div></div>
       <p class="nota-date" id="notaDate"></p>
     </section>
+    <!-- I VOLTI DA BATTEZZARE (Goffredo, 27/09/2026): i volti che nessuno ha riconosciuto,
+         raggruppati per somiglianza. Un nome li fa diventare una persona da cercare. -->
+    <section id="voltiBox" style="margin-top:30px" hidden>
+      <div class="sez"><h2>Volti da battezzare</h2><span id="voltiConto"></span><button class="dx" id="voltiTutti" hidden>Vedi tutti</button></div>
+      <p class="nota-date" style="margin-top:4px">Volti trovati nei video che non somigliano a nessuno dei giocatori con una foto. Scrivi chi è: da quel momento la persona si cerca per nome, e nei video nuovi si riconosce da sola. <b>Non serve</b> li mette da parte (tifosi, passanti).</p>
+      <div id="volti" class="vb-griglia"></div>
+      <datalist id="elencoPers"></datalist>
+    </section>
   </div>
 
   <div id="risultati" class="ris" hidden></div>
@@ -411,7 +431,7 @@
 
   // ══════════ GETTONI ══════════
   var ETI = { coll: "Collezione", ep: "Episodio", cart: "Cartella", stag: "Stagione", anno: "Anno", tipo: "Tipo", pers: "Persona", gen: "Tipo di contenuto", sq: "Squadra", comp: "Competizione", avv: "Avversario",
-    st: "Stato del materiale", cam: "Chi ha girato", mo: "Momento", lu: "Luogo", ct: "Casa o trasferta", part: "Partita" };
+    st: "Stato del materiale", cam: "Chi ha girato", mo: "Momento", lu: "Luogo", ct: "Casa o trasferta", part: "Partita", come: "Come compare", volto: "Volto" };
   // LE PARTITE DEL COMO con materiale del club (Goffredo, 27/09/2026): chiave = il giorno
   var PART = {};
   function titoloPartita(p) { return p ? (p.casa ? "Como–" + p.avv : p.avv + "–Como") : ""; }
@@ -444,13 +464,14 @@
   }
   var FOTO = "/loghi/";
   function iniziali(nome) { return nome.split(/\s+/).map(function (w) { return w[0]; }).slice(0, 2).join("").toUpperCase(); }
-  function avatar(p, cls) { return p && p.foto ? '<span class="' + (cls || "gt-av") + '" style="background-image:url(&quot;' + FOTO + esc(p.foto) + '&quot;)"></span>' : '<span class="' + (cls || "gt-av") + ' ini">' + esc(iniziali(p ? p.nome : "?")) + "</span>"; }
+  function ritaglio(k) { return BASE + "indice/ignoti/" + k + ".jpg"; }
+  function avatar(p, cls) { if (p && !p.foto && p.volto) return '<span class="' + (cls || "gt-av") + '" style="background-image:url(&quot;' + ritaglio(p.volto) + '&quot;)"></span>'; return p && p.foto ? '<span class="' + (cls || "gt-av") + '" style="background-image:url(&quot;' + FOTO + esc(p.foto) + '&quot;)"></span>' : '<span class="' + (cls || "gt-av") + ' ini">' + esc(iniziali(p ? p.nome : "?")) + "</span>"; }
   function di(k) { return G.filter(function (x) { return x.k === k; }).map(function (x) { return x.v; }); }
   function disegnaGettoni() {
     $("gettoni").innerHTML = G.map(function (g, i) {
       var u = (g.k === "coll" || g.k === "ep") ? copertina(g.v) : "";
       var nome = g.k === "cart" ? g.v.split("/").slice(-2).join(" › ") : g.n;
-      return '<span class="gt" title="' + esc(ETI[g.k] + ": " + g.v) + '">' + (g.k === "pers" ? avatar(PERS[g.v]) : u ? '<span class="gt-mini" style="' + bg(u) + '"></span>' : '<span class="gt-dot"' + (g.k === "coll" ? ' style="--c:' + colore(g.v) + '"' : "") + "></span>") + "<b>" + esc(nome) + "</b>" + (g.k === "ep" ? "<small>" + esc(g.v.split("/")[0]) + "</small>" : "") + '<button data-via="' + i + '" aria-label="togli ' + esc(nome) + '">×</button></span>';
+      return '<span class="gt" title="' + esc(ETI[g.k] + ": " + g.v) + '">' + (g.k === "pers" ? avatar(PERS[g.v]) : g.k === "volto" ? '<span class="gt-av" style="background-image:url(&quot;' + ritaglio(g.v) + '&quot;)"></span>' : u ? '<span class="gt-mini" style="' + bg(u) + '"></span>' : '<span class="gt-dot"' + (g.k === "coll" ? ' style="--c:' + colore(g.v) + '"' : "") + "></span>") + "<b>" + esc(nome) + "</b>" + (g.k === "ep" ? "<small>" + esc(g.v.split("/")[0]) + "</small>" : "") + '<button data-via="' + i + '" aria-label="togli ' + esc(nome) + '">×</button></span>';
     }).join("");
     $("svuota").hidden = !G.length && !$("cerca").value && !RACCOLTA;
   }
@@ -501,7 +522,7 @@
     h += '<h5>File</h5><a data-testo="1"><span class="gt-dot" style="--c:var(--fumo)"></span><span>Cerca «' + esc($("cerca").value.trim()) + '» nei nomi dei file e delle cartelle</span><small>Invio</small></a>';
     // la persona che si sta scrivendo: la sua scheda accanto, come nel MAM
     var p0 = q.length >= 3 && pers.length ? pers[0] : null;
-    if (!p0 || !SCHEDA_P || SCHEDA_P.id !== p0.id) SCHEDA_SEL = { tipo: {}, gen: {}, stag: {}, comp: {}, coll: {}, part: {} };
+    if (!p0 || !SCHEDA_P || SCHEDA_P.id !== p0.id) SCHEDA_SEL = { tipo: {}, come: {}, gen: {}, stag: {}, comp: {}, coll: {}, part: {} };
     SCHEDA_P = p0;
     $("sugg").classList.toggle("con-scheda", !!p0);
     $("sugg").innerHTML = p0 ? '<div class="sg-lista">' + h + '</div><div class="sg-lato">' + cardPersona(p0, "sugg") + "</div>" : h;
@@ -547,7 +568,11 @@
     [["foto", "fotografie", "immagini"], "tipo", "foto"], [["video", "filmati"], "tipo", "video"],
     [["grezzo", "grezzi", "raw"], "st", "Grezzo"], [["montato", "montati", "export"], "st", "Montato"],
     [["in casa"], "ct", "Casa"], [["in trasferta", "trasferta", "trasferte"], "ct", "Trasferta"],
-    [["assist"], "assist", "1"]
+    [["assist"], "assist", "1"],
+    // I VOLTI (28/09/2026): "douvikas primi piani", "dove si vede nico paz", "fabregas nominato"
+    [["primo piano", "primi piani", "primissimo piano", "primissimi piani", "close up", "closeup", "in faccia", "da vicino"], "come", "Primo piano"],
+    [["si vede", "si vedono", "compare", "compaiono", "appare", "appaiono", "faccia", "volto", "volti", "riconosciuto", "riconosciuti"], "come", "Si vede"],
+    [["nominato", "nominata", "nominati", "nel nome", "citato", "citata"], "come", "Nominato"]
   ];
   function lev1(a, b) { // due parole sono "quasi uguali" se differiscono di una lettera
     if (Math.abs(a.length - b.length) > 1 || a.length < 4) return false;
@@ -620,7 +645,7 @@
     if (Q) h.set("q", Q); if (RACCOLTA) h.set("r", RACCOLTA.id); if (TAB !== "tutto") h.set("t", TAB);
     history.replaceState(null, "", location.pathname + location.search + (h.toString() ? "#" + h.toString() : ""));
   }
-  function nomeDi(k, v) { return k === "ep" ? v.split("/")[1] : k === "cart" ? ultimo(v) : k === "stag" ? "Stagione " + v : k === "tipo" ? (v === "video" ? "Solo video" : "Solo foto") : k === "pers" ? ((PERS[v] || {}).nome || v) : k === "avv" ? "contro " + v : k === "cam" ? "Girato da " + v : k === "ct" ? (v === "Casa" ? "In casa" : "In trasferta") : k === "part" ? (PART[v] ? titoloPartita(PART[v]) + " " + dataRip(PART[v].g) : v) : v; }
+  function nomeDi(k, v) { return k === "volto" ? "Volto sconosciuto" : k === "ep" ? v.split("/")[1] : k === "cart" ? ultimo(v) : k === "stag" ? "Stagione " + v : k === "tipo" ? (v === "video" ? "Solo video" : "Solo foto") : k === "pers" ? ((PERS[v] || {}).nome || v) : k === "avv" ? "contro " + v : k === "cam" ? "Girato da " + v : k === "ct" ? (v === "Casa" ? "In casa" : "In trasferta") : k === "part" ? (PART[v] ? titoloPartita(PART[v]) + " " + dataRip(PART[v].g) : v) : v; }
   function leggiIndirizzo() {
     var h = new URLSearchParams(location.hash.slice(1)); G = [];
     try { (JSON.parse(h.get("g") || "[]") || []).forEach(function (x) { if (ETI[x[0]]) G.push({ k: x[0], v: String(x[1]), n: nomeDi(x[0], String(x[1])) }); }); } catch (e) {}
@@ -805,6 +830,8 @@
     $("risultati").innerHTML = '<div class="attesa">Carico l’elenco dei file (' + (I ? n(I.file) : "…") + ")…</div>";
     // chi si vede nei video (volti-1907): arriva insieme all'elenco dei file
     var volti = fetch(BASE + "indice/volti.json", { cache: "no-cache" }).then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; });
+    // e quanto e' grande il volto (visti.json: [persona, altezza]): sopra PRIMO e' un primo piano
+    fetch(BASE + "indice/visti.json", { cache: "no-cache" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (v) { VISTI_H = v || {}; if (F && G.some(function (g) { return g.k === "come"; })) vai(); }).catch(function () {});
     CARICO = fetch(BASE + "indice/file.json", { cache: "no-cache" }).then(function (r) { if (!r.ok) throw 0; return r.json(); })
       .then(function (j) { F = j.map(function (x) { return { d: x[0], nd: norm(x[0]), f: x[1] }; }); return volti; }).then(function (v) { VOLTI = v || {}; })
       .catch(function () { CARICO = null; throw new Error("L’elenco dei file non è ancora pronto: lo stiamo preparando sulla NAS."); });
@@ -814,7 +841,8 @@
   function trovati(escludi) {
     var coll = di("coll"), ep = di("ep"), cart = di("cart"), stag = di("stag"), anno = di("anno");
     var fp = di("pers"), fg = di("gen"), fq = di("sq"), fc = di("comp"), fa = di("avv"), fcam = di("cam"), fmo = di("mo"), flu = di("lu"), fct = di("ct"), fst = di("st");
-    var DD = doppioni(); NASCOSTI = 0; var fpart = di("part");
+    var DD = doppioni(); NASCOSTI = 0; var fpart = di("part"), fcome = di("come"), fvolto = di("volto"), vieVolto = null;
+    if (fvolto.length) { vieVolto = new Set(); fvolto.forEach(function (id) { var g = ((IGN || {}).gruppi || []).filter(function (x) { return x.id === id; })[0]; (g ? g.vie : []).forEach(function (v) { vieVolto.add(v); }); }); }
     var parole = norm(Q).split(/\s+/).filter(function (w) { return w.length > 1; });
     var inRacc = RACCOLTA ? new Set(RACCOLTA.file.filter(function (x) { return !x.cartella; }).map(function (x) { return x.via; })) : null;
     var cartRacc = RACCOLTA ? RACCOLTA.file.filter(function (x) { return x.cartella; }).map(function (x) { return x.via; }) : [];
@@ -843,6 +871,7 @@
       for (var j = 0; j < fs.length; j++) {
         var f = fs[j], via = d + "/" + f[0];
         if (inRacc && !tuttaDentro && !inRacc.has(via)) continue;
+        if (vieVolto && !vieVolto.has(via)) continue;
         var tp = tipo(f[0]); if (tp === "altro") continue;
         var dd = DD[via];
         if (dd && dd.primo !== via && !MOSTRA_DOPPI && !inRacc) { NASCOSTI++; continue; }
@@ -853,15 +882,85 @@
         // le persone di questo file: quelle della cartella, piu' quelle scritte nel suo nome
         var pers = md.p || [];
         if (md.pf) { var nf = " " + norm(f[0].replace(/\.[^.]+$/, "")).replace(/[^a-z0-9]+/g, " ") + " "; pers = pers.concat(md.pf.filter(function (pid) { return PERS[pid] && PERS[pid].alias.some(function (a) { return nf.indexOf(" " + a + " ") >= 0; }); })); }
-        var visti = VOLTI[via] || [];
+        var visti = VOLTI[via] || [], nominati = pers, vh = VISTI_H[via] || [];
         if (visti.length) pers = pers.concat(visti.filter(function (x) { return pers.indexOf(x) < 0; }));
         if (escludi !== "pers" && fp.length && !tuttaP && !pers.some(function (x) { return fp.indexOf(x) >= 0; })) continue;
+        // come compare: nominato (percorso o nome del file), si vede (volto), primo piano (volto grande)
+        if (escludi !== "come" && fcome.length && !comeCompare(fp.length ? fp : pers, nominati, visti, vh).some(function (m) { return fcome.indexOf(m) >= 0; })) continue;
         if (parole.length) { var nn = F[i].nd + "/" + norm(f[0]), ok = true; for (var w = 0; w < parole.length; w++) if (nn.indexOf(parole[w]) < 0) { ok = false; break; } if (!ok) continue; }
-        out.push({ via: via, d: d, nome: f[0], peso: f[1], mtime: f[2], data: dt, stag: st || (dt ? stagioneDi(dt) : ""), tipo: tp, coll: c0, md: md, pers: pers, st: stt, dop: dd ? dd.n : 0, volti: visti });
+        out.push({ via: via, d: d, nome: f[0], peso: f[1], mtime: f[2], data: dt, stag: st || (dt ? stagioneDi(dt) : ""), tipo: tp, coll: c0, md: md, pers: pers, nom: nominati, st: stt, dop: dd ? dd.n : 0, volti: visti, vh: vh });
       }
     }
     return out;
   }
+  // COME COMPARE una persona in un file (Goffredo, 27/09/2026: "chi si vede" non e' "chi e' nominato")
+  var PRIMO = 0.25, VISTI_H = {};
+  function comeCompare(chi, nominati, visti, vh) {
+    var m = [];
+    if (chi.some(function (p) { return nominati.indexOf(p) >= 0; })) m.push("Nominato");
+    if (chi.some(function (p) { return visti.indexOf(p) >= 0; })) m.push("Si vede");
+    if (vh.some(function (y) { return chi.indexOf(y[0]) >= 0 && y[1] >= PRIMO; })) m.push("Primo piano");
+    return m;
+  }
+  // ══════════ I VOLTI DA BATTEZZARE ══════════
+  // ignoti.json (ignoti-1907.py): gruppi di volti simili, dal piu' presente. Si battezzano con
+  // POST /volti (servizio-1907): a una persona che c'e' gia', a una nuova, o "non serve".
+  var IGN = null, IGN_TUTTI = false;
+  function caricaIgnoti() {
+    return fetch(BASE + "indice/ignoti.json", { cache: "no-cache" }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { IGN = j; disegnaIgnoti(); }).catch(function () {});
+  }
+  function disegnaIgnoti() {
+    var gg = (IGN && IGN.gruppi) || [];
+    $("voltiBox").hidden = !gg.length; if (!gg.length) return;
+    var tanti = gg.filter(function (g) { return g.vie.length > 1; }).length, max = IGN_TUTTI ? 240 : 6;
+    $("voltiConto").textContent = n(gg.length) + (gg.length === 1 ? " gruppo" : " gruppi") + (tanti ? " · " + n(tanti) + " in più video" : "") + (IGN.battezzati ? " · " + n(IGN.battezzati) + " volti già battezzati" : "");
+    $("elencoPers").innerHTML = Object.keys(PERS).map(function (k) { return '<option value="' + esc(PERS[k].nome) + '">'; }).join("");
+    $("volti").innerHTML = gg.slice(0, max).map(function (g) {
+      var f = g.forse && PERS[g.forse[0]];
+      return '<div class="vb" data-vg="' + esc(g.id) + '"><div class="vb-facce">' + g.k.slice(0, 5).map(function (k) { return '<img src="' + ritaglio(k) + '" alt="" loading="lazy">'; }).join("") + (g.k.length > 5 ? "<span>+" + n(g.k.length - 5) + "</span>" : "") + "</div>" +
+        '<div class="vb-info">in <b>' + n(g.vie.length) + "</b> video · <a data-vfa=\"vedi\">guarda i video</a></div>" +
+        (f ? '<div class="vb-forse">Forse è <b>' + esc(f.nome) + '</b><button class="mini oro" data-vfa="si" data-pid="' + esc(f.id) + '">Sì, è lui</button></div>' : "") +
+        '<div class="vb-nome"><input list="elencoPers" placeholder="Chi è? Nome e cognome" aria-label="chi è"><button class="mini" data-vfa="battezza">Battezza</button></div>' +
+        '<button class="vb-no" data-vfa="scarta" title="tifosi, passanti, volti che non servono">Non serve</button></div>';
+    }).join("");
+    $("voltiTutti").hidden = gg.length <= max; $("voltiTutti").textContent = "Vedi tutti (" + n(gg.length) + ")";
+  }
+  function gruppoDi(el) { var id = el.closest("[data-vg]").dataset.vg; return IGN.gruppi.filter(function (g) { return g.id === id; })[0]; }
+  function battezza(g, corpo, detto) {
+    corpo.k = g.k;
+    fetch(BASE + "volti", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || !j.ok) throw new Error(j.errore || "Non riuscito: riprova tra poco."); return j; }); })
+      .then(function () {
+        var i = IGN.gruppi.indexOf(g); IGN.gruppi.splice(i, 1); if (!corpo.scarta) IGN.battezzati = (IGN.battezzati || 0) + g.k.length; disegnaIgnoti();
+        avviso("ok", (corpo.scarta ? "Messi da parte" : "Battezzato: <b>" + esc(detto) + "</b>") + " · " + n(g.k.length) + (g.k.length === 1 ? " volto" : " volti") + ". La ricerca lo sa tra qualche minuto. <button class=\"mini\" data-annulla>Annulla</button>");
+        var b = $("avvisi").lastChild.querySelector("[data-annulla]");
+        b.onclick = function (e) { e.stopPropagation(); b.closest(".avviso").remove();
+          fetch(BASE + "volti", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ k: g.k, togli: true }) })
+            .then(function (r) { if (!r.ok) throw 0; IGN.gruppi.splice(Math.max(0, i), 0, g); if (!corpo.scarta) IGN.battezzati -= g.k.length; disegnaIgnoti(); avviso("", "Annullato."); })
+            .catch(function () { avviso("err", "Annullamento non riuscito."); }); };
+      })
+      .catch(function (e) { avviso("err", esc(e.message)); });
+  }
+  function battezzaDaCampo(el) {
+    var g = gruppoDi(el), campo = el.closest(".vb").querySelector("input"), nome = campo.value.trim().replace(/\s+/g, " ");
+    if (nome.length < 3) { campo.focus(); avviso("err", "Scrivi chi è: nome e cognome."); return; }
+    var pid = Object.keys(PERS).filter(function (k) { return norm(PERS[k].nome) === norm(nome); })[0];
+    if (pid) return battezza(g, { pid: pid }, PERS[pid].nome);
+    if (nome.split(" ").length < 2 && !confirm("«" + nome + "» senza cognome: si cercherà solo dai volti, non dai nomi delle cartelle. Va bene?")) return;
+    if (!confirm("«" + nome + "» è una persona nuova per l’archivio. La aggiungo?")) return;
+    battezza(g, { nome: nome }, nome);
+  }
+  $("volti").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-vfa]"); if (!b) return; e.preventDefault(); var a = b.dataset.vfa, g = gruppoDi(b);
+    if (a === "vedi") { G = G.filter(function (x) { return x.k !== "volto"; }); metti({ k: "volto", v: g.id, n: nomeDi("volto", g.id) }); window.scrollTo(0, 0); }
+    else if (a === "si") battezza(g, { pid: b.dataset.pid }, (PERS[b.dataset.pid] || {}).nome || "");
+    else if (a === "scarta") battezza(g, { scarta: true });
+    else if (a === "battezza") battezzaDaCampo(b);
+  });
+  $("volti").addEventListener("keydown", function (e) { if (e.key === "Enter" && e.target.matches(".vb-nome input")) { e.preventDefault(); battezzaDaCampo(e.target); } });
+  $("voltiTutti").onclick = function () { IGN_TUTTI = true; disegnaIgnoti(); };
+
   function risultati() {
     if (!F) { caricaFile().then(risultati).catch(function (e) { $("risultati").innerHTML = '<div class="vuoto">' + esc(e.message) + "</div>"; }); return; }
     var tutti = trovati(), nascosti = NASCOSTI;
@@ -923,7 +1022,7 @@
   var COL_GEN = { "Partita": "#C9A24B", "Allenamento": "#7FDCA9", "Intervista": "#8CC5F2", "Conferenza stampa": "#5AA7E8", "Ritiro": "#6EE7A8", "Nuovo acquisto": "#F2C98C",
     "Tifosi": "#F2A0A0", "Evento": "#C7A6F2", "Lifestyle e territorio": "#9FE0E0", "Drone": "#E3E08C", "Backstage": "#F5D76E", "Commerciale": "#F29C6B",
     "Grafica": "#B8B8C8", "Documentario": "#E3C271", "Social": "#E58BD0" };
-  var SCHEDA_P = null, SCHEDA_SEL = { tipo: {}, gen: {}, stag: {}, comp: {}, coll: {}, part: {} };
+  var SCHEDA_P = null, SCHEDA_SEL = { tipo: {}, come: {}, gen: {}, stag: {}, comp: {}, coll: {}, part: {} };
   function cardPersona(p, modo, tutti) {
     var sel = function (k, v) { return modo === "ris" ? di(k).indexOf(v) >= 0 : !!SCHEDA_SEL[k][v]; };
     var c = p.conti, nv, nf, gen = {}, stg = {}, cmp = {}, dove = {};
@@ -933,13 +1032,17 @@
         (x.md.g || []).forEach(function (g) { add(gen, g); }); add(stg, x.stag); add(cmp, x.md.c); add(dove, x.coll); });
     } else { nv = c.video; nf = c.foto; gen = c.generi; stg = c.stagioni; cmp = c.competizioni || {}; dove = c.collezioni; }
     var ord = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }); };
-    var foto = '<span class="sg-foto">' + esc(iniziali(p.nome)) + (p.foto ? '<img src="' + FOTO + esc(p.foto) + '" alt="" onerror="this.remove()">' : "") + "</span>";
+    var foto = '<span class="sg-foto">' + esc(iniziali(p.nome)) + (p.foto ? '<img src="' + FOTO + esc(p.foto) + '" alt="" onerror="this.remove()">' : p.volto ? '<img src="' + ritaglio(p.volto) + '" alt="" onerror="this.remove()">' : "") + "</span>";
     var sq = p.ruolo === "Club" || p.ruolo === "Staff tecnico" ? "Como 1907 · " + p.ruolo : p.ruolo === "Como Women" ? "Como Women" : "Como" + (p.ruolo ? " · " + p.ruolo : "") + (p.maglia && p.ruolo !== "Allenatore" ? " · n. " + p.maglia : "");
     var u = c.ultima;
     var h = '<div class="sg">' + foto + '<div class="sg-testa"><div class="sg-nome">' + esc(p.nome) + '</div><div class="sg-sq"><img class="sg-stemma" src="' + FOTO + 'stemma-espn-2572.png" alt="">' + esc(sq) + "</div>" +
       '<div class="sg-riga"><b>' + n(nv) + "</b> video · <b>" + n(nf) + "</b> foto" + (modo === "ris" ? " trovati" : " · <b>" + n(c.cartelle) + "</b> cartelle") + (u ? " · ultima: " + esc(u[1]) + " " + dataRip(u[0]) : "") +
       (c.volti ? ' · <span title="file senza il suo nome in cui è stato riconosciuto dal volto">👤 <b>' + n(c.volti) + "</b> dal volto</span>" : "") + "</div></div>";
-    var tess = [["tipo", "video", "Video", nv, "#8CC5F2"], ["tipo", "foto", "Foto", nf, "#7FDCA9"]].filter(function (t) { return t[3]; })
+    // si vede: in quanti video c'e' il suo volto, e in quanti in primo piano
+    var sv, pp;
+    if (modo === "ris") { sv = 0; pp = 0; tutti.forEach(function (x) { var m = comeCompare([p.id], x.nom, x.volti, x.vh); if (m.indexOf("Si vede") >= 0) sv++; if (m.indexOf("Primo piano") >= 0) pp++; }); }
+    else { sv = c.visti || 0; pp = c.primi || 0; }
+    var tess = [["tipo", "video", "Video", nv, "#8CC5F2"], ["tipo", "foto", "Foto", nf, "#7FDCA9"], ["come", "Si vede", "Si vede", sv, "#E8A0BF"], ["come", "Primo piano", "Primo piano", pp, "#F0C27B"]].filter(function (t) { return t[3]; })
       .concat(ord(gen).slice(0, 10).map(function (g) { return ["gen", g, g, gen[g], COL_GEN[g] || "#9AA7B8"]; }));
     h += '<div class="sg-tessere">' + tess.map(function (t) { var on = sel(t[0], t[1]); return '<button type="button" class="sg-t' + (on ? " on" : "") + '" data-sg="' + t[0] + "|" + esc(t[1]) + '" aria-pressed="' + on + '" style="--c:' + t[4] + '"><b>' + n(t[3]) + "</b><span>" + esc(t[2]) + "</span></button>"; }).join("") + "</div>";
     function gruppo(eti, k, o, max, fmt) { var ks = ord(o).slice(0, max); if (!ks.length) return ""; if (k === "stag") ks.sort().reverse();
@@ -984,7 +1087,7 @@
   function cercaDaScheda(p) {
     G = G.filter(function (g) { return g.k !== "pers"; }); G.push({ k: "pers", v: p.id, n: p.nome });
     Object.keys(SCHEDA_SEL).forEach(function (k) { Object.keys(SCHEDA_SEL[k]).forEach(function (v) { if (k === "tipo") G = G.filter(function (g) { return g.k !== "tipo"; }); G.push({ k: k, v: v, n: nomeDi(k, v) }); }); });
-    SCHEDA_SEL = { tipo: {}, gen: {}, stag: {}, comp: {}, coll: {}, part: {} }; SCHEDA_P = null;
+    SCHEDA_SEL = { tipo: {}, come: {}, gen: {}, stag: {}, comp: {}, coll: {}, part: {} }; SCHEDA_P = null;
     Q = $("cerca").value.trim(); chiudiSugg(); capisci(); disegnaGettoni(); vai();
   }
   function schedaPersona(p, tutti) {
@@ -1099,7 +1202,9 @@
     var perEp = conta(tutti, function (x) { var p = x.d.split("/"); return p.length > 1 ? p[0] + "/" + p[1] : ""; });
     function contaLista(k, campo) { var c = {}; (di(k).length ? trovati(k) : tutti).forEach(function (x) { var v = campo === "p" ? x.pers : x.md[campo]; (Array.isArray(v) ? v : v ? [v] : []).forEach(function (y) { c[y] = (c[y] || 0) + 1; }); }); return c; }
     var perSt = conta(di("st").length ? trovati("st") : tutti, function (x) { return x.st; });
+    var perCome = {}; (di("come").length ? trovati("come") : tutti).forEach(function (x) { comeCompare(di("pers").length ? di("pers") : x.pers, x.nom, x.volti, x.vh).forEach(function (m) { perCome[m] = (perCome[m] || 0) + 1; }); });
     var cols = colonna("gen", "Tipo di contenuto", contaLista("gen", "g")) + colonna("pers", "Persone", contaLista("pers", "p")) +
+      colonna("come", "Come compare", perCome, function (a, b) { return ["Si vede", "Primo piano", "Nominato"].indexOf(a) - ["Si vede", "Primo piano", "Nominato"].indexOf(b); }) +
       colonna("st", "Stato del materiale", perSt) +
       colonna("stag", "Stagione", perStag, function (a, b) { return b.localeCompare(a); }) + colonna("sq", "Squadra", contaLista("sq", "q")) +
       colonna("mo", "Momento", contaLista("mo", "mo")) + colonna("cam", "Chi ha girato", contaLista("cam", "cam")) + colonna("lu", "Luogo", contaLista("lu", "lu")) +
@@ -1365,6 +1470,8 @@
 
 
       disegnaStagioni(); disegnaAlbero(); disegnaCollezioni(); disegnaHome();
+      var soloVolti = location.hash === "#volti"; if (soloVolti) IGN_TUTTI = true;
+      caricaIgnoti().then(function () { if (soloVolti && !$("voltiBox").hidden) $("voltiBox").scrollIntoView({ block: "start" }); });
       var soloRacc = location.hash === "#raccolte";
       caricaRaccolte().then(function () { if (soloRacc) { disegnaRaccolte(true); $("raccolteBox").scrollIntoView({ block: "start" }); } });
       if (!soloRacc) { leggiIndirizzo(); vai(); }

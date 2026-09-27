@@ -20,6 +20,7 @@ CASA = "/var/lib/comotv-1907"
 ROSE_CACHE = os.path.join(CASA, "rose-como.json")
 FOTO_MAPPA = "/var/lib/comotv/foto-intestazioni.json"
 FOTO_DIR = "/var/lib/comotv/loghi"
+BATTESIMI = "/var/lib/comotv-1907/battesimi.json"
 
 
 def piatto(s):
@@ -100,6 +101,22 @@ def slug(s):
     return re.sub(r"[^a-z0-9]+", "-", piatto(s)).strip("-")
 
 
+_RITR = {}
+def RITRATTI():
+    if "x" not in _RITR:
+        try: _RITR["x"] = json.load(open("/var/lib/comotv-1907/ritratti.json"))
+        except Exception: _RITR["x"] = {}
+    return _RITR["x"]
+
+
+def battezzati():
+    """le persone nuove battezzate dai volti sconosciuti (non nelle rose ESPN ne' in CLUB):
+    staff, dirigenti, ospiti. Hanno come foto il loro volto ritagliato ("volto")."""
+    try: b = json.load(open(BATTESIMI)).get("persone", {})
+    except Exception: return []
+    return [{"nome": v["nome"], "ruolo": v.get("ruolo", ""), "club": True, "volto": v.get("volto", "")} for v in b.values() if v.get("nome")]
+
+
 def rose_espn():
     try:
         if time.time() - os.path.getmtime(ROSE_CACHE) < 7 * 86400: return json.load(open(ROSE_CACHE))
@@ -138,7 +155,7 @@ def persone():
         perSq, ambigui = {}, set()
     tutte = []
     viste = set()
-    for p in CLUB + rose_espn():
+    for p in CLUB + rose_espn() + battezzati():
         nome = p["nome"]; k = slug(nome)
         if k in viste: continue
         viste.add(k)
@@ -152,6 +169,8 @@ def persone():
                 if parole[i] in ("da", "de", "van", "di", "del", "della", "dos", "el"):
                     cognome = " ".join(parole[i:]); break
             if len(cognome) >= 4 and cognome not in AMBIGUI: alias.add(cognome)
+        # un battezzato con una parola sola ("Pietro") non si cerca nei percorsi: troverebbe tutti i Pietro
+        if p.get("volto") and len(parole) < 2: alias = set()
         foto = p.get("foto", "")
         chiavi = ["-".join(slug(nome).split("-")[-2:]), slug(nome).split("-")[-1]]
         if not foto:
@@ -164,8 +183,10 @@ def persone():
             for kk in chiavi:
                 f = "foto-premium-" + kk + ".png"
                 if kk not in ambigui and kk not in perSq and os.path.exists(os.path.join(FOTO_DIR, f)): foto = f; break
+        # senza foto premium, ma con un ritratto messo a mano (ritratti-1907.py): il suo volto
+        volto = p.get("volto", "") or ("" if foto else (RITRATTI().get(k) or {}).get("k", ""))
         tutte.append({"id": k, "nome": nome, "ruolo": p.get("ruolo", ""), "maglia": p.get("maglia", ""), "stagioni": sorted(p.get("stagioni", []), reverse=True),
-                      "foto": foto, "alias": sorted(alias, key=len, reverse=True), "club": p in CLUB})
+                      "foto": foto, "alias": sorted(alias, key=len, reverse=True), "club": p in CLUB or bool(p.get("volto")), "volto": volto})
     return tutte
 
 
