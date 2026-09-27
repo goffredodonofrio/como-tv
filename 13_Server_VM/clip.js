@@ -7561,6 +7561,62 @@ function leggiArchivio() {
   });
   if (via) { console.log("[clip] archivio: " + via + " partite di magazzini sganciati tolte dall'indice"); scriviArchivio(); }
 }
+// LE AGGIUNTE ENTRANO IN INDICE (27/09/2026). Le 161 partite fuori indice
+// approvate da Goffredo sono arrivate sulla NAS (S3-ARCHIVIO) ma lo
+// scandaglio non le prende: i tagli li scarta per regola, e molte sono piu'
+// vecchie della sua finestra. Il piano (nas-aggiunte.json, fatto una volta
+// confrontando .aggiunte.txt con l'indice) dice nome, competizione e file;
+// qui diventano voci "nas:", che lo scandaglio non tocca. Rifarlo non
+// duplica: l'id viene dalla cartella e dal nome.
+function NAS_VOCI() {
+  const s2 = new Set();
+  Object.keys(ARCHIVIO).forEach((k) => { if (k.indexOf("nas:") === 0) (ARCHIVIO[k].pezzi || []).forEach((z) => s2.add(z.chiave)); });
+  return s2;
+}
+function importaAggiunteNas() {
+  let piano = [];
+  try { piano = JSON.parse(fs.readFileSync(path.join(DIR, "nas-aggiunte.json"), "utf8")); } catch (e) { return { ok: false, errore: "manca nas-aggiunte.json: " + e.message }; }
+  // il secchio e' quello dell'archivio copiato (lo specchio in S3-ARCHIVIO),
+  // non ARCH_BUCKET, che e' il VOD della QNAP: il 27/09 le prime 152 voci
+  // erano finite li' e cercavano i file nel posto sbagliato
+  const secchio = (MAGAZZINI.filter((x) => x.inventario)[0] || {}).bucket;
+  if (!secchio) return { ok: false, errore: "manca l'elenco dell'archivio (s3-inventario.json)" };
+  let nuove = 0, gia = 0, senzaFile = 0, corrette = 0;
+  // e quello che hanno letto nel posto sbagliato non vale: si rilegge
+  Object.keys(ARCHIVIO).forEach((k) => {
+    const v = ARCHIVIO[k];
+    if (k.indexOf("nas:") !== 0 || v.bucket === secchio) return;
+    v.bucket = secchio; corrette++;
+    LETTURE_DEL_FILE.forEach((c) => { delete v[c]; });
+    delete v.misurato;
+  });
+  piano.forEach((v) => {
+    const file = (v.file || []).filter((k) => NAS_FILE.has(k));
+    if (!file.length) { senzaFile++; return; }
+    const dove = file[0].split("/").slice(0, -1).join("/");
+    const id = "nas:" + crypto.createHash("sha1").update(v.giorno + "|" + v.partita + "|" + file.join("|")).digest("hex").slice(0, 14);
+    if (ARCHIVIO[id]) { gia++; return; }
+    const g = String(v.giorno || "");
+    const pezzi = file.map((k) => ({ chiave: k, peso: NAS_FILE.get(k), file: path.basename(k), dentro: path.dirname(k).split("/").slice(3).join("/") }));
+    // l'ordine e l'asse dall'ora scritta nel nome, come per le orfane di S3
+    const secondi = (f) => { const o = oraNelNome(f); return o ? (o.h % 12) * 3600 + o.m * 60 + o.s : null; };
+    pezzi.sort((x, y) => (secondi(x.file) || 0) - (secondi(y.file) || 0));
+    const primo = secondi(pezzi[0].file);
+    let scorso = 0;
+    pezzi.forEach((x, n) => {
+      if (n === 0) { x.da = 0; return; }
+      const s2 = secondi(x.file); if (primo === null || s2 === null) { x.da = null; return; }
+      let d = s2 - primo; while (d < scorso) d += 12 * 3600; x.da = d; scorso = d;
+    });
+    ARCHIVIO[id] = { bucket: secchio, chiave: pezzi[0].chiave, peso: pezzi[0].peso, partita: v.partita, competizione: v.competizione || "",
+      variante: "", giorno: g, dove, fonte: pezzi.length > 1 ? "pezzi" : "intero", pezzi,
+      kickoff: null, sicuro: false, soloNas: true, gemella: v.fratello || undefined,
+      quando: v.quando || new Date(Date.UTC(+g.slice(0, 4), +g.slice(4, 6) - 1, +g.slice(6, 8), 18, 0)).toISOString() };
+    nuove++;
+  });
+  if (nuove || corrette) { scriviArchivio(); giroNas(); console.log("[clip] aggiunte dalla NAS: " + nuove + " partite entrate in indice" + (corrette ? ", " + corrette + " rimesse nel secchio giusto" : "")); }
+  return { ok: true, nuove, gia, senzaFile, corrette };
+}
 function scriviArchivio() {
   try {
     const tmp = fileArchivio() + ".tmp";
@@ -7893,6 +7949,8 @@ async function archivioScandaglia(p) {
   Object.keys(gruppi).forEach((k) => {
     const gr = gruppi[k];
     if (gr.presa) return;
+    // gia' entrata in indice dalla NAS (voce "nas:"): niente doppione
+    if (gr.file.some((f) => NAS_VOCI().has(f.chiave))) return;
     const scelta = scegliMateriale(gr, "");
     if (!scelta || scelta.fonte === "unico") return;      // non e' una partita intera: si lascia stare
     const g = gr.giorno;
@@ -7971,7 +8029,7 @@ async function archivioScandaglia(p) {
   let tolte = 0;
   Object.keys(ARCHIVIO).forEach((k) => {
     const v = ARCHIVIO[k];
-    if (k.indexOf("s3:") === 0 || v.bucket !== bucket || viste.has(k)) return;
+    if (k.indexOf("s3:") === 0 || k.indexOf("nas:") === 0 || v.bucket !== bucket || viste.has(k)) return;
     if (!(Date.parse(v.quando) >= limite)) return;      // fuori dalla finestra guardata: non si tocca
     delete ARCHIVIO[k]; tolte++;
   });
@@ -10891,7 +10949,7 @@ async function riconosciPartita(rec) {
       // — quella riga adesso non ha piu' niente: va via, se no la stessa
       // registrazione si vede due volte in elenco con due nomi diversi.
       Object.keys(ARCHIVIO).forEach((k) => {
-        if (k === fuori.scelto.rec || k.indexOf("s3:") === 0) return;
+        if (k === fuori.scelto.rec || k.indexOf("s3:") === 0 || k.indexOf("nas:") === 0) return;
         if (ARCHIVIO[k].dove === a.dove && ARCHIVIO[k].bucket === a.bucket) delete ARCHIVIO[k];
       });
       a.riconosciuta = RICONOSCIUTE[a.dove]; scriviArchivio();
@@ -12141,7 +12199,7 @@ function logoEvento(a) {
   return "";
 }
 function titoloDi(a) {
-  if (a.soloS3 && titoloAMano(a.dove)) return titoloAMano(a.dove);
+  if ((a.soloS3 || a.soloNas) && titoloAMano(a.dove)) return titoloAMano(a.dove);
   const p = String(a.partita || "").trim().replace(/\s*[-–]\s*(ITA|ENG)\s*$/i, "");
   // un nome che e' solo una data o "3 CLEANFEED" non dice niente; "20260728_COMO CUP CLEANFEED" dice COMO CUP
   const pulito = p.replace(/\.(mp4|mov|mxf|mkv)$/i, "").replace(/^\d{6,9}[\s_-]*/, "").replace(/[\s_-]*clean ?feed\s*$/i, "").replace(/_+/g, " ").trim();
@@ -15209,7 +15267,7 @@ const AZIONI = {
   "clip-archivio-titolo": (p) => {
     const a = ARCHIVIO[String(p.rec || "")];
     if (!a) throw new Error("questa voce non e' nell'archivio");
-    if (!a.soloS3) throw new Error("questa partita ha il nome di Airtable: si cambia li'");
+    if (!a.soloS3 && !a.soloNas) throw new Error("questa partita ha il nome di Airtable: si cambia li'");
     const t = String(p.titolo || "").trim().slice(0, 120);
     if (!t) throw new Error("manca il nome");
     titoliAMano()[a.dove] = t;
@@ -15413,6 +15471,7 @@ const AZIONI = {
     const speciali = Object.keys(ARCHIVIO).map((k) => { const a = ARCHIVIO[k]; const sp = a && a.chiave && specialeDi(k, a); return sp ? { titolo: titoloDi(a), ...sp } : null; }).filter(Boolean);
     return { ok: true, squadre, altri, speciali, conStemma: squadre.filter((x) => !x.fonti.sigla || Object.keys(x.fonti).length > 1).length, totale: squadre.length };
   },
+  "clip-nas-aggiunte": () => importaAggiunteNas(),
   "clip-archivio-copia": async () => Object.assign({}, await statoCopia(), { nomi: statoNomi(), casa: statoCasa() }),
   // quante partite S3 sono gia' in casa (ricontate adesso)
   "clip-archivio-specchio": async () => Object.assign({ ok: true, cartella: path.join(QNAP_RADICE, SPECCHIO_DIR) }, await aggiornaSpecchio()),
