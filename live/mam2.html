@@ -1016,6 +1016,8 @@
   .copia-num{margin-left:auto;font-size:12.5px;color:var(--ivory2);} .copia-num strong{color:var(--oro2);font:600 14px ui-monospace,Menlo,monospace;}
   .copia-riga{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--ivory2);}
   .copia-riga .copia-barra{flex:1 1 200px;height:6px;min-width:120px;}
+  .copia-num .grigio{color:var(--ivory2);} .copia-num a{color:#F0A93B;text-decoration:underline;text-underline-offset:3px;}
+  .copia.compatta > .copia-barra{height:6px;}
   .copia-kpi{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--fumo);}
   .copia-kpi b{color:var(--ivory);font-weight:600;font-variant-numeric:tabular-nums;}
   .copia-kpi .nota{margin-left:auto;}
@@ -1975,7 +1977,7 @@
     if (FILTRO.stato === "tc" && !x.telecronaca) return false;
     if (FILTRO.stato === "s3" && !x.s3) return false;
     if (FILTRO.stato === "qnap" && x.s3) return false;
-    if (FILTRO.stato === "controllare" && x.sicuro !== false) return false;
+    if (FILTRO.stato === "controllare" && !x.guardare) return false;
     return true;
   }
   function eventiVisti(){ return EVENTI.filter(passa); }
@@ -2025,7 +2027,7 @@
       (tc ? '<option value="tc"' + (FILTRO.stato === "tc" ? " selected" : "") + ">con telecronaca (" + tc + ")</option>" : "") +
       (EVENTI.length - s3 ? '<option value="qnap"' + (FILTRO.stato === "qnap" ? " selected" : "") + ">sulla QNAP (" + (EVENTI.length - s3) + ")</option>" : "") +
       (s3 ? '<option value="s3"' + (FILTRO.stato === "s3" ? " selected" : "") + ">su S3 a Parigi (" + s3 + ")</option>" : "") +
-      (function(){ var n = EVENTI.filter(function(x){ return x.sicuro === false; }).length; return n ? '<option value="controllare"' + (FILTRO.stato === "controllare" ? " selected" : "") + ">nome da controllare (" + n + ")</option>" : ""; })();
+      (function(){ var n = EVENTI.filter(function(x){ return x.guardare; }).length; return n ? '<option value="controllare"' + (FILTRO.stato === "controllare" ? " selected" : "") + ">da guardare a mano (" + n + ")</option>" : ""; })();
     el("selStato").classList.toggle("on", !!FILTRO.stato);
     el("catConto").textContent = comp.length + " competizioni";
     if (!el("compTenda").hidden) disegnaTenda();
@@ -6879,43 +6881,42 @@
   function disegnaCopia(d){
     var c = el("copiaS3"), mini = el("copiaMini");
     if (!d || !d.partite) { c.hidden = true; mini.hidden = true; return; }
-    var ag = d.aggiunte, tuttoIndice = d.partiteCasa >= d.partite;
+    var num = function(n){ return (n || 0).toLocaleString("it-IT"); };
+    var cs = d.casa || {}, ag = d.aggiunte;
+    // UN CONTEGGIO SOLO (27/09/2026): utilizzabili, non ancora, da guardare.
+    // Le tappe (ESPN, cronometro, tabellone, boati) stanno nel suggerimento
+    var tot = d.partite, usa = cs.utilizzabili || 0, guarda = cs.daGuardare || 0;
+    var nonAncora = Math.max(0, tot - usa - guarda);
     var agFinite = !ag || ag.fatti >= ag.file;
-    var scarica = d.attiva || (!!ag && !agFinite && (d.inCorso > 0));
-    var completo = tuttoIndice && agFinite;
-    var st = completo ? "finita" : scarica ? "va" : "ferma";
-    var etichetta = completo ? "completo" : scarica ? (tuttoIndice && ag ? "scarica le aggiunte" : "sta scaricando") : ("ferma" + (d.fermaDa ? " da " + Math.round(d.fermaDa / 60000) + " min" : ""));
+    var scarica = d.attiva && (d.partiteCasa < d.partite || !agFinite);
+    var st = !nonAncora && agFinite ? "finita" : "va";
+    var etichetta = !nonAncora && agFinite ? "tutto pronto" : scarica ? "sta scaricando" : "sta lavorando";
     // la media dei 10 minuti: quella dei 30 secondi salta a ogni file che la
     // passata sulla NAS trova finito tutto insieme (3.868 MB/s il 27/09)
     var v = d.attiva ? (d.velocita || d.velocitaOra || 0) : 0;
     if (v > 150e6) v = 0;
-    // avanzamento: le aggiunte se ci sono e non sono finite, se no l'indice
-    var tot, fatto, cosa, manca;
-    if (ag && !agFinite) { tot = ag.byte; fatto = Math.min(ag.byte, ag.byteArrivati); cosa = ag.fatti + " di " + ag.file + " file aggiunti"; }
-    else { tot = d.byteTot; fatto = Math.min(d.byteTot, d.sullaNas); cosa = d.partiteCasa.toLocaleString("it-IT") + " di " + d.partite.toLocaleString("it-IT") + " partite"; }
-    manca = Math.max(0, tot - fatto);
-    var perc = tot ? fatto / tot * 100 : 100, fine = v > 1e5 && manca > 0 ? Date.now() + manca / v * 1000 : null;
-    var cs = d.casa || {}, nm = d.nomi || {};
-    var num = function(n){ return (n || 0).toLocaleString("it-IT"); };
-    var kpi = function(eti, val, tit){ return '<span' + (tit ? ' title="' + esc(tit) + '"' : '') + '><b>' + val + '</b> ' + eti + '</span>'; };
-    var mancanoInd = Math.max(0, d.partite - d.partiteCasa);
+    var dettaglio = "Utilizzabile: sulla NAS, si sa che partita è, ESPN chiesto e cronometro letto: le azioni cadono al minuto giusto.\n" +
+      "Tabellone e boati poi le rifiniscono al secondo, da soli.\n\n" +
+      "Sulla NAS " + num(d.partiteCasa) + " di " + num(tot) + " · ESPN " + num(cs.espn) + " · cronometro " + num(cs.cronometro) +
+      " · tabellone " + num(cs.tabellone) + " · boati " + num(cs.boati) + " · rifinite del tutto " + num(cs.finite);
+    var perc = tot ? usa / tot * 100 : 0;
     c.hidden = false; c.className = "copia compatta " + st;
     c.innerHTML = '<div class="copia-testa"><b>Archivio</b><em class="' + st + '">' + etichetta + '</em>' +
-        '<span class="copia-num" title="le partite dell\u2019indice S3 gi\u00e0 sulla NAS; le aggiunte arrivate si contano nel totale in alto"><strong>' + num(d.partiteCasa) + '</strong> di ' + num(d.partite) + ' dall\u2019indice S3 · <strong>' + gbTesto(d.sullaNas) + '</strong></span></div>' +
-      (!completo ? '<div class="copia-riga"><div class="copia-barra"><i class="casa" style="width:' + Math.max(0.5, perc).toFixed(1) + '%"></i></div>' +
-        '<span>' + esc(cosa) + ' · ' + perc.toFixed(0) + '%' + (v ? ' · ' + mbs(v) : '') + (fine ? ' · fine verso le ' + esc(quandoOra(fine).replace(/^\S+\s/, "")) : '') +
-        (d.spesi !== null && d.spesi !== undefined ? ' · ' + Math.round(d.spesi) + ' $ di 450' : '') + '</span></div>' : '') +
-      '<div class="copia-kpi">' +
-        kpi("pronte", num(cs.finite) + "/" + num(cs.partite || d.partiteCasa), "partite con tutti i passi: ESPN, cronometro, tabellone, boati, momenti") +
-        kpi("ESPN", num(cs.espn)) + kpi("cronometro", num(cs.cronometro)) + kpi("tabellone", num(cs.tabellone)) + kpi("boati", num(cs.boati)) +
-        (nm.sicure !== undefined ? kpi("nomi sicuri", num(nm.sicure)) + (nm.daControllare ? kpi("da controllare", num(nm.daControllare), "partite senza un nome sicuro: vanno guardate a mano (filtro Stato)") : '') : '') +
-        '<span class="nota">trascrizione: ' + (mancanoInd ? 'quando arrivano le ultime ' + mancanoInd : 'di notte, dall’1 alle 6') + '</span>' +
-      '</div>' +
+        '<span class="copia-num" title="' + esc(dettaglio) + '"><strong>' + num(usa) + '</strong> utilizzabili' +
+        (nonAncora ? ' · <strong class="grigio">' + num(nonAncora) + '</strong> non ancora' : '') +
+        (guarda ? ' · <a href="#" id="copiaGuarda" title="la macchina non riesce a capire che partita sono: aprile e guardale">' + num(guarda) + ' da guardare</a>' : '') + '</span></div>' +
+      '<div class="copia-barra" title="' + esc(dettaglio) + '"><i class="casa" style="width:' + perc.toFixed(1) + '%"></i></div>' +
+      (ag && !agFinite ? '<div class="copia-riga"><span>Scarico le partite aggiunte: ' + num(ag.fatti) + ' di ' + num(ag.file) + ' file · ' +
+        (ag.byte ? Math.round(Math.min(ag.byteArrivati, ag.byte) / ag.byte * 100) : 0) + '%' + (v ? ' · ' + mbs(v) : '') +
+        (d.spesi !== null && d.spesi !== undefined ? ' · spesa ' + Math.round(d.spesi) + ' $ di 450' : '') + '</span></div>' : '') +
       (d.errore ? '<div class="copia-err">⚠ ' + esc(d.errore) + '</div>' : '');
-    mini.hidden = completo;
-    mini.textContent = "⇣ Archivio " + perc.toFixed(0) + "%" + (v ? " · " + Math.round(v / 1e6) + " MB/s" : "");
-    mini.style.color = scarica ? "" : "#F0A93B";
+    var g = el("copiaGuarda");
+    if (g) g.addEventListener("click", function(e){ e.preventDefault(); metteFiltro("stato", "controllare"); el("selStato").scrollIntoView({ block: "center", behavior: "smooth" }); });
+    mini.hidden = !nonAncora && agFinite;
+    mini.textContent = "Archivio " + Math.floor(perc) + "% pronto";
+    mini.style.color = "";
   }
+
   // nella Libreria si chiede ogni 5 secondi (il ponte ripesa solo i file a meta'),
   // altrove basta il bottoncino in alto; a scheda nascosta non si chiede niente
   var COPIA_PRIMA = true;

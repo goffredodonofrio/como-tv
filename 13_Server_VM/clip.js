@@ -6446,7 +6446,18 @@ function inCasaDaLavorare() {
   return Object.keys(ARCHIVIO).filter((k) => {
     const a = ARCHIVIO[k];
     return a && a.chiave && magazzinoInventario(a.bucket) && inCasa(a) && !CASA.attive.has(k) && passoCasa(k, a);
-  }).sort((x, y) => prioritaPartita(x) - prioritaPartita(y));
+  }).sort((x, y) => rifinitura(x) - rifinitura(y) || prioritaPartita(x) - prioritaPartita(y));
+}
+// PRIMA UTILIZZABILI, POI RIFINITE (27/09/2026). Prima il giro finiva una
+// partita (fino ai boati) e poi passava alla prossima: 275 rifinite e 650
+// ancora da usare. Ora prima i passi che la rendono utilizzabile (ESPN,
+// cronometro, e il tabellone solo se serve a sapere che partita e'), poi
+// tabellone e boati per il secondo giusto
+function rifinitura(k) {
+  const a = ARCHIVIO[k], passo = passoCasa(k, a);
+  if (passo === "espn" || passo === "cronometro") return 0;
+  if (passo === "tabellone" && !nomeSicuro(a)) return 0;
+  return 1;
 }
 // due partite insieme (una sola se qualcuno sta usando il MAM): assorbe
 // anche il giro dei nomi, perche' il tabellone letto qui dice gia' se il
@@ -6485,11 +6496,28 @@ async function giroCasa() {
     setTimeout(() => { giroCasa().catch(() => {}); }, 3000);
   }
 }
+// UTILIZZABILE (27/09/2026): il conteggio che conta per chi lavora. Una
+// partita si puo' cercare e usare quando e' sulla NAS, si sa che partita e',
+// ESPN e' stato chiesto (anche se non l'ha) e il cronometro dice dove comincia
+// nel file: le azioni cadono al minuto giusto. Tabellone e boati rifiniscono
+// al secondo dopo, in silenzio. Lo studio non ha partita: basta che ci sia.
+function utilizzabile(k, a) {
+  if (!a || !inCasa(a)) return false;
+  if (DA_STUDIO.test(a.partita || "")) return true;
+  return !!a.partita && nomeSicuro(a) && !!ESPN[k] && !!(a.orologio || a.orologioFallito);
+}
+// DA GUARDARE: la macchina ci ha provato (tabellone letto o fallito) e non sa
+// ancora che partita e'. Da sola non ci arriva: serve un occhio
+function daGuardare(a) {
+  return !!a && inCasa(a) && !nomeSicuro(a) && !DA_STUDIO.test(a.partita || "") && !!(a.tabellone || a.tabelloneFallito || !a.partita);
+}
 function statoCasa() {
-  const n = { partite: 0, espn: 0, appunti: 0, cronometro: 0, tabellone: 0, boati: 0, momenti: 0, finite: 0, studio: 0 };
+  const n = { partite: 0, espn: 0, appunti: 0, cronometro: 0, tabellone: 0, boati: 0, momenti: 0, finite: 0, studio: 0, utilizzabili: 0, daGuardare: 0 };
   Object.keys(ARCHIVIO).forEach((k) => {
     const a = ARCHIVIO[k];
     if (!a || !a.chiave || !magazzinoInventario(a.bucket) || !inCasa(a)) return;
+    if (utilizzabile(k, a)) n.utilizzabili++;
+    else if (daGuardare(a)) n.daGuardare++;
     n.partite++;
     if (ESPN[k]) n.espn++;
     if (((APPUNTI[k] || {}).righe || []).length) n.appunti++;
@@ -15117,7 +15145,7 @@ const AZIONI = {
                    nomeDa: a.soloS3 ? "cartella" : (a.partita ? "airtable" : (nomeDaCartella(a) ? "cartella" : "")), sicuro: !!a.partita && nomeSicuro(a), competizione: a.competizione || "",
                    quandoPartita: a.quando || "", durata: r ? (r.durata || 0) : Math.round(minuti * 60), reg: r ? r.id : undefined,
                    telecronaca: !!(r && PARLATO[r.id] && (PARLATO[r.id].pezzi || []).length), s3: !inCasa(a), inCasa: inCasa(a), senzaNome: !!a.soloS3, bucket: a.bucket, pezzi: (a.pezzi || []).length || 1,
-                   soloElenco: soloElenco(a.bucket) && !inCasa(a), puntata: puntata(a),
+                   soloElenco: soloElenco(a.bucket) && !inCasa(a), puntata: puntata(a), guardare: daGuardare(a),
                    // per l'anteprima: stemmi, telecronista e lingua, risultato
                    // l'anteprima solo per quelle che la Libreria mostra (in casa); gli stemmi
                    // delle altre li prepara prepararaStemmi in sottofondo
