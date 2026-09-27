@@ -779,7 +779,7 @@
     var h = "";
     var unaP = di("pers"); if (unaP.length === 1 && PERS[unaP[0]] && !RACCOLTA) h += '<div class="sg-ris">' + cardPersona(PERS[unaP[0]], "ris", tutti) + "</div>";
     if (RACCOLTA) h += '<div class="rac-testa"><span class="rc-eti">Raccolta 1907</span><h2>' + esc(RACCOLTA.nome) + "</h2><small>" + (function () { var nc = RACCOLTA.file.filter(function (x) { return x.cartella; }).length, nf = RACCOLTA.file.length - nc; return [nf ? nf + " file" : "", nc ? nc + (nc === 1 ? " cartella intera" : " cartelle intere") : ""].filter(Boolean).join(" · "); })() + " · aggiornata " + dataCorta((RACCOLTA.aggiornata || 0) / 1000) + (RACCOLTA.chi ? " · " + esc(RACCOLTA.chi) : "") +
-      '</small><span class="rc-az"><button class="oro" data-fa="monta-racc">Monta tutta</button><button data-fa="vlc-racc" title="tutta la raccolta in VLC, dalla NAS montata sul Mac">Apri in VLC</button><button data-fa="copie-racc" title="prepara ora le copie leggere per guardarla nel browser">Prepara le copie</button><button data-fa="rinomina">Rinomina</button><button data-fa="cancella">Elimina</button><button data-fa="esci">Esci</button></span></div>';
+      '</small><span class="rc-az"><button class="oro" data-fa="monta-racc">Monta tutta</button><button data-fa="premiere-racc" title="la raccolta come sequenza per Premiere, con gli originali della NAS">Premiere (XML)</button><button data-fa="vlc-racc" title="tutta la raccolta in VLC, dalla NAS montata sul Mac">Apri in VLC</button><button data-fa="copie-racc" title="prepara ora le copie leggere per guardarla nel browser">Prepara le copie</button><button data-fa="rinomina">Rinomina</button><button data-fa="cancella">Elimina</button><button data-fa="esci">Esci</button></span></div>';
     var nFiltri = G.filter(function (x) { return x.k !== "tipo"; }).length;
     h += '<div class="filtri-ris"><button data-tab="tutto" class="' + (TAB === "tutto" ? "on" : "") + '">Tutto<b>' + n(tutti.length) + '</b></button><button data-tab="video" class="' + (TAB === "video" ? "on" : "") + '"' + (nV ? "" : " disabled") + ">Video<b>" + n(nV) + '</b></button><button data-tab="foto" class="' + (TAB === "foto" ? "on" : "") + '"' + (nF ? "" : " disabled") + ">Foto<b>" + (nF ? n(nF) : "–") + "</b></button>" +
       '<button id="apriFiltri" class="apri-filtri' + (PANNELLO ? " aperto" : "") + '" aria-expanded="' + PANNELLO + '">Filtri' + (nFiltri ? "<b>" + nFiltri + "</b>" : "") + " " + (PANNELLO ? "▴" : "▾") + "</button>" +
@@ -990,7 +990,7 @@
     }
     b.innerHTML = "<span>" + detto + " <em>(" + n(nv) + " video da montare)</em></span>" +
       '<button class="monta" data-fa="monta"' + (nv ? "" : " disabled") + '>Monta questi</button><button class="salva" data-fa="salva">Salva in raccolta</button>' +
-      (nv ? '<button class="svuota" data-fa="vlc" title="apre la scelta in VLC dalla NAS montata sul Mac">VLC</button><button class="svuota" data-fa="copie" title="prepara le copie leggere per guardarli nel browser">Prepara le copie</button>' : "") +
+      (nv ? '<button class="svuota" data-fa="premiere" title="la scelta come sequenza per Premiere, con gli originali della NAS">Premiere</button><button class="svuota" data-fa="vlc" title="apre la scelta in VLC dalla NAS montata sul Mac">VLC</button><button class="svuota" data-fa="copie" title="prepara le copie leggere per guardarli nel browser">Prepara le copie</button>' : "") +
       (RACCOLTA ? '<button class="svuota" data-fa="togli-racc">Togli dalla raccolta</button>' : "") + '<button class="svuota" data-fa="svuota">Svuota</button>';
   }
   function scegli(via, forza) {
@@ -1053,6 +1053,7 @@
     var t = e.target.closest("[data-fa]"); if (!t) return;
     if (t.dataset.fa === "monta") monta(Array.from(SCELTI.values()), t);
     if (t.dataset.fa === "salva") { SALVA_APERTO = true; disegnaBarra(); }
+    if (t.dataset.fa === "premiere") premiereXml(videoDi(Array.from(SCELTI.values())), [G.map(function (g) { return g.n; }).join(" · "), Q].filter(Boolean).join(" · ") || "Scelta Como 1907", t);
     if (t.dataset.fa === "vlc") apriInVlc(videoDi(Array.from(SCELTI.values())).slice(0, 2000), "scelta Como 1907");
     if (t.dataset.fa === "copie") preparaCopie(videoDi(Array.from(SCELTI.values())));
     if (t.dataset.fa === "salva-ok") salvaInRaccolta();
@@ -1087,6 +1088,7 @@
       if (fa === "esci") { RACCOLTA = null; disegnaGettoni(); vai(); }
       if (fa === "monta-racc" && RACCOLTA) monta(RACCOLTA.file, t, RACCOLTA.nome);
       if (fa === "vlc-racc" && RACCOLTA) apriInVlc(videoDi(RACCOLTA.file).slice(0, 2000), RACCOLTA.nome);
+      if (fa === "premiere-racc" && RACCOLTA) premiereXml(videoDi(RACCOLTA.file), RACCOLTA.nome, t);
       if (fa === "copie-racc" && RACCOLTA) preparaCopie(videoDi(RACCOLTA.file));
       if (fa === "rinomina" && RACCOLTA) { var nm = prompt("Nuovo nome della raccolta", RACCOLTA.nome); if (nm && nm.trim()) post({ tipo: "clip-1907-raccolta-rinomina", id: RACCOLTA.id, nome: nm.trim() }).then(function (d) { RACCOLTA.nome = d.raccolta.nome; caricaRaccolte(); risultati(); }).catch(function (x) { avviso("err", esc(x.message)); }); }
       if (fa === "cancella" && RACCOLTA) { if (confirm("Eliminare la raccolta “" + RACCOLTA.nome + "”? I file sulla QNAP non si toccano.")) { var id = RACCOLTA.id; post({ tipo: "clip-1907-raccolta-cancella", id: id }).then(function () { RACCOLTA = null; caricaRaccolte(); vai(); avviso("", 'Raccolta eliminata. <a href="#" data-ripristina="' + esc(id) + '" style="color:var(--oro2)">Annulla</a>'); }).catch(function (x) { avviso("err", esc(x.message)); }); } }
@@ -1139,6 +1141,25 @@
     avviso("", "Ok: da ora VLC cerca i file in " + esc(RADICE_NAS) + ".");
   }
   document.addEventListener("click", function (e) { var a = e.target.closest && e.target.closest("[data-cambia-nas]"); if (a) { e.preventDefault(); cambiaNas(); } });
+  // PREMIERE (Goffredo, 27/09/2026): una raccolta o una scelta diventa una sequenza per
+  // Premiere (XML come quello del MAM di Como TV), con gli originali gia' collegati sulla
+  // NAS montata sul Mac. Il servizio-1907 legge durata e formato di ogni file.
+  function premiereXml(vie, nome, bottone) {
+    var video = vie.filter(function (v) { return tipo(v) === "video"; }).slice(0, 600);
+    if (!video.length) { avviso("err", "Niente video da mandare a Premiere."); return; }
+    var testo = bottone ? bottone.textContent : ""; if (bottone) { bottone.disabled = true; bottone.textContent = "Preparo l’XML…"; }
+    avviso("", "Leggo " + n(video.length) + " file per Premiere: ci vuole circa " + Math.max(1, Math.round(video.length / 5)) + " secondi.");
+    fetch(BASE + "premiere", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nome: nome, vie: video, radice: RADICE_NAS }) })
+      .then(function (r) { if (!r.ok) return r.json().then(function (j) { throw new Error(j.errore || "XML non riuscito"); }); return r.text().then(function (t) { return [t, r.headers.get("X-Quanti")]; }); })
+      .then(function (x) {
+        var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([x[0]], { type: "application/xml" }));
+        a.download = (nome || "como1907").replace(/[^A-Za-z0-9 _.-]+/g, " ").trim().slice(0, 60) + ".xml"; document.body.appendChild(a); a.click();
+        setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+        avviso("", "XML per Premiere scaricato (" + (x[1] || video.length) + " file): in Premiere File → Importa. I file si agganciano da " + esc(RADICE_NAS) + ". <a href=\"#\" data-cambia-nas=\"1\" style=\"color:var(--oro2)\">La NAS sta altrove?</a>");
+      })
+      .catch(function (e) { avviso("err", esc(e.message)); })
+      .then(function () { if (bottone) { bottone.disabled = false; bottone.textContent = testo; } });
+  }
   // PREPARA LE COPIE: le copie leggere di una raccolta o di una scelta si mettono in coda
   // subito, cosi' quando si apre il lettore sono gia' pronte (la VM le fa una alla volta)
   function preparaCopie(vie) {

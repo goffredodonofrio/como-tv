@@ -16,10 +16,15 @@ Fuori dal ponte, dietro nginx su 127.0.0.1:8097:
                                    per l'anteprima che scorre col mouse sulla tessera
   GET /copia?v=<percorso>          stato della copia leggera; se non c'e', la mette in coda
   GET /code                        cosa c'e' in coda
+  POST /premiere {nome, vie, radice} l'XML per Premiere (xmeml 4, come il MAM di Como TV): una
+                                   sequenza con i file uno dopo l'altro, collegati agli
+                                   originali sulla NAS montata sul Mac (radice)
 Le copie finiscono in /var/lib/comotv-1907/proxy/<k>.mp4 e le serve nginx.
 <k> = sha1(percorso)[:16]: la chiave la calcola chi chiede e qui si ricontrolla.
 """
 import hashlib, json, os, subprocess, threading, time, urllib.parse, urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from xml.sax.saxutils import escape as xesc
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 R = "/mnt/qnap100-frame"
@@ -142,6 +147,67 @@ def lavora():
             if CODA and CODA[0] == k: CODA.pop(0)
 
 
+def scheda_file(pieno):
+    """durata, fps, misura e canali audio: quello che serve a Premiere per agganciare il file"""
+    try:
+        o = json.loads(subprocess.run(["nice", "-n", "10", "ffprobe", "-v", "error", "-show_entries",
+                                       "format=duration:stream=codec_type,width,height,r_frame_rate,channels", "-of", "json", pieno],
+                                      capture_output=True, text=True, timeout=60).stdout or "{}")
+    except Exception:
+        return None
+    st = o.get("streams") or []
+    v = next((x for x in st if x.get("codec_type") == "video"), {})
+    a = next((x for x in st if x.get("codec_type") == "audio"), {})
+    fps = 25.0
+    try:
+        n_, d_ = (v.get("r_frame_rate") or "25/1").split("/"); fps = int(n_) / max(1, int(d_)) or 25.0
+    except ValueError: pass
+    if fps < 5 or fps > 240: fps = 25.0
+    return {"d": float((o.get("format") or {}).get("duration") or 0), "fps": fps, "w": int(v.get("width") or 1920),
+            "h": int(v.get("height") or 1080), "ch": int(a.get("channels") or 0)}
+
+
+def xml_premiere(nome, vie, radice):
+    radice = (radice or "/Volumes/COMOTV - FRAME").rstrip("/")
+    ok = []
+    for v in vie:
+        v2, pieno = dentro(v)
+        if v2: ok.append((v2, pieno))
+    with ThreadPoolExecutor(3) as ex:
+        schede = list(ex.map(lambda x: scheda_file(x[1]), ok))
+    voci = [(v, sc) for (v, _), sc in zip(ok, schede) if sc and sc["d"] > 0]
+    if not voci: return None, 0
+    # la sequenza prende la cadenza e la misura piu' comuni fra i file
+    comune = max(set(round(sc["fps"], 3) for _, sc in voci), key=lambda f: sum(1 for _, sc in voci if round(sc["fps"], 3) == f))
+    base = next(sc for _, sc in voci if round(sc["fps"], 3) == comune)
+    def rate(f):
+        ntsc = "TRUE" if any(abs(f - x) < 0.05 for x in (23.976, 29.97, 59.94)) else "FALSE"
+        return "<rate><timebase>%d</timebase><ntsc>%s</ntsc></rate>" % (round(f), ntsc)
+    tc = "<timecode>" + rate(comune) + "<string>00:00:00:00</string><frame>0</frame><displayformat>NDF</displayformat></timecode>"
+    def url(v): return "file://localhost" + urllib.parse.quote(radice + "/" + v, safe="/")
+    video, audio, marker, pos = "", "", "", 0
+    for i, (v, sc) in enumerate(voci, 1):
+        dur = max(1, round(sc["d"] * comune)); fdur = max(1, round(sc["d"] * sc["fps"]))
+        n = xesc(os.path.basename(v))
+        f = ('<file id="f%d"><name>%s</name><pathurl>%s</pathurl>%s<duration>%d</duration>%s<media><video><samplecharacteristics>'
+             '<width>%d</width><height>%d</height></samplecharacteristics></video>%s</media></file>') % (
+            i, n, xesc(url(v)), rate(sc["fps"]), fdur, tc, sc["w"], sc["h"], "<audio><channelcount>%d</channelcount></audio>" % sc["ch"] if sc["ch"] else "")
+        link = ('<link><linkclipref>v%d</linkclipref><mediatype>video</mediatype><trackindex>1</trackindex><clipindex>%d</clipindex></link>' % (i, i) +
+                ('<link><linkclipref>a%d</linkclipref><mediatype>audio</mediatype><trackindex>1</trackindex><clipindex>%d</clipindex></link>' % (i, i) if sc["ch"] else ""))
+        video += ('<clipitem id="v%d"><name>%s</name><duration>%d</duration>%s<start>%d</start><end>%d</end><in>0</in><out>%d</out>%s'
+                  '<sourcetrack><mediatype>video</mediatype><trackindex>1</trackindex></sourcetrack>%s</clipitem>') % (i, n, dur, rate(comune), pos, pos + dur, dur, f, link)
+        if sc["ch"]:
+            audio += ('<clipitem id="a%d"><name>%s</name><duration>%d</duration>%s<start>%d</start><end>%d</end><in>0</in><out>%d</out><file id="f%d"/>'
+                      '<sourcetrack><mediatype>audio</mediatype><trackindex>1</trackindex></sourcetrack>%s</clipitem>') % (i, n, dur, rate(comune), pos, pos + dur, dur, i, link)
+        marker += "<marker><name>%s</name><comment>%s</comment><in>%d</in><out>-1</out></marker>" % (n, xesc(os.path.dirname(v)), pos)
+        pos += dur
+    xml = ('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>\n<xmeml version="4">\n<sequence id="sequence-1"><name>%s</name><duration>%d</duration>%s%s\n'
+           '<media><video><format><samplecharacteristics>%s<width>%d</width><height>%d</height></samplecharacteristics></format><track>%s</track></video>'
+           '<audio><track>%s</track></audio></media>\n%s\n</sequence>\n</xmeml>\n') % (
+        xesc(nome or "Como 1907"), pos, rate(comune), tc, rate(comune), base["w"], base["h"], video, audio, marker)
+    return xml, len(voci)
+
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 
@@ -150,6 +216,18 @@ class H(BaseHTTPRequestHandler):
         self.send_response(codice); self.send_header("Content-Type", tipo); self.send_header("Content-Length", str(len(b)))
         for k, v in (extra or {}).items(): self.send_header(k, v)
         self.end_headers(); self.wfile.write(b)
+
+    def do_POST(self):
+        if urllib.parse.urlparse(self.path).path != "/premiere": return self.rispondi(404, {"ok": False})
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            p = json.loads(self.rfile.read(min(n, 2_000_000)) or b"{}")
+        except Exception:
+            return self.rispondi(400, {"ok": False, "errore": "richiesta non valida"})
+        vie = [str(v) for v in (p.get("vie") or [])][:600]
+        xml, quanti = xml_premiere(str(p.get("nome") or ""), vie, str(p.get("radice") or ""))
+        if not xml: return self.rispondi(400, {"ok": False, "errore": "nessun video leggibile"})
+        return self.rispondi(200, xml.encode("utf-8"), "application/xml; charset=utf-8", {"X-Quanti": str(quanti)})
 
     def do_GET(self):
         u = urllib.parse.urlparse(self.path); q = urllib.parse.parse_qs(u.query)
