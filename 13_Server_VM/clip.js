@@ -6463,7 +6463,7 @@ function inCasaDaLavorare() {
 function rifinitura(k) {
   const a = ARCHIVIO[k], passo = passoCasa(k, a);
   if (passo === "espn" || passo === "cronometro") return 0;
-  if (passo === "tabellone" && !nomeSicuro(a)) return 0;
+  if (passo === "tabellone" && !nomeSicuro(a) && !nomeQuasiCerto(k, a)) return 0;
   return 1;
 }
 // due partite insieme (una sola se qualcuno sta usando il MAM): assorbe
@@ -6511,7 +6511,39 @@ async function giroCasa() {
 function utilizzabile(k, a) {
   if (!a || !inCasa(a)) return false;
   if (DA_STUDIO.test(a.partita || "")) return true;
-  return !!a.partita && nomeSicuro(a) && !!ESPN[k] && !!(a.orologio || a.orologioFallito);
+  return !!a.partita && (nomeSicuro(a) || nomeQuasiCerto(k, a)) && !!ESPN[k] && !!(a.orologio || a.orologioFallito);
+}
+// NOME QUASI CERTO (27/09/2026): l'abbinamento riga Airtable -> cartella non
+// ha passato la soglia, ma la cartella ha lo stesso giorno (+-1) e dentro il
+// suo nome ci sono tutte e due le squadre, col nome del titolo o con quello
+// di ESPN ("Hajduk Split" per HAJDUK SPALATO). Su 345 nomi in attesa erano
+// 304: utilizzabili subito, il tabellone li conferma dopo
+const VUOTE_SQUADRA = new Set("fc cf ac as sc ss us afc club calcio united city real sporting atletico athletic deportivo del the vs u17 u18 u19 u20 u21 u23 women femminile primavera".split(" "));
+function paroleNome(t) {
+  return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]/g, " ")
+    .split(/\s+/).filter((w) => w.length >= 3 && !VUOTE_SQUADRA.has(w) && !/^\d+$/.test(w));
+}
+const QUASI = new Map();
+function nomeQuasiCerto(k, a) {
+  if (!a || !a.partita || !a.dove || a.fonte === "unico") return false;
+  const e = ESPN[k] || {}, sq = e.squadre && e.squadre.length === 2 ? e.squadre : null;
+  const chiave = a.partita + "|" + a.dove + "|" + (sq ? sq.join("|") : "");
+  if (QUASI.has(k) && QUASI.get(k).chiave === chiave) return QUASI.get(k).si;
+  let si = false;
+  const pz = a.dove.split("/"), g = /^(\d{4})(\d{2})(\d{2})/.exec(pz[1] || ""), q = Date.parse(a.quando || "");
+  const titolo = a.partita.replace(/\s*\[.*?\]|\s*\(.*?\)/g, "").replace(/\s+\d+\s*-\s*\d+.*$/, "");
+  const lati = titolo.split(/\s+-\s+|-(?=[A-Z])|\s+vs\.?\s+/i);
+  if (g && q && lati.length === 2) {
+    // il giorno della cartella contro quello della partita in ora italiana
+    const giorno = Date.UTC(+g[1], +g[2] - 1, +g[3]), locale = q + 2 * 3600000;
+    const dg = Math.abs(Math.floor(locale / 86400000) * 86400000 - giorno) / 86400000;
+    const cw = paroleNome(pz[2] || "");
+    const c = (n) => paroleNome(n).some((w) => cw.some((x) => x.slice(0, 4) === w.slice(0, 4)));
+    const espnTutte = !!sq && c(sq[0]) && c(sq[1]);
+    si = dg <= 1 && (c(lati[0]) || espnTutte) && (c(lati[1]) || espnTutte);
+  }
+  QUASI.set(k, { chiave, si });
+  return si;
 }
 // DA GUARDARE: la macchina ci ha provato (tabellone letto o fallito) e non sa
 // ancora che partita e'. Da sola non ci arriva: serve un occhio
