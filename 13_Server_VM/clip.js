@@ -6307,17 +6307,24 @@ function velocitaTra(campioni, ora, finestra) {
 // (.aggiunte.txt accanto al diario). La barra deve dire quante ne sono
 // arrivate, non 100% perche' l'indice e' tutto in casa. Si pesa al massimo
 // una volta al minuto: sono qualche centinaio di stat sulla NFS.
-const AGGIUNTE = { quando: 0, v: null };
-function statoAggiunte(base, inArrivo) {
-  if (Date.now() - AGGIUNTE.quando > 60000) {
-    AGGIUNTE.quando = Date.now();
-    let testo = ""; try { testo = fs.readFileSync(path.join(base, ".aggiunte.txt"), "utf8"); } catch (e) { AGGIUNTE.v = null; return null; }
+// LE AGGIUNTE (.aggiunte.txt): i file fuori dall'indice che il container
+// scarica in coda. Si ripesano in sottofondo ogni minuto, mai bloccando il
+// ponte: sulla NAS 278 stat una dopo l'altra lo fermavano 4 secondi
+const AGGIUNTE = { quando: 0, v: null, gira: false };
+async function pesaAggiunte(base) {
+  AGGIUNTE.gira = true; AGGIUNTE.quando = Date.now();
+  try {
+    let testo = ""; try { testo = await NFS(() => fs.promises.readFile(path.join(base, ".aggiunte.txt"), "utf8")); } catch (e) { AGGIUNTE.v = null; return; }
     const voci = [];
     testo.split("\n").slice(1).forEach((r) => { r = r.trim(); if (!r) return; const m = /^(?:"((?:[^"]|"")*)"|([^,]*)),(\d*)$/.exec(r); if (!m) return; voci.push({ k: (m[1] !== undefined ? m[1].replace(/""/g, '"') : m[2]), b: +m[3] || 0 }); });
+    const pesi = await Promise.all(voci.map((v) => NFS(() => fs.promises.stat(path.join(base, v.k))).then((st) => st.size, () => null)));
     let fatti = 0, byte = 0, byteFatti = 0;
-    voci.forEach((v) => { byte += v.b; try { const st = fs.statSync(path.join(base, v.k)); if (!v.b || st.size === v.b) { fatti++; byteFatti += v.b || st.size; } } catch (e) {} });
+    voci.forEach((v, i) => { byte += v.b; const b = pesi[i]; if (b !== null && (!v.b || b === v.b)) { fatti++; byteFatti += v.b || b; } });
     AGGIUNTE.v = { file: voci.length, fatti, byte, byteFatti, chiavi: new Set(voci.map((v) => v.k)) };
-  }
+  } finally { AGGIUNTE.gira = false; }
+}
+function statoAggiunte(base, inArrivo) {
+  if (!AGGIUNTE.gira && Date.now() - AGGIUNTE.quando > 60000) pesaAggiunte(base).catch(() => {});
   const a = AGGIUNTE.v; if (!a) return null;
   // i file a meta' delle aggiunte contano per quello che e' gia' arrivato
   const inCorso = (inArrivo || []).filter((x) => a.chiavi.has(path.relative(base, x.p).replace(/\.parziale(\.[^/]*)?$/, ""))).reduce((n, x) => n + (x.b || 0), 0);
