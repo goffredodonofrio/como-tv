@@ -31,10 +31,10 @@ GENERI = [
     ("Partita", r"matchdays?|match ?day|full match|partita|giornata|\bg\d{1,2}\b|highlights?|\bvs?\b|warm ?up|riscaldamento|prematch|pre ?match|post ?match|tunnel|player arrival|broadcast camera"),
     ("Allenamento", r"training(?! camp)|allenament|mozzate|sessione"),
     ("Ritiro", r"training camp|pre-?season|preseason|ritiro|marbella|\btst\b"),
-    ("Intervista", r"interviews?|\bitw\b|intervist|react"),
+    ("Intervista", r"interviews?|\bitw\b|intervist|\bintw\b|soundbite"),
     ("Conferenza stampa", r"press conference|conferenza|sala stampa|presser"),
     ("Nuovo acquisto", r"signing|new player|presentazione|unveil|announcement|welcome"),
-    ("Tifosi", r"\bfans?\b|tifosi|fan stor|curva|supporters|ultras|flares"),
+    ("Tifosi", r"\bfans?\b|tifosi|fan stor|curva (sud|nord)|supporters|ultras|flares|fans? reaction"),
     ("Evento", r"\bevents?\b|evento|gala|concert|party|cerimonia|award|cup\b|torneo|trofeo|parade"),
     ("Lifestyle e territorio", r"lifestyle|tourism|discover|villa\b|villas|lake|lago|bellagio|brunate|como city|centro como|taste of|cooking|restaurant|wedding"),
     ("Drone", r"drone"),
@@ -210,3 +210,77 @@ class Riconosci:
         for c, rx in COMPETIZIONI_RX:
             if rx.search(t): return c
         return ""
+
+
+# ── CHI HA GIRATO (la camera o il videomaker, dalle cartelle) ───────────
+R_CAM_NOME = re.compile(r"^(?:cam(?:era)?\s+(?P<a>[a-z]{3,}))$|^(?P<b>[a-z]{3,})(?:'s|s)?\s*(?:cam|camera)$", re.I)
+CAM_FISSE = [
+    ("Broadcast", r"broadcast camera|broadcast|raw cam serie a|live\s+ita|live\s+eng"),
+    ("Telefono", r"phone cam|phone footage|phone|iphone|cellulare"),
+    ("Drone", r"\bdrone\b"),
+    ("GoPro", r"go ?pro"),
+    ("Getty", r"\bgetty\b"),
+    ("360°", r"\b360\b"),
+]
+CAM_FISSE_RX = [(c, re.compile(rx, re.I)) for c, rx in CAM_FISSE]
+NON_CAM = {"the", "match", "main", "second", "first", "live", "raw", "phone", "broadcast", "promotion", "unit", "extra", "footage", "footages",
+           "full", "new", "old", "cam", "camera", "video", "photo", "all", "tiki", "day", "offloads", "offload", "proxies", "proxy", "test",
+           "truffle", "intw", "dumps", "dump", "admin", "cameras", "vip"}
+# stessa persona scritta in modi diversi, o nomi di attrezzatura
+CAM_ALIAS = {"dji": "Drone", "hudis": "Hudi", "rudi": "Rudy", "handy": "Handycam", "disposable": "Usa e getta", "player": "Camera dei giocatori"}
+
+
+def camera(percorso):
+    """la camera o chi ha girato: dalla cartella piu' vicina al file che ne parla"""
+    for pezzo in reversed(percorso.split("/")):
+        t = piatto(pezzo).replace("_", " ").strip()
+        m = re.search(r"\bcam(?:era)?\s*([a-d1-9])\b", t)
+        if m and not re.search(r"camera footages?", t): return "Camera " + m.group(1).upper()
+        for c, rx in CAM_FISSE_RX:
+            if rx.search(t): return c
+        m = R_CAM_NOME.search(t)
+        if m:
+            n = (m.group("a") or m.group("b") or "").strip().replace("\u2019", "")
+            if n and n not in NON_CAM: return CAM_ALIAS.get(n, n.capitalize())
+        for rx in (r"\(([a-z]+)'?s cam\)", r"^([a-z]{3,})'?s?\s+cam(?:era)?\b", r"\bfootage\s+([a-z]{3,})$", r"\bcam\s+([a-z]{3,})$"):
+            m = re.search(rx, t)
+            if m and m.group(1) not in NON_CAM: return CAM_ALIAS.get(m.group(1), m.group(1).capitalize())
+    return ""
+
+
+# ── IL MOMENTO (di una partita o di un evento) ─────────────────────────
+MOMENTI = [
+    ("Arrivo", r"arrival|arrivo|\bbus\b|player arrival|arriving"),
+    ("Pre-partita", r"pre ?match|prematch|pre-game|pre partita|before the match"),
+    ("Tunnel", r"tunnel|walk ?out|line ?up|ingresso|entrata"),
+    ("Riscaldamento", r"warm ?up|riscaldamento"),
+    ("Partita", r"\bmatch footage\b|full match|1st half|2nd half|primo tempo|secondo tempo|\bpartita\b|\blive\b"),
+    ("Gol", r"\bgol\b|\bgoals?\b"),
+    ("Esultanza", r"celebration|esultanz|festa|champions!|we did it"),
+    ("Intervallo", r"half ?time|intervallo"),
+    ("Post-partita", r"post ?match|post partita|mixed zone|flash|after the match"),
+    ("Spogliatoio", r"dressing|locker|spogliatoio"),
+]
+MOMENTI_RX = [(m, re.compile(rx, re.I)) for m, rx in MOMENTI]
+
+
+def momenti(percorso):
+    t = piatto(percorso).replace("_", " ")
+    return [m for m, rx in MOMENTI_RX if rx.search(t)]
+
+
+# ── IL LUOGO ───────────────────────────────────────────────────────────
+LUOGHI = [
+    ("Stadio Sinigaglia", r"sinigaglia"), ("Centro sportivo Mozzate", r"mozzate"), ("Bellagio", r"bellagio"),
+    ("Villa Erba", r"villa erba"), ("Villa d'Este", r"villa d.?este"), ("Villa Carminati", r"carminati"), ("Villa Pliniana", r"pliniana"),
+    ("Villa del Balbianello", r"balbianello"), ("Varenna", r"varenna"), ("Brunate", r"brunate"), ("Cernobbio", r"cernobbio"),
+    ("Menaggio", r"menaggio"), ("Tremezzo", r"tremezzo"), ("Como città", r"centro como|como city|citta di como|downtown"),
+    ("Lago di Como", r"lake como|lago di como|\bboat\b|barca|\blake\b"), ("Marbella", r"marbella"), ("Ghana", r"ghana|accra"),
+    ("Londra", r"london|londra"), ("Indonesia", r"indonesia|jakarta|\bbali\b"), ("Milano", r"milano|milan store|store milano"),
+]
+LUOGHI_RX = [(l, re.compile(rx, re.I)) for l, rx in LUOGHI]
+
+
+def luoghi(percorso):
+    t = piatto(percorso).replace("_", " ")
+    return [l for l, rx in LUOGHI_RX if rx.search(t)]

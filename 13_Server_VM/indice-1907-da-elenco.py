@@ -235,7 +235,8 @@ def partita_in(nome, stag):
     if len(altre) != 1: return None
     pos_como = [x[0] for x in sq if x[1] == "COMO"][0]; pos_altra, altra = altre[0]
     cand = [c for c in calendario() if altra in c[1:3] and (not stag or stagione_di(c[0]) == stag)]
-    if not cand: return (0, "", altra)
+    casa = pos_como < pos_altra          # "COMO v X": in casa; "X v COMO": in trasferta
+    if not cand: return (0, "", altra, casa)
     # un mese scritto ("NOVEMBER 30 - COMO MONZA") restringe
     m = re.search(r"(?<![a-z])" + MESE + r"[a-z]*\s*(\d{1,2})?(?!\d)", nome, re.I)
     if m and len(cand) > 1:
@@ -246,8 +247,8 @@ def partita_in(nome, stag):
         # l'ordine dice chi gioca in casa: "COMO v JUVENTUS" o "SASSUOLO v COMO"
         c2 = [c for c in cand if (c[1] == "COMO") == (pos_como < pos_altra)]
         if c2: cand = c2
-    if len(set(c[0] for c in cand)) == 1: return (cand[0][0], cand[0][3] if len(cand[0]) > 3 else "", altra)
-    return (0, "", altra)
+    if len(set(c[0] for c in cand)) == 1: return (cand[0][0], cand[0][3] if len(cand[0]) > 3 else "", altra, cand[0][1] == "COMO")
+    return (0, "", altra, casa)
 
 
 def senza_date(t):
@@ -454,6 +455,7 @@ def main():
         if pt:
             if pt[2]: md["a"] = pt[2].title()
             if pt[1]: md["c"] = pt[1]
+            md["ct"] = "Casa" if pt[3] else "Trasferta"
             if "Partita" not in md.get("g", []): md["g"] = ["Partita"] + md.get("g", [])
         c = RIC.competizione(d)
         if c and "c" not in md: md["c"] = c
@@ -462,6 +464,14 @@ def main():
         # "INTV FABREGAS" non e' di Fabregas)
         pp = RIC.persone(d)
         if pp: md["p"] = pp
+        # chi ha girato, il momento, il luogo (Goffredo, 27/09/2026)
+        cm = META.camera(d)
+        if cm: md["cam"] = cm
+        mo = META.momenti(d)
+        if mo: md["mo"] = mo
+        lu = META.luoghi(d)
+        if md.get("ct") == "Casa" and md.get("q", "Prima squadra") == "Prima squadra" and "Stadio Sinigaglia" not in lu and "Partita" in md.get("g", []): lu = ["Stadio Sinigaglia"] + lu
+        if lu: md["lu"] = lu
         pf = {}
         for f in fs:
             if tipo(f[0]) == "altro": continue
@@ -505,6 +515,10 @@ def main():
         rappr = max(rr, key=lambda r: r[4])[8]
         fonte = rr[0][7]
         mu = {}
+        # quanti file di ogni tipo: una partita con una cartella di interviste non e' tutta "Intervista"
+        gn = {}
+        for r in rr:
+            for g in r[9].get("g", []): gn[g] = gn.get(g, 0) + r[4] + r[5]
         for r in rr:
             for k, v in r[9].items():
                 if isinstance(v, list):
@@ -512,6 +526,7 @@ def main():
                     for x in v:
                         if x not in l: l.append(x)
                 elif k not in mu: mu[k] = v
+        if gn: mu["gn"] = gn
         servizi.append([via, dt, rr[0][2], sum(r[4] for r in rr), sum(r[5] for r in rr), sum(r[6] for r in rr), fonte, rappr, pulito(via), mu])
     servizi.sort(key=lambda x: (-x[1], x[0]))
     colls = sorted((c for c in conta.values() if c["liv"] == 1), key=lambda c: -c["ultima"])
