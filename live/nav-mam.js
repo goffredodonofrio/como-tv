@@ -47,28 +47,29 @@
     ".sito-voce.qui{color:#C9A24B;background:rgba(201,162,75,.12);border-color:rgba(201,162,75,.3);letter-spacing:.28em;padding:10px 18px;}" +
     ".sito-destra{margin-left:auto;display:flex;align-items:center;gap:8px;flex:0 0 auto;}" +
     "@media (max-width:640px){.sito-marchio span{display:none;}.sito-voce{padding:9px 8px;letter-spacing:.06em;}}";
-  var st = document.createElement("style");
-  st.id = "nav-mam-stile";
-  st.textContent = CSS;
-  document.head.appendChild(st);
-
+  // IL MENU' UNICO (27/09/2026): la barra e' quella di tutto il sito (menu-sito.js).
+  // Qui si crea subito il suo posto, con #sitoDestra (il MAM ci sposta i suoi tasti
+  // appena parte), e la barra si riempie appena arriva menu-sito.js.
   var nav = document.createElement("nav");
-  nav.className = "sito";
-  nav.id = "sitoNav";
-  nav.setAttribute("aria-label", "MAM Como TV");
-  nav.innerHTML = '<a class="sito-marchio" href="../index.html"><img src="/loghi/como-tv-logo.png" alt=""><span>Como TV</span></a>' +
-    VOCI.map(function (v) { return '<a class="sito-voce" data-voce="' + v[0] + '" href="' + v[1] + '">' + v[2] + '</a>'; }).join("") +
-    '<span class="sito-destra" id="sitoDestra"></span>';
+  nav.className = "ms-bar"; nav.id = "sitoNav";
+  nav.innerHTML = '<span class="ms-destra sito-destra" id="sitoDestra"></span>';
   var s = document.currentScript;
   if (s && s.parentNode) s.parentNode.insertBefore(nav, s); else document.body.insertBefore(nav, document.body.firstChild);
-
+  // le viste del MAM -> la voce del menu'
+  var MAPPA = { mam: ["mam", "live/mam2.html"], raccolte: ["mam", "live/mam2.html?raccolte=1"], live: ["mam", "live/mam2.html?live=1"],
+                editing: ["mam", "live/mam2.html?montaggio=1"], magazzino: ["mam", "live/magazzino.html"], "1907": ["1907", "live/mam-1907.html"] };
+  var voluta = quale();
   function accendi(nome) {
-    Array.prototype.forEach.call(nav.querySelectorAll(".sito-voce"), function (a) {
-      a.classList.toggle("qui", a.getAttribute("data-voce") === nome);
-    });
+    voluta = nome;
+    var m = MAPPA[nome] || MAPPA.mam;
+    if (nome === "editing" && /[?&]ambito=1907/.test(location.search)) m = ["1907", "live/mam2.html?montaggio=1&ambito=1907"];
+    if (window.MENU_SITO) window.MENU_SITO.accendi(m[0], m[1]);
   }
-  accendi(quale());
   window.NAV_MAM = { accendi: accendi, destra: document.getElementById("sitoDestra") };
+  var sc = document.createElement("script");
+  sc.src = s && s.src ? s.src.replace(/[^\/]*$/, "menu-sito.js") : "menu-sito.js";
+  sc.onload = function () { accendi(voluta); };
+  document.head.appendChild(sc);
 })();
 
 // LA GUIDA DENTRO LE PAGINE (27/09/2026): coach.js monta la linguetta GUIDA e

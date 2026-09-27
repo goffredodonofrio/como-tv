@@ -220,7 +220,8 @@ REGISTRO_HTML = """<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><m
 @font-face{font-family:'Mazzard';src:url('/como-tv/assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;}
 @font-face{font-family:'DM Sans';src:url('/como-tv/assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#1B1C20;color:#EDEDEE;font:14px/1.45 'DM Sans',system-ui,sans-serif;padding:22px clamp(16px,3vw,40px) 60px}
+body{background:#1B1C20;color:#EDEDEE;font:14px/1.45 'DM Sans',system-ui,sans-serif}
+.pagina{padding:22px clamp(16px,3vw,40px) 60px}
 a{color:#E3C271}
 .testa{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}
 .testa img{width:34px} .testa h1{font:800 26px/1 'Mazzard',sans-serif} .testa span{color:#8E9096;font-size:13px} .testa .dx{margin-left:auto;display:flex;gap:14px;font-size:13px}
@@ -235,7 +236,9 @@ a{color:#E3C271}
 .scroll{overflow-x:auto} .nota{color:#8E9096;font-size:12px;margin-top:10px}
 @media (max-width:760px){.filtri{grid-template-columns:1fr 1fr}}
 </style></head><body>
-<div class="testa"><img src="/loghi/como-tv-logo.png" alt=""><h1>Registro di controllo</h1><span id="conto"></span><span class="dx"><a href="/como-tv/">Home</a><a href="/auth/esci">Esci</a></span></div>
+<nav class="ms-bar"></nav><script src="/como-tv/live/menu-sito.js"></script><script src="/como-tv/live/utente.js" async></script>
+<div class="pagina">
+<div class="testa"><h1>Registro di controllo</h1><span id="conto"></span></div>
 <div class="filtri">
 <input id="f" placeholder="Cerca per persona, azione, file o IP" type="search">
 <select id="chi"><option value="">Tutte le persone</option></select>
@@ -243,7 +246,8 @@ a{color:#E3C271}
 <input id="da" type="date" title="dal"><input id="a" type="date" title="al">
 </div>
 <div class="scroll"><table class="tab"><thead><tr><th>Quando</th><th>Chi</th><th>Azione</th><th>Oggetto</th><th>IP</th></tr></thead><tbody id="righe"><tr><td colspan="5">Carico…</td></tr></tbody></table></div>
-<p class="nota">Si registrano accessi e uscite, gli accessi rifiutati e, dietro il cancello, pagine e file aperti (oggi: MAM Como 1907). Le richieste a pezzi dello stesso video nello stesso quarto d'ora contano una volta. Miniature e anteprime non si registrano.</p>
+</div>
+<p class="nota" style="padding:0 clamp(16px,3vw,40px) 40px">Si registrano accessi e uscite, gli accessi rifiutati e, dietro il cancello, pagine e file aperti (oggi: MAM Como 1907). Le richieste a pezzi dello stesso video nello stesso quarto d'ora contano una volta. Miniature e anteprime non si registrano.</p>
 <script>
 var V=[],$=function(i){return document.getElementById(i)};
 function esc(s){return String(s||"").replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}

@@ -166,76 +166,20 @@
       st.textContent = CSS;
       document.head.appendChild(st);
     }
+    // IL MENU' UNICO (27/09/2026): la barra e' quella di tutto il sito (menu-sito.js),
+    // con le grafiche nella tendina "Live". L'elenco VOCI qui sopra resta per il
+    // MAM (window.COMO_NAV). L'orologio resta di nav.js.
     var nav = document.createElement("nav");
-    nav.className = "cnav";
-
-    // il nome del file senza la domanda: "dataviz.html?k=valore" e' dataviz.html
-    function nomeFile(indirizzo) { return indirizzo.split("?")[0].split("/").pop().toLowerCase(); }
-    // una voce con la domanda (le cinque di Data Viz) si accende solo se la
-    // pagina e' stata aperta proprio con quella; la tendina che la contiene
-    // si accende comunque
-    function eQui(indirizzo) {
-      if (nomeFile(indirizzo) !== qui) return false;
-      var d = indirizzo.indexOf("?") >= 0 ? indirizzo.slice(indirizzo.indexOf("?")) : "";
-      return !d || d === location.search;
-    }
-    function collegamento(v) {
-      var attivo = eQui(v[0]) ? ' class="qui"' : "";
-      return '<a href="' + esc(v[0]) + '"' + attivo + '>' + esc(v[1]) + '</a>';
-    }
-
-    var tendine = [];                       // le tendine da appendere al body
-    nav.innerHTML = VOCI.map(function (v, i) {
-      if (!v.voci) return collegamento(v);
-      // il tasto si accende se la pagina aperta sta qui dentro: cosi' si vede
-      // dove ci si trova senza doverla aprire
-      var dentro = v.voci.some(function (u) { return nomeFile(u[0]) === qui; });
-      tendine.push({ i: i, voci: v.voci });
-      return '<button type="button" data-giu="' + i + '"' + (dentro ? ' class="qui"' : '') + '>' +
-             esc(v.nome) + '<i>&#9660;</i></button>';
-    }).join("");
-
+    nav.className = "ms-bar";
     if (document.body.firstChild) document.body.insertBefore(nav, document.body.firstChild);
     else document.body.appendChild(nav);
-
-    tendine.forEach(function (t) {
-      var d = document.createElement("div");
-      d.className = "cnav-giu";
-      d.dataset.giu = t.i;
-      d.innerHTML = t.voci.map(collegamento).join("");
-      document.body.appendChild(d);
-    });
-
-    // Si apre col clic, non col passaggio del mouse: qui si lavora in fretta e
-    // una tendina che si apre da sola mentre si punta a un altro tasto e' un
-    // modo di aprire la pagina sbagliata in diretta.
-    function chiudi() {
-      nav.querySelectorAll("button.aperto").forEach(function (b) { b.classList.remove("aperto"); });
-      document.querySelectorAll(".cnav-giu.aperto").forEach(function (d) { d.classList.remove("aperto"); });
+    if (window.MENU_SITO) window.MENU_SITO.disegna(nav);
+    else if (!document.getElementById("ms-script")) {
+      var me = document.currentScript || document.querySelector('script[src*="nav.js"]');
+      var sc = document.createElement("script"); sc.id = "ms-script";
+      sc.src = me && me.src ? me.src.replace(/[^\/]*$/, "menu-sito.js") : "menu-sito.js";
+      document.head.appendChild(sc);
     }
-    nav.addEventListener("click", function (ev) {
-      var b = ev.target.closest ? ev.target.closest("button[data-giu]") : null;
-      if (!b) return;
-      var gia = b.classList.contains("aperto");
-      chiudi();
-      if (gia) return;
-      var d = document.querySelector('.cnav-giu[data-giu="' + b.dataset.giu + '"]');
-      if (!d) return;
-      var r = b.getBoundingClientRect();
-      d.style.top = Math.round(r.bottom + 6) + "px";
-      d.classList.add("aperto");
-      b.classList.add("aperto");
-      // se la tendina sborda a destra la si tira dentro: sulle pagine strette
-      // finirebbe mezza fuori schermo
-      var largo = d.offsetWidth;
-      var x = Math.min(Math.round(r.left), window.innerWidth - largo - 12);
-      d.style.left = Math.max(12, x) + "px";
-    });
-    document.addEventListener("click", function (ev) {
-      if (!ev.target.closest || !ev.target.closest(".cnav, .cnav-giu")) chiudi();
-    });
-    document.addEventListener("keydown", function (ev) { if (ev.key === "Escape") chiudi(); });
-    window.addEventListener("resize", chiudi);
 
     if (!SENZA_ORA) montaOrologio();
   }
@@ -274,7 +218,7 @@
       setTimeout(allinea, 600);
     } else {
       o.style.position = "fixed";
-      o.style.top = "58px";      // sotto il menù
+      o.style.top = "76px";      // sotto il menù
       o.style.right = "22px";
       document.body.appendChild(o);
     }

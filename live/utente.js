@@ -30,8 +30,13 @@
 
   var tentativi = 0;
   function monta(j) {
-    var barra = document.querySelector(".nav-content") || document.querySelector(".sito") || document.querySelector("nav");
-    if (!barra) { if (tentativi++ < 20) setTimeout(function () { monta(j); }, 250); return; }
+    // nel menu' unico (menu-sito.js) il posto e' l'angolo destro della barra: si
+    // aspetta che la barra sia disegnata (nav.js la monta a pagina pronta, e il
+    // disegno riscrive la barra: un nome messo prima sparirebbe)
+    var ms = document.querySelector("nav.ms-bar");
+    if ((!ms || !ms.querySelector(".ms-marchio")) && tentativi < 40) { tentativi++; setTimeout(function () { monta(j); }, 150); return; }
+    var barra = (ms && ms.querySelector(".ms-destra")) || document.querySelector(".nav-content") || document.querySelector(".sito") || document.querySelector("nav");
+    if (!barra) return;
     if (barra.querySelector(".utente-nav")) return;
     var st = document.createElement("style"); st.textContent = CSS; document.head.appendChild(st);
     var box = document.createElement("div"); box.className = "utente-nav";
@@ -59,7 +64,8 @@
     }
     // dopo "Area personale" se c'e' (che ha gia' margin-left:auto), se no in fondo a destra
     var mia = barra.querySelector(".nav-mia");
-    if (mia) mia.insertAdjacentElement("afterend", box); else { box.classList.add("solo"); barra.appendChild(box); }
+    if (barra.classList.contains("ms-destra")) barra.appendChild(box);
+    else if (mia) mia.insertAdjacentElement("afterend", box); else { box.classList.add("solo"); barra.appendChild(box); }
   }
   // il lucchetto "Area personale" della home e' solo del super utente
   function areaPersonale(j) { var a = document.querySelector(".area-personale"); if (a && !(j && j.admin)) a.style.display = "none"; return j; }
