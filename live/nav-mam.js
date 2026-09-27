@@ -84,3 +84,16 @@
     (document.head || document.documentElement).appendChild(s);
   } catch (e) {}
 })();
+
+// CHI E' ENTRATO (27/09/2026): utente.js mette nella barra la persona, il
+// Registro (super utente) ed Esci. Come la guida: si carica una volta sola.
+(function () {
+  try {
+    if (window.__UTENTE_CARICATO || /-vmix\.html$/i.test(location.pathname)) return;
+    window.__UTENTE_CARICATO = 1;
+    var qui = document.currentScript && document.currentScript.src;
+    var s = document.createElement("script");
+    s.src = qui ? qui.replace(/[^\/]*$/, "utente.js") : "utente.js"; s.async = true;
+    (document.head || document.documentElement).appendChild(s);
+  } catch (e) {}
+})();

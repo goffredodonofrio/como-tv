@@ -11,7 +11,7 @@ Dietro nginx su 127.0.0.1:8098:
   GET /auth/verifica                per nginx (auth_request): 200 + X-Utente, oppure 401
   GET /auth/chi                     {"email": …} per le pagine
   GET /auth/esci                    chiude la sessione
-La sessione e' un cookie firmato (HMAC) che dura 30 giorni. Gli accessi finiscono
+La sessione e' un cookie firmato (HMAC): finisce chiudendo il browser, o dopo 12 ore. Gli accessi finiscono
 in /var/lib/comotv-accesso/accessi.jsonl (chi, quando, da dove).
 
 Configurazione in /etc/comotv/accesso.env (mai nel repo):
@@ -31,7 +31,10 @@ REGISTRO = "/var/lib/comotv-accesso/accessi.jsonl"
 SITO = os.environ.get("ACCESSO_SITO", "https://projects-cloud.it")
 RITORNO = SITO + "/auth/google/fatto"
 COOKIE = "comotv_sessione"
-DURATA = 30 * 86400
+# LA SESSIONE SI CHIUDE QUANDO SI ESCE (Goffredo, 27/09/2026): cookie di sessione
+# (chiuso il browser non vale piu') e in ogni caso scadenza dopo una giornata di lavoro
+DURATA = 12 * 3600
+LOG_NGINX = "/var/log/nginx/comotv-chi.log"
 
 
 def conf():
@@ -99,6 +102,10 @@ def ammesso(email, hd=None):
     return dominio in domini and (hd is None or (hd or "").lower() == dominio)
 
 
+def super_utenti():
+    return {x.strip().lower() for x in conf().get("ACCESSO_ADMIN", "goffredo.donofrio@sent.tv").split(",") if x.strip()}
+
+
 def torna_sicuro(t):
     t = t or "/como-tv/"
     return t if t.startswith("/") and not t.startswith("//") and "\\" not in t else "/como-tv/"
@@ -130,9 +137,101 @@ a.g:focus-visible{outline:3px solid #C9A24B;outline-offset:3px}
 <h1>Accedi a Como TV</h1>
 __ERRORE__
 <p>Con il tuo account Google di lavoro: <b>@sent.tv</b> o <b>@comofootball.com</b>.</p>
-<a class="g" href="/auth/google?torna=__TORNA__"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.2C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.3 5.7c4.3-4 7-9.9 7-17.2z"/><path fill="#FBBC05" d="M10.6 28.5c-.5-1.4-.8-2.9-.8-4.5s.3-3.1.8-4.5l-7.9-6.2C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.3-5.7c-2.2 1.5-5 2.3-8.6 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.2C6.6 42.6 14.6 48 24 48z"/></svg>Accedi con Google</a>
+<a class="g" id="vai" href="/auth/google?torna=__TORNA__"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.2C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.3 5.7c4.3-4 7-9.9 7-17.2z"/><path fill="#FBBC05" d="M10.6 28.5c-.5-1.4-.8-2.9-.8-4.5s.3-3.1.8-4.5l-7.9-6.2C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.3-5.7c-2.2 1.5-5 2.3-8.6 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.2C6.6 42.6 14.6 48 24 48z"/></svg>Accedi con Google</a>
 <p>Ogni azione viene registrata con la tua mail.</p>
-</main></body></html>"""
+</main><script>if(location.hash){var a=document.getElementById("vai");a.href+=encodeURIComponent(location.hash);}</script></body></html>"""
+
+
+def azione_di(percorso, stato):
+    """dalla riga di nginx a un'azione che si legge: None = rumore (miniature, indice)"""
+    p = urllib.parse.unquote(percorso.split("?", 1)[0])
+    if "/mam-1907/mini/" in p or "/mam-1907/provino/" in p or "/mam-1907/indice/" in p: return None
+    if p.endswith("/live/mam-1907.html"): return ("apre la pagina", "MAM Como 1907")
+    if "/mam-1907/file/" in p: return ("guarda / scarica l'originale", p.split("/mam-1907/file/", 1)[1])
+    if "/mam-1907/copie/" in p: return ("guarda la copia leggera", p.rsplit("/", 1)[-1])
+    if p.endswith("/mam-1907/copia"):
+        v = urllib.parse.parse_qs(percorso.split("?", 1)[1] if "?" in percorso else "").get("v", [""])[0]
+        return ("chiede la copia leggera", v) if "fai=1" in percorso else None
+    return ("apre", p)
+
+
+def registro(quante=4000):
+    """accessi del servizio + righe del cancello di nginx; le richieste a pezzi dello
+    stesso video (206) nello stesso quarto d'ora diventano una riga sola"""
+    voci = []
+    try:
+        for r in open(REGISTRO).read().splitlines()[-quante:]:
+            d = json.loads(r)
+            voci.append({"q": d["quando"], "chi": d.get("chi") or "", "az": {"entra": "entra", "esce": "esce", "rifiutato": "accesso rifiutato"}.get(d["evento"], d["evento"]), "cosa": "", "ip": d.get("ip", "")})
+    except OSError:
+        pass
+    ultimo = {}
+    try:
+        righe = open(LOG_NGINX, errors="replace").read().splitlines()[-quante * 10:]
+    except OSError:
+        righe = []
+    for r in righe:
+        c = r.split("\t")
+        if len(c) < 7 or not c[1].strip() or c[1].strip() == "-": continue
+        a = azione_di(c[4].strip(), c[5].strip())
+        if not a: continue
+        q = c[0].strip()[:19]; chi = c[1].strip(); k = (chi, a[0], a[1])
+        t = time.mktime(time.strptime(q, "%Y-%m-%dT%H:%M:%S"))
+        if k in ultimo and t - ultimo[k] < 900: continue
+        ultimo[k] = t
+        voci.append({"q": q, "chi": chi, "az": a[0], "cosa": a[1], "ip": c[2].strip()})
+    voci.sort(key=lambda v: v["q"], reverse=True)
+    return voci[:quante]
+
+
+REGISTRO_HTML = """<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Registro di controllo · Como TV</title><meta name="robots" content="noindex">
+<style>
+@font-face{font-family:'Mazzard';src:url('/como-tv/assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;}
+@font-face{font-family:'DM Sans';src:url('/como-tv/assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1B1C20;color:#EDEDEE;font:14px/1.45 'DM Sans',system-ui,sans-serif;padding:22px clamp(16px,3vw,40px) 60px}
+a{color:#E3C271}
+.testa{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+.testa img{width:34px} .testa h1{font:800 26px/1 'Mazzard',sans-serif} .testa span{color:#8E9096;font-size:13px} .testa .dx{margin-left:auto;display:flex;gap:14px;font-size:13px}
+.filtri{display:grid;grid-template-columns:minmax(220px,2fr) repeat(2,minmax(160px,1fr)) repeat(2,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.filtri input,.filtri select{background:rgba(245,241,230,.06);border:1px solid rgba(255,255,255,.16);color:#EDEDEE;border-radius:8px;padding:9px 10px;font:inherit;color-scheme:dark;min-width:0}
+.tab{width:100%;border-collapse:collapse;background:#2A2B30;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden;font-size:13px}
+.tab th{font:700 9.5px/1 'Mazzard',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#8E9096;text-align:left;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.08)}
+.tab td{padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:top}
+.tab td.q,.tab td.ip{color:#8E9096;white-space:nowrap;font-variant-numeric:tabular-nums} .tab td.cosa{word-break:break-word;color:#C9CACF}
+.az{font:700 10px/1 'Mazzard',sans-serif;letter-spacing:.06em;text-transform:uppercase;padding:4px 7px;border-radius:4px;background:rgba(245,241,230,.08);white-space:nowrap}
+.az.entra{background:rgba(79,203,139,.16);color:#7FDCA9}.az.esce{background:rgba(142,144,150,.16)}.az.rif{background:rgba(229,72,77,.18);color:#FF9A9C}.az.file{background:rgba(90,167,232,.18);color:#8CC5F2}
+.scroll{overflow-x:auto} .nota{color:#8E9096;font-size:12px;margin-top:10px}
+@media (max-width:760px){.filtri{grid-template-columns:1fr 1fr}}
+</style></head><body>
+<div class="testa"><img src="/loghi/como-tv-logo.png" alt=""><h1>Registro di controllo</h1><span id="conto"></span><span class="dx"><a href="/como-tv/">Home</a><a href="/auth/esci">Esci</a></span></div>
+<div class="filtri">
+<input id="f" placeholder="Cerca per persona, azione, file o IP" type="search">
+<select id="chi"><option value="">Tutte le persone</option></select>
+<select id="az"><option value="">Tutte le azioni</option></select>
+<input id="da" type="date" title="dal"><input id="a" type="date" title="al">
+</div>
+<div class="scroll"><table class="tab"><thead><tr><th>Quando</th><th>Chi</th><th>Azione</th><th>Oggetto</th><th>IP</th></tr></thead><tbody id="righe"><tr><td colspan="5">Carico…</td></tr></tbody></table></div>
+<p class="nota">Si registrano accessi e uscite, gli accessi rifiutati e, dietro il cancello, pagine e file aperti (oggi: MAM Como 1907). Le richieste a pezzi dello stesso video nello stesso quarto d'ora contano una volta. Miniature e anteprime non si registrano.</p>
+<script>
+var V=[],$=function(i){return document.getElementById(i)};
+function esc(s){return String(s||"").replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function cl(a){return a==="entra"?"entra":a==="esce"?"esce":/rifiut/.test(a)?"rif":/originale|copia/.test(a)?"file":""}
+function disegna(){
+ var f=$("f").value.toLowerCase(),chi=$("chi").value,az=$("az").value,da=$("da").value,a=$("a").value;
+ var r=V.filter(function(v){return(!chi||v.chi===chi)&&(!az||v.az===az)&&(!da||v.q.slice(0,10)>=da)&&(!a||v.q.slice(0,10)<=a)&&(!f||(v.chi+" "+v.az+" "+v.cosa+" "+v.ip).toLowerCase().indexOf(f)>=0)});
+ $("conto").textContent=r.length+" eventi";
+ $("righe").innerHTML=r.slice(0,1500).map(function(v){var d=v.q.replace("T"," ");return"<tr><td class=q>"+esc(d.slice(8,10)+"/"+d.slice(5,7)+"/"+d.slice(0,4)+" "+d.slice(11,16))+"</td><td>"+esc(v.chi)+"</td><td><span class='az "+cl(v.az)+"'>"+esc(v.az)+"</span></td><td class=cosa>"+esc(v.cosa)+"</td><td class=ip>"+esc(v.ip)+"</td></tr>"}).join("")||"<tr><td colspan=5>Nessun evento con questi filtri.</td></tr>";
+}
+fetch("/auth/registro.json",{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){
+ V=j; var chi={},az={}; V.forEach(function(v){if(v.chi)chi[v.chi]=1;az[v.az]=1});
+ $("chi").innerHTML+=Object.keys(chi).sort().map(function(x){return"<option>"+esc(x)+"</option>"}).join("");
+ $("az").innerHTML+=Object.keys(az).sort().map(function(x){return"<option>"+esc(x)+"</option>"}).join("");
+ disegna();
+});
+["f","chi","az","da","a"].forEach(function(i){$(i).addEventListener("input",disegna)});
+</script></body></html>"""
 
 
 PRIVACY = """<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -171,15 +270,22 @@ class H(BaseHTTPRequestHandler):
 
     def do_GET(self):
         u = urllib.parse.urlparse(self.path); q = urllib.parse.parse_qs(u.query)
-        torna = torna_sicuro((q.get("torna") or [""])[0])
+        # torna e' tutto quello che segue "torna=": la pagina di prima con la sua ricerca
+        torna = torna_sicuro(urllib.parse.unquote(u.query[6:]) if u.query.startswith("torna=") else "")
         if u.path == "/auth/verifica":
             email = sessione_valida(self.cookie())
             return self.manda(200, b"", extra=[("X-Utente", email)]) if email else self.manda(401)
         if u.path == "/auth/chi":
             email = sessione_valida(self.cookie())
-            return self.manda(200, json.dumps({"email": email or ""}), "application/json")
+            return self.manda(200, json.dumps({"email": email or "", "admin": bool(email and email in super_utenti())}), "application/json")
         if u.path == "/auth/entra":
             return self.pagina(torna)
+        if u.path in ("/auth/registro", "/auth/registro.json"):
+            email = sessione_valida(self.cookie())
+            if not email: return self.manda(302, extra=[("Location", "/auth/entra?torna=/auth/registro")])
+            if email not in super_utenti(): return self.manda(403, "Il registro lo vede solo il super utente.")
+            if u.path.endswith(".json"): return self.manda(200, json.dumps(registro(), ensure_ascii=False), "application/json; charset=utf-8")
+            return self.manda(200, REGISTRO_HTML, "text/html; charset=utf-8")
         if u.path == "/auth/privacy":
             return self.manda(200, PRIVACY, "text/html; charset=utf-8")
         if u.path == "/auth/esci":
@@ -220,7 +326,7 @@ class H(BaseHTTPRequestHandler):
                 return self.pagina(torna, "L'account " + email + " non è abilitato. Usa la mail @sent.tv o @comofootball.com, o chiedi di essere aggiunto.")
             registra("entra", email, self.ip())
             return self.manda(302, extra=[("Location", torna),
-                                          ("Set-Cookie", COOKIE + "=" + sessione_nuova(email) + "; Path=/; Max-Age=%d; Secure; HttpOnly; SameSite=Lax" % DURATA)])
+                                          ("Set-Cookie", COOKIE + "=" + sessione_nuova(email) + "; Path=/; Secure; HttpOnly; SameSite=Lax")])
         return self.manda(404)
 
 
