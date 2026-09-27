@@ -6564,8 +6564,12 @@ function nomeQuasiCerto(k, a) {
     const cart = pz[2] || "";
     // (27/09 notte: c'era "|| pz.length <= 3", ma TEMP/giorno/cartella ha proprio tre
     // pezzi, e tutte le cartelle normali finivano sul nome del file: -250 utilizzabili)
-    const cw = paroleNome(!cart.trim() || /^(tagli|cleanfeed|clean feed|ita|eng|\d{6,8})$/i.test(cart.trim()) ? path.basename(a.chiave || "") : cart);
-    const c = (n) => paroleNome(n).some((w) => cw.some((x) => x.slice(0, 4) === w.slice(0, 4)));
+    const fonteNome = !cart.trim() || /^(tagli|cleanfeed|clean feed|ita|eng|\d{6,8})$/i.test(cart.trim()) ? path.basename(a.chiave || "") : cart;
+    const cw = paroleNome(fonteNome);
+    // le parole comuni ma lunghe ("Sporting", "Atletico") contano lo stesso:
+    // "Sporting vs Benfica" deve dire SPORTING LISBONA (28/09/2026)
+    const lunghe = (n) => String(n || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length >= 6 && VUOTE_SQUADRA.has(w));
+    const c = (n) => paroleNome(n).concat(lunghe(n)).some((w) => cw.concat(lunghe(fonteNome)).some((x) => x.slice(0, 4) === w.slice(0, 4)));
     const espnTutte = !!sq && c(sq[0]) && c(sq[1]);
     si = dg <= 1 && (c(lati[0]) || espnTutte) && (c(lati[1]) || espnTutte);
   }
