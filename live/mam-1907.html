@@ -328,6 +328,8 @@
   .vb-forse{font-size:12px;color:var(--ivory2);display:flex;gap:6px;align-items:center;flex-wrap:wrap;} .vb-forse b{color:var(--ivory);}
   .vb-nome{display:flex;gap:6px;} .vb-nome input{flex:1;min-width:0;background:var(--navy2);border:1px solid var(--riga2);border-radius:8px;color:var(--ivory);padding:6px 8px;font:inherit;font-size:12px;}
   .vb-nome input:focus{outline:none;border-color:var(--oro);}
+  .vb-prop{border-color:rgba(201,162,75,.45);}
+  .pv .vb-facce{flex-wrap:nowrap;overflow:hidden;} .pv .vb-facce img{width:34px;height:34px;} .pv .vb-facce img:first-child{width:60px;height:60px;}
   .vb-no{align-self:flex-start;background:none;border:0;color:var(--fumo);font-size:11px;padding:0;cursor:pointer;} .vb-no:hover{color:var(--ivory);}
   .velo[hidden]{display:none}
   .velo{position:fixed;inset:0;background:rgba(5,6,10,.88);display:grid;place-items:center;padding:20px;z-index:100;}
@@ -945,13 +947,29 @@
       .then(function (j) { IGN = j; disegnaIgnoti(); }).catch(function () {});
   }
   function disegnaIgnoti() {
-    var gg = (IGN && IGN.gruppi) || [];
-    $("voltiBox").hidden = !gg.length; if (!gg.length) return;
+    var gg = (IGN && IGN.gruppi) || [], pp = (IGN && IGN.proposte) || [];
+    $("voltiBox").hidden = !gg.length && !pp.length; if (!gg.length && !pp.length) return;
     var tanti = gg.filter(function (g) { return g.vie.length > 1; }).length, max = IGN_TUTTI ? 240 : 6;
-    $("voltiConto").textContent = n(gg.length) + (gg.length === 1 ? " gruppo" : " gruppi") + (tanti ? " · " + n(tanti) + " in più video" : "") + (IGN.battezzati ? " · " + n(IGN.battezzati) + " volti già battezzati" : "");
+    $("voltiConto").textContent = (pp.length ? n(pp.length) + (pp.length === 1 ? " proposta · " : " proposte · ") : "") + n(gg.length) + (gg.length === 1 ? " gruppo" : " gruppi") + (tanti ? " · " + n(tanti) + " in più video" : "") + (IGN.battezzati ? " · " + n(IGN.battezzati) + " volti già battezzati" : "");
     $("elencoPers").innerHTML = Object.keys(PERS).map(function (k) { return '<option value="' + esc(PERS[k].nome) + '">'; }).join("");
-    $("volti").innerHTML = gg.slice(0, max).map(cartaVolto).join("");
+    $("volti").innerHTML = pp.slice(0, IGN_TUTTI ? 100 : 3).map(cartaProposta).join("") + gg.slice(0, max).map(cartaVolto).join("");
     $("voltiTutti").hidden = gg.length <= max; $("voltiTutti").textContent = "Vedi tutti (" + n(gg.length) + ")";
+  }
+  // LE PROPOSTE (ritratti-auto-1907): la faccia che torna nei video che nominano solo quella persona
+  function cartaProposta(pr) {
+    var p = PERS[pr.pid] || { nome: pr.pid };
+    return '<div class="vb vb-prop" data-vp="' + esc(pr.pid) + '"><div class="vb-facce"><img src="' + ritaglio(pr.k) + '" alt="" loading="lazy"></div>' +
+      '<div class="vb-forse" style="font-size:13px"><span>È <b>' + esc(p.nome) + "</b>?</span></div>" +
+      '<div class="vb-info">la faccia che torna in <b>' + n(pr.video) + "</b>" + (pr.su ? " dei " + n(pr.su) + " suoi video con volti" : " suoi video") + "</div>" +
+      '<div class="vb-nome"><button class="mini oro" data-vpa="si">Sì, è lui</button><button class="mini" data-vpa="no">No</button></div></div>';
+  }
+  function rispondiProposta(el) {
+    var pid = el.closest("[data-vp]").dataset.vp, si = el.dataset.vpa === "si", nome = (PERS[pid] || {}).nome || pid;
+    fetch(BASE + "volti", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ proposta: pid, si: si }) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || !j.ok) throw new Error(j.errore || "Non riuscito: riprova tra poco."); }); })
+      .then(function () { IGN.proposte = (IGN.proposte || []).filter(function (x) { return x.pid !== pid; }); disegnaIgnoti(); if (!$("pannelloVolti").hidden) disegnaParete();
+        avviso("ok", si ? "Fatto: da stanotte <b>" + esc(nome) + "</b> si riconosce dal volto." : "Proposta scartata: non tornerà."); })
+      .catch(function (e) { avviso("err", esc(e.message)); });
   }
   function cartaVolto(g) {
     var f = g.forse && PERS[g.forse[0]];
@@ -987,6 +1005,7 @@
     battezza(g, { nome: nome }, nome);
   }
   function suVolti(e) {
+    var pr = e.target.closest("[data-vpa]"); if (pr) { e.preventDefault(); rispondiProposta(pr); return; }
     var b = e.target.closest("[data-vfa]"); if (!b) return; e.preventDefault(); var a = b.dataset.vfa, g = gruppoDi(b);
     if (a === "vedi") { chiudiParete(); G = G.filter(function (x) { return x.k !== "volto"; }); metti({ k: "volto", v: g.id, n: nomeDi("volto", g.id) }); window.scrollTo(0, 0); }
     else if (a === "si") battezza(g, { pid: b.dataset.pid }, (PERS[b.dataset.pid] || {}).nome || "");
@@ -1004,7 +1023,7 @@
   var GIOCATORI = ["Portiere", "Difensore", "Centrocampista", "Attaccante"];
   function facciaDi(p) { var k = (p.conti || {}).faccia; return k ? BASE + "indice/visti/" + k + ".jpg" : p.foto ? FOTO + p.foto : p.volto ? ritaglio(p.volto) : ""; }
   function disegnaParete() {
-    var box = $("pannelloVolti"), nIgn = ((IGN && IGN.gruppi) || []).length, q = norm(PV_Q);
+    var box = $("pannelloVolti"), nIgn = ((IGN && IGN.gruppi) || []).length + ((IGN && IGN.proposte) || []).length, q = norm(PV_Q);
     var pers = Object.keys(PERS).map(function (k) { return PERS[k]; }).filter(function (p) { return (p.conti.visti || 0) > 0; });
     var tutti = pers.length, nG = pers.filter(function (p) { return GIOCATORI.indexOf(p.ruolo) >= 0; }).length;
     if (PV_FIL === "giocatori") pers = pers.filter(function (p) { return GIOCATORI.indexOf(p.ruolo) >= 0; });
@@ -1016,7 +1035,8 @@
       fil.map(function (f) { return '<button type="button" data-pvf="' + f[0] + '" class="' + (PV_FIL === f[0] ? "on" : "") + '">' + f[1] + " " + n(f[2]) + "</button>"; }).join("") + "</div></div>";
     if (PV_FIL === "ignoti") {
       var gg = ((IGN && IGN.gruppi) || []).slice(0, 60);
-      h += '<div class="pv-gr vb-griglia" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">' + (gg.length ? gg.map(cartaVolto).join("") : '<div class="pv-vuoto">Nessun volto da battezzare.</div>') + "</div>";
+      var pps = (IGN && IGN.proposte) || [];
+      h += '<div class="pv-gr vb-griglia" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">' + (gg.length || pps.length ? pps.map(cartaProposta).join("") + gg.map(cartaVolto).join("") : '<div class="pv-vuoto">Nessun volto da battezzare.</div>') + "</div>";
     } else {
       h += '<div class="pv-gr">' + (pers.length ? pers.map(function (p) { var on = scelte.indexOf(p.id) >= 0, u = facciaDi(p);
         return '<button type="button" class="pv-f' + (on ? " on" : "") + '" data-pvp="' + esc(p.id) + '" aria-pressed="' + on + '" title="' + esc(p.nome) + " · si vede in " + n(p.conti.visti) + " video" + (p.conti.primi ? ", " + n(p.conti.primi) + " in primo piano" : "") + '"><span class="fc">' + (u ? '<img src="' + esc(u) + '" alt="" loading="lazy" decoding="async" onerror="this.remove()">' : "") + esc(iniziali(p.nome)) + "</span><b>" + esc(p.nome) + "</b><small>in " + n(p.conti.visti) + " video</small></button>"; }).join("")
@@ -1034,7 +1054,7 @@
   $("apriVolti").addEventListener("click", function (e) { e.stopPropagation(); if ($("pannelloVolti").hidden) apriParete(); else chiudiParete(); });
   $("pannelloVolti").addEventListener("click", function (e) {
     e.stopPropagation();
-    if (e.target.closest("[data-vfa]")) return suVolti(e);
+    if (e.target.closest("[data-vfa],[data-vpa]")) return suVolti(e);
     var b;
     if ((b = e.target.closest("[data-pvf]"))) { PV_FIL = b.dataset.pvf; disegnaParete(); return; }
     if ((b = e.target.closest("[data-pvp]"))) { var pid = b.dataset.pvp;

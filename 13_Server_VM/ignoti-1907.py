@@ -44,7 +44,9 @@ def main():
     liberi = [x for k, x in righe.items() if k not in nomi and os.path.exists(os.path.join(CASA, "pub", "ignoti", k + ".jpg"))]
     liberi.sort(key=lambda x: -x["h"])
     if not liberi:
-        json.dump({"aggiornato": int(time.time()), "gruppi": [], "battezzati": len(nomi)}, open(OUT, "w")); print("nessun volto da battezzare"); return
+        try: prop = json.load(open(os.path.join(CASA, "proposte.json")))
+        except Exception: prop = {}
+        json.dump({"aggiornato": int(time.time()), "gruppi": [], "battezzati": len(nomi), "proposte": [{"pid": k, "k": v["k"], "video": v.get("video", 0), "su": v.get("su", 0)} for k, v in prop.items()]}, open(OUT, "w")); print("nessun volto da battezzare"); return
     E = np.stack([V.da_impronta(x["e"]) for x in liberi]); E /= np.linalg.norm(E, axis=1, keepdims=True)
     somme = np.zeros((len(liberi), E.shape[1]), np.float32); cap = np.zeros((len(liberi), E.shape[1]), np.float32)
     membri = []
@@ -57,6 +59,13 @@ def main():
         membri.append([i]); somme[m] = E[i]; cap[m] = E[i]
     # chi conosciamo: la galleria del Como piu' i battezzati
     ids, gal = V.galleria_como()
+    # piu' le proposte di ritratti-auto-1907 (la faccia che domina nei video che nominano solo
+    # quella persona): valgono solo per il "forse e' ...", mai per riconoscere da sole
+    try: prop = json.load(open(os.path.join(CASA, "proposte.json")))
+    except Exception: prop = {}
+    if prop:
+        ids = list(ids) + list(prop); pe = np.stack([V.da_impronta(x["e"]) for x in prop.values()]); pe /= np.linalg.norm(pe, axis=1, keepdims=True)
+        gal = np.vstack([gal, pe])
     gruppi = []
     for j, mm in enumerate(membri):
         xs = [liberi[i] for i in mm]
@@ -71,7 +80,10 @@ def main():
     gruppi.sort(key=lambda g: (-len(g["vie"]), -len(g["k"]), -g["h"]))
     tanti = [g for g in gruppi if len(g["vie"]) > 1]
     soli = [g for g in gruppi if len(g["vie"]) == 1][:MAX_SOLI]
-    fuori = {"aggiornato": int(time.time()), "volti": len(liberi), "gruppi": tanti + soli, "altri": len(gruppi) - len(tanti) - len(soli),
+    try: ritr = json.load(open(os.path.join(CASA, "ritratti.json")))
+    except Exception: ritr = {}
+    proposte = sorted(({"pid": k, "k": v["k"], "video": v.get("video", 0), "su": v.get("su", 0)} for k, v in prop.items() if k not in ritr), key=lambda x: -x["video"])
+    fuori = {"aggiornato": int(time.time()), "volti": len(liberi), "gruppi": tanti + soli, "proposte": proposte, "altri": len(gruppi) - len(tanti) - len(soli),
              "battezzati": sum(1 for v in nomi.values() if v != "-")}
     tmp = OUT + ".tmp"; json.dump(fuori, open(tmp, "w"), ensure_ascii=False, separators=(",", ":")); os.replace(tmp, OUT)
     print("volti da battezzare: %d in %d gruppi (%d in piu' video)" % (len(liberi), len(gruppi), len(tanti)))

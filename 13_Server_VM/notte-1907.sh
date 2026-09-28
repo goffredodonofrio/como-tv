@@ -7,8 +7,9 @@
 #   4. le locandine delle cartelle nuove (fotogramma + composizione col Chrome dell'export)
 #   5. le miniature dei servizi nuovi
 #   6. le copie leggere dei video che il browser non legge, per priorita' (copie-notte-1907.py)
-#   7. i volti: chi si vede nei video, confrontato con la galleria del Como (volti-1907.py)
-#   8. i volti sconosciuti raggruppati, da battezzare (ignoti-1907.py)
+#   7. un volto a chi non ha lo scontornato (ritratti-auto-1907.py)
+#   8. i volti: chi si vede nei video, confrontato con la galleria del Como (volti-1907.py)
+#   9. i volti sconosciuti raggruppati, da battezzare, e le proposte (ignoti-1907.py)
 # Se parte una diretta ci si ferma e si aspetta che finisca.
 set -u
 CASA=/var/lib/comotv-1907
@@ -35,10 +36,14 @@ nice -n 15 python3 /opt/comotv/scalda-mini-1907.py | tail -1
 #    (prima dei volti: la mattina servono gia'), fino alle 05:15
 aspetta; passo "copie leggere"
 nice -n 15 python3 /opt/comotv/copie-notte-1907.py --fino 05:15 --spazio 12 | tail -1
-# 7. chi si vede nei video (volti): al massimo due ore, poi l'indice li prende
+# 7. un volto a chi non ha lo scontornato (ritratti-auto-1907.py): foto confermate dai suoi video,
+#    o proposte da confermare nella pagina; mezz'ora a notte finche' non ha guardato tutti
+aspetta; passo "ritratti"
+nice -n 15 /opt/volti/bin/python /opt/comotv/ritratti-auto-1907.py --minuti 30 2>/dev/null | tail -3
+# 8. chi si vede nei video (volti): al massimo due ore, poi l'indice li prende
 aspetta; passo "volti"
 nice -n 15 /opt/volti/bin/python /opt/comotv/volti-1907.py --minuti 120 2>/dev/null | tail -1
-# 8. i volti sconosciuti in gruppi, da battezzare nella pagina (ignoti-1907.py)
+# 9. i volti sconosciuti in gruppi, da battezzare nella pagina (ignoti-1907.py)
 nice -n 15 /opt/volti/bin/python /opt/comotv/ignoti-1907.py 2>/dev/null | tail -1
 nice -n 10 python3 /opt/comotv/indice-1907-da-elenco.py
 passo "fatto"

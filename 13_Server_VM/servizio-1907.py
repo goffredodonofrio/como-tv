@@ -19,7 +19,7 @@ Fuori dal ponte, dietro nginx su 127.0.0.1:8097:
   POST /premiere {nome, vie, radice} l'XML per Premiere (xmeml 4, come il MAM di Como TV): una
                                    sequenza con i file uno dopo l'altro, collegati agli
                                    originali sulla NAS montata sul Mac (radice)
-  POST /volti {k: [ritagli], pid | nome [, ruolo] | scarta | togli}
+  POST /volti {k: [ritagli], pid | nome [, ruolo] | scarta | togli} oppure {proposta: id, si: true|false}
                                    battezza un gruppo di volti sconosciuti (battesimi.json): li
                                    da' a una persona che c'e' gia', a una persona nuova, o li
                                    scarta (tifosi, passanti); "togli" annulla. Un minuto dopo
@@ -225,8 +225,40 @@ def _meta():
     m = importlib.util.module_from_spec(sp); sp.loader.exec_module(m); return m
 
 
+def proposta(p, chi):
+    """la faccia proposta da ritratti-auto-1907 per una persona: si' (diventa il suo ritratto) o no"""
+    pid = str(p.get("proposta") or "")
+    with B_LOCK:
+        prop = _leggi(os.path.join(CASA, "proposte.json"), {})
+        x = prop.pop(pid, None)
+        if not x: return 404, {"ok": False, "errore": "proposta non trovata"}
+        if p.get("si"):
+            r = _leggi(os.path.join(CASA, "ritratti.json"), {})
+            r[pid] = {"k": x["k"], "e": x["e"], "fonte": "auto", "confermato": chi or "pagina", "quando": int(time.time())}
+            _scrivi(os.path.join(CASA, "ritratti.json"), r)
+        else:
+            fa = _leggi(os.path.join(CASA, "ritratti-auto.json"), {})
+            fa[pid] = dict(fa.get(pid) or {}, esito="rifiutata", chi=chi)
+            _scrivi(os.path.join(CASA, "ritratti-auto.json"), fa)
+        _scrivi(os.path.join(CASA, "proposte.json"), prop)
+        b = _leggi(BATTESIMI, {}); b.setdefault("storia", []).append([int(time.time()), chi, ("si:" if p.get("si") else "no:") + pid, 1]); _scrivi(BATTESIMI, b)
+    RIFAI["quando"] = time.time() + 60
+    if not RIFAI["gira"]: threading.Thread(target=rifai, daemon=True).start()
+    return 200, {"ok": True, "pid": pid}
+
+
+def _leggi(f, d):
+    try: return json.load(open(f))
+    except Exception: return d
+
+
+def _scrivi(f, x):
+    tmp = f + ".tmp"; json.dump(x, open(tmp, "w"), ensure_ascii=False); os.replace(tmp, f)
+
+
 def battezza(p, chi):
     import re
+    if p.get("proposta"): return proposta(p, chi)
     ks = [str(k) for k in (p.get("k") or []) if re.fullmatch(r"[0-9a-f]{14}", str(k))][:5000]
     if not ks: return 400, {"ok": False, "errore": "nessun volto"}
     with B_LOCK:

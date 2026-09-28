@@ -28,7 +28,9 @@ sp = importlib.util.spec_from_file_location("volti", "/opt/comotv/volti-1907.py"
 def main():
     riv = cv2.FaceDetectorYN.create(MODELLI + "/yunet.onnx", "", (640, 640), 0.7, 0.3, 5000)
     trad = cv2.FaceRecognizerSF.create(MODELLI + "/sface.onnx", "")
-    fuori = {}
+    # i ritratti automatici (ritratti-auto-1907.py) restano; una foto messa a mano li sostituisce
+    try: fuori = {k: v for k, v in json.load(open(OUT)).items() if v.get("fonte") == "auto"}
+    except Exception: fuori = {}
     for nome in sorted(os.listdir(DIR)) if os.path.isdir(DIR) else []:
         pid, est = os.path.splitext(nome)
         if est.lower() not in (".jpg", ".jpeg", ".png", ".webp"): continue
@@ -44,7 +46,7 @@ def main():
         e = trad.feature(rit).flatten().astype(np.float32); e /= np.linalg.norm(e)
         k = hashlib.sha1(("ritratto#" + pid).encode()).hexdigest()[:14]
         os.makedirs(RITAGLI, exist_ok=True); cv2.imwrite(os.path.join(RITAGLI, k + ".jpg"), rit, [cv2.IMWRITE_JPEG_QUALITY, 88])
-        fuori[pid] = {"k": k, "e": V.impronta(e)}
+        fuori[pid] = {"k": k, "e": V.impronta(e), "fonte": "foto"}
         print("ritratto:", pid)
     tmp = OUT + ".tmp"; json.dump(fuori, open(tmp, "w")); os.replace(tmp, OUT)
 
