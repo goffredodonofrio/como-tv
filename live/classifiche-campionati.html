@@ -103,6 +103,9 @@
   .gironi label.gir.on{border-color:var(--gold,#C9A24B);background:rgba(201,162,75,.14);color:var(--gold-bright,#E3C271);}
   .gironi label.gir input{margin:0;}
   .gironi .mini{padding:6px 10px;font-size:10px;}
+  .gironi .lega{font-family:'Mazzard',system-ui,sans-serif;font-size:10px;font-weight:700;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--fg-3,#8A8B96);margin:0 2px 0 10px;}
+  .gironi .lega:first-child{margin-left:0;}
   .gironi .nota{font-size:12px;color:var(--fg-3,#8A8B96);margin-left:6px;}
   .grafit input[type=text]{
     font-family:'DM Sans',system-ui,sans-serif;font-weight:600;font-size:18px;letter-spacing:.01em;
@@ -1066,11 +1069,19 @@
     if (state.groups.length < 2) { campo.hidden = true; return; }
     campo.hidden = false;
     state.scelti = (state.scelti || [0]).filter(function (i) { return i < state.groups.length; });
-    var h = state.groups.map(function (g, i) {
+    var legaPrima = null, h = "";
+    state.groups.forEach(function (g, i) {
       var on = state.scelti.indexOf(i) >= 0;
-      return '<label class="gir' + (on ? ' on' : '') + '"><input type="checkbox" data-gir="' + i + '"' + (on ? ' checked' : '') + '>' +
-        esc(g.label || ("Girone " + (i + 1))) + '</label>';
-    }).join("");
+      var m = /^Girone\s+([A-Z])(\d+)$/i.exec(g.label || "");
+      var testo = g.label || ("Girone " + (i + 1));
+      if (m) {
+        // la Nations League: le caselle si raggruppano per Lega
+        if (m[1] !== legaPrima) { h += '<span class="lega">Lega ' + esc(m[1].toUpperCase()) + '</span>'; legaPrima = m[1]; }
+        testo = m[2];
+      }
+      h += '<label class="gir' + (on ? ' on' : '') + '"><input type="checkbox" data-gir="' + i + '"' + (on ? ' checked' : '') + '>' +
+        esc(testo) + '</label>';
+    });
     var n = state.scelti.length;
     h += '<button type="button" class="mini" data-gir-tutti="1">Tutti</button>' +
          '<button type="button" class="mini" data-gir-tutti="0">Nessuno</button>' +
@@ -1100,6 +1111,13 @@
     disegnaGironi();
     if (window.anteprimaSeAperta) anteprimaSeAperta();
   });
+  // Il nome del girone IN ONDA: la lettera della Lega si toglie (Goffredo,
+  // 28/09/2026): "Girone A1" esce "GIRONE 1". Nell'editor e nella scaletta
+  // di regia resta intero, se no Lega A e Lega B avrebbero quattro "Girone 1"
+  // uguali. "Girone A" delle qualificazioni non ha numero e resta com'e'.
+  function nomeInOnda(label) {
+    return String(label || "").replace(/^(Girone)\s+[A-Z](\d+)$/i, "$1 $2").toUpperCase();
+  }
   function righeGrafica(g) {
     return g.rows.map(function (row) {
       var nome = row.manual ? defaultName(row.api) : grafName(row.api);
@@ -1114,14 +1132,14 @@
     var scelti = multi ? (state.scelti || []).map(function (i) { return state.groups[i]; }).filter(Boolean) : state.groups;
     if (!scelti.length) return [];
     function uno(g) {
-      return { e: occhiello + (g.label && multi ? " · " + g.label.toUpperCase() : ""), t: titolo, r: righeGrafica(g), _nome: g.label || "" };
+      return { e: occhiello + (g.label && multi ? " · " + nomeInOnda(g.label) : ""), t: titolo, r: righeGrafica(g), _nome: g.label || "" };
     }
     if (!multi || state.unoPerVoce || scelti.length === 1) return scelti.map(uno);
     var out = [];
     for (var i = 0; i < scelti.length; i += MAX_GIRONI) {
       var pezzo = scelti.slice(i, i + MAX_GIRONI);
       out.push({ e: occhiello, t: titolo,
-                 g: pezzo.map(function (g) { return { n: String(g.label || "").toUpperCase(), r: righeGrafica(g) }; }),
+                 g: pezzo.map(function (g) { return { n: nomeInOnda(g.label), r: righeGrafica(g) }; }),
                  _nome: pezzo.map(function (g) { return g.label; }).join(", ") });
     }
     return out;
