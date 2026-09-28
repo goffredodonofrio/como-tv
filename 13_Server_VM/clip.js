@@ -15315,7 +15315,8 @@ function voltiAvanti() {
     const da = pz[i].da || 0;
     if (codice === 0) trattiVolto(ora.punti).forEach((z) => fatto.tratti.push([+(da + z.t0).toFixed(1), +(da + z.t1 + 1).toFixed(1), +z.s.toFixed(3), i, z.t0]));
     fatto.pezzi.push(i);
-    if (codice !== 0) fatto.errore = "volti.py " + codice;
+    // un file rotto (Al Hilal-Al Ahli del 1/9/2026: "moov atom not found") si dice, non vale zero inquadrature
+    if (codice !== 0) fatto.errore = codice === 3 ? "file illeggibile" : "volti.py " + codice;
     if (fatto.pezzi.length >= pz.length) { fatto.fatto = new Date().toISOString(); VOLTI_CODA.shift(); }
     scriviVolti(); global.__SCHEDE_A && global.__SCHEDE_A.clear();
     setImmediate(voltiAvanti);
@@ -15329,7 +15330,8 @@ function statoVolto(nome) {
   // quanto manca: due ore a partita (l'indice non ha la durata), a nove volte il tempo reale
   const secondi = Math.max(0, VOLTI_CODA.length * 7200 - ((VOLTO_ORA && VOLTO_ORA.ultimo) || 0)) / 9;
   const lavora = VOLTO_ORA && VOLTO_ORA.lavoro.chi === chi ? { partita: (ARCHIVIO[VOLTO_ORA.lavoro.rec] || {}).partita || "", al: VOLTO_ORA.ultimo || 0 } : null;
-  return { ok: true, nome, foto: !!fotoAllenatore(nome), partite: tutte.length, fatte, inCoda, tratti, minuti: Math.round(secondi / 60), lavora, fermo: !!(VOLTI_CODA.length && inDiretta()) };
+  const rotte = tutte.filter((r) => (P.partite[r] || {}).errore).map((r) => (ARCHIVIO[r] || {}).partita || r);
+  return { ok: true, nome, foto: !!fotoAllenatore(nome), partite: tutte.length, fatte, inCoda, tratti, rotte, minuti: Math.round(secondi / 60), lavora, fermo: !!(VOLTI_CODA.length && inDiretta()) };
 }
 // LE AZIONI DI UN ALLENATORE, solo nelle partite con lui in panchina: i gol
 // della sua squadra e quelli subiti (li' la regia va su di lui), e le righe

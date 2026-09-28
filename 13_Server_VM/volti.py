@@ -54,3 +54,8 @@ while True:
     if t is not None and da > 0: t += da
     print(json.dumps({"t": None if t is None else round(t, 2), "n": 0 if f is None else len(f), "v": v}), flush=True)
     i += 1
+# un file che non si apre (o si interrompe) non e' "nessun volto": e' un errore
+p.wait()
+if i == 0 or p.returncode != 0:
+    print("volti.py: file illeggibile (ffmpeg " + str(p.returncode) + ", " + str(i) + " fotogrammi)", file=sys.stderr)
+    sys.exit(3)
