@@ -88,7 +88,9 @@ const CONFIG = {
   // Undici vMix e la regia (25/09/2026, erano sette e la regia). La regia e'
   // l'ULTIMO canale, il 12: prima era l'8, e al primo avvio carica() sposta
   // la sua scaletta dall'8 al 12.
-  CANALI: 12,
+  // Il 13 e' OBS (28/09/2026): un'uscita come i vMix, stesse funzioni.
+  // La regia resta il 12.
+  CANALI: 13,
   CANALE_REGIA: 12,
   // Nessun tetto alle grafiche in scaletta: trenta bastavano per una partita,
   // non per una giornata intera o per un progetto d'archivio. Resta un numero
@@ -2149,7 +2151,7 @@ const SCORCIATOIE_CANALE = {
 function scorciatoia(percorso) {
   const pulito = percorso.replace(/\/+$/, "") || "/";
   if (SCORCIATOIE[pulito]) return { file: SCORCIATOIE[pulito] };
-  const m = pulito.match(/^\/([a-z]+)\/([1-9]|1[0-2])$/);
+  const m = pulito.match(/^\/([a-z]+)\/([1-9]|1[0-3])$/);
   if (m && SCORCIATOIE_CANALE[m[1]]) {
     return { file: SCORCIATOIE_CANALE[m[1]], canale: m[2] };
   }

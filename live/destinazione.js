@@ -26,9 +26,9 @@ window.Destinazione = (function () {
       localStorage.setItem("comotv.canali12", "1");
     }
   } catch (e) {}
-  var N_CANALI = 12;
+  var N_CANALI = 13;   // 1-11 vMix, 12 la regia, 13 OBS
   // il dodicesimo e' quello della regia: ha un nome suo, non "vMix 12"
-  function nomeCanale(c) { return c == 12 ? "VMIX REGIA" : "vMix " + c; }
+  function nomeCanale(c) { return c == 12 ? "VMIX REGIA" : c == 13 ? "OBS" : "vMix " + c; }
 
   var guasto = "";      // se l'elenco non arriva, il menu' lo dice
 
