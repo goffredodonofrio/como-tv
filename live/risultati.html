@@ -104,7 +104,8 @@
   .cmpIn::placeholder{color:rgba(245,241,230,.28);letter-spacing:.06em;}
   .cmpIn:focus{outline:none;border-color:var(--line-gold);}
   .match{flex-wrap:wrap;}
-  .match .cmpIn{flex:1 1 100%;margin-left:26px;}
+  .match .cmpIn{flex:1 1 60%;margin-left:26px;}
+  .match .cmpIn.qn{flex:0 1 240px;margin-left:0;}
   .amano .cmpIn{flex:0 0 150px;}
   .grafit input[type=text]{
     font-family:'DM Sans',system-ui,sans-serif;font-weight:600;font-size:18px;letter-spacing:.01em;
@@ -281,6 +282,13 @@
       <div class="lingua">
         <input type="text" id="cmpTutte" placeholder="es. CARABAO CUP · vuota = senza competizione" maxlength="40">
         <button type="button" id="btnCmpTutte">Scrivi in tutte</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="qnTutte">Data e ora nella linguetta &mdash; per tutte le righe</label>
+      <div class="lingua">
+        <input type="text" id="qnTutte" placeholder="es. SABATO 4 OTT · 20:45 · vuota = senza" maxlength="40">
+        <button type="button" id="btnQnTutte">Scrivi in tutte</button>
       </div>
     </div>
     <label class="spunta"><input type="checkbox" id="conQuando" checked> Data e ora nella linguetta</label>
@@ -682,6 +690,16 @@
       });
   }
 
+  // Le nazionali: ESPN ha la bandiera in teamlogos/countries/, e per molte
+  // Under (Croazia U21, Finlandia U21...) il solito indirizzo col codice non
+  // esiste. Si usa la bandiera che indica lui, che e' quella della nazionale
+  // maggiore: la stessa per la Finlandia e per la Finlandia U21.
+  function stemmaEspn(t) {
+    var logo = String(t.logo || "");
+    if (/\/teamlogos\/countries\//.test(logo)) return logo.replace(/^http:/, "https:");
+    return String(t.id || "");
+  }
+
   function load() {
     var comp = COMPS[el.comp.selectedIndex];
     state.comp = comp;
@@ -729,8 +747,8 @@
 
           return {
             id: ev.id || String(i),
-            tid1: home && home.team ? String(home.team.id || "") : "",
-            tid2: away && away.team ? String(away.team.id || "") : "",
+            tid1: home && home.team ? stemmaEspn(home.team) : "",
+            tid2: away && away.team ? stemmaEspn(away.team) : "",
             checked: quante + i < MAXEV,
             finita: st.state === "post",
             haPunteggio: haPunteggio,
@@ -944,6 +962,11 @@
         '<span class="st">' + esc(m.statoBreve) + '</span>' +
         '<input type="text" class="cmpIn" data-cmp="' + esc(m.id) + '" value="' + esc(m.campi[0]) + '" ' +
           'placeholder="competizione (vuota: non esce)" spellcheck="false">' +
+        // la data e l'ora si correggono a mano come la competizione (Goffredo,
+        // 28/09/2026): ESPN non sempre ha l'orario giusto, e a volte serve
+        // scrivere "Stasera" o "Sospesa"
+        '<input type="text" class="cmpIn qn" data-quando="' + esc(m.id) + '" value="' + esc(m.campi[2]) + '" ' +
+          'placeholder="data e ora (vuota: non esce)" spellcheck="false">' +
         '</div>';
     });
     h += '</div>';
@@ -1151,6 +1174,10 @@
       var t = ev.target;
       if (t.dataset && t.dataset.mano) scriviMano(t.dataset.mano, t.dataset.k, t.value);
       if (t.dataset && t.dataset.espn) scriviNome(t, quale === "change");
+      if (t.dataset && t.dataset.quando) {
+        var mq = state.matches.filter(function (x) { return x.id === t.dataset.quando; })[0];
+        if (mq) { mq.campi[2] = t.value; aggiornaAnteprima(); }
+      }
       if (t.dataset && t.dataset.cmp) {
         var mc = state.matches.filter(function (x) { return x.id === t.dataset.cmp; })[0];
         if (mc) { mc.campi[0] = t.value; aggiornaAnteprima(); }
@@ -1167,6 +1194,14 @@
     aggiornaAnteprima();
     status("ok", '<span class="msg">' + (v ? 'In tutte le righe: <b>' + esc(v) + '</b>.'
       : 'Competizione tolta da tutte le righe.') + '</span>');
+  });
+  document.getElementById("btnQnTutte").addEventListener("click", function () {
+    var v = document.getElementById("qnTutte").value.trim();
+    state.matches.forEach(function (m) { m.campi[2] = v; });
+    render();
+    aggiornaAnteprima();
+    status("ok", '<span class="msg">' + (v ? 'Data e ora in tutte le righe: <b>' + esc(v) + '</b>.'
+      : 'Data e ora tolte da tutte le righe.') + '</span>');
   });
   el.conQuando.addEventListener("change", function () { aggiornaAnteprima(); });
   // Il nome di una partita presa da ESPN, corretto a mano. Cambia subito la
