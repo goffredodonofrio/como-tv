@@ -8080,11 +8080,12 @@ async function archivioScandaglia(p) {
       // di prima se li tiene; se il materiale cambia vanno buttati, perche'
       // parlano di un altro file.
       const prima = ARCHIVIO[rec.id] || {};
-      const stessaRoba = prima.dove === meglio.dove && prima.bucket === bucket;
+      const stessaRoba = prima.dove === meglio.dove && prima.bucket === bucket && (!prima.chiave || prima.chiave === pezzi[0].chiave);
       // TUTTE, anche i "fatto" e i "fallito": senza boatiFatti,
       // orologioFallito, tabelloneFallito il giro della casa rifaceva i boati
       // e riprovava i cronometri gia' falliti a ogni scandaglio (26/09/2026)
-      const letture = { orologio: prima.orologio };
+      // (il cronometro prima restava SEMPRE, anche su un file nuovo: 28/09/2026)
+      const letture = {};
       if (stessaRoba) LETTURE_DEL_FILE.forEach((c) => { if (prima[c] !== undefined) letture[c] = prima[c]; });
       ARCHIVIO[rec.id] = Object.assign(letture, { bucket: bucket, chiave: pezzi[0].chiave, peso: pezzi[0].peso,
         partita: f["Partita"] || "", competizione: f["Competizione"] || "",
@@ -9809,6 +9810,10 @@ function applicaOrologio(rec, esito) {
       if (esito["inizio" + n] === undefined || esito["inizio" + n] === null) { delete esito["inizio" + n]; delete esito.fonti[n]; return; }
       if (!esito.fonti[n]) esito.fonti[n] = esito.fonte || "cronometro";
     });
+    // su quale file: se il file della partita cambia, questo non vale piu'
+    // (Sassuolo-Como ITA, 28/09/2026: letto sulla registrazione grezza della
+    // regia e rimasto attaccato alla "partita intera" montata, 7 minuti di scarto)
+    esito.chiave = a.chiave;
     a.orologio = esito; delete a.orologioFallito;
   } else delete a.orologio;
   const kick0 = (a.kickoff !== null && a.kickoff !== undefined) ? a.kickoff : null;
@@ -15764,6 +15769,18 @@ const AZIONI = {
   "clip-nas-aggiunte": () => importaAggiunteNas(),
   "clip-archivio-correggi": (p) => correggiArchivio(p.voci),
   "clip-1907-cerca": (p) => cerca1907(p.q, p.quante),
+  // RILEGGERE DA CAPO (28/09/2026): cronometro, tabellone, boati e momenti di
+  // queste partite via, e il giro della casa li rifa'. Le durate restano
+  "clip-archivio-rileggi": (p) => {
+    const via = ["orologio", "orologioFallito", "tabellone", "tabelloneFallito", "boati", "boatiFatti", "momenti", "momentiFatti", "momentiVer", "gol", "replay", "primoReplay", "replayNo", "cronometroCieco"];
+    const fatte = [];
+    (Array.isArray(p.recs) ? p.recs : []).slice(0, 50).forEach((rec) => {
+      const a = ARCHIVIO[String(rec)]; if (!a) return;
+      via.forEach((c) => { delete a[c]; }); fatte.push(String(rec));
+    });
+    if (fatte.length) { scriviArchivio(); console.log("[clip] da rileggere da capo: " + fatte.map((k) => (ARCHIVIO[k].partita || k)).join(", ")); setTimeout(() => { giroCasa().catch(() => {}); }, 2000); }
+    return { ok: true, fatte };
+  },
   "clip-archivio-copia": async () => Object.assign({}, await statoCopia(), { nomi: statoNomi(), casa: statoCasa() }),
   // quante partite S3 sono gia' in casa (ricontate adesso)
   "clip-archivio-specchio": async () => Object.assign({ ok: true, cartella: path.join(QNAP_RADICE, SPECCHIO_DIR) }, await aggiornaSpecchio()),
