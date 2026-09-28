@@ -685,6 +685,9 @@
   #regiaEsp{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);z-index:95;width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;
     display:flex;flex-direction:column;gap:10px;padding:14px 18px;border:1px solid rgba(79,163,232,.6);border-radius:14px;background:#141722;box-shadow:0 18px 50px rgba(0,0,0,.6);}
   #regiaEsp[hidden]{display:none;}
+  .regia-ed{margin-left:6px;font:700 11px/1 'Mazzard',sans-serif;letter-spacing:.08em;text-transform:uppercase;padding:9px 12px;border-radius:6px;cursor:pointer;
+    background:rgba(156,203,242,.14);color:#9CCBF2;border:1px solid rgba(156,203,242,.45);}
+  .regia-ed:hover,.regia-ed:focus-visible{background:#9CCBF2;color:#0B1B33;outline:none;}
   #regiaEsp .pr-testa{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 12px;font-size:13px;color:var(--ivory2);}
   #regiaEsp .pr-testa b{font:700 11px/1 'Mazzard',sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#9CCBF2;}
   #regiaEsp .riga-r{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 14px;}
@@ -1561,7 +1564,7 @@
             <div class="riga2"><button class="mini" id="eCasa" title="scarica i pezzi sulla VM: riproduzione immediata ed export senza attese">Pezzi in casa</button><button class="mini" id="eXml" title="l'XML per Premiere con l'SRT a fianco">XML Premiere</button><button class="mini" id="eRinomina">Rinomina</button><button class="mini" id="eProg" title="in quale progetto sta questa sequenza">Progetto</button></div>
             <div id="eCasaStato" style="font-size:11.5px;color:var(--fumo)"></div></div>
             <div class="sez2"><h4>Esporta</h4>
-            <div class="riga2"><button class="oro" id="eApriEsporta" title="la modalit&#224; Esporta: formati, anteprima, impostazioni, coda">Esporta&#8230; &#8984;M</button></div>
+            <div class="riga2"><button class="oro" id="eApriEsporta" title="la modalit&#224; Esporta: formati, anteprima, impostazioni, coda">Esporta&#8230; &#8984;M</button><button class="regia-ed" id="eRegia" title="il montaggio in scaletta su un vMix: lo prepara in 16:9 e lo manda, in un clic">&#128225; In regia</button></div>
             <div id="eMotore" hidden>
             <div class="riga2" id="eFormati" title="clicca per vederlo nel monitor; più formati accesi = più file in uscita"><span class="fchip on vista" data-f="16:9">16:9</span><span class="fchip" data-f="9:16">9:16</span><span class="fchip" data-f="1:1">1:1</span><span class="fchip" data-f="3:4">3:4</span></div>
             <div class="riga2 avviso2" id="eQuanti"></div>
@@ -7030,17 +7033,29 @@
   // ── INVIA ALLA REGIA un file dell'export: stessa scaletta e stesso menu'
   // delle grafiche (regia-load, grafica "video"). Il montato ha il suo audio,
   // quindi qui la telecronaca parte accesa.
-  function apriRegiaEsp(b){
+  function pannelloRegiaEsp(){
     var p = el("regiaEsp");
     if (!p) { p = document.createElement("div"); p.id = "regiaEsp"; p.setAttribute("role", "dialog"); p.setAttribute("aria-label", "Invia alla regia"); document.body.appendChild(p);
-      p.addEventListener("click", function(e){ var t = e.target.closest("button"); if (!t) return; if (t.dataset.fa === "annulla") p.hidden = true; if (t.dataset.fa === "manda") mandaEsp(p); });
-      p.addEventListener("keydown", function(e){ if (e.key === "Escape") p.hidden = true; if (e.key === "Enter" && e.target.id === "regiaEspTitolo") { e.preventDefault(); mandaEsp(p); } });
+      p.addEventListener("click", function(e){ var t = e.target.closest("button"); if (!t) return; if (t.dataset.fa === "annulla") p.hidden = true; if (t.dataset.fa === "manda") mandaEsp(p); if (t.dataset.fa === "mandaEd") mandaDaEditor(p); });
+      p.addEventListener("keydown", function(e){ if (e.key === "Escape" && !REGIA_ED) p.hidden = true; if (e.key === "Enter" && e.target.id === "regiaEspTitolo") { e.preventDefault(); if (p.dataset.modo === "editor") mandaDaEditor(p); else mandaEsp(p); } });
     }
+    return p;
+  }
+  // l'ultimo vMix scelto per la regia: in diretta si manda di fila sullo stesso
+  function doveRegia(opz, dest){
+    var v = ""; try { v = localStorage.getItem("mam2-regia-dove") || ""; } catch (e) {}
+    if (v && opz.some(function(o){ return o.value === v; })) return v;
+    return dest ? dest.value : "";
+  }
+  function ricordaDoveRegia(v){ try { if (v) localStorage.setItem("mam2-regia-dove", v); } catch (e) {} }
+  function apriRegiaEsp(b){
+    var p = pannelloRegiaEsp(); p.dataset.modo = "uscita";
     var dest = el("lCanale"), opz = dest ? [].filter.call(dest.options, function(o){ return o.value && o.value.indexOf("__") !== 0 && !o.disabled; }) : [];
+    var sceltoDove = doveRegia(opz, dest);
     p.dataset.file = b.dataset.file; p.dataset.dur = b.dataset.dur; p.dataset.formato = b.dataset.regiaesp;
     p.innerHTML = '<div class="pr-testa"><b>&#128225; Invia alla regia</b><span>' + esc((SEQ && SEQ.titolo) || "sequenza") + ' · ' + esc(b.dataset.regiaesp) + ' · ' + tc(+b.dataset.dur || 0) + '</span></div>' +
       '<div class="riga-r"><div class="campo-r"><label for="regiaEspTitolo">Nome in scaletta</label><input id="regiaEspTitolo" type="text" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" maxlength="60" value="' + esc(String((SEQ && SEQ.titolo) || "MONTATO").replace(/^BOZZA\s*·\s*/i, "").toUpperCase()) + '"></div>' +
-      '<div class="campo-r"><label for="regiaEspDove">Seleziona vMix o progetto</label><select id="regiaEspDove">' + opz.map(function(o){ return '<option value="' + esc(o.value) + '"' + (dest && o.value === dest.value ? " selected" : "") + '>' + esc(o.textContent) + '</option>'; }).join("") + '</select></div>' +
+      '<div class="campo-r"><label for="regiaEspDove">Seleziona vMix o progetto</label><select id="regiaEspDove">' + opz.map(function(o){ return '<option value="' + esc(o.value) + '"' + (o.value === sceltoDove ? " selected" : "") + '>' + esc(o.textContent) + '</option>'; }).join("") + '</select></div>' +
       '<label class="spunta" title="il montato esce con il suo audio"><input type="checkbox" id="regiaEspAudio" checked> Con l’audio del montato</label>' +
       '<button type="button" class="manda" data-fa="manda">&#128225; Invia alla regia</button><button type="button" class="annulla" data-fa="annulla">Annulla</button></div>';
     p.hidden = false;
@@ -7048,6 +7063,7 @@
   }
   function mandaEsp(p){
     var titolo = (el("regiaEspTitolo").value || "").trim().toUpperCase().slice(0, 60) || "MONTATO", dove = el("regiaEspDove").value, audio = el("regiaEspAudio").checked;
+    ricordaDoveRegia(dove);
     if (el("lCanale") && dove) { el("lCanale").value = dove; try { el("lCanale").dispatchEvent(new Event("change")); } catch (e) {} }
     var btn = p.querySelector("[data-fa=manda]"); btn.disabled = true;
     post(Destinazione.corpo({ grafica: "video", titolo: titolo,
@@ -7055,6 +7071,73 @@
       .then(function(){ p.hidden = true; avviso("ok", "“" + esc(titolo) + "” in scaletta su " + esc(Destinazione.dove()) + ". Dalla regia lo mandano in onda."); })
       .catch(function(er){ btn.disabled = false; avviso("err", "La regia non l’ha preso: " + esc(er.message)); });
   }
+  // ── IN REGIA DALL'EDITOR (28/09/2026) ────────────────────────────────
+  // Un clic: il montaggio si prepara in 16:9 (senza grafiche i pezzi in casa
+  // si incollano e basta, pochi secondi; con le grafiche e' un export vero) e
+  // appena il file c'e' va in scaletta sul vMix scelto, come le grafiche.
+  var REGIA_ED = null;
+  function apriInRegia(){
+    if (!SEQ) return avviso("err", "Apri prima una sequenza.");
+    if (!PZ.length) return avviso("err", "La sequenza è vuota.");
+    if (!window.Destinazione) return avviso("err", "Manca destinazione.js: non so dove mandarlo.");
+    if (REGIA_ED) { el("regiaEsp").hidden = false; return; }
+    var p = pannelloRegiaEsp(); p.dataset.modo = "editor";
+    var dest = el("lCanale"), opz = dest ? [].filter.call(dest.options, function(o){ return o.value && o.value.indexOf("__") !== 0 && !o.disabled; }) : [];
+    var sceltoDove = doveRegia(opz, dest);
+    var conGrafiche = !!(GRAF && GRAF.length);
+    var nota = conGrafiche ? "ci sono grafiche: serve un export 16:9, qualche minuto" : "solo tagli: esce in pochi secondi se i pezzi sono in casa";
+    p.innerHTML = '<div class="pr-testa"><b>&#128225; In regia</b><span>' + esc(SEQ.titolo || "sequenza") + ' · 16:9 · ' + tc(durSeq()) + ' · ' + esc(nota) + '</span></div>' +
+      '<div class="riga-r"><div class="campo-r"><label for="regiaEspTitolo">Nome in scaletta</label><input id="regiaEspTitolo" type="text" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" maxlength="60" value="' + esc(String(SEQ.titolo || "MONTATO").replace(/^BOZZA\s*·\s*/i, "").toUpperCase()) + '"></div>' +
+      '<div class="campo-r"><label for="regiaEspDove">Seleziona vMix o progetto</label><select id="regiaEspDove">' + opz.map(function(o){ return '<option value="' + esc(o.value) + '"' + (o.value === sceltoDove ? " selected" : "") + '>' + esc(o.textContent) + '</option>'; }).join("") + '</select></div>' +
+      '<label class="spunta" title="il montato esce con il suo audio"><input type="checkbox" id="regiaEspAudio" checked> Con l’audio del montato</label>' +
+      '<button type="button" class="manda" data-fa="mandaEd">&#128225; Prepara e invia</button><button type="button" class="annulla" data-fa="annulla">Annulla</button></div>';
+    p.hidden = false;
+    setTimeout(function(){ var t = el("regiaEspTitolo"); if (t) { t.focus(); t.select(); } }, 0);
+  }
+  function statoRegiaEd(p, testo, quota){
+    p.innerHTML = '<div class="pr-testa"><b>&#128225; In regia</b><span>' + esc(REGIA_ED ? REGIA_ED.titolo : "") + ' · ' + esc(testo) + '</span></div>' +
+      (quota !== undefined ? '<div class="esp-av-barra" style="margin-top:8px"><i style="width:' + Math.max(2, quota * 100).toFixed(1) + '%"></i></div>' : '');
+  }
+  function mandaDaEditor(p){
+    if (REGIA_ED || !SEQ) return;
+    var titolo = (el("regiaEspTitolo").value || "").trim().toUpperCase().slice(0, 60) || "MONTATO", dove = el("regiaEspDove").value, audio = el("regiaEspAudio").checked;
+    ricordaDoveRegia(dove);
+    if (el("lCanale") && dove) { el("lCanale").value = dove; try { el("lCanale").dispatchEvent(new Event("change")); } catch (e) {} }
+    var seq = SEQ.id, reg = SEQ.reg, t0 = Date.now();
+    REGIA_ED = { titolo: titolo, seq: seq };
+    statoRegiaEd(p, "preparo il filmato 16:9…", 0.02);
+    var finisci = function(ok, testo){
+      REGIA_ED = null;
+      if (ok) { avviso("ok", testo); p.hidden = true; } else { p.hidden = true; avviso("err", testo); }
+    };
+    post({ tipo:"clip-hl-esporta", seq: seq, formato: "16:9", esatto: el("eEsatto").checked, sotto: "", sottoLingua: el("eSottoL").value }).then(function(d){
+      // un altro export era gia' in corso su questa sequenza: il 16:9 potrebbe non arrivare
+      if (!d.formati && d.export && d.export.stato === "lavora" && d.export.formato !== "16:9") return finisci(false, "C’è già un export in corso su questa sequenza: riprova appena finisce.");
+      var giri = 0;
+      var guarda = function(){
+        post({ tipo:"clip-hl-elenco", reg: reg, tutte: true }).then(function(x){
+          var q = (x.seq || []).filter(function(z){ return z.id === seq; })[0];
+          if (!q) return finisci(false, "La sequenza non c’è più.");
+          if (q.export && q.export.stato === "errore") return finisci(false, "Il filmato non è uscito: " + esc(q.export.errore || ""));
+          var f = (q.esportati || {})["16:9"];
+          if (f && f.file && (f.quando || 0) >= t0 - 2000) {
+            statoRegiaEd(p, "mando in scaletta…", 1);
+            return post(Destinazione.corpo({ grafica: "video", titolo: titolo,
+              dati: { k: "video", src: location.origin + BASE + f.file, dur: f.durata || 0, fit: "contain", loop: false, mute: !audio, bg: "nero" } }))
+              .then(function(){ finisci(true, "“" + esc(titolo) + "” in scaletta su " + esc(Destinazione.dove()) + " · " + tc(f.durata || 0) + (f.copiato ? " · pezzi incollati, senza ricodificare" : "") + ". Dalla regia lo mandano in onda."); giroUscite(); })
+              .catch(function(er){ finisci(false, "La regia non l’ha preso: " + esc(er.message)); });
+          }
+          var q2 = q.export && q.export.stato === "lavora" ? avanzaExport(q.export) : 0;
+          statoRegiaEd(p, q.export && q.export.fase ? q.export.fase + " · " + Math.round(q2 * 100) + "%" : "preparo il filmato 16:9…", Math.max(0.03, q2));
+          if (++giri > 900) return finisci(false, "Il filmato ci mette troppo: lo trovi nelle uscite quando è pronto.");
+          setTimeout(guarda, 1500);
+        }).catch(function(){ if (++giri > 900) return finisci(false, "Il ponte non risponde."); setTimeout(guarda, 3000); });
+      };
+      setTimeout(guarda, 1000);
+    }).catch(function(er){ finisci(false, esc(er.message)); });
+  }
+  el("eRegia").addEventListener("click", apriInRegia);
+  if (AMBITO) el("eRegia").hidden = true;          // l'Editing del MAM 1907 non va in regia
   // UN'USCITA IN RACCOLTA: il file gia' esportato, senza rifare niente
   ["eUscite", "espUscite"].forEach(function(id){ var c = el(id); if (!c) return; c.addEventListener("click", function(e){
     var rg = e.target.closest("[data-regiaesp]"); if (rg) { if (!window.Destinazione) return avviso("err", "Manca destinazione.js: non so dove mandarlo."); return apriRegiaEsp(rg); }
