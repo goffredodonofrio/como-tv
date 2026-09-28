@@ -21,7 +21,7 @@ La chiave delle sessioni si crea da sola in /etc/comotv/accesso.chiave.
 Gli indirizzi singoli ammessi (collaboratori con la mail personale) stanno in
 /etc/comotv/accesso-autorizzati.txt, uno per riga.
 """
-import base64, hashlib, hmac, html, json, os, secrets, time, urllib.parse, urllib.request
+import base64, hashlib, hmac, html, json, os, re, secrets, time, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 CONF = "/etc/comotv/accesso.env"
@@ -160,6 +160,30 @@ def pagina_permessa(email, percorso):
 def super_utenti():
     su = {x.strip().lower() for x in conf().get("ACCESSO_ADMIN", "goffredo.donofrio@sent.tv").split(",") if x.strip()}
     return su | {k for k, v in locali().items() if v.get("admin")}
+
+
+# ── IL CLUB VEDE SOLO IL SUO (Goffredo, 28/09/2026): le mail @comofootball.com
+#    entrano solo in "MAM e Magazzino Como 1907" (home filtrata, MAM 1907, Raccolte
+#    1907, Editing 1907 e i loro file) e in Guida e Palestra. Lo decide il server,
+#    pagina per pagina.
+def ruolo(email):
+    email = (email or "").lower()
+    if email in super_utenti(): return "admin"
+    solo = [d.strip().lower() for d in conf().get("ACCESSO_SOLO_1907", "comofootball.com").split(",") if d.strip()]
+    return "club" if email.rsplit("@", 1)[-1] in solo else "staff"
+
+
+def club_puo(percorso):
+    """le pagine del club: home, MAM Como 1907 (e i suoi dati), Editing 1907, Guida e Palestra"""
+    p, _, q = urllib.parse.unquote(percorso or "").partition("?")
+    rel = p
+    for pre in ("/como-tv-dev/", "/como-tv/", "/"):
+        if p.startswith(pre): rel = p[len(pre):]; break
+    if rel in ("", "index.html"): return True
+    if rel == "live/mam-1907.html" or rel.startswith("mam-1907/"): return True
+    if rel.startswith("guida/"): return True              # Guida e Palestra (Goffredo, 28/09/2026)
+    if rel == "live/mam2.html" and re.search(r"(^|&)ambito=1907(&|$)", q): return True
+    return False
 
 
 def torna_sicuro(t):
@@ -362,15 +386,22 @@ class H(BaseHTTPRequestHandler):
         torna = torna_sicuro(urllib.parse.unquote(u.query[6:]) if u.query.startswith("torna=") else "")
         if u.path == "/auth/verifica":
             email = sessione_valida(self.cookie())
-            return self.manda(200, b"", extra=[("X-Utente", email)]) if email else self.manda(401)
+            if not email: return self.manda(401)
+            if ruolo(email) == "club" and not club_puo(self.headers.get("X-Pagina") or ""): return self.manda(403)
+            return self.manda(200, b"", extra=[("X-Utente", email)])
         if u.path == "/auth/verifica-dip":
             email = sessione_valida(self.cookie())
             if not email: return self.manda(401)
+            if ruolo(email) == "club":
+                # nella cartella HR il club apre solo l'elenco (vuoto per lui, e lo rimanda al 1907):
+                # un 403 sull'elenco farebbe girare in tondo il rinvio all'elenco
+                ok = urllib.parse.unquote(self.headers.get("X-Pagina") or "").split("?")[0].endswith("/foglio-presenze.html")
+                return self.manda(200, b"", extra=[("X-Utente", email)]) if ok else self.manda(403)
             return self.manda(200, b"", extra=[("X-Utente", email)]) if pagina_permessa(email, self.headers.get("X-Pagina") or "") else self.manda(403)
         if u.path == "/auth/dipendenti":
             email = sessione_valida(self.cookie())
             if not email: return self.manda(401, json.dumps({"errore": "serve l'accesso"}), "application/json")
-            return self.manda(200, json.dumps({"email": email, "admin": email in super_utenti(),
+            return self.manda(200, json.dumps({"email": email, "admin": email in super_utenti(), "ruolo": ruolo(email),
                                                "persone": [{"slug": k, "nome": v.get("nome", k)} for k, v in fogli_di(email)]}, ensure_ascii=False), "application/json; charset=utf-8")
         if u.path.startswith("/auth/presenze/"):
             email = sessione_valida(self.cookie()); slug = u.path.rsplit("/", 1)[-1]
@@ -381,7 +412,7 @@ class H(BaseHTTPRequestHandler):
             return self.manda(200, dati, "application/json; charset=utf-8")
         if u.path == "/auth/chi":
             email = sessione_valida(self.cookie())
-            return self.manda(200, json.dumps({"email": email or "", "admin": bool(email and email in super_utenti())}), "application/json")
+            return self.manda(200, json.dumps({"email": email or "", "admin": bool(email and email in super_utenti()), "ruolo": ruolo(email) if email else ""}), "application/json")
         if u.path == "/auth/entra":
             return self.pagina(torna)
         if u.path in ("/auth/registro", "/auth/registro.json"):

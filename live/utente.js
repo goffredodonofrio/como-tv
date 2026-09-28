@@ -70,6 +70,13 @@
     else if (mia) mia.insertAdjacentElement("afterend", box); else { box.classList.add("solo"); barra.appendChild(box); }
   }
   // il lucchetto "Area personale" della home e' solo del super utente
-  function areaPersonale(j) { var a = document.querySelector(".area-personale"); if (a && !(j && j.admin)) a.style.display = "none"; return j; }
+  function areaPersonale(j) {
+    var a = document.querySelector(".area-personale"); if (a && !(j && j.admin)) a.style.display = "none";
+    // il club (@comofootball.com): in home solo i blocchi "Guida" e "MAM e Magazzino Como 1907"
+    if (j && j.ruolo === "club") [].forEach.call(document.querySelectorAll(".hub-blocco"), function (b) {
+      var t = b.querySelector(".hub-titolo"); if (!t || !/1907|^\s*Guida\s*$/.test(t.textContent)) b.style.display = "none";
+    });
+    return j;
+  }
   fetch("/auth/chi", { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : {}; }).then(areaPersonale).then(monta).catch(function () {});
 })();

@@ -152,6 +152,12 @@
     window.addEventListener("resize", chiudi);
     window.addEventListener("scroll", function (e) { if (!(e.target && e.target.closest && e.target.closest(".ms-sotto"))) chiudi(); }, true);
     BARRE.push({ nav: nav, sotto: sotto });
+    // IL CLUB (@comofootball.com) vede solo "MAM e Magazzino Como 1907" e la Guida: le altre
+    // tendine spariscono (le pagine le blocca comunque il server)
+    fetch("/auth/chi", { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) {
+      if (!j || j.ruolo !== "club") return;
+      bottoni.forEach(function (x, i) { if (AREE[i].k !== "1907" && AREE[i].k !== "guida") { x.style.display = "none"; sotto[i].remove(); } });
+    }).catch(function () {});
     return destra;
   }
   // il MAM cambia vista senza ricaricare: gli si riaccende la voce giusta
