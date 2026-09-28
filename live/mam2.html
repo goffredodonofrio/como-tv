@@ -381,7 +381,11 @@
   .pan-partita .info{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;font-size:12px;padding:4px 2px;}
   .pan-partita .info span{color:var(--fumo);} .pan-partita .info b{font-weight:500;color:var(--ivory);} .pan-partita .info a{color:var(--oro2);cursor:pointer;text-decoration:underline;}
   .pan-partita .pt-az{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
-  /* L'ANTEPRIMA AL PASSAGGIO: il video dell'azione (o il provino del 1907) sopra il fotogramma */
+  /* L'ANTEPRIMA AL PASSAGGIO: il video dell'azione (o il provino del 1907) sopra il fotogramma,
+     e la tessera ingrandita sopra le altre */
+  .tes.az{position:relative;transition:transform .18s ease, box-shadow .18s ease;}
+  .tes.az.grande{transform:scale(1.6);z-index:40;box-shadow:0 22px 60px rgba(0,0,0,.65), 0 0 0 1px var(--oro);}
+  @media (prefers-reduced-motion: reduce){ .tes.az{transition:none;} }
   .tes .mini .ant-video,.tes .mini .ant-prov{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;}
   .tes .mini .ant-prov{background-size:600% 100%;background-repeat:no-repeat;background-position:0 0;}
   .tes .mini .ant-barra{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.18);z-index:2;pointer-events:none;}
@@ -3111,14 +3115,20 @@
     clearTimeout(ANT.timer);
     if (ANT.video) { try { ANT.video.pause(); ANT.video.removeAttribute("src"); ANT.video.load(); } catch (e) {} ANT.video.remove(); ANT.video = null; }
     if (ANT.card) {
-      ANT.card.classList.remove("ant-su", "ant-attesa");
+      ANT.card.classList.remove("ant-su", "ant-attesa", "grande");
       [].forEach.call(ANT.card.querySelectorAll(".ant-barra,.ant-prov"), function(n){ n.remove(); });
     }
     ANT.card = null;
   }
   function barraAnt(mini){ var b = document.createElement("span"); b.className = "ant-barra"; b.innerHTML = "<i></i>"; mini.appendChild(b); return b.firstChild; }
+  function ingrandisci(card){
+    var r = card.getBoundingClientRect(), w = window.innerWidth, h = window.innerHeight;
+    var ox = r.left < 120 ? "left" : r.right > w - 120 ? "right" : "center", oy = r.top < 140 ? "top" : r.bottom > h - 140 ? "bottom" : "center";
+    card.style.transformOrigin = ox + " " + oy; card.classList.add("grande");
+  }
   function avviaAnteprima(card){
     var mini = card.querySelector(".mini"); if (!mini) return;
+    ingrandisci(card);
     if (card.classList.contains("a1907")) {
       var x = AZ_PER_CHIAVE[card.dataset.e1907]; if (!x) return;
       card.classList.add("ant-attesa");
@@ -3138,9 +3148,10 @@
     card.classList.add("ant-attesa");
     viaDiReg(card).then(function(via){
       if (ANT.card !== card) return;
-      var v = document.createElement("video"); v.className = "ant-video"; v.muted = true; v.playsInline = true; v.preload = "auto";
+      var v = document.createElement("video"); v.className = "ant-video"; v.muted = false; v.volume = 0.8; v.playsInline = true; v.preload = "auto";
       var bi = barraAnt(mini);
-      v.addEventListener("loadedmetadata", function(){ try { v.currentTime = da; } catch (e) {} v.play().catch(function(){}); });
+      // con l'audio (Goffredo, 28/09/2026); se il browser non lo lascia partire, muto
+      v.addEventListener("loadedmetadata", function(){ try { v.currentTime = da; } catch (e) {} v.play().catch(function(){ v.muted = true; v.play().catch(function(){}); }); });
       v.addEventListener("playing", function(){ if (ANT.card === card) { card.classList.remove("ant-attesa"); card.classList.add("ant-su"); } });
       v.addEventListener("timeupdate", function(){
         if (v.currentTime >= a || v.currentTime < da - 1) { try { v.currentTime = da; } catch (e) {} }
