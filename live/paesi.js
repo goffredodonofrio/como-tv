@@ -71,5 +71,25 @@ window.PaesiIt = (function () {
     if ((base + suff).length > 16) base = CORTI[base] || base.slice(0, Math.max(3, 15 - suff.length)) + ".";
     return base + suff;
   }
-  return { nome: nomePaese };
+  // Il nome intero con le minuscole, per i campi e le grafiche che non
+  // scrivono tutto maiuscolo: "Northern Ireland U21" -> "Irlanda del Nord U21".
+  // Qui non si accorcia: il limite dei 16 caratteri e' delle linguette.
+  var PICCOLE = { "DEL": "del", "DELLA": "della", "E": "e", "DI": "di" };
+  function proprio(s) {
+    var m = String(s || "").trim().match(/^(.+?)(\s+(U\d{2}|Women|Olympic))?$/);
+    if (!m || !PAESI[m[1]]) return null;
+    var base = PAESI[m[1]].split(" ").map(function (w, i) {
+      if (i && PICCOLE[w]) return PICCOLE[w];
+      if (/^(RD|USA)$/.test(w)) return w;                      // sigle
+      if (/^D'/.test(w)) return "d'" + w.charAt(2) + w.slice(3).toLowerCase();
+      return w.charAt(0) + w.slice(1).toLowerCase();
+    }).join(" ");
+    var suff = m[3] ? (m[3] === "Women" ? " femminile" : m[3] === "Olympic" ? " olimpica" : " " + m[3]) : "";
+    return base + suff;
+  }
+  // il nome di una squadra ESPN: se e' una nazionale in italiano, se no com'e'
+  function squadra(s) { return proprio(s) || s; }
+  return { nome: nomePaese, proprio: proprio, squadra: squadra };
 })();
+// scorciatoia per le pagine: (window.sqIt || String)(nomeEspn)
+window.sqIt = function (n) { return window.PaesiIt ? window.PaesiIt.squadra(n) : n; };

@@ -293,7 +293,8 @@
               var t = chi.filter(function (x) { return x.homeAway === dove; })[0];
               if (!t) return "";
               var tm = t.team || {};
-              return tm.shortDisplayName || tm.displayName || tm.abbreviation || "";
+              var n = tm.shortDisplayName || tm.displayName || tm.abbreviation || "";
+              return window.PaesiIt ? PaesiIt.squadra(n) : n;   // le nazionali in italiano
             }
             var casa = squadra("home"), fuori = squadra("away");
             return { id: e.id, data: e.date,
@@ -367,6 +368,9 @@
       side.comp = iRose;
       side.teamId = String((blocco.team || {}).id || "");
       side.teamName = (blocco.team || {}).displayName || side.teamName;
+      // "Italy" -> "Italia" in grafica; il nome ESPN resta per maglie e foto del CT
+      if ((blocco.team || {}).displayName) side.teamEspn = blocco.team.displayName;
+      if (window.PaesiIt) side.teamName = PaesiIt.squadra(side.teamName);
       side.manualMode = false;
 
       side.roster = lista.map(function (x, i) {

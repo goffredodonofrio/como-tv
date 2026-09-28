@@ -72,6 +72,9 @@ window.Crawl = (function () {
     if(!t) return "";
     var cand=[t.shortDisplayName,t.displayName,t.name];
     for(var i=0;i<cand.length;i++){ var k=(cand[i]||"").toLowerCase().trim(); if(NOMI[k]) return NOMI[k]; }
+    // le nazionali in italiano (paesi.js, se la pagina lo carica)
+    var paese=window.PaesiIt&&(PaesiIt.proprio(t.displayName)||PaesiIt.proprio(t.shortDisplayName));
+    if(paese) return paese;
     return t.shortDisplayName||t.abbreviation||t.displayName||t.name||"";
   }
 

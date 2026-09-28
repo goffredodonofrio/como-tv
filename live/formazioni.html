@@ -382,6 +382,7 @@
 
 <script src="chiave.js"></script>
 <script src="destinazione.js"></script>
+<script src="paesi.js"></script>
 <script src="formazioni-espn.js"></script>
 <script src="giovanili.js"></script>
 <script src="riapri.js"></script>
@@ -610,7 +611,9 @@
         var teams = [];
         (d.children || []).forEach(function (ch) {
           ((ch.standings && ch.standings.entries) || []).forEach(function (e) {
-            teams.push({ id: String(e.team.id), name: e.team.displayName || e.team.name });
+            var nomeT = e.team.displayName || e.team.name;
+            // le nazionali in italiano (paesi.js): "Italy" -> "Italia"
+            teams.push({ id: String(e.team.id), name: window.PaesiIt ? PaesiIt.squadra(nomeT) : nomeT, espn: nomeT });
           });
         });
         teams.sort(function (a, b) { return a.name.localeCompare(b.name); });
@@ -985,7 +988,7 @@
       var nc = parseInt(t.dataset.val, 10);
       if (isNaN(nc) || nc === side.comp) return;   // niente di nuovo: non azzerare la squadra
       side.comp = nc;
-      side.teamId = ""; side.teamName = ""; side.roster = []; side.tit = []; side.pan = []; side.custom = {};
+      side.teamId = ""; side.teamName = ""; side.teamEspn = ""; side.roster = []; side.tit = []; side.pan = []; side.custom = {};
       loadTeams(side, renderAll);
       renderAll();
     }
@@ -998,6 +1001,9 @@
       var found = null;
       for (var i = 0; i < teams.length; i++) if (teams[i].id === tv) found = teams[i];
       side.teamName = found ? found.name : "";
+      // il nome ESPN resta per cercare maglie e foto del CT in magazzino,
+      // caricate col nome inglese ("coach-italy"): in grafica va l'italiano
+      side.teamEspn = found ? (found.espn || found.name) : "";
       side.custom = {};
       if (side.teamId) loadRoster(side);
       else { side.roster = []; side.tit = []; side.pan = []; renderAll(); }
@@ -1614,7 +1620,7 @@
         if (side.logoFisso) return side.logoFisso;   // ripresa dalla scaletta: lo stemma era quello
         // magazzino prima (anche col nome senza la coda "Primavera"/"Under"),
         // poi lo stemma del club senior per le giovanili, poi ESPN
-        var mio = slugM(side.teamName || "");
+        var mio = slugM(side.teamEspn || side.teamName || "");
         var corto = mio.replace(/-(primavera|under-\d+|u\d+)$/, "");
         if (LOGHI_SCAVALCO[mio]) return LOGHI_SCAVALCO[mio];
         if (LOGHI_SCAVALCO[corto]) return LOGHI_SCAVALCO[corto];
@@ -1701,7 +1707,7 @@
     "deportivo": "deportivo-coruna"
   };
   function magliaUrl(side, dove) {
-    var mio = slugM(side.teamName || side.label);
+    var mio = slugM(side.teamEspn || side.teamName || side.label);
     // la corrispondenza dichiarata vince: anche quando dice "nessuna"
     if (ALIAS_MAGLIA.hasOwnProperty(mio)) return ALIAS_MAGLIA[mio] ? magliaDi(ALIAS_MAGLIA[mio], dove) : "";
     var sua = magliaDi(mio, dove);
@@ -1885,7 +1891,7 @@
     if (!d) return;
     var side = sides[0];
     side.manualMode = true; side.teamId = ""; side.roster = []; side.custom = {};
-    side.teamName = d.n || "";
+    side.teamName = d.n || ""; side.teamEspn = "";
     if (d.m && MODULI.indexOf(d.m) >= 0) side.mod = d.m;
     if (d.k) side.kit = d.k;
     side.coachN = (d.a && d.a[0]) || ""; side.coachC = (d.a && d.a[1]) || "";
