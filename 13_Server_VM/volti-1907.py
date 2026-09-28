@@ -38,7 +38,8 @@ OUT = os.path.join(CASA, "volti.jsonl")
 IGNOTI = os.path.join(CASA, "ignoti.jsonl")
 RITAGLI = os.path.join(CASA, "pub", "ignoti")
 BATTESIMI = os.path.join(CASA, "battesimi.json")
-VERSIONE = 2
+VERSIONE = 3          # 3: anche il ritaglio di chi si riconosce (pub/visti/<k>.jpg), per la parete dei volti
+VISTI_DIR = os.path.join(CASA, "pub", "visti")
 LATO = 960
 SOGLIA = 0.45          # coseno SFace: OpenCV indica 0.363 per "stessa persona"; qui si sta piu' stretti
 STACCO = 0.08          # la seconda persona deve stare almeno cosi' sotto
@@ -129,9 +130,10 @@ def fotogrammi(pieno):
     return fuori
 
 
-def chi_ce(ims, ids, gal, riv, trad, ignoti=None):
+def chi_ce(ims, ids, gal, riv, trad, ignoti=None, ritagli=None):
     """chi si riconosce: [[id, somiglianza, altezza]]; con ignoti=[] ci mette i volti grandi
-    che non somigliano a nessuno: (altezza, impronta, ritaglio)"""
+    che non somigliano a nessuno: (altezza, impronta, ritaglio); con ritagli={} il ritaglio
+    piu' grande di ogni persona riconosciuta"""
     trovati = {}
     for im in ims:
         h, w = im.shape[:2]
@@ -153,6 +155,7 @@ def chi_ce(ims, ids, gal, riv, trad, ignoti=None):
                 pid, sim = o[0]
                 v0 = trovati.get(pid, [0, 0])
                 trovati[pid] = [max(v0[0], sim), max(v0[1], alt)]
+                if ritagli is not None and alt >= v0[1]: ritagli[pid] = rit
             elif ignoti is not None and alt >= IGNOTO_ALTEZZA and float(f[14]) >= IGNOTO_NITIDO and frontale(f):
                 # lo stesso volto su piu' fotogrammi del file: si tiene il piu' grande
                 for j, (a2, e2, r2) in enumerate(ignoti):
@@ -219,20 +222,24 @@ def main():
         print("\nsu %d file: %d giusti, %d sbagliati, %d senza volto riconosciuto (%.1f s a file)" % (n, giusti, sbagliati, vuoti, (time.time() - t0) / max(1, n)))
         return
 
-    # fatti: le righe della versione 2 (le prime, senza altezza e senza sconosciuti, si rifanno)
-    fatti = set()
+    # fatti: conta l'ultima riga di ogni file. Si rifanno le vecchie dove qualcuno si vedeva (serve
+    # il ritaglio) e prima di tutto il resto; quelle della versione 2 senza nessuno valgono come fatte
+    ultime = {}
     try:
         for r in open(OUT, encoding="utf-8"):
             try: riga = json.loads(r)
             except Exception: continue
-            if riga.get("w") == VERSIONE: fatti.add(riga["v"])
+            ultime[riga["v"]] = riga
     except OSError:
         pass
+    fatti = {v for v, r in ultime.items() if r.get("w") == VERSIONE or r.get("w") == 2 and not r.get("p")}
+    da_rifare = {v for v, r in ultime.items() if v not in fatti and r.get("p")}
     # prima i file in cartelle senza nomi, dei tipi dove i volti sono grandi, dalle stagioni recenti
     md = {r[0]: r for r in ind["cartelle"]}
     def priorita(v):
         r = md.get(v.rsplit("/", 1)[0]); m = r[8] if r else {}
         g = set(m.get("g", []))
+        if v in da_rifare: return (-2, 0, 0)
         if x.prima and (x.prima in m.get("p", []) or x.prima in m.get("pf", [])): return (-1, 0, -(r[1] if r else 0))
         return (0 if not m.get("p") else 1, 0 if g & {"Intervista", "Nuovo acquisto", "Conferenza stampa", "Backstage", "Allenamento"} else 1, -(r[1] if r else 0))
     coda = sorted((v for v in video if v not in fatti), key=priorita)
@@ -243,8 +250,14 @@ def main():
             if fine and time.time() > fine: break
             while in_diretta(): time.sleep(300)
             ims = fotogrammi(os.path.join(R, v))
-            sconosciuti = []
-            chi = chi_ce(ims, ids, gal, riv, trad, sconosciuti)
+            sconosciuti, ritagli = [], {}
+            chi = chi_ce(ims, ids, gal, riv, trad, sconosciuti, ritagli)
+            # il ritaglio di chi si vede: la faccina sulla tessera e sulla parete dei volti
+            os.makedirs(VISTI_DIR, exist_ok=True)
+            for c in chi:
+                if c[0] in ritagli:
+                    k = hashlib.sha1((v + "|" + c[0]).encode()).hexdigest()[:14]
+                    cv2.imwrite(os.path.join(VISTI_DIR, k + ".jpg"), ritagli[c[0]], [cv2.IMWRITE_JPEG_QUALITY, 82]); c.append(k)
             n = salva_ignoti(v, sconosciuti, ign); ign.flush()
             out.write(json.dumps({"v": v, "p": chi, "f": len(ims), "i": n, "w": VERSIONE}, ensure_ascii=False) + "\n"); out.flush()
             if i % 100 == 99: print(i + 1, "file", flush=True)

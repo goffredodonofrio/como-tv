@@ -429,8 +429,12 @@ def schede_persone(righe):
         if c: c["volti"] = sum(v for d, x in PV.items() for pid, (v, f) in x.items() if pid == p["id"])
         if c:
             # si vede: in tutti i file dove c'e' il suo volto, anche se il nome lo diceva gia'
-            hh = [h for vv in VISTI.values() for pid, h in vv if pid == p["id"]]
-            if hh: c["visti"] = len(hh); c["primi"] = sum(1 for h in hh if h >= PRIMO_PIANO)
+            hh = [y for vv in VISTI.values() for y in vv if y[0] == p["id"]]
+            if hh:
+                c["visti"] = len(hh); c["primi"] = sum(1 for y in hh if y[1] >= PRIMO_PIANO)
+                # la sua faccia per la parete dei volti: il ritaglio piu' grande
+                rr = [y for y in hh if len(y) > 2]
+                if rr: c["faccia"] = max(rr, key=lambda y: y[1])[2]
         if not c: continue
         fuori.append(dict({k: p[k] for k in ("id", "nome", "ruolo", "maglia", "stagioni", "foto", "alias", "volto")}, **{"conti": c}))
     return sorted(fuori, key=lambda p: -(p["conti"]["video"] + p["conti"]["foto"]))
@@ -497,7 +501,8 @@ def main():
             except Exception: continue
             if x.get("p"):
                 VOLTI[x["v"]] = [p[0] for p in x["p"]]
-                VISTI[x["v"]] = [[p[0], p[2] if len(p) > 2 else 0] for p in x["p"]]
+                # [persona, altezza del volto, ritaglio (pub/visti/<k>.jpg, dalla versione 3)]
+                VISTI[x["v"]] = [[p[0], p[2] if len(p) > 2 else 0] + ([p[3]] if len(p) > 3 else []) for p in x["p"]]
             else:
                 VOLTI.pop(x["v"], None); VISTI.pop(x["v"], None)
     except OSError:
