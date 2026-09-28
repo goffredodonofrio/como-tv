@@ -2628,17 +2628,28 @@
              titolo: x.titolo || x.giocatore || "", minuto: x.minuto || "", tipo: x.tipo || "", ruolo: x.ruolo || "", gol: !!x.gol, partita: x.partita || "" };
   }
   function domandaRicerca(){ return [GETTONI.map(function(g){ return g.eti; }).join(" · "), Q].filter(Boolean).join(" · ") || "azioni"; }
+  // LA CLIP SI APRE IN UN'ALTRA SCHEDA (28/09/2026, Goffredo): la ricerca resta
+  // dov'e'. Sempre la stessa scheda dell'Editing ("mam2-editing"): il secondo
+  // clic aggiunge li', in coda, invece di aprire una scheda in piu'. Il lavoro
+  // lo fa la scheda nuova (?inseq=), cosi' il browser non la blocca.
   function inTimeline(x){
     var domanda = domandaRicerca(), mem = null;
-    try { mem = JSON.parse(sessionStorage.getItem("mam2-seq-ricerca") || "null"); } catch (e) {}
-    var seq = mem && mem.q === domanda ? mem.id : "";
-    avviso("", "Metto «" + esc(x.titolo || x.giocatore || "l\u2019azione") + "» in timeline…");
-    post({ tipo:"clip-monta-scelte", titolo: "Dalla ricerca · " + domanda, domanda: domanda, seq: seq, pezzi: [pezzoDiAzione(x)] }).then(function(d){
+    try { mem = JSON.parse(localStorage.getItem("mam2-seq-ricerca") || "null"); } catch (e) {}
+    var cosa = { p: pezzoDiAzione(x), d: domanda, s: mem && mem.q === domanda ? mem.id : "", r: x.rec || "", t: x.voce === "1907" ? 0 : Math.floor(apriA(x) || 0), n: x.titolo || x.giocatore || "azione" };
+    var w = window.open("mam2.html?inseq=" + encodeURIComponent(JSON.stringify(cosa)), "mam2-editing");
+    if (!w) avviso("err", "Il browser ha bloccato la scheda nuova: consenti le finestre per questo sito.");
+    else avviso("ok", "«" + esc(cosa.n) + "» in timeline, nella scheda dell’Editing.");
+  }
+  // nella scheda nuova: si mette il pezzo e si apre la sequenza
+  function inSeqDaUrl(js){
+    var c = null; try { c = JSON.parse(js); } catch (e) {}
+    if (!c || !c.p) { vai("libreria"); return avviso("err", "Non so quale clip mettere in timeline."); }
+    document.title = "Metto in timeline… · MAM Como TV";
+    post({ tipo:"clip-monta-scelte", titolo: "Dalla ricerca · " + c.d, domanda: c.d, seq: c.s || "", pezzi: [c.p] }).then(function(d){
       if (!d || d.ok === false || !d.seq) throw new Error((d && d.errore) || "non entra in timeline" + (d && d.saltate && d.saltate.length ? ": " + d.saltate[0] : ""));
-      try { sessionStorage.setItem("mam2-seq-ricerca", JSON.stringify({ q: domanda, id: d.seq.id })); sessionStorage.setItem("mam2-avviso", "«" + (x.titolo || "azione") + "» in timeline" + (d.inCoda ? ", in coda a «" + d.seq.titolo + "»" : ", in una sequenza nuova: «" + d.seq.titolo + "»") + "."); } catch (e) {}
-      var t = x.voce === "1907" ? 0 : apriA(x);
-      location.href = "mam2.html?seq=" + encodeURIComponent(d.seq.id) + "&ultimo=1" + (x.rec ? "&srgrec=" + encodeURIComponent(x.rec) + "&srgt=" + Math.floor(t || 0) : "");
-    }).catch(function(er){ avviso("err", esc(er.message)); });
+      try { localStorage.setItem("mam2-seq-ricerca", JSON.stringify({ q: c.d, id: d.seq.id })); sessionStorage.setItem("mam2-avviso", "«" + c.n + "» in timeline" + (d.inCoda ? ", in coda a «" + d.seq.titolo + "»" : ", in una sequenza nuova: «" + d.seq.titolo + "»") + "."); } catch (e) {}
+      location.replace("mam2.html?seq=" + encodeURIComponent(d.seq.id) + "&ultimo=1" + (c.r ? "&srgrec=" + encodeURIComponent(c.r) + "&srgt=" + (c.t || 0) : ""));
+    }).catch(function(er){ vai("libreria"); avviso("err", esc(er.message)); });
   }
   function apri1907(x){ inTimeline(x); }
   el("risultati").addEventListener("click", function(e){
@@ -8007,13 +8018,14 @@
   // ("s3:4579…"), e nell'indirizzo arriva come %3A: con [A-Za-z0-9]+ se ne
   // prendeva solo "s3" e la pagina diceva "non e' nell'indice" (23/09)
   var vai0 = function(n){ var m = new RegExp("(\\?|&)" + n + "=([^&]+)").exec(location.search); return m ? decodeURIComponent(m[2]) : ""; };
-  var pa = vai0("asset"), pr = vai0("reg"), pt = vai0("t"), pq = vai0("q"), ps = vai0("seq"), prac = vai0("rac");
+  var pa = vai0("asset"), pr = vai0("reg"), pt = vai0("t"), pq = vai0("q"), ps = vai0("seq"), prac = vai0("rac"), pins = vai0("inseq");
   if (window.Destinazione) Destinazione.adotta(el("lCanale"), PONTE, TOKEN);
   if (/(\?|&)live=1/.test(location.search)) apriLive();
   // ?montaggio=1 — il montaggio VUOTO, sempre (Goffredo, 25/09/2026): i
   // due monitor, il Browser media, nessuna sequenza aperta. Le sequenze
   // stanno nel pannello Progetto, a un clic.
   else if (/(\?|&)montaggio=1/.test(location.search)) apriEditorVuoto();
+  else if (pins) inSeqDaUrl(pins);
   else if (ps) apriEditor(ps);
   else if (pa) { if (vai0("scheda") === "1") apriAsset(pa, pr, +pt || 0); else apriPartitaInEditing(pa, pr, +pt || 0); }
   else if (prac) { vai("libreria"); apriRaccolta(prac, vai0("f"), pq); }
