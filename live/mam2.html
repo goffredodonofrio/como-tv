@@ -365,6 +365,12 @@
   .tes .mini .foto{position:absolute;inset:0;background:#000 center/cover no-repeat;opacity:0;transition:opacity .3s;}
   .tes .mini .foto.su{opacity:1;}
   .a1907 .mini img.foto{width:100%;height:100%;object-fit:cover;display:block;}
+  /* L'ANTEPRIMA AL PASSAGGIO: il video dell'azione (o il provino del 1907) sopra il fotogramma */
+  .tes .mini .ant-video,.tes .mini .ant-prov{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;}
+  .tes .mini .ant-prov{background-size:600% 100%;background-repeat:no-repeat;background-position:0 0;}
+  .tes .mini .ant-barra{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.18);z-index:2;pointer-events:none;}
+  .tes .mini .ant-barra i{display:block;height:100%;width:0;background:#C9A24B;transition:width .2s linear;}
+  .tes.ant-attesa .mini::after{content:"anteprima…";position:absolute;left:8px;bottom:8px;z-index:2;font-size:10.5px;letter-spacing:.06em;color:var(--ivory2);background:rgba(0,0,0,.6);padding:2px 7px;border-radius:4px;pointer-events:none;}
 
   .tes .mini .sopra{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;padding:8px;pointer-events:none;
     background:linear-gradient(180deg,rgba(10,15,36,.55),transparent 35%,transparent 60%,rgba(10,15,36,.7));}
@@ -3037,6 +3043,84 @@
       prossimoAz();
     }, 1500);
   }
+  // ── L'ANTEPRIMA AL PASSAGGIO (28/09/2026) ─────────────────────────────
+  // Il mouse su una tessera, e dopo un attimo la tessera si muove: l'azione
+  // da 4 s prima a 6 s dopo, muta, e ricomincia. Senza aprire niente. Le clip
+  // del Como 1907 (camere 4K che il browser non legge) scorrono sul loro
+  // provino: 6 fotogrammi lungo la clip, seguendo il mouse.
+  var ANT = { card: null, timer: 0, video: null };
+  function viaDiReg(card){
+    return new Promise(function(ok, no){
+      var r = card.dataset.reg && REGS[card.dataset.reg];
+      if (r && r.via) return ok(r.via);
+      if (!card.dataset.rec) return no();
+      post({ tipo:"clip-archivio-apri", rec: card.dataset.rec }).then(function(d){
+        if (d && d.reg && d.reg.via) { REGS[d.reg.id] = d.reg; card.dataset.reg = d.reg.id; ok(d.reg.via); } else no();
+      }).catch(no);
+    });
+  }
+  function fermaAnteprima(){
+    clearTimeout(ANT.timer);
+    if (ANT.video) { try { ANT.video.pause(); ANT.video.removeAttribute("src"); ANT.video.load(); } catch (e) {} ANT.video.remove(); ANT.video = null; }
+    if (ANT.card) {
+      ANT.card.classList.remove("ant-su", "ant-attesa");
+      [].forEach.call(ANT.card.querySelectorAll(".ant-barra,.ant-prov"), function(n){ n.remove(); });
+    }
+    ANT.card = null;
+  }
+  function barraAnt(mini){ var b = document.createElement("span"); b.className = "ant-barra"; b.innerHTML = "<i></i>"; mini.appendChild(b); return b.firstChild; }
+  function avviaAnteprima(card){
+    var mini = card.querySelector(".mini"); if (!mini) return;
+    if (card.classList.contains("a1907")) {
+      var x = AZ_PER_CHIAVE[card.dataset.e1907]; if (!x) return;
+      card.classList.add("ant-attesa");
+      var u = "/como-tv/mam-1907/provino/" + x.k1907 + ".jpg?v=" + encodeURIComponent(x.via1907), img = new Image();
+      img.onload = function(){
+        if (ANT.card !== card) return;
+        card.classList.remove("ant-attesa"); card.classList.add("ant-su");
+        var pv = document.createElement("div"); pv.className = "ant-prov"; pv.style.backgroundImage = 'url("' + u + '")';
+        mini.insertBefore(pv, mini.querySelector(".sopra")); barraAnt(mini).style.width = "16.66%";
+        if (ANT.ultimo) scorriProvino(card, ANT.ultimo);
+      };
+      img.onerror = function(){ card.classList.remove("ant-attesa"); };
+      img.src = u;
+      return;
+    }
+    var t = +card.dataset.t || 0, da = Math.max(0, t - 4), a = t + 6;
+    card.classList.add("ant-attesa");
+    viaDiReg(card).then(function(via){
+      if (ANT.card !== card) return;
+      var v = document.createElement("video"); v.className = "ant-video"; v.muted = true; v.playsInline = true; v.preload = "auto";
+      var bi = barraAnt(mini);
+      v.addEventListener("loadedmetadata", function(){ try { v.currentTime = da; } catch (e) {} v.play().catch(function(){}); });
+      v.addEventListener("playing", function(){ if (ANT.card === card) { card.classList.remove("ant-attesa"); card.classList.add("ant-su"); } });
+      v.addEventListener("timeupdate", function(){
+        if (v.currentTime >= a || v.currentTime < da - 1) { try { v.currentTime = da; } catch (e) {} }
+        bi.style.width = Math.max(0, Math.min(100, (v.currentTime - da) / (a - da) * 100)).toFixed(1) + "%";
+      });
+      v.addEventListener("error", function(){ card.classList.remove("ant-attesa"); });
+      mini.insertBefore(v, mini.querySelector(".sopra"));
+      ANT.video = v; v.src = BASE + via;
+    }).catch(function(){ card.classList.remove("ant-attesa"); });
+  }
+  function scorriProvino(card, e){
+    var pv = card.querySelector(".ant-prov"); if (!pv) return;
+    var r = card.querySelector(".mini").getBoundingClientRect(), x = Math.max(0, Math.min(0.999, (e.clientX - r.left) / r.width)), i = Math.floor(x * 6);
+    pv.style.backgroundPosition = (i / 5 * 100) + "% 0";
+    var b = card.querySelector(".ant-barra i"); if (b) { b.style.marginLeft = (i / 6 * 100) + "%"; b.style.width = "16.66%"; }
+  }
+  el("risultati").addEventListener("mouseover", function(e){
+    var card = e.target.closest(".tes.az"); if (!card || card === ANT.card) return;
+    if (!card.classList.contains("a1907") && !card.dataset.rec && !card.dataset.reg) return;
+    fermaAnteprima(); ANT.card = card;
+    ANT.timer = setTimeout(function(){ if (ANT.card === card) avviaAnteprima(card); }, 350);
+  });
+  el("risultati").addEventListener("mousemove", function(e){ if (ANT.card && ANT.card.classList.contains("a1907")) { ANT.ultimo = e; scorriProvino(ANT.card, e); } });
+  el("risultati").addEventListener("mouseout", function(e){
+    if (!ANT.card) return;
+    var verso = e.relatedTarget; if (verso && ANT.card.contains(verso)) return;
+    if (e.target.closest(".tes.az") === ANT.card) fermaAnteprima();
+  });
   function prossimoAz(){
     while (IN_AZ < 2 && CODA_AZ.length) {
       var a = CODA_AZ.shift(); IN_AZ++;
