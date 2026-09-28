@@ -93,6 +93,17 @@
   /* riga occhiello + titolo della grafica: campi grandi, comodi da scrivere */
   .grafit{display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;padding:2px 0 20px;}
   .grafit .field{flex:1;min-width:260px;}
+  /* i gironi da mandare in onda: una casella per girone */
+  #gironiField{flex:1 1 100%;}
+  #gironiField[hidden]{display:none;}
+  .gironi{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+  .gironi label.gir{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:6px;cursor:pointer;
+    border:1px solid rgba(245,241,230,.16);background:rgba(245,241,230,.04);font-family:'Mazzard',system-ui,sans-serif;
+    font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ivory-dim,#D8D2C2);}
+  .gironi label.gir.on{border-color:var(--gold,#C9A24B);background:rgba(201,162,75,.14);color:var(--gold-bright,#E3C271);}
+  .gironi label.gir input{margin:0;}
+  .gironi .mini{padding:6px 10px;font-size:10px;}
+  .gironi .nota{font-size:12px;color:var(--fg-3,#8A8B96);margin-left:6px;}
   .grafit input[type=text]{
     font-family:'DM Sans',system-ui,sans-serif;font-weight:600;font-size:18px;letter-spacing:.01em;
     padding:13px 15px;color:var(--ivory);background:rgba(245,241,230,.06);
@@ -249,6 +260,12 @@
       <label for="titoloG">Titolo grande della grafica</label>
       <input type="text" id="titoloG" placeholder="LA CLASSIFICA" maxlength="60">
     </div>
+    <!-- compare solo quando la competizione ha piu' gironi (Nations League,
+         qualificazioni): si spuntano quelli da mandare in onda -->
+    <div class="field" id="gironiField" hidden>
+      <label>Gironi in onda &mdash; fino a 4 nella stessa grafica</label>
+      <div class="gironi" id="gironi"></div>
+    </div>
   </div>
 
   <div class="status" id="status">
@@ -271,6 +288,7 @@
 </div>
 
 <script src="scavalco.js"></script>
+<script src="paesi.js"></script>
 <script src="chiave.js"></script>
 <script src="destinazione.js"></script>
 <script src="esporta-video.js"></script>
@@ -510,8 +528,9 @@
 
   // ---------------- nomi ----------------
 
+  // le nazionali in italiano (paesi.js, lo stesso elenco dei Risultati)
   function defaultName(apiName) {
-    return String(apiName || "").toUpperCase().trim();
+    return (window.PaesiIt && PaesiIt.nome(apiName)) || String(apiName || "").toUpperCase().trim();
   }
 
   function grafName(apiName) {
@@ -575,6 +594,7 @@
         var lbl = data.children.length === 1 ? (data.children[0].name || "") : "";
         state.leagueName = /[A-Za-z]{3}/.test(lbl) ? lbl : (data.name + " · " + seasonLabel(season));
         state.groups = parse(data.children);
+        state.scelti = [0];
         applyDiffs(comp.slug, season);
         state.stamp = new Date();
         state.dirty = false;
@@ -638,7 +658,7 @@
       });
       rows.sort(function (a, b) { return a.pos - b.pos; });
       return {
-        label: children.length > 1 ? (ch.name || ("Girone " + (i + 1))) : "",
+        label: children.length > 1 ? String(ch.name || ("Girone " + (i + 1))).replace(/^Group\b/i, "Girone") : "",
         rows: rows
       };
     });
@@ -728,6 +748,7 @@
 
     h += '</tbody></table></div>';
     el.out.innerHTML = h;
+    disegnaGironi();
 
     Array.prototype.forEach.call(el.out.querySelectorAll("td.graf"), function (td) {
       td.addEventListener("blur", onNameEdit);
@@ -1031,6 +1052,81 @@
       });
   }
 
+  // ---------------- i gironi in onda ----------------
+  // Con piu' gironi (Nations League, qualificazioni) si spuntano quelli da
+  // mandare in onda. Prima l'anteprima mostrava sempre il primo e l'invio
+  // chiedeva il numero in una finestrella. I gironi spuntati vanno nella
+  // STESSA grafica, fino a 4 (due colonne): un girone da quattro squadre da
+  // solo lascerebbe la grafica quasi vuota. Oltre i 4 si fanno piu' voci, e
+  // con "una grafica per girone" ogni girone e' una voce sua.
+  var MAX_GIRONI = 4;
+  function disegnaGironi() {
+    var box = document.getElementById("gironi"), campo = document.getElementById("gironiField");
+    if (!box) return;
+    if (state.groups.length < 2) { campo.hidden = true; return; }
+    campo.hidden = false;
+    state.scelti = (state.scelti || [0]).filter(function (i) { return i < state.groups.length; });
+    var h = state.groups.map(function (g, i) {
+      var on = state.scelti.indexOf(i) >= 0;
+      return '<label class="gir' + (on ? ' on' : '') + '"><input type="checkbox" data-gir="' + i + '"' + (on ? ' checked' : '') + '>' +
+        esc(g.label || ("Girone " + (i + 1))) + '</label>';
+    }).join("");
+    var n = state.scelti.length;
+    h += '<button type="button" class="mini" data-gir-tutti="1">Tutti</button>' +
+         '<button type="button" class="mini" data-gir-tutti="0">Nessuno</button>' +
+         '<label class="gir"><input type="checkbox" id="unoPerVoce"' + (state.unoPerVoce ? ' checked' : '') + '> una grafica per girone</label>' +
+         '<span class="nota">' + (!n ? 'Nessun girone spuntato.' :
+           state.unoPerVoce ? n + (n === 1 ? ' voce' : ' voci') + ' in scaletta, una per girone.' :
+           n <= MAX_GIRONI ? n + (n === 1 ? ' girone' : ' gironi') + ' nella stessa grafica.' :
+           n + ' gironi: ' + Math.ceil(n / MAX_GIRONI) + ' grafiche da ' + MAX_GIRONI + ' (l\'anteprima mostra la prima).') + '</span>';
+    box.innerHTML = h;
+  }
+  document.getElementById("gironi").addEventListener("change", function (ev) {
+    var t = ev.target;
+    if (t.id === "unoPerVoce") state.unoPerVoce = t.checked;
+    else if (t.dataset.gir != null) {
+      var i = +t.dataset.gir, sc = state.scelti || [];
+      if (t.checked && sc.indexOf(i) < 0) sc.push(i);
+      if (!t.checked) sc = sc.filter(function (x) { return x !== i; });
+      state.scelti = sc.sort(function (a, b) { return a - b; });
+    }
+    disegnaGironi();
+    if (window.anteprimaSeAperta) anteprimaSeAperta();
+  });
+  document.getElementById("gironi").addEventListener("click", function (ev) {
+    var b = ev.target.closest ? ev.target.closest("button[data-gir-tutti]") : null;
+    if (!b) return;
+    state.scelti = b.dataset.girTutti === "1" ? state.groups.map(function (g, i) { return i; }) : [];
+    disegnaGironi();
+    if (window.anteprimaSeAperta) anteprimaSeAperta();
+  });
+  function righeGrafica(g) {
+    return g.rows.map(function (row) {
+      var nome = row.manual ? defaultName(row.api) : grafName(row.api);
+      return [row.pos, nome, row.pg, row.v, row.p, row.s, row.pt,
+              (window.Scavalco && Scavalco.url(row.dn)) || row.tid || ""];
+    });
+  }
+  // i pacchetti da mandare in onda, nell'ordine: uno per voce di scaletta
+  function pacchetti(occhiello, titolo) {
+    if (!state.groups.length) return [];
+    var multi = state.groups.length > 1;
+    var scelti = multi ? (state.scelti || []).map(function (i) { return state.groups[i]; }).filter(Boolean) : state.groups;
+    if (!scelti.length) return [];
+    function uno(g) {
+      return { e: occhiello + (g.label && multi ? " · " + g.label.toUpperCase() : ""), t: titolo, r: righeGrafica(g), _nome: g.label || "" };
+    }
+    if (!multi || state.unoPerVoce || scelti.length === 1) return scelti.map(uno);
+    var out = [];
+    for (var i = 0; i < scelti.length; i += MAX_GIRONI) {
+      var pezzo = scelti.slice(i, i + MAX_GIRONI);
+      out.push({ e: occhiello, t: titolo,
+                 g: pezzo.map(function (g) { return { n: String(g.label || "").toUpperCase(), r: righeGrafica(g) }; }),
+                 _nome: pezzo.map(function (g) { return g.label; }).join(", ") });
+    }
+    return out;
+  }
+
   // ---------------- invio alla regia (grafica animata vMix) ----------------
 
   function inviaRegia() {
@@ -1038,39 +1134,17 @@
     var cfg = ponteConfig(false);
     if (!cfg) return;
 
-    // con più gironi si sceglie quale mandare (vuoto = tutti, uno per voce)
-    var gruppi = state.groups;
-    if (state.groups.length > 1) {
-      var r = window.prompt("Quale girone? (1-" + state.groups.length + ", vuoto = tutti)", "1");
-      if (r === null) return;
-      r = r.trim();
-      if (r !== "") {
-        var gi = parseInt(r, 10) - 1;
-        if (isNaN(gi) || gi < 0 || gi >= state.groups.length) { status("err", '<span class="msg">Girone non valido.</span>'); return; }
-        gruppi = [state.groups[gi]];
-      }
-    }
-
     var eyebrow = el.occhielloG.value.trim() || ((state.comp ? state.comp.nome.toUpperCase() : "") + " - GIORNATA");
-
     var titoloGrande = el.titoloG.value.trim() || "LA CLASSIFICA";
+    var lista = pacchetti(eyebrow.trim(), titoloGrande.trim() || "LA CLASSIFICA");
+    if (!lista.length) { status("err", '<span class="msg">Spunta almeno un girone da mandare in onda.</span>'); return; }
 
     (function run(list) {
       if (!list.length) return;
-      var g = list[0];
+      var dati = list[0], nomeG = dati._nome; delete dati._nome;
       var titolo = window.prompt("Nome in scaletta di regia:",
-        "CLASSIFICA " + (state.comp ? state.comp.nome.toUpperCase() : "") + (g.label ? " — " + g.label.toUpperCase() : ""));
+        "CLASSIFICA " + (state.comp ? state.comp.nome.toUpperCase() : "") + (nomeG ? " — " + nomeG.toUpperCase() : ""));
       if (titolo === null) return;
-
-      var dati = {
-        e: eyebrow.trim() + (g.label && state.groups.length > 1 ? " · " + g.label.toUpperCase() : ""),
-        t: titoloGrande.trim() || "LA CLASSIFICA",
-        r: g.rows.map(function (row) {
-          var nome = row.manual ? defaultName(row.api) : grafName(row.api);
-          return [row.pos, nome, row.pg, row.v, row.p, row.s, row.pt,
-                  (window.Scavalco && Scavalco.url(row.dn)) || row.tid || ""];
-        })
-      };
 
       var __canale = scegliCanale();
       if (__canale === null) return;
@@ -1094,7 +1168,7 @@
         .catch(function () {
           status("err", '<span class="msg"><b>Ponte non raggiungibile.</b></span>');
         });
-    })(gruppi);
+    })(lista);
   }
 
   // ---------------- init ----------------
@@ -1132,18 +1206,13 @@
       document.getElementById("prevG").style.transform = "scale(" + (box.clientWidth / 1920) + ")";
     }
     window.addEventListener("resize", fitG);
+    // l'anteprima e' la prima grafica che andra' in onda coi gironi spuntati
     function datiPrev() {
-      if (!state.groups.length) return null;
-      var g = state.groups[0];
-      return {
-        e: (el.occhielloG.value.trim() || (state.comp ? state.comp.nome.toUpperCase() : "")) + (g.label && state.groups.length > 1 ? " · " + g.label.toUpperCase() : ""),
-        t: el.titoloG.value.trim() || "LA CLASSIFICA",
-        r: g.rows.map(function (row) {
-          var nome = row.manual ? defaultName(row.api) : grafName(row.api);
-          return [row.pos, nome, row.pg, row.v, row.p, row.s, row.pt,
-                  (window.Scavalco && Scavalco.url(row.dn)) || row.tid || ""];
-        })
-      };
+      var p = pacchetti((el.occhielloG.value.trim() || (state.comp ? state.comp.nome.toUpperCase() : "")),
+                        el.titoloG.value.trim() || "LA CLASSIFICA")[0];
+      if (!p) return null;
+      delete p._nome;
+      return p;
     }
     function render(scroll) {
       var dati = datiPrev();
@@ -1167,6 +1236,7 @@
     });
     // scrivendo occhiello o titolo, l'anteprima già aperta si aggiorna dal vivo
     function liveIfOpen() { if (document.getElementById("prevGbox").style.display !== "none") render(false); }
+    window.anteprimaSeAperta = liveIfOpen;
     el.titoloG.addEventListener("input", liveIfOpen);
     el.occhielloG.addEventListener("input", liveIfOpen);
   })();
