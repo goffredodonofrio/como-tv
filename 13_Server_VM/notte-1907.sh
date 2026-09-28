@@ -40,6 +40,7 @@ nice -n 15 python3 /opt/comotv/copie-notte-1907.py --fino 05:15 --spazio 12 | ta
 #    o proposte da confermare nella pagina; mezz'ora a notte finche' non ha guardato tutti
 aspetta; passo "ritratti"
 nice -n 15 /opt/volti/bin/python /opt/comotv/ritratti-auto-1907.py --minuti 30 2>/dev/null | tail -3
+nice -n 15 /opt/volti/bin/python /opt/comotv/posate-1907.py 2>/dev/null | tail -1
 # 8. chi si vede nei video (volti): al massimo due ore, poi l'indice li prende
 aspetta; passo "volti"
 nice -n 15 /opt/volti/bin/python /opt/comotv/volti-1907.py --minuti 120 2>/dev/null | tail -1

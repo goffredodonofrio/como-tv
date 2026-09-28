@@ -437,6 +437,9 @@ def schede_persone(righe):
                 if rr: c["faccia"] = max(rr, key=lambda y: y[1])[2]
         if not c: continue
         fuori.append(dict({k: p[k] for k in ("id", "nome", "ruolo", "maglia", "stagioni", "foto", "alias", "volto")}, **{"conti": c}))
+        # la foto posata ridotta alla faccia (posate-1907.py): leggera, per parete, gettoni e schede
+        pf = os.path.join(PUB, "posate", p["id"] + ".jpg")
+        if os.path.exists(pf): fuori[-1]["posata"] = int(os.path.getmtime(pf))
     return sorted(fuori, key=lambda p: -(p["conti"]["video"] + p["conti"]["foto"]))
 
 

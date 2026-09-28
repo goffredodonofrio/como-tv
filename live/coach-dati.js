@@ -230,6 +230,14 @@
       { t: "Monta tutta: una sequenza nell'Editing 1907", fai: "clic", su: '[data-fa="monta-racc"]' }
     ] },
 
+    { id: "c09", area: "MAM Como 1907", titolo: "Cercare con i volti", pagine: ["mam-1907"], pagina: "live/mam-1907.html", passi: [
+      { t: "Clicca Volti, a destra nel campo di ricerca", fai: "clic", su: "#apriVolti" },
+      { t: "Clicca una faccia", aiuto: "Diventa un gettone, insieme a «Si vede»: i video dove c'è il suo volto, non solo il suo nome.", fai: "clic", su: "#pannelloVolti .pv-f" },
+      { t: "Spunta solo primi piani", fai: "clic", su: "#pvPrimi" },
+      { t: "Clicca Mostra i video", fai: "clic", su: '#pannelloVolti [data-pvok]' },
+      { t: "Sotto ogni video, le faccine di chi si vede: bordo oro è primo piano", fai: "leggi", su: "#risultati .facce-t" }
+    ] },
+
     // ═══════ GRAFICHE LIVE ═══════
     { id: "05-grafiche-live", area: "Grafiche live", titolo: "Il catalogo delle grafiche", video: "05-grafiche-live", pagine: ["classifiche"], pagina: "live/classifiche.html", passi: [
       { t: "Ogni anteprima è la grafica vera: passaci sopra", fai: "leggi", su: { testo: "^formazioni premium con foto$", tag: "h3,h2,div,span,b" } },

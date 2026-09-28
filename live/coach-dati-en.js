@@ -48,8 +48,15 @@ window.COACH_EN = {
   "Guardare un video, anche i .mov": "Watching a video, .mov too",
   "Scegliere e salvare in raccolta": "Picking and saving to a collection",
   "Montare: Editing e Premiere": "Editing: Editor and Premiere",
+  "Cercare con i volti": "Searching by face",
 
   // steps
+  "Clicca Volti, a destra nel campo di ricerca": "Click Volti (faces), on the right of the search box",
+  "Clicca una faccia": "Click a face",
+  "Diventa un gettone, insieme a «Si vede»: i video dove c'è il suo volto, non solo il suo nome.": "It becomes a token, together with «Si vede» (seen): the videos where their face appears, not just their name.",
+  "Spunta solo primi piani": "Tick solo primi piani (close-ups only)",
+  "Clicca Mostra i video": "Click Mostra i video (show the videos)",
+  "Sotto ogni video, le faccine di chi si vede: bordo oro è primo piano": "Under each video, the faces of who appears: a gold ring means close-up",
   "Le stagioni: una locandina per stagione": "Seasons: one poster per season",
   "Clicca una stagione": "Click a season",
   "Le collezioni della stagione scelta": "The collections of the season you picked",
