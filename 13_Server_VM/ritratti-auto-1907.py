@@ -127,12 +127,14 @@ def main():
     pers = META.persone(); ric = META.Riconosci(pers)
     fatto = leggi(FATTO, {}); ritr = leggi(RITRATTI, {}); prop = leggi(PROPOSTE, {})
     solo = [s for s in x.solo.split(",") if s]
+    # chi e' gia' stato battezzato a mano ha gia' il suo volto: niente proposte doppie
+    battezzati = set(v for v in leggi(os.path.join(CASA, "battesimi.json"), {}).get("crop", {}).values() if v != "-")
     riv = cv2.FaceDetectorYN.create(V.MODELLI + "/yunet.onnx", "", (V.LATO, V.LATO), 0.7, 0.3, 5000)
     trad = cv2.FaceRecognizerSF.create(V.MODELLI + "/sface.onnx", "")
     for p in pers:
         pid = p["id"]
         if solo and pid not in solo: continue
-        if not solo and (p["foto"] or pid in ritr or pid in fatto): continue
+        if not solo and (p["foto"] or pid in ritr or pid in fatto or pid in battezzati): continue
         if time.time() > fine: break
         while V.in_diretta(): time.sleep(300)
         vie = suoi_video(pid, ind, fpc, ric)
