@@ -378,6 +378,9 @@
   .pan-partita .pt-aiuto{margin-left:auto;font-size:10.5px;color:var(--fumo);}
   .pan-partita .pt-elenco{display:flex;flex-direction:column;gap:1px;}
   .pan-partita .pt-vuoto{color:var(--fumo);font-size:12px;padding:10px 4px;}
+  .pan-partita .info{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;font-size:12px;padding:4px 2px;}
+  .pan-partita .info span{color:var(--fumo);} .pan-partita .info b{font-weight:500;color:var(--ivory);} .pan-partita .info a{color:var(--oro2);cursor:pointer;text-decoration:underline;}
+  .pan-partita .pt-az{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
   /* L'ANTEPRIMA AL PASSAGGIO: il video dell'azione (o il provino del 1907) sopra il fotogramma */
   .tes .mini .ant-video,.tes .mini .ant-prov{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;}
   .tes .mini .ant-prov{background-size:600% 100%;background-repeat:no-repeat;background-position:0 0;}
@@ -6977,11 +6980,26 @@
   // attorno all'azione e ci porta la Sorgente, poi "," la mette in sequenza.
   // Sotto, le azioni (doppio clic: dritta in sequenza) e la telecronaca.
   var PT = { reg: "", righe: [], fischio: {}, squadre: null, detto: [], tag: "", q: "", vista: "azioni" };
+  // LA PARTITA SI APRE NELL'EDITING (28/09/2026, Goffredo: "saltiamo un
+  // passaggio"). Dalla ricerca o dalla Libreria non si passa piu' dalla
+  // scheda: l'Editing, la partita nella Sorgente, la scheda Partita accanto;
+  // arrivando da un'azione, IN e OUT gia' attorno a lei. Poi "," e' in sequenza.
+  function apriPartitaInEditing(rec, regId, t){
+    apriEditorVuoto();
+    mostraScheda("partita", true);
+    PT.poi = t ? function(){
+      var best = null, d = 31;
+      PT.righe.forEach(function(x, ix){ var dd = Math.min(Math.abs((x.dentro !== undefined ? x.dentro : x.t) - t), Math.abs(x.t - t)); if (dd < d) { d = dd; best = ix; } });
+      if (best !== null) ptAzione(best); else srgVai(Math.max(0, t - 2));
+    } : null;
+    apriSorgente(rec, t ? Math.max(0, t - 2) : null, null, false);
+  }
+  function ptDopo(){ if (PT.poi && !PT.carica) { var f = PT.poi; PT.poi = null; setTimeout(f, 0); } }
   function ptDur(){ var v = el("videoS"); return (SRG.r && SRG.r.durata) || (v && isFinite(v.duration) && v.duration) || 1; }
   function ptCarica(){
     var r = SRG.r;
     if (!r) { PT.reg = ""; return ptDisegna(); }
-    if (PT.reg === r.id) return ptDisegna();
+    if (PT.reg === r.id) { ptDisegna(); return ptDopo(); }
     PT.reg = r.id; PT.righe = []; PT.detto = []; PT.squadre = null; PT.fischio = {}; PT.tag = ""; PT.q = ""; PT.carica = true;
     ptDisegna();
     Promise.all([post({ tipo:"clip-tabellino", reg: r.id }).catch(function(){ return { righe: [] }; }), post({ tipo:"clip-parlato", reg: r.id }).catch(function(){ return { pezzi: [] }; })]).then(function(rs){
@@ -6989,7 +7007,7 @@
       PT.righe = (rs[0].righe || []).slice().sort(function(a, b){ return a.t - b.t; });
       PT.fischio = rs[0].fischio || {}; PT.squadre = rs[0].squadre || null;
       PT.detto = (rs[1].pezzi || []).filter(function(x){ return !x.vivo; }).sort(function(a, b){ return a.a - b.a; });
-      PT.carica = false; ptDisegna();
+      PT.carica = false; ptDisegna(); ptDopo();
     });
   }
   function ptAzioni(){
@@ -7036,7 +7054,17 @@
     var leg = ord.map(function(t){ var g = SEGNI[t] || SEGNI.azione, ic = ICONE_AZ[t];
       return '<span data-pttag="' + esc(t) + '"' + (PT.tag === t ? ' class="on"' : '') + '>' + (ic ? '<i class="leg-ico" style="background:' + ic.replace(/"/g, "&quot;") + ' center/contain no-repeat"></i>' : '<i style="background:' + g.c + '"></i>') + esc(g.n) + ' <b>' + conta[t] + '</b></span>'; }).join("");
     var az = ptAzioni(), dt = ptDetti();
-    var elenco = PT.vista === "detto"
+    var r0 = SRG.r, fischio = function(n){ var f = PT.fischio[n];
+      if (!f || f.t === undefined || f.t === null) return n === "1" ? "non letto (stima: inizio file)" : "non letto (stima: un’ora dopo il 1T)";
+      var come = { cronometro: "cronometro letto" + (f.verificato ? " ✓" : ""), telecronaca: "dalla telecronaca", mano: "segnato a mano", stima: "stima" }[f.fonte] || f.fonte;
+      return '<a data-ptt="' + (f.t + 2) + '" title="vai li’">' + tc(f.t) + '</a> · ' + esc(come); };
+    var info = '<div class="info"><span>partita</span><b>' + esc(r0.titolo || "") + '</b>' + (r0.competizione ? '<span>competizione</span><b>' + esc(r0.competizione) + '</b>' : '') +
+      '<span>data</span><b>' + quando(r0.avviata) + '</b><span>durata</span><b>' + durata(r0.durata) + '</b><span>calcio d’inizio</span><b>' + fischio("1") + '</b><span>ripresa</span><b>' + fischio("2") + '</b>' +
+      '<span>telecronaca</span><b>' + (PT.detto.length ? PT.detto.length + " righe" : "non trascritta") + '</b><span>fonti</span><b>' + esc(Object.keys(PT.righe.reduce(function(a, x){ a[x.fonte] = 1; return a; }, {})).join(", ") || "—") + '</b>' +
+      '<span>file</span><b style="word-break:break-all">' + esc((r0.arch && r0.arch.chiave) || "") + '</b></div>' +
+      '<div class="pt-az"><button class="mini" data-ptanc="1" title="il primo tempo comincia dove e’ ferma la Sorgente">1T comincia qui</button><button class="mini" data-ptanc="2" title="il secondo tempo comincia dove e’ ferma la Sorgente">2T comincia qui</button><button class="mini" data-ptanc="auto" title="cerca il fischio nelle frasi del telecronista, nei gol e nei minuti detti">Dalla telecronaca</button><button class="mini" data-ptanc="cronometro" title="rilegge il cronometro in sovrimpressione (un minuto di lavoro)">Rileggi cronometro</button></div>' +
+      '<div class="pt-az"><button class="mini" data-ptsc="file">&#8595; Scarica il file</button><button class="mini" data-ptsc="it">SRT ITA</button><button class="mini" data-ptsc="en">SRT ENG</button></div>';
+    var elenco = PT.vista === "info" ? info : PT.vista === "detto"
       ? (dt.length ? dt.slice(0, PT.q ? 400 : 150).map(function(x){ return '<div class="voce" data-ptt="' + x.a + '"><span class="min">' + tcBreve(x.a) + '</span><span class="tx">' + evidenzia(x.x, PT.q) + '</span></div>'; }).join("") + (!PT.q && dt.length > 150 ? '<div class="pt-vuoto">…e altre ' + (dt.length - 150) + ' righe: cerca qui sopra.</div>' : '')
         : '<div class="pt-vuoto">' + (PT.detto.length ? "Nessuna riga con quelle parole." : "Telecronaca non trascritta.") + '</div>')
       : (az.length ? az.map(function(o){ var x = o.x;
@@ -7047,10 +7075,24 @@
         '<input id="ptCerca" type="search" placeholder="Cerca: gol, un nome, una parola detta" autocomplete="off" value="' + esc(PT.q) + '"></div>' +
       '<div class="momenti' + (corsie ? " corsie" : "") + (PT.tag ? " filtra" : "") + '" id="ptBarra" title="clic su un’azione: IN e OUT attorno all’azione · altrove: la Sorgente va li’">' + b + '</div>' +
       '<div class="legenda">' + leg + '</div>' +
-      '<div class="pt-schede"><button type="button" data-ptv="azioni" class="' + (PT.vista !== "detto" ? "on" : "") + '">Azioni <b>' + az.length + '</b></button><button type="button" data-ptv="detto" class="' + (PT.vista === "detto" ? "on" : "") + '">Telecronaca <b>' + dt.length + '</b></button><span class="pt-aiuto">clic: IN/OUT · doppio clic o <kbd>,</kbd>: in sequenza</span></div>' +
+      '<div class="pt-schede"><button type="button" data-ptv="azioni" class="' + (PT.vista === "azioni" ? "on" : "") + '">Azioni <b>' + az.length + '</b></button><button type="button" data-ptv="detto" class="' + (PT.vista === "detto" ? "on" : "") + '">Telecronaca <b>' + dt.length + '</b></button><button type="button" data-ptv="info" class="' + (PT.vista === "info" ? "on" : "") + '">Info</button><span class="pt-aiuto">clic: IN/OUT · doppio clic o <kbd>,</kbd>: in sequenza</span></div>' +
       '<div class="pt-elenco">' + elenco + '</div>';
     ptSegniIO(); ptTestina();
     if (cerca) { var i2 = el("ptCerca"); i2.focus(); i2.setSelectionRange(i2.value.length, i2.value.length); }
+  }
+  // il fischio, come nella scheda della Libreria ma sulla partita della Sorgente
+  function ptAncora(cosa, b){
+    if (!SRG.r) return;
+    var q = { tipo:"clip-archivio-ancora", reg: SRG.r.id };
+    if (cosa === "1" || cosa === "2") { q.tempo = cosa; q.t = Math.round(el("videoS").currentTime || 0); }
+    else if (cosa === "auto") q.auto = true; else if (cosa === "cronometro") q.cronometro = true;
+    if (b) { b.disabled = true; b.textContent = "…"; }
+    post(q).then(function(d){
+      PT.righe = (d.righe || []).slice().sort(function(a, c){ return a.t - c.t; }); PT.fischio = d.fischio || {}; if (d.squadre) PT.squadre = d.squadre;
+      ptDisegna();
+      var f1 = PT.fischio["1"], f2 = PT.fischio["2"];
+      avviso("ok", "Fischio: 1T " + (f1 ? tc(f1.t) : "?") + " · 2T " + (f2 ? tc(f2.t) : "?"));
+    }).catch(function(e){ avviso("err", esc(e.message)); ptDisegna(); });
   }
   function ptTestina(){ var t = el("ptTestina"); if (!t || !SRG.r) return; t.style.left = (el("videoS").currentTime / ptDur() * 100) + "%"; }
   function ptSegniIO(){
@@ -7074,6 +7116,12 @@
   el("ptCorpo").addEventListener("click", function(e){
     var tg = e.target.closest("[data-pttag]"); if (tg) { PT.tag = PT.tag === tg.dataset.pttag ? "" : tg.dataset.pttag; return ptDisegna(); }
     var vv = e.target.closest("[data-ptv]"); if (vv) { PT.vista = vv.dataset.ptv; return ptDisegna(); }
+    var an = e.target.closest("[data-ptanc]"); if (an) return ptAncora(an.dataset.ptanc, an);
+    var sc = e.target.closest("[data-ptsc]"); if (sc && SRG.r) {
+      if (sc.dataset.ptsc !== "file") return scaricaSrt(SRG.r.id, sc.dataset.ptsc);
+      if (!SRG.r.arch) return;
+      return post({ tipo:"clip-qnap-via", via: SRG.r.arch.chiave, radice:"qnap" }).then(function(x){ var a = document.createElement("a"); a.href = BASE + x.via + "&scarica=1"; a.download = SRG.r.arch.chiave; document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); }, 1000); }).catch(function(er){ avviso("err", esc(er.message)); });
+    }
     var ai = e.target.closest("[data-pti]"); if (ai) return ptAzione(+ai.dataset.pti);
     var tt = e.target.closest("[data-ptt]"); if (tt) { srgVai(Math.max(0, +tt.dataset.ptt - 2)); var vd = el("videoS"); if (vd.paused) vd.play().catch(function(){}); return; }
     var m = e.target.closest("#ptBarra"); if (!m) return;
@@ -7107,7 +7155,7 @@
   });
   el("srgLibreria").addEventListener("click", function(){
     if (!SRG.r) return;
-    location.href = "mam2.html?asset=" + encodeURIComponent(SRG.rec) + "&reg=" + SRG.r.id + "&t=" + Math.floor(el("videoS").currentTime + 3) + (SEQ ? "&per=" + encodeURIComponent(SEQ.id) : "");
+    location.href = "mam2.html?asset=" + encodeURIComponent(SRG.rec) + "&reg=" + SRG.r.id + "&t=" + Math.floor(el("videoS").currentTime + 3) + (SEQ ? "&per=" + encodeURIComponent(SEQ.id) : "") + "&scheda=1";
   });
   // i tasti della Sorgente, quando e' lei il pannello attivo
   function tastiSorgente(e){
@@ -7906,7 +7954,7 @@
   // stanno nel pannello Progetto, a un clic.
   else if (/(\?|&)montaggio=1/.test(location.search)) apriEditorVuoto();
   else if (ps) apriEditor(ps);
-  else if (pa) apriAsset(pa, pr, +pt || 0);
+  else if (pa) { if (vai0("scheda") === "1") apriAsset(pa, pr, +pt || 0); else apriPartitaInEditing(pa, pr, +pt || 0); }
   else if (prac) { vai("libreria"); apriRaccolta(prac, vai0("f"), pq); }
   else if (/(\?|&)raccolte=1/.test(location.search)) apriPaginaRaccolte();
   else { vai("libreria"); var pf = vai0("f"); if (pf) gettoniDaUrl(pf); if (pq || pf) cerca(pq); }
