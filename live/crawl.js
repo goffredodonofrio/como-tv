@@ -34,7 +34,21 @@ window.Crawl = (function () {
     {b:"🏴",n:"Scottish Championship",code:"sco.2"},{b:"🏴",n:"Premier Sports Cup",code:"sco.cis"},
     {b:"🇪🇸",n:"LaLiga",code:"esp.1"},{b:"🇪🇺",n:"Champions League",code:"uefa.champions"},
     {b:"🇪🇺",n:"Europa League",code:"uefa.europa"},{b:"🇪🇺",n:"Conference League",code:"uefa.europa.conf"},
-    {b:"🌎",n:"CONMEBOL Libertadores",code:"conmebol.libertadores"},{b:"🌎",n:"CONMEBOL Sudamericana",code:"conmebol.sudamericana"}
+    {b:"🌎",n:"CONMEBOL Libertadores",code:"conmebol.libertadores"},{b:"🌎",n:"CONMEBOL Sudamericana",code:"conmebol.sudamericana"},
+    // le nazionali (28/09/2026): ESPN le tratta come le leghe
+    {b:"🇪🇺",n:"Nations League",code:"uefa.nations"},
+    {b:"🇪🇺",n:"Qualificazioni Europei",code:"uefa.euroq"},
+    {b:"🇪🇺",n:"Europei",code:"uefa.euro"},
+    {b:"🇪🇺",n:"Qualificazioni Europei U21",code:"uefa.euro_u21_qual"},
+    {b:"🇪🇺",n:"Europei U21",code:"uefa.euro_u21"},
+    {b:"🌍",n:"Qualificazioni Mondiali",code:"fifa.worldq.uefa"},
+    {b:"🌎",n:"Qualificazioni Mondiali CONMEBOL",code:"fifa.worldq.conmebol"},
+    {b:"🌍",n:"Mondiali",code:"fifa.world"},
+    {b:"🌍",n:"Mondiali U20",code:"fifa.world.u20"},
+    {b:"🌍",n:"Amichevoli nazionali",code:"fifa.friendly"},
+    {b:"🌎",n:"Copa América",code:"conmebol.america"},
+    {b:"🌍",n:"Qualificazioni Coppa d'Africa",code:"caf.nations_qual"},
+    {b:"🌍",n:"Coppa d'Africa",code:"caf.nations"}
   ];
 
   // i nomi come li scrive la redazione, non come li scrive ESPN
