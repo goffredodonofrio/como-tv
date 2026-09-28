@@ -15229,6 +15229,108 @@ function squadraDelGol(x, rec) {
 }
 // "GOL DIVORATO", "POI ANNULLATO CON IL VAR": per l'allenatore non sono gol
 const GOL_FINTO = /\b(divorat|mangiat|sfiorat|mancat|sbagliat|annullat|cancellat)/i;
+// ══════════ IL VOLTO: DOVE SI VEDE L'ALLENATORE (28/09/2026) ══════════
+//  Goffredo: "escludiamo l'ascolto, proviamo l'inquadratura". Gli appunti
+//  segnano "Inquadrato Simone Inzaghi" una volta ogni tanto; il volto lo trova
+//  ogni volta che la regia va su di lui. /opt/comotv-volti (volti.py, OpenCV
+//  con YuNet per trovare i volti e SFace per riconoscerli, gratis e in casa)
+//  legge solo i fotogrammi chiave (uno al secondo): una partita di due ore in
+//  circa un quarto d'ora di un core, a priorita' minima. Una partita alla
+//  volta, mai sopra una diretta: se parte una registrazione si ferma e poi
+//  riprende. Il volto di riferimento e' la foto premium dell'allenatore.
+//  Provato su Al Ettifaq-Al Hilal: 3 inquadrature vere in 10 minuti, dove gli
+//  appunti ne scrivono una; la grafica della formazione (fotina da 30 pixel)
+//  si scarta con l'altezza minima del volto.
+const VOLTI_DIR = process.env.COMOTV_VOLTI || "/opt/comotv-volti";
+const VOLTO_SIM = 0.42, VOLTO_ALTO = 55;        // somiglianza (coseno SFace) e altezza minima in pixel su 540
+function fileVolti() { return path.join(DIR, "volti.json"); }
+let VOLTI = null;
+function volti() {
+  if (!VOLTI) { try { VOLTI = JSON.parse(fs.readFileSync(fileVolti(), "utf8")); } catch (e) { VOLTI = {}; } if (!VOLTI.persone) VOLTI.persone = {}; }
+  return VOLTI;
+}
+function scriviVolti() { try { volti().coda = VOLTI_CODA; const tmp = fileVolti() + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(volti())); fs.renameSync(tmp, fileVolti()); } catch (e) {} }
+function chiaveVolto(nome) { return nomeParole(nome).join(" "); }
+// la sua foto: quella della squadra che allena oggi (allenatori.json), o
+// quella della squadra del suo ultimo periodo, se il periodo e' ancora aperto
+// e allenatori.json non dice che li' adesso c'e' un altro
+function fotoAllenatore(nome) {
+  const chi = chiaveVolto(nome), oggi = new Date().toISOString().slice(0, 10);
+  let al = {}; try { al = JSON.parse(fs.readFileSync(fileAllenatori(), "utf8")).perId || {}; } catch (e) {}
+  const occupata = {};
+  Object.keys(al).forEach((id) => { const x = al[id]; if (x && x.squadra) occupata[x.squadra] = chiaveVolto(((x.nome || "") + " " + (x.cognome || "")).trim()); });
+  const prova = (sq) => { const f = path.join(STEMMI_DIR, "foto-premium-coach-" + slugSquadra(sq) + ".png"); return fs.existsSync(f) ? f : ""; };
+  for (const sq of Object.keys(occupata)) if (occupata[sq] === chi) { const f = prova(sq); if (f) return f; }
+  const pc = panchine(); if (!pc) return "";
+  const suoi = [];
+  Object.keys(pc.perSq).forEach((sq) => pc.perSq[sq].forEach((z) => { if (chiaveVolto(z[0]) === chi && z[3] >= oggi) suoi.push(z); }));
+  for (const z of suoi.sort((u, v) => v[2].localeCompare(u[2]))) { if (occupata[z[1]] && occupata[z[1]] !== chi) continue; const f = prova(z[1]); if (f) return f; }
+  return "";
+}
+// le sue partite da guardare: una registrazione per gara (in casa, in italiano), tutti i suoi file
+function partiteDelVolto(nome) {
+  const suoi = panchineDi(nome), perGara = {};
+  const voto = (r) => { const b = ARCHIVIO[r] || {}; return (/\baudio\b/i.test(b.partita || "") ? 2 : /\beng\b/i.test(b.partita || "") ? 1 : 0); };
+  Object.keys(suoi).forEach((rec) => {
+    const a = ARCHIVIO[rec]; if (!a || !inCasa(a)) return;
+    const id = (ESPN[rec] || {}).id || rec;
+    if (!perGara[id] || voto(rec) < voto(perGara[id])) perGara[id] = rec;
+  });
+  return Object.values(perGara).sort((u, v) => String((ARCHIVIO[v] || {}).quando).localeCompare(String((ARCHIVIO[u] || {}).quando)));
+}
+function inDiretta() { return Object.keys(R.reg).some((k) => R.reg[k].stato === "registra" && !R.reg[k].guarda); }
+const VOLTI_CODA = [];          // { chi, nome, foto, rec }; sta anche in volti.json, e dopo un riavvio riprende
+setTimeout(() => { if (CODE_SPENTE) return; (volti().coda || []).forEach((l) => { if (!VOLTI_CODA.some((y) => y.chi === l.chi && y.rec === l.rec)) VOLTI_CODA.push(l); }); voltiAvanti(); }, 90000);
+let VOLTO_ORA = null;           // { lavoro, pezzo, pr, punti, fermato }
+// i secondi in cui si vede diventano tratti: pause fino a 2,5 s, almeno due
+// secondi o una somiglianza netta
+function trattiVolto(punti) {
+  const out = []; let c = null;
+  punti.sort((u, v) => u[0] - v[0]).forEach(([t, s]) => {
+    if (c && t - c.t1 <= 2.5) { c.t1 = t; c.n++; c.s = Math.max(c.s, s); return; }
+    if (c) out.push(c); c = { t0: t, t1: t, n: 1, s };
+  });
+  if (c) out.push(c);
+  return out.filter((z) => z.n >= 2 || z.s >= 0.5);
+}
+function voltiAvanti() {
+  if (VOLTO_ORA || !VOLTI_CODA.length) return;
+  if (inDiretta()) { setTimeout(voltiAvanti, 60000); return; }
+  const l = VOLTI_CODA[0], a = ARCHIVIO[l.rec], P = volti().persone[l.chi];
+  const fatto = P.partite[l.rec] || (P.partite[l.rec] = { tratti: [], pezzi: [] });
+  const pz = partiDi(a || {}), i = pz.findIndex((z, j) => fatto.pezzi.indexOf(j) < 0);
+  if (!a || i < 0 || !copiaInCasa(pz[i].chiave)) { if (a && i < 0) fatto.fatto = new Date().toISOString(); VOLTI_CODA.shift(); scriviVolti(); return setImmediate(voltiAvanti); }
+  const pr = cp.spawn("nice", ["-n", "19", path.join(VOLTI_DIR, "venv/bin/python"), path.join(VOLTI_DIR, "volti.py"), copiaInCasa(pz[i].chiave), "0", "0", l.foto], { stdio: ["ignore", "pipe", "ignore"] });
+  const ora = VOLTO_ORA = { lavoro: l, pezzo: i, pr, punti: [], fermato: false, avviato: Date.now() };
+  let resto = "";
+  pr.stdout.on("data", (b) => {
+    const righe = (resto + b).split("\n"); resto = righe.pop();
+    righe.forEach((r) => { try { const x = JSON.parse(r); ora.ultimo = x.t;
+      (x.v || []).forEach((v) => { if (v[1] >= VOLTO_SIM && v[5] >= VOLTO_ALTO && x.t !== null) ora.punti.push([x.t, v[1]]); }); } catch (e) {} });
+  });
+  const guardia = setInterval(() => { if (inDiretta()) { ora.fermato = true; try { pr.kill(); } catch (e) {} } }, 30000);
+  pr.on("close", (codice) => {
+    clearInterval(guardia); VOLTO_ORA = null;
+    if (ora.fermato) { setTimeout(voltiAvanti, 60000); return; }
+    const da = pz[i].da || 0;
+    if (codice === 0) trattiVolto(ora.punti).forEach((z) => fatto.tratti.push([+(da + z.t0).toFixed(1), +(da + z.t1 + 1).toFixed(1), +z.s.toFixed(3), i, z.t0]));
+    fatto.pezzi.push(i);
+    if (codice !== 0) fatto.errore = "volti.py " + codice;
+    if (fatto.pezzi.length >= pz.length) { fatto.fatto = new Date().toISOString(); VOLTI_CODA.shift(); }
+    scriviVolti(); global.__SCHEDE_A && global.__SCHEDE_A.clear();
+    setImmediate(voltiAvanti);
+  });
+}
+function statoVolto(nome) {
+  const chi = chiaveVolto(nome), P = volti().persone[chi] || { partite: {} }, tutte = partiteDelVolto(nome);
+  const fatte = tutte.filter((r) => (P.partite[r] || {}).fatto).length;
+  const inCoda = VOLTI_CODA.filter((l) => l.chi === chi).length;
+  const tratti = tutte.reduce((n, r) => n + (((P.partite[r] || {}).tratti) || []).length, 0);
+  // quanto manca: due ore a partita (l'indice non ha la durata), a nove volte il tempo reale
+  const secondi = Math.max(0, VOLTI_CODA.length * 7200 - ((VOLTO_ORA && VOLTO_ORA.ultimo) || 0)) / 9;
+  const lavora = VOLTO_ORA && VOLTO_ORA.lavoro.chi === chi ? { partita: (ARCHIVIO[VOLTO_ORA.lavoro.rec] || {}).partita || "", al: VOLTO_ORA.ultimo || 0 } : null;
+  return { ok: true, nome, foto: !!fotoAllenatore(nome), partite: tutte.length, fatte, inCoda, tratti, minuti: Math.round(secondi / 60), lavora, fermo: !!(VOLTI_CODA.length && inDiretta()) };
+}
 // LE AZIONI DI UN ALLENATORE, solo nelle partite con lui in panchina: i gol
 // della sua squadra e quelli subiti (li' la regia va su di lui), e le righe
 // che lo nominano: "Inquadrato Simone Inzaghi" (i giornalisti lo segnano
@@ -15258,9 +15360,25 @@ function cercaAllenatore(p, tipi, parole, per, finti) {
                    gol: x.gol, certezza: x.certezza, chiave, dentroFile, quando: r.finita || r.avviata || 0, ruolo, ruoloDa: ruolo ? "allenatore" : "", rating: x.rating || 0, boato: x.boato || 0 });
     });
   });
-  // prima dove i giornalisti hanno scritto "inquadrato Inzaghi": e' l'immagine che si cerca
+  // E DOVE LO SI VEDE DAVVERO: le inquadrature trovate col volto (voltiAvanti)
+  const vt = ((volti().persone[chiaveVolto(nome)] || {}).partite) || {}, regDi = {};
+  Object.keys(per).forEach((k) => { const r = R.reg[k] || finti[k]; if (r) { const rc = (r.arch && r.arch.rec) || r.evento || ""; if (rc && !regDi[rc]) regDi[rc] = { k, r }; } });
+  Object.keys(vt).forEach((rec) => {
+    if (!suoi[rec]) return;
+    const a = ARCHIVIO[rec] || {}, q = regDi[rec];
+    (vt[rec].tratti || []).forEach((z) => {
+      const [t0, t1, sim, iPz, f0] = z, pz = partiDi(a)[iPz] || {};
+      const x = { reg: q && !q.r.finto ? q.k : "", partita: (q && q.r.titolo) || a.partita || rec, rec, t: t0, dentro: Math.max(0, t0 - 2), fuori: t1 + 2, s3: false,
+                  tipo: "Inquadratura", tag: "", titolo: "Inquadrato " + nome + " · " + Math.max(1, Math.round(t1 - t0)) + " s", minuto: "", fonte: "volto", fonti: ["volto"],
+                  squadra: suoi[rec], giocatore: nome, gol: false, certezza: "inquadratura", chiave: pz.chiave || a.chiave || "", dentroFile: f0,
+                  quando: a.quando ? Date.parse(a.quando) : 0, ruolo: "inquadrato", ruoloDa: "volto", rating: Math.round(sim * 100), boato: 0 };
+      if (tipi.length || altre.length) return;
+      fuori.push(x);
+    });
+  });
+  // prima le inquadrature (quelle viste col volto, poi quelle scritte negli appunti), poi i gol
   const PESO = { inquadrato: 3, "gol squadra": 2, "gol subito": 1 };
-  fuori.sort((u, v) => (PESO[v.ruolo] || 0) - (PESO[u.ruolo] || 0) || String(v.quando).localeCompare(String(u.quando)) || u.t - v.t);
+  fuori.sort((u, v) => (PESO[v.ruolo] || 0) - (PESO[u.ruolo] || 0) || (v.fonte === "volto" ? 1 : 0) - (u.fonte === "volto" ? 1 : 0) || String(v.quando).localeCompare(String(u.quando)) || u.t - v.t);
   const inRosa = Object.keys(suoi);
   return { ok: true, righe: fuori.slice(0, num(p.quante, 1, 2000, 500)), totale: fuori.length, partite: new Set(fuori.map((x) => x.reg || x.rec)).size, tipi: tipi.length, parole,
            scheda: { allenatore: true, nome, chi: chiN, inRosa } };
@@ -15751,7 +15869,7 @@ const AZIONI = {
       Object.keys(al).forEach((id) => { const x = al[id]; if (!x || !x.squadra) return;
         const f = "foto-premium-coach-" + slugSq(x.squadra) + ".png";
         if (fileFoto.has(f)) fotoAll[nomeParole(((x.nome || "") + " " + (x.cognome || "")).trim()).join(" ")] = f; }); } catch (e) {}
-    const a = Array.from(allen.values()).map((x) => [x.n, Object.keys(x.sq).sort((u, v) => x.sq[v] - x.sq[u]), x.partite.size, fotoAll[nomeParole(x.n).join(" ")] || ""])
+    const a = Array.from(allen.values()).map((x) => [x.n, Object.keys(x.sq).sort((u, v) => x.sq[v] - x.sq[u]), x.partite.size, fotoAll[nomeParole(x.n).join(" ")] || path.basename(fotoAllenatore(x.n) || "")])
       .sort((u, v) => v[2] - u[2]);
     const esito = { ok: true, g, a };
     global.__DIZ_GIOCATORI = { quando: Date.now(), esito };
@@ -15794,6 +15912,27 @@ const AZIONI = {
                     rec: ultime.map((x) => x.rec) };
     mem.set(kMem, { quando: Date.now(), esito });
     return esito;
+  },
+  // IL VOLTO: parte la ricerca nelle sue partite (quelle gia' guardate restano)
+  "clip-volti-avvia": (p) => {
+    const nome = String(p.allenatore || "").trim(); if (!nome) return { ok: false, errore: "manca il nome" };
+    const foto = fotoAllenatore(nome); if (!foto) return Object.assign(statoVolto(nome), { ok: false, errore: "manca la foto dell'allenatore" });
+    const chi = chiaveVolto(nome), V = volti();
+    const P = V.persone[chi] || (V.persone[chi] = { nome, partite: {} }); P.foto = path.basename(foto);
+    partiteDelVolto(nome).forEach((rec) => {
+      if ((P.partite[rec] || {}).fatto || VOLTI_CODA.some((l) => l.chi === chi && l.rec === rec)) return;
+      VOLTI_CODA.push({ chi, nome, foto, rec });
+    });
+    scriviVolti(); voltiAvanti();
+    return statoVolto(nome);
+  },
+  "clip-volti-stato": (p) => statoVolto(String(p.allenatore || "").trim()),
+  "clip-volti-ferma": (p) => {
+    const nome = String(p.allenatore || "").trim(), chi = chiaveVolto(nome);
+    for (let i = VOLTI_CODA.length - 1; i >= 0; i--) if (VOLTI_CODA[i].chi === chi) VOLTI_CODA.splice(i, 1);
+    if (VOLTO_ORA && VOLTO_ORA.lavoro.chi === chi) { VOLTO_ORA.fermato = true; try { VOLTO_ORA.pr.kill(); } catch (e) {} }
+    scriviVolti();
+    return statoVolto(nome);
   },
   // LA SCHEDA DELL'ALLENATORE: come quella del giocatore, ma le partite sono
   // quelle con lui in panchina e i numeri sono i gol fatti e subiti (le

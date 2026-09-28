@@ -153,6 +153,11 @@
   .sg-t.on::after{content:"";position:absolute;top:8px;right:8px;width:14px;height:14px;border-radius:50%;background:#C9A24B center/10px no-repeat
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' stroke='%2310131c' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");}
   .sg-gruppo{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px;}
+  .sg-volto{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--riga2);font:500 12.5px/1.4 'DM Sans',sans-serif;color:var(--ivory2);}
+  .sg-volto i{font:700 9.5px/1 'Mazzard',sans-serif;font-style:normal;letter-spacing:.16em;text-transform:uppercase;color:var(--fumo);min-width:92px;}
+  .sg-volto b{color:var(--oro2,#C9A24B);font-weight:700;}
+  .sg-volto small{color:var(--fumo);font-size:11px;}
+  .sg-volto .sg-cerca:disabled{opacity:.5;cursor:default;}
   .sg-gruppo i{font:700 9.5px/1 'Mazzard',sans-serif;font-style:normal;letter-spacing:.16em;text-transform:uppercase;color:var(--fumo);margin-right:4px;min-width:92px;}
   .sg-c{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;border:1px solid var(--riga2);background:transparent;color:var(--ivory2);
     font:600 12px/1 'DM Sans',sans-serif;cursor:pointer;}
@@ -2286,11 +2291,39 @@
         return '<button type="button" class="sg-c' + (on ? " on" : "") + '" data-sg="st|' + esc(x.k) + '|Stagione ' + esc(x.k) + '" aria-pressed="' + on + '">' + esc(x.k) + '<b>' + x.n + '</b></button>';
       }).join("") + '</div>';
     }
+    if (g.al && modo === "ris") h += voltoHtml(g.v);
     if (modo === "sugg") {
       var n = Object.keys(SCHEDA_SEL.r).length + Object.keys(SCHEDA_SEL.c).length + Object.keys(SCHEDA_SEL.st).length;
       h += '<div class="sg-azioni"><button type="button" class="sg-cerca" data-sgcerca="1">Cerca' + (n ? ' con ' + n + (n === 1 ? ' filtro' : ' filtri') : ' tutto di ' + esc(String(g.eti || "").split(/\s+/).pop())) + '</button><span>Invio</span></div>';
     }
     return h + '</div>';
+  }
+  // IL VOLTO DELL'ALLENATORE (28/09/2026): il ponte guarda le sue partite e
+  // trova dove la regia lo inquadra (volti.py sulla VM). Qui il tasto per
+  // farlo partire e a che punto e'; quando una partita e' finita, la ricerca si rifa'.
+  var VOLTI_ST = {}, VOLTI_GIRA = {};
+  function voltiChiedi(nome, avvia){
+    if (!avvia && VOLTI_GIRA[nome]) return; VOLTI_GIRA[nome] = true;
+    post({ tipo: avvia ? "clip-volti-avvia" : "clip-volti-stato", allenatore: nome }).then(function(j){
+      var prima = VOLTI_ST[nome]; VOLTI_ST[nome] = j; VOLTI_GIRA[nome] = false;
+      var g = gettone("g")[0]; if (!g || !g.al || g.v !== nome) return;
+      if (prima && (prima.fatte !== j.fatte || prima.tratti !== j.tratti)) { CHIAVE_RIC = ""; cerca(el("cercaLib").value); } else disegnaRisultati();
+      if (j.inCoda) { VOLTI_GIRA[nome] = true; setTimeout(function(){ VOLTI_GIRA[nome] = false; voltiChiedi(nome); }, 15000); }
+    }).catch(function(){ VOLTI_GIRA[nome] = false; });
+  }
+  function durataVolti(m){ return m >= 90 ? "circa " + Math.round(m / 60) + " ore" : m >= 60 ? "circa un’ora" : "circa " + Math.max(1, m) + " minuti"; }
+  function voltoHtml(nome){
+    var st = VOLTI_ST[nome];
+    if (!st) { voltiChiedi(nome); return '<div class="sg-volto">…</div>'; }
+    var h = '<div class="sg-volto"><i>Inquadrature</i>';
+    if (!st.foto) return h + '<span>Per cercarlo nelle immagini serve la sua foto nel Magazzino (foto coach della squadra).</span></div>';
+    if (st.inCoda) return h + '<span>Lo cerco nelle immagini: <b>' + st.fatte + '</b> partite su ' + st.partite + (st.tratti ? ' · <b>' + st.tratti + '</b> inquadrature trovate' : '') +
+      (st.fermo ? ' · in pausa: c’è una diretta' : ' · mancano ' + durataVolti(st.minuti)) + '</span></div>';
+    if (st.fatte && st.fatte >= st.partite) return h + '<span>Cercato nelle immagini di tutte le ' + st.partite + ' partite: <b>' + st.tratti + '</b> inquadrature.</span></div>';
+    var resta = st.partite - st.fatte;
+    return h + '<span>' + (st.fatte ? 'Cercato in ' + st.fatte + ' partite su ' + st.partite + ' (' + st.tratti + ' inquadrature). ' : '') + '</span>' +
+      '<button type="button" class="sg-cerca" data-volti="' + esc(nome) + '">Cercalo nelle immagini' + (st.fatte ? ' delle altre ' + resta : ' delle sue ' + resta + ' partite') + '</button>' +
+      '<small>' + durataVolti(Math.round(resta * 14)) + ', a bassa priorità; si ferma durante le dirette</small></div>';
   }
   // si prova con le ultime tre parole, poi due, poi una: "tutti i gol di douvikas" riconosce Douvikas
   function suggerisci(){
@@ -2441,9 +2474,9 @@
     var frase = /"([^"]{2,})"|“([^”]{2,})”/.exec(Q);
     var libero = Q.replace(/"[^"]*"?|“[^”]*”?/g, " ").replace(/\s+/g, " ").trim();
     var qAz = frase ? "" : [gio ? gio.v : "", libero].join(" ").trim();
-    // dell'allenatore i telecronisti dicono il cognome ("Inzaghi"); le frasi si
-    // tengono poi solo nelle sue partite (Filippo Inzaghi allena il Palermo)
-    var qDet = frase ? (frase[1] || frase[2]) : [gio ? (gio.al ? gio.v.split(/\s+/).pop() : gio.v) : "", libero].join(" ").trim();
+    // DELL'ALLENATORE NIENTE TELECRONACHE (28/09/2026): "buona manovra della
+    // squadra di Inzaghi" lo nomina ma non lo fa vedere. Solo una frase tra virgolette
+    var qDet = frase ? (frase[1] || frase[2]) : gio && gio.al ? "" : [gio ? gio.v : "", libero].join(" ").trim();
     // DENTRO UNA RACCOLTA si cerca fra le sue azioni, in pagina: il ponte non serve
     if (RACCOLTA) {
       CHIAVE_RIC = "";
@@ -2540,7 +2573,7 @@
   // chi clicca vuole vedere la giocata. Quando il secondo l'ha detto
   // l'inquadratura (palla in rete, parata, palo) si apre poco prima: per il gol
   // e l'assist sette secondi, il cross o il passaggio ci stanno dentro
-  var RINCORSA = { "gol squadra": 7, "gol subito": 7, "gol": 7, "assist": 7, "nel gol": 7, "autogol": 7, "tiro": 6, "tiro parato": 6, "parata": 6, "palo": 6, "passaggio chiave": 7 };
+  var RINCORSA = { "inquadrato": 1, "gol squadra": 7, "gol subito": 7, "gol": 7, "assist": 7, "nel gol": 7, "autogol": 7, "tiro": 6, "tiro parato": 6, "parata": 6, "palo": 6, "passaggio chiave": 7 };
   function apriA(x){
     // al secondo: dall'inquadratura o dal cronometro ESPN (letto sul cronometro della partita)
     if ((x.certezza !== "inquadratura" && x.certezza !== "espn") || x.t === undefined) return x.dentro;
@@ -2794,6 +2827,7 @@
     box.querySelectorAll("input[data-colcerca]").forEach(function(i){ i.addEventListener("input", function(){ COLONNA_CERCA[i.dataset.colcerca] = i.value; COLONNA_TUTTE[i.dataset.colcerca] = true; disegnaRisultati(); }); });
     box.querySelectorAll("[data-azzera]").forEach(function(b){ b.addEventListener("click", function(){ GETTONI = GETTONI.filter(function(y){ return y.t === "g"; }); disegnaGettoni(); disegnaRisultati(); aggiornaUrlRicerca(); }); });
     box.querySelectorAll("[data-rt]").forEach(function(b){ b.addEventListener("click", function(){ RIS_TAB = b.dataset.rt; disegnaRisultati(); }); });
+    box.querySelectorAll("[data-volti]").forEach(function(b){ b.addEventListener("click", function(){ b.disabled = true; voltiChiedi(b.dataset.volti, true); }); });
     box.querySelectorAll(".sg-ris [data-sg]").forEach(function(b){ b.addEventListener("click", function(){
       var v = b.dataset.sg.split("|"); cambiaFiltroGettone(v[0], v[1], v[2]); if (v[0] === "r" && scelti("r").length) RIS_TAB = "azioni";
     }); });
