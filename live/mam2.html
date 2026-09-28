@@ -2186,7 +2186,7 @@
   // I risultati cambiano forma: un giocatore porta in cima la sua scheda e le
   // sue giocate, una squadra o una competizione le partite. La riga "Affina"
   // aggiunge gettoni con un clic, e la ricerca intera sta nell'indirizzo.
-  var GETTONI = [], DIZ_G = null, DIZ_G_IN_CORSO = false, SUG = [], SUG_I = 0, SUG_K = 0, ORDINE_RIS = "pertinenza", QEV = "";
+  var GETTONI = [], DIZ_G = null, DIZ_A = [], DIZ_G_IN_CORSO = false, SUG = [], SUG_I = 0, SUG_K = 0, ORDINE_RIS = "pertinenza", QEV = "";
   var CHIAVE_RIC = "";
   var NOMI_TIPO_G = { g: "Giocatori", s: "Squadre", c: "Competizioni", r: "Giocate", st: "Stagioni", l: "Lingua" };
   var ETI_P = { secondo: "al secondo", minuto: "al minuto" }, ETI_D = { nas: "sulla NAS", arrivo: "in arrivo" };
@@ -2200,6 +2200,8 @@
     if (DIZ_G || DIZ_G_IN_CORSO) return; DIZ_G_IN_CORSO = true;
     post({ tipo:"clip-cerca-giocatori" }).then(function(j){
       DIZ_G = (j.g || []).map(function(x){ return { n: x[0], sq: x[1], k: x[2], p: piatto([x[0]].concat(x[3] || []).join(" ")), foto: x[4] || "" }; });
+      // GLI ALLENATORI (28/09/2026): chi era in panchina, dal ponte (le panchine con le date)
+      DIZ_A = (j.a || []).map(function(x){ return { n: x[0], sq: (x[1] || []).join(", "), k: x[2], p: piatto(x[0]), foto: x[3] || "" }; });
       DIZ_G_IN_CORSO = false; suggerisci();
     }).catch(function(){ DIZ_G_IN_CORSO = false; });
   }
@@ -2219,10 +2221,13 @@
     if (!ws.length || ws.join("").length < 2) return [];
     var out = [], n;
     if (DIZ_G) { n = 0; for (var i = 0; i < DIZ_G.length && n < 5; i++) { var g = DIZ_G[i]; if (prefissi(ws, g.p)) { out.push({ t: "g", v: g.n, eti: g.n, sq: g.sq, n: g.k, img: g.foto }); n++; } } }
+    // l'allenatore e' un gettone "g" come il giocatore (uno solo alla volta), con al:1
+    n = 0; for (var ia = 0; ia < DIZ_A.length && n < 3; ia++) { var a = DIZ_A[ia]; if (prefissi(ws, a.p)) { out.push({ t: "g", al: 1, v: a.n, eti: a.n, sq: a.sq, n: a.k, img: a.foto }); n++; } }
     n = 0; squadreNote().forEach(function(s){ if (n < 3 && prefissi(ws, piatto(s.nome))) { out.push({ t: "s", v: s.nome, eti: s.nome, img: s.stemma, n: s.n }); n++; } });
     n = 0; compNote().forEach(function(c){ if (n < 3 && prefissi(ws, piatto(c.nome))) { out.push({ t: "c", v: c.nome, eti: c.nome, n: c.n }); n++; } });
     var rs = {};
-    ORDINE_RUOLI.forEach(function(r){ if (prefissi(ws, piatto(r + " " + RUOLI[r].eti))) rs[r] = 1; });
+    var conAll = !!(gettone("g")[0] || {}).al, RUOLI_ALL = { "inquadrato": 1, "gol squadra": 1, "gol subito": 1, "citato": 1 };
+    ORDINE_RUOLI.forEach(function(r){ if ((conAll ? RUOLI_ALL[r] || r === "giallo" || r === "rosso" : !RUOLI_ALL[r]) && prefissi(ws, piatto(r + " " + RUOLI[r].eti))) rs[r] = 1; });
     if (ws.length === 1) Object.keys(RUOLO_SINONIMI).forEach(function(k){ if (k.indexOf(ws[0]) === 0) rs[RUOLO_SINONIMI[k]] = 1; });
     Object.keys(rs).slice(0, 4).forEach(function(r){ if (RUOLI[r]) out.push({ t: "r", v: r, eti: RUOLI[r].eti }); });
     n = 0; stagioniNote().forEach(function(s){ if (n < 3 && prefissi(ws, piatto(s.nome.replace("/", " ") + " " + s.nome.replace("/", "")))) { out.push({ t: "st", v: s.nome, eti: "Stagione " + s.nome, n: s.n }); n++; } });
@@ -2237,14 +2242,15 @@
   // trovate, ogni riquadro e' gia' un gettone).
   var SCHEDE_G = {}, SCHEDA_SEL = { nome: "", r: {}, c: {}, st: {} };
   var ORDINE_SCHEDA = [["gol", "Gol"], ["assist", "Assist"], ["tiro", "Tiri"], ["tiro parato", "Tiri parati"], ["palo", "Pali"], ["passaggio chiave", "Pass. chiave"],
-    ["parata", "Parate"], ["rigore sbagliato", "Rigori sbagliati"], ["autogol", "Autogol"], ["giallo", "Gialli"], ["rosso", "Rossi"], ["nel gol", "Nel gol"]];
-  function schedaDi(nome, squadra, poi){
+    ["parata", "Parate"], ["rigore sbagliato", "Rigori sbagliati"], ["autogol", "Autogol"], ["giallo", "Gialli"], ["rosso", "Rossi"], ["nel gol", "Nel gol"],
+    ["inquadrato", "Inquadrato"], ["gol squadra", "Gol fatti"], ["gol subito", "Gol subiti"], ["citato", "Nominato"]];
+  function schedaDi(nome, squadra, poi, al){
     // (se c'e' gia' non si richiama "poi": ridisegnerebbe, e ridisegnando si richiederebbe la scheda)
-    var k = nome + "|" + (squadra || "");
+    var k = nome + "|" + (squadra || "") + (al ? "|al" : "");
     if (SCHEDE_G[k] && SCHEDE_G[k] !== "…") return SCHEDE_G[k];
     if (SCHEDE_G[k] === "…") return null;
     SCHEDE_G[k] = "…";
-    post({ tipo:"clip-scheda-giocatore", nome: nome, squadra: squadra || "" }).then(function(j){ SCHEDE_G[k] = j; if (poi) poi(j); }).catch(function(){ delete SCHEDE_G[k]; });
+    post(al ? { tipo:"clip-scheda-allenatore", nome: nome } : { tipo:"clip-scheda-giocatore", nome: nome, squadra: squadra || "" }).then(function(j){ SCHEDE_G[k] = j; if (poi) poi(j); }).catch(function(){ delete SCHEDE_G[k]; });
     return null;
   }
   function stemmaSquadra(nome){
@@ -2259,7 +2265,7 @@
     var sel = function(t, v){ return modo === "ris" ? scelti(t).indexOf(v) >= 0 : !!(SCHEDA_SEL[t] || {})[v]; };
     var conta = modo === "ris" ? (contaAz || {}) : ((info && info.conta) || {});
     var h = '<div class="sg sg-modo-' + modo + '">' + foto + '<div class="sg-testa"><div class="sg-nome">' + esc(g.eti || g.v) + '</div>' +
-      '<div class="sg-sq">' + stemmaSquadra(g.sq) + esc(g.sq || "") + '</div>' +
+      '<div class="sg-sq">' + (g.al ? '<em>Allenatore</em> · ' : '') + stemmaSquadra(g.sq) + esc(g.sq || "") + '</div>' +
       (info ? '<div class="sg-riga"><b>' + info.partite + '</b> ' + (info.partite === 1 ? "partita" : "partite") + ' nell’archivio' +
         (info.inCasa ? ' · <b>' + info.inCasa + '</b> sulla NAS' : '') + (info.ultima ? ' · ultima: ' + esc(info.ultima.partita) + ' ' + quando(info.ultima.quando) : '') + '</div>' : '<div class="sg-riga">…</div>') +
       '</div>';
@@ -2267,7 +2273,7 @@
       var on = sel("r", r[0]), c = (RUOLI[r[0]] || {}).c || "#9AA7B8";
       return '<button type="button" class="sg-t' + (on ? " on" : "") + '" data-sg="r|' + r[0] + '|' + esc((RUOLI[r[0]] || {}).eti || r[1]) + '" aria-pressed="' + on + '" style="--c:' + c + '"><b>' + conta[r[0]] + '</b><span>' + r[1] + '</span></button>';
     }).join("");
-    h += '<div class="sg-tessere">' + (tessere || '<span class="sg-vuoto">' + (info ? "Nessuna giocata ESPN in archivio" : "") + '</span>') + '</div>';
+    h += '<div class="sg-tessere">' + (tessere || '<span class="sg-vuoto">' + (info ? (g.al ? "Nessun gol ESPN in archivio" : "Nessuna giocata ESPN in archivio") : "") + '</span>') + '</div>';
     if (info && info.competizioni && info.competizioni.length) {
       h += '<div class="sg-gruppo"><i>Competizioni</i>' + info.competizioni.slice(0, 6).map(function(x){
         var on = sel("c", x.k);
@@ -2298,7 +2304,8 @@
     SUG_I = Math.min(SUG_I, SUG.length - 1);
     var ultimo = "";
     var lista = SUG.map(function(x, i){
-      var testa = x.t !== ultimo ? '<h5>' + NOMI_TIPO_G[x.t] + '</h5>' : ""; ultimo = x.t;
+      var tipo = x.t + (x.al ? "a" : "");
+      var testa = tipo !== ultimo ? '<h5>' + (x.al ? "Allenatori" : NOMI_TIPO_G[x.t]) + '</h5>' : ""; ultimo = tipo;
       return testa + '<a data-sug="' + i + '" class="' + (i === SUG_I ? "on" : "") + '">' + iconaGettone(x) + '<span>' + esc(x.eti) + (x.sq ? ' <em>' + esc(x.sq) + '</em>' : '') + '</span>' +
         (x.n ? '<small>' + x.n + (x.n === 1 ? " partita" : " partite") + '</small>' : '') + '</a>';
     }).join("");
@@ -2306,7 +2313,7 @@
     var g = SUG[SUG_I], card = "";
     if (g && g.t === "g") {
       if (SCHEDA_SEL.nome !== g.v + "|" + g.sq) SCHEDA_SEL = { nome: g.v + "|" + g.sq, r: {}, c: {}, st: {} };
-      var info = schedaDi(g.v, g.sq, function(){ if (SUG[SUG_I] === g) suggerisci(); });
+      var info = schedaDi(g.v, g.sq, function(){ if (SUG[SUG_I] === g) suggerisci(); }, g.al);
       card = schedaCardHtml(g, info, "sugg");
     }
     box.innerHTML = '<div class="sg-lista">' + lista + '</div>' + (card ? '<div class="sg-lato">' + card + '</div>' : '');
@@ -2330,7 +2337,7 @@
     // "o": Serie A o Coppa Italia, Gol o Assist (il pannello filtri, 26/09/2026)
     if (x.t === "g") GETTONI = GETTONI.filter(function(y){ return y.t !== "g"; });
     else if (GETTONI.some(function(y){ return y.t === x.t && y.v === x.v; })) return;
-    GETTONI.push({ t: x.t, v: x.v, eti: x.eti, sq: x.sq || "", img: x.img || "" });
+    GETTONI.push({ t: x.t, v: x.v, eti: x.eti, sq: x.sq || "", img: x.img || "", al: x.al ? 1 : 0 });
   }
   function scegliSuggerimento(i){
     var x = SUG[i]; if (!x) return;
@@ -2347,7 +2354,7 @@
     if (x.t === "g") {
       resto = resto.filter(function(w){
         var p = piatto(w);
-        if (RUOLO_SINONIMI[p] && RUOLI[RUOLO_SINONIMI[p]]) { var r = RUOLO_SINONIMI[p]; aggiungiGettone({ t: "r", v: r, eti: RUOLI[r].eti }); return false; }
+        if (RUOLO_SINONIMI[p] && RUOLI[RUOLO_SINONIMI[p]]) { var r = RUOLO_SINONIMI[p]; if (x.al && r === "gol") r = "gol squadra"; aggiungiGettone({ t: "r", v: r, eti: RUOLI[r].eti }); return false; }
         return !FERMA.has(p);
       });
     }
@@ -2378,11 +2385,11 @@
     var pezzi = [];
     if (RACCOLTA) pezzi.push("rac=" + encodeURIComponent(RACCOLTA.id));
     if (Q) pezzi.push("q=" + encodeURIComponent(Q));
-    if (GETTONI.length) pezzi.push("f=" + encodeURIComponent(JSON.stringify(GETTONI.map(function(x){ return [x.t, x.v, x.eti, x.sq || "", x.img || ""]; }))));
+    if (GETTONI.length) pezzi.push("f=" + encodeURIComponent(JSON.stringify(GETTONI.map(function(x){ return x.al ? [x.t, x.v, x.eti, x.sq || "", x.img || "", 1] : [x.t, x.v, x.eti, x.sq || "", x.img || ""]; }))));
     try { history.replaceState(null, "", "mam2.html" + (pezzi.length ? "?" + pezzi.join("&") : "")); } catch (e) {}
   }
   function gettoniDaUrl(f){
-    try { GETTONI = (JSON.parse(f) || []).map(function(x){ return { t: x[0], v: x[1], eti: x[2] || x[1], sq: x[3] || "", img: x[4] || "" }; }).filter(function(x){ return NOMI_TIPO_G[x.t] || x.t === "p" || x.t === "d"; }); } catch (e) { GETTONI = []; }
+    try { GETTONI = (JSON.parse(f) || []).map(function(x){ return { t: x[0], v: x[1], eti: x[2] || x[1], sq: x[3] || "", img: x[4] || "", al: x[5] ? 1 : 0 }; }).filter(function(x){ return NOMI_TIPO_G[x.t] || x.t === "p" || x.t === "d"; }); } catch (e) { GETTONI = []; }
     disegnaGettoni();
   }
   (function(){
@@ -2434,7 +2441,9 @@
     var frase = /"([^"]{2,})"|“([^”]{2,})”/.exec(Q);
     var libero = Q.replace(/"[^"]*"?|“[^”]*”?/g, " ").replace(/\s+/g, " ").trim();
     var qAz = frase ? "" : [gio ? gio.v : "", libero].join(" ").trim();
-    var qDet = frase ? (frase[1] || frase[2]) : [gio ? gio.v : "", libero].join(" ").trim();
+    // dell'allenatore i telecronisti dicono il cognome ("Inzaghi"); le frasi si
+    // tengono poi solo nelle sue partite (Filippo Inzaghi allena il Palermo)
+    var qDet = frase ? (frase[1] || frase[2]) : [gio ? (gio.al ? gio.v.split(/\s+/).pop() : gio.v) : "", libero].join(" ").trim();
     // DENTRO UNA RACCOLTA si cerca fra le sue azioni, in pagina: il ponte non serve
     if (RACCOLTA) {
       CHIAVE_RIC = "";
@@ -2442,7 +2451,7 @@
       RIS.azioni = RACCOLTA.azioni.filter(function(x){ var t = piatto([x.titolo, x.giocatore, x.partita, x.tipo, x.ruolo].join(" ")); return parole.every(function(w){ return t.indexOf(w) >= 0; }); });
       RIS.dette = []; RIS.scheda = null; disegnaRisultati(); return;
     }
-    var chiave = JSON.stringify([qAz, qDet, gio ? gio.sq : ""]);
+    var chiave = JSON.stringify([qAz, qDet, gio ? gio.sq : "", gio && gio.al ? 1 : 0]);
     // la stessa domanda al ponte (e' cambiato solo un gettone che si filtra in pagina): si ridisegna e basta
     if (chiave === CHIAVE_RIC) { disegnaRisultati(); return; }
     CHIAVE_RIC = chiave;
@@ -2455,7 +2464,7 @@
       // domanda per non ripeterla, e se la prima cadeva (il ponte che si
       // riavvia) non la rifaceva piu' — risultati vuoti qualunque cosa si toccasse
       var riprova = function(){ if (CHIAVE_RIC !== chiave) return; CHIAVE_RIC = ""; setTimeout(function(){ if (!CHIAVE_RIC) cerca(el("cercaLib").value); }, 3000); };
-      if (qAz.length >= 3) post({ tipo:"clip-tabellino-cerca", q: qAz, quante: 500, giocatore: gio ? gio.v : "", squadra: gio ? gio.sq : "" }).then(function(j){ if (CHIAVE_RIC !== chiave) return; if (!j || j.ok === false) return riprova(); RIS.azioni = j.righe || []; RIS.scheda = j.scheda || null; disegnaRisultati(); }).catch(riprova);
+      if (qAz.length >= 3) post(gio && gio.al ? { tipo:"clip-tabellino-cerca", q: qAz, quante: 1000, allenatore: gio.v } : { tipo:"clip-tabellino-cerca", q: qAz, quante: 500, giocatore: gio ? gio.v : "", squadra: gio ? gio.sq : "" }).then(function(j){ if (CHIAVE_RIC !== chiave) return; if (!j || j.ok === false) return riprova(); RIS.azioni = j.righe || []; RIS.scheda = j.scheda || null; disegnaRisultati(); }).catch(riprova);
       if (qDet.length >= 3) post({ tipo:"clip-parlato-cerca", q: qDet, quante: 300 }).then(function(j){ if (CHIAVE_RIC !== chiave) return; RIS.dette = j.righe || []; disegnaRisultati(); }).catch(function(){});
     }, 300);
   }
@@ -2469,9 +2478,12 @@
     "palo": { eti: "Palo", cl: "occ", c: "#5AA7E8" }, "passaggio chiave": { eti: "Pass. chiave", cl: "occ", c: "#5AA7E8" },
     "parata": { eti: "Parata", cl: "occ", c: "#5AA7E8" }, "rigore parato": { eti: "Rigore parato", cl: "occ", c: "#5AA7E8" },
     "rigore sbagliato": { eti: "Rigore sbagliato", cl: "altro", c: "#F5F1E6" },
-    "giallo": { eti: "Giallo", cl: "giallo", c: "#FCD34D" }, "rosso": { eti: "Rosso", cl: "rosso", c: "#E51B20" }
+    "giallo": { eti: "Giallo", cl: "giallo", c: "#FCD34D" }, "rosso": { eti: "Rosso", cl: "rosso", c: "#E51B20" },
+    // i ruoli dell'allenatore: i gol della sua squadra, quelli subiti, le righe che lo nominano
+    "gol squadra": { eti: "Gol fatto", cl: "", c: "#C9A24B" }, "gol subito": { eti: "Gol subito", cl: "altro", c: "#E8A0A0" },
+    "inquadrato": { eti: "Inquadrato", cl: "assist", c: "#6EE7A8" }, "citato": { eti: "Nominato", cl: "altro", c: "#9AA7B8" }
   };
-  var ORDINE_RUOLI = ["gol", "assist", "nel gol", "tiro", "tiro parato", "palo", "passaggio chiave", "parata", "rigore parato", "rigore sbagliato", "autogol", "giallo", "rosso"];
+  var ORDINE_RUOLI = ["gol", "assist", "nel gol", "tiro", "tiro parato", "palo", "passaggio chiave", "parata", "rigore parato", "rigore sbagliato", "autogol", "giallo", "rosso", "inquadrato", "gol squadra", "gol subito", "citato"];
   function tipoAzione(x){
     if (x.ruolo && RUOLI[x.ruolo]) return RUOLI[x.ruolo];
     var t = String((x.tag || x.tipo || "") + " " + (x.titolo || "")).toLowerCase();
@@ -2528,7 +2540,7 @@
   // chi clicca vuole vedere la giocata. Quando il secondo l'ha detto
   // l'inquadratura (palla in rete, parata, palo) si apre poco prima: per il gol
   // e l'assist sette secondi, il cross o il passaggio ci stanno dentro
-  var RINCORSA = { "gol": 7, "assist": 7, "nel gol": 7, "autogol": 7, "tiro": 6, "tiro parato": 6, "parata": 6, "palo": 6, "passaggio chiave": 7 };
+  var RINCORSA = { "gol squadra": 7, "gol subito": 7, "gol": 7, "assist": 7, "nel gol": 7, "autogol": 7, "tiro": 6, "tiro parato": 6, "parata": 6, "palo": 6, "passaggio chiave": 7 };
   function apriA(x){
     // al secondo: dall'inquadratura o dal cronometro ESPN (letto sul cronometro della partita)
     if ((x.certezza !== "inquadratura" && x.certezza !== "espn") || x.t === undefined) return x.dentro;
@@ -2622,7 +2634,7 @@
       return true;
     });
     var azioni = rls.length ? tutteAz.filter(function(x){ return rls.indexOf(x.ruolo) >= 0; }) : tutteAz.slice();
-    var dette = RIS.dette.filter(function(x){ return metaOk(evDi(x), x.titolo); });
+    var dette = RIS.dette.filter(function(x){ return metaOk(evDi(x), x.titolo) && !(gio && gio.al && rosa && !rosa.has(x.rec)); });
     return { partite: partite, tutteAz: tutteAz, azioni: azioni, dette: dette, gio: gio, frase: frase, q: q, evDi: evDi };
   }
   var ARCH1907 = { q: "", n: 0, clip: [] }, ARCH1907_CHIESTA = "";
@@ -2749,7 +2761,7 @@
     if (PANNELLO_APERTO) h += pannelloHtml();
     if (gio) {
       var contaAz = {}; F.tutteAz.forEach(function(x){ if (x.ruolo) contaAz[x.ruolo] = (contaAz[x.ruolo] || 0) + 1; });
-      var infoG = schedaDi(gio.v, gio.sq, function(){ if (gettone("g")[0] === gio) disegnaRisultati(); });
+      var infoG = schedaDi(gio.v, gio.sq, function(){ if (gettone("g")[0] === gio) disegnaRisultati(); }, gio.al);
       h += '<div class="sg-ris">' + schedaCardHtml(gio, infoG, "ris", contaAz) + '</div>';
     }
     lista.forEach(function(g){

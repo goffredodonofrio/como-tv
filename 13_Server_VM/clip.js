@@ -15165,6 +15165,106 @@ function ruoloDi(x, rec, chi, giocate) {
   const r = ruoloDalTesto(x, chi);
   return { ruolo: r, da: r ? "testo" : "" };
 }
+// ══════════ GLI ALLENATORI NELLA RICERCA (28/09/2026) ══════════
+//  Goffredo: "metti che devo fare una macchia su Simone Inzaghi", poi "estendi
+//  a tutti gli allenatori". ESPN non dice chi siede in panchina e
+//  allenatori.json sa solo chi c'e' oggi: le Como-Inter del 2025/26 non sono
+//  di Inzaghi (c'era gia' Chivu), le quaranta dell'Al Hilal si'. Quindi le
+//  panchine CON LE DATE, dalle pagine di stagione di Wikipedia (Personnel e
+//  Managerial changes, vedi allenatori-storia.py): allenatori-storia.json,
+//  periodi [allenatore, squadra ESPN, dal, al, adInterim, paese]. Il paese
+//  separa le omonime: il Liverpool inglese e quello uruguaiano.
+function fileStoriaAllenatori() { return path.join(DIR, "..", "allenatori-storia.json"); }
+const PAESE_LEGA = { ita: "ITA", ksa: "KSA", eng: "ENG", arg: "ARG", aut: "AUT", ger: "GER", ned: "NED", sco: "SCO", fra: "FRA", por: "POR", gre: "GRE" };
+const PAESI_SUDAM = new Set(["ARG", "BRA", "COL", "CHI", "ECU", "PAR", "URU", "PER", "BOL", "VEN"]);
+function panchine() {
+  let mt = 0; try { mt = fs.statSync(fileStoriaAllenatori()).mtimeMs; } catch (e) { return null; }
+  const c = global.__PANCHINE; if (c && c.mt === mt && Date.now() - c.quando < 3600000) return c;
+  let d = {}; try { d = JSON.parse(fs.readFileSync(fileStoriaAllenatori(), "utf8")); } catch (e) { return null; }
+  const perSq = {};
+  (d.periodi || []).forEach((p) => { (perSq[p[1]] || (perSq[p[1]] = [])).push(p); });
+  const x = { mt, quando: Date.now(), perSq, perRec: {}, generato: d.generato || "" };
+  global.__PANCHINE = x; return x;
+}
+// chi allenava le due squadre di questa partita, quel giorno: { squadra: [allenatore, adInterim] }
+function allenatoriDi(rec) {
+  const pc = panchine(); if (!pc) return null;
+  if (pc.perRec[rec] !== undefined) return pc.perRec[rec];
+  const e = ESPN[rec]; let esito = null;
+  if (e && e.squadre && e.quando) {
+    const g = String(e.quando).slice(0, 10), pre = String(e.lega || "").split(".")[0];
+    const paeseOk = (p) => !e.lega ? true : pre === "conmebol" ? PAESI_SUDAM.has(p) : PAESE_LEGA[pre] === p;
+    e.squadre.forEach((sq) => {
+      const p = (pc.perSq[sq] || []).find((z) => paeseOk(z[5]) && z[2] <= g && g <= z[3]);
+      if (p) (esito || (esito = {}))[sq] = [p[0], !!p[4]];
+    });
+  }
+  pc.perRec[rec] = esito; return esito;
+}
+// le partite dell'archivio con lui in panchina: rec -> la sua squadra
+function panchineDi(nome) {
+  const esatto = nomeParole(nome).join(" "), suoi = {};
+  if (!esatto) return suoi;
+  Object.keys(ARCHIVIO).forEach((rec) => {
+    const al = allenatoriDi(rec); if (!al) return;
+    const sq = Object.keys(al).find((k) => nomeParole(al[k][0]).join(" ") === esatto);
+    if (sq) suoi[rec] = sq;
+  });
+  return suoi;
+}
+// di chi e' un gol: la squadra scritta sulla riga, se no quella del gol ESPN
+// di quel minuto (per ESPN l'autogol sta gia' con chi lo riceve a favore)
+function squadraDelGol(x, rec) {
+  const e = ESPN[rec] || {}, sq = e.squadre || [];
+  if (x.squadra) { const k = sq.find((s) => piattaMinuscola(s) === piattaMinuscola(x.squadra)); if (k) return k; }
+  // gli appunti la scrivono spesso tra parentesi: "GOL 2-0 MALCOM (AL HILAL)"
+  const t = " " + nomeParole(x.titolo).join(" ") + " ";
+  const dette = sq.filter((s) => { const w = nomeParole(s).join(" "); return w && t.indexOf(" " + w + " ") >= 0; });
+  if (dette.length === 1) return dette[0];
+  const m = minutoRiga(x); if (!m) return "";
+  // "45'" negli appunti e' il 45'+3 di ESPN: vale anche il minuto senza recupero
+  const g = (e.eventi || []).filter((y) => /goal|penalty - scored/i.test(y.tipo || "") && !/disallow|cancel|no goal/i.test(y.tipo || ""))
+    .map((y) => ({ y, d: Math.min(Math.abs((y.min || 0) + (y.stopp || 0) - m.min), Math.abs((y.min || 0) - m.min)) })).filter((z) => z.d <= 2).sort((u, v) => u.d - v.d)[0];
+  return g ? g.y.squadra || "" : "";
+}
+// "GOL DIVORATO", "POI ANNULLATO CON IL VAR": per l'allenatore non sono gol
+const GOL_FINTO = /\b(divorat|mangiat|sfiorat|mancat|sbagliat|annullat|cancellat)/i;
+// LE AZIONI DI UN ALLENATORE, solo nelle partite con lui in panchina: i gol
+// della sua squadra e quelli subiti (li' la regia va su di lui), e le righe
+// che lo nominano: "Inquadrato Simone Inzaghi" (i giornalisti lo segnano
+// negli appunti), ammonito, espulso. Con altre parole
+// nella domanda ("Inzaghi rigore") valgono quelle, sempre nelle sue partite.
+// Il solo cognome non basta: Filippo Inzaghi allena il Palermo.
+function cercaAllenatore(p, tipi, parole, per, finti) {
+  const nome = String(p.allenatore), chiN = nomeParole(nome), cognome = chiN[chiN.length - 1] || "";
+  const suoi = panchineDi(nome), altre = parole.filter((w) => chiN.indexOf(w) < 0), fuori = [];
+  Object.keys(per).forEach((k) => {
+    const r = R.reg[k] || finti[k]; if (!r) return;
+    const recR = (r.arch && r.arch.rec) || r.evento || "", sua = suoi[recR]; if (!sua) return;
+    per[k].forEach((x) => {
+      const cat = categoriaRiga(x);
+      let ruolo = "";
+      if (cat === "gol" && !GOL_FINTO.test(String(x.titolo || ""))) { const sq = squadraDelGol(x, recR); ruolo = !sq ? "gol" : sq === sua ? "gol squadra" : "gol subito"; }
+      else if (nomeParole([x.titolo, x.giocatore, x.dettaglio].join(" ")).indexOf(cognome) >= 0) ruolo = cat === "giallo" || cat === "rosso" ? cat : /inquadrat/i.test(String(x.titolo || "") + " " + String(x.dettaglio || "")) ? "inquadrato" : "citato";
+      if (altre.length) { if (!combaciaRiga(x, r.titolo, tipi, altre)) return; }
+      else {
+        if (!ruolo) return;
+        if (tipi.length && !combaciaRiga(x, r.titolo, tipi, [])) return;
+      }
+      let chiave = x.chiave || "", dentroFile = x.dentroFile !== undefined ? x.dentroFile : x.dentro;
+      if (r.arch && !r.finto) { const pa = pezzoAl(r, x.dentro); if (pa && pa.pezzo && pa.pezzo.chiave) { chiave = pa.pezzo.chiave; dentroFile = pa.dentro; } else chiave = r.arch.chiave || ""; }
+      fuori.push({ reg: r.finto ? "" : k, partita: r.titolo || k, rec: recR, t: x.t, dentro: x.dentro, fuori: x.fuori, s3: !!(r.arch && magazzinoInventario(r.arch.bucket) && !inCasaReg(r)),
+                   tipo: x.tipo, tag: x.tag, titolo: x.titolo, minuto: x.minuto, fonte: x.fonte, fonti: x.fonti, squadra: x.squadra, giocatore: x.giocatore,
+                   gol: x.gol, certezza: x.certezza, chiave, dentroFile, quando: r.finita || r.avviata || 0, ruolo, ruoloDa: ruolo ? "allenatore" : "", rating: x.rating || 0, boato: x.boato || 0 });
+    });
+  });
+  // prima dove i giornalisti hanno scritto "inquadrato Inzaghi": e' l'immagine che si cerca
+  const PESO = { inquadrato: 3, "gol squadra": 2, "gol subito": 1 };
+  fuori.sort((u, v) => (PESO[v.ruolo] || 0) - (PESO[u.ruolo] || 0) || String(v.quando).localeCompare(String(u.quando)) || u.t - v.t);
+  const inRosa = Object.keys(suoi);
+  return { ok: true, righe: fuori.slice(0, num(p.quante, 1, 2000, 500)), totale: fuori.length, partite: new Set(fuori.map((x) => x.reg || x.rec)).size, tipi: tipi.length, parole,
+           scheda: { allenatore: true, nome, chi: chiN, inRosa } };
+}
 // LA SCHEDA DEL GIOCATORE: le sue giocate ESPN nelle partite dell'archivio,
 // una volta per gara (ITA, ENG e AUDIO sono la stessa partita)
 function schedaGiocatore(parole, cache) {
@@ -15635,7 +15735,25 @@ const AZIONI = {
     };
     const g = Array.from(per.values()).map((x) => [x.n, x.sq, x.partite.size, Array.from(x.alias), fotoDi(x.n, x.sq)])
       .sort((u, v) => v[2] - u[2]);
-    const esito = { ok: true, g };
+    // GLI ALLENATORI (28/09/2026): chi era in panchina, partita per partita;
+    // la foto e' quella della squadra che allena oggi (foto-premium-coach-<squadra>)
+    const allen = new Map();
+    Object.keys(ARCHIVIO).forEach((rec) => {
+      const al = allenatoriDi(rec); if (!al) return; const e = ESPN[rec] || {};
+      Object.keys(al).forEach((sq) => {
+        const n = al[sq][0], x = allen.get(n) || { n, sq: {}, partite: new Set() };
+        x.partite.add(e.id || rec); x.sq[sq] = (x.sq[sq] || 0) + 1; allen.set(n, x);
+      });
+    });
+    const slugSq = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const fotoAll = {};
+    try { const al = JSON.parse(fs.readFileSync(fileAllenatori(), "utf8")).perId || {};
+      Object.keys(al).forEach((id) => { const x = al[id]; if (!x || !x.squadra) return;
+        const f = "foto-premium-coach-" + slugSq(x.squadra) + ".png";
+        if (fileFoto.has(f)) fotoAll[nomeParole(((x.nome || "") + " " + (x.cognome || "")).trim()).join(" ")] = f; }); } catch (e) {}
+    const a = Array.from(allen.values()).map((x) => [x.n, Object.keys(x.sq).sort((u, v) => x.sq[v] - x.sq[u]), x.partite.size, fotoAll[nomeParole(x.n).join(" ")] || ""])
+      .sort((u, v) => v[2] - u[2]);
+    const esito = { ok: true, g, a };
     global.__DIZ_GIOCATORI = { quando: Date.now(), esito };
     return esito;
   },
@@ -15675,6 +15793,47 @@ const AZIONI = {
                     ultima: ultime[0] ? { partita: (ARCHIVIO[ultime[0].rec] || {}).partita || "", quando: ultime[0].quando } : null,
                     rec: ultime.map((x) => x.rec) };
     mem.set(kMem, { quando: Date.now(), esito });
+    return esito;
+  },
+  // LA SCHEDA DELL'ALLENATORE: come quella del giocatore, ma le partite sono
+  // quelle con lui in panchina e i numeri sono i gol fatti e subiti (le
+  // immagini che servono per un pezzo su un allenatore: le esultanze, le facce)
+  "clip-scheda-allenatore": (p) => {
+    const nome = String(p.nome || "").trim(); if (!nome) return { ok: false, errore: "manca il nome" };
+    const mem = global.__SCHEDE_A || (global.__SCHEDE_A = new Map());
+    const c0 = mem.get(nome); if (c0 && Date.now() - c0.quando < 600000) return c0.esito;
+    const suoi = panchineDi(nome), gare = new Map(), conta = {}, periodi = {}, cognome = nomeParole(nome).slice(-1)[0] || "";
+    Object.keys(suoi).forEach((rec) => {
+      const e = ESPN[rec] || {}, a = ARCHIVIO[rec], sq = suoi[rec], id = e.id || rec;
+      if (!gare.has(id)) (e.eventi || []).forEach((y) => {
+        if (!/goal|penalty - scored/i.test(y.tipo || "") || /disallow|cancel|no goal/i.test(y.tipo || "")) return;
+        const r = y.squadra === sq ? "gol squadra" : "gol subito"; conta[r] = (conta[r] || 0) + 1;
+      });
+      if (!gare.has(id)) ((APPUNTI[rec] || {}).righe || []).forEach((y) => {
+        if (/inquadrat/i.test(y.x || "") && nomeParole(y.x).indexOf(cognome) >= 0) conta.inquadrato = (conta.inquadrato || 0) + 1;
+      });
+      const x = gare.get(id) || { rec, sq, comp: "", quando: a.quando || e.quando || "", casa: false };
+      if (!x.comp) { try { x.comp = competizioneVista(a, rec) || a.competizione || ""; } catch (z) { x.comp = a.competizione || ""; } }
+      const voto = (r) => { const b = ARCHIVIO[r] || {}; return (inCasa(b) ? 0 : 4) + (/\baudio\b/i.test(b.partita || "") ? 2 : /\beng\b/i.test(b.partita || "") ? 1 : 0); };
+      if (inCasa(a)) x.casa = true;
+      if (voto(rec) < voto(x.rec)) x.rec = rec;
+      gare.set(id, x);
+    });
+    const pc = panchine(), chi = nomeParole(nome).join(" ");
+    if (pc) Object.keys(pc.perSq).forEach((sq) => pc.perSq[sq].forEach((z) => {
+      if (nomeParole(z[0]).join(" ") !== chi) return;
+      const v = periodi[sq] || (periodi[sq] = { dal: z[2], al: z[3] });
+      if (z[2] < v.dal) v.dal = z[2]; if (z[3] > v.al) v.al = z[3];
+    }));
+    const stagione = (q) => { const d = new Date(q); if (!q || isNaN(d)) return ""; const y = d.getFullYear() - (d.getMonth() < 6 ? 1 : 0); return y + "/" + String((y + 1) % 100).padStart(2, "0"); };
+    const contaDi = (fn) => { const m = {}; gare.forEach((x) => { const k = fn(x); if (k) m[k] = (m[k] || 0) + 1; }); return Object.keys(m).map((k) => ({ k, n: m[k] })).sort((u, v) => v.n - u.n); };
+    const ultime = Array.from(gare.values()).sort((u, v) => String(v.quando).localeCompare(String(u.quando)));
+    const esito = { ok: true, nome, allenatore: true, conta, partite: gare.size, inCasa: ultime.filter((x) => x.casa).length,
+                    competizioni: contaDi((x) => x.comp), stagioni: contaDi((x) => stagione(x.quando)),
+                    squadre: contaDi((x) => x.sq).map((x) => Object.assign(x, periodi[x.k] || {})),
+                    ultima: ultime[0] ? { partita: (ARCHIVIO[ultime[0].rec] || {}).partita || "", quando: ultime[0].quando } : null,
+                    rec: ultime.map((x) => x.rec) };
+    mem.set(nome, { quando: Date.now(), esito });
     return esito;
   },
   // PROVA: dove metterebbe il momento delle giocate ESPN di un giocatore (non salva niente)
@@ -16117,6 +16276,7 @@ const AZIONI = {
     if (!global.__TAB_CACHE) await (CERCA_CACHE_IN_CORSO || (CERCA_CACHE_IN_CORSO = costruisciCercaCache().finally(() => { CERCA_CACHE_IN_CORSO = null; })));
     else if (ora - global.__TAB_CACHE.quando > 60000 && !CERCA_CACHE_IN_CORSO) CERCA_CACHE_IN_CORSO = costruisciCercaCache().catch(() => {}).finally(() => { CERCA_CACHE_IN_CORSO = null; });
     const per = global.__TAB_CACHE.per, finti = global.__TAB_CACHE.finti || {}, fuori = [];
+    if (p.allenatore) return cercaAllenatore(p, tipi, parole, per, finti);
     // IL GIOCATORE DEL GETTONE (nome esatto + squadra): le partite dove ESPN ha
     // le rose e lui non c'e' non sono sue, anche se il nome ci somiglia
     const gEsatto = p.giocatore ? nomeParole(String(p.giocatore)).join(" ") : "", gSq = piattaMinuscola(String(p.squadra || ""));
