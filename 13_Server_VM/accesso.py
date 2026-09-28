@@ -236,101 +236,206 @@ __ERRORE__
 </main><script>if(location.hash){var a=document.getElementById("vai");a.href+=encodeURIComponent(location.hash);var t=document.getElementById("tornaTec");t.value+=location.hash;}</script></body></html>"""
 
 
-def azione_di(percorso, stato):
-    """dalla riga di nginx a un'azione che si legge: None = rumore (miniature, indice)"""
-    p = urllib.parse.unquote(percorso.split("?", 1)[0])
-    if "/mam-1907/mini/" in p or "/mam-1907/provino/" in p or "/mam-1907/indice/" in p: return None
-    if p.endswith("/live/mam-1907.html"): return ("apre la pagina", "MAM Como 1907")
-    if "/presenze/" in p and p.endswith(".html"): return ("apre il foglio presenze", p.rsplit("/", 1)[-1].replace(".html", ""))
-    if p.endswith("/foglio-presenze.html"): return ("apre l'elenco presenze", "")
-    if "/mam-1907/file/" in p: return ("guarda / scarica l'originale", p.split("/mam-1907/file/", 1)[1])
-    if "/mam-1907/copie/" in p: return ("guarda la copia leggera", p.rsplit("/", 1)[-1])
-    if p.endswith("/mam-1907/copia"):
-        v = urllib.parse.parse_qs(percorso.split("?", 1)[1] if "?" in percorso else "").get("v", [""])[0]
-        return ("chiede la copia leggera", v) if "fai=1" in percorso else None
-    return ("apre", p)
+# ── IL REGISTRO PER PERSONA (Goffredo, 28/09/2026: "cosi' e' una lista unica e non mi
+#    piace; prima nome e cognome poi la mail, e la durata della sessione"). Dalle righe di
+#    nginx e dagli accessi si fanno le SESSIONI di ogni persona (dall'entrata all'ultima
+#    cosa fatta, o all'uscita; una pausa di piu' di mezz'ora ne apre un'altra) e per ogni
+#    sessione COSA HA FATTO in parole: le pagine aperte e le azioni, contate. Miniature,
+#    copertine e indici non contano: sono la pagina che si carica, non una scelta.
+NOMI_PAGINE = {
+    "index.html": "Home", "live/mam2.html": "MAM", "live/mam2.html?raccolte=1": "Raccolte / Macchie", "live/mam2.html?live=1": "MAM Live",
+    "live/mam2.html?montaggio=1": "Editing", "live/mam2.html?ambito=1907": "Editing 1907", "live/mam-1907.html": "MAM Como 1907",
+    "live/magazzino.html": "Magazzino", "live/classifiche.html": "Catalogo grafiche", "live/redazione.html": "Controllo redazione",
+    "live/regia.html": "Regia", "live/telecronaca.html": "Telecronaca", "guida/index.html": "Guida", "guida/en.html": "Guida (EN)",
+    "guida/palestra.html": "Palestra", "guida/palestra-en.html": "Palestra (EN)", "1. contratti & hr/foglio-presenze.html": "Presenze dipendenti",
+    "10_look&feel/como tv ott design/generatore.html": "Grafiche statiche", "uefa-club-channel.html": "UEFA Club Channel",
+}
+PAUSA = 1800
 
 
-def registro(quante=4000):
-    """accessi del servizio + righe del cancello di nginx; le richieste a pezzi dello
-    stesso video (206) nello stesso quarto d'ora diventano una riga sola"""
-    voci = []
+def nome_di(email, dip=None):
+    email = (email or "").lower()
+    if email in locali(): return email + " (accesso tecnico)"
+    for v in (dip or {}).values():
+        if (v.get("email") or "").lower() == email: return v.get("nome") or email
+    parti = email.split("@")[0].replace("_", ".").split(".")
+    return " ".join(x[:1].upper() + x[1:] for x in parti if x) or email
+
+
+def azione_di(metodo, percorso):
+    """una riga di nginx -> (voce, dettaglio) in parole; None = rumore"""
+    p, _, q = urllib.parse.unquote(percorso).partition("?")
+    rel = p
+    for pre in ("/como-tv-dev/", "/como-tv/", "/"):
+        if p.startswith(pre): rel = p[len(pre):]; break
+    dev = " (dev)" if p.startswith("/como-tv-dev/") else ""
+    if rel.startswith("api"): return ("lavora nel MAM" + dev, "") if metodo == "POST" else None
+    if rel.startswith("mam-1907/file/"): return ("guarda o scarica un originale del 1907", rel.split("/", 2)[2])
+    if rel.startswith("mam-1907/copie/"): return ("guarda una copia leggera del 1907", "")
+    if rel == "mam-1907/copia": return ("chiede una copia leggera", urllib.parse.parse_qs(q).get("v", [""])[0]) if "fai=1" in q else None
+    if rel.startswith("mam-1907/volti"): return ("lavora ai volti del 1907", "") if metodo == "POST" else None
+    if rel.startswith("mam-1907/"): return None
+    if metodo != "GET" or not (rel == "" or rel.endswith(".html")): return None
+    k = (rel or "index.html").lower()
+    if k.endswith("live/mam2.html"):
+        for x in ("ambito=1907", "raccolte=1", "live=1", "montaggio=1"):
+            if x in q: k = k + "?" + x; break
+    if k.startswith("1. contratti & hr/presenze/"): return ("apre il foglio presenze", k.rsplit("/", 1)[-1].replace(".html", ""))
+    nome = NOMI_PAGINE.get(k) or k.rsplit("/", 1)[-1].replace(".html", "").replace("-", " ").capitalize()
+    return ("apre " + nome + dev, "")
+
+
+def registro(giorni=21):
+    """{persone: [...], rifiuti: [...]} degli ultimi giorni"""
+    da = time.time() - giorni * 86400
+    eventi = []                      # (t, chi, voce, dettaglio, ip, tipo)
+    rifiuti = []
     try:
-        for r in open(REGISTRO).read().splitlines()[-quante:]:
-            d = json.loads(r)
-            voci.append({"q": d["quando"], "chi": d.get("chi") or "", "az": {"entra": "entra", "esce": "esce", "rifiutato": "accesso rifiutato"}.get(d["evento"], d["evento"]), "cosa": d.get("foglio", ""), "ip": d.get("ip", "")})
+        for r in open(REGISTRO).read().splitlines():
+            d = json.loads(r); t = time.mktime(time.strptime(d["quando"], "%Y-%m-%dT%H:%M:%S"))
+            if t < da: continue
+            ev, chi = d.get("evento", ""), (d.get("chi") or "").lower()
+            if "rifiutat" in ev or "bloccat" in ev:
+                rifiuti.append({"q": d["quando"], "chi": chi, "az": ev, "ip": d.get("ip", "")}); continue
+            tipo = "entra" if ev.startswith("entra") else "esce" if ev == "esce" else "evento"
+            voce = {"entra": "entra", "entra (accesso tecnico)": "entra con l'accesso tecnico", "esce": "esce", "sessione di debug": "sessione di debug (prove automatiche)",
+                    "salva presenze": "salva il foglio presenze"}.get(ev, ev)
+            if chi: eventi.append((t, chi, voce, d.get("foglio", ""), d.get("ip", ""), tipo))
     except OSError:
         pass
-    ultimo = {}
     try:
-        righe = open(LOG_NGINX, errors="replace").read().splitlines()[-quante * 10:]
+        righe = open(LOG_NGINX, errors="replace").read().splitlines()
     except OSError:
         righe = []
     for r in righe:
         c = r.split("\t")
-        if len(c) < 7 or not c[1].strip() or c[1].strip() == "-": continue
-        a = azione_di(c[4].strip(), c[5].strip())
-        if not a: continue
-        q = c[0].strip()[:19]; chi = c[1].strip(); k = (chi, a[0], a[1])
-        t = time.mktime(time.strptime(q, "%Y-%m-%dT%H:%M:%S"))
-        if k in ultimo and t - ultimo[k] < 900: continue
-        ultimo[k] = t
-        voci.append({"q": q, "chi": chi, "az": a[0], "cosa": a[1], "ip": c[2].strip()})
-    voci.sort(key=lambda v: v["q"], reverse=True)
-    return voci[:quante]
+        if len(c) < 7: continue
+        chi = c[1].strip().lower()
+        if not chi or chi == "-": continue
+        try: t = time.mktime(time.strptime(c[0].strip()[:19], "%Y-%m-%dT%H:%M:%S"))
+        except ValueError: continue
+        if t < da: continue
+        a = azione_di(c[3].strip(), c[4].strip())
+        if a: eventi.append((t, chi, a[0], a[1], c[2].strip(), "azione"))
+    eventi.sort()
+    dip = dipendenti(); ora = time.time()
+    per = {}
+    for t, chi, voce, det, ip, tipo in eventi:
+        u = per.setdefault(chi, {"email": chi, "nome": nome_di(chi, dip), "ruolo": ruolo(chi), "sessioni": []})
+        ss = u["sessioni"]; cur = ss[-1] if ss else None
+        # un "entra" apre una sessione nuova solo dopo una pausa vera (se no e' la stessa)
+        if cur is None or cur["chiusa"] or t - cur["fine"] > PAUSA or (tipo == "entra" and t - cur["fine"] > 120):
+            cur = {"inizio": t, "fine": t, "ip": [], "azioni": [], "chiusa": False}; ss.append(cur)
+        cur["fine"] = t
+        if ip and ip not in cur["ip"] and ip != "server": cur["ip"].append(ip)
+        # la stessa cosa nella stessa sessione si conta una volta, con il totale e l'ora della prima
+        az = cur["azioni"]; gia = next((z for z in az if z["v"] == voce), None)
+        if gia:
+            gia["n"] += 1
+            if det and det not in gia["d"] and len(gia["d"]) < 5: gia["d"].append(det)
+        else:
+            az.append({"v": voce, "n": 1, "q": t, "d": [det] if det else []})
+        if tipo == "esce": cur["chiusa"] = True
+    persone = []
+    for u in per.values():
+        for x in u["sessioni"]:
+            x["durata"] = int(x["fine"] - x["inizio"])
+            x["dentro"] = not x["chiusa"] and ora - x["fine"] < 900
+            x["inizio"] = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(x["inizio"]))
+            x["fine"] = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(x["fine"]))
+            for a in x["azioni"]: a["q"] = time.strftime("%H:%M", time.localtime(a["q"]))
+        u["sessioni"].reverse()
+        u["ultimo"] = u["sessioni"][0]["fine"] if u["sessioni"] else ""
+        persone.append(u)
+    persone.sort(key=lambda u: u["ultimo"], reverse=True)
+    rifiuti.sort(key=lambda r: r["q"], reverse=True)
+    return {"persone": persone, "rifiuti": rifiuti, "giorni": giorni}
 
 
-REGISTRO_HTML = """<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+REGISTRO_HTML = r"""<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Registro di controllo · Como TV</title><meta name="robots" content="noindex">
 <style>
 @font-face{font-family:'Mazzard';src:url('/como-tv/assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;}
 @font-face{font-family:'DM Sans';src:url('/como-tv/assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#1B1C20;color:#EDEDEE;font:14px/1.45 'DM Sans',system-ui,sans-serif}
-.pagina{padding:22px clamp(16px,3vw,40px) 60px}
-a{color:#E3C271}
-.testa{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}
-.testa img{width:34px} .testa h1{font:800 26px/1 'Mazzard',sans-serif} .testa span{color:#8E9096;font-size:13px} .testa .dx{margin-left:auto;display:flex;gap:14px;font-size:13px}
-.filtri{display:grid;grid-template-columns:minmax(220px,2fr) repeat(2,minmax(160px,1fr)) repeat(2,minmax(140px,1fr));gap:10px;margin-bottom:14px}
-.filtri input,.filtri select{background:rgba(245,241,230,.06);border:1px solid rgba(255,255,255,.16);color:#EDEDEE;border-radius:8px;padding:9px 10px;font:inherit;color-scheme:dark;min-width:0}
-.tab{width:100%;border-collapse:collapse;background:#2A2B30;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden;font-size:13px}
-.tab th{font:700 9.5px/1 'Mazzard',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#8E9096;text-align:left;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.08)}
-.tab td{padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:top}
-.tab td.q,.tab td.ip{color:#8E9096;white-space:nowrap;font-variant-numeric:tabular-nums} .tab td.cosa{word-break:break-word;color:#C9CACF}
-.az{font:700 10px/1 'Mazzard',sans-serif;letter-spacing:.06em;text-transform:uppercase;padding:4px 7px;border-radius:4px;background:rgba(245,241,230,.08);white-space:nowrap}
-.az.entra{background:rgba(79,203,139,.16);color:#7FDCA9}.az.esce{background:rgba(142,144,150,.16)}.az.rif{background:rgba(229,72,77,.18);color:#FF9A9C}.az.file{background:rgba(90,167,232,.18);color:#8CC5F2}
-.scroll{overflow-x:auto} .nota{color:#8E9096;font-size:12px;margin-top:10px}
-@media (max-width:760px){.filtri{grid-template-columns:1fr 1fr}}
+.pagina{padding:22px clamp(16px,3vw,40px) 60px;max-width:1300px}
+.testa{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.testa h1{font:800 26px/1 'Mazzard',sans-serif} .testa span{color:#8E9096;font-size:13px}
+.filtri{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.filtri input{background:rgba(245,241,230,.06);border:1px solid rgba(255,255,255,.16);color:#EDEDEE;border-radius:8px;padding:9px 11px;font:inherit;color-scheme:dark}
+.filtri input[type=search]{flex:1 1 280px}
+.persona{background:#2A2B30;border:1px solid rgba(255,255,255,.08);border-radius:12px;margin-bottom:10px;overflow:hidden}
+.persona>summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:44px minmax(0,1fr) repeat(3,auto);gap:16px;align-items:center;padding:12px 16px}
+.persona>summary::-webkit-details-marker{display:none}
+.persona[open]>summary{border-bottom:1px solid rgba(255,255,255,.08)}
+.av{width:40px;height:40px;border-radius:50%;background:#C9A24B;color:#10131c;display:grid;place-items:center;font:800 13px/1 'Mazzard',sans-serif}
+.av.club{background:#5AA7E8} .av.tec{background:#8E9096}
+.chi b{display:block;font-size:15.5px} .chi small{color:#9A9CA4;font-size:12.5px}
+.chi .ruolo{font:700 9.5px/1 'Mazzard',sans-serif;letter-spacing:.12em;text-transform:uppercase;border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:3px 6px;margin-left:8px;color:#C9CACF}
+.num{text-align:right;font-size:12px;color:#9A9CA4;white-space:nowrap} .num b{display:block;color:#EDEDEE;font-size:14px;font-variant-numeric:tabular-nums}
+.dentro{color:#7FDCA9!important}
+.sessioni{padding:6px 16px 14px}
+.sess{display:grid;grid-template-columns:170px 110px minmax(0,1fr);gap:14px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.sess:last-child{border-bottom:0}
+.sess .q{font-variant-numeric:tabular-nums} .sess .q small{display:block;color:#8E9096;font-size:11.5px}
+.sess .d{font:800 16px/1.2 'Mazzard',sans-serif;color:#E3C271} .sess .d small{display:block;font:500 11px/1.3 'DM Sans',sans-serif;color:#8E9096}
+.az{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start;align-content:flex-start}
+.az span{background:rgba(245,241,230,.07);border-radius:999px;padding:4px 10px;font-size:12.5px;white-space:nowrap} .az span i{font-style:normal;color:#8E9096;font-size:11px;margin-right:5px} .az span b{color:#E3C271;margin-left:4px}
+.az span.file{background:rgba(90,167,232,.16)} .az span.entra{background:rgba(79,203,139,.14)} .az span.esce{background:rgba(142,144,150,.16)}
+h2{font:700 11px/1 'Mazzard',sans-serif;letter-spacing:.2em;text-transform:uppercase;color:#C9A24B;margin:26px 0 10px}
+.rif{width:100%;border-collapse:collapse;font-size:13px;background:#2A2B30;border-radius:12px;overflow:hidden}
+.rif td{padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.06)} .rif td.q{color:#8E9096;white-space:nowrap}
+.nota{color:#8E9096;font-size:12px;margin-top:14px}
+@media (max-width:760px){.persona>summary{grid-template-columns:40px 1fr}.num{display:none}.sess{grid-template-columns:1fr 1fr}.sess .az{grid-column:1/-1}}
 </style></head><body>
 <nav class="ms-bar"></nav><script src="/como-tv/live/menu-sito.js"></script><script src="/como-tv/live/utente.js" async></script>
 <div class="pagina">
 <div class="testa"><h1>Registro di controllo</h1><span id="conto"></span></div>
-<div class="filtri">
-<input id="f" placeholder="Cerca per persona, azione, file o IP" type="search">
-<select id="chi"><option value="">Tutte le persone</option></select>
-<select id="az"><option value="">Tutte le azioni</option></select>
-<input id="da" type="date" title="dal"><input id="a" type="date" title="al">
+<div class="filtri"><input id="f" type="search" placeholder="Cerca una persona, una mail o una pagina"><input id="da" type="date" title="dal"><input id="a" type="date" title="al"></div>
+<div id="persone"><p class="nota">Carico…</p></div>
+<h2>Accessi rifiutati e blocchi</h2><div id="rifiuti"></div>
+<p class="nota">Una sessione va dall'entrata all'ultima cosa fatta (o all'uscita); una pausa di più di mezz'ora ne apre un'altra. "Dentro adesso" = attivo negli ultimi 15 minuti senza essere uscito. Miniature, copertine e indici non si contano. Ultimi <span id="gg"></span> giorni.</p>
 </div>
-<div class="scroll"><table class="tab"><thead><tr><th>Quando</th><th>Chi</th><th>Azione</th><th>Oggetto</th><th>IP</th></tr></thead><tbody id="righe"><tr><td colspan="5">Carico…</td></tr></tbody></table></div>
-</div>
-<p class="nota" style="padding:0 clamp(16px,3vw,40px) 40px">Si registrano accessi e uscite, gli accessi rifiutati e, dietro il cancello, pagine e file aperti (oggi: MAM Como 1907). Le richieste a pezzi dello stesso video nello stesso quarto d'ora contano una volta. Miniature e anteprime non si registrano.</p>
 <script>
-var V=[],$=function(i){return document.getElementById(i)};
-function esc(s){return String(s||"").replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
-function cl(a){return a==="entra"?"entra":a==="esce"?"esce":/rifiut/.test(a)?"rif":/originale|copia/.test(a)?"file":""}
+var D=null,$=function(i){return document.getElementById(i)};
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function ini(n){return n.replace(/\(.*\)/,"").split(/\s+/).filter(Boolean).map(function(w){return w[0]}).slice(0,2).join("").toUpperCase()}
+function dur(s){if(s<60)return"meno di 1 min";var h=Math.floor(s/3600),m=Math.round(s%3600/60);if(m===60){h++;m=0}return h?h+" h "+(m?m+" min":""):m+" min"}
+function dt(q){return q.slice(8,10)+"/"+q.slice(5,7)+"/"+q.slice(0,4)}
+function ora(q){return q.slice(11,16)}
+var RUOLI={admin:"super utente",staff:"Como TV",club:"Como 1907"};
 function disegna(){
- var f=$("f").value.toLowerCase(),chi=$("chi").value,az=$("az").value,da=$("da").value,a=$("a").value;
- var r=V.filter(function(v){return(!chi||v.chi===chi)&&(!az||v.az===az)&&(!da||v.q.slice(0,10)>=da)&&(!a||v.q.slice(0,10)<=a)&&(!f||(v.chi+" "+v.az+" "+v.cosa+" "+v.ip).toLowerCase().indexOf(f)>=0)});
- $("conto").textContent=r.length+" eventi";
- $("righe").innerHTML=r.slice(0,1500).map(function(v){var d=v.q.replace("T"," ");return"<tr><td class=q>"+esc(d.slice(8,10)+"/"+d.slice(5,7)+"/"+d.slice(0,4)+" "+d.slice(11,16))+"</td><td>"+esc(v.chi)+"</td><td><span class='az "+cl(v.az)+"'>"+esc(v.az)+"</span></td><td class=cosa>"+esc(v.cosa)+"</td><td class=ip>"+esc(v.ip)+"</td></tr>"}).join("")||"<tr><td colspan=5>Nessun evento con questi filtri.</td></tr>";
+ var f=$("f").value.toLowerCase(),da=$("da").value,a=$("a").value,tot=0;
+ var h=D.persone.map(function(u){
+  var ss=u.sessioni.filter(function(x){var g=x.inizio.slice(0,10);return(!da||g>=da)&&(!a||g<=a)});
+  if(!ss.length)return"";
+  var testo=(u.nome+" "+u.email+" "+ss.map(function(x){return x.azioni.map(function(z){return z.v+" "+z.d.join(" ")}).join(" ")}).join(" ")).toLowerCase();
+  if(f&&testo.indexOf(f)<0)return"";
+  tot++;
+  var tempo=ss.reduce(function(t,x){return t+x.durata},0),dentro=ss.some(function(x){return x.dentro});
+  var tec=/accesso tecnico/.test(u.nome);
+  return '<details class="persona"><summary><span class="av '+(tec?"tec":u.ruolo==="club"?"club":"")+'">'+esc(ini(u.nome))+'</span>'+
+   '<span class="chi"><b>'+esc(u.nome)+'</b><small>'+esc(u.email)+'<span class="ruolo">'+esc(RUOLI[u.ruolo]||u.ruolo)+'</span></small></span>'+
+   '<span class="num"><b'+(dentro?' class="dentro"':'')+'>'+(dentro?"dentro adesso":dt(u.ultimo)+" "+ora(u.ultimo))+'</b>ultima attività</span>'+
+   '<span class="num"><b>'+ss.length+'</b>'+(ss.length===1?"sessione":"sessioni")+'</span>'+
+   '<span class="num"><b>'+dur(tempo)+'</b>tempo in tutto</span></summary><div class="sessioni">'+
+   ss.map(function(x){
+    return '<div class="sess"><div class="q">'+dt(x.inizio)+'<small>dalle '+ora(x.inizio)+' alle '+ora(x.fine)+(x.ip.length?" · "+esc(x.ip.join(", ")):"")+'</small></div>'+
+     '<div class="d">'+(x.dentro?'<span class="dentro">in corso</span>':dur(x.durata))+'<small>'+(x.chiusa?"uscito con Esci":x.dentro?"dentro adesso":"finita per inattività")+'</small></div>'+
+     '<div class="az">'+x.azioni.map(function(z){var c=/originale|copia/.test(z.v)?"file":z.v.indexOf("entra")===0?"entra":z.v==="esce"?"esce":"";
+       return '<span class="'+c+'" title="'+esc(z.d.join("\n"))+'"><i>'+z.q+'</i>'+esc(z.v)+(z.n>1?'<b>×'+z.n+'</b>':'')+'</span>'}).join("")+'</div></div>';
+   }).join("")+'</div></details>';
+ }).join("");
+ $("persone").innerHTML=h||'<p class="nota">Nessuno in questo periodo.</p>';
+ $("conto").textContent=tot+(tot===1?" persona":" persone");
 }
 fetch("/auth/registro.json",{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){
- V=j; var chi={},az={}; V.forEach(function(v){if(v.chi)chi[v.chi]=1;az[v.az]=1});
- $("chi").innerHTML+=Object.keys(chi).sort().map(function(x){return"<option>"+esc(x)+"</option>"}).join("");
- $("az").innerHTML+=Object.keys(az).sort().map(function(x){return"<option>"+esc(x)+"</option>"}).join("");
+ D=j;$("gg").textContent=j.giorni;
+ $("rifiuti").innerHTML=j.rifiuti.length?'<table class="rif">'+j.rifiuti.map(function(r){return"<tr><td class=q>"+dt(r.q)+" "+ora(r.q)+"</td><td>"+esc(r.chi||"—")+"</td><td>"+esc(r.az)+"</td><td class=q>"+esc(r.ip)+"</td></tr>"}).join("")+"</table>":'<p class="nota">Nessuno.</p>';
  disegna();
 });
-["f","chi","az","da","a"].forEach(function(i){$(i).addEventListener("input",disegna)});
+["f","da","a"].forEach(function(i){$(i).addEventListener("input",disegna)});
 </script></body></html>"""
 
 
