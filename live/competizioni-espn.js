@@ -53,7 +53,8 @@ window.CompetizioniEspn = (function () {
     den: "Danimarca", sui: "Svizzera", swe: "Svezia", nor: "Norvegia", rus: "Russia", col: "Colombia",
     uru: "Uruguay", chi: "Cile", ecu: "Ecuador", par: "Paraguay", per: "Perù", mex: "Messico",
     jpn: "Giappone", chn: "Cina", aus: "Australia" };
-  var INTERNAZIONALI = [["uefa", "🇪🇺 Europa · UEFA"], ["conmebol", "🌎 Sudamerica · CONMEBOL"], ["fifa", "🌍 Mondo · FIFA"]];
+  var INTERNAZIONALI = [["uefa", "🇪🇺 Europa · UEFA"], ["conmebol", "🌎 Sudamerica · CONMEBOL"], ["fifa", "🌍 Mondo · FIFA"],
+    ["caf", "🌍 Africa · CAF"]];
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -104,7 +105,7 @@ window.CompetizioniEspn = (function () {
       ["arg", "bra", "chi", "col", "ecu", "par", "per", "uru", "conmebol"],
       ["usa", "mex"],
       ["ksa", "jpn", "chn", "aus"],
-      ["fifa"]
+      ["fifa", "caf"]
     ];
     function etichetta(k) {
       var int = INTERNAZIONALI.filter(function (x) { return x[0] === k; })[0];

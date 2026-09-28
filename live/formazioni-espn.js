@@ -64,7 +64,25 @@
     { band: "🇪🇺", nome: "Conference League",     code: "uefa.europa.conf",      rose: "" },
     { band: "🇪🇺", nome: "Supercoppa UEFA",       code: "uefa.super_cup",        rose: "" },
     { band: "🌎", nome: "CONMEBOL Libertadores", code: "conmebol.libertadores", rose: "conmebol.libertadores" },
-    { band: "🌎", nome: "CONMEBOL Sudamericana", code: "conmebol.sudamericana", rose: "conmebol.sudamericana" }
+    { band: "🌎", nome: "CONMEBOL Sudamericana", code: "conmebol.sudamericana", rose: "conmebol.sudamericana" },
+    // LE NAZIONALI (28/09/2026, chieste da Goffredo): ESPN le tratta come le
+    // leghe — stesso tabellone, stesse rose, stesse chiamate — quindi entrano
+    // in tutte le pagine che scelgono una partita, e nella tendina delle
+    // competizioni (competizioni-espn.js le legge da qui). Le rose sono quelle
+    // della competizione stessa: le nazionali non stanno in un campionato.
+    { band: "🇪🇺", nome: "Nations League",              code: "uefa.nations",         rose: "uefa.nations" },
+    { band: "🇪🇺", nome: "Qualificazioni Europei",      code: "uefa.euroq",           rose: "uefa.euroq" },
+    { band: "🇪🇺", nome: "Europei",                     code: "uefa.euro",            rose: "uefa.euro" },
+    { band: "🇪🇺", nome: "Qualificazioni Europei U21",  code: "uefa.euro_u21_qual",   rose: "uefa.euro_u21_qual" },
+    { band: "🇪🇺", nome: "Europei U21",                 code: "uefa.euro_u21",        rose: "uefa.euro_u21" },
+    { band: "🌍", nome: "Qualificazioni Mondiali",     code: "fifa.worldq.uefa",     rose: "fifa.worldq.uefa" },
+    { band: "🌎", nome: "Qualificazioni Mondiali CONMEBOL", code: "fifa.worldq.conmebol", rose: "fifa.worldq.conmebol" },
+    { band: "🌍", nome: "Mondiali",                    code: "fifa.world",           rose: "fifa.world" },
+    { band: "🌍", nome: "Mondiali U20",                code: "fifa.world.u20",       rose: "fifa.world.u20" },
+    { band: "🌍", nome: "Amichevoli nazionali",        code: "fifa.friendly",        rose: "fifa.friendly" },
+    { band: "🌎", nome: "Copa América",                code: "conmebol.america",     rose: "conmebol.america" },
+    { band: "🌍", nome: "Qualificazioni Coppa d'Africa", code: "caf.nations_qual",    rose: "caf.nations_qual" },
+    { band: "🌍", nome: "Coppa d'Africa",              code: "caf.nations",          rose: "caf.nations" }
   ];
 
   function esc(s) {
