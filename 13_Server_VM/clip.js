@@ -16062,6 +16062,18 @@ const AZIONI = {
       t0 += fuori - dentro;
     }
     if (!pezzi.length) throw new Error("nessuna delle azioni scelte si puo' montare adesso" + (saltate.length ? ": " + saltate.slice(0, 3).join(", ") : ""));
+    // IN CODA A UNA SEQUENZA CHE C'E' GIA' (28/09/2026): dalla ricerca ogni clic
+    // su un'azione la mette in timeline, e le azioni della stessa ricerca vanno
+    // una dopo l'altra nella stessa sequenza
+    const gia = p.seq && R.seq[String(p.seq)];
+    if (gia) {
+      const fine = (gia.pezzi || []).filter((x) => !x.traccia || x.traccia === "V1").reduce((m, x) => Math.max(m, (x.t0 || 0) + (x.fuori - x.dentro) / (+x.velocita || 1)), 0);
+      pezzi.forEach((x) => { x.t0 = Math.round((x.t0 + fine) * 1000) / 1000; if (x.reg === gia.reg) delete x.reg; gia.pezzi.push(x); });
+      gia.tocco = Date.now();
+      normalizzaSeq(gia);
+      scrivi(); annuncia(0, "clip");
+      return { ok: true, seq: { id: gia.id, titolo: gia.titolo }, quante: pezzi.length, saltate, inCoda: true };
+    }
     const q = {
       id: nuovoId("s"), reg: pezzi[0].reg,
       titolo: String(p.titolo || "").slice(0, 120) || "Dalla ricerca \u00b7 " + pezzi.length + " azioni",
