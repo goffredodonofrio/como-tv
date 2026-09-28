@@ -1370,7 +1370,7 @@
         </div>
       </div>
       <div class="bozza-tl" id="bozzaTl">
-        <div class="testa"><h3>Bozza</h3><small id="bzConto">il grezzo di questa partita</small><div class="dx"><button class="mini" id="bBozzaSpuntate" title="le azioni spuntate nella scheda entrano nella bozza con le loro finestre">Aggiungi le spuntate</button><button class="mini" id="bBozzaProg" title="in quale progetto sta la bozza">Progetto</button><button class="mini oro" id="bRifinisci" disabled title="apre questa bozza nel montaggio: rifinisci, sottotitoli, grafiche, export">Manda in montaggio &#9656;</button></div></div>
+        <div class="testa"><h3>Bozza</h3><small id="bzConto">il grezzo di questa partita</small><div class="dx"><button class="mini" id="bBozzaSpuntate" title="le azioni spuntate nella scheda entrano nella bozza con le loro finestre">Aggiungi le spuntate</button><button class="mini" id="bBozzaProg" title="in quale progetto sta la bozza">Progetto</button><button class="mini regia-ed" id="bBozzaRegia" title="la bozza in scaletta su un vMix, senza passare dal montaggio (se e' vuota, prende IN e OUT)">&#128225; In regia</button><button class="mini oro" id="bRifinisci" disabled title="apre questa bozza nel montaggio: rifinisci, sottotitoli, grafiche, export">Manda in montaggio &#9656;</button></div></div>
         <div class="pista" id="bzPista"></div>
       </div>
     </div>
@@ -3754,6 +3754,20 @@
     el("bzPista").querySelectorAll("button[data-bvia]").forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); post({ tipo:"clip-hl-pezzo", seq: BOZZA.id, pezzo: b.dataset.bvia, togli: true }).then(function(d){ BOZZA = d.seq; disegnaBozza(); }).catch(function(er){ avviso("err", esc(er.message)); }); }); });
   }
   el("bRifinisci").addEventListener("click", function(){ if (BOZZA) location.href = "mam2.html?seq=" + encodeURIComponent(BOZZA.id); });
+  // IN REGIA DALLA BOZZA (28/09/2026): senza passare dal montaggio. La bozza e'
+  // una sequenza vera: si prepara in 16:9 e va in scaletta come dall'Editor
+  el("bBozzaRegia").addEventListener("click", function(){
+    if (!ASSET) return;
+    var dallaBozza = function(){
+      var pz = BOZZA ? (BOZZA.pezzi || []) : [];
+      apriInRegia({ id: BOZZA.id, reg: BOZZA.reg || ASSET.id, titolo: BOZZA.titolo || ASSET.titolo, pezzi: pz.length,
+                    dur: pz.reduce(function(a, x){ return a + (x.fuori - x.dentro); }, 0), grafiche: !!(BOZZA.grafiche && BOZZA.grafiche.length) });
+    };
+    if (BOZZA && (BOZZA.pezzi || []).length) return dallaBozza();
+    if (DENTRO === null || FUORI === null || FUORI <= DENTRO) return avviso("err", "La bozza è vuota: segna IN e OUT (tasti I e O) o aggiungi le azioni spuntate.");
+    var b = this; b.disabled = true;
+    bozzaAggiungi(DENTRO, FUORI).then(function(){ disegnaBozza(); b.disabled = false; dallaBozza(); }).catch(function(e){ b.disabled = false; avviso("err", esc(e.message)); });
+  });
   el("bBozzaSpuntate").addEventListener("click", function(){
     var righe = Object.keys(SCELTE).map(function(k){ return TAB[k]; }).filter(Boolean).sort(function(a,b){ return a.t - b.t; });
     if (!righe.length) return avviso("err", "Spunta prima qualche azione nella scheda a destra.");
@@ -7159,19 +7173,22 @@
   // Un clic: il montaggio si prepara in 16:9 (senza grafiche i pezzi in casa
   // si incollano e basta, pochi secondi; con le grafiche e' un export vero) e
   // appena il file c'e' va in scaletta sul vMix scelto, come le grafiche.
-  var REGIA_ED = null;
-  function apriInRegia(){
-    if (!SEQ) return avviso("err", "Apri prima una sequenza.");
-    if (!PZ.length) return avviso("err", "La sequenza è vuota.");
+  var REGIA_ED = null, REGIA_SEQ = null;
+  // la sequenza da mandare: quella aperta nell'Editor, o la bozza della partita
+  function seqEditor(){ return SEQ ? { id: SEQ.id, reg: SEQ.reg, titolo: SEQ.titolo, pezzi: PZ.length, dur: durSeq(), grafiche: !!(GRAF && GRAF.length) } : null; }
+  function apriInRegia(q){
+    q = q || seqEditor();
+    if (!q) return avviso("err", "Apri prima una sequenza.");
+    if (!q.pezzi) return avviso("err", "La sequenza è vuota.");
     if (!window.Destinazione) return avviso("err", "Manca destinazione.js: non so dove mandarlo.");
     if (REGIA_ED) { el("regiaEsp").hidden = false; return; }
+    REGIA_SEQ = q;
     var p = pannelloRegiaEsp(); p.dataset.modo = "editor";
     var dest = el("lCanale"), opz = dest ? [].filter.call(dest.options, function(o){ return o.value && o.value.indexOf("__") !== 0 && !o.disabled; }) : [];
     var sceltoDove = doveRegia(opz, dest);
-    var conGrafiche = !!(GRAF && GRAF.length);
-    var nota = conGrafiche ? "ci sono grafiche: serve un export 16:9, qualche minuto" : "solo tagli: esce in pochi secondi se i pezzi sono in casa";
-    p.innerHTML = '<div class="pr-testa"><b>&#128225; In regia</b><span>' + esc(SEQ.titolo || "sequenza") + ' · 16:9 · ' + tc(durSeq()) + ' · ' + esc(nota) + '</span></div>' +
-      '<div class="riga-r"><div class="campo-r"><label for="regiaEspTitolo">Nome in scaletta</label><input id="regiaEspTitolo" type="text" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" maxlength="60" value="' + esc(String(SEQ.titolo || "MONTATO").replace(/^BOZZA\s*·\s*/i, "").toUpperCase()) + '"></div>' +
+    var nota = q.grafiche ? "ci sono grafiche: serve un export 16:9, qualche minuto" : "solo tagli: esce in pochi secondi se i pezzi sono in casa";
+    p.innerHTML = '<div class="pr-testa"><b>&#128225; In regia</b><span>' + esc(q.titolo || "sequenza") + ' · 16:9 · ' + tc(q.dur || 0) + ' · ' + esc(nota) + '</span></div>' +
+      '<div class="riga-r"><div class="campo-r"><label for="regiaEspTitolo">Nome in scaletta</label><input id="regiaEspTitolo" type="text" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" maxlength="60" value="' + esc(String(q.titolo || "MONTATO").replace(/^BOZZA\s*·\s*/i, "").toUpperCase()) + '"></div>' +
       '<div class="campo-r"><label for="regiaEspDove">Seleziona vMix o progetto</label><select id="regiaEspDove">' + opz.map(function(o){ return '<option value="' + esc(o.value) + '"' + (o.value === sceltoDove ? " selected" : "") + '>' + esc(o.textContent) + '</option>'; }).join("") + '</select></div>' +
       '<label class="spunta" title="il montato esce con il suo audio"><input type="checkbox" id="regiaEspAudio" checked> Con l’audio del montato</label>' +
       '<button type="button" class="manda" data-fa="mandaEd">&#128225; Prepara e invia</button><button type="button" class="annulla" data-fa="annulla">Annulla</button></div>';
@@ -7183,11 +7200,11 @@
       (quota !== undefined ? '<div class="esp-av-barra" style="margin-top:8px"><i style="width:' + Math.max(2, quota * 100).toFixed(1) + '%"></i></div>' : '');
   }
   function mandaDaEditor(p){
-    if (REGIA_ED || !SEQ) return;
+    if (REGIA_ED || !REGIA_SEQ) return;
     var titolo = (el("regiaEspTitolo").value || "").trim().toUpperCase().slice(0, 60) || "MONTATO", dove = el("regiaEspDove").value, audio = el("regiaEspAudio").checked;
     ricordaDoveRegia(dove);
     if (el("lCanale") && dove) { el("lCanale").value = dove; try { el("lCanale").dispatchEvent(new Event("change")); } catch (e) {} }
-    var seq = SEQ.id, reg = SEQ.reg, t0 = Date.now();
+    var seq = REGIA_SEQ.id, reg = REGIA_SEQ.reg, t0 = Date.now();
     REGIA_ED = { titolo: titolo, seq: seq };
     statoRegiaEd(p, "preparo il filmato 16:9…", 0.02);
     var finisci = function(ok, testo){
@@ -7220,7 +7237,7 @@
       setTimeout(guarda, 1000);
     }).catch(function(er){ finisci(false, esc(er.message)); });
   }
-  el("eRegia").addEventListener("click", apriInRegia);
+  el("eRegia").addEventListener("click", function(){ apriInRegia(); });
   if (AMBITO) el("eRegia").hidden = true;          // l'Editing del MAM 1907 non va in regia
   // UN'USCITA IN RACCOLTA: il file gia' esportato, senza rifare niente
   ["eUscite", "espUscite"].forEach(function(id){ var c = el(id); if (!c) return; c.addEventListener("click", function(e){
