@@ -387,6 +387,20 @@
     { slug: "conference",    band: "🇪🇺", nome: "Conference League",     code: "uefa.europa.conf" },
     { slug: "libertadores",  band: "🌎", nome: "CONMEBOL Libertadores", code: "conmebol.libertadores" },
     { slug: "sudamericana",  band: "🌎", nome: "CONMEBOL Sudamericana", code: "conmebol.sudamericana" },
+    // LE NAZIONALI (28/09/2026). ESPN le ha come le leghe: stesso tabellone,
+    // stesse chiamate. I nomi arrivano in inglese ("Italy"): li traduce
+    // nomePaese() qui sotto, dentro il nome in grafica.
+    { slug: "nations",       band: "🇪🇺", nome: "Nations League",             code: "uefa.nations" },
+    { slug: "qualmondiali",  band: "🌍", nome: "Qualificazioni Mondiali",    code: "fifa.worldq.uefa" },
+    { slug: "qualmondsud",   band: "🌎", nome: "Qualificazioni Mondiali CONMEBOL", code: "fifa.worldq.conmebol" },
+    { slug: "qualeuropei",   band: "🇪🇺", nome: "Qualificazioni Europei",     code: "uefa.euroq" },
+    { slug: "amichevoli",    band: "🌍", nome: "Amichevoli nazionali",       code: "fifa.friendly" },
+    { slug: "mondiali",      band: "🌍", nome: "Mondiali",                   code: "fifa.world" },
+    { slug: "europei",       band: "🇪🇺", nome: "Europei",                    code: "uefa.euro" },
+    { slug: "copaamerica",   band: "🌎", nome: "Copa América",               code: "conmebol.america" },
+    { slug: "u21qual",       band: "🇪🇺", nome: "Qualificazioni Europei U21", code: "uefa.euro_u21_qual" },
+    { slug: "u21",           band: "🇪🇺", nome: "Europei U21",                code: "uefa.euro_u21" },
+    { slug: "mondialiu20",   band: "🌍", nome: "Mondiali U20",               code: "fifa.world.u20" },
     // Le giovanili italiane ESPN non le ha: provati tutti i codici plausibili,
     // rispondono 400, e nel suo elenco di leghe non compaiono. Quindi qui non
     // si carica niente da fuori — le partite si scrivono a mano, e le squadre
@@ -497,7 +511,54 @@
   };
 
   var MAPLS = "comotv.classifiche.mappatura";
-  function defaultName(s) { return String(s || "").toUpperCase().trim(); }
+  // Le nazionali: ESPN scrive i paesi in inglese. In grafica vanno in
+  // italiano, gia' entro i 16 caratteri; le Under tengono il loro suffisso
+  // ("Italy U21" -> "ITALIA U21"). I club non c'entrano: un nome che non e'
+  // un paese passa com'e'.
+  var PAESI = {
+    "Italy": "ITALIA", "France": "FRANCIA", "Spain": "SPAGNA", "Germany": "GERMANIA", "England": "INGHILTERRA",
+    "Portugal": "PORTOGALLO", "Netherlands": "OLANDA", "Belgium": "BELGIO", "Croatia": "CROAZIA",
+    "Switzerland": "SVIZZERA", "Austria": "AUSTRIA", "Denmark": "DANIMARCA", "Sweden": "SVEZIA",
+    "Norway": "NORVEGIA", "Finland": "FINLANDIA", "Iceland": "ISLANDA", "Poland": "POLONIA",
+    "Czechia": "REP. CECA", "Czech Republic": "REP. CECA", "Slovakia": "SLOVACCHIA", "Slovenia": "SLOVENIA",
+    "Hungary": "UNGHERIA", "Romania": "ROMANIA", "Bulgaria": "BULGARIA", "Serbia": "SERBIA",
+    "Montenegro": "MONTENEGRO", "Bosnia-Herzegovina": "BOSNIA", "Bosnia and Herzegovina": "BOSNIA",
+    "North Macedonia": "MACEDONIA NORD", "Albania": "ALBANIA", "Kosovo": "KOSOVO", "Greece": "GRECIA",
+    "Turkey": "TURCHIA", "Türkiye": "TURCHIA", "Cyprus": "CIPRO", "Malta": "MALTA", "Georgia": "GEORGIA",
+    "Armenia": "ARMENIA", "Azerbaijan": "AZERBAIGIAN", "Ukraine": "UCRAINA", "Belarus": "BIELORUSSIA",
+    "Moldova": "MOLDAVIA", "Russia": "RUSSIA", "Lithuania": "LITUANIA", "Latvia": "LETTONIA",
+    "Estonia": "ESTONIA", "Scotland": "SCOZIA", "Wales": "GALLES", "Northern Ireland": "IRLANDA DEL NORD",
+    "Republic of Ireland": "IRLANDA", "Ireland": "IRLANDA", "Luxembourg": "LUSSEMBURGO",
+    "Liechtenstein": "LIECHTENSTEIN", "Andorra": "ANDORRA", "San Marino": "SAN MARINO",
+    "Gibraltar": "GIBILTERRA", "Faroe Islands": "FAROE", "Kazakhstan": "KAZAKISTAN", "Israel": "ISRAELE",
+    "Brazil": "BRASILE", "Argentina": "ARGENTINA", "Uruguay": "URUGUAY", "Colombia": "COLOMBIA",
+    "Chile": "CILE", "Peru": "PERÙ", "Ecuador": "ECUADOR", "Paraguay": "PARAGUAY", "Bolivia": "BOLIVIA",
+    "Venezuela": "VENEZUELA", "Mexico": "MESSICO", "United States": "STATI UNITI", "USA": "STATI UNITI",
+    "Canada": "CANADA", "Costa Rica": "COSTA RICA", "Panama": "PANAMA", "Jamaica": "GIAMAICA",
+    "Honduras": "HONDURAS", "Morocco": "MAROCCO", "Senegal": "SENEGAL", "Nigeria": "NIGERIA",
+    "Ghana": "GHANA", "Ivory Coast": "COSTA D'AVORIO", "Cote d'Ivoire": "COSTA D'AVORIO",
+    "Côte d'Ivoire": "COSTA D'AVORIO", "Cameroon": "CAMERUN", "Algeria": "ALGERIA", "Tunisia": "TUNISIA",
+    "Egypt": "EGITTO", "South Africa": "SUDAFRICA", "Congo DR": "RD CONGO", "Mali": "MALI",
+    "Japan": "GIAPPONE", "South Korea": "COREA DEL SUD", "Korea Republic": "COREA DEL SUD",
+    "Australia": "AUSTRALIA", "Iran": "IRAN", "Saudi Arabia": "ARABIA SAUDITA", "Qatar": "QATAR",
+    "United Arab Emirates": "EMIRATI ARABI", "Iraq": "IRAQ", "China PR": "CINA", "China": "CINA",
+    "New Zealand": "NUOVA ZELANDA", "Uzbekistan": "UZBEKISTAN", "Jordan": "GIORDANIA"
+  };
+  var CORTI = { "IRLANDA DEL NORD": "IRLANDA NORD", "MACEDONIA NORD": "MACEDONIA N.", "COREA DEL SUD": "COREA SUD",
+                "ARABIA SAUDITA": "ARABIA S.", "NUOVA ZELANDA": "N. ZELANDA", "COSTA D'AVORIO": "C. D'AVORIO",
+                "STATI UNITI": "USA", "LIECHTENSTEIN": "LIECHTENST.", "EMIRATI ARABI": "EMIRATI",
+                "LUSSEMBURGO": "LUSSEMB.", "INGHILTERRA": "INGHILTERRA" };
+  function nomePaese(s) {
+    var m = String(s || "").trim().match(/^(.+?)(\s+(U\d{2}|Women|Olympic))?$/);
+    if (!m || !PAESI[m[1]]) return null;
+    var suff = m[3] ? (m[3] === "Women" ? " F" : m[3] === "Olympic" ? " OLIMPICA" : " " + m[3]) : "";
+    var base = PAESI[m[1]];
+    // col suffisso i nomi lunghi sforano i 16 caratteri della grafica:
+    // "IRLANDA DEL NORD U21" diventa "IRLANDA NORD U21"
+    if ((base + suff).length > 16) base = CORTI[base] || base.slice(0, Math.max(3, 15 - suff.length)) + ".";
+    return base + suff;
+  }
+  function defaultName(s) { return nomePaese(s) || String(s || "").toUpperCase().trim(); }
   function grafName(s) {
     var m = {};
     try { m = JSON.parse(localStorage.getItem(MAPLS) || "{}"); } catch (e) {}
