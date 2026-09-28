@@ -25,18 +25,25 @@
     font-family:'DM Sans',system-ui,sans-serif;}
 
   /* ── striscia in basso ── */
-  #ticker{position:absolute;left:0;right:0;bottom:40px;transform:translateY(140%);}
+  /* La striscia e' UN blocco pieno (28/09/2026): prima erano due fasce
+     sovrapposte e mezze trasparenti, e quando vMix mostrava la pagina a una
+     misura diversa da 1920x1080 la giuntura fra titolone e crawl cadeva a
+     meta' pixel: una riga dove si vedeva il video sotto. Ora il fondo pieno
+     sta sotto a tutte e due, e la striscia sborda di 4 px a destra e a
+     sinistra, cosi' anche i lati non restano mai mezzi vuoti. */
+  #ticker{position:absolute;left:-4px;right:-4px;bottom:40px;transform:translateY(140%);
+    background:#0A0F26;}
   #ticker.on{transform:translateY(0);transition:transform .7s cubic-bezier(.2,.75,.3,1);}
 
   /* riga principale: logo + (categoria sopra) titolone */
   #main{display:flex;align-items:stretch;height:144px;
-    background:linear-gradient(180deg, rgba(16,23,58,.97), rgba(10,15,38,.98));
+    background:linear-gradient(180deg, #10173A, #0A0F26);
     border-top:3px solid #C9A24B;
     box-shadow:0 -10px 40px rgba(0,0,0,.45);}
 
   /* blocco logo Como TV a sinistra */
-  #eti{flex:0 0 auto;width:196px;display:flex;align-items:center;justify-content:center;
-    padding:14px 24px 14px 96px;border-right:2px solid rgba(201,162,75,.38);}
+  #eti{flex:0 0 auto;width:200px;display:flex;align-items:center;justify-content:center;
+    padding:14px 24px 14px 100px;border-right:2px solid rgba(201,162,75,.38);}
   #eti img{height:90px;width:auto;object-fit:contain;
     filter:drop-shadow(0 3px 8px rgba(0,0,0,.5));}
 
@@ -73,10 +80,10 @@
   .tito.out{transform:translateY(-100%) translateZ(0);}
 
   /* crawl in basso: scorre in continuo */
-  #crawl{display:flex;align-items:center;height:52px;background:rgba(6,10,26,.98);overflow:hidden;
+  #crawl{display:flex;align-items:center;height:52px;background:#060A1A;overflow:hidden;
     border-top:1px solid rgba(201,162,75,.35);}
   /* dove il crawl "muore": il logo Como TV, fermo, a sinistra */
-  #crawltag{flex:0 0 auto;align-self:stretch;display:flex;align-items:center;padding:0 26px 0 96px;
+  #crawltag{flex:0 0 auto;align-self:stretch;display:flex;align-items:center;padding:0 26px 0 100px;
     background:rgba(201,162,75,.14);white-space:nowrap;
     clip-path:polygon(0 0, 100% 0, calc(100% - 20px) 100%, 0 100%);}
   #crawltag img{height:34px;width:auto;object-fit:contain;
@@ -148,8 +155,12 @@
   if (!D) { document.getElementById("stage").style.display = "none"; return; }
 
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
-  function fit(){ var s=Math.min(window.innerWidth/1920, window.innerHeight/1080);
-    document.getElementById("stage").style.transform="translate(-50%,-50%) scale("+s+")"; }
+  // Il quadro si mette su pixel interi: con translate(-50%) e una scala non
+  // intera l'angolo cadeva a meta' pixel e i bordi venivano sfumati.
+  function fit(){ var s=Math.min(window.innerWidth/1920, window.innerHeight/1080), st=document.getElementById("stage");
+    st.style.transformOrigin="0 0";
+    st.style.left=Math.round((window.innerWidth-1920*s)/2)+"px"; st.style.top=Math.round((window.innerHeight-1080*s)/2)+"px";
+    st.style.transform="scale("+s+")"; }
   window.addEventListener("resize", fit); fit();
 
   // ── categoria (occhiello sopra il titolo) ──
