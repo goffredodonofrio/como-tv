@@ -27,7 +27,7 @@ Fuori dal ponte, dietro nginx su 127.0.0.1:8097:
 Le copie finiscono in /var/lib/comotv-1907/proxy/<k>.mp4 e le serve nginx.
 <k> = sha1(percorso)[:16]: la chiave la calcola chi chiede e qui si ricontrolla.
 """
-import hashlib, json, os, subprocess, threading, time, urllib.parse, urllib.request
+import hashlib, json, os, re, secrets, subprocess, threading, time, urllib.parse, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from xml.sax.saxutils import escape as xesc
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -514,6 +514,7 @@ def _registra(chi, azione, da, a):
     reg = _leggi(CARTELLE_REG, {"voci": []})
     reg["voci"].append([int(time.time()), chi, azione, da, a]); del reg["voci"][:-5000]
     _scrivi(CARTELLE_REG, reg)
+    if azione in ("rinomina", "sposta"): commenti_segui(da, a)
     if azione in ("rinomina", "sposta"):
         sp = _leggi(SPOSTAMENTI, {})
         # chi era gia' stato spostato dentro "da" segue il nuovo nome
@@ -607,6 +608,126 @@ def controlla_segnati():
     return r
 
 
+# ── I COMMENTI SUI VIDEO, COME SU FRAME.IO (Goffredo, 29/09/2026) ──────
+# Un commento sta su un file (la via nel FRAME) a un secondo preciso, o su un tratto (t..fino).
+# Ha le risposte, si risolve, e chi e' taggato (@nome@comofootball.com) lo ritrova in "Menzioni".
+# Commenta chi apre il MAM 1907; modifica e cancella solo chi l'ha scritto (o un super utente).
+# Se una cartella si sposta o si rinomina (Cartelle 1907), i commenti la seguono (_registra).
+COMMENTI = os.path.join(CASA, "commenti.json")
+C_LOCK = threading.Lock()
+MENZ_RX = re.compile(r"@?([A-Za-z0-9._%+-]+@(?:comofootball\.com|sent\.tv))\b", re.I)
+
+
+def _admin(email):
+    email = (email or "").lower()
+    try: return bool(json.load(open("/etc/comotv/accesso-locali.json")).get(email, {}).get("admin"))
+    except Exception: return email == "goffredo.donofrio@sent.tv"
+
+
+def _menzioni(testo):
+    return sorted({m.lower() for m in MENZ_RX.findall(testo or "")})
+
+
+def _persone_note():
+    """chi si puo' taggare: chi e' gia' entrato (club e Como TV) e chi ha gia' commentato"""
+    ee = set()
+    try:
+        for r in open("/var/lib/comotv-accesso/accessi.jsonl"):
+            try: e = (json.loads(r).get("chi") or "").lower()
+            except ValueError: continue
+            if re.fullmatch(r"[a-z0-9._%+-]+@(comofootball\.com|sent\.tv)", e): ee.add(e)
+    except OSError:
+        pass
+    c = _leggi(COMMENTI, {"per": {}})
+    for lst in c.get("per", {}).values():
+        for x in lst:
+            ee.add(x.get("chi", "")); ee.update(x.get("menzioni", []))
+            for y in x.get("risposte", []): ee.add(y.get("chi", "")); ee.update(y.get("menzioni", []))
+    return sorted(e for e in ee if e and "@" in e)
+
+
+def commenti_leggi(q, chi):
+    chi = (chi or "").lower()
+    c = _leggi(COMMENTI, {"per": {}, "lette": {}})
+    per = c.get("per", {})
+    if (q.get("conti") or [""])[0]:
+        return 200, {"ok": True, "conti": {v: [len(l), sum(1 for x in l if not x.get("risolto"))] for v, l in per.items() if l}}
+    if (q.get("menzioni") or [""])[0]:
+        lette = set(c.get("lette", {}).get(chi, [])); fuori = []
+        for v, lst in per.items():
+            for x in lst:
+                for y in [x] + x.get("risposte", []):
+                    if chi and chi in y.get("menzioni", []):
+                        fuori.append({"via": v, "id": x["id"], "rid": y["id"], "chi": y["chi"], "quando": y["quando"], "testo": y["testo"][:300],
+                                      "t": x.get("t", 0), "letta": y["id"] in lette, "risolto": bool(x.get("risolto"))})
+        fuori.sort(key=lambda z: -z["quando"])
+        return 200, {"ok": True, "menzioni": fuori[:300], "nuove": sum(1 for z in fuori if not z["letta"])}
+    v = _rel((q.get("v") or [""])[0])
+    return 200, {"ok": True, "via": v, "commenti": per.get(v, []), "io": chi, "persone": _persone_note(), "admin": _admin(chi)}
+
+
+def commenti_scrivi(p, chi):
+    chi = (chi or "").lower()
+    if not chi: return 403, {"ok": False, "errore": "Per commentare bisogna essere entrati con la propria mail."}
+    az, via = p.get("azione"), _rel(p.get("via"))
+    testo = str(p.get("testo") or "").strip()[:4000]
+    ora = int(time.time())
+    with C_LOCK:
+        c = _leggi(COMMENTI, {"per": {}, "lette": {}})
+        if az == "letta":
+            ids = [str(x) for x in (p.get("ids") or [])][:500]
+            l = c.setdefault("lette", {}).setdefault(chi, [])
+            for i in ids:
+                if i not in l: l.append(i)
+            del l[:-3000]; _scrivi(COMMENTI, c)
+            return 200, {"ok": True}
+        if not via or not os.path.realpath(os.path.join(R, via)).startswith(R + "/"): return 400, {"ok": False, "errore": "File non valido."}
+        lst = c.setdefault("per", {}).setdefault(via, [])
+        x = next((k for k in lst if k["id"] == p.get("id")), None)
+        if az == "nuovo":
+            if not testo: return 400, {"ok": False, "errore": "Il commento e' vuoto."}
+            try: t = max(0.0, round(float(p.get("t") or 0), 2))
+            except (TypeError, ValueError): t = 0.0
+            fino = p.get("fino")
+            try: fino = round(float(fino), 2) if fino not in (None, "") else None
+            except (TypeError, ValueError): fino = None
+            if fino is not None and fino <= t: fino = None
+            x = {"id": "c" + secrets.token_hex(5), "chi": chi, "quando": ora, "t": t, "fino": fino, "testo": testo,
+                 "menzioni": _menzioni(testo), "risposte": [], "risolto": None}
+            lst.append(x); lst.sort(key=lambda k: (k.get("t", 0), k["quando"]))
+        elif not x:
+            return 404, {"ok": False, "errore": "Il commento non c'e' piu'."}
+        elif az == "risposta":
+            if not testo: return 400, {"ok": False, "errore": "La risposta e' vuota."}
+            x.setdefault("risposte", []).append({"id": "r" + secrets.token_hex(5), "chi": chi, "quando": ora, "testo": testo, "menzioni": _menzioni(testo)})
+        elif az in ("risolvi", "riapri"):
+            x["risolto"] = {"chi": chi, "quando": ora} if az == "risolvi" else None
+        elif az in ("modifica", "cancella"):
+            rid = p.get("rid"); y = next((k for k in x.get("risposte", []) if k["id"] == rid), None) if rid else x
+            if not y: return 404, {"ok": False, "errore": "Non c'e' piu'."}
+            if y["chi"] != chi and not _admin(chi): return 403, {"ok": False, "errore": "Si modifica e si cancella solo quello che si e' scritto."}
+            if az == "modifica":
+                if not testo: return 400, {"ok": False, "errore": "Il testo e' vuoto."}
+                y.update(testo=testo, menzioni=_menzioni(testo), modificato=ora)
+            elif rid: x["risposte"] = [k for k in x["risposte"] if k["id"] != rid]
+            else: lst[:] = [k for k in lst if k["id"] != x["id"]]
+        else:
+            return 400, {"ok": False, "errore": "azione sconosciuta"}
+        if not lst: c["per"].pop(via, None)
+        _scrivi(COMMENTI, c)
+        return 200, {"ok": True, "via": via, "commenti": c["per"].get(via, [])}
+
+
+def commenti_segui(da, a):
+    """una cartella o un file spostato: i commenti vanno col nuovo percorso"""
+    with C_LOCK:
+        c = _leggi(COMMENTI, {"per": {}}); per = c.get("per", {}); cambiato = False
+        for v in list(per):
+            if v == da or v.startswith(da + "/"):
+                per[a + v[len(da):]] = per.pop(v); cambiato = True
+        if cambiato: _scrivi(COMMENTI, c)
+
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 
@@ -618,7 +739,7 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         via = urllib.parse.urlparse(self.path).path
-        if via not in ("/premiere", "/volti", "/doppioni", "/cartelle"): return self.rispondi(404, {"ok": False})
+        if via not in ("/premiere", "/volti", "/doppioni", "/cartelle", "/commenti"): return self.rispondi(404, {"ok": False})
         try:
             n = int(self.headers.get("Content-Length") or 0)
             p = json.loads(self.rfile.read(min(n, 2_000_000)) or b"{}")
@@ -626,6 +747,9 @@ class H(BaseHTTPRequestHandler):
             return self.rispondi(400, {"ok": False, "errore": "richiesta non valida"})
         if via == "/volti":
             cod, r = battezza(p, str(self.headers.get("X-Utente") or ""))
+            return self.rispondi(cod, r)
+        if via == "/commenti":
+            cod, r = commenti_scrivi(p, str(self.headers.get("X-Utente") or ""))
             return self.rispondi(cod, r)
         if via == "/cartelle":
             cod, r = organizza(p, str(self.headers.get("X-Utente") or ""))
@@ -692,6 +816,9 @@ class H(BaseHTTPRequestHandler):
             c = _leggi(ELIMINATI, {"voci": {}})
             return self.rispondi(200, {"ok": True, "segnati": s.get("segnati", {}), "stato": stato, "eliminati": c.get("voci", {}),
                                        "puoi": puo_segnare(chi), "elimina": puo_eliminare(chi)}, extra={"Cache-Control": "no-store"})
+        if u.path == "/commenti":
+            cod, r = commenti_leggi(q, self.headers.get("X-Utente") or "")
+            return self.rispondi(cod, r, extra={"Cache-Control": "no-store"})
         if u.path == "/code":
             with LOCK:
                 return self.rispondi(200, {"ok": True, "coda": [dict(STATO[k], pieno=None) for k in CODA]})
