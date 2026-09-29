@@ -345,6 +345,149 @@ def segna(p, chi):
     return 200, {"ok": True, "segnati": len(s["segnati"])}
 
 
+# ELIMINA DAL MAM (Goffredo, 29/09/2026: "se si logga lui [Gionata Medeot] puo' cancellare, gli
+# altri di comofootball si fanno la lista al massimo"). Solo chi e' in CANCELLA (o in
+# /etc/comotv/doppioni-cancella.txt, una mail per riga) e i super utenti: il doppione si SPOSTA in
+# "_CESTINO COMO TV" sulla loro NAS (stesso volume: istantaneo, si rimette a posto finche' il
+# cestino non si svuota). Si scrive solo dal collegamento dedicato /mnt/qnap100-frame-cestino;
+# il MAM legge sempre da quello in sola lettura. Prima di spostare si ricontrolla la copia che resta.
+CANCELLA = {"gionata.medeot@comofootball.com"}
+RW = "/mnt/qnap100-frame-cestino"
+CESTINO = "_CESTINO COMO TV"
+CESTINATI = os.path.join(CASA, "doppioni-cestino.json")
+
+
+def puo_eliminare(email):
+    email = (email or "").lower()
+    chi = set(CANCELLA)
+    try: chi |= {r.strip().lower() for r in open("/etc/comotv/doppioni-cancella.txt") if r.strip() and not r.startswith("#")}
+    except OSError: pass
+    # piu' i super utenti di Como TV (puo_segnare li ammette, e non sono del club)
+    return bool(email) and (email in chi or (puo_segnare(email) and not email.endswith("@comofootball.com")))
+
+
+def _grandi(radice):
+    """{(nome minuscolo, dimensione)} dei file sopra 1 MB sotto una cartella"""
+    fuori = set()
+    for d, ds, fs in os.walk(radice):
+        ds[:] = [x for x in ds if not x.startswith((".", "@"))]
+        for f in fs:
+            if f.startswith("."): continue
+            try: s = os.path.getsize(os.path.join(d, f))
+            except OSError: continue
+            if s >= 1_000_000: fuori.add((f.lower(), s))
+    return fuori
+
+
+def _nas_pronta():
+    """il collegamento del cestino e' davvero la NAS? (29/09/2026: senza mount, la cartella
+    finiva sul disco della VM e la prova di scrittura sembrava riuscita)"""
+    try:
+        os.listdir(RW)                                   # sveglia l'automount
+        return os.stat(RW).st_dev != os.stat(os.path.dirname(RW)).st_dev and os.path.isdir(os.path.join(RW, CESTINO))
+    except OSError:
+        return False
+
+
+def elimina(p, chi):
+    if not puo_eliminare(chi): return 403, {"ok": False, "errore": "Eliminare dal MAM puo' solo chi e' autorizzato (Gionata Medeot)."}
+    if not _nas_pronta(): return 503, {"ok": False, "errore": "La NAS del club non e' collegata in scrittura in questo momento: non si sposta niente. Riprova tra poco."}
+    try: os.makedirs(os.path.join(RW, CESTINO), exist_ok=True)
+    except OSError as e: return 409, {"ok": False, "errore": "La NAS non permette ancora di spostare: serve la scrittura sul FRAME per la VM (%s)." % (e.strerror or e)}
+    tieni = _tenute(); quando = time.strftime("%Y-%m-%d %H%M"); esiti = []
+    vie = ["/".join(x for x in str(v).split("/") if x and x not in (".", "..")) for v in (p.get("vie") or [])][:2000]
+    via_set = set(vie)
+    with S_LOCK:
+        s = _leggi(SEGNATI, {"segnati": {}, "storia": []}); c = _leggi(CESTINATI, {"voci": {}, "storia": []})
+        for via in vie:
+            if not via or via.startswith(CESTINO): continue
+            b = tieni.get(via)
+            if not b: esiti.append([via, "non e' nell'elenco dei doppioni"]); continue
+            if any(b == x or b.startswith(x + "/") for x in via_set): esiti.append([via, "anche la copia che resta e' tra quelle da eliminare"]); continue
+            src, keep = os.path.join(RW, via), os.path.join(RW, b)
+            if not os.path.exists(src): esiti.append([via, "non c'e' piu'"]); continue
+            if not os.path.exists(keep): esiti.append([via, "la copia che resta non c'e' piu': non si elimina"]); continue
+            # l'ultimo controllo: tutto quello che se ne va deve stare nella copia che resta
+            if os.path.isdir(src):
+                manca = _grandi(src) - _grandi(keep)
+                if manca: esiti.append([via, "la copia che resta non ha %d dei suoi file: non si elimina" % len(manca)]); continue
+            elif os.path.getsize(src) != os.path.getsize(keep): esiti.append([via, "la copia che resta ha un'altra dimensione: non si elimina"]); continue
+            dest = os.path.join(CESTINO, quando, via)
+            try:
+                os.makedirs(os.path.dirname(os.path.join(RW, dest)), exist_ok=True); os.rename(src, os.path.join(RW, dest))
+            except OSError as e:
+                esiti.append([via, "non riuscito: %s" % (e.strerror or e)]); continue
+            k = hashlib.sha1((via + quando).encode()).hexdigest()[:12]
+            c["voci"][k] = {"via": via, "dove": dest, "tieni": b, "chi": chi, "quando": int(time.time()), "segnato_da": (s["segnati"].get(via) or {}).get("chi", "")}
+            s["segnati"].pop(via, None); esiti.append([via, "ok"])
+        n = sum(1 for e in esiti if e[1] == "ok")
+        c["storia"].append([int(time.time()), chi, "elimina", n]); del c["storia"][:-1000]
+        _scrivi(CESTINATI, c); _scrivi(SEGNATI, s)
+    _CONTROLLO["t"] = 0
+    return 200, {"ok": True, "eliminati": n, "esiti": esiti}
+
+
+def rimetti(p, chi):
+    """dal cestino al suo posto (finche' il cestino non e' stato svuotato)"""
+    if not puo_eliminare(chi): return 403, {"ok": False, "errore": "Non autorizzato."}
+    if not _nas_pronta(): return 503, {"ok": False, "errore": "La NAS del club non e' collegata in scrittura in questo momento. Riprova tra poco."}
+    esiti = []
+    with S_LOCK:
+        c = _leggi(CESTINATI, {"voci": {}, "storia": []})
+        for k in [str(x) for x in (p.get("ids") or [])][:2000]:
+            v = c["voci"].get(k)
+            if not v: continue
+            src, dest = os.path.join(RW, v["dove"]), os.path.join(RW, v["via"])
+            if os.path.exists(dest): esiti.append([v["via"], "al suo posto c'e' gia' qualcosa"]); continue
+            if not os.path.exists(src): esiti.append([v["via"], "il cestino e' stato svuotato"]); c["voci"].pop(k); continue
+            try: os.makedirs(os.path.dirname(dest), exist_ok=True); os.rename(src, dest)
+            except OSError as e: esiti.append([v["via"], "non riuscito: %s" % (e.strerror or e)]); continue
+            c["voci"].pop(k); esiti.append([v["via"], "ok"])
+        c["storia"].append([int(time.time()), chi, "rimetti", sum(1 for e in esiti if e[1] == "ok")]); del c["storia"][:-1000]
+        _scrivi(CESTINATI, c)
+    return 200, {"ok": True, "esiti": esiti}
+
+
+# Qui si GUARDA anche, in sola lettura: un segnato che non c'e' piu' diventa "cancellato" (se
+# qualcuno l'ha tolto dalla NAS a mano); se sparisce la copia che doveva restare, si avvisa.
+_TIENI = {"t": 0, "m": {}}
+_CONTROLLO = {"t": 0, "r": {}}
+
+
+def _tenute():
+    f = os.path.join(CASA, "pub", "doppioni.json")
+    try: mt = os.path.getmtime(f)
+    except OSError: return {}
+    if mt != _TIENI["t"]:
+        try:
+            j = json.load(open(f))
+            m = {r["cartella"]: r["tieni"] for r in j.get("cartelle", [])}; m.update({r["a"]: r["b"] for r in j.get("file", [])})
+            _TIENI.update(t=mt, m=m)
+        except Exception:
+            pass
+    return _TIENI["m"]
+
+
+def controlla_segnati():
+    """{via: {"cancellato": ts} | {"attenzione": "..."}} per i segnati, al massimo una volta al minuto"""
+    if time.time() - _CONTROLLO["t"] < 60: return _CONTROLLO["r"]
+    tieni = _tenute(); r = {}
+    with S_LOCK:
+        s = _leggi(SEGNATI, {"segnati": {}, "storia": []}); cambiato = False
+        for via, x in s["segnati"].items():
+            if not os.path.exists(os.path.join(R, via)):
+                if not x.get("cancellato"): x["cancellato"] = int(time.time()); cambiato = True
+                r[via] = {"cancellato": x["cancellato"]}
+            elif x.get("cancellato"):
+                x.pop("cancellato"); cambiato = True           # ricomparso (rimesso a posto dal cestino della QNAP)
+            b = tieni.get(via)
+            if b and not os.path.exists(os.path.join(R, b)):
+                r.setdefault(via, {})["attenzione"] = "La copia che doveva restare non c'e' piu'"
+        if cambiato: _scrivi(SEGNATI, s)
+    _CONTROLLO.update(t=time.time(), r=r)
+    return r
+
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 
@@ -366,7 +509,10 @@ class H(BaseHTTPRequestHandler):
             cod, r = battezza(p, str(self.headers.get("X-Utente") or ""))
             return self.rispondi(cod, r)
         if via == "/doppioni":
-            cod, r = segna(p, str(self.headers.get("X-Utente") or ""))
+            chi = str(self.headers.get("X-Utente") or "")
+            if p.get("azione") == "elimina": cod, r = elimina(p, chi)
+            elif p.get("azione") == "rimetti": cod, r = rimetti(p, chi)
+            else: cod, r = segna(p, chi)
             return self.rispondi(cod, r)
         vie = [str(v) for v in (p.get("vie") or [])][:600]
         xml, quanti = xml_premiere(str(p.get("nome") or ""), vie, str(p.get("radice") or ""))
@@ -416,7 +562,10 @@ class H(BaseHTTPRequestHandler):
                                        "davanti": davanti, "errore": s.get("errore", "")})
         if u.path == "/doppioni":
             s = _leggi(SEGNATI, {"segnati": {}})
-            return self.rispondi(200, {"ok": True, "segnati": s.get("segnati", {}), "puoi": puo_segnare(self.headers.get("X-Utente") or "")}, extra={"Cache-Control": "no-store"})
+            stato = controlla_segnati(); s = _leggi(SEGNATI, {"segnati": {}}); chi = self.headers.get("X-Utente") or ""
+            c = _leggi(CESTINATI, {"voci": {}})
+            return self.rispondi(200, {"ok": True, "segnati": s.get("segnati", {}), "stato": stato, "cestino": c.get("voci", {}),
+                                       "puoi": puo_segnare(chi), "elimina": puo_eliminare(chi)}, extra={"Cache-Control": "no-store"})
         if u.path == "/code":
             with LOCK:
                 return self.rispondi(200, {"ok": True, "coda": [dict(STATO[k], pieno=None) for k in CODA]})

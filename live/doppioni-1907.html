@@ -77,6 +77,11 @@
   .bad.segn{border-color:rgba(229,72,77,.6);color:var(--rosso2);}
   .chi{font-size:11px;color:var(--rosso2);}
   .piu{align-self:center;margin-top:6px;}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:84px;z-index:120;background:#13141a;border:1px solid var(--oro);border-radius:10px;padding:12px 16px;max-width:560px;font-size:13px;color:var(--ivory2);box-shadow:0 10px 30px rgba(0,0,0,.5);cursor:pointer;}
+  .toast b{color:var(--oro2);}
+  .bad.canc{border-color:rgba(79,203,139,.6);color:var(--ok);background:rgba(79,203,139,.08);}
+  .bad.att{border-color:var(--rosso);color:#fff;background:var(--rosso);}
+  .dp.cancellata{opacity:.62;}
   .vuoto{padding:30px;border:1px dashed var(--riga2);border-radius:12px;color:var(--fumo);text-align:center;}
   /* la barra della scelta */
   #barra{position:fixed;left:0;right:0;bottom:0;z-index:50;background:#13141a;border-top:1px solid rgba(201,162,75,.5);padding:12px 26px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;box-shadow:0 -10px 30px rgba(0,0,0,.4);}
@@ -122,6 +127,7 @@
   <button type="button" id="deseleziona">Deseleziona</button>
   <button type="button" id="togliSegno">Togli il segno</button>
   <button type="button" class="rosso" id="segna">Segna da cancellare</button>
+  <button type="button" class="rosso" id="elimina" hidden title="sposta nel cestino della NAS: si rimette a posto finche' il cestino non si svuota">Elimina</button>
 </div>
 <div class="velo" id="velo" hidden></div>
 <script>
@@ -129,7 +135,7 @@
   "use strict";
   var BASE = "/como-tv/mam-1907/";
   var $ = function (id) { return document.getElementById(id); };
-  var D = null, SEGN = {}, PUOI = false, SCHEDA = "cartelle", SCELTI = new Map(), QUANTI = 50, LISTA = [];
+  var D = null, SEGN = {}, STATO = {}, CEST = {}, ELIM = false, PUOI = false, SCHEDA = "cartelle", SCELTI = new Map(), QUANTI = 50, LISTA = [];
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function norm(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
   function gb(b) { if (!b) return "0 GB"; return b >= 1e12 ? (b / 1e12).toLocaleString("it-IT", { maximumFractionDigits: 1 }) + " TB" : b >= 1e9 ? (b / 1e9).toLocaleString("it-IT", { maximumFractionDigits: 1 }) + " GB" : Math.max(1, Math.round(b / 1e6)).toLocaleString("it-IT") + " MB"; }
@@ -154,6 +160,16 @@
       (t === "altro" ? '<span class="ico">' + esc((v.split(".").pop() || "").toUpperCase()) + "</span>" : "") + (conT ? '<span class="t">' + esc(v.split("/").pop()) + "</span>" : "") + "</div>";
   }
 
+  // IL PERCORSO SULLA NAS: si cancella dal Finder (Vai alla cartella, Maiuscole+Cmd+G) o da File
+  // Station, con il proprio account della QNAP. Stessa radice del MAM Como 1907 (cambiabile).
+  function radice() { try { return localStorage.getItem("mam1907-nas") || "/Volumes/COMOTV - FRAME"; } catch (e) { return "/Volumes/COMOTV - FRAME"; } }
+  function copiaPercorso(v) {
+    var t = radice() + "/" + v;
+    (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { avvisa("Percorso copiato. Nel Finder: <b>Vai → Vai alla cartella</b> (Maiuscole+Cmd+G) e incolla. In File Station: la cartella COMOTV - FRAME, poi lo stesso percorso."); })
+      .catch(function () { prompt("Il percorso sulla NAS del club", t); });
+  }
+  function avvisa(h) { var a = document.createElement("div"); a.className = "toast"; a.innerHTML = h; document.body.appendChild(a); setTimeout(function () { a.remove(); }, 6000); a.onclick = function () { a.remove(); }; }
+
   // ── i dati ──
   Promise.all([
     fetch(BASE + "indice/doppioni.json", { cache: "no-cache" }).then(function (r) { if (!r.ok) throw 0; return r.json(); }),
@@ -164,17 +180,20 @@
     disegna();
   }).catch(function () { $("elenco").innerHTML = '<div class="vuoto">L’elenco dei doppioni non è ancora pronto: lo prepara la VM. Riprova tra qualche minuto.</div>'; });
   function caricaSegni() {
-    return fetch(BASE + "doppioni", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) { SEGN = j.segnati || {}; PUOI = !!j.puoi; }).catch(function () {});
+    return fetch(BASE + "doppioni", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) { SEGN = j.segnati || {}; STATO = j.stato || {}; CEST = j.cestino || {}; ELIM = !!j.elimina; PUOI = !!j.puoi; }).catch(function () {});
   }
 
   // ── cosa si vede ──
   function voci() {
     var q = norm($("cerca").value.trim()), c = $("coll").value, st = $("stato").value, ver = $("soloVer").checked;
     var l;
+    var via = {}; Object.keys(CEST).forEach(function (k) { via[CEST[k].via] = 1; });
+    if (SCHEDA === "cestino") return Object.keys(CEST).map(function (k) { return Object.assign({ id: k, cest: true, peso: 0 }, CEST[k]); }).sort(function (x, y) { return y.quando - x.quando; });
     if (SCHEDA === "segnati") l = D.cartelle.filter(function (x) { return SEGN[x.cartella]; }).concat(D.file.filter(function (x) { return SEGN[x.a]; }));
     else l = SCHEDA === "cartelle" ? D.cartelle : D.file;
     l = l.filter(function (x) {
       var a = x.cartella || x.a, b = x.tieni || x.b;
+      if (via[a]) return false;
       if (c && a.split("/")[0] !== c) return false;
       if (q && norm(a + " " + b).indexOf(q) < 0) return false;
       if (st === "da" && SEGN[a]) return false;
@@ -185,11 +204,18 @@
     if ($("ord").value === "nome") l = l.slice().sort(function (x, y) { return (x.cartella || x.a).localeCompare(y.cartella || y.a); });
     return l;
   }
+  function rigaCestino(x) {
+    return '<article class="dp" data-k="' + esc(x.id) + '" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr) 190px">' +
+      '<div class="lato via"><span class="eti">Nel cestino</span>' + percorso(x.via) + '<div class="meta">eliminata da ' + esc(x.chi) + " · " + new Date(x.quando * 1000).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + (x.segnato_da ? " · segnata da " + esc(x.segnato_da) : "") + "</div></div>" +
+      '<div class="lato resta"><span class="eti">Resta</span>' + percorso(x.tieni) + "</div>" +
+      '<div class="stato">' + (ELIM ? '<button type="button" class="mini" data-rimetti="' + esc(x.id) + '">Rimetti a posto</button>' : "") + "</div></article>";
+  }
   function riga(x) {
-    var cart = !!x.cartella, a = cart ? x.cartella : x.a, b = cart ? x.tieni : x.b, s = SEGN[a], on = SCELTI.has(a);
+    if (x.cest) return rigaCestino(x);
+    var cart = !!x.cartella, a = cart ? x.cartella : x.a, b = cart ? x.tieni : x.b, s = SEGN[a], on = SCELTI.has(a), st = STATO[a] || {};
     var ma = cart ? (x.esempi || []).slice(0, 3).map(function (e) { return mini(e[0], true); }).join("") : mini(a);
     var mb = cart ? (x.esempi || []).slice(0, 3).map(function (e) { return mini(e[1], true); }).join("") : mini(b);
-    return '<article class="dp' + (on ? " scelta" : "") + (s ? " segnata" : "") + '" data-a="' + esc(a) + '">' +
+    return '<article class="dp' + (on ? " scelta" : "") + (s ? " segnata" : "") + (st.cancellato ? " cancellata" : "") + '" data-a="' + esc(a) + '">' +
       '<label class="dp-sel"><input type="checkbox" data-sel="' + esc(a) + '"' + (on ? " checked" : "") + ' aria-label="scegli"></label>' +
       '<div class="lato via"><span class="eti">' + (cart ? "Cartella che può andare" : "Può andare") + '</span><div class="minis' + (cart ? "" : " uno") + '">' + ma + "</div>" + percorso(a) +
       '<div class="meta">' + (cart ? n(x.file) + " file" + (x.piccoli ? " (di cui " + n(x.piccoli) + " piccoli di servizio)" : "") : gb(x.peso) + (x.copie > 2 ? " · " + x.copie + " copie in tutto" : "")) + "</div></div>" +
@@ -198,22 +224,29 @@
       '<div class="stato"><div class="peso">' + gb(x.peso).replace(/ (\w+)$/, "<small>$1</small>") + "</div>" +
       (cart ? '<span class="bad">' + (x.identica ? "Identica" : "Resta ha " + n(x.in_piu) + " file in più") + "</span>" : "") +
       ((x.verificata || x.verificato) ? '<span class="bad ok" title="primi e ultimi 256 KB uguali">✓ Contenuto verificato</span>' : '<span class="bad" title="stesso nome e stessa dimensione">Nome e dimensione</span>') +
-      (s ? '<span class="bad segn">Segnata da cancellare</span><span class="chi">' + esc(s.chi) + " · " + new Date(s.quando * 1000).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + "</span>" : "") +
-      '<button type="button" class="mini" data-conf="' + esc(a) + '">Confronta</button></div></article>';
+      (st.attenzione ? '<span class="bad att">⚠ ' + esc(st.attenzione) + "</span>" : "") +
+      (st.cancellato ? '<span class="bad canc">✓ Cancellata dalla NAS</span>' : s ? '<span class="bad segn">Segnata da cancellare</span>' : "") +
+      (s ? '<span class="chi">segnata da ' + esc(s.chi) + " · " + new Date(s.quando * 1000).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + "</span>" : "") +
+      '<button type="button" class="mini" data-conf="' + esc(a) + '">Confronta</button>' +
+      "</div></article>";
   }
   function disegna() {
     if (!D) return;
     LISTA = voci();
     var tc = D.cartelle.reduce(function (t, x) { return t + x.peso; }, 0), tf = D.file.reduce(function (t, x) { return t + x.peso; }, 0);
     var sg = Object.keys(SEGN), ts = sg.reduce(function (t, k) { return t + (SEGN[k].peso || 0); }, 0);
-    $("numeri").innerHTML = '<div class="num"><b>' + gb(tc + tf) + '</b><span>si possono liberare</span></div><div class="num"><b>' + n(D.cartelle.length) + '</b><span>cartelle copiate · ' + gb(tc) + '</span></div><div class="num"><b>' + n(D.file.length) + '</b><span>file doppi · ' + gb(tf) + '</span></div><div class="num segn"><b>' + n(sg.length) + '</b><span>segnati da cancellare · ' + gb(ts) + "</span></div>";
-    $("avviso").innerHTML = "<b>Qui non si cancella niente.</b> Il segno dice al team chi ha deciso cosa; i file restano dove sono finché qualcuno non li cancella dalla QNAP. Ogni file resta almeno in una copia che non è in questo elenco." +
-      (PUOI ? "" : " <b>Puoi guardare ma non segnare:</b> i segni li mette il team del Como 1907.") + (D.verifica ? "" : " Il controllo del contenuto è ancora in corso: per ora i doppioni sono riconosciuti da nome e dimensione.");
-    $("schede").innerHTML = [["cartelle", "Cartelle copiate", D.cartelle.length], ["file", "File doppi", D.file.length], ["segnati", "Segnati", sg.length]].map(function (s) {
+    var canc = sg.filter(function (k) { return (STATO[k] || {}).cancellato; }), tcanc = canc.reduce(function (t, k) { return t + (SEGN[k].peso || 0); }, 0);
+    var att = Object.keys(STATO).filter(function (k) { return STATO[k].attenzione; }).length;
+    $("numeri").innerHTML = '<div class="num"><b>' + gb(tc + tf) + '</b><span>si possono liberare</span></div><div class="num"><b>' + n(D.cartelle.length) + '</b><span>cartelle copiate · ' + gb(tc) + '</span></div><div class="num"><b>' + n(D.file.length) + '</b><span>file doppi · ' + gb(tf) + '</span></div><div class="num segn"><b>' + n(sg.length - canc.length) + '</b><span>segnati, da cancellare · ' + gb(ts - tcanc) + '</span></div><div class="num"><b style="color:var(--ok)">' + n(canc.length) + '</b><span>già cancellati · ' + gb(tcanc) + "</span></div>" +
+      (att ? '<div class="num"><b style="color:var(--rosso2)">' + n(att) + '</b><span>⚠ copia che resta sparita</span></div>' : "");
+    $("avviso").innerHTML = (ELIM ? "<b>Puoi eliminare:</b> scegli i doppioni e premi <b>Elimina</b>. Vanno nel cestino della NAS del club (<b>_CESTINO COMO TV</b>): prima la pagina ricontrolla che la copia che resta ci sia, con tutti i file; finché il cestino non si svuota, li rimetti a posto dalla scheda Cestino."
+      : PUOI ? "<b>Segna i doppioni</b> che secondo te possono andare: li elimina Gionata Medeot, che vede i tuoi segni." : "<b>Puoi guardare:</b> segnano il team del Como 1907, elimina Gionata Medeot.") +
+      " Ogni file resta almeno in una copia che non è in questo elenco." + (D.verifica ? "" : " Il controllo del contenuto è ancora in corso: per ora i doppioni sono riconosciuti da nome e dimensione.");
+    $("schede").innerHTML = [["cartelle", "Cartelle copiate", D.cartelle.length], ["file", "File doppi", D.file.length], ["segnati", "Segnati", sg.length], ["cestino", "Cestino", Object.keys(CEST).length]].map(function (s) {
       return '<button type="button" role="tab" data-scheda="' + s[0] + '" class="' + (SCHEDA === s[0] ? "on" : "") + '" aria-selected="' + (SCHEDA === s[0]) + '">' + s[1] + "<b>" + n(s[2]) + "</b></button>"; }).join("");
     $("conto").textContent = n(LISTA.length) + " in elenco · " + gb(LISTA.reduce(function (t, x) { return t + x.peso; }, 0));
     var h = LISTA.slice(0, QUANTI).map(riga).join("");
-    if (!LISTA.length) h = '<div class="vuoto">' + (SCHEDA === "segnati" ? "Nessun doppione segnato, per ora." : "Nessun doppione con questi filtri.") + "</div>";
+    if (!LISTA.length) h = '<div class="vuoto">' + (SCHEDA === "segnati" ? "Nessun doppione segnato, per ora." : SCHEDA === "cestino" ? "Il cestino è vuoto." : "Nessun doppione con questi filtri.") + "</div>";
     if (LISTA.length > QUANTI) h += '<button type="button" class="piu" id="altri">Mostra altri ' + Math.min(50, LISTA.length - QUANTI) + " (" + n(LISTA.length - QUANTI) + " ancora)</button>";
     if (SCHEDA === "segnati" && sg.length) h = '<div><button type="button" class="oro" id="scarica">Scarica l’elenco dei segnati (CSV)</button></div>' + h;
     $("elenco").innerHTML = h;
@@ -224,6 +257,7 @@
     $("barra").hidden = !sel.length;
     $("quanti").innerHTML = "<b>" + n(sel.length) + "</b> " + (sel.length === 1 ? "scelto" : "scelti") + " · <b>" + gb(peso) + "</b>";
     $("segna").disabled = !PUOI || segnati === sel.length; $("togliSegno").disabled = !PUOI || !segnati;
+    $("elimina").hidden = !ELIM; $("elimina").disabled = !sel.length;
     $("barraNota").textContent = PUOI ? "" : "Solo il team del Como 1907 può segnare";
   }
 
@@ -274,6 +308,26 @@
   function chiudiConf() { $("velo").querySelectorAll("video").forEach(function (v) { v.pause(); }); $("velo").hidden = true; $("velo").innerHTML = ""; }
 
   // ── segnare ──
+  function risultato(j, fatto) {
+    var no = (j.esiti || []).filter(function (e) { return e[1] !== "ok"; });
+    alert(fatto + (no.length ? "\n\nNon eliminati (" + no.length + "):\n" + no.slice(0, 12).map(function (e) { return "· " + e[0].split("/").slice(-2).join("/") + " — " + e[1]; }).join("\n") + (no.length > 12 ? "\n…" : "") : ""));
+  }
+  function elimina() {
+    var sel = Array.from(SCELTI.values()); if (!sel.length) return;
+    var peso = sel.reduce(function (t, x) { return t + x.peso; }, 0);
+    if (!confirm("Eliminare " + n(sel.length) + (sel.length === 1 ? " doppione" : " doppioni") + " (" + gb(peso) + ")?\n\nVanno nel cestino della NAS del club (_CESTINO COMO TV): la copia che resta non si tocca. Finché il cestino non si svuota, si rimettono a posto dalla scheda Cestino.")) return;
+    $("elimina").disabled = true; $("elimina").textContent = "Elimino…";
+    fetch(BASE + "doppioni", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ azione: "elimina", vie: sel.map(function (x) { return x.cartella || x.a; }) }) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || !j.ok) throw new Error(j.errore || "Non riuscito: riprova."); return j; }); })
+      .then(function (j) { SCELTI.clear(); risultato(j, "Eliminati: " + n(j.eliminati) + " (nel cestino della NAS)."); return caricaSegni(); })
+      .catch(function (e) { alert(e.message); })
+      .then(function () { $("elimina").textContent = "Elimina"; disegna(); });
+  }
+  function rimetti(k) {
+    fetch(BASE + "doppioni", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ azione: "rimetti", ids: [k] }) })
+      .then(function (r) { return r.json(); }).then(function (j) { var no = (j.esiti || []).filter(function (e) { return e[1] !== "ok"; }); if (no.length) alert(no[0][1]); return caricaSegni(); }).then(disegna)
+      .catch(function () { alert("Non riuscito: riprova."); });
+  }
   function manda(azione) {
     var sel = Array.from(SCELTI.values()).filter(function (x) { return azione === "togli" ? SEGN[x.cartella || x.a] : !SEGN[x.cartella || x.a]; });
     if (!sel.length) return;
@@ -285,9 +339,10 @@
       .catch(function (e) { alert(e.message); });
   }
   function scarica() {
-    var righe = [["tipo", "da cancellare", "copia che resta", "GB", "segnato da", "quando"]];
-    D.cartelle.forEach(function (x) { var s = SEGN[x.cartella]; if (s) righe.push(["cartella", x.cartella, x.tieni, (x.peso / 1e9).toFixed(2), s.chi, new Date(s.quando * 1000).toISOString()]); });
-    D.file.forEach(function (x) { var s = SEGN[x.a]; if (s) righe.push(["file", x.a, x.b, (x.peso / 1e9).toFixed(3), s.chi, new Date(s.quando * 1000).toISOString()]); });
+    var R0 = radice() + "/";
+    var righe = [["tipo", "da cancellare", "copia che resta", "GB", "segnato da", "quando", "stato"]];
+    D.cartelle.forEach(function (x) { var s = SEGN[x.cartella]; if (s) righe.push(["cartella", R0 + x.cartella, R0 + x.tieni, (x.peso / 1e9).toFixed(2), s.chi, new Date(s.quando * 1000).toISOString(), (STATO[x.cartella] || {}).cancellato ? "cancellato" : "da cancellare"]); });
+    D.file.forEach(function (x) { var s = SEGN[x.a]; if (s) righe.push(["file", R0 + x.a, R0 + x.b, (x.peso / 1e9).toFixed(3), s.chi, new Date(s.quando * 1000).toISOString(), (STATO[x.a] || {}).cancellato ? "cancellato" : "da cancellare"]); });
     var csv = righe.map(function (r) { return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(";"); }).join("\r\n");
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" })); a.download = "doppioni-1907-segnati.csv"; document.body.appendChild(a); a.click(); a.remove();
   }
@@ -297,15 +352,17 @@
     var b;
     if ((b = e.target.closest("[data-scheda]"))) { SCHEDA = b.dataset.scheda; QUANTI = 50; disegna(); return; }
     if ((b = e.target.closest("[data-conf]"))) { confronta(b.dataset.conf); return; }
+    if ((b = e.target.closest("[data-rimetti]"))) { rimetti(b.dataset.rimetti); return; }
     if ((b = e.target.closest(".mini")) && !e.target.closest("#velo")) { var ar = b.closest("[data-a]"); if (ar) { var x = trova(ar.dataset.a), j = 0; if (x && x.cartella) { var ms = Array.from(b.parentNode.children); j = ms.indexOf(b); } confronta(ar.dataset.a, j); } return; }
     if ((b = e.target.closest("[data-es]"))) { confronta($("velo").dataset.a, +b.dataset.es); return; }
     if (e.target.id === "chiudiConf" || e.target === $("velo")) { chiudiConf(); return; }
     if (e.target.id === "altri") { QUANTI += 50; disegna(); return; }
     if (e.target.id === "scarica") { scarica(); return; }
-    if (e.target.id === "tutti") { LISTA.forEach(function (x) { SCELTI.set(x.cartella || x.a, x); }); disegna(); return; }
+    if (e.target.id === "tutti") { if (SCHEDA === "cestino") return; LISTA.forEach(function (x) { SCELTI.set(x.cartella || x.a, x); }); disegna(); return; }
     if (e.target.id === "deseleziona") { SCELTI.clear(); disegna(); return; }
     if (e.target.id === "segna") { manda("segna"); return; }
     if (e.target.id === "togliSegno") { manda("togli"); return; }
+    if (e.target.id === "elimina") { elimina(); return; }
   });
   // la scelta: un clic; con Maiuscolo si prende tutto l'intervallo dall'ultimo scelto
   var ULTIMO = -1;
