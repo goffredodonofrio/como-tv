@@ -456,6 +456,17 @@
   var PONTE = /^\/como-tv-dev\//.test(location.pathname) ? "/como-tv-dev/api" : "/api";
   var TOKEN = ""; try { TOKEN = (window.ChiaveComoTV ? ChiaveComoTV.valore() : "") || ""; } catch (e) {}
   var I = null, COP = {}, F = null, CARICO = null, CART = {}, RACC = [], RACCOLTA = null;
+  // GLI SPOSTAMENTI (29/09/2026): cartelle rinominate o spostate dalla pagina Cartelle 1907. Le raccolte
+  // tengono i percorsi vecchi: qui si traducono in quelli nuovi (il prefisso piu' lungo vince), cosi'
+  // Monta tutta, Premiere e le copie trovano i file dove sono ora.
+  var SPOST = {};
+  fetch(BASE + "indice/spostamenti.json", { cache: "no-cache" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) { SPOST = j || {}; }).catch(function () {});
+  function nuovaVia(v) {
+    var best = "";
+    Object.keys(SPOST).forEach(function (k) { if ((v === k || v.indexOf(k + "/") === 0) && k.length > best.length) best = k; });
+    return best ? SPOST[best] + v.slice(best.length) : v;
+  }
+  function conViaNuova(r) { if (r && r.file) r.file.forEach(function (x) { if (!x.viaOrig) x.viaOrig = x.via; x.via = nuovaVia(x.viaOrig); }); return r; }
   var G = [];            // gettoni: {k:"coll"|"ep"|"cart"|"stag"|"anno"|"tipo", v, n}
   var Q = "", MAX = 60, quanti = MAX, TAB = "tutto", PANNELLO = false, ORD = "data";
   var SCELTI = new Map(), SALVA_APERTO = false;
@@ -1003,7 +1014,7 @@
   $("vediRacc").onclick = function () { disegnaRaccolte(true); };
   function apriRaccolta(id, daIndirizzo) {
     return post({ tipo: "clip-1907-raccolta-leggi", id: id }).then(function (d) {
-      RACCOLTA = d.raccolta; G = []; Q = ""; $("cerca").value = ""; disegnaGettoni(); if (!daIndirizzo) window.scrollTo(0, 0); vai();
+      RACCOLTA = conViaNuova(d.raccolta); G = []; Q = ""; $("cerca").value = ""; disegnaGettoni(); if (!daIndirizzo) window.scrollTo(0, 0); vai();
     }).catch(function (e) { avviso("err", esc(e.message)); });
   }
 
@@ -1582,9 +1593,10 @@
     if (t.dataset.fa === "salva-no") { SALVA_APERTO = false; disegnaBarra(); }
     if (t.dataset.fa === "svuota") { SCELTI.clear(); disegnaBarra(); if (!$("risultati").hidden) risultati(); }
     if (t.dataset.fa === "togli-racc" && RACCOLTA) {
-      var vie = Array.from(SCELTI.keys()), dentro = new Set(RACCOLTA.file.map(function (x) { return x.via; })), da = vie.filter(function (v) { return dentro.has(v); });
+      var vie = Array.from(SCELTI.keys()), orig = {}; RACCOLTA.file.forEach(function (x) { orig[x.via] = x.viaOrig || x.via; });
+      var da = vie.filter(function (v) { return orig[v]; }).map(function (v) { return orig[v]; });
       if (!da.length) { avviso("err", "Quello che hai scelto sta nella raccolta perché è dentro una cartella intera: togli la cartella."); return; }
-      post({ tipo: "clip-1907-raccolta-togli", id: RACCOLTA.id, vie: da }).then(function (d) { RACCOLTA = d.raccolta; SCELTI.clear(); disegnaBarra(); caricaRaccolte(); risultati(); avviso("", d.tolte + " tolti dalla raccolta."); }).catch(function (x) { avviso("err", esc(x.message)); });
+      post({ tipo: "clip-1907-raccolta-togli", id: RACCOLTA.id, vie: da }).then(function (d) { RACCOLTA = conViaNuova(d.raccolta); SCELTI.clear(); disegnaBarra(); caricaRaccolte(); risultati(); avviso("", d.tolte + " tolti dalla raccolta."); }).catch(function (x) { avviso("err", esc(x.message)); });
     }
   });
 

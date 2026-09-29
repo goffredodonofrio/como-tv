@@ -470,6 +470,103 @@ def elimina(p, chi):
     return 200, {"ok": True, "eliminati": n, "esiti": esiti}
 
 
+# ── LE CARTELLE DEL FRAME COME UN DISCO (Goffredo, 29/09/2026: "editabile in cartelle come un
+# hard-disk"; possono tutti i @comofootball.com). Si guarda dal collegamento in sola lettura; si
+# crea, rinomina e sposta SOLO da quello in scrittura (RW), dentro il FRAME, mai cancellando.
+# Ogni spostamento resta in spostamenti.json (vecchio -> nuovo): il MAM ci ritrova le raccolte.
+CARTELLE_REG = os.path.join(CASA, "cartelle-registro.json")
+SPOSTAMENTI = os.path.join(CASA, "pub", "spostamenti.json")
+VIDEO_FOTO = VIDEO + FOTO
+
+
+def _rel(v):
+    return "/".join(x for x in str(v or "").replace("\\", "/").split("/") if x and x not in (".", ".."))
+
+
+def _nome_ok(nome):
+    nome = " ".join(str(nome or "").split())
+    if not nome or len(nome) > 200 or "/" in nome or nome.startswith((".", "@", "#")) or nome in (".", ".."): return ""
+    return nome
+
+
+def cartella(v):
+    """il contenuto di una cartella del FRAME: cartelle e file, dal collegamento in sola lettura"""
+    rel = _rel(v); pieno = os.path.join(R, rel) if rel else R
+    if not os.path.realpath(pieno).startswith(R) or not os.path.isdir(pieno): return None
+    cc, ff = [], []
+    try:
+        with os.scandir(pieno) as it:
+            for e in it:
+                if e.name.startswith((".", "@", "#")): continue
+                try:
+                    st = e.stat(follow_symlinks=False)
+                    if e.is_dir(follow_symlinks=False): cc.append({"nome": e.name, "quando": int(st.st_mtime)})
+                    else: ff.append({"nome": e.name, "peso": st.st_size, "quando": int(st.st_mtime)})
+                except OSError:
+                    pass
+    except OSError:
+        return None
+    cc.sort(key=lambda x: x["nome"].lower()); ff.sort(key=lambda x: x["nome"].lower())
+    return {"via": rel, "cartelle": cc, "file": ff}
+
+
+def _registra(chi, azione, da, a):
+    reg = _leggi(CARTELLE_REG, {"voci": []})
+    reg["voci"].append([int(time.time()), chi, azione, da, a]); del reg["voci"][:-5000]
+    _scrivi(CARTELLE_REG, reg)
+    if azione in ("rinomina", "sposta"):
+        sp = _leggi(SPOSTAMENTI, {})
+        # chi era gia' stato spostato dentro "da" segue il nuovo nome
+        for k, v in list(sp.items()):
+            if v == da or v.startswith(da + "/"): sp[k] = a + v[len(da):]
+        sp[da] = a
+        _scrivi(SPOSTAMENTI, sp)
+
+
+def organizza(p, chi):
+    if not puo_segnare(chi): return 403, {"ok": False, "errore": "Organizzare le cartelle puo' solo il team del Como 1907."}
+    if not _nas_pronta(): return 503, {"ok": False, "errore": "La NAS del club non e' collegata in scrittura in questo momento. Riprova tra poco."}
+    az = p.get("azione"); esiti = []
+    with S_LOCK:
+        if az == "nuova":
+            dentro, nome = _rel(p.get("in")), _nome_ok(p.get("nome"))
+            if not nome: return 400, {"ok": False, "errore": "Nome non valido."}
+            dest = os.path.join(RW, dentro, nome)
+            if not _dentro_frame(dest): return 400, {"ok": False, "errore": "Percorso non valido."}
+            if os.path.exists(dest): return 409, {"ok": False, "errore": "C'e' gia' una cartella con questo nome."}
+            try: os.makedirs(dest)
+            except OSError as e: return 500, {"ok": False, "errore": "Non riuscito: %s" % (e.strerror or e)}
+            _registra(chi, "nuova", "", _rel(os.path.join(dentro, nome)))
+            return 200, {"ok": True, "via": _rel(os.path.join(dentro, nome))}
+        if az == "rinomina":
+            via, nome = _rel(p.get("via")), _nome_ok(p.get("nome"))
+            if not via or not nome: return 400, {"ok": False, "errore": "Nome non valido."}
+            src = os.path.join(RW, via); dest = os.path.join(os.path.dirname(src), nome)
+            if not _dentro_frame(src) or not _dentro_frame(dest): return 400, {"ok": False, "errore": "Percorso non valido."}
+            if not os.path.exists(src): return 404, {"ok": False, "errore": "Non c'e' piu'."}
+            if os.path.exists(dest): return 409, {"ok": False, "errore": "C'e' gia' qualcosa con questo nome."}
+            try: os.rename(src, dest)
+            except OSError as e: return 500, {"ok": False, "errore": "Non riuscito: %s" % (e.strerror or e)}
+            nuovo = _rel(os.path.relpath(dest, RW)); _registra(chi, "rinomina", via, nuovo)
+            return 200, {"ok": True, "via": nuovo}
+        if az == "sposta":
+            dentro = _rel(p.get("in")); dd = os.path.join(RW, dentro) if dentro else RW
+            if not os.path.isdir(dd) or not (dentro == "" or _dentro_frame(dd)): return 400, {"ok": False, "errore": "La cartella di arrivo non c'e'."}
+            for via in [_rel(v) for v in (p.get("vie") or [])][:500]:
+                if not via: continue
+                src = os.path.join(RW, via); dest = os.path.join(dd, os.path.basename(via))
+                if not _dentro_frame(src): esiti.append([via, "percorso non valido"]); continue
+                if dentro == via or dentro.startswith(via + "/"): esiti.append([via, "non si sposta una cartella dentro se stessa"]); continue
+                if os.path.dirname(via) == dentro: esiti.append([via, "e' gia' li'"]); continue
+                if not os.path.exists(src): esiti.append([via, "non c'e' piu'"]); continue
+                if os.path.exists(dest): esiti.append([via, "nella cartella di arrivo c'e' gia' qualcosa con questo nome"]); continue
+                try: os.rename(src, dest)
+                except OSError as e: esiti.append([via, "non riuscito: %s" % (e.strerror or e)]); continue
+                nuovo = _rel(os.path.relpath(dest, RW)); _registra(chi, "sposta", via, nuovo); esiti.append([via, "ok"])
+            return 200, {"ok": True, "spostati": sum(1 for x in esiti if x[1] == "ok"), "esiti": esiti}
+    return 400, {"ok": False, "errore": "azione sconosciuta"}
+
+
 # Qui si GUARDA anche, in sola lettura: un segnato che non c'e' piu' diventa "cancellato" (se
 # qualcuno l'ha tolto dalla NAS a mano); se sparisce la copia che doveva restare, si avvisa.
 _TIENI = {"t": 0, "m": {}}
@@ -521,7 +618,7 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         via = urllib.parse.urlparse(self.path).path
-        if via not in ("/premiere", "/volti", "/doppioni"): return self.rispondi(404, {"ok": False})
+        if via not in ("/premiere", "/volti", "/doppioni", "/cartelle"): return self.rispondi(404, {"ok": False})
         try:
             n = int(self.headers.get("Content-Length") or 0)
             p = json.loads(self.rfile.read(min(n, 2_000_000)) or b"{}")
@@ -529,6 +626,9 @@ class H(BaseHTTPRequestHandler):
             return self.rispondi(400, {"ok": False, "errore": "richiesta non valida"})
         if via == "/volti":
             cod, r = battezza(p, str(self.headers.get("X-Utente") or ""))
+            return self.rispondi(cod, r)
+        if via == "/cartelle":
+            cod, r = organizza(p, str(self.headers.get("X-Utente") or ""))
             return self.rispondi(cod, r)
         if via == "/doppioni":
             chi = str(self.headers.get("X-Utente") or "")
@@ -581,6 +681,11 @@ class H(BaseHTTPRequestHandler):
                 davanti = CODA.index(k) if k in CODA else 0
             return self.rispondi(200, {"ok": True, "k": k, "stato": s["stato"], "avanzamento": round(s.get("avanzamento", 0), 3),
                                        "davanti": davanti, "errore": s.get("errore", "")})
+        if u.path == "/cartelle":
+            c = cartella((q.get("v") or [""])[0])
+            if c is None: return self.rispondi(404, {"ok": False, "errore": "cartella non trovata"})
+            c.update(ok=True, puoi=puo_segnare(self.headers.get("X-Utente") or ""))
+            return self.rispondi(200, c, extra={"Cache-Control": "no-store"})
         if u.path == "/doppioni":
             s = _leggi(SEGNATI, {"segnati": {}})
             stato = controlla_segnati(); s = _leggi(SEGNATI, {"segnati": {}}); chi = self.headers.get("X-Utente") or ""
