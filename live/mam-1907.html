@@ -1056,7 +1056,9 @@
   // oro coi numeri e lo stemma del Como. Il materiale del club e' quasi tutto girato: il suo
   // fotogramma piu' recente entra a destra, sfumato nel navy. Tutto dai dati, nessuna immagine da fare.
   var STEMMA_COMO = FOTO + "stemma-espn-2572.png";
-  function pulisciTitolo(t) {
+  // "COMO TV- INSIDE SINIGAGLIA" si legge "INSIDE SINIGAGLIA" (Goffredo, 29/09/2026): solo il nome mostrato
+  function nomeVista(t) { var v = String(t || "").replace(/^\s*como\s*tv\s*[-\u2013:|]*\s*/i, ""); return v || String(t || ""); }
+  function pulisciTitolo(t) { t = nomeVista(t);
     return String(t || "").replace(/\.(mp4|mov|mxf|m4v|jpe?g|png)$/i, "").replace(/^G_?\d+[_\s-]+/i, "").replace(/(^|[_\s-])20\d{6}(?=[_\s-]|$)/g, " ").replace(/_+/g, " ").replace(/\s+/g, " ").replace(/^[\s-]+|[\s-]+$/g, "").trim() || String(t || "");
   }
   function stemmaC7(sq) { return '<span class="c7-sq"><span class="c7-stemma">' + (sq && sq.stemma ? '<img src="' + esc(sq.stemma) + '" alt="" loading="lazy">' : '<span class="c7-sigla">' + esc(String((sq && sq.nome) || "?").slice(0, 3).toUpperCase()) + "</span>") + '</span><span class="c7-nome">' + esc((sq && sq.nome) || "") + "</span></span>"; }
@@ -1139,14 +1141,14 @@
     function cognome(n) { n = String(n || "").trim(); var p = n.split(" "); return p.length > 1 ? p.slice(1).join(" ") : n; }
     // la lingua della registrazione di Como TV, ben visibile (ITA o ENG)
     function lingua(e) { return '<span class="lingua ' + (e.lingua === "ENG" ? "eng" : "ita") + '" title="' + (e.lingua === "ENG" ? "telecronaca in inglese" : "telecronaca in italiano") + '">' + (e.lingua === "ENG" ? "ENG" : "ITA") + "</span>"; }
-    function graficaEv(e) { var x = e.x, o = { data: dataRip(e.dt), lingua: e.lingua, fondo: "Como TV" + (x.durata ? " · " + durataH(x.durata) : "") }; if (!x.ris && !x.studio && PART[e.dt]) return graficaEspn(PART[e.dt], o); return grafica({ x: x.ris || !e.ris ? x : Object.assign({}, x, { ris: e.ris }) }, o); }
+    function graficaEv(e) { var x = e.x, o = { data: dataRip(e.dt), lingua: e.lingua, fondo: x.durata ? "partita intera · " + durataH(x.durata) : "partita intera" }; if (!x.ris && !x.studio && PART[e.dt]) return graficaEspn(PART[e.dt], o); return grafica({ x: x.ris || !e.ris ? x : Object.assign({}, x, { ris: e.ris }) }, o); }
     function riga(r, i) {
       if (r.ev) {
         var e = r.e, x = e.x, comp = x.compVista || x.competizione || "";
         return '<tr class="srv-r el-part" data-ri="' + i + '" tabindex="0" title="Apri nell’Editing del Como 1907">' +
           '<td class="anteprima">' + graficaEv(e) + '</td><td class="tit"><b>' + esc(versione(x.titolo || x.partita || "").t) + " " + lingua(e) + "</b><small>la partita intera di Como TV, telecronaca " + (e.lingua === "ENG" ? "in inglese" : "in italiano") + "</small>" + datiEspn(espnDi(e.dt, versione(x.titolo || x.partita || "").t)) + "</td>" +
           "<td>" + bollino(comp || e.ramo, e.ramo) + "</td>" + '<td class="n">' + dataRip(r.dt) + '</td><td class="n">' + (x.durata ? durataH(x.durata) : "") + "</td>" +
-          '<td class="n"><span class="segno-tv" title="la registrazione del MAM di Como TV">COMO TV</span></td><td class="n">' + gb(e.peso || 0) + "</td></tr>";
+          '<td class="n">partita intera</td><td class="n">' + gb(e.peso || 0) + "</td></tr>";
       }
       if (r.pa) {
         var mc = matClub(r.club), pa = r.pa;
@@ -1165,7 +1167,7 @@
       if (r.ev) {
         var e = r.e, x = e.x;
         return '<div class="card srv ev" data-ri="' + i + '" tabindex="0" title="Apri nell’Editing del Como 1907"><div class="mini">' + graficaEv(e) + "</div>" +
-          '<div class="t"><b>' + esc(versione(x.titolo || x.partita || "").t) + " " + lingua(e) + "</b><small>" + bollino(x.compVista || x.competizione || e.ramo, e.ramo) + '<span class="segno-tv">COMO TV</span></small>' + datiEspn(espnDi(e.dt, versione(x.titolo || x.partita || "").t)) + "</div></div>";
+          '<div class="t"><b>' + esc(versione(x.titolo || x.partita || "").t) + " " + lingua(e) + "</b><small>" + bollino(x.compVista || x.competizione || e.ramo, e.ramo) + "</small>" + datiEspn(espnDi(e.dt, versione(x.titolo || x.partita || "").t)) + "</div></div>";
       }
       if (r.pa) {
         var pa = r.pa, mc = matClub(r.club);
@@ -1268,7 +1270,7 @@
     return G2;
   }
   function ordina(arr) {
-    if (FX_ORD === "nome") return arr.sort(function (a, b) { return a.k.localeCompare(b.k, "it", { numeric: true }); });
+    if (FX_ORD === "nome") return arr.sort(function (a, b) { return String(a.nome || a.k).localeCompare(String(b.nome || b.k), "it", { numeric: true }); });
     if (FX_ORD === "peso") return arr.sort(function (a, b) { return b.p - a.p; });
     return arr.sort(function (a, b) { return b.dt - a.dt || (b.v + b.f) - (a.v + a.f); });
   }
@@ -1276,7 +1278,7 @@
   // reparto in alto (quello che prevale dentro), il nome al centro, i numeri in basso
   function mosaico(o) {
     var ss = o.s.filter(function (x) { return x[7]; }).sort(function (a, b) { return (b[1] || 0) - (a[1] || 0); });
-    if (o.e.length && !ss.length) { var ev = o.e.slice().sort(function (a, b) { return b.dt - a.dt; })[0]; return '<div class="fx-cop">' + grafica(ev, { data: dataRip(ev.dt), lingua: ev.lingua, fondo: n(o.e.length) + (o.e.length === 1 ? " partita" : " partite") + " di Como TV" }) + "</div>"; }
+    if (o.e.length && !ss.length) { var ev = o.e.slice().sort(function (a, b) { return b.dt - a.dt; })[0]; return '<div class="fx-cop">' + grafica(ev, { data: dataRip(ev.dt), lingua: ev.lingua, fondo: n(o.e.length) + (o.e.length === 1 ? " partita" : " partite") }) + "</div>"; }
     var top = o.top;
     if (!top) { var c = {}; o.s.forEach(function (x) { var d = dipDi(x); c[d] = (c[d] || 0) + x[3] + x[4]; }); var k = Object.keys(c).sort(function (a, b) { return c[b] - c[a]; })[0]; top = k ? DIP_N[k].replace(/^\d+\.\s*/, "") : "Cartella"; }
     var foto = ss[0] ? ss[0][7] : "";
@@ -1363,7 +1365,8 @@
   }
   function ordinePrimoLivello(nomi) {
     var st = nomi.filter(function (x) { return annoStagione(x); }).sort(function (a, b) { return annoStagione(b) - annoStagione(a) || (/pre-?season/i.test(b) ? 1 : 0) - (/pre-?season/i.test(a) ? 1 : 0) || a.localeCompare(b, "it", { numeric: true }); });
-    var al = nomi.filter(function (x) { return !annoStagione(x); }).sort(function (a, b) { return a.localeCompare(b, "it", { numeric: true, sensitivity: "base" }); });
+    var nv = typeof nomeVista === "function" ? nomeVista : function (x) { return x; };
+    var al = nomi.filter(function (x) { return !annoStagione(x); }).sort(function (a, b) { return nv(a).localeCompare(nv(b), "it", { numeric: true, sensitivity: "base" }); });
     return { stagioni: st, altre: al };
   }
   // LA STAGIONE COME CAPO (Goffredo, 29/09/2026, "solo nella vista"): le cartelle della stessa stagione
@@ -1402,7 +1405,7 @@
       voceLista(Object.keys(top)).map(function (vv) {
         var t = vv.nome;
         if (t === "\u0000") return '<hr class="fx-sep" aria-hidden="true">';
-        var r = '<button class="liv2' + (vv.figlio ? " figlio" : "") + (vere && FX.via === t ? " on" : "") + '" data-fxvia="' + esc(t) + '">' + (vv.figlio ? '<span class="fx-ic">\u21B3</span>' : '<span class="fx-ic">' + SVG_CART + "</span>") + '<span class="fx-nome">' + esc(t) + '</span><span class="fx-n">' + (top[t] ? n(top[t]) : "") + "</span></button>";
+        var r = '<button class="liv2' + (vv.figlio ? " figlio" : "") + (vere && FX.via === t ? " on" : "") + '" data-fxvia="' + esc(t) + '">' + (vv.figlio ? '<span class="fx-ic">\u21B3</span>' : '<span class="fx-ic">' + SVG_CART + "</span>") + '<span class="fx-nome" title="' + esc(t) + '">' + esc(nomeVista(t)) + '</span><span class="fx-n">' + (top[t] ? n(top[t]) : "") + "</span></button>";
         if (cur[0] === t) for (var i = 1; i < cur.length; i++) { var v = cur.slice(0, i + 1).join("/"); r += '<button class="liv3' + (FX.via === v ? " on" : "") + '" data-fxvia="' + esc(v) + '" style="padding-left:' + (32 + i * 10) + 'px"><span class="fx-nome">' + esc(cur[i]) + "</span></button>"; }
         return r;
       }).join("") + "</div>";
@@ -1432,7 +1435,7 @@
   function fxVere() {
     FX_SEL = FX_EVSEL = null; $("fxFoglie").hidden = true;
     var via = FX.via, tok = FX_TOK = {};
-    var pz = [["COMOTV - FRAME", 'data-fxvia=""']]; if (via) via.split("/").forEach(function (p, i, a) { pz.push([p, 'data-fxvia="' + esc(a.slice(0, i + 1).join("/")) + '"']); });
+    var pz = [["COMOTV - FRAME", 'data-fxvia=""']]; if (via) via.split("/").forEach(function (p, i, a) { pz.push([i ? p : nomeVista(p), 'data-fxvia="' + esc(a.slice(0, i + 1).join("/")) + '"']); });
     fxBc(pz); fxSide();
     $("fxAzioni").hidden = false;
     $("fxAzioni").innerHTML = '<button type="button" data-fxnuova>+ Nuova cartella</button>' + (via ? '<button type="button" data-fxmod="' + esc(via) + '">Rinomina questa cartella</button><button type="button" data-fxcerca>Cerca qui dentro</button>' : "") +
@@ -1451,7 +1454,7 @@
   function fxVereDisegna(j) {
     var via = j.via || "";
     var voci = (j.cartelle || []).map(function (c) {
-      var p = (via ? via + "/" : "") + c.nome, o = { k: c.nome, via: p, s: [], e: [], v: 0, f: 0, p: 0, dt: 0 };
+      var p = (via ? via + "/" : "") + c.nome, o = { k: c.nome, nome: via ? c.nome : nomeVista(c.nome), via: p, s: [], e: [], v: 0, f: 0, p: 0, dt: 0 };
       (I.servizi || []).forEach(function (x) { if (x[0] === p || x[0].indexOf(p + "/") === 0) { o.s.push(x); o.dt = Math.max(o.dt, x[1] || 0); } });
       I.cartelle.forEach(function (r) { if (r[0] === p || r[0].indexOf(p + "/") === 0) { o.v += r[4]; o.f += r[5]; o.p += r[6] || 0; } });
       return o;
