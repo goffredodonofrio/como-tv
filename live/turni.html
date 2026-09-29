@@ -109,8 +109,8 @@
   thead th.festa{background:var(--festa);}
   thead th.oggi{background:var(--oggi);}
   thead th.oggi .gg{color:var(--oro);}
-  th.riga1,td.riga1{position:sticky;left:0;z-index:11;text-align:center;color:var(--testo3);font-size:11.5px;}
-  th.nome,td.nome{position:sticky;left:36px;z-index:11;text-align:left;padding:3px 10px;
+  th.riga1,td.riga1{position:sticky;left:0;z-index:11;text-align:center;color:var(--testo3);font-size:11px;}
+  th.nome,td.nome{position:sticky;left:30px;z-index:11;text-align:left;padding:3px 10px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   thead th.riga1,thead th.nome{z-index:14;}
   td.nome b{font-weight:700;font-size:13.5px;display:block;line-height:1.25;}
@@ -129,10 +129,12 @@
     font:inherit;color:inherit;min-height:var(--alt,56px);}
   .cel:focus{outline:none;}
   td.cella.scelta{box-shadow:inset 0 0 0 2px var(--evidenza);border-radius:2px;}
-  .ora{font-weight:700;font-size:13.5px;letter-spacing:-.01em;display:block;font-variant-numeric:tabular-nums;}
+  .ora{font-weight:700;font-size:13.5px;letter-spacing:-.01em;display:block;font-variant-numeric:tabular-nums;white-space:nowrap;}
   .pills{display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;}
+  /* una pastiglia lunga ("COORDINAMENTO REDAZIONE") va a capo dentro se
+     stessa: si legge per intero e non sborda dalla colonna */
   .pill{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;color:var(--chipT);
-    white-space:nowrap;max-width:112px;overflow:hidden;text-overflow:ellipsis;}
+    white-space:normal;overflow-wrap:break-word;line-height:1.3;}
   .pill.grande{font-size:12px;padding:2px 9px;}
   .assente{background-image:repeating-linear-gradient(45deg,transparent,transparent 5px,var(--linea2) 5px,var(--linea2) 10px);}
   .vuota .ora{color:var(--testo3);font-weight:500;}
@@ -142,16 +144,18 @@
   td.ore small{display:block;color:var(--testo3);font-size:11px;}
   /* Corta: una riga sola, orario e pastiglie in fila — cosi' le persone
      ci stanno tutte senza scorrere. Media e alta danno aria alle attivita'. */
-  table.corta .cel{--alt:25px;padding:1px 8px;display:flex;align-items:center;gap:5px;overflow:hidden;min-width:0;
+  table.corta .cel{--alt:25px;padding:2px 8px;display:flex;align-items:flex-start;gap:5px;min-width:0;
     border-left:3px solid transparent;}
   table.corta td.cella.att .cel{border-left:0;padding-left:6px;}
   .cel.sede{border-left:3px solid #3FA76B;} .cel.smart{border-left:3px solid #4D95FF;}
   .cel.esterna{border-left:3px solid #E08B3E;}
   table.corta .pill.luogo{display:none;}
   table.media .cel,table.alta .cel{padding-top:5px;}
-  table.corta .ora{font-size:12.5px;flex:none;}
-  table.corta .pills{margin:0;flex-wrap:nowrap;overflow:hidden;min-width:0;}
-  table.corta .pill{max-width:none;}
+  table.corta .ora{font-size:12px;flex:none;white-space:nowrap;}
+  /* le attivita' si vedono tutte: le pastiglie vanno a capo e la riga
+     cresce quanto serve, invece di tagliare le parole */
+  table.corta .pills{margin:0;flex-wrap:wrap;min-width:0;gap:2px;}
+  table.corta .pill{font-size:10px;padding:0 6px;letter-spacing:-.01em;}
   table.corta td.nome{padding:2px 10px;}
   table.corta td.nome b{font-size:13px;}
   table.corta td.nome small{display:none;}
@@ -335,7 +339,22 @@
     var v = NONLAVORO.filter(function (x) { return x[0] === t.tipo; })[0];
     return v ? v[1].toUpperCase() : t.tipo.toUpperCase();
   }
+  // Chi scrive il suo nome in alto vede solo la propria riga: e' la vista
+  // "il mio turno". Basta svuotare il campo (o "mostra tutte") per tornare.
+  function combacia(nome, cerca) {
+    var a = nome.toLowerCase(), b = cerca.toLowerCase().trim();
+    if (!b) return true;
+    return b.split(/\s+/).every(function (parola) { return a.indexOf(parola) >= 0; });
+  }
+  function soloIo() {
+    var cerca = (S.io || "").trim();
+    if (!cerca) return null;
+    var suoi = S.persone.filter(function (p) { return combacia(p.nome, cerca); });
+    return suoi.length ? suoi : null;
+  }
   function personeMostrate() {
+    var mie = soloIo();
+    if (mie) return mie;
     return S.persone.filter(function (p) { return p.attivo !== false && (!S.reparto || p.reparto === S.reparto); });
   }
 
@@ -383,14 +402,14 @@
     // Ogni giorno e' due colonne, come in Airtable: l'orario e le attivita'.
     // Le larghezze si misurano sullo schermo, l'orario quanto basta a "15:00–00:00".
     var spazio = el("telaio").clientWidth || 1280;
-    var largaNome = Math.min(180, Math.max(132, Math.round(spazio * 0.11)));
-    var largaOra = 82;
+    var largaNome = Math.min(160, Math.max(116, Math.round(spazio * 0.095)));
+    var largaOra = 88;             // "15:00–00:00" per intero, striscia del luogo compresa
     // 16px di margine: se no la barra di scorrimento verticale fa comparire
     // anche quella orizzontale, e sembra che la settimana non ci stia
-    var largaGiorno = Math.max(172, Math.floor((spazio - 36 - largaNome - 16) / gg.length));
+    var largaGiorno = Math.max(172, Math.floor((spazio - 30 - largaNome - 16) / gg.length));
     var largaAtt = largaGiorno - largaOra;
-    var h = ['<table class="' + (ALTEZZA || "corta") + '" style="width:' + (36 + largaNome + largaGiorno * gg.length) + 'px">' +
-             '<colgroup><col style="width:36px"><col style="width:' + largaNome + 'px">' +
+    var h = ['<table class="' + (ALTEZZA || "corta") + '" style="width:' + (30 + largaNome + largaGiorno * gg.length) + 'px">' +
+             '<colgroup><col style="width:30px"><col style="width:' + largaNome + 'px">' +
              gg.map(function () { return '<col style="width:' + largaOra + 'px"><col style="width:' + largaAtt + 'px">'; }).join("") + "</colgroup>" +
              '<thead><tr><th class="riga1" rowspan="2"></th><th class="nome" rowspan="2">Persona</th>'];
     gg.forEach(function (g) {
@@ -462,9 +481,14 @@
       a.className = "allarme";
       a.textContent = "⚠ " + S.avvisi.length + (S.avvisi.length === 1 ? " cosa da guardare" : " cose da guardare");
     }
-    var quanti = 0;
-    gg.forEach(function (g) { quanti += Object.keys(S.turni[g] || {}).length; });
-    el("conta").innerHTML = "<b>" + persone.length + "</b> persone · <b>" + gg.length + "</b> giorni · <b>" + quanti + "</b> turni scritti";
+    var quanti = 0, viste = persone.map(function (p) { return p.id; });
+    gg.forEach(function (g) {
+      Object.keys(S.turni[g] || {}).forEach(function (pid) { if (viste.indexOf(pid) >= 0) quanti++; });
+    });
+    el("conta").innerHTML = soloIo()
+      ? "<b>" + esc(persone.map(function (p) { return p.nome; }).join(", ")) + "</b> · <b>" + quanti +
+        '</b> turni nel periodo · <button class="t" id="tutte" style="padding:2px 8px;font-size:12px;border:1px solid var(--linea)">mostra tutte</button>'
+      : "<b>" + persone.length + "</b> persone · <b>" + gg.length + "</b> giorni · <b>" + quanti + "</b> turni scritti";
     if (S.cella) segnaScelta();
   }
 
@@ -714,7 +738,20 @@
       .then(function (d) { S.persone = d.persone; stato("aggiunta " + nome); disegna(); })
       .catch(function (e) { stato(e.message, true); });
   });
-  el("chi").addEventListener("change", function () { try { localStorage.setItem("comotv.turni.chi", this.value); } catch (e) {} });
+  var attesaChi = null;
+  el("chi").addEventListener("input", function () {
+    var v = this.value;
+    try { localStorage.setItem("comotv.turni.chi", v); } catch (e) {}
+    clearTimeout(attesaChi);
+    attesaChi = setTimeout(function () { S.io = v; disegna(); }, 250);
+  });
+  el("conta").addEventListener("click", function (e) {
+    if (!e.target.closest("#tutte")) return;
+    S.io = "";
+    el("chi").value = "";
+    try { localStorage.setItem("comotv.turni.chi", ""); } catch (err) {}
+    disegna();
+  });
   el("tema").addEventListener("click", function () {
     var scuro = !document.documentElement.classList.contains("scura");
     document.documentElement.classList.toggle("scura", scuro);
@@ -747,7 +784,8 @@
     if (alt) { ALTEZZA = alt; [].forEach.call(el("altezza").children, function (x) { x.classList.toggle("on", x.dataset.a === alt); }); }
   } catch (e) {}
   var q = new URLSearchParams(location.search);
-  S.io = q.get("io") || "";
+  S.io = q.get("io") || el("chi").value || "";
+  if (q.get("io")) el("chi").value = q.get("io");
   if (q.get("vista")) {
     S.giorni = q.get("vista") === "mese" ? "mese" : +q.get("vista") || 7;
     [].forEach.call(el("vista").children, function (x) { x.classList.toggle("on", x.dataset.v === String(S.giorni)); });
