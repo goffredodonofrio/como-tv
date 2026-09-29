@@ -129,13 +129,14 @@
     font:inherit;color:inherit;min-height:var(--alt,56px);}
   .cel:focus{outline:none;}
   td.cella.scelta{box-shadow:inset 0 0 0 2px var(--evidenza);border-radius:2px;}
-  .ora{font-weight:700;font-size:13.5px;letter-spacing:-.01em;display:block;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .pill.ora{font-variant-numeric:tabular-nums;letter-spacing:-.01em;white-space:nowrap;}
   .pills{display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;}
   /* una pastiglia lunga ("COORDINAMENTO REDAZIONE") va a capo dentro se
      stessa: si legge per intero e non sborda dalla colonna */
   .pill{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;color:var(--chipT);
     white-space:normal;overflow-wrap:break-word;line-height:1.3;}
   .pill.grande{font-size:12px;padding:2px 9px;}
+  table.media .pill.ora,table.alta .pill.ora{font-size:12px;padding:1px 8px;}
   .assente{background-image:repeating-linear-gradient(45deg,transparent,transparent 5px,var(--linea2) 5px,var(--linea2) 10px);}
   .vuota .ora{color:var(--testo3);font-weight:500;}
   .segnale{display:inline-block;width:6px;height:6px;border-radius:50%;background:#E5342B;margin-left:5px;vertical-align:2px;}
@@ -144,18 +145,19 @@
   td.ore small{display:block;color:var(--testo3);font-size:11px;}
   /* Corta: una riga sola, orario e pastiglie in fila — cosi' le persone
      ci stanno tutte senza scorrere. Media e alta danno aria alle attivita'. */
-  table.corta .cel{--alt:23px;padding:1px 7px;display:flex;align-items:flex-start;gap:4px;min-width:0;
-    border-left:3px solid transparent;}
-  table.corta td.cella.att .cel{border-left:0;padding-left:6px;}
-  .cel.sede{border-left:3px solid #3FA76B;} .cel.smart{border-left:3px solid #4D95FF;}
-  .cel.esterna{border-left:3px solid #E08B3E;}
+  table.corta .cel{--alt:23px;padding:1px 6px;display:flex;align-items:flex-start;gap:4px;min-width:0;}
+
+
   table.corta .pill.luogo{display:none;}
   table.media .cel,table.alta .cel{padding-top:5px;}
-  table.corta .ora{font-size:12px;flex:none;white-space:nowrap;}
+  table.corta .pill.ora{font-size:10.5px;}
   /* le attivita' si vedono tutte: le pastiglie vanno a capo e la riga
      cresce quanto serve, invece di tagliare le parole */
-  table.corta .pills{margin:0;flex-wrap:wrap;min-width:0;gap:1px;}
-  table.corta .pill{font-size:10px;padding:0 5px;letter-spacing:-.01em;line-height:1.18;}
+  table.corta .pills{margin:0;flex-wrap:wrap;min-width:0;gap:2px;}
+  table.corta .pill{font-size:10px;padding:0 5px;letter-spacing:-.01em;line-height:1.2;}
+  /* le attivita' si impilano una sotto l'altra quando sono piu' d'una:
+     ognuna si legge per intero, senza mischiarsi con la vicina */
+  table.corta td.cella.att .pills{flex-direction:column;align-items:flex-start;gap:1px;}
   table.corta td.nome{padding:1px 10px;}
   table.corta td.nome b{font-size:13px;}
   table.corta td.nome small{display:none;}
@@ -403,7 +405,7 @@
     // Le larghezze si misurano sullo schermo, l'orario quanto basta a "15:00–00:00".
     var spazio = el("telaio").clientWidth || 1280;
     var largaNome = Math.min(160, Math.max(116, Math.round(spazio * 0.095)));
-    var largaOra = 88;             // "15:00–00:00" per intero, striscia del luogo compresa
+    var largaOra = 78;             // la pastiglia "15:00–00:00" e basta
     // 16px di margine: se no la barra di scorrimento verticale fa comparire
     // anche quella orizzontale, e sembra che la settimana non ci stia
     // 180 e' il minimo perche' la parola piu' lunga che scriviamo
@@ -442,7 +444,8 @@
           var sinistra = "", destra = "";
           if (t && t.tipo === "lavoro") {
             var luogo = LUOGHI.filter(function (l) { return l[0] === t.luogo; })[0];
-            sinistra = '<span class="ora">' + etichetta(t) + "</span>";
+            // l'orario e' una pastiglia come le altre: il colore dice il luogo
+            sinistra = '<span class="pills">' + pill(etichetta(t), luogo ? luogo[2] : "grigio", false, "ora") + "</span>";
             destra = '<span class="pills">' + (luogo ? pill(luogo[1], luogo[2], false, "luogo") : "") +
               (t.attivita || []).map(function (a) { return pill(a, tinta(a)); }).join("") +
               (t.nota ? pill(t.nota, "grigio") : "") + "</span>";
