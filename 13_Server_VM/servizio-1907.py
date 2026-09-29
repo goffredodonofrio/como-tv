@@ -495,6 +495,7 @@ def elimina(p, chi):
         e_["storia"].append([int(time.time()), chi, "elimina", n]); del e_["storia"][:-1000]
         _scrivi(ELIMINATI, e_); _scrivi(SEGNATI, s)
     _CONTROLLO["t"] = 0
+    ripara_indice([x[0] for x in esiti if x[1].startswith("ok") or x[1].startswith("eliminato")])
     return 200, {"ok": True, "eliminati": n, "esiti": esiti}
 
 
@@ -542,6 +543,7 @@ def _registra(chi, azione, da, a):
     reg = _leggi(CARTELLE_REG, {"voci": []})
     reg["voci"].append([int(time.time()), chi, azione, da, a]); del reg["voci"][:-5000]
     _scrivi(CARTELLE_REG, reg)
+    ripara_indice([da, a])
     if azione in ("rinomina", "sposta"): commenti_segui(da, a)
     if azione in ("rinomina", "sposta"):
         sp = _leggi(SPOSTAMENTI, {})
@@ -636,6 +638,57 @@ def controlla_segnati():
     return r
 
 
+# ── L'INDICE SI RIALLINEA DA SOLO (29/09/2026, sera) ─────────────────────
+# Dopo spostamenti, rinomine e cancellazioni l'indice restava quello della notte (cartelle che "non ci
+# sono piu'", doppioni che si ripresentano). Un minuto e mezzo dopo l'ultima modifica si rileggono dalla
+# NAS solo le cartelle di primo livello toccate, si aggiornano le loro righe nell'elenco e si rifa'
+# l'indice (circa un minuto). Mai durante il giro di notte, che rilegge tutto.
+RIPARA = {"tops": set(), "timer": None, "gira": False}
+R_LOCK = threading.Lock()
+
+
+def ripara_indice(vie):
+    tops = {str(v).split("/")[0] for v in vie if v and not str(v).startswith(("_PROVA",))}
+    if not tops: return
+    with R_LOCK:
+        RIPARA["tops"] |= tops
+        if RIPARA["timer"]: RIPARA["timer"].cancel()
+        RIPARA["timer"] = threading.Timer(90, _ripara); RIPARA["timer"].daemon = True; RIPARA["timer"].start()
+
+
+def _ripara():
+    if subprocess.run(["pgrep", "-f", "notte-1907.sh|elenco-1907.sh"], capture_output=True).returncode == 0:
+        RIPARA["timer"] = threading.Timer(600, _ripara); RIPARA["timer"].daemon = True; RIPARA["timer"].start(); return
+    with R_LOCK:
+        RIPARA["timer"] = None
+        if RIPARA["gira"]:
+            RIPARA["timer"] = threading.Timer(120, _ripara); RIPARA["timer"].daemon = True; RIPARA["timer"].start(); return
+        tops, RIPARA["tops"], RIPARA["gira"] = set(RIPARA["tops"]), set(), True
+    try:
+        el = os.path.join(CASA, "elenco.tsv")
+        nuove = []
+        for t in sorted(tops):
+            if not os.path.isdir(os.path.join(R, t)): continue
+            out = subprocess.run(["nice", "-n", "10", "ionice", "-c3", "find", t, "-mindepth", "1", "(", "-name", "@*", "-o", "-name", ".*", "-o", "-name", "_CESTINO COMO TV", ")",
+                                  "-prune", "-o", "-type", "f", "-printf", "%s\t%T@\t%p\n"], cwd=R, capture_output=True, timeout=3600)
+            nuove.append(out.stdout.decode("utf-8", "surrogateescape"))
+        tmp = el + ".ripara.tmp"
+        with open(el, "rb") as f, open(tmp, "wb") as g:
+            pre = tuple((t + "/").encode("utf-8", "surrogateescape") for t in tops)
+            for riga in f:
+                parti = riga.split(b"\t", 2)
+                if len(parti) == 3 and parti[2].startswith(pre): continue
+                g.write(riga)
+            for x in nuove: g.write(x.encode("utf-8", "surrogateescape"))
+        os.replace(tmp, el)
+        subprocess.run(["nice", "-n", "10", "python3", "/opt/comotv/indice-1907-da-elenco.py"], capture_output=True, timeout=1800)
+    except Exception as e:
+        print("[ripara] " + str(e), flush=True)
+    finally:
+        with R_LOCK:
+            RIPARA["gira"] = False
+
+
 # ── ELIMINARE UNA CLIP DALLA SUA ANTEPRIMA (Goffredo, 29/09/2026) ─────
 # Solo chi puo' eliminare i doppioni (Gionata Medeot e i super utenti); un file alla volta, mai una
 # cartella; definitivo (via NFS il cestino della QNAP non lo raccoglie). Registro in eliminati-a-mano.json.
@@ -655,6 +708,7 @@ def elimina_clip(p, chi):
         r = _leggi(ELIMINATI_MANO, {"voci": []})
         r["voci"].append({"via": via, "peso": peso, "chi": chi, "quando": int(time.time())}); del r["voci"][:-20000]
         _scrivi(ELIMINATI_MANO, r)
+    ripara_indice([via])
     return 200, {"ok": True, "via": via, "peso": peso}
 
 
