@@ -303,10 +303,16 @@ def registro(giorni=21):
             if chi: eventi.append((t, chi, voce, d.get("foglio", ""), d.get("ip", ""), tipo))
     except OSError:
         pass
-    try:
-        righe = open(LOG_NGINX, errors="replace").read().splitlines()
-    except OSError:
-        righe = []
+    # anche i log ruotati la notte (comotv-chi.log.1, .2.gz, ...): se no "ieri" sparisce
+    import glob, gzip as _gz
+    righe = []
+    for f in sorted(glob.glob(LOG_NGINX + "*")):
+        try:
+            if os.path.getmtime(f) < da: continue
+            aperto = _gz.open(f, "rt", errors="replace") if f.endswith(".gz") else open(f, errors="replace")
+            with aperto as g: righe.extend(g.read().splitlines())
+        except OSError:
+            continue
     for r in righe:
         c = r.split("\t")
         if len(c) < 7: continue
@@ -325,7 +331,7 @@ def registro(giorni=21):
         ss = u["sessioni"]; cur = ss[-1] if ss else None
         # un "entra" apre una sessione nuova solo dopo una pausa vera (se no e' la stessa)
         if cur is None or cur["chiusa"] or t - cur["fine"] > PAUSA or (tipo == "entra" and t - cur["fine"] > 120):
-            cur = {"inizio": t, "fine": t, "ip": [], "azioni": [], "chiusa": False}; ss.append(cur)
+            cur = {"inizio": t, "fine": t, "ip": [], "azioni": [], "seq": [], "chiusa": False}; ss.append(cur)
         cur["fine"] = t
         if ip and ip not in cur["ip"] and ip != "server": cur["ip"].append(ip)
         # la stessa cosa nella stessa sessione si conta una volta, con il totale e l'ora della prima
@@ -335,6 +341,13 @@ def registro(giorni=21):
             if det and det not in gia["d"] and len(gia["d"]) < 5: gia["d"].append(det)
         else:
             az.append({"v": voce, "n": 1, "q": t, "d": [det] if det else []})
+        # il PASSO PASSO: in ordine di tempo, la stessa cosa di fila una volta sola col conto
+        sq = cur["seq"]
+        if sq and sq[-1]["v"] == voce and (not det or det in sq[-1]["d"] or len(sq[-1]["d"]) < 3):
+            sq[-1]["n"] += 1
+            if det and det not in sq[-1]["d"]: sq[-1]["d"].append(det)
+        elif len(sq) < 400:
+            sq.append({"v": voce, "n": 1, "q": t, "d": [det] if det else []})
         if tipo == "esce": cur["chiusa"] = True
     persone = []
     for u in per.values():
@@ -343,7 +356,7 @@ def registro(giorni=21):
             x["dentro"] = not x["chiusa"] and ora - x["fine"] < 900
             x["inizio"] = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(x["inizio"]))
             x["fine"] = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(x["fine"]))
-            for a in x["azioni"]: a["q"] = time.strftime("%H:%M", time.localtime(a["q"]))
+            for a in x["azioni"] + x["seq"]: a["q"] = time.strftime("%H:%M", time.localtime(a["q"]))
         u["sessioni"].reverse()
         u["ultimo"] = u["sessioni"][0]["fine"] if u["sessioni"] else ""
         persone.append(u)
@@ -358,84 +371,141 @@ REGISTRO_HTML = r"""<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><
 @font-face{font-family:'Mazzard';src:url('/como-tv/assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;}
 @font-face{font-family:'DM Sans';src:url('/como-tv/assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#1B1C20;color:#EDEDEE;font:14px/1.45 'DM Sans',system-ui,sans-serif}
-.pagina{padding:22px clamp(16px,3vw,40px) 60px;max-width:1300px}
-.testa{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:16px}
-.testa h1{font:800 26px/1 'Mazzard',sans-serif} .testa span{color:#8E9096;font-size:13px}
-.filtri{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
-.filtri input{background:rgba(245,241,230,.06);border:1px solid rgba(255,255,255,.16);color:#EDEDEE;border-radius:8px;padding:9px 11px;font:inherit;color-scheme:dark}
-.filtri input[type=search]{flex:1 1 280px}
-.persona{background:#2A2B30;border:1px solid rgba(255,255,255,.08);border-radius:12px;margin-bottom:10px;overflow:hidden}
-.persona>summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:44px minmax(0,1fr) repeat(3,auto);gap:16px;align-items:center;padding:12px 16px}
+body{background:#17181C;color:#F2F2F3;font:15px/1.5 'DM Sans',system-ui,sans-serif}
+.pagina{padding:24px clamp(16px,3vw,44px) 70px;max-width:1320px}
+.testa{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+.testa h1{font:800 28px/1 'Mazzard',sans-serif} .testa span{color:#A3A5AD;font-size:14px}
+.viste{margin-left:auto;display:flex;gap:4px;background:#24262C;border-radius:10px;padding:4px}
+.viste button{border:0;background:transparent;color:#C9CACF;padding:8px 14px;border-radius:7px;font:700 11px/1 'Mazzard',sans-serif;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
+.viste button.on{background:#C9A24B;color:#10131c}
+/* LE DATE: tasti rapidi e striscia dei giorni con attivita' */
+.periodo{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.periodo button,.giorno{border:1px solid rgba(255,255,255,.16);background:#24262C;color:#E6E6E8;border-radius:999px;padding:8px 14px;font:600 13.5px/1 'DM Sans',sans-serif;cursor:pointer}
+.periodo button.on,.giorno.on{background:#C9A24B;border-color:#C9A24B;color:#10131c}
+.periodo button:focus-visible,.giorno:focus-visible,.viste button:focus-visible{outline:2px solid #E3C271;outline-offset:2px}
+.giorni{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 10px;margin-bottom:14px;scrollbar-width:thin}
+.giorno{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:74px;border-radius:12px;padding:9px 10px}
+.giorno b{font:800 17px/1 'Mazzard',sans-serif} .giorno small{font-size:11.5px;opacity:.8} .giorno i{font-style:normal;font-size:11px;opacity:.75}
+.cerca{width:100%;background:#24262C;border:1px solid rgba(255,255,255,.16);color:#F2F2F3;border-radius:10px;padding:12px 14px;font:inherit;margin-bottom:18px}
+.cerca:focus{outline:none;border-color:#C9A24B}
+/* le persone */
+.persona{background:#24262C;border:1px solid rgba(255,255,255,.09);border-radius:14px;margin-bottom:12px;overflow:hidden}
+.persona[open]{border-color:rgba(201,162,75,.45)}
+.persona>summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:16px;align-items:start;padding:16px 18px}
 .persona>summary::-webkit-details-marker{display:none}
-.persona[open]>summary{border-bottom:1px solid rgba(255,255,255,.08)}
-.av{width:40px;height:40px;border-radius:50%;background:#C9A24B;color:#10131c;display:grid;place-items:center;font:800 13px/1 'Mazzard',sans-serif}
+.av{width:46px;height:46px;border-radius:50%;background:#C9A24B;color:#10131c;display:grid;place-items:center;font:800 14px/1 'Mazzard',sans-serif}
 .av.club{background:#5AA7E8} .av.tec{background:#8E9096}
-.chi b{display:block;font-size:15.5px} .chi small{color:#9A9CA4;font-size:12.5px}
-.chi .ruolo{font:700 9.5px/1 'Mazzard',sans-serif;letter-spacing:.12em;text-transform:uppercase;border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:3px 6px;margin-left:8px;color:#C9CACF}
-.num{text-align:right;font-size:12px;color:#9A9CA4;white-space:nowrap} .num b{display:block;color:#EDEDEE;font-size:14px;font-variant-numeric:tabular-nums}
+.chi b{font-size:17px} .chi .mail{display:block;color:#B4B6BD;font-size:13.5px;margin-top:2px}
+.ruolo{font:700 10px/1 'Mazzard',sans-serif;letter-spacing:.12em;text-transform:uppercase;border:1px solid rgba(255,255,255,.22);border-radius:4px;padding:3px 7px;margin-left:8px;color:#D8D9DD;vertical-align:2px}
+.riass{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.stat{display:flex;gap:22px;text-align:right}
+.stat div{font-size:12px;color:#A3A5AD;white-space:nowrap} .stat b{display:block;color:#F2F2F3;font-size:15px;font-variant-numeric:tabular-nums}
 .dentro{color:#7FDCA9!important}
-.sessioni{padding:6px 16px 14px}
-.sess{display:grid;grid-template-columns:170px 110px minmax(0,1fr);gap:14px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.06)}
-.sess:last-child{border-bottom:0}
-.sess .q{font-variant-numeric:tabular-nums} .sess .q small{display:block;color:#8E9096;font-size:11.5px}
-.sess .d{font:800 16px/1.2 'Mazzard',sans-serif;color:#E3C271} .sess .d small{display:block;font:500 11px/1.3 'DM Sans',sans-serif;color:#8E9096}
-.az{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start;align-content:flex-start}
-.az span{background:rgba(245,241,230,.07);border-radius:999px;padding:4px 10px;font-size:12.5px;white-space:nowrap} .az span i{font-style:normal;color:#8E9096;font-size:11px;margin-right:5px} .az span b{color:#E3C271;margin-left:4px}
-.az span.file{background:rgba(90,167,232,.16)} .az span.entra{background:rgba(79,203,139,.14)} .az span.esce{background:rgba(142,144,150,.16)}
-h2{font:700 11px/1 'Mazzard',sans-serif;letter-spacing:.2em;text-transform:uppercase;color:#C9A24B;margin:26px 0 10px}
-.rif{width:100%;border-collapse:collapse;font-size:13px;background:#2A2B30;border-radius:12px;overflow:hidden}
-.rif td{padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.06)} .rif td.q{color:#8E9096;white-space:nowrap}
-.nota{color:#8E9096;font-size:12px;margin-top:14px}
-@media (max-width:760px){.persona>summary{grid-template-columns:40px 1fr}.num{display:none}.sess{grid-template-columns:1fr 1fr}.sess .az{grid-column:1/-1}}
+.chip{display:inline-flex;align-items:center;gap:5px;background:rgba(245,241,230,.08);border-radius:999px;padding:5px 11px;font-size:13px;white-space:nowrap}
+.chip b{color:#E3C271} .chip.file{background:rgba(90,167,232,.18)} .chip.entra{background:rgba(79,203,139,.16)} .chip.esce{background:rgba(142,144,150,.18)}
+.sessioni{padding:4px 18px 16px 82px}
+.sess{padding:14px 0;border-top:1px solid rgba(255,255,255,.07)}
+.sess-t{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:10px}
+.sess-t .d{font:800 18px/1 'Mazzard',sans-serif;color:#E3C271} .sess-t span{color:#B4B6BD;font-size:13.5px}
+.passi{list-style:none;border-left:2px solid rgba(201,162,75,.35);margin-left:6px}
+.passi li{position:relative;padding:5px 0 5px 18px;font-size:14px}
+.passi li::before{content:"";position:absolute;left:-6px;top:12px;width:10px;height:10px;border-radius:50%;background:#2E3037;border:2px solid #C9A24B}
+.passi li.file::before{border-color:#5AA7E8} .passi li.entra::before{border-color:#4FCB8B} .passi li.esce::before{border-color:#8E9096}
+.passi .ora{display:inline-block;width:52px;color:#A3A5AD;font-variant-numeric:tabular-nums}
+.passi b{color:#E3C271;margin-left:4px} .passi .det{display:block;margin-left:52px;color:#9EA0A8;font-size:12.5px;word-break:break-all}
+.altri{background:none;border:0;color:#E3C271;font:inherit;font-size:13.5px;cursor:pointer;padding:6px 0 0 18px}
+/* la cronologia */
+.cron h3{font:700 12px/1 'Mazzard',sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#C9A24B;margin:22px 0 10px}
+.riga{display:grid;grid-template-columns:60px 220px minmax(0,1fr);gap:14px;padding:9px 12px;border-radius:8px;align-items:baseline}
+.riga:nth-child(odd){background:#1F2025}
+.riga .ora{color:#A3A5AD;font-variant-numeric:tabular-nums} .riga .nome{font-weight:600} .riga .cosa b{color:#E3C271} .riga .cosa small{display:block;color:#9EA0A8;font-size:12.5px;word-break:break-all}
+h2{font:700 12px/1 'Mazzard',sans-serif;letter-spacing:.2em;text-transform:uppercase;color:#C9A24B;margin:30px 0 12px}
+.rif{width:100%;border-collapse:collapse;font-size:14px;background:#24262C;border-radius:12px;overflow:hidden}
+.rif td{padding:9px 12px;border-bottom:1px solid rgba(255,255,255,.06)} .rif td.q{color:#A3A5AD;white-space:nowrap}
+.nota{color:#A3A5AD;font-size:13px;margin-top:16px;max-width:900px}
+@media (max-width:820px){.persona>summary{grid-template-columns:44px 1fr}.stat{grid-column:1/-1;justify-content:flex-start;text-align:left}.sessioni{padding-left:18px}.riga{grid-template-columns:52px 1fr}.riga .cosa{grid-column:1/-1}}
 </style></head><body>
 <nav class="ms-bar"></nav><script src="/como-tv/live/menu-sito.js"></script><script src="/como-tv/live/utente.js" async></script>
 <div class="pagina">
-<div class="testa"><h1>Registro di controllo</h1><span id="conto"></span></div>
-<div class="filtri"><input id="f" type="search" placeholder="Cerca una persona, una mail o una pagina"><input id="da" type="date" title="dal"><input id="a" type="date" title="al"></div>
-<div id="persone"><p class="nota">Carico…</p></div>
+<div class="testa"><h1>Registro di controllo</h1><span id="conto"></span>
+ <div class="viste" role="tablist"><button id="vPers" class="on" role="tab">Persone</button><button id="vCron" role="tab">Cronologia</button></div></div>
+<div class="periodo" id="periodo">
+ <button data-p="oggi">Oggi</button><button data-p="ieri">Ieri</button><button data-p="7">Ultimi 7 giorni</button><button data-p="30">Ultimi 30 giorni</button><button data-p="tutto">Tutto</button>
+</div>
+<div class="giorni" id="giorni" aria-label="Giorni con attività"></div>
+<input class="cerca" id="f" type="search" placeholder="Cerca una persona, una mail, una pagina o un file">
+<div id="corpo"><p class="nota">Carico…</p></div>
 <h2>Accessi rifiutati e blocchi</h2><div id="rifiuti"></div>
 <p class="nota">Una sessione va dall'entrata all'ultima cosa fatta (o all'uscita); una pausa di più di mezz'ora ne apre un'altra. "Dentro adesso" = attivo negli ultimi 15 minuti senza essere uscito. Miniature, copertine e indici non si contano. Ultimi <span id="gg"></span> giorni.</p>
 </div>
 <script>
-var D=null,$=function(i){return document.getElementById(i)};
+var D=null,VISTA="persone",DA="",A="",$=function(i){return document.getElementById(i)};
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function ini(n){return n.replace(/\(.*\)/,"").split(/\s+/).filter(Boolean).map(function(w){return w[0]}).slice(0,2).join("").toUpperCase()}
-function dur(s){if(s<60)return"meno di 1 min";var h=Math.floor(s/3600),m=Math.round(s%3600/60);if(m===60){h++;m=0}return h?h+" h "+(m?m+" min":""):m+" min"}
-function dt(q){return q.slice(8,10)+"/"+q.slice(5,7)+"/"+q.slice(0,4)}
-function ora(q){return q.slice(11,16)}
+function dur(s){if(s<60)return"meno di 1 min";var h=Math.floor(s/3600),m=Math.round(s%3600/60);if(m===60){h++;m=0}return h?h+" h"+(m?" "+m+" min":""):m+" min"}
+function dt(q){return q.slice(8,10)+"/"+q.slice(5,7)+"/"+q.slice(0,4)} function ora(q){return q.slice(11,16)}
+function iso(d){return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2)}
+var GG=["dom","lun","mar","mer","gio","ven","sab"],MM=["gen","feb","mar","apr","mag","giu","lug","ago","set","ott","nov","dic"];
+function giornoBello(g){var d=new Date(g+"T12:00:00"),oggi=iso(new Date()),ieri=iso(new Date(Date.now()-864e5));return g===oggi?"Oggi":g===ieri?"Ieri":GG[d.getDay()]+" "+d.getDate()+" "+MM[d.getMonth()]}
 var RUOLI={admin:"super utente",staff:"Como TV",club:"Como 1907"};
-function disegna(){
- var f=$("f").value.toLowerCase(),da=$("da").value,a=$("a").value,tot=0;
- var h=D.persone.map(function(u){
-  var ss=u.sessioni.filter(function(x){var g=x.inizio.slice(0,10);return(!da||g>=da)&&(!a||g<=a)});
-  if(!ss.length)return"";
-  var testo=(u.nome+" "+u.email+" "+ss.map(function(x){return x.azioni.map(function(z){return z.v+" "+z.d.join(" ")}).join(" ")}).join(" ")).toLowerCase();
-  if(f&&testo.indexOf(f)<0)return"";
-  tot++;
-  var tempo=ss.reduce(function(t,x){return t+x.durata},0),dentro=ss.some(function(x){return x.dentro});
-  var tec=/accesso tecnico/.test(u.nome);
-  return '<details class="persona"><summary><span class="av '+(tec?"tec":u.ruolo==="club"?"club":"")+'">'+esc(ini(u.nome))+'</span>'+
-   '<span class="chi"><b>'+esc(u.nome)+'</b><small>'+esc(u.email)+'<span class="ruolo">'+esc(RUOLI[u.ruolo]||u.ruolo)+'</span></small></span>'+
-   '<span class="num"><b'+(dentro?' class="dentro"':'')+'>'+(dentro?"dentro adesso":dt(u.ultimo)+" "+ora(u.ultimo))+'</b>ultima attività</span>'+
-   '<span class="num"><b>'+ss.length+'</b>'+(ss.length===1?"sessione":"sessioni")+'</span>'+
-   '<span class="num"><b>'+dur(tempo)+'</b>tempo in tutto</span></summary><div class="sessioni">'+
-   ss.map(function(x){
-    return '<div class="sess"><div class="q">'+dt(x.inizio)+'<small>dalle '+ora(x.inizio)+' alle '+ora(x.fine)+(x.ip.length?" · "+esc(x.ip.join(", ")):"")+'</small></div>'+
-     '<div class="d">'+(x.dentro?'<span class="dentro">in corso</span>':dur(x.durata))+'<small>'+(x.chiusa?"uscito con Esci":x.dentro?"dentro adesso":"finita per inattività")+'</small></div>'+
-     '<div class="az">'+x.azioni.map(function(z){var c=/originale|copia/.test(z.v)?"file":z.v.indexOf("entra")===0?"entra":z.v==="esce"?"esce":"";
-       return '<span class="'+c+'" title="'+esc(z.d.join("\n"))+'"><i>'+z.q+'</i>'+esc(z.v)+(z.n>1?'<b>×'+z.n+'</b>':'')+'</span>'}).join("")+'</div></div>';
-   }).join("")+'</div></details>';
- }).join("");
- $("persone").innerHTML=h||'<p class="nota">Nessuno in questo periodo.</p>';
- $("conto").textContent=tot+(tot===1?" persona":" persone");
+function cl(v){return /originale|copia/.test(v)?"file":v.indexOf("entra")===0?"entra":v==="esce"?"esce":""}
+function nel(x){var g=x.inizio.slice(0,10);return(!DA||g>=DA)&&(!A||g<=A)}
+function periodo(p){
+ var oggi=new Date();
+ if(p==="oggi"){DA=A=iso(oggi)} else if(p==="ieri"){DA=A=iso(new Date(Date.now()-864e5))}
+ else if(p==="tutto"){DA=A=""} else {DA=iso(new Date(Date.now()-(+p-1)*864e5));A=iso(oggi)}
+ segnaTasti(p); disegna();
 }
+function segnaTasti(p){[].forEach.call(document.querySelectorAll("#periodo button"),function(b){b.classList.toggle("on",b.dataset.p===p)});
+ [].forEach.call(document.querySelectorAll(".giorno"),function(b){b.classList.toggle("on",!p&&DA===b.dataset.g&&A===b.dataset.g)})}
+function giorni(){
+ var per={};D.persone.forEach(function(u){u.sessioni.forEach(function(x){var g=x.inizio.slice(0,10);(per[g]=per[g]||{})[u.email]=1})});
+ $("giorni").innerHTML=Object.keys(per).sort().reverse().map(function(g){var n=Object.keys(per[g]).length;return'<button class="giorno" data-g="'+g+'"><small>'+esc(giornoBello(g))+'</small><b>'+g.slice(8,10)+'</b><i>'+n+(n===1?" persona":" persone")+'</i></button>'}).join("");
+}
+function testoDi(u,ss){return(u.nome+" "+u.email+" "+ss.map(function(x){return x.seq.map(function(z){return z.v+" "+z.d.join(" ")}).join(" ")}).join(" ")).toLowerCase()}
+function passi(x,tutti){
+ var s=x.seq,max=tutti?s.length:12;
+ return'<ul class="passi">'+s.slice(0,max).map(function(z){return'<li class="'+cl(z.v)+'"><span class="ora">'+z.q+'</span>'+esc(z.v)+(z.n>1?'<b>×'+z.n+'</b>':'')+(z.d.length?'<span class="det">'+esc(z.d.slice(0,3).join(" · "))+'</span>':'')+'</li>'}).join("")+'</ul>'+
+  (s.length>max?'<button class="altri" data-tutti="1">Mostra tutti i '+s.length+' passi</button>':'');
+}
+function disegnaPersone(f){
+ var tot=0,h=D.persone.map(function(u,ui){
+  var ss=u.sessioni.filter(nel); if(!ss.length)return"";
+  if(f&&testoDi(u,ss).indexOf(f)<0)return""; tot++;
+  var tempo=ss.reduce(function(t,x){return t+x.durata},0),dentro=ss.some(function(x){return x.dentro}),tec=/accesso tecnico/.test(u.nome);
+  var som={};ss.forEach(function(x){x.azioni.forEach(function(z){if(z.v==="entra"||z.v==="esce")return;som[z.v]=(som[z.v]||0)+z.n})});
+  var top=Object.keys(som).sort(function(a,b){return som[b]-som[a]}).slice(0,6);
+  return'<details class="persona" data-u="'+ui+'"><summary><span class="av '+(tec?"tec":u.ruolo==="club"?"club":"")+'">'+esc(ini(u.nome))+'</span>'+
+   '<span class="chi"><b>'+esc(u.nome)+'</b><span class="ruolo">'+esc(RUOLI[u.ruolo]||u.ruolo)+'</span><span class="mail">'+esc(u.email)+'</span>'+
+   '<span class="riass">'+(top.length?top.map(function(v){return'<span class="chip '+cl(v)+'">'+esc(v)+(som[v]>1?'<b>×'+som[v]+'</b>':'')+'</span>'}).join(""):'<span class="chip">solo entrato</span>')+'</span></span>'+
+   '<span class="stat"><div><b'+(dentro?' class="dentro"':'')+'>'+(dentro?"dentro adesso":dt(u.ultimo)+" "+ora(u.ultimo))+'</b>ultima attività</div><div><b>'+ss.length+'</b>'+(ss.length===1?"sessione":"sessioni")+'</div><div><b>'+dur(tempo)+'</b>tempo in tutto</div></span></summary>'+
+   '<div class="sessioni">'+ss.map(function(x,xi){return'<div class="sess" data-x="'+xi+'"><div class="sess-t"><span class="d">'+(x.dentro?'<span class="dentro">in corso</span>':dur(x.durata))+'</span><span>'+dt(x.inizio)+' · dalle '+ora(x.inizio)+' alle '+ora(x.fine)+' · '+(x.chiusa?"uscito con Esci":x.dentro?"dentro adesso":"finita per inattività")+(x.ip.length?' · '+esc(x.ip.join(", ")):'')+'</span></div>'+passi(x,false)+'</div>'}).join("")+'</div></details>';
+ }).join("");
+ $("corpo").innerHTML=h||'<p class="nota">Nessuno in questo periodo.</p>'; return tot;
+}
+function disegnaCron(f){
+ var righe=[];
+ D.persone.forEach(function(u){u.sessioni.filter(nel).forEach(function(x){var g=x.inizio.slice(0,10);x.seq.forEach(function(z){righe.push({g:g,q:z.q,u:u,z:z})})})});
+ if(f)righe=righe.filter(function(r){return(r.u.nome+" "+r.u.email+" "+r.z.v+" "+r.z.d.join(" ")).toLowerCase().indexOf(f)>=0});
+ righe.sort(function(a,b){return(b.g+b.q).localeCompare(a.g+a.q)});
+ var h="",ultimo="",pers={};
+ righe.slice(0,1500).forEach(function(r){pers[r.u.email]=1;if(r.g!==ultimo){h+=(ultimo?"</div>":"")+'<h3>'+esc(giornoBello(r.g))+" · "+dt(r.g+"T")+'</h3><div>';ultimo=r.g}
+  h+='<div class="riga"><span class="ora">'+r.q+'</span><span class="nome">'+esc(r.u.nome)+'</span><span class="cosa">'+esc(r.z.v)+(r.z.n>1?'<b> ×'+r.z.n+'</b>':'')+(r.z.d.length?'<small>'+esc(r.z.d.slice(0,3).join(" · "))+'</small>':'')+'</span></div>'});
+ $("corpo").innerHTML=h?'<div class="cron">'+h+'</div></div>':'<p class="nota">Niente in questo periodo.</p>';
+ return Object.keys(pers).length;
+}
+function disegna(){var f=$("f").value.toLowerCase(),n=VISTA==="persone"?disegnaPersone(f):disegnaCron(f);$("conto").textContent=n+(n===1?" persona":" persone")+(DA?(DA===A?" · "+giornoBello(DA):" · dal "+dt(DA+"T")+" al "+dt(A+"T")):" · tutto il periodo")}
+$("periodo").addEventListener("click",function(e){var b=e.target.closest("button");if(b)periodo(b.dataset.p)});
+$("giorni").addEventListener("click",function(e){var b=e.target.closest(".giorno");if(!b)return;DA=A=b.dataset.g;segnaTasti("");disegna()});
+$("corpo").addEventListener("click",function(e){var b=e.target.closest(".altri");if(!b)return;var s=b.closest(".sess"),p=b.closest(".persona"),u=D.persone[+p.dataset.u],x=u.sessioni.filter(nel)[+s.dataset.x];b.previousElementSibling.outerHTML=passi(x,true).replace(/<button[\s\S]*$/,"");b.remove()});
+$("vPers").onclick=function(){VISTA="persone";this.classList.add("on");$("vCron").classList.remove("on");disegna()};
+$("vCron").onclick=function(){VISTA="cron";this.classList.add("on");$("vPers").classList.remove("on");disegna()};
+$("f").addEventListener("input",disegna);
 fetch("/auth/registro.json",{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){
- D=j;$("gg").textContent=j.giorni;
+ D=j;$("gg").textContent=j.giorni;giorni();
  $("rifiuti").innerHTML=j.rifiuti.length?'<table class="rif">'+j.rifiuti.map(function(r){return"<tr><td class=q>"+dt(r.q)+" "+ora(r.q)+"</td><td>"+esc(r.chi||"—")+"</td><td>"+esc(r.az)+"</td><td class=q>"+esc(r.ip)+"</td></tr>"}).join("")+"</table>":'<p class="nota">Nessuno.</p>';
- disegna();
+ periodo("oggi");
 });
-["f","da","a"].forEach(function(i){$(i).addEventListener("input",disegna)});
 </script></body></html>"""
 
 
