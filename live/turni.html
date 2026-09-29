@@ -98,7 +98,7 @@
 
   /* ── griglia ─────────────────────────────────────────────────────── */
   .telaio{flex:1;overflow:auto;background:var(--carta);}
-  table{border-collapse:separate;border-spacing:0;}
+  table{border-collapse:separate;border-spacing:0;table-layout:fixed;}
   th,td{border-right:1px solid var(--linea);border-bottom:1px solid var(--linea);background:var(--carta);}
   thead th{position:sticky;top:0;z-index:12;padding:0 10px;height:34px;text-align:center;font-weight:500;
     font-size:12px;color:var(--testo2);white-space:nowrap;}
@@ -106,8 +106,9 @@
   thead th.festa{background:var(--festa);}
   thead th.oggi{background:var(--oggi);}
   thead th.oggi .gg{color:var(--oro);}
-  th.riga1,td.riga1{position:sticky;left:0;z-index:11;width:42px;min-width:42px;text-align:center;color:var(--testo3);font-size:12px;}
-  th.nome,td.nome{position:sticky;left:42px;z-index:11;min-width:186px;max-width:210px;text-align:left;padding:6px 10px;}
+  th.riga1,td.riga1{position:sticky;left:0;z-index:11;text-align:center;color:var(--testo3);font-size:11.5px;}
+  th.nome,td.nome{position:sticky;left:36px;z-index:11;text-align:left;padding:3px 10px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   thead th.riga1,thead th.nome{z-index:14;}
   td.nome b{font-weight:700;font-size:13.5px;display:block;line-height:1.25;}
   td.nome small{color:var(--testo3);font-size:11.5px;}
@@ -115,7 +116,7 @@
     letter-spacing:.09em;text-transform:uppercase;color:var(--testo2);border-right:0;}
   tr:hover td.nome,tr:hover td.cella{background:var(--riga);}
   tr.io td.nome{box-shadow:inset 3px 0 0 var(--oro);}
-  td.cella{padding:0;min-width:124px;vertical-align:top;}
+  td.cella{padding:0;vertical-align:top;overflow:hidden;}
   td.cella.festa{background:var(--festa);}
   td.cella.oggi{background:var(--oggi);}
   .cel{display:block;width:100%;height:100%;padding:6px 8px;border:0;background:none;text-align:left;cursor:pointer;
@@ -133,14 +134,30 @@
   td.ore{min-width:74px;text-align:right;padding:6px 10px;font-variant-numeric:tabular-nums;}
   td.ore b{font-weight:700;font-size:13.5px;}
   td.ore small{display:block;color:var(--testo3);font-size:11px;}
-  table.corta .cel{--alt:38px;} table.corta .pills{display:none;}
-  table.media .cel{--alt:56px;}
+  /* Corta: una riga sola, orario e pastiglie in fila — cosi' le persone
+     ci stanno tutte senza scorrere. Media e alta danno aria alle attivita'. */
+  table.corta .cel{--alt:27px;padding:2px 8px;display:flex;align-items:center;gap:5px;overflow:hidden;min-width:0;
+    border-left:3px solid transparent;}
+  table.corta .cel.sede{border-left-color:#3FA76B;} table.corta .cel.smart{border-left-color:#4D95FF;}
+  table.corta .cel.esterna{border-left-color:#E08B3E;}
+  table.corta .pill.luogo{display:none;}
+  table.corta .ora{font-size:12.5px;flex:none;}
+  table.corta .pills{margin:0;flex-wrap:nowrap;overflow:hidden;min-width:0;}
+  table.corta .pill{max-width:none;}
+  table.corta td.nome{padding:2px 10px;}
+  table.corta td.nome b{font-size:13px;}
+  table.corta td.nome small{display:none;}
+  table.corta tr.gruppo td{padding:2px 12px;font-size:11px;}
+  table.media .cel{--alt:52px;}
   table.alta .cel{--alt:78px;}
 
   /* ── fondo pagina ────────────────────────────────────────────────── */
   .fondo{display:flex;align-items:center;gap:14px;padding:7px 14px;border-top:1px solid var(--linea);
     background:var(--carta);font-size:12.5px;color:var(--testo2);flex-wrap:wrap;}
   .fondo b{color:var(--testo);}
+  .legenda{display:none;align-items:center;gap:5px;color:var(--testo3);font-size:12px;}
+  .legenda i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-left:8px;}
+  body.corta .legenda{display:inline-flex;}
   .fondo .sp{flex:1;}
   .allarme{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;cursor:pointer;
     border:1px solid #F0C9A0;background:#FFF6EC;color:#8A4B12;font:inherit;font-size:12.5px;font-weight:700;}
@@ -214,8 +231,8 @@
       <option value="produzione">Produzione</option>
     </select>
     <span class="seg" id="altezza" title="Altezza delle righe">
-      <button data-a="corta">≡</button>
-      <button data-a="media" class="on">≣</button>
+      <button data-a="corta" class="on">≡</button>
+      <button data-a="media">≣</button>
       <button data-a="alta">☰</button>
     </span>
     <span class="sp" style="flex:1"></span>
@@ -232,6 +249,7 @@
 
   <div class="fondo">
     <span id="conta">—</span>
+    <span class="legenda" id="legenda"><i style="background:#3FA76B"></i>sede<i style="background:#4D95FF"></i>smart<i style="background:#E08B3E"></i>esterna</span>
     <span class="sp"></span>
     <button class="allarme pulito" id="allarme">Nessun controllo da guardare</button>
   </div>
@@ -269,8 +287,9 @@
     for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 100000;
     return TINTE[h % TINTE.length];
   }
-  function pill(testo, tintaNome, grande) {
-    return '<span class="pill' + (grande ? " grande" : "") + '" style="background:var(--' + tintaNome + ')">' + esc(testo) + "</span>";
+  function pill(testo, tintaNome, grande, classe) {
+    return '<span class="pill' + (grande ? " grande" : "") + (classe ? " " + classe : "") +
+      '" style="background:var(--' + tintaNome + ')">' + esc(testo) + "</span>";
   }
 
   /* ── il periodo mostrato ───────────────────────────────────────────── */
@@ -353,33 +372,36 @@
       el("telaio").innerHTML = '<div class="vuoto">Nessuna persona in elenco.<br>Aggiungine una con <b>+ Persona</b>.</div>';
       return;
     }
-    var h = ['<table class="' + (ALTEZZA || "media") + '"><thead><tr><th class="riga1"></th><th class="nome">Persona</th>'];
+    var spazio = el("telaio").clientWidth || 1280;
+    var largaNome = Math.min(200, Math.max(150, Math.round(spazio * 0.14)));
+    var largaGiorno = Math.max(132, Math.floor((spazio - 36 - largaNome - 2) / gg.length));
+    var h = ['<table class="' + (ALTEZZA || "corta") + '" style="width:' + (36 + largaNome + largaGiorno * gg.length) + 'px">' +
+             '<colgroup><col style="width:36px"><col style="width:' + largaNome + 'px">' +
+             gg.map(function () { return '<col style="width:' + largaGiorno + 'px">'; }).join("") + "</colgroup>" +
+             '<thead><tr><th class="riga1"></th><th class="nome">Persona</th>'];
     gg.forEach(function (g) {
       var d = dataDa(g), fine = d.getDay() === 0 || d.getDay() === 6;
       h.push('<th class="' + (fine ? "festa " : "") + (g === oggi ? "oggi" : "") + '">' + GIORNI[d.getDay()] +
              '<span class="gg">' + d.getDate() + "</span>" +
              (d.getDate() === 1 || g === gg[0] ? " " + MESI[d.getMonth()].slice(0, 3) : "") + "</th>");
     });
-    h.push('<th class="ore">Ore</th></tr></thead><tbody>');
+    h.push("</tr></thead><tbody>");
 
     var n = 0;
     REPARTI.forEach(function (r) {
       var suoi = persone.filter(function (p) { return p.reparto === r[0]; });
       if (!suoi.length) return;
-      h.push('<tr class="gruppo"><td colspan="' + (gg.length + 3) + '">' + r[1] + " · " + suoi.length + "</td></tr>");
+      h.push('<tr class="gruppo"><td colspan="' + (gg.length + 2) + '">' + r[1] + " · " + suoi.length + "</td></tr>");
       suoi.forEach(function (p) {
         n++;
-        var ore = 0, fuori = 0;
         var celle = gg.map(function (g) {
           var t = turnoDi(g, p.id), ass = assenzaDi(g, p.id), d = dataDa(g);
           var fine = d.getDay() === 0 || d.getDay() === 6;
-          ore += oreDi(t);
-          if (t && t.tipo !== "lavoro") fuori++;
           var dentro = "";
           if (t && t.tipo === "lavoro") {
             var luogo = LUOGHI.filter(function (l) { return l[0] === t.luogo; })[0];
             dentro = '<span class="ora">' + etichetta(t) + "</span>" +
-              '<span class="pills">' + (luogo ? pill(luogo[1], luogo[2]) : "") +
+              '<span class="pills">' + (luogo ? pill(luogo[1], luogo[2], false, "luogo") : "") +
               (t.attivita || []).map(function (a) { return pill(a, tinta(a)); }).join("") +
               (t.nota ? pill(t.nota, "grigio") : "") + "</span>";
           } else if (t) {
@@ -389,11 +411,11 @@
             dentro = '<span class="pills">' + pill(ass.tipo.toUpperCase(), "viola") + "</span>";
           }
           return '<td class="cella ' + (fine ? "festa " : "") + (g === oggi ? "oggi" : "") + '" data-g="' + g + '" data-p="' + p.id + '">' +
-                 '<button class="cel' + (!t && ass ? " assente" : "") + (!t && !ass ? " vuota" : "") + '" data-g="' + g + '" data-p="' + p.id + '">' + dentro + "</button></td>";
+                 '<button class="cel' + (t && t.tipo === "lavoro" && t.luogo ? " " + t.luogo : "") +
+                 (!t && ass ? " assente" : "") + (!t && !ass ? " vuota" : "") + '" data-g="' + g + '" data-p="' + p.id + '">' + dentro + "</button></td>";
         }).join("");
         h.push("<tr" + (S.io && p.nome.toLowerCase().indexOf(S.io.toLowerCase()) >= 0 ? ' class="io"' : "") + '><td class="riga1">' + n + "</td>" +
-               '<td class="nome"><b>' + esc(p.nome) + "</b><small>" + (p.reparto || "") + "</small></td>" + celle +
-               '<td class="ore"><b>' + (ore ? ore.toFixed(0) + "h" : "–") + "</b><small>" + fuori + " non lav.</small></td></tr>");
+               '<td class="nome"><b>' + esc(p.nome) + "</b></td>" + celle + "</tr>");
       });
     });
 
@@ -403,7 +425,7 @@
       var sede = lavoro.filter(function (p) { return (turnoDi(g, p.id).luogo || "") === "sede"; });
       h.push('<td style="text-align:center;font-size:12px;color:var(--testo2)"><b style="color:var(--testo)">' + sede.length + "</b>/" + lavoro.length + "</td>");
     });
-    h.push("<td></td></tr></tfoot></table>");
+    h.push("</tr></tfoot></table>");
     el("telaio").innerHTML = h.join("");
 
     [].forEach.call(document.querySelectorAll(".cel"), function (b) {
@@ -628,7 +650,7 @@
   }
 
   /* ── strumenti e tastiera ─────────────────────────────────────────── */
-  var ALTEZZA = "media";
+  var ALTEZZA = "corta";
   function muovi(n) {
     if (S.giorni === "mese") { var d = dataDa(S.da); d.setMonth(d.getMonth() + n, 1); S.da = iso(d); }
     else S.da = piu(S.da, n * +S.giorni);
@@ -651,6 +673,7 @@
     var b = e.target.closest("button"); if (!b) return;
     [].forEach.call(this.children, function (x) { x.classList.toggle("on", x === b); });
     ALTEZZA = b.dataset.a;
+    document.body.classList.toggle("corta", ALTEZZA === "corta");
     try { localStorage.setItem("comotv.turni.altezza", ALTEZZA); } catch (err) {}
     disegna();
   });
@@ -706,8 +729,14 @@
     S.giorni = q.get("vista") === "mese" ? "mese" : +q.get("vista") || 7;
     [].forEach.call(el("vista").children, function (x) { x.classList.toggle("on", x.dataset.v === String(S.giorni)); });
   }
+  document.body.classList.toggle("corta", ALTEZZA === "corta");
   S.da = S.giorni === "mese" ? oggiISO().slice(0, 8) + "01" : lunedi(new Date());
   carica();
+  var attesaMisura = null;
+  window.addEventListener("resize", function () {
+    clearTimeout(attesaMisura);
+    attesaMisura = setTimeout(function () { if (S.persone.length) disegna(); }, 180);
+  });
   // chi guarda senza toccare niente vede comunque le modifiche degli altri
   setInterval(function () { if (!el("scheda").classList.contains("on")) carica(); }, 60000);
 })();
