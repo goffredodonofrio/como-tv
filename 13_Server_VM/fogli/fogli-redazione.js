@@ -684,6 +684,8 @@ function rifai() {
     B.forEach((b) => {
       if (b.t === "h0" || b.t === "h1") { sezione = b.x || ""; sotto = ""; return; }
       if (b.t === "h2" || b.t === "h3") { sotto = b.x || ""; return; }
+      const comeTitolo = titoloBlocco(b);
+      if (comeTitolo) { sotto = comeTitolo; return; }
       if (ARBITRO.test(sezione) || ARBITRO.test(sotto)) return;
       let testo = "";
       if (b.t === "p" || b.t === "li") testo = (b.lead ? b.lead + " " : "") + (b.x || "");
@@ -1045,6 +1047,29 @@ function giovanili() {
 // nominano, con foglio, autore e data. Una frase va a un giocatore solo se il
 // foglio parla della sua squadra, oppure se quel cognome ce l'ha lui solo:
 // cosi' due Silva di due squadre diverse non si mescolano.
+// QUANDO UN PARAGRAFO E' UN TITOLO (29/09/2026). Nelle schede squadra della
+// redazione il giocatore si scrive "Jean Butez 🇫🇷": il nome in grassetto e
+// le bandierine. Word lo salva come paragrafo (nome in grassetto = lead, il
+// resto sono solo simboli), mentre chi non ha bandierina diventa un titolo.
+// Il lettore cambiava sezione solo sui titoli, e le curiosita' di Butez,
+// Kempf, Valle... finivano tutte al primo giocatore senza bandiera
+// (Goldaniga ne aveva 113). Ora:
+//  · un paragrafo che e' solo un nome in grassetto piu' simboli e' un titolo;
+//  · il titolo di reparto ("🧤 PORTIERI", "🧱 DIFENSORI") chiude la sezione
+//    del giocatore di prima, cosi' le sue frasi non passano al reparto dopo.
+const SIMBOLI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{1F1E6}-\u{1F1FF}\u{E0000}-\u{E007F}\u{FE0F}\u{200D}|·•\-–—,.()\s]/gu;
+function titoloBlocco(b) {
+  if (!b || (b.t !== "p" && b.t !== "li")) return null;
+  const x = String(b.x || "");
+  // "Jean Butez | 🇫🇷": il nome e' tutto nel grassetto, il resto sono simboli
+  if (b.lead && String(b.lead).trim().length <= 50 && !x.replace(SIMBOLI, "").length) return String(b.lead).trim();
+  // "🧤 PORTIERI": un titolo di reparto in maiuscolo, corto, senza cifre
+  const nudo = (b.lead ? b.lead + " " : "") + x;
+  const parole = nudo.replace(SIMBOLI, " ").trim();
+  if (parole && parole.length <= 30 && !/\d/.test(parole) && parole === parole.toUpperCase() && /[A-ZÀ-Ý]{4,}/.test(parole)) return parole;
+  return null;
+}
+
 function schedario(stato) {
   const rose = Object.assign({}, stato.rose || {}, giovanili());
   const dir = path.join(PUB, "fogli");
@@ -1067,6 +1092,8 @@ function schedario(stato) {
     B.forEach((b) => {
       if (b.t === "h0" || b.t === "h1") { sezione = b.x || ""; sotto = ""; return; }
       if (b.t === "h2" || b.t === "h3") { sotto = b.x || ""; return; }
+      const comeTitolo = titoloBlocco(b);
+      if (comeTitolo) { sotto = comeTitolo; return; }
       if (ARBITRO.test(sezione) || ARBITRO.test(sotto)) return;
       let testo = "";
       if (b.t === "p" || b.t === "li") testo = (b.lead ? b.lead + " " : "") + (b.x || "");
