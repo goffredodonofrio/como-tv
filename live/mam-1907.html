@@ -380,6 +380,10 @@
   .fx-file .ff{cursor:pointer;border-radius:9px;padding:6px;border:1px solid transparent;} .fx-file .ff:hover{border-color:var(--riga);background:rgba(245,241,230,.04);}
   .fx-file .ff .fx-mos{aspect-ratio:16/9;grid-template-columns:1fr;}
   .fx-file .ff b{display:block;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:5px;} .fx-file .ff small{font-size:11px;color:var(--fumo);}
+  .fx-sel{outline:2px solid var(--oro);outline-offset:-2px;background:rgba(201,162,75,.08);border-radius:10px;}
+  .fx-drop,.fx-g .fx-drop,.fx-bc a.fx-drop{outline:2px dashed var(--oro2);outline-offset:-2px;background:rgba(201,162,75,.16) !important;border-radius:10px;}
+  .fx-preso{opacity:.45;}
+  .fx-scelti{display:inline-flex;align-items:center;gap:8px;color:var(--oro2);font-weight:600;}
   .fx-sez{font:700 10px/1 'Mazzard',sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--fumo);margin:22px 0 10px;}
   @media (max-width:860px){ .fx{grid-template-columns:1fr;} .fx-side{position:static;max-height:none;border-right:0;border-bottom:1px solid var(--riga);} .fx-main{padding:12px;} }
   .el-tab{width:100%;border-collapse:collapse;}
@@ -1086,6 +1090,7 @@
   // del percorso: e' una lettura, non la verita' della NAS. La NAS com'e' la mostra "Cartelle vere".
   var FX = { modo: "ord", stag: "", dip: "", sub: "", via: "" };
   try { FX.modo = localStorage.getItem("mam1907-fx") === "vere" ? "vere" : "ord"; } catch (e) {}
+  var FX_SCELTE = new Set(), FX_PRESI = [];
   var FX_SEL = null, FX_EVSEL = null, FX_TIT = "", FX_ORD = "data", FX_DIPS = null, FX_SUBS = null, FX_TOK = null, FX_ULTIMA = null, FX_TUTTI = false;
   try { FX_ORD = localStorage.getItem("mam1907-fxord") || "data"; } catch (e) {}
   var DIP = [["ft", "1. First Team"], ["wf", "2. Women's First Team"], ["pr", "3. Primavera 1"], ["ac", "4. Academy"], ["ps", "5. Partners-Sponsor"], ["re", "6. Retail"], ["el", "7. Events-Lifestyle"],
@@ -1157,7 +1162,8 @@
         [o.v ? n(o.v) + " video" : "", o.f ? n(o.f) + " foto" : "", o.e.length ? n(o.e.length) + " partite" : ""].filter(Boolean).join(" · ") + '</td><td class="n">' + (o.p ? gb(o.p) : "—") + "</td></tr>";
     }).join("") + "</tbody></table></div>";
     return '<div class="fx-grid">' + voci.map(function (o) {
-      return '<div class="fx-card" tabindex="0" ' + attr(o) + ">" + (piu ? piu(o) : "") + mosaico(o) + '<div class="fx-t"><b title="' + esc(o.nome || o.k) + '">' + esc(o.nome || o.k) + "</b><small>" + infoG(o) + "</small>" + (mod ? mod(o) : "") + "</div></div>";
+      var at = attr(o), cl = / class="fx-sel"/.test(at) ? " fx-sel" : ""; at = at.replace(' class="fx-sel"', "");
+      return '<div class="fx-card' + cl + '" tabindex="0" ' + at + ">" + (piu ? piu(o) : "") + mosaico(o) + '<div class="fx-t"><b title="' + esc(o.nome || o.k) + '">' + esc(o.nome || o.k) + "</b><small>" + infoG(o) + "</small>" + (mod ? mod(o) : "") + "</div></div>";
     }).join("") + "</div>";
   }
   function fxServizi(st) { return (I.servizi || []).filter(function (x) { return (st === "-" ? !x[2] : !st || x[2] === st) && (x[3] || x[4]); }); }
@@ -1254,7 +1260,9 @@
     fxBc(pz); fxSide();
     $("fxAzioni").hidden = false;
     $("fxAzioni").innerHTML = '<button type="button" data-fxnuova>+ Nuova cartella</button>' + (via ? '<button type="button" data-fxmod="' + esc(via) + '">Rinomina questa cartella</button><button type="button" data-fxcerca>Cerca qui dentro</button>' : "") +
-      '<a class="b" href="cartelle-1907.html#v=' + encodeURIComponent(via) + '">Sposta e organizza…</a><span>Le modifiche vanno sulla NAS del club; nell’indice del MAM entrano stanotte.</span>';
+      '<a class="b" href="cartelle-1907.html#v=' + encodeURIComponent(via) + '">Sposta in…</a><span class="fx-scelti" id="fxScelti"></span>' +
+      '<span>Per spostare, trascina cartelle e file su una cartella, sul percorso in alto o nella colonna a sinistra. ⌘ o Ctrl + clic per sceglierne più d’uno. Le modifiche vanno sulla NAS del club; nell’indice del MAM entrano stanotte.</span>';
+    fxScelti();
     if (!(FX_ULTIMA && FX_ULTIMA.via === via)) $("fxBody").innerHTML = '<div class="attesa">Leggo la cartella sulla NAS…</div>';
     fetch(BASE + "cartelle?v=" + encodeURIComponent(via), { cache: "no-store" }).then(function (r) { if (!r.ok) throw r.status; return r.json(); }).then(function (j) {
       if (tok !== FX_TOK) return;
@@ -1275,14 +1283,14 @@
     voci = ordina(voci);
     var ff = (j.file || []).slice().sort(FX_ORD === "peso" ? function (a, b) { return b.peso - a.peso; } : function (a, b) { return a.nome.localeCompare(b.nome, "it", { numeric: true }); });
     var h = '<p class="fx-conta">' + n(voci.length) + (voci.length === 1 ? " cartella" : " cartelle") + (ff.length ? " · " + n(ff.length) + " file" : "") + "</p>";
-    if (voci.length) h += cartelleFx(voci, function (o) { return 'data-fxvia="' + esc(o.via) + '"'; },
+    if (voci.length) h += cartelleFx(voci, function (o) { return 'data-fxvia="' + esc(o.via) + '" draggable="true"' + (FX_SCELTE.has(o.via) ? ' class="fx-sel"' : ""); },
       function (o) { return o.v + o.f ? bottonePiu(o.via, true) : ""; },
       function (o) { return '<button type="button" class="mini fx-mod" data-fxmod="' + esc(o.via) + '">Rinomina</button>'; });
     if (ff.length) {
       var max = FX_TUTTI ? 99999 : 120;
       h += '<div class="fx-sez">File</div><div class="fx-file">' + ff.slice(0, max).map(function (f) {
         var p = (via ? via + "/" : "") + f.nome, m = RX_VID.test(f.nome) || RX_FOTO.test(f.nome);
-        return '<div class="ff" tabindex="0" data-fxfile="' + esc(p) + '" title="' + esc(f.nome) + '"><div class="fx-mos uno"><div' + (m ? ' data-mini="' + esc(p) + '"' : "") + '><span class="foto"></span>' + (m ? "" : '<span class="vuota" style="font-size:12px">' + esc((f.nome.split(".").pop() || "").toUpperCase()) + "</span>") + "</div></div><b>" + esc(f.nome) + "</b><small>" + (f.peso ? gb(f.peso) : "0 MB · vuoto") + "</small></div>";
+        return '<div class="ff' + (FX_SCELTE.has(p) ? " fx-sel" : "") + '" tabindex="0" draggable="true" data-fxfile="' + esc(p) + '" title="' + esc(f.nome) + '"><div class="fx-mos uno"><div' + (m ? ' data-mini="' + esc(p) + '"' : "") + '><span class="foto"></span>' + (m ? "" : '<span class="vuota" style="font-size:12px">' + esc((f.nome.split(".").pop() || "").toUpperCase()) + "</span>") + "</div></div><b>" + esc(f.nome) + "</b><small>" + (f.peso ? gb(f.peso) : "0 MB · vuoto") + "</small></div>";
       }).join("") + "</div>" + (ff.length > max ? '<div class="piu">Ne vedi ' + n(max) + " su " + n(ff.length) + '. <button class="mini" data-fxtutti>Mostrali tutti</button></div>' : "");
     }
     if (!voci.length && !ff.length) h += '<div class="vuoto">Cartella vuota.</div>';
@@ -1317,9 +1325,15 @@
     var t = e.target.closest("[data-scc]"); if (!t || !t.classList.contains("scegli")) return;
     e.preventDefault(); e.stopPropagation(); scegliCartella(t.dataset.scc);
   }, true);
-  function fxVai() { APERTI = {}; FX_TUTTI = false; salvaIndirizzo(); fxDisegna(); var b = $("fxBox").getBoundingClientRect(); if (b.top < 0) $("fxBox").scrollIntoView({ block: "start" }); }
+  function fxVai() { APERTI = {}; FX_TUTTI = false; FX_SCELTE.clear(); salvaIndirizzo(); fxDisegna(); var b = $("fxBox").getBoundingClientRect(); if (b.top < 0) $("fxBox").scrollIntoView({ block: "start" }); }
   $("fxBox").addEventListener("click", function (e) {
     var t;
+    if (FX.modo === "vere" && (e.metaKey || e.ctrlKey || e.shiftKey) && (t = e.target.closest("#fxBody [data-fxvia], #fxBody [data-fxfile]")) && !e.target.closest("[data-fxmod],.scegli")) {
+      var v = t.dataset.fxvia != null ? t.dataset.fxvia : t.dataset.fxfile;
+      if (FX_SCELTE.has(v)) FX_SCELTE.delete(v); else FX_SCELTE.add(v);
+      t.classList.toggle("fx-sel", FX_SCELTE.has(v)); fxScelti(); return;
+    }
+    if ((t = e.target.closest("[data-fxnoscelta]"))) { FX_SCELTE.clear(); document.querySelectorAll("#fxBody .fx-sel").forEach(function (x) { x.classList.remove("fx-sel"); }); fxScelti(); return; }
     if ((t = e.target.closest("[data-fxmod]"))) { fxRinomina(t.dataset.fxmod); return; }
     if ((t = e.target.closest("[data-fxnuova]"))) { var qui = FX.via; fxChiedi("Nuova cartella", "Dentro: " + (qui ? qui.split("/").join(" › ") : "COMOTV - FRAME"), "Nuova cartella", function (nome) { return fxManda({ azione: "nuova", in: qui, nome: nome }).then(function () { avviso("", "Cartella creata."); FX_ULTIMA = null; fxDisegna(); }); }); return; }
     if ((t = e.target.closest("[data-fxcerca]"))) { G = []; metti({ k: "cart", v: FX.via, n: ultimo(FX.via) }); window.scrollTo(0, 0); return; }
@@ -1336,6 +1350,63 @@
     }
   });
   $("fxBody").addEventListener("keydown", function (e) { if (e.key === "Enter" && e.target.matches(".fx-card,.ff,tr[tabindex]")) e.target.click(); });
+  // ── TRASCINA PER SPOSTARE (Goffredo, 29/09/2026: "spostare cartelle e file tipo drag and drop") ──
+  // Si prende una cartella o un file (o tutti quelli scelti con ⌘/Ctrl+clic, se e' tra quelli) e si
+  // lascia su una cartella: nel riquadro, nel percorso in alto o nella colonna a sinistra. Si conferma,
+  // poi il servizio-1907 sposta sulla NAS (azione "sposta", mai cancellare) e le raccolte seguono.
+  function fxScelti() {
+    var b = $("fxScelti"); if (!b) return;
+    b.innerHTML = FX_SCELTE.size ? n(FX_SCELTE.size) + (FX_SCELTE.size === 1 ? " scelto" : " scelti") + ' <button type="button" class="mini" data-fxnoscelta>Togli</button>' : "";
+  }
+  function viaDi(el) { return el.dataset.fxvia != null ? el.dataset.fxvia : el.dataset.fxfile; }
+  function fxBersaglio(e) {
+    if (FX.modo !== "vere" || !FX_PRESI.length) return null;
+    var b = e.target.closest && e.target.closest("#fxBody [data-fxvia], #fxBc [data-fxvia], #fxSide [data-fxvia]");
+    if (!b) return null;
+    var dest = b.dataset.fxvia;
+    // non dentro se stessi, non dove gia' sono
+    if (FX_PRESI.some(function (v) { return dest === v || dest.indexOf(v + "/") === 0; })) return null;
+    if (FX_PRESI.every(function (v) { return v.split("/").slice(0, -1).join("/") === dest; })) return null;
+    return b;
+  }
+  $("fxBox").addEventListener("dragstart", function (e) {
+    var t = e.target.closest && e.target.closest("#fxBody [draggable=true]"); if (!t || FX.modo !== "vere") return;
+    var v = viaDi(t);
+    FX_PRESI = FX_SCELTE.has(v) ? Array.from(FX_SCELTE) : [v];
+    try { e.dataTransfer.setData("text/plain", FX_PRESI.join("\n")); e.dataTransfer.effectAllowed = "move"; } catch (x) {}
+    document.querySelectorAll("#fxBody [draggable=true]").forEach(function (x) { if (FX_PRESI.indexOf(viaDi(x)) >= 0) x.classList.add("fx-preso"); });
+  });
+  $("fxBox").addEventListener("dragend", function () {
+    FX_PRESI = []; document.querySelectorAll(".fx-preso,.fx-drop").forEach(function (x) { x.classList.remove("fx-preso", "fx-drop"); });
+  });
+  $("fxBox").addEventListener("dragover", function (e) {
+    var b = fxBersaglio(e);
+    document.querySelectorAll(".fx-drop").forEach(function (x) { if (x !== b) x.classList.remove("fx-drop"); });
+    if (!b) return; e.preventDefault(); try { e.dataTransfer.dropEffect = "move"; } catch (x) {} b.classList.add("fx-drop");
+  });
+  $("fxBox").addEventListener("dragleave", function (e) { var b = e.target.closest && e.target.closest(".fx-drop"); if (b && !b.contains(e.relatedTarget)) b.classList.remove("fx-drop"); });
+  $("fxBox").addEventListener("drop", function (e) {
+    var b = fxBersaglio(e); document.querySelectorAll(".fx-drop,.fx-preso").forEach(function (x) { x.classList.remove("fx-drop", "fx-preso"); });
+    if (!b) return; e.preventDefault();
+    var vie = FX_PRESI.slice(), dest = b.dataset.fxvia; FX_PRESI = [];
+    fxSposta(vie, dest);
+  });
+  function fxSposta(vie, dest) {
+    var nomi = vie.map(function (v) { return v.split("/").pop(); });
+    $("velo").innerHTML = '<div class="fx-dlg" role="dialog" aria-label="Sposta"><h2>Sposta</h2><p>' + (vie.length === 1 ? "«" + esc(nomi[0]) + "»" : n(vie.length) + " elementi (" + esc(nomi.slice(0, 4).join(", ")) + (vie.length > 4 ? "…" : "") + ")") +
+      ' in <b>' + esc(dest ? dest.split("/").join(" › ") : "COMOTV - FRAME") + '</b>?</p><p class="nota-date">Si sposta sulla NAS del club, per tutti. Le raccolte che li contengono li ritrovano da sole.</p><div class="az"><button type="button" id="fxNo">Annulla</button><button type="button" class="oro" id="fxOk">Sposta</button></div></div>';
+    $("velo").hidden = false; $("fxOk").focus(); $("fxNo").onclick = chiudi;
+    $("fxOk").onclick = function () {
+      $("fxOk").disabled = true;
+      fxManda({ azione: "sposta", vie: vie, in: dest }).then(function (j) {
+        chiudi();
+        (j.esiti || []).forEach(function (x) { if (x[1] === "ok") SPOST[x[0]] = (dest ? dest + "/" : "") + x[0].split("/").pop(); });
+        var no = (j.esiti || []).filter(function (x) { return x[1] !== "ok"; });
+        avviso(no.length ? "err" : "", (j.spostati ? "Spostati: " + n(j.spostati) + "." : "Niente spostato.") + (no.length ? " Non spostati: " + no.slice(0, 5).map(function (x) { return esc(x[0].split("/").pop()) + " (" + esc(x[1]) + ")"; }).join(", ") : ""));
+        FX_SCELTE.clear(); FX_ULTIMA = null; fxDisegna();
+      }).catch(function (e) { $("fxOk").disabled = false; avviso("err", esc(e.message)); });
+    };
+  }
   function fxModo(m) { FX.modo = m; try { localStorage.setItem("mam1907-fx", m); } catch (e) {} fxVai(); }
   $("fxOrd").onclick = function () { fxModo("ord"); }; $("fxVere").onclick = function () { fxModo("vere"); };
   $("fxOrdina").onchange = function () { FX_ORD = this.value; try { localStorage.setItem("mam1907-fxord", FX_ORD); } catch (e) {} fxDisegna(); };
