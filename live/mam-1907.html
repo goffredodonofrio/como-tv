@@ -883,7 +883,7 @@
     if (!G.length && !Q && !RACCOLTA) { if (FX.modo === "vere") { if (FX.via) h.set("fv", FX.via); } else if (FX.dip || (I && FX.stag !== Object.keys(STAGIONI).sort().reverse()[0])) h.set("fo", [FX.stag, FX.dip, FX.sub, FX.comp, FX.par].join("|")); }
     history.replaceState(null, "", location.pathname + location.search + (h.toString() ? "#" + h.toString() : ""));
   }
-  function nomeDi(k, v) { return k === "insieme" ? "Insieme" : k === "volto" ? "Volto sconosciuto" : k === "ep" ? v.split("/")[1] : k === "cart" ? ultimo(v) : k === "stag" ? "Stagione " + v : k === "tipo" ? (v === "video" ? "Solo video" : "Solo foto") : k === "pers" ? ((PERS[v] || {}).nome || v) : k === "avv" ? "contro " + v : k === "cam" ? "Girato da " + v : k === "ct" ? (v === "Casa" ? "In casa" : "In trasferta") : k === "part" ? (PART[v] ? titoloPartita(PART[v]) + " " + dataRip(PART[v].g) : v) : v; }
+  function nomeDi(k, v) { return k === "insieme" ? "Insieme" : k === "volto" ? "Volto sconosciuto" : k === "coll" ? nomeVista(v) : k === "ep" ? v.split("/")[1] : k === "cart" ? (v.indexOf("/") < 0 ? nomeVista(v) : ultimo(v)) : k === "stag" ? "Stagione " + v : k === "tipo" ? (v === "video" ? "Solo video" : "Solo foto") : k === "pers" ? ((PERS[v] || {}).nome || v) : k === "avv" ? "contro " + v : k === "cam" ? "Girato da " + v : k === "ct" ? (v === "Casa" ? "In casa" : "In trasferta") : k === "part" ? (PART[v] ? titoloPartita(PART[v]) + " " + dataRip(PART[v].g) : v) : v; }
   function leggiIndirizzo() {
     var h = new URLSearchParams(location.hash.slice(1)); G = [];
     try { (JSON.parse(h.get("g") || "[]") || []).forEach(function (x) { if (ETI[x[0]]) G.push({ k: x[0], v: String(x[1]), n: nomeDi(x[0], String(x[1])) }); }); } catch (e) {}
@@ -1061,6 +1061,8 @@
   // i nomi mostrati scelti a mano (Goffredo, 29/09/2026): sulla NAS la cartella resta com'e'
   // "2025-2026 Season" e' una seconda copia, incompleta, di "SEASON 2025-2026" (download da Frame del 25-29/09/2026)
   var NOMI_VISTA = { "Pre-season 26-27": "2026-2027 Preseason", "SEASON 2025-2026": "2025-2026 Season", "2025-2026 Season": "2025-2026 Season (copia di settembre)" };
+  // un percorso da leggere: la cartella di primo livello col suo nome mostrato
+  function percorsoVista(p, sep) { var a = String(p || "").split("/"); if (a[0]) a[0] = nomeVista(a[0]); return a.join(sep || " › "); }
   function nomeVista(t) { t = String(t || ""); if (NOMI_VISTA[t]) return NOMI_VISTA[t]; var v = t.replace(/^\s*como\s*tv\s*[-\u2013:|]*\s*/i, ""); return v || t; }
   function pulisciTitolo(t) { t = nomeVista(t);
     return String(t || "").replace(/\.(mp4|mov|mxf|m4v|jpe?g|png)$/i, "").replace(/^G_?\d+[_\s-]+/i, "").replace(/(^|[_\s-])20\d{6}(?=[_\s-]|$)/g, " ").replace(/_+/g, " ").replace(/\s+/g, " ").replace(/^[\s-]+|[\s-]+$/g, "").trim() || String(t || "");
@@ -1163,7 +1165,7 @@
       }
       var y = r.x, parti = y[0].split("/");
       return '<tr class="srv-r" data-ri="' + i + '" data-cart="' + esc(y[0]) + '" tabindex="0" title="Apri nell’Editing del Como 1907"><td class="anteprima"><div class="c7-box"' + (y[7] ? ' data-mini="' + esc(y[7]) + '"' : "") + ">" + copertinaServizio(y) + "</div></td>" +
-        '<td class="tit"><b>' + esc(titoloServizio(y)) + "</b><small>" + esc(parti.slice(0, -1).join(" › ")) + "</small></td>" +
+        '<td class="tit"><b>' + esc(titoloServizio(y)) + "</b><small>" + esc(percorsoVista(parti.slice(0, -1).join("/"))) + "</small></td>" +
         "<td>" + bollino(sottoDi(y) || ramoDi(y), ramoDi(y)) + '</td><td class="n">' + (y[1] ? dataRip(y[1]) : "—") + '</td><td class="n"></td>' +
         '<td class="n">' + [y[3] ? n(y[3]) + " video" : "", y[4] ? n(y[4]) + " foto" : ""].filter(Boolean).join(" · ") + '</td><td class="n">' + gb(y[5]) + "</td></tr>";
     }
@@ -1202,7 +1204,7 @@
     var parti = x[0].split("/"), c0 = parti[0], dt = x[1];
     var eti = dt ? (dt % 100 ? ("0" + (dt % 100)).slice(-2) + "." + ("0" + (Math.floor(dt / 100) % 100)).slice(-2) + "." + String(Math.floor(dt / 10000)).slice(2) : MESI[Math.floor(dt / 100) % 100 - 1].slice(0, 3) + " " + Math.floor(dt / 10000)) : (x[2] ? "Stagione " + x[2] : "");
     return '<div class="card srv' + (SCELTI.has(x[0]) ? " scelta" : "") + '" data-cart="' + esc(x[0]) + '"' + ((x[9] || {}).pk ? ' data-pk="' + esc(x[9].pk) + '"' : "") + '' + (x[7] ? ' data-prov="' + esc(x[7]) + '"' : "") + ' tabindex="0" title="' + esc(x[0]) + '">' + (conPiu ? bottonePiu(x[0], true) : "") + '<div class="mini"' + (x[7] ? ' data-mini="' + esc(x[7]) + '"' : "") + ">" + copertinaServizio(x) + '<span class="scorri"><i></i></span><span class="prep">anteprima…</span></div>' +
-      '<div class="t"><b>' + esc(x[8] || ultimo(x[0])) + '</b><small><span class="comp-et" style="background:' + colore(c0) + '">' + esc(c0) + "</span>" + esc(parti.slice(1, -1).join(" › ")) + "</small>" +
+      '<div class="t"><b>' + esc(x[8] || ultimo(x[0])) + '</b><small><span class="comp-et" style="background:' + colore(c0) + '">' + esc(nomeVista(c0)) + "</span>" + esc(parti.slice(1, -1).join(" › ")) + "</small>" +
       (dt && x[6] && x[6] !== "nome" ? '<small style="margin-top:2px">data ' + esc(FONTI[x[6]] || "") + "</small>" : "") + "</div></div>";
   }
   $("selTipo").onchange = function () { APERTI = {}; disegnaAlbero(); disegnaHome(); };
@@ -2107,7 +2109,7 @@
     var on = SCELTI.has(x.via), parti = x.d.split("/");
     return '<div class="card' + (on ? " scelta" : "") + '" data-f="' + esc(x.via) + '"' + (x.tipo === "video" ? ' data-prov="' + esc(x.via) + '"' : "") + ' tabindex="0"><div class="mini" data-mini="' + esc(x.via) + '"><div class="foto"></div><span class="scorri"><i></i></span><span class="prep">anteprima…</span><div class="sopra"><div class="su"><span class="tipo-az st-' + x.st.toLowerCase() + '">' + esc(x.st) + "</span>" + (x.dop > 1 ? '<span class="tipo-az st-dop" title="lo stesso file sta in ' + x.dop + ' cartelle">×' + x.dop + "</span>" : "") + (x.data ? '<span class="quando">' + dataRip(x.data) + "</span>" : "") + '</div><div class="giu"><span>' + esc(parti.slice(-1)[0]) + '</span><span class="peso">' + gb(x.peso) + "</span></div></div></div>" +
       '<button class="scegli' + (on ? " on" : "") + '" data-sc="' + esc(x.via) + '" aria-pressed="' + on + '" title="' + (on ? "Togli dalla scelta" : "Scegli per montare o per la raccolta") + '">' + (on ? '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>' : '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>') + "</button>" +
-      '<div class="t"><div class="testo">' + evidenzia(x.nome) + '</div><small><span class="comp-et" style="background:' + colore(x.coll) + '">' + esc(x.coll) + "</span>" + esc(parti.slice(1).join(" › ")) + "</small>" +
+      '<div class="t"><div class="testo">' + evidenzia(x.nome) + '</div><small><span class="comp-et" style="background:' + colore(x.coll) + '">' + esc(nomeVista(x.coll)) + "</span>" + esc(parti.slice(1).join(" › ")) + "</small>" +
       faccine(x) + "</div>" + (x.tipo === "video" || x.tipo === "foto" ? bottoneRev(x.via) : "") + "</div>";
   }
   // chi si vede nel file: la sua faccina ritagliata da quel video (bordo oro = primo piano)
@@ -2445,7 +2447,7 @@
   var SEGUI = null;
   function apri(x) {
     var u = url(x.via), dx = (x.tipo === "video" ? '<button data-fa="percorso-uno" title="il percorso del file sulla NAS, da incollare nel Finder (Vai alla cartella)">Copia percorso</button>' : "") + '<a class="b" href="' + u + '" download>Scarica l’originale</a>' + (x.tipo === "video" ? '<button data-fa="monta-uno" class="oro">Monta questo</button>' : "") + '<button data-fa="scegli-uno">' + (SCELTI.has(x.via) ? "Togli dalla scelta" : "Scegli") + '</button><button id="chiudi">Chiudi</button>';
-    var info = '<div class="info"><div><b>' + esc(x.nome) + "</b><br>" + esc(x.d.split("/").join(" › ")) + " · " + gb(x.peso) + (x.data ? " · girato il " + dataRip(x.data) : "") + '</div><div class="dx">' + dx + "</div></div>";
+    var info = '<div class="info"><div><b>' + esc(x.nome) + "</b><br>" + esc(percorsoVista(x.d)) + " · " + gb(x.peso) + (x.data ? " · girato il " + dataRip(x.data) : "") + '</div><div class="dx">' + dx + "</div></div>";
     var schermo;
     if (x.tipo === "foto" && /\.(jpe?g|png|webp)$/i.test(x.via)) schermo = '<div class="schermo"><img src="' + u + '" alt=""></div>';
     else if (x.tipo === "video") schermo = '<div class="schermo" id="schermo"><div class="copia"><b>Preparo l’anteprima…</b></div></div>';
