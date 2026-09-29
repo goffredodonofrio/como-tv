@@ -12965,6 +12965,18 @@ async function lavoroRegia(L, pezzi) {
     tmp.forEach((f) => { try { fs.unlinkSync(f); } catch (e) {} });
   }
 }
+// il file di un'azione scelta: la copia in casa, se no la cartella del suo magazzino
+function fileDiAzione(x) {
+  const c = String((x && x.chiave) || ""); if (!c) return null;
+  const qui = copiaInCasa(c); if (qui) return qui;
+  const r = x.reg && R.reg[x.reg], a = x.rec && ARCHIVIO[x.rec];
+  const bucket = (r && r.arch && r.arch.bucket) || (a && a.bucket) || "";
+  if (!bucket) return null;
+  let m = null; try { m = magazzinoDi(bucket); } catch (e) { return null; }
+  if (!m || !m.cartella) return null;
+  const f = path.resolve(m.cartella, c);
+  return f.startsWith(path.resolve(m.cartella) + path.sep) && fs.existsSync(f) ? f : null;
+}
 // i filmati per la regia servono il giorno stesso: dopo una settimana si tolgono
 function puliziaRegia() {
   try {
@@ -15308,7 +15320,14 @@ function voltiAvanti() {
     righe.forEach((r) => { try { const x = JSON.parse(r); ora.ultimo = x.t;
       (x.v || []).forEach((v) => { if (v[1] >= VOLTO_SIM && v[5] >= VOLTO_ALTO && x.t !== null) ora.punti.push([x.t, v[1]]); }); } catch (e) {} });
   });
-  const guardia = setInterval(() => { if (inDiretta()) { ora.fermato = true; try { pr.kill(); } catch (e) {} } }, 30000);
+  // mentre si taglia per la regia il volto si ferma (SIGSTOP): legge i file
+  // interi dalla NAS e rubava la linea (Baturina, 28/09 sera: 3 minuti per 18 secondi)
+  let sospeso = false;
+  const guardia = setInterval(() => {
+    if (inDiretta()) { ora.fermato = true; try { pr.kill("SIGCONT"); pr.kill(); } catch (e) {} return; }
+    const regia = Object.keys(REGIA_LAVORI).some((k) => REGIA_LAVORI[k].stato === "lavora");
+    if (regia !== sospeso) { sospeso = regia; try { pr.kill(regia ? "SIGSTOP" : "SIGCONT"); } catch (e) {} }
+  }, 2000);
   pr.on("close", (codice) => {
     clearInterval(guardia); VOLTO_ORA = null;
     if (ora.fermato) { setTimeout(voltiAvanti, 60000); return; }
@@ -16237,11 +16256,15 @@ const AZIONI = {
         pezzi.push({ file: f, da: 0, dur: Math.max(1, +x.durata || 0), montato: String(x.file) });
         return;
       }
-      const file = copiaInCasa(x && x.chiave);
+      // IL FILE, DOVUNQUE STIA (29/09/2026): la copia di S3 sulla NAS, oppure la
+      // cartella della QNAP (magazzino "qnap100": Genoa-Como ENG, Como-Lipsia,
+      // Udinese-Como). Qui si guardava solo la prima: il MAM le apriva, la regia
+      // diceva "non ancora sulla NAS" (Manolo, 28/09 sera)
+      const file = fileDiAzione(x);
       if (!file || typeof x.secFile !== "number") { saltate.push(String((x && (x.partita || x.titolo)) || "?").slice(0, 80)); return; }
       pezzi.push({ file, da: x.secFile - prima, dur: prima + dopo });
     });
-    if (!pezzi.length) throw new Error("nessuna di queste azioni e' ancora sulla NAS");
+    if (!pezzi.length) throw new Error("non trovo il file di " + (saltate.length === 1 ? "questa azione" : "nessuna di queste azioni") + (saltate.length ? " (" + saltate.slice(0, 3).join(", ") + (saltate.length > 3 ? "…" : "") + ")" : ""));
     const L = { id: nuovoId("rr"), titolo: String(p.titolo || "Raccolta").slice(0, 80), stato: "lavora", fase: "taglio", fatti: 0, tot: pezzi.length, saltate, creato: Date.now() };
     REGIA_LAVORI[L.id] = L;
     // un montato da solo e' gia' il filmato: niente da tagliare
