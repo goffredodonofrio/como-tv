@@ -347,6 +347,7 @@
   .fx-g .fx-ic{flex:0 0 14px;color:var(--fumo);font-size:12px;text-align:center;}
   .fx-g .fx-n{margin-left:auto;font-size:11px;color:var(--fumo);font-variant-numeric:tabular-nums;}
   .fx-g .fx-nome{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+  .fx-sep{border:0;border-top:1px dashed var(--riga2);margin:6px 8px;}
   .fx-g .liv2{padding-left:24px;font-size:12.5px;} .fx-g .liv3{padding-left:40px;font-size:12px;}
   .fx-main{min-width:0;padding:14px 18px 18px;}
   .fx-tb{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-bottom:12px;border-bottom:1px solid var(--riga);margin-bottom:14px;}
@@ -1298,6 +1299,20 @@
       (voci.length ? cartelleFx(voci, attr) : '<div class="vuoto">Niente in questa stagione.</div>');
     miniatureDi($("fxBody"));
   }
+  // LE CARTELLE DI PRIMO LIVELLO (Goffredo, 29/09/2026): prima le stagioni, dalla piu' recente,
+  // poi una riga, poi le altre in ordine alfabetico. "SEASON 2025-2026", "2024-2025 Academy",
+  // "Pre-season 26-27" sono stagioni (conta l'anno d'inizio); "Como CUP 2025" no.
+  function annoStagione(nome) {
+    var m = String(nome).match(/(?:^|\D)(20\d\d)\s*[-\/_]\s*(?:20)?(\d\d)(?!\d)/) || String(nome).match(/(?:^|\D)(\d\d)\s*[-\/_]\s*(\d\d)(?!\d)/);
+    if (!m) return 0;
+    var a = +m[1] < 100 ? 2000 + +m[1] : +m[1], b = +m[2];
+    return (a + 1) % 100 === b ? a : 0;
+  }
+  function ordinePrimoLivello(nomi) {
+    var st = nomi.filter(function (x) { return annoStagione(x); }).sort(function (a, b) { return annoStagione(b) - annoStagione(a) || (/pre-?season/i.test(b) ? 1 : 0) - (/pre-?season/i.test(a) ? 1 : 0) || a.localeCompare(b, "it", { numeric: true }); });
+    var al = nomi.filter(function (x) { return !annoStagione(x); }).sort(function (a, b) { return a.localeCompare(b, "it", { numeric: true, sensitivity: "base" }); });
+    return { stagioni: st, altre: al };
+  }
   function fxSide() {
     var h = "";
     if (FX.modo === "ord") {
@@ -1317,7 +1332,8 @@
       ((FX_ULTIMA && FX_ULTIMA.via === "" && FX_ULTIMA.cartelle) || []).forEach(function (c) { if (!(c.nome in top)) top[c.nome] = 0; });
       var cur = FX.via.split("/");
       h += '<div class="fx-g"><h3>COMOTV - FRAME</h3><button class="' + (FX.via === "" ? "on" : "") + '" data-fxvia=""><span class="fx-ic">' + SVG_CART + '</span><span class="fx-nome">Tutte le cartelle</span></button>' +
-        Object.keys(top).sort(function (a, b) { return a.localeCompare(b, "it", { numeric: true }); }).map(function (t) {
+        (function () { var o = ordinePrimoLivello(Object.keys(top)); return o.stagioni.concat(o.stagioni.length && o.altre.length ? ["\u0000"] : [], o.altre); })().map(function (t) {
+          if (t === "\u0000") return '<hr class="fx-sep" aria-hidden="true">';
           var r = '<button class="liv2' + (FX.via === t ? " on" : "") + '" data-fxvia="' + esc(t) + '"><span class="fx-ic">' + SVG_CART + '</span><span class="fx-nome">' + esc(t) + '</span><span class="fx-n">' + (top[t] ? n(top[t]) : "") + "</span></button>";
           if (cur[0] === t) for (var i = 1; i < cur.length; i++) { var v = cur.slice(0, i + 1).join("/"); r += '<button class="liv3' + (FX.via === v ? " on" : "") + '" data-fxvia="' + esc(v) + '" style="padding-left:' + (32 + i * 10) + 'px"><span class="fx-nome">' + esc(cur[i]) + "</span></button>"; }
           return r;
