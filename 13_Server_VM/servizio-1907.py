@@ -346,15 +346,17 @@ def segna(p, chi):
 
 
 # ELIMINA DAL MAM (Goffredo, 29/09/2026: "se si logga lui [Gionata Medeot] puo' cancellare, gli
-# altri di comofootball si fanno la lista al massimo"). Solo chi e' in CANCELLA (o in
-# /etc/comotv/doppioni-cancella.txt, una mail per riga) e i super utenti: il doppione si SPOSTA in
-# "_CESTINO COMO TV" sulla loro NAS (stesso volume: istantaneo, si rimette a posto finche' il
-# cestino non si svuota). Si scrive solo dal collegamento dedicato /mnt/qnap100-frame-cestino;
-# il MAM legge sempre da quello in sola lettura. Prima di spostare si ricontrolla la copia che resta.
+# altri di comofootball si fanno la lista al massimo"; poi: "vorrei che si eliminasse direttamente
+# ... 1 e ciao, si arrangiano"). Solo chi e' in CANCELLA (o in /etc/comotv/doppioni-cancella.txt,
+# una mail per riga) e i super utenti. L'ELIMINAZIONE E' DEFINITIVA: via NFS il cestino di rete della
+# QNAP non la raccoglie. Prima si ricontrolla che la copia che resta ci sia con tutti i file grandi;
+# resta il registro (doppioni-eliminati.json: chi, quando, cosa, quale copia e' rimasta).
+# Si scrive solo dal collegamento dedicato /mnt/qnap100-frame-cestino; il MAM legge sempre da quello
+# in sola lettura.
+import shutil
 CANCELLA = {"gionata.medeot@comofootball.com"}
 RW = "/mnt/qnap100-frame-cestino"
-CESTINO = "_CESTINO COMO TV"
-CESTINATI = os.path.join(CASA, "doppioni-cestino.json")
+ELIMINATI = os.path.join(CASA, "doppioni-eliminati.json")
 
 
 def puo_eliminare(email):
@@ -380,72 +382,92 @@ def _grandi(radice):
 
 
 def _nas_pronta():
-    """il collegamento del cestino e' davvero la NAS? (29/09/2026: senza mount, la cartella
-    finiva sul disco della VM e la prova di scrittura sembrava riuscita)"""
+    """il collegamento in scrittura e' davvero la NAS? (29/09/2026: senza mount, le scritture
+    finivano sul disco della VM e una prova sembrava riuscita)"""
     try:
-        os.listdir(RW)                                   # sveglia l'automount
-        return os.stat(RW).st_dev != os.stat(os.path.dirname(RW)).st_dev and os.path.isdir(os.path.join(RW, CESTINO))
+        return len(os.listdir(RW)) > 3 and os.stat(RW).st_dev != os.stat(os.path.dirname(RW)).st_dev
     except OSError:
         return False
 
 
+def _impronta(p):
+    """primi e ultimi 256 KB + dimensione (come doppioni-1907.py)"""
+    try:
+        with open(p, "rb") as f:
+            a = f.read(262144); f.seek(0, 2); n = f.tell(); f.seek(max(0, n - 262144)); b = f.read(262144)
+        return hashlib.sha1(a + b + str(n).encode()).hexdigest()
+    except OSError:
+        return None
+
+
+def _stesso_contenuto(src, keep, cartella):
+    """al momento di eliminare, il contenuto si confronta di nuovo: un file, o i 5 piu' grandi di una cartella"""
+    if not cartella:
+        h = _impronta(src); return bool(h) and h == _impronta(keep)
+    di_keep = {}
+    for d, ds, fs in os.walk(keep):
+        for f in fs:
+            try: di_keep.setdefault((f.lower(), os.path.getsize(os.path.join(d, f))), os.path.join(d, f))
+            except OSError: pass
+    grandi = []
+    for d, ds, fs in os.walk(src):
+        for f in fs:
+            try: grandi.append((os.path.getsize(os.path.join(d, f)), f, os.path.join(d, f)))
+            except OSError: pass
+    for size, f, pa in sorted(grandi, reverse=True)[:5]:
+        pb = di_keep.get((f.lower(), size))
+        if not pb: return False
+        ha = _impronta(pa)
+        if not ha or ha != _impronta(pb): return False
+    return True
+
+
+def _dentro_frame(p):
+    """il percorso vero sta dentro il FRAME, e non e' il FRAME stesso"""
+    v = os.path.realpath(p)
+    return v.startswith(RW + "/") and v.rstrip("/") != RW
+
+
 def elimina(p, chi):
     if not puo_eliminare(chi): return 403, {"ok": False, "errore": "Eliminare dal MAM puo' solo chi e' autorizzato (Gionata Medeot)."}
-    if not _nas_pronta(): return 503, {"ok": False, "errore": "La NAS del club non e' collegata in scrittura in questo momento: non si sposta niente. Riprova tra poco."}
-    try: os.makedirs(os.path.join(RW, CESTINO), exist_ok=True)
-    except OSError as e: return 409, {"ok": False, "errore": "La NAS non permette ancora di spostare: serve la scrittura sul FRAME per la VM (%s)." % (e.strerror or e)}
-    tieni = _tenute(); quando = time.strftime("%Y-%m-%d %H%M"); esiti = []
+    if not _nas_pronta(): return 503, {"ok": False, "errore": "La NAS del club non e' collegata in scrittura in questo momento: non si elimina niente. Riprova tra poco."}
+    tieni = _tenute(); esiti = []
     vie = ["/".join(x for x in str(v).split("/") if x and x not in (".", "..")) for v in (p.get("vie") or [])][:2000]
     via_set = set(vie)
     with S_LOCK:
-        s = _leggi(SEGNATI, {"segnati": {}, "storia": []}); c = _leggi(CESTINATI, {"voci": {}, "storia": []})
+        s = _leggi(SEGNATI, {"segnati": {}, "storia": []}); e_ = _leggi(ELIMINATI, {"voci": {}, "storia": []})
         for via in vie:
-            if not via or via.startswith(CESTINO): continue
+            if not via: continue
             b = tieni.get(via)
             if not b: esiti.append([via, "non e' nell'elenco dei doppioni"]); continue
             if any(b == x or b.startswith(x + "/") for x in via_set): esiti.append([via, "anche la copia che resta e' tra quelle da eliminare"]); continue
             src, keep = os.path.join(RW, via), os.path.join(RW, b)
+            if not _dentro_frame(src) or not _dentro_frame(keep): esiti.append([via, "percorso non valido"]); continue
             if not os.path.exists(src): esiti.append([via, "non c'e' piu'"]); continue
             if not os.path.exists(keep): esiti.append([via, "la copia che resta non c'e' piu': non si elimina"]); continue
             # l'ultimo controllo: tutto quello che se ne va deve stare nella copia che resta
-            if os.path.isdir(src):
+            cartella = os.path.isdir(src)
+            if cartella:
                 manca = _grandi(src) - _grandi(keep)
                 if manca: esiti.append([via, "la copia che resta non ha %d dei suoi file: non si elimina" % len(manca)]); continue
             elif os.path.getsize(src) != os.path.getsize(keep): esiti.append([via, "la copia che resta ha un'altra dimensione: non si elimina"]); continue
-            dest = os.path.join(CESTINO, quando, via)
+            if not _stesso_contenuto(src, keep, cartella): esiti.append([via, "il contenuto della copia che resta e' diverso: non si elimina"]); continue
+            errori = []
             try:
-                os.makedirs(os.path.dirname(os.path.join(RW, dest)), exist_ok=True); os.rename(src, os.path.join(RW, dest))
-            except OSError as e:
-                esiti.append([via, "non riuscito: %s" % (e.strerror or e)]); continue
-            k = hashlib.sha1((via + quando).encode()).hexdigest()[:12]
-            c["voci"][k] = {"via": via, "dove": dest, "tieni": b, "chi": chi, "quando": int(time.time()), "segnato_da": (s["segnati"].get(via) or {}).get("chi", "")}
-            s["segnati"].pop(via, None); esiti.append([via, "ok"])
-        n = sum(1 for e in esiti if e[1] == "ok")
-        c["storia"].append([int(time.time()), chi, "elimina", n]); del c["storia"][:-1000]
-        _scrivi(CESTINATI, c); _scrivi(SEGNATI, s)
+                if cartella: shutil.rmtree(src, onerror=lambda fn, pth, ex: errori.append(os.path.relpath(pth, RW)))
+                else: os.remove(src)
+            except OSError as ex:
+                errori.append(str(ex.strerror or ex))
+            k = hashlib.sha1((via + str(time.time())).encode()).hexdigest()[:12]
+            e_["voci"][k] = {"via": via, "tieni": b, "chi": chi, "quando": int(time.time()), "cartella": cartella,
+                             "segnato_da": (s["segnati"].get(via) or {}).get("chi", ""), "errori": errori[:20]}
+            s["segnati"].pop(via, None)
+            esiti.append([via, "ok" if not errori else "eliminato in parte: %d elementi non si sono potuti togliere" % len(errori)])
+        n = sum(1 for x in esiti if x[1] == "ok")
+        e_["storia"].append([int(time.time()), chi, "elimina", n]); del e_["storia"][:-1000]
+        _scrivi(ELIMINATI, e_); _scrivi(SEGNATI, s)
     _CONTROLLO["t"] = 0
     return 200, {"ok": True, "eliminati": n, "esiti": esiti}
-
-
-def rimetti(p, chi):
-    """dal cestino al suo posto (finche' il cestino non e' stato svuotato)"""
-    if not puo_eliminare(chi): return 403, {"ok": False, "errore": "Non autorizzato."}
-    if not _nas_pronta(): return 503, {"ok": False, "errore": "La NAS del club non e' collegata in scrittura in questo momento. Riprova tra poco."}
-    esiti = []
-    with S_LOCK:
-        c = _leggi(CESTINATI, {"voci": {}, "storia": []})
-        for k in [str(x) for x in (p.get("ids") or [])][:2000]:
-            v = c["voci"].get(k)
-            if not v: continue
-            src, dest = os.path.join(RW, v["dove"]), os.path.join(RW, v["via"])
-            if os.path.exists(dest): esiti.append([v["via"], "al suo posto c'e' gia' qualcosa"]); continue
-            if not os.path.exists(src): esiti.append([v["via"], "il cestino e' stato svuotato"]); c["voci"].pop(k); continue
-            try: os.makedirs(os.path.dirname(dest), exist_ok=True); os.rename(src, dest)
-            except OSError as e: esiti.append([v["via"], "non riuscito: %s" % (e.strerror or e)]); continue
-            c["voci"].pop(k); esiti.append([v["via"], "ok"])
-        c["storia"].append([int(time.time()), chi, "rimetti", sum(1 for e in esiti if e[1] == "ok")]); del c["storia"][:-1000]
-        _scrivi(CESTINATI, c)
-    return 200, {"ok": True, "esiti": esiti}
 
 
 # Qui si GUARDA anche, in sola lettura: un segnato che non c'e' piu' diventa "cancellato" (se
@@ -511,7 +533,6 @@ class H(BaseHTTPRequestHandler):
         if via == "/doppioni":
             chi = str(self.headers.get("X-Utente") or "")
             if p.get("azione") == "elimina": cod, r = elimina(p, chi)
-            elif p.get("azione") == "rimetti": cod, r = rimetti(p, chi)
             else: cod, r = segna(p, chi)
             return self.rispondi(cod, r)
         vie = [str(v) for v in (p.get("vie") or [])][:600]
@@ -563,8 +584,8 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/doppioni":
             s = _leggi(SEGNATI, {"segnati": {}})
             stato = controlla_segnati(); s = _leggi(SEGNATI, {"segnati": {}}); chi = self.headers.get("X-Utente") or ""
-            c = _leggi(CESTINATI, {"voci": {}})
-            return self.rispondi(200, {"ok": True, "segnati": s.get("segnati", {}), "stato": stato, "cestino": c.get("voci", {}),
+            c = _leggi(ELIMINATI, {"voci": {}})
+            return self.rispondi(200, {"ok": True, "segnati": s.get("segnati", {}), "stato": stato, "eliminati": c.get("voci", {}),
                                        "puoi": puo_segnare(chi), "elimina": puo_eliminare(chi)}, extra={"Cache-Control": "no-store"})
         if u.path == "/code":
             with LOCK:

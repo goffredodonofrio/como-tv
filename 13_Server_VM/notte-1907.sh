@@ -32,6 +32,9 @@ D=$CASA/pub/copertine
 nice -n 15 node /opt/comotv/copertine-render.js $D/copertine.json $D/src $D && chmod -R a+rX $CASA/pub
 aspetta; passo "miniature dei servizi"
 nice -n 15 python3 /opt/comotv/scalda-mini-1907.py | tail -1
+# 5b. i doppioni per la pagina Doppioni 1907 (contenuto verificato, solo le impronte nuove)
+aspetta; passo "doppioni"
+nice -n 15 ionice -c3 python3 /opt/comotv/doppioni-1907.py --verifica | tail -1
 # 6. le copie leggere dei video che il browser non legge: raccolte, poi le riprese piu' recenti
 #    (prima dei volti: la mattina servono gia'), fino alle 05:15
 aspetta; passo "copie leggere"

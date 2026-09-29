@@ -11,8 +11,9 @@
   Le copie del FRAME (doppioni-1907.py sulla VM): CARTELLE copiate e FILE doppi, ognuna accanto
   alla copia che resta. Si guardano (miniature, provino che scorre col mouse, confronto affiancato),
   si scelgono anche a gruppi e si SEGNANO da cancellare (chi e quando, sul servizio-1907).
-  Il FRAME e' montato in sola lettura: la pagina non cancella niente; l'elenco dei segnati si scarica
-  per chi cancella da File Station.
+  ELIMINA (solo Gionata Medeot e i super utenti, deciso dal server): cancellazione DEFINITIVA dalla
+  NAS del club, dopo il controllo che la copia che resta ci sia con tutti i file; registro in
+  "Eliminati". Gli altri del club segnano soltanto.
   Dati: /como-tv/mam-1907/indice/doppioni.json · segni: GET/POST /como-tv/mam-1907/doppioni
 -->
 <style>
@@ -127,7 +128,7 @@
   <button type="button" id="deseleziona">Deseleziona</button>
   <button type="button" id="togliSegno">Togli il segno</button>
   <button type="button" class="rosso" id="segna">Segna da cancellare</button>
-  <button type="button" class="rosso" id="elimina" hidden title="sposta nel cestino della NAS: si rimette a posto finche' il cestino non si svuota">Elimina</button>
+  <button type="button" class="rosso" id="elimina" hidden title="elimina dalla NAS del club, definitivamente">Elimina</button>
 </div>
 <div class="velo" id="velo" hidden></div>
 <script>
@@ -180,7 +181,7 @@
     disegna();
   }).catch(function () { $("elenco").innerHTML = '<div class="vuoto">L’elenco dei doppioni non è ancora pronto: lo prepara la VM. Riprova tra qualche minuto.</div>'; });
   function caricaSegni() {
-    return fetch(BASE + "doppioni", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) { SEGN = j.segnati || {}; STATO = j.stato || {}; CEST = j.cestino || {}; ELIM = !!j.elimina; PUOI = !!j.puoi; }).catch(function () {});
+    return fetch(BASE + "doppioni", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) { SEGN = j.segnati || {}; STATO = j.stato || {}; CEST = j.eliminati || {}; ELIM = !!j.elimina; PUOI = !!j.puoi; }).catch(function () {});
   }
 
   // ── cosa si vede ──
@@ -188,7 +189,7 @@
     var q = norm($("cerca").value.trim()), c = $("coll").value, st = $("stato").value, ver = $("soloVer").checked;
     var l;
     var via = {}; Object.keys(CEST).forEach(function (k) { via[CEST[k].via] = 1; });
-    if (SCHEDA === "cestino") return Object.keys(CEST).map(function (k) { return Object.assign({ id: k, cest: true, peso: 0 }, CEST[k]); }).sort(function (x, y) { return y.quando - x.quando; });
+    if (SCHEDA === "eliminati") return Object.keys(CEST).map(function (k) { return Object.assign({ id: k, cest: true, peso: 0 }, CEST[k]); }).sort(function (x, y) { return y.quando - x.quando; });
     if (SCHEDA === "segnati") l = D.cartelle.filter(function (x) { return SEGN[x.cartella]; }).concat(D.file.filter(function (x) { return SEGN[x.a]; }));
     else l = SCHEDA === "cartelle" ? D.cartelle : D.file;
     l = l.filter(function (x) {
@@ -206,9 +207,9 @@
   }
   function rigaCestino(x) {
     return '<article class="dp" data-k="' + esc(x.id) + '" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr) 190px">' +
-      '<div class="lato via"><span class="eti">Nel cestino</span>' + percorso(x.via) + '<div class="meta">eliminata da ' + esc(x.chi) + " · " + new Date(x.quando * 1000).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + (x.segnato_da ? " · segnata da " + esc(x.segnato_da) : "") + "</div></div>" +
-      '<div class="lato resta"><span class="eti">Resta</span>' + percorso(x.tieni) + "</div>" +
-      '<div class="stato">' + (ELIM ? '<button type="button" class="mini" data-rimetti="' + esc(x.id) + '">Rimetti a posto</button>' : "") + "</div></article>";
+      '<div class="lato via"><span class="eti">Eliminata</span>' + percorso(x.via) + '<div class="meta">da ' + esc(x.chi) + " · " + new Date(x.quando * 1000).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) + (x.segnato_da && x.segnato_da !== x.chi ? " · segnata da " + esc(x.segnato_da) : "") + "</div></div>" +
+      '<div class="lato resta"><span class="eti">È rimasta</span>' + percorso(x.tieni) + "</div>" +
+      '<div class="stato">' + ((x.errori || []).length ? '<span class="bad att">Eliminata in parte (' + x.errori.length + ')</span>' : '<span class="bad canc">✓ Eliminata</span>') + "</div></article>";
   }
   function riga(x) {
     if (x.cest) return rigaCestino(x);
@@ -239,14 +240,14 @@
     var att = Object.keys(STATO).filter(function (k) { return STATO[k].attenzione; }).length;
     $("numeri").innerHTML = '<div class="num"><b>' + gb(tc + tf) + '</b><span>si possono liberare</span></div><div class="num"><b>' + n(D.cartelle.length) + '</b><span>cartelle copiate · ' + gb(tc) + '</span></div><div class="num"><b>' + n(D.file.length) + '</b><span>file doppi · ' + gb(tf) + '</span></div><div class="num segn"><b>' + n(sg.length - canc.length) + '</b><span>segnati, da cancellare · ' + gb(ts - tcanc) + '</span></div><div class="num"><b style="color:var(--ok)">' + n(canc.length) + '</b><span>già cancellati · ' + gb(tcanc) + "</span></div>" +
       (att ? '<div class="num"><b style="color:var(--rosso2)">' + n(att) + '</b><span>⚠ copia che resta sparita</span></div>' : "");
-    $("avviso").innerHTML = (ELIM ? "<b>Puoi eliminare:</b> scegli i doppioni e premi <b>Elimina</b>. Vanno nel cestino della NAS del club (<b>_CESTINO COMO TV</b>): prima la pagina ricontrolla che la copia che resta ci sia, con tutti i file; finché il cestino non si svuota, li rimetti a posto dalla scheda Cestino."
+    $("avviso").innerHTML = (ELIM ? "<b>Puoi eliminare:</b> scegli i doppioni e premi <b>Elimina</b>. È <b>definitivo</b>: il file sparisce dalla NAS del club e non si recupera. Prima la pagina ricontrolla che la copia che resta ci sia, con tutti i file; se non torna, quella riga non si tocca. Chi ha eliminato cosa resta nella scheda Eliminati."
       : PUOI ? "<b>Segna i doppioni</b> che secondo te possono andare: li elimina Gionata Medeot, che vede i tuoi segni." : "<b>Puoi guardare:</b> segnano il team del Como 1907, elimina Gionata Medeot.") +
       " Ogni file resta almeno in una copia che non è in questo elenco." + (D.verifica ? "" : " Il controllo del contenuto è ancora in corso: per ora i doppioni sono riconosciuti da nome e dimensione.");
-    $("schede").innerHTML = [["cartelle", "Cartelle copiate", D.cartelle.length], ["file", "File doppi", D.file.length], ["segnati", "Segnati", sg.length], ["cestino", "Cestino", Object.keys(CEST).length]].map(function (s) {
+    $("schede").innerHTML = [["cartelle", "Cartelle copiate", D.cartelle.length], ["file", "File doppi", D.file.length], ["segnati", "Segnati", sg.length], ["eliminati", "Eliminati", Object.keys(CEST).length]].map(function (s) {
       return '<button type="button" role="tab" data-scheda="' + s[0] + '" class="' + (SCHEDA === s[0] ? "on" : "") + '" aria-selected="' + (SCHEDA === s[0]) + '">' + s[1] + "<b>" + n(s[2]) + "</b></button>"; }).join("");
     $("conto").textContent = n(LISTA.length) + " in elenco · " + gb(LISTA.reduce(function (t, x) { return t + x.peso; }, 0));
     var h = LISTA.slice(0, QUANTI).map(riga).join("");
-    if (!LISTA.length) h = '<div class="vuoto">' + (SCHEDA === "segnati" ? "Nessun doppione segnato, per ora." : SCHEDA === "cestino" ? "Il cestino è vuoto." : "Nessun doppione con questi filtri.") + "</div>";
+    if (!LISTA.length) h = '<div class="vuoto">' + (SCHEDA === "segnati" ? "Nessun doppione segnato, per ora." : SCHEDA === "eliminati" ? "Nessun doppione eliminato, per ora." : "Nessun doppione con questi filtri.") + "</div>";
     if (LISTA.length > QUANTI) h += '<button type="button" class="piu" id="altri">Mostra altri ' + Math.min(50, LISTA.length - QUANTI) + " (" + n(LISTA.length - QUANTI) + " ancora)</button>";
     if (SCHEDA === "segnati" && sg.length) h = '<div><button type="button" class="oro" id="scarica">Scarica l’elenco dei segnati (CSV)</button></div>' + h;
     $("elenco").innerHTML = h;
@@ -315,18 +316,13 @@
   function elimina() {
     var sel = Array.from(SCELTI.values()); if (!sel.length) return;
     var peso = sel.reduce(function (t, x) { return t + x.peso; }, 0);
-    if (!confirm("Eliminare " + n(sel.length) + (sel.length === 1 ? " doppione" : " doppioni") + " (" + gb(peso) + ")?\n\nVanno nel cestino della NAS del club (_CESTINO COMO TV): la copia che resta non si tocca. Finché il cestino non si svuota, si rimettono a posto dalla scheda Cestino.")) return;
+    if (!confirm("Eliminare DEFINITIVAMENTE " + n(sel.length) + (sel.length === 1 ? " doppione" : " doppioni") + " (" + gb(peso) + ") dalla NAS del club?\n\nNon si recupera. La copia che resta non si tocca.")) return;
     $("elimina").disabled = true; $("elimina").textContent = "Elimino…";
     fetch(BASE + "doppioni", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ azione: "elimina", vie: sel.map(function (x) { return x.cartella || x.a; }) }) })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || !j.ok) throw new Error(j.errore || "Non riuscito: riprova."); return j; }); })
-      .then(function (j) { SCELTI.clear(); risultato(j, "Eliminati: " + n(j.eliminati) + " (nel cestino della NAS)."); return caricaSegni(); })
+      .then(function (j) { SCELTI.clear(); risultato(j, "Eliminati: " + n(j.eliminati) + "."); return caricaSegni(); })
       .catch(function (e) { alert(e.message); })
       .then(function () { $("elimina").textContent = "Elimina"; disegna(); });
-  }
-  function rimetti(k) {
-    fetch(BASE + "doppioni", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ azione: "rimetti", ids: [k] }) })
-      .then(function (r) { return r.json(); }).then(function (j) { var no = (j.esiti || []).filter(function (e) { return e[1] !== "ok"; }); if (no.length) alert(no[0][1]); return caricaSegni(); }).then(disegna)
-      .catch(function () { alert("Non riuscito: riprova."); });
   }
   function manda(azione) {
     var sel = Array.from(SCELTI.values()).filter(function (x) { return azione === "togli" ? SEGN[x.cartella || x.a] : !SEGN[x.cartella || x.a]; });
@@ -352,13 +348,12 @@
     var b;
     if ((b = e.target.closest("[data-scheda]"))) { SCHEDA = b.dataset.scheda; QUANTI = 50; disegna(); return; }
     if ((b = e.target.closest("[data-conf]"))) { confronta(b.dataset.conf); return; }
-    if ((b = e.target.closest("[data-rimetti]"))) { rimetti(b.dataset.rimetti); return; }
     if ((b = e.target.closest(".mini")) && !e.target.closest("#velo")) { var ar = b.closest("[data-a]"); if (ar) { var x = trova(ar.dataset.a), j = 0; if (x && x.cartella) { var ms = Array.from(b.parentNode.children); j = ms.indexOf(b); } confronta(ar.dataset.a, j); } return; }
     if ((b = e.target.closest("[data-es]"))) { confronta($("velo").dataset.a, +b.dataset.es); return; }
     if (e.target.id === "chiudiConf" || e.target === $("velo")) { chiudiConf(); return; }
     if (e.target.id === "altri") { QUANTI += 50; disegna(); return; }
     if (e.target.id === "scarica") { scarica(); return; }
-    if (e.target.id === "tutti") { if (SCHEDA === "cestino") return; LISTA.forEach(function (x) { SCELTI.set(x.cartella || x.a, x); }); disegna(); return; }
+    if (e.target.id === "tutti") { if (SCHEDA === "eliminati") return; LISTA.forEach(function (x) { SCELTI.set(x.cartella || x.a, x); }); disegna(); return; }
     if (e.target.id === "deseleziona") { SCELTI.clear(); disegna(); return; }
     if (e.target.id === "segna") { manda("segna"); return; }
     if (e.target.id === "togliSegno") { manda("togli"); return; }

@@ -149,8 +149,9 @@ def main():
         togli = [d + "/" + diretti[d][k] for d in fuori[1:]]
         sparsi.append({"tieni": tieni + "/" + diretti[tieni][k], "togli": togli, "peso": k[1]})
     if x.verifica:
-        # anche qui il contenuto: i 3000 gruppi piu' pesanti
-        for s in sorted(sparsi, key=lambda s: -s["peso"] * len(s["togli"]))[:3000]:
+        # anche qui il contenuto
+        # tutti i gruppi (le impronte gia' fatte restano in impronte.json: di notte si aggiungono solo le nuove)
+        for s in sorted(sparsi, key=lambda s: -s["peso"] * len(s["togli"])):
             h0 = impronta(s["tieni"], cache)
             s["togli"] = [v for v in s["togli"] if h0 and impronta(v, cache) == h0]
             s["verificato"] = True
