@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Doppioni 1907 · Como TV</title>
+<!--
+  DOPPIONI 1907 (Goffredo, 29/09/2026: "una pagina con le clip doppione che possono essere viste
+  in anteprima. Chi dal team del Como 1907 le giudica da cancellare le cancella. Consenti
+  selezioni multiple")
+  Le copie del FRAME (doppioni-1907.py sulla VM): CARTELLE copiate e FILE doppi, ognuna accanto
+  alla copia che resta. Si guardano (miniature, provino che scorre col mouse, confronto affiancato),
+  si scelgono anche a gruppi e si SEGNANO da cancellare (chi e quando, sul servizio-1907).
+  Il FRAME e' montato in sola lettura: la pagina non cancella niente; l'elenco dei segnati si scarica
+  per chi cancella da File Station.
+  Dati: /como-tv/mam-1907/indice/doppioni.json · segni: GET/POST /como-tv/mam-1907/doppioni
+-->
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-display:swap;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  [hidden]{display:none!important;}
+  :root{color-scheme:dark;--navy:#1B1C20;--navy2:#222327;--pan:#2A2B30;--pan2:#33343A;--riga:rgba(255,255,255,.08);--riga2:rgba(255,255,255,.16);
+    --oro:#C9A24B;--oro2:#E3C271;--ivory:#EDEDEE;--ivory2:#C9CACF;--fumo:#8E9096;--ok:#4FCB8B;--rosso:#E5484D;--rosso2:#F08A8D;}
+  body{font:14px/1.45 'DM Sans',system-ui,sans-serif;font-weight:500;color:var(--ivory);background:var(--navy);min-height:100vh;}
+  button,.b{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:8px 13px;border-radius:7px;cursor:pointer;
+    background:rgba(245,241,230,.05);color:var(--ivory2);border:1px solid var(--riga2);white-space:nowrap;display:inline-flex;align-items:center;gap:7px;text-decoration:none;}
+  button:hover,.b:hover{color:var(--oro2);border-color:var(--oro);}
+  button.mini{padding:5px 9px;font-size:10px;}
+  button.oro{background:var(--oro);border-color:var(--oro);color:#10131c;} button.oro:hover{color:#10131c;background:var(--oro2);}
+  button.rosso{background:var(--rosso);border-color:var(--rosso);color:#fff;} button.rosso:hover{background:#f05a5f;color:#fff;}
+  button:disabled{opacity:.45;cursor:not-allowed;}
+  :focus-visible{outline:2px solid var(--oro);outline-offset:2px;}
+  #pagina{display:flex;flex-direction:column;gap:18px;padding:22px 26px 130px;max-width:1500px;}
+  .testa h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:28px;letter-spacing:-.01em;} .testa h1 span{color:var(--oro);}
+  .testa p{color:var(--fumo);margin-top:4px;font-size:13px;max-width:900px;}
+  .numeri{display:flex;flex-wrap:wrap;gap:10px;}
+  .num{background:var(--pan);border:1px solid var(--riga);border-radius:12px;padding:12px 16px;min-width:170px;}
+  .num b{display:block;font:800 24px/1.1 'Mazzard',sans-serif;color:var(--ivory);font-variant-numeric:tabular-nums;}
+  .num span{font-size:12px;color:var(--fumo);}
+  .num.segn b{color:var(--rosso2);}
+  .avviso-ro{border:1px solid rgba(201,162,75,.35);background:rgba(201,162,75,.08);border-radius:10px;padding:10px 14px;font-size:13px;color:var(--ivory2);max-width:1000px;}
+  .avviso-ro b{color:var(--oro2);}
+  .schede{display:flex;gap:4px;border-bottom:1px solid var(--riga2);flex-wrap:wrap;}
+  .schede button{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;padding:10px 14px;font-size:12px;}
+  .schede button b{font-family:ui-monospace,Menlo,monospace;color:var(--fumo);margin-left:4px;}
+  .schede button.on{color:var(--oro2);border-bottom-color:var(--oro);}
+  .filtri{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+  .filtri input[type=search],.filtri select{height:34px;border-radius:8px;border:1px solid var(--riga2);background:var(--navy2);color:var(--ivory);padding:0 10px;font:inherit;font-size:13px;}
+  .filtri input[type=search]{min-width:260px;flex:1 1 260px;max-width:460px;}
+  .filtri label{display:inline-flex;gap:6px;align-items:center;font-size:12px;color:var(--ivory2);cursor:pointer;}
+  .filtri .conto{margin-left:auto;font-size:12px;color:var(--fumo);}
+  /* una coppia: la copia che puo' andare, la copia che resta */
+  .elenco{display:flex;flex-direction:column;gap:10px;}
+  .dp{display:grid;grid-template-columns:34px minmax(0,1fr) 28px minmax(0,1fr) 190px;gap:12px;align-items:stretch;background:var(--pan);border:1px solid var(--riga);border-radius:12px;padding:12px;}
+  .dp.scelta{border-color:var(--oro);box-shadow:0 0 0 1px rgba(201,162,75,.4) inset;}
+  .dp.segnata{background:linear-gradient(90deg,rgba(229,72,77,.13),var(--pan) 40%);}
+  .dp-sel{display:flex;align-items:flex-start;justify-content:center;padding-top:4px;}
+  .dp-sel input{width:20px;height:20px;accent-color:#C9A24B;cursor:pointer;}
+  .lato{min-width:0;display:flex;flex-direction:column;gap:7px;}
+  .eti{font:700 10px/1 'Mazzard',sans-serif;letter-spacing:.2em;text-transform:uppercase;color:var(--rosso2);} .resta .eti{color:var(--ok);}
+  .minis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;}
+  .minis.uno{grid-template-columns:minmax(0,1fr);max-width:260px;}
+  .mini{position:relative;aspect-ratio:16/9;background:#101114 center/cover no-repeat;border-radius:6px;overflow:hidden;cursor:pointer;border:1px solid var(--riga);}
+  .mini.provino{background-size:600% 100%;}
+  .mini .t{position:absolute;left:0;right:0;bottom:0;padding:3px 5px;font-size:10px;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.8));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .mini .ico{position:absolute;inset:0;display:grid;place-items:center;color:var(--fumo);font-size:11px;}
+  .per{font-size:12.5px;line-height:1.35;color:var(--ivory2);word-break:break-word;} .per b{color:var(--ivory);}
+  .per .coll{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle;}
+  .meta{font-size:11.5px;color:var(--fumo);font-variant-numeric:tabular-nums;}
+  .freccia{display:flex;align-items:center;justify-content:center;color:var(--fumo);font-size:18px;}
+  .stato{display:flex;flex-direction:column;gap:7px;align-items:flex-start;border-left:1px solid var(--riga);padding-left:12px;min-width:0;}
+  .peso{font:800 20px/1 'Mazzard',sans-serif;font-variant-numeric:tabular-nums;} .peso small{font-size:11px;color:var(--fumo);font-family:'DM Sans',sans-serif;font-weight:500;margin-left:3px;}
+  .bad{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:999px;font-size:11px;border:1px solid var(--riga2);color:var(--ivory2);}
+  .bad.ok{border-color:rgba(79,203,139,.5);color:var(--ok);}
+  .bad.segn{border-color:rgba(229,72,77,.6);color:var(--rosso2);}
+  .chi{font-size:11px;color:var(--rosso2);}
+  .piu{align-self:center;margin-top:6px;}
+  .vuoto{padding:30px;border:1px dashed var(--riga2);border-radius:12px;color:var(--fumo);text-align:center;}
+  /* la barra della scelta */
+  #barra{position:fixed;left:0;right:0;bottom:0;z-index:50;background:#13141a;border-top:1px solid rgba(201,162,75,.5);padding:12px 26px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;box-shadow:0 -10px 30px rgba(0,0,0,.4);}
+  #barra .quanti{font-size:14px;} #barra .quanti b{color:var(--oro2);font-variant-numeric:tabular-nums;}
+  #barra .spazio{flex:1;}
+  #barra .nota{font-size:12px;color:var(--fumo);}
+  /* il confronto */
+  .velo{position:fixed;inset:0;z-index:100;background:rgba(5,6,10,.88);display:grid;place-items:center;padding:20px;}
+  .conf{width:min(1300px,100%);max-height:94vh;overflow:auto;background:var(--pan);border:1px solid rgba(201,162,75,.35);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px;}
+  .conf-testa{display:flex;gap:10px;align-items:center;flex-wrap:wrap;} .conf-testa h2{font:800 16px/1.2 'Mazzard',sans-serif;flex:1;min-width:0;}
+  .conf-due{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .conf-lato{display:flex;flex-direction:column;gap:6px;min-width:0;}
+  .schermo{position:relative;aspect-ratio:16/9;background:#000 center/contain no-repeat;border-radius:8px;overflow:hidden;}
+  .schermo video,.schermo img{width:100%;height:100%;object-fit:contain;background:#000;display:block;}
+  .schermo .non{position:absolute;left:8px;right:8px;bottom:8px;font-size:11.5px;color:var(--ivory2);background:rgba(10,15,36,.85);padding:6px 8px;border-radius:6px;}
+  .esempi{display:flex;gap:6px;flex-wrap:wrap;}
+  .esempi button{text-transform:none;letter-spacing:0;font-family:'DM Sans',sans-serif;font-weight:500;font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;}
+  .esempi button.on{border-color:var(--oro);color:var(--oro2);}
+  @media (max-width:980px){ .dp{grid-template-columns:30px minmax(0,1fr);} .freccia{display:none;} .resta,.stato{grid-column:2;} .stato{border-left:0;padding-left:0;flex-direction:row;flex-wrap:wrap;align-items:center;} .conf-due{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<script src="nav-mam.js"></script>
+<div id="pagina">
+  <div class="testa"><h1>Doppioni <span>Como 1907</span></h1>
+    <p>Materiale salvato due volte (o più) nella cartella COMOTV - FRAME. A sinistra la copia che <b>può andare</b>, a destra quella che <b>resta</b>: guardale, sceglile (anche tante insieme) e segnale da cancellare.</p></div>
+  <div class="numeri" id="numeri"></div>
+  <div class="avviso-ro" id="avviso"></div>
+  <div class="schede" id="schede" role="tablist"></div>
+  <div class="filtri">
+    <input id="cerca" type="search" placeholder="Cerca nei percorsi: store, gaming, women…" autocomplete="off">
+    <select id="coll" title="collezione"></select>
+    <select id="stato" title="stato"><option value="">Tutti</option><option value="da">Da decidere</option><option value="segn">Già segnati</option></select>
+    <select id="ord" title="ordine"><option value="peso">Più pesanti</option><option value="nome">Per percorso</option></select>
+    <label><input type="checkbox" id="soloVer"> solo con il contenuto verificato</label>
+    <button class="mini" id="tutti" type="button">Scegli tutti quelli in elenco</button>
+    <span class="conto" id="conto"></span>
+  </div>
+  <div class="elenco" id="elenco"><div class="vuoto">Carico i doppioni…</div></div>
+</div>
+<div id="barra" hidden>
+  <span class="quanti" id="quanti"></span><span class="spazio"></span><span class="nota" id="barraNota"></span>
+  <button type="button" id="deseleziona">Deseleziona</button>
+  <button type="button" id="togliSegno">Togli il segno</button>
+  <button type="button" class="rosso" id="segna">Segna da cancellare</button>
+</div>
+<div class="velo" id="velo" hidden></div>
+<script>
+(function () {
+  "use strict";
+  var BASE = "/como-tv/mam-1907/";
+  var $ = function (id) { return document.getElementById(id); };
+  var D = null, SEGN = {}, PUOI = false, SCHEDA = "cartelle", SCELTI = new Map(), QUANTI = 50, LISTA = [];
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function norm(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
+  function gb(b) { if (!b) return "0 GB"; return b >= 1e12 ? (b / 1e12).toLocaleString("it-IT", { maximumFractionDigits: 1 }) + " TB" : b >= 1e9 ? (b / 1e9).toLocaleString("it-IT", { maximumFractionDigits: 1 }) + " GB" : Math.max(1, Math.round(b / 1e6)).toLocaleString("it-IT") + " MB"; }
+  function n(x) { return (x || 0).toLocaleString("it-IT"); }
+  function url(p) { return BASE + "file/" + p.split("/").map(encodeURIComponent).join("/"); }
+  function tipo(nm) { nm = nm.toLowerCase(); return /\.(mp4|mov|mxf|m4v|avi|mkv|mts|m2ts|webm)$/.test(nm) ? "video" : /\.(jpe?g|png|webp|heic|tiff?)$/.test(nm) ? "foto" : "altro"; }
+  var PALETTE = ["#C9A24B", "#8CC5F2", "#7FDCA9", "#F2A0A0", "#C7A6F2", "#F2C98C", "#9FE0E0", "#E3E08C"];
+  function colore(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return PALETTE[h % PALETTE.length]; }
+  var K = {};
+  function chiave(p) {
+    if (K[p]) return Promise.resolve(K[p]);
+    return crypto.subtle.digest("SHA-1", new TextEncoder().encode(p)).then(function (b) {
+      var h = Array.from(new Uint8Array(b)).map(function (x) { return ("0" + x.toString(16)).slice(-2); }).join("").slice(0, 16); K[p] = h; return h; });
+  }
+  function percorso(p) {
+    var a = p.split("/"), c = a[0], ult = a.pop();
+    return '<div class="per" title="' + esc(p) + '"><span class="coll" style="background:' + colore(c) + '"></span>' + esc(a.join(" › ")) + (a.length ? " › " : "") + "<b>" + esc(ult) + "</b></div>";
+  }
+  function mini(v, conT) {
+    var t = tipo(v);
+    return '<div class="mini" data-mini="' + esc(v) + '"' + (t === "video" ? ' data-prov="' + esc(v) + '"' : "") + ' role="button" tabindex="0" title="' + esc(v.split("/").pop()) + '">' +
+      (t === "altro" ? '<span class="ico">' + esc((v.split(".").pop() || "").toUpperCase()) + "</span>" : "") + (conT ? '<span class="t">' + esc(v.split("/").pop()) + "</span>" : "") + "</div>";
+  }
+
+  // ── i dati ──
+  Promise.all([
+    fetch(BASE + "indice/doppioni.json", { cache: "no-cache" }).then(function (r) { if (!r.ok) throw 0; return r.json(); }),
+    caricaSegni()
+  ]).then(function (x) { D = x[0]; D.cartelle.forEach(function (c, i) { c.id = "c" + i; }); D.file.forEach(function (f, i) { f.id = "f" + i; });
+    var colls = {}; D.cartelle.forEach(function (c) { colls[c.cartella.split("/")[0]] = 1; }); D.file.forEach(function (f) { colls[f.a.split("/")[0]] = 1; });
+    $("coll").innerHTML = '<option value="">Tutte le collezioni</option>' + Object.keys(colls).sort().map(function (c) { return '<option>' + esc(c) + "</option>"; }).join("");
+    disegna();
+  }).catch(function () { $("elenco").innerHTML = '<div class="vuoto">L’elenco dei doppioni non è ancora pronto: lo prepara la VM. Riprova tra qualche minuto.</div>'; });
+  function caricaSegni() {
+    return fetch(BASE + "doppioni", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) { SEGN = j.segnati || {}; PUOI = !!j.puoi; }).catch(function () {});
+  }
+
+  // ── cosa si vede ──
+  function voci() {
+    var q = norm($("cerca").value.trim()), c = $("coll").value, st = $("stato").value, ver = $("soloVer").checked;
+    var l;
+    if (SCHEDA === "segnati") l = D.cartelle.filter(function (x) { return SEGN[x.cartella]; }).concat(D.file.filter(function (x) { return SEGN[x.a]; }));
+    else l = SCHEDA === "cartelle" ? D.cartelle : D.file;
+    l = l.filter(function (x) {
+      var a = x.cartella || x.a, b = x.tieni || x.b;
+      if (c && a.split("/")[0] !== c) return false;
+      if (q && norm(a + " " + b).indexOf(q) < 0) return false;
+      if (st === "da" && SEGN[a]) return false;
+      if (st === "segn" && !SEGN[a]) return false;
+      if (ver && !(x.verificata || x.verificato)) return false;
+      return true;
+    });
+    if ($("ord").value === "nome") l = l.slice().sort(function (x, y) { return (x.cartella || x.a).localeCompare(y.cartella || y.a); });
+    return l;
+  }
+  function riga(x) {
+    var cart = !!x.cartella, a = cart ? x.cartella : x.a, b = cart ? x.tieni : x.b, s = SEGN[a], on = SCELTI.has(a);
+    var ma = cart ? (x.esempi || []).slice(0, 3).map(function (e) { return mini(e[0], true); }).join("") : mini(a);
+    var mb = cart ? (x.esempi || []).slice(0, 3).map(function (e) { return mini(e[1], true); }).join("") : mini(b);
+    return '<article class="dp' + (on ? " scelta" : "") + (s ? " segnata" : "") + '" data-a="' + esc(a) + '">' +
+      '<label class="dp-sel"><input type="checkbox" data-sel="' + esc(a) + '"' + (on ? " checked" : "") + ' aria-label="scegli"></label>' +
+      '<div class="lato via"><span class="eti">' + (cart ? "Cartella che può andare" : "Può andare") + '</span><div class="minis' + (cart ? "" : " uno") + '">' + ma + "</div>" + percorso(a) +
+      '<div class="meta">' + (cart ? n(x.file) + " file" + (x.piccoli ? " (di cui " + n(x.piccoli) + " piccoli di servizio)" : "") : gb(x.peso) + (x.copie > 2 ? " · " + x.copie + " copie in tutto" : "")) + "</div></div>" +
+      '<div class="freccia" aria-hidden="true">→</div>' +
+      '<div class="lato resta"><span class="eti">Resta</span><div class="minis' + (cart ? "" : " uno") + '">' + mb + "</div>" + percorso(b) + "</div>" +
+      '<div class="stato"><div class="peso">' + gb(x.peso).replace(/ (\w+)$/, "<small>$1</small>") + "</div>" +
+      (cart ? '<span class="bad">' + (x.identica ? "Identica" : "Resta ha " + n(x.in_piu) + " file in più") + "</span>" : "") +
+      ((x.verificata || x.verificato) ? '<span class="bad ok" title="primi e ultimi 256 KB uguali">✓ Contenuto verificato</span>' : '<span class="bad" title="stesso nome e stessa dimensione">Nome e dimensione</span>') +
+      (s ? '<span class="bad segn">Segnata da cancellare</span><span class="chi">' + esc(s.chi) + " · " + new Date(s.quando * 1000).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + "</span>" : "") +
+      '<button type="button" class="mini" data-conf="' + esc(a) + '">Confronta</button></div></article>';
+  }
+  function disegna() {
+    if (!D) return;
+    LISTA = voci();
+    var tc = D.cartelle.reduce(function (t, x) { return t + x.peso; }, 0), tf = D.file.reduce(function (t, x) { return t + x.peso; }, 0);
+    var sg = Object.keys(SEGN), ts = sg.reduce(function (t, k) { return t + (SEGN[k].peso || 0); }, 0);
+    $("numeri").innerHTML = '<div class="num"><b>' + gb(tc + tf) + '</b><span>si possono liberare</span></div><div class="num"><b>' + n(D.cartelle.length) + '</b><span>cartelle copiate · ' + gb(tc) + '</span></div><div class="num"><b>' + n(D.file.length) + '</b><span>file doppi · ' + gb(tf) + '</span></div><div class="num segn"><b>' + n(sg.length) + '</b><span>segnati da cancellare · ' + gb(ts) + "</span></div>";
+    $("avviso").innerHTML = "<b>Qui non si cancella niente.</b> Il segno dice al team chi ha deciso cosa; i file restano dove sono finché qualcuno non li cancella dalla QNAP. Ogni file resta almeno in una copia che non è in questo elenco." +
+      (PUOI ? "" : " <b>Puoi guardare ma non segnare:</b> i segni li mette il team del Como 1907.") + (D.verifica ? "" : " Il controllo del contenuto è ancora in corso: per ora i doppioni sono riconosciuti da nome e dimensione.");
+    $("schede").innerHTML = [["cartelle", "Cartelle copiate", D.cartelle.length], ["file", "File doppi", D.file.length], ["segnati", "Segnati", sg.length]].map(function (s) {
+      return '<button type="button" role="tab" data-scheda="' + s[0] + '" class="' + (SCHEDA === s[0] ? "on" : "") + '" aria-selected="' + (SCHEDA === s[0]) + '">' + s[1] + "<b>" + n(s[2]) + "</b></button>"; }).join("");
+    $("conto").textContent = n(LISTA.length) + " in elenco · " + gb(LISTA.reduce(function (t, x) { return t + x.peso; }, 0));
+    var h = LISTA.slice(0, QUANTI).map(riga).join("");
+    if (!LISTA.length) h = '<div class="vuoto">' + (SCHEDA === "segnati" ? "Nessun doppione segnato, per ora." : "Nessun doppione con questi filtri.") + "</div>";
+    if (LISTA.length > QUANTI) h += '<button type="button" class="piu" id="altri">Mostra altri ' + Math.min(50, LISTA.length - QUANTI) + " (" + n(LISTA.length - QUANTI) + " ancora)</button>";
+    if (SCHEDA === "segnati" && sg.length) h = '<div><button type="button" class="oro" id="scarica">Scarica l’elenco dei segnati (CSV)</button></div>' + h;
+    $("elenco").innerHTML = h;
+    miniature(); barra();
+  }
+  function barra() {
+    var sel = Array.from(SCELTI.values()), peso = sel.reduce(function (t, x) { return t + x.peso; }, 0), segnati = sel.filter(function (x) { return SEGN[x.cartella || x.a]; }).length;
+    $("barra").hidden = !sel.length;
+    $("quanti").innerHTML = "<b>" + n(sel.length) + "</b> " + (sel.length === 1 ? "scelto" : "scelti") + " · <b>" + gb(peso) + "</b>";
+    $("segna").disabled = !PUOI || segnati === sel.length; $("togliSegno").disabled = !PUOI || !segnati;
+    $("barraNota").textContent = PUOI ? "" : "Solo il team del Como 1907 può segnare";
+  }
+
+  // ── le miniature (a richiesta, poche per volta) e il provino che scorre ──
+  var OSS = "IntersectionObserver" in window ? new IntersectionObserver(function (vv) { vv.forEach(function (v) { if (v.isIntersecting) { OSS.unobserve(v.target); caricaMini(v.target); } }); }, { rootMargin: "200px" }) : null;
+  function miniature() { document.querySelectorAll("#elenco [data-mini]").forEach(function (m) { if (OSS) OSS.observe(m); else caricaMini(m); }); }
+  var VOLO = 0, CODA = [];
+  function caricaMini(m) {
+    if (tipo(m.dataset.mini) === "altro") return;
+    if (VOLO >= 4) { CODA.push(m); return; }
+    VOLO++;
+    var v = m.dataset.mini, dopo = function () { VOLO--; var p = CODA.shift(); if (p) caricaMini(p); };
+    chiave(v).then(function (k) { var u = BASE + "mini/" + k + ".jpg?v=" + encodeURIComponent(v), i = new Image();
+      i.onload = function () { m.style.backgroundImage = 'url("' + u + '")'; m.dataset.prima = u; dopo(); }; i.onerror = dopo; i.src = u; });
+  }
+  var PROV = {};
+  function provino(v) { return PROV[v] || (PROV[v] = chiave(v).then(function (k) { return new Promise(function (ok, no) { var u = BASE + "provino/" + k + ".jpg?v=" + encodeURIComponent(v), i = new Image(); i.onload = function () { ok(u); }; i.onerror = function () { delete PROV[v]; no(); }; i.src = u; }); })); }
+  document.addEventListener("mousemove", function (e) {
+    var m = e.target.closest && e.target.closest(".mini[data-prov]"); if (!m) return;
+    if (!m.classList.contains("provino")) { if (m.dataset.chiesto) return; m.dataset.chiesto = 1;
+      provino(m.dataset.prov).then(function (u) { m.dataset.pu = u; m.classList.add("provino"); m.style.backgroundImage = 'url("' + u + '")'; }).catch(function () {}); return; }
+    var r = m.getBoundingClientRect(), i = Math.floor(Math.max(0, Math.min(.999, (e.clientX - r.left) / r.width)) * 6);
+    m.style.backgroundPosition = (i / 5 * 100) + "% 0";
+  });
+  document.addEventListener("mouseout", function (e) { var m = e.target.closest && e.target.closest(".mini.provino"); if (m && !m.contains(e.relatedTarget)) { m.classList.remove("provino"); m.style.backgroundImage = m.dataset.prima ? 'url("' + m.dataset.prima + '")' : ""; m.style.backgroundPosition = ""; delete m.dataset.chiesto; } });
+
+  // ── il confronto affiancato ──
+  function trova(a) { return D.cartelle.filter(function (x) { return x.cartella === a; })[0] || D.file.filter(function (x) { return x.a === a; })[0]; }
+  function schermo(v) {
+    if (tipo(v) === "foto") return '<div class="schermo"><img src="' + esc(url(v)) + '" alt=""></div>';
+    if (tipo(v) !== "video") return '<div class="schermo"><div class="non">File ' + esc((v.split(".").pop() || "").toUpperCase()) + ": niente anteprima.</div></div>";
+    return '<div class="schermo" data-schermo="' + esc(v) + '"><video src="' + esc(url(v)) + '" controls muted playsinline preload="metadata"></video></div>';
+  }
+  function confronta(a, j) {
+    var x = trova(a); if (!x) return; j = j || 0;
+    var cart = !!x.cartella, coppie = cart ? (x.esempi || []) : [[x.a, x.b]], c = coppie[j] || coppie[0];
+    if (!c) return;
+    $("velo").innerHTML = '<div class="conf" role="dialog" aria-label="Confronta"><div class="conf-testa"><h2>' + esc(cart ? x.cartella.split("/").pop() : x.a.split("/").pop()) + "</h2>" +
+      '<span class="bad">' + gb(x.peso) + "</span>" + '<button type="button" id="chiudiConf">Chiudi</button></div>' +
+      (cart && coppie.length > 1 ? '<div class="esempi">' + coppie.map(function (e, i) { return '<button type="button" data-es="' + i + '" class="' + (i === j ? "on" : "") + '">' + esc(e[0].split("/").pop()) + "</button>"; }).join("") + "</div>" : "") +
+      '<div class="conf-due"><div class="conf-lato"><span class="eti" style="color:var(--rosso2)">Può andare</span>' + schermo(c[0]) + percorso(c[0]) + '</div><div class="conf-lato"><span class="eti" style="color:var(--ok)">Resta</span>' + schermo(c[1]) + percorso(c[1]) + "</div></div></div>";
+    $("velo").hidden = false; $("velo").dataset.a = a;
+    // se il browser non legge il formato: il provino al posto del video
+    $("velo").querySelectorAll("[data-schermo]").forEach(function (s) { var vd = s.querySelector("video");
+      vd.addEventListener("error", function () { var v = s.dataset.schermo; provino(v).then(function (u) { s.innerHTML = '<img src="' + esc(u) + '" alt="" style="object-fit:cover;object-position:0 0">'; s.insertAdjacentHTML("beforeend", '<div class="non">Il browser non apre questo formato (4K 10 bit, ProRes…): qui i fotogrammi lungo la clip.</div>'); }).catch(function () { s.insertAdjacentHTML("beforeend", '<div class="non">Il browser non apre questo formato.</div>'); }); }, { once: true });
+      chiave(s.dataset.schermo).then(function (k) { vd.poster = BASE + "mini/" + k + ".jpg?v=" + encodeURIComponent(s.dataset.schermo); }); });
+  }
+  function chiudiConf() { $("velo").querySelectorAll("video").forEach(function (v) { v.pause(); }); $("velo").hidden = true; $("velo").innerHTML = ""; }
+
+  // ── segnare ──
+  function manda(azione) {
+    var sel = Array.from(SCELTI.values()).filter(function (x) { return azione === "togli" ? SEGN[x.cartella || x.a] : !SEGN[x.cartella || x.a]; });
+    if (!sel.length) return;
+    var peso = sel.reduce(function (t, x) { return t + x.peso; }, 0);
+    if (azione === "segna" && !confirm("Segnare da cancellare " + n(sel.length) + (sel.length === 1 ? " doppione" : " doppioni") + " (" + gb(peso) + ")?\nNon si cancella niente adesso: resta scritto chi l’ha deciso.")) return;
+    fetch(BASE + "doppioni", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ azione: azione, voci: sel.map(function (x) { return { via: x.cartella || x.a, tipo: x.cartella ? "cartella" : "file", peso: x.peso }; }) }) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || !j.ok) throw new Error(j.errore || "Non riuscito: riprova."); }); })
+      .then(function () { SCELTI.clear(); return caricaSegni(); }).then(disegna)
+      .catch(function (e) { alert(e.message); });
+  }
+  function scarica() {
+    var righe = [["tipo", "da cancellare", "copia che resta", "GB", "segnato da", "quando"]];
+    D.cartelle.forEach(function (x) { var s = SEGN[x.cartella]; if (s) righe.push(["cartella", x.cartella, x.tieni, (x.peso / 1e9).toFixed(2), s.chi, new Date(s.quando * 1000).toISOString()]); });
+    D.file.forEach(function (x) { var s = SEGN[x.a]; if (s) righe.push(["file", x.a, x.b, (x.peso / 1e9).toFixed(3), s.chi, new Date(s.quando * 1000).toISOString()]); });
+    var csv = righe.map(function (r) { return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(";"); }).join("\r\n");
+    var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" })); a.download = "doppioni-1907-segnati.csv"; document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  // ── i gesti ──
+  document.addEventListener("click", function (e) {
+    var b;
+    if ((b = e.target.closest("[data-scheda]"))) { SCHEDA = b.dataset.scheda; QUANTI = 50; disegna(); return; }
+    if ((b = e.target.closest("[data-conf]"))) { confronta(b.dataset.conf); return; }
+    if ((b = e.target.closest(".mini")) && !e.target.closest("#velo")) { var ar = b.closest("[data-a]"); if (ar) { var x = trova(ar.dataset.a), j = 0; if (x && x.cartella) { var ms = Array.from(b.parentNode.children); j = ms.indexOf(b); } confronta(ar.dataset.a, j); } return; }
+    if ((b = e.target.closest("[data-es]"))) { confronta($("velo").dataset.a, +b.dataset.es); return; }
+    if (e.target.id === "chiudiConf" || e.target === $("velo")) { chiudiConf(); return; }
+    if (e.target.id === "altri") { QUANTI += 50; disegna(); return; }
+    if (e.target.id === "scarica") { scarica(); return; }
+    if (e.target.id === "tutti") { LISTA.forEach(function (x) { SCELTI.set(x.cartella || x.a, x); }); disegna(); return; }
+    if (e.target.id === "deseleziona") { SCELTI.clear(); disegna(); return; }
+    if (e.target.id === "segna") { manda("segna"); return; }
+    if (e.target.id === "togliSegno") { manda("togli"); return; }
+  });
+  // la scelta: un clic; con Maiuscolo si prende tutto l'intervallo dall'ultimo scelto
+  var ULTIMO = -1;
+  document.addEventListener("change", function (e) {
+    var c = e.target.closest && e.target.closest("[data-sel]"); if (!c) return;
+    var i = LISTA.findIndex(function (x) { return (x.cartella || x.a) === c.dataset.sel; });
+    var da = e.shiftKey || c.dataset.shift ? Math.min(i, ULTIMO) : i, a = e.shiftKey || c.dataset.shift ? Math.max(i, ULTIMO) : i;
+    if (ULTIMO < 0) { da = a = i; }
+    for (var k = da; k <= a; k++) { var x = LISTA[k], id = x.cartella || x.a; if (c.checked) SCELTI.set(id, x); else SCELTI.delete(id); }
+    ULTIMO = i; delete c.dataset.shift;
+    document.querySelectorAll("#elenco [data-sel]").forEach(function (q) { var on = SCELTI.has(q.dataset.sel); q.checked = on; q.closest(".dp").classList.toggle("scelta", on); });
+    barra();
+  });
+  document.addEventListener("click", function (e) { var c = e.target.closest && e.target.closest("[data-sel]"); if (c && e.shiftKey) c.dataset.shift = 1; }, true);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("velo").hidden) chiudiConf(); if ((e.key === "Enter" || e.key === " ") && e.target.classList && e.target.classList.contains("mini")) { e.preventDefault(); e.target.click(); } });
+  ["cerca", "coll", "stato", "ord", "soloVer"].forEach(function (id) { $(id).addEventListener(id === "cerca" ? "input" : "change", function () { QUANTI = 50; disegna(); }); });
+})();
+</script>
+</body>
+</html>
