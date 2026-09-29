@@ -600,7 +600,10 @@ def main():
             for pid in VOLTI.get(d + "/" + f[0], []):
                 if pid not in pp: pv.setdefault(pid, [0, 0])[0] += 1
         if pv: md["pv"] = sorted(pv); PV[d] = pv
-        righe.append([d, dn, stag, len(fs), v, fo, sum(f[1] for f in fs), fonte, (d + "/" + vid[len(vid) // 2]) if vid else "", md])
+        # (29/09/2026) il rappresentativo: un video; se la cartella ha solo foto, una foto (jpg/png/webp,
+        # quelle che ffmpeg legge): senza, la copertina restava senza immagine
+        fotoL = sorted(f[0] for f in fs if f[0].lower().endswith((".jpg", ".jpeg", ".png", ".webp")))
+        righe.append([d, dn, stag, len(fs), v, fo, sum(f[1] for f in fs), fonte, (d + "/" + vid[len(vid) // 2]) if vid else (d + "/" + fotoL[len(fotoL) // 2]) if fotoL else "", md])
     # LE VICINE: una cartella senza data dentro una ripresa datata ("G07 - COMO v
     # JUVENTUS/match/HUDI'S CAM", camera sbagliata) prende il giorno delle sue
     # sorelle, se sotto lo stesso genitore c'e' un giorno solo.
@@ -641,7 +644,7 @@ def main():
             while i < min(len(comune), len(q)) and comune[i] == q[i]: i += 1
             comune = comune[:i]
         via = "/".join(comune) or sez
-        rappr = max(rr, key=lambda r: r[4])[8]
+        rappr = max(rr, key=lambda r: (r[4], bool(r[8])))[8] or next((r[8] for r in rr if r[8]), "")
         fonte = rr[0][7]
         mu = {}
         # quanti file di ogni tipo: una partita con una cartella di interviste non e' tutta "Intervista"
