@@ -11064,6 +11064,35 @@ async function leggiTabellone(rec, rifai) {
 let riconoscimentiAlLavoro = new Set();
 // un file che non dice come si chiama: "MultiCorder3 - Output 1", "Output 2"
 const SENZA_NOME = /multicorder|output\s*\d|^\s*$/i;
+// ══════════ I FILE DI VMIX CHE ARRIVANO SULLA NAS (29/09/2026) ══════════
+//  Goffredo: "tutte le volte che viene caricato un file da vMix alla NAS, di
+//  che evento si tratta, e la miniatura e tutto il resto". Il file si chiama
+//  "MultiCorder3 - Output 1 - 28 settembre 2026 - 07-49-42 .mp4" (ora a
+//  dodici) e lo scandaglio gia' sa quali eventi di Airtable cominciano dentro
+//  di lui (candidati). Quando ce n'e' UNO SOLO e' lui: lo si aggancia da
+//  soli, senza aspettare una persona (il Football Show del 28/09 aspettava).
+//  Quando sono piu' d'uno (partite in parallelo) decide il tabellone, uno per
+//  volta e mai sopra una diretta. Poi il giro della casa fa il resto.
+async function abbinaVmix() {
+  let fatti = 0; const dubbi = [];
+  Object.keys(ARCHIVIO).forEach((k) => {
+    const a = ARCHIVIO[k];
+    if (!a || !a.soloS3 || !a.dove || !SENZA_NOME.test(a.partita || "") || a.riconosciuta || RICONOSCIUTE[a.dove]) return;
+    const c = a.candidati || [];
+    if (c.length === 1) {
+      RICONOSCIUTE[a.dove] = { rec: c[0].rec, nome: c[0].nome, automatica: true, quando: new Date().toISOString(),
+        perche: ["l'unico evento di Airtable che comincia dentro il file vMix (" + (a.giorno || "") + ")"] };
+      a.riconosciuta = RICONOSCIUTE[a.dove]; fatti++;
+      console.log("[clip] vMix: " + (a.chiave || a.dove) + " e' " + c[0].nome + " (unico evento di Airtable in quell'orario)");
+    } else if (c.length > 1) dubbi.push(k);
+  });
+  if (fatti) { scriviRiconosciute(); scriviArchivio(); }
+  for (const k of dubbi.slice(0, 3)) {
+    if (registrandoDavvero() || laDirettaGira() || magazzinoOccupato()) break;
+    try { const r = await riconosciPartita(k); if (r && r.scelto) fatti++; } catch (e) { console.log("[clip] vMix, tabellone (" + k + "): " + e.message); }
+  }
+  return fatti;
+}
 async function riconosciPartita(rec) {
   const a = ARCHIVIO[String(rec || "")];
   if (!a) throw new Error("questa partita non e' nell'indice");
@@ -11698,6 +11727,8 @@ async function controllaArchivioNuovo() {
     console.log("[clip] archivio: " + (nuove ? "roba nuova nel magazzino" : "giro delle cinque") + ", rifaccio l'indice");
     const r = await archivioScandaglia({ giorni: 3650 });   // tutto l'archivio, non gli ultimi 400 giorni
     console.log("[clip] archivio: indice rifatto, " + (r.partiteViste || 0) + " partite viste, " + (r.intere || 0) + " intere");
+    // i file di vMix appena arrivati: di che evento sono (e se si', l'indice si rifa' con il nome giusto)
+    if (await abbinaVmix()) await archivioScandaglia({ giorni: 3650 });
     ultimoScandaglio = Date.now();
   } catch (e) { console.log("[clip] archivio: controllo non riuscito: " + e.message); }
   finally { scandaglioInCorso = false; }
@@ -15325,7 +15356,7 @@ function voltiAvanti() {
   let sospeso = false;
   const guardia = setInterval(() => {
     if (inDiretta()) { ora.fermato = true; try { pr.kill("SIGCONT"); pr.kill(); } catch (e) {} return; }
-    const regia = Object.keys(REGIA_LAVORI).some((k) => REGIA_LAVORI[k].stato === "lavora");
+    const regia = regiaInCorso();
     if (regia !== sospeso) { sospeso = regia; try { pr.kill(regia ? "SIGSTOP" : "SIGCONT"); } catch (e) {} }
   }, 2000);
   pr.on("close", (codice) => {
@@ -15341,6 +15372,89 @@ function voltiAvanti() {
     setImmediate(voltiAvanti);
   });
 }
+function regiaInCorso() { return Object.keys(REGIA_LAVORI).some((k) => REGIA_LAVORI[k].stato === "lavora"); }
+// ══════════ IL SECONDO GIUSTO DELL'APPUNTO "INQUADRATO X" (29/09/2026) ══════════
+//  Goffredo: niente passata di tutta la partita (pesa sulla NAS e sui live):
+//  si parte dagli appunti. Misurato su 9 note di Rodgers e Inzaghi: X si vede
+//  fra 10 s prima e 50 s dopo il minuto scritto (8 su 9), e nella stessa
+//  finestra ci sono da 2 a 10 altri primi piani. Quindi si guarda SOLO da 20 s
+//  prima a 60 s dopo, e vale solo il volto di X (la sua foto): senza foto la
+//  nota resta dov'e', niente primo piano a caso. ~15 s di calcolo per nota.
+const NOTE_DA = -20, NOTE_A = 60;
+function chiaveNota(chiave, sec) { return String(chiave) + "|" + Math.round(sec); }
+// il secondo nel file di una riga del tabellino (come la pagina: dentroFile + (t - dentro))
+function secondoRiga(r, x) {
+  let chiave = x.chiave || "", dF = x.dentroFile !== undefined ? x.dentroFile : x.dentro;
+  if (r.arch && !r.finto) { const pa = pezzoAl(r, x.dentro); if (pa && pa.pezzo && pa.pezzo.chiave) { chiave = pa.pezzo.chiave; dF = pa.dentro; } else chiave = r.arch.chiave || ""; }
+  return { chiave, sec: (dF || 0) + ((x.t || 0) - (x.dentro !== undefined ? x.dentro : (x.t || 0))) };
+}
+// le note "inquadrato <allenatore di quella partita>" da puntare
+function noteInquadrato() {
+  const C = global.__TAB_CACHE; if (!C) return [];
+  const out = [], visti = new Set(), V = volti(); V.note = V.note || {};
+  Object.keys(C.per).forEach((k) => {
+    const r = R.reg[k] || (C.finti || {})[k]; if (!r) return;
+    const rec = (r.arch && r.arch.rec) || r.evento || ""; if (!rec) return;
+    const al = allenatoriDi(rec); if (!al) return;
+    C.per[k].forEach((x) => {
+      if (!/inquadrat/i.test(x.titolo || "")) return;
+      const parole = nomeParole(x.titolo);
+      const chi = Object.keys(al).map((sq) => al[sq][0]).find((n) => parole.indexOf(nomeParole(n).slice(-1)[0]) >= 0);
+      if (!chi) return;
+      const { chiave, sec } = secondoRiga(r, x), key = chiaveNota(chiave, sec);
+      if (visti.has(key) || V.note[key]) return; visti.add(key);
+      const foto = fotoAllenatore(chi); if (!foto) return;
+      const file = fileDiAzione({ chiave, rec, reg: r.finto ? "" : k }); if (!file) return;
+      out.push({ key, chiave, sec, file, foto, chi, rec });
+    });
+  });
+  return out;
+}
+let NOTE_CODA = [], NOTA_ORA = null;
+async function noteGiro() {
+  if (CODE_SPENTE || NOTA_ORA || NOTE_CODA.length) return;
+  try {
+    if (!global.__TAB_CACHE) await (CERCA_CACHE_IN_CORSO || (CERCA_CACHE_IN_CORSO = costruisciCercaCache().finally(() => { CERCA_CACHE_IN_CORSO = null; })));
+  } catch (e) { return; }
+  NOTE_CODA = noteInquadrato();
+  if (NOTE_CODA.length) console.log("[clip] note inquadrato da puntare: " + NOTE_CODA.length);
+  noteAvanti();
+}
+function noteAvanti() {
+  if (NOTA_ORA || !NOTE_CODA.length) return;
+  if (inDiretta() || regiaInCorso() || VOLTO_ORA) { setTimeout(noteAvanti, 60000); return; }
+  const n = NOTE_CODA.shift(), da = Math.max(0, n.sec + NOTE_DA);
+  const pr = cp.spawn("nice", ["-n", "19", path.join(VOLTI_DIR, "venv/bin/python"), path.join(VOLTI_DIR, "volti.py"), n.file, String(da), String(NOTE_A - NOTE_DA), n.foto], { stdio: ["ignore", "pipe", "ignore"] });
+  const ora = NOTA_ORA = { n, pr, punti: [], fermato: false };
+  let resto = "";
+  pr.stdout.on("data", (b) => {
+    const righe = (resto + b).split("\n"); resto = righe.pop();
+    righe.forEach((r) => { try { const x = JSON.parse(r); (x.v || []).forEach((v) => { if (v[1] >= VOLTO_SIM && v[5] >= VOLTO_ALTO && x.t !== null) ora.punti.push([x.t, v[1]]); }); } catch (e) {} });
+  });
+  let sospeso = false;
+  const guardia = setInterval(() => {
+    if (inDiretta()) { ora.fermato = true; try { pr.kill("SIGCONT"); pr.kill(); } catch (e) {} return; }
+    const rg = regiaInCorso();
+    if (rg !== sospeso) { sospeso = rg; try { pr.kill(rg ? "SIGSTOP" : "SIGCONT"); } catch (e) {} }
+  }, 2000);
+  pr.on("close", (codice) => {
+    clearInterval(guardia); NOTA_ORA = null;
+    if (ora.fermato) { NOTE_CODA.unshift(n); setTimeout(noteAvanti, 60000); return; }
+    const V = volti(); V.note = V.note || {};
+    if (codice !== 0) V.note[n.key] = { chi: n.chi, t0: null, errore: codice === 3 ? "file illeggibile" : "volti.py " + codice, fatto: new Date().toISOString() };
+    else {
+      // il tratto giusto: il piu' vicino alla nota, meglio dopo che prima (gli appunti arrivano in ritardo)
+      const peso = (z) => z.t0 >= n.sec - 10 ? z.t0 - n.sec : (n.sec - z.t0) * 2;
+      const best = trattiVolto(ora.punti).sort((u, v) => peso(u) - peso(v))[0];
+      V.note[n.key] = best ? { chi: n.chi, t0: +best.t0.toFixed(1), t1: +(best.t1 + 1).toFixed(1), sim: +best.s.toFixed(3), fatto: new Date().toISOString() }
+                           : { chi: n.chi, t0: null, fatto: new Date().toISOString() };
+    }
+    scriviVolti();
+    setImmediate(noteAvanti);
+  });
+}
+setTimeout(noteGiro, 300000);
+setInterval(noteGiro, 3600000);
 function statoVolto(nome) {
   const chi = chiaveVolto(nome), P = volti().persone[chi] || { partite: {} }, tutte = partiteDelVolto(nome);
   const fatte = tutte.filter((r) => (P.partite[r] || {}).fatto).length;
@@ -15376,9 +15490,19 @@ function cercaAllenatore(p, tipi, parole, per, finti) {
       }
       let chiave = x.chiave || "", dentroFile = x.dentroFile !== undefined ? x.dentroFile : x.dentro;
       if (r.arch && !r.finto) { const pa = pezzoAl(r, x.dentro); if (pa && pa.pezzo && pa.pezzo.chiave) { chiave = pa.pezzo.chiave; dentroFile = pa.dentro; } else chiave = r.arch.chiave || ""; }
-      fuori.push({ reg: r.finto ? "" : k, partita: r.titolo || k, rec: recR, t: x.t, dentro: x.dentro, fuori: x.fuori, s3: !!(r.arch && magazzinoInventario(r.arch.bucket) && !inCasaReg(r)),
+      const riga = { reg: r.finto ? "" : k, partita: r.titolo || k, rec: recR, t: x.t, dentro: x.dentro, fuori: x.fuori, s3: !!(r.arch && magazzinoInventario(r.arch.bucket) && !inCasaReg(r)),
                    tipo: x.tipo, tag: x.tag, titolo: x.titolo, minuto: x.minuto, fonte: x.fonte, fonti: x.fonti, squadra: x.squadra, giocatore: x.giocatore,
-                   gol: x.gol, certezza: x.certezza, chiave, dentroFile, quando: r.finita || r.avviata || 0, ruolo, ruoloDa: ruolo ? "allenatore" : "", rating: x.rating || 0, boato: x.boato || 0 });
+                   gol: x.gol, certezza: x.certezza, chiave, dentroFile, quando: r.finita || r.avviata || 0, ruolo, ruoloDa: ruolo ? "allenatore" : "", rating: x.rating || 0, boato: x.boato || 0 };
+      // "INQUADRATO X" GIA' PUNTATA: la clip parte quando X si vede davvero
+      if (ruolo === "inquadrato") {
+        const sr = secondoRiga(r, x), nt = ((volti().note || {})[chiaveNota(sr.chiave, sr.sec)]) || null;
+        if (nt && nt.t0 !== null && nt.t0 !== undefined) {
+          const sposta = nt.t0 - sr.sec;
+          Object.assign(riga, { t: x.t + sposta, dentro: x.t + sposta - 2, fuori: x.t + sposta + (nt.t1 - nt.t0) + 2, chiave: sr.chiave, dentroFile: nt.t0 - 2,
+                                certezza: "inquadratura", fonti: (x.fonti || [x.fonte]).concat(["volto"]) });
+        }
+      }
+      fuori.push(riga);
     });
   });
   // E DOVE LO SI VEDE DAVVERO: le inquadrature trovate col volto (voltiAvanti)
@@ -15948,6 +16072,12 @@ const AZIONI = {
     return statoVolto(nome);
   },
   "clip-volti-stato": (p) => statoVolto(String(p.allenatore || "").trim()),
+  "clip-note-stato": (p) => {
+    if (p && p.avvia) noteGiro();
+    const N = volti().note || {}, v = Object.keys(N).map((k) => N[k]);
+    return { ok: true, fatte: v.length, trovate: v.filter((x) => x.t0 !== null && x.t0 !== undefined).length, errori: v.filter((x) => x.errore).length,
+             inCoda: NOTE_CODA.length, ora: NOTA_ORA ? { chi: NOTA_ORA.n.chi, rec: NOTA_ORA.n.rec } : null };
+  },
   "clip-volti-ferma": (p) => {
     const nome = String(p.allenatore || "").trim(), chi = chiaveVolto(nome);
     for (let i = VOLTI_CODA.length - 1; i >= 0; i--) if (VOLTI_CODA[i].chi === chi) VOLTI_CODA.splice(i, 1);
@@ -16715,6 +16845,12 @@ const AZIONI = {
     r.on("error", () => ok({ ok: true, ponte: false }));
     r.on("timeout", () => { r.destroy(); ok({ ok: true, ponte: false }); });
   }),
+  // i file di vMix sulla NAS: abbina adesso, senza aspettare il giro dell'ora
+  "clip-vmix-abbina": async () => {
+    const n = await abbinaVmix();
+    if (n) await archivioScandaglia({ giorni: 3650 });
+    return { ok: true, abbinati: n };
+  },
   "clip-archivio-proponi": (p) => {
     const quali = Object.keys(ARCHIVIO).filter((k) => {
       const a = ARCHIVIO[k];
