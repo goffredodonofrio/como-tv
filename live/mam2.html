@@ -784,6 +784,8 @@
   .ws > .pan[data-pan="partita"]{flex:0 0 var(--partita,440px);min-width:0;min-height:0;display:flex;flex-direction:column;}
   .ws > #divPartita{flex:0 0 6px;}
   .ws.senza-partita > .pan[data-pan="partita"], .ws.senza-partita > #divPartita{display:none;}
+  /* (29/09/2026) il pannello Partita c'e' solo quando la partita ha dei dati (azioni, telecronaca, squadre) */
+  .ws.partita-vuota > .pan[data-pan="partita"], .ws.partita-vuota > #divPartita{display:none;}
   .pan[data-pan="partita"] .pan-partita{flex:1 1 auto;min-height:0;overflow:auto;}
   .ws-su{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:var(--lato,300px) 6px minmax(0,1fr);}
   .ws-giu{flex:0 0 auto;min-height:0;display:grid;grid-template-columns:var(--bin,300px) 6px 34px minmax(0,1fr) 22px;column-gap:0;}
@@ -1559,7 +1561,7 @@
     <!-- LO SPAZIO DI LAVORO A PANNELLI, come l’area "Montaggio" di Premiere.
          Ogni pannello ha le sue schede, il suo menu ≡ e si massimizza col tasto `.
          Il pannello attivo ha il bordo oro: i tasti agiscono li’. -->
-    <div class="ws" id="ws"><div class="ws-main">
+    <div class="ws partita-vuota" id="ws"><div class="ws-main">
       <div class="ws-su">
         <section class="pan" data-pan="effetti">
           <header class="pan-schede"><button class="linguetta" data-scheda="srg">Sorgente: <span id="srgNome">(nessuna)</span></button><button class="linguetta on" data-scheda="effetti">Controllo effetti</button><button class="linguetta" data-scheda="metadati">Metadati</button><button class="linguetta lancia" id="geLancia" title="apre il Generatore in una finestra sua: la grafica torna in timeline con Manda in timeline">Grafiche essenziali &#8599;</button><button class="linguetta" data-scheda="testo">Testo</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
@@ -7022,11 +7024,15 @@
     }).catch(function(er){ el("srgTitolo").textContent = "Nessuna partita"; avviso("err", esc(er.message)); });
   }
   // l'ultima partita della Sorgente si riapre da sola, come in Premiere
-  function srgRicorda(){ if (!SRG.r) return; try { localStorage.setItem("mam2-srg", JSON.stringify({ rec: SRG.rec, t: Math.round(el("videoS").currentTime || 0), titolo: SRG.r.titolo || "" })); } catch (e) {} }
+  // (29/09/2026) la memoria e' una per Editing: quella del 1907 non riapre l'ultima partita di Como TV,
+  // e nel 1907 un Football Show (uno studio) non si ricorda e non si riapre mai
+  var SRG_CHIAVE = "mam2-srg" + (AMBITO ? "-" + AMBITO : "");
+  function srgAmmessa(titolo){ return !(AMBITO === "1907" && /football\s*show|studio/i.test(String(titolo || ""))); }
+  function srgRicorda(){ if (!SRG.r || !srgAmmessa(SRG.r.titolo)) return; try { localStorage.setItem(SRG_CHIAVE, JSON.stringify({ rec: SRG.rec, t: Math.round(el("videoS").currentTime || 0), titolo: SRG.r.titolo || "" })); } catch (e) {} }
   function srgRiapriUltima(){
     if (SRG.r) return;
-    var u = null; try { u = JSON.parse(localStorage.getItem("mam2-srg") || "null"); } catch (e) {}
-    if (u && u.rec) apriSorgente(u.rec, u.t || 0, { titolo: u.titolo }, true);
+    var u = null; try { u = JSON.parse(localStorage.getItem(SRG_CHIAVE) || "null"); } catch (e) {}
+    if (u && u.rec && srgAmmessa(u.titolo)) apriSorgente(u.rec, u.t || 0, { titolo: u.titolo }, true);
   }
   function srgInOut(){
     el("srgTIn").textContent = SRG.dentro === null ? "—" : tc(SRG.dentro);
@@ -7071,10 +7077,15 @@
   }
   function ptDopo(){ if (PT.poi && !PT.carica) { var f = PT.poi; PT.poi = null; setTimeout(f, 0); } }
   function ptDur(){ var v = el("videoS"); return (SRG.r && SRG.r.durata) || (v && isFinite(v.duration) && v.duration) || 1; }
+  function ptVuota(si){
+    var ws = el("ws"); if (!ws || ws.classList.contains("partita-vuota") === si) return;
+    ws.classList.toggle("partita-vuota", si);
+    if (typeof misuraPalco === "function") misuraPalco(); if (SEQ && typeof disegnaTl === "function") disegnaTl();
+  }
   function ptCarica(){
     var r = SRG.r;
-    if (!r) { PT.reg = ""; return ptDisegna(); }
-    if (PT.reg === r.id) { ptDisegna(); return ptDopo(); }
+    if (!r) { PT.reg = ""; ptVuota(true); return ptDisegna(); }
+    if (PT.reg === r.id) { ptDisegna(); ptVuota(!PT.carica && !PT.righe.length && !PT.detto.length); return ptDopo(); }
     PT.reg = r.id; PT.righe = []; PT.detto = []; PT.squadre = null; PT.fischio = {}; PT.tag = ""; PT.q = ""; PT.filtro = ""; PT.aperti = {}; PT.carica = true;
     ptDisegna();
     Promise.all([post({ tipo:"clip-tabellino", reg: r.id }).catch(function(){ return { righe: [] }; }), post({ tipo:"clip-parlato", reg: r.id }).catch(function(){ return { pezzi: [] }; })]).then(function(rs){
@@ -7083,6 +7094,7 @@
       PT.fischio = rs[0].fischio || {}; PT.squadre = rs[0].squadre || null;
       PT.detto = (rs[1].pezzi || []).filter(function(x){ return !x.vivo; }).sort(function(a, b){ return a.a - b.a; });
       PT.carica = false; ptDisegna(); ptDopo();
+      ptVuota(!PT.righe.length && !PT.detto.length);
     });
   }
   function ptAzioni(){
