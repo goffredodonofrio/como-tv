@@ -1499,7 +1499,7 @@
     var gr = gruppiStagioni(Object.keys(top));
     var ramo = function (t, liv) {
       var r = '<button class="' + liv + (vere && FX.via === t ? " on" : "") + '" data-fxvia="' + esc(t) + '"><span class="fx-ic">' + SVG_CART + '</span><span class="fx-nome" title="' + esc(t) + '">' + esc(nomeVista(t)) + '</span><span class="fx-n">' + (top[t] ? n(top[t]) : "") + "</span></button>";
-      if (cur[0] === t) for (var i = 1; i < cur.length; i++) { var v = cur.slice(0, i + 1).join("/"); r += '<button class="liv3' + (FX.via === v ? " on" : "") + '" data-fxvia="' + esc(v) + '" style="padding-left:' + (46 + i * 10) + 'px"><span class="fx-nome">' + esc(cur[i]) + "</span></button>"; }
+      if (cur[0] === t) for (var i = 1; i < cur.length; i++) { if (PASSAGGIO.test(cur[i])) continue; var v = cur.slice(0, i + 1).join("/"); r += '<button class="liv3' + (FX.via === v ? " on" : "") + '" data-fxvia="' + esc(v) + '" style="padding-left:' + (46 + i * 10) + 'px"><span class="fx-nome">' + esc(cur[i]) + "</span></button>"; }
       return r;
     };
     h += '<div class="fx-g"><h3>COMOTV - FRAME</h3><button class="' + (vere && FX.via === "" ? "on" : "") + '" data-fxvia=""><span class="fx-ic">' + SVG_CART + '</span><span class="fx-nome">Tutte le cartelle</span></button>' +
@@ -1538,7 +1538,7 @@
     var top0 = {}; I.cartelle.forEach(function (r) { top0[r[0].split("/")[0]] = 1; });
     var GS = gruppiStagioni(Object.keys(top0)), gq = GS.stagioni.filter(function (g) { return g.via === via || g.cartelle.indexOf(via.split("/")[0]) >= 0; })[0];
     var pz = [["COMOTV - FRAME", 'data-fxvia=""']]; if (gq) pz.push([gq.nome, 'data-fxvia="' + gq.via + '"']);
-    if (via && via.charAt(0) !== "\u00a7") via.split("/").forEach(function (p, i, a) { pz.push([i ? p : nomeVista(p), 'data-fxvia="' + esc(a.slice(0, i + 1).join("/")) + '"']); });
+    if (via && via.charAt(0) !== "\u00a7") via.split("/").forEach(function (p, i, a) { if (i && PASSAGGIO.test(p)) return; pz.push([i ? p : nomeVista(p), 'data-fxvia="' + esc(a.slice(0, i + 1).join("/")) + '"']); });
     // il nodo "Stagione 2026/27": non e' una cartella della NAS, raccoglie quelle di quella stagione
     if (via.charAt(0) === "\u00a7") {
       fxBc(pz); fxSide(); $("fxAzioni").hidden = true;
@@ -1562,8 +1562,17 @@
       $("fxBody").innerHTML = '<div class="vuoto">' + (s === 404 ? "Questa cartella non c’è più: forse è stata spostata o rinominata." : "Non riesco a leggere la NAS del club in questo momento.") + ' <a data-fxvia="" style="cursor:pointer;color:var(--oro2)">Torna all’inizio</a></div>';
     });
   }
+  // (Goffredo, 29/09/2026) "COMO TV" dentro una squadra e' solo un passaggio: nella vista il suo contenuto
+  // sta nella cartella sopra e il percorso lo salta. Sulla NAS resta com'e'.
+  var PASSAGGIO = /^\s*como\s*tv\s*$/i;
+  function sottocartelle(p) { var l = {}; I.cartelle.forEach(function (r) { if (r[0].indexOf(p + "/") === 0) l[r[0].slice(p.length + 1).split("/")[0]] = 1; }); return Object.keys(l); }
   function fxVereDisegna(j) {
     var via = j.via || "";
+    if (via && (j.cartelle || []).some(function (c) { return PASSAGGIO.test(c.nome); })) {
+      var piatte = [];
+      (j.cartelle || []).forEach(function (c) { if (PASSAGGIO.test(c.nome)) sottocartelle(via + "/" + c.nome).forEach(function (sn) { piatte.push({ nome: sn, sotto: c.nome }); }); else piatte.push(c); });
+      j = Object.assign({}, j, { cartelle: piatte });
+    }
     var gr = null, gs = null;
     if (!via && !j.stagione) { gr = gruppiStagioni((j.cartelle || []).map(function (c) { return c.nome; })); var inStag = {}; gr.stagioni.forEach(function (g) { g.cartelle.forEach(function (c) { inStag[c] = 1; }); }); j = Object.assign({}, j, { cartelle: (j.cartelle || []).filter(function (c) { return !inStag[c.nome]; }) }); }
     var conta = function (p, o) {
@@ -1572,7 +1581,7 @@
       return o;
     };
     var nodi = (gr ? gr.stagioni : []).map(function (g) { var o = { k: g.via, nome: g.nome, via: g.via, stagione: 1, top: "Stagione", s: [], e: [], v: 0, f: 0, p: 0, dt: 0 }; g.cartelle.forEach(function (c) { conta(c, o); }); o.quante = g.cartelle.length; return o; });
-    var voci = (j.cartelle || []).map(function (c) { var p = (via ? via + "/" : "") + c.nome; return conta(p, { k: c.nome, nome: via ? c.nome : nomeVista(c.nome), via: p, s: [], e: [], v: 0, f: 0, p: 0, dt: 0 }); });
+    var voci = (j.cartelle || []).map(function (c) { var p = (via ? via + "/" : "") + (c.sotto ? c.sotto + "/" : "") + c.nome; return conta(p, { k: c.nome, nome: via ? c.nome : nomeVista(c.nome), via: p, s: [], e: [], v: 0, f: 0, p: 0, dt: 0 }); });
     voci = nodi.concat(ordina(voci));
 
     var ff = (j.file || []).slice().sort(FX_ORD === "peso" ? function (a, b) { return b.peso - a.peso; } : function (a, b) { return a.nome.localeCompare(b.nome, "it", { numeric: true }); });
