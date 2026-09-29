@@ -636,6 +636,28 @@ def controlla_segnati():
     return r
 
 
+# ── ELIMINARE UNA CLIP DALLA SUA ANTEPRIMA (Goffredo, 29/09/2026) ─────
+# Solo chi puo' eliminare i doppioni (Gionata Medeot e i super utenti); un file alla volta, mai una
+# cartella; definitivo (via NFS il cestino della QNAP non lo raccoglie). Registro in eliminati-a-mano.json.
+ELIMINATI_MANO = os.path.join(CASA, "eliminati-a-mano.json")
+
+
+def elimina_clip(p, chi):
+    if not puo_eliminare(chi): return 403, {"ok": False, "errore": "Eliminare dalla NAS del club puo' solo chi e' autorizzato (Gionata Medeot)."}
+    if not _nas_pronta(): return 503, {"ok": False, "errore": "La NAS del club non e' collegata in scrittura in questo momento. Riprova tra poco."}
+    via = _rel(p.get("via")); pieno = os.path.join(RW, via)
+    if not via or not _dentro_frame(pieno): return 400, {"ok": False, "errore": "Percorso non valido."}
+    if not os.path.isfile(pieno): return 404, {"ok": False, "errore": "Il file non c'e' piu' (o e' una cartella: si eliminano solo i file)."}
+    peso = os.path.getsize(pieno)
+    try: os.remove(pieno)
+    except OSError as e: return 500, {"ok": False, "errore": "Non riuscito: %s" % (e.strerror or e)}
+    with S_LOCK:
+        r = _leggi(ELIMINATI_MANO, {"voci": []})
+        r["voci"].append({"via": via, "peso": peso, "chi": chi, "quando": int(time.time())}); del r["voci"][:-20000]
+        _scrivi(ELIMINATI_MANO, r)
+    return 200, {"ok": True, "via": via, "peso": peso}
+
+
 # ── I COMMENTI SUI VIDEO, COME SU FRAME.IO (Goffredo, 29/09/2026) ──────
 # Un commento sta su un file (la via nel FRAME) a un secondo preciso, o su un tratto (t..fino).
 # Ha le risposte, si risolve, e chi e' taggato (@nome@comofootball.com) lo ritrova in "Menzioni".
@@ -679,7 +701,7 @@ def commenti_leggi(q, chi):
     c = _leggi(COMMENTI, {"per": {}, "lette": {}})
     per = c.get("per", {})
     if (q.get("conti") or [""])[0]:
-        return 200, {"ok": True, "conti": {v: [len(l), sum(1 for x in l if not x.get("risolto"))] for v, l in per.items() if l}}
+        return 200, {"ok": True, "elimina": puo_eliminare(chi), "conti": {v: [len(l), sum(1 for x in l if not x.get("risolto"))] for v, l in per.items() if l}}
     if (q.get("menzioni") or [""])[0]:
         lette = set(c.get("lette", {}).get(chi, [])); fuori = []
         for v, lst in per.items():
@@ -691,7 +713,7 @@ def commenti_leggi(q, chi):
         fuori.sort(key=lambda z: -z["quando"])
         return 200, {"ok": True, "menzioni": fuori[:300], "nuove": sum(1 for z in fuori if not z["letta"])}
     v = _rel((q.get("v") or [""])[0])
-    return 200, {"ok": True, "via": v, "commenti": per.get(v, []), "io": chi, "persone": _persone_note(), "admin": _admin(chi)}
+    return 200, {"ok": True, "via": v, "commenti": per.get(v, []), "io": chi, "persone": _persone_note(), "admin": _admin(chi), "elimina": puo_eliminare(chi)}
 
 
 def commenti_scrivi(p, chi):
@@ -767,7 +789,7 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         via = urllib.parse.urlparse(self.path).path
-        if via not in ("/premiere", "/volti", "/doppioni", "/cartelle", "/commenti"): return self.rispondi(404, {"ok": False})
+        if via not in ("/premiere", "/volti", "/doppioni", "/cartelle", "/commenti", "/elimina-clip"): return self.rispondi(404, {"ok": False})
         try:
             n = int(self.headers.get("Content-Length") or 0)
             p = json.loads(self.rfile.read(min(n, 2_000_000)) or b"{}")
@@ -775,6 +797,9 @@ class H(BaseHTTPRequestHandler):
             return self.rispondi(400, {"ok": False, "errore": "richiesta non valida"})
         if via == "/volti":
             cod, r = battezza(p, str(self.headers.get("X-Utente") or ""))
+            return self.rispondi(cod, r)
+        if via == "/elimina-clip":
+            cod, r = elimina_clip(p, str(self.headers.get("X-Utente") or ""))
             return self.rispondi(cod, r)
         if via == "/commenti":
             cod, r = commenti_scrivi(p, str(self.headers.get("X-Utente") or ""))
