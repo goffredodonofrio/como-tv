@@ -1086,14 +1086,17 @@
   .lib-riga{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px 16px;}
   .lib-riga > .lib-cerca{flex:0 1 820px;min-width:280px;}
   .lib-riga > .copia{flex:1 1 320px;min-width:0;margin:0;}
-  .copia.riassunto{padding:0;border:0;background:transparent;max-width:none;height:54px;box-sizing:border-box;justify-content:center;gap:6px;overflow:hidden;}
+  .copia.riassunto{position:relative;padding:0 14px;border:1px solid var(--riga2);border-radius:12px;background:rgba(245,241,230,.04);max-width:none;height:54px;box-sizing:border-box;justify-content:center;gap:5px;overflow:visible;}
   .ra-n-riga{display:flex;align-items:baseline;gap:4px 14px;font-size:12px;color:var(--fumo);white-space:nowrap;overflow:hidden;}
   .ra-n strong{color:var(--oro2);font:600 13px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;margin-right:3px;}
-  .ra{display:flex;flex-wrap:nowrap;align-items:center;gap:5px;overflow-x:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,#000 92%,transparent);mask-image:linear-gradient(90deg,#000 92%,transparent);}
-  .ra::-webkit-scrollbar{display:none;}
-  .ra button{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:999px;border:1px solid var(--riga2);background:transparent;color:var(--ivory2);font:600 11px/1.2 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;}
-  .ra button b{font:600 10.5px/1 ui-monospace,Menlo,monospace;color:var(--fumo);}
-  .ra button .gt-dot{width:7px;height:7px;flex:0 0 7px;margin:0;}
+  .ra{display:flex;flex-wrap:nowrap;align-items:center;gap:5px;overflow:hidden;}
+  .ra button,.ra-pop button{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;border:1px solid var(--riga2);background:transparent;color:var(--ivory2);font:600 11px/1.2 'DM Sans',sans-serif;letter-spacing:0;text-transform:none;cursor:pointer;white-space:nowrap;}
+  .ra button b,.ra-pop button b{font:600 10.5px/1 ui-monospace,Menlo,monospace;color:var(--fumo);}
+  .ra button .gt-dot,.ra-pop button .gt-dot{width:7px;height:7px;flex:0 0 7px;margin:0;}
+  .ra .ra-piu{color:var(--oro2);border-color:rgba(201,162,75,.5);}
+  .ra-pop{position:absolute;top:calc(100% + 6px);right:0;left:0;z-index:30;display:flex;flex-wrap:wrap;gap:6px;padding:12px;border:1px solid var(--riga2);border-radius:12px;background:#1d2029;box-shadow:0 14px 40px rgba(0,0,0,.5);max-height:320px;overflow:auto;}
+  .ra-pop[hidden]{display:none;}
+  .ra-pop button:hover,.ra-pop button:focus-visible{border-color:rgba(201,162,75,.6);color:var(--ivory);outline:none;}
   .ra button:hover,.ra button:focus-visible{border-color:rgba(201,162,75,.6);color:var(--ivory);outline:none;}
   .copia-testa b{font-family:'Mazzard',sans-serif;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--oro);}
   .copia-testa em{font-style:normal;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--riga2);color:var(--ivory2);}
@@ -2500,6 +2503,7 @@
     el("libRac").hidden = attivo || !RACCOLTE_EL.length;
     // mentre si cerca la scheda della copia non sta in mezzo (resta il bottoncino in alto)
     el("copiaS3").style.display = attivo ? "none" : "";
+    if (!attivo && el("copiaS3").classList.contains("riassunto")) adattaFila(el("copiaS3"));
     aggiornaUrlRicerca();
     if (!attivo) return;
     // al ponte va il giocatore (dal gettone) piu' il testo libero; una frase
@@ -7509,10 +7513,17 @@
       mini.hidden = true;
       var h = riassuntoArchivio(usa);
       if (!h) { c.hidden = true; return; }
+      // ogni 5 secondi torna uguale: non si ridisegna (chiuderebbe il pannello aperto)
+      if (c.dataset.h === h && c.classList.contains("riassunto")) { c.hidden = false; return; }
+      c.dataset.h = h;
       c.hidden = false; c.className = "copia riassunto"; c.innerHTML = h;
-      c.querySelectorAll("[data-rcomp]").forEach(function(b){ b.addEventListener("click", function(){ aggiungiGettone({ t: "c", v: b.dataset.rcomp, eti: b.dataset.rcomp }); disegnaGettoni(); cerca(el("cercaLib").value); }); });
+      adattaFila(c);
+      var piu = c.querySelector(".ra-piu"), pop = c.querySelector(".ra-pop");
+      piu.addEventListener("click", function(e){ e.stopPropagation(); pop.hidden = !pop.hidden; piu.setAttribute("aria-expanded", String(!pop.hidden)); });
+      c.querySelectorAll("[data-rcomp]").forEach(function(b){ b.addEventListener("click", function(){ pop.hidden = true; aggiungiGettone({ t: "c", v: b.dataset.rcomp, eti: b.dataset.rcomp }); disegnaGettoni(); cerca(el("cercaLib").value); }); });
       return;
     }
+    delete c.dataset.h;
     c.hidden = false; c.className = "copia compatta " + st;
     c.innerHTML = '<div class="copia-testa"><b>Archivio</b><em class="' + st + '">' + etichetta + '</em>' +
         '<span class="copia-num" title="' + esc(dettaglio) + '"><strong>' + num(usa) + '</strong> utilizzabili' +
@@ -7530,6 +7541,24 @@
     mini.style.color = "";
   }
 
+  // NIENTE SCORRIMENTO (29/09/2026): nella fila restano le competizioni che ci
+  // stanno, le altre dietro "+N", che apre il pannello con tutte
+  function adattaFila(box){
+    var fila = box.querySelector(".ra"), piu = box.querySelector(".ra-piu"); if (!fila || !piu) return;
+    var chips = Array.prototype.slice.call(fila.querySelectorAll("[data-rcomp]"));
+    chips.forEach(function(b){ b.style.display = ""; }); piu.hidden = true;
+    if (fila.scrollWidth <= fila.clientWidth + 1) return;
+    piu.hidden = false; piu.textContent = "+" + chips.length + " altre";   // la scritta piu' larga, per misurare
+    var spazio = fila.clientWidth - piu.offsetWidth - 8, nasc = 0;
+    // dalla prima che non ci sta in poi, tutte dietro "+N" (nascondendole le altre scalano: senza il "fuori" una corta rientrava fuori ordine)
+    var fuori = false;
+    chips.forEach(function(b){ if (fuori || b.offsetLeft - fila.offsetLeft + b.offsetWidth > spazio) { fuori = true; b.style.display = "none"; nasc++; } });
+    piu.textContent = nasc === chips.length ? chips.length + " competizioni" : "+" + nasc + (nasc === 1 ? " altra" : " altre");
+    piu.title = "tutte le " + chips.length + " competizioni";
+  }
+  window.addEventListener("resize", function(){ var c = el("copiaS3"); if (c && c.classList.contains("riassunto")) adattaFila(c); });
+  document.addEventListener("click", function(e){ var c = el("copiaS3"), pop = c && c.querySelector(".ra-pop"); if (pop && !pop.hidden && !e.target.closest(".ra-pop")) { pop.hidden = true; } });
+  document.addEventListener("keydown", function(e){ if (e.key !== "Escape") return; var c = el("copiaS3"), pop = c && c.querySelector(".ra-pop"); if (pop) pop.hidden = true; });
   // IL RIASSUNTO DELL'ARCHIVIO: partite, ore, Como, stagioni, le competizioni
   // piu' ricche (un clic = il filtro). Tutto da EVENTI, gia' in pagina
   function riassuntoArchivio(usa){
@@ -7556,7 +7585,8 @@
       (donne ? '<span class="ra-n"><strong>' + num(donne) + '</strong> Como Women</span>' : '') +
       '<span class="ra-n"><strong>' + num(comp.length) + '</strong> competizioni</span>' +
       (stag ? '<span class="ra-n">' + esc(stag) + '</span>' : '') + '</div>' +
-      '<div class="ra">' + comp.map(chip).join("") + '</div>';
+      '<div class="ra">' + comp.map(chip).join("") + '<button type="button" class="ra-piu" aria-expanded="false" hidden>+</button></div>' +
+      '<div class="ra-pop" role="dialog" aria-label="Tutte le competizioni" hidden>' + comp.map(chip).join("") + '</div>';
   }
   // nella Libreria si chiede ogni 5 secondi (il ponte ripesa solo i file a meta'),
   // altrove basta il bottoncino in alto; a scheda nascosta non si chiede niente

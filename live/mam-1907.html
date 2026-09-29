@@ -49,16 +49,19 @@
      quanto la barra, i numeri sopra e le squadre e le competizioni in una fila che scorre */
   .lib-riga{display:flex;flex-wrap:wrap;align-items:flex-start;gap:10px 16px;}
   .lib-riga > .lib-cerca{flex:0 1 820px;min-width:280px;}
-  .riass{flex:1 1 320px;min-width:0;height:54px;display:flex;flex-direction:column;justify-content:center;gap:6px;overflow:hidden;}
+  .riass{position:relative;flex:1 1 320px;min-width:0;height:54px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;gap:5px;padding:0 14px;border:1px solid var(--riga2);border-radius:12px;background:rgba(245,241,230,.04);}
   .riass[hidden]{display:none;}
   .ra-n-riga{display:flex;align-items:baseline;gap:4px 14px;font-size:12px;color:var(--fumo);white-space:nowrap;overflow:hidden;}
   .ra-n strong{color:var(--oro2);font:600 13px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;margin-right:3px;}
-  .ra{display:flex;flex-wrap:nowrap;align-items:center;gap:5px;overflow-x:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,#000 92%,transparent);mask-image:linear-gradient(90deg,#000 92%,transparent);}
-  .ra::-webkit-scrollbar{display:none;}
-  .ra button{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:999px;border:1px solid var(--riga2);background:transparent;color:var(--ivory2);font:600 11px/1.2 'DM Sans',sans-serif;letter-spacing:0;text-transform:none;cursor:pointer;white-space:nowrap;}
-  .ra button b{font:600 10.5px/1 ui-monospace,Menlo,monospace;color:var(--fumo);}
-  .ra button i{font-style:normal;color:var(--fumo);font-size:10px;letter-spacing:.08em;text-transform:uppercase;}
+  .ra{display:flex;flex-wrap:nowrap;align-items:center;gap:5px;overflow:hidden;}
+  .ra button,.ra-pop button{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;border:1px solid var(--riga2);background:transparent;color:var(--ivory2);font:600 11px/1.2 'DM Sans',sans-serif;letter-spacing:0;text-transform:none;cursor:pointer;white-space:nowrap;}
+  .ra button b,.ra-pop button b{font:600 10.5px/1 ui-monospace,Menlo,monospace;color:var(--fumo);}
   .ra .sep{flex:0 0 1px;width:1px;height:14px;background:var(--riga2);margin:0 3px;}
+  .ra .ra-piu{color:var(--oro2);border-color:rgba(201,162,75,.5);}
+  .ra-pop{position:absolute;top:calc(100% + 6px);right:0;left:0;z-index:30;display:flex;flex-wrap:wrap;gap:6px;padding:12px;border:1px solid var(--riga2);border-radius:12px;background:#1d2029;box-shadow:0 14px 40px rgba(0,0,0,.5);max-height:320px;overflow:auto;}
+  .ra-pop[hidden]{display:none;}
+  .ra-pop h6{flex:0 0 100%;margin:4px 0 0;font:700 9.5px/1 'Mazzard',sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--fumo);}
+  .ra-pop button:hover,.ra-pop button:focus-visible{border-color:rgba(201,162,75,.6);color:var(--ivory);outline:none;}
   .ra button:hover,.ra button:focus-visible{border-color:rgba(201,162,75,.6);color:var(--ivory);outline:none;}
   .lib-cerca .lu{position:absolute;left:18px;top:27px;transform:translateY(-50%);opacity:.6;font-size:18px;pointer-events:none;z-index:1;}
   .campo-g{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-height:54px;padding:7px 44px 7px 50px;border-radius:12px;border:1px solid var(--riga2);background:rgba(245,241,230,.06);cursor:text;}
@@ -1599,6 +1602,21 @@
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("velo").hidden) chiudi(); });
 
   // ══════════ IL RIASSUNTO ══════════
+  // niente scorrimento: nella fila quello che ci sta, il resto dietro "+N"
+  function adattaFila(box) {
+    var fila = box.querySelector(".ra"), piu = box.querySelector(".ra-piu"); if (!fila || !piu) return;
+    var voci = Array.prototype.slice.call(fila.querySelectorAll("[data-rk], .sep"));
+    voci.forEach(function (b) { b.style.display = ""; }); piu.hidden = true;
+    if (fila.scrollWidth <= fila.clientWidth + 1) return;
+    var tot = fila.querySelectorAll("[data-rk]").length;
+    piu.hidden = false; piu.textContent = "+" + tot + " altre";
+    var spazio = fila.clientWidth - piu.offsetWidth - 8, nasc = 0, fuori = false;
+    voci.forEach(function (b) { if (fuori || b.offsetLeft - fila.offsetLeft + b.offsetWidth > spazio) { fuori = true; b.style.display = "none"; if (b.dataset.rk) nasc++; } });
+    piu.textContent = nasc === tot ? "Squadre e competizioni" : "+" + nasc + (nasc === 1 ? " altra" : " altre");
+  }
+  window.addEventListener("resize", function () { var b = $("riass"); if (b && !b.hidden) adattaFila(b); });
+  document.addEventListener("click", function (e) { var p = document.querySelector("#riass .ra-pop"); if (p && !p.hidden && !e.target.closest(".ra-pop")) p.hidden = true; });
+  document.addEventListener("keydown", function (e) { if (e.key !== "Escape") return; var p = document.querySelector("#riass .ra-pop"); if (p) p.hidden = true; });
   // file, collezioni, episodi, peso, stagioni; poi le squadre (prima squadra,
   // Primavera, Under, Women: le giovanili stanno qui) e le competizioni. Un clic = il filtro
   function disegnaRiassunto() {
@@ -1609,9 +1627,15 @@
     box.innerHTML = '<div class="ra-n-riga"><span class="ra-n"><strong>' + n(I.file) + '</strong> file</span><span class="ra-n"><strong>' + n(I.collezioni.length) + '</strong> collezioni</span>' +
       '<span class="ra-n"><strong>' + n(I.episodi.length) + '</strong> episodi</span><span class="ra-n"><strong>' + gb(I.peso) + "</strong></span>" +
       (st.length ? '<span class="ra-n">' + esc(st.length > 1 ? st[0] + " – " + st[st.length - 1] : st[0]) + "</span>" : "") + "</div>" +
-      '<div class="ra">' + ord(VOC.sq).map(function (v) { return chip("sq", v); }).join("") + (Object.keys(VOC.comp).length ? '<i class="sep"></i>' + ord(VOC.comp).map(function (v) { return chip("comp", v); }).join("") : "") + "</div>";
+      '<div class="ra">' + ord(VOC.sq).map(function (v) { return chip("sq", v); }).join("") + (Object.keys(VOC.comp).length ? '<i class="sep"></i>' + ord(VOC.comp).map(function (v) { return chip("comp", v); }).join("") : "") +
+      '<button type="button" class="ra-piu" aria-expanded="false" hidden>+</button></div>' +
+      '<div class="ra-pop" role="dialog" aria-label="Squadre e competizioni" hidden><h6>Squadre</h6>' + ord(VOC.sq).map(function (v) { return chip("sq", v); }).join("") +
+      (Object.keys(VOC.comp).length ? "<h6>Competizioni</h6>" + ord(VOC.comp).map(function (v) { return chip("comp", v); }).join("") : "") + "</div>";
     box.hidden = false;
-    box.querySelectorAll("[data-rk]").forEach(function (b) { b.addEventListener("click", function () { var k = b.dataset.rk, v = b.dataset.rv; metti({ k: k, v: v, n: nomeDi(k, v) }); }); });
+    var piu = box.querySelector(".ra-piu"), pop = box.querySelector(".ra-pop");
+    piu.addEventListener("click", function (e) { e.stopPropagation(); pop.hidden = !pop.hidden; piu.setAttribute("aria-expanded", String(!pop.hidden)); });
+    box.querySelectorAll("[data-rk]").forEach(function (b) { b.addEventListener("click", function () { pop.hidden = true; var k = b.dataset.rk, v = b.dataset.rv; metti({ k: k, v: v, n: nomeDi(k, v) }); }); });
+    adattaFila(box);
   }
 
   // ══════════ PARTENZA ══════════
