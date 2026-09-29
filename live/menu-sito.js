@@ -39,7 +39,7 @@
       { nome: "Crawl", voci: [["live/ticker.html", "Ticker"], ["live/sottopancia.html", "Sottopancia"], ["live/sfondi.html", "Sfondi per i box"], ["live/contributi.html", "Contributi video"]] }
     ] },
     { k: "grafiche", nome: "Grafiche statiche e Social Media", voci: [[OTT, "Grafiche Statiche"], [OTT + "?solo=social", "Social Video e Maschere"], ["uefa-club-channel.html", "UEFA Club Channel"]] },
-    { k: "mam", nome: "MAM e Magazzino Como TV", voci: [["live/mam2.html", "MAM"], ["live/mam2.html?raccolte=1", "Raccolte / Macchie"], ["live/mam2.html?live=1", "MAM Live"],
+    { k: "mam", nome: "MAM e Magazzino Como TV", voci: [["live/mam2.html", "MAM Como TV"], ["live/mam2.html?raccolte=1", "Raccolte / Macchie"], ["live/mam2.html?live=1", "MAM Como TV | Live"],
       ["live/mam2.html?montaggio=1", "Editing"], ["live/magazzino.html", "Magazzino"]] },
     { k: "1907", nome: "MAM e Magazzino Como 1907", voci: [["live/mam-1907.html", "MAM Como 1907"], ["live/mam-1907.html#raccolte", "Raccolte 1907"],
       ["live/mam2.html?montaggio=1&ambito=1907", "Editing 1907"], [null, "Magazzino 1907", "in arrivo"]] },

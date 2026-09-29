@@ -86,7 +86,7 @@
       ["sfondi.html",                "Sfondi per i box"],
       ["contributi.html",            "Contributi video"]
     ]},
-    ["mam2.html",                  "MAM"],
+    ["mam2.html",                  "MAM Como TV"],
     ["magazzino.html",             "Magazzino"],
     ["redazione.html",             "Controllo redazione"],
     ["regia.html",                 "Regia"]

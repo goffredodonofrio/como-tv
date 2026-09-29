@@ -13,10 +13,10 @@
   "use strict";
   var VOCI = [
     ["home", "../index.html", "Home"],
-    ["mam", "mam2.html", "MAM"],
+    ["mam", "mam2.html", "MAM Como TV"],
     // le raccolte hanno una pagina loro (Goffredo, 26/09/2026)
     ["raccolte", "mam2.html?raccolte=1", "Raccolte / Macchie"],
-    ["live", "mam2.html?live=1", "MAM Live"],
+    ["live", "mam2.html?live=1", "MAM Como TV | Live"],
     ["editing", "mam2.html?montaggio=1", "Editing"],
     // il materiale del club (QNAP COMOTV - FRAME), 27/09/2026
     ["1907", "mam-1907.html", "MAM Como 1907"],

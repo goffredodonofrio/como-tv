@@ -16611,6 +16611,13 @@ const AZIONI = {
   // Airtable comincia dentro di lui. Quando ne resta UNA SOLA, quella e' la
   // proposta: costa zero byte, e la conferma la da' una persona dall'Asset.
   // Il tabellone, che costa minuti e mega, resta per i casi dubbi.
+  "clip-riparati": async () => { await leggiRiparati(); return { ok: true, file: Array.from(RIPARATI.keys()) }; },
+  // i file di vMix sulla NAS: abbina adesso, senza aspettare il giro dell'ora
+  "clip-vmix-abbina": async () => {
+    const n = await abbinaVmix();
+    if (n) await archivioScandaglia({ giorni: 3650 });
+    return { ok: true, abbinati: n };
+  },
   "clip-archivio-proponi": (p) => {
     const quali = Object.keys(ARCHIVIO).filter((k) => {
       const a = ARCHIVIO[k];
