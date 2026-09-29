@@ -123,6 +123,8 @@
   </div>
 </div>
 
+<script src="paesi.js"></script>
+<script src="crawl.js"></script>
 <script>
 (function () {
   "use strict";
@@ -178,17 +180,34 @@
   cat.textContent = conf.nome;
   cat.style.setProperty("--cat", conf.cat);
   if (D.et === "diretta") cat.classList.add("diretta");
-  // la stessa categoria, grande, nel blocco a sinistra
+  // la stessa categoria, grande, nel blocco a sinistra. Ogni titolo puo'
+  // avere la sua (D.te, allineata a D.ti): in rotazione cambia con lui.
   var eti = document.getElementById("eti");
-  eti.textContent = conf.nome;
-  eti.style.setProperty("--cat", conf.cat);
-  eti.style.setProperty("--catvelo", conf.cat + "26");      // il colore al 15%
-  if (D.et === "diretta") eti.classList.add("diretta");
+  var etiOra = null;
+  function mettiEtichetta(chiave, conMovimento) {
+    var c = ETICH[chiave] || conf;
+    if (etiOra === c) return;
+    function scrivi() {
+      eti.textContent = c.nome;
+      eti.style.setProperty("--cat", c.cat);
+      eti.style.setProperty("--catvelo", c.cat + "26");      // il colore al 15%
+      eti.classList.toggle("diretta", c === ETICH.diretta);
+    }
+    if (conMovimento && etiOra && !STILL && eti.animate) {
+      // cambia a meta' del giro del titolo: si spegne, cambia, si riaccende
+      eti.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260 * SLOW, fill: "forwards" });
+      setTimeout(function () { scrivi(); eti.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300 * SLOW, fill: "forwards" }); }, 280 * SLOW);
+    } else scrivi();
+    etiOra = c;
+  }
+  var ETI_TIT = D.te || [];
+  mettiEtichetta(ETI_TIT[0] || D.et, false);
 
   // ── crawl: costruisco il nastro (duplicato per lo scorrimento continuo) ──
   var crawl = String(D.cr || "").trim();
-  (function () {
+  function costruisciCrawl() {
     if (!crawl) { document.getElementById("crawl").style.display = "none"; return; }
+    document.getElementById("crawl").style.display = "";
     // "||||" separa i blocchi, "·" separa le voci. La 1ª voce di ogni blocco è
     // l'etichetta (avorio); le altre sono DATI (oro). Separatore | tra i dati.
     function pezzo(txt) {
@@ -205,7 +224,8 @@
     track.innerHTML = '<div class="uno" style="display:flex;align-items:center">' + blocchi +
       '<span class="sep">|</span></div><div class="uno" style="display:flex;align-items:center">' + blocchi +
       '<span class="sep">|</span></div>';
-  })();
+  }
+  costruisciCrawl();
 
   // ── titolone rotante ──
   var wrap = document.getElementById("titowrap");
@@ -305,8 +325,9 @@
   }
   function ruota() {
     if (!titoli.length) return;
-    var t = titoli[idx % titoli.length];
+    var i = idx % titoli.length, t = titoli[i];
     idx++;
+    if (ETI_TIT.length) mettiEtichetta(ETI_TIT[i] || D.et, true);
     mostraTito(t);
   }
 
@@ -356,8 +377,36 @@
     if (uno && !STILL) partiCrawl(track, uno);
   }
 
+  // ── il crawl che si aggiorna da solo ─────────────────────────────────
+  // Il testo arriva gia' pronto dall'editor, ma e' una fotografia: in diretta
+  // i risultati PARZIALI cambiano (29/09/2026: in onda restavano quelli
+  // dell'invio). Con le voci (D.cv) il ticker rifa' i conti da ESPN ogni
+  // minuto; se il testo e' cambiato, il nastro nuovo entra alla FINE del
+  // giro in corso, quando il nastro e' comunque al punto di partenza: niente
+  // scatti a meta' lettura.
+  var cambioInAttesa = null;
+  function aggiornaCrawl() {
+    if (!window.Crawl || !Crawl.calcola || !D.cv || !D.cv.length) return;
+    Crawl.calcola(D.cv).then(function (nuovo) {
+      nuovo = String(nuovo || "").trim();
+      if (!nuovo || nuovo === crawl || cambioInAttesa === nuovo) return;
+      cambioInAttesa = nuovo;
+      var fra = 0;
+      if (anCrawl && anCrawl.effect && anCrawl.effect.getTiming) {
+        var giro = anCrawl.effect.getTiming().duration, ora = anCrawl.currentTime || 0;
+        fra = giro - (ora % giro);
+      }
+      setTimeout(function () {
+        crawl = cambioInAttesa; cambioInAttesa = null;
+        costruisciCrawl();
+        var track = document.getElementById("crawltrack"), uno = track.querySelector(".uno");
+        if (uno) partiCrawl(track, uno);
+      }, Math.max(0, fra));
+    }).catch(function () {});
+  }
+
   if (STILL) { document.getElementById("ticker").classList.add("on"); ruota(); }
-  else avvia();
+  else { avvia(); if (D.cv && D.cv.length) setInterval(aggiornaCrawl, 60000); }
 
   document.addEventListener("dblclick", function () { location.reload(); });
 })();

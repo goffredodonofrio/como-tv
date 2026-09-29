@@ -152,7 +152,7 @@ window.Crawl = (function () {
 
   // il blocco di UNA voce → Promise di {data:[…], n} oppure null
   function bloccoVoce(v){
-    var c=COMPS[v.ci]||COMPS[0], base="https://site.api.espn.com/apis/site/v2/sports/soccer/"+c.code;
+    var c=v.code?{code:v.code}:(COMPS[v.ci]||COMPS[0]), base="https://site.api.espn.com/apis/site/v2/sports/soccer/"+c.code;
     function J(u){ return fetch(u).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}); }
     if(v.tipo==="cls"){
       return J("https://site.api.espn.com/apis/v2/sports/soccer/"+c.code+"/standings").then(function(st){
@@ -201,19 +201,46 @@ window.Crawl = (function () {
       ((sb&&sb.events)||[]).forEach(function(e){
         var cc=e.competitions&&e.competitions[0]; if(!cc||!cc.status||!cc.status.type)return;
         var done=cc.status.type.completed, live=cc.status.type.state==="in";
-        if(v.tipo==="ris" && !done)return;
+        // i risultati comprendono le partite IN CORSO, col minuto (29/09/2026:
+        // in diretta il crawl mostrava solo i finali, e i parziali mancavano)
+        if(v.tipo==="ris" && !done && !live)return;
         if(v.tipo==="pro" && (done||live))return;
         var cs=cc.competitors||[]; if(cs.length<2)return;
         var h=cs.filter(function(x){return x.homeAway==="home";})[0]||cs[0];
         var w=cs.filter(function(x){return x.homeAway==="away";})[0]||cs[1];
         if(v.tipo==="ris"){ if(h.score!=null&&w.score!=null)
-          out.push(nomeSquadra(h.team).toUpperCase()+"-"+nomeSquadra(w.team).toUpperCase()+" "+h.score+"-"+w.score); }
+          out.push(nomeSquadra(h.team).toUpperCase()+"-"+nomeSquadra(w.team).toUpperCase()+" "+h.score+"-"+w.score+
+                   (live && !done ? " "+minuto(cc.status) : "")); }
         else { var g=e.date?new Date(e.date).toLocaleDateString("it-IT",{day:"numeric",month:"short"}):"";
           out.push(nomeSquadra(h.team).toUpperCase()+"-"+nomeSquadra(w.team).toUpperCase()+(g?" "+g:"")); }
       });
       if(!out.length)return null;
       var tot=out.length; out=out.slice(0,12);   // il turno + margine: il crawl non è infinito
       return {data:out, n:tot};
+    });
+  }
+
+  // il minuto di una partita in corso: "35'", "45'+2'", all'intervallo "INT."
+  function minuto(st){
+    var d=((st&&st.type&&(st.type.shortDetail||st.type.detail))||"").trim();
+    if(/half\s*time|^HT$/i.test(d)) return "INT.";
+    var c=(st&&st.displayClock)||"";
+    if(c && /\d/.test(c)) return c.replace(/\s+/g,"");
+    return d ? d.replace(/\s+/g,"") : "LIVE";
+  }
+
+  // Le voci come le vuole il ticker in onda: competizione per codice e
+  // titolo gia' scritto. Viaggiano nel pacchetto accanto al testo, e il
+  // ticker rifa' i conti da solo ogni minuto (i parziali si aggiornano).
+  function spec(){
+    return voci.map(function(v){ var c=COMPS[v.ci]||COMPS[0]; return { code:c.code, tipo:v.tipo, h:hdrVoce(v) }; });
+  }
+  // il testo del crawl da quelle voci, senza editor: -> Promise(testo)
+  function calcola(elenco){
+    return Promise.all((elenco||[]).map(bloccoVoce)).then(function(res){
+      var blocchi=[];
+      res.forEach(function(r,i){ if(r&&r.data&&r.data.length) blocchi.push(elenco[i].h+" · "+r.data.join(" · ")); });
+      return blocchi.join(" |||| ");
     });
   }
 
@@ -282,5 +309,5 @@ window.Crawl = (function () {
     aggiorna();
   }
 
-  return { monta: monta, testo: function(){ return crawlText; }, aggiorna: aggiorna };
+  return { monta: monta, testo: function(){ return crawlText; }, aggiorna: aggiorna, spec: spec, calcola: calcola };
 })();

@@ -204,6 +204,12 @@
     color:var(--gold-bright);font-family:'Mazzard',sans-serif;font-weight:800;font-size:12px;
     display:flex;align-items:center;justify-content:center;margin-top:3px;}
   .titrow .tlines{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;}
+  /* l'etichetta del SINGOLO titolo: in rotazione cambia con lui */
+  .titrow .tet{display:flex;gap:5px;flex-wrap:wrap;}
+  .titrow .tet button{font-family:'Mazzard',sans-serif;font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+    padding:4px 8px;border-radius:999px;cursor:pointer;background:transparent;color:var(--fg-3,#8A8B96);
+    border:1px solid rgba(245,241,230,.12);}
+  .titrow .tet button.on{color:var(--gold-bright,#E3C271);border-color:var(--gold,#C9A24B);background:rgba(201,162,75,.14);}
   .tline{display:flex;align-items:center;gap:8px;}
   .tline input{flex:1;min-width:0;font-size:14px;padding:8px 10px;background:rgba(245,241,230,.06);
     border:1px solid rgba(245,241,230,.16);border-radius:7px;color:var(--ivory);}
@@ -291,8 +297,8 @@
   <div class="impianto">
     <div>
       <div class="card" id="cardTesti">
-        <h2>Etichetta</h2>
-        <div class="desc">Il tag della striscia. Scegli, non scrivere.</div>
+        <h2>Etichetta <small>dei titoli nuovi</small></h2>
+        <div class="desc">Ogni titolo ha la sua etichetta (la scegli nel suo riquadro) e in onda cambia insieme al titolo. Questa è quella con cui nasce un titolo nuovo.</div>
         <div class="etichette" id="etichette">
           <label class="on"><input type="radio" name="et" value="ultimora" checked><span>Ultim'ora</span></label>
           <label><input type="radio" name="et" value="mercato"><span>Calciomercato</span></label>
@@ -393,6 +399,10 @@
   var titRows = [{ r1: "Fiorentina, in chiusura Gnonto del Leeds", r2: "Prestito con diritto di riscatto" }, { r1: "", r2: "" }];
   function cont(inp){ var c=inp.parentNode.querySelector(".tcount"); c.textContent=inp.value.length+"/"+MAXLEN; c.classList.toggle("over", inp.value.length>MAXLEN); }
   function renderTit(){
+    // ogni titolo tiene la sua etichetta: quelli che non l'hanno ancora (la
+    // bozza di prima) prendono quella in alto UNA volta, e da li' in poi
+    // cambiare l'etichetta in alto non li tocca piu'
+    titRows.forEach(function(t){ if(!t.et) t.et=etichettaScelta(); });
     var box=el("titolist"); box.innerHTML="";
     titRows.forEach(function(t, i){
       var row=document.createElement("div"); row.className="titrow";
@@ -400,9 +410,17 @@
         '<div class="tlines">'+
           '<div class="tline"><input class="tl1" placeholder="Riga 1" value="'+esc(t.r1||"")+'"><span class="tcount"></span></div>'+
           '<div class="tline"><input class="tl2" placeholder="Riga 2 (facoltativa)" value="'+esc(t.r2||"")+'"><span class="tcount"></span></div>'+
+          '<div class="tet">'+Object.keys(NOMI_ET).map(function(k){
+            return '<button type="button" data-et="'+k+'"'+((t.et||etichettaScelta())===k?' class="on"':'')+'>'+esc(NOMI_ET[k])+'</button>'; }).join("")+'</div>'+
         '</div>'+
         (titRows.length>1?'<button class="trm" type="button" title="Togli il titolo">&times;</button>':'');
       box.appendChild(row);
+      row.querySelector(".tet").addEventListener("click", function(ev){
+        var b=ev.target.closest ? ev.target.closest("button[data-et]") : null; if(!b) return;
+        t.et=b.dataset.et;
+        [].forEach.call(this.querySelectorAll("button"), function(x){ x.classList.toggle("on", x===b); });
+        anteprima();
+      });
       var i1=row.querySelector(".tl1"), i2=row.querySelector(".tl2");
       i1.addEventListener("input", function(){ t.r1=i1.value; cont(i1); anteprima(); });
       i2.addEventListener("input", function(){ t.r2=i2.value; cont(i2); anteprima(); });
@@ -410,11 +428,15 @@
       cont(i1); cont(i2);
     });
   }
-  el("btnAddTit").addEventListener("click", function(){ titRows.push({r1:"",r2:""}); renderTit();
+  el("btnAddTit").addEventListener("click", function(){ titRows.push({r1:"",r2:"",et:etichettaScelta()}); renderTit();
     var last=el("titolist").querySelector(".titrow:last-child .tl1"); if(last) last.focus(); });
   renderTit();
   function titoli(){ return titRows.map(function(t){ var a=(t.r1||"").trim(), b=(t.r2||"").trim();
     return b ? a+" · "+b : a; }).filter(Boolean); }
+  // l'etichetta di ogni titolo, allineata a titoli(); quelli senza (bozze
+  // vecchie) prendono quella scelta in alto
+  function etichetteTitoli(){ return titRows.filter(function(t){ return (t.r1||"").trim() || (t.r2||"").trim(); })
+    .map(function(t){ return t.et || etichettaScelta(); }); }
 
   // ── crawl: lo compone il modulo condiviso, uno solo per tutte e due le forme ──
   var crawlText = "";
@@ -800,7 +822,11 @@
   // ══ i dati ════════════════════════════════════════════════════════════
   function payload(perAnteprima){
     var cr = window.Crawl ? Crawl.testo() : crawlText;
-    if (!verticale()) return { et: etichettaScelta(), ti: titoli(), cr: cr };
+    var cv = window.Crawl && Crawl.spec ? Crawl.spec() : null;
+    if (!verticale()) {
+      var te = etichetteTitoli();
+      return { et: te[0] || etichettaScelta(), te: te, ti: titoli(), cr: cr, cv: cv };
+    }
 
     var co = CONT.map(function(c){
       var o = { e:(c.e||"").trim(), t:(c.t||"").trim(), x:(c.x||"").trim() };
