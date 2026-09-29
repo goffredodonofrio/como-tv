@@ -306,6 +306,45 @@ def rifai():
         if RIFAI["quando"]: threading.Thread(target=rifai, daemon=True).start()
 
 
+# ── I DOPPIONI SEGNATI (29/09/2026) ────────────────────────────────────
+# La pagina Doppioni 1907 mostra le copie; il team del club segna quelle da cancellare. Qui si
+# tiene solo il segno (chi, quando): il FRAME e' in sola lettura, nessun file si tocca.
+SEGNATI = os.path.join(CASA, "doppioni-segnati.json")
+S_LOCK = threading.Lock()
+
+
+def puo_segnare(email):
+    """il club (@comofootball.com) e i super utenti di Como TV"""
+    email = (email or "").lower()
+    conf = {}
+    try:
+        for r in open("/etc/comotv/accesso.env"):
+            if "=" in r and not r.lstrip().startswith("#"):
+                k, v = r.split("=", 1); conf[k.strip()] = v.strip().strip('"')
+    except OSError:
+        pass
+    admin = {x.strip().lower() for x in conf.get("ACCESSO_ADMIN", "goffredo.donofrio@sent.tv").split(",") if x.strip()}
+    try: admin |= {k.lower() for k, v in json.load(open("/etc/comotv/accesso-locali.json")).items() if v.get("admin")}
+    except Exception: pass
+    club = [d.strip().lower() for d in conf.get("ACCESSO_SOLO_1907", "comofootball.com").split(",") if d.strip()]
+    return bool(email) and (email in admin or email.rsplit("@", 1)[-1] in club)
+
+
+def segna(p, chi):
+    if not puo_segnare(chi): return 403, {"ok": False, "errore": "Solo il team del Como 1907 puo' segnare i doppioni."}
+    voci = [v for v in (p.get("voci") or []) if isinstance(v, dict) and v.get("via")][:5000]
+    if not voci: return 400, {"ok": False, "errore": "niente da segnare"}
+    with S_LOCK:
+        s = _leggi(SEGNATI, {"segnati": {}, "storia": []})
+        for v in voci:
+            via = str(v["via"])[:1000]
+            if p.get("azione") == "togli": s["segnati"].pop(via, None)
+            else: s["segnati"][via] = {"chi": chi, "quando": int(time.time()), "tipo": "cartella" if v.get("tipo") == "cartella" else "file", "peso": int(v.get("peso") or 0)}
+        s["storia"].append([int(time.time()), chi, p.get("azione") or "segna", len(voci)]); del s["storia"][:-1000]
+        _scrivi(SEGNATI, s)
+    return 200, {"ok": True, "segnati": len(s["segnati"])}
+
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 
@@ -317,7 +356,7 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         via = urllib.parse.urlparse(self.path).path
-        if via not in ("/premiere", "/volti"): return self.rispondi(404, {"ok": False})
+        if via not in ("/premiere", "/volti", "/doppioni"): return self.rispondi(404, {"ok": False})
         try:
             n = int(self.headers.get("Content-Length") or 0)
             p = json.loads(self.rfile.read(min(n, 2_000_000)) or b"{}")
@@ -325,6 +364,9 @@ class H(BaseHTTPRequestHandler):
             return self.rispondi(400, {"ok": False, "errore": "richiesta non valida"})
         if via == "/volti":
             cod, r = battezza(p, str(self.headers.get("X-Utente") or ""))
+            return self.rispondi(cod, r)
+        if via == "/doppioni":
+            cod, r = segna(p, str(self.headers.get("X-Utente") or ""))
             return self.rispondi(cod, r)
         vie = [str(v) for v in (p.get("vie") or [])][:600]
         xml, quanti = xml_premiere(str(p.get("nome") or ""), vie, str(p.get("radice") or ""))
@@ -372,6 +414,9 @@ class H(BaseHTTPRequestHandler):
                 davanti = CODA.index(k) if k in CODA else 0
             return self.rispondi(200, {"ok": True, "k": k, "stato": s["stato"], "avanzamento": round(s.get("avanzamento", 0), 3),
                                        "davanti": davanti, "errore": s.get("errore", "")})
+        if u.path == "/doppioni":
+            s = _leggi(SEGNATI, {"segnati": {}})
+            return self.rispondi(200, {"ok": True, "segnati": s.get("segnati", {}), "puoi": puo_segnare(self.headers.get("X-Utente") or "")}, extra={"Cache-Control": "no-store"})
         if u.path == "/code":
             with LOCK:
                 return self.rispondi(200, {"ok": True, "coda": [dict(STATO[k], pieno=None) for k in CODA]})

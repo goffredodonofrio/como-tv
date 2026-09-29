@@ -181,6 +181,7 @@ def club_puo(percorso):
         if p.startswith(pre): rel = p[len(pre):]; break
     if rel in ("", "index.html"): return True
     if rel == "live/mam-1907.html" or rel.startswith("mam-1907/"): return True
+    if rel == "live/doppioni-1907.html": return True       # i doppioni del FRAME: li giudica il club (29/09/2026)
     if rel.startswith("guida/"): return True              # Guida e Palestra (Goffredo, 28/09/2026)
     if rel == "live/mam2.html" and re.search(r"(^|&)ambito=1907(&|$)", q): return True
     return False
@@ -245,7 +246,7 @@ __ERRORE__
 NOMI_PAGINE = {
     "index.html": "Home", "live/mam2.html": "MAM", "live/mam2.html?raccolte=1": "Raccolte / Macchie", "live/mam2.html?live=1": "MAM Live",
     "live/mam2.html?montaggio=1": "Editing", "live/mam2.html?ambito=1907": "Editing 1907", "live/mam-1907.html": "MAM Como 1907",
-    "live/magazzino.html": "Magazzino", "live/classifiche.html": "Catalogo grafiche", "live/redazione.html": "Controllo redazione",
+    "live/doppioni-1907.html": "Doppioni 1907", "live/magazzino.html": "Magazzino", "live/classifiche.html": "Catalogo grafiche", "live/redazione.html": "Controllo redazione",
     "live/regia.html": "Regia", "live/telecronaca.html": "Telecronaca", "guida/index.html": "Guida", "guida/en.html": "Guida (EN)",
     "guida/palestra.html": "Palestra", "guida/palestra-en.html": "Palestra (EN)", "1. contratti & hr/foglio-presenze.html": "Presenze dipendenti",
     "10_look&feel/como tv ott design/generatore.html": "Grafiche statiche", "uefa-club-channel.html": "UEFA Club Channel",
@@ -274,6 +275,7 @@ def azione_di(metodo, percorso):
     if rel.startswith("mam-1907/copie/"): return ("guarda una copia leggera del 1907", "")
     if rel == "mam-1907/copia": return ("chiede una copia leggera", urllib.parse.parse_qs(q).get("v", [""])[0]) if "fai=1" in q else None
     if rel.startswith("mam-1907/volti"): return ("lavora ai volti del 1907", "") if metodo == "POST" else None
+    if rel == "mam-1907/doppioni": return ("segna i doppioni del 1907", "") if metodo == "POST" else None
     if rel.startswith("mam-1907/"): return None
     if metodo != "GET" or not (rel == "" or rel.endswith(".html")): return None
     k = (rel or "index.html").lower()

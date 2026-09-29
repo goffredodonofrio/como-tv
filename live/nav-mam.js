@@ -25,7 +25,7 @@
   function quale() {
     var f = (location.pathname.split("/").pop() || "").toLowerCase(), q = location.search;
     if (f === "magazzino.html" || f === "magazzino-foto.html" || f === "video.html") return "magazzino";
-    if (f === "mam-1907.html" || /[?&]ambito=1907/.test(q)) return "1907";
+    if (f === "mam-1907.html" || f === "doppioni-1907.html" || /[?&]ambito=1907/.test(q)) return "1907";
     if (/[?&]live=1/.test(q)) return "live";
     if (/[?&](raccolte=1|rac=)/.test(q)) return "raccolte";
     if (/[?&](montaggio=1|seq=)/.test(q)) return "editing";
