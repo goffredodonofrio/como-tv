@@ -348,6 +348,7 @@
   .fx-g .fx-n{margin-left:auto;font-size:11px;color:var(--fumo);font-variant-numeric:tabular-nums;}
   .fx-g .fx-nome{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
   .fx-g .fx-stag{width:calc(100% - 16px);margin:0 8px 6px;font:inherit;font-size:12.5px;color:var(--ivory);background:var(--pan);border:1px solid var(--riga2);border-radius:7px;padding:5px 8px;}
+  .fx-g .liv2.stag .fx-nome{font-weight:700;color:var(--ivory);} .fx-g .liv3.in-stag{padding-left:46px;font-size:12.5px;}
   .fx-g .liv2.figlio{padding-left:40px;font-size:12px;}
   .fx-sep{border:0;border-top:1px dashed var(--riga2);margin:6px 8px;}
   .fx-g .liv2{padding-left:24px;font-size:12.5px;} .fx-g .liv3{padding-left:40px;font-size:12px;}
@@ -879,7 +880,7 @@
     if (G.length) h.set("g", JSON.stringify(G.map(function (x) { return [x.k, x.v]; })));
     if (Q) h.set("q", Q); if (RACCOLTA) h.set("r", RACCOLTA.id); if (TAB !== "tutto") h.set("t", TAB);
     // dove si e' nello sfoglia (Frame): la cartella vera o stagione|reparto|tipo
-    if (!G.length && !Q && !RACCOLTA) { if (FX.modo === "vere") { if (FX.via) h.set("fv", FX.via); } else if (FX.dip || (I && FX.stag !== Object.keys(STAGIONI).sort().reverse()[0])) h.set("fo", [FX.stag, FX.dip, FX.sub].join("|")); }
+    if (!G.length && !Q && !RACCOLTA) { if (FX.modo === "vere") { if (FX.via) h.set("fv", FX.via); } else if (FX.dip || (I && FX.stag !== Object.keys(STAGIONI).sort().reverse()[0])) h.set("fo", [FX.stag, FX.dip, FX.sub, FX.comp, FX.par].join("|")); }
     history.replaceState(null, "", location.pathname + location.search + (h.toString() ? "#" + h.toString() : ""));
   }
   function nomeDi(k, v) { return k === "insieme" ? "Insieme" : k === "volto" ? "Volto sconosciuto" : k === "ep" ? v.split("/")[1] : k === "cart" ? ultimo(v) : k === "stag" ? "Stagione " + v : k === "tipo" ? (v === "video" ? "Solo video" : "Solo foto") : k === "pers" ? ((PERS[v] || {}).nome || v) : k === "avv" ? "contro " + v : k === "cam" ? "Girato da " + v : k === "ct" ? (v === "Casa" ? "In casa" : "In trasferta") : k === "part" ? (PART[v] ? titoloPartita(PART[v]) + " " + dataRip(PART[v].g) : v) : v; }
@@ -892,7 +893,7 @@
     Q = h.get("q") || ""; $("cerca").value = Q;
     var r = h.get("r"); if (r) apriRaccolta(r, true);
     if (h.has("fv")) { FX.modo = "vere"; FX.via = h.get("fv"); fxDisegna(); }
-    else if (h.has("fo")) { var fo = h.get("fo").split("|"); FX.modo = "ord"; FX.stag = fo[0] || ""; FX.dip = fo[1] || ""; FX.sub = fo[2] || ""; fxDisegna(); }
+    else if (h.has("fo")) { var fo = h.get("fo").split("|"); FX.modo = "ord"; FX.stag = fo[0] || ""; FX.dip = fo[1] || ""; FX.sub = fo[2] || ""; FX.comp = fo[3] || ""; FX.par = fo[4] || ""; fxDisegna(); }
     disegnaGettoni();
   }
 
@@ -1105,7 +1106,7 @@
     var righe = [], giornate = {};
     sv.forEach(function (x) {
       var m = x[9] || {};
-      if (m.pk && PART[m.pk]) { var gr = giornate[m.pk]; if (!gr) { gr = giornate[m.pk] = { pa: PART[m.pk], pk: m.pk, dt: +m.pk, club: [] }; righe.push(gr); } gr.club.push(x); return; }
+      if (m.pk && PART[m.pk] && !FX_PARTITA) { var gr = giornate[m.pk]; if (!gr) { gr = giornate[m.pk] = { pa: PART[m.pk], pk: m.pk, dt: +m.pk, club: [] }; righe.push(gr); } gr.club.push(x); return; }
       righe.push({ x: x, dt: x[1] || 0 });
     });
     // a parita' di giorno: la partita ITA, poi la ENG, poi il materiale del club
@@ -1220,7 +1221,7 @@
   // I reparti hanno i nomi del workspace del club su Frame.io (Season 2026-27: 1. FIRST TEAM ... 14. FANS).
   // Il reparto di un servizio viene dal ramo dell'indice (metadati_1907.ramo) e, per il Club, dalle parole
   // del percorso: e' una lettura, non la verita' della NAS. La NAS com'e' la mostra "Cartelle vere".
-  var FX = { modo: "ord", stag: "", dip: "", sub: "", via: "" };
+  var FX = { modo: "ord", stag: "", dip: "", sub: "", via: "", comp: "", par: "" }, FX_PARTITA = false;
   FX.modo = "vere";   // si parte dall'albero vero, come su Frame.io
   var FX_SCELTE = new Set(), FX_PRESI = [], FX_CHIUSA = false;
   var FX_SEL = null, FX_EVSEL = null, FX_TIT = "", FX_ORD = "data", FX_DIPS = null, FX_SUBS = null, FX_TOK = null, FX_ULTIMA = null, FX_TUTTI = false;
@@ -1295,6 +1296,14 @@
     return [!noServ && o.s.length ? n(o.s.length) + (o.s.length === 1 ? " servizio" : " servizi") : "", o.e.length ? n(o.e.length) + (o.e.length === 1 ? " partita" : " partite") + " Como TV" : "",
       o.v + o.f ? n(o.v + o.f) + (o.v + o.f === 1 ? " elemento" : " elementi") : "", o.p ? gb(o.p) : ""].filter(Boolean).join(" · ") || "vuota";
   }
+  function cartelleFxP(voci, attr, partite) {
+    if (!partite) return cartelleFx(voci, attr);
+    var cop = function (o) { return copertinaPartita(o); };
+    if (VISTA_H === "lista") return '<div style="overflow-x:auto"><table class="el-tab fx-tab"><thead><tr><th></th><th>Partita</th><th>Data</th><th>Contenuto</th><th>Peso</th></tr></thead><tbody>' + voci.map(function (o) {
+      return "<tr " + attr(o) + ' tabindex="0"><td class="fx-ico">' + cop(o) + '</td><td class="tit"><b>' + esc(o.nome) + "</b>" + datiEspn(PART[o.k]) + '</td><td class="n">' + (o.dt ? dataRip(o.dt) : "—") + '</td><td class="n">' + esc(infoG(o)) + '</td><td class="n">' + (o.p ? gb(o.p) : "—") + "</td></tr>"; }).join("") + "</tbody></table></div>";
+    return '<div class="fx-grid">' + voci.map(function (o) {
+      return '<div class="fx-card" tabindex="0" ' + attr(o) + ">" + cop(o) + '<div class="fx-t"><b title="' + esc(o.nome) + '">' + esc(o.nome) + "</b><small>" + esc(infoG(o)) + "</small></div></div>"; }).join("") + "</div>";
+  }
   function cartelleFx(voci, attr, piu, mod) {
     if (VISTA_H === "lista") return '<div style="overflow-x:auto"><table class="el-tab fx-tab"><thead><tr><th></th><th>Nome</th><th>Ultime riprese</th><th>Contenuto</th><th>Peso</th></tr></thead><tbody>' + voci.map(function (o) {
       return "<tr " + attr(o) + ' tabindex="0"><td class="fx-ico">' + mosaico(o) + '</td><td class="tit"><b>' + esc(o.nome || o.k) + "</b><small>" + esc(infoG(o).replace(/ · [^·]*B$/, "")) + '</small></td><td class="n">' + (o.dt ? dataRip(o.dt) : "—") + '</td><td class="n">' +
@@ -1309,8 +1318,56 @@
   function fxEventi(st) { return EVC.filter(function (e) { return st === "-" ? false : !st || e.stag === st; }); }
   function nomeStag(k) { return k === "-" ? "Senza stagione" : k === "" ? "Tutte le stagioni" : "Stagione " + k; }
   function fxBc(pezzi) { $("fxBc").innerHTML = pezzi.map(function (p, i) { return i === pezzi.length - 1 ? "<b>" + esc(p[0]) + "</b>" : "<a " + p[1] + ">" + esc(p[0]) + "</a><i>›</i>"; }).join(""); }
+  // LE PARTITE COME SU FRAME.IO (Goffredo, 29/09/2026): Matchday > "01. SERIE A" > "G01_UDINESE v COMO" >
+  // dentro le partite intere di Como TV (ITA, ENG) e le cartelle del club di quella partita. Solo vista:
+  // la G e' l'ordine di data tra le partite che conosciamo in quella competizione e stagione.
+  var COMP_F = [[/women'?s cup|serie a women/i, "WOMEN'S CUP"], [/serie a/i, "SERIE A"], [/champions/i, "CHAMPIONS LEAGUE"], [/coppa italia/i, "COPPA ITALIA"],
+    [/europa league/i, "EUROPA LEAGUE"], [/conference/i, "CONFERENCE LEAGUE"], [/serie b/i, "SERIE B"], [/primavera/i, "PRIMAVERA 1"], [/amichevol|friendl|pre-?season|test match/i, "FRIENDLIES"]];
+  function compFrame(c) { c = String(c || ""); for (var i = 0; i < COMP_F.length; i++) if (COMP_F[i][0].test(c)) return COMP_F[i][1]; return c ? c.toUpperCase() : "ALTRE PARTITE"; }
+  function compOrdine(c) { var i = ["SERIE A", "WOMEN'S CUP", "PRIMAVERA 1", "CHAMPIONS LEAGUE", "EUROPA LEAGUE", "CONFERENCE LEAGUE", "COPPA ITALIA", "SERIE B"].indexOf(c); return i < 0 ? (c === "FRIENDLIES" ? 90 : c === "ALTRE PARTITE" ? 99 : 50) : i; }
+  function nomeFrame(t) {
+    t = String(t || "").replace(/\s+\d+\s*[-–]\s*\d+\s*$/, "").replace(/\s+vs?\.?\s+/i, " v ").trim();
+    if (!/ v /.test(t)) { var m = t.match(/^([^\d–-]+?)\s*[-–]\s*([^\d–-]+)$/); if (m) t = m[1].trim() + " v " + m[2].trim(); }
+    return t.split(" v ").map(function (z) { return z.toUpperCase(); }).join(" v ");
+  }
+  function partiteMatchday(D, d) {
+    var per = {};
+    function g(k) { return per[k] = per[k] || { k: k, s: [], e: [], v: 0, f: 0, p: 0, dt: 0, comp: "", nome: "" }; }
+    D.s.forEach(function (x) {
+      if (subDi(x, d) !== FX.sub) return;
+      var m = x[9] || {}, dt = +m.pk || 0, o = g(dt ? String(dt) : "c:" + x[0]);
+      o.s.push(x); o.v += x[3]; o.f += x[4]; o.p += x[5]; o.dt = dt || x[1] || o.dt;
+      if (!o.comp) o.comp = m.c || (PART[m.pk] || {}).comp || (/women'?s cup/i.test(x[0]) ? "Women's Cup" : /coppa italia/i.test(x[0]) ? "Coppa Italia" : /champions|ucl/i.test(x[0]) ? "Champions League" : /friendl|amichevol|pre-?season/i.test(x[0]) ? "Amichevole" : "");
+      if (!o.nome) o.nome = dt && PART[dt] && (PART[dt].espn || {}).squadre ? "" : nomeFrame(pulisciTitolo(titoloServizio(x)));
+    });
+    D.e.forEach(function (e) { if (subEv(e, d) !== FX.sub) return; var o = g(String(e.dt)); o.e.push(e); o.dt = e.dt; o.comp = o.comp || e.x.compVista || e.x.competizione || ""; if (!o.nome && e.x.squadre && e.x.squadre.length === 2) o.nome = e.x.squadre[0].nome.toUpperCase() + " v " + e.x.squadre[1].nome.toUpperCase(); if (!o.nome) o.nome = nomeFrame(versione(e.x.titolo || e.x.partita || "").t); });
+    Object.keys(per).forEach(function (k) {
+      var o = per[k], pa = PART[k], sq = pa && pa.espn && pa.espn.squadre;
+      if (sq && sq.length === 2) { var c = sq.filter(function (z) { return z.casa; })[0] || sq[0], f = sq.filter(function (z) { return z !== c; })[0]; o.nome = c.nome.toUpperCase() + " v " + f.nome.toUpperCase(); o.comp = o.comp || pa.comp; }
+      o.comp = compFrame(o.comp);
+    });
+    var comps = {};
+    Object.keys(per).forEach(function (k) { var o = per[k]; (comps[o.comp] = comps[o.comp] || []).push(o); });
+    var nomi = Object.keys(comps).sort(function (a, b) { return compOrdine(a) - compOrdine(b) || a.localeCompare(b); });
+    return nomi.map(function (c, i) {
+      var l = comps[c].sort(function (a, b) { return (a.dt || 0) - (b.dt || 0); });
+      l.forEach(function (o, j) { o.g = "G" + ("0" + (j + 1)).slice(-2) + "_" + (o.nome || "PARTITA"); });
+      var cc = { k: c, nome: ("0" + (i + 1)).slice(-2) + ". " + c, partite: l, s: [], e: [], v: 0, f: 0, p: 0, dt: 0 };
+      l.forEach(function (o) { cc.s = cc.s.concat(o.s); cc.e = cc.e.concat(o.e); cc.v += o.v; cc.f += o.f; cc.p += o.p; cc.dt = Math.max(cc.dt, o.dt || 0); });
+      return cc;
+    });
+  }
+  function copertinaPartita(o) {
+    var pa = PART[o.k], ev = o.e.slice().sort(function (a, b) { return (a.lingua === "ENG") - (b.lingua === "ENG"); })[0];
+    var lingue = o.e.map(function (e) { return e.lingua; }).filter(function (v, i, a) { return v && a.indexOf(v) === i; }).join(" · ");
+    var fondo = [lingue ? "Como TV " + lingue : "", o.v ? n(o.v) + " video del club" : ""].filter(Boolean).join(" · ") || "vuota";
+    if (pa && pa.espn) return '<div class="fx-cop">' + graficaEspn(pa, { data: dataRip(o.dt), fondo: fondo }) + "</div>";
+    if (ev) return '<div class="fx-cop">' + grafica(ev, { data: dataRip(o.dt), fondo: fondo }) + "</div>";
+    o.top = o.comp; return mosaico(o);
+  }
   function fxDisegna() {
     if (!I) return;
+    FX_PARTITA = false;
     $("fxOrd").classList.toggle("on", FX.modo === "ord"); $("fxVere").classList.toggle("on", FX.modo === "vere");
     $("vGriglia").classList.toggle("on", VISTA_H !== "lista"); $("vLista").classList.toggle("on", VISTA_H === "lista");
     $("fxOrdina").value = FX_ORD;
@@ -1329,8 +1386,32 @@
       if (!conSotto) FX_SUBS = null;
       if (FX.sub && !subs[FX.sub]) FX.sub = "";
       pezzi.push([DIP_N[d], 'data-fxdip="' + d + '"']);
-      if (FX.sub) pezzi.push([FX.sub, ""]);
+      if (FX.sub) pezzi.push([FX.sub, 'data-fxsub="' + esc(FX.sub) + '"']);
       foglia = !FX_SUBS || !!FX.sub;
+      if (FX.sub === "Matchday") {
+        var comps = partiteMatchday(D, d), C = comps.filter(function (c) { return c.k === FX.comp; })[0];
+        if (FX.comp && !C) { FX.comp = ""; FX.par = ""; }
+        var P = C && C.partite.filter(function (o) { return o.k === FX.par; })[0];
+        if (FX.par && !P) FX.par = "";
+        if (C) pezzi.push([C.nome, 'data-fxcomp="' + esc(C.k) + '"']);
+        if (P) pezzi.push([P.g, ""]);
+        if (!P) {
+          fxBc(pezzi); fxSide(); FX_SEL = FX_EVSEL = null; FX_TIT = ""; $("fxFoglie").hidden = true;
+          var vv = C ? C.partite.slice().reverse() : comps;
+          if (C) vv.forEach(function (o) { o.nome = o.g; o.top = C.nome; });
+          else vv.forEach(function (o) { o.top = DIP_N[d] + " · Matchday"; });
+          $("fxBody").innerHTML = '<p class="fx-conta">' + (C ? n(vv.length) + (vv.length === 1 ? " partita" : " partite") : n(vv.length) + (vv.length === 1 ? " competizione" : " competizioni")) + "</p>" +
+            (vv.length ? cartelleFxP(vv, C ? function (o) { return 'data-fxpar="' + esc(o.k) + '"'; } : function (o) { return 'data-fxcomp="' + esc(o.k) + '"'; }, !!C) : '<div class="vuoto">Nessuna partita.</div>');
+          miniatureDi($("fxBody"));
+          return;
+        }
+        fxBc(pezzi); fxSide();
+        var sP = new Set(P.s.map(function (x) { return x[0]; })), eP = P.e;
+        FX_SEL = function (x) { return sP.has(x[0]); }; FX_EVSEL = function (e) { return eP.indexOf(e) >= 0; };
+        FX_TIT = P.g; FX_PARTITA = true;
+        $("fxBody").innerHTML = ""; $("fxFoglie").hidden = false; disegnaHome();
+        return;
+      }
     }
     fxBc(pezzi); fxSide();
     if (foglia) {
@@ -1396,19 +1477,33 @@
     if (!FX_DIPS || FX_DIPS_K !== k) { FX_DIPS = gruppi(fxServizi(FX.stag), fxEventi(FX.stag), dipDi, dipEv); FX_DIPS_K = k; }
     return FX_DIPS;
   }
+  var FX_APERTE = {};
+  function gruppiStagioni(nomi) {
+    var o = ordinePrimoLivello(nomi), per = {};
+    o.stagioni.forEach(function (x) { var a = annoStagione(x); (per[a] = per[a] || []).push(x); });
+    return { stagioni: Object.keys(per).sort(function (a, b) { return b - a; }).map(function (a) {
+      return { via: "\u00a7" + a, anno: +a, nome: "Stagione " + a + "/" + String(+a + 1).slice(2), cartelle: per[a].sort(function (x, y) { return (/pre-?season/i.test(x) ? 1 : 0) - (/pre-?season/i.test(y) ? 1 : 0) || x.localeCompare(y); }) }; }), altre: o.altre };
+  }
   function fxSide() {
     var h = "", vere = FX.modo === "vere";
     var top = {}; I.cartelle.forEach(function (r) { var t = r[0].split("/")[0]; top[t] = (top[t] || 0) + r[4] + r[5]; });
     ((FX_ULTIMA && FX_ULTIMA.via === "" && FX_ULTIMA.cartelle) || []).forEach(function (c) { if (!(c.nome in top)) top[c.nome] = 0; });
     var cur = vere ? FX.via.split("/") : [];
+    // LE STAGIONI COME NODI (Goffredo, 29/09/2026: "non si capisce"): "Stagione 2026/27" raggruppa le cartelle
+    // vere di quella stagione (2026-2027 Season, Pre-season 26-27), ognuna col suo nome esatto; solo vista
+    var gr = gruppiStagioni(Object.keys(top));
+    var ramo = function (t, liv) {
+      var r = '<button class="' + liv + (vere && FX.via === t ? " on" : "") + '" data-fxvia="' + esc(t) + '"><span class="fx-ic">' + SVG_CART + '</span><span class="fx-nome" title="' + esc(t) + '">' + esc(nomeVista(t)) + '</span><span class="fx-n">' + (top[t] ? n(top[t]) : "") + "</span></button>";
+      if (cur[0] === t) for (var i = 1; i < cur.length; i++) { var v = cur.slice(0, i + 1).join("/"); r += '<button class="liv3' + (FX.via === v ? " on" : "") + '" data-fxvia="' + esc(v) + '" style="padding-left:' + (46 + i * 10) + 'px"><span class="fx-nome">' + esc(cur[i]) + "</span></button>"; }
+      return r;
+    };
     h += '<div class="fx-g"><h3>COMOTV - FRAME</h3><button class="' + (vere && FX.via === "" ? "on" : "") + '" data-fxvia=""><span class="fx-ic">' + SVG_CART + '</span><span class="fx-nome">Tutte le cartelle</span></button>' +
-      voceLista(Object.keys(top)).map(function (vv) {
-        var t = vv.nome;
-        if (t === "\u0000") return '<hr class="fx-sep" aria-hidden="true">';
-        var r = '<button class="liv2' + (vv.figlio ? " figlio" : "") + (vere && FX.via === t ? " on" : "") + '" data-fxvia="' + esc(t) + '">' + (vv.figlio ? '<span class="fx-ic">\u21B3</span>' : '<span class="fx-ic">' + SVG_CART + "</span>") + '<span class="fx-nome" title="' + esc(t) + '">' + esc(nomeVista(t)) + '</span><span class="fx-n">' + (top[t] ? n(top[t]) : "") + "</span></button>";
-        if (cur[0] === t) for (var i = 1; i < cur.length; i++) { var v = cur.slice(0, i + 1).join("/"); r += '<button class="liv3' + (FX.via === v ? " on" : "") + '" data-fxvia="' + esc(v) + '" style="padding-left:' + (32 + i * 10) + 'px"><span class="fx-nome">' + esc(cur[i]) + "</span></button>"; }
-        return r;
-      }).join("") + "</div>";
+      gr.stagioni.map(function (g) {
+        var dentro = g.cartelle.indexOf(cur[0]) >= 0 || FX.via === g.via, aperta = FX_APERTE[g.via] !== undefined ? FX_APERTE[g.via] : dentro;
+        return '<button class="liv2 stag' + (vere && FX.via === g.via ? " on" : "") + '" data-fxvia="' + g.via + '"><span class="fx-ic" data-fxapri="' + g.via + '" title="' + (aperta ? "chiudi" : "apri") + '">' + (aperta ? "▾" : "▸") + '</span><span class="fx-nome">' + esc(g.nome) + '</span><span class="fx-n">' + n(g.cartelle.reduce(function (t, c) { return t + (top[c] || 0); }, 0)) + "</span></button>" +
+          (aperta ? g.cartelle.map(function (c) { return ramo(c, "liv3 in-stag"); }).join("") : "");
+      }).join("") + (gr.stagioni.length && gr.altre.length ? '<hr class="fx-sep" aria-hidden="true">' : "") +
+      gr.altre.map(function (c) { return ramo(c, "liv2"); }).join("") + "</div>";
     var dips = dipsDellaStagione(), stg = Object.keys(STAGIONI).sort().reverse().concat(["-", ""]);
     h += '<div class="fx-g"><h3>Collezioni</h3><select id="fxStagSel" class="fx-stag" aria-label="stagione delle collezioni">' + stg.map(function (k) { return '<option value="' + k + '"' + (FX.stag === k ? " selected" : "") + ">" + esc(nomeStag(k)) + "</option>"; }).join("") + "</select>" +
       '<button class="' + (!vere && !FX.dip ? "on" : "") + '" data-fxstag="' + FX.stag + '"><span class="fx-ic">' + SVG_COLL + '</span><span class="fx-nome">Tutti i reparti</span></button>' +
@@ -1435,7 +1530,17 @@
   function fxVere() {
     FX_SEL = FX_EVSEL = null; $("fxFoglie").hidden = true;
     var via = FX.via, tok = FX_TOK = {};
-    var pz = [["COMOTV - FRAME", 'data-fxvia=""']]; if (via) via.split("/").forEach(function (p, i, a) { pz.push([i ? p : nomeVista(p), 'data-fxvia="' + esc(a.slice(0, i + 1).join("/")) + '"']); });
+    var top0 = {}; I.cartelle.forEach(function (r) { top0[r[0].split("/")[0]] = 1; });
+    var GS = gruppiStagioni(Object.keys(top0)), gq = GS.stagioni.filter(function (g) { return g.via === via || g.cartelle.indexOf(via.split("/")[0]) >= 0; })[0];
+    var pz = [["COMOTV - FRAME", 'data-fxvia=""']]; if (gq) pz.push([gq.nome, 'data-fxvia="' + gq.via + '"']);
+    if (via && via.charAt(0) !== "\u00a7") via.split("/").forEach(function (p, i, a) { pz.push([i ? p : nomeVista(p), 'data-fxvia="' + esc(a.slice(0, i + 1).join("/")) + '"']); });
+    // il nodo "Stagione 2026/27": non e' una cartella della NAS, raccoglie quelle di quella stagione
+    if (via.charAt(0) === "\u00a7") {
+      fxBc(pz); fxSide(); $("fxAzioni").hidden = true;
+      FX_ULTIMA = { via: via, cartelle: gq ? gq.cartelle.map(function (c) { return { nome: c }; }) : [], file: [], virtuale: true };
+      fxVereDisegna({ via: "", cartelle: FX_ULTIMA.cartelle, file: [], stagione: gq });
+      return;
+    }
     fxBc(pz); fxSide();
     $("fxAzioni").hidden = false;
     $("fxAzioni").innerHTML = '<button type="button" data-fxnuova>+ Nuova cartella</button>' + (via ? '<button type="button" data-fxmod="' + esc(via) + '">Rinomina questa cartella</button><button type="button" data-fxcerca>Cerca qui dentro</button>' : "") +
@@ -1444,27 +1549,32 @@
     fxScelti();
     if (!(FX_ULTIMA && FX_ULTIMA.via === via)) $("fxBody").innerHTML = '<div class="attesa">Leggo la cartella sulla NAS…</div>';
     fetch(BASE + "cartelle?v=" + encodeURIComponent(via), { cache: "no-store" }).then(function (r) { if (!r.ok) throw r.status; return r.json(); }).then(function (j) {
-      if (tok !== FX_TOK) return;
+      // se nel frattempo si e' andati altrove (un link a una collezione, un altro clic) non si ricopre la pagina
+      if (tok !== FX_TOK || FX.modo !== "vere" || FX.via !== via) return;
       FX_ULTIMA = j; fxSide(); fxVereDisegna(j);
     }).catch(function (s) {
-      if (tok !== FX_TOK) return;
+      if (tok !== FX_TOK || FX.modo !== "vere" || FX.via !== via) return;
       $("fxBody").innerHTML = '<div class="vuoto">' + (s === 404 ? "Questa cartella non c’è più: forse è stata spostata o rinominata." : "Non riesco a leggere la NAS del club in questo momento.") + ' <a data-fxvia="" style="cursor:pointer;color:var(--oro2)">Torna all’inizio</a></div>';
     });
   }
   function fxVereDisegna(j) {
     var via = j.via || "";
-    var voci = (j.cartelle || []).map(function (c) {
-      var p = (via ? via + "/" : "") + c.nome, o = { k: c.nome, nome: via ? c.nome : nomeVista(c.nome), via: p, s: [], e: [], v: 0, f: 0, p: 0, dt: 0 };
+    var gr = null, gs = null;
+    if (!via && !j.stagione) { gr = gruppiStagioni((j.cartelle || []).map(function (c) { return c.nome; })); var inStag = {}; gr.stagioni.forEach(function (g) { g.cartelle.forEach(function (c) { inStag[c] = 1; }); }); j = Object.assign({}, j, { cartelle: (j.cartelle || []).filter(function (c) { return !inStag[c.nome]; }) }); }
+    var conta = function (p, o) {
       (I.servizi || []).forEach(function (x) { if (x[0] === p || x[0].indexOf(p + "/") === 0) { o.s.push(x); o.dt = Math.max(o.dt, x[1] || 0); } });
       I.cartelle.forEach(function (r) { if (r[0] === p || r[0].indexOf(p + "/") === 0) { o.v += r[4]; o.f += r[5]; o.p += r[6] || 0; } });
       return o;
-    });
-    voci = ordina(voci);
+    };
+    var nodi = (gr ? gr.stagioni : []).map(function (g) { var o = { k: g.via, nome: g.nome, via: g.via, stagione: 1, top: "Stagione", s: [], e: [], v: 0, f: 0, p: 0, dt: 0 }; g.cartelle.forEach(function (c) { conta(c, o); }); o.quante = g.cartelle.length; return o; });
+    var voci = (j.cartelle || []).map(function (c) { var p = (via ? via + "/" : "") + c.nome; return conta(p, { k: c.nome, nome: via ? c.nome : nomeVista(c.nome), via: p, s: [], e: [], v: 0, f: 0, p: 0, dt: 0 }); });
+    voci = nodi.concat(ordina(voci));
+
     var ff = (j.file || []).slice().sort(FX_ORD === "peso" ? function (a, b) { return b.peso - a.peso; } : function (a, b) { return a.nome.localeCompare(b.nome, "it", { numeric: true }); });
     var h = '<p class="fx-conta">' + n(voci.length) + (voci.length === 1 ? " cartella" : " cartelle") + (ff.length ? " · " + n(ff.length) + " file" : "") + "</p>";
-    if (voci.length) h += cartelleFx(voci, function (o) { return 'data-fxvia="' + esc(o.via) + '" draggable="true"' + (FX_SCELTE.has(o.via) ? ' class="fx-sel"' : ""); },
-      function (o) { return o.v + o.f ? bottonePiu(o.via, true) : ""; },
-      function (o) { return '<button type="button" class="mini fx-mod" data-fxmod="' + esc(o.via) + '">Rinomina</button>'; });
+    if (voci.length) h += cartelleFx(voci, function (o) { return 'data-fxvia="' + esc(o.via) + '"' + (o.stagione ? "" : ' draggable="true"') + (FX_SCELTE.has(o.via) ? ' class="fx-sel"' : ""); },
+      function (o) { return o.v + o.f && !o.stagione ? bottonePiu(o.via, true) : ""; },
+      function (o) { return o.stagione ? "" : '<button type="button" class="mini fx-mod" data-fxmod="' + esc(o.via) + '">Rinomina</button>'; });
     if (ff.length) {
       var max = FX_TUTTI ? 99999 : 120;
       h += '<div class="fx-sez">File</div><div class="fx-file">' + ff.slice(0, max).map(function (f) {
@@ -1520,24 +1630,27 @@
     if ((t = e.target.closest("[data-fxracc]"))) { FX_TUTTI = true; fxSide(); return; }
     // la freccetta apre e chiude la stagione (come su Frame.io); il nome ci porta dentro,
     // e sul nome della stagione gia' aperta, senza reparto scelto, la richiude
+    if ((t = e.target.closest("#fxSide [data-fxapri]"))) { var g0 = t.dataset.fxapri, ora = t.textContent === "▾"; FX_APERTE[g0] = !ora; fxSide(); return; }
     if ((t = e.target.closest("#fxSide [data-fxfreccia]"))) {
       if (FX.stag === t.dataset.fxfreccia) { FX_CHIUSA = !FX_CHIUSA; fxSide(); return; }
       FX_CHIUSA = false; FX.modo = "ord"; FX.stag = t.dataset.fxfreccia; FX.dip = ""; FX.sub = ""; fxVai(); return;
     }
-    if ((t = e.target.closest("[data-fxstag]"))) { FX_CHIUSA = false; FX.modo = "ord"; FX.stag = t.dataset.fxstag; FX.dip = ""; FX.sub = ""; fxVai(); return; }
-    if ((t = e.target.closest("[data-fxdip]"))) { FX_CHIUSA = false; FX.dip = t.dataset.fxdip; FX.sub = ""; fxVai(); return; }
-    if ((t = e.target.closest("[data-fxsub]"))) { FX.sub = t.dataset.fxsub; fxVai(); return; }
+    if ((t = e.target.closest("[data-fxstag]"))) { FX_CHIUSA = false; FX.modo = "ord"; FX.stag = t.dataset.fxstag; FX.dip = ""; FX.sub = ""; FX.comp = ""; FX.par = ""; fxVai(); return; }
+    if ((t = e.target.closest("[data-fxcomp]"))) { FX.modo = "ord"; FX.comp = t.dataset.fxcomp; FX.par = ""; fxVai(); return; }
+    if ((t = e.target.closest("[data-fxpar]"))) { FX.modo = "ord"; FX.par = t.dataset.fxpar; fxVai(); return; }
+    if ((t = e.target.closest("[data-fxdip]"))) { FX.comp = ""; FX.par = ""; FX_CHIUSA = false; FX.dip = t.dataset.fxdip; FX.sub = ""; fxVai(); return; }
+    if ((t = e.target.closest("[data-fxsub]"))) { FX.comp = ""; FX.par = ""; FX.sub = t.dataset.fxsub; fxVai(); return; }
     if ((t = e.target.closest("[data-fxvia]"))) { FX.modo = "vere"; FX.via = t.dataset.fxvia; fxVai(); return; }
     if ((t = e.target.closest("#fxBody [data-rev]"))) { apriFileFx(t.dataset.rev); return; }
     if ((t = e.target.closest("[data-fxfile]"))) { if (RX_VID.test(t.dataset.fxfile)) apriFileInEditing(t.dataset.fxfile); else apriFileFx(t.dataset.fxfile); return; }
     if ((t = e.target.closest("[data-fxscorc]"))) {
       if (t.dataset.fxscorc === "menzioni") { caricaMenzioni().then(apriMenzioni); return; }
       if (t.dataset.fxscorc === "volti") { $("apriVolti").click(); window.scrollTo(0, 0); return; }
-      FX.modo = "ord"; FX.dip = "ft"; FX.sub = "Matchday"; fxVai(); return;
+      FX.modo = "ord"; FX.dip = "ft"; FX.sub = "Matchday"; FX.comp = ""; FX.par = ""; fxVai(); return;
     }
   });
   $("fxBody").addEventListener("keydown", function (e) { if (e.key === "Enter" && e.target.matches(".fx-card,.ff,tr[tabindex]")) e.target.click(); });
-  $("fxSide").addEventListener("change", function (e) { if (e.target.id === "fxStagSel") { FX.modo = "ord"; FX.stag = e.target.value; FX.dip = ""; FX.sub = ""; fxVai(); } });
+  $("fxSide").addEventListener("change", function (e) { if (e.target.id === "fxStagSel") { FX.modo = "ord"; FX.stag = e.target.value; FX.dip = ""; FX.sub = ""; FX.comp = ""; FX.par = ""; fxVai(); } });
   // ── TRASCINA PER SPOSTARE (Goffredo, 29/09/2026: "spostare cartelle e file tipo drag and drop") ──
   // Si prende una cartella o un file (o tutti quelli scelti con ⌘/Ctrl+clic, se e' tra quelli) e si
   // lascia su una cartella: nel riquadro, nel percorso in alto o nella colonna a sinistra. Si conferma,
@@ -1551,7 +1664,7 @@
     if (FX.modo !== "vere" || !FX_PRESI.length) return null;
     var b = e.target.closest && e.target.closest("#fxBody [data-fxvia], #fxBc [data-fxvia], #fxSide [data-fxvia]");
     if (!b) return null;
-    var dest = b.dataset.fxvia;
+    var dest = b.dataset.fxvia; if (dest.charAt(0) === "\u00a7") return null;
     // non dentro se stessi, non dove gia' sono
     if (FX_PRESI.some(function (v) { return dest === v || dest.indexOf(v + "/") === 0; })) return null;
     if (FX_PRESI.every(function (v) { return v.split("/").slice(0, -1).join("/") === dest; })) return null;
