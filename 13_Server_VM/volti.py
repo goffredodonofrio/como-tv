@@ -52,7 +52,9 @@ while True:
     while len(tempi) <= i and p.poll() is None: pass
     t = tempi[i] if i < len(tempi) else None
     if t is not None and da > 0: t += da
-    print(json.dumps({"t": None if t is None else round(t, 2), "n": 0 if f is None else len(f), "v": v}), flush=True)
+    # h: il volto piu' grande (pixel su 540), per riconoscere un primo piano anche senza foto
+    h = 0 if f is None else int(max(x[3] for x in f))
+    print(json.dumps({"t": None if t is None else round(t, 2), "n": 0 if f is None else len(f), "h": h, "v": v}), flush=True)
     i += 1
 # un file che non si apre (o si interrompe) non e' "nessun volto": e' un errore
 p.wait()

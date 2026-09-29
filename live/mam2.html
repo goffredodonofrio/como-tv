@@ -1083,6 +1083,14 @@
      velato = byte gia' arrivati, file a meta' compresi. */
   .copia{border:1px solid rgba(201,162,75,.45);border-radius:12px;padding:12px 16px;margin:10px 0 18px;background:rgba(201,162,75,.06);display:flex;flex-direction:column;gap:8px;max-width:900px;}
   .copia-testa{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .copia.riassunto{gap:10px;padding:14px 18px;border-color:var(--riga2);background:rgba(245,241,230,.03);}
+  .ra-riga{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--ivory2);}
+  .ra-riga b{font-family:'Mazzard',sans-serif;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--oro);margin-right:4px;}
+  .ra-riga strong{color:var(--oro2);font:600 15px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;}
+  .ra-comp{display:flex;flex-wrap:wrap;gap:6px;}
+  .ra-comp button{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;border:1px solid var(--riga2);background:transparent;color:var(--ivory2);font:600 12px/1 'DM Sans',sans-serif;cursor:pointer;}
+  .ra-comp button b{font:600 11px/1 ui-monospace,Menlo,monospace;color:var(--fumo);}
+  .ra-comp button:hover,.ra-comp button:focus-visible{border-color:rgba(201,162,75,.6);color:var(--ivory);outline:none;}
   .copia-testa b{font-family:'Mazzard',sans-serif;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--oro);}
   .copia-testa em{font-style:normal;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--riga2);color:var(--ivory2);}
   .copia-testa em.va{border-color:rgba(124,217,146,.6);color:#7CD992;} .copia-testa em.ferma{border-color:rgba(240,169,59,.6);color:#F0A93B;} .copia-testa em.finita{border-color:var(--oro);color:var(--oro2);}
@@ -7470,6 +7478,16 @@
       "Sulla NAS " + num(d.partiteCasa) + " di " + num(tot) + " · ESPN " + num(cs.espn) + " · cronometro " + num(cs.cronometro) +
       " · tabellone " + num(cs.tabellone) + " · boati " + num(cs.boati) + " · rifinite del tutto " + num(cs.finite);
     var perc = tot ? usa / tot * 100 : 0;
+    // TUTTO PRONTO: niente barra, un riassunto di cosa c'e' (29/09/2026, Goffredo:
+    // "togliamo questo, piuttosto un piccolo riassunto di cio' che si ha a disposizione")
+    if (!nonAncora && agFinite && !d.errore) {
+      mini.hidden = true;
+      var h = riassuntoArchivio(usa);
+      if (!h) { c.hidden = true; return; }
+      c.hidden = false; c.className = "copia riassunto"; c.innerHTML = h;
+      c.querySelectorAll("[data-rcomp]").forEach(function(b){ b.addEventListener("click", function(){ aggiungiGettone({ t: "c", v: b.dataset.rcomp, eti: b.dataset.rcomp }); disegnaGettoni(); cerca(el("cercaLib").value); }); });
+      return;
+    }
     c.hidden = false; c.className = "copia compatta " + st;
     c.innerHTML = '<div class="copia-testa"><b>Archivio</b><em class="' + st + '">' + etichetta + '</em>' +
         '<span class="copia-num" title="' + esc(dettaglio) + '"><strong>' + num(usa) + '</strong> utilizzabili' +
@@ -7487,6 +7505,25 @@
     mini.style.color = "";
   }
 
+  // IL RIASSUNTO DELL'ARCHIVIO: partite, ore, Como, stagioni, le competizioni
+  // piu' ricche (un clic = il filtro). Tutto da EVENTI, gia' in pagina
+  function riassuntoArchivio(usa){
+    if (!EVENTI.length) return "";
+    var num = function(n){ return (n || 0).toLocaleString("it-IT"); };
+    var ore = 0, como = 0;
+    EVENTI.forEach(function(x){ ore += (+x.durata || 0) / 3600; if (/\bcomo\b/i.test([x.partita, (x.squadre || []).map(function(s){ return s.nome; }).join(" ")].join(" "))) como++; });
+    var st = stagioniNote(), comp = compNote();
+    var stag = st.length ? (st.length > 1 ? st[st.length - 1].nome + " – " + st[0].nome : st[0].nome) : "";
+    return '<div class="ra-riga"><b>Archivio</b>' +
+      '<span><strong>' + num(usa || EVENTI.length) + '</strong> partite</span>' +
+      (ore ? '<span><strong>' + num(Math.round(ore)) + '</strong> ore di video</span>' : '') +
+      '<span><strong>' + num(como) + '</strong> del Como</span>' +
+      '<span><strong>' + num(comp.length) + '</strong> competizioni</span>' +
+      (stag ? '<span>stagioni <strong>' + esc(stag) + '</strong></span>' : '') + '</div>' +
+      '<div class="ra-comp">' + comp.slice(0, 8).map(function(c){
+        return '<button type="button" data-rcomp="' + esc(c.nome) + '" title="cerca in ' + esc(c.nome) + '"><span class="gt-dot" style="background:' + coloreComp(c.nome) + '"></span>' + esc(compBreve(c.nome)) + '<b>' + num(c.n) + '</b></button>';
+      }).join("") + '</div>';
+  }
   // nella Libreria si chiede ogni 5 secondi (il ponte ripesa solo i file a meta'),
   // altrove basta il bottoncino in alto; a scheda nascosta non si chiede niente
   var COPIA_PRIMA = true;
