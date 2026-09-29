@@ -386,6 +386,10 @@
   .fx-scelti{display:inline-flex;align-items:center;gap:8px;color:var(--oro2);font-weight:600;}
   .fx-sez{font:700 10px/1 'Mazzard',sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--fumo);margin:22px 0 10px;}
   @media (max-width:860px){ .fx{grid-template-columns:1fr;} .fx-side{position:static;max-height:none;border-right:0;border-bottom:1px solid var(--riga);} .fx-main{padding:12px;} }
+  .lingua{display:inline-block;vertical-align:middle;font:800 10.5px/1 'Mazzard',sans-serif;letter-spacing:.08em;padding:3px 6px 2px;border-radius:4px;color:#fff;background:#1F7A4D;}
+  .lingua.eng{background:#2456B8;}
+  .el-graf{position:relative;display:inline-block;} .el-graf .lingua{position:absolute;right:3px;bottom:3px;font-size:9px;padding:2px 4px 1px;}
+  .card .mini .lingua.grande{position:absolute;right:8px;top:8px;z-index:3;font-size:13px;padding:5px 8px 4px;box-shadow:0 2px 6px rgba(0,0,0,.4);}
   .el-tab{width:100%;border-collapse:collapse;}
   .el-tab th{font:700 10px/1 'Mazzard',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--fumo);text-align:left;padding:10px 10px;border-bottom:1px solid var(--riga);}
   .el-tab td{padding:8px 10px;border-bottom:1px solid var(--riga);vertical-align:middle;}
@@ -938,17 +942,23 @@
         var sotto = x.studio ? "Football Show" : ramo === "Academy" ? ((testo.match(/\bu ?(1\d|2[0-3])\b/i) ? "Under " + testo.match(/\bu ?(1\d|2[0-3])\b/i)[1] : /primavera/i.test(testo) ? "Primavera" : "Academy")) : "";
         return { ev: 1, x: x, dt: dt, stag: dt ? stagioneDi(dt) : "", ramo: ramo, sotto: sotto, peso: x.peso || 0 };
       }).filter(function (e) { return e.dt; });
-      // la stessa partita in piu' versioni (ITA, ENG, AUDIO ONLY): una riga sola, con la versione che ha il risultato
+      // ITALIANO E INGLESE (Goffredo, 29/09/2026: "le partite del Como italiano e inglese quando ci
+      // sono, con la label chiara"): una riga per versione, ITA o ENG ben visibile. Solo quelle sulla
+      // NAS (si aprono nell'Editing); l'AUDIO ONLY non e' una versione da guardare e resta fuori.
+      // Il risultato manca spesso alla versione inglese: si prende da quella italiana.
       var perK = {}, uniche = [];
       EVC.forEach(function (e) {
-        var x = e.x, nomi = (x.squadre || []).map(function (q) { return norm(q.nome); }).sort().join("|");
+        var x = e.x; if (x.inCasa === false || x.s3) return;
+        var vv = versione(x.titolo || x.partita || "").v, vo = String((x.voce && x.voce.lingua) || "").toLowerCase();
+        if (/AUDIO/.test(vv)) return;
+        e.lingua = /ENG|ING|EN\b/.test(vv) || /^en/.test(vo) ? "ENG" : "ITA";
+        var nomi = (x.squadre || []).map(function (q) { return norm(q.nome); }).sort().join("|");
         var k = e.dt + "|" + (nomi || norm(versione(x.titolo || x.partita || "").t));
-        var g = perK[k];
-        if (!g) { g = perK[k] = e; e.versioni = []; uniche.push(e); }
-        else if (!g.x.ris && x.ris) { e.versioni = g.versioni; perK[k] = e; uniche[uniche.indexOf(g)] = e; g = e; }
-        var v = versione(x.titolo || x.partita || "").v || (x.voce && x.voce.lingua) || "";
-        if (v && g.versioni.indexOf(v) < 0) g.versioni.push(v);
+        var g = perK[k] = perK[k] || {};
+        if (g[e.lingua]) { if (!g[e.lingua].x.ris && x.ris) uniche[uniche.indexOf(g[e.lingua])] = g[e.lingua] = e; return; }
+        g[e.lingua] = e; uniche.push(e);
       });
+      Object.keys(perK).forEach(function (k) { var g = perK[k], r = (g.ITA && g.ITA.x.ris) || (g.ENG && g.ENG.x.ris); ["ITA", "ENG"].forEach(function (l) { if (g[l] && !g[l].x.ris && r) g[l].ris = r; }); });
       EVC = uniche;
       if (I) { disegnaAlbero(); fxDisegna(); }
     }).catch(function () {});
@@ -999,15 +1009,16 @@
     // una riga per partita: la partita di Como TV con dentro il materiale del club di quel giorno;
     // le giornate del club senza la registrazione di Como TV diventano righe partita dai dati ESPN
     var ev = partiteVisibili().map(function (e) { return { ev: 1, e: e, dt: e.dt, club: [] }; });
-    var perGiorno = {}; ev.forEach(function (r) { (perGiorno[r.dt] = perGiorno[r.dt] || []).push(r); });
     var righe = [], giornate = {};
     sv.forEach(function (x) {
-      var m = x[9] || {}, g = x[1], cand = (perGiorno[g] || []).filter(function (r) { return r.e.ramo === ramoDi(x) || (m.pk && r.e.ramo === "Prima squadra"); })[0];
-      if (cand) { cand.club.push(x); return; }
+      var m = x[9] || {};
       if (m.pk && PART[m.pk]) { var gr = giornate[m.pk]; if (!gr) { gr = giornate[m.pk] = { pa: PART[m.pk], pk: m.pk, dt: +m.pk, club: [] }; righe.push(gr); } gr.club.push(x); return; }
       righe.push({ x: x, dt: x[1] || 0 });
     });
-    righe = righe.concat(ev).sort(function (a, b) { return (b.dt || 0) - (a.dt || 0); });
+    // a parita' di giorno: la partita ITA, poi la ENG, poi il materiale del club
+    var peso0 = function (r) { return r.ev ? (r.e.lingua === "ENG" ? 1 : 0) : 2; };
+    righe = righe.concat(ev).sort(function (a, b) { return (b.dt || 0) - (a.dt || 0) || peso0(a) - peso0(b); });
+    RIGHE_H = righe;
     if (FX_ORD !== "data") {
       var nomeR = function (r) { return norm(r.x ? titoloServizio(r.x) : r.e ? versione(r.e.x.titolo || r.e.x.partita || "").t : r.pa ? titoloPartita(r.pa) : ""); };
       var pesoR = function (r) { return r.x ? r.x[5] : (r.club || []).reduce(function (s, x) { return s + x[5]; }, 0) + (r.e ? r.e.peso || 0 : 0); };
@@ -1019,33 +1030,44 @@
     $("tempoConto").textContent = n(sv.length) + (sv.length === 1 ? " servizio" : " servizi") + (nPart ? " · " + n(nPart) + " partite" : "");
     var max = APERTI.lista ? 99999 : 150;
     function matClub(cl) { var v = 0, f = 0, p = 0; cl.forEach(function (x) { v += x[3]; f += x[4]; p += x[5]; }); return { v: v, f: f, p: p }; }
-    function riga(r) {
-      if (r.ev || r.pa) {
-        var mc = matClub(r.club), e = r.e, x = e ? e.x : null, pa = r.pa || PART[r.club[0] && (r.club[0][9] || {}).pk], pk = r.pk || (r.club[0] && (r.club[0][9] || {}).pk) || "";
-        var titolo = x ? versione(x.titolo || x.partita || "").t : (typeof titoloPartita === "function" ? titoloPartita(pa) : pa.avv);
-        var comp = x ? (x.compVista || x.competizione || "") : (pa.comp || "");
-        var ramo = e ? e.ramo : "Prima squadra";
-        var vers = e && e.versioni && e.versioni.length ? "Como TV: " + e.versioni.join(" · ") : "";
-        var sotto = [r.club.length ? "materiale del club: " + [mc.v ? n(mc.v) + " video" : "", mc.f ? n(mc.f) + " foto" : ""].filter(Boolean).join(" · ") : (x && x.studio ? "Como TV · studio" : "solo la registrazione di Como TV"), vers].filter(Boolean).join(" · ");
-        return '<tr class="srv-r el-part"' + (pk && PART[pk] ? ' data-pk="' + esc(pk) + '"' : "") + (r.club.length ? ' data-cart="' + esc(r.club[0][0]) + '"' : "") + ">" +
-          '<td class="anteprima">' + (x && !x.ris && !x.studio && PART[r.dt] ? graficaEspn(PART[r.dt]) : x ? grafica(e) : graficaEspn(pa)) + '</td><td class="tit"><b>' + esc(titolo) + "</b><small>" + esc(sotto) + "</small></td>" +
-          "<td>" + bollino(comp || ramo, ramo) + "</td>" + '<td class="n">' + dataRip(r.dt) + '</td><td class="n">' + (x && x.durata ? durataH(x.durata) : "") + "</td>" +
-          '<td class="n">' + (r.club.length ? n(mc.v) + " video" : "—") + (x ? '<span class="segno-tv" title="c\'e\' la registrazione nel MAM di Como TV">COMO TV</span>' : "") + '</td><td class="n">' + gb(mc.p || (e ? e.peso : 0)) + "</td></tr>";
+    // la lingua della registrazione di Como TV, ben visibile (ITA o ENG)
+    function lingua(e) { return '<span class="lingua ' + (e.lingua === "ENG" ? "eng" : "ita") + '" title="' + (e.lingua === "ENG" ? "telecronaca in inglese" : "telecronaca in italiano") + '">' + (e.lingua === "ENG" ? "ENG" : "ITA") + "</span>"; }
+    function graficaEv(e) { var x = e.x; if (!x.ris && !x.studio && PART[e.dt]) return graficaEspn(PART[e.dt]); return grafica({ x: x.ris || !e.ris ? x : Object.assign({}, x, { ris: e.ris }) }); }
+    function riga(r, i) {
+      if (r.ev) {
+        var e = r.e, x = e.x, comp = x.compVista || x.competizione || "";
+        return '<tr class="srv-r el-part" data-ri="' + i + '" tabindex="0" title="Apri nell’Editing del Como 1907">' +
+          '<td class="anteprima"><div class="el-graf">' + graficaEv(e) + lingua(e) + '</div></td><td class="tit"><b>' + esc(versione(x.titolo || x.partita || "").t) + " " + lingua(e) + "</b><small>" + (x.studio ? "Como TV · studio" : "la partita intera di Como TV, telecronaca " + (e.lingua === "ENG" ? "in inglese" : "in italiano")) + "</small></td>" +
+          "<td>" + bollino(comp || e.ramo, e.ramo) + "</td>" + '<td class="n">' + dataRip(r.dt) + '</td><td class="n">' + (x.durata ? durataH(x.durata) : "") + "</td>" +
+          '<td class="n"><span class="segno-tv" title="la registrazione del MAM di Como TV">COMO TV</span></td><td class="n">' + gb(e.peso || 0) + "</td></tr>";
       }
-      var y = r.x, m = y[9] || {}, parti = y[0].split("/");
-      return '<tr class="srv-r" data-cart="' + esc(y[0]) + '"><td class="anteprima"><div class="el-mini"' + (y[7] ? ' data-mini="' + esc(y[7]) + '"' : "") + '><span class="foto"></span></div></td>' +
+      if (r.pa) {
+        var mc = matClub(r.club), pa = r.pa;
+        return '<tr class="srv-r el-part" data-ri="' + i + '" tabindex="0" title="Apri nell’Editing del Como 1907">' +
+          '<td class="anteprima">' + graficaEspn(pa) + '</td><td class="tit"><b>' + esc(titoloPartita(pa)) + "</b><small>materiale del club: " + esc([mc.v ? n(mc.v) + " video" : "", mc.f ? n(mc.f) + " foto" : ""].filter(Boolean).join(" · ")) + " · " + n(r.club.length) + (r.club.length === 1 ? " servizio" : " servizi") + "</small></td>" +
+          "<td>" + bollino(pa.comp || "Prima squadra", "Prima squadra") + '</td><td class="n">' + dataRip(r.dt) + '</td><td class="n"></td>' +
+          '<td class="n">' + n(mc.v) + ' video</td><td class="n">' + gb(mc.p) + "</td></tr>";
+      }
+      var y = r.x, parti = y[0].split("/");
+      return '<tr class="srv-r" data-ri="' + i + '" data-cart="' + esc(y[0]) + '" tabindex="0" title="Apri nell’Editing del Como 1907"><td class="anteprima"><div class="el-mini"' + (y[7] ? ' data-mini="' + esc(y[7]) + '"' : "") + '><span class="foto"></span></div></td>' +
         '<td class="tit"><b>' + esc(titoloServizio(y)) + "</b><small>" + esc(parti.slice(0, -1).join(" › ")) + "</small></td>" +
         "<td>" + bollino(sottoDi(y) || ramoDi(y), ramoDi(y)) + '</td><td class="n">' + (y[1] ? dataRip(y[1]) : "—") + '</td><td class="n"></td>' +
         '<td class="n">' + [y[3] ? n(y[3]) + " video" : "", y[4] ? n(y[4]) + " foto" : ""].filter(Boolean).join(" · ") + '</td><td class="n">' + gb(y[5]) + "</td></tr>";
     }
-    function carta(r) {
-      if (r.ev || r.pa) {
-        var e = r.e, x = e ? e.x : null, pa = r.pa, pk = r.pk || (r.club[0] && (r.club[0][9] || {}).pk) || "", mc = matClub(r.club);
-        return '<div class="card srv ev"' + (pk && PART[pk] ? ' data-pk="' + esc(pk) + '"' : "") + (r.club.length ? ' data-cart="' + esc(r.club[0][0]) + '"' : "") + ' tabindex="0"><div class="mini">' + (x && !x.ris && !x.studio && PART[r.dt] ? graficaEspn(PART[r.dt]) : x ? grafica(e) : graficaEspn(pa)) +
-          '<span class="eti">' + dataRip(r.dt) + '</span><span class="nn">' + (r.club.length ? n(mc.v) + " video del club" : "Como TV") + "</span></div>" +
-          '<div class="t"><b>' + esc(x ? versione(x.titolo || x.partita || "").t : titoloPartita(pa)) + "</b><small>" + bollino(x ? (x.compVista || x.competizione || e.ramo) : (pa.comp || "Prima squadra"), e ? e.ramo : "Prima squadra") + (x ? '<span class="segno-tv">COMO TV</span>' : "") + "</small></div></div>";
+    function carta(r, i) {
+      if (r.ev) {
+        var e = r.e, x = e.x;
+        return '<div class="card srv ev" data-ri="' + i + '" tabindex="0" title="Apri nell’Editing del Como 1907"><div class="mini">' + graficaEv(e) + lingua(e).replace('class="lingua', 'class="lingua grande') +
+          '<span class="eti">' + dataRip(r.dt) + '</span><span class="nn">' + (x.durata ? durataH(x.durata) + " · " : "") + "Como TV</span></div>" +
+          '<div class="t"><b>' + esc(versione(x.titolo || x.partita || "").t) + " " + lingua(e) + "</b><small>" + bollino(x.compVista || x.competizione || e.ramo, e.ramo) + '<span class="segno-tv">COMO TV</span></small></div></div>';
       }
-      return schedaServizio(r.x, true).replace(/<span class="comp-et"[^>]*>[^<]*<\/span>/, bollino(sottoDi(r.x) || ramoDi(r.x), ramoDi(r.x)) + " ");
+      if (r.pa) {
+        var pa = r.pa, mc = matClub(r.club);
+        return '<div class="card srv ev" data-ri="' + i + '" tabindex="0" title="Apri nell’Editing del Como 1907"><div class="mini">' + graficaEspn(pa) +
+          '<span class="eti">' + dataRip(r.dt) + '</span><span class="nn">' + n(mc.v) + " video del club</span></div>" +
+          '<div class="t"><b>' + esc(titoloPartita(pa)) + "</b><small>" + bollino(pa.comp || "Prima squadra", "Prima squadra") + "materiale del club</small></div></div>";
+      }
+      return schedaServizio(r.x, true).replace(/<span class="comp-et"[^>]*>[^<]*<\/span>/, bollino(sottoDi(r.x) || ramoDi(r.x), ramoDi(r.x)) + " ").replace('<div class="card srv', '<div data-ri="' + i + '" class="card srv');
     }
     if (!righe.length) { $("tempo").innerHTML = '<div class="vuoto">Niente con questi filtri.</div>'; return; }
     if (VISTA_H === "lista") {
@@ -1074,15 +1096,19 @@
       (dt && x[6] && x[6] !== "nome" ? '<small style="margin-top:2px">data ' + esc(FONTI[x[6]] || "") + "</small>" : "") + "</div></div>";
   }
   $("selTipo").onchange = function () { APERTI = {}; disegnaAlbero(); disegnaHome(); };
+  // UN CLIC E SI APRE NELL'EDITING DEL COMO 1907 (Goffredo, 29/09/2026, come nel MAM di Como TV):
+  // la partita di Como TV (ITA o ENG) intera; il servizio o la giornata con tutti i suoi video.
+  var RIGHE_H = [];
   $("tempo").addEventListener("click", function (e) {
     var b = e.target.closest("[data-apri-m]"); if (b) { APERTI[b.dataset.apriM] = true; disegnaHome(); return; }
-    var c = e.target.closest(".srv[data-cart],.srv-r[data-cart],.srv[data-pk],.srv-r[data-pk]");
-    var solo = e.target.closest(".el-part:not([data-pk]):not([data-cart])");
-    if (solo) { avviso("", "Questa partita c'è solo nel MAM di Como TV: il materiale del club di quel giorno non c'è."); return; }
-    if (c && c.dataset.pk && PART[c.dataset.pk]) { G = G.filter(function (g) { return g.k === "tipo"; }); metti({ k: "part", v: c.dataset.pk, n: nomeDi("part", c.dataset.pk) }); window.scrollTo(0, 0); return; }
-    if (c) { if (TIPO_H && !G.some(function (g) { return g.k === "gen" && g.v === TIPO_H; })) G.push({ k: "gen", v: TIPO_H, n: TIPO_H }); metti({ k: "cart", v: c.dataset.cart, n: ultimo(c.dataset.cart) }); window.scrollTo(0, 0); }
+    if (e.target.closest(".scegli")) return;
+    var c = e.target.closest("[data-ri]"); if (!c) return;
+    var r = RIGHE_H[+c.dataset.ri]; if (!r) return;
+    if (r.ev) { var x = r.e.x, t = versione(x.titolo || x.partita || "").t + " [" + r.e.lingua + "]"; apriSequenza([{ rec: x.rec, reg: x.reg, titolo: t, durata: x.durata || 0 }], t, null, finestraEditing()); return; }
+    if (r.pa) { apriCartelle(r.club.map(function (y) { return y[0]; }), titoloPartita(r.pa) + " · materiale del club"); return; }
+    apriCartelle([r.x[0]], titoloServizio(r.x));
   });
-  $("tempo").addEventListener("keydown", function (e) { if (e.key === "Enter" && e.target.classList.contains("srv")) e.target.click(); });
+  $("tempo").addEventListener("keydown", function (e) { if (e.key === "Enter" && e.target.matches("[data-ri]")) e.target.click(); });
 
   // ══════════ SFOGLIA COME FRAME.IO (29/09/2026) ══════════
   // I reparti hanno i nomi del workspace del club su Frame.io (Season 2026-27: 1. FIRST TEAM ... 14. FANS).
@@ -1343,7 +1369,7 @@
     if ((t = e.target.closest("[data-fxdip]"))) { FX.dip = t.dataset.fxdip; FX.sub = ""; fxVai(); return; }
     if ((t = e.target.closest("[data-fxsub]"))) { FX.sub = t.dataset.fxsub; fxVai(); return; }
     if ((t = e.target.closest("[data-fxvia]"))) { FX.modo = "vere"; FX.via = t.dataset.fxvia; fxVai(); return; }
-    if ((t = e.target.closest("[data-fxfile]"))) { apriFileFx(t.dataset.fxfile); return; }
+    if ((t = e.target.closest("[data-fxfile]"))) { if (RX_VID.test(t.dataset.fxfile)) apriFileInEditing(t.dataset.fxfile); else apriFileFx(t.dataset.fxfile); return; }
     if ((t = e.target.closest("[data-fxscorc]"))) {
       if (t.dataset.fxscorc === "volti") { $("apriVolti").click(); window.scrollTo(0, 0); return; }
       FX.modo = "ord"; FX.dip = "ft"; FX.sub = "Matchday"; fxVai(); return;
@@ -1962,29 +1988,50 @@
     });
     return fuori;
   }
-  function monta(lista, bottone, titolo) {
+  function monta(lista, bottone, titolo, w) {
     var video = videoDi(lista);
-    if (!video.length) { avviso("err", "Tra quello che hai scelto non ci sono video: si montano solo i video."); return; }
-    if (video.length > 80 && !confirm("Dentro ci sono " + n(video.length) + " video: una sequenza ne tiene al massimo 80. Monto i primi 80 (in ordine di cartella e nome)?")) return;
+    if (!video.length) { chiudiFinestra(w); avviso("err", "Tra quello che hai scelto non ci sono video: si montano solo i video."); return; }
+    if (video.length > 80 && !confirm("Dentro ci sono " + n(video.length) + " video: una sequenza ne tiene al massimo 80. Monto i primi 80 (in ordine di cartella e nome)?")) { chiudiFinestra(w); return; }
     video = video.slice(0, 80);
-    var testo = bottone.textContent; bottone.disabled = true; bottone.textContent = "Preparo la sequenza…";
     var tit = titolo || [RACCOLTA ? RACCOLTA.nome : "", G.map(function (g) { return g.n; }).join(" · "), Q].filter(Boolean).join(" · ") || ("Como 1907 · " + video.length + " file");
-    post({ tipo: "clip-1907-monta", titolo: tit, domanda: [G.map(function (g) { return g.n; }).join(" · "), Q].filter(Boolean).join(" · "), file: video.map(function (v) { return { via: v }; }) })
+    apriSequenza(video.map(function (v) { return { via: v }; }), tit, bottone, w);
+  }
+  // L'EDITING DEL 1907 in una scheda sua (mam1907-editing). La scheda si apre SUBITO, al clic, se no
+  // il browser la blocca (arriva dopo la risposta del ponte); poi ci si carica la sequenza.
+  function finestraEditing() {
+    var w = null; try { w = window.open("", "mam1907-editing"); } catch (e) {}
+    try { if (w && w.location.href === "about:blank") { w.document.title = "Editing Como 1907"; w.document.body.style.cssText = "background:#1B1C20;color:#C9CACF;font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0"; w.document.body.textContent = "Preparo la sequenza…"; } } catch (e) {}
+    return w;
+  }
+  function chiudiFinestra(w) { try { if (w && w.location.href === "about:blank") w.close(); } catch (e) {} }
+  function apriSequenza(file, tit, bottone, w) {
+    var testo = bottone ? bottone.textContent : "";
+    if (bottone) { bottone.disabled = true; bottone.textContent = "Preparo la sequenza…"; } else avviso("", "Preparo la sequenza nell’Editing del Como 1907…");
+    post({ tipo: "clip-1907-monta", titolo: tit, domanda: [G.map(function (g) { return g.n; }).join(" · "), Q].filter(Boolean).join(" · "), file: file })
       .then(function (d) {
-        var nota = "Sequenza “" + d.seq.titolo + "”: " + d.quante + (d.quante === 1 ? " pezzo" : " pezzi") + (d.saltati && d.saltati.length ? " · " + d.saltati.length + " file saltati" : "") + ". I 4K a 10 bit si vedono appena è pronta la copia leggera.";
+        var nota = "Sequenza “" + d.seq.titolo + "”: " + d.quante + (d.quante === 1 ? " pezzo" : " pezzi") + (d.saltati && d.saltati.length ? " · " + d.saltati.length + " saltati (" + d.saltati.slice(0, 2).join(", ") + ")" : "") + ". I 4K a 10 bit si vedono appena è pronta la copia leggera.";
         try { sessionStorage.setItem("mam2-avviso", nota); } catch (e) {}
         SCELTI.clear();
         // l'Editing in una scheda a parte (29/09/2026, come nel MAM Como TV): la
         // ricerca resta qui. La scheda e' del 1907, non quella dell'Editing di Como TV
-        var dove = "mam2.html?seq=" + encodeURIComponent(d.seq.id) + "&ambito=1907", w = null;
-        try { w = window.open(dove, "mam1907-editing"); } catch (e) {}
+        var dove = "mam2.html?seq=" + encodeURIComponent(d.seq.id) + "&ambito=1907";
+        if (!w || w.closed) { try { w = window.open(dove, "mam1907-editing"); } catch (e) {} }
+        else { try { w.location.href = new URL(dove, location.href).href; } catch (e) { w = null; } }
         if (!w) { location.href = dove; return; }
         try { w.focus(); } catch (e) {}
-        bottone.disabled = false; bottone.textContent = testo; disegnaBarra(); if (!$("risultati").hidden) risultati();
+        if (bottone) { bottone.disabled = false; bottone.textContent = testo; }
+        disegnaBarra(); if (!$("risultati").hidden) risultati();
         avviso("ok", esc(nota));
       })
-      .catch(function (e) { bottone.disabled = false; bottone.textContent = testo; avviso("err", esc(e.message)); });
+      .catch(function (e) { chiudiFinestra(w); if (bottone) { bottone.disabled = false; bottone.textContent = testo; } avviso("err", esc(e.message)); });
   }
+  // cartelle intere (un servizio, una giornata): servono i file dell'indice, che arrivano la prima volta
+  function apriCartelle(vie, tit) {
+    var w = finestraEditing();
+    if (!F) avviso("", "Leggo l’elenco dei file…");
+    caricaFile().then(function () { monta(vie.map(function (v) { return { via: v, cartella: 1 }; }), null, tit, w); }).catch(function () { chiudiFinestra(w); avviso("err", "L’elenco dei file non arriva: riprova tra poco."); });
+  }
+  function apriFileInEditing(via) { apriSequenza([{ via: via }], via.split("/").pop(), null, finestraEditing()); }
   function salvaInRaccolta() {
     var nome = ($("nomeRacc").value || "").trim(); if (!nome) { $("nomeRacc").focus(); return; }
     var lista = Array.from(SCELTI.values());
@@ -2020,7 +2067,7 @@
     if ((t = e.target.closest("[data-scc]"))) { e.preventDefault(); e.stopPropagation(); scegliCartella(t.dataset.scc); return; }
     if ((t = e.target.closest("[data-sg]"))) { var kv = t.dataset.sg.split("|"), k2 = kv[0], v2 = kv.slice(1).join("|"); if (di(k2).indexOf(v2) >= 0) togli(k2, v2); else metti({ k: k2, v: v2, n: nomeDi(k2, v2) }, k2 === "tipo"); return; }
     if ((t = e.target.closest("[data-chip]"))) { var k = t.dataset.chip, v = t.dataset.v; if (di(k).indexOf(v) >= 0) togli(k, v); else metti({ k: k, v: v, n: nomeDi(k, v) }); return; }
-    if ((t = e.target.closest(".srv[data-cart]"))) { metti({ k: "cart", v: t.dataset.cart, n: ultimo(t.dataset.cart) }); window.scrollTo(0, 0); return; }
+    if ((t = e.target.closest(".srv[data-cart]"))) { apriCartelle([t.dataset.cart], ultimo(t.dataset.cart)); return; }
     if ((t = e.target.closest("[data-tab]"))) { TAB = t.dataset.tab; quanti = MAX; salvaIndirizzo(); risultati(); return; }
     if ((t = e.target.closest("#apriFiltri"))) { PANNELLO = !PANNELLO; try { localStorage.setItem("mam1907-filtri", PANNELLO ? "1" : "0"); } catch (x) {} risultati(); return; }
     if ((t = e.target.closest("[data-golpart]"))) { e.preventDefault(); var pp = di("pers")[0], gl = (PERS[pp].conti.gol || []).filter(function (x) { return PART[x[0]]; });
@@ -2043,7 +2090,8 @@
       return;
     }
     if ((t = e.target.closest("[data-apri]"))) { apriCollezione(t.dataset.apri); return; }
-    if ((t = e.target.closest(".card[data-f]"))) { var x = VISTI.find(function (y) { return y.via === t.dataset.f; }); if (x) apri(x); }
+    // un video si apre nell'Editing del 1907; foto e altri file nel lettore
+    if ((t = e.target.closest(".card[data-f]"))) { var x = VISTI.find(function (y) { return y.via === t.dataset.f; }); if (x) { if (x.tipo === "video") apriFileInEditing(x.via); else apri(x); } }
   });
   $("risultati").addEventListener("change", function (e) {
     var c = e.target.closest("[data-col]"); if (c) { if (c.checked) metti({ k: c.dataset.col, v: c.value, n: nomeDi(c.dataset.col, c.value) }); else togli(c.dataset.col, c.value); return; }

@@ -16243,6 +16243,26 @@ const AZIONI = {
     const pezzi = [], saltati = [];
     let t0 = 0;
     for (const x of lista) {
+      // UNA PARTITA DI COMO TV (ITA o ENG), intera (Goffredo, 29/09/2026: dal MAM 1907 si
+      // clicca la partita e si apre nell'Editing del 1907). La registrazione e' quella del
+      // MAM di Como TV: la sequenza resta del 1907 (origine "1907"), la partita non si tocca.
+      if (x.rec) {
+        const rec = String(x.rec), a = ARCHIVIO[rec], nome = String(x.titolo || (a && a.partita) || rec).slice(0, 140);
+        if (!a) { saltati.push(nome + " (non e' nell'archivio)"); continue; }
+        let r = x.reg && R.reg[String(x.reg)];
+        if (!r || !r.arch || r.arch.rec !== rec) {
+          const ap = await archivioApri({ rec });
+          if (!ap || !ap.ok || !ap.reg) { saltati.push(nome + (ap && ap.errore ? " (" + ap.errore + ")" : "")); continue; }
+          r = R.reg[ap.reg.id];
+        }
+        if (!r) { saltati.push(nome); continue; }
+        const durata = r.durata || durataRegistrata(r.id) || Math.min(4 * 3600, Math.max(0, +x.durata || 0));
+        if (!durata) { saltati.push(nome + " (durata non ancora misurata)"); continue; }
+        pezzi.push({ id: nuovoId("p"), reg: r.id, partita: r.titolo, dentro: 0, fuori: durata, base: 0, t0: Math.round(t0 * 1000) / 1000,
+                     traccia: "V1", stacco: 0, titolo: nome, tipo: "", minuto: "", fonte: "comotv" });
+        t0 += durata;
+        continue;
+      }
       let ap; try { ap = await apri1907({ via: x.via, __chi: p.__chi }); } catch (e) { saltati.push(path.basename(String(x.via || "")) + " (" + e.message + ")"); continue; }
       const r = R.reg[ap.reg.id]; if (!r) { saltati.push(String(x.via || "")); continue; }
       const durata = r.durata || 0;
