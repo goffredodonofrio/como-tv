@@ -7535,8 +7535,16 @@
   function riassuntoArchivio(usa){
     if (!EVENTI.length) return "";
     var num = function(n){ return (n || 0).toLocaleString("it-IT"); };
-    var ore = 0, como = 0;
-    EVENTI.forEach(function(x){ ore += (+x.durata || 0) / 3600; if (/\bcomo\b/i.test([x.partita, (x.squadre || []).map(function(s){ return s.nome; }).join(" ")].join(" "))) como++; });
+    // il Como diviso: prima squadra, giovanili (Primavera, Under), femminile
+    var ore = 0, como = 0, giov = 0, donne = 0;
+    EVENTI.forEach(function(x){
+      ore += (+x.durata || 0) / 3600;
+      if (!/\bcomo\b/i.test([x.partita, (x.squadre || []).map(function(s){ return s.nome; }).join(" ")].join(" "))) return;
+      var t = [x.partita, x.competizione, x.compVista].join(" ");
+      if (/femminil|\bwomen\b/i.test(t)) donne++;
+      else if (/primavera|under[\s-]?\d{2}|\bu[\s-]?\d{2}\b|youth|academy|giovanil/i.test(t)) giov++;
+      else como++;
+    });
     var st = stagioniNote(), comp = compNote();
     var stag = st.length ? (st.length > 1 ? st[st.length - 1].nome + " – " + st[0].nome : st[0].nome) : "";
     var chip = function(c){ return '<button type="button" data-rcomp="' + esc(c.nome) + '" title="' + esc(c.nome) + ': ' + num(c.n) + ' partite"><span class="gt-dot" style="background:' + coloreComp(c.nome) + '"></span>' + esc(compBreve(c.nome)) + '<b>' + num(c.n) + '</b></button>'; };
@@ -7544,6 +7552,8 @@
     return '<div class="ra-n-riga"><span class="ra-n"><strong>' + num(usa || EVENTI.length) + '</strong> partite</span>' +
       (ore ? '<span class="ra-n"><strong>' + num(Math.round(ore)) + '</strong> ore</span>' : '') +
       '<span class="ra-n"><strong>' + num(como) + '</strong> Como</span>' +
+      (giov ? '<span class="ra-n"><strong>' + num(giov) + '</strong> giovanili Como</span>' : '') +
+      (donne ? '<span class="ra-n"><strong>' + num(donne) + '</strong> Como Women</span>' : '') +
       '<span class="ra-n"><strong>' + num(comp.length) + '</strong> competizioni</span>' +
       (stag ? '<span class="ra-n">' + esc(stag) + '</span>' : '') + '</div>' +
       '<div class="ra">' + comp.map(chip).join("") + '</div>';
