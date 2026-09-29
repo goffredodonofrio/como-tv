@@ -134,7 +134,7 @@
   /* una pastiglia lunga ("COORDINAMENTO REDAZIONE") va a capo dentro se
      stessa: si legge per intero e non sborda dalla colonna */
   .pill{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;color:var(--chipT);
-    white-space:normal;overflow-wrap:break-word;line-height:1.3;}
+    white-space:normal;overflow-wrap:break-word;line-height:1.3;max-width:100%;}
   .pill.grande{font-size:12px;padding:2px 9px;}
   table.media .pill.ora,table.alta .pill.ora{font-size:12px;padding:1px 8px;}
   .assente{background-image:repeating-linear-gradient(45deg,transparent,transparent 5px,var(--linea2) 5px,var(--linea2) 10px);}
@@ -150,7 +150,7 @@
 
   table.corta .pill.luogo{display:none;}
   table.media .cel,table.alta .cel{padding-top:5px;}
-  table.corta .pill.ora{font-size:10.5px;}
+  table.corta .pill.ora{font-size:9.5px;}
   /* le attivita' si vedono tutte: le pastiglie vanno a capo e la riga
      cresce quanto serve, invece di tagliare le parole */
   table.corta .pills{margin:0;flex-wrap:wrap;min-width:0;gap:2px;}
@@ -301,8 +301,12 @@
     for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 100000;
     return TINTE[h % TINTE.length];
   }
+  var STRETTE = {};
+  function stretta(testo) {
+    return String(testo).split(/\s+/).some(function (w) { return STRETTE[w]; }) ? " stretta" : "";
+  }
   function pill(testo, tintaNome, grande, classe) {
-    return '<span class="pill' + (grande ? " grande" : "") + (classe ? " " + classe : "") +
+    return '<span class="pill' + (grande ? " grande" : "") + (classe ? " " + classe : "") + stretta(testo) +
       '" style="background:var(--' + tintaNome + ')">' + esc(testo) + "</span>";
   }
 
@@ -393,6 +397,67 @@
     return out;
   }
 
+  /* ── quanto e' larga la pastiglia dell'orario, per davvero ────────── */
+  function misuraOrario(gg, persone) {
+    var scritte = {};
+    gg.forEach(function (g) {
+      persone.forEach(function (p) {
+        var t = turnoDi(g, p.id), a = assenzaDi(g, p.id);
+        if (t) scritte[etichetta(t)] = 1;
+        else if (a) scritte[String(a.tipo).toUpperCase()] = 1;
+      });
+    });
+    var elenco = Object.keys(scritte);
+    if (!elenco.length) elenco = ["15:00–00:00"];
+    return Math.min(140, Math.max(64, Math.ceil(misuraPastiglie(elenco, "ora")) + 12));   // 12 = i margini della cella
+  }
+  // Le PAROLE delle attivita' che stanno in pagina: fra una parola e
+  // l'altra si va a capo, quindi a decidere la larghezza e' la piu' lunga.
+  function paroleAttivita(gg, persone) {
+    var v = {};
+    gg.forEach(function (g) {
+      persone.forEach(function (p) {
+        var t = turnoDi(g, p.id);
+        if (!t) return;
+        (t.attivita || []).concat(t.nota ? [t.nota] : []).forEach(function (a) {
+          String(a).split(/\s+/).forEach(function (w) { if (w) v[w] = 1; });
+        });
+      });
+    });
+    return Object.keys(v);
+  }
+
+  /* Quanto e' larga la pastiglia piu' lunga fra quelle date: si disegna di
+     nascosto, con le stesse regole, e si misura. Vale per gli orari e per
+     le attivita'. */
+  function misuraParole(elenco, classe) {
+    var mappa = {};
+    if (!elenco.length) return mappa;
+    var finto = document.createElement("div");
+    finto.style.cssText = "position:absolute;visibility:hidden;pointer-events:none;top:-9999px;left:-9999px";
+    finto.innerHTML = '<table class="' + (ALTEZZA || "corta") + '"><tbody><tr><td class="cella att"><button class="cel"><span class="pills">' +
+      elenco.map(function (x) { return '<span class="pill">' + esc(x) + "</span>"; }).join("") +
+      "</span></button></td></tr></tbody></table>";
+    document.body.appendChild(finto);
+    [].forEach.call(finto.querySelectorAll(".pill"), function (x, i) { mappa[elenco[i]] = x.getBoundingClientRect().width; });
+    document.body.removeChild(finto);
+    return mappa;
+  }
+  function misuraPastiglie(elenco, classe) {
+    if (!elenco.length) return 0;
+    var finto = document.createElement("div");
+    finto.style.cssText = "position:absolute;visibility:hidden;pointer-events:none;top:-9999px;left:-9999px";
+    finto.innerHTML = '<table class="' + (ALTEZZA || "corta") + '"><tbody><tr><td class="cella ' + (classe === "ora" ? "ora" : "att") + '">' +
+      '<button class="cel"><span class="pills">' +
+      elenco.map(function (x) { return '<span class="pill' + (classe === "ora" ? " ora" : "") + '">' + esc(x) + "</span>"; }).join("") +
+      "</span></button></td></tr></tbody></table>";
+    document.body.appendChild(finto);
+    var largo = 0;
+    [].forEach.call(finto.querySelectorAll(".pill"), function (x) { largo = Math.max(largo, x.getBoundingClientRect().width); });
+    document.body.removeChild(finto);
+    return largo;
+  }
+
   /* ── la griglia ───────────────────────────────────────────────────── */
   function disegna() {
     var gg = giorniMostrati(), oggi = oggiISO(), persone = personeMostrate();
@@ -404,15 +469,28 @@
     // Ogni giorno e' due colonne, come in Airtable: l'orario e le attivita'.
     // Le larghezze si misurano sullo schermo, l'orario quanto basta a "15:00–00:00".
     var spazio = el("telaio").clientWidth || 1280;
-    var largaNome = Math.min(160, Math.max(116, Math.round(spazio * 0.095)));
-    var largaOra = 78;             // la pastiglia "15:00–00:00" e basta
+    var largaNome = Math.min(150, Math.max(110, Math.round(spazio * 0.085)));
+    // La colonna dell'orario non si indovina: si misura. Si disegna di
+    // nascosto la pastiglia piu' larga fra quelle che finiranno in pagina
+    // (con lo stesso carattere e le stesse regole) e si prende quella misura.
+    // Prima era un numero fisso: bastava un carattere non ancora caricato o
+    // uno zoom diverso e "15:00–00:00" veniva tagliato.
+    var largaOra = misuraOrario(gg, persone);
     // 16px di margine: se no la barra di scorrimento verticale fa comparire
     // anche quella orizzontale, e sembra che la settimana non ci stia
     // 180 e' il minimo perche' la parola piu' lunga che scriviamo
     // ("COORDINAMENTO") stia su una riga sola: sotto, si scorre in orizzontale
-    var largaGiorno = Math.max(180, Math.floor((spazio - 30 - largaNome - 16) / gg.length));
+    var largaGiorno = Math.max(largaOra + 84, Math.floor((spazio - 30 - largaNome - 16) / gg.length));
     var largaAtt = largaGiorno - largaOra;
-    var h = ['<table class="' + (ALTEZZA || "corta") + '" style="width:' + (30 + largaNome + largaGiorno * gg.length) + 'px">' +
+    // l'attivita' piu' lunga deve stare nella sua colonna: se non ci sta,
+    // la pastiglia si rimpicciolisce (fino a 8px) invece di uscire dalla cella
+    var largaAttPiu = misuraPastiglie(paroleAttivita(gg, persone), "att");
+    // dentro la cella ci sono i margini (12) e la pastiglia ha i suoi (10),
+    // che non rimpiccioliscono col carattere: il conto tiene tutto
+    var corpoAtt = 10, postoTesto = largaAtt - 12 - 10, testoPiu = Math.max(1, largaAttPiu - 10);
+    if (testoPiu > postoTesto) corpoAtt = Math.max(8, Math.floor(10 * postoTesto / testoPiu * 10) / 10);
+    var h = ['<style>table.corta td.cella.att .pill.stretta{font-size:' + corpoAtt + 'px}</style>' +
+             '<table class="' + (ALTEZZA || "corta") + '" style="width:' + (30 + largaNome + largaGiorno * gg.length) + 'px">' +
              '<colgroup><col style="width:30px"><col style="width:' + largaNome + 'px">' +
              gg.map(function () { return '<col style="width:' + largaOra + 'px"><col style="width:' + largaAtt + 'px">'; }).join("") + "</colgroup>" +
              '<thead><tr><th class="riga1" rowspan="2"></th><th class="nome" rowspan="2">Persona</th>'];
@@ -798,6 +876,9 @@
   document.body.classList.toggle("corta", ALTEZZA === "corta");
   S.da = S.giorni === "mese" ? oggiISO().slice(0, 8) + "01" : lunedi(new Date());
   carica();
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () { if (S.persone.length) disegna(); });
+  }
   var attesaMisura = null;
   window.addEventListener("resize", function () {
     clearTimeout(attesaMisura);
