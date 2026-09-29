@@ -1083,14 +1083,15 @@
      velato = byte gia' arrivati, file a meta' compresi. */
   .copia{border:1px solid rgba(201,162,75,.45);border-radius:12px;padding:12px 16px;margin:10px 0 18px;background:rgba(201,162,75,.06);display:flex;flex-direction:column;gap:8px;max-width:900px;}
   .copia-testa{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
-  .copia.riassunto{gap:10px;padding:14px 18px;border-color:var(--riga2);background:rgba(245,241,230,.03);}
-  .ra-riga{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--ivory2);}
-  .ra-riga b{font-family:'Mazzard',sans-serif;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--oro);margin-right:4px;}
-  .ra-riga strong{color:var(--oro2);font:600 15px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;}
-  .ra-comp{display:flex;flex-wrap:wrap;gap:6px;}
-  .ra-comp button{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;border:1px solid var(--riga2);background:transparent;color:var(--ivory2);font:600 12px/1 'DM Sans',sans-serif;cursor:pointer;}
-  .ra-comp button b{font:600 11px/1 ui-monospace,Menlo,monospace;color:var(--fumo);}
-  .ra-comp button:hover,.ra-comp button:focus-visible{border-color:rgba(201,162,75,.6);color:var(--ivory);outline:none;}
+  .copia.riassunto{padding:0;margin:8px 0 16px;border:0;background:transparent;max-width:none;}
+  .ra{display:flex;flex-wrap:wrap;align-items:center;gap:5px 6px;font-size:12px;color:var(--fumo);}
+  .ra-n{white-space:nowrap;margin-right:8px;} .ra-n strong{color:var(--oro2);font:600 13px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;margin-right:3px;}
+  .ra-sep{width:1px;height:16px;background:var(--riga2);margin:0 6px 0 0;}
+  .ra button{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:999px;border:1px solid var(--riga2);background:transparent;color:var(--ivory2);font:600 11px/1.2 'DM Sans',sans-serif;cursor:pointer;}
+  .ra button b{font:600 10.5px/1 ui-monospace,Menlo,monospace;color:var(--fumo);}
+  .ra button .gt-dot{width:7px;height:7px;flex:0 0 7px;margin:0;}
+  .ra .ra-piu{color:var(--oro2);border-style:dashed;}
+  .ra button:hover,.ra button:focus-visible{border-color:rgba(201,162,75,.6);color:var(--ivory);outline:none;}
   .copia-testa b{font-family:'Mazzard',sans-serif;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--oro);}
   .copia-testa em{font-style:normal;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--riga2);color:var(--ivory2);}
   .copia-testa em.va{border-color:rgba(124,217,146,.6);color:#7CD992;} .copia-testa em.ferma{border-color:rgba(240,169,59,.6);color:#F0A93B;} .copia-testa em.finita{border-color:var(--oro);color:var(--oro2);}
@@ -1377,8 +1378,8 @@
   <div class="vista" id="libreria">
     <div class="lib-testa"><h1 id="libSaluto">Buongiorno, <span>Como TV</span></h1><p id="libSotto">L'archivio: partite intere, azioni, telecronache, foto. Cerca, guarda, monta.</p></div>
     <div class="lib-cerca campo-g" id="campoG"><span class="lu">&#128269;</span><span id="gettoni" class="gettoni"></span><input id="cercaLib" type="search" placeholder="Cerca qui" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" autofocus aria-autocomplete="list" aria-controls="suggerisci"><div id="suggerisci" class="sugg" role="listbox" hidden></div></div>
-    <div id="riprendi"></div>
     <div class="copia" id="copiaS3" hidden></div>
+    <div id="riprendi"></div>
     <div id="libProg">
       <div class="sez"><h2>Progetti</h2><span id="progConto"></span><button class="dx b mini" id="progNuovo" title="un progetto raccoglie le sequenze di un lavoro (una puntata, un'uscita social, un cliente)">+ Nuovo progetto</button></div>
       <div class="prog" id="progetti"></div>
@@ -1736,13 +1737,13 @@
   function apriNelMontaggio(r){
     if (!r || !r.id) return avviso("err", "Apri prima una partita.");
     // arrivati dal montaggio con la sequenza in mano: si torna a quella
-    if (perSeq()) { location.href = "mam2.html?seq=" + encodeURIComponent(perSeq()); return; }
+    if (perSeq()) { vaiEditing("mam2.html?seq=" + encodeURIComponent(perSeq())); return; }
     post({ tipo:"clip-hl-elenco", reg: r.id, tutte: true }).then(function(d){
       var qs = (d.seq || []).filter(function(q){ return q.reg === r.id || (q.pezzi || []).some(function(x){ return x.reg === r.id; }); })
         .sort(function(a, b){ return (b.tocco || b.creata || 0) - (a.tocco || a.creata || 0); });
       if (qs.length) return qs[0];
       return post({ tipo:"clip-hl-nuova", reg: r.id, titolo: "HL " + (r.titolo || "partita") }).then(function(x){ return x.seq; });
-    }).then(function(q){ if (q && q.id) location.href = "mam2.html?seq=" + encodeURIComponent(q.id); })
+    }).then(function(q){ if (q && q.id) vaiEditing("mam2.html?seq=" + encodeURIComponent(q.id)); })
       .catch(function(er){ avviso("err", esc(er.message)); });
   }
   function el(id){ return document.getElementById(id); }
@@ -1791,6 +1792,25 @@
   var EVENTI = [], REGS = {}, ASSET = null, IN_ARRIVO = 0;
   function soloNas(v){ IN_ARRIVO = v.filter(function(x){ return x.s3; }).length; return v.filter(function(x){ return !x.s3; }); }
   var VISTA_ORA = "libreria";   // la vista aperta (i menu); VISTA e' della Libreria: anteprime o lista
+  // TUTTO SI APRE NELLA SCHEDA DELL'EDITING (29/09/2026, Goffredo: "anche per
+  // le partite, per tutto"). Dalla Libreria, dalla ricerca e dalle raccolte una
+  // partita, una telecronaca, un montato, una sequenza vanno nella scheda
+  // "mam2-editing" (la stessa delle azioni): la ricerca resta dov'e'. Dentro
+  // l'Editing si naviga come prima. Se il browser blocca la scheda, si va qui.
+  function daLibreria(){ return VISTA_ORA === "libreria" || VISTA_ORA === "vRaccolte"; }
+  function vaiEditing(href){
+    if (!daLibreria()) { location.href = href; return; }
+    var w = null; try { w = window.open(href, "mam2-editing"); } catch (e) {}
+    if (!w) { location.href = href; return; }
+    try { w.focus(); } catch (e) {}
+  }
+  document.addEventListener("click", function(e){
+    if (e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || !daLibreria()) return;
+    var a = e.target.closest && e.target.closest("a[href]"); if (!a || a.target) return;
+    var h = a.getAttribute("href") || "";
+    if (!/^mam2\.html\?(asset|seq|reg|srgrec|montaggio)=/.test(h)) return;
+    e.preventDefault(); vaiEditing(h);
+  });
   function vai(vista){ VISTA_ORA = vista;
     var lib = vista === "libreria" || vista === "vRaccolte";
     el("menubar").hidden = lib;
@@ -1954,7 +1974,7 @@
         var ant = anteprimaHtml(x);
         return '<tr data-href="' + linkAsset(x) + '"><td class="mini2c' + (ant ? ' conant' : '') + '">' + (ant ? '<span class="minil conant">' + ant + '</span>' : '<span class="minil" data-reg="' + esc(x.s3 ? "" : (x.reg || "")) + '" style="' + (mini ? "background-image:url('" + esc(mini) + "')" : "") + '"></span>') + '</td><td class="p">' + esc(nomeDi(x)) + (x.partita ? '<small>' + esc(x.nome) + '</small>' : '') + '</td><td>' + (compEtichetta(x) || '<span style="color:var(--fumo)">\u2014</span>') + '</td><td class="n">' + quando(x.quando) + '</td><td class="n">' + (x.durata ? tc(x.durata) : "—") + '</td><td class="n">' + peso(x.peso) + '</td><td>' + (x.telecronaca ? '<span class="tcb">tc</span>' : '<span style="color:var(--fumo)">—</span>') + (x.s3 ? ' <span class="tcb" style="color:#5AA7E8;border-color:#5AA7E8">S3</span>' : '') + '</td></tr>';
       }).join("") + '</tbody></table>';
-      el("recenti").querySelectorAll("tr[data-href]").forEach(function(tr){ tr.addEventListener("click", function(){ location.href = tr.dataset.href; }); });
+      el("recenti").querySelectorAll("tr[data-href]").forEach(function(tr){ tr.addEventListener("click", function(){ vaiEditing(tr.dataset.href); }); });
       var daL = Array.prototype.slice.call(el("recenti").querySelectorAll(".minil[data-reg]")).filter(function(m){ return m.dataset.reg; });
       var giroL = function(){ var m = daL.shift(); if (!m) return; posa(m.dataset.reg, undefined, function(u){ m.style.backgroundImage = "url('" + u + "')"; }, function(){ setTimeout(giroL, 80); }); };
       giroL();
@@ -3121,7 +3141,7 @@
       var nota = "Sequenza “" + d.seq.titolo + "”: " + d.quante + (d.quante === 1 ? " pezzo" : " pezzi") + (d.saltate && d.saltate.length ? " · " + d.saltate.length + " azioni saltate (partite non ancora sulla NAS)" : "");
       try { sessionStorage.setItem("mam2-avviso", nota); } catch (e) {}
       SCELTE_RIC.clear();
-      location.href = "mam2.html?seq=" + encodeURIComponent(d.seq.id);
+      vaiEditing("mam2.html?seq=" + encodeURIComponent(d.seq.id));
     })
     .catch(function(e){ bottone.disabled = false; bottone.textContent = "Monta questi"; avviso("err", esc(e.message)); });
   }
@@ -3368,7 +3388,7 @@
       if ((d.mancanti || []).length) m += " Non ho trovato " + d.mancanti.length + " file: " + esc(d.mancanti.slice(0, 3).join(", ")) + (d.mancanti.length > 3 ? "\u2026" : "") + ".";
       if ((d.altrove || []).length) m += " " + d.altrove.length + " clip sono di un'altra partita e restano fuori.";
       try { sessionStorage.setItem("mam2-avviso", "Importate " + d.quante + " clip su " + d.clipNellXml + " da " + esc(f.name) + "." + m); } catch (e) {}
-      location.href = "mam2.html?seq=" + encodeURIComponent(d.seq.id);
+      vaiEditing("mam2.html?seq=" + encodeURIComponent(d.seq.id));
     }).catch(function(er){ avviso("err", esc(er.message)); });
   });
   function nuovoProgetto(){
@@ -3388,7 +3408,7 @@
     var n = window.prompt("Nome della nuova sequenza:", "");
     if (!n || !n.trim()) return;
     post({ tipo:"clip-hl-nuova", reg: SEQ.reg, titolo: n.trim(), prog: SEQ.prog || "" })
-      .then(function(d){ location.href = "mam2.html?seq=" + encodeURIComponent(d.seq.id); })
+      .then(function(d){ vaiEditing("mam2.html?seq=" + encodeURIComponent(d.seq.id)); })
       .catch(function(er){ avviso("err", esc(er.message)); });
   }
   function scatola(titolo, voci, poi){
@@ -3424,7 +3444,7 @@
           var seq = (j.seq || []).filter(function(z){ return delMioAmbito(z) && (pid === "__tutte" || z.prog === pid); })
             .sort(function(a, b){ return (b.tocco || b.creata || 0) - (a.tocco || a.creata || 0); })
             .map(function(z){ return { id: z.id, nome: z.titolo || z.id, nota: (z.pezzi || []).length + " pezzi" }; });
-          scatola("Apri sequenza", seq, function(sid){ location.href = "mam2.html?seq=" + encodeURIComponent(sid); });
+          scatola("Apri sequenza", seq, function(sid){ vaiEditing("mam2.html?seq=" + encodeURIComponent(sid)); });
         }).catch(function(er){ avviso("err", esc(er.message)); });
       });
     }).catch(function(er){ avviso("err", esc(er.message)); });
@@ -3631,7 +3651,7 @@
     }); });
     el("scheda").querySelectorAll("button[data-mtogli]").forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); post({ tipo:"clip-marker", reg: ASSET.id, togli: b.dataset.mtogli }).then(function(d){ MARKER = d.marker || []; ASSET.marker = MARKER; disegnaScheda(el("cercaS").value); disegnaMomenti(); }).catch(function(er){ avviso("err", esc(er.message)); }); }); });
     el("scheda").querySelectorAll("#bl-detto .voce[data-k]").forEach(function(v){ v.addEventListener("dblclick", function(){ correggiRiga(v.dataset.k); }); });
-    if (el("bHlAuto")) el("bHlAuto").addEventListener("click", function(){ var b = this; b.disabled = true; b.textContent = "…"; post({ tipo:"clip-hl-genera", reg: ASSET.id }).then(function(d){ var q = d.seq; if (q && q.id) location.href = "mam2.html?seq=" + encodeURIComponent(q.id); else throw new Error("nessuna sequenza"); }).catch(function(e){ avviso("err", esc(e.message)); b.disabled = false; b.textContent = "HL automatico"; }); });
+    if (el("bHlAuto")) el("bHlAuto").addEventListener("click", function(){ var b = this; b.disabled = true; b.textContent = "…"; post({ tipo:"clip-hl-genera", reg: ASSET.id }).then(function(d){ var q = d.seq; if (q && q.id) vaiEditing("mam2.html?seq=" + encodeURIComponent(q.id)); else throw new Error("nessuna sequenza"); }).catch(function(e){ avviso("err", esc(e.message)); b.disabled = false; b.textContent = "HL automatico"; }); });
     if (el("bImportaSrt")) { el("bImportaSrt").addEventListener("click", function(){ el("fSrt").click(); }); el("fSrt").addEventListener("change", function(){ var f = this.files && this.files[0]; if (!f) return; var fr = new FileReader(); fr.onload = function(){ importaSrt(String(fr.result || ""), f.name); }; fr.readAsText(f); this.value = ""; }); }
     el("scheda").querySelectorAll(".fischio[data-t]").forEach(function(v){ v.addEventListener("click", function(){ seek(+v.dataset.t); }); });
     if (el("bTutteAz")) el("bTutteAz").addEventListener("click", function(){ TAB.forEach(function(x, k){ SCELTE[k] = true; }); disegnaScheda(el("cercaS").value); });
@@ -3651,7 +3671,7 @@
       post({ tipo:"clip-hl-ricetta", reg: ASSET.id, cosa: cosa, prima: 4, dopo: d - 4, quante: 30 })
         .then(function(j){
           avviso("ok", j.quante + (j.quante === 1 ? " azione montata" : " azioni montate") + (j.trovate > j.quante ? " di " + j.trovate : "") + ".");
-          setTimeout(function(){ location.href = "mam2.html?seq=" + encodeURIComponent(j.seq.id); }, 800);
+          setTimeout(function(){ vaiEditing("mam2.html?seq=" + encodeURIComponent(j.seq.id)); }, 800);
         })
         .catch(function(er){ avviso("err", esc(er.message)); });
     });
@@ -3711,7 +3731,7 @@
     var righe = Object.keys(SCELTE).map(function(k){ return TAB[k] && TAB[k].t; }).filter(function(t){ return t !== undefined; });
     if (!righe.length || !ASSET) return;
     post({ tipo:"clip-tabellino-monta", reg: ASSET.id, righe: righe }).then(function(d){
-      var q = d.seq || d.sequenza; if (q && q.id) location.href = "mam2.html?seq=" + encodeURIComponent(q.id);
+      var q = d.seq || d.sequenza; if (q && q.id) vaiEditing("mam2.html?seq=" + encodeURIComponent(q.id));
       else { avviso("ok", "Sequenza creata: si apre nel montaggio."); apriNelMontaggio(ASSET); }
     }).catch(function(e){ avviso("err", esc(e.message)); });
   }
@@ -3922,7 +3942,7 @@
     });
     el("bzPista").querySelectorAll("button[data-bvia]").forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); post({ tipo:"clip-hl-pezzo", seq: BOZZA.id, pezzo: b.dataset.bvia, togli: true }).then(function(d){ BOZZA = d.seq; disegnaBozza(); }).catch(function(er){ avviso("err", esc(er.message)); }); }); });
   }
-  el("bRifinisci").addEventListener("click", function(){ if (BOZZA) location.href = "mam2.html?seq=" + encodeURIComponent(BOZZA.id); });
+  el("bRifinisci").addEventListener("click", function(){ if (BOZZA) vaiEditing("mam2.html?seq=" + encodeURIComponent(BOZZA.id)); });
   // IN REGIA DALLA BOZZA (28/09/2026): senza passare dal montaggio. La bozza e'
   // una sequenza vera: si prepara in 16:9 e va in scaletta come dall'Editor
   el("bBozzaRegia").addEventListener("click", function(){
@@ -3962,7 +3982,7 @@
   function inserisci(seqId, dove){
     var c = { tipo:"clip-hl-inserisci", reg: ASSET.id, dentro: DENTRO, fuori: FUORI, titolo: (ASSET.titolo || "") + " " + tc(DENTRO), aggancia: false };
     if (seqId) c.seq = seqId; if (dove !== undefined && dove !== null) c.dove = dove;
-    return post(c).then(function(d){ var q = d.seq; if (q && q.id) location.href = "mam2.html?seq=" + encodeURIComponent(q.id); }).catch(function(e){ avviso("err", esc(e.message)); });
+    return post(c).then(function(d){ var q = d.seq; if (q && q.id) vaiEditing("mam2.html?seq=" + encodeURIComponent(q.id)); }).catch(function(e){ avviso("err", esc(e.message)); });
   }
   // I SOTTOTITOLI SI SCELGONO COL TASTO CHE DICE COSA ESCE. Tre tasti, uno
   // acceso alla volta: quello acceso comanda sia quello che si vede sul
@@ -4117,7 +4137,7 @@
       disegnaBrowser();
     }).catch(function(er){ avviso("err", esc(er.message)); });
   }
-  el("bin").addEventListener("click", function(e){ var r = e.target.closest(".seqr[data-seq]"); if (r) location.href = "mam2.html?seq=" + encodeURIComponent(r.dataset.seq) + (AMBITO ? "&ambito=1907" : ""); });
+  el("bin").addEventListener("click", function(e){ var r = e.target.closest(".seqr[data-seq]"); if (r) vaiEditing("mam2.html?seq=" + encodeURIComponent(r.dataset.seq) + (AMBITO ? "&ambito=1907" : "")); });
   el("tlVuota").addEventListener("click", function(e){
     var a = e.target.closest("a[data-vuota]"); if (!a) return;
     if (a.dataset.vuota === "browser") { mostraScheda("browser"); el("bmCerca").focus(); } else apriProgetto();
@@ -4698,7 +4718,7 @@
   function nuovaSequenzaSu(r){
     var n = window.prompt("Nome della nuova sequenza:", "HL " + (r.titolo || "")); if (!n || !n.trim()) return;
     post({ tipo:"clip-hl-nuova", reg: r.id, titolo: n.trim() })
-      .then(function(d){ location.href = "mam2.html?seq=" + encodeURIComponent(d.seq.id); })
+      .then(function(d){ vaiEditing("mam2.html?seq=" + encodeURIComponent(d.seq.id)); })
       .catch(function(er){ avviso("err", esc(er.message)); });
   }
   // IL MENU COMO TV: il resto della casa, nello stesso ordine della barra
@@ -7356,7 +7376,7 @@
       var nome = window.prompt("Nome della nuova sequenza:", "HL " + (r.titolo || "")); if (nome === null) return;
       post({ tipo:"clip-hl-nuova", reg: r.id, titolo: (nome.trim() || "HL " + (r.titolo || "")) })
         .then(function(d){ return post({ tipo:"clip-hl-inserisci", seq: d.seq.id, reg: r.id, dentro: SRG.dentro, fuori: SRG.fuori, aggancia: false, titolo: (r.titolo || "") + " " + tc(SRG.dentro) }); })
-        .then(function(d){ location.href = "mam2.html?seq=" + encodeURIComponent(d.seq.id); })
+        .then(function(d){ vaiEditing("mam2.html?seq=" + encodeURIComponent(d.seq.id)); })
         .catch(function(er){ avviso("err", esc(er.message)); });
       return;
     }
@@ -7400,7 +7420,7 @@
     }).catch(function(){ b.hidden = true; });
   }
   el("aPerInserisci").addEventListener("click", inserisciInPer);
-  el("aPerTorna").addEventListener("click", function(){ location.href = "mam2.html?seq=" + encodeURIComponent(perSeq()); });
+  el("aPerTorna").addEventListener("click", function(){ vaiEditing("mam2.html?seq=" + encodeURIComponent(perSeq())); });
 
   // ── METADATI: la carta d'identita' della clip scelta ───────────────
   function disegnaMetadati(){
@@ -7485,6 +7505,7 @@
       var h = riassuntoArchivio(usa);
       if (!h) { c.hidden = true; return; }
       c.hidden = false; c.className = "copia riassunto"; c.innerHTML = h;
+      var piu = c.querySelector("[data-rtutte]"); if (piu) piu.addEventListener("click", function(){ RIASSUNTO_TUTTE = true; chiediCopia(); });
       c.querySelectorAll("[data-rcomp]").forEach(function(b){ b.addEventListener("click", function(){ aggiungiGettone({ t: "c", v: b.dataset.rcomp, eti: b.dataset.rcomp }); disegnaGettoni(); cerca(el("cercaLib").value); }); });
       return;
     }
@@ -7507,6 +7528,7 @@
 
   // IL RIASSUNTO DELL'ARCHIVIO: partite, ore, Como, stagioni, le competizioni
   // piu' ricche (un clic = il filtro). Tutto da EVENTI, gia' in pagina
+  var RIASSUNTO_TUTTE = false;
   function riassuntoArchivio(usa){
     if (!EVENTI.length) return "";
     var num = function(n){ return (n || 0).toLocaleString("it-IT"); };
@@ -7514,15 +7536,14 @@
     EVENTI.forEach(function(x){ ore += (+x.durata || 0) / 3600; if (/\bcomo\b/i.test([x.partita, (x.squadre || []).map(function(s){ return s.nome; }).join(" ")].join(" "))) como++; });
     var st = stagioniNote(), comp = compNote();
     var stag = st.length ? (st.length > 1 ? st[st.length - 1].nome + " – " + st[0].nome : st[0].nome) : "";
-    return '<div class="ra-riga"><b>Archivio</b>' +
-      '<span><strong>' + num(usa || EVENTI.length) + '</strong> partite</span>' +
-      (ore ? '<span><strong>' + num(Math.round(ore)) + '</strong> ore di video</span>' : '') +
-      '<span><strong>' + num(como) + '</strong> del Como</span>' +
-      '<span><strong>' + num(comp.length) + '</strong> competizioni</span>' +
-      (stag ? '<span>stagioni <strong>' + esc(stag) + '</strong></span>' : '') + '</div>' +
-      '<div class="ra-comp">' + comp.slice(0, 8).map(function(c){
-        return '<button type="button" data-rcomp="' + esc(c.nome) + '" title="cerca in ' + esc(c.nome) + '"><span class="gt-dot" style="background:' + coloreComp(c.nome) + '"></span>' + esc(compBreve(c.nome)) + '<b>' + num(c.n) + '</b></button>';
-      }).join("") + '</div>';
+    var chip = function(c){ return '<button type="button" data-rcomp="' + esc(c.nome) + '" title="' + esc(c.nome) + ': ' + num(c.n) + ' partite"><span class="gt-dot" style="background:' + coloreComp(c.nome) + '"></span>' + esc(compBreve(c.nome)) + '<b>' + num(c.n) + '</b></button>'; };
+    var PRIME = 18, tutte = RIASSUNTO_TUTTE || comp.length <= PRIME + 2;
+    return '<div class="ra"><span class="ra-n"><strong>' + num(usa || EVENTI.length) + '</strong> partite</span>' +
+      (ore ? '<span class="ra-n"><strong>' + num(Math.round(ore)) + '</strong> ore</span>' : '') +
+      '<span class="ra-n"><strong>' + num(como) + '</strong> Como</span>' +
+      (stag ? '<span class="ra-n">' + esc(stag) + '</span>' : '') +
+      '<i class="ra-sep"></i>' + comp.slice(0, tutte ? comp.length : PRIME).map(chip).join("") +
+      (tutte ? '' : '<button type="button" class="ra-piu" data-rtutte="1">+' + (comp.length - PRIME) + '</button>') + '</div>';
   }
   // nella Libreria si chiede ogni 5 secondi (il ponte ripesa solo i file a meta'),
   // altrove basta il bottoncino in alto; a scheda nascosta non si chiede niente
