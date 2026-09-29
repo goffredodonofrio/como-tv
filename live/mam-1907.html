@@ -45,6 +45,21 @@
   .lib-testa p{color:var(--fumo);margin-top:4px;font-size:13px;}
   /* il campo a gettoni del MAM */
   .lib-cerca{position:relative;max-width:820px;}
+  /* IL RIASSUNTO ACCANTO ALLA BARRA (29/09/2026, come nel MAM Como TV): alto
+     quanto la barra, i numeri sopra e le squadre e le competizioni in una fila che scorre */
+  .lib-riga{display:flex;flex-wrap:wrap;align-items:flex-start;gap:10px 16px;}
+  .lib-riga > .lib-cerca{flex:0 1 820px;min-width:280px;}
+  .riass{flex:1 1 320px;min-width:0;height:54px;display:flex;flex-direction:column;justify-content:center;gap:6px;overflow:hidden;}
+  .riass[hidden]{display:none;}
+  .ra-n-riga{display:flex;align-items:baseline;gap:4px 14px;font-size:12px;color:var(--fumo);white-space:nowrap;overflow:hidden;}
+  .ra-n strong{color:var(--oro2);font:600 13px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;margin-right:3px;}
+  .ra{display:flex;flex-wrap:nowrap;align-items:center;gap:5px;overflow-x:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,#000 92%,transparent);mask-image:linear-gradient(90deg,#000 92%,transparent);}
+  .ra::-webkit-scrollbar{display:none;}
+  .ra button{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:999px;border:1px solid var(--riga2);background:transparent;color:var(--ivory2);font:600 11px/1.2 'DM Sans',sans-serif;letter-spacing:0;text-transform:none;cursor:pointer;white-space:nowrap;}
+  .ra button b{font:600 10.5px/1 ui-monospace,Menlo,monospace;color:var(--fumo);}
+  .ra button i{font-style:normal;color:var(--fumo);font-size:10px;letter-spacing:.08em;text-transform:uppercase;}
+  .ra .sep{flex:0 0 1px;width:1px;height:14px;background:var(--riga2);margin:0 3px;}
+  .ra button:hover,.ra button:focus-visible{border-color:rgba(201,162,75,.6);color:var(--ivory);outline:none;}
   .lib-cerca .lu{position:absolute;left:18px;top:27px;transform:translateY(-50%);opacity:.6;font-size:18px;pointer-events:none;z-index:1;}
   .campo-g{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-height:54px;padding:7px 44px 7px 50px;border-radius:12px;border:1px solid var(--riga2);background:rgba(245,241,230,.06);cursor:text;}
   .campo-g:focus-within{border-color:var(--oro);}
@@ -351,6 +366,7 @@
 <script src="nav-mam.js"></script>
 <div id="libreria">
   <div class="lib-testa"><h1 id="saluto">Buongiorno, <span>Como 1907</span></h1><p id="sotto">Il materiale del club: stagioni, format, documentari, academy. Cerca, guarda, monta.</p></div>
+  <div class="lib-riga">
   <div class="lib-cerca">
     <span class="lu">&#128269;</span>
     <div class="campo-g" id="campoG"><span id="gettoni" style="display:contents"></span><input id="cerca" type="search" placeholder="Cerca qui" autocomplete="off" data-1p-ignore data-lpignore="true" aria-autocomplete="list" aria-controls="sugg"></div>
@@ -358,6 +374,8 @@
     <button class="via" id="svuota" title="svuota la ricerca" aria-label="svuota la ricerca" hidden>×</button>
     <div id="pannelloVolti" class="sugg pv" role="dialog" aria-label="Scegli i volti" hidden></div>
     <div id="sugg" class="sugg" role="listbox" hidden></div>
+  </div>
+  <div class="riass" id="riass" hidden></div>
   </div>
 
   <div id="home">
@@ -1400,7 +1418,14 @@
         var nota = "Sequenza “" + d.seq.titolo + "”: " + d.quante + (d.quante === 1 ? " pezzo" : " pezzi") + (d.saltati && d.saltati.length ? " · " + d.saltati.length + " file saltati" : "") + ". I 4K a 10 bit si vedono appena è pronta la copia leggera.";
         try { sessionStorage.setItem("mam2-avviso", nota); } catch (e) {}
         SCELTI.clear();
-        location.href = "mam2.html?seq=" + encodeURIComponent(d.seq.id) + "&ambito=1907";
+        // l'Editing in una scheda a parte (29/09/2026, come nel MAM Como TV): la
+        // ricerca resta qui. La scheda e' del 1907, non quella dell'Editing di Como TV
+        var dove = "mam2.html?seq=" + encodeURIComponent(d.seq.id) + "&ambito=1907", w = null;
+        try { w = window.open(dove, "mam1907-editing"); } catch (e) {}
+        if (!w) { location.href = dove; return; }
+        try { w.focus(); } catch (e) {}
+        bottone.disabled = false; bottone.textContent = testo; disegnaBarra(); if (!$("risultati").hidden) risultati();
+        avviso("ok", esc(nota));
       })
       .catch(function (e) { bottone.disabled = false; bottone.textContent = testo; avviso("err", esc(e.message)); });
   }
@@ -1573,6 +1598,22 @@
   $("velo").addEventListener("click", function (e) { if (e.target.id === "velo") chiudi(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("velo").hidden) chiudi(); });
 
+  // ══════════ IL RIASSUNTO ══════════
+  // file, collezioni, episodi, peso, stagioni; poi le squadre (prima squadra,
+  // Primavera, Under, Women: le giovanili stanno qui) e le competizioni. Un clic = il filtro
+  function disegnaRiassunto() {
+    var box = $("riass"); if (!box || !I) return;
+    var st = Object.keys(STAGIONI).sort();
+    var ord = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }); };
+    var chip = function (k, v) { return '<button type="button" data-rk="' + k + '" data-rv="' + esc(v) + '" title="' + esc(nomeDi(k, v)) + ": " + n(VOC[k][v]) + ' file">' + esc(nomeDi(k, v)) + "<b>" + n(VOC[k][v]) + "</b></button>"; };
+    box.innerHTML = '<div class="ra-n-riga"><span class="ra-n"><strong>' + n(I.file) + '</strong> file</span><span class="ra-n"><strong>' + n(I.collezioni.length) + '</strong> collezioni</span>' +
+      '<span class="ra-n"><strong>' + n(I.episodi.length) + '</strong> episodi</span><span class="ra-n"><strong>' + gb(I.peso) + "</strong></span>" +
+      (st.length ? '<span class="ra-n">' + esc(st.length > 1 ? st[0] + " – " + st[st.length - 1] : st[0]) + "</span>" : "") + "</div>" +
+      '<div class="ra">' + ord(VOC.sq).map(function (v) { return chip("sq", v); }).join("") + (Object.keys(VOC.comp).length ? '<i class="sep"></i>' + ord(VOC.comp).map(function (v) { return chip("comp", v); }).join("") : "") + "</div>";
+    box.hidden = false;
+    box.querySelectorAll("[data-rk]").forEach(function (b) { b.addEventListener("click", function () { var k = b.dataset.rk, v = b.dataset.rv; metti({ k: k, v: v, n: nomeDi(k, v) }); }); });
+  }
+
   // ══════════ PARTENZA ══════════
   fetch(BASE + "indice/copertine/copertine.json", { cache: "no-cache" }).then(function (r) { return r.ok ? r.json() : { copertine: [] }; }).catch(function () { return { copertine: [] }; })
     .then(function (c) { (c.copertine || []).forEach(function (v) { COP[v.p] = v; }); return fetch(BASE + "indice/indice.json", { cache: "no-cache" }); })
@@ -1590,13 +1631,12 @@
       (I.persone || []).forEach(function (p) { PERS[p.id] = p; });
       PART = I.partite || {};
       var datate = I.cartelle.filter(function (r) { return r[1]; }).length;
-      $("sotto").textContent = n(I.file) + " file · " + I.collezioni.length + " collezioni · " + n(I.episodi.length) + " episodi · " + gb(I.peso) + " sulla NAS" +
-        (I.parziale ? " · indicizzazione in corso" : "") + ". Cerca, guarda, monta.";
+      $("sotto").textContent = "Il materiale del club: stagioni, format, documentari, academy" + (I.parziale ? " (indicizzazione in corso)" : "") + ". Cerca, guarda, monta.";
       $("notaDate").textContent = "Le date sono quelle delle riprese, non della NAS (lì tutti i file hanno il giorno della copia, estate 2026): dal nome della cartella, dal calendario delle partite del Como, dalle cartelle vicine, dal nome del file o dall’orologio della camera. Oggi " + n(datate) + " cartelle su " + n(I.cartelle.length) + " hanno il giorno.";
       var stg = Object.keys(STAGIONI).sort().reverse(); STAG = stg[0] || "";
 
 
-      disegnaStagioni(); disegnaAlbero(); disegnaCollezioni(); disegnaHome();
+      disegnaStagioni(); disegnaAlbero(); disegnaCollezioni(); disegnaHome(); disegnaRiassunto();
       var soloVolti = location.hash === "#volti"; if (soloVolti) IGN_TUTTI = true;
       caricaIgnoti().then(function () { if (soloVolti && !$("voltiBox").hidden) $("voltiBox").scrollIntoView({ block: "start" }); });
       var soloRacc = location.hash === "#raccolte";
