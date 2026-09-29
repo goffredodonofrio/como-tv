@@ -452,18 +452,32 @@ def elimina(p, chi):
                 if manca: esiti.append([via, "la copia che resta non ha %d dei suoi file: non si elimina" % len(manca)]); continue
             elif os.path.getsize(src) != os.path.getsize(keep): esiti.append([via, "la copia che resta ha un'altra dimensione: non si elimina"]); continue
             if not _stesso_contenuto(src, keep, cartella): esiti.append([via, "il contenuto della copia che resta e' diverso: non si elimina"]); continue
-            errori = []
+            errori, tenuti = [], []
             try:
-                if cartella: shutil.rmtree(src, onerror=lambda fn, pth, ex: errori.append(os.path.relpath(pth, RW)))
+                if cartella:
+                    # (29/09/2026) file per file: se ne va solo quello che nella copia che resta c'e' uguale
+                    # (stesso percorso dentro la cartella e stessa dimensione). Quello che non c'e' (sottotitoli,
+                    # progetti Premiere, foto piccole) RESTA dov'e', con le sue cartelle: l'unica copia non si tocca.
+                    for radice, cc, ff in os.walk(src, topdown=False):
+                        for f in ff:
+                            pf = os.path.join(radice, f); rel = os.path.relpath(pf, src); kf = os.path.join(keep, rel)
+                            try:
+                                if os.path.isfile(kf) and os.path.getsize(kf) == os.path.getsize(pf): os.remove(pf)
+                                else: tenuti.append(os.path.relpath(pf, RW))
+                            except OSError as ex: errori.append(os.path.relpath(pf, RW))
+                        try:
+                            if not os.listdir(radice): os.rmdir(radice)
+                        except OSError: pass
                 else: os.remove(src)
             except OSError as ex:
                 errori.append(str(ex.strerror or ex))
             k = hashlib.sha1((via + str(time.time())).encode()).hexdigest()[:12]
             e_["voci"][k] = {"via": via, "tieni": b, "chi": chi, "quando": int(time.time()), "cartella": cartella,
-                             "segnato_da": (s["segnati"].get(via) or {}).get("chi", ""), "errori": errori[:20]}
+                             "segnato_da": (s["segnati"].get(via) or {}).get("chi", ""), "errori": errori[:20], "tenuti": tenuti[:50]}
             s["segnati"].pop(via, None)
-            esiti.append([via, "ok" if not errori else "eliminato in parte: %d elementi non si sono potuti togliere" % len(errori)])
-        n = sum(1 for x in esiti if x[1] == "ok")
+            esiti.append([via, "eliminato in parte: %d elementi non si sono potuti togliere" % len(errori) if errori else
+                          "ok, tenuti %d file che non avevano un'altra copia" % len(tenuti) if tenuti else "ok"])
+        n = sum(1 for x in esiti if x[1].startswith("ok"))
         e_["storia"].append([int(time.time()), chi, "elimina", n]); del e_["storia"][:-1000]
         _scrivi(ELIMINATI, e_); _scrivi(SEGNATI, s)
     _CONTROLLO["t"] = 0

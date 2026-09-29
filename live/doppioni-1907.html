@@ -433,13 +433,25 @@
   function elimina() {
     var sel = Array.from(SCELTI.values()); if (!sel.length) return;
     var peso = sel.reduce(function (t, x) { return t + x.peso; }, 0);
-    if (!confirm("Eliminare DEFINITIVAMENTE " + n(sel.length) + (sel.length === 1 ? " doppione" : " doppioni") + " (" + gb(peso) + ") dalla NAS del club?\n\nNon si recupera. La copia che resta non si tocca.")) return;
-    $("elimina").disabled = true; $("elimina").textContent = "Elimino…";
-    fetch(BASE + "doppioni", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ azione: "elimina", vie: sel.map(function (x) { return x.cartella || x.a; }) }) })
-      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || !j.ok) throw new Error(j.errore || "Non riuscito: riprova."); return j; }); })
-      .then(function (j) { SCELTI.clear(); risultato(j, "Eliminati: " + n(j.eliminati) + "."); return caricaSegni(); })
-      .catch(function (e) { alert(e.message); })
-      .then(function () { $("elimina").textContent = "Elimina"; disegna(); });
+    if (!confirm("Eliminare DEFINITIVAMENTE " + n(sel.length) + (sel.length === 1 ? " doppione" : " doppioni") + " (" + gb(peso) + ") dalla NAS del club?\n\nNon si recupera. La copia che resta non si tocca, e nelle cartelle restano i file che non hanno un'altra copia." + (sel.length > 100 ? "\n\nSi fa a pacchetti da 100: ci vorra' un po', e si puo' fermare." : ""))) return;
+    // A PACCHETTI (29/09/2026): il servizio ne prende al massimo 2.000 per volta e cancellare sulla NAS e' lento;
+    // si manda 100 alla volta, uno dopo l'altro, e il bottone dice a che punto si e'. Si puo' fermare.
+    var vie = sel.map(function (x) { return x.cartella || x.a; }), tot = { eliminati: 0, esiti: [] }, i = 0, FERMA = false;
+    $("elimina").disabled = true;
+    $("deseleziona").textContent = "Ferma"; var ferma = function (e) { e.stopImmediatePropagation(); FERMA = true; }; $("deseleziona").addEventListener("click", ferma, true);
+    function giro() {
+      if (FERMA || i >= vie.length) return Promise.resolve();
+      var pacco = vie.slice(i, i + 100);
+      $("elimina").textContent = "Elimino… " + n(i) + " / " + n(vie.length);
+      return fetch(BASE + "doppioni", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ azione: "elimina", vie: pacco }) })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || !j.ok) throw new Error(j.errore || "Non riuscito (" + r.status + "): riprova, i doppioni gia' eliminati restano nella scheda Eliminati."); return j; }); })
+        .then(function (j) { tot.eliminati += j.eliminati || 0; tot.esiti = tot.esiti.concat(j.esiti || []); pacco.forEach(function (v) { SCELTI.delete(v); }); i += pacco.length; return giro(); });
+    }
+    giro().then(function () {
+      var tenuti = tot.esiti.filter(function (e) { return /tenuti/.test(e[1]); }).length;
+      risultato({ esiti: tot.esiti.filter(function (e) { return !/^ok/.test(e[1]); }) }, (FERMA ? "Fermato. " : "") + "Eliminati: " + n(tot.eliminati) + " di " + n(vie.length) + "." + (tenuti ? "\n\nIn " + tenuti + " cartelle sono rimasti i file che non avevano un'altra copia (sottotitoli, progetti, foto piccole)." : ""));
+    }).catch(function (e) { alert("Eliminati finora: " + n(tot.eliminati) + ".\n\n" + e.message); })
+      .then(function () { $("deseleziona").removeEventListener("click", ferma, true); $("deseleziona").textContent = "Deseleziona"; $("elimina").textContent = "Elimina"; return caricaSegni(); }).then(disegna);
   }
   function manda(azione) {
     var sel = Array.from(SCELTI.values()).filter(function (x) { return azione === "togli" ? SEGN[x.cartella || x.a] : !SEGN[x.cartella || x.a]; });
