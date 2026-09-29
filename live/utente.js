@@ -78,5 +78,22 @@
     });
     return j;
   }
-  fetch("/auth/chi", { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : {}; }).then(areaPersonale).then(monta).catch(function () {});
+  // CHI E' DENTRO ORA (29/09/2026): la pagina dice al Registro che e' aperta, una volta
+  // al minuto e quando la si mette davanti o dietro; chiudendola dice "via". Solo la
+  // pagina e il titolo: niente di quello che si scrive o si guarda dentro.
+  function presenza(j) {
+    if (!j || !j.email) return j;
+    var id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    var manda = function (via) {
+      var b = JSON.stringify({ s: id, p: location.pathname + location.search, t: document.title, v: document.visibilityState === "visible", via: via ? 1 : 0 });
+      if (via && navigator.sendBeacon) { navigator.sendBeacon("/auth/presente", new Blob([b], { type: "application/json" })); return; }
+      fetch("/auth/presente", { method: "POST", body: b, headers: { "Content-Type": "application/json" }, credentials: "same-origin", keepalive: true }).catch(function () {});
+    };
+    manda(); setInterval(function () { manda(); }, 60000);
+    document.addEventListener("visibilitychange", function () { manda(); });
+    window.addEventListener("pagehide", function () { manda(1); });
+    window.addEventListener("pageshow", function (e) { if (e.persisted) manda(); });
+    return j;
+  }
+  fetch("/auth/chi", { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : {}; }).then(areaPersonale).then(presenza).then(monta).catch(function () {});
 })();

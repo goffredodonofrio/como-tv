@@ -365,6 +365,75 @@ def registro(giorni=21):
     return {"persone": persone, "rifiuti": rifiuti, "giorni": giorni}
 
 
+# ── CHI E' DENTRO ORA (Goffredo, 29/09/2026: "cosi' vedo chi e' in questo momento
+#    online"). Ogni pagina col menu' (utente.js) manda un segnale al minuto: quale
+#    pagina, e se e' davanti o in un'altra scheda; chiudendola dice "via". Le pagine
+#    senza menu' (Guida, Grafiche statiche, Palinsesto...) si vedono dal log di nginx:
+#    chi ha fatto qualcosa negli ultimi 10 minuti. Solo in memoria: dopo un riavvio
+#    l'elenco si riempie da solo entro un minuto.
+PRESENTI = {}          # email -> {scheda: {p, t, v, q, dal, ip}}
+FRESCO = 180           # un segnale vale 3 minuti (le schede in secondo piano battono piano)
+DA_POCO = 600
+
+
+def presente(email, ip, d):
+    s = str(d.get("s") or "")[:40]
+    if not s: return
+    schede = PRESENTI.setdefault(email, {})
+    if d.get("via"): schede.pop(s, None); return
+    ora = time.time(); prima = schede.get(s)
+    schede[s] = {"p": str(d.get("p") or "")[:400], "t": str(d.get("t") or "")[:120], "v": bool(d.get("v")),
+                 "q": ora, "dal": prima["dal"] if prima else ora, "ip": ip}
+
+
+def nome_pagina(p):
+    if p.startswith("/auth/registro"): return "Registro di controllo"
+    a = azione_di("GET", p)
+    if not a: return p
+    v = a[0][5:] if a[0].startswith("apre ") else a[0]
+    return v[:1].upper() + v[1:] + (" · " + a[1] if a[1] else "")
+
+
+def presenti():
+    ora = time.time(); dip = dipendenti(); per = {}
+    for email, schede in list(PRESENTI.items()):
+        for k in [k for k, x in schede.items() if ora - x["q"] > FRESCO]: schede.pop(k, None)
+        if not schede: PRESENTI.pop(email, None); continue
+        u = per.setdefault(email, {"email": email, "schede": [], "log": None})
+        for x in schede.values():
+            u["schede"].append({"pagina": nome_pagina(x["p"]), "titolo": x["t"], "davanti": x["v"],
+                                "dal": int(ora - x["dal"]), "fa": int(ora - x["q"]), "ip": x["ip"]})
+    # l'ultima cosa fatta di ciascuno, dal log di nginx (anche per chi e' su pagine senza menu')
+    try:
+        with open(LOG_NGINX, errors="replace") as g:
+            g.seek(0, 2); g.seek(max(0, g.tell() - 600000)); righe = g.read().splitlines()[1:]
+    except OSError:
+        righe = []
+    for r in righe:
+        c = r.split("\t")
+        if len(c) < 7: continue
+        chi = c[1].strip().lower()
+        if not chi or chi == "-": continue
+        try: t = time.mktime(time.strptime(c[0].strip()[:19], "%Y-%m-%dT%H:%M:%S"))
+        except ValueError: continue
+        if ora - t > DA_POCO: continue
+        a = azione_di(c[3].strip(), c[4].strip())
+        if not a: continue
+        u = per.setdefault(chi, {"email": chi, "schede": [], "log": None})
+        u["log"] = {"cosa": a[0] + (" · " + a[1] if a[1] else ""), "fa": int(ora - t), "ip": c[2].strip()}
+    out = []
+    for u in per.values():
+        u["nome"] = nome_di(u["email"], dip); u["ruolo"] = ruolo(u["email"])
+        u["schede"].sort(key=lambda x: (not x["davanti"], x["fa"]))
+        u["davanti"] = any(x["davanti"] for x in u["schede"])
+        # "dentro" = una pagina aperta che batte; "da poco" = solo un'azione negli ultimi 10 minuti
+        u["stato"] = "davanti" if u["davanti"] else "aperto" if u["schede"] else "da poco"
+        u["dal"] = max([x["dal"] for x in u["schede"]] or [0])
+        out.append(u)
+    out.sort(key=lambda u: ({"davanti": 0, "aperto": 1, "da poco": 2}[u["stato"]], u["nome"].lower()))
+    return {"presenti": out, "ora": time.strftime("%H:%M:%S")}
+
+
 REGISTRO_HTML = r"""<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Registro di controllo · Como TV</title><meta name="robots" content="noindex">
 <style>
@@ -396,11 +465,36 @@ body{background:#17181C;color:#F2F2F3;font:15px/1.5 'DM Sans',system-ui,sans-ser
 .av{width:46px;height:46px;border-radius:50%;background:#C9A24B;color:#10131c;display:grid;place-items:center;font:800 14px/1 'Mazzard',sans-serif}
 .av.club{background:#5AA7E8} .av.tec{background:#8E9096}
 .chi b{font-size:17px} .chi .mail{display:block;color:#B4B6BD;font-size:13.5px;margin-top:2px}
-.ruolo{font:700 10px/1 'Mazzard',sans-serif;letter-spacing:.12em;text-transform:uppercase;border:1px solid rgba(255,255,255,.22);border-radius:4px;padding:3px 7px;margin-left:8px;color:#D8D9DD;vertical-align:2px}
+.ruolo{font:700 10px/1 'Mazzard',sans-serif;letter-spacing:.12em;text-transform:uppercase;border:1px solid rgba(255,255,255,.22);border-radius:4px;padding:3px 7px;margin-left:8px;color:#D8D9DD;vertical-align:2px;white-space:nowrap;display:inline-block}
 .riass{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .stat{display:flex;gap:22px;text-align:right}
 .stat div{font-size:12px;color:#A3A5AD;white-space:nowrap} .stat b{display:block;color:#F2F2F3;font-size:15px;font-variant-numeric:tabular-nums}
 .dentro{color:#7FDCA9!important}
+/* ONLINE ORA */
+.periodo button.online{display:inline-flex;align-items:center;gap:8px;border-color:rgba(79,203,139,.55);color:#BFF0D5}
+.periodo button.online b{background:rgba(79,203,139,.22);border-radius:999px;padding:2px 8px;font-size:12.5px;color:#DFF8EA}
+.periodo button.online.on{background:#4FCB8B;border-color:#4FCB8B;color:#0E2418} .periodo button.online.on b{background:rgba(14,36,24,.18);color:#0E2418}
+.pallino{width:9px;height:9px;border-radius:50%;background:#4FCB8B;box-shadow:0 0 0 0 rgba(79,203,139,.6);animation:batte 2s infinite}
+.periodo button.online.on .pallino{background:#0E2418}
+.sep{width:1px;height:22px;background:rgba(255,255,255,.14);margin:0 2px}
+@keyframes batte{0%{box-shadow:0 0 0 0 rgba(79,203,139,.55)}70%{box-shadow:0 0 0 8px rgba(79,203,139,0)}100%{box-shadow:0 0 0 0 rgba(79,203,139,0)}}
+@media (prefers-reduced-motion:reduce){.pallino{animation:none}}
+.modo-online .viste{display:none}
+.on-grup{font:700 12px/1 'Mazzard',sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#7FDCA9;margin:6px 0 12px}
+.on-grup.poco{color:#A3A5AD;margin-top:26px}
+.on-griglia{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr));gap:12px}
+.on-pers{background:#24262C;border:1px solid rgba(79,203,139,.35);border-radius:14px;padding:16px 18px;display:grid;grid-template-columns:46px minmax(0,1fr);gap:4px 14px}
+.on-pers.aperto{border-color:rgba(227,194,113,.35)} .on-pers.poco{border-color:rgba(255,255,255,.09)}
+.on-pers .av{grid-row:span 2;position:relative} .on-pers .av::after{content:"";position:absolute;right:-1px;bottom:-1px;width:13px;height:13px;border-radius:50%;background:#4FCB8B;border:3px solid #24262C}
+.on-pers.aperto .av::after{background:#E3C271} .on-pers.poco .av::after{background:#8E9096}
+.on-stato{font-size:13px;color:#B4B6BD;margin-top:4px} .on-stato b{color:#7FDCA9;font-weight:600} .on-pers.aperto .on-stato b{color:#E3C271} .on-pers.poco .on-stato b{color:#D8D9DD}
+.on-schede{grid-column:1/-1;list-style:none;margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.on-schede li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:baseline;background:#1D1F24;border-radius:9px;padding:9px 12px;font-size:14px}
+.on-schede li small{display:block;color:#9EA0A8;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.on-schede .dove{font-size:12px;color:#A3A5AD;white-space:nowrap} .on-schede li.davanti .dove{color:#7FDCA9}
+.on-ult{grid-column:1/-1;color:#A3A5AD;font-size:13px;margin-top:8px}
+.on-vai{grid-column:1/-1;justify-self:start;margin-top:8px;background:none;border:0;color:#E3C271;font:inherit;font-size:13.5px;cursor:pointer;padding:0}
+.on-vai:focus-visible{outline:2px solid #E3C271;outline-offset:3px}
 .chip{display:inline-flex;align-items:center;gap:5px;background:rgba(245,241,230,.08);border-radius:999px;padding:5px 11px;font-size:13px;white-space:nowrap}
 .chip b{color:#E3C271} .chip.file{background:rgba(90,167,232,.18)} .chip.entra{background:rgba(79,203,139,.16)} .chip.esce{background:rgba(142,144,150,.18)}
 .sessioni{padding:4px 18px 16px 82px}
@@ -430,16 +524,17 @@ h2{font:700 12px/1 'Mazzard',sans-serif;letter-spacing:.2em;text-transform:upper
 <div class="testa"><h1>Registro di controllo</h1><span id="conto"></span>
  <div class="viste" role="tablist"><button id="vPers" class="on" role="tab">Persone</button><button id="vCron" role="tab">Cronologia</button></div></div>
 <div class="periodo" id="periodo">
+ <button data-p="online" class="online"><span class="pallino" aria-hidden="true"></span>Online ora <b id="nOn">…</b></button><span class="sep" aria-hidden="true"></span>
  <button data-p="oggi">Oggi</button><button data-p="ieri">Ieri</button><button data-p="7">Ultimi 7 giorni</button><button data-p="30">Ultimi 30 giorni</button><button data-p="tutto">Tutto</button>
 </div>
 <div class="giorni" id="giorni" aria-label="Giorni con attività"></div>
 <input class="cerca" id="f" type="search" placeholder="Cerca una persona, una mail, una pagina o un file">
 <div id="corpo"><p class="nota">Carico…</p></div>
-<h2>Accessi rifiutati e blocchi</h2><div id="rifiuti"></div>
-<p class="nota">Una sessione va dall'entrata all'ultima cosa fatta (o all'uscita); una pausa di più di mezz'ora ne apre un'altra. "Dentro adesso" = attivo negli ultimi 15 minuti senza essere uscito. Miniature, copertine e indici non si contano. Ultimi <span id="gg"></span> giorni.</p>
+<h2>Accessi rifiutati e blocchi</h2><div id="rifiuti" style="overflow-x:auto"></div>
+<p class="nota">Una sessione va dall'entrata all'ultima cosa fatta (o all'uscita); una pausa di più di mezz'ora ne apre un'altra. "Dentro adesso" = attivo negli ultimi 15 minuti senza essere uscito. Miniature, copertine e indici non si contano. "Online ora" = una pagina aperta che ha dato segno di vita negli ultimi 3 minuti (le pagine col menù lo mandano ogni minuto), più chi ha fatto qualcosa negli ultimi 10 minuti su pagine senza menù; si aggiorna da solo ogni 30 secondi. Ultimi <span id="gg"></span> giorni.</p>
 </div>
 <script>
-var D=null,VISTA="persone",DA="",A="",$=function(i){return document.getElementById(i)};
+var D=null,ON=null,ONLINE=false,VISTA="persone",DA="",A="",$=function(i){return document.getElementById(i)};
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function ini(n){return n.replace(/\(.*\)/,"").split(/\s+/).filter(Boolean).map(function(w){return w[0]}).slice(0,2).join("").toUpperCase()}
 function dur(s){if(s<60)return"meno di 1 min";var h=Math.floor(s/3600),m=Math.round(s%3600/60);if(m===60){h++;m=0}return h?h+" h"+(m?" "+m+" min":""):m+" min"}
@@ -451,6 +546,8 @@ var RUOLI={admin:"super utente",staff:"Como TV",club:"Como 1907"};
 function cl(v){return /originale|copia/.test(v)?"file":v.indexOf("entra")===0?"entra":v==="esce"?"esce":""}
 function nel(x){var g=x.inizio.slice(0,10);return(!DA||g>=DA)&&(!A||g<=A)}
 function periodo(p){
+ ONLINE=p==="online";document.body.classList.toggle("modo-online",ONLINE);
+ if(ONLINE){segnaTasti(p);if(ON)disegna();caricaOnline();return}
  var oggi=new Date();
  if(p==="oggi"){DA=A=iso(oggi)} else if(p==="ieri"){DA=A=iso(new Date(Date.now()-864e5))}
  else if(p==="tutto"){DA=A=""} else {DA=iso(new Date(Date.now()-(+p-1)*864e5));A=iso(oggi)}
@@ -494,10 +591,39 @@ function disegnaCron(f){
  $("corpo").innerHTML=h?'<div class="cron">'+h+'</div></div>':'<p class="nota">Niente in questo periodo.</p>';
  return Object.keys(pers).length;
 }
-function disegna(){var f=$("f").value.toLowerCase(),n=VISTA==="persone"?disegnaPersone(f):disegnaCron(f);$("conto").textContent=n+(n===1?" persona":" persone")+(DA?(DA===A?" · "+giornoBello(DA):" · dal "+dt(DA+"T")+" al "+dt(A+"T")):" · tutto il periodo")}
+function fa(s){return s<60?"adesso":dur(s)+" fa"}
+function schedaOn(u,ui){
+ var cls=u.stato==="davanti"?"":u.stato==="aperto"?" aperto":" poco",tec=/accesso tecnico/.test(u.nome);
+ var st=u.stato==="davanti"?"<b>Sta usando il sito</b>":u.stato==="aperto"?"<b>Pagina aperta in un'altra scheda</b>":"<b>Attivo da poco</b>";
+ if(u.schede.length)st+=" · da "+dur(u.dal); else if(u.log)st+=" · ultima azione "+fa(u.log.fa);
+ return'<div class="on-pers'+cls+'"><span class="av '+(tec?"tec":u.ruolo==="club"?"club":"")+'">'+esc(ini(u.nome))+'</span>'+
+  '<span class="chi"><b>'+esc(u.nome)+'</b><span class="ruolo">'+esc(RUOLI[u.ruolo]||u.ruolo)+'</span><span class="mail">'+esc(u.email)+'</span></span>'+
+  '<span class="on-stato">'+st+'</span>'+
+  (u.schede.length?'<ul class="on-schede">'+u.schede.map(function(x){return'<li class="'+(x.davanti?"davanti":"")+'"><span>'+esc(x.pagina)+(x.titolo&&x.titolo!==x.pagina?'<small>'+esc(x.titolo)+'</small>':'')+'</span><span class="dove">'+(x.davanti?"davanti ora":"in secondo piano")+'</span></li>'}).join("")+'</ul>':'')+
+  (u.log?'<span class="on-ult">Ultima azione: '+esc(u.log.cosa)+' · '+fa(u.log.fa)+'</span>':'')+
+  '<button class="on-vai" data-mail="'+esc(u.email)+'">Cosa ha fatto oggi →</button></div>';
+}
+function disegnaOnline(f){
+ var tutti=(ON?ON.presenti:[]).filter(function(u){return!f||(u.nome+" "+u.email+" "+u.schede.map(function(x){return x.pagina+" "+x.titolo}).join(" ")+" "+(u.log?u.log.cosa:"")).toLowerCase().indexOf(f)>=0});
+ var den=tutti.filter(function(u){return u.stato!=="da poco"}),poco=tutti.filter(function(u){return u.stato==="da poco"});
+ $("corpo").innerHTML=!ON?'<p class="nota">Carico…</p>':
+  (den.length?'<div class="on-grup">Dentro adesso</div><div class="on-griglia">'+den.map(schedaOn).join("")+'</div>':'<p class="nota">In questo momento non c’è nessuno con una pagina aperta.</p>')+
+  (poco.length?'<div class="on-grup poco">Attivi negli ultimi 10 minuti</div><div class="on-griglia">'+poco.map(schedaOn).join("")+'</div>':'');
+ return den.length;
+}
+function caricaOnline(){
+ return fetch("/auth/presenti.json",{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){
+  ON=j;var n=j.presenti.filter(function(u){return u.stato!=="da poco"}).length;$("nOn").textContent=n;
+  if(ONLINE)disegna();
+ }).catch(function(){});
+}
+function disegna(){
+ var f=$("f").value.toLowerCase();
+ if(ONLINE){var k=disegnaOnline(f);$("conto").textContent=k+(k===1?" persona dentro":" persone dentro")+(ON?" · aggiornato alle "+ON.ora.slice(0,5):"");return}
+ var n=VISTA==="persone"?disegnaPersone(f):disegnaCron(f);$("conto").textContent=n+(n===1?" persona":" persone")+(DA?(DA===A?" · "+giornoBello(DA):" · dal "+dt(DA+"T")+" al "+dt(A+"T")):" · tutto il periodo")}
 $("periodo").addEventListener("click",function(e){var b=e.target.closest("button");if(b)periodo(b.dataset.p)});
-$("giorni").addEventListener("click",function(e){var b=e.target.closest(".giorno");if(!b)return;DA=A=b.dataset.g;segnaTasti("");disegna()});
-$("corpo").addEventListener("click",function(e){var b=e.target.closest(".altri");if(!b)return;var s=b.closest(".sess"),p=b.closest(".persona"),u=D.persone[+p.dataset.u],x=u.sessioni.filter(nel)[+s.dataset.x];b.previousElementSibling.outerHTML=passi(x,true).replace(/<button[\s\S]*$/,"");b.remove()});
+$("giorni").addEventListener("click",function(e){var b=e.target.closest(".giorno");if(!b)return;ONLINE=false;document.body.classList.remove("modo-online");DA=A=b.dataset.g;segnaTasti("");disegna()});
+$("corpo").addEventListener("click",function(e){var v=e.target.closest(".on-vai");if(v){$("f").value=v.dataset.mail;periodo("oggi");return}var b=e.target.closest(".altri");if(!b)return;var s=b.closest(".sess"),p=b.closest(".persona"),u=D.persone[+p.dataset.u],x=u.sessioni.filter(nel)[+s.dataset.x];b.previousElementSibling.outerHTML=passi(x,true).replace(/<button[\s\S]*$/,"");b.remove()});
 $("vPers").onclick=function(){VISTA="persone";this.classList.add("on");$("vCron").classList.remove("on");disegna()};
 $("vCron").onclick=function(){VISTA="cron";this.classList.add("on");$("vPers").classList.remove("on");disegna()};
 $("f").addEventListener("input",disegna);
@@ -506,6 +632,8 @@ fetch("/auth/registro.json",{cache:"no-store"}).then(function(r){return r.json()
  $("rifiuti").innerHTML=j.rifiuti.length?'<table class="rif">'+j.rifiuti.map(function(r){return"<tr><td class=q>"+dt(r.q)+" "+ora(r.q)+"</td><td>"+esc(r.chi||"—")+"</td><td>"+esc(r.az)+"</td><td class=q>"+esc(r.ip)+"</td></tr>"}).join("")+"</table>":'<p class="nota">Nessuno.</p>';
  periodo("oggi");
 });
+caricaOnline();setInterval(caricaOnline,30000);
+document.addEventListener("visibilitychange",function(){if(!document.hidden)caricaOnline()});
 </script></body></html>"""
 
 
@@ -526,7 +654,7 @@ PRIVACY = """<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><meta na
 <h1>Accesso a Como TV · informativa sui dati</h1>
 <p>Gli strumenti di lavoro di Como TV su projects-cloud.it sono riservati al personale con un account Google aziendale <b>@sent.tv</b> o <b>@comofootball.com</b> e alle persone autorizzate singolarmente.</p>
 <h2>Quali dati</h2><p>Dall'accesso con Google leggiamo soltanto l'<b>indirizzo email</b> e la conferma che l'account appartiene al dominio aziendale. Non leggiamo contatti, file, calendario o altri dati dell'account.</p>
-<h2>A cosa servono</h2><p>A decidere chi può entrare e a registrare chi fa cosa negli strumenti (accessi, aperture, download, montaggi, invii), per sicurezza e per il lavoro della redazione.</p>
+<h2>A cosa servono</h2><p>A decidere chi può entrare e a registrare chi fa cosa negli strumenti (accessi, aperture, download, montaggi, invii) e quali pagine sono aperte in quel momento, per sicurezza e per il lavoro della redazione.</p>
 <h2>Dove restano</h2><p>Su un server usato solo da Como TV. Non vengono ceduti a terzi né usati per pubblicità.</p>
 <h2>Uscire</h2><p>Si esce da <a href="/auth/esci">/auth/esci</a>. Per domande o per chiedere la cancellazione del proprio registro scrivere al responsabile degli strumenti Como TV.</p>
 </body></html>"""
@@ -590,10 +718,11 @@ class H(BaseHTTPRequestHandler):
             return self.manda(200, json.dumps({"email": email or "", "admin": bool(email and email in super_utenti()), "ruolo": ruolo(email) if email else ""}), "application/json")
         if u.path == "/auth/entra":
             return self.pagina(torna)
-        if u.path in ("/auth/registro", "/auth/registro.json"):
+        if u.path in ("/auth/registro", "/auth/registro.json", "/auth/presenti.json"):
             email = sessione_valida(self.cookie())
             if not email: return self.manda(302, extra=[("Location", "/auth/entra?torna=/auth/registro")])
             if email not in super_utenti(): return self.manda(403, "Il registro lo vede solo il super utente.")
+            if u.path == "/auth/presenti.json": return self.manda(200, json.dumps(presenti(), ensure_ascii=False), "application/json; charset=utf-8")
             if u.path.endswith(".json"): return self.manda(200, json.dumps(registro(), ensure_ascii=False), "application/json; charset=utf-8")
             return self.manda(200, REGISTRO_HTML, "text/html; charset=utf-8")
         if u.path == "/auth/tecnico":
@@ -601,7 +730,8 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/auth/privacy":
             return self.manda(200, PRIVACY, "text/html; charset=utf-8")
         if u.path == "/auth/esci":
-            registra("esce", sessione_valida(self.cookie()), self.ip())
+            chi = sessione_valida(self.cookie()); PRESENTI.pop(chi, None)
+            registra("esce", chi, self.ip())
             return self.manda(302, extra=[("Location", "/auth/entra"), ("Set-Cookie", COOKIE + "=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax")])
         c = conf()
         if u.path == "/auth/google":
@@ -667,6 +797,12 @@ def do_POST_tecnico(self):
 def do_POST_presenze(self):
     u = urllib.parse.urlparse(self.path)
     if u.path == "/auth/tecnico": return do_POST_tecnico(self)
+    if u.path == "/auth/presente":
+        email = sessione_valida(self.cookie()); n = int(self.headers.get("Content-Length") or 0)
+        if not email: return self.manda(401)
+        try: presente(email, self.ip(), json.loads(self.rfile.read(min(n, 4096)).decode()) if 0 < n <= 4096 else {})
+        except Exception: return self.manda(400)
+        return self.manda(204)
     if not u.path.startswith("/auth/presenze/"): return self.manda(404)
     email = sessione_valida(self.cookie()); slug = u.path.rsplit("/", 1)[-1]
     if not email: return self.manda(401, json.dumps({"errore": "serve l'accesso"}), "application/json")
