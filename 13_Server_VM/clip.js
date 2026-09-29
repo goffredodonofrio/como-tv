@@ -1009,24 +1009,6 @@ function clipMarker(p) {
 // per puntare un gol bastano due minuti d'audio, non due ore — e il
 // magazzino e' della regia, non nostro.
 function volumeAlSecondo(via, da, quanto) {
-  // DIETRO IL PONTE IL CONTO LO FA LA EC2. Misurare il livello di tre minuti
-  // vuol dire leggere tre minuti di video: centocinquanta mega per una sola
-  // azione, e le azioni sono migliaia. Sulla EC2 il file si legge in regione
-  // (gratis) e qui arriva la lista dei decibel: un kilobyte, tre secondi.
-  const pp = pontePer(via);
-  if (pp) return new Promise((ok) => {
-    const q = new URLSearchParams({ k: pp.chiave, da: String(Math.max(0, Math.round(da || 0))),
-                                    dur: String(Math.max(1, Math.round(quanto || 180))) });
-    const r = http.get(pp.ponte + "/rms?" + q.toString(), { timeout: 900000 }, (res) => {
-      let t = ""; res.on("data", (b) => { t += b; });
-      res.on("end", () => {
-        try { const j = JSON.parse(t); ok(j && j.ok && Array.isArray(j.db) ? j.db : []); }
-        catch (e) { ok([]); }
-      });
-    });
-    r.on("error", () => ok([]));
-    r.on("timeout", () => { r.destroy(); ok([]); });
-  });
   const prima = ["-hide_banner", "-nostdin"];
   if (da) prima.push("-ss", String(Math.max(0, Math.round(da))));
   if (quanto) prima.push("-t", String(Math.round(quanto)));
@@ -3754,23 +3736,6 @@ async function calcolaOnda(reg, dentro, fuori) {
   ONDE_IN_CORSO.add(k);
   const lista = path.join(cartellaOnde(), k + ".txt");
   try {
-    // SE IL FILE STA DIETRO IL PONTE, L'ONDA LA MISURA LA EC2. Tirare qui i
-    // campioni grezzi di un pezzo vuol dire scaricarne l'audio da S3 —
-    // centinaia di mega per disegnare una linea verde. A Parigi il file si
-    // legge in regione e torna una lista di decibel: un kilobyte. Un valore
-    // al secondo invece di dodici, quindi la forma e' piu' grossa, ma dice
-    // lo stesso dove parla il telecronista e dove urla lo stadio, che e'
-    // tutto quello che serve per tagliare e per mettere una dissolvenza.
-    const reggi = R.reg[reg];
-    const fonte = (reggi && reggi.arch) ? fonteAl(reggi, dentro) : null;
-    if (fonte && fonte.via && pontePer(fonte.via)) {
-      const db = await volumeAlSecondo(fonte.via, fonte.dentro, Math.max(1, Math.round(fuori - dentro)));
-      if (!db.length) return null;
-      // da decibel a zero-cento: sotto i -60 dB non c'e' niente da vedere
-      const onda = db.map((v) => Math.max(0, Math.min(100, Math.round((v + 60) / 60 * 100))));
-      try { fs.writeFileSync(via, JSON.stringify(onda)); } catch (e) {}
-      return onda;
-    }
     const ingresso = ingressoSolaudio(reg, dentro, fuori, lista);
     if (!ingresso) return null;
     // mono a 8 kHz, grezzo: non serve la qualita', serve la forma. Un pezzo
@@ -6074,8 +6039,6 @@ function filtroSting(r, c, cartella, id) {
 //  spesso la fine dell'azione precedente, o una dissolvenza.
 
 function miniatura(file, fuori, quando) {
-  const pp = pontePer(file);
-  if (pp) return fotogrammaDalPonte(pp, quando, fuori, { w: 640, q: 4 });
   return new Promise((si) => {
     const pr = spawn(FFMPEG, ["-hide_banner", "-loglevel", "error", "-nostdin",
       "-ss", String(Math.max(0, quando)), "-i", file, "-frames:v", "1",
@@ -6224,14 +6187,12 @@ const MAGAZZINI = [];
     fuori: process.env.COMOTV_NAS_FUORI === "1"
   });
 })();
-// IL MAGAZZINO DI SOLO ELENCO. L'archivio di Como Football sta su S3 a
-// Parigi (145 TB) e la VM non ha una chiave: l'elenco pero' ce l'abbiamo,
-// fatto dalla EC2 nella stessa regione e portato qui come un JSON da due
-// mega (s3-inventario.json nella cartella dei dati). Con quello le partite
-// entrano nell'indice e nella Libreria come "su S3", si appaiano ad
-// Airtable, si cercano per appunti ed ESPN. Leggerne i byte no: finche'
-// non c'e' una chiave (o un ponte sulla EC2) ogni firma dice di no,
-// chiaramente, e le code che leggono video (misure, cronometro) lo saltano.
+// L'INDICE DELL'ARCHIVIO NAS (29/09/2026, S3 lasciato). Le 1.893 partite
+// che stavano su S3 sono tutte sulla QNAP, in S3-ARCHIVIO, con lo stesso
+// percorso di allora. L'elenco dei loro file (s3-inventario.json: il nome e'
+// rimasto, i dati sono solo nostri) resta l'indice: dice quali file ha ogni
+// partita e quanto pesano; i byte si leggono dalla NAS (SPECCHIO, sotto). Il
+// "bucket" scritto nelle partite ("mola-italy-como-archive") e' solo un nome.
 let inventarioVisto = "";
 function registraInventario() {
   if (!DIR) return;
@@ -6240,25 +6201,18 @@ function registraInventario() {
   if (!fs.existsSync(via)) return;
   inventarioVisto = via;
   let j = null;
-  try { j = JSON.parse(fs.readFileSync(via, "utf8")); } catch (e) { console.log("[clip] s3-inventario.json illeggibile: " + e.message); return; }
+  try { j = JSON.parse(fs.readFileSync(via, "utf8")); } catch (e) { console.log("[clip] indice dell'archivio NAS illeggibile: " + e.message); return; }
   if (!j || !j.bucket || !Array.isArray(j.oggetti)) return;
   if (MAGAZZINI.some((m) => m.bucket === j.bucket)) return;
-  // il ponte: il servizio sulla EC2 (nella regione del secchio, quindi a
-  // traffico zero verso S3) che legge a intervalli e conta ogni byte. Con
-  // il ponte i file si aprono; senza, resta il solo elenco
-  MAGAZZINI.push({ nome: "amazon-inventario", inventario: via, bucket: String(j.bucket), regione: String(j.regione || "eu-west-3"),
+  MAGAZZINI.push({ nome: "archivio-nas", inventario: via, bucket: String(j.bucket), regione: "locale",
                    radice: String(j.radice || "TEMP/"), id: "", segreto: "", endpoint: "", fuori: false,
-                   ponte: String(process.env.COMOTV_S3_PONTE || "").replace(/\/+$/, ""),
                    oggetti: j.oggetti.map((o) => ({ chiave: String(o.k), peso: +o.s || 0, quando: String(o.d || "") })).filter((o) => o.peso > 0) });
-  const m0 = MAGAZZINI[MAGAZZINI.length - 1];
-  console.log("[clip] magazzino " + (m0.ponte ? "S3 via ponte " + m0.ponte : "di solo elenco") + ": " + j.bucket + " (" + j.oggetti.length + " oggetti, " + (j.quando || "") + ")");
+  console.log("[clip] archivio NAS: " + j.oggetti.length + " file in " + SPECCHIO_DIR);
 }
 function magazzinoInventario(bucket) { return MAGAZZINI.filter((x) => x.bucket && x.bucket === (bucket || "") && x.inventario)[0] || null; }
-// solo elenco: niente da leggere (nessun ponte, nessuna chiave)
-function soloElenco(bucket) { const m = magazzinoInventario(bucket); return !!(m && !m.ponte); }
-// dall'inventario: si legge (col ponte) ma le code automatiche — misure,
-// cronometro — non partono da sole: ogni lettura da S3 e' contata, e si fa
-// quando qualcuno la chiede
+// dell'indice: si legge solo la copia sulla NAS (copiaInCasa)
+function soloElenco(bucket) { return !!magazzinoInventario(bucket); }
+// dall'indice dell'archivio: le code automatiche partono solo sulle partite in casa
 function senzaCode(bucket) { return !!magazzinoInventario(bucket); }
 
 // ── LE PARTITE S3 PORTATE IN CASA ─────────────────────────────────────
@@ -6273,174 +6227,55 @@ function senzaCode(bucket) { return !!magazzinoInventario(bucket); }
 const SPECCHIO_DIR = process.env.COMOTV_NAS_SPECCHIO || "S3-ARCHIVIO";
 let SPECCHIO = new Map();                            // chiave S3 -> percorso sulla NAS
 let SPECCHIO_QUANDO = 0;
-function copiaInCasa(chiave) { return chiave ? (SPECCHIO.get(String(chiave)) || null) : null; }
+// I FILE RIPARATI (29/09/2026). Cinque file dell'archivio erano senza indice
+// ("moov atom not found": registrazione o copia interrotta) e non si aprivano
+// con niente. Rifatti con untrunc (/opt/untrunc, modello: un file sano dello
+// stesso MultiCorder e dello stesso giorno) in S3-ARCHIVIO/_riparati/<stesso
+// percorso>; l'originale resta dov'e'. Se la copia riparata c'e', si legge lei.
+// _riparati sta fuori da TEMP: lo scandaglio e la copia non la vedono.
+const RIPARATI = new Map();
+async function leggiRiparati() {
+  const base = path.join(process.env.COMOTV_NAS_CARTELLA || "/mnt/qnap100", SPECCHIO_DIR, "_riparati"), nuovo = new Map();
+  const giro = async (dir, rel) => {
+    let v; try { v = await fs.promises.readdir(dir, { withFileTypes: true }); } catch (e) { return; }
+    for (const x of v) {
+      if (x.name.startsWith(".") || /\.parziale/.test(x.name)) continue;
+      const p = path.join(dir, x.name), r = rel ? rel + "/" + x.name : x.name;
+      if (x.isDirectory()) await giro(p, r); else nuovo.set(r, p);
+    }
+  };
+  await giro(base, "");
+  RIPARATI.clear(); nuovo.forEach((v, k) => RIPARATI.set(k, v));
+}
+setTimeout(() => leggiRiparati().catch(() => {}), 20000);
+setInterval(() => leggiRiparati().catch(() => {}), 600000);
+function copiaInCasa(chiave) { if (!chiave) return null; return RIPARATI.get(String(chiave)) || SPECCHIO.get(String(chiave)) || null; }
 function partiDi(a) { return a && a.pezzi && a.pezzi.length ? a.pezzi : (a && a.chiave ? [{ chiave: a.chiave, peso: a.peso }] : []); }
 // una riga d'indice o una registrazione: in casa solo se c'e' TUTTA
 function inCasa(a) { const pz = partiDi(a); return !!pz.length && pz.every((z) => SPECCHIO.has(z.chiave)); }
 function inCasaReg(r) { return !!(r && r.arch && magazzinoInventario(r.arch.bucket) && inCasa(r.arch)); }
 // il freno delle code S3 non vale per le partite gia' in casa
 function senzaCodeDi(a) { return !!a && senzaCode(a.bucket) && !inCasa(a); }
-// ── L'AVANZAMENTO DELLA COPIA, per la barra nella Libreria ─────────────
-//  Si legge quello che lo script lascia sulla NAS (.scarica-stato.json,
-//  .scarica.log) e si pesa la cartella, file a meta' compresi: la velocita'
-//  e' la crescita degli ultimi minuti, la fine prevista quello che manca
-//  diviso per la velocita'. Il conto delle partite e' quello del MAM: una
-//  partita conta quando c'e' TUTTA (inCasa), non quando e' arrivato un file.
-// il MAM non legge da S3: solo lo script di copia (fuori dal ponte) ci parla
-const S3_STACCATO = process.env.COMOTV_S3_STACCATO !== "0";
-function staccataDaS3(r) { return !!(S3_STACCATO && r && r.arch && magazzinoInventario(r.arch.bucket) && !inCasa(r.arch)); }
-const COPIA_CAMPIONI = [];
+// ── LA SCHEDA DELL'ARCHIVIO, nella Libreria ───────────────────────────
+//  La copia da S3 e' finita e S3 e' lasciato (29/09/2026): niente piu'
+//  velocita', file a meta', aggiunte o dollari. Restano le partite dell'indice
+//  e quante sono sulla NAS. Lo specchio si rifa' ogni mezz'ora (l'archivio ex
+//  S3 non cambia piu'): prima la Libreria faceva ripesare ~2.100 file sulla
+//  NAS ogni due minuti, finche' restava aperta.
+function staccataDaS3(r) { return !!(r && r.arch && magazzinoInventario(r.arch.bucket) && !inCasa(r.arch)); }
+const COPIA_PESO = { quando: 0 };
 let COPIA_ULTIMO = null;
-//  Pesare tutta la cartella sulla NFS costa: si fa ogni 20 secondi. In mezzo
-//  (la barra chiede ogni pochi secondi) si ripesano solo i file a meta', e
-//  quelli finiti restano nel conto di prima: cosi' i MB salgono dal vivo
-//  senza bloccare il ponte.
-const COPIA_PESO = { quando: 0, fatti: 0, parziali: [] };
-const COPIA_FILE = new Map();   // file a meta' -> campioni {t, b} per la sua velocita'
-function pesaCopia(base) {
-  let fatti = 0; const parziali = [];
-  const giro = (d, prof) => {
-    let v; try { v = fs.readdirSync(d, { withFileTypes: true }); } catch (e) { return; }
-    for (const x of v) {
-      if (x.name.startsWith(".") || x.name === "_script") continue;
-      const p = path.join(d, x.name);
-      if (x.isDirectory()) { if (prof < 8) giro(p, prof + 1); continue; }
-      if (/\.parziale/.test(x.name)) { parziali.push(p); continue; }
-      try { fatti += fs.statSync(p).size; } catch (e) {}
-    }
-  };
-  giro(path.join(base, "TEMP"), 0);
-  Object.assign(COPIA_PESO, { quando: Date.now(), fatti, parziali });
-}
-function velocitaTra(campioni, ora, finestra) {
-  // la crescita tra adesso e il campione piu' vecchio dentro la finestra
-  const ultimo = campioni[campioni.length - 1];
-  const primo = campioni.find((c) => ora - c.t <= finestra);
-  if (!ultimo || !primo || ultimo.t - primo.t < 4000) return null;
-  return Math.max(0, (ultimo.b - primo.b) / ((ultimo.t - primo.t) / 1000));
-}
-// LE AGGIUNTE (27/09/2026): i file approvati a mano dopo la copia grande
-// (.aggiunte.txt accanto al diario). La barra deve dire quante ne sono
-// arrivate, non 100% perche' l'indice e' tutto in casa. Si pesa al massimo
-// una volta al minuto: sono qualche centinaio di stat sulla NFS.
-// LE AGGIUNTE (.aggiunte.txt): i file fuori dall'indice che il container
-// scarica in coda. Il file si rilegge ogni 5 minuti; i pesi NON si chiedono
-// alla NAS: li ha gia' la passata della NAS (NAS_FILE). Prima 278 domande
-// in piu' ogni minuto intasavano la fila NFS e la Libreria restava in coda
-const AGGIUNTE = { quando: 0, voci: null, gira: false };
-async function leggiAggiunte(base) {
-  AGGIUNTE.gira = true; AGGIUNTE.quando = Date.now();
-  try {
-    let testo = ""; try { testo = await NFS(() => fs.promises.readFile(path.join(base, ".aggiunte.txt"), "utf8")); } catch (e) { AGGIUNTE.voci = null; return; }
-    const voci = [];
-    testo.split("\n").slice(1).forEach((r) => { r = r.trim(); if (!r) return; const m = /^(?:"((?:[^"]|"")*)"|([^,]*)),(\d*)$/.exec(r); if (!m) return; voci.push({ k: (m[1] !== undefined ? m[1].replace(/""/g, '"') : m[2]), b: +m[3] || 0 }); });
-    AGGIUNTE.voci = voci;
-  } finally { AGGIUNTE.gira = false; }
-}
-function statoAggiunte(base, inArrivo) {
-  if (!AGGIUNTE.gira && Date.now() - AGGIUNTE.quando > 300000) leggiAggiunte(base).catch(() => {});
-  const voci = AGGIUNTE.voci; if (!voci || !NAS_FILE.size) return null;
-  let fatti = 0, byte = 0, byteFatti = 0;
-  voci.forEach((v) => { byte += v.b; const b = NAS_FILE.get(v.k); if (b !== undefined && (!v.b || b === v.b)) { fatti++; byteFatti += v.b || b; } });
-  // i file a meta' delle aggiunte contano per quello che e' gia' arrivato
-  const chiavi = new Set(voci.map((v) => v.k));
-  const inCorso = (inArrivo || []).filter((x) => chiavi.has(path.relative(base, x.p).replace(/\.parziale(\.[^/]*)?$/, ""))).reduce((n, x) => n + (x.b || 0), 0);
-  return { file: voci.length, fatti, byte, byteArrivati: byteFatti + inCorso };
-}
 async function statoCopia() {
-  if (COPIA_ULTIMO && Date.now() - COPIA_ULTIMO.quando < 2500) return COPIA_ULTIMO;
-  const base = path.join(QNAP_RADICE, SPECCHIO_DIR);
-  // la passata sulla NAS gira in sottofondo ogni 20 secondi; la prima volta la si aspetta
-  // (la prima volta dopo un riavvio non si aspetta piu': sono 5 minuti di
-  // richieste appese; si risponde "sto contando" e la scheda arriva dopo)
-  if (Date.now() - COPIA_PESO.quando > 120000) { giroNas(); if (!COPIA_PESO.quando) return { ok: true, contando: true }; }
-  // i file a meta' si ripesano adesso (sono pochi), senza bloccare; quello
-  // sparito e' stato rinominato: e' finito, e la prossima passata lo conta
-  const ora = Date.now(), inArrivo = [];
-  let inCorsoByte = 0;
-  // se la fila NFS e' piena (la passata della NAS), non si aspetta: si
-  // risponde con l'ultima fotografia, fra 3 secondi
-  const pesati = Promise.all(COPIA_PESO.parziali.map((p) => NFS(() => fs.promises.stat(p)).then((st) => st.size, () => null)));
-  const pesi = COPIA_ULTIMO ? await Promise.race([pesati, new Promise((ok) => setTimeout(() => ok(null), 3000))]) : await pesati;
-  if (!pesi) return COPIA_ULTIMO;
-  // un file a meta' sparito e' stato rinominato: il suo peso passa SUBITO tra i
-  // finiti, se no i GB calano fino alla prossima passata e la velocita' va a zero
-  const finali = await Promise.all(COPIA_PESO.parziali.map((p, i) => pesi[i] !== null ? null
-    : NFS(() => fs.promises.stat(p.replace(/\.parziale(\.[^/]*)?$/, ""))).then((st) => st.size, () => null)));
-  finali.forEach((b) => { if (b) COPIA_PESO.fatti += b; });
-  const finito = [];
-  COPIA_PESO.parziali = COPIA_PESO.parziali.filter((p, i) => {
-    const b = pesi[i];
-    if (b === null) { finito.push(p); COPIA_FILE.delete(p); return false; }
-    inCorsoByte += b;
-    const cc = COPIA_FILE.get(p) || []; cc.push({ t: ora, b });
-    while (cc.length > 2 && ora - cc[0].t > 60000) cc.shift();
-    COPIA_FILE.set(p, cc);
-    inArrivo.push({ p, b, v: velocitaTra(cc, ora, 30000) });
-    return true;
-  });
-  for (const p of COPIA_FILE.keys()) if (!COPIA_PESO.parziali.includes(p)) COPIA_FILE.delete(p);
-  // un file appena finito: si ricontano specchio e peso (in sottofondo), cosi' la partita si apre subito dalla NAS
-  if (finito.length) giroNas();
-  const sullaNas = COPIA_PESO.fatti + inCorsoByte, inCorso = inArrivo.length;
-  COPIA_CAMPIONI.push({ t: ora, b: sullaNas });
-  while (COPIA_CAMPIONI.length > 2 && ora - COPIA_CAMPIONI[0].t > 600000) COPIA_CAMPIONI.shift();
-  const velocita = COPIA_CAMPIONI[0] && ora - COPIA_CAMPIONI[0].t > 25000 ? velocitaTra(COPIA_CAMPIONI, ora, 600000) : null;
-  const velocitaOra = velocitaTra(COPIA_CAMPIONI, ora, 30000);
+  if (COPIA_ULTIMO && Date.now() - COPIA_ULTIMO.quando < 30000) return COPIA_ULTIMO;
+  if (Date.now() - COPIA_PESO.quando > 1800000) { giroNas(); if (!COPIA_PESO.quando && !SPECCHIO.size) return { ok: true, contando: true }; }
   let partite = 0, byteTot = 0, partiteCasa = 0, byteCasa = 0;
-  const pesoDi = new Map();
   Object.keys(ARCHIVIO).forEach((rec) => {
     const a = ARCHIVIO[rec]; if (!a || !a.chiave || !magazzinoInventario(a.bucket)) return;
-    const pz = partiDi(a), b = pz.reduce((n, z) => n + (z.peso || 0), 0);
-    pz.forEach((z) => pesoDi.set(z.chiave, { peso: z.peso || 0, partita: a.partita || "" }));
+    const b = partiDi(a).reduce((n, z) => n + (z.peso || 0), 0);
     partite++; byteTot += b;
     if (inCasa(a)) { partiteCasa++; byteCasa += b; }
   });
-  let stato = null; try { stato = JSON.parse(fs.readFileSync(path.join(base, ".scarica-stato.json"), "utf8")); } catch (e) {}
-  let righe = [], logQuando = 0;
-  try { righe = fs.readFileSync(path.join(base, ".scarica.log"), "utf8").trim().split("\n").slice(-300); logQuando = fs.statSync(path.join(base, ".scarica.log")).mtimeMs; } catch (e) {}
-  // TEMP/giorno/PARTITA/[lingua]/...: il nome e' la cartella della partita, con la lingua se c'e'
-  const nomeFile = (chiave) => {
-    const pz = chiave.split("/");
-    const lingua = pz.slice(3, -1).map((z) => /AUDIO ONLY/i.test(z) ? "solo audio" : ((/\b(ITA|ENG)\b/i.exec(z) || [])[1] || "").toUpperCase()).filter(Boolean)[0];
-    return (pz[2] || pz[pz.length - 1]) + (lingua ? " (" + lingua + ")" : "");
-  };
-  const ultimi = righe.filter((r) => /  ok /.test(r)).slice(-6).reverse().map((r) => {
-    const m = /  ok (.+?) ([\d.]+) GB in (\d+) s/.exec(r);
-    return m ? { file: nomeFile(m[1]), gb: +m[2], secondi: +m[3] } : null;
-  }).filter(Boolean);
-  const file = inArrivo.map((x) => {
-    const chiave = path.relative(base, x.p).replace(/\.parziale(\.[^/]*)?$/, "");
-    const info = pesoDi.get(chiave) || {};
-    return { file: nomeFile(chiave), chiave, giorno: (chiave.split("/")[1] || ""), byte: x.b, peso: info.peso || null, velocita: x.v };
-  }).sort((a, b) => (b.peso ? b.byte / b.peso : 0) - (a.peso ? a.byte / a.peso : 0));
-  // un errore conta solo se e' l'ultima cosa successa: quelli vecchi sono passati
-  const ultimaRiga = righe.length ? righe[righe.length - 1] : "";
-  const errore = /ERRORE|\['  File/.test(ultimaRiga) ? (righe.filter((r) => /ERRORE/.test(r)).slice(-1)[0] || "").replace(/^\S+ \S+\s+/, "").slice(0, 200) : "";
-  const manca = Math.max(0, byteTot - sullaNas);
-  // il grafico: un punto ogni 15 secondi sugli ultimi 10 minuti
-  const storia = [];
-  let ancora = COPIA_CAMPIONI[0];
-  for (const c of COPIA_CAMPIONI) {
-    if (c.t - ancora.t < 15000) continue;
-    storia.push({ t: c.t, v: Math.round(Math.max(0, (c.b - ancora.b) / ((c.t - ancora.t) / 1000))) });
-    ancora = c;
-  }
-  const vFine = velocita || velocitaOra;
-  COPIA_ULTIMO = {
-    ok: true, quando: ora, cartella: base,
-    partite, partiteCasa, byteTot, byteCasa, sullaNas, inCorso,
-    velocita, velocitaOra, storia: storia.slice(-40),
-    fine: vFine && vFine > 1e5 ? ora + manca / vFine * 1000 : null,
-    aggiunte: statoAggiunte(base, inArrivo),
-    // pagato e' tutto quello che e' uscito da S3, file a meta' compresi
-    spesi: Math.round(Math.max(stato ? stato.byte || 0 : 0, sullaNas) / 1e9 * 0.03 * 100) / 100,
-    daSpendere: Math.round(manca / 1e9 * 0.03),
-    scaricati: stato ? { byte: stato.byte || 0, file: stato.file || 0 } : null,
-    attiva: !!logQuando && ora - logQuando < 20 * 60000 && (inCorso > 0 || (velocita || 0) > 1e5),
-    fermaDa: logQuando ? ora - logQuando : null,
-    file, ultimi, errore
-  };
+  COPIA_ULTIMO = { ok: true, quando: Date.now(), cartella: path.join(QNAP_RADICE, SPECCHIO_DIR), partite, partiteCasa, byteTot, byteCasa };
   return COPIA_ULTIMO;
 }
 // ── IL GIRO DELLA CASA ──────────────────────────────────────────────
@@ -6706,9 +6541,8 @@ function giroNas() {
     SPECCHIO = nuovo; SPECCHIO_QUANDO = Date.now();
     // si tiene su disco: al riavvio lo specchio c'e' subito, senza aspettare la NAS
     if (cambiato) { try { fs.writeFileSync(path.join(DIR, "specchio.json"), JSON.stringify([...nuovo])); } catch (e) {} }
-    let fatti = 0; finiti.forEach((b) => { fatti += b; });
-    Object.assign(COPIA_PESO, { quando: Date.now(), fatti, parziali: parziali.slice() });
-    if (cambiato) { console.log("[clip] specchio S3: " + partite + " partite in casa (" + nuovo.size + " file) in " + base); annuncia(0, "clip"); }
+    COPIA_PESO.quando = Date.now();
+    if (cambiato) { console.log("[clip] archivio NAS: " + partite + " partite in casa (" + nuovo.size + " file) in " + base); annuncia(0, "clip"); }
     return { partite, file: nuovo.size };
   })().finally(() => { nasInCorso = null; });
   return nasInCorso;
@@ -6733,7 +6567,9 @@ function elencaInventario(mg, prefisso, delimitatore) {
 // stavano solo li' escono dall'indice. Le chiavi restano dove sono, il
 // secchio pure: qui dentro semplicemente non esiste piu'. Si riaccende
 // togliendo una riga dall'ambiente, e un giro di scandaglio lo rimette.
-const S3_SPENTO = process.env.COMOTV_S3_SPENTO === "1";
+// Dal 29/09/2026 S3 e' lasciato: spento per definizione, non per una riga
+// dell'ambiente che si puo' perdere (si riaccenderebbe con COMOTV_S3_SPENTO=0).
+const S3_SPENTO = process.env.COMOTV_S3_SPENTO !== "0";
 const AMAZZONE = S3_SPENTO
   ? { nome: "amazon", endpoint: "", bucket: "", id: "", segreto: "", regione: "", spento: true }
   : { nome: "amazon", endpoint: "", bucket: S3.bucket, id: S3.id,
@@ -6796,14 +6632,11 @@ async function s3Firma(chiave, cerca, quanto, bucket) {
 function firmaConRegione(regione, chiave, cerca, quanto, bucket) {
   const secchio = bucket || S3.bucket;
   const m = magazzinoDi(secchio);
-  if (m.inventario && chiave) { const qui = copiaInCasa(chiave); if (qui) return qui; }   // gia' in casa: la NAS
-  // STACCATI DA S3 (25/09/2026, deciso da Goffredo): il MAM non legge piu'
-  // niente da Parigi. Le partite ci arrivano solo con la copia sulla NAS;
-  // finche' non e' finita, una partita che sta solo su S3 non si apre.
-  if (m.inventario && S3_STACCATO) throw new Error("questa partita sta ancora su S3: si apre quando la copia l'ha portata sulla NAS");
+  // L'ARCHIVIO NAS (ex S3, lasciato il 29/09/2026): i file stanno in
+  // S3-ARCHIVIO sulla QNAP; se non ci sono, non c'e' altro posto dove cercarli
   if (m.inventario) {
-    if (m.ponte) return m.ponte + "/o/" + uriChiave(chiave);
-    throw new Error("di questo archivio S3 abbiamo solo l'elenco: per aprire i file serve il ponte sulla EC2 o la chiave in sola lettura");
+    const qui = chiave ? copiaInCasa(chiave) : null; if (qui) return qui;
+    throw new Error("il file di questa partita non e' sulla NAS");
   }
   // una cartella non si firma: si indica. Chi chiede l'indirizzo per
   // elencare (chiave vuota) riceve la cartella stessa.
@@ -9921,40 +9754,10 @@ function tesseractCe() {
 }
 
 // la fascia alta di un fotogramma, a grandezza naturale: e' li' che sta
-// la grafica. Il file resta su S3: ffmpeg salta al secondo e prende uno
+// la grafica. Il file resta sulla NAS: ffmpeg salta al secondo e prende uno
 const OROLOGIO_PY = path.join(__dirname, "orologio.py");
 const CAMPO_PY = path.join(__dirname, "campo.py");
-// IL FOTOGRAMMA DAL PONTE. Se il file sta dietro il ponte S3 (la EC2 a
-// Parigi), il fotogramma lo estrae la EC2 e qui arriva solo l'immagine:
-// cento kB invece dei sette mega che costa leggere indice e GOP da fuori.
-function pontePer(via) {
-  const m = MAGAZZINI.filter((x) => x.inventario && x.ponte && String(via || "").startsWith(x.ponte + "/o/"))[0];
-  return m ? { ponte: m.ponte, chiave: decodeURIComponent(String(via).slice(m.ponte.length + 3)) } : null;
-}
-function fotogrammaDalPonte(p, sec, fuori, come) {
-  return new Promise((ok) => {
-    const q = new URLSearchParams({ k: p.chiave, t: String(Math.max(0, sec)) });
-    if (come && come.crop) q.set("c", come.crop);
-    if (come && come.png) q.set("fmt", "png");
-    if (come && come.w) q.set("w", String(come.w));
-    if (come && come.q) q.set("q", String(come.q));
-    const r = http.get(p.ponte + "/f?" + q.toString(), { timeout: 150000 }, (res) => {
-      if (res.statusCode !== 200) { let t = ""; res.on("data", (b) => { t += b; }); res.on("end", () => { console.log("[clip] ponte S3: fotogramma a " + sec + "s: " + res.statusCode + " " + t.slice(0, 120)); ok(false); }); return; }
-      const w = fs.createWriteStream(fuori);
-      res.pipe(w); w.on("finish", () => ok(true)); w.on("error", () => ok(false));
-    });
-    r.on("error", (e) => { console.log("[clip] ponte S3: " + e.message); ok(false); });
-    r.on("timeout", () => { r.destroy(new Error("tempo scaduto")); });
-  });
-}
 function fasciaAlta(via, sec) {
-  const pp = pontePer(via);
-  if (pp) {
-    // in JPEG: la fascia alta in PNG pesava mezzo mega a fotogramma, e un
-    // cronometro letto e verificato ne prende venti (12 MB → ~3 MB)
-    const jpg = path.join(os.tmpdir(), "orologio-" + nuovoId("") + ".jpg");
-    return fotogrammaDalPonte(pp, sec, jpg, { crop: "top", q: 3 }).then((si) => si ? jpg : null);
-  }
   return new Promise((ok) => {
     const png = path.join(os.tmpdir(), "orologio-" + nuovoId("") + ".png");
     execFile(FFMPEG, ["-hide_banner", "-loglevel", "error", "-ss", String(Math.max(0, sec)), "-i", via,
@@ -11589,22 +11392,6 @@ function orologiInCoda(ripasso) {
 //  cento minuti in su e' la partita intera e basta lui; due da 45-75 sono i
 //  due tempi; sotto i 35 e' un taglio di regia e si scarta, se c'e' altro.
 function durataFile(via) {
-  // dietro il ponte S3 la misura la fa la EC2: ffprobe legge l'indice del
-  // file nella regione del secchio (gratis) e qui arriva un numero. Senza la
-  // durata vera il riconoscimento tira a indovinare due ore e guarda i
-  // fotogrammi nei posti sbagliati (2 partite nominate su 15, il 22/09)
-  const pp = pontePer(via);
-  if (pp) return new Promise((ok) => {
-    const r = http.get(pp.ponte + "/dur?k=" + encodeURIComponent(pp.chiave), { timeout: 200000 }, (res) => {
-      let t = ""; res.on("data", (b) => { t += b; });
-      res.on("end", () => {
-        try { const j = JSON.parse(t); ok(j && j.ok && isFinite(j.secondi) ? Math.round(j.secondi / 60 * 10) / 10 : null); }
-        catch (e) { ok(null); }
-      });
-    });
-    r.on("error", () => ok(null));
-    r.on("timeout", () => { r.destroy(); ok(null); });
-  });
   return new Promise((ok) => {
     execFile("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", via],
       { timeout: 90000 }, (e, so) => {
@@ -11617,7 +11404,7 @@ const CODA_DURATE = [];
 let durateInMoto = 0, durateFatte = 0, durateFallite = 0, durateCambiate = 0, durateDaScrivere = 0;
 const DURATE_INSIEME = 2;
 async function misuraPartita(rec) {
-  if (ARCHIVIO[rec] && soloElenco(ARCHIVIO[rec].bucket) && !inCasa(ARCHIVIO[rec])) throw new Error("solo elenco: le durate si misurano quando ci sara' il ponte o la chiave");
+  if (ARCHIVIO[rec] && soloElenco(ARCHIVIO[rec].bucket) && !inCasa(ARCHIVIO[rec])) throw new Error("il file di questa partita non e' sulla NAS");
   // col ponte la misura non costa: ffprobe gira sulla EC2, in regione
   const a = ARCHIVIO[rec];
   if (!a) return;
@@ -15656,7 +15443,6 @@ const AZIONI = {
     // che magazzini ci sono, e quale risponde: serve per accorgersi che il
     // Synology e' spento prima di scoprirlo aprendo una partita
     const elenco = [];
-    if (magazzinoAcceso(AMAZZONE)) elenco.push({ nome: "amazon", bucket: AMAZZONE.bucket, dove: "amazonaws.com" });
     MAGAZZINI.filter(magazzinoAcceso).forEach((m) => elenco.push({ nome: m.nome, bucket: m.bucket,
       dove: m.endpoint || m.cartella, radice: m.radice || "" }));
     return { ok: true, acceso: true, regione: await s3Regione(),
@@ -16825,32 +16611,6 @@ const AZIONI = {
   // Airtable comincia dentro di lui. Quando ne resta UNA SOLA, quella e' la
   // proposta: costa zero byte, e la conferma la da' una persona dall'Asset.
   // Il tabellone, che costa minuti e mega, resta per i casi dubbi.
-  // QUANTO ABBIAMO LETTO DA S3. Il traffico in uscita da AWS e' gratis fino a
-  // cento giga al mese: il ponte sulla EC2 conta ogni byte e si ferma prima.
-  // La pagina lo mostra a chi guarda una partita d'archivio, cosi' si sa
-  // quanto costa un play senza doverlo chiedere a nessuno.
-  "clip-s3-conto": () => new Promise((ok) => {
-    const m = MAGAZZINI.filter((x) => x.inventario && x.ponte)[0];
-    if (!m) return ok({ ok: true, ponte: false });
-    const r = http.get(m.ponte + "/conto", { timeout: 8000 }, (res) => {
-      let t = ""; res.on("data", (b) => { t += b; });
-      res.on("end", () => {
-        try {
-          const j = JSON.parse(t);
-          ok({ ok: true, ponte: true, bucket: m.bucket, giorno: j.giorno_byte || 0, mese: j.mese_byte || 0,
-               tettoGiorno: j.tetto_giorno_byte || 0, tettoMese: j.tetto_mese_byte || 0 });
-        } catch (e) { ok({ ok: true, ponte: false }); }
-      });
-    });
-    r.on("error", () => ok({ ok: true, ponte: false }));
-    r.on("timeout", () => { r.destroy(); ok({ ok: true, ponte: false }); });
-  }),
-  // i file di vMix sulla NAS: abbina adesso, senza aspettare il giro dell'ora
-  "clip-vmix-abbina": async () => {
-    const n = await abbinaVmix();
-    if (n) await archivioScandaglia({ giorni: 3650 });
-    return { ok: true, abbinati: n };
-  },
   "clip-archivio-proponi": (p) => {
     const quali = Object.keys(ARCHIVIO).filter((k) => {
       const a = ARCHIVIO[k];
