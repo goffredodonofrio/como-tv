@@ -619,6 +619,13 @@ def main():
                     r[1] = next(iter(g)); r[7] = "vicine"
                     if r[1] % 10000 // 100 and not r[2]: r[2] = stagione_di(r[1])
                 break
+    # I RAMI (29/09/2026): Prima squadra, Women, Academy, Format, Club, Archivio storico, Da sistemare
+    # (metadati_1907.ramo); dopo le vicine, cosi' la stagione e' quella definitiva
+    for r in righe:
+        rm, fm = META.ramo(r[0], r[9], r[2] or "")
+        r[9]["ramo"] = rm
+        if fm: r[9]["fmt"] = fm
+        else: r[9].pop("fmt", None)
     # I SERVIZI: stesso giorno (o stesso mese), stessa sezione -> il loro percorso comune
     gruppi = collections.defaultdict(list)
     for r in righe:
@@ -649,6 +656,12 @@ def main():
                         if x not in l: l.append(x)
                 elif k not in mu: mu[k] = v
         if gn: mu["gn"] = gn
+        # il ramo del servizio: quello con piu' video tra le sue cartelle
+        pr = collections.Counter()
+        for r in rr: pr[(r[9].get("ramo"), r[9].get("fmt", ""))] += r[4] + r[5] + 1
+        (mu["ramo"], fm), _ = pr.most_common(1)[0]
+        if fm: mu["fmt"] = fm
+        else: mu.pop("fmt", None)
         servizi.append([via, dt, rr[0][2], sum(r[4] for r in rr), sum(r[5] for r in rr), sum(r[6] for r in rr), fonte, rappr, pulito(via), mu])
     servizi.sort(key=lambda x: (-x[1], x[0]))
     colls = sorted((c for c in conta.values() if c["liv"] == 1), key=lambda c: -c["ultima"])

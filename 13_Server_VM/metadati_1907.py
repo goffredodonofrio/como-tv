@@ -60,6 +60,39 @@ SQUADRE = [
 ]
 SQUADRE_RX = [(q, re.compile(rx, re.I)) for q, rx in SQUADRE]
 
+# I RAMI DELL'ALBERO (Goffredo, 29/09/2026: "stagione > Prima squadra maschile > tutte le altre
+# squadre > format > altro"; Academy = tutte le giovanili, Primavera compresa). Ogni cartella va in
+# un ramo solo, nell'ordine: un FORMAT (prodotto editoriale, anche se ci sono giocatori), la
+# SQUADRA, il CLUB (eventi, store, territorio...), l'ARCHIVIO STORICO (prima del 2023/24), e se
+# niente torna DA SISTEMARE (un contatore che deve scendere). Si corregge la parola, non il codice.
+FORMAT = [
+    ("Discover Como", r"discover como"), ("Taste of Como", r"taste of como"), ("Behind the Team", r"behind the team"),
+    ("Inside Sinigaglia", r"inside sinigaglia"), ("Como Legends", r"como legends|\blegends\b"), ("Tourism", r"como tv ?- ?tourism|\btourism\b"),
+    ("Como Gaming Club", r"gaming"), ("Kings League", r"kings league|\bzeta\b"), ("Documentario Fàbregas", r"documentario fabregas|cesc documentary"),
+    ("Documentario Mola", r"documentario mola"), ("Fan stories", r"fan stories"), ("Get to know you", r"get to know"),
+]
+FORMAT_RX = [(n, re.compile(rx, re.I)) for n, rx in FORMAT]
+RAMO_PRIMA = re.compile(r"team playing|team goal|team warm ?up|marbella|training camp|celebration|\bmatch ?day|first team|men.?s first", re.I)
+RAMO_CLUB = re.compile(r"hospitality|store|como cup|summer camp|commercial|commerciale|sponsor|event|gala|christmas|natale|ghana|drone|tifosi|fans|"
+                       r"external media|other media|press|lifestyle|b[- ]?roll|territor|tour|celebrit|people|carnival|carnevale|sentiero|interior|exterior|"
+                       r"stadio|indonesia|test cam|foundation|charity|scuola|school|anthem|castle|castello|villa|wine|vino|mountain|lake|lago", re.I)
+RAMO_CLUB_GENERI = {"Evento", "Commerciale", "Tifosi", "Lifestyle e territorio", "Drone", "Social"}
+RAMI = ["Prima squadra", "Women", "Academy", "Format", "Club", "Archivio storico", "Da sistemare"]
+
+
+def ramo(percorso, md, stagione=""):
+    """(ramo, format) di una cartella: vedi RAMI"""
+    t = percorso or ""; q = (md or {}).get("q")
+    for n, rx in FORMAT_RX:
+        if rx.search(t): return "Format", n
+    if not q and RAMO_PRIMA.search(t): q = "Prima squadra"
+    if q == "Prima squadra": return "Prima squadra", ""
+    if q == "Como Women": return "Women", ""
+    if q: return "Academy", ""
+    if RAMO_CLUB.search(t) or set((md or {}).get("g", [])) & RAMO_CLUB_GENERI: return "Club", ""
+    if stagione and stagione < "2023/24": return "Archivio storico", ""
+    return "Da sistemare", ""
+
 COMPETIZIONI = [
     ("Serie A", r"serie ?a\b"), ("Serie B", r"serie ?b\b"), ("Serie C", r"serie ?c\b|lega pro"),
     ("Coppa Italia", r"coppa italia|italian cup"), ("Champions League", r"champions"), ("Europa League", r"europa league"),
