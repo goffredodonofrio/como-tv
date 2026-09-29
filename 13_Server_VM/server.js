@@ -2330,6 +2330,179 @@ function lavagnaTogli(p) {
   return { ok: true, elenco: lavagneElenco() };
 }
 
+// ── I TURNI DELLA REDAZIONE ───────────────────────────────────────────
+// Prototipo per uscire da Airtable, dove i turni vivono in una tabella
+// larga: una riga per persona e DUE colonne per ogni giorno (orario +
+// attivita'), senza l'anno nell'intestazione. Qui un turno e' un turno: ha
+// una data vera, un'ora di inizio e una di fine, quindi le ore si sommano,
+// i riposi si controllano e un mese nuovo non si "crea" — esiste.
+//   turni.json = { persone:[{id,nome,reparto,attivo}],
+//                  turni:{ "2026-09-29": { "<idpersona>": {tipo,inizio,fine,luogo,attivita[],nota} } },
+//                  assenze:[{id,persona,tipo,da,a,nota}], storia:[...] }
+// Come lo schedario e le lavagne: pagina interna, nessuna chiave, ma ogni
+// scrittura porta il nome di chi l'ha fatta e la copia di prima resta.
+const TURNI_FILE = path.join(path.dirname(CONFIG.STATO), "turni.json");
+const TURNI_TIPI = ["lavoro", "off", "ferie", "recupero", "festivo", "malattia", "permesso"];
+const TURNI_LUOGHI = ["sede", "smart", "esterna"];
+const TURNI_REPARTI = ["redazione", "social", "grafica", "produzione"];
+const TURNI_STORIA = 800;
+function turniData(s) { return /^\d{4}-\d{2}-\d{2}$/.test(String(s || "")) ? String(s) : ""; }
+function turniOra(s) {
+  const m = String(s == null ? "" : s).trim().match(/^(\d{1,2})[.:,]?(\d{2})?$/);
+  if (!m) return "";
+  const h = +m[1], mi = +(m[2] || 0);
+  return h > 23 || mi > 59 ? "" : String(h).padStart(2, "0") + ":" + String(mi).padStart(2, "0");
+}
+function turniTutto() {
+  try { return JSON.parse(fs.readFileSync(TURNI_FILE, "utf8")); }
+  catch (e) { return { versione: 1, persone: [], turni: {}, assenze: [], storia: [] }; }
+}
+function turniSalva(t, chi, cosa) {
+  t.persone = t.persone || []; t.turni = t.turni || {}; t.assenze = t.assenze || [];
+  t.storia = (t.storia || []).concat([{ quando: new Date().toISOString(), chi: String(chi || "").slice(0, 40), cosa: String(cosa || "").slice(0, 160) }]).slice(-TURNI_STORIA);
+  const testo = JSON.stringify(t);
+  if (testo.length > 12e6) throw new Error("archivio turni pieno");
+  try { if (fs.existsSync(TURNI_FILE)) fs.copyFileSync(TURNI_FILE, TURNI_FILE + ".bak"); } catch (e) {}
+  const tmp = TURNI_FILE + ".tmp";
+  fs.writeFileSync(tmp, testo);
+  fs.renameSync(tmp, TURNI_FILE);
+  return t;
+}
+// Un turno ripulito: quello che arriva dalla pagina non entra com'e'.
+function turnoPulito(v) {
+  if (!v || !v.tipo) return null;
+  const tipo = String(v.tipo).toLowerCase();
+  if (TURNI_TIPI.indexOf(tipo) < 0) throw new Error("tipo di turno sconosciuto: " + tipo);
+  const t = { tipo };
+  if (tipo === "lavoro") {
+    t.inizio = turniOra(v.inizio); t.fine = turniOra(v.fine);
+    if (!t.inizio || !t.fine) throw new Error("un turno di lavoro vuole ora di inizio e di fine");
+  }
+  const luogo = String(v.luogo || "").toLowerCase();
+  if (luogo) {
+    if (TURNI_LUOGHI.indexOf(luogo) < 0) throw new Error("luogo sconosciuto: " + luogo);
+    t.luogo = luogo;
+  }
+  const att = (Array.isArray(v.attivita) ? v.attivita : [])
+    .map(x => String(x || "").replace(/\s+/g, " ").trim().slice(0, 40)).filter(Boolean).slice(0, 8);
+  if (att.length) t.attivita = att;
+  const nota = String(v.nota || "").replace(/\s+/g, " ").trim().slice(0, 120);
+  if (nota) t.nota = nota;
+  return t;
+}
+function turniPersonaEsiste(t, id) {
+  return (t.persone || []).some(p => p.id === id);
+}
+// Una cella o un pugno di celle in un colpo: la copia della settimana e il
+// riempimento di una riga passano di qui, cosi' il file si scrive una volta
+// sola invece che quaranta.
+function turniCelle(p) {
+  const t = turniTutto();
+  const celle = Array.isArray(p.celle) ? p.celle : [{ data: p.data, persona: p.persona, turno: p.turno }];
+  if (celle.length > 400) throw new Error("troppe celle in una volta");
+  let messi = 0, tolti = 0;
+  celle.forEach(c => {
+    const data = turniData(c.data);
+    const persona = String(c.persona || "");
+    if (!data) throw new Error("data non valida: " + c.data);
+    if (!turniPersonaEsiste(t, persona)) throw new Error("persona sconosciuta: " + persona);
+    const turno = turnoPulito(c.turno);
+    if (turno) { (t.turni[data] = t.turni[data] || {})[persona] = turno; messi++; }
+    else if (t.turni[data]) {
+      delete t.turni[data][persona]; tolti++;
+      if (!Object.keys(t.turni[data]).length) delete t.turni[data];
+    }
+  });
+  turniSalva(t, p.chi, "turni: " + messi + " scritti, " + tolti + " tolti");
+  return { ok: true, messi, tolti, turni: t.turni };
+}
+function turniAssenza(p) {
+  const t = turniTutto();
+  const persona = String(p.persona || "");
+  if (!turniPersonaEsiste(t, persona)) throw new Error("persona sconosciuta: " + persona);
+  const tipo = String(p.tipo || "ferie").toLowerCase();
+  if (TURNI_TIPI.indexOf(tipo) < 0) throw new Error("tipo sconosciuto: " + tipo);
+  const da = turniData(p.da), a = turniData(p.a) || turniData(p.da);
+  if (!da || !a || a < da) throw new Error("date dell'assenza non valide");
+  const v = { id: String(p.id || "") || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
+              persona, tipo, da, a, nota: String(p.nota || "").trim().slice(0, 120) };
+  t.assenze = (t.assenze || []).filter(x => x.id !== v.id).concat([v]);
+  if (t.assenze.length > 4000) throw new Error("troppe assenze");
+  turniSalva(t, p.chi, "assenza " + tipo + " " + persona + " " + da + "→" + a);
+  return { ok: true, assenze: t.assenze };
+}
+function turniAssenzaTogli(p) {
+  const t = turniTutto();
+  const resta = (t.assenze || []).filter(x => x.id !== String(p.id || ""));
+  if (resta.length === (t.assenze || []).length) throw new Error("assenza non trovata");
+  t.assenze = resta;
+  turniSalva(t, p.chi, "assenza tolta");
+  return { ok: true, assenze: resta };
+}
+function turniPersona(p) {
+  const t = turniTutto();
+  const nome = String(p.nome || "").replace(/\s+/g, " ").trim().slice(0, 60);
+  if (!nome) throw new Error("scrivi il nome");
+  const reparto = String(p.reparto || "redazione").toLowerCase();
+  if (TURNI_REPARTI.indexOf(reparto) < 0) throw new Error("reparto sconosciuto: " + reparto);
+  const id = String(p.id || "") || nome.toLowerCase().split(" ").sort().join("-").replace(/[^a-z0-9-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  const gia = (t.persone || []).filter(x => x.id === id)[0];
+  if (gia) {
+    gia.nome = nome; gia.reparto = reparto;
+    if (p.attivo !== undefined) gia.attivo = !!p.attivo;
+  } else {
+    if ((t.persone || []).length >= 200) throw new Error("troppe persone");
+    t.persone.push({ id, nome, reparto, attivo: p.attivo === undefined ? true : !!p.attivo });
+  }
+  turniSalva(t, p.chi, (gia ? "persona aggiornata " : "persona nuova ") + nome);
+  return { ok: true, persone: t.persone };
+}
+// La migrazione da Airtable entra da qui, una volta sola: sostituisce tutto,
+// e di quello che c'era resta comunque la copia .bak accanto al file.
+function turniImporta(p) {
+  const d = p.dati || {};
+  if (!Array.isArray(d.persone) || !d.turni) throw new Error("dati da importare incompleti");
+  const t = { versione: 1, persone: [], turni: {}, assenze: [], storia: turniTutto().storia || [] };
+  d.persone.slice(0, 200).forEach(x => {
+    const nome = String(x.nome || "").trim().slice(0, 60);
+    if (!nome) return;
+    const reparto = TURNI_REPARTI.indexOf(String(x.reparto || "")) >= 0 ? x.reparto : "redazione";
+    t.persone.push({ id: String(x.id || nome.toLowerCase().replace(/\s+/g, "-")), nome, reparto, attivo: x.attivo !== false });
+  });
+  let celle = 0;
+  Object.keys(d.turni || {}).forEach(data => {
+    if (!turniData(data)) return;
+    Object.keys(d.turni[data] || {}).forEach(persona => {
+      if (!turniPersonaEsiste(t, persona)) return;
+      let turno = null;
+      try { turno = turnoPulito(d.turni[data][persona]); } catch (e) { turno = null; }
+      if (turno) { (t.turni[data] = t.turni[data] || {})[persona] = turno; celle++; }
+    });
+  });
+  (Array.isArray(d.assenze) ? d.assenze : []).forEach(x => {
+    const da = turniData(x.da), a = turniData(x.a) || turniData(x.da);
+    if (!da || !a || !turniPersonaEsiste(t, String(x.persona || ""))) return;
+    t.assenze.push({ id: String(x.id || (Date.now().toString(36) + t.assenze.length)), persona: String(x.persona),
+                     tipo: TURNI_TIPI.indexOf(String(x.tipo || "")) >= 0 ? x.tipo : "ferie", da, a, nota: String(x.nota || "").slice(0, 120) });
+  });
+  turniSalva(t, p.chi, "importazione: " + t.persone.length + " persone, " + celle + " celle, " + t.assenze.length + " assenze");
+  return { ok: true, persone: t.persone.length, celle, assenze: t.assenze.length };
+}
+// Quello che serve alla pagina: le persone sempre tutte, i turni e le
+// assenze solo del periodo guardato (un anno intero non serve a nessuno).
+function turniLeggi(da, a) {
+  const t = turniTutto();
+  const d1 = turniData(da), d2 = turniData(a);
+  const turni = {};
+  Object.keys(t.turni || {}).forEach(k => {
+    if ((!d1 || k >= d1) && (!d2 || k <= d2)) turni[k] = t.turni[k];
+  });
+  const assenze = (t.assenze || []).filter(x => (!d1 || x.a >= d1) && (!d2 || x.da <= d2));
+  return { ok: true, persone: t.persone || [], turni, assenze,
+           storia: (t.storia || []).slice(-20).reverse(),
+           quante: { giorni: Object.keys(t.turni || {}).length, assenze: (t.assenze || []).length } };
+}
+
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, "http://" + (req.headers.host || "localhost"));
   const q = u.searchParams;
@@ -2517,6 +2690,8 @@ const server = http.createServer((req, res) => {
       return json(res, { url: url, orfana: url ? "" : fotoOrfana(chi) });
     }
     if (q.get("allenatore")) return json(res, allenatoreDi(q.get("allenatore")));
+    // i turni della redazione (prototipo: vedi il blocco piu' sopra)
+    if (q.get("turni")) return json(res, turniLeggi(q.get("da"), q.get("a")));
     // le lavagne dei telecronisti: l'elenco, o una sola col suo contenuto
     if (q.get("lavagne")) return json(res, { elenco: lavagneElenco() });
     if (q.get("lavagna")) {
@@ -2682,6 +2857,16 @@ function permesso(p, ip) {
       // Le aggiunte allo schedario: come il referto, senza chiave (la pagina
       // e' interna e ogni riga porta il nome di chi l'ha scritta), cappate e
       // con la copia di prima a ogni scrittura.
+      if (String(p.tipo || "").indexOf("turni-") === 0) {
+        try {
+          if (p.tipo === "turni-celle") return json(res, turniCelle(p));
+          if (p.tipo === "turni-assenza") return json(res, turniAssenza(p));
+          if (p.tipo === "turni-assenza-togli") return json(res, turniAssenzaTogli(p));
+          if (p.tipo === "turni-persona") return json(res, turniPersona(p));
+          if (p.tipo === "turni-importa") return json(res, turniImporta(p));
+          return json(res, { ok: false, errore: "comando turni sconosciuto" });
+        } catch (err) { return json(res, { ok: false, errore: err.message }); }
+      }
       if (p.tipo === "lavagna-salva" || p.tipo === "lavagna-togli") {
         try { return json(res, p.tipo === "lavagna-salva" ? lavagnaSalva(p) : lavagnaTogli(p)); }
         catch (err) { return json(res, { ok: false, errore: err.message }); }

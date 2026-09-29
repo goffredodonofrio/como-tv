@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<script>
+/* Come le altre pagine di lavoro: da GitHub si viene portati sulla VM. */
+(function () {
+  if (location.hostname.indexOf("github.io") < 0) return;
+  location.replace("https://projects-cloud.it" + location.pathname + location.search + location.hash);
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Turni Redazione · Como TV</title>
+<!--
+  TURNI REDAZIONE — il gestionale dei turni, al posto della tabella Airtable.
+
+  In Airtable un turno era una casella in una colonna intestata "Sabato 15
+  Agosto", con l'orario scritto come etichetta ("10-19") e le attivita' in
+  un'altra colonna ancora. Qui un turno ha una data, un'ora di inizio e una
+  di fine: le ore si sommano, i riposi si controllano, e un mese nuovo non
+  va creato a mano.
+
+  Dati e scritture passano dal ponte (/api?turni=1, POST tipo turni-*).
+  Nessuna chiave: la pagina e' interna, ma ogni scrittura porta il nome di
+  chi l'ha fatta (in alto a destra) e resta nella storia.
+
+  Indirizzi: turni.html                 la settimana corrente
+             turni.html?vista=mese      il mese
+             turni.html?io=Rossi Mario  evidenzia una persona
+-->
+<style>
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-ExtraBold.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap;}
+  @font-face{font-family:'Mazzard';src:url('../assets/fonts/MazzardM-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}
+  @font-face{font-family:'DM Sans';src:url('../assets/fonts/DMSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap;}
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    color-scheme:light;
+    --fondo:#E9E4D8;--carta:#FFFFFF;--testo:#0A0F24;--testo2:#4A5068;--oro:#8A6A1E;--oroB:#6E520F;
+    --linea:#DCD5C4;--lineaoro:rgba(138,106,30,.35);--chip:#F6F2E9;--festa:#F1ECE0;--oggi:rgba(138,106,30,.10);
+    --sede:#1F6F43;--smart:#1D4E89;--esterna:#B3620F;--off:#B3171C;--ferie:#7A3E9D;--rec:#8A6A1E;
+  }
+  html.scura{
+    color-scheme:dark;
+    --fondo:#0A0F24;--carta:#111833;--testo:#F5F1E6;--testo2:#8A8B96;--oro:#C9A24B;--oroB:#E3C271;
+    --linea:rgba(245,241,230,.12);--lineaoro:rgba(201,162,75,.35);--chip:rgba(245,241,230,.06);
+    --festa:rgba(245,241,230,.03);--oggi:rgba(201,162,75,.12);
+    --sede:#5FD08C;--smart:#7FB2F0;--esterna:#F0A85F;--off:#F08A8A;--ferie:#CDA3FF;--rec:#E3C271;
+  }
+  body{font-family:'DM Sans',system-ui,sans-serif;font-weight:500;background:var(--fondo);color:var(--testo);font-size:15px;}
+  .foglio{min-height:100vh;background:var(--carta);border-left:1px solid var(--linea);border-right:1px solid var(--linea);
+    max-width:1800px;margin:0 auto;display:flex;flex-direction:column;}
+
+  header{padding:16px clamp(12px,2.5vw,26px) 10px;border-bottom:1px solid var(--linea);}
+  .eyebrow{font-family:'Mazzard',sans-serif;font-size:11px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:var(--oro);}
+  h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:clamp(20px,3vw,30px);line-height:1.02;text-transform:uppercase;margin:6px 0 2px;}
+  .sotto{color:var(--testo2);font-size:13.5px;}
+
+  .barra{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px clamp(12px,2.5vw,26px);
+    border-bottom:1px solid var(--linea);position:sticky;top:0;z-index:20;background:var(--carta);}
+  .barra .sp{flex:1;}
+  button,select,input{font-family:'DM Sans',sans-serif;font-size:14px;color:var(--testo);}
+  .btn{font-family:'Mazzard',sans-serif;font-weight:700;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    padding:8px 12px;border-radius:8px;cursor:pointer;background:var(--chip);color:var(--testo);border:1px solid var(--linea);}
+  .btn:hover{border-color:var(--oro);color:var(--oroB);}
+  .btn.forte{background:var(--oro);border-color:var(--oro);color:var(--carta);}
+  .btn.forte:hover{background:var(--oroB);color:var(--carta);}
+  .btn:disabled{opacity:.45;cursor:default;}
+  select,input[type=text],input[type=date]{padding:7px 10px;border-radius:8px;border:1px solid var(--linea);background:var(--chip);}
+  select:focus,input:focus{outline:none;border-color:var(--oro);}
+  .periodo{font-family:'Mazzard',sans-serif;font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase;min-width:230px;text-align:center;}
+  .stato{font-size:12.5px;color:var(--testo2);min-width:120px;}
+  .stato.male{color:#B3171C;}
+  html.scura .stato.male{color:#F08A8A;}
+
+  main{flex:1;overflow:auto;padding:0 0 30px;}
+  table{border-collapse:separate;border-spacing:0;width:100%;}
+  th,td{border-bottom:1px solid var(--linea);border-right:1px solid var(--linea);vertical-align:top;}
+  thead th{position:sticky;top:0;z-index:12;background:var(--carta);padding:7px 8px;text-align:center;
+    font-family:'Mazzard',sans-serif;font-weight:700;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--testo2);}
+  thead th .dg{display:block;font-size:17px;color:var(--testo);font-weight:800;}
+  thead th.festa{background:var(--festa);}
+  thead th.oggi{background:var(--oggi);color:var(--oroB);}
+  th.chi,td.chi{position:sticky;left:0;z-index:11;background:var(--carta);text-align:left;min-width:180px;max-width:220px;}
+  thead th.chi{z-index:14;}
+  td.chi{padding:7px 10px;}
+  td.chi b{font-family:'Mazzard',sans-serif;font-weight:700;font-size:13.5px;letter-spacing:.01em;display:block;line-height:1.2;}
+  td.chi small{color:var(--testo2);font-size:11.5px;}
+  tr.reparto td{background:var(--chip);padding:6px 10px;font-family:'Mazzard',sans-serif;font-weight:700;
+    font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--oro);position:sticky;left:0;}
+  td.cella{padding:0;min-width:104px;}
+  td.cella.festa{background:var(--festa);}
+  td.cella.oggi{background:var(--oggi);}
+  .turno{display:block;width:100%;height:100%;min-height:52px;padding:6px 7px;text-align:left;background:none;border:0;
+    cursor:pointer;font-family:'DM Sans',sans-serif;border-left:3px solid transparent;}
+  .turno:hover{background:var(--chip);}
+  .turno .ora{font-family:'Mazzard',sans-serif;font-weight:800;font-size:14px;letter-spacing:.01em;display:block;}
+  .turno .dove{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;}
+  .turno .att{display:block;font-size:11px;color:var(--testo2);line-height:1.25;margin-top:2px;
+    overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+  .turno.sede{border-left-color:var(--sede);} .turno.sede .dove{color:var(--sede);}
+  .turno.smart{border-left-color:var(--smart);} .turno.smart .dove{color:var(--smart);}
+  .turno.esterna{border-left-color:var(--esterna);} .turno.esterna .dove{color:var(--esterna);}
+  .turno.off .ora{color:var(--off);} .turno.off{border-left-color:var(--off);}
+  .turno.ferie .ora{color:var(--ferie);} .turno.ferie{border-left-color:var(--ferie);}
+  .turno.recupero .ora,.turno.festivo .ora,.turno.permesso .ora,.turno.malattia .ora{color:var(--rec);}
+  .turno.recupero,.turno.festivo,.turno.permesso,.turno.malattia{border-left-color:var(--rec);}
+  .turno.vuota{color:var(--testo2);}
+  .turno.assente{background:repeating-linear-gradient(45deg,transparent,transparent 6px,var(--chip) 6px,var(--chip) 12px);}
+  .turno.scelta{box-shadow:inset 0 0 0 2px var(--oro);}
+  .turno .avviso{display:inline-block;width:7px;height:7px;border-radius:50%;background:#E5342B;margin-left:4px;vertical-align:1px;}
+  td.ore{min-width:66px;text-align:right;padding:7px 9px;font-variant-numeric:tabular-nums;}
+  td.ore b{font-family:'Mazzard',sans-serif;font-weight:800;font-size:14px;}
+  td.ore small{display:block;color:var(--testo2);font-size:11px;}
+  tfoot td{position:sticky;bottom:0;background:var(--carta);font-size:11.5px;color:var(--testo2);padding:6px 7px;text-align:center;}
+  tfoot td.chi{text-align:left;font-family:'Mazzard',sans-serif;font-weight:700;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--oro);}
+  tfoot td b{color:var(--testo);font-variant-numeric:tabular-nums;}
+  tr.io td.chi{box-shadow:inset 3px 0 0 var(--oro);}
+
+  /* il pannello che si apre sulla cella */
+  .velo{position:fixed;inset:0;background:rgba(10,15,36,.35);z-index:40;display:none;}
+  .velo.on{display:block;}
+  .pannello{position:fixed;right:0;top:0;bottom:0;width:min(420px,100%);background:var(--carta);z-index:41;
+    border-left:1px solid var(--linea);padding:18px 20px;overflow:auto;display:none;}
+  .pannello.on{display:block;}
+  .pannello h2{font-family:'Mazzard',sans-serif;font-weight:800;font-size:19px;text-transform:uppercase;line-height:1.1;}
+  .pannello .quando{color:var(--testo2);font-size:13.5px;margin-bottom:12px;}
+  .pannello label{display:block;font-family:'Mazzard',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--oro);margin:14px 0 6px;}
+  .veloce{width:100%;padding:10px 12px;font-size:16px;border-radius:9px;border:1px solid var(--lineaoro);background:var(--chip);}
+  .aiuto{font-size:12px;color:var(--testo2);margin-top:6px;line-height:1.45;}
+  .scelte{display:flex;flex-wrap:wrap;gap:6px;}
+  .scelte button{font-size:12.5px;padding:7px 10px;border-radius:999px;border:1px solid var(--linea);background:var(--chip);cursor:pointer;}
+  .scelte button:hover{border-color:var(--oro);}
+  .scelte button.on{background:var(--oro);border-color:var(--oro);color:var(--carta);font-weight:700;}
+  .ore2{display:flex;gap:8px;align-items:center;}
+  .ore2 input{width:84px;text-align:center;font-size:16px;}
+  .fondo{display:flex;gap:8px;margin-top:20px;flex-wrap:wrap;}
+  .avvisi{margin:14px clamp(12px,2.5vw,26px);padding:10px 13px;border-radius:10px;border:1px solid var(--lineaoro);
+    background:rgba(201,162,75,.08);font-size:13.5px;line-height:1.5;}
+  .avvisi b{color:var(--oroB);}
+  .avvisi ul{margin:6px 0 0 18px;}
+  .avvisi.nessuno{display:none;}
+  .avvisi summary{cursor:pointer;list-style:none;}
+  .avvisi summary::-webkit-details-marker{display:none;}
+  .avvisi summary::before{content:"▸ ";color:var(--oro);}
+  .avvisi details[open] summary::before{content:"▾ ";}
+  .avvisi details[open] ul{max-height:230px;overflow:auto;}
+  .vuoto{padding:60px 20px;text-align:center;color:var(--testo2);}
+  @media (max-width:760px){ th.chi,td.chi{min-width:120px;} td.cella{min-width:88px;} }
+</style>
+</head>
+<body>
+<div class="foglio">
+  <header>
+    <div class="eyebrow">Como TV · Redazione</div>
+    <h1>Turni</h1>
+    <div class="sotto" id="sotto">—</div>
+  </header>
+
+  <div class="barra">
+    <button class="btn" id="indietro" title="Periodo precedente">←</button>
+    <button class="btn" id="oggi">Oggi</button>
+    <button class="btn" id="avanti" title="Periodo successivo">→</button>
+    <span class="periodo" id="periodo">—</span>
+    <select id="vista" title="Quanto guardare">
+      <option value="7">Settimana</option>
+      <option value="14">Due settimane</option>
+      <option value="mese">Mese</option>
+    </select>
+    <select id="reparto" title="Filtra per reparto">
+      <option value="">Tutti i reparti</option>
+      <option value="redazione">Redazione</option>
+      <option value="social">Social media</option>
+      <option value="grafica">Grafica</option>
+      <option value="produzione">Produzione</option>
+    </select>
+    <span class="sp"></span>
+    <button class="btn" id="copia" title="Copia i turni del periodo precedente sulle caselle ancora vuote">Copia periodo prima</button>
+    <button class="btn" id="csv" title="Scarica quello che vedi">CSV</button>
+    <button class="btn" id="nuova" title="Aggiungi una persona in elenco">+ Persona</button>
+    <input type="text" id="chi" placeholder="chi sei" title="Il nome resta scritto nella storia delle modifiche" style="width:130px">
+    <button class="btn" id="tema" title="Chiaro o scuro">◐</button>
+    <span class="stato" id="stato"></span>
+  </div>
+
+  <div class="avvisi nessuno" id="avvisi"></div>
+  <main id="main"><div class="vuoto">Carico i turni…</div></main>
+</div>
+
+<div class="velo" id="velo"></div>
+<aside class="pannello" id="pannello" aria-label="Modifica turno"></aside>
+
+<script>
+(function () {
+  "use strict";
+  var PONTE = "/api";                 // in dev ci pensa comotv-dev-fix a spostarlo
+  var GIORNI = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
+  var MESI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
+  var REPARTI = [["redazione", "Redazione"], ["social", "Social media"], ["grafica", "Grafica"], ["produzione", "Produzione"]];
+  var LUOGHI = [["sede", "Sede"], ["smart", "Smart"], ["esterna", "Esterna"]];
+  var NONLAVORO = [["off", "OFF"], ["ferie", "Ferie"], ["recupero", "Recupero"], ["festivo", "Festivo"], ["permesso", "Permesso"], ["malattia", "Malattia"]];
+  var ORARI_BASE = ["9-18", "10-19", "11-20", "14-23", "15-00", "9-16"];
+
+  var S = { persone: [], turni: {}, assenze: [], da: null, giorni: 7, reparto: "", cella: null, io: "" };
+  var APERTI = false;        // il riquadro degli avvisi resta come lo lasci
+  function el(id) { return document.getElementById(id); }
+  function iso(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  function dataDa(s) { var p = String(s).split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function piu(s, n) { var d = dataDa(s); d.setDate(d.getDate() + n); return iso(d); }
+  function lunedi(d) { var x = new Date(d); var g = (x.getDay() + 6) % 7; x.setDate(x.getDate() - g); return iso(x); }
+  function oggiISO() { return iso(new Date()); }
+  function stato(t, male) { var e = el("stato"); e.textContent = t || ""; e.className = "stato" + (male ? " male" : ""); }
+
+  /* ── il periodo mostrato ───────────────────────────────────────────── */
+  function giorniMostrati() {
+    var out = [], n = S.giorni === "mese" ? giorniDelMese() : +S.giorni;
+    for (var i = 0; i < n; i++) out.push(piu(S.da, i));
+    return out;
+  }
+  function giorniDelMese() {
+    var d = dataDa(S.da);
+    return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  }
+  function titoloPeriodo(gg) {
+    var a = dataDa(gg[0]), b = dataDa(gg[gg.length - 1]);
+    if (a.getMonth() === b.getMonth()) return a.getDate() + "–" + b.getDate() + " " + MESI[a.getMonth()] + " " + a.getFullYear();
+    return a.getDate() + " " + MESI[a.getMonth()] + " – " + b.getDate() + " " + MESI[b.getMonth()] + " " + b.getFullYear();
+  }
+
+  /* ── conti: ore di un turno, ore di una persona nel periodo ────────── */
+  function oreDi(t) {
+    if (!t || t.tipo !== "lavoro" || !t.inizio || !t.fine) return 0;
+    var a = +t.inizio.slice(0, 2) * 60 + +t.inizio.slice(3), b = +t.fine.slice(0, 2) * 60 + +t.fine.slice(3);
+    if (b <= a) b += 24 * 60;                  // 15-00 finisce a mezzanotte
+    return (b - a) / 60;
+  }
+  function turnoDi(data, pid) { return (S.turni[data] || {})[pid] || null; }
+  function assenzaDi(data, pid) {
+    for (var i = 0; i < S.assenze.length; i++) {
+      var x = S.assenze[i];
+      if (x.persona === pid && x.da <= data && data <= x.a) return x;
+    }
+    return null;
+  }
+  function etichetta(t) {
+    if (!t) return "";
+    if (t.tipo === "lavoro") return (t.inizio || "") + "–" + (t.fine || "");
+    var v = NONLAVORO.filter(function (x) { return x[0] === t.tipo; })[0];
+    return v ? v[1].toUpperCase() : t.tipo.toUpperCase();
+  }
+
+  /* ── i controlli: quello che in Airtable non c'era ─────────────────── */
+  function avvisiDel(gg) {
+    var out = [];
+    var persone = personeMostrate();
+    persone.forEach(function (p) {
+      var scorso = null, filaLavoro = 0;
+      gg.forEach(function (g) {
+        var t = turnoDi(g, p.id), ass = assenzaDi(g, p.id);
+        if (t && t.tipo === "lavoro" && ass) out.push({ genere: "in ferie ma a lavoro", g: g, p: p.id, testo: p.nome + " ha un turno il " + breve(g) + " ma è in " + ass.tipo });
+        if (t && t.tipo === "lavoro") {
+          filaLavoro++;
+          if (filaLavoro === 7) out.push({ genere: "senza riposo", g: g, p: p.id, testo: p.nome + ": sette giorni di fila senza riposo (fino al " + breve(g) + ")" });
+          if (scorso) {
+            var fine = dataDa(scorso.g); fine.setHours(+scorso.t.fine.slice(0, 2), +scorso.t.fine.slice(3));
+            if (+scorso.t.fine.slice(0, 2) * 60 + +scorso.t.fine.slice(3) <= +scorso.t.inizio.slice(0, 2) * 60 + +scorso.t.inizio.slice(3)) fine.setDate(fine.getDate() + 1);
+            var via = dataDa(g); via.setHours(+t.inizio.slice(0, 2), +t.inizio.slice(3));
+            var pausa = (via - fine) / 3600000;
+            if (pausa >= 0 && pausa < 11) out.push({ genere: "poche ore fra due turni", g: g, p: p.id, testo: p.nome + ": solo " + pausa.toFixed(0) + " ore fra il turno del " + breve(scorso.g) + " e quello del " + breve(g) });
+          }
+          scorso = { g: g, t: t };
+        } else { filaLavoro = 0; }
+      });
+    });
+    gg.forEach(function (g) {
+      var inSede = persone.filter(function (p) { var t = turnoDi(g, p.id); return t && t.tipo === "lavoro" && t.luogo === "sede"; }).length;
+      var qualcuno = persone.filter(function (p) { var t = turnoDi(g, p.id); return t && t.tipo === "lavoro"; }).length;
+      if (qualcuno > 0 && inSede === 0) out.push({ genere: "nessuno in sede", g: g, testo: breve(g) + ": nessuno in sede" });
+    });
+    return out;
+  }
+  function breve(g) { var d = dataDa(g); return d.getDate() + " " + MESI[d.getMonth()].slice(0, 3); }
+
+  function personeMostrate() {
+    return S.persone.filter(function (p) {
+      return p.attivo !== false && (!S.reparto || p.reparto === S.reparto);
+    });
+  }
+
+  /* ── la griglia ───────────────────────────────────────────────────── */
+  function disegna() {
+    var gg = giorniMostrati(), oggi = oggiISO();
+    el("periodo").textContent = titoloPeriodo(gg);
+    var persone = personeMostrate();
+    if (!persone.length) {
+      el("main").innerHTML = '<div class="vuoto">Nessuna persona in elenco.<br>Importa i turni da Airtable o aggiungi qualcuno dal ponte.</div>';
+      return;
+    }
+    var h = ['<table><thead><tr><th class="chi">Persona</th>'];
+    gg.forEach(function (g) {
+      var d = dataDa(g), fine = d.getDay() === 0 || d.getDay() === 6;
+      h.push('<th class="' + (fine ? "festa " : "") + (g === oggi ? "oggi" : "") + '">' + GIORNI[d.getDay()].slice(0, 3) +
+             '<span class="dg">' + d.getDate() + '</span>' + (d.getDate() === 1 || g === gg[0] ? MESI[d.getMonth()].slice(0, 3) : "") + '</th>');
+    });
+    h.push('<th class="ore">Ore</th></tr></thead><tbody>');
+
+    REPARTI.forEach(function (r) {
+      var suoi = persone.filter(function (p) { return p.reparto === r[0]; });
+      if (!suoi.length) return;
+      h.push('<tr class="reparto"><td colspan="' + (gg.length + 2) + '">' + r[1] + '</td></tr>');
+      suoi.forEach(function (p) {
+        var ore = 0, off = 0;
+        var righe = gg.map(function (g) {
+          var t = turnoDi(g, p.id), ass = assenzaDi(g, p.id), d = dataDa(g);
+          var fine = d.getDay() === 0 || d.getDay() === 6;
+          ore += oreDi(t);
+          if (t && t.tipo !== "lavoro") off++;
+          var cls = "turno" + (t ? " " + (t.tipo === "lavoro" ? (t.luogo || "") : t.tipo) : " vuota") + (ass && !t ? " assente" : "");
+          var dentro = "";
+          if (t) {
+            dentro = '<span class="ora">' + etichetta(t) + '</span>';
+            if (t.luogo) dentro += '<span class="dove">' + t.luogo + '</span>';
+            if (t.attivita && t.attivita.length) dentro += '<span class="att">' + t.attivita.join(" · ") + '</span>';
+            if (t.nota) dentro += '<span class="att">' + t.nota + '</span>';
+          } else if (ass) {
+            dentro = '<span class="ora" style="color:var(--ferie)">' + ass.tipo.toUpperCase() + '</span>';
+          }
+          return '<td class="cella ' + (fine ? "festa " : "") + (g === oggi ? "oggi" : "") + '">' +
+                 '<button class="' + cls + '" data-g="' + g + '" data-p="' + p.id + '">' + dentro + '</button></td>';
+        }).join("");
+        h.push('<tr' + (S.io && p.nome.toLowerCase().indexOf(S.io.toLowerCase()) >= 0 ? ' class="io"' : "") + '>' +
+               '<td class="chi"><b>' + p.nome + '</b><small>' + (p.reparto || "") + '</small></td>' + righe +
+               '<td class="ore"><b>' + (ore ? ore.toFixed(0) : "–") + '</b><small>' + off + ' non lav.</small></td></tr>');
+      });
+    });
+
+    h.push('</tbody><tfoot><tr><td class="chi">In sede / totale</td>');
+    gg.forEach(function (g) {
+      var lavoro = persone.filter(function (p) { var t = turnoDi(g, p.id); return t && t.tipo === "lavoro"; });
+      var sede = lavoro.filter(function (p) { return (turnoDi(g, p.id).luogo || "") === "sede"; });
+      h.push('<td><b>' + sede.length + '</b>/' + lavoro.length + '</td>');
+    });
+    h.push('<td></td></tr></tfoot></table>');
+    el("main").innerHTML = h.join("");
+
+    [].forEach.call(document.querySelectorAll(".turno"), function (b) {
+      b.addEventListener("click", function () { apri(b.dataset.g, b.dataset.p, b); });
+    });
+
+    // Gli avvisi restano chiusi: dicono quanti sono e si aprono se interessano.
+    // Aperti su un mese intero si mangiavano mezza pagina.
+    var av = avvisiDel(gg);
+    var box = el("avvisi");
+    if (!av.length) { box.className = "avvisi nessuno"; box.innerHTML = ""; }
+    else {
+      var perTipo = {};
+      av.forEach(function (a) { perTipo[a.genere] = (perTipo[a.genere] || 0) + 1; });
+      var riassunto = Object.keys(perTipo).map(function (k) { return perTipo[k] + " " + k; }).join(" · ");
+      box.className = "avvisi";
+      box.innerHTML = '<details' + (APERTI ? " open" : "") + '><summary><b>Da guardare: ' + av.length + '</b> — ' + riassunto + '</summary><ul>' +
+        av.map(function (a) { return "<li>" + a.testo + "</li>"; }).join("") + "</ul></details>";
+      box.querySelector("details").addEventListener("toggle", function () { APERTI = this.open; });
+    }
+    el("sotto").textContent = persone.length + " persone · " + gg.length + " giorni · " +
+      Object.keys(S.turni).length + " giornate in archivio";
+  }
+
+  /* ── il pannello di modifica ──────────────────────────────────────── */
+  function attivitaViste() {
+    var v = {};
+    Object.keys(S.turni).forEach(function (g) {
+      Object.keys(S.turni[g]).forEach(function (p) {
+        (S.turni[g][p].attivita || []).forEach(function (a) { v[a] = (v[a] || 0) + 1; });
+      });
+    });
+    return Object.keys(v).sort(function (a, b) { return v[b] - v[a]; }).slice(0, 14);
+  }
+  function orariVisti() {
+    var v = {};
+    Object.keys(S.turni).forEach(function (g) {
+      Object.keys(S.turni[g]).forEach(function (p) {
+        var t = S.turni[g][p];
+        if (t.tipo === "lavoro" && t.inizio) v[t.inizio + "-" + t.fine] = (v[t.inizio + "-" + t.fine] || 0) + 1;
+      });
+    });
+    var visti = Object.keys(v).sort(function (a, b) { return v[b] - v[a]; }).slice(0, 8);
+    return visti.length ? visti : ORARI_BASE.map(function (o) { var p = o.split("-"); return ora(p[0]) + "-" + ora(p[1]); });
+  }
+  function ora(s) {
+    var m = String(s).trim().match(/^(\d{1,2})[.:,]?(\d{2})?$/);
+    if (!m) return "";
+    return String(+m[1]).padStart(2, "0") + ":" + (m[2] || "00");
+  }
+  function apri(g, pid, bottone) {
+    var p = S.persone.filter(function (x) { return x.id === pid; })[0];
+    if (!p) return;
+    [].forEach.call(document.querySelectorAll(".turno.scelta"), function (x) { x.classList.remove("scelta"); });
+    if (bottone) bottone.classList.add("scelta");
+    var t = turnoDi(g, pid), ass = assenzaDi(g, pid), d = dataDa(g);
+    S.cella = { g: g, p: pid, bozza: t ? JSON.parse(JSON.stringify(t)) : { tipo: "lavoro", inizio: "", fine: "" } };
+    var b = S.cella.bozza;
+    var h = ['<h2>' + p.nome + '</h2><div class="quando">' + GIORNI[d.getDay()] + " " + d.getDate() + " " + MESI[d.getMonth()] + " " + d.getFullYear() +
+             (ass ? ' · <b style="color:var(--ferie)">in ' + ass.tipo + " fino al " + breve(ass.a) + "</b>" : "") + '</div>'];
+    h.push('<label>Scrivi e vai</label><input class="veloce" id="veloce" placeholder="10-19 sede football show" autocomplete="off">');
+    h.push('<div class="aiuto">Un orario (<b>10-19</b>, <b>9.30-18.30</b>), poi dove (<b>sede</b>, <b>smart</b>, <b>esterna</b>), poi le attività. Oppure <b>off</b>, <b>ferie</b>, <b>recupero</b>. Invio salva.</div>');
+    h.push('<label>Orari usati</label><div class="scelte" id="rapidi">' +
+      orariVisti().map(function (o) { return '<button data-o="' + o + '">' + o + '</button>'; }).join("") +
+      NONLAVORO.map(function (x) { return '<button data-t="' + x[0] + '">' + x[1] + '</button>'; }).join("") + '</div>');
+    h.push('<label>Dalle / alle</label><div class="ore2"><input type="text" id="in" value="' + (b.inizio || "") + '" placeholder="10:00"> <span>→</span> <input type="text" id="fi" value="' + (b.fine || "") + '" placeholder="19:00"></div>');
+    h.push('<label>Dove</label><div class="scelte" id="dove">' +
+      LUOGHI.map(function (l) { return '<button data-l="' + l[0] + '" class="' + (b.luogo === l[0] ? "on" : "") + '">' + l[1] + '</button>'; }).join("") + '</div>');
+    h.push('<label>Attività</label><div class="scelte" id="att">' +
+      attivitaViste().map(function (a) { return '<button data-a="' + a + '" class="' + ((b.attivita || []).indexOf(a) >= 0 ? "on" : "") + '">' + a + '</button>'; }).join("") + '</div>');
+    h.push('<input type="text" id="attnuova" placeholder="altra attività + Invio" style="width:100%;margin-top:8px">');
+    h.push('<label>Nota</label><input type="text" id="nota" value="' + (b.nota || "").replace(/"/g, "&quot;") + '" placeholder="facoltativa" style="width:100%">');
+    h.push('<div class="fondo"><button class="btn forte" id="salva">Salva</button>' +
+           '<button class="btn" id="svuota">Svuota</button>' +
+           '<button class="btn" id="chiudi">Chiudi</button></div>');
+    h.push('<div class="aiuto" style="margin-top:14px">Frecce ← → per cambiare giorno, ↑ ↓ per cambiare persona.</div>');
+    el("pannello").innerHTML = h.join("");
+    el("pannello").classList.add("on");
+    el("velo").classList.add("on");
+    el("veloce").focus();
+
+    el("veloce").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { leggiVeloce(this.value); salva(); }
+    });
+    [].forEach.call(document.querySelectorAll("#rapidi button"), function (x) {
+      x.addEventListener("click", function () {
+        if (x.dataset.o) { var pz = x.dataset.o.split("-"); b.tipo = "lavoro"; b.inizio = ora(pz[0]); b.fine = ora(pz[1]); el("in").value = b.inizio; el("fi").value = b.fine; }
+        else { b.tipo = x.dataset.t; salva(); }
+      });
+    });
+    [].forEach.call(document.querySelectorAll("#dove button"), function (x) {
+      x.addEventListener("click", function () {
+        b.luogo = b.luogo === x.dataset.l ? "" : x.dataset.l;
+        [].forEach.call(document.querySelectorAll("#dove button"), function (y) { y.classList.toggle("on", y.dataset.l === b.luogo); });
+      });
+    });
+    [].forEach.call(document.querySelectorAll("#att button"), function (x) {
+      x.addEventListener("click", function () {
+        b.attivita = b.attivita || [];
+        var i = b.attivita.indexOf(x.dataset.a);
+        if (i >= 0) b.attivita.splice(i, 1); else b.attivita.push(x.dataset.a);
+        x.classList.toggle("on", i < 0);
+      });
+    });
+    el("attnuova").addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" || !this.value.trim()) return;
+      b.attivita = (b.attivita || []).concat([this.value.trim()]);
+      this.value = ""; apriDiNuovo();
+    });
+    el("salva").addEventListener("click", function () { leggiCampi(); salva(); });
+    el("svuota").addEventListener("click", function () { S.cella.bozza = null; salva(); });
+    el("chiudi").addEventListener("click", chiudi);
+  }
+  function apriDiNuovo() {
+    var c = S.cella; if (!c) return;
+    var bozza = c.bozza;
+    apri(c.g, c.p, null);
+    S.cella.bozza = bozza;
+  }
+  function leggiCampi() {
+    var b = S.cella.bozza; if (!b) return;
+    var i = el("in"), f = el("fi"), n = el("nota");
+    if (i && i.value) { b.inizio = ora(i.value); b.tipo = "lavoro"; }
+    if (f && f.value) b.fine = ora(f.value);
+    if (n) b.nota = n.value.trim();
+  }
+  /* "10-19 sede football show" → turno. Quello che non e' orario o luogo
+     diventa attivita': si scrive come si parla. */
+  function leggiVeloce(testo) {
+    var t = String(testo || "").trim();
+    if (!t) { leggiCampi(); return; }
+    var b = S.cella.bozza || (S.cella.bozza = { tipo: "lavoro" });
+    var parole = t.split(/\s+/), attivita = [];
+    parole.forEach(function (w) {
+      var m = w.match(/^(\d{1,2}([.:,]\d{2})?)[-–](\d{1,2}([.:,]\d{2})?)$/);
+      var l = w.toLowerCase();
+      if (m) { b.tipo = "lavoro"; b.inizio = ora(m[1]); b.fine = ora(m[3]); return; }
+      if (LUOGHI.some(function (x) { return x[0] === l; })) { b.luogo = l; return; }
+      if (l === "trasferta") { b.luogo = "esterna"; return; }
+      var nl = NONLAVORO.filter(function (x) { return x[0] === l || x[1].toLowerCase() === l; })[0];
+      if (nl) { b.tipo = nl[0]; return; }
+      attivita.push(w);
+    });
+    if (attivita.length) b.attivita = (b.attivita || []).concat([attivita.join(" ").toUpperCase()]);
+  }
+  function chiudi() {
+    el("pannello").classList.remove("on");
+    el("velo").classList.remove("on");
+    S.cella = null;
+  }
+
+  /* ── scritture ────────────────────────────────────────────────────── */
+  function chiSono() { return (el("chi").value || "").trim(); }
+  function posta(corpo) {
+    corpo.chi = chiSono();
+    return fetch(PONTE, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (!d.ok) throw new Error(d.errore || "il ponte ha detto no"); return d; });
+  }
+  function salva() {
+    var c = S.cella; if (!c) return;
+    var turno = c.bozza;
+    if (turno && turno.tipo === "lavoro" && (!turno.inizio || !turno.fine)) { stato("manca un orario", true); return; }
+    stato("salvo…");
+    posta({ tipo: "turni-celle", celle: [{ data: c.g, persona: c.p, turno: turno }] })
+      .then(function (d) { S.turni = d.turni; stato("salvato " + new Date().toLocaleTimeString("it-IT").slice(0, 5)); chiudi(); disegna(); })
+      .catch(function (e) { stato(e.message, true); });
+  }
+  /* Copia il periodo precedente sulle caselle ancora vuote: la settimana
+     tipo si ripete, e quello che e' gia' scritto non si tocca. */
+  function copiaPeriodo() {
+    var gg = giorniMostrati(), n = gg.length, celle = [];
+    gg.forEach(function (g) {
+      var prima = piu(g, -n);
+      personeMostrate().forEach(function (p) {
+        if (turnoDi(g, p.id)) return;
+        var t = turnoDi(prima, p.id);
+        if (t) celle.push({ data: g, persona: p.id, turno: t });
+      });
+    });
+    if (!celle.length) { stato("niente da copiare"); return; }
+    if (!confirm("Copio " + celle.length + " turni dal periodo precedente sulle caselle vuote?")) return;
+    stato("copio…");
+    posta({ tipo: "turni-celle", celle: celle })
+      .then(function (d) { S.turni = d.turni; stato(celle.length + " turni copiati"); disegna(); })
+      .catch(function (e) { stato(e.message, true); });
+  }
+  function csv() {
+    var gg = giorniMostrati();
+    var righe = [["Persona", "Reparto"].concat(gg).join(";")];
+    personeMostrate().forEach(function (p) {
+      righe.push([p.nome, p.reparto].concat(gg.map(function (g) {
+        var t = turnoDi(g, p.id);
+        if (!t) return "";
+        return etichetta(t) + (t.luogo ? " " + t.luogo : "") + (t.attivita && t.attivita.length ? " " + t.attivita.join("/") : "");
+      })).join(";"));
+    });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["﻿" + righe.join("\n")], { type: "text/csv;charset=utf-8" }));
+    a.download = "turni-" + gg[0] + "_" + gg[gg.length - 1] + ".csv";
+    a.click();
+  }
+
+  /* ── caricamento ──────────────────────────────────────────────────── */
+  function carica() {
+    var gg = giorniMostrati();
+    // si chiede un po' piu' del periodo: i controlli guardano anche il giorno prima
+    return fetch(PONTE + "?turni=1&da=" + piu(gg[0], -7) + "&a=" + piu(gg[gg.length - 1], 7), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.errore || "il ponte non risponde");
+        S.persone = d.persone || []; S.turni = d.turni || {}; S.assenze = d.assenze || [];
+        disegna();
+      })
+      .catch(function (e) { stato(e.message, true); el("main").innerHTML = '<div class="vuoto">' + e.message + "</div>"; });
+  }
+
+  /* ── barra e tastiera ─────────────────────────────────────────────── */
+  function muovi(n) {
+    var passo = S.giorni === "mese" ? null : +S.giorni;
+    if (passo) S.da = piu(S.da, n * passo);
+    else { var d = dataDa(S.da); d.setMonth(d.getMonth() + n, 1); S.da = iso(d); }
+    carica();
+  }
+  function vistaScelta() {
+    S.giorni = el("vista").value;
+    S.da = S.giorni === "mese" ? S.da.slice(0, 8) + "01" : lunedi(dataDa(S.da));
+    carica();
+  }
+  el("indietro").addEventListener("click", function () { muovi(-1); });
+  el("avanti").addEventListener("click", function () { muovi(1); });
+  el("oggi").addEventListener("click", function () {
+    S.da = S.giorni === "mese" ? oggiISO().slice(0, 8) + "01" : lunedi(new Date());
+    carica();
+  });
+  el("vista").addEventListener("change", vistaScelta);
+  el("reparto").addEventListener("change", function () { S.reparto = this.value; disegna(); });
+  el("copia").addEventListener("click", copiaPeriodo);
+  el("csv").addEventListener("click", csv);
+  el("nuova").addEventListener("click", function () {
+    var nome = prompt("Nome e cognome della persona (come lo vuoi vedere in griglia)");
+    if (!nome) return;
+    var reparto = prompt("Reparto: redazione, social, grafica o produzione", "redazione");
+    if (!reparto) return;
+    posta({ tipo: "turni-persona", nome: nome, reparto: reparto.toLowerCase().trim() })
+      .then(function (d) { S.persone = d.persone; stato("aggiunta " + nome); disegna(); })
+      .catch(function (e) { stato(e.message, true); });
+  });
+  el("velo").addEventListener("click", chiudi);
+  el("chi").addEventListener("change", function () { try { localStorage.setItem("comotv.turni.chi", this.value); } catch (e) {} });
+  el("tema").addEventListener("click", function () {
+    var scuro = !document.documentElement.classList.contains("scura");
+    document.documentElement.classList.toggle("scura", scuro);
+    try { localStorage.setItem("comotv.turni.tema", scuro ? "scura" : "chiara"); } catch (e) {}
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") return chiudi();
+    if (!S.cella || /input|textarea/i.test((e.target.tagName || ""))) return;
+    var gg = giorniMostrati(), persone = personeMostrate();
+    var ig = gg.indexOf(S.cella.g), ip = persone.map(function (p) { return p.id; }).indexOf(S.cella.p);
+    if (e.key === "ArrowRight" && ig < gg.length - 1) vaiA(gg[ig + 1], S.cella.p);
+    else if (e.key === "ArrowLeft" && ig > 0) vaiA(gg[ig - 1], S.cella.p);
+    else if (e.key === "ArrowDown" && ip < persone.length - 1) vaiA(S.cella.g, persone[ip + 1].id);
+    else if (e.key === "ArrowUp" && ip > 0) vaiA(S.cella.g, persone[ip - 1].id);
+    else return;
+    e.preventDefault();
+  });
+  function vaiA(g, p) {
+    var b = document.querySelector('.turno[data-g="' + g + '"][data-p="' + p + '"]');
+    apri(g, p, b);
+    if (b) b.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  try {
+    if (localStorage.getItem("comotv.turni.tema") === "scura") document.documentElement.classList.add("scura");
+    el("chi").value = localStorage.getItem("comotv.turni.chi") || "";
+  } catch (e) {}
+  var q = new URLSearchParams(location.search);
+  S.io = q.get("io") || "";
+  if (q.get("vista")) { S.giorni = q.get("vista") === "mese" ? "mese" : +q.get("vista") || 7; el("vista").value = String(S.giorni); }
+  S.da = S.giorni === "mese" ? oggiISO().slice(0, 8) + "01" : lunedi(new Date());
+  carica();
+  // chi guarda senza toccare niente vede comunque le modifiche degli altri
+  setInterval(function () { if (!S.cella) carica(); }, 60000);
+})();
+</script>
+</body>
+</html>
