@@ -503,6 +503,13 @@
   .rev-vuoto{padding:22px 16px;color:var(--fumo);font-size:13px;line-height:1.5;}
   .rev-bt{position:absolute;right:8px;top:8px;z-index:4;display:inline-flex;align-items:center;gap:4px;padding:4px 7px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(10,15,36,.82);color:var(--ivory);font:700 11px/1 'DM Sans',sans-serif;text-transform:none;letter-spacing:0;cursor:pointer;min-height:0;}
   .card > .rev-bt{top:auto;bottom:8px;} .fx-file .ff{position:relative;} .fx-file .ff .rev-bt{top:12px;right:12px;}
+  .clip-az{position:absolute;left:8px;top:8px;z-index:5;display:flex;gap:4px;opacity:0;transition:opacity .15s;}
+  .card:hover .clip-az,.card:focus-within .clip-az,.ff:hover .clip-az,.ff:focus-within .clip-az{opacity:1;}
+  @media (hover:none){ .clip-az{opacity:1;} }
+  .clip-az button{width:28px;height:26px;padding:0;display:inline-grid;place-items:center;border-radius:6px;border:1px solid rgba(255,255,255,.22);background:rgba(10,15,36,.86);color:var(--ivory);min-height:0;cursor:pointer;}
+  .clip-az button:hover{border-color:var(--oro);color:var(--oro2);} .clip-az button.rosso:hover{border-color:var(--rosso);color:#fff;background:var(--rosso);}
+  .fx-file .ff .clip-az{left:12px;top:12px;}
+  .card .mini .sopra .su{padding-left:0;} .card:hover .mini .sopra .su{opacity:0;}
   .clip-bt{position:absolute;right:8px;top:8px;z-index:4;width:28px;height:24px;padding:0;display:inline-grid;place-items:center;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(10,15,36,.82);color:var(--ivory);font:800 15px/1 'DM Sans',sans-serif;letter-spacing:0;text-transform:none;min-height:0;cursor:pointer;}
   .clip-bt:hover{border-color:var(--oro);color:var(--oro2);}
   .card > .clip-bt{top:auto;bottom:8px;right:auto;left:8px;} .fx-file .ff .clip-bt{top:12px;left:12px;right:auto;}
@@ -2464,7 +2471,7 @@
   // leggera (720p) se c'e', e se non c'e' la si chiede al servizio-1907.
   var SEGUI = null;
   function apri(x) {
-    var u = url(x.via), dx = (x.tipo === "video" ? '<button data-fa="percorso-uno" title="il percorso del file sulla NAS, da incollare nel Finder (Vai alla cartella)">Copia percorso</button>' : "") + '<a class="b" href="' + u + '" download>Scarica l’originale</a>' + '<button type="button" data-cmenu="' + esc(x.via) + '">Condividi / elimina</button>' + (x.tipo === "video" ? '<button data-fa="monta-uno" class="oro">Monta questo</button>' : "") + '<button data-fa="scegli-uno">' + (SCELTI.has(x.via) ? "Togli dalla scelta" : "Scegli") + '</button><button id="chiudi">Chiudi</button>';
+    var u = url(x.via), dx = (x.tipo === "video" ? '<button data-fa="percorso-uno" title="il percorso del file sulla NAS, da incollare nel Finder (Vai alla cartella)">Copia percorso</button>' : "") + '<a class="b" href="' + u + '" download>Scarica l’originale</a>' + '<button type="button" data-cazione="link" data-via="' + esc(x.via) + '">' + IC_LINK + " Copia link</button>" + (PUO_ELIM ? '<button type="button" class="rosso" data-cazione="elimina" data-via="' + esc(x.via) + '">' + IC_CESTO + " Elimina</button>" : "") + (x.tipo === "video" ? '<button data-fa="monta-uno" class="oro">Monta questo</button>' : "") + '<button data-fa="scegli-uno">' + (SCELTI.has(x.via) ? "Togli dalla scelta" : "Scegli") + '</button><button id="chiudi">Chiudi</button>';
     var info = '<div class="info"><div><b>' + esc(x.nome) + "</b><br>" + esc(percorsoVista(x.d)) + " · " + gb(x.peso) + (x.data ? " · girato il " + dataRip(x.data) : "") + '</div><div class="dx">' + dx + "</div></div>";
     var schermo;
     if (x.tipo === "foto" && /\.(jpe?g|png|webp)$/i.test(x.via)) schermo = '<div class="schermo"><img src="' + u + '" alt=""></div>';
@@ -2511,7 +2518,14 @@
   // chi e' taggato lo ritrova in Menzioni. Si salvano nel servizio-1907 (commenti.json).
   var REV = null, CONTI_C = {}, MENZ = { lista: [], nuove: 0 }, PUO_ELIM = false;
   // ── LE TRE AZIONI DI OGNI CLIP (Goffredo, 29/09/2026): condividi con un link, scarica cosi' com'e', elimina ──
-  function bottoneMenu(via) { return '<button type="button" class="clip-bt" data-cmenu="' + esc(via) + '" title="Condividi, scarica, elimina" aria-label="azioni della clip">\u22EF</button>'; }
+  var IC_LINK = '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.6 9.4a2.6 2.6 0 0 0 3.7 0l2.4-2.4a2.6 2.6 0 0 0-3.7-3.7l-.9.9M9.4 6.6a2.6 2.6 0 0 0-3.7 0L3.3 9a2.6 2.6 0 0 0 3.7 3.7l.9-.9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  var IC_GIU = '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7.5 8 11l3.5-3.5M3 13.5h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var IC_CESTO = '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M7 7v4M9 7v4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  // I TRE TASTI SU OGNI MINIATURA (Goffredo, 29/09/2026): condividi (il link), scarica l'originale, elimina
+  function bottoneMenu(via) {
+    return '<span class="clip-az" role="group" aria-label="azioni della clip"><button type="button" data-cazione="link" data-via="' + esc(via) + '" title="Copia il link della clip">' + IC_LINK + '</button><button type="button" data-cazione="scarica" data-via="' + esc(via) + '" title="Scarica l\u2019originale, cos\u00ec com\u2019\u00e8">' + IC_GIU + "</button>" +
+      (PUO_ELIM ? '<button type="button" class="rosso" data-cazione="elimina" data-via="' + esc(via) + '" title="Elimina dalla NAS del club (definitivo)">' + IC_CESTO + "</button>" : "") + "</span>";
+  }
   function linkClip(via) { return location.origin + location.pathname + "#apri=" + encodeURIComponent(via); }
   function apriVia(via, t) {
     var i = via.lastIndexOf("/"), nome = via.slice(i + 1), d = i > 0 ? via.slice(0, i) : "";
@@ -2529,7 +2543,10 @@
     var r = bt.getBoundingClientRect(), w = 230;
     m.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w)) + "px"; m.style.top = (r.bottom + window.scrollY + 6) + "px";
     m.addEventListener("click", function (e) {
-      var b = e.target.closest("[data-cm]"); if (!b) return; e.stopPropagation(); var az = b.dataset.cm; chiudiMenuClip();
+      var b = e.target.closest("[data-cm]"); if (!b) return; e.stopPropagation(); chiudiMenuClip(); azioneClip(b.dataset.cm, via);
+    });
+  }
+  function azioneClip(az, via) {
       if (az === "link") { var l = linkClip(via); (navigator.clipboard ? navigator.clipboard.writeText(l) : Promise.reject()).then(function () { avviso("", "Link copiato: chi \u00e8 entrato con Google lo apre direttamente su questa clip."); }).catch(function () { prompt("Il link della clip", l); }); }
       if (az === "scarica") { var a = document.createElement("a"); a.href = url(via); a.download = via.split("/").pop(); document.body.appendChild(a); a.click(); a.remove(); }
       if (az === "elimina") {
@@ -2539,9 +2556,10 @@
           .then(function (j) { avviso("", "Eliminato: " + esc(via.split("/").pop()) + " (" + gb(j.peso) + ")."); document.querySelectorAll('[data-f="' + CSS.escape(via) + '"],[data-fxfile="' + CSS.escape(via) + '"]').forEach(function (c) { c.remove(); }); if (typeof VISTI !== "undefined") VISTI = VISTI.filter(function (x) { return x.via !== via; }); })
           .catch(function (e) { avviso("err", esc(e.message)); });
       }
-    });
   }
   document.addEventListener("click", function (e) {
+    var ca = e.target.closest && e.target.closest("[data-cazione]");
+    if (ca) { e.preventDefault(); e.stopPropagation(); azioneClip(ca.dataset.cazione, ca.dataset.via); return; }
     var b = e.target.closest && e.target.closest("[data-cmenu]");
     if (b) { e.preventDefault(); e.stopPropagation(); if (document.getElementById("clipMenu") && document.getElementById("clipMenu").dataset.per === b.dataset.cmenu) { chiudiMenuClip(); return; } menuClip(b.dataset.cmenu, b); document.getElementById("clipMenu").dataset.per = b.dataset.cmenu; return; }
     if (!(e.target.closest && e.target.closest("#clipMenu"))) chiudiMenuClip();
@@ -2554,7 +2572,7 @@
   function testoC(t) { return esc(t).replace(/@?([A-Za-z0-9._%+-]+@(?:comofootball\.com|sent\.tv))/gi, function (m, e) { return '<span class="tag" title="' + e + '">@' + esc(nomeMail(e)) + "</span>"; }); }
   function videoRev() { var sc = $("schermo"); return sc ? sc.querySelector("video") : null; }
   function caricaConti() {
-    return fetch(BASE + "commenti?conti=1", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) { CONTI_C = j.conti || {}; PUO_ELIM = !!j.elimina; }).catch(function () {});
+    return fetch(BASE + "commenti?conti=1", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) { CONTI_C = j.conti || {}; var prima = PUO_ELIM; PUO_ELIM = !!j.elimina; if (PUO_ELIM && !prima && I) { if (!$("risultati").hidden && typeof risultati === "function") risultati(); else if (FX.modo === "vere" && FX_ULTIMA) fxVereDisegna(FX_ULTIMA); } }).catch(function () {});
   }
   function caricaMenzioni() {
     return fetch(BASE + "commenti?menzioni=1", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) { MENZ = { lista: j.menzioni || [], nuove: j.nuove || 0 }; if (I) fxSide(); }).catch(function () {});
