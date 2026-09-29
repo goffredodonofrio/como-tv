@@ -16256,7 +16256,23 @@ const AZIONI = {
           r = R.reg[ap.reg.id];
         }
         if (!r) { saltati.push(nome); continue; }
-        const durata = r.durata || durataRegistrata(r.id) || Math.min(4 * 3600, Math.max(0, +x.durata || 0));
+        // una partita non ancora misurata (29/09/2026, Como-Lipsia ITA): la si misura adesso dal file
+        // sulla NAS (ffprobe legge solo l'indice) e la durata resta sulla registrazione
+        let durata = r.durata || durataRegistrata(r.id) || Math.min(4 * 3600, Math.max(0, +x.durata || 0));
+        if (!durata) {
+          const k = r.arch && r.arch.chiave;
+          // dove puo' stare: lo specchio di S3 sulla NAS, la radice della QNAP, il percorso che dice la pagina
+          const dentroQnap = (v) => { const f = v ? path.resolve(QNAP_RADICE, String(v)) : ""; return f.startsWith(QNAP_RADICE + "/") ? f : ""; };
+          const posti = [k && SPECCHIO.get(k) && dentroQnap(SPECCHIO.get(k)), k && dentroQnap(path.join(SPECCHIO_DIR, k)), k && dentroQnap(k), r.file,
+                         x.via && dentroQnap(path.join(SPECCHIO_DIR, String(x.via))), x.via && dentroQnap(x.via)];
+          for (const f of posti.filter(Boolean)) {
+            try {
+              if (!fs.existsSync(f)) continue;
+              const d = parseFloat(String(execFileSync(FFPROBE, ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", f], { timeout: 30000 })));
+              if (d > 0) { durata = Math.round(d); r.durata = durata; break; }
+            } catch (e) {}
+          }
+        }
         if (!durata) { saltati.push(nome + " (durata non ancora misurata)"); continue; }
         pezzi.push({ id: nuovoId("p"), reg: r.id, partita: r.titolo, dentro: 0, fuori: durata, base: 0, t0: Math.round(t0 * 1000) / 1000,
                      traccia: "V1", stacco: 0, titolo: nome, tipo: "", minuto: "", fonte: "comotv" });
