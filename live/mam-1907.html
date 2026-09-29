@@ -347,6 +347,7 @@
   .fx-g .fx-ic{flex:0 0 14px;color:var(--fumo);font-size:12px;text-align:center;}
   .fx-g .fx-n{margin-left:auto;font-size:11px;color:var(--fumo);font-variant-numeric:tabular-nums;}
   .fx-g .fx-nome{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+  .fx-g .liv2.figlio{padding-left:40px;font-size:12px;}
   .fx-sep{border:0;border-top:1px dashed var(--riga2);margin:6px 8px;}
   .fx-g .liv2{padding-left:24px;font-size:12.5px;} .fx-g .liv3{padding-left:40px;font-size:12px;}
   .fx-main{min-width:0;padding:14px 18px 18px;}
@@ -1174,7 +1175,7 @@
   // del percorso: e' una lettura, non la verita' della NAS. La NAS com'e' la mostra "Cartelle vere".
   var FX = { modo: "ord", stag: "", dip: "", sub: "", via: "" };
   try { FX.modo = localStorage.getItem("mam1907-fx") === "vere" ? "vere" : "ord"; } catch (e) {}
-  var FX_SCELTE = new Set(), FX_PRESI = [];
+  var FX_SCELTE = new Set(), FX_PRESI = [], FX_CHIUSA = false;
   var FX_SEL = null, FX_EVSEL = null, FX_TIT = "", FX_ORD = "data", FX_DIPS = null, FX_SUBS = null, FX_TOK = null, FX_ULTIMA = null, FX_TUTTI = false;
   try { FX_ORD = localStorage.getItem("mam1907-fxord") || "data"; } catch (e) {}
   var DIP = [["ft", "1. First Team"], ["wf", "2. Women's First Team"], ["pr", "3. Primavera 1"], ["ac", "4. Academy"], ["ps", "5. Partners-Sponsor"], ["re", "6. Retail"], ["el", "7. Events-Lifestyle"],
@@ -1313,13 +1314,31 @@
     var al = nomi.filter(function (x) { return !annoStagione(x); }).sort(function (a, b) { return a.localeCompare(b, "it", { numeric: true, sensitivity: "base" }); });
     return { stagioni: st, altre: al };
   }
+  // LA STAGIONE COME CAPO (Goffredo, 29/09/2026, "solo nella vista"): le cartelle della stessa stagione
+  // stanno sotto quella che si chiama "AAAA-AAAA Season" (2024-2025 Academy sotto 2024-2025 Season).
+  // Sulla NAS non si sposta niente: e' solo l'ordine della colonna.
+  function capoStagione(nomi) {
+    var l = nomi.slice().sort(function (a, b) { return (/^\s*\d{4}\s*-\s*\d{4}\s+season\s*$/i.test(b) ? 2 : /season/i.test(b) && !/pre/i.test(b) ? 1 : 0) - (/^\s*\d{4}\s*-\s*\d{4}\s+season\s*$/i.test(a) ? 2 : /season/i.test(a) && !/pre/i.test(a) ? 1 : 0) || a.localeCompare(b); });
+    return l[0];
+  }
+  function voceLista(nomi) {
+    // [{nome, figlio}] con "\u0000" come riga di separazione
+    var o = ordinePrimoLivello(nomi), per = {}, fuori = [];
+    o.stagioni.forEach(function (x) { var a = annoStagione(x); (per[a] = per[a] || []).push(x); });
+    Object.keys(per).sort(function (a, b) { return b - a; }).forEach(function (a) {
+      var capo = capoStagione(per[a]); fuori.push({ nome: capo, figlio: false });
+      per[a].filter(function (x) { return x !== capo; }).forEach(function (x) { fuori.push({ nome: x, figlio: true }); });
+    });
+    if (fuori.length && o.altre.length) fuori.push({ nome: "\u0000" });
+    return fuori.concat(o.altre.map(function (x) { return { nome: x, figlio: false }; }));
+  }
   function fxSide() {
     var h = "";
     if (FX.modo === "ord") {
       var stg = Object.keys(STAGIONI).sort().reverse().concat(["-", ""]);
       h += '<div class="fx-g"><h3>Stagioni</h3>' + stg.map(function (k) {
-        var on = FX.stag === k, r = '<button class="' + (on && !FX.dip ? "on" : "") + '" data-fxstag="' + k + '"><span class="fx-ic">' + (on ? "▾" : "▸") + '</span><span class="fx-nome">' + esc(nomeStag(k)) + "</span></button>";
-        if (on && FX_DIPS) r += DIP.filter(function (d) { return FX_DIPS[d[0]]; }).map(function (d) {
+        var on = FX.stag === k, aperta = on && !FX_CHIUSA, r = '<button class="' + (on && !FX.dip ? "on" : "") + '" data-fxstag="' + k + '"><span class="fx-ic" data-fxfreccia="' + k + '" title="' + (aperta ? "chiudi" : "apri") + '">' + (aperta ? "▾" : "▸") + '</span><span class="fx-nome">' + esc(nomeStag(k)) + "</span></button>";
+        if (aperta && FX_DIPS) r += DIP.filter(function (d) { return FX_DIPS[d[0]]; }).map(function (d) {
           var o = FX_DIPS[d[0]], a = FX.dip === d[0];
           var s = '<button class="liv2' + (a && !FX.sub ? " on" : "") + '" data-fxdip="' + d[0] + '"><span class="fx-ic">' + SVG_CART + '</span><span class="fx-nome">' + esc(d[1]) + '</span><span class="fx-n">' + n(o.s.length + o.e.length) + "</span></button>";
           if (a && FX_SUBS) s += FX_SUBS.map(function (sb) { return '<button class="liv3' + (FX.sub === sb.k ? " on" : "") + '" data-fxsub="' + esc(sb.k) + '"><span class="fx-nome">' + esc(sb.k) + '</span><span class="fx-n">' + n(sb.s.length + sb.e.length) + "</span></button>"; }).join("");
@@ -1332,9 +1351,10 @@
       ((FX_ULTIMA && FX_ULTIMA.via === "" && FX_ULTIMA.cartelle) || []).forEach(function (c) { if (!(c.nome in top)) top[c.nome] = 0; });
       var cur = FX.via.split("/");
       h += '<div class="fx-g"><h3>COMOTV - FRAME</h3><button class="' + (FX.via === "" ? "on" : "") + '" data-fxvia=""><span class="fx-ic">' + SVG_CART + '</span><span class="fx-nome">Tutte le cartelle</span></button>' +
-        (function () { var o = ordinePrimoLivello(Object.keys(top)); return o.stagioni.concat(o.stagioni.length && o.altre.length ? ["\u0000"] : [], o.altre); })().map(function (t) {
+        voceLista(Object.keys(top)).map(function (vv) {
+          var t = vv.nome;
           if (t === "\u0000") return '<hr class="fx-sep" aria-hidden="true">';
-          var r = '<button class="liv2' + (FX.via === t ? " on" : "") + '" data-fxvia="' + esc(t) + '"><span class="fx-ic">' + SVG_CART + '</span><span class="fx-nome">' + esc(t) + '</span><span class="fx-n">' + (top[t] ? n(top[t]) : "") + "</span></button>";
+          var r = '<button class="liv2' + (vv.figlio ? " figlio" : "") + (FX.via === t ? " on" : "") + '" data-fxvia="' + esc(t) + '">' + (vv.figlio ? '<span class="fx-ic">\u21B3</span>' : '<span class="fx-ic">' + SVG_CART + "</span>") + '<span class="fx-nome">' + esc(t) + '</span><span class="fx-n">' + (top[t] ? n(top[t]) : "") + "</span></button>";
           if (cur[0] === t) for (var i = 1; i < cur.length; i++) { var v = cur.slice(0, i + 1).join("/"); r += '<button class="liv3' + (FX.via === v ? " on" : "") + '" data-fxvia="' + esc(v) + '" style="padding-left:' + (32 + i * 10) + 'px"><span class="fx-nome">' + esc(cur[i]) + "</span></button>"; }
           return r;
         }).join("") + "</div>";
@@ -1439,8 +1459,15 @@
     if ((t = e.target.closest("[data-fxcerca]"))) { G = []; metti({ k: "cart", v: FX.via, n: ultimo(FX.via) }); window.scrollTo(0, 0); return; }
     if ((t = e.target.closest("[data-fxtutti]"))) { FX_TUTTI = true; fxVereDisegna(FX_ULTIMA); return; }
     if ((t = e.target.closest("[data-fxracc]"))) { FX_TUTTI = true; fxSide(); return; }
-    if ((t = e.target.closest("[data-fxstag]"))) { FX.modo = "ord"; FX.stag = t.dataset.fxstag; FX.dip = ""; FX.sub = ""; fxVai(); return; }
-    if ((t = e.target.closest("[data-fxdip]"))) { FX.dip = t.dataset.fxdip; FX.sub = ""; fxVai(); return; }
+    // la freccetta apre e chiude la stagione (come su Frame.io); il nome ci porta dentro,
+    // e sul nome della stagione gia' aperta, senza reparto scelto, la richiude
+    if ((t = e.target.closest("#fxSide [data-fxfreccia]"))) {
+      if (FX.stag === t.dataset.fxfreccia) { FX_CHIUSA = !FX_CHIUSA; fxSide(); return; }
+      FX_CHIUSA = false; FX.modo = "ord"; FX.stag = t.dataset.fxfreccia; FX.dip = ""; FX.sub = ""; fxVai(); return;
+    }
+    if ((t = e.target.closest("#fxSide [data-fxstag]")) && FX.modo === "ord" && FX.stag === t.dataset.fxstag && !FX.dip) { FX_CHIUSA = !FX_CHIUSA; fxSide(); return; }
+    if ((t = e.target.closest("[data-fxstag]"))) { FX_CHIUSA = false; FX.modo = "ord"; FX.stag = t.dataset.fxstag; FX.dip = ""; FX.sub = ""; fxVai(); return; }
+    if ((t = e.target.closest("[data-fxdip]"))) { FX_CHIUSA = false; FX.dip = t.dataset.fxdip; FX.sub = ""; fxVai(); return; }
     if ((t = e.target.closest("[data-fxsub]"))) { FX.sub = t.dataset.fxsub; fxVai(); return; }
     if ((t = e.target.closest("[data-fxvia]"))) { FX.modo = "vere"; FX.via = t.dataset.fxvia; fxVai(); return; }
     if ((t = e.target.closest("#fxBody [data-rev]"))) { apriFileFx(t.dataset.rev); return; }
