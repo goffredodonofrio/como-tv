@@ -1083,14 +1083,17 @@
      velato = byte gia' arrivati, file a meta' compresi. */
   .copia{border:1px solid rgba(201,162,75,.45);border-radius:12px;padding:12px 16px;margin:10px 0 18px;background:rgba(201,162,75,.06);display:flex;flex-direction:column;gap:8px;max-width:900px;}
   .copia-testa{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
-  .copia.riassunto{padding:0;margin:8px 0 16px;border:0;background:transparent;max-width:none;}
-  .ra{display:flex;flex-wrap:wrap;align-items:center;gap:5px 6px;font-size:12px;color:var(--fumo);}
-  .ra-n{white-space:nowrap;margin-right:8px;} .ra-n strong{color:var(--oro2);font:600 13px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;margin-right:3px;}
-  .ra-sep{width:1px;height:16px;background:var(--riga2);margin:0 6px 0 0;}
-  .ra button{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:999px;border:1px solid var(--riga2);background:transparent;color:var(--ivory2);font:600 11px/1.2 'DM Sans',sans-serif;cursor:pointer;}
+  .lib-riga{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px 16px;}
+  .lib-riga > .lib-cerca{flex:0 1 820px;min-width:280px;}
+  .lib-riga > .copia{flex:1 1 320px;min-width:0;margin:0;}
+  .copia.riassunto{padding:0;border:0;background:transparent;max-width:none;height:54px;box-sizing:border-box;justify-content:center;gap:6px;overflow:hidden;}
+  .ra-n-riga{display:flex;align-items:baseline;gap:4px 14px;font-size:12px;color:var(--fumo);white-space:nowrap;overflow:hidden;}
+  .ra-n strong{color:var(--oro2);font:600 13px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;margin-right:3px;}
+  .ra{display:flex;flex-wrap:nowrap;align-items:center;gap:5px;overflow-x:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,#000 92%,transparent);mask-image:linear-gradient(90deg,#000 92%,transparent);}
+  .ra::-webkit-scrollbar{display:none;}
+  .ra button{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:999px;border:1px solid var(--riga2);background:transparent;color:var(--ivory2);font:600 11px/1.2 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;}
   .ra button b{font:600 10.5px/1 ui-monospace,Menlo,monospace;color:var(--fumo);}
   .ra button .gt-dot{width:7px;height:7px;flex:0 0 7px;margin:0;}
-  .ra .ra-piu{color:var(--oro2);border-style:dashed;}
   .ra button:hover,.ra button:focus-visible{border-color:rgba(201,162,75,.6);color:var(--ivory);outline:none;}
   .copia-testa b{font-family:'Mazzard',sans-serif;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--oro);}
   .copia-testa em{font-style:normal;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--riga2);color:var(--ivory2);}
@@ -1377,8 +1380,10 @@
   <!-- ══════════ LIBRERIA ══════════ -->
   <div class="vista" id="libreria">
     <div class="lib-testa"><h1 id="libSaluto">Buongiorno, <span>Como TV</span></h1><p id="libSotto">L'archivio: partite intere, azioni, telecronache, foto. Cerca, guarda, monta.</p></div>
-    <div class="lib-cerca campo-g" id="campoG"><span class="lu">&#128269;</span><span id="gettoni" class="gettoni"></span><input id="cercaLib" type="search" placeholder="Cerca qui" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" autofocus aria-autocomplete="list" aria-controls="suggerisci"><div id="suggerisci" class="sugg" role="listbox" hidden></div></div>
-    <div class="copia" id="copiaS3" hidden></div>
+    <div class="lib-riga">
+      <div class="lib-cerca campo-g" id="campoG"><span class="lu">&#128269;</span><span id="gettoni" class="gettoni"></span><input id="cercaLib" type="search" placeholder="Cerca qui" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" autofocus aria-autocomplete="list" aria-controls="suggerisci"><div id="suggerisci" class="sugg" role="listbox" hidden></div></div>
+      <div class="copia" id="copiaS3" hidden></div>
+    </div>
     <div id="riprendi"></div>
     <div id="libProg">
       <div class="sez"><h2>Progetti</h2><span id="progConto"></span><button class="dx b mini" id="progNuovo" title="un progetto raccoglie le sequenze di un lavoro (una puntata, un'uscita social, un cliente)">+ Nuovo progetto</button></div>
@@ -7505,7 +7510,6 @@
       var h = riassuntoArchivio(usa);
       if (!h) { c.hidden = true; return; }
       c.hidden = false; c.className = "copia riassunto"; c.innerHTML = h;
-      var piu = c.querySelector("[data-rtutte]"); if (piu) piu.addEventListener("click", function(){ RIASSUNTO_TUTTE = true; chiediCopia(); });
       c.querySelectorAll("[data-rcomp]").forEach(function(b){ b.addEventListener("click", function(){ aggiungiGettone({ t: "c", v: b.dataset.rcomp, eti: b.dataset.rcomp }); disegnaGettoni(); cerca(el("cercaLib").value); }); });
       return;
     }
@@ -7528,7 +7532,6 @@
 
   // IL RIASSUNTO DELL'ARCHIVIO: partite, ore, Como, stagioni, le competizioni
   // piu' ricche (un clic = il filtro). Tutto da EVENTI, gia' in pagina
-  var RIASSUNTO_TUTTE = false;
   function riassuntoArchivio(usa){
     if (!EVENTI.length) return "";
     var num = function(n){ return (n || 0).toLocaleString("it-IT"); };
@@ -7537,13 +7540,13 @@
     var st = stagioniNote(), comp = compNote();
     var stag = st.length ? (st.length > 1 ? st[st.length - 1].nome + " – " + st[0].nome : st[0].nome) : "";
     var chip = function(c){ return '<button type="button" data-rcomp="' + esc(c.nome) + '" title="' + esc(c.nome) + ': ' + num(c.n) + ' partite"><span class="gt-dot" style="background:' + coloreComp(c.nome) + '"></span>' + esc(compBreve(c.nome)) + '<b>' + num(c.n) + '</b></button>'; };
-    var PRIME = 18, tutte = RIASSUNTO_TUTTE || comp.length <= PRIME + 2;
-    return '<div class="ra"><span class="ra-n"><strong>' + num(usa || EVENTI.length) + '</strong> partite</span>' +
+    // accanto alla barra e alta quanto lei: i numeri sopra, sotto tutte le competizioni in una fila che scorre
+    return '<div class="ra-n-riga"><span class="ra-n"><strong>' + num(usa || EVENTI.length) + '</strong> partite</span>' +
       (ore ? '<span class="ra-n"><strong>' + num(Math.round(ore)) + '</strong> ore</span>' : '') +
       '<span class="ra-n"><strong>' + num(como) + '</strong> Como</span>' +
-      (stag ? '<span class="ra-n">' + esc(stag) + '</span>' : '') +
-      '<i class="ra-sep"></i>' + comp.slice(0, tutte ? comp.length : PRIME).map(chip).join("") +
-      (tutte ? '' : '<button type="button" class="ra-piu" data-rtutte="1">+' + (comp.length - PRIME) + '</button>') + '</div>';
+      '<span class="ra-n"><strong>' + num(comp.length) + '</strong> competizioni</span>' +
+      (stag ? '<span class="ra-n">' + esc(stag) + '</span>' : '') + '</div>' +
+      '<div class="ra">' + comp.map(chip).join("") + '</div>';
   }
   // nella Libreria si chiede ogni 5 secondi (il ponte ripesa solo i file a meta'),
   // altrove basta il bottoncino in alto; a scheda nascosta non si chiede niente
