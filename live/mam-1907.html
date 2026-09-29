@@ -503,6 +503,14 @@
   .rev-vuoto{padding:22px 16px;color:var(--fumo);font-size:13px;line-height:1.5;}
   .rev-bt{position:absolute;right:8px;top:8px;z-index:4;display:inline-flex;align-items:center;gap:4px;padding:4px 7px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(10,15,36,.82);color:var(--ivory);font:700 11px/1 'DM Sans',sans-serif;text-transform:none;letter-spacing:0;cursor:pointer;min-height:0;}
   .card > .rev-bt{top:auto;bottom:8px;} .fx-file .ff{position:relative;} .fx-file .ff .rev-bt{top:12px;right:12px;}
+  .clip-bt{position:absolute;right:8px;top:8px;z-index:4;width:28px;height:24px;padding:0;display:inline-grid;place-items:center;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(10,15,36,.82);color:var(--ivory);font:800 15px/1 'DM Sans',sans-serif;letter-spacing:0;text-transform:none;min-height:0;cursor:pointer;}
+  .clip-bt:hover{border-color:var(--oro);color:var(--oro2);}
+  .card > .clip-bt{top:auto;bottom:8px;right:auto;left:8px;} .fx-file .ff .clip-bt{top:12px;left:12px;right:auto;}
+  .clip-menu{position:absolute;z-index:200;width:230px;background:var(--pan2);border:1px solid var(--riga2);border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.5);padding:6px;display:flex;flex-direction:column;gap:2px;}
+  .clip-menu .cm-nome{font-size:11.5px;color:var(--fumo);padding:6px 8px 8px;border-bottom:1px solid var(--riga);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .clip-menu button{justify-content:flex-start;width:100%;border:0;background:none;padding:8px 10px;border-radius:7px;font:600 13px/1.2 'DM Sans',sans-serif;text-transform:none;letter-spacing:0;color:var(--ivory);}
+  .clip-menu button:hover{background:rgba(201,162,75,.14);color:var(--ivory);} .clip-menu .cm-rosso{color:#F08A8D;} .clip-menu .cm-rosso:hover{background:rgba(229,72,77,.18);color:#fff;}
+  .clip-menu .cm-nota{font-size:11.5px;color:var(--fumo);padding:6px 10px;}
   .rev-bt:hover{border-color:var(--oro);color:var(--oro2);} .rev-bt.aperti{background:var(--oro);color:#10131c;border-color:var(--oro);}
   @media (max-width:980px){ .lettore.rev{grid-template-columns:1fr;max-height:none;overflow:auto;} .rev-c{border-left:0;border-top:1px solid var(--riga);max-height:none;} }
   .lettore .info{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:12px 16px;font-size:13px;color:var(--ivory2);}
@@ -892,6 +900,7 @@
     if (h.get("t") === "video" || h.get("t") === "foto") TAB = h.get("t");
     Q = h.get("q") || ""; $("cerca").value = Q;
     var r = h.get("r"); if (r) apriRaccolta(r, true);
+    if (h.get("apri")) { var av = h.get("apri"); setTimeout(function () { apriVia(av); }, 50); }
     if (h.has("fv")) { FX.modo = "vere"; FX.via = h.get("fv"); fxDisegna(); }
     else if (h.has("fo")) { var fo = h.get("fo").split("|"); FX.modo = "ord"; FX.stag = fo[0] || ""; FX.dip = fo[1] || ""; FX.sub = fo[2] || ""; FX.comp = fo[3] || ""; FX.par = fo[4] || ""; fxDisegna(); }
     disegnaGettoni();
@@ -1593,7 +1602,7 @@
       var max = FX_TUTTI ? 99999 : 120;
       h += '<div class="fx-sez">File</div><div class="fx-file">' + ff.slice(0, max).map(function (f) {
         var p = (via ? via + "/" : "") + f.nome, m = RX_VID.test(f.nome) || RX_FOTO.test(f.nome);
-        return '<div class="ff' + (FX_SCELTE.has(p) ? " fx-sel" : "") + '" tabindex="0" draggable="true" data-fxfile="' + esc(p) + '" title="' + esc(f.nome) + '">' + (m ? bottoneRev(p) : "") + '<div class="fx-mos uno"><div' + (m ? ' data-mini="' + esc(p) + '"' : "") + '><span class="foto"></span>' + (m ? "" : '<span class="vuota" style="font-size:12px">' + esc((f.nome.split(".").pop() || "").toUpperCase()) + "</span>") + "</div></div><b>" + esc(f.nome) + "</b><small>" + (f.peso ? gb(f.peso) : "0 MB · vuoto") + "</small></div>";
+        return '<div class="ff' + (FX_SCELTE.has(p) ? " fx-sel" : "") + '" tabindex="0" draggable="true" data-fxfile="' + esc(p) + '" title="' + esc(f.nome) + '">' + (m ? bottoneRev(p) : "") + bottoneMenu(p) + '<div class="fx-mos uno"><div' + (m ? ' data-mini="' + esc(p) + '"' : "") + '><span class="foto"></span>' + (m ? "" : '<span class="vuota" style="font-size:12px">' + esc((f.nome.split(".").pop() || "").toUpperCase()) + "</span>") + "</div></div><b>" + esc(f.nome) + "</b><small>" + (f.peso ? gb(f.peso) : "0 MB · vuoto") + "</small></div>";
       }).join("") + "</div>" + (ff.length > max ? '<div class="piu">Ne vedi ' + n(max) + " su " + n(ff.length) + '. <button class="mini" data-fxtutti>Mostrali tutti</button></div>' : "");
     }
     if (!voci.length && !ff.length) h += '<div class="vuoto">Cartella vuota.</div>';
@@ -2119,7 +2128,7 @@
     return '<div class="card' + (on ? " scelta" : "") + '" data-f="' + esc(x.via) + '"' + (x.tipo === "video" ? ' data-prov="' + esc(x.via) + '"' : "") + ' tabindex="0"><div class="mini" data-mini="' + esc(x.via) + '"><div class="foto"></div><span class="scorri"><i></i></span><span class="prep">anteprima…</span><div class="sopra"><div class="su"><span class="tipo-az st-' + x.st.toLowerCase() + '">' + esc(x.st) + "</span>" + (x.dop > 1 ? '<span class="tipo-az st-dop" title="lo stesso file sta in ' + x.dop + ' cartelle">×' + x.dop + "</span>" : "") + (x.data ? '<span class="quando">' + dataRip(x.data) + "</span>" : "") + '</div><div class="giu"><span>' + esc(parti.slice(-1)[0]) + '</span><span class="peso">' + gb(x.peso) + "</span></div></div></div>" +
       '<button class="scegli' + (on ? " on" : "") + '" data-sc="' + esc(x.via) + '" aria-pressed="' + on + '" title="' + (on ? "Togli dalla scelta" : "Scegli per montare o per la raccolta") + '">' + (on ? '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>' : '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>') + "</button>" +
       '<div class="t"><div class="testo">' + evidenzia(x.nome) + '</div><small><span class="comp-et" style="background:' + colore(x.coll) + '">' + esc(nomeVista(x.coll)) + "</span>" + esc(parti.slice(1).join(" › ")) + "</small>" +
-      faccine(x) + "</div>" + (x.tipo === "video" || x.tipo === "foto" ? bottoneRev(x.via) : "") + "</div>";
+      faccine(x) + "</div>" + (x.tipo === "video" || x.tipo === "foto" ? bottoneRev(x.via) : "") + bottoneMenu(x.via) + "</div>";
   }
   // chi si vede nel file: la sua faccina ritagliata da quel video (bordo oro = primo piano)
   function faccina(pid, k, cls) { var p = PERS[pid] || {}, u = k ? BASE + "indice/visti/" + k + ".jpg" : posata(p) ? posata(p) : p.foto ? FOTO + p.foto : p.volto ? ritaglio(p.volto) : "";
@@ -2455,7 +2464,7 @@
   // leggera (720p) se c'e', e se non c'e' la si chiede al servizio-1907.
   var SEGUI = null;
   function apri(x) {
-    var u = url(x.via), dx = (x.tipo === "video" ? '<button data-fa="percorso-uno" title="il percorso del file sulla NAS, da incollare nel Finder (Vai alla cartella)">Copia percorso</button>' : "") + '<a class="b" href="' + u + '" download>Scarica l’originale</a>' + (x.tipo === "video" ? '<button data-fa="monta-uno" class="oro">Monta questo</button>' : "") + '<button data-fa="scegli-uno">' + (SCELTI.has(x.via) ? "Togli dalla scelta" : "Scegli") + '</button><button id="chiudi">Chiudi</button>';
+    var u = url(x.via), dx = (x.tipo === "video" ? '<button data-fa="percorso-uno" title="il percorso del file sulla NAS, da incollare nel Finder (Vai alla cartella)">Copia percorso</button>' : "") + '<a class="b" href="' + u + '" download>Scarica l’originale</a>' + '<button type="button" data-cmenu="' + esc(x.via) + '">Condividi / elimina</button>' + (x.tipo === "video" ? '<button data-fa="monta-uno" class="oro">Monta questo</button>' : "") + '<button data-fa="scegli-uno">' + (SCELTI.has(x.via) ? "Togli dalla scelta" : "Scegli") + '</button><button id="chiudi">Chiudi</button>';
     var info = '<div class="info"><div><b>' + esc(x.nome) + "</b><br>" + esc(percorsoVista(x.d)) + " · " + gb(x.peso) + (x.data ? " · girato il " + dataRip(x.data) : "") + '</div><div class="dx">' + dx + "</div></div>";
     var schermo;
     if (x.tipo === "foto" && /\.(jpe?g|png|webp)$/i.test(x.via)) schermo = '<div class="schermo"><img src="' + u + '" alt=""></div>';
@@ -2500,7 +2509,44 @@
   // ══════════ I COMMENTI SUI VIDEO, COME SU FRAME.IO (29/09/2026) ══════════
   // Al punto del video (o su un tratto), con le risposte, "risolto", e i tag @nome@comofootball.com:
   // chi e' taggato lo ritrova in Menzioni. Si salvano nel servizio-1907 (commenti.json).
-  var REV = null, CONTI_C = {}, MENZ = { lista: [], nuove: 0 };
+  var REV = null, CONTI_C = {}, MENZ = { lista: [], nuove: 0 }, PUO_ELIM = false;
+  // ── LE TRE AZIONI DI OGNI CLIP (Goffredo, 29/09/2026): condividi con un link, scarica cosi' com'e', elimina ──
+  function bottoneMenu(via) { return '<button type="button" class="clip-bt" data-cmenu="' + esc(via) + '" title="Condividi, scarica, elimina" aria-label="azioni della clip">\u22EF</button>'; }
+  function linkClip(via) { return location.origin + location.pathname + "#apri=" + encodeURIComponent(via); }
+  function apriVia(via, t) {
+    var i = via.lastIndexOf("/"), nome = via.slice(i + 1), d = i > 0 ? via.slice(0, i) : "";
+    apri({ via: via, nome: nome, d: d, peso: 0, tipo: RX_VID.test(nome) ? "video" : RX_FOTO.test(nome) ? "foto" : "altro", data: CART[d] ? CART[d][0] : 0, salta: t });
+  }
+  function chiudiMenuClip() { var m = document.getElementById("clipMenu"); if (m) m.remove(); }
+  function menuClip(via, bt) {
+    chiudiMenuClip();
+    var m = document.createElement("div"); m.id = "clipMenu"; m.className = "clip-menu"; m.setAttribute("role", "menu");
+    m.innerHTML = '<div class="cm-nome" title="' + esc(via) + '">' + esc(via.split("/").pop()) + "</div>" +
+      '<button type="button" data-cm="link" role="menuitem">Copia il link</button>' +
+      '<button type="button" data-cm="scarica" role="menuitem">Scarica l\u2019originale</button>' +
+      (PUO_ELIM ? '<button type="button" data-cm="elimina" role="menuitem" class="cm-rosso">Elimina dalla NAS\u2026</button>' : '<span class="cm-nota">Eliminare pu\u00f2 solo chi \u00e8 autorizzato</span>');
+    document.body.appendChild(m);
+    var r = bt.getBoundingClientRect(), w = 230;
+    m.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w)) + "px"; m.style.top = (r.bottom + window.scrollY + 6) + "px";
+    m.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-cm]"); if (!b) return; e.stopPropagation(); var az = b.dataset.cm; chiudiMenuClip();
+      if (az === "link") { var l = linkClip(via); (navigator.clipboard ? navigator.clipboard.writeText(l) : Promise.reject()).then(function () { avviso("", "Link copiato: chi \u00e8 entrato con Google lo apre direttamente su questa clip."); }).catch(function () { prompt("Il link della clip", l); }); }
+      if (az === "scarica") { var a = document.createElement("a"); a.href = url(via); a.download = via.split("/").pop(); document.body.appendChild(a); a.click(); a.remove(); }
+      if (az === "elimina") {
+        if (!confirm("Eliminare DEFINITIVAMENTE dalla NAS del club:\n\n" + via + "\n\nNon si recupera.")) return;
+        fetch(BASE + "elimina-clip", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ via: via }) })
+          .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || !j.ok) throw new Error(j.errore || "Non riuscito: riprova."); return j; }); })
+          .then(function (j) { avviso("", "Eliminato: " + esc(via.split("/").pop()) + " (" + gb(j.peso) + ")."); document.querySelectorAll('[data-f="' + CSS.escape(via) + '"],[data-fxfile="' + CSS.escape(via) + '"]').forEach(function (c) { c.remove(); }); if (typeof VISTI !== "undefined") VISTI = VISTI.filter(function (x) { return x.via !== via; }); })
+          .catch(function (e) { avviso("err", esc(e.message)); });
+      }
+    });
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("[data-cmenu]");
+    if (b) { e.preventDefault(); e.stopPropagation(); if (document.getElementById("clipMenu") && document.getElementById("clipMenu").dataset.per === b.dataset.cmenu) { chiudiMenuClip(); return; } menuClip(b.dataset.cmenu, b); document.getElementById("clipMenu").dataset.per = b.dataset.cmenu; return; }
+    if (!(e.target.closest && e.target.closest("#clipMenu"))) chiudiMenuClip();
+  }, true);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") chiudiMenuClip(); });
   function nomeMail(e) { var p = String(e || "").split("@")[0].split(/[._-]+/).filter(Boolean); return p.map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(" ") || e; }
   function iniziali(e) { var p = nomeMail(e).split(" "); return ((p[0] || "")[0] || "") + ((p[1] || "")[0] || ""); }
   function tcod(t) { t = Math.max(0, +t || 0); var h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), sec = Math.floor(t % 60), f = Math.floor((t % 1) * 25); return ("0" + h).slice(-2) + ":" + ("0" + m).slice(-2) + ":" + ("0" + sec).slice(-2) + ":" + ("0" + f).slice(-2); }
@@ -2508,7 +2554,7 @@
   function testoC(t) { return esc(t).replace(/@?([A-Za-z0-9._%+-]+@(?:comofootball\.com|sent\.tv))/gi, function (m, e) { return '<span class="tag" title="' + e + '">@' + esc(nomeMail(e)) + "</span>"; }); }
   function videoRev() { var sc = $("schermo"); return sc ? sc.querySelector("video") : null; }
   function caricaConti() {
-    return fetch(BASE + "commenti?conti=1", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) { CONTI_C = j.conti || {}; }).catch(function () {});
+    return fetch(BASE + "commenti?conti=1", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) { CONTI_C = j.conti || {}; PUO_ELIM = !!j.elimina; }).catch(function () {});
   }
   function caricaMenzioni() {
     return fetch(BASE + "commenti?menzioni=1", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) { MENZ = { lista: j.menzioni || [], nuove: j.nuove || 0 }; if (I) fxSide(); }).catch(function () {});
