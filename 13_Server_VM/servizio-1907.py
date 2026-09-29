@@ -458,20 +458,34 @@ def elimina(p, chi):
                     # (29/09/2026) file per file: se ne va solo quello che nella copia che resta c'e' uguale
                     # (stesso percorso dentro la cartella e stessa dimensione). Quello che non c'e' (sottotitoli,
                     # progetti Premiere, foto piccole) RESTA dov'e', con le sue cartelle: l'unica copia non si tocca.
+                    # (29/09/2026, sera) la copia uguale si cerca OVUNQUE dentro la cartella che resta (le copie
+                    # hanno spesso le sottocartelle in un altro ordine): stesso nome e stessa dimensione, e per i
+                    # file grandi anche inizio e fine uguali. I "._nome" (metadati del Mac) seguono il loro file.
+                    idx = {}
+                    for r2, c2, f2 in os.walk(keep):
+                        for f in f2:
+                            try: idx.setdefault((f.lower(), os.path.getsize(os.path.join(r2, f))), []).append(os.path.join(r2, f))
+                            except OSError: pass
                     for radice, cc, ff in os.walk(src, topdown=False):
-                        for f in ff:
-                            pf = os.path.join(radice, f); rel = os.path.relpath(pf, src); kf = os.path.join(keep, rel)
+                        andati = set()
+                        for f in sorted(ff, key=lambda z: z.startswith("._")):
+                            pf = os.path.join(radice, f)
                             try:
-                                if os.path.isfile(kf) and os.path.getsize(kf) == os.path.getsize(pf): os.remove(pf)
+                                if f.startswith("._") and f[2:] in andati: os.remove(pf); continue
+                                sz = os.path.getsize(pf)
+                                cand = idx.get((f.lower(), sz)) or []
+                                ip = _impronta(pf) if cand and sz >= 2_000_000 else ""
+                                ok = bool(cand) and (sz < 2_000_000 or (ip is not None and ip == _impronta(cand[0])))
+                                if ok: os.remove(pf); andati.add(f)
                                 else: tenuti.append(os.path.relpath(pf, RW))
-                            except OSError as ex: errori.append(os.path.relpath(pf, RW))
+                            except OSError: errori.append(os.path.relpath(pf, RW))
                         try:
                             if not os.listdir(radice): os.rmdir(radice)
                         except OSError: pass
                 else: os.remove(src)
             except OSError as ex:
                 errori.append(str(ex.strerror or ex))
-            k = hashlib.sha1((via + str(time.time())).encode()).hexdigest()[:12]
+            k = next((k0 for k0, v0 in e_["voci"].items() if v0.get("via") == via), None) or hashlib.sha1((via + str(time.time())).encode()).hexdigest()[:12]
             e_["voci"][k] = {"via": via, "tieni": b, "chi": chi, "quando": int(time.time()), "cartella": cartella,
                              "segnato_da": (s["segnati"].get(via) or {}).get("chi", ""), "errori": errori[:20], "tenuti": tenuti[:50]}
             s["segnati"].pop(via, None)

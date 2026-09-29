@@ -366,6 +366,9 @@
     var h = VISTA === "griglia" ? '<div class="griglia">' + LISTA.slice(0, QUANTI).map(carta).join("") + "</div>" : LISTA.slice(0, QUANTI).map(riga).join("");
     if (!LISTA.length) h = '<div class="vuoto">' + (SCHEDA === "segnati" ? "Nessun doppione segnato, per ora." : SCHEDA === "eliminati" ? "Nessun doppione eliminato, per ora." : "Nessun doppione con questi filtri.") + "</div>";
     if (LISTA.length > QUANTI) h += '<button type="button" class="piu" id="altri">Mostra altri ' + Math.min(50, LISTA.length - QUANTI) + " (" + n(LISTA.length - QUANTI) + " ancora)</button>";
+    var rimasti = Object.keys(CEST).map(function (k) { return CEST[k]; }).filter(function (x) { return (x.tenuti || []).length; });
+    if (SCHEDA === "eliminati" && ELIM && rimasti.length) h = '<div class="avviso-ro" style="margin-bottom:10px"><b>' + n(rimasti.length) + " cartelle</b> sono rimaste con dei file: la prima regola cercava la copia solo allo stesso posto nella cartella che resta. Adesso la si cerca ovunque dentro quella cartella (stesso nome, stessa dimensione e, per i file grandi, inizio e fine uguali); quello che non ha una copia resta comunque. " +
+      '<button type="button" class="rosso" id="ripulisci">Ripulisci i file rimasti</button></div>' + h;
     if (SCHEDA === "segnati" && sg.length) h = '<div><button type="button" class="oro" id="scarica">Scarica l’elenco dei segnati (CSV)</button></div>' + h;
     $("elenco").innerHTML = h;
     miniature(); barra();
@@ -436,9 +439,13 @@
     if (!confirm("Eliminare DEFINITIVAMENTE " + n(sel.length) + (sel.length === 1 ? " doppione" : " doppioni") + " (" + gb(peso) + ") dalla NAS del club?\n\nNon si recupera. La copia che resta non si tocca, e nelle cartelle restano i file che non hanno un'altra copia." + (sel.length > 100 ? "\n\nSi fa a pacchetti da 100: ci vorra' un po', e si puo' fermare." : ""))) return;
     // A PACCHETTI (29/09/2026): il servizio ne prende al massimo 2.000 per volta e cancellare sulla NAS e' lento;
     // si manda 100 alla volta, uno dopo l'altro, e il bottone dice a che punto si e'. Si puo' fermare.
-    var vie = sel.map(function (x) { return x.cartella || x.a; }), tot = { eliminati: 0, esiti: [] }, i = 0, FERMA = false;
+    eliminaVie(sel.map(function (x) { return x.cartella || x.a; }));
+  }
+  function eliminaVie(vie) {
+    var tot = { eliminati: 0, esiti: [] }, i = 0, FERMA = false;
+    $("barra").hidden = false;
     $("elimina").disabled = true;
-    $("deseleziona").textContent = "Ferma"; var ferma = function (e) { e.stopImmediatePropagation(); FERMA = true; }; $("deseleziona").addEventListener("click", ferma, true);
+    $("deseleziona").textContent = "Ferma"; var ferma = function (e) { e.stopImmediatePropagation(); FERMA = true; $("deseleziona").textContent = "Mi fermo alla fine del pacchetto…"; $("deseleziona").disabled = true; }; $("deseleziona").addEventListener("click", ferma, true);
     function giro() {
       if (FERMA || i >= vie.length) return Promise.resolve();
       var pacco = vie.slice(i, i + 100);
@@ -451,7 +458,7 @@
       var tenuti = tot.esiti.filter(function (e) { return /tenuti/.test(e[1]); }).length;
       risultato({ esiti: tot.esiti.filter(function (e) { return !/^ok/.test(e[1]); }) }, (FERMA ? "Fermato. " : "") + "Eliminati: " + n(tot.eliminati) + " di " + n(vie.length) + "." + (tenuti ? "\n\nIn " + tenuti + " cartelle sono rimasti i file che non avevano un'altra copia (sottotitoli, progetti, foto piccole)." : ""));
     }).catch(function (e) { alert("Eliminati finora: " + n(tot.eliminati) + ".\n\n" + e.message); })
-      .then(function () { $("deseleziona").removeEventListener("click", ferma, true); $("deseleziona").textContent = "Deseleziona"; $("elimina").textContent = "Elimina"; return caricaSegni(); }).then(disegna);
+      .then(function () { $("deseleziona").removeEventListener("click", ferma, true); $("deseleziona").textContent = "Deseleziona"; $("deseleziona").disabled = false; $("elimina").textContent = "Elimina"; return caricaSegni(); }).then(disegna);
   }
   function manda(azione) {
     var sel = Array.from(SCELTI.values()).filter(function (x) { return azione === "togli" ? SEGN[x.cartella || x.a] : !SEGN[x.cartella || x.a]; });
@@ -493,6 +500,11 @@
     if (e.target.id === "segna") { manda("segna"); return; }
     if (e.target.id === "togliSegno") { manda("togli"); return; }
     if (e.target.id === "elimina") { elimina(); return; }
+    if (e.target.id === "ripulisci") {
+      var vv = Object.keys(CEST).map(function (k) { return CEST[k]; }).filter(function (x) { return (x.tenuti || []).length; }).map(function (x) { return x.via; });
+      if (confirm("Ripulire " + n(vv.length) + " cartelle gia' eliminate in parte?\n\nSe ne vanno solo i file che hanno la copia uguale nella cartella che resta. Definitivo.")) eliminaVie(vv);
+      return;
+    }
   });
   // la scelta: un clic; con Maiuscolo si prende tutto l'intervallo dall'ultimo scelto
   var ULTIMO = -1;
